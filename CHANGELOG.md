@@ -1,10 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-alpha.1 — 2026-07-18 (pre-release)
 
-Pre-release research code (major version 0). Interfaces, the covered source
-fragment, and the trust surface may change without notice — do not depend on it
-as a stable API. The CatCrypt verified compiler as a standalone Lake package.
+Pre-release research code (SemVer pre-release; major version 0). Interfaces, the
+covered source fragment, and the trust surface may change without notice — do not
+depend on it as a stable API. The CatCrypt verified compiler as a standalone Lake
+package.
 
 - Two fronts (hax/Rust → LowCT → `Com` IR) lowering to one verified owned
   x86/ARM/RISC-V backend, packaged as the import-closure of the compiler subtree
