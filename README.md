@@ -20,6 +20,14 @@ encodes instructions to bytes for x86-64, AArch64, and RISC-V. Every dialect
 carries a Lean denotation and every lowering is a Lean function proved to preserve
 it, so a well-typed term denotes its specification by construction.
 
+The `Com` dialect framework follows [lean-mlir](https://github.com/opencompl/lean-mlir)
+(used via the Veir library) for the IR's structure; code generation is CatCrypt's
+own owned backend and does not depend on it. Alongside that backend, the pipeline
+can target the [Jasmin](https://github.com/jasmin-lang/jasmin) compiler, emitting
+Jasmin for `jasminc` to assemble. [PROVENANCE.md](PROVENANCE.md) records the
+lineage of the low-level IR — AUCurves, bedrock2, Rupicola — and its connection to
+Jasmin.
+
 ## The guarantee
 
 One source-to-assembly theorem governs the pipeline. The emitted bytes denote the
