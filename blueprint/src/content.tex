@@ -1,0 +1,61 @@
+% CatCrypt verified compiler — blueprint (leanblueprint).
+% Build:  leanblueprint pdf     (print) ;  leanblueprint web   (dependency-graph site)
+% Each \lean{...}\leanok node links an informal statement to its formal theorem.
+
+\chapter{The CatCrypt verified compiler}
+
+\section{Scope}
+
+The compiler is proved correct on the covered sublanguage $\mathsf{IsCoveredCtl}$
+--- the fragment of hax-extracted Rust the front handles (ANF / structured
+control flow). It is \emph{not} a proof about arbitrary Rust. Concrete
+per-scheme emit endpoints live outside this package; here we state the generic
+pipeline and its end-to-end guarantees.
+
+\begin{definition}[Covered control-flow fragment]
+  \label{def:covered-ctl}
+  \lean{IsCoveredCtl}
+  \leanok
+  The predicate carving the source fragment for which every pipeline stage is
+  total and correctness-preserving.
+\end{definition}
+
+\section{Pipeline}
+
+Two fronts (hax/Rust $\to$ LowCT $\to$ \texttt{Com} IR) lower to one verified
+owned x86/ARM/RISC-V backend. The trust surface (ISA models,
+$\mathsf{decode}\circ\mathsf{encode}=\mathrm{id}$, byte-level instruction trust)
+is confined to this package.
+
+\begin{theorem}[Rust $\to$ jasmin \texttt{Com}, end to end]
+  \label{thm:rust-to-jasmin}
+  \uses{def:covered-ctl}
+  \lean{rustToJasminCom_endToEnd}
+  \leanok
+  For a source in the covered fragment, the compiled \texttt{Com} program refines
+  the reference semantics.
+\end{theorem}
+
+\begin{theorem}[Robust compilation, source to x86]
+  \label{thm:robust-x86}
+  \uses{thm:rust-to-jasmin}
+  \lean{robustCompilation_source_to_x86}
+  \leanok
+  The composed pipeline down to x86 bytes preserves the source guarantee
+  robustly (against the covered fragment's contexts).
+\end{theorem}
+
+\begin{theorem}[Backend correctness, all covered programs]
+  \label{thm:compile-correct-all}
+  \uses{def:covered-ctl}
+  \lean{compile_correct_all}
+  \leanok
+  Every covered program compiles to a target that agrees with the reference.
+\end{theorem}
+
+\section{What remains}
+
+The blueprint currently states the capstones. Filling in intermediate nodes
+(front totality, backend machine model, the $\mathsf{decode}\circ\mathsf{encode}$
+lemma, leakage/CT preservation) makes the dependency graph a faithful map of the
+proof and is the natural next authoring step.

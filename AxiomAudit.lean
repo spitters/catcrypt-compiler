@@ -1,0 +1,7 @@
+import CatCrypt.Crypto.SecureCompilation.VIR.CompilerCorrectnessExtracted
+import CatCrypt.Crypto.SecureCompilation.VIR.RobustCompilationPipeline
+import CatCrypt.Crypto.SecureCompilation.VIR.Compiler
+
+#print axioms CatCrypt.Crypto.SecureCompilation.VIR.CompilerCorrectnessExtracted.rustToJasminCom_endToEnd
+#print axioms CatCrypt.Crypto.SecureCompilation.VIR.RobustCompilationPipeline.robustCompilation_source_to_x86
+#print axioms CatCrypt.Crypto.SecureCompilation.VIR.Compiler.compile_correct_all

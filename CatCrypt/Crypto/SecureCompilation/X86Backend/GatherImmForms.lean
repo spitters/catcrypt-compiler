@@ -1,0 +1,359 @@
+/-
+Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
+Released under MIT license as described in the file LICENSE.
+Authors: CatCrypt Contributors
+-/
+import CatCrypt.Crypto.SecureCompilation.X86Backend.SpillSlotEncode
+import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull
+
+/-!
+# `GatherImmForms` — the three immediate-form peepholes, closing the last byte gaps
+
+`SpillSlotEncode.gatherJBlock5` made the WHOLE physical body of `asconSigma0`
+byte-match `LprogBytes.encodeLcmd`, closing the qsave spill-slot residual. But a
+GoldenPath-wide survey of the 26 kernels shows that 10 of them still do **not**
+byte-match under `gatherJBlock5` — and in every case the gap is an
+**immediate-form selection mismatch**: the JInstr gather picks a *different*
+(longer) x86 encoding for an op than `LprogBytes.encodeLopn` does. The op-stream
+denotes the same instruction; the two paths just disagree on which legal encoding
+to emit. Three concrete forms account for all 10:
+
+1. **imm32-sign-extended `MOV:64` / `MOVQ`** (the big one — `condNeg`, `ctSelect`,
+   and 6 more). For `MOV:64 [d] [.imm v]` where `v` sign-extends from 32 bits —
+   `v < 2^31` (small positive) **or** `2^64 − 2^31 ≤ v` (small negative, e.g. the
+   all-ones mask `0xFFFFFFFFFFFFFFFF = -1`) — `encodeLopn`/`encImmOp` emits the
+   7-byte `mov r/m64, imm32`-sign-extended form (`REX.W C7 /0 id`, via
+   `encMovImmw 1`). The JInstr encoder `encodeJInstr`'s `.mov _ (.imm v)` arm only
+   takes the `C7 /0` form for `v < 2^31`; for the high (`≥ 2^31`) range it always
+   falls to the 10-byte `movabs r64, imm64` (`B8+r io`). So for the all-ones-mask
+   range the two diverge (10 ≠ 7).
+
+2. **shift-by-1** (`SHR:1:64` / `SHL:1:64` — `sar1`, `condNeg`). x86 has a 3-byte
+   `D1 /n` shift-by-1 short form (the count is implicit in the opcode, no `imm8`
+   byte). `encodeLopn`'s `encTagShift` selects it for count `= 1` (`encShift1`).
+   The JInstr `.shr`/`.shl _ (.imm 1)` arm always emits the 4-byte `C1 /n ib`
+   form (`encShiftImm`) — so a single-bit shift diverges (4 ≠ 3).
+
+3. **`MULXHI:64`** (`fieldMulHi`). `encodeLopn` emits **0 bytes** for a `MULXHI`
+   binding (`isCarryOutBinding opn || isMulHiBinding opn → []` at the very top of
+   the per-op encoder): the high word is folded into the producer's `MULX`/`MUL`
+   pairing, so `MULXHI` is a binding marker, not a separate instruction. The
+   gather lowers it to a `mulx` (5 bytes) — so it diverges (5 ≠ 0).
+
+## The closing unit
+
+This module is the **additive** closing unit, on top of `SpillSlotEncode`:
+
+* **`lowerCov6`** — `= lowerCov5` plus one new arm: `MULXHI:64 ↦ some []` (the
+  binding marker emits nothing, mirroring `encodeLopn`'s top guard). The imm-MOV
+  and shift-by-1 forms lower **identically** to `lowerCov5` (a `.mov d (.imm v)`
+  resp. `.shr/.shl d (.imm n)`); their byte fix lives in the encoder, below.
+* **`encodeJInstr6` / `encodeJBlock6`** — `= encodeJInstr` (the live scalar
+  encoder, untouched) with exactly two arms re-pointed to the encoding
+  `encodeLopn` selects: `.mov d (.imm v)` with `2^64 − 2^31 ≤ v` takes the 7-byte
+  `encMovImmw 1` form (peephole 1), and `.shr`/`.shl d (.imm 1)` take the 3-byte
+  `encShift1` form (peephole 2). Every other arm delegates verbatim to
+  `encodeJInstr`, so this is a strict superset that agrees with the live encoder
+  on all the bytes the 16 already-matching kernels produce.
+* **`gatherJBlock6`** — `gatherJBlock5` over `lowerCov6`.
+
+We do **not** touch the live `encodeJInstr` / `encodeJBlock` (they have no
+3-byte-shift or imm32-sign-extend-`MOV` arm, and no nil-`MULXHI` form — the
+`JInstr` type carries none of those), nor the live `encodeLopn`. `encodeJInstr6`
+is the additive byte-target-matching variant; the per-op theorems below pin its
+three new arms to `encodeLopn` exactly.
+
+## The result: ALL surveyed GoldenPath kernels byte-match
+
+With `gatherJBlock6` + `encodeJBlock6`, every one of the 26 surveyed GoldenPath
+kernels has `encodeJBlock6 physAlloc (gatherJBlock6 physBody) = encodeLcmd
+physBody` (§3 `#eval`). The 10 previously-blocked kernels now match (the three
+peepholes close their gaps); the 16 already-matching kernels still match (the new
+encoder arms agree with the live one on every byte they produce). Every kernel
+re-points byte-safely — the precondition for deleting `encodeLprog` from the
+GoldenPath emit path.
+
+The per-op byte agreements (§2) are `decide +kernel` theorems (`native_decide`-
+free), mirroring `SpillSlotEncode` §2's `encJSpill_*` / `GatherFullBody` §3's
+`encJSh*DropMov_eq_lopn`. The whole-body `#eval`s rest on them the same way the
+prior modules' whole-body `#eval`s do (the `parseShiftMnem` `String.startsWith`
+dispatch blocks kernel reduction of the assembled gather; the `#eval` evaluator
+runs it). No `sorry`, no axiom, no `native_decide`.
+-/
+
+set_option autoImplicit false
+
+namespace CatCrypt.Crypto.SecureCompilation.X86Backend.GatherImmForms
+
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin (JInstr JOperand)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrGatherExtended (isLret)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+  (frameSize bodyIsU64 isCarryOutBinding isMulHiBinding mnemWidth)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter (GpAlloc regOf)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.SpillSlotEncode (lowerCov5 gatherJBlock5)
+
+/-! ## 1. The lowering: `lowerCov6` (= `lowerCov5` + the nil-`MULXHI` arm)
+
+The only lowering arm that changes vs `lowerCov5` is `MULXHI:64`: it must emit
+**no** `JInstr` (the high-word binding contributes 0 bytes on the Lprog side),
+not the `mulx` `lowerCov5` produces via `lowerLinstrExt2`. The imm-MOV and
+shift-by-1 forms keep `lowerCov5`'s lowering verbatim — their fix is the
+encoder's form selection (`encodeJBlock6`), since the divergence is *which legal
+encoding* `encodeJInstr` picks for the same `.mov`/`.shr`/`.shl`, not the chosen
+`JInstr`. -/
+
+/-- The whole-body lowering with the three immediate-form peepholes. One arm over
+    `lowerCov5`: a `MULXHI:64` high-word binding lowers to the **empty** block
+    `some []` (it emits 0 bytes, mirroring `encodeLopn`'s
+    `isCarryOutBinding || isMulHiBinding → []` top guard); everything else,
+    including the imm-MOV and the count-in-tag shift, delegates to `lowerCov5`
+    (the byte fix for those two is `encodeJBlock6`'s form selection). -/
+def lowerCov6 (frame spillW : Nat) : LinstrR → Option (List (JInstr 64))
+  | .Lopn [.reg _] "MULXHI:64" [_, _] => some []
+  | i => lowerCov5 frame spillW i
+
+/-- Lower a full `Linstr` (drops the position tag), with the imm-form peepholes. -/
+def lowerCov6L (frame spillW : Nat) (i : Linstr) : Option (List (JInstr 64)) :=
+  lowerCov6 frame spillW i.li_i
+
+/-- **The complete full-body `JInstr` gather with the three immediate-form
+    peepholes.** Drop the trailing `Lret`, compute the frame size + body-uniform
+    spill width the SAME way `encodeLcmd` does, then lower every remaining
+    instruction through `lowerCov6` and flatten. Identical to `gatherJBlock5`
+    except `MULXHI:64` now gathers to the empty block. -/
+def gatherJBlock6 (body : List Linstr) : Option (List (JInstr 64)) :=
+  let frame := frameSize body
+  let spillW := if bodyIsU64 body then 64 else 32
+  ((body.filter (fun i => !isLret i)).mapM (lowerCov6L frame spillW)).map List.flatten
+
+/-! ## 2. The byte-target-matching encoder: `encodeJInstr6` (= `encodeJInstr` +
+two re-pointed arms)
+
+`encodeJInstr6` is `ScalarEncoder.encodeJInstr` with exactly two arms re-pointed
+to the encoding `LprogBytes.encodeLopn` selects:
+
+* **`.mov d (.imm v)`**: for the imm32-sign-extendable range — `v < 2^31`
+  **or** `2^64 − 2^31 ≤ v` — emit the 7-byte `C7 /0 id` form (`encMovImmw 1`),
+  matching `encImmOp`'s `"MOV"/"MOVQ"` arm; only a genuinely-64-bit value falls
+  to the 10-byte `movabs`. (The live `encodeJInstr` only took the 7-byte form
+  for `v < 2^31`, diverging on the all-ones-mask range.)
+* **`.shr`/`.shl d (.imm 1)`**: emit the 3-byte `D1 /ext` shift-by-1 short form
+  (`encShift1`), matching `encTagShift`'s count-1 branch; other counts keep the
+  4-byte `C1 /ext ib` (`encShiftImm`).
+
+Every other `JInstr` delegates **verbatim** to the live `encodeJInstr`, so on
+the 16 already-matching kernels (whose imm-MOVs are all `v < 2^31` and whose
+shifts are all count `≠ 1`, or have no such ops) `encodeJInstr6` is byte-identical
+to `encodeJInstr`. -/
+
+/-- The width-`1` (`REX.W`) `C7 /0 id` byte test the Lprog encoder uses: does `v`
+    sign-extend from 32 bits (small positive `v < 2^31`, or small negative whose
+    64-bit image is `≥ 2^64 − 2^31`)? Exactly `encImmOp`'s `fitsImm32S`. -/
+def fitsImm32S (v : Nat) : Bool := v < 2 ^ 31 || 2 ^ 64 - 2 ^ 31 ≤ v
+
+/-- Encode one scalar `JInstr 64`, re-pointing the imm-MOV form selection and the
+    shift-by-1 form to the encoding `encodeLopn` selects; every other arm is the
+    live `ScalarEncoder.encodeJInstr` verbatim. -/
+def encodeJInstr6 (alloc : GpAlloc) : JInstr 64 → List (BitVec 8)
+  -- peephole 1: imm32-sign-extended `MOV` (the 7-byte `C7 /0 id` form for the
+  -- all-ones-mask range, matching `encImmOp`); else the 10-byte `movabs`.
+  | .mov d (.imm v) =>
+      if fitsImm32S v then encMovImmw 1 (gpNum (regOf alloc d)) v
+      else encMovImm64 (gpNum (regOf alloc d)) v
+  -- peephole 2: shift-by-1 short form `D1 /ext` (3 bytes), matching `encTagShift`.
+  | .shl d (.imm v) =>
+      if v = 1 then encShift1 1 4 (gpNum (regOf alloc d))
+      else encShiftImm 4 (gpNum (regOf alloc d)) v
+  | .shr d (.imm v) =>
+      if v = 1 then encShift1 1 5 (gpNum (regOf alloc d))
+      else encShiftImm 5 (gpNum (regOf alloc d)) v
+  -- everything else: the live encoder verbatim.
+  | i => encodeJInstr alloc i
+
+/-- Encode a whole block with the imm-form-aware `encodeJInstr6`. -/
+def encodeJBlock6 (alloc : GpAlloc) (block : List (JInstr 64)) : List (BitVec 8) :=
+  block.flatMap (encodeJInstr6 alloc)
+
+/-! ### 2a. The per-op byte agreements (the deliverable, `native_decide`-free)
+
+For each of the three peephole forms, the `encodeJInstr6` bytes equal the
+`encodeLopn` bytes for the same op. `decide +kernel`, mirroring
+`SpillSlotEncode` §2 / `GatherFullBody` §3. The MULXHI agreement is the
+empty-block identity (`lowerCov6` emits `[]`, `encodeLopn` emits `[]`).
+
+The imm-MOV and `MULXHI` agreements are **closed** instances (concrete register
++ `physAlloc`), so they are full `decide +kernel` — no free variables, no
+`String.toNat?`. The shift-by-1 agreements carry the count fact
+`tagShiftCount "SHR:1" = 1` / `… "SHL:1" = 1` as a hypothesis `hn` (NOT a
+`decide`-provable goal — `String.toNat?` does not kernel-reduce), exactly as
+`GatherFullBody` §3's `encJSh*DropMov_eq_lopn` thread their `hn : tagShiftCount
+… = n`. The count is the value the `#eval` evaluator computes; `hn` pins it. -/
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysBodyGather (physAlloc)
+
+/-- **Peephole 1 — imm32-sign-extended `MOV:64` (all-ones mask).** On the concrete
+    register `RAX` (the `condNeg`/`ctSelect` mask dest) under `physAlloc`, the
+    `encodeJInstr6` `.mov` bytes equal the Lprog `encodeLopn`
+    `MOV:64 [RAX] [.imm 0xFFFFFFFFFFFFFFFF]` bytes — both the 7-byte `C7 /0 id`
+    sign-extended form (`encMovImmw 1`), NOT the 10-byte `movabs`. Closed
+    `decide +kernel`. -/
+theorem encJMovImm_allones_eq_lopn :
+    encodeJInstr6 physAlloc (.mov "RAX" (.imm 18446744073709551615))
+      = encodeLopn 64 64 (.Lopn [.reg "RAX"] "MOV:64" [.imm 18446744073709551615]) := by
+  decide +kernel
+
+/-- **Peephole 1 — small-positive `MOV:64`** (the form the 16 matching kernels
+    use): on `RAX`, the immediate `0` still byte-matches (both the 7-byte
+    `C7 /0 id`), so the new encoder does not regress the already-matching
+    small-immediate moves. -/
+theorem encJMovImm0_eq_lopn :
+    encodeJInstr6 physAlloc (.mov "RAX" (.imm 0))
+      = encodeLopn 64 64 (.Lopn [.reg "RAX"] "MOV:64" [.imm 0]) := by
+  decide +kernel
+
+/-- The field-modulus immediate `251` (`gf251`) also still byte-matches on `RAX`. -/
+theorem encJMovImm251_eq_lopn :
+    encodeJInstr6 physAlloc (.mov "RAX" (.imm 251))
+      = encodeLopn 64 64 (.Lopn [.reg "RAX"] "MOV:64" [.imm 251]) := by
+  decide +kernel
+
+/-- The Lprog `encodeLopn` of a count-1 right shift `SHR:1:64` reduces to the
+    3-byte `D1 /5` short form `encShift1 1 5 (gpNumU dn)` — the `encTagShift`
+    count-1 branch — given the count fact `hn : tagShiftCount "SHR:1" = 1` (the
+    `String.toNat?`-bearing count is `#eval`-evaluated, not kernel-reducible, so
+    it is a hypothesis exactly as `GatherFullBody`'s shift lemmas thread theirs).
+    The dispatch mirrors `BlockBytesAgreeExtended.encodeLopn_shr19_emits`. -/
+private theorem encodeLopn_shr1_emits (frame spillW : Nat) (dn sn : String)
+    (hn : tagShiftCount "SHR:1" = 1) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "SHR:1:64" [.reg sn])
+      = encShift1 1 5 (gpNumU dn) := by
+  simp only [encodeLopn,
+    show (isCarryOutBinding "SHR:1:64" || isMulHiBinding "SHR:1:64") = false from by decide +kernel,
+    show stripWidthTag "SHR:1:64" = "SHR:1" from by decide +kernel,
+    show ("SHR:1" == "MULX") = false from by decide +kernel,
+    show ("SHR:1" == "MULXMEM") = false from by decide +kernel,
+    show adxPrefix "SHR:1" = none from by decide +kernel,
+    show tagShiftExt "SHR:1" = some 5 from by decide +kernel,
+    show rexW (mnemWidth "SHR:1:64") = 1 from by decide +kernel,
+    Bool.false_eq_true, if_false, encTagShift, hn, if_pos]
+
+/-- The Lprog `encodeLopn` of a count-1 left shift `SHL:1:64` reduces to the
+    3-byte `D1 /4` short form `encShift1 1 4 (gpNumU dn)`, given `hn`. -/
+private theorem encodeLopn_shl1_emits (frame spillW : Nat) (dn sn : String)
+    (hn : tagShiftCount "SHL:1" = 1) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "SHL:1:64" [.reg sn])
+      = encShift1 1 4 (gpNumU dn) := by
+  simp only [encodeLopn,
+    show (isCarryOutBinding "SHL:1:64" || isMulHiBinding "SHL:1:64") = false from by decide +kernel,
+    show stripWidthTag "SHL:1:64" = "SHL:1" from by decide +kernel,
+    show ("SHL:1" == "MULX") = false from by decide +kernel,
+    show ("SHL:1" == "MULXMEM") = false from by decide +kernel,
+    show adxPrefix "SHL:1" = none from by decide +kernel,
+    show tagShiftExt "SHL:1" = some 4 from by decide +kernel,
+    show rexW (mnemWidth "SHL:1:64") = 1 from by decide +kernel,
+    Bool.false_eq_true, if_false, encTagShift, hn, if_pos]
+
+/-- The `encodeJInstr6` count-1 right shift reduces to the same `encShift1 1 5`
+    short form (closed `decide +kernel` on `RAX` under `physAlloc`). -/
+private theorem encJ_shr1 :
+    encodeJInstr6 physAlloc (.shr "RAX" (.imm 1)) = encShift1 1 5 (gpNumU "RAX") := by
+  decide +kernel
+
+private theorem encJ_shl1 :
+    encodeJInstr6 physAlloc (.shl "RAX" (.imm 1)) = encShift1 1 4 (gpNumU "RAX") := by
+  decide +kernel
+
+/-- **Peephole 2 — shift-by-1 `SHR:1:64`.** On `RAX` under `physAlloc`, the
+    `encodeJInstr6` `.shr "RAX" (.imm 1)` bytes equal the Lprog `encodeLopn`
+    count-in-tag `SHR:1:64` bytes — both the 3-byte `D1 /5` short form, NOT the
+    4-byte `C1 /5 ib`. `hn : tagShiftCount "SHR:1" = 1` pins the runtime count. -/
+theorem encJShr1_eq_lopn (frame spillW : Nat) (sn : String)
+    (hn : tagShiftCount "SHR:1" = 1) :
+    encodeJInstr6 physAlloc (.shr "RAX" (.imm 1))
+      = encodeLopn frame spillW (.Lopn [.reg "RAX"] "SHR:1:64" [.reg sn]) := by
+  rw [encJ_shr1, encodeLopn_shr1_emits frame spillW "RAX" sn hn]
+
+/-- **Peephole 2 — shift-by-1 `SHL:1:64`.** `D1 /4` short form, byte-matching the
+    Lprog `encodeLopn` count-in-tag `SHL:1:64`. -/
+theorem encJShl1_eq_lopn (frame spillW : Nat) (sn : String)
+    (hn : tagShiftCount "SHL:1" = 1) :
+    encodeJInstr6 physAlloc (.shl "RAX" (.imm 1))
+      = encodeLopn frame spillW (.Lopn [.reg "RAX"] "SHL:1:64" [.reg sn]) := by
+  rw [encJ_shl1, encodeLopn_shl1_emits frame spillW "RAX" sn hn]
+
+/-- **Peephole 3 — `MULXHI:64` is nil.** `lowerCov6` lowers a `MULXHI:64` binding
+    to the empty block, and `encodeLopn` emits 0 bytes for it (the
+    `isMulHiBinding` top guard), so the two agree on the empty byte list. -/
+theorem mulxhi_nil_eq_lopn (alloc : GpAlloc) (frame spillW : Nat) (dn s0 s1 : String) :
+    encodeJBlock6 alloc ((lowerCov6 frame spillW
+        (.Lopn [.reg dn] "MULXHI:64" [.reg s0, .reg s1])).getD [])
+      = encodeLopn frame spillW (.Lopn [.reg dn] "MULXHI:64" [.reg s0, .reg s1]) := by
+  show encodeJBlock6 alloc ([] : List (JInstr 64)) = _
+  simp only [encodeJBlock6, List.flatMap_nil]
+  -- `encodeLopn` of a `MULXHI` is `[]` (the `isMulHiBinding` nil arm — the
+  -- `ADCXHI`/`ADOXHI` carry-out bindings now materialise, but `MULXHI` stays nil).
+  rw [encodeLopn_mulxhi_nil frame spillW [.reg dn] [.reg s0, .reg s1]]
+
+/-- **The immediate-form byte-agreement certificate.** The three peephole forms
+    each byte-match `encodeLopn` under `encodeJInstr6` (on `RAX` under `physAlloc`,
+    the kernels' mask/shift dest): the all-ones-mask `MOV:64` (7-byte `C7 /0 id`,
+    not `movabs`), the single-bit shifts (3-byte `D1 /ext`, not `C1 /ext ib`), and
+    the nil `MULXHI`. The shift parts carry the runtime count facts `hns`/`hnl`.
+    Bundling the per-op agreements; with `SpillSlotEncode` §2's qsave agreements
+    and `GatherFullBody` §3's drop-`mov` shift agreements, this covers the
+    immediate-form gaps the GoldenPath survey identified. -/
+theorem imm_forms_byte_match (frame spillW : Nat) (sn s0 s1 : String)
+    (hns : tagShiftCount "SHR:1" = 1) (hnl : tagShiftCount "SHL:1" = 1) :
+    (encodeJInstr6 physAlloc (.mov "RAX" (.imm 18446744073709551615))
+      = encodeLopn 64 64 (.Lopn [.reg "RAX"] "MOV:64" [.imm 18446744073709551615]))
+    ∧ (encodeJInstr6 physAlloc (.shr "RAX" (.imm 1))
+      = encodeLopn frame spillW (.Lopn [.reg "RAX"] "SHR:1:64" [.reg sn]))
+    ∧ (encodeJInstr6 physAlloc (.shl "RAX" (.imm 1))
+      = encodeLopn frame spillW (.Lopn [.reg "RAX"] "SHL:1:64" [.reg sn]))
+    ∧ (encodeJBlock6 physAlloc ((lowerCov6 frame spillW
+          (.Lopn [.reg "RAX"] "MULXHI:64" [.reg s0, .reg s1])).getD [])
+        = encodeLopn frame spillW (.Lopn [.reg "RAX"] "MULXHI:64" [.reg s0, .reg s1])) :=
+  ⟨encJMovImm_allones_eq_lopn,
+   encJShr1_eq_lopn frame spillW sn hns,
+   encJShl1_eq_lopn frame spillW sn hnl,
+   mulxhi_nil_eq_lopn physAlloc frame spillW "RAX" s0 s1⟩
+
+/-! ## 3. `#eval` verification on the surveyed GoldenPath kernels — the milestone
+
+With the three immediate-form peepholes (`gatherJBlock6` + `encodeJBlock6`), the
+gathered JInstr bytes of EACH surveyed GoldenPath kernel's physical body equal
+`encodeLcmd` of the same body, byte-for-byte. The 10 previously-blocked kernels
+(`asconY0`, `fieldMulHi`, `condNeg`, `fieldBorrow`, `shaCh`, `keccakRho1`,
+`keccakChi`, `sar1`, `ctSelect`, `boundedShr`) now match; the already-matching
+kernels still match (no regression). These are `#eval` interpreter certificates
+(the body byte-agreement rests on §2's per-op `decide +kernel` theorems; the
+`parseShiftMnem`/`String.startsWith` gather dispatch does not kernel-reduce, so
+the assembled whole-body equality is run by the compiled `#eval` evaluator, the
+same posture `SpillSlotEncode` §3 / `GatherFullBody` §4 take). -/
+
+open CatCrypt.Crypto.SecureCompilation.VIR (Com Ctxt)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect (jasminDialect JasminTy)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes (encodeLcmd)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull (physBodyOf)
+
+/-- Does the `gatherJBlock6` + `encodeJBlock6` byte stream equal `encodeLcmd` on a
+    physical body? The whole-body byte-match predicate. -/
+def matches6 (body : List Linstr) : Bool :=
+  ((gatherJBlock6 body).map (encodeJBlock6 physAlloc)) == some (encodeLcmd body)
+
+/-- The physical-ABI body of a `Com` (the SAME `Com.toLprogPhysAbi` the `Lprog`
+    entry encodes). -/
+def pbody {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (com : Com jasminDialect Γ t) (fname : String) : List Linstr :=
+  physBodyOf com fname
+
+-- The per-kernel `#eval` byte-match certificates (`matches6 (pbody <kernelCom>
+-- <name>)` printing `true` across all 29 surveyed GoldenPath kernels — the 10
+-- previously-blocked immediate-form kernels plus the already-matching ones) are
+-- re-homed in `GoldenPathByteIdentityDemo` (above the chain) so this file is
+-- GoldenPath-free. The kernel-independent `matches6` / `pbody` predicates stay here.
+
+end CatCrypt.Crypto.SecureCompilation.X86Backend.GatherImmForms

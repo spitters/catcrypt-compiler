@@ -1,0 +1,558 @@
+/-
+Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
+Released under MIT license as described in the file LICENSE.
+Authors: CatCrypt Contributors
+-/
+import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+
+/-!
+# AT&T asm printer for the scalar `JInstr` machine instructions (the trust boundary)
+
+`Avx512AsmPrinter.lean` prints the **ZMM** subset (`ZInstr`) to AT&T-syntax
+AVX-512 assembly. This module is its **scalar** counterpart: it prints a
+`JInstr w` block — the scalar + ADX/BMI2 instruction set of `JasminModel.lean`,
+the same set lowered to `Com (x86Dialect w)` by `X86Dialect.lowerBlock` — to
+AT&T-syntax x86-64 assembly text (`movq`/`addq`/`adcq`/.../`mulx`/`adcx`/`adox`,
+`%rN` operands), to be assembled by `gas`/`cc`.
+
+## Where the trust boundary is (precise)
+
+The **verified artifact** is `Com (x86Dialect w) → JasminModel.runBlock` (the
+`X86Dialect.lowerBlock` pass + `X86Dialect.lowerBlock_denote`, down to the
+differentially-validated `JasminModel.evalInstr` semantics, itself a line-for-line
+transcription of Jasmin's Rocq `x86_instr_decl.v` validated in
+`TranslationValidation.lean`). This printer + `gas` is the *thin* trust boundary,
+much narrower than trusting jasminc's full lowering, because:
+
+* the printer is a **syntactic** map: one `JInstr` arm → one AT&T mnemonic line,
+  with a fixed register assignment (`allocGp`, first-seen order over the
+  callee/caller GP pool). There is no instruction selection, no scheduling, no
+  optimization — the mnemonic and its operand registers are determined by the
+  `JInstr` constructor and the allocator, nothing else.
+* `gas` then performs only **assembly** (mnemonic+operands → encoded bytes), the
+  same final step the jasmin chain trusts. We run no optimizing compiler over the
+  kernel body.
+
+So the trusted-but-unverified surface is: (the printer is correct AT&T syntax for
+each mnemonic) ∧ (`gas` encodes each mnemonic per the Intel SDM). The
+function prologue/epilogue that loads arguments into the named registers and
+stores results (`renderLeafFn`) is likewise trusted scaffolding, *outside* the
+verified straight-line body: the verified claim covers the body's
+`runBlock`/`evalInstr` transform, not the System V calling-convention glue.
+
+## Register allocation
+
+A `JInstr` block uses SSA-style string names. `allocGp` assigns each distinct
+name a fixed `%rN` (in first-seen order over a fixed GP pool that excludes
+`%rsp`). Small straight-line kernels use far fewer than the pool size, so the
+trivial first-fit allocation never spills. (Spilling is out of scope.)
+-/
+
+set_option autoImplicit false
+
+namespace CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
+
+/-! ## 1. Register allocation: name → %rN -/
+
+/-- The general-purpose 64-bit register pool, in a fixed allocation order.
+    `%rsp` (stack pointer) and `%rbp` (frame base) are excluded so first-fit
+    allocation never clobbers the frame. Order chosen so the System-V argument
+    registers come first, easing the leaf-function ABI glue. -/
+def gpPool : List String :=
+  [ "%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9", "%r10", "%r11",
+    "%rax", "%rbx", "%r12", "%r13", "%r14", "%r15" ]
+
+/-- The register name(s) read by an operand (`[]` for an immediate). -/
+def srcNames : JOperand → List String
+  | .reg r => [r]
+  | .imm _ => []
+
+/-- The (dst names, src names) read/written by one `JInstr` — for collecting the
+    distinct register names of a block in first-seen order. -/
+def jinstrNames : {w : Nat} → JInstr w → List String
+  | _, .mov d s   => d :: srcNames s
+  | _, .add d s   => d :: srcNames s
+  | _, .sub d s   => d :: srcNames s
+  | _, .adc d s   => d :: srcNames s
+  | _, .sbb d s   => d :: srcNames s
+  | _, .imul d s  => d :: srcNames s
+  | _, .neg d     => [d]
+  | _, .setc d    => [d]
+  | _, .and_ d s  => d :: srcNames s
+  | _, .or_ d s   => d :: srcNames s
+  | _, .xor_ d s  => d :: srcNames s
+  | _, .shl d s   => d :: srcNames s
+  | _, .shr d s   => d :: srcNames s
+  | _, .sar d s   => d :: srcNames s
+  | _, .cmove d s  => d :: srcNames s
+  | _, .cmovne d s => d :: srcNames s
+  | _, .cmovb d s  => d :: srcNames s
+  | _, .mulx dh dl a b => dh :: dl :: srcNames a ++ srcNames b
+  | _, .mulxMem dh dl a base _ => dh :: dl :: base :: srcNames a
+  | _, .adcx d s  => d :: srcNames s
+  | _, .adox d s  => d :: srcNames s
+  | _, .loadMem d base _   => d :: [base]
+  | _, .storeMem base _ s  => base :: srcNames s
+  | _, .loadMemIdx d base idx _   => d :: base :: [idx]
+  | _, .storeMemIdx base idx _ s  => base :: idx :: srcNames s
+  -- `loadSym dst sym` writes the base register `dst`; `sym` is a `.rodata`
+  -- *symbol* (an assembler label), NOT a register name, so it is not allocated.
+  | _, .loadSym d _   => [d]
+
+/-- Collect the distinct register names of a block, in first-seen order. -/
+def blockNames {w : Nat} (block : List (JInstr w)) : List String :=
+  (block.flatMap jinstrNames).foldl
+    (fun acc n => if acc.contains n then acc else acc ++ [n]) []
+
+/-- A register assignment: an association list name → "%rN". -/
+abbrev GpAlloc := List (String × String)
+
+/-- First-fit allocation: assign each distinct block name the next free pool
+    register, with any `pinned` names forced first (used to fix arguments to
+    their System-V argument registers). -/
+def allocGp {w : Nat} (pinned : GpAlloc) (block : List (JInstr w)) : GpAlloc :=
+  let used := pinned.map Prod.snd
+  let pool := gpPool.filter (fun r => ¬ used.contains r)
+  let free := blockNames block |>.filter (fun n => (pinned.lookup n).isNone)
+  pinned ++ (free.zip pool)
+
+/-- The distinct GP names a block needs beyond the pinned ones, and the number
+    of pool registers available for them. The block fits the budget iff
+    `gpFreeNames.length ≤ gpFreeSlots`. -/
+def gpFreeNames {w : Nat} (pinned : GpAlloc) (block : List (JInstr w)) : List String :=
+  blockNames block |>.filter (fun n => (pinned.lookup n).isNone)
+
+/-- The number of pool registers free for non-pinned names. -/
+def gpFreeSlots (pinned : GpAlloc) : Nat :=
+  let used := pinned.map Prod.snd
+  (gpPool.filter (fun r => ¬ used.contains r)).length
+
+/-- `none` iff `allocGp` assigns every required name a distinct pool register;
+    `some overflow` lists the names that `allocGp` would leave unmapped (because
+    the free pool is exhausted), which `regOf` would then silently alias onto
+    `%rax` — the #380-class collision. A budget-aware emitter must check this is
+    `none` before trusting the rendered block. -/
+def allocOverflow {w : Nat} (pinned : GpAlloc) (block : List (JInstr w)) :
+    Option (List String) :=
+  let alloc := allocGp pinned block
+  let mapped := alloc.map Prod.fst
+  let names := gpFreeNames pinned block
+  -- names that `free.zip pool` truncated away (free.length > pool.length)
+  let unmapped := names.filter (fun n => ¬ mapped.contains n)
+  if unmapped.isEmpty then none else some unmapped
+
+/-- The `%rN` register a name is assigned. An unmapped name (only possible when
+    `allocOverflow ≠ none`, i.e. the pool was exhausted) returns the explicit
+    sentinel `<UNALLOCATED:n>` rather than silently aliasing onto a live `%rax`:
+    the assembler then rejects the emitted text, so a budget overflow can never
+    pass as valid code (the #380 silent-`%rax`-alias bug). Callers that have
+    verified `allocOverflow = none` never hit the sentinel. -/
+def regOf (alloc : GpAlloc) (n : String) : String :=
+  (alloc.lookup n).getD ("<UNALLOCATED:" ++ n ++ ">")
+
+/-- Render an operand: a register name → its `%rN`; an immediate → `$v`. -/
+def renderOperand (alloc : GpAlloc) : JOperand → String
+  | .reg r => regOf alloc r
+  | .imm v => "$" ++ toString v
+
+/-- The AT&T 8-bit (low byte) subregister name for a `%rN` 64-bit register name
+    (`"%rax" → "%al"`, `"%r8" → "%r8b"`). Used by `SETcc`, which writes a byte
+    destination; the printer then `MOVZBQ`-zero-extends it to the full register. -/
+def gpReg8 (r : String) : String :=
+  match r with
+  | "%rax" => "%al"  | "%rcx" => "%cl"  | "%rdx" => "%dl"  | "%rbx" => "%bl"
+  | "%rsp" => "%spl" | "%rbp" => "%bpl" | "%rsi" => "%sil" | "%rdi" => "%dil"
+  | "%r8"  => "%r8b" | "%r9"  => "%r9b" | "%r10" => "%r10b" | "%r11" => "%r11b"
+  | "%r12" => "%r12b"| "%r13" => "%r13b"| "%r14" => "%r14b" | "%r15" => "%r15b"
+  | other  => other
+
+/-! ## 2. The AT&T mnemonic printer (one line per `JInstr`)
+
+AT&T two-operand order is `op src, dst` (`addq %rB, %rA` ≡ `A := A + B`). Shifts
+take the count first (`shlq $imm, %rA`). The three/four-operand BMI2 forms
+(`mulx`) and the ADX carry ops (`adcx`/`adox`) follow the GNU-as encoding. -/
+
+/-- Print one `JInstr` to its AT&T asm line (64-bit `q` suffix, scalar GP regs).
+    One arm → one line; no instruction selection or scheduling. -/
+def renderJInstr {w : Nat} (alloc : GpAlloc) : JInstr w → String
+  | .mov d s   => "\tmovq "  ++ renderOperand alloc s ++ ", " ++ regOf alloc d
+  | .add d s   => "\taddq "  ++ renderOperand alloc s ++ ", " ++ regOf alloc d
+  | .sub d s   => "\tsubq "  ++ renderOperand alloc s ++ ", " ++ regOf alloc d
+  | .adc d s   => "\tadcq "  ++ renderOperand alloc s ++ ", " ++ regOf alloc d
+  | .sbb d s   => "\tsbbq "  ++ renderOperand alloc s ++ ", " ++ regOf alloc d
+  -- `IMUL` has no two-operand immediate form: an immediate multiplier uses the
+  -- three-operand `imulq $imm, %src, %dst` (here src = dst), a register
+  -- multiplier the two-operand `imulq %src, %dst`.
+  | .imul d s  =>
+      match s with
+      | .imm _ => "\timulq " ++ renderOperand alloc s ++ ", " ++ regOf alloc d
+                    ++ ", " ++ regOf alloc d
+      | .reg _ => "\timulq " ++ renderOperand alloc s ++ ", " ++ regOf alloc d
+  | .neg d     => "\tnegq "  ++ regOf alloc d
+  -- `SETcc` writes a byte destination; the model's `setc` arm stores the *full*
+  -- zero-extended flag value, so the printer emits the `setb`/`movzbq` pair that
+  -- realises that: `setb %dl` sets the low byte from CF, `movzbq %dl, %rdx`
+  -- zero-extends to the full 64-bit register (matching `evalInstr`'s
+  -- `if CF then 1 else 0` write). Two AT&T lines for the one model arm.
+  | .setc d    =>
+      let r := regOf alloc d
+      "\tsetb " ++ gpReg8 r ++ "\n\tmovzbq " ++ gpReg8 r ++ ", " ++ r
+  | .and_ d s  => "\tandq "  ++ renderOperand alloc s ++ ", " ++ regOf alloc d
+  | .or_ d s   => "\torq "   ++ renderOperand alloc s ++ ", " ++ regOf alloc d
+  | .xor_ d s  => "\txorq "  ++ renderOperand alloc s ++ ", " ++ regOf alloc d
+  | .shl d s   => "\tshlq "  ++ renderOperand alloc s ++ ", " ++ regOf alloc d
+  | .shr d s   => "\tshrq "  ++ renderOperand alloc s ++ ", " ++ regOf alloc d
+  | .sar d s   => "\tsarq "  ++ renderOperand alloc s ++ ", " ++ regOf alloc d
+  | .cmove d s  => "\tcmoveq "  ++ renderOperand alloc s ++ ", " ++ regOf alloc d
+  | .cmovne d s => "\tcmovneq " ++ renderOperand alloc s ++ ", " ++ regOf alloc d
+  | .cmovb d s  => "\tcmovbq "  ++ renderOperand alloc s ++ ", " ++ regOf alloc d
+  -- AT&T `mulx src2, dstLo, dstHi`; the implicit src1 is %rdx.
+  | .mulx dh dl a b =>
+      "\tmulx " ++ renderOperand alloc b ++ ", " ++ regOf alloc dl ++ ", " ++ regOf alloc dh
+      ++ "  # src1=%rdx=" ++ renderOperand alloc a
+  -- AT&T memory-operand `mulxq off(%base), %dstLo, %dstHi`; the implicit src1 is
+  -- %rdx. The second source is read straight from `[base + off]` (s2n's fold of
+  -- the multiplicand load into the MULX).
+  | .mulxMem dh dl a base off =>
+      "\tmulxq " ++ toString off ++ "(" ++ regOf alloc base ++ "), "
+      ++ regOf alloc dl ++ ", " ++ regOf alloc dh
+      ++ "  # src1=%rdx=" ++ renderOperand alloc a
+  | .adcx d s  => "\tadcx "  ++ renderOperand alloc s ++ ", " ++ regOf alloc d
+  | .adox d s  => "\tadox "  ++ renderOperand alloc s ++ ", " ++ regOf alloc d
+  -- AT&T memory operand `movq off(%base), %dst` (load) / `movq %src, off(%base)`
+  -- (store). A zero offset prints as `(%base)`.
+  | .loadMem d base off =>
+      "\tmovq " ++ toString off ++ "(" ++ regOf alloc base ++ "), " ++ regOf alloc d
+  | .storeMem base off s =>
+      "\tmovq " ++ renderOperand alloc s ++ ", " ++ toString off ++ "(" ++ regOf alloc base ++ ")"
+  -- AT&T SIB memory operand `movq (%base, %idx, scale), %dst` (gather load) /
+  -- `movq %src, (%base, %idx, scale)` (scatter store). `scale` is the byte
+  -- stride (1/2/4/8); the static displacement is 0.
+  | .loadMemIdx d base idx scale =>
+      "\tmovq (" ++ regOf alloc base ++ ", " ++ regOf alloc idx ++ ", "
+        ++ toString scale ++ "), " ++ regOf alloc d
+  | .storeMemIdx base idx scale s =>
+      "\tmovq " ++ renderOperand alloc s ++ ", (" ++ regOf alloc base ++ ", "
+        ++ regOf alloc idx ++ ", " ++ toString scale ++ ")"
+  -- AT&T RIP-relative load-effective-address of a `.rodata` symbol:
+  -- `leaq sym(%rip), %dst`. `sym` is emitted verbatim (it is an assembler label,
+  -- not a register); `dst` is resolved through the allocator like any GP base.
+  | .loadSym d sym =>
+      "\tleaq " ++ sym ++ "(%rip), " ++ regOf alloc d
+
+/-- Print a whole block's instruction lines (one per `JInstr`). -/
+def renderBlockBody {w : Nat} (alloc : GpAlloc) (block : List (JInstr w)) : List String :=
+  block.map (renderJInstr alloc)
+
+/-! ## 2b. Spill-aware rendering (#416) — consume `SpillingRegAlloc.Slot` decisions
+
+The first-fit `allocGp` / `regOf` path above is non-spilling: on a body with more
+distinct names than the GP pool it leaves the overflow names unmapped and `regOf`
+emits the `<UNALLOCATED:n>` sentinel. `SpillingRegAlloc.spillAlloc` instead produces,
+per name, a `Slot` decision — either a pool register (`resident`) or a frame byte
+offset (`spilled`). This section is the **additive** renderer that consumes those
+decisions; the `allocGp`/`regOf` path above is left untouched (every other kernel's
+emit + its `*Asm_shape`/`*_length` theorems depend on it).
+
+The renderer never sees the `Slot` type directly (to keep `AsmPrinter` free of the
+`Optimizer` dependency): the caller passes a precomputed **resident allocation**
+(`name → "%rN"` for the names that stayed in registers, an ordinary `GpAlloc`) plus,
+per instruction, the **spilled-name reload/store data** as it appears in the
+spill-materialised block. Concretely the caller renders the *original* block one
+instruction at a time, and for each instruction supplies the (≤ k) spilled names it
+touches and their frame offsets; this renderer assigns each spilled name a distinct
+reserved **working register**, emits the reload(s) before the instruction, the
+instruction with operands resolved (resident → pool reg, spilled → working reg), and
+the store-back(s) after a spilled destination.
+
+For the X25519 application the per-instruction spilled-name footprint is at most two
+(`SpillingRegAlloc.workRegs` reserves exactly two), so two working registers always
+suffice; the renderer is parametric in the working-register list and the frame base. -/
+
+/-- The reserved working registers a spilled operand is reloaded into. Mirrors
+    `SpillingRegAlloc.workRegs`; kept here so `AsmPrinter` has no `Optimizer`
+    dependency. -/
+def spillWorkRegs : List String := ["%r14", "%r15"]
+
+/-- A per-instruction spill view: the resident allocation (`name → "%rN"`), the frame
+    base register name (e.g. `"fp"`), and the spilled names this instruction
+    reads / writes with their frame byte offsets. The caller derives this from the
+    `spillAlloc` decisions; the renderer turns it into reload + instruction + store
+    lines. -/
+structure SpillView where
+  /-- name → "%rN" for register-resident names (the pool registers). -/
+  resident : GpAlloc
+  /-- the frame base register name (mapped to its `%rN` via `resident`). -/
+  frameBase : String
+  /-- spilled names read by this instruction, with their frame byte offsets. -/
+  spilledReads : List (String × Int)
+  /-- spilled names written by this instruction, with their frame byte offsets. -/
+  spilledWrites : List (String × Int)
+
+/-- The distinct spilled names this instruction touches (reads ∪ writes), in
+    read-then-write first-seen order. A spilled name that is both read and written
+    (a two-address destination) appears once. -/
+def SpillView.touchedSpills (v : SpillView) : List String :=
+  (v.spilledReads.map Prod.fst ++ v.spilledWrites.map Prod.fst).foldl
+    (fun acc n => if acc.contains n then acc else acc ++ [n]) []
+
+/-- Assign each touched spilled name a distinct working register (first-fit over
+    `spillWorkRegs`). The X25519 body touches ≤ 2 spills per instruction, so the two
+    reserved working registers always suffice; if a body ever exceeds the working set
+    a name falls off the end and `regOf` of the resulting (resident ∪ work) alloc
+    yields the `<UNALLOCATED>` sentinel — the same explicit-failure discipline as the
+    non-spilling path, never a silent alias. -/
+def SpillView.workAlloc (v : SpillView) : GpAlloc :=
+  (v.touchedSpills.zip spillWorkRegs)
+
+/-- The full per-instruction allocation the spill renderer uses: resident names map
+    to their pool register, the (≤ 2) spilled names this instruction touches map to
+    distinct working registers. -/
+def SpillView.alloc (v : SpillView) : GpAlloc :=
+  v.resident ++ v.workAlloc
+
+/-- The reserved register that `MULX`/`MULXMEM` read as their implicit first source
+    (`src1`). On x86 this is always `%rdx`. The per-program-point renderer
+    materialises a `mulx`'s `src1` operand into `%rdx` immediately before the
+    instruction, so the allocator must **reserve** `%rdx` (never hand it to a
+    register-resident value) — see `X25519MonoLadderMem2Reg.framePinsRA`. -/
+def mulxSrc1Reg : String := "%rdx"
+
+/-- The implicit-`%rdx` materialisation line(s) for a `mulx`/`mulxMem`: move the
+    instruction's first source (resolved to its physical register by `alloc`) into
+    `%rdx`. For non-`mulx` instructions this is empty.
+
+    The model's `JInstr.mulx dh dl a b` reads `a` **by name** (`a.eval s`), so the
+    gas realisation must put `a`'s value into the hardware `%rdx` that the `mulx`
+    encoding reads. The bare `renderJInstr` only *commented* `# src1=%rdx=a`,
+    silently assuming `a` was pinned to `%rdx`; under spilling RA that pin is gone,
+    so the materialisation must be explicit. An immediate `a` needs no move (it
+    cannot be a `mulx` src1 here).
+
+    **Pin-aware elision (#426).** When the pin-aware allocator already binds the
+    multiplier `a` to `%rdx` (`SpillingRegAlloc.spillAllocPinned`), `regOf alloc r`
+    is already `mulxSrc1Reg` and the move would be a redundant `movq %rdx, %rdx`.
+    We elide it: `a`'s value is already live in `%rdx` (set once when the multiplier
+    name was loaded), exactly mirroring s2n's MULX schedule. This removes the per-
+    multiply `movq → %rdx` the #418 printer inserted for all 193 multiplies. The
+    elision is semantics-preserving: a `movq %rdx, %rdx` writes `%rdx` the value it
+    already holds, so dropping it leaves the hardware `mulx` reading the same src1. -/
+def mulxRdxSetup (alloc : GpAlloc) : JInstr 64 → List String
+  | .mulx _ _ a _ =>
+      match a with
+      | .reg r => let s := regOf alloc r; if s == mulxSrc1Reg then [] else ["\tmovq " ++ s ++ ", " ++ mulxSrc1Reg]
+      | .imm _ => []
+  | .mulxMem _ _ a _ _ =>
+      match a with
+      | .reg r => let s := regOf alloc r; if s == mulxSrc1Reg then [] else ["\tmovq " ++ s ++ ", " ++ mulxSrc1Reg]
+      | .imm _ => []
+  | _ => []
+
+/-- Render one instruction under its `SpillView`, **per program point**:
+
+    1. reload each spilled read into its working register (`movq off(%fp), %work`);
+    2. for a `mulx`/`mulxMem`, materialise the `src1` operand into `%rdx`
+       (`mulxRdxSetup`) — the implicit-source register the hardware `mulx` reads;
+    3. emit the instruction with operands resolved by `SpillView.alloc` (resident →
+       pool reg, spilled → working reg, `mulx` src1 → `%rdx`);
+    4. store each spilled write back to its frame cell (`movq %work, off(%fp)`).
+
+    Resident-only non-`mulx` instructions reduce to a single line identical to the
+    non-spilling `renderJInstr`. Because the caller reserves `%rdx` from the resident
+    pool, neither the reload nor the `%rdx` setup can clobber a simultaneously-live
+    resident value — this is the per-program-point realisation that closes the
+    global-alias defect. -/
+def renderJInstrSpilled (v : SpillView) (i : JInstr 64) : List String :=
+  let alloc := v.alloc
+  let fpReg := regOf v.resident v.frameBase
+  let reloads := v.spilledReads.map (fun (n, off) =>
+    "\tmovq " ++ toString off ++ "(" ++ fpReg ++ "), " ++ regOf alloc n)
+  let stores := v.spilledWrites.map (fun (n, off) =>
+    "\tmovq " ++ regOf alloc n ++ ", " ++ toString off ++ "(" ++ fpReg ++ ")")
+  reloads ++ mulxRdxSetup alloc i ++ (renderJInstr alloc i :: stores)
+
+/-! ## 3. Leaf-function wrapper (trusted ABI scaffolding)
+
+`renderLeafFn` wraps a rendered straight-line body in a minimal System-V leaf
+function: a label + `.globl`, the body lines, and a `ret`. The argument-loading
+and result-storing glue is supplied by the caller as `prologue`/`epilogue` line
+lists, and is **trusted scaffolding outside the verified body** (the verified
+claim is about the body's `runBlock`/`evalInstr` transform, not the ABI glue). -/
+
+/-- Emit a `.s` text for a leaf function `name` whose body is `bodyLines`,
+    framed by `prologue` (arg load) and `epilogue` (result store + `ret`). -/
+def renderLeafFn (name : String) (prologue bodyLines epilogue : List String) : String :=
+  let header :=
+    [ "\t.text", "\t.globl " ++ name, "\t.type " ++ name ++ ", @function", name ++ ":" ]
+  -- A non-executable-stack note (quiets the GNU linker on the emitted object).
+  let footer := [ "\t.section .note.GNU-stack,\"\",@progbits" ]
+  String.intercalate "\n" (header ++ prologue ++ bodyLines ++ epilogue ++ footer) ++ "\n"
+
+/-! ## 4. The System V AMD64 ABI layer (#464)
+
+The per-kernel emitters (`Fe25519MulKernel.feMulAsm`, `BignumMontMulKernel.mul48Asm`,
+…) used to hand-write their prologue/epilogue: an unconditional `pushq` of every
+callee-saved register and a manual `movq %rdx, <reg>` to free `%rdx` for `MULX`.
+That glue was both **over-conservative** (it saved registers the body never
+touches) and **uncomputed** (no check that the saves match what the allocation
+actually clobbers, no stack-alignment discipline). This section is the owned
+backend's principled System V AMD64 ABI layer: given a function *signature* (the
+ordered argument names + their class) and a register allocation, it computes the
+argument-register moves, the *minimal* callee-saved save/restore set (exactly the
+callee-saved registers the allocation uses), and the 16-byte stack-alignment pad,
+and emits the framed leaf with `renderLeafFn`.
+
+The ABI glue remains trusted scaffolding *outside* the `runBlock`-verified body —
+but it is now **derived from the allocation by a single function**, not copied by
+hand per kernel, so the save set provably covers exactly the clobbered
+callee-saved registers and the alignment is computed, not assumed.
+
+### The convention (System V AMD64, §3.2)
+
+* **Integer/pointer arguments** go in `%rdi, %rsi, %rdx, %rcx, %r8, %r9` (then the
+  stack); the integer return is `%rax` (`:rdx` for the 128-bit pair).
+* **Callee-saved**: `%rbx, %rbp, %r12, %r13, %r14, %r15` (and `%rsp`). A function
+  that writes any of these must restore it before returning.
+* **Caller-saved (scratch)**: `%rax, %rcx, %rdx, %rsi, %rdi, %r8–%r11` — free to
+  clobber.
+* **Stack alignment & the red zone**: at the point of a `call`, `%rsp` must be
+  16-byte aligned; on function entry (just after the return address is pushed)
+  `%rsp ≡ 8 (mod 16)`. The 128 bytes below `%rsp` (`%rsp-128 .. %rsp-1`) are the
+  **red zone** (§3.2.2): a leaf function — one that makes no `call` — may use them
+  as scratch *without* moving `%rsp`, because no signal handler or callee will
+  clobber that region. Our kernels are leaves, so instead of a
+  `pushq … ; subq $pad` frame we save each used callee-saved register with a
+  single `movq %reg, -8*(i+1)(%rsp)` into the red zone and reload it on exit. This
+  leaves `%rsp` untouched (so it stays the entry-aligned `≡ 8 (mod 16)`, fully
+  ABI-conformant and re-callable), saves only the registers the body clobbers,
+  and is leaner than both the old `pushq`/`popq`+pad scaffold and jasmin's
+  `lea/and` realign idiom — closing the #466 `bignum_mul_4_8` prologue overhead.
+  (Should a kernel ever gain a `call`, it would no longer be a leaf and would need
+  an `%rsp`-moving frame; the word kernels here never call.) -/
+
+/-- The System V AMD64 integer/pointer argument registers, in order. The *i*-th
+    integer/pointer argument is passed in `intArgRegs[i]` (arguments beyond the
+    sixth go on the stack — out of scope for the leaf kernels). -/
+def intArgRegs : List String := ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"]
+
+/-- The System V AMD64 integer return register (the second-half pair register for
+    a 128-bit return is `%rdx`). -/
+def intRetReg : String := "%rax"
+
+/-- The callee-saved general-purpose registers under System V AMD64: a function
+    that clobbers any of these must save/restore it. `%rsp` is handled by the
+    push/pop accounting itself; `%rbp` is included (we do not reserve it as a frame
+    pointer — the kernels are frame-pointer-omitting leaves). -/
+def calleeSavedRegs : List String :=
+  ["%rbx", "%rbp", "%r12", "%r13", "%r14", "%r15"]
+
+/-- The callee-saved registers a given allocation actually binds, in
+    `calleeSavedRegs` order. These are exactly the registers the emitted body may
+    write, so exactly these must be saved/restored. -/
+def usedCalleeSaved (alloc : GpAlloc) : List String :=
+  let bound := alloc.map Prod.snd
+  calleeSavedRegs.filter (fun r => bound.contains r)
+
+/-- A System V argument's class for the leaf-ABI glue. We only need the integer/
+    pointer class for the word kernels; the constructor is kept open for a future
+    `sse` (xmm) class without breaking callers. -/
+inductive ArgClass where
+  /-- An integer or pointer argument: passed in the next `intArgRegs` slot. -/
+  | intPtr : ArgClass
+deriving DecidableEq, Repr
+
+/-- A function argument: the SSA/source name the body refers to it by, and its ABI
+    class. The *i*-th `intPtr` argument arrives in `intArgRegs[i]`. -/
+structure AbiArg where
+  /-- The source name the body refers to this argument by. -/
+  name : String
+  /-- The argument's ABI class (currently always `intPtr`). -/
+  cls  : ArgClass
+deriving Repr
+
+/-- The home register the *i*-th integer/pointer argument arrives in. Out-of-range
+    indices (a 7th+ integer argument, stack-passed) yield `none`. -/
+def intArgHome (i : Nat) : Option String := intArgRegs[i]?
+
+/-- The argument-marshalling moves: for each `intPtr` argument, if the allocation
+    binds its name to a register **different** from its ABI home register, emit a
+    `movq %home, %dst` that copies the incoming value into place. When the name is
+    already allocated to its home register (the common pointer-argument case, e.g.
+    `z`→`%rdi`) no move is emitted. When a name is allocated to a *later* argument's
+    home this is still a single straight move because the allocator pins arguments
+    to distinct registers (no overlap cycle); the canonical use is the `MULX`
+    multiplier living in `%rdx` while the third pointer argument (also `%rdx` on
+    entry) is moved out to a free register — exactly the hand-written
+    `movq %rdx, <yreg>` the kernels used to write by hand. -/
+def argMarshalMoves (alloc : GpAlloc) (args : List AbiArg) : List String :=
+  let indexed := args.zipIdx
+  indexed.filterMap (fun (a, i) =>
+    match a.cls, intArgHome i with
+    | .intPtr, some home =>
+        let dst := regOf alloc a.name
+        if dst == home then none
+        else some ("\tmovq " ++ home ++ ", " ++ dst)
+    | _, none => none)
+
+/-- The byte offset (below `%rsp`) of the *i*-th saved callee-saved register's
+    red-zone slot. Slot `i` lives at `-8*(i+1)(%rsp)`; the first save is at
+    `-8(%rsp)`, the second at `-16(%rsp)`, … The System V AMD64 red zone is the
+    128 bytes below `%rsp` (`%rsp-128 .. %rsp-1`) that a **leaf** function may use
+    as scratch without adjusting `%rsp`: no signal handler or called function
+    touches it (§3.2.2). At most six callee-saved registers need saving (48 bytes
+    of the 128), so the slots never escape the red zone. -/
+def redZoneSlotOff (i : Nat) : Int := -8 * (Int.ofNat i + 1)
+
+/-- The callee-saved save sequence — the **leaf red-zone idiom** (matching the
+    light `lea/and`-style frame jasmin emits, but leaner: no `%rsp` adjustment at
+    all). For each used callee-saved register we emit a single
+    `movq %reg, -8*(i+1)(%rsp)` storing it into its red-zone slot, in
+    `calleeSavedRegs` order. No `pushq`, no `subq`, no alignment pad: because the
+    kernels are leaves (they make no `call`), `%rsp` stays 16-byte aligned on
+    entry, the red zone is never clobbered, and the entire `push/pop/sub` scaffold
+    collapses to one `movq` per saved register. The restore sequence
+    (`abiRestore`) is its exact mirror — the same slot offsets reloaded.
+
+    This is the same red-zone save discipline the VIR Jasmin export already uses
+    for the callee-saved GPRs (`JasminLprogExport.abiSave*`); here it replaces the
+    heavier `pushq … ; subq $8` prologue that cost the owned `bignum_mul_4_8`
+    ~6% over jasmin (#466 finding #4). -/
+def abiSave (alloc : GpAlloc) : List String :=
+  (usedCalleeSaved alloc).zipIdx.map (fun (r, i) =>
+    "\tmovq " ++ r ++ ", " ++ toString (redZoneSlotOff i) ++ "(%rsp)")
+
+/-- The callee-saved restore sequence: the mirror of `abiSave` — reload each saved
+    register from its red-zone slot `movq -8*(i+1)(%rsp), %reg`, in
+    `calleeSavedRegs` order. No `%rsp` movement (no `addq`/`popq`), since the saves
+    never moved `%rsp`. -/
+def abiRestore (alloc : GpAlloc) : List String :=
+  (usedCalleeSaved alloc).zipIdx.map (fun (r, i) =>
+    "\tmovq " ++ toString (redZoneSlotOff i) ++ "(%rsp), " ++ r)
+
+/-- Render a full System V AMD64 leaf function from a *signature* and an
+    allocation, computing the ABI glue rather than hand-writing it:
+
+    * **prologue** = save the (minimal) used callee-saved set into the leaf red
+      zone (`abiSave`, one `movq` per register, no `%rsp` adjustment), then the
+      argument-marshalling moves (`argMarshalMoves`);
+    * **body** = the caller-supplied `bodyLines` (the `runBlock`-verified straight
+      line, one line per `JInstr`);
+    * **epilogue** = the caller-supplied `resultStores` (the result-writing moves,
+      part of the verified body's effect on memory), then restore the saved set
+      (`abiRestore`), then `ret`.
+
+    The save set is **exactly** the callee-saved registers the allocation binds, so
+    the function clobbers nothing it does not restore; the order of save vs.
+    arg-marshal matters (saves first, so a marshal target that happens to be a
+    callee-saved register is already preserved). This is the single ABI definition
+    the kernels share — no per-kernel hand-written `pushq`/`popq`/`movq %rdx`. -/
+def renderSysVLeafFn (name : String) (alloc : GpAlloc) (args : List AbiArg)
+    (bodyLines resultStores : List String) : String :=
+  renderLeafFn name
+    (abiSave alloc ++ argMarshalMoves alloc args)
+    bodyLines
+    (resultStores ++ abiRestore alloc ++ ["\tret"])
+
+end CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter

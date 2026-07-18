@@ -1,0 +1,3044 @@
+/-
+Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
+Released under MIT license as described in the file LICENSE.
+Authors: CatCrypt Contributors
+-/
+import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+
+set_option autoImplicit false
+
+/-!
+# Front-general SCALAR preservation (`denote = semScalar`) — straight-line core
+
+The SIMD path (`TranslateDialectVsimdDenote.translateDialectControlV_denote`) is
+the only front with a **front-general** preservation homomorphism: for any covered
+`vsimd` body, the emitted `Com catCryptDialect` prefix denotes exactly the body's
+`SimdOp`-fold semantics, symbolically over all inputs. This module builds the
+**scalar** analogue over the straight-line fragment the point-op / field bricks
+use: `RScalarSetExpr`, the opaque leaf-call arm (`RCall`), the dynamic-index array
+arms (`RArrLoad` / `RArrStore`), and their `RSeq` / `RBlock` / `RSkip` closure.
+
+Three new pieces (the scalar twins of `semV` / `ConsistentV`):
+
+* `SEnvScalar` — a per-name partial environment of *heterogeneously typed* values
+  `(t : CryptoTy) × ⟦t⟧` (the scalar path threads `.sword w` words, `.memref n`
+  arrays, and opaque `extCall` results, so — unlike the mono-typed 128-bit
+  `SEnv` — the value universe is the full `CryptoTy` denotation);
+* `semScalar : LowCT → SEnvScalar → Option SEnvScalar` — the pure operational
+  semantics of the covered scalar arms, each op reading its operands from the env
+  and binding its destination to the SAME waist the front's emitted
+  `catCryptDialect` op denotes by (`extCall ↦ CryptoTy.default`, `memrefGetDyn ↦
+  memGetDyn`, `memrefSetDyn ↦ memSetDyn`, an `SExpr` word-op fold for
+  `RScalarSetExpr`);
+* `ConsistentS vm V env` — every name's `env` value is exactly the slot it
+  resolves to in the `Γ`-valuation `V` (the heterogeneous twin of `ConsistentV`).
+
+The keystone theorem `translateDialectControl_denote` is proved by induction on
+the straight-line coverage `IsCoveredS`, its `rSeq` arm discharging the
+per-concatenation homomorphism `denote (front (a ++ b)) = denote (front b) ∘
+denote (front a)` via `ComCont.comp o₁.cont o₂.cont` — the exact shape the SIMD
+`rSeq` arm uses. Every single-binding arm reduces to the type-generic one-op step
+`scalar_step` (the heterogeneous twin of `vsimd_step`). It is stated in the same
+shape as the SIMD theorem, so it extends to more arms by adding coverage
+constructors.
+
+## Scope of this file
+
+`IsCoveredS` / the proved theorem cover the whole straight-line mechanical
+fragment: the `RSeq` / `RBlock` / `RSkip` closure; the const/zero scalar binds
+(`RScalarSet`, `RLetU64Zero`); every opaque leaf-call arm (`RCall`, `RSelect`,
+`RCallDstThreaded`, `RTupleStore`/`RTupleLoad`, `RArrLoadLit`/`RArrStoreLit`, the
+two-dest `RCallSwap` and `RCloneCall`, the N-dest `RCallN`); the dynamic-index
+array **load**/**store** arms (`RArrLoad` via `memGetDyn`, `RArrStore` via
+`memSetDyn`); and the memref limb write `RLimbStore` (a weaken-step + a
+`memrefSet` bind). Every single-binding arm reduces to `scalar_step`; the
+multi-binding arms (`RLetU64Zero`, `RCallSwap`, `RCloneCall`, `RLimbStore`,
+`RCallN`) compose per-bind via `ComCont.comp` on the RSeq backbone (`RCallN` by
+induction on its dest list, generalizing the context).
+
+The scalar-`SExpr` assignment (`RScalarSetExpr`) — the point-op brick route — is
+now proved over its `srcClean` fragment (`SVar` / `SLit` / `SAdd` / `SSub` /
+`SMul` / `SAnd` / `SXor` / `SShl` / `SShr` / `SMulHiU` over non-`__sx` source
+variables and `< 2^64` literals — the full alphabet of the Keccak-f1600 round
+bodies and the secp256k1 `feMul` brick). The keystone is the `SExpr`-recursion
+homomorphism `lowerSExpr_denote` (§5f): by induction on `SExpr`, the front's
+fresh-temp `varBind` chain denotes its env-level mirror `semLowerSExpr`, and its
+result slot resolves to the closed-form word evaluator `SExpr.evalBV (envReader
+env) e`. The fresh temporaries never collide with a source read (`tmpName`
+injectivity — proved here via a decimal digit round-trip, §2b — plus the
+`OnlyTmpBelow` / `ResultOK` bookkeeping). The shift arms case the front's
+immediate-vs-variable amount selection (`bvShiftL 64 k` on a literal `SLit k`,
+`bvShiftLV 64` otherwise), reconciled with `evalBV`'s uniform
+`<<< (amount).toNat` through `srcClean`'s `k < 2^64` literal bound; `SMulHiU`
+closes through the `mulHiC`↔`sexprMulHiU` bridge (`mulHiC_eq_sexprMulHiU`). The
+remaining `SExpr` nodes (the signed `SAsr` / `SMulS` / `SMulHiS`, the tower read
+`SLimb`, `SLt`) stay excluded from `srcClean` (no jasmin lowering or signed
+semantics the covered kernels don't use).
+
+**Stage 2 (§8) is closed**: the control arms `RFor` (bounded meta-unroll) and
+`RIfNz` (φ-merge) are proved, so the preservation homomorphism
+(`translateDialectControl_denote_ctl`) covers the full control-extended
+fragment `IsCoveredSCtl` — arm-for-arm the shape of
+`TranslateDialectDirectControl.IsCoveredCtl` (with the `srcClean` side
+condition on `RScalarSetExpr`, exactly as `IsCoveredS` refines `IsCovered`).
+
+**0 sorries.** `IsCoveredS` is the full straight-line `IsCovered` (19 arms);
+`IsCoveredSCtl` adds `RFor` + `RIfNz` on top.
+-/
+
+namespace CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
+
+open CatCrypt.Crypto.SecureCompilation.CryptoSSA
+open CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
+open CatCrypt.Crypto.SecureCompilation.VIR
+open CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+open CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
+open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+open CatCrypt.Crypto.Jasmin.LowCT (LowCT Located TowerType SExpr)
+
+/-! ## 1. Heterogeneously-typed scalar environment -/
+
+/-- A per-name partial environment of typed scalar values. Each bound name maps
+    to a dependent pair `(t : CryptoTy) × ⟦t⟧` — the value together with the
+    `CryptoTy` it inhabits — so the same env can carry `.sword w` words, `.memref
+    n` arrays, and opaque `extCall` results side by side (the scalar path is
+    heterogeneously typed, unlike the mono-128-bit `SEnv`). -/
+abbrev SEnvScalar := String → Option ((t : CryptoTy) × ⟦t⟧)
+
+/-- Update a name in an `SEnvScalar` with a value of type `t`. -/
+def SEnvScalar.upd (env : SEnvScalar) (name : String) {t : CryptoTy} (val : ⟦t⟧) :
+    SEnvScalar :=
+  fun s => if s = name then some ⟨t, val⟩ else env s
+
+/-- Consistency between a `VarMap` at `Γ`, a `Γ`-valuation `V`, and an
+    `SEnvScalar`: every name's env value is exactly the typed slot it resolves to
+    in `V` (or `none` if the name is unbound in the `VarMap`). The heterogeneous
+    twin of `ConsistentV`. -/
+def ConsistentS {Γ : Ctx} (vm : VarMap Γ)
+    (V : Ctxt.Valuation (d := catCryptDialect) Γ) (env : SEnvScalar) : Prop :=
+  ∀ s : String,
+    (vm.lookup s).map (fun p => (⟨p.1, (toVIRVar p.2).lookup V⟩ : (t : CryptoTy) × ⟦t⟧))
+      = env s
+
+/-- Entry consistency at the empty context: the empty varmap, the empty
+    valuation, and the everywhere-`none` env are consistent. Every
+    translation pipeline starts here, so the entry `ConsistentS` hypothesis
+    of the preservation theorem is discharged for free at top level. -/
+theorem consistentS_empty :
+    ConsistentS VarMap.empty (.nil : Ctxt.Valuation (d := catCryptDialect) ([] : Ctx))
+      (fun _ => none) :=
+  fun _ => rfl
+
+/-- Read a tracked output's value out of a `ConsistentS` state: if the varmap
+    tracks `name` at slot `w : CVar Γ t` and the env carries `val` at the same
+    type `t`, then the valuation's slot value IS `val`. The single-name
+    projection that lets a caller convert "the source semantics left `val` in
+    `name`" into "the emitted program's return slot holds `val`". -/
+theorem ConsistentS.lookup_eq {Γ : Ctx} {vm : VarMap Γ}
+    {V : Ctxt.Valuation (d := catCryptDialect) Γ} {env : SEnvScalar}
+    (hc : ConsistentS vm V env) {name : String} {t : CryptoTy}
+    {w : CVar Γ t} {val : ⟦t⟧}
+    (hw : vm.lookup name = some ⟨t, w⟩) (hval : env name = some ⟨t, val⟩) :
+    (toVIRVar w).lookup V = val := by
+  have h := hc name
+  rw [hw, hval] at h
+  simpa using h
+
+/-! ## 2. The type-generic single-op step (shared across all single-binding arms)
+
+The scalar analogue of `vsimd_step`, but **type-generic** in the bound slot's
+`CryptoTy` `t` (the SIMD twin was pinned to `.sword 128`): emitting a `varBind`
+of an expression `e : Expr … Γ t` over the entry valuation `V` extends
+consistency by binding `dst` to `e.denote V`, and the emitted prefix, applied to
+any tail, denotes that tail at the extended valuation. -/
+
+/-- One op step: `ComCont.varBind e` binds `dst` to `e.denote V`, extending
+    `ConsistentS`, and denotes any tail at the extended valuation. Common core of
+    every single-binding scalar arm (`RCall`, the memref `RArrLoad`/`RArrStore`,
+    each `SExpr` node) — they differ only in `e`. -/
+theorem scalar_step {Γ : Ctx} (vm : VarMap Γ)
+    (V : Ctxt.Valuation (d := catCryptDialect) Γ) (env : SEnvScalar)
+    (hc : ConsistentS vm V env) (dst : String) {t : CryptoTy}
+    (e : Expr catCryptDialect Γ t) :
+    ConsistentS (vm.bind dst) (V.extend (e.denote V)) (env.upd dst (e.denote V)) ∧
+    ∀ {s : CryptoTy} (tail : Com catCryptDialect (t :: Γ) s),
+      ∃ com, (ComCont.varBind e) tail = some com ∧
+        com.denote V = tail.denote (V.extend (e.denote V)) := by
+  refine ⟨?_, ?_⟩
+  · intro s
+    by_cases hsd : s = dst
+    · subst hsd
+      simp only [VarMap.bind, SEnvScalar.upd]
+      rfl
+    · simp only [VarMap.bind, SEnvScalar.upd, if_neg hsd]
+      rw [← hc s]
+      cases hl : vm.lookup s with
+      | none => rfl
+      | some p =>
+          obtain ⟨t', v⟩ := p
+          rfl
+  · intro s tail
+    exact ⟨Com.var e tail, rfl, rfl⟩
+
+/-- Weakening step (the un-named twin of `scalar_step`'s consistency half): a
+    `varBind` that grows the context by an *anonymous* fresh slot (`vm.weaken`,
+    not `vm.bind`) keeps every existing name consistent — the new slot shifts
+    each bound `CVar` by `.there`, and the `.there`-shifted lookup on the
+    extended valuation is definitionally the original lookup. Used by the
+    `RLimbStore` arm, whose first emitted `varBind` (the literal word) lands in
+    an anonymous temp. -/
+theorem consistentS_weaken {Γ : Ctx} {t : CryptoTy} (vm : VarMap Γ)
+    (V : Ctxt.Valuation (d := catCryptDialect) Γ) (env : SEnvScalar)
+    (hc : ConsistentS vm V env) (x : ⟦t⟧) :
+    ConsistentS vm.weaken (V.extend x) env := by
+  intro s
+  rw [← hc s]
+  simp only [VarMap.weaken]
+  cases hl : vm.lookup s with
+  | none => rfl
+  | some p => obtain ⟨t', v⟩ := p; rfl
+
+/-! ## 2b. Fresh-temp namespace: `tmpName` injectivity + the env word-reader
+
+The `RScalarSetExpr` front lowers an `SExpr` into a chain of `varBind`s over
+FRESH temporaries `tmpName k = "__sx" ++ toString k`. The `SExpr`-recursion
+homomorphism (below) needs those temporaries to be *disjoint by index* — i.e.
+`tmpName` injective — which reduces to `Nat.repr` injective. That is not in
+`Mathlib`/core, so it is proved here via a decimal-digit left inverse
+(`toDigits_val : dval (Nat.toDigits 10 n) = n`). -/
+
+/-- Decimal value of a digit-char list, MSB first (the left inverse of
+    `Nat.toDigits 10`). -/
+def dval (ds : List Char) : Nat := ds.foldl (fun a c => a * 10 + (c.toNat - 48)) 0
+
+/-- `foldl` with a running accumulator: `acc` contributes `acc * 10 ^ len`. -/
+theorem foldl_acc (ds : List Char) (acc : Nat) :
+    ds.foldl (fun a c => a * 10 + (c.toNat - 48)) acc = acc * 10 ^ ds.length + dval ds := by
+  induction ds generalizing acc with
+  | nil => simp [dval]
+  | cons c cs ih =>
+      simp only [List.foldl_cons, List.length_cons, dval]
+      rw [ih (acc * 10 + (c.toNat - 48)), ih (0 * 10 + (c.toNat - 48))]
+      ring
+
+theorem dval_cons (c : Char) (ds : List Char) :
+    dval (c :: ds) = (c.toNat - 48) * 10 ^ ds.length + dval ds := by
+  simp only [dval, List.foldl_cons]
+  rw [foldl_acc]
+  simp only [zero_mul, zero_add]
+  rfl
+
+theorem digitChar_val {n : Nat} (h : n < 10) : (Nat.digitChar n).toNat - 48 = n := by
+  interval_cases n <;> decide
+
+theorem toDigitsCore_val (fuel : Nat) :
+    ∀ (n : Nat) (ds : List Char), n < 10 ^ fuel →
+      dval (Nat.toDigitsCore 10 fuel n ds) = n * 10 ^ ds.length + dval ds := by
+  induction fuel with
+  | zero =>
+      intro n ds h
+      simp only [pow_zero, Nat.lt_one_iff] at h
+      subst h
+      simp [Nat.toDigitsCore, dval]
+  | succ fuel ih =>
+      intro n ds h
+      simp only [Nat.toDigitsCore]
+      by_cases hn' : n / 10 = 0
+      · rw [if_pos hn']
+        have hlt : n < 10 := by
+          rcases Nat.lt_or_ge n 10 with h1 | h1
+          · exact h1
+          · exact absurd (Nat.div_eq_zero_iff.mp hn') (by omega)
+        rw [dval_cons, digitChar_val (by omega : n % 10 < 10), Nat.mod_eq_of_lt hlt]
+      · rw [if_neg hn']
+        have hn10 : n / 10 < 10 ^ fuel := by rw [pow_succ] at h; omega
+        rw [ih (n / 10) (Nat.digitChar (n % 10) :: ds) hn10, dval_cons,
+          digitChar_val (by omega : n % 10 < 10)]
+        simp only [List.length_cons]
+        have hP : (n / 10 * 10 + n % 10) * 10 ^ ds.length = n * 10 ^ ds.length := by
+          rw [(by omega : n / 10 * 10 + n % 10 = n)]
+        rw [pow_succ]
+        linear_combination hP
+
+theorem toDigits_val (n : Nat) : dval (Nat.toDigits 10 n) = n := by
+  unfold Nat.toDigits
+  rw [toDigitsCore_val (n + 1) n [] (by
+    calc n < n + 1 := Nat.lt_succ_self n
+    _ ≤ 2 ^ (n + 1) := Nat.le_of_lt Nat.lt_two_pow_self
+    _ ≤ 10 ^ (n + 1) := Nat.pow_le_pow_left (by norm_num) _)]
+  simp [dval]
+
+theorem repr_injective : Function.Injective Nat.repr := by
+  intro a b h
+  unfold Nat.repr at h
+  have hd : Nat.toDigits 10 a = Nat.toDigits 10 b := by
+    have := congrArg String.toList h; simpa using this
+  have := toDigits_val a
+  rw [hd, toDigits_val b] at this
+  omega
+
+/-- Fresh temporary name at counter `k`, matching the front's `tmpName`. -/
+theorem tmpName_injective : Function.Injective TranslateDialectDirectArms.tmpName := by
+  intro a b h
+  unfold TranslateDialectDirectArms.tmpName at h
+  simp only [String.append_right_inj] at h
+  exact repr_injective (by simpa [toString] using h)
+
+/-- A name is a fresh SExpr-lowering temporary iff it is `tmpName k` for some
+    index `k`. The reserved `__sx` namespace, tracked structurally (avoids
+    `String.isPrefixOf` reasoning). Source `SExpr` variables are `¬ isTmpName`. -/
+def isTmpName (s : String) : Prop := ∃ k, s = TranslateDialectDirectArms.tmpName k
+
+theorem isTmpName_tmpName (k : Nat) : isTmpName (TranslateDialectDirectArms.tmpName k) :=
+  ⟨k, rfl⟩
+
+/-- Read a `.sword 64` word slot out of an `SEnvScalar` (default `0` for an
+    unbound / mistyped name). The `SExpr` word evaluator `SExpr.evalBV` reads its
+    `SVar` leaves through this. -/
+def envReader (env : SEnvScalar) : String → BitVec 64 :=
+  fun s => match env s with
+    | some ⟨.sword 64, w⟩ => w
+    | _ => 0
+
+/-- Read a `.sword 64` word slot out of an `SEnvScalar` as an `Option` (the
+    partial-lookup twin of `envReader`, `some` exactly when the name is bound at
+    `.sword 64`). Mirrors the front's `lookupU64` at the env level. -/
+def envReadU64 (env : SEnvScalar) (nm : String) : Option (BitVec 64) :=
+  match env nm with
+  | some ⟨.sword 64, w⟩ => some w
+  | _ => none
+
+/-- One binary node of the `SExpr` env-mirror: given the env *after* both
+    operands are lowered and their result names `na`, `nb`, read both words and
+    bind a fresh temp `tmpName cnt` to `f va vb` (the word `f` the front's emitted
+    op denotes). `none` if either operand slot is not a `u64` word. -/
+def binNode (envAB : SEnvScalar) (na nb : String) (cnt : Nat)
+    (f : BitVec 64 → BitVec 64 → BitVec 64) : Option (SEnvScalar × String × Nat) :=
+  match envReadU64 envAB na, envReadU64 envAB nb with
+  | some va, some vb =>
+      some (envAB.upd (TranslateDialectDirectArms.tmpName cnt) (t := .sword 64) (f va vb),
+        TranslateDialectDirectArms.tmpName cnt, cnt + 1)
+  | _, _ => none
+
+/-- **Env-level image of `lowerSExpr`.** The scalar-word twin of the SIMD `semV`
+    fold: mirrors the front's fresh-temp chain at the `SEnvScalar` level, binding
+    each node's fresh temp to the SAME word the front's emitted `catCryptDialect`
+    op denotes (`bvConst`/`bvAdd`/… — front-faithful, so the preservation
+    homomorphism `translateDialectFull_denote` ties them via `ConsistentS` with NO
+    freshness reasoning). The shift arms use `SExpr.evalBV`'s uniform
+    variable-amount convention (`va <<< vb.toNat` / `va >>> vb.toNat`); when the
+    amount is a literal `SLit k` the front instead emits the immediate op
+    `bvShiftL 64 k` / `bvShiftR 64 k`, and the two agree exactly under
+    `srcClean`'s `k < 2^64` literal bound (`(BitVec.ofNat 64 k).toNat = k`).
+    Declines exactly the arms `lowerSExpr` declines. -/
+def semLowerSExpr (env : SEnvScalar) (cnt : Nat) : SExpr → Option (SEnvScalar × String × Nat)
+  | .SVar x =>
+      match envReadU64 env x with
+      | some _ => some (env, x, cnt)
+      | none => none
+  | .SLit n =>
+      some (env.upd (TranslateDialectDirectArms.tmpName cnt) (t := .sword 64) (BitVec.ofNat 64 n),
+        TranslateDialectDirectArms.tmpName cnt, cnt + 1)
+  | .SAdd a b =>
+      match semLowerSExpr env cnt a with
+      | some (e1, na, c1) =>
+          match semLowerSExpr e1 c1 b with
+          | some (e2, nb, c2) => binNode e2 na nb c2 (· + ·)
+          | none => none
+      | none => none
+  | .SSub a b =>
+      match semLowerSExpr env cnt a with
+      | some (e1, na, c1) =>
+          match semLowerSExpr e1 c1 b with
+          | some (e2, nb, c2) => binNode e2 na nb c2 (· - ·)
+          | none => none
+      | none => none
+  | .SMul a b =>
+      match semLowerSExpr env cnt a with
+      | some (e1, na, c1) =>
+          match semLowerSExpr e1 c1 b with
+          | some (e2, nb, c2) => binNode e2 na nb c2 (· * ·)
+          | none => none
+      | none => none
+  | .SAnd a b =>
+      match semLowerSExpr env cnt a with
+      | some (e1, na, c1) =>
+          match semLowerSExpr e1 c1 b with
+          | some (e2, nb, c2) => binNode e2 na nb c2 (· &&& ·)
+          | none => none
+      | none => none
+  | .SXor a b =>
+      match semLowerSExpr env cnt a with
+      | some (e1, na, c1) =>
+          match semLowerSExpr e1 c1 b with
+          | some (e2, nb, c2) => binNode e2 na nb c2 (· ^^^ ·)
+          | none => none
+      | none => none
+  | .SShl a b =>
+      match semLowerSExpr env cnt a with
+      | some (e1, na, c1) =>
+          match semLowerSExpr e1 c1 b with
+          | some (e2, nb, c2) => binNode e2 na nb c2 (fun va vb => va <<< vb.toNat)
+          | none => none
+      | none => none
+  | .SShr a b =>
+      match semLowerSExpr env cnt a with
+      | some (e1, na, c1) =>
+          match semLowerSExpr e1 c1 b with
+          | some (e2, nb, c2) => binNode e2 na nb c2 (fun va vb => va >>> vb.toNat)
+          | none => none
+      | none => none
+  | .SMulHiU a b =>
+      match semLowerSExpr env cnt a with
+      | some (e1, na, c1) =>
+          match semLowerSExpr e1 c1 b with
+          | some (e2, nb, c2) =>
+              binNode e2 na nb c2 (fun va vb => VIR.CatCryptDialect.mulHiC va vb)
+          | none => none
+      | none => none
+  | _ => none
+
+/-- Source-cleanliness of an `SExpr`: its `SVar`/`SLimb` variables are NOT in the
+    reserved `__sx` temp namespace (so the front's fresh temporaries never collide
+    with a source read), and its `SLit` literals are `< 2^64` (so a literal shift
+    amount `k` reconciles with `SExpr.evalBV`'s `(BitVec.ofNat 64 k).toNat`). Real
+    kernels (index arithmetic over named slots, small shift constants) satisfy it. -/
+def srcClean : SExpr → Prop
+  | .SVar x => ¬ isTmpName x
+  | .SLit n => n < 2 ^ 64
+  | .SAdd a b | .SSub a b | .SMul a b | .SAnd a b | .SXor a b
+  | .SShl a b | .SShr a b | .SMulHiU a b => srcClean a ∧ srcClean b
+  | _ => False
+
+/-! ## 3. Scalar operational semantics of the covered straight-line arms -/
+
+/-- The env-level fold behind the `RCallN` multi-dest leaf call: bind each
+    destination in turn to the opaque `CryptoTy.default` waist (the dialect
+    `extCall` denotation). Mirrors `loopCallNDestsD`'s left-to-right recursion
+    (process the head dest, recurse on the tail against the updated env), so the
+    `RCallN` induction case closes by structural recursion on `dests`. -/
+def semCallNDests : List Located → SEnvScalar → SEnvScalar
+  | [], env => env
+  | d :: rest, env =>
+      semCallNDests rest
+        (env.upd d.locVar (t := encodeTy d.locDst) (CryptoTy.default (encodeTy d.locDst)))
+
+/-- The φ-merge select: the word value the front's six-op `RIfNz` (C′) merge
+    chain computes — `zero → else`, `nonzero → then` (the `ite (not (bvEq cond
+    zero))` cmov). Stated over a literal `BitVec w` parameter so the `Decidable`
+    instance on the guard is found without unfolding `⟦.sword w⟧`. -/
+def phiSelect {w : Nat} (condv : BitVec w) (thenV elseV : BitVec 64) : BitVec 64 :=
+  if condv = 0#w then elseV else thenV
+
+/-- The φ-merge zero test (the `bvEq cond zero` bit), over a literal `BitVec w`
+    parameter for the same `Decidable`-resolution reason as `phiSelect`. -/
+def condIsZero {w : Nat} (v : BitVec w) : Bool := decide (v = 0#w)
+
+/-- The env-level fold behind the bounded `RFor` loop: run the body semantics
+    once per trip, binding the counter `x` to the trip index `n` (ascending
+    `0, 1, …, N-1`), peeling the LAST trip first — the exact recursion shape of
+    the front's meta-unroll `loopRForD`, so the `RFor` induction case closes by
+    `Nat`-induction in lock-step. The body semantics `semBody` is passed in
+    (as `loopRForD` takes `translateBody`), so this def can be stated before
+    `semScalar`'s `RFor` arm is in scope. -/
+def semRForD (semBody : SEnvScalar → Option SEnvScalar) (x : String) :
+    Nat → SEnvScalar → Option SEnvScalar
+  | 0, env => some env
+  | n + 1, env =>
+      match semRForD semBody x n env with
+      | some envPre => semBody (envPre.upd x (t := .sword 64) (BitVec.ofNat 64 n))
+      | none => none
+
+/-- Pure operational semantics of the covered scalar `LowCT` arms as a partial
+    `SEnvScalar` transformer. Each arm binds its destination to the SAME waist the
+    front's emitted `catCryptDialect` op denotes by:
+
+    * `RCall` — an opaque leaf: `CryptoTy.default (encodeTy dst)` (the dialect
+      `extCall` denotation, independent of the argument values);
+    * `RArrLoad` — the dynamic-index read `memGetDyn arr i` when the array slot is
+      a `.memref n`, the index a `.sword 64`, and the destination a `u64` word;
+      else the opaque `extCall "arrLoadDyn"` default;
+    * `RArrStore` — the dynamic-index write `memSetDyn arr i v` when the shapes
+      line up and the destination array's encoding is `.memref n`; else the opaque
+      default. -/
+def semScalar : LowCT → SEnvScalar → Option SEnvScalar
+  | .RSkip, env => some env
+  | .RBlock body, env => semScalar body env
+  | .RSeq c₁ c₂, env => (semScalar c₁ env).bind (fun e => semScalar c₂ e)
+  | .RScalarSet name n, env =>
+      some (env.upd name (t := .sword 64) (BitVec.ofNat 64 n))
+  | .RLetU64Zero name body, env =>
+      semScalar body (env.upd name (t := .sword 64) (0 : BitVec 64))
+  | .RCall _fname dst _args, env =>
+      let retTy := encodeTy dst.locDst
+      some (env.upd dst.locVar (t := retTy) (CryptoTy.default retTy))
+  | .RSelect dst _sel _src0 _src1, env =>
+      let retTy := encodeTy dst.locDst
+      some (env.upd dst.locVar (t := retTy) (CryptoTy.default retTy))
+  | .RCallDstThreaded _fname dst _args, env =>
+      let retTy := encodeTy dst.locDst
+      some (env.upd dst.locVar (t := retTy) (CryptoTy.default retTy))
+  | .RTupleStore dst _idx _src, env =>
+      let retTy := encodeTy dst.locDst
+      some (env.upd dst.locVar (t := retTy) (CryptoTy.default retTy))
+  | .RTupleLoad dst _src _idx, env =>
+      let retTy := encodeTy dst.locDst
+      some (env.upd dst.locVar (t := retTy) (CryptoTy.default retTy))
+  | .RArrLoadLit dst _src _idx, env =>
+      let retTy := encodeTy dst.locDst
+      some (env.upd dst.locVar (t := retTy) (CryptoTy.default retTy))
+  | .RArrStoreLit arr _idx _src, env =>
+      let retTy := encodeTy arr.locDst
+      some (env.upd arr.locVar (t := retTy) (CryptoTy.default retTy))
+  | .RCallSwap _fname dest1 dest2 _args, env =>
+      let retTy1 := encodeTy dest1.locDst
+      let retTy2 := encodeTy dest2.locDst
+      some ((env.upd dest1.locVar (t := retTy1) (CryptoTy.default retTy1)).upd
+        dest2.locVar (t := retTy2) (CryptoTy.default retTy2))
+  | .RCloneCall cv _tt oldDest _innerF newDest _args, env =>
+      match env oldDest.locVar with
+      | some ⟨cloneTy, _⟩ =>
+          let retTy := encodeTy newDest.locDst
+          some ((env.upd cv (t := cloneTy) (CryptoTy.default cloneTy)).upd
+            newDest.locVar (t := retTy) (CryptoTy.default retTy))
+      | none => none
+  | .RLimbStore loc idx v, env =>
+      match env loc.locVar with
+      | some ⟨.memref n, arr⟩ =>
+          if h : idx < n then
+            some (env.upd loc.locVar (t := .memref n)
+              (fun j => if j = ⟨idx, h⟩ then v else arr j))
+          else none
+      | _ => none
+  | .RCallN _fname dests _args, env => some (semCallNDests dests env)
+  | .RArrLoad dst src idxVar, env =>
+      match dst.locDst, env src.locVar, env idxVar with
+      | .TU64, some ⟨.memref _n, arr⟩, some ⟨.sword 64, i⟩ =>
+          some (env.upd dst.locVar (t := .sword 64) (memGetDyn arr i.toNat))
+      | dty, _, _ =>
+          some (env.upd dst.locVar (t := encodeTy dty) (CryptoTy.default (encodeTy dty)))
+  | .RArrStore arr idxVar src, env =>
+      let dty := arr.locDst
+      match env arr.locVar, env idxVar, env src.locVar with
+      | some ⟨.memref n, a⟩, some ⟨.sword 64, i⟩, some ⟨.sword 64, v⟩ =>
+          if h : encodeTy dty = .memref n then
+            some (env.upd arr.locVar (t := encodeTy dty)
+              (h.symm ▸ (memSetDyn a i.toNat v)))
+          else
+            some (env.upd arr.locVar (t := encodeTy dty) (CryptoTy.default (encodeTy dty)))
+      | _, _, _ =>
+          some (env.upd arr.locVar (t := encodeTy dty) (CryptoTy.default (encodeTy dty)))
+  | .RScalarSetExpr x e, env =>
+      match semLowerSExpr env 0 e with
+      | some (env2, _nm, _) =>
+          some (env2.upd x (t := .sword 64) (SExpr.evalBV (envReader env) e))
+      | none => none
+  | .RFor x N body, env => semRForD (fun e => semScalar body e) x N env
+  | .RIfNz name thenBr elseBr, env =>
+      -- The waist the front's `RIfNz` lowering denotes by (the exact mirror of
+      -- `translateDialectControl`'s case analysis): the guard must be a bound
+      -- scalar; when both branches are a single `RScalarSet` on the SAME name —
+      -- the (C′) φ-merge, the only case the front compiles as a genuine
+      -- conditional — bind that name to the cmov-selected value (`zero → else`,
+      -- `nonzero → then`); every other case composes the branch semantics
+      -- sequentially (`then; else`), which is what the front's pass-through /
+      -- re-translation cases (A)/(B)/(C-otherwise) emit — in (A)/(B) the front
+      -- passes through ONE branch's prefix, and the discarded branch is
+      -- context-invariant hence env-inert (`translateDialectControl_ext`), so
+      -- the sequential composition is denotation-equal there.
+      match env name with
+      | some ⟨.sword w, condv⟩ =>
+          match asSingleScalarSet thenBr, asSingleScalarSet elseBr with
+          | some thenSet, some elseSet =>
+              if thenSet.name = elseSet.name then
+                some (env.upd thenSet.name (t := .sword 64)
+                  (phiSelect (w := w) condv (BitVec.ofNat 64 thenSet.val)
+                    (BitVec.ofNat 64 elseSet.val)))
+              else
+                (semScalar thenBr env).bind (fun e => semScalar elseBr e)
+          | _, _ => (semScalar thenBr env).bind (fun e => semScalar elseBr e)
+      | _ => none
+  | _, _ => none
+
+/-! ## 4. The straight-line covered fragment
+
+`IsCoveredS` marks the straight-line scalar arms this preservation theorem
+covers: the leaf-call arm (`RCall`), the dynamic-index array **load**/**store**
+arms (`RArrLoad` / `RArrStore`), plus their `RSeq` / `RBlock` / `RSkip` closure.
+Deliberately separate from `IsCoveredCtl` (same shape, fewer arms). The
+scalar-`SExpr` assignment (`RScalarSetExpr x e`, with `srcClean e`) is now
+covered via the `SExpr`-recursion homomorphism `lowerSExpr_denote` (§5f, §7); its
+constructor carries the `srcClean` side condition (`SExpr` over the arithmetic /
+bitwise / shift / high-multiply fragment, non-`__sx` source variables). The
+control arms `RFor` / `RIfNz` are covered by the Stage-2 extension
+`IsCoveredSCtl` (§8). -/
+
+/-- The straight-line scalar-covered `LowCT` fragment. -/
+inductive IsCoveredS : LowCT → Prop
+  | rSkip : IsCoveredS .RSkip
+  | rBlock {body : LowCT} : IsCoveredS body → IsCoveredS (.RBlock body)
+  | rSeq {c₁ c₂ : LowCT} : IsCoveredS c₁ → IsCoveredS c₂ → IsCoveredS (.RSeq c₁ c₂)
+  | rScalarSet (name : String) (n : Nat) : IsCoveredS (.RScalarSet name n)
+  | rLetU64Zero {name : String} {body : LowCT} :
+      IsCoveredS body → IsCoveredS (.RLetU64Zero name body)
+  | rCall (fname : String) (dst : Located) (args : List Located) :
+      IsCoveredS (.RCall fname dst args)
+  | rSelect (dst : Located) (sel : String) (src0 src1 : Located) :
+      IsCoveredS (.RSelect dst sel src0 src1)
+  | rCallDstThreaded (fname : String) (dst : Located) (args : List Located) :
+      IsCoveredS (.RCallDstThreaded fname dst args)
+  | rTupleStore (dst : Located) (idx : Nat) (src : Located) :
+      IsCoveredS (.RTupleStore dst idx src)
+  | rTupleLoad (dst src : Located) (idx : Nat) :
+      IsCoveredS (.RTupleLoad dst src idx)
+  | rArrLoadLit (dst src : Located) (idx : Nat) :
+      IsCoveredS (.RArrLoadLit dst src idx)
+  | rArrStoreLit (arr : Located) (idx : Nat) (src : Located) :
+      IsCoveredS (.RArrStoreLit arr idx src)
+  | rCallSwap (fname : String) (dest1 dest2 : Located) (args : List Located) :
+      IsCoveredS (.RCallSwap fname dest1 dest2 args)
+  | rCloneCall (cv : String) (tt : TowerType) (oldDest : Located) (innerF : String)
+      (newDest : Located) (args : List Located) :
+      IsCoveredS (.RCloneCall cv tt oldDest innerF newDest args)
+  | rLimbStore (loc : Located) (idx : Nat) (v : BitVec 64) :
+      IsCoveredS (.RLimbStore loc idx v)
+  | rCallN (fname : String) (dests args : List Located) :
+      IsCoveredS (.RCallN fname dests args)
+  | rArrLoad (dst src : Located) (idxVar : String) :
+      IsCoveredS (.RArrLoad dst src idxVar)
+  | rArrStore (arr : Located) (idxVar : String) (src : Located) :
+      IsCoveredS (.RArrStore arr idxVar src)
+  | rScalarSetExpr (x : String) (e : SExpr) (hclean : srcClean e) :
+      IsCoveredS (.RScalarSetExpr x e)
+
+/-- `IsCoveredS` refines the front-simulation coverage `IsCovered`: the arms
+    are 1:1, with `rScalarSetExpr` forgetting the `srcClean` side condition.
+    Lets one `IsCoveredS` hypothesis feed both the preservation homomorphism
+    (here) and the operational simulation (`rustExecSimulatesDialect`). -/
+theorem IsCoveredS.toIsCovered {c : LowCT} (h : IsCoveredS c) : IsCovered c := by
+  induction h with
+  | rSkip => exact .rSkip
+  | rBlock _ ih => exact .rBlock ih
+  | rSeq _ _ ih₁ ih₂ => exact .rSeq ih₁ ih₂
+  | rScalarSet name n => exact .rScalarSet name n
+  | rLetU64Zero _ ih => exact .rLetU64Zero ih
+  | rCall fname dst args => exact .rCall fname dst args
+  | rSelect dst sel src0 src1 => exact .rSelect dst sel src0 src1
+  | rCallDstThreaded fname dst args => exact .rCallDstThreaded fname dst args
+  | rTupleStore dst idx src => exact .rTupleStore dst idx src
+  | rTupleLoad dst src idx => exact .rTupleLoad dst src idx
+  | rArrLoadLit dst src idx => exact .rArrLoadLit dst src idx
+  | rArrStoreLit arr idx src => exact .rArrStoreLit arr idx src
+  | rCallSwap fname dest1 dest2 args => exact .rCallSwap fname dest1 dest2 args
+  | rCloneCall cv tt oldDest innerF newDest args =>
+      exact .rCloneCall cv tt oldDest innerF newDest args
+  | rLimbStore loc idx v => exact .rLimbStore loc idx v
+  | rCallN fname dests args => exact .rCallN fname dests args
+  | rArrLoad dst src idxVar => exact .rArrLoad dst src idxVar
+  | rArrStore arr idxVar src => exact .rArrStore arr idxVar src
+  | rScalarSetExpr x e _ => exact .rScalarSetExpr x e
+
+/-! ## 5. Op-denotation helpers (the waist each single-binding arm binds by) -/
+
+/-- An opaque `extCall` denotes to `CryptoTy.default retTy`, independent of its
+    arguments (the dialect compile-path meaning of an opaque leaf). -/
+theorem extCallExpr_denote {Γ : Ctx} (name : String) (retTy : CryptoTy)
+    {argTys : List CryptoTy} (hv : CHVector (fun t => CVar Γ t) argTys)
+    (V : Ctxt.Valuation (d := catCryptDialect) Γ) :
+    (extCallExpr name retTy hv).denote V = CryptoTy.default retTy := rfl
+
+/-- The `memrefGetDyn` expression denotes to the dynamic-index read `memGetDyn`. -/
+theorem memrefGetDyn_denote {Γ : Ctx} (n : Nat) (arrV : CVar Γ (.memref n))
+    (idxV : CVar Γ (.sword 64)) (V : Ctxt.Valuation (d := catCryptDialect) Γ) :
+    (Expr.denote (d := catCryptDialect)
+      { op := .memrefGetDyn n, retTy_eq := rfl,
+        args := .cons (toVIRVar arrV) (.cons (toVIRVar idxV) .nil) } V)
+      = memGetDyn ((toVIRVar arrV).lookup V) ((toVIRVar idxV).lookup V).toNat := rfl
+
+/-- The `memrefSetDyn` expression denotes to the dynamic-index write `memSetDyn`. -/
+theorem memrefSetDyn_denote {Γ : Ctx} (n : Nat) (arrV : CVar Γ (.memref n))
+    (idxV srcV : CVar Γ (.sword 64)) (V : Ctxt.Valuation (d := catCryptDialect) Γ) :
+    (Expr.denote (d := catCryptDialect)
+      { op := .memrefSetDyn n, retTy_eq := rfl,
+        args := .cons (toVIRVar arrV)
+          (.cons (toVIRVar idxV) (.cons (toVIRVar srcV) .nil)) } V)
+      = memSetDyn ((toVIRVar arrV).lookup V) ((toVIRVar idxV).lookup V).toNat
+          ((toVIRVar srcV).lookup V) := rfl
+
+/-! ## 5b. `varBind`-factoring of the array combinators
+
+Both branches of `arrLoadCont` are a single `ComCont.varBind`; `arrLoadExpr`
+extracts the bound expression (`memrefGetDyn` on the real dynamic-index ABI,
+else the opaque `extCall "arrLoadDyn"`). Factoring the combinator as
+`ComCont.varBind (arrLoadExpr …)` lets the `RArrLoad` induction case close by
+`scalar_step` exactly as `RCall` does — the two front-emitted matches
+(`arrLoadExpr` and `semScalar`'s `RArrLoad` arm) are driven in lock-step by a
+double `split` (the diagonal cases agree by the §5 denotation lemmas; the cross
+cases are discriminant-contradictory). -/
+
+/-- The single expression `arrLoadCont` binds, in both branches. -/
+def arrLoadExpr {Γ : Ctx} (dty : TowerType)
+    (resolvedArgs : List ((t : CryptoTy) × CVar Γ t))
+    (idxSig : (t : CryptoTy) × CVar Γ t)
+    {argTys : List CryptoTy} (hv : CHVector (fun t => CVar Γ t) argTys) :
+    Expr catCryptDialect Γ (encodeTy dty) :=
+  match dty, resolvedArgs, idxSig with
+  | .TU64, [⟨.memref n, arrV⟩], ⟨.sword 64, idxV⟩ =>
+      { op := .memrefGetDyn n, retTy_eq := rfl,
+        args := .cons (toVIRVar arrV) (.cons (toVIRVar idxV) .nil) }
+  | dty', _, _ => extCallExpr "arrLoadDyn" (encodeTy dty') hv
+
+/-- `arrLoadCont` applied to any tail agrees with `ComCont.varBind` of
+    `arrLoadExpr` (phrased per-applied-tail — over the singleton resolved-arg
+    list the front actually emits; the implicit `{t}` of a bare `ComCont`
+    equality won't synthesize). Both combinators are the same literal-pattern
+    dependent match; casing the shape discriminants (`dty`, the slot types, the
+    `64` width) reduces both in lock-step. -/
+theorem arrLoadCont_eq {Γ : Ctx} (dty : TowerType)
+    (st : CryptoTy) (sv : CVar Γ st) (it : CryptoTy) (iv : CVar Γ it)
+    {argTys : List CryptoTy} (hv : CHVector (fun t => CVar Γ t) argTys)
+    {t : CryptoTy} (tail : Com catCryptDialect (encodeTy dty :: Γ) t) :
+    arrLoadCont dty [⟨st, sv⟩] ⟨it, iv⟩ hv tail
+      = ComCont.varBind (arrLoadExpr dty [⟨st, sv⟩] ⟨it, iv⟩ hv) tail := by
+  cases dty <;>
+    rcases st with _ | _ | ⟨_, _⟩ | ⟨_, _⟩ | _ | nmem <;>
+    rcases it with _ | _ | ⟨_, _⟩ | ⟨_, _⟩ | w | _ <;>
+    first
+    | rfl
+    | (rcases eq_or_ne w 64 with rfl | hw <;>
+        first
+        | rfl
+        | simp_all [arrLoadCont, arrLoadExpr, ComCont.varBind, CryptoTy.sword.injEq])
+
+/-! ## 5c. `varBind`-factoring of the array **store** combinator
+
+`arrStoreCont`'s memref branch is a `memrefSetDyn` `varBind` wrapped in a
+`ComCont.castCtx` (a codomain transport, guarded by `encodeTy dty = .memref n`);
+the fallback branches are a single `extCall "arrStoreDyn"` `varBind`. The
+`castCtx`↔`varBind` naturality (`castCtx_varBind`) collapses the transport to a
+`varBind` of the transported expression, so — exactly as for the load arm —
+`arrStoreCont` factors as `ComCont.varBind (arrStoreExpr …)`, and the induction
+case closes by `scalar_step`. -/
+
+/-- Naturality of `ComCont.castCtx` against `ComCont.varBind`: transporting a
+    `varBind` along a codomain-slot equality `hh : t = t'` (lifted to
+    `hh ▸ (·::Γ)`) equals the `varBind` of the transported expression. General
+    over `t`/`t'`, so it applies to the concrete `.memref n = encodeTy dty` cast
+    by unification (a single `cases hh`, no case explosion). -/
+theorem castCtx_varBind {Γ : Ctx} {t t' : CryptoTy} (hh : t = t')
+    (e : Expr catCryptDialect Γ t) {s : CryptoTy}
+    (tail : Com catCryptDialect (t' :: Γ) s) :
+    ComCont.castCtx (congrArg (· :: Γ) hh) (ComCont.varBind e) tail
+      = ComCont.varBind (hh ▸ e) tail := by
+  cases hh; rfl
+
+/-- Transport commutes with `Expr.denote`: `(hh ▸ e).denote V = hh ▸ (e.denote V)`
+    for a codomain-slot equality `hh : t = t'`. General over `t`/`t'` (a single
+    `cases hh`), the value-side twin of `castCtx_varBind`. -/
+theorem expr_denote_cast {Γ : Ctx} {t t' : CryptoTy} (hh : t = t')
+    (e : Expr catCryptDialect Γ t) (V : Ctxt.Valuation (d := catCryptDialect) Γ) :
+    (hh ▸ e).denote V = hh ▸ (e.denote V) := by
+  cases hh; rfl
+
+/-- The single expression `arrStoreCont` binds, in every branch. The memref
+    branch is the `memrefSetDyn` expression transported from its natural codomain
+    `.memref n` to the destination array's declared encoding `encodeTy dty`
+    (guarded by `h : encodeTy dty = .memref n`); the fallbacks are the opaque
+    `extCall "arrStoreDyn"`. -/
+def arrStoreExpr {Γ : Ctx} (dty : TowerType)
+    (resolvedArgs : List ((t : CryptoTy) × CVar Γ t))
+    (idxSig : (t : CryptoTy) × CVar Γ t)
+    {argTys : List CryptoTy} (hv : CHVector (fun t => CVar Γ t) argTys) :
+    Expr catCryptDialect Γ (encodeTy dty) :=
+  match resolvedArgs, idxSig with
+  | [⟨.memref n, arrV⟩, ⟨.sword 64, srcV⟩], ⟨.sword 64, idxV⟩ =>
+      let e : Expr catCryptDialect Γ (.memref n) :=
+        { op := .memrefSetDyn n, retTy_eq := rfl,
+          args := .cons (toVIRVar arrV)
+            (.cons (toVIRVar idxV) (.cons (toVIRVar srcV) .nil)) }
+      if h : encodeTy dty = .memref n then h.symm ▸ e
+      else extCallExpr "arrStoreDyn" (encodeTy dty) hv
+  | _, _ => extCallExpr "arrStoreDyn" (encodeTy dty) hv
+
+/-- `arrStoreCont` applied to any tail agrees with `ComCont.varBind` of
+    `arrStoreExpr` (phrased per-applied-tail, over the `[arr, src]`/`idx`
+    resolved-arg list the front emits). The memref branch collapses its
+    `castCtx` via `castCtx_varBind`; the fallbacks are already a bare `varBind`. -/
+theorem arrStoreCont_eq {Γ : Ctx} (dty : TowerType)
+    (at_ : CryptoTy) (av : CVar Γ at_) (stt : CryptoTy) (sv : CVar Γ stt)
+    (it : CryptoTy) (iv : CVar Γ it)
+    {argTys : List CryptoTy} (hv : CHVector (fun t => CVar Γ t) argTys)
+    {t : CryptoTy} (tail : Com catCryptDialect (encodeTy dty :: Γ) t) :
+    arrStoreCont dty [⟨at_, av⟩, ⟨stt, sv⟩] ⟨it, iv⟩ hv tail
+      = ComCont.varBind (arrStoreExpr dty [⟨at_, av⟩, ⟨stt, sv⟩] ⟨it, iv⟩ hv) tail := by
+  rcases at_ with _ | _ | ⟨_, _⟩ | ⟨_, _⟩ | _ | n <;>
+    rcases stt with _ | _ | ⟨_, _⟩ | ⟨_, _⟩ | ws | _ <;>
+    rcases it with _ | _ | ⟨_, _⟩ | ⟨_, _⟩ | wi | _ <;>
+    first
+    | rfl
+    | (-- Remaining: array slot `= .memref n`, source slot `= .sword ws`; the
+       -- match is stuck on the symbolic `ws`. Split it (and, once it is `64`, the
+       -- index width `wi`); every non-`(memref,64,64)` leaf collapses to the
+       -- opaque `extCall` fallback, and the real branch closes by `castCtx_varBind`.
+       rcases eq_or_ne ws 64 with rfl | hws
+       · first
+         | rfl
+         | (rcases eq_or_ne wi 64 with rfl | hwi
+            · simp only [arrStoreCont, arrStoreExpr]
+              by_cases hmem : encodeTy dty = .memref n
+              · simp only [dif_pos hmem]
+                exact castCtx_varBind hmem.symm _ tail
+              · simp only [dif_neg hmem]
+            · simp [arrStoreCont, arrStoreExpr, CryptoTy.sword.injEq, hwi])
+       · simp [arrStoreCont, arrStoreExpr, CryptoTy.sword.injEq, hws])
+
+/-! ## 5d. The `RCallN` multi-dest fold
+
+`RCallN` lowers via `loopCallNDestsD`, a left-to-right fold that binds each
+destination through an `extCall "callN:f"` `varBind` (growing both the context
+and the `VarMap` by one slot per dest). The homomorphism over the fold is proved
+by induction on the destination list — generalizing the context `Γ` (each
+recursive step lands in `retTy :: Γ`) — with each step closing exactly like a
+`scalar_step` composed via `ComCont.comp` (the RSeq backbone), and the base case
+(`ComCont.id`) closing like `RSkip`. -/
+
+/-- Front-general preservation over the `RCallN` destination fold. Each dest
+    binds the opaque leaf waist `CryptoTy.default`, so the emitted prefix denotes
+    exactly `semCallNDests`. Induction on `dests`, generalizing `Γ`/`vm`/`V`/`env`. -/
+theorem loopCallNDestsD_denote (fname : String) (args : List Located) :
+    ∀ (dests : List Located) {Γ : Ctx} (vm : VarMap Γ)
+      (V : Ctxt.Valuation (d := catCryptDialect) Γ) (env : SEnvScalar) (o : DTransOut Γ),
+      ConsistentS vm V env →
+      loopCallNDestsD fname args vm dests = some o →
+      ∃ V' : Ctxt.Valuation (d := catCryptDialect) o.Γ',
+        ConsistentS o.vm V' (semCallNDests dests env) ∧
+        ∀ {t : CryptoTy} (tail : Com catCryptDialect o.Γ' t),
+          ∃ com, o.cont tail = some com ∧ com.denote V = tail.denote V' := by
+  intro dests
+  induction dests with
+  | nil =>
+      intro Γ vm V env o hc htr
+      simp only [loopCallNDestsD] at htr
+      obtain rfl := Option.some.inj htr
+      exact ⟨V, hc, fun tail => ⟨tail, rfl, rfl⟩⟩
+  | cons d rest ih =>
+      intro Γ vm V env o hc htr
+      rcases hra : resolveLocatedArgs vm args with _ | resolvedArgs
+      · simp [loopCallNDestsD, hra] at htr
+      · simp only [loopCallNDestsD, hra] at htr
+        rcases hrest : loopCallNDestsD fname args (vm.bind d.locVar) rest with _ | oRest
+        · rw [hrest] at htr; simp at htr
+        · rw [hrest] at htr
+          simp only [Option.some.injEq] at htr
+          obtain rfl := htr
+          obtain ⟨hcons1, hcont1⟩ :=
+            scalar_step vm V env hc d.locVar
+              (extCallExpr ("callN:" ++ fname) (encodeTy d.locDst)
+                (listSigmaToCHVector resolvedArgs).snd)
+          obtain ⟨V', hc', hcont2⟩ :=
+            ih (vm.bind d.locVar) (V.extend _) _ oRest hcons1 hrest
+          refine ⟨V', hc', ?_⟩
+          intro t tail
+          obtain ⟨com2, hcom2, hden2⟩ := hcont2 tail
+          obtain ⟨com, hcom, hden⟩ := hcont1 com2
+          refine ⟨com, ?_, ?_⟩
+          · show ComCont.comp (ComCont.varBind _) oRest.cont tail = some com
+            simp only [ComCont.comp, hcom2, hcom]
+          · rw [hden, hden2]
+
+/-! ## 5e. Fresh-temp bookkeeping for the `SExpr`-recursion homomorphism
+
+The `RScalarSetExpr` front lowers an `SExpr` into a chain of `varBind`s over
+FRESH temps `tmpName k` (counters strictly increasing). To prove the emitted
+chain denotes `SExpr.evalBV`, we thread three invariants alongside `ConsistentS`:
+
+* `FreshFrom env cnt` — `env` has NO temp bound at index `≥ cnt` (the fresh
+  region the chain will use);
+* `OnlyTmpBelow env env2 cnt` — `env2` agrees with `env` everywhere EXCEPT temps
+  at index `≥ cnt` (the chain only writes fresh temps, never a source read);
+* `ResultOK nm cnt'` — the result name is a source name or a temp of index
+  `< cnt'` (so a *later* fresh temp never overwrites it).
+
+Together with `tmpName` injectivity they give the non-collision facts the
+homomorphism needs. -/
+
+/-- `env` binds no temporary at index `≥ cnt`. -/
+def FreshFrom (env : SEnvScalar) (cnt : Nat) : Prop :=
+  ∀ k, cnt ≤ k → env (TranslateDialectDirectArms.tmpName k) = none
+
+/-- `env2` agrees with `env` off the fresh-temp region `{tmpName k : k ≥ cnt}`. -/
+def OnlyTmpBelow (env env2 : SEnvScalar) (cnt : Nat) : Prop :=
+  ∀ s, (¬ isTmpName s ∨ ∃ k, k < cnt ∧ s = TranslateDialectDirectArms.tmpName k) → env2 s = env s
+
+/-- The result name is a source name, or a temp of index `< cnt'`. -/
+def ResultOK (nm : String) (cnt' : Nat) : Prop :=
+  ¬ isTmpName nm ∨ ∃ k, k < cnt' ∧ nm = TranslateDialectDirectArms.tmpName k
+
+theorem tmpName_ne {k c : Nat} (h : k ≠ c) :
+    TranslateDialectDirectArms.tmpName k ≠ TranslateDialectDirectArms.tmpName c :=
+  fun he => h (tmpName_injective he)
+
+theorem ne_tmpName_of_not_isTmp {s : String} (h : ¬ isTmpName s) (c : Nat) :
+    s ≠ TranslateDialectDirectArms.tmpName c :=
+  fun he => h ⟨c, he⟩
+
+theorem onlyTmpBelow_refl (env : SEnvScalar) (cnt : Nat) : OnlyTmpBelow env env cnt :=
+  fun _ _ => rfl
+
+theorem onlyTmpBelow_trans {env e1 e2 : SEnvScalar} {cnt c1 : Nat}
+    (h1 : OnlyTmpBelow env e1 cnt) (h2 : OnlyTmpBelow e1 e2 c1) (hle : cnt ≤ c1) :
+    OnlyTmpBelow env e2 cnt := by
+  intro s hs
+  have hs' : ¬ isTmpName s ∨ ∃ k, k < c1 ∧ s = TranslateDialectDirectArms.tmpName k := by
+    rcases hs with h | ⟨k, hk, rfl⟩
+    · exact Or.inl h
+    · exact Or.inr ⟨k, by omega, rfl⟩
+  rw [h2 s hs']
+  exact h1 s hs
+
+theorem onlyTmpBelow_upd {env e2 : SEnvScalar} {cnt c : Nat} {w : BitVec 64}
+    (h : OnlyTmpBelow env e2 cnt) (hc : cnt ≤ c) :
+    OnlyTmpBelow env (e2.upd (TranslateDialectDirectArms.tmpName c) (t := .sword 64) w) cnt := by
+  intro s hs
+  have hne : s ≠ TranslateDialectDirectArms.tmpName c := by
+    rcases hs with h1 | ⟨k, hk, rfl⟩
+    · exact ne_tmpName_of_not_isTmp h1 c
+    · exact tmpName_ne (by omega)
+  simp only [SEnvScalar.upd, if_neg hne]
+  exact h s hs
+
+theorem freshFrom_upd_succ {env : SEnvScalar} {c : Nat} {w : BitVec 64}
+    (h : FreshFrom env c) :
+    FreshFrom (env.upd (TranslateDialectDirectArms.tmpName c) (t := .sword 64) w) (c + 1) := by
+  intro k hk
+  have hne : TranslateDialectDirectArms.tmpName k ≠ TranslateDialectDirectArms.tmpName c :=
+    tmpName_ne (by omega)
+  simp only [SEnvScalar.upd, if_neg hne]
+  exact h k (by omega)
+
+/-- `ConsistentS` bridges the front's `lookupU64` to the env word-reader
+    `envReadU64`. -/
+theorem consistentS_readU64 {Γ : Ctx} {vm : VarMap Γ}
+    {V : Ctxt.Valuation (d := catCryptDialect) Γ} {env : SEnvScalar}
+    (hc : ConsistentS vm V env) (nm : String) {v : CVar Γ (.sword 64)}
+    (h : TranslateDialectDirectArms.lookupU64 vm nm = some v) :
+    envReadU64 env nm = some ((toVIRVar v).lookup V) := by
+  have hlk := hc nm
+  simp only [TranslateDialectDirectArms.lookupU64] at h
+  split at h
+  · next v' heq =>
+      simp only [Option.some.injEq] at h
+      subst h
+      rw [heq] at hlk
+      simp only [Option.map_some] at hlk
+      simp only [envReadU64, ← hlk]
+  · exact absurd h (by simp)
+
+/-- `envReadU64` and `envReader` read the same `.sword 64` slot. -/
+theorem envReadU64_reader {env : SEnvScalar} {nm : String} {w : BitVec 64}
+    (h : envReadU64 env nm = some w) : envReader env nm = w := by
+  simp only [envReadU64] at h
+  simp only [envReader]
+  split at h <;> simp_all
+
+/-- Reading back a just-bound `.sword 64` temp. -/
+theorem envReadU64_upd_self (env : SEnvScalar) (nm : String) (w : BitVec 64) :
+    envReadU64 (env.upd nm (t := .sword 64) w) nm = some w := by
+  simp [envReadU64, SEnvScalar.upd]
+
+/-- Stability: a name in the preserved set keeps its `envReadU64` value. -/
+theorem readU64_stable {env e2 : SEnvScalar} {cnt : Nat} {nm : String}
+    (h : OnlyTmpBelow env e2 cnt) (hnm : ResultOK nm cnt) :
+    envReadU64 e2 nm = envReadU64 env nm := by
+  have : e2 nm = env nm := h nm hnm
+  simp only [envReadU64, this]
+
+/-- `SExpr.evalBV` congruence: readers agreeing on non-temp names agree on a
+    `srcClean` expression (its variables are all non-temp). -/
+theorem evalBV_congr (β1 β2 : String → BitVec 64) :
+    ∀ (e : SExpr), (∀ s, ¬ isTmpName s → β1 s = β2 s) → srcClean e →
+      SExpr.evalBV β1 e = SExpr.evalBV β2 e := by
+  intro e
+  induction e with
+  | SVar x => intro hβ hcl; simp only [SExpr.evalBV]; exact hβ x hcl
+  | SLit n => intro _ _; rfl
+  | SAdd a b iha ihb => intro hβ hcl; simp only [SExpr.evalBV, iha hβ hcl.1, ihb hβ hcl.2]
+  | SSub a b iha ihb => intro hβ hcl; simp only [SExpr.evalBV, iha hβ hcl.1, ihb hβ hcl.2]
+  | SMul a b iha ihb => intro hβ hcl; simp only [SExpr.evalBV, iha hβ hcl.1, ihb hβ hcl.2]
+  | SAnd a b iha ihb => intro hβ hcl; simp only [SExpr.evalBV, iha hβ hcl.1, ihb hβ hcl.2]
+  | SXor a b iha ihb => intro hβ hcl; simp only [SExpr.evalBV, iha hβ hcl.1, ihb hβ hcl.2]
+  | SShl a b iha ihb => intro hβ hcl; simp only [SExpr.evalBV, iha hβ hcl.1, ihb hβ hcl.2]
+  | SShr a b iha ihb => intro hβ hcl; simp only [SExpr.evalBV, iha hβ hcl.1, ihb hβ hcl.2]
+  | SMulHiU a b iha ihb => intro hβ hcl; simp only [SExpr.evalBV, iha hβ hcl.1, ihb hβ hcl.2]
+  | SLt a b iha ihb => intro _ hcl; exact hcl.elim
+  | SAsr a b iha ihb => intro _ hcl; exact hcl.elim
+  | SMulS a b iha ihb => intro _ hcl; exact hcl.elim
+  | SMulHiS a b iha ihb => intro _ hcl; exact hcl.elim
+  | SLimb v i => intro _ _; rfl
+
+/-- The `mulHiC` ↔ `sexprMulHiU` bridge: the dialect's high-word multiply
+    (`Nat`-division by `2^64` of the full product) agrees with `SExpr.evalBV`'s
+    `SMulHiU` arm (`sexprMulHiU`, a `>>> 64` over the mod-`2^64`-reduced
+    operands) on `u64` words — the reductions are no-ops (`BitVec.isLt`) and the
+    shift is the same division (`Nat.shiftRight_eq_div_pow`). -/
+theorem mulHiC_eq_sexprMulHiU (x y : BitVec 64) :
+    mulHiC x y
+      = BitVec.ofNat 64 (CatCrypt.Crypto.Jasmin.LowCT.sexprMulHiU x.toNat y.toNat) := by
+  simp [mulHiC, CatCrypt.Crypto.Jasmin.LowCT.sexprMulHiU, Nat.shiftRight_eq_div_pow,
+    Nat.mod_eq_of_lt x.isLt, Nat.mod_eq_of_lt y.isLt]
+
+/-! ## 6. Front-general scalar preservation over the straight-line fragment -/
+
+/-! ## 5f. The `SExpr`-recursion homomorphism (`RScalarSetExpr`) -/
+
+/-- **The `SExpr`-recursion denotation homomorphism.** For a `srcClean` `SExpr`
+    lowered by `lowerSExpr` from a `ConsistentS` state with a fresh temp region,
+    the emitted `ComCont` chain denotes exactly its env-mirror `semLowerSExpr`,
+    and its result slot resolves to the closed-form word evaluator
+    `SExpr.evalBV (envReader env) e`. Induction on `SExpr`; each binary node is a
+    fresh `varBind` composed via `ComCont.comp` on the two sub-chains, its value
+    reconciled through `consistentS_readU64` + the fresh-temp non-collision
+    lemmas (`readU64_stable`, `onlyTmpBelow_*`, `freshFrom_upd_succ`) + the
+    reader congruence `evalBV_congr`. The shift arms add a 2-way `split` on the
+    front's inline amount-shape match (immediate `bvShiftL`/`bvShiftR 64 k` on a
+    literal amount, variable `bvShiftLV`/`bvShiftRV 64` otherwise); the literal
+    branch reconciles `k = (BitVec.ofNat 64 k).toNat` from `srcClean`'s
+    `k < 2^64` bound. `SMulHiU` closes via `mulHiC_eq_sexprMulHiU`. -/
+theorem lowerSExpr_denote (e : SExpr) :
+    ∀ {Γ : Ctx} (vm : VarMap Γ) (V : Ctxt.Valuation (d := catCryptDialect) Γ)
+      (env : SEnvScalar) (cnt : Nat) (o : DTransOut Γ) (nm : String) (cnt' : Nat),
+      ConsistentS vm V env → srcClean e →
+      TranslateDialectDirectArms.lowerSExpr vm cnt e = some (o, nm, cnt') →
+      ∃ (V' : Ctxt.Valuation (d := catCryptDialect) o.Γ') (env2 : SEnvScalar),
+        semLowerSExpr env cnt e = some (env2, nm, cnt') ∧
+        cnt ≤ cnt' ∧
+        ConsistentS o.vm V' env2 ∧
+        (∀ {t : CryptoTy} (tail : Com catCryptDialect o.Γ' t),
+          ∃ com, o.cont tail = some com ∧ com.denote V = tail.denote V') ∧
+        OnlyTmpBelow env env2 cnt ∧ ResultOK nm cnt' ∧
+        envReadU64 env2 nm = some (SExpr.evalBV (envReader env) e) := by
+  induction e with
+  | SVar x =>
+      intro Γ vm V env cnt o nm cnt' hc hclean hlow
+      simp only [TranslateDialectDirectArms.lowerSExpr] at hlow
+      split at hlow
+      · next w hlk =>
+          simp only [Option.some.injEq, Prod.mk.injEq] at hlow
+          obtain ⟨rfl, rfl, rfl⟩ := hlow
+          have hread := consistentS_readU64 hc x hlk
+          refine ⟨V, env, ?_, le_refl _, hc, fun tail => ⟨tail, rfl, rfl⟩,
+            onlyTmpBelow_refl env cnt, Or.inl hclean, ?_⟩
+          · simp only [semLowerSExpr, hread]
+          · simp only [SExpr.evalBV]
+            rw [envReadU64_reader hread]; exact hread
+      · exact absurd hlow (by simp)
+  | SLit n =>
+      intro Γ vm V env cnt o nm cnt' hc hclean hlow
+      simp only [TranslateDialectDirectArms.lowerSExpr, Option.some.injEq, Prod.mk.injEq] at hlow
+      obtain ⟨rfl, rfl, rfl⟩ := hlow
+      have hstep := scalar_step vm V env hc (TranslateDialectDirectArms.tmpName cnt)
+        ({ op := .bvConst 64 (BitVec.ofNat 64 n), retTy_eq := rfl, args := .nil } :
+          Expr catCryptDialect Γ (.sword 64))
+      obtain ⟨hcons, hcont⟩ := hstep
+      refine ⟨V.extend (BitVec.ofNat 64 n),
+        env.upd (TranslateDialectDirectArms.tmpName cnt) (t := .sword 64) (BitVec.ofNat 64 n),
+        rfl, Nat.le_succ _, hcons, ?_,
+        onlyTmpBelow_upd (onlyTmpBelow_refl env cnt) (le_refl _),
+        Or.inr ⟨cnt, Nat.lt_succ_self _, rfl⟩,
+        by rw [envReadU64_upd_self]; rfl⟩
+      intro t tail
+      obtain ⟨com, hcom, hden⟩ := hcont tail
+      exact ⟨com, by simpa [TranslateDialectDirectArms.pushVarBind, ComCont.comp,
+        ComCont.id] using hcom, hden⟩
+  | SAdd a b iha ihb =>
+      intro Γ vm V env cnt o nm cnt' hc hclean hlow
+      obtain ⟨sa, sb⟩ := hclean
+      simp only [TranslateDialectDirectArms.lowerSExpr] at hlow
+      split at hlow
+      · exact absurd hlow (by simp)
+      · next r hra =>
+          obtain ⟨oa, na, c1⟩ := r
+          split at hlow
+          · exact absurd hlow (by simp)
+          · next s hrb =>
+              obtain ⟨ob, nb, c2⟩ := s
+              split at hlow
+              · next va vb hla hlb =>
+                  simp only [Option.some.injEq, Prod.mk.injEq] at hlow
+                  obtain ⟨rfl, rfl, rfl⟩ := hlow
+                  obtain ⟨V₁, env1, hsemA, hleA, hcA, hcontA, hotbA, hrokA, hvalA⟩ :=
+                    iha vm V env cnt oa na c1 hc sa hra
+                  obtain ⟨V₂, env2, hsemB, hleB, hcB, hcontB, hotbB, hrokB, hvalB⟩ :=
+                    ihb oa.vm V₁ env1 c1 ob nb c2 hcA sb hrb
+                  have hva := consistentS_readU64 hcB na hla
+                  have hvb := consistentS_readU64 hcB nb hlb
+                  set eAdd : Expr catCryptDialect ob.Γ' (.sword 64) :=
+                    { op := .bvAdd 64, retTy_eq := rfl,
+                      args := .cons (toVIRVar va) (.cons (toVIRVar vb) .nil) } with heAdd
+                  obtain ⟨hcons, hcontFin⟩ :=
+                    scalar_step ob.vm V₂ env2 hcB (TranslateDialectDirectArms.tmpName c2) eAdd
+                  have hva_ev : (toVIRVar va).lookup V₂ = SExpr.evalBV (envReader env) a := by
+                    have h1 : envReadU64 env2 na = some (SExpr.evalBV (envReader env) a) := by
+                      rw [readU64_stable hotbB hrokA]; exact hvalA
+                    rw [hva] at h1; exact Option.some.inj h1
+                  have hvb_ev : (toVIRVar vb).lookup V₂ = SExpr.evalBV (envReader env) b := by
+                    have hcongr : SExpr.evalBV (envReader env1) b = SExpr.evalBV (envReader env) b :=
+                      evalBV_congr _ _ b
+                        (fun t ht => by simp only [envReader]; rw [hotbA t (Or.inl ht)]) sb
+                    have h1 : envReadU64 env2 nb = some (SExpr.evalBV (envReader env) b) := by
+                      rw [hvalB, hcongr]
+                    rw [hvb] at h1; exact Option.some.inj h1
+                  have hden : eAdd.denote V₂
+                      = SExpr.evalBV (envReader env) a + SExpr.evalBV (envReader env) b := by
+                    rw [← hva_ev, ← hvb_ev]; rfl
+                  have hbin : binNode env2 na nb c2 (· + ·)
+                      = some (env2.upd (TranslateDialectDirectArms.tmpName c2) (t := .sword 64)
+                          (eAdd.denote V₂), TranslateDialectDirectArms.tmpName c2, c2 + 1) := by
+                    simp only [binNode, hva, hvb]; rw [hva_ev, hvb_ev, ← hden]
+                  refine ⟨V₂.extend (eAdd.denote V₂),
+                    env2.upd (TranslateDialectDirectArms.tmpName c2) (t := .sword 64) (eAdd.denote V₂),
+                    ?_, by omega, hcons, ?_,
+                    onlyTmpBelow_upd (onlyTmpBelow_trans hotbA hotbB hleA) (by omega),
+                    Or.inr ⟨c2, Nat.lt_succ_self _, rfl⟩, ?_⟩
+                  · simp only [semLowerSExpr, hsemA, hsemB, hbin]
+                  · intro t tail
+                    obtain ⟨comV, hcomV, hdenV⟩ := hcontFin tail
+                    obtain ⟨comB, hcomB, hdenB⟩ := hcontB comV
+                    obtain ⟨comA, hcomA, hdenA⟩ := hcontA comB
+                    refine ⟨comA, ?_, ?_⟩
+                    · show ComCont.comp (ComCont.comp oa.cont ob.cont) (ComCont.varBind _) tail
+                        = some comA
+                      simp only [ComCont.comp, hcomV, hcomB, hcomA]
+                    · rw [hdenA, hdenB]; exact hdenV
+                  · rw [envReadU64_upd_self, hden]; rfl
+              · exact absurd hlow (by simp)
+  | SSub a b iha ihb =>
+      intro Γ vm V env cnt o nm cnt' hc hclean hlow
+      obtain ⟨sa, sb⟩ := hclean
+      simp only [TranslateDialectDirectArms.lowerSExpr] at hlow
+      split at hlow
+      · exact absurd hlow (by simp)
+      · next r hra =>
+          obtain ⟨oa, na, c1⟩ := r
+          split at hlow
+          · exact absurd hlow (by simp)
+          · next s hrb =>
+              obtain ⟨ob, nb, c2⟩ := s
+              split at hlow
+              · next va vb hla hlb =>
+                  simp only [Option.some.injEq, Prod.mk.injEq] at hlow
+                  obtain ⟨rfl, rfl, rfl⟩ := hlow
+                  obtain ⟨V₁, env1, hsemA, hleA, hcA, hcontA, hotbA, hrokA, hvalA⟩ :=
+                    iha vm V env cnt oa na c1 hc sa hra
+                  obtain ⟨V₂, env2, hsemB, hleB, hcB, hcontB, hotbB, hrokB, hvalB⟩ :=
+                    ihb oa.vm V₁ env1 c1 ob nb c2 hcA sb hrb
+                  have hva := consistentS_readU64 hcB na hla
+                  have hvb := consistentS_readU64 hcB nb hlb
+                  set eOp : Expr catCryptDialect ob.Γ' (.sword 64) :=
+                    { op := .bvSub 64, retTy_eq := rfl,
+                      args := .cons (toVIRVar va) (.cons (toVIRVar vb) .nil) } with heOp
+                  obtain ⟨hcons, hcontFin⟩ :=
+                    scalar_step ob.vm V₂ env2 hcB (TranslateDialectDirectArms.tmpName c2) eOp
+                  have hva_ev : (toVIRVar va).lookup V₂ = SExpr.evalBV (envReader env) a := by
+                    have h1 : envReadU64 env2 na = some (SExpr.evalBV (envReader env) a) := by
+                      rw [readU64_stable hotbB hrokA]; exact hvalA
+                    rw [hva] at h1; exact Option.some.inj h1
+                  have hvb_ev : (toVIRVar vb).lookup V₂ = SExpr.evalBV (envReader env) b := by
+                    have hcongr : SExpr.evalBV (envReader env1) b = SExpr.evalBV (envReader env) b :=
+                      evalBV_congr _ _ b
+                        (fun t ht => by simp only [envReader]; rw [hotbA t (Or.inl ht)]) sb
+                    have h1 : envReadU64 env2 nb = some (SExpr.evalBV (envReader env) b) := by
+                      rw [hvalB, hcongr]
+                    rw [hvb] at h1; exact Option.some.inj h1
+                  have hden : eOp.denote V₂
+                      = SExpr.evalBV (envReader env) a - SExpr.evalBV (envReader env) b := by
+                    rw [← hva_ev, ← hvb_ev]; rfl
+                  have hbin : binNode env2 na nb c2 (· - ·)
+                      = some (env2.upd (TranslateDialectDirectArms.tmpName c2) (t := .sword 64)
+                          (eOp.denote V₂), TranslateDialectDirectArms.tmpName c2, c2 + 1) := by
+                    simp only [binNode, hva, hvb]; rw [hva_ev, hvb_ev, ← hden]
+                  refine ⟨V₂.extend (eOp.denote V₂),
+                    env2.upd (TranslateDialectDirectArms.tmpName c2) (t := .sword 64) (eOp.denote V₂),
+                    ?_, by omega, hcons, ?_,
+                    onlyTmpBelow_upd (onlyTmpBelow_trans hotbA hotbB hleA) (by omega),
+                    Or.inr ⟨c2, Nat.lt_succ_self _, rfl⟩, ?_⟩
+                  · simp only [semLowerSExpr, hsemA, hsemB, hbin]
+                  · intro t tail
+                    obtain ⟨comV, hcomV, hdenV⟩ := hcontFin tail
+                    obtain ⟨comB, hcomB, hdenB⟩ := hcontB comV
+                    obtain ⟨comA, hcomA, hdenA⟩ := hcontA comB
+                    refine ⟨comA, ?_, ?_⟩
+                    · show ComCont.comp (ComCont.comp oa.cont ob.cont) (ComCont.varBind _) tail
+                        = some comA
+                      simp only [ComCont.comp, hcomV, hcomB, hcomA]
+                    · rw [hdenA, hdenB]; exact hdenV
+                  · rw [envReadU64_upd_self, hden]; rfl
+              · exact absurd hlow (by simp)
+  | SMul a b iha ihb =>
+      intro Γ vm V env cnt o nm cnt' hc hclean hlow
+      obtain ⟨sa, sb⟩ := hclean
+      simp only [TranslateDialectDirectArms.lowerSExpr] at hlow
+      split at hlow
+      · exact absurd hlow (by simp)
+      · next r hra =>
+          obtain ⟨oa, na, c1⟩ := r
+          split at hlow
+          · exact absurd hlow (by simp)
+          · next s hrb =>
+              obtain ⟨ob, nb, c2⟩ := s
+              split at hlow
+              · next va vb hla hlb =>
+                  simp only [Option.some.injEq, Prod.mk.injEq] at hlow
+                  obtain ⟨rfl, rfl, rfl⟩ := hlow
+                  obtain ⟨V₁, env1, hsemA, hleA, hcA, hcontA, hotbA, hrokA, hvalA⟩ :=
+                    iha vm V env cnt oa na c1 hc sa hra
+                  obtain ⟨V₂, env2, hsemB, hleB, hcB, hcontB, hotbB, hrokB, hvalB⟩ :=
+                    ihb oa.vm V₁ env1 c1 ob nb c2 hcA sb hrb
+                  have hva := consistentS_readU64 hcB na hla
+                  have hvb := consistentS_readU64 hcB nb hlb
+                  set eOp : Expr catCryptDialect ob.Γ' (.sword 64) :=
+                    { op := .bvMul 64, retTy_eq := rfl,
+                      args := .cons (toVIRVar va) (.cons (toVIRVar vb) .nil) } with heOp
+                  obtain ⟨hcons, hcontFin⟩ :=
+                    scalar_step ob.vm V₂ env2 hcB (TranslateDialectDirectArms.tmpName c2) eOp
+                  have hva_ev : (toVIRVar va).lookup V₂ = SExpr.evalBV (envReader env) a := by
+                    have h1 : envReadU64 env2 na = some (SExpr.evalBV (envReader env) a) := by
+                      rw [readU64_stable hotbB hrokA]; exact hvalA
+                    rw [hva] at h1; exact Option.some.inj h1
+                  have hvb_ev : (toVIRVar vb).lookup V₂ = SExpr.evalBV (envReader env) b := by
+                    have hcongr : SExpr.evalBV (envReader env1) b = SExpr.evalBV (envReader env) b :=
+                      evalBV_congr _ _ b
+                        (fun t ht => by simp only [envReader]; rw [hotbA t (Or.inl ht)]) sb
+                    have h1 : envReadU64 env2 nb = some (SExpr.evalBV (envReader env) b) := by
+                      rw [hvalB, hcongr]
+                    rw [hvb] at h1; exact Option.some.inj h1
+                  have hden : eOp.denote V₂
+                      = SExpr.evalBV (envReader env) a * SExpr.evalBV (envReader env) b := by
+                    rw [← hva_ev, ← hvb_ev]; rfl
+                  have hbin : binNode env2 na nb c2 (· * ·)
+                      = some (env2.upd (TranslateDialectDirectArms.tmpName c2) (t := .sword 64)
+                          (eOp.denote V₂), TranslateDialectDirectArms.tmpName c2, c2 + 1) := by
+                    simp only [binNode, hva, hvb]; rw [hva_ev, hvb_ev, ← hden]
+                  refine ⟨V₂.extend (eOp.denote V₂),
+                    env2.upd (TranslateDialectDirectArms.tmpName c2) (t := .sword 64) (eOp.denote V₂),
+                    ?_, by omega, hcons, ?_,
+                    onlyTmpBelow_upd (onlyTmpBelow_trans hotbA hotbB hleA) (by omega),
+                    Or.inr ⟨c2, Nat.lt_succ_self _, rfl⟩, ?_⟩
+                  · simp only [semLowerSExpr, hsemA, hsemB, hbin]
+                  · intro t tail
+                    obtain ⟨comV, hcomV, hdenV⟩ := hcontFin tail
+                    obtain ⟨comB, hcomB, hdenB⟩ := hcontB comV
+                    obtain ⟨comA, hcomA, hdenA⟩ := hcontA comB
+                    refine ⟨comA, ?_, ?_⟩
+                    · show ComCont.comp (ComCont.comp oa.cont ob.cont) (ComCont.varBind _) tail
+                        = some comA
+                      simp only [ComCont.comp, hcomV, hcomB, hcomA]
+                    · rw [hdenA, hdenB]; exact hdenV
+                  · rw [envReadU64_upd_self, hden]; rfl
+              · exact absurd hlow (by simp)
+  | SShr a b iha ihb =>
+      intro Γ vm V env cnt o nm cnt' hc hclean hlow
+      obtain ⟨sa, sb⟩ := hclean
+      simp only [TranslateDialectDirectArms.lowerSExpr] at hlow
+      split at hlow
+      · exact absurd hlow (by simp)
+      · next r hra =>
+          obtain ⟨oa, na, c1⟩ := r
+          split at hlow
+          · exact absurd hlow (by simp)
+          · next s hrb =>
+              obtain ⟨ob, nb, c2⟩ := s
+              split at hlow
+              · next va vb hla hlb =>
+                  -- 2-way split on the emitted op's amount shape: a literal
+                  -- amount `SLit k` emits the immediate `bvShiftR 64 k`, a
+                  -- runtime amount the variable `bvShiftRV 64`.
+                  split at hlow
+                  · next k =>
+                      simp only [Option.some.injEq, Prod.mk.injEq] at hlow
+                      obtain ⟨rfl, rfl, rfl⟩ := hlow
+                      obtain ⟨V₁, env1, hsemA, hleA, hcA, hcontA, hotbA, hrokA, hvalA⟩ :=
+                        iha vm V env cnt oa na c1 hc sa hra
+                      obtain ⟨V₂, env2, hsemB, hleB, hcB, hcontB, hotbB, hrokB, hvalB⟩ :=
+                        ihb oa.vm V₁ env1 c1 ob nb c2 hcA sb hrb
+                      have hva := consistentS_readU64 hcB na hla
+                      have hvb := consistentS_readU64 hcB nb hlb
+                      set eOp : Expr catCryptDialect ob.Γ' (.sword 64) :=
+                        { op := .bvShiftR 64 k, retTy_eq := rfl,
+                          args := .cons (toVIRVar va) .nil } with heOp
+                      obtain ⟨hcons, hcontFin⟩ :=
+                        scalar_step ob.vm V₂ env2 hcB (TranslateDialectDirectArms.tmpName c2) eOp
+                      have hva_ev : (toVIRVar va).lookup V₂ = SExpr.evalBV (envReader env) a := by
+                        have h1 : envReadU64 env2 na = some (SExpr.evalBV (envReader env) a) := by
+                          rw [readU64_stable hotbB hrokA]; exact hvalA
+                        rw [hva] at h1; exact Option.some.inj h1
+                      have hvb_ev : (toVIRVar vb).lookup V₂
+                          = SExpr.evalBV (envReader env) (SExpr.SLit k) := by
+                        have h1 : envReadU64 env2 nb
+                            = some (SExpr.evalBV (envReader env) (SExpr.SLit k)) := hvalB
+                        rw [hvb] at h1; exact Option.some.inj h1
+                      have hk : (SExpr.evalBV (envReader env) (SExpr.SLit k)).toNat = k := by
+                        have hklt : k < 2 ^ 64 := sb
+                        simp only [SExpr.evalBV, BitVec.toNat_ofNat]
+                        omega
+                      have hden : eOp.denote V₂
+                          = SExpr.evalBV (envReader env) a
+                              >>> (SExpr.evalBV (envReader env) (SExpr.SLit k)).toNat := by
+                        rw [hk, ← hva_ev]; rfl
+                      have hbin : binNode env2 na nb c2 (fun x y => x >>> y.toNat)
+                          = some (env2.upd (TranslateDialectDirectArms.tmpName c2) (t := .sword 64)
+                              (eOp.denote V₂), TranslateDialectDirectArms.tmpName c2, c2 + 1) := by
+                        simp only [binNode, hva, hvb]; rw [hva_ev, hvb_ev, ← hden]
+                      refine ⟨V₂.extend (eOp.denote V₂),
+                        env2.upd (TranslateDialectDirectArms.tmpName c2) (t := .sword 64) (eOp.denote V₂),
+                        ?_, by omega, hcons, ?_,
+                        onlyTmpBelow_upd (onlyTmpBelow_trans hotbA hotbB hleA) (by omega),
+                        Or.inr ⟨c2, Nat.lt_succ_self _, rfl⟩, ?_⟩
+                      · -- fold the inner `semLowerSExpr (SLit k)` computation back
+                        -- through `hsemB` (b is concrete here, so the def-equation
+                        -- would otherwise race the IH rewrite)
+                        have hinj : env1.upd (TranslateDialectDirectArms.tmpName c1)
+                              (t := .sword 64) (BitVec.ofNat 64 k) = env2
+                            ∧ TranslateDialectDirectArms.tmpName c1 = nb ∧ c1 + 1 = c2 := by
+                          simpa [semLowerSExpr] using hsemB
+                        obtain ⟨rfl, rfl, rfl⟩ := hinj
+                        simp only [semLowerSExpr, hsemA, hbin]
+                      · intro t tail
+                        obtain ⟨comV, hcomV, hdenV⟩ := hcontFin tail
+                        obtain ⟨comB, hcomB, hdenB⟩ := hcontB comV
+                        obtain ⟨comA, hcomA, hdenA⟩ := hcontA comB
+                        refine ⟨comA, ?_, ?_⟩
+                        · show ComCont.comp (ComCont.comp oa.cont ob.cont) (ComCont.varBind _) tail
+                            = some comA
+                          simp only [ComCont.comp, hcomV, hcomB, hcomA]
+                        · rw [hdenA, hdenB]; exact hdenV
+                      · rw [envReadU64_upd_self, hden]; rfl
+                  · -- runtime amount: variable `bvShiftRV 64`
+                      simp only [Option.some.injEq, Prod.mk.injEq] at hlow
+                      obtain ⟨rfl, rfl, rfl⟩ := hlow
+                      obtain ⟨V₁, env1, hsemA, hleA, hcA, hcontA, hotbA, hrokA, hvalA⟩ :=
+                        iha vm V env cnt oa na c1 hc sa hra
+                      obtain ⟨V₂, env2, hsemB, hleB, hcB, hcontB, hotbB, hrokB, hvalB⟩ :=
+                        ihb oa.vm V₁ env1 c1 ob nb c2 hcA sb hrb
+                      have hva := consistentS_readU64 hcB na hla
+                      have hvb := consistentS_readU64 hcB nb hlb
+                      set eOp : Expr catCryptDialect ob.Γ' (.sword 64) :=
+                        { op := .bvShiftRV 64, retTy_eq := rfl,
+                          args := .cons (toVIRVar va) (.cons (toVIRVar vb) .nil) } with heOp
+                      obtain ⟨hcons, hcontFin⟩ :=
+                        scalar_step ob.vm V₂ env2 hcB (TranslateDialectDirectArms.tmpName c2) eOp
+                      have hva_ev : (toVIRVar va).lookup V₂ = SExpr.evalBV (envReader env) a := by
+                        have h1 : envReadU64 env2 na = some (SExpr.evalBV (envReader env) a) := by
+                          rw [readU64_stable hotbB hrokA]; exact hvalA
+                        rw [hva] at h1; exact Option.some.inj h1
+                      have hvb_ev : (toVIRVar vb).lookup V₂ = SExpr.evalBV (envReader env) b := by
+                        have hcongr : SExpr.evalBV (envReader env1) b = SExpr.evalBV (envReader env) b :=
+                          evalBV_congr _ _ b
+                            (fun t ht => by simp only [envReader]; rw [hotbA t (Or.inl ht)]) sb
+                        have h1 : envReadU64 env2 nb = some (SExpr.evalBV (envReader env) b) := by
+                          rw [hvalB, hcongr]
+                        rw [hvb] at h1; exact Option.some.inj h1
+                      have hden : eOp.denote V₂
+                          = SExpr.evalBV (envReader env) a
+                              >>> (SExpr.evalBV (envReader env) b).toNat := by
+                        rw [← hva_ev, ← hvb_ev]; rfl
+                      have hbin : binNode env2 na nb c2 (fun x y => x >>> y.toNat)
+                          = some (env2.upd (TranslateDialectDirectArms.tmpName c2) (t := .sword 64)
+                              (eOp.denote V₂), TranslateDialectDirectArms.tmpName c2, c2 + 1) := by
+                        simp only [binNode, hva, hvb]; rw [hva_ev, hvb_ev, ← hden]
+                      refine ⟨V₂.extend (eOp.denote V₂),
+                        env2.upd (TranslateDialectDirectArms.tmpName c2) (t := .sword 64) (eOp.denote V₂),
+                        ?_, by omega, hcons, ?_,
+                        onlyTmpBelow_upd (onlyTmpBelow_trans hotbA hotbB hleA) (by omega),
+                        Or.inr ⟨c2, Nat.lt_succ_self _, rfl⟩, ?_⟩
+                      · simp only [semLowerSExpr, hsemA, hsemB, hbin]
+                      · intro t tail
+                        obtain ⟨comV, hcomV, hdenV⟩ := hcontFin tail
+                        obtain ⟨comB, hcomB, hdenB⟩ := hcontB comV
+                        obtain ⟨comA, hcomA, hdenA⟩ := hcontA comB
+                        refine ⟨comA, ?_, ?_⟩
+                        · show ComCont.comp (ComCont.comp oa.cont ob.cont) (ComCont.varBind _) tail
+                            = some comA
+                          simp only [ComCont.comp, hcomV, hcomB, hcomA]
+                        · rw [hdenA, hdenB]; exact hdenV
+                      · rw [envReadU64_upd_self, hden]; rfl
+              · exact absurd hlow (by simp)
+  | SShl a b iha ihb =>
+      intro Γ vm V env cnt o nm cnt' hc hclean hlow
+      obtain ⟨sa, sb⟩ := hclean
+      simp only [TranslateDialectDirectArms.lowerSExpr] at hlow
+      split at hlow
+      · exact absurd hlow (by simp)
+      · next r hra =>
+          obtain ⟨oa, na, c1⟩ := r
+          split at hlow
+          · exact absurd hlow (by simp)
+          · next s hrb =>
+              obtain ⟨ob, nb, c2⟩ := s
+              split at hlow
+              · next va vb hla hlb =>
+                  -- 2-way split on the emitted op's amount shape: a literal
+                  -- amount `SLit k` emits the immediate `bvShiftL 64 k`, a
+                  -- runtime amount the variable `bvShiftLV 64`.
+                  split at hlow
+                  · next k =>
+                      simp only [Option.some.injEq, Prod.mk.injEq] at hlow
+                      obtain ⟨rfl, rfl, rfl⟩ := hlow
+                      obtain ⟨V₁, env1, hsemA, hleA, hcA, hcontA, hotbA, hrokA, hvalA⟩ :=
+                        iha vm V env cnt oa na c1 hc sa hra
+                      obtain ⟨V₂, env2, hsemB, hleB, hcB, hcontB, hotbB, hrokB, hvalB⟩ :=
+                        ihb oa.vm V₁ env1 c1 ob nb c2 hcA sb hrb
+                      have hva := consistentS_readU64 hcB na hla
+                      have hvb := consistentS_readU64 hcB nb hlb
+                      set eOp : Expr catCryptDialect ob.Γ' (.sword 64) :=
+                        { op := .bvShiftL 64 k, retTy_eq := rfl,
+                          args := .cons (toVIRVar va) .nil } with heOp
+                      obtain ⟨hcons, hcontFin⟩ :=
+                        scalar_step ob.vm V₂ env2 hcB (TranslateDialectDirectArms.tmpName c2) eOp
+                      have hva_ev : (toVIRVar va).lookup V₂ = SExpr.evalBV (envReader env) a := by
+                        have h1 : envReadU64 env2 na = some (SExpr.evalBV (envReader env) a) := by
+                          rw [readU64_stable hotbB hrokA]; exact hvalA
+                        rw [hva] at h1; exact Option.some.inj h1
+                      have hvb_ev : (toVIRVar vb).lookup V₂
+                          = SExpr.evalBV (envReader env) (SExpr.SLit k) := by
+                        have h1 : envReadU64 env2 nb
+                            = some (SExpr.evalBV (envReader env) (SExpr.SLit k)) := hvalB
+                        rw [hvb] at h1; exact Option.some.inj h1
+                      have hk : (SExpr.evalBV (envReader env) (SExpr.SLit k)).toNat = k := by
+                        have hklt : k < 2 ^ 64 := sb
+                        simp only [SExpr.evalBV, BitVec.toNat_ofNat]
+                        omega
+                      have hden : eOp.denote V₂
+                          = SExpr.evalBV (envReader env) a
+                              <<< (SExpr.evalBV (envReader env) (SExpr.SLit k)).toNat := by
+                        rw [hk, ← hva_ev]; rfl
+                      have hbin : binNode env2 na nb c2 (fun x y => x <<< y.toNat)
+                          = some (env2.upd (TranslateDialectDirectArms.tmpName c2) (t := .sword 64)
+                              (eOp.denote V₂), TranslateDialectDirectArms.tmpName c2, c2 + 1) := by
+                        simp only [binNode, hva, hvb]; rw [hva_ev, hvb_ev, ← hden]
+                      refine ⟨V₂.extend (eOp.denote V₂),
+                        env2.upd (TranslateDialectDirectArms.tmpName c2) (t := .sword 64) (eOp.denote V₂),
+                        ?_, by omega, hcons, ?_,
+                        onlyTmpBelow_upd (onlyTmpBelow_trans hotbA hotbB hleA) (by omega),
+                        Or.inr ⟨c2, Nat.lt_succ_self _, rfl⟩, ?_⟩
+                      · -- fold the inner `semLowerSExpr (SLit k)` computation back
+                        -- through `hsemB` (b is concrete here, so the def-equation
+                        -- would otherwise race the IH rewrite)
+                        have hinj : env1.upd (TranslateDialectDirectArms.tmpName c1)
+                              (t := .sword 64) (BitVec.ofNat 64 k) = env2
+                            ∧ TranslateDialectDirectArms.tmpName c1 = nb ∧ c1 + 1 = c2 := by
+                          simpa [semLowerSExpr] using hsemB
+                        obtain ⟨rfl, rfl, rfl⟩ := hinj
+                        simp only [semLowerSExpr, hsemA, hbin]
+                      · intro t tail
+                        obtain ⟨comV, hcomV, hdenV⟩ := hcontFin tail
+                        obtain ⟨comB, hcomB, hdenB⟩ := hcontB comV
+                        obtain ⟨comA, hcomA, hdenA⟩ := hcontA comB
+                        refine ⟨comA, ?_, ?_⟩
+                        · show ComCont.comp (ComCont.comp oa.cont ob.cont) (ComCont.varBind _) tail
+                            = some comA
+                          simp only [ComCont.comp, hcomV, hcomB, hcomA]
+                        · rw [hdenA, hdenB]; exact hdenV
+                      · rw [envReadU64_upd_self, hden]; rfl
+                  · -- runtime amount: variable `bvShiftLV 64`
+                      simp only [Option.some.injEq, Prod.mk.injEq] at hlow
+                      obtain ⟨rfl, rfl, rfl⟩ := hlow
+                      obtain ⟨V₁, env1, hsemA, hleA, hcA, hcontA, hotbA, hrokA, hvalA⟩ :=
+                        iha vm V env cnt oa na c1 hc sa hra
+                      obtain ⟨V₂, env2, hsemB, hleB, hcB, hcontB, hotbB, hrokB, hvalB⟩ :=
+                        ihb oa.vm V₁ env1 c1 ob nb c2 hcA sb hrb
+                      have hva := consistentS_readU64 hcB na hla
+                      have hvb := consistentS_readU64 hcB nb hlb
+                      set eOp : Expr catCryptDialect ob.Γ' (.sword 64) :=
+                        { op := .bvShiftLV 64, retTy_eq := rfl,
+                          args := .cons (toVIRVar va) (.cons (toVIRVar vb) .nil) } with heOp
+                      obtain ⟨hcons, hcontFin⟩ :=
+                        scalar_step ob.vm V₂ env2 hcB (TranslateDialectDirectArms.tmpName c2) eOp
+                      have hva_ev : (toVIRVar va).lookup V₂ = SExpr.evalBV (envReader env) a := by
+                        have h1 : envReadU64 env2 na = some (SExpr.evalBV (envReader env) a) := by
+                          rw [readU64_stable hotbB hrokA]; exact hvalA
+                        rw [hva] at h1; exact Option.some.inj h1
+                      have hvb_ev : (toVIRVar vb).lookup V₂ = SExpr.evalBV (envReader env) b := by
+                        have hcongr : SExpr.evalBV (envReader env1) b = SExpr.evalBV (envReader env) b :=
+                          evalBV_congr _ _ b
+                            (fun t ht => by simp only [envReader]; rw [hotbA t (Or.inl ht)]) sb
+                        have h1 : envReadU64 env2 nb = some (SExpr.evalBV (envReader env) b) := by
+                          rw [hvalB, hcongr]
+                        rw [hvb] at h1; exact Option.some.inj h1
+                      have hden : eOp.denote V₂
+                          = SExpr.evalBV (envReader env) a
+                              <<< (SExpr.evalBV (envReader env) b).toNat := by
+                        rw [← hva_ev, ← hvb_ev]; rfl
+                      have hbin : binNode env2 na nb c2 (fun x y => x <<< y.toNat)
+                          = some (env2.upd (TranslateDialectDirectArms.tmpName c2) (t := .sword 64)
+                              (eOp.denote V₂), TranslateDialectDirectArms.tmpName c2, c2 + 1) := by
+                        simp only [binNode, hva, hvb]; rw [hva_ev, hvb_ev, ← hden]
+                      refine ⟨V₂.extend (eOp.denote V₂),
+                        env2.upd (TranslateDialectDirectArms.tmpName c2) (t := .sword 64) (eOp.denote V₂),
+                        ?_, by omega, hcons, ?_,
+                        onlyTmpBelow_upd (onlyTmpBelow_trans hotbA hotbB hleA) (by omega),
+                        Or.inr ⟨c2, Nat.lt_succ_self _, rfl⟩, ?_⟩
+                      · simp only [semLowerSExpr, hsemA, hsemB, hbin]
+                      · intro t tail
+                        obtain ⟨comV, hcomV, hdenV⟩ := hcontFin tail
+                        obtain ⟨comB, hcomB, hdenB⟩ := hcontB comV
+                        obtain ⟨comA, hcomA, hdenA⟩ := hcontA comB
+                        refine ⟨comA, ?_, ?_⟩
+                        · show ComCont.comp (ComCont.comp oa.cont ob.cont) (ComCont.varBind _) tail
+                            = some comA
+                          simp only [ComCont.comp, hcomV, hcomB, hcomA]
+                        · rw [hdenA, hdenB]; exact hdenV
+                      · rw [envReadU64_upd_self, hden]; rfl
+              · exact absurd hlow (by simp)
+  | SAnd a b iha ihb =>
+      intro Γ vm V env cnt o nm cnt' hc hclean hlow
+      obtain ⟨sa, sb⟩ := hclean
+      simp only [TranslateDialectDirectArms.lowerSExpr] at hlow
+      split at hlow
+      · exact absurd hlow (by simp)
+      · next r hra =>
+          obtain ⟨oa, na, c1⟩ := r
+          split at hlow
+          · exact absurd hlow (by simp)
+          · next s hrb =>
+              obtain ⟨ob, nb, c2⟩ := s
+              split at hlow
+              · next va vb hla hlb =>
+                  simp only [Option.some.injEq, Prod.mk.injEq] at hlow
+                  obtain ⟨rfl, rfl, rfl⟩ := hlow
+                  obtain ⟨V₁, env1, hsemA, hleA, hcA, hcontA, hotbA, hrokA, hvalA⟩ :=
+                    iha vm V env cnt oa na c1 hc sa hra
+                  obtain ⟨V₂, env2, hsemB, hleB, hcB, hcontB, hotbB, hrokB, hvalB⟩ :=
+                    ihb oa.vm V₁ env1 c1 ob nb c2 hcA sb hrb
+                  have hva := consistentS_readU64 hcB na hla
+                  have hvb := consistentS_readU64 hcB nb hlb
+                  set eOp : Expr catCryptDialect ob.Γ' (.sword 64) :=
+                    { op := .bvAnd 64, retTy_eq := rfl,
+                      args := .cons (toVIRVar va) (.cons (toVIRVar vb) .nil) } with heOp
+                  obtain ⟨hcons, hcontFin⟩ :=
+                    scalar_step ob.vm V₂ env2 hcB (TranslateDialectDirectArms.tmpName c2) eOp
+                  have hva_ev : (toVIRVar va).lookup V₂ = SExpr.evalBV (envReader env) a := by
+                    have h1 : envReadU64 env2 na = some (SExpr.evalBV (envReader env) a) := by
+                      rw [readU64_stable hotbB hrokA]; exact hvalA
+                    rw [hva] at h1; exact Option.some.inj h1
+                  have hvb_ev : (toVIRVar vb).lookup V₂ = SExpr.evalBV (envReader env) b := by
+                    have hcongr : SExpr.evalBV (envReader env1) b = SExpr.evalBV (envReader env) b :=
+                      evalBV_congr _ _ b
+                        (fun t ht => by simp only [envReader]; rw [hotbA t (Or.inl ht)]) sb
+                    have h1 : envReadU64 env2 nb = some (SExpr.evalBV (envReader env) b) := by
+                      rw [hvalB, hcongr]
+                    rw [hvb] at h1; exact Option.some.inj h1
+                  have hden : eOp.denote V₂
+                      = SExpr.evalBV (envReader env) a &&& SExpr.evalBV (envReader env) b := by
+                    rw [← hva_ev, ← hvb_ev]; rfl
+                  have hbin : binNode env2 na nb c2 (· &&& ·)
+                      = some (env2.upd (TranslateDialectDirectArms.tmpName c2) (t := .sword 64)
+                          (eOp.denote V₂), TranslateDialectDirectArms.tmpName c2, c2 + 1) := by
+                    simp only [binNode, hva, hvb]; rw [hva_ev, hvb_ev, ← hden]
+                  refine ⟨V₂.extend (eOp.denote V₂),
+                    env2.upd (TranslateDialectDirectArms.tmpName c2) (t := .sword 64) (eOp.denote V₂),
+                    ?_, by omega, hcons, ?_,
+                    onlyTmpBelow_upd (onlyTmpBelow_trans hotbA hotbB hleA) (by omega),
+                    Or.inr ⟨c2, Nat.lt_succ_self _, rfl⟩, ?_⟩
+                  · simp only [semLowerSExpr, hsemA, hsemB, hbin]
+                  · intro t tail
+                    obtain ⟨comV, hcomV, hdenV⟩ := hcontFin tail
+                    obtain ⟨comB, hcomB, hdenB⟩ := hcontB comV
+                    obtain ⟨comA, hcomA, hdenA⟩ := hcontA comB
+                    refine ⟨comA, ?_, ?_⟩
+                    · show ComCont.comp (ComCont.comp oa.cont ob.cont) (ComCont.varBind _) tail
+                        = some comA
+                      simp only [ComCont.comp, hcomV, hcomB, hcomA]
+                    · rw [hdenA, hdenB]; exact hdenV
+                  · rw [envReadU64_upd_self, hden]; rfl
+              · exact absurd hlow (by simp)
+  | SXor a b iha ihb =>
+      intro Γ vm V env cnt o nm cnt' hc hclean hlow
+      obtain ⟨sa, sb⟩ := hclean
+      simp only [TranslateDialectDirectArms.lowerSExpr] at hlow
+      split at hlow
+      · exact absurd hlow (by simp)
+      · next r hra =>
+          obtain ⟨oa, na, c1⟩ := r
+          split at hlow
+          · exact absurd hlow (by simp)
+          · next s hrb =>
+              obtain ⟨ob, nb, c2⟩ := s
+              split at hlow
+              · next va vb hla hlb =>
+                  simp only [Option.some.injEq, Prod.mk.injEq] at hlow
+                  obtain ⟨rfl, rfl, rfl⟩ := hlow
+                  obtain ⟨V₁, env1, hsemA, hleA, hcA, hcontA, hotbA, hrokA, hvalA⟩ :=
+                    iha vm V env cnt oa na c1 hc sa hra
+                  obtain ⟨V₂, env2, hsemB, hleB, hcB, hcontB, hotbB, hrokB, hvalB⟩ :=
+                    ihb oa.vm V₁ env1 c1 ob nb c2 hcA sb hrb
+                  have hva := consistentS_readU64 hcB na hla
+                  have hvb := consistentS_readU64 hcB nb hlb
+                  set eOp : Expr catCryptDialect ob.Γ' (.sword 64) :=
+                    { op := .bvXor 64, retTy_eq := rfl,
+                      args := .cons (toVIRVar va) (.cons (toVIRVar vb) .nil) } with heOp
+                  obtain ⟨hcons, hcontFin⟩ :=
+                    scalar_step ob.vm V₂ env2 hcB (TranslateDialectDirectArms.tmpName c2) eOp
+                  have hva_ev : (toVIRVar va).lookup V₂ = SExpr.evalBV (envReader env) a := by
+                    have h1 : envReadU64 env2 na = some (SExpr.evalBV (envReader env) a) := by
+                      rw [readU64_stable hotbB hrokA]; exact hvalA
+                    rw [hva] at h1; exact Option.some.inj h1
+                  have hvb_ev : (toVIRVar vb).lookup V₂ = SExpr.evalBV (envReader env) b := by
+                    have hcongr : SExpr.evalBV (envReader env1) b = SExpr.evalBV (envReader env) b :=
+                      evalBV_congr _ _ b
+                        (fun t ht => by simp only [envReader]; rw [hotbA t (Or.inl ht)]) sb
+                    have h1 : envReadU64 env2 nb = some (SExpr.evalBV (envReader env) b) := by
+                      rw [hvalB, hcongr]
+                    rw [hvb] at h1; exact Option.some.inj h1
+                  have hden : eOp.denote V₂
+                      = SExpr.evalBV (envReader env) a ^^^ SExpr.evalBV (envReader env) b := by
+                    rw [← hva_ev, ← hvb_ev]; rfl
+                  have hbin : binNode env2 na nb c2 (· ^^^ ·)
+                      = some (env2.upd (TranslateDialectDirectArms.tmpName c2) (t := .sword 64)
+                          (eOp.denote V₂), TranslateDialectDirectArms.tmpName c2, c2 + 1) := by
+                    simp only [binNode, hva, hvb]; rw [hva_ev, hvb_ev, ← hden]
+                  refine ⟨V₂.extend (eOp.denote V₂),
+                    env2.upd (TranslateDialectDirectArms.tmpName c2) (t := .sword 64) (eOp.denote V₂),
+                    ?_, by omega, hcons, ?_,
+                    onlyTmpBelow_upd (onlyTmpBelow_trans hotbA hotbB hleA) (by omega),
+                    Or.inr ⟨c2, Nat.lt_succ_self _, rfl⟩, ?_⟩
+                  · simp only [semLowerSExpr, hsemA, hsemB, hbin]
+                  · intro t tail
+                    obtain ⟨comV, hcomV, hdenV⟩ := hcontFin tail
+                    obtain ⟨comB, hcomB, hdenB⟩ := hcontB comV
+                    obtain ⟨comA, hcomA, hdenA⟩ := hcontA comB
+                    refine ⟨comA, ?_, ?_⟩
+                    · show ComCont.comp (ComCont.comp oa.cont ob.cont) (ComCont.varBind _) tail
+                        = some comA
+                      simp only [ComCont.comp, hcomV, hcomB, hcomA]
+                    · rw [hdenA, hdenB]; exact hdenV
+                  · rw [envReadU64_upd_self, hden]; rfl
+              · exact absurd hlow (by simp)
+  | SMulHiU a b iha ihb =>
+      intro Γ vm V env cnt o nm cnt' hc hclean hlow
+      obtain ⟨sa, sb⟩ := hclean
+      simp only [TranslateDialectDirectArms.lowerSExpr] at hlow
+      split at hlow
+      · exact absurd hlow (by simp)
+      · next r hra =>
+          obtain ⟨oa, na, c1⟩ := r
+          split at hlow
+          · exact absurd hlow (by simp)
+          · next s hrb =>
+              obtain ⟨ob, nb, c2⟩ := s
+              split at hlow
+              · next va vb hla hlb =>
+                  simp only [Option.some.injEq, Prod.mk.injEq] at hlow
+                  obtain ⟨rfl, rfl, rfl⟩ := hlow
+                  obtain ⟨V₁, env1, hsemA, hleA, hcA, hcontA, hotbA, hrokA, hvalA⟩ :=
+                    iha vm V env cnt oa na c1 hc sa hra
+                  obtain ⟨V₂, env2, hsemB, hleB, hcB, hcontB, hotbB, hrokB, hvalB⟩ :=
+                    ihb oa.vm V₁ env1 c1 ob nb c2 hcA sb hrb
+                  have hva := consistentS_readU64 hcB na hla
+                  have hvb := consistentS_readU64 hcB nb hlb
+                  set eOp : Expr catCryptDialect ob.Γ' (.sword 64) :=
+                    { op := .bvMulHi 64, retTy_eq := rfl,
+                      args := .cons (toVIRVar va) (.cons (toVIRVar vb) .nil) } with heOp
+                  obtain ⟨hcons, hcontFin⟩ :=
+                    scalar_step ob.vm V₂ env2 hcB (TranslateDialectDirectArms.tmpName c2) eOp
+                  have hva_ev : (toVIRVar va).lookup V₂ = SExpr.evalBV (envReader env) a := by
+                    have h1 : envReadU64 env2 na = some (SExpr.evalBV (envReader env) a) := by
+                      rw [readU64_stable hotbB hrokA]; exact hvalA
+                    rw [hva] at h1; exact Option.some.inj h1
+                  have hvb_ev : (toVIRVar vb).lookup V₂ = SExpr.evalBV (envReader env) b := by
+                    have hcongr : SExpr.evalBV (envReader env1) b = SExpr.evalBV (envReader env) b :=
+                      evalBV_congr _ _ b
+                        (fun t ht => by simp only [envReader]; rw [hotbA t (Or.inl ht)]) sb
+                    have h1 : envReadU64 env2 nb = some (SExpr.evalBV (envReader env) b) := by
+                      rw [hvalB, hcongr]
+                    rw [hvb] at h1; exact Option.some.inj h1
+                  have hden : eOp.denote V₂
+                      = mulHiC (SExpr.evalBV (envReader env) a)
+                          (SExpr.evalBV (envReader env) b) := by
+                    rw [← hva_ev, ← hvb_ev]; rfl
+                  have hbin : binNode env2 na nb c2 (fun x y => mulHiC x y)
+                      = some (env2.upd (TranslateDialectDirectArms.tmpName c2) (t := .sword 64)
+                          (eOp.denote V₂), TranslateDialectDirectArms.tmpName c2, c2 + 1) := by
+                    simp only [binNode, hva, hvb]; rw [hva_ev, hvb_ev, ← hden]
+                  refine ⟨V₂.extend (eOp.denote V₂),
+                    env2.upd (TranslateDialectDirectArms.tmpName c2) (t := .sword 64) (eOp.denote V₂),
+                    ?_, by omega, hcons, ?_,
+                    onlyTmpBelow_upd (onlyTmpBelow_trans hotbA hotbB hleA) (by omega),
+                    Or.inr ⟨c2, Nat.lt_succ_self _, rfl⟩, ?_⟩
+                  · simp only [semLowerSExpr, hsemA, hsemB, hbin]
+                  · intro t tail
+                    obtain ⟨comV, hcomV, hdenV⟩ := hcontFin tail
+                    obtain ⟨comB, hcomB, hdenB⟩ := hcontB comV
+                    obtain ⟨comA, hcomA, hdenA⟩ := hcontA comB
+                    refine ⟨comA, ?_, ?_⟩
+                    · show ComCont.comp (ComCont.comp oa.cont ob.cont) (ComCont.varBind _) tail
+                        = some comA
+                      simp only [ComCont.comp, hcomV, hcomB, hcomA]
+                    · rw [hdenA, hdenB]; exact hdenV
+                  · rw [envReadU64_upd_self, hden, mulHiC_eq_sexprMulHiU]; rfl
+              · exact absurd hlow (by simp)
+  | SLt a b iha ihb =>
+      intro Γ vm V env cnt o nm cnt' hc hclean hlow
+      simp only [TranslateDialectDirectArms.lowerSExpr] at hlow; exact absurd hlow (by simp)
+  | SAsr a b iha ihb =>
+      intro Γ vm V env cnt o nm cnt' hc hclean hlow
+      simp only [TranslateDialectDirectArms.lowerSExpr] at hlow; exact absurd hlow (by simp)
+  | SMulS a b iha ihb =>
+      intro Γ vm V env cnt o nm cnt' hc hclean hlow
+      simp only [TranslateDialectDirectArms.lowerSExpr] at hlow; exact absurd hlow (by simp)
+  | SMulHiS a b iha ihb =>
+      intro Γ vm V env cnt o nm cnt' hc hclean hlow
+      simp only [TranslateDialectDirectArms.lowerSExpr] at hlow; exact absurd hlow (by simp)
+  | SLimb x i =>
+      intro Γ vm V env cnt o nm cnt' hc hclean hlow
+      simp only [TranslateDialectDirectArms.lowerSExpr] at hlow; exact absurd hlow (by simp)
+
+/-- **Front-general scalar preservation** (`translateDialectFull` form). For any
+    straight-line covered body `c`, the emitted `Com`-prefix `o.cont` denotes
+    exactly the body's `semScalar` semantics: an extended valuation `V'`
+    consistent with the final `VarMap` and the `semScalar`-updated env, on which
+    every tail's denotation through `o.cont` (at the entry `V`) equals the tail's
+    denotation at `V'`. Induction on the coverage; `rSeq` via `ComCont.comp`. -/
+theorem translateDialectFull_denote {c : LowCT} (hcov : IsCoveredS c) :
+    ∀ {Γ : Ctx} (vm : VarMap Γ) (V : Ctxt.Valuation (d := catCryptDialect) Γ)
+      (env env' : SEnvScalar) (o : DTransOut Γ),
+      ConsistentS vm V env →
+      translateDialectFull vm c = some o →
+      semScalar c env = some env' →
+      ∃ V' : Ctxt.Valuation (d := catCryptDialect) o.Γ',
+        ConsistentS o.vm V' env' ∧
+        ∀ {t : CryptoTy} (tail : Com catCryptDialect o.Γ' t),
+          ∃ com, o.cont tail = some com ∧ com.denote V = tail.denote V' := by
+  induction hcov with
+  | rSkip =>
+      intro Γ vm V env env' o hc htr hsem
+      simp only [translateDialectFull, translateDialect] at htr
+      simp only [semScalar] at hsem
+      obtain rfl := Option.some.inj hsem
+      obtain rfl := Option.some.inj htr
+      exact ⟨V, hc, fun tail => ⟨tail, rfl, rfl⟩⟩
+  | @rBlock body hbody ih =>
+      intro Γ vm V env env' o hc htr hsem
+      simp only [translateDialectFull] at htr
+      simp only [semScalar] at hsem
+      exact ih vm V env env' o hc htr hsem
+  | @rSeq c₁ c₂ h₁ h₂ ih₁ ih₂ =>
+      intro Γ vm V env env' o hc htr hsem
+      rcases ht1 : translateDialectFull vm c₁ with _ | o₁
+      · simp [translateDialectFull, ht1] at htr
+      · rcases ht2 : translateDialectFull o₁.vm c₂ with _ | o₂
+        · simp [translateDialectFull, ht1, ht2] at htr
+        · rcases hs1 : semScalar c₁ env with _ | env₁
+          · simp [semScalar, hs1] at hsem
+          · simp only [semScalar, hs1, Option.bind_some] at hsem
+            simp only [translateDialectFull, ht1, ht2, Option.some.injEq] at htr
+            obtain rfl := htr
+            obtain ⟨V₁, hc₁, hcont₁⟩ := ih₁ vm V env env₁ o₁ hc ht1 hs1
+            obtain ⟨V₂, hc₂, hcont₂⟩ := ih₂ o₁.vm V₁ env₁ env' o₂ hc₁ ht2 hsem
+            refine ⟨V₂, hc₂, ?_⟩
+            intro t tail
+            obtain ⟨com₂, hcom₂, hden₂⟩ := hcont₂ tail
+            obtain ⟨com, hcom, hden⟩ := hcont₁ com₂
+            refine ⟨com, ?_, ?_⟩
+            · show ComCont.comp o₁.cont o₂.cont tail = some com
+              simp only [ComCont.comp, hcom₂, hcom]
+            · rw [hden, hden₂]
+  | rScalarSet name n =>
+      intro Γ vm V env env' o hc htr hsem
+      simp only [translateDialectFull, translateDialect] at htr
+      obtain rfl := Option.some.inj htr
+      simp only [semScalar] at hsem
+      obtain rfl := Option.some.inj hsem
+      obtain ⟨hcons, hcont⟩ :=
+        scalar_step vm V env hc name
+          ({ op := .bvConst 64 (BitVec.ofNat 64 n), retTy_eq := rfl, args := .nil } :
+            Expr catCryptDialect Γ (.sword 64))
+      exact ⟨_, hcons, fun tail => hcont tail⟩
+  | @rLetU64Zero name body hbody ih =>
+      intro Γ vm V env env' o hc htr hsem
+      simp only [translateDialectFull] at htr
+      rcases htb : translateDialectFull (vm.bind name) body with _ | ob
+      · rw [htb] at htr; simp at htr
+      · rw [htb] at htr
+        simp only [Option.some.injEq] at htr
+        obtain rfl := htr
+        obtain ⟨hcons0, hcont0⟩ :=
+          scalar_step vm V env hc name
+            ({ op := .bvConst 64 (0 : BitVec 64), retTy_eq := rfl, args := .nil } :
+              Expr catCryptDialect Γ (.sword 64))
+        simp only [semScalar] at hsem
+        obtain ⟨V', hc', hcont1⟩ :=
+          ih (vm.bind name) (V.extend _) _ env' ob hcons0 htb hsem
+        refine ⟨V', hc', ?_⟩
+        intro t tail
+        obtain ⟨com1, hcom1, hden1⟩ := hcont1 tail
+        obtain ⟨com, hcom, hden⟩ := hcont0 com1
+        refine ⟨com, ?_, ?_⟩
+        · show ComCont.comp (ComCont.varBind _) ob.cont tail = some com
+          simp only [ComCont.comp, hcom1, hcom]
+        · rw [hden, hden1]
+  | rCall fname dst args =>
+      intro Γ vm V env env' o hc htr hsem
+      rcases hra : resolveLocatedArgs vm args with _ | resolvedArgs
+      · simp [translateDialectFull, hra] at htr
+      · simp only [translateDialectFull, hra] at htr
+        obtain rfl := Option.some.inj htr
+        simp only [semScalar] at hsem
+        obtain rfl := Option.some.inj hsem
+        obtain ⟨hcons, hcont⟩ :=
+          scalar_step vm V env hc dst.locVar
+            (extCallExpr fname (encodeTy dst.locDst) (listSigmaToCHVector resolvedArgs).snd)
+        exact ⟨_, hcons, fun tail => hcont tail⟩
+  | rSelect dst sel src0 src1 =>
+      intro Γ vm V env env' o hc htr hsem
+      rcases hra : resolveLocatedArgs vm [src0, src1] with _ | resolvedArgs
+      · simp [translateDialectFull, hra] at htr
+      · simp only [translateDialectFull, hra] at htr
+        obtain rfl := Option.some.inj htr
+        simp only [semScalar] at hsem
+        obtain rfl := Option.some.inj hsem
+        obtain ⟨hcons, hcont⟩ :=
+          scalar_step vm V env hc dst.locVar
+            (extCallExpr "select" (encodeTy dst.locDst) (listSigmaToCHVector resolvedArgs).snd)
+        exact ⟨_, hcons, fun tail => hcont tail⟩
+  | rCallDstThreaded fname dst args =>
+      intro Γ vm V env env' o hc htr hsem
+      rcases hra : resolveLocatedArgs vm (dst :: args) with _ | resolvedArgs
+      · simp [translateDialectFull, hra] at htr
+      · simp only [translateDialectFull, hra] at htr
+        obtain rfl := Option.some.inj htr
+        simp only [semScalar] at hsem
+        obtain rfl := Option.some.inj hsem
+        obtain ⟨hcons, hcont⟩ :=
+          scalar_step vm V env hc dst.locVar
+            (extCallExpr fname (encodeTy dst.locDst) (listSigmaToCHVector resolvedArgs).snd)
+        exact ⟨_, hcons, fun tail => hcont tail⟩
+  | rTupleStore dst idx src =>
+      intro Γ vm V env env' o hc htr hsem
+      rcases hra : resolveLocatedArgs vm [src] with _ | resolvedArgs
+      · simp [translateDialectFull, hra] at htr
+      · simp only [translateDialectFull, hra] at htr
+        obtain rfl := Option.some.inj htr
+        simp only [semScalar] at hsem
+        obtain rfl := Option.some.inj hsem
+        obtain ⟨hcons, hcont⟩ :=
+          scalar_step vm V env hc dst.locVar
+            (extCallExpr ("tupleStore:" ++ toString idx) (encodeTy dst.locDst)
+              (listSigmaToCHVector resolvedArgs).snd)
+        exact ⟨_, hcons, fun tail => hcont tail⟩
+  | rTupleLoad dst src idx =>
+      intro Γ vm V env env' o hc htr hsem
+      rcases hra : resolveLocatedArgs vm [src] with _ | resolvedArgs
+      · simp [translateDialectFull, hra] at htr
+      · simp only [translateDialectFull, hra] at htr
+        obtain rfl := Option.some.inj htr
+        simp only [semScalar] at hsem
+        obtain rfl := Option.some.inj hsem
+        obtain ⟨hcons, hcont⟩ :=
+          scalar_step vm V env hc dst.locVar
+            (extCallExpr ("tupleLoad:" ++ toString idx) (encodeTy dst.locDst)
+              (listSigmaToCHVector resolvedArgs).snd)
+        exact ⟨_, hcons, fun tail => hcont tail⟩
+  | rArrLoadLit dst src idx =>
+      intro Γ vm V env env' o hc htr hsem
+      rcases hra : resolveLocatedArgs vm [src] with _ | resolvedArgs
+      · simp [translateDialectFull, hra] at htr
+      · simp only [translateDialectFull, hra] at htr
+        obtain rfl := Option.some.inj htr
+        simp only [semScalar] at hsem
+        obtain rfl := Option.some.inj hsem
+        obtain ⟨hcons, hcont⟩ :=
+          scalar_step vm V env hc dst.locVar
+            (extCallExpr ("arrLoad:" ++ toString idx) (encodeTy dst.locDst)
+              (listSigmaToCHVector resolvedArgs).snd)
+        exact ⟨_, hcons, fun tail => hcont tail⟩
+  | rArrStoreLit arr idx src =>
+      intro Γ vm V env env' o hc htr hsem
+      rcases hra : resolveLocatedArgs vm [arr, src] with _ | resolvedArgs
+      · simp [translateDialectFull, hra] at htr
+      · simp only [translateDialectFull, hra] at htr
+        obtain rfl := Option.some.inj htr
+        simp only [semScalar] at hsem
+        obtain rfl := Option.some.inj hsem
+        obtain ⟨hcons, hcont⟩ :=
+          scalar_step vm V env hc arr.locVar
+            (extCallExpr ("arrStore:" ++ toString idx) (encodeTy arr.locDst)
+              (listSigmaToCHVector resolvedArgs).snd)
+        exact ⟨_, hcons, fun tail => hcont tail⟩
+  | rCallSwap fname dest1 dest2 args =>
+      intro Γ vm V env env' o hc htr hsem
+      rcases hra : resolveLocatedArgs vm args with _ | resolvedArgs
+      · simp [translateDialectFull, hra] at htr
+      · simp only [translateDialectFull, hra] at htr
+        rcases hra2 : resolveLocatedArgs (vm.bind dest1.locVar) args with _ | resolvedArgs2
+        · rw [hra2] at htr; simp at htr
+        · rw [hra2] at htr
+          simp only [Option.some.injEq] at htr
+          obtain rfl := htr
+          simp only [semScalar] at hsem
+          obtain rfl := Option.some.inj hsem
+          obtain ⟨hcons1, hcont1⟩ :=
+            scalar_step vm V env hc dest1.locVar
+              (extCallExpr fname (encodeTy dest1.locDst) (listSigmaToCHVector resolvedArgs).snd)
+          obtain ⟨hcons2, hcont2⟩ :=
+            scalar_step (vm.bind dest1.locVar) (V.extend _) _ hcons1 dest2.locVar
+              (extCallExpr fname (encodeTy dest2.locDst) (listSigmaToCHVector resolvedArgs2).snd)
+          refine ⟨_, hcons2, ?_⟩
+          intro t tail
+          obtain ⟨com2, hcom2, hden2⟩ := hcont2 tail
+          obtain ⟨com, hcom, hden⟩ := hcont1 com2
+          refine ⟨com, ?_, ?_⟩
+          · show ComCont.comp (ComCont.varBind _) (ComCont.varBind _) tail = some com
+            simp only [ComCont.comp, hcom2, hcom]
+          · rw [hden, hden2]
+  | rCloneCall cv tt oldDest innerF newDest args =>
+      intro Γ vm V env env' o hc htr hsem
+      rcases hlk : vm.lookup oldDest.locVar with _ | ⟨cloneTy, oldVar⟩
+      · simp [translateDialectFull, hlk] at htr
+      · simp only [translateDialectFull, hlk] at htr
+        rcases hra : resolveLocatedArgs (vm.bind cv) args with _ | resolvedArgs
+        · rw [hra] at htr; simp at htr
+        · rw [hra] at htr
+          simp only [Option.some.injEq] at htr
+          obtain rfl := htr
+          have henv : env oldDest.locVar = some ⟨cloneTy, (toVIRVar oldVar).lookup V⟩ := by
+            rw [← hc oldDest.locVar, hlk]; rfl
+          simp only [semScalar, henv] at hsem
+          obtain rfl := Option.some.inj hsem
+          obtain ⟨hcons1, hcont1⟩ :=
+            scalar_step vm V env hc cv
+              (extCallExpr "clone" cloneTy (.cons oldVar .nil))
+          obtain ⟨hcons2, hcont2⟩ :=
+            scalar_step (vm.bind cv) (V.extend _) _ hcons1 newDest.locVar
+              (extCallExpr innerF (encodeTy newDest.locDst) (listSigmaToCHVector resolvedArgs).snd)
+          refine ⟨_, hcons2, ?_⟩
+          intro t tail
+          obtain ⟨com2, hcom2, hden2⟩ := hcont2 tail
+          obtain ⟨com, hcom, hden⟩ := hcont1 com2
+          refine ⟨com, ?_, ?_⟩
+          · show ComCont.comp (ComCont.varBind _) (ComCont.varBind _) tail = some com
+            simp only [ComCont.comp, hcom2, hcom]
+          · rw [hden, hden2]
+  | rLimbStore loc idx v =>
+      intro Γ vm V env env' o hc htr hsem
+      rcases hlk : vm.lookup loc.locVar with _ | ⟨mt, arr⟩
+      · simp [translateDialectFull, hlk] at htr
+      · rcases mt with _ | _ | ⟨_, _⟩ | ⟨_, _⟩ | _ | n
+        · simp [translateDialectFull, hlk] at htr
+        · simp [translateDialectFull, hlk] at htr
+        · simp [translateDialectFull, hlk] at htr
+        · simp [translateDialectFull, hlk] at htr
+        · simp [translateDialectFull, hlk] at htr
+        · simp only [translateDialectFull, hlk] at htr
+          by_cases hlt : idx < n
+          · rw [dif_pos hlt] at htr
+            simp only [Option.some.injEq] at htr
+            obtain rfl := htr
+            have henv : env loc.locVar = some ⟨.memref n, (toVIRVar arr).lookup V⟩ := by
+              rw [← hc loc.locVar, hlk]; rfl
+            simp only [semScalar, henv, dif_pos hlt] at hsem
+            obtain rfl := Option.some.inj hsem
+            have hcw := consistentS_weaken vm V env hc
+              (({ op := .bvConst 64 v, retTy_eq := rfl, args := .nil } :
+                Expr catCryptDialect Γ (.sword 64)).denote V)
+            obtain ⟨_, hcont1⟩ :=
+              scalar_step vm V env hc loc.locVar
+                ({ op := .bvConst 64 v, retTy_eq := rfl, args := .nil } :
+                  Expr catCryptDialect Γ (.sword 64))
+            obtain ⟨hcons2, hcont2⟩ :=
+              scalar_step vm.weaken (V.extend _) env hcw loc.locVar
+                ({ op := .memrefSet n ⟨idx, hlt⟩, retTy_eq := rfl,
+                   args := .cons (toVIRVar (CVar.there arr)) (.cons (toVIRVar CVar.here) .nil) } :
+                  Expr catCryptDialect (.sword 64 :: Γ) (.memref n))
+            refine ⟨_, hcons2, ?_⟩
+            intro t tail
+            obtain ⟨com2, hcom2, hden2⟩ := hcont2 tail
+            obtain ⟨com, hcom, hden⟩ := hcont1 com2
+            refine ⟨com, ?_, ?_⟩
+            · show ComCont.comp (ComCont.varBind _) (ComCont.varBind _) tail = some com
+              simp only [ComCont.comp, hcom2, hcom]
+            · rw [hden, hden2]
+          · rw [dif_neg hlt] at htr; simp at htr
+  | rCallN fname dests args =>
+      intro Γ vm V env env' o hc htr hsem
+      simp only [translateDialectFull] at htr
+      simp only [semScalar] at hsem
+      obtain rfl := Option.some.inj hsem
+      exact loopCallNDestsD_denote fname args dests vm V env o hc htr
+  | rArrLoad dst src idxVar =>
+      intro Γ vm V env env' o hc htr hsem
+      rcases hsrc : vm.lookup src.locVar with _ | σ_src
+      · simp [translateDialectFull, resolveLocatedArgs, hsrc] at htr
+      · rcases hidx : vm.lookup idxVar with _ | idxSig
+        · simp [translateDialectFull, resolveLocatedArgs, hsrc, hidx] at htr
+        · simp only [translateDialectFull, resolveLocatedArgs, hsrc, hidx] at htr
+          obtain rfl := (Option.some.inj htr).symm
+          rcases σ_src with ⟨st, sv⟩
+          rcases idxSig with ⟨it, iv⟩
+          set hv := (listSigmaToCHVector ([(⟨st, sv⟩ : (t : CryptoTy) × CVar Γ t)] ++
+            [(⟨it, iv⟩ : (t : CryptoTy) × CVar Γ t)])).snd with hhv
+          have henvs : env src.locVar = some ⟨st, (toVIRVar sv).lookup V⟩ := by
+            rw [← hc src.locVar, hsrc]; rfl
+          have henvi : env idxVar = some ⟨it, (toVIRVar iv).lookup V⟩ := by
+            rw [← hc idxVar, hidx]; rfl
+          have hval : env' = env.upd dst.locVar (t := encodeTy dst.locDst)
+              ((arrLoadExpr dst.locDst [⟨st, sv⟩] ⟨it, iv⟩ hv).denote V) := by
+            have h2 : some env' = some (env.upd dst.locVar (t := encodeTy dst.locDst)
+                ((arrLoadExpr dst.locDst [⟨st, sv⟩] ⟨it, iv⟩ hv).denote V)) := by
+              rw [← hsem]
+              simp only [semScalar, henvs, henvi]
+              cases dst.locDst
+              case TU64 =>
+                rcases st with _ | _ | ⟨_, _⟩ | ⟨_, _⟩ | _ | nmem <;>
+                  rcases it with _ | _ | ⟨_, _⟩ | ⟨_, _⟩ | w | _ <;>
+                  first
+                  | (simp [arrLoadExpr, extCallExpr_denote]; done)
+                  | (rcases eq_or_ne w 64 with rfl | hw <;>
+                      first
+                      | rfl
+                      | simp_all [arrLoadExpr, extCallExpr_denote, CryptoTy.sword.injEq])
+              all_goals
+                simp [arrLoadExpr, extCallExpr_denote]
+            exact Option.some.inj h2
+          subst hval
+          obtain ⟨hcons, hcont⟩ :=
+            scalar_step vm V env hc dst.locVar
+              (arrLoadExpr dst.locDst [⟨st, sv⟩] ⟨it, iv⟩ hv)
+          refine ⟨_, hcons, ?_⟩
+          intro t tail
+          simp only [arrLoadCont_eq]
+          exact hcont tail
+  | rArrStore arr idxVar src =>
+      intro Γ vm V env env' o hc htr hsem
+      rcases harr : vm.lookup arr.locVar with _ | σ_arr
+      · simp [translateDialectFull, resolveLocatedArgs, harr] at htr
+      · rcases hsrc : vm.lookup src.locVar with _ | σ_src
+        · simp [translateDialectFull, resolveLocatedArgs, harr, hsrc] at htr
+        · rcases hidx : vm.lookup idxVar with _ | idxSig
+          · simp [translateDialectFull, resolveLocatedArgs, harr, hsrc, hidx] at htr
+          · simp only [translateDialectFull, resolveLocatedArgs, harr, hsrc, hidx] at htr
+            obtain rfl := (Option.some.inj htr).symm
+            rcases σ_arr with ⟨at_, av⟩
+            rcases σ_src with ⟨stt, sv⟩
+            rcases idxSig with ⟨it, iv⟩
+            set hv := (listSigmaToCHVector
+              ([(⟨at_, av⟩ : (t : CryptoTy) × CVar Γ t),
+                (⟨stt, sv⟩ : (t : CryptoTy) × CVar Γ t)] ++
+               [(⟨it, iv⟩ : (t : CryptoTy) × CVar Γ t)])).snd with hhv
+            have henva : env arr.locVar = some ⟨at_, (toVIRVar av).lookup V⟩ := by
+              rw [← hc arr.locVar, harr]; rfl
+            have henvs : env src.locVar = some ⟨stt, (toVIRVar sv).lookup V⟩ := by
+              rw [← hc src.locVar, hsrc]; rfl
+            have henvi : env idxVar = some ⟨it, (toVIRVar iv).lookup V⟩ := by
+              rw [← hc idxVar, hidx]; rfl
+            have hval : env' = env.upd arr.locVar (t := encodeTy arr.locDst)
+                ((arrStoreExpr arr.locDst [⟨at_, av⟩, ⟨stt, sv⟩] ⟨it, iv⟩ hv).denote V) := by
+              have h2 : some env' = some (env.upd arr.locVar (t := encodeTy arr.locDst)
+                  ((arrStoreExpr arr.locDst [⟨at_, av⟩, ⟨stt, sv⟩] ⟨it, iv⟩ hv).denote V)) := by
+                rw [← hsem]
+                simp only [semScalar, henva, henvs, henvi]
+                rcases at_ with _ | _ | ⟨_, _⟩ | ⟨_, _⟩ | _ | n <;>
+                  rcases stt with _ | _ | ⟨_, _⟩ | ⟨_, _⟩ | ws | _ <;>
+                  rcases it with _ | _ | ⟨_, _⟩ | ⟨_, _⟩ | wi | _ <;>
+                  first
+                  | (simp [arrStoreExpr, extCallExpr_denote]; done)
+                  | (rcases eq_or_ne ws 64 with rfl | hws
+                     · first
+                       | (simp [arrStoreExpr]; done)
+                       | (rcases eq_or_ne wi 64 with rfl | hwi
+                          · simp only [arrStoreExpr]
+                            by_cases hmem : encodeTy arr.locDst = .memref n
+                            · simp only [dif_pos hmem, expr_denote_cast]
+                              rfl
+                            · simp only [dif_neg hmem, extCallExpr_denote]
+                          · simp_all [arrStoreExpr, extCallExpr_denote, CryptoTy.sword.injEq])
+                     · simp_all [arrStoreExpr, extCallExpr_denote, CryptoTy.sword.injEq])
+              exact Option.some.inj h2
+            subst hval
+            obtain ⟨hcons, hcont⟩ :=
+              scalar_step vm V env hc arr.locVar
+                (arrStoreExpr arr.locDst [⟨at_, av⟩, ⟨stt, sv⟩] ⟨it, iv⟩ hv)
+            refine ⟨_, hcons, ?_⟩
+            intro t tail
+            simp only [arrStoreCont_eq]
+            exact hcont tail
+  | rScalarSetExpr x e hclean =>
+      intro Γ vm V env env' o hc htr hsem
+      rcases hlow : TranslateDialectDirectArms.lowerSExpr vm 0 e with _ | r
+      · simp [translateDialectFull, hlow] at htr
+      · obtain ⟨oe, nme, cnte'⟩ := r
+        rcases hlk : TranslateDialectDirectArms.lookupU64 oe.vm nme with _ | v
+        · simp [translateDialectFull, hlow, hlk] at htr
+        · simp only [translateDialectFull, hlow, hlk] at htr
+          obtain rfl := Option.some.inj htr
+          obtain ⟨Ve, env2, hsemLow, hle0, hce, hconte, hotbe, hroke, hvale⟩ :=
+            lowerSExpr_denote e vm V env 0 oe nme cnte' hc hclean hlow
+          simp only [semScalar, hsemLow] at hsem
+          obtain rfl := Option.some.inj hsem
+          have hvv : (toVIRVar v).lookup Ve = SExpr.evalBV (envReader env) e := by
+            have hr := consistentS_readU64 hce nme hlk
+            exact Option.some.inj (hr.symm.trans hvale)
+          set copyE : Expr catCryptDialect oe.Γ' (.sword 64) :=
+            { op := .bvShiftL 64 0, retTy_eq := rfl, args := .cons (toVIRVar v) .nil } with hcopyE
+          have hcopy : copyE.denote Ve = SExpr.evalBV (envReader env) e := by
+            rw [hcopyE, ← hvv]; exact BitVec.shiftLeft_zero _
+          obtain ⟨hcons, hcont⟩ := scalar_step oe.vm Ve env2 hce x copyE
+          refine ⟨Ve.extend (copyE.denote Ve), ?_, ?_⟩
+          · have hee : env2.upd x (t := .sword 64) (copyE.denote Ve)
+                = env2.upd x (t := .sword 64) (SExpr.evalBV (envReader env) e) := by rw [hcopy]
+            rw [← hee]; exact hcons
+          · intro t tail
+            obtain ⟨comV, hcomV, hdenV⟩ := hcont tail
+            obtain ⟨comA, hcomA, hdenA⟩ := hconte comV
+            refine ⟨comA, ?_, ?_⟩
+            · show ComCont.comp oe.cont (ComCont.varBind copyE) tail = some comA
+              simp only [ComCont.comp, hcomV, hcomA]
+            · rw [hdenA]; exact hdenV
+
+/-- **Front-general scalar preservation** (`translateDialectControl` form, the
+    spec-named entry point). On the straight-line covered fragment
+    `translateDialectControl` coincides with `translateDialectFull` (it delegates
+    every non-`RFor`/`RIfNz`/`RWhileNz` arm there), so the homomorphism transfers
+    verbatim. This is the scalar analogue of
+    `TranslateDialectVsimdDenote.translateDialectControlV_denote`; adding the
+    `RScalarSetExpr` induction case (and then `RFor` / `RIfNz`) grows the covered
+    fragment toward the full `IsCoveredCtl`. -/
+theorem translateDialectControl_denote {c : LowCT} (hcov : IsCoveredS c) :
+    ∀ {Γ : Ctx} (vm : VarMap Γ) (V : Ctxt.Valuation (d := catCryptDialect) Γ)
+      (env env' : SEnvScalar) (o : DTransOut Γ),
+      ConsistentS vm V env →
+      translateDialectControl vm c = some o →
+      semScalar c env = some env' →
+      ∃ V' : Ctxt.Valuation (d := catCryptDialect) o.Γ',
+        ConsistentS o.vm V' env' ∧
+        ∀ {t : CryptoTy} (tail : Com catCryptDialect o.Γ' t),
+          ∃ com, o.cont tail = some com ∧ com.denote V = tail.denote V' := by
+  intro Γ vm V env env' o hc htr hsem
+  have hfull : translateDialectControl vm c = translateDialectFull vm c :=
+    translateDialectControl_eq_full_of_covered vm hcov.toIsCovered
+  rw [hfull] at htr
+  exact translateDialectFull_denote hcov vm V env env' o hc htr hsem
+
+/-! ## 7. Mechanical straight-line arms closed; outstanding obligation (scalar-`SExpr`)
+
+The whole mechanical straight-line fragment is now proved. Beyond the composition
+keystone (`RSeq`/`RBlock`/`RSkip`), three shapes of arm close uniformly:
+
+* **Single-binding opaque leaf** (`RCall`, `RSelect`, `RCallDstThreaded`,
+  `RTupleStore`/`RTupleLoad`, `RArrLoadLit`/`RArrStoreLit`) and single concrete
+  bind (`RScalarSet`, a `bvConst`): one `ComCont.varBind` closed directly by
+  `scalar_step`; the emitted `extCallExpr`/`bvConst` denotes to the same waist
+  (`CryptoTy.default` / the literal) `semScalar` binds, so the `exact` closes by
+  definitional agreement.
+* **Multi-binding folds** (`RLetU64Zero` = prefix bind + body IH; `RCallSwap` /
+  `RCloneCall` = two binds; `RLimbStore` = a weaken-step + a `memrefSet` bind;
+  `RCallN` = N binds by induction on the dest list, generalizing the context):
+  each per-bind step is a `scalar_step` (or `consistentS_weaken` for the anonymous
+  `RLimbStore` temp), composed via `ComCont.comp` on the RSeq backbone.
+
+The dynamic-index **load** and **store** arms (`RArrLoad`, `RArrStore`) are now
+proved cases of the homomorphism (§5b/§5c + the `rArrLoad`/`rArrStore` arms of
+`translateDialectFull_denote`). Their front combinators `arrLoadCont` /
+`arrStoreCont` refactor as `ComCont.varBind (arrLoadExpr …)` /
+`ComCont.varBind (arrStoreExpr …)` (`arrLoadCont_eq` / `arrStoreCont_eq`), and
+the induction cases reduce the front's literal-pattern dependent match in
+**lock-step** with `semScalar`'s matching arm by casing the shape discriminants
+(`rcases` the slot `CryptoTy`s — which *substitute* rather than leaving the HEq
+equations `split` produces — and `eq_or_ne _ 64` width splits), each case closing
+by `scalar_step` exactly as `RCall`. The reusable lesson: **case the discriminants
+(so both mirrored matches ι-reduce together); do not `split` them** (`split`
+reduces only one match and leaves the other under an unusable negation/HEq
+hypothesis).
+
+The **store** arm's extra wrinkle — `arrStoreCont`'s memref branch wraps its
+`memrefSetDyn` `varBind` in a `ComCont.castCtx` (a codomain transport guarded by
+`encodeTy arr.locDst = .memref n`), and `semScalar`'s value carries a matching
+`h ▸` — is discharged by two *general* congruence lemmas, `castCtx_varBind`
+(`castCtx (congrArg (·::Γ) hh) (varBind e) = varBind (hh ▸ e)`) and
+`expr_denote_cast` (`(hh ▸ e).denote V = hh ▸ (e.denote V)`), each a single
+`cases hh` with NO case explosion. Crucially the array's declared encoding
+`encodeTy arr.locDst` is kept **opaque**: instead of the 20-way `cases
+arr.locDst` (which combined with the slot `rcases` + width splits would exceed
+the `whnf` budget), a single `by_cases encodeTy arr.locDst = .memref n` drives
+both `semScalar`'s guard and `arrStoreExpr`'s guard together — the parametric
+per-op congruence factoring that avoids the case product entirely.
+
+The **`RScalarSetExpr x e`** arm (the point-op brick route) is now proved over
+its `srcClean` fragment. The front lowers the `SExpr` tree via `lowerSExpr` into a
+**chain** of `ComCont.varBind`s over fresh `__sx` temporaries (not a single
+`varBind`), so beyond `scalar_step` it needs the `SExpr`-recursion homomorphism
+`lowerSExpr_denote` (§5f): an env-level word-op mirror `semLowerSExpr` threading
+the same fresh temporaries, proved by induction on `SExpr` to match the emitted
+chain's denotation via `ComCont.comp`, with its result slot resolving to the
+closed-form `SExpr.evalBV (envReader env) e`. The three sub-obligations:
+
+1. **`SExpr`-recursion homomorphism** — the induction body of `lowerSExpr_denote`;
+   each binary node is a fresh `varBind` over the two sub-chains (`ComCont.comp`),
+   its value tied through `consistentS_readU64` + the reader congruence
+   `evalBV_congr`.
+2. **Fresh-temp non-collision** — `tmpName` injectivity (§2b, proved from a
+   decimal-digit left inverse `toDigits_val`, absent from core/Mathlib) plus the
+   `OnlyTmpBelow` / `ResultOK` bookkeeping (`readU64_stable`, `onlyTmpBelow_*`):
+   temps `tmpName k` never collide with a `srcClean` source read, and a later
+   fresh temp never overwrites an earlier result name.
+3. **Shift-arm reconciliation** — the front's inline amount-shape match (the
+   immediate op `bvShiftL 64 k` on a literal amount `SLit k`, the variable
+   `bvShiftLV 64` otherwise) is cased by a 2-way `split`, and the literal branch
+   reconciles `k = (BitVec.ofNat 64 k).toNat` from `srcClean`'s `k < 2^64`
+   literal bound — so `SShl`/`SShr` (the Keccak-f1600 round-body and secp256k1
+   `feMul`-brick alphabet) are covered, as is the `SMulHiU` high-multiply via the
+   `mulHiC`↔`sexprMulHiU` bridge. Only the signed `SAsr`/`SMulS`/`SMulHiS` (plus
+   `SLt`/`SLimb`) stay outside `srcClean`.
+
+The per-brick *field* correctness (that a brick computes `(a·b) mod p`) is the
+separate deep obligation recorded in `Secp256k1PointOpCompositional`. -/
+
+/-! ## 8. Stage 2 — the control arms (`RFor` / `RIfNz`)
+
+The control-flow extension of the preservation homomorphism, from the
+straight-line `IsCoveredS` to the full control-extended fragment (the scalar
+twin of `TranslateDialectDirectControl.IsCoveredCtl`). Three layers:
+
+* **coverage** — `IsCoveredSCtl` mirrors `IsCoveredCtl` arm-for-arm
+  (`ofCovered`/`rFor`/`rIfNz`), with `IsCoveredS`'s `srcClean` side condition on
+  `RScalarSetExpr` in place of `IsCovered`'s unconditional arm;
+* **the extension/inertness invariant** (`translateDialectControl_ext`) — every
+  accepted translation's output context is `Δ ++ Γ` for some pushed prefix `Δ`,
+  and a context-invariant translation (`Δ = []`) is env-INERT (`semScalar` is
+  the identity on it). This is the load-bearing fact for `RIfNz`'s (A)/(B)
+  cases, where the front passes through ONE branch's prefix and discards the
+  other: the discarded branch is exactly the context-invariant one, and
+  inertness makes the sequential waist semantics agree with the single-branch
+  denotation. Proved over ALL of `LowCT` (no coverage hypothesis) by structural
+  induction, with per-chain auxiliaries for `lowerSExpr` / `loopCallNDestsD` /
+  `loopRForD`;
+* **the two induction cases** — `RFor` by `Nat`-induction over the meta-unroll
+  (`loopRForD_denote`: each trip is a `scalar_step` counter bind composed with
+  the body IH via `ComCont.comp`, the `RCallN` fold pattern with the body IH in
+  place of the opaque bind), `RIfNz` by the front's four-way case split
+  ((A)/(B1)/(B2) via branch IH + inertness; (C′) via five `consistentS_weaken`
+  steps + one `scalar_step` on the φ-merge `ite`, cased on the scrutinee). -/
+
+/-- The control-extended scalar-covered `LowCT` fragment: the straight-line
+    covered arms plus `RFor` over covered bodies and `RIfNz` over covered
+    branches — arm-for-arm the shape of
+    `TranslateDialectDirectControl.IsCoveredCtl`. -/
+inductive IsCoveredSCtl : LowCT → Prop
+  | ofStraight {c : LowCT} : IsCoveredS c → IsCoveredSCtl c
+  | rFor {x : String} {N : Nat} {body : LowCT} :
+      IsCoveredSCtl body → IsCoveredSCtl (.RFor x N body)
+  | rIfNz {name : String} {thenBr elseBr : LowCT} :
+      IsCoveredSCtl thenBr → IsCoveredSCtl elseBr →
+      IsCoveredSCtl (.RIfNz name thenBr elseBr)
+
+/-- `IsCoveredSCtl` refines the control-extended front-simulation coverage
+    `IsCoveredCtl` (via `IsCoveredS.toIsCovered` on the straight-line arms), so
+    a single `IsCoveredSCtl` hypothesis feeds BOTH the preservation
+    homomorphism (`translateDialectControl_denote_ctl`) and the operational
+    simulation (`rustExecSimulatesDialect`). -/
+theorem IsCoveredSCtl.toIsCoveredCtl {c : LowCT} (h : IsCoveredSCtl c) :
+    IsCoveredCtl c := by
+  induction h with
+  | ofStraight hs => exact .ofCovered hs.toIsCovered
+  | rFor _ ih => exact .rFor ih
+  | rIfNz _ _ ihT ihE => exact .rIfNz ihT ihE
+
+/-- `asSingleScalarSet` inversion: a successful view IS an `RScalarSet`. -/
+theorem asSingleScalarSet_eq : ∀ {c : LowCT} {s : SingleScalarSet},
+    asSingleScalarSet c = some s → c = .RScalarSet s.name s.val := by
+  intro c s h
+  cases c <;>
+    first
+    | (obtain rfl := Option.some.inj h; rfl)
+    | exact absurd h (by simp [asSingleScalarSet])
+
+/-- A left factor appended to a list yielding the list itself is empty. -/
+theorem append_eq_self_left {Δ Γ : Ctx} (h : Δ ++ Γ = Γ) : Δ = [] := by
+  have hlen := congrArg List.length h
+  simp only [List.length_append] at hlen
+  exact List.eq_nil_of_length_eq_zero (by omega)
+
+/-! ### 8a. Context-extension invariants of the front chains -/
+
+/-- `lowerSExpr` only pushes slots: its output context is `Δ ++ Γ`. -/
+theorem lowerSExpr_ext (e : SExpr) :
+    ∀ {Γ : Ctx} (vm : VarMap Γ) (cnt : Nat) (o : DTransOut Γ) (nm : String)
+      (cnt' : Nat),
+      TranslateDialectDirectArms.lowerSExpr vm cnt e = some (o, nm, cnt') →
+      ∃ Δ : Ctx, o.Γ' = Δ ++ Γ := by
+  induction e with
+  | SVar x =>
+      intro Γ vm cnt o nm cnt' hlow
+      simp only [TranslateDialectDirectArms.lowerSExpr] at hlow
+      split at hlow
+      · simp only [Option.some.injEq, Prod.mk.injEq] at hlow
+        obtain ⟨rfl, rfl, rfl⟩ := hlow
+        exact ⟨[], rfl⟩
+      · exact absurd hlow (by simp)
+  | SLit n =>
+      intro Γ vm cnt o nm cnt' hlow
+      simp only [TranslateDialectDirectArms.lowerSExpr, Option.some.injEq,
+        Prod.mk.injEq] at hlow
+      obtain ⟨rfl, rfl, rfl⟩ := hlow
+      exact ⟨[.sword 64], rfl⟩
+  | SLt a b iha ihb =>
+      intro Γ vm cnt o nm cnt' hlow
+      simp only [TranslateDialectDirectArms.lowerSExpr] at hlow
+      exact absurd hlow (by simp)
+  | SAsr a b iha ihb =>
+      intro Γ vm cnt o nm cnt' hlow
+      simp only [TranslateDialectDirectArms.lowerSExpr] at hlow
+      exact absurd hlow (by simp)
+  | SMulS a b iha ihb =>
+      intro Γ vm cnt o nm cnt' hlow
+      simp only [TranslateDialectDirectArms.lowerSExpr] at hlow
+      exact absurd hlow (by simp)
+  | SMulHiS a b iha ihb =>
+      intro Γ vm cnt o nm cnt' hlow
+      simp only [TranslateDialectDirectArms.lowerSExpr] at hlow
+      exact absurd hlow (by simp)
+  | SLimb x i =>
+      intro Γ vm cnt o nm cnt' hlow
+      simp only [TranslateDialectDirectArms.lowerSExpr] at hlow
+      exact absurd hlow (by simp)
+  | _ =>
+      -- All eight binary arms share the two-chain `seqOut`/`pushVarBind` shape.
+      rename_i a b iha ihb
+      intro Γ vm cnt o nm cnt' hlow
+      simp only [TranslateDialectDirectArms.lowerSExpr] at hlow
+      split at hlow
+      · exact absurd hlow (by simp)
+      · next r hra =>
+          obtain ⟨oa, na, c1⟩ := r
+          split at hlow
+          · exact absurd hlow (by simp)
+          · next s hrb =>
+              obtain ⟨ob, nb, c2⟩ := s
+              split at hlow
+              · next va vb hla hlb =>
+                  simp only [Option.some.injEq, Prod.mk.injEq] at hlow
+                  obtain ⟨rfl, rfl, rfl⟩ := hlow
+                  obtain ⟨Δa, hΔa⟩ := iha vm cnt oa na c1 hra
+                  obtain ⟨Δb, hΔb⟩ := ihb oa.vm c1 ob nb c2 hrb
+                  refine ⟨.sword 64 :: (Δb ++ Δa), ?_⟩
+                  show .sword 64 :: ob.Γ' = (.sword 64 :: (Δb ++ Δa)) ++ Γ
+                  rw [hΔb, hΔa]
+                  simp
+              · exact absurd hlow (by simp)
+
+/-- `loopCallNDestsD` only pushes slots, one per destination. -/
+theorem loopCallNDestsD_ext (fname : String) (args : List Located) :
+    ∀ (dests : List Located) {Γ : Ctx} (vm : VarMap Γ) (o : DTransOut Γ),
+      loopCallNDestsD fname args vm dests = some o →
+      ∃ Δ : Ctx, o.Γ' = Δ ++ Γ ∧ (Δ = [] → dests = []) := by
+  intro dests
+  induction dests with
+  | nil =>
+      intro Γ vm o htr
+      simp only [loopCallNDestsD] at htr
+      obtain rfl := Option.some.inj htr
+      exact ⟨[], rfl, fun _ => rfl⟩
+  | cons d rest ih =>
+      intro Γ vm o htr
+      rcases hra : resolveLocatedArgs vm args with _ | resolvedArgs
+      · simp [loopCallNDestsD, hra] at htr
+      · simp only [loopCallNDestsD, hra] at htr
+        rcases hrest : loopCallNDestsD fname args (vm.bind d.locVar) rest with _ | oRest
+        · rw [hrest] at htr; simp at htr
+        · rw [hrest] at htr
+          simp only [Option.some.injEq] at htr
+          obtain rfl := htr
+          obtain ⟨Δr, hΔr, _⟩ := ih (vm.bind d.locVar) oRest hrest
+          refine ⟨Δr ++ [encodeTy d.locDst], ?_, ?_⟩
+          · show oRest.Γ' = (Δr ++ [encodeTy d.locDst]) ++ Γ
+            rw [hΔr]; simp
+          · intro h; exact absurd h (by simp)
+
+/-- **Context-extension + inertness invariant of the straight-line front.**
+    Every accepted `translateDialectFull` output context is `Δ ++ Γ` for some
+    pushed prefix `Δ` (the front only pushes slots, never pops), and a
+    context-invariant translation (`Δ = []`) is env-INERT: `semScalar` is the
+    identity on it. Proved for ALL of `LowCT` (no coverage hypothesis) by
+    structural induction — the arms the front declines are vacuous. -/
+theorem translateDialectFull_ext (c : LowCT) :
+    ∀ {Γ : Ctx} (vm : VarMap Γ) (o : DTransOut Γ),
+      translateDialectFull vm c = some o →
+      ∃ Δ : Ctx, o.Γ' = Δ ++ Γ ∧
+        (Δ = [] → ∀ env env' : SEnvScalar, semScalar c env = some env' → env' = env) := by
+  induction c <;> intro Γ vm o htr
+  case RSkip =>
+      obtain rfl := Option.some.inj htr
+      refine ⟨[], rfl, fun _ env env' hsem => ?_⟩
+      simp only [semScalar] at hsem
+      exact (Option.some.inj hsem).symm
+  case RSeq c₁ c₂ ih₁ ih₂ =>
+      rcases ht1 : translateDialectFull vm c₁ with _ | o₁
+      · simp [translateDialectFull, ht1] at htr
+      · rcases ht2 : translateDialectFull o₁.vm c₂ with _ | o₂
+        · simp [translateDialectFull, ht1, ht2] at htr
+        · simp only [translateDialectFull, ht1, ht2, Option.some.injEq] at htr
+          obtain rfl := htr
+          obtain ⟨Δ₁, hΔ₁, hin₁⟩ := ih₁ vm o₁ ht1
+          obtain ⟨Δ₂, hΔ₂, hin₂⟩ := ih₂ o₁.vm o₂ ht2
+          refine ⟨Δ₂ ++ Δ₁, ?_, ?_⟩
+          · show o₂.Γ' = (Δ₂ ++ Δ₁) ++ Γ
+            rw [hΔ₂, hΔ₁, List.append_assoc]
+          · intro hnil env env' hsem
+            obtain ⟨h2, h1⟩ := List.append_eq_nil_iff.mp hnil
+            simp only [semScalar] at hsem
+            rcases hs1 : semScalar c₁ env with _ | env₁
+            · rw [hs1] at hsem; simp at hsem
+            · simp only [hs1, Option.bind_some] at hsem
+              rw [hin₂ h2 env₁ env' hsem, hin₁ h1 env env₁ hs1]
+  case RBlock body ih =>
+      simp only [translateDialectFull] at htr
+      obtain ⟨Δ, hΔ, hin⟩ := ih vm o htr
+      refine ⟨Δ, hΔ, fun hnil env env' hsem => ?_⟩
+      simp only [semScalar] at hsem
+      exact hin hnil env env' hsem
+  case RLetZero nm tt body ih =>
+      simp only [translateDialectFull] at htr
+      obtain ⟨Δ, hΔ, _⟩ := ih vm o htr
+      refine ⟨Δ, hΔ, fun _ env env' hsem => ?_⟩
+      simp only [semScalar] at hsem
+      exact absurd hsem (by simp)
+  case RLetU64Zero nm body ih =>
+      simp only [translateDialectFull] at htr
+      rcases htb : translateDialectFull (vm.bind nm) body with _ | ob
+      · rw [htb] at htr; simp at htr
+      · rw [htb] at htr
+        simp only [Option.some.injEq] at htr
+        obtain rfl := htr
+        obtain ⟨Δb, hΔb, _⟩ := ih (vm.bind nm) ob htb
+        refine ⟨Δb ++ [.sword 64], ?_, fun h => absurd h (by simp)⟩
+        show ob.Γ' = (Δb ++ [.sword 64]) ++ Γ
+        rw [hΔb]; simp
+  case RScalarSet nm n =>
+      obtain rfl := Option.some.inj htr
+      exact ⟨[.sword 64], rfl, fun h => absurd h (by simp)⟩
+  case RCall fname dest args =>
+      rcases hra : resolveLocatedArgs vm args with _ | resolvedArgs
+      · simp [translateDialectFull, hra] at htr
+      · simp only [translateDialectFull, hra] at htr
+        obtain rfl := Option.some.inj htr
+        exact ⟨[encodeTy dest.locDst], rfl, fun h => absurd h (by simp)⟩
+  case RSelect dst sel src0 src1 =>
+      rcases hra : resolveLocatedArgs vm [src0, src1] with _ | resolvedArgs
+      · simp [translateDialectFull, hra] at htr
+      · simp only [translateDialectFull, hra] at htr
+        obtain rfl := Option.some.inj htr
+        exact ⟨[encodeTy dst.locDst], rfl, fun h => absurd h (by simp)⟩
+  case RCallDstThreaded fname dst args =>
+      rcases hra : resolveLocatedArgs vm (dst :: args) with _ | resolvedArgs
+      · simp [translateDialectFull, hra] at htr
+      · simp only [translateDialectFull, hra] at htr
+        obtain rfl := Option.some.inj htr
+        exact ⟨[encodeTy dst.locDst], rfl, fun h => absurd h (by simp)⟩
+  case RTupleStore dst idx src =>
+      rcases hra : resolveLocatedArgs vm [src] with _ | resolvedArgs
+      · simp [translateDialectFull, hra] at htr
+      · simp only [translateDialectFull, hra] at htr
+        obtain rfl := Option.some.inj htr
+        exact ⟨[encodeTy dst.locDst], rfl, fun h => absurd h (by simp)⟩
+  case RTupleLoad dst src idx =>
+      rcases hra : resolveLocatedArgs vm [src] with _ | resolvedArgs
+      · simp [translateDialectFull, hra] at htr
+      · simp only [translateDialectFull, hra] at htr
+        obtain rfl := Option.some.inj htr
+        exact ⟨[encodeTy dst.locDst], rfl, fun h => absurd h (by simp)⟩
+  case RArrLoadLit dst src idx =>
+      rcases hra : resolveLocatedArgs vm [src] with _ | resolvedArgs
+      · simp [translateDialectFull, hra] at htr
+      · simp only [translateDialectFull, hra] at htr
+        obtain rfl := Option.some.inj htr
+        exact ⟨[encodeTy dst.locDst], rfl, fun h => absurd h (by simp)⟩
+  case RArrStoreLit arr idx src =>
+      rcases hra : resolveLocatedArgs vm [arr, src] with _ | resolvedArgs
+      · simp [translateDialectFull, hra] at htr
+      · simp only [translateDialectFull, hra] at htr
+        obtain rfl := Option.some.inj htr
+        exact ⟨[encodeTy arr.locDst], rfl, fun h => absurd h (by simp)⟩
+  case RArrLoad dst src idxVar =>
+      rcases hra : resolveLocatedArgs vm [src] with _ | resolvedArgs
+      · simp [translateDialectFull, hra] at htr
+      · rcases hidx : vm.lookup idxVar with _ | idxSig
+        · simp [translateDialectFull, hra, hidx] at htr
+        · simp only [translateDialectFull, hra, hidx] at htr
+          obtain rfl := Option.some.inj htr
+          exact ⟨[encodeTy dst.locDst], rfl, fun h => absurd h (by simp)⟩
+  case RArrStore arr idxVar src =>
+      rcases hra : resolveLocatedArgs vm [arr, src] with _ | resolvedArgs
+      · simp [translateDialectFull, hra] at htr
+      · rcases hidx : vm.lookup idxVar with _ | idxSig
+        · simp [translateDialectFull, hra, hidx] at htr
+        · simp only [translateDialectFull, hra, hidx] at htr
+          obtain rfl := Option.some.inj htr
+          exact ⟨[encodeTy arr.locDst], rfl, fun h => absurd h (by simp)⟩
+  case RCallSwap fname dest1 dest2 args =>
+      rcases hra : resolveLocatedArgs vm args with _ | ra
+      · simp [translateDialectFull, hra] at htr
+      · simp only [translateDialectFull, hra] at htr
+        rcases hra2 : resolveLocatedArgs (vm.bind dest1.locVar) args with _ | ra2
+        · rw [hra2] at htr; simp at htr
+        · rw [hra2] at htr
+          simp only [Option.some.injEq] at htr
+          obtain rfl := htr
+          exact ⟨[encodeTy dest2.locDst, encodeTy dest1.locDst], rfl,
+            fun h => absurd h (by simp)⟩
+  case RCloneCall cv tt oldDest innerF newDest args =>
+      rcases hlk : vm.lookup oldDest.locVar with _ | p
+      · simp [translateDialectFull, hlk] at htr
+      · obtain ⟨cloneTy, oldVar⟩ := p
+        simp only [translateDialectFull, hlk] at htr
+        rcases hra : resolveLocatedArgs (vm.bind cv) args with _ | ra
+        · rw [hra] at htr; simp at htr
+        · rw [hra] at htr
+          simp only [Option.some.injEq] at htr
+          obtain rfl := htr
+          exact ⟨[encodeTy newDest.locDst, cloneTy], rfl, fun h => absurd h (by simp)⟩
+  case RLimbStore loc idx v =>
+      rcases hlk : vm.lookup loc.locVar with _ | p
+      · simp [translateDialectFull, hlk] at htr
+      · obtain ⟨mt, arr⟩ := p
+        rcases mt with _ | _ | ⟨_, _⟩ | ⟨_, _⟩ | _ | n
+        · simp [translateDialectFull, hlk] at htr
+        · simp [translateDialectFull, hlk] at htr
+        · simp [translateDialectFull, hlk] at htr
+        · simp [translateDialectFull, hlk] at htr
+        · simp [translateDialectFull, hlk] at htr
+        · simp only [translateDialectFull, hlk] at htr
+          by_cases hlt : idx < n
+          · rw [dif_pos hlt] at htr
+            simp only [Option.some.injEq] at htr
+            obtain rfl := htr
+            exact ⟨[.memref n, .sword 64], rfl, fun h => absurd h (by simp)⟩
+          · rw [dif_neg hlt] at htr; simp at htr
+  case RCallN fname dests args =>
+      simp only [translateDialectFull] at htr
+      obtain ⟨Δ, hΔ, hnil⟩ := loopCallNDestsD_ext fname args dests vm o htr
+      refine ⟨Δ, hΔ, fun h env env' hsem => ?_⟩
+      obtain rfl := hnil h
+      simp only [semScalar, semCallNDests] at hsem
+      exact (Option.some.inj hsem).symm
+  case RScalarSetExpr x e =>
+      rcases hlow : TranslateDialectDirectArms.lowerSExpr vm 0 e with _ | r
+      · simp [translateDialectFull, hlow] at htr
+      · obtain ⟨oe, nme, cnte⟩ := r
+        rcases hlk : TranslateDialectDirectArms.lookupU64 oe.vm nme with _ | v
+        · simp [translateDialectFull, hlow, hlk] at htr
+        · simp only [translateDialectFull, hlow, hlk] at htr
+          obtain rfl := Option.some.inj htr
+          obtain ⟨Δe, hΔe⟩ := lowerSExpr_ext e vm 0 oe nme cnte hlow
+          refine ⟨.sword 64 :: Δe, ?_, fun h => absurd h (by simp)⟩
+          show .sword 64 :: oe.Γ' = (.sword 64 :: Δe) ++ Γ
+          rw [hΔe]; rfl
+  all_goals simp [translateDialectFull] at htr
+
+/-- `loopRForD` only pushes slots (one counter bind + the body's pushes per
+    trip); a context-invariant unroll is the zero-trip one. -/
+theorem loopRForD_ext (x : String) (body : LowCT)
+    (ihBody : ∀ {Γ : Ctx} (vm : VarMap Γ) (o : DTransOut Γ),
+      translateDialectControl vm body = some o → ∃ Δ : Ctx, o.Γ' = Δ ++ Γ) :
+    ∀ (N : Nat) {Γ : Ctx} (vm : VarMap Γ) (o : DTransOut Γ),
+      loopRForD (translateBody := fun vm' => translateDialectControl vm' body)
+        vm x N = some o →
+      ∃ Δ : Ctx, o.Γ' = Δ ++ Γ ∧ (Δ = [] → N = 0) := by
+  intro N
+  induction N with
+  | zero =>
+      intro Γ vm o htr
+      simp only [loopRForD] at htr
+      obtain rfl := Option.some.inj htr
+      exact ⟨[], rfl, fun _ => rfl⟩
+  | succ n ihN =>
+      intro Γ vm o htr
+      simp only [loopRForD] at htr
+      rcases hpre : loopRForD (translateBody := fun vm' => translateDialectControl vm' body)
+          vm x n with _ | oPre
+      · rw [hpre] at htr; simp at htr
+      · simp only [hpre] at htr
+        rcases hbt : translateDialectControl (oPre.vm.bind x) body with _ | oBody
+        · rw [hbt] at htr; simp at htr
+        · simp only [hbt, Option.some.injEq] at htr
+          obtain rfl := htr
+          obtain ⟨ΔP, hΔP, _⟩ := ihN vm oPre hpre
+          obtain ⟨Δb, hΔb⟩ := ihBody (oPre.vm.bind x) oBody hbt
+          refine ⟨Δb ++ .sword 64 :: ΔP, ?_, fun h => absurd h (by simp)⟩
+          show oBody.Γ' = (Δb ++ .sword 64 :: ΔP) ++ Γ
+          rw [hΔb, hΔP]
+          simp
+
+/-- **Context-extension + inertness invariant of the control front.** The
+    control-arm analogue of `translateDialectFull_ext`: every accepted
+    `translateDialectControl` output context is `Δ ++ Γ`, and `Δ = []` forces
+    env-inertness of `semScalar`. Proved for ALL of `LowCT`; the non-control
+    arms delegate to the straight-line invariant. -/
+theorem translateDialectControl_ext (c : LowCT) :
+    ∀ {Γ : Ctx} (vm : VarMap Γ) (o : DTransOut Γ),
+      translateDialectControl vm c = some o →
+      ∃ Δ : Ctx, o.Γ' = Δ ++ Γ ∧
+        (Δ = [] → ∀ env env' : SEnvScalar, semScalar c env = some env' → env' = env) := by
+  induction c <;> intro Γ vm o htr
+  case RSeq c₁ c₂ ih1 ih2 =>
+      -- Control-level `RSeq`: the front now recurses into `translateDialectControl`
+      -- on both children; the pushed context is `Δ₂ ++ Δ₁` and inertness chains
+      -- through `semScalar (RSeq _ _) = bind`.
+      simp only [translateDialectControl] at htr
+      split at htr
+      · rename_i o₁ h1
+        split at htr
+        · rename_i o₂ h2
+          simp only [Option.some.injEq] at htr
+          obtain rfl := htr
+          obtain ⟨Δ₁, hΔ₁, hin₁⟩ := ih1 vm o₁ h1
+          obtain ⟨Δ₂, hΔ₂, hin₂⟩ := ih2 o₁.vm o₂ h2
+          refine ⟨Δ₂ ++ Δ₁, ?_, ?_⟩
+          · show o₂.Γ' = (Δ₂ ++ Δ₁) ++ Γ
+            rw [hΔ₂, hΔ₁, List.append_assoc]
+          · intro hnil env env' hsem
+            obtain ⟨h2nil, h1nil⟩ := List.append_eq_nil_iff.mp hnil
+            simp only [semScalar] at hsem
+            rcases hs1 : semScalar c₁ env with _ | env₁
+            · rw [hs1] at hsem; simp at hsem
+            · simp only [hs1, Option.bind_some] at hsem
+              rw [hin₂ h2nil env₁ env' hsem]
+              exact hin₁ h1nil env env₁ hs1
+        · exact absurd htr (by simp)
+      · exact absurd htr (by simp)
+  case RFor x N body ih =>
+      simp only [translateDialectControl] at htr
+      obtain ⟨Δ, hΔ, hN⟩ := loopRForD_ext x body
+        (fun {Γ} vm o h => ((ih vm o h).imp fun Δ p => p.1)) N vm o htr
+      refine ⟨Δ, hΔ, ?_⟩
+      intro hnil env env' hsem
+      obtain rfl := hN hnil
+      simp only [semScalar, semRForD] at hsem
+      exact (Option.some.inj hsem).symm
+  case RWhileNz name body ih =>
+      simp only [translateDialectControl] at htr
+      split at htr
+      · rcases hb : translateDialectControl vm body with _ | ob
+        · rw [hb] at htr; simp at htr
+        · rw [hb] at htr
+          simp only [Option.map_some, Option.some.injEq] at htr
+          obtain rfl := htr
+          refine ⟨[], rfl, fun _ env env' hsem => ?_⟩
+          simp only [semScalar] at hsem
+          exact absurd hsem (by simp)
+      · exact absurd htr (by simp)
+  case RIfNz name thenBr elseBr ihT ihE =>
+      simp only [translateDialectControl] at htr
+      split at htr
+      case _ w condVar hlk =>
+        split at htr
+        case _ o₁ o₂ ht₁ ht₂ =>
+          split at htr
+          · next h₁ =>
+            split at htr
+            · next h₂ =>
+              -- (A): both branches context-invariant; the front passes `o₁`
+              -- through, and BOTH branches are env-inert.
+              simp only [Option.some.injEq] at htr
+              obtain rfl := htr
+              refine ⟨[], h₁, fun _ env env' hsem => ?_⟩
+              simp only [semScalar] at hsem
+              split at hsem
+              case _ w' condv henv =>
+                rcases hts : asSingleScalarSet thenBr with _ | tS
+                · simp only [hts] at hsem
+                  rcases hs1 : semScalar thenBr env with _ | env₁
+                  · rw [hs1] at hsem; simp at hsem
+                  · simp only [hs1, Option.bind_some] at hsem
+                    obtain ⟨Δ₁, hΔ₁, hin₁⟩ := ihT vm o₁ ht₁
+                    obtain ⟨Δ₂, hΔ₂, hin₂⟩ := ihE vm o₂ ht₂
+                    rw [hin₂ (append_eq_self_left (hΔ₂ ▸ h₂)) env₁ env' hsem,
+                      hin₁ (append_eq_self_left (hΔ₁ ▸ h₁)) env env₁ hs1]
+                · -- `thenBr` a single `RScalarSet` always extends — contra `h₁`.
+                  obtain rfl := asSingleScalarSet_eq hts
+                  have h1' : (CryptoTy.sword 64 :: Γ : Ctx) = o₁.Γ' :=
+                    congrArg DTransOut.Γ' (Option.some.inj ht₁)
+                  rw [← h1'] at h₁
+                  exact absurd (congrArg List.length h₁) (by simp)
+              case _ => exact absurd hsem (by simp)
+            · next h₂ =>
+              -- (B1): only `elseBr` extends; the front passes `o₂` through.
+              simp only [Option.some.injEq] at htr
+              obtain rfl := htr
+              obtain ⟨Δ₂, hΔ₂, _⟩ := ihE vm o₂ ht₂
+              exact ⟨Δ₂, hΔ₂,
+                fun hnil => absurd (show o₂.Γ' = Γ by rw [hΔ₂, hnil]; rfl) h₂⟩
+          · next h₁ =>
+            split at htr
+            · next h₂ =>
+              -- (B2): only `thenBr` extends; the front passes `o₁` through.
+              simp only [Option.some.injEq] at htr
+              obtain rfl := htr
+              obtain ⟨Δ₁, hΔ₁, _⟩ := ihT vm o₁ ht₁
+              exact ⟨Δ₁, hΔ₁,
+                fun hnil => absurd (show o₁.Γ' = Γ by rw [hΔ₁, hnil]; rfl) h₁⟩
+            · next h₂ =>
+              split at htr
+              · next tS eS hts hes =>
+                split at htr
+                · next hname =>
+                  -- (C′) φ-merge: six pushed slots.
+                  simp only [Option.some.injEq] at htr
+                  obtain rfl := htr
+                  exact ⟨[.sword 64, .bit, .bit, .sword w, .sword 64, .sword 64],
+                    rfl, fun h => absurd h (by simp)⟩
+                · next hname =>
+                  -- (C-otherwise, names differ): sequential re-translation.
+                  split at htr
+                  · next o₂' ht₂' =>
+                    simp only [Option.some.injEq] at htr
+                    obtain rfl := htr
+                    obtain ⟨Δ₁, hΔ₁, _⟩ := ihT vm o₁ ht₁
+                    obtain ⟨Δ₂', hΔ₂', _⟩ := ihE o₁.vm o₂' ht₂'
+                    refine ⟨Δ₂' ++ Δ₁, ?_, ?_⟩
+                    · show o₂'.Γ' = (Δ₂' ++ Δ₁) ++ Γ
+                      rw [hΔ₂', hΔ₁, List.append_assoc]
+                    · intro hnil
+                      obtain ⟨h2, h1⟩ := List.append_eq_nil_iff.mp hnil
+                      exact absurd (show o₁.Γ' = Γ by rw [hΔ₁, h1]; rfl) h₁
+                  · exact absurd htr (by simp)
+              · -- (C-otherwise, not both single scalar-sets): same shape.
+                split at htr
+                · next o₂' ht₂' =>
+                  simp only [Option.some.injEq] at htr
+                  obtain rfl := htr
+                  obtain ⟨Δ₁, hΔ₁, _⟩ := ihT vm o₁ ht₁
+                  obtain ⟨Δ₂', hΔ₂', _⟩ := ihE o₁.vm o₂' ht₂'
+                  refine ⟨Δ₂' ++ Δ₁, ?_, ?_⟩
+                  · show o₂'.Γ' = (Δ₂' ++ Δ₁) ++ Γ
+                    rw [hΔ₂', hΔ₁, List.append_assoc]
+                  · intro hnil
+                    obtain ⟨h2, h1⟩ := List.append_eq_nil_iff.mp hnil
+                    exact absurd (show o₁.Γ' = Γ by rw [hΔ₁, h1]; rfl) h₁
+                · exact absurd htr (by simp)
+        case _ => exact absurd htr (by simp)
+      case _ => exact absurd htr (by simp)
+  all_goals exact translateDialectFull_ext _ vm o htr
+
+/-- Context-invariant accepted translations are env-inert (corollary of
+    `translateDialectControl_ext`). The `RIfNz` (A)/(B) pass-through cases of
+    the preservation theorem reduce their discarded branch to this. -/
+theorem translateDialectControl_inert {c : LowCT} {Γ : Ctx} {vm : VarMap Γ}
+    {o : DTransOut Γ} (htr : translateDialectControl vm c = some o)
+    (hΓ : o.Γ' = Γ) :
+    ∀ env env' : SEnvScalar, semScalar c env = some env' → env' = env := by
+  obtain ⟨Δ, hΔ, hin⟩ := translateDialectControl_ext c vm o htr
+  exact hin (append_eq_self_left (hΔ ▸ hΓ))
+
+/-! ### 8b. The `RFor` induction case (`loopRForD_denote`)
+
+`Nat`-induction over the meta-unroll, in lock-step with `semRForD`: the
+`n+1`-trip prefix is (trips `0..n-1`) ∘ (counter bind `x := n`) ∘ (body), each
+composed via `ComCont.comp` — the `loopCallNDestsD_denote` fold pattern with
+the body IH in place of the opaque `extCall` bind. The entry `Γ`/`vm`/`V`/`env`
+stay FIXED across the induction (the recursion peels the LAST trip, re-entering
+at the same entry state); only the output `o`/`env'` generalize. -/
+
+/-- Front-general preservation over the `RFor` meta-unroll. The body's
+    preservation homomorphism is passed in (`ihBody`, the coverage IH). -/
+theorem loopRForD_denote (x : String) (body : LowCT)
+    (ihBody : ∀ {Γ : Ctx} (vm : VarMap Γ) (V : Ctxt.Valuation (d := catCryptDialect) Γ)
+      (env env' : SEnvScalar) (o : DTransOut Γ),
+      ConsistentS vm V env →
+      translateDialectControl vm body = some o →
+      semScalar body env = some env' →
+      ∃ V' : Ctxt.Valuation (d := catCryptDialect) o.Γ',
+        ConsistentS o.vm V' env' ∧
+        ∀ {t : CryptoTy} (tail : Com catCryptDialect o.Γ' t),
+          ∃ com, o.cont tail = some com ∧ com.denote V = tail.denote V') :
+    ∀ (N : Nat) {Γ : Ctx} (vm : VarMap Γ) (V : Ctxt.Valuation (d := catCryptDialect) Γ)
+      (env env' : SEnvScalar) (o : DTransOut Γ),
+      ConsistentS vm V env →
+      loopRForD (translateBody := fun vm' => translateDialectControl vm' body)
+        vm x N = some o →
+      semRForD (fun e => semScalar body e) x N env = some env' →
+      ∃ V' : Ctxt.Valuation (d := catCryptDialect) o.Γ',
+        ConsistentS o.vm V' env' ∧
+        ∀ {t : CryptoTy} (tail : Com catCryptDialect o.Γ' t),
+          ∃ com, o.cont tail = some com ∧ com.denote V = tail.denote V' := by
+  intro N
+  induction N with
+  | zero =>
+      intro Γ vm V env env' o hc htr hsem
+      simp only [loopRForD] at htr
+      simp only [semRForD] at hsem
+      obtain rfl := Option.some.inj htr
+      obtain rfl := Option.some.inj hsem
+      exact ⟨V, hc, fun tail => ⟨tail, rfl, rfl⟩⟩
+  | succ n ihN =>
+      intro Γ vm V env env' o hc htr hsem
+      simp only [loopRForD] at htr
+      simp only [semRForD] at hsem
+      rcases hpre : loopRForD (translateBody := fun vm' => translateDialectControl vm' body)
+          vm x n with _ | oPre
+      · rw [hpre] at htr; simp at htr
+      · simp only [hpre] at htr
+        rcases hspre : semRForD (fun e => semScalar body e) x n env with _ | envPre
+        · rw [hspre] at hsem; simp at hsem
+        · simp only [hspre] at hsem
+          rcases hbt : translateDialectControl (oPre.vm.bind x) body with _ | oBody
+          · rw [hbt] at htr; simp at htr
+          · simp only [hbt, Option.some.injEq] at htr
+            obtain rfl := htr
+            obtain ⟨VPre, hcPre, hcontPre⟩ := ihN vm V env envPre oPre hc hpre hspre
+            obtain ⟨hconsSet, hcontSet⟩ :=
+              scalar_step oPre.vm VPre envPre hcPre x
+                ({ op := .bvConst 64 (BitVec.ofNat 64 n), retTy_eq := rfl, args := .nil } :
+                  Expr catCryptDialect oPre.Γ' (.sword 64))
+            obtain ⟨Vb, hcB, hcontB⟩ :=
+              ihBody (oPre.vm.bind x) (VPre.extend _) _ env' oBody hconsSet hbt hsem
+            refine ⟨Vb, hcB, ?_⟩
+            intro t tail
+            obtain ⟨comB, hcomB, hdenB⟩ := hcontB tail
+            obtain ⟨comS, hcomS, hdenS⟩ := hcontSet comB
+            obtain ⟨com, hcom, hden⟩ := hcontPre comS
+            refine ⟨com, ?_, ?_⟩
+            · show ComCont.comp oPre.cont
+                (ComCont.comp (ComCont.varBind _) oBody.cont) tail = some com
+              simp only [ComCont.comp, hcomB, hcomS, hcom]
+            · rw [hden, hdenS, hdenB]
+
+/-! ### 8c. The `RIfNz` (C′) φ-merge expression -/
+
+/-- The φ-merge `ite` expression the front's (C′) case emits, at its context
+    `Γ₅ = .bit :: .bit :: .sword w :: .sword 64 :: .sword 64 :: Γ` (cond-bit,
+    cond-eq, zero, elseV, thenV, entry). Definitionally the front's `eIte`. -/
+def phiIteExpr {Γ : Ctx} (w : Nat) :
+    Expr catCryptDialect
+      (.bit :: .bit :: .sword w :: .sword 64 :: .sword 64 :: Γ) (.sword 64) :=
+  { op := .ite (.sword 64), retTy_eq := rfl,
+    args := .cons (toVIRVar .here)
+      (.cons (toVIRVar (.there (.there (.there (.there .here)))))
+        (.cons (toVIRVar (.there (.there (.there .here)))) .nil)) }
+
+/-- The φ-merge chain denotes the cmov select: at the valuation the five
+    preceding merge binds build, the front's `ite` computes exactly
+    `phiSelect condval thenV elseV` (`zero → else`, `nonzero → then`). -/
+theorem phiIteExpr_denote {Γ : Ctx} (w : Nat)
+    (V : Ctxt.Valuation (d := catCryptDialect) Γ) (condval : BitVec w)
+    (tv ev : BitVec 64) :
+    (phiIteExpr (Γ := Γ) w).denote
+      (.cons (!decide (condval = 0#w))
+        (.cons (decide (condval = 0#w))
+          (.cons (BitVec.ofNat w 0) (.cons ev (.cons tv V)))))
+      = phiSelect condval tv ev := by
+  show (if (!decide (condval = 0#w)) = true then tv else ev) = phiSelect condval tv ev
+  by_cases hcv : condval = 0#w <;> simp [phiSelect, hcv]
+
+/-! ### 8d. Front-general scalar preservation over the FULL control-extended
+fragment -/
+
+/-- **Front-general scalar preservation, control-extended** (the Stage-2
+    keystone). For any `IsCoveredSCtl`-covered body — the full
+    `IsCoveredCtl`-shaped fragment, `RFor` and `RIfNz` included — the emitted
+    `Com`-prefix denotes exactly the body's `semScalar` waist semantics.
+    Induction on the coverage: the straight-line arms delegate to
+    `translateDialectFull_denote`; `RFor` is `loopRForD_denote`'s meta-unroll
+    induction; `RIfNz` follows the front's four-way case split — the (A)/(B)
+    pass-through cases discharge the discarded (context-invariant) branch via
+    `translateDialectControl_inert`, the (C′) φ-merge composes five
+    `consistentS_weaken` steps with one `scalar_step` on `phiIteExpr` (its
+    value reconciled by `phiIteExpr_denote`), and (C-otherwise) is the `RSeq`
+    backbone over the re-translated `elseBr`. -/
+theorem translateDialectControl_denote_ctl {c : LowCT} (hcov : IsCoveredSCtl c) :
+    ∀ {Γ : Ctx} (vm : VarMap Γ) (V : Ctxt.Valuation (d := catCryptDialect) Γ)
+      (env env' : SEnvScalar) (o : DTransOut Γ),
+      ConsistentS vm V env →
+      translateDialectControl vm c = some o →
+      semScalar c env = some env' →
+      ∃ V' : Ctxt.Valuation (d := catCryptDialect) o.Γ',
+        ConsistentS o.vm V' env' ∧
+        ∀ {t : CryptoTy} (tail : Com catCryptDialect o.Γ' t),
+          ∃ com, o.cont tail = some com ∧ com.denote V = tail.denote V' := by
+  induction hcov with
+  | @ofStraight c hs =>
+      intro Γ vm V env env' o hc htr hsem
+      have hfull : translateDialectControl vm c = translateDialectFull vm c :=
+        translateDialectControl_eq_full_of_covered vm hs.toIsCovered
+      rw [hfull] at htr
+      exact translateDialectFull_denote hs vm V env env' o hc htr hsem
+  | @rFor x N body hbody ih =>
+      intro Γ vm V env env' o hc htr hsem
+      exact loopRForD_denote x body
+        (fun vm V env env' o hc ht hs => ih vm V env env' o hc ht hs)
+        N vm V env env' o hc htr hsem
+  | @rIfNz name thenBr elseBr hthen helse ihT ihE =>
+      intro Γ vm V env env' o hc htr hsem
+      simp only [translateDialectControl] at htr
+      split at htr
+      case _ w condVar hlk =>
+        have henv : env name = some ⟨CryptoTy.sword w, (toVIRVar condVar).lookup V⟩ := by
+          rw [← hc name, hlk]; rfl
+        simp only [semScalar, henv] at hsem
+        split at htr
+        case _ o₁ o₂ ht₁ ht₂ =>
+          split at htr
+          · next h₁ =>
+            split at htr
+            · next h₂ =>
+              -- (A): both branches context-invariant; front = `o₁`, and both
+              -- branches are env-inert.
+              simp only [Option.some.injEq] at htr
+              obtain rfl := htr
+              have hseq : (semScalar thenBr env).bind
+                  (fun e => semScalar elseBr e) = some env' := by
+                rcases hts : asSingleScalarSet thenBr with _ | tS
+                · simpa only [hts] using hsem
+                · obtain rfl := asSingleScalarSet_eq hts
+                  have h1' : (CryptoTy.sword 64 :: Γ : Ctx) = o₁.Γ' :=
+                    congrArg DTransOut.Γ' (Option.some.inj ht₁)
+                  rw [← h1'] at h₁
+                  exact absurd (congrArg List.length h₁) (by simp)
+              rcases hs1 : semScalar thenBr env with _ | env₁
+              · rw [hs1] at hseq; simp at hseq
+              · simp only [hs1, Option.bind_some] at hseq
+                rw [translateDialectControl_inert ht₂ h₂ env₁ env' hseq]
+                exact ihT vm V env env₁ o₁ hc ht₁ hs1
+            · next h₂ =>
+              -- (B1): only `elseBr` extends; `thenBr` is inert, front = `o₂`.
+              simp only [Option.some.injEq] at htr
+              obtain rfl := htr
+              have hseq : (semScalar thenBr env).bind
+                  (fun e => semScalar elseBr e) = some env' := by
+                rcases hts : asSingleScalarSet thenBr with _ | tS
+                · simpa only [hts] using hsem
+                · obtain rfl := asSingleScalarSet_eq hts
+                  have h1' : (CryptoTy.sword 64 :: Γ : Ctx) = o₁.Γ' :=
+                    congrArg DTransOut.Γ' (Option.some.inj ht₁)
+                  rw [← h1'] at h₁
+                  exact absurd (congrArg List.length h₁) (by simp)
+              rcases hs1 : semScalar thenBr env with _ | env₁
+              · rw [hs1] at hseq; simp at hseq
+              · simp only [hs1, Option.bind_some] at hseq
+                rw [translateDialectControl_inert ht₁ h₁ env env₁ hs1] at hseq
+                exact ihE vm V env env' o₂ hc ht₂ hseq
+          · next h₁ =>
+            split at htr
+            · next h₂ =>
+              -- (B2): only `thenBr` extends; `elseBr` is inert, front = `o₁`.
+              simp only [Option.some.injEq] at htr
+              obtain rfl := htr
+              have hseq : (semScalar thenBr env).bind
+                  (fun e => semScalar elseBr e) = some env' := by
+                rcases hts : asSingleScalarSet thenBr with _ | tS
+                · simpa only [hts] using hsem
+                · rcases hes : asSingleScalarSet elseBr with _ | eS
+                  · simpa only [hts, hes] using hsem
+                  · obtain rfl := asSingleScalarSet_eq hes
+                    have h2' : (CryptoTy.sword 64 :: Γ : Ctx) = o₂.Γ' :=
+                      congrArg DTransOut.Γ' (Option.some.inj ht₂)
+                    rw [← h2'] at h₂
+                    exact absurd (congrArg List.length h₂) (by simp)
+              rcases hs1 : semScalar thenBr env with _ | env₁
+              · rw [hs1] at hseq; simp at hseq
+              · simp only [hs1, Option.bind_some] at hseq
+                obtain ⟨V₁, hc₁, hcont₁⟩ := ihT vm V env env₁ o₁ hc ht₁ hs1
+                obtain rfl := translateDialectControl_inert ht₂ h₂ env₁ env' hseq
+                exact ⟨V₁, hc₁, hcont₁⟩
+            · next h₂ =>
+              split at htr
+              · next tS eS hts hes =>
+                split at htr
+                · next hname =>
+                  -- (C′) φ-merge: five weaken steps + one `scalar_step` on the
+                  -- merge `ite`, value reconciled by `phiIteExpr_denote`.
+                  simp only [Option.some.injEq] at htr
+                  obtain rfl := htr
+                  simp only [hts, hes] at hsem
+                  rw [if_pos hname] at hsem
+                  obtain rfl := Option.some.inj hsem
+                  have hc1 := consistentS_weaken vm V env hc
+                    (t := CryptoTy.sword 64) (BitVec.ofNat 64 tS.val)
+                  have hc2 := consistentS_weaken _ _ env hc1
+                    (t := CryptoTy.sword 64) (BitVec.ofNat 64 eS.val)
+                  have hc3 := consistentS_weaken _ _ env hc2
+                    (t := CryptoTy.sword w) (BitVec.ofNat w 0)
+                  have hc4 := consistentS_weaken _ _ env hc3
+                    (t := CryptoTy.bit) (condIsZero ((toVIRVar condVar).lookup V))
+                  have hc5 := consistentS_weaken _ _ env hc4
+                    (t := CryptoTy.bit) (!condIsZero ((toVIRVar condVar).lookup V))
+                  obtain ⟨hcons, _⟩ :=
+                    scalar_step _ _ env hc5 tS.name (phiIteExpr (Γ := Γ) w)
+                  rw [← phiIteExpr_denote w V ((toVIRVar condVar).lookup V)
+                    (BitVec.ofNat 64 tS.val) (BitVec.ofNat 64 eS.val)]
+                  exact ⟨_, hcons, fun tail => ⟨_, rfl, rfl⟩⟩
+                · next hname =>
+                  -- (C-otherwise, names differ): sequential re-translation —
+                  -- the `RSeq` backbone.
+                  split at htr
+                  · next o₂' ht₂' =>
+                    simp only [Option.some.injEq] at htr
+                    obtain rfl := htr
+                    simp only [hts, hes] at hsem
+                    rw [if_neg hname] at hsem
+                    rcases hs1 : semScalar thenBr env with _ | env₁
+                    · rw [hs1] at hsem; simp at hsem
+                    · simp only [hs1, Option.bind_some] at hsem
+                      obtain ⟨V₁, hc₁, hcont₁⟩ := ihT vm V env env₁ o₁ hc ht₁ hs1
+                      obtain ⟨V₂, hc₂, hcont₂⟩ :=
+                        ihE o₁.vm V₁ env₁ env' o₂' hc₁ ht₂' hsem
+                      refine ⟨V₂, hc₂, ?_⟩
+                      intro t tail
+                      obtain ⟨com₂, hcom₂, hden₂⟩ := hcont₂ tail
+                      obtain ⟨com, hcom, hden⟩ := hcont₁ com₂
+                      refine ⟨com, ?_, ?_⟩
+                      · show ComCont.comp o₁.cont o₂'.cont tail = some com
+                        simp only [ComCont.comp, hcom₂, hcom]
+                      · rw [hden, hden₂]
+                  · exact absurd htr (by simp)
+              · -- (C-otherwise, not both single scalar-sets): same backbone.
+                rename_i hnot
+                split at htr
+                · next o₂' ht₂' =>
+                  simp only [Option.some.injEq] at htr
+                  obtain rfl := htr
+                  have hseq : (semScalar thenBr env).bind
+                      (fun e => semScalar elseBr e) = some env' := by
+                    rcases hts : asSingleScalarSet thenBr with _ | tS
+                    · simpa only [hts] using hsem
+                    · rcases hes : asSingleScalarSet elseBr with _ | eS
+                      · simpa only [hts, hes] using hsem
+                      · exact (hnot tS eS hts hes).elim
+                  rcases hs1 : semScalar thenBr env with _ | env₁
+                  · rw [hs1] at hseq; simp at hseq
+                  · simp only [hs1, Option.bind_some] at hseq
+                    obtain ⟨V₁, hc₁, hcont₁⟩ := ihT vm V env env₁ o₁ hc ht₁ hs1
+                    obtain ⟨V₂, hc₂, hcont₂⟩ :=
+                      ihE o₁.vm V₁ env₁ env' o₂' hc₁ ht₂' hseq
+                    refine ⟨V₂, hc₂, ?_⟩
+                    intro t tail
+                    obtain ⟨com₂, hcom₂, hden₂⟩ := hcont₂ tail
+                    obtain ⟨com, hcom, hden⟩ := hcont₁ com₂
+                    refine ⟨com, ?_, ?_⟩
+                    · show ComCont.comp o₁.cont o₂'.cont tail = some com
+                      simp only [ComCont.comp, hcom₂, hcom]
+                    · rw [hden, hden₂]
+                · exact absurd htr (by simp)
+        case _ => exact absurd htr (by simp)
+      case _ => exact absurd htr (by simp)
+
+/-! ### 8e. Worked examples (the `IsCoveredCtl`-shaped fragment) -/
+
+/-- A bounded loop over a covered straight-line body is Stage-2 covered
+    (mirrors `TranslateDialectDirectControl`'s `IsCoveredCtl` example). -/
+example (x : String) (N : Nat) : IsCoveredSCtl (.RFor x N .RSkip) :=
+  .rFor (.ofStraight .rSkip)
+
+/-- An `RIfNz` over covered branches is Stage-2 covered — here the (C′)
+    φ-merge shape (both branches single same-name scalar sets). -/
+example (name y : String) :
+    IsCoveredSCtl (.RIfNz name (.RScalarSet y 1) (.RScalarSet y 0)) :=
+  .rIfNz (.ofStraight (.rScalarSet y 1)) (.ofStraight (.rScalarSet y 0))
+
+/-- Nested control: a conditional inside a bounded loop is Stage-2 covered. -/
+example (x name y : String) (N : Nat) :
+    IsCoveredSCtl (.RFor x N (.RIfNz name (.RScalarSet y 1) (.RScalarSet y 0))) :=
+  .rFor (.rIfNz (.ofStraight (.rScalarSet y 1)) (.ofStraight (.rScalarSet y 0)))
+
+end CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
