@@ -5,13 +5,20 @@ takes a high-level source — hax-extracted Rust, or a relational specification
 written in Lean — and emits constant-time machine code as encoded bytes, with a
 machine-checked proof that the bytes compute the source specification.
 
+> 🚧 **Under construction — experimental research prototype.** This is an
+> experiment in what a *verified* compiler for cryptography, from a high-level
+> source to constant-time assembly inside Lean, could look like. It is not a
+> production tool; interfaces, the covered source fragment, and the emitted
+> surface are still evolving, and breaking changes are expected.
+
 The design follows MLIR. The source lowers through a stack of typed dialects — an
-SSA `Com` intermediate representation, per-family dialects (lattice and NTT
-coefficient forms, elliptic-curve field arithmetic, a word-level Jasmin dialect),
-and progressive verified rewriting — down to an owned backend that encodes
-instructions to bytes for x86-64, AArch64, and RISC-V. Every dialect carries a
-Lean denotation and every lowering is a Lean function proved to preserve it, so a
-well-typed term denotes its specification by construction.
+SSA `Com` intermediate representation, per-family crypto dialects that mirror the
+prime-IR MLIR op families (field, modular and Montgomery arithmetic, elliptic
+curves, polynomial and NTT coefficient forms, pairing), a word-level Jasmin
+dialect, and progressive verified rewriting — down to an owned backend that
+encodes instructions to bytes for x86-64, AArch64, and RISC-V. Every dialect
+carries a Lean denotation and every lowering is a Lean function proved to preserve
+it, so a well-typed term denotes its specification by construction.
 
 ## The guarantee
 
@@ -53,9 +60,13 @@ S-box array-size check; `AxiomAudit.lean` reproduces the full ledger.
 
 ## Build, dependencies, documentation
 
-See [BUILDING.md](BUILDING.md). Dependencies resolve from git: `catcryptCore`,
-`Veir`, `paramTransfer`, `CompPoly`, `hax-lean`, `mathlib`. [DOCS.md](DOCS.md)
-covers the generated API reference and the blueprint.
+See [BUILDING.md](BUILDING.md). Dependencies resolve from git:
+[`catcryptCore`](https://github.com/spitters/CatCrypt-core) (the CatCrypt
+methodology library), `Veir`,
+[`paramTransfer`](https://github.com/spitters/ParamTransfer) (the proof-transfer
+bridge), `CompPoly`, [`hax-lean`](https://github.com/spitters/hax-lean) (the
+typed hax front), `mathlib`. [DOCS.md](DOCS.md) covers the generated API
+reference and the blueprint.
 
 ## Status and license
 
