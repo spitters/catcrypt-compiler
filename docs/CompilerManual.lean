@@ -185,10 +185,11 @@ signers: HAWK is emitted at the NTRU-ring-multiply kernel level, and FN-DSA
 (Falcon) is reference-linked because its discrete-Gaussian sampler is not
 constant-time-emittable. The constant-time clause is anchored on the x86 model;
 AArch64 and RISC-V carry functional correctness and byte encoding but not an
-authoritative leakage model. The `jasminc` validation path remains on a small,
-tagged residual of benchmark rows, driven by three named codegen blockers (a
-multiply-written-buffer store path, memory-operand byte encoding, and call-in-loop
-emit).
+authoritative leakage model. The owned-emit migration has driven `jasminc` off
+nearly every kernel — the bignum, symmetric, curve, and field kernels are all
+owned-backend emit; a handful of advanced signature and pairing kernels (Falcon,
+HAWK, MAYO signing, a BLS12-377 pairing) are the last residual, where `jasminc`
+still serves as the validation backend.
 
 # How this documentation is organized
 
