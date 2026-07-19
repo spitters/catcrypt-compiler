@@ -151,8 +151,10 @@ field. On the symmetric side, best-variant-vs-best-variant, the emit is ahead of
 libcrux — SHA-256 on SHA-NI at 0.20×, the SHA-3 / SHAKE family on a 4-way AVX2
 core at 0.46×, HMAC-SHA256 at 0.30×. The honest _gap_ rows are ChaCha20-Poly1305
 (the scalar Poly1305 leaf is the residual), Ed25519 sign and verify (an adopted
-field leaf), and ML-KEM-768 (owned Fujisaki–Okamoto transform over one external
-Keccak leaf).
+field leaf), and ML-KEM-768 (its arithmetic, packing, and branchless verify/cmov
+FO-glue leaves are owned and KAT-checked against PQClean, while the FO
+orchestration, the `gen_matrix` rejection sweep, and Keccak stay external — so it
+is owned by leaves, not end to end).
 
 The harness already covers most libcrux crates — BLAKE2, ChaCha20-Poly1305,
 Curve25519, Ed25519, HKDF, HMAC, ML-DSA, ML-KEM, SHA-2, SHA-3. Extending it to the
