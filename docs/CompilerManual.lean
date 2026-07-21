@@ -134,24 +134,11 @@ security transfer for the asymmetric families.
 
 # Benchmarks
 
-The benchmarks measure the emitted assembly against the fastest deployed reference,
-cycle-for-cycle on one host, reporting the ratio of the emit to the reference. They
-compare at matching scope: an emitted kernel against an emitted kernel, an adopted
-leaf against an adopted leaf.
-
-Against verified references — Jasmin, libcrux, fiat-crypto, s2n-bignum, Vale — the
-emitted field and bignum kernels are at parity. On the symmetric family, where the
-compiler emits the SIMD variant, the emit is ahead of the scalar reference. Where
-the emit rides an adopted verified leaf the ratio is near one by construction; where
-it emits an unadopted kernel a small scheduling factor remains, which an in-Lean
-X25519 ladder marks as the modularity floor.
-
-The gaps are named at each row: a symmetric AEAD whose one scalar leaf is the
-residual, the elliptic-curve signers that ride an adopted field leaf, and ML-KEM,
-whose arithmetic, sampling, and orchestration are each owned and checked against
-reference vectors but not yet linked in a single binary. Extending the harness to
-the remaining crates and parameter sets is recompilation and wiring. The `bench/`
-directory holds the harness and the current results.
+The emitted assembly is measured against the fastest deployed references — Jasmin,
+libcrux, fiat-crypto, s2n-bignum, Vale — cycle-for-cycle at matching scope. The
+field and bignum kernels are at parity, and the symmetric primitives are at or ahead
+of the optimized reference. The measured ratios, the method, and the per-family
+coverage are in `bench.md`; the `bench/` directory holds the harness.
 
 # A worked example
 
