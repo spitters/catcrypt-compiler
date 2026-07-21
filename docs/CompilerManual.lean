@@ -110,6 +110,21 @@ meet: a goal beyond the compiler's correctness.
 `lake env lean AxiomAudit.lean` prints the axiom ledger of the machine-checked
 theorems.
 
+# Headline theorems
+
+Three machine-checked theorems govern the pipeline. `AxiomAudit.lean` prints the
+axiom set each one rests on.
+
+_Compiler correctness_ — `Compiler.compile_correct_all`. Every well-typed term the
+compiler lowers denotes its source specification, for each validated model choice.
+
+_Rust front, end to end_ — `CompilerCorrectnessExtracted.rustToJasminCom_endToEnd`. A
+hax-extracted source, lowered through the dialect stack to the Jasmin `Com`, agrees
+with the source over the machine-word semantics, data-dependent loops included.
+
+_Robust source to x86_ — `RobustCompilationPipeline.robustCompilation_source_to_x86`.
+The source-level constant-time guarantee is carried onto the emitted x86.
+
 # The backends and the trusted base
 
 The compiler emits one owned in-Lean backend to three architectures. The x86-64
