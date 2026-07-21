@@ -1,56 +1,76 @@
 # Demo
 
-Concrete commands, run from the package root. The first `lake build` compiles the
-dependencies; see [BUILDING.md](BUILDING.md) for setup. The headline theorems these
-touch are described in the manual's "Headline theorems" section.
+The compiler is a Lean library, not a command-line tool: a program is authored as a
+`Com` (or extracted from Rust by hax), and the compile functions lower it to a
+backend together with a proof that the emitted code computes the source. Below are
+two worked programs. Build each with `lake build <module>` (the first build compiles
+the dependencies; see [BUILDING.md](BUILDING.md)).
 
-## The correctness capstones and their trusted base
+## A Lean-authored kernel → AArch64 and RISC-V
 
-```bash
-lake env lean AxiomAudit.lean
+Module `CatCrypt.Crypto.SecureCompilation.MultiBackendDemo`. The source is a kernel
+in the shared register waist, authored as a `Com`:
+
+```lean
+-- v2 := v0 · v1 ; ret v2
+def mulCom : Com jasminDialect [.reg 64, .reg 64] (.reg 64) := …
 ```
 
-Prints the axiom set behind the three headline theorems — the generic compiler
-correctness, the Rust front's source-to-Jasmin end-to-end result, and the robust
-source-to-x86 compilation.
+Compiling it, each step carrying its correctness:
 
-## Emit one kernel to three backends
+```lean
+-- Com → register program:
+theorem mulCom_flatten : comToRegProg mulCom 2 = [RegStmt.mul "v2" "v0" "v1"] := by rfl
+
+-- register program → AArch64 machine block, computing the source denotation:
+theorem mulCom_arm (s : BState) :
+    runBBlock s (lowerBBlock (regToBOp (comToRegProg mulCom 2)))
+      = armTarget.denote (comToRegProg mulCom 2) s
+
+-- …and → RISC-V, with the same guarantee:
+theorem mulCom_riscv_e2e (V) (s : RState64) (hs) :
+    (runRBlock64 s (lowerRBlock64 (regToROp (comToRegProg mulCom 2)))).regs (comRetName mulCom 2)
+      = Com.denote mulCom V
+```
 
 ```bash
 lake build CatCrypt.Crypto.SecureCompilation.MultiBackendDemo
 ```
 
-One `Com` front lowered to x86-64, AArch64, and RISC-V; the module's theorems state
-the emitted code agrees with the source on each backend.
+`com_riscv_e2e` in the same module gives this guarantee for every supported `Com`, so
+`mulCom` is one instance of the general result.
 
-## Emit machine bytes
+## A Rust routine, extracted with hax → compiled
 
-```bash
-lake build CatCrypt.Crypto.SecureCompilation.X86Backend.GoldenPathByteIdentityDemo
+Module `CatCrypt.Crypto.SecureCompilation.CompileFromHaxLinkExample`. The source calls
+the SHA-256 message-schedule σ₀ leaf:
+
+```rust
+fn sigma0_caller(inp: &[u32]) -> u32 {
+    sha256_sigma0(inp[0])          // sha256_sigma0 is a fast leaf, provided separately
+}
 ```
 
-Emits a kernel through the golden path and inspects its byte encoding.
+hax extracts it to the THIR the front lowers, `let r = sha256_sigma0(inp[0]); ret r`.
+The front produces a `Com` with one leaf-call boundary; linking the leaf yields the
+whole-program theorem:
 
-## Import a hand-written Jasmin leaf
+```lean
+def outerSigma0Thir : Thir := .let_ "r" (.call "sha256_sigma0" [.inp 0]) (.ret (.lvar "r"))
+def outerSigma0Com  : Com jasminDialect … := (thirToJasmin … outerSigma0Thir).get …
 
-```bash
-lake build CatCrypt.Crypto.Jasmin.Examples.JincParserDemo
+-- given the σ₀ leaf's agreement, the compiled program denotes the FIPS 180-4 formula:
+theorem linkedExample_correct … (x : BitVec 32) :
+    outerSigma0Com.denote … = x.rotateRight 7 ^^^ x.rotateRight 18 ^^^ x >>> 3
 ```
 
-Parses a `.jinc` leaf into the IR and inspects it — the import-from-Jasmin direction.
-
-## Orchestration over emitted arithmetic leaves
-
 ```bash
-lake build CatCrypt.Crypto.SecureCompilation.Fe25519OrchestrationExample
+lake build CatCrypt.Crypto.SecureCompilation.CompileFromHaxLinkExample
 ```
 
-A Curve25519 accumulation orchestrated over emitted field leaves.
-
-## Build the manual
+## Headline theorems, trusted base, and the manual
 
 ```bash
+lake env lean AxiomAudit.lean        # the axioms the three headline theorems rest on
 cd docs && lake build CompilerManual && lake exe compiler-manual --output _out
 ```
-
-Open `docs/_out/html-single/index.html`.

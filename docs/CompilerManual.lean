@@ -157,12 +157,22 @@ coverage are in `bench.md`; the `bench/` directory holds the harness.
 
 # A worked example
 
-A covered routine travels the whole pipeline in one file. The Curve25519 field and
-scalar-multiplication examples take a hax-extracted source, lower it through the
-dialect stack, and emit x86-64 bytes, with the end-to-end agreement discharged on
-the result. The emitted bytes are the artifact the benchmark harness times against
-the reference. Run `AxiomAudit.lean` on the endpoint to see what the result rests
-on.
+Two programs travel the whole pipeline. One is authored in Lean: a kernel computing
+`v2 := v0 · v1` in the shared register waist. The compiler flattens it to a register
+program, then lowers that to an AArch64 machine block and to a RISC-V one, with a
+theorem for each backend proving the compiled block computes the source denotation.
+The general result behind them holds for every supported program, so the kernel is
+one instance of it.
+
+The other starts in Rust — a routine that calls the SHA-256 σ₀ leaf. hax extracts it,
+the front lowers it to a term with one leaf-call boundary, and linking the σ₀ leaf
+proves the compiled program denotes the FIPS 180-4 formula
+`(x ror 7) ⊕ (x ror 18) ⊕ (x >> 3)`. This is the two-front path: a compiled outer met
+with a fast leaf at one call boundary.
+
+The two modules are `MultiBackendDemo` and `CompileFromHaxLinkExample`. `DEMO.md`
+lists the commands to build and inspect them, and `AxiomAudit.lean` prints what the
+endpoints rest on.
 
 # Scope
 
