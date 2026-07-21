@@ -1,2 +1,7 @@
 /.lake
 /lake-manifest.json
+
+# nested docs (Verso manual) build artifacts
+docs/.lake/
+docs/_out/
+docs/lake-manifest.json
