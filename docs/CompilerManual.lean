@@ -53,6 +53,10 @@ hand-written Jasmin leaves through the same backend.
 
 # The pipeline
 
+The passes, in order:
+`Rust (hax) or Lean spec (relational) → SSA IR → prime-ir algebra → Jasmin dialect → owned backend → x86-64 / AArch64 / RISC-V bytes`.
+Each arrow is a total Lean function proved to preserve the denotation.
+
 The two sources — hax-extracted Rust and Lean relational specifications — feed one
 SSA intermediate representation. The relational front relates a specification to a
 low-level program by a denotation-preserving relation, in the style of

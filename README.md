@@ -13,6 +13,9 @@ The design also takes inspiration from [AUCurves](https://github.com/AU-COBRA/AU
 > covered source fragment, and the emitted surface are evolving; expect breaking
 > changes. This is not a production tool.
 
+**New here?** [Getting started](GETTING_STARTED.md) compiles a program to assembly in
+one command.
+
 ## The three aspects
 
 - **Orchestration** — Rust, extracted through hax. The extraction eliminates traits,
