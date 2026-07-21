@@ -30,11 +30,19 @@ taskset -c 0-1 lake build     # ~one Lean worker per core at ~3 GB; re-run to re
 lake env lean AxiomAudit.lean     # prints the axioms each end-to-end capstone depends on
 ```
 
-## Generate the API documentation (docgen4)
+## Generate the documentation
+
+API reference (docgen4):
 
 ```bash
 lake -R -Kenv=doc update
 lake -R -Kenv=doc build CatCryptCompiler:docs     # output under .lake/build/doc/
 ```
 
-See [DOCS.md](DOCS.md) for the leanblueprint and Verso documentation options.
+Proof blueprint (leanblueprint) — the theorem-dependency graph in `blueprint/`:
+
+```bash
+pip install leanblueprint
+leanblueprint pdf                 # print version
+leanblueprint web                 # dependency-graph website
+```
