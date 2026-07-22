@@ -33,14 +33,29 @@ one command.
 
 ## The dialect stack, and a two-way verified relationship with Jasmin
 
+```mermaid
+flowchart TD
+    RUST["Rust source"] -->|hax| IR
+    SPEC["Lean specification"] -->|relational compilation| IR
+    IR["SSA IR"] --> ALG["prime-ir algebra dialects"]
+    ALG --> JAS["word-level Jasmin dialect"]
+    JAS --> BE["owned backend"]
+    BE --> X86["x86-64"]
+    BE --> ARM["AArch64"]
+    BE --> RV["RISC-V"]
+```
+
+*Two source fronts converge on one IR; every arrow is a lowering proved to preserve
+the denotation.*
+
 The source lowers through typed dialects — an SSA intermediate representation, the
-prime-ir algebraic dialects, and the word-level Jasmin dialect — down to an 
+prime-ir algebraic dialects, and the word-level Jasmin dialect — down to an owned
 backend that encodes instructions to bytes for x86-64, AArch64, and RISC-V. Every
 dialect carries a Lean denotation, and every lowering is a Lean function proved to
 preserve it, so a well-typed term denotes its specification by construction. The IR
 structure follows [lean-mlir](https://github.com/opencompl/lean-mlir) (via the Veir
-library); code generation is CatCrypt's own backend, which inititated from a port of the jasmin compiler.
-Unverified LLVM code generation is also possible.
+library); code generation is CatCrypt's own backend, which initiated from a port of
+the jasmin compiler. Unverified LLVM code generation is also possible.
 
 The compiler both compiles *to* [Jasmin](https://github.com/jasmin-lang/jasmin) and
 imports *from* it, both inside Lean. The algebraic dialects lower to the Jasmin
