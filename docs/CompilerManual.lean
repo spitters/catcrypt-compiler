@@ -32,6 +32,12 @@ machine-checked theorems.
 A cryptographic implementation is written, implicitly, at three levels. CatCrypt
 makes that structure explicit and gives each level a verified path to machine code.
 
+Crypto today splits that structure by trust rather than by nature: the orchestration
+in Rust, but the constant-time-critical code hand-written in assembly, because `rustc`
+is not trusted to preserve constant time. A verified compiler removes the split — it
+preserves constant time itself, so each part is written at its natural level and
+compiled with trust.
+
 _Orchestration_ is the protocol and control spine — the message flow, the key
 schedule, the loop structure. Its source is Rust, extracted through
 [hax](https://github.com/hacspec/hax). The extraction eliminates trait methods,
@@ -50,6 +56,13 @@ an NTT butterfly. Their language is [Jasmin](https://github.com/jasmin-lang/jasm
 whose word-level dialect is the compiler's MLIR substrate. The compiler relates to
 Jasmin in both directions: it compiles to the Jasmin dialect, and it imports
 hand-written Jasmin leaves through the same backend.
+
+An ML-KEM protocol shows the division. The orchestration — key schedule and message
+flow — stays in Rust or Lean. The algebra — the number-theoretic transform and field
+arithmetic — is expressed in the MLIR/prime-ir dialects, targeted from a Lean
+specification by relational compilation. Only the hand-tuned leaves remain at the
+assembly level. The verified compiler carries constant time and correctness across
+all three, so no part drops to assembly for trust.
 
 # The pipeline
 

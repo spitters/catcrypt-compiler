@@ -9,6 +9,12 @@ AArch64, and RISC-V as machine bytes inside Lean. The compiler correctness is ve
 It is also constant time, and robust, but the precise proofs of these are under construction.
 The design also takes inspiration from [AUCurves](https://github.com/AU-COBRA/AUCurves)
 
+Today this structure is split by trust rather than by nature: orchestration in Rust,
+but the constant-time-critical code hand-written in assembly, because `rustc` is not
+trusted to preserve constant time. A verified compiler — constant-time preservation
+included — lets each part be written at its natural level of abstraction and compiled
+with trust, instead of dropping to hand-written assembly to keep control of timing.
+
 > 🚧 **Under construction — experimental research prototype.** The interfaces, the
 > covered source fragment, and the emitted surface are evolving; expect breaking
 > changes. This is not a production tool.
@@ -30,6 +36,13 @@ one command.
   compiles to the matching dialect operation.
 - **Leaves** — Jasmin style structured assembly. The word-level Jasmin dialect is the compiler's MLIR
   substrate, and the compiler both compiles to it and imports from it (below).
+
+For example, an ML-KEM protocol is edited where each part lives: the orchestration —
+key schedule and message flow — in Rust or Lean; the algebra — the number-theoretic
+transform and field arithmetic — in the MLIR/prime-ir dialects, targeted from a Lean
+specification by relational compilation; and only the hand-tuned leaves stay at the
+assembly level. The verified compiler carries constant time and correctness across
+all three, so no part drops to assembly for trust.
 
 ## The dialect stack, and a two-way verified relationship with Jasmin
 
