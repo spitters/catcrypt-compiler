@@ -12,9 +12,8 @@ import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAsmPrinter
 /-!
 # Hello, compiler: a program compiled to assembly, and printed
 
-The compiler takes input through a front — never a hand-authored `Com`. Here the
-hax front lowers a straight-line arithmetic routine; the compiled AArch64 block is
-printed by `#eval`.
+The compiler takes input through a front. Here the hax front lowers a straight-line
+arithmetic routine, and the compiled AArch64 block is printed by `#eval`.
 -/
 
 set_option autoImplicit false
@@ -30,7 +29,7 @@ open CatCrypt.Crypto.SecureCompilation.ARMBackend
 open CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
 
 /-- The source, as hax extracts it: Rust `fn f(a, b) { let t = a * b; t + a }`
-    as a `Thir` the front lowers. Not a hand-authored `Com`. -/
+    as a `Thir` the front lowers into the compiler's IR. -/
 def srcThir : Thir :=
   .let_ "t" (.mul (.inp 0) (.inp 1))
     (.let_ "r" (.add (.lvar "t") (.inp 0))
@@ -41,7 +40,7 @@ theorem srcThir_lowers :
     (thirToJasmin (w := 64) (nIn := 2) [] (initFState 64 2) srcThir).isSome := by
   native_decide
 
-/-- The front's output `Com` — produced by the front, not authored. -/
+/-- The front's output `Com`, produced by the front. -/
 def srcCom : Com jasminDialect (frontCtxt 64 2 []) (rW 64) :=
   (thirToJasmin (w := 64) (nIn := 2) [] (initFState 64 2) srcThir).get srcThir_lowers
 
@@ -62,7 +61,7 @@ def demoAlloc : GpAlloc := (List.range 8).map (fun i => ("v" ++ toString i, "w" 
 The front's value-preservation (`ThirToComFront.thirToJasmin_denote`) proves `srcCom`
 denotes the source; `MultiBackendDemo.com_riscv_e2e` proves the compiled machine
 block computes that denotation for every supported program (shown there for RISC-V;
-the AArch64 lowering carries the same denotation keystone).
+the AArch64 lowering preserves the denotation the same way).
 
 The relational front is the other on-ramp: `RelationalFrontCurve25519` realizes the
 Curve25519 base-field add and multiply from their `ZMod` specifications, over a
