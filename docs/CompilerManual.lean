@@ -54,7 +54,7 @@ hand-written Jasmin leaves through the same backend.
 # The pipeline
 
 The passes, in order:
-`Rust (hax) or Lean spec (relational) → SSA IR → prime-ir algebra → Jasmin dialect → owned backend → x86-64 / AArch64 / RISC-V bytes`.
+`Rust (hax) or Lean spec (relational) → SSA IR → prime-ir algebra → Jasmin dialect → backend → x86-64 / AArch64 / RISC-V bytes`.
 Each arrow is a total Lean function proved to preserve the denotation.
 
 The two sources — hax-extracted Rust and Lean relational specifications — feed one
@@ -62,7 +62,7 @@ SSA intermediate representation. The relational front relates a specification to
 low-level program by a denotation-preserving relation, in the style of
 [Rupicola](https://github.com/mit-plv/rupicola). From the intermediate
 representation a source descends through the algebraic dialects and the word-level
-Jasmin dialect to an owned backend that encodes instructions to bytes for x86-64,
+Jasmin dialect to a backend that encodes instructions to bytes for x86-64,
 AArch64, and RISC-V.
 
 Every dialect carries a Lean denotation, and every lowering is a total Lean function
@@ -76,10 +76,10 @@ bedrock2, Rupicola.
 ## The two-way relationship with Jasmin
 
 The compiler reaches machine code through Jasmin in two ways, both inside Lean. It
-compiles _to_ the Jasmin dialect, which reaches x86 by either the owned bytes-direct
+compiles _to_ the Jasmin dialect, which reaches x86 by either the bytes-direct
 encoder or Jasmin's own verified compiler, reached by printing Jasmin text. And it
 imports _from_ Jasmin: a hand-written Jasmin leaf is parsed into the intermediate
-representation and lowered through the same owned backend. The external `jasminc`
+representation and lowered through the same backend. The external `jasminc`
 tool is a differential byte oracle.
 
 # The optimizer
@@ -131,7 +131,7 @@ The source-level constant-time guarantee is carried onto the emitted x86.
 
 # The backends and the trusted base
 
-The compiler emits one owned in-Lean backend to three architectures. The x86-64
+The compiler has one backend for three architectures. The x86-64
 backend carries the constant-time clause. The AArch64 and RISC-V backends emit and
 run end to end with proved byte encodings and proved functional correctness; the
 constant-time model is x86. For RISC-V, the emitted scalar instruction semantics are
@@ -142,11 +142,11 @@ The trusted base is named. It comprises the cryptographic-hardness assumptions t
 protocols rest on; the per-architecture machine model the backend is checked
 against; the cited Jasmin constant-time-preservation theorem; and the fidelity of
 hax extraction. The byte-level instruction facts — the decode/encode round-trip and
-the arithmetic-carry instructions — are proved theorems, and the owned backend
+the arithmetic-carry instructions — are proved theorems, and the backend
 carries no `jasminc` assumption.
 
-The leaves are verified: symmetric primitives by owned emit in Lean, and arithmetic
-and curve leaves by AUCurves and fiat-crypto, carried as cross-prover results. Two
+The leaves are verified: symmetric primitives emitted in Lean, and arithmetic and
+curve leaves by AUCurves and fiat-crypto, carried as cross-prover results. Two
 residuals remain: the advanced-pairing mathematics, which mirrors upstream
 assumptions and lies outside the compiler-correctness proof, and the byte-level
 security transfer for the asymmetric families.

@@ -24,7 +24,7 @@ Gallina to bedrock2.
 CatCrypt bridges this bedrock2/AUCurves-style command IR to the
 [Jasmin](https://github.com/jasmin-lang/jasmin) toolchain: `LowCT` lowers to a
 word-level Jasmin dialect (`LowCTToJasmin`), so a source can target the Jasmin
-compiler (`jasminc`) in addition to CatCrypt's owned byte-level backend. This
+compiler (`jasminc`) in addition to CatCrypt's byte-level backend. This
 carries the relational / bedrock2 low-level design onto the Jasmin path for
 constant-time assembly.
 
@@ -33,5 +33,5 @@ constant-time assembly.
 The `Com` IR — typed SSA dialects, each carrying a Lean denotation — follows the
 structure of [lean-mlir](https://github.com/opencompl/lean-mlir), used via the
 Veir library. lean-mlir shapes the IR; code generation runs through CatCrypt's own
-owned backend and does not depend on it for emitting bytes. The `ComToVeir` path
+backend and does not depend on it for emitting bytes. The `ComToVeir` path
 is an optional export to MLIR, not part of code generation.

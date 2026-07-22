@@ -39,7 +39,7 @@ flowchart TD
     SPEC["Lean specification"] -->|relational compilation| IR
     IR["SSA IR"] --> ALG["prime-ir algebra dialects"]
     ALG --> JAS["word-level Jasmin dialect"]
-    JAS --> BE["owned backend"]
+    JAS --> BE["backend"]
     BE --> X86["x86-64"]
     BE --> ARM["AArch64"]
     BE --> RV["RISC-V"]
@@ -49,8 +49,8 @@ flowchart TD
 the denotation.*
 
 The source lowers through typed dialects — an SSA intermediate representation, the
-prime-ir algebraic dialects, and the word-level Jasmin dialect — down to an owned
-backend that encodes instructions to bytes for x86-64, AArch64, and RISC-V. Every
+prime-ir algebraic dialects, and the word-level Jasmin dialect — down to a backend
+that encodes instructions to bytes for x86-64, AArch64, and RISC-V. Every
 dialect carries a Lean denotation, and every lowering is a Lean function proved to
 preserve it, so a well-typed term denotes its specification by construction. The IR
 structure follows [lean-mlir](https://github.com/opencompl/lean-mlir) (via the Veir

@@ -42,7 +42,7 @@ rejected.
 
 ## Which targets?
 
-One owned backend emits x86-64, AArch64, and RISC-V as machine bytes. The
+One backend emits x86-64, AArch64, and RISC-V as machine bytes. The
 constant-time clause is anchored on the x86 model.
 
 ## Why is the first build slow?

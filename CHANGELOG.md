@@ -7,7 +7,7 @@ covered source fragment, and the trust surface may change without notice — do 
 depend on it as a stable API. The CatCrypt verified compiler as a standalone Lake
 package.
 
-- Two fronts (hax/Rust → LowCT → `Com` IR) lowering to one verified owned
+- Two fronts (hax/Rust → LowCT → `Com` IR) lowering to one verified
   x86/ARM/RISC-V backend, packaged as the import-closure of the compiler subtree
   (1851 modules), free of every scheme security proof and of the `MPC`/`Examples`
   protocol proofs.

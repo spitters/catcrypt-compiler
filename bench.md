@@ -17,7 +17,7 @@ adopted leaf, and each row is one of:
   backend class;
 - **adopted leaf** — the emit rides a verified external leaf, so the ratio is near
   1.0 by construction;
-- **partial** — an owned kernel whose whole-primitive assembly is not yet linked in
+- **partial** — a kernel whose whole-primitive assembly is not yet linked in
   a single binary; the ratio is a target, not a verdict.
 
 ## Field and bignum
@@ -58,11 +58,11 @@ of the optimized reference:
 
 ## Coverage
 
-The harness pairs the owned emit against the optimized libcrux crates: BLAKE2,
+The harness pairs the emit against the optimized libcrux crates: BLAKE2,
 ChaCha20-Poly1305, Curve25519, Ed25519, HKDF, HMAC, ML-DSA, ML-KEM, SHA-2, SHA-3.
 Some rows are partial — ChaCha20-Poly1305 rides a scalar Poly1305 leaf, the Ed25519
 signers ride an adopted field leaf, and ML-KEM-768's arithmetic, sampling, and
-orchestration are each owned and checked against reference vectors but not yet linked
-in a single binary. Extending the harness to the remaining crates and parameter sets
+orchestration are each emitted and checked against reference vectors but not yet
+linked in a single binary. Extending the harness to the remaining crates and parameter sets
 (P-256/ECDSA, RSA, further ML-KEM and ML-DSA parameters) is recompilation and wiring
 over emit that already exists.
