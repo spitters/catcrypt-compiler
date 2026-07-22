@@ -36,6 +36,7 @@ that it is fast. See [BUILDING.md](BUILDING.md) for the toolchain and dependenci
 - [DEMO.md](DEMO.md) — the same routine plus the relational front (a Lean
   specification compiled by relational compilation), and the axiom audit.
 - [EXAMPLES.md](EXAMPLES.md) — a curated set of buildable example modules.
+- [FAQ.md](FAQ.md) — no CLI? how do I compile my own program? what is trusted?
 - The manual — narrative and the headline theorems:
   `cd docs && lake build CompilerManual && lake exe compiler-manual --output _out`.
 - [AxiomAudit.lean](AxiomAudit.lean) — the axioms the headline theorems rest on:

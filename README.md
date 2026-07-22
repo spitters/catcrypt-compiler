@@ -91,9 +91,9 @@ The relational front compiles Lean specifications directly.
 
 [GETTING_STARTED.md](GETTING_STARTED.md) compiles a program in one command;
 [DEMO.md](DEMO.md) and [EXAMPLES.md](EXAMPLES.md) walk the two fronts and the
-buildable example modules; the [manual](docs/CompilerManual.lean) — a
-[Verso](https://github.com/leanprover/verso) document — gives the narrative and the
-headline theorems.
+buildable example modules; [FAQ.md](FAQ.md) answers the common questions; the
+[manual](docs/CompilerManual.lean) — a [Verso](https://github.com/leanprover/verso)
+document — gives the narrative and the headline theorems.
 
 See [BUILDING.md](BUILDING.md). Dependencies resolve from git:
 [`catcryptCore`](https://github.com/spitters/CatCrypt-core) (the CatCrypt
