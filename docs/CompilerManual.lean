@@ -132,15 +132,24 @@ theorems.
 Three machine-checked theorems govern the pipeline. `AxiomAudit.lean` prints the
 axiom set each one rests on.
 
-_Compiler correctness_ — `Compiler.compile_correct_all`. Every well-typed term the
-compiler lowers denotes its source specification, for each validated model choice.
+_Compiler correctness_ — `Compiler.compile_correct_all`. For every program the
+compiler accepts, under a validated machine model, decoding the machine execution of
+the emitted code `m` equals the source's per-slot denotation:
+```
+M.decodeOut (M.exec m (M.encodeIn (runProg leafSem m (mapVal V)))) i
+  = latticeDenote q n V i
+```
+The model-validation hypothesis is an explicit argument, carried, not assumed.
 
 _Rust front, end to end_ — `CompilerCorrectnessExtracted.rustToJasminCom_endToEnd`. A
-hax-extracted source, lowered through the dialect stack to the Jasmin `Com`, agrees
-with the source over the machine-word semantics, data-dependent loops included.
+hax-extracted source, lowered through the dialect stack to the Jasmin `Com`, denotes
+the value the source leaves — `jcom.denote (ctMapValD W) = ctTransTy (w.lookup V')` —
+over the machine-word semantics, data-dependent loops included.
 
 _Robust source to x86_ — `RobustCompilationPipeline.robustCompilation_source_to_x86`.
-The source-level constant-time guarantee is carried onto the emitted x86.
+For every source program, the emitted-and-compiled x86 observable is the decode of
+the transported source meaning — no drift through lowering, emission, or the Jasmin
+compiler — and the emitted code is constant-time at x86.
 
 # The backends and the trusted base
 

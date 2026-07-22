@@ -119,7 +119,7 @@ The relational front compiles Lean specifications directly.
 
 [GETTING_STARTED.md](GETTING_STARTED.md) compiles a program in one command;
 [DEMO.md](DEMO.md) and [EXAMPLES.md](EXAMPLES.md) walk the two fronts and the
-buildable example modules; [FAQ.md](FAQ.md) answers the common questions; the
+buildable example modules; [bench.md](bench.md) reports the measured performance; the
 [manual](docs/CompilerManual.lean) — a [Verso](https://github.com/leanprover/verso)
 document — gives the narrative and the headline theorems.
 
