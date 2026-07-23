@@ -66,9 +66,11 @@ Three theorems state the compiler's correctness end to end:
 - [`robustCompilation_source_to_x86`](CatCrypt/Crypto/SecureCompilation/VIR/RobustCompilationPipeline.lean)
   — for every source program the emitted x86, executed and decoded, has the
   source's meaning, and is constant-time.
-- [`compile_correct_all`](CatCrypt/Crypto/SecureCompilation/VIR/Compiler.lean)
-  — for every program the compiler accepts, decoding the machine execution of the
-  emitted code equals the program's denotation.
+- [`compileVia_comp_correct`](CatCrypt/Crypto/SecureCompilation/VIR/LoweringDataComp.lean)
+  — for a program compiled through a chain of dialects (`d → d' → jasmin`), running
+  the owned-emitted code computes the composite value transport of the program's
+  denotation. The single-dialect keystone (`compileVia_correct`) and the lattice
+  route (`compile_correct_all`) are instances.
 
 The trusted base these rest on is described in [PROVENANCE.md](PROVENANCE.md).
 

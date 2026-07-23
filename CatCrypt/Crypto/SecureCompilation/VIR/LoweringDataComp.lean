@@ -222,4 +222,64 @@ variable {Γ : Ctxt d} {tt : d.Ty} (c : Com d Γ tt)
 
 end CompileViaSanity
 
+/-! ## 5. The multi-dialect compile theorem
+
+`comp_fundamental` (§3) gives the composite *transport square*; composing it with
+the owned whole-function backend gives the `runProg`-level correctness for a
+program compiled through TWO dialects `d → d' → jasmin`. This is the general
+theorem for programs that cross dialect boundaries: the same CompCert-shape
+equation as `CompilerGeneric.compileVia_correct`, but for the collapsed chain
+`L1.comp L2`. -/
+
+section CompileViaComp
+
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect
+open CatCrypt.Crypto.SecureCompilation.VIR.CompilerGeneric
+open CatCrypt.Crypto.SecureCompilation.VIR.WholeFnLowering
+
+variable [TyDenote d.Ty] [DialectDenote d]
+variable [TyDenote d'.Ty] [DialectDenote d']
+
+/-- **`compileVia_comp_correct` — two-dialect compile correctness.**
+
+    For a source dialect `d`, an intermediate dialect `d'`, structural lowerings
+    `L1 : d → d'` and `L2 : d' → jasmin`, the owned-emitted jasmin program
+    `compileVia (L1.comp L2) c`, run under `leafSem`, computes the composite
+    value transport of the source denotation:
+
+        runProg leafSem (compileVia (L1.comp L2) c) (compMapVal … V)
+          = compTransTy … (c.denote V)
+
+    Each stage contributes only its own transport squares
+    (`hVar₁/hOp₁/hExt₁`, `hVar₂/hOp₂/hExt₂`); the owned backend contributes
+    `hJLeaf` and `hStraight`. No fresh induction, no `jasminc`: the `runProg`
+    step is `lowerComToProg_sem_eq'`, and the denotation equality is
+    `comp_fundamental`. Programs that lower through several dialects instantiate
+    this with the appropriate chain (a longer chain re-associates into nested
+    `comp`s, each an instance of this theorem). -/
+theorem compileVia_comp_correct
+    (L1 : LoweringData d d') (L2 : LoweringData d' jasminDialect)
+    (transTy1 : TransTy L1) (mapVal1 : MapVal L1)
+    (hVar1 : VarTransports L1 transTy1 mapVal1)
+    (hOp1 : OpLowerTransports L1 transTy1 mapVal1)
+    (hExt1 : MapValExtends L1 transTy1 mapVal1)
+    (transTy2 : TransTy L2) (mapVal2 : MapVal L2)
+    (hVar2 : VarTransports L2 transTy2 mapVal2)
+    (hOp2 : OpLowerTransports L2 transTy2 mapVal2)
+    (hExt2 : MapValExtends L2 transTy2 mapVal2)
+    {leafSem : LeafSem} (hJLeaf : JasminPrintSemCorrect.LeafAgrees leafSem)
+    {Γ : Ctxt d} {t : d.Ty} (c : Com d Γ t)
+    (hStraight : StraightLine (compileVia (L1.comp L2) c))
+    (V : Ctxt.Valuation Γ) :
+    runProg leafSem (compileVia (L1.comp L2) c)
+        (compMapVal L1 L2 mapVal1 mapVal2 V)
+      = compTransTy L1 L2 transTy1 transTy2 (c.denote V) := by
+  rw [lowerComToProg_sem_eq' hJLeaf (compileVia (L1.comp L2) c) hStraight
+        (compMapVal L1 L2 mapVal1 mapVal2 V)]
+  exact comp_fundamental L1 L2 transTy1 mapVal1 hVar1 hOp1 hExt1
+      transTy2 mapVal2 hVar2 hOp2 hExt2 c V
+
+end CompileViaComp
+
 end CatCrypt.Crypto.SecureCompilation.VIR.LoweringDataComp
