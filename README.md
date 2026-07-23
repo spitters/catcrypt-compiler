@@ -6,21 +6,17 @@ spine), **algebra** (field, curve, and polynomial mathematics), and **leaves**
 (low-level hand-tuned primitives). CatCrypt gives each part a verified source,
 lowers them through typed MLIR-style dialects (close to prime-ir), and emits constant-time x86-64,
 AArch64, and RISC-V as machine bytes inside Lean. The compiler correctness is verified.
-It is also constant time, and robust, but the precise proofs of these are under construction.
+It is also constant time, and robust, but the precise proofs of the latter are under construction.
 The design also takes inspiration from [AUCurves](https://github.com/AU-COBRA/AUCurves)
 
-Today this structure is split by trust rather than by nature: orchestration in Rust,
-but the constant-time-critical code hand-written in assembly, because `rustc` is not
-trusted to preserve constant time. A verified compiler — constant-time preservation
-included — lets each part be written at its natural level of abstraction and compiled
-with trust, instead of dropping to hand-written assembly to keep control of timing.
+Production rust implementation often only emphasize two layers: orchestration in Rust,
+and the constant-time-critical code hand-written in assembly, because `rustc` is not
+trusted to preserve constant time. A verified constant-time compiler lets each part be 
+written at its natural level of abstraction.
 
 > 🚧 **Under construction — experimental research prototype.** The interfaces, the
 > covered source fragment, and the emitted surface are evolving; expect breaking
 > changes. This is not a production tool.
-
-**New here?** [Getting started](GETTING_STARTED.md) compiles a program to assembly in
-one command.
 
 ## The three aspects
 
@@ -31,11 +27,10 @@ one command.
 - **Algebra** - The field, modular-arithmetic, elliptic-curve, and
   polynomial/NTT dialects are the verified analogs of
   [PrimeIR](https://github.com/fractalyze/prime-ir)'s MLIR dialects for cryptography
-  — the algebraic tier that structures the compiler over a Jasmin-like substrate. A
+  — the algebraic tier that structures the compiler over a Jasmin-like language, phrased as an MLIR dialect. A
   companion Rust library exposes these operations to hax, and a kernel that uses them
   compiles to the matching dialect operation.
-- **Leaves** — Jasmin style structured assembly. The word-level Jasmin dialect is the compiler's MLIR
-  substrate, and the compiler both compiles to it and imports from it (below).
+- **Leaves** — Jasmin style structured assembly. Jasmin is presented as an MLIR dialect, and the compiler both compiles to it and imports from it (below).
 
 For example, an ML-KEM protocol is edited where each part lives: the orchestration —
 key schedule and message flow — in Rust or Lean; the algebra — the number-theoretic
