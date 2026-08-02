@@ -47,7 +47,7 @@ norm check, producing a `TBytes 8`-typed cnd word (`1` if accept, `0` if reject)
 We follow the `jhashReified` pattern: define the pure-Lean function for
 documentation/spec, register each leaf in the `LowCTPattern` registry via
 `@[rust_cmd_pattern]`, then **hand-build the `LowCT`** the reifier *would*
-produce. Downstream (`translate → cprogToJasminCom → emitAbiOrchRegPtr`) is
+produce. Downstream (`translate → cryptoDialectToJasminCom → emitAbiOrchRegPtr`) is
 the unmodified verified front.
 
 ## References

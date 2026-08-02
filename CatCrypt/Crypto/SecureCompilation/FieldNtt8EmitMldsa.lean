@@ -196,7 +196,7 @@ def ntt8MldsaLprog : Lprog :=
     (abiW := 64)
 
 /-- The owned AT&T `.s` text for `ntt8_mldsa`. -/
-def ntt8MldsaOwnedAsm : String := renderLprogAtt ntt8MldsaLprog
+def ntt8MldsaAsm : String := renderLprogAtt ntt8MldsaLprog
 
 /-- The output path for the field-kernel-emitted `.s`. -/
 def ntt8MldsaTarget : System.FilePath :=
@@ -205,7 +205,7 @@ def ntt8MldsaTarget : System.FilePath :=
 /-- **The byte-correct ML-DSA 8-point-NTT owned-emit driver.** -/
 def emitNtt8Mldsa : IO Unit := do
   IO.FS.createDirAll "bench/field_kernel_compare/gen_com"
-  let asm := ntt8MldsaOwnedAsm
+  let asm := ntt8MldsaAsm
   IO.FS.writeFile ntt8MldsaTarget asm
   IO.println s!"FIELD-NTT8-MLDSA emit OK : {ntt8MldsaTarget} ({asm.toUTF8.size} bytes, symbol ntt8_mldsa)"
 
@@ -254,5 +254,12 @@ def ntt8MldsaNatRef (g : Nat → Nat) :
   let (y4, y5) := bflyNat b4 b5 5771523
   let (y6, y7) := bflyNat b6 b7 7861508
   (y0, y1, y2, y3, y4, y5, y6, y7)
+
+/-! ## Artifact generation at elaboration
+
+The render is written while this module elaborates, so `lake` produces it from
+this file and no separate driver or Makefile rule carries the dependency. -/
+
+#eval emitNtt8Mldsa
 
 end CatCrypt.Crypto.SecureCompilation.FieldNtt8EmitMldsa

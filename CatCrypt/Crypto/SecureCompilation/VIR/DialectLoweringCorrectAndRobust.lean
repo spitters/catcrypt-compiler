@@ -10,7 +10,7 @@ import CatCrypt.Crypto.SecureCompilation.VIR.ParamDialectTransport
 /-!
 # Algebraic dialect lowerings: functionally correct **and** constant-time, together
 
-`X86Backend/OwnedCorrectAndRobust.ownedCompile_correct_secure_and_CT` states, for
+`X86Backend/CorrectAndRobust.ownedCompile_correct_secure_and_CT` states, for
 one owned scalar-arith program, **functional correctness** (the machine run
 computes the source value) **and** **constant-time robustness** together — but,
 as its own docstring records, only for the *owned scalar-arith fragment*
@@ -45,13 +45,13 @@ Param-engine synthesis in `ParamDialectTransport`.
   preservation. This conjunct is at the **op-tree (value-realisation)** level —
   the same prime-field, same-carrier fragment on which `param_solve` synthesizes.
 
-## Honest scope
+## Scope
 
 Each capstone composes **dialect-level preservation** facts. This is **not** a
 whole-source-to-machine end-to-end statement: the full source→machine chain
 links these dialect lowerings through `ModArith → {LowCT | Vector} →` the owned
 backend, whose own correct-and-robust anchor is
-`X86Backend/OwnedCorrectAndRobust.ownedCompile_correct_secure_and_CT`. What is
+`X86Backend/CorrectAndRobust.ownedCompile_correct_secure_and_CT`. What is
 stated here is exactly the per-lowering "functional ∧ constant-time" pairing,
 at the level (op / whole-program) annotated on each theorem — the algebraic
 analogue of the owned-scalar triple, ready to compose onto that anchor.

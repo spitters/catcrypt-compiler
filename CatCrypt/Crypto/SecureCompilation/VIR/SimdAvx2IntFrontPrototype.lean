@@ -40,7 +40,7 @@ both operands `.sword 128`) denotes via the backend `SimdOp.denote` waist
 front body already translates, lowers, and denotes **with zero core edits** —
 this file proves it for `vpxor`.
 
-**What is NOT yet complete is the BYTE ENCODER, and one genuinely-missing op.**
+**What is NOT yet complete is the BYTE ENCODER, and one missing op.**
 `VsimdByteEncoder.encodeVsimdInst` has correct VEX bytes for bitwise
 and/or/xor and packed add/sub/mullw/mulhi, but the packed SHIFT arms and
 `.bitwise .andn` fall through to WRONG catch-all bytes, and `VPMULUDQ`
@@ -69,7 +69,7 @@ open CatCrypt.Crypto.SecureCompilation.CryptoSSA
 This is the `SimdFrontPilot` skeleton verbatim, with `.gf2p8mulb` replaced by
 `.bitwise .xor`. No core `SimdOp` constructor is added: `.bitwise .xor` already
 exists and already lowers, so the prototype is a REAL end-to-end front op, not a
-scaffold with a hole. (Had the op been genuinely missing — e.g. `VPMULUDQ` —
+scaffold with a hole. (Had the op been missing — e.g. `VPMULUDQ` —
 this same skeleton would compile only after the one-line constructor + denote +
 lowering + encoder arms listed in the worklist; the structure is identical.) -/
 
@@ -143,14 +143,14 @@ front dialect TODAY; `bytes?` = has correct VEX bytes in `encodeVsimdInst`.
 `*` bytes gap: `.bitwise .andn` and every `.packed .sh{l,r} _` hit the
 `encodeVsimdInst` catch-alls (`.bitwise _ => 0xEF` = VPXOR bytes; `.packed _ _ =>
 0xFE` = VPADDD bytes), so they denote + lower correctly but would emit WRONG
-machine bytes. `VPMULUDQ` is a genuine even-lane widening multiply (like
+machine bytes. `VPMULUDQ` is an even-lane widening multiply (like
 `mulhi16`), not expressible via `packed`/`bitwise` — it needs a new constructor.
 
 ### Rotate is synthesised, not a primitive
 
 No `VPROL*`/`VPROR*` is needed: a lane rotate is `(x <<< n) ||| (x >>> (w-n))` =
 `.packed .shl w ∘ .packed .shr w ∘ .bitwise .or`. This is the KAT-pinned idiom in
-`KeccakAvx2OwnedEmit.laneRotl` and `Sha2MultiBufAvx2OwnedEmit.rotrSynth`
+`KeccakAvx2Emit.laneRotl` and `Sha2MultiBufAvx2Emit.rotrSynth`
 (`rotrSynth_eq : rotrSynth x n = BitVec.rotateRight x n`). So closing the two
 SHIFT byte arms + `VPORQ` (already an `.or` alias) is what unlocks all of
 ChaCha/BLAKE/Keccak/SHA-mb rotation.
@@ -193,7 +193,7 @@ precise remaining edits, all in files this prototype does NOT own:
    `.bitwise .andn => "VPANDN"` before the `VPBITWISE` catch-all. Effort: ~S
    (~20min). Semantics (`(~~~a)&&&b`) + front + lowering already done.
 
-3. **`VPMULUDQ` — genuine new op** (Poly1305 32×32→64 even-lane multiply). This
+3. **`VPMULUDQ` — new op** (Poly1305 32×32→64 even-lane multiply). This
    is the ONLY constructor addition. Full add:
      * `SimdOp.vpmuludq` constructor (+ `argTys`/`retTy` = `[reg128,reg128]→reg128`,
        `mnemonic "VPMULUDQ"`) in `JasminDialect.lean`.

@@ -375,31 +375,21 @@ def grid2DExportJazz : String := NestedForProg.toJazzExport "grid2d" grid2D
 
 #eval IO.println grid2DExportJazz
 
-/-- The exported `.jazz` has the **outer** `for` loop (`for j = 0 to 3`). -/
-theorem grid2DExport_has_outer_for :
-    JasminPrint.strContains grid2DExportJazz "for j = 0 to 3" = true := by
-  native_decide
+/- The exported `.jazz` has the **outer** `for` loop (`for j = 0 to 3`). -/
+#guard (JasminPrint.strContains grid2DExportJazz "for j = 0 to 3")
 
-/-- The exported `.jazz` has the **inner** `for` loop (`for i = 0 to 2`). -/
-theorem grid2DExport_has_inner_for :
-    JasminPrint.strContains grid2DExportJazz "for i = 0 to 2" = true := by
-  native_decide
+/- The exported `.jazz` has the **inner** `for` loop (`for i = 0 to 2`). -/
+#guard (JasminPrint.strContains grid2DExportJazz "for i = 0 to 2")
 
-/-- **Structural check: an inner `for` is nested inside the outer `for`.** The
+/- **Structural check: an inner `for` is nested inside the outer `for`.** The
     outer header `for j = 0 to 3 {` is followed (later in the text) by the inner
     header `for i = 0 to 2 {`, and both appear — the headline nesting property.
     We check the inner `for` occurs after the outer `for` opens by splitting on
     the outer header and finding the inner header in the tail. -/
-theorem grid2DExport_inner_inside_outer :
-    JasminPrint.strContains
-      ((grid2DExportJazz.splitOn "for j = 0 to 3 {").getLast!)
-      "for i = 0 to 2 {" = true := by
-  native_decide
+#guard (JasminPrint.strContains ((grid2DExportJazz.splitOn "for j = 0 to 3 {").getLast!) "for i = 0 to 2 {")
 
-/-- The exported `.jazz` is an `export fn` jasminc unit. -/
-theorem grid2DExport_has_export :
-    JasminPrint.strContains grid2DExportJazz "export fn grid2d" = true := by
-  native_decide
+/- The exported `.jazz` is an `export fn` jasminc unit. -/
+#guard (JasminPrint.strContains grid2DExportJazz "export fn grid2d")
 
 /-- The exported `.jazz` does NOT unroll: it has a single `acc = acc + acc`
     inside the inner loop body (one occurrence), confirming both loops are

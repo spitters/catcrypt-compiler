@@ -18,7 +18,7 @@ The re-source target is the just-landed width-parametric front leaf
 round op is pure `SXor`/`SAnd`/`SShr`/`SShl` + 32-bit `SAdd`, and `rotr32` is the
 disjoint-halves shift pair — all inside `lowerSExprW`'s covered alphabet.
 
-This module discharges the **load-bearing capability gate** for that flip: it
+This module discharges the **capability gate** for that flip: it
 expresses every SHA-256 round primitive (`Σ0`, `Σ1`, `Ch`, `Maj`, `σ0`, `σ1`),
 one full compression **round step** (`a' = T1+T2`, `e' = d+T1`), and one
 **message-schedule step** (`W[t] = σ1(W[t-2]) + W[t-7] + σ0(W[t-15]) + W[t-16]`)
@@ -29,7 +29,7 @@ as `.sword 32` `SExpr`s, and checks computationally that each
 2. lowers on to a `Com jasminDialect` through
    `DialectToJasminCom.cryptoDialectToJasminCom` (reaches the owned x86 backend
    at 32-bit `reg`s);
-3. denotes, with genuine 32-bit wrap, to the FIPS 180-4 §6.2 spec on samples
+3. denotes, with 32-bit wrap, to the FIPS 180-4 §6.2 spec on samples
    (including a 32-bit-wrap witness that a 64-bit add would miscompute);
 4. `rotr32(x,k) = (x >>> k) ^ (x <<< (32-k))` equals the native
    `BitVec.rotateRight k` for every SHA-256 rotate amount (`bv_decide`,
@@ -98,7 +98,7 @@ def sMaj (a b c : SExpr) : SExpr := .SXor (.SXor (.SAnd a b) (.SAnd a c)) (.SAnd
     `Com catCryptDialect Γ (.sword 32)` returning the result word, through
     `lowerSExprW 32`. -/
 def progOf {Γ : Ctx} (vm : VarMap Γ) (e : SExpr) : Option (Com catCryptDialect Γ (.sword 32)) :=
-  match lowerSExprW 32 vm 0 e with
+  match ScalarSExprWidth32Prototype.lowerSExprW 32 vm 0 e with
   | some r =>
       match r.1.vm.lookup r.2.1 with
       | some ⟨.sword 32, v⟩ => r.1.cont (Com.ret (toVIRVar v))
@@ -199,7 +199,7 @@ def specSched (w2 w7 w15 w16 : BitVec 32) : BitVec 32 :=
 
 /-! ## 4. `rotr32` faithfulness — universal over all inputs (`bv_decide`)
 
-The load-bearing identity: at width 32, `(x >>> k) ^ (x <<< (32-k))` equals the
+The identity: at width 32, `(x >>> k) ^ (x <<< (32-k))` equals the
 native `BitVec.rotateRight k` for every SHA-256 rotate amount, over all `2^32`
 inputs (SAT, not enumeration). These are the `sRotr` amounts
 `{2,13,22,6,11,25,7,18,17,19}`. -/
@@ -236,7 +236,7 @@ theorem sched_lowers :
     ((progOf schedVM sSchedStep).bind DialectToJasminCom.cryptoDialectToJasminCom).isSome := by
   native_decide
 
-/-! ## 6. `denote = spec` with genuine 32-bit wrap (the correctness gate)
+/-! ## 6. `denote = spec` with 32-bit wrap (the correctness gate)
 
 The front-emitted round/schedule words denote to the FIPS 180-4 §6.2 reference on
 samples. The first `sNewA` sample forces the 32-bit adds to WRAP (a 64-bit add

@@ -16,7 +16,7 @@ instruction set, so that the owned AT&T printer
 jasminc** on the path and **no dependency on the bespoke `Avx2YmmModel` /
 `Avx2YmmAsmPrinter`**.
 
-It is the dialect-native successor to `X86Backend/Avx2YmmNttOwnedEmit.lean`
+It is the dialect-native successor to `X86Backend/Avx2YmmNttEmit.lean`
 (which built a `List YInst` over `Avx2YmmModel.YInst`). The translation is
 faithful 1:1 — every instruction maps to the SAME rendered AT&T string — so the
 emitted artifact is byte-identical to the bespoke kernel's, and the bench driver
@@ -260,7 +260,7 @@ The vector-pair group's `dmont` core (the head of `pairGroup`) computes, for
 each even 32-bit lane, the signed Montgomery product `lo_e − qm_e` and, for the
 odd lanes (via `vmovshdup`), `lo_o − qm_o`. This pin runs the core ops through
 `YmmOp.denote` (over `BitVec 256`, NOT `runYBlock`/`YState`) and checks the
-signed even-lane product and the odd-dup broadcast — the load-bearing signed
+signed even-lane product and the odd-dup broadcast — the signed
 multiply the NTT relies on. It is the dialect-native restatement of the bespoke
 §6 `runYBlock` fragment pin, in the form already cross-checked at the end of
 `YmmDialectOps.lean`. -/

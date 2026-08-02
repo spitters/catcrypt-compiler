@@ -11,7 +11,7 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElf
 # Multi-limb (array-argument) ABI splice: a 4-limb add through the OWNED backend
 
 A **proof-of-concept** that the owned x86 ABI splice marshals *multi-limb / array*
-arguments — the keystone that makes wide bignum/curve kernels emit **callable**.
+arguments — the step that makes wide bignum/curve kernels emit **callable**.
 
 The scalar splice (`deriveInLoad`/`deriveOutStore` in `CompileComToElf`) handles
 only the `u64 → u64` case: each argument and result is a single machine word.
@@ -59,7 +59,7 @@ bytes `0..24`, array 1 (`b`) at bytes `32..56`.
 
 This is a **proof-of-concept for the ABI splice** (the wide marshalling):
 
-* **Verified (printer shape)**: `bignum4AddOwnedAsm_shape` — the emitted `.s`
+* **Verified (printer shape)**: `bignum4AddAsm_shape` — the emitted `.s`
   carries the SysV leaf label and no unhandled-op sentinel, so the multi-limb
   splice produces a well-formed object (no `UNHANDLED-OP` from the eight loads /
   four stores).
@@ -68,7 +68,7 @@ This is a **proof-of-concept for the ABI splice** (the wide marshalling):
   over four vectors (incl. per-limb wraparound and a distinct-per-limb vector
   that would expose any offset-map aliasing) — byte-identical, no jasminc.
 * **Trusted (thin)**: `renderLprogAtt` / `gas` / the SysV leaf ABI frame, exactly
-  as for the scalar `Sha512ChMajThirOwnedEmit` path.
+  as for the scalar `Sha512ChMajThirEmit` path.
 -/
 
 set_option autoImplicit false
@@ -133,7 +133,7 @@ def bignum4AddCom : Com jasminDialect addCtxt (.reg 64) :=
 `abiTyin` carries the 8-limb SysV input shape (eight `64`s). -/
 
 /-- The 4-limb-add owned `Lprog` (`fname` `"bignum4_add"`), wide ABI splice. -/
-def bignum4AddOwnedLprog : Lprog :=
+def bignum4AddLprog : Lprog :=
   Com.toLprogPhysAbi bignum4AddCom "bignum4_add"
     (fun _ => none)                         -- shiftImm oracle (unused)
     (fun _ => none)                         -- immSlotMap (no input immediates)
@@ -143,20 +143,20 @@ def bignum4AddOwnedLprog : Lprog :=
     [64, 64, 64, 64, 64, 64, 64, 64]        -- abiTyin (8 u64 input limbs)
 
 /-- The rendered owned-backend AT&T `.s` for `bignum4_add` (no jasminc). -/
-def bignum4AddOwnedAsm : String := renderLprogAtt bignum4AddOwnedLprog
+def bignum4AddAsm : String := renderLprogAtt bignum4AddLprog
 
 /-! ## 3. Shape check on the emitted asm -/
 
-/-- Substring test (mirrors `Sha512SigmaThirOwnedEmit.hasSub`). -/
+/-- Substring test (mirrors `Sha512SigmaThirEmit.hasSub`). -/
 def hasSub (s pat : String) : Bool := (s.splitOn pat).length > 1
 
 /-- The emitted `.s` carries the SysV leaf label and has no unhandled-op
     sentinel — the eight multi-limb input loads (`inp[0..7]`) and four output
     stores (`out[0..3]`) all lower through the splice. Shape only; value
     correctness is the external KAT. -/
-theorem bignum4AddOwnedAsm_shape :
-    hasSub bignum4AddOwnedAsm "bignum4_add"
-      ∧ hasSub bignum4AddOwnedAsm "UNHANDLED" = false := by native_decide
+theorem bignum4AddAsm_shape :
+    hasSub bignum4AddAsm "bignum4_add"
+      ∧ hasSub bignum4AddAsm "UNHANDLED" = false := by native_decide
 
 /-! ## 4. Emit driver -/
 
@@ -165,11 +165,18 @@ theorem bignum4AddOwnedAsm_shape :
 def emitMain : IO Unit := do
   let dir := "bench/owned_bignum4_add_arrabi/gen"
   IO.FS.createDirAll dir
-  IO.FS.writeFile (dir ++ "/bignum4_add_owned.s") bignum4AddOwnedAsm
+  IO.FS.writeFile (dir ++ "/bignum4_add_owned.s") bignum4AddAsm
   IO.println "WROTE bench/owned_bignum4_add_arrabi/gen/bignum4_add_owned.s"
   IO.println "  (4-limb limbwise add bignum4AddCom through Com[jasmin]"
   IO.println "   -> toLprogPhysAbi (deriveInLoadArr 8 8 / deriveOutStoreArr 4 8)"
   IO.println "   -> renderLprogAtt onto the OWNED x86 backend, NO jasminc;"
   IO.println "   wide MULTI-LIMB / array-argument ABI splice)"
+
+/-! ## Artifact generation at elaboration
+
+The render is written while this module elaborates, so `lake` produces it from
+this file and no separate driver or Makefile rule carries the dependency. -/
+
+#eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.Bignum4AddArrAbiDemo

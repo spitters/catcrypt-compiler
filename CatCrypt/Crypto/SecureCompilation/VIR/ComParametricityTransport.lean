@@ -8,6 +8,8 @@ import CatCrypt.Crypto.SecureCompilation.VIR.Core
 /-!
 # `Com`-parametricity fundamental lemma: per-op leaf transport lifts to whole-program transport
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 A dialect lowering pass `lower : Com d Γ t → Com d' (mapΓ) (mapTy t)` is
 *denotation-preserving* exactly when its whole-program transport square commutes:
 `(lower c).denote (mapVal V) = transTy (c.denote V)`. This file proves the
@@ -151,7 +153,7 @@ def VarTransports (L : LoweringData d d') (transTy : TransTy L) (mapVal : MapVal
     `BinOpRealization.commutes`): `lowerExpr` is a homomorphism along
     `transTy`/`mapVal`.
 
-    This is the **only genuinely op-specific obligation** a pass must discharge —
+    This is the **only op-specific obligation** a pass must discharge —
     one square per instruction leaf. The fundamental lemma lifts it to the whole
     program. To make binding thread, the coherence additionally fixes how the
     *extended* mapped valuation is formed: extending the mapped valuation by the
@@ -200,7 +202,7 @@ def ComLowerTransports (L : LoweringData d d') (transTy : TransTy L) (mapVal : M
       body, glued by `MapValExtends` threading the bound value through
       `Valuation.extend`.
 
-    This is the Phase-1 keystone: a pass proves only its instruction leaves and
+    This is the Phase-1 result: a pass proves only its instruction leaves and
     gets whole-program preservation for free. It is generic over both dialects
     and the lowering. -/
 theorem fundamental
@@ -284,7 +286,7 @@ def idMapVal : MapVal idLowering := fun V => V
 theorem idVarTransports : VarTransports idLowering idTransTy idMapVal :=
   fun _ _ => rfl
 
-/-- **Per-op leaf (validation) — the only genuinely op-specific obligation.**
+/-- **Per-op leaf (validation) — the only op-specific obligation.**
     Each lowered expression transports. Here the lowering is the identity, so the
     square is `rfl`. A real pass discharges this per instruction; `fundamental`
     does the rest. -/
@@ -318,7 +320,7 @@ def sampleProg : Com toyDialect [()] () :=
 
 /-- **The whole-program square on a concrete multi-binding program, popping out
     of the per-op leaves.** Instantiation of `idComLowerTransports` at
-    `sampleProg`: the identity lowering's whole-`Com` preservation for a genuine
+    `sampleProg`: the identity lowering's whole-`Com` preservation for a
     two-binding program is obtained with **no** program-specific induction — only
     the three one-line leaf lemmas fed to `fundamental`. -/
 theorem sampleProg_transports :

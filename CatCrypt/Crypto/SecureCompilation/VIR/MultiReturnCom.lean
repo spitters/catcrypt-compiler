@@ -8,6 +8,8 @@ import CatCrypt.Crypto.SecureCompilation.VIR.Core
 /-!
 # Multi-return VIR (D2 skeleton)
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 `Com d Γ t` in `Core.lean` is single-return: a program denotes to one value of
 type `⟦t⟧`. That single-return shape forces shared work across multiple
 "final" outputs to land in *separate* `func.func` boundaries downstream, which

@@ -53,7 +53,7 @@ and the trace length `N` are specialised at Lean time (typical configs are
 Same as `FalconReflect.lean`, `MemAbiReflect.lean`, and `Plonky3Reflect.lean`
 (Merkle layer): `reifyLowCT%` does not consult the `LowCTPattern` registry,
 so we hand-build the `LowCT` body the reifier *would* produce. The rest of
-the front (`translate → cprogToJasminCom → emitAbiOrchRegPtr`) is unmodified.
+the front (`translate → cryptoDialectToJasminCom → emitAbiOrchRegPtr`) is unmodified.
 
 ## RFor and unrolling
 
@@ -291,7 +291,7 @@ Each step becomes one `RCall` with a fresh destination of the appropriate
 `TBytes` width. The whole body is one `RSeq` chain, four `RCall`s deep.
 
 `reifyLowCT%` does not consult the registry, so we hand-build the body.
-Downstream (`translate → cprogToJasminCom → emitAbiOrchRegPtr`) is
+Downstream (`translate → cryptoDialectToJasminCom → emitAbiOrchRegPtr`) is
 unmodified. -/
 
 /-- TowerType for a BabyBear vector of length `M` (`8·M` bytes). -/

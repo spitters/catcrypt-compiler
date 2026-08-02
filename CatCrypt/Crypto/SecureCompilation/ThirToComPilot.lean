@@ -8,6 +8,8 @@ import CatCrypt.Crypto.SecureCompilation.VIR.Core
 /-!
 # Pilot: a verified THIR → `Com` lowering ("Aeneas-for-compilation", #568)
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 This module is a **design + pilot** for a *direct* lowering from a minimal
 subset of Rust's Typed-HIR (THIR — the typed AST that hax/charon expose) into
 CatCrypt's intrinsically-typed SSA IR `Com` (`VIR/Core.lean`), with a
@@ -55,7 +57,7 @@ and ties the two denotations.
   environment and the `Com` de-Bruijn `Valuation`. Concrete pilot functions
   (`pilotAddMul`, `pilotForSum`) instantiate it and evaluate by `decide`.
 
-## Honest scope (pilot vs a general front)
+## Scope (pilot vs a general front)
 
 The pilot is **not** a general THIR front. A general front additionally needs:
 

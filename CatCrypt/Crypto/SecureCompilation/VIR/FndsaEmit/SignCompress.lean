@@ -260,30 +260,22 @@ def signCompressJazz : String := emitSignCompressJazz "fndsa_512_sign_compress"
 
 /-! ### Sanity checks on the compression emit -/
 
-/-- The compression emit has the expected ABI. -/
-theorem sign_compress_export_sig :
-    strContains signCompressJazz
-      "export fn fndsa_512_sign_compress(reg ptr u8[1280] out, reg const ptr u16[512] s2)"
-      = true := by native_decide
+/- The compression emit has the expected ABI. -/
+#guard (strContains signCompressJazz "export fn fndsa_512_sign_compress(reg ptr u8[1280] out, reg const ptr u16[512] s2)")
 
-/-- The emit renders the sign-bit push, low-7 push, and unary tail (as
+/- The emit renders the sign-bit push, low-7 push, and unary tail (as
     `inline fn` subroutine calls — the pseudo-mnemonics were replaced
     with jasmin-valid calls in the surface-closure pass). -/
-theorem sign_compress_has_all_pushes :
-    strContains signCompressJazz "comp_push_sign(" = true
-      ∧ strContains signCompressJazz "comp_push_low7(" = true
-      ∧ strContains signCompressJazz "comp_push_unary(" = true := by
-  native_decide
+#guard (strContains signCompressJazz "comp_push_sign(")
+    && (strContains signCompressJazz "comp_push_low7(")
+    && (strContains signCompressJazz "comp_push_unary(")
 
-/-- The emit renders exactly 512 compression steps (one per coefficient). -/
-theorem sign_compress_step_count :
-    strContains signCompressJazz "// comp step 0  (sign | low7 | unary tail)" = true
-      ∧ strContains signCompressJazz "// comp step 511  (sign | low7 | unary tail)" = true
-      ∧ strContains signCompressJazz "// comp step 512  (sign | low7 | unary tail)" = false := by
-  native_decide
+/- The emit renders exactly 512 compression steps (one per coefficient). -/
+#guard (strContains signCompressJazz "// comp step 0  (sign | low7 | unary tail)")
+    && (strContains signCompressJazz "// comp step 511  (sign | low7 | unary tail)")
+    && !(strContains signCompressJazz "// comp step 512  (sign | low7 | unary tail)")
 
-/-- The emit renders the final partial-byte flush. -/
-theorem sign_compress_has_flush :
-    strContains signCompressJazz "comp_flush(" = true := by native_decide
+/- The emit renders the final partial-byte flush. -/
+#guard (strContains signCompressJazz "comp_flush(")
 
 end CatCrypt.Crypto.SecureCompilation.VIR.FndsaEmit.SignCompress

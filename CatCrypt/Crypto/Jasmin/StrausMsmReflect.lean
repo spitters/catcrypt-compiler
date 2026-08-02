@@ -20,7 +20,7 @@ each) followed by a point-add. For an `m`-term MSM that is `m·256` doublings.
 
 This file is the reflect surface for the **windowed / bucketed (Straus)** MSM,
 the algorithm `dalek-bulletproofs` uses (and the one AUCurves verifies in
-`~/Claude/BLS/AUCurves/src/Bedrock/End2End/Ed25519/Straus2MSMBody.v`). Instead
+`src/Bedrock/End2End/Ed25519/Straus2MSMBody.v`). Instead
 of one ladder per term it **shares the doublings across all terms**: for a
 window width `w = 4` and 256-bit scalars there are `64` windows; each window
 does `w = 4` doublings (shared across every term) and then, **per term**, one
@@ -28,7 +28,7 @@ CT table lookup of `digit·P` followed by one point-add into the accumulator.
 Cost for `m` terms: `256` shared doublings `+ 64·m` adds `+ 15·m` table-setup
 adds, versus `m·256` doublings for the per-term ladder.
 
-## Constant-time discipline (the load-bearing property)
+## Constant-time discipline (the central property)
 
 Pippenger / Straus reads a **bucket index from secret scalar window bits**. A
 naive table read `T[digit]` is a secret-index memory access — a CT violation.
@@ -180,7 +180,7 @@ def strausIter (windows : Nat) (scalarVar : String)
 
 /-! ## 7. The full single-base windowed scalar-mul body
 
-`Q := identity; for i in 0..windows { strausIter }`. A genuine multi-base
+`Q := identity; for i in 0..windows { strausIter }`. A multi-base
 Straus interleaves several `(scalar, table)` pairs inside the same window loop
 (sharing the doublings across **all** bases); this surface gives the
 single-base CT skeleton, and the multi-base interleave is the same body with
@@ -192,7 +192,7 @@ def strausScalarMulBody (windows : Nat) (scalarVar : String)
     (Q sel : Located) (T : Nat → Located) : LowCT :=
   .RFor "i" windows (strausIter windows scalarVar Q sel T)
 
-/-! ## 8. Constant-time theorem (the load-bearing deliverable) -/
+/-! ## 8. Constant-time theorem -/
 
 /-- The CT table-select is constant-time: it is a chain of `RSelect` (CMOV)
     and `RScalarSetExpr` (pure-`SExpr`) constructors, all CT-admitted. The
@@ -241,7 +241,7 @@ theorem strausScalarMulBody_isCT' (windows : Nat) (scalarVar : String)
 
 private def Tnames (i : Nat) : Located := loc s!"T{i}" edPointTowerType
 
-/-- The body genuinely uses the shared point-double leaf: if `ed_point_double`
+/-- The body uses the shared point-double leaf: if `ed_point_double`
     is NOT on the CT whitelist (only `ed_point_add` is), the body is rejected —
     confirming the shared per-window doubling (the operation that distinguishes
     Straus from the per-term ladder) is actually present, not optimised away. -/

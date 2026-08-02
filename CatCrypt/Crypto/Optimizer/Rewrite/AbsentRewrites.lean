@@ -19,8 +19,8 @@ denotation-preserving identity over its natural carrier.
 2. **`fromMont ∘ toMont = id`** — Montgomery-domain canonicalization. Stated over
    the abstract field `ZMod p` and PARAMETRIC in the Montgomery factor `R` (only
    `R · R⁻¹ = 1` is used), so the wide literal `R = 2^(64·k) mod p` is NEVER
-   materialized — the Trocq/relational-transport discipline ([[feedback-slow-proofs-and-probe-first]],
-   `RelationalFrontBls377Mul`): prove on the cheap abstract structure, never `cbv`
+   materialized — the Trocq/relational-transport discipline
+   (`RelationalFrontBls377Mul`): prove on the cheap abstract structure, never `cbv`
    over the concrete Montgomery constant.
 3. **`reverse ∘ reverse = id`** — redundant bit-reversal elimination, the core of
    the "NTT without bit-reversal" rewrite (two consecutive bit-reversal stages of

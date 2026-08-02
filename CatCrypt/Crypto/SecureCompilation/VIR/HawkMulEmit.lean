@@ -26,7 +26,7 @@ ring-shape kernel: the negacyclic sibling of `Ntruhrss701MulEmit`.
       --(cryptoDialectToJasminCom)-->  hawkMulFrontCom : Com jasminDialect inCtxtF r64
   ```
 
-  `HAWK/HawkMulOwnedEmit.lean` renders it to owned AT&T `.s` (symbol
+  `HAWK/HawkMulEmit.lean` renders it to owned AT&T `.s` (symbol
   `hawk_mul`, no jasminc); `bench/hawk_compare/hawk_mul_kat.c` byte-KATs it
   against the independent negacyclic-convolution-mod-1024 reference.
 
@@ -34,7 +34,7 @@ ring-shape kernel: the negacyclic sibling of `Ntruhrss701MulEmit`.
   **universal** denotation tie lives in `HawkMulComDenoteTie.lean`:
   `hawkMulCom.denote (encode a b) = embZ (hawkNegacyclicMul a b ⟨N-1⟩)` for
   **every** lane pair, per-coefficient for every `k < N`. It is verification
-  content only — it no longer renders any deployed artifact. Both `Com`s
+  content only — it renders no deployed artifact. Both `Com`s
   compute the same mathematical spec: the model ties to `hawkNegacyclicMul`
   universally; the front emit's `hawk_denote_spec` gates it against the same
   independent negacyclic `% 1024` reference on edge + random vectors, and the
@@ -343,7 +343,7 @@ abbrev inCtxtF : Ctxt jasminDialect := List.replicate 33 r64
 
 /-- The **deployed** HAWK-256 negacyclic ring-multiply tile — FRONT-GENERATED
     (`translateDialectControl` + `cryptoDialectToJasminCom`), not hand-built.
-    Rendered to owned `.s` by `HAWK/HawkMulOwnedEmit.lean` under the `hawk_mul`
+    Rendered to owned `.s` by `HAWK/HawkMulEmit.lean` under the `hawk_mul`
     symbol. -/
 def hawkMulFrontCom : Com jasminDialect inCtxtF r64 :=
   hawkLoweredOpt.get hawkLowered_isSome

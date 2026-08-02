@@ -393,4 +393,11 @@ def emitP384 : IO Unit := do
     "bench/p384_fieldmul_compare/gen_com/p384_mul_x86_from_lean.s" p384MulAsm
   IO.println "wrote p384_mul_x86_from_lean.s (derived Solinas reduce, #409)"
 
+/-! ## Artifact generation at elaboration
+
+The render is written while this module elaborates, so `lake` produces it from
+this file and no separate driver or Makefile rule carries the dependency. -/
+
+#eval emitP384
+
 end CatCrypt.Crypto.SecureCompilation.X86Backend.P384FieldKernel

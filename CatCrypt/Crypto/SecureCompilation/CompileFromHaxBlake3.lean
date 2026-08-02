@@ -34,7 +34,7 @@ This is the ChaCha quarter-round skeleton with the two message-word injections
 the literals `16, 12, 8, 7`, so — unlike ChaCha, whose *left*-rotates the front
 models as `rotate_right(x, 32-n)` — the BLAKE3 source's `rotate_right` counts are
 the rotate counts verbatim. The matching closed-form spec is `blake3GSpec` here
-(the BLAKE3-reference `g`, matching `BLAKE3.CompressOwnedEmit.gSpec`).
+(the BLAKE3-reference `g`, matching `BLAKE3.CompressEmit.gSpec`).
 
 ## Method (mirrors `CompileFromHaxChaCha.qr{A,B,C,D}_compiles`)
 
@@ -72,7 +72,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect (jasminDialect)
 /-! ## The BLAKE3 `G` closed-form spec (on `BitVec 32`)
 
 A direct transcription of the BLAKE3 reference `g`, matching
-`BLAKE3.CompressOwnedEmit.gSpec` (restated here as a tuple of the four output
+`BLAKE3.CompressEmit.gSpec` (restated here as a tuple of the four output
 words, to keep this leaf module self-contained). -/
 
 /-- The BLAKE3 reference `g` output words `(a', b', c', d')` on state words

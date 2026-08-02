@@ -44,7 +44,7 @@ in the translation-validation discipline of our #541 egraph validator.
    renaming** `ρ : name → physreg` to a block commutes with `runBlock` — the renamed
    block computes, at each `ρ n`, exactly what the original computed at `n`. Proved
    once over an abstract `RegMachine` interface (`get`/`set` + their two laws), by
-   induction with no new custom axioms. The keystone for the register-resident path.
+   induction with no new custom axioms. The soundness of the register-resident path.
 3. **The spill-path checker** (`spillStore_establishes`, `evalReload_noop`,
    `reload_sandwich`): on a memory-extended state (`MemMachine`: `get`/`load`/`setReg`
    /`store` + four laws), the spill store establishes the cell↦reg invariant
@@ -52,6 +52,12 @@ in the translation-validation discipline of our #541 egraph validator.
    roundtrip is denotation-preserving.
 4. **The rewrite-length decomposition** (`rewriteBlock_length`): the RA-rewritten
    block is one machine instruction per op plus exactly the inserted spill traffic.
+5. **Byte separation of frame slots** (`SepAt`, `SlotsSeparated`,
+   `linearScan_slotsSeparated`): a spilled value of byte width `width` occupies
+   `[off, off + width)`, two slots are usable independently when those ranges are
+   disjoint, and the linear scan's frame stride discharges that obligation when it is at
+   least the value width. `Optimizer.ByteMemMachine` is the memory interface whose
+   non-interference law consumes it.
 
 §5–§6 exhibit that the x86 / A64 instances **fit** the typeclass (the generic lemmas,
 instantiated, give back what `SpillingRegAlloc`/`ArmRegAlloc` proved), and §7 is the
@@ -160,49 +166,58 @@ inductive Slot where
 def allocPool [MachineModel I] (pinned scratch : List String) : List String :=
   (physRegs (I := I)).filter (fun r => ¬ pinned.contains r ∧ ¬ scratch.contains r)
 
+/-- The scan step of `linearScan`: `active` is the `(name, reg, lastUse)` map, `freeRegs`
+    the unassigned pool, `nextSpill` the next free frame offset, `acc` the decisions so
+    far, and the final argument the remaining live ranges in `defIdx` order. Consecutive
+    spill offsets advance by `stride`. -/
+def linearScanGo (stride : Int) (active : List (String × String × Nat))
+    (freeRegs : List String) (nextSpill : Int) (acc : List (String × Slot)) :
+    List LiveRange → List (String × Slot)
+  | [] => acc
+  | lr :: rest =>
+    let (live, expired) := active.partition (fun a => lr.defIdx ≤ a.2.2)
+    let freed := freeRegs ++ expired.map (fun a => a.2.1)
+    match freed with
+    | reg :: more =>
+      linearScanGo stride ((lr.name, reg, lr.lastUse) :: live) more nextSpill
+         ((lr.name, .resident reg) :: acc) rest
+    | [] =>
+      let farthestActive := live.foldl
+        (fun (best : Option (String × String × Nat)) a =>
+          match best with
+          | none => some a
+          | some b => if a.2.2 > b.2.2 then some a else best) none
+      match farthestActive with
+      | some a =>
+        if a.2.2 > lr.lastUse then
+          let live' := live.filter (fun x => x.1 ≠ a.1)
+          linearScanGo stride ((lr.name, a.2.1, lr.lastUse) :: live') [] (nextSpill + stride)
+             ((lr.name, .resident a.2.1) :: (a.1, .spilled nextSpill) :: acc) rest
+        else
+          linearScanGo stride live [] (nextSpill + stride)
+            ((lr.name, .spilled nextSpill) :: acc) rest
+      | none =>
+        linearScanGo stride live [] (nextSpill + stride)
+          ((lr.name, .spilled nextSpill) :: acc) rest
+
 /-- **The generic linear-scan allocator** (farthest-end eviction). Walk the live
     ranges in `defIdx` order keeping an active map `(name, reg, lastUse)` and the free
     pool; on a new def, reuse a free / expired register if one is available, else spill
     the farthest-ending active interval (or the newcomer) to a fresh frame cell.
-    `frameBase` byte-offsets advance sequentially so two live spills never alias. This
-    is the *single* source for `SpillingRegAlloc.linearScan` and `ArmRegAlloc.linearScan`
-    — they differ only in the pool the `MachineModel` supplies. -/
-def linearScan (pool : List String) (frameBase : Int) (lrs : List LiveRange) :
-    List (String × Slot) :=
-  let rec go (active : List (String × String × Nat)) (freeRegs : List String)
-      (nextSpill : Int) (acc : List (String × Slot)) :
-      List LiveRange → List (String × Slot)
-    | [] => acc
-    | lr :: rest =>
-      let (live, expired) := active.partition (fun a => lr.defIdx ≤ a.2.2)
-      let freed := freeRegs ++ expired.map (fun a => a.2.1)
-      match freed with
-      | reg :: more =>
-        go ((lr.name, reg, lr.lastUse) :: live) more nextSpill
-           ((lr.name, .resident reg) :: acc) rest
-      | [] =>
-        let farthestActive := live.foldl
-          (fun (best : Option (String × String × Nat)) a =>
-            match best with
-            | none => some a
-            | some b => if a.2.2 > b.2.2 then some a else best) none
-        match farthestActive with
-        | some a =>
-          if a.2.2 > lr.lastUse then
-            let live' := live.filter (fun x => x.1 ≠ a.1)
-            go ((lr.name, a.2.1, lr.lastUse) :: live') [] (nextSpill + 8)
-               ((lr.name, .resident a.2.1) :: (a.1, .spilled nextSpill) :: acc) rest
-          else
-            go live [] (nextSpill + 8) ((lr.name, .spilled nextSpill) :: acc) rest
-        | none =>
-          go live [] (nextSpill + 8) ((lr.name, .spilled nextSpill) :: acc) rest
-  go [] pool frameBase [] (lrs.mergeSort (fun a b => a.defIdx ≤ b.defIdx))
+    Consecutive spill offsets advance from `frameBase` by `stride`, the byte width of one
+    allocated value; the default `8` is the general-purpose word. This is the *single*
+    source for `SpillingRegAlloc.linearScan` and `ArmRegAlloc.linearScan` — they differ
+    only in the pool the `MachineModel` supplies. -/
+def linearScan (pool : List String) (frameBase : Int) (lrs : List LiveRange)
+    (stride : Int := 8) : List (String × Slot) :=
+  linearScanGo stride [] pool frameBase []
+    (lrs.mergeSort (fun a b => a.defIdx ≤ b.defIdx))
 
 /-- The spill decisions for a block: `name ↦ Slot` by linear scan over its live
-    ranges. -/
+    ranges, with `stride`-byte frame cells. -/
 def spillAlloc [MachineModel I] (pinned scratch : List String) (frameBase : Int)
-    (block : List I) : List (String × Slot) :=
-  linearScan (allocPool (I := I) pinned scratch) frameBase (liveRanges block)
+    (block : List I) (stride : Int := 8) : List (String × Slot) :=
+  linearScan (allocPool (I := I) pinned scratch) frameBase (liveRanges block) stride
 
 /-- Count of spilled names. -/
 def spillCount (decisions : List (String × Slot)) : Nat :=
@@ -276,8 +291,8 @@ class RegMachine (I : Type) (S : Type) extends MachineModel I where
   /-- A single step applies every `(name, value)` pair of `writes s i`, left-to-right
       (a left fold of `set`), **as observed on the register file**: reading any register
       after the step equals reading it after the fold. This register-observable form (not
-      whole-state equality) is what register-allocation soundness needs — the keystone
-      only ever inspects `get` — and it admits ops with *non-register* side effects, like
+      whole-state equality) is what register-allocation soundness needs — the resident-path
+      result only ever inspects `get` — and it admits ops with *non-register* side effects, like
       x86 `adcx`/`adox` writing a flag alongside their destination. For a single-output
       op the fold is one `set`; for `mulx` it is two. -/
   evalInst_eq_set : ∀ (s : S) (i : I) (r : String),
@@ -432,7 +447,7 @@ theorem rmRun_cons (I : Type) [RegMachine I S] (s : S) (i : I) (is : List I) :
 theorem renameBlock_cons [RegMachine I S] (ρ : String → String) (i : I) (is : List I) :
     renameBlock (S := S) ρ (i :: is) = rmRename S ρ i :: renameBlock (S := S) ρ is := rfl
 
-/-- **Resident-path soundness (the generic keystone).** For an injective renaming `ρ`
+/-- **Resident-path soundness, generically.** For an injective renaming `ρ`
     that maps discard registers to discard registers and whose image avoids the discard
     set on every written name, running the renamed block preserves `Reindexed`: the
     renamed block computes at `ρ n` exactly what the original computes at `n`. The single
@@ -588,5 +603,143 @@ theorem rewriteBlock_length [MachineModel I] (decisions : List (String × Slot))
       rewriteInstr_eq, List.length_append, List.length_cons,
       List.length_append, List.length_append, List.length_cons]
     omega
+
+/-! ## 6. Byte separation of frame slots
+
+`Slot.spilled off` records a **byte** offset, and one spilled value occupies the bytes
+`[off, off + width)` where `width` is the byte width of the allocated value. Two spill
+slots are usable independently exactly when those byte ranges are disjoint — `SepAt`.
+Distinctness of the offsets is strictly weaker: at `width = 32` the offsets `0` and `8`
+are distinct and their ranges overlap.
+
+`SlotsSeparated width decisions` is the whole-allocation form of the condition, and
+`linearScan_slotsSeparated` discharges it from the allocator's own frame stride: at
+`width ≤ stride` the offsets `linearScan` assigns are pairwise separated. -/
+
+/-- `SepAt width a b`: the `width`-byte accesses at byte offsets `a` and `b` cover
+    disjoint byte ranges — `[a, a + width)` ends at or before `b`, or the other way
+    round. -/
+def SepAt (width : Nat) (a b : Int) : Prop := a + width ≤ b ∨ b + width ≤ a
+
+instance instDecidableSepAt (width : Nat) (a b : Int) : Decidable (SepAt width a b) := by
+  unfold SepAt; infer_instance
+
+/-- Separation is symmetric. -/
+theorem SepAt.symm {width : Nat} {a b : Int} (h : SepAt width a b) : SepAt width b a := Or.symm h
+
+/-- Separated offsets are distinct, at a positive width. The converse fails: distinct
+    offsets closer together than `width` overlap. -/
+theorem SepAt.ne {width : Nat} {a b : Int} (hw : 0 < width) (h : SepAt width a b) : a ≠ b := by
+  rcases h with h | h <;> omega
+
+/-- **Distinct offsets on a `width`-aligned grid are separated.** The cell-indexed frame
+    of `MemMachine` — one cell per value, distinct cells disjoint by construction — is the
+    byte-addressed frame restricted to the multiples of `width`, and this is why: on that
+    grid, offset distinctness already gives byte-range disjointness. -/
+theorem sepAt_of_aligned (width : Nat) (i j : Int) (h : i ≠ j) :
+    SepAt width (width * i) (width * j) := by
+  have hw : (0 : Int) ≤ width := Int.natCast_nonneg width
+  rcases Int.lt_or_lt_of_ne h with hlt | hgt
+  · exact Or.inl (by simpa [Int.mul_add] using Int.mul_le_mul_of_nonneg_left (a := i + 1) hlt hw)
+  · exact Or.inr (by simpa [Int.mul_add] using Int.mul_le_mul_of_nonneg_left (a := j + 1) hgt hw)
+
+/-- Any two members of a pairwise-separated offset list are separated (separation is
+    symmetric, so the list order carries no information). -/
+theorem sepAt_of_pairwise_mem {width : Nat} {l : List Int} (hl : l.Pairwise (SepAt width))
+    {a b : Int} (ha : a ∈ l) (hb : b ∈ l) (hab : a ≠ b) : SepAt width a b := by
+  induction l with
+  | nil => cases ha
+  | cons x xs ih =>
+    rcases List.pairwise_cons.mp hl with ⟨hx, hxs⟩
+    rcases List.mem_cons.mp ha with rfl | ha'
+    · rcases List.mem_cons.mp hb with rfl | hb'
+      · exact absurd rfl hab
+      · exact hx b hb'
+    · rcases List.mem_cons.mp hb with rfl | hb'
+      · exact (hx a ha').symm
+      · exact ih hxs ha' hb'
+
+/-- The byte offsets a decision list spills to. -/
+def slotOffsets (decisions : List (String × Slot)) : List Int :=
+  decisions.filterMap (fun d => match d.2 with | .spilled off => some off | _ => none)
+
+/-- **The whole-allocation separation obligation.** Every two frame slots of `decisions`
+    cover disjoint byte ranges at value width `width`. This is the condition a spill/reload
+    argument over a byte-addressed frame needs, and the condition
+    `(slotOffsets decisions).Nodup` is the weaker distinctness form of. -/
+def SlotsSeparated (width : Nat) (decisions : List (String × Slot)) : Prop :=
+  (slotOffsets decisions).Pairwise (SepAt width)
+
+instance instDecidableSlotsSeparated (width : Nat) (decisions : List (String × Slot)) :
+    Decidable (SlotsSeparated width decisions) := by
+  unfold SlotsSeparated; infer_instance
+
+/-- **Separation refines distinctness**: separated slots have distinct offsets, so
+    `SlotsSeparated width` implies the `Nodup` condition, at a positive width. -/
+theorem slotOffsets_nodup_of_slotsSeparated {width : Nat} {decisions : List (String × Slot)}
+    (hw : 0 < width) (h : SlotsSeparated width decisions) : (slotOffsets decisions).Nodup :=
+  h.imp (SepAt.ne hw)
+
+/-- The scan invariant: an offset already emitted lies at least `stride` below the next
+    free offset, so every new slot is separated from all earlier ones. -/
+theorem linearScanGo_pairwise (width : Nat) (stride : Int) (hw : (width : Int) ≤ stride) :
+    ∀ (lrs : List LiveRange) (active : List (String × String × Nat)) (freeRegs : List String)
+      (nextSpill : Int) (acc : List (String × Slot)),
+      (∀ o ∈ slotOffsets acc, o + stride ≤ nextSpill) →
+      (slotOffsets acc).Pairwise (SepAt width) →
+      (slotOffsets (linearScanGo stride active freeRegs nextSpill acc lrs)).Pairwise
+        (SepAt width) := by
+  have hw0 : (0 : Int) ≤ (width : Int) := Int.natCast_nonneg _
+  intro lrs
+  induction lrs with
+  | nil => intro active freeRegs nextSpill acc _ hp; exact hp
+  | cons lr rest ih =>
+    intro active freeRegs nextSpill acc hacc hp
+    have hres : ∀ (l : List (String × Slot)), slotOffsets l = slotOffsets acc →
+        ((∀ o ∈ slotOffsets l, o + stride ≤ nextSpill)
+          ∧ (slotOffsets l).Pairwise (SepAt width)) := by
+      intro l hl
+      rw [hl]; exact ⟨hacc, hp⟩
+    have hspill : ∀ (l : List (String × Slot)),
+        slotOffsets l = nextSpill :: slotOffsets acc →
+        ((∀ o ∈ slotOffsets l, o + stride ≤ nextSpill + stride)
+          ∧ (slotOffsets l).Pairwise (SepAt width)) := by
+      intro l hl
+      rw [hl]
+      refine ⟨?_, ?_⟩
+      · intro o ho
+        rcases List.mem_cons.mp ho with h | h
+        · omega
+        · have := hacc o h; omega
+      · refine List.pairwise_cons.mpr ⟨?_, hp⟩
+        intro b hb
+        have := hacc b hb
+        exact Or.inr (by omega)
+    simp only [linearScanGo]
+    split
+    · exact ih _ _ nextSpill _ (hres _ rfl).1 (hres _ rfl).2
+    · split
+      · split
+        · exact ih _ _ _ _ (hspill _ rfl).1 (hspill _ rfl).2
+        · exact ih _ _ _ _ (hspill _ rfl).1 (hspill _ rfl).2
+      · exact ih _ _ _ _ (hspill _ rfl).1 (hspill _ rfl).2
+
+/-- **The linear scan's frame stride discharges the separation obligation.** When the
+    frame stride is at least the byte width of an allocated value, the slots `linearScan`
+    assigns cover pairwise-disjoint byte ranges. At `width > stride` the conclusion is not
+    available — a `%ymm` value (`width = 32`) spilled by the default 8-byte scan has
+    overlapping slots, and this is the theorem that says so by failing to apply. -/
+theorem linearScan_slotsSeparated (width : Nat) (pool : List String) (frameBase : Int)
+    (lrs : List LiveRange) (stride : Int) (hw : (width : Int) ≤ stride) :
+    SlotsSeparated width (linearScan pool frameBase lrs stride) :=
+  linearScanGo_pairwise width stride hw _ [] pool frameBase [] (by simp [slotOffsets])
+    (by simp [slotOffsets])
+
+/-- The same for `spillAlloc`: a block's spill decisions are separated at any value width
+    the frame stride covers. -/
+theorem spillAlloc_slotsSeparated [MachineModel I] (width : Nat) (pinned scratch : List String)
+    (frameBase : Int) (block : List I) (stride : Int) (hw : (width : Int) ≤ stride) :
+    SlotsSeparated width (spillAlloc (I := I) pinned scratch frameBase block stride) :=
+  linearScan_slotsSeparated width _ frameBase _ stride hw
 
 end CatCrypt.Crypto.Optimizer.GenericRegAlloc

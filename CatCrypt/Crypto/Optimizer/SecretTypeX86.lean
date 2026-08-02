@@ -23,7 +23,7 @@ This file adds the **owned-x86 backend pass** (#555-C): the
 store-to-load-forwarding / mem2reg block rewrite `optimizeX86Block`
 (`X86ComPipeline`), which operates on the owned `List (JInstr 64)` machine-IR
 the field/bignum leaves emit. Like the egraph pass it is *not* a pure reorder,
-but unlike it the relevant guarantee is a genuine **preservation** rather than
+but unlike it the relevant guarantee is a **preservation** rather than
 mere monotonicity: forwarding a store→load copies a value to where it was
 already flowing, so a cell's taint is reproduced exactly at the register that
 already holds it.
@@ -60,13 +60,14 @@ says the cell carries the **same taint** as the register that holds it:
 register's), so the forward is taint-**preserving** — and threading the
 rewritten step re-establishes the invariant.
 
-The headline `optimizeX86Block_blockMaxTaintX_le` (≤, the declassification form
-shared with the egraph and the `#555` driver's gated nature) states the pass
-never **raises** the block taint summary; the sharper
-`storeToLoadForward_blockMaxTaintX_eq` proves it is in fact preserved
-**exactly** from the empty (vacuously valid) held env — the seed asked for. So
-the compositional-CT invariant now extends across the owned-x86 driver pass
-too.
+`storeToLoadForward_blockMaxTaintX_eq` proves the forwarding stage preserves the
+summary **exactly** from the empty (vacuously valid) held env. The driver's other
+three stages — the identity-mov drop, redundant spill-reload elimination, and the
+guarded MUL→MULX fusion — each delete an instruction whose contribution to the
+running join is dropped while the threaded envs stay fixed, so each is stated in
+the `⊑ₛ` form. The headline `optimizeX86Block_blockMaxTaintX_le` (≤, the
+declassification form shared with the egraph and the `#555` driver's gated
+nature) chains the four: the driver never **raises** the block taint summary.
 
 All goals closed.
 -/
@@ -78,6 +79,11 @@ namespace CatCrypt.Crypto.Optimizer.SecretTypeX86
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.Optimizer.SecretType (SecretLevel)
 open CatCrypt.Crypto.Optimizer.StoreToLoadForward
+open CatCrypt.Crypto.Optimizer.GraphColoringCoalesce (isIdMov dropIdMovs)
+open CatCrypt.Crypto.Optimizer.RedundantReloadElim
+  (consDrop dropReloads defaultSpillBases dropReloads_cons eq_of_isRedundantReload)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrFlagLiveness
+  (fuseMulxGuarded isRedundantLowMul_some isWideningMul_some)
 
 open CatCrypt.Crypto.Optimizer.SecretType.SecretLevel (join leq)
 
@@ -465,38 +471,213 @@ theorem storeToLoadForward_blockMaxTaintX_eq (R : RegTaint) (C : CellTaint)
     blockMaxTaintX R C (storeToLoadForward block) = blockMaxTaintX R C block :=
   forwardAux_blockMaxTaintX_eq (h := []) (by intro e he; simp at he) block
 
-/-! ## 6. The driver form and the headline `≤` (declassification) statement
+/-! ## 6. The two shrinking peepholes of the driver pipeline
+
+`optimizeX86Block` runs store-to-load forwarding, then the identity-mov drop,
+then the flag-liveness-guarded MUL→MULX fusion. Forwarding preserves the summary
+exactly (§5). The two shrinking stages delete an instruction each and are
+therefore stated in the `⊑ₛ` (declassification) form: deleting an instruction can
+only remove a contribution from the running join, never add one. In both cases
+the deletion leaves the threaded register/cell taint envs unchanged, so the
+tail's summary is computed against the same envs on both sides. -/
+
+/-- Both branches of a join sit below a common upper bound. -/
+theorem join_leq {x y z : SecretLevel} (hx : x ⊑ₛ z) (hy : y ⊑ₛ z) : (x ⊔ₛ y) ⊑ₛ z := by
+  cases x <;> cases y <;> cases z <;> simp_all [SecretLevel.leq, SecretLevel.join]
+
+/-- The join is monotone in its right argument. -/
+theorem join_mono_right {x y y' : SecretLevel} (h : y' ⊑ₛ y) : (x ⊔ₛ y') ⊑ₛ (x ⊔ₛ y) :=
+  join_leq (SecretLevel.leq_join_left _ _)
+    (SecretLevel.leq_trans h (SecretLevel.leq_join_right _ _))
+
+/-- A self-move `mov r (.reg r)` rebinds `r` to the taint it already carries, so
+threading it leaves the register-taint env unchanged. -/
+theorem stepRegTaint_idMov (R : RegTaint) (C : CellTaint) (r : String) :
+    stepRegTaint R C (.mov r (.reg r)) = R := by
+  funext y
+  simp only [stepRegTaint, writtenRegs, List.mem_singleton, instrTaint, operandTaint]
+  by_cases hy : y = r <;> simp [hy]
+
+/-- **The identity-mov drop never raises the block taint summary.** Each deleted
+`mov r (.reg r)` contributes `R r` to the running join and leaves the threaded
+envs fixed, so removing it drops one join component and keeps the rest. -/
+theorem dropIdMovs_blockMaxTaintX_le (block : List (JInstr 64)) :
+    ∀ (R : RegTaint) (C : CellTaint),
+      blockMaxTaintX R C (dropIdMovs block) ⊑ₛ blockMaxTaintX R C block := by
+  induction block with
+  | nil => intro R C; exact SecretLevel.leq_refl _
+  | cons i is ih =>
+    intro R C
+    unfold dropIdMovs
+    rw [List.filter_cons]
+    by_cases h : isIdMov i = true
+    · simp only [h, Bool.not_true, Bool.false_eq_true, if_false]
+      match i, h with
+      | .mov d (.reg r), h =>
+        simp only [isIdMov, beq_iff_eq] at h
+        subst h
+        have htail := ih R C
+        unfold dropIdMovs at htail
+        simp only [blockMaxTaintX, stepRegTaint_idMov]
+        exact SecretLevel.leq_trans htail (SecretLevel.leq_join_right _ _)
+    · rw [if_pos (by simp [h] : (! isIdMov i) = true)]
+      have htail := ih (stepRegTaint R C i) (stepCellTaint R C i)
+      unfold dropIdMovs at htail
+      simp only [blockMaxTaintX]
+      exact join_mono_right htail
+
+/-- A store writes no register, so threading it leaves the register-taint env
+unchanged. -/
+theorem stepRegTaint_storeMem (R : RegTaint) (C : CellTaint) (base : String)
+    (off : Int) (src : JOperand) :
+    stepRegTaint R C (.storeMem base off src) = R := by
+  funext y; simp [stepRegTaint, writtenRegs]
+
+/-- Threading a register-to-memory store records the stored register's taint at the
+stored cell and leaves every other cell alone. -/
+theorem stepCellTaint_storeMem_reg (R : RegTaint) (C : CellTaint) (base : String)
+    (off : Int) (r : String) :
+    stepCellTaint R C (.storeMem base off (.reg r))
+      = fun y => if y = (base, off) then R r else C y := by
+  funext y; simp [stepCellTaint, operandTaint]
+
+/-- **Deleting a reload of a cell that already carries the destination register's
+taint never raises the summary.** The reload's output taint is the cell's, which is
+the register's, so threading it rebinds `r` to the level it already has and leaves
+the cell env alone: the tail is summarised against the same envs on both sides, and
+the reload's own contribution is the only difference. -/
+theorem blockMaxTaintX_dropReload_le {base : String} {off : Int} {r : String}
+    (R : RegTaint) (C : CellTaint) (h : C (base, off) = R r) (t : List (JInstr 64)) :
+    blockMaxTaintX R C t ⊑ₛ blockMaxTaintX R C (.loadMem r base off :: t) := by
+  have hR : stepRegTaint R C (.loadMem r base off) = R := by
+    funext y
+    simp only [stepRegTaint, writtenRegs, List.mem_singleton, instrTaint]
+    by_cases hy : y = r <;> simp [hy, h]
+  simp only [blockMaxTaintX, stepCellTaint_loadMem, hR]
+  exact SecretLevel.leq_join_right _ _
+
+/-- One `consDrop` step never raises the summary: the only deletion is the reload of
+a cell the preceding store has just filled from the reloaded register. -/
+theorem consDrop_blockMaxTaintX_le (bases : List String) (i : JInstr 64)
+    (k : List (JInstr 64)) (R : RegTaint) (C : CellTaint) :
+    blockMaxTaintX R C (consDrop bases i k) ⊑ₛ blockMaxTaintX R C (i :: k) := by
+  cases k with
+  | nil => exact SecretLevel.leq_refl _
+  | cons j rest =>
+    rw [consDrop]
+    split
+    · rename_i hred
+      obtain ⟨b0, o0, r0, hi, hj⟩ := eq_of_isRedundantReload hred
+      subst hi; subst hj
+      have hcell : stepCellTaint R C (.storeMem b0 o0 (.reg r0)) (b0, o0)
+          = stepRegTaint R C (.storeMem b0 o0 (.reg r0)) r0 := by
+        rw [stepRegTaint_storeMem, stepCellTaint_storeMem_reg]; simp
+      simp only [blockMaxTaintX]
+      exact join_mono_right (blockMaxTaintX_dropReload_le _ _ hcell rest)
+    · exact SecretLevel.leq_refl _
+
+/-- **Redundant spill-reload elimination never raises the block taint summary.** Each
+deleted reload reads a cell the immediately preceding store filled from the reloaded
+register, so it contributes a level the register already carries and leaves the
+threaded envs fixed. -/
+theorem dropReloads_blockMaxTaintX_le (bases : List String) (block : List (JInstr 64)) :
+    ∀ (R : RegTaint) (C : CellTaint),
+      blockMaxTaintX R C (dropReloads bases block) ⊑ₛ blockMaxTaintX R C block := by
+  induction block with
+  | nil => intro R C; exact SecretLevel.leq_refl _
+  | cons i rest ih =>
+    intro R C
+    rw [dropReloads_cons]
+    refine SecretLevel.leq_trans (consDrop_blockMaxTaintX_le bases i _ R C) ?_
+    simp only [blockMaxTaintX]
+    exact join_mono_right (ih _ _)
+
+/-- **The guarded MUL→MULX fusion never raises the block taint summary.** Where
+the guard fires, the dropped low `imul lo, b` writes `lo` the taint
+`R lo ⊔ₛ R b`, and the surviving `mulx hi, lo, a, b` overwrites `lo` (and `hi`)
+with `R a ⊔ₛ R b` reading only `a`, `b`, which the fusion's freshness keeps
+distinct from `lo`. So both sides thread the same post-envs and the fused block's
+summary is the original's minus the dropped `imul`'s contribution. -/
+theorem fuseMulxGuarded_blockMaxTaintX_le (body : List (JInstr 64)) :
+    ∀ (R : RegTaint) (C : CellTaint),
+      blockMaxTaintX R C (fuseMulxGuarded body) ⊑ₛ blockMaxTaintX R C body := by
+  fun_induction fuseMulxGuarded body with
+  | case1 => intro R C; exact SecretLevel.leq_refl _
+  | case2 i₁ i₂ rest lo b mHi mLo mA mB hWide hLow hcond ih =>
+      intro R C
+      simp only [Bool.and_eq_true, beq_iff_eq, bne_iff_ne] at hcond
+      obtain ⟨⟨⟨⟨hloeq, hbeq⟩, hane⟩, hbne⟩, _hdead⟩ := hcond
+      have hi₁ : i₁ = .imul lo (.reg b) := isRedundantLowMul_some hLow
+      have hi₂ : i₂ = .mulx mHi lo (.reg mA) (.reg b) := by
+        rw [isWideningMul_some hWide, ← hloeq, ← hbeq]
+      subst hi₁; subst hi₂
+      -- Neither multiply writes a statically-known cell, so the cell env is fixed.
+      have hcellImul : stepCellTaint R C (.imul lo (.reg b)) = C := rfl
+      have hcellMulx : ∀ T : RegTaint,
+          stepCellTaint T C (.mulx mHi lo (.reg mA) (.reg b)) = C := fun _ => rfl
+      -- The register env after `imul` agrees with `R` on the multiplier's sources.
+      have hR1 : stepRegTaint R C (.imul lo (.reg b))
+          = fun y => if y = lo then (R lo ⊔ₛ R b) else R y := by
+        funext y
+        simp only [stepRegTaint, writtenRegs, List.mem_singleton, instrTaint, operandTaint]
+      have hthread : stepRegTaint (stepRegTaint R C (.imul lo (.reg b))) C
+            (.mulx mHi lo (.reg mA) (.reg b))
+          = stepRegTaint R C (.mulx mHi lo (.reg mA) (.reg b)) := by
+        funext y
+        simp only [stepRegTaint, writtenRegs, List.mem_cons,
+          List.not_mem_nil, or_false, instrTaint, operandTaint, if_neg hane, if_neg hbne]
+        by_cases h1 : y = mHi
+        · simp [h1]
+        · by_cases h2 : y = lo <;> simp [h1, h2]
+      have hhead : instrTaint (stepRegTaint R C (.imul lo (.reg b))) C
+            (.mulx mHi lo (.reg mA) (.reg b))
+          = instrTaint R C (.mulx mHi lo (.reg mA) (.reg b)) := by
+        simp only [instrTaint, operandTaint, hR1, if_neg hane, if_neg hbne]
+      simp only [blockMaxTaintX, hcellImul, hcellMulx, hhead, hthread]
+      refine join_leq ?_ ?_
+      · exact SecretLevel.leq_trans (SecretLevel.leq_join_left _ _)
+          (SecretLevel.leq_join_right _ _)
+      · exact SecretLevel.leq_trans (ih _ C)
+          (SecretLevel.leq_trans (SecretLevel.leq_join_right _ _)
+            (SecretLevel.leq_join_right _ _))
+  | case3 i₁ i₂ rest lo b mHi mLo mA mB hWide hLow hcond ih =>
+      intro R C
+      simp only [blockMaxTaintX]
+      exact join_mono_right (ih _ _)
+  | case4 i₁ i₂ rest hmatch ih =>
+      intro R C
+      simp only [blockMaxTaintX]
+      exact join_mono_right (ih _ _)
+  | case5 i => intro R C; exact SecretLevel.leq_refl _
+
+/-! ## 7. The driver form and the headline `≤` (declassification) statement
 
 `optimizeX86Block` (`X86ComPipeline`) is `applyX86Pipeline defaultX86Pipeline`,
-whose only unconditional pass is `storeToLoadForward`. So the driver preserves
-the block taint summary exactly, and a fortiori never **raises** it — the `≤`
+i.e. store-to-load forwarding, the identity-mov drop, redundant spill-reload
+elimination, and the guarded MUL→MULX fusion. The first preserves the summary
+exactly and the other three lower it, so the driver never **raises** it — the `≤`
 (declassification) form shared with the egraph pass and the gated `#555` driver,
-the honest compositional-CT guarantee at the owned-x86 layer. -/
+the compositional-CT guarantee at the owned-x86 layer. -/
 
 /-- **The owned-x86 optimizer driver never raises the block taint summary.** The
 declassification (`⊑ₛ`) form of the compositional-CT invariant at the owned-x86
 backend layer, matching the egraph pass's `saturateCom_comMaxTaint_le` and the
-#555 driver's gated nature. In fact (next lemma) it is an equality. -/
+#555 driver's gated nature. -/
 theorem optimizeX86Block_blockMaxTaintX_le (R : RegTaint) (C : CellTaint)
     (block : List (JInstr 64)) :
     blockMaxTaintX R C
         (CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline.optimizeX86Block block)
       ⊑ₛ blockMaxTaintX R C block := by
-  show blockMaxTaintX R C (storeToLoadForward block) ⊑ₛ _
+  show blockMaxTaintX R C
+      (fuseMulxGuarded (dropReloads defaultSpillBases
+        (dropIdMovs (storeToLoadForward block)))) ⊑ₛ _
+  refine SecretLevel.leq_trans (fuseMulxGuarded_blockMaxTaintX_le _ R C) ?_
+  refine SecretLevel.leq_trans (dropReloads_blockMaxTaintX_le _ _ R C) ?_
+  refine SecretLevel.leq_trans (dropIdMovs_blockMaxTaintX_le _ R C) ?_
   rw [storeToLoadForward_blockMaxTaintX_eq]
   exact SecretLevel.leq_refl _
 
-/-- The driver in fact preserves the block taint summary **exactly** (it is
-`storeToLoadForward` composed with the identity pass). -/
-theorem optimizeX86Block_blockMaxTaintX_eq (R : RegTaint) (C : CellTaint)
-    (block : List (JInstr 64)) :
-    blockMaxTaintX R C
-        (CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline.optimizeX86Block block)
-      = blockMaxTaintX R C block := by
-  show blockMaxTaintX R C (storeToLoadForward block) = _
-  rw [storeToLoadForward_blockMaxTaintX_eq]
-
-/-! ## 7. Self-contained validation
+/-! ## 8. Self-contained validation
 
 A two-instruction frame round-trip: store register `r` to cell `(fp, 0)`, then
 reload that cell into `d`. With `r` marked `sec` the store carries `sec` into the

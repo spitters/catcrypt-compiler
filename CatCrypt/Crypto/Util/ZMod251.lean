@@ -39,7 +39,7 @@ set_option autoImplicit false
 namespace CatCrypt.Util
 
 /-- MQOM / SDitH base field is prime: `q = 251`. -/
-instance fact_prime_251 : Fact (Nat.Prime 251) := ⟨by native_decide⟩
+instance fact_prime_251 : Fact (Nat.Prime 251) := ⟨by norm_num⟩
 
 /-- The MQOM / SDitH base prime field. An `abbrev` so the `ZMod` field/ring
     structure flows through transparently. -/

@@ -24,13 +24,13 @@ where (FIPS 180-4 §4.1.2 / §4.1.3)
     Σ₁(e)      = ROTR⁶(e) ⊕ ROTR¹¹(e) ⊕ ROTR²⁵(e)
     Ch(e,f,g)  = (e ∧ f) ⊕ (¬e ∧ g)          (¬e = e ⊕ 0xffffffff)
 
-This is the genuine SHA-256 round-update for the `e` lane (the one that absorbs
+This is the SHA-256 round-update for the `e` lane (the one that absorbs
 `Σ₁`/`Ch`/`K_t`/`W_t`) — the real-primitive milestone for the front. Unlike the
 bundled `sha256RoundAThir` (on the OLDER `inductive Thir` AST, lowered to
 `Com jasminDialect` via the bespoke `thirToJasmin` *jasminc* path), this leaf is
 on the `Com thirDialect` AST and is therefore directly emittable through the
 OWNED x86 backend spine (see
-`X86Backend/Sha256RoundThirOwnedEmit.lean`).
+`X86Backend/Sha256RoundThirEmit.lean`).
 
 ## Argument list
 
@@ -49,7 +49,7 @@ arguments; `kt = K_t`, `wt = W_t`). The single output is `e'`.
   the same `BitVec 32` (`lowerThir_denote` ∘ `sha256RoundEComThir_denote`).
 
 The companion `Maj(a,b,c)` leaf (`sha256MajComThir`) is also provided — a second
-genuine SHA-256 round component (`T₂`'s `Maj` term).
+SHA-256 round component (`T₂`'s `Maj` term).
 -/
 
 set_option autoImplicit false
@@ -331,7 +331,7 @@ def sha256RoundAComThir :
 
 /-! ## 2. Companion `Maj(a,b,c)` leaf (the `T₂` Maj term)
 
-A second genuine SHA-256 round component: `Maj(a,b,c) = (a∧b) ⊕ (a∧c) ⊕ (b∧c)`
+A second SHA-256 round component: `Maj(a,b,c) = (a∧b) ⊕ (a∧c) ⊕ (b∧c)`
 (FIPS 180-4 §4.1.3), built on `Com thirDialect` over `[a, b, c]`. -/
 
 /-- SHA-256 `Maj(a,b,c)` as a `Com thirDialect` leaf over `[a, b, c]`.

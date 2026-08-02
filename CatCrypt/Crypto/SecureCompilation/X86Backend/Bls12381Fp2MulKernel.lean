@@ -392,22 +392,13 @@ def countSub (hay needle : String) : Nat :=
       if needle == String.ofList (hay.toList.drop i |>.take needle.length)
       then acc + 1 else acc) 0
 
-/-- Shape: the emitted `Fp` add leaf uses the hardware ADD/ADC chain + `cmovb`
+/- Shape: the emitted `Fp` add leaf uses the hardware ADD/ADC chain + `cmovb`
     select (no synthesised-carry `shrq $63`). -/
-theorem fpAddAsm_shape :
-    hasSub fpAddAsm "addq"
-      ∧ hasSub fpAddAsm "adcq"
-      ∧ hasSub fpAddAsm "cmovb"
-      ∧ hasSub fpAddAsm "(%rdi)"
-      ∧ (hasSub fpAddAsm "shrq $63" = false) := by native_decide
+#guard (hasSub fpAddAsm "addq") && (hasSub fpAddAsm "adcq") && (hasSub fpAddAsm "cmovb") && (hasSub fpAddAsm "(%rdi)") && !(hasSub fpAddAsm "shrq $63")
 
-/-- Shape: the emitted `Fp` sub leaf uses the hardware SUB/SBB borrow chain +
+/- Shape: the emitted `Fp` sub leaf uses the hardware SUB/SBB borrow chain +
     masked ADD/ADC add-back. -/
-theorem fpSubAsm_shape :
-    hasSub fpSubAsm "subq"
-      ∧ hasSub fpSubAsm "sbbq"
-      ∧ hasSub fpSubAsm "adcq"
-      ∧ (hasSub fpSubAsm "shrq $63" = false) := by native_decide
+#guard (hasSub fpSubAsm "subq") && (hasSub fpSubAsm "sbbq") && (hasSub fpSubAsm "adcq") && !(hasSub fpSubAsm "shrq $63")
 
 /-- **The owned `Fp2` mul carries three real `Fp`-multiply calls** (not the 0–1
     multiply-insn stub the RELIC bench flagged): the driver contains exactly

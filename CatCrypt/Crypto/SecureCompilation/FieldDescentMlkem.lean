@@ -26,11 +26,11 @@ two canonical residues (`< q² < 2^64`) with no overflow. The descent's `modMul`
 leaf is therefore the *direct schoolbook reduce* `(a · b) % q` — exactly the
 shape of BabyBear's `bbMul = (a · b) % p`, but here the reduction is a single
 `%`, not the 10-fold Montgomery `bbReduce`. (The 16-bit lane Montgomery block in
-`MLKEM.NttOwnedEmit.fqmulBlk` is the *AVX2* realization; the **scalar** descent
+`MLKEM.NttEmit.fqmulBlk` is the *AVX2* realization; the **scalar** descent
 this file serves does not need it, and the canonical-rep `%` is what the proof
 discharges.)
 
-## What is proved (the genuine residual, closed for q = 3329)
+## What is proved (the residual, closed for q = 3329)
 
 Under the canonical-representative encoding `mkEnc x = BitVec.ofNat 64 x.val`:
 

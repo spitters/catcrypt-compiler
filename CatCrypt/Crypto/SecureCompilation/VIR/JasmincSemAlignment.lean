@@ -44,7 +44,7 @@ op set: every operation gets a row, summarised in `opcode_alignment_total`
 We transcribe each Coq primitive as a Lean `def` (annotated with its Coq `file:line`)
 and prove `execExpr`/`bop.apply` equals it. What remains trusted shrinks to the
 transcriptions faithfully mirroring the Coq definitions — verifiable by inspecting two
-short lines each — plus the genuinely-external `extCall` leaf (`ExtCallAgrees`,
+short lines each — plus the external `extCall` leaf (`ExtCallAgrees`,
 the carried leaf edge). The byte-addressed refinement of the element-layer
 `stackLoad`/`stackStore` rows is the downstream `JasmincWArrayAlignment.lean`.
 -/
@@ -235,7 +235,7 @@ theorem mem_agrees_jasmin :
 parametric in the opaque leaf semantics `leafSem`. The dialect's own
 interpretation is `jasminExtSem` (`JasminDialect`). jasmin's `psem` evaluates an
 `extCall` as `Ccall`/`sem_call` of the linked function (`expr.v:420`). There is
-**no closed `rfl` here**: the leaf is genuinely external (a CryptoSSA `fp_*`
+**no closed `rfl` here**: the leaf is external (a CryptoSSA `fp_*`
 intrinsic, a formosa NTT leaf, …), so its agreement with `jasmin`'s `sem_call`
 is precisely the `LeafAgrees leafSem` hypothesis that `lowerComToProg_sem_eq`
 already carries. We make the op-set entry explicit by *naming* the predicate the
@@ -279,17 +279,15 @@ row for **every** emittable operation:
 | `extCall`                     | `ExtCallAgrees` (the carried `LeafAgrees` edge)    | leaf   |
 
 There is **no `Cfor` obligation**: `jasminDialect` has no loop op, so the `Com`
-ranged over by `lowerComToProg_sem_eq` is straight-line
-(`WidthFrontStraightLine.cprogToJasminComW'_straightLine` confirms the real
-ML-KEM emit is straight-line; bounded loops are the separate additive for-loop
-layer, task #48). The bundle below packages the four closed (`rfl`) shapes; the
+ranged over by `lowerComToProg_sem_eq` is straight-line; bounded loops are the
+separate additive for-loop layer. The bundle below packages the four closed (`rfl`) shapes; the
 fifth (`extCall`) is the explicitly-named leaf edge `ExtCallAgrees`, the only
-per-opcode row not discharged by `rfl` because the leaf is genuinely external. -/
+per-opcode row not discharged by `rfl` because the leaf is external. -/
 
 /-- **Total per-opcode psem alignment over the closed (`rfl`-dischargeable) op
     set.** Bundles every emittable operation whose alignment is definitional: the
     eight `regArith` word ops, `castW`, and the `stackLoad`/`stackStore` element
-    accessors. The one remaining op, `extCall`, is the genuinely-external leaf,
+    accessors. The one remaining op, `extCall`, is the external leaf,
     whose alignment is the named predicate `ExtCallAgrees` (the carried
     `LeafAgrees` edge), not a `rfl` row. So this conjunction plus `ExtCallAgrees`
     is the **complete** per-opcode obligation for the dialect's emittable ops. -/
@@ -449,7 +447,7 @@ lane-by-lane, jasmin's `psem` of the x86 vector instruction.
 | XOR-accumulate (`acc ^= …`)       | `Ox86 (VPXOR …)` → `wxor` lane (the GF(16) additive XOR)                 |
 
 The single byte (`U8`) lane of each is the scalar `word`-ring op already in §1,
-plus the genuinely-new `#VPSHUFB_256` lookup, which we transcribe per byte: for
+plus the new `#VPSHUFB_256` lookup, which we transcribe per byte: for
 an index byte `i` with its high bit clear, `wpshufb tbl i = tbl[i.toNat]` (the
 GF(16) nibbles `0..15` never set the high bit, so the zeroing case is dead). -/
 
@@ -536,7 +534,7 @@ Mersenne reduce as `#VPSRL_16u16` + `#VPAND` + `#VPADD_16u16` (`p = (p&127) +
 (p>>7)`) + `#VPCMPEQ_16u16`/`#VPSUB_16u16` conditional subtract, and the
 horizontal **integer** add as a `#VPADD_8u16` tree. Every packed op is, lane-by-
 lane, jasmin's `psem` of the x86 vector instruction = the scalar `BitVec 16`
-word-ring op (§1), with `#VPMULL_16u16`'s lane already in §5. The genuinely new
+word-ring op (§1), with `#VPMULL_16u16`'s lane already in §5. The new
 shapes are the byte/word compare-equal and the per-word add/sub/and/shift at
 width 16, all the §1 `jWord*` ops lifted lane-wise by `lift2_vec`/`lift1_vec`.
 
@@ -852,7 +850,7 @@ sanity checks in the emitter file (`sha256_batched_has_reg_state`,
 
 **Denotation-preservation.** The 4-block batched emit denotes 4 invocations
 of the committed single-block compression `Sha2Emit.compressCom` composed
-via the `JForProgMultiOp.loop_denote_eq_multiOp` keystone (#92) at N=4:
+via the `JForProgMultiOp.loop_denote_eq_multiOp` lemma (#92) at N=4:
 
   `⟦ emitSha256BatchedJazz ⟧ state K M = (compressCom ∘ chain)^4 state`
 

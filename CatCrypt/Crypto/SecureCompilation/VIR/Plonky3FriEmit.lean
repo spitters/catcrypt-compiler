@@ -291,14 +291,12 @@ def friJazz : String :=
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (strContains)
 
-/-- The emitted FRI `.jazz` declares both phase exports and reuses layer 1's
+/- The emitted FRI `.jazz` declares both phase exports and reuses layer 1's
     `h2to1` compress in the query path — with NO opaque leaf (`extCall`). -/
-theorem friJazz_shape :
-    strContains friJazz "export fn fri_fold_layer(" = true
-      ∧ strContains friJazz "export fn fri_query_verify(" = true
-      ∧ strContains friJazz "sum  = fadd(ep, en);" = true
-      ∧ strContains friJazz "cur = h2to1(cur, siblings[32 * level : 32], cur);" = true
-      ∧ strContains friJazz "extCall" = false := by
-  refine ⟨?_, ?_, ?_, ?_, ?_⟩ <;> native_decide
+#guard (strContains friJazz "export fn fri_fold_layer(")
+    && (strContains friJazz "export fn fri_query_verify(")
+    && (strContains friJazz "sum  = fadd(ep, en);")
+    && (strContains friJazz "cur = h2to1(cur, siblings[32 * level : 32], cur);")
+    && !(strContains friJazz "extCall")
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FriEmit

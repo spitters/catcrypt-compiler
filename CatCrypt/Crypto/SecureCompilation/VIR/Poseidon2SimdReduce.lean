@@ -474,66 +474,45 @@ def poseidon2SimdReduceJazz : String :=
 
 /-! ## 6. Structural sanity checks -/
 
-/-- The SIMD-reduce emit declares the standard `export fn poseidon2_bb`
+/- The SIMD-reduce emit declares the standard `export fn poseidon2_bb`
     ABI. -/
-theorem poseidon2SimdReduceJazz_export :
-    strContains poseidon2SimdReduceJazz "export fn poseidon2_bb(" = true := by
-  native_decide
+#guard (strContains poseidon2SimdReduceJazz "export fn poseidon2_bb(")
 
-/-- The SIMD-reduce emit declares the `__m256i` packed-u64 register file
+/- The SIMD-reduce emit declares the `__m256i` packed-u64 register file
     used for the lane-parallel field reduce (`vx`, `vsq`, `vx4`, `vt`,
     plus the broadcast constants `vmm_const` and `vp_const`). -/
-theorem poseidon2SimdReduceJazz_has_u256_regs :
-    strContains poseidon2SimdReduceJazz
-      "reg u256 vlo vhi vx vx_orig vsq vx4 vt vm vmm_const vp_const;"
-      = true := by
-  native_decide
+#guard (strContains poseidon2SimdReduceJazz "reg u256 vlo vhi vx vx_orig vsq vx4 vt vm vmm_const vp_const;")
 
-/-- The SIMD-reduce emit uses the packed-u64 right-shift intrinsic
+/- The SIMD-reduce emit uses the packed-u64 right-shift intrinsic
     (`VPSRLQ_4u64` in jasmin's AVX2 syntax: `#VPSRL_4u64`). -/
-theorem poseidon2SimdReduceJazz_has_vpsrl :
-    strContains poseidon2SimdReduceJazz "#VPSRL_4u64" = true := by
-  native_decide
+#guard (strContains poseidon2SimdReduceJazz "#VPSRL_4u64")
 
-/-- The SIMD-reduce emit uses the packed-u64 add intrinsic
+/- The SIMD-reduce emit uses the packed-u64 add intrinsic
     (`#VPADD_4u64`, x86 `vpaddq ymm`). -/
-theorem poseidon2SimdReduceJazz_has_vpadd :
-    strContains poseidon2SimdReduceJazz "#VPADD_4u64" = true := by
-  native_decide
+#guard (strContains poseidon2SimdReduceJazz "#VPADD_4u64")
 
-/-- The SIMD-reduce emit uses the packed-u64 sub intrinsic
+/- The SIMD-reduce emit uses the packed-u64 sub intrinsic
     (`#VPSUB_4u64`, x86 `vpsubq ymm`), needed by the canonicalising
     packed csub step. -/
-theorem poseidon2SimdReduceJazz_has_vpsub :
-    strContains poseidon2SimdReduceJazz "#VPSUB_4u64" = true := by
-  native_decide
+#guard (strContains poseidon2SimdReduceJazz "#VPSUB_4u64")
 
-/-- The SIMD-reduce emit uses the packed-u64 signed-compare intrinsic
+/- The SIMD-reduce emit uses the packed-u64 signed-compare intrinsic
     `#VPCMPGT_4u64` (x86 `vpcmpgtq ymm`) to build the canonicalising
     csub's `x < p` mask. -/
-theorem poseidon2SimdReduceJazz_has_vpcmpgt :
-    strContains poseidon2SimdReduceJazz "#VPCMPGT_4u64" = true := by
-  native_decide
+#guard (strContains poseidon2SimdReduceJazz "#VPCMPGT_4u64")
 
-/-- The SIMD-reduce emit lane-spreads `× BBC` into 4 scalar multiplies on
+/- The SIMD-reduce emit lane-spreads `× BBC` into 4 scalar multiplies on
     the `u64[4]` `tbuf` stack alias to the `__m256i` lane register (AVX2
     has no native packed-u64-by-scalar multiply, so the lane-spread is the
     honest engineering boundary; the 3 *other* fold-step ops remain fully
     packed). -/
-theorem poseidon2SimdReduceJazz_lane_spread_mul :
-    strContains poseidon2SimdReduceJazz "r0 *= bbc_r;" = true := by
-  native_decide
+#guard (strContains poseidon2SimdReduceJazz "r0 *= bbc_r;")
 
-/-- The SIMD-reduce emit uses no extCall / opaque leaf. -/
-theorem poseidon2SimdReduceJazz_no_extcall :
-    strContains poseidon2SimdReduceJazz "extCall" = false := by
-  native_decide
+/- The SIMD-reduce emit uses no extCall / opaque leaf. -/
+#guard !(strContains poseidon2SimdReduceJazz "extCall")
 
-/-- The SIMD-reduce emit retains the FIFTEENTH-mode RC-add packed-u64
+/- The SIMD-reduce emit retains the FIFTEENTH-mode RC-add packed-u64
     lane-add (carry-over). -/
-theorem poseidon2SimdReduceJazz_keeps_rc_add :
-    strContains poseidon2SimdReduceJazz "vhi = #VPADD_4u64(vhi, vlo);"
-      = true := by
-  native_decide
+#guard (strContains poseidon2SimdReduceJazz "vhi = #VPADD_4u64(vhi, vlo);")
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2SimdReduce

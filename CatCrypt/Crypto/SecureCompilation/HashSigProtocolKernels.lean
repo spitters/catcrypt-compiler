@@ -28,7 +28,7 @@ address/tweak, so step `i` is a *unary* map `node → node` on the digest carrie
   times — `c⁰ ↦ c¹ = F(c⁰) ↦ … ↦ c^{w-1}`.  A single chain of length `c` is a
   unary pipeline of `c` chain steps (this is exactly the repo's owned
   `"treehash_chain_" ++ toString n` per-level chain emit, with `Th` the
-  tweakable-hash leaf — `X86Backend/TreehashChainOwnedEmit.lean`).
+  tweakable-hash leaf — `X86Backend/TreehashChainEmit.lean`).
 * **XMSS** (RFC 8391): a WOTS+ public key is compressed by an L-tree (a Merkle
   fold of the `len` chain tops), then the L-tree roots are folded up a Merkle
   authentication path to the XMSS root.  Both the L-tree and the auth path are
@@ -60,7 +60,7 @@ parameter set (WOTS+-w, XMSS-h, LMS-h, SPHINCS+-d):
 
 The per-kernel realizations are **hypotheses** (`KernelRealizes` facts) — each
 is the per-step leaf-bytes KAT a real protocol cites at instantiation.  The
-abstract chain/fold step specs are honest opaque parameters: the deliverable is
+abstract chain/fold step specs are opaque parameters: the deliverable is
 the protocol-structure composition over a *real* protocol, not re-deriving any
 one tweakable hash's bytes.  No fabricated `leafSpec`; nothing protocol-specific
 beyond listing each protocol's kernels and citing their realizations.
@@ -141,7 +141,7 @@ A WOTS+ chain walks one secret-key component up its hash chain by applying the
 chain step `c` times: `c⁰ ↦ F(c⁰) ↦ F²(c⁰) ↦ … ↦ Fᶜ(c⁰)`.  `chainStep i` is
 the `i`-th tweakable-hash application `F`-with-address-`i`; the emitted kernel is
 the single reused tweakable-hash leaf (the `"treehash_chain_"` per-step body in
-`X86Backend/TreehashChainOwnedEmit.lean`).  The whole chain is a unary
+`X86Backend/TreehashChainEmit.lean`).  The whole chain is a unary
 `pipeN` pipeline of length `c`. -/
 
 /-- The emitted leaf-name of the WOTS+ tweakable-hash chain step. -/

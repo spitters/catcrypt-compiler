@@ -143,32 +143,26 @@ theorem tableGet_no_overflow :
     allocOverflow [("out", "%rdi"), ("inp", "%rsi")] tableGetBody = none := by
   native_decide
 
-/-- The emitted `.s` carries the `table_get` leaf label. -/
-theorem tableGet_has_leaf : hasSub tableGetAsm "table_get" = true := by native_decide
+/- The emitted `.s` carries the `table_get` leaf label. -/
+#guard (hasSub tableGetAsm "table_get")
 
-/-- The emitted `.s` carries a `.section .rodata` block. -/
-theorem tableGet_has_rodata : hasSub tableGetAsm ".section .rodata" = true := by native_decide
+/- The emitted `.s` carries a `.section .rodata` block. -/
+#guard (hasSub tableGetAsm ".section .rodata")
 
-/-- The emitted `.s` carries the table label `rodata_probe_tbl:`. -/
-theorem tableGet_has_table_label : hasSub tableGetAsm "rodata_probe_tbl:" = true := by
-  native_decide
+/- The emitted `.s` carries the table label `rodata_probe_tbl:`. -/
+#guard (hasSub tableGetAsm "rodata_probe_tbl:")
 
-/-- The emitted `.s` carries the eight `.quad` table values. -/
-theorem tableGet_has_quads :
-    hasSub tableGetAsm "\t.quad 10" = true
-      ∧ hasSub tableGetAsm "\t.quad 80" = true := by native_decide
+/- The emitted `.s` carries the eight `.quad` table values. -/
+#guard (hasSub tableGetAsm "\t.quad 10") && (hasSub tableGetAsm "\t.quad 80")
 
-/-- The emitted `.s` carries a RIP-relative base load `leaq …(%rip), …`. -/
-theorem tableGet_has_rip_lea :
-    hasSub tableGetAsm "\tleaq rodata_probe_tbl(%rip), " = true := by native_decide
+/- The emitted `.s` carries a RIP-relative base load `leaq …(%rip), …`. -/
+#guard (hasSub tableGetAsm "\tleaq rodata_probe_tbl(%rip), ")
 
-/-- The emitted `.s` carries the SIB register-indexed gather `(…, …, 8)`. -/
-theorem tableGet_has_sib : hasSub tableGetAsm ", 8)" = true := by native_decide
+/- The emitted `.s` carries the SIB register-indexed gather `(…, …, 8)`. -/
+#guard (hasSub tableGetAsm ", 8)")
 
-/-- No unhandled-op / unallocated-register sentinel in the emitted `.s`. -/
-theorem tableGet_no_sentinel :
-    hasSub tableGetAsm "UNHANDLED" = false
-      ∧ hasSub tableGetAsm "UNALLOCATED" = false := by native_decide
+/- No unhandled-op / unallocated-register sentinel in the emitted `.s`. -/
+#guard !(hasSub tableGetAsm "UNHANDLED") && !(hasSub tableGetAsm "UNALLOCATED")
 
 /-! ## 5. Emit driver -/
 

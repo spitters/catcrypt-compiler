@@ -12,6 +12,8 @@ import CatCrypt.Crypto.Jasmin.LowCT
 /-!
 # Region-extended VIR programs
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 VIR's `Com` (see `Core.lean`) is straight-line: it has only `ret` and `var`.
 That suffices for `select`-style conditionals (where both arms are values,
 not nested sub-programs), but it can't model

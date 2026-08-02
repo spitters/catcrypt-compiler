@@ -392,18 +392,14 @@ def forsTreeExportJazz : String :=
 
 /-! ## 7. Structural smoke tests for the emitted `.jazz` -/
 
-/-- The hypertree `.jazz` is an `export fn` jasminc unit. -/
-theorem hyperTreeExport_has_export :
-    JasminPrint.strContains hyperTreeExportJazz "export fn slhdsa_hypertree" = true := by
-  native_decide
+/- The hypertree `.jazz` is an `export fn` jasminc unit. -/
+#guard (JasminPrint.strContains hyperTreeExportJazz "export fn slhdsa_hypertree")
 
-/-- The hypertree `.jazz` has the halving level loops of *both* XMSS layers: the
+/- The hypertree `.jazz` has the halving level loops of *both* XMSS layers: the
     `4,2,1` halving counts appear (once per layer). -/
-theorem hyperTreeExport_has_levels :
-    JasminPrint.strContains hyperTreeExportJazz "for i = 0 to 4" = true
-      ∧ JasminPrint.strContains hyperTreeExportJazz "for i = 0 to 2" = true
-      ∧ JasminPrint.strContains hyperTreeExportJazz "for i = 0 to 1" = true := by
-  refine ⟨?_, ?_, ?_⟩ <;> native_decide
+#guard (JasminPrint.strContains hyperTreeExportJazz "for i = 0 to 4")
+    && (JasminPrint.strContains hyperTreeExportJazz "for i = 0 to 2")
+    && (JasminPrint.strContains hyperTreeExportJazz "for i = 0 to 1")
 
 /-- **Structural check: the hypertree is `d = 2` stacked XMSS treehashes** —
     exactly `6 = d · h'` level loops (`2 ·` the `4,2,1` halving sequence), each a
@@ -412,17 +408,13 @@ theorem hyperTreeExport_has_levels :
 theorem hyperTreeExport_d_layers :
     (hyperTreeExportJazz.splitOn "(acc + acc)").length = 7 := by native_decide
 
-/-- The FORS `.jazz` is an `export fn` jasminc unit. -/
-theorem forsTreeExport_has_export :
-    JasminPrint.strContains forsTreeExportJazz "export fn slhdsa_fors" = true := by
-  native_decide
+/- The FORS `.jazz` is an `export fn` jasminc unit. -/
+#guard (JasminPrint.strContains forsTreeExportJazz "export fn slhdsa_fors")
 
-/-- The FORS `.jazz` has the per-subtree halving level loops (`2, 1`) and the
+/- The FORS `.jazz` has the per-subtree halving level loops (`2, 1`) and the
     `k - 1 = 2`-step root compression loop. -/
-theorem forsTreeExport_has_levels :
-    JasminPrint.strContains forsTreeExportJazz "for i = 0 to 2" = true
-      ∧ JasminPrint.strContains forsTreeExportJazz "for i = 0 to 1" = true := by
-  refine ⟨?_, ?_⟩ <;> native_decide
+#guard (JasminPrint.strContains forsTreeExportJazz "for i = 0 to 2")
+    && (JasminPrint.strContains forsTreeExportJazz "for i = 0 to 1")
 
 /-- **Structural check: FORS is `k = 3` subtrees plus a root compression** —
     exactly `7 = k · a + 1` level loops (`3 ·` the `2,1` halving sequence, then

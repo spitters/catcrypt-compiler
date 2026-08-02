@@ -20,8 +20,8 @@ in the emit path:
     --(cryptoDialectToJasminCom)-->  hashLeafCom : Com jasminDialect inCtxt r64
 ```
 
-Consumers (`Plonky3OwnedEmitMain` / `Plonky3WholeProverOwnedEmit` /
-`Plonky3OrchLoopsOwnedEmit` / `ZkSumCheckWholeProverOwnedEmit`) render
+Consumers (`Plonky3EmitMain` / `Plonky3WholeProverEmit` /
+`Plonky3OrchLoopsEmit` / `ZkSumCheckWholeProverEmit`) render
 `hashLeafCom` to owned AT&T `.s` via `Com.toLprogPhysAbi` (constants as
 `immSlotMap` immediates via `constNat`, the field word loaded from the `RSI`
 input pointer, outputs stored via `stdOutStore 4`) under the export symbol
@@ -168,7 +168,7 @@ abbrev inCtxt : Ctxt jasminDialect := List.replicate 8 r64
 
 /-- The deployed leaf-hash `Com jasminDialect` — FRONT-GENERATED
     (`translateDialectControl` + `cryptoDialectToJasminCom`), not hand-built.
-    Rendered to owned `.s` by `Plonky3OwnedEmitMain` (and inlined by the
+    Rendered to owned `.s` by `Plonky3EmitMain` (and inlined by the
     whole-prover / orchestration emits) under `plonky3_merkle_hash_leaf_rc`. -/
 def hashLeafCom : Com jasminDialect inCtxt r64 :=
   hashLoweredOpt.get hashLowered_isSome

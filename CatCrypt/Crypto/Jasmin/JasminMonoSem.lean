@@ -177,6 +177,87 @@ def pureEvalMonoCmd (n : Nat) (env : Var → BitVec n) (retVar : Var) :
       retVar rest
   | _ :: rest => pureEvalMonoCmd n env retVar rest
 
+/-- Final environment after processing a list of commands. Mirrors the arm
+    structure of `pureEvalMonoCmd`, including the `Copn ADD_64`/`ADC_64` arms
+    (written inline, no `let`, so `fun_induction`/`simp` normalize identically
+    to `pureEvalMonoCmd`'s unfolded arms). -/
+def pureEvalFinalEnv (n : Nat) (env : Var → BitVec n) : List InstrR → Var → BitVec n
+  | [] => env
+  | .Cassgn (.Lvar x) _ _ e :: rest =>
+    pureEvalFinalEnv n
+      (fun w => if w = x.var then pureEvalMonoExpr n env e else env w)
+      rest
+  | .Copn [.Lnone _ _, .Lvar cfv, .Lnone _ _, .Lnone _ _, .Lnone _ _, .Lvar rv] _
+          (.Oasm ⟨"ADD_64"⟩) [.Pvar av, .Pvar bv] :: rest =>
+    pureEvalFinalEnv n
+      (fun w =>
+        if w = rv.var then (BitVec.adc (env av.gv.var) (env bv.gv.var) false).snd
+        else if w = cfv.var then boolToBVaux n (BitVec.adc (env av.gv.var) (env bv.gv.var) false).fst
+        else env w)
+      rest
+  | .Copn [.Lnone _ _, .Lvar cfv, .Lnone _ _, .Lnone _ _, .Lnone _ _, .Lvar rv] _
+          (.Oasm ⟨"ADC_64"⟩) [.Pvar av, .Pvar bv, .Pvar cinv] :: rest =>
+    pureEvalFinalEnv n
+      (fun w =>
+        if w = rv.var then
+          (BitVec.adc (env av.gv.var) (env bv.gv.var) ((env cinv.gv.var).toNat ≠ 0)).snd
+        else if w = cfv.var then
+          boolToBVaux n (BitVec.adc (env av.gv.var) (env bv.gv.var) ((env cinv.gv.var).toNat ≠ 0)).fst
+        else env w)
+      rest
+  | _ :: rest => pureEvalFinalEnv n env rest
+
+/-- Classifier for the two carry-`Copn` intrinsics. Returns the relevant
+    variables — (carry-flag out, result out, addend a, addend b, carry-in?) —
+    for a recognized `ADD_64`/`ADC_64` shape, `none` otherwise. Its match arms
+    mirror the `Copn` arms of `pureEvalMonoCmd` / `pureEvalFinalEnv` /
+    `monoCmdLiveVars`, so `split`ing it supplies the negative shape information
+    that a bare `Copn` head-match discards. -/
+def copnCarry? : List LVal → SOpn → List PExpr → Option (Var × Var × Var × Var × Option Var)
+  | [.Lnone _ _, .Lvar cfv, .Lnone _ _, .Lnone _ _, .Lnone _ _, .Lvar rv],
+    .Oasm ⟨"ADD_64"⟩, [.Pvar av, .Pvar bv] =>
+    some (cfv.var, rv.var, av.gv.var, bv.gv.var, none)
+  | [.Lnone _ _, .Lvar cfv, .Lnone _ _, .Lnone _ _, .Lnone _ _, .Lvar rv],
+    .Oasm ⟨"ADC_64"⟩, [.Pvar av, .Pvar bv, .Pvar cinv] =>
+    some (cfv.var, rv.var, av.gv.var, bv.gv.var, some cinv.gv.var)
+  | _, _, _ => none
+
+/-- `pureEvalFinalEnv` on a single `Copn`, characterized through `copnCarry?`. -/
+theorem pureEvalFinalEnv_Copn (n : Nat) (env : Var → BitVec n)
+    (lvs : List LVal) (tag : AssgnTag) (op : SOpn) (es : List PExpr) :
+    pureEvalFinalEnv n env [InstrR.Copn lvs tag op es] =
+      match copnCarry? lvs op es with
+      | some (cf, r, a, b, cin) =>
+          let p := BitVec.adc (env a) (env b) (cin.elim false (fun cv => (env cv).toNat ≠ 0))
+          (fun w => if w = r then p.snd else if w = cf then boolToBVaux n p.fst else env w)
+      | none => env := by
+  fun_cases copnCarry? lvs op es <;>
+    first
+    | (simp [pureEvalFinalEnv]; done)
+    | (rw [pureEvalFinalEnv] <;> grind [pureEvalFinalEnv])
+
+/-- **Composition lemma**: `pureEvalMonoCmd` over concatenated commands equals
+    evaluating the first commands to get a final environment, then evaluating
+    the second commands in that environment. -/
+theorem pureEvalMonoCmd_append (n : Nat) (env : Var → BitVec n) (retVar : Var)
+    (cmds1 cmds2 : List InstrR) :
+    pureEvalMonoCmd n env retVar (cmds1 ++ cmds2) =
+    pureEvalMonoCmd n (pureEvalFinalEnv n env cmds1) retVar cmds2 := by
+  fun_induction pureEvalFinalEnv n env cmds1 <;>
+    simp_all [pureEvalMonoCmd, List.cons_append]
+
+/-- Head congruence: the head instruction's env-effect is tail-independent, so
+    if two tails agree under every environment, prepending the same instruction
+    keeps them equal. Follows from `pureEvalMonoCmd_append` on the singleton
+    prefix, sidestepping any per-`Copn`-shape case analysis. -/
+theorem pureEvalMonoCmd_head_congr (n : Nat) (env : Var → BitVec n) (retVar : Var)
+    (c : InstrR) (L1 L2 : List InstrR)
+    (h : ∀ e, pureEvalMonoCmd n e retVar L1 = pureEvalMonoCmd n e retVar L2) :
+    pureEvalMonoCmd n env retVar (c :: L1) = pureEvalMonoCmd n env retVar (c :: L2) := by
+  have e1 : c :: L1 = [c] ++ L1 := rfl
+  have e2 : c :: L2 = [c] ++ L2 := rfl
+  rw [e1, e2, pureEvalMonoCmd_append, pureEvalMonoCmd_append, h]
+
 end
 
 end CatCrypt.Crypto.Jasmin.ToSSA

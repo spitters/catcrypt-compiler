@@ -325,24 +325,20 @@ def wholeRoundExportAsm (r : Nat) : String :=
 
 /-! ## 7. Structural smoke pins on the framed whole-round `.s` -/
 
-/-- The framed whole round emits all four sub-step shapes (θ/ι xor, ρ shifts + or,
+/- The framed whole round emits all four sub-step shapes (θ/ι xor, ρ shifts + or,
     χ and) under one export symbol — the owned (no-jasminc, no-`Avx512Model`)
     whole-round path. -/
-theorem whole_round_asm_complete :
-    (strContains (wholeRoundExportAsm 0) "keccakf1600_zmm8_round:" = true) ∧
-    (strContains (wholeRoundExportAsm 0) "vpxorq" = true) ∧
-    (strContains (wholeRoundExportAsm 0) "vpsllvq" = true) ∧
-    (strContains (wholeRoundExportAsm 0) "vpsrlvq" = true) ∧
-    (strContains (wholeRoundExportAsm 0) "vporq" = true) ∧
-    (strContains (wholeRoundExportAsm 0) "vpandq" = true) := by
-  native_decide
+#guard (strContains (wholeRoundExportAsm 0) "keccakf1600_zmm8_round:")
+    && (strContains (wholeRoundExportAsm 0) "vpxorq")
+    && (strContains (wholeRoundExportAsm 0) "vpsllvq")
+    && (strContains (wholeRoundExportAsm 0) "vpsrlvq")
+    && (strContains (wholeRoundExportAsm 0) "vporq")
+    && (strContains (wholeRoundExportAsm 0) "vpandq")
 
-/-- No UPPERCASE jasmin intrinsic survives in the framed whole round — the owned
+/- No UPPERCASE jasmin intrinsic survives in the framed whole round — the owned
     (no-jasminc) path, and the 512-bit `%zmm` registers are present. -/
-theorem whole_round_asm_owned :
-    (strContains (wholeRoundExportAsm 0) "%zmm" = true) ∧
-    (strContains (wholeRoundExportAsm 0) "#VPXOR" = false) := by
-  native_decide
+#guard (strContains (wholeRoundExportAsm 0) "%zmm")
+    && !(strContains (wholeRoundExportAsm 0) "#VPXOR")
 
 /-! ## 8. Emit driver -/
 

@@ -235,51 +235,39 @@ def fndsaVerifyJazz : String := emitFndsaVerifyJazz "fndsa_512_verify"
 
 /-! ## 7. Structural sanity checks on the emitted text -/
 
-/-- The export has the expected FN-DSA verify ABI (`u16[512]` out, `u16[1032]`
+/- The export has the expected FN-DSA verify ABI (`u16[512]` out, `u16[1032]`
     in: 512 × `c`, 512 × `s2h`, 8 × broadcast `q`). -/
-theorem fndsa_verify_export_sig :
-    strContains fndsaVerifyJazz
-      "export fn fndsa_512_verify(reg ptr u16[512] out, reg const ptr u16[1032] inp)"
-      = true := by native_decide
+#guard (strContains fndsaVerifyJazz "export fn fndsa_512_verify(reg ptr u16[512] out, reg const ptr u16[1032] inp)")
 
-/-- The body renders packed AVX2 subtraction (the verify lane operation,
+/- The body renders packed AVX2 subtraction (the verify lane operation,
     jasmin surface mnemonic `#VPSUB_8u16` = packed-sub of eight `u16` lanes). -/
-theorem fndsa_verify_has_vpsub_8u16 :
-    strContains fndsaVerifyJazz "#VPSUB_8u16(" = true := by native_decide
+#guard (strContains fndsaVerifyJazz "#VPSUB_8u16(")
 
-/-- The body renders the packed mod-q correction add (jasmin surface
+/- The body renders the packed mod-q correction add (jasmin surface
     mnemonic `#VPADD_8u16`). -/
-theorem fndsa_verify_has_vpadd_8u16 :
-    strContains fndsaVerifyJazz "#VPADD_8u16(" = true := by native_decide
+#guard (strContains fndsaVerifyJazz "#VPADD_8u16(")
 
-/-- The body renders the CT-safe lane-wise unsigned minimum (the realization
+/- The body renders the CT-safe lane-wise unsigned minimum (the realization
     of the `if x < 0 then x + q else x` correction when storing as u16;
     jasmin surface mnemonic `#VPMINU_8u16`). -/
-theorem fndsa_verify_has_vpminu_8u16 :
-    strContains fndsaVerifyJazz "#VPMINU_8u16(" = true := by native_decide
+#guard (strContains fndsaVerifyJazz "#VPMINU_8u16(")
 
-/-- The broadcast q-vector is loaded from `inp[:u128 128]` (= 1024 u16
+/- The broadcast q-vector is loaded from `inp[:u128 128]` (= 1024 u16
     lanes past the start of the input, the small constant region just
     past the s2h stream). Indices are in `u128` units. -/
-theorem fndsa_verify_loads_q :
-    strContains fndsaVerifyJazz "q_vec = inp[:u128 128];" = true := by
-  native_decide
+#guard (strContains fndsaVerifyJazz "q_vec = inp[:u128 128];")
 
-/-- The first stage subtracts the first 8 lanes of `c` and `s2h` and stores
+/- The first stage subtracts the first 8 lanes of `c` and `s2h` and stores
     them at `out[:u128 0]`. The `s2h` window starts at `u128`-slot 64
     (= 512 u16 lanes in). -/
-theorem fndsa_verify_first_stage :
-    strContains fndsaVerifyJazz "a = inp[:u128 0];" = true
-      ∧ strContains fndsaVerifyJazz "b = inp[:u128 64];" = true
-      ∧ strContains fndsaVerifyJazz "out[:u128 0] = e;" = true := by
-  native_decide
+#guard (strContains fndsaVerifyJazz "a = inp[:u128 0];")
+    && (strContains fndsaVerifyJazz "b = inp[:u128 64];")
+    && (strContains fndsaVerifyJazz "out[:u128 0] = e;")
 
-/-- The export carries the verify lane width and lane count: 8 u16 per
+/- The export carries the verify lane width and lane count: 8 u16 per
     `__m128i`, 64 stages → 512 = N lanes. -/
-theorem fndsa_verify_renders_all_stages :
-    strContains fndsaVerifyJazz "// verify stage 0  (lanes 0..7)" = true
-      ∧ strContains fndsaVerifyJazz "// verify stage 63  (lanes 504..511)" = true := by
-  native_decide
+#guard (strContains fndsaVerifyJazz "// verify stage 0  (lanes 0..7)")
+    && (strContains fndsaVerifyJazz "// verify stage 63  (lanes 504..511)")
 
 /-! ## 8. Sampler-side jazz (FPU-free fixed-point CDT base sampler)
 
@@ -386,44 +374,32 @@ def fndsaSamplerJazz : String := emitFndsaSamplerJazz "fndsa_cdt_basesampler"
 
 /-! ### Sanity checks on the sampler emit -/
 
-/-- The sampler emit has the expected ABI. -/
-theorem fndsa_sampler_export_sig :
-    strContains fndsaSamplerJazz
-      "export fn fndsa_cdt_basesampler(reg ptr u32[2] out, reg const ptr u8[10] inp)"
-      = true := by native_decide
+/- The sampler emit has the expected ABI. -/
+#guard (strContains fndsaSamplerJazz "export fn fndsa_cdt_basesampler(reg ptr u32[2] out, reg const ptr u8[10] inp)")
 
-/-- The sampler emits exactly 19 CDT comparison steps (the RCDT length,
+/- The sampler emits exactly 19 CDT comparison steps (the RCDT length,
     matching `Sampler.RCDT_LEN`). -/
-theorem fndsa_sampler_has_all_steps :
-    strContains fndsaSamplerJazz "// CDT step 0  (RCDT entry, public constant)" = true
-      ∧ strContains fndsaSamplerJazz "// CDT step 18  (RCDT entry, public constant)" = true
-      ∧ strContains fndsaSamplerJazz "// CDT step 19  (RCDT entry, public constant)" = false := by
-  native_decide
+#guard (strContains fndsaSamplerJazz "// CDT step 0  (RCDT entry, public constant)")
+    && (strContains fndsaSamplerJazz "// CDT step 18  (RCDT entry, public constant)")
+    && !(strContains fndsaSamplerJazz "// CDT step 19  (RCDT entry, public constant)")
 
-/-- The sampler reads exactly 10 random bytes (9 magnitude + 1 sign).
+/- The sampler reads exactly 10 random bytes (9 magnitude + 1 sign).
     `rand_lo` is the packed 8-byte read at `inp[:u64 0]`, `rand_hi` is
     the zero-extended 9th byte, and `inp[9]` feeds the sign-fold. -/
-theorem fndsa_sampler_reads_10_bytes :
-    strContains fndsaSamplerJazz "rand_lo = inp[:u64 0];" = true
-      ∧ strContains fndsaSamplerJazz "rand_hi = (64u) inp[8];" = true
-      ∧ strContains fndsaSamplerJazz "sign_byte = (32u) inp[9];" = true := by
-  native_decide
+#guard (strContains fndsaSamplerJazz "rand_lo = inp[:u64 0];")
+    && (strContains fndsaSamplerJazz "rand_hi = (64u) inp[8];")
+    && (strContains fndsaSamplerJazz "sign_byte = (32u) inp[9];")
 
-/-- The sampler has the constant-time 2-limb unsigned subtract-with-
+/- The sampler has the constant-time 2-limb unsigned subtract-with-
     borrow (no branch on secret; the final-borrow flag feeds a
     conditional move). Replaces the prior `#CDT_LT_BROADCAST`
     pseudo-mnemonic. -/
-theorem fndsa_sampler_ct_compare :
-    strContains fndsaSamplerJazz "cmp_flag, tmp = tmp - rcdt_lo;" = true
-      ∧ strContains fndsaSamplerJazz
-          "cmp_flag, tmp = tmp - rcdt_hi - cmp_flag;" = true := by
-  native_decide
+#guard (strContains fndsaSamplerJazz "cmp_flag, tmp = tmp - rcdt_lo;")
+    && (strContains fndsaSamplerJazz "cmp_flag, tmp = tmp - rcdt_hi - cmp_flag;")
 
-/-- The sampler accumulator increment is unconditional `acc = acc + w0` —
+/- The sampler accumulator increment is unconditional `acc = acc + w0` —
     the CT realization of the `cdtStep` (`acc + (if r < e then 1 else 0)`),
     where the `0/1` comes from the lane-mask of `#CDT_LT_BROADCAST`. -/
-theorem fndsa_sampler_unconditional_accumulate :
-    strContains fndsaSamplerJazz "acc = acc + w0;" = true := by
-  native_decide
+#guard (strContains fndsaSamplerJazz "acc = acc + w0;")
 
 end CatCrypt.Crypto.SecureCompilation.VIR.FndsaEmit

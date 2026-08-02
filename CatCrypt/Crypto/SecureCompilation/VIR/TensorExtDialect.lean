@@ -16,11 +16,11 @@ fractalyze/prime-ir's **TensorExt** dialect, whose one op is
 
 ## Why this dialect exists (the gap it closes)
 
-Per `PRIME_IR_GAP_ANALYSIS.md` (repo root, §5), CatCrypt already *had* the
+Per `PRIME_IR_OP_CORRESPONDENCE.md` (repo root, §5), CatCrypt already *had* the
 bit-reversal functionality, but only **inlined** inside the NTT emit kernels:
 `Plonky3ProveEmit.bitReverse`/`bitReversePermute` (`ntt.rs::bit_reverse`,
 reverse-the-low-`logN`-bits, used by `bbNtt`), and the same permutation reused
-by `LatticeNttEmit` / `Plonky3LdeColumnEmit` / `FheNttLoopOwnedEmit`.  The gap
+by `LatticeNttEmit` / `Plonky3LdeColumnEmit` / `FheNttLoopEmit`.  The gap
 analysis classified it **PARTIAL** — "functionality present, not factored as a
 reusable tensor op."  This dialect **factors that inlined permutation as a
 standalone op**, matching prime-ir's `tensor_ext.bit_reverse` one-for-one.
@@ -56,9 +56,9 @@ development; the structural facts proved here are the bound-free `Equiv` form).
 input's lane `bitrev_k(i)`.  This is the per-lane permutation prime-ir's
 `tensor_ext.bit_reverse` denotes to.  The dialect denotation
 (`tensorExtDenote`) plugs this leaf in directly, so the op's meaning is the
-**genuine** index permutation, not a stub.
+index permutation.
 
-## Honest classification (read `VIR/DIALECTS.md`)
+## Classification (read `VIR/DIALECTS.md`)
 
 This is a **HIGH-tier, prime-ir-corresponding / agreement** dialect, NOT an
 emit-wired one.  It has **no lowering out** (no `→ Com jasminDialect`, no
@@ -67,7 +67,7 @@ backend edge): like `mlirArithDialect` & friends in DIALECTS.md's
 claim and factors the previously-inlined bit-reversal into one reusable op with
 a verified denotation + involution law.  It does **not** add a new lowering or
 emit path — the bytes-reaching NTT bit-reversal still flows through the inlined
-`Plonky3ProveEmit`/`LatticeNttEmit` kernels (the genuine `Com → jasmin → ELF`
+`Plonky3ProveEmit`/`LatticeNttEmit` kernels (the `Com → jasmin → ELF`
 spine in DIALECTS.md).  Do not overclaim an emit this file does not build.
 
 ## Pure-only + constant-time
@@ -159,7 +159,7 @@ instance : DialectSignature tensorExtDialect where
   ret op := match op with
     | .bitReverse k => .tensor k
 
-/-! ## 7. Op denotation (into the genuine index permutation) -/
+/-! ## 7. Op denotation (into the index permutation) -/
 
 instance tensorExtDenote : DialectDenote tensorExtDialect where
   denote op := match op with

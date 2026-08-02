@@ -56,7 +56,7 @@ realises each leaf.
 follow the established pattern: define the pure-Lean kernel for documentation,
 register each leaf in the `LowCTPattern` registry via `@[rust_cmd_pattern]`,
 then **hand-build the `LowCT`** the reifier *would* produce. Downstream
-(`translate → cprogToJasminCom → emitAbiOrchRegPtr`) is the unmodified verified
+(`translate → cryptoDialectToJasminCom → emitAbiOrchRegPtr`) is the unmodified verified
 front.
 
 ## LowCT-expressivity gap (documented)
@@ -72,7 +72,7 @@ hand-typed string text.
 
 ## References
 
-* AUCurves: `$HOME/Claude/BLS/AUCurves/bls12-381-safe-rust` (verified-bedrock2)
+* AUCurves: `bls12-381-safe-rust` crate (verified-bedrock2)
 * `CatCrypt/Crypto/Pairing/Bls12381Emit.lean` — abstract `BlsPrimitives`,
   `EcLeafAgrees`, `PairingLeavesAgree`, `msmFold_eq_msm`, `groth16VerifyRhsCom_denote`
 * `CatCrypt/Crypto/Pairing/Bls12381AUCurves.lean` — AUCurves-symbol binding

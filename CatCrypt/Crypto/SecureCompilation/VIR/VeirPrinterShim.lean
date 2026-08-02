@@ -8,6 +8,8 @@ import Veir.Printer
 /-!
 # Veir Printer Shim — `IO Unit` → `IO String`
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 Veir's `Veir.Printer.printModule` (Printer.lean:192) emits MLIR text
 via `IO.print` / `IO.println` (side-effects on stdout).  It has no
 pure `IRContext → String` form.

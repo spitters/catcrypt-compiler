@@ -24,7 +24,7 @@ whole-pipeline emit-realization that the `Grounded*` modules discharge with
 is a *theorem* (a proved concrete realizer composed with a verified codec
 round-trip), not a hypothesised leaf-bytes KAT.
 
-The entries below are genuine definitional aliases (`abbrev … := @Module.name`).
+The entries below are definitional aliases (`abbrev … := @Module.name`).
 Each forces its source theorem to elaborate and be in scope, so this file is a
 compile-time check that *all* the grounded results hold: if any source theorem
 were removed or its statement weakened past the alias, this file would fail to
@@ -62,7 +62,7 @@ verified codec round-trips.
 
 * **Lattice (ML-KEM)**
   * ML-KEM NTT-multiply (FIPS 203) and the `k`-step matrix–vector pointwise
-    backbone (`mlkem_ntt_grounded`, `grounded_mlkem_matvec_realizes`).
+    core (`mlkem_ntt_grounded`, `grounded_mlkem_matvec_realizes`).
 
 * **Zero-knowledge (Fiat-Shamir transcript)**
   * Poseidon2 Baby-Bear Fiat-Shamir transcript chain for STARK / Plonky3 / FRI
@@ -84,10 +84,10 @@ realization hypotheses; what remains is a single, shared residual:
   assembly ≡ realizer `leafSpec`).  This is **one global obligation per kernel**,
   discharged by the owned route — *not* a per-protocol or per-kernel hypothesis,
   and *not* a KAT.  The NTT route discharges it structurally
-  (`X86Backend/OwnedLoopRealization.lean`; the owned realization is free of
+  (`X86Backend/LoopRealization.lean`; the owned realization is free of
   `jasminc_preserves_ct` under `#print axioms`).
 
-Two protocols carry one further honest caveat, neither a kernel hypothesis:
+Two protocols carry one further caveat, neither a kernel hypothesis:
 
 * **Poly1305 (ChaCha20-Poly1305 MAC phase)** additionally carries a codec-fit /
   *range* side-condition on the accumulator (`hrange`, `width ≥ 17` covers every
@@ -95,10 +95,10 @@ Two protocols carry one further honest caveat, neither a kernel hypothesis:
   `width ≤ 48` codec-fit, not a kernel realization.
 * **Schnorr / EdDSA** grounds only the *scalar-field* response equation.  The
   **EC point operations** (`s·G`, `c·P`, `R + c·P`) are group operations with no
-  concrete field realizer and are explicitly *un-realized* — the honest residual
+  concrete field realizer and are explicitly *un-realized* — the residual
   of that grounding.
 
-## Honest scope, restated
+## Scope, restated
 
 This index does not claim end-to-end machine-checked security for whole
 protocols.  It claims exactly: the *composition layer* of each listed pipeline is
@@ -202,13 +202,13 @@ abbrev sha256_chain_is_grounded :=
 
 The ML-KEM NTT-multiply (FIPS 203) — already unconditional (the codec round-trip
 `decodeP_encodeP` plus `nttMul_eq_cyclicConv'` at the proven primitive root) —
-and the `k`-step matrix–vector pointwise backbone built from it. -/
+and the `k`-step matrix–vector pointwise core built from it. -/
 
 /-- ML-KEM NTT-multiply (FIPS 203) grounded — alias of the source theorem. -/
 abbrev mlkem_ntt_is_grounded :=
   @GroundedMlkemNtt.mlkem_ntt_grounded
 
-/-- ML-KEM matrix–vector pointwise-multiply backbone grounded — alias of the
+/-- ML-KEM matrix–vector pointwise-multiply core grounded — alias of the
     source theorem. -/
 abbrev mlkem_matvec_is_grounded :=
   @GroundedMlkemNtt.grounded_mlkem_matvec_realizes
@@ -228,7 +228,7 @@ abbrev poseidon_transcript_is_grounded :=
 The Schnorr / EdDSA scalar response combine `x ↦ c·x + r` and its batch /
 multi-scalar form, dispatched through one combined leafSpec whose two arms are
 the proved `combined_realizes_mul` / `combined_realizes_add`. The EC point
-operations are the honest un-realized residual (see module docstring). -/
+operations are the un-realized residual (see module docstring). -/
 
 /-- Schnorr / EdDSA scalar response combine grounded — alias of the source theorem. -/
 abbrev schnorr_response_is_grounded :=

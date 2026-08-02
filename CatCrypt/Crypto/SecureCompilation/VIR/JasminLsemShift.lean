@@ -38,8 +38,8 @@ source `s`, the structured linear instruction is
 — the **base** shift mnemonic (no `:<n>` count in the string) with the count
 riding in the `.imm n` operand. This is *exactly* the form
 
-* the existing `legalizeShiftImmLprog` (`Blake2bGThirOwnedEmit`,
-  `ChaChaQRThirOwnedEmit`) produces from the unary `SHR:<n>:64` before byte
+* the existing `legalizeShiftImmLprog` (`Blake2bGThirEmit`,
+  `ChaChaQRThirEmit`) produces from the unary `SHR:<n>:64` before byte
   rendering (`legalizeShiftImmInstr (emitted shrImm) = [MOV d,s; SHR:64 d,#n]`),
   and
 * the owned printer / `LoweringExtended.lowerAluJ` byte-renders (`"SHR" =>
@@ -76,7 +76,7 @@ realizers. The per-binding denotation equality is then discharged through
 `Trocq.transferRel` (`.rel`). Where Trocq does **not** fit: the *partiality*
 descent of `lsemStepN` (an `Option` match on the `LinstrR` syntax, not an op-tree
 over a single carrier) and the de-Bruijn `StoreAgreesN` bookkeeping — those reuse
-increment 5's machinery directly, as honestly noted at each use.
+increment 5's machinery directly, as noted at each use.
 
 **0 sorries, axioms ⊆ {propext, Classical.choice, Quot.sound}, no
 `jasminc_preserves_ct`.** The `lsem→bytes` encoder and Sail tables remain the

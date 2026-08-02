@@ -8,31 +8,24 @@ import CatCrypt.Crypto.SecureCompilation.SpeculativeCT
 /-!
 # Verified fence-insertion: speculative CT against an *unconstrained* predictor
 
-**Task #564 residual.**  `SpeculativeCT.lean` delivered the speculative
-leakage semantics over the owned `LowCT` stream (`specObs`,
-`SpeculativelyConstantTime`) and the keystone `architecturally_CT_imp_SCT`.
-That keystone, however, holds because the misprediction oracle there is a pure
-function of the *public* branch value — so its choices are public-determined
-the moment `cmdCT` certifies the branch public.  A *real* attacker controls the
-branch predictor **adversarially**; against such a predictor the bare keystone
-says nothing, because the predictor could in principle steer transient
-execution down a secret-dependent wrong path.
+`SpeculativeCT.lean`'s `architecturally_CT_imp_SCT` holds because each
+`MispredOracle` field is a function of a slot name and a runtime value, so its
+decisions agree on two states the moment `cmdCT` classifies that slot `Public`.
+An attacker-controlled predictor need not have that shape.
 
-This file closes that gap with the **sound, blanket mitigation**: a verified
-`LowCT → LowCT` pass `insertFences` that places a speculation barrier
-(`lfence`) at the head of every branch arm and loop body, and the theorem that
-the fenced program is speculatively constant-time against an **unconstrained**
-misprediction oracle.
+This file holds a `LowCT → LowCT` pass `insertFences` placing a speculation
+barrier (`lfence`) at the head of every branch arm and loop body, a fenced
+observer `specObsF` in which a barrier drains the transient window, and the
+theorem that the fenced program has equal `specObsF` traces under an
+unconstrained misprediction oracle.
 
-The argument is the classic *"lfence drains speculation"* one (it is exactly
-why Jasmin's Spectre-declassified backend, and the SLH literature, insert
-fences): a fence truncates the transient (mis-speculated) window to zero at
-that point, so a wrong-path that begins with a fence contributes **no**
-transient observations.  With a fence at the head of every arm, the entire
-speculative leakage trace collapses to the *architectural* leakage trace —
-which `cmdCT` already certifies secret-independent.  Crucially, this holds for
-**every** oracle, including an adversarial one, because the collapse is
-structural (no oracle choice survives the drain).
+The argument is "lfence drains speculation", the reason Jasmin's
+Spectre-declassified backend and the SLH literature insert fences: a fence
+truncates the transient window to zero at that point, so a wrong-path beginning
+with a fence contributes **no** transient observations.  With a fence at the
+head of every arm, the fenced speculative trace collapses to the architectural
+trace, which `cmdCT` certifies secret-independent.  The collapse is structural,
+so it holds for **every** oracle: no oracle choice survives the drain.
 
 ## What this provides
 
@@ -58,48 +51,54 @@ structural (no oracle choice survives the drain).
    fence* (returns `[]` on `RFence`).  This is the operational content of
    "lfence drains speculation".
 
-5. **The unconstrained-oracle keystone**
-   (`specObsF_insertFences_eq_archObs`, `insertFences_SCT_unconstrained`): for
-   *any* window and *any* (adversarial) oracle, the fenced speculative trace of
-   `insertFences c` equals the architectural trace of `c`; hence if `c` is
-   architecturally CT (`cmdCT`), `insertFences c` is speculatively CT against an
-   unconstrained predictor.
+5. **The collapse** (`specObsF_insertFences_eq_archObs`,
+   `insertFences_SCT_unconstrained`): for *any* window and *any* oracle, the
+   fenced speculative trace of `insertFences c` equals the architectural trace
+   of `c`; so if `c` is `cmdCT`-accepted, `insertFences c` has equal `specObsF`
+   traces on `PublicEquiv` states.
 
 Applied to the pilot branch kernel `SpeculativeCT.Pilot.pilotKernelBranch`.
 
-## Coverage (all four Spectre transient sources)
+## What the collapse covers
 
-The 2026-06 extension carries the fence/mitigation past Spectre-v1 to the full
-set of transient sources `SpeculativeCT.lean` now models:
+The two halves of `insertFences_SCT_unconstrained` are the collapse
+`specObsF (insertFences c) = archObs c`, which holds for every oracle, and
+`architecturally_CT_imp_ArchCT`, which turns `cmdCT` acceptance into equality
+of the collapsed trace.
 
-| Variant | Mitigation inserted by `insertFences`           | Drained by | Proved |
-|---------|--------------------------------------------------|------------|--------|
-| PHT/v1  | `lfence` (`RFence`) at branch-arm / loop-body head | `specTransient` (wrong-path drain) | yes |
-| BTB/v2  | retpoline-shape site-guard (`RGuard`) before the indirect call | `specObsF_fenceGuard` (transient drain) | yes |
-| RSB     | RSB-stuffing site-guard before the matching return | `specObsF_fenceGuard` | yes |
-| STL/v4  | SSBD / LFENCE site-guard before the load/store    | `specObsF_fenceGuard` | yes |
+| Clause | Barrier `insertFences` places | Drained by |
+|--------|-------------------------------|------------|
+| `RIfNz`, `RWhileNz` | `RFence` at the arm / body head | `specTransient` |
+| `RCall` | `RGuard` before the call | `specObsF_fenceGuard` |
+| `RArrLoad`, `RArrStore` | `RGuard` before the access | `specObsF_fenceGuard` |
 
-All four are proved SCT against an **unconstrained adversarial** oracle by the
-single collapse theorem `specObsF_insertFences_eq_archObs` →
-`insertFences_SCT_unconstrained`: every transient source resolves at its
-guarded site and drains, so the fenced speculative trace equals the
-architectural one regardless of the oracle.
+The site markers `Obs.indirectTarget`, `Obs.retTarget` and `Obs.stlForward`
+that `RGuard` drains carry memory words, as in `SpeculativeCT.specObs`: the
+predicted callee pointer and the predicted return address are the first two
+words of the call's destination slot, and the store-bypass marker is the word
+the load is forwarded out of its source slot at the runtime index.  The
+architectural clause at the same site emits the runtime index or nothing, so
+the drain removes a data dependence the architectural trace does not carry.
 
-## Honest scope
+## Scope
 
-* This is the **blanket-fence + blanket-site-guard** mitigation: a fence at
-  every branch and a guard before every call/load/store.  It is sound
-  (provably SCT-vs-unconstrained-oracle) but conservative on performance.  The
-  stronger Cauligi/Jasmin **selective speculative-load-hardening (SLH)** —
-  masking only secret-dependent loads instead of blanket fencing — is a perf
-  optimization with a harder proof obligation; it is *not* attempted here and
-  is reported as the residual.
-* The BTB/RSB site-guards are modelled as zero-cost barrier markers at the
-  call's destination slot (the target/return register of the frame); see the
-  `SpeculativeCT.lean` residual on the indirect-control abstraction (`LowCT`
-  has no dedicated indirect-jump/`ret` constructor).  STL's microarchitectural
-  store-buffer datum is a model assumption (the *address* pattern is what we
-  model and drain; the bypassed datum's value is delegated to leaf-CT).
+* The barriers are blanket: a fence at every branch and a guard before every
+  call, load and store.  `SpeculativeCTMask.insertMasks` and
+  `BladeSelectiveProtect.insertSelective` place fewer.
+* `RFence` and `RGuard` are `LowCT.RAssert` markers, and only `specObsF` reads
+  their labels.  `SpeculativeCTStoreBuffer.specRun`, whose loads may be
+  forwarded a buffered store value, maps every `RAssert` to the identity;
+  `SpeculativeCTStoreBufferPasses.specRun_insertFences` records that this pass
+  leaves that run unchanged, and
+  `SpeculativeCTStoreBufferPasses.insertFences_not_SCT_SB` exhibits a
+  `cmdCT`-accepted command whose fenced image separates two `PublicEquiv`
+  states there.
+* `cmdCT` acceptance is the hypothesis of `insertFences_SCT_unconstrained`.  It
+  does not imply constant-time of the state-threading committed run
+  (`SpeculativeCTStoreBuffer.cmdCT_not_imp_ArchCT`);
+  `SpeculativeCTStoreBufferPasses.insertFences_SCT_SB_window_zero` and
+  `insertFences_SCT_SB_neverSpeculate` are the restatements over that run, with
+  `ArchConstantTimeSB` in place of `cmdCT`.
 
 ## References
 
@@ -294,10 +293,10 @@ trace of a fenced wrong-path is empty. -/
     constructors contribute their architectural observation and recurse; the
     overall result is truncated to `window` by the caller.
 
-    We only need the *head-fence* case for the keystone (a fenced arm starts
-    with `RFence`), so non-fence constructors fall back to the architectural
-    observation of the (truncated) prefix; the `RFence` and `RSeq`-with-leading-
-    fence cases are what make the drain fire. -/
+    The collapse theorem feeds this only fenced arms, which start with
+    `RFence`, so non-fence constructors fall back to the architectural
+    observation of the truncated prefix; the `RFence` and
+    `RSeq`-with-leading-fence cases are what make the drain fire. -/
 def specTransient (rs : RustState) : LowCT → ObsTrace
   | .RAssert _              => []
   | .RSeq c1 c2             =>
@@ -414,23 +413,30 @@ def specObsF (window : SpecWindow) (O : MispredOracle) (rs : RustState) :
       Obs.branch cond v :: (speculated ++ obsBody)
   | .RFor _ _ body          => specObsF window O rs body
   | .RArrStore _ idxVar _   => [Obs.memIdx idxVar (rs.rsScalar idxVar)]
-  | .RArrLoad dst _ idxVar  =>
-      -- Unfenced load: the STL transient fires (oracle-gated).  Mirrors the
-      -- `specObs` STL clause; drained when fence-guarded (see `RSeq` above).
+  | .RArrLoad _ src idxVar  =>
+      -- Unfenced load: the STL transient fires (oracle-gated), carrying the
+      -- word the load is forwarded out of the source slot at the runtime index.
+      -- Mirrors the `specObs` STL clause; drained when fence-guarded (see
+      -- `RSeq` above).
+      let i := rs.rsScalar idxVar
       let stl : ObsTrace :=
-        if O.bypassStore idxVar (rs.rsScalar idxVar) then
-          withRollback [Obs.stlForward idxVar (rs.rsScalar idxVar)]
+        if O.bypassStore idxVar i then
+          withRollback [Obs.stlForward src.locVar (rsTowerLimb rs src.locVar i)]
         else []
-      Obs.memIdx idxVar (rs.rsScalar idxVar) :: (stl ++ (let _ := dst; []))
+      Obs.memIdx idxVar i :: stl
   | .RCall _ dest _         =>
-      -- Unfenced call: the BTB + RSB transients fire (oracle-gated).
+      -- Unfenced call: the BTB + RSB transients fire (oracle-gated), carrying
+      -- the predicted callee pointer and the predicted return address, read as
+      -- the first two words of the call's destination slot.
       let tslot := dest.locVar
       let tv := rs.rsScalar tslot
       let btb : ObsTrace :=
-        if O.injectTarget tslot tv then withRollback [Obs.indirectTarget tslot tv]
+        if O.injectTarget tslot tv then
+          withRollback [Obs.indirectTarget tslot (rsTowerLimb rs tslot 0)]
         else []
       let rsb : ObsTrace :=
-        if O.mispredRet tslot tv then withRollback [Obs.retTarget tslot tv]
+        if O.mispredRet tslot tv then
+          withRollback [Obs.retTarget tslot (rsTowerLimb rs tslot 1)]
         else []
       btb ++ rsb
   | _                       => []
@@ -451,7 +457,7 @@ def specObsF (window : SpecWindow) (O : MispredOracle) (rs : RustState) :
     specObsF window O rs (fenceGuard c) = archObs rs c := by
   simp [fenceGuard, specObsF, RGuard, guardLabel, committedObs]
 
-/-! ## §5.  The unconstrained-oracle keystone
+/-! ## §5.  The collapse to the architectural trace
 
 For a *fenced* program — one where every branch arm / loop body begins with a
 fence — the mis-speculated contribution of every branch is `[]` (the wrong-path
@@ -563,11 +569,9 @@ theorem insertFences_SCT_unconstrained
 
 /-! ## §7.  Pilot: the branching kernel is SCT against an unconstrained oracle
 
-We exercise the unconstrained-oracle keystone on `Pilot.pilotKernelBranch`
-(the `RIfNz`-on-public-flag kernel that genuinely drives the speculative
-machinery).  Its architectural acceptance discharges by `cmdCT`
-(`Pilot.pilotKernelBranch_cmdCT`); the fence pass then makes it SCT for *any*
-predictor. -/
+`insertFences_SCT_unconstrained` applied to `Pilot.pilotKernelBranch`, the
+`RIfNz`-on-public-flag kernel that drives the branch-misprediction clause.  Its
+architectural acceptance discharges by `Pilot.pilotKernelBranch_cmdCT`. -/
 
 namespace Pilot
 
@@ -578,12 +582,10 @@ theorem insertFences_pilotKernelBranch_cmdCT :
       = true := by
   native_decide
 
-/-- **Pilot result.**  The fenced branching kernel `insertFences
-    pilotKernelBranch` is speculatively constant-time against an
-    **unconstrained** misprediction oracle, for every speculation window.  This
-    is the sound, blanket-fence mitigation: even an adversarial predictor's
-    transient wrong-path leaks nothing, because the head-fence drains the
-    window before any wrong-path observation is issued. -/
+/-- The fenced branching kernel `insertFences pilotKernelBranch` has equal
+    `specObsF` traces on `PublicEquiv` states, for every window and every
+    misprediction oracle: the head fence drains the wrong-path window before any
+    of its observations is issued. -/
 theorem pilotKernelBranch_SCT_unconstrained
     (window : SpecWindow) (O : MispredOracle) :
     SpeculativelyConstantTimeF window O pilotLevels
@@ -593,88 +595,85 @@ theorem pilotKernelBranch_SCT_unconstrained
 
 end Pilot
 
-/-! ### Mitigation-effectiveness witnesses
+/-! ### The site-guard removes the site markers
 
-These check that the site-guard genuinely *removes* the BTB/RSB/STL transient
-(not vacuously): the unfenced call/load leaks the transient observation under a
-firing oracle, while the guarded form drains it to the architectural trace. -/
+The unguarded call and load emit their site markers under a firing oracle, each
+carrying a word read from the site's destination or source slot; the guarded
+forms emit the architectural trace alone.  The state is `Sanity.stMem`, whose
+heap holds a one-byte value in the call's destination slot (`tgt`, word `0` is
+`5`, word `1` is `0`) and in the load's source slot (`a`, word `0` is `9`). -/
 
-/-- An oracle firing every speculative source. -/
+/-- An oracle whose four decisions all fire. -/
 def allFireF : MispredOracle :=
   ⟨fun _ _ => true, fun _ _ => true, fun _ _ => true, fun _ _ => true⟩
 
-/-- Unfenced indirect call leaks the BTB + RSB transient under a firing oracle. -/
+/-- An unguarded call emits both call-site markers under a firing oracle,
+    carrying the first two words of the call's destination slot. -/
 theorem call_unfenced_leaks :
-    specObsF 8 allFireF Sanity.st (.RCall "f" ⟨"tgt", .TU64⟩ [])
-      = [Obs.indirectTarget "tgt" 7, Obs.rollback,
-         Obs.retTarget "tgt" 7, Obs.rollback] := by
+    specObsF 8 allFireF Sanity.stMem (.RCall "f" ⟨"tgt", .TU64⟩ [])
+      = [Obs.indirectTarget "tgt" 5, Obs.rollback,
+         Obs.retTarget "tgt" 0, Obs.rollback] := by
   native_decide
 
-/-- **Site-guard drains BTB/RSB.**  `insertFences` on the same indirect call
-    produces the guarded form whose fenced speculative trace is the (empty)
-    architectural call trace — the transient is gone, for the firing oracle. -/
+/-- `insertFences` on the same call produces the guarded form, whose fenced
+    speculative trace under the firing oracle is the empty architectural call
+    trace. -/
 theorem call_guarded_drains :
-    specObsF 8 allFireF Sanity.st (insertFences (.RCall "f" ⟨"tgt", .TU64⟩ []))
+    specObsF 8 allFireF Sanity.stMem
+        (insertFences (.RCall "f" ⟨"tgt", .TU64⟩ []))
       = [] := by
   native_decide
 
-/-- **Site-guard drains STL.**  `insertFences` on a load drains the STL
-    transient, leaving only the architectural memory-index observation. -/
-theorem load_guarded_drains :
-    specObsF 8 allFireF Sanity.st
-        (insertFences (.RArrLoad ⟨"d", .TU64⟩ ⟨"a", .TU64⟩ "idx"))
-      = [Obs.memIdx "idx" 3] := by
+/-- An unguarded load emits the store-bypass marker under a firing oracle,
+    carrying the word forwarded out of the source slot at the runtime index. -/
+theorem load_unfenced_leaks :
+    specObsF 8 allFireF Sanity.stMem (.RArrLoad ⟨"d", .TU64⟩ ⟨"a", .TU64⟩ "idx")
+      = [Obs.memIdx "idx" 0, Obs.stlForward "a" 9, Obs.rollback] := by
   native_decide
 
-/-! ## §8.  What this gets us, and what remains
+/-- `insertFences` on the same load drains the store-bypass marker, leaving the
+    architectural memory-index observation. -/
+theorem load_guarded_drains :
+    specObsF 8 allFireF Sanity.stMem
+        (insertFences (.RArrLoad ⟨"d", .TU64⟩ ⟨"a", .TU64⟩ "idx"))
+      = [Obs.memIdx "idx" 0] := by
+  native_decide
 
-**Delivered (this file).**
-* `insertFences : LowCT → LowCT`, a structural pass placing (i) an `lfence`
-  (`RFence`) at the head of every branch arm / loop body — the PHT/v1
-  mitigation — and (ii) a site-guard (`RGuard`: retpoline/RSB-stuffing/SSBD)
-  before every indirect call (BTB/RSB) and every load/store (STL).
-* **Denotation preservation**: `archObs_insertFences` (architectural leakage
-  trace unchanged) and `cmdCT_insertFences` (acceptance preserved) — both the
-  fence and the site-guard are genuine no-ops for the non-speculative
-  semantics.
-* **Fenced speculative semantics** (`specObsF` + `specTransient` +
-  `committedObs`) implementing "barrier drains speculation": the PHT
-  wrong-path is flushed at its leading fence (`specTransient`), and a
-  site-guarded call/load/store's BTB/RSB/STL transient is drained to its
-  committed (architectural) observation (`specObsF_fenceGuard`).
-* **The unconstrained-oracle keystone** `insertFences_SCT_unconstrained`: an
-  architecturally-CT program, once fenced+guarded, is speculatively CT against
-  an *arbitrary adversarial* predictor and *any* window, over **all four
-  Spectre sources** (PHT/BTB/RSB/STL).  Applied to `Pilot.pilotKernelBranch`.
-  `call_unfenced_leaks` / `call_guarded_drains` / `load_guarded_drains`
-  witness the site-guard genuinely removes the BTB/RSB/STL transient (the
-  mitigation is non-vacuous).
+/-! ## §8.  What the pass delivers
 
-**Variant-coverage matrix** (modelled? mitigated? proved?):
+**In this file.**
+* `insertFences : LowCT → LowCT`, placing an `RFence` at the head of every
+  branch arm and loop body, and an `RGuard` before every call, load and store.
+* `archObs_insertFences` and `cmdCT_insertFences`: both markers are `RAssert`
+  no-ops, so the architectural leakage trace and `cmdCT` acceptance are
+  unchanged.
+* `specObsF`, `specTransient` and `committedObs`: the barrier drains, so a
+  wrong-path beginning with `RFence` contributes `[]`, and a guarded call, load
+  or store contributes its architectural observation alone
+  (`specObsF_fenceGuard`).
+* `specObsF_insertFences_eq_archObs` and `insertFences_SCT_unconstrained`: the
+  fenced speculative trace of `insertFences c` is the architectural trace of
+  `c` for every window and every oracle, so a `cmdCT`-accepted `c` yields equal
+  fenced traces on `PublicEquiv` states.  Applied to `Pilot.pilotKernelBranch`.
+  `call_unfenced_leaks`, `call_guarded_drains`, `load_unfenced_leaks` and
+  `load_guarded_drains` compute the traces with and without the guard.
 
-| Variant | Modelled (`SpeculativeCT.lean`) | Mitigation | Proved SCT vs unconstrained oracle |
-|---------|---------------------------------|------------|------------------------------------|
-| PHT/v1  | `branch` + wrong-path window    | `lfence` arm/loop head | yes |
-| BTB/v2  | `indirectTarget`                | retpoline-shape `RGuard` before call | yes |
-| RSB     | `retTarget`                     | RSB-stuffing `RGuard` before return | yes |
-| STL/v4  | `stlForward`                    | SSBD/LFENCE `RGuard` before load/store | yes |
+The axiom profile of `specObsF_insertFences_eq_archObs` is `propext`,
+`Classical.choice`, `Quot.sound`; the pilot and witness lemmas additionally
+carry the `native_decide` axiom.
 
-All four discharge through `specObsF_insertFences_eq_archObs` (axiom profile:
-`propext`; the pilot/witness `native_decide` lemmas additionally carry the
-standard `native_decide` axiom).
-
-**What remains (honest residual / model assumptions).**
-* **Selective SLH (perf).**  This is the *blanket* mitigation — a barrier at
-  every branch/call/load.  The Cauligi/Jasmin selective speculative-load-
-  hardening variant masks only secret-dependent loads (far fewer barriers),
-  trading a harder proof obligation for much lower overhead.  That is the
-  perf-optimal follow-up; the present blanket version is its sound baseline.
-* **Indirect-control abstraction (BTB/RSB).**  `LowCT` has no dedicated
-  indirect-jump/`ret` constructor, so the BTB/RSB site-guard is placed before
-  *every* call.  A dedicated indirect-control node would let the pass guard
-  only genuinely-indirect sites.  Sound but conservative.
-* **STL store-buffer model.**  The STL guard drains the modelled *address*
-  transient; the bypassed datum's *value* leakage is delegated to leaf-CT, as
-  for an ordinary load.  A full store-buffer model is the residual. -/
+**Scope.**
+* The placement is blanket: a barrier at every branch, call, load and store.
+  `BladeSelectiveProtect.insertSelective` places barriers only at a covering
+  set of sites, and `SpeculativeCTMask.insertMasks` only at loads.
+* `LowCT` has no indirect-jump or return constructor, so the call-site guard
+  goes before every call.
+* The markers are `RAssert` labels that only `specObsF` reads.  Over
+  `SpeculativeCTStoreBuffer.specRun`, whose loads may be forwarded a buffered
+  store value, `SpeculativeCTStoreBufferPasses.specRun_insertFences` shows the
+  pass is the identity, and `insertFences_not_SCT_SB` shows a `cmdCT`-accepted
+  command whose fenced image separates two `PublicEquiv` states there.  The
+  restatements over that run take `ArchConstantTimeSB` as hypothesis and hold
+  at window `0` and under `neverSpeculate`. -/
 
 end CatCrypt.Crypto.SecureCompilation.SpeculativeCT

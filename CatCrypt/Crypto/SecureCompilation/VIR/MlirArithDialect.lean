@@ -319,7 +319,7 @@ end Agreement
 The agreement lemmas above are the per-op crux. To package the full pass we
 record the op correspondence `catToArith` (the semantic-level counterpart of
 `CatCryptOp.toArithOpCode`) and STATE the `Com → Com` denotation-preservation
-theorem, mirroring `CryptoToJasminComCorrect.cprogToJasminCom_denote_eq`.
+theorem, mirroring `CryptoToJasminComCorrect.cryptoDialectToJasminCom_denote_eq`.
 
 Only the arith fragment of `CatCryptOp` is in the domain of `catToArith`; the
 algebraic-datatype / memref / extCall ops are out of scope for an arith pass
@@ -405,7 +405,7 @@ translation would: (1) translate each `Expr` via `catToArith` on its op
 transport `transport` collapses to the identity and the preservation
 statement is `(translate c).denote V = c.denote V`.
 
-The structure mirrors `cprogToJasminCom_denote_eq`: the `.ret` case is a
+The structure mirrors `cryptoDialectToJasminCom_denote_eq`: the `.ret` case is a
 variable-lookup identity; the `.var` case combines `catToArith_denote` for the
 bound expression with the induction hypothesis for the body. It is DEFERRED (see
 the closing note) — the §3 agreement lemmas (equivalently `catToArith_denote`)
@@ -474,7 +474,7 @@ theorem argsCM_lookup {Γ : Ctxt catCryptDialect} :
     `argsCM_lookup` agreement of the resolved arguments collapse the goal to a
     plain `congrArg`. This is the single dependent-transport step in the pass; it
     is the analogue of the `cast`/`HEq`/`eq_of_heq` discharge in
-    `cprogToJasminCom_denote_eq`, minus the `mapTy` threading. -/
+    `cryptoDialectToJasminCom_denote_eq`, minus the `mapTy` threading. -/
 theorem denote_cong {Γ : Ctxt catCryptDialect}
     {s s' : List CryptoTy} {r r' : CryptoTy}
     (f : HVector (fun t => ⟦t⟧) s → ⟦r⟧)
@@ -529,7 +529,7 @@ identity (`Com.denote` of a return is `v.lookup V`; `varCM_lookup` closes it).
 The `.var` case combines the per-expression agreement (the bound `Expr`s denote
 equally, via `catToArith_denote` + `argsCM_lookup`) with the induction
 hypothesis on the body. This mirrors
-`CryptoToJasminComCorrect.cprogToJasminCom_denote_eq`, but is strictly easier:
+`CryptoToJasminComCorrect.cryptoDialectToJasminCom_denote_eq`, but is strictly easier:
 there is no `mapTy`/`mapCtx`, so the valuation transport is the identity. -/
 
 /-- Per-expression agreement: a translated expression denotes to the same value

@@ -14,12 +14,12 @@ A feasibility probe for emitting a full lazy NTT butterfly — including its
 jasminc. The gating question was whether the `if X ≥ 2q: X −= 2q` (and the
 final `if T ≥ q: T −= q`) conditional subtracts can be emitted at all, since
 the GP-linear `Lprog` printer renders neither `thSelect` nor a `CMOV` (the
-modmul work pushed the csub host-side; cf. `FheShoupOwnedEmit` §docstring).
+modmul work pushed the csub host-side; cf. `FheShoupEmit` §docstring).
 
-## Verdict: YES — via the branchless arithmetic mask-trick (no branch, no CMOV)
+## Result: YES — via the branchless arithmetic mask-trick (no branch, no CMOV)
 
 The conditional subtract is the standard sign-bit mask the ML-DSA `decompose`
-emit already uses (`MLDSA/DecomposeOwnedEmit.decomposeBody`):
+emit already uses (`MLDSA/DecomposeEmit.decomposeBody`):
 
 ```
   r = X − 2q                  -- SUB
@@ -55,7 +55,7 @@ Inputs `X, Y ∈ [0, 4q)`, twiddle `ω`, precomputed Shoup constant `ω' = ⌊ω
 ```
 
 `T = lo(ω·Y) − lo(q̂·q)` is a single 64-bit subtraction (the true value is in
-`[0, 2q) ⊂ [0, 2^64)`, so the high words cancel — same reason `FheShoupOwnedEmit`
+`[0, 2q) ⊂ [0, 2^64)`, so the high words cancel — same reason `FheShoupEmit`
 has no carry chain). `q̂` is `mulhi`, taken as the high output of `MULX`.
 
 ## What is verified here
@@ -70,17 +70,17 @@ has no carry chain). `q̂` is `mulhi`, taken as the high output of `MULX`.
   the GP pool). This is the headline: the conditional reduction is *present* in
   the emitted code, not host-side.
 
-## Honest gap (the `mulx` rdx-pin — pre-existing, shared with FheShoupOwnedEmit)
+## Gap (the `mulx` rdx-pin — pre-existing, shared with FheShoupEmit)
 
 `AT&T mulx src2, dstLo, dstHi` pins src1 to `%rdx`. The first-fit `allocGp`
 assigns `%rdx` to whatever name appears third; it does NOT evacuate src1 of the
 `MULX` into `%rdx`. So the *rendered* `mulx` line's implicit src1 register is not
 guaranteed to hold `Y`. The `runBlock` semantics uses `a.eval`/`b.eval` directly
 (ignoring the physical rdx pin), so the value KAT passes; but a faithful `.s`
-needs the rdx evacuation that the `Lprog` path's `FheMontMulOwnedEmit.fuseMulHiLprog`
+needs the rdx evacuation that the `Lprog` path's `FheMontMulEmit.fuseMulHiLprog`
 performs. This probe deliberately stays on the simpler scalar `JInstr` printer to
 isolate the *conditional-reduction* question; the Shoup high-word `mulx` should be
-routed through `fuseMulHiLprog` (as `FheShoupOwnedEmit` does) for a shippable
+routed through `fuseMulHiLprog` (as `FheShoupEmit` does) for a shippable
 kernel. The conditional-reduction result is independent of this and fully stands.
 -/
 
@@ -174,7 +174,7 @@ def butterflyAlloc : GpAlloc := allocGp [] butterflyBody
 def butterflyAsm : String :=
   String.intercalate "\n" (renderBlockBody butterflyAlloc butterflyBody)
 
-/-- Substring test (mirrors `FheMontMulOwnedEmit.hasSub`). -/
+/-- Substring test (mirrors `FheMontMulEmit.hasSub`). -/
 def hasSub (hay needle : String) : Bool :=
   (List.range (hay.length + 1)).any (fun i =>
     needle == String.ofList (hay.toList.drop i |>.take needle.length))

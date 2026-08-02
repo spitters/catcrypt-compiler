@@ -8,6 +8,8 @@ import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 /-!
 # The `func` dialect (D0 fan-out — CatCrypt-side, not in `VIR/`)
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 The function-call neutral dialect of the MLIR dialect-alignment restructure
 (D0 fan-out). It is the
 target-neutral *call* fragment — upstream MLIR's `func` / Veir `Func` — defined

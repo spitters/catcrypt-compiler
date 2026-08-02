@@ -22,7 +22,7 @@ MULX + dual ADCX/ADOX carry-chain idiom — the same machinery the BN254/BLS
 kernels use — landing the whole `a·b·R⁻¹ mod p` field multiply in one
 own-emitted leaf.
 
-## The Montgomery constants (canonical, NOT fabricated)
+## The Montgomery constants (canonical sources)
 
 * Modulus limbs: `PastaFieldAddSubKernel.{pallasLimbs, vestaLimbs}` (the AUCurves
   `pallas_modulus` / `vesta_modulus`).
@@ -210,15 +210,9 @@ def pallasMontMulAsm : String :=
 def vestaMontMulAsm : String :=
   renderMontMul "vesta_mont_mul_4" (montMulBlock vestaLimbs vestaNPrime)
 
-/-- Shape check: the emitted Pallas mont-mul uses the dual carry-chain CIOS
+/- Shape check: the emitted Pallas mont-mul uses the dual carry-chain CIOS
     idiom (`mulx`/`adcx`/`adox`/`imul`) + memory-operand `MULX` from `[x]`. -/
-theorem pallasMontMulAsm_shape :
-    PastaFieldAddSubKernel.hasSub pallasMontMulAsm "mulx"
-      ∧ PastaFieldAddSubKernel.hasSub pallasMontMulAsm "adcx"
-      ∧ PastaFieldAddSubKernel.hasSub pallasMontMulAsm "adox"
-      ∧ PastaFieldAddSubKernel.hasSub pallasMontMulAsm "imul"
-      ∧ PastaFieldAddSubKernel.hasSub pallasMontMulAsm "mulxq 0(%rsi)"
-      ∧ PastaFieldAddSubKernel.hasSub pallasMontMulAsm "(%rdi)" := by native_decide
+#guard (PastaFieldAddSubKernel.hasSub pallasMontMulAsm "mulx") && (PastaFieldAddSubKernel.hasSub pallasMontMulAsm "adcx") && (PastaFieldAddSubKernel.hasSub pallasMontMulAsm "adox") && (PastaFieldAddSubKernel.hasSub pallasMontMulAsm "imul") && (PastaFieldAddSubKernel.hasSub pallasMontMulAsm "mulxq 0(%rsi)") && (PastaFieldAddSubKernel.hasSub pallasMontMulAsm "(%rdi)")
 
 /-- Emit driver: write the in-Lean-backend-emitted mont-mul `.s` files. -/
 def emitMain : IO Unit := do
@@ -228,5 +222,12 @@ def emitMain : IO Unit := do
   IO.FS.writeFile
     "bench/halo2_compare/gen_com/vesta_mont_mul_4_owned_from_lean.s" vestaMontMulAsm
   IO.println "wrote gen_com/{pasta,vesta}_mont_mul_4_owned_from_lean.s (owned x86 backend CIOS, no jasminc)"
+
+/-! ## Artifact generation at elaboration
+
+The renders are written while this module elaborates, so `lake` produces them
+from this file and no separate driver or Makefile rule carries the dependency. -/
+
+#eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.PastaMontMulKernel

@@ -1007,64 +1007,41 @@ def poseidon2MontgomeryJazz : String :=
 
 /-! ## 8. Structural sanity checks -/
 
-/-- The Montgomery emit declares the standard `export fn poseidon2_bb` ABI. -/
-theorem poseidon2MontgomeryJazz_export :
-    strContains poseidon2MontgomeryJazz "export fn poseidon2_bb(" = true := by
-  native_decide
+/- The Montgomery emit declares the standard `export fn poseidon2_bb` ABI. -/
+#guard (strContains poseidon2MontgomeryJazz "export fn poseidon2_bb(")
 
-/-- The Montgomery emit uses the packed-u64 32x32 -> 64 multiply intrinsic
+/- The Montgomery emit uses the packed-u64 32x32 -> 64 multiply intrinsic
     (`#VPMULU_256`), the lever this variant is built around. -/
-theorem poseidon2MontgomeryJazz_has_vpmuludq :
-    strContains poseidon2MontgomeryJazz "#VPMULU_256" = true := by
-  native_decide
+#guard (strContains poseidon2MontgomeryJazz "#VPMULU_256")
 
-/-- The Montgomery emit uses the packed-u64 right-shift (`#VPSRL_4u64`),
+/- The Montgomery emit uses the packed-u64 right-shift (`#VPSRL_4u64`),
     needed for the Montgomery `>> 32` after `t + m * p`. -/
-theorem poseidon2MontgomeryJazz_has_vpsrl :
-    strContains poseidon2MontgomeryJazz "#VPSRL_4u64" = true := by
-  native_decide
+#guard (strContains poseidon2MontgomeryJazz "#VPSRL_4u64")
 
-/-- The Montgomery emit uses the packed-u64 add (`#VPADD_4u64`). -/
-theorem poseidon2MontgomeryJazz_has_vpadd :
-    strContains poseidon2MontgomeryJazz "#VPADD_4u64" = true := by
-  native_decide
+/- The Montgomery emit uses the packed-u64 add (`#VPADD_4u64`). -/
+#guard (strContains poseidon2MontgomeryJazz "#VPADD_4u64")
 
-/-- The Montgomery emit uses the packed-u64 sub (`#VPSUB_4u64`) for the
+/- The Montgomery emit uses the packed-u64 sub (`#VPSUB_4u64`) for the
     final canonicalising packed csub. -/
-theorem poseidon2MontgomeryJazz_has_vpsub :
-    strContains poseidon2MontgomeryJazz "#VPSUB_4u64" = true := by
-  native_decide
+#guard (strContains poseidon2MontgomeryJazz "#VPSUB_4u64")
 
-/-- The Montgomery emit uses the packed-u64 signed compare
+/- The Montgomery emit uses the packed-u64 signed compare
     (`#VPCMPGT_4u64`) for the final canonicalising mask. -/
-theorem poseidon2MontgomeryJazz_has_vpcmpgt :
-    strContains poseidon2MontgomeryJazz "#VPCMPGT_4u64" = true := by
-  native_decide
+#guard (strContains poseidon2MontgomeryJazz "#VPCMPGT_4u64")
 
-/-- The Montgomery emit declares the Montgomery magic constant
+/- The Montgomery emit declares the Montgomery magic constant
     `NEG_P_INV = -p^{-1} mod 2^32`. -/
-theorem poseidon2MontgomeryJazz_has_neg_p_inv :
-    strContains poseidon2MontgomeryJazz "param int NEG_P_INV = 2013265919;"
-      = true := by
-  native_decide
+#guard (strContains poseidon2MontgomeryJazz "param int NEG_P_INV = 2013265919;")
 
-/-- The Montgomery emit declares the 32-bit mask constant. -/
-theorem poseidon2MontgomeryJazz_has_mask32 :
-    strContains poseidon2MontgomeryJazz "param int MASK32    = 4294967295;"
-      = true := by
-  native_decide
+/- The Montgomery emit declares the 32-bit mask constant. -/
+#guard (strContains poseidon2MontgomeryJazz "param int MASK32    = 4294967295;")
 
-/-- The Montgomery emit uses no extCall / opaque leaf. -/
-theorem poseidon2MontgomeryJazz_no_extcall :
-    strContains poseidon2MontgomeryJazz "extCall" = false := by
-  native_decide
+/- The Montgomery emit uses no extCall / opaque leaf. -/
+#guard !(strContains poseidon2MontgomeryJazz "extCall")
 
-/-- The Montgomery emit retains the FIFTEENTH-mode RC-add packed-u64
+/- The Montgomery emit retains the FIFTEENTH-mode RC-add packed-u64
     lane-add (carry-over). -/
-theorem poseidon2MontgomeryJazz_keeps_rc_add :
-    strContains poseidon2MontgomeryJazz "va = #VPADD_4u64(va, vb);"
-      = true := by
-  native_decide
+#guard (strContains poseidon2MontgomeryJazz "va = #VPADD_4u64(va, vb);")
 
 /-! ## 9. Single-pass Montgomery emit (EIGHTEENTH ABI mode)
 
@@ -1457,49 +1434,34 @@ def poseidon2MontgomerySinglePassJazz : String :=
 
 /-! ### Single-pass structural sanity checks -/
 
-/-- The single-pass emit declares the standard `export fn poseidon2_bb` ABI. -/
-theorem singlePassJazz_export :
-    strContains poseidon2MontgomerySinglePassJazz "export fn poseidon2_bb(" = true := by
-  native_decide
+/- The single-pass emit declares the standard `export fn poseidon2_bb` ABI. -/
+#guard (strContains poseidon2MontgomerySinglePassJazz "export fn poseidon2_bb(")
 
-/-- The single-pass emit uses the packed-u64 32x32 -> 64 multiply intrinsic. -/
-theorem singlePassJazz_has_vpmuludq :
-    strContains poseidon2MontgomerySinglePassJazz "#VPMULU_256" = true := by
-  native_decide
+/- The single-pass emit uses the packed-u64 32x32 -> 64 multiply intrinsic. -/
+#guard (strContains poseidon2MontgomerySinglePassJazz "#VPMULU_256")
 
-/-- The single-pass emit declares the scalar Montgomery S-box `montsbox`
+/- The single-pass emit declares the scalar Montgomery S-box `montsbox`
     (single-pass montmul chain) used by the partial rounds. -/
-theorem singlePassJazz_has_montsbox :
-    strContains poseidon2MontgomerySinglePassJazz "inline fn montsbox(" = true := by
-  native_decide
+#guard (strContains poseidon2MontgomerySinglePassJazz "inline fn montsbox(")
 
-/-- The single-pass emit declares the scalar single-pass `montmul` helper. -/
-theorem singlePassJazz_has_montmul :
-    strContains poseidon2MontgomerySinglePassJazz "inline fn montmul(" = true := by
-  native_decide
+/- The single-pass emit declares the scalar single-pass `montmul` helper. -/
+#guard (strContains poseidon2MontgomerySinglePassJazz "inline fn montmul(")
 
-/-- The single-pass emit uses no extCall / opaque leaf. -/
-theorem singlePassJazz_no_extcall :
-    strContains poseidon2MontgomerySinglePassJazz "extCall" = false := by
-  native_decide
+/- The single-pass emit uses no extCall / opaque leaf. -/
+#guard !(strContains poseidon2MontgomerySinglePassJazz "extCall")
 
-/-- The single-pass emit retains the two-pass `packedMontMulBody` chain
+/- The single-pass emit retains the two-pass `packedMontMulBody` chain
     nowhere in its S-box (the S-box uses the single-pass body); confirm the
     `R_SQR` boundary constant is declared (input conversion to Montgomery). -/
-theorem singlePassJazz_has_rsq :
-    strContains poseidon2MontgomerySinglePassJazz "param int R_SQR     = 1172168163;"
-      = true := by
-  native_decide
+#guard (strContains poseidon2MontgomerySinglePassJazz "param int R_SQR     = 1172168163;")
 
-/-- The vectorized internal-MDS fragment (`#165`, `emitInternalMatVec`) is a
+/- The vectorized internal-MDS fragment (`#165`, `emitInternalMatVec`) is a
     well-formed `internal_mat` whose diagonal multiply runs as packed
     `VPMULUDQ` montmuls. Retained and proven denotation-equal
     (`MontIso.montInternalMDS_vec_eq`); not wired into the shipped artifact
     because it regresses cycles on this microarchitecture (the diagonal
     multiplies are independent singletons that pipeline better scalar). -/
-theorem internalMatVec_has_vpmuludq :
-    strContains emitInternalMatVec "#VPMULU_256" = true := by
-  native_decide
+#guard (strContains emitInternalMatVec "#VPMULU_256")
 
 /-! ## 9b. Lane-resident single-pass Montgomery emit (NINETEENTH ABI mode)
 
@@ -1813,53 +1775,36 @@ def poseidon2MontgomeryResidentJazz : String :=
 
 /-! ### Lane-resident structural sanity checks -/
 
-/-- The lane-resident emit declares the standard `export fn poseidon2_bb` ABI. -/
-theorem residentJazz_export :
-    strContains poseidon2MontgomeryResidentJazz "export fn poseidon2_bb(" = true := by
-  native_decide
+/- The lane-resident emit declares the standard `export fn poseidon2_bb` ABI. -/
+#guard (strContains poseidon2MontgomeryResidentJazz "export fn poseidon2_bb(")
 
-/-- The lane-resident emit declares the 4 named YMM state registers
+/- The lane-resident emit declares the 4 named YMM state registers
     `vS0..vS3` (the pinned-quartet residency invariant). -/
-theorem residentJazz_has_vS_regs :
-    strContains poseidon2MontgomeryResidentJazz "vS0 vS1 vS2 vS3" = true := by
-  native_decide
+#guard (strContains poseidon2MontgomeryResidentJazz "vS0 vS1 vS2 vS3")
 
-/-- The lane-resident emit uses the packed-u64 32x32 -> 64 multiply intrinsic
+/- The lane-resident emit uses the packed-u64 32x32 -> 64 multiply intrinsic
     (single-pass Montgomery body, same as EIGHTEENTH mode). -/
-theorem residentJazz_has_vpmuludq :
-    strContains poseidon2MontgomeryResidentJazz "#VPMULU_256" = true := by
-  native_decide
+#guard (strContains poseidon2MontgomeryResidentJazz "#VPMULU_256")
 
-/-- The lane-resident emit declares the single-pass scalar `montmul` helper
+/- The lane-resident emit declares the single-pass scalar `montmul` helper
     used by the partial rounds (inherited from the EIGHTEENTH-mode preamble). -/
-theorem residentJazz_has_montmul :
-    strContains poseidon2MontgomeryResidentJazz "inline fn montmul(" = true := by
-  native_decide
+#guard (strContains poseidon2MontgomeryResidentJazz "inline fn montmul(")
 
-/-- The lane-resident emit declares the scalar `montsbox` for the partial
+/- The lane-resident emit declares the scalar `montsbox` for the partial
     rounds. -/
-theorem residentJazz_has_montsbox :
-    strContains poseidon2MontgomeryResidentJazz "inline fn montsbox(" = true := by
-  native_decide
+#guard (strContains poseidon2MontgomeryResidentJazz "inline fn montsbox(")
 
-/-- The lane-resident emit uses no extCall / opaque leaf. -/
-theorem residentJazz_no_extcall :
-    strContains poseidon2MontgomeryResidentJazz "extCall" = false := by
-  native_decide
+/- The lane-resident emit uses no extCall / opaque leaf. -/
+#guard !(strContains poseidon2MontgomeryResidentJazz "extCall")
 
-/-- The lane-resident emit retains the Montgomery boundary constant `R_SQR`
+/- The lane-resident emit retains the Montgomery boundary constant `R_SQR`
     (used in `toMontResident` to convert canonical inputs to Montgomery form). -/
-theorem residentJazz_has_rsq :
-    strContains poseidon2MontgomeryResidentJazz "param int R_SQR     = 1172168163;"
-      = true := by
-  native_decide
+#guard (strContains poseidon2MontgomeryResidentJazz "param int R_SQR     = 1172168163;")
 
-/-- The lane-resident emit performs the RC-add reg-to-reg on `vS0` (the
+/- The lane-resident emit performs the RC-add reg-to-reg on `vS0` (the
     pinned-quartet residency invariant — the per-quartet RC-add does not
     round-trip through a `tbuf` staging buffer for the state load). -/
-theorem residentJazz_rc_add_reg_to_reg :
-    strContains poseidon2MontgomeryResidentJazz "vS0 = #VPADD_4u64(vS0, vb);" = true := by
-  native_decide
+#guard (strContains poseidon2MontgomeryResidentJazz "vS0 = #VPADD_4u64(vS0, vb);")
 
 /-! ## 10. Headline single-pass denotation
 
@@ -2251,98 +2196,61 @@ def poseidon2MontgomeryResidentPartialJazz : String :=
 
 /-! ### Lane-resident-partial structural sanity checks -/
 
-/-- The lane-resident-partial emit declares the standard `export fn
+/- The lane-resident-partial emit declares the standard `export fn
     poseidon2_bb` ABI. -/
-theorem residentPartialJazz_export :
-    strContains poseidon2MontgomeryResidentPartialJazz
-      "export fn poseidon2_bb(" = true := by
-  native_decide
+#guard (strContains poseidon2MontgomeryResidentPartialJazz "export fn poseidon2_bb(")
 
-/-- The lane-resident-partial emit declares the 4 named YMM state
+/- The lane-resident-partial emit declares the 4 named YMM state
     registers `vS0..vS3` (the pinned-quartet residency invariant). -/
-theorem residentPartialJazz_has_vS_regs :
-    strContains poseidon2MontgomeryResidentPartialJazz
-      "vS0 vS1 vS2 vS3" = true := by
-  native_decide
+#guard (strContains poseidon2MontgomeryResidentPartialJazz "vS0 vS1 vS2 vS3")
 
-/-- The lane-resident-partial emit declares the auxiliary YMM `vsumYmm`
+/- The lane-resident-partial emit declares the auxiliary YMM `vsumYmm`
     used by the YMM-direct internal_mat sum reduction (broadcast sum
     added to each quartet diag-mul result). -/
-theorem residentPartialJazz_has_vsum_regs :
-    strContains poseidon2MontgomeryResidentPartialJazz "vsumYmm"
-      = true := by
-  native_decide
+#guard (strContains poseidon2MontgomeryResidentPartialJazz "vsumYmm")
 
-/-- The lane-resident-partial emit uses the packed-u64 32x32 -> 64 multiply
+/- The lane-resident-partial emit uses the packed-u64 32x32 -> 64 multiply
     intrinsic. -/
-theorem residentPartialJazz_has_vpmuludq :
-    strContains poseidon2MontgomeryResidentPartialJazz "#VPMULU_256"
-      = true := by
-  native_decide
+#guard (strContains poseidon2MontgomeryResidentPartialJazz "#VPMULU_256")
 
-/-- The lane-resident-partial emit declares the Montgomery-form diagonal
+/- The lane-resident-partial emit declares the Montgomery-form diagonal
     `DIAGV_MONT` table used by the YMM-direct `internal_mat` (Montgomery
     diagonal multiply, denotation per `MontIso.montInternalMDS_vec_eq`). -/
-theorem residentPartialJazz_has_diagv_mont :
-    strContains poseidon2MontgomeryResidentPartialJazz "u64[16] DIAGV_MONT"
-      = true := by
-  native_decide
+#guard (strContains poseidon2MontgomeryResidentPartialJazz "u64[16] DIAGV_MONT")
 
-/-- The lane-resident-partial emit declares the single-pass scalar `montmul`
+/- The lane-resident-partial emit declares the single-pass scalar `montmul`
     helper used by the lane-0 sbox dance in each partial round. -/
-theorem residentPartialJazz_has_montmul :
-    strContains poseidon2MontgomeryResidentPartialJazz
-      "inline fn montmul(" = true := by
-  native_decide
+#guard (strContains poseidon2MontgomeryResidentPartialJazz "inline fn montmul(")
 
-/-- The lane-resident-partial emit declares the scalar `montsbox` for the
+/- The lane-resident-partial emit declares the scalar `montsbox` for the
     lane-0 dance in each partial round. -/
-theorem residentPartialJazz_has_montsbox :
-    strContains poseidon2MontgomeryResidentPartialJazz
-      "inline fn montsbox(" = true := by
-  native_decide
+#guard (strContains poseidon2MontgomeryResidentPartialJazz "inline fn montsbox(")
 
-/-- The lane-resident-partial emit uses no extCall / opaque leaf. -/
-theorem residentPartialJazz_no_extcall :
-    strContains poseidon2MontgomeryResidentPartialJazz "extCall" = false := by
-  native_decide
+/- The lane-resident-partial emit uses no extCall / opaque leaf. -/
+#guard !(strContains poseidon2MontgomeryResidentPartialJazz "extCall")
 
-/-- The lane-resident-partial emit retains the Montgomery boundary constant
+/- The lane-resident-partial emit retains the Montgomery boundary constant
     `R_SQR`. -/
-theorem residentPartialJazz_has_rsq :
-    strContains poseidon2MontgomeryResidentPartialJazz
-      "param int R_SQR     = 1172168163;" = true := by
-  native_decide
+#guard (strContains poseidon2MontgomeryResidentPartialJazz "param int R_SQR     = 1172168163;")
 
-/-- The YMM-direct internal_mat broadcasts a canonical scalar sum back to
+/- The YMM-direct internal_mat broadcasts a canonical scalar sum back to
     `vsumYmm` after reducing through the canonical scalar `fadd`. The
     broadcast uses `#VPBROADCAST_4u64` reg-to-reg (no `tbuf` round-trip
     for the sum broadcast). -/
-theorem residentPartialJazz_has_vsum_broadcast :
-    strContains poseidon2MontgomeryResidentPartialJazz
-      "vsumYmm = #VPBROADCAST_4u64(tbuf[0]);" = true := by
-  native_decide
+#guard (strContains poseidon2MontgomeryResidentPartialJazz "vsumYmm = #VPBROADCAST_4u64(tbuf[0]);")
 
-/-- The YMM-direct internal_mat adds the broadcast sum back to each quartet
+/- The YMM-direct internal_mat adds the broadcast sum back to each quartet
     register `vS0..vS3` reg-to-reg (no `s[]` round-trip between partial
     rounds). The packed csub-after-add is reg-to-reg on `vSg` directly. -/
-theorem residentPartialJazz_has_ymm_internal_mat :
-    strContains poseidon2MontgomeryResidentPartialJazz
-      "vr = #VPADD_4u64(vr, vsumYmm);" = true := by
-  native_decide
+#guard (strContains poseidon2MontgomeryResidentPartialJazz "vr = #VPADD_4u64(vr, vsumYmm);")
 
-/-- **#177 leaner-partial-rounds witness**: the partial-round sum reduction
+/- **#177 leaner-partial-rounds witness**: the partial-round sum reduction
     uses the 3-step YMM packed-add tree (`vt = vS0+vS1`, `vu = vS2+vS3`,
     `vsumYmm = vt+vu`) instead of spilling each `vSg` and reducing
     scalar-side. Algebraic justification: `MontIso.partialSumUpTo4p`. -/
-theorem residentPartialJazz_has_packed_sum_tree :
-    strContains poseidon2MontgomeryResidentPartialJazz
-        "vt = #VPADD_4u64(vS0, vS1);"
-      ∧ strContains poseidon2MontgomeryResidentPartialJazz
-          "vu = #VPADD_4u64(vS2, vS3);"
-      ∧ strContains poseidon2MontgomeryResidentPartialJazz
-          "vsumYmm = #VPADD_4u64(vt, vu);" := by
-  refine ⟨?_, ?_, ?_⟩ <;> native_decide
+#guard (strContains poseidon2MontgomeryResidentPartialJazz "vt = #VPADD_4u64(vS0, vS1);")
+    && (strContains poseidon2MontgomeryResidentPartialJazz "vu = #VPADD_4u64(vS2, vS3);")
+    && (strContains poseidon2MontgomeryResidentPartialJazz "vsumYmm = #VPADD_4u64(vt, vu);")
 
 /-- **Headline (lane-resident + YMM-direct internal_mat)**: the TWENTIETH-mode
     emit (§9c) realises the SAME Montgomery body as the NINETEENTH-mode

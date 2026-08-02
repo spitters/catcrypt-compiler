@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381FinalExp
 
 /-!
-# BLS12-381 owned `Fp` inverse + the `pp_map` keystone (#602 / #219)
+# BLS12-381 owned `Fp` inverse + the full owned `pp_map` (#602 / #219)
 
 **Variant: RELIC-transcribed (tests-only correctness).** This owned `pp_map`
 emit is hand-transcribed from the RELIC pairing reference and gated
@@ -79,7 +79,7 @@ the bench harness at the granularity of the owned leaves, and each layer is
 KAT'd byte-identical to RELIC (`fp_inv`, `fp2_inv`, `fp6_inv`, `fp12_inv`,
 `fp12_conv_cyc`, `pp_exp_k12`) and a GMP oracle.
 
-## The keystone: full owned `pp_map`
+## Full owned `pp_map`
 
 With the easy part owned, the **full** `pp_exp` (easy ∘ hard) runs owned, and
 
@@ -138,7 +138,7 @@ def fpInvAsm : String :=
 /-! ## 2. Shape checks (real leaf call graph, not a stub) -/
 
 /-- The owned `fp_inv` calls the divstep leaf exactly once and the Montgomery
-    multiply exactly once — the genuine `divstep`-then-`·R³` correction. -/
+    multiply exactly once — the `divstep`-then-`·R³` correction. -/
 theorem fpInvAsm_calls :
     countSub fpInvAsm ("callq " ++ divstepSym) = 1
       ∧ countSub fpInvAsm ("callq " ++ montMulSym) = 1 := by native_decide
@@ -210,5 +210,12 @@ def emitMain : IO Unit := do
   let g := "bench/bls12381_ppmap_compare/gen_com/"
   IO.FS.writeFile (g ++ "bls12381_fp_inv_x86_from_lean.s") fpInvAsm
   IO.println "wrote gen_com/bls12381_fp_inv_x86_from_lean.s (owned Fp inverse: AUCurves divstep leaf + R^3 Montgomery correction over the committed mont_mul)"
+
+/-! ## Artifact generation at elaboration
+
+The render is written while this module elaborates, so `lake` produces it from
+this file and no separate driver or Makefile rule carries the dependency. -/
+
+#eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381PairingMap

@@ -10,7 +10,7 @@ import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 This module extends the **C4** step of the verified-compiler plan to the **UOV
 GF(256) field multiply** — the hot scalar primitive of the OV-Ip public-map
-evaluation (`bench/uov_compare`, `UOV.VerifyOwnedEmit.gf256MulInline`). The
+evaluation (`bench/uov_compare`, `UOV.VerifyEmit.gf256MulInline`). The
 earlier C4 leaves drove `compileFromHax` *emitting* a crypto leaf from
 hax-extracted source for SHA-256 (`CompileFromHaxLeaves`), Keccak χ
 (`CompileFromHaxKeccak`), BLAKE2s ARX (`CompileFromHaxBlake2`), and the Ascon
@@ -37,7 +37,7 @@ Every step is `BitAnd`/`BitXor`/`Shl`/`Shr`/`wrapping_sub` over the low byte —
 leaf and the Ascon S-box. The conditional reduction by `0x1b` when bit 8 sets is
 done by a **data-independent mask** (`mask = 0 − bit`), not a branch, so the body
 is constant-time and uses only `recogBin`/`recogShift` heads (no `Not`, no
-control flow). This is exactly `UOV.VerifyOwnedEmit.gf256MulInline`'s arithmetic,
+control flow). This is exactly `UOV.VerifyEmit.gf256MulInline`'s arithmetic,
 now driven through the verified compiler-from-hax front rather than the owned
 x86 backend.
 
@@ -187,7 +187,7 @@ theorem gf256Mul_compileFromHax_isSome :
     through the C3 per-primitive obligation `compileFromHax_meets_spec`. This is a
     C4 fan-out to the UOV GF(256) primitive, reusing the SHA-256/Ascon
     `BitXor`/`BitAnd`/`Shl`/`Shr`/`wrapping_sub` recognizers with no front change;
-    it is the constant-time arithmetic of `UOV.VerifyOwnedEmit.gf256MulInline`,
+    it is the constant-time arithmetic of `UOV.VerifyEmit.gf256MulInline`,
     driven through the compiler-from-hax front. -/
 theorem gf256Mul_compiles :
     ∃ (prog : Com jasminDialect (frontCtxt 32 2 []) (rW 32)),

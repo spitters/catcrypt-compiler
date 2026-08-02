@@ -1135,7 +1135,6 @@ def sigBlock (rot1 rot2 sh : Nat) (nout : String) (r cont : ImpExpr) : ImpExpr :
      (.letBind "sa" (.app "BitXor" [.var "sa", .var "sb"])
       (.letBind nout (.app "BitXor" [.var "sa", .var "sc"]) cont))))
 
-set_option linter.unusedSimpArgs false in
 /-- **σ-block is value-preserving.** Under `denoteScalar` (array parameter `"w"`),
     the σ-block over a read `r` denoting to `v` (stably across the scratch
     extensions — `hr`) runs `cont` in the env extended with `nout := sigmaGen v`
@@ -1167,7 +1166,7 @@ theorem sigBlock_denote {nIn : Nat} (I : Fin nIn → BitVec 32)
     funext ρ'; simp only [denoteAtomExpr, idxOf_arr_none (show ("w":String) ≠ "sc" by decide)]
   simp only [sigBlock, ImpExpr.denoteScalar, recogBin, recogShift,
     litNat?, ShiftKind.apply, JasminBinOp.apply, reduceIte,
-    String.reduceEq, Int.toNat, or_self, or_false, false_or,
+    String.reduceEq, Int.toNat, or_self, or_false,
     e0, e1, e2, hsa, hsb, hsc, Option.bind_some, Option.map_some, sigmaGen, if_true]
   congr 1
   funext y
@@ -1298,7 +1297,6 @@ theorem wReadExpr_denoteSched_scratch {nIn : Nat} (I : Fin nIn → BitVec 32)
   rw [hagree (wName k) (wName_ne_of_head (by decide)) (wName_ne_of_head (by decide))]
   exact hρ k hk1 hk2
 
-set_option linter.unusedSimpArgs false in
 /-- **The σ-schedule step is value-preserving.** Under the array-SSA invariant `hρ`
     (`cnt = i - 16`, every written `wName k` equal to the `schedFold` state), the
     step body for `i` denotes (via the two `sigBlock_denote` applications and the
@@ -1371,7 +1369,6 @@ theorem schedStep_denote {nIn : Nat} (I : Fin nIn → BitVec 32) (i : Nat)
       if_neg (wName_ne_of_head (by decide) : wName k ≠ "sb")]
     exact hρ1 k hk1 hk2
   have hr7 := wReadExpr_denoteSched I (i - 7) cnt (by omega) ρ2 hρ2
-  have hr16 := wReadExpr_denoteSched I (i - 16) cnt (by omega) ρ2 hρ2
   -- reduce the three wrapping adds binding t1, t2, wName i
   simp only [ImpExpr.denoteScalar, recogBin, String.reduceEq, or_self, reduceIte,
     true_or, JasminBinOp.apply, denoteAtomExpr,
@@ -1379,7 +1376,7 @@ theorem schedStep_denote {nIn : Nat} (I : Fin nIn → BitVec 32) (i : Nat)
     idxOf_arr_none (show ("w":String) ≠ "s0" by decide),
     idxOf_arr_none (show ("w":String) ≠ "t1" by decide),
     idxOf_arr_none (show ("w":String) ≠ "t2" by decide),
-    hs1, hs0, hr7, hr16, Option.bind_some, Option.map_some, if_true]
+    hs1, hs0, hr7, Option.bind_some, Option.map_some, if_true]
   -- the final `W[i-16]` read (env extended at dead `t1`/`t2`) matches `ρ2`'s read.
   have hr16' : denoteAtomExpr ["w"] I (wReadExpr "w" 16 (i - 16))
       (fun y => if y = "t2" then some (sigma1Fn v1 + schedFold (inpGet I) cnt (i - 7) + sigma0Fn v0)
@@ -1408,17 +1405,17 @@ theorem schedStep_denote {nIn : Nat} (I : Fin nIn → BitVec 32) (i : Nat)
     by_cases h1 : y = "s1"
     · simp [h1]
     by_cases ha : y = "sa"
-    · simp [h1, ha]
+    · simp [ha]
     by_cases hc : y = "sc"
-    · simp [h1, ha, hc]
+    · simp [hc]
     by_cases hb : y = "sb"
-    · simp [h1, ha, hc, hb]
+    · simp [hb]
     by_cases h0 : y = "s0"
-    · simp [h1, ha, hc, hb, h0]
+    · simp [h0]
     by_cases ht1 : y = "t1"
-    · simp [h1, ha, hc, hb, h0, ht1]
+    · simp [ht1]
     by_cases ht2 : y = "t2"
-    · simp [h1, ha, hc, hb, h0, ht1, ht2]
+    · simp [ht2]
     · simp [h1, ha, hc, hb, h0, ht1, ht2]
 
 /-- **The σ schedule recurrence is value-preserving (per-element SSA).** The

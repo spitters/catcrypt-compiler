@@ -503,102 +503,78 @@ def poly1305MacHaclAeadBundleJazz : String :=
 
 /-! ### Structural checks on the emitted text -/
 
-/-- The AEAD bundle's runtime-loop export sizes its `inp` array for up to
+/- The AEAD bundle's runtime-loop export sizes its `inp` array for up to
     `NBlkAeadMax` blocks (so a 16 KiB message fits) — `5 + 5·1100 = 5505`. -/
-theorem poly_hacl_aead_bundle_runtime_sized :
-    strContains poly1305MacHaclAeadBundleJazz
-      "reg const ptr u64[5505] inp" = true := by native_decide
+#guard (strContains poly1305MacHaclAeadBundleJazz "reg const ptr u64[5505] inp")
 
-/-- The AEAD bundle still folds exactly the runtime `nblk` blocks
+/- The AEAD bundle still folds exactly the runtime `nblk` blocks
     (`while (nblk != 0)`), not a fixed unroll — so it MACs any message length up
     to `NBlkAeadMax` blocks. -/
-theorem poly_hacl_aead_bundle_runtime_loop :
-    strContains poly1305MacHaclAeadBundleJazz
-      "while (nblk != 0)" = true := by native_decide
+#guard (strContains poly1305MacHaclAeadBundleJazz "while (nblk != 0)")
 
-/-- The AEAD bundle carries the cross-block-resident fixed-`NBLK` export for the
+/- The AEAD bundle carries the cross-block-resident fixed-`NBLK` export for the
     114-byte RFC 8439 §2.8.2 row. -/
-theorem poly_hacl_aead_bundle_has_resident :
-    strContains poly1305MacHaclAeadBundleJazz
-      "export fn poly1305_mac_hacl_r(" = true := by native_decide
+#guard (strContains poly1305MacHaclAeadBundleJazz "export fn poly1305_mac_hacl_r(")
 
-/-- The MAC export takes the runtime block count `nblk` and Horner-folds it with a
+/- The MAC export takes the runtime block count `nblk` and Horner-folds it with a
     `while (nblk` loop — NOT a fixed `NBLK`-deep unroll. -/
-theorem poly_hacl_runtime_loop :
-    strContains poly1305MacHaclJazz "while (nblk != 0)" = true := by native_decide
+#guard (strContains poly1305MacHaclJazz "while (nblk != 0)")
 
-/-- The reduction wraps `r5[i] = 5·r[i]` are precomputed once (the HACL `r5i`
+/- The reduction wraps `r5[i] = 5·r[i]` are precomputed once (the HACL `r5i`
     trick), folding `2¹³⁰ ≡ 5` into the key. -/
-theorem poly_hacl_precomputes_r5 :
-    strContains poly1305MacHaclJazz "r5[1] = t;" = true := by native_decide
+#guard (strContains poly1305MacHaclJazz "r5[1] = t;")
 
-/-- The field multiply reads the precomputed wrap `r5[…]` in its diagonals (the
+/- The field multiply reads the precomputed wrap `r5[…]` in its diagonals (the
     folded `2¹³⁰ ≡ 5` terms), instead of a per-product `·5` instruction. -/
-theorem poly_hacl_diag_reads_r5 :
-    strContains poly1305MacHaclJazz "t *= r5[" = true := by native_decide
+#guard (strContains poly1305MacHaclJazz "t *= r5[")
 
-/-- The five field-multiply diagonals are register-SSA accumulators `d0..d4`
+/- The five field-multiply diagonals are register-SSA accumulators `d0..d4`
     (HACL's `a0k..a4k` form), not an `acc[]` stack array. -/
-theorem poly_hacl_register_diagonals :
-    strContains poly1305MacHaclJazz "d0 = t;" = true := by native_decide
+#guard (strContains poly1305MacHaclJazz "d0 = t;")
 
-/-- The top-limb carry still folds back with the `·5` weight (`2¹³⁰ ≡ 5 (mod p)`)
+/- The top-limb carry still folds back with the `·5` weight (`2¹³⁰ ≡ 5 (mod p)`)
     after the diagonals — the field reduction is correct. -/
-theorem poly_hacl_folds_by_5 :
-    strContains poly1305MacHaclJazz "c *= 5;" = true := by native_decide
+#guard (strContains poly1305MacHaclJazz "c *= 5;")
 
-/-- The `26`-bit limb mask `0x3ffffff` (`= 2²⁶ − 1`) renormalizes the limbs. -/
-theorem poly_hacl_masks_26bit :
-    strContains poly1305MacHaclJazz "m &= 0x3ffffff;" = true := by native_decide
+/- The `26`-bit limb mask `0x3ffffff` (`= 2²⁶ − 1`) renormalizes the limbs. -/
+#guard (strContains poly1305MacHaclJazz "m &= 0x3ffffff;")
 
-/-- The Horner step is the field add (`a[k] += mᵢ,k`) then the inline HACL field
+/- The Horner step is the field add (`a[k] += mᵢ,k`) then the inline HACL field
     multiply. -/
-theorem poly_hacl_horner_step :
-    strContains poly1305MacHaclJazz "a = poly1305_mulmod_hacl(a, r, r5);"
-      = true := by native_decide
+#guard (strContains poly1305MacHaclJazz "a = poly1305_mulmod_hacl(a, r, r5);")
 
-/-- The bundle carries the unrolled fixed-`NBLK` export with **static** indexing
+/- The bundle carries the unrolled fixed-`NBLK` export with **static** indexing
     (no runtime loop): block `i = 0` reads `inp[5 + 0]` etc., so there is no
     per-block `off` recompute. (Block `0`, limb `0` is `inp[5]`.) -/
-theorem poly_hacl_bundle_has_unrolled :
-    strContains poly1305MacHaclBundleJazz
-      "export fn poly1305_mac_hacl_u(" = true := by native_decide
+#guard (strContains poly1305MacHaclBundleJazz "export fn poly1305_mac_hacl_u(")
 
-/-- The bundle's unrolled export uses static block indexing (`inp[5]` is block 0
+/- The bundle's unrolled export uses static block indexing (`inp[5]` is block 0
     limb 0) — no `while (nblk` loop inside `poly1305_mac_hacl_u`. -/
-theorem poly_hacl_bundle_unrolled_static :
-    strContains poly1305MacHaclBundleJazz "t = inp[5];" = true := by native_decide
+#guard (strContains poly1305MacHaclBundleJazz "t = inp[5];")
 
 /-! ### Structural checks on the cross-block-resident export -/
 
-/-- The bundle carries the cross-block-resident export `poly1305_mac_hacl_r`
+/- The bundle carries the cross-block-resident export `poly1305_mac_hacl_r`
     (the #498 accumulator-residence variant). -/
-theorem poly_hacl_bundle_has_resident :
-    strContains poly1305MacHaclBundleJazz
-      "export fn poly1305_mac_hacl_r(" = true := by native_decide
+#guard (strContains poly1305MacHaclBundleJazz "export fn poly1305_mac_hacl_r(")
 
-/-- The resident export declares the five accumulator limbs as `reg u64`
+/- The resident export declares the five accumulator limbs as `reg u64`
     variables `a0..a4` (register-resident across the block sequence), NOT a
     `stack u64[5] a` array. The accumulator never spills between blocks. -/
-theorem poly_resident_acc_in_regs :
-    strContains poly1305MacHaclBundleJazz "reg u64 a0 a1 a2 a3 a4;"
-      = true := by native_decide
+#guard (strContains poly1305MacHaclBundleJazz "reg u64 a0 a1 a2 a3 a4;")
 
-/-- The resident export precomputes the `5·` key wraps ONCE in the prologue (the
+/- The resident export precomputes the `5·` key wraps ONCE in the prologue (the
     loop-invariant `r5[]` precompute), before the unrolled blocks. The wraps and
     clamped key live in stack arrays (loop-invariant, no per-block accumulator
     spill); only the accumulator `a0..a4` is register-resident across blocks. -/
-theorem poly_resident_precomputes_r5 :
-    strContains poly1305MacHaclBundleJazz "r5[1] = t;" = true := by native_decide
+#guard (strContains poly1305MacHaclBundleJazz "r5[1] = t;")
 
-/-- The resident export folds the message into the register accumulator
+/- The resident export folds the message into the register accumulator
     (`a0 += t;`) — no `a[0] = m;` stack store of the accumulator between blocks. -/
-theorem poly_resident_reg_fold :
-    strContains poly1305MacHaclBundleJazz "a0 += t;" = true := by native_decide
+#guard (strContains poly1305MacHaclBundleJazz "a0 += t;")
 
-/-- The resident export stores the final accumulator from registers to `out[]`
+/- The resident export stores the final accumulator from registers to `out[]`
     ONCE (`out[0] = a0;`), the single epilogue commit. -/
-theorem poly_resident_stores_once :
-    strContains poly1305MacHaclBundleJazz "out[0] = a0;" = true := by native_decide
+#guard (strContains poly1305MacHaclBundleJazz "out[0] = a0;")
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.Poly1305Kernel

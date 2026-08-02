@@ -29,7 +29,7 @@ each output coordinate with the `mul_xi`-by-`ξ₆` nonresidue folds. This match
 the `CubicFieldExtensions.Fp6_mul` schedule the tower importer pins.
 
 `fp6_mulKaratsuba_eq_schoolbook`: the two agree for any nonresidue `ξ₆` — `ext`
-then `ring` over the `Fp2_377` `CommRing`. This is the load-bearing correctness
+then `ring` over the `Fp2_377` `CommRing`. This is the correctness
 fact for emitting a 6-mul `Fp6` multiply.
 
 ### Fp12 (dodecic) — Karatsuba over Fp6 (3 Fp6 muls vs schoolbook's 4)
@@ -170,7 +170,7 @@ def mulKaratsuba (ξ₂ : FpBLS377) (ξ₆ : Fp2_377) (x y : Fp6_377) : Fp6_377 
 /-- **The Karatsuba `Fp6_377` multiply equals the schoolbook multiply** for any
     base nonresidue `ξ₂` and cubic nonresidue `ξ₆`. The Toom-3 cross-term recovery
     of `a₁b₂+a₂b₁`, `a₀b₁+a₁b₀`, `a₀b₂+a₂b₀` is denotation-preserving: each output
-    coordinate agrees over the `Fp2_377` `CommRing` by `ring`. Load-bearing for a
+    coordinate agrees over the `Fp2_377` `CommRing` by `ring`. Used for a
     6-mul `Fp6` multiply. -/
 theorem mulKaratsuba_eq_schoolbook (ξ₂ : FpBLS377) (ξ₆ : Fp2_377) (x y : Fp6_377) :
     mulKaratsuba ξ₂ ξ₆ x y = mulSchoolbook ξ₂ ξ₆ x y := by
@@ -193,12 +193,12 @@ componentwise `Fp2_377`-identity, closed by `ext` then `ring` over the `Fp2_377`
   letI := Fp2_377.commRing ξ₂
   have hm : ∀ a b : Fp2_377, mul₂ ξ₂ a b = a * b := fun _ _ => rfl
   { add := (· + ·)
-    add_assoc := fun a b c => by ext <;> simp <;> ring
+    add_assoc := fun a b c => by ext <;> simp only [add_c0, add_c1, add_c2] <;> ring
     zero := 0
-    zero_add := fun a => by ext <;> simp
-    add_zero := fun a => by ext <;> simp
+    zero_add := fun a => by ext <;> simp only [add_c0, add_c1, add_c2, zero_c0, zero_c1, zero_c2] <;> ring
+    add_zero := fun a => by ext <;> simp only [add_c0, add_c1, add_c2, zero_c0, zero_c1, zero_c2] <;> ring
     nsmul := nsmulRec
-    add_comm := fun a b => by ext <;> simp <;> ring
+    add_comm := fun a b => by ext <;> simp only [add_c0, add_c1, add_c2] <;> ring
     mul := mulSchoolbook ξ₂ ξ₆
     left_distrib := fun a b c => by
       show mulSchoolbook ξ₂ ξ₆ a (b + c)
@@ -227,8 +227,8 @@ componentwise `Fp2_377`-identity, closed by `ext` then `ring` over the `Fp2_377`
       ext <;> · simp only [mulSchoolbook, hm, one_c0, one_c1, one_c2] <;> ring
     neg := Neg.neg
     zsmul := zsmulRec
-    sub_eq_add_neg := fun a b => by ext <;> simp <;> ring
-    neg_add_cancel := fun a => by ext <;> simp
+    sub_eq_add_neg := fun a b => by ext <;> simp only [sub_c0, sub_c1, sub_c2, add_c0, add_c1, add_c2, neg_c0, neg_c1, neg_c2] <;> ring
+    neg_add_cancel := fun a => by ext <;> simp only [add_c0, add_c1, add_c2, neg_c0, neg_c1, neg_c2, zero_c0, zero_c1, zero_c2] <;> ring
     mul_comm := fun a b => by
       show mulSchoolbook ξ₂ ξ₆ a b = mulSchoolbook ξ₂ ξ₆ b a
       ext <;> · simp only [mulSchoolbook, hm] <;> ring }
@@ -287,7 +287,7 @@ def vGen : Fp6_377 := ⟨0, 1, 0⟩
 
 /-- **`mulByV` is left-multiplication by the generator `v`** in the `Fp6_377`
     `CommRing`: `x·v = vGen · x`. With this the `Fp12` non-residue fold is a
-    genuine `Fp6` ring multiply, so the `Fp12` ring axioms (including
+    `Fp6` ring multiply, so the `Fp12` ring axioms (including
     associativity) reduce to `Fp6`-ring identities `ring` proves with the cubic
     multiply kept opaque. -/
 theorem mulByV_eq_mul (ξ₂ : FpBLS377) (ξ₆ : Fp2_377) (x : Fp6_377) :

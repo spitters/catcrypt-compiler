@@ -215,7 +215,8 @@ theorem lsemStepMem_regArith
   have hs : sarStruct? (.Lopn [.reg dst] (withWidthTag 64 base) [.reg dst, b]) = none := by
     cases b <;> simp only [sarStruct?, hstrip, if_neg h4]
   rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inr rfl),
-      lsemStepMC_of_delegate _ _ hm ha hh, lsemStepSh_of_not_sar _ _ hs]
+      lsemStepMC_of_delegate _ _ hm ha hh (by cases b <;> rfl) (by cases b <;> rfl),
+      lsemStepSh_of_not_sar _ _ hs]
   simp only [lsemStepN, readReg_of_getW hva, hvb, hstrip, hop, Option.map_some]
 
 /-- **The lsem twin of the immediate-`MOV` (`regConst`) wire.** Writes the literal
@@ -226,7 +227,7 @@ theorem lsemStepMem_movImm (dst : String) (n : Nat) (ls : LstateM) :
   have hstr : stripWidthTag (withWidthTag 64 "MOV") = "MOV" := by decide +kernel
   have hwidth : widthFromTag (withWidthTag 64 "MOV") = 64 := by decide +kernel
   rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inr rfl),
-      lsemStepMC_of_delegate _ _ rfl rfl rfl, lsemStepSh_of_not_sar _ _ rfl]
+      lsemStepMC_of_delegate _ _ rfl rfl rfl rfl rfl, lsemStepSh_of_not_sar _ _ rfl]
   simp only [lsemStepN, hstr, Option.map_some, if_pos]
   rw [hwidth]
 
@@ -501,7 +502,8 @@ theorem lsemStepMem_regArith3
   have hs : sarStruct? (.Lopn [.reg dst] (withWidthTag 64 base) [.reg a, b]) = none := by
     cases b <;> simp only [sarStruct?, hstrip, if_neg h4]
   rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inr rfl),
-      lsemStepMC_of_delegate _ _ hm ha hh, lsemStepSh_of_not_sar _ _ hs]
+      lsemStepMC_of_delegate _ _ hm ha hh (by cases b <;> rfl) (by cases b <;> rfl),
+      lsemStepSh_of_not_sar _ _ hs]
   simp only [lsemStepN, readReg_of_getW hva, hvb, hstrip, hop, Option.map_some]
 
 /-- **The lsem twin of a three-address structured `MULXHI` wire.** Reads both
@@ -1530,5 +1532,177 @@ theorem mac2_columns_lsem_agree (flg : String → Prop)
       hAcc hA2 hB2 hCy hHi hLo hLoA2 hLoB2 hHiLo
       hcf2 hcf2_acc hcf2_lo hcf2_cf1 hcf2_of1 hof2 hof2_acc hof2_cy hof2_of1 hof2_cf2 hof2_cf1)
     s ls h
+
+/-! ## 11. The subtract-with-borrow column (`sbb` / `sbbhi`, CF-only correspondence)
+
+`sbb dst src` is the borrow-chain limb `dst := dst − src − CF`. Unlike `adcx`
+(which touches only `CF`), `sbb` is a full SUB-style op that clobbers **all five**
+flags, so its correspondence is the `CF`-only `JLstateCorrCF`, not `JLstateCorrF`.
+Its lsem image is the structured `SBBHI`/`SBB` carry realizer threading the `CF`
+slot — the dual of the `ADCXHI`/`ADCX` pair. -/
+
+/-- **`sbb` data agreement.** The lsem borrow-subtract word `subBorrowWord v1 v2 (bit
+    c)` equals the `JState` `SBB` data output `(x86_SBB v1 v2 c).word`. Both are the
+    two's-complement `v1 − v2 − [c]` up to the modular wrap. -/
+theorem subBorrowWord_flagBit_eq (v1 v2 : BitVec 64) (c : Bool) :
+    subBorrowWord v1 v2 (flagBit c) = (x86_SBB v1 v2 c).word := by
+  apply BitVec.eq_of_toNat_eq
+  have hx : v1.toNat < 2 ^ 64 := v1.isLt
+  have hy : v2.toNat < 2 ^ 64 := v2.isLt
+  have hne : ((2 ^ 64 : Nat) : Int) ≠ 0 := by norm_num
+  have hR : ((x86_SBB v1 v2 c).word.toNat : Int)
+      = ((v1.toNat : Int) - v2.toNat - (if c then 1 else 0)) % ((2 ^ 64 : Nat) : Int) := by
+    simp only [x86_SBB, sub_borrow, BitVec.toNat_ofInt]
+    rw [Int.toNat_of_nonneg (Int.emod_nonneg _ hne)]
+    push_cast
+    ring_nf
+  simp only [subBorrowWord, BitVec.toNat_sub, BitVec.toNat_ofNat, flagBit_toNat]
+  cases c <;> simp_all <;> omega
+
+/-- **`sbb` borrow-out agreement.** The lsem borrow-out bit `borrowOutBit v1 v2 (bit
+    c)` equals the flag bit of the `JState` `SBB` carry-out `(x86_SBB v1 v2 c).cf`.
+    Both fire iff the unbounded difference `v1 − v2 − [c]` went negative. -/
+theorem borrowOutBit_flagBit_eq (v1 v2 : BitVec 64) (c : Bool) :
+    borrowOutBit v1 v2 (flagBit c) = flagBit ((x86_SBB v1 v2 c).cf.getD false) := by
+  have hx : v1.toNat < 2 ^ 64 := v1.isLt
+  have hy : v2.toNat < 2 ^ 64 := v2.isLt
+  have hne : ((2 ^ 64 : Nat) : Int) ≠ 0 := by norm_num
+  have hcf : (x86_SBB v1 v2 c).cf.getD false
+      = decide (v1.toNat < v2.toNat + (if c then 1 else 0)) := by
+    simp only [x86_SBB, wunsigned, Option.getD_some]
+    rw [decide_eq_decide]
+    have hR : ((sub_borrow v1 v2 (if c then 1 else 0)).toNat : Int)
+        = ((v1.toNat : Int) - v2.toNat - (if c then 1 else 0)) % ((2 ^ 64 : Nat) : Int) := by
+      simp only [sub_borrow, BitVec.toNat_ofInt]
+      rw [Int.toNat_of_nonneg (Int.emod_nonneg _ hne)]
+      push_cast
+      ring_nf
+    rw [hR]
+    cases c <;> simp <;> omega
+  rw [hcf, borrowOutBit, flagBit_toNat]
+  by_cases h : v1.toNat < v2.toNat + (if c then 1 else 0) <;> simp [h, flagBit]
+
+/-- **The lsem twin of a three-address structured `SBB` wire** (`dst := subBorrowWord
+    a b c`, borrow-in `c` at width 1). The data half of an `sbb` lowering — the dual
+    of `lsemStepMem_adcx3`. -/
+theorem lsemStepMem_sbb3 (dst a b c : String) (ls : LstateM) (va vb : BitVec 64) (vc : BitVec 1)
+    (hva : ls.reg.getW a 64 = some va) (hvb : ls.reg.getW b 64 = some vb)
+    (hvc : ls.reg.getW c 1 = some vc) :
+    lsemStepMem (.Lopn [.reg dst] (withWidthTag 64 "SBB") [.reg a, .reg b, .reg c], .reg none) ls
+      = some { ls with reg := (ls.reg.setReg dst (subBorrowWord va vb vc)).nextPc } := by
+  have hstep : lsemStepMC
+      (.Lopn [.reg dst] (withWidthTag 64 "SBB") [.reg a, .reg b, .reg c]) ls.reg
+      = some ((ls.reg.setReg dst (subBorrowWord va vb vc)).nextPc) := by
+    simp only [lsemStepMC, mulhiStruct?_sbb, adcxStruct?_sbb, adcxhiStruct?_sbb, sbbStruct?_sbb,
+      readReg_of_getW hva, hvb, hvc]
+  rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inr rfl), hstep]
+  rfl
+
+/-- **The lsem twin of a three-address structured `SBBHI` wire** (`dst := borrowOutBit
+    a b c`, a `BitVec 1`). The borrow-out half of an `sbb` lowering — the dual of
+    `lsemStepMem_adcxhi3`. -/
+theorem lsemStepMem_sbbhi3 (dst a b c : String) (ls : LstateM) (va vb : BitVec 64) (vc : BitVec 1)
+    (hva : ls.reg.getW a 64 = some va) (hvb : ls.reg.getW b 64 = some vb)
+    (hvc : ls.reg.getW c 1 = some vc) :
+    lsemStepMem (.Lopn [.reg dst] (withWidthTag 64 "SBBHI") [.reg a, .reg b, .reg c], .reg none) ls
+      = some { ls with reg := (ls.reg.setReg dst (borrowOutBit va vb vc)).nextPc } := by
+  have hstep : lsemStepMC
+      (.Lopn [.reg dst] (withWidthTag 64 "SBBHI") [.reg a, .reg b, .reg c]) ls.reg
+      = some ((ls.reg.setReg dst (borrowOutBit va vb vc)).nextPc) := by
+    simp only [lsemStepMC, mulhiStruct?_sbbhi, adcxStruct?_sbbhi, adcxhiStruct?_sbbhi,
+      sbbStruct?_sbbhi, sbbhiStruct?_sbbhi, readReg_of_getW hva, hvb, hvc]
+  rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inr rfl), hstep]
+  rfl
+
+/-- `JLstateCorrCF s ls flg cfN`: the register+memory correspondence **plus** a
+    single `CF` flag slot. Unlike `JLstateCorrF` there is no `OF` axis: `sbb`
+    clobbers all five flags, so only the designated `CF` slot `cfN` (in the synthetic
+    flag namespace `flg`) is tracked against `s.flags.cf`. -/
+structure JLstateCorrCF (s : JState 64) (ls : LstateM) (flg : String → Prop) (cfN : String) :
+    Prop where
+  /-- Register agreement off the flag namespace. -/
+  regAgree : ∀ r : String, ¬ flg r → ls.reg.getW r 64 = some (s.regs r)
+  /-- Memory agreement. -/
+  memAgree : ∀ (base : String) (off : Int), ls.lmem base off = s.mem base off
+  /-- The designated `CF` slot mirrors `s.flags.cf`. -/
+  cfAgree : ls.reg.getW cfN 1 = some (flagBit (s.flagB (·.cf)))
+  /-- The `CF` slot is a flag name. -/
+  cfFlg : flg cfN
+
+/-- **Per-opcode agreement for the register-source `.sbb` (CF chain).** Given a fresh
+    CF-slot `cfNew` (a flag name distinct from `dst`, `src`, `cfN`), the pair
+    `[SBBHI cfNew; SBB dst]` — both reading the current slot `cfN` — does not fail and
+    its result satisfies `JLstateCorrCF` with the new CF slot `cfNew`, matching the
+    in-place `.sbb dst (.reg src)` on the register, `CF`, and memory axes. -/
+theorem sbb_case (s : JState 64) (ls : LstateM) (flg : String → Prop) (cfN : String)
+    (hcorr : JLstateCorrCF s ls flg cfN) (dst src cfNew : String)
+    (hdst : ¬ flg dst) (hsrc : ¬ flg src) (hNew : flg cfNew)
+    (hNe_dst : cfNew ≠ dst) (hNe_src : cfNew ≠ src) (hNe_cf : cfNew ≠ cfN) :
+    ∃ ls', lsemStraightMem
+        [ (.Lopn [.reg cfNew] (withWidthTag 64 "SBBHI") [.reg dst, .reg src, .reg cfN], .reg none),
+          (.Lopn [.reg dst]   (withWidthTag 64 "SBB")   [.reg dst, .reg src, .reg cfN], .reg none) ]
+        ls = some ls' ∧
+      JLstateCorrCF (runBlock s [.sbb dst (.reg src)]) ls' flg cfNew := by
+  have hva : ls.reg.getW dst 64 = some (s.regs dst) := hcorr.regAgree dst hdst
+  have hvb : ls.reg.getW src 64 = some (s.regs src) := hcorr.regAgree src hsrc
+  have hvc : ls.reg.getW cfN 1 = some (flagBit (s.flagB (·.cf))) := hcorr.cfAgree
+  -- Step 1: SBBHI writes the borrow-out to the fresh slot `cfNew`.
+  set ls1 : LstateM :=
+    { ls with reg := (ls.reg.setReg cfNew
+        (borrowOutBit (s.regs dst) (s.regs src) (flagBit (s.flagB (·.cf))))).nextPc } with hls1
+  have hstep1 : lsemStepMem
+      (.Lopn [.reg cfNew] (withWidthTag 64 "SBBHI") [.reg dst, .reg src, .reg cfN], .reg none) ls
+      = some ls1 := lsemStepMem_sbbhi3 cfNew dst src cfN ls _ _ _ hva hvb hvc
+  -- reads for step 2 are unchanged (SBBHI wrote `cfNew`, distinct from dst/src/cfN).
+  have hva1 : ls1.reg.getW dst 64 = some (s.regs dst) := by
+    rw [hls1]; simp only [LstateN.getW_nextPc]
+    rw [LstateN.getW_setReg_other _ _ _ _ _ (Ne.symm hNe_dst), hva]
+  have hvb1 : ls1.reg.getW src 64 = some (s.regs src) := by
+    rw [hls1]; simp only [LstateN.getW_nextPc]
+    rw [LstateN.getW_setReg_other _ _ _ _ _ (Ne.symm hNe_src), hvb]
+  have hvc1 : ls1.reg.getW cfN 1 = some (flagBit (s.flagB (·.cf))) := by
+    rw [hls1]; simp only [LstateN.getW_nextPc]
+    rw [LstateN.getW_setReg_other _ _ _ _ _ (Ne.symm hNe_cf), hvc]
+  -- Step 2: SBB writes the data to `dst`.
+  set ls2 : LstateM :=
+    { ls1 with reg := (ls1.reg.setReg dst
+        (subBorrowWord (s.regs dst) (s.regs src) (flagBit (s.flagB (·.cf))))).nextPc } with hls2
+  have hstep2 : lsemStepMem
+      (.Lopn [.reg dst] (withWidthTag 64 "SBB") [.reg dst, .reg src, .reg cfN], .reg none) ls1
+      = some ls2 := lsemStepMem_sbb3 dst dst src cfN ls1 _ _ _ hva1 hvb1 hvc1
+  refine ⟨ls2, ?_, ?_⟩
+  · simp only [lsemStraightMem_cons, hstep1, hstep2, lsemStraightMem_nil]
+  -- The correspondence to the `JState` `.sbb` result.
+  · have hrun : runBlock s [.sbb dst (.reg src)]
+        = s.writeB5W dst (x86_SBB (s.regs dst) (s.regs src) (s.flagB (·.cf))) := by
+      simp only [runBlock_cons, runBlock_nil, evalInstr, JOperand.eval, JState.get]
+    rw [hrun]
+    have hdata : subBorrowWord (s.regs dst) (s.regs src) (flagBit (s.flagB (·.cf)))
+        = (x86_SBB (s.regs dst) (s.regs src) (s.flagB (·.cf))).word :=
+      subBorrowWord_flagBit_eq _ _ _
+    have hcarry : borrowOutBit (s.regs dst) (s.regs src) (flagBit (s.flagB (·.cf)))
+        = flagBit ((x86_SBB (s.regs dst) (s.regs src) (s.flagB (·.cf))).cf.getD false) :=
+      borrowOutBit_flagBit_eq _ _ _
+    refine ⟨?_, ?_, ?_, hNew⟩
+    · -- regAgree off flg
+      intro r hr
+      have hr_ne_new : r ≠ cfNew := by rintro rfl; exact hr hNew
+      by_cases hrd : r = dst
+      · subst hrd
+        simp only [hls2, hls1, LstateN.getW_nextPc, LstateN.getW_setReg_same]
+        rw [hdata]; simp [JState.writeB5W]
+      · simp only [hls2, hls1, LstateN.getW_nextPc,
+          LstateN.getW_setReg_other _ _ _ _ _ hrd,
+          LstateN.getW_setReg_other _ _ _ _ _ hr_ne_new]
+        rw [hcorr.regAgree r hr]; simp [JState.writeB5W, hrd]
+    · -- memAgree
+      intro base off
+      simp only [JState.writeB5W]
+      exact hcorr.memAgree base off
+    · -- cfAgree at the new slot cfNew
+      simp only [hls2, hls1, LstateN.getW_nextPc,
+        LstateN.getW_setReg_other _ _ _ _ _ hNe_dst, LstateN.getW_setReg_same]
+      rw [hcarry]
+      simp only [JState.flagB, JState.writeB5W_flags]
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgree

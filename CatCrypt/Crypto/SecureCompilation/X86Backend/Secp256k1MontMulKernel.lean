@@ -27,7 +27,7 @@ at ~24 simultaneously-live values against a small pool). The interleaved CIOS
 MAC+reduce keeps the peak pressure to the six-word accumulator window plus the
 MULX scratch, which fits the pool without spilling (`secp256k1MontMulAlloc_no_overflow`).
 
-## The secp256k1 modulus + Montgomery constant (canonical, NOT fabricated)
+## The secp256k1 modulus + Montgomery constant (canonical sources)
 
 The secp256k1 base-field prime is
 
@@ -291,19 +291,12 @@ def hasSub (hay needle : String) : Bool :=
   (List.range (hay.length + 1)).any (fun i =>
     needle == String.ofList (hay.toList.drop i |>.take needle.length))
 
-/-- Shape check: the emitted asm contains the dual carry-chain CIOS idiom
+/- Shape check: the emitted asm contains the dual carry-chain CIOS idiom
     (`mulx`, `adcx`, `adox`, `imul` for the Montgomery factor), the
     memory-operand `MULX` reads the multiplicand from `[x]` (`mulxq 0(%rsi)`),
     the result stores print in AT&T form (`(%rdi)`), and the `%rdx`-pinned
     multiplier is the `MULX` src1. -/
-theorem secp256k1MontMulAsm_shape :
-    hasSub secp256k1MontMulAsm "mulx"
-      ∧ hasSub secp256k1MontMulAsm "adcx"
-      ∧ hasSub secp256k1MontMulAsm "adox"
-      ∧ hasSub secp256k1MontMulAsm "imul"
-      ∧ hasSub secp256k1MontMulAsm "mulxq 0(%rsi)"
-      ∧ hasSub secp256k1MontMulAsm "(%rdi)"
-      ∧ hasSub secp256k1MontMulAsm "src1=%rdx" := by native_decide
+#guard (hasSub secp256k1MontMulAsm "mulx") && (hasSub secp256k1MontMulAsm "adcx") && (hasSub secp256k1MontMulAsm "adox") && (hasSub secp256k1MontMulAsm "imul") && (hasSub secp256k1MontMulAsm "mulxq 0(%rsi)") && (hasSub secp256k1MontMulAsm "(%rdi)") && (hasSub secp256k1MontMulAsm "src1=%rdx")
 
 /-- Emit driver: write the in-Lean-backend-emitted `.s` for the bench harness. -/
 def emitMain : IO Unit := do
@@ -312,5 +305,12 @@ def emitMain : IO Unit := do
     "bench/secp256k1_compare/gen_com/secp256k1_mont_mul_x86_from_lean.s"
     secp256k1MontMulAsm
   IO.println "wrote gen_com/secp256k1_mont_mul_x86_from_lean.s (in-Lean x86 backend CIOS, no jasminc)"
+
+/-! ## Artifact generation at elaboration
+
+The render is written while this module elaborates, so `lake` produces it from
+this file and no separate driver or Makefile rule carries the dependency. -/
+
+#eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.Secp256k1MontMulKernel

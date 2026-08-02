@@ -288,41 +288,28 @@ def merkleTreeExportJazz : String :=
 
 /-! ## 7. Structural smoke tests for the emitted `.jazz` -/
 
-/-- The WOTS chain `.jazz` is an `export fn` jasminc unit. -/
-theorem wotsChainExport_has_export :
-    JasminPrint.strContains wotsChainExportJazz "export fn wots_chain" = true := by
-  native_decide
+/- The WOTS chain `.jazz` is an `export fn` jasminc unit. -/
+#guard (JasminPrint.strContains wotsChainExportJazz "export fn wots_chain")
 
-/-- The WOTS chain `.jazz` has the real `w - 1 = 15`-iteration loop (not unrolled). -/
-theorem wotsChainExport_has_loop :
-    JasminPrint.strContains wotsChainExportJazz "for i = 0 to 15" = true := by
-  native_decide
+/- The WOTS chain `.jazz` has the real `w - 1 = 15`-iteration loop (not unrolled). -/
+#guard (JasminPrint.strContains wotsChainExportJazz "for i = 0 to 15")
 
 /-- The WOTS chain body is the single squaring leaf `acc * acc`, and it appears
     exactly once (a real `for`, not unrolled to 15 copies). -/
 theorem wotsChainExport_not_unrolled :
     (wotsChainExportJazz.splitOn "(acc * acc)").length = 2 := by native_decide
 
-/-- The Merkle treehash `.jazz` is an `export fn` jasminc unit. -/
-theorem merkleTreeExport_has_export :
-    JasminPrint.strContains merkleTreeExportJazz "export fn xmss_treehash" = true := by
-  native_decide
+/- The Merkle treehash `.jazz` is an `export fn` jasminc unit. -/
+#guard (JasminPrint.strContains merkleTreeExportJazz "export fn xmss_treehash")
 
-/-- The Merkle treehash `.jazz` has all three halving level loops. -/
-theorem merkleTreeExport_has_levels :
-    JasminPrint.strContains merkleTreeExportJazz "for i = 0 to 4" = true
-      ∧ JasminPrint.strContains merkleTreeExportJazz "for i = 0 to 2" = true
-      ∧ JasminPrint.strContains merkleTreeExportJazz "for i = 0 to 1" = true := by
-  refine ⟨?_, ?_, ?_⟩ <;> native_decide
+/- The Merkle treehash `.jazz` has all three halving level loops. -/
+#guard (JasminPrint.strContains merkleTreeExportJazz "for i = 0 to 4")
+    && (JasminPrint.strContains merkleTreeExportJazz "for i = 0 to 2")
+    && (JasminPrint.strContains merkleTreeExportJazz "for i = 0 to 1")
 
-/-- **Structural check: the three Merkle level loops appear in halving sequence**
+/- **Structural check: the three Merkle level loops appear in halving sequence**
     (`4 → 2 → 1`), i.e. `h = 3` sequential `for` loops with the halving counts. -/
-theorem merkleTreeExport_halving_sequence :
-    JasminPrint.strContains
-      ((((merkleTreeExportJazz.splitOn "for i = 0 to 4 {").getLast!).splitOn
-          "for i = 0 to 2 {").getLast!)
-      "for i = 0 to 1 {" = true := by
-  native_decide
+#guard (JasminPrint.strContains ((((merkleTreeExportJazz.splitOn "for i = 0 to 4 {").getLast!).splitOn "for i = 0 to 2 {").getLast!) "for i = 0 to 1 {")
 
 /-- The Merkle treehash `.jazz` does NOT unroll: exactly three `acc + acc` combine
     bodies (one per level loop), not `4 + 2 + 1 = 7` copies. -/

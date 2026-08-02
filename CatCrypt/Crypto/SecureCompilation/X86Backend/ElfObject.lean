@@ -43,6 +43,9 @@ the unconditional half of the trust story, mirroring `elf64Header_length` /
 * `textBytes_length` — `.text` total length is the sum of the leaf lengths.
 * `symCount_eq` — the symbol count is `1 + #leaves` (the null sym plus one per leaf).
 * `header_64` / `header_magic` — re-exported header shape (via `SailX86Decoder`).
+* `buildElfObject_magic` / `buildElfObjectMulti_magic` /
+  `buildElfObjectMultiReloc_magic` / `buildElfObjectRodata_magic` — each builder's
+  output opens with the ELF magic, for all inputs, with no byte evaluated.
 
 These are the symbol-table analogue of the encoder's `decode (encode i) = i`: they
 pin the object's *structure* (where each function lives, how big it is) for all
@@ -273,6 +276,56 @@ def buildElfObjectMulti (leaves : List Leaf) : List (BitVec 8) :=
 def buildElfObject (name : String) (text : List (BitVec 8)) : List (BitVec 8) :=
   buildElfObjectMulti [⟨name, text⟩]
 
+/-! ### Header re-export (single source of truth in `SailX86Decoder`) and the
+object's leading magic -/
+
+/-- The object begins with a 64-byte `Elf64_Ehdr` (re-export of
+    `SailX86Decoder.elf64Header_length` for the multi-symbol object). -/
+theorem header_64 (shoff shnum shstrndx : Nat) :
+    (elf64Header shoff shnum shstrndx).length = 64 :=
+  elf64Header_length shoff shnum shstrndx
+
+/-- The first six bytes are the ELF magic + 64-bit/LE class (re-export of
+    `SailX86Decoder.elf64Header_magic`). -/
+theorem header_magic (shoff shnum shstrndx : Nat) :
+    (elf64Header shoff shnum shstrndx).take 6
+      = [0x7f, 0x45, 0x4c, 0x46, 2, 1].map (BitVec.ofNat 8) :=
+  elf64Header_magic shoff shnum shstrndx
+
+/-- Any byte list whose head is an `Elf64_Ehdr` opens with the ELF magic and the
+    64-bit/little-endian class bytes: the 6-byte prefix lies inside the 64-byte
+    header, so the appended sections do not reach it. -/
+theorem header_prefix_magic (shoff shnum shstrndx : Nat) (rest : List (BitVec 8)) :
+    (elf64Header shoff shnum shstrndx ++ rest).take 6
+      = [0x7f, 0x45, 0x4c, 0x46, 2, 1].map (BitVec.ofNat 8) := by
+  rw [List.take_append_of_le_length (by rw [header_64]; omega), header_magic]
+
+/-- The multi-symbol relocatable object opens with the ELF magic and the
+    64-bit/little-endian class bytes, for any leaves, externs and relocations —
+    the sections after the `Elf64_Ehdr` never reach the first six bytes, so no
+    byte of the object need be evaluated. -/
+theorem buildElfObjectMultiReloc_magic (leaves : List Leaf) (externs : List String)
+    (relocs : List Reloc) :
+    (buildElfObjectMultiReloc leaves externs relocs).take 6
+      = [0x7f, 0x45, 0x4c, 0x46, 2, 1].map (BitVec.ofNat 8) := by
+  unfold buildElfObjectMultiReloc
+  simp only [List.append_assoc]
+  exact header_prefix_magic _ _ _ _
+
+/-- The no-relocation multi-symbol object opens with the ELF magic, for any
+    leaves. -/
+theorem buildElfObjectMulti_magic (leaves : List Leaf) :
+    (buildElfObjectMulti leaves).take 6
+      = [0x7f, 0x45, 0x4c, 0x46, 2, 1].map (BitVec.ofNat 8) :=
+  buildElfObjectMultiReloc_magic leaves [] []
+
+/-- The single-symbol object opens with the ELF magic, for any symbol name and
+    any `.text` bytes. -/
+theorem buildElfObject_magic (name : String) (text : List (BitVec 8)) :
+    (buildElfObject name text).take 6
+      = [0x7f, 0x45, 0x4c, 0x46, 2, 1].map (BitVec.ofNat 8) :=
+  buildElfObjectMulti_magic _
+
 /-! ## 4b. A `.text` + `.rodata` object with RIP-relative constant-pool relocations (AEGIS C0/C1)
 
 The fixed-ABI AEAD kernels (AES-GCM GHASH masks, AEGIS `C0`/`C1` state constants)
@@ -360,6 +413,17 @@ def buildElfObjectRodata (name : String) (text : List (BitVec 8))
   elf64Header shoff 7 6
     ++ textPad ++ rodataPad ++ relaPad ++ strtabPad ++ shstrPad ++ symtab ++ shdrs
 
+/-- The `.text` + `.rodata` object opens with the ELF magic and the
+    64-bit/little-endian class bytes, for any symbol name, `.text` bytes,
+    constant pool and relocation list. -/
+theorem buildElfObjectRodata_magic (name : String) (text rodata : List (BitVec 8))
+    (relocs : List RodataReloc) :
+    (buildElfObjectRodata name text rodata relocs).take 6
+      = [0x7f, 0x45, 0x4c, 0x46, 2, 1].map (BitVec.ofNat 8) := by
+  unfold buildElfObjectRodata
+  simp only [List.append_assoc]
+  exact header_prefix_magic _ _ _ _
+
 /-! ### `.rodata` object well-formedness pins -/
 
 /-- A worked AEGIS-shaped pin: two 16-byte constants `C0`/`C1` in `.rodata`, one
@@ -376,8 +440,8 @@ def demoRodataObject : List (BitVec 8) :=
   buildElfObjectRodata "aegis_const_load" [BitVec.ofNat 8 0xc3] demoRodataPool demoRodataRelocs
 
 /-- The `.rodata` object begins with the 64-byte `Elf64_Ehdr` (ELF magic + class). -/
-example : demoRodataObject.take 6 = [0x7f, 0x45, 0x4c, 0x46, 2, 1].map (BitVec.ofNat 8) := by
-  native_decide
+example : demoRodataObject.take 6 = [0x7f, 0x45, 0x4c, 0x46, 2, 1].map (BitVec.ofNat 8) :=
+  buildElfObjectRodata_magic _ _ _ _
 
 /-- `.rela.text` for the two-constant AEGIS pool is `2 × 24 = 48` bytes (two
     24-byte `Elf64_Rela` entries, one per RIP-relative constant load). -/
@@ -506,21 +570,6 @@ theorem symtabBytes_length (leaves : List Leaf) :
 theorem symCount_eq (leaves : List Leaf) :
     (symtabBytes leaves).length / 24 = 1 + leaves.length := by
   rw [symtabBytes_length]; omega
-
-/-! ### Header re-export (single source of truth in `SailX86Decoder`) -/
-
-/-- The object begins with a 64-byte `Elf64_Ehdr` (re-export of
-    `SailX86Decoder.elf64Header_length` for the multi-symbol object). -/
-theorem header_64 (shoff shnum shstrndx : Nat) :
-    (elf64Header shoff shnum shstrndx).length = 64 :=
-  elf64Header_length shoff shnum shstrndx
-
-/-- The first six bytes are the ELF magic + 64-bit/LE class (re-export of
-    `SailX86Decoder.elf64Header_magic`). -/
-theorem header_magic (shoff shnum shstrndx : Nat) :
-    (elf64Header shoff shnum shstrndx).take 6
-      = [0x7f, 0x45, 0x4c, 0x46, 2, 1].map (BitVec.ofNat 8) :=
-  elf64Header_magic shoff shnum shstrndx
 
 /-- The single-leaf object's `.text` is exactly that leaf's bytes (the pilot's
     `buildElfObject` is the one-element specialisation). -/

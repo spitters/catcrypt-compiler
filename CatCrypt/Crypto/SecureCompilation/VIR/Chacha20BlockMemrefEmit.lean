@@ -36,7 +36,7 @@ a `bvAdd 64` masked to 32 bits (`&&& 0xFFFFFFFF`), every xor is a `bvXor 64`
 rotate-left-by-`m` is `((x <<< m) ||| (x >>> (32-m))) &&& 0xFFFFFFFF` via
 `bvShiftL`/`bvShiftR`/`bvOr`/`bvAnd 64`. All of these are seam-covered (they lower to
 `regArith add/xor/or/and` + `shlImm`/`shrImm`), so the whole program lowers and the
-16 store values are genuine `.sword 64` words. The per-op masking identities below
+16 store values are `.sword 64` words. The per-op masking identities below
 (`add32_setWidth` etc.) are `bv_decide` facts equating the masked 64-bit op with the
 `setWidth 64` of the native 32-bit ChaCha op, so each output cell holds exactly
 `(ChaCha20Block.chachaBlock s i).setWidth 64` — the committed RFC block, word for
@@ -270,7 +270,7 @@ theorem chachaCore64_setW (s : ChaChaState) :
   | succ n ih =>
       rw [Function.iterate_succ_apply, Function.iterate_succ_apply, hstep, ih]
 
-/-- **64-carried block keystone.** On clean-32 widened inputs, the 64-carried block
+/-- **The 64-carried block equation.** On clean-32 widened inputs, the 64-carried block
     equals `setW` of the RFC-8439 §2.3 block `chachaBlock` — i.e. each output cell is
     `(chachaBlock s i).setWidth 64`. The arithmetic is the masked-op conjugation
     folded through the same round structure as `chachaBlock`. -/
@@ -613,5 +613,12 @@ def emit : IO Unit := do
   IO.FS.writeFile "bench/chacha_compare/gen_com/chacha20_block_memref.s"
     chacha20BlockMemrefJazz
   IO.println "CatCrypt whole-block memref emit OK : bench/chacha_compare/gen_com/chacha20_block_memref.s"
+
+/-! ## Artifact generation at elaboration
+
+The render is written while this module elaborates, so `lake` produces it from
+this file and no separate driver or Makefile rule carries the dependency. -/
+
+#eval emit
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockMemrefEmit

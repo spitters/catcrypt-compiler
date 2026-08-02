@@ -17,7 +17,7 @@ counterpart of prime-ir's `field.cmp`, `mod_arith.cmp`, and
 
 ## Why this dialect exists (the gap it closes)
 
-Per `PRIME_IR_GAP_ANALYSIS.md` (repo root, §1 & §4), CatCrypt already *had* the
+Per `PRIME_IR_OP_CORRESPONDENCE.md` (repo root, §1 & §4), CatCrypt already *had* the
 comparison and identity-test functionality, but only at the **bit / sword
 layer** and via the `none` carrier of the EC add law:
 
@@ -229,7 +229,7 @@ instance : DialectSignature cmpDialect where
     | .ecIsZero _ _ => .bool
     | .ecEq _ _ => .bool
 
-/-! ## 7. Op denotation (into the genuine `Bool` predicate) -/
+/-! ## 7. Op denotation (into the `Bool` predicate) -/
 
 instance cmpDenote : DialectDenote cmpDialect where
   denote op := match op with
@@ -359,7 +359,7 @@ instance {Γ : Ctxt cmpDialect} {t : CmpTy}
 /-! ## 10. Smoke test
 
 A one-op `Com cmpDialect`: `let r = fieldIsZero a; ret r` over `ZMod 7`, public
-data.  On `a = 0` it returns `true`; the op denotes to the genuine zero-test. -/
+data.  On `a = 0` it returns `true`; the op denotes to the zero-test. -/
 
 /-- One-op smoke program: a public-data `fieldIsZero` over `[fp 7]`. -/
 def smokeProg : Com cmpDialect [.fp 7] .bool :=

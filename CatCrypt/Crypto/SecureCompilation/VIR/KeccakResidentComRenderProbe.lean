@@ -13,7 +13,7 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 # PROBE: the resident Keccak variants re-routed through the owned Com→render path
 
 Investigation probe (NOT a committed kernel). Demonstrates that the two resident
-Keccak emits (`KeccakResidentBebOwnedEmit`, `KeccakResidentChiRowOwnedEmit`),
+Keccak emits (`KeccakResidentBebEmit`, `KeccakResidentChiRowEmit`),
 currently HAND-AUTHORED asm-string `flatMap`s, are expressible through the SAME
 `KeccakEmit.keccakF1600Com → toLprogPhysAbi → (load-CSE) → renderLprogAtt`
 pipeline that `KeccakLinearMain.lean` already uses for the plain owned `.s`:

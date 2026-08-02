@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.SecureCompilation.ComBuilder
 import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
 import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
+import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfFull
 
 /-!
 # Two more all-ALU golden field reductions, via the Com-generator
@@ -146,10 +147,13 @@ theorem gf127ReduceBuilt_riscv_e2e (V : Ctxt.Valuation ([.reg 64] : Ctxt jasminD
       = Com.denote gf127ReduceBuilt V :=
   com_riscv_e2e gf127ReduceBuilt_ok allReg64_one V s hs
 
-/-- **The x86 owned-emit leg** (KAT-gated tier): the same source to ELF `.o` bytes
-    via the generic driver. -/
+/-- **The x86 owned-emit leg, via the optimized full-ELF entry.**
+    Emits through `OptimizedComToElfFull.optimizedCompileComToElf`; correctness uses
+    `optimizedCompileComToElf_sound` (the optimized block is `runBlock`-equal to the
+    unoptimized gathered block on every input) together with the executed spec-KAT in
+    `bench/qruov_compare/`, not byte identity with `compileComToElf`. -/
 def gf127ReduceBuilt_x86_elf : ByteArray :=
-  X86Backend.CompileComToElfJInstrFull6.compileComToElfJInstrFull6 gf127ReduceBuilt "gf127_reduce"
+  X86Backend.OptimizedComToElfFull.optimizedCompileComToElf gf127ReduceBuilt "gf127_reduce"
 
 /-! ## Kernel 2 — lattice `q = 3329` conditional-subtract -/
 
@@ -223,9 +227,12 @@ theorem condSub3329Built_riscv_e2e (V : Ctxt.Valuation ([.reg 64] : Ctxt jasminD
       = Com.denote condSub3329Built V :=
   com_riscv_e2e condSub3329Built_ok allReg64_one V s hs
 
-/-- **The x86 owned-emit leg** (KAT-gated tier): the same source to ELF `.o` bytes
-    via the generic driver. -/
+/-- **The x86 owned-emit leg, via the optimized full-ELF entry.**
+    Emits through `OptimizedComToElfFull.optimizedCompileComToElf`; correctness uses
+    `optimizedCompileComToElf_sound` (the optimized block is `runBlock`-equal to the
+    unoptimized gathered block on every input) together with the executed spec-KAT in
+    `bench/mlkem_compare/`, not byte identity with `compileComToElf`. -/
 def condSub3329Built_x86_elf : ByteArray :=
-  X86Backend.CompileComToElfJInstrFull6.compileComToElfJInstrFull6 condSub3329Built "mlkem_condsub3329"
+  X86Backend.OptimizedComToElfFull.optimizedCompileComToElf condSub3329Built "mlkem_condsub3329"
 
 end CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenReduces

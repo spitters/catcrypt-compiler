@@ -110,7 +110,7 @@ def byteRoundtripKernel : Com memrefDialect inΓ (.int 8) :=
 /-! ## 2. Independent byte-view reference (no `stackSet`/`stackGet`)
 
 The spec is written directly as a byte-array update, *not* by reference to the
-dialect's `stackSet`/`stackGet` — so `denote = spec` is a genuine cross-check
+dialect's `stackSet`/`stackGet` — so `denote = spec` is an independent cross-check
 that the byte store writes cell `i mod memN` and leaves every other cell
 untouched (the no-overrun property, at the denotational level). -/
 
@@ -146,11 +146,12 @@ example :
 
 /-- **Roundtrip.** Reading back the just-stored byte returns `v` — independent of
     the initial buffer (the load hits exactly the cell the store wrote). -/
-example : (byteRoundtripKernel.denote (val (fun j => BitVec.ofNat 8 (10 * j.val)) 3 0x42)
-    : BitVec 8) = 0x42 := by native_decide
+example : @Eq (BitVec 8)
+    (byteRoundtripKernel.denote (val (fun j => BitVec.ofNat 8 (10 * j.val)) 3 0x42)) 0x42 := by
+  native_decide
 
 /-- The roundtrip is `v` for any representative index (no cross-cell bleed). -/
-example : (byteRoundtripKernel.denote (val (fun _ => 0xFF) 1 0x01) : BitVec 8) = 0x01 := by
+example : @Eq (BitVec 8) (byteRoundtripKernel.denote (val (fun _ => 0xFF) 1 0x01)) 0x01 := by
   native_decide
 
 /-! ## 4. Byte lowering-preservation (equal-strength `w = 8` instance)

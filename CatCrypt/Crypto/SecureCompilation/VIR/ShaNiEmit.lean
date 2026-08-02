@@ -482,23 +482,17 @@ def sha256ShaNiCompress : String := sha256ShaNiJazz "sha256_compress_shani"
 
 /-! ### Structural sanity checks -/
 
-/-- The export has the SHA-NI compression ABI. -/
-theorem shani_export_sig :
-    JasminPrint.strContains sha256ShaNiCompress
-      "export fn sha256_compress_shani(reg ptr u32[8] state, reg const ptr u32[16] msg, reg const ptr u32[64] kw)"
-      = true := by native_decide
+/- The export has the SHA-NI compression ABI. -/
+#guard (JasminPrint.strContains sha256ShaNiCompress "export fn sha256_compress_shani(reg ptr u32[8] state, reg const ptr u32[16] msg, reg const ptr u32[64] kw)")
 
-/-- The body uses the 32 `SHA256RNDS2` paired-round instructions (one of them). -/
-theorem shani_has_rnds2 :
-    JasminPrint.strContains sha256ShaNiCompress "#SHA256RNDS2" = true := by native_decide
+/- The body uses the 32 `SHA256RNDS2` paired-round instructions (one of them). -/
+#guard (JasminPrint.strContains sha256ShaNiCompress "#SHA256RNDS2")
 
-/-- The body uses the `SHA256MSG1` schedule helper. -/
-theorem shani_has_msg1 :
-    JasminPrint.strContains sha256ShaNiCompress "#SHA256MSG1" = true := by native_decide
+/- The body uses the `SHA256MSG1` schedule helper. -/
+#guard (JasminPrint.strContains sha256ShaNiCompress "#SHA256MSG1")
 
-/-- The body uses the `SHA256MSG2` schedule helper. -/
-theorem shani_has_msg2 :
-    JasminPrint.strContains sha256ShaNiCompress "#SHA256MSG2" = true := by native_decide
+/- The body uses the `SHA256MSG2` schedule helper. -/
+#guard (JasminPrint.strContains sha256ShaNiCompress "#SHA256MSG2")
 
 /-- The body runs exactly 64 rounds = 32 `SHA256RNDS2` calls (2 per quartet × 16
     quartets). Counting via the quartet renderer: each quartet emits 2 RNDS2. -/

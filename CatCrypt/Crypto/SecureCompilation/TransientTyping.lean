@@ -59,25 +59,33 @@ erasure* `archErase : TransTable → LevelTable` (`Public, Transient ↦ Public`
 already enforces "every branch / address is architecturally Public", i.e. the
 `⊑ Transient` half — **conjoined** with the strictly-stronger `noTransAddr tt c`
 side condition that no address slot is `Transient`. The first conjunct supplies
-the soundness chain into `cmdCT`; the second carries the genuine
-transient-vs-public distinction (a `cmdCT`-only check would conflate a Transient
-address with a Public one, since both erase to Public).
+the chain into `cmdCT`; the second carries the transient-vs-public distinction
+(a `cmdCT`-only check would conflate a Transient address with a Public one,
+since both erase to Public).
 
 ## Soundness
 
 `transTyped_imp_SCT`: a `TransTyped` program is `SpeculativelyConstantTime` for
 *every* speculation window and *every* misprediction oracle. The proof routes
-the first conjunct of well-typedness through `cmdCT` and then through the
-speculative keystone `architecturally_CT_imp_SCT`. This is the
-*Spectre-Declassified soundness theorem* against the existing SCT predicate.
+the first conjunct of well-typedness through `cmdCT` and then through
+`architecturally_CT_imp_SCT`.
+
+The statement is about `SpeculativeCT.specObs`, which reads memory against the
+entry state. `noTransAddr` constrains the *level* of an address slot; it does not
+constrain which value reaches an address slot at run time. Over
+`SpeculativeCTStoreBuffer.specRun`, where a bypassing load is forwarded the value
+a buffered store overwrote and that value then reaches later addresses,
+`SpeculativeCTStoreBufferPasses.transTyped_not_imp_SB` exhibits a `TransTyped`
+program that separates two `PublicEquiv` states, and a second `TransTyped`
+program whose state-threading committed trace already separates them.
 
 ## Relationship to the two-level system
 
 `embedSecret : SecretLevel → TransLevel` (`Public ↦ Public`, `Secret ↦ Secret`)
 embeds the two-point `Jasmin.SecretLevel` lattice as the
 no-`Transient` fragment, and is a lattice homomorphism for join. `Transient` is
-the genuinely new intermediate point. `archErase` is the section that collapses
-`Transient` back down to `Public` (the architectural view).
+the intermediate point outside that image. `archErase` is the section that
+collapses `Transient` back down to `Public`, the architectural view.
 
 ## References
 
@@ -199,8 +207,8 @@ embedding is a join-homomorphism: it is the canonical inclusion of the
 sublattice `{Public, Secret}`. -/
 
 /-- Embed the two-point `Jasmin.SecretLevel` into `TransLevel`
-    (`Public ↦ Public`, `Secret ↦ Secret`). `Transient` is the genuinely new
-    intermediate point, never in the image. -/
+    (`Public ↦ Public`, `Secret ↦ Secret`). `Transient` is the intermediate
+    point, never in the image. -/
 def embedSecret : SecretLevel → TransLevel
   | .Public => .Public
   | .Secret => .Secret
@@ -263,10 +271,9 @@ theorem archEraseLevel_eq_public_iff (l : TransLevel) :
   `⊑ Transient` half of the discipline). It is the conjunct that feeds the
   soundness chain.
 * `noTransAddr tt c` — the strictly-stronger side condition forbidding a
-  *Transient* slot from being a load/store **address**. This is the genuine
+  *Transient* slot from being a load/store **address**. This is the
   transient-vs-public content: a Transient address erases to Public and would
-  slip past `cmdCT` alone, but it is exactly the speculative leak the discipline
-  rejects. -/
+  pass `cmdCT` alone, and it is the address the discipline rejects. -/
 
 /-- A slot's transient level is *not* `Transient` (so it is `Public` or
     `Secret`). Used to require that an address slot is strictly `Public`
@@ -306,38 +313,41 @@ def noTransAddr (tt : TransTable) (c : LowCT) : Bool :=
 def TransTyped (tt : TransTable) (c : LowCT) (leafCT : LeafCTTable) : Bool :=
   cmdCT c (archErase tt) leafCT && noTransAddr tt c
 
-/-- Well-typedness gives architectural CT under the erased table — the first
-    conjunct, the bridge into the speculative keystone. -/
+/-- Well-typedness gives `cmdCT` acceptance under the erased table — the first
+    conjunct, the bridge into `architecturally_CT_imp_SCT`. -/
 theorem TransTyped.cmdCT {tt : TransTable} {c : LowCT} {leafCT : LeafCTTable}
     (h : TransTyped tt c leafCT = true) :
     cmdCT c (archErase tt) leafCT = true := by
   simp only [TransTyped, Bool.and_eq_true] at h
   exact h.1
 
-/-- Well-typedness gives the speculative-address side condition — the second
-    conjunct, the genuine transient-vs-public content. -/
+/-- Well-typedness gives the address side condition — the second conjunct, the
+    transient-vs-public content. -/
 theorem TransTyped.noTransAddr {tt : TransTable} {c : LowCT} {leafCT : LeafCTTable}
     (h : TransTyped tt c leafCT = true) :
     noTransAddr tt c = true := by
   simp only [TransTyped, Bool.and_eq_true] at h
   exact h.2
 
-/-! ## §5.  Soundness: `TransTyped ⟹ SpeculativelyConstantTime`
+/-! ## §5.  `TransTyped ⟹ SpeculativelyConstantTime`
 
-The soundness theorem of the transient discipline against the existing
-speculative-leakage predicate. Routing the architectural conjunct through the
-keystone `architecturally_CT_imp_SCT` (specialised to `lt := archErase tt`)
-yields `SpeculativelyConstantTime` *for every window and every oracle*. -/
+Routing the architectural conjunct through `architecturally_CT_imp_SCT`,
+specialised to `lt := archErase tt`, yields `SpeculativelyConstantTime` for
+every window and every oracle. -/
 
-/-- **Spectre-Declassified soundness.** A transient-well-typed program is
-    speculatively constant-time under the architecturally-erased level table,
-    for *every* speculation window and *every* misprediction oracle.
+/-- A transient-well-typed program has equal `specObs` traces on states that
+    agree on the public slots of the architecturally erased table, for every
+    speculation window and every misprediction oracle.
 
-    The discipline's payload: a branch/guard may carry a `Transient` value
-    (architecturally public — sequential CT is preserved), but `TransTyped`'s
-    address side condition forbids a `Transient` slot from being a speculative
-    load/store address, so no secret data reaches the cache channel under
-    misprediction. -/
+    A branch or guard may carry a `Transient` value, which is architecturally
+    public; `TransTyped`'s address side condition forbids a `Transient` slot
+    from being a load or store address.
+
+    The conclusion is about `SpeculativeCT.specObs`, which reads memory against
+    the entry state.  Over `SpeculativeCTStoreBuffer.specRun`, where a bypassing
+    load is forwarded the value a buffered store overwrote,
+    `SpeculativeCTStoreBufferPasses.transTyped_not_imp_SB` exhibits a
+    `TransTyped` program that separates two `PublicEquiv` states. -/
 theorem transTyped_imp_SCT
     (window : SpecWindow) (O : MispredOracle)
     (tt : TransTable) (leafCT : LeafCTTable)
@@ -356,16 +366,14 @@ theorem transTyped_imp_ArchCT
 /-! ## §6.  Worked example: a Transient branch is admitted; a Transient
 address is rejected
 
-We exhibit the genuine three-level content on two minimal programs.
+Two minimal programs separating the three levels.
 
 * `transientBranch`: a branch on a `Transient`-classified flag, with a CT leaf
   call in each arm over `Public` slots. It is `TransTyped` — the Transient flag
-  is admitted *as a branch condition* (sequential CT) — and hence SCT.
+  is admitted as a branch condition — and hence SCT.
 * `transientLoad`: a load whose **address** slot is `Transient`. It is **not**
-  `TransTyped` (`TransTyped … = false`), witnessing that the discipline rejects
-  a Transient address even though the *same* table makes it pass the
-  architectural `cmdCT` check (which erases `Transient` to `Public`). This is the
-  precise Spectre-Declassified distinction, made non-vacuous. -/
+  `TransTyped`, while the *same* table makes it pass the architectural `cmdCT`
+  check, which erases `Transient` to `Public`. -/
 
 namespace Example
 
@@ -390,9 +398,8 @@ theorem transientBranch_typed :
     TransTyped tt transientBranch LeafCTTable.canonical = true := by
   native_decide
 
-/-- **Hence the Transient-branch program is speculatively CT** — for every window
-    and oracle. Even mispredicting down the wrong arm leaks only
-    public-determined observations, because the (architecturally-public) branch
+/-- The Transient-branch program has equal `specObs` traces on `PublicEquiv`
+    states, for every window and oracle: the architecturally public branch
     decision drives both the path and the oracle. -/
 theorem transientBranch_SCT (window : SpecWindow) (O : MispredOracle) :
     SpeculativelyConstantTime window O (archErase tt) transientBranch :=
@@ -403,19 +410,16 @@ theorem transientBranch_SCT (window : SpecWindow) (O : MispredOracle) :
 def transientLoad : LowCT :=
   .RArrLoad ⟨"d", .TU64⟩ ⟨"src", .TU64⟩ "idx"
 
-/-- **A Transient address is rejected.** Even though the architectural `cmdCT`
-    check passes (the Transient index erases to Public), `TransTyped` is `false`:
-    the speculative-address side condition `noTransAddr` forbids the Transient
-    index. This is the non-vacuous transient-vs-public distinction — a Transient
-    value is safe to branch on but not to use as a speculative load address. -/
+/-- A Transient address is rejected: the architectural `cmdCT` check passes,
+    since the Transient index erases to Public, and `TransTyped` is `false`
+    because `noTransAddr` forbids the Transient index. -/
 theorem transientLoad_not_typed :
     TransTyped tt transientLoad LeafCTTable.canonical = false := by
   native_decide
 
-/-- The companion fact making the rejection meaningful: the *same* table makes
-    `transientLoad` pass the architectural `cmdCT` check (Transient erases to
-    Public). So `TransTyped`'s rejection is genuinely the new, stronger
-    speculative content — not something `cmdCT` already caught. -/
+/-- The companion fact: the *same* table makes `transientLoad` pass the
+    architectural `cmdCT` check, since Transient erases to Public.  The
+    rejection above is therefore content `cmdCT` alone does not carry. -/
 theorem transientLoad_archErase_cmdCT :
     cmdCT transientLoad (archErase tt) LeafCTTable.canonical = true := by
   native_decide

@@ -11,7 +11,7 @@ import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 This module extends the **C4** step of the verified-compiler plan to the
 **ML-KEM-768** (FIPS-203 `SampleNTT` / Algorithm 13) rejection-sampling
 per-candidate **extraction** body. It is the compile-from-hax sibling of the
-owned-emit rejection loop in `CatCrypt/Crypto/MLKEM/RejUniformOwnedEmit.lean`
+owned-emit rejection loop in `CatCrypt/Crypto/MLKEM/RejUniformEmit.lean`
 (reuses its `q = 3329`, the `0xFFF` mask, and the exact `>> | << & 0xFFF`
 extraction arithmetic verbatim).
 
@@ -26,7 +26,7 @@ val1 = ((buf[pos+1] >> 4) | ((uint16_t)buf[pos+2] << 4)) & 0xFFF;  /* the high c
 ```
 
 each then **accepted** iff `< q = 3329`. The data-dependent accept/store loop is
-Tier-3 (it is the owned `runGuardedLoop` of `RejUniformOwnedEmit.lean`, not a
+Tier-3 (it is the owned `runGuardedLoop` of `RejUniformEmit.lean`, not a
 compile-from-hax leaf), so we derive the **scalar per-candidate body**: the first
 12-bit candidate `d1 = (b0 | (b1 << 8)) & 0xFFF`. This is pure `shift_left` /
 `BitOr` / `BitAnd` — all **logical** shifts (the inputs are unsigned bytes), a
@@ -45,7 +45,7 @@ recovers the exact 12-bit candidate from `(b0, b1)` on the byte input domain is
 ## The `< q` acceptance predicate: front-head gap (documented, not stubbed)
 
 The acceptance decision `d1 < 3329` produces a 0/1 mask in the owned emit via a
-`SUB`/`CMOVB` (borrow-flag → CMOV) idiom (see `RejUniformOwnedEmit.rejWindowBody`).
+`SUB`/`CMOVB` (borrow-flag → CMOV) idiom (see `RejUniformEmit.rejWindowBody`).
 The compile-from-hax front (`ImpExprToThir.recogBin`/`recogShift`) recognizes only
 `BitXor`/`BitAnd`/`BitOr`/`wrapping_{add,mul,sub}`/`shift_{left,right}` — there is
 **no compare-producing-mask head** (no `Lt`/`lt`/`borrow`/`cmovb`) in the front.
@@ -53,7 +53,7 @@ So the `< q` acceptance mask is **not** a single compile-from-hax leaf with the
 current recognizer set; it would require adding a compare/select head to
 `recogBin` (and a matching `Rhs` form lowering to `SUB`+`CMOVB` / `SETB`). We
 therefore derive only the 12-bit **extract** here and leave the acceptance mask to
-the owned x86 backend (`RejUniformOwnedEmit.lean`, where the `SUB`/`CMOVB` idiom is
+the owned x86 backend (`RejUniformEmit.lean`, where the `SUB`/`CMOVB` idiom is
 KAT'd against PQClean). This matches the C4 scope: the extraction arithmetic is the
 logical-shift body the front covers; the comparison is a back-end concern.
 -/
@@ -158,7 +158,7 @@ in positions `[11:8]`, recovering exactly the 12-bit candidate (the top nibble o
     12-bit candidate `(b0 ||| (b1 << 8)) & 0xFFF`. The identity holds for all
     `BitVec 32` inputs (the form already *is* `(b0 ||| (b1 << 8)) & 0xFFF`); on the
     intended byte domain `b0, b1 < 2^8` the surviving bits are exactly `b0[7:0]` and
-    `b1[3:0] << 8` — the genuine 12-bit `SampleNTT` candidate (`b1`'s top nibble
+    `b1[3:0] << 8` — the 12-bit `SampleNTT` candidate (`b1`'s top nibble
     feeds the *other* candidate `d2`). Closed by `bv_decide` (pure `BitVec`). -/
 theorem mlkemRejVal0Form_eq_candidate (b0 b1 : BitVec 32) :
     mlkemRejVal0Form b0 b1 = (b0 ||| (b1 <<< (8 : Nat))) &&& 0xFFF#32 := by

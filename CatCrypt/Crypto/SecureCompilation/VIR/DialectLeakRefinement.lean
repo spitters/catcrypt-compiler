@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakTrace
 import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
-import CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedRHPFull
+import CatCrypt.Crypto.SecureCompilation.X86Backend.RHPFull
 
 /-!
 # Dialect → jasmin → x86 leak-refinement
@@ -13,10 +13,10 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedRHPFull
 `LeakTraceCom.lean` built the dialect-level structural leak trace
 `leakTraceCom : Com catCryptDialect → LeakTrace` and an *equality* adequacy to
 `CProg.leakTrace`. Its "Scope" named the residual: `leakTraceCom` lives on the
-abstract op-sequence `Com catCryptDialect`, whereas `OwnedRHPFull.blockLeak`
+abstract op-sequence `Com catCryptDialect`, whereas `RHPFull.blockLeak`
 lives on the lowered x86 `JInstr`/`JState`; bridging the two needs the
 dialect → jasmin → x86 leak-refinement chain. This file builds that chain, as
-far as it genuinely closes, and names the edge that does not.
+far as it closes, and names the edge that does not.
 
 ## What this file delivers
 
@@ -39,18 +39,18 @@ far as it genuinely closes, and names the edge that does not.
 * **§3 Composition toward the concrete x86 `blockLeak`.** The x86 leg is over a
   *different* observable alphabet — `blockLeak : … → List MLeak` records
   control-flow + memory addresses, not the abstract `LeakEvent` op tokens. The
-  honest bridge on the owned scalar-arith fragment is the joint
+  bridge on the owned scalar-arith fragment is the joint
   *state-independence*: a dialect program *realized* by an owned scalar-arith
   block `ps` (`Realizes cc ρ ps`) has BOTH a state-independent abstract leak
   trace (structurally, `leakTraceCom`) AND a state-independent concrete x86
-  `blockLeak (lowerSeq ρ ps)` — the latter *genuinely* (address-dependent),
-  reusing OwnedRHPFull's `lowerSeq_constant_time` and `blockLeak_no_branch`.
+  `blockLeak (lowerSeq ρ ps)` — the latter *non-vacuously* (address-dependent),
+  reusing RHPFull's `lowerSeq_constant_time` and `blockLeak_no_branch`.
   `dialect_to_x86_leak_refinement` chains all three legs into a single theorem.
 
 ## Scope (read this before relying on the names)
 
 The chain that closes **end-to-end** is the **owned scalar-arith / branch-free
-fragment** — the same fragment `OwnedRHPFull.blockLeak` covers (`lowerSeq` of a
+fragment** — the same fragment `RHPFull.blockLeak` covers (`lowerSeq` of a
 `List ArithSrc`, all `IsDirect`, no `loadMemIdx`/`storeMemIdx`, no conditional
 jump). On exactly that fragment:
 
@@ -58,7 +58,7 @@ jump). On exactly that fragment:
   syntax-only state-independence transports down (`leakTraceJ_length_refines`,
   `leakTraceJ_state_independent`) — proved here, no axiom;
 * (jasmin → x86) the concrete `blockLeak (lowerSeq ρ ps)` is state-independent
-  and branch-free — reused from `OwnedRHPFull` / `MachineConstantTime`
+  and branch-free — reused from `RHPFull` / `MachineConstantTime`
   (`lowerSeq_constant_time`, `blockLeak_no_branch`), no `jasminc_preserves_ct`.
 
 So `leakTraceCom cc`'s constant-time property (its state-independence, equal to
@@ -74,7 +74,7 @@ precise about it:
   take no valuation, so the `s₁`/`s₂` quantification is *vacuous* (there is no
   branch or value-indexed constructor in `Com`). This is the branch-free
   fragment's state-independence.
-* `blockLeak (lowerSeq ρ ps)` is state-independent **adversarially / genuinely**
+* `blockLeak (lowerSeq ρ ps)` is state-independent **adversarially / non-vacuously**
   — `blockLeak` reads the running `JState` and *could* expose a value-dependent
   memory address (a register-indexed `storeMemIdx`); it is constant here only
   *because* the owned fragment emits no such instruction
@@ -93,7 +93,7 @@ preservation**: for an arbitrary `Com jasminDialect` (with `stackLoad` /
 `stackStore` / multi-result `callN` / vector ops), there is no proved emit-and-
 leak-refinement onto a `blockLeak`-modeled x86 block here — that step routes
 through the un-owned backend (which, for clause (A) machine-CT, still appeals to
-the cited `jasminc_preserves_ct`; see `OwnedRHPFull` §3). The dialect → jasmin
+the cited `jasminc_preserves_ct`; see `RHPFull` §3). The dialect → jasmin
 *length*-refinement (§2) is proved for the **whole** lowered fragment, but the
 jasmin → x86 leg is only the owned `lowerSeq` leaf. This file does not claim the
 general dialect → x86 leak-refinement.
@@ -102,8 +102,8 @@ general dialect → x86 leak-refinement.
 
 The §1/§2 results (`leakTraceJ`, `leakTraceJ_length_refines`,
 `leakTraceJ_state_independent`) and the §3 composition over the owned fragment
-are pure structural inductions + reuse of `OwnedRHPFull`'s
-`jasminc_preserves_ct`-free owned keystones. **No `jasminc_preserves_ct`** is
+are pure structural inductions + reuse of `RHPFull`'s
+`jasminc_preserves_ct`-free owned results. **No `jasminc_preserves_ct`** is
 threaded — the owned x86 leg is the concrete `blockLeak` model, not the opaque
 `X86Prog.isCT`.
 
@@ -123,7 +123,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminCom (mapTy mapCtx)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
-open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedRHPFull
+open CatCrypt.Crypto.SecureCompilation.X86Backend.RHPFull
 
 set_option autoImplicit false
 
@@ -233,14 +233,14 @@ The x86 leg is over a different observable alphabet (`MLeak`, not `LeakEvent`),
 so the bridge is not a trace *equality* but a joint *state-independence*: the
 abstract dialect leak trace and the concrete x86 `blockLeak` are *both* constant
 across states on the owned scalar-arith fragment — the abstract one structurally
-(vacuously), the concrete one genuinely (`lowerSeq_constant_time`). A dialect
+(vacuously), the concrete one non-vacuously (`lowerSeq_constant_time`). A dialect
 program is *realized* by an owned scalar-arith block when the x86 leg it lowers
 to is `lowerSeq ρ ps`. -/
 
 /-- **Realization onto the owned scalar-arith x86 leg.** A dialect program `cc`
     is realized by the owned scalar-arith block `ps` (under register map `ρ`)
     when the concrete x86 code it is emitted to is `lowerSeq ρ ps` — the
-    direct-addressed, branch-free leaf `OwnedRHPFull.blockLeak` covers. This is
+    direct-addressed, branch-free leaf `RHPFull.blockLeak` covers. This is
     the fragment on which the dialect → jasmin → x86 leak chain closes. -/
 def Realizes {Γ : Ctx} {t : CryptoTy}
     (_cc : Com catCryptDialect Γ t)
@@ -256,7 +256,7 @@ def Realizes {Γ : Ctx} {t : CryptoTy}
 
     * (abstract, structural) `leakTraceCom cc` is the same across any two states
       — it is syntax-only, so the `s₁`/`s₂` quantification is vacuous;
-    * (concrete, genuine) `blockLeak s₁ tgt = blockLeak s₂ tgt` for any two x86
+    * (concrete, non-vacuous) `blockLeak s₁ tgt = blockLeak s₂ tgt` for any two x86
       states — and this is a *real* `IsDirect`-gated theorem
       (`lowerSeq_constant_time`), not a vacuity, since `blockLeak` reads the
       running state and only avoids value-dependent leakage because the owned
@@ -268,7 +268,7 @@ def Realizes {Γ : Ctx} {t : CryptoTy}
     equal — via `LeakTraceCom.leakTraceCom_adequacy` — to `CProg.leakTrace`'s) is
     *matched at the concrete x86 machine level* on the owned scalar-arith
     fragment. This is the dialect → (jasmin) → x86 leak-refinement, closed on
-    exactly the fragment `OwnedRHPFull.blockLeak` covers. No
+    exactly the fragment `RHPFull.blockLeak` covers. No
     `jasminc_preserves_ct`. -/
 theorem dialect_to_x86_leak_refinement {Γ : Ctx} {t : CryptoTy}
     (cc : Com catCryptDialect Γ t)
@@ -277,7 +277,7 @@ theorem dialect_to_x86_leak_refinement {Γ : Ctx} {t : CryptoTy}
     -- (abstract, structural) the dialect leak trace is state-independent:
     (∀ σ : Type, ∀ s₁ s₂ : σ,
       (fun _ : σ => Com.leakTrace cc) s₁ = (fun _ : σ => Com.leakTrace cc) s₂) ∧
-    -- (concrete, genuine) the x86 `blockLeak` is state-independent:
+    -- (concrete, non-vacuous) the x86 `blockLeak` is state-independent:
     (∀ s₁ s₂ : JState 64, blockLeak s₁ tgt = blockLeak s₂ tgt) ∧
     -- (no control-flow leak) the concrete trace is branch-free:
     (∀ s : JState 64, (blockLeak s tgt).filter MLeak.isBranch = []) := by

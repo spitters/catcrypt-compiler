@@ -272,19 +272,15 @@ def ntruKaraJazz : String :=
 
 /-! ### Structural sanity checks on the emitted text -/
 
-/-- The emitted `.jazz` carries the drop-in NTRU ring-multiply ABI (16-word out,
+/- The emitted `.jazz` carries the drop-in NTRU ring-multiply ABI (16-word out,
     33-word in), real multiplication (`*`, the half-products) and the Karatsuba
     middle-term subtraction (`-`), the front-materialised `& 8191` mask constant,
     and no skipped-op sentinel (every front-lowered binding renders to a real
     scalar assignment). -/
-theorem kara_jazz_shape :
-    strContains ntruKaraJazz
-        "export fn ntru_mul_kara(reg ptr u64[16] out, reg const ptr u64[33] inp)"
-        = true
-      ∧ strContains ntruKaraJazz " * " = true
-      ∧ strContains ntruKaraJazz " - " = true
-      ∧ strContains ntruKaraJazz "8191" = true
-      ∧ strContains ntruKaraJazz "non-regArith op skipped" = false := by
-  native_decide
+#guard (strContains ntruKaraJazz "export fn ntru_mul_kara(reg ptr u64[16] out, reg const ptr u64[33] inp)")
+    && (strContains ntruKaraJazz " * ")
+    && (strContains ntruKaraJazz " - ")
+    && (strContains ntruKaraJazz "8191")
+    && !(strContains ntruKaraJazz "non-regArith op skipped")
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Ntruhrss701KaratsubaEmit

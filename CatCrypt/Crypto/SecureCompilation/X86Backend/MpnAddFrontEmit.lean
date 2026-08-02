@@ -11,7 +11,7 @@ import CatCrypt.Crypto.SecureCompilation.Dialects.CarryChainSelect
 /-!
 # `mpn_add_n` through the owned-RA ADX path, FRONT-GENERATED (#477 closed)
 
-`MpnAdxOwnedLprog` supplies a *hand-authored* physical `Lprog` (raw `ADCX`
+`MpnAdxLprog` supplies a *hand-authored* physical `Lprog` (raw `ADCX`
 strings, pinned SysV registers, `mem.<base>.<off>` accesses) because the #477
 note recorded that the `Com → Lprog` register allocator legalized only the
 two-source binop alphabet, leaving the three-source flag-coupled `ADCX`/`ADOX`
@@ -40,7 +40,7 @@ synthesis, the `add2Prog` shape), selected by
 `CarryChainSelect.translateDialectCarrySelect` into a `catCryptDialect` `Com`
 whose carry-chain is `bvAddCarryLo`/`bvAddCarryHi` threading a single `sword 1`
 carry limb-to-limb, lowered by `cryptoDialectToJasminCom` and rendered through
-the owned RA (`toOwnedAsm`) — **no hand `Com`/`Lcmd`/`.s`**. The final carry-out
+the owned RA (`toAsm`) — **no hand `Com`/`Lcmd`/`.s`**. The final carry-out
 is architecturally dropped, so the kernel computes `out = (X + Y) mod 2^(64·n)`
 (the `mpn_add_n` result words; the returned carry is a separate concern).
 
@@ -223,7 +223,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport (Com.toLprogPhysAbi
 /-- Lower a front dialect program to `Com jasminDialect` and render an owned
     `Lprog` under the SysV pointer ABI, then fuse the ADX carry chains and print
     AT&T. `none` if the front / lowering declines. -/
-def toOwnedAsmOf (name : String) (abiArgs : List String) {n : Nat}
+def toAsmOf (name : String) (abiArgs : List String) {n : Nat}
     (fc : Option (Com catCryptDialect (inΓ n) (.memref n))) : Option String :=
   match fc with
   | some c =>
@@ -241,17 +241,17 @@ def toOwnedAsmOf (name : String) (abiArgs : List String) {n : Nat}
 
 /-- The owned AT&T `.s` for the pure `n`-limb ADX `mpn_add_n`
     (RDI = out, RSI = x, RDX = y). -/
-def toOwnedAsm (n : Nat) (name : String) (abiArgs : List String) : Option String :=
-  toOwnedAsmOf name abiArgs (frontCom n)
+def toAsm (n : Nat) (name : String) (abiArgs : List String) : Option String :=
+  toAsmOf name abiArgs (frontCom n)
 
 /-- The owned AT&T `.s` for the pure `n`-limb `mpn_add_n`. -/
 def addAsm (n : Nat) : Option String :=
-  toOwnedAsm n s!"mpn_add_n_adx_front_{n}" ["RDI", "RSI", "RDX"]
+  toAsm n s!"mpn_add_n_adx_front_{n}" ["RDI", "RSI", "RDX"]
 
 /-- The owned AT&T `.s` for the pure `n`-limb `mpn_sub_n` (complement-add ADX
     chain: `x − y = x + ~y + 1`). -/
 def subAsm (n : Nat) : Option String :=
-  toOwnedAsmOf s!"mpn_sub_n_adx_front_{n}" ["RDI", "RSI", "RDX"] (subFrontCom n)
+  toAsmOf s!"mpn_sub_n_adx_front_{n}" ["RDI", "RSI", "RDX"] (subFrontCom n)
 
 /-! ## 5. Witnesses at 2 and 4 limbs -/
 
@@ -284,20 +284,18 @@ theorem add4Asm_shape :
     ∧ strContains ((addAsm 4).getD "") "(%r14," = true
     ∧ strContains ((addAsm 4).getD "") "UNHANDLED" = false := by native_decide
 
-/-- The RA-rendered 2-limb `mpn_sub_n` `.s` is a valid complement-add ADX chain:
+/- The RA-rendered 2-limb `mpn_sub_n` `.s` is a valid complement-add ADX chain:
     the `adcxq` chain reached the text (the front rewrote the borrow windows to
     `x + ~y + carry` in the complement-add convention), the streaming SIB
     operands are present, and no `UNHANDLED` sentinel. -/
-theorem sub2Asm_shape :
-    strContains ((subAsm 2).getD "") "adcxq" = true
-    ∧ strContains ((subAsm 2).getD "") "(%r14," = true
-    ∧ strContains ((subAsm 2).getD "") "UNHANDLED" = false := by native_decide
+#guard (strContains ((subAsm 2).getD "") "adcxq")
+    && (strContains ((subAsm 2).getD "") "(%r14,")
+    && !(strContains ((subAsm 2).getD "") "UNHANDLED")
 
-/-- The RA-rendered 4-limb `mpn_sub_n` `.s` is a valid complement-add ADX chain. -/
-theorem sub4Asm_shape :
-    strContains ((subAsm 4).getD "") "adcxq" = true
-    ∧ strContains ((subAsm 4).getD "") "(%r14," = true
-    ∧ strContains ((subAsm 4).getD "") "UNHANDLED" = false := by native_decide
+/- The RA-rendered 4-limb `mpn_sub_n` `.s` is a valid complement-add ADX chain. -/
+#guard (strContains ((subAsm 4).getD "") "adcxq")
+    && (strContains ((subAsm 4).getD "") "(%r14,")
+    && !(strContains ((subAsm 4).getD "") "UNHANDLED")
 
 /-! ## 6. `denote = spec` vs the independent `Nat` `mod 2^(64·n)` spec -/
 

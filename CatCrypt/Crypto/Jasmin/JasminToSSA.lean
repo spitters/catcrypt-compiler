@@ -80,6 +80,20 @@ def monoCmdLiveVars (retVar : Var) : List InstrR → List Var
       ++ [av.gv.var, bv.gv.var, cinv.gv.var]
   | _ :: rest => monoCmdLiveVars retVar rest
 
+/-- `monoCmdLiveVars` on a single `Copn`, characterized through `copnCarry?`. -/
+theorem monoCmdLiveVars_Copn (retVar : Var) (lvs : List LVal) (tag : AssgnTag)
+    (op : SOpn) (es : List PExpr) (rest : List InstrR) :
+    monoCmdLiveVars retVar (InstrR.Copn lvs tag op es :: rest) =
+      match copnCarry? lvs op es with
+      | some (cf, r, a, b, cin) =>
+          ((monoCmdLiveVars retVar rest).filter (fun v => !decide (v = cf) && !decide (v = r)))
+            ++ (a :: b :: cin.elim [] (fun cv => [cv]))
+      | none => monoCmdLiveVars retVar rest := by
+  fun_cases copnCarry? lvs op es <;>
+    first
+    | (simp [monoCmdLiveVars]; done)
+    | (rw [monoCmdLiveVars] <;> grind [monoCmdLiveVars])
+
 /-- If two environments agree on the variables read by an expression,
     `pureEvalMonoExpr` gives the same result. -/
 theorem pureEvalMonoExpr_irrelevant {n : Nat}
@@ -142,21 +156,35 @@ theorem pureEvalMonoCmd_irrelevant {n : Nat}
           · subst hw_eq; exact absurd hw hx_live
           · simp [hw_eq]; exact h w hw
       | _ => simp only [pureEvalMonoCmd]; exact ih _ _ (by simp [monoCmdLiveVars] at h ⊢; exact h)
-    | Copn _ _ _ _ =>
-      -- For ADD_64/ADC_64 shapes, env₁ and env₂ updates depend on
-      -- argument variables (a, b, [cin]) which are now in
-      -- `monoCmdLiveVars`. For other Copn shapes, it's a no-op.
-      -- **Open (same wildcard-match obstacle as the `Copn` cases of
-      -- `simpleDCE_correct`).** Both `pureEvalMonoCmd` *and*
-      -- `monoCmdLiveVars` need to unfold on an abstract `Copn lvs op es`,
-      -- but Lean's `match` compiler discards the "not the ADD_64/ADC_64
-      -- shape" negation in the no-op arm, so neither `simp only
-      -- [pureEvalMonoCmd, monoCmdLiveVars]` (no progress) nor `rw`
-      -- (unprovable abstract-shape side goals) discharges it. The
-      -- ADD_64/ADC_64 arms are tractable; only the no-op catch-all is
-      -- blocked, and closing it honestly needs a full LVal/SOpn/PExpr
-      -- head-shape enumeration. Out of scope; documented structural gap.
-      sorry
+    | Copn lvs tag op es =>
+      -- The head's env-effect is tail-independent, so `pureEvalMonoCmd_append`
+      -- on the singleton prefix reduces the goal to `ih` applied to the two
+      -- post-`Copn` environments; the remaining obligation is that the single
+      -- `Copn` step preserves agreement on the live variables of `rest`.
+      have e0 : (InstrR.Copn lvs tag op es :: rest) = [InstrR.Copn lvs tag op es] ++ rest := rfl
+      rw [e0, pureEvalMonoCmd_append, pureEvalMonoCmd_append]
+      apply ih
+      intro w hw
+      rw [monoCmdLiveVars_Copn] at h
+      rw [pureEvalFinalEnv_Copn, pureEvalFinalEnv_Copn]
+      cases hc : copnCarry? lvs op es with
+      | none => simp only [hc] at h ⊢; exact h w hw
+      | some val =>
+        obtain ⟨cf, r, a, b, cin⟩ := val
+        simp only [hc] at h ⊢
+        have ha : env₁ a = env₂ a := h a (by simp)
+        have hb : env₁ b = env₂ b := h b (by simp)
+        have hcin : (cin.elim false fun cv => decide ((env₁ cv).toNat ≠ 0))
+            = (cin.elim false fun cv => decide ((env₂ cv).toNat ≠ 0)) := by
+          cases cin with
+          | none => rfl
+          | some cv => simp only [Option.elim, h cv (by simp)]
+        by_cases hwr : w = r
+        · subst hwr; simp only [↓reduceIte, ha, hb, hcin]
+        · by_cases hwcf : w = cf
+          · subst hwcf; simp only [if_neg hwr, ↓reduceIte, ha, hb, hcin]
+          · simp only [if_neg hwr, if_neg hwcf]
+            exact h w (by simp_all [List.mem_append, List.mem_filter, hwr, hwcf])
     | Cif _ _ _ | Cfor _ _ _ | Cwhile _ _ _ | Ccall _ _ _ _ =>
       simp only [pureEvalMonoCmd]
       exact ih _ _ (by simp [monoCmdLiveVars] at h ⊢; exact h)
@@ -208,31 +236,11 @@ theorem simpleDCE_correct {n : Nat}
     | Copn lvs tag op es =>
       -- `simpleDCE` is a no-op on the `.Copn` head, so the goal is
       -- `pureEvalMonoCmd … (Copn lvs tag op es :: simpleDCE rest) =
-      --  pureEvalMonoCmd … (Copn lvs tag op es :: rest)`. Drive the match
-      -- on the `Copn` head ourselves (rcases on the ADD_64/ADC_64 shape vs
-      -- the no-op catch-all); each leaf reduces `pureEvalMonoCmd` to a
-      -- recursion on `simpleDCE rest` / `rest` under the *same* env, closed
-      -- by `ih`.
+      --  pureEvalMonoCmd … (Copn lvs tag op es :: rest)`. The head's env
+      -- effect is tail-independent, so `pureEvalMonoCmd_head_congr` closes it
+      -- for any `Copn` shape at once (no ADD_64/ADC_64 vs no-op split needed).
       simp only [simpleDCE]
-      match lvs, op, es with
-      | [.Lnone _ _, .Lvar _, .Lnone _ _, .Lnone _ _, .Lnone _ _, .Lvar _],
-        .Oasm ⟨"ADD_64"⟩, [.Pvar _, .Pvar _] =>
-        simp only [pureEvalMonoCmd]; exact ih _
-      | [.Lnone _ _, .Lvar _, .Lnone _ _, .Lnone _ _, .Lnone _ _, .Lvar _],
-        .Oasm ⟨"ADC_64"⟩, [.Pvar _, .Pvar _, .Pvar _] =>
-        simp only [pureEvalMonoCmd]; exact ih _
-      | _, _, _ =>
-        -- No-op catch-all. Open goal: even after driving the head-shape
-        -- match ourselves, the proof-`match` wildcard re-binds
-        -- `lvs/op/es` generically, so `pureEvalMonoCmd` cannot reduce to
-        -- its `| _ :: rest` arm — `simp only [pureEvalMonoCmd]` makes no
-        -- progress and the `ih`-form is not defeq. Lean's `match` compiler
-        -- drops the "not the ADD_64/ADC_64 shape" negation in the wildcard,
-        -- so closing it honestly needs a full `List LVal`/`SOpn`/`List
-        -- PExpr` head-shape enumeration or a `rest`-independent refactor of
-        -- `pureEvalMonoCmd`'s `Copn`-head env-update. Out of scope; the two
-        -- ADD_64/ADC_64 shapes above are fully closed.
-        sorry
+      exact pureEvalMonoCmd_head_congr n env retVar (.Copn lvs tag op es) _ _ ih
     | Cif _ _ _ | Cfor _ _ _ | Cwhile _ _ _ | Ccall _ _ _ _ =>
       simp [simpleDCE, pureEvalMonoCmd, ih]
 

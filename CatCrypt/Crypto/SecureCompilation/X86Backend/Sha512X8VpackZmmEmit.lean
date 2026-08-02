@@ -8,7 +8,7 @@ import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint
 /-!
 # SHA-512 8-way σ/Σ lane kernel migrated onto the unified `Com jasminDialect` (512-bit ZMM)
 
-The committed SHA-512 8-way multi-buffer emit (`Sha512X8OwnedEmit`,
+The committed SHA-512 8-way multi-buffer emit (`Sha512X8Emit`,
 `bench/sha2_compare/sha512_x8_emit.lean`) packs **eight** independent SHA-512
 streams across the eight `u64` lanes of a 512-bit ZMM register and runs the
 80-round FIPS 180-4 §6.4 compression lane-parallel. Its body is a `ZOp` block over
@@ -17,7 +17,7 @@ by `Avx512Lowering.lowerZBlock` and printed by `Avx512AsmPrinter.renderZInstr`.
 
 This module is the **SIMD-dialect-unification** twin of the kernel's
 σ/Σ-mixing core — the σ0 (small sigma 0) lane function, the canonical
-rotate-recombination building block that `Sha512X8OwnedEmit.protrZ` / `psigmaZ`
+rotate-recombination building block that `Sha512X8Emit.protrZ` / `psigmaZ`
 assemble — re-expressed as a straight-line `Com jasminDialect` program over
 `reg 512` (ZMM) registers, **off** the bespoke `Avx512Model` machine, rendered
 through `VpackZmmAsmPrint.renderVpackZmmCom` + `VsimdAsmPrint.frameAsmFunction`.
@@ -42,20 +42,20 @@ no-`Avx512Model` route.
 ## What σ0 is (FIPS 180-4 §4.1.3)
 
 `σ0(x) = rotr(x, 1) ^ rotr(x, 8) ^ shr(x, 7)`, packed over all 8 lanes — exactly
-`Sha512X8OwnedEmit.psigmaZ` instantiated at `smallSig0 = (1, 8, 7)` with
+`Sha512X8Emit.psigmaZ` instantiated at `smallSig0 = (1, 8, 7)` with
 `r3IsShr = true`. The two rotates expand to `protrZ`:
 `rotr(x, n) = (x >>> n) ||| (x <<< (64 - n))`.
 
 ## Op mapping (this is the migration's substance)
 
-`Sha512X8OwnedEmit` uses xor/or plus **immediate** shifts for the σ/Σ rotates.
+`Sha512X8Emit` uses xor/or plus **immediate** shifts for the σ/Σ rotates.
 The unified `vpackZMM .shl` / `.shr` render to the **variable** per-lane shifts
 `vpsllvq` / `vpsrlvq` (each lane's shift count read from the second register's
 lane), not the immediate-count `vpsllq` / `vpsrlq`. The migration expresses each
 immediate shift-by-`n` as a `vpackZMM .shl` / `.shr` whose **second operand is a
 broadcast-constant register** holding `n` in every 64-bit lane:
 
-| `Sha512X8OwnedEmit.ZOp`      | `Com jasminDialect` op                | denote               |
+| `Sha512X8Emit.ZOp`      | `Com jasminDialect` op                | denote               |
 |------------------------------|---------------------------------------|----------------------|
 | `.xor d a b`                 | `vpackZMM .xor` (vpxorq)               | `zmmPackQ .xor a b`  |
 | `.or  d a b`                 | `vpackZMM .or`  (vporq)                | `zmmPackQ .or  a b`  |
@@ -143,7 +143,7 @@ ret out
 -/
 
 /-- The migrated SHA-512 σ0 lane kernel as a `Com jasminDialect` over `reg 512`
-    registers — the dialect-native equivalent of `Sha512X8OwnedEmit.psigmaZ` at
+    registers — the dialect-native equivalent of `Sha512X8Emit.psigmaZ` at
     `smallSig0 = (1,8,7)`, `r3IsShr = true`. Every immediate shift is a
     `vpackZMM .shl/.shr` against a broadcast shift-count constant (de-Bruijn
     indices below are tracked against the growing context). -/
@@ -328,40 +328,31 @@ theorem asm_has_export :
     strContains sha512_x8_sigma0_vpackzmm_asm "sha512_x8_sigma0:" = true := by
   native_decide
 
-/-- The emit carries the packed variable right shift (lowercase owned `%zmm`
+/- The emit carries the packed variable right shift (lowercase owned `%zmm`
     mnemonic) — the broadcast-shift realization of the immediate σ0 shifts. -/
-theorem asm_has_vpsrlvq :
-    strContains sha512_x8_sigma0_vpackzmm_asm "vpsrlvq" = true := by native_decide
+#guard (strContains sha512_x8_sigma0_vpackzmm_asm "vpsrlvq")
 
-/-- The emit carries the packed variable left shift (the `<<< (64-n)` half of each
+/- The emit carries the packed variable left shift (the `<<< (64-n)` half of each
     rotate). -/
-theorem asm_has_vpsllvq :
-    strContains sha512_x8_sigma0_vpackzmm_asm "vpsllvq" = true := by native_decide
+#guard (strContains sha512_x8_sigma0_vpackzmm_asm "vpsllvq")
 
-/-- The emit carries the packed OR (the rotate recombination). -/
-theorem asm_has_vporq :
-    strContains sha512_x8_sigma0_vpackzmm_asm "vporq" = true := by native_decide
+/- The emit carries the packed OR (the rotate recombination). -/
+#guard (strContains sha512_x8_sigma0_vpackzmm_asm "vporq")
 
-/-- The emit carries the packed XOR (the σ-mix). -/
-theorem asm_has_vpxorq :
-    strContains sha512_x8_sigma0_vpackzmm_asm "vpxorq" = true := by native_decide
+/- The emit carries the packed XOR (the σ-mix). -/
+#guard (strContains sha512_x8_sigma0_vpackzmm_asm "vpxorq")
 
-/-- The body uses 512-bit `%zmm` registers (not the 128-bit `%xmm` of the
+/- The body uses 512-bit `%zmm` registers (not the 128-bit `%xmm` of the
     `VsimdAsmPrint` fragment). -/
-theorem asm_has_zmm :
-    strContains sha512_x8_sigma0_vpackzmm_asm "%zmm" = true := by native_decide
+#guard (strContains sha512_x8_sigma0_vpackzmm_asm "%zmm")
 
-/-- The emit carries the broadcast shift-count `.rodata` table (the
+/- The emit carries the broadcast shift-count `.rodata` table (the
     immediate-shift-via-broadcast idiom). -/
-theorem asm_has_shift_rodata :
-    strContains sha512_x8_sigma0_vpackzmm_asm "SHL_SIG0_C1:" = true := by
-  native_decide
+#guard (strContains sha512_x8_sigma0_vpackzmm_asm "SHL_SIG0_C1:")
 
-/-- No UPPERCASE jasmin intrinsic survives — this is the owned (no-jasminc)
+/- No UPPERCASE jasmin intrinsic survives — this is the owned (no-jasminc)
     lowercase-mnemonic path. -/
-theorem asm_no_jasmin_intrinsic :
-    strContains sha512_x8_sigma0_vpackzmm_asm "#VPSRL_8u64" = false := by
-  native_decide
+#guard !(strContains sha512_x8_sigma0_vpackzmm_asm "#VPSRL_8u64")
 
 /-! ## 8. Emit driver -/
 

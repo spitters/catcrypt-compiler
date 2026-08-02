@@ -21,11 +21,11 @@ siblings of the committed `sha256MajComThir` / the `Ch` sub-bindings of
 
 with `¬e` realised as `e ⊕ 0xffffffffffffffff` (`thBinLit .xor 64 …`).
 
-These are genuinely-SHA-512 primitives: `Ch` is the `T₁` choose term and `Maj`
+These are SHA-512 primitives: `Ch` is the `T₁` choose term and `Maj`
 is the `T₂` majority term of the SHA-512 compression round over `u64` words.
 Each leaf is on the `Com thirDialect` AST and is therefore directly emittable
 through the OWNED x86 backend spine (see
-`X86Backend/Sha512ChMajThirOwnedEmit.lean`).
+`X86Backend/Sha512ChMajThirEmit.lean`).
 
 ## Argument lists
 

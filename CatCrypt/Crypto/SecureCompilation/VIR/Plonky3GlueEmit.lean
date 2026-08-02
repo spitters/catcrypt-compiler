@@ -5,6 +5,8 @@ Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3BarrettLaw
+import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 
 set_option autoImplicit false
 
@@ -22,7 +24,7 @@ element, and the **OOD/DEEP** element — sourced through the verified
     --(cryptoDialectToJasminCom)-->  Com jasminDialect inCtxt r64
 ```
 
-The consumer `Plonky3GlueOwnedEmit` renders the three `Com`s to one owned
+The consumer `Plonky3GlueEmit` renders the three `Com`s to one owned
 AT&T `.s` (`Com.toLprogPhysAbi -> renderLprogAtt`, constants as `immSlotMap`
 immediates) under the export symbols `quotient_compose_elem_rc`,
 `ood_deep_elem_rc`, `challenger_squeeze_rc`; KAT
@@ -44,7 +46,7 @@ ood_deep elem (q_i, q_at_z, pw, i+1):        // ref_ood_deep, per element
   out = (q_i − q_at_z)·(i+1) + pw
 ```
 
-### Canonical vs non-canonical arithmetic (the load-bearing distinction)
+### Canonical vs non-canonical arithmetic (the central distinction)
 
 The C reference's `pr_mul a b = (a·b mod 2⁶⁴) mod p` WRAPS the `u64` product
 before reducing, and `pr_reduce` is a SINGLE conditional subtract — so the
@@ -105,7 +107,7 @@ abbrev r64 : JasminTy := .reg 64
 /-- The BabyBear prime `p = 2013265921`. -/
 def bbPNat : Nat := 2013265921
 
-/-! ## 0. Input-word indices (the `Plonky3GlueOwnedEmit` immediate split) -/
+/-! ## 0. Input-word indices (the `Plonky3GlueEmit` immediate split) -/
 
 /-- The number of declared input words (all three leaves). -/
 abbrev nInputs : Nat := 16
@@ -227,7 +229,7 @@ def chalBody : LowCT := seqAll (
 /-! ## 5. Source context + per-leaf `VarMap`s
 
 Head-first: word `0` is the context head, word `15` the deepest — input word
-`i` at De Bruijn index `i`, the layout `Plonky3GlueOwnedEmit.abiMaps 16`
+`i` at De Bruijn index `i`, the layout `Plonky3GlueEmit.abiMaps 16`
 expects. Unused words are bound under distinct `u{i}` names. -/
 
 /-- The source context: 16 `u64` scalar slots. -/
@@ -474,3 +476,159 @@ theorem glue_last_binding_is_copy :
   refine ⟨?_, ?_, ?_⟩ <;> native_decide
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Plonky3GlueEmit
+
+
+namespace CatCrypt.Crypto.SecureCompilation.VIR.Plonky3GlueEmit
+
+open CatCrypt.Crypto.SecureCompilation.VIR
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+open CatCrypt.Crypto.SecureCompilation.VIR.Plonky3GlueEmit
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (renderLprogAtt)
+
+/-! ## 0. Shared helpers (substring + ABI maps) -/
+
+/-- Substring test (`needle` occurs in `hay`). -/
+def hasSub (hay needle : String) : Bool :=
+  (List.range (hay.length + 1)).any (fun i =>
+    needle == String.ofList (hay.toList.drop i |>.take needle.length))
+
+/-- The standard `out[0..nOut-1]` store map: output word `j` to `[RDI + 8j]`. -/
+def stdOutStore (nOut : Nat) : OutStoreMap :=
+  (List.range nOut).map (fun j => ("RDI", j * 8))
+
+/-- Build the `(immSlotMap, inLoadMap)` pair from a per-input-word constant
+    oracle `constAt : idx → Option Nat` over an `nIn`-word context. A word with a
+    constant becomes an immediate; every other word is loaded from `[RSI+8·idx]`.
+    Argument slot `s` corresponds to input word `nIn - 1 - s` (the De Bruijn
+    reversal in `comToLfundef`). -/
+def abiMaps (nIn : Nat) (constAt : Nat → Option Nat) : ImmSlotMap × InLoadMap :=
+  ( fun s => if s < nIn then constAt (nIn - 1 - s) else none
+  , fun s => if s < nIn then
+               (let idx := nIn - 1 - s
+                if (constAt idx).isNone then some ("RSI", idx * 8) else none)
+             else none )
+
+/-! ## 0b. Front provenance
+
+Each deployed `Com` IS the front pipeline's output for its LowCT body
+(`translateDialectControl` + `cryptoDialectToJasminCom`), capped at the
+`qout` output copy — pinned here in checkable form. -/
+
+/-- `quotientComposeElemCom` is the front pipeline's output for `quotBody`. -/
+theorem quot_from_front :
+    (frontComWith quotVM quotBody "qout").bind
+        DialectToJasminCom.cryptoDialectToJasminCom
+      = some quotientComposeElemCom :=
+  (Option.some_get quotLowered_isSome).symm
+
+/-- `oodDeepElemCom` is the front pipeline's output for `oodBody`. -/
+theorem ood_from_front :
+    (frontComWith oodVM oodBody "qout").bind
+        DialectToJasminCom.cryptoDialectToJasminCom
+      = some oodDeepElemCom :=
+  (Option.some_get oodLowered_isSome).symm
+
+/-- `challengerSqueezeCom` is the front pipeline's output for `chalBody`. -/
+theorem chal_from_front :
+    (frontComWith chalVM chalBody "qout").bind
+        DialectToJasminCom.cryptoDialectToJasminCom
+      = some challengerSqueezeCom :=
+  (Option.some_get chalLowered_isSome).symm
+
+/-! ## 1. Per-leaf constant oracles (16-word input context, `nInputs = 16`)
+
+The six Barrett/branchless immediates at `iMU=7, iP=8, iZero=9, 10, 11, 12` are
+shared by all three leaves. The challenger leaf adds four more (the wrapping
+multiply constant, the `2³² mod p` factor, the low-32 mask, and the immediate
+`1`). -/
+
+/-- Barrett constants common to all three glue leaves. -/
+def barrettConstAt (idx : Nat) : Option Nat :=
+  if idx = iMU then some 2290649223        -- 7
+  else if idx = iP then some 2013265921    -- 8
+  else if idx = iZero then some 0          -- 9
+  else if idx = 10 then some 30
+  else if idx = 11 then some 32
+  else if idx = 12 then some 63
+  else none
+
+/-- Quotient-compose / OOD-DEEP constant oracle (Barrett only). -/
+def quotConstAt (idx : Nat) : Option Nat := barrettConstAt idx
+
+/-- Challenger-squeeze constant oracle (Barrett + the four challenger
+    immediates `C`, `R`, `LOW`, `1`). -/
+def chalConstAt (idx : Nat) : Option Nat :=
+  if idx = cC then some 2654435769         -- 4
+  else if idx = cR then some 268435454     -- 5
+  else if idx = cLOW then some 4294967295  -- 6
+  else if idx = cOne then some 1           -- 13
+  else barrettConstAt idx
+
+/-! ## 2. The three owned leaves
+
+Each leaf takes `(out : RDI ptr u64[1], inp : RSI ptr u64[16])`, computes one
+output word (the final binding's value), and stores it to `[RDI]`. -/
+
+/-- quotient-compose leaf (`quotient_compose_elem_rc`). -/
+def quotLprog : Lprog :=
+  let (imm, inl) := abiMaps nInputs quotConstAt
+  Com.toLprogPhysAbi quotientComposeElemCom "quotient_compose_elem_rc"
+    (fun _ => none) imm inl (stdOutStore 1)
+
+/-- OOD/DEEP leaf (`ood_deep_elem_rc`). -/
+def oodLprog : Lprog :=
+  let (imm, inl) := abiMaps nInputs quotConstAt
+  Com.toLprogPhysAbi oodDeepElemCom "ood_deep_elem_rc"
+    (fun _ => none) imm inl (stdOutStore 1)
+
+/-- Fiat–Shamir challenger-squeeze leaf (`challenger_squeeze_rc`). -/
+def chalLprog : Lprog :=
+  let (imm, inl) := abiMaps nInputs chalConstAt
+  Com.toLprogPhysAbi challengerSqueezeCom "challenger_squeeze_rc"
+    (fun _ => none) imm inl (stdOutStore 1)
+
+/-- All three glue leaves combined into one `.s` (their `lp_funcs` concatenated),
+    matching the single composed `glue_from_rustcmd.s` unit. -/
+def glueLprog : Lprog :=
+  { quotLprog with
+    lp_funcs := quotLprog.lp_funcs ++ oodLprog.lp_funcs
+      ++ chalLprog.lp_funcs }
+
+def glueAsm : String := renderLprogAtt glueLprog
+
+/-! ## 3. Conservative printer shape lemmas -/
+
+def quotAsm : String := renderLprogAtt quotLprog
+def oodAsm : String := renderLprogAtt oodLprog
+def chalAsm : String := renderLprogAtt chalLprog
+
+#guard (hasSub quotAsm "quotient_compose_elem_rc")
+#guard !(hasSub quotAsm "UNHANDLED")
+#guard (hasSub oodAsm "ood_deep_elem_rc")
+#guard !(hasSub oodAsm "UNHANDLED")
+#guard (hasSub chalAsm "challenger_squeeze_rc")
+#guard !(hasSub chalAsm "UNHANDLED")
+
+/-- The combined `.s` carries all three leaf labels (structural: its `lp_funcs`
+    is the concatenation of the three single-leaf programs). -/
+theorem glue_owned_funcs_len :
+    glueLprog.lp_funcs.length = 3 := by native_decide
+
+/-! ## 4. Emit driver -/
+
+/-- Write the owned-backend `.s` carrying all three glue leaves into the
+    `bench/plonky3_compare/gen_com` harness directory (no jasminc). The `.s`
+    relinks into `glue_from_rustcmd_kat.c` byte-identically. -/
+def emitMain : IO Unit := do
+  let dir := "bench/plonky3_compare/gen_com"
+  IO.FS.createDirAll dir
+  IO.FS.writeFile (dir ++ "/glue_from_rustcmd_owned.s") glueAsm
+  IO.println "WROTE plonky3 owned glue .s (quotient_compose / ood_deep / challenger_squeeze)"
+  IO.println "  Com[jasmin] regArith -> toLprogPhysAbi -> renderLprogAtt onto the OWNED x86 backend, NO jasminc"
+
+end CatCrypt.Crypto.SecureCompilation.VIR.Plonky3GlueEmit
+
+/-- Top-level entry point. -/
+def main : IO UInt32 := do
+  CatCrypt.Crypto.SecureCompilation.VIR.Plonky3GlueEmit.emitMain
+  return 0

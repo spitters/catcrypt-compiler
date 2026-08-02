@@ -41,7 +41,7 @@ Concretely, the orchestrator body is:
   return proof;
 ```
 
-## DEGREE-2 GUARD (selector-inclusive quotient sizing — load-bearing)
+## DEGREE-2 GUARD (selector-inclusive quotient sizing)
 
 `airMaxDegree fibTransitionDegrees = 1` reports the **bare** Fibonacci
 transition degree. The quotient sizing must use the **selector-inclusive**
@@ -75,7 +75,7 @@ end-link in `.jinc` includes change). The per-orchestrator leaves are:
 
 Same as the layer-N reflect files: `reifyLowCT%` doesn't consult the
 `LowCTPattern` registry, so we hand-build the body the reifier *would*
-produce. Downstream (`translate → cprogToJasminCom → emitAbiOrchRegPtr`)
+produce. Downstream (`translate → cryptoDialectToJasminCom → emitAbiOrchRegPtr`)
 is unmodified.
 
 ## References
@@ -289,7 +289,7 @@ noncomputable def proveOrchestratorLean (trace : Plonky3ProveTrace 3 8) :
 /-! ## 6. Hand-built `LowCT` body — the front-end input
 
 The flat `RSeq` chain of `RCall`s, one per orchestrator step. Downstream
-(`translate → cprogToJasminCom → emitAbiOrchRegPtr`) is unmodified. -/
+(`translate → cryptoDialectToJasminCom → emitAbiOrchRegPtr`) is unmodified. -/
 
 /-- TowerType for the input trace (3 cols × H rows × 8 bytes). -/
 def plonky3ProveTraceTowerType (W H : Nat) : TowerType := .TBytes (8 * W * H)

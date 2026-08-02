@@ -8,12 +8,14 @@ import CatCrypt.Crypto.SecureCompilation.VIR.JForProgMultiOp
 /-!
 # Verified register allocation for `JForProg` — Com→Com framework
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 `JForProgUnroll.lean` (#139) shipped the verified-pass-as-Com→Com pattern for
 loop unrolling. This file applies the same discipline to a different
 optimisation layer: **register allocation**. The bench residuals behind
 HACL\*'s SHA-2 1.64×, Keccak 3.04×, and ChaCha 4-way 4.2× speedups trace
 back not to algorithmic gaps — those are closed by `JForProgUnroll` and the
-multi-op keystone — but to RA decisions that jasminc makes downstream:
+multi-op loop lemma — but to RA decisions that jasminc makes downstream:
 
 1. The state words live in *stack slots* across loop iterations, rather than
    in callee-saved registers. Reload/spill on every hot use.

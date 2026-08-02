@@ -7,7 +7,9 @@ import CatCrypt.Crypto.SecureCompilation.VIR.MergeCom
 import CatCrypt.Crypto.SecureCompilation.VIR.ComParametricityTransport
 
 /-!
-# Block-expanding `Com d → Com d'` descent functor (the honest one-op→a-block lowering)
+# Block-expanding `Com d → Com d'` descent functor (one-op→a-block lowering)
+
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
 `ComParametricityTransport.LoweringData` is the *structural* (single-op→single-op)
 lowering: its `lowerExpr : Expr d Γ t → Expr d' (mapCtx Γ) (mapTy t)` emits **one**
@@ -26,7 +28,7 @@ This file supplies the missing compiler piece: a **block-expanding descent funct
 target BLOCK, with a `fundamental`-style whole-program denotation-preservation theorem
 that consumes only the per-op **block** squares.
 
-## The one genuinely new primitive: `Com.spliceCom`
+## The one new primitive: `Com.spliceCom`
 
 `LoweringData.lowerCom`'s `var` arm is `.var (lowerExpr e) (lowerCom body)` — a single
 `.var`, because the lowered op is a single `Expr`. Block expansion needs instead to
@@ -45,7 +47,7 @@ de Bruijn substitution law, ported dialect-generically here.
   whole `Com d'` block, not one `Expr`), `blockLowerCom` (the descent recursion, splicing
   each op's block), and `blockFundamental` — per-op block squares
   (`BlockOpTransports`) lift to whole-program preservation (`blockLowerCom_denote`).
-* `Validation` — a toy dialect where one source op expands to a genuine **2-binding**
+* `Validation` — a toy dialect where one source op expands to a **2-binding**
   target block, and the whole-program square pops out on a multi-binding program from
   the block leaf alone (the block analogue of `ComParametricityTransport.Validation`).
 
@@ -242,7 +244,7 @@ structure BlockLoweringData (d d' : Dialect) [DialectSignature d] [DialectSignat
   /-- Variable transport. -/
   mapVar : ∀ {Γ : Ctxt d} {t : d.Ty}, Ctxt.Var Γ t → Ctxt.Var (mapCtx Γ) (mapTy t)
   /-- **Per-op block lowering:** each source `Expr` becomes a whole target `Com` BLOCK
-      returning a value of the mapped return type. (The genuine block expansion — one
+      returning a value of the mapped return type. (The block expansion — one
       source op, several target bindings.) -/
   lowerExprBlock : ∀ {Γ : Ctxt d} {t : d.Ty},
     Expr d Γ t → Com d' (mapCtx Γ) (mapTy t)
@@ -327,18 +329,18 @@ theorem blockFundamental
       -- `ComParametricityTransport.fundamental` closes its structural `var` case.
       grind [BlockLoweringData.blockLowerCom, Com.denote]
 
-/-! ## 5. Validation — a genuine one-op→2-block expansion, whole program from the leaf
+/-! ## 5. Validation — a one-op→2-block expansion, whole program from the leaf
 
 To witness the machinery is non-vacuous (leaf in, whole program out) we instantiate at a
 toy dialect where **one** source op expands to a **2-binding** target block. This is the
 block analogue of `ComParametricityTransport.Validation` (which used a single-op identity
-lowering); here the lowering genuinely emits more bindings than it consumes, exercising
+lowering); here the lowering emits more bindings than it consumes, exercising
 `spliceCom`. -/
 
 namespace Validation
 
 /-- A one-type, one-op toy dialect: type `()` denoting `Nat`, a binary op `dup x y = x`.
-    Same as `ComParametricityTransport.Validation.toyDialect`; enough to host a genuine
+    Same as `ComParametricityTransport.Validation.toyDialect`; enough to host a
     multi-binding block. -/
 def toyDialect : Dialect where
   Op := Unit
@@ -355,7 +357,7 @@ def dupExpr {Γ : Ctxt toyDialect} (x y : Ctxt.Var Γ ()) : Expr toyDialect Γ (
   ⟨(), rfl, .cons x (.cons y .nil)⟩
 
 /-- **The block-expanding self-lowering.** `mapTy`/`mapCtx`/`mapVar` are identities, but
-    `lowerExprBlock` expands one `dup x y` into a genuine **2-binding** block
+    `lowerExprBlock` expands one `dup x y` into a **2-binding** block
     `let a = dup x y; let b = dup a y; ret b` (both denote `x`). This is the crux the
     single-op `LoweringData` cannot express. -/
 def dupBlockLowering : BlockLoweringData toyDialect toyDialect where
@@ -380,7 +382,7 @@ theorem dupVarTransports : VarTransports dupBlockLowering idTransTy idMapVal :=
   fun _ _ => rfl
 
 /-- **The per-op BLOCK leaf.** The 2-binding block for `dup x y` denotes to `x`, which is
-    exactly `dup x y = x` (the source op's denotation). The genuine block square — the
+    exactly `dup x y = x` (the source op's denotation). The block square — the
     obligation `blockFundamental` consumes, discharged here by evaluation. -/
 theorem dupBlockOpTransports : BlockOpTransports dupBlockLowering idTransTy idMapVal := by
   intro Γ t e V

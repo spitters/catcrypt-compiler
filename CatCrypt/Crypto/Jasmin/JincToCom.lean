@@ -10,8 +10,9 @@ Authors: CatCrypt Contributors
 Parses the straight-line fragment of a hand-written Jasmin `.jinc` leaf into an
 untyped AST (`JFun`). The fragment covers `inline fn`/`fn` headers with `reg`/
 `reg ptr` parameters, local `reg`/`reg ptr` declarations, width casts `(Wu)x`,
-binary `*`/`+`/`-` with a register or literal operand, compound `+=`, indexed
-loads `tbl[idx]`, const-indexed stores `out[k] = v`, a global-table assignment
+binary `*`/`+`/`-`/`&`/`|`/`^`/`<<`/`>>` with a register or literal operand,
+compound `+=`, variable-indexed loads `tbl[idx]`, const-indexed stores
+`out[k] = v`, a global-table assignment
 `name = GLOBAL`, and `return name`. The elaborator (`JincToCom` §elab) turns a
 `JFun` into a `Com jasminDialect`; this module is the textual front.
 
@@ -32,6 +33,7 @@ inductive Tok where
   | lparen | rparen | lbrace | rbrace | lbrack | rbrack
   | semi | comma | assign | plus | minus | star | arrow | plusEq
   | question | colon
+  | amp | pipe | caret | shl | shr
   deriving Repr, BEq, Inhabited
 
 abbrev Cs := List Char
@@ -61,6 +63,11 @@ partial def tokenize (s : String) : Except String (List Tok) := do
     | [] => return acc.reverse
     | '+' :: '=' :: rest => go rest (.plusEq :: acc)
     | '-' :: '>' :: rest => go rest (.arrow :: acc)
+    | '<' :: '<' :: rest => go rest (.shl :: acc)
+    | '>' :: '>' :: rest => go rest (.shr :: acc)
+    | '&' :: rest => go rest (.amp :: acc)
+    | '|' :: rest => go rest (.pipe :: acc)
+    | '^' :: rest => go rest (.caret :: acc)
     | '(' :: rest => go rest (.lparen :: acc)
     | ')' :: rest => go rest (.rparen :: acc)
     | '{' :: rest => go rest (.lbrace :: acc)
@@ -105,7 +112,7 @@ inductive JTy where
   deriving Repr, BEq, Inhabited, DecidableEq
 
 inductive BinKind where
-  | add | sub | mul
+  | add | sub | mul | and | or | xor | shl | shr
   deriving Repr, BEq, Inhabited
 
 /-- A binary right-hand operand: a variable or a literal. -/
@@ -243,6 +250,11 @@ def parseStmt : P Stmt := do
               | some .star => parseBinTail lhs a .mul
               | some .plus => parseBinTail lhs a .add
               | some .minus => parseBinTail lhs a .sub
+              | some .amp => parseBinTail lhs a .and
+              | some .pipe => parseBinTail lhs a .or
+              | some .caret => parseBinTail lhs a .xor
+              | some .shl => parseBinTail lhs a .shl
+              | some .shr => parseBinTail lhs a .shr
               | some .question =>                        -- `lhs = a ? t : f`
                   let _ ← advance
                   let t ← ident
@@ -393,5 +405,71 @@ def ctSelectSrc : String :=
 theorem ctSelect_parses :
     (parseJincFun ctSelectSrc).toOption.map (fun f => (f.params.length, f.retTy, f.decls.length, f.body.length))
       = some (3, .reg 64, 1, 2) := by native_decide
+
+/-! ## 6. Scalar-op leaves: subtraction, bitwise `&`/`|`/`^`, shift-by-literal -/
+
+/-- `sub(a, b) = a - b`. -/
+def subSrc : String :=
+  "inline fn sub(reg u64 a, reg u64 b) -> reg u64 {
+     reg u64 r;
+     r = a - b;
+     return r;
+   }"
+
+/-- `bit_and(a, b) = a & b`. -/
+def andSrc : String :=
+  "inline fn bit_and(reg u64 a, reg u64 b) -> reg u64 {
+     reg u64 r;
+     r = a & b;
+     return r;
+   }"
+
+/-- `bit_or(a, b) = a | b`. -/
+def orSrc : String :=
+  "inline fn bit_or(reg u64 a, reg u64 b) -> reg u64 {
+     reg u64 r;
+     r = a | b;
+     return r;
+   }"
+
+/-- `bit_xor(a, b) = a ^ b`. -/
+def xorSrc : String :=
+  "inline fn bit_xor(reg u64 a, reg u64 b) -> reg u64 {
+     reg u64 r;
+     r = a ^ b;
+     return r;
+   }"
+
+/-- `shl3(a) = a << 3` (shift by a literal amount). -/
+def shlSrc : String :=
+  "inline fn shl3(reg u64 a) -> reg u64 {
+     reg u64 r;
+     r = a << 3;
+     return r;
+   }"
+
+/-- `shr2(a) = a >> 2` (shift by a literal amount). -/
+def shrSrc : String :=
+  "inline fn shr2(reg u64 a) -> reg u64 {
+     reg u64 r;
+     r = a >> 2;
+     return r;
+   }"
+
+/-- The four register-operand scalar leaves (`-`, `&`, `|`, `^`) each parse to a
+    2-parameter, 1-declaration, 2-statement `reg 64` function. -/
+theorem scalarBinOps_parse :
+    [subSrc, andSrc, orSrc, xorSrc].all (fun s =>
+      (parseJincFun s).toOption.map
+        (fun f => (f.params.length, f.retTy, f.decls.length, f.body.length))
+        == some (2, .reg 64, 1, 2)) = true := by native_decide
+
+/-- The two shift-by-literal leaves (`<<`, `>>`) each parse to a 1-parameter,
+    1-declaration, 2-statement `reg 64` function. -/
+theorem scalarShiftOps_parse :
+    [shlSrc, shrSrc].all (fun s =>
+      (parseJincFun s).toOption.map
+        (fun f => (f.params.length, f.retTy, f.decls.length, f.body.length))
+        == some (1, .reg 64, 1, 2)) = true := by native_decide
 
 end CatCrypt.Crypto.Jasmin.JincToCom

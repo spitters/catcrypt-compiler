@@ -5,7 +5,6 @@ Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.RelationalCompileHigh
 import CatCrypt.Crypto.SecureCompilation.MultiLimbEmitBridge
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4LimbTierA
 
 /-!
 # The curve-field Stage-2 leaves, discharged CONCRETELY for a MULTI-LIMB prime
@@ -135,7 +134,7 @@ These are stated **prime-parametric** (any `p, R, nP` with `0 < p`, `p ≤ R`,
     casting `Number.montgomeryMul p R nP a b` (the proven `montRedc4` of the
     schoolbook product, `a, b < p`) into `ZMod p` equals `mmEnc R (a · b)`, where
     `a, b` are read as the Montgomery reps `mmEnc R α`, `mmEnc R β`. Discharged
-    against `montgomeryMul_correct` + `montForm_zmod_eq` — the genuine multi-limb
+    against `montgomeryMul_correct` + `montForm_zmod_eq` — the multi-limb
     content of the Stage-2 `modMul` leaf, exactly as `bbMul_realizes` is for the
     single-word BabyBear prime. -/
 theorem mmMul_realizes {p R nP : Nat} (hp : 0 < p) (hpR : p ≤ R) (hR : 0 < R)

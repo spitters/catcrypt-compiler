@@ -10,7 +10,7 @@ import Mathlib.Data.ZMod.Basic
 # The `bls12_377` quadratic extension `Fp2 = Fp[u]/(u² − ξ)`, with KARATSUBA mul
 
 `RelationalFrontBls377Add` closes the `bls12_377` base-field **ADD** relationally
-over the 6×64-bit carrier (`bls377Q = ZMod`'s modulus, the genuine 377-bit
+over the 6×64-bit carrier (`bls377Q = ZMod`'s modulus, the 377-bit
 Zexe/Aleo prime). The *next* gateway toward `bls12_377` pairings is the quadratic
 extension field `Fp2` over that base field — `Fp[u]/(u² − ξ)` for a nonresidue
 `ξ` (`u² = ξ`). This module builds that `Fp2`, mirroring `Pairing/Fp2Tower.lean`'s
@@ -29,7 +29,7 @@ The headline is the **Karatsuba-equals-schoolbook** correctness:
 where `v0 = ac`, `v1 = bd`, `mid = (a+b)(c+d)`. The optimization that trades the
 fourth base multiply for an extra add (`ad + bc = (a+b)(c+d) − ac − bd`) is
 **semantics-preserving** (`mulKaratsuba_eq_schoolbook`) — `ext` then `ring` on
-each component. This is the load-bearing fact for emitting a 3-mul `Fp2` multiply
+each component. This is the fact for emitting a 3-mul `Fp2` multiply
 without changing the field's denotation.
 
 We keep the nonresidue `ξ` a **parameter** (`u² = ξ`); the `bls12_377`
@@ -38,7 +38,7 @@ identity holds for *any* `ξ`, so we do not pin its value here (mirroring
 `Fp2Tower`'s generic-over-base-ring shape, here generic over the nonresidue).
 
 We also give `Fp2_377` a `CommRing` structure (schoolbook mul, componentwise
-add/sub/neg), so the extension field is a genuine commutative ring — every axiom
+add/sub/neg), so the extension field is a commutative ring — every axiom
 is a componentwise `ZMod bls377Q`-identity closed by `ext`/`ring`. When `ξ` is a
 non-square (stated as a hypothesis, **not** proved here — non-squareness of the
 `bls12_377` twist nonresidue is a number-theoretic fact about the concrete `ξ`),
@@ -63,9 +63,9 @@ open CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
 
 /-! ## 0. The `bls12_377` base field as a `ZMod` carrier
 
-`bls377Q` is the genuine 377-bit `bls12_377` base-field prime (defined in
+`bls377Q` is the 377-bit `bls12_377` base-field prime (defined in
 `RelationalFrontBls377Add`). We register its `NeZero` so `ZMod bls377Q` is a
-genuine residue ring, and abbreviate the base field. -/
+residue ring, and abbreviate the base field. -/
 
 /-- `bls377Q` is nonzero (the 377-bit prime is positive). -/
 instance : NeZero bls377Q := ⟨by unfold bls377Q; norm_num⟩
@@ -154,13 +154,12 @@ def mulKaratsuba (ξ : FpBLS377) (x y : Fp2_377) : Fp2_377 :=
     the fourth base product `ad + bc` for `(a+b)(c+d) − ac − bd` is
     denotation-preserving for any nonresidue `ξ`. The `c0` components are
     syntactically equal; the `c1` components agree by `ring`
-    (`(a+b)(c+d) − ac − bd = ad + bc`). This is the load-bearing correctness fact
+    (`(a+b)(c+d) − ac − bd = ad + bc`). This is the correctness fact
     for emitting a 3-mul `Fp2` multiply. -/
 theorem mulKaratsuba_eq_schoolbook (ξ : FpBLS377) (x y : Fp2_377) :
     mulKaratsuba ξ x y = mulSchoolbook ξ x y := by
-  ext
-  · simp
-  · simp; ring
+  ext <;>
+    simp only [mulKaratsuba_c0, mulKaratsuba_c1, mulSchoolbook_c0, mulSchoolbook_c1] <;> ring
 
 /-! ## 5. The `CommRing` structure on `Fp2_377` (schoolbook mul)
 
@@ -174,48 +173,48 @@ identity, closed by `ext` then `ring`. We bundle it parameterically in `ξ`. -/
     component closes them. -/
 @[reducible] def commRing (ξ : FpBLS377) : CommRing Fp2_377 where
   add := (· + ·)
-  add_assoc a b c := by ext <;> simp <;> ring
+  add_assoc a b c := by ext <;> simp only [add_c0, add_c1] <;> ring
   zero := 0
-  zero_add a := by ext <;> simp
-  add_zero a := by ext <;> simp
+  zero_add a := by ext <;> simp only [add_c0, add_c1, zero_c0, zero_c1] <;> ring
+  add_zero a := by ext <;> simp only [add_c0, add_c1, zero_c0, zero_c1] <;> ring
   nsmul := nsmulRec
-  add_comm a b := by ext <;> simp <;> ring
+  add_comm a b := by ext <;> simp only [add_c0, add_c1] <;> ring
   mul := mulSchoolbook ξ
   left_distrib a b c := by
     show mulSchoolbook ξ a (b + c) = mulSchoolbook ξ a b + mulSchoolbook ξ a c
-    refine Fp2_377.ext ?_ ?_ <;> · simp [mulSchoolbook]; ring
+    refine Fp2_377.ext ?_ ?_ <;> · simp only [mulSchoolbook_c0, mulSchoolbook_c1, add_c0, add_c1]; ring
   right_distrib a b c := by
     show mulSchoolbook ξ (a + b) c = mulSchoolbook ξ a c + mulSchoolbook ξ b c
-    refine Fp2_377.ext ?_ ?_ <;> · simp [mulSchoolbook]; ring
+    refine Fp2_377.ext ?_ ?_ <;> · simp only [mulSchoolbook_c0, mulSchoolbook_c1, add_c0, add_c1]; ring
   zero_mul a := by
     show mulSchoolbook ξ 0 a = 0
-    refine Fp2_377.ext ?_ ?_ <;> · simp [mulSchoolbook]
+    refine Fp2_377.ext ?_ ?_ <;> · simp only [mulSchoolbook_c0, mulSchoolbook_c1, zero_c0, zero_c1]; ring
   mul_zero a := by
     show mulSchoolbook ξ a 0 = 0
-    refine Fp2_377.ext ?_ ?_ <;> · simp [mulSchoolbook]
+    refine Fp2_377.ext ?_ ?_ <;> · simp only [mulSchoolbook_c0, mulSchoolbook_c1, zero_c0, zero_c1]; ring
   mul_assoc a b c := by
     show mulSchoolbook ξ (mulSchoolbook ξ a b) c = mulSchoolbook ξ a (mulSchoolbook ξ b c)
-    refine Fp2_377.ext ?_ ?_ <;> · simp [mulSchoolbook]; ring
+    refine Fp2_377.ext ?_ ?_ <;> · simp only [mulSchoolbook_c0, mulSchoolbook_c1]; ring
   one := 1
   one_mul a := by
     show mulSchoolbook ξ 1 a = a
-    refine Fp2_377.ext ?_ ?_ <;> · simp [mulSchoolbook]
+    refine Fp2_377.ext ?_ ?_ <;> · simp only [mulSchoolbook_c0, mulSchoolbook_c1, one_c0, one_c1]; ring
   mul_one a := by
     show mulSchoolbook ξ a 1 = a
-    refine Fp2_377.ext ?_ ?_ <;> · simp [mulSchoolbook]
+    refine Fp2_377.ext ?_ ?_ <;> · simp only [mulSchoolbook_c0, mulSchoolbook_c1, one_c0, one_c1]; ring
   neg := Neg.neg
   zsmul := zsmulRec
-  sub_eq_add_neg a b := by ext <;> simp <;> ring
-  neg_add_cancel a := by ext <;> simp
+  sub_eq_add_neg a b := by ext <;> simp only [sub_c0, sub_c1, add_c0, add_c1, neg_c0, neg_c1] <;> ring
+  neg_add_cancel a := by ext <;> simp only [add_c0, add_c1, neg_c0, neg_c1, zero_c0, zero_c1] <;> ring
   mul_comm a b := by
     show mulSchoolbook ξ a b = mulSchoolbook ξ b a
-    refine Fp2_377.ext ?_ ?_ <;> · simp [mulSchoolbook]; ring
+    refine Fp2_377.ext ?_ ?_ <;> · simp only [mulSchoolbook_c0, mulSchoolbook_c1]; ring
 
 /-- **Schoolbook `Fp2_377` multiply is commutative** (extracted directly, without
     going through the `CommRing` bundle). -/
 theorem mulSchoolbook_comm (ξ : FpBLS377) (x y : Fp2_377) :
     mulSchoolbook ξ x y = mulSchoolbook ξ y x := by
-  ext <;> simp <;> ring
+  ext <;> simp only [mulSchoolbook_c0, mulSchoolbook_c1] <;> ring
 
 /-- **Karatsuba `Fp2_377` multiply is commutative** — immediate from
     `mulKaratsuba_eq_schoolbook` and `mulSchoolbook_comm`. -/
@@ -246,7 +245,7 @@ theorem example_karatsuba_eq_schoolbook :
     (over `ZMod bls377Q`, where these small residues do not wrap). -/
 theorem example_mulSchoolbook_value :
     mulSchoolbook 5 example_x example_y = ⟨179, 43⟩ := by
-  ext <;> simp [example_x, example_y] <;> ring
+  ext <;> simp only [mulSchoolbook_c0, mulSchoolbook_c1, example_x, example_y] <;> ring
 
 end Fp2_377
 

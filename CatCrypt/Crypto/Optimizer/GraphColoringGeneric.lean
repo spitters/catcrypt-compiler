@@ -16,7 +16,7 @@ x86 `JInstr 64` / `JState 64` types**. But neither pass touches anything x86-spe
 the interference graph is built purely from `LiveRange` intervals, the spill metric
 from `writtenNames`/`readNames` use counts, the coloring from the adjacency relation,
 and coalescing is *a rename* whose soundness is exactly the generic resident-path
-keystone `GenericRegAlloc.renameBlock_runBlock`. This module is the **D3 phase** for
+result `GenericRegAlloc.renameBlock_runBlock`. This module is the **D3 phase** for
 those two passes: lift them off `JInstr 64` and state them once over the generic
 `MachineModel`/`RegMachine` abstraction, additive to (and leaving untouched) the
 x86-specific `GraphColoringRegAlloc.lean` / `GraphColoringCoalesce.lean`.
@@ -31,11 +31,16 @@ x86-specific `GraphColoringRegAlloc.lean` / `GraphColoringCoalesce.lean`.
    `GenericRegAlloc.liveRanges`, which is itself over `[MachineModel I]`.
 2. **The graph-coloring allocator generically** (§2–§3, untrusted): the use-density
    spill cost (`useCount`/`spillCostFrac`/`cheaperSpill`), Briggs simplify/spill
-   (`degreeIn`/`pickNode`/`simplifyStack`), select/color (`firstFreeColor`/`selectColors`),
+   (`degreeIn`/`pickNode`/`simplifyStack`), select/color (`firstFreeColor`/`selectColors`,
+   whose spill offsets advance by the value-width `stride` argument, `8` by default),
    `valueRanges`, and the top-level `graphColorAlloc` — all over `[MachineModel I]`,
    producing the same `name ↦ Slot` shape `GenericRegAlloc.spillAlloc` does. Untrusted
    (its output is checked by `renameBlock_runBlock`), so it need not be — and is not —
-   verified; it is total and typechecks generically.
+   verified; it is total and typechecks generically. What *is* proved about the allocator
+   is the frame-layout obligation a byte-addressed spill argument needs:
+   `selectColors_slotsSeparated` / `graphColorAlloc_slotsSeparated` — at a stride at least
+   the byte width of one allocated value, the assigned slots cover pairwise-disjoint byte
+   ranges (`GenericRegAlloc.SlotsSeparated`).
 3. **Move-coalescing generically** (§4, P4): a small `MoveMachine` extension exposing
    copy detection (`asMove`) and the identity-move `runBlock`-no-op law, then
    `coalesceInterfereOk`/`subst`/`firstCoalescable`/`coalesceStep`/`dropIdMoves`/`coalesce`
@@ -44,7 +49,7 @@ x86-specific `GraphColoringRegAlloc.lean` / `GraphColoringCoalesce.lean`.
      proved generically from the class's `idMove_runBlock_noop` law (the generic analogue
      of the x86 `runBlock_dropIdMovs`);
    * `coalesceStep_runBlock` (§4) — a certified coalescing step preserves `Reindexed`,
-     **proved generically** by composing the resident-path keystone
+     **proved generically** by composing the resident-path result
      `GenericRegAlloc.renameBlock_runBlock` (the rename is sound) with the identity-move
      drop (the residue is a no-op). This is the generic analogue of the x86
      `coalesceStep_runBlock_rel` + `runBlock_dropIdMovs` composition.
@@ -52,17 +57,17 @@ x86-specific `GraphColoringRegAlloc.lean` / `GraphColoringCoalesce.lean`.
    (`instRegMachineRInst`) confirming the generic graph and the generic coalescing
    soundness fire — the `.mv` copy and the `renameRInst` rename slot straight in.
 
-## Honest scope (what stays x86-specific)
+## Scope (what stays x86-specific)
 
 The x86 `GraphColoringCoalesce` also proves a **constant-time** preservation lemma
 (`coalesce_allDirect`, via `ScalarCompileCorrect.allDirect_renameBlock`) and a battery
 of concrete `native_decide` demos (`demo_*`, the Keccak `keccak_graphColor_*` spill-count
 metrics). The CT lemma rests on the x86 `allDirect`/`IsDirect` addressing-mode predicate
 (an x86-ISA notion with no `MachineModel` field), and the `native_decide` metrics are
-about the *concrete* x86 Keccak body — both are genuinely x86-specific and are NOT
+about the *concrete* x86 Keccak body — both are x86-specific and are NOT
 lifted here. What lifts is the algorithm (graph + coloring + coalescing) and the
 **denotation-preservation** soundness (`runBlock_dropIdMoves`, `coalesceStep_runBlock`),
-which is exactly the part that reuses the generic `renameBlock_runBlock` keystone.
+which is exactly the part that reuses the generic `renameBlock_runBlock` result.
 
 This file uses `set_option autoImplicit false` (the `Optimizer/` convention).
 -/
@@ -200,22 +205,86 @@ def firstFreeColor (pool : List String) (lrs : List LiveRange)
   let nbrRegs := (neighbours lrs lr).filterMap (fun b => assigned.lookup b.name)
   pool.find? (fun r => ¬ nbrRegs.contains r)
 
+/-- The select step: `st` is the remaining simplify stack, `assigned` the partial
+    coloring, `nextSpill` the next free frame offset, `acc` the decisions so far.
+    Consecutive spill offsets advance by `stride`. -/
+def selectColorsGo (pool : List String) (lrs : List LiveRange) (stride : Int)
+    (st : List LiveRange) (assigned : List (String × String)) (nextSpill : Int)
+    (acc : List (String × Slot)) : List (String × Slot) :=
+  match st with
+  | [] => acc
+  | lr :: rest =>
+    match firstFreeColor pool lrs assigned lr with
+    | some r => selectColorsGo pool lrs stride rest ((lr.name, r) :: assigned) nextSpill
+                   ((lr.name, .resident r) :: acc)
+    | none => selectColorsGo pool lrs stride rest assigned (nextSpill + stride)
+                ((lr.name, .spilled nextSpill) :: acc)
+
 /-- The **select phase**: pop the simplify stack head-first, coloring each node with
     `firstFreeColor`; a node with no free color spills to the next frame cell. Produces
-    the `name ↦ Slot` decision list (the same shape `linearScan` returns). -/
+    the `name ↦ Slot` decision list (the same shape `linearScan` returns).
+
+    `stride` is the byte width of one allocated value: consecutive spill offsets advance
+    by it, so two live spills of `stride`-byte values occupy disjoint frame cells
+    (`selectColors_slotsSeparated`). The default `8` is the general-purpose word; a vector
+    file passes its own width (`16` for `%xmm`, `32` for `%ymm`, `64` for `%zmm`). -/
 def selectColors (pool : List String) (lrs : List LiveRange) (frameBase : Int)
-    (stack : List LiveRange) : List (String × Slot) :=
-  let rec go (st : List LiveRange) (assigned : List (String × String))
-      (nextSpill : Int) (acc : List (String × Slot)) : List (String × Slot) :=
-    match st with
-    | [] => acc
-    | lr :: rest =>
-      match firstFreeColor pool lrs assigned lr with
-      | some r => go rest ((lr.name, r) :: assigned) nextSpill
-                     ((lr.name, .resident r) :: acc)
-      | none => go rest assigned (nextSpill + 8)
-                  ((lr.name, .spilled nextSpill) :: acc)
-  go stack [] frameBase []
+    (stack : List LiveRange) (stride : Int := 8) : List (String × Slot) :=
+  selectColorsGo pool lrs stride stack [] frameBase []
+
+/-- The select invariant: an offset already emitted lies at least `stride` below the next
+    free offset, so each new slot is separated from every earlier one. -/
+theorem selectColorsGo_pairwise (width : Nat) (pool : List String) (lrs : List LiveRange)
+    (stride : Int) (hw : (width : Int) ≤ stride) :
+    ∀ (st : List LiveRange) (assigned : List (String × String)) (nextSpill : Int)
+      (acc : List (String × Slot)),
+      (∀ o ∈ slotOffsets acc, o + stride ≤ nextSpill) →
+      (slotOffsets acc).Pairwise (SepAt width) →
+      (slotOffsets (selectColorsGo pool lrs stride st assigned nextSpill acc)).Pairwise
+        (SepAt width) := by
+  have hw0 : (0 : Int) ≤ (width : Int) := Int.natCast_nonneg _
+  intro st
+  induction st with
+  | nil => intro assigned nextSpill acc _ hp; exact hp
+  | cons lr rest ih =>
+    intro assigned nextSpill acc hacc hp
+    have hres : ∀ (l : List (String × Slot)), slotOffsets l = slotOffsets acc →
+        ((∀ o ∈ slotOffsets l, o + stride ≤ nextSpill)
+          ∧ (slotOffsets l).Pairwise (SepAt width)) := by
+      intro l hl
+      rw [hl]; exact ⟨hacc, hp⟩
+    have hspill : ∀ (l : List (String × Slot)),
+        slotOffsets l = nextSpill :: slotOffsets acc →
+        ((∀ o ∈ slotOffsets l, o + stride ≤ nextSpill + stride)
+          ∧ (slotOffsets l).Pairwise (SepAt width)) := by
+      intro l hl
+      rw [hl]
+      refine ⟨?_, ?_⟩
+      · intro o ho
+        rcases List.mem_cons.mp ho with h | h
+        · omega
+        · have := hacc o h; omega
+      · refine List.pairwise_cons.mpr ⟨?_, hp⟩
+        intro b hb
+        have := hacc b hb
+        exact Or.inr (by omega)
+    simp only [selectColorsGo]
+    split
+    · exact ih _ nextSpill _ (hres _ rfl).1 (hres _ rfl).2
+    · exact ih _ _ _ (hspill _ rfl).1 (hspill _ rfl).2
+
+/-- **The select phase's frame stride discharges the separation obligation.** When the
+    stride is at least the byte width of one allocated value, the frame slots
+    `selectColors` assigns cover pairwise-disjoint byte ranges, so a spill/reload argument
+    over a byte-addressed frame (`Optimizer.ByteMemMachine`) applies to its output. The
+    hypothesis is where the stride enters: a `%ymm` pool (`width = 32`) coloured at the
+    default stride `8` does not satisfy it, and the conclusion is then false — see
+    `VsimdGraphColorRegAlloc.pressureBlock_ymm_slots_overlap_at_stride_eight`. -/
+theorem selectColors_slotsSeparated (width : Nat) (pool : List String) (lrs : List LiveRange)
+    (frameBase : Int) (stack : List LiveRange) (stride : Int) (hw : (width : Int) ≤ stride) :
+    SlotsSeparated width (selectColors pool lrs frameBase stack stride) :=
+  selectColorsGo_pairwise width pool lrs stride hw stack [] frameBase []
+    (by simp [slotOffsets]) (by simp [slotOffsets])
 
 /-- The live ranges of the **value** names only — names written somewhere in the block.
     Read-only names (memory/frame base addresses, never a destination) are fixed
@@ -229,13 +298,15 @@ def valueRanges [MachineModel I] (block : List I) : List LiveRange :=
     drop-in alternative that plugs into the identical proved spill/rename checker.
     `k = |pool|` colors; spill choice by use-density; LIFO select. Allocates only the
     **value** names (`valueRanges`). The pool is the generic `allocPool` (the `physRegs`
-    file minus pinned/scratch). Untrusted — checked by `renameBlock_runBlock`. -/
+    file minus pinned/scratch). `stride` is the byte width of one allocated value, the
+    spacing of consecutive spill cells; the default `8` is the general-purpose word.
+    Untrusted — checked by `renameBlock_runBlock`. -/
 def graphColorAlloc [MachineModel I] (pinned scratch : List String) (frameBase : Int)
-    (block : List I) : List (String × Slot) :=
+    (block : List I) (stride : Int := 8) : List (String × Slot) :=
   let pool := allocPool (I := I) pinned scratch
   let lrs := valueRanges block
   let stack := simplifyStack block lrs pool.length
-  selectColors pool lrs frameBase stack
+  selectColors pool lrs frameBase stack stride
 
 /-- The number of names the graph-coloring allocator spills. -/
 def graphColorSpillCount [MachineModel I] (pinned scratch : List String) (frameBase : Int)
@@ -247,6 +318,16 @@ def graphColorResidentCount [MachineModel I] (pinned scratch : List String)
     (frameBase : Int) (block : List I) : Nat :=
   residentCount (graphColorAlloc pinned scratch frameBase block)
 
+/-- **The graph-coloring allocator's slots are separated at any width its stride covers.**
+    The obligation a byte-addressed spill argument imposes on the allocator, discharged
+    from the `stride` argument alone: it holds of every block and every pool, and fails to
+    apply exactly when the stride is narrower than the value being spilled. -/
+theorem graphColorAlloc_slotsSeparated [MachineModel I] (width : Nat)
+    (pinned scratch : List String) (frameBase : Int) (block : List I) (stride : Int)
+    (hw : (width : Int) ≤ stride) :
+    SlotsSeparated width (graphColorAlloc (I := I) pinned scratch frameBase block stride) :=
+  selectColors_slotsSeparated width _ _ frameBase _ stride hw
+
 /-! ## 4. Generic move-coalescing (P4)
 
 Coalescing a copy `dst ← src` is the renaming `dst ↦ src` applied to the whole block,
@@ -254,7 +335,7 @@ after which the copy has become the identity `src ← src` and is dropped:
 
   `coalesce = dropIdMoves ∘ renameBlock (subst d s)`
 
-So it reuses two facts: (1) the renaming soundness — the generic resident-path keystone
+So it reuses two facts: (1) the renaming soundness — the generic resident-path result
 `GenericRegAlloc.renameBlock_runBlock` (an injective rename carries `Reindexed` through
 `runBlock`); and (2) identity-move drop is a `runBlock` no-op.
 
@@ -267,7 +348,7 @@ register-to-register moves `dst ← src`) and the **identity-move no-op law** (a
 /-- The **copy-detection + identity-move** extension to `RegMachine`: which instructions
     are register-to-register moves, the identity-move predicate, and the law that an
     identity self-move is a `runBlock` no-op (the only fact coalescing's cleanup half
-    needs beyond the generic rename keystone). The x86 `GraphColoringCoalesce` discharges
+    needs beyond the generic rename result). The x86 `GraphColoringCoalesce` discharges
     this with `.mov d (.reg s)` + `evalInstr_idMov_noop`; RV64 with `.mv d s` + a
     `runBlock`-singleton `mv r r` no-op. -/
 class MoveMachine (I : Type) (S : Type) extends RegMachine I S where
@@ -342,7 +423,7 @@ def coalesce [MoveMachine I S] (block : List I) : List I :=
 
 Two composed facts. (a) Dropping identity self-moves is a `runBlock` no-op, fully
 general (from `MoveMachine.idMove_runBlock_noop`). (b) The coalescing substitution is a
-rename, sound via the generic keystone `GenericRegAlloc.renameBlock_runBlock`. -/
+rename, sound via the generic `GenericRegAlloc.renameBlock_runBlock`. -/
 
 /-- **Dropping identity self-moves preserves `runBlock`** — the cleanup half of a
     coalescing step, general over all blocks/states. Each removed identity self-move is a
@@ -390,13 +471,13 @@ theorem coalesceStep_cleanup_sound [MoveMachine I S] (block : List I) (s : S) :
       = RegMachine.runBlock s (coalesceStep (S := S) block) :=
   runBlock_dropIdMoves (coalesceStep (S := S) block) s
 
-/-- **Rename-level single-step soundness (the `Reindexed` simulation, the genuine
-    statement).** For an injective substitution `ρ = subst d s` (injective exactly when
+/-- **Rename-level single-step soundness (the `Reindexed` simulation).** For an
+    injective substitution `ρ = subst d s` (injective exactly when
     `d`,`s` don't both occur as distinct live names — the non-interference certificate)
     that is discard-preserving and writes only non-discard names, the coalescing rename
     carries `Reindexed ρ` through `runBlock`: the coalesced run's register `ρ n` agrees
-    with the original run's `n`. This instantiates the proved generic renaming keystone
-    `GenericRegAlloc.renameBlock_runBlock` — the genuine "coalescing preserves the
+    with the original run's `n`. This instantiates the proved generic renaming result
+    `GenericRegAlloc.renameBlock_runBlock` — the "coalescing preserves the
     computation up to the merged register" statement, the generic analogue of the x86
     `coalesceStep_runBlock_rel`. -/
 theorem coalesceStep_runBlock_rel [MoveMachine I S] {d s : String}
@@ -416,7 +497,7 @@ theorem coalesceStep_runBlock_rel [MoveMachine I S] {d s : String}
 We exhibit (a) the generic interference graph fires there (the symmetry property and the
 graph builder typecheck at `RInst`), and (b) the move-coalescing extension fires: `.mv`
 is the copy form, `renameRInst` the rename, and the generic coalescing soundness
-keystone (`coalesceStep_runBlock_rel`, hence `GenericRegAlloc.renameBlock_runBlock`)
+result (`coalesceStep_runBlock_rel`, hence `GenericRegAlloc.renameBlock_runBlock`)
 specializes through the instance. -/
 
 namespace RV64Specialization
@@ -432,7 +513,8 @@ theorem rv64_interfere_symm (a b : LiveRange) : interfere a b = interfere b a :=
 
 /-- **The generic graph-coloring allocator typechecks and runs at RV64.** It produces a
     `name ↦ Slot` decision list over an `RInst` block, drawing from the RV64 `gpFile` pool
-    — confirming `graphColorAlloc` is genuinely generic (no x86 residue). -/
+    — confirming `graphColorAlloc` is generic in the instruction type (no x86
+    residue). -/
 def rv64GraphColor (pinned scratch : List String) (frameBase : Int)
     (block : List RInst) : List (String × Slot) :=
   graphColorAlloc (I := RInst) pinned scratch frameBase block

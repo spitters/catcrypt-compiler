@@ -248,36 +248,27 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (strContains)
 /-- The emitted HAWK 4-way export name. -/
 def hawkMul4WayJazz : String := emitHawk4WayJazz "hawk_mul_4way"
 
-/-- The HAWK 4-way export has the expected ABI. -/
-theorem hawk_mul_4way_export_sig :
-    strContains hawkMul4WayJazz
-      "export fn hawk_mul_4way(reg ptr u32[64] out, reg const ptr u32[132] inp)"
-      = true := by native_decide
+/- The HAWK 4-way export has the expected ABI. -/
+#guard (strContains hawkMul4WayJazz "export fn hawk_mul_4way(reg ptr u32[64] out, reg const ptr u32[132] inp)")
 
-/-- The HAWK 4-way body uses packed-u32 lane multiply `#VPMULL_4u32` — the
+/- The HAWK 4-way body uses packed-u32 lane multiply `#VPMULL_4u32` — the
     heart of the lane-parallel-map ring multiply. -/
-theorem hawk_mul_4way_has_packed_mul :
-    strContains hawkMul4WayJazz "#VPMULL_4u32(" = true := by native_decide
+#guard (strContains hawkMul4WayJazz "#VPMULL_4u32(")
 
-/-- The HAWK 4-way body uses packed-u32 lane add `#VPADD_4u32` (positive
+/- The HAWK 4-way body uses packed-u32 lane add `#VPADD_4u32` (positive
     convolution half). -/
-theorem hawk_mul_4way_has_packed_add :
-    strContains hawkMul4WayJazz "#VPADD_4u32(" = true := by native_decide
+#guard (strContains hawkMul4WayJazz "#VPADD_4u32(")
 
-/-- The HAWK 4-way body uses packed-u32 lane subtract `#VPSUB_4u32` — the
+/- The HAWK 4-way body uses packed-u32 lane subtract `#VPSUB_4u32` — the
     negacyclic-wrapped half (`x^N = -1`). -/
-theorem hawk_mul_4way_has_packed_sub :
-    strContains hawkMul4WayJazz "#VPSUB_4u32(" = true := by native_decide
+#guard (strContains hawkMul4WayJazz "#VPSUB_4u32(")
 
-/-- The HAWK 4-way body uses per-lane bitwise-AND for the final `& 1023`
+/- The HAWK 4-way body uses per-lane bitwise-AND for the final `& 1023`
     reduction (one mask per lane realized by the broadcasted constant). -/
-theorem hawk_mul_4way_has_mask :
-    strContains hawkMul4WayJazz "acc = acc & mask;" = true := by native_decide
+#guard (strContains hawkMul4WayJazz "acc = acc & mask;")
 
-/-- The body renders all 16 output coefficients (`out[0]` and `out[15]`
+/- The body renders all 16 output coefficients (`out[0]` and `out[15]`
     comment markers both present). -/
-theorem hawk_mul_4way_has_16_coeffs :
-    strContains hawkMul4WayJazz "// out[0]" = true
-      ∧ strContains hawkMul4WayJazz "// out[15]" = true := by native_decide
+#guard (strContains hawkMul4WayJazz "// out[0]") && (strContains hawkMul4WayJazz "// out[15]")
 
 end CatCrypt.Crypto.SecureCompilation.VIR.HawkMul4WayEmit

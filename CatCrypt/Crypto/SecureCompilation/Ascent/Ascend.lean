@@ -5,6 +5,7 @@ Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
 import CatCrypt.Crypto.SecureCompilation.Ascent.Control
+import CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf
 
 /-!
 # The `ascend` tactic — the integrator
@@ -84,6 +85,136 @@ example : Corres SRword (fun _ => True)
       else a s)
     (.RIfNz "g" (.RScalarSet "r" 5) (.RScalarSet "r" 7)) :=
   corres_if "g" "r" 5 7
+
+/-! ## Ascent with `RScalarSetExpr` expression terminals
+
+The base `ascend` (`ascend_sound` over `SRword`) stops at `RScalarSet`: its terminals
+are literal assignments. To auto-assemble a kernel whose terminals are `SExpr`
+*expressions* (`RScalarSetExpr`) — index arithmetic, field mixing, bitwise rounds —
+the value leaf is `corres_setExpr` (arithmetic, `Ascent.ExprLeaf`) or
+`corres_setExprBitwise` (bitwise). Those leaves live over the **non-temp** state
+relations `SRwordNT` / `SRwordBV`, not the total `SRword`: `semScalar`'s
+`RScalarSetExpr` arm lowers `e` through fresh temporaries and scribbles the
+`tmpName` namespace, which the total `SRword` (constraining *every* name) does not
+preserve, while `SRwordNT` / `SRwordBV` (non-temp names only) do. So the expression
+ascent is a **sibling** fragment over `SRwordNT` / `SRwordBV`, not an extension of
+the `SRword` `IsAscendable`; the base `ascend_sound` is left intact. (Unifying the
+two would move the whole calculus onto the non-temp relation — a mechanical but
+broad re-proof of every leaf; the non-temp literal leaf `corres_setScalar_NT` is the
+first step of that, done here.) -/
+
+/-- The straight-line arithmetic-expression fragment: `RScalarSet` literal leaves and
+    `RScalarSetExpr` terminals over the `IsArithClean` (`+`/`-`/`*`) fragment, wrapped
+    in the structural `RSkip`/`RBlock`/`RSeq`. -/
+inductive IsAscendableExpr : LowCT → Prop
+  | rSkip : IsAscendableExpr .RSkip
+  | rBlock {body : LowCT} : IsAscendableExpr body → IsAscendableExpr (.RBlock body)
+  | rSeq {c₁ c₂ : LowCT} : IsAscendableExpr c₁ → IsAscendableExpr c₂ →
+      IsAscendableExpr (.RSeq c₁ c₂)
+  | rScalarSet (name : String) (n : Nat) : IsAscendableExpr (.RScalarSet name n)
+  | rScalarSetExpr (x : String) (e : SExpr) (he : IsArithClean e) :
+      IsAscendableExpr (.RScalarSetExpr x e)
+
+/-- The abstract `ZMod 2^64` word transformer for the arithmetic-expression fragment:
+    the `RScalarSetExpr` terminal sets `x` to the clean `evalZMod` value. -/
+def asemWExpr : LowCT → (String → ZMod (2 ^ 64)) → (String → ZMod (2 ^ 64))
+  | .RSkip, a => a
+  | .RBlock body, a => asemWExpr body a
+  | .RSeq c₁ c₂, a => asemWExpr c₂ (asemWExpr c₁ a)
+  | .RScalarSet name n, a => fun s => if s = name then (n : ZMod (2 ^ 64)) else a s
+  | .RScalarSetExpr x e, a => fun s => if s = x then evalZMod a e else a s
+  | _, a => a
+
+/-- Soundness of the arithmetic-expression ascent over `SRwordNT`: every
+    `IsAscendableExpr` program lifts to its `ZMod 2^64` spec `asemWExpr c`, assembling
+    the `corres_skip`/`_block`/`_seq` structure with the literal leaf
+    `corres_setScalar_NT` and the expression leaf `corres_setExpr`. -/
+theorem ascend_expr_sound {c : LowCT} (h : IsAscendableExpr c) :
+    Corres SRwordNT (fun _ => True) (asemWExpr c) c := by
+  induction h with
+  | rSkip => exact corres_skip SRwordNT
+  | rBlock _ ih => exact corres_block SRwordNT ih
+  | rSeq _ _ ih₁ ih₂ =>
+      have h := corres_seq SRwordNT ih₁ ih₂ (fun _ _ => trivial)
+      exact h
+  | rScalarSet name n => exact corres_setScalar_NT name n
+  | rScalarSetExpr x e he => exact corres_setExpr x e he
+
+/-- The straight-line bitwise-expression fragment: `RScalarSetExpr` terminals over the
+    `IsWordClean` (`^^^`/`&&&`/`<<<`/`>>>`) fragment, wrapped in `RSkip`/`RBlock`/`RSeq`.
+    Constants enter through `SLit` terminals, so no separate literal leaf is needed. -/
+inductive IsAscendableBitwise : LowCT → Prop
+  | rSkip : IsAscendableBitwise .RSkip
+  | rBlock {body : LowCT} : IsAscendableBitwise body → IsAscendableBitwise (.RBlock body)
+  | rSeq {c₁ c₂ : LowCT} : IsAscendableBitwise c₁ → IsAscendableBitwise c₂ →
+      IsAscendableBitwise (.RSeq c₁ c₂)
+  | rScalarSetExpr (x : String) (e : SExpr) (he : IsWordClean e) :
+      IsAscendableBitwise (.RScalarSetExpr x e)
+
+/-- The abstract `BitVec 64` word transformer for the bitwise fragment: the spec stays
+    in the word algebra (`SExpr.evalBV`), with no `ZMod` abstraction. -/
+def asemWBV : LowCT → (String → BitVec 64) → (String → BitVec 64)
+  | .RBlock body, a => asemWBV body a
+  | .RSeq c₁ c₂, a => asemWBV c₂ (asemWBV c₁ a)
+  | .RScalarSetExpr x e, a => fun s => if s = x then SExpr.evalBV a e else a s
+  | _, a => a
+
+/-- Soundness of the bitwise-expression ascent over `SRwordBV`: every
+    `IsAscendableBitwise` program lifts to its `BitVec 64` word spec `asemWBV c`,
+    assembling the structural rules with the bitwise leaf `corres_setExprBitwise`. -/
+theorem ascend_bitwise_sound {c : LowCT} (h : IsAscendableBitwise c) :
+    Corres SRwordBV (fun _ => True) (asemWBV c) c := by
+  induction h with
+  | rSkip => exact corres_skip SRwordBV
+  | rBlock _ ih => exact corres_block SRwordBV ih
+  | rSeq _ _ ih₁ ih₂ =>
+      have h := corres_seq SRwordBV ih₁ ih₂ (fun _ _ => trivial)
+      exact h
+  | rScalarSetExpr x e he => exact corres_setExprBitwise x e he
+
+/-- The `ascend_expr` tactic: as `ascend`, over the arithmetic-expression fragment.
+    Closes fully when every terminal is a literal `RScalarSet`; an `RScalarSetExpr`
+    terminal leaves its `IsArithClean` cleanliness as a residual goal. -/
+macro "ascend_expr" : tactic => `(tactic| exact ascend_expr_sound (by repeat' constructor))
+
+/-- The `ascend_bitwise` tactic: as `ascend`, over the bitwise-expression fragment. -/
+macro "ascend_bitwise" : tactic => `(tactic| exact ascend_bitwise_sound (by repeat' constructor))
+
+/-! ### The expression ascent in action -/
+
+/-- A literal-only straight-line kernel lifts over `SRwordNT` by one `ascend_expr`. -/
+example : Corres SRwordNT (fun _ => True)
+    (asemWExpr (.RSeq (.RScalarSet "x" 5) (.RScalarSet "y" 7)))
+    (.RSeq (.RScalarSet "x" 5) (.RScalarSet "y" 7)) := by ascend_expr
+
+/-- **Expression terminals auto-assemble.** A two-step kernel whose *second* terminal
+    is an arithmetic `SExpr` (`j := i + 1`) lifts to its `ZMod 2^64` spec — the
+    `corres_setExpr` leaf slotted into the structural recursion. -/
+example :
+    Corres SRwordNT (fun _ => True)
+      (asemWExpr (.RSeq (.RScalarSet "i" 0)
+        (.RScalarSetExpr "j" (.SAdd (.SVar "i") (.SLit 1)))))
+      (.RSeq (.RScalarSet "i" 0) (.RScalarSetExpr "j" (.SAdd (.SVar "i") (.SLit 1)))) :=
+  ascend_expr_sound
+    (.rSeq (.rScalarSet "i" 0)
+      (.rScalarSetExpr "j" (.SAdd (.SVar "i") (.SLit 1))
+        ⟨notTmp_of_short "i" (by decide), (by norm_num : (1 : ℕ) < 2 ^ 64)⟩))
+
+/-- **A bitwise round auto-assembles.** A two-step ChaCha-style mix (`d := d ^^^ a`;
+    `b := b ^^^ c`), both terminals bitwise `SExpr`s, lifts to its `BitVec 64` word
+    spec via the bitwise leaf — the fragment the arithmetic ascent could not reach. -/
+example :
+    Corres SRwordBV (fun _ => True)
+      (asemWBV (.RSeq (.RScalarSetExpr "d" (.SXor (.SVar "d") (.SVar "a")))
+        (.RScalarSetExpr "b" (.SXor (.SVar "b") (.SVar "c")))))
+      (.RSeq (.RScalarSetExpr "d" (.SXor (.SVar "d") (.SVar "a")))
+        (.RScalarSetExpr "b" (.SXor (.SVar "b") (.SVar "c")))) :=
+  ascend_bitwise_sound
+    (.rSeq
+      (.rScalarSetExpr "d" (.SXor (.SVar "d") (.SVar "a"))
+        ⟨notTmp_of_short "d" (by decide), notTmp_of_short "a" (by decide)⟩)
+      (.rScalarSetExpr "b" (.SXor (.SVar "b") (.SVar "c"))
+        ⟨notTmp_of_short "b" (by decide), notTmp_of_short "c" (by decide)⟩))
 
 /-! ## The value-leaf transfer via the `param_auto` coordinator
 

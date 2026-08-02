@@ -11,6 +11,8 @@ import CatCrypt.Crypto.Primitives.AES128
 /-!
 # ABI-faithful `.jazz` emission for the lattice→jasmin orchestration
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 `JasminPrint.emitJazz` (via `ppJasminProg`) prints a *simplified* pseudo-jasmin
 (`fn f(u8[512] p0) …`) that jasminc rejects: array parameters need a storage
 class and a pointer ABI, and arrays cannot be passed/returned by value. This
@@ -1100,7 +1102,7 @@ def emitInlineLeaf (name : String) (w arity : Nat)
 /-! ## Width-cast pilot orchestration (#605, Step 5b — `castW` cross-width)
 
 `emitAbiOrchReg` above runs over a single homogeneous register width `w`, so its
-wired `castW` arm only renders the same-width (identity) zero-extend. The genuine
+wired `castW` arm only renders the same-width (identity) zero-extend. The
 cross-width cast — the "cast#8" digest-byte case (`(u32) ((u8) x) = x & 0xff`) —
 needs an intermediate register of a *different* width. This focused orchestration
 renders a `castW`-composition `Com` (`castW w w' ; castW w' w`) directly: it
@@ -1195,29 +1197,7 @@ def nttMulAbiJazz : String :=
 
 #eval IO.println nttMulAbiJazz
 
-/-- The emitted text carries the in-place pointer ABI on the entry point. -/
-theorem nttMul_abi_has_regptr :
-    strContains nttMulAbiJazz "reg ptr u16[256]" = true := by native_decide
-
-/-- The emitted text still carries the basemul leaf call. -/
-theorem nttMul_abi_has_basemul :
-    strContains nttMulAbiJazz "ntt_basemul_3329_256(" = true := by native_decide
-
-/-- The entry point is an `export fn`. -/
-theorem nttMul_abi_has_export :
-    strContains nttMulAbiJazz "export fn ntt_mul(" = true := by native_decide
-
-/-- The entry point uses jasmin's mutable-output-first ABI
-    (`reg ptr` output, `reg const ptr` inputs) — the shape jasminc accepts. -/
-theorem nttMul_abi_out_first :
-    strContains nttMulAbiJazz
-      "export fn ntt_mul(reg ptr u16[256] out, reg const ptr u16[256] p0" = true := by
-  native_decide
-
-/-- Inputs are copied into owned local `stack` buffers (so the leaf chain runs on
-    owned pointers, not borrowed parameters). -/
-theorem nttMul_abi_has_stack :
-    strContains nttMulAbiJazz "stack u16[256]" = true := by native_decide
+-- Emit-text KATs for `nttMulAbiJazz` moved to `JasminAbiEmitKat`.
 
 /-! ## Smoke: memory-pointer ABI (the third mode)
 
@@ -1239,30 +1219,7 @@ def memDemoAbiJazz : String :=
 
 #eval IO.println memDemoAbiJazz
 
-/-- The memory mode emits raw `reg u64` caller-memory pointers (NOT `reg ptr`
-    typed arrays). -/
-theorem memDemo_abi_has_regu64 :
-    strContains memDemoAbiJazz "reg u64" = true := by native_decide
-
-/-- The entry point is an `export fn` with the `reg u64`-first ABI. -/
-theorem memDemo_abi_export_regu64_first :
-    strContains memDemoAbiJazz
-      "export fn sha3_256_mem_orch(reg u64 out, reg u64 p0)" = true := by
-  native_decide
-
-/-- The leaf is called with the output + input pointers passed directly. -/
-theorem memDemo_abi_has_leaf_call :
-    strContains memDemoAbiJazz "out = sha3_256_mem(out, p0);" = true := by
-  native_decide
-
-/-- The return type is a raw `reg u64` caller-memory pointer. -/
-theorem memDemo_abi_returns_regu64 :
-    strContains memDemoAbiJazz ") -> reg u64 {" = true := by native_decide
-
-/-- The memory mode declares **no** owned `stack` scratch buffers (every buffer
-    is caller memory; single-leaf passthrough). -/
-theorem memDemo_abi_no_stack :
-    strContains memDemoAbiJazz "stack u" = false := by native_decide
+-- Emit-text KATs for `memDemoAbiJazz` moved to `JasminAbiEmitKat`.
 
 /-! ## Register-accumulator EMIT-computation mode (ADDITIVE)
 
@@ -1792,7 +1749,7 @@ and `n ↦ n · x^k mod poly` is a function `[0..15] → [0..15]`, each `va · x
 **one `#VPSHUFB_256` lookup** of a 16-entry "times-`x^k`" table indexed by the
 low nibble of `va` (nibbles are `0..15`, so PSHUFB's high-bit-zeroing never
 triggers). Four PSHUFBs (k = 0..3), each masked by the lane-broadcast of bit `k`
-of `vb` and XORed, give the 32-lane GF(16) product — a genuine SIMD field
+of `vb` and XORed, give the 32-lane GF(16) product — a SIMD field
 multiply over `GaloisField 2 4`, whose additive (XOR) group is an
 `AddCommMonoid`, so the same `VectorReduce.scalarFold_eq_hsum` core licenses the
 horizontal-XOR reduction of the row dot.
@@ -2532,7 +2489,7 @@ def renderChacha4wayXmmBody : List String :=
   -- its 16 vec256 locals across the round body — `Hacl_Chacha20_Vec256.c`
   -- explicitly comments on the spill in its 16-locals C body).
   --
-  -- The load-bearing speedup vs the #107 stack-array emit: the OTHER 14
+  -- The dominant speedup vs the #107 stack-array emit: the OTHER 14
   -- state words pay ZERO memory accesses across the 20 rounds (320 ARX ops
   -- × ~14/16 reg-resident = ~280 ops with no load/store flanking vs all 320
   -- ops flanked in #107). Roughly: #107 pays ~4 memory accesses per ARX add
@@ -2569,77 +2526,7 @@ def emitChacha4wayXmmJazz (name : String) : String :=
     ++ String.intercalate ", " paramStrs ++ ") -> reg ptr u32[64] {\n  "
     ++ String.intercalate "\n  " renderChacha4wayXmmBody ++ "\n  return out;\n}"
 
-/-! ### Structural sanity checks on the XMM-resident 4-way emit -/
-
-/-- The XMM-resident 4-way export has the expected ABI (same as the
-    stack-resident 4-way). -/
-theorem chacha4wayXmm_export_sig :
-    strContains (emitChacha4wayXmmJazz "chacha20_4way_xmm_block")
-      "export fn chacha20_4way_xmm_block(reg ptr u32[64] out, reg const ptr u32[64] inp)"
-      = true := by native_decide
-
-/-- The XMM-resident body declares the named `m0..m13` XMM register file
-    (14 of the 16 state words pinned in registers across rounds). The AVX2
-    16-XMM cap forces 2 spills (14 state regs + 2 rotate scratches = 16);
-    HACL* `Hacl_Chacha20_Vec256` faces the identical constraint. -/
-theorem chacha4wayXmm_has_named_state_regs :
-    strContains (emitChacha4wayXmmJazz "chacha20_4way_xmm_block")
-      "reg u128 m0 m1 m2 m3 m4 m5 m6 m7 m8 m9 m10 m11 m12 m13;"
-      = true := by native_decide
-
-/-- Words 14/15 of the state live in single-slot stack `u128` spills
-    `m14s`/`m15s`. -/
-theorem chacha4wayXmm_has_m1415_spills :
-    strContains (emitChacha4wayXmmJazz "chacha20_4way_xmm_block")
-      "stack u128 m14s;"
-      = true ∧
-    strContains (emitChacha4wayXmmJazz "chacha20_4way_xmm_block")
-      "stack u128 m15s;"
-      = true := by native_decide
-
-/-- The XMM-resident body uses a stack-spill `u128[16] orig` array for the
-    feed-forward originals (HACL* Vec256 strategy: state stays in XMM,
-    originals spill to the stack since the AVX2 16-XMM file can't hold 32
-    live vectors). -/
-theorem chacha4wayXmm_has_stack_orig :
-    strContains (emitChacha4wayXmmJazz "chacha20_4way_xmm_block")
-      "stack u128[16] orig;"
-      = true := by native_decide
-
-/-- The XMM-resident body uses packed-u32 lane add — REGISTER-TO-REGISTER
-    (no `m[:u128 ...]` stack-array indexing). -/
-theorem chacha4wayXmm_has_reg_packed_add :
-    strContains (emitChacha4wayXmmJazz "chacha20_4way_xmm_block")
-      "m0 = #VPADD_4u32(m0, m4);"
-      = true := by native_decide
-
-/-- The XMM-resident body uses packed-u32 lane shift-left (`#VPSLL_4u32`) on
-    named regs (no stack-array indexing). -/
-theorem chacha4wayXmm_has_reg_packed_shl :
-    strContains (emitChacha4wayXmmJazz "chacha20_4way_xmm_block")
-      "m12 = #VPSLL_4u32(m12, 16);"
-      = true := by native_decide
-
-/-- The XMM-resident body does NOT use the stack-array `m[:u128 ...]`
-    indexing pattern (that's the stack-resident #107 emit's signature). -/
-theorem chacha4wayXmm_no_stack_array_state :
-    strContains (emitChacha4wayXmmJazz "chacha20_4way_xmm_block")
-      "stack u128[16] m;"
-      = false := by native_decide
-
-/-- The XMM-resident body's quarter-round `b ^= c` is a SINGLE reg-to-reg
-    `m{b} = m{b} ^ m{c}` line (no `w0 = m[:u128 b]; w1 = m[:u128 c];
-    w0 = w0 ^ w1; m[:u128 b] = w0;` 4-op load/store sequence). -/
-theorem chacha4wayXmm_reg_to_reg_xor :
-    strContains (emitChacha4wayXmmJazz "chacha20_4way_xmm_block")
-      "m4 = m4 ^ m8;"
-      = true := by native_decide
-
-/-- It emits NO horizontal-sum pattern — pure lane-parallel map (same
-    invariant as the stack-resident 4-way). -/
-theorem chacha4wayXmm_is_lane_map_not_reduce :
-    strContains (emitChacha4wayXmmJazz "chacha20_4way_xmm_block")
-      "#VPEXTR_16(" = false := by native_decide
+-- Emit-text KATs for `emitChacha4wayXmmJazz` moved to `JasminAbiEmitKat`.
 
 /-! ## ChaCha20 4-way XMM-resident emit with PSHUFB-based <<<16 / <<<8 rotates
 
@@ -2830,63 +2717,7 @@ def emitChacha4wayXmmPshufbJazz (name : String) : String :=
     ++ String.intercalate ", " paramStrs ++ ") -> reg ptr u32[64] {\n  "
     ++ String.intercalate "\n  " renderChacha4wayXmmPshufbBody ++ "\n  return out;\n}"
 
-/-! ### Structural sanity checks on the PSHUFB XMM-resident 4-way emit -/
-
-/-- The PSHUFB emit declares the rotate-16 PSHUFB byte mask at file scope. -/
-theorem chacha4wayXmmPshufb_has_rot16_mask :
-    strContains (emitChacha4wayXmmPshufbJazz "chacha20_4way_xmm_pshufb_block")
-      "u8[16] CHACHA_ROT16_MASK"
-      = true := by native_decide
-
-/-- The PSHUFB emit declares the rotate-8 PSHUFB byte mask at file scope. -/
-theorem chacha4wayXmmPshufb_has_rot8_mask :
-    strContains (emitChacha4wayXmmPshufbJazz "chacha20_4way_xmm_pshufb_block")
-      "u8[16] CHACHA_ROT8_MASK"
-      = true := by native_decide
-
-/-- The PSHUFB emit has the expected ABI (same as the #111 XMM-resident emit). -/
-theorem chacha4wayXmmPshufb_export_sig :
-    strContains (emitChacha4wayXmmPshufbJazz "chacha20_4way_xmm_pshufb_block")
-      "export fn chacha20_4way_xmm_pshufb_block(reg ptr u32[64] out, reg const ptr u32[64] inp)"
-      = true := by native_decide
-
-/-- The PSHUFB emit body uses `#VPSHUFB_128` for the byte-shuffle rotates. -/
-theorem chacha4wayXmmPshufb_uses_vpshufb :
-    strContains (emitChacha4wayXmmPshufbJazz "chacha20_4way_xmm_pshufb_block")
-      "#VPSHUFB_128("
-      = true := by native_decide
-
-/-- The PSHUFB emit retains the `#VPSLL_4u32` packed-shift instruction for
-    the <<<12 and <<<7 rotates (those have no byte-cyclic structure). -/
-theorem chacha4wayXmmPshufb_keeps_shl_for_12_7 :
-    strContains (emitChacha4wayXmmPshufbJazz "chacha20_4way_xmm_pshufb_block")
-      "= #VPSLL_4u32("
-      = true := by native_decide
-
-/-- The PSHUFB emit declares the rot16 mask spill cell. -/
-theorem chacha4wayXmmPshufb_has_rot16_spill :
-    strContains (emitChacha4wayXmmPshufbJazz "chacha20_4way_xmm_pshufb_block")
-      "stack u128 rot16_mask;"
-      = true := by native_decide
-
-/-- The PSHUFB emit declares the rot8 mask spill cell. -/
-theorem chacha4wayXmmPshufb_has_rot8_spill :
-    strContains (emitChacha4wayXmmPshufbJazz "chacha20_4way_xmm_pshufb_block")
-      "stack u128 rot8_mask;"
-      = true := by native_decide
-
-/-- The PSHUFB emit retains the SAME XMM-state-register file as `#111`
-    (`m0..m13`) — register pressure is unchanged. -/
-theorem chacha4wayXmmPshufb_same_state_regs :
-    strContains (emitChacha4wayXmmPshufbJazz "chacha20_4way_xmm_pshufb_block")
-      "reg u128 m0 m1 m2 m3 m4 m5 m6 m7 m8 m9 m10 m11 m12 m13;"
-      = true := by native_decide
-
-/-- The PSHUFB emit is also lane-map (no horizontal-sum), same invariant as
-    the baseline. -/
-theorem chacha4wayXmmPshufb_is_lane_map_not_reduce :
-    strContains (emitChacha4wayXmmPshufbJazz "chacha20_4way_xmm_pshufb_block")
-      "#VPEXTR_16(" = false := by native_decide
+-- Emit-text KATs for `emitChacha4wayXmmPshufbJazz` moved to `JasminAbiEmitKat`.
 
 /-! ## GF(16) TABLE-LOOKUP EMIT mode (the TENTH ABI mode — DATA-INDEXED, ADDITIVE)
 
@@ -3352,38 +3183,7 @@ def emitKeccakSimdJazz (name : String) : String :=
     ++ String.intercalate ", " paramStrs ++ ") -> reg ptr u64[25] {\n  "
     ++ String.intercalate "\n  " renderKeccakSimdBody ++ "\n  return out;\n}"
 
-/-! ### Structural sanity checks on the SIMD emit -/
-
-/-- The export has the expected SIMD Keccak ABI. -/
-theorem keccak_simd_export_sig :
-    strContains (emitKeccakSimdJazz "keccak_f1600")
-      "export fn keccak_f1600(reg ptr u64[25] out, reg const ptr u64[25] inp)"
-      = true := by native_decide
-
-/-- The SIMD body renders a real `__m256i` AVX2 register-tile declaration. -/
-theorem keccak_simd_has_u256_tile :
-    strContains (emitKeccakSimdJazz "keccak_f1600")
-      "reg u256 v0 v1;"
-      = true := by native_decide
-
-/-- The SIMD body emits the packed-u256 XOR (`v1 = v1 ^ v0;`) used for
-    θ-parity column-0..3 row contributions — the lane-parallel-MAP win. -/
-theorem keccak_simd_has_packed_xor :
-    strContains (emitKeccakSimdJazz "keccak_f1600")
-      "v1 = v1 ^ v0;"
-      = true := by native_decide
-
-/-- The first round constant `RC[0] = 1` is emitted (ι, scalar). -/
-theorem keccak_simd_first_round_const :
-    strContains (emitKeccakSimdJazz "keccak_f1600")
-      "w0 = w0 ^ 1;"
-      = true := by native_decide
-
-/-- The SIMD body emits no skipped-op marker. -/
-theorem keccak_simd_no_skips :
-    strContains (emitKeccakSimdJazz "keccak_f1600")
-      "non-regArith op skipped"
-      = false := by native_decide
+-- Emit-text KATs for `emitKeccakSimdJazz` moved to `JasminAbiEmitKat`.
 
 end KeccakSimd
 
@@ -3418,7 +3218,7 @@ ABI:
     — same shape at 64-bit width; 80 round constants, 80 rounds per block.
 
 Denotation: N batched blocks denote N invocations of the committed single-block
-`compressCom` composed via `JForProgMultiOp`'s loop-keystone (#92). The
+`compressCom` composed via `JForProgMultiOp`'s loop lemma (#92). The
 structural sanity checks below — the working words appear as `reg` (not `stack`),
 the body emits 4 feed-forward block boundaries, no skips — are the
 string-containment companions that `KeccakSimd` ships.
@@ -3776,7 +3576,7 @@ def renderSha256BatchedBody : List String :=
 
     Denotation: 4 invocations of the committed single-block compression
     `Sha2Emit.compressCom` composed via the `JForProgMultiOp.loop_denote_eq_multiOp`
-    keystone (#92), instantiated at N=4. Per-block: 64 rounds in working
+    lemma (#92), instantiated at N=4. Per-block: 64 rounds in working
     registers (no spill) + feed-forward; inter-block: chaining state stays in
     `S` and is reloaded into `a..h` at the start of the next block.
 
@@ -3795,64 +3595,7 @@ def emitSha256BatchedJazz (name : String) : String :=
     ++ String.intercalate "\n  " renderSha256BatchedBody ++ "\n  "
     ++ String.intercalate "\n  " renderFinalStore256 ++ "\n  return state;\n}"
 
-/-! ### Structural sanity checks on the batched SHA-256 emit -/
-
-/-- The export has the expected batched ABI. -/
-theorem sha256_batched_export_sig :
-    strContains (emitSha256BatchedJazz "sha256_compress_x4")
-      "export fn sha256_compress_x4(reg ptr u32[8] state, reg const ptr u32[64] K, reg const ptr u32[64] M)"
-      = true := by native_decide
-
-/-- The body declares the 8 chaining words as REGISTERS (the whole point —
-    register-resident state, no inter-block stack spill). -/
-theorem sha256_batched_has_reg_state :
-    strContains (emitSha256BatchedJazz "sha256_compress_x4")
-      "reg u32 a b c d e f g h;"
-      = true := by native_decide
-
-/-- The body declares the 4 temporary scratch registers. -/
-theorem sha256_batched_has_scratch_regs :
-    strContains (emitSha256BatchedJazz "sha256_compress_x4")
-      "reg u32 t0 t1 t2 t3;"
-      = true := by native_decide
-
-/-- The schedule window is a small `stack u32[16]` (the sliding window — not
-    the per-round-binding spillage the scalar emit uses). -/
-theorem sha256_batched_has_W_stack :
-    strContains (emitSha256BatchedJazz "sha256_compress_x4")
-      "stack u32[16] W;"
-      = true := by native_decide
-
-/-- Loads message word `M[0]` (block 0, word 0) — first input read. -/
-theorem sha256_batched_loads_block0 :
-    strContains (emitSha256BatchedJazz "sha256_compress_x4")
-      "t0 = M[0];"
-      = true := by native_decide
-
-/-- Loads message word `M[48]` (block 3, word 0) — first read of the 4th
-    block, confirming 4-block unroll. -/
-theorem sha256_batched_loads_block3 :
-    strContains (emitSha256BatchedJazz "sha256_compress_x4")
-      "t0 = M[48];"
-      = true := by native_decide
-
-/-- The first round constant K[0] is referenced. -/
-theorem sha256_batched_uses_K0 :
-    strContains (emitSha256BatchedJazz "sha256_compress_x4")
-      "t0 = K[0];"
-      = true := by native_decide
-
-/-- The last (64th) round constant K[63] is referenced (so all 64 rounds emit). -/
-theorem sha256_batched_uses_K63 :
-    strContains (emitSha256BatchedJazz "sha256_compress_x4")
-      "t0 = K[63];"
-      = true := by native_decide
-
-/-- Emit contains no skipped-op marker (a regression guard). -/
-theorem sha256_batched_no_skips :
-    strContains (emitSha256BatchedJazz "sha256_compress_x4")
-      "non-regArith op skipped"
-      = false := by native_decide
+-- Emit-text KATs for `emitSha256BatchedJazz` moved to `JasminAbiEmitKat`.
 
 /-! ### SHA-512 batched mode (same shape at 64-bit width, 80 rounds per block).
 
@@ -3978,41 +3721,7 @@ def emitSha512BatchedJazz (name : String) : String :=
     ++ String.intercalate "\n  " renderSha512BatchedBody ++ "\n  "
     ++ String.intercalate "\n  " renderFinalStore512 ++ "\n  return state;\n}"
 
-/-- The SHA-512 export has the expected batched ABI. -/
-theorem sha512_batched_export_sig :
-    strContains (emitSha512BatchedJazz "sha512_compress_x4")
-      "export fn sha512_compress_x4(reg ptr u64[8] state, reg const ptr u64[80] K, reg const ptr u64[64] M)"
-      = true := by native_decide
-
-/-- The SHA-512 body declares the chaining words as 64-bit registers. -/
-theorem sha512_batched_has_reg_state :
-    strContains (emitSha512BatchedJazz "sha512_compress_x4")
-      "reg u64 a b c d e f g h;"
-      = true := by native_decide
-
-/-- The SHA-512 schedule window is `stack u64[16]`. -/
-theorem sha512_batched_has_W_stack :
-    strContains (emitSha512BatchedJazz "sha512_compress_x4")
-      "stack u64[16] W;"
-      = true := by native_decide
-
-/-- The last (80th) SHA-512 round constant K[79] is referenced. -/
-theorem sha512_batched_uses_K79 :
-    strContains (emitSha512BatchedJazz "sha512_compress_x4")
-      "t0 = K[79];"
-      = true := by native_decide
-
-/-- The 4th block's first message word is loaded — the 4-block unroll fires. -/
-theorem sha512_batched_loads_block3 :
-    strContains (emitSha512BatchedJazz "sha512_compress_x4")
-      "t0 = M[48];"
-      = true := by native_decide
-
-/-- SHA-512 emit has no skipped-op markers. -/
-theorem sha512_batched_no_skips :
-    strContains (emitSha512BatchedJazz "sha512_compress_x4")
-      "non-regArith op skipped"
-      = false := by native_decide
+-- Emit-text KATs for `emitSha512BatchedJazz` moved to `JasminAbiEmitKat`.
 
 end Sha2Batch
 
@@ -4057,7 +3766,7 @@ HACL\*'s `ws`/`hash` SoA layout.
 SHA-2 compressions: `LaneMap.laneMap_eq_scalarMap` at `block = sha2_compress_spec`,
 `α = β = (Fin 8 → BitVec 32)` (resp. `Fin 8 → BitVec 64`), `L = N`. Recorded as
 `sha256_8way_lane_map` / `sha512_4way_lane_map` below (corollaries of the
-keystone, proved by `funext + rfl` — no new axioms, the same grounding as the
+lane-map lemma, proved by `funext + rfl` — no new axioms, the same grounding as the
 Keccak 4-way `keccak4way_lane_map`). -/
 
 namespace Sha2MultiBuf
@@ -4268,57 +3977,15 @@ def emitSha256x8Jazz (name : String) : String := emitJazz mb256 name
 /-- SHA-512 4-way multi-buffer emit. -/
 def emitSha512x4Jazz (name : String) : String := emitJazz mb512 name
 
-/-! ### Structural sanity checks -/
+-- Emit-text KATs for `emitSha256x8Jazz`/`emitSha512x4Jazz` moved to `JasminAbiEmitKat`.
 
-/-- SHA-256 8-way export ABI. -/
-theorem sha256x8_export_sig :
-    strContains (emitSha256x8Jazz "sha256_compress_x8")
-      "export fn sha256_compress_x8(reg ptr u256[8] state, reg const ptr u256[16] msg, reg const ptr u256[64] kbr)"
-      = true := by native_decide
-
-/-- SHA-256 8-way declares the 8 working YMM registers. -/
-theorem sha256x8_has_work_ymm :
-    strContains (emitSha256x8Jazz "sha256_compress_x8") "reg u256 va vb vc vd ve vf vg vh;"
-      = true := by native_decide
-
-/-- SHA-256 8-way uses the packed-u32 add intrinsic. -/
-theorem sha256x8_has_vpadd :
-    strContains (emitSha256x8Jazz "sha256_compress_x8") "#VPADD_8u32" = true := by native_decide
-
-/-- SHA-256 8-way uses the packed per-lane u32 shifts (the rotates). -/
-theorem sha256x8_has_vpsll :
-    strContains (emitSha256x8Jazz "sha256_compress_x8") "#VPSLL_8u32" = true := by native_decide
-
-/-- SHA-256 8-way uses the broadcast round-constant input `kbr`. -/
-theorem sha256x8_uses_kbr :
-    strContains (emitSha256x8Jazz "sha256_compress_x8") "kbr[0]" = true := by native_decide
-
-/-- SHA-512 4-way export ABI. -/
-theorem sha512x4_export_sig :
-    strContains (emitSha512x4Jazz "sha512_compress_x4w")
-      "export fn sha512_compress_x4w(reg ptr u256[8] state, reg const ptr u256[16] msg, reg const ptr u256[80] kbr)"
-      = true := by native_decide
-
-/-- SHA-512 4-way uses the packed-u64 add intrinsic. -/
-theorem sha512x4_has_vpadd :
-    strContains (emitSha512x4Jazz "sha512_compress_x4w") "#VPADD_4u64" = true := by native_decide
-
-/-- SHA-512 4-way references the last round constant `kbr[79]`. -/
-theorem sha512x4_uses_k79 :
-    strContains (emitSha512x4Jazz "sha512_compress_x4w") "kbr[79]" = true := by native_decide
-
-/-- No skipped-op marker (all ops are real packed AVX2 intrinsics). -/
-theorem sha256x8_no_skips :
-    strContains (emitSha256x8Jazz "sha256_compress_x8") "non-regArith op skipped"
-      = false := by native_decide
-
-/-! ### Denotation grounding (the LaneMap keystone, N-way SHA-2)
+/-! ### Denotation grounding (the LaneMap lemma, N-way SHA-2)
 
 The packed N-way round denotes N **independent** scalar SHA-2 compressions:
 each AVX2 lane is byte-exactly the scalar `sha2_compress` of its stream. This is
 `LaneMap.laneMap_eq_scalarMap` at `block = sha2_compress_spec`,
 `α = β = (Fin 8 → BitVec w)` (the 8 chaining words), `L = N`. The corollaries
-below instantiate the keystone — proved by `funext + rfl`, exactly as the
+below instantiate it — proved by `funext + rfl`, exactly as the
 Keccak 4-way `keccak4way_lane_map`. No new axioms beyond the existing SHA-2
 bridge. -/
 
@@ -4656,7 +4323,7 @@ end Gf256Tab
 The remaining opaque hardware leaf in the AEAD cluster (`#AESENC` in AES-GCM /
 AES-CCM / AES-SIV / AES-GCM-SIV / AEGIS) and in FAEST (`faest_aes128` in
 `CatCrypt/Crypto/FAEST/Leaves.lean`) is the AES round transform. This section
-adds the **bitsliced AES S-box** as a pure-boolean emit — the load-bearing
+adds the **bitsliced AES S-box** as a pure-boolean emit — the
 primitive whose removal collapses the entire AES extCall leaf to a fully-emitted
 sequence of XOR/AND/NOT ops on bit-plane registers, the same trick HACL*'s
 `Hacl_AES128_NotIntr.c` uses for software AES and faest-ref uses internally
@@ -4755,7 +4422,7 @@ After S-box: the 10-round AES-128 encryption needs:
   applications, REUSING the bitsliced S-box this section ships), `Rcon` XOR.
   Reuses S-box; the rest is XOR.
 
-So the S-box this section ships is the LOAD-BEARING gate-bound primitive; the
+So the S-box this section ships is the gate-bound primitive; the
 full AES round composition reuses it under structural XOR/permutation. The
 remaining residual is OPERATIONAL (gate-count routine, not new mathematics).
 A future section can package it as one `emitAes128EncryptBitsliceJazz` export.
@@ -5076,37 +4743,9 @@ def emitAes128SboxKernelJazz : String :=
 
 /-! ### Structural checks on the emitted text -/
 
-/-- The bitsliced S-box is rendered as a pure `inline fn` (not an `extCall`
-    leaf, not a hardware `#AESENC` intrinsic). -/
-theorem aesSboxBitslice_has_inline_fn :
-    strContains emitAesSboxBitsliceFn "inline fn aes_sbox_bitslice" = true := by
-  native_decide
-
-/-- The bitsliced S-box rendering takes 8 bit-plane inputs `b0..b7` and
-    writes 8 bit-plane outputs `s0..s7`. -/
-theorem aesSboxBitslice_eight_planes :
-    strContains emitAesSboxBitsliceFn "reg u64 b0, reg u64 b1" = true
-      ∧ strContains emitAesSboxBitsliceFn "return s0, s1, s2, s3, s4, s5, s6, s7;"
-          = true := by
-  refine ⟨?_, ?_⟩ <;> native_decide
-
-/-- The standalone `.jazz` contains NO `#AESENC` intrinsic — the opaque
-    hardware leaf is dropped entirely. -/
-theorem aesSboxKernel_no_aesenc :
-    strContains emitAes128SboxKernelJazz "#AESENC" = false := by native_decide
-
-/-- The standalone `.jazz` contains NO `extCall` to the libjade AES leaf
-    `faest_aes128`. -/
-theorem aesSboxKernel_no_faest_aes128_extcall :
-    strContains emitAes128SboxKernelJazz "faest_aes128" = false := by native_decide
-
-/-- The standalone `.jazz` exports `aes_sbox_apply` as the public entry
-    point, taking an 8-byte input pointer and writing an 8-byte output
-    pointer (the 8-way packed AES S-box). -/
-theorem aesSboxKernel_export_sig :
-    strContains emitAes128SboxKernelJazz
-      "export fn aes_sbox_apply(reg ptr u8[8] outp, reg const ptr u8[8] inp)"
-      = true := by native_decide
+-- Emit-text KATs for `emitAesSboxBitsliceFn`/`emitAes128SboxKernelJazz` moved to
+-- `JasminAbiEmitKat`. The 256-entry S-box correctness anchor
+-- `aesSboxBitslice_eq_sbox` stays here (finite-computation correctness).
 
 end AesBitslice
 
@@ -5308,50 +4947,7 @@ def emitPoseidon2SimdBodyJazz : String :=
     ++ String.intercalate "\n  " renderPoseidon2SimdBody
     ++ "\n  return outp;\n}"
 
-/-! ### Structural sanity checks on the Poseidon2 SIMD emit -/
-
-/-- The export has the expected Poseidon2 ABI (same as the scalar emit). -/
-theorem poseidon2_simd_export_sig :
-    strContains emitPoseidon2SimdBodyJazz
-      "export fn poseidon2_bb(reg u64 outp, reg u64 inp)"
-      = true := by native_decide
-
-/-- The SIMD body declares the `__m256i` lane-register file `vlo` / `vhi`
-    used for the packed-u64 round-constant ADD intrinsic. -/
-theorem poseidon2_simd_has_u256_tile :
-    strContains emitPoseidon2SimdBodyJazz
-      "reg u256 vlo vhi;"
-      = true := by native_decide
-
-/-- The SIMD body declares the `__m256i` lane registers `vlo` and `vhi`
-    used as packed-u64 accumulators for the round-constant lane-add and the
-    `rc_tile` pack. -/
-theorem poseidon2_simd_has_lane_constants :
-    strContains emitPoseidon2SimdBodyJazz
-      "reg u256 vlo vhi;"
-      = true := by native_decide
-
-/-- The SIMD body emits the packed-u64 lane-add intrinsic
-    `#VPADD_4u64(vhi, vlo)` (`VPADDQ` on x86, 4 lanes per add) — the
-    load-bearing lane-parallel op for the round-constant ADD phase. -/
-theorem poseidon2_simd_has_packed_add :
-    strContains emitPoseidon2SimdBodyJazz
-      "vhi = #VPADD_4u64(vhi, vlo);"
-      = true := by native_decide
-
-/-- The SIMD body emits no opaque-leaf marker. -/
-theorem poseidon2_simd_no_extcall :
-    strContains emitPoseidon2SimdBodyJazz
-      "extCall"
-      = false := by native_decide
-
-/-- The SIMD body still invokes the scalar `mds(s)` mixing layer between
-    rounds (the MDS round-trip; the lane-parallel win is on the S-box, not
-    on the MDS). -/
-theorem poseidon2_simd_has_mds_call :
-    strContains emitPoseidon2SimdBodyJazz
-      "s = mds(s);"
-      = true := by native_decide
+-- Emit-text KATs for `emitPoseidon2SimdBodyJazz` moved to `JasminAbiEmitKat`.
 
 end Poseidon2Simd
 

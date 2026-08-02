@@ -10,6 +10,8 @@ import Transfer.Deriving.ParamDerive
 /-!
 # A combinator-built `Param`-`Com` relation, and the *generated* whole-program transport
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 `ComParametricityTransport.lean` proves the whole-`Com` transport square by a
 **hand-written** structural induction (`fundamental`): per-op leaf squares lift
 to whole-program preservation. This file re-derives that result through the
@@ -377,7 +379,7 @@ def derive_handler_gap (L : LoweringData d d') : IndexAwareDeriveGap L := {}
 
 Re-run `ComParametricityTransport.Validation`'s concrete two-binding program
 through the **engine route** to show the combinator-built lift is non-vacuous and
-agrees with the hand lemma on a genuine multi-binding `Com`. -/
+agrees with the hand lemma on a multi-binding `Com`. -/
 
 namespace Validation
 

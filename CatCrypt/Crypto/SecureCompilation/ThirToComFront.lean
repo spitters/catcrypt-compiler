@@ -15,7 +15,7 @@ backend does **not** consume. This module is the **working end-to-end front
 lane**: it lowers real monomorphic scalar crypto functions from a faithful
 THIR-ANF representation into a `Com` over the **`jasminDialect`** that the
 existing verified emit chain (`emitAbiOrchReg`, `JasminAbiEmit.lean`) renders to
-owned-x86 jasmin/asm — the same `regArith` path `R3MulOwnedEmit`, `AsconEmit`,
+owned-x86 jasmin/asm — the same `regArith` path `R3MulEmit`, `AsconEmit`,
 and `ChaChaEmit` use. So the THIR lowers all the way to a callable artifact, and
 the denotation-preservation theorem ties the THIR meaning to the emitted Com.
 
@@ -68,11 +68,11 @@ new `Rhs.ror`/`Rhs.bin` arms together at the non-`u64` width.
 * **Trusted (thin):** the SysV-ABI orchestration string (param decls, copy-in /
   copy-out), `as`/`jasminc` downstream, and the C KAT harness.
 
-## Honest scope
+## Scope
 
 This compiles **two** monomorphic scalar fns end-to-end with the connecting
 theorem (`u64` inner product, `u32` SHA-256 σ₀). It shares `ThirToComPilot`'s
-honest boundaries (ANF operands, compile-time-`N` loops unrolled, pure-`Option`
+boundaries (ANF operands, compile-time-`N` loops unrolled, pure-`Option`
 no-effect model, no structs/enums/match/refs). The new things over the pilot are
 indexed array reads (`Atom.inp`), the ARX op surface (`Rhs.ror`/`Rhs.bin`),
 width-parameterization, and retargeting onto `jasminDialect`.
@@ -150,7 +150,7 @@ inductive Rhs where
       `castW w w` op (#605, Step 5b). `BitVec.zeroExtend w` at the same width is
       the identity, so this stays in the homogeneous `rW w` register file and
       flows through the preservation proof unchanged; it is the front-connected
-      image of the dialect's `castW` op. The genuine **cross-width** cast (the
+      image of the dialect's `castW` op. The **cross-width** cast (the
       `cast#8` digest-byte case `(u32)((u8) x)`) is the `castW w w'` composition
       exercised end-to-end by the dedicated `castDemoCom` pilot (§8). -/
   | cast (a : Atom)
@@ -911,16 +911,11 @@ def dot4Jazz : String :=
 
 #eval IO.println dot4Jazz
 
-/-- The export has the expected `dot4` ABI (1-word out, 8-word in). -/
-theorem dot4_export_sig :
-    strContains dot4Jazz
-      "export fn dot4(reg ptr u64[1] out, reg const ptr u64[8] inp)" = true := by
-  native_decide
+/- The export has the expected `dot4` ABI (1-word out, 8-word in). -/
+#guard (strContains dot4Jazz "export fn dot4(reg ptr u64[1] out, reg const ptr u64[8] inp)")
 
-/-- The emitted body renders real multiply/add computation (no skipped ops). -/
-theorem dot4_no_skipped :
-    strContains dot4Jazz "non-regArith op skipped" = false := by
-  native_decide
+/- The emitted body renders real multiply/add computation (no skipped ops). -/
+#guard !(strContains dot4Jazz "non-regArith op skipped")
 
 /-! ## §7  SHA-256 leaf `small_sigma0` (`w = 32`, #605 Step 4)
 
@@ -1021,23 +1016,15 @@ def sigma0Jazz : String :=
 
 #eval IO.println sigma0Jazz
 
-/-- The export has the expected `small_sigma0` ABI (1-word out, 1-word in, u32). -/
-theorem sigma0_export_sig :
-    strContains sigma0Jazz
-      "export fn small_sigma0(reg ptr u32[1] out, reg const ptr u32[1] inp)"
-      = true := by
-  native_decide
+/- The export has the expected `small_sigma0` ABI (1-word out, 1-word in, u32). -/
+#guard (strContains sigma0Jazz "export fn small_sigma0(reg ptr u32[1] out, reg const ptr u32[1] inp)")
 
-/-- The emitted body renders real computation (no skipped ops). -/
-theorem sigma0_no_skipped :
-    strContains sigma0Jazz "non-regArith op skipped" = false := by
-  native_decide
+/- The emitted body renders real computation (no skipped ops). -/
+#guard !(strContains sigma0Jazz "non-regArith op skipped")
 
-/-- The emitted body uses the native right-rotate op (`#ROR_32`, the `Rhs.ror`
+/- The emitted body uses the native right-rotate op (`#ROR_32`, the `Rhs.ror`
     arm) — both σ₀ rotates render through the single x86 rotate intrinsic. -/
-theorem sigma0_has_ror :
-    strContains sigma0Jazz "#ROR_32(" = true := by
-  native_decide
+#guard (strContains sigma0Jazz "#ROR_32(")
 
 /-! ## §8  Width CAST pilot (`castW`, #605 Step 5b)
 
@@ -1049,8 +1036,8 @@ Two complementary pieces close Step 5b — the width cast:
   carried by the *same* preservation theorem as every other op. `castThir`
   exercises it end-to-end; `cast_FrontValueAgrees` is its connecting theorem.
 
-* **Genuine cross-width (the `cast#8` digest-byte case).** The dialect's `castW`
-  op is width-changing; the register-arith front is single-width, so the genuine
+* **Cross-width (the `cast#8` digest-byte case).** The dialect's `castW`
+  op is width-changing; the register-arith front is single-width, so the
   `u32 → u8 → u32` round-trip (`(u32)((u8) x) = x & 0xff`, the SHA-256 digest
   byte-extract / repack) is realised by a dedicated two-`castW` `Com`
   (`castDemoCom`) and the focused `emitAbiOrchCast` orchestration. Its
@@ -1114,17 +1101,11 @@ def castDemoJazz : String := emitAbiOrchCast "cast_demo" 32 8
 
 #eval IO.println castDemoJazz
 
-/-- The export has the expected `cast_demo` ABI (1-word u32 out / in). -/
-theorem castDemo_export_sig :
-    strContains castDemoJazz
-      "export fn cast_demo(reg ptr u32[1] out, reg const ptr u32[1] inp)"
-      = true := by native_decide
+/- The export has the expected `cast_demo` ABI (1-word u32 out / in). -/
+#guard (strContains castDemoJazz "export fn cast_demo(reg ptr u32[1] out, reg const ptr u32[1] inp)")
 
-/-- The emitted body renders the narrowing then widening jasmin width casts. -/
-theorem castDemo_has_casts :
-    (strContains castDemoJazz "(8u) w0" = true) ∧
-    (strContains castDemoJazz "(32u) wn" = true) := by
-  native_decide
+/- The emitted body renders the narrowing then widening jasmin width casts. -/
+#guard (strContains castDemoJazz "(8u) w0") && (strContains castDemoJazz "(32u) wn")
 
 /-! ## §9  Indexed array STORE pilot (`stackStore`, #605 Step 5a)
 
@@ -1171,9 +1152,8 @@ theorem storeDemo_export_sig :
       ("export fn store_demo(reg ptr u32[4] out, reg const ptr u32[4] inp, "
         ++ "reg u64 idx, reg u32 val)") = true := by native_decide
 
-/-- The emitted body renders the runtime-indexed element store. -/
-theorem storeDemo_has_store :
-    strContains storeDemoJazz "out[(uint)idx] = val;" = true := by native_decide
+/- The emitted body renders the runtime-indexed element store. -/
+#guard (strContains storeDemoJazz "out[(uint)idx] = val;")
 
 /-! ## §10  SHA-256 compression round core through the front (`w = 32`, #605 Step 6)
 
@@ -1656,61 +1636,35 @@ def sha256RoundEJazz : String :=
 #eval IO.println sha256RoundAJazz
 #eval IO.println msgSchedJazz
 
-/-- The `a'` round export has the expected ABI (1-word out, 10-word in, u32). -/
-theorem sha256RoundA_export_sig :
-    strContains sha256RoundAJazz
-      "export fn sha256_round_a(reg ptr u32[1] out, reg const ptr u32[10] inp)"
-      = true := by native_decide
+/- The `a'` round export has the expected ABI (1-word out, 10-word in, u32). -/
+#guard (strContains sha256RoundAJazz "export fn sha256_round_a(reg ptr u32[1] out, reg const ptr u32[10] inp)")
 
-/-- The `a'` round body renders real computation (no skipped ops). -/
-theorem sha256RoundA_no_skipped :
-    strContains sha256RoundAJazz "non-regArith op skipped" = false := by native_decide
+/- The `a'` round body renders real computation (no skipped ops). -/
+#guard !(strContains sha256RoundAJazz "non-regArith op skipped")
 
-/-- The `a'` round body uses the native right-rotate op (the six Σ rotates). -/
-theorem sha256RoundA_has_ror :
-    strContains sha256RoundAJazz "#ROR_32(" = true := by native_decide
+/- The `a'` round body uses the native right-rotate op (the six Σ rotates). -/
+#guard (strContains sha256RoundAJazz "#ROR_32(")
 
-/-- The `e'` round export has the expected ABI. -/
-theorem sha256RoundE_export_sig :
-    strContains sha256RoundEJazz
-      "export fn sha256_round_e(reg ptr u32[1] out, reg const ptr u32[10] inp)"
-      = true := by native_decide
+/- The `e'` round export has the expected ABI. -/
+#guard (strContains sha256RoundEJazz "export fn sha256_round_e(reg ptr u32[1] out, reg const ptr u32[10] inp)")
 
-/-- The message-schedule export has the expected ABI (1-word out, 4-word in). -/
-theorem msgSched_export_sig :
-    strContains msgSchedJazz
-      "export fn msg_sched(reg ptr u32[1] out, reg const ptr u32[4] inp)"
-      = true := by native_decide
+/- The message-schedule export has the expected ABI (1-word out, 4-word in). -/
+#guard (strContains msgSchedJazz "export fn msg_sched(reg ptr u32[1] out, reg const ptr u32[4] inp)")
 
-/-- The Ch export has the expected ABI (1-word out, 3-word in). -/
-theorem ch_export_sig :
-    strContains chJazz
-      "export fn ch(reg ptr u32[1] out, reg const ptr u32[3] inp)"
-      = true := by native_decide
+/- The Ch export has the expected ABI (1-word out, 3-word in). -/
+#guard (strContains chJazz "export fn ch(reg ptr u32[1] out, reg const ptr u32[3] inp)")
 
-/-- The Maj export has the expected ABI (1-word out, 3-word in). -/
-theorem maj_export_sig :
-    strContains majJazz
-      "export fn maj(reg ptr u32[1] out, reg const ptr u32[3] inp)"
-      = true := by native_decide
+/- The Maj export has the expected ABI (1-word out, 3-word in). -/
+#guard (strContains majJazz "export fn maj(reg ptr u32[1] out, reg const ptr u32[3] inp)")
 
-/-- The Σ₁ export has the expected ABI (1-word out, 1-word in). -/
-theorem bigSigma1_export_sig :
-    strContains bigSigma1Jazz
-      "export fn big_sigma1(reg ptr u32[1] out, reg const ptr u32[1] inp)"
-      = true := by native_decide
+/- The Σ₁ export has the expected ABI (1-word out, 1-word in). -/
+#guard (strContains bigSigma1Jazz "export fn big_sigma1(reg ptr u32[1] out, reg const ptr u32[1] inp)")
 
-/-- The Σ₀ export has the expected ABI. -/
-theorem bigSigma0_export_sig :
-    strContains bigSigma0Jazz
-      "export fn big_sigma0(reg ptr u32[1] out, reg const ptr u32[1] inp)"
-      = true := by native_decide
+/- The Σ₀ export has the expected ABI. -/
+#guard (strContains bigSigma0Jazz "export fn big_sigma0(reg ptr u32[1] out, reg const ptr u32[1] inp)")
 
-/-- The σ₁ export has the expected ABI. -/
-theorem smallSigma1_export_sig :
-    strContains smallSigma1Jazz
-      "export fn small_sigma1(reg ptr u32[1] out, reg const ptr u32[1] inp)"
-      = true := by native_decide
+/- The σ₁ export has the expected ABI. -/
+#guard (strContains smallSigma1Jazz "export fn small_sigma1(reg ptr u32[1] out, reg const ptr u32[1] inp)")
 
 /-! ## §9  σ₀ re-derived through the `thirDialect` two-stage spine (#616)
 
@@ -1976,36 +1930,26 @@ def qrDJazz : String :=
   emitAbiOrchReg "chacha_qr_d" (w := 32) (nIn := 4) (nOut := 1) (nCopy := 4)
     qrRegDecls qrInName qrDstName (lowerThir qrDThir)
 
-/-- The `a'` quarter-round export has the expected ABI (1-word out, 4-word in). -/
-theorem qrA_export_sig :
-    strContains qrAJazz
-      "export fn chacha_qr_a(reg ptr u32[1] out, reg const ptr u32[4] inp)"
-      = true := by
-  native_decide
+/- The `a'` quarter-round export has the expected ABI (1-word out, 4-word in). -/
+#guard (strContains qrAJazz "export fn chacha_qr_a(reg ptr u32[1] out, reg const ptr u32[4] inp)")
 
-/-- The emitted `a'` body renders real computation (no skipped ops). -/
-theorem qrA_no_skipped :
-    strContains qrAJazz "non-regArith op skipped" = false := by
-  native_decide
+/- The emitted `a'` body renders real computation (no skipped ops). -/
+#guard !(strContains qrAJazz "non-regArith op skipped")
 
-/-- The emitted `a'` body uses the native right-rotate op (`#ROR_32`), the
+/- The emitted `a'` body uses the native right-rotate op (`#ROR_32`), the
     `rol`-via-`thRor` encoding. -/
-theorem qrA_uses_rotr :
-    strContains qrAJazz "#ROR_32(" = true := by
-  native_decide
+#guard (strContains qrAJazz "#ROR_32(")
 
-/-- The four emitted quarter-round functions return DISTINCT output words: each
+/- The four emitted quarter-round functions return DISTINCT output words: each
     copies its own result slot into the final binding before the `out[0]` write
     (`a' = k[6]`, `b' = k[11]`, `c' = k[9]`, `d' = k[8]`). The register-arith
     emit reads back the last binding's slot, so distinct final-copy sources are
     exactly what makes the four exports compute the four quarter-round outputs
     rather than a shared last value. -/
-theorem qr_outputs_distinct :
-    strContains qrAJazz "w0 = k[6];\n  _, _, w0 = #ROR_32(w0, 0);\n  k[12] = w0;" = true
-      ∧ strContains qrBJazz "w0 = k[11];\n  _, _, w0 = #ROR_32(w0, 0);\n  k[12] = w0;" = true
-      ∧ strContains qrCJazz "w0 = k[9];\n  _, _, w0 = #ROR_32(w0, 0);\n  k[12] = w0;" = true
-      ∧ strContains qrDJazz "w0 = k[8];\n  _, _, w0 = #ROR_32(w0, 0);\n  k[12] = w0;" = true := by
-  native_decide
+#guard (strContains qrAJazz "w0 = k[6];\n  _, _, w0 = #ROR_32(w0, 0);\n  k[12] = w0;")
+    && (strContains qrBJazz "w0 = k[11];\n  _, _, w0 = #ROR_32(w0, 0);\n  k[12] = w0;")
+    && (strContains qrCJazz "w0 = k[9];\n  _, _, w0 = #ROR_32(w0, 0);\n  k[12] = w0;")
+    && (strContains qrDJazz "w0 = k[8];\n  _, _, w0 = #ROR_32(w0, 0);\n  k[12] = w0;")
 
 /-! ## §12  BLAKE2b G mixing function through the thirDialect spine (#606)
 
@@ -2260,36 +2204,26 @@ def gDJazz : String :=
   emitAbiOrchReg "blake2b_g_d" (w := 64) (nIn := 6) (nOut := 1) (nCopy := 6)
     gRegDecls gInName gDstName (lowerThir gDThir)
 
-/-- The `a'` G export has the expected ABI (1-word out, 6-word in). -/
-theorem gA_export_sig :
-    strContains gAJazz
-      "export fn blake2b_g_a(reg ptr u64[1] out, reg const ptr u64[6] inp)"
-      = true := by
-  native_decide
+/- The `a'` G export has the expected ABI (1-word out, 6-word in). -/
+#guard (strContains gAJazz "export fn blake2b_g_a(reg ptr u64[1] out, reg const ptr u64[6] inp)")
 
-/-- The emitted `a'` body renders real computation (no skipped ops). -/
-theorem gA_no_skipped :
-    strContains gAJazz "non-regArith op skipped" = false := by
-  native_decide
+/- The emitted `a'` body renders real computation (no skipped ops). -/
+#guard !(strContains gAJazz "non-regArith op skipped")
 
-/-- The emitted `a'` body uses the native right-rotate op (`#ROR_64`), the
+/- The emitted `a'` body uses the native right-rotate op (`#ROR_64`), the
     `ror64` encoding. -/
-theorem gA_uses_rotr :
-    strContains gAJazz "#ROR_64(" = true := by
-  native_decide
+#guard (strContains gAJazz "#ROR_64(")
 
-/-- The four emitted G functions return DISTINCT output words: each copies its
+/- The four emitted G functions return DISTINCT output words: each copies its
     own result slot into the final binding before the `out[0]` write
     (`a' = k[8]`, `b' = k[13]`, `c' = k[11]`, `d' = k[10]`). The register-arith
     emit reads back the last binding's slot, so distinct final-copy sources are
     exactly what makes the four exports compute the four G outputs rather than a
     shared last value. -/
-theorem g_outputs_distinct :
-    strContains gAJazz "w0 = k[8];\n  _, _, w0 = #ROR_64(w0, 0);\n  k[14] = w0;" = true
-      ∧ strContains gBJazz "w0 = k[13];\n  _, _, w0 = #ROR_64(w0, 0);\n  k[14] = w0;" = true
-      ∧ strContains gCJazz "w0 = k[11];\n  _, _, w0 = #ROR_64(w0, 0);\n  k[14] = w0;" = true
-      ∧ strContains gDJazz "w0 = k[10];\n  _, _, w0 = #ROR_64(w0, 0);\n  k[14] = w0;" = true := by
-  native_decide
+#guard (strContains gAJazz "w0 = k[8];\n  _, _, w0 = #ROR_64(w0, 0);\n  k[14] = w0;")
+    && (strContains gBJazz "w0 = k[13];\n  _, _, w0 = #ROR_64(w0, 0);\n  k[14] = w0;")
+    && (strContains gCJazz "w0 = k[11];\n  _, _, w0 = #ROR_64(w0, 0);\n  k[14] = w0;")
+    && (strContains gDJazz "w0 = k[10];\n  _, _, w0 = #ROR_64(w0, 0);\n  k[14] = w0;")
 
 /-! ## §13  BabyBear lazy Montgomery multiply through the thirDialect spine (#606)
 
@@ -2455,24 +2389,16 @@ def montMulJazz : String :=
   emitAbiOrchReg "babybear_montmul" (w := 64) (nIn := 2) (nOut := 1) (nCopy := 2)
     montRegDecls montInName montDstName (lowerThir montMulThir)
 
-/-- The REDC export has the expected ABI (1-word out, 2-word in). -/
-theorem montMul_export_sig :
-    strContains montMulJazz
-      "export fn babybear_montmul(reg ptr u64[1] out, reg const ptr u64[2] inp)"
-      = true := by
-  native_decide
+/- The REDC export has the expected ABI (1-word out, 2-word in). -/
+#guard (strContains montMulJazz "export fn babybear_montmul(reg ptr u64[1] out, reg const ptr u64[2] inp)")
 
-/-- The emitted REDC body renders real computation (no skipped ops). -/
-theorem montMul_no_skipped :
-    strContains montMulJazz "non-regArith op skipped" = false := by
-  native_decide
+/- The emitted REDC body renders real computation (no skipped ops). -/
+#guard !(strContains montMulJazz "non-regArith op skipped")
 
-/-- The emitted REDC body uses an integer multiply (`w0 = w0 * w1;`), the
+/- The emitted REDC body uses an integer multiply (`w0 = w0 * w1;`), the
     `thBin .mul 64` REDC product — the field-arithmetic op distinguishing this
     leaf from the pure-ARX rotates of §11/§12. -/
-theorem montMul_uses_mul :
-    strContains montMulJazz "w0 = w0 * w1;" = true := by
-  native_decide
+#guard (strContains montMulJazz "w0 = w0 * w1;")
 
 /-- The emitted REDC body materializes the `minv` and `p` constants and the
     `0xffffffff` low-word mask, and performs the final `>> 32` reduction — the
@@ -2690,24 +2616,14 @@ def bflyBJazz : String :=
   emitAbiOrchReg "babybear_ntt_bfly_b" (w := 64) (nIn := 3) (nOut := 1) (nCopy := 3)
     bflyRegDecls bflyInName bflyDstName (lowerThir bflyBThir)
 
-/-- The `a'` butterfly export has the expected ABI (1-word out, 3-word in). -/
-theorem bflyA_export_sig :
-    strContains bflyAJazz
-      "export fn babybear_ntt_bfly_a(reg ptr u64[1] out, reg const ptr u64[3] inp)"
-      = true := by
-  native_decide
+/- The `a'` butterfly export has the expected ABI (1-word out, 3-word in). -/
+#guard (strContains bflyAJazz "export fn babybear_ntt_bfly_a(reg ptr u64[1] out, reg const ptr u64[3] inp)")
 
-/-- The `b'` butterfly export has the expected ABI. -/
-theorem bflyB_export_sig :
-    strContains bflyBJazz
-      "export fn babybear_ntt_bfly_b(reg ptr u64[1] out, reg const ptr u64[3] inp)"
-      = true := by
-  native_decide
+/- The `b'` butterfly export has the expected ABI. -/
+#guard (strContains bflyBJazz "export fn babybear_ntt_bfly_b(reg ptr u64[1] out, reg const ptr u64[3] inp)")
 
-/-- The emitted `a'` body renders real computation (no skipped ops). -/
-theorem bflyA_no_skipped :
-    strContains bflyAJazz "non-regArith op skipped" = false := by
-  native_decide
+/- The emitted `a'` body renders real computation (no skipped ops). -/
+#guard !(strContains bflyAJazz "non-regArith op skipped")
 
 /-- The emitted butterfly bodies materialize the `minv`, `p`, and `4p` constants
     and the `0xffffffff` mask, use an integer multiply (the §13 REDC product) and
@@ -2722,15 +2638,13 @@ theorem bfly_redc_shape :
       ∧ strContains bflyBJazz "w0 = w0 >> 32;" = true := by     -- REDC reduction
   native_decide
 
-/-- The two emitted butterfly functions return DISTINCT output words: each copies
+/- The two emitted butterfly functions return DISTINCT output words: each copies
     its own result slot into the final binding before the `out[0]` write
     (`a' = k[11]`, `b' = k[14]`). The register-arith emit reads back the last
     binding's slot, so distinct final-copy sources are exactly what makes the two
     exports compute the two butterfly outputs rather than a shared last value. -/
-theorem bfly_outputs_distinct :
-    strContains bflyAJazz "w0 = k[11];\n  _, _, w0 = #ROR_64(w0, 0);\n  k[15] = w0;" = true
-      ∧ strContains bflyBJazz "w0 = k[14];\n  _, _, w0 = #ROR_64(w0, 0);\n  k[15] = w0;" = true := by
-  native_decide
+#guard (strContains bflyAJazz "w0 = k[11];\n  _, _, w0 = #ROR_64(w0, 0);\n  k[15] = w0;")
+    && (strContains bflyBJazz "w0 = k[14];\n  _, _, w0 = #ROR_64(w0, 0);\n  k[15] = w0;")
 
 /-! ## §15  Poseidon2 BabyBear S-box `x^7` (Montgomery domain) through the thirDialect spine (#606)
 
@@ -2891,24 +2805,16 @@ def sboxJazz : String :=
   emitAbiOrchReg "babybear_poseidon2_sbox" (w := 64) (nIn := 1) (nOut := 1) (nCopy := 1)
     sboxRegDecls sboxInName sboxDstName (lowerThir sboxThir)
 
-/-- The S-box export has the expected ABI (1-word out, 1-word in). -/
-theorem sbox_export_sig :
-    strContains sboxJazz
-      "export fn babybear_poseidon2_sbox(reg ptr u64[1] out, reg const ptr u64[1] inp)"
-      = true := by
-  native_decide
+/- The S-box export has the expected ABI (1-word out, 1-word in). -/
+#guard (strContains sboxJazz "export fn babybear_poseidon2_sbox(reg ptr u64[1] out, reg const ptr u64[1] inp)")
 
-/-- The emitted S-box body renders real computation (no skipped ops). -/
-theorem sbox_no_skipped :
-    strContains sboxJazz "non-regArith op skipped" = false := by
-  native_decide
+/- The emitted S-box body renders real computation (no skipped ops). -/
+#guard !(strContains sboxJazz "non-regArith op skipped")
 
-/-- The emitted S-box body uses an integer multiply (`w0 = w0 * w1;`), the
+/- The emitted S-box body uses an integer multiply (`w0 = w0 * w1;`), the
     `thBin .mul 64` REDC product reused across the four field multiplies — the
     field-arithmetic op composed by the power gadget. -/
-theorem sbox_uses_mul :
-    strContains sboxJazz "w0 = w0 * w1;" = true := by
-  native_decide
+#guard (strContains sboxJazz "w0 = w0 * w1;")
 
 /-- The emitted S-box body materializes the `minv` and `p` REDC constants and the
     `0xffffffff` low-word mask, and performs the `>> 32` reduction — the
@@ -2920,12 +2826,10 @@ theorem sbox_redc_shape :
       ∧ strContains sboxJazz "w0 = w0 >> 32;" = true := by     -- REDC reduction
   native_decide
 
-/-- The final montmul (`x7 = montmul(x6, x)`) writes the OUTPUT into the last
+/- The final montmul (`x7 = montmul(x6, x)`) writes the OUTPUT into the last
     working slot `k[43]`, which the register-arith emit reads back as the result
     (`r = s >> 32` of the fourth REDC block, no identity-copy tail). -/
-theorem sbox_output_slot :
-    strContains sboxJazz "k[43] = w0;\n  w0 = k[43];\n  out[0] = w0;" = true := by
-  native_decide
+#guard (strContains sboxJazz "k[43] = w0;\n  w0 = k[43];\n  out[0] = w0;")
 
 /-! ## §16  Widening multiply + carry-chain add through the thirDialect spine (#616, E1a)
 
@@ -3054,19 +2958,13 @@ def widenMulLoJazz : String :=
   emitAbiOrchReg "widen_mul_lo" (w := 64) (nIn := 2) (nOut := 1) (nCopy := 2)
     widenRegDecls widenInName widenDstName (lowerThir widenMulLoThir)
 
-/-- The LOW-word export has the expected ABI (1-word out, 2-word in). -/
-theorem widenMulLo_export_sig :
-    strContains widenMulLoJazz
-      "export fn widen_mul_lo(reg ptr u64[1] out, reg const ptr u64[2] inp)"
-      = true := by
-  native_decide
+/- The LOW-word export has the expected ABI (1-word out, 2-word in). -/
+#guard (strContains widenMulLoJazz "export fn widen_mul_lo(reg ptr u64[1] out, reg const ptr u64[2] inp)")
 
-/-- The emitted LOW-word body renders the real `64×64→64` low multiply
+/- The emitted LOW-word body renders the real `64×64→64` low multiply
     (`w0 = w0 * w1;`) and skips no op — the rendering side of `thBin .mul 64`. -/
-theorem widenMulLo_uses_mul :
-    strContains widenMulLoJazz "w0 = w0 * w1;" = true
-      ∧ strContains widenMulLoJazz "non-regArith op skipped" = false := by
-  native_decide
+#guard (strContains widenMulLoJazz "w0 = w0 * w1;")
+    && !(strContains widenMulLoJazz "non-regArith op skipped")
 
 /-- The emitted `.jazz` for the widening-multiply HIGH word through the
     thirDialect spine (`lowerThir widenMulHiThir`) and the verified register-arith
@@ -3078,19 +2976,13 @@ def widenMulHiJazz : String :=
   emitAbiOrchReg "widen_mul_hi" (w := 64) (nIn := 2) (nOut := 1) (nCopy := 2)
     widenRegDecls widenInName widenDstName (lowerThir widenMulHiThir)
 
-/-- The HIGH-word export has the expected ABI (1-word out, 2-word in). -/
-theorem widenMulHi_export_sig :
-    strContains widenMulHiJazz
-      "export fn widen_mul_hi(reg ptr u64[1] out, reg const ptr u64[2] inp)"
-      = true := by
-  native_decide
+/- The HIGH-word export has the expected ABI (1-word out, 2-word in). -/
+#guard (strContains widenMulHiJazz "export fn widen_mul_hi(reg ptr u64[1] out, reg const ptr u64[2] inp)")
 
-/-- The emitted HIGH-word body renders the `#MULX` high-multiply and skips no op —
+/- The emitted HIGH-word body renders the `#MULX` high-multiply and skips no op —
     the rendering side of `thMulHi 64 → mulhi 64`. -/
-theorem widenMulHi_uses_mulx :
-    strContains widenMulHiJazz "w0, w1 = #MULX(w0, w1);" = true
-      ∧ strContains widenMulHiJazz "non-regArith op skipped" = false := by
-  native_decide
+#guard (strContains widenMulHiJazz "w0, w1 = #MULX(w0, w1);")
+    && !(strContains widenMulHiJazz "non-regArith op skipped")
 
 /-! ### §16.2  `addCarry2limb`: a 2-limb carry-chain add `(a1:a0)+(b1:b0)=(s1:s0)`
 
@@ -3258,27 +3150,17 @@ def addCarry2limbS1Jazz : String :=
   emitAbiOrchReg "addcarry2limb_s1" (w := 64) (nIn := 4) (nOut := 1) (nCopy := 4)
     addCarry2RegDecls addCarry2InName widenDstName (lowerThir addCarry2limbS1Thir)
 
-/-- The `s0` export has the expected ABI (1-word out, 4-word in). -/
-theorem addCarry2limbS0_export_sig :
-    strContains addCarry2limbS0Jazz
-      "export fn addcarry2limb_s0(reg ptr u64[1] out, reg const ptr u64[4] inp)"
-      = true := by
-  native_decide
+/- The `s0` export has the expected ABI (1-word out, 4-word in). -/
+#guard (strContains addCarry2limbS0Jazz "export fn addcarry2limb_s0(reg ptr u64[1] out, reg const ptr u64[4] inp)")
 
-/-- The `s1` export has the expected ABI (1-word out, 4-word in). -/
-theorem addCarry2limbS1_export_sig :
-    strContains addCarry2limbS1Jazz
-      "export fn addcarry2limb_s1(reg ptr u64[1] out, reg const ptr u64[4] inp)"
-      = true := by
-  native_decide
+/- The `s1` export has the expected ABI (1-word out, 4-word in). -/
+#guard (strContains addCarry2limbS1Jazz "export fn addcarry2limb_s1(reg ptr u64[1] out, reg const ptr u64[4] inp)")
 
-/-- The `s1` body renders the `#ADC` carry-chain data word and the carry-out
+/- The `s1` body renders the `#ADC` carry-chain data word and the carry-out
     materialisation, and skips no op — the rendering side of `addCarryLo` /
     `addCarryHi`. -/
-theorem addCarry2limbS1_uses_adc :
-    strContains addCarry2limbS1Jazz "= #ADC_64(w0, w1, cf);" = true
-      ∧ strContains addCarry2limbS1Jazz "non-regArith op skipped" = false := by
-  native_decide
+#guard (strContains addCarry2limbS1Jazz "= #ADC_64(w0, w1, cf);")
+    && !(strContains addCarry2limbS1Jazz "non-regArith op skipped")
 
 /-! ## §17  Constant-time conditional-subtract (SELECT / cmov) through the thirDialect spine (#594, E2)
 
@@ -3388,22 +3270,16 @@ def condSubSelectJazz : String :=
 
 #eval IO.println condSubSelectJazz
 
-/-- The export has the expected ABI (1-word out, 3-word in). -/
-theorem condSubSelect_export_sig :
-    strContains condSubSelectJazz
-      "export fn condsub_select(reg ptr u64[1] out, reg const ptr u64[3] inp)"
-      = true := by
-  native_decide
+/- The export has the expected ABI (1-word out, 3-word in). -/
+#guard (strContains condSubSelectJazz "export fn condsub_select(reg ptr u64[1] out, reg const ptr u64[3] inp)")
 
-/-- The emitted body renders the branchless mask-select (`mask = -cond`, i.e.
+/- The emitted body renders the branchless mask-select (`mask = -cond`, i.e.
     `0 - cond`, then `b ^ ((a ^ b) & mask)`) and the real subtract, and skips no
     op — the rendering side of `thBin .sub 64 → regArith .sub` and `thSelect 64 →
     select`. -/
-theorem condSubSelect_uses_mask :
-    strContains condSubSelectJazz "wb = -wb;" = true
-      ∧ strContains condSubSelectJazz "w0 = w0 & wb;" = true
-      ∧ strContains condSubSelectJazz "non-regArith op skipped" = false := by
-  native_decide
+#guard (strContains condSubSelectJazz "wb = -wb;")
+    && (strContains condSubSelectJazz "w0 = w0 & wb;")
+    && !(strContains condSubSelectJazz "non-regArith op skipped")
 
 /-- The two binding destinations of the demonstrator are distinct working slots
     (`k[0]` for the difference, `k[1]` for the select), so neither output
@@ -3518,26 +3394,17 @@ def treehashNodeJazz : String :=
 
 #eval IO.println treehashNodeJazz
 
-/-- The caller export has the expected ABI (1-word out, 2-word in). -/
-theorem treehashNode_export_sig :
-    strContains treehashNodeJazz
-      "export fn treehash_node(reg ptr u64[1] out, reg const ptr u64[2] inp)"
-      = true := by
-  native_decide
+/- The caller export has the expected ABI (1-word out, 2-word in). -/
+#guard (strContains treehashNodeJazz "export fn treehash_node(reg ptr u64[1] out, reg const ptr u64[2] inp)")
 
-/-- The callee `compress` ships as an `inline fn` alongside the caller. -/
-theorem treehashNode_has_callee :
-    strContains treehashNodeJazz
-      "inline fn compress(reg u64 a0, reg u64 a1) -> reg u64" = true := by
-  native_decide
+/- The callee `compress` ships as an `inline fn` alongside the caller. -/
+#guard (strContains treehashNodeJazz "inline fn compress(reg u64 a0, reg u64 a1) -> reg u64")
 
-/-- The caller body renders a real call to the `compress` leaf (`k[0] =
+/- The caller body renders a real call to the `compress` leaf (`k[0] =
     compress(wa0, wa1);`) and skips no op — the rendering side of `thExtCall →
     extCall`. -/
-theorem treehashNode_calls_compress :
-    strContains treehashNodeJazz "k[0] = compress(wa0, wa1);" = true
-      ∧ strContains treehashNodeJazz "non-regArith op skipped" = false := by
-  native_decide
+#guard (strContains treehashNodeJazz "k[0] = compress(wa0, wa1);")
+    && !(strContains treehashNodeJazz "non-regArith op skipped")
 
 /-! ## §19  AVX-512 8-lane packed add — homogeneous `reg 512` SIMD through the
     thirDialect spine (#616, E6)
@@ -3629,19 +3496,13 @@ def vpackAdd8Jazz : String :=
 
 #eval IO.println vpackAdd8Jazz
 
-/-- The export has the expected `u512` ABI (1-word out, 2-word in). -/
-theorem vpackAdd8_export_sig :
-    strContains vpackAdd8Jazz
-      "export fn vpack_add8(reg ptr u512[1] out, reg const ptr u512[2] inp)"
-      = true := by
-  native_decide
+/- The export has the expected `u512` ABI (1-word out, 2-word in). -/
+#guard (strContains vpackAdd8Jazz "export fn vpack_add8(reg ptr u512[1] out, reg const ptr u512[2] inp)")
 
-/-- The emitted body renders the real 8×u64 packed add (`#VPADD_8u64`) and skips
+/- The emitted body renders the real 8×u64 packed add (`#VPADD_8u64`) and skips
     no op — the rendering side of `thVpack .add → vpackZMM .add`. -/
-theorem vpackAdd8_uses_vpadd8 :
-    strContains vpackAdd8Jazz "#VPADD_8u64" = true
-      ∧ strContains vpackAdd8Jazz "non-regArith op skipped" = false := by
-  native_decide
+#guard (strContains vpackAdd8Jazz "#VPADD_8u64")
+    && !(strContains vpackAdd8Jazz "non-regArith op skipped")
 
 /-! ## §20  Runtime-indexed table LOAD — public NTT twiddle lookup `zeta[i]` (#619, E4)
 
@@ -3742,9 +3603,8 @@ theorem zetaLookup_export_sig :
       ("export fn zeta_lookup(reg ptr u16[1] out, reg const ptr u16[8] inp, "
         ++ "reg u64 idx)") = true := by native_decide
 
-/-- The emitted body renders the runtime-indexed element LOAD `buf[(uint)idx]`. -/
-theorem zetaLookup_has_load :
-    strContains zetaLookupJazz "buf[(uint)idx];" = true := by native_decide
+/- The emitted body renders the runtime-indexed element LOAD `buf[(uint)idx]`. -/
+#guard (strContains zetaLookupJazz "buf[(uint)idx];")
 
 /-! ## §21  STRUCT (product state) + usize-tag MATCH dispatch through the
     thirDialect spine (#617, E5b)
@@ -3767,7 +3627,7 @@ fields (no op). The 2-field state record `{ acc, ctr }` here is the input pair
 `ctr` threads through untouched (the product-state flow). **This handles a
 FIXED-ARITY struct of equal-width fields only.** It does NOT yet model variant
 PAYLOADS of differing widths, nested/recursive ADTs, or a heap-boxed struct —
-those are the genuine two-AST gap (hax `ImpExpr.ctorPat`/`proj` over a sum type
+those are the two-AST gap (hax `ImpExpr.ctorPat`/`proj` over a sum type
 does not map onto a fixed register tuple). A struct here is a flat fixed tuple
 of `reg w` slots.
 
@@ -3944,31 +3804,21 @@ def matchStepJazz : String :=
 
 #eval IO.println matchStepJazz
 
-/-- The caller export has the expected ABI (1-word out, 3-word in). -/
-theorem matchStep_export_sig :
-    strContains matchStepJazz
-      "export fn match_step(reg ptr u64[1] out, reg const ptr u64[3] inp)"
-      = true := by
-  native_decide
+/- The caller export has the expected ABI (1-word out, 3-word in). -/
+#guard (strContains matchStepJazz "export fn match_step(reg ptr u64[1] out, reg const ptr u64[3] inp)")
 
-/-- Both tag-test leaves ship as `inline fn`s alongside the caller (the usize-tag
+/- Both tag-test leaves ship as `inline fn`s alongside the caller (the usize-tag
     `match` desugared to `tag == 0` / `tag == 1` equality leaves). -/
-theorem matchStep_has_tag_leaves :
-    strContains matchStepJazz
-      "inline fn thir_eqlit_64_0(reg u64 a0) -> reg u64" = true
-      ∧ strContains matchStepJazz
-        "inline fn thir_eqlit_64_1(reg u64 a0) -> reg u64" = true := by
-  native_decide
+#guard (strContains matchStepJazz "inline fn thir_eqlit_64_0(reg u64 a0) -> reg u64")
+    && (strContains matchStepJazz "inline fn thir_eqlit_64_1(reg u64 a0) -> reg u64")
 
-/-- The caller body renders the dispatch: real calls to both tag tests and the
+/- The caller body renders the dispatch: real calls to both tag tests and the
     branchless mask-select (`-wb`, `& wb`) of the nested `thSelect`, and skips no
     op — the rendering side of `thEqLit → extCall` + `thSelect → select`. -/
-theorem matchStep_dispatches :
-    strContains matchStepJazz "thir_eqlit_64_0(wa0);" = true
-      ∧ strContains matchStepJazz "thir_eqlit_64_1(wa0);" = true
-      ∧ strContains matchStepJazz "wb = -wb;" = true
-      ∧ strContains matchStepJazz "non-regArith op skipped" = false := by
-  native_decide
+#guard (strContains matchStepJazz "thir_eqlit_64_0(wa0);")
+    && (strContains matchStepJazz "thir_eqlit_64_1(wa0);")
+    && (strContains matchStepJazz "wb = -wb;")
+    && !(strContains matchStepJazz "non-regArith op skipped")
 
 /-! ## §22  Bounded FOR-loop front construct: an ARX round schedule as ONE loop
     (#618, E3)
@@ -3983,7 +3833,7 @@ iteration structure is the unchanged `JForProg`.
 
 ### The demonstrator: an ARX round, iterated `n` times
 
-The Class-A unlock is a body that is a genuine ARX round, run a public number of
+The Class-A unlock is a body that is an ARX round, run a public number of
 rounds threading a single 64-bit register-state accumulator:
 
     fn fold(acc, n) { for _ in 0..n { acc = (acc + C) ^ rotr(acc, 32) } ; acc }
@@ -4092,23 +3942,19 @@ def foldRoundJazz (n : Nat) : String :=
 
 #eval IO.println (foldRoundJazz 8)
 
-/-- The emitted unit is an `export fn fold_round` with the bounded-loop ABI
+/- The emitted unit is an `export fn fold_round` with the bounded-loop ABI
     (`reg u64 acc0 -> reg u64`). -/
-theorem foldRound_export_sig :
-    strContains (foldRoundJazz 8)
-      "export fn fold_round(reg u64 acc0) -> reg u64" = true := by native_decide
+#guard (strContains (foldRoundJazz 8) "export fn fold_round(reg u64 acc0) -> reg u64")
 
-/-- The body is a REAL `for i = 0 to 8` loop — emitted, not unrolled. -/
-theorem foldRound_has_for :
-    strContains (foldRoundJazz 8) "for i = 0 to 8" = true := by native_decide
+/- The body is a REAL `for i = 0 to 8` loop — emitted, not unrolled. -/
+#guard (strContains (foldRoundJazz 8) "for i = 0 to 8")
 
-/-- The loop body renders the lowered ARX round: the shift/shift/or rotate
+/- The loop body renders the lowered ARX round: the shift/shift/or rotate
     (`>>` `<<` `|`) and the combining xor (`^`). -/
-theorem foldRound_body_ops :
-    strContains (foldRoundJazz 8) " >> " = true
-      ∧ strContains (foldRoundJazz 8) " << " = true
-      ∧ strContains (foldRoundJazz 8) " | " = true
-      ∧ strContains (foldRoundJazz 8) " ^ " = true := by native_decide
+#guard (strContains (foldRoundJazz 8) " >> ")
+    && (strContains (foldRoundJazz 8) " << ")
+    && (strContains (foldRoundJazz 8) " | ")
+    && (strContains (foldRoundJazz 8) " ^ ")
 
 /-! ## §23  FIRST whole-protocol SHAPE: a treehash CHAIN — the §18 leaf CALL run
     inside the §22 bounded FOR loop (#606, E5a × E3 composed)
@@ -4146,7 +3992,7 @@ shape jasminc's RA *can* compile, so this demonstrator targets a REAL byte-KAT
 (not the §22 clean SKIP).
 
 The leaf `Th` is single-input (`node -> node`) for exactly this register-light
-reason. A multi-input `Th(left ‖ right)` (a genuine binary Merkle parent) reads
+reason. A multi-input `Th(left ‖ right)` (a binary Merkle parent) reads
 two live operands and is the stated follow-on.
 
 ### Denotation
@@ -4162,7 +4008,7 @@ COMPOSITION is the callee's separate, KAT-discharged obligation — exactly as
 part; the leaf body is the opaque obligation the KAT cross-checks against the
 concrete C stand-in.
 
-### HONEST scope
+### Scope
 
 This lands the treehash CHAIN: a LINEAR fold of the tweakable hash over `N`
 levels (the WOTS+ hash chain / Merkle-path-authentication spine). It is NOT the
@@ -4280,26 +4126,25 @@ def treehashChainJazz (n : Nat) : String :=
 
 #eval IO.println (treehashChainJazz 8)
 
-/-- The emitted unit hosts the `Th` leaf as an `inline fn` callee. -/
-theorem treehashChain_has_callee :
-    strContains (treehashChainJazz 8)
-      "inline fn thir_th(reg u64 a0) -> reg u64" = true := by native_decide
+/- The emitted unit hosts the `Th` leaf as an `inline fn` callee. -/
+#guard (strContains (treehashChainJazz 8) "inline fn thir_th(reg u64 a0) -> reg u64")
 
-/-- The emitted unit is an `export fn treehash_chain_8` with the bounded-loop ABI
+/- The emitted unit is an `export fn treehash_chain_8` with the bounded-loop ABI
     (`reg u64 node0 -> reg u64`). -/
-theorem treehashChain_export_sig :
-    strContains (treehashChainJazz 8)
-      "export fn treehash_chain_8(reg u64 acc0) -> reg u64" = true := by native_decide
+#guard (strContains (treehashChainJazz 8) "export fn treehash_chain_8(reg u64 acc0) -> reg u64")
 
-/-- The body is a REAL `for i = 0 to 8` loop whose iteration CALLS the `Th` leaf
+/- The body is a REAL `for i = 0 to 8` loop whose iteration CALLS the `Th` leaf
     (`v0 = thir_th(acc);`) and rebinds the running node (`acc = v0;`) — the §18
     call inside the §22 loop, emitted, not unrolled. The accumulator is read
     EXACTLY ONCE per iteration (the call argument), then dead: the single-acc-read
     register-light shape jasmin's RA can compile. -/
-theorem treehashChain_loop_calls_th :
-    strContains (treehashChainJazz 8) "for i = 0 to 8" = true
-      ∧ strContains (treehashChainJazz 8) "v0 = thir_th(acc);" = true
-      ∧ strContains (treehashChainJazz 8) "acc = v0;" = true := by
-  native_decide
+#guard (strContains (treehashChainJazz 8) "for i = 0 to 8")
+    && (strContains (treehashChainJazz 8) "v0 = thir_th(acc);")
+    && (strContains (treehashChainJazz 8) "acc = v0;")
+
+/-- The `dot4` THIR denotes `dotSpec 4`: the inner product
+    `Σ_{i<4} a[i]·b[i]` with `a[i] = I i` and `b[i] = I (4 + i)`. -/
+theorem dot4Thir_denote (I : Fin 8 → BitVec 64) :
+    dot4.denote I (LEnv.empty 64) = some (dotSpec 4 I) := rfl
 
 end CatCrypt.Crypto.SecureCompilation.ThirToComFront

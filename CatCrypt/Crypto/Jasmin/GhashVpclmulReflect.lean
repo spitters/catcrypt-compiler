@@ -44,7 +44,7 @@ and the tower-type signature; the SIMD intrinsic semantics
 We follow the established pattern: define the pure-Lean function for
 documentation, register each leaf in the `LowCTPattern` registry via
 `@[rust_cmd_pattern]`, then **hand-build the `LowCT`** the reifier
-*would* produce. Downstream (`translate → cprogToJasminCom →
+*would* produce. Downstream (`translate → cryptoDialectToJasminCom →
 emitAbiOrchRegPtr`) is the unmodified verified front.
 
 ## LowCT-expressivity gap (documented)

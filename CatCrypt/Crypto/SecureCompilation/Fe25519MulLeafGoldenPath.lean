@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.SecureCompilation.FieldMul2x1GoldenPath
 import CatCrypt.Crypto.SecureCompilation.Fe25519AddLeafGoldenPath
 import CatCrypt.Crypto.SecureCompilation.VIR.KernelSyntax
+import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfFull
 import CatCrypt.Crypto.SecureCompilation.VIR.Grind
 import Std.Tactic.BVDecide
 
@@ -422,10 +423,13 @@ theorem fe25519MacColLoCom_riscv_e2e
       = Com.denote fe25519MacColLoCom V :=
   com_riscv_e2e fe25519MacColLoCom_ok allReg64_four V s hs
 
-/-- **The x86 owned-emit leg** (KAT-gated tier, as `FieldEmitGoldenPath.fieldAddCom_x86_elf`):
-    the same MAC-column source to ELF `.o` bytes via the generic driver. -/
+/-- **The x86 owned-emit leg, via the optimized full-ELF entry.**
+    Emits through `OptimizedComToElfFull.optimizedCompileComToElf`; correctness uses
+    `optimizedCompileComToElf_sound` (the optimized block is `runBlock`-equal to the
+    unoptimized gathered block on every input) together with the executed spec-KAT in
+    `bench/x25519_fieldmul_compare/`, not byte identity with `compileComToElf`. -/
 def fe25519MacColLoCom_x86_elf : ByteArray :=
-  X86Backend.CompileComToElfJInstrFull6.compileComToElfJInstrFull6 fe25519MacColLoCom "fe25519_mac_col_lo"
+  X86Backend.OptimizedComToElfFull.optimizedCompileComToElf fe25519MacColLoCom "fe25519_mac_col_lo"
 
 /-! ## 3. The widening MAC value law — the two emitted words reassemble the accumulate
 

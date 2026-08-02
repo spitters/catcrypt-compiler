@@ -984,7 +984,7 @@ inductive ComL : Ctxt jasminDialect → JasminTy → Type _ where
       * `body` is the continuation, with the final accumulator bound.
 
       Denotes to `JLoopBodyN.nestedDenote` (the double fold matching
-      `JasminLsemMemLoopNestDepth.runNestedVarLoopMem`); lowers to genuine nested
+      `JasminLsemMemLoopNestDepth.runNestedVarLoopMem`); lowers to nested
       back-edges (an inner `forLoopLcmdNRt` inside the outer body, with a per-outer
       inner-count recompute) — the shape of `JasminLsemMemLoopNestDepth.ggmProg`. -/
   | forLoopNRtNested {Γ accTy s} {invTys : Ctxt jasminDialect}
@@ -996,7 +996,7 @@ inductive ComL : Ctxt jasminDialect → JasminTy → Type _ where
   /-- A **data-dependent do-while** — the `RWhileNz` countdown idiom
       (`while (n != 0) { …body…; n -= 1 }`), the A3 `whileLinstrRM` shape. The
       loop body runs FIRST and the guard counter is bottom-tested (`Lcond NZ` on
-      the counter register), so the lowering is a genuine do-while back-edge with
+      the counter register), so the lowering is a do-while back-edge with
       **no zero-trip top guard** — unlike `forLoopNRt`'s top-guarded skip. `guard`
       is the in-scope runtime countdown seed: the emitted loop re-reads the
       counter each pass and exits when it reaches `0`, so the trip count is fixed
@@ -1093,7 +1093,7 @@ def ComL.denote : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
     across the back-edge, which the single-`accTy` loop nodes cannot hold.
 
     The carrier is the **product type the dialect already has**: `stackArr w N`, a
-    genuine `N`-cell product (`⟦stackArr w N⟧ = Fin N → BitVec w`). Each cell is a
+    an `N`-cell product (`⟦stackArr w N⟧ = Fin N → BitVec w`). Each cell is a
     frame slot; the loop body reads any cell (`stackLoad`), updates it, and
     `stackStore`s it back — the functional `stackStore` returns the whole updated
     array, so all `N` cells are loop-carried through the one `forLoopBlock`
@@ -1383,7 +1383,7 @@ to the downstream `read_linear` reassembly, which is adequate for the existing
 single-leaf kernels but does **not** place a real `LinstrR.Lcall`.
 
 `loopBodyCallLcmd` is the explicit-ABI alternative used when a loop body must
-genuinely `call` an opaque leaf (MSM's Straus inner loop calling
+`call` an opaque leaf (MSM's Straus inner loop calling
 `ed_point_add`/`ed_point_double`; the GGM real node calling an AES round): it
 emits the **System V AMD64** sequence around a real `Lcall`:
 
@@ -1429,7 +1429,7 @@ def sysvCallerSaved : List String :=
 /-- Emit a real-`Lcall` SysV call to the opaque leaf `sym`, marshalling the
     resolved call-argument operands `argOps` into the SysV arg registers, then
     capturing the integer return value into `dst`. The body of a loop that must
-    genuinely `call` a leaf splices this in place of the `CALL:` shadow.
+    `call` a leaf splices this in place of the `CALL:` shadow.
 
     Shape: one `MOV <argReg>, <argOp>` per argument (up to 6), then the `Lcall`,
     then `MOV dst, RAX`. The `Lcall`'s `ra` (return-address slot) is `none`
@@ -1612,7 +1612,7 @@ def expandCallShadows (body : Lcmd) : Lcmd :=
     lowers byte-identically to `loopBodyWalkN`, so a call-free body is unchanged.
 
     This is the `JLoopBodyN`-body variant that makes MSM's Straus inner loop and
-    the GGM real AES-PRG node expressible with a genuine in-loop call: the body's
+    the GGM real AES-PRG node expressible with an in-loop call: the body's
     `extCall in[idx]`/`extCall acc` lowers to the marshalled SysV call sequence,
     spliced inside the rolled back-edge. -/
 def loopBodyWalkNCall (d : Nat) (accReg idxReg : String) (invRegs : List String)
@@ -1809,7 +1809,7 @@ def nestCountWalk (d : Nat) (outerIdxReg : String) (invRegs : List String) :
     depth `d`: a runtime outer loop (top label `d`, counter `Lctr<d>`, index
     `Lidx<d>`) whose body **recomputes** the inner trip (`nestCountWalk innerCount`
     into the inner counter) and then runs an inner runtime loop (top label `d+1`,
-    counter `Lctr<d+1>`, index `Lidx<d+1>`). Two genuine nested back-edges plus the
+    counter `Lctr<d+1>`, index `Lidx<d+1>`). Two nested back-edges plus the
     per-outer inner-count recompute — the `Lcmd` image of
     `JasminLsemMemLoopNestDepth.ggmProg`'s structure (outer/inner `loopLinstrRM`
     with the `mid := num >> sa` seed). The inner body is walked with the outer
@@ -1884,7 +1884,7 @@ def forLoopLcmdNRtNested (d : Nat) (accReg : String) (initOp outerCountOp : LOpe
     countdown idiom), the invariant touches, and the **bottom-test** back-edge
     `CMP Lctr,0; Lcond NZ top`. Identical to `forLoopLcmdNRt` MINUS the zero-trip
     top guard (`CMP;Lcond Z endL` and the `endL` label): the body runs at least
-    once — a genuine do-while, not a top-guarded counted loop. -/
+    once — a do-while, not a top-guarded counted loop. -/
 def whileLcmdNz (d : Nat) (accReg : String) (initOp guardOp : LOperand)
     {accTy : JasminTy} {invTys : Ctxt jasminDialect}
     (update : Com jasminDialect (accTy :: .reg 64 :: invTys) accTy)
@@ -2068,7 +2068,7 @@ def comLLoopBodyWalk (immSlotMap : ImmSlotMap) :
     `forLoopLcmdNRt`) around ONE copy of the recursively-lowered loop body
     (`comLLoopBodyWalk`, which may itself carry inner back-edges). On a
     straight-line `loopBody` this is byte-identical to `forLoopLcmdNRt`; with a
-    nested loop node in the body it emits genuine nested back-edges. -/
+    nested loop node in the body it emits nested back-edges. -/
 def forLoopBlockLcmd (d : Nat) (accReg : String) (initOp countOp : LOperand)
     {accTy : JasminTy} {invTys : Ctxt jasminDialect}
     (loopBody : ComL (accTy :: .reg 64 :: invTys) accTy)
@@ -2125,7 +2125,7 @@ def comLToBody (nArgs : Nat) (argNames : Nat → String)
   | _, _, .forLoopNRtNested innerCount innerUpdate outerCount init invs body, curDepth =>
       -- Nested runtime loop: an inner runtime loop (top label `curDepth+1`) inside
       -- the outer runtime loop (top label `curDepth`), with the inner trip
-      -- recomputed per outer pass (`nestCountWalk innerCount`). Two genuine nested
+      -- recomputed per outer pass (`nestCountWalk innerCount`). Two nested
       -- back-edges — the `Lcmd` image of `ggmProg`.
       forLoopLcmdNRtNested curDepth (regName curDepth)
           (resolveVar curDepth nArgs argNames immSlotMap init)
@@ -2295,10 +2295,10 @@ This section adds a second export, `Com.toLprogPhysText`, that:
 
 1. derives a **logical-slot read/write trace** from the body (the dst and src
    operands of each `Lopn`), one `PhysEvent` per binding;
-2. runs a **linear-scan register allocation** over the **15 usable x86-64 GP
-   registers** (`RAX RBX RCX RDX RSI RDI RBP R8 … R15`; `RSP` is the stack
-   pointer and is excluded), with **stack-slot spill** for any slot whose
-   linear-scan physical index lands ≥ 15;
+2. runs a **linear-scan register allocation** over the **13 allocatable x86-64
+   GP registers** (`RAX RBX RCX RDX RSI RDI RBP R8 … R13`; `RSP` is the stack
+   pointer, `R14`/`R15` are reserved reload scratches), with **stack-slot
+   spill** for any slot whose linear-scan physical index lands ≥ 13;
 3. lowers each binop `dst = op src0 src1` to **two-address** form — `mov dst,
    src0` then `op dst, src1`, collapsed to the single `op dst, src1` when the RA
    already placed `dst` on `src0`'s physical location.
@@ -2444,7 +2444,7 @@ def LOperand.regName? : LOperand → Option String
 
 /-- The register-file slot names an `LOperand` contributes **as a source**. This
     differs from `regName?` only on the SIB form `arrIdx base idx scale`, where
-    the *base pointer* `base` is a genuine GP source register (the runtime array
+    the *base pointer* `base` is a GP source register (the runtime array
     base, supplied as a SysV pointer arg) alongside the index `idx`. Tracking the
     base here is what lets the linear scan allocate it and `remapOperand` rewrite
     the SIB's base/index to physical registers (so the printer renders
@@ -2510,7 +2510,7 @@ no `sorry` enters the spec side). -/
     list; `ptrEq` against the live cached object therefore implies object
     identity (hence value equality), making a hit sound.
 
-    Retention is load-bearing: a bare-address key over a non-retained body is
+    Retention is required: a bare-address key over a non-retained body is
     unsound — once an exporter's virtual body is freed, the next export's body
     head cell can be allocated at the same address (same-size cons cells), and
     a false hit register-allocates the new body under the stale name→slot
@@ -2518,7 +2518,7 @@ no `sorry` enters the spec side). -/
     out-of-universe sentinel slot `names.size`, so all such operands share ONE
     physical register and their use-site reloads clobber each other (e.g. a
     binop over two ABI inputs degenerating to `x ^ x`; the regression shape
-    theorem is `LeaRoundThirOwnedEmit.leaX1_reloads_distinct`).
+    theorem is `LeaRoundThirEmit.leaX1_reloads_distinct`).
 
     Correctness does not depend on the cache hitting (a miss just rebuilds),
     only on a hit returning THIS body's table — which retention guarantees. -/
@@ -2647,12 +2647,25 @@ def bodyVecSlots (body : Lcmd) : Array Bool :=
     range (`s ≥ vecArr.size`) defaults to GP (`false`). -/
 def slotIsVec (vecArr : Array Bool) (s : Nat) : Bool := vecArr[s]?.getD false
 
-/-! ### 7c. Linear-scan physical allocation (15 GP regs + spill)
+/-! ### 7c. Linear-scan physical allocation (13 GP regs + spill)
 
-The same Poletto–Sarkar linear scan as `UnrolledComRA`: process slots in
-live-range-start order, reclaim physical registers whose owner's range ended,
-take the lowest free physical register (a fresh one beyond `numGPRegs` spills to
-the stack array). Re-derived locally over `PhysEvent`. -/
+A Poletto–Sarkar linear scan over a **bounded** physical pool, derived locally
+over `PhysEvent`: process slots in live-range-start order, reclaim registers
+whose owner's range ended, take the lowest free register in `[0, numGPRegs)`.
+
+When the pool is full, the *spill-at-interval* rule picks the value that goes to
+the stack by **spill cost**: the register-resident value with the largest live
+range *per use*, `(rangeEnd - position) / useCount`. A value that is touched on
+every step therefore outranks an equally long-lived value that is touched twice.
+The incoming interval competes under the same measure and is spilled itself when
+it is the cheaper one.
+
+Stack cells form a pool separate from the registers. Each cell carries the hull
+`(minStart, maxEnd)` of the ranges placed in it, and a range enters a cell only
+when it is disjoint from that hull. A spilled value occupies its cell over its
+**whole** range — including the prefix it already spent in a register — so cell
+reuse is decided against the hull rather than against the set of values live at
+the spill point. -/
 
 /-- All slots touched by an event. -/
 def PhysEvent.touched (ev : PhysEvent) : List Nat := ev.wr :: ev.rds
@@ -2680,81 +2693,239 @@ def physLiveRange (tr : List PhysEvent) (s : Nat) : Nat × Nat :=
 def physRangesOverlap (r1 r2 : Nat × Nat) : Bool :=
   r1.1 ≤ r2.2 && r2.1 ≤ r1.2
 
-/-- One linear-scan step: free physical registers whose owner ended before `st`,
-    take the lowest free one (a fresh one if none free). -/
-def physScanStep (st en : Nat) (busy : List (Nat × Nat)) (nextFresh : Nat) :
-    Nat × List (Nat × Nat) × Nat :=
-  let busy' := busy.filter (fun p => p.2 ≥ st)
-  let busySlots := busy'.map Prod.fst
-  match (List.range nextFresh).find? (fun ph => !busySlots.contains ph) with
-  | some ph => (ph, (ph, en) :: busy', nextFresh)
-  | none    => (nextFresh, (nextFresh, en) :: busy', nextFresh + 1)
+/-- An in-flight *register* allocation during the scan. -/
+structure PhysActive where
+  /-- First trace position of the allocated slot's live range. -/
+  st : Nat
+  /-- Last trace position of the allocated slot's live range. -/
+  en : Nat
+  /-- The allocated physical register index (`< numRegs`). -/
+  phys : Nat
+  /-- The logical slot holding the register. -/
+  slot : Nat
+  deriving Repr, DecidableEq, Inhabited
 
-/-- Tail-recursive worker for `physScanAux`'s compiled form: accumulates onto a
-    reversed list, reversed once at the end (avoids the `acc ++ [_]`
-    quadratic). -/
-private def physScanAuxRev (fuel : Nat) (items : List (Nat × Nat × Nat))
-    (busy : List (Nat × Nat)) (nextFresh : Nat) (acc : List (Nat × Nat)) :
-    List (Nat × Nat) :=
-  match fuel, items with
-  | 0, _ => acc.reverse
-  | _, [] => acc.reverse
-  | fuel' + 1, (s, st, en) :: rest =>
-      let (ph, busy', nextFresh') := physScanStep st en busy nextFresh
-      physScanAuxRev fuel' rest busy' nextFresh' ((s, ph) :: acc)
+/-- The lowest physical index in `[0, numRegs)` held by no active allocation. -/
+def freeRegIn (numRegs : Nat) (used : List Nat) : Option Nat :=
+  (List.range numRegs).find? (fun ph => !used.contains ph)
 
-@[inline] def physScanAuxImpl (fuel : Nat) (items : List (Nat × Nat × Nat))
-    (busy : List (Nat × Nat)) (nextFresh : Nat) (acc : List (Nat × Nat)) :
-    List (Nat × Nat) :=
-  acc ++ physScanAuxRev fuel items busy nextFresh []
+/-- Per-cell occupancy hulls: entry `i` is the `(minStart, maxEnd)` hull of the
+    ranges placed in stack cell `i`, whose physical index is `numRegs + i`. -/
+abbrev CellHulls := Array (Nat × Nat)
 
-/-- Run the scan over `(slot, start, end)` triples sorted by start. -/
-@[implemented_by physScanAuxImpl]
-def physScanAux (fuel : Nat) (items : List (Nat × Nat × Nat))
-    (busy : List (Nat × Nat)) (nextFresh : Nat) (acc : List (Nat × Nat)) :
-    List (Nat × Nat) :=
-  match fuel, items with
-  | 0, _ => acc
-  | _, [] => acc
-  | fuel' + 1, (s, st, en) :: rest =>
-      let (ph, busy', nextFresh') := physScanStep st en busy nextFresh
-      physScanAux fuel' rest busy' nextFresh' (acc ++ [(s, ph)])
+/-- The first cell index `≥ i` whose hull is disjoint from `[st, en]`, or
+    `hulls.size` when every existing cell overlaps. -/
+def firstFittingCell (hulls : CellHulls) (st en : Nat) : Nat → Nat
+  | i =>
+    if h : i < hulls.size then
+      if physRangesOverlap hulls[i] (st, en) then firstFittingCell hulls st en (i + 1)
+      else i
+    else i
+termination_by i => hulls.size - i
+decreasing_by omega
 
-/-- Compiled `physLiveItems`: one `O(n)` pass over the trace records the first
-    and last touch position of every slot into arrays (rather than re-scanning
-    the trace per slot in `physFirstTouch`/`physLastTouch`). -/
-@[inline] def physLiveItemsImpl (tr : List PhysEvent) : List (Nat × Nat × Nat) :=
+/-- Place `[st, en]` in the lowest cell whose hull is disjoint from it, widening
+    that cell's hull to cover the range; append a fresh cell when none fits. -/
+def allocCell (hulls : CellHulls) (st en : Nat) : Nat × CellHulls :=
+  let i := firstFittingCell hulls st en 0
+  match hulls[i]? with
+  | some c => (i, hulls.set! i (Nat.min c.1 st, Nat.max c.2 en))
+  | none => (i, hulls.push (st, en))
+
+/-- Spill-cost order on allocations at trace position `st`: `a` outranks `b` when
+    its remaining range per use is larger, `(a.en - st) / uses[a.slot]` against
+    `(b.en - st) / uses[b.slot]`, compared by cross-multiplication. Ties break on
+    the later range end, then on the larger slot index. -/
+def spillPrefer (st : Nat) (uses : Array Nat) (a b : PhysActive) : Bool :=
+  let ka := (a.en - st) * Nat.max 1 (uses[b.slot]?.getD 1)
+  let kb := (b.en - st) * Nat.max 1 (uses[a.slot]?.getD 1)
+  if ka == kb then
+    if a.en == b.en then a.slot > b.slot else a.en > b.en
+  else ka > kb
+
+/-- The register-resident allocation that `spillPrefer` ranks highest. -/
+def spillVictim (st : Nat) (uses : Array Nat) (act : List PhysActive) :
+    Option PhysActive :=
+  act.foldl (fun best a =>
+      match best with
+      | some b => if spillPrefer st uses a b then some a else best
+      | none => some a)
+    none
+
+/-- One scan step over the interval `[st, en]` of slot `s`.
+
+    Register allocations whose range ended before `st` are reclaimed. If a
+    register in `[0, numRegs)` is then free, `s` takes the lowest one. Otherwise
+    `spillVictim` ranks the register-resident values, the winner is compared
+    against the incoming interval under the same `spillPrefer` order, and the
+    higher-ranked of the two moves to a stack cell for its whole range
+    (`allocCell`). When the victim is a resident value, `s` takes the register it
+    vacates.
+
+    Assignments are accumulated most-recent-first, so `find?` on the result reads
+    the final location of a slot that a later step moved to a cell. -/
+def physScanSpillStep (numRegs : Nat) (uses : Array Nat)
+    (act : List PhysActive) (hulls : CellHulls) (acc : List (Nat × Nat))
+    (s st en : Nat) : List PhysActive × CellHulls × List (Nat × Nat) :=
+  let act' := act.filter (fun a => a.en ≥ st)
+  let used := act'.map PhysActive.phys
+  match freeRegIn numRegs used with
+  | some ph => (⟨st, en, ph, s⟩ :: act', hulls, (s, ph) :: acc)
+  | none =>
+      let inc : PhysActive := ⟨st, en, numRegs, s⟩
+      match spillVictim st uses act' with
+      | some far =>
+          if spillPrefer st uses far inc then
+            let r := allocCell hulls far.st far.en
+            (⟨st, en, far.phys, s⟩ :: act'.filter (fun a => a.phys != far.phys),
+             r.2, (far.slot, numRegs + r.1) :: (s, far.phys) :: acc)
+          else
+            let r := allocCell hulls st en
+            (act', r.2, (s, numRegs + r.1) :: acc)
+      | none =>
+          let r := allocCell hulls st en
+          (act', r.2, (s, numRegs + r.1) :: acc)
+
+/-- Run the bounded scan over `(slot, start, end)` triples sorted by start. -/
+def physScanSpill (numRegs : Nat) (uses : Array Nat)
+    (items : List (Nat × Nat × Nat)) (act : List PhysActive) (hulls : CellHulls)
+    (acc : List (Nat × Nat)) : List (Nat × Nat) :=
+  match items with
+  | [] => acc
+  | (s, st, en) :: rest =>
+      let (act', hulls', acc') :=
+        physScanSpillStep numRegs uses act hulls acc s st en
+      physScanSpill numRegs uses rest act' hulls' acc'
+
+/-! #### The scan's register-distinctness invariant
+
+The register half of the allocation is safe because the physical indices held by
+the in-flight allocations stay pairwise distinct: `freeRegIn` only ever hands out
+an index no active allocation holds, and the one step that hands out an index
+already in use (`spillVictim` moving a resident value to a stack cell) drops that
+value's allocation in the same step. Two slots whose ranges overlap are therefore
+never given the same register. -/
+
+/-- `freeRegIn` hands out an index inside the pool. -/
+theorem freeRegIn_lt {numRegs : Nat} {used : List Nat} {ph : Nat}
+    (h : freeRegIn numRegs used = some ph) : ph < numRegs :=
+  List.mem_range.mp (List.mem_of_find?_eq_some h)
+
+/-- `freeRegIn` hands out an index that no active allocation holds. -/
+theorem freeRegIn_not_mem {numRegs : Nat} {used : List Nat} {ph : Nat}
+    (h : freeRegIn numRegs used = some ph) : ph ∉ used := by
+  unfold freeRegIn at h
+  simpa using List.find?_some h
+
+private theorem spillFold_mem (st : Nat) (uses : Array Nat) :
+    ∀ (act : List PhysActive) (b0 : Option PhysActive) (far : PhysActive),
+      act.foldl (fun best a =>
+          match best with
+          | some b => if spillPrefer st uses a b then some a else best
+          | none => some a) b0 = some far →
+        far ∈ act ∨ b0 = some far := by
+  intro act
+  induction act with
+  | nil => intro b0 far h; exact Or.inr h
+  | cons a rest ih =>
+    intro b0 far h
+    rw [List.foldl_cons] at h
+    rcases ih _ far h with hm | hb
+    · exact Or.inl (List.mem_cons_of_mem _ hm)
+    · cases b0 with
+      | none =>
+        simp only [Option.some.injEq] at hb
+        exact Or.inl (hb ▸ List.mem_cons_self)
+      | some b =>
+        by_cases hp : spillPrefer st uses a b
+        · simp only [hp, if_pos, Option.some.injEq] at hb
+          exact Or.inl (hb ▸ List.mem_cons_self)
+        · simp only [hp, Bool.false_eq_true, if_neg, not_false_iff] at hb
+          exact Or.inr hb
+
+/-- `spillVictim` returns one of the active allocations. -/
+theorem spillVictim_mem {st : Nat} {uses : Array Nat} {act : List PhysActive}
+    {far : PhysActive} (h : spillVictim st uses act = some far) : far ∈ act := by
+  rcases spillFold_mem st uses act none far h with hm | hb
+  · exact hm
+  · exact absurd hb (by simp)
+
+/-- One scan step keeps the in-flight allocations on pairwise-distinct physical
+    registers. -/
+theorem physScanSpillStep_nodup (numRegs : Nat) (uses : Array Nat)
+    (act : List PhysActive) (hulls : CellHulls) (acc : List (Nat × Nat))
+    (s st en : Nat) (h : (act.map PhysActive.phys).Nodup) :
+    ((physScanSpillStep numRegs uses act hulls acc s st en).1.map
+      PhysActive.phys).Nodup := by
+  have hfs : ∀ (p : PhysActive → Bool) (l : List PhysActive),
+      (l.map PhysActive.phys).Nodup → ((l.filter p).map PhysActive.phys).Nodup :=
+    fun _ l hl => hl.sublist (List.filter_sublist.map PhysActive.phys)
+  simp only [physScanSpillStep]
+  split
+  next ph hfr =>
+    exact List.nodup_cons.mpr ⟨by simpa using freeRegIn_not_mem hfr, hfs _ _ h⟩
+  next hfr =>
+    split
+    next far hv =>
+      split
+      next hp =>
+        refine List.nodup_cons.mpr ⟨?_, hfs _ _ (hfs _ _ h)⟩
+        simp only [List.mem_map, not_exists, not_and]
+        intro x hx hxp
+        have hne := (List.mem_filter.mp hx).2
+        simp [hxp] at hne
+      next hp => exact hfs _ _ h
+    next hv => exact hfs _ _ h
+
+/-- Occurrences of slot `s` among the slots the trace touches. -/
+def physSlotUses (tr : List PhysEvent) (s : Nat) : Nat :=
+  (tr.flatMap PhysEvent.touched).count s
+
+/-- Compiled `physLiveData`: one `O(n)` pass over the trace records the first
+    touch, the last touch and the touch count of every slot into arrays (rather
+    than re-scanning the trace per slot in
+    `physFirstTouch`/`physLastTouch`/`physSlotUses`). -/
+@[inline] def physLiveDataImpl (tr : List PhysEvent) :
+    List (Nat × Nat × Nat) × Array Nat :=
   let univ := physUniverse tr
   let len := tr.length
-  let (firstA, lastA) : Array Nat × Array Nat := Id.run do
+  let (firstA, lastA, useA) : Array Nat × Array Nat × Array Nat := Id.run do
     let mut fst : Array Nat := Array.replicate univ len   -- sentinel = len (never)
     let mut lst : Array Nat := Array.replicate univ 0
+    let mut cnt : Array Nat := Array.replicate univ 0
     let mut pos := 0
     for ev in tr do
       for s in ev.touched do
         if s < univ then
           if fst[s]! == len then fst := fst.set! s pos
           lst := lst.set! s pos
+          cnt := cnt.set! s (cnt[s]! + 1)
       pos := pos + 1
-    return (fst, lst)
+    return (fst, lst, cnt)
   let raw := (List.range univ).filterMap (fun s =>
     let st := firstA[s]!
     if st < len then some (s, st, lastA[s]!) else none)
-  raw.mergeSort (fun a b => a.2.1 < b.2.1 || (a.2.1 == b.2.1 && a.1 ≤ b.1))
+  (raw.mergeSort (fun a b => a.2.1 < b.2.1 || (a.2.1 == b.2.1 && a.1 ≤ b.1)), useA)
 
-/-- The live slots paired with ranges, sorted by start then slot. -/
-@[implemented_by physLiveItemsImpl]
-def physLiveItems (tr : List PhysEvent) : List (Nat × Nat × Nat) :=
+/-- The live slots paired with ranges (sorted by start then slot), together with
+    the per-slot touch counts over `[0, physUniverse)`. -/
+@[implemented_by physLiveDataImpl]
+def physLiveData (tr : List PhysEvent) : List (Nat × Nat × Nat) × Array Nat :=
   let univ := physUniverse tr
   let raw := (List.range univ).filterMap (fun s =>
     let (st, en) := physLiveRange tr s
     if st < tr.length then some (s, st, en) else none)
-  raw.mergeSort (fun a b => a.2.1 < b.2.1 || (a.2.1 == b.2.1 && a.1 ≤ b.1))
+  (raw.mergeSort (fun a b => a.2.1 < b.2.1 || (a.2.1 == b.2.1 && a.1 ≤ b.1)),
+   ((List.range univ).map (physSlotUses tr)).toArray)
+
+/-- The live slots paired with ranges, sorted by start then slot. -/
+def physLiveItems (tr : List PhysEvent) : List (Nat × Nat × Nat) :=
+  (physLiveData tr).1
 
 /-- The logical→physical slot assignment. -/
 def physAssign (tr : List PhysEvent) : List (Nat × Nat) :=
-  let items := physLiveItems tr
-  physScanAux items.length items [] 0 []
+  let d := physLiveData tr
+  physScanSpill numGPRegs d.2 d.1 [] #[] []
 
 /-- The logical→physical slot map (identity outside the live set). -/
 def physMap (tr : List PhysEvent) (s : Nat) : Nat :=
@@ -2768,7 +2939,10 @@ def physMap (tr : List PhysEvent) (s : Nat) : Nat :=
   let univ := physUniverse tr
   Id.run do
     let mut t : Array Nat := (Array.range univ)
-    for (s, ph) in physAssign tr do
+    -- `physAssign` is most-recent-first (a slot the scan later moved to a stack
+    -- cell appears twice, newest first), and `physTable`'s `find?` reads the
+    -- head; scattering in reverse gives the same last-write-wins result.
+    for (s, ph) in (physAssign tr).reverse do
       if s < univ then t := t.set! s ph
     return t
 
@@ -2799,8 +2973,8 @@ vector one.
 
 When `vecArr` marks no slot vector (every pure-scalar kernel), the vector item
 list is empty, the GP item list is exactly `physLiveItems tr`, and the GP scan is
-the same call `physScanAux items.length items [] 0 []` as `physAssign` — so the
-result is byte-identical to the GP-only allocator. -/
+the same call `physScanSpill numGPRegs uses items [] #[] []` as `physAssign` — so
+the result is byte-identical to the GP-only allocator. -/
 
 /-- Class-aware logical→physical assignment. Partition the live items by class
     (`vecArr`), run two independent linear scans, and offset the vector class's
@@ -2808,11 +2982,11 @@ result is byte-identical to the GP-only allocator. -/
     vector. -/
 def physAssignClassed (tr : List PhysEvent) (vecArr : Array Bool) :
     List (Nat × Nat) :=
-  let items := physLiveItems tr
-  let gpItems := items.filter (fun it => !slotIsVec vecArr it.1)
-  let vecItems := items.filter (fun it => slotIsVec vecArr it.1)
-  let gpAssign := physScanAux gpItems.length gpItems [] 0 []
-  let vecAssign := physScanAux vecItems.length vecItems [] 0 []
+  let d := physLiveData tr
+  let gpItems := d.1.filter (fun it => !slotIsVec vecArr it.1)
+  let vecItems := d.1.filter (fun it => slotIsVec vecArr it.1)
+  let gpAssign := physScanSpill numGPRegs d.2 gpItems [] #[] []
+  let vecAssign := physScanSpill numVecRegs d.2 vecItems [] #[] []
   gpAssign ++ vecAssign.map (fun p => (p.1, p.2 + vectorBase))
 
 /-- Compiled class-aware `physTable`: scatter the class-aware assignment into an
@@ -2822,7 +2996,8 @@ def physAssignClassed (tr : List PhysEvent) (vecArr : Array Bool) :
   let univ := physUniverse tr
   Id.run do
     let mut t : Array Nat := (Array.range univ)
-    for (s, ph) in physAssignClassed tr vecArr do
+    -- Reverse for the same last-write-wins reason as `physTableImpl`.
+    for (s, ph) in (physAssignClassed tr vecArr).reverse do
       if s < univ then t := t.set! s ph
     return t
 
@@ -6370,7 +6545,7 @@ def liveAux : List PhysEvent → List Nat × List (List Nat)
     ≤ K (the max number of simultaneously-live residence classes — 25 for
     Poseidon2), so each step is `O(K)` and the whole pass is `O(n·K)` with no
     per-point materialization beyond the snapshot list. Mirrors
-    `physLiveItemsImpl`'s single-array discipline (#512 build-cost precedent);
+    `physLiveDataImpl`'s single-array discipline (#512 build-cost precedent);
     handles the 107k-binding body without stack overflow (tail-accumulating). -/
 @[inline] def liveOutsImpl (tr : List PhysEvent) : List (List Nat) := Id.run do
   -- Walk events from last to first over the reversed list (no indexed access,
@@ -6666,7 +6841,7 @@ A two-argument program `mapAddOneProg [out, in]` that runs the array-map body
 `out[i] := in[i] + 1` over 4-element `reg 64` arrays via a single `forLoopN`
 node. The body reads the loop index as the runtime SIB index of a `stackLoad`
 (`LOADIDX in[i]`) and a `stackStore` (`STOREIDX out[i]`), so the rolled loop does
-a genuine per-iteration indexed array load/store — the increment kernels like
+a per-iteration indexed array load/store — the increment kernels like
 `mayo_encode` (`out[i] := pack(in[2i], in[2i+1])`) need. The denotation is the
 mathematical array map `i ↦ in[i] + 1`, and the lowered body is ONE body copy
 with the index advance + a real back-edge. -/
@@ -6718,7 +6893,7 @@ def mapAddOnePhysBody : Lcmd := (ComL.toLfundefPhys mapAddOneProg).lfd_body
 
 /-- **Indexed array load IN the loop body:** the virtual body contains exactly one
     `LOADIDX` whose source is a register-indexed SIB element `in[idx*8]` — a
-    genuine per-iteration `stackLoad in[i]`, not a compile-time `.arr` element. -/
+    per-iteration `stackLoad in[i]`, not a compile-time `.arr` element. -/
 theorem mapAddOneBodyV_has_indexed_load :
     (mapAddOneBodyV.filter (fun i => match i.li_i with
       | .Lopn _ "LOADIDX" [.arrIdx _ idx 8] => idx == loopIdx 2
@@ -7159,7 +7334,7 @@ theorem mapAddOneAbiBody_unchanged_by_fix :
 /-! ## Real-`Lcall` leaf-call-in-loop-body smoke test (`loopBodyWalkNCall`)
 
 The loop body MSM's Straus inner loop and the GGM real AES-PRG node need: a body
-that genuinely `call`s an opaque leaf, lowered to a real `LinstrR.Lcall` (not the
+that `call`s an opaque leaf, lowered to a real `LinstrR.Lcall` (not the
 `CALL:` shadow `Lopn`), with the SysV ABI marshalling around it. -/
 
 /-- A single-arg leaf-call loop body `acc := ed_point_double(acc)` over the
@@ -7175,14 +7350,14 @@ def edDblCallBodyW : Lcmd :=
   (loopBodyWalkNCall 1 "RAX" "Lidx1" [] (fun _ => none) edDblCallBody.update 2).1
 
 /-- **Real `Lcall` in the loop body:** the marshalled SysV sequence — arg into
-    `RDI`, the genuine `Lcall`, the `RAX` return captured into the body temp. -/
+    `RDI`, the `Lcall`, the `RAX` return captured into the body temp. -/
 theorem edDblCallBodyW_expected :
     edDblCallBodyW.map (fun i => i.li_i.toText) =
       [ "Lopn [RDI] MOV:64 [RAX]"          -- marshal acc (RAX) → SysV arg0 RDI
       , "Lcall - ed_point_double:0"        -- the REAL call (not a CALL: shadow)
       , "Lopn [L1_r2] MOV:64 [RAX]" ] := by decide  -- capture RAX → body temp
 
-/-- **It is a genuine `LinstrR.Lcall`,** not an `Lopn "CALL:…"` shadow. -/
+/-- **It is an `LinstrR.Lcall`,** not an `Lopn "CALL:…"` shadow. -/
 theorem edDblCallBodyW_has_real_Lcall :
     edDblCallBodyW.any (fun i =>
       match i.li_i with | .Lcall _ _ => true | _ => false) = true := by decide
@@ -7228,7 +7403,7 @@ theorem loopBodyWalkNCall_callfree_eq_loopBodyWalkN :
 
 /-! ### Caller-save barrier for an in-loop `Lcall` (`physBody` / `remapOperand`)
 
-A rolled loop body that genuinely `call`s a leaf (`loopBodyCallLcmd`) must keep
+A rolled loop body that `call`s a leaf (`loopBodyCallLcmd`) must keep
 its loop-carried values (accumulator, `Lidx`, `Lctr`) in callee-saved registers
 across the call, and leave the literal SysV arg/return registers the marshalling
 names (`RDI`/`RAX`) verbatim. The barrier in `remapOperand` (engaged by
@@ -7274,7 +7449,7 @@ theorem loopSmoke_callfree_barrier_noop :
 
 /-! ### In-loop-call ComL through the full ABI export (`ComL.toLprogPhysAbi`)
 
-A `ComL.forLoopN` whose body genuinely `call`s a leaf
+A `ComL.forLoopN` whose body `call`s a leaf
 (`acc := ed_point_double(acc)`, MSM's Straus / GGM rolled-kernel shape) assembled
 through the SAME full ABI export the call-free kernels use. The call-walk
 selection (`comBodyHasCall` ⇒ `forLoopLcmdNCall`) makes the body issue a real
@@ -7282,7 +7457,7 @@ selection (`comBodyHasCall` ⇒ `forLoopLcmdNCall`) makes the body issue a real
 (`buildArgMaterializePhys` / `buildArgPtrMaterialize` / `buildEpilogue` /
 `memrefBaseReload`) resolve names through `physNameForBody`; the body operands use
 the call-free `remapOperand`. The theorems below check that the in-loop `Lcall`
-is emitted (the genuine call is present) and that the call-free loop path is
+is emitted (the call is present) and that the call-free loop path is
 byte-identical. -/
 
 /-- The looped accumulator kernel `acc := ed_point_double(acc)` (4 trips) over a
@@ -7303,7 +7478,7 @@ theorem edDblLoopProg_virt_hasCall :
 theorem edDblLoopProg_phys_hasCall :
     bodyHasCall (ComL.toLfundefPhys edDblLoopProg).lfd_body = true := by native_decide
 
-/-- **The body issues exactly one genuine `LinstrR.Lcall`** (not a `CALL:`
+/-- **The body issues exactly one `LinstrR.Lcall`** (not a `CALL:`
     shadow `Lopn`) — the real `call ed_point_double`. -/
 theorem edDblLoopProg_one_real_Lcall :
     ((ComL.toLfundefPhys edDblLoopProg).lfd_body.filter (fun i =>
@@ -7351,7 +7526,7 @@ theorem loopSmokeRtProg_denote :
 
 /-- **Denote = spec (different runtime count):** seed `2`, runtime count `3` →
     `2^(2³) = 256`. Same program, different `count` argument: the trip count is
-    genuinely read from the valuation, not baked in. -/
+    read from the valuation, not baked in. -/
 theorem loopSmokeRtProg_denote_count3 :
     ComL.denote loopSmokeRtProg (.cons (2 : BitVec 64) (.cons (3 : BitVec 64) .nil))
       = (256 : BitVec 64) := by rfl

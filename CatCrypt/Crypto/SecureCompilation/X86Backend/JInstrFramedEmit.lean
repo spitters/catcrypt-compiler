@@ -46,7 +46,7 @@ are unchanged). It builds, over `List (JInstr 64)`:
    emitter. So a relocation is supplied as a `JCallReloc` naming the caller
    function, the call-site byte offset *within that function's framed `.text`*, and
    the callee symbol. `jinstrRelocEmit` resolves callees that are sibling leaves
-   (intra-object, by name) vs. genuine externals (UNDEF symbols) and rebases every
+   (intra-object, by name) from externals (UNDEF symbols) and rebases every
    offset. This is the complete multi-symbol + reloc object.
 
 ## Trust tier
@@ -235,9 +235,9 @@ def jinstrMultiEmit (fs : List JFunc) : List (BitVec 8) :=
 /-! ## 3. The offset-rebase is correct (the one piece of new arithmetic)
 
 `globalReloc` is the only computation this module introduces that is not a direct
-reuse of a proved `ElfObject` / `LeafBytes` definition. These pin its two
-load-bearing facts: the global offset of a reloc is its caller's base plus the
-local offset, and the first function sits at `.text` offset `0`. -/
+reuse of a proved `ElfObject` / `LeafBytes` definition. These pin its two facts:
+the global offset of a reloc is its caller's base plus the local offset, and the
+first function sits at `.text` offset `0`. -/
 
 /-- The first emitted function is based at `.text` offset `0`. -/
 theorem funcBase_head (f : JFunc) (rest : List JFunc) :
@@ -304,14 +304,12 @@ theorem demoFunc_framed_longer_than_flat :
   omega
 
 /-- The framed demo `.o` is a well-formed object: its first six bytes are the ELF
-    magic + 64-bit/LE class (an instance of `ElfObject.header_magic`, threaded
-    through the multi-symbol builder). -/
+    magic + 64-bit/LE class (an instance of
+    `ElfObject.buildElfObjectMulti_magic`). -/
 theorem demoFunc_emit_magic :
     (jinstrFramedEmit demoFunc).take 6
-      = [0x7f, 0x45, 0x4c, 0x46, 2, 1].map (BitVec.ofNat 8) := by
-  unfold jinstrFramedEmit buildElfObjectMulti buildElfObjectMultiReloc
-  simp only [List.append_assoc]
-  rw [List.take_append_of_le_length (by rw [header_64]; omega), header_magic]
+      = [0x7f, 0x45, 0x4c, 0x46, 2, 1].map (BitVec.ofNat 8) :=
+  buildElfObjectMulti_magic _
 
 /-! ## 5. A worked multi-symbol + relocation example
 

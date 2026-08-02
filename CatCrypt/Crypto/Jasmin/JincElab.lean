@@ -14,7 +14,8 @@ Elaborates a parsed straight-line `JFun` (`JincToCom`) into an intrinsically-typ
 `Com jasminDialect Γ τ`, then renders it through the owned backend
 (`Com.toLprogPhysAbi` → `renderLprogAtt`) — no jasminc. Global tables assigned by
 `name = GLOBAL` are turned into pointer parameters (the owned export emits no
-globals). The op mapping is `(Wu)x → castW`, `a*b/a+b/a-b → regArith`, integer
+globals). The op mapping is `(Wu)x → castW`, the binary ops
+`a*b/a+b/a-b/a&b/a|b/a^b/a<<n/a>>n → regArith`, integer
 literals → `regConst`, `tbl[idx] → stackLoad`, `out[k]=v → stackStore`, and the
 branchless conditional `c ? a : b → select` (constant-time control flow: renders
 to `test`/`cmovcc`, no PC divergence).
@@ -51,6 +52,11 @@ def binOf : BinKind → JasminBinOp
   | .add => .add
   | .sub => .sub
   | .mul => .mul
+  | .and => .and
+  | .or => .or
+  | .xor => .xor
+  | .shl => .shl
+  | .shr => .shr
 
 /-- Build the `Ctxt.Var Γ τ` at de-Bruijn index `i`, succeeding iff `Γ[i] = τ`. -/
 def mkVar : (Γ : Ctxt jasminDialect) → Nat → (τ : JasminTy) → Option (Ctxt.Var Γ τ)
@@ -271,6 +277,67 @@ theorem ctSelect_denote_false :
     ctSelectCom?.map (fun com => (com.denote
       (.cons (9 : BitVec 64) (.cons (7 : BitVec 64) (.cons (0 : BitVec 1) .nil))) : BitVec 64))
       = some (9 : BitVec 64) := by native_decide
+
+/-! ## 4c. Denotational self-check of the scalar ops (`-`/`&`/`|`/`^`/`<<`/`>>`) -/
+
+/-- The elaborated `Com` of a two-register `reg 64` scalar leaf, at its concrete
+    type (`[b, a] → reg 64`, the source parameters `a, b` reversed so `a` is the
+    deepest `Ctxt.Var`). -/
+def binReg64Com? (src : String) :
+    Option (Com jasminDialect [.reg 64, .reg 64] (.reg 64)) :=
+  match elabFun ((parseJincFun src).toOption.getD default) with
+  | some ⟨Γ, τ, com⟩ =>
+      if hΓ : Γ = [.reg 64, .reg 64] then
+        if hτ : τ = .reg 64 then some (hΓ ▸ hτ ▸ com) else none
+      else none
+  | none => none
+
+/-- The elaborated `Com` of a one-register shift-by-literal `reg 64` leaf, at its
+    concrete type (`[a] → reg 64`). -/
+def shiftReg64Com? (src : String) :
+    Option (Com jasminDialect [.reg 64] (.reg 64)) :=
+  match elabFun ((parseJincFun src).toOption.getD default) with
+  | some ⟨Γ, τ, com⟩ =>
+      if hΓ : Γ = [.reg 64] then
+        if hτ : τ = .reg 64 then some (hΓ ▸ hτ ▸ com) else none
+      else none
+  | none => none
+
+/-- `sub` denotes to `a - b`: at `a = 10`, `b = 3`, the result is `7`. -/
+theorem sub_denote_concrete :
+    (binReg64Com? subSrc).map (fun c => (c.denote
+      (.cons (3 : BitVec 64) (.cons (10 : BitVec 64) .nil)) : BitVec 64))
+      = some (7 : BitVec 64) := by native_decide
+
+/-- `bit_and` denotes to `a &&& b`: at `a = 12`, `b = 10`, the result is `8`. -/
+theorem and_denote_concrete :
+    (binReg64Com? andSrc).map (fun c => (c.denote
+      (.cons (10 : BitVec 64) (.cons (12 : BitVec 64) .nil)) : BitVec 64))
+      = some (8 : BitVec 64) := by native_decide
+
+/-- `bit_or` denotes to `a ||| b`: at `a = 12`, `b = 10`, the result is `14`. -/
+theorem or_denote_concrete :
+    (binReg64Com? orSrc).map (fun c => (c.denote
+      (.cons (10 : BitVec 64) (.cons (12 : BitVec 64) .nil)) : BitVec 64))
+      = some (14 : BitVec 64) := by native_decide
+
+/-- `bit_xor` denotes to `a ^^^ b`: at `a = 12`, `b = 10`, the result is `6`. -/
+theorem xor_denote_concrete :
+    (binReg64Com? xorSrc).map (fun c => (c.denote
+      (.cons (10 : BitVec 64) (.cons (12 : BitVec 64) .nil)) : BitVec 64))
+      = some (6 : BitVec 64) := by native_decide
+
+/-- `shl3` denotes to `a <<< 3`: at `a = 5`, the result is `40`. -/
+theorem shl_denote_concrete :
+    (shiftReg64Com? shlSrc).map (fun c => (c.denote
+      (.cons (5 : BitVec 64) .nil) : BitVec 64))
+      = some (40 : BitVec 64) := by native_decide
+
+/-- `shr2` denotes to `a >>> 2`: at `a = 40`, the result is `10`. -/
+theorem shr_denote_concrete :
+    (shiftReg64Com? shrSrc).map (fun c => (c.denote
+      (.cons (40 : BitVec 64) .nil) : BitVec 64))
+      = some (10 : BitVec 64) := by native_decide
 
 /-! ## 5. Owned x86 emission (no jasminc) -/
 

@@ -330,19 +330,12 @@ def feMulAsm : String :=
 /-- The emitted asm has one body line per instruction. -/
 theorem feMulAsmBody_length : feMulAsmBody.length = 95 := by native_decide
 
-/-- Shape check: the emitted asm contains the dual carry-chain idiom
+/- Shape check: the emitted asm contains the dual carry-chain idiom
     (`mulx`, `adcx`, `adox`), the memory-operand `MULX` reads the multiplicand
     straight from `[x]` (`mulxq 0(%rsi)`, matching s2n's `mulxq (x)`), the result
     stores print in AT&T form (`(%rdi)`), the `%rdx`-pinned multiplier is the
     `MULX` src1, and the reduction's `38` and `19` Solinas constants appear. -/
-theorem feMulAsm_shape :
-    BignumMontMulKernel.hasSub feMulAsm "mulx"
-      ∧ BignumMontMulKernel.hasSub feMulAsm "adcx"
-      ∧ BignumMontMulKernel.hasSub feMulAsm "adox"
-      ∧ BignumMontMulKernel.hasSub feMulAsm "mulxq 0(%rsi)"
-      ∧ BignumMontMulKernel.hasSub feMulAsm "(%rdi)"
-      ∧ BignumMontMulKernel.hasSub feMulAsm "$38"
-      ∧ BignumMontMulKernel.hasSub feMulAsm "$19" := by native_decide
+#guard (BignumMontMulKernel.hasSub feMulAsm "mulx") && (BignumMontMulKernel.hasSub feMulAsm "adcx") && (BignumMontMulKernel.hasSub feMulAsm "adox") && (BignumMontMulKernel.hasSub feMulAsm "mulxq 0(%rsi)") && (BignumMontMulKernel.hasSub feMulAsm "(%rdi)") && (BignumMontMulKernel.hasSub feMulAsm "$38") && (BignumMontMulKernel.hasSub feMulAsm "$19")
 
 /-- Emit driver: write the in-Lean-backend-emitted `.s` for the bench harness. -/
 def emitMain : IO Unit := do

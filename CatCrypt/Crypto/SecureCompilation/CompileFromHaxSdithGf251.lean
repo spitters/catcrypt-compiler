@@ -15,7 +15,7 @@ binary `GF(2^k)` fan-outs (BLAKE2 ARX, Keccak χ, SHA-256 leaves), GF(251) is th
 **Solinas / pseudo-Mersenne** prime `251 = 2⁸ - 5`, so `256 ≡ 5 (mod 251)`:
 multiply is integer `a·b` followed by a `256 ≡ 5` double-fold and a branch-free
 conditional subtract — exactly the reduce CatCrypt's owned SDitH kernel
-(`SDitH/VerifyOwnedEmit.lean`) renders through the GP-ALU alphabet.
+(`SDitH/VerifyEmit.lean`) renders through the GP-ALU alphabet.
 
 ## GF(251) multiply (Solinas fold), `w = 64`
 
@@ -56,7 +56,7 @@ obligation `compileFromHax_meets_spec`. The emitted jasmin `Com` is *computed by
 the verified compiler* and proven equal to the Solinas-fold form.
 
 The abstract `(a*b) % 251` tie is stated and proved **separately**
-(`gf251MulFold_eq_mod`) over the constrained domain `a, b < 251`, the genuine
+(`gf251MulFold_eq_mod`) over the constrained domain `a, b < 251`, the
 mod-reduce arithmetic identity (the hard part — the prime-field analogue of the
 `#117` Barrett seam).
 -/
@@ -167,8 +167,8 @@ theorem gf251Mul_compiles :
 
 The Solinas-fold emit form `gf251MulFold` equals abstract `(a*b) % 251` over the
 constrained SDitH domain `a, b < 251` (every base-field residue). This is the
-genuine prime-field reduce identity — the analogue of the `#117` Barrett seam,
-not an ARX `rfl`. -/
+prime-field reduce identity: a Barrett-style modular-reduction fact over
+the constrained SDitH domain. -/
 
 /-- The `Nat`-domain image of the GF(251) Solinas fold: the exact `toNat`
     semantics of each `BitVec 64` step (`W = 2⁶⁴`; the fold `&&& 255` is `% 256`,

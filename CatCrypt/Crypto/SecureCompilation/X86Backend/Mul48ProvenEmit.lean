@@ -395,14 +395,10 @@ def mul48ProvenAsm : String :=
   renderLeafFn "bignum_mul_4_8_proven"
     mul48ProvenPrologue mul48ProvenBodyLines mul48ProvenEpilogue
 
-/-- Shape check: the emitted asm contains the dual carry-chain idiom (`mulx`,
+/- Shape check: the emitted asm contains the dual carry-chain idiom (`mulx`,
     `adcx`, `adox`) from the proven core, the load/store pointer ABI
     (`(%rsi)`, `(%rdi)`), and the `bignum_mul_4_8_proven` symbol. -/
-theorem mul48ProvenAsm_shape :
-    BignumMontMulKernel.hasSub mul48ProvenAsm "bignum_mul_4_8_proven"
-      ∧ BignumMontMulKernel.hasSub mul48ProvenAsm "mulx"
-      ∧ BignumMontMulKernel.hasSub mul48ProvenAsm "adcx"
-      ∧ BignumMontMulKernel.hasSub mul48ProvenAsm "adox" := by native_decide
+#guard (BignumMontMulKernel.hasSub mul48ProvenAsm "bignum_mul_4_8_proven") && (BignumMontMulKernel.hasSub mul48ProvenAsm "mulx") && (BignumMontMulKernel.hasSub mul48ProvenAsm "adcx") && (BignumMontMulKernel.hasSub mul48ProvenAsm "adox")
 
 /-- Emit driver: write the proven-core-emitted `.s` for the bench harness. -/
 def emitMain : IO Unit := do

@@ -9,7 +9,7 @@ import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 # Orchestration front: a phase-schedule → `Com` combinator for the call band
 
 The EC/pairing and whole-prover-spine owned-emit modules
-(`Pairing.Bls12_377Emit`, `Pairing.EcPairingOwnedEmit`, the plonky3 spines, …)
+(`Pairing.Bls12_377Emit`, `Pairing.EcPairingEmit`, the plonky3 spines, …)
 express a whole-protocol orchestration — the gather/`call`/scatter glue over
 opaque `.stackArr` leaves — as a straight-line `Com jasminDialect` whose every
 binding is an opaque `.extCall` over point/field buffers. That `Com` is then

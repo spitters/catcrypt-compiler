@@ -18,7 +18,7 @@ denoting `BitVec.sshiftRight`, commit #606/#605).
 
 `decompose` splits a standard representative `a ∈ [0, q)` into `(a1, a0)` with
 `a ≡ a1·α + a0 (mod q)`, `a0` centered. The PQClean body (verbatim from
-`ml-dsa-65/clean/rounding.c`, transcribed in `DecomposeOwnedEmit`):
+`ml-dsa-65/clean/rounding.c`, transcribed in `DecomposeEmit`):
 
 ```c
 int32_t decompose(int32_t *a0, int32_t a) {
@@ -33,23 +33,23 @@ int32_t decompose(int32_t *a0, int32_t a) {
 ```
 
 The single output derived here is the **low part `a0`** — the branch that
-genuinely needs the arithmetic shift. The boundary fix-up
+needs the arithmetic shift. The boundary fix-up
 `*a0 −= (((q−1)/2 − *a0) >> 31) & q` is the branchless two's-complement trick:
 `mid = (q−1)/2 − a0` is a signed `int32`; its **arithmetic** `>> 31` is the
 all-ones sign mask (`−1`) when `mid < 0`, else `0`; `& q` then subtracts `q`
 exactly on the boundary range. The logical `>>>` cannot realise this — the mask
 must be sign-replicated, not zero-filled. This is exactly the
-`arith_shift_right` surface (`DecomposeOwnedEmit`'s owned `sar` instruction).
+`arith_shift_right` surface (`DecomposeEmit`'s owned `sar` instruction).
 
 ## Width `w = 64`
 
-Following the owned `DecomposeOwnedEmit` convention, all values are carried in
+Following the owned `DecomposeEmit` convention, all values are carried in
 `BitVec 64`. The two `⌊a/α⌋` shifts (`>> 7`, `>> 22`) act on **non-negative**
 values, so they are the logical `shift_right` (`>>>`); the boundary `mid` is held
 sign-extended (it fits the signed `int32` range, `mid ∈ [−3928321, 4190208]`), so
 its 32-bit `>> 31` sign mask is reproduced **exactly** by the 64-bit
 `BitVec.sshiftRight mid 63` (the owned `sar 63`): both yield `0` (non-negative
-`mid`) or all-ones (negative `mid`). This is the same realisation `DecomposeOwnedEmit`
+`mid`) or all-ones (negative `mid`). This is the same realisation `DecomposeEmit`
 uses (`sar "m" (.imm 63)`).
 
 ## Method (mirrors `CompileFromHaxMldsaReduce32.mldsaReduce32_compiles`)
@@ -73,7 +73,7 @@ stated as a theorem here: the form-level `mldsaDecomposeA0_compiles` is the
 primary deliverable (the verified compiler emits this body, denotation-faithful
 to the explicit `mldsaDecomposeA0Form`) and stands on its own. The per-coefficient
 value-correctness against PQClean (including the boundary fix-up coefficient) is
-KAT-pinned in `DecomposeOwnedEmit` (`decompose_a0_coeff{0,17,4}`).
+KAT-pinned in `DecomposeEmit` (`decompose_a0_coeff{0,17,4}`).
 -/
 
 set_option autoImplicit false
@@ -199,7 +199,7 @@ theorem mldsaDecomposeA0_compiles :
 The structural identity that makes the boundary fix-up a *branchless* select: the
 arithmetic-shift sign mask `msk = mid >>ₐ 63` is the two's-complement all-ones /
 all-zeros word, and `msk & q` is therefore exactly `q` when `mid < 0` (the
-boundary range) and `0` otherwise. This is the genuine purpose of the
+boundary range) and `0` otherwise. This is the purpose of the
 `arith_shift_right` op — it is what removes the data-dependent boundary branch.
 
 This is stated and proved at the pure-BitVec level (the mask-select fact only,
@@ -207,7 +207,7 @@ isolated from the Barrett high-part multiply chain that walls `bv_decide`). The
 full `decompose` splitting tie (`a ≡ a1·α + a0 (mod q)`, `a0` centered) inherently
 chains the `a1*1025` / `a1*α` products and is out of `bv_decide`'s reach (the
 Montgomery wall); it is KAT-pinned against PQClean in
-`DecomposeOwnedEmit.decompose_a0_coeff{0,17,4}` (including the boundary-firing
+`DecomposeEmit.decompose_a0_coeff{0,17,4}` (including the boundary-firing
 coefficient), not restated here. -/
 
 /-- **The arithmetic-shift sign mask is the branchless select.** For any signed

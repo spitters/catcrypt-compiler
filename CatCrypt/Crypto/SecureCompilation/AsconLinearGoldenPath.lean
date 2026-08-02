@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
 import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
-import Std.Tactic.BVDecide
+import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfFull
 
 /-!
 # Golden path: the Ascon linear diffusion layer `Σ₀..Σ₄` as `Com jasminDialect`, emitted by the verified compiler
@@ -37,24 +37,33 @@ The recipe (one source → both backends), as in `Sha512BitFuncsGoldenPath`:
    Step 1's `comToReg_faithful`.
 
 The Ascon `Σ` rotation constants (NIST SP 800-232): `Σ₀ = (19,28)`, `Σ₁ = (61,39)`,
-`Σ₂ = (1,6)`, `Σ₃ = (10,17)`, `Σ₄ = (7,41)`. -/
+`Σ₂ = (1,6)`, `Σ₃ = (10,17)`, `Σ₄ = (7,41)`.
+
+Elaboration sits above the one-second module ceiling. The recognizable-spec proofs are
+not the cost — `BitVec.rotateRight_def` closes each in under 20 ms. Two per-kernel
+costs account for it. The `Com.denote` `rfl` reduces the kernel's eight-binding chain;
+a structural rewrite through the `Com.denote` equations in place of the `rfl` is a
+possible cheaper form and has not been tried. The `com_arm_e2e` and `com_riscv_e2e`
+instantiations cost roughly 25 ms per binding and do not respond to supplying their
+implicit arguments; those two lemmas are themselves the shared form, and what remains
+is one instantiation per `Σ` per backend. -/
 
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.AsconLinear
 
 open CatCrypt.Crypto.SecureCompilation.VIR
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-open CatCrypt.Crypto.SecureCompilation.ScalarLin
-open CatCrypt.Crypto.SecureCompilation.ScalarLinFront
-open CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
-open CatCrypt.Crypto.SecureCompilation.ScalarLinNeutralDemo
-open CatCrypt.Crypto.SecureCompilation.MultiBackendDemo
-open CatCrypt.Crypto.SecureCompilation.ARMBackend
-open CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
-open CatCrypt.Crypto.SecureCompilation.RISCVBackend
-open CatCrypt.Crypto.SecureCompilation.RISCVBackend.RegToRiscv
-open CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+  CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+  CatCrypt.Crypto.SecureCompilation.ScalarLin
+  CatCrypt.Crypto.SecureCompilation.ScalarLinFront
+  CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
+  CatCrypt.Crypto.SecureCompilation.ScalarLinNeutralDemo
+  CatCrypt.Crypto.SecureCompilation.MultiBackendDemo
+  CatCrypt.Crypto.SecureCompilation.ARMBackend
+  CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
+  CatCrypt.Crypto.SecureCompilation.RISCVBackend
+  CatCrypt.Crypto.SecureCompilation.RISCVBackend.RegToRiscv
+  CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
 
 /-! ## `Σ₀ x = x ^ ROTR^19 x ^ ROTR^28 x`
 
@@ -126,9 +135,19 @@ theorem asconSigma0Com_riscv_e2e (V : Ctxt.Valuation ([.reg 64] : Ctxt jasminDia
       = Com.denote asconSigma0Com V :=
   com_riscv_e2e asconSigma0Com_ok allReg64_one V s hs
 
-/-- **The x86 owned-emit leg** (KAT-gated tier). -/
+/-- **The x86 owned-emit leg, via the optimized full-ELF entry.**
+
+    This kernel is the worked example of the optimized emit path: it lowers through
+    `OptimizedComToElfFull.optimizedCompileComToElf`, which gathers the physical body,
+    runs the validated optimization pipeline, and frames + stitches the ELF.
+    Correctness is anchored on
+    `OptimizedComToElfFull.optimizedCompileComToElf_sound` — the optimized block is
+    `runBlock`-equal to the unoptimized gathered block on every machine state — together
+    with the executed spec-KAT in `bench/ascon_compare/`, which runs the Ascon owned
+    emit against the authoritative Ascon vectors. The anchor is runBlock-equivalence
+    plus the executed vectors, not byte identity with the reference `compileComToElf`. -/
 def asconSigma0Com_x86_elf : ByteArray :=
-  X86Backend.CompileComToElfJInstrFull6.compileComToElfJInstrFull6 asconSigma0Com "ascon_sigma0"
+  X86Backend.OptimizedComToElfFull.optimizedCompileComToElf asconSigma0Com "ascon_sigma0"
 
 /-! ## `Σ₁ x = x ^ ROTR^61 x ^ ROTR^39 x`
 
@@ -198,9 +217,13 @@ theorem asconSigma1Com_riscv_e2e (V : Ctxt.Valuation ([.reg 64] : Ctxt jasminDia
       = Com.denote asconSigma1Com V :=
   com_riscv_e2e asconSigma1Com_ok allReg64_one V s hs
 
-/-- **The x86 owned-emit leg** (KAT-gated tier). -/
+/-- **The x86 owned-emit leg, via the optimized full-ELF entry.**
+    Emits through `OptimizedComToElfFull.optimizedCompileComToElf`; correctness uses
+    `optimizedCompileComToElf_sound` (the optimized block is `runBlock`-equal to the
+    unoptimized gathered block on every input) together with the executed spec-KAT in
+    `bench/ascon_compare/`, not byte identity with `compileComToElf`. -/
 def asconSigma1Com_x86_elf : ByteArray :=
-  X86Backend.CompileComToElfJInstrFull6.compileComToElfJInstrFull6 asconSigma1Com "ascon_sigma1"
+  X86Backend.OptimizedComToElfFull.optimizedCompileComToElf asconSigma1Com "ascon_sigma1"
 
 /-! ## `Σ₂ x = x ^ ROTR^1 x ^ ROTR^6 x`
 
@@ -270,9 +293,13 @@ theorem asconSigma2Com_riscv_e2e (V : Ctxt.Valuation ([.reg 64] : Ctxt jasminDia
       = Com.denote asconSigma2Com V :=
   com_riscv_e2e asconSigma2Com_ok allReg64_one V s hs
 
-/-- **The x86 owned-emit leg** (KAT-gated tier). -/
+/-- **The x86 owned-emit leg, via the optimized full-ELF entry.**
+    Emits through `OptimizedComToElfFull.optimizedCompileComToElf`; correctness uses
+    `optimizedCompileComToElf_sound` (the optimized block is `runBlock`-equal to the
+    unoptimized gathered block on every input) together with the executed spec-KAT in
+    `bench/ascon_compare/`, not byte identity with `compileComToElf`. -/
 def asconSigma2Com_x86_elf : ByteArray :=
-  X86Backend.CompileComToElfJInstrFull6.compileComToElfJInstrFull6 asconSigma2Com "ascon_sigma2"
+  X86Backend.OptimizedComToElfFull.optimizedCompileComToElf asconSigma2Com "ascon_sigma2"
 
 /-! ## `Σ₃ x = x ^ ROTR^10 x ^ ROTR^17 x`
 
@@ -342,9 +369,13 @@ theorem asconSigma3Com_riscv_e2e (V : Ctxt.Valuation ([.reg 64] : Ctxt jasminDia
       = Com.denote asconSigma3Com V :=
   com_riscv_e2e asconSigma3Com_ok allReg64_one V s hs
 
-/-- **The x86 owned-emit leg** (KAT-gated tier). -/
+/-- **The x86 owned-emit leg, via the optimized full-ELF entry.**
+    Emits through `OptimizedComToElfFull.optimizedCompileComToElf`; correctness uses
+    `optimizedCompileComToElf_sound` (the optimized block is `runBlock`-equal to the
+    unoptimized gathered block on every input) together with the executed spec-KAT in
+    `bench/ascon_compare/`, not byte identity with `compileComToElf`. -/
 def asconSigma3Com_x86_elf : ByteArray :=
-  X86Backend.CompileComToElfJInstrFull6.compileComToElfJInstrFull6 asconSigma3Com "ascon_sigma3"
+  X86Backend.OptimizedComToElfFull.optimizedCompileComToElf asconSigma3Com "ascon_sigma3"
 
 /-! ## `Σ₄ x = x ^ ROTR^7 x ^ ROTR^41 x`
 
@@ -414,8 +445,12 @@ theorem asconSigma4Com_riscv_e2e (V : Ctxt.Valuation ([.reg 64] : Ctxt jasminDia
       = Com.denote asconSigma4Com V :=
   com_riscv_e2e asconSigma4Com_ok allReg64_one V s hs
 
-/-- **The x86 owned-emit leg** (KAT-gated tier). -/
+/-- **The x86 owned-emit leg, via the optimized full-ELF entry.**
+    Emits through `OptimizedComToElfFull.optimizedCompileComToElf`; correctness uses
+    `optimizedCompileComToElf_sound` (the optimized block is `runBlock`-equal to the
+    unoptimized gathered block on every input) together with the executed spec-KAT in
+    `bench/ascon_compare/`, not byte identity with `compileComToElf`. -/
 def asconSigma4Com_x86_elf : ByteArray :=
-  X86Backend.CompileComToElfJInstrFull6.compileComToElfJInstrFull6 asconSigma4Com "ascon_sigma4"
+  X86Backend.OptimizedComToElfFull.optimizedCompileComToElf asconSigma4Com "ascon_sigma4"
 
 end CatCrypt.Crypto.SecureCompilation.AsconLinear

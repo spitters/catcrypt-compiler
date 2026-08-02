@@ -6,6 +6,8 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 
 /-!
 # Plonky3 coset-NTT column LDE FRONT-COMPILED as seven `Com jasminDialect` leaves
@@ -17,10 +19,10 @@ slots, each leaf's statement list is pushed through `translateDialectControl` an
 lowered by `cryptoDialectToJasminCom` to a `Com jasminDialect`.  No de-Bruijn
 `Com` binding chain and no positional `emitAbiOrchReg` dst-map is hand-authored.
 
-## The 139-word ABI (preserved for `Plonky3LdeColumnOwnedEmit`)
+## The 139-word ABI (preserved for `Plonky3LdeColumnEmit`)
 
 Each leaf keeps its historical 139-word input context and its
-`Com jasminDialect inCtxt r64` type, so `Plonky3LdeColumnOwnedEmit`'s
+`Com jasminDialect inCtxt r64` type, so `Plonky3LdeColumnEmit`'s
 `Com.toLprogPhysAbi <leaf> … (abiMaps 139 ldeConstAt) (stdOutStore 32)` render
 (and hence `lde_column_from_rustcmd_owned.s` / the
 `plonky3-lde-column-rustcmd-kat` byte KAT) is unchanged.  Input words:
@@ -347,3 +349,178 @@ def comBindings : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
   ++ ", ntt-l4: " ++ toString (comBindings nttLeaf4Com))
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Plonky3LdeColumnEmit
+
+
+namespace CatCrypt.Crypto.SecureCompilation.VIR.Plonky3LdeColumnEmit
+
+open CatCrypt.Crypto.SecureCompilation.VIR
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+open CatCrypt.Crypto.SecureCompilation.VIR.Plonky3LdeColumnEmit
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (renderLprogAtt)
+
+/-! ## 0. Shared helpers (substring + ABI maps) -/
+
+/-- Substring test (`needle` occurs in `hay`). -/
+def hasSub (hay needle : String) : Bool :=
+  (List.range (hay.length + 1)).any (fun i =>
+    needle == String.ofList (hay.toList.drop i |>.take needle.length))
+
+/-- The standard `out[0..nOut-1]` store map: output word `j` to `[RDI + 8j]`. -/
+def stdOutStore (nOut : Nat) : OutStoreMap :=
+  (List.range nOut).map (fun j => ("RDI", j * 8))
+
+/-- Build the `(immSlotMap, inLoadMap)` pair from a per-input-word constant
+    oracle `constAt : idx → Option Nat` over an `nIn`-word context. A word with a
+    constant becomes an immediate; every other word is loaded from `[RSI+8·idx]`.
+    Argument slot `s` corresponds to input word `nIn - 1 - s` (the De Bruijn
+    reversal in `comToLfundef`). -/
+def abiMaps (nIn : Nat) (constAt : Nat → Option Nat) : ImmSlotMap × InLoadMap :=
+  ( fun s => if s < nIn then constAt (nIn - 1 - s) else none
+  , fun s => if s < nIn then
+               (let idx := nIn - 1 - s
+                if (constAt idx).isNone then some ("RSI", idx * 8) else none)
+             else none )
+
+/-! ## 1. The LDE constant oracle
+
+The 139-word input context (`Plonky3LdeColumnEmit.nInputs = 139`). Words
+`133..138` are the six Barrett/branchless immediates (matching `inttInName` /
+`bufInName`); every other word (`0..132`: the buffer values, twiddles, coset
+powers, intt scale) is a runtime `RSI` load. -/
+
+/-- The Barrett/branchless immediates at LDE input words `133..138`. -/
+def ldeConstAt (idx : Nat) : Option Nat :=
+  if idx = iMU then some 2290649223        -- 133
+  else if idx = iP then some 2013265921    -- 134
+  else if idx = iZero then some 0          -- 135
+  else if idx = iSh30 then some 30         -- 136
+  else if idx = iSh32 then some 32         -- 137
+  else if idx = iSh63 then some 63         -- 138
+  else none
+
+/-! ## 2. The seven owned leaves
+
+Each leaf takes `(out : RDI ptr u64[32], inp : RSI ptr u64[139])`, writes 32
+output words to `[RDI + 8j]`, and reads its runtime words from `[RSI + 8·idx]`.
+The seven `Com`s and their `allRegArith` proofs are from `Plonky3LdeColumnEmit`. -/
+
+/-- intt-8 leaf (`lde_intt8_rc`): 8-pt inverse NTT + scale `8⁻¹`. -/
+def inttLprog : Lprog :=
+  let (imm, inl) := abiMaps nInputs ldeConstAt
+  Com.toLprogPhysAbi inttLeafCom "lde_intt8_rc" (fun _ => none) imm inl (stdOutStore 32)
+
+/-- coset-twist leaf (`lde_twist_rc`): zero-pad + coset twist + fused fwd-NTT
+    bit-reversal. -/
+def twistLprog : Lprog :=
+  let (imm, inl) := abiMaps nInputs ldeConstAt
+  Com.toLprogPhysAbi twistLeafCom "lde_twist_rc" (fun _ => none) imm inl (stdOutStore 32)
+
+/-- one forward-NTT layer leaf (`lde_ntt32_l<layer>_rc`). -/
+def nttLprog (layer : Nat) : Lprog :=
+  let (imm, inl) := abiMaps nInputs ldeConstAt
+  Com.toLprogPhysAbi (nttLeafCom layer) ("lde_ntt32_l" ++ toString layer ++ "_rc")
+    (fun _ => none) imm inl (stdOutStore 32)
+
+/-- All seven LDE leaves combined into one `.s` (their `lp_funcs` concatenated),
+    matching the single composed `lde_column_from_rustcmd.s` unit. -/
+def ldeColumnLprog : Lprog :=
+  { inttLprog with
+    lp_funcs :=
+      inttLprog.lp_funcs ++ twistLprog.lp_funcs
+        ++ (nttLprog 0).lp_funcs ++ (nttLprog 1).lp_funcs
+        ++ (nttLprog 2).lp_funcs ++ (nttLprog 3).lp_funcs
+        ++ (nttLprog 4).lp_funcs }
+
+def ldeColumnAsm : String := renderLprogAtt ldeColumnLprog
+
+/-! ## 2b. Front provenance (per-leaf, small)
+
+Each deployed leaf `Com` this module renders is the sibling front module
+`Plonky3LdeColumnEmit`'s front lowering — the `translateDialectControl`-translated
+LowCT statement list, lowered to a `Com jasminDialect` by
+`cryptoDialectToJasminCom`.  Nothing here hand-authors a `Com`: the leaves are
+consumed from the front and only the owned RA-render tail (`toLprogPhysAbi` /
+`renderLprogAtt`) is local.  The provenance gate is the front module's SMALL
+per-leaf `*_isSome` check (each a `native_decide` over ONE ≈30-binding leaf), not
+a whole-block scan; the equalities below are definitional (`Option.some_get`) and
+name the front lowering (`cryptoDialectToJasminCom`) that produced each symbol. -/
+
+theorem intt_front_sourced :
+    (frontComAt (seqAll inttLeafStmts) (oName 31)).bind
+      DialectToJasminCom.cryptoDialectToJasminCom = some inttLeafCom :=
+  (Option.some_get inttLowered_isSome).symm
+
+theorem twist_front_sourced :
+    (frontComAt (seqAll twistLeafStmts) (oName 31)).bind
+      DialectToJasminCom.cryptoDialectToJasminCom = some twistLeafCom :=
+  (Option.some_get twistLowered_isSome).symm
+
+theorem ntt0_front_sourced :
+    (frontComAt (seqAll (nttLeafStmts 0)) (oName 31)).bind
+      DialectToJasminCom.cryptoDialectToJasminCom = some (nttLeafCom 0) :=
+  (Option.some_get nttLeaf0_isSome).symm
+
+theorem ntt1_front_sourced :
+    (frontComAt (seqAll (nttLeafStmts 1)) (oName 31)).bind
+      DialectToJasminCom.cryptoDialectToJasminCom = some (nttLeafCom 1) :=
+  (Option.some_get nttLeaf1_isSome).symm
+
+theorem ntt2_front_sourced :
+    (frontComAt (seqAll (nttLeafStmts 2)) (oName 31)).bind
+      DialectToJasminCom.cryptoDialectToJasminCom = some (nttLeafCom 2) :=
+  (Option.some_get nttLeaf2_isSome).symm
+
+theorem ntt3_front_sourced :
+    (frontComAt (seqAll (nttLeafStmts 3)) (oName 31)).bind
+      DialectToJasminCom.cryptoDialectToJasminCom = some (nttLeafCom 3) :=
+  (Option.some_get nttLeaf3_isSome).symm
+
+theorem ntt4_front_sourced :
+    (frontComAt (seqAll (nttLeafStmts 4)) (oName 31)).bind
+      DialectToJasminCom.cryptoDialectToJasminCom = some (nttLeafCom 4) :=
+  (Option.some_get nttLeaf4_isSome).symm
+
+/-! ## 3. Conservative printer shape lemmas
+
+Each leaf's export label is present and its body contains no `UNHANDLED` op
+sentinel (every binding is a handled `regArith` op). The shape checks are done
+**per leaf** (each render ≈ the proven-feasible 57 KB `fri_fold_from_rustcmd`
+scale) rather than over the ~350 KB concatenation, keeping each `native_decide`
+`hasSub` scan in the established size regime. -/
+
+def inttAsm : String := renderLprogAtt inttLprog
+def twistAsm : String := renderLprogAtt twistLprog
+def nttAsm (layer : Nat) : String := renderLprogAtt (nttLprog layer)
+
+#guard (hasSub inttAsm "lde_intt8_rc")
+#guard !(hasSub inttAsm "UNHANDLED")
+#guard (hasSub twistAsm "lde_twist_rc")
+#guard !(hasSub twistAsm "UNHANDLED")
+#guard (hasSub (nttAsm 0) "lde_ntt32_l0_rc")
+#guard !(hasSub (nttAsm 0) "UNHANDLED")
+#guard (hasSub (nttAsm 4) "lde_ntt32_l4_rc")
+#guard !(hasSub (nttAsm 4) "UNHANDLED")
+
+/-- The combined `.s` carries all seven leaf labels (structural: its `lp_funcs`
+    is the concatenation of the seven single-leaf programs). -/
+theorem ldeColumn_owned_funcs_len :
+    ldeColumnLprog.lp_funcs.length = 7 := by native_decide
+
+/-! ## 4. Emit driver -/
+
+/-- Write the owned-backend `.s` carrying all seven LDE column leaves into the
+    `bench/plonky3_compare/gen_com` harness directory (no jasminc). The `.s`
+    relinks into `lde_column_from_rustcmd_kat.c` byte-identically. -/
+def emitMain : IO Unit := do
+  let dir := "bench/plonky3_compare/gen_com"
+  IO.FS.createDirAll dir
+  IO.FS.writeFile (dir ++ "/lde_column_from_rustcmd_owned.s") ldeColumnAsm
+  IO.println "WROTE plonky3 owned LDE column .s (intt8 / twist / ntt32 l0..l4)"
+  IO.println "  Com[jasmin] regArith -> toLprogPhysAbi -> renderLprogAtt onto the OWNED x86 backend, NO jasminc"
+
+end CatCrypt.Crypto.SecureCompilation.VIR.Plonky3LdeColumnEmit
+
+/-- Top-level entry point for `lake exe plonky3ldeowned`. -/
+def main : IO UInt32 := do
+  CatCrypt.Crypto.SecureCompilation.VIR.Plonky3LdeColumnEmit.emitMain
+  return 0

@@ -65,7 +65,7 @@ slot), exactly as `Fe25519MulKernel` recovers a slot via `zr`→`%rbp`.
 * `p256Kernel_residue_eq_multiSolinas`: the residue the kernel computes —
   `(high·2^256 + low) % p256`, the value the KAT pins byte-for-byte — equals
   `multiSolinasReduce multiP256 high low`, tying the emit to #403's value-level
-  theorem (`ModReduceSelect.reduceP256_eq_mod`), not merely cross-checking GMP.
+  theorem (`ModReduceSelect.reduceP256_eq_mod`), rather than cross-checking GMP.
 * The all-inputs byte-identity that the emitted instruction stream computes
   `(x·y) mod p256` is the external KAT (`bench/p256_fieldmul_compare`, vs GMP
   `mod p256`): 8×8 corner pairs + 50000 random vectors.
@@ -291,7 +291,7 @@ the four-word halves, each `< 2^256`) to its residue mod
 emitted instruction stream computes exactly `P mod p256` is the external KAT
 (`bench/p256_fieldmul_compare`, vs GMP). The lemma below records, at the value
 level, that *that residue* is precisely the multi-term Solinas reduce #403 proved
-correct — i.e. the kernel realises `multiSolinasReduce multiP256`, not merely
+correct — i.e. the kernel realises `multiSolinasReduce multiP256`, rather than
 "some" reduction. This is the P-256 analogue of §7's
 `fusedReduce_at_25519_eq_feMulReduce` value tie. -/
 
@@ -345,5 +345,12 @@ def emitP256 : IO Unit := do
   IO.FS.writeFile
     "bench/p256_fieldmul_compare/gen_com/p256_mul_x86_from_lean.s" p256MulAsm
   IO.println "wrote p256_mul_x86_from_lean.s (NIST Solinas reduce, #407)"
+
+/-! ## Artifact generation at elaboration
+
+The render is written while this module elaborates, so `lake` produces it from
+this file and no separate driver or Makefile rule carries the dependency. -/
+
+#eval emitP256
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.P256FieldKernel

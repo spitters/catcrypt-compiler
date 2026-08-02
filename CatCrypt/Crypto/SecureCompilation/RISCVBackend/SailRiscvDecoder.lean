@@ -398,7 +398,6 @@ theorem encB_slices (imm : BitVec 13) (rs2 rs1 : BitVec 5) (funct3 : BitVec 3)
   refine ⟨?_, ?_, ?_, ?_, ?_⟩ <;>
     simp only [sOpcode, sFunct3, sRs1, sRs2, sImmB, encB] <;> bv_decide
 
-set_option linter.unusedSimpArgs false in
 /-- **Round-trip for B-type branches (`decode (encode) = i`).** For every emitted
     B-type branch (register names in the backend pool, opcode `0x63`), decoding its
     encoder word recovers the comparison `c`, the two source registers, and the

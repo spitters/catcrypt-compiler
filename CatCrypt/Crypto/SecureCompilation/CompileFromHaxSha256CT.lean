@@ -47,7 +47,7 @@ theorem fullSchedule_compiled_is_CT :
     ComJasminCTByConstruction
       ((compileFromHax (w := 32) (nIn := 16) ["w"]
         (ImpExprToThir.schedProgram 64)).get fullSchedule_isSome) :=
-  (comJasminCT?_eq_true_iff _).mp (by native_decide)
+  CompileFromHaxScope.compileFromHax_get_ct fullSchedule_isSome
 
 /-- **The compiled full SHA-256 compression loop is constant-time by construction.**
     The `Com jasminDialect` produced for `compProgram 64` (all 64 rounds) is in the
@@ -57,6 +57,6 @@ theorem fullCompress_compiled_is_CT :
     ComJasminCTByConstruction
       ((compileFromHax (w := 32) (nIn := 72) ["in"] (compProgram 64)).get
         fullCompress_isSome) :=
-  (comJasminCT?_eq_true_iff _).mp (by native_decide)
+  CompileFromHaxScope.compileFromHax_get_ct fullCompress_isSome
 
 end CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha256CT

@@ -14,15 +14,15 @@ additional-signatures Round; UOV over the non-commutative matrix ring
 `o = 4`). SNOVA verifies a signature by **evaluating the public map** over `R`;
 with the ring multiply unfolded to its GF(16) entries, every output cell is the
 schoolbook GF(16) multiply-accumulate sweep
-`out[r][c] = Σ_J Σ_k A_J[r][k] · v_J[k][c]` (`SNOVA/VerifyOwnedEmit.lean`'s
+`out[r][c] = Σ_J Σ_k A_J[r][k] · v_J[k][c]` (`SNOVA/VerifyEmit.lean`'s
 `gf16BitStep`/`gf16MulInline`).
 
-SNOVA uses the **same** GF(16) field as MAYO (`SNOVA/VerifyOwnedEmit.lean`'s
-`GF16 = GF(2)[x]/(x⁴+x+1)` matches `MAYO/VerifyOwnedEmit.lean`), and the
+SNOVA uses the **same** GF(16) field as MAYO (`SNOVA/VerifyEmit.lean`'s
+`GF16 = GF(2)[x]/(x⁴+x+1)` matches `MAYO/VerifyEmit.lean`), and the
 per-element multiply is the **same** 4-step bit-serial shift-and-conditional-xor
 with the same reduce constant (`0x3 = x+1`, since `x⁴ ≡ x+1`) and the same
 branch-free `0 − bit` mask — its KAT vectors `7·11 = 4` and `3·6 = 0xa` are
-byte-identical (`SNOVA.VerifyOwnedEmit.gf16Mac_value`/`gf16Mac_value2`). So the
+byte-identical (`SNOVA.VerifyEmit.gf16Mac_value`/`gf16Mac_value2`). So the
 scalar GF(16) leaf the SNOVA ring-dot is built from is a direct port of
 `CompileFromHaxMayoGf16.gf16Mul_compiles` (the matrix-ring/rank only set the
 **index walk** that selects `m = A_J[r][k]` and `v = v_J[k][c]` per term; the
@@ -34,7 +34,7 @@ The product `a · b` over the low nibble is the standard 4-step shift-and-
 conditional-xor with reduction: for each bit `k = 0..3` of `b`, conditionally XOR
 the running shifted multiplicand `sh` into the accumulator `r` if bit `k` is set,
 then `xtime(sh)` (multiply `sh` by `x`, reducing modulo `x⁴+x+1`). This is exactly
-`SNOVA.VerifyOwnedEmit.gf16BitStep` (and `MAYO`'s).
+`SNOVA.VerifyEmit.gf16BitStep` (and `MAYO`'s).
 
 The conditional XOR and the conditional reduce are both done **branch-free** via a
 mask `mask = 0 − bit` (`0x0` or all-ones). The front exposes `BitAnd`/`BitXor`/
@@ -64,7 +64,7 @@ This is the **scalar GF(16) multiply leaf** that SNOVA's ring-dot
 multiply-accumulate is built from. The ring-dot composition (the matrix-ring index
 walk `Σ_J Σ_k A_J[r][k] · v_J[k][c]` over flattened GF(16) entries) is the same
 per-cell pointer-bump MAC the SNOVA-reference performs; its bounded-loop owned
-emission is `SNOVA/VerifyOwnedEmit.lean` (`mapEvalLooped`), so the remaining step
+emission is `SNOVA/VerifyEmit.lean` (`mapEvalLooped`), so the remaining step
 is the loop-around-this-leaf composition, not the field arithmetic.
 -/
 
@@ -92,7 +92,7 @@ and then `xtime`s `sh`. -/
     `sh` (shifted multiplicand) and `r` (accumulator); per-step locals carry the
     decimal-string suffix `s` so the four steps don't collide.
 
-    The step computes (mirroring `SNOVA.VerifyOwnedEmit.gf16BitStep`):
+    The step computes (mirroring `SNOVA.VerifyEmit.gf16BitStep`):
     `bit := (b >> k) & 1`; `mask := (bit ^ ones) + 1`; `r := r ^ (sh & mask)`;
     `t := (sh << 1) & 0xf`; `cy := (sh >> 3) & 1`; `cm := ((cy ^ ones) + 1) & 0x3`;
     `sh := t ^ cm`. -/
@@ -193,7 +193,7 @@ theorem snovaGf16Mul_compileFromHax_isSome :
     `compileFromHax_meets_spec`.
 
     This is the scalar GF(16) (GF(2⁴)) multiply leaf that SNOVA's ring-dot
-    multiply-accumulate (`SNOVA/VerifyOwnedEmit.lean`) is built from — the same
+    multiply-accumulate (`SNOVA/VerifyEmit.lean`) is built from — the same
     field, same bit-serial straight-line, same branch-free `(bit ^ ones) + 1 =
     0 − bit` mask, and same `7·11 = 4` / `3·6 = 0xa` KAT vectors as MAYO. The
     ring-dot composition (the matrix-ring index walk `Σ_J Σ_k A_J[r][k]·v_J[k][c]`)
@@ -224,11 +224,11 @@ theorem snovaGf16Mul_compiles :
 
 Not required for the `_compiles` deliverable above. This side lemma sanity-checks,
 on representative operand pairs, that `snovaGf16MulSpec` is the GF(16) =
-GF(2)[x]/(x⁴+x+1) product, matching `SNOVA.VerifyOwnedEmit.gf16Mac_value`/
+GF(2)[x]/(x⁴+x+1) product, matching `SNOVA.VerifyEmit.gf16Mac_value`/
 `gf16Mac_value2`. -/
 
 /-- `snovaGf16MulSpec` computes the GF(16) field product on the
-    `SNOVA.VerifyOwnedEmit` KAT vectors: `7 · 11 = 4` and `3 · 6 = 0xa` over
+    `SNOVA.VerifyEmit` KAT vectors: `7 · 11 = 4` and `3 · 6 = 0xa` over
     GF(2)[x]/(x⁴+x+1). -/
 theorem snovaGf16MulSpec_kat :
     snovaGf16MulSpec 0x7 0xb = 0x4 ∧ snovaGf16MulSpec 0x3 0x6 = 0xa := by

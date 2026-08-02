@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
 import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
-import Std.Tactic.BVDecide
+import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfFull
 
 /-!
 # Golden path: the Ascon S-box as `Com jasminDialect`, emitted by the verified compiler
@@ -26,8 +26,9 @@ The recipe (one source → both backends):
    `regArith {and, or, xor}` / `regConst` alphabet;
 2. `ComOK` (mechanical — one constructor per op) + prove `Com.denote = <in-Com expr>`
    by cheap `rfl`, AND a recognizable-spec theorem `Com.denote = <standard BitVec
-   operators in circuit form>` (using `~~~`, `&&&`, `^^^`) by `bv_decide` — the
-   independent check tying the source to the textbook S-box circuit;
+   operators in circuit form>` (using `~~~`, `&&&`, `^^^`) by rewriting with
+   `xor_ones64_eq_not` — the independent check tying the source to the textbook
+   S-box circuit;
 3. `ScalarLinNeutralDemo.com_arm_e2e` / `MultiBackendDemo.com_riscv_e2e` emit the
    verified backend block — both discharged by Step 1's `comToReg_faithful`.
 
@@ -45,26 +46,43 @@ Writing the intermediates in terms of the *original* inputs:
 `y4 = x4b`, `y0 = x0b ^ x4b`, `y1 = x1b ^ x0b`, `y3 = x3b ^ x2b`, `y2 = ~x2b`.
 
 Logical-not (`~~~`) is not a `SupportedOp`; it is expressed as `e ^^^ 0xFFFF…FFFF` via a
-`regConst` all-ones binding (decimal literal `18446744073709551615` — `2^64 - 1` breaks
-both the denote `rfl` and `bv_decide`), exactly as in `shaChCom`. All five lanes emit to
-both backends with no new compiler machinery. -/
+`regConst` all-ones binding (decimal literal `18446744073709551615`; the `2^64 - 1` form
+breaks the denote `rfl`), exactly as in `shaChCom`. `xor_ones64_eq_not` discharges that
+realization once for all five lanes. All five lanes emit to both backends with no new
+compiler machinery.
+
+Elaboration sits above the one-second module ceiling. Two per-lane costs account for
+it. The `Com.denote` `rfl` reduces the lane's binding chain, so it grows with the
+lane's length; a structural rewrite through the `Com.denote` equations in place of the
+`rfl` is a possible cheaper form and has not been tried. The `com_arm_e2e` and
+`com_riscv_e2e` instantiations cost roughly 25 ms per binding and do not respond to
+supplying their implicit arguments; those two lemmas are themselves the shared form,
+and what remains is one instantiation per lane per backend. -/
 
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.AsconSbox
 
 open CatCrypt.Crypto.SecureCompilation.VIR
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-open CatCrypt.Crypto.SecureCompilation.ScalarLin
-open CatCrypt.Crypto.SecureCompilation.ScalarLinFront
-open CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
-open CatCrypt.Crypto.SecureCompilation.ScalarLinNeutralDemo
-open CatCrypt.Crypto.SecureCompilation.MultiBackendDemo
-open CatCrypt.Crypto.SecureCompilation.ARMBackend
-open CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
-open CatCrypt.Crypto.SecureCompilation.RISCVBackend
-open CatCrypt.Crypto.SecureCompilation.RISCVBackend.RegToRiscv
-open CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+  CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+  CatCrypt.Crypto.SecureCompilation.ScalarLin
+  CatCrypt.Crypto.SecureCompilation.ScalarLinFront
+  CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
+  CatCrypt.Crypto.SecureCompilation.ScalarLinNeutralDemo
+  CatCrypt.Crypto.SecureCompilation.MultiBackendDemo
+  CatCrypt.Crypto.SecureCompilation.ARMBackend
+  CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
+  CatCrypt.Crypto.SecureCompilation.RISCVBackend
+  CatCrypt.Crypto.SecureCompilation.RISCVBackend.RegToRiscv
+  CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+
+/-- The all-ones `regConst` realizes logical-not at width 64:
+    `x ^^^ 0xFFFF_FFFF_FFFF_FFFF = ~~~x`. The decimal literal is definitionally
+    `BitVec.allOnes 64`, so the identity is `BitVec.xor_allOnes`. -/
+theorem xor_ones64_eq_not (x : BitVec 64) :
+    x ^^^ BitVec.ofNat 64 18446744073709551615 = ~~~x := by
+  rw [show BitVec.ofNat 64 18446744073709551615 = BitVec.allOnes 64 from rfl,
+    BitVec.xor_allOnes]
 
 /-- The five-input context `[x0,x1,x2,x3,x4]` is all-`reg 64`. -/
 theorem allReg64_five :
@@ -129,12 +147,12 @@ theorem asconY4Com_denote (x0 x1 x2 x3 x4 : BitVec 64) :
       = (x4 ^^^ x3) ^^^ (((x0 ^^^ x4) ^^^ BitVec.ofNat 64 18446744073709551615) &&& x1) := by
   rfl
 
-/-- **Step 2 — recognizable-spec proof, `bv_decide`.** Ties the source to the textbook
-    S-box circuit lane `y4 = (x4^x3) ^ ((~(x0^x4)) & x1)` with the textbook `~~~`. -/
+/-- **Step 2 — recognizable-spec proof, via `xor_ones64_eq_not`.** Ties the source to the
+    textbook S-box circuit lane `y4 = (x4^x3) ^ ((~(x0^x4)) & x1)` with the textbook `~~~`. -/
 theorem asconY4Com_spec (x0 x1 x2 x3 x4 : BitVec 64) :
     Com.denote asconY4Com (.cons x0 (.cons x1 (.cons x2 (.cons x3 (.cons x4 .nil)))))
       = (x4 ^^^ x3) ^^^ ((~~~(x0 ^^^ x4)) &&& x1) := by
-  rw [asconY4Com_denote]; congr 1; bv_decide
+  rw [asconY4Com_denote]; simp only [xor_ones64_eq_not]
 
 /-- **Emitted AArch64**, discharged by `comToReg_faithful` via `com_arm_e2e`. -/
 theorem asconY4Com_arm_e2e
@@ -156,9 +174,13 @@ theorem asconY4Com_riscv_e2e
       = Com.denote asconY4Com V :=
   com_riscv_e2e asconY4Com_ok allReg64_five V s hs
 
-/-- **The x86 owned-emit leg** (KAT-gated tier): the same source to ELF `.o` bytes. -/
+/-- **The x86 owned-emit leg, via the optimized full-ELF entry.**
+    Emits through `OptimizedComToElfFull.optimizedCompileComToElf`; correctness uses
+    `optimizedCompileComToElf_sound` (the optimized block is `runBlock`-equal to the
+    unoptimized gathered block on every input) together with the executed spec-KAT in
+    `bench/ascon_compare/`, not byte identity with `compileComToElf`. -/
 def asconY4Com_x86_elf : ByteArray :=
-  X86Backend.CompileComToElfJInstrFull6.compileComToElfJInstrFull6 asconY4Com "ascon_sbox_y4"
+  X86Backend.OptimizedComToElfFull.optimizedCompileComToElf asconY4Com "ascon_sbox_y4"
 
 /-! ## `y0 = x0b ^ x4b` where `x0b = x0a ^ ((~x1)&x2a)`, `x4b = x4a ^ ((~x0a)&x1)`
 
@@ -230,12 +252,12 @@ theorem asconY0Com_denote (x0 x1 x2 x3 x4 : BitVec 64) :
                 ^^^ (((x0 ^^^ x4) ^^^ BitVec.ofNat 64 18446744073709551615) &&& x1)) := by
   rfl
 
-/-- **Step 2 — recognizable-spec proof, `bv_decide`.** -/
+/-- **Step 2 — recognizable-spec proof, via `xor_ones64_eq_not`.** -/
 theorem asconY0Com_spec (x0 x1 x2 x3 x4 : BitVec 64) :
     Com.denote asconY0Com (.cons x0 (.cons x1 (.cons x2 (.cons x3 (.cons x4 .nil)))))
       = ((x0 ^^^ x4) ^^^ ((~~~x1) &&& (x2 ^^^ x1)))
           ^^^ ((x4 ^^^ x3) ^^^ ((~~~(x0 ^^^ x4)) &&& x1)) := by
-  rw [asconY0Com_denote]; congr 2 <;> bv_decide
+  rw [asconY0Com_denote]; simp only [xor_ones64_eq_not]
 
 /-- **Emitted AArch64**, discharged by `comToReg_faithful` via `com_arm_e2e`. -/
 theorem asconY0Com_arm_e2e
@@ -257,9 +279,13 @@ theorem asconY0Com_riscv_e2e
       = Com.denote asconY0Com V :=
   com_riscv_e2e asconY0Com_ok allReg64_five V s hs
 
-/-- **The x86 owned-emit leg** (KAT-gated tier). -/
+/-- **The x86 owned-emit leg, via the optimized full-ELF entry.**
+    Emits through `OptimizedComToElfFull.optimizedCompileComToElf`; correctness uses
+    `optimizedCompileComToElf_sound` (the optimized block is `runBlock`-equal to the
+    unoptimized gathered block on every input) together with the executed spec-KAT in
+    `bench/ascon_compare/`, not byte identity with `compileComToElf`. -/
 def asconY0Com_x86_elf : ByteArray :=
-  X86Backend.CompileComToElfJInstrFull6.compileComToElfJInstrFull6 asconY0Com "ascon_sbox_y0"
+  X86Backend.OptimizedComToElfFull.optimizedCompileComToElf asconY0Com "ascon_sbox_y0"
 
 /-! ## `y1 = x1b ^ x0b` where `x1b = x1 ^ ((~x2a)&x3)`, `x0b = x0a ^ ((~x1)&x2a)`
 
@@ -325,12 +351,12 @@ theorem asconY1Com_denote (x0 x1 x2 x3 x4 : BitVec 64) :
                 ^^^ ((x1 ^^^ BitVec.ofNat 64 18446744073709551615) &&& (x2 ^^^ x1))) := by
   rfl
 
-/-- **Step 2 — recognizable-spec proof, `bv_decide`.** -/
+/-- **Step 2 — recognizable-spec proof, via `xor_ones64_eq_not`.** -/
 theorem asconY1Com_spec (x0 x1 x2 x3 x4 : BitVec 64) :
     Com.denote asconY1Com (.cons x0 (.cons x1 (.cons x2 (.cons x3 (.cons x4 .nil)))))
       = (x1 ^^^ ((~~~(x2 ^^^ x1)) &&& x3))
           ^^^ ((x0 ^^^ x4) ^^^ ((~~~x1) &&& (x2 ^^^ x1))) := by
-  rw [asconY1Com_denote]; congr 2 <;> bv_decide
+  rw [asconY1Com_denote]; simp only [xor_ones64_eq_not]
 
 /-- **Emitted AArch64**, discharged by `comToReg_faithful` via `com_arm_e2e`. -/
 theorem asconY1Com_arm_e2e
@@ -352,9 +378,13 @@ theorem asconY1Com_riscv_e2e
       = Com.denote asconY1Com V :=
   com_riscv_e2e asconY1Com_ok allReg64_five V s hs
 
-/-- **The x86 owned-emit leg** (KAT-gated tier). -/
+/-- **The x86 owned-emit leg, via the optimized full-ELF entry.**
+    Emits through `OptimizedComToElfFull.optimizedCompileComToElf`; correctness uses
+    `optimizedCompileComToElf_sound` (the optimized block is `runBlock`-equal to the
+    unoptimized gathered block on every input) together with the executed spec-KAT in
+    `bench/ascon_compare/`, not byte identity with `compileComToElf`. -/
 def asconY1Com_x86_elf : ByteArray :=
-  X86Backend.CompileComToElfJInstrFull6.compileComToElfJInstrFull6 asconY1Com "ascon_sbox_y1"
+  X86Backend.OptimizedComToElfFull.optimizedCompileComToElf asconY1Com "ascon_sbox_y1"
 
 /-! ## `y3 = x3b ^ x2b` where `x3b = x3 ^ ((~x4a)&x0a)`, `x2b = x2a ^ ((~x3)&x4a)`
 
@@ -427,12 +457,12 @@ theorem asconY3Com_denote (x0 x1 x2 x3 x4 : BitVec 64) :
                 ^^^ ((x3 ^^^ BitVec.ofNat 64 18446744073709551615) &&& (x4 ^^^ x3))) := by
   rfl
 
-/-- **Step 2 — recognizable-spec proof, `bv_decide`.** -/
+/-- **Step 2 — recognizable-spec proof, via `xor_ones64_eq_not`.** -/
 theorem asconY3Com_spec (x0 x1 x2 x3 x4 : BitVec 64) :
     Com.denote asconY3Com (.cons x0 (.cons x1 (.cons x2 (.cons x3 (.cons x4 .nil)))))
       = (x3 ^^^ ((~~~(x4 ^^^ x3)) &&& (x0 ^^^ x4)))
           ^^^ ((x2 ^^^ x1) ^^^ ((~~~x3) &&& (x4 ^^^ x3))) := by
-  rw [asconY3Com_denote]; congr 2 <;> bv_decide
+  rw [asconY3Com_denote]; simp only [xor_ones64_eq_not]
 
 /-- **Emitted AArch64**, discharged by `comToReg_faithful` via `com_arm_e2e`. -/
 theorem asconY3Com_arm_e2e
@@ -454,9 +484,13 @@ theorem asconY3Com_riscv_e2e
       = Com.denote asconY3Com V :=
   com_riscv_e2e asconY3Com_ok allReg64_five V s hs
 
-/-- **The x86 owned-emit leg** (KAT-gated tier). -/
+/-- **The x86 owned-emit leg, via the optimized full-ELF entry.**
+    Emits through `OptimizedComToElfFull.optimizedCompileComToElf`; correctness uses
+    `optimizedCompileComToElf_sound` (the optimized block is `runBlock`-equal to the
+    unoptimized gathered block on every input) together with the executed spec-KAT in
+    `bench/ascon_compare/`, not byte identity with `compileComToElf`. -/
 def asconY3Com_x86_elf : ByteArray :=
-  X86Backend.CompileComToElfJInstrFull6.compileComToElfJInstrFull6 asconY3Com "ascon_sbox_y3"
+  X86Backend.OptimizedComToElfFull.optimizedCompileComToElf asconY3Com "ascon_sbox_y3"
 
 /-! ## `y2 = ~x2b` where `x2b = x2a ^ ((~x3)&x4a)`
 
@@ -509,13 +543,12 @@ theorem asconY2Com_denote (x0 x1 x2 x3 x4 : BitVec 64) :
           ^^^ BitVec.ofNat 64 18446744073709551615 := by
   rfl
 
-/-- **Step 2 — recognizable-spec proof, `bv_decide`.** Ties the source to the textbook
-    S-box lane `y2 = ~(x2a ^ ((~x3)&x4a))` with the textbook `~~~`. -/
+/-- **Step 2 — recognizable-spec proof, via `xor_ones64_eq_not`.** Ties the source to the
+    textbook S-box lane `y2 = ~(x2a ^ ((~x3)&x4a))` with the textbook `~~~`. -/
 theorem asconY2Com_spec (x0 x1 x2 x3 x4 : BitVec 64) :
     Com.denote asconY2Com (.cons x0 (.cons x1 (.cons x2 (.cons x3 (.cons x4 .nil)))))
       = ~~~((x2 ^^^ x1) ^^^ ((~~~x3) &&& (x4 ^^^ x3))) := by
-  rw [asconY2Com_denote, show BitVec.ofNat 64 18446744073709551615 = BitVec.allOnes 64 from rfl]
-  simp only [BitVec.xor_allOnes]
+  rw [asconY2Com_denote]; simp only [xor_ones64_eq_not]
 
 /-- **Emitted AArch64**, discharged by `comToReg_faithful` via `com_arm_e2e`. -/
 theorem asconY2Com_arm_e2e
@@ -537,8 +570,12 @@ theorem asconY2Com_riscv_e2e
       = Com.denote asconY2Com V :=
   com_riscv_e2e asconY2Com_ok allReg64_five V s hs
 
-/-- **The x86 owned-emit leg** (KAT-gated tier). -/
+/-- **The x86 owned-emit leg, via the optimized full-ELF entry.**
+    Emits through `OptimizedComToElfFull.optimizedCompileComToElf`; correctness uses
+    `optimizedCompileComToElf_sound` (the optimized block is `runBlock`-equal to the
+    unoptimized gathered block on every input) together with the executed spec-KAT in
+    `bench/ascon_compare/`, not byte identity with `compileComToElf`. -/
 def asconY2Com_x86_elf : ByteArray :=
-  X86Backend.CompileComToElfJInstrFull6.compileComToElfJInstrFull6 asconY2Com "ascon_sbox_y2"
+  X86Backend.OptimizedComToElfFull.optimizedCompileComToElf asconY2Com "ascon_sbox_y2"
 
 end CatCrypt.Crypto.SecureCompilation.AsconSbox

@@ -418,15 +418,8 @@ def combSelect6Asm : String :=
     combSelect6AsmBody
     [ "\tpopq %r15", "\tpopq %r14", "\tpopq %r13", "\tpopq %r12", "\tpopq %rbx", "\tret" ]
 
-/-- **CT syntactic witness for the 64-entry select.** -/
-theorem combSelect6_constant_time_offsets :
-    BignumMontMulKernel.hasSub combSelect6Asm "cmoveq"
-      ∧ BignumMontMulKernel.hasSub combSelect6Asm "subq"
-      ∧ BignumMontMulKernel.hasSub combSelect6Asm "(%rdi)"
-      ∧ (BignumMontMulKernel.hasSub combSelect6Asm ",%rsi)") = false
-      ∧ (BignumMontMulKernel.hasSub combSelect6Asm "(%rsi)") = false
-      ∧ (BignumMontMulKernel.hasSub combSelect6Asm "(%rsi,") = false := by
-  native_decide
+/- **CT syntactic witness for the 64-entry select.** -/
+#guard (BignumMontMulKernel.hasSub combSelect6Asm "cmoveq") && (BignumMontMulKernel.hasSub combSelect6Asm "subq") && (BignumMontMulKernel.hasSub combSelect6Asm "(%rdi)") && !(BignumMontMulKernel.hasSub combSelect6Asm ",%rsi)") && !(BignumMontMulKernel.hasSub combSelect6Asm "(%rsi)") && !(BignumMontMulKernel.hasSub combSelect6Asm "(%rsi,")
 
 /-- Emit driver: write the in-Lean-backend-emitted `.s` for the bench harness. -/
 def emitMain : IO Unit := do

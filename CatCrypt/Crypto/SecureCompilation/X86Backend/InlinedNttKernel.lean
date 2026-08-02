@@ -567,12 +567,10 @@ def memOpCount : List (JInstr 64) → Nat
 theorem abi_memops_exceed_inlined :
     memOpCount abiBoundaryBlock = memOpCount inlinedMergedBlock + 4 := by native_decide
 
-/-- The ABI form's emitted body references the scratch pointer's register for
+/- The ABI form's emitted body references the scratch pointer's register for
     the boundary store/reload; the boundary store line is present in the ABI
     text and absent from the inlined text. -/
-theorem abi_has_boundary_store :
-    BarrettButterflyKernel.hasSub abiAsm ", 0(%rdx)" = true
-      ∧ BarrettButterflyKernel.hasSub inlinedAsm ", 0(%rdx)" = false := by native_decide
+#guard (BarrettButterflyKernel.hasSub abiAsm ", 0(%rdx)") && !(BarrettButterflyKernel.hasSub inlinedAsm ", 0(%rdx)")
 
 /-- Emit driver: write both `.s` files for the bench harness. -/
 def emitMain : IO Unit := do

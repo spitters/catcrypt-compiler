@@ -589,24 +589,22 @@ theorem keccak_export_sig :
       ("export fn keccak_round(reg ptr u64[25] out, reg const ptr u64["
         ++ toString nInputs ++ "] inp)") = true := by native_decide
 
-/-- The body renders real `xor` (θ / χ / ι). -/
-theorem keccak_has_xor : strContains keccakRoundJazz " ^ " = true := by native_decide
+/- The body renders real `xor` (θ / χ / ι). -/
+#guard (strContains keccakRoundJazz " ^ ")
 
-/-- …and `and` (the χ nonlinear layer). -/
-theorem keccak_has_and : strContains keccakRoundJazz " & " = true := by native_decide
+/- …and `and` (the χ nonlinear layer). -/
+#guard (strContains keccakRoundJazz " & ")
 
-/-- …and shift-left / shift-right / or (the ρ / θ lane rotates). -/
-theorem keccak_has_shl : strContains keccakRoundJazz " << " = true := by native_decide
-theorem keccak_has_shr : strContains keccakRoundJazz " >> " = true := by native_decide
-theorem keccak_has_or  : strContains keccakRoundJazz " | " = true := by native_decide
+/- …and shift-left / shift-right / or (the ρ / θ lane rotates). -/
+#guard (strContains keccakRoundJazz " << ")
+#guard (strContains keccakRoundJazz " >> ")
+#guard (strContains keccakRoundJazz " | ")
 
-/-- NOT is emitted as an XOR with the all-ones 64-bit mask immediate. -/
-theorem keccak_has_not_mask :
-    strContains keccakRoundJazz "^ 18446744073709551615" = true := by native_decide
+/- NOT is emitted as an XOR with the all-ones 64-bit mask immediate. -/
+#guard (strContains keccakRoundJazz "^ 18446744073709551615")
 
-/-- The first round constant `RC[0] = 1` is XORed into `A[0,0]` (slot 0). -/
-theorem keccak_first_round_const :
-    strContains keccakRoundJazz "w0 = w0 ^ 1;" = true := by native_decide
+/- The first round constant `RC[0] = 1` is XORed into `A[0,0]` (slot 0). -/
+#guard (strContains keccakRoundJazz "w0 = w0 ^ 1;")
 
 /-- The state lives in the reused `stack u64[numSlots]` array `k`; the only
     registers are the two working scratch `w0`,`w1` (no fresh `t{N}` per binding). -/
@@ -615,10 +613,9 @@ theorem keccak_reuses_regs :
       ∧ strContains keccakRoundJazz "reg u64 w0;" = true
       ∧ strContains keccakRoundJazz "reg u64 t100;" = false := by native_decide
 
-/-- It emits **no** leaf call and **no** skipped-op marker: pure straight-line
+/- It emits **no** leaf call and **no** skipped-op marker: pure straight-line
     `regArith` (every op is one of the existing dialect operators). -/
-theorem keccak_no_skips :
-    strContains keccakRoundJazz "non-regArith op skipped" = false := by native_decide
+#guard !(strContains keccakRoundJazz "non-regArith op skipped")
 
 /-- Binding count of a `Com` (one per `.var`). -/
 def comBindings : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
@@ -1268,61 +1265,47 @@ def keccakF1600ResidentChiRowJazz : String :=
 
 /-! ### Structural sanity checks on the state-resident emit -/
 
-/-- The export has the expected resident Keccak ABI. -/
-theorem resident_export_sig :
-    strContains keccakF1600ResidentJazz
-      "export fn keccak_f1600_resident(reg ptr u64[25] out, reg const ptr u64[25] inp)"
-      = true := by native_decide
+/- The export has the expected resident Keccak ABI. -/
+#guard (strContains keccakF1600ResidentJazz "export fn keccak_f1600_resident(reg ptr u64[25] out, reg const ptr u64[25] inp)")
 
-/-- The body declares the `numResidentMs` (=7) named GPRs for the hottest state
+/- The body declares the `numResidentMs` (=7) named GPRs for the hottest state
     lanes (`m0..m6`, the jasminc-realised resident ceiling — the residency
     invariant). -/
-theorem resident_has_m_regs :
-    strContains keccakF1600ResidentJazz
-      "reg u64 m0 m1 m2 m3 m4 m5 m6;"
-      = true := by native_decide
+#guard (strContains keccakF1600ResidentJazz "reg u64 m0 m1 m2 m3 m4 m5 m6;")
 
-/-- The body declares the 5 named GPRs for the θ column parities. -/
-theorem resident_has_c_regs :
-    strContains keccakF1600ResidentJazz "reg u64 c0 c1 c2 c3 c4;" = true := by native_decide
+/- The body declares the 5 named GPRs for the θ column parities. -/
+#guard (strContains keccakF1600ResidentJazz "reg u64 c0 c1 c2 c3 c4;")
 
-/-- The body uses `m0`'s state reg directly in ι (`m0 = m0 ^ RC[0]`), no stack
+/- The body uses `m0`'s state reg directly in ι (`m0 = m0 ^ RC[0]`), no stack
     round-trip — the load-bearing reg-to-reg ι op. -/
-theorem resident_iota_reg_to_reg :
-    strContains keccakF1600ResidentJazz "m0 = m0 ^ 1;" = true := by native_decide
+#guard (strContains keccakF1600ResidentJazz "m0 = m0 ^ 1;")
 
-/-- The body uses `m{i} = m{i} ^ t0` for the θ-D application on the reg-resident
+/- The body uses `m{i} = m{i} ^ t0` for the θ-D application on the reg-resident
     row-0 lanes (`m0..m4`), reg-to-reg, no stack round-trip. -/
-theorem resident_thetaD_reg_to_reg :
-    strContains keccakF1600ResidentJazz "m0 = m0 ^ t0;" = true := by native_decide
+#guard (strContains keccakF1600ResidentJazz "m0 = m0 ^ t0;")
 
-/-- The body uses θ-parity initial XOR reg-to-reg (`c0 = m0;`) for the
+/- The body uses θ-parity initial XOR reg-to-reg (`c0 = m0;`) for the
     reg-resident row-0 lane. Subsequent XORs in the same column load through
     `t0` from the `m[]` stack array (rows 1-4 are stack-resident in the
     default budget). -/
-theorem resident_thetaC_init :
-    strContains keccakF1600ResidentJazz "c0 = m0;" = true := by native_decide
+#guard (strContains keccakF1600ResidentJazz "c0 = m0;")
 
-/-- The body has NO `k[]` stack array (the residency invariant: the canonical
+/- The body has NO `k[]` stack array (the residency invariant: the canonical
     state array name `k` of the §1-§6 scalar emit is replaced by the named GPRs
     `m0..m4` + the stack array `m[]` for the spilled state lanes). -/
-theorem resident_no_k_array :
-    strContains keccakF1600ResidentJazz "stack u64[57] k" = false := by native_decide
+#guard !(strContains keccakF1600ResidentJazz "stack u64[57] k")
 
-/-- The body emits no `non-regArith` skip marker. -/
-theorem resident_no_skips :
-    strContains keccakF1600ResidentJazz "non-regArith op skipped" = false := by native_decide
+/- The body emits no `non-regArith` skip marker. -/
+#guard !(strContains keccakF1600ResidentJazz "non-regArith op skipped")
 
-/-- The body uses the `b[]` stack array for ρ∘π output (the χ inputs come from
+/- The body uses the `b[]` stack array for ρ∘π output (the χ inputs come from
     `b[]`, the only stack round-trip per round; amortised across the 25
     χ-lane writes that follow). -/
-theorem resident_has_b_array :
-    strContains keccakF1600ResidentJazz "stack u64[25] b;" = true := by native_decide
+#guard (strContains keccakF1600ResidentJazz "stack u64[25] b;")
 
-/-- The body uses the `m[]` stack array for the spilled state lanes (those past
+/- The body uses the `m[]` stack array for the spilled state lanes (those past
     `numResidentMs`). -/
-theorem resident_has_m_array :
-    strContains keccakF1600ResidentJazz "stack u64[25] m;" = true := by native_decide
+#guard (strContains keccakF1600ResidentJazz "stack u64[25] m;")
 
 /-! ### Structural sanity on the B-lane-reuse (row-resident) χ -/
 
@@ -1342,25 +1325,19 @@ theorem chiRow_b_loads_per_round :
 theorem chi_base_b_loads_per_round :
     (renderResChi.filter (fun s => strContains s "= b[")).length = 75 := by native_decide
 
-/-- The B-lane-reuse emit has the expected ABI. -/
-theorem residentChiRow_export_sig :
-    strContains keccakF1600ResidentChiRowJazz
-      "export fn keccak_f1600_resident_chirow(reg ptr u64[25] out, reg const ptr u64[25] inp)"
-      = true := by native_decide
+/- The B-lane-reuse emit has the expected ABI. -/
+#guard (strContains keccakF1600ResidentChiRowJazz "export fn keccak_f1600_resident_chirow(reg ptr u64[25] out, reg const ptr u64[25] inp)")
 
-/-- The B-lane-reuse emit reuses the parity regs `c0..c4` (no new declaration) —
+/- The B-lane-reuse emit reuses the parity regs `c0..c4` (no new declaration) —
     same decl block as the base resident emit. -/
-theorem residentChiRow_same_decls :
-    strContains keccakF1600ResidentChiRowJazz "reg u64 c0 c1 c2 c3 c4;" = true := by native_decide
+#guard (strContains keccakF1600ResidentChiRowJazz "reg u64 c0 c1 c2 c3 c4;")
 
-/-- The B-lane-reuse emit emits no `non-regArith` skip marker. -/
-theorem residentChiRow_no_skips :
-    strContains keccakF1600ResidentChiRowJazz "non-regArith op skipped" = false := by native_decide
+/- The B-lane-reuse emit emits no `non-regArith` skip marker. -/
+#guard !(strContains keccakF1600ResidentChiRowJazz "non-regArith op skipped")
 
-/-- The B-lane-reuse body still uses the `b[]` stack array (ρ∘π output / χ input),
+/- The B-lane-reuse body still uses the `b[]` stack array (ρ∘π output / χ input),
     just with each row's lanes loaded once. -/
-theorem residentChiRow_has_b_array :
-    strContains keccakF1600ResidentChiRowJazz "stack u64[25] b;" = true := by native_decide
+#guard (strContains keccakF1600ResidentChiRowJazz "stack u64[25] b;")
 
 /-! ### Denotation preservation (storage-class refinement)
 
@@ -1758,19 +1735,14 @@ theorem renderResChiBeb_load_count :
 theorem residentBeb_shorter_than_resident :
     renderResBodyBeb.length < renderResBody.length := by native_decide
 
-/-- Structural sanity: the bebigokimisa emit declares the resident ABI and uses
+/- Structural sanity: the bebigokimisa emit declares the resident ABI and uses
     the `b[]` stack array (the χ inputs), i.e. the same storage class — only the
     χ arithmetic differs. -/
-theorem residentBeb_export_sig :
-    strContains keccakF1600ResidentBebJazz
-      "export fn keccak_f1600_resident_beb(reg ptr u64[25] out, reg const ptr u64[25] inp)"
-      = true := by native_decide
+#guard (strContains keccakF1600ResidentBebJazz "export fn keccak_f1600_resident_beb(reg ptr u64[25] out, reg const ptr u64[25] inp)")
 
-theorem residentBeb_has_b_array :
-    strContains keccakF1600ResidentBebJazz "stack u64[25] b;" = true := by native_decide
+#guard (strContains keccakF1600ResidentBebJazz "stack u64[25] b;")
 
-theorem residentBeb_no_skips :
-    strContains keccakF1600ResidentBebJazz "non-regArith op skipped" = false := by native_decide
+#guard !(strContains keccakF1600ResidentBebJazz "non-regArith op skipped")
 
 end Resident
 
@@ -1958,30 +1930,22 @@ def keccakF1600Ymm4Jazz : String :=
 
 /-! ### Structural sanity checks on the YMM 4-way emit -/
 
-/-- The export has the 4-way Simd256 ABI (`u64[100]` SoA, 4 sponges × 25 lanes). -/
-theorem ymm4_export_sig :
-    strContains keccakF1600Ymm4Jazz
-      "export fn keccak_f1600_x4(reg ptr u64[100] out, reg const ptr u64[100] inp)"
-      = true := by native_decide
+/- The export has the 4-way Simd256 ABI (`u64[100]` SoA, 4 sponges × 25 lanes). -/
+#guard (strContains keccakF1600Ymm4Jazz "export fn keccak_f1600_x4(reg ptr u64[100] out, reg const ptr u64[100] inp)")
 
-/-- The body declares 9 named YMM lanes `v0..v8` — more resident u64 lane-values
+/- The body declares 9 named YMM lanes `v0..v8` — more resident u64 lane-values
     (`4·9 = 36`) than the GP path's 7. -/
-theorem ymm4_has_v_regs :
-    strContains keccakF1600Ymm4Jazz
-      "reg u256 v0 v1 v2 v3 v4 v5 v6 v7 v8;" = true := by native_decide
+#guard (strContains keccakF1600Ymm4Jazz "reg u256 v0 v1 v2 v3 v4 v5 v6 v7 v8;")
 
-/-- The body declares the 5 parity YMM. -/
-theorem ymm4_has_pc_regs :
-    strContains keccakF1600Ymm4Jazz "reg u256 pc0 pc1 pc2 pc3 pc4;" = true := by native_decide
+/- The body declares the 5 parity YMM. -/
+#guard (strContains keccakF1600Ymm4Jazz "reg u256 pc0 pc1 pc2 pc3 pc4;")
 
-/-- χ uses the single-instruction `#VPANDN_256` for `(¬a) ∧ c`. -/
-theorem ymm4_chi_vpandn :
-    strContains keccakF1600Ymm4Jazz "t0 = #VPANDN_256(t0, t1);" = true := by native_decide
+/- χ uses the single-instruction `#VPANDN_256` for `(¬a) ∧ c`. -/
+#guard (strContains keccakF1600Ymm4Jazz "t0 = #VPANDN_256(t0, t1);")
 
-/-- The packed 64-bit ρ/θ rotates use `#VPSLL_4u64` / `#VPSRL_4u64`. -/
-theorem ymm4_rho_packed :
-    (strContains keccakF1600Ymm4Jazz "#VPSLL_4u64" = true)
-      ∧ (strContains keccakF1600Ymm4Jazz "#VPSRL_4u64" = true) := by native_decide
+/- The packed 64-bit ρ/θ rotates use `#VPSLL_4u64` / `#VPSRL_4u64`. -/
+#guard (strContains keccakF1600Ymm4Jazz "#VPSLL_4u64")
+    && (strContains keccakF1600Ymm4Jazz "#VPSRL_4u64")
 
 /-- numVmm (= 9) is strictly greater than the GP resident cap (5, and its
     jasminc-realised max of 7). -/

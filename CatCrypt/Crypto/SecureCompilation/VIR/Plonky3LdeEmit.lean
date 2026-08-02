@@ -267,14 +267,12 @@ def ldeJazz : String :=
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (strContains)
 
-/-- The emitted LDE `.jazz` declares the `export fn lde_coset_fft`, the field
+/- The emitted LDE `.jazz` declares the `export fn lde_coset_fft`, the field
     helpers, and the butterfly body — with NO opaque leaf (`extCall`). -/
-theorem ldeJazz_shape :
-    strContains ldeJazz "export fn lde_coset_fft(" = true
-      ∧ strContains ldeJazz "inline fn fmul(" = true
-      ∧ strContains ldeJazz "wb = fmul(w, hi);" = true
-      ∧ strContains ldeJazz "a[j + i]       = fadd(lo, wb);" = true
-      ∧ strContains ldeJazz "extCall" = false := by
-  refine ⟨?_, ?_, ?_, ?_, ?_⟩ <;> native_decide
+#guard (strContains ldeJazz "export fn lde_coset_fft(")
+    && (strContains ldeJazz "inline fn fmul(")
+    && (strContains ldeJazz "wb = fmul(w, hi);")
+    && (strContains ldeJazz "a[j + i]       = fadd(lo, wb);")
+    && !(strContains ldeJazz "extCall")
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Plonky3LdeEmit

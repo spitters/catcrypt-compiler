@@ -223,13 +223,11 @@ def airJazz : String :=
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (strContains)
 
-/-- The emitted AIR `.jazz` declares the `export fn air_eval_fib`, evaluates both
+/- The emitted AIR `.jazz` declares the `export fn air_eval_fib`, evaluates both
     transition constraints, and uses NO opaque leaf (`extCall`). -/
-theorem airJazz_shape :
-    strContains airJazz "export fn air_eval_fib(" = true
-      ∧ strContains airJazz "c0 = fsub(na, cb);" = true
-      ∧ strContains airJazz "c1 = fsub(nb, sum);" = true
-      ∧ strContains airJazz "extCall" = false := by
-  refine ⟨?_, ?_, ?_, ?_⟩ <;> native_decide
+#guard (strContains airJazz "export fn air_eval_fib(")
+    && (strContains airJazz "c0 = fsub(na, cb);")
+    && (strContains airJazz "c1 = fsub(nb, sum);")
+    && !(strContains airJazz "extCall")
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Plonky3AirEmit

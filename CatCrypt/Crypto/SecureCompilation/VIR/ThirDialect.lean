@@ -9,6 +9,8 @@ import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
 /-!
 # THIR VIR dialect and the verified `Com[thir] → Com[jasmin]` lowering (#616)
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 A real `thirDialect : Dialect` for the THIR front, together with a structurally
 recursive, denotation-preserving lowering `lowerThir : Com thirDialect Γ t →
 Com jasminDialect Γ t`. This turns the bespoke per-function `thirToJasmin` emit
@@ -38,7 +40,7 @@ let lit = regConst w n      -- materialise the immediate
 let out = regArith op w a lit
 ```
 
-So `lowerThir` is a genuine op-EXPANSION: the body after the expanded binding is
+So `lowerThir` is an op-EXPANSION: the body after the expanded binding is
 weakened through the inserted `regConst` binding. The weakening is `Com.rename`
 (`MergeCom`) along `Ctxt.Hom.lift (Ctxt.Hom.weakenOne …)`, and its denotation
 transparency is the standard de Bruijn substitution law (`Com.denote_rename`,

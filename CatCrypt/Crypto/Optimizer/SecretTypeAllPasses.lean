@@ -28,16 +28,16 @@ representation-agnostic notion of a *declassify-monotone pass* — a transform
 that, under *every* taint assignment, never moves the summary up the
 `SecretLevel` lattice — and (2) consolidates the five committed facts into one
 record `AllPassesMonotone`, each field being exactly the corresponding existing
-lemma (so the bundle is non-vacuous by construction). The genuinely new content
+lemma (so the bundle is non-vacuous by construction). The new content
 is §3: because `⊑ₛ` is transitive, the **composition of any two same-summary
 passes is itself declassify-monotone**, which is what makes "CT-preservation is
 a compositional typing invariant" a *compositional* statement — the optimizer
 may run these passes in any order/repetition and the secrecy budget is still
 respected.
 
-The summaries are honest scalars: peephole/scheduler/x86-forwarding preserve
+The summaries are scalars: peephole/scheduler/x86-forwarding preserve
 them *exactly* (an equality, hence trivially `⊑ₛ`), while the egraph engine and
-the composed canonicalize pipeline genuinely *declassify* (the `demoMulZero`
+the composed canonicalize pipeline *declassify* (the `demoMulZero`
 validation drops a binder `sec ↦ pub`). The `IsDeclassifyMonotone` predicate is
 the common shape; equality facts feed it via `le_of_eq` (here
 `SecretLevel.leq_of_eq`), so a single transitivity lemma covers all
@@ -134,7 +134,7 @@ theorem peepCom_monotone {Γ : Ctxt jasminDialect} {t : JasminTy} :
   fun T c => SecretLevel.leq_of_eq (peepCom_comMaxTaint T c)
 
 /-- **Bounded equality-saturation is declassify-monotone** on `Com jasminDialect`.
-Witness: `saturateCom_comMaxTaint_le`. The summary genuinely drops on
+Witness: `saturateCom_comMaxTaint_le`. The summary drops on
 `demoMulZero` (`sec ↦ pub`), so this is a strict `⊑ₛ`, not an equality. The known
 constants `k` are a fixed parameter of the engine. -/
 theorem saturateCom_monotone {Γ : Ctxt jasminDialect} {t : JasminTy}
@@ -160,8 +160,9 @@ theorem scheduleBlock_monotone :
       blockMaxTaint (fun b => scheduleBlock b) :=
   fun T b => SecretLevel.leq_of_eq (scheduleBlock_blockMaxTaint_eq T b)
 
-/-- **The owned-x86 driver is declassify-monotone** on `List (JInstr 64)` (in fact
-exact: store-to-load forwarding copies a value where it already flows). Witness:
+/-- **The owned-x86 driver is declassify-monotone** on `List (JInstr 64)`:
+forwarding copies a value where it already flows, and the two shrinking peepholes
+delete instructions, dropping contributions from the running join. Witness:
 `optimizeX86Block_blockMaxTaintX_le`. The taint env is the pair `RegTaint ×
 CellTaint`, so the summary is uncurried over the pair. -/
 theorem optimizeX86Block_monotone :

@@ -670,13 +670,9 @@ def feMulLeafAsm (o a b : Nat) : String :=
     [ "\tpopq %rbp", "\tpopq %r15", "\tpopq %r14", "\tpopq %r13", "\tpopq %r12"
     , "\tpopq %rbx", "\tret" ]
 
-/-- Shape check: the emitted field-op leaf carries the dual carry-chain idiom and
+/- Shape check: the emitted field-op leaf carries the dual carry-chain idiom and
     the Solinas reduce constant `$38` (the composed point op inherits this). -/
-theorem feMulLeaf_asm_shape :
-    BignumMontMulKernel.hasSub (feMulLeafAsm sA sE sF) "mulx"
-      ∧ BignumMontMulKernel.hasSub (feMulLeafAsm sA sE sF) "adcx"
-      ∧ BignumMontMulKernel.hasSub (feMulLeafAsm sA sE sF) "adox"
-      ∧ BignumMontMulKernel.hasSub (feMulLeafAsm sA sE sF) "$38" := by native_decide
+#guard (BignumMontMulKernel.hasSub (feMulLeafAsm sA sE sF) "mulx") && (BignumMontMulKernel.hasSub (feMulLeafAsm sA sE sF) "adcx") && (BignumMontMulKernel.hasSub (feMulLeafAsm sA sE sF) "adox") && (BignumMontMulKernel.hasSub (feMulLeafAsm sA sE sF) "$38")
 
 /-- Emit driver: write the in-Lean-backend-emitted field-op leaf `.s` for the
     bench harness, plus a manifest of the point-op call sequences (the structural

@@ -15,14 +15,9 @@ The `CProg`-free substrate shared by both `LowCT → CryptoSSA` fronts: the
 `asSingleScalarSet`) used by the `RIfNz` φ-merge, and the argument
 resolver (`resolveLocatedArgs`).
 
-Two fronts consume this substrate:
-
-* `translateDialectControl` (`Dialects/TranslateDialectDirectControl.lean`)
-  — the verified, `CProg`-free successor, lowering `LowCT` directly to
-  `Com catCryptDialect`.
-* `translate` (`VIR/CryptoToJasminComWidth.lean`) — the legacy
-  `CProg`/`CExpr` front, co-located with its only consumer
-  `cprogToJasminComW` and the width benches that drive it.
+One front consumes this substrate: `translateDialectControl`
+(`Dialects/TranslateDialectDirectControl.lean`), which lowers `LowCT` directly to
+`Com catCryptDialect`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
@@ -38,7 +33,7 @@ def encodeTy : TowerType → CryptoTy
   | .TU64     => .sword 64
   -- Phase L.1: u8 / u32 scalars.  These only arise in byte-packing
   -- kernels that bail to `none` in `translate`, so the CryptoSSA
-  -- encoding is never load-bearing — we map them to small memrefs
+  -- encoding never carries meaning — we map them to small memrefs
   -- (1 / 4 bytes) so the memref-uniform witness lemmas apply.
   | .TU8      => .memref 1
   | .TU32     => .memref 4

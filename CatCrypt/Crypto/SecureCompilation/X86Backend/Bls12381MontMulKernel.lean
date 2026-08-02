@@ -307,19 +307,12 @@ def hasSub (hay needle : String) : Bool :=
   (List.range (hay.length + 1)).any (fun i =>
     needle == String.ofList (hay.toList.drop i |>.take needle.length))
 
-/-- Shape check: the emitted asm contains the dual carry-chain CIOS idiom
+/- Shape check: the emitted asm contains the dual carry-chain CIOS idiom
     (`mulx`, `adcx`, `adox`, `imul` for the Montgomery factor), the
     memory-operand `MULX` reads the multiplicand from `[x]` (`mulxq 0(%rsi)`),
     the result stores print in AT&T form (`(%rdi)`), and the `%rdx`-pinned
     multiplier is the `MULX` src1. -/
-theorem blsMontMulAsm_shape :
-    hasSub blsMontMulAsm "mulx"
-      ∧ hasSub blsMontMulAsm "adcx"
-      ∧ hasSub blsMontMulAsm "adox"
-      ∧ hasSub blsMontMulAsm "imul"
-      ∧ hasSub blsMontMulAsm "mulxq 0(%rsi)"
-      ∧ hasSub blsMontMulAsm "(%rdi)"
-      ∧ hasSub blsMontMulAsm "src1=%rdx" := by native_decide
+#guard (hasSub blsMontMulAsm "mulx") && (hasSub blsMontMulAsm "adcx") && (hasSub blsMontMulAsm "adox") && (hasSub blsMontMulAsm "imul") && (hasSub blsMontMulAsm "mulxq 0(%rsi)") && (hasSub blsMontMulAsm "(%rdi)") && (hasSub blsMontMulAsm "src1=%rdx")
 
 /-- Emit driver: write the in-Lean-backend-emitted `.s` for the bench harness. -/
 def emitMain : IO Unit := do
@@ -531,12 +524,9 @@ def gcMontMulAsm : String :=
     , "\tpopq %rbp", "\tpopq %r15", "\tpopq %r14", "\tpopq %r13", "\tpopq %r12"
     , "\tpopq %rbx", "\tret" ]
 
-/-- Shape check on the graph-coloring leaf: one labelled function carrying the CIOS
+/- Shape check on the graph-coloring leaf: one labelled function carrying the CIOS
     arithmetic (`mulx`/`adcx`/`adox`/`imul`) and the (fewer) reload/store traffic. -/
-theorem gcMontMulAsm_shape :
-    hasSub gcMontMulAsm "bls12381_mont_mul_gc_x86_from_lean"
-      ∧ hasSub gcMontMulAsm "adcx"
-      ∧ hasSub gcMontMulAsm "adox" := by native_decide
+#guard (hasSub gcMontMulAsm "bls12381_mont_mul_gc_x86_from_lean") && (hasSub gcMontMulAsm "adcx") && (hasSub gcMontMulAsm "adox")
 
 /-! ### The linear-scan baseline leaf — the apples-to-apples MCA comparand
 

@@ -121,8 +121,8 @@ def d11 : ZMod 11 := 2
 def onCurve11 (x y : ZMod 11) : Bool :=
   decide (a11 * x^2 + y^2 = 1 + d11 * x^2 * y^2)
 
-/-- Derived BLN denominators (cited in `EdwardsCurve.lean`'s
-    `add_denom_pos`/`add_denom_neg`). PBT check: for any `(Px, Py)`,
+/-- Derived BLN denominators, proved in `EdwardsCurve.lean` as
+    `add_denom_pos`/`add_denom_neg`. PBT check: for any `(Px, Py)`,
     `(Qx, Qy)` *both on-curve*, the denominators `1 ± d·Px·Qx·Py·Qy`
     are nonzero.
 

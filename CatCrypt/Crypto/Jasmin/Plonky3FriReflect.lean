@@ -257,7 +257,7 @@ noncomputable def friProverLean1024 (evals : Plonky3FriEvals 1024) :
 /-! ## 5. Hand-built `LowCT` bodies — the front-end input
 
 `reifyLowCT%` does not consult the registry, so we hand-build the body.
-Downstream (`translate → cprogToJasminCom → emitAbiOrchRegPtr`) is
+Downstream (`translate → cryptoDialectToJasminCom → emitAbiOrchRegPtr`) is
 unmodified. Each `RCall` matches one `let`-binding in `friProverLean_N`. -/
 
 /-- TowerType for an FRI evaluation array of width `N` (8 bytes/elem). -/

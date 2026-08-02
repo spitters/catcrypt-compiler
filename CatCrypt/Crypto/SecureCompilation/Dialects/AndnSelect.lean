@@ -8,7 +8,9 @@ import CatCrypt.Crypto.SecureCompilation.Dialects.ArithIselPass
 /-!
 # D3 — the `andn` peephole: a subtree-collapsing ISel pass on `Com jasminDialect`
 
-This is keystone #1's **second** native-op selection (after `RorImmSelect.lean`'s
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
+This is the ISel-as-a-pass line's **second** native-op selection (after `RorImmSelect.lean`'s
 `rorImm`): the BMI1 `ANDN dst, a, b ⇒ dst := (~a) & b` instruction, which collapses
 the and-not idiom `a &&& (~~~ b)` from a `NOT; AND` pair to a single op. It is the
 exact shape `Sha2/KeccakChiSelect` hand-applies at the value level for the Keccak χ
@@ -95,7 +97,7 @@ def mkAndnOp {Γ : Ctxt jasminDialect} {s : JasminTy} (w : Nat)
           (.cons (.there (.there b)) (.cons (.there (.there a)) .nil)))
         body))
 
-/-! ## 2. Value-level keystone: the two subtrees denote equally (unconditional) -/
+/-! ## 2. Value-level equality: the two subtrees denote equally (unconditional) -/
 
 /-- **Subtree denotation agreement.** `mkAndnOp` (native `andn b a`) and
     `mkAndnotSubtree` (the `const; xor; and` emulation) denote the **same value** on

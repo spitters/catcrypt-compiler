@@ -31,7 +31,7 @@ computation over the **`jasminDialect` register-arithmetic primitives**
 exactly a dialect-op denotation, a `Com jasminDialect` built from these ops
 denotes to this computation **by construction**.
 
-## Why Goldilocks, not the 256-bit curves (honest scope)
+## Why Goldilocks, not the 256-bit curves (scope)
 
 The whole front (`jasminDialect`, `runBlock`, the THIR front) denotes each
 register into a single `BitVec w`. A 256-bit Solinas reduce
@@ -62,10 +62,10 @@ this file supplies the proof that block was missing.
   boundary. The Com→`lsem` semantic faithfulness for the modeled straight-line
   fragments is the proved `ComLsemExportFaithful[MC]` predicate (`LsemPortAll`),
   but this kernel's full carry-chain emit is not itself a `Com` over those
-  fragments. This is the SAME physical trust boundary `MontMulThirOwnedEmit`
+  fragments. This is the SAME physical trust boundary `MontMulThirEmit`
   (`montMulThir`) sits behind: even that template has NO machine-checked
   `runBlock(emitted) = spec`; its emit tie is asm shape lemmas + an external KAT.
-  The honest improvement here is at the **reduce** layer: the *value the
+  The improvement here is at the **reduce** layer: the *value the
   computation produces* is now a theorem, where before it was a docstring claim.
 -/
 

@@ -259,7 +259,7 @@ theorem wfLinstr_sound (i : LinstrR) (h : wfLinstr i = true) :
   intro o ho
   exact (List.all_eq_true.mp hres) o ho
 
-/-- The checker is genuinely runnable (decidable as `= true`). -/
+/-- The checker is decidable as `= true`. -/
 example (i : LinstrR) : Decidable (wfLinstr i = true) := inferInstance
 example (p : Lprog) : Decidable (wfLprog p = true) := inferInstance
 
@@ -291,7 +291,7 @@ theorem reloadScratch2_ok :
     isMemX86 (LOperand.reg reloadScratch2) = false := by native_decide
 
 /-- A two-operand `mov`/load `[d] op [s]` is WF when `d`, `s` are resolved and at
-    most one is a memory operand. The workhorse for the single-instruction arms. -/
+    most one is a memory operand. The base case for the single-instruction arms. -/
 theorem wf_two_op (d s : LOperand) (op : String)
     (hd : opResolved d = true) (hs : opResolved s = true)
     (hmem : ¬ (isMemX86 d = true ∧ isMemX86 s = true)) :
@@ -351,6 +351,36 @@ theorem wf_binop (d s : LOperand) (op : String)
   simp only [List.filter, hdMem]
   rcases Bool.eq_false_or_eq_true (isMemX86 s) with hm | hm <;>
     simp [hm]
+
+/-- A store-core instruction `[dArr] opn [addr', v]` is WF when `dArr` is a
+    resolved non-memory operand, `addr'` is a resolved SIB element (a single
+    memory operand), and `v` is a resolved non-memory operand (a register or the
+    routing scratch): the only memory operand is `addr'`, so the count is ≤ 1. -/
+theorem wf_store_core (dArr addr' v : LOperand) (opn : String)
+    (hda : opResolved dArr = true) (hdaMem : isMemX86 dArr = false)
+    (haddr : opResolved addr' = true)
+    (hv : opResolved v = true) (hvMem : isMemX86 v = false) :
+    wfLinstr (.Lopn [dArr] opn [addr', v]) = true := by
+  unfold wfLinstr instrOperands atMostOneMem widthConsistent countMem
+  simp only [List.cons_append, List.nil_append, List.all_cons, List.all_nil,
+    hda, haddr, hv, Bool.and_true, Bool.true_and, decide_eq_true_eq]
+  simp only [List.filter, hdaMem, hvMem]
+  rcases Bool.eq_false_or_eq_true (isMemX86 addr') with ha | ha <;> simp [ha]
+
+/-- The flat `mem.R14.0` destination of the address-fold store arm is a resolved
+    base+offset memory name. -/
+theorem scratch2Mem_resolved :
+    opResolved (LOperand.reg ("mem." ++ reloadScratch2 ++ ".0")) = true := by
+  have hpfx : ("mem." : String).isPrefixOf "mem.R14.0" = true := by
+    simp [String.isPrefixOf, String.startsWith]
+  have hdrop : (("mem.R14.0" : String).drop 4).toString = "R14.0" := by decide
+  have hsplit : ("R14.0" : String).splitOn "." = ["R14", "0"] := by
+    simp +decide [String.splitOn, String.splitOnAux]
+  have hnat : ("0" : String).toNat?.isSome = true := by
+    simp [String.toNat?, String.Slice.toNat?, String.Slice.isNat]
+  simp only [opResolved, reloadScratch2, regNameResolved, memNameResolved,
+    String.reduceAppend, hpfx, hdrop, hsplit, x86PhysRegNames]
+  simp [hnat]
 
 /-- A physical register name is never a SIB spill (`k.`-prefixed) name. -/
 theorem physReg_not_sibSpill {n : String} (h : n ∈ x86PhysRegNames) :
@@ -439,8 +469,12 @@ theorem legalizeMemLoad_wf (dst src : LOperand) (opn mov : String)
     `R15`); otherwise the direct store already has ≤ 1 memory operand. Direct
     refutation of bug class 2 (the `mem → mem` store).
 
+    When the SIB index is the value scratch `R15`, the address is folded into
+    `R14` by a `LEA` and the value is stored through the flat `mem.R14.0`
+    operand.
+
     The store instruction `[dArr] opn [addr, R15]` (or `[addr, val]`) has two
-    sources; `wf_three_op_store` handles the ≤ 1-memory count over the
+    sources; `wf_store_core` handles the ≤ 1-memory count over the
     `dArr :: addr :: v :: []` operand list (the array-result `dArr` names the
     functionally-updated array and is itself a register, never memory). -/
 theorem legalizeMemStore_wf (dArr addr val : LOperand) (opn mov : String)
@@ -453,32 +487,50 @@ theorem legalizeMemStore_wf (dArr addr val : LOperand) (opn mov : String)
   -- `addr` is resolved ⇒ the SIB-base legalization is the identity (no prelude).
   rw [legalizeSibElem_id_of_resolved addr haddr] at hi
   simp only [List.nil_append] at hi
-  by_cases hsp : val.isSpill = true
-  · rw [if_pos hsp] at hi
-    simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
-    rcases hi with hi | hi
-    · subst hi; exact wf_scratch_dst val _ hval
-    · -- store: `[dArr] opn [addr, R15]`; dArr not mem, R15 not mem ⇒ ≤ 1 mem (addr).
-      subst hi
-      unfold wfLinstr instrOperands atMostOneMem widthConsistent countMem
-      simp only [List.cons_append, List.nil_append, List.all_cons, List.all_nil,
-        hda, haddr, reloadScratch_ok.1, Bool.and_true, Bool.true_and,
-        decide_eq_true_eq]
-      simp only [List.filter, hdaMem, reloadScratch_ok.2]
-      rcases Bool.eq_false_or_eq_true (isMemX86 addr) with ha | ha <;>
-        simp [ha]
-  · rw [Bool.not_eq_true] at hsp
-    rw [if_neg (by rw [hsp]; exact Bool.false_ne_true)] at hi
-    rw [List.mem_singleton] at hi; subst hi
-    -- store: `[dArr] opn [addr, val]`; dArr not mem, val not spill ⇒ val not mem.
-    rw [memCoincidesSpill] at hvc
-    have hvalMem : isMemX86 val = false := by rw [hvc, hsp]
-    unfold wfLinstr instrOperands atMostOneMem widthConsistent countMem
-    simp only [List.cons_append, List.nil_append, List.all_cons, List.all_nil,
-      hda, haddr, hval, Bool.and_true, Bool.true_and, decide_eq_true_eq]
-    simp only [List.filter, hdaMem, hvalMem]
-    rcases Bool.eq_false_or_eq_true (isMemX86 addr) with ha | ha <;>
-      simp [ha]
+  rw [memCoincidesSpill] at hvc
+  cases addr with
+  | arr _ _ => simp only [opResolved, Bool.false_eq_true] at haddr
+  | reg n =>
+    cases hsp : val.isSpill <;> rw [hsp] at hi
+    · -- direct store: `val` is not a spill, hence not memory.
+      rw [List.mem_singleton] at hi; subst hi
+      exact wf_store_core _ _ val opn hda hdaMem haddr hval (by rw [hvc, hsp])
+    · simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
+      rcases hi with hi | hi
+      · subst hi; exact wf_scratch_dst val _ hval
+      · subst hi
+        exact wf_store_core _ _ _ opn hda hdaMem haddr
+          reloadScratch_ok.1 reloadScratch_ok.2
+  | imm v =>
+    cases hsp : val.isSpill <;> rw [hsp] at hi
+    · rw [List.mem_singleton] at hi; subst hi
+      exact wf_store_core _ _ val opn hda hdaMem haddr hval (by rw [hvc, hsp])
+    · simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
+      rcases hi with hi | hi
+      · subst hi; exact wf_scratch_dst val _ hval
+      · subst hi
+        exact wf_store_core _ _ _ opn hda hdaMem haddr
+          reloadScratch_ok.1 reloadScratch_ok.2
+  | arrIdx b iN sc =>
+    cases hsp : val.isSpill <;> simp only [hsp] at hi
+    · rw [List.mem_singleton] at hi; subst hi
+      exact wf_store_core _ _ val opn hda hdaMem haddr hval (by rw [hvc, hsp])
+    · by_cases hc : (iN == reloadScratch) = true
+      · -- index-collision arm: the SIB address is folded into `R14` by a `LEA`,
+        -- then the value goes through `R15` into the flat `mem.R14.0` operand.
+        rw [if_pos hc] at hi
+        simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
+        rcases hi with hi | hi | hi
+        · subst hi; exact wf_scratch2_dst _ _ haddr
+        · subst hi; exact wf_scratch_dst val _ hval
+        · subst hi; exact wf_scratch_src _ _ scratch2Mem_resolved
+      · rw [if_neg hc] at hi
+        simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
+        rcases hi with hi | hi
+        · subst hi; exact wf_scratch_dst val _ hval
+        · subst hi
+          exact wf_store_core _ _ _ opn hda hdaMem haddr
+            reloadScratch_ok.1 reloadScratch_ok.2
 
 /-- `legalizeBinop dst src opn` produces only WF instructions, given resolved
     operands whose memory status coincides with their spill status. Every
@@ -638,21 +690,6 @@ spill) and the value/dst are resolved, **every** instruction the legalizer emits
 — the address-reload prelude *and* the core load/store — is WF. This is the
 direct refutation of the third remaining ChaCha codegen error. -/
 
-/-- A store-core instruction `[dArr] opn [addr', v]` is WF when `dArr` is a
-    resolved non-memory operand, `addr'` is a resolved SIB element (a single
-    memory operand), and `v` is a resolved non-memory operand (a register or the
-    routing scratch): the only memory operand is `addr'`, so the count is ≤ 1. -/
-theorem wf_store_core (dArr addr' v : LOperand) (opn : String)
-    (hda : opResolved dArr = true) (hdaMem : isMemX86 dArr = false)
-    (haddr : opResolved addr' = true)
-    (hv : opResolved v = true) (hvMem : isMemX86 v = false) :
-    wfLinstr (.Lopn [dArr] opn [addr', v]) = true := by
-  unfold wfLinstr instrOperands atMostOneMem widthConsistent countMem
-  simp only [List.cons_append, List.nil_append, List.all_cons, List.all_nil,
-    hda, haddr, hv, Bool.and_true, Bool.true_and, decide_eq_true_eq]
-  simp only [List.filter, hdaMem, hvMem]
-  rcases Bool.eq_false_or_eq_true (isMemX86 addr') with ha | ha <;> simp [ha]
-
 /-- **The full memory-STORE legalization is WF, including the spilled-SIB-base
     case** (bug class 3 on the address). Given the SIB destination's base/index
     are SIB-ok and the value is resolved with memory-status coinciding with its
@@ -672,26 +709,80 @@ theorem legalizeMemStore_sib_wf (scale : Nat)
   -- The address prelude is WF, and the fixed SIB element is resolved.
   have haddr' : opResolved (legalizeSibElem (.arrIdx bN iN scale)).2 = true :=
     legalizeSibElem_fixed_resolved bN iN scale ⟨hb, hidx, hs⟩
-  rw [List.mem_append] at hi
-  rcases hi with hi | hi
-  · -- prelude instruction
-    exact legalizeSibElem_prelude_wf bN iN scale hb hidx i hi
-  · -- core store instruction (value routing)
-    -- The fixed SIB element is a memory operand; the value/scratch is not.
-    by_cases hsp : valOp.isSpill = true
-    · rw [if_pos hsp] at hi
-      simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
-      rcases hi with hi | hi
-      · subst hi; exact wf_scratch_dst valOp _ hval
-      · subst hi
-        exact wf_store_core dArrOp _ (.reg reloadScratch) opn hda hdaMem haddr'
+  have hpre : ∀ j ∈ (legalizeSibElem (.arrIdx bN iN scale)).1, wfLinstr j = true :=
+    legalizeSibElem_prelude_wf bN iN scale hb hidx
+  rw [memCoincidesSpill] at hvc
+  cases hlz : legalizeSibElem (LOperand.arrIdx bN iN scale) with
+  | mk addrPre addr' =>
+    rw [hlz] at haddr' hpre
+    simp only [hlz] at hi
+    simp only at haddr' hpre
+    -- The value routing shared by every arm but the index-collision one.
+    have hcore : ∀ m : String, ∀ j ∈
+        [LinstrR.Lopn [LOperand.reg reloadScratch] m [valOp],
+         LinstrR.Lopn [dArrOp] opn [addr', LOperand.reg reloadScratch]],
+        wfLinstr j = true := by
+      intro m j hj
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at hj
+      rcases hj with hj | hj
+      · subst hj; exact wf_scratch_dst valOp _ hval
+      · subst hj
+        exact wf_store_core _ _ _ opn hda hdaMem haddr'
           reloadScratch_ok.1 reloadScratch_ok.2
-    · rw [Bool.not_eq_true] at hsp
-      rw [if_neg (by rw [hsp]; exact Bool.false_ne_true)] at hi
-      rw [List.mem_singleton] at hi; subst hi
-      rw [memCoincidesSpill] at hvc
-      have hvalMem : isMemX86 valOp = false := by rw [hvc, hsp]
-      exact wf_store_core dArrOp _ valOp opn hda hdaMem haddr' hval hvalMem
+    cases addr' with
+    | arr _ _ => simp only [opResolved, Bool.false_eq_true] at haddr'
+    | reg n =>
+      cases hsp : valOp.isSpill
+      · simp only [hsp] at hi
+        rw [List.mem_append] at hi
+        rcases hi with hi | hi
+        · exact hpre i hi
+        · rw [List.mem_singleton] at hi; subst hi
+          exact wf_store_core _ _ valOp opn hda hdaMem haddr' hval (by rw [hvc, hsp])
+      · simp only [hsp] at hi
+        rw [List.mem_append] at hi
+        rcases hi with hi | hi
+        · exact hpre i hi
+        · exact hcore _ i hi
+    | imm v =>
+      cases hsp : valOp.isSpill
+      · simp only [hsp] at hi
+        rw [List.mem_append] at hi
+        rcases hi with hi | hi
+        · exact hpre i hi
+        · rw [List.mem_singleton] at hi; subst hi
+          exact wf_store_core _ _ valOp opn hda hdaMem haddr' hval (by rw [hvc, hsp])
+      · simp only [hsp] at hi
+        rw [List.mem_append] at hi
+        rcases hi with hi | hi
+        · exact hpre i hi
+        · exact hcore _ i hi
+    | arrIdx b2 i2 s2 =>
+      cases hsp : valOp.isSpill
+      · simp only [hsp] at hi
+        rw [List.mem_append] at hi
+        rcases hi with hi | hi
+        · exact hpre i hi
+        · rw [List.mem_singleton] at hi; subst hi
+          exact wf_store_core _ _ valOp opn hda hdaMem haddr' hval (by rw [hvc, hsp])
+      · simp only [hsp] at hi
+        by_cases hc : (i2 == reloadScratch) = true
+        · -- index-collision arm: the SIB address is folded into `R14` by a `LEA`,
+          -- then the value goes through `R15` into the flat `mem.R14.0` operand.
+          rw [if_pos hc] at hi
+          rw [List.mem_append] at hi
+          rcases hi with hi | hi
+          · exact hpre i hi
+          · simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
+            rcases hi with hi | hi | hi
+            · subst hi; exact wf_scratch2_dst _ _ haddr'
+            · subst hi; exact wf_scratch_dst valOp _ hval
+            · subst hi; exact wf_scratch_src _ _ scratch2Mem_resolved
+        · rw [if_neg hc] at hi
+          rw [List.mem_append] at hi
+          rcases hi with hi | hi
+          · exact hpre i hi
+          · exact hcore _ i hi
 
 /-- **The full memory-LOAD legalization is WF, including the spilled-SIB-base
     case** (bug class 3 on the address). Given the SIB source's base/index are

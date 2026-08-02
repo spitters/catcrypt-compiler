@@ -15,7 +15,7 @@ The hot scalar primitive of UOV / MAYO public-map evaluation is the GF(2⁸)
 sum of `aᵢ · bᵢ` products over the AES binary field
 `GF(2⁸) = 𝔽₂[x]/(x⁸+x⁴+x³+x+1)` (reduction polynomial `0x11b`), with field
 addition = XOR. This is exactly the arithmetic benchmarked by `pqov` / `MAYO-C`
-(`bench/uov_compare`, `UOV.VerifyOwnedEmit.gf256MulInline`).
+(`bench/uov_compare`, `UOV.VerifyEmit.gf256MulInline`).
 
 This file routes that MAC through the **high** crypto-SSA dialect
 `catCryptDialect`, reusing the committed GF(2⁸) capability:
@@ -289,5 +289,12 @@ def mayoGf256MacJazz : String := emitJazz "mayo_gf256_mac" gf256MacStepJasmin
     orchestrator to `jasminc` + micro-bench. -/
 def emit : IO Unit :=
   IO.FS.writeFile "bench/uov_compare/gen_com/mayo_gf256_mac.s" mayoGf256MacJazz
+
+/-! ## Artifact generation at elaboration
+
+The render is written while this module elaborates, so `lake` produces it from
+this file and no separate driver or Makefile rule carries the dependency. -/
+
+#eval emit
 
 end CatCrypt.Crypto.SecureCompilation.VIR.MayoUovGf256CatCryptEmit

@@ -8,18 +8,18 @@ set_option autoImplicit false
 namespace CatCrypt.Crypto.SecureCompilation.BarrettCompress10Exact
 
 /-- The `polyvec_compress` (du = 10) magic-number form, matching
-    `CompressOwnedEmit.magicCompress10`:
+    `CompressEmit.magicCompress10`:
     `(((x<<10)+1665)·1290167) >> 32 & 0x3ff`. -/
 def magicC10 (x : Nat) : Nat :=
   ((((x <<< 10) + 1665) * 1290167) >>> 32) &&& 1023
 
 /-- The FIPS-203 rounding division for du = 10, matching
-    `CompressOwnedEmit.refDivCompress 10`:
+    `CompressEmit.refDivCompress 10`:
     `(((x<<10)+1664)/3329) & 0x3ff`. -/
 def refC10 (x : Nat) : Nat :=
   (((x <<< 10) + 1664) / 3329) &&& 1023
 
-/-- The load-bearing quotient identity: the round-down reciprocal multiply/shift
+/-- The central quotient identity: the round-down reciprocal multiply/shift
     equals the true rounding division, for every coefficient `x ∈ [0, 3329)`.
     `1290167 = ⌊2^32/3329⌋`, `3329·1290167 = 2^32 − 1353`. -/
 theorem magic10_quot (x : Nat) (hx : x < 3329) :

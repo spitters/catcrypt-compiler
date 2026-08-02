@@ -54,7 +54,7 @@ X25519 ladder), and routes it through the verified optimizer:
   the validated Jasmin machine model (`X86Dialect.lowerBlock_denote_closed`),
   and `mem2reg` is denotation-preserving (`Mem2Reg.mem2reg_runBlock_agree`).
 
-This is the **keystone**: it demonstrates the verified spilling RA fires on the
+This is the case where the verified spilling RA fires on the
 SHA-2 op shape (`mov/add/and/or/xor/shl/shr/loadMem/storeMem`), which the
 `jasminc`-backed emit cannot reach.
 
@@ -114,7 +114,7 @@ We author the whole round as named value bindings (`t0, t1, …`) with the eight
 working words loaded once from their cells and the result words stored back —
 the *frame-resident SSA-scratch* shape `mem2reg` promotes and `spillAlloc`
 places. Every name is distinct (single-def), so the peak live set is large and
-the spilling allocator is genuinely exercised. -/
+the spilling allocator is exercised. -/
 
 /-- `rotr` of a 32-bit value in 64-bit regs: `dst = (src >>> n) | (src <<< (32-n))`. -/
 def rotr32 (dst tmp src : String) (n : Nat) : List (JInstr 64) :=
@@ -385,7 +385,7 @@ theorem roundBodyLines_no_unallocated :
   native_decide
 
 /-- The emitted body is **95** lines: 81 instruction lines + the reload/store traffic
-    for the **two genuine** spilled compute names (`a`, `b`). Note this is fewer than
+    for the two spilled compute names (`a`, `b`). Note this is fewer than
     the `113` of `sha256Round_spill_traffic` (`spillReloadBlock`'s count): the oblivious
     `spillAlloc` nominally marks the read-only frame base `fp` as a third spill (offset
     `0`), but `fp` is pinned to `%rbp` and must NOT be reloaded/stored (a reload would
@@ -821,7 +821,7 @@ def emitGcMain512 : IO Unit := do
 /-! ## 8. Full SHA-256 / SHA-512 compress: the 64/80-round wrapper (#555)
 
 §1–7 author and RA **one** FIPS round in isolation, which is the verified
-keystone but not a full-message FIPS KAT target on its own. This section wraps
+round core but not a full-message FIPS KAT target on its own. This section wraps
 the round into the complete compression function — the message schedule + all
 rounds + the feed-forward — so the orchestrator can `rdtsc` a full
 `sha256_compress` / `sha512_compress` and run the FIPS-180-4 known-answer test.
@@ -851,7 +851,7 @@ for free because its Jasmin words are `reg u32`; here the masking is **explicit*
 shifts are correct in the low 32 bits regardless of the high bits, and additions
 carry only *upward*, so masking the four 32-bit **outputs** (`new a`, `new e`,
 and each schedule word `W[t]`) suffices to keep every value a faithful 32-bit
-word. SHA-512 is a genuine 64-bit algorithm, so its outputs need no mask
+word. SHA-512 is a 64-bit algorithm, so its outputs need no mask
 (`maskW … 64` is the identity and is elided).
 
 ### What is verified vs. trusted here
@@ -1164,5 +1164,18 @@ def emitCompressMain : IO Unit := do
     "bench/sha2_linear_compare/gen_ra/sha512_compress_ra_x86_from_lean.s"
     sha512CompressAsm
   IO.println "wrote gen_ra/sha512_compress_ra_x86_from_lean.s (verified-RA full 80-round SHA-512 compress)"
+
+/-! ## Artifact generation at elaboration
+
+The six `gen_ra` renders are written while this module elaborates, so `lake`
+produces them from this file and no separate driver or Makefile rule carries the
+dependency. The output directory is gitignored: the renders are build outputs,
+obtained by building this module. -/
+
+#eval emitMain
+#eval emitGcMain
+#eval emitMain512
+#eval emitGcMain512
+#eval emitCompressMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.Sha256RoundRegAlloc

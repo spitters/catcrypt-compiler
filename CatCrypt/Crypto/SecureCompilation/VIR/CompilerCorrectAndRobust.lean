@@ -38,16 +38,16 @@ agreement), `StraightLine c`, and `RobustlyCTSafe c` (the source program's
 Com-level constant-time, discharged per-route — e.g. `robustCTPreservation_uncond`
 for the lattice route).
 
-## Scope (honest)
+## Scope
 
 This is the **`Com`-waist** statement: it is about any emitted `Com jasminDialect`
 program, which is what every frontend produces and every backend route consumes.
 The lattice route's `robustCompilation_source_to_x86` is the instance where
 `RobustlyCTSafe` is discharged unconditionally; the owned scalar route
-(`X86Backend/OwnedCorrectAndRobust`) is the instance where the `JasminIRToX86` edge
+(`X86Backend/CorrectAndRobust`) is the instance where the `JasminIRToX86` edge
 is the owned encoder and the whole triple is axiom-free of `jasminc_preserves_ct`;
 the algebraic arms (`VIR/DialectLoweringCorrectAndRobust`) supply the Field/ModArith/EC
-source programs and their CT. The remaining genuine residuals are the per-route
+source programs and their CT. The remaining residuals are the per-route
 `RobustlyCTSafe` discharge and the cross-arch (`ARM`/`RISC-V`) value edges.
 -/
 

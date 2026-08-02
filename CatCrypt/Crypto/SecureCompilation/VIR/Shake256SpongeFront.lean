@@ -11,7 +11,7 @@ import CatCrypt.Crypto.SecureCompilation.VIR.QuerySampleBranchFront
 /-!
 # Front schedule language for the variable-length SHAKE256 sponge
 
-The deployed `Shake256SpongeOwnedEmit.shake256Body` is a variable-length FIPS-202
+The deployed `Shake256SpongeEmit.shake256Body` is a variable-length FIPS-202
 SHAKE256 sponge — a runtime-`N` absorb loop, a byte-granular tail with the
 `pad10*1` domain pad, and a runtime-`N` squeeze loop — over the owned
 Keccak-f[1600] permutation. It was previously below every landed front. This
@@ -29,7 +29,7 @@ pieces the session's two front-landings and the sponge-flip provide:
   = `MOV:8`) and a byte **XOR-into-cell** (`xorMemB` = `XOR:8`, a read-modify-write
   of `state[i] ^= in[i]`), plus the SHAKE `0x1f`/`0x80` pad XORs and the squeeze's
   byte copy store (`storeB` = `MOV:8`). The landed byte-cell front
-  (`Plonky3SerializeOwnedEmit.serByteStore`, `MemrefOp.store 8 n`) supplies a
+  (`Plonky3SerializeEmit.serByteStore`, `MemrefOp.store 8 n`) supplies a
   width-exact *pure store* (a SIB `STOREIDX` scale 1 = `movb`); the sponge's tail
   is the **XOR read-modify-write** of a byte cell, one step past a pure store, so
   its byte ops are rendered here as the owned `MOV:8`/`XOR:8` byte forms (a
@@ -324,7 +324,7 @@ def wellFormedSponge (steps : List SpStep) : Bool :=
 
 /-- The deployed SHAKE256 layout (rate 136 / 17 lanes, capacity 512, state at
     frame offset 8, `0x1f`/`0x80` pad, frame 264) — the concrete configuration the
-    `Shake256SpongeOwnedEmit` deploy passes and the generation-gate / shape
+    `Shake256SpongeEmit` deploy passes and the generation-gate / shape
     theorems witness. -/
 def demoCfg : SpongeConfig :=
   { rate := 136, rateWords := 17, stateOff := 8, dsByte := 0x1f, padBit := 0x80

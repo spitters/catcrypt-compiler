@@ -8,6 +8,8 @@ import CatCrypt.Crypto.SecureCompilation.VIR.Core
 /-!
 # VIR example: a tiny arithmetic dialect
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 Smoke-tests the VIR framework with a single-type, three-op dialect:
 `add`, `mul`, `const`. Shows that `Dialect` / `DialectSignature` /
 `DialectDenote` / `Expr` / `Com` work end-to-end.

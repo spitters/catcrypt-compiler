@@ -38,7 +38,7 @@ over the flag machine, at both region shapes B2 pinned to the lowering.
 
 Regions nest to arbitrary depth (the block tree is the depth index), and the
 spec fold (`runFB`/`runFBsL`/`runFRegionF`) runs a region as a data-dependent
-do-while whose back-edge decision is a **genuine counter read** (`getW`) — the
+do-while whose back-edge decision is a **counter read** (`getW`) — the
 emitted `CMP` evaluates its operand, so the guard-equivalence direction of B2
 (`zf`-after-`CMP` = ¬`condNZ`) is used per taken/exit decision.
 
@@ -84,10 +84,8 @@ SPEC fold, which equals `ComL.denote` = `ggmNestedFold` at the GGM small sizes
 zero-trip (`num = 1`: every inner trip `0`) cases.
 
 **0 sorries; axioms ⊆ {propext, Classical.choice, Quot.sound}** for the segment
-lemma and the closed theorems (+ the `aesSboxArrayW_size` `native_decide`
-inherited by statements mentioning the `jasminDialect` denotation, as in B4/B5;
-+ `Lean.ofReduceBool` for the `native_decide` SPEC-fold evaluations in the
-validate).
+lemma and the closed theorems (+ `Lean.ofReduceBool` for the `native_decide`
+SPEC-fold evaluations in the validate).
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagNestJoin
@@ -426,7 +424,7 @@ end
   rw [FBlocksResolve]
 
 /-! ## 3. The spec fold: straight blocks via `runStraightF`, regions as
-data-dependent do-whiles with a GENUINE counter read
+data-dependent do-whiles with a counter read
 
 `runFRegionF nReg body q` is the do-while from the top of a region's body
 (pc `q`): run the body blocks (flag threaded), READ the counter (`getW` — the
@@ -704,7 +702,7 @@ The joint statement at back-edge budget `wf`, proved by a fresh strong
 induction on `wf` mirroring B5's `segCore` — the CMP step is absorbed into each
 back-edge decision (fetch the `CMP`, materialise `zf = (counter == 0)`, then
 the `Lcond NZ`/`Z` reads it; B2's `zf_after_cmp_eq_not_condNZ` content, applied
-here as the two `by_cases` arms on the genuine counter read). -/
+here as the two `by_cases` arms on the counter read). -/
 
 /-- The block-list segment lemma at budget `wf` (the induction carrier). -/
 def SegFBlocksAt (P : LprogM) (wf : Nat) : Prop :=
@@ -1456,7 +1454,7 @@ theorem findLabelMem_guarded_top (top endL : LLabel) (nReg : String)
     `forLoopLcmdNRt_guard` / `forLoopLcmdNRt_backedge`) — run as a singleton
     program from pc 0 with a NONZERO runtime count:
 
-    the guard `CMP` reads the counter (genuinely — `some v0`, `v0 ≠ 0`), the
+    the guard `CMP` reads the counter (`some v0`, `v0 ≠ 0`), the
     `Lcond Z` falls through, and given the counter schedule over the extended
     bounded fold `runBoundedStraightF body 3` **at the shifted base** (pc 3 —
     the loop top of the guarded shape), the machine halts past the skip label

@@ -464,13 +464,9 @@ def monoStepAsm : String :=
     monoStepBodyLines
     [ "\tpopq %rbp", "\tpopq %r15", "\tpopq %r14", "\tpopq %r13", "\tpopq %r12", "\tpopq %rbx", "\tret" ]
 
-/-- Shape check: the emitted body contains MULX (from the multiplies) and the
+/- Shape check: the emitted body contains MULX (from the multiplies) and the
     fused-cmadd `$121666` immediate, and is a single function (one `.globl`). -/
-theorem monoStepAsm_shape :
-    BignumMontMulKernel.hasSub monoStepAsm "mulxq"
-      ∧ BignumMontMulKernel.hasSub monoStepAsm "$121666"
-      ∧ BignumMontMulKernel.hasSub monoStepAsm "x25519_mono_step" := by
-  native_decide
+#guard (BignumMontMulKernel.hasSub monoStepAsm "mulxq") && (BignumMontMulKernel.hasSub monoStepAsm "$121666") && (BignumMontMulKernel.hasSub monoStepAsm "x25519_mono_step")
 
 /-- Emit driver: write the monolithic-step `.s` file for the bench harness. -/
 def emitMain : IO Unit := do
@@ -478,5 +474,12 @@ def emitMain : IO Unit := do
   IO.FS.writeFile
     "bench/x25519_ladder_compare/gen_com/x25519_mono_step_x86_from_lean.s" monoStepAsm
   IO.println "wrote gen_com/x25519_mono_step_x86_from_lean.s (monolithic inlined ladder step)"
+
+/-! ## Artifact generation at elaboration
+
+The render is written while this module elaborates, so `lake` produces it from
+this file and no separate driver or Makefile rule carries the dependency. -/
+
+#eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.X25519MonoLadderKernel

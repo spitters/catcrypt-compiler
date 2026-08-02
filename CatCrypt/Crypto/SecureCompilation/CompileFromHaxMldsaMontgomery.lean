@@ -26,7 +26,7 @@ int32_t montgomery_reduce(int64_t a) {
 The final `>> 32` is the **arithmetic** (sign-preserving) shift of a signed
 `int64`. Like the Barrett `reduce32` quotient estimate (`CompileFromHaxMldsaReduce32`),
 this cannot be realised by the logical `>>>`: the quotient `(a − t·q) / 2³²` must
-round toward `−∞` for negative arguments, i.e. it is genuinely
+round toward `−∞` for negative arguments, i.e. it is
 `BitVec.sshiftRight`, not `>>>`. This is exactly the surface the front op
 `arith_shift_right` (`ShiftKind.sar`, `Rhs.sarImm`, denoting `BitVec.sshiftRight`,
 commit #606/#605) unblocks.
@@ -34,14 +34,14 @@ commit #606/#605) unblocks.
 The `(int32_t)t` truncation is the standard `shl 32; sar 32` sign-extend pair:
 multiply gives the full 64-bit product `a·QINV`; shifting the low 32 bits up to
 bit 63 and arithmetically shifting back down sign-extends the low `int32` into the
-`BitVec 64` word — exactly the owned `PolyOwnedEmit` `pointwise` realisation
+`BitVec 64` word — exactly the owned `PolyEmit` `pointwise` realisation
 (`imul QINV; shl 32; sar 32`). All other ops (`wrapping_mul`, `shift_left`,
 `wrapping_sub`) are the SHA-256/Keccak/BLAKE2/SDitH recognizers already in place.
 
 ## Width `w = 64`
 
 The argument `a` is the signed `int64` product (carried as a `BitVec 64`, the owned
-`PolyOwnedEmit` convention). `BitVec.sshiftRight _ 32` is faithful to C's signed
+`PolyEmit` convention). `BitVec.sshiftRight _ 32` is faithful to C's signed
 `int64 >> 32` on this word: the sign bit lives in bit 63 and `sshiftRight`
 replicates it. The `(int32)` truncation `(t0 <<< 32) >>ₐ 32` keeps only the low 32
 bits sign-extended, matching the C `(int32_t)` cast.
@@ -59,7 +59,7 @@ per-primitive obligation `compileFromHax_meets_spec`. The emitted jasmin `Com` i
 denotes `BitVec.sshiftRight`, matching the form.
 
 The abstract Montgomery congruence (`montgomery_reduce(a) ≡ a·R⁻¹ (mod q)`, i.e.
-`a − r·2³²` is a multiple of `q`) is the genuine signed-Montgomery identity. We
+`a − r·2³²` is a multiple of `q`) is the signed-Montgomery identity. We
 state it in the exact multiple-of-`q` form `montgomery_reduce` removes
 (`a − form·2³² = t·q`, mirroring how `reduce32` stated its tie) and prove it by
 pure-BitVec `bv_decide`; the form-level `_compiles` is the primary deliverable and

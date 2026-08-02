@@ -21,7 +21,7 @@ kernels, framed by the principled SysV ABI layer (`renderSysVLeafFn`, #464).
 It is the SM2 analog of the BN254 field-multiply: four CIOS iterations over a
 256-bit prime.
 
-## The SM2 modulus + Montgomery constant (canonical, NOT fabricated)
+## The SM2 modulus and Montgomery constant
 
 The SM2 base-field prime is
 
@@ -30,8 +30,7 @@ The SM2 base-field prime is
 Its four little-endian 64-bit limbs are
 `[0xffffffffffffffff, 0xffffffff00000000, 0xffffffffffffffff, 0xfffffffeffffffff]`.
 
-These limbs are **sourced from the vendored s2n-bignum SM2 sources**, not
-fabricated:
+These limbs come from the vendored s2n-bignum SM2 sources:
 
 * `bench/reference_install/s2n-bignum/x86/sm2/bignum_mod_sm2_4.S` documents the
   modulus directly as `[n3; -1; n1; -1] = p_sm2` with
@@ -48,23 +47,24 @@ have `p ≡ −1 (mod 2^64)`, hence the Montgomery constant
 
     n′ = −p⁻¹ (mod 2^64) = 1.
 
-This matches the vendored `bignum_montmul_sm2.S` `montreds` macro, whose short
-Montgomery reduction takes the Montgomery factor `m = d0` (the `n′ = 1` step)
-and folds `m · p_sm2` via the `2^32`-shift identity for this Solinas prime.
+The Montgomery factor of a CIOS row is therefore the low accumulator word
+itself, `m = t0`, and the fold of `m · p_sm2` needs no multiply. Writing
+`L = m ≪ 32` and `H = m ≫ 32` (so `m · 2^32 = L + H·2^64` as a 128-bit value),
 
-We use the standard generic CIOS Montgomery reduce (with `n′ = 1`) rather than
-the prime-specific shift-and-subtract fast path: it is the same owned-backend
-ADX idiom already verified for BN254/BLS12-381, and correctness is gated by the
-external GMP KAT. The Solinas `2^32`-shift fast path (as in the vendored
-`montreds`) is a follow-on perf optimization, not a correctness change.
+    m · p_sm2 = m·2^256 − (L + H·2^64)·2^192 − (L + H·2^64)·2^64 + m·2^64 − m,
+
+and the two middle terms at word position 1 combine into the single 128-bit
+value `m·(2^32 − 1) = (L + H·2^64) − m`. The reduce is then one `shl`/`shr`
+pair, one `sub`/`sbb` forming that 128-bit value, and one borrow chain across
+the accumulator — the `montreds` macro of the vendored `bignum_montmul_sm2.S`.
 
 ## What is proved / gated here
 
 * `sm2MontMulBlock_lowering_correct`: lowering the block to `Com (x86Dialect 64)`
   and denoting it on the init state equals `runBlock` on the source block — the
   owned backend's straight-line lowering is denotation-preserving across the
-  `loadMem`/`mulxMem`/`mulx`/`adcx`/`adox`/`imul`/`sub`/`sbb`/`cmovb`/`storeMem`
-  mix.
+  `loadMem`/`mulxMem`/`adcx`/`adox`/`shl`/`shr`/`add`/`adc`/`sub`/`sbb`/`cmovb`/
+  `storeMem` mix.
 * `sm2MontMulAlloc_no_overflow`: the first-fit allocator assigns every register
   name a distinct pool register (no silent `%rax`-alias, the #380 class).
 * `sm2MontMulBlock_constant_time`: the body is straight-line all-direct
@@ -116,16 +116,15 @@ Register names (within the 14-GP budget — four-limb window):
 * `z`/`x`/`y` — the result and operand base pointers (`z`→`%rdi`, `x`→`%rsi`,
   `y` arrives in `%rdx` and is moved to a free register in the prologue —
   `%rdx` is reserved for the `MULX`/`mulx` multiplier).
-* `yd` — the running multiplier, pinned to `%rdx`; reloaded with `b[i]` (the
-  `MAC` phase) then with the Montgomery factor `m = t0·n′ mod 2^64` (the reduce
-  phase) per row.
+* `yd` — the running multiplier, pinned to `%rdx`; reloaded with `b[i]` for the
+  `MAC` phase of each row, and reused as a `montreds` temporary in the reduce.
 * `t0..t5` — the six-word CIOS accumulator window (`n+2` words for `n = 4`: the
-  `T += a·b[i]` and `T += m·p` adds can each carry out of limb `n` into limb
+  `T += a·b[i]` and `T += m·p` folds can each carry out of limb `n` into limb
   `n+1 = t5`).
-* `lo`/`hi` — the `MULX` product scratch (`hi` also stages the immediate `n′`
-  and `p[j]` operands for the reduce).
-* `zr` — a zero register, used for the zero-extend carry folds and to clear
-  CF/OF (`xor zr, zr`) between chains. -/
+* `lo`/`hi` — the `MULX` product scratch, and the `montreds` shift pair
+  (`L = m ≪ 32`, `H = m ≫ 32`) in the reduce.
+* `zr` — a zero register for the zero-extend carry folds and to clear CF/OF
+  (`xor zr, zr`) between chains, and the fourth `montreds` temporary. -/
 
 /-- One CIOS MAC step on column `j` (`0 < j < 4`): `mulx hi,lo = a[j]·yd`, then
     `adcx t_j ← lo` (CF chain) and `adox t_{j+1} ← hi` (OF chain). -/
@@ -133,89 +132,95 @@ def macStep (tlo thi : String) (j : Nat) : List (JInstr 64) :=
   [ .mulxMem "hi" "lo" (.reg "yd") "x" (8 * j)
   , .adcx tlo (.reg "lo"), .adox thi (.reg "hi") ]
 
-/-- One CIOS reduce step on column `j` (`0 < j < 4`): `mulx hi,lo = p[j]·m`
-    (`yd` holds `m`), then the low word adds at limb `j` (`adcx t_j ← lo`, CF
-    chain) and the high word at limb `j+1` (`adox t_{j+1} ← hi`, OF chain).
-    `p[j]` is staged into `hi` first since `mulx` needs a register src2. -/
-def redStep (tlo thi : String) (j : Nat) : List (JInstr 64) :=
-  [ .mov "hi" (.imm (pLimbs[j]!))
-  , .mulx "hi" "lo" (.reg "yd") (.reg "hi")
-  , .adcx tlo (.reg "lo"), .adox thi (.reg "hi") ]
+/-- The short Montgomery reduction of `p_sm2` (`montreds`): fold `m · p_sm2`
+    into the six accumulator words `u0..u5`, with the Montgomery factor
+    `m = u0` (`n′ = 1`) and no multiply.
 
-/-- One CIOS iteration on multiplier word `b[i]`.
+    `lo`/`hi` receive the shift pair `L = m ≪ 32`, `H = m ≫ 32`, copied to
+    `yd`/`zr`; `sub lo, u0` / `sbb hi, 0` then turns `[hi:lo]` into the 128-bit
+    `m·(2^32 − 1) = m·2^32 − m`. The fold is
+
+    * `+ m` at limb 4 (`m·2^256`), carrying into limb 5;
+    * `− m·(2^32 − 1)` at limbs 1–2 (`− m·2^96 + m·2^64`), `− L` at limb 3 and
+      `− H` at limb 4 (`− m·2^224`), one borrow chain ending at limb 5;
+    * `− m` at limb 0, which cancels `u0` exactly and borrows nothing, so it is
+      not emitted — limb 0 leaves the window. -/
+def montreds (u0 u1 u2 u3 u4 u5 : String) : List (JInstr 64) :=
+  [ .mov "lo" (.reg u0), .shl "lo" (.imm 32)
+  , .mov "hi" (.reg u0), .shr "hi" (.imm 32)
+  , .mov "yd" (.reg "lo"), .mov "zr" (.reg "hi")
+  , .sub "lo" (.reg u0), .sbb "hi" (.imm 0)
+  , .add u4 (.reg u0), .adc u5 (.imm 0)
+  , .sub u1 (.reg "lo"), .sbb u2 (.reg "hi")
+  , .sbb u3 (.reg "yd"), .sbb u4 (.reg "zr"), .sbb u5 (.imm 0) ]
+
+/-- The accumulator register holding limb `j` of the window during iteration `i`.
+    The window shifts down by one limb per iteration; rotating the six names
+    instead of copying the words realises the shift with no `mov`. -/
+def tName (i j : Nat) : String := "t" ++ toString ((i + j) % 6)
+
+/-- One CIOS iteration on multiplier word `b[i]`, over the rotated window
+    `uⱼ = tName i j`.
 
     Phase A (MAC, `T += a·b[i]`): clear CF/OF, load `yd ← b[i]`, the first `MULX`
-    `a[0]·b[i]` lands `(lo,hi)`; `adcx t0 ← lo`, `adox t1 ← hi`, then `macStep`
+    `a[0]·b[i]` lands `(lo,hi)`; `adcx u0 ← lo`, `adox u1 ← hi`, then `macStep`
     for `j = 1..3`, finally fold the top carries into the window top.
 
-    Phase B (factor): `m = t0·n′ (mod 2^64)` computed straight into `yd`
-    (=`%rdx`); since `n′ = 1` this is `m = t0`, computed by the generic `imul`
-    sequence (`yd ← t0`, `yd ← yd·n′`) so the schedule is uniform with the other
-    CIOS kernels.
+    Phase B (reduce, `T += m·p`): `montreds` with `m = u0` (`n′ = 1`). Limb 0 is
+    zero afterwards and becomes limb 5 of iteration `i+1` under the name
+    rotation, so the iteration ends by clearing `u0`.
 
-    Phase C (reduce, `T += m·p`, then shift down): clear CF/OF; the first
-    `mulx p[0]·m` adds into `t0` (`t0` becomes `≡ 0 (mod 2^64)` by the choice of
-    `m`), `adox t1 ← hi`; then `redStep` for `j = 1..3`; the five-`mov` rotation
-    `t0←t1, …, t4←t5, t5←0` shifts the window down.
-
-    **Six-word accumulator window `t0..t5`.** A faithful CIOS needs `n+2 = 6`
-    accumulator words for `n = 4`: each `T += …` adds a `≤ n+1`-word value to an
-    `≤ n+1`-word running window, and the sum can spill into limb `n+1` (`t5`).
-    The top column's high word (`adox tₙ₊₁ ← (·)ₕᵢ`) and the CF-chain tail can
-    both carry *out* of `t4`; those final carries must land in `t5`, not be
-    folded back into `t4`. So each phase ends with
-    `adcx t4 ← 0; adcx t5 ← 0; adox t5 ← 0` — the `adcx t4 ← 0` folds the CF
-    chain into `t4`, `adcx t5 ← 0` captures `t4`'s carry-out, and `adox t5 ← 0`
-    captures the OF-chain terminal carry (out of the `adox t4 ← hi` of the top
-    column) into `t5`. The window then rotates `t4 ← t5`. (An earlier 5-word
-    window folded both tail carries back into `t4`; the limb-`n+1` carry was
-    dropped, producing the small high/middle-limb KAT diffs.) -/
+    **Six-word accumulator window.** A faithful CIOS needs `n+2 = 6` accumulator
+    words for `n = 4`: each `T += …` adds a `≤ n+1`-word value to an `≤ n+1`-word
+    running window, and the sum can spill into limb `n+1` (`u5`). The top
+    column's high word (`adox uₙ₊₁ ← (·)ₕᵢ`) and the CF-chain tail can both carry
+    *out* of `u4`; those final carries land in `u5`, not folded back into `u4`.
+    So Phase A ends with `adcx u4 ← 0; adcx u5 ← 0; adox u5 ← 0` — the
+    `adcx u4 ← 0` folds the CF chain into `u4`, `adcx u5 ← 0` captures `u4`'s
+    carry-out, and `adox u5 ← 0` captures the OF-chain terminal carry (out of the
+    `adox u4 ← hi` of the top column) into `u5`. -/
 def ciosIter (i : Nat) : List (JInstr 64) :=
+  let u0 := tName i 0; let u1 := tName i 1; let u2 := tName i 2
+  let u3 := tName i 3; let u4 := tName i 4; let u5 := tName i 5
   -- Phase A: MAC  T += a·b[i]
   [ .xor_ "zr" (.reg "zr")          -- clear CF and OF
   , .loadMem "yd" "y" (8 * i)
   , .mulxMem "hi" "lo" (.reg "yd") "x" 0
-  , .adcx "t0" (.reg "lo"), .adox "t1" (.reg "hi") ]
-  ++ macStep "t1" "t2" 1
-  ++ macStep "t2" "t3" 2
-  ++ macStep "t3" "t4" 3
-  -- fold the CF chain into t4, then push both tail carries into t5
-  ++ [ .adcx "t4" (.reg "zr"), .adcx "t5" (.reg "zr"), .adox "t5" (.reg "zr") ]
-  -- Phase B: m = t0 * n' mod 2^64, computed straight into the multiplier yd
-  ++ [ .mov "yd" (.reg "t0"), .mov "hi" (.imm nPrime), .imul "yd" (.reg "hi") ]
-  -- Phase C: reduce  T += m*p ; t0 cancels; window shifts down
-  ++ [ .xor_ "zr" (.reg "zr")
-     , .mov "hi" (.imm (pLimbs[0]!))
-     , .mulx "hi" "lo" (.reg "yd") (.reg "hi")
-     , .adcx "t0" (.reg "lo"), .adox "t1" (.reg "hi") ]
-  ++ redStep "t1" "t2" 1
-  ++ redStep "t2" "t3" 2
-  ++ redStep "t3" "t4" 3
-  -- fold the CF chain into t4, then push both tail carries into t5 (t5 already
-  -- holds the Phase-A overflow; adcx/adox accumulate onto it)
-  ++ [ .adcx "t4" (.reg "zr"), .adcx "t5" (.reg "zr"), .adox "t5" (.reg "zr")
-     -- window shift: t0←t1, t1←t2, t2←t3, t3←t4, t4←t5, t5←0
-     , .mov "t0" (.reg "t1"), .mov "t1" (.reg "t2"), .mov "t2" (.reg "t3")
-     , .mov "t3" (.reg "t4"), .mov "t4" (.reg "t5"), .mov "t5" (.imm 0) ]
+  , .adcx u0 (.reg "lo"), .adox u1 (.reg "hi") ]
+  ++ macStep u1 u2 1
+  ++ macStep u2 u3 2
+  ++ macStep u3 u4 3
+  -- fold the CF chain into u4, then push both tail carries into u5
+  ++ [ .adcx u4 (.reg "zr"), .adcx u5 (.reg "zr"), .adox u5 (.reg "zr") ]
+  -- Phase B: reduce  T += m*p with m = u0 ; u0 cancels and becomes the next
+  -- iteration's top limb
+  ++ montreds u0 u1 u2 u3 u4 u5
+  ++ [ .mov u0 (.imm 0) ]
 
 /-- The final branch-free conditional subtract of `p_sm2` and store of the four
-    result words to `z[0..3]`. After four CIOS iterations the accumulator
-    `t0..t3` holds the low four words of a value in `[0, 2p)` and `t4` its
-    (`0`/`1`) carry word (the post-shift `t5`); trial-subtract `p_sm2`
-    (immediates) staging each trial word in the stack scratch frame `sp[0..3]`,
-    then `sbb t4, 0` threads the borrow through the carry word. If the final
-    borrow `CF = 1` (i.e. `t < p`) `cmovb` keeps the original `tj`; else the
-    trial word in scratch is kept. -/
+    result words to `z[0..3]`. After four CIOS iterations limbs `0..3` of the
+    window (`tName 4 0 .. tName 4 3`) hold the low four words of a value in
+    `[0, 2p)` and limb 4 its (`0`/`1`) carry word; trial-subtract `p_sm2`
+    (immediates staged through `hi`, since `sub`/`sbb` take a register source
+    for a full 64-bit operand), then `sbb, 0` threads the borrow through the
+    carry word. If the final borrow `CF = 1` (i.e. `t < p`) `cmovb` restores the
+    original limb over the trial word; otherwise the trial word is stored.
+
+    The operand pointers `x`/`y`, the `MULX` multiplier `yd` and the zero
+    register `zr` are dead once the last CIOS iteration has run, so they carry
+    the four trial words and the reduce needs no memory. -/
 def sm2FinalReduce : List (JInstr 64) :=
-  [ .mov "lo" (.reg "t0"), .mov "hi" (.imm (pLimbs[0]!)), .sub "lo" (.reg "hi"), .storeMem "sp" 0  (.reg "lo")
-  , .mov "lo" (.reg "t1"), .mov "hi" (.imm (pLimbs[1]!)), .sbb "lo" (.reg "hi"), .storeMem "sp" 8  (.reg "lo")
-  , .mov "lo" (.reg "t2"), .mov "hi" (.imm (pLimbs[2]!)), .sbb "lo" (.reg "hi"), .storeMem "sp" 16 (.reg "lo")
-  , .mov "lo" (.reg "t3"), .mov "hi" (.imm (pLimbs[3]!)), .sbb "lo" (.reg "hi"), .storeMem "sp" 24 (.reg "lo")
-  , .sbb "t4" (.imm 0)   -- top word; CF = final borrow; CF=1 ⇒ t < p ⇒ keep originals
-  , .loadMem "hi" "sp" 0,  .cmovb "hi" (.reg "t0"), .storeMem "z" 0  (.reg "hi")
-  , .loadMem "hi" "sp" 8,  .cmovb "hi" (.reg "t1"), .storeMem "z" 8  (.reg "hi")
-  , .loadMem "hi" "sp" 16, .cmovb "hi" (.reg "t2"), .storeMem "z" 16 (.reg "hi")
-  , .loadMem "hi" "sp" 24, .cmovb "hi" (.reg "t3"), .storeMem "z" 24 (.reg "hi") ]
+  let u0 := tName 4 0; let u1 := tName 4 1; let u2 := tName 4 2
+  let u3 := tName 4 3; let u4 := tName 4 4
+  [ .mov "x"  (.reg u0), .mov "hi" (.imm (pLimbs[0]!)), .sub "x"  (.reg "hi")
+  , .mov "y"  (.reg u1), .mov "hi" (.imm (pLimbs[1]!)), .sbb "y"  (.reg "hi")
+  , .mov "yd" (.reg u2), .mov "hi" (.imm (pLimbs[2]!)), .sbb "yd" (.reg "hi")
+  , .mov "zr" (.reg u3), .mov "hi" (.imm (pLimbs[3]!)), .sbb "zr" (.reg "hi")
+  , .sbb u4 (.imm 0)   -- top word; CF = final borrow; CF=1 ⇒ t < p ⇒ keep originals
+  , .cmovb "x" (.reg u0), .cmovb "y" (.reg u1)
+  , .cmovb "yd" (.reg u2), .cmovb "zr" (.reg u3)
+  , .storeMem "z" 0 (.reg "x"),  .storeMem "z" 8  (.reg "y")
+  , .storeMem "z" 16 (.reg "yd"), .storeMem "z" 24 (.reg "zr") ]
 
 /-- The full CIOS Montgomery multiply body: zero the accumulator, four CIOS
     iterations, then the final conditional subtract + store. A concrete flat
@@ -272,11 +277,12 @@ theorem sm2MontMulBlock_constant_time (s₁ s₂ : JState 64) :
     blockLeak s₁ sm2MontMulBlock = blockLeak s₂ sm2MontMulBlock :=
   allDirect_constant_time sm2MontMulBlock sm2MontMulBlock_allDirect s₁ s₂
 
-/-! ## 6. AT&T assembly emission (reg-ptr ABI + small stack scratch frame) -/
+/-! ## 6. AT&T assembly emission (reg-ptr ABI) -/
 
-/-- Pin pointers + the `MULX` multiplier `yd`→`%rdx` + scratch base `sp`→`%rbp`. -/
+/-- Pin the pointers `z`→`%rdi`, `x`→`%rsi` and the `MULX` multiplier
+    `yd`→`%rdx`. -/
 def sm2MontMulPinned : GpAlloc :=
-  [("z", "%rdi"), ("x", "%rsi"), ("yd", "%rdx"), ("sp", "%rbp")]
+  [("z", "%rdi"), ("x", "%rsi"), ("yd", "%rdx")]
 
 /-- First-fit allocation over the full block. -/
 def sm2MontMulAlloc : GpAlloc := allocGp sm2MontMulPinned sm2MontMulBlock
@@ -290,18 +296,15 @@ theorem sm2MontMulAlloc_no_overflow :
 def sm2MontMulAsmBody : List String := renderBlockBody sm2MontMulAlloc sm2MontMulBlock
 
 /-- The full emitted leaf `sm2_mont_mul_x86_from_lean(z, x, y)`. The prologue
-    saves callee regs, carves a 32-byte scratch frame, points `%rbp` at it, and
-    moves the `y` pointer out of `%rdx`. Frame alloc/restore is trusted ABI
+    saves the callee-saved registers and moves the `y` pointer out of `%rdx`
+    (reserved for the `MULX` multiplier). Save/restore is trusted ABI
     scaffolding outside the `runBlock`-verified body. -/
 def sm2MontMulAsm : String :=
   renderLeafFn "sm2_mont_mul_x86_from_lean"
     [ "\tpushq %rbx", "\tpushq %r12", "\tpushq %r13", "\tpushq %r14", "\tpushq %r15"
-    , "\tpushq %rbp"
-    , "\tsubq $32, %rsp", "\tmovq %rsp, %rbp"
     , "\tmovq %rdx, " ++ regOf sm2MontMulAlloc "y" ]
     sm2MontMulAsmBody
-    [ "\taddq $32, %rsp"
-    , "\tpopq %rbp", "\tpopq %r15", "\tpopq %r14", "\tpopq %r13", "\tpopq %r12"
+    [ "\tpopq %r15", "\tpopq %r14", "\tpopq %r13", "\tpopq %r12"
     , "\tpopq %rbx", "\tret" ]
 
 /-- Local substring test (`needle` occurs in `hay`). -/
@@ -309,19 +312,12 @@ def hasSub (hay needle : String) : Bool :=
   (List.range (hay.length + 1)).any (fun i =>
     needle == String.ofList (hay.toList.drop i |>.take needle.length))
 
-/-- Shape check: the emitted asm contains the dual carry-chain CIOS idiom
-    (`mulx`, `adcx`, `adox`, `imul` for the Montgomery factor), the
-    memory-operand `MULX` reads the multiplicand from `[x]` (`mulxq 0(%rsi)`),
-    the result stores print in AT&T form (`(%rdi)`), and the `%rdx`-pinned
-    multiplier is the `MULX` src1. -/
-theorem sm2MontMulAsm_shape :
-    hasSub sm2MontMulAsm "mulx"
-      ∧ hasSub sm2MontMulAsm "adcx"
-      ∧ hasSub sm2MontMulAsm "adox"
-      ∧ hasSub sm2MontMulAsm "imul"
-      ∧ hasSub sm2MontMulAsm "mulxq 0(%rsi)"
-      ∧ hasSub sm2MontMulAsm "(%rdi)"
-      ∧ hasSub sm2MontMulAsm "src1=%rdx" := by native_decide
+/- Shape check: the emitted asm contains the dual carry-chain CIOS idiom
+    (`mulx`, `adcx`, `adox`), the `2^32` shift pair of the `montreds` reduce
+    (`shlq $32`, `shrq $32`), the memory-operand `MULX` reads the multiplicand
+    from `[x]` (`mulxq 0(%rsi)`), the result stores print in AT&T form
+    (`(%rdi)`), and the `%rdx`-pinned multiplier is the `MULX` src1. -/
+#guard (hasSub sm2MontMulAsm "mulx") && (hasSub sm2MontMulAsm "adcx") && (hasSub sm2MontMulAsm "adox") && (hasSub sm2MontMulAsm "shlq $32") && (hasSub sm2MontMulAsm "shrq $32") && (hasSub sm2MontMulAsm "mulxq 0(%rsi)") && (hasSub sm2MontMulAsm "(%rdi)") && (hasSub sm2MontMulAsm "src1=%rdx")
 
 /-- Emit driver: write the in-Lean-backend-emitted `.s` for the bench harness. -/
 def emitMain : IO Unit := do
@@ -330,5 +326,12 @@ def emitMain : IO Unit := do
     "bench/sm2_compare/gen_com/sm2_mont_mul_x86_from_lean.s"
     sm2MontMulAsm
   IO.println "wrote gen_com/sm2_mont_mul_x86_from_lean.s (in-Lean x86 backend CIOS, no jasminc)"
+
+/-! ## Artifact generation at elaboration
+
+The render is written while this module elaborates, so `lake` produces it from
+this file and no separate driver or Makefile rule carries the dependency. -/
+
+#eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.Sm2MontMulKernel

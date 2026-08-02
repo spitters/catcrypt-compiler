@@ -17,7 +17,7 @@ GF(16) multiply (`CompileFromHaxMayoGf16`) and the SDitH GF(251) Solinas multipl
 (`CompileFromHaxSdithGf251`) showed `compileFromHax` *emitting* crypto leaves for
 the bitwise / ARX / finite-field families. Here we do the same for the **CBD_η=2
 noise coefficient**, the per-coefficient arithmetic of ML-KEM-768's `cbd2`
-(`cbd.c`, matching `CatCrypt/Crypto/MLKEM/CbdOwnedEmit.lean`'s `refCoeff`).
+(`cbd.c`, matching `CatCrypt/Crypto/MLKEM/CbdEmit.lean`'s `refCoeff`).
 
 ## CBD_η=2 per-window coefficient (FIPS-203 Alg. 8, η = 2)
 
@@ -144,7 +144,7 @@ theorem cbd2_compileFromHax_isSome :
     through the C3 per-primitive obligation `compileFromHax_meets_spec`. This is a
     C4 fan-out to the **lattice-KEM** primitive family — the per-coefficient
     arithmetic of ML-KEM-768's `cbd2` noise sampler (FIPS-203 Alg. 8, matching
-    `MLKEM/CbdOwnedEmit.refCoeff`) — reusing the SHA-256/Keccak/BLAKE2/GF
+    `MLKEM/CbdEmit.refCoeff`) — reusing the SHA-256/Keccak/BLAKE2/GF
     `BitAnd`/`shift_right`/`wrapping_add`/`wrapping_sub` recognizers with no front
     change. The coefficient is a branch-free popcount difference, so the leaf is
     `rfl`-clean like the GF leaves. -/
@@ -174,7 +174,7 @@ Not required for the `_compiles` deliverable above. This side lemma sanity-check
 that `cbd2Spec` lands in the CBD_η=2 range `[−2, 2]` (two's-complement) over every
 4-bit window, and matches a few representative `refCoeff`-style vectors. -/
 
-/-- `cbd2Spec` produces a genuine centered-binomial-η=2 coefficient on
+/-- `cbd2Spec` produces a centered-binomial-η=2 coefficient on
     representative 4-bit windows: `0b0011 → 2−0 = 2`, `0b1100 → 0−2 = −2`,
     `0b1001 → 1−1 = 0`, `0b0001 → 1`, `0b1000 → −1`. -/
 theorem cbd2Spec_kat :

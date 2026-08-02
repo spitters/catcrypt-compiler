@@ -9,6 +9,8 @@ import Mathlib.Data.ZMod.Basic
 /-!
 # Field VIR dialect (#482-2 — the L3 algebraic layer, over ModArith)
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 The **L3** level of the PrimeIR-style layered crypto-IR stack
 (`docs/dialect-restructure-plan.md`), sitting between the elliptic-curve group
 law and the residue-ring ModArith dialect:
@@ -126,7 +128,7 @@ def frobenius (x : Fp2Val p) : Fp2Val p := ⟨x.c0, -x.c1⟩
 
 /-- β-parametric quadratic multiply for the tower `Fp2 = Fp[u]/(u² − β)`, i.e.
     `u² = β`: `(a+bu)(c+du) = (ac + β·bd) + (ad+bc)u`. The existing `Mul`
-    instance is the `β = −1` case (BLS12-381/BN254); `β = −5` gives the genuine
+    instance is the `β = −1` case (BLS12-381/BN254); `β = −5` gives the
     BLS12-377 quadratic extension. Additive parametrization — the `−1` tower is
     untouched. -/
 def mulBeta (β : ZMod p) (x y : Fp2Val p) : Fp2Val p :=

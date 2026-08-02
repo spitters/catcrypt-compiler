@@ -17,7 +17,7 @@ of fractalyze/prime-ir's **ModArith** dialect ops `mod_arith.to_mont`,
 
 ## Why this dialect exists (the gap it closes)
 
-Per `PRIME_IR_GAP_ANALYSIS.md` (repo root, §2), CatCrypt already *computes* in the
+Per `PRIME_IR_OP_CORRESPONDENCE.md` (repo root, §2), CatCrypt already *computes* in the
 Montgomery domain — `montMul N R N'` / `redc N R N'`
 (`Optimizer/Rewrite/MontgomeryRedcGeneric.lean`), with the proven defining
 property `redc T · R ≡ T (mod N)` — but it does **not** expose the
@@ -59,7 +59,7 @@ the `ZMod N` cast).
 
 ## Agreement / correctness lemmas (reuse, don't re-prove, the REDC core)
 
-The single piece of number theory is the proved keystone
+The single piece of number theory is the proved lemma
 `MontgomeryRedcGeneric.redc_mul_R_modEq : redc T · R ≡ T (mod N)`; every lemma
 here is assembled from it (plus, for `fromMont_toMont`, the radix-inverse witness
 `hRinv : R · Rinv ≡ 1 (mod N)` — the standard `gcd(R, N) = 1` precondition in
@@ -85,7 +85,7 @@ conversions into three reusable ops with denotations tied to the existing
 add a new lowering or emit path — the bytes-reaching Montgomery arithmetic still
 flows through the existing emit kernels (`MontgomeryMulEmitValue`,
 `ConcreteMontMulRealizer`, `TransferMontRedcButterfly`, the owned `runZBlock`
-REDC blocks — the genuine `Com → jasmin → ELF` spine in DIALECTS.md).  Do not
+REDC blocks — the `Com → jasmin → ELF` spine in DIALECTS.md).  Do not
 overclaim an emit this file does not build.
 
 ## Pure-only + constant-time
@@ -107,7 +107,7 @@ open CatCrypt.Crypto.Optimizer.Rewrite.MontgomeryRedcGeneric
 /-! ## 1. Concrete leaf functions (the three Montgomery domain-conversion maps)
 
 Each is defined directly in terms of the existing `MontgomeryRedcGeneric` core, so
-their meaning is the genuine Montgomery conversion, not a stub. -/
+their meaning is the Montgomery conversion. -/
 
 /-- **Enter the Montgomery domain** (`mod_arith.to_mont`): `x ↦ x · R`. -/
 @[reducible] def toMontF (R x : ℤ) : ℤ := x * R
@@ -126,6 +126,17 @@ their meaning is the genuine Montgomery conversion, not a stub. -/
     diagonal of Montgomery multiplication, not a separate algorithm. -/
 theorem montSquareF_eq_montMul (N R N' x : ℤ) :
     montSquareF N R N' x = montMul N R N' x x := rfl
+
+/-- **Binary Montgomery multiply** (`mod_arith.mont_mul`):
+    `(a, b) ↦ montMul N R N' a b` (`= a · b · R⁻¹ (mod N)`), the two-operand
+    form of the existing `MontgomeryRedcGeneric.montMul`.  `montSquareF` is its
+    diagonal (`montMulF N R N' x x = montSquareF N R N' x`). -/
+@[reducible] def montMulF (N R N' a b : ℤ) : ℤ := montMul N R N' a b
+
+/-- `montSquareF` is the diagonal of `montMulF` — repeated-operand binary
+    Montgomery multiply. -/
+theorem montSquareF_eq_montMulF (N R N' x : ℤ) :
+    montSquareF N R N' x = montMulF N R N' x x := rfl
 
 /-! ## 2. Type -/
 
@@ -158,6 +169,9 @@ inductive ModArithMontOp where
   | fromMont (N R N' : ℤ)
   /-- Fused Montgomery square (prime-ir `mod_arith.mont_square`). -/
   | montSquare (N R N' : ℤ)
+  /-- Binary Montgomery multiply (prime-ir `mod_arith.mont_mul`): two distinct
+      residue operands. `montSquare` is its diagonal. -/
+  | montMul (N R N' : ℤ)
   deriving DecidableEq
 
 /-! ## 4. The dialect -/
@@ -169,25 +183,29 @@ inductive ModArithMontOp where
 
 /-! ## 5. Op signature (arg types + return type)
 
-Each conversion op is unary residue → residue at the same `(N, R, N')`. -/
+The three domain-conversion ops are unary residue → residue at the same
+`(N, R, N')`; the binary `montMul` takes two residues at that `(N, R, N')`. -/
 
 instance : DialectSignature modArithMontDialect where
   sig op := match op with
     | .toMont N R N' => [.residue N R N']
     | .fromMont N R N' => [.residue N R N']
     | .montSquare N R N' => [.residue N R N']
+    | .montMul N R N' => [.residue N R N', .residue N R N']
   ret op := match op with
     | .toMont N R N' => .residue N R N'
     | .fromMont N R N' => .residue N R N'
     | .montSquare N R N' => .residue N R N'
+    | .montMul N R N' => .residue N R N'
 
-/-! ## 6. Op denotation (into the genuine Montgomery maps) -/
+/-! ## 6. Op denotation (into the Montgomery maps) -/
 
 instance modArithMontDenote : DialectDenote modArithMontDialect where
   denote op := match op with
     | .toMont _ R _ => fun args => toMontF R args.head
     | .fromMont N R N' => fun args => fromMontF N R N' args.head
     | .montSquare N R N' => fun args => montSquareF N R N' args.head
+    | .montMul N R N' => fun args => montMulF N R N' args.head args.tail.head
 
 /-! ## 7. Per-op denotation agreement facts (tie each op to the existing core) -/
 
@@ -208,9 +226,17 @@ theorem montSquare_denote (N R N' x : ℤ) :
     modArithMontDenote.denote (.montSquare N R N') (.cons x .nil)
       = montMul N R N' x x := rfl
 
+/-- **`montMul` denotation.** The binary `montMul N R N'` denotes to
+    `montMul N R N' a b` — Montgomery multiply on two distinct operands, the
+    existing `MontgomeryRedcGeneric.montMul`.  `montSquare` is the diagonal
+    (`b = a`). -/
+theorem montMul_denote (N R N' a b : ℤ) :
+    modArithMontDenote.denote (.montMul N R N') (.cons a (.cons b .nil))
+      = montMul N R N' a b := rfl
+
 /-! ## 8. Round-trip and inverse-domain agreement lemmas
 
-The single piece of number theory is the proved keystone
+The single piece of number theory is the proved lemma
 `MontgomeryRedcGeneric.redc_mul_R_modEq`; every lemma here is assembled from it
 (no Montgomery reduction is re-proved). -/
 

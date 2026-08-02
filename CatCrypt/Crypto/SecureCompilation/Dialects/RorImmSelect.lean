@@ -8,6 +8,8 @@ import CatCrypt.Crypto.SecureCompilation.Dialects.ArithIselPass
 /-!
 # D3 — the `rorImm` peephole: a subtree-collapsing ISel pass on `Com jasminDialect`
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 `ArithIselPass.lean` builds the denotation-preserving ISel *framework* on the
 cleanest **same-shape** case (commutative operand canonicalization), and its
 docstring §"What needs a multi-op rewrite" flags the next deliverable:
@@ -17,7 +19,7 @@ docstring §"What needs a multi-op rewrite" flags the next deliverable:
 > change.
 
 This file delivers exactly that peephole as a `Com jasminDialect → Com jasminDialect`
-pass. It is keystone #1 of ISel-as-a-pass: the first *real native-op selection*
+pass. It opens the ISel-as-a-pass line: the first *real native-op selection*
 that **matches an emulation subtree and rewrites it to the native op**, with a
 machine-checked denotation-preservation proof.
 
@@ -55,7 +57,7 @@ soundness content.
 The collapse is licensed only for an **in-range immediate** `n < w` (every SHA-512
 Σ/σ and Keccak ρ rotate is in range). We carry that as the `RorPattern` predicate's
 `hlt : n < w` field rather than firing on an out-of-range `n` (where
-`rotateRight` and the shift-or form genuinely differ) — exactly as
+`rotateRight` and the shift-or form differ) — exactly as
 `VectorToAvx512.lean` conditions its lowering on the carry-free lane ops. On a
 matched, in-range subtree the pass rewrites to `rorImm` and the denotation is
 preserved (`rorSelectExpr_denote`, the headline). On every non-matching or
@@ -111,7 +113,7 @@ def mkRorOp {Γ : Ctxt jasminDialect} {s : JasminTy} (w n : Nat)
       (.var (.mk (.rorImm w n) rfl (.cons (.there (.there src)) .nil))
         body))
 
-/-! ## 2. Value-level keystone: the two subtrees denote equally (for `n < w`)
+/-! ## 2. Value-level equality: the two subtrees denote equally (for `n < w`)
 
 This is the whole soundness content, reduced to the `BitVec` identity
 `rorImm_eq_shiftOr`. -/
@@ -174,7 +176,7 @@ structural `varDecEq` below to decide the `Var`-equality operand checks (this li
 in the pass file, touching no shared substrate).
 
 The `n < w` guard is the honest fragment condition: out of range, `rotateRight`
-and the shift-or form genuinely differ, so the pass declines to fire (cf.
+and the shift-or form differ, so the pass declines to fire (cf.
 `VectorToAvx512.lean`, which likewise conditions its lowering on the supported
 op fragment). -/
 

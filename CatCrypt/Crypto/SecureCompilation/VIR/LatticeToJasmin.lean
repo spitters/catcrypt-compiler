@@ -212,20 +212,16 @@ theorem tgt_four_instrs :
     (tgtProg.funcs.head?.map (fun fd => fd.body.length)) = some 4 := by
   decide
 
-/-- The emitted target `.jazz` contains the `ntt_basemul_` leaf call. -/
-theorem tgt_jazz_has_basemul : strContains tgtJazz "ntt_basemul_" = true := by
-  native_decide
+/- The emitted target `.jazz` contains the `ntt_basemul_` leaf call. -/
+#guard (strContains tgtJazz "ntt_basemul_")
 
-/-- The emitted target `.jazz` contains the `ntt_invntt_` leaf call. -/
-theorem tgt_jazz_has_invntt : strContains tgtJazz "ntt_invntt_" = true := by
-  native_decide
+/- The emitted target `.jazz` contains the `ntt_invntt_` leaf call. -/
+#guard (strContains tgtJazz "ntt_invntt_")
 
-/-- The emitted target `.jazz` contains the forward `ntt_` leaf call. -/
-theorem tgt_jazz_has_ntt : strContains tgtJazz "ntt_3329_256" = true := by
-  native_decide
+/- The emitted target `.jazz` contains the forward `ntt_` leaf call. -/
+#guard (strContains tgtJazz "ntt_3329_256")
 
-/-- The emitted source `.jazz` contains the unexpanded `poly_mul` leaf call. -/
-theorem src_jazz_has_polymul : strContains srcJazz "poly_mul" = true := by
-  native_decide
+/- The emitted source `.jazz` contains the unexpanded `poly_mul` leaf call. -/
+#guard (strContains srcJazz "poly_mul")
 
 end CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasmin

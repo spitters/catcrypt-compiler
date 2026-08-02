@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRuntimeLoop
 import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectPhaseCompose
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulOwnedEmit
+import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
 
 set_option autoImplicit false
 
@@ -42,7 +42,7 @@ front combinators — no hand-authored `Com`/`Lcmd`/`JInstr`/`.s`:
   count-driven prefix runs (counts `(16,0,0,0)` stop after layer 0).
 
 * **§5–§6 The Merkle commit (leaf-hash ; level-compress), leaf-hash phase
-  continuation-composed with a genuine NESTED runtime loop.**
+  continuation-composed with a NESTED runtime loop.**
   `merkleComL` = `rolledForLoopNRtCont` (leaf-hash loop, the 4-lane
   wrapping-u64 `_p3_hleaf_u64` mixer inlined as covered LowCT) whose
   continuation is `rolledForLoopNRtNested` (outer level `lvl < log₂ n`, inner
@@ -389,7 +389,7 @@ def csubL (dst src : String) : List LowCT :=
     `q = hi64(lo·μ)`, `r = lo - q·p`, two csubs.
 
     `μ` is bound ONCE (`Mu`) and a **discarded** low `μ`-product (`QloD`, never
-    read) precedes the `SMulHiU` — the `FheShoupOwnedEmit` recipe: post-RA the
+    read) precedes the `SMulHiU` — the `FheShoupEmit` recipe: post-RA the
     two are exactly the shared-second-source `MUL` + `MULXHI` pair
     `fuseMulHiLprog` keys on, so the standalone high word materialises as ONE
     real two-output `mulx` (the renderer issues no standalone `MULXHI` line —
@@ -597,7 +597,7 @@ theorem foldChain_denote_layer0 :
   native_decide
 
 /-- **denote = the seed at all-zero counts** (every phase empty — the counts
-    genuinely drive the fold). -/
+    drive the fold). -/
 theorem foldChain_denote_zero :
     foldDenoteSlots 0 0 0 0 (List.range 34)
       = some ((List.range 34).map (fun i =>
@@ -684,7 +684,7 @@ theorem foldChainFx_denote_full :
 Flat single-buffer tree at `n = 8` leaves: `nodes : memref 60` — level `l`
 (row size `n >> l`) starts at lane `8n − (8n >> l)` (`0, 32, 48, 56`), root at
 `56..59`.  Phase A leaf-hashes `src[i]` into row `i` (the `_p3_hleaf_u64` mixer
-inlined); its continuation is the genuine nested runtime loop (outer `lvl < 3`,
+inlined); its continuation is the nested runtime loop (outer `lvl < 3`,
 inner `j < n >> (lvl+1)` recomputed per level) compressing row pairs with the
 `_p3_compress_u64` mixer inlined.  The digests are identical to the pin's
 ping-pong build. -/
@@ -818,7 +818,7 @@ abbrev ΓM : Ctxt jasminDialect :=
 /-- The jasmin image of the nodes accumulator. -/
 abbrev ndT : JasminTy := mapTy (CryptoTy.memref 60)
 
-/-- The Merkle spine: leaf-hash loop whose continuation is the genuine NESTED
+/-- The Merkle spine: leaf-hash loop whose continuation is the NESTED
     level-compress loop (inner trip `n >> (lvl+1)` recomputed per level). -/
 def merkleComL : Option (ComL ΓM ndT) := do
   let pB ← rolledForLoopNRtNested (Γouter := ndT :: ΓM) (accCTy := .memref 60)
@@ -836,7 +836,7 @@ def merkleComL : Option (ComL ΓM ndT) := do
     (invs := .cons (.there (.there .here)) .nil)
     (cont := pB)
 
-/-- **The Merkle spine front-compiles** (leaf-hash phase + genuine nested
+/-- **The Merkle spine front-compiles** (leaf-hash phase + nested
     level loop, ONE `ComL`). -/
 theorem merkleComL_isSome : merkleComL.isSome := by native_decide
 
@@ -1085,7 +1085,7 @@ theorem query_denote_layer0 :
                 (List.range 136)) := by
   native_decide
 
-/-- **denote = the zero seed at `levels = 0`** (no trips — the count genuinely
+/-- **denote = the zero seed at `levels = 0`** (no trips — the count
     drives the walk; nothing is written). -/
 theorem query_denote_zero :
     queryDenoteSlots 0 (List.range 136)
@@ -1096,7 +1096,7 @@ theorem query_denote_zero :
 
 The full layer-0 spine through ALL FOUR committed phase families in a single
 front-compiled `ComL`: fixed-trip leaf-hash (`rolledForLoopNCont`, `N = 32`),
-genuine nested level-compress mid-chain (`rolledForLoopNRtNestedCont`, outer
+nested level-compress mid-chain (`rolledForLoopNRtNestedCont`, outer
 `lvl < 5`, inner `32 >> (lvl+1)` recomputed per level), the three query/path
 walks, then the layer-0 fold at fixed count 16 (`phaseFoldFx 0`). The tree
 buffer is seeded ZERO — the walks read the digests the chain itself built.
@@ -1318,7 +1318,7 @@ theorem layer_denote_fold :
 
 /-! ## 7. Render the front-compiled fragments to owned `.s` -/
 
-open CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulOwnedEmit
+open CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
   (fuseMulHiLprog)
 
 /-- The fold chain rendered:
@@ -1374,17 +1374,15 @@ def frontAsm : String :=
   (foldChainAsm.getD "") ++ "\n" ++ (merkleAsm.getD "") ++ "\n"
     ++ (foldChainFxAsm.getD "") ++ "\n" ++ (queryAsm.getD "") ++ "\n"
 
-/-- The rendered `.s` carries all four export symbols, no `UNHANDLED` marker
+/- The rendered `.s` carries all four export symbols, no `UNHANDLED` marker
     (the imm64 Barrett/mixer constants render), and real two-output `mulx`
     lines (every Barrett high word fused — no dropped `MULXHI` binding). -/
-theorem frontAsm_clean :
-    strContains frontAsm "p3_fri_fold_chain" = true
-    ∧ strContains frontAsm "p3_merkle_flat8" = true
-    ∧ strContains frontAsm "p3_fri_fold_chain_fx" = true
-    ∧ strContains frontAsm "p3_fri_query_walk" = true
-    ∧ strContains frontAsm "UNHANDLED" = false
-    ∧ strContains frontAsm "mulx" = true := by
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩ <;> native_decide
+#guard (strContains frontAsm "p3_fri_fold_chain")
+    && (strContains frontAsm "p3_merkle_flat8")
+    && (strContains frontAsm "p3_fri_fold_chain_fx")
+    && (strContains frontAsm "p3_fri_query_walk")
+    && !(strContains frontAsm "UNHANDLED")
+    && (strContains frontAsm "mulx")
 
 /-! ## 8. Emit driver
 

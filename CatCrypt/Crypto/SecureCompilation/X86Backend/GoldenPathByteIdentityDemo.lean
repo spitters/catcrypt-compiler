@@ -24,7 +24,7 @@ The JInstr gather/byte-identity chain (`JInstrGatherExtended` →
 byte-match certificates on the real GoldenPath kernel `Com`s
 (`asconSigma0Com`, `fieldMulLoCom`, …). That pulled the `*GoldenPath` modules
 into the chain's import graph — a **cycle** the moment any GoldenPath kernel
-wants to import the chain's re-point entry `compileComToElfJInstrFull6` for its
+wants to import the chain's point entry `compileComToElfJInstrFull6` for its
 `_x86_elf` def.
 
 This file breaks the cycle: it sits **above** both the chain
@@ -190,19 +190,24 @@ def coreNoSpill : List Linstr :=
 #eval (Com.toLprogPhysAbi asconSigma0Com "ascon_sigma0").lp_funcs.head?.map
   (fun nf => nf.2.lfd_body.map (·.li_i))
 
-/-! ## 7. `CompileComToElfJInstrFull` — the whole-ELF byte-match + re-point demo -/
+/-! ## 7. `CompileComToElfJInstrFull` — the whole-ELF byte-match + point demo -/
 
 -- The full physical body gathers under the spill-aware lowering. `true`.
 #eval (gatherJBlock5 (physBodyOf asconSigma0Com "ascon_sigma0")).isSome
 
--- THE WHOLE-ELF BYTE-MATCH: the full-body JInstr ELF entry vs `compileComToElf`,
--- on the real kernel `asconSigma0`. `true`.
-#eval compileComToElfJInstrFull asconSigma0Com "ascon_sigma0"
-        == compileComToElf asconSigma0Com "ascon_sigma0"
+-- The whole-ELF byte-identity check on `asconSigma0` is retired: its `_x86_elf` def
+-- (`asconSigma0Com_x86_elf`) now emits through `OptimizedComToElfFull.optimizedCompileComToElf`,
+-- whose correctness is anchored on `optimizedCompileComToElf_sound` (runBlock-equivalence
+-- of the optimized block to the unoptimized gathered block, on every input) together with
+-- the executed spec-KAT in `bench/ascon_compare/` (emitted bytes vs the authoritative Ascon
+-- vectors), not on byte identity with `compileComToElf`. The whole-ELF byte-identity of the
+-- `Full` entry is demonstrated below on a still-Full6-anchored kernel (`fieldMulLo`).
+#eval compileComToElfJInstrFull fieldMulLoCom "field_mul_lo"
+        == compileComToElf fieldMulLoCom "field_mul_lo"
 
--- Same object size, both entries. `768` / `768`.
-#eval (compileComToElfJInstrFull asconSigma0Com "ascon_sigma0").size
-#eval (compileComToElf asconSigma0Com "ascon_sigma0").size
+-- Same object size, both entries.
+#eval (compileComToElfJInstrFull fieldMulLoCom "field_mul_lo").size
+#eval (compileComToElf fieldMulLoCom "field_mul_lo").size
 
 /-! ## 8. `GatherImmForms` — the per-kernel byte-match across all surveyed kernels -/
 
@@ -222,12 +227,16 @@ def coreNoSpill : List Linstr :=
 #eval matches6 (pbody asconSigma0Com "ascon_sigma0")
 #eval matches6 (pbody fieldMulLoCom "field_mul_lo")
 
-/-! ## 9. `CompileComToElfJInstrFull6` — the wired re-point entry byte-match -/
+/-! ## 9. `CompileComToElfJInstrFull6` — the wired point entry byte-match -/
 
--- THE RE-POINT SMOKE CHECK: the byte-safe entry `compileComToElfJInstrFull6`
--- byte-matches `compileComToElf` on `asconSigma0` (the def the GoldenPath kernels'
--- `_x86_elf` defs re-point to). `true`.
-#eval compileComToElfJInstrFull6 asconSigma0Com "ascon_sigma0"
-        == compileComToElf asconSigma0Com "ascon_sigma0"
+-- THE POINT-ENTRY SMOKE CHECK: the byte-safe entry `compileComToElfJInstrFull6`
+-- byte-matches `compileComToElf` on a still-Full6-anchored kernel (`fieldMulLo`, the
+-- def whose `_x86_elf` points to `compileComToElfJInstrFull6`). `true`.
+-- The check on `asconSigma0` is retired: `asconSigma0Com_x86_elf` now emits through
+-- `OptimizedComToElfFull.optimizedCompileComToElf` and is anchored on
+-- `optimizedCompileComToElf_sound` + the `bench/ascon_compare/` spec-KAT, not byte
+-- identity with `compileComToElf`.
+#eval compileComToElfJInstrFull6 fieldMulLoCom "field_mul_lo"
+        == compileComToElf fieldMulLoCom "field_mul_lo"
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.GoldenPathByteIdentityDemo

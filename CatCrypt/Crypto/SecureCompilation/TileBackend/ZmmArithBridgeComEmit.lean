@@ -124,28 +124,23 @@ def vpmullqExportAsm : String :=
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (strContains)
 
-/-- The packed-add export emits the lowercase owned `%zmm` mnemonic (not the
+/- The packed-add export emits the lowercase owned `%zmm` mnemonic (not the
     UPPERCASE jasmin `#VPADD_8u64` intrinsic). -/
-theorem vpaddqExport_has_vpaddq :
-    strContains vpaddqExportAsm "vpaddq" = true := by native_decide
+#guard (strContains vpaddqExportAsm "vpaddq")
 
-/-- The packed-add export uses 512-bit `%zmm` registers. -/
-theorem vpaddqExport_has_zmm :
-    strContains vpaddqExportAsm "%zmm" = true := by native_decide
+/- The packed-add export uses 512-bit `%zmm` registers. -/
+#guard (strContains vpaddqExportAsm "%zmm")
 
-/-- The packed-add export symbol is present. -/
-theorem vpaddqExport_has_symbol :
-    strContains vpaddqExportAsm "zmm_vpaddq_packed:" = true := by native_decide
+/- The packed-add export symbol is present. -/
+#guard (strContains vpaddqExportAsm "zmm_vpaddq_packed:")
 
-/-- No UPPERCASE jasmin intrinsic survives in the packed-add export — this is the
+/- No UPPERCASE jasmin intrinsic survives in the packed-add export — this is the
     owned (no-jasminc) lowercase-mnemonic path. -/
-theorem vpaddqExport_no_jasmin_intrinsic :
-    strContains vpaddqExportAsm "#VPADD_8u64" = false := by native_decide
+#guard !(strContains vpaddqExportAsm "#VPADD_8u64")
 
-/-- The packed-multiply export emits the lowercase owned `%zmm` multiply
+/- The packed-multiply export emits the lowercase owned `%zmm` multiply
     mnemonic. -/
-theorem vpmullqExport_has_vpmullq :
-    strContains vpmullqExportAsm "vpmullq" = true := by native_decide
+#guard (strContains vpmullqExportAsm "vpmullq")
 
 /-! ## 5. Extra direct-render pins (XOR and the variable left shift)
 

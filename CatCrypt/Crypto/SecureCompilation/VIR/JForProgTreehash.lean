@@ -541,38 +541,25 @@ def combinerTreeExportJazz : String :=
 
 #eval IO.println combinerTreeExportJazz
 
-/-- The exported `.jazz` has the **level-0** loop (`for i = 0 to 4`). -/
-theorem combinerTreeExport_has_level0 :
-    JasminPrint.strContains combinerTreeExportJazz "for i = 0 to 4" = true := by
-  native_decide
+/- The exported `.jazz` has the **level-0** loop (`for i = 0 to 4`). -/
+#guard (JasminPrint.strContains combinerTreeExportJazz "for i = 0 to 4")
 
-/-- The exported `.jazz` has the **level-1** loop (`for i = 0 to 2`). -/
-theorem combinerTreeExport_has_level1 :
-    JasminPrint.strContains combinerTreeExportJazz "for i = 0 to 2" = true := by
-  native_decide
+/- The exported `.jazz` has the **level-1** loop (`for i = 0 to 2`). -/
+#guard (JasminPrint.strContains combinerTreeExportJazz "for i = 0 to 2")
 
-/-- The exported `.jazz` has the **level-2** loop (`for i = 0 to 1`). -/
-theorem combinerTreeExport_has_level2 :
-    JasminPrint.strContains combinerTreeExportJazz "for i = 0 to 1" = true := by
-  native_decide
+/- The exported `.jazz` has the **level-2** loop (`for i = 0 to 1`). -/
+#guard (JasminPrint.strContains combinerTreeExportJazz "for i = 0 to 1")
 
-/-- **Structural check: the three level loops appear in halving sequence.** The
+/- **Structural check: the three level loops appear in halving sequence.** The
     level-0 header `for i = 0 to 4 {` is followed (later in the text) by the
     level-1 header `for i = 0 to 2 {`, which is followed by the level-2 header
     `for i = 0 to 1 {` — `h = 3` sequential `for` loops with the halving counts.
     We check by splitting on each header in turn and finding the next in the
     tail. -/
-theorem combinerTreeExport_halving_sequence :
-    JasminPrint.strContains
-      ((((combinerTreeExportJazz.splitOn "for i = 0 to 4 {").getLast!).splitOn
-          "for i = 0 to 2 {").getLast!)
-      "for i = 0 to 1 {" = true := by
-  native_decide
+#guard (JasminPrint.strContains ((((combinerTreeExportJazz.splitOn "for i = 0 to 4 {").getLast!).splitOn "for i = 0 to 2 {").getLast!) "for i = 0 to 1 {")
 
-/-- The exported `.jazz` is an `export fn` jasminc unit. -/
-theorem combinerTreeExport_has_export :
-    JasminPrint.strContains combinerTreeExportJazz "export fn treehash" = true := by
-  native_decide
+/- The exported `.jazz` is an `export fn` jasminc unit. -/
+#guard (JasminPrint.strContains combinerTreeExportJazz "export fn treehash")
 
 /-- The exported `.jazz` does NOT unroll: it has exactly three `acc = acc + acc`
     bodies (one per level loop), confirming all three loops are emitted as real

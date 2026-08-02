@@ -47,33 +47,57 @@ def frameBaseName : String := "fp"
 /-- The frame-base pin shared by every emitted leaf. -/
 def framePins : GpAlloc := [(frameBaseName, "%rbp")]
 
-/-- The register-resident allocation: the caller's `pins` plus every name the
-    pin-aware linear scan keeps in a register. -/
-def residentOf (pins : GpAlloc) (block : List (JInstr 64)) : GpAlloc :=
+/-- The register-resident allocation induced by a fixed spill-decision map:
+    the caller's `pins` plus every block name the map keeps in a register. -/
+def residentOfDecisions (pins : GpAlloc) (block : List (JInstr 64))
+    (decisions : List (String × Slot)) : GpAlloc :=
   pins ++ (blockNames block).filterMap (fun n =>
-    match (spillAllocPinned pins 0 block).lookup n with
+    match decisions.lookup n with
     | some (.resident reg) => some (n, reg)
     | _ => none)
 
+/-- The register-resident allocation: the caller's `pins` plus every name the
+    pin-aware linear scan keeps in a register. -/
+def residentOf (pins : GpAlloc) (block : List (JInstr 64)) : GpAlloc :=
+  residentOfDecisions pins block (spillAllocPinned pins 0 block)
+
+/-- The spill-slot offset of a non-pinned name under a fixed spill-decision map
+    (`none` if pinned/resident). -/
+def spilledOfDecisions (pins : GpAlloc) (decisions : List (String × Slot))
+    (n : String) : Option Int :=
+  if (pins.map Prod.fst).contains n then none
+  else spillSlotOf decisions n
+
 /-- The spill-slot offset of a non-pinned name (`none` if pinned/resident). -/
 def spilledOf (pins : GpAlloc) (block : List (JInstr 64)) (n : String) : Option Int :=
-  if (pins.map Prod.fst).contains n then none
-  else spillSlotOf (spillAllocPinned pins 0 block) n
+  spilledOfDecisions pins (spillAllocPinned pins 0 block) n
+
+/-- The `SpillView` for one instruction against a precomputed resident map and
+    spill-decision map: the resident map (frame pin + caller pins + linear-scan
+    residents) plus this instruction's spilled read/write operands. -/
+def viewOfDecisions (resident : GpAlloc) (pins : GpAlloc)
+    (decisions : List (String × Slot)) (i : JInstr 64) : SpillView where
+  resident := resident
+  frameBase := frameBaseName
+  spilledReads := (readNames i).filterMap (fun n =>
+    (spilledOfDecisions pins decisions n).map (fun off => (n, off)))
+  spilledWrites := (writtenNames i).filterMap (fun n =>
+    (spilledOfDecisions pins decisions n).map (fun off => (n, off)))
 
 /-- The `SpillView` for one instruction: the resident map (frame pin + caller
     pins + linear-scan residents) plus this instruction's spilled read/write
     operands. -/
-def viewOf (pins : GpAlloc) (block : List (JInstr 64)) (i : JInstr 64) : SpillView where
-  resident := framePins ++ residentOf pins block
-  frameBase := frameBaseName
-  spilledReads := (readNames i).filterMap (fun n =>
-    (spilledOf pins block n).map (fun off => (n, off)))
-  spilledWrites := (writtenNames i).filterMap (fun n =>
-    (spilledOf pins block n).map (fun off => (n, off)))
+def viewOf (pins : GpAlloc) (block : List (JInstr 64)) (i : JInstr 64) : SpillView :=
+  viewOfDecisions (framePins ++ residentOf pins block) pins
+    (spillAllocPinned pins 0 block) i
 
-/-- The spill-materialised body lines for the whole block. -/
+/-- The spill-materialised body lines for the whole block. The spill decisions
+    are computed once and shared by every instruction's `SpillView`. -/
 def bodyLinesOf (pins : GpAlloc) (block : List (JInstr 64)) : List String :=
-  block.flatMap (fun i => renderJInstrSpilled (viewOf pins block i) i)
+  let decisions := spillAllocPinned pins 0 block
+  let resident := framePins ++ residentOfDecisions pins block decisions
+  block.flatMap (fun i =>
+    renderJInstrSpilled (viewOfDecisions resident pins decisions i) i)
 
 /-! ## 2. The generic leaf emitter -/
 
@@ -103,14 +127,17 @@ def calleeRestores : List String :=
 def genericLeafAsm (sym : String) (args : List AbiArg) (pins : GpAlloc)
     (prologueClears : List String) (frameBytes : Nat)
     (block : List (JInstr 64)) : String :=
-  let resident := framePins ++ residentOf pins block
+  let decisions := spillAllocPinned pins 0 block
+  let resident := framePins ++ residentOfDecisions pins block decisions
   let argMoves := argMarshalMoves resident args
   let prologue :=
     calleeSaves
       ++ [ "\tleaq -" ++ toString frameBytes ++ "(%rsp), %rbp" ]
       ++ prologueClears
       ++ argMoves
-  renderLeafFn sym prologue (bodyLinesOf pins block) calleeRestores
+  let body := block.flatMap (fun i =>
+    renderJInstrSpilled (viewOfDecisions resident pins decisions i) i)
+  renderLeafFn sym prologue body calleeRestores
 
 /-- **CT-gated generic emit (Phase 0 + Phase 1).** Emit only if `block` is in the
     `CompilableCT` constant-time subset; otherwise reject with the violation
@@ -143,5 +170,12 @@ def emitMainGenericMul48 : IO Unit := do
   IO.FS.writeFile
     "bench/s2n_montmul_compare/gen_com/bignum_mul_4_8_generic.s" bignum_mul_4_8_generic
   IO.println "wrote gen_com/bignum_mul_4_8_generic.s (via the generic emit driver)"
+
+/-! ## Artifact generation at elaboration
+
+The render is written while this module elaborates, so `lake` produces it from
+this file and no separate driver or Makefile rule carries the dependency. -/
+
+#eval emitMainGenericMul48
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.GenericEmit

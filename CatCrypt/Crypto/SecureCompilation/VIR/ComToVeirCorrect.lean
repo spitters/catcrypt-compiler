@@ -213,11 +213,6 @@ section ChainInvariant
 
 variable [ToVeirOp d]
 
--- The HashMap-insert simp lemma triggers via def-unfolding; simp's
--- conservative "unused arg" check flags it as redundant in some
--- branches. Silence here rather than per-call.
-set_option linter.unusedSimpArgs false
-
 /-- `OperationPtr.get!` after `setNextOp!` on the SAME pointer
     yields the updated operation. Direct unfolding + HashMap. -/
 private theorem get!_setNextOp!_self
@@ -227,8 +222,7 @@ private theorem get!_setNextOp!_self
     op.get! (op.setNextOp! ctx new) =
       { op.get! ctx with next := new } := by
   simp [Veir.OperationPtr.setNextOp!, Veir.OperationPtr.set,
-        Veir.OperationPtr.get!,
-        Std.HashMap.getElem!_insert]
+        Veir.OperationPtr.get!]
 
 /-- `OperationPtr.get!` after `setNextOp!` on a DIFFERENT pointer
     is unchanged. -/
@@ -260,8 +254,7 @@ private theorem next_get!_setParent!_self
     (new : Option Veir.BlockPtr) :
     (op.get! (op.setParent! ctx new)).next = (op.get! ctx).next := by
   simp [Veir.OperationPtr.setParent!, Veir.OperationPtr.set,
-        Veir.OperationPtr.get!,
-        Std.HashMap.getElem!_insert]
+        Veir.OperationPtr.get!]
 
 /-- `setParent!` on a different pointer is fully transparent. -/
 private theorem get!_setParent!_other

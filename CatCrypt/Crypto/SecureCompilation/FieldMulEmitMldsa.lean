@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopOwnedEmit
+import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopEmit
 
 /-!
 # Byte-correct field multiply over `F_q` (`q = 8380417`, ML-DSA), FRONT-COMPILED
@@ -111,7 +111,7 @@ open CatCrypt.Crypto.Jasmin.LowCT (LowCT SExpr)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
   (Com.toLprogPhysAbi InLoadMap OutStoreMap Lprog)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (renderLprogAtt)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopOwnedEmit (occursIn)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopEmit (occursIn)
 
 /-- The `reg 64` dialect type. -/
 abbrev r64 : JasminTy := .reg 64
@@ -222,7 +222,7 @@ def mldsaMulLprog : Lprog :=
 
 /-- The owned AT&T `.s` text for `mldsa_mul`, rendered straight from the owned
     `Lprog` (no jasminc). -/
-def mldsaMulOwnedAsm : String := renderLprogAtt mldsaMulLprog
+def mldsaMulAsm : String := renderLprogAtt mldsaMulLprog
 
 /-- The output path for the field-kernel-emitted `.s`. -/
 def mldsaMulTarget : System.FilePath :=
@@ -233,7 +233,7 @@ def mldsaMulTarget : System.FilePath :=
     writes it to `gen_com/mldsa_mul.s`. -/
 def emitMldsaMul : IO Unit := do
   IO.FS.createDirAll "bench/field_kernel_compare/gen_com"
-  let asm := mldsaMulOwnedAsm
+  let asm := mldsaMulAsm
   IO.FS.writeFile mldsaMulTarget asm
   IO.println s!"FIELD-MUL-MLDSA emit OK : {mldsaMulTarget} ({asm.toUTF8.size} bytes, symbol mldsa_mul)"
 
@@ -246,9 +246,9 @@ theorem mldsaMul_one_func :
 /-- The rendered `.s` carries the `mldsa_mul` symbol, the Montgomery `imulq`
     multiply, and no unhandled op (every body op rendered to a real line). -/
 theorem mldsaMul_shape :
-    occursIn "mldsa_mul" mldsaMulOwnedAsm = true
-      ∧ occursIn "imulq" mldsaMulOwnedAsm = true
-      ∧ occursIn "UNHANDLED" mldsaMulOwnedAsm = false := by native_decide
+    occursIn "mldsa_mul" mldsaMulAsm = true
+      ∧ occursIn "imulq" mldsaMulAsm = true
+      ∧ occursIn "UNHANDLED" mldsaMulAsm = false := by native_decide
 
 /-! ## 6. INDEPENDENT Montgomery reference (`(a·b·R⁻¹) mod q`) -/
 

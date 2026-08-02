@@ -6,12 +6,14 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.SecureCompilation.VIR.RobustSafety
 
 /-!
-# A genuine context model for robust constant-time safety (fuller RSP/RHP)
+# A context model for robust constant-time safety (fuller RSP/RHP)
+
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
 This file strengthens the first robust-compilation artifact
 (`RobustSafety.lean`) from "constant-time **by construction** against attacker
 **labellings**" to a fuller Robust-Safety-Preservation (RSP) shape with a
-**genuine context model on `Com`**: a program-with-a-hole and a real linking
+**full context model on `Com`**: a program-with-a-hole and a real linking
 operation, following Abate, Blanco, Garg, Hriţcu, Patrignani, Thibault,
 *"Journey Beyond Full Abstraction: Exploring Robust Property Preservation for
 Secure Compilation"* (CSF 2019).
@@ -23,8 +25,9 @@ model is the *secrecy labelling* `LabelCtxt Γ` — the attacker only chooses wh
 **top-level inputs** are secret. The docstring states that a fuller RSP needs
 
 > a `Com`-with-a-hole that supplies *and consumes* variables, with the attacker
-> observing a full leakage trace … a genuine back-translation of arbitrary
-> target contexts to source ones.
+> observing a full leakage trace …
+
+together with a back-translation of arbitrary target contexts to source ones.
 
 This file supplies the first half of that: a real **`Com`-with-a-hole** linking
 model, the CT-compositionality lemma over linking, and the resulting robust
@@ -46,14 +49,14 @@ interface share the result type `th`. Concretely
 * `ComCtx.hole` is the trivial context (the hole *is* the whole program, so the
   outer context `Γ` equals the hole context `Γh`);
 * `ComCtx.var e C` binds `e : Expr d Γ tb` and then continues with the context
-  `C` in the extended de Bruijn context `tb :: Γ` — so the prefix genuinely
+  `C` in the extended de Bruijn context `tb :: Γ` — so the prefix
   **supplies** a fresh variable that the plugged program may **consume**.
 
 `plug C p : Com d Γ th` performs the linking. This is exactly the lean-mlir /
 SSProve "link a fragment as the continuation of a prefix" model, intrinsically
 typed so that the supplied variables are visible to the hole.
 
-## Compositionality (the load-bearing lemmas)
+## Compositionality (the main lemmas)
 
 * `ComCtx.plug_denote` — **denotational compositionality**: the denotation of
   `plug C p` factors through `p.denote`, evaluated in the valuation the prefix
@@ -71,7 +74,7 @@ typed so that the supplied variables are visible to the hole.
 `lowerLatticeToJasmin_robustlyCTSafe_ctx` is the headline: *for every target
 (Jasmin) linking context `C` whose own prefix is CT-safe, the whole linked
 program `plug C (lowerLatticeToJasmin c)` is CT-safe under every labelling*.
-That is robust CT in the genuine context sense — the attacker may wrap the
+That is robust CT in the contextual sense — the attacker may wrap the
 compiled program in **any** CT-safe let-prefix that supplies inputs and consumes
 its output, and CT still holds. It is the compositionality lemma
 (`ctSafeJasmin_plug`) fed by B2a (`lowerLatticeToJasmin_ctSafeJasmin`).
@@ -86,7 +89,7 @@ have no lattice pre-image — the lattice dialect has only whole-poly types
 (`polyC`, `polyN`). So an arbitrary target context is *not* the `tau`-image of
 any source context, and a literal back-translation `ComCtx jasmin → ComCtx
 lattice` does not exist. We therefore prove the **forward** robust-preservation
-direction (the load-bearing half, items 1–3) and characterise back-translation
+direction (the unconditional half, items 1–3) and characterise back-translation
 precisely as an explicit hypothesis: `backTranslates` packages "every target
 context is realised by a source context", and `robustCTPreservation_ctx_of_back`
 shows that *given* such a back-translation the source-to-target robust
@@ -274,14 +277,14 @@ theorem ctSafeJasmin_plug_of {Γh : Ctxt jasminDialect} {th : JasminTy}
 
 /-! ## 4. The fuller robust-safety preservation theorem
 
-We now state robust CT in the genuine context sense. A Jasmin program is
+We now state robust CT in the contextual sense. A Jasmin program is
 **robustly CT-safe against all contexts** iff, for every CT-safe linking context
 `C` and every labelling, the linked whole program is CT-safe. This quantifies
-over all `Com`-with-a-hole contexts — not merely over labellings of the top-level
+over all `Com`-with-a-hole contexts — not just over labellings of the top-level
 inputs as in `RobustSafety.RobustlyCTSafe`. -/
 
 /-- **Robust CT-safety against all contexts (target / Jasmin).** A Jasmin program
-    `p` robustly satisfies constant-time in the genuine context sense iff, for
+    `p` robustly satisfies constant-time in the contextual sense iff, for
     every linking context `C` whose prefix is CT-safe and every labelling `L`, the
     linked whole program `plug C p` is CT-safe. The quantification is over all
     `Com`-with-a-hole contexts: the attacker may wrap `p` in any CT-safe let-prefix
@@ -305,7 +308,7 @@ theorem RobustlyCTSafeCtx.toRobustlyCTSafe {Γ : Ctxt jasminDialect} {t : Jasmin
 
 /-- **Headline: the lowering is robustly CT-safe against all contexts.** For every
     source lattice program `c`, the lowered Jasmin program is robustly
-    constant-time in the genuine context sense: wrapped in *any* CT-safe linking
+    constant-time in the contextual sense: wrapped in *any* CT-safe linking
     context, the whole linked program is constant-time, under every labelling.
     Proof: CT-compositionality (`ctSafeJasmin_plug_of`) reduces the linked-program
     obligation to (i) the context's own CT-safety — the hypothesis — and (ii) the
@@ -353,12 +356,12 @@ theorem lowerLatticeToJasmin_robust_correctness_ctx
       = (lowerLatticeToJasmin c).denote (ComCtx.propagate C V) :=
   ComCtx.plug_denote C (lowerLatticeToJasmin c) V
 
-/-! ## 6. The two halves packaged (genuine context model) -/
+/-! ## 6. The two halves packaged (full context model) -/
 
 /-- **Secure compilation against all contexts (combined).** For every source
     lattice program, the lowering is simultaneously robustly constant-time against
     all linking contexts (§4) and behaviour-preserving under linking (§5). This is
-    the secure-compilation pairing in the genuine `Com`-with-a-hole context model,
+    the secure-compilation pairing in the `Com`-with-a-hole context model,
     strengthening `RobustSafety.lowerLatticeToJasmin_secure_compilation` (which
     quantified only over top-level secrecy labellings). -/
 theorem lowerLatticeToJasmin_secure_compilation_ctx
@@ -387,7 +390,7 @@ only to state the source-side judgement. `backTranslates p` packages "every
 CT-safe target context linking `p` is realised, on CT-safety, by *some* source
 context"; `robustCTPreservation_ctx_of_back` then derives the source→target
 robust implication *given* such a back-translation. The forward result (§4) needs
-no such hypothesis — it is the load-bearing half. -/
+no such hypothesis — it is the unconditional half. -/
 
 /-- Lower a lattice context to a Jasmin context along the lowering, in lockstep
     with `lowerLatticeToJasmin` on `Com`. This is the context-level *image* of the
@@ -416,7 +419,7 @@ def RobustlyCTSafeCtxSource {Γ : Ctxt latticeDialect} {t : LatticeTy}
 /-- **Back-translatability hypothesis.** "Every CT-safe *target* context linking
     the lowered program `lowerLatticeToJasmin c` is realised, on the CT-safety of
     the linked program, by some *source* context's lowering." This is the
-    statement a genuine back-translation would discharge. Because `tau` is not
+    statement a back-translation would discharge. Because `tau` is not
     surjective onto target contexts (Jasmin-only ops/types have no lattice
     pre-image), it cannot be proved in general — we carry it as an explicit
     hypothesis, never an axiom. -/
@@ -437,7 +440,7 @@ def backTranslates {Γ : Ctxt latticeDialect} {t : LatticeTy}
     RSP back-translation direction; it is conditional precisely because the type
     map obstructs an unconditional back-translation. The forward direction (§4,
     `lowerLatticeToJasmin_robustlyCTSafe_ctx`) holds unconditionally and is the
-    load-bearing half. -/
+    stronger half. -/
 theorem robustCTPreservation_ctx_of_back
     {Γ : Ctxt latticeDialect} {t : LatticeTy} (c : Com latticeDialect Γ t)
     (hback : backTranslates c) (hSrc : RobustlyCTSafeCtxSource c) :
@@ -457,7 +460,7 @@ theorem robustCTPreservation_ctx_uncond
 
 /-! ## 8. Smoke: robust CT against contexts is non-vacuous
 
-The genuine context judgement is restrictive: a context that itself performs a
+The contextual judgement is restrictive: a context that itself performs a
 secret-indexed `stackLoad` is not CT-safe, so it is excluded from the robust
 quantifier — confirming `RobustlyCTSafeCtx` is not vacuously true by admitting
 every context. We reuse `JasminCTPredicate.loadProg`'s secret-index load as the
@@ -476,7 +479,7 @@ def hostileCtx :
 
 /-- The hostile context is **not** CT-safe under the secret-index labelling: its
     prefix's `stackLoad` reads a secret-derived address. So the robust context
-    quantifier (`RobustlyCTSafeCtx`) genuinely excludes it — the judgement is not
+    quantifier (`RobustlyCTSafeCtx`) excludes it — the judgement is not
     vacuously satisfied by admitting every context. -/
 theorem hostileCtx_not_ctSafe :
     ctSafeCtxJasmin hostileCtx JasminCTPredicate.secretIdxLabels = false := by

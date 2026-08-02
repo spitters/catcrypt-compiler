@@ -48,7 +48,7 @@ owns it).
 We therefore build the **same `LowCT` body the reifier *would* produce** by
 hand (`jhashBody` below: one `RCall "jhash_mem"` ending the chain, retName
 `__result`) and drive it through the **rest of the verified front unchanged**
-(`translate` → `extractedFrontProg` → `cprogToJasminCom` →
+(`translate` → `extractedFrontProg` → `cryptoDialectToJasminCom` →
 `emitAbiOrchMem`). Only the `reifyLowCT%` macro is bypassed; the downstream
 front (the part `decaps_full_kat.lean` and friends exercise) is identical.
 

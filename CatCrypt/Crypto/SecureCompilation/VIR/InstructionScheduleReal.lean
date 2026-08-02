@@ -6,13 +6,15 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.SecureCompilation.VIR.Core
 
 /-!
-# A genuine instruction-scheduling pass for `Com` (real transform)
+# A reordering instruction-scheduling pass for `Com` (real transform)
+
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
 `InstructionSchedule.lean` ships an *analysis-as-labelling* scheduler whose
 `Com → Com` rewrite is the identity (`applySchedule = fun p _ => p`), so its
 preservation theorems are `rfl` and verify nothing about an actual reorder.
 This file supplies what that one defers: a **structural** `Com → Com` transform
-that genuinely *reorders two adjacent independent bindings*, together with a
+that *reorders two adjacent independent bindings*, together with a
 **non-`rfl`** denotation-preservation proof by induction over the `Com`.
 
 This mirrors `DeadCodeElimReal.lean` and `CommonSubexprElimReal.lean` (the
@@ -47,12 +49,12 @@ let v1 = e1'      -- e1' : Expr d (t2 :: Γ) t1,   binds v1 : t1  (e1, shifted)
   (`.here` in `t2 :: t1 :: Γ`) becomes `v2` at its new depth, every use of `v1`
   (`.there .here`) becomes `v1` at its new depth, deeper uses unchanged.
 
-This is a genuine reorder: the two binders change places, and the body's de
+This is a real reorder: the two binders change places, and the body's de
 Bruijn indices are renumbered through a 2-slot swap. It is **not** the identity.
 
-## The proof (genuinely not `rfl`)
+## The proof (not `rfl`)
 
-The keystone is
+The central lemma is
 
   `swapBody_denote`:
     `(swapCom body).denote (swap V) = body.denote V`
@@ -75,7 +77,7 @@ variable lands on the slot now holding its old value.
 * **Scoped to the cleanest case:** `scheduleSwap` / `scheduleSwap_denote`
   specialise to `Δ = []` and bundle the independence-strengthening of `e2`. The
   user-facing `scheduleSwap` runs on `.var e1 (.var e2 body)`, checks the
-  independence hypothesis (`e2` does not read `v1`), and returns the genuinely
+  independence hypothesis (`e2` does not read `v1`), and returns the
   reordered `.var e2' (.var e1' body')` with the preservation theorem
   `scheduleSwap_denote`.
 -/
@@ -191,7 +193,7 @@ def swapVal : {Δ : Ctxt d} → {t1 t2 : d.Ty} → {Γ : Ctxt d} →
 
 /-! ## 4. The swap laws (lookups agree)
 
-The genuine inductive lemmas: looking up a swapped variable in `swapVal W`
+The inductive lemmas: looking up a swapped variable in `swapVal W`
 equals looking up the original variable in `W`. The two top slots hold each
 other's values in `swapVal W`, so the index swap is exactly compensated. -/
 
@@ -239,7 +241,7 @@ theorem swapExpr_denote {Δ : Ctxt d} {t1 t2 : d.Ty} {Γ : Ctxt d} {s : d.Ty}
   simp only []
   rw [swapHV_lookupArgs e.args W]
 
-/-! ## 5. The keystone: denotation preservation of the swap (NON-`rfl`)
+/-! ## 5. Denotation preservation of the swap (NON-`rfl`)
 
 The swapped program at `swapVal W` denotes the same function as the original at
 `W`. The two valuations exchange the two top slots, and the body's swapped
@@ -441,7 +443,7 @@ theorem scheduleSwap_denote {t1 t2 : d.Ty} {Γ : Ctxt d} {τ : d.Ty}
   rw [weakenHeadExpr_denote e1 V (e2.denote (V.extend (e1.denote V)))]
   -- Now the bodies: the reordered side is
   --   (swapCom body).denote ((V.extend v2).extend v1)
-  -- which by the swap keystone (Δ = []) equals
+  -- which by the swap preservation lemma (Δ = []) equals
   --   body.denote ((V.extend v1).extend v2) = original body side.
   have hswap := swapCom_denote (Δ := []) (t1 := t1) (t2 := t2) (Γ := Γ) body
                   ((V.extend (e1.denote V)).extend (e2.denote (V.extend (e1.denote V))))
@@ -508,7 +510,7 @@ def origProg : Com toyDialect [] () :=
   .var e1 (.var e2 body)
 
 /-- The reordered program emits `e2` (= `const 20`) first, then `e1`. The
-*outermost expression genuinely changes* from `const 10` to `const 20`: the two
+*outermost expression changes* from `const 10` to `const 20`: the two
 binders swapped places. This is a real reorder, not the identity. -/
 example :
     ScheduleReal.scheduleSwap e1 e2 body (by native_decide)

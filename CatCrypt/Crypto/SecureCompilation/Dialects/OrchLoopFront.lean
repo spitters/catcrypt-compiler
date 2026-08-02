@@ -4,9 +4,9 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.Dialects.OrchFront
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3OrchLoopsOwnedEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.ZkSumCheckWholeProverOwnedEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ProveDriverOwnedEmit
+import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3OrchLoopsEmit
+import CatCrypt.Crypto.SecureCompilation.VIR.ZkSumCheckWholeProverEmit
+import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ProveDriverEmit
 
 /-!
 # Loop-over-call orchestration front: validation against the deployed drivers
@@ -28,10 +28,10 @@ equality is `rfl` and the emitted bytes are byte-identical (no `.s` change).
 The whole-prover modules whose driver IS one `loopLcmd`-`Lfundef` are so
 re-sourced:
 
-* `Plonky3OrchLoopsOwnedEmit.orchLoopFundef`  — single-leaf-call strided loop,
-* `ZkSumCheckWholeProverOwnedEmit.sumcheckLoopFundef` — two-leaf-call round loop
+* `Plonky3OrchLoopsEmit.orchLoopFundef`  — single-leaf-call strided loop,
+* `ZkSumCheckWholeProverEmit.sumcheckLoopFundef` — two-leaf-call round loop
   with callee-saved base reload,
-* `Plonky3ProveDriverOwnedEmit.proveDriverFundef` — straight-line phase call
+* `Plonky3ProveDriverEmit.proveDriverFundef` — straight-line phase call
   sequence (the degenerate no-loop case, `buildOrchCallSeq`).
 
 The FiatShamir word-move duplex is the residual: its loops are memref word
@@ -59,7 +59,7 @@ equalities factor through. -/
 theorem strideCall_body_eq (leaf : String) (so si : Nat) :
     bandLcmd 64 [OrchStep.call leaf, OrchStep.addImm "RDI" so,
         OrchStep.addImm "RSI" si, OrchStep.subImm "R8" 1]
-      = Plonky3OrchLoopsOwnedEmit.orchLoopBody leaf so si := rfl
+      = Plonky3OrchLoopsEmit.orchLoopBody leaf so si := rfl
 
 /-- Component (module 1): the prologue schedule renders to the counter-init `MOV`
     band — a 1-instruction `rfl`. -/
@@ -72,7 +72,7 @@ theorem strideCall_prologue_eq (n : Nat) :
     `buildOrchLoop (strideCallSpec …)`, so the emitted bytes are unchanged. -/
 theorem buildOrchLoop_eq_orchLoopFundef (leaf : String) (n so si : Nat) :
     buildOrchLoop (strideCallSpec leaf n so si)
-      = Plonky3OrchLoopsOwnedEmit.orchLoopFundef leaf n so si := rfl
+      = Plonky3OrchLoopsEmit.orchLoopFundef leaf n so si := rfl
 
 /-- Component (module 2): the two-call round-body schedule renders to the
     hand-authored `sumcheckRoundBody` — a bounded 9-instruction `rfl`. -/
@@ -82,7 +82,7 @@ theorem sumcheck_body_eq (so si : Nat) :
         OrchStep.movRR "RDI" "R12", OrchStep.movRR "RSI" "R13",
         OrchStep.call "zk_poseidon2_squeeze_rc",
         OrchStep.addImm "R12" so, OrchStep.addImm "R13" si, OrchStep.subImm "R8" 1]
-      = ZkSumCheckWholeProverOwnedEmit.sumcheckRoundBody so si := rfl
+      = ZkSumCheckWholeProverEmit.sumcheckRoundBody so si := rfl
 
 /-- Component (module 2): the base-seed + counter-init prologue schedule renders
     to the three seed `MOV`s — a bounded 3-instruction `rfl`. -/
@@ -99,7 +99,7 @@ theorem sumcheck_prologue_eq (n : Nat) :
     `buildOrchLoop (sumcheckSpec …)`). -/
 theorem buildOrchLoop_eq_sumcheckLoopFundef (n so si : Nat) :
     buildOrchLoop (sumcheckSpec n so si)
-      = ZkSumCheckWholeProverOwnedEmit.sumcheckLoopFundef n so si := rfl
+      = ZkSumCheckWholeProverEmit.sumcheckLoopFundef n so si := rfl
 
 /-- **Validate (module 4, no-loop).** The straight-line phase-call sequence
     `proveDriverFundef` is the degenerate case: `buildOrchCallSeq` over the phase
@@ -109,8 +109,8 @@ theorem buildOrchLoop_eq_sumcheckLoopFundef (n so si : Nat) :
     `buildOrchCallSeq 64 (provePhaseSymbols.map OrchStep.call)`). -/
 theorem buildOrchCallSeq_eq_proveDriverFundef :
     buildOrchCallSeq 64
-        (Plonky3ProveDriverOwnedEmit.provePhaseSymbols.map OrchStep.call)
-      = Plonky3ProveDriverOwnedEmit.proveDriverFundef := rfl
+        (Plonky3ProveDriverEmit.provePhaseSymbols.map OrchStep.call)
+      = Plonky3ProveDriverEmit.proveDriverFundef := rfl
 
 /-! ## 2. The generated driver carries the owned back-edge + the leaf call
 
@@ -128,7 +128,7 @@ driver's owned control-flow shape with no re-rendering. -/
     (`merkleLeafLoop` *is* `orchLoopFundef "…" 32 32 64`). -/
 theorem buildOrchLoop_eq_merkleLeafLoop :
     buildOrchLoop (strideCallSpec "plonky3_merkle_hash_leaf_rc" 32 32 64)
-      = Plonky3OrchLoopsOwnedEmit.merkleLeafLoop :=
+      = Plonky3OrchLoopsEmit.merkleLeafLoop :=
   buildOrchLoop_eq_orchLoopFundef "plonky3_merkle_hash_leaf_rc" 32 32 64
 
 /-- The front-sourced Merkle-leaf driver renders the owned loop back-edge and the
@@ -145,6 +145,6 @@ theorem buildOrchLoop_merkleLeaf_renders_control_flow :
       ∧ CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow.occursIn
           "call plonky3_merkle_hash_leaf_rc" s = true := by
   rw [buildOrchLoop_eq_merkleLeafLoop]
-  exact Plonky3OrchLoopsOwnedEmit.merkleLeafLoop_renders_control_flow
+  exact Plonky3OrchLoopsEmit.merkleLeafLoop_renders_control_flow
 
 end CatCrypt.Crypto.SecureCompilation.Dialects.OrchLoopFront

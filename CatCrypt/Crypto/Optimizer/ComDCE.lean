@@ -8,8 +8,10 @@ import CatCrypt.Crypto.Optimizer.Rewrite.Egraph
 /-!
 # Verified dead-let elimination for `Com` — a denotation-preserving rewrite
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 A **structural `Com → Com` dead-binding-elimination pass** over the typed VIR
-framework. It is the genuine `Com`-level rewrite that the analysis-only
+framework. It is the `Com`-level rewrite that the analysis-only
 `SecureCompilation/VIR/DeadCodeElim.lean` left as the documented residual: that
 file decides *which* binders are dead but applies the identity transform at the
 `Com` level (deadness is consumed downstream as a labelling). Here the rewrite
@@ -53,7 +55,7 @@ drops an observable effect: denotation is preserved exactly.
   by induction over the let-chain. **Not `rfl`.**
 * `comDCE_cost_le`, `comDCE_ctSafe` — `jasminDialect` corollaries: the pass is
   cost-non-increasing and CT-preserving (the dialect is branch-free).
-* Self-contained validation: a program with a genuinely dead trailing binder is
+* Self-contained validation: a program with a dead trailing binder is
   shrunk by the pass while its denotation is preserved.
 
 All goals closed. No `sorry`. Axiom set: `propext`, `Quot.sound`,
@@ -122,7 +124,7 @@ def comDCE {d : Dialect} [DialectSignature d] {Γ : Ctxt d} {t : d.Ty} :
           | none    => .var e (.ret v)  -- the binder *is* the returned value: keep
       | body' => .var e body'           -- body still has binders: keep this one
 
-/-! ## 3. Denotation preservation (genuine, not `rfl`) -/
+/-! ## 3. Denotation preservation (not `rfl`) -/
 
 /-- **Denotation preservation for `comDCE`.** The cleaned program denotes the
 same function as the input: `(comDCE c).denote V = c.denote V`, for every
@@ -185,7 +187,7 @@ theorem comDCE_ctSafe {Γ : Ctxt jasminDialect} {t : JasminTy}
 
 /-! ## 5. Self-contained validation
 
-A `Com jasminDialect [reg 32] (reg 32)` with a genuinely **dead trailing
+A `Com jasminDialect [reg 32] (reg 32)` with a **dead trailing
 binding**:
 
     let v0 = x + x      -- live: it is what we return

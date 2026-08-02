@@ -44,8 +44,8 @@ each handled separately rather than hand-waved:
 1. **extraction → LowCT** — `haxToLowCT_simulates_full`, discharged
    per-protocol by the bridge `Hyp_*` obligations.
 2. **leaf-spec'd jasmin denotation** — for the lattice leaves this is
-   *discharged* (A3, `jasminExtSem`); for genuine external leaves (CryptoSSA
-   `fp_*` intrinsics on the `cprogToJasminCom` front, A1) it stays parametric in
+   *discharged* (A3, `jasminExtSem`); for external leaves (CryptoSSA
+   `fp_*` intrinsics on the `cryptoDialectToJasminCom` front, A1) it stays parametric in
    `CryptoToJasminComCorrect.JasminLeafAgrees`.
 3. **semantic printer faithfulness** — only the *structural* faithfulness is
    proved here (`JasminPrintCorrect`, instruction/parameter counts); the
@@ -55,7 +55,7 @@ each handled separately rather than hand-waved:
 
 The LowCT→CryptoSSA→Com[catCrypt] front (`LowCTToCryptoSSACorrect`,
 `CryptoToVIRCorrect`) and the CProg→Com[jasmin] front (A1,
-`cprogToJasminCom_denote_eq`) are the verified upstream halves; the lattice
+`cryptoDialectToJasminCom_denote_eq`) are the verified upstream halves; the lattice
 route below is the verified optimizer+backend half.
 
 0 sorries.

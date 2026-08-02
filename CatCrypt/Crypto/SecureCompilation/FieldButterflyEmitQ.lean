@@ -308,7 +308,7 @@ def bflyQLprog : Lprog :=
 
 /-- The owned AT&T `.s` text for `bfly_q3329`, rendered straight from the owned
     `Lprog` (no jasminc). -/
-def bflyQOwnedAsm : String := renderLprogAtt bflyQLprog
+def bflyQAsm : String := renderLprogAtt bflyQLprog
 
 /-- The output path for the field-kernel-emitted `.s`. -/
 def bflyQTarget : System.FilePath :=
@@ -319,7 +319,7 @@ def bflyQTarget : System.FilePath :=
     (`bfly_q3329`) and writes it to `gen_com/bfly_q3329.s`. -/
 def emitBflyQ : IO Unit := do
   IO.FS.createDirAll "bench/field_kernel_compare/gen_com"
-  let asm := bflyQOwnedAsm
+  let asm := bflyQAsm
   IO.FS.writeFile bflyQTarget asm
   IO.println s!"FIELD-BUTTERFLY-Q emit OK : {bflyQTarget} ({asm.toUTF8.size} bytes, symbol bfly_q3329)"
 

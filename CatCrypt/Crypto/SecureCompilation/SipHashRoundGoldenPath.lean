@@ -51,25 +51,36 @@ g3 = ROTL(c3,21) ^ e0                                     -- = v3'
 So `v0' = ROTL(v0+v1,32) + (ROTL(v3,16) ^ (v2+v3))`, and the deeper words rebuild the
 chain through `c1`, `c3`, `e2`, `e0`. The four programs lower through the *same*
 `comToReg_faithful` as the field/Keccak/Threefish ops — so the SipHash ARX words emit to
-both backends with no new machinery, only a new kernel body. -/
+both backends with no new machinery, only a new kernel body.
+
+Elaboration sits above the one-second module ceiling. The recognizable-spec proofs are
+not the cost — the shared `rotl_synth` closes each in under 20 ms. Two per-word costs
+account for it, and both grow with the word's binding count, which is large here
+because a single-output `Com` cannot share sub-results and each word rebuilds the whole
+ARX chain. The `Com.denote` `rfl` reduces that chain; a structural rewrite through the
+`Com.denote` equations in place of the `rfl` is a possible cheaper form and has not
+been tried. The `com_arm_e2e` and `com_riscv_e2e` instantiations cost roughly 25 ms per
+binding and do not respond to supplying their implicit arguments; those two lemmas are
+themselves the shared form, and what remains is one instantiation per word per
+backend. -/
 
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.SipHashRound
 
 open CatCrypt.Crypto.SecureCompilation.VIR
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-open CatCrypt.Crypto.SecureCompilation.ScalarLin
-open CatCrypt.Crypto.SecureCompilation.ScalarLinFront
-open CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
-open CatCrypt.Crypto.SecureCompilation.ScalarLinNeutralDemo
-open CatCrypt.Crypto.SecureCompilation.MultiBackendDemo
-open CatCrypt.Crypto.SecureCompilation.ARMBackend
-open CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
-open CatCrypt.Crypto.SecureCompilation.RISCVBackend
-open CatCrypt.Crypto.SecureCompilation.RISCVBackend.RegToRiscv
-open CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
-open CatCrypt.Crypto.SecureCompilation.RotateSynth
+  CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+  CatCrypt.Crypto.SecureCompilation.ScalarLin
+  CatCrypt.Crypto.SecureCompilation.ScalarLinFront
+  CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
+  CatCrypt.Crypto.SecureCompilation.ScalarLinNeutralDemo
+  CatCrypt.Crypto.SecureCompilation.MultiBackendDemo
+  CatCrypt.Crypto.SecureCompilation.ARMBackend
+  CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
+  CatCrypt.Crypto.SecureCompilation.RISCVBackend
+  CatCrypt.Crypto.SecureCompilation.RISCVBackend.RegToRiscv
+  CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+  CatCrypt.Crypto.SecureCompilation.RotateSynth
 
 /-- The 4-input SipHash state context `[v0, v1, v2, v3]` is all-`reg 64`. -/
 theorem allReg64_four : AllReg64 ([.reg 64, .reg 64, .reg 64, .reg 64] : Ctxt jasminDialect) := by

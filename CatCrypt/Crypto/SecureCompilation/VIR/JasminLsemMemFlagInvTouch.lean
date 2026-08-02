@@ -73,9 +73,7 @@ instruction writes a wrong value into the tracked carrier) and `cmpIdxTouch`
   condition on the flag route, not yet proved generically over `ScalarMemN`
   linearizations (the counter-machine route does not need it).
 
-**Fully proved; axioms ⊆ {propext, Classical.choice, Quot.sound}** + the
-inherited `aesSboxArrayW_size` `native_decide` carried by every statement
-mentioning the `jasminDialect` denotation.
+**Fully proved; axioms ⊆ {propext, Classical.choice, Quot.sound}.**
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagInvTouch
@@ -201,7 +199,7 @@ theorem plainLopnBodyB_sound {body : List LinstrRM} (h : plainLopnBodyB body = t
 
 /-- **The invariant-touch loop body**: a restoring touch segment in front of
     the emitted `chain ++ writeback` pass.  The touch runs INSIDE every trip
-    (between the back-edge and the chain), so the loop body genuinely writes
+    (between the back-edge and the chain), so the loop body writes
     invariant-tracked state mid-pass. -/
 def loopBodyInvTouchMN {w : Nat}
     (update : Com jasminDialect (JasminTy.reg w :: JasminTy.reg 64 :: invTys)

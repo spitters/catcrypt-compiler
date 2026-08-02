@@ -940,132 +940,101 @@ def mlkemNtt4wayJazz : String := emitMlkemNtt4wayJazz "mlkem_ntt_4way"
 /-- The emitted ML-DSA-65 4-way NTT export name. -/
 def mldsaNtt4wayJazz : String := emitMldsaNtt4wayJazz "mldsa_ntt_4way"
 
-/-- The ML-KEM 4-way export has the expected ABI: 256-u16 in/out. -/
-theorem mlkem_ntt_4way_export_sig :
-    strContains mlkemNtt4wayJazz
-      "export fn mlkem_ntt_4way(reg ptr u16[256] out, reg const ptr u16[264] inp)"
-      = true := by native_decide
+/- The ML-KEM 4-way export has the expected ABI: 256-u16 in/out. -/
+#guard (strContains mlkemNtt4wayJazz "export fn mlkem_ntt_4way(reg ptr u16[256] out, reg const ptr u16[264] inp)")
 
-/-- The ML-DSA 4-way export has the expected ABI: 256-u32 in/out. -/
-theorem mldsa_ntt_4way_export_sig :
-    strContains mldsaNtt4wayJazz
-      "export fn mldsa_ntt_4way(reg ptr u32[256] out, reg const ptr u32[260] inp)"
-      = true := by native_decide
+/- The ML-DSA 4-way export has the expected ABI: 256-u32 in/out. -/
+#guard (strContains mldsaNtt4wayJazz "export fn mldsa_ntt_4way(reg ptr u32[256] out, reg const ptr u32[260] inp)")
 
-/-- The ML-KEM 4-way body uses packed-`u16` lane multiply (`#VPMULL_8u16`) — the
+/- The ML-KEM 4-way body uses packed-`u16` lane multiply (`#VPMULL_8u16`) — the
     heart of the lane-parallel-map NTT butterfly. -/
-theorem mlkem_ntt_4way_has_packed_mul :
-    strContains mlkemNtt4wayJazz "#VPMULL_8u16(" = true := by native_decide
+#guard (strContains mlkemNtt4wayJazz "#VPMULL_8u16(")
 
-/-- The ML-KEM 4-way body uses packed-`u16` lane add (`#VPADD_8u16`). -/
-theorem mlkem_ntt_4way_has_packed_add :
-    strContains mlkemNtt4wayJazz "#VPADD_8u16(" = true := by native_decide
+/- The ML-KEM 4-way body uses packed-`u16` lane add (`#VPADD_8u16`). -/
+#guard (strContains mlkemNtt4wayJazz "#VPADD_8u16(")
 
-/-- The ML-KEM 4-way body uses packed-`u16` lane subtract (`#VPSUB_8u16`). -/
-theorem mlkem_ntt_4way_has_packed_sub :
-    strContains mlkemNtt4wayJazz "#VPSUB_8u16(" = true := by native_decide
+/- The ML-KEM 4-way body uses packed-`u16` lane subtract (`#VPSUB_8u16`). -/
+#guard (strContains mlkemNtt4wayJazz "#VPSUB_8u16(")
 
-/-- The ML-DSA 4-way body uses packed-`u32` lane multiply (`#VPMULL_4u32`) —
+/- The ML-DSA 4-way body uses packed-`u32` lane multiply (`#VPMULL_4u32`) —
     the 32-bit analogue of ML-KEM's `#VPMULL_8u16`. -/
-theorem mldsa_ntt_4way_has_packed_mul :
-    strContains mldsaNtt4wayJazz "#VPMULL_4u32(" = true := by native_decide
+#guard (strContains mldsaNtt4wayJazz "#VPMULL_4u32(")
 
-/-- The ML-DSA 4-way body uses packed-`u32` lane add (`#VPADD_4u32`). -/
-theorem mldsa_ntt_4way_has_packed_add :
-    strContains mldsaNtt4wayJazz "#VPADD_4u32(" = true := by native_decide
+/- The ML-DSA 4-way body uses packed-`u32` lane add (`#VPADD_4u32`). -/
+#guard (strContains mldsaNtt4wayJazz "#VPADD_4u32(")
 
-/-- The ML-DSA 4-way body uses packed-`u32` lane subtract (`#VPSUB_4u32`). -/
-theorem mldsa_ntt_4way_has_packed_sub :
-    strContains mldsaNtt4wayJazz "#VPSUB_4u32(" = true := by native_decide
+/- The ML-DSA 4-way body uses packed-`u32` lane subtract (`#VPSUB_4u32`). -/
+#guard (strContains mldsaNtt4wayJazz "#VPSUB_4u32(")
 
-/-- The emit renders 8 butterfly stages (the full 256-coefficient NTT). -/
-theorem mlkem_ntt_4way_has_8_stages :
-    strContains mlkemNtt4wayJazz "// stage 0" = true
-      ∧ strContains mlkemNtt4wayJazz "// stage 7" = true := by native_decide
+/- The emit renders 8 butterfly stages (the full 256-coefficient NTT). -/
+#guard (strContains mlkemNtt4wayJazz "// stage 0") && (strContains mlkemNtt4wayJazz "// stage 7")
 
-/-- The ML-DSA emit renders 8 butterfly stages. -/
-theorem mldsa_ntt_4way_has_8_stages :
-    strContains mldsaNtt4wayJazz "// stage 0" = true
-      ∧ strContains mldsaNtt4wayJazz "// stage 7" = true := by native_decide
+/- The ML-DSA emit renders 8 butterfly stages. -/
+#guard (strContains mldsaNtt4wayJazz "// stage 0") && (strContains mldsaNtt4wayJazz "// stage 7")
 
 /-- The bench-validated full ML-KEM-768 NTT export. -/
 def mlkemNttFull16wayJazz : String := emitMlkemNttFull16wayJazz "ntt_full_proto"
 
-/-- The full-NTT export has the expected in-place ABI with the 1152-u16 aux
+/- The full-NTT export has the expected in-place ABI with the 1152-u16 aux
     buffer (q/qinv + per-layer zeta tables + shuffle controls). -/
-theorem mlkem_ntt_full_export_sig :
-    strContains mlkemNttFull16wayJazz
-      "export fn ntt_full_proto(reg mut ptr u16[256] r, reg const ptr u16[2112] aux)"
-      = true := by native_decide
+#guard (strContains mlkemNttFull16wayJazz "export fn ntt_full_proto(reg mut ptr u16[256] r, reg const ptr u16[2112] aux)")
 
-/-- The full NTT carries the in-lane Montgomery multiply (`vfqmul`) — the
+/- The full NTT carries the in-lane Montgomery multiply (`vfqmul`) — the
     packed analogue of PQClean's `fqmul`. -/
-theorem mlkem_ntt_full_has_vfqmul :
-    strContains mlkemNttFull16wayJazz "inline fn vfqmul(" = true := by native_decide
+#guard (strContains mlkemNttFull16wayJazz "inline fn vfqmul(")
 
-/-- The full NTT renders all 7 Cooley–Tukey layers (`len = 128 … 2`). -/
-theorem mlkem_ntt_full_has_all_7_layers :
-    strContains mlkemNttFull16wayJazz "// === len = 128" = true
-      ∧ strContains mlkemNttFull16wayJazz "// === len = 64" = true
-      ∧ strContains mlkemNttFull16wayJazz "// === len = 32" = true
-      ∧ strContains mlkemNttFull16wayJazz "// === len = 16" = true
-      ∧ strContains mlkemNttFull16wayJazz "// === len = 8" = true
-      ∧ strContains mlkemNttFull16wayJazz "// === len = 4" = true
-      ∧ strContains mlkemNttFull16wayJazz "// === len = 2" = true := by native_decide
+/- The full NTT renders all 7 Cooley–Tukey layers (`len = 128 … 2`). -/
+#guard (strContains mlkemNttFull16wayJazz "// === len = 128")
+    && (strContains mlkemNttFull16wayJazz "// === len = 64")
+    && (strContains mlkemNttFull16wayJazz "// === len = 32")
+    && (strContains mlkemNttFull16wayJazz "// === len = 16")
+    && (strContains mlkemNttFull16wayJazz "// === len = 8")
+    && (strContains mlkemNttFull16wayJazz "// === len = 4")
+    && (strContains mlkemNttFull16wayJazz "// === len = 2")
 
-/-- The deep layers use the partner-alignment primitives: cross-128 `#VPERMQ`
+/- The deep layers use the partner-alignment primitives: cross-128 `#VPERMQ`
     (len=8) and within-128 `#VPSHUFB_256` (len=4,2). -/
-theorem mlkem_ntt_full_has_shuffles :
-    strContains mlkemNttFull16wayJazz "#VPERMQ(" = true
-      ∧ strContains mlkemNttFull16wayJazz "#VPSHUFB_256(" = true
-      ∧ strContains mlkemNttFull16wayJazz "#VPBLEND_8u32(" = true := by native_decide
+#guard (strContains mlkemNttFull16wayJazz "#VPERMQ(")
+    && (strContains mlkemNttFull16wayJazz "#VPSHUFB_256(")
+    && (strContains mlkemNttFull16wayJazz "#VPBLEND_8u32(")
 
 /-- The bench-validated full ML-DSA-65 NTT export. -/
 def mldsaNttFull8wayJazz : String := emitMldsaNttFull8wayJazz "dsa_ntt_proto"
 
-/-- The ML-DSA full-NTT export has the expected in-place ABI (256 u32 in place,
+/- The ML-DSA full-NTT export has the expected in-place ABI (256 u32 in place,
     2048-u32 aux). -/
-theorem mldsa_ntt_full_export_sig :
-    strContains mldsaNttFull8wayJazz
-      "export fn dsa_ntt_proto(reg mut ptr u32[256] r, reg const ptr u32[2048] aux)"
-      = true := by native_decide
+#guard (strContains mldsaNttFull8wayJazz "export fn dsa_ntt_proto(reg mut ptr u32[256] r, reg const ptr u32[2048] aux)")
 
-/-- The ML-DSA full NTT carries the signed 64-bit Montgomery multiply (`dmont`)
+/- The ML-DSA full NTT carries the signed 64-bit Montgomery multiply (`dmont`)
     built on `#VPMUL_4u64` (VPMULDQ) and `#VMOVSHDUP_256`. -/
-theorem mldsa_ntt_full_has_dmont :
-    strContains mldsaNttFull8wayJazz "inline fn dmont(" = true
-      ∧ strContains mldsaNttFull8wayJazz "#VPMUL_4u64(" = true
-      ∧ strContains mldsaNttFull8wayJazz "#VMOVSHDUP_256(" = true := by native_decide
+#guard (strContains mldsaNttFull8wayJazz "inline fn dmont(")
+    && (strContains mldsaNttFull8wayJazz "#VPMUL_4u64(")
+    && (strContains mldsaNttFull8wayJazz "#VMOVSHDUP_256(")
 
-/-- The ML-DSA full NTT renders all 8 Cooley–Tukey layers (`len = 128 … 1`). -/
-theorem mldsa_ntt_full_has_all_8_layers :
-    strContains mldsaNttFull8wayJazz "// len = 128" = true
-      ∧ strContains mldsaNttFull8wayJazz "// len = 64" = true
-      ∧ strContains mldsaNttFull8wayJazz "// len = 32" = true
-      ∧ strContains mldsaNttFull8wayJazz "// len = 16" = true
-      ∧ strContains mldsaNttFull8wayJazz "// len = 8" = true
-      ∧ strContains mldsaNttFull8wayJazz "// len = 4" = true
-      ∧ strContains mldsaNttFull8wayJazz "// len = 2" = true
-      ∧ strContains mldsaNttFull8wayJazz "// len = 1" = true := by native_decide
+/- The ML-DSA full NTT renders all 8 Cooley–Tukey layers (`len = 128 … 1`). -/
+#guard (strContains mldsaNttFull8wayJazz "// len = 128")
+    && (strContains mldsaNttFull8wayJazz "// len = 64")
+    && (strContains mldsaNttFull8wayJazz "// len = 32")
+    && (strContains mldsaNttFull8wayJazz "// len = 16")
+    && (strContains mldsaNttFull8wayJazz "// len = 8")
+    && (strContains mldsaNttFull8wayJazz "// len = 4")
+    && (strContains mldsaNttFull8wayJazz "// len = 2")
+    && (strContains mldsaNttFull8wayJazz "// len = 1")
 
 /-- The #420 packed-dual-zeta butterfly demonstrator export. -/
 def mldsaDualZetaButterflyJazz : String :=
   emitMldsaDualZetaButterflyJazz "dsa_dualzeta_bfly"
 
-/-- The dual-zeta butterfly export has the expected one-vector ABI. -/
-theorem mldsa_dualzeta_export_sig :
-    strContains mldsaDualZetaButterflyJazz
-      "export fn dsa_dualzeta_bfly(reg mut ptr u32[8] r, reg const ptr u32[40] aux)"
-      = true := by native_decide
+/- The dual-zeta butterfly export has the expected one-vector ABI. -/
+#guard (strContains mldsaDualZetaButterflyJazz "export fn dsa_dualzeta_bfly(reg mut ptr u32[8] r, reg const ptr u32[40] aux)")
 
-/-- The packed-dual-zeta butterfly carries the `dmont` Montgomery multiply core
+/- The packed-dual-zeta butterfly carries the `dmont` Montgomery multiply core
     (6 `#VPMUL_4u64`) and the cross-128 partner `#VPERMQ`.  With the zeta vector
     split one-zeta-per-128-bit-half, that single 6-mul call twiddles two
     sub-butterfly groups. -/
-theorem mldsa_dualzeta_has_dmont :
-    strContains mldsaDualZetaButterflyJazz "inline fn dmont(" = true
-      ∧ strContains mldsaDualZetaButterflyJazz "#VPMUL_4u64(" = true
-      ∧ strContains mldsaDualZetaButterflyJazz "#VPERMQ(" = true := by native_decide
+#guard (strContains mldsaDualZetaButterflyJazz "inline fn dmont(")
+    && (strContains mldsaDualZetaButterflyJazz "#VPMUL_4u64(")
+    && (strContains mldsaDualZetaButterflyJazz "#VPERMQ(")
 
 /-- `dmont2` (the even/odd dual-zeta form PQClean uses at the adjacent deep
     levels) issues exactly six `#VPMUL_4u64` (= `VPMULDQ`) — the same multiply
@@ -1080,50 +1049,40 @@ theorem mldsa_dmont2_six_muls :
 /-- The bench-validated full ML-DSA-65 inverse NTT export (GS, #645-followon). -/
 def mldsaInvNttFull8wayJazz : String := emitMldsaInvNttFull8wayJazz "dsa_invntt_proto"
 
-/-- The ML-DSA inverse-NTT export has the expected in-place ABI (256 u32 in
+/- The ML-DSA inverse-NTT export has the expected in-place ABI (256 u32 in
     place, 2056-u32 aux: q + GS `−zeta` tables + final `n⁻¹` scale pair). -/
-theorem mldsa_invntt_full_export_sig :
-    strContains mldsaInvNttFull8wayJazz
-      "export fn dsa_invntt_proto(reg mut ptr u32[256] r, reg const ptr u32[2056] aux)"
-      = true := by native_decide
+#guard (strContains mldsaInvNttFull8wayJazz "export fn dsa_invntt_proto(reg mut ptr u32[256] r, reg const ptr u32[2056] aux)")
 
-/-- The inverse NTT reuses the signed 64-bit Montgomery multiply (`dmont`)
+/- The inverse NTT reuses the signed 64-bit Montgomery multiply (`dmont`)
     shared with the forward leaf. -/
-theorem mldsa_invntt_full_has_dmont :
-    strContains mldsaInvNttFull8wayJazz "inline fn dmont(" = true
-      ∧ strContains mldsaInvNttFull8wayJazz "#VPMUL_4u64(" = true := by native_decide
+#guard (strContains mldsaInvNttFull8wayJazz "inline fn dmont(")
+    && (strContains mldsaInvNttFull8wayJazz "#VPMUL_4u64(")
 
-/-- The inverse NTT renders all 8 Gentleman–Sande layers (`len = 1 … 128`) in
+/- The inverse NTT renders all 8 Gentleman–Sande layers (`len = 1 … 128`) in
     the reverse order of the forward leaf. -/
-theorem mldsa_invntt_full_has_all_8_layers :
-    strContains mldsaInvNttFull8wayJazz "// len = 1 " = true
-      ∧ strContains mldsaInvNttFull8wayJazz "// len = 2 " = true
-      ∧ strContains mldsaInvNttFull8wayJazz "// len = 4 " = true
-      ∧ strContains mldsaInvNttFull8wayJazz "// len = 8 " = true
-      ∧ strContains mldsaInvNttFull8wayJazz "// len = 16 " = true
-      ∧ strContains mldsaInvNttFull8wayJazz "// len = 32 " = true
-      ∧ strContains mldsaInvNttFull8wayJazz "// len = 64 " = true
-      ∧ strContains mldsaInvNttFull8wayJazz "// len = 128 " = true := by native_decide
+#guard (strContains mldsaInvNttFull8wayJazz "// len = 1 ")
+    && (strContains mldsaInvNttFull8wayJazz "// len = 2 ")
+    && (strContains mldsaInvNttFull8wayJazz "// len = 4 ")
+    && (strContains mldsaInvNttFull8wayJazz "// len = 8 ")
+    && (strContains mldsaInvNttFull8wayJazz "// len = 16 ")
+    && (strContains mldsaInvNttFull8wayJazz "// len = 32 ")
+    && (strContains mldsaInvNttFull8wayJazz "// len = 64 ")
+    && (strContains mldsaInvNttFull8wayJazz "// len = 128 ")
 
-/-- The inverse NTT carries the final `n⁻¹·mont²` scale (`f = 41978`). -/
-theorem mldsa_invntt_full_has_final_scale :
-    strContains mldsaInvNttFull8wayJazz "final scale" = true := by native_decide
+/- The inverse NTT carries the final `n⁻¹·mont²` scale (`f = 41978`). -/
+#guard (strContains mldsaInvNttFull8wayJazz "final scale")
 
 /-- The bench-validated 8-lane AVX2 pointwise-Montgomery basemul export. -/
 def mldsaPointwise8wayJazz : String := emitMldsaPointwise8wayJazz "dsa_pointwise_proto"
 
-/-- The pointwise basemul export has the expected two-input in-place ABI. -/
-theorem mldsa_pointwise_export_sig :
-    strContains mldsaPointwise8wayJazz
-      "export fn dsa_pointwise_proto(reg mut ptr u32[256] ra, reg const ptr u32[256] rb, reg const ptr u32[16] aux)"
-      = true := by native_decide
+/- The pointwise basemul export has the expected two-input in-place ABI. -/
+#guard (strContains mldsaPointwise8wayJazz "export fn dsa_pointwise_proto(reg mut ptr u32[256] ra, reg const ptr u32[256] rb, reg const ptr u32[16] aux)")
 
-/-- The pointwise basemul uses the variable-multiplier `dmontv` (shifting BOTH
+/- The pointwise basemul uses the variable-multiplier `dmontv` (shifting BOTH
     operands for the odd lane), and computes the Montgomery-quotient multiplier
     `b·qinv` on the fly via a packed `#VPMULL_8u32`. -/
-theorem mldsa_pointwise_has_dmontv_and_qmul :
-    strContains mldsaPointwise8wayJazz "inline fn dmontv(" = true
-      ∧ strContains mldsaPointwise8wayJazz "#VPMULL_8u32(" = true
-      ∧ strContains mldsaPointwise8wayJazz "dmontv(a, b, bqi, vq)" = true := by native_decide
+#guard (strContains mldsaPointwise8wayJazz "inline fn dmontv(")
+    && (strContains mldsaPointwise8wayJazz "#VPMULL_8u32(")
+    && (strContains mldsaPointwise8wayJazz "dmontv(a, b, bqi, vq)")
 
 end CatCrypt.Crypto.SecureCompilation.VIR.LatticeNttEmit

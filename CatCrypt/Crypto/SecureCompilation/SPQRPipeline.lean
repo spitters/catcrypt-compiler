@@ -98,7 +98,7 @@ theorem SPQRPipeline.perfect_security {hon β : Type} {E : EventSig} {n : Nat}
     sdistITreeN n E handler (haxLift n E P.hax_impl) P.ideal = 0 := by
   have h := P.uc_secure handler
   rw [h_exact, h_perfect, add_zero] at h
-  exact le_antisymm h (zero_le _)
+  exact le_antisymm h (zero_le)
 
 /-! ## Pipeline Composition -/
 

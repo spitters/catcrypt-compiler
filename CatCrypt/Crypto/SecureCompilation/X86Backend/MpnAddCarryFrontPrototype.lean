@@ -24,7 +24,7 @@ HW-faithful half-add split
 ```
 
 which uses only `SShr` / `SAdd` / `SAnd` — the same word-split carry idiom the
-deployed `Secp256k1FeMulFront` (FieldWidenMulCurve) and `Poly1305OwnedCom`
+deployed `Secp256k1FeMulFront` (FieldWidenMulCurve) and `Poly1305Com`
 (`carryStmts`) fronts already use. All shifts stay within word width, so the
 expression lowers faithfully (unlike `>> 64`, which the unbounded-`Nat` `SExpr`
 model would permit but a 64-bit register cannot realise). A three-input
@@ -36,14 +36,14 @@ exclusive, so their OR is an `SAdd` (dodging the absent `SOr`/`SNot` — the
 with a `+2^64` bias to avoid `SSub`'s saturation, borrow read off the high split
 or via `SLt`).
 
-## Scope / honest status
+## Scope / status
 
 * This is a **feasibility prototype**: it establishes that the covered
   carry-threading body front-compiles (`rolledForLoopNRt` returns `some`,
-  `addRtProg_isSome`), wrapping into a genuine `ComL.forLoopNRt` (one body copy,
+  `addRtProg_isSome`), wrapping into a `ComL.forLoopNRt` (one body copy,
   `jne` back-edge, counter seeded from the runtime `n` register). It does NOT yet
   wire the owned `.s` emission or the external `libgmp` byte-KAT — that flip
-  (re-sourcing `MpnLoopOwnedEmit`'s hand-authored `addLoopBody`/`subLoopBody`
+  (re-sourcing `MpnLoopEmit`'s hand-authored `addLoopBody`/`subLoopBody`
   through this front) is the follow-up.
 * **Carry-in seed ABI wrinkle** (plumbing, not a front gap): `rolledForLoopNRt`
   needs `init` to be an in-scope `Ctxt.Var` of `mapTy accCTy = .reg 64`. GMP's
@@ -139,9 +139,9 @@ def addRtProgOpt : Option (ComL Γouter (mapTy (.sword 64))) :=
     (invs := .cons (.there .here) (.cons (.there (.there .here))
               (.cons (.there (.there (.there .here))) .nil)))
 
-/-- **Feasibility keystone:** the runtime-loop front ACCEPTS the covered
+/-- **Feasibility result:** the runtime-loop front ACCEPTS the covered
     carry-threading `mpn_add_n` body — `rolledForLoopNRt` returns `some`, wrapping
-    it in a genuine `ComL.forLoopNRt` (one body copy + `jne` back-edge, counter
+    it in a `ComL.forLoopNRt` (one body copy + `jne` back-edge, counter
     seeded from the runtime `n` register). The loop-carried carry rides the
     `.sword 64` accumulator; no reg-1 carry dialect op is used. -/
 theorem addRtProg_isSome : addRtProgOpt.isSome := by native_decide

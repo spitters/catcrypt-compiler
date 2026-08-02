@@ -9,6 +9,8 @@ import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
 /-!
 # Direct merge translator (D2.1 approach #3)
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 Take two `Com d Γ t1` and `Com d Γ t2` programs that share a common
 prefix of let-bindings and produce a single `MultiReturnCom d Γ
 [t1, t2]` that emits both results from one program. When such a

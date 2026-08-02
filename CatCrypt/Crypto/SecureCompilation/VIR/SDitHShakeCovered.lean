@@ -10,7 +10,7 @@ import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenoteSe
 # SDitH SHAKE128 sponge whole-program denote through the covered `RSeq`-of-control fragment
 
 SDitH's commitment / PRG layer is SHAKE128. Its deployed owned leaf
-(`SDitH/ShakeOwnedEmit.lean`, `Lsdith_shake128_into`) is a single-block sponge —
+(`SDitH/ShakeEmit.lean`, `Lsdith_shake128_into`) is a single-block sponge —
 zero the 25-lane state, absorb the message rate block, apply the FIPS-202
 `pad10*1` domain pad (SHAKE128 `0x1f`/`0x80`), permute with Keccak-f[1600], and
 squeeze the digest rate block. That is exactly the FIPS-202 sponge shape
@@ -24,7 +24,7 @@ This re-sources the SDitH SHAKE128 sponge from a high-level `LowCT` term
 **existing covered-fragment front** — the same recipe as
 `Shake256Covered.shake256Covered_denote` — and banks the whole-program machine
 denote homomorphism for it. It strengthens the orchestration-front descent of the
-same sponge (`ShakeOwnedEmit.shakeCom` / `ShakeDenote.shakeCom_denote`, a
+same sponge (`ShakeEmit.shakeCom` / `ShakeDenote.shakeCom_denote`, a
 `buildOrchComP` schedule with a leaf-oracle-parametric `Com.denote`) to a
 high-level `RSeq`-of-control descent with a whole-program denote through the
 canonical `translateDialectControl` front.
@@ -56,7 +56,7 @@ SDitH SHAKE128 hashes a fixed single 32-byte block into a 32-byte digest: the
 absorb block count (`⌈inlen / rate⌉` with `rate = 168`) and the squeeze block
 count (`⌈outlen / rate⌉`) are both **1** — static, so `RFor` suffices, no
 `RWhileNz` is needed. The `NSHARE = 8` commitment fold `acc ← SHAKE128(acc)`
-(`ShakeOwnedEmit.sdith_commit_fold`) sequences eight of these single-block sponges
+(`ShakeEmit.sdith_commit_fold`) sequences eight of these single-block sponges
 — a further static counted-loop layer, a separate obligation. A variable-length
 streaming SHAKE128 XOF (runtime `inlen`/`outlen`) would need `RWhileNz`, the
 data-dependent-count arm; that is not the SDitH usage here.
@@ -131,7 +131,7 @@ def squeezeLoop : LowCT :=
 def sdithShakeLowCT : LowCT :=
   .RSeq absorbLoop (.RSeq padPhase squeezeLoop)
 
-/-! ## 2. Coverage — the load-bearing structural proofs -/
+/-! ## 2. Coverage — the structural proofs -/
 
 /-- The absorb-block body is straight-line covered. -/
 theorem absorbBlockBody_coveredS : IsCoveredS absorbBlockBody :=

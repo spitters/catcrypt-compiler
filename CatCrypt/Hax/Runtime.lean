@@ -88,6 +88,26 @@ where
     | 0, _, acc => acc
     | n + 1, i, acc => go n (i - 1) (f i acc)
 
+/-- Relational congruence for `foldRange`: a relation `R` between two accumulator
+    types that holds on the initial accumulators and is preserved by the two step
+    functions at every index carries over to the two fold results over the same
+    index range. Stated here, before `foldRange` is sealed `@[irreducible]`, so
+    the equational unfolding is available. -/
+theorem foldRange_rel {α β : Type} {R : α → β → Prop} {lo hi : Int}
+    {fa : Int → α → α} {fb : Int → β → β} {ia : α} {ib : β}
+    (h0 : R ia ib) (hstep : ∀ i a b, R a b → R (fa i a) (fb i b)) :
+    R (foldRange lo hi ia fa) (foldRange lo hi ib fb) := by
+  simp only [foldRange]
+  suffices H : ∀ (n : Nat) (lo : Int) (a : α) (b : β), R a b →
+      R (foldRange.go fa n lo a) (foldRange.go fb n lo b) from H _ _ _ _ h0
+  intro n
+  induction n with
+  | zero => intro lo a b hab; exact hab
+  | succ n ih =>
+    intro lo a b hab
+    simp only [foldRange.go]
+    exact ih (lo + 1) (fa lo a) (fb lo b) (hstep lo a b hab)
+
 -- Performance: keep whnf from unfolding iteration combinators inside
 -- the giant `mutual` blocks emitted by haxpipeT. Without this, elaborating
 -- a single foldRange-heavy def (e.g. FAEST's `compute_witness`) can blow

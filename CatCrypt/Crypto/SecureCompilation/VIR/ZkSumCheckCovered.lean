@@ -13,7 +13,7 @@ The Spartan/Jolt sum-check prover hot path is a **multi-phase counted-round
 kernel**: seed the Fiat–Shamir transcript with the claimed sum, then run the
 per-round loop — each round folds the round polynomial into the accumulator
 (`round_eval`, a BabyBear Horner fold) and squeezes the next challenge from the
-Poseidon2 transcript. Spartan's R1CS sum-check (#431) is genuinely two-phase:
+Poseidon2 transcript. Spartan's R1CS sum-check (#431) is two-phase:
 `num_rounds_x = 4` cubic rounds followed by `num_rounds_y = 5` quad rounds. Its
 top-level control is therefore a *sequence of a straight-line FS-init prologue
 and two counted round loops*:
@@ -25,7 +25,7 @@ fs_init ; (for rx in 0..numRoundsX  round_step ; fs_squeeze)
 
 The round count of each phase is a **compile-time constant** (`num_rounds_x`,
 `num_rounds_y` — fixed by the R1CS instance shape, exactly the `MOV r8, #n`
-seed of the hand `ZkSumCheckWholeProverOwnedEmit.sumcheckLoop`), so each phase
+seed of the hand `ZkSumCheckWholeProverEmit.sumcheckLoop`), so each phase
 is an `RFor` and the three phases are sequenced with `RSeq`. This is exactly the
 shape the canonical front accepts after the `RSeq`-of-control increment:
 `translateDialectControl` closes under `RSeq`-sequencing of control blocks, so
@@ -38,9 +38,9 @@ This re-sources the sum-check whole-prover from a high-level `LowCT` term
 denote homomorphism, the same recipe as
 `Fe25519ScalarmultCovered.fullScalarmultCovered_denote`,
 `Shake256Covered.shake256Covered_denote`, and `MayoSolveCovered.mayoSolveCovered_denote`.
-It strengthens the hand `ZkSumCheckWholeProverOwnedEmit` OrchStep schedule (a
+It strengthens the hand `ZkSumCheckWholeProverEmit` OrchStep schedule (a
 `loopLcmd` owned-back-edge object with no whole-program machine denote) to a
-genuine high-level-source descent.
+high-level-source descent.
 
 ## Opaque leaves — the per-round BabyBear work, exactly the exemplar tier
 
@@ -83,7 +83,7 @@ outside this static-count `RFor`+`RSeq` fragment; those are not part of the
 counted sum-check round schedule banked here. Orthogonally, the PCS commitment
 **curve MSM** (Spartan Hyrax / Jolt commit) is curve-group arithmetic with no
 owned-x86 emit — it stays outside this owned BabyBear field-core prover, exactly
-as `ZkSumCheckWholeProverOwnedEmit` documents; it is a *byte-emit* residual (the
+as `ZkSumCheckWholeProverEmit` documents; it is a *byte-emit* residual (the
 curve backend), not a *control-coverage* residual, so it does not obstruct the
 whole-program control descent banked here.
 -/
@@ -110,7 +110,7 @@ open CatCrypt.Crypto.Jasmin.LowCT (LowCT Located TowerType SExpr)
 def numRoundsX : Nat := 4
 /-- Phase-2 round count `num_rounds_y = 5` (the quad rounds over the R1CS `y`
     variables) — the `MOV r8, #5` seed. Total `4 + 5 = 9` rounds, matching
-    `ZkSumCheckWholeProverOwnedEmit.spartanSumcheckLoop`'s `n = 9`. -/
+    `ZkSumCheckWholeProverEmit.spartanSumcheckLoop`'s `n = 9`. -/
 def numRoundsY : Nat := 5
 
 /-! ## 1. The high-level source: the prover as `fs_init ; phase1 ; phase2` -/
@@ -156,7 +156,7 @@ def phase2Loop : LowCT :=
 def zkSumCheckLowCT : LowCT :=
   .RSeq fsInitBody (.RSeq phase1Loop phase2Loop)
 
-/-! ## 2. Coverage — the load-bearing structural proofs -/
+/-! ## 2. Coverage — the central structural proofs -/
 
 /-- The FS-init prologue is straight-line covered. -/
 theorem fsInitBody_coveredS : IsCoveredS fsInitBody :=

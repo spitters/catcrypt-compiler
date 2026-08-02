@@ -319,40 +319,29 @@ def chachaPolyJazz : String :=
 
 /-! ### Structural checks on the emitted text -/
 
-/-- The MAC kernel's ABI: `out : u64[5]` (the 5×26-bit MAC accumulator limbs),
+/- The MAC kernel's ABI: `out : u64[5]` (the 5×26-bit MAC accumulator limbs),
     `inp : u64[5 + 5·NBLK]` (the clamped key limbs then the `NBLK` pre-packed
     block limb-quintuples), `NBLK = 10` ⇒ `55`. -/
-theorem poly_mac_export_sig :
-    strContains poly1305MacJazz
-      "export fn poly1305_mac(reg ptr u64[5] out, reg const ptr u64[55] inp)"
-      = true := by native_decide
+#guard (strContains poly1305MacJazz "export fn poly1305_mac(reg ptr u64[5] out, reg const ptr u64[55] inp)")
 
-/-- The field multiply is the inline `poly1305_mulmod` (the `·` of the
+/- The field multiply is the inline `poly1305_mulmod` (the `·` of the
     `𝔽_{2¹³⁰−5}` lane, over 5×26-bit limbs). -/
-theorem poly_mac_has_mulmod :
-    strContains poly1305MacJazz
-      "inline fn poly1305_mulmod(reg ptr u64[5] h, reg const ptr u64[5] r)" = true := by
-  native_decide
+#guard (strContains poly1305MacJazz "inline fn poly1305_mulmod(reg ptr u64[5] h, reg const ptr u64[5] r)")
 
-/-- The reduction folds the high limbs back with the `·5` weight
+/- The reduction folds the high limbs back with the `·5` weight
     (`2¹³⁰ ≡ 5 (mod p)`) — the `c = c * 5;` top-limb fold in the carry chain. -/
-theorem poly_mac_folds_by_5 :
-    strContains poly1305MacJazz "c = c * 5;" = true := by native_decide
+#guard (strContains poly1305MacJazz "c = c * 5;")
 
-/-- The 26-bit limb mask `0x3ffffff` (`= 2²⁶ − 1`) renormalizes the limbs in the
+/- The 26-bit limb mask `0x3ffffff` (`= 2²⁶ − 1`) renormalizes the limbs in the
     carry chain. -/
-theorem poly_mac_masks_26bit :
-    strContains poly1305MacJazz "acc[0] = acc[0] & 0x3ffffff;" = true := by native_decide
+#guard (strContains poly1305MacJazz "acc[0] = acc[0] & 0x3ffffff;")
 
-/-- The Horner step is the field add (`acc[k] += m_i,k`) then the field multiply
+/- The Horner step is the field add (`acc[k] += m_i,k`) then the field multiply
     (`acc := acc · r`) — `acc := (acc + m_i)·r`. -/
-theorem poly_mac_horner_step :
-    strContains poly1305MacJazz "acc = poly1305_mulmod(acc, rk);" = true := by
-  native_decide
+#guard (strContains poly1305MacJazz "acc = poly1305_mulmod(acc, rk);")
 
-/-- The MAC accumulator limbs are written back to `out`. -/
-theorem poly_mac_writes_out :
-    strContains poly1305MacJazz "out[z] = acc[z];" = true := by native_decide
+/- The MAC accumulator limbs are written back to `out`. -/
+#guard (strContains poly1305MacJazz "out[z] = acc[z];")
 
 /-- The bundle reuses the committed ChaCha20 block export **verbatim** (the
     keystream / Poly1305-key source) — its exact RFC-KAT'd ABI line is present, so

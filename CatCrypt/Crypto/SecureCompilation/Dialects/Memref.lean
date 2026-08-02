@@ -8,6 +8,8 @@ import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 /-!
 # The `memref` dialect (D0 fan-out — CatCrypt-side, not in `VIR/`)
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 The memory fragment of the MLIR dialect-alignment restructure
 (D0 fan-out). It is the
 target-neutral indexed-buffer fragment — upstream MLIR's `memref` — defined over
@@ -54,7 +56,7 @@ inductive MemrefTy where
   | .int w => BitVec w
   | .buf w n => Fin n → BitVec w
 
-instance : TyDenote MemrefTy where
+@[reducible] instance : TyDenote MemrefTy where
   denote := MemrefTy.denote
 
 /-! ## 2. Ops — the neutral-`memref` fragment (Veir `Memref` / MLIR `memref` names) -/

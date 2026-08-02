@@ -435,21 +435,18 @@ that the G mixing function's rotate and arithmetic ops survive to the printer. -
 /-- The `.jazz` text of the lowered `a`-output BLAKE2b G word. -/
 def blake2bGJazzA : String := JasminPrint.emitJazz "blake2b_g_a" blake2bGJasminA
 
-/-- **Render smoke: the rotate survives.** The emitted `.jazz` names the native
+/- **Render smoke: the rotate survives.** The emitted `.jazz` names the native
     scalar right-rotate asm op (`#ROR_64`) — the rotate of the G mixing function
     reaches the x86 printer through the whole
     `Com catCryptDialect → Com jasminDialect → .jazz` chain (the `bvRor` op lowered
     to jasmin `rorImm`, which the printer renders as `#ROR_64`). -/
-theorem blake2bGJazzA_has_ror :
-    JasminPrint.strContains blake2bGJazzA "ROR" = true := by native_decide
+#guard (JasminPrint.strContains blake2bGJazzA "ROR")
 
-/-- **Render smoke: the add survives.** -/
-theorem blake2bGJazzA_has_plus :
-    JasminPrint.strContains blake2bGJazzA "+" = true := by native_decide
+/- **Render smoke: the add survives.** -/
+#guard (JasminPrint.strContains blake2bGJazzA "+")
 
-/-- **Render smoke: the xor survives.** -/
-theorem blake2bGJazzA_has_xor :
-    JasminPrint.strContains blake2bGJazzA "^" = true := by native_decide
+/- **Render smoke: the xor survives.** -/
+#guard (JasminPrint.strContains blake2bGJazzA "^")
 
 /-- **Shape: six `reg 64` inputs and 14 body instructions** — the same
     parameter/op count the catCrypt block carries (14 ops, no spilled binds),

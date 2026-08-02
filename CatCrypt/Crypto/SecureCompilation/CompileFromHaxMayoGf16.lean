@@ -16,7 +16,7 @@ and the BLAKE2s `G` step (`CompileFromHaxBlake2`) showed `compileFromHax`
 *emitting* crypto leaves for the bitwise (`¬`/`∧`/`⊕`/shift) and ARX
 (`+`/`^`/`>>>`) families. Here we do the same for the **GF(16) field multiply**,
 the hot inner unit of MAYO's `eval_public_map` (the verify map evaluation
-`acc ^= sⱼ · A[j][l] · s_l`, matching `CatCrypt/Crypto/MAYO/VerifyOwnedEmit.lean`'s
+`acc ^= sⱼ · A[j][l] · s_l`, matching `CatCrypt/Crypto/MAYO/VerifyEmit.lean`'s
 `gf16BitStep`/`gf16MulInline`).
 
 ## GF(16) multiply (the bit-serial straight-line)
@@ -26,7 +26,7 @@ is the standard 4-step **shift-and-conditional-xor with reduction**: for each bi
 `k = 0..3` of `b`, conditionally XOR the running shifted multiplicand `sh` into
 the accumulator `r` if bit `k` is set, then `xtime(sh)` (multiply `sh` by `x`,
 reducing modulo `x⁴+x+1`, i.e. XOR the reduce constant `0x3 = x+1` back in when
-the degree-4 bit `x⁴` appears). This is exactly `VerifyOwnedEmit.gf16BitStep`.
+the degree-4 bit `x⁴` appears). This is exactly `VerifyEmit.gf16BitStep`.
 
 The conditional XOR and the conditional reduce are both done **branch-free** via a
 mask `mask = 0 − bit` (`0x0` or all-ones). The front exposes `BitAnd`/`BitXor`/
@@ -61,7 +61,7 @@ arguments atoms or earlier locals), so the leaf follows the C3 obligation:
 The emitted jasmin `Com` is *computed by the verified compiler from the extracted
 source*, proven equal to the bit-serial GF(16) product — the compiler authored
 the leaf, with no front change beyond the SHA-256/Keccak/BLAKE2 leaves. This is
-the first finite-field (GF(2⁴)) family fan-out, and the genuinely-harder tier:
+the first finite-field (GF(2⁴)) family fan-out, and the harder tier:
 the field-reduce makes the spec non-trivial.
 -/
 
@@ -91,7 +91,7 @@ literals are materialized into their own locals first. -/
     local; allocates per-step locals named with the suffix `s` (the step index as
     a decimal string, supplied by the caller) so the four steps don't collide.
 
-    The step computes (mirroring `VerifyOwnedEmit.gf16BitStep`):
+    The step computes (mirroring `VerifyEmit.gf16BitStep`):
     `bit := (b >> k) & 1`; `mask := (bit ^ ones) + 1`; `r := r ^ (sh & mask)`;
     `t := (sh << 1) & 0xf`; `cy := (sh >> 3) & 1`; `cm := ((cy ^ ones) + 1) & 0x3`;
     `sh := t ^ cm`. -/
@@ -193,9 +193,9 @@ theorem gf16Mul_compileFromHax_isSome :
     This is a C4 fan-out to the *finite-field* (GF(2⁴)) primitive family — the hot
     inner unit of MAYO's `eval_public_map` — reusing the SHA-256/Keccak/BLAKE2
     `BitAnd`/`BitXor`/`Shl`/`Shr`/`wrapping_add` recognizers with no front change.
-    The field-reduce (`xtime` modulo `x⁴+x+1`) is the genuinely-harder content; it
+    The field-reduce (`xtime` modulo `x⁴+x+1`) is the harder content; it
     is done branch-free via the two's-complement mask `(bit ^ ones) + 1 = 0 − bit`,
-    matching `VerifyOwnedEmit.gf16BitStep`. -/
+    matching `VerifyEmit.gf16BitStep`. -/
 theorem gf16Mul_compiles :
     ∃ (prog : Com jasminDialect (frontCtxt 32 2 []) (rW 32)),
       compileFromHax (w := 32) (nIn := 2) ["a", "b"] gf16MulSrc = some prog ∧
@@ -222,9 +222,9 @@ Not required for the `_compiles` deliverable above (which states the emitted
 jasmin equals the bit-serial form the source computes). This side lemma sanity-
 checks, on representative operand pairs, that `gf16MulSpec` is the GF(16) =
 GF(2)[x]/(x⁴+x+1) product: e.g. `7 · 11 = 4` (`x²`) and `3 · 6 = 0xa`, matching
-`VerifyOwnedEmit.gf16Mac_value`/`gf16Mac_value2`. -/
+`VerifyEmit.gf16Mac_value`/`gf16Mac_value2`. -/
 
-/-- `gf16MulSpec` computes the GF(16) field product on the `VerifyOwnedEmit`
+/-- `gf16MulSpec` computes the GF(16) field product on the `VerifyEmit`
     KAT vectors: `7 · 11 = 4` and `3 · 6 = 0xa` over GF(2)[x]/(x⁴+x+1). -/
 theorem gf16MulSpec_kat :
     gf16MulSpec 0x7 0xb = 0x4 ∧ gf16MulSpec 0x3 0x6 = 0xa := by

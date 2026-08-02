@@ -11,6 +11,8 @@ set_option autoImplicit false
 /-!
 # Multi-binder VIR — pair destructor on top of `Com` (Phase 4 #7)
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 `Com d Γ t` (single binder per `var`) is the substrate. Many dialect ops
 return a `.pair`-typed value (e.g., `mkPair`, `cnot`/`cz` from the
 quantum dialect). Consuming both components downstream forces walking

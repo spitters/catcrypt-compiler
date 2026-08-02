@@ -12,7 +12,7 @@ import CatCrypt.Crypto.Optimizer.GenericRegAlloc
 `Optimizer.GenericRegAlloc` (#552) factored the x86 `SpillingRegAlloc` and the A64
 `ArmRegAlloc` into a single `MachineModel`-parameterized validated allocator: the
 linear-scan allocator (untrusted) + the verified checker (the injective-renaming
-keystone `renameBlock_runBlock`, the spill-store/reload-roundtrip sandwich
+lemma `renameBlock_runBlock`, the spill-store/reload-roundtrip sandwich
 `reload_sandwich`, the rewrite-length decomposition `rewriteBlock_length`), all stated
 **once** over `[RegMachine I S]` / `[MemMachine M]`.
 
@@ -28,7 +28,7 @@ gap). The instance:
 * `instRegMachineRInst` (`RegMachine RInst RState`): the per-op `evalRInst` is a single
   `set d (instVal s i)` write (`evalRInst_eq_set`), `runRBlock` is the left fold, and
   the source-locality `instVal_rename` holds by `cases` over `RInst` — so the generic
-  `renameBlock_runBlock` keystone **specializes** to the RV64 register-resident path.
+  `renameBlock_runBlock` **specializes** to the RV64 register-resident path.
 * `instMemMachineRMemState` (`MemMachine RMemState`): the spill path over a
   memory-extended `RState`, so the generic `spillStore_establishes` / `evalReload_noop`
   / `reload_sandwich` give the RV64 spill soundness.
@@ -124,7 +124,7 @@ def gpFile : List String :=
 
 /-! ## 3. The `MachineModel` / `RegMachine` / `MemMachine` instances (the fresh wiring)
 
-The genuine deliverable: instantiating the generic pass for RV64. -/
+Instantiating the generic pass for RV64. -/
 
 /-- **`MachineModel RInst`**: the syntactic interface — written/read names from
     `rinstDstSrcs`, the GP file, and `sw`/`lw` as the spill/reload constructors. -/
@@ -140,7 +140,7 @@ instance instMachineModelRInst : MachineModel RInst where
   mkReload r _off := .mv r r
 
 /-- **`RegMachine RInst RState`**: the semantic interface — `runRBlock`, the 32-bit
-    register file, and the per-op shape. The generic `renameBlock_runBlock` keystone
+    register file, and the per-op shape. The generic `renameBlock_runBlock`
     specializes through this instance to the RV64 register-resident path. -/
 instance instRegMachineRInst : RegMachine RInst RState where
   toMachineModel := instMachineModelRInst
@@ -248,8 +248,8 @@ generic results at the RV64 types as the canonical RV64 RA soundness statements.
 /-- **RV64 resident-path soundness** — `GenericRegAlloc.renameBlock_runBlock`
     instantiated at `RInst`/`RState`: applying an injective renaming `ρ` that maps the
     RV64 discard set `{zero, x0}` to itself (and real names to real registers) onto an
-    `RInst` block commutes with `runRBlock`. The RV64 register-resident keystone,
-    obtained from the generic pass with no new proof. -/
+    `RInst` block commutes with `runRBlock`. The RV64 register-resident soundness
+    statement, obtained from the generic pass with no new proof. -/
 theorem renameRBlock_runRBlock (ρ : String → String) (hinj : Function.Injective ρ)
     (hρd : ∀ r, rmDisc RInst RState r = true → rmDisc RInst RState (ρ r) = true)
     (hρnd : ∀ r, rmDisc RInst RState r = false → rmDisc RInst RState (ρ r) = false)
@@ -325,5 +325,21 @@ theorem hot_spillAlloc_wellformed :
     (linearScan tinyPool 0 (liveRanges hotBody)).all
       (fun d => match d.2 with | .resident _ => true | .spilled off => 0 ≤ off) = true := by
   native_decide
+
+/-! ## 6. Byte separation of the RV64 frame slots
+
+The RV64 allocator is the generic `GenericRegAlloc.linearScan` at the RV64 pool, so its
+frame layout is the generic one and the byte-separation obligation is discharged by
+`GenericRegAlloc.linearScan_slotsSeparated`. What is RV64-specific is the *access width*:
+a spilled value is a 32-bit `R32` stored by `sw` and reloaded by `lw`, occupying 4 bytes,
+which the default 8-byte stride covers. -/
+
+/-- **The RV64 frame slots cover pairwise-disjoint byte ranges at the `sw`/`lw` access
+    width.** A spilled RV64 value is 4 bytes wide and the default frame stride is 8, so the
+    generic stride hypothesis is met and the slots are separated. -/
+theorem linearScan_slotsSeparated_rv64 (pool : List String) (frameBase : Int)
+    (lrs : List LiveRange) :
+    SlotsSeparated 4 (linearScan pool frameBase lrs) :=
+  linearScan_slotsSeparated 4 pool frameBase lrs 8 (by decide)
 
 end CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvRegAlloc

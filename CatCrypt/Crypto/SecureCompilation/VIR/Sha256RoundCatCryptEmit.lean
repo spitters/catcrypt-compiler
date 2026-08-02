@@ -388,16 +388,14 @@ SHA-256 round-component ops survive to the printer. -/
 /-- The `.jazz` text of the lowered `Σ₀` component. -/
 def sha256Sigma0Jazz : String := JasminPrint.emitJazz "sha256_sigma0" sha256Sigma0Jasmin
 
-/-- **Render smoke: the rotate survives.** The emitted `.jazz` names the native
+/- **Render smoke: the rotate survives.** The emitted `.jazz` names the native
     scalar right-rotate asm op (`#ROR_32`) — the `bvRor` rotates of `Σ₀` reach the
     x86 printer through the whole `Com catCryptDialect → Com jasminDialect → .jazz`
     chain (`bvRor` lowered to jasmin `rorImm`, rendered as `#ROR_32`). -/
-theorem sha256Sigma0Jazz_has_ror :
-    JasminPrint.strContains sha256Sigma0Jazz "ROR" = true := by native_decide
+#guard (JasminPrint.strContains sha256Sigma0Jazz "ROR")
 
-/-- **Render smoke: the xor survives.** -/
-theorem sha256Sigma0Jazz_has_xor :
-    JasminPrint.strContains sha256Sigma0Jazz "^" = true := by native_decide
+/- **Render smoke: the xor survives.** -/
+#guard (JasminPrint.strContains sha256Sigma0Jazz "^")
 
 /-- **Shape: one `reg 32` input and 5 body instructions** — three rotates plus two
     XORs, the catCrypt `Σ₀` block's op count, confirming the whole component lands
@@ -410,8 +408,7 @@ theorem sha256Sigma0Jasmin_shape :
     shape reaches the printer. -/
 def sha256ChJazz : String := JasminPrint.emitJazz "sha256_ch" sha256ChJasmin
 
-/-- **Render smoke (Ch): the xor survives.** -/
-theorem sha256ChJazz_has_xor :
-    JasminPrint.strContains sha256ChJazz "^" = true := by native_decide
+/- **Render smoke (Ch): the xor survives.** -/
+#guard (JasminPrint.strContains sha256ChJazz "^")
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Sha256RoundCatCryptEmit

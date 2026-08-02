@@ -417,15 +417,13 @@ theorem hmacXorPad_abi :
       "export fn hmac_xor_pad(reg ptr u32[16] out, reg const ptr u32[17] inp)" = true := by
   native_decide
 
-/-- The XOR-pad body carries the real `regArith xor` op (`^`), the emitted pad
+/- The XOR-pad body carries the real `regArith xor` op (`^`), the emitted pad
     computation — NOT an `extCall` leaf. -/
-theorem hmacXorPad_has_xor :
-    strContains hmacXorPadJazz " ^ " = true := by native_decide
+#guard (strContains hmacXorPadJazz " ^ ")
 
-/-- The XOR-pad `.jazz` carries no `extCall` leaf call: it is fully emitted (the
+/- The XOR-pad `.jazz` carries no `extCall` leaf call: it is fully emitted (the
     pad word is read straight from `inp[16]`). -/
-theorem hmacXorPad_no_hash_leaf :
-    strContains hmacXorPadJazz "sha256_compress(" = false := by native_decide
+#guard !(strContains hmacXorPadJazz "sha256_compress(")
 
 /-! ## 6. HMAC-SHA512: the same XOR-pad at `w = 64` over the 128-byte block
 
@@ -548,31 +546,24 @@ theorem xorPadComW_denote (w : Nat) (V : Ctxt.Valuation (padCtxtW w)) :
 
 /-! ### 6c. Emitted-text sanity checks (HMAC-SHA512) -/
 
-/-- The SHA-512 XOR-pad is an `export fn` with the register-arith ABI. -/
-theorem hmacXorPad512_has_export :
-    strContains hmacXorPad512Jazz "export fn hmac512_xor_pad(" = true := by native_decide
+/- The SHA-512 XOR-pad is an `export fn` with the register-arith ABI. -/
+#guard (strContains hmacXorPad512Jazz "export fn hmac512_xor_pad(")
 
-/-- The SHA-512 XOR-pad uses the mutable-output-first register-arith ABI over
+/- The SHA-512 XOR-pad uses the mutable-output-first register-arith ABI over
     `u64` (16 key words + the pad word). -/
-theorem hmacXorPad512_abi :
-    strContains hmacXorPad512Jazz
-      "export fn hmac512_xor_pad(reg ptr u64[16] out, reg const ptr u64[17] inp)" = true := by
-  native_decide
+#guard (strContains hmacXorPad512Jazz "export fn hmac512_xor_pad(reg ptr u64[16] out, reg const ptr u64[17] inp)")
 
-/-- The SHA-512 XOR-pad body carries the real `regArith xor` op (`^`) — NOT an
+/- The SHA-512 XOR-pad body carries the real `regArith xor` op (`^`) — NOT an
     `extCall` leaf. -/
-theorem hmacXorPad512_has_xor :
-    strContains hmacXorPad512Jazz " ^ " = true := by native_decide
+#guard (strContains hmacXorPad512Jazz " ^ ")
 
-/-- The SHA-512 XOR-pad `.jazz` carries no `extCall` hash leaf: it is fully
+/- The SHA-512 XOR-pad `.jazz` carries no `extCall` hash leaf: it is fully
     emitted (the pad word is read straight from `inp[16]`). -/
-theorem hmacXorPad512_no_hash_leaf :
-    strContains hmacXorPad512Jazz "sha512_compress(" = false := by native_decide
+#guard !(strContains hmacXorPad512Jazz "sha512_compress(")
 
-/-- The SHA-512 XOR-pad uses 64-bit words, distinguishing it from the SHA-256
+/- The SHA-512 XOR-pad uses 64-bit words, distinguishing it from the SHA-256
     pad (`stack u64[16]` state buffer). -/
-theorem hmacXorPad512_is_u64 :
-    strContains hmacXorPad512Jazz "stack u64[16] st" = true := by native_decide
+#guard (strContains hmacXorPad512Jazz "stack u64[16] st")
 
 /-! ## 7. HMAC-SHA384: HMAC over the SHA-384 truncation of the SHA-512 core
 
@@ -626,12 +617,11 @@ theorem hmac384_core_width : sha384Variant.core.w = hw512 :=
 theorem hmac384_digest_bytes : Sha2Emit.Truncated.digestBytes sha384Variant = 48 :=
   Sha2Emit.Truncated.sha384_digest_bytes
 
-/-- **The XOR-pad emitted text HMAC-SHA384 consumes is the committed
+/- **The XOR-pad emitted text HMAC-SHA384 consumes is the committed
     `hmac512_xor_pad`** — HMAC-SHA384 and HMAC-SHA512 drive the *same* emitted
     pad over the *same* 128-byte block. No HMAC-SHA384-specific `.jazz` is
     emitted; the digest truncation is in the C wrapper. -/
-theorem hmac384_uses_hmac512_pad :
-    strContains hmacXorPad512Jazz "export fn hmac512_xor_pad(" = true := by native_decide
+#guard (strContains hmacXorPad512Jazz "export fn hmac512_xor_pad(")
 
 /-! ## Front-sourced HMAC pad + SHA-2 core (covered SExpr front, rfl-provenance)
 

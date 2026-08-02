@@ -23,11 +23,53 @@ already validate are unchanged. The only import is `YmmDialectOps` (for `YmmOp`
 and its `attMnemonic`); there is NO dependency on the bespoke `Avx2YmmModel`.
 
 The mnemonic strings come from `YmmOp.attMnemonic`; the operand order and arity
-are keyed on the `YmmOp` constructor (binary `vpmuldq`/`vpsubq`/`vpaddd`/
-`vpsubd`/`vpblendd`, unary `vmovshdup`/`vpshufd`/`vpermq`, with the `imm8`-
-carrying permutes baking the immediate into a leading `$imm` operand). The
-`vmovdqu` move/load/store arms are not `YmmOp`s (they leave/enter memory), so
-they are separate `YmmInstr` constructors with their own literal mnemonic.
+are keyed on the `YmmOp` constructor: plain binary ops print `src2, src1, dst`
+through a catch-all arm, unary `vmovshdup` prints `src, dst`, and the `imm8`-
+carrying permutes (`vpshufd`/`vpermq`/`vpblendd`) and lane shifts
+(`vpsrlq`/`vpsllq`/`vpsrld`/`vpslld`) bake the immediate into a leading `$imm`
+operand. The `vmovdqu` move/load/store arms are not `YmmOp`s (they leave/enter
+memory), so they are separate `YmmInstr` constructors with their own literal
+mnemonic.
+
+## Named-symbol memory operands (§7)
+
+`YmmMem` is base-plus-displacement, which cannot spell a rip-relative reference
+to a `.rodata` label: `⟨"sym(%rip)", 0⟩` would print `(sym(%rip))`, which `gas`
+rejects. `YmmSymMem` is the second operand form — a symbol name plus a byte
+offset into it, printed `sym(%rip)` / `sym+8(%rip)` / `sym-8(%rip)`. It is
+carried by `YmmSymInstr`, an instruction layer that lifts every `YmmInstr`
+through `.plain` and adds the two symbol-sourced loads (`vmovdqu` of a 256-bit
+constant, `vpbroadcastq` of a single qword). `YmmMem`, `YmmInstr` and every
+renderer over them are unchanged, and `renderYmmSymBlockBody_plain` /
+`renderYmmSymFundef_plain` state that a `.plain`-only block renders to the same
+lines as before.
+
+## What a symbol operand asserts, and what the render establishes
+
+A symbol operand names a memory location; printing it says nothing about the
+bytes at that location. `YmmOp.denote` is a function on register values, and
+`YmmInstr` has no memory semantics at all (`MpnSimdExtractEmit.evalXInst`, the
+one model over it, treats `.yload`/`.ystore` as register-file no-ops), so a
+kernel that reads a mask from `c_M26(%rip)` and then proves a lane identity
+about the loaded register has assumed the mask value rather than derived it.
+
+Three obligations sit behind such an operand:
+
+* **the reference resolves to a defined label.** `ymmSymsDefined` pairs each
+  referenced symbol with a name in the `.rodata` definition list, and
+  `ymmSymsDefined_iff` characterises it as list inclusion. This one is checked
+  in Lean.
+* **the label holds the intended value.** The `.rodata` `.quad` list is the
+  definition; discharging this means deriving those words from the Lean datum
+  the kernel's specification uses, so the constant is written once, and running
+  a machine semantics that seeds the symbol's memory.
+  `X86Backend/RodataProbe.tableGet_value` is what that looks like at the scalar
+  tier: it seeds the symbol bank and runs `runBlock`. There is no 256-bit
+  counterpart, so at this tier the value rests on the emitted `.quad` list and
+  the external byte KAT.
+* **`gas` and `ld` resolve `sym(%rip)` to the address of the `.rodata` label**
+  under PIE/PIC. This is the assembler/linker trust the backend's other
+  rip-relative leaves already carry (`AsmPrinter.JInstr.loadSym`).
 
 ## Where the trust boundary is (identical posture to the bespoke printer)
 
@@ -100,10 +142,20 @@ def renderYmmInstr : YmmInstr → String
           "\t" ++ mn ++ "\t$" ++ toString imm ++ ", " ++ a ++ ", " ++ dst
       | .vpermq imm, [a] =>
           "\t" ++ mn ++ "\t$" ++ toString imm ++ ", " ++ a ++ ", " ++ dst
+      -- imm8-carrying unary lane shifts: `\t<mn>\t$imm, src, dst`
+      | .vpsrlq imm, [a] =>
+          "\t" ++ mn ++ "\t$" ++ toString imm ++ ", " ++ a ++ ", " ++ dst
+      | .vpsllq imm, [a] =>
+          "\t" ++ mn ++ "\t$" ++ toString imm ++ ", " ++ a ++ ", " ++ dst
+      | .vpsrld imm, [a] =>
+          "\t" ++ mn ++ "\t$" ++ toString imm ++ ", " ++ a ++ ", " ++ dst
+      | .vpslld imm, [a] =>
+          "\t" ++ mn ++ "\t$" ++ toString imm ++ ", " ++ a ++ ", " ++ dst
       -- unary high-dup move: `\tvmovshdup\tsrc, dst`
       | .vmovshdup, [a] =>
           "\t" ++ mn ++ "\t" ++ a ++ ", " ++ dst
-      -- binary ALU (vpmuldq/vpsubq/vpaddd/vpsubd): `\t<mn>\tsrc2, src1, dst`
+      -- plain binary ALU (vpmuldq/vpsubq/vpaddd/vpsubd/vpmuludq/vpaddq/vpmullq/
+      -- vpand/vpor/vpxor/vpshufb): `\t<mn>\tsrc2, src1, dst`
       | _, [a, b] =>
           "\t" ++ mn ++ "\t" ++ b ++ ", " ++ a ++ ", " ++ dst
       -- ill-formed operand list (wrong arity): visible rejection for gas
@@ -122,24 +174,31 @@ def renderYmmBlockBody (block : List YmmInstr) : List String :=
 The signed ML-DSA NTT kernel is leaf, uses no callee-saved GP registers, touches
 only `%ymm` and the two argument pointers (`%rdi` = `r`, `%rsi` = `aux`), and
 returns `r`. The frame is the symbol directives, the body, the `movq %rdi, %rax`
-return-value move, and `ret`. Reproduced VERBATIM from `renderYFundef` — the
-exact directive set + tabs is load-bearing for byte-identity with the bespoke
-printer (and hence the bench KATs). -/
+return-value move, and `ret`. The exact directive set and tab placement is what
+byte-identity with `renderYFundef`, and hence with the bench KATs, rests on. -/
 
-/-- Render a complete AT&T function: header directives, label, body, ABI
-    epilogue (`movq %rdi, %rax ; ret`). Copied verbatim from
-    `Avx2Ymm.renderYFundef`. -/
-def renderYmmFundef (name : String) (block : List YmmInstr) : List String :=
+/-- The six frame header lines: the AT&T/section directives, the alignment, the
+    symbol directives, and the function label. -/
+def ymmFrameHeader (name : String) : List String :=
   [ "\t.att_syntax"
   , "\t.text"
   , "\t.p2align\t5"
   , "\t.globl\t" ++ name
   , "\t.type\t" ++ name ++ ", @function"
   , name ++ ":" ]
-  ++ renderYmmBlockBody block
-  ++ [ "\tmovq\t%rdi, %rax"
-     , "\tret"
-     , "\t.section\t.note.GNU-stack,\"\",@progbits" ]
+
+/-- The three frame footer lines: the 2-pointer-ABI return-value move, `ret`, and
+    the non-executable-stack note. -/
+def ymmFrameFooter : List String :=
+  [ "\tmovq\t%rdi, %rax"
+  , "\tret"
+  , "\t.section\t.note.GNU-stack,\"\",@progbits" ]
+
+/-- Render a complete AT&T function: header directives, label, body, ABI
+    epilogue (`movq %rdi, %rax ; ret`). Copied verbatim from
+    `Avx2Ymm.renderYFundef`. -/
+def renderYmmFundef (name : String) (block : List YmmInstr) : List String :=
+  ymmFrameHeader name ++ renderYmmBlockBody block ++ ymmFrameFooter
 
 /-- The function text as a single `\n`-joined string (ready to write to a `.s`).
     Matches `Avx2Ymm.renderYFundefText`. -/
@@ -199,6 +258,60 @@ example : renderYmmInstr (.ystore ⟨"%rdi", 0⟩ "%ymm3")
 example : renderYmmInstr (.ystore ⟨"%rdi", 512⟩ "%ymm1")
     = "\tvmovdqu\t%ymm1, 512(%rdi)" := by native_decide
 
+/-! ## 5b. Syntax pins for the added ALU ops
+
+Operand order is keyed to real emitted lines: `vpxor %ymm2, %ymm5, %ymm5` and
+`vpslld $12, %ymm3, %ymm6` (`bench/chacha_compare/gen_owned_simd/`),
+`vpaddq %ymm21, %ymm16, %ymm16` and `vpsrlq $26, %ymm16, %ymm22`
+(`bench/poly1305_compare/gen_owned_ymm/`). Those artifacts separate mnemonic
+from operands with a SPACE; this printer uses a TAB, matching the ML-DSA NTT
+reference `.s` it is pinned against. `gas` accepts either. -/
+
+/-- `vpmuludq %ymm5, %ymm0, %ymm16` — plain binary, `src2, src1, dst`. -/
+example : renderYmmInstr (.alu .vpmuludq "%ymm16" ["%ymm0", "%ymm5"])
+    = "\tvpmuludq\t%ymm5, %ymm0, %ymm16" := by native_decide
+
+/-- `vpaddq %ymm21, %ymm16, %ymm16` — plain binary. -/
+example : renderYmmInstr (.alu .vpaddq "%ymm16" ["%ymm16", "%ymm21"])
+    = "\tvpaddq\t%ymm21, %ymm16, %ymm16" := by native_decide
+
+/-- `vpmullq %ymm15, %ymm23, %ymm23` — plain binary. -/
+example : renderYmmInstr (.alu .vpmullq "%ymm23" ["%ymm23", "%ymm15"])
+    = "\tvpmullq\t%ymm15, %ymm23, %ymm23" := by native_decide
+
+/-- `vpand %ymm14, %ymm16, %ymm16` — the VEX spelling of the artifacts'
+    EVEX `vpandq`. -/
+example : renderYmmInstr (.alu .vpand "%ymm16" ["%ymm16", "%ymm14"])
+    = "\tvpand\t%ymm14, %ymm16, %ymm16" := by native_decide
+
+/-- `vpor %ymm3, %ymm6, %ymm3` — plain binary. -/
+example : renderYmmInstr (.alu .vpor "%ymm3" ["%ymm6", "%ymm3"])
+    = "\tvpor\t%ymm3, %ymm6, %ymm3" := by native_decide
+
+/-- `vpxor %ymm2, %ymm5, %ymm5` — plain binary. -/
+example : renderYmmInstr (.alu .vpxor "%ymm5" ["%ymm5", "%ymm2"])
+    = "\tvpxor\t%ymm2, %ymm5, %ymm5" := by native_decide
+
+/-- `vpshufb %ymm0, %ymm5, %ymm5` — binary, `src1` = data, `src2` = control. -/
+example : renderYmmInstr (.alu .vpshufb "%ymm5" ["%ymm5", "%ymm0"])
+    = "\tvpshufb\t%ymm0, %ymm5, %ymm5" := by native_decide
+
+/-- `vpsrlq $26, %ymm16, %ymm22` — imm8-carrying unary shift. -/
+example : renderYmmInstr (.alu (.vpsrlq 26) "%ymm22" ["%ymm16"])
+    = "\tvpsrlq\t$26, %ymm16, %ymm22" := by native_decide
+
+/-- `vpsllq $23, %ymm20, %ymm21` — imm8-carrying unary shift. -/
+example : renderYmmInstr (.alu (.vpsllq 23) "%ymm21" ["%ymm20"])
+    = "\tvpsllq\t$23, %ymm20, %ymm21" := by native_decide
+
+/-- `vpsrld $20, %ymm3, %ymm3` — imm8-carrying unary shift. -/
+example : renderYmmInstr (.alu (.vpsrld 20) "%ymm3" ["%ymm3"])
+    = "\tvpsrld\t$20, %ymm3, %ymm3" := by native_decide
+
+/-- `vpslld $12, %ymm3, %ymm6` — imm8-carrying unary shift. -/
+example : renderYmmInstr (.alu (.vpslld 12) "%ymm6" ["%ymm3"])
+    = "\tvpslld\t$12, %ymm3, %ymm6" := by native_decide
+
 /-! ## 6. Frame pins (byte-identical to `renderYFundef`'s header/epilogue) -/
 
 /-- The frame header carries the symbol directives and the AT&T label
@@ -215,5 +328,158 @@ example :
     (renderYmmFundef "dsa_ntt_proto" []).drop 6
       = [ "\tmovq\t%rdi, %rax", "\tret"
         , "\t.section\t.note.GNU-stack,\"\",@progbits" ] := by native_decide
+
+/-! ## 7. Named-symbol (rip-relative) operands and the instruction layer over them
+
+`YmmMem` addresses memory through a base register; a `.rodata` constant is
+addressed through its symbol name and the instruction pointer. `YmmSymMem` is
+that second form, and `YmmSymInstr` is the instruction type that carries it: it
+lifts every `YmmInstr` through `.plain` and adds the two symbol-sourced loads the
+256-bit kernels need. This is the same extension shape as
+`X86Backend/MpnSimdExtractEmit.XInst` (lift the base instruction type, add arms
+with their own literal mnemonics), which keeps `YmmInstr` and both of its
+existing consumers untouched.
+
+The arms are loads only. A `.rodata` symbol is read-only, so there is no
+symbol-destination store; a memory-source ALU form (`vpxor sym(%rip), %ymm0,
+%ymm0`, as `VIR/KeccakAvx2Emit` spells it inline) is a further arm, not part of
+this operand. -/
+
+/-- A rip-relative 256-bit memory operand: a symbol name plus a byte offset into
+    the object it labels. `disp = 0` addresses the symbol itself; `disp = 32`
+    addresses the second 256-bit constant of a table laid out at that label. -/
+structure YmmSymMem where
+  /-- The `.rodata` label name. -/
+  sym : String
+  /-- Byte offset added to the symbol's address. -/
+  disp : Int
+
+/-- The symbol operand at offset zero. -/
+def ymmSym (name : String) : YmmSymMem := ⟨name, 0⟩
+
+/-- Print a `YmmSymMem` as AT&T rip-relative `sym(%rip)`, with a signed
+    symbol-relative offset when it is non-zero (`sym+32(%rip)`,
+    `sym-8(%rip)`). -/
+def renderYmmSymMem (m : YmmSymMem) : String :=
+  if m.disp = 0 then m.sym ++ "(%rip)"
+  else if m.disp > 0 then m.sym ++ "+" ++ toString m.disp ++ "(%rip)"
+  else m.sym ++ toString m.disp ++ "(%rip)"
+
+/-- One instruction of a kernel that reads `.rodata` constants: any `YmmInstr`,
+    or one of the two symbol-sourced loads. -/
+inductive YmmSymInstr where
+  /-- A base `YmmInstr` (ALU op, register move, base+displacement load/store). -/
+  | plain (i : YmmInstr)
+  /-- `vmovdqu sym(%rip), dst` — load a 256-bit constant. -/
+  | yloadSym (dst : String) (mem : YmmSymMem)
+  /-- `vpbroadcastq sym(%rip), dst` — load one qword and replicate it across the
+      four 64-bit lanes. -/
+  | ybcastqSym (dst : String) (mem : YmmSymMem)
+
+/-- Render one `YmmSymInstr` to its AT&T asm line. The `.plain` arm is
+    `renderYmmInstr`; the two symbol arms carry their own literal mnemonic and
+    print `src, dst` (AT&T load order). -/
+def renderYmmSymInstr : YmmSymInstr → String
+  | .plain i => renderYmmInstr i
+  | .yloadSym dst mem => "\tvmovdqu\t" ++ renderYmmSymMem mem ++ ", " ++ dst
+  | .ybcastqSym dst mem => "\tvpbroadcastq\t" ++ renderYmmSymMem mem ++ ", " ++ dst
+
+/-- Print a whole symbol-layer block's instruction lines. -/
+def renderYmmSymBlockBody (block : List YmmSymInstr) : List String :=
+  block.map renderYmmSymInstr
+
+/-- Render a complete AT&T function over the symbol layer, with the frame of
+    `renderYmmFundef` (the shared `ymmFrameHeader` / `ymmFrameFooter`). -/
+def renderYmmSymFundef (name : String) (block : List YmmSymInstr) : List String :=
+  ymmFrameHeader name ++ renderYmmSymBlockBody block ++ ymmFrameFooter
+
+/-- The symbol-layer function text as a single `\n`-joined string. -/
+def renderYmmSymFundefText (name : String) (block : List YmmSymInstr) : String :=
+  String.intercalate "\n" (renderYmmSymFundef name block) ++ "\n"
+
+/-! ### The symbol layer prints the base layer unchanged
+
+A block with no symbol operand renders to exactly the lines the base printer
+produces, so moving a kernel onto `YmmSymInstr` before it references any
+constant does not change its bytes. -/
+
+/-- The `.plain` arm is `renderYmmInstr`. -/
+theorem renderYmmSymInstr_plain (i : YmmInstr) :
+    renderYmmSymInstr (.plain i) = renderYmmInstr i := rfl
+
+/-- A `.plain`-only block renders to the base printer's lines. -/
+theorem renderYmmSymBlockBody_plain (block : List YmmInstr) :
+    renderYmmSymBlockBody (block.map .plain) = renderYmmBlockBody block := by
+  simp [renderYmmSymBlockBody, renderYmmBlockBody, List.map_map,
+    renderYmmSymInstr_plain]
+
+/-- A `.plain`-only function renders to the base printer's function, frame
+    included. -/
+theorem renderYmmSymFundef_plain (name : String) (block : List YmmInstr) :
+    renderYmmSymFundef name (block.map .plain) = renderYmmFundef name block := by
+  simp [renderYmmSymFundef, renderYmmFundef, renderYmmSymBlockBody_plain]
+
+/-! ### Pairing each symbol reference with a definition
+
+`ymmSymRefs` collects the symbols a block reads; `ymmSymsDefined` checks each
+against a list of defined `.rodata` label names. This is the one obligation of
+the three in the module docstring that is checked here: it rules out a reference
+to a constant the kernel never defines (a link error, or worse a coincidental
+match with an unrelated global), and says nothing about the bytes at the label. -/
+
+/-- The `.rodata` symbol an instruction reads, if any. -/
+def YmmSymInstr.symRef : YmmSymInstr → Option String
+  | .plain _ => none
+  | .yloadSym _ mem => some mem.sym
+  | .ybcastqSym _ mem => some mem.sym
+
+/-- The distinct `.rodata` symbols a block reads, in first-reference order. -/
+def ymmSymRefs (block : List YmmSymInstr) : List String :=
+  (block.filterMap YmmSymInstr.symRef).eraseDups
+
+/-- Every symbol the block reads appears in `defs` (the defined `.rodata` label
+    names). -/
+def ymmSymsDefined (block : List YmmSymInstr) (defs : List String) : Bool :=
+  (ymmSymRefs block).all (fun s => defs.contains s)
+
+/-- `ymmSymsDefined` is inclusion of the referenced symbols in the defined
+    names. -/
+theorem ymmSymsDefined_iff (block : List YmmSymInstr) (defs : List String) :
+    ymmSymsDefined block defs = true ↔ ∀ s ∈ ymmSymRefs block, s ∈ defs := by
+  simp [ymmSymsDefined, List.all_eq_true]
+
+/-! ### Syntax pins for the symbol operand and its two arms
+
+Spellings audited against `gas`: `vmovdqu fa_M26(%rip), %ymm3` and
+`vpbroadcastq LEA_MASK32(%rip), %ymm0` are the forms the ristretto and LEA/LSH
+artifacts use. These are `#guard`s rather than `native_decide` examples, so they
+carry no axiom. -/
+
+/- `vmovdqu fa_M26(%rip), %ymm3` — 256-bit constant load at offset zero. -/
+#guard renderYmmSymInstr (.yloadSym "%ymm3" (ymmSym "fa_M26"))
+  == "\tvmovdqu\tfa_M26(%rip), %ymm3"
+
+/- `vpbroadcastq LEA_MASK32(%rip), %ymm0` — single-qword broadcast. -/
+#guard renderYmmSymInstr (.ybcastqSym "%ymm0" (ymmSym "LEA_MASK32"))
+  == "\tvpbroadcastq\tLEA_MASK32(%rip), %ymm0"
+
+/- A positive symbol-relative offset prints as `sym+disp(%rip)`. -/
+#guard renderYmmSymMem ⟨"fa_2P", 32⟩ == "fa_2P+32(%rip)"
+
+/- A negative symbol-relative offset prints as `sym-disp(%rip)`. -/
+#guard renderYmmSymMem ⟨"fa_2P", -32⟩ == "fa_2P-32(%rip)"
+
+/- A `.plain` arm prints exactly the base printer's line. -/
+#guard renderYmmSymInstr (.plain (.yload "%ymm4" ⟨"%rdi", 512⟩))
+  == "\tvmovdqu\t512(%rdi), %ymm4"
+
+/- Two references to one symbol collect once; a `.plain` arm references none. -/
+#guard ymmSymRefs [ .yloadSym "%ymm3" (ymmSym "fa_M26")
+                  , .plain (.ymov "%ymm4" "%ymm3")
+                  , .ybcastqSym "%ymm5" ⟨"fa_M26", 8⟩ ] == ["fa_M26"]
+
+/- A reference with a definition passes; one without fails. -/
+#guard ymmSymsDefined [.yloadSym "%ymm3" (ymmSym "fa_M26")] ["fa_M26", "fa_C19"]
+#guard !ymmSymsDefined [.yloadSym "%ymm3" (ymmSym "fa_M25")] ["fa_M26", "fa_C19"]
 
 end CatCrypt.Crypto.SecureCompilation.VIR.YmmAsmPrint

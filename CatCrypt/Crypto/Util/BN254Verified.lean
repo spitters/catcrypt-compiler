@@ -4,6 +4,7 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 import Mathlib.Data.ZMod.Basic
+import CatCrypt.Crypto.Util.BN254PrimeCert
 import Mathlib.Tactic
 
 /-!
@@ -71,7 +72,8 @@ abbrev BN254 : Nat :=
     254-bit Miller–Rabin in a reasonable time, so we take primality as a named
     axiom (the `Fact` instance below carries it through Mathlib's
     `ZMod`-as-field machinery). -/
-axiom bn254_prime : Nat.Prime BN254
+theorem bn254_prime : Nat.Prime BN254 :=
+  CatCrypt.Crypto.Util.BN254PrimeCert.bn254lit_prime
 
 /-- Wrap primality as a `Fact` so `Field (ZMod BN254)` is inferred
     automatically by Mathlib. -/

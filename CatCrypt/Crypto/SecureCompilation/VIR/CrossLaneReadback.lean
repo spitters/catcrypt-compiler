@@ -293,8 +293,7 @@ theorem cross_lane_runOutput_shuffle_then_add (q n : Nat)
 /-! ## 4. The NTT cross-lane routing as a concrete constant `σ`
 
 The motivating example: the AVX2/AVX-512 NTT layer's lower/upper-half **gather**
-(`NttLayerComDenote`'s `lowerHalf`/`upperHalf` gather-scatter, the §6b kernel's
-`#VPERMQ`/`#VPSHUFB`). A radix-2 NTT layer over `n = 2 * h` lanes routes the lower
+(the §6b `LatticeNttEmit` kernel's `#VPERMQ`/`#VPSHUFB` lane routing). A radix-2 NTT layer over `n = 2 * h` lanes routes the lower
 half `[0, h)` and the upper half `[h, n)` into interleaved butterfly position — a fixed
 (public, compile-time) lane permutation. We exhibit one such constant `σ` (the
 even/odd deinterleave-style gather `i ↦ (i % h) routed by half`) and confirm the

@@ -9,7 +9,7 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 /-!
 # Front schedule for the MSB-first early-exit `mpn_cmp`
 
-`MpnLoopOwnedEmit`'s eight core runtime-N loop kernels (`add/sub/and/ior/xor/
+`MpnLoopEmit`'s eight core runtime-N loop kernels (`add/sub/and/ior/xor/
 com/copyi/zero`) are front-sourced through `TranslateDialectRuntimeLoop.
 rolledForLoopNRt` (a covered `LowCT` loop body → `ComL.forLoopNRt` → owned
 export). The one kernel that path could not express was `mpn_cmp`: GMP's
@@ -48,7 +48,7 @@ SysV, `int mpn_cmp(const mp_limb_t *ap, const mp_limb_t *bp, mp_size_t n)`:
 `RAX` (result), `RCX` (counter), `R8` (`8·n` stride), `R9`/`R10` (the two loaded
 limbs) — all caller-saved, so the leaf needs no callee-save park.
 
-## Denotation honesty
+## Denotation
 
 The forward `condFwd` break, the `goto` back-edge, and the `subRR` compare have
 the **same** denotation status as the SHAKE256 sponge and query-sampler fronts:
@@ -133,10 +133,10 @@ theorem cmp_wellFormed : wellFormedCmp cmpSteps = true := by native_decide
 /-! ## 3. The rendered early-exit `.s` (front-sourced deployed body) -/
 
 /-- The FRONT-sourced deployed `.s` text for `mpn_cmp` (rendered from the schedule
-    via the owned `renderLfundef`). This is what `MpnLoopOwnedEmit` deploys. -/
+    via the owned `renderLfundef`). This is what `MpnLoopEmit` deploys. -/
 def cmpAsmFront : String := renderLfundef "mpn_cmp_loop_owned" cmpBodyFront
 
-/-- **The rendered `mpn_cmp` is a genuine MSB-first early-exit scan returning
+/- **The rendered `mpn_cmp` is an MSB-first early-exit scan returning
     `{-1,0,+1}` in `RAX` over the GMP ABI.** The body renders:
     * the scan loop back-edge (`.L0:` / `jmp .L0`);
     * the per-limb compare-by-subtract (`subq %r10, %r9`);
@@ -147,17 +147,15 @@ def cmpAsmFront : String := renderLfundef "mpn_cmp_loop_owned" cmpBodyFront
     * the GMP ABI operand streaming (`(%rdi)` = `a[i]`, `(%rsi)` = `b[i]`);
     and emits no `UNHANDLED` sentinel — every schedule op rendered to a real
     line. -/
-theorem cmpAsmFront_shape :
-    occursIn ".L0:" cmpAsmFront = true
-      ∧ occursIn "jmp .L0" cmpAsmFront = true
-      ∧ occursIn "subq %r10, %r9" cmpAsmFront = true
-      ∧ occursIn "jne .L2" cmpAsmFront = true
-      ∧ occursIn "je .L1" cmpAsmFront = true
-      ∧ occursIn "movq $1, %rax" cmpAsmFront = true
-      ∧ occursIn "subq $1, %rax" cmpAsmFront = true
-      ∧ occursIn "(%rdi)" cmpAsmFront = true
-      ∧ occursIn "(%rsi)" cmpAsmFront = true
-      ∧ occursIn "UNHANDLED" cmpAsmFront = false := by
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> native_decide
+#guard (occursIn ".L0:" cmpAsmFront)
+    && (occursIn "jmp .L0" cmpAsmFront)
+    && (occursIn "subq %r10, %r9" cmpAsmFront)
+    && (occursIn "jne .L2" cmpAsmFront)
+    && (occursIn "je .L1" cmpAsmFront)
+    && (occursIn "movq $1, %rax" cmpAsmFront)
+    && (occursIn "subq $1, %rax" cmpAsmFront)
+    && (occursIn "(%rdi)" cmpAsmFront)
+    && (occursIn "(%rsi)" cmpAsmFront)
+    && !(occursIn "UNHANDLED" cmpAsmFront)
 
 end CatCrypt.Crypto.SecureCompilation.VIR.MpnCmpEarlyExitFront

@@ -333,43 +333,33 @@ def chacha4wayPshufbJazz : String :=
 
 /-! ## 5. Self-checks on the emitted text -/
 
-/-- The pshufb 4-way export has the expected ABI. -/
-theorem pshufb_export_sig :
-    strContains chacha4wayPshufbJazz
-      "export fn chacha20_4way_pshufb_block(reg ptr u32[64] out, reg const ptr u32[64] inp)"
-      = true := by native_decide
+/- The pshufb 4-way export has the expected ABI. -/
+#guard (strContains chacha4wayPshufbJazz "export fn chacha20_4way_pshufb_block(reg ptr u32[64] out, reg const ptr u32[64] inp)")
 
-/-- The cross-lane `#VPSHUFB_128` byte-shuffle (the leaf) is emitted — the lever. -/
-theorem pshufb_has_vpshufb :
-    strContains chacha4wayPshufbJazz "#VPSHUFB_128(" = true := by native_decide
+/- The cross-lane `#VPSHUFB_128` byte-shuffle (the leaf) is emitted — the lever. -/
+#guard (strContains chacha4wayPshufbJazz "#VPSHUFB_128(")
 
-/-- The `<<<16` rotate is the pshufb against the `rol16` control. -/
-theorem pshufb_rol16 :
-    strContains chacha4wayPshufbJazz "#VPSHUFB_128(m12, rol16);" = true := by native_decide
+/- The `<<<16` rotate is the pshufb against the `rol16` control. -/
+#guard (strContains chacha4wayPshufbJazz "#VPSHUFB_128(m12, rol16);")
 
-/-- The `<<<8` rotate is the pshufb against the `rol8` control. -/
-theorem pshufb_rol8 :
-    strContains chacha4wayPshufbJazz " = #VPSHUFB_128(m12, rol8);" = true := by native_decide
+/- The `<<<8` rotate is the pshufb against the `rol8` control. -/
+#guard (strContains chacha4wayPshufbJazz " = #VPSHUFB_128(m12, rol8);")
 
-/-- The byte-shuffle control constants are emitted (the fixed, public `σ`). -/
-theorem pshufb_has_controls :
-    strContains chacha4wayPshufbJazz "ROL16_CTRL" = true
-      ∧ strContains chacha4wayPshufbJazz "ROL8_CTRL" = true := by native_decide
+/- The byte-shuffle control constants are emitted (the fixed, public `σ`). -/
+#guard (strContains chacha4wayPshufbJazz "ROL16_CTRL")
+    && (strContains chacha4wayPshufbJazz "ROL8_CTRL")
 
-/-- The per-lane ARX add survives (the rest of the quarter-round is per-lane). -/
-theorem pshufb_has_packed_add :
-    strContains chacha4wayPshufbJazz "#VPADD_4u32(" = true := by native_decide
+/- The per-lane ARX add survives (the rest of the quarter-round is per-lane). -/
+#guard (strContains chacha4wayPshufbJazz "#VPADD_4u32(")
 
-/-- The non-byte-aligned rotates (`<<<12`, `<<<7`) stay the per-lane shift-or. -/
-theorem pshufb_has_shift_or :
-    strContains chacha4wayPshufbJazz "#VPSLL_4u32(" = true
-      ∧ strContains chacha4wayPshufbJazz "#VPSRL_4u32(" = true := by native_decide
+/- The non-byte-aligned rotates (`<<<12`, `<<<7`) stay the per-lane shift-or. -/
+#guard (strContains chacha4wayPshufbJazz "#VPSLL_4u32(")
+    && (strContains chacha4wayPshufbJazz "#VPSRL_4u32(")
 
-/-- The `<<<16`/`<<<8` rotates do NOT emit the shift-or pattern via the rotate
+/- The `<<<16`/`<<<8` rotates do NOT emit the shift-or pattern via the rotate
     scratch the way `<<<12`/`<<<7` do: the byte-aligned rotates are replaced by
     the single pshufb (no `m12 = #VPSLL_4u32(m12, 16)` appears). -/
-theorem pshufb_no_shift_or_for_16 :
-    strContains chacha4wayPshufbJazz "#VPSLL_4u32(m12, 16)" = false := by native_decide
+#guard !(strContains chacha4wayPshufbJazz "#VPSLL_4u32(m12, 16)")
 
 /-! ## 6. The cross-lane permute LEAF rides the verified lsem leaf arm
 

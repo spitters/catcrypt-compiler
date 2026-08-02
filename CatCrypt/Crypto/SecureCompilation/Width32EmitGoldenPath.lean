@@ -5,6 +5,7 @@ Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
 import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
+import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfFull
 import Std.Tactic.BVDecide
 
 /-!
@@ -123,9 +124,13 @@ theorem add32Com_riscv_e2e (V : Ctxt.Valuation ([.reg 64, .reg 64] : Ctxt jasmin
       = Com.denote add32Com V :=
   com_riscv_e2e add32Com_ok FieldEmitGoldenPath.allReg64_two V s hs
 
-/-- **The x86 owned-emit leg** (KAT-gated tier): the same source to ELF `.o` bytes. -/
+/-- **The x86 owned-emit leg, via the optimized full-ELF entry.**
+    Emits through `OptimizedComToElfFull.optimizedCompileComToElf`; correctness uses
+    `optimizedCompileComToElf_sound` (the optimized block is `runBlock`-equal to the
+    unoptimized gathered block on every input) together with the executed spec-KAT in
+    `bench/chacha_compare/`, not byte identity with `compileComToElf`. -/
 def add32Com_x86_elf : ByteArray :=
-  X86Backend.CompileComToElfJInstrFull6.compileComToElfJInstrFull6 add32Com "u32_add"
+  X86Backend.OptimizedComToElfFull.optimizedCompileComToElf add32Com "u32_add"
 
 /-! ## Masked xor: `xor32 a b = (a ^ b) &&& 0xFFFFFFFF`
 
@@ -183,9 +188,13 @@ theorem xor32Com_riscv_e2e (V : Ctxt.Valuation ([.reg 64, .reg 64] : Ctxt jasmin
       = Com.denote xor32Com V :=
   com_riscv_e2e xor32Com_ok FieldEmitGoldenPath.allReg64_two V s hs
 
-/-- **The x86 owned-emit leg** (KAT-gated tier). -/
+/-- **The x86 owned-emit leg, via the optimized full-ELF entry.**
+    Emits through `OptimizedComToElfFull.optimizedCompileComToElf`; correctness uses
+    `optimizedCompileComToElf_sound` (the optimized block is `runBlock`-equal to the
+    unoptimized gathered block on every input) together with the executed spec-KAT in
+    `bench/chacha_compare/`, not byte identity with `compileComToElf`. -/
 def xor32Com_x86_elf : ByteArray :=
-  X86Backend.CompileComToElfJInstrFull6.compileComToElfJInstrFull6 xor32Com "u32_xor"
+  X86Backend.OptimizedComToElfFull.optimizedCompileComToElf xor32Com "u32_xor"
 
 /-! ## 32-bit rotate-left: `rotl32 a k = ((am <<< k) ||| (am >>> (32 - k))) &&& 0xFFFFFFFF`
 
@@ -263,9 +272,13 @@ theorem rotl32Com_16_riscv_e2e (V : Ctxt.Valuation ([.reg 64] : Ctxt jasminDiale
       = Com.denote rotl32Com_16 V :=
   com_riscv_e2e rotl32Com_16_ok allReg64_one V s hs
 
-/-- **The x86 owned-emit leg** (KAT-gated tier). -/
+/-- **The x86 owned-emit leg, via the optimized full-ELF entry.**
+    Emits through `OptimizedComToElfFull.optimizedCompileComToElf`; correctness uses
+    `optimizedCompileComToElf_sound` (the optimized block is `runBlock`-equal to the
+    unoptimized gathered block on every input) together with the executed spec-KAT in
+    `bench/chacha_compare/`, not byte identity with `compileComToElf`. -/
 def rotl32Com_16_x86_elf : ByteArray :=
-  X86Backend.CompileComToElfJInstrFull6.compileComToElfJInstrFull6 rotl32Com_16 "u32_rotl16"
+  X86Backend.OptimizedComToElfFull.optimizedCompileComToElf rotl32Com_16 "u32_rotl16"
 
 /-- `rotl32 a 12` over `[a]` (input masked to 32 bits, then shift-or-rotate). -/
 def rotl32Com_12 : Com jasminDialect [.reg 64] (.reg 64) :=
@@ -330,9 +343,13 @@ theorem rotl32Com_12_riscv_e2e (V : Ctxt.Valuation ([.reg 64] : Ctxt jasminDiale
       = Com.denote rotl32Com_12 V :=
   com_riscv_e2e rotl32Com_12_ok allReg64_one V s hs
 
-/-- **The x86 owned-emit leg** (KAT-gated tier). -/
+/-- **The x86 owned-emit leg, via the optimized full-ELF entry.**
+    Emits through `OptimizedComToElfFull.optimizedCompileComToElf`; correctness uses
+    `optimizedCompileComToElf_sound` (the optimized block is `runBlock`-equal to the
+    unoptimized gathered block on every input) together with the executed spec-KAT in
+    `bench/chacha_compare/`, not byte identity with `compileComToElf`. -/
 def rotl32Com_12_x86_elf : ByteArray :=
-  X86Backend.CompileComToElfJInstrFull6.compileComToElfJInstrFull6 rotl32Com_12 "u32_rotl12"
+  X86Backend.OptimizedComToElfFull.optimizedCompileComToElf rotl32Com_12 "u32_rotl12"
 
 /-! ## A real ChaCha20 quarter-round component
 
@@ -419,8 +436,12 @@ theorem chachaQuarterStepCom_riscv_e2e
       = Com.denote chachaQuarterStepCom V :=
   com_riscv_e2e chachaQuarterStepCom_ok FieldEmitGoldenPath.allReg64_two V s hs
 
-/-- **The x86 owned-emit leg** (KAT-gated tier). -/
+/-- **The x86 owned-emit leg, via the optimized full-ELF entry.**
+    Emits through `OptimizedComToElfFull.optimizedCompileComToElf`; correctness uses
+    `optimizedCompileComToElf_sound` (the optimized block is `runBlock`-equal to the
+    unoptimized gathered block on every input) together with the executed spec-KAT in
+    `bench/chacha_compare/`, not byte identity with `compileComToElf`. -/
 def chachaQuarterStepCom_x86_elf : ByteArray :=
-  X86Backend.CompileComToElfJInstrFull6.compileComToElfJInstrFull6 chachaQuarterStepCom "chacha_qstep"
+  X86Backend.OptimizedComToElfFull.optimizedCompileComToElf chachaQuarterStepCom "chacha_qstep"
 
 end CatCrypt.Crypto.SecureCompilation.Width32Emit

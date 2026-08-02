@@ -81,7 +81,7 @@ The non-BASIC (`Z ≠ 1`) RCB doubling for `a = 0` (`Z1 = p->z`):
 `fp2_sqr` covers `t0 = Y²` and `t2 = Z²`. The by-`b'` step is `fp2_mul` by the
 runtime `b'` operand.
 
-## Honest scope
+## Scope
 
 This is the `G2` group-law **leaf** toward the Miller loop. The bodies of the
 `Fp` add/sub leaves are `runBlock`-verified (`Bls12381Fp2MulKernel`); the `Fp`
@@ -351,5 +351,12 @@ def emitMain : IO Unit := do
   IO.FS.writeFile "bench/bls12381_g2_compare/gen_com/bls12381_g2_add.s"                 g2AddAsm
   IO.FS.writeFile "bench/bls12381_g2_compare/gen_com/bls12381_g2_dbl.s"                 g2DblAsm
   IO.println "wrote gen_com/bls12381_fp2_{add,sub,dbl,copy}_x86_from_lean.s + bls12381_g2_{add,dbl}.s (owned x86 backend, G2 group law over verified Fp2 leaves)"
+
+/-! ## Artifact generation at elaboration
+
+The renders are written while this module elaborates, so `lake` produces them
+from this file and no separate driver or Makefile rule carries the dependency. -/
+
+#eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381G2

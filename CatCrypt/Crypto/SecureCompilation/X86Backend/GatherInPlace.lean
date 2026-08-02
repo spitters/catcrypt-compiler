@@ -109,20 +109,43 @@ def lowerAluJ2InPlace (dst : String) (opn : String) (s0 s1 : JOperand) :
 /-- The in-place coverage lowering. The two-source `regArith` mnemonics
     (`ADD/SUB/AND/OR/XOR:64`, plus their untagged forms) are intercepted with the
     `lowerAluJ2InPlace` peephole (skip the leading `mov` when `s0 = dst`); the
-    high-word multiply `MULXHI:64` and every other shape delegate to
-    `lowerLinstrExtCov` verbatim. So `lowerLinstrExtCov3` differs from
-    `lowerLinstrExtCov` only on the `s0 = dst` two-source case, where it now emits
-    the single in-place op the Lprog encoder produces. -/
+    high-word multiply `MULXHI:64`, the two-source memory scatters
+    `STORE`/`STOREIDX`, and every other shape delegate to `lowerLinstrExtCov`
+    verbatim. So `lowerLinstrExtCov3` differs from `lowerLinstrExtCov` only on the
+    `s0 = dst` two-source `regArith` case, where it emits the single in-place op
+    the Lprog encoder produces.
+
+    The `MULXHI:64` / `STORE` / `STOREIDX` head patterns sit above the generic
+    two-source arm because those shapes also carry two sources: without them the
+    generic arm would run `lowerAluJ2InPlace` on a mnemonic outside the ALU table
+    and return `none`, hiding coverage `lowerLinstrExtCov` already has. -/
 def lowerLinstrExtCov3 : LinstrR → Option (List (JInstr 64))
   -- the high-word multiply stays as `lowerLinstrExtCov` lowers it (two sources, but
   -- not a `regArith` split — keep it before the generic two-source peephole arm)
   | .Lopn [.reg dst] "MULXHI:64" [s0, s1] =>
       lowerLinstrExtCov (.Lopn [.reg dst] "MULXHI:64" [s0, s1])
+  -- the two-source memory scatters: constant-offset `STORE` and register-indexed
+  -- (SIB) `STOREIDX`, both `[.arr…/.arrIdx…, val]` shapes
+  | .Lopn [.reg dst] "STORE" [s0, s1] =>
+      lowerLinstrExtCov (.Lopn [.reg dst] "STORE" [s0, s1])
+  | .Lopn [.reg dst] "STOREIDX" [s0, s1] =>
+      lowerLinstrExtCov (.Lopn [.reg dst] "STOREIDX" [s0, s1])
   -- generic two-source ALU (`regArith bop 64`): the in-place peephole
   | .Lopn [.reg dst] opn [s0, s1] =>
       lowerAluJ2InPlace dst opn (lowerJOperand s0) (lowerJOperand s1)
   -- everything else: the coverage superset verbatim
   | i => lowerLinstrExtCov i
+
+/-- The two-source memory scatters delegate to `lowerLinstrExtCov`, so the
+    register-indexed store the SSA exporter emits gathers. -/
+theorem lowerLinstrExtCov3_storeidx (dst base idx : String) (scale : Nat) (val : LOperand) :
+    lowerLinstrExtCov3 (.Lopn [.reg dst] "STOREIDX" [.arrIdx base idx scale, val])
+      = some [JInstr.storeMemIdx base idx scale (lowerJOperand val)] := rfl
+
+/-- The constant-offset store delegates to `lowerLinstrExtCov`. -/
+theorem lowerLinstrExtCov3_store (dst base : String) (off : Nat) (val : LOperand) :
+    lowerLinstrExtCov3 (.Lopn [.reg dst] "STORE" [.arr base off, val])
+      = some [JInstr.storeMem base (off : Int) (lowerJOperand val)] := rfl
 
 /-- Lower a full `Linstr` (drops the position tag), in-place coverage superset. -/
 def lowerLinstrExtCov3L (i : Linstr) : Option (List (JInstr 64)) :=

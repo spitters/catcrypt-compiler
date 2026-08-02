@@ -4,6 +4,9 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 import Mathlib.Data.ZMod.Basic
+import CatCrypt.Crypto.MLKEM.ByteCodec
+import CatCrypt.Crypto.MLKEM.Compress
+import CatCrypt.Crypto.MLKEM.Sampler
 
 /-!
 # ML-KEM jasmin leaf functional-correctness specs (citation-style axioms)
@@ -37,8 +40,8 @@ ML-KEM jasmin implementation in this tree**:
   functional correctness.)
 * `BLS/libjade/submodules/formosa-mlkem/` is an **uninitialised submodule**
   (empty directory).
-* No `.ec` file anywhere under `~/Claude` mentions `kyber`/`mlkem` in either
-  its path or its content.
+* No `.ec` file anywhere in the local workspace mentions `kyber`/`mlkem` in
+  either its path or its content.
 * The only local ML-KEM *spec* artefacts are the libcrux F* extraction
   (`libcrux/specs/kyber/proofs/fstar/extraction/Hacspec_kyber.*.fst`) and
   CatCrypt's own Lean MLWE/FO development (`CatCrypt/Crypto/MLKEM/`). Neither
@@ -75,7 +78,7 @@ the real CompPoly NTT product is a *proved* Lean theorem:
 > `CatCrypt.Crypto.SecureCompilation.VIR.LatticeNTTSemantic.realNttMul_negacyclic_coeff`
 
 which establishes, for the real NTT/pointwise-multiply/inverse-NTT pipeline
-over `Z_q[X]/(X^n + 1)`, that the coefficient-wise result equals the genuine
+over `Z_q[X]/(X^n + 1)`, that the coefficient-wise result equals the
 negacyclic convolution (cyclic full product folded by the `X^n ≡ −1`
 reduction) — not a definitional `rfl`. See §7 below for the in-tree
 `ntt_basemul_is_proven` marker that records this distinction in the leaf
@@ -183,7 +186,7 @@ axiom gen_matrix_leaf : Bytes32 → Fin mlkemK → Fin mlkemK → Poly
 /-- The FIPS 203 Alg. 7 `SampleNTT` reference: a 34-byte SHAKE128 input
     (`ρ` ‖ two index bytes) to a uniform NTT-domain polynomial via
     rejection sampling. Opaque (spec side). -/
-axiom sampleNTT_spec : Bytes → Poly
+def sampleNTT_spec : Bytes → Poly := CatCrypt.Crypto.MLKEM.Sampler.sampleNTT
 
 /-- The XOF input byte string `ρ ‖ j ‖ i` consumed by `SampleNTT` for
     entry `(i,j)` (FIPS 203 §6.1; note the transpose `(j,i)` order). -/
@@ -216,7 +219,8 @@ axiom poly_getnoise_leaf : Bytes → Nat → Poly
 
 /-- FIPS 203 §4.2.2 `SamplePolyCBD_η` reference: decode a `64·η`-byte PRF
     output into a centered-binomial polynomial. Opaque (spec side). -/
-axiom samplePolyCBD_spec : Bytes → Nat → Poly
+def samplePolyCBD_spec (b : Bytes) (eta : Nat) : Poly :=
+  CatCrypt.Crypto.MLKEM.Sampler.sampleCBD_eta eta b
 
 /-- The SHAKE256 PRF expansion `PRF(σ, N)` of length `64·η` consumed by
     `SamplePolyCBD_η` (FIPS 203 §4.1, the `PRF` function). Opaque. -/
@@ -248,11 +252,13 @@ per-component lift, so a single contract suffices). -/
 
 /-- Per-coefficient `Compress_d` reference (FIPS 203 §4.2.1):
     `⌈(2^d / q)·x⌋ mod 2^d`, returned as a `Nat` in `[0, 2^d)`. Opaque. -/
-axiom compress_spec : Nat → ZMod mlkemQ → Nat
+def compress_spec (d : Nat) (x : ZMod mlkemQ) : Nat :=
+  (CatCrypt.Crypto.MLKEM.Compress.compress_d d x).val
 
 /-- Per-coefficient `Decompress_d` reference (FIPS 203 §4.2.1):
     `⌈(q / 2^d)·y⌋`. Opaque. -/
-axiom decompress_spec : Nat → Nat → ZMod mlkemQ
+def decompress_spec (d : Nat) (y : Nat) : ZMod mlkemQ :=
+  CatCrypt.Crypto.MLKEM.Compress.decompress_d d (y : ZMod (2 ^ d))
 
 /-- The opaque `_poly_compress` leaf, exposed coefficient-wise: parameter
     `d`, coefficient index, polynomial to a compressed `Nat`. -/
@@ -293,9 +299,9 @@ axiom poly_decompress_leaf_correct (d : Nat) (k : Fin mlkemN)
     vector via the `_poly_decompress` leaf and then re-compressing
     coefficient-wise via the `_poly_compress` leaf is the composition of the
     two specs — the shape a `Compress ∘ Decompress` near-identity argument
-    (FIPS 203 §4.2.1, the rounding-error bound) would build on. Genuine
-    content: it chains both leaf-correctness axioms on a shared `d`/`k`,
-    ruling out a vacuous pairing. -/
+    (FIPS 203 §4.2.1, the rounding-error bound) would build on. It chains
+    both leaf-correctness axioms on a shared `d`/`k`, ruling out a vacuous
+    pairing. -/
 theorem compress_decompress_leaf_chain (d : Nat) (k : Fin mlkemN)
     (c : Fin mlkemN → Nat) :
     poly_compress_leaf d k (poly_decompress_leaf d c)
@@ -312,11 +318,13 @@ the leaves implement `ByteEncode_d` / `ByteDecode_d`, and on canonical
 
 /-- FIPS 203 `ByteEncode_d` reference: a polynomial and bit-width `d` to a
     `32·d`-byte string. Opaque (spec side). -/
-axiom byteEncode_spec : Nat → Poly → Bytes
+def byteEncode_spec (d : Nat) (p : Poly) : Bytes :=
+  CatCrypt.Crypto.MLKEM.ByteCodec.byteEncode d p
 
 /-- FIPS 203 `ByteDecode_d` reference: a `32·d`-byte string and `d` back to
     a polynomial. Opaque (spec side). -/
-axiom byteDecode_spec : Nat → Bytes → Poly
+def byteDecode_spec (d : Nat) (b : Bytes) : Poly :=
+  CatCrypt.Crypto.MLKEM.ByteCodec.byteDecode d mlkemQ b
 
 /-- The opaque `__polyvec_tobytes` leaf (here at polynomial granularity;
     the polyvec leaf is the concatenation over the `k` components). -/
@@ -352,19 +360,23 @@ axiom poly_frombytes_leaf_correct (d : Nat) (b : Bytes) :
     (and the per-poly `sem_decode12K`, `sem_decode1K`, `sem_decode4K`; the
     general bit-level `decodeK` / `encodeK`). These give the
     `ByteDecode_d ∘ ByteEncode_d = id` round-trip used to make §5 non-vacuous:
-    the two leaf specs are genuine inverses.
+    the two leaf specs are mutually inverse.
     https://github.com/formosa-crypto/crypto-specs
     (vendored under formosa-mlkem at `crypto-specs/`) -/
-axiom byteDecode_byteEncode_cancel (d : Nat) (p : Poly) :
-    byteDecode_spec d (byteEncode_spec d p) = p
+theorem byteDecode_byteEncode_cancel (d : Nat) (hd : mlkemQ ≤ 2 ^ d) (p : Poly) :
+    byteDecode_spec d (byteEncode_spec d p) = p := by
+  have : NeZero mlkemQ := ⟨by norm_num⟩
+  exact CatCrypt.Crypto.MLKEM.ByteCodec.byteDecode_byteEncode d mlkemQ hd p
 
 /-- **Proved.** The two byte leaves round-trip through their specs:
-    `frombytes (tobytes p) = p`. Genuine content — it fails unless the two
-    leaf-correctness axioms agree on `d` and the spec-level cancel holds. -/
-theorem polyvec_bytes_roundtrip (d : Nat) (p : Poly) :
+    `frombytes (tobytes p) = p`, whenever `d` is wide enough to hold a
+    `Z_q` coefficient (`mlkemQ ≤ 2^d`, i.e. `d ≥ 12` — the FIPS 203 poly
+    encoding uses `d = 12`). It fails unless the two leaf-correctness axioms
+    agree on `d` and the spec-level cancel holds. -/
+theorem polyvec_bytes_roundtrip (d : Nat) (hd : mlkemQ ≤ 2 ^ d) (p : Poly) :
     poly_frombytes_leaf d (poly_tobytes_leaf d p) = p := by
-  rw [poly_tobytes_leaf_correct, poly_frombytes_leaf_correct,
-      byteDecode_byteEncode_cancel]
+  rw [poly_tobytes_leaf_correct, poly_frombytes_leaf_correct]
+  exact byteDecode_byteEncode_cancel d hd p
 
 /-! ## §6  Keygen `G`-output split (derived)
 

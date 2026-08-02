@@ -182,7 +182,7 @@ theorem aN_mem {i : Nat} (h : i < 25) : aN i ∈ aLaneNames := mapN_mem h
 
 /-! #### `WSBlock` over a `List.map`-generated block, by induction on the map
 
-The workhorse: a `(List.range k).map f` block is well-scoped from `bound` whenever
+A `(List.range k).map f` block is well-scoped from `bound` whenever
 each `f i` is a single `RScalarSetExpr` that is `ShapeAccepts`ed and reads only
 names already in `bound`. The growing bound-set threaded by `WSBlock` is handled by
 monotonicity (`List.mem_cons_of_mem`): a read valid at the block-start bound stays
@@ -196,7 +196,7 @@ theorem WSBlock_map (f : Nat → LowCT) : ∀ (l : List Nat) (bound : List Strin
   | nil => intro bound _; rfl
   | cons i rest ih =>
       intro bound h
-      obtain ⟨x, e, hfi, hacc, hreads⟩ := h i (List.mem_cons_self i rest)
+      obtain ⟨x, e, hfi, hacc, hreads⟩ := h i List.mem_cons_self
       simp only [List.map_cons, hfi, WSBlock, Bool.and_eq_true]
       refine ⟨⟨hacc, ?_⟩, ?_⟩
       · simp only [List.all_eq_true, decide_eq_true_eq]
@@ -231,7 +231,7 @@ theorem mem_boundAfter_of_mem_targets (l : List LowCT) {bound : List String} {n 
       cases s
       case RScalarSetExpr x e =>
           rcases List.mem_cons.mp h with rfl | h'
-          · exact mem_boundAfter_of_mem_bound rest (List.mem_cons_self x bound)
+          · exact mem_boundAfter_of_mem_bound rest List.mem_cons_self
           · exact ih (bound := x :: bound) h'
       all_goals exact ih h
 
@@ -306,8 +306,8 @@ theorem ws_cblock (bound : List String) (ha : ∀ n ∈ aLaneNames, n ∈ bound)
   refine ⟨cN i, xorVars [aN i, aN (i + 5), aN (i + 10), aN (i + 15), aN (i + 20)], rfl, ?_, ?_⟩
   · simp [xorVars, ShapeAccepts]
   · intro n hn
-    simp only [xorVars, baseVars, List.mem_cons, List.mem_singleton, List.not_mem_nil,
-      List.append_assoc, or_false] at hn
+    simp only [xorVars, baseVars, List.nil_append, List.singleton_append, List.cons_append,
+      List.mem_cons, List.mem_singleton, List.not_mem_nil, List.append_assoc, or_false] at hn
     apply ha
     rcases hn with rfl | rfl | rfl | rfl | rfl <;> exact aN_mem (by omega)
 
@@ -320,7 +320,8 @@ theorem ws_dblock (bound : List String) (hc : ∀ n ∈ (List.range 5).map cN, n
   refine ⟨dN i, .SXor (.SVar (cN ((i + 4) % 5))) (rotLE (cN ((i + 1) % 5)) 1), rfl, ?_, ?_⟩
   · simp [rotLE, ShapeAccepts]
   · intro n hn
-    simp only [rotLE, baseVars, List.mem_cons, List.mem_singleton, List.not_mem_nil,
+    simp only [rotLE, baseVars, List.nil_append, List.append_nil, List.singleton_append,
+      List.cons_append, List.mem_cons, List.mem_singleton, List.not_mem_nil,
       List.append_assoc, or_false] at hn
     apply hc
     rcases hn with rfl | rfl | rfl <;> exact mapN_mem (Nat.mod_lt _ (by norm_num))
@@ -335,7 +336,8 @@ theorem ws_pblock (bound : List String) (ha : ∀ n ∈ aLaneNames, n ∈ bound)
   refine ⟨pN i, .SXor (.SVar (aN i)) (.SVar (dN (i % 5))), rfl, ?_, ?_⟩
   · simp [ShapeAccepts]
   · intro n hn
-    simp only [baseVars, List.mem_cons, List.mem_singleton, List.not_mem_nil, or_false] at hn
+    simp only [baseVars, List.nil_append, List.singleton_append, List.cons_append,
+      List.mem_cons, List.mem_singleton, List.not_mem_nil, or_false] at hn
     rcases hn with rfl | rfl
     · exact ha _ (aN_mem hi25)
     · exact hd _ (mapN_mem (Nat.mod_lt _ (by norm_num)))
@@ -369,7 +371,8 @@ theorem ws_hblock (bound : List String) (hb : ∀ k, k < 25 → bN k ∈ bound) 
       rfl, ?_, ?_⟩
   · simp [notE, ShapeAccepts]
   · intro n hn
-    simp only [notE, baseVars, List.mem_cons, List.mem_singleton, List.not_mem_nil,
+    simp only [notE, baseVars, List.nil_append, List.append_nil, List.singleton_append,
+      List.cons_append, List.mem_cons, List.mem_singleton, List.not_mem_nil,
       List.append_assoc, or_false] at hn
     rcases hn with rfl | rfl | rfl
     · exact hb i hi25
@@ -384,17 +387,19 @@ theorem ws_abackblock (r : Nat) (bound : List String)
   apply WSBlock_map
   intro i hi
   have hi25 : i < 25 := List.mem_range.mp hi
-  rcases Nat.eq_or_ne i 0 with rfl | hne
+  rcases eq_or_ne i 0 with rfl | hne
   · refine ⟨aN 0, .SXor (.SVar (hN 0)) (.SLit (KeccakEmit.roundConst r)), rfl, ?_, ?_⟩
     · simp [ShapeAccepts]
     · intro n hn
-      simp only [baseVars, List.mem_cons, List.mem_singleton, List.not_mem_nil, or_false] at hn
+      simp only [baseVars, List.nil_append, List.append_nil, List.singleton_append,
+        List.cons_append, List.mem_cons, List.mem_singleton, List.not_mem_nil, or_false] at hn
       subst hn; exact hh _ (mapN_mem (by norm_num))
   · refine ⟨aN i, .SVar (hN i), ?_, ?_, ?_⟩
     · simp only [aBackStmt, beq_iff_eq, hne, if_neg, reduceIte]
     · simp [ShapeAccepts]
     · intro n hn
-      simp only [baseVars, List.mem_cons, List.mem_singleton, List.not_mem_nil, or_false] at hn
+      simp only [baseVars, List.nil_append, List.append_nil, List.singleton_append,
+        List.cons_append, List.mem_cons, List.mem_singleton, List.not_mem_nil, or_false] at hn
       subst hn; exact hh _ (mapN_mem hi25)
 
 /-- One round is well-scoped from the a-lanes — proved by structural recomposition of
@@ -547,12 +552,62 @@ theorem shapeRun24_ok :
     (shapeTranslate srcShape (fullBody 24)).bind (fun σ => shapeLookup σ (oN 24))
       = some (.sword 64) := shapeRun24_ok'
 
+/-! #### The body lies in the covered fragment
+
+`translateDialectControl_eq_full_of_covered` already relates the two fronts on
+`IsCovered` bodies. What is left is membership: every statement the Keccak
+generators emit is a single `RScalarSetExpr`, and `seqAll` of covered statements
+is covered. The `RSeq` spine is traversed by induction, so the cost does not
+grow with the round count. -/
+
+open CatCrypt.Crypto.Jasmin.LowCT in
+/-- A `seqAll` chain of covered statements is covered. -/
+theorem covered_seqAll : ∀ (l : List LowCT), (∀ c ∈ l, IsCovered c) → IsCovered (seqAll l)
+  | [], _ => IsCovered.rSkip
+  | [c], h => h c List.mem_cons_self
+  | c :: d :: cs, h =>
+      IsCovered.rSeq (h c List.mem_cons_self)
+        (covered_seqAll (d :: cs) fun x hx => h x (List.mem_cons_of_mem c hx))
+
+theorem covered_cStmt (i : Nat) : IsCovered (cStmt i) := .rScalarSetExpr _ _
+theorem covered_dStmt (i : Nat) : IsCovered (dStmt i) := .rScalarSetExpr _ _
+theorem covered_pStmt (i : Nat) : IsCovered (pStmt i) := .rScalarSetExpr _ _
+theorem covered_bStmt (i : Nat) : IsCovered (bStmt i) := .rScalarSetExpr _ _
+theorem covered_hStmt (i : Nat) : IsCovered (hStmt i) := .rScalarSetExpr _ _
+theorem covered_oCopyStmt (i : Nat) : IsCovered (oCopyStmt i) := .rScalarSetExpr _ _
+
+theorem covered_aBackStmt (r i : Nat) : IsCovered (aBackStmt r i) := by
+  unfold aBackStmt; split <;> exact .rScalarSetExpr _ _
+
+/-- One round body is covered: every statement of `roundStmts` is a single
+    `RScalarSetExpr`. -/
+theorem covered_roundBodyR (r : Nat) : IsCovered (roundBodyR r) := by
+  rw [roundBodyR_eq_seqAll]
+  apply covered_seqAll
+  intro c hc
+  simp only [roundStmts, firstPart, List.mem_append, List.mem_map] at hc
+  obtain (((((⟨i, _, rfl⟩ | ⟨i, _, rfl⟩) | ⟨i, _, rfl⟩) | ⟨i, _, rfl⟩) | ⟨i, _, rfl⟩)
+    | ⟨i, _, rfl⟩) := hc
+  exacts [covered_cStmt i, covered_dStmt i, covered_pStmt i, covered_bStmt i,
+    covered_hStmt i, covered_aBackStmt r i]
+
+/-- The `N`-round body plus the output copy is covered. -/
+theorem covered_fullBody (N : Nat) : IsCovered (fullBody N) := by
+  unfold fullBody
+  apply covered_seqAll
+  intro c hc
+  simp only [List.mem_append, List.mem_map] at hc
+  obtain (⟨r, _, rfl⟩ | ⟨i, _, rfl⟩) := hc
+  · exact covered_roundBodyR r
+  · exact covered_oCopyStmt i
+
 /-- On the straight-line `RSeq`/`RScalarSetExpr` body, the control front and the
     straight-line front coincide: the control arms `RFor`/`RIfNz`/`RWhileNz` do
     not occur, so `translateDialectControl` delegates to `translateDialectFull`. -/
 theorem tdc_eq_tdf_fullBody :
     translateDialectControl srcVM (fullBody 24)
-      = translateDialectFull srcVM (fullBody 24) := rfl
+      = translateDialectFull srcVM (fullBody 24) :=
+  translateDialectControl_eq_full_of_covered srcVM (covered_fullBody 24)
 
 /-- **The 24-round front translates, and its emitted prefix is pure-arith.** -/
 theorem front24_spec : ∃ c, frontFull 24 = some c ∧ PureLower c := by
@@ -572,11 +627,10 @@ theorem front24_spec : ∃ c, frontFull 24 = some c ∧ PureLower c := by
 theorem front24_isSome : (frontFull 24).isSome := by
   obtain ⟨c, hfc, _⟩ := front24_spec; rw [hfc]; rfl
 
-/-- **The 24-round front lowers to jasmin end-to-end.** The keystone: the
-    `loweredFull 24` `isSome` — infeasible as a single `native_decide` (OOM) — is
-    proved by structural composition of `lowerSExpr_sim` / `shapeTranslate_sim` /
-    backend totality, gated on the one cheap alist `native_decide`
-    (`shapeRun24_ok`). -/
+/-- **The 24-round front lowers to jasmin end-to-end.** The `loweredFull 24`
+    `isSome` is proved by structural composition of `lowerSExpr_sim` /
+    `shapeTranslate_sim` / backend totality, gated on the one cheap alist
+    `native_decide` (`shapeRun24_ok`). -/
 theorem lowered24_isSome : (loweredFull 24).isSome := by
   obtain ⟨c, hfc, hpl⟩ := front24_spec
   simp only [loweredFull, hfc, Option.bind_some]

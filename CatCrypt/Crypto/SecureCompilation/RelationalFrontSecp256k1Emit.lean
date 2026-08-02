@@ -30,7 +30,7 @@ This mirrors the `G1`-body routing in
 field leaves route through the **same** owned front the bls12-381 `G1` body does,
 tying the secp256k1 relational front to the backend.
 
-## Honest scope
+## Scope of the claims
 
 The claims here are purely **structural lowering**: that the owned front accepts
 the rendered secp256k1 field-op bodies and emits one `Ccall` per op. We do **not**
@@ -83,33 +83,30 @@ def secpComposedJasmin := toJasminCmd secpComposedBody
 
 /-- **The secp256k1 base-field ADD routes through the bridge front.** The single
     `fp_add` leaf lowers to a one-node Jasmin call program. -/
-theorem secpAddJasmin_length : secpAddJasmin.length = 1 := by native_decide
+theorem secpAddJasmin_length : secpAddJasmin.length = 1 := rfl
 
 /-- Every node the front emits for the secp256k1 ADD is a `Ccall` — the op is
     fully lowered (no fall-through to an unhandled construct). -/
 theorem secpAddJasmin_all_calls :
-    secpAddJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := by
-  native_decide
+    secpAddJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := rfl
 
 /-- **The secp256k1 base-field MUL routes through the bridge front.** The single
     `fp_mul` leaf lowers to a one-node Jasmin call program. -/
-theorem secpMulJasmin_length : secpMulJasmin.length = 1 := by native_decide
+theorem secpMulJasmin_length : secpMulJasmin.length = 1 := rfl
 
 /-- Every node the front emits for the secp256k1 MUL is a `Ccall` — fully lowered. -/
 theorem secpMulJasmin_all_calls :
-    secpMulJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := by
-  native_decide
+    secpMulJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := rfl
 
 /-- **A composed secp256k1 base-field body routes through the bridge front.** The
     two `RSeq`-chained field ops (`r := a*b ; s := r+c`) lower to a two-node Jasmin
     call program — one `Ccall` per op — showing multi-op routing, the same shape
     the 34-node `g1AddJasmin` exercises. -/
-theorem secpComposedJasmin_length : secpComposedJasmin.length = 2 := by native_decide
+theorem secpComposedJasmin_length : secpComposedJasmin.length = 2 := rfl
 
 /-- Every node the front emits for the composed secp256k1 body is a `Ccall` —
     both ops fully lowered. -/
 theorem secpComposedJasmin_all_calls :
-    secpComposedJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := by
-  native_decide
+    secpComposedJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := rfl
 
 end CatCrypt.Crypto.SecureCompilation.RelationalFrontSecp256k1Emit

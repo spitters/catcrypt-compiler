@@ -8,11 +8,11 @@ import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 import CatCrypt.Crypto.Jasmin.ChaCha20QR
 
 /-!
-# ChaCha20 quarter-round as a genuine `catCryptDialect → jasmin → x86` path
+# ChaCha20 quarter-round as a `catCryptDialect → jasmin → x86` path
 
 The RFC-8439 §2.1 ChaCha20 quarter-round is a *benchmarked* primitive. Until now
 it routed to owned x86 only through the THIR front
-(`X86Backend/ChaChaQRThirOwnedEmit.lean`); the high algebraic crypto-SSA surface
+(`X86Backend/ChaChaQRThirEmit.lean`); the high algebraic crypto-SSA surface
 `catCryptDialect` carried no quarter-round coverage. This file closes that gap:
 it builds the quarter-round *natively* as a straight-line `Com catCryptDialect`
 program over the dialect's word ops (`bvAdd`/`bvXor`/`bvRor`), proves it denotes
@@ -187,7 +187,7 @@ abbrev chacha20QRCatCryptD : Com catCryptDialect [T32,T32,T32,T32] T32 :=
 
 /-! ## 4. `denote = spec` for the catCrypt programs
 
-Each equation is closed by the `OwnedChacha20DwordCom`/`OwnedKeccak…Com` peel
+Each equation is closed by the `Chacha20DwordCom`/`OwnedKeccak…Com` peel
 pattern: (1) `rw [program, qrBlock]` exposes the 12-op `Com.var` chain; (2) `rw` by
 the per-op `rfl` step lemmas `denote_var_bvAdd`/`bvXor`/`bvRor` (each peels one
 binding to `body.denote (V.extend (op …))`, the op a waist function
@@ -203,7 +203,7 @@ set_option maxRecDepth 10000
 
 /-! ### Waist functions and single-binding peel step lemmas (each `rfl`)
 
-The catCrypt-dialect analogues of `OwnedChacha20DwordCom.zmmPackD`/
+The catCrypt-dialect analogues of `Chacha20DwordCom.zmmPackD`/
 `denote_var_vpackZMMd`. The waist functions return `BitVec 32` (= `⟦sword 32⟧`), so
 `Ctxt.Valuation.extend` infers the bound type and the step lemmas elaborate. -/
 
@@ -409,21 +409,18 @@ that the quarter-round's rotate and arithmetic ops survive to the printer. -/
 /-- The `.jazz` text of the lowered `a`-output quarter-round. -/
 def chacha20QRJazzA : String := JasminPrint.emitJazz "chacha20_qr_a" chacha20QRJasminA
 
-/-- **Render smoke: the rotate survives.** The emitted `.jazz` names the native
+/- **Render smoke: the rotate survives.** The emitted `.jazz` names the native
     scalar right-rotate asm op (`#ROR_32`) — the diagonal rotate of the
     quarter-round reaches the x86 printer through the whole
     `Com catCryptDialect → Com jasminDialect → .jazz` chain (the `bvRor` op lowered
     to jasmin `rorImm`, which the printer renders as `#ROR_32`). -/
-theorem chacha20QRJazzA_has_ror :
-    JasminPrint.strContains chacha20QRJazzA "ROR" = true := by native_decide
+#guard (JasminPrint.strContains chacha20QRJazzA "ROR")
 
-/-- **Render smoke: the add survives.** -/
-theorem chacha20QRJazzA_has_plus :
-    JasminPrint.strContains chacha20QRJazzA "+" = true := by native_decide
+/- **Render smoke: the add survives.** -/
+#guard (JasminPrint.strContains chacha20QRJazzA "+")
 
-/-- **Render smoke: the xor survives.** -/
-theorem chacha20QRJazzA_has_xor :
-    JasminPrint.strContains chacha20QRJazzA "^" = true := by native_decide
+/- **Render smoke: the xor survives.** -/
+#guard (JasminPrint.strContains chacha20QRJazzA "^")
 
 /-- **Shape: four `reg 32` inputs and 12 body instructions** — the same
     parameter/op count the catCrypt block carries (12 ops, no spilled binds),

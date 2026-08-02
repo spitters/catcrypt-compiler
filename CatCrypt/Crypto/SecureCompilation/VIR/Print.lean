@@ -9,6 +9,8 @@ import CatCrypt.Crypto.SecureCompilation.VIR.MultiReturnCom
 /-!
 # Textual MLIR emission for VIR programs
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 `Com.printModule` renders a `Com d Γ t` into a textual-MLIR `func.func`
 module. Callers provide a `DialectPrint` instance for their dialect
 giving per-op and per-type textual names.

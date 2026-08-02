@@ -29,7 +29,7 @@ A single straight-line 16-word `Com catCryptDialect` for the whole block is
 ~5440 de-Bruijn-threaded ops (80 quarter-rounds × 68 bindings), which is neither
 hand-authorable nor `rfl`/`native_decide`-closable at MCP heartbeats. Instead the
 block is composed **structurally**, mirroring how
-[`OwnedChacha20DwordBlockCom.lean`](OwnedChacha20DwordBlockCom.lean) assembles the
+[`Chacha20DwordBlockCom.lean`](Chacha20DwordBlockCom.lean) assembles the
 packed quarter-round into the whole block:
 
 1. **`qrCatCrypt`** (`§1`) — the four quarter-round outputs *computed by the
@@ -48,7 +48,7 @@ packed quarter-round into the whole block:
    each step the catCrypt-dialect quarter-round. Ten double-rounds, then the
    feed-forward `ChaChaState.add`.
 
-4. **`chacha20Block_catcrypt_denote`** (`§4`) — the keystone: the whole catCrypt
+4. **`chacha20Block_catcrypt_denote`** (`§4`) — the core result: the whole catCrypt
    block equals the canonical RFC-8439 §2.3 block `ChaCha20Block.chachaBlock`,
    proved by folding the per-quarter-round denote equality through the round
    structure (`Function.iterate_congr` for the 10 double-rounds), NOT one
@@ -146,7 +146,7 @@ def chacha20BlockCatCrypt (s : ChaChaState) : ChaChaState :=
 
 /-! ## 4. The whole catCrypt block equals the RFC-8439 §2.3 block
 
-The keystone. Each level of the round structure equals its `ChaCha20Block`
+The core result. Each level of the round structure equals its `ChaCha20Block`
 counterpart by the level below; the ten double-rounds are folded with
 `Function.iterate_congr` (NOT a monolithic `rfl` over 80 quarter-rounds), so the
 whole catCrypt block equals the canonical RFC block `ChaCha20Block.chachaBlock`. -/
@@ -176,7 +176,7 @@ theorem chachaCoreCatCrypt_eq (s : ChaChaState) :
     funext doubleRoundCatCrypt_eq
   simp only [chachaCoreCatCrypt, chachaCore, hfun]
 
-/-- **Whole-block keystone.** The whole ChaCha20 block computed over the committed
+/-- **Whole-block result.** The whole ChaCha20 block computed over the committed
     catCrypt-dialect quarter-round `Com` equals the canonical RFC-8439 §2.3 block
     `ChaCha20Block.chachaBlock`. Every quarter-round in the block is evaluated by
     the committed `Com catCryptDialect` program `chacha20QRCatCrypt{A,B,C,D}`, so

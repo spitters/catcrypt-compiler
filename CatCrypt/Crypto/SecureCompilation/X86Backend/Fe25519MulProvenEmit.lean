@@ -60,8 +60,8 @@ named `Fe25519ReduceRunBlock.splitBookkeepingGap`, gated by the external GMP KAT
 `axiom`. The MULX-`%rdx` legalization and the verified spilling allocator are
 reused unchanged from the Montgomery template.
 
-The modulus limbs are the `native_decide`-pinned genuine prime
-`Fe25519TierA.p25519Limbs` (`= 2^255 − 19 = solinasParams25519.modulus`).
+The modulus limbs are `Fe25519TierA.p25519Limbs`, pinned by `native_decide`
+to the prime `2^255 − 19 = solinasParams25519.modulus`.
 -/
 
 set_option autoImplicit false
@@ -391,5 +391,12 @@ def emitMain : IO Unit := do
   IO.FS.writeFile
     "bench/x25519_fieldmul_compare/gen/fe25519_mul_proven.s" fe25519ProvenAsm
   IO.println "wrote bench/x25519_fieldmul_compare/gen/fe25519_mul_proven.s"
+
+/-! ## Artifact generation at elaboration
+
+The render is written while this module elaborates, so `lake` produces it from
+this file and no separate driver or Makefile rule carries the dependency. -/
+
+#eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulProvenEmit

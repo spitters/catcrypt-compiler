@@ -43,13 +43,13 @@ For each, the fused arm builds the same `catCryptDialect` `Expr` that
 
 `translateTop` **discards the straight-line prefix `o.cont`** entirely — it only
 emits the `constUnit; ret` terminator at the final context `o.Γ'`. So the
-load-bearing fact downstream is *context agreement*: `translateDialectFull` and
+central fact downstream is *context agreement*: `translateDialectFull` and
 `translate` succeed together and emit the **same** final context `Γ'` and the
 **same** updated `VarMap` `vm`. We prove that for the covered fragment
 `IsCovered` (the core arms plus the new ones), reusing the
 `TranslateDialectDirect.translateDialect_ctx_agree` pattern.
 
-## Honesty: which arms fuse cleanly
+## Which arms fuse cleanly
 
 The single/double-`extCall` arms (`RCall`, `RSelect`, `RCallDstThreaded`,
 `RTuple*`, `RArr*Lit`, `RArr{Load,Store}`, `RLimbStore`, `RCallSwap`,
@@ -301,7 +301,7 @@ def lowerSExpr {Γ : Ctx} (vm : VarMap Γ) (cnt : Nat) :
 The `lowerSExpr` front above hardwires every emitted dialect word op to width
 `64` (`.bvAdd 64`, `.bvShiftL 64 k`, …) and only accepts `.sword 64` input slots
 (`lookupU64`). That is exactly right for the lane-independent word-packing kernels
-(Hawk, GF-MQ), but it cannot express genuine narrow-width crypto with CROSS-LANE
+(Hawk, GF-MQ), but it cannot express narrow-width crypto with CROSS-LANE
 mixing — the ChaCha quarter-round rotations, the SHA-256 Σ/Ch/Maj words, the
 BLAKE3 g-function, the Frodo 16-bit lanes — because those need a real 32-bit
 (or 16-bit) register ALU: width-`w` wrapping arithmetic and `rotl_w`.
@@ -578,14 +578,14 @@ def arrLoadCont {Γ : Ctx} (dty : TowerType)
 
     This is the **word-cell** array store: `CryptoTy.memref n` is `Fin n → BitVec
     64` and `memrefSetDyn n` lowers to jasmin `stackStore 64 n` (SIB scale 8,
-    `movq`). A genuine **byte-cell** store (`stackStore 8 n`, SIB scale 1, `movb`)
+    `movq`). A **byte-cell** store (`stackStore 8 n`, SIB scale 1, `movb`)
     cannot be expressed here without giving `CryptoTy.memref` a cell-width
     parameter (its denotation and every `.memref`-exhaustive match, plus a
     byte-width dialect op + `DialectToJasminCom` arm, all change). The byte-capable
     store lives in the width-parametric `Dialects.Memref` front (`.buf 8 n`
     → `stackStore 8 n`, proven denote-preserving by `lowerMemrefToJasmin_denote`);
     the Plonky3 LE byte serializer is sourced through it
-    (`Plonky3SerializeOwnedEmit.frontByteStoreLinstr`). -/
+    (`Plonky3SerializeEmit.frontByteStoreLinstr`). -/
 def arrStoreCont {Γ : Ctx} (dty : TowerType)
     (resolvedArgs : List ((t : CryptoTy) × CVar Γ t))
     (idxSig : (t : CryptoTy) × CVar Γ t)

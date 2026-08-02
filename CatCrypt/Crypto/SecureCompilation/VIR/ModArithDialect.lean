@@ -10,6 +10,8 @@ import Mathlib.Data.ZMod.Basic
 /-!
 # ModArith VIR dialect (#482-1 — the L2 algebraic layer)
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 The single, shared modular-arithmetic dialect of the PrimeIR-style layered
 crypto-IR stack (`docs/dialect-restructure-plan.md`). It is the **L2** level
 between the abstract field math and the IR backends:

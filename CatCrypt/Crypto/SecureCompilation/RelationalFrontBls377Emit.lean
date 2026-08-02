@@ -31,7 +31,7 @@ This mirrors the `G1`-body routing in
 field leaves route through the **same** owned front the bls12-381 `G1` body does,
 tying the bls12-377 relational front to the backend.
 
-## Honest scope
+## Scope of the claims
 
 The claims here are purely **structural lowering**: that the owned front accepts
 the rendered bls12-377 field-op bodies and emits one `Ccall` per op. We do **not**
@@ -84,33 +84,30 @@ def bls377ComposedJasmin := toJasminCmd bls377ComposedBody
 
 /-- **The bls12-377 base-field ADD routes through the bridge front.** The single
     `fp_add` leaf lowers to a one-node Jasmin call program. -/
-theorem bls377AddJasmin_length : bls377AddJasmin.length = 1 := by native_decide
+theorem bls377AddJasmin_length : bls377AddJasmin.length = 1 := rfl
 
 /-- Every node the front emits for the bls12-377 ADD is a `Ccall` — the op is
     fully lowered (no fall-through to an unhandled construct). -/
 theorem bls377AddJasmin_all_calls :
-    bls377AddJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := by
-  native_decide
+    bls377AddJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := rfl
 
 /-- **The bls12-377 base-field MUL routes through the bridge front.** The single
     `fp_mul` leaf lowers to a one-node Jasmin call program. -/
-theorem bls377MulJasmin_length : bls377MulJasmin.length = 1 := by native_decide
+theorem bls377MulJasmin_length : bls377MulJasmin.length = 1 := rfl
 
 /-- Every node the front emits for the bls12-377 MUL is a `Ccall` — fully lowered. -/
 theorem bls377MulJasmin_all_calls :
-    bls377MulJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := by
-  native_decide
+    bls377MulJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := rfl
 
 /-- **A composed bls12-377 base-field body routes through the bridge front.** The
     two `RSeq`-chained field ops (`r := a*b ; s := r+c`) lower to a two-node Jasmin
     call program — one `Ccall` per op — showing multi-op routing, the same shape
     the 34-node `g1AddJasmin` exercises. -/
-theorem bls377ComposedJasmin_length : bls377ComposedJasmin.length = 2 := by native_decide
+theorem bls377ComposedJasmin_length : bls377ComposedJasmin.length = 2 := rfl
 
 /-- Every node the front emits for the composed bls12-377 body is a `Ccall` —
     both ops fully lowered. -/
 theorem bls377ComposedJasmin_all_calls :
-    bls377ComposedJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := by
-  native_decide
+    bls377ComposedJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := rfl
 
 end CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Emit

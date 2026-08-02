@@ -8,7 +8,9 @@ import CatCrypt.Crypto.SecureCompilation.VIR.DialectLoweringTransport
 import CatCrypt.Crypto.SecureCompilation.VIR.ComParametricityTransport
 
 /-!
-# Field → ModArith as a genuine `Com`-level program transport (the honest L3→L2 structure)
+# Field → ModArith as a `Com`-level program transport (the L3→L2 structure)
+
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
 ## Scope
 
@@ -17,14 +19,14 @@ theorems are **op-level identity realisations** (`realise op = denote op`): they
 say each dialect op denotes to its own abstract value, and the lowering "chain"
 in `DialectLoweringChain` composes those op-level equalities by **transitivity of
 realisation facts**, not by a program-level `Com fieldDialect → Com modArithDialect`
-transport carried by a `TransportSquare`/`LoweringData`. This file determines,
-honestly, **which part of Field→ModArith is a genuine program transport** and
-which part is irreducibly op-level — and builds the genuine part as a real
+transport carried by a `TransportSquare`/`LoweringData`. This file determines
+**which part of Field→ModArith is a program transport** and
+which part is irreducibly op-level — and builds the transport part as a real
 `TransportSquare`.
 
-### The honest structural verdict (two fragments, two different answers)
+### The structural split (two fragments, two different answers)
 
-* **Prime-field fragment — genuine `Com`-level transport.** The five prime-field
+* **Prime-field fragment — a `Com`-level transport.** The five prime-field
   ops (`fAdd`/`fSub`/`fNeg`/`fMul`/`fInv`) are **1:1** with ModArith ops
   (`modAdd`/`modSub`/`modNeg`/`modMul`/`byInverse`): the Field type `fp p` and the
   ModArith type `fp p` *both* denote to `ZMod p`, and each Field leaf is
@@ -48,14 +50,14 @@ which part is irreducibly op-level — and builds the genuine part as a real
   a **single** op). Moreover ModArith has **no `fp2`/`fp6`/`fp12` type** at all —
   there is no `mapTy` target for the extension types — so a *total*
   `Com fieldDialect → Com modArithDialect` lowering does **not** exist. The
-  extension lowering is therefore genuinely the op-level realisation
+  extension lowering is therefore the op-level realisation
   `Fp2MulSchedule = ext2MulF` (`FieldLowering.fp2MulSchedule_denote`), a
   value-level equality composed by transitivity, **not** a `Com`-program
   transport. We formalise it as what it is (`extOpRealisation`) and record the
   precise reason it cannot be a `LoweringData`.
 
-So the Phase-0 finding is **confirmed and refined**: L3→L2 is *part* genuine
-program transport (the prime-field fragment, built here) and *part* op-level
+So the Phase-0 finding is **confirmed and refined**: L3→L2 is *part* program
+transport (the prime-field fragment, built here) and *part* op-level
 realisation (the extension fragment, formalised here as such, with the
 no-`mapTy`-target / op-splitting obstruction stated).
 
@@ -63,10 +65,10 @@ no-`mapTy`-target / op-splitting obstruction stated).
 
 * `fpDialect` — the **prime-field sub-dialect of `fieldDialect`**: type `fp p`
   only, ops the five prime-field ops. It IS the prime-field fragment of Field;
-  giving it its own dialect is what lets the genuine 1:1 lowering be *total*
+  giving it its own dialect is what lets the 1:1 lowering be *total*
   (the obstruction above is precisely that the extension types have no ModArith
   home).
-* `lowerFieldToModArith : LoweringData fpDialect modArithDialect` — the genuine
+* `lowerFieldToModArith : LoweringData fpDialect modArithDialect` — the
   structural lowering, one prime-field op → its ModArith twin.
 * `fpVarTransports` / `fpOpLowerTransports` / `fpMapValExtends` — the three leaf
   coherences, each `rfl`.
@@ -94,7 +96,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.DialectLoweringTransport
 
 `fpDialect` is the prime-field fragment of `fieldDialect`: only the type `fp p`
 and the five prime-field ops. It is *not* a new mathematical object — it is the
-sub-dialect on which Field and ModArith genuinely coincide 1:1 (their `fp p`
+sub-dialect on which Field and ModArith coincide 1:1 (their `fp p`
 types both denote `ZMod p`, and the five leaves are definitionally equal). Giving
 it a standalone dialect is exactly what makes the structural lowering **total**:
 the only reason a total `fieldDialect → modArithDialect` lowering fails is the
@@ -265,7 +267,7 @@ theorem mapVar_lookup {Γ : Ctxt fpDialect} {t : FpTy}
 
 /-- **Op-leaf transport.** The lowered expression denotes (under the mapped
     valuation) to the (identity-)transport of the source op's denotation. The
-    only genuinely op-specific obligation. After `cases op` and peeling the
+    only op-specific obligation. After `cases op` and peeling the
     (concrete-arity) argument vector, the lowered ModArith op's denotation is
     *definitionally* the source Field leaf (`modAddF = fAddF`, …); `mapVar_lookup`
     aligns each positionally-identical mapped argument. -/
@@ -319,7 +321,7 @@ theorem fpMapValExtends :
 /-- **Whole-program transport, prime-field Field→ModArith.** For *every*
     `Com fpDialect Γ t`, the structurally-lowered ModArith program denotes (under
     the mapped valuation) to the (identity-)transport of the source denotation —
-    the genuine program-level lowering correctness. Obtained from the three
+    the program-level lowering correctness. Obtained from the three
     per-op/leaf coherences by `ComParametricityTransport.fundamental`; no
     program-specific induction. -/
 theorem fpComLowerTransports {Γ : Ctxt fpDialect} {t : FpTy}
@@ -334,7 +336,7 @@ We package the whole-program transport for a *fixed* program `c` as a
 `DialectLoweringTransport.TransportSquare`, exactly the Phase-0 registry shape
 (`g = c.denote`, `f = (lowerCom c).denote`, `φin = mapVal`, `φout = transTy`).
 This is the deliverable: the prime-field Field→ModArith lowering joins the
-registry as a **genuine program transport** (not an op-level realisation). -/
+registry as a **program transport** (not an op-level realisation). -/
 
 /-- **`regFieldToModArith`** — the prime-field Field→ModArith lowering of a
     program `c`, as a registered `TransportSquare`. The carried square is exactly
@@ -351,7 +353,7 @@ def regFieldToModArith {Γ : Ctxt fpDialect} {t : FpTy} (c : Com fpDialect Γ t)
 
 /-- **The registry square carries the program-level correctness.** Unfolding
     `regFieldToModArith` gives back exactly the whole-program transport — the
-    square is the genuine `Com → Com` denotation-preservation, not a per-op
+    square is the `Com → Com` denotation-preservation, not a per-op
     identity. -/
 theorem regFieldToModArith_related {Γ : Ctxt fpDialect} {t : FpTy}
     (c : Com fpDialect Γ t) (V : Ctxt.Valuation Γ) :
@@ -360,7 +362,7 @@ theorem regFieldToModArith_related {Γ : Ctxt fpDialect} {t : FpTy}
 
 /-! ## 6. The extension fragment is irreducibly op-level (NOT a program transport)
 
-The prime-field arm above is a genuine `Com fpDialect → Com modArithDialect`
+The prime-field arm above is a `Com fpDialect → Com modArithDialect`
 transport. The **extension** arm (`fp2`/`fp6`/`fp12`, `ext2Mul`/`ext6Mul`/…) is
 **not**, for two independent reasons — both formalised here:
 
@@ -373,7 +375,7 @@ transport. The **extension** arm (`fp2`/`fp6`/`fp12`, `ext2Mul`/`ext6Mul`/…) i
    (single op) cannot express, and that `ComParametricityTransport` explicitly
    excludes from the canonical structural shape.
 
-So the extension Field→ModArith step is genuinely an **op-level realisation**
+So the extension Field→ModArith step is an **op-level realisation**
 (`FieldLowering.fp2MulSchedule_denote`: the ModArith-leaf Karatsuba schedule
 equals the abstract `Fp2` product), a value-level equality composed by
 transitivity in `DialectLoweringChain.extChainDenote` — *not* a `Com`-program

@@ -9,6 +9,8 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
 /-!
 # The x86 backend as a VIR/MLIR `Com` dialect (#281)
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 `JasminModel.lean` is a faithful Lean transcription of Jasmin's Rocq x86
 instruction semantics for the emitted scalar+ADX subset (the `x86_*` semantic
 functions, the five-flag `JFlag` state, `evalInstr`/`runBlock`), differentially

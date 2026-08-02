@@ -6,13 +6,15 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.SecureCompilation.VIR.Core
 
 /-!
-# A genuine loop-invariant code motion (LICM) pass for `Com` (real transform)
+# A hoisting loop-invariant code motion (LICM) pass for `Com` (real transform)
+
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
 `LoopInvariantHoist.lean` ships an *analysis-as-labelling* LICM whose
 `Com → Com` rewrite is the identity (`applyLicm = fun p _ => p`), so its
 preservation theorems are `rfl` and verify nothing about an actual hoist.
 This file supplies what that one avoids: a **structural** transform that
-genuinely *moves* a loop-invariant binding from inside a bounded loop to a
+*moves* a loop-invariant binding from inside a bounded loop to a
 once-per-call prelude, together with a **non-`rfl`** denotation-preservation
 proof by induction over the loop trip count.
 
@@ -47,12 +49,12 @@ acc .nil))` — the invariant value `c` is supplied **once**, not recomputed
 each iteration. This is a real structural change: the binding has left the
 loop.
 
-## The proof (genuinely not `rfl`)
+## The proof (not `rfl`)
 
 The original loop computes, each iteration, `e.denote (.cons acc .nil)` and
 feeds it to `body`; the hoisted loop feeds the *precomputed* `c`. They agree
 because `e` is nullary, so `e.denote (.cons acc .nil) = c` for every `acc`
-— *this is the loop-invariance content*. The keystone
+— *this is the loop-invariance content*. The central lemma
 
   `hoist_denote : (hoist update h).denote n init = loopDenote n update init`
 
@@ -79,7 +81,7 @@ recomputed value to the hoisted constant.
   body. A general hoist of a deeper invariant binding whose args read only
   earlier-invariant binders needs the de Bruijn renumbering layer
   (`strengthen*` in `DeadCodeElimReal.lean`); the nullary head case needs
-  none, which is why it carries the genuine non-`rfl` proof cleanly.
+  none, which is why it carries the non-`rfl` proof cleanly.
 -/
 
 set_option autoImplicit false
@@ -112,7 +114,7 @@ def loopDenote {accTy : d.Ty} (n : Nat) (update : Com d [accTy] accTy)
 /-! ## 2. A `List.foldl` congruence over loop steps
 
 Two loops whose step functions agree on every accumulator value fold to the
-same result. The genuine inductive lemma underlying the hoist: hoisting only
+same result. The inductive lemma underlying the hoist: hoisting only
 changes *how* each step's invariant value is obtained, never the step's
 result, so the folds coincide. -/
 
@@ -215,7 +217,7 @@ def HoistedLoop.denote {accTy : d.Ty} (p : HoistedLoop d accTy)
 loop-invariant), pull `e` out of the loop: precompute its constant value once
 and return a `HoistedLoop` whose residual body is `body`.
 
-This genuinely restructures the program — the binding `e` is removed from the
+This restructures the program — the binding `e` is removed from the
 per-iteration body and materialised in the prelude (the `c` field). It is
 **not** the identity: the result is a different structure (`HoistedLoop`) over
 a body in a *different* (extended) context. -/
@@ -229,7 +231,7 @@ def hoist {accTy t : d.Ty} (n : Nat) (dummyAcc : ⟦accTy⟧)
   c := e.denote (.cons dummyAcc .nil)
   body := body
 
-/-! ## 5. The keystone: denotation preservation (NON-`rfl`)
+/-! ## 5. Denotation preservation (NON-`rfl`)
 
 The hoisted loop denotes exactly the original loop. The two programs are
 structurally different (invariant inside vs. outside the loop) and agree only
@@ -242,7 +244,7 @@ and concludes by the loop step congruence. -/
 `e`, the hoisted loop denotes the same function as the original loop: the
 once-computed invariant equals what the loop recomputes every iteration.
 
-The proof is genuinely not `rfl`: the original loop's step recomputes
+The proof is not `rfl`: the original loop's step recomputes
 `e.denote (.cons acc .nil)` each iteration, while the hoisted loop's step uses
 the prelude constant `c`; equating them is the loop-invariance reasoning
 (`hinv`), threaded through the loop fold (`foldl_step_congr`). -/
@@ -336,7 +338,7 @@ theorem invHeadExpr_inv : LoopInvariant invHeadExpr :=
 /-- One original loop iteration adds 10 to the accumulator: `step acc = acc + 10`. -/
 example (acc : Nat) : stepOf loopBody acc = acc + 10 := rfl
 
-/-- **The transform genuinely moves the binding out of the loop.** The hoisted
+/-- **The transform moves the binding out of the loop.** The hoisted
 program's prelude constant is `10` — the `const` binding now lives outside the
 loop. (`dummyAcc = 0`; invariance makes the choice irrelevant.) -/
 example : (hoist 5 (0 : Nat) invHeadExpr residualBody invHeadExpr_inv).c = (10 : Nat) := rfl

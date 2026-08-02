@@ -43,7 +43,7 @@ with the counter register *equal to the guard register* — the `SUB gReg ← gR
    characterization** for the countdown body class — from a seed with guard
    value `vn` (`0 < vn.toNat ≤ fuel`), the do-while HALTS and
    `whileTripsMem … = vn.toNat`, by induction on the fuel with one
-   `loopBodyFullMN_trip` guard decrement per step. `0 < vn.toNat` is genuine:
+   `loopBodyFullMN_trip` guard decrement per step. `0 < vn.toNat` is required:
    the emitted idiom is body-first (do-while), so a zero seed underflows to
    `2^64 - 1` on entry and the run does not stop at trip `0`.
 4. **`whileMem_export_faithful_comL_trips` /
@@ -52,9 +52,7 @@ with the counter register *equal to the guard register* — the `SUB gReg ← gR
    hypotheses (`hgseed`/`hpos`) via §3; the do-while fuel is pinned to the
    seed, so no fuel parameter remains on the statement surface.
 
-**0 sorries; axioms = {propext, Classical.choice, Quot.sound} + the inherited
-`aesSboxArrayW_size` `native_decide` (carried by every statement mentioning
-`Com.denote`).**
+**0 sorries; axioms = {propext, Classical.choice, Quot.sound}.**
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieWhileUncond
@@ -177,7 +175,7 @@ theorem condNZ_of_getW {b : LstateM} {r : String} {v : BitVec 64}
     HALTS within `fuel`, and the data-dependent trip count `whileTripsMem …`
     equals the seed `vn.toNat`. Induction on the fuel: each trip takes guard
     value `k + 1` to `k` (`loopBodyFullMN_trip` across §1's fold face), and the
-    first zero exits. Both side conditions are genuine: `vn.toNat ≤ fuel`
+    first zero exits. Both side conditions are required: `vn.toNat ≤ fuel`
     because `runWhileMem` spends one fuel unit per trip, and `0 < vn.toNat`
     because the emitted idiom is body-first (do-while) — a zero seed underflows
     to `2^64 - 1` on entry and the run does not stop at trip `0`. -/
@@ -251,7 +249,7 @@ theorem runWhileMem_countdown_halts_trips {w : Nat} (env : LeafEnvM)
     specialized to the countdown body `loopBodyFullMN update gReg`, with the
     run-schedule pair `hhalt`/`htrip` REPLACED by the seed-value hypotheses:
     the guard register seeds the guard variable's value (`hgseed`) and the
-    seed is positive (`hpos` — genuine, §3's do-while entry condition). §3
+    seed is positive (`hpos` — §3's do-while entry condition). §3
     proves halting and the trip identification with the do-while fuel pinned
     to the seed, so no fuel parameter remains. The per-trip simulation `hsim`
     and the accumulator register stay generic (the seed agreement `hseed`
@@ -300,7 +298,7 @@ theorem whileMem_export_faithful_comL_trips {Γ : Ctxt jasminDialect} {w : Nat}
     absorbed into `hgseed`): the remaining hypotheses are the update shape
     (`hupd`), the guard-register name hygiene (`hna`/`hnr`), the pc/name pins
     (`hfn`/`hpc`), the seed agreement (`hseed`), the guard seed value
-    (`hgseed`) and its positivity (`hpos` — genuine, §3's do-while entry
+    (`hgseed`) and its positivity (`hpos` — §3's do-while entry
     condition). No hypothesis mentions the run or a fuel budget: halting, the
     trip count and the machine fuel `(guardV.lookup V).toNat * (fuelCostC … +
     1)` are all computed from the seed. -/

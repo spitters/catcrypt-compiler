@@ -20,8 +20,8 @@ over named scalar slots, the statement list is pushed through
 
 `friFoldCom` / `bbInvCom` keep their historical 16-word input context and their
 `Com jasminDialect inCtxt r64` type, so every downstream renderer
-(`Plonky3WholeProverOwnedEmit`, `Plonky3OrchLoopsOwnedEmit`,
-`ZkSumCheckWholeProverOwnedEmit`, `Plonky3OwnedEmitMain`) that does
+(`Plonky3WholeProverEmit`, `Plonky3OrchLoopsEmit`,
+`ZkSumCheckWholeProverEmit`, `Plonky3EmitMain`) that does
 `Com.toLprogPhysAbi Plonky3FriFoldEmit.friFoldCom … (abiMaps 16 friFoldConstAt)`
 keeps working byte-for-byte.  Input words:
 

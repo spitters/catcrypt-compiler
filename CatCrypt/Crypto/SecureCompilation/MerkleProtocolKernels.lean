@@ -36,7 +36,7 @@ authentication path being checked), so level `i`'s fold is a *unary* map
 unary pipeline `node₀ ↦ node₁ ↦ … ↦ root` — exactly the shape the unary
 `ProtocolKernels` models.  This mirrors the repo's real treehash combiner
 (`SecureCompilation/VIR/JForProgTreehash.lean`'s 2→1 `combinerTree`) and the
-owned per-level chain emit (`X86Backend/TreehashChainOwnedEmit.lean`'s
+owned per-level chain emit (`X86Backend/TreehashChainEmit.lean`'s
 `"treehash_chain_" ++ toString n`): per level, one hash of the running node with
 that level's sibling.
 
@@ -82,7 +82,7 @@ variable {C : Type*}
 
 /-- The depth-3 path's per-level leaf-names, in pipeline order.  Modeled on the
     real owned per-level chain emit `"treehash_chain_" ++ toString n`
-    (`X86Backend/TreehashChainOwnedEmit.lean`). -/
+    (`X86Backend/TreehashChainEmit.lean`). -/
 def merkleLeaves3 : List String :=
   ["merkle_path_fold_1", "merkle_path_fold_2", "merkle_path_fold_3"]
 

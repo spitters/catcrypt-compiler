@@ -268,7 +268,7 @@ def hornerQLprog : Lprog :=
 
 /-- The owned AT&T `.s` text for `horner_q3329`, rendered straight from the
     owned `Lprog` (no jasminc). -/
-def hornerQOwnedAsm : String := renderLprogAtt hornerQLprog
+def hornerQAsm : String := renderLprogAtt hornerQLprog
 
 /-- The output path for the field-kernel-emitted `.s`. -/
 def hornerQTarget : System.FilePath :=
@@ -279,7 +279,7 @@ def hornerQTarget : System.FilePath :=
     (`horner_q3329`) and writes it to `gen_com/horner_q3329.s`. -/
 def emitHornerQ : IO Unit := do
   IO.FS.createDirAll "bench/field_kernel_compare/gen_com"
-  let asm := hornerQOwnedAsm
+  let asm := hornerQAsm
   IO.FS.writeFile hornerQTarget asm
   IO.println s!"FIELD-HORNER-Q emit OK : {hornerQTarget} ({asm.toUTF8.size} bytes, symbol horner_q3329)"
 

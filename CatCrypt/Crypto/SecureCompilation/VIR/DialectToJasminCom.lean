@@ -8,13 +8,10 @@ import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
 import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
 
 /-!
-# `Com catCryptDialect → Com jasminDialect` lowering (CProg-free front)
+# `Com catCryptDialect → Com jasminDialect` lowering
 
-The `CProg`-free twin of `CryptoToJasminCom.cprogToJasminCom`. Where that map
-lowers the extraction-side SSA IR `CProg` into the typed Jasmin dialect
-`Com jasminDialect`, this map lowers the **dialect-native** straight-line program
-`Com catCryptDialect` into `Com jasminDialect` — *structurally identically* but
-sourcing the dialect (`Com catCryptDialect`) rather than `CProg`.
+This map lowers the dialect-native straight-line program `Com catCryptDialect`
+into the typed Jasmin dialect `Com jasminDialect`.
 
 ```
 LowCT ──translateDialectControlTop──▶ Com catCryptDialect
@@ -22,11 +19,9 @@ LowCT ──translateDialectControlTop──▶ Com catCryptDialect
       ──JasminPrint.emitJazz──────────▶ .jazz
 ```
 
-This `lowCTToJasminComD` front is the **drop-in replacement** for the old
-`extractedFrontProg (CProg) → cprogToJasminCom` bench path: it removes the
-intermediate `CProg` materialization (the `CProg`-deletion / DR-collapse
-keystone), composing the already-`CProg`-free
-`TranslateDialectDirectControl.translateDialectControlTop` front with this map.
+The `lowCTToJasminComD` front composes
+`TranslateDialectDirectControl.translateDialectControlTop` with this map, taking
+`LowCT` to `Com jasminDialect` in one step.
 
 ## Why it can reuse the template's maps verbatim
 
@@ -69,9 +64,8 @@ so the dialect carries it as a faithful denotation but declines to lower it).
 
 ## Status
 
-Front + smoke. The dialect twin of the `fp_add`/`addKernel` leaf kernels lowers,
-matching the `cprogToJasminCom` output shape; checked by `native_decide`. 0
-sorries.
+Front and smoke test. The `fp_add` leaf kernel lowers to a single `regArith add`
+over two `reg 64` inputs, checked by `native_decide`.
 -/
 
 set_option autoImplicit true -- SSA IR front: many context/type variables
@@ -96,23 +90,45 @@ because `mapCtx (s :: Γ) = mapTy s :: mapCtx Γ` reduces (`mapCtx = List.map
 mapTy`), the dependent indices line up and the translation is the clean
 `here ↦ here`, `there ↦ there`. -/
 
+/-- Recursive worker for `toJVarD`: the mapped target context `Δ` is an
+    explicit argument, destructured alongside the variable, so each output
+    `.there` node stores a tail of the one shared `Δ` list. Keeps whole-block
+    lowering linear in the variable-chain length: the `mapCtx Γ` list is built
+    once (by `toJVarD`) instead of once per `.there` level. -/
+def toJVarDAux {t : CryptoTy} : {Γ : Ctx} →
+    Ctxt.Var (d := catCryptDialect) Γ t →
+    (Δ : Ctxt jasminDialect) → mapCtx Γ = Δ →
+    Ctxt.Var (d := jasminDialect) Δ (mapTy t)
+  | _, .here, _, h => h ▸ .here
+  | _, .there _, [], h => nomatch h
+  | _, .there v, _ :: Δ', h => .there (toJVarDAux v Δ' (by injection h))
+
 /-- Translate a `catCryptDialect` De Bruijn variable to a `jasminDialect`
     variable, transporting along `mapTy`/`mapCtx`. The dialect-`Ctxt.Var`
-    analogue of `CryptoToJasminCom.toJVar`. -/
-def toJVarD {Γ : Ctx} {t : CryptoTy} :
-    Ctxt.Var (d := catCryptDialect) Γ t →
-    Ctxt.Var (d := jasminDialect) (mapCtx Γ) (mapTy t)
-  | .here => .here
-  | .there v => .there (toJVarD v)
+    analogue of `CryptoToJasminCom.toJVar`. Computes `mapCtx Γ` once and hands
+    it to `toJVarDAux`, which threads it structurally down the `.there`
+    spine. -/
+def toJVarD {Γ : Ctx} {t : CryptoTy}
+    (v : Ctxt.Var (d := catCryptDialect) Γ t) :
+    Ctxt.Var (d := jasminDialect) (mapCtx Γ) (mapTy t) :=
+  toJVarDAux v (mapCtx Γ) rfl
 
-/-- Translate a dialect `Expr`'s argument `HVector` of `Ctxt.Var`s into a
-    Jasmin `HVector` of `Ctxt.Var`s, indexed by the pointwise-mapped types. -/
-def toJArgsD {Γ : Ctx} :
+/-- Worker for `toJArgsD`: shares one mapped context `Δ` across all argument
+    translations. -/
+def toJArgsDAux {Γ : Ctx} (Δ : Ctxt jasminDialect) (h : mapCtx Γ = Δ) :
     {tys : List CryptoTy} →
     HVector (fun ty => Ctxt.Var (d := catCryptDialect) Γ ty) tys →
-    HVector (fun ty => Ctxt.Var (d := jasminDialect) (mapCtx Γ) ty) (tys.map mapTy)
+    HVector (fun ty => Ctxt.Var (d := jasminDialect) Δ ty) (tys.map mapTy)
   | [], .nil => .nil
-  | _ :: _, .cons v rest => .cons (toJVarD v) (toJArgsD rest)
+  | _ :: _, .cons v rest => .cons (toJVarDAux v Δ h) (toJArgsDAux Δ h rest)
+
+/-- Translate a dialect `Expr`'s argument `HVector` of `Ctxt.Var`s into a
+    Jasmin `HVector` of `Ctxt.Var`s, indexed by the pointwise-mapped types.
+    Computes `mapCtx Γ` once, shared across the whole vector. -/
+def toJArgsD {Γ : Ctx} {tys : List CryptoTy}
+    (args : HVector (fun ty => Ctxt.Var (d := catCryptDialect) Γ ty) tys) :
+    HVector (fun ty => Ctxt.Var (d := jasminDialect) (mapCtx Γ) ty) (tys.map mapTy) :=
+  toJArgsDAux (mapCtx Γ) rfl args
 
 /-! ## 2. Binary-arithmetic builder
 
@@ -346,6 +362,9 @@ def toJExprD {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t) :
       | .packed b lw => some (hr ▸
           { op := .vsimd (.packed b lw), retTy_eq := rfl,
             args := .cons (toJVarD args.head) (.cons (toJVarD args.tail.head) .nil) })
+      | .varShift b lw => some (hr ▸
+          { op := .vsimd (.varShift b lw), retTy_eq := rfl,
+            args := .cons (toJVarD args.head) (.cons (toJVarD args.tail.head) .nil) })
       | .mulhi16 => some (hr ▸
           { op := .vsimd .mulhi16, retTy_eq := rfl,
             args := .cons (toJVarD args.head) (.cons (toJVarD args.tail.head) .nil) })
@@ -413,8 +432,7 @@ def toJExprD {Γ : Ctx} {t : CryptoTy} (e : Expr catCryptDialect Γ t) :
 /-! ## 4. Program translation -/
 
 /-- Lower a `Com catCryptDialect` into a `Com jasminDialect`. Returns `none` if
-    any expression falls outside the lowered straight-line fragment. The
-    `CProg`-free twin of `CryptoToJasminCom.cprogToJasminCom`. -/
+    any expression falls outside the lowered straight-line fragment. -/
 def cryptoDialectToJasminCom {Γ : Ctx} {t : CryptoTy} :
     Com catCryptDialect Γ t → Option (Com jasminDialect (mapCtx Γ) (mapTy t))
   | .ret v => some (.ret (toJVarD v))
@@ -429,16 +447,13 @@ def cryptoDialectToJasminCom {Γ : Ctx} {t : CryptoTy} :
 /-! ## 5. The composed `CProg`-free front
 
 `lowCTToJasminComD := translateDialectControlTop >=> cryptoDialectToJasminCom`.
-This is the drop-in replacement for the bench
-`extractedFrontProg (CProg) → cprogToJasminCom` path: a `LowCT → Com jasminDialect`
-front with **no** intermediate `CProg`. The front `translateDialectControlTop`
+It is a `LowCT → Com jasminDialect` front. The front `translateDialectControlTop`
 emits a `Com catCryptDialect _ .unit` at some final context `Γ'`; we lower it,
 landing a `Com jasminDialect (mapCtx Γ') (.reg 0)` (`mapTy .unit = .reg 0`). -/
 
 /-- The composed `CProg`-free `LowCT → Com jasminDialect` front: run the direct
     control-flow dialect front `translateDialectControlTop`, then lower its
-    `Com catCryptDialect` to `Com jasminDialect` with `cryptoDialectToJasminCom`.
-    Replaces the `extractedFrontProg → cprogToJasminCom` bench path. -/
+    `Com catCryptDialect` to `Com jasminDialect` with `cryptoDialectToJasminCom`. -/
 def lowCTToJasminComD {Γ : Ctx} (vm : VarMap Γ) (c : LowCT) :
     Option (Σ Γ' : Ctxt jasminDialect, Com jasminDialect Γ' (.reg 0)) :=
   match Dialects.TranslateDialectDirectControl.translateDialectControlTop vm c with
@@ -448,20 +463,18 @@ def lowCTToJasminComD {Γ : Ctx} (vm : VarMap Γ) (c : LowCT) :
       | none => none
   | none => none
 
-/-! ## 6. Smoke test: the dialect twin of the `fp_add` leaf kernels
+/-! ## 6. Smoke test: the `fp_add` leaf kernel
 
-We rebuild the `addKernel` of `CryptoToJasminCom`'s smoke directly as a
-`Com catCryptDialect`, lower it through this front, and confirm it lands a
-`some (Com jasminDialect …)` with the same shape as the `cprogToJasminCom`
-output (a single `regArith add` over the two `reg 64` inputs). -/
+We build the `addKernel` as a `Com catCryptDialect`, lower it through this front,
+and confirm it lands a `some (Com jasminDialect …)` carrying a single
+`regArith add` over the two `reg 64` inputs. -/
 
 namespace SmokeTest
 
 open CatCryptDialect
 
 /-- `let s = a + b; ret s` over `[sword 64, sword 64]`, built natively as a
-    `Com catCryptDialect` (the dialect twin of `CryptoToJasminCom`'s
-    `addKernel`). -/
+    `Com catCryptDialect`. -/
 def addComCD : Com catCryptDialect [.sword 64, .sword 64] (.sword 64) :=
   .var
     { op := .bvAdd 64, retTy_eq := rfl,
@@ -476,13 +489,10 @@ theorem addComCD_isSome : (cryptoDialectToJasminCom addComCD).isSome := by
 def addComJ : Com jasminDialect [.reg 64, .reg 64] (.reg 64) :=
   (cryptoDialectToJasminCom addComCD).get addComCD_isSome
 
-/-- The lowered program emits a `+` in `.jazz`, end-to-end through the existing
+/- The lowered program emits a `+` in `.jazz`, end-to-end through the existing
     `JasminPrint.emitJazz` printer — confirming the dialect front reaches the
     same `.jazz` text as the `CProg` path. -/
-theorem addComJ_jazz_has_plus :
-    JasminPrint.strContains (JasminPrint.emitJazz "fp_add_arith_d" addComJ) "+"
-      = true := by
-  native_decide
+#guard (JasminPrint.strContains (JasminPrint.emitJazz "fp_add_arith_d" addComJ) "+")
 
 /-- Two parameters (the two `reg 64` inputs) and one body instruction. -/
 theorem addComJ_shape :
@@ -503,14 +513,9 @@ def extComCD : Com catCryptDialect [.sword 64, .sword 64] (.sword 64) :=
 theorem extComCD_isSome : (cryptoDialectToJasminCom extComCD).isSome := by
   native_decide
 
-/-- The lowered `extCall` program names `fp_add` in `.jazz` (the leaf survives
+/- The lowered `extCall` program names `fp_add` in `.jazz` (the leaf survives
     the whole `Com catCryptDialect → Com jasminDialect → .jazz` chain). -/
-theorem extComCD_jazz_has_fp_add :
-    JasminPrint.strContains
-      (JasminPrint.emitJazz "fp_add_ext_d"
-        ((cryptoDialectToJasminCom extComCD).get extComCD_isSome))
-      "fp_add" = true := by
-  native_decide
+#guard (JasminPrint.strContains (JasminPrint.emitJazz "fp_add_ext_d" ((cryptoDialectToJasminCom extComCD).get extComCD_isSome)) "fp_add")
 
 end SmokeTest
 

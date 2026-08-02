@@ -8,6 +8,8 @@ import CatCrypt.Crypto.Optimizer.Rewrite.Egraph
 /-!
 # IR-level uncompute-after-last-use (dead-store elimination) for `Com`
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 A **dead-in-continuation** pass over the typed VIR framework: a value bound by
 `.var e body` whose result (`.here` in `body`) is **never read anywhere in
 `body`** can be freed — its compute step is uncomputed because the value is
@@ -446,7 +448,7 @@ def demoContinuation :
     -- context [v2, v1, v0, x]: v0 = .there (.there .here)
     (.ret (.there (.there .here)))                                  -- ret v0
 
-/-- **The middle binder `v1` is genuinely interior dead**: the continuation
+/-- **The middle binder `v1` is interior dead**: the continuation
 below it does not read its head binder. This is exactly the precondition
 `uncompute` tests (`comReadsSlot [] body = false`), and it holds. -/
 example : comReadsSlot [] demoContinuation = false := by native_decide

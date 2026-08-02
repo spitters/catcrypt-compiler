@@ -41,7 +41,7 @@ embedding**:
   Because that is *definitionally* the `forLoopBlock` loop-body context
   `accTy :: .reg 64 :: invTys` (`accTy := mapTy accCTy`,
   `invTys := outerInvCTys.map mapTy`), the front's output
-  `ComL Γblk (mapTy accCTy)` — a genuine `whileNz` / do-while NODE, its own inner
+  `ComL Γblk (mapTy accCTy)` — a `whileNz` / do-while NODE, its own inner
   index at slot `1` — IS the recursive body the block node wants;
 * the **outer** loop wraps that inner node with `ComL.forLoopBlock`, threading the
   outer trip count / accumulator seed / invariants.  The outer loop's index binder
@@ -49,8 +49,8 @@ embedding**:
   depends on the outer index (e.g. MAYO's `A[row·AC + j]`) reaches it as an inner
   invariant.
 
-The result is a `forLoopBlock`-over-`whileNz` `ComL`: two genuine bottom-test
-back-edges (outer + inner), no unrolling.  Nesting is genuinely recursive — feed a
+The result is a `forLoopBlock`-over-`whileNz` `ComL`: two bottom-test
+back-edges (outer + inner), no unrolling.  Nesting is recursive — feed a
 `lowerNestedLoop` result as the inner of another `lowerNestedLoop` for 3-deep, and
 so on (the outer block context is uniform in shape at every level).
 
@@ -100,7 +100,7 @@ open CatCrypt.Crypto.Jasmin.LowCT (LowCT SExpr TowerType)
 /-! ## 1. The recursive lowering -/
 
 /-- Lower a **nested** LowCT loop — an outer runtime-trip loop whose per-iteration
-    body is itself an inner `RWhileNz` sweep — into a genuine
+    body is itself an inner `RWhileNz` sweep — into a
     `ComL.forLoopBlock`-over-`ComL.whileNz`, with **no unrolling** of either level.
 
     * the inner (leaf) loop's straight-line body `innerBody` front-compiles through
@@ -223,13 +223,13 @@ def demoNested : Option (ComL demoΓouter (.reg 64)) :=
 /-- **The front generates the nested loop** (the inner leaf body front-compiles). -/
 theorem demoNested_isSome : demoNested.isSome := by native_decide
 
-/-- **The outer spine is genuinely the block-body loop node** `forLoopBlock`. -/
+/-- **The outer spine is the block-body loop node** `forLoopBlock`. -/
 theorem demoNested_is_forLoopBlock_node :
     (demoNested.map (fun c => match c with
       | .forLoopBlock _ _ _ _ _ => true
       | _ => false)) = some true := by native_decide
 
-/-- **The inner (recursive) body is genuinely a `whileNz` do-while NODE**, not an
+/-- **The inner (recursive) body is a `whileNz` do-while NODE**, not an
     unrolled straight-line chain — the block node carries a real inner loop. -/
 theorem demoNested_inner_is_whileNz_node :
     (demoNested.map (fun c => match c with
@@ -265,7 +265,7 @@ theorem demoNested_denote_double' :
     (demoNested.map (fun c => BitVec.toNat (ComL.denote c (demoVal 3 2))))
       = some (demoDoubleRef 3 2) := by native_decide
 
-/-- **Two genuine bottom-test back-edges** (outer + inner): the `comLToBody`
+/-- **Two bottom-test back-edges** (outer + inner): the `comLToBody`
     lowering of the nested loop carries exactly **two** `Lcond NZ` conditional
     jumps — real nested control flow, not an unrolled chain. -/
 theorem demoNested_two_backedges :
@@ -275,7 +275,7 @@ theorem demoNested_two_backedges :
             | .Lcond (.reg "NZ") _ => true | _ => false)).length == 2))
       = some true := by native_decide
 
-/-- **The inner loop is a genuine bottom-test do-while:** the inner `whileNz`
+/-- **The inner loop is a bottom-test do-while:** the inner `whileNz`
     contributes its back-edge with no zero-trip top guard of its own — the only
     `Lcond Z` in the lowering is the outer block's counted zero-trip skip (the
     `forLoopBlock` frame), so there is exactly **one** `Lcond Z`, not two. -/
@@ -366,8 +366,8 @@ theorem rolledWhileNzComLCont_ret_here {Γouter : Ctxt jasminDialect}
     `invs`, trip `(guard.lookup V).toNat`) — the sweep runs, its result is bound at
     `.here`, and the next phase runs on it.  Structural (`unfold`; `rw`; `rfl`);
     same axiom footprint as the committed reference `rolledWhileNzComL_denote` /
-    `rolledForLoopNRtCont_denote` (`propext`, `Quot.sound`, and the front's
-    `aesSboxArrayW_size` `native_decide` size axiom — no `Classical.choice`). -/
+    `rolledForLoopNRtCont_denote` (`propext`, `Quot.sound` — no
+    `Classical.choice`). -/
 theorem rolledWhileNzComLCont_denote {Γouter : Ctxt jasminDialect}
     {accCTy : CryptoTy} {invCTys : Ctx} {s : JasminTy}
     (vmBody : VarMap (accCTy :: .sword 64 :: invCTys)) (accName : String)
@@ -477,14 +477,14 @@ def spliceDemo : Option (ComL spliceΓkern (.reg 64)) :=
 theorem spliceDemo_isSome : spliceDemo.isSome := by native_decide
 
 /-- **The outer spine is the block-body loop node** whose recursive body's *first*
-    phase is a `forLoopN` (the 1-trip prefix glue) — a genuine multi-phase body,
+    phase is a `forLoopN` (the 1-trip prefix glue) — a multi-phase body,
     not a bare inner sweep. -/
 theorem spliceDemo_is_block_over_multiphase :
     (spliceDemo.map (fun c => match c with
       | .forLoopBlock (.forLoopN _ _ _ _) _ _ _ _ => true
       | _ => false)) = some true := by native_decide
 
-/-- **The block body genuinely splices an inner `whileNz` sweep after the prefix
+/-- **The block body splices an inner `whileNz` sweep after the prefix
     glue**: the recursive body is `forLoopN (prefix) … (forLoopN? no — whileNz sweep …)`.
     We witness the sweep node sitting as the prefix glue's continuation. -/
 theorem spliceDemo_splices_whileNz :
@@ -524,7 +524,7 @@ theorem spliceDemo_denote_seq' :
     (spliceDemo.map (fun c => BitVec.toNat (ComL.denote c (spliceVal 3 2))))
       = some (spliceRef 3 2) := by native_decide
 
-/-- **Four genuine bottom-test back-edges** for the spliced body: the outer block
+/-- **Four bottom-test back-edges** for the spliced body: the outer block
     loop, the inner countdown sweep, and the two 1-trip glue phases are all counted
     loops, so the `comLToBody` lowering carries exactly **four** `Lcond NZ`
     back-edges — real nested + sequential control flow, no unrolling. -/
@@ -654,7 +654,7 @@ The canonical state-dependent double fold: on outer pass `i`, the inner sweep ru
 exactly `i` times — the trip is the outer index itself, materialised by the covered
 `countBody` `cnt := SVar "jd"` (the front reads the outer index binder as the count).
 The inner body increments the accumulator, so the whole loop computes
-`Σ_{i<N} i = N(N-1)/2` — the count genuinely varies per outer pass (the MAYO `rc`
+`Σ_{i<N} i = N(N-1)/2` — the count varies per outer pass (the MAYO `rc`
 shape, with the clamped bound replaced by the bare index for a closed-form check). -/
 
 /-- Count body: `cnt := jd` (the inner trip = the outer index). `countName = "cnt"`. -/
@@ -676,7 +676,7 @@ def triUpdateVm : VarMap [CryptoTy.sword 64, CryptoTy.sword 64, CryptoTy.sword 6
 /-- Outer (kernel-argument) context `[N (outer count), acc]`. -/
 def triΓouter : Ctxt jasminDialect := [.reg 64, .reg 64]
 
-/-- The front-generated triangular counted loop — a genuine `ComL.forLoopNRtNested`
+/-- The front-generated triangular counted loop — a `ComL.forLoopNRtNested`
     whose inner trip is recomputed as the outer index each pass, or `none`. -/
 def triCounted : Option (ComL triΓouter (.reg 64)) :=
   rolledForLoopNRtCountedCont
@@ -691,7 +691,7 @@ def triCounted : Option (ComL triΓouter (.reg 64)) :=
 /-- **The front generates the triangular loop.** -/
 theorem triCounted_isSome : triCounted.isSome := by native_decide
 
-/-- **The spine is genuinely the nested runtime-loop node** — a real recomputed-count
+/-- **The spine is the nested runtime-loop node** — a real recomputed-count
     2-deep loop, not an unrolled chain. -/
 theorem triCounted_is_nested_node :
     (triCounted.map (fun c => match c with
@@ -721,7 +721,7 @@ theorem triCounted_denote_triangular' :
     (triCounted.map (fun c => BitVec.toNat (ComL.denote c (triVal 5)))) = some (triRef 5) := by
   native_decide
 
-/-- **Two genuine bottom-test back-edges** (outer + the recomputed-count inner): the
+/-- **Two bottom-test back-edges** (outer + the recomputed-count inner): the
     `comLToBody` lowering carries exactly **two** `Lcond NZ` conditional jumps — real
     nested control flow with a per-outer-pass recomputed inner trip. -/
 theorem triCounted_two_backedges :
@@ -762,7 +762,7 @@ def triCountedChain : Option (ComL triΓouter (.reg 64)) :=
 
 /-- **The counted sweep splices mid-chain.** `denote = triangular fold + 100`: the
     suffix phase ran on the nested-sweep result, witnessing the counted loop as a
-    genuine phase in the multi-phase chain (`N = 6` → `15 + 100 = 115`). -/
+    phase in the multi-phase chain (`N = 6` → `15 + 100 = 115`). -/
 theorem triCountedChain_denote_seq :
     (triCountedChain.map (fun c => BitVec.toNat (ComL.denote c (triVal 6))))
       = some (triRef 6 + 100) := by native_decide

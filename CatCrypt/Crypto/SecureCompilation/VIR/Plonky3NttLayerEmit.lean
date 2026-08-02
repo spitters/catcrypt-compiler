@@ -50,8 +50,8 @@ words: the **last eight bindings** of the `Com` are the front's identity
 copies of the transformed `v0..v7` in order, matching `toLprogPhysAbi`'s
 last-`nOut` output convention.
 
-Consumers (`Plonky3OwnedEmitMain` / `Plonky3WholeProverOwnedEmit` /
-`Plonky3OrchLoopsOwnedEmit`) render `layerCom` to owned AT&T `.s` via
+Consumers (`Plonky3EmitMain` / `Plonky3WholeProverEmit` /
+`Plonky3OrchLoopsEmit`) render `layerCom` to owned AT&T `.s` via
 `Com.toLprogPhysAbi` under the export symbol `plonky3_ntt_layer8_rc`; the
 external KAT is `bench/plonky3_compare/ntt_layer_from_rustcmd_kat.c`
 (`make plonky3-ntt-layer-rustcmd-kat`) against the self-contained C
@@ -199,7 +199,7 @@ abbrev inCtxt : Ctxt jasminDialect := List.replicate 18 r64
 
 /-- The deployed NTT-layer `Com jasminDialect` — FRONT-GENERATED
     (`translateDialectControl` + `cryptoDialectToJasminCom`), not hand-built.
-    Rendered to owned `.s` by `Plonky3OwnedEmitMain` (and inlined by the
+    Rendered to owned `.s` by `Plonky3EmitMain` (and inlined by the
     whole-prover / orchestration emits) under `plonky3_ntt_layer8_rc`. -/
 def layerCom : Com jasminDialect inCtxt r64 :=
   layerLoweredOpt.get layerLowered_isSome

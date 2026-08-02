@@ -38,7 +38,12 @@ def KState.zero : KState := fun _ _ => 0
 
 /-! ## Round Constants (FIPS 202, Section 3.2.5) -/
 
-private def rcData : List (BitVec 64) := [
+/-- The FIPS-202 ι round constants. Not `private`: a cross-module bridge proof
+    (extraction ↔ this reference) has to name the table to unfold it, and a
+    `private` name is not accessible outside its module. Reason over it by
+    `simp [roundConstant, rcData]` — unfolding plus literal normalisation. Do not
+    compute over it with `decide`, and never with `native_decide`. -/
+def rcData : List (BitVec 64) := [
   0x0000000000000001, 0x0000000000008082, 0x800000000000808A, 0x8000000080008000,
   0x000000000000808B, 0x0000000080000001, 0x8000000080008081, 0x8000000000008009,
   0x000000000000008A, 0x0000000000000088, 0x0000000080008009, 0x000000008000000A,
@@ -51,8 +56,9 @@ def roundConstant (r : Nat) : BitVec 64 := rcData.getD r 0
 
 /-! ## Rotation Offsets (FIPS 202, Section 3.2.2) -/
 
-/-- ρ rotation offsets: `rotOffsets x y` gives the rotation amount for lane (x,y). -/
-private def rotData : List (List Nat) := [
+/-- ρ rotation offsets: `rotOffsets x y` gives the rotation amount for lane (x,y).
+    Public for the same reason as `rcData`. -/
+def rotData : List (List Nat) := [
   [ 0, 36,  3, 41, 18],
   [ 1, 44, 10, 45,  2],
   [62,  6, 43, 15, 61],

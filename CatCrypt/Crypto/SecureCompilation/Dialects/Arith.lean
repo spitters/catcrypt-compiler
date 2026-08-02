@@ -8,6 +8,8 @@ import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 /-!
 # The `arith` dialect (D0 gate — CatCrypt-side, not in `VIR/`)
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 The first upstream-aligned neutral dialect of the MLIR dialect-alignment restructure
 (D0). It is the
 target-neutral integer-arithmetic fragment — upstream MLIR's `arith` — defined over
@@ -28,7 +30,7 @@ shifts) as a migration contract (plan §0.3).
 The op set is exactly the `ScalarLinDeBruijn.SupportedOp` neutral fragment — binary
 ALU, widening-high multiply, immediate shifts, materialised constant — under
 upstream names, so it is the lowering target the `SupportedOp` firewall re-points to
-(D0's highest-leverage locus). `ArithOp.toJasmin` is the verified-lowering image map
+(the first such locus in D0). `ArithOp.toJasmin` is the verified-lowering image map
 into the existing `jasminDialect`; the `Com arith → Com jasmin` recursion + its
 denotation-preservation proof (the `LatticeToJasmin` mirror) is the next step.
 

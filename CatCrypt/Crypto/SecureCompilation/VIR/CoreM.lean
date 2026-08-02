@@ -8,6 +8,8 @@ import CatCrypt.Crypto.SecureCompilation.VIR.Core
 /-!
 # Effectful VIR denotation
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 Adds a **monadic denotation** layer on top of VIR's pure `Core.lean`,
 without disturbing the pure path. Two new typeclasses parameterise the
 denotation by an effect monad `M`:

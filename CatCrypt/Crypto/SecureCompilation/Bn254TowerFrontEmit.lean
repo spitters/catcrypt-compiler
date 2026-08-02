@@ -32,7 +32,7 @@ same straight-line route as `Mersenne31FrontEmit`):
     --(renderLprogAtt)--> bench/bn254_compare/jasmin_tower/gen_com/tower_owned.s
 ```
 
-The per-rewrite denotation-preservation keystones of the selection live in
+The per-rewrite denotation-preservation lemmas of the selection live in
 `Dialects/CarryChainSelect.lean` (`select_addStart_*` / `select_addMid_*` /
 `select_subStart_*` / `select_subMid_*`, all-inputs `bv_decide`); the §6
 `denote = independent Nat spec` gates below re-check the *selected* pipeline
@@ -119,7 +119,7 @@ def pNat : Nat :=
 def pl : List Nat :=
   [4332616871279656263, 10917124144477883021, 13281191951274694749, 3486998266802970665]
 
-/-- `pl` recombines to the genuine BN254 prime. -/
+/-- `pl` recombines to the BN254 prime. -/
 theorem pl_value :
     pl[0]! + 2 ^ 64 * pl[1]! + 2 ^ 128 * pl[2]! + 2 ^ 192 * pl[3]! = pNat := by
   native_decide
@@ -338,7 +338,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport (Com.toLprogPhysAbi
     (`AdxChainFuse.fuseAdxChain`) runs after physical lowering and before the AT&T
     printer, coalescing each value-threaded `ADCX`/`ADCXHI`/`ADCX` limb triple into
     a live-flag `adcx` chain (dropping the `setc`/`movzbq`/`bt` round-trip). -/
-def toOwnedAsm (name : String) (abiArgs : List String)
+def toAsm (name : String) (abiArgs : List String)
     (j : Option (Σ Γj : Ctxt jasminDialect, Σ t : JasminTy, Com jasminDialect Γj t)) :
     Option String :=
   (j.map (fun s =>
@@ -351,13 +351,13 @@ def toOwnedAsm (name : String) (abiArgs : List String)
 
 /-- The owned AT&T `.s` of `j_bn254_Fp2_add` (RDI = out, RSI = x, RDX = y). -/
 def addAsm : Option String :=
-  toOwnedAsm "j_bn254_Fp2_add" ["RDI", "RSI", "RDX"] (toJasmin addFrontCom)
+  toAsm "j_bn254_Fp2_add" ["RDI", "RSI", "RDX"] (toJasmin addFrontCom)
 /-- The owned AT&T `.s` of `j_bn254_Fp2_sub` (RDI = out, RSI = x, RDX = y). -/
 def subAsm : Option String :=
-  toOwnedAsm "j_bn254_Fp2_sub" ["RDI", "RSI", "RDX"] (toJasmin subFrontCom)
+  toAsm "j_bn254_Fp2_sub" ["RDI", "RSI", "RDX"] (toJasmin subFrontCom)
 /-- The owned AT&T `.s` of `j_bn254_Fp2_felem_copy` (RDI = out, RSI = x). -/
 def copyAsm : Option String :=
-  toOwnedAsm "j_bn254_Fp2_felem_copy" ["RDI", "RSI"] (toJasmin copyFrontCom)
+  toAsm "j_bn254_Fp2_felem_copy" ["RDI", "RSI"] (toJasmin copyFrontCom)
 
 /-- The three bodies front-compile (`translateDialectControl` + `ret out`). -/
 theorem frontCom_isSome :

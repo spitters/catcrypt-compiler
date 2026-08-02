@@ -12,7 +12,7 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.FieldAddSubTierA
 `Curve4MontMulProvenEmit.lean` emits ONE leaf — the secp256k1 Montgomery field
 multiply `secp256k1_montmul_proven` — assembled from the two proven `runBlock`
 cores. That is the curve-family analogue of BabyBear's single `bbMul` word block.
-The curve-family analogue of the **field-pipeline keystone**
+The curve-family analogue of the whole-permutation field-pipeline emit
 (`Poseidon2/FieldPipelineEmitBB.lean`, which emits the whole 21-round Poseidon2
 permutation as one `.s` through the field schedule) is a *composition* of those
 proven leaves: this file emits the field-op tree
@@ -52,7 +52,7 @@ GMP-KAT-gated end to end
 `a·b·R⁻¹ + c·d·R⁻¹ mod p`).
 
 This is the **curve family** (3rd self-emitted field family after BabyBear scalar
-and the Pasta/BN254/P256 leaves): a genuine multi-limb field-op tree emitted to
+and the Pasta/BN254/P256 leaves): a multi-limb field-op tree emitted to
 owned x86-64 over proven Montgomery + canonical-add blocks, with the value gate
 external (GMP).
 

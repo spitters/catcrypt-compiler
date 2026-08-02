@@ -15,7 +15,7 @@ and Jacobian → affine.  It is the CatCrypt counterpart of prime-ir's
 
 ## Why this dialect exists (the gap it closes)
 
-Per `PRIME_IR_GAP_ANALYSIS.md` (repo root, §4), CatCrypt already *moves between*
+Per `PRIME_IR_OP_CORRESPONDENCE.md` (repo root, §4), CatCrypt already *moves between*
 the affine and Jacobian representations — `affToPoint` embeds an affine wire
 point into the abstract group, and the MSM kernels normalise Jacobian
 accumulators back to affine via `Pairing/BatchInverse.lean` — but it does **not**
@@ -60,18 +60,14 @@ the curve-group kernels consume — the once-for-all tie to that dialect.
   semantics, where `convert_point_type` to affine picks the canonical
   representative.
 
-## Honest classification (read `VIR/DIALECTS.md`)
+## What this file supplies
 
-This is a **HIGH-tier, prime-ir-corresponding / agreement** dialect, NOT an
-emit-wired one.  Like `tensorExtDialect`, `derivedDialect`, `cmpDialect`, and the
-`mlirArith*` family in DIALECTS.md's "correspondence-only" table, it has **no
-lowering out** (no `→ Com jasminDialect`, no backend edge).  It substantiates the
-"prime-ir `elliptic_curve.convert_point_type` aligned" claim by giving the two
-conversions a first-class op with a verified round-trip law.  It does **not** add
-a lowering or emit path — the bytes-reaching coordinate conversions still flow
-through the existing `affToPoint` / MSM-normalise (`BatchInverse`) kernels (the
-genuine `Com → jasmin → ELF` spine in DIALECTS.md).  Do not overclaim an emit
-this file does not build.
+The two conversions as first-class ops with a verified round-trip law. It builds
+no lowering and no emit path of its own; `EcConvertToFieldLowering.lean` carries
+those coordinate programs, and the batched normalisation the MSM output needs
+goes through `BatchInverse` instead, since a single-point op cannot express it.
+
+Lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
 ## Pure-only + constant-time
 
@@ -169,7 +165,7 @@ instance : DialectSignature ecConvertDialect where
     | .affineToJacobian p => .jacobian p
     | .jacobianToAffine p => .affine p
 
-/-! ## 7. Op denotation (into the genuine coordinate conversions) -/
+/-! ## 7. Op denotation (into the coordinate conversions) -/
 
 instance ecConvertDenote : DialectDenote ecConvertDialect where
   denote op := match op with

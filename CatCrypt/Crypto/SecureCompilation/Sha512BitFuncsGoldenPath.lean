@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
 import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
-import Std.Tactic.BVDecide
+import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfFull
 
 /-!
 # Golden path: the SHA-512 bit functions as `Com jasminDialect`, emitted by the verified compiler
@@ -24,8 +24,9 @@ The recipe (one source → both backends), as in `FieldEmitGoldenPath`:
    `regArith`/`shrImm`/`shlImm`/`regConst` alphabet;
 2. `ComOK` (mechanical — one constructor per op) + prove `Com.denote = <in-Com expr>`
    by cheap `rfl`, AND a recognizable-spec theorem `Com.denote = <standard BitVec
-   operators>` (using `~~~`, `.rotateRight`, `^^^`, `>>>`) by `bv_decide` — the
-   independent check tying the source to the textbook definition;
+   operators>` (using `~~~`, `.rotateRight`, `^^^`, `>>>`) by rewriting with
+   `xor_ones64_eq_not` and `BitVec.rotateRight_def` — the independent check tying
+   the source to the textbook definition;
 3. `ScalarLinNeutralDemo.com_arm_e2e` / `MultiBackendDemo.com_riscv_e2e` emit the
    verified backend block — both discharged by Step 1's `comToReg_faithful`.
 
@@ -33,27 +34,43 @@ The rotate `ROTR^n x` is **branchless in the existing `reg 64` alphabet** as
 `(x >>> n) ||| (x <<< (64 - n))` — `shrImm`/`shlImm`/`or`, every one in `SupportedOp`,
 so it lowers through the same `comToReg_faithful` as the field ALU ops with no new
 dialect machinery. Logical-not (`~~~e` in `Ch`) is not a `SupportedOp`; it is expressed
-as `e ^^^ 0xFFFF…FFFF` via a `regConst` all-ones binding (decimal literal —
-`2^64 - 1` breaks both the denote `rfl` and `bv_decide`). The six functions complete
-the round bit-twiddling SHA-512 needs, all emitting to both backends with no new
-compiler machinery. -/
+as `e ^^^ 0xFFFF…FFFF` via a `regConst` all-ones binding (decimal literal; the
+`2^64 - 1` form breaks the denote `rfl`), discharged by `xor_ones64_eq_not`. The six
+functions complete the round bit-twiddling SHA-512 needs, all emitting to both backends
+with no new compiler machinery.
+
+Elaboration sits above the one-second module ceiling. Two per-kernel costs account for
+it. The `Com.denote` `rfl` reduces the kernel's binding chain, so it grows with the
+kernel's length; a structural rewrite through the `Com.denote` equations in place of
+the `rfl` is a possible cheaper form and has not been tried. The `com_arm_e2e` and
+`com_riscv_e2e` instantiations cost roughly 25 ms per binding and do not respond to
+supplying their implicit arguments; those two lemmas are themselves the shared form,
+and what remains is one instantiation per kernel per backend. -/
 
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.Sha512BitFuncs
 
 open CatCrypt.Crypto.SecureCompilation.VIR
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-open CatCrypt.Crypto.SecureCompilation.ScalarLin
-open CatCrypt.Crypto.SecureCompilation.ScalarLinFront
-open CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
-open CatCrypt.Crypto.SecureCompilation.ScalarLinNeutralDemo
-open CatCrypt.Crypto.SecureCompilation.MultiBackendDemo
-open CatCrypt.Crypto.SecureCompilation.ARMBackend
-open CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
-open CatCrypt.Crypto.SecureCompilation.RISCVBackend
-open CatCrypt.Crypto.SecureCompilation.RISCVBackend.RegToRiscv
-open CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+  CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+  CatCrypt.Crypto.SecureCompilation.ScalarLin
+  CatCrypt.Crypto.SecureCompilation.ScalarLinFront
+  CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
+  CatCrypt.Crypto.SecureCompilation.ScalarLinNeutralDemo
+  CatCrypt.Crypto.SecureCompilation.MultiBackendDemo
+  CatCrypt.Crypto.SecureCompilation.ARMBackend
+  CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
+  CatCrypt.Crypto.SecureCompilation.RISCVBackend
+  CatCrypt.Crypto.SecureCompilation.RISCVBackend.RegToRiscv
+  CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+
+/-- The all-ones `regConst` realizes logical-not at width 64:
+    `x ^^^ 0xFFFF_FFFF_FFFF_FFFF = ~~~x`. The decimal literal is definitionally
+    `BitVec.allOnes 64`, so the identity is `BitVec.xor_allOnes`. -/
+theorem xor_ones64_eq_not (x : BitVec 64) :
+    x ^^^ BitVec.ofNat 64 18446744073709551615 = ~~~x := by
+  rw [show BitVec.ofNat 64 18446744073709551615 = BitVec.allOnes 64 from rfl,
+    BitVec.xor_allOnes]
 
 /-! ## `Ch e f g = (e & f) ^ ((~e) & g)`
 
@@ -95,12 +112,12 @@ theorem shaChCom_denote (e f g : BitVec 64) :
     Com.denote shaChCom (.cons e (.cons f (.cons g .nil)))
       = (e &&& f) ^^^ ((e ^^^ BitVec.ofNat 64 18446744073709551615) &&& g) := rfl
 
-/-- **Step 2 — recognizable-spec proof, `bv_decide`.** Ties the source to the standard
-    `Ch e f g = (e & f) ^ ((~e) & g)` with the textbook `~~~`. -/
+/-- **Step 2 — recognizable-spec proof, via `xor_ones64_eq_not`.** Ties the source to the
+    standard `Ch e f g = (e & f) ^ ((~e) & g)` with the textbook `~~~`. -/
 theorem shaChCom_spec (e f g : BitVec 64) :
     Com.denote shaChCom (.cons e (.cons f (.cons g .nil)))
       = (e &&& f) ^^^ ((~~~e) &&& g) := by
-  rw [shaChCom_denote]; congr 1; bv_decide
+  rw [shaChCom_denote]; simp only [xor_ones64_eq_not]
 
 /-- **Emitted AArch64**, discharged by `comToReg_faithful` via `com_arm_e2e`. -/
 theorem shaChCom_arm_e2e (V : Ctxt.Valuation ([.reg 64, .reg 64, .reg 64] : Ctxt jasminDialect))
@@ -163,7 +180,8 @@ theorem shaMajCom_denote (a b c : BitVec 64) :
     Com.denote shaMajCom (.cons a (.cons b (.cons c .nil)))
       = ((a &&& b) ^^^ (a &&& c)) ^^^ (b &&& c) := rfl
 
-/-- **Step 2 — recognizable-spec proof, `bv_decide`.** -/
+/-- **Step 2 — recognizable-spec proof.** The in-Com form is already the textbook
+    circuit up to `^^^` association, so the denote lemma alone closes it. -/
 theorem shaMajCom_spec (a b c : BitVec 64) :
     Com.denote shaMajCom (.cons a (.cons b (.cons c .nil)))
       = (a &&& b) ^^^ (a &&& c) ^^^ (b &&& c) := by
@@ -248,8 +266,8 @@ theorem shaBigSigma0Com_denote (a : BitVec 64) :
       = (((a >>> 28) ||| (a <<< 36)) ^^^ ((a >>> 34) ||| (a <<< 30)))
           ^^^ ((a >>> 39) ||| (a <<< 25)) := rfl
 
-/-- **Step 2 — recognizable-spec proof, `bv_decide`.** Ties the `shr | shl` source to
-    the textbook `ROTR` via `BitVec.rotateRight`. -/
+/-- **Step 2 — recognizable-spec proof, via `BitVec.rotateRight_def`.** Ties the
+    `shr | shl` source to the textbook `ROTR` via `BitVec.rotateRight`. -/
 theorem shaBigSigma0Com_spec (a : BitVec 64) :
     Com.denote shaBigSigma0Com (.cons a .nil)
       = a.rotateRight 28 ^^^ a.rotateRight 34 ^^^ a.rotateRight 39 := by
@@ -332,7 +350,7 @@ theorem shaBigSigma1Com_denote (e : BitVec 64) :
       = (((e >>> 14) ||| (e <<< 50)) ^^^ ((e >>> 18) ||| (e <<< 46)))
           ^^^ ((e >>> 41) ||| (e <<< 23)) := rfl
 
-/-- **Step 2 — recognizable-spec proof, `bv_decide`.** -/
+/-- **Step 2 — recognizable-spec proof, via `BitVec.rotateRight_def`.** -/
 theorem shaBigSigma1Com_spec (e : BitVec 64) :
     Com.denote shaBigSigma1Com (.cons e .nil)
       = e.rotateRight 14 ^^^ e.rotateRight 18 ^^^ e.rotateRight 41 := by
@@ -408,7 +426,7 @@ theorem shaSmallSigma0Com_denote (x : BitVec 64) :
     Com.denote shaSmallSigma0Com (.cons x .nil)
       = (((x >>> 1) ||| (x <<< 63)) ^^^ ((x >>> 8) ||| (x <<< 56))) ^^^ (x >>> 7) := rfl
 
-/-- **Step 2 — recognizable-spec proof, `bv_decide`.** -/
+/-- **Step 2 — recognizable-spec proof, via `BitVec.rotateRight_def`.** -/
 theorem shaSmallSigma0Com_spec (x : BitVec 64) :
     Com.denote shaSmallSigma0Com (.cons x .nil)
       = x.rotateRight 1 ^^^ x.rotateRight 8 ^^^ (x >>> 7) := by
@@ -432,9 +450,13 @@ theorem shaSmallSigma0Com_riscv_e2e (V : Ctxt.Valuation ([.reg 64] : Ctxt jasmin
       = Com.denote shaSmallSigma0Com V :=
   com_riscv_e2e shaSmallSigma0Com_ok allReg64_one V s hs
 
-/-- **The x86 owned-emit leg** (KAT-gated tier). -/
+/-- **The x86 owned-emit leg, via the optimized full-ELF entry.**
+    Emits through `OptimizedComToElfFull.optimizedCompileComToElf`; correctness uses
+    `optimizedCompileComToElf_sound` (the optimized block is `runBlock`-equal to the
+    unoptimized gathered block on every input) together with the executed spec-KAT in
+    `bench/sha2_compare/`, not byte identity with `compileComToElf`. -/
 def shaSmallSigma0Com_x86_elf : ByteArray :=
-  X86Backend.CompileComToElfJInstrFull6.compileComToElfJInstrFull6 shaSmallSigma0Com "sha512_smallsigma0"
+  X86Backend.OptimizedComToElfFull.optimizedCompileComToElf shaSmallSigma0Com "sha512_smallsigma0"
 
 /-! ## `σ₁ x = ROTR^19 x ^ ROTR^61 x ^ (x >>> 6)`
 
@@ -484,7 +506,7 @@ theorem shaSmallSigma1Com_denote (x : BitVec 64) :
     Com.denote shaSmallSigma1Com (.cons x .nil)
       = (((x >>> 19) ||| (x <<< 45)) ^^^ ((x >>> 61) ||| (x <<< 3))) ^^^ (x >>> 6) := rfl
 
-/-- **Step 2 — recognizable-spec proof, `bv_decide`.** -/
+/-- **Step 2 — recognizable-spec proof, via `BitVec.rotateRight_def`.** -/
 theorem shaSmallSigma1Com_spec (x : BitVec 64) :
     Com.denote shaSmallSigma1Com (.cons x .nil)
       = x.rotateRight 19 ^^^ x.rotateRight 61 ^^^ (x >>> 6) := by
@@ -508,8 +530,12 @@ theorem shaSmallSigma1Com_riscv_e2e (V : Ctxt.Valuation ([.reg 64] : Ctxt jasmin
       = Com.denote shaSmallSigma1Com V :=
   com_riscv_e2e shaSmallSigma1Com_ok allReg64_one V s hs
 
-/-- **The x86 owned-emit leg** (KAT-gated tier). -/
+/-- **The x86 owned-emit leg, via the optimized full-ELF entry.**
+    Emits through `OptimizedComToElfFull.optimizedCompileComToElf`; correctness uses
+    `optimizedCompileComToElf_sound` (the optimized block is `runBlock`-equal to the
+    unoptimized gathered block on every input) together with the executed spec-KAT in
+    `bench/sha2_compare/`, not byte identity with `compileComToElf`. -/
 def shaSmallSigma1Com_x86_elf : ByteArray :=
-  X86Backend.CompileComToElfJInstrFull6.compileComToElfJInstrFull6 shaSmallSigma1Com "sha512_smallsigma1"
+  X86Backend.OptimizedComToElfFull.optimizedCompileComToElf shaSmallSigma1Com "sha512_smallsigma1"
 
 end CatCrypt.Crypto.SecureCompilation.Sha512BitFuncs

@@ -7,13 +7,15 @@ import CatCrypt.Crypto.SecureCompilation.VIR.Core
 import Std.Tactic.BVDecide
 
 /-!
-# A genuine rewriting strength-reduction pass for `Com` (real transform)
+# A rewriting strength-reduction pass for `Com` (real transform)
+
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
 `StrengthReduce.lean` ships an *analysis-as-labelling* strength reducer whose
 `Com → Com` rewrite is the identity (`applyStrengthReduce = fun p _ => p`), so
 its preservation theorems are `rfl` and verify nothing about an actual
 rewrite. This file supplies what that one avoids: a **structural**
-`Com → Com` transform that genuinely *rewrites* an `Expr` to a cheaper but
+`Com → Com` transform that *rewrites* an `Expr` to a cheaper but
 denotationally-equal one, together with a **non-`rfl`** denotation-preservation
 proof by induction over the `Com`.
 
@@ -35,15 +37,15 @@ untouched; only the bound `Expr` changes. So the transform is a structural map
 over the `Com` that replaces, at each `.var`, the bound expression with its
 strength-reduced form.
 
-## The proof (genuinely not `rfl`)
+## The proof (not `rfl`)
 
 `Com.var e body` denotes `body.denote (V.extend (e.denote V))`. So rewriting
 `e ↝ e'` preserves the whole-program denotation **iff** `e'.denote V = e.denote V`
-for every valuation `V`. The keystone
+for every valuation `V`. The lemma
 
   `srExpr_denote`:  `(srExpr e).denote V = e.denote V`
 
-is the load-bearing op-equivalence: for the `mul x (const 2)` site it reduces
+is the op-equivalence: for the `mul x (const 2)` site it reduces
 to the **arithmetic fact** `a * 2 = a + a` over the dialect's value type
 (`BitVec`/`Nat`), discharged by `bv_decide` / `ring` / `omega` — **not** by
 `rfl`, because `mul`'s denotation (`a * 2`) and `add`'s denotation (`a + a`)
@@ -121,7 +123,7 @@ def srCom (rw : {Γ : Ctxt d} → {t : d.Ty} → Expr d Γ t → Expr d Γ t) :
     srCom rw (Com.var e body) = Com.var (rw e) (srCom rw body) := by
   rw [srCom]
 
-/-! ## 2. The keystone: denotation preservation (NON-`rfl`)
+/-! ## 2. Denotation preservation (NON-`rfl`)
 
 Given that the rewrite is denotation-sound on every expression, mapping it over
 the `Com` preserves the whole-program denotation. The proof is a structural
@@ -188,9 +190,11 @@ instance : DialectDenote arithDialect where
 
 /-! ### The op-equivalence (NON-`rfl`)
 
-`2 * a = a + a` over `BitVec 32`. This is the load-bearing algebraic identity:
-`mul2`'s denotation is `2 * a`, the rewritten `add x x` denotes `a + a`, and
-they agree only by this `BitVec` ring fact — closed by `bv_decide`, not `rfl`. -/
+`2 * a = a + a` over `BitVec 32`. This is the algebraic identity carrying the
+rewrite: `mul2`'s denotation is `2 * a`, the rewritten `add x x` denotes
+`a + a`, and they agree only by this `BitVec` fact — NOT `rfl`. Closed by
+`bv_decide` (the `BitVec` decision procedure), which discharges it over the
+core `BitVec` operations without pulling in Mathlib's ring layer. -/
 
 /-- The strength-reduction op identity over `BitVec 32`: doubling equals
 self-addition. Closed by `bv_decide` (the decision procedure for `BitVec`),
@@ -249,7 +253,7 @@ def strengthReduce {Γ : Ctxt arithDialect} {τ : arithDialect.Ty}
 
 /-- **Denotation preservation for `strengthReduce` (NON-`rfl`).** The
 strength-reduced program denotes the same function as the original. This is
-**not** `rfl`: at every `mul2` site the bound expression genuinely changes
+**not** `rfl`: at every `mul2` site the bound expression changes
 (`mul2 x ↝ add x x`), and the two programs denote equal values only through
 the `BitVec` identity `2 * a = a + a` (`two_mul_eq_add_self`), threaded over
 the whole `Com` by `srCom_denote`. -/
@@ -262,7 +266,7 @@ theorem strengthReduce_denote {Γ : Ctxt arithDialect} {τ : arithDialect.Ty}
 /-! ### A concrete worked example (the transform really rewrites a binding)
 
 A closed program `let y = mul2 x; ret y` (with `x` an input). Strength
-reduction rewrites it to `let y = add x x; ret y`. The bound op genuinely
+reduction rewrites it to `let y = add x x; ret y`. The bound op
 changes (`mul2 → add`), yet the denotation is preserved: both compute `2 * x`. -/
 
 /-- A program over context `[()]` (one input `x`): bind `mul2 x`, return it. -/
@@ -271,7 +275,7 @@ def doubleProg : Com arithDialect [()] () :=
     (.ret .here)
 
 /-- The strength-reduced program binds `add x x` instead of `mul2 x`: the bound
-op is genuinely different. -/
+op differs. -/
 theorem strengthReduce_doubleProg :
     strengthReduce doubleProg
       = .var { op := ArithOp.add, retTy_eq := rfl,

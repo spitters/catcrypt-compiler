@@ -4,6 +4,8 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.Jasmin.Ed25519Iface
+import CatCrypt.Crypto.Util.P25519PrimeCert
+import CatCrypt.Crypto.Util.Ed25519LPrimeCert
 import Mathlib.Data.ZMod.Basic
 import Mathlib.FieldTheory.Finite.Basic
 
@@ -82,7 +84,8 @@ instance : NeZero L := ⟨L_ne_zero⟩
 /-- `L` is prime. **Open obligation**: primality certificate. (`decide`
     does not finish in reasonable time for a 253-bit number; would need
     a Pocklington or BinaryTree certificate à la Coqprime.) -/
-axiom L_is_prime : Nat.Prime L
+theorem L_is_prime : Nat.Prime L :=
+  CatCrypt.Crypto.Util.Ed25519LPrimeCert.ed25519Llit_prime
 
 instance : Fact (Nat.Prime L) := ⟨L_is_prime⟩
 
@@ -256,7 +259,8 @@ axiom interp_fp_opp (x : Fp25519) :
     **Discharged in:** any standard primality reference for Curve25519
     (e.g. RFC 7748 §4.1, Bernstein's Curve25519 paper, or Coqprime's
     BinaryTree primality certificate which fiat-crypto uses). -/
-axiom fp_is_prime : Nat.Prime fpModulus
+theorem fp_is_prime : Nat.Prime fpModulus :=
+  CatCrypt.Crypto.Util.P25519PrimeCert.p25519lit_prime
 
 instance : Fact (Nat.Prime fpModulus) := ⟨fp_is_prime⟩
 
@@ -807,7 +811,8 @@ The remaining work to close the full Ed25519 correctness circle: -/
 
 /-- **Open.** `p = 2^255 - 19` is prime. `decide` works in principle but
     is too slow; would need an explicit certificate. -/
-axiom p_is_prime : Nat.Prime fpModulus
+theorem p_is_prime : Nat.Prime fpModulus :=
+  CatCrypt.Crypto.Util.P25519PrimeCert.p25519lit_prime
 
 /- `L_is_prime` is now declared earlier near the `L` definition with
    its `Fact (Nat.Prime L)` instance (see §1). Same for `fpModulus`. -/

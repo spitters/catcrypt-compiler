@@ -45,10 +45,10 @@ pass discharges all currently-recognised patterns in one go.
 
 ## Compress emission wiring
 
-`CompressEmit.lean` operates on `LowCT`, not on `Com catCryptDialect`,
+`CompressJazzEmit.lean` operates on `LowCT`, not on `Com catCryptDialect`,
 so there is no `compressVIR : Com catCryptDialect _ _` value to plug
 the optimizer into. The wiring is documented here as **deferred** until
-`CompressEmit` (or a sibling file) exposes a `Com`-level
+`CompressJazzEmit` (or a sibling file) exposes a `Com`-level
 representation. Once it does, an `optimizedCompressVIR := optimize
 compressVIR` definition with a `_denote_eq` corollary is a two-line
 addition.

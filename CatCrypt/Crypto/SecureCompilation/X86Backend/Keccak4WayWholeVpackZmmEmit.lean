@@ -258,26 +258,20 @@ Reproducing the per-step emit's posture (the packed XOR present, no UPPERCASE
 jasmin intrinsic, 512-bit `%zmm`, the export symbol), now over the ONE framed
 function whose body is the threaded θ→ι sequence. -/
 
-/-- The whole sub-kernel issues the packed XOR (θ's fold and ι's round-constant
+/- The whole sub-kernel issues the packed XOR (θ's fold and ι's round-constant
     XOR, lowercase owned `%zmm` mnemonic). -/
-theorem whole_asm_has_vpxorq :
-    strContains keccak_theta_iota_whole_vpackzmm_asm "vpxorq" = true := by native_decide
+#guard (strContains keccak_theta_iota_whole_vpackzmm_asm "vpxorq")
 
-/-- The whole sub-kernel uses 512-bit `%zmm` registers — the owned ZMM path. -/
-theorem whole_asm_has_zmm :
-    strContains keccak_theta_iota_whole_vpackzmm_asm "%zmm" = true := by native_decide
+/- The whole sub-kernel uses 512-bit `%zmm` registers — the owned ZMM path. -/
+#guard (strContains keccak_theta_iota_whole_vpackzmm_asm "%zmm")
 
-/-- No UPPERCASE jasmin intrinsic survives — the owned (no-jasminc, no
+/- No UPPERCASE jasmin intrinsic survives — the owned (no-jasminc, no
     `Avx512Model`) sequence-rendered path. -/
-theorem whole_asm_no_jasmin_intrinsic :
-    strContains keccak_theta_iota_whole_vpackzmm_asm "#VPADD_8u64" = false := by
-  native_decide
+#guard !(strContains keccak_theta_iota_whole_vpackzmm_asm "#VPADD_8u64")
 
-/-- The whole sub-kernel is ONE framed function naming its export symbol — both
+/- The whole sub-kernel is ONE framed function naming its export symbol — both
     steps live in this single body (the whole-multi-step `.s`). -/
-theorem whole_asm_has_export :
-    strContains keccak_theta_iota_whole_vpackzmm_asm "keccak_theta_iota_vpackzmm:" = true := by
-  native_decide
+#guard (strContains keccak_theta_iota_whole_vpackzmm_asm "keccak_theta_iota_vpackzmm:")
 
 /-! ## 7. Emit driver -/
 

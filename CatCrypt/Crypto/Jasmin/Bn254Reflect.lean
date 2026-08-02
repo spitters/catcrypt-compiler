@@ -231,7 +231,7 @@ tower level — exactly the leaf call graphs the AUCurves bedrock2 tower emits
 `Fp6Fp12TowerImport.lean`).
 
 Routed through CatCrypt's **own** verified front
-(`translate → cprogToJasminCom → emitAbiOrchRegPtr`,
+(`translate → cryptoDialectToJasminCom → emitAbiOrchRegPtr`,
 `bench/bn254_compare/fp_tower_from_rustcmd.lean`) these emit as a verified
 reg-ptr orchestration over **typed-array** (`reg ptr u64[N]`) field leaves —
 NOT the inlined byte-pointer leaves of the AUCurves direct emit. The

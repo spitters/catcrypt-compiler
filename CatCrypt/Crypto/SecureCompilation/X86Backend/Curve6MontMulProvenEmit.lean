@@ -57,7 +57,7 @@ the syntactic/value trust boundary, exactly as at 4 limbs. No `sorry`, no new
 `axiom`. The MULX/ADX legalizations and the verified spilling allocator are
 reused unchanged.
 
-The per-word `n'` is pinned to the genuine prime by `<curve>NPrime_pin`
+The per-word `n'` is pinned to the curve prime by `<curve>NPrime_pin`
 (`(p₀ · n') % 2^64 = 2^64 − 1`, one `mod`); the moduli are the
 `native_decide`-pinned `p384Limbs` / `bls12381Limbs` from `Curve6LimbTierA`.
 -/
@@ -163,7 +163,7 @@ def storeOutputs : List (JInstr 64) :=
     in `rcy` (`CF = OF = 0`); the 6-word window slides to `accNames[i+1..]`, and
     `rcy` is *added* into `accNames[i+6]` (a CF-independent `add`), its carry-out
     propagated through every higher accumulator word and finally into `rtop` — no
-    carry is ever dropped, so `rtop` is the genuine 385th bit of the running
+    carry is ever dropped, so `rtop` is the 385th bit of the running
     value. (At 6 limbs `nextCarryWord = accNames[i+6]` and the fold chain spans
     `accNames[i+7 .. 11]` then `rtop`.) -/
 def emitMontRedcStepAt (i : Nat) : List (JInstr 64) :=
@@ -399,5 +399,13 @@ def emitMainBls12381 : IO Unit := do
   IO.FS.writeFile
     "bench/bls12381_compare/gen/bls12381_montmul_proven.s" bls12381ProvenAsm
   IO.println "wrote bench/bls12381_compare/gen/bls12381_montmul_proven.s"
+
+/-! ## Artifact generation at elaboration
+
+The renders are written while this module elaborates, so `lake` produces them
+from this file and no separate driver or Makefile rule carries the dependency. -/
+
+#eval emitMainP384
+#eval emitMainBls12381
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.Curve6MontMulProvenEmit

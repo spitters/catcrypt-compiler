@@ -349,7 +349,7 @@ def sizeSuffix (w : Nat) : String :=
     width is unambiguous once the count is parsed off the front. -/
 def parseImmShiftMnem (opn : String) : Option (String × Nat × Nat) :=
   let isU64 := opn.endsWith ":64"
-  -- peel only the genuine `:64` width tag, leaving `SHR:<count>`
+  -- peel only the `:64` width tag, leaving `SHR:<count>`
   let core := if isU64 then stripWidthTag opn else opn
   match core.splitOn ":" with
   | [mn, nStr] =>
@@ -423,8 +423,8 @@ def attBase : String → Option String
   -- channel. The value semantics is pinned by `JasminModel.x86_CMOVcc`
   -- (`if b then src else dst`); the matching `JInstr.cmove`/`cmovne`/`cmovb`
   -- arms already carry it, so a hand-built `Lcmd` swap transcribes a
-  -- `native_decide`-pinned `JInstr` body (the KAT pattern `MpnLoopOwnedEmit`/
-  -- `MAYO.VerifyOwnedEmit` use).
+  -- `native_decide`-pinned `JInstr` body (the KAT pattern `MpnLoopEmit`/
+  -- `MAYO.VerifyEmit` use).
   | "CMOVE"  => some "cmove"  | "CMOVNE" => some "cmovne"
   | "CMOVB"  => some "cmovb"  | "CMOVAE" => some "cmovae"
   | "CMOVL"  => some "cmovl"  | "CMOVGE" => some "cmovge"
@@ -753,10 +753,37 @@ def renderLopn (frame spillW : Nat) :
               ++ resolveOperand frame spillW w d ]
       else
         let w := mnemWidth opn
-        match attBase (stripAbiTag opn) with
+        let mnBase := stripAbiTag opn
+        match attBase mnBase with
         | some m =>
-            [ "\t" ++ m ++ sizeSuffix w ++ " "
-                ++ resolveOperand frame spillW w b ++ ", " ++ resolveOperand frame spillW w d ]
+            let bOp := resolveOperand frame spillW w b
+            let dOp := resolveOperand frame spillW w d
+            -- **Mem-to-mem legalization for the flag-only compare class.** x86 has
+            -- no memory-to-memory `cmp`/`test`, and the upstream two-address
+            -- legalizer (`physBodyRmap`'s `isBinop` alphabet) does not cover
+            -- `CMP`/`TEST`, so a bounded-linear-scan allocation that spills both
+            -- the counter and the bound reaches the printer with both operands in
+            -- frame slots. Split through the reserved primary reload scratch
+            -- `R15`: it is excluded from the allocator's pool (`gpRegNames`), so
+            -- no kernel value is ever live in it.
+            --
+            -- The operand loaded into the scratch is `d` — the AT&T *destination*,
+            -- the second printed operand. AT&T `cmp<sz> b, d` sets the flags from
+            -- `d - b`, so `mov<sz> d, %r15 ; cmp<sz> b, %r15` sets them from
+            -- `%r15 - b = d - b`: the same flags, hence the same branch taken by
+            -- the following `Lcond` Jcc. Loading `b` instead would compute `b - d`
+            -- and invert every ordered condition. For `TEST` the flag effect is
+            -- `b & d`, symmetric in its operands, so the same split is exact.
+            -- `mov` writes no flag, so nothing is disturbed between the load and
+            -- the compare. Neither op writes its destination operand, so no
+            -- write-back of the scratch is needed.
+            if (mnBase == "CMP" || mnBase == "TEST")
+                && isMemOperand b && isMemOperand d then
+              let scratch := resolveName frame spillW w "R15"
+              [ "\tmov" ++ sizeSuffix w ++ " " ++ dOp ++ ", " ++ scratch,
+                "\t" ++ m ++ sizeSuffix w ++ " " ++ bOp ++ ", " ++ scratch ]
+            else
+              [ "\t" ++ m ++ sizeSuffix w ++ " " ++ bOp ++ ", " ++ dOp ]
         | none => [ "\t# UNHANDLED-OP " ++ opn ]
   | [d], opn, [a, s, cin] =>
       let w := mnemWidth opn
@@ -1059,7 +1086,7 @@ parks every callee-saved register it allocates by emitting `MOVQ qsave.X, X` (an
 the matching restore) **into the body** via `buildPrologue`/`buildEpilogue`, so
 those bodies are ABI-correct without any printer-side help.
 
-A body built **by hand** at the `Lcmd` level (e.g. MAYO's `VerifyOwnedEmit`,
+A body built **by hand** at the `Lcmd` level (e.g. MAYO's `VerifyEmit`,
 which uses `R12`/`R13` as GF(16) scratch) bypasses that prologue and so carries
 NO qsave park — without a save it clobbers the C caller's `R12`/`R13` and
 SEGFAULTs. `renderLfundef` therefore detects every callee-saved GPR the body
@@ -1106,7 +1133,7 @@ def bodyParksQsave (body : VIR.JasminLprogExport.Lcmd) (reg : String) : Bool :=
     writes as a bare destination but does NOT already `qsave`-park. Empty for
     every `comToLfundefPhysAbi`-produced body (all six are `qsave`-parked) and for
     any body using no callee-saved scratch — so the push/pop wrapping is inert
-    except for hand-built bodies that genuinely clobber callee-saved registers. -/
+    except for hand-built bodies that clobber callee-saved registers. -/
 def calleeSavedToSave (body : VIR.JasminLprogExport.Lcmd) : List String :=
   calleeSavedRegs.filter (fun r => bodyWritesBareReg body r && !bodyParksQsave body r)
 
@@ -1130,7 +1157,7 @@ entry value before `ret`, so the function is re-callable. -/
 
     To honour the SysV callee-saved contract for **hand-built** bodies (which do
     not go through `comToLfundefPhysAbi`'s `qsave` park — e.g. MAYO's
-    `VerifyOwnedEmit`, which uses `R12`/`R13` as GF(16) scratch), the frame is
+    `VerifyEmit`, which uses `R12`/`R13` as GF(16) scratch), the frame is
     bracketed by a `pushq`/`popq` of exactly the callee-saved GPRs the body
     bare-writes without already `qsave`-parking (`calleeSavedToSave`). The pushes
     precede the `leaq -F` and the pops follow the `leaq F` (LIFO), so `%rsp` nests

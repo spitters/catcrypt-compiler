@@ -11,7 +11,7 @@ import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 This module is a **LATTICE-family** compile-from-hax leaf. It extends the **C4**
 step of the verified-compiler plan to ML-DSA-65's polynomial **bit-packing**
 serializer (FIPS-204, `q = 8380417`). The body chosen is `polyw1_pack`, the
-cleanest single-output bit-serialization in `CatCrypt/Crypto/MLDSA/PackOwnedEmit.lean`:
+cleanest single-output bit-serialization in `CatCrypt/Crypto/MLDSA/PackEmit.lean`:
 
 ```c
 /* polyw1_pack: 4-bit (ML-DSA-65), 2 coeffs -> 1 byte (PQClean ml-dsa-65/clean/poly.c) */

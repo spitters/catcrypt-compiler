@@ -10,9 +10,9 @@ import CatCrypt.Crypto.Primitives.SHA256
 
 The `UInt32` SHA-256 round components `t1Word` / `aPrimeWord` / `ePrimeWord` and
 their faithfulness anchors to the sealed `Primitives.SHA256.compressRound`,
-hoisted out of the bespoke `OwnedSha256DwordRoundRealization` (which imports the
+hoisted out of the bespoke `Sha256DwordRoundRealization` (which imports the
 `Avx512DwordModel` machine) into this model-free module so the unified-dialect
-abstract round tie (`OwnedSha256DwordRoundAbstractCom`) can reuse them without a
+abstract round tie (`Sha256DwordRoundAbstractCom`) can reuse them without a
 machine-model dependency. These are pure `UInt32`/`Primitives.SHA256`
 declarations — they never referenced `ZState32` or the dword lane model.
 -/

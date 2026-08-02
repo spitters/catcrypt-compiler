@@ -54,18 +54,18 @@ the carry-in `cin : sword w` is first narrowed to a `sword 1` "nonzero" bit by
   the single per-op block square via `blockFundamental` (no per-program
   induction).
 
-## Residual (honest)
+## Residual
 
 The pass rebuilds the pair via `mkPair` to keep every `fst`/`snd` consumer
 untouched, so the `.pair` type still sits in the context and still hits
 `mapTy .pair = .reg 0` at lowering. The twin *words* (`bvAddCarryLo`/
 `bvAddCarryHi`) lower; what survives is the `mkPair` wrapper. Reaching bytes for
 the carry class from here needs one more, much simpler, `fst/snd`-of-`mkPair`
-beta/copy-forward peephole to strip the rebuilt pair (or genuine consumer surgery
+beta/copy-forward peephole to strip the rebuilt pair (or direct consumer surgery
 splicing the two words directly into the `fst`/`snd` consumers — a 1→2 type map
 the single-return `BlockLoweringData` cannot express).
 
-Note this is a *different* pipeline from `MpnLoopOwnedEmit`: that module's carry
+Note this is a *different* pipeline from `MpnLoopEmit`: that module's carry
 loops are hand-authored `JInstr 64` / `Com (x86Dialect 64)` at the machine level
 (open-coded GPR carry, block-unrolled `adc`), never routed through
 `catCryptDialect`, so this pass does not — and need not — re-source them. This
@@ -343,7 +343,7 @@ theorem pairElim_denote {Γ : Ctxt catCryptDialect} {t : CryptoSSA.CryptoTy}
 
 /-! ## 6. Validation — the pass on a concrete carry program -/
 
-/-- A one-op program with a genuine `bvAdd64` pair node over two 8-bit inputs. -/
+/-- A one-op program with a `bvAdd64` pair node over two 8-bit inputs. -/
 def sampleCarryProg :
     Com catCryptDialect [.sword 8, .sword 8] (.pair (.sword 8) (.sword 8)) :=
   .var ⟨.bvAdd64 8, rfl, .cons .here (.cons (.there .here) .nil)⟩ (.ret .here)

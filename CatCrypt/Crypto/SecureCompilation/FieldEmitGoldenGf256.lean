@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.SecureCompilation.ComBuilder
 import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
 import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
+import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfFull
 import CatCrypt.Crypto.SecureCompilation.VIR.MulDenoteErgonomics
 
 /-!
@@ -229,9 +230,12 @@ theorem gf256MulBuilt_riscv_e2e (V : Ctxt.Valuation ([.reg 64, .reg 64] : Ctxt j
       = Com.denote gf256MulBuilt V :=
   com_riscv_e2e gf256MulBuilt_ok FieldEmitGoldenPath.allReg64_two V s hs
 
-/-- **The x86 owned-emit leg** (KAT-gated tier, as the `FieldEmitGoldenPath`
-    legs): the same `Com` source to ELF `.o` bytes via the generic driver. -/
+/-- **The x86 owned-emit leg, via the optimized full-ELF entry.**
+    Emits through `OptimizedComToElfFull.optimizedCompileComToElf`; correctness uses
+    `optimizedCompileComToElf_sound` (the optimized block is `runBlock`-equal to the
+    unoptimized gathered block on every input) together with the executed spec-KAT in
+    `bench/sm2_compare/`, not byte identity with `compileComToElf`. -/
 def gf256MulBuilt_x86_elf : ByteArray :=
-  X86Backend.CompileComToElfJInstrFull6.compileComToElfJInstrFull6 gf256MulBuilt "gf256_mul"
+  X86Backend.OptimizedComToElfFull.optimizedCompileComToElf gf256MulBuilt "gf256_mul"
 
 end CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenGf256

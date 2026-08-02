@@ -149,6 +149,14 @@ theorem stripWidthTag_withWidthTag_ADCXHI (w : Nat) :
     stripWidthTag (withWidthTag w "ADCXHI") = "ADCXHI" := by
   unfold withWidthTag; split <;> decide +kernel
 
+theorem stripWidthTag_withWidthTag_SBB (w : Nat) :
+    stripWidthTag (withWidthTag w "SBB") = "SBB" := by
+  unfold withWidthTag; split <;> decide +kernel
+
+theorem stripWidthTag_withWidthTag_SBBHI (w : Nat) :
+    stripWidthTag (withWidthTag w "SBBHI") = "SBBHI" := by
+  unfold withWidthTag; split <;> decide +kernel
+
 /-! ## 3. The mul/carry-aware step `lsemStepMC`
 
 `lsemStepMC` adds exactly three arms — the structured `MULXHI`, `ADCX`, `ADCXHI`
@@ -183,6 +191,21 @@ def adcxStruct? : LinstrR → Option (String × String × String × String)
 def adcxhiStruct? : LinstrR → Option (String × String × String × String)
   | .Lopn [.reg dst] opn [.reg a, .reg b, .reg c] =>
       if stripWidthTag opn = "ADCXHI" then some (dst, a, b, c) else none
+  | _ => none
+
+/-- Recognise a structured `SBB` (borrow data) instruction `Lopn [.reg dst]
+    (…"SBB"…) [.reg a, .reg b, .reg c]` and return `(dst, a, b, c)` — the dual of
+    `adcxStruct?`. Reads minuend `a`, subtrahend `b`, borrow-in `c` (width 1). -/
+def sbbStruct? : LinstrR → Option (String × String × String × String)
+  | .Lopn [.reg dst] opn [.reg a, .reg b, .reg c] =>
+      if stripWidthTag opn = "SBB" then some (dst, a, b, c) else none
+  | _ => none
+
+/-- Recognise a structured `SBBHI` (borrow-out) instruction — the dual of
+    `adcxhiStruct?`. -/
+def sbbhiStruct? : LinstrR → Option (String × String × String × String)
+  | .Lopn [.reg dst] opn [.reg a, .reg b, .reg c] =>
+      if stripWidthTag opn = "SBBHI" then some (dst, a, b, c) else none
   | _ => none
 
 /-- The mul/carry-aware single-step semantics:
@@ -225,15 +248,34 @@ def lsemStepMC (i : LinstrR) (s : LstateN) : Option LstateN :=
           | some vb, some vc => some ((s.setReg dst (carryOutBit va vb vc)).nextPc)
           | _, _ => none
       | none => none
+  | none =>
+  match sbbStruct? i with
+  | some (dst, a, b, c) =>
+      match readReg s (.reg a) with
+      | some ⟨wₐ, va⟩ =>
+          match s.getW b wₐ, s.getW c 1 with
+          | some vb, some vc => some ((s.setReg dst (subBorrowWord va vb vc)).nextPc)
+          | _, _ => none
+      | none => none
+  | none =>
+  match sbbhiStruct? i with
+  | some (dst, a, b, c) =>
+      match readReg s (.reg a) with
+      | some ⟨wₐ, va⟩ =>
+          match s.getW b wₐ, s.getW c 1 with
+          | some vb, some vc => some ((s.setReg dst (borrowOutBit va vb vc)).nextPc)
+          | _, _ => none
+      | none => none
   | none => lsemStepSh i s
 
 /-- On any instruction recognised by none of the three structured recognizers,
     `lsemStepMC` is exactly increment 6's `lsemStepSh`. (So increment 5/6's
     `regArith`/`select`/shift steps transfer unchanged.) -/
 theorem lsemStepMC_of_delegate (i : LinstrR) (s : LstateN)
-    (hm : mulhiStruct? i = none) (ha : adcxStruct? i = none) (hh : adcxhiStruct? i = none) :
+    (hm : mulhiStruct? i = none) (ha : adcxStruct? i = none) (hh : adcxhiStruct? i = none)
+    (hs : sbbStruct? i = none) (hsh : sbbhiStruct? i = none) :
     lsemStepMC i s = lsemStepSh i s := by
-  simp only [lsemStepMC, hm, ha, hh]
+  simp only [lsemStepMC, hm, ha, hh, hs, hsh]
 
 /-! ### `lsemStraightMC` / leakage / composition over the mul/carry-aware step -/
 
@@ -353,6 +395,74 @@ theorem adcxhiStruct?_adcx {w : Nat} (dst a b c : String) :
     adcxhiStruct? (.Lopn [.reg dst] (withWidthTag w "ADCX") [.reg a, .reg b, .reg c]) = none :=
   adcxhiStruct?_of_ne (by rw [stripWidthTag_withWidthTag_ADCX]; decide)
 
+/-! ### `SBB` / `SBBHI` recognizer + cross-disjointness (dual of the `ADCX` block) -/
+
+/-- `sbbStruct?` recognises the structured `SBB` (three `.reg` sources). -/
+theorem sbbStruct?_sbb {w : Nat} (dst a b c : String) :
+    sbbStruct? (.Lopn [.reg dst] (withWidthTag w "SBB") [.reg a, .reg b, .reg c])
+      = some (dst, a, b, c) := by
+  simp only [sbbStruct?, stripWidthTag_withWidthTag_SBB, if_pos]
+
+/-- `sbbStruct?` of an `Lopn` whose stripped mnemonic is not `"SBB"` is `none`. -/
+theorem sbbStruct?_of_ne {dst : String} {opn : String} {srcs : List LOperand}
+    (h : stripWidthTag opn ≠ "SBB") :
+    sbbStruct? (.Lopn [.reg dst] opn srcs) = none := by
+  rcases srcs with _ | ⟨a, _ | ⟨b, _ | ⟨c, _ | _⟩⟩⟩
+  · rfl
+  · cases a <;> rfl
+  · cases a <;> cases b <;> rfl
+  · cases a <;> cases b <;> cases c <;> simp only [sbbStruct?, if_neg h]
+  · cases a <;> cases b <;> cases c <;> rfl
+
+/-- `sbbhiStruct?` recognises the structured `SBBHI`. -/
+theorem sbbhiStruct?_sbbhi {w : Nat} (dst a b c : String) :
+    sbbhiStruct? (.Lopn [.reg dst] (withWidthTag w "SBBHI") [.reg a, .reg b, .reg c])
+      = some (dst, a, b, c) := by
+  simp only [sbbhiStruct?, stripWidthTag_withWidthTag_SBBHI, if_pos]
+
+/-- `sbbhiStruct?` of an `Lopn` whose stripped mnemonic is not `"SBBHI"` is `none`. -/
+theorem sbbhiStruct?_of_ne {dst : String} {opn : String} {srcs : List LOperand}
+    (h : stripWidthTag opn ≠ "SBBHI") :
+    sbbhiStruct? (.Lopn [.reg dst] opn srcs) = none := by
+  rcases srcs with _ | ⟨a, _ | ⟨b, _ | ⟨c, _ | _⟩⟩⟩
+  · rfl
+  · cases a <;> rfl
+  · cases a <;> cases b <;> rfl
+  · cases a <;> cases b <;> cases c <;> simp only [sbbhiStruct?, if_neg h]
+  · cases a <;> cases b <;> cases c <;> rfl
+
+/-- The prior recognizers are `none` on an `SBB` instruction (distinct mnemonics),
+    so `lsemStepMC` reaches the `SBB` arm. -/
+theorem mulhiStruct?_sbb {w : Nat} (dst a b c : String) :
+    mulhiStruct? (.Lopn [.reg dst] (withWidthTag w "SBB") [.reg a, .reg b, .reg c]) = none :=
+  mulhiStruct?_of_ne (by rw [stripWidthTag_withWidthTag_SBB]; decide)
+
+theorem adcxStruct?_sbb {w : Nat} (dst a b c : String) :
+    adcxStruct? (.Lopn [.reg dst] (withWidthTag w "SBB") [.reg a, .reg b, .reg c]) = none :=
+  adcxStruct?_of_ne (by rw [stripWidthTag_withWidthTag_SBB]; decide)
+
+theorem adcxhiStruct?_sbb {w : Nat} (dst a b c : String) :
+    adcxhiStruct? (.Lopn [.reg dst] (withWidthTag w "SBB") [.reg a, .reg b, .reg c]) = none :=
+  adcxhiStruct?_of_ne (by rw [stripWidthTag_withWidthTag_SBB]; decide)
+
+/-- The prior recognizers (including `sbbStruct?`) are `none` on an `SBBHI`
+    instruction, so `lsemStepMC` reaches the `SBBHI` arm. -/
+theorem mulhiStruct?_sbbhi {w : Nat} (dst a b c : String) :
+    mulhiStruct? (.Lopn [.reg dst] (withWidthTag w "SBBHI") [.reg a, .reg b, .reg c]) = none :=
+  mulhiStruct?_of_ne (by rw [stripWidthTag_withWidthTag_SBBHI]; decide)
+
+theorem adcxStruct?_sbbhi {w : Nat} (dst a b c : String) :
+    adcxStruct? (.Lopn [.reg dst] (withWidthTag w "SBBHI") [.reg a, .reg b, .reg c]) = none :=
+  adcxStruct?_of_ne (by rw [stripWidthTag_withWidthTag_SBBHI]; decide)
+
+theorem adcxhiStruct?_sbbhi {w : Nat} (dst a b c : String) :
+    adcxhiStruct? (.Lopn [.reg dst] (withWidthTag w "SBBHI") [.reg a, .reg b, .reg c]) = none :=
+  adcxhiStruct?_of_ne (by rw [stripWidthTag_withWidthTag_SBBHI]; decide)
+
+theorem sbbStruct?_sbbhi {w : Nat} (dst a b c : String) :
+    sbbStruct? (.Lopn [.reg dst] (withWidthTag w "SBBHI") [.reg a, .reg b, .reg c]) = none :=
+  sbbStruct?_of_ne (by rw [stripWidthTag_withWidthTag_SBBHI]; decide)
+
 /-! ### The trio is disjoint from the increment-5/6 instruction images
 
 `regArith` emits a `binOpName` mnemonic, `select` emits `CMOV`, the shifts emit
@@ -368,27 +478,41 @@ theorem binOpName_ne_ADCX (bop : JasminBinOp) : binOpName bop ≠ "ADCX" := by
 theorem binOpName_ne_ADCXHI (bop : JasminBinOp) : binOpName bop ≠ "ADCXHI" := by
   cases bop <;> decide
 
+theorem binOpName_ne_SBB (bop : JasminBinOp) : binOpName bop ≠ "SBB" := by
+  cases bop <;> decide
+
+theorem binOpName_ne_SBBHI (bop : JasminBinOp) : binOpName bop ≠ "SBBHI" := by
+  cases bop <;> decide
+
 /-- All three recognizers are `none` on the `regArith` `opToLinstrR` image. -/
 theorem struct?_regArith {w : Nat} (bop : JasminBinOp) (dst : String)
     (srcs : List LOperand) :
     mulhiStruct? (opToLinstrR (JasminOp.regArith bop w) dst srcs) = none ∧
     adcxStruct? (opToLinstrR (JasminOp.regArith bop w) dst srcs) = none ∧
-    adcxhiStruct? (opToLinstrR (JasminOp.regArith bop w) dst srcs) = none := by
+    adcxhiStruct? (opToLinstrR (JasminOp.regArith bop w) dst srcs) = none ∧
+    sbbStruct? (opToLinstrR (JasminOp.regArith bop w) dst srcs) = none ∧
+    sbbhiStruct? (opToLinstrR (JasminOp.regArith bop w) dst srcs) = none := by
   rw [opToLinstrR]
-  refine ⟨mulhiStruct?_of_ne ?_, adcxStruct?_of_ne ?_, adcxhiStruct?_of_ne ?_⟩ <;>
+  refine ⟨mulhiStruct?_of_ne ?_, adcxStruct?_of_ne ?_, adcxhiStruct?_of_ne ?_,
+      sbbStruct?_of_ne ?_, sbbhiStruct?_of_ne ?_⟩ <;>
     · rw [stripWidthTag_withWidthTag_binOpName]
       first
       | exact binOpName_ne_MULXHI bop
       | exact binOpName_ne_ADCX bop
       | exact binOpName_ne_ADCXHI bop
+      | exact binOpName_ne_SBB bop
+      | exact binOpName_ne_SBBHI bop
 
 /-- All three recognizers are `none` on the `select` `opToLinstrR` image. -/
 theorem struct?_select {w : Nat} (dst : String) (srcs : List LOperand) :
     mulhiStruct? (opToLinstrR (JasminOp.select w) dst srcs) = none ∧
     adcxStruct? (opToLinstrR (JasminOp.select w) dst srcs) = none ∧
-    adcxhiStruct? (opToLinstrR (JasminOp.select w) dst srcs) = none := by
+    adcxhiStruct? (opToLinstrR (JasminOp.select w) dst srcs) = none ∧
+    sbbStruct? (opToLinstrR (JasminOp.select w) dst srcs) = none ∧
+    sbbhiStruct? (opToLinstrR (JasminOp.select w) dst srcs) = none := by
   rw [opToLinstrR]
-  refine ⟨mulhiStruct?_of_ne ?_, adcxStruct?_of_ne ?_, adcxhiStruct?_of_ne ?_⟩ <;>
+  refine ⟨mulhiStruct?_of_ne ?_, adcxStruct?_of_ne ?_, adcxhiStruct?_of_ne ?_,
+      sbbStruct?_of_ne ?_, sbbhiStruct?_of_ne ?_⟩ <;>
     · rw [stripWidthTag_withWidthTag_CMOV]; decide
 
 /-- All three recognizers are `none` on a structured shift instruction
@@ -399,9 +523,11 @@ theorem struct?_shiftLinstr {w : Nat} (mnem : String) (dst : String)
     (src : LOperand) (n : Nat) :
     mulhiStruct? (shiftLinstr mnem w dst src n) = none ∧
     adcxStruct? (shiftLinstr mnem w dst src n) = none ∧
-    adcxhiStruct? (shiftLinstr mnem w dst src n) = none := by
-  simp only [shiftLinstr, mulhiStruct?, adcxStruct?, adcxhiStruct?]
-  cases src <;> exact ⟨trivial, trivial, trivial⟩
+    adcxhiStruct? (shiftLinstr mnem w dst src n) = none ∧
+    sbbStruct? (shiftLinstr mnem w dst src n) = none ∧
+    sbbhiStruct? (shiftLinstr mnem w dst src n) = none := by
+  simp only [shiftLinstr, mulhiStruct?, adcxStruct?, adcxhiStruct?, sbbStruct?, sbbhiStruct?]
+  cases src <;> exact ⟨trivial, trivial, trivial, trivial, trivial⟩
 
 /-- All three recognizers are `none` on the `regConst` `opToLinstrR` image (the
     immediate-`MOV` form): the trio mnemonics are `MULXHI`/`ADCX`/`ADCXHI`, never
@@ -409,9 +535,12 @@ theorem struct?_shiftLinstr {w : Nat} (mnem : String) (dst : String)
 theorem struct?_regConst {w n : Nat} (dst : String) (srcs : List LOperand) :
     mulhiStruct? (opToLinstrR (JasminOp.regConst w n) dst srcs) = none ∧
     adcxStruct? (opToLinstrR (JasminOp.regConst w n) dst srcs) = none ∧
-    adcxhiStruct? (opToLinstrR (JasminOp.regConst w n) dst srcs) = none := by
+    adcxhiStruct? (opToLinstrR (JasminOp.regConst w n) dst srcs) = none ∧
+    sbbStruct? (opToLinstrR (JasminOp.regConst w n) dst srcs) = none ∧
+    sbbhiStruct? (opToLinstrR (JasminOp.regConst w n) dst srcs) = none := by
   rw [opToLinstrR]
-  refine ⟨mulhiStruct?_of_ne ?_, adcxStruct?_of_ne ?_, adcxhiStruct?_of_ne ?_⟩ <;>
+  refine ⟨mulhiStruct?_of_ne ?_, adcxStruct?_of_ne ?_, adcxhiStruct?_of_ne ?_,
+      sbbStruct?_of_ne ?_, sbbhiStruct?_of_ne ?_⟩ <;>
     (rw [CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemScalar.stripWidthTag_withWidthTag_MOV];
      decide)
 
@@ -583,8 +712,8 @@ theorem lsemStepMC_var {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
         st =
       some ((st.setReg (regName curDepth)
         ((⟨JasminOp.regArith bop w, heq, args⟩ : Expr jasminDialect Γ (.reg w)).denote V)).nextPc) := by
-  obtain ⟨hm, ha, hh⟩ := struct?_regArith bop (regName curDepth) _
-  rw [lsemStepMC_of_delegate _ _ hm ha hh]
+  obtain ⟨hm, ha, hh, hs, hsh⟩ := struct?_regArith bop (regName curDepth) _
+  rw [lsemStepMC_of_delegate _ _ hm ha hh hs hsh]
   exact lsemStepSh_var bop heq args hagree
 
 /-- The `select` binding steps via `lsemStepMC` to its denotation. -/
@@ -601,8 +730,8 @@ theorem lsemStepMC_sel {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
         st =
       some ((st.setReg (regName curDepth)
         ((⟨JasminOp.select w, heq, args⟩ : Expr jasminDialect Γ (.reg w)).denote V)).nextPc) := by
-  obtain ⟨hm, ha, hh⟩ := struct?_select (regName curDepth) _
-  rw [lsemStepMC_of_delegate _ _ hm ha hh]
+  obtain ⟨hm, ha, hh, hs, hsh⟩ := struct?_select (regName curDepth) _
+  rw [lsemStepMC_of_delegate _ _ hm ha hh hs hsh]
   exact lsemStepSh_sel heq args hagree
 
 /-- The `regConst` binding steps via `lsemStepMC` to its denotation (increment 6's
@@ -622,8 +751,8 @@ theorem lsemStepMC_const {w nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
         st =
       some ((st.setReg (regName curDepth)
         ((⟨JasminOp.regConst w n, heq, args⟩ : Expr jasminDialect Γ (.reg w)).denote V)).nextPc) := by
-  obtain ⟨hm, ha, hh⟩ := struct?_regConst (regName curDepth) _
-  rw [lsemStepMC_of_delegate _ _ hm ha hh]
+  obtain ⟨hm, ha, hh, hs, hsh⟩ := struct?_regConst (regName curDepth) _
+  rw [lsemStepMC_of_delegate _ _ hm ha hh hs hsh]
   exact lsemStepSh_const (V := V) n hwn heq args
 
 /-- The structured shift bindings step via `lsemStepMC` to their denotations. -/
@@ -640,8 +769,8 @@ theorem lsemStepMC_shr {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
             (.reg "")) n) st =
       some ((st.setReg (regName curDepth)
         ((⟨JasminOp.shrImm w n, heq, args⟩ : Expr jasminDialect Γ (.reg w)).denote V)).nextPc) := by
-  obtain ⟨hm, ha, hh⟩ := struct?_shiftLinstr "SHR" (regName curDepth) _ n
-  rw [lsemStepMC_of_delegate _ _ hm ha hh]
+  obtain ⟨hm, ha, hh, hs, hsh⟩ := struct?_shiftLinstr "SHR" (regName curDepth) _ n
+  rw [lsemStepMC_of_delegate _ _ hm ha hh hs hsh]
   exact lsemStepSh_shr hn heq args hagree
 
 theorem lsemStepMC_shl {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
@@ -657,8 +786,8 @@ theorem lsemStepMC_shl {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
             (.reg "")) n) st =
       some ((st.setReg (regName curDepth)
         ((⟨JasminOp.shlImm w n, heq, args⟩ : Expr jasminDialect Γ (.reg w)).denote V)).nextPc) := by
-  obtain ⟨hm, ha, hh⟩ := struct?_shiftLinstr "SHL" (regName curDepth) _ n
-  rw [lsemStepMC_of_delegate _ _ hm ha hh]
+  obtain ⟨hm, ha, hh, hs, hsh⟩ := struct?_shiftLinstr "SHL" (regName curDepth) _ n
+  rw [lsemStepMC_of_delegate _ _ hm ha hh hs hsh]
   exact lsemStepSh_shl hn heq args hagree
 
 theorem lsemStepMC_sar {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
@@ -674,8 +803,8 @@ theorem lsemStepMC_sar {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
             (.reg "")) n) st =
       some ((st.setReg (regName curDepth)
         ((⟨JasminOp.sarImm w n, heq, args⟩ : Expr jasminDialect Γ (.reg w)).denote V)).nextPc) := by
-  obtain ⟨hm, ha, hh⟩ := struct?_shiftLinstr "SAR" (regName curDepth) _ n
-  rw [lsemStepMC_of_delegate _ _ hm ha hh]
+  obtain ⟨hm, ha, hh, hs, hsh⟩ := struct?_shiftLinstr "SAR" (regName curDepth) _ n
+  rw [lsemStepMC_of_delegate _ _ hm ha hh hs hsh]
   exact lsemStepSh_sar hn heq args hagree
 
 /-! ## 7. The mul/carry emission `straightOpsMC` and source predicate `ScalarMulCarryN`

@@ -328,14 +328,9 @@ def hasSub (hay needle : String) : Bool :=
   (List.range (hay.length + 1)).any (fun i =>
     needle == (hay.toList.drop i |>.take needle.length).asString)
 
-/-- The Barrett constant and prime appear as immediates; the memory loads/stores
+/- The Barrett constant and prime appear as immediates; the memory loads/stores
     print in AT&T `off(%base)` form; `negq` and `mulx`-free scalar body. -/
-theorem butterflyAsm_shape :
-    hasSub butterflyAsm "2290649223"
-      ∧ hasSub butterflyAsm "2013265921"
-      ∧ hasSub butterflyAsm "(%rsi)"
-      ∧ hasSub butterflyAsm "(%rdi)"
-      ∧ hasSub butterflyAsm "negq" := by native_decide
+#guard (hasSub butterflyAsm "2290649223") && (hasSub butterflyAsm "2013265921") && (hasSub butterflyAsm "(%rsi)") && (hasSub butterflyAsm "(%rdi)") && (hasSub butterflyAsm "negq")
 
 /-- Emit driver: write the in-Lean-backend-emitted `.s` for the bench harness. -/
 def emitMain : IO Unit := do

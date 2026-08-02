@@ -8,7 +8,7 @@ import CatCrypt.Crypto.SecureCompilation.VIR.VsimdAsmPrint
 /-!
 # OWNED AES-128-CTR whole `.s` emit on the UNIFIED `Com jasminDialect`
 
-`Aes128CtrOwnedEmit.lean` emits the AES-NI AES-128-CTR keystream generator
+`Aes128CtrEmit.lean` emits the AES-NI AES-128-CTR keystream generator
 (MAYO's `PK_PRF = AES_128_CTR`, `aes128ctr.c`'s `AES_128_CTR_NI`) through the
 **bespoke** `Vec128`/`VCryptOp` crypto-SIMD IR: its AES key schedule
 (`VAESKEYGENASSIST` + `VPSHUFD $0xff` + `VPSLLDQ` / `VPXOR` mix) and the 4-wide /
@@ -55,7 +55,7 @@ rendered by `renderVsimdCom` (the owned AT&T `vsimd` printer); the CTR
 sequencing (the +1 increment, the loop, the in-register `VPSHUFB` byteswap, the
 tail copy) is the SAME straight-line ABI glue as the bespoke driver.
 
-## Honest status
+## Status
 
 Each crypto Com program is pinned `denote = spec` by a whole-program `rfl`
 (unfolding the `Com`/`Expr` smart constructors resolves the `vsimd`/`vpslldq`
@@ -361,7 +361,7 @@ def ecb1Lines : List String :=
 
 The counter sequencing (the +1 increment, the loop, the in-register `VPSHUFB`
 byteswap, the tail copy) is the SAME straight-line ABI glue as
-`Aes128CtrOwnedEmit`. The counter is kept in the GP register `%r8`; each lane's
+`Aes128CtrEmit`. The counter is kept in the GP register `%r8`; each lane's
 XMM counter block is built register-to-register (`vmovq %r8 → st_l`,
 `vpslldq $8`, the verified `VPSHUFB` byteswap against `ctrmask`). -/
 
@@ -485,50 +485,38 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (strContains)
 theorem asm_has_export :
     strContains aesCtrExportAsm "aes128_ctr_owned:" = true := by native_decide
 
-/-- The drop-in (weak) `AES_128_CTR_owned` symbol is exported. -/
-theorem asm_has_weak_dropin :
-    strContains aesCtrExportAsm "\t.weak\tAES_128_CTR_owned\n" = true := by native_decide
+/- The drop-in (weak) `AES_128_CTR_owned` symbol is exported. -/
+#guard (strContains aesCtrExportAsm "\t.weak\tAES_128_CTR_owned\n")
 
-/-- The AES-128 key schedule is emitted (`VAESKEYGENASSIST` + `VPSHUFD $255`),
+/- The AES-128 key schedule is emitted (`VAESKEYGENASSIST` + `VPSHUFD $255`),
     lowercase owned mnemonics. -/
-theorem asm_has_keygen :
-    strContains aesCtrExportAsm "vaeskeygenassist" = true
-      ∧ strContains aesCtrExportAsm "vpshufd $255" = true := by
-  refine ⟨?_, ?_⟩ <;> native_decide
+#guard (strContains aesCtrExportAsm "vaeskeygenassist")
+    && (strContains aesCtrExportAsm "vpshufd $255")
 
-/-- The AES-128-ECB body is emitted: the `VAESENC` rounds and the final
+/- The AES-128-ECB body is emitted: the `VAESENC` rounds and the final
     `VAESENCLAST`. -/
-theorem asm_has_aes_rounds :
-    strContains aesCtrExportAsm "vaesenc " = true
-      ∧ strContains aesCtrExportAsm "vaesenclast " = true := by
-  refine ⟨?_, ?_⟩ <;> native_decide
+#guard (strContains aesCtrExportAsm "vaesenc ") && (strContains aesCtrExportAsm "vaesenclast ")
 
-/-- The CTR loop is emitted: the 4-wide fast path, the 1-wide tail, and the
+/- The CTR loop is emitted: the 4-wide fast path, the 1-wide tail, and the
     in-register counter byteswap (`VPSHUFB` against `ctrmask = %xmm15`) — no GP
     red-zone round-trip. -/
-theorem asm_has_ctr_loop :
-    strContains aesCtrExportAsm ".Laesctr_loop4:" = true
-      ∧ strContains aesCtrExportAsm ".Laesctr_tail1:" = true
-      ∧ strContains aesCtrExportAsm "vpshufb " = true
-      ∧ strContains aesCtrExportAsm "vmovq\t%r8, " = true := by
-  refine ⟨?_, ?_, ?_, ?_⟩ <;> native_decide
+#guard (strContains aesCtrExportAsm ".Laesctr_loop4:")
+    && (strContains aesCtrExportAsm ".Laesctr_tail1:")
+    && (strContains aesCtrExportAsm "vpshufb ")
+    && (strContains aesCtrExportAsm "vmovq\t%r8, ")
 
-/-- The counter path is fully in-register: no `bswapq`/red-zone counter trip
+/- The counter path is fully in-register: no `bswapq`/red-zone counter trip
     (the byteswap moved to the verified `VPSHUFB`). -/
-theorem asm_no_redzone_ctr :
-    strContains aesCtrExportAsm "bswapq" = false := by native_decide
+#guard !(strContains aesCtrExportAsm "bswapq")
 
-/-- No register name escaped allocation (the 11 round keys + 4 states + ctrmask
+/- No register name escaped allocation (the 11 round keys + 4 states + ctrmask
     fit in 16 XMM, no spill). -/
-theorem asm_no_unallocated :
-    strContains aesCtrExportAsm "UNALLOCATED" = false := by native_decide
+#guard !(strContains aesCtrExportAsm "UNALLOCATED")
 
-/-- No UPPERCASE jasmin intrinsic survives — the owned (no-jasminc)
+/- No UPPERCASE jasmin intrinsic survives — the owned (no-jasminc)
     lowercase-mnemonic path. -/
-theorem asm_no_jasmin_intrinsic :
-    strContains aesCtrExportAsm "VAESENC" = false
-      ∧ strContains aesCtrExportAsm "VAESKEYGENASSIST" = false := by
-  refine ⟨?_, ?_⟩ <;> native_decide
+#guard !(strContains aesCtrExportAsm "VAESENC")
+    && !(strContains aesCtrExportAsm "VAESKEYGENASSIST")
 
 /-! ## 11. Emit driver -/
 
@@ -544,5 +532,5 @@ end CatCrypt.Crypto.SecureCompilation.X86Backend.Aes128CtrVsimdEmit
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Aes128CtrVsimdEmit in
 /-- `lake env lean --run` entry point: emit the owned-backend AES-128-CTR `.s`
     on the unified `Com jasminDialect`. `private` so it does not collide with
-    other `main`s in the `OwnedEmitAll` rot-guard aggregator. -/
+    other `main`s in the `EmitAll` rot-guard aggregator. -/
 private def main : IO Unit := emit

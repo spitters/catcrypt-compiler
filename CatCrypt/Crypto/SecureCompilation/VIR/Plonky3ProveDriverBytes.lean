@@ -3,14 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ProveDriverOwnedEmit
+import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ProveDriverEmit
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
 
 /-!
 # The whole-prover object as verified BYTES — `gas` out of the trusted base
 
 The Plonky3 whole-prover object (field leaves + phase loop-drivers + the
-`plonky3_prove` entry, `Plonky3ProveDriverOwnedEmit.wholeProverWithEntryLprog`) was
+`plonky3_prove` entry, `Plonky3ProveDriverEmit.wholeProverWithEntryLprog`) was
 rendered to AT&T **text** assembled by `gas`. That path trusts `gas` to translate
 the printer's text to bytes. This file emits the SAME object as a relocatable ELF
 `.o` directly from the **verified byte encoder** (`LprogBytes.encodeLprogReloc` →
@@ -20,7 +20,7 @@ the printer's text to bytes. This file emits the SAME object as a relocatable EL
   encoder, whose straight-line arms carry `SailX86Decoder`'s `decode (encode i) = i`
   round-trip (the verified-to-bytes tier);
 * the inter-function `call`s (the prove() entry → the phase leaves/loops) become
-  `R_X86_64_PLT32` `.rela.text` relocations the linker resolves — the one honest
+  `R_X86_64_PLT32` `.rela.text` relocations the linker resolves — the one
   residual is the relocation/linker (and the control-flow `jmp`/`jcc` encodings,
   gas-pinned by byte-diff, not yet decode-verified).
 
@@ -30,7 +30,7 @@ The result is a linkable `.o` whose `.text` is the verified encoder's bytes, not
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ProveDriverBytes
 
-open CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ProveDriverOwnedEmit
+open CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ProveDriverEmit
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
 
 set_option autoImplicit false

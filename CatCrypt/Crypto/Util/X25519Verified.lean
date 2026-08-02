@@ -4,6 +4,7 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 import Mathlib.Data.ZMod.Basic
+import CatCrypt.Crypto.Util.P25519PrimeCert
 import Mathlib.Tactic
 
 /-!
@@ -79,7 +80,8 @@ example : P25519 = 5789604461865809771178549250434395392663499233282028201972879
     a reasonable time, so we take primality as a named hypothesis (the
     `Fact` instance below carries it through Mathlib's `ZMod`-as-field
     machinery). -/
-axiom p25519_prime : Nat.Prime P25519
+theorem p25519_prime : Nat.Prime P25519 :=
+  CatCrypt.Crypto.Util.P25519PrimeCert.p25519lit_prime
 
 /-- Wrap primality as a `Fact` so `Field (ZMod P25519)` is inferred
     automatically by Mathlib. -/

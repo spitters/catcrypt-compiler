@@ -30,7 +30,7 @@ This mirrors the `G1`-body routing in
 field leaves route through the **same** owned front the bls12-381 `G1` body does,
 tying the P-384 relational front to the backend.
 
-## Honest scope
+## Scope of the claims
 
 The claims here are purely **structural lowering**: that the owned front accepts
 the rendered P-384 field-op bodies and emits one `Ccall` per op. We do **not**
@@ -83,33 +83,30 @@ def p384ComposedJasmin := toJasminCmd p384ComposedBody
 
 /-- **The P-384 base-field ADD routes through the bridge front.** The single
     `fp_add` leaf lowers to a one-node Jasmin call program. -/
-theorem p384AddJasmin_length : p384AddJasmin.length = 1 := by native_decide
+theorem p384AddJasmin_length : p384AddJasmin.length = 1 := rfl
 
 /-- Every node the front emits for the P-384 ADD is a `Ccall` — the op is
     fully lowered (no fall-through to an unhandled construct). -/
 theorem p384AddJasmin_all_calls :
-    p384AddJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := by
-  native_decide
+    p384AddJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := rfl
 
 /-- **The P-384 base-field MUL routes through the bridge front.** The single
     `fp_mul` leaf lowers to a one-node Jasmin call program. -/
-theorem p384MulJasmin_length : p384MulJasmin.length = 1 := by native_decide
+theorem p384MulJasmin_length : p384MulJasmin.length = 1 := rfl
 
 /-- Every node the front emits for the P-384 MUL is a `Ccall` — fully lowered. -/
 theorem p384MulJasmin_all_calls :
-    p384MulJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := by
-  native_decide
+    p384MulJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := rfl
 
 /-- **A composed P-384 base-field body routes through the bridge front.** The
     two `RSeq`-chained field ops (`r := a*b ; s := r+c`) lower to a two-node Jasmin
     call program — one `Ccall` per op — showing multi-op routing, the same shape
     the 34-node `g1AddJasmin` exercises. -/
-theorem p384ComposedJasmin_length : p384ComposedJasmin.length = 2 := by native_decide
+theorem p384ComposedJasmin_length : p384ComposedJasmin.length = 2 := rfl
 
 /-- Every node the front emits for the composed P-384 body is a `Ccall` —
     both ops fully lowered. -/
 theorem p384ComposedJasmin_all_calls :
-    p384ComposedJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := by
-  native_decide
+    p384ComposedJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := rfl
 
 end CatCrypt.Crypto.SecureCompilation.RelationalFrontP384Emit

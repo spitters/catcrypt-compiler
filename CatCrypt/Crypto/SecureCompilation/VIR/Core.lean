@@ -7,6 +7,8 @@ Authors: CatCrypt Contributors
 /-!
 # VIR: a minimal verified MLIR-style SSA framework
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 Reimplementation of lean-mlir's core `Dialect`/`Com`/`Ctxt`/`Expr` framework,
 stripped to what CatCrypt needs: single-return-type, no monadic effect kinds,
 no regions, no `Qq`/reflection. Designed to be API-compatible with

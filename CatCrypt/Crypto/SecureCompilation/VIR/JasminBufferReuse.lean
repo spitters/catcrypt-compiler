@@ -51,7 +51,7 @@ It contributes four pieces:
    alone — which disjoints only later *loads* from a store target — is **not**
    sufficient for denotation preservation, because the in-place store's stale
    pre-store value is still observable by returning the target or by using it as
-   a later store's source. The genuinely-sufficient per-store condition is full
+   a later store's source. The sufficient per-store condition is full
    deadness, threaded as `StoreSafe` (unique source naming + `BodyAvoidsBuffer`).
 
 All lemmas have all goals closed; the only axioms are the standard
@@ -114,7 +114,7 @@ is that no expression reads it; in the realistic emitted fragment the only op
 reading a `stackArr` source is `stackLoad` (`regArith`/`castW` take only
 registers, and the fragment carries no buffer-reading `stackStore`/`extCall`),
 so `BufferDeadAfter B` (= `LaterLoadsDisjoint B`, every load `ShapeDisjoint` from
-`B`) is genuine deadness. We make the "only loads read buffers" side-condition
+`B`) is deadness. We make the "only loads read buffers" side-condition
 explicit as `OnlyLoadsReadBuffers`, and conclude the irrelevance lemma. -/
 
 /-- `v` is **not the buffer `B`**, allowing for a type mismatch: either `v`'s
@@ -139,7 +139,7 @@ def AgreeOff {Γ : Ctxt jasminDialect} {wB nB : Nat}
     `regArith`/`castW`/`stackLoad` — never a buffer-reading `stackStore` or
     `extCall`. This is the emitted-code fragment in which a `stackLoad` is the
     *only* way a `stackArr` flows into a computation, so a buffer disjoint from
-    every later load source is genuinely unread. Threaded through the body. -/
+    every later load source is unread. Threaded through the body. -/
 def OnlyLoadsReadBuffers {Γ : Ctxt jasminDialect} :
     {t : jasminDialect.Ty} → Com jasminDialect Γ t → Prop
   | _, .ret _ => True
@@ -148,6 +148,23 @@ def OnlyLoadsReadBuffers {Γ : Ctxt jasminDialect} :
       (∀ (name : String) (argTys : List jasminDialect.Ty) (retTy : jasminDialect.Ty),
         e.op ≠ .extCall name argTys retTy) ∧
       OnlyLoadsReadBuffers body
+
+/-- The operand-independence of `callN` under the default `jasminDenote`, which is
+    what lets `OnlyLoadsReadBuffers` omit `callN` from the exclusion list above:
+    a `callN` denotes the constant `callNDefaults`, so it reads nothing, while
+    `stackStore` and `extCall` must be excluded because they write and read the
+    buffer respectively.
+
+    The scope is the default instance. `jasminDenoteWithN` takes a `callNSem`
+    parameter, and under an instance supplying a semantics that consults its
+    arguments this equation is false — so `OnlyLoadsReadBuffers`,
+    `expr_denote_agreeOff`'s `callN` arm, and `deadBuffer_denote_irrelevant`
+    hold for `jasminDenote` and would need a `callN` exclusion to transport to
+    `jasminDenoteWithN`. -/
+theorem callN_denote_const (name : String) (argTys retTys : List JasminTy)
+    (args args' : HVector (fun t => ⟦t⟧) argTys) :
+    jasminDenote.denote (.callN name argTys retTys) args
+      = jasminDenote.denote (.callN name argTys retTys) args' := rfl
 
 /-- **The buffer `B` is never the returned value.** Walks the body, shifting `B`
     under each binder, and requires every `ret` to return a variable distinct
@@ -181,6 +198,67 @@ theorem NotBuffer.of_shapeDisjoint {Γ : Ctxt jasminDialect} {wB nB w n : Nat}
   rw [dif_pos (And.intro (rfl : w = w) (rfl : n = n))] at h
   -- The casts are refls; `h : BufDisjoint B src`, target: `(rfl ▸ src) ≠ B`.
   simpa using fun (he : src = B) => h he.symm
+
+/-- **Args-level non-buffer.** Every variable in an argument vector is
+    `NotBuffer B`. For the emitted shapes only the `stackArr`-typed arguments can
+    fail this (register/index/value args are `NotBuffer B` by type), so it bites
+    exactly on buffer reads. -/
+def ArgsNotBuffer {Γ : Ctxt jasminDialect} {wB nB : Nat}
+    (B : Ctxt.Var Γ (.stackArr wB nB)) :
+    {tys : List jasminDialect.Ty} → HVector (fun ty => Ctxt.Var Γ ty) tys → Prop
+  | [], .nil => True
+  | _ :: _, .cons v rest => NotBuffer B v ∧ ArgsNotBuffer B rest
+
+/-- If two valuations agree off `B` and every argument is `NotBuffer B`, the
+    looked-up argument vectors coincide. -/
+theorem lookupArgs_agreeOff {Γ : Ctxt jasminDialect} {wB nB : Nat}
+    {B : Ctxt.Var Γ (.stackArr wB nB)} {V₁ V₂ : Ctxt.Valuation Γ}
+    (hag : AgreeOff B V₁ V₂) :
+    {tys : List jasminDialect.Ty} → (args : HVector (fun ty => Ctxt.Var Γ ty) tys) →
+    ArgsNotBuffer B args → Expr.lookupArgs args V₁ = Expr.lookupArgs args V₂
+  | [], .nil, _ => rfl
+  | _ :: _, .cons v rest, h => by
+      obtain ⟨hv, hrest⟩ := h
+      show HVector.cons (v.lookup V₁) (Expr.lookupArgs rest V₁)
+        = HVector.cons (v.lookup V₂) (Expr.lookupArgs rest V₂)
+      rw [hag v hv, lookupArgs_agreeOff hag rest hrest]
+
+/-- **Any-op expression irrelevance.** `Expr.denote` is a function of the looked-up
+    arguments only (true for every op, including `stackStore`/`extCall`), so if
+    all arguments are `NotBuffer B` then the expression denotes equally under any
+    two valuations agreeing off `B`. This generalises `expr_denote_agreeOff` past
+    the load-only fragment. -/
+theorem expr_denote_argsNotBuffer {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
+    {wB nB : Nat} {B : Ctxt.Var Γ (.stackArr wB nB)}
+    {V₁ V₂ : Ctxt.Valuation Γ} (hag : AgreeOff B V₁ V₂)
+    (e : Expr jasminDialect Γ t) (h : ArgsNotBuffer B e.args) :
+    e.denote V₁ = e.denote V₂ := by
+  show e.retTy_eq ▸ DialectDenote.denote e.op (Expr.lookupArgs e.args V₁)
+    = e.retTy_eq ▸ DialectDenote.denote e.op (Expr.lookupArgs e.args V₂)
+  rw [lookupArgs_agreeOff hag e.args h]
+
+/-- An argument vector none of whose types is the buffer's `stackArr wB nB` is
+    `ArgsNotBuffer B`: each entry is `NotBuffer B` by type. -/
+theorem argsNotBuffer_of_tys {Γ : Ctxt jasminDialect} {wB nB : Nat}
+    (B : Ctxt.Var Γ (.stackArr wB nB)) :
+    {tys : List jasminDialect.Ty} → (args : HVector (fun ty => Ctxt.Var Γ ty) tys) →
+    (∀ ty ∈ tys, ty ≠ JasminTy.stackArr wB nB) → ArgsNotBuffer B args
+  | [], .nil, _ => trivial
+  | ty :: _, .cons v rest, h =>
+      ⟨NotBuffer.of_ne_ty B v (h ty (by simp)),
+       argsNotBuffer_of_tys B rest (fun t ht => h t (by simp [ht]))⟩
+
+/-- An expression whose operand types are all distinct from the buffer's
+    `stackArr wB nB` denotes identically under two valuations that agree off `B`:
+    no operand can be `B`, so `expr_denote_argsNotBuffer` applies. -/
+theorem expr_denote_of_argTys {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
+    {wB nB : Nat} {B : Ctxt.Var Γ (.stackArr wB nB)}
+    {V₁ V₂ : Ctxt.Valuation Γ} (hag : AgreeOff B V₁ V₂)
+    (e : Expr jasminDialect Γ t)
+    (h : ∀ ty ∈ DialectSignature.sig (d := jasminDialect) e.op,
+      ty ≠ JasminTy.stackArr wB nB) :
+    e.denote V₁ = e.denote V₂ :=
+  expr_denote_argsNotBuffer hag e (argsNotBuffer_of_tys B e.args h)
 
 /-- A `regArith`/`castW`/`stackLoad` argument vector resolves identically under
     two valuations that `AgreeOff B`, provided (for the `stackLoad`) its source
@@ -239,6 +317,31 @@ theorem expr_denote_agreeOff {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
       -- independent of valuations.
       match args with
       | .nil => rfl
+  -- The vector / carry-chain / immediate-shift / select ops take only `reg _`
+  -- operands, so no operand can be the `stackArr` buffer `B`.
+  | vpackZMM bop => exact expr_denote_of_argTys hag _ (by simp [DialectSignature.sig])
+  | vpackZMMd bop => exact expr_denote_of_argTys hag _ (by simp [DialectSignature.sig])
+  | vprordZMM n => exact expr_denote_of_argTys hag _ (by simp [DialectSignature.sig])
+  | vpslldq n => exact expr_denote_of_argTys hag _ (by simp [DialectSignature.sig])
+  | vpsrldq n => exact expr_denote_of_argTys hag _ (by simp [DialectSignature.sig])
+  | vsimd sop =>
+      exact expr_denote_of_argTys hag _
+        (by cases sop <;> simp [DialectSignature.sig, SimdOp.argTys])
+  | mulhi w => exact expr_denote_of_argTys hag _ (by simp [DialectSignature.sig])
+  | addCarryLo w => exact expr_denote_of_argTys hag _ (by simp [DialectSignature.sig])
+  | addCarryHi w => exact expr_denote_of_argTys hag _ (by simp [DialectSignature.sig])
+  | rorImm w n => exact expr_denote_of_argTys hag _ (by simp [DialectSignature.sig])
+  | shrImm w n => exact expr_denote_of_argTys hag _ (by simp [DialectSignature.sig])
+  | sarImm w n => exact expr_denote_of_argTys hag _ (by simp [DialectSignature.sig])
+  | shlImm w n => exact expr_denote_of_argTys hag _ (by simp [DialectSignature.sig])
+  | select w => exact expr_denote_of_argTys hag _ (by simp [DialectSignature.sig])
+  | callN name argTys retTys =>
+      -- Multi-result opaque call: under `jasminDenote` its denotation is the
+      -- constant `callNDefaults` tuple projected to the head slot, so it does not
+      -- read its operands. `callN_denote_const` states that dependence and records
+      -- that it fails under a `jasminDenoteWithN` instance with an argument-reading
+      -- `callNSem`.
+      rfl
 
 /-- If `.there v` (a shifted variable) is `NotBuffer (.there B)`, then `v` is
     `NotBuffer B`: `.there` is injective, so `v = B` would force `.there v = .there B`. -/
@@ -451,11 +554,11 @@ to the wider `WellFormedStores` fragment — the one that admits non-aliasing
 argument the milestone needs, generalising §2's `denote_agreeOff` past the
 load-only fragment.
 
-### A precise (and load-bearing) finding: `WellFormedStores` is *not* sufficient
+### `WellFormedStores` is *not* sufficient for denotation preservation
 
 `WellFormedStores` requires only that each `stackStore` target is disjoint, in
 the post-store context, from every later **load** source (`LaterLoadsDisjoint`).
-That is genuinely too weak for denotation preservation. The reason is the
+That is too weak for denotation preservation. The reason is the
 in-place aliasing recorded in `stackStore_aliases_source`: a `stackStore` writes
 its result to the source array's own SSA name, so after the binder the fresh
 `.here` (post-store array) and the in-scope `.there X` (pre-store array) collapse
@@ -498,47 +601,9 @@ agreement under full per-store deadness, which any caller discharges from the
 `StraightLine` reduction to `lowerComToProg_sem_eq`, and all the denote-side
 machinery — is closed unconditionally. -/
 
-/-- **Args-level non-buffer.** Every variable in an argument vector is
-    `NotBuffer B`. For the emitted shapes only the `stackArr`-typed arguments can
-    fail this (register/index/value args are `NotBuffer B` by type), so it bites
-    exactly on buffer reads. -/
-def ArgsNotBuffer {Γ : Ctxt jasminDialect} {wB nB : Nat}
-    (B : Ctxt.Var Γ (.stackArr wB nB)) :
-    {tys : List jasminDialect.Ty} → HVector (fun ty => Ctxt.Var Γ ty) tys → Prop
-  | [], .nil => True
-  | _ :: _, .cons v rest => NotBuffer B v ∧ ArgsNotBuffer B rest
-
-/-- If two valuations agree off `B` and every argument is `NotBuffer B`, the
-    looked-up argument vectors coincide. -/
-theorem lookupArgs_agreeOff {Γ : Ctxt jasminDialect} {wB nB : Nat}
-    {B : Ctxt.Var Γ (.stackArr wB nB)} {V₁ V₂ : Ctxt.Valuation Γ}
-    (hag : AgreeOff B V₁ V₂) :
-    {tys : List jasminDialect.Ty} → (args : HVector (fun ty => Ctxt.Var Γ ty) tys) →
-    ArgsNotBuffer B args → Expr.lookupArgs args V₁ = Expr.lookupArgs args V₂
-  | [], .nil, _ => rfl
-  | _ :: _, .cons v rest, h => by
-      obtain ⟨hv, hrest⟩ := h
-      show HVector.cons (v.lookup V₁) (Expr.lookupArgs rest V₁)
-        = HVector.cons (v.lookup V₂) (Expr.lookupArgs rest V₂)
-      rw [hag v hv, lookupArgs_agreeOff hag rest hrest]
-
-/-- **Any-op expression irrelevance.** `Expr.denote` is a function of the looked-up
-    arguments only (true for every op, including `stackStore`/`extCall`), so if
-    all arguments are `NotBuffer B` then the expression denotes equally under any
-    two valuations agreeing off `B`. This generalises `expr_denote_agreeOff` past
-    the load-only fragment. -/
-theorem expr_denote_argsNotBuffer {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
-    {wB nB : Nat} {B : Ctxt.Var Γ (.stackArr wB nB)}
-    {V₁ V₂ : Ctxt.Valuation Γ} (hag : AgreeOff B V₁ V₂)
-    (e : Expr jasminDialect Γ t) (h : ArgsNotBuffer B e.args) :
-    e.denote V₁ = e.denote V₂ := by
-  show e.retTy_eq ▸ DialectDenote.denote e.op (Expr.lookupArgs e.args V₁)
-    = e.retTy_eq ▸ DialectDenote.denote e.op (Expr.lookupArgs e.args V₂)
-  rw [lookupArgs_agreeOff hag e.args h]
-
 /-- **Body avoids the buffer `B` (full deadness).** Every binder's expression has
     all arguments `NotBuffer B` and every `ret` is `NotBuffer B`, with `B` shifted
-    under each binder. This is the genuine deadness condition that preservation
+    under each binder. This is the deadness condition that preservation
     needs: it forbids a later load, a later store *source*, an `extCall`
     argument, and a return from observing `B` — unlike `LaterLoadsDisjoint`, which
     constrains loads only. -/
@@ -681,7 +746,7 @@ shifted source buffer is **fully dead** after the binder (`BodyAvoidsBuffer`, no
 later argument or `ret` reads it). Under (i)–(ii) the post-store store-valuation
 agrees with the functional `Com.denote` valuation *off* the dead source slot, and
 `denote_agreeOff_all` bridges the two. `StoreSafe` is exactly the gap between
-`WellFormedStores` (loads only) and genuine preservation; it is the precise
+`WellFormedStores` (loads only) and denotation preservation; it is the precise
 residual identified in §4 (and witnessed false for `WellFormedStores` alone by
 the `store; ret stale` counterexample). -/
 
@@ -878,7 +943,7 @@ set_option linter.unusedVariables false in
     `WellFormedStores` alone is **not** sufficient — a store target may still be
     returned or used as a later store's source, both of which expose the stale
     pre-store value (witnessed by the `store; ret stale` counterexample). The
-    genuinely-sufficient side condition is `StoreSafe`: at each `stackStore`, the
+    sufficient side condition is `StoreSafe`: at each `stackStore`, the
     source buffer is uniquely named among in-scope variables and fully dead after
     the binder. Under it the result follows from the store-faithful induction
     `execCom_storeVal` (the `Com.denote` half being the `denote_agreeOff_all` /

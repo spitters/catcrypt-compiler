@@ -173,6 +173,24 @@ theorem srword_srwordNT {env : SEnvScalar} {a : String → ZMod (2 ^ 64)}
     (h : SRword env a) : SRwordNT env a :=
   fun x _ => h x
 
+/-- `RScalarSet name n` over the non-temp relation `SRwordNT` — the literal leaf in
+    the `SRwordNT`-based expression ascent (so a straight-line kernel that mixes
+    literal sets and `RScalarSetExpr` terminals lifts uniformly). The `corres_setScalar`
+    twin, restricted to non-temp names. -/
+theorem corres_setScalar_NT (name : String) (n : Nat) :
+    Corres SRwordNT (fun _ => True)
+      (fun a s => if s = name then (n : ZMod (2 ^ 64)) else a s)
+      (.RScalarSet name n) := by
+  intro env a hSR _
+  refine ⟨env.upd name (t := .sword 64) (BitVec.ofNat 64 n), rfl, ?_⟩
+  intro x hnt
+  by_cases hx : x = name
+  · subst hx
+    exact ⟨BitVec.ofNat 64 n, by simp [SEnvScalar.upd],
+      by simp [wEnc, BitVec.toNat_ofNat, ZMod.natCast_mod]⟩
+  · obtain ⟨w, hw, hwn⟩ := hSR x hnt
+    exact ⟨w, by simp [SEnvScalar.upd, hx, hw], by simp [hx, hwn]⟩
+
 /-- `corres_setExpr` — the arithmetic `RScalarSetExpr x e` value leaf. From a
     concrete env `SRwordNT`-related to abstract `a`, the real `semScalar`
     `RScalarSetExpr` arm makes progress (`= some _`, discharged via
@@ -221,5 +239,151 @@ theorem corres_setExpr (x : String) (e : SExpr) (he : IsArithClean e) :
         rw [hotb y (Or.inl hnt)]; exact hw
       · show wEnc w = if y = x then evalZMod a e else a y
         rw [if_neg hyx]; exact hwe
+
+/-! ## The bitwise value leaf — keeping the spec in the `BitVec 64` word algebra
+
+The arithmetic leaf `corres_setExpr` abstracts words to `ZMod 2^64` through `wEnc`,
+because `+`/`-`/`*` are `ZMod`-ring operations. The bitwise operations `^^^`/`&&&`
+/`<<<`/`>>>` are **not** ring operations of `ZMod 2^64`, so there is no `wEnc`
+square for them; the honest clean spec keeps the value in the `BitVec 64` word
+algebra itself (`SExpr.evalBV`). The abstraction is the identity — the clean spec
+IS the word computation — so the value transfer is definitional (no ring square),
+unlike the arithmetic leaf's `wEnc_evalBV_evalZMod`. This is the coverable fragment
+of SHA `Maj`/`Ch` (`&&&`/`^^^`) and all of Keccak `θ`/`ρ`/`χ` (`^^^`/`&&&`/rotate).
+
+Width note: this is width **64** (covers Keccak / SHA-512 / any 64-bit bitwise
+kernel). A width-parametric variant (32-bit, for ChaCha / SHA-256) is a separate
+documented follow-on — it needs `evalBV` / `envReader` re-indexed at width 32.
+-/
+
+/-- The bitwise sub-fragment of `srcClean`: variable/literal leaves plus the four
+    word-algebra bitwise ops (`^^^`/`&&&`/`<<<`/`>>>`). `SVar` leaves are non-temp
+    source names and `SLit` literals are `< 2^64` (the `srcClean` leaf conditions),
+    so `IsWordClean e → srcClean e`. A rotate `x <<<< k` is the derived shape
+    `SXor (SShl x k) (SShr x (SLit (64-k)))`, itself `IsWordClean` — rotate composes
+    from shifts + xor with no new node. -/
+def IsWordClean : SExpr → Prop
+  | .SVar x => ¬ isTmpName x
+  | .SLit n => n < 2 ^ 64
+  | .SXor a b | .SAnd a b | .SShl a b | .SShr a b => IsWordClean a ∧ IsWordClean b
+  | _ => False
+
+/-- The bitwise fragment is source-clean (`srcClean` covers the bitwise arms). -/
+theorem isWordClean_srcClean : ∀ e, IsWordClean e → srcClean e := by
+  intro e
+  induction e with
+  | SVar x => intro h; exact h
+  | SLit n => intro h; exact h
+  | SXor a b iha ihb => intro h; exact ⟨iha h.1, ihb h.2⟩
+  | SAnd a b iha ihb => intro h; exact ⟨iha h.1, ihb h.2⟩
+  | SShl a b iha ihb => intro h; exact ⟨iha h.1, ihb h.2⟩
+  | SShr a b iha ihb => intro h; exact ⟨iha h.1, ihb h.2⟩
+  | SAdd a b iha ihb => intro h; exact h.elim
+  | SSub a b iha ihb => intro h; exact h.elim
+  | SMul a b iha ihb => intro h; exact h.elim
+  | SMulHiU a b iha ihb => intro h; exact h.elim
+  | SLt a b iha ihb => intro h; exact h.elim
+  | SAsr a b iha ihb => intro h; exact h.elim
+  | SMulS a b iha ihb => intro h; exact h.elim
+  | SMulHiS a b iha ihb => intro h; exact h.elim
+  | SLimb v i => intro h; exact h.elim
+
+/-- The bitwise word-phase state relation restricted to non-temp source names:
+    every non-temp name holds a `.sword 64` whose word is the abstract `BitVec 64`
+    value **directly**. The abstraction is the identity — the clean spec IS the
+    `evalBV` word computation, with no `wEnc`/`ZMod` transfer. As with `SRwordNT`,
+    the fresh-temp namespace the lowering scribbles is invisible to a source
+    kernel, so the relation constrains only non-temp names. -/
+def SRwordBV (env : SEnvScalar) (a : String → BitVec 64) : Prop :=
+  ∀ x, ¬ isTmpName x → env x = some ⟨.sword 64, a x⟩
+
+/-- `corres_setExprBitwise` — the bitwise `RScalarSetExpr x e` value leaf. From a
+    concrete env `SRwordBV`-related to abstract `a : String → BitVec 64`, the real
+    `semScalar` `RScalarSetExpr` arm makes progress (`= some _`, via
+    `semLowerSExpr_ok'`) to an env related to the abstract state that sets `x` to
+    `SExpr.evalBV a e` (the clean **word** value — no `ZMod` abstraction) and leaves
+    every other source name untouched. The value step is `evalBV_congr_on` (reader
+    agreement), not a ring square — the transfer is definitional for the bitwise
+    fragment. -/
+theorem corres_setExprBitwise (x : String) (e : SExpr) (he : IsWordClean e) :
+    Corres SRwordBV (fun _ => True)
+      (fun a s => if s = x then SExpr.evalBV a e else a s)
+      (.RScalarSetExpr x e) := by
+  intro env a hSR _
+  -- A witnessing rust state whose scalar store reads back the env words, so the
+  -- proven fresh-temp success lemma `semLowerSExpr_ok'` applies.
+  set rs : RustState := ⟨fun _ => none, fun y => (a y).toNat⟩ with hrs
+  have hEB : EnvBoundOn rs env (fun _ => True) := by
+    intro y _ hnt
+    have hround : BitVec.ofNat 64 (a y).toNat = a y := by
+      apply BitVec.eq_of_toNat_eq
+      rw [BitVec.toNat_ofNat]
+      exact Nat.mod_eq_of_lt (a y).isLt
+    show env y = some ⟨.sword 64, BitVec.ofNat 64 ((a y).toNat)⟩
+    rw [hround]; exact hSR y hnt
+  obtain ⟨env2, nm, cnt', hsem, _, hotb, _, _⟩ :=
+    semLowerSExpr_ok' rs (fun _ => True) e env 0 hEB (varsBoundIn_true e)
+      (isWordClean_srcClean e he)
+  -- the stored value: `evalBV` under the env reader agrees with `evalBV a` since
+  -- the reader agrees with `a` on every non-temp leaf (definitional, no ring square)
+  have hval : SExpr.evalBV (envReader env) e = SExpr.evalBV a e := by
+    apply evalBV_congr_on (fun _ => True) (envReader env) a e _ (varsBoundIn_true e)
+      (isWordClean_srcClean e he)
+    intro s _ hns
+    simp only [envReader, hSR s hns]
+  refine ⟨env2.upd x (t := .sword 64) (SExpr.evalBV (envReader env) e), ?_, ?_⟩
+  · simp only [semScalar, hsem]
+  · intro y hnt
+    by_cases hyx : y = x
+    · show (env2.upd x (t := .sword 64) (SExpr.evalBV (envReader env) e)) y
+        = some ⟨.sword 64, if y = x then SExpr.evalBV a e else a y⟩
+      rw [if_pos hyx]
+      simp only [SEnvScalar.upd, if_pos hyx]
+      rw [hval]
+    · show (env2.upd x (t := .sword 64) (SExpr.evalBV (envReader env) e)) y
+        = some ⟨.sword 64, if y = x then SExpr.evalBV a e else a y⟩
+      rw [if_neg hyx]
+      simp only [SEnvScalar.upd, if_neg hyx]
+      rw [hotb y (Or.inl hnt)]
+      exact hSR y hnt
+
+/-! ## A concrete bitwise kernel closes
+
+A ChaCha-style quarter-round mix step `d := d ^^^ a` and a Keccak-`χ`-style step
+`e := a ^^^ (¬b &&& c)` (with `¬b` spelled `SXor b (SLit (2^64-1))`, all-ones xor)
+are both `IsWordClean`, so the leaf closes them — the exact bitwise shapes the
+arithmetic leaf could not reach. -/
+
+/-- Short source names are never fresh temps (`tmpName k = "__sx" ++ …` has length
+    ≥ 5), so a length-`< 4` name is `¬ isTmpName`. -/
+theorem notTmp_of_short (s : String) (hs : s.length < 4) : ¬ isTmpName s := by
+  rintro ⟨k, hk⟩
+  have hlen := congrArg String.length hk
+  rw [CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms.tmpName,
+    String.length_append] at hlen
+  have h2 : "__sx".length = 4 := rfl
+  omega
+
+/-- ChaCha-style `d := d ^^^ a` closes through the bitwise leaf. -/
+example :
+    Corres SRwordBV (fun _ => True)
+      (fun a s => if s = "d" then SExpr.evalBV a (.SXor (.SVar "d") (.SVar "a")) else a s)
+      (.RScalarSetExpr "d" (.SXor (.SVar "d") (.SVar "a"))) :=
+  corres_setExprBitwise "d" (.SXor (.SVar "d") (.SVar "a"))
+    ⟨notTmp_of_short "d" (by decide), notTmp_of_short "a" (by decide)⟩
+
+/-- Keccak-`χ`-style `e := a ^^^ (¬b &&& c)`, with `¬b = b ^^^ (2^64-1)`, closes. -/
+example :
+    Corres SRwordBV (fun _ => True)
+      (fun a s => if s = "e" then
+          SExpr.evalBV a (.SXor (.SVar "a")
+            (.SAnd (.SXor (.SVar "b") (.SLit (2 ^ 64 - 1))) (.SVar "c")))
+        else a s)
+      (.RScalarSetExpr "e" (.SXor (.SVar "a")
+        (.SAnd (.SXor (.SVar "b") (.SLit (2 ^ 64 - 1))) (.SVar "c")))) :=
+  corres_setExprBitwise "e" _
+    ⟨notTmp_of_short "a" (by decide),
+     ⟨⟨notTmp_of_short "b" (by decide), Nat.sub_lt (by positivity) Nat.one_pos⟩,
+      notTmp_of_short "c" (by decide)⟩⟩
 
 end CatCrypt.Crypto.SecureCompilation.Ascent

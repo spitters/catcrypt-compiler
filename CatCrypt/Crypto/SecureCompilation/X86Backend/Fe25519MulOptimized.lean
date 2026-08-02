@@ -174,4 +174,11 @@ def emitMain : IO Unit := do
     "bench/x25519_fieldmul_compare/gen_com/fe25519_mul_x86_generic_opt.s" optFeMulAsm
   IO.println "wrote gen_com/fe25519_mul_x86_generic_opt.s (generic owned optimizer pipeline)"
 
+/-! ## Artifact generation at elaboration
+
+The render is written while this module elaborates, so `lake` produces it from
+this file and no separate driver or Makefile rule carries the dependency. -/
+
+#eval emitMain
+
 end CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulOptimized

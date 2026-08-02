@@ -9,11 +9,10 @@ import CatCrypt.Crypto.SecureCompilation.VIR.VPCmpEmit
 /-!
 # The SIMD→GP extract gap: owned `vpcmpeqq` + `vpmovmskb gpr, ymm` (model-free)
 
-This is the **model-free** re-authoring of the mpn SIMD-compare owned `.s` emit
-(the `vpcmpeqq`/`vpmovmskb` extract kernel). It produces the same owned `.s`
-artifact `bench/mpn_compare_simd_compare/gen/mpn_simd_compare_owned.s` as the
-bespoke `X86Backend/Avx2ExtractEmit.lean`, but with NO dependency on the bespoke
-`Avx2YmmModel` / `Avx2YmmAsmPrinter` / `Avx2YmmEncoder`. Its only inputs are:
+The **model-free** mpn SIMD-compare owned `.s` emit (the `vpcmpeqq`/`vpmovmskb`
+extract kernel). It writes
+`bench/mpn_compare_simd_compare/gen/mpn_simd_compare_owned.s` with no dependency
+on `Avx2YmmModel` / `Avx2YmmAsmPrinter` / `Avx2YmmEncoder`. Its only inputs are:
 
 * the unified AT&T printer `VIR.YmmAsmPrint` (`YmmInstr` / `renderYmmInstr` for
   the `vmovdqu` load lines and the function frame),
@@ -246,7 +245,7 @@ def renderMpnSimdChunkText (name : String) : String :=
 
 /-- The full owned `.s`: one `mpn_simd_chunk_<n>` export per demonstrator size
     {4,8,16,32,64} (matching `cmp_simd_ref.c`'s `mpn_simd_chunk_4` extern). -/
-def mpnSimdCompareOwnedS : String :=
+def mpnSimdCompareS : String :=
   String.intercalate "\n"
     ((["mpn_simd_chunk_4", "mpn_simd_chunk_8", "mpn_simd_chunk_16",
        "mpn_simd_chunk_32", "mpn_simd_chunk_64"].map renderMpnSimdChunkText))
@@ -314,11 +313,11 @@ theorem mpnSimdChunk_all_equal (a : Ymm) :
 def emit : IO Unit := do
   IO.FS.createDirAll "bench/mpn_compare_simd_compare/gen"
   IO.FS.writeFile "bench/mpn_compare_simd_compare/gen/mpn_simd_compare_owned.s"
-    mpnSimdCompareOwnedS
+    mpnSimdCompareS
   IO.println "wrote bench/mpn_compare_simd_compare/gen/mpn_simd_compare_owned.s"
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.MpnSimdExtract
 
 -- NB: the `lake env lean --run` entry point lives in the bench driver, NOT here —
--- a root-level `def main` in a library module imported by the OwnedEmitAll
+-- a root-level `def main` in a library module imported by the EmitAll
 -- rot-guard collides with other root-`main` modules.

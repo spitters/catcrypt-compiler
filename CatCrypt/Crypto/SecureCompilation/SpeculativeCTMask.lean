@@ -9,15 +9,13 @@ import CatCrypt.Crypto.SecureCompilation.SpeculativeCTFence
 # Verified address-masking (Speculative-Load-Hardening): speculative CT against
   an *unconstrained* predictor, by masking rather than fencing
 
-**Task #564 residual (SLH variant).**  `SpeculativeCT.lean` delivered the
-speculative leakage semantics over the owned `LowCT` stream (`specObs`,
-`SpeculativelyConstantTime`) and the keystone `architecturally_CT_imp_SCT`;
-`SpeculativeCTFence.lean` closed the *unconstrained-predictor* gap with the
-**blanket-fence** mitigation `insertFences` (an `lfence` at every branch arm /
-loop head, drained by `specTransient`).
+`SpeculativeCT.lean` gives the speculative leakage observer `specObs` and
+`SpeculativelyConstantTime`; `SpeculativeCTFence.lean` gives the blanket-fence
+pass `insertFences` (an `lfence` at every branch arm and loop head, drained by
+`specTransient`) and equality of the fenced traces under an unconstrained
+oracle.
 
-A blanket fence is sound but conservative: every barrier serialises the
-pipeline.  The Blade / Jasmin / LLVM hardening literature reports ~5.0% overhead
+A blanket fence is conservative: every barrier serialises the pipeline.  The Blade / Jasmin / LLVM hardening literature reports ~5.0% overhead
 for blanket fencing versus ~1.7% for **Speculative-Load-Hardening (SLH)**, which
 leaves the pipeline running and instead *masks load addresses* with a
 misprediction predicate: a register that holds `0` whenever a branch may have
@@ -63,37 +61,39 @@ transiently-issued address is masked to a constant.
 5. **Masked speculative semantics** (`specObsM`, `specMaskedTransient`): identical
    to `specObs` except that, on a mis-speculated load, the transiently-issued
    memory-index observation is the **masked** (sentinel) address rather than the
-   runtime one.  This is the operational content of "SLH masks the speculative
-   address".
+   runtime one, and a masked load's store-bypass marker carries the word read at
+   that masked address rather than at the runtime one.  This is the operational
+   content of "SLH masks the speculative address".
 
-6. **The unconstrained-oracle keystone**
-   (`specObsM_insertMasks_eq_maskedArch`, `insertMasks_SCT_unconstrained`): for
-   *any* window and *any* (adversarial) oracle, the masked speculative trace of
-   `insertMasks c` is a fixed function of the public state; hence if `c` is
-   architecturally CT (`cmdCT`), `insertMasks c` is speculatively CT against an
-   unconstrained predictor.
+6. **The masked-trace equality** (`specObsM_insertMasks_eq`,
+   `insertMasks_SCT_unconstrained`): for *any* window and *any* oracle, the
+   masked speculative trace of `insertMasks c` is equal on `PublicEquiv` states
+   when `c` is `cmdCT`-accepted.
 
-7. **Perf rationale** (`insertMasks_subsumes_fewer_sites`): masking touches only
+7. **Marker count** (`insertMasks_subsumes_fewer_sites`): masking touches only
    the *load* sites, whereas blanket fencing places a barrier at every branch
-   arm / loop head *and* every call / load / store.  We record the inclusion of
-   the mitigated-site sets as the structural witness of the perf argument
+   arm / loop head *and* every call / load / store.  The inclusion of the
+   marked-site sets is the structural form of the overhead argument
    (~1.7% SLH vs ~5.0% blanket fence).
 
-## Honest scope
+## Scope
 
-* The masking observable is the same pc / memory-address pattern the rest of the
-  SCT model reasons over.  The mask forces the *transiently-issued address* to a
-  constant; the committed (architectural) address is untouched (committed
-  execution is not mis-speculated, so its predicate is `0`).
-* This file mitigates the **STL / PHT-via-load** transient (the load-address
-  source SLH targets).  The BTB/RSB indirect-control transients are *not* an
-  address-masking target (they steer control, not a load address); against an
-  unconstrained predictor those remain the fence/site-guard's job
-  (`SpeculativeCTFence.insertFences`).  SLH and fencing therefore compose: mask
-  the loads (cheap), guard the indirect-control sites (rare).  We make that
-  composition explicit only at the level of the coverage matrix.
+* The observable is the same branch-decision and memory-address pattern the
+  rest of this model reasons over.  The mask forces the *transiently-issued
+  address* to a constant; the committed address is untouched, since committed
+  execution is not mis-speculated and its predicate is `0`.
+* The masked clauses are the load-address ones.  The call-site markers steer
+  control rather than a load address and are left to
+  `SpeculativeCTFence.insertFences`.
+* `RMask` is a `LowCT.RAssert` label that only `specObsM` reads.  Over
+  `SpeculativeCTStoreBuffer.specRun`, whose loads may be forwarded a buffered
+  store value, `SpeculativeCTStoreBufferPasses.specRun_insertMasks` shows the
+  pass is the identity, and `insertMasks_not_SCT_SB` shows a `cmdCT`-accepted
+  command whose masked image separates two `PublicEquiv` states there.  The
+  restatements over that run take `ArchConstantTimeSB` as hypothesis and hold
+  at window `0` and under `neverSpeculate`.
 * As in the fence file, `LowCT` has no separate executable big-step here;
-  `archObs` is the leakage denotation the CT story reasons over.
+  `archObs` is the leakage denotation this file reasons over.
 
 ## References
 
@@ -341,7 +341,8 @@ theorem specMaskedTransient_masked_load_const (rs1 rs2 : RustState)
     masked load issues the sentinel address) rather than by a raw `.take window`,
     and a *masked* load (`RSeq RMask (RArrLoad …)`, as `insertMasks` emits)
     issues its committed (architectural) memory-index observation while its STL
-    transient is the masked sentinel.
+    marker carries the word read out of the source slot at the masked (sentinel)
+    address.
 
     After `insertMasks`, every load is masked, so every transient load address
     is the sentinel — the transient trace is data-independent. -/
@@ -356,16 +357,19 @@ def specObsM (window : SpecWindow) (O : MispredOracle) (rs : RustState) :
       | .RAssert s =>
           if s = maskLabel then
             -- A masked load: emit its committed (architectural) memory-index
-            -- observation; the STL transient is masked to the sentinel and is
-            -- contributed only down a mis-speculated wrong-path (handled in the
-            -- enclosing `RIfNz`/`RWhileNz` via `specMaskedTransient`).
+            -- observation; its store-bypass marker carries the word read out of
+            -- the source slot at the *masked* address, so the forwarded word no
+            -- longer depends on the runtime index.
             (match c2 with
-             | .RArrLoad _ _ idxVar =>
+             | .RArrLoad _ src idxVar =>
+                 let i := rs.rsScalar idxVar
                  let stl : ObsTrace :=
-                   if O.bypassStore idxVar (rs.rsScalar idxVar) then
-                     withRollback [Obs.memIdx idxVar (maskAddr true (rs.rsScalar idxVar))]
+                   if O.bypassStore idxVar i then
+                     withRollback
+                       [Obs.stlForward src.locVar
+                         (rsTowerLimb rs src.locVar (maskAddr true i))]
                    else []
-                 Obs.memIdx idxVar (rs.rsScalar idxVar) :: stl
+                 Obs.memIdx idxVar i :: stl
              | _ => specObsM window O rs c2)
           else specObsM window O rs c1 ++ specObsM window O rs c2
       | _ => specObsM window O rs c1 ++ specObsM window O rs c2
@@ -395,34 +399,40 @@ def specObsM (window : SpecWindow) (O : MispredOracle) (rs : RustState) :
       Obs.branch cond v :: (speculated ++ obsBody)
   | .RFor _ _ body          => specObsM window O rs body
   | .RArrStore _ idxVar _   => [Obs.memIdx idxVar (rs.rsScalar idxVar)]
-  | .RArrLoad dst _ idxVar  =>
-      -- An *unmasked* load: its STL transient issues the runtime address
-      -- (oracle-gated).  Mirrors the `specObs` STL clause; the masked form is
-      -- handled in the `RSeq`-with-leading-mask case above.
+  | .RArrLoad _ src idxVar  =>
+      -- An *unmasked* load: its STL marker carries the word read out of the
+      -- source slot at the runtime index (oracle-gated).  Mirrors the `specObs`
+      -- STL clause; the masked form is handled in the `RSeq`-with-leading-mask
+      -- case above.
+      let i := rs.rsScalar idxVar
       let stl : ObsTrace :=
-        if O.bypassStore idxVar (rs.rsScalar idxVar) then
-          withRollback [Obs.stlForward idxVar (rs.rsScalar idxVar)]
+        if O.bypassStore idxVar i then
+          withRollback [Obs.stlForward src.locVar (rsTowerLimb rs src.locVar i)]
         else []
-      Obs.memIdx idxVar (rs.rsScalar idxVar) :: (stl ++ (let _ := dst; []))
+      Obs.memIdx idxVar i :: stl
   | .RCall _ dest _         =>
       -- BTB/RSB are *not* an address-masking target (they steer control, not a
       -- load address); SLH leaves them to the fence/site-guard.  Modelled here
-      -- exactly as in `specObsF` (oracle-gated transient).
+      -- exactly as in `specObsF`: the predicted callee pointer and the predicted
+      -- return address are the first two words of the destination slot.
       let tslot := dest.locVar
       let tv := rs.rsScalar tslot
       let btb : ObsTrace :=
-        if O.injectTarget tslot tv then withRollback [Obs.indirectTarget tslot tv]
+        if O.injectTarget tslot tv then
+          withRollback [Obs.indirectTarget tslot (rsTowerLimb rs tslot 0)]
         else []
       let rsb : ObsTrace :=
-        if O.mispredRet tslot tv then withRollback [Obs.retTarget tslot tv]
+        if O.mispredRet tslot tv then
+          withRollback [Obs.retTarget tslot (rsTowerLimb rs tslot 1)]
         else []
       btb ++ rsb
   | _                       => []
 
 /-- The masked speculative observer applied to a *masked* load issues the
     committed memory-index observation (and, under a firing STL oracle, the
-    masked sentinel transient).  Stated for the no-STL case used by the
-    keystone's load clause. -/
+    masked sentinel transient).  Stated for the case where the store-bypass
+    decision is `false`, which is the load clause of
+    `specObsM_insertMasks_eq`. -/
 @[simp] theorem specObsM_masked_load_noSTL (window : SpecWindow)
     (O : MispredOracle) (rs : RustState) (dst src : Located) (idxVar : String)
     (h : O.bypassStore idxVar (rs.rsScalar idxVar) = false) :
@@ -432,8 +442,8 @@ def specObsM (window : SpecWindow) (O : MispredOracle) (rs : RustState) :
 
 /-! ## §6.  The masked-transient public-determinacy lemma
 
-The keystone's branch-arm clause needs that the *masked transient* of a masked
-program is equal on `PublicEquiv` states.  We prove it as a standalone
+The branch-arm clause of `specObsM_insertMasks_eq` needs the *masked transient*
+of a masked program to be equal on `PublicEquiv` states.  It is a standalone
 induction: every masked load issues the public `sentinelAddr` constant, and
 every other transient observation reads a `cmdCT`-public slot. -/
 
@@ -486,28 +496,18 @@ theorem specMaskedTransient_insertMasks_eq
          rw [archObs_insertMasks, archObs_insertMasks]
          exact architecturally_CT_imp_ArchCT lt leafCT _ hCT rs1 rs2 hEq)
 
-/-! ## §6b.  The unconstrained-oracle keystone
+/-! ## §6b.  The masked-trace equality
 
-For a *masked* program — one where every load is preceded by a mask marker — the
-mis-speculated load contribution down any wrong-path is the **sentinel** address,
-a fixed constant.  The committed (architectural) observations are
-secret-independent by `cmdCT` (via `architecturally_CT_imp_ArchCT`).  Hence the
-masked speculative trace is a function of the public state alone, **for every
-window and every oracle**, including an adversarial one — the oracle's choices
-only ever expose the constant-sentinel transient.
+In a masked program — one where every load is preceded by a mask marker — the
+mis-speculated load contribution down any wrong-path is the sentinel address, a
+fixed constant, and the committed observations read `cmdCT`-public slots.  So
+the masked speculative trace is equal on `PublicEquiv` states for every window
+and every oracle. -/
 
-We make this precise by exhibiting, for a masked program, an explicit
-"masked-architectural" reference trace that depends only on the public state, and
-showing the masked speculative trace equals it on `PublicEquiv` states. -/
-
-/-- The masked-architectural reference trace of `c`: the architectural trace,
-    plus, at every masked load reached down a mis-predicted branch, a
-    *sentinel-address* transient.  The full reference trace is a function of the
-    public branch/index slots only.  We do **not** need to materialise it
-    explicitly: the keystone proves the masked speculative trace is *equal on
-    `PublicEquiv` states* directly, by structural induction, using that (i) every
-    committed observation reads a `cmdCT`-public slot and (ii) every transient
-    masked-load observation is the public constant `sentinelAddr`. -/
+/-- The masked speculative trace of `insertMasks c` is equal on `PublicEquiv`
+    states, by structural induction: every committed observation reads a
+    `cmdCT`-public slot, and every transient masked-load observation is the
+    public constant `sentinelAddr`. -/
 theorem specObsM_insertMasks_eq
     (window : SpecWindow) (O : MispredOracle)
     (lt : LevelTable) (leafCT : LeafCTTable)
@@ -530,21 +530,24 @@ theorem specObsM_insertMasks_eq
         have hc1 : c1 = LowCT.RAssert s := insertMasks_eq_RAssert heq
         subst hc1
         -- `c1 = RAssert s`.  Under `s = maskLabel` the masked-load sub-arm
-        -- (when `c2` is a load) reads the public `idxVar` for both the committed
-        -- obs and the STL-guard; the sentinel masked transient is a constant.
-        -- The `_` sub-arm and the non-mask label both close by ih2.
+        -- (when `c2` is a load) reads the public `idxVar` for the committed obs
+        -- and the STL gate, and the public source slot for the masked forwarded
+        -- word.  The `_` sub-arm and the non-mask label both close by ih2.
         split
         · -- `s = maskLabel`
           cases c2 with
           | RArrLoad dst src idxVar =>
-              have hidx : lt idxVar = .Public := by
-                have hCT2 := hCT.2
-                simp only [cmdCT_RArrLoad, Bool.and_eq_true] at hCT2
-                exact level_beq_public_iff.mp hCT2.1.1
+              have hCT2 := hCT.2
+              simp only [cmdCT_RArrLoad, Bool.and_eq_true] at hCT2
+              have hidx : lt idxVar = .Public := level_beq_public_iff.mp hCT2.1.1
+              have hsrc : lt src.locVar = .Public :=
+                level_beq_public_iff.mp hCT2.2
               have hv : rs1.rsScalar idxVar = rs2.rsScalar idxVar :=
                 hEq.scalar_eq hidx
+              have hT : rs1.rsTower src.locVar = rs2.rsTower src.locVar :=
+                hEq.tower_eq hsrc
               simp only [insertMasks, masked, RMask, maskLabel, specObsM,
-                ↓reduceIte, hv]
+                ↓reduceIte, hv, rsTowerLimb, hT]
           | _ =>
               -- `c2` is not a load, so the nested `match insertMasks c2`
               -- reduces to `specObsM … (insertMasks c2)`, closed by ih2.
@@ -597,14 +600,20 @@ theorem specObsM_insertMasks_eq
   | RArrLoad dst src idxVar =>
       simp only [cmdCT_RArrLoad, Bool.and_eq_true] at hCT
       have hidx : lt idxVar = .Public := level_beq_public_iff.mp hCT.1.1
+      have hsrc : lt src.locVar = .Public := level_beq_public_iff.mp hCT.2
       have hv : rs1.rsScalar idxVar = rs2.rsScalar idxVar := hEq.scalar_eq hidx
-      simp only [insertMasks, masked, RMask, maskLabel, specObsM, ↓reduceIte, hv]
+      have hT : rs1.rsTower src.locVar = rs2.rsTower src.locVar :=
+        hEq.tower_eq hsrc
+      simp only [insertMasks, masked, RMask, maskLabel, specObsM, ↓reduceIte, hv,
+        rsTowerLimb, hT]
   | RCall f dest args =>
       simp only [cmdCT_RCall, Bool.and_eq_true] at hCT
       have hdest : lt dest.locVar = .Public := level_beq_public_iff.mp hCT.1.2
       have hv : rs1.rsScalar dest.locVar = rs2.rsScalar dest.locVar :=
         hEq.scalar_eq hdest
-      simp only [insertMasks, specObsM, hv]
+      have hT : rs1.rsTower dest.locVar = rs2.rsTower dest.locVar :=
+        hEq.tower_eq hdest
+      simp only [insertMasks, specObsM, hv, rsTowerLimb, hT]
   | _ => rfl
 
 /-! ## §7.  Speculative CT against an unconstrained predictor -/
@@ -705,20 +714,18 @@ theorem insertMasks_subsumes_fewer_sites (c : LowCT) :
 
 /-! ## §9.  Pilot: a masked load kernel is SCT against an unconstrained oracle
 
-We exercise the masking keystone on a small kernel that genuinely contains a
-load (so the masking machinery fires): a public-branch flag guarding a
-table-indexed load over a public index.  Its architectural acceptance discharges
-by `cmdCT`; the mask pass then makes it SCT for *any* predictor, with strictly
-fewer barriers than the fence pass. -/
+`insertMasks_SCT_unconstrained` applied to a kernel containing a load, so that
+the masking clauses fire: a public branch flag guarding a table-indexed load
+over a public index.  Its architectural acceptance discharges by `cmdCT`, and
+the mask pass places strictly fewer markers than the fence pass. -/
 
 namespace PilotMask
 
 open Pilot
 
 /-- A kernel with a load under a public branch: `if flag then a[idx] else a[idx]`,
-    all slots public.  This genuinely exercises the masking machinery — the
-    mis-speculated wrong arm contains a load whose transient address is masked to
-    the sentinel. -/
+    all slots public.  The mis-speculated wrong arm contains a load whose
+    transient address is masked to the sentinel. -/
 def pilotKernelLoad : LowCT :=
   .RIfNz "flag"
     (.RArrLoad ⟨"d", .TU64⟩ ⟨"arr", .TU64⟩ "idx")
@@ -728,11 +735,10 @@ theorem pilotKernelLoad_cmdCT :
     cmdCT pilotKernelLoad pilotLevels LeafCTTable.canonical = true := by
   native_decide
 
-/-- **Pilot result (masking).**  The mask-hardened load kernel
-    `insertMasks pilotKernelLoad` is speculatively constant-time against an
-    **unconstrained** misprediction oracle, for every speculation window.  This
-    is the SLH mitigation: even an adversarial predictor's transient wrong-path
-    load issues only the sentinel address, so it leaks nothing. -/
+/-- The mask-hardened load kernel `insertMasks pilotKernelLoad` has equal
+    `specObsM` traces on `PublicEquiv` states, for every window and every
+    misprediction oracle: the transient wrong-path load issues the sentinel
+    address. -/
 theorem pilotKernelLoad_SCT_unconstrained
     (window : SpecWindow) (O : MispredOracle) :
     SpeculativelyConstantTimeM window O pilotLevels (insertMasks pilotKernelLoad) :=
@@ -744,37 +750,34 @@ theorem insertMasks_pilotKernelLoad_cmdCT :
     cmdCT (insertMasks pilotKernelLoad) pilotLevels LeafCTTable.canonical = true := by
   native_decide
 
-/-- **Perf witness on the pilot.**  Masking the load kernel inserts strictly
-    fewer barriers than fencing it (the fence pass also barriers both branch
-    arms).  Concretely `2 ≤ 4`. -/
+/-- Masking the load kernel inserts fewer markers than fencing it: the fence
+    pass also barriers both branch arms.  Concretely `2 ≤ 4`. -/
 theorem pilotKernelLoad_mask_fewer :
     maskMarkerCount pilotKernelLoad ≤ fenceMarkerCount pilotKernelLoad := by
   native_decide
 
 end PilotMask
 
-/-! ## §10.  Mitigation-effectiveness witnesses
+/-! ## §10.  The mask removes the transient address's state dependence
 
-These check that the mask genuinely *removes the data-dependence* of the
-transient load address (not vacuously): the unmasked load's transient address is
-the runtime index (state-dependent), while the masked form's transient address is
-the sentinel constant in every state. -/
+The unmasked load's transient address is the runtime index, which differs
+between the two states below; the masked form's transient address is the
+sentinel constant in both. -/
 
-/-- A second state with a *different* index value, to witness data-dependence. -/
+/-- A second state with a different index value. -/
 def st2 : RustState :=
   { rsTower := fun _ => none,
     rsScalar := fun s => if s = "idx" then 99 else 0 }
 
-/-- **Unmasked load is data-dependent.**  The bare load's transient address is
-    the runtime index, which differs between `Sanity.st` (idx = 3) and `st2`
-    (idx = 99). -/
+/-- The bare load's transient address is the runtime index, which differs
+    between `Sanity.st` (idx = 3) and `st2` (idx = 99). -/
 theorem load_unmasked_transient_data_dependent :
     specMaskedTransient Sanity.st (.RArrLoad ⟨"d", .TU64⟩ ⟨"a", .TU64⟩ "idx")
       ≠ specMaskedTransient st2 (.RArrLoad ⟨"d", .TU64⟩ ⟨"a", .TU64⟩ "idx") := by
   native_decide
 
-/-- **Masked load is data-independent.**  After masking, the transient address is
-    the sentinel constant in *both* states — the data-dependence is gone. -/
+/-- After masking, the transient address is the sentinel constant in both
+    states. -/
 theorem load_masked_transient_data_independent :
     specMaskedTransient Sanity.st (insertMasks (.RArrLoad ⟨"d", .TU64⟩ ⟨"a", .TU64⟩ "idx"))
       = specMaskedTransient st2 (insertMasks (.RArrLoad ⟨"d", .TU64⟩ ⟨"a", .TU64⟩ "idx")) := by
@@ -786,61 +789,67 @@ theorem load_masked_transient_is_sentinel :
       = [Obs.memIdx "idx" sentinelAddr] := by
   native_decide
 
-/-! ## §11.  What this gets us, and what remains
+/-! The same masking applies to the store-bypass marker: an unmasked load is
+forwarded the word at its runtime index, a masked one the word at the sentinel
+address.  The state below holds a one-byte value in the load's source slot, so
+word `0` of slot `a` is `9` and word `3` is `0`, and its runtime index is `3`. -/
 
-**Delivered (this file).**
-* `maskAddr` — the SLH address-masking primitive: under the misprediction
-  predicate the load address is forced to the data-independent `sentinelAddr`
-  (the all-zero mask result), `maskAddr_true_const` being the one-line
-  data-independence fact.
-* `insertMasks : LowCT → LowCT`, a structural pass placing an `RMask` SLH point
-  before every load (recursing into branch arms / loop bodies) — and *nothing*
-  at branch heads, calls, or stores, unlike `insertFences`.
-* **Denotation preservation**: `archObs_insertMasks` (architectural leakage
-  trace unchanged) and `cmdCT_insertMasks` (acceptance preserved) — the mask
-  marker is a genuine no-op for the non-speculative semantics.
-* **Masked speculative semantics** (`specObsM` + `specMaskedTransient`)
-  implementing "SLH masks the speculative address": a mis-speculated masked load
-  issues the sentinel address, not the runtime one.
-* **The unconstrained-oracle keystone** `insertMasks_SCT_unconstrained`: an
-  architecturally-CT program, once mask-hardened, is speculatively CT against an
-  *arbitrary adversarial* predictor and *any* window — the transient load
-  addresses are all the public constant `sentinelAddr`.  Applied to
-  `PilotMask.pilotKernelLoad`.  `load_unmasked_transient_data_dependent` /
-  `load_masked_transient_data_independent` witness the mask genuinely removes
-  the data-dependence (non-vacuous).
-* **Perf rationale** `insertMasks_subsumes_fewer_sites`:
-  `maskMarkerCount c ≤ fenceMarkerCount c` — masking inserts no more (and
-  generically strictly fewer) serialising barriers than blanket fencing, the
-  structural ground of the ~1.7% (SLH) vs ~5.0% (blanket fence) overhead gap.
+/-- A state whose heap holds a one-byte value in the load's source slot, with a
+    runtime index of `3`. -/
+def stArr : RustState :=
+  { rsTower := fun x => if x = "a" then some ⟨.TU8, Sanity.byteVal 9⟩ else none,
+    rsScalar := fun s => if s = "idx" then 3 else 0 }
 
-**Variant-coverage matrix** (masking as the load-address mitigation; cf. the
-fence file's matrix for the control-flow sources):
+/-- An unmasked load's store-bypass marker carries the word at the load's
+    runtime index. -/
+theorem load_unmasked_stl_at_runtime_index :
+    specObsM 8 Sanity.allFire stArr (.RArrLoad ⟨"d", .TU64⟩ ⟨"a", .TU64⟩ "idx")
+      = [Obs.memIdx "idx" 3, Obs.stlForward "a" 0, Obs.rollback] := by
+  native_decide
 
-| Variant | Mitigation here (`insertMasks`)            | Drained/Masked by | Proved |
-|---------|--------------------------------------------|-------------------|--------|
-| PHT/v1 (via load) | mask the transient load address    | `specMaskedTransient` → sentinel | yes |
-| STL/v4  | mask the bypassed load's address           | `specMaskedTransient` → sentinel | yes |
-| BTB/v2  | *not* an address-masking target — fence/guard it | (left to `insertFences`) | n/a |
-| RSB     | *not* an address-masking target — fence/guard it | (left to `insertFences`) | n/a |
+/-- A masked load's store-bypass marker carries the word at the sentinel
+    address. -/
+theorem load_masked_stl_at_sentinel :
+    specObsM 8 Sanity.allFire stArr
+        (insertMasks (.RArrLoad ⟨"d", .TU64⟩ ⟨"a", .TU64⟩ "idx"))
+      = [Obs.memIdx "idx" 3, Obs.stlForward "a" 9, Obs.rollback] := by
+  native_decide
 
-SLH masking and fencing compose: mask the (frequent) loads cheaply, and
-fence/site-guard the (rare) indirect-control sites the fence file handles.
+/-! ## §11.  What the pass delivers
 
-**What remains (honest residual / model assumptions).**
-* **Selective masking.**  This is the *blanket-mask-every-load* SLH baseline.
-  The Cauligi/Jasmin *selective* SLH masks only secret-dependent loads (a
-  taint-directed subset), trading a type-system obligation for even fewer masks.
-  The structural perf witness here (mask ≤ fence) is the sound blanket baseline;
-  selective masking is the follow-up.
-* **Indirect-control sources (BTB/RSB).**  Address masking does not address the
-  control-steering transients; those remain the fence/site-guard's job
-  (`insertFences`).  A combined pass (mask loads + guard indirect control) is the
-  natural composition; this file proves the masking half.
-* **Mask-register liveness model.**  We model the mask's effect (sentinel under
-  misprediction) directly, abstracting the dataflow that keeps the mask register
-  poisoned across a mis-speculated window.  A finer model would thread the mask
-  register through the operational semantics; for the address-pattern
-  granularity the SCT observer reasons over, the direct model is faithful. -/
+**In this file.**
+* `maskAddr`, the address-masking primitive: under the misprediction predicate
+  the load address is forced to `sentinelAddr`, with `maskAddr_true_const` the
+  statement that the masked address does not depend on the true one.
+* `insertMasks : LowCT → LowCT`, placing an `RMask` before every load and
+  nothing at branch heads, calls, or stores.
+* `archObs_insertMasks` and `cmdCT_insertMasks`: the mask marker is an `RAssert`
+  no-op, so the architectural leakage trace and `cmdCT` acceptance are
+  unchanged.
+* `specObsM` and `specMaskedTransient`: a mis-speculated masked load issues the
+  sentinel address rather than the runtime one, and its store-bypass marker
+  carries the word read at that masked address.
+* `specObsM_insertMasks_eq` and `insertMasks_SCT_unconstrained`: a
+  `cmdCT`-accepted program, once mask-hardened, has equal `specObsM` traces on
+  `PublicEquiv` states, for every window and every oracle.  Applied to
+  `PilotMask.pilotKernelLoad`.  `load_unmasked_transient_data_dependent` and
+  `load_masked_transient_data_independent` compute the transient address with
+  and without the mask; `load_unmasked_stl_at_runtime_index` and
+  `load_masked_stl_at_sentinel` compute the forwarded word.
+* `insertMasks_subsumes_fewer_sites`: `maskMarkerCount c ≤ fenceMarkerCount c`.
+
+**Scope.**
+* The masked clauses are the load-address ones.  The call-site markers are left
+  to `SpeculativeCTFence.insertFences`; a pass that masks loads and guards
+  call sites is the composition of the two.
+* The mask is blanket over loads.  A taint-directed subset is the selective
+  variant.
+* The mask's effect is modelled directly, as the sentinel under misprediction,
+  rather than by threading a mask register through the operational semantics.
+* `RMask` is a `LowCT.RAssert` label that only `specObsM` reads.  Over
+  `SpeculativeCTStoreBuffer.specRun` the pass is the identity
+  (`SpeculativeCTStoreBufferPasses.specRun_insertMasks`), and
+  `insertMasks_not_SCT_SB` there exhibits a `cmdCT`-accepted command whose
+  masked image separates two `PublicEquiv` states. -/
 
 end CatCrypt.Crypto.SecureCompilation.SpeculativeCT

@@ -374,7 +374,7 @@ This sounds clean but tripped on a subtle reifier interaction:
 > `reifyChain`, line 779). `whnf` runs at *default* transparency, which
 > **unfolds regular `def`s**. So a let-bound `mayo_quadform_n8 s mat`,
 > when the head is a `def`, gets reduced to the body's
-> `mayoScalarOfGf16 (MqEvalVerified.mqEvalN8 …)` — the head is no longer
+> `mayoScalarOfGf16 (MqEvalVerified.mqEvalN8 …)` — the head is not
 > the registered name, so the pattern match fails.
 
 That is *the* issue. The phrase "typeclass-arity" in the agent's note was
@@ -425,7 +425,7 @@ to `rfl`-based proofs in any module that imports the `def`.
 - The reifier's `whnf`-then-match path is unchanged for any name NOT in
   the computable set; only the small set of `@[rust_cmd_pattern_computable]`
   heads gets the "match-before-whnf" treatment.
-- The downstream chain (`translate → cprogToJasminCom → emitAbiOrch…`) sees
+- The downstream chain (`translate → cryptoDialectToJasminCom → emitAbiOrch…`) sees
   the same `RCall` shape regardless of whether the leaf is a `def` or an
   `axiom` — the leaf name is just a string at that layer.
 

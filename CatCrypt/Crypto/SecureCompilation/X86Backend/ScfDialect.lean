@@ -8,6 +8,8 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
 /-!
 # Structured-control-flow (`scf`) dialect over the owned x86 machine (#566)
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 A VIR `Dialect` whose ops are the MLIR-`scf`-style structured control constructs —
 a bounded `for` and a two-arm `if` — over the owned x86 machine state `JState w`.
 It is the structured-control-flow tier of the Com/VIR substrate: protocols that

@@ -10,7 +10,7 @@ import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectWhileDenote
 /-!
 # Plonky3 whole-prover orchestration loops through the covered `RSeq`-of-control fragment
 
-`Plonky3OrchLoopsOwnedEmit` emits the whole-prover orchestration LOOPS — the
+`Plonky3OrchLoopsEmit` emits the whole-prover orchestration LOOPS — the
 Merkle leaf level, the Merkle compress level, the FRI fold chain, the FRI query
 loop, and the proof-of-work grind — as **owned-backend `loopLcmd` back-edges**
 whose bodies `Lcall` the emitted field leaves. That module is the byte-level
@@ -50,7 +50,7 @@ structure** — the four static-count loops sequenced — through the canonical
 front, with a whole-program denote. The per-iteration field arithmetic (the
 Poseidon2 hash_leaf / compress, the BabyBear `fri_fold`) is the separate byte-KAT
 obligation on the emitted leaves (`plonky3_compare`,
-`Plonky3OrchLoopsOwnedEmit`'s per-kernel KATs), just as Keccak-f's permutation
+`Plonky3OrchLoopsEmit`'s per-kernel KATs), just as Keccak-f's permutation
 correctness is the FIPS-202 KAT.
 
 ## The proof-of-work grind — the data-dependent `RWhileNz` arm
@@ -168,7 +168,7 @@ def friQueryLoop : LowCT :=
 def plonky3OrchLoopsLowCT : LowCT :=
   .RSeq merkleLeafLoop (.RSeq merkleCompressLoop (.RSeq friFoldLoop friQueryLoop))
 
-/-! ## 2. Coverage — the load-bearing structural proofs -/
+/-! ## 2. Coverage — the central structural proofs -/
 
 /-- The Merkle-leaf-step body is straight-line covered. -/
 theorem merkleLeafStepBody_coveredS : IsCoveredS merkleLeafStepBody :=

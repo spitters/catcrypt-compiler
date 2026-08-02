@@ -25,11 +25,11 @@ loads/stores, address arithmetic, and a mid-body counted loop alongside the leaf
 This module is that missing front piece. It sits at the same owned-backend level
 as `OrchFront` (imports only `JasminLprogExport` + `LprogControlFlow` +
 `LprogAsmPrinter`, plus `OrchFront` for layering), so it is upstream of the
-`Plonky3QuerySampleOwnedEmit` deploy with no import cycle.
+`Plonky3QuerySampleEmit` deploy with no import cycle.
 
 ## What the query sampler needs vs the landed fronts
 
-The deployed `Plonky3QuerySampleOwnedEmit` kernel (`p3_fs_observe` /
+The deployed `Plonky3QuerySampleEmit` kernel (`p3_fs_observe` /
 `p3_fs_sample` / `p3_fs_sample_bits` / the partial-absorb duplex
 `p3_fs_duplex_n`) is a `DuplexChallenger<16,8>` sample/observe wrapper. Its
 control shape needs three things the landed fronts lack:
@@ -47,7 +47,7 @@ control shape needs three things the landed fronts lack:
   guard around it. → the new `.load` / `.store` / `.loop` steps.
 * **(c) the "byte-narrow tail".** In this kernel the query-index truncation is
   the `& 31` five-bit mask — an owned `AND:64` (`.andImm`), NOT a sub-word byte
-  store. So there is **no** genuine byte-cell dependency for the query sampler:
+  store. So there is **no** byte-cell dependency for the query sampler:
   the mask is expressible with the owned word ALU. (A real sub-word byte STORE —
   the separate byte-cell agent's work — is not needed here.)
 
@@ -159,7 +159,7 @@ def bband (w : Nat) (steps : List BStep) : Lcmd := steps.flatMap (bstepToLcmd w)
     bband w (a ++ b) = bband w a ++ bband w b := by
   simp [bband, List.flatMap_append]
 
-/-! ## 2. The forward-branch combinator (the genuinely new primitive)
+/-! ## 2. The forward-branch combinator (the new primitive)
 
 `loopLcmd`/`whileLcmd` are *backward* branches; `condSkip` is the *forward* one:
 `CMP gReg,#imm ; Lcond cc → lbl ; <then> ; lbl:`. Its `then` band runs iff the
@@ -239,7 +239,7 @@ structure QSConfig where
 /-! ## 4. The query-sampler schedules (branch + runtime loop + calls)
 
 Each schedule is a `List BStep`; `bband 64` renders it to the deployed owned
-body. These reproduce the deployed `Plonky3QuerySampleOwnedEmit` bodies exactly
+body. These reproduce the deployed `Plonky3QuerySampleEmit` bodies exactly
 (the deploy re-sources its `*Body` defs from these), so the emitted `.s` is
 byte-identical. -/
 
@@ -355,47 +355,40 @@ theorem duplexN_hasLoop_hasCall (cfg : QSConfig) :
 
 /-! ## 6. Structural shape facts (the schedules render the owned control flow)
 
-The deployed emit's `native_decide` render KATs (`observe_renders_trigger`,
-`sample_renders_trigger`, `duplexN_renders_loop_and_call`,
-`sample_bits_renders_mask`) apply to these bodies verbatim once the deploy is
-re-sourced from them. Here we pin, at the front, that each body renders its
-control shape — the forward branch / back-edge / mask / call — with a fixed
-config witness. -/
+The deployed emit's render checks in `Plonky3QuerySampleEmit` apply to these
+bodies verbatim once the deploy is re-sourced from them. Here we pin, at the
+front, that each body renders its control shape — the forward branch /
+back-edge / mask / call — with a fixed config witness. -/
 
 /-- A concrete config witness (the deployed flat-`Chal` layout). -/
 def demoCfg : QSConfig :=
   { inbufOff := 128, outbufOff := 192, inlenOff := 256, outlenOff := 264
     permSym := "hp_perm16", duplexFullSym := "p3_fs_duplex", duplexNSym := "p3_fs_duplex_n" }
 
-/-- The observe body renders the `inlen==8` forward trigger (`cmpq $8,%rcx ;
+/- The observe body renders the `inlen==8` forward trigger (`cmpq $8,%rcx ;
     jne .L7 ; … ; .L7:`) and the full-absorb `call`. -/
-theorem observe_renders_trigger :
-    let s := renderLfundef "p3_fs_observe" (observeBodyFront demoCfg)
-    occursIn "cmpq $8, %rcx" s = true ∧ occursIn ".L7:" s = true
-      ∧ occursIn "jne .L7" s = true ∧ occursIn "call p3_fs_duplex" s = true := by
-  refine ⟨?_, ?_, ?_, ?_⟩ <;> native_decide
+#guard
+  let s := renderLfundef "p3_fs_observe" (observeBodyFront demoCfg)
+  occursIn "cmpq $8, %rcx" s && occursIn ".L7:" s
+    && occursIn "jne .L7" s && occursIn "call p3_fs_duplex" s
 
-/-- The sample body renders the disjunctive `inlen>0 || outlen==0` trigger (two
+/- The sample body renders the disjunctive `inlen>0 || outlen==0` trigger (two
     `cmpq $0` + two `jne`) and the partial-absorb `call`. -/
-theorem sample_renders_trigger :
-    let s := renderLfundef "p3_fs_sample" (sampleBodyFront demoCfg)
-    occursIn "cmpq $0, %rcx" s = true ∧ occursIn "jne .L1" s = true
-      ∧ occursIn "jne .L2" s = true ∧ occursIn "call p3_fs_duplex_n" s = true := by
-  refine ⟨?_, ?_, ?_, ?_⟩ <;> native_decide
+#guard
+  let s := renderLfundef "p3_fs_sample" (sampleBodyFront demoCfg)
+  occursIn "cmpq $0, %rcx" s && occursIn "jne .L1" s
+    && occursIn "jne .L2" s && occursIn "call p3_fs_duplex_n" s
 
-/-- The partial-absorb duplex renders the runtime counted absorb loop
+/- The partial-absorb duplex renders the runtime counted absorb loop
     (`.L0: … ; jne .L0`) and the `call hp_perm16` permute. -/
-theorem duplexN_renders_loop_and_call :
-    let s := renderLfundef "p3_fs_duplex_n" (duplexNBodyFront demoCfg)
-    occursIn ".L0:" s = true ∧ occursIn "jne .L0" s = true
-      ∧ occursIn "call hp_perm16" s = true := by
-  refine ⟨?_, ?_, ?_⟩ <;> native_decide
+#guard
+  let s := renderLfundef "p3_fs_duplex_n" (duplexNBodyFront demoCfg)
+  occursIn ".L0:" s && occursIn "jne .L0" s && occursIn "call hp_perm16" s
 
-/-- The sample-bits body renders the `& 31` mask (`andq $31,%rax`) over the
+/- The sample-bits body renders the `& 31` mask (`andq $31,%rax`) over the
     `call p3_fs_sample` result (case (c): a word ALU mask). -/
-theorem sample_bits_renders_mask :
-    let s := renderLfundef "p3_fs_sample_bits" (sampleBitsBodyFront demoCfg)
-    occursIn "call p3_fs_sample" s = true ∧ occursIn "andq $31, %rax" s = true := by
-  refine ⟨?_, ?_⟩ <;> native_decide
+#guard
+  let s := renderLfundef "p3_fs_sample_bits" (sampleBitsBodyFront demoCfg)
+  occursIn "call p3_fs_sample" s && occursIn "andq $31, %rax" s
 
 end CatCrypt.Crypto.SecureCompilation.VIR.QuerySampleBranchFront

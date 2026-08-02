@@ -382,12 +382,8 @@ theorem feOps_alloc_no_overflow :
       ∧ allocOverflow feMul121666Pinned feMul121666Block = none
       ∧ allocOverflow feSqrPinned feSqrBlock = none := by native_decide
 
-/-- Shape checks: each emitted body contains the expected mnemonics. -/
-theorem feOps_asm_shape :
-    BignumMontMulKernel.hasSub feAddAsm "addq"
-      ∧ BignumMontMulKernel.hasSub feSubAsm "sbbq"
-      ∧ BignumMontMulKernel.hasSub feMul121666Asm "$121666"
-      ∧ BignumMontMulKernel.hasSub feSqrAsm "mulx" := by native_decide
+/- Shape checks: each emitted body contains the expected mnemonics. -/
+#guard (BignumMontMulKernel.hasSub feAddAsm "addq") && (BignumMontMulKernel.hasSub feSubAsm "sbbq") && (BignumMontMulKernel.hasSub feMul121666Asm "$121666") && (BignumMontMulKernel.hasSub feSqrAsm "mulx")
 
 /-- Emit driver: write the in-Lean-backend-emitted `.s` files for the bench harness. -/
 def emitMain : IO Unit := do

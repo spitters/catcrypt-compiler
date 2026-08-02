@@ -29,7 +29,8 @@ that's sufficient for this property:
 
 1. The body is split into a *load prefix* and a *store suffix*.
 2. The load prefix reads inputs into registers; once registers hold
-   the inputs, the in-memory input buffer is no longer consulted.
+   the inputs, later instructions do not consult the in-memory input
+   buffer.
 3. The store suffix writes outputs without further loads.
 
 Under this discipline, even if the output buffer aliases an input
@@ -333,7 +334,9 @@ without a `Lmem` store don't change `s.mem`. Inspection of
 - `Cassgn (Lvar _)`: writes a register via `setReg`. Memory unchanged.
 - `Cassgn (Lmem _)`: writes memory; `hasStore` is `true` here, so
   the precondition `hasStore i = false` rules this case out.
-- `Copn` (all 7 supported intrinsics SUB/SBB/ADD/ADC/MULX/ADCX/ADOX/XOR):
+- `Copn` (every supported intrinsic: the 64-bit SUB/SBB/ADD/ADC/MULX/DIV/
+  ADCX/ADOX/XOR, the SHL/SHR/SHLD/SHRD shifts, and the 32-bit
+  SUB/ADD/ADC/SBB/MULX):
   all output bundles route through `setReg` only — even when the
   spec'd `lvs` contains an `Lmem`, `execInstr` returns `none` rather
   than writing memory (the bundle writer fails to pattern-match).
@@ -386,18 +389,32 @@ theorem writeXorBundle_preserves_mem (s s' : BignumState) (lvs : List LVal)
   split at h <;> simp_all
   all_goals (cases h; rfl)
 
+/-- `writeDivBundle` (DIV_64) preserves memory. -/
+theorem writeDivBundle_preserves_mem (s s' : BignumState) (lvs : List LVal)
+    (q r : BitVec 64) (h : writeDivBundle s lvs q r = some s') :
+    s'.mem = s.mem := by
+  unfold writeDivBundle at h
+  split at h <;> simp_all
+  all_goals (cases h; rfl)
+
+/-- `writeShiftBundle` (SHL_64/SHR_64/SHLD_64/SHRD_64) preserves memory. -/
+theorem writeShiftBundle_preserves_mem (s s' : BignumState) (lvs : List LVal)
+    (r : BitVec 64) (h : writeShiftBundle s lvs r = some s') :
+    s'.mem = s.mem := by
+  unfold writeShiftBundle at h
+  split at h <;> simp_all
+  all_goals (cases h; rfl)
+
 /-- **No-store ⇒ memory preserved (Cassgn-Lvar case).** The
 representative case of the operational sub-lemma: a `Cassgn` into a
 register-LVal writes via `setReg`, which preserves memory.
 
-The full lemma covering all `InstrR` constructors (Cassgn full,
-Copn full, Cif/Cfor/Cwhile/Ccall) requires walking each Copn `Oasm`
-sub-branch through the corresponding bundle-writer helper above.
-Each individual sub-branch closes with `writeXxxBundle_preserves_mem`
-+ Option-bind unfolding (~10 LoC apiece × 8 asm names = ~80 LoC of
-mechanical case work, plus the trivial Cif/Cfor/Cwhile/Ccall fall-throughs
-where `execInstr` returns `none`). Documented as B5.1.b sub-task — the
-bundle-writer lemmas are the cleanest dispatch points. -/
+The full lemma covering all `InstrR` constructors is
+`execInstr_noStore_preserves_mem` below: it walks each Copn `Oasm`
+sub-branch through the corresponding bundle-writer helper above,
+closing each with `writeXxxBundle_preserves_mem` plus Option-bind
+unfolding, and takes the trivial Cif/Cfor/Cwhile/Ccall fall-throughs
+where `execInstr` returns `none`. -/
 theorem execInstr_noStore_preserves_mem_Cassgn_Lvar
     (s s' : BignumState) (v : VarI) (tag : AssgnTag) (ty : SType) (rhs : PExpr)
     (hExec : execInstr s (.Cassgn (.Lvar v) tag ty rhs) = some s') :
@@ -491,6 +508,10 @@ theorem execInstr_noStore_preserves_mem
         simp only [bind, Option.bind_eq_some_iff] at hExec
         obtain ⟨_, _, _, _, hWrite⟩ := hExec
         exact writeMulxBundle_preserves_mem _ _ _ _ _ hWrite
+      · -- DIV_64
+        simp only [bind, Option.bind_eq_some_iff] at hExec
+        obtain ⟨_, _, _, _, _, _, hWrite⟩ := hExec
+        exact writeDivBundle_preserves_mem _ _ _ _ _ hWrite
       · -- ADCX
         simp only [bind, Option.bind_eq_some_iff] at hExec
         obtain ⟨_, _, _, _, _, _, hWrite⟩ := hExec
@@ -503,6 +524,22 @@ theorem execInstr_noStore_preserves_mem
         simp only [bind, Option.bind_eq_some_iff] at hExec
         obtain ⟨_, _, _, _, hWrite⟩ := hExec
         exact writeXorBundle_preserves_mem _ _ _ _ _ _ hWrite
+      · -- SHL_64
+        simp only [bind, Option.bind_eq_some_iff] at hExec
+        obtain ⟨_, _, _, _, hWrite⟩ := hExec
+        exact writeShiftBundle_preserves_mem _ _ _ _ hWrite
+      · -- SHR_64
+        simp only [bind, Option.bind_eq_some_iff] at hExec
+        obtain ⟨_, _, _, _, hWrite⟩ := hExec
+        exact writeShiftBundle_preserves_mem _ _ _ _ hWrite
+      · -- SHLD_64
+        simp only [bind, Option.bind_eq_some_iff] at hExec
+        obtain ⟨_, _, _, _, _, _, hWrite⟩ := hExec
+        exact writeShiftBundle_preserves_mem _ _ _ _ hWrite
+      · -- SHRD_64
+        simp only [bind, Option.bind_eq_some_iff] at hExec
+        obtain ⟨_, _, _, _, _, _, hWrite⟩ := hExec
+        exact writeShiftBundle_preserves_mem _ _ _ _ hWrite
       · -- (U32, additive) SUB_32
         simp only [bind, Option.bind_eq_some_iff] at hExec
         obtain ⟨_, _, _, _, hWrite⟩ := hExec
@@ -515,6 +552,14 @@ theorem execInstr_noStore_preserves_mem
         simp only [bind, Option.bind_eq_some_iff] at hExec
         obtain ⟨_, _, _, _, _, _, hWrite⟩ := hExec
         exact writeSubBundle_preserves_mem _ _ _ _ _ hWrite
+      · -- (U32, additive) SBB_32
+        simp only [bind, Option.bind_eq_some_iff] at hExec
+        obtain ⟨_, _, _, _, _, _, hWrite⟩ := hExec
+        exact writeSubBundle_preserves_mem _ _ _ _ _ hWrite
+      · -- (U32, additive) MULX_32
+        simp only [bind, Option.bind_eq_some_iff] at hExec
+        obtain ⟨_, _, _, _, hWrite⟩ := hExec
+        exact writeMulxBundle_preserves_mem _ _ _ _ _ hWrite
       · -- Catchall: execInstr = none, contradicts hExec
         exact absurd hExec (by simp)
   | Cif cond ct cf => simp [execInstr] at hExec
@@ -598,7 +643,12 @@ theorem evalPExpr_noLoad_indep_of_mem :
   | .Pget _ _ _ _, _, _, _, _ => rfl
   | .Psub _ _ _ _ _, _, _, _, _ => rfl
   | .Pload _ _ _, _, _, _, h => by simp [peLoad] at h
-  | .Papp1 _ _, _, _, _, _ => rfl
+  | .Papp1 op a, regs, m1, m2, h => by
+      have ha : peLoad a = false := by simpa [peLoad] using h
+      have iha := evalPExpr_noLoad_indep_of_mem a regs m1 m2 ha
+      cases op <;>
+        first | rfl
+              | (simp only [evalPExpr]; rw [iha])
   | .Papp2 op a b, regs, m1, m2, h => by
       have ha : peLoad a = false := by simp [peLoad] at h; exact h.1
       have hb : peLoad b = false := by simp [peLoad] at h; exact h.2
@@ -734,7 +784,7 @@ theorem bignumExec_noLoad_regs_indep_of_mem
         have h_eq_s : bignumExec tail s2 = bignumExec tail { regs := s1.regs, mem := s2.mem } := by
           rw [show s2 = { regs := s1.regs, mem := s2.mem } from by
             cases s2; cases s1; congr; exact h_regs_eq.symm]
-        simp only [Option.map_some]
+        show (bignumExec tail s1).map (·.regs) = (bignumExec tail s2).map (·.regs)
         rw [h_eq_s]
         exact h_tail_eq
 
@@ -791,6 +841,25 @@ theorem writeXorBundle_regs_indep_of_mem
     (writeXorBundle { regs := regs, mem := m1 } lvs of cf r).map (·.regs) =
     (writeXorBundle { regs := regs, mem := m2 } lvs of cf r).map (·.regs) := by
   unfold writeXorBundle
+  split <;> rfl
+
+/-- `writeDivBundle` (DIV_64) regs evolution is mem-independent. -/
+theorem writeDivBundle_regs_indep_of_mem
+    (regs : String → BitVec 64) (m1 m2 : MemoryModel.Mem)
+    (lvs : List LVal) (q r : BitVec 64) :
+    (writeDivBundle { regs := regs, mem := m1 } lvs q r).map (·.regs) =
+    (writeDivBundle { regs := regs, mem := m2 } lvs q r).map (·.regs) := by
+  unfold writeDivBundle
+  split <;> rfl
+
+/-- `writeShiftBundle` (SHL_64/SHR_64/SHLD_64/SHRD_64) regs evolution is
+mem-independent. -/
+theorem writeShiftBundle_regs_indep_of_mem
+    (regs : String → BitVec 64) (m1 m2 : MemoryModel.Mem)
+    (lvs : List LVal) (r : BitVec 64) :
+    (writeShiftBundle { regs := regs, mem := m1 } lvs r).map (·.regs) =
+    (writeShiftBundle { regs := regs, mem := m2 } lvs r).map (·.regs) := by
+  unfold writeShiftBundle
   split <;> rfl
 
 /-! ### §2.7.6. Remaining per-instruction `NoLoadInstrRegsIndepOfMem` cases
@@ -862,30 +931,31 @@ theorem noLoadInstrRegsIndepOfMem_Cassgn_Lmem
       cases h_a : resolveAddr { regs := regs, mem := m2 : BignumState } base off with
       | none => rfl
       | some addr => rfl
+  case U8 =>
+    -- (U8, additive) The single-byte store writes memory via `storeMem8`
+    -- and leaves regs untouched, so it is mem-independent.
+    unfold execInstr
+    simp only [bind, h_eval, h_addr]
+    cases evalPExpr { regs := regs, mem := m2 } rhs with
+    | none => rfl
+    | some w =>
+      cases h_a : resolveAddr { regs := regs, mem := m2 : BignumState } base off with
+      | none => rfl
+      | some addr => rfl
   all_goals rfl
 
-/-! ### §2.7.6.1. Copn-Oasm case: documented Prop obligation
+/-! ### §2.7.6.1. Copn-Oasm case: Prop obligation
 
-The full Copn-Oasm regs-indep-of-mem proof requires dispatching on
-`(asm.name, args)` over the 8 supported intrinsics × 2/3-arg shapes,
-threading `evalPExpr_noLoad_indep_of_mem` through each match arm and
-routing through the appropriate `writeXxxBundle_regs_indep_of_mem`.
+The Copn-Oasm regs-indep-of-mem proof dispatches on `(asm.name, args)`
+over every supported intrinsic × 2/3-arg shape, threading
+`evalPExpr_noLoad_indep_of_mem` through each match arm and routing
+through the appropriate `writeXxxBundle_regs_indep_of_mem`.
 
-Each individual arm is mechanically straightforward (the per-arity
-helper below works), but Lean's elaborator doesn't expose the
-`(asm.name, args) = (string-literal, list-literal)` equality
-in a form that lets us cleanly drive the inner match. Rather than
-fight tactic-monad limitations, we expose the per-arity helpers as
-lemmas and document the dispatch as the deferred obligation. The
-upgraded `execInstr_noLoad_regs_indep_of_mem` below uses the four
-trivial cases plus `Cassgn_Lvar`, `Cassgn_Lmem`, etc., and treats
-the Copn-Oasm case as a *hypothesis* for downstream callers to
-discharge per-leaf via `decide`-shaped reasoning when the leaf body
-is fully concrete.
-
-This is consistent with the parameterised-by-per-instruction-obligation
-style of `bignumExec_noLoad_regs_indep_of_mem`, which already takes
-`NoLoadInstrRegsIndepOfMem i` as a hypothesis. -/
+`execInstr_noLoad_regs_indep_of_mem` below takes that dispatch as a
+hypothesis, in the parameterised-by-per-instruction-obligation style
+of `bignumExec_noLoad_regs_indep_of_mem`; the obligation itself is
+discharged in §2.7.6.5 by `noLoadInstrRegsIndepOfMem_CopnOasm`, and
+the `_qed` wrappers below plug it in. -/
 
 /-- The Copn-Oasm regs-indep-of-mem obligation, kept as a `Prop`-form
 obligation. Callers with concrete `asm.name` and `args` can discharge
@@ -906,39 +976,34 @@ private theorem peLoad_of_args_no_load
     rw [ht] at h
     cases h
 
-/-! ### §2.7.6.2. The Copn-Oasm closure (CLOSED 2026-04-30)
+/-! ### §2.7.6.2. The Copn-Oasm closure
 
-**Originally** (B5 entry note): the Copn-Oasm regs-indep-of-mem
-closure was held back behind a Lean elaboration boundary: after
-`unfold execInstr` and the outer InstrR match exposes the inner
-`match (asm.name, args)`, the inner match doesn't reduce uniformly
-because the equation compiler binds the discriminator to a fresh
-metavariable rather than to the per-arm literal.
-
-**Closure (B5, attempt 1a — custom match-eq lemma generator)**: the
-8 per-arm reduction lemmas in §2.7.6.3 (`execInstr_Copn_Oasm_<NAME>`)
-each have the schematic proof
+`execInstr` on a `Copn _ _ (Oasm asm) args` reduces to an inner
+`match asm.name, args with ...` whose discriminator is the opaque
+`asm.name`. The per-arm reduction lemmas in §2.7.6.3
+(`execInstr_Copn_Oasm_<NAME>`) each take `h_name : asm.name = "<NAME>"`
+and have the schematic proof
 ```
 unfold execInstr; simp only [h_name]
 ```
-which works because `simp only [h_name]` rewrites every occurrence
-of `asm.name` (in both the LHS and the RHS of the goal) to the
-literal name string, after which the inner string-match is reducible
-by `rfl`. The dispatcher `noLoadInstrRegsIndepOfMem_CopnOasm` (§2.7.6.5)
-then discharges the obligation by:
+`simp only [h_name]` rewrites `asm.name` to the literal name string on
+both sides of the goal, after which the inner string-match reduces by
+`rfl`.
+
+The dispatcher `noLoadInstrRegsIndepOfMem_CopnOasm` (§2.7.6.5)
+discharges the obligation by:
 
 1. Splitting `args` on its length (0, 1, 2, 3, ≥4).
 2. For length 2 / length 3, `by_cases` on each candidate `asm.name`
    and rewriting via the per-arm lemma.
-3. For unsupported names, both `execInstr` calls reduce to `none`
-   inline (via `unfold execInstr; split <;> simp_all` plus an
-   `obtain ⟨_, _, h_op, h_args⟩` from the `Copn` heq).
+3. For names outside the supported set, rewriting both `execInstr`
+   calls to `none` via the arity lemmas of §2.7.6.4.
 
-Convenience Qed wrappers are exposed below as
+Qed wrappers are exposed below as
 `execInstr_noLoad_regs_indep_of_mem_qed`,
 `noLoadInstrRegsIndepOfMem_all_qed`, and
-`bignumExec_noLoad_regs_indep_of_mem_qed` — these no longer require
-the obligation as a hypothesis. -/
+`bignumExec_noLoad_regs_indep_of_mem_qed`; they take no obligation
+hypothesis. -/
 
 /-! ### §2.7.6.3. Per-arm `execInstr` reduction lemmas (Copn-Oasm)
 
@@ -1013,6 +1078,20 @@ theorem execInstr_Copn_Oasm_MULX
   unfold execInstr
   simp only [h_name]
 
+theorem execInstr_Copn_Oasm_DIV_64
+    (s : BignumState) (lvs : List LVal) (tag : AssgnTag)
+    (asm : AsmOp) (eh el ed : PExpr)
+    (h_name : asm.name = "DIV_64") :
+    execInstr s (.Copn lvs tag (.Oasm asm) [eh, el, ed]) =
+    (do
+       let hi ← evalPExpr s eh
+       let lo ← evalPExpr s el
+       let d ← evalPExpr s ed
+       let (q, r) := divrem64 hi lo d
+       writeDivBundle s lvs q r) := by
+  unfold execInstr
+  simp only [h_name]
+
 theorem execInstr_Copn_Oasm_ADCX
     (s : BignumState) (lvs : List LVal) (tag : AssgnTag)
     (asm : AsmOp) (ea eb ec : PExpr)
@@ -1051,6 +1130,57 @@ theorem execInstr_Copn_Oasm_XOR_64
        let b ← evalPExpr s eb
        let r : BitVec 64 := a ^^^ b
        writeXorBundle s lvs 0 0 r) := by
+  unfold execInstr
+  simp only [h_name]
+
+-- (Shift, additive) per-op reduction lemmas for the shift intrinsics.
+theorem execInstr_Copn_Oasm_SHL_64
+    (s : BignumState) (lvs : List LVal) (tag : AssgnTag)
+    (asm : AsmOp) (ea ek : PExpr)
+    (h_name : asm.name = "SHL_64") :
+    execInstr s (.Copn lvs tag (.Oasm asm) [ea, ek]) =
+    (do
+       let a ← evalPExpr s ea
+       let k ← evalPExpr s ek
+       writeShiftBundle s lvs (shl64 a k)) := by
+  unfold execInstr
+  simp only [h_name]
+
+theorem execInstr_Copn_Oasm_SHR_64
+    (s : BignumState) (lvs : List LVal) (tag : AssgnTag)
+    (asm : AsmOp) (ea ek : PExpr)
+    (h_name : asm.name = "SHR_64") :
+    execInstr s (.Copn lvs tag (.Oasm asm) [ea, ek]) =
+    (do
+       let a ← evalPExpr s ea
+       let k ← evalPExpr s ek
+       writeShiftBundle s lvs (shr64 a k)) := by
+  unfold execInstr
+  simp only [h_name]
+
+theorem execInstr_Copn_Oasm_SHLD_64
+    (s : BignumState) (lvs : List LVal) (tag : AssgnTag)
+    (asm : AsmOp) (edst esrc ek : PExpr)
+    (h_name : asm.name = "SHLD_64") :
+    execInstr s (.Copn lvs tag (.Oasm asm) [edst, esrc, ek]) =
+    (do
+       let dst ← evalPExpr s edst
+       let src ← evalPExpr s esrc
+       let k ← evalPExpr s ek
+       writeShiftBundle s lvs (shld64 dst src k)) := by
+  unfold execInstr
+  simp only [h_name]
+
+theorem execInstr_Copn_Oasm_SHRD_64
+    (s : BignumState) (lvs : List LVal) (tag : AssgnTag)
+    (asm : AsmOp) (edst esrc ek : PExpr)
+    (h_name : asm.name = "SHRD_64") :
+    execInstr s (.Copn lvs tag (.Oasm asm) [edst, esrc, ek]) =
+    (do
+       let dst ← evalPExpr s edst
+       let src ← evalPExpr s esrc
+       let k ← evalPExpr s ek
+       writeShiftBundle s lvs (shrd64 dst src k)) := by
   unfold execInstr
   simp only [h_name]
 
@@ -1095,15 +1225,76 @@ theorem execInstr_Copn_Oasm_ADC_32
   unfold execInstr
   simp only [h_name]
 
+theorem execInstr_Copn_Oasm_SBB_32
+    (s : BignumState) (lvs : List LVal) (tag : AssgnTag)
+    (asm : AsmOp) (ea eb ec : PExpr)
+    (h_name : asm.name = "SBB_32") :
+    execInstr s (.Copn lvs tag (.Oasm asm) [ea, eb, ec]) =
+    (do
+       let a ← evalPExpr s ea
+       let b ← evalPExpr s eb
+       let c ← evalPExpr s ec
+       let (bf, r) := BignumExec.subBorrowIn32 a b c
+       writeSubBundle s lvs bf r) := by
+  unfold execInstr
+  simp only [h_name]
+
+theorem execInstr_Copn_Oasm_MULX_32
+    (s : BignumState) (lvs : List LVal) (tag : AssgnTag)
+    (asm : AsmOp) (ea eb : PExpr)
+    (h_name : asm.name = "MULX_32") :
+    execInstr s (.Copn lvs tag (.Oasm asm) [ea, eb]) =
+    (do
+       let a ← evalPExpr s ea
+       let b ← evalPExpr s eb
+       let (hi, lo) := BignumExec.mulx32 a b
+       writeMulxBundle s lvs hi lo) := by
+  unfold execInstr
+  simp only [h_name]
+
 /-! ### §2.7.6.4. Catch-all unsupported-name lemmas
 
-If `asm.name` matches none of the 8 supported names at the given arity,
-`execInstr` returns `none`. We avoid catching all-unsupported as a
-separate lemma (`split` over the outer match exposes Cassgn arms with
-`heq : Copn ... = Cassgn ...` injectivity contradictions that are
-mechanical but verbose). Instead, the dispatcher proof inlines the
-case dispatch via `if h : asm.name = ... then ... else ...` chains
-combined with the per-arm reduction lemmas. -/
+If `asm.name` matches none of the supported names at the given arity,
+`execInstr` returns `none`. One lemma per argument-count shape; the
+dispatcher below applies them once the `by_cases` chain has exhausted
+the supported names. -/
+
+/-- Two-argument `Copn (Oasm asm)` with an unsupported `asm.name`
+returns `none`. -/
+theorem execInstr_Copn_Oasm_unsupported_two
+    (s : BignumState) (lvs : List LVal) (tag : AssgnTag) (asm : AsmOp)
+    (ea eb : PExpr)
+    (h_sub : asm.name ≠ "SUB_64") (h_add : asm.name ≠ "ADD_64")
+    (h_mulx : asm.name ≠ "MULX") (h_xor : asm.name ≠ "XOR_64")
+    (h_shl : asm.name ≠ "SHL_64") (h_shr : asm.name ≠ "SHR_64")
+    (h_sub32 : asm.name ≠ "SUB_32") (h_add32 : asm.name ≠ "ADD_32")
+    (h_mulx32 : asm.name ≠ "MULX_32") :
+    execInstr s (.Copn lvs tag (.Oasm asm) [ea, eb]) = none := by
+  simp only [execInstr]
+  split <;> simp_all
+
+/-- Three-argument `Copn (Oasm asm)` with an unsupported `asm.name`
+returns `none`. -/
+theorem execInstr_Copn_Oasm_unsupported_three
+    (s : BignumState) (lvs : List LVal) (tag : AssgnTag) (asm : AsmOp)
+    (ea eb ec : PExpr)
+    (h_sbb : asm.name ≠ "SBB_64") (h_adc : asm.name ≠ "ADC_64")
+    (h_div : asm.name ≠ "DIV_64") (h_adcx : asm.name ≠ "ADCX")
+    (h_adox : asm.name ≠ "ADOX") (h_shld : asm.name ≠ "SHLD_64")
+    (h_shrd : asm.name ≠ "SHRD_64") (h_adc32 : asm.name ≠ "ADC_32")
+    (h_sbb32 : asm.name ≠ "SBB_32") :
+    execInstr s (.Copn lvs tag (.Oasm asm) [ea, eb, ec]) = none := by
+  simp only [execInstr]
+  split <;> simp_all
+
+/-- `Copn (Oasm asm)` with four or more arguments returns `none`: every
+supported intrinsic takes two or three arguments. -/
+theorem execInstr_Copn_Oasm_unsupported_arity
+    (s : BignumState) (lvs : List LVal) (tag : AssgnTag) (asm : AsmOp)
+    (ea eb ec d : PExpr) (rest : List PExpr) :
+    execInstr s (.Copn lvs tag (.Oasm asm) (ea :: eb :: ec :: d :: rest)) = none := by
+  simp only [execInstr]
+  split <;> simp_all
 
 
 /-! ### §2.7.6.5. Discharging the obligation
@@ -1199,22 +1390,47 @@ theorem noLoadInstrRegsIndepOfMem_CopnOasm :
         | none => rfl
         | some _ =>
           exact writeSubBundle_regs_indep_of_mem regs m1 m2 lvs _ _
-    -- None of the 6 two-arg names match: both sides reduce to `none`. Prove
-    -- this inline via `unfold execInstr; split <;> simp_all` chasing through
-    -- the outer match's heq to the inner match's catch-all.
-    have h_lhs : execInstr { regs := regs, mem := m1 } (.Copn lvs tag (.Oasm asm) [ea, eb]) = none := by
-      unfold execInstr
-      split <;> simp_all
-      obtain ⟨_, _, h_op, h_args⟩ := ‹_ ∧ _›
-      subst h_op; subst h_args
-      split <;> simp_all
-    have h_rhs : execInstr { regs := regs, mem := m2 } (.Copn lvs tag (.Oasm asm) [ea, eb]) = none := by
-      unfold execInstr
-      split <;> simp_all
-      obtain ⟨_, _, h_op, h_args⟩ := ‹_ ∧ _›
-      subst h_op; subst h_args
-      split <;> simp_all
-    rw [h_lhs, h_rhs]
+    by_cases h_shl : asm.name = "SHL_64"
+    · -- (Shift, additive) SHL_64: writes regs via writeShiftBundle ⇒ mem-indep.
+      rw [execInstr_Copn_Oasm_SHL_64 _ _ _ _ _ _ h_shl,
+          execInstr_Copn_Oasm_SHL_64 _ _ _ _ _ _ h_shl]
+      rw [h_eval_ea, h_eval_eb]
+      cases evalPExpr { regs := regs, mem := m2 } ea with
+      | none => rfl
+      | some _ =>
+        cases evalPExpr { regs := regs, mem := m2 } eb with
+        | none => rfl
+        | some _ =>
+          exact writeShiftBundle_regs_indep_of_mem regs m1 m2 lvs _
+    by_cases h_shr : asm.name = "SHR_64"
+    · -- (Shift, additive) SHR_64: writes regs via writeShiftBundle ⇒ mem-indep.
+      rw [execInstr_Copn_Oasm_SHR_64 _ _ _ _ _ _ h_shr,
+          execInstr_Copn_Oasm_SHR_64 _ _ _ _ _ _ h_shr]
+      rw [h_eval_ea, h_eval_eb]
+      cases evalPExpr { regs := regs, mem := m2 } ea with
+      | none => rfl
+      | some _ =>
+        cases evalPExpr { regs := regs, mem := m2 } eb with
+        | none => rfl
+        | some _ =>
+          exact writeShiftBundle_regs_indep_of_mem regs m1 m2 lvs _
+    by_cases h_mulx32 : asm.name = "MULX_32"
+    · -- (U32, additive) MULX_32: writes regs via writeMulxBundle ⇒ mem-indep.
+      rw [execInstr_Copn_Oasm_MULX_32 _ _ _ _ _ _ h_mulx32,
+          execInstr_Copn_Oasm_MULX_32 _ _ _ _ _ _ h_mulx32]
+      rw [h_eval_ea, h_eval_eb]
+      cases evalPExpr { regs := regs, mem := m2 } ea with
+      | none => rfl
+      | some _ =>
+        cases evalPExpr { regs := regs, mem := m2 } eb with
+        | none => rfl
+        | some _ =>
+          exact writeMulxBundle_regs_indep_of_mem regs m1 m2 lvs _ _
+    -- None of the two-arg names match: both sides reduce to `none`.
+    rw [execInstr_Copn_Oasm_unsupported_two _ _ _ _ _ _
+          h_sub h_add h_mulx h_xor h_shl h_shr h_sub32 h_add32 h_mulx32,
+        execInstr_Copn_Oasm_unsupported_two _ _ _ _ _ _
+          h_sub h_add h_mulx h_xor h_shl h_shr h_sub32 h_add32 h_mulx32]
   -- Length ≥ 3: split on whether rest is empty (length 3) or not (≥ 4)
   · subst h_args2
     cases rest with
@@ -1300,37 +1516,75 @@ theorem noLoadInstrRegsIndepOfMem_CopnOasm :
             | none => rfl
             | some _ =>
               exact writeSubBundle_regs_indep_of_mem regs m1 m2 lvs _ _
-      -- None of the 5 three-arg names match: both sides reduce to `none`.
-      have h_lhs : execInstr { regs := regs, mem := m1 } (.Copn lvs tag (.Oasm asm) [ea, eb, ec]) = none := by
-        unfold execInstr
-        split <;> simp_all
-        obtain ⟨_, _, h_op, h_args⟩ := ‹_ ∧ _›
-        subst h_op; subst h_args
-        split <;> simp_all
-      have h_rhs : execInstr { regs := regs, mem := m2 } (.Copn lvs tag (.Oasm asm) [ea, eb, ec]) = none := by
-        unfold execInstr
-        split <;> simp_all
-        obtain ⟨_, _, h_op, h_args⟩ := ‹_ ∧ _›
-        subst h_op; subst h_args
-        split <;> simp_all
-      rw [h_lhs, h_rhs]
+      by_cases h_div : asm.name = "DIV_64"
+      · -- DIV_64: writes regs via writeDivBundle ⇒ mem-indep.
+        rw [execInstr_Copn_Oasm_DIV_64 _ _ _ _ _ _ _ h_div,
+            execInstr_Copn_Oasm_DIV_64 _ _ _ _ _ _ _ h_div]
+        rw [h_eval_ea, h_eval_eb, h_eval_ec]
+        cases evalPExpr { regs := regs, mem := m2 } ea with
+        | none => rfl
+        | some _ =>
+          cases evalPExpr { regs := regs, mem := m2 } eb with
+          | none => rfl
+          | some _ =>
+            cases evalPExpr { regs := regs, mem := m2 } ec with
+            | none => rfl
+            | some _ =>
+              exact writeDivBundle_regs_indep_of_mem regs m1 m2 lvs _ _
+      by_cases h_shld : asm.name = "SHLD_64"
+      · -- (Shift, additive) SHLD_64: writes regs via writeShiftBundle ⇒ mem-indep.
+        rw [execInstr_Copn_Oasm_SHLD_64 _ _ _ _ _ _ _ h_shld,
+            execInstr_Copn_Oasm_SHLD_64 _ _ _ _ _ _ _ h_shld]
+        rw [h_eval_ea, h_eval_eb, h_eval_ec]
+        cases evalPExpr { regs := regs, mem := m2 } ea with
+        | none => rfl
+        | some _ =>
+          cases evalPExpr { regs := regs, mem := m2 } eb with
+          | none => rfl
+          | some _ =>
+            cases evalPExpr { regs := regs, mem := m2 } ec with
+            | none => rfl
+            | some _ =>
+              exact writeShiftBundle_regs_indep_of_mem regs m1 m2 lvs _
+      by_cases h_shrd : asm.name = "SHRD_64"
+      · -- (Shift, additive) SHRD_64: writes regs via writeShiftBundle ⇒ mem-indep.
+        rw [execInstr_Copn_Oasm_SHRD_64 _ _ _ _ _ _ _ h_shrd,
+            execInstr_Copn_Oasm_SHRD_64 _ _ _ _ _ _ _ h_shrd]
+        rw [h_eval_ea, h_eval_eb, h_eval_ec]
+        cases evalPExpr { regs := regs, mem := m2 } ea with
+        | none => rfl
+        | some _ =>
+          cases evalPExpr { regs := regs, mem := m2 } eb with
+          | none => rfl
+          | some _ =>
+            cases evalPExpr { regs := regs, mem := m2 } ec with
+            | none => rfl
+            | some _ =>
+              exact writeShiftBundle_regs_indep_of_mem regs m1 m2 lvs _
+      by_cases h_sbb32 : asm.name = "SBB_32"
+      · -- (U32, additive) SBB_32: writes regs via writeSubBundle ⇒ mem-indep.
+        rw [execInstr_Copn_Oasm_SBB_32 _ _ _ _ _ _ _ h_sbb32,
+            execInstr_Copn_Oasm_SBB_32 _ _ _ _ _ _ _ h_sbb32]
+        rw [h_eval_ea, h_eval_eb, h_eval_ec]
+        cases evalPExpr { regs := regs, mem := m2 } ea with
+        | none => rfl
+        | some _ =>
+          cases evalPExpr { regs := regs, mem := m2 } eb with
+          | none => rfl
+          | some _ =>
+            cases evalPExpr { regs := regs, mem := m2 } ec with
+            | none => rfl
+            | some _ =>
+              exact writeSubBundle_regs_indep_of_mem regs m1 m2 lvs _ _
+      -- None of the three-arg names match: both sides reduce to `none`.
+      rw [execInstr_Copn_Oasm_unsupported_three _ _ _ _ _ _ _
+            h_sbb h_adc h_div h_adcx h_adox h_shld h_shrd h_adc32 h_sbb32,
+          execInstr_Copn_Oasm_unsupported_three _ _ _ _ _ _ _
+            h_sbb h_adc h_div h_adcx h_adox h_shld h_shrd h_adc32 h_sbb32]
     | cons d rest' =>
       -- Length ≥ 4: `execInstr` returns `none` from the inner catch-all.
-      have h_lhs : execInstr { regs := regs, mem := m1 }
-          (.Copn lvs tag (.Oasm asm) (ea :: eb :: ec :: d :: rest')) = none := by
-        unfold execInstr
-        split <;> simp_all
-        obtain ⟨_, _, h_op, h_args⟩ := ‹_ ∧ _›
-        subst h_op; subst h_args
-        split <;> simp_all
-      have h_rhs : execInstr { regs := regs, mem := m2 }
-          (.Copn lvs tag (.Oasm asm) (ea :: eb :: ec :: d :: rest')) = none := by
-        unfold execInstr
-        split <;> simp_all
-        obtain ⟨_, _, h_op, h_args⟩ := ‹_ ∧ _›
-        subst h_op; subst h_args
-        split <;> simp_all
-      rw [h_lhs, h_rhs]
+      rw [execInstr_Copn_Oasm_unsupported_arity _ _ _ _ _ _ _ _ _,
+          execInstr_Copn_Oasm_unsupported_arity _ _ _ _ _ _ _ _ _]
 
 
 /-! ### §2.7.7. Per-instruction dispatcher for noLoad ⇒ regs-indep-of-mem
@@ -1569,8 +1823,8 @@ what the file already mechanises:
    run from two regs-equal, footprint-equal states, the post-execution
    footprints agree. Closing this generically requires an operational
    "every store writes a regs-deterministic value" dispatcher (~50
-   LoC, parallel to `bignumExec_noStore_preserves_mem`); for now we
-   expose it as `PostFootprintAgreementPreserved`.
+   LoC, parallel to `bignumExec_noStore_preserves_mem`); it is
+   exposed as `PostFootprintAgreementPreserved`.
 
 ### Subtle issue
 
@@ -1640,8 +1894,8 @@ For `post` with `hasLoad = false` everywhere, every store address is
 regs-determined (via `resolveAddr` reading only regs through the
 `Pconst` offset path) and every store value is regs-determined (via
 `evalPExpr_noLoad_indep_of_mem`). Discharging it generically would
-require a per-instruction "deterministic store" dispatcher; for now
-we expose it as a Prop obligation. -/
+require a per-instruction "deterministic store" dispatcher; it is
+exposed as a Prop obligation. -/
 def PostFootprintAgreementPreserved
     (post : List InstrR) (fp : LeafFootprint) : Prop :=
   ∀ (t1 t2 : BignumState),
@@ -1804,7 +2058,7 @@ by hypothesis.
 
 PARTIAL CLOSURE: the proof case-splits on `v.var.vname = fp.outBase`;
 the equal branch (the assigned register *is* the footprint base) is
-genuinely False without extra preconditions, because the post-execution
+False without extra preconditions, because the post-execution
 footprint reads from a *different* address whose content is not
 constrained by `readFootprint t1 fp = readFootprint t2 fp`. A
 counterexample exists with `none = none` precondition and the
@@ -1840,8 +2094,8 @@ theorem postFootprintInstrPreserved_Cassgn_Lvar
     by_cases hv : v.var.vname = fp.outBase
     · -- GAP: v is the footprint base. The new base is `w` in both
       -- states, but mem differs and the precondition only constrains
-      -- bytes at the OLD base, not at `w`. Genuinely unprovable
-      -- without an extra "post doesn't modify outBase" precondition.
+      -- bytes at the OLD base, not at `w`. Unprovable without an
+      -- extra "post doesn't modify outBase" precondition.
       sorry
     · -- Easy case: setReg doesn't touch fp.outBase, so the new
       -- footprint base equals the old footprint base, mem unchanged.

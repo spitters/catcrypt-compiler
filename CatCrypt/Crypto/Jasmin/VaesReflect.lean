@@ -44,7 +44,7 @@ the canonical ABI for VAES kernels (the Intel optimization guide's
 We follow the established pattern: define the pure-Lean function for
 documentation, register each leaf via `@[rust_cmd_pattern]`, then
 **hand-build the `LowCT`** the reifier *would* produce. Downstream
-(`translate → cprogToJasminCom → emitAbiOrchRegPtr`) is the unmodified
+(`translate → cryptoDialectToJasminCom → emitAbiOrchRegPtr`) is the unmodified
 verified front.
 
 ## LowCT-expressivity gap (documented)

@@ -9,7 +9,7 @@ import CatCrypt.Crypto.SecureCompilation.VIR.ShaNiEmit
 /-!
 # SHA-256 (SHA-NI) re-sourced through the vector front (`translateDialectControlV`)
 
-`Sha2ShaniOwnedEmit.lean` HAND-AUTHORS the SHA-NI single-block compression as an
+`Sha2ShaniEmit.lean` HAND-AUTHORS the SHA-NI single-block compression as an
 AT&T `.s` schedule (`ShaNiEmit.renderQuartet` → gas mnemonics) — outside the
 verified front. This module puts the three SHA-NI data effects into the SIMD
 **dialect** (`CatCryptDialect`) as first-class ops with **faithful FIPS 180-4
@@ -43,9 +43,9 @@ cascades outside this layer: (a) the `SimdOp`-exhaustive x86 emitters
 with byte-exact KATs; `VsimdAsmPrint` needs the mnemonic arms); and (b)
 `SHA256RNDS2` reads its round-constant operand implicitly in `%xmm0`, so the
 owned AT&T printer must STAGE the ternary op's third input into `%xmm0` (a
-register-allocation constraint, exactly as `Sha2ShaniOwnedEmit.renderQuartet`
+register-allocation constraint, exactly as `Sha2ShaniEmit.renderQuartet`
 does by hand) before the 2-operand machine instruction. Until then the owned
-`.s` remains `Sha2ShaniOwnedEmit`'s hand schedule.
+`.s` remains `Sha2ShaniEmit`'s hand schedule.
 
 Invoke: `lake build CatCrypt.Crypto.SecureCompilation.VIR.Sha2ShaniVsimdCovered`
 -/

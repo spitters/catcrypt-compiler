@@ -8,6 +8,8 @@ import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptPrint
 /-!
 # Structural correctness of the CatCrypt VIR text printer (v0)
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 This file proves **v0 ("no information loss") structural faithfulness**
 properties for the textual MLIR printer in `CatCryptPrint.lean`.
 

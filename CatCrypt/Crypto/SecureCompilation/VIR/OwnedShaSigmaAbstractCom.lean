@@ -38,7 +38,7 @@ There is no `runZBlock` / `ZInstr` / `ZState` / `jasminc` / `jasminc_preserves_c
 in any theorem's `#print axioms`: every tie is between the verified
 `Com jasminDialect` denotation and the abstract FIPS-180-4 σ/Σ function.
 
-## HONEST scope — the σ/Σ message-schedule + round-mixing lane functions
+## Scope — the σ/Σ message-schedule + round-mixing lane functions
 
 Together with the σ₀ pilot this re-anchors all four FIPS-180-4 §4.1.3 rotate-xor
 mixing functions (the two message-schedule σ and the two round Σ). What remains
@@ -73,12 +73,24 @@ abbrev r512 : JasminTy := .reg 512
 pilot module's `rotr1_toBitVec` / `rotr8_toBitVec` to an arbitrary amount `n`. -/
 
 /-- The abstract `UInt64` `rotr x n` on its `toBitVec` is the BitVec shift-or
-    `(x.toBitVec >>> n.toNat) ||| (x.toBitVec <<< (64 - n.toNat))`. -/
-theorem rotr_toBitVec (x n : UInt64) :
+    `(x.toBitVec >>> n.toNat) ||| (x.toBitVec <<< (64 - n.toNat))`, for a rotate
+    amount below the word width.
+
+    The bound is necessary, not bookkeeping: `UInt64`'s shifts reduce the amount
+    modulo 64 while `BitVec`'s do not, and `64 - n.toNat` truncates in `Nat`, so
+    the two sides diverge for every `n ≥ 64` — at `x = 7, n = 100` the left side
+    is `1879048192` and the right side is `7`. The unconditional characterisation
+    of the same operation is `(SHA512.rotr x n).toBitVec =
+    x.toBitVec.rotateRight (n.toNat % 64)`. -/
+theorem rotr_toBitVec (x n : UInt64) (hn : n.toNat < 64) :
     (SHA512.rotr x n).toBitVec
       = (x.toBitVec >>> n.toNat) ||| (x.toBitVec <<< (64 - n.toNat)) := by
   unfold SHA512.rotr
-  simp
+  rcases Nat.eq_zero_or_pos n.toNat with h0 | hpos
+  · simp [h0]
+  · simp [Nat.mod_eq_of_lt hn]
+    congr 2
+    omega
 
 /-! ## 2. σ₁ — `Com` kernel, denotation, lane, abstract tie
 
@@ -154,7 +166,8 @@ theorem sigma1Com_lane_abstract (x : BitVec 512) (k : Fin 8) :
       = (SHA512.smallSigma1 (UInt64.ofBitVec (zmmLane x k))).toBitVec := by
   rw [sigma1Com_lane]
   unfold SHA512.smallSigma1
-  simp only [UInt64.toBitVec_xor, rotr_toBitVec, UInt64.toBitVec_shiftRight]
+  rw [UInt64.toBitVec_xor, UInt64.toBitVec_xor, rotr_toBitVec _ 19 (by decide),
+    rotr_toBitVec _ 61 (by decide)]
   simp
 
 /-! ## 3. Σ₀ — `Com` kernel, denotation, lane, abstract tie
@@ -199,10 +212,10 @@ def bigSigma0Com : Com jasminDialect bigSigmaCtx r512 :=
   (.var (.mk (.vpackZMM .or) rfl
           (.cons (.there .here) (.cons .here .nil)))
   -- ctx [r34,t30,t34,r28,t36,t28,x,c28,c36,c34,c30,c39,c25]
-  -- t39 := x >>> 39 ; x=6, c39=10
+  -- t39 := x >>> 39 ; x=6, c39=11
   (.var (.mk (.vpackZMM .shr) rfl
           (.cons (.there (.there (.there (.there (.there (.there .here))))))
-            (.cons (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there .here))))))))))
+            (.cons (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there .here)))))))))))
               .nil)))
   -- ctx [t39,r34,t30,t34,r28,t36,t28,x,c28,c36,c34,c30,c39,c25]
   -- t25 := x <<< 25 ; x=7, c25=13
@@ -265,7 +278,8 @@ theorem bigSigma0Com_lane_abstract (x : BitVec 512) (k : Fin 8) :
       = (SHA512.bigSigma0 (UInt64.ofBitVec (zmmLane x k))).toBitVec := by
   rw [bigSigma0Com_lane]
   unfold SHA512.bigSigma0
-  simp only [UInt64.toBitVec_xor, rotr_toBitVec]
+  rw [UInt64.toBitVec_xor, UInt64.toBitVec_xor, rotr_toBitVec _ 28 (by decide),
+    rotr_toBitVec _ 34 (by decide), rotr_toBitVec _ 39 (by decide)]
   simp
 
 /-! ## 4. Σ₁ — `Com` kernel, denotation, lane, abstract tie
@@ -294,7 +308,7 @@ def bigSigma1Com : Com jasminDialect bigSigmaCtx r512 :=
           (.cons (.there .here) (.cons .here .nil)))
   (.var (.mk (.vpackZMM .shr) rfl
           (.cons (.there (.there (.there (.there (.there (.there .here))))))
-            (.cons (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there .here))))))))))
+            (.cons (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there (.there .here)))))))))))
               .nil)))
   (.var (.mk (.vpackZMM .shl) rfl
           (.cons (.there (.there (.there (.there (.there (.there (.there .here)))))))
@@ -349,7 +363,8 @@ theorem bigSigma1Com_lane_abstract (x : BitVec 512) (k : Fin 8) :
       = (SHA512.bigSigma1 (UInt64.ofBitVec (zmmLane x k))).toBitVec := by
   rw [bigSigma1Com_lane]
   unfold SHA512.bigSigma1
-  simp only [UInt64.toBitVec_xor, rotr_toBitVec]
+  rw [UInt64.toBitVec_xor, UInt64.toBitVec_xor, rotr_toBitVec _ 14 (by decide),
+    rotr_toBitVec _ 18 (by decide), rotr_toBitVec _ 41 (by decide)]
   simp
 
 end CatCrypt.Crypto.SecureCompilation.VIR.OwnedShaSigmaAbstractCom

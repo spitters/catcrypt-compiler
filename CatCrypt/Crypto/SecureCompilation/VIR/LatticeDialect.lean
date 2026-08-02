@@ -8,6 +8,8 @@ import CatCrypt.Crypto.SecureCompilation.VIR.Core
 /-!
 # Lattice VIR dialect
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 A minimal `VIR.Dialect` whose `Ty` distinguishes **coefficient-form** from
 **NTT-form** polynomials, making the NTT-domain multiplication rewrite a
 *typed*, denotation-preserving transformation. This is the Phase 3 deliverable
@@ -80,15 +82,36 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 
 /-! ## 1. Types -/
 
-/-- The lattice dialect's value-type alphabet. `polyC` and `polyN` are
-    *distinct* constructors so coefficient-form and NTT-form polynomials never
-    unify, even though they denote to the same concrete representation. -/
-inductive LatticeTy where
+/-- Which value semantics a lattice type carries. The syntax of the lattice
+    dialect — type alphabet, op tags, op signatures — is one thing; the values
+    the types denote are a choice. `bits` denotes to the concrete machine
+    representation `Fin n → BitVec 16`; `poly` denotes to `CPolynomial (ZMod q)`
+    and is supplied by `LatticeNTTSemantic`.
+
+    A `TyDenote` instance is keyed on the type of types, so two denotations
+    require two type alphabets. Indexing the alphabet by the semantics is what
+    lets the alphabet, the ops and the signature be written once and still admit
+    both instances. -/
+inductive LatticeSem where
+  /-- Machine representation: `Fin n → BitVec 16`. -/
+  | bits
+  /-- CompPoly polynomials over `ZMod q`. -/
+  | poly
+  deriving DecidableEq
+
+/-- The lattice dialect's value-type alphabet, indexed by its semantics.
+    `polyC` and `polyN` are *distinct* constructors so coefficient-form and
+    NTT-form polynomials never unify, even though under either semantics they
+    denote to the same concrete representation. -/
+inductive LatticeTyG (s : LatticeSem) where
   /-- A polynomial in coefficient form over `Z_q[X]/(X^n+1)`. -/
   | polyC (q n : Nat)
   /-- A polynomial in NTT form (pointwise evaluations). -/
   | polyN (q n : Nat)
   deriving DecidableEq
+
+/-- The type alphabet under the machine semantics. -/
+abbrev LatticeTy := LatticeTyG .bits
 
 /-- Total denotation of `LatticeTy`. Both forms denote to `Fin n → BitVec 16`:
     the concrete representation coincides, but the *types* are distinct in the
@@ -146,13 +169,21 @@ inductive LatticeOp where
 
 /-! ## 4. The dialect -/
 
-/-- The lattice dialect: `Op` is `LatticeOp`, `Ty` is `LatticeTy`. -/
-@[reducible] def latticeDialect : Dialect :=
-  { Op := LatticeOp, Ty := LatticeTy }
+/-- The lattice dialect at a given value semantics: `Op` is `LatticeOp`, `Ty` is
+    the alphabet indexed by `s`. The op tags do not mention values, so one
+    `LatticeOp` serves both semantics. -/
+@[reducible] def latticeDialectG (s : LatticeSem) : Dialect :=
+  { Op := LatticeOp, Ty := LatticeTyG s }
+
+/-- The lattice dialect under the machine semantics. -/
+abbrev latticeDialect : Dialect := latticeDialectG .bits
 
 /-! ## 5. Op signatures (arg types + return type) -/
 
-instance : DialectSignature latticeDialect where
+/-- Op signatures, shared by both semantics: the arity and the coefficient/NTT
+    form of each argument and result are properties of the syntax, not of the
+    values the types denote. -/
+instance latticeSignature {s : LatticeSem} : DialectSignature (latticeDialectG s) where
   sig op := match op with
     | .ntt q n => [.polyC q n]
     | .invntt q n => [.polyN q n]

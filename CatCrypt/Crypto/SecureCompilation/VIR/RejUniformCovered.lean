@@ -13,7 +13,7 @@ ML-KEM-768's matrix expansion (`PQCLEAN_MLKEM768_CLEAN_gen_matrix`,
 SHAKE128 XOF stream: read a 12-bit candidate, accept it iff `< q = 3329`,
 advance the byte cursor, and repeat **until the output buffer is full**. The
 number of windows is decided at run time by how many candidates land below `q`,
-so this is a genuine *data-dependent* loop — not a fixed unroll and not a counted
+so this is a *data-dependent* loop — not a fixed unroll and not a counted
 `RFor`. The termination criterion (buffer full) is the `while (name != 0)` shape
 `RWhileNz` models.
 
@@ -45,7 +45,7 @@ buffer-not-full guard.
 
 The candidate stream / hash squeeze and the arithmetic are **opaque leaves**
 (their FIPS-203 correctness is the separate byte-KAT obligation, carried by the
-owned-emit kernel `MLKEM.RejUniformOwnedEmit`); what is banked here is the descent
+owned-emit kernel `MLKEM.RejUniformEmit`); what is banked here is the descent
 of the **rejection control structure** — the data-dependent `while` — through the
 canonical front, with a whole-program machine denote.
 
@@ -115,7 +115,7 @@ def rejBody : LowCT :=
 def rejUniformLowCT : LowCT :=
   .RWhileNz "remaining" rejBody
 
-/-! ## 2. Coverage — the load-bearing structural proofs -/
+/-! ## 2. Coverage — the structural proofs -/
 
 /-- The advance-and-extract tail is straight-line covered. -/
 theorem rejAdvanceExtract_coveredS : IsCoveredS rejAdvanceExtract :=
@@ -128,7 +128,7 @@ theorem acceptBranch_coveredS : IsCoveredS acceptBranch :=
   .rSeq (.rCall "rej_store" (loc "out") [loc "out", loc "cand"]) rejAdvanceExtract_coveredS
 
 /-- **The window body is Stage-2 covered** (`IsCoveredSCtl`): an `RIfNz` over two
-    straight-line branches. This is the load-bearing fact — it feeds the
+    straight-line branches. This is the central fact — it feeds the
     `RWhileNz` whole-program denote (`rWhileNz_whole_denote`). -/
 theorem rejBody_covered : IsCoveredSCtl rejBody :=
   .rIfNz (.ofStraight acceptBranch_coveredS) (.ofStraight rejAdvanceExtract_coveredS)

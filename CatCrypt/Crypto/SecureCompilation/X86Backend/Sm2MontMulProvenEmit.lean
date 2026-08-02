@@ -54,8 +54,8 @@ valLimbs y` and `emitMontRedcStep`'s `runBlock = montgomeryReduce` step
    accumulator words into step `i+1`'s input registers across one fused emitted
    block. This is the same multi-block register-routing the schoolbook's
    `SchoolbookRunBlock` named for its inter-row combine; it does not change the
-   per-step value spec (each step's `runBlock` value IS a genuine
-   `montgomeryReduce` step, proven in `MontReduceRunBlock`).
+   per-step value spec (each step's `runBlock` value is a `montgomeryReduce`
+   step, proven in `MontReduceRunBlock`).
 
 `AsmPrinter` + `gas` is the thin syntactic trust boundary. No `sorry`, no new
 `axiom`. The MULX implicit-`%rdx` and ADX immediate legalizations
@@ -217,7 +217,7 @@ scaffolding; the per-step accumulate semantics is the proven
     cleared `CF`), and that `add`'s own carry-out is propagated one word further
     into `accNames[i+5]` (for `i < 3`) or into the dedicated top-carry word
     `rtop` (for the final step `i = 3`, capturing the 257th-bit overflow of the
-    `< 2·p` result). This is the genuine `n+2`-word CIOS window discipline the
+    `< 2·p` result). This is the `n+2`-word CIOS window discipline the
     hand-written kernel documents (its `t5` top word); the per-step accumulate
     semantics is the proven `emitMontRedcStep`. -/
 def emitMontRedcStepAt (i : Nat) : List (JInstr 64) :=
@@ -359,7 +359,7 @@ We use the verified pin-aware spilling allocator over the **legalized** block:
 register, the two `MULX` scratch destinations `phi`/`plo`→`%rax`/`%rcx` (so no
 single `mulx` ever touches more spilled operands than the two reserved working
 registers can reload — see `sm2ProvenPins`), the rest linear-scanned (the
-genuinely-spilled values round-trip through frame cells via
+spilled values round-trip through frame cells via
 `renderJInstrSpilled`). -/
 
 /-- The register-allocation pins for the spilling allocator: `z`→`%rdi`,
@@ -474,14 +474,10 @@ def sm2ProvenAsm : String :=
   renderLeafFn "sm2_montmul_proven"
     sm2ProvenPrologue sm2ProvenBodyLines sm2ProvenEpilogue
 
-/-- Shape check: the emitted asm contains the product + reduce dual-carry idiom
+/- Shape check: the emitted asm contains the product + reduce dual-carry idiom
     (`mulx`, `adcx`, `adox`) from both proven cores, the load/store pointer ABI
     (`(%rsi)`, `(%rdi)`), and the `sm2_montmul_proven` symbol. -/
-theorem sm2ProvenAsm_shape :
-    BignumMontMulKernel.hasSub sm2ProvenAsm "sm2_montmul_proven"
-      ∧ BignumMontMulKernel.hasSub sm2ProvenAsm "mulx"
-      ∧ BignumMontMulKernel.hasSub sm2ProvenAsm "adcx"
-      ∧ BignumMontMulKernel.hasSub sm2ProvenAsm "adox" := by native_decide
+#guard (BignumMontMulKernel.hasSub sm2ProvenAsm "sm2_montmul_proven") && (BignumMontMulKernel.hasSub sm2ProvenAsm "mulx") && (BignumMontMulKernel.hasSub sm2ProvenAsm "adcx") && (BignumMontMulKernel.hasSub sm2ProvenAsm "adox")
 
 /-- Emit driver: write the proven-cores-emitted `.s` for the bench harness. -/
 def emitMain : IO Unit := do
@@ -489,5 +485,12 @@ def emitMain : IO Unit := do
   IO.FS.writeFile
     "bench/sm2_compare/gen/sm2_montmul_proven.s" sm2ProvenAsm
   IO.println "wrote gen/sm2_montmul_proven.s (emitProductBlock4 + emitMontRedcStep proven cores, spilling RA)"
+
+/-! ## Artifact generation at elaboration
+
+The render is written while this module elaborates, so `lake` produces it from
+this file and no separate driver or Makefile rule carries the dependency. -/
+
+#eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.Sm2MontMulProvenEmit

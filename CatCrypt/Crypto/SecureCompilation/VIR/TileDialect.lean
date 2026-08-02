@@ -9,6 +9,8 @@ import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 /-!
 # Tile VIR dialect
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 A minimal `VIR.Dialect` whose `Op`/`Ty` model the **tile** (GPU / Tile-IR)
 fragment: a value is a *tile* — `n` lanes of `BitVec w`. This is the Tile-IR
 analogue of `jasminDialect` (`JasminDialect.lean`): it makes "tile" a

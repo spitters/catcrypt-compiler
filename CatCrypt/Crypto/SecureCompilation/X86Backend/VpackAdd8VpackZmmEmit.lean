@@ -13,7 +13,7 @@ import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint
 output): per lane `k ∈ 0..7`, `out[k] = x[k] + y[k] (mod 2^64)`, **no cross-lane
 carry**.
 
-The pre-migration emit (`VpackAdd8OwnedEmit.lean`) expresses this as a single
+The pre-migration emit (`VpackAdd8Emit.lean`) expresses this as a single
 `Avx512Model.ZInstr.vpaddq` over the bespoke AVX-512 register machine
 (`ZState`/`runZBlock`), rendered by `Avx512AsmPrinter.renderZInstr`. This module
 is the **SIMD-dialect-unification** twin: the same one-`vpaddq` kernel as a
@@ -191,19 +191,16 @@ single `vpaddq` issued), now over the `Com`-rendered `.s`. -/
 theorem asm_has_export :
     strContains vpack_add8_vpackzmm_asm "vpack_add8:" = true := by native_decide
 
-/-- The emit carries the packed add (lowercase owned `%zmm` mnemonic). -/
-theorem asm_has_vpaddq :
-    strContains vpack_add8_vpackzmm_asm "vpaddq" = true := by native_decide
+/- The emit carries the packed add (lowercase owned `%zmm` mnemonic). -/
+#guard (strContains vpack_add8_vpackzmm_asm "vpaddq")
 
-/-- The body uses 512-bit `%zmm` registers (not the 128-bit `%xmm` of the
+/- The body uses 512-bit `%zmm` registers (not the 128-bit `%xmm` of the
     `VsimdAsmPrint` fragment). -/
-theorem asm_has_zmm :
-    strContains vpack_add8_vpackzmm_asm "%zmm" = true := by native_decide
+#guard (strContains vpack_add8_vpackzmm_asm "%zmm")
 
-/-- No UPPERCASE jasmin intrinsic survives — this is the owned (no-jasminc)
+/- No UPPERCASE jasmin intrinsic survives — this is the owned (no-jasminc)
     lowercase-mnemonic path. -/
-theorem asm_no_jasmin_intrinsic :
-    strContains vpack_add8_vpackzmm_asm "#VPADD_8u64" = false := by native_decide
+#guard !(strContains vpack_add8_vpackzmm_asm "#VPADD_8u64")
 
 /-! ## 7. Emit driver -/
 

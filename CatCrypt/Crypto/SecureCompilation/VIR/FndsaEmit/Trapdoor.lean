@@ -671,21 +671,16 @@ structural theorem below asserts the marker is present in the emit, so a
 future agent cannot stub the body back to a no-op without removing the
 marker (and the theorem will then fail to type-check). -/
 
-/-- **Sanity: the trapdoor emit has the expected ABI.** -/
-theorem trapdoor_export_sig :
-    strContains trapdoorJazz
-      "export fn fndsa_512_ffsampling(reg ptr u16[1024] out, reg ptr u64[4608] tree, reg const ptr u16[512] target, reg u64 rng)"
-      = true := by native_decide
+/- **Sanity: the trapdoor emit has the expected ABI.** -/
+#guard (strContains trapdoorJazz "export fn fndsa_512_ffsampling(reg ptr u16[1024] out, reg ptr u64[4608] tree, reg const ptr u16[512] target, reg u64 rng)")
 
-/-- **Sanity: the trapdoor emit calls all six Q11.52 + RCDT subroutines.** -/
-theorem trapdoor_has_all_kernels :
-    strContains trapdoorJazz "fxp_mul(" = true
-      ∧ strContains trapdoorJazz "fxp_div(" = true
-      ∧ strContains trapdoorJazz "fxp_add(" = true
-      ∧ strContains trapdoorJazz "fxp_sub(" = true
-      ∧ strContains trapdoorJazz "fxp_round(" = true
-      ∧ strContains trapdoorJazz "cdt_basesample(" = true := by
-  native_decide
+/- **Sanity: the trapdoor emit calls all six Q11.52 + RCDT subroutines.** -/
+#guard (strContains trapdoorJazz "fxp_mul(")
+    && (strContains trapdoorJazz "fxp_div(")
+    && (strContains trapdoorJazz "fxp_add(")
+    && (strContains trapdoorJazz "fxp_sub(")
+    && (strContains trapdoorJazz "fxp_round(")
+    && (strContains trapdoorJazz "cdt_basesample(")
 
 /-- **Sanity: the trapdoor emit walks the tree iteratively (the depth-9
     `for lv = 0 to 9` outer loop is present, with nested `for node`).** -/
@@ -695,23 +690,19 @@ theorem trapdoor_walks_tree_iteratively :
       ∧ strContains trapdoorJazz ("for k = 0 to " ++ toString FFSAMPLING_N) = true := by
   native_decide
 
-/-- **Sanity: the leaf loop actually moves data through `tree[]`, `target[]`,
+/- **Sanity: the leaf loop actually moves data through `tree[]`, `target[]`,
     and `out[]` (the stub-back-to-no-op detector). If a future agent
     replaces the body with `return out;` this theorem fails. -/
-theorem trapdoor_moves_data :
-    strContains trapdoorJazz "tree[base + 0]" = true
-      ∧ strContains trapdoorJazz "target[k]" = true
-      ∧ strContains trapdoorJazz "out[k] = " = true := by
-  native_decide
+#guard (strContains trapdoorJazz "tree[base + 0]")
+    && (strContains trapdoorJazz "target[k]")
+    && (strContains trapdoorJazz "out[k] = ")
 
-/-- **Verification-gap prevention (the structural marker theorem).** The emit
+/- **Verification-gap prevention (the structural marker theorem).** The emit
     body contains the magic string `ffsampling_real_v1_marker`. A future
     agent who reverts the body to a stub (the previous no-op pass-through)
     will not be able to compile this theorem, because the marker lives inside
     the per-leaf draw comment that the stub did not contain. -/
-theorem ffsamplingEmit_uses_spec :
-    strContains trapdoorJazz "ffsampling_real_v1_marker" = true := by
-  native_decide
+#guard (strContains trapdoorJazz "ffsampling_real_v1_marker")
 
 /-! ### 7.4 KAT (known-answer-test) framework against the spec
 

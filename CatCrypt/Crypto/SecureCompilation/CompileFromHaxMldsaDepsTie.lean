@@ -29,7 +29,7 @@ property of the spec instance onto the compiled realization with no new axioms.
 
 Each field is the per-coefficient signed-`int32` body of an ML-DSA-65 reduce
 primitive (`q = 8380417`), carried sign-extended into `BitVec 64` (the owned
-`PolyOwnedEmit` / `*OwnedEmit` convention). All come from the committed
+`PolyEmit` / `*Emit` convention). All come from the committed
 `*_compiles` leaves; the realization equality is their value-agreement clause:
 
 | Field          | Compiled leaf (`*_compiles`)        | Emit form / abstract tie                          |
@@ -41,14 +41,14 @@ primitive (`q = 8380417`), carried sign-extended into `BitVec 64` (the owned
 | `power2roundA0`| `power2roundA0_compiles`            | `power2roundA0Spec` (`power2roundReconstruct_eq`) |
 | `decomposeA0`  | `mldsaDecomposeA0_compiles`         | `mldsaDecomposeA0Form` (`decomposeA0_signMask_select`) |
 
-The right column lists, for honesty, the committed *abstract* identity each emit
+The right column lists the committed *abstract* identity each emit
 form satisfies (mod-`q` congruence / canonical-range / reconstruction); those are
 proved in the leaf modules and are not re-proved here. This file is the
 **functional-correctness tie**: it states *the emitted artifact computes exactly
 the per-coefficient reduce function the spec specifies*, framed as
 `compiled = spec`, not as a new security bound.
 
-## Honesty: representation gap to the protocol `Dependencies`
+## Representation gap to the protocol `Dependencies`
 
 The abstract `MLDSADependencies` / `PureMLDSACrypto` fields that the ML-DSA
 *security* proof consumes (`HaxTypes.lean`) operate at the **whole-`Vec` / whole-
@@ -62,7 +62,7 @@ to the FIPS-204 Barrett `reduce32` body. There is therefore **no concrete
 *into* `f_mod_q` / `f_highBits` (an `:= a` style placeholder substitution) would
 be tying to an uninterpreted/placeholder field — exactly what the task forbids.
 
-What is genuine, and what this file does, is the **repr-bridge layer**: pin an
+What this file does is the **repr-bridge layer**: pin an
 abstract per-coefficient reduce-`Dependencies` record (`MldsaReduceDeps`, the
 representation the leaves actually live at — per-coeff `BitVec 64`), give it the
 FIPS reference spec, and prove the verified-compiler-emitted leaves realize that
@@ -71,15 +71,15 @@ to the ML-DSA reduce family. The remaining gap — a concrete `PureMLDSACrypto`
 whose `f_highBits`/`f_lowBits`/`f_mod_q` are *defined* (lifting these per-coeff
 `BitVec 64` bodies through `UInt32 ≃ BitVec 32` and over a 256-coefficient
 `Poly`/`Vec`) — is a vector-lift + carrier-instantiation step, not a tie to an
-existing definition; it is honestly out of scope here.
+existing definition; it is out of scope here.
 
-## Honesty: UC vacuity of the ML-DSA `*_uc_secure` conclusions
+## UC vacuity of the ML-DSA `*_uc_secure` conclusions
 
 `SurfaceDeps.mldsa_hax_uc_secure` is `UCEmulates 0 …` proved by
 `intro A; use A; exact le_of_eq (sdist_self _)` — simulator = adversary, ε = 0,
 i.e. it is the trivial *(composition plumbing)* lift and says nothing
 protocol-specific (per the project's standing note that crypto `*_uc_security`
-are often `∃ ε, ε ≤ bound := ⟨_, le_refl⟩`). The genuine ML-DSA bound lives in
+are often `∃ ε, ε ≤ bound := ⟨_, le_refl⟩`). The ML-DSA bound lives in
 `mldsa_eufcma_security` (Kiltz–Lyubashevsky–Schaffner) and is parametric over the
 abstract `Dependencies`, never reaching down to `f_mod_q`. The tie in this file is
 therefore meaningful **at the functional-correctness layer** — the emitted leaf

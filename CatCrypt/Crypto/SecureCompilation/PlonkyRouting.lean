@@ -17,7 +17,7 @@ single `RegProg` by sequencing the compiled multiply and add kernels (`++` is th
 sequencing law `denotePure_append`), routing registers with `mov`.
 
 The result `bbFriFoldProg`:
-* `bbFriFold_zmod` — computes the genuine `ZMod babyBear` fold value;
+* `bbFriFold_zmod` — computes the `ZMod babyBear` fold value;
 * `bbFriFold_arm` / `bbFriFold_riscv` — compiles to both backends.
 
 Composition needs one ingredient — that a kernel leaves the registers it never writes
@@ -66,19 +66,44 @@ theorem denotePure_app_ne (r : String) : ∀ (p : RegProg) (e : Env),
           (fun s' hs' => h s' (List.mem_cons_of_mem _ hs')),
         evalRegStmtPure_app_ne e s r (h s List.mem_cons_self)]
 
+/-- A register outside a program's list of destinations is written by none of its
+    statements. -/
+theorem ne_dst_of_not_mem_dsts (r : String) (p : RegProg) (h : r ∉ p.map RegStmt.dst) :
+    ∀ s ∈ p, r ≠ RegStmt.dst s :=
+  fun s hs hr => h (List.mem_map.mpr ⟨s, hs, hr.symm⟩)
+
+/-- The destination registers of the BabyBear multiply kernel, in order. -/
+theorem bbMulProg_dsts :
+    bbMulProg.map RegStmt.dst =
+      ["x", "muc", "q", "pc", "qp", "r", "ones", "zero", "d", "rxp", "nrxp", "t1", "nr", "t2",
+       "bor0", "bor", "mask", "r1", "nmask", "r2", "res"] := rfl
+
+/-- The destination registers of the BabyBear add kernel, in order. -/
+theorem bbAddProg_dsts :
+    bbAddProg.map RegStmt.dst =
+      ["s", "pc", "d", "ones", "sxp", "nsxp", "t1", "ns", "t2", "bor0", "bor", "zero", "mask",
+       "r1", "nmask", "r2", "res"] := rfl
+
+/-- The destination registers of the modular-subtract kernel, in order. -/
+theorem submodProg_dsts (p : Nat) :
+    (submodProg p).map RegStmt.dst =
+      ["d", "pc", "ones", "axb", "naxb", "t1", "na", "t2", "bor0", "bor", "zero", "mask", "mp",
+       "res"] := rfl
+
 /-! ## The FRI fold, routed through the compiler -/
 
 /-- plonky3's FRI fold `fEven + β·fOdd` over BabyBear: copy `(β, fOdd)` into the
     multiply kernel's inputs, run `bbMulProg`, copy `(fEven, β·fOdd)` into the add
     kernel's inputs, run `bbAddProg`. Inputs in `fe`, `be`, `fo`; result in `res`. -/
 def bbFriFoldProg : RegProg :=
-  [.mov "a" "be", .mov "b" "fo"] ++ bbMulProg
-    ++ [.mov "a" "fe", .mov "b" "res"] ++ bbAddProg
+  [RegStmt.mov "a" "be", RegStmt.mov "b" "fo"] ++ bbMulProg
+    ++ [RegStmt.mov "a" "fe", RegStmt.mov "b" "res"] ++ bbAddProg
 
 /-- `fe` is not written by the multiply kernel, so it survives the call. -/
-theorem fe_fresh_mul : ∀ s ∈ bbMulProg, "fe" ≠ RegStmt.dst s := by decide
+theorem fe_fresh_mul : ∀ s ∈ bbMulProg, "fe" ≠ RegStmt.dst s :=
+  ne_dst_of_not_mem_dsts _ _ (by simp [bbMulProg_dsts])
 
-/-- **The composed program computes the genuine `ZMod babyBear` FRI fold.** -/
+/-- The composed program computes the `ZMod babyBear` FRI fold. -/
 theorem bbFriFold_zmod (env : Env)
     (hfe : (env "fe").toNat < babyBear) (hbe : (env "be").toNat < babyBear)
     (hfo : (env "fo").toNat < babyBear) :
@@ -88,11 +113,14 @@ theorem bbFriFold_zmod (env : Env)
   -- e1: after the input movs for the multiply
   set e1 := RegProg.denotePure [RegStmt.mov "a" "be", RegStmt.mov "b" "fo"] env with he1
   have he1a : e1 "a" = env "be" := by
-    simp [he1, RegProg.denotePure, evalRegStmtPure, Env.set, Env.get]
+    simp only [he1, RegProg.denotePure, List.foldl_cons, List.foldl_nil, evalRegStmtPure, Env.set,
+      Env.get, String.reduceEq, reduceIte]
   have he1b : e1 "b" = env "fo" := by
-    simp [he1, RegProg.denotePure, evalRegStmtPure, Env.set, Env.get]
+    simp only [he1, RegProg.denotePure, List.foldl_cons, List.foldl_nil, evalRegStmtPure, Env.set,
+      Env.get, String.reduceEq, reduceIte]
   have he1fe : e1 "fe" = env "fe" := by
-    simp [he1, RegProg.denotePure, evalRegStmtPure, Env.set, Env.get]
+    simp only [he1, RegProg.denotePure, List.foldl_cons, List.foldl_nil, evalRegStmtPure, Env.set,
+      Env.get, String.reduceEq, reduceIte]
   -- e2: after the multiply kernel
   set e2 := RegProg.denotePure bbMulProg e1 with he2
   have he2res : (e2 "res").toNat = ((env "be").toNat * (env "fo").toNat) % babyBear := by
@@ -108,7 +136,8 @@ theorem bbFriFold_zmod (env : Env)
       Env.get, String.reduceEq, reduceIte]
     rw [he2fe]
   have he3b : e3 "b" = e2 "res" := by
-    simp [he3, RegProg.denotePure, evalRegStmtPure, Env.set, Env.get]
+    simp only [he3, RegProg.denotePure, List.foldl_cons, List.foldl_nil, evalRegStmtPure, Env.set,
+      Env.get, String.reduceEq, reduceIte]
   -- final add kernel
   have hba : (e3 "a").toNat < babyBear := by rw [he3a]; exact hfe
   have hbb : (e3 "b").toNat < babyBear := by
@@ -125,7 +154,8 @@ theorem bbFriFold_zmod (env : Env)
     rw [← Nat.cast_mul, ← Nat.cast_add, ZMod.val_natCast]
   rw [hfinal, he3a, he3b, he2res, hrhs, Nat.add_mod, Nat.mod_mod, ← Nat.add_mod]
 
-/-- The composed fold compiles to AArch64 (the generic keystone over the whole program). -/
+/-- The composed fold compiles to AArch64: the machine run of the lowered block
+    realises the whole program's `RegProg` denotation. -/
 theorem bbFriFold_arm (s : BState) :
     runBBlock s (lowerBBlock (regToBOp bbFriFoldProg)) = armTarget.denote bbFriFoldProg s :=
   regToBOp_denote bbFriFoldProg s
@@ -153,25 +183,32 @@ theorem bbMul_resLt (e : Env) (ha : (e "a").toNat < babyBear) (hb : (e "b").toNa
   rw [bbMul_zmod e ha hb]; exact ZMod.val_lt _
 
 /-- `fx` is not written by the multiply kernel, so it survives each call. -/
-theorem fx_fresh_mul : ∀ s ∈ bbMulProg, "fx" ≠ RegStmt.dst s := by decide
+theorem fx_fresh_mul : ∀ s ∈ bbMulProg, "fx" ≠ RegStmt.dst s :=
+  ne_dst_of_not_mem_dsts _ _ (by simp [bbMulProg_dsts])
 
 /-- plonky3's Poseidon S-box `x^5 = ((x·x)·(x·x))·x` over BabyBear: three multiply
     kernels chained, squaring then squaring then one more multiply. Input `fx`, result
     `res`. -/
 def bbSboxProg : RegProg :=
-  [.mov "a" "fx", .mov "b" "fx"] ++ bbMulProg
-    ++ [.mov "s2" "res", .mov "a" "s2", .mov "b" "s2"] ++ bbMulProg
-    ++ [.mov "s4" "res", .mov "a" "s4", .mov "b" "fx"] ++ bbMulProg
+  [RegStmt.mov "a" "fx", RegStmt.mov "b" "fx"] ++ bbMulProg
+    ++ [RegStmt.mov "s2" "res", RegStmt.mov "a" "s2", RegStmt.mov "b" "s2"] ++ bbMulProg
+    ++ [RegStmt.mov "s4" "res", RegStmt.mov "a" "s4", RegStmt.mov "b" "fx"] ++ bbMulProg
 
-/-- **The composed program computes the genuine `ZMod babyBear` S-box `x^5`.** -/
+/-- The composed program computes the `ZMod babyBear` S-box `x^5`. -/
 theorem bbSbox_zmod (env : Env) (hx : (env "fx").toNat < babyBear) :
     ((RegProg.denotePure bbSboxProg env) "res").toNat
       = (((env "fx").toNat : ZMod babyBear) ^ 5).val := by
   -- e1: inputs (x, x) for the first square
   set e1 := RegProg.denotePure [RegStmt.mov "a" "fx", RegStmt.mov "b" "fx"] env with he1
-  have he1a : e1 "a" = env "fx" := by simp [he1, RegProg.denotePure, evalRegStmtPure, Env.set, Env.get]
-  have he1b : e1 "b" = env "fx" := by simp [he1, RegProg.denotePure, evalRegStmtPure, Env.set, Env.get]
-  have he1fx : e1 "fx" = env "fx" := by simp [he1, RegProg.denotePure, evalRegStmtPure, Env.set, Env.get]
+  have he1a : e1 "a" = env "fx" := by
+    simp only [he1, RegProg.denotePure, List.foldl_cons, List.foldl_nil, evalRegStmtPure, Env.set,
+      Env.get, String.reduceEq, reduceIte]
+  have he1b : e1 "b" = env "fx" := by
+    simp only [he1, RegProg.denotePure, List.foldl_cons, List.foldl_nil, evalRegStmtPure, Env.set,
+      Env.get, String.reduceEq, reduceIte]
+  have he1fx : e1 "fx" = env "fx" := by
+    simp only [he1, RegProg.denotePure, List.foldl_cons, List.foldl_nil, evalRegStmtPure, Env.set,
+      Env.get, String.reduceEq, reduceIte]
   have ha1 : (e1 "a").toNat < babyBear := by rw [he1a]; exact hx
   have hb1 : (e1 "b").toNat < babyBear := by rw [he1b]; exact hx
   -- m1 = x²
@@ -184,8 +221,12 @@ theorem bbSbox_zmod (env : Env) (hx : (env "fx").toNat < babyBear) :
   -- e2: inputs (x², x²) for the second square
   set e2 := RegProg.denotePure [RegStmt.mov "s2" "res", RegStmt.mov "a" "s2", RegStmt.mov "b" "s2"] m1
     with he2
-  have he2a : e2 "a" = m1 "res" := by simp [he2, RegProg.denotePure, evalRegStmtPure, Env.set, Env.get]
-  have he2b : e2 "b" = m1 "res" := by simp [he2, RegProg.denotePure, evalRegStmtPure, Env.set, Env.get]
+  have he2a : e2 "a" = m1 "res" := by
+    simp only [he2, RegProg.denotePure, List.foldl_cons, List.foldl_nil, evalRegStmtPure, Env.set,
+      Env.get, String.reduceEq, reduceIte]
+  have he2b : e2 "b" = m1 "res" := by
+    simp only [he2, RegProg.denotePure, List.foldl_cons, List.foldl_nil, evalRegStmtPure, Env.set,
+      Env.get, String.reduceEq, reduceIte]
   have he2fx : e2 "fx" = env "fx" := by
     simp only [he2, RegProg.denotePure, List.foldl_cons, List.foldl_nil, evalRegStmtPure, Env.set,
       Env.get, String.reduceEq, reduceIte]; rw [hm1fx]
@@ -201,7 +242,9 @@ theorem bbSbox_zmod (env : Env) (hx : (env "fx").toNat < babyBear) :
   -- e3: inputs (x⁴, x) for the final multiply
   set e3 := RegProg.denotePure [RegStmt.mov "s4" "res", RegStmt.mov "a" "s4", RegStmt.mov "b" "fx"] m2
     with he3
-  have he3a : e3 "a" = m2 "res" := by simp [he3, RegProg.denotePure, evalRegStmtPure, Env.set, Env.get]
+  have he3a : e3 "a" = m2 "res" := by
+    simp only [he3, RegProg.denotePure, List.foldl_cons, List.foldl_nil, evalRegStmtPure, Env.set,
+      Env.get, String.reduceEq, reduceIte]
   have he3b : e3 "b" = env "fx" := by
     simp only [he3, RegProg.denotePure, List.foldl_cons, List.foldl_nil, evalRegStmtPure, Env.set,
       Env.get, String.reduceEq, reduceIte]; rw [hm2fx]
@@ -238,17 +281,24 @@ The radix-2 butterfly `(a, b) ↦ (a + ω·b, a − ω·b)` — one multiply (`�
 (`a + ω·b` → `o0`), one modular subtract (`a − ω·b` → `res`) — chaining the compiled
 BabyBear kernels and holding `a` and `ω·b` across the calls via register preservation. -/
 
-theorem fa_fresh_mul : ∀ s ∈ bbMulProg, "fa" ≠ RegStmt.dst s := by decide
-theorem fa_fresh_add : ∀ s ∈ bbAddProg, "fa" ≠ RegStmt.dst s := by decide
-theorem wb_fresh_add : ∀ s ∈ bbAddProg, "wb" ≠ RegStmt.dst s := by decide
-theorem o0_fresh_sub : ∀ s ∈ submodProg babyBear, "o0" ≠ RegStmt.dst s := by decide
+theorem fa_fresh_mul : ∀ s ∈ bbMulProg, "fa" ≠ RegStmt.dst s :=
+  ne_dst_of_not_mem_dsts _ _ (by simp [bbMulProg_dsts])
+
+theorem fa_fresh_add : ∀ s ∈ bbAddProg, "fa" ≠ RegStmt.dst s :=
+  ne_dst_of_not_mem_dsts _ _ (by simp [bbAddProg_dsts])
+
+theorem wb_fresh_add : ∀ s ∈ bbAddProg, "wb" ≠ RegStmt.dst s :=
+  ne_dst_of_not_mem_dsts _ _ (by simp [bbAddProg_dsts])
+
+theorem o0_fresh_sub : ∀ s ∈ submodProg babyBear, "o0" ≠ RegStmt.dst s :=
+  ne_dst_of_not_mem_dsts _ _ (by simp [submodProg_dsts])
 
 /-- plonky3's radix-2 NTT butterfly over BabyBear. Inputs `fa = a`, `fw = ω`,
     `fb = b`; outputs `o0 = a + ω·b` and `res = a − ω·b`. -/
 def bbButterflyProg : RegProg :=
-  [.mov "a" "fw", .mov "b" "fb"] ++ bbMulProg
-    ++ [.mov "wb" "res", .mov "a" "fa", .mov "b" "wb"] ++ bbAddProg
-    ++ [.mov "o0" "res", .mov "a" "fa", .mov "b" "wb"] ++ submodProg babyBear
+  [RegStmt.mov "a" "fw", RegStmt.mov "b" "fb"] ++ bbMulProg
+    ++ [RegStmt.mov "wb" "res", RegStmt.mov "a" "fa", RegStmt.mov "b" "wb"] ++ bbAddProg
+    ++ [RegStmt.mov "o0" "res", RegStmt.mov "a" "fa", RegStmt.mov "b" "wb"] ++ submodProg babyBear
 
 /-- Shared setup: the value-and-preservation facts up to (and including) the add kernel. -/
 private theorem bb_butterfly_pre (env : Env)
@@ -268,9 +318,15 @@ private theorem bb_butterfly_pre (env : Env)
               + ((env "fw").toNat : ZMod babyBear) * ((env "fb").toNat : ZMod babyBear)).val) := by
   -- e1, m1 (the multiply), e2, ma (the add)
   set e1 := RegProg.denotePure [RegStmt.mov "a" "fw", RegStmt.mov "b" "fb"] env with he1
-  have he1a : e1 "a" = env "fw" := by simp [he1, RegProg.denotePure, evalRegStmtPure, Env.set, Env.get]
-  have he1b : e1 "b" = env "fb" := by simp [he1, RegProg.denotePure, evalRegStmtPure, Env.set, Env.get]
-  have he1fa : e1 "fa" = env "fa" := by simp [he1, RegProg.denotePure, evalRegStmtPure, Env.set, Env.get]
+  have he1a : e1 "a" = env "fw" := by
+    simp only [he1, RegProg.denotePure, List.foldl_cons, List.foldl_nil, evalRegStmtPure, Env.set,
+      Env.get, String.reduceEq, reduceIte]
+  have he1b : e1 "b" = env "fb" := by
+    simp only [he1, RegProg.denotePure, List.foldl_cons, List.foldl_nil, evalRegStmtPure, Env.set,
+      Env.get, String.reduceEq, reduceIte]
+  have he1fa : e1 "fa" = env "fa" := by
+    simp only [he1, RegProg.denotePure, List.foldl_cons, List.foldl_nil, evalRegStmtPure, Env.set,
+      Env.get, String.reduceEq, reduceIte]
   have ha1 : (e1 "a").toNat < babyBear := by rw [he1a]; exact hfw
   have hb1 : (e1 "b").toNat < babyBear := by rw [he1b]; exact hfb
   set m1 := RegProg.denotePure bbMulProg e1 with hm1
@@ -285,8 +341,12 @@ private theorem bb_butterfly_pre (env : Env)
   have he2a : e2 "a" = env "fa" := by
     simp only [he2, RegProg.denotePure, List.foldl_cons, List.foldl_nil, evalRegStmtPure, Env.set,
       Env.get, String.reduceEq, reduceIte]; rw [hm1fa]
-  have he2b : e2 "b" = m1 "res" := by simp [he2, RegProg.denotePure, evalRegStmtPure, Env.set, Env.get]
-  have he2wb : e2 "wb" = m1 "res" := by simp [he2, RegProg.denotePure, evalRegStmtPure, Env.set, Env.get]
+  have he2b : e2 "b" = m1 "res" := by
+    simp only [he2, RegProg.denotePure, List.foldl_cons, List.foldl_nil, evalRegStmtPure, Env.set,
+      Env.get, String.reduceEq, reduceIte]
+  have he2wb : e2 "wb" = m1 "res" := by
+    simp only [he2, RegProg.denotePure, List.foldl_cons, List.foldl_nil, evalRegStmtPure, Env.set,
+      Env.get, String.reduceEq, reduceIte]
   have he2fa : e2 "fa" = env "fa" := by
     simp only [he2, RegProg.denotePure, List.foldl_cons, List.foldl_nil, evalRegStmtPure, Env.set,
       Env.get, String.reduceEq, reduceIte]; rw [hm1fa]
@@ -300,7 +360,7 @@ private theorem bb_butterfly_pre (env : Env)
   · rw [denotePure_app_ne "wb" bbAddProg e2 wb_fresh_add, he2wb]; exact hm1lt
   · rw [bbAddProg, addmodProg_zmod babyBear e2 (by decide) ha2 hb2, he2a, he2b, hm1z]
 
-/-- **The butterfly's first output `o0` is the genuine field value `a + ω·b`.** -/
+/-- The butterfly's first output `o0` is the field value `a + ω·b`. -/
 theorem bbButterfly_o0_zmod (env : Env)
     (hfa : (env "fa").toNat < babyBear) (hfw : (env "fw").toNat < babyBear)
     (hfb : (env "fb").toNat < babyBear) :
@@ -312,13 +372,14 @@ theorem bbButterfly_o0_zmod (env : Env)
   set e3 := RegProg.denotePure [RegStmt.mov "o0" "res", RegStmt.mov "a" "fa", RegStmt.mov "b" "wb"] ma
     with he3
   have he3o0 : e3 "o0" = ma "res" := by
-    simp [he3, RegProg.denotePure, evalRegStmtPure, Env.set, Env.get]
+    simp only [he3, RegProg.denotePure, List.foldl_cons, List.foldl_nil, evalRegStmtPure, Env.set,
+      Env.get, String.reduceEq, reduceIte]
   have hfinal : (RegProg.denotePure bbButterflyProg env) "o0"
       = (RegProg.denotePure (submodProg babyBear) e3) "o0" := by
     rw [bbButterflyProg, RegProg.denotePure_append, RegProg.denotePure_append, hma, ← he3]
   rw [hfinal, denotePure_app_ne "o0" (submodProg babyBear) e3 o0_fresh_sub, he3o0, hmares]
 
-/-- **The butterfly's second output `res` is the genuine field value `a − ω·b`.** -/
+/-- The butterfly's second output `res` is the field value `a − ω·b`. -/
 theorem bbButterfly_res_zmod (env : Env)
     (hfa : (env "fa").toNat < babyBear) (hfw : (env "fw").toNat < babyBear)
     (hfb : (env "fb").toNat < babyBear) :

@@ -124,7 +124,7 @@ Use `@[rust_cmd_pattern_computable]` (new, head is a `def`) when:
   identities.  No ABI axiom needed because the leaf IS the spec.
 
 Both attributes share the same persistent registry shape (`LowCTPattern`)
-and the same downstream pipeline (`translate → cprogToJasminCom →
+and the same downstream pipeline (`translate → cryptoDialectToJasminCom →
 emitAbiOrch...` sees an opaque `extCall "<leaf-name>"` regardless).
 The only difference is whether the reifier's `whnf` is bypassed for the
 head (yes for `_computable`, no for the legacy attribute).  -/

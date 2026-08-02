@@ -129,8 +129,12 @@ structure HaxProtocol (hon β : Type) (E : EventSig) (n : Nat) where
   h_spec : forall handler : (forall e : E.Event, SPComp (E.Resp e)),
     sdistITreeN n E handler (haxLift n E spec) ideal ≤ ε_spec
 
-/-- The full SPQR-style security theorem: the Hax-extracted code is
-    (ε_spec + ε_extract)-close to the ideal functionality. -/
+/-- The Hax-extracted code is `(ε_spec + ε_extract)`-close to the ideal
+    functionality *(composition plumbing)*.
+
+    A triangle inequality over the two distances the structure already carries,
+    composed by `haxLift_uc_transfer`. The conclusion is a bound on
+    `sdistITreeN`, not a `UCEmulates` with a simulator. -/
 theorem HaxProtocol.uc_secure {hon β : Type} {E : EventSig} {n : Nat}
     (P : HaxProtocol hon β E n)
     (handler : forall e : E.Event, SPComp (E.Resp e)) :

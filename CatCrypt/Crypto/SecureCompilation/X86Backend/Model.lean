@@ -40,9 +40,9 @@ The correspondence is recorded and machine-checked in
   Rocq (full five-flag state + the `x86_*` functions + `evalInstr`/`runBlock`);
   this `Model.lean` `step` is reconciled with it on the data result in
   `TranslationValidation.lean`'s `Jasmin` section.
-* `CT-CompCert` and `K-x86` are compared against in `X86_MODEL_COMPARISON.md`
-  (a human-readable cross-framework side-by-side, not a machine-checked
-  equivalence). A **second independent machine-checked anchor**, the Sail x86
+* `CT-CompCert` and `K-x86` have been read side by side against this model, on
+  paper and not as a machine-checked equivalence, so neither constrains what is
+  proved here. A **second independent machine-checked anchor**, the Sail x86
   model derived from the ACL2 `x86isa` model
   (`rems-project/sail-x86-from-acl2`), is wired in `SailX86Validation.lean`
   (#437): the owned `step`/`evalInstr` are pinned to the Sail spec functions'
@@ -321,8 +321,8 @@ inductive Instr (w : Nat) where
   /-- `SUB dst, src` : `dst := dst - src`; sets `CF` to the unsigned borrow. -/
   | sub (dst : Reg) (src : Operand)
   /-- `ADC dst, src` : `dst := dst + src + CF`; sets `CF` to the new carry-out.
-      The bignum add-with-carry workhorse (no `JasminBinOp` source counterpart;
-      validated directly against Jasmin's `x86_ADC`). -/
+      The bignum add-with-carry instruction (no `JasminBinOp` source
+      counterpart; validated directly against Jasmin's `x86_ADC`). -/
   | adc (dst : Reg) (src : Operand)
   /-- `SBB dst, src` : `dst := dst - src - CF`; sets `CF` to the new borrow.
       Validated directly against Jasmin's `x86_SBB`. -/

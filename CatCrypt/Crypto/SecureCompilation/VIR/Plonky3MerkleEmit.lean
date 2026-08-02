@@ -263,16 +263,14 @@ def merkleJazz : String :=
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (strContains)
 
-/-- The emitted Merkle `.jazz` declares the `export fn merkle_build_root`, the
+/- The emitted Merkle `.jazz` declares the `export fn merkle_build_root`, the
     two-to-one compress, and the leaf hash — and uses NO opaque leaf
     (`extCall`). -/
-theorem merkleJazz_shape :
-    strContains merkleJazz "export fn merkle_build_root(" = true
-      ∧ strContains merkleJazz "inline fn h2to1(" = true
-      ∧ strContains merkleJazz "inline fn hleaf(" = true
-      ∧ strContains merkleJazz "t *= 0x9E; t += i;" = true
-      ∧ strContains merkleJazz "extCall" = false := by
-  refine ⟨?_, ?_, ?_, ?_, ?_⟩ <;> native_decide
+#guard (strContains merkleJazz "export fn merkle_build_root(")
+    && (strContains merkleJazz "inline fn h2to1(")
+    && (strContains merkleJazz "inline fn hleaf(")
+    && (strContains merkleJazz "t *= 0x9E; t += i;")
+    && !(strContains merkleJazz "extCall")
 
 /-! ## 6. KAT: byte-identity against the plonky3-hax reference
 

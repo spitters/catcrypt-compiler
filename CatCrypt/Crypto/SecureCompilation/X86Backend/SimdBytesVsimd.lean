@@ -52,7 +52,7 @@ store are the SAME straight-line ABI glue as `SimdBytes.encodeAesEcbBlock`.
 Round keys / state are pinned to the SAME XMM slots as the bespoke
 `aesEcbAlloc` (`ct ↦ %xmm0`, `st ↦ %xmm1`, `rk_k ↦ %xmm(2+k)`).
 
-## Honest status
+## Status
 
 The Com program is pinned `denote = spec` by a whole-program `rfl` (unfolding
 the `Com`/`Expr` smart constructors resolves the `vsimd` denote arms to the same
@@ -240,33 +240,25 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (strContains)
 theorem asm_has_export :
     strContains aesEcbExportAsm "aes128_ecb_block:" = true := by native_decide
 
-/-- The whitening + the AES round chain is emitted: the `VPXOR` whitening, the
+/- The whitening + the AES round chain is emitted: the `VPXOR` whitening, the
     `VAESENC` rounds, and the final `VAESENCLAST`. -/
-theorem asm_has_aes_rounds :
-    strContains aesEcbExportAsm "vpxor " = true
-      ∧ strContains aesEcbExportAsm "vaesenc " = true
-      ∧ strContains aesEcbExportAsm "vaesenclast " = true := by
-  refine ⟨?_, ?_, ?_⟩ <;> native_decide
+#guard (strContains aesEcbExportAsm "vpxor ")
+    && (strContains aesEcbExportAsm "vaesenc ")
+    && (strContains aesEcbExportAsm "vaesenclast ")
 
-/-- The single-struct ABI is emitted: round-key/plaintext loads from `%rdi` and
+/- The single-struct ABI is emitted: round-key/plaintext loads from `%rdi` and
     the ciphertext store to `(%rdi + 192)`. -/
-theorem asm_has_abi :
-    strContains aesEcbExportAsm "(%rdi), %xmm2" = true
-      ∧ strContains aesEcbExportAsm "176(%rdi), %xmm0" = true
-      ∧ strContains aesEcbExportAsm ", 192(%rdi)" = true := by
-  refine ⟨?_, ?_, ?_⟩ <;> native_decide
+#guard (strContains aesEcbExportAsm "(%rdi), %xmm2")
+    && (strContains aesEcbExportAsm "176(%rdi), %xmm0")
+    && (strContains aesEcbExportAsm ", 192(%rdi)")
 
-/-- No register name escaped allocation (the 11 round keys + state + plaintext
+/- No register name escaped allocation (the 11 round keys + state + plaintext
     fit in 13 XMM, no spill). -/
-theorem asm_no_unallocated :
-    strContains aesEcbExportAsm "UNALLOCATED" = false := by native_decide
+#guard !(strContains aesEcbExportAsm "UNALLOCATED")
 
-/-- No UPPERCASE jasmin intrinsic survives — the owned (no-jasminc)
+/- No UPPERCASE jasmin intrinsic survives — the owned (no-jasminc)
     lowercase-mnemonic path. -/
-theorem asm_no_jasmin_intrinsic :
-    strContains aesEcbExportAsm "VAESENC" = false
-      ∧ strContains aesEcbExportAsm "VPXOR" = false := by
-  refine ⟨?_, ?_⟩ <;> native_decide
+#guard !(strContains aesEcbExportAsm "VAESENC") && !(strContains aesEcbExportAsm "VPXOR")
 
 /-! ## 7. Emit driver -/
 
@@ -282,5 +274,5 @@ end CatCrypt.Crypto.SecureCompilation.X86Backend.SimdBytesVsimd
 open CatCrypt.Crypto.SecureCompilation.X86Backend.SimdBytesVsimd in
 /-- `lake env lean --run` entry point: emit the owned-backend AES-128-ECB
     single-block `.s` on the unified `Com jasminDialect`. `private` so it does
-    not collide with other `main`s in the `OwnedEmitAll` rot-guard aggregator. -/
+    not collide with other `main`s in the `EmitAll` rot-guard aggregator. -/
 private def main : IO Unit := emit

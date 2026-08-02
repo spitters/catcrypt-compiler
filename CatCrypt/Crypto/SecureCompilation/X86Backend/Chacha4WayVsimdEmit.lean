@@ -9,7 +9,7 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.ElfObject
 /-!
 # The whole ChaCha20 4-way block, owned-emitted on the unified stack (Vec128 teardown)
 
-This is the `Vec128*`-free twin of `X86Backend.Chacha4WayOwnedEmit`: the **whole**
+This is the `Vec128*`-free twin of `X86Backend.Chacha4WayEmit`: the **whole**
 4-way ChaCha20 block (RFC 8439 §2.3.2), assembled to machine bytes through the
 owned x86(+SIMD) backend with neither `gas` nor `jasminc` on the artifact path —
 but riding the standalone ChaCha byte-helper layer
@@ -18,12 +18,12 @@ transpose body `transpose4BytesU`, and the `vmovdqu`/`vpaddd`/`sub`/`add`/`ret`
 ABI glue), so it imports **no** `Vec128*` file and **no** `SimdBytes`.
 
 It reproduces, byte-for-byte, the `SimdBytes`-based
-`Chacha4WayOwnedEmit.encodeChacha20_4way_block`: the structural seams and the
+`Chacha4WayEmit.encodeChacha20_4way_block`: the structural seams and the
 full-emit-path RFC 8439 §2.3.2 denotational self-check are preserved.
 
 ## Register budget — the memory-resident SoA schedule
 
-Identical to `Chacha4WayOwnedEmit`: the sixteen SoA words stay resident in the
+Identical to `Chacha4WayEmit`: the sixteen SoA words stay resident in the
 `%rdi` buffer and the round is processed one quarter-round at a time (each acts on
 a disjoint four-word set), so only four words + one rotate temp (= five XMM) are
 live at once.  The four words are loaded from the SoA buffer, the quarter-round
@@ -50,7 +50,7 @@ value-level KAT.
 Identical to `VsimdChachaByteEncoder` / `SimdBytes`: the quarter-round / transpose
 body bytes and the ABI glue are each gas-pinned in `VsimdChachaByteEncoder`; the
 VEX SIMD opcodes have no ACL2 x86isa decode tables, so this stays at the
-gas-pinned validation tier — the same honest residual as the rest of the SIMD
+gas-pinned validation tier — the same residual as the rest of the SIMD
 byte path.
 -/
 
@@ -156,7 +156,7 @@ def encodePhaseC : List (BitVec 8) :=
     (snapshot + rounds + feed-forward) ++ Phase C (SoA→AoS) ++ the two-pointer
     return-value epilogue (`mov %rdi,%rax ; ret`).  No `gas`, no `jasminc`, no
     `Vec128*` on the artifact path.  The canonical entry point (the `SimdBytes`-free
-    twin of `Chacha4WayOwnedEmit.encodeChacha20_4way_block`). -/
+    twin of `Chacha4WayEmit.encodeChacha20_4way_block`). -/
 def emit : List (BitVec 8) :=
   encodePhaseA ++ encodePhaseB ++ encodePhaseC ++ encRetOutPtrU
 
@@ -168,7 +168,7 @@ private def main : List (BitVec 8) := emit
 def chacha20_4way_blockObject : List (BitVec 8) :=
   ElfObject.buildElfObject "chacha20_4way_block" emit
 
-/-! ## 7. Structural well-formedness pins (mirroring `Chacha4WayOwnedEmit` §7) -/
+/-! ## 7. Structural well-formedness pins (mirroring `Chacha4WayEmit` §7) -/
 
 /-- The kernel ends with the two-pointer return-value epilogue `mov %rdi,%rax ; ret`. -/
 theorem emit_tail :
@@ -183,14 +183,15 @@ theorem encodeQR_0_4_8_12_eq :
         ++ (encVmovdquStoreU 0 0 ++ encVmovdquStoreU 1 64 ++ encVmovdquStoreU 2 128
             ++ encVmovdquStoreU 3 192) := by native_decide
 
-/-- The 4-way block object begins with the 64-byte `Elf64_Ehdr` magic. -/
+/-- The 4-way block object begins with the 64-byte `Elf64_Ehdr` magic
+    (`ElfObject.buildElfObject_magic` at this kernel). -/
 theorem chacha20_4way_blockObject_header :
-    chacha20_4way_blockObject.take 6 = [0x7f, 0x45, 0x4c, 0x46, 2, 1].map (BitVec.ofNat 8) := by
-  native_decide
+    chacha20_4way_blockObject.take 6 = [0x7f, 0x45, 0x4c, 0x46, 2, 1].map (BitVec.ofNat 8) :=
+  ElfObject.buildElfObject_magic _ _
 
 /-! ## 8. Full-emit-path denotational self-check vs RFC 8439 §2.3.2
 
-The same whole-marshalled-data-flow check as `Chacha4WayOwnedEmit` §8: Phase A
+The same whole-marshalled-data-flow check as `Chacha4WayEmit` §8: Phase A
 transpose ∘ the memory-resident rounds ∘ Phase C transpose over a model `u32`
 memory, using the same offset formulas the byte-emit addresses, checked against a
 from-scratch RFC 8439 §2.3.2 reference.  By the gas-pins in
@@ -329,7 +330,7 @@ def refOut : Array (BitVec 32) :=
     Phase A ∘ memory-resident rounds ∘ Phase C — reproduces the from-scratch
     RFC 8439 §2.3.2 reference on all 4 blocks × 16 AoS words, over the exact
     offset formulas the byte-emit addresses (the `Vec128*`-free twin of
-    `Chacha4WayOwnedEmit.DenoteCheck.denoteKernel_matches_rfc`). -/
+    `Chacha4WayEmit.DenoteCheck.denoteKernel_matches_rfc`). -/
 theorem denoteKernel_matches_rfc :
     (List.range 64).all (fun i =>
       (denoteKernel modelInput).getD i 0 = refOut.getD i 0) = true := by

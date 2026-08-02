@@ -9,7 +9,7 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.CryptoExtEncoder
 /-!
 # Standalone ChaCha byte-helper layer (Vec128 teardown)
 
-The whole ChaCha20 4-way owned kernel (`X86Backend.Chacha4WayOwnedEmit`) is a
+The whole ChaCha20 4-way owned kernel (`X86Backend.Chacha4WayEmit`) is a
 `Vec128*` consumer: its quarter-round body bytes and its AoS↔SoA 4×4 transpose
 body bytes are produced by `X86Backend.SimdBytes.encodeVBlock` over the bespoke
 `Vec128.VInst` IR (`cbQR`/`transpose4Block`, register-resolved through the
@@ -35,7 +35,7 @@ Each helper's byte output is built from `CryptoExt`'s audited prefix builders
 (the same construction `Vec128.encodeVInst` is built on) and pinned, byte-for-byte,
 to the exact `SimdBytes`/gas reference via `native_decide` — so the migrated
 `Chacha4WayVsimdEmit` kernel is byte-identical to the `SimdBytes`-based
-`Chacha4WayOwnedEmit` with **zero** `Vec128*` imports.
+`Chacha4WayEmit` with **zero** `Vec128*` imports.
 
 ## Trust posture
 
@@ -43,7 +43,7 @@ Identical in kind to `SimdBytes` / `VsimdByteEncoder`: each VEX builder is
 `CryptoExt`'s audited bit-layout construction, and every helper byte string is
 gas-pinned (`as --64` + `objdump -d`).  The decode round-trip for the VEX SIMD
 opcodes is the same gas-pinned tier (the ACL2 x86isa / sail-x86 model has no VEX
-SIMD decode tables) — the honest residual, the same ceiling `SimdBytes` records.
+SIMD decode tables) — the residual, the same ceiling `SimdBytes` records.
 -/
 
 set_option autoImplicit false

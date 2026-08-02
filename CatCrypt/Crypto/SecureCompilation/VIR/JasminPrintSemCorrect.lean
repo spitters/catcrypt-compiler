@@ -234,6 +234,9 @@ def execExpr {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
          | .packed bop laneW, args =>
              SimdOp.denote (.packed bop laneW)
                (s.get (vm _ args.head) (.reg 128)) (s.get (vm _ args.tail.head) (.reg 128))
+         | .varShift bop laneW, args =>
+             SimdOp.denote (.varShift bop laneW)
+               (s.get (vm _ args.head) (.reg 128)) (s.get (vm _ args.tail.head) (.reg 128))
          | .mulhi16, args =>
              SimdOp.denote .mulhi16
                (s.get (vm _ args.head) (.reg 128)) (s.get (vm _ args.tail.head) (.reg 128))
@@ -494,6 +497,14 @@ theorem execExpr_eq {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
           | cons b rest' =>
             show (SimdOp.packed bop laneW).denote (s.get (vm _ a) (.reg 128)) (s.get (vm _ b) (.reg 128))
               = (SimdOp.packed bop laneW).denote (a.lookup V) (b.lookup V)
+            rw [hS _ a, hS _ b]
+      | varShift bop laneW =>
+        cases args with
+        | cons a rest =>
+          cases rest with
+          | cons b rest' =>
+            show (SimdOp.varShift bop laneW).denote (s.get (vm _ a) (.reg 128)) (s.get (vm _ b) (.reg 128))
+              = (SimdOp.varShift bop laneW).denote (a.lookup V) (b.lookup V)
             rw [hS _ a, hS _ b]
       | mulhi16 =>
         cases args with

@@ -7,18 +7,18 @@ import CatCrypt.Crypto.SecureCompilation.VIR.HawkMulEmit
 import CatCrypt.Crypto.SecureCompilation.VIR.HawkMul4WayRealization
 
 /-!
-# HAWK ring-multiply: the proof-model `Com` kernel denotes the genuine spec
+# HAWK ring-multiply: the proof-model `Com` kernel denotes the spec
 
 `HawkMulEmit.hawkMulCom` is the **proof-model** `Com jasminDialect`
 straight-line kernel for the HAWK-256 negacyclic ring multiply over
 `Z/1024[x]/(x^16 + 1)` (512 `regArith` bindings: schoolbook `mul`, accumulating
 `add`/`sub` for the `x^N=-1` sign, and a final `& 1023` field mask). The
 *deployed* artifact is the front-generated `HawkMulEmit.hawkMulFrontCom`
-(rendered by `HAWK/HawkMulOwnedEmit`); this model carries the universal
+(rendered by `HAWK/HawkMulEmit`); this model carries the universal
 verification content for the same spec.
 `HawkMul4WayRealization.hawkNegacyclicMul` is the abstract spec over
 `ZMod 1024`. This module proves they agree: the **denotation** of the model
-Com kernel computes the genuine negacyclic product.
+Com kernel computes the negacyclic product.
 
 ## Main result
 
@@ -26,7 +26,7 @@ Com kernel computes the genuine negacyclic product.
 
   `hawkMulCom.denote (encode a b) = embZ (hawkNegacyclicMul a b ⟨N-1⟩)`
 
-i.e. denoting the emitted kernel on the encoded input gives the embedded genuine
+i.e. denoting the emitted kernel on the encoded input gives the embedded
 negacyclic product at the returned coefficient. This is a **full `N = 16`** tie:
 the per-coefficient lemma `final_outSlot_spec` establishes it for **every**
 `k < N` (the kernel returns `out[N-1]`; the slot-level result covers all 16
@@ -954,11 +954,11 @@ theorem φ_bvAccum_eq_spec (a b : HawkLane) (k : Nat) (hk : k < HawkMulEmit.N) :
 /-! ## 10. The HAWK Com-denotation ⟷ spec tie (full N=16)
 
 This is the headline result: the emitted `Com jasminDialect` kernel `hawkMulCom`,
-**denoted**, computes the genuine negacyclic product `hawkNegacyclicMul`. -/
+**denoted**, computes the negacyclic product `hawkNegacyclicMul`. -/
 
 /-- **Per-coefficient Com-denotation tie.** The final slot map of `hawkMulCom`'s
     denotation holds, at every output `out[k]` (`k < N = 16`), the embedded
-    genuine negacyclic product `embZ (hawkNegacyclicMul a b ⟨k⟩)`. -/
+    negacyclic product `embZ (hawkNegacyclicMul a b ⟨k⟩)`. -/
 theorem final_outSlot_spec (a b : HawkLane) (k : Nat) (hk : k < HawkMulEmit.N) :
     maskModel 0 (coeffsModel 0 (slotMap HawkMulEmit.initBState (encode a b))) (outSlot k)
       = embZ (hawkNegacyclicMul a b ⟨k, hk⟩) := by
@@ -969,7 +969,7 @@ theorem final_outSlot_spec (a b : HawkLane) (k : Nat) (hk : k < HawkMulEmit.N) :
 
 /-- **The HAWK Com-denotation ⟷ spec tie (FULL `N = 16`).** Denoting the emitted
     `Com jasminDialect` negacyclic-multiply kernel on the encoded lane pair `(a,
-    b)` yields exactly the embedded genuine negacyclic product
+    b)` yields exactly the embedded negacyclic product
     `hawkNegacyclicMul a b` at the returned coefficient `out[N-1]`. Because the
     per-coefficient result `final_outSlot_spec` holds for **every** `k < N`, this
     is a full `N = 16` tie of the kernel's denotation to the spec

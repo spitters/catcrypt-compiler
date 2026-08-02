@@ -17,7 +17,7 @@ place; π renames registers; χ is `a ^ (¬b ∧ c)` per lane; ι XORs a broadca
 round constant). So the packed permutation denotes `N` independent scalar Keccak
 permutations.
 
-The pre-migration emit (`Keccak4WayOwnedEmit.lean` + the bench driver
+The pre-migration emit (`Keccak4WayEmit.lean` + the bench driver
 `bench/keccak4way_compare/keccak_zmm_emit.lean`) expresses each θρπχι sub-step as
 a bespoke `Avx512Model.ZOp` block (`thetaBlk`/`rhoPiBlk`/`chiBlk`/`iotaBlk`),
 lowered through `Avx512Lowering.lowerZBlock` to the bespoke `ZInstr` machine and
@@ -57,7 +57,7 @@ lowering or printing path of this emit.
 
 The whole permutation stays inside `{vpxorq, vpandq, vporq, vpsllvq, vpsrlvq}`,
 each a `JasminOp.vpackZMM` arm the unified dialect already denotes (`zmmPackQ`),
-with `Avx512Lowering` no longer on the path.
+with `Avx512Lowering` off the path.
 
 ### ρ rotate: immediate-shift → broadcast-count variable shift (documented)
 
@@ -110,7 +110,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (strContains)
 /-! ## 0. FIPS 202 constants (lane index `i = x + 5y`)
 
 Re-listed in the linear lane order this emit uses (agree with
-`Keccak4WayOwnedEmit.rhoOff` / `roundConst`). -/
+`Keccak4WayEmit.rhoOff` / `roundConst`). -/
 
 /-- ρ left-rotation offset for lane `i = x + 5y` (FIPS 202 §3.2.2). -/
 def rhoOff : Nat → Nat
@@ -444,40 +444,31 @@ def keccak_round_vpackzmm_asm : String :=
 These reproduce the pre-migration emit's posture (the packed alphabet present, no
 UPPERCASE jasmin intrinsic, 512-bit `%zmm`), now over the `Com`-rendered `.s`. -/
 
-/-- The emit issues the packed XOR (θ/χ/ι, lowercase owned `%zmm` mnemonic). -/
-theorem asm_has_vpxorq :
-    strContains keccak_round_vpackzmm_asm "vpxorq" = true := by native_decide
+/- The emit issues the packed XOR (θ/χ/ι, lowercase owned `%zmm` mnemonic). -/
+#guard (strContains keccak_round_vpackzmm_asm "vpxorq")
 
-/-- The emit issues the packed AND (χ `¬b ∧ c`). -/
-theorem asm_has_vpandq :
-    strContains keccak_round_vpackzmm_asm "vpandq" = true := by native_decide
+/- The emit issues the packed AND (χ `¬b ∧ c`). -/
+#guard (strContains keccak_round_vpackzmm_asm "vpandq")
 
-/-- The emit issues the packed OR (ρ rotate `hi | lo`). -/
-theorem asm_has_vporq :
-    strContains keccak_round_vpackzmm_asm "vporq" = true := by native_decide
+/- The emit issues the packed OR (ρ rotate `hi | lo`). -/
+#guard (strContains keccak_round_vpackzmm_asm "vporq")
 
-/-- The emit issues the per-lane variable left shift (ρ `src <<< n`,
+/- The emit issues the per-lane variable left shift (ρ `src <<< n`,
     broadcast-count). -/
-theorem asm_has_vpsllvq :
-    strContains keccak_round_vpackzmm_asm "vpsllvq" = true := by native_decide
+#guard (strContains keccak_round_vpackzmm_asm "vpsllvq")
 
-/-- The emit issues the per-lane variable right shift (ρ `src >>> (64-n)`). -/
-theorem asm_has_vpsrlvq :
-    strContains keccak_round_vpackzmm_asm "vpsrlvq" = true := by native_decide
+/- The emit issues the per-lane variable right shift (ρ `src >>> (64-n)`). -/
+#guard (strContains keccak_round_vpackzmm_asm "vpsrlvq")
 
-/-- The body uses 512-bit `%zmm` registers. -/
-theorem asm_has_zmm :
-    strContains keccak_round_vpackzmm_asm "%zmm" = true := by native_decide
+/- The body uses 512-bit `%zmm` registers. -/
+#guard (strContains keccak_round_vpackzmm_asm "%zmm")
 
-/-- No UPPERCASE jasmin intrinsic survives — the owned (no-jasminc) path. -/
-theorem asm_no_jasmin_intrinsic :
-    strContains keccak_round_vpackzmm_asm "#VPADD_8u64" = false := by native_decide
+/- No UPPERCASE jasmin intrinsic survives — the owned (no-jasminc) path. -/
+#guard !(strContains keccak_round_vpackzmm_asm "#VPADD_8u64")
 
-/-- The export symbols are present. -/
-theorem asm_has_exports :
-    (strContains keccak_round_vpackzmm_asm "keccak_theta_vpackzmm:" = true) ∧
-    (strContains keccak_round_vpackzmm_asm "keccak_chi_vpackzmm:" = true) := by
-  native_decide
+/- The export symbols are present. -/
+#guard (strContains keccak_round_vpackzmm_asm "keccak_theta_vpackzmm:")
+    && (strContains keccak_round_vpackzmm_asm "keccak_chi_vpackzmm:")
 
 /-! ## 8. Emit driver -/
 

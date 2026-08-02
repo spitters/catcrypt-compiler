@@ -286,7 +286,7 @@ theorem bbInvFront_is_purearith : allPureArith bbInvFrontCom = true := by native
 
 Renders the FRONT `Com`s straight to AT&T `.s` via the owned x86 backend
 (`Com.toLprogPhysAbi ∘ renderLprogAtt`), the same route as
-`Plonky3OwnedEmitMain`'s hand-Com leaves and the CROSS / FieldWidenMul flips. No
+`Plonky3EmitMain`'s hand-Com leaves and the CROSS / FieldWidenMul flips. No
 `emitAbiOrchReg` de-Bruijn dst-map: the owned RA assigns registers. All field
 constants are `SLit`-materialized inside the `Com` (rendered as `regConst`/imm),
 so BOTH functions take only their runtime words: `fri_fold_rc` reads `inp[0..3]`
@@ -305,19 +305,19 @@ def runtimeInLoad (nIn : Nat) : InLoadMap :=
   fun s => if s < nIn then some ("RSI", (nIn - 1 - s) * 8) else none
 
 /-- `fri_fold_rc`: 4 runtime words `inp[0..3]`, 1 output word. -/
-def friFoldFrontOwnedLprog : Lprog :=
+def friFoldFrontLprog : Lprog :=
   Com.toLprogPhysAbi friFoldFrontCom
     "fri_fold_rc" (fun _ => none) (fun _ => none) (runtimeInLoad nIn4) (stdOutStore 1)
 
 /-- `bb_inv_rc`: 1 runtime word `inp[0]`, 1 output word. -/
-def bbInvFrontOwnedLprog : Lprog :=
+def bbInvFrontLprog : Lprog :=
   Com.toLprogPhysAbi bbInvFrontCom
     "bb_inv_rc" (fun _ => none) (fun _ => none) (runtimeInLoad nIn1) (stdOutStore 1)
 
 /-- Both FRI leaves in one `Lprog` (two `lp_funcs`) → one `.s`. -/
-def friFrontOwnedLprog : Lprog :=
-  { friFoldFrontOwnedLprog with
-    lp_funcs := friFoldFrontOwnedLprog.lp_funcs ++ bbInvFrontOwnedLprog.lp_funcs }
+def friFrontLprog : Lprog :=
+  { friFoldFrontLprog with
+    lp_funcs := friFoldFrontLprog.lp_funcs ++ bbInvFrontLprog.lp_funcs }
 
 /-- The deployed owned `.s` (front-sourced), written to
     `gen_com/fri_fold_from_rustcmd_owned.s`.
@@ -328,6 +328,6 @@ def friFrontOwnedLprog : Lprog :=
     four (`regArith`→`Lopn`, `regConst`→`MOV #imm`, `shlImm`→`SHL:n`,
     `shrImm`→`SHR:n`). The byte identity to the `fri_fold`/`bbInv` spec is the
     external `cc` KAT (`fri_fold_from_rustcmd_kat.c`, relinked). -/
-def friFrontOwnedAsm : String := renderLprogAtt friFrontOwnedLprog
+def friFrontAsm : String := renderLprogAtt friFrontLprog
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FriFoldFrontEmit

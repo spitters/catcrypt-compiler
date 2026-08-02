@@ -617,18 +617,12 @@ def hasSub (hay needle : String) : Bool :=
   (List.range (hay.length + 1)).any (fun i =>
     needle == String.ofList (hay.toList.drop i |>.take needle.length))
 
-/-- Shape check: the emitted asm contains the dual carry-chain idiom
+/- Shape check: the emitted asm contains the dual carry-chain idiom
     (`mulx`, `adcx`, `adox`), the **memory-operand** `MULX` reads the multiplicand
     straight from `[x]` (`mulxq 0(%rsi)`, matching s2n's `mulxq (x)`), the result
     stores print in AT&T form (`(%rdi)`), and the `%rdx`-pinned multiplier is the
     `MULX` src1. -/
-theorem mul48Asm_shape :
-    hasSub mul48Asm "mulx"
-      ∧ hasSub mul48Asm "adcx"
-      ∧ hasSub mul48Asm "adox"
-      ∧ hasSub mul48Asm "mulxq 0(%rsi)"
-      ∧ hasSub mul48Asm "(%rdi)"
-      ∧ hasSub mul48Asm "src1=%rdx" := by native_decide
+#guard (hasSub mul48Asm "mulx") && (hasSub mul48Asm "adcx") && (hasSub mul48Asm "adox") && (hasSub mul48Asm "mulxq 0(%rsi)") && (hasSub mul48Asm "(%rdi)") && (hasSub mul48Asm "src1=%rdx")
 
 /-- Emit driver: write the in-Lean-backend-emitted `.s` for the bench harness. -/
 def emitMain : IO Unit := do

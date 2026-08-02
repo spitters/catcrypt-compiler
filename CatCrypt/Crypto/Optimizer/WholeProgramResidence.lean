@@ -6,6 +6,8 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.SecureCompilation.VIR.ComInline
 import CatCrypt.Crypto.Optimizer.Mem2Reg
 import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
+import CatCrypt.Crypto.Optimizer.GraphColoringCoalesce
+import CatCrypt.Crypto.Optimizer.SpillSlotReuse
 
 /-!
 # `wholeProgramResidence`: the residence lever as ONE automatic verified pass (#555)
@@ -308,16 +310,61 @@ block, the **scalar** residence tail runs:
 `prot` is the harness-observable output-cell set; `pinned`/`frameBase`/`spillBase`
 are the allocator's fixed assignments. -/
 
-/-- **The block-level GP-residence tail.** `mem2reg` the cross-leaf cells, then
-    materialize the graph-coloring allocation's spill traffic. The resulting block
-    keeps the scalar hot values register-resident; only the genuinely-cheap values
-    are spilled (and their traffic is sandwich-transparent). -/
+/-- **Repack the spilled decisions onto shared frame slots.** Given the allocator's
+    `name ↦ Slot` decisions and the block's live ranges, remap each `Slot.spilled`
+    name's frame offset onto the greedy left-edge packing
+    (`SpillSlotReuse.reuseAssign` over the spilled names' live ranges): two spilled
+    names whose live ranges do not overlap share one frame cell, so the frame holds
+    only as many cells as the peak simultaneous-spill count. Residents are unchanged;
+    a spilled name keeps its original offset only if the packer produced no entry for
+    it. Validity — no two overlapping names on one cell — is the decidable
+    `reusePackValid` certificate. -/
+def reusePackDecisions (frameBase : Int) (block : List (JInstr 64))
+    (decisions : List (String × Slot)) : List (String × Slot) :=
+  let slotmap : String → Option Int := fun n =>
+    match decisions.lookup n with
+    | some (.spilled o) => some o
+    | _ => none
+  let spilledLRs := SpillSlotReuse.spilledRanges slotmap (SpillingRegAlloc.liveRanges block)
+  let packed := SpillSlotReuse.reuseAssign frameBase spilledLRs
+  decisions.map (fun p =>
+    match p.2 with
+    | .spilled off => (p.1, Slot.spilled ((packed.lookup p.1).getD off))
+    | .resident r => (p.1, Slot.resident r))
+
+/-- The decidable slot-reuse certificate for the residence tail's repacking: no two
+    spilled names with overlapping live ranges share a frame cell
+    (`SpillSlotReuse.slotReuseValid` on the packed assignment against the block's live
+    ranges). Discharged per body by `decide`/`native_decide`, mirroring the spill
+    materialization's `SpillWellFormed` side-condition. -/
+def reusePackValid (frameBase : Int) (block : List (JInstr 64))
+    (decisions : List (String × Slot)) : Bool :=
+  let slotmap : String → Option Int := fun n =>
+    match decisions.lookup n with
+    | some (.spilled o) => some o
+    | _ => none
+  let spilledLRs := SpillSlotReuse.spilledRanges slotmap (SpillingRegAlloc.liveRanges block)
+  SpillSlotReuse.slotReuseValid (SpillSlotReuse.reuseAssign frameBase spilledLRs)
+    (SpillingRegAlloc.liveRanges block)
+
+/-- **The block-level GP-residence tail.** `mem2reg` the cross-leaf cells, pack the
+    graph-coloring allocation's spilled names onto shared frame slots
+    (`reusePackDecisions`), materialize the spill traffic, then coalesce the residual
+    register-to-register copies (`GraphColoringCoalesce.coalesce`, a post-pass over the
+    materialised `List (JInstr 64)` before lowering). The resulting block keeps the
+    scalar hot values register-resident; only the low-density values are spilled
+    (their traffic is sandwich-transparent), spilled names with disjoint live ranges
+    share a frame cell (certified by `reusePackValid`), and a copy `mov d (.reg s)`
+    whose two names do not interfere away from the copy — the `coalesceInterfereOk`
+    certificate against the materialised block's `liveRanges` — is merged and dropped. -/
 def wholeProgramResidenceBlock (prot : List (String × Int))
     (pinned : GpAlloc) (frameBase : Int) (spillBase : String)
     (block : List (JInstr 64)) : List (JInstr 64) :=
   let promoted := mem2reg prot block
-  SpillingRegAlloc.spillReloadBlock
-    (graphColorAlloc pinned frameBase promoted) spillBase promoted
+  let reused := reusePackDecisions frameBase promoted
+    (graphColorAlloc pinned frameBase promoted)
+  let materialised := SpillingRegAlloc.spillReloadBlock reused spillBase promoted
+  GraphColoringCoalesce.coalesce materialised
 
 /-- **mem2reg is the first GP-tail link, preserving the observable footprint.** For
     every state, the mem2reg'd block agrees with the original on every register and
@@ -344,6 +391,67 @@ theorem wholeProgramResidence_gpSpill_sound {sb : String} {off : Int} {r : Strin
     runBlock s (.storeMem sb off (.reg r) :: (mid ++ .loadMem r sb off :: rest))
       = runBlock s (.storeMem sb off (.reg r) :: (mid ++ rest)) :=
   graphColor_spillReload_sound mid rest hmid
+
+/-! ### The slot-reuse link
+
+`reusePackDecisions` shares one frame cell between spilled names whose live ranges do
+not overlap. A spilled value `r` reusing a cell `(sb, off)` a now-dead name held earlier
+is transparent: `r`'s own store re-establishes the cell, so its reload is a no-op — the
+prior occupant's value is irrelevant. The `reusePackValid` certificate guarantees the
+earlier occupant is dead, so no live reload of it straddles `r`'s store. -/
+
+/-- **The slot-reuse link is sandwich-transparent (RA-path soundness).** A spilled
+    value `r` that reuses a frame cell `(sb, off)` previously held by a now-dead name:
+    once `r`'s own store re-establishes the cell (`SpillValid`), the reload before `r`'s
+    use is a no-op, so the store/`mid`/reload sandwich denotes the same as the
+    un-instrumented body — independently of the earlier occupant. Residence entry point
+    to `SpillSlotReuse.singleReuse_noClobber_runBlock`; the `reusePackValid` certificate
+    guarantees the earlier occupant is dead. -/
+theorem wholeProgramResidence_slotReuse_sound {sb : String} {off : Int} {r : String}
+    {s : JState 64} (mid rest : List (JInstr 64))
+    (hmid : SpillingRegAlloc.SpillValid sb off r
+      (runBlock (evalInstr s (.storeMem sb off (.reg r))) mid)) :
+    runBlock s (.storeMem sb off (.reg r) :: (mid ++ .loadMem r sb off :: rest))
+      = runBlock s (.storeMem sb off (.reg r) :: (mid ++ rest)) :=
+  SpillSlotReuse.singleReuse_noClobber_runBlock mid rest hmid
+
+/-! ### The residual-copy coalescing link
+
+After the spill traffic is materialised, the GP-residence tail runs
+`GraphColoringCoalesce.coalesce`: it merges a register-to-register copy
+`mov d (.reg s)` whose two names do not interfere away from the copy point (certified
+by `coalesceInterfereOk` against the materialised block's `liveRanges`) into the
+single register `s`, dropping the now-identity `mov`. A coalescing step is the rename
+`subst d s`; its soundness is the `StateRel` simulation carried through `runBlock`. -/
+
+/-- **The coalescing link carries the `StateRel` simulation (RA-path soundness).**
+    For an injective coalescing substitution `subst d s` — injective exactly when the
+    `coalesceInterfereOk` certificate holds against the materialised block's live
+    ranges — the coalesced run's register `subst d s n` agrees with the original run's
+    `n` through `runBlock`. Residence entry point to
+    `GraphColoringCoalesce.coalesceStep_runBlock_rel`: the coalescing post-pass added
+    to `wholeProgramResidenceBlock` preserves the computation up to the merged
+    register, exactly as renaming does. -/
+theorem wholeProgramResidence_coalesce_rel {d s : String}
+    (hinj : Function.Injective (GraphColoringCoalesce.subst d s))
+    {sL sR : JState 64}
+    (h : RandomizedRegAlloc.StateRel (GraphColoringCoalesce.subst d s) sL sR)
+    (block : List (JInstr 64)) :
+    RandomizedRegAlloc.StateRel (GraphColoringCoalesce.subst d s)
+      (runBlock sL (RandomizedRegAlloc.renameBlock (GraphColoringCoalesce.subst d s) block))
+      (runBlock sR block) :=
+  GraphColoringCoalesce.coalesceStep_runBlock_rel hinj h block
+
+/-- **The coalescing link preserves the constant-time class.** If the materialised
+    residence block is `allDirect`, so is its coalesced form: coalescing is renames
+    plus identity-mov drops, both direct-addressing-preserving. Residence entry point
+    to `GraphColoringCoalesce.coalesce_allDirect`. -/
+theorem wholeProgramResidence_coalesce_allDirect (block : List (JInstr 64))
+    (h : CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage.allDirect
+      block = true) :
+    CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage.allDirect
+      (GraphColoringCoalesce.coalesce block) = true :=
+  GraphColoringCoalesce.coalesce_allDirect block h
 
 /-! ### The whole-block GP-spill lift: `SpillWellFormed` status
 

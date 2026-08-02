@@ -59,7 +59,7 @@ combines several leaves (Falcon-verify is 7 RCalls); for primitives where the
 Same workaround as `UovReflect`: define the pure-Lean function for documentation,
 register each leaf in the `LowCTPattern` registry via `@[rust_cmd_pattern]`,
 then **hand-build the `LowCT`** the reifier *would* produce. Downstream
-(`translate → cprogToJasminCom → emitAbiOrchRegPtr`) is the unmodified verified
+(`translate → cryptoDialectToJasminCom → emitAbiOrchRegPtr`) is the unmodified verified
 front.
 
 ## References

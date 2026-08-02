@@ -5,12 +5,14 @@ Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.VIR.RunOutputReadback
 import CatCrypt.Crypto.SecureCompilation.VIR.CompilerCorrectnessExtracted
+import CatCrypt.Crypto.SecureCompilation.VIR.CompilerGeneric
+import CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasminDenoteUncond
 import CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Decoder
 import CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscvDecoder
 import CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArmDecoder
 
 /-!
-# The compiler keystone: one `compile`, one `compile_correct_all`
+# The compiler-correctness theorem: one `compile`, one `compile_correct_all`
 
 This module assembles the per-route, per-stage compiler results that already
 live in the tree into **one** generic compile function and **one** generic
@@ -30,7 +32,7 @@ CompCert shape: *the emitted artifact, executed under a machine model's
 validated semantics, computes the value the source program denotes* — relative
 to that model's validation depth and under the stated hypotheses.
 
-The honesty of this keystone is in the precision of what it claims, stated here:
+What this theorem claims is stated precisely here:
 
 **(a) Which route is unconditional vs hypothesis-carrying.**
 
@@ -39,7 +41,7 @@ The honesty of this keystone is in the precision of what it claims, stated here:
   *zero* hypotheses. Its read-back form `runOutputToWords_chain_eq` carries only
   the leaf-agreement (`LeafAgrees`) and SSA-naming injectivity side-conditions
   of the whole-function lowering (`hInj`, `hPinj`) — and the lowering's own
-  keystone `lowerComToProg_sem_eq'` already discharges the latter two
+  theorem `lowerComToProg_sem_eq'` already discharges the latter two
   internally, leaving only the leaf edge.
 * **Front route** (`Source.front`, the haxpipe-extracted Rust path) is
   **hypothesis-carrying**: `rustToJasminCom_endToEnd` requires `hAdequacy`
@@ -57,12 +59,12 @@ The honesty of this keystone is in the precision of what it claims, stated here:
 * **RISC-V** — *pilot.* The R/I-type `encode`/`decode` round-trips against the
   Sail-riscv tables (`SailRiscvDecoder.roundtrip_RInst`, `…_roriw`) and the
   RV32 lo-32 ALU-value refinements (`SailRiscv32Ref.addw_lo32` …) are proved;
-  there is no whole-`Com`→RISC-V value-preservation keystone yet.
+  there is no whole-`Com`→RISC-V value-preservation theorem yet.
   `riscvModel.validated` records the round-trip + value-refinement pilot.
 * **ARM (AArch64)** — *partial.* The GP-ALU `encode`/`decode` round-trips are
   proved (`SailArmDecoder.roundtrip_ainst_{add,sub,and,orr,eor,mov,ror,lsr}`),
   and one effect edge is the explicitly-named `trust_edge_pilot`; there is no
-  whole-`Com`→ARM value-preservation keystone yet. `armModel.validated`
+  whole-`Com`→ARM value-preservation theorem yet. `armModel.validated`
   records the round-trip subset.
 
 **(c) Open edges that remain hypotheses** (not discharged here):
@@ -152,7 +154,7 @@ Each model's `validated` field is set to one of these aliases, each of which is
 *definitionally the statement of an existing, proved round-trip theorem* in the
 corresponding backend. The `*_validated` lemmas below discharge them by citing
 exactly that theorem — so `MachineModel.validated` is never `True`-by-fiat: it is
-the genuine ISA-validation the backend carries, at its real depth. -/
+the ISA-validation the backend carries, at its real depth. -/
 
 /-- **x86 — deepest.** The register-direct ALU `encode∘decode` round-trip against
     the transcribed Sail tables (`SailX86Decoder.roundtrip_AluRR`). Together with
@@ -166,8 +168,8 @@ def X86Validated : Prop :=
 
 /-- **RISC-V — pilot.** The full emitted RV64I subset `decode∘encode` round-trip
     against the sail-riscv `encdec` discipline (`SailRiscvDecoder.roundtrip_RInst`).
-    There is no whole-`Com`→RISC-V value-preservation keystone yet; this is the
-    genuine instruction-level pilot. Defined as exactly the type of that proved
+    There is no whole-`Com`→RISC-V value-preservation theorem yet; this is the
+    instruction-level pilot. Defined as exactly the type of that proved
     theorem (`riscvValidated_proof`). -/
 def RiscvValidated : Prop :=
   ∀ (i : RISCVBackend.RInst)
@@ -180,8 +182,8 @@ def RiscvValidated : Prop :=
 /-- **ARM (AArch64) — partial.** The GP-ALU `ADD` `encode∘decode` round-trip
     against the transcribed aarch_decode Sail clause (`SailArmDecoder.roundtrip_ainst_add`),
     representative of the proved GP-ALU subset (`add/sub/and/orr/eor/mov/ror/lsr`).
-    There is no whole-`Com`→ARM value-preservation keystone yet; this is the
-    genuine — partial — round-trip subset. Defined as exactly the type of that
+    There is no whole-`Com`→ARM value-preservation theorem yet; this is the
+    partial round-trip subset. Defined as exactly the type of that
     proved theorem (`armValidated_proof`). -/
 def ArmValidated : Prop :=
   ∀ (alloc : ARMBackend.GpAlloc) (d a b : String)
@@ -258,7 +260,7 @@ inductive Source where
     run-output the source dialect program computes (per-slot read-back is then
     `runOutputToWords`). For the front route the denotation is opaque at this
     surface and supplied by the front theorem; here we expose only the lattice
-    value, which is the route the unconditional keystone covers. -/
+    value, which is the route the unconditional theorem covers. -/
 noncomputable def latticeDenote (q n : Nat)
     (V : Ctxt.Valuation (inCtxt q n)) : Fin n → BitVec 16 :=
   fun i => runOutputToWords (transTy ((srcCom q n).denote V)) i
@@ -280,9 +282,9 @@ noncomputable def compile (q n : Nat) :
       else none
   | .front _ _ _ => none
 
-/-! ## 4. The keystone: one generic correctness theorem -/
+/-! ## 4. One generic correctness theorem -/
 
-/-- The supported target ISAs (the `MachineModel`s the keystone ranges over). -/
+/-- The supported target ISAs (the `MachineModel`s the theorem ranges over). -/
 inductive ModelChoice where
   /-- x86 — deepest validation. -/
   | x86 : ModelChoice
@@ -345,7 +347,7 @@ theorem compile_correct_all
     (V : Ctxt.Valuation (inCtxt q n)) (i : Fin n) :
     -- The conclusion is the conjunction of (1) the model's validation being in
     -- force (so the statement is *relative to* `M`'s validated semantics — `hVal`
-    -- is load-bearing, not decorative) and (2) the CompCert-shape equation:
+    -- is required, not decorative) and (2) the CompCert-shape equation:
     -- decoding the model's execution of the emitted code `m` on the run-output
     -- state equals the source program's per-slot denotation.
     -- (`M.exec`/`M.encodeIn`/`M.decodeOut` are the shared dialect-chain interface.)
@@ -371,6 +373,55 @@ theorem compile_correct_all
   -- by the assembled three-pass chain.
   unfold latticeDenote
   exact runOutputToWords_chain_eq q n hLeaf hInj hPinj V i
+
+/-- The same equation as `compile_correct_all` on the lattice route, proved
+    through the generic dialect-lowering theorem
+    `CompilerGeneric.latticeKeystone_via` (the specialization of
+    `compileVia_correct` to `latticeLoweringData`) rather than through the
+    lattice-specific `runOutputToWords_chain_eq`.
+
+    That theorem's op-square hypothesis is discharged by the concrete
+    leaf semantics (`LatticeToJasminDenoteUncond.latticeLeafAgrees`), its
+    straight-line hypothesis by `CompilerLoweringRegistry.lowered_tgtCom_straightLine`,
+    and the source/target bridge by `LatticeDialect.nttMul_rewrite_denote_eq`. -/
+theorem compile_correct_all_via_generic
+    (leafSem : LeafSem)
+    (q n : Nat)
+    (choice : ModelChoice)
+    (hVal : (chosenModel choice q n).validated)
+    (hLeaf : LeafAgrees leafSem)
+    (hInj : Function.Injective freshName)
+    (hPinj : ∀ (t t' : JasminTy)
+        (v : Ctxt.Var (d := jasminDialect) ((inCtxt q n).map tau) t)
+        (v' : Ctxt.Var (d := jasminDialect) ((inCtxt q n).map tau) t'),
+        (paramsAndMap ((inCtxt q n).map tau)).2 t v
+          = (paramsAndMap ((inCtxt q n).map tau)).2 t' v' →
+        (∃ h : t = t', h ▸ v = v'))
+    (m : Com jasminDialect ((inCtxt q n).map tau) (tau (.polyC q n)))
+    (hCompile : compile q n (.lattice q n) = some m)
+    (V : Ctxt.Valuation (inCtxt q n)) (i : Fin n) :
+    (chosenModel choice q n).validated
+    ∧ (chosenModel choice q n).decodeOut
+        ((chosenModel choice q n).exec m
+          ((chosenModel choice q n).encodeIn
+            (fun j => runOutputToWords (runProg leafSem m (mapVal V)) j))) i
+      = latticeDenote q n V i := by
+  refine ⟨hVal, ?_⟩
+  have hModel : (chosenModel choice q n).decodeOut
+      ((chosenModel choice q n).exec m
+        ((chosenModel choice q n).encodeIn
+          (fun j => runOutputToWords (runProg leafSem m (mapVal V)) j))) i
+        = runOutputToWords (runProg leafSem m (mapVal V)) i := rfl
+  rw [hModel]
+  have hm : m = lowerLatticeToJasmin (tgtCom q n) := by
+    simpa only [compile, and_self, dif_pos, Option.some.injEq] using hCompile.symm
+  subst hm
+  unfold latticeDenote
+  rw [nttMul_rewrite_denote_eq]
+  exact congrArg (fun w => runOutputToWords w i)
+    (CompilerGeneric.latticeKeystone_via
+      LatticeToJasminDenoteUncond.latticeLeafAgrees hLeaf (tgtCom q n)
+      (CompilerLoweringRegistry.lowered_tgtCom_straightLine q n) V)
 
 /-- **The front route (hypothesis-carrying), via `rustToJasminCom_endToEnd`.**
     Stated separately because it is *not* unconditional: its correctness carries

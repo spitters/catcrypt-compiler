@@ -9,6 +9,8 @@ import Mathlib.Data.ZMod.Basic
 /-!
 # EllipticCurve VIR dialect (#482-3 — the L4 algebraic layer, over Field)
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 The **L4** level of the PrimeIR-style layered crypto-IR stack
 (`docs/dialect-restructure-plan.md`), sitting above the `Field` dialect and the
 prime-field base it lowers onto:

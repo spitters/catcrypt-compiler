@@ -9,6 +9,8 @@ import CatCrypt.Crypto.SecureCompilation.VIR.MultiReturnCom
 /-!
 # Direct-VIR emission of an X25519 ladder step
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 Authors the ladder step's VIR `Com` directly using `CatCryptOp.extCall`,
 as a ground-truth reference for what the `CryptoSSA → VIR` translation
 should produce. Post-2026-05-14 the translation works (see

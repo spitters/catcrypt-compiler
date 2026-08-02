@@ -353,60 +353,51 @@ def chachaBlockJazz : String :=
 
 /-! ### Structural sanity checks on the emitted text -/
 
-/-- The export has the expected ChaCha ABI (16-word out, 39-word in: 16 state +
+/- The export has the expected ChaCha ABI (16-word out, 39-word in: 16 state +
     16 originals + 7 shift constants). -/
-theorem chacha_export_sig :
-    strContains chachaBlockJazz
-      "export fn chacha20_block(reg ptr u32[16] out, reg const ptr u32[39] inp)"
-      = true := by native_decide
+#guard (strContains chachaBlockJazz "export fn chacha20_block(reg ptr u32[16] out, reg const ptr u32[39] inp)")
 
-/-- The emitted body renders real shift-left computation (the new dialect op). -/
-theorem chacha_has_shl : strContains chachaBlockJazz " << " = true := by native_decide
+/- The emitted body renders real shift-left computation (the new dialect op). -/
+#guard (strContains chachaBlockJazz " << ")
 
-/-- …and shift-right (the new dialect op). -/
-theorem chacha_has_shr : strContains chachaBlockJazz " >> " = true := by native_decide
+/- …and shift-right (the new dialect op). -/
+#guard (strContains chachaBlockJazz " >> ")
 
-/-- …and the ARX add / xor / or. -/
-theorem chacha_has_add : strContains chachaBlockJazz " + " = true := by native_decide
-theorem chacha_has_xor : strContains chachaBlockJazz " ^ " = true := by native_decide
-theorem chacha_has_or  : strContains chachaBlockJazz " | " = true := by native_decide
+/- …and the ARX add / xor / or. -/
+#guard (strContains chachaBlockJazz " + ")
+#guard (strContains chachaBlockJazz " ^ ")
+#guard (strContains chachaBlockJazz " | ")
 
-/-- The output is copied back word-by-word from the state array via `w0`: output
+/- The output is copied back word-by-word from the state array via `w0`: output
     word 0 stores the feed-forward element `k[0]`. -/
-theorem chacha_copies_out :
-    strContains chachaBlockJazz "out[0] = w0;" = true := by native_decide
+#guard (strContains chachaBlockJazz "out[0] = w0;")
 
-/-- The very first emitted op is the first quarter-round add `a += b` on state
+/- The very first emitted op is the first quarter-round add `a += b` on state
     words 0 and 4, rendered as the load/compute/store sequence over `w0`,`w1`:
     `w0 = k[0]; w1 = k[4]; w0 = w0 + w1; k[0] = w0;`. -/
-theorem chacha_first_op :
-    strContains chachaBlockJazz "w0 = k[0];" = true
-      ∧ strContains chachaBlockJazz "w1 = k[4];" = true
-      ∧ strContains chachaBlockJazz "w0 = w0 + w1;" = true := by native_decide
+#guard (strContains chachaBlockJazz "w0 = k[0];")
+    && (strContains chachaBlockJazz "w1 = k[4];")
+    && (strContains chachaBlockJazz "w0 = w0 + w1;")
 
-/-- The final feed-forward adds the original state, read straight from the input
+/- The final feed-forward adds the original state, read straight from the input
     pointer (here word 0): `w1 = inp[0]; w0 = w0 + w1;`. Reading the original
     from memory at feed-forward time keeps register pressure minimal. -/
-theorem chacha_feedforward :
-    strContains chachaBlockJazz "w1 = inp[0];" = true := by native_decide
+#guard (strContains chachaBlockJazz "w1 = inp[0];")
 
-/-- Rotates emit **immediate** shifts (e.g. the first QR's `d <<<= 16`): the
+/- Rotates emit **immediate** shifts (e.g. the first QR's `d <<<= 16`): the
     shift amount is a literal jasmin immediate (`w0 = w0 << 16;`). -/
-theorem chacha_shift_immediate :
-    strContains chachaBlockJazz "w0 = w0 << 16;" = true := by native_decide
+#guard (strContains chachaBlockJazz "w0 = w0 << 16;")
 
-/-- The state lives in the reused `stack u32[18]` array `k`; the only registers
+/- The state lives in the reused `stack u32[18]` array `k`; the only registers
     are the two working scratch `w0`,`w1` (no fresh `t{N}` per binding). -/
-theorem chacha_reuses_regs :
-    strContains chachaBlockJazz "stack u32[18] k;" = true
-      ∧ strContains chachaBlockJazz "reg u32 w0;" = true
-      ∧ strContains chachaBlockJazz "reg u32 t100;" = false := by native_decide
+#guard (strContains chachaBlockJazz "stack u32[18] k;")
+    && (strContains chachaBlockJazz "reg u32 w0;")
+    && !(strContains chachaBlockJazz "reg u32 t100;")
 
-/-- It emits **no** leaf call (pure computation, no `extCall`): no parenthesised
+/- It emits **no** leaf call (pure computation, no `extCall`): no parenthesised
     call of the orchestration leaf shapes appears. The body is straight-line
     `regArith`, so there is no `// non-regArith op skipped` marker either. -/
-theorem chacha_no_skips :
-    strContains chachaBlockJazz "non-regArith op skipped" = false := by native_decide
+#guard !(strContains chachaBlockJazz "non-regArith op skipped")
 
 /-- Binding count of a `Com` (one per `.var`). -/
 def comBindings : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
@@ -484,38 +475,31 @@ theorem chacha4way_denotation_preserves (state : ChaCha4Way) :
 def chacha4wayBlockJazz : String :=
   JasminAbiEmit.emitChacha4wayJazz "chacha20_4way_block"
 
-/-- The 4-way export has the expected ABI: 4 blocks in, 4 blocks out. -/
-theorem chacha4way_export_sig :
-    strContains chacha4wayBlockJazz
-      "export fn chacha20_4way_block(reg ptr u32[64] out, reg const ptr u32[64] inp)"
-      = true := by native_decide
+/- The 4-way export has the expected ABI: 4 blocks in, 4 blocks out. -/
+#guard (strContains chacha4wayBlockJazz "export fn chacha20_4way_block(reg ptr u32[64] out, reg const ptr u32[64] inp)")
 
 /-- The 4-way body uses packed-u32 lane add (`#VPADD_4u32`) — the heart of
     the lane-parallel-map ARX. -/
 theorem chacha4way_has_packed_add :
     strContains chacha4wayBlockJazz "#VPADD_4u32(" = true := by native_decide
 
-/-- The 4-way body uses packed-u32 lane shift-left (`#VPSLL_4u32`) for the
+/- The 4-way body uses packed-u32 lane shift-left (`#VPSLL_4u32`) for the
     ARX rotates. -/
-theorem chacha4way_has_packed_shl :
-    strContains chacha4wayBlockJazz "#VPSLL_4u32(" = true := by native_decide
+#guard (strContains chacha4wayBlockJazz "#VPSLL_4u32(")
 
-/-- The 4-way body uses packed-u32 lane shift-right (`#VPSRL_4u32`) for the
+/- The 4-way body uses packed-u32 lane shift-right (`#VPSRL_4u32`) for the
     ARX rotates. -/
-theorem chacha4way_has_packed_shr :
-    strContains chacha4wayBlockJazz "#VPSRL_4u32(" = true := by native_decide
+#guard (strContains chacha4wayBlockJazz "#VPSRL_4u32(")
 
-/-- The 4-way body declares the 16-word SoA state as a stack `u128[16]`
+/- The 4-way body declares the 16-word SoA state as a stack `u128[16]`
     array `m` (4 blocks × 4 u32 per `u128` × 16 words = the full 4-way ChaCha
     state). Working registers `w0`/`w1` are the only XMM live across rounds. -/
-theorem chacha4way_has_m128i_state :
-    strContains chacha4wayBlockJazz "stack u128[16] m;" = true := by native_decide
+#guard (strContains chacha4wayBlockJazz "stack u128[16] m;")
 
-/-- The 4-way body does NOT contain a horizontal-sum sequence (no
+/- The 4-way body does NOT contain a horizontal-sum sequence (no
     `#VPSRLDQ_128`-by-8/4/2 pattern from `renderHSum16`) — confirming it's a
     pure lane-parallel MAP, not a reduction. -/
-theorem chacha4way_is_lane_map_not_reduce :
-    strContains chacha4wayBlockJazz "#VPEXTR_16(" = false := by native_decide
+#guard !(strContains chacha4wayBlockJazz "#VPEXTR_16(")
 
 /-! ## 8. ChaCha 4-way XMM-resident emission (the SIXTEENTH ABI mode — task #111)
 
@@ -549,14 +533,11 @@ denotation-irrelevant performance refinement. -/
 def chacha4wayXmmBlockJazz : String :=
   JasminAbiEmit.emitChacha4wayXmmJazz "chacha20_4way_xmm_block"
 
-/-- The XMM-resident 4-way export has the expected ABI: 4 blocks in, 4 out
+/- The XMM-resident 4-way export has the expected ABI: 4 blocks in, 4 out
     (the SAME ABI as the stack-resident 4-way, only the body differs). -/
-theorem chacha4way_xmm_export_sig :
-    strContains chacha4wayXmmBlockJazz
-      "export fn chacha20_4way_xmm_block(reg ptr u32[64] out, reg const ptr u32[64] inp)"
-      = true := by native_decide
+#guard (strContains chacha4wayXmmBlockJazz "export fn chacha20_4way_xmm_block(reg ptr u32[64] out, reg const ptr u32[64] inp)")
 
-/-- The XMM-resident body declares 14 named state XMM registers `m0..m13`
+/- The XMM-resident body declares 14 named state XMM registers `m0..m13`
     plus single-slot stack spills `m14s`/`m15s` for words 14/15 (the AVX2
     16-XMM file cannot hold 16 state words + 2 rotate scratches; HACL*
     `Hacl_Chacha20_Vec256` faces the identical cap and resolves it
@@ -564,31 +545,22 @@ theorem chacha4way_xmm_export_sig :
     storage-class change vs the stack-resident emit (#107): 14 of 16
     state words are register-resident, eliminating ~14/16 of the round-body
     memory traffic. -/
-theorem chacha4way_xmm_has_state_regs :
-    strContains chacha4wayXmmBlockJazz
-      "reg u128 m0 m1 m2 m3 m4 m5 m6 m7 m8 m9 m10 m11 m12 m13;"
-      = true := by native_decide
+#guard (strContains chacha4wayXmmBlockJazz "reg u128 m0 m1 m2 m3 m4 m5 m6 m7 m8 m9 m10 m11 m12 m13;")
 
-/-- The XMM-resident body uses packed-u32 lane add register-to-register
+/- The XMM-resident body uses packed-u32 lane add register-to-register
     (no `m[:u128 ...]` stack indexing): the first column-round `a += b` is
     `m0 = #VPADD_4u32(m0, m4);`. -/
-theorem chacha4way_xmm_has_reg_to_reg_add :
-    strContains chacha4wayXmmBlockJazz "m0 = #VPADD_4u32(m0, m4);"
-      = true := by native_decide
+#guard (strContains chacha4wayXmmBlockJazz "m0 = #VPADD_4u32(m0, m4);")
 
-/-- The XMM-resident body uses packed-u32 left-shift directly on a named
+/- The XMM-resident body uses packed-u32 left-shift directly on a named
     register: `m12 = #VPSLL_4u32(m12, 16);` (vs `w0 = #VPSLL_4u32(w0, 16);`
     in the stack emit). -/
-theorem chacha4way_xmm_has_reg_packed_shl :
-    strContains chacha4wayXmmBlockJazz "m12 = #VPSLL_4u32(m12, 16);"
-      = true := by native_decide
+#guard (strContains chacha4wayXmmBlockJazz "m12 = #VPSLL_4u32(m12, 16);")
 
-/-- The XMM-resident body does NOT use the stack `u128[16] m` array storage
+/- The XMM-resident body does NOT use the stack `u128[16] m` array storage
     (that's the stack-resident emit's identifying declaration). Confirms the
     storage-class refinement is in effect. -/
-theorem chacha4way_xmm_no_stack_state_array :
-    strContains chacha4wayXmmBlockJazz "stack u128[16] m;" = false := by
-  native_decide
+#guard !(strContains chacha4wayXmmBlockJazz "stack u128[16] m;")
 
 /-- **Denotation preservation for the XMM-resident ChaCha 4-way emit.** The
     XMM-resident kernel denotes the lane-parallel-map of `chacha20BlockSpec`

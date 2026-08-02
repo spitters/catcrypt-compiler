@@ -9,6 +9,8 @@ import CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic
 /-!
 # Poly VIR dialect (#482-4 — the L4′ polynomial-ring layer, over Field/ModArith)
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 The **L4′** level of the PrimeIR-style layered crypto-IR stack
 (`docs/dialect-restructure-plan.md`), the polynomial-ring sibling of the
 EllipticCurve(L4) layer.  It sits above the `Field`/`ModArith` dialects:
@@ -27,7 +29,7 @@ layer one home.
 
 The dialect's ring is `R = F[X]/(Xⁿ ± 1)` over `F = ZMod q`.  We model a ring
 element in **coefficient form** as a `CompPoly.CPolynomial (ZMod q)` — the
-genuine algebraic polynomial — and in **NTT (evaluation) form** as an
+algebraic polynomial — and in **NTT (evaluation) form** as an
 `Array (ZMod q)` (the evaluation vector over the NTT domain).  The polynomial-
 ring ops therefore denote into the *real* CompPoly NTT pipeline
 (`LatticeNTTSound`'s `realNtt`/`realInvntt`/`realBasemul`/`realNttMul`), and the
@@ -110,7 +112,7 @@ inductive PolyTy where
   | polyN (q n : Nat)
   deriving DecidableEq
 
-/-- Total denotation of `PolyTy`: coefficient form into the genuine CompPoly
+/-- Total denotation of `PolyTy`: coefficient form into the CompPoly
     polynomial `CPolynomial (ZMod q)`, NTT form into the evaluation vector
     `Array (ZMod q)`. -/
 @[reducible] instance : TyDenote PolyTy where
@@ -120,7 +122,7 @@ inductive PolyTy where
 
 /-! ## 2. Concrete leaf functions (the abstract poly-ring operations)
 
-The algebraic leaves are the genuine CompPoly NTT operations
+The algebraic leaves are the CompPoly NTT operations
 (`realNtt`/`realInvntt`/`realBasemul`/`realNttMul` from `LatticeNTTSound`), so
 the denotation is the abstract polynomial-ring math, NOT the toy `id` of
 `latticeDialect`.  The add/sub/scalar leaves are `CPolynomial`'s native ring
@@ -128,7 +130,7 @@ operations. -/
 
 variable {q n : Nat}
 
-/-- Forward NTT leaf: CompPoly's `forwardImpl`, a genuine transform (not `id`).
+/-- Forward NTT leaf: CompPoly's `forwardImpl`, an actual transform (not `id`).
     Needs `Field (ZMod q)` (from `Fact (Nat.Prime q)`) for the CompPoly domain. -/
 @[reducible] def nttF [Fact (Nat.Prime q)] (D : Domain (ZMod q)) (p : CPolynomial (ZMod q)) :
     Array (ZMod q) :=
@@ -155,7 +157,7 @@ variable {q n : Nat}
 @[reducible] def polySMulF (c : ZMod q) (p : CPolynomial (ZMod q)) : CPolynomial (ZMod q) :=
   (CompPoly.CPolynomial.C c) * p
 
-/-- The negacyclic NTT multiply leaf: the genuine composite
+/-- The negacyclic NTT multiply leaf: the composite
     `invntt (basemul (ntt p) (ntt q))`, definitionally CompPoly's `fastMulImpl`
     (`realNttMul`).  Under `Domain.fits` this is the *cyclic* full product; the
     `%ₘ (Xⁿ+1)` fold (the dialect's negacyclic tie) turns it into the ring
@@ -290,7 +292,7 @@ theorem ctSafeCom_all {Γ : Ctxt polyDialect} {t : PolyTy}
 The add/sub/scalar facts hold **definitionally** (the leaves are `CPolynomial`'s
 native ring ops).  The `nttMul` negacyclic fact is the deep tie: it reuses
 CompPoly's `realNttMul_negacyclic_coeff` (#32/#35), so the dialect's `nttMul`
-op — after the `%ₘ (Xⁿ+1)` fold — denotes to the genuine negacyclic
+op — after the `%ₘ (Xⁿ+1)` fold — denotes to the negacyclic
 convolution, stated **once** at the dialect. -/
 
 variable [ND : NttDomains]
@@ -317,7 +319,7 @@ theorem nttMul_denote [Fact (Nat.Prime q)] (p r : CPolynomial (ZMod q)) :
         else (0 : CPolynomial (ZMod q))) = realNttMul (ND.dom q) p r
   rw [dif_pos (Fact.out : Nat.Prime q)]
 
-/-- **The once-per-dialect negacyclic tie (#32/#35).** With the genuine CompPoly
+/-- **The once-per-dialect negacyclic tie (#32/#35).** With the CompPoly
     NTT operations plugged into the dialect denotation, the negacyclic reduction
     `%ₘ (Xⁿ+1)` of the `nttMul` op's denotation, on the encoded inputs
     `enc a`, `enc b`, has its `k`-th coefficient (`k < n`) equal to the explicit
@@ -327,7 +329,7 @@ theorem nttMul_denote [Fact (Nat.Prime q)] (p r : CPolynomial (ZMod q)) :
 
     This lifts `realNttMul_negacyclic_coeff` (the op-level CompPoly tie) onto the
     Poly **dialect** denotation: the dialect's `nttMul` op denotes, under the real
-    ops, to the genuine negacyclic product of `Z_q[X]/(Xⁿ+1)`.  It is the single
+    ops, to the negacyclic product of `Z_q[X]/(Xⁿ+1)`.  It is the single
     structural tie connecting the abstract NTT op to the convolution spec; every
     NTT-using protocol inherits it without re-proving the transform. -/
 theorem nttMul_negacyclic_coeff [Fact (Nat.Prime q)]

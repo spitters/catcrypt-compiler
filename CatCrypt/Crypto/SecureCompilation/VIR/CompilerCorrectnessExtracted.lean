@@ -18,8 +18,7 @@ end-to-end story for the lattice NTT-multiplication route
 (`latticeNttMul_compile_correct`). This file builds the **front-rooted**
 analogue: it starts from *extracted* `LowCT` and chains the verified front
 stages into one statement, so the correctness story can begin at the
-extraction boundary. It is stated over the `CProg`-free, dialect-native front,
-so no `CProg`, `cprogToJasminCom`, or `CryptoToJasminComCorrect` appears:
+extraction boundary. It is stated over the dialect-native front:
 
 ```
 LowCT c   ──TranslateDialectDirectControl.translateDialectControl──▶   Com[catCryptDialect]
@@ -85,10 +84,10 @@ bottoms out at explicit edges, handled separately rather than hand-waved:
 
 The cross-side leaf agreement that the old `CProg` route carried as
 `JasminLeafAgrees` is, on the dialect front, discharged unconditionally by
-`DialectToJasminComCorrect.dialectJasminLeafAgrees_holds` and no longer a
+`DialectToJasminComCorrect.dialectJasminLeafAgrees_holds` rather than a
 parametric edge of the front lowering.
 
-All goals closed (no `sorry`); the genuine gaps are carried as the explicit
+All goals closed (no `sorry`); the gaps are carried as the explicit
 hypotheses listed above.
 -/
 
@@ -158,8 +157,7 @@ carried. -/
 
     The two halves use independent entry valuations (`V : HVec Γ` for the
     simulation, `W : Ctxt.Valuation Γ` for the dialect denotation); the fused
-    form below ties them. No `CProg`, `cprogToJasminCom`, or `JasminLeafAgrees`
-    appears — leaf agreement is discharged internally by
+    form below ties them. Leaf agreement is discharged internally by
     `dialectJasminLeafAgrees_holds`. -/
 theorem rustToJasminCom_denote_eq
     {Γ : Ctx} {t : CryptoTy}
@@ -188,7 +186,7 @@ front's post-state. The theorem below tightens it:
   `rustExecSimulatesDialect` supplies the post-state `V'`;
 * the conclusion **fuses** the two stages: the jasmin program's denotation equals
   the `ctTransTy`-transport of the LowCT post-state's value for `w`
-  (`w.lookup V'`), so it genuinely reads "the compiled jasmin code computes the
+  (`w.lookup V'`), so it reads "the compiled jasmin code computes the
   value the LowCT source leaves in `w`".
 
 The *only* remaining hypothesis is `hAdequacy`: the dialect program's denotation
@@ -215,17 +213,16 @@ deliberately does not cover — see §2c). -/
     produced value (`hAdequacy`), then for a single tracked output variable `w`
     the emitted jasmin program's denotation equals the value the source `LowCT`
     leaves in `w` — output-value agreement under a byte-layout invariant, not
-    full functional/memory equivalence, with the genuinely-hard adequacy edge
+    full functional/memory equivalence, with the hard adequacy edge
     supplied as a hypothesis rather than proved.*
 
     ### GUARANTEED (proved internally)
     * **Single-output value agreement on the tracked variable `w`.** The
       conclusion equates `jcom.denote (ctMapValD W)` with `ctTransTy (w.lookup V')`
       — the value of the *one* chosen output variable `w` in the related
-      post-state `V'`. The chaining of the `CProg`-free front simulation
-      (`rustExecSimulatesDialect`) with the A1 lowering
-      (`cryptoDialectToJasminCom_denote_eq'`, proved by program induction) is
-      genuine; no `sorry`.
+      post-state `V'`. The front simulation (`rustExecSimulatesDialect`) chains
+      with the A1 lowering (`cryptoDialectToJasminCom_denote_eq'`, proved by
+      program induction).
     * Existence of a post-state valuation `V'` byte-related to `rs'` (this is
       what the front simulation delivers — *existence*, not value).
     * **Leaf agreement is discharged**, not assumed: A1 closes it via
@@ -290,8 +287,8 @@ theorem rustToJasminCom_endToEnd
     program, since every translation pipeline starts from `VarMap.empty`.
 
     The non-top-level `rustToJasminCom_endToEnd` keeps `hInv` because it is
-    genuinely parametric over an arbitrary entry varmap `vm`, where `hInv`
-    carries the full byte-layout invariant (not merely `NoAliasVM`) and is a real
+    parametric over an arbitrary entry varmap `vm`, where `hInv`
+    carries the full byte-layout invariant ((rather than only `NoAliasVM`)) and is a real
     precondition. -/
 theorem rustToJasminCom_endToEnd_topLevel
     {t : CryptoTy}

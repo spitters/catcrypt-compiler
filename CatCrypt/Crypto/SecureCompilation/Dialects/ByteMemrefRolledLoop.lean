@@ -24,7 +24,7 @@ This module adds the **byte-granular** rolled loop. Byte-width (`movb`, SIB
 scale-1, `uint8_t`) indexed stores exist in the standalone width-parametric
 `memref` dialect (`Dialects/Memref.lean`): `.buf 8 n → stackStore 8 → STOREIDX`
 scale-1 → `movb`, validated end-to-end in `ByteMemrefFrontValidate`. The
-combinator here wraps a `memref`-dialect byte loop *body* into a genuine
+combinator here wraps a `memref`-dialect byte loop *body* into a
 `ComL.forLoopN`, the byte twin of `rolledForLoopN`:
 
 ```
@@ -57,7 +57,7 @@ The byte VALUES are checked against the LE spec `(v >> 8·i) & 0xff` via `denote
 
 ## The arithmetic-input wall (why Plonky3's register writer cannot re-point yet)
 
-`Plonky3SerializeOwnedEmit.leByteBody` is hand-authored `Lcmd` whose value lives
+`Plonky3SerializeEmit.leByteBody` is hand-authored `Lcmd` whose value lives
 in a **register** `%rdx` and is split by an in-body `SHR %rdx, 8` each trip
 (`STORE:8 ; SHR:64 ; ADD ; SUB`). Re-pointing THAT through a byte `memref` loop
 needs the byte split `(v >> 8·i) & 0xff` computed *inside* the loop body — a
@@ -86,7 +86,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (renderLprogAt
 
 /-! ## 1. The combinator: a byte-cell rolled `ComL.forLoopN` -/
 
-/-- Wrap a `memref`-dialect byte-loop *body* into a genuine rolled `ComL.forLoopN`.
+/-- Wrap a `memref`-dialect byte-loop *body* into a rolled `ComL.forLoopN`.
 
     * `body` is a `memref` program over `[.buf 8 n, .int 64, *invBufs]` (byte
       accumulator buffer `.here`, loop index `.there .here`, invariant byte
@@ -219,7 +219,7 @@ This is the check the word-store trap fails: `isSome = true` is NOT enough — a
 64-bit `stackStore 64` would render `movq` at scale 8 and clobber 7 neighbouring
 byte cells. -/
 
-/-- Substring test (mirrors `Plonky3SerializeOwnedEmit.hasSub`). -/
+/-- Substring test (mirrors `Plonky3SerializeEmit.hasSub`). -/
 def hasSub (hay needle : String) : Bool :=
   (List.range (hay.length + 1)).any (fun i =>
     needle == String.ofList (hay.toList.drop i |>.take needle.length))
@@ -231,37 +231,42 @@ def byteSerAsm : String :=
     (ComL.toLprogPhysAbi byteSerComL "p3_ser_u64_le" (argName 0) [argName 1]
       (fun _ => none) (fun _ => none) ["RDI", "RSI"] [64, 64])
 
-/-- **Byte store, not word store.** The emitted kernel contains a `movb` store
+/- **Byte store, not word store.** The emitted kernel contains a `movb` store
     at SIB scale 1 — the width-exact one-byte write — and does NOT contain the
     64-bit `movq` at scale 8 that the word (`.memref`/`stackStore 64`) path would
     give. THE decisive check (per the word-store trap: `isSome` is not enough). -/
-theorem byteSer_store_is_movb :
-    hasSub byteSerAsm "movb" = true := by native_decide
+#guard (hasSub byteSerAsm "movb")
 
-/-- The byte load renders `movzbl` (scale-1 zero-extending byte load). -/
-theorem byteSer_load_is_movzbl :
-    hasSub byteSerAsm "movzbl" = true := by native_decide
+/- The byte load renders `movzbl` (scale-1 zero-extending byte load). -/
+#guard (hasSub byteSerAsm "movzbl")
 
-/-- The SIB scale of the indexed byte access is 1 (`uint8_t` stride), not 8: the
+/- The SIB scale of the indexed byte access is 1 (`uint8_t` stride), not 8: the
     store renders `movb %dl, (%r14, %rbx, 1)` and the load `movzbl (%r14, %rbx, 1),
     %edx` — SIB stride 1. A word store would render scale `, 8)`. -/
-theorem byteSer_scale1 :
-    hasSub byteSerAsm ", 1)" = true ∧ hasSub byteSerAsm ", 8)" = false := by
-  refine ⟨?_, ?_⟩ <;> native_decide
+#guard (hasSub byteSerAsm ", 1)") && !(hasSub byteSerAsm ", 8)")
 
-/-- The emit is a genuine rolled loop: a real `jne` back-edge and a loop label. -/
-theorem byteSer_has_backedge :
-    hasSub byteSerAsm "jne" = true ∧ hasSub byteSerAsm ".L" = true := by
-  refine ⟨?_, ?_⟩ <;> native_decide
+/- The emit is a rolled loop: a real `jne` back-edge and a loop label. -/
+#guard (hasSub byteSerAsm "jne") && (hasSub byteSerAsm ".L")
 
-/-- No unhandled op leaked into the emit. -/
-theorem byteSer_no_unhandled :
-    hasSub byteSerAsm "UNHANDLED" = false := by native_decide
+/- No unhandled op leaked into the emit. -/
+#guard !(hasSub byteSerAsm "UNHANDLED")
 
 /-! ## 6. Emit driver -/
 
-/-- Write the front-sourced byte-granular LE-`u64` serializer `.s`. -/
-def writeEmit (path : System.FilePath) : IO Unit :=
+/-- Write the front-sourced byte-granular LE-`u64` serializer `.s`. The artifact
+    name is distinct from `plonky3_serialize_owned.s`, which carries the
+    register-input `p3_ser_u64_le` writer of `Plonky3SerializeEmit`. -/
+def writeEmit
+    (path : System.FilePath :=
+      "bench/plonky3_compare/gen_com/p3_ser_u64_le_byteloop_owned.s") : IO Unit := do
+  if let some d := path.parent then IO.FS.createDirAll d
   IO.FS.writeFile path byteSerAsm
+
+/-! ## Artifact generation at elaboration
+
+The render is written while this module elaborates, so `lake` produces it from
+this file and no separate driver or Makefile rule carries the dependency. -/
+
+#eval writeEmit
 
 end CatCrypt.Crypto.SecureCompilation.Dialects.ByteMemrefRolledLoop

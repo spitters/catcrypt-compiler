@@ -3,7 +3,7 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+import CatCrypt.Crypto.SecureCompilation.CompileFromHaxScope
 
 /-!
 # The SHA-256 compression round loop compiles, value-correct
@@ -20,7 +20,7 @@ with `Σ₀(x)=(x⋙2)⊕(x⋙13)⊕(x⋙22)`, `Σ₁(x)=(x⋙6)⊕(x⋙11)⊕(x
 `Ch(e,f,g)=(e∧f)⊕(¬e∧g)`, `Maj(a,b,c)=(a∧b)⊕(a∧c)⊕(b∧c)`, and `K[t]` the FIPS
 round constants.
 
-Only `a` and `e` are genuinely new each round (`b,c,d` shift down from `a`;
+Only `a` and `e` are new each round (`b,c,d` shift down from `a`;
 `f,g,h` from `e`), so the SSA unrolling binds **two** fresh state locals per round
 plus the round's scratch temporaries, passing the renamed words to the next round
 — the register-renaming the round loop is. `K[t]` is materialised as a literal
@@ -38,6 +38,7 @@ namespace CatCrypt.Crypto.SecureCompilation.CompileFromHaxCompress
 open CatCrypt.Hax
 open CatCrypt.Crypto.SecureCompilation.ImpExprToThir
 open CatCrypt.Crypto.SecureCompilation.CompileFromHax
+open CatCrypt.Crypto.SecureCompilation.CompileFromHaxScope
 open CatCrypt.Crypto.SecureCompilation.ThirToComFront
 open CatCrypt.Crypto.SecureCompilation.VIR (Com)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect (jasminDialect JasminBinOp)
@@ -109,7 +110,7 @@ def kBV (t : Nat) : BitVec 32 := BitVec.ofNat 32 (kVal t)
 /-! ## §3  The round body and unroller (`ImpExpr`)
 
 Each round is emitted **already let-normalized** (atom args throughout): the Σ/Ch/Maj
-sub-results bind to scratch temporaries, then `t1`/`t2` and the two genuinely-new
+sub-results bind to scratch temporaries, then `t1`/`t2` and the two new
 words `a'`/`e'`. The other six words are renames, passed by name to the next round.
 `K[t]` is a literal; `W[t]` an input read (`index[in, lit (8+t)]`). All scratch
 names are literals (reused per round, dead after) so env comparisons stay cheap; the
@@ -197,16 +198,199 @@ def initSt {nIn : Nat} (I : Fin nIn → BitVec 32) : St :=
 /-- The schedule words as read by the program: `W[t] = index[in, lit (8+t)]`. -/
 def wSpec {nIn : Nat} (I : Fin nIn → BitVec 32) (t : Nat) : BitVec 32 := inpGet I (8 + t)
 
-/-! ## §4  The full compression loop compiles -/
+/-! ## §4  The unroller compiles, at every unroll depth
+
+The compression program is a chain of `letBind`s whose operands are either
+round-local names just bound or indexed reads of the input array, so it satisfies
+the syntactic scope condition of `CompileFromHaxScope`. Discharging that condition
+is an induction on the unroll depth: one round extends the bound-name list by
+`roundLocals`, and the eight working-word operands handed to the next round are
+either freshly bound (`aN r` / `eN r`) or already in scope. -/
+
+/-- The locals one compression round binds, newest first. -/
+def roundLocals (r : Nat) : List String :=
+  [eN r, aN r, "t2", "s4", "mx", "mc", "mb", "ma", "s3", "bx", "bc", "bb", "ba",
+   "t1", "u9", "kc", "u8", "u7", "s2", "cc", "cb", "ca", "s1", "bx", "bc", "bb", "ba"]
+
+/-- The round-output name `aN r` begins with `'q'`. -/
+theorem aN_head (r : Nat) : (aN r).toList.head? = some 'q' := by
+  simp [aN, String.toList_append, String.toList_ofList]
+
+/-- The round-output name `eN r` begins with `'q'`. -/
+theorem eN_head (r : Nat) : (eN r).toList.head? = some 'q' := by
+  simp [eN, String.toList_append, String.toList_ofList]
+
+/-- `aN r` is not the array parameter `"in"`. -/
+theorem aN_notParam (r : Nat) : (["in"] : List String).idxOf? (aN r) = none := by
+  have h : aN r ≠ "in" := by
+    intro h; have := aN_head r; rw [h] at this; exact absurd this (by decide)
+  simp [List.idxOf?, Ne.symm h]
+
+/-- `eN r` is not the array parameter `"in"`. -/
+theorem eN_notParam (r : Nat) : (["in"] : List String).idxOf? (eN r) = none := by
+  have h : eN r ≠ "in" := by
+    intro h; have := eN_head r; rw [h] at this; exact absurd this (by decide)
+  simp [List.idxOf?, Ne.symm h]
+
+/-- A `Σ` block compiles: three rotates of an in-scope operand and two xors. -/
+theorem bigSigBlock_compiles {nIn : Nat} (rot1 rot2 rot3 : Nat) (nout : String)
+    (rE cont : ImpExpr) (S : List String)
+    (hrE : OperandInScope ["in"] nIn S rE)
+    (hcont : Compiles ["in"] 32 nIn (nout :: "bx" :: "bc" :: "bb" :: "ba" :: S) cont) :
+    Compiles ["in"] 32 nIn S (bigSigBlock rot1 rot2 rot3 nout rE cont) := by
+  have hb : recogBin "rotate_right" = none := by simp [recogBin]
+  have hs : recogShift "rotate_right" = some ShiftKind.ror := by simp [recogShift]
+  have hx : recogBin "BitXor" = some JasminBinOp.xor := by simp [recogBin]
+  refine Compiles.letShift (n := rot1) hb hs hrE (by simp [litNat?]) ?_
+  refine Compiles.letShift (n := rot2) hb hs (hrE.mono (by intro y hy; simp [hy]))
+    (by simp [litNat?]) ?_
+  refine Compiles.letShift (n := rot3) hb hs (hrE.mono (by intro y hy; simp [hy]))
+    (by simp [litNat?]) ?_
+  refine Compiles.letBin hx (.local_ "ba" (by decide) (by simp))
+    (.local_ "bb" (by decide) (by simp)) ?_
+  exact Compiles.letBin hx (.local_ "bx" (by decide) (by simp))
+    (.local_ "bc" (by decide) (by simp)) hcont
+
+/-- The `Ch` block compiles, using the `__ones` complement local. -/
+theorem chBlock_compiles {nIn : Nat} (nout : String) (eE fE gE cont : ImpExpr)
+    (S : List String) (hones : "__ones" ∈ S)
+    (heE : OperandInScope ["in"] nIn S eE)
+    (hfE : OperandInScope ["in"] nIn S fE)
+    (hgE : OperandInScope ["in"] nIn S gE)
+    (hcont : Compiles ["in"] 32 nIn (nout :: "cc" :: "cb" :: "ca" :: S) cont) :
+    Compiles ["in"] 32 nIn S (chBlock nout eE fE gE cont) := by
+  have hand : recogBin "BitAnd" = some JasminBinOp.and := by simp [recogBin]
+  have hx : recogBin "BitXor" = some JasminBinOp.xor := by simp [recogBin]
+  refine Compiles.letBin hand heE hfE ?_
+  refine Compiles.letBin hx (heE.mono (by intro y hy; simp [hy]))
+    (.local_ "__ones" (by decide) (by simp [hones])) ?_
+  refine Compiles.letBin hand (.local_ "cb" (by decide) (by simp))
+    (hgE.mono (by intro y hy; simp [hy])) ?_
+  exact Compiles.letBin hx (.local_ "ca" (by decide) (by simp))
+    (.local_ "cc" (by decide) (by simp)) hcont
+
+/-- The `Maj` block compiles: three ands of in-scope operands and two xors. -/
+theorem majBlock_compiles {nIn : Nat} (nout : String) (aE bE cE cont : ImpExpr)
+    (S : List String)
+    (haE : OperandInScope ["in"] nIn S aE)
+    (hbE : OperandInScope ["in"] nIn S bE)
+    (hcE : OperandInScope ["in"] nIn S cE)
+    (hcont : Compiles ["in"] 32 nIn (nout :: "mx" :: "mc" :: "mb" :: "ma" :: S) cont) :
+    Compiles ["in"] 32 nIn S (majBlock nout aE bE cE cont) := by
+  have hand : recogBin "BitAnd" = some JasminBinOp.and := by simp [recogBin]
+  have hx : recogBin "BitXor" = some JasminBinOp.xor := by simp [recogBin]
+  refine Compiles.letBin hand haE hbE ?_
+  refine Compiles.letBin hand (haE.mono (by intro y hy; simp [hy]))
+    (hcE.mono (by intro y hy; simp [hy])) ?_
+  refine Compiles.letBin hand (hbE.mono (by intro y hy; simp [hy]))
+    (hcE.mono (by intro y hy; simp [hy])) ?_
+  refine Compiles.letBin hx (.local_ "ma" (by decide) (by simp))
+    (.local_ "mb" (by decide) (by simp)) ?_
+  exact Compiles.letBin hx (.local_ "mx" (by decide) (by simp))
+    (.local_ "mc" (by decide) (by simp)) hcont
+
+/-- One compression round compiles: the four blocks and the five adds resolve, and
+    the continuation runs with `roundLocals r` added to the bound names. -/
+theorem roundBody_compiles {nIn : Nat} (r : Nat)
+    (aE bE cE dE eE fE gE hE cont : ImpExpr) (S : List String)
+    (hones : "__ones" ∈ S) (hw : 8 + r < nIn)
+    (haE : OperandInScope ["in"] nIn S aE)
+    (hbE : OperandInScope ["in"] nIn S bE)
+    (hcE : OperandInScope ["in"] nIn S cE)
+    (hdE : OperandInScope ["in"] nIn S dE)
+    (heE : OperandInScope ["in"] nIn S eE)
+    (hfE : OperandInScope ["in"] nIn S fE)
+    (hgE : OperandInScope ["in"] nIn S gE)
+    (hhE : OperandInScope ["in"] nIn S hE)
+    (hcont : Compiles ["in"] 32 nIn (roundLocals r ++ S) cont) :
+    Compiles ["in"] 32 nIn S (roundBody r aE bE cE dE eE fE gE hE cont) := by
+  have hadd : recogBin "wrapping_add" = some JasminBinOp.add := by simp [recogBin]
+  refine bigSigBlock_compiles 6 11 25 "s1" eE _ S heE ?_
+  refine chBlock_compiles "s2" eE fE gE _ _ (by simp [hones])
+    (heE.mono (by intro y hy; simp [hy])) (hfE.mono (by intro y hy; simp [hy]))
+    (hgE.mono (by intro y hy; simp [hy])) ?_
+  refine Compiles.letBin hadd (hhE.mono (by intro y hy; simp [hy]))
+    (.local_ "s1" (by decide) (by simp)) ?_
+  refine Compiles.letBin hadd (.local_ "u7" (by decide) (by simp))
+    (.local_ "s2" (by decide) (by simp)) ?_
+  refine Compiles.letLit (l := .int (kVal r)) (n := kVal r) (by simp [litNat?]) ?_
+  refine Compiles.letBin hadd (.local_ "u8" (by decide) (by simp))
+    (.local_ "kc" (by decide) (by simp)) ?_
+  refine Compiles.letBin hadd (.local_ "u9" (by decide) (by simp))
+    (.input "in" (.int (8 + r)) (8 + r) (by simp) (by simp [litNat?]; omega) hw) ?_
+  refine bigSigBlock_compiles 2 13 22 "s3" aE _ _
+    (haE.mono (by intro y hy; simp [hy])) ?_
+  refine majBlock_compiles "s4" aE bE cE _ _
+    (haE.mono (by intro y hy; simp [hy])) (hbE.mono (by intro y hy; simp [hy]))
+    (hcE.mono (by intro y hy; simp [hy])) ?_
+  refine Compiles.letBin hadd (.local_ "s3" (by decide) (by simp))
+    (.local_ "s4" (by decide) (by simp)) ?_
+  refine Compiles.letBin hadd (.local_ "t1" (by decide) (by simp))
+    (.local_ "t2" (by decide) (by simp)) ?_
+  exact Compiles.letBin hadd (hdE.mono (by intro y hy; simp [hy]))
+    (.local_ "t1" (by decide) (by simp)) hcont
+
+/-- **The compression unroller compiles at every depth.** `compUnroll (c+1) r`
+    — the `c+1`-round chain from round `r`, threading the eight working-word read
+    operands — satisfies the scope condition whenever the operands and `__ones` are
+    in scope and the schedule words `W[r .. r+c]` are input slots. Induction on the
+    unroll depth. -/
+theorem compUnroll_compiles {nIn : Nat} :
+    ∀ (c r : Nat) (S : List String) (aE bE cE dE eE fE gE hE : ImpExpr),
+      8 + r + c < nIn → "__ones" ∈ S →
+      OperandInScope ["in"] nIn S aE → OperandInScope ["in"] nIn S bE →
+      OperandInScope ["in"] nIn S cE → OperandInScope ["in"] nIn S dE →
+      OperandInScope ["in"] nIn S eE → OperandInScope ["in"] nIn S fE →
+      OperandInScope ["in"] nIn S gE → OperandInScope ["in"] nIn S hE →
+      Compiles ["in"] 32 nIn S (compUnroll (c + 1) r aE bE cE dE eE fE gE hE) := by
+  intro c
+  induction c with
+  | zero =>
+      intro r S aE bE cE dE eE fE gE hE hw hones ha hb hc hd he hf hg hh
+      refine roundBody_compiles r aE bE cE dE eE fE gE hE _ S hones (by omega)
+        ha hb hc hd he hf hg hh ?_
+      exact Compiles.var (aN_notParam r) (by simp [roundLocals])
+  | succ c ih =>
+      intro r S aE bE cE dE eE fE gE hE hw hones ha hb hc hd he hf hg hh
+      refine roundBody_compiles r aE bE cE dE eE fE gE hE _ S hones (by omega)
+        ha hb hc hd he hf hg hh ?_
+      refine ih (r + 1) (roundLocals r ++ S) _ _ _ _ _ _ _ _ (by omega)
+        (by simp [roundLocals, hones])
+        (.local_ (aN r) (aN_notParam r) (by simp [roundLocals]))
+        (ha.mono (by intro y hy; simp [roundLocals, hy]))
+        (hb.mono (by intro y hy; simp [roundLocals, hy]))
+        (hc.mono (by intro y hy; simp [roundLocals, hy]))
+        (.local_ (eN r) (eN_notParam r) (by simp [roundLocals]))
+        (he.mono (by intro y hy; simp [roundLocals, hy]))
+        (hf.mono (by intro y hy; simp [roundLocals, hy]))
+        (hg.mono (by intro y hy; simp [roundLocals, hy]))
+
+/-- **The compression program compiles at every round count.** `compProgram (N+1)`
+    over `nIn` input slots satisfies the scope condition whenever the eight initial
+    words and the `N+1` schedule words are input slots. -/
+theorem compProgram_compiles {nIn N : Nat} (h : 8 + N < nIn) :
+    Compiles ["in"] 32 nIn [] (compProgram (N + 1)) := by
+  refine Compiles.letLit (l := .int 4294967295) (n := 4294967295) (by simp [litNat?]) ?_
+  exact compUnroll_compiles N 0 ["__ones"] _ _ _ _ _ _ _ _ (by omega) (by simp)
+    (.input "in" (.int 0) 0 (by simp) (by simp [litNat?]) (by omega))
+    (.input "in" (.int 1) 1 (by simp) (by simp [litNat?]) (by omega))
+    (.input "in" (.int 2) 2 (by simp) (by simp [litNat?]) (by omega))
+    (.input "in" (.int 3) 3 (by simp) (by simp [litNat?]) (by omega))
+    (.input "in" (.int 4) 4 (by simp) (by simp [litNat?]) (by omega))
+    (.input "in" (.int 5) 5 (by simp) (by simp [litNat?]) (by omega))
+    (.input "in" (.int 6) 6 (by simp) (by simp [litNat?]) (by omega))
+    (.input "in" (.int 7) 7 (by simp) (by simp [litNat?]) (by omega))
+
+/-! ## §5  The full compression loop compiles -/
 
 /-- **The full SHA-256 compression loop compiles.** All 64 rounds (`compProgram 64`,
     over the 8 initial words + 64 schedule words = 72 input slots) compile through
     the unchanged `compileFromHax`. -/
 theorem fullCompress_isSome :
-    (compileFromHax (w := 32) (nIn := 72) ["in"] (compProgram 64)).isSome := by
-  native_decide
+    (compileFromHax (w := 32) (nIn := 72) ["in"] (compProgram 64)).isSome :=
+  compileFromHax_isSome_of_compiles (compProgram_compiles (N := 63) (by omega))
 
-/-! ## §5  Round-body value-correctness (validated by `rfl`)
+/-! ## §6  Round-body value-correctness (validated by `rfl`)
 
 The single round (and, by `rfl`, a handful of rounds) denotes to exactly the FIPS
 `roundFn` fold — validating the round body is the real compression round. General-N
@@ -215,8 +399,8 @@ array-state, the four block-denote lemmas threaded), built on this body. -/
 
 /-- The single compression round compiles. -/
 theorem compress1_isSome :
-    (compileFromHax (w := 32) (nIn := 9) ["in"] (compProgram 1)).isSome := by
-  native_decide
+    (compileFromHax (w := 32) (nIn := 9) ["in"] (compProgram 1)).isSome :=
+  compileFromHax_isSome_of_compiles (compProgram_compiles (N := 0) (by omega))
 
 set_option maxRecDepth 4000 in
 /-- **The compression round body is value-correct.** The one-round program
@@ -234,8 +418,8 @@ theorem compress1_value :
 
 /-- Four compression rounds compile. -/
 theorem compress4_isSome :
-    (compileFromHax (w := 32) (nIn := 12) ["in"] (compProgram 4)).isSome := by
-  native_decide
+    (compileFromHax (w := 32) (nIn := 12) ["in"] (compProgram 4)).isSome :=
+  compileFromHax_isSome_of_compiles (compProgram_compiles (N := 3) (by omega))
 
 set_option maxRecDepth 8000 in
 /-- **Four compression rounds are value-correct** — the round body *chains*
@@ -251,7 +435,7 @@ theorem compress4_value :
     (Option.some_get compress4_isSome).symm ?_
   rfl
 
-/-! ## §6  Block denotation lemmas (toward general-N value-correctness)
+/-! ## §7  Block denotation lemmas (toward general-N value-correctness)
 
 The four block helpers each denote, under `denoteScalar`, to `cont` run in the env
 extended at `nout` with the block value (plus dead scratch). The compression
@@ -259,7 +443,6 @@ analogue of §9's `sigBlock_denote`, the per-round workhorses the general-N indu
 threads. The read operands are required to denote *stably* across the block's
 scratch extension (the `hr*` hypotheses), exactly as in §9. -/
 
-set_option linter.unusedSimpArgs false in
 /-- `bigSigBlock` is value-preserving: it runs `cont` with `nout := Σ(v)`. -/
 theorem bigSigBlock_denote {nIn : Nat} (I : Fin nIn → BitVec 32)
     (ρ : String → Option (BitVec 32)) (rot1 rot2 rot3 : Nat) (nout : String)
@@ -290,10 +473,9 @@ theorem bigSigBlock_denote {nIn : Nat} (I : Fin nIn → BitVec 32)
     funext ρ'; simp only [denoteAtomExpr, idxOf_arr_none (show ("in":String) ≠ "bx" by decide)]
   simp only [bigSigBlock, ImpExpr.denoteScalar, recogBin, recogShift, litNat?,
     ShiftKind.apply, JasminBinOp.apply, reduceIte, String.reduceEq, Int.toNat,
-    or_self, or_false, false_or, e0, e1, e2, hba, hbb, hbc, hbx,
+    or_self, or_false, e0, e1, e2, hba, hbb, hbc, hbx,
     Option.bind_some, Option.map_some, if_true]
 
-set_option linter.unusedSimpArgs false in
 /-- `chBlock` is value-preserving: it runs `cont` with `nout := Ch(ve,vf,vg)`. The
     `__ones` local (the all-ones complement) is read from `ρ` (`h_ones`). -/
 theorem chBlock_denote {nIn : Nat} (I : Fin nIn → BitVec 32)
@@ -328,10 +510,9 @@ theorem chBlock_denote {nIn : Nat} (I : Fin nIn → BitVec 32)
   have hones : denoteAtomExpr ["in"] I (ImpExpr.var "__ones") = fun ρ' => ρ' "__ones" := by
     funext ρ'; simp only [denoteAtomExpr, idxOf_arr_none (show ("in":String) ≠ "__ones" by decide)]
   simp only [chBlock, ImpExpr.denoteScalar, recogBin, JasminBinOp.apply, reduceIte,
-    String.reduceEq, or_self, or_false, false_or, ea0, ef0, ea1, eg2, hca, hcb, hcc,
+    String.reduceEq, or_self, ea0, ef0, ea1, eg2, hca, hcb, hcc,
     hones, h_ones, chFn, Option.bind_some, Option.map_some, if_true]
 
-set_option linter.unusedSimpArgs false in
 /-- `majBlock` is value-preserving: it runs `cont` with `nout := Maj(va,vb,vc)`. -/
 theorem majBlock_denote {nIn : Nat} (I : Fin nIn → BitVec 32)
     (ρ : String → Option (BitVec 32)) (nout : String) (aE bE cE : ImpExpr)
@@ -371,7 +552,7 @@ theorem majBlock_denote {nIn : Nat} (I : Fin nIn → BitVec 32)
   have hmx : denoteAtomExpr ["in"] I (ImpExpr.var "mx") = fun ρ' => ρ' "mx" := by
     funext ρ'; simp only [denoteAtomExpr, idxOf_arr_none (show ("in":String) ≠ "mx" by decide)]
   simp only [majBlock, ImpExpr.denoteScalar, recogBin, JasminBinOp.apply, reduceIte,
-    String.reduceEq, or_self, or_false, false_or, ea0, eb0, ea1, ec1, eb2, ec2, hma,
+    String.reduceEq, or_self, ea0, eb0, ea1, ec1, eb2, ec2, hma,
     hmb, hmc, hmx, majFn, Option.bind_some, Option.map_some, if_true]
 
 end CatCrypt.Crypto.SecureCompilation.CompileFromHaxCompress

@@ -202,4 +202,11 @@ def emitMain : IO Unit := do
   IO.FS.writeFile "bench/aes_xts_compare/gen/aes_xts_double.s" doubleAsm
   IO.println "WROTE bench/aes_xts_compare/gen/aes_xts_double.s (owned x86 backend, NO jasminc)"
 
+/-! ## Artifact generation at elaboration
+
+The `.s` is written while this module elaborates, so `lake` owns the dependency
+between the kernel source and the bench artifact. -/
+
+#eval emitMain
+
 end CatCrypt.Crypto.SecureCompilation.X86Backend.XtsTweakKernel

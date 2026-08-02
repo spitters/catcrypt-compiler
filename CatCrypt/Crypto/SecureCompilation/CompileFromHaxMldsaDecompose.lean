@@ -17,7 +17,7 @@ the Keccak `χ`/`θ`/`ι` lanes (`CompileFromHaxKeccak`), the BLAKE2s `G` step
 (`CompileFromHaxMayoGf16`) showed `compileFromHax` *emitting* crypto leaves for
 the bitwise, ARX, prime-field, and binary-field families. Here we do the same
 for a **post-quantum signature rounding leaf**, the per-coefficient
-straight-line shift/add/sub split that `MLDSA/Power2RoundOwnedEmit.lean` lowers
+straight-line shift/add/sub split that `MLDSA/Power2RoundEmit.lean` lowers
 through the owned X86 loop backend — now derived through the *same* verified
 `compileFromHax` front as the other C4 leaves, with no front change.
 
@@ -70,9 +70,9 @@ compiler* and proven equal to the FIPS-204 rounding form.
 
 `power2roundReconstruct_eq` ties the two emitted forms together with the defining
 `power2round` identity `a1·2^D + a0 = a` (mod `2^64`) over the standard-representative
-domain `a < q` — the genuine rounding-correctness fact (the SDitH-lesson pure-BitVec
+domain `a < q` — the rounding-correctness fact (the SDitH-lesson pure-BitVec
 `bv_decide` tie, the rounding analogue of the GF(251) Solinas-fold seam), not an
-ARX `rfl`. The spec forms match `Power2RoundOwnedEmit.refA1`/`refA0Bits`.
+ARX `rfl`. The spec forms match `Power2RoundEmit.refA1`/`refA0Bits`.
 -/
 
 set_option autoImplicit false
@@ -99,7 +99,7 @@ def power2roundA1Src : ImpExpr :=
      (.var "a1")))
 
 /-- The closed high-part emit form the source denotes to, at `w = 64`:
-    `a1 = (a + 4095) >>> 13`. Matches `Power2RoundOwnedEmit.refA1` (with the
+    `a1 = (a + 4095) >>> 13`. Matches `Power2RoundEmit.refA1` (with the
     public schedule inlined as the abstract input `a`). -/
 def power2roundA1Spec (a : BitVec 64) : BitVec 64 :=
   (a + 4095) >>> (13 : Nat)
@@ -163,7 +163,7 @@ def power2roundA0Src : ImpExpr :=
 
 /-- The closed low-part emit form the source denotes to, at `w = 64`:
     `a0 = a − (((a + 4095) >>> 13) <<< 13)`, the two's-complement low part.
-    Matches `Power2RoundOwnedEmit.refA0Bits` (with the public schedule inlined as
+    Matches `Power2RoundEmit.refA0Bits` (with the public schedule inlined as
     the abstract input `a`). -/
 def power2roundA0Spec (a : BitVec 64) : BitVec 64 :=
   a - (((a + 4095) >>> (13 : Nat)) <<< (13 : Nat))
@@ -187,7 +187,7 @@ theorem power2roundA0_compileFromHax_isSome :
     valuation `![a]`) is exactly the FIPS-204 low-part form
     `a0 = a − (((a + 4095) >>> 13) <<< 13)`. Routed through the C3 per-primitive
     obligation `compileFromHax_meets_spec`. The two's-complement low part is the
-    genuinely-signed content (the centered `a0 ∈ (−2^{D−1}, 2^{D−1}]`), realised by
+    signed content (the centered `a0 ∈ (−2^{D−1}, 2^{D−1}]`), realised by
     `wrapping_sub` mod `2^64` exactly as the owned `x86_SUB`. -/
 theorem power2roundA0_compiles :
     ∃ (prog : Com jasminDialect (frontCtxt 64 1 []) (rW 64)),
@@ -213,7 +213,7 @@ theorem power2roundA0_compiles :
 
 The two emitted forms satisfy the defining `power2round` identity: the high part
 times `2^D` plus the low part reconstructs the input `a`, over the
-standard-representative domain `a < q`. This is the genuine rounding-correctness
+standard-representative domain `a < q`. This is the rounding-correctness
 fact — the rounding analogue of the GF(251) Solinas-fold seam, proved as a pure
 `BitVec 64` `bv_decide` over the constrained domain (the SDitH lesson). -/
 

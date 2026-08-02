@@ -172,37 +172,27 @@ theorem lo_body_lines :
 
 /-! ## 5. Structural smoke pins on the emitted `.s` text -/
 
-/-- The `hi` emit carries the packed multiply (lowercase owned mnemonic). -/
-theorem hi_asm_has_vpmullq :
-    strContains ntt_butterfly_hi_vpackzmm_asm "vpmullq" = true := by native_decide
+/- The `hi` emit carries the packed multiply (lowercase owned mnemonic). -/
+#guard (strContains ntt_butterfly_hi_vpackzmm_asm "vpmullq")
 
-/-- The `hi` emit carries the packed add (lowercase owned mnemonic). -/
-theorem hi_asm_has_vpaddq :
-    strContains ntt_butterfly_hi_vpackzmm_asm "vpaddq" = true := by native_decide
+/- The `hi` emit carries the packed add (lowercase owned mnemonic). -/
+#guard (strContains ntt_butterfly_hi_vpackzmm_asm "vpaddq")
 
-/-- The `lo` emit carries the packed subtract (lowercase owned mnemonic). -/
-theorem lo_asm_has_vpsubq :
-    strContains ntt_butterfly_lo_vpackzmm_asm "vpsubq" = true := by native_decide
+/- The `lo` emit carries the packed subtract (lowercase owned mnemonic). -/
+#guard (strContains ntt_butterfly_lo_vpackzmm_asm "vpsubq")
 
-/-- The exported `hi` symbol is present. -/
-theorem hi_asm_has_export :
-    strContains ntt_butterfly_hi_vpackzmm_asm "ntt_butterfly_hi_vpackzmm:" = true := by
-  native_decide
+/- The exported `hi` symbol is present. -/
+#guard (strContains ntt_butterfly_hi_vpackzmm_asm "ntt_butterfly_hi_vpackzmm:")
 
-/-- The exported `lo` symbol is present. -/
-theorem lo_asm_has_export :
-    strContains ntt_butterfly_lo_vpackzmm_asm "ntt_butterfly_lo_vpackzmm:" = true := by
-  native_decide
+/- The exported `lo` symbol is present. -/
+#guard (strContains ntt_butterfly_lo_vpackzmm_asm "ntt_butterfly_lo_vpackzmm:")
 
-/-- The body uses 512-bit `%zmm` registers (not the 128-bit `%xmm` of the
+/- The body uses 512-bit `%zmm` registers (not the 128-bit `%xmm` of the
     `VsimdAsmPrint` fragment). -/
-theorem hi_asm_has_zmm :
-    strContains ntt_butterfly_hi_vpackzmm_asm "%zmm" = true := by native_decide
+#guard (strContains ntt_butterfly_hi_vpackzmm_asm "%zmm")
 
-/-- No UPPERCASE jasmin intrinsic survives in the `hi` emit — this is the owned
+/- No UPPERCASE jasmin intrinsic survives in the `hi` emit — this is the owned
     (no-jasminc) lowercase-mnemonic path. -/
-theorem hi_asm_no_jasmin_intrinsic :
-    strContains ntt_butterfly_hi_vpackzmm_asm "#VPMULL_8u64" = false := by
-  native_decide
+#guard !(strContains ntt_butterfly_hi_vpackzmm_asm "#VPMULL_8u64")
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ButterflyBlockComEmit

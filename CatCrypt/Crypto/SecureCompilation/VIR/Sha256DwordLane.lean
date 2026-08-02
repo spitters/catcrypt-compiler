@@ -15,14 +15,14 @@ with their bit-exact ties to the abstract `UInt32` FIPS-180-4 spec
 (`Crypto.Primitives.SHA256`).
 
 These functions and ties were previously stated inside the AVX-512 dword machine
-model (`X86Backend/Avx512DwordModel.lean` + `OwnedSha256DwordRoundRealization.lean`).
+model (`X86Backend/Avx512DwordModel.lean` + `Sha256DwordRoundRealization.lean`).
 They are **pure `BitVec 32` ↔ `UInt32` facts** — independent of any register-file
 or instruction-set model — so they live here, importing only the abstract spec.
 Consumers that need "the dword lane SHA-256 body equals the spec" depend on this
 module without pulling in the AVX-512 model.
 
 The lane is already 32-bit, so every tie is **bit-exact** (no `setWidth 32`
-truncation): on a 32-bit lane the right rotate `rorD` wraps mod 32 — the genuine
+truncation): on a 32-bit lane the right rotate `rorD` wraps mod 32 — the
 SHA-256 `rotr` — unlike the 64-bit-lane analogue.
 
 * `chD` / `majD` — `Ch`/`Maj` bodies (pure bitwise, `ch_dword_bitExact` /
@@ -48,14 +48,14 @@ open CatCrypt.Crypto.Primitives.SHA256
 
 /-- The dword (`BitVec 32`) right rotate by an immediate `k`, written as the
     `(a >>> k) ||| (a <<< (32-k))` shift decomposition **at width 32** — the
-    genuine SHA-256 `rotr`.  At width 32 the high `k` bits wrap into the low `k`
+    SHA-256 `rotr`.  At width 32 the high `k` bits wrap into the low `k`
     bits, mod 32 (`VPRORD`). -/
 @[simp] def rorD (a : BitVec 32) (k : Nat) : BitVec 32 :=
   (a >>> k) ||| (a <<< (32 - k))
 
 /-- **`rorD` is `BitVec.rotateRight` at width 32.**  For `0 < k < 32` the
     shift-decomposition `(a >>> k) ||| (a <<< (32-k))` equals `a.rotateRight k` —
-    the genuine 32-bit right rotate (wraps mod 32). -/
+    the 32-bit right rotate (wraps mod 32). -/
 theorem rorD_eq_rotateRight (a : BitVec 32) (k : Nat) (hk : k < 32) :
     rorD a k = a.rotateRight k := by
   have hmod : k % 32 = k := Nat.mod_eq_of_lt hk

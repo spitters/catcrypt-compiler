@@ -12,9 +12,9 @@ import CatCrypt.Crypto.Bridges.ReprTransfer
 its homomorphism square is gated by `dom a → dom b → …`.  That is the right shape
 when the no-truncation precondition factors operand-by-operand (e.g. a field-`+`
 where each summand is `< p`).  But the Montgomery **butterfly combine**
-`(a, b) ↦ a + w·b` over `BitVec 64` lanes has a genuinely *joint* no-wrap
+`(a, b) ↦ a + w·b` over `BitVec 64` lanes has a *joint* no-wrap
 precondition — `a.toNat + w·b.toNat < 2^64` — which does NOT factor into two
-per-operand bounds.  The pilot `OwnedMontButterflyTransfer.lean` was therefore forced
+per-operand bounds.  The pilot `MontButterflyTransfer.lean` was therefore forced
 to OVER-RESTRICT to the per-operand `< 2^31` sufficient condition (then
 `w·b < 2^62`, `a + w·b < 2^63 < 2^64`), and documented the gap.
 
@@ -30,7 +30,7 @@ This file closes that gap, **additively** (it does not touch `ReprTransfer.lean`
   not factor as a conjunction of per-operand predicates, so the generalisation is
   strict.
 
-The **applications** — the Montgomery butterfly combine re-derived on its genuine
+The **applications** — the Montgomery butterfly combine re-derived on its
 joint no-wrap domain (dropping the pilot's per-operand `< 2^31`) and a second
 homomorphic lane kernel — live in the sibling file
 `CatCrypt/Crypto/SecureCompilation/TransferButterflyJoint.lean` (it imports the owned

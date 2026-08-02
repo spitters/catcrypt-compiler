@@ -3,14 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockFullMemrefEmit
+import CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockFullMemrefJazzEmit
 import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 
 /-!
 # The whole ChaCha20 block, STATE-RESIDENT, through the OWNED x86 backend (NO jasminc)
 
-[`Chacha20BlockFullMemrefOwnedEmit.lean`](Chacha20BlockFullMemrefOwnedEmit.lean)
+[`Chacha20BlockFullMemrefEmit.lean`](Chacha20BlockFullMemrefEmit.lean)
 compiles the whole ChaCha20 block from one `Com catCryptDialect` through the owned
 backend `Com.toLprogPhysAbi`. But its source `Com`
 (`chacha20BlockFullMemrefCom`) holds the **sixteen working state words and sixteen
@@ -457,8 +457,8 @@ RSI`, `a1 = wrk ← RDI`).
 
 These were `native_decide` theorems, which compile the whole Com + denote + lowering
 to native code at build time and do not terminate on a module this heavy
-(`[[feedback-avoid-rev12-native-decide-kat]]`: never gate an emit kernel with heavy
-`native_decide`). They are now **runtime self-checks** inside `emit`: the emit binary
+(an emit kernel should not be gated on a heavy
+`native_decide`). They are **runtime self-checks** inside `emit`: the emit binary
 computes the lowering and the denote=spec / no-spill checks when run, and the external
 oracle is the RFC-8439 C KAT. The module itself builds cheaply. -/
 

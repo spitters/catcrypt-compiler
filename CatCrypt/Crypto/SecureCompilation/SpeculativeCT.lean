@@ -6,56 +6,65 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
 
 /-!
-# Speculative Constant-Time (SCT) for the owned `LowCT` instruction stream
+# Speculative constant-time for the owned `LowCT` instruction stream
 
-**Task #564 PILOT** — re-opens the deferred RHP-4 (Spectre) line now that the
-pipeline *owns* the instruction stream (`LowCT`).  This file delivers the
-*foundation* for speculative constant-time, in the style of Cauligi et al.,
-"Constant-Time Foundations for the New Spectre Era" (PLDI 2020), and one
-structural keystone lemma — it does **not** attempt to "solve Spectre".
+A leakage observer over `LowCT` extending the architectural branch-and-index
+trace with a speculation window and a misprediction oracle, the constant-time
+predicate over that observer, and its consequence for programs the
+architectural analyser `cmdCT` accepts.
 
-## What this provides
+## What the observer emits
 
-1. **Speculative leakage semantics** (`SpecState`, `specObs`, `specObsList`):
-   the architectural leakage observation of `LowCT` is the sequence of
-   *branch-condition values* and *runtime memory-index values* an attacker
-   reads (the pc / memory-address pattern).  We extend the architectural
-   observer with a **speculation window** and a **misprediction oracle**:
-   on a branch, the oracle may mis-predict and speculatively execute the
-   *wrong* path for up to a bounded window, accumulating its leakage
-   observations, then roll back.
+`archObs rs c` is the architectural leakage of `c` from `rs`: the branch
+decisions taken and the runtime memory indices accessed, in order.  `specObs
+window O rs c` extends it with the oracle `O` and the window bound.
 
-2. **The SCT predicate** (`SpeculativelyConstantTime`): two executions whose
-   inputs agree on the PUBLIC slots produce the *same* speculative leakage
-   trace.  This is the speculative analogue of the architectural
-   `PublicEquiv → PublicEquiv` noninterference proved by `cmdCT_sound`
-   (`LowCTCTAnalysis.lean`).
+* **Conditional-branch misprediction (PHT).**  `RIfNz` and `RWhileNz`
+  contribute, when `O.mispredict` fires, the *other* arm's observations
+  truncated to `window` and capped by `Obs.rollback`, followed by the
+  architecturally taken arm's observations.  The transient contribution is the
+  wrong path's own trace, so this clause separates a mispredicted run from a
+  correctly predicted one.
+* **Store bypass (STL).**  The `RArrLoad` clause emits, when `O.bypassStore`
+  fires, `Obs.stlForward src.locVar (rsTowerLimb rs src.locVar i)` — the word
+  the load is forwarded out of the source slot, read at the load's runtime
+  index `i`.  Because the observer reads against the entry state, that word is
+  the contents the slot held before any store the command itself performs, so
+  it is the value a load bypassing every pending store receives.  It is a
+  memory read, not the index the architectural `Obs.memIdx` at the same site
+  carries.
+* **Indirect-branch and return misprediction (BTB, RSB).**  The `RCall` clause
+  emits `Obs.indirectTarget dest.locVar (rsTowerLimb rs dest.locVar 0)` and
+  `Obs.retTarget dest.locVar (rsTowerLimb rs dest.locVar 1)`: the predicted
+  callee pointer and the predicted return address, read as the first two words
+  of the call's destination slot.  `archObs` emits nothing at a call.
 
-3. **The structural keystone** (`architecturally_CT_imp_SCT`): for a
-   program accepted by the architectural CT analyser `cmdCT` (every branch
-   condition and every memory index is `Public`), the speculative leakage
-   trace is a function of the PUBLIC state alone — so SCT follows.  The
-   intuition formalised: if every branch / index is public, then both the
-   architectural observations AND the misprediction oracle's choices (which
-   we constrain to be driven by the public branch decisions, `PublicDriven`)
-   are public-determined; the spec-leak-trace therefore adds nothing
-   secret-dependent.
+A store-to-load forward that carries the value a *particular* buffered store
+overwrote, and that enters the state and from there later addresses, is
+expressible over `SpeculativeCTStoreBuffer.specRun`, whose state carries a
+store buffer of overwritten slot values.
+`SpeculativeCTStoreBuffer.cmdCT_not_imp_SCT` exhibits a `cmdCT`-accepted
+command that leaks under that model.
 
-## Scope (honest)
+## Scope
 
-* The leakage observable is the **pc + memory-address pattern** — branch
-  decisions and runtime memory indices.  This is exactly the granularity at
-  which Spectre-PHT / Spectre-STL leak, and the granularity `cmdCT` already
-  reasons about.  Data values inside leaves are not modelled (they are not
-  address-pattern leakage; leaf CT is delegated, as in `cmdCT_sound`).
-* The model is a *clean structural* observer over `LowCT`, parameterised by
-  the misprediction oracle.  It is NOT wired through the relational
-  `RustExec` big-step (which would re-derive the whole operational
-  semantics); the architectural projection of `specObs` is the structural
-  branch/index trace, and that is what the keystone reasons over.
-* A real fence/SLH pass (which would *discharge* the `PublicDriven` oracle
-  obligation for an arbitrary attacker-controlled predictor) is future
-  work — see the closing note.
+* The observable is the branch-decision, memory-address and transiently
+  forwarded-word pattern.  Data values inside leaves are delegated to the
+  leaf-CT table, as in `cmdCT_sound`.
+* The observer is structural over `LowCT` and reads every condition, index and
+  memory word against the entry state; it is not threaded through the
+  relational `RustExec` big-step.  A load therefore sees the slot contents the
+  command started with, and a second store to a slot the command already wrote
+  is invisible to it.
+* `LowCT` has no indirect-jump and no return constructor, so the indirect
+  target and the return address are modelled as the first two words of the
+  call's destination slot.
+* `architecturally_CT_imp_SCT` states that a `cmdCT`-accepted program has equal
+  `specObs` traces on `PublicEquiv` states.  It rests on `cmdCT` classifying
+  the source, destination and index slots `Public`: `Separation.loadSecretArr`
+  and `Separation.callSecretDest` are architecturally constant-time commands
+  whose `specObs` traces separate two `PublicEquiv` states, and both are
+  rejected by `cmdCT`.
 
 ## References
 
@@ -78,24 +87,16 @@ condition value (which way control went), and at every runtime-indexed memory
 access the index value.  Pure data-flow (leaf arithmetic) is not address
 leakage and is delegated to the leaf-CT table, exactly as in `cmdCT_sound`. -/
 
-/-- A single leakage observation.  The first three constructors are the
-    architectural / Spectre-PHT (v1) observable (branch decisions, runtime
-    memory indices, and the speculation-rollback marker).  The last three
-    (added 2026-06) extend the observable to the remaining Spectre transient
-    sources, each modelled as the runtime value of the *slot* the speculative
-    microarchitectural structure reads:
+/-- A single leakage observation.
 
-    * `indirectTarget` — **Spectre-v2 / BTB**: an indirect call/branch whose
-      speculative target is taken from a runtime *target slot* (the register
-      holding the callee address).  The attacker reads the target value the
-      branch-target buffer steered to.
-    * `retTarget` — **Spectre-RSB**: a return whose speculative target is the
-      (possibly-mispredicted) return-stack top, modelled as a runtime *return
-      slot* value.
-    * `stlForward` — **Spectre-v4 / STL** (speculative store bypass): a load
-      that speculatively bypasses a prior store and forwards a stale value;
-      the attacker reads the load's *address slot* used for the bypassed
-      forward. -/
+    `branch`, `memIdx` and `rollback` are the architectural and
+    branch-misprediction observable: branch decisions, runtime memory indices,
+    and the rollback marker that caps a mis-speculated window.
+
+    `indirectTarget`, `retTarget` and `stlForward` are the transient
+    observations of the three remaining speculation sites.  Each carries a
+    memory word: the predicted callee pointer, the predicted return address,
+    and the word a bypassing load is forwarded. -/
 inductive Obs where
   /-- A branch on scalar slot `cond` was reached with runtime value `v`. -/
   | branch (cond : String) (v : Nat) : Obs
@@ -103,14 +104,13 @@ inductive Obs where
   | memIdx (idxVar : String) (v : Nat) : Obs
   /-- A speculation rollback marker (a mis-speculated window ended). -/
   | rollback : Obs
-  /-- **BTB (v2)** indirect-branch/call speculative target: the runtime value
-      `v` of the target slot `tgt` the branch-target buffer steered to. -/
+  /-- Indirect-branch site: the predicted callee pointer `v`, read from slot
+      `tgt`. -/
   | indirectTarget (tgt : String) (v : Nat) : Obs
-  /-- **RSB** speculative return target: the runtime value `v` of the
-      return-stack slot `ret` the return speculated to. -/
+  /-- Return site: the predicted return address `v`, read from slot `ret`. -/
   | retTarget (ret : String) (v : Nat) : Obs
-  /-- **STL (v4)** store-to-load-forward: the runtime value `v` of the
-      address slot `addr` a load used to speculatively bypass a prior store. -/
+  /-- Store bypass: the word `v` a bypassing load is forwarded out of the
+      source slot `addr`. -/
   | stlForward (addr : String) (v : Nat) : Obs
   deriving DecidableEq, Repr, Inhabited
 
@@ -169,30 +169,34 @@ We model the oracle as a function of the *current branch site* and the
 *public branch decision*.  A `MispredOracle` returns, at a branch with
 condition slot `cond` and observed value `v`, whether to mispredict. -/
 
-/-- A misprediction oracle.  It ranges over **all four** Spectre transient
-    sources we model, each as a pure function of the relevant *slot* and its
-    runtime value.  Keeping every field a pure function of `(slot, v)` is what
-    makes the oracle *unconstrained* yet *public-determined* once `cmdCT`
-    certifies the slot public:
+/-- A misprediction oracle: four independent decisions, each a pure function of
+    a slot name and a runtime value.
 
-    * `mispredict` — **PHT (v1)**: mispredict the conditional branch `cond`?
-    * `injectTarget` — **BTB (v2)**: inject a transient indirect target at the
-      call site whose target slot is `tgt` (value `v`)?
-    * `mispredRet` — **RSB**: mispredict the return-stack top at the return
-      site whose return slot is `ret` (value `v`)?
-    * `bypassStore` — **STL (v4)**: speculatively bypass the prior store at the
-      load whose address slot is `addr` (value `v`)? -/
+    * `mispredict` — mispredict the conditional branch `cond` at value `v`?
+    * `injectTarget` — mispredict the indirect target at the call whose
+      destination slot is `tgt` (value `v`)?
+    * `mispredRet` — mispredict the return address at the call whose
+      destination slot is `ret` (value `v`)?
+    * `bypassStore` — bypass the pending stores at the load whose index slot is
+      `addr` (value `v`)?
+
+    Every field ranges over a slot name and its runtime value only, so once
+    `cmdCT` certifies that slot `Public`, the decision agrees on any two
+    `PublicEquiv` states — this is `PublicDriven`.  A predictor that reads the
+    whole speculative state, including a store buffer, is
+    `SpeculativeCTStoreBuffer.SpecOracle`, and `PublicDrivenSB` is a restriction
+    on it that `SpeculativeCTStoreBuffer.peekOracle` fails. -/
 structure MispredOracle where
-  /-- Mispredict at branch `cond` whose runtime value is `v`?  (PHT/v1) -/
+  /-- Mispredict at branch `cond` whose runtime value is `v`? -/
   mispredict : (cond : String) → (v : Nat) → Bool
-  /-- Inject a speculative indirect target at the call whose target slot is
-      `tgt` (runtime value `v`)?  (BTB/v2) -/
+  /-- Mispredict the indirect target at the call whose destination slot is
+      `tgt` (runtime value `v`)? -/
   injectTarget : (tgt : String) → (v : Nat) → Bool
-  /-- Mispredict the return-stack top at the return whose return slot is `ret`
-      (runtime value `v`)?  (RSB) -/
+  /-- Mispredict the return address at the call whose destination slot is `ret`
+      (runtime value `v`)? -/
   mispredRet : (ret : String) → (v : Nat) → Bool
-  /-- Speculatively bypass a prior store at the load whose address slot is
-      `addr` (runtime value `v`)?  (STL/v4) -/
+  /-- Bypass the pending stores at the load whose index slot is `addr` (runtime
+      value `v`)? -/
   bypassStore : (addr : String) → (v : Nat) → Bool
 
 /-- The speculation window bound: the number of instructions the processor
@@ -248,37 +252,31 @@ def specObs (window : SpecWindow) (O : MispredOracle) (rs : RustState) :
       Obs.branch cond v :: (speculated ++ obsBody)
   | .RFor _ _ body          => specObs window O rs body
   | .RArrStore _ idxVar _   => [Obs.memIdx idxVar (rs.rsScalar idxVar)]
-  | .RArrLoad dst _ idxVar  =>
-      -- **STL (v4) speculative store bypass.**  A load may speculatively
-      -- forward a stale value bypassing a prior store to the same address.
-      -- We model the bypassed forward as an `stlForward` observation on the
-      -- load's *index/address slot* (the address the forward keyed on), gated
-      -- by the oracle's `bypassStore` decision.  The architectural memory-index
-      -- observation is always emitted first.  The address slot read is the
-      -- same `idxVar` `cmdCT_RArrLoad` certifies public.
+  | .RArrLoad _ src idxVar  =>
+      -- The architectural index observation, then — when `O.bypassStore`
+      -- fires — the word the load is forwarded out of the source slot at that
+      -- index.  The observer reads against the entry state, so the word is the
+      -- contents the slot held before any store the command performs.
+      let i := rs.rsScalar idxVar
       let stl : ObsTrace :=
-        if O.bypassStore idxVar (rs.rsScalar idxVar) then
-          [Obs.stlForward idxVar (rs.rsScalar idxVar), Obs.rollback]
+        if O.bypassStore idxVar i then
+          [Obs.stlForward src.locVar (rsTowerLimb rs src.locVar i), Obs.rollback]
         else []
-      Obs.memIdx idxVar (rs.rsScalar idxVar) :: (stl ++
-        -- a load also pushes/forwards nothing else architecturally; `dst` is
-        -- unused architecturally (no further obs).
-        (let _ := dst; []))
+      Obs.memIdx idxVar i :: stl
   | .RCall _ dest _         =>
-      -- **BTB (v2) indirect-target injection** and **RSB return-mispredict.**
-      -- A call site establishes (i) an indirect-call target register and (ii)
-      -- a return address on the return-stack.  We model both speculative
-      -- sources on the call's *destination slot* `dest.locVar` (the register
-      -- the indirect target / return address occupies in this frame), each
-      -- gated by its oracle field.  `cmdCT_RCall` certifies `dest.locVar`
-      -- public, so both reads are public-determined.
+      -- The predicted callee pointer and the predicted return address, gated by
+      -- `O.injectTarget` and `O.mispredRet`.  `LowCT` has no indirect-jump and
+      -- no return constructor, so the two are read as the first two words of
+      -- the call's destination slot.
       let tslot := dest.locVar
       let tv := rs.rsScalar tslot
       let btb : ObsTrace :=
-        if O.injectTarget tslot tv then [Obs.indirectTarget tslot tv, Obs.rollback]
+        if O.injectTarget tslot tv then
+          [Obs.indirectTarget tslot (rsTowerLimb rs tslot 0), Obs.rollback]
         else []
       let rsb : ObsTrace :=
-        if O.mispredRet tslot tv then [Obs.retTarget tslot tv, Obs.rollback]
+        if O.mispredRet tslot tv then
+          [Obs.retTarget tslot (rsTowerLimb rs tslot 1), Obs.rollback]
         else []
       btb ++ rsb
   | _                       => []
@@ -288,25 +286,34 @@ def specObs (window : SpecWindow) (O : MispredOracle) (rs : RustState) :
 def neverMispred : MispredOracle :=
   ⟨fun _ _ => false, fun _ _ => false, fun _ _ => false, fun _ _ => false⟩
 
-/-! ## §4.  Public-driven oracles
+/-! ## §4.  Public-drivenness of the oracle
 
-For the keystone we constrain the predictor to be *driven by public data*:
-its misprediction decision at a branch depends only on the condition slot and
-the (public) condition value.  This is automatically satisfied by the
-`MispredOracle` shape — `mispredict` is already a function of `(cond, v)`
-only — so *any* oracle is public-driven **once the branch value `v` is
-public**, which is exactly what `cmdCT` certifies.  We record the property as
-a definition for documentation and for the keystone's hypothesis surface. -/
+Whether a transient window opens is itself an observation, so leakage equality
+across two states needs the oracle to take the same decision on both.
+`PublicDriven` is that property.  Every `MispredOracle` has it, because each
+field is a function of a slot name and a runtime value and `PublicEquiv` equates
+the runtime value of a `Public` slot.  A predictor that reads the whole
+speculative state does not: `SpeculativeCTStoreBuffer.PublicDrivenSB` is the
+same property for such a predictor and `SpeculativeCTStoreBuffer.peekOracle`
+fails it. -/
 
-/-- An oracle is *public-determined* at a state pair: it returns the same
-    misprediction decision whenever the two states agree on the relevant
-    (public) condition value.  Trivially true for every `MispredOracle`,
-    since `mispredict` is a pure function of `(cond, v)`. -/
-def PublicDriven (O : MispredOracle) : Prop :=
-  ∀ (cond : String) (v : Nat), O.mispredict cond v = O.mispredict cond v
+/-- **Public-driven oracle.**  On any two `PublicEquiv` states the oracle takes
+    the same branch-misprediction and store-bypass decision at every `Public`
+    slot. -/
+def PublicDriven (lt : LevelTable) (O : MispredOracle) : Prop :=
+  ∀ rs1 rs2 : RustState, PublicEquiv lt rs1 rs2 →
+    (∀ cond, lt cond = .Public →
+        O.mispredict cond (rs1.rsScalar cond) = O.mispredict cond (rs2.rsScalar cond)) ∧
+      (∀ addr, lt addr = .Public →
+        O.bypassStore addr (rs1.rsScalar addr) = O.bypassStore addr (rs2.rsScalar addr))
 
-theorem every_oracle_publicDriven (O : MispredOracle) : PublicDriven O :=
-  fun _ _ => rfl
+/-- Every `MispredOracle` is public-driven: each field reads a slot name and a
+    runtime value, and `PublicEquiv` equates the runtime value of a `Public`
+    slot. -/
+theorem every_oracle_publicDriven (lt : LevelTable) (O : MispredOracle) :
+    PublicDriven lt O :=
+  fun _ _ hEq =>
+    ⟨fun _ hc => by rw [hEq.scalar_eq hc], fun _ ha => by rw [hEq.scalar_eq ha]⟩
 
 /-! ## §5.  The SCT predicate -/
 
@@ -326,26 +333,24 @@ def ArchConstantTime (lt : LevelTable) (c : LowCT) : Prop :=
   ∀ rs1 rs2 : RustState, PublicEquiv lt rs1 rs2 →
     archObs rs1 c = archObs rs2 c
 
-/-! ## §6.  The structural keystone
+/-! ## §6.  `cmdCT` acceptance and the `specObs` trace
 
-If `cmdCT c lt leafCT = true` — i.e. *every branch condition and every
-runtime memory index in `c` is `Public`* — then the speculative leakage
-trace of `c` is a function of the public state alone.  Hence SCT.
+If `cmdCT c lt leafCT = true` — every branch condition and every runtime
+memory index in `c` is `Public` — then the `specObs` trace of `c` is equal on
+any two `PublicEquiv` states.
 
-The proof is a structural induction on `c`.  At each control-flow / indexed
+The proof is a structural induction on `c`.  At each control-flow and indexed
 site, `cmdCT = true` forces the relevant slot `Public`, so `PublicEquiv`
-equates the runtime value the observer reads, and the oracle (a pure function
-of `(cond, v)`) makes the same decision on both sides; the recursion closes
-the subterms.  The non-control, non-indexed constructors leak nothing and
-close by `rfl`. -/
+equates the runtime value the observer reads, and the oracle, a function of
+that slot and value, makes the same decision on both sides; the recursion
+closes the subterms.  The remaining constructors emit nothing and close by
+`rfl`. -/
 
-/-- **Keystone (speculative form).**  An architecturally-CT program (accepted
-    by `cmdCT`) has a speculative leakage trace determined by the public
-    state: equal on any two `PublicEquiv` states, *for every window and every
-    misprediction oracle*.  The oracle is unconstrained beyond its
-    `MispredOracle` shape — because `cmdCT` already forces the branch value it
-    reads to be public, the oracle's `(cond, v)`-driven decision is itself
-    public-determined (`PublicDriven`, automatic). -/
+/-- The `specObs` trace of a `cmdCT`-accepted program is equal on any two
+    `PublicEquiv` states, for every window and every misprediction oracle.  The
+    oracle is unconstrained beyond its `MispredOracle` shape: each field is a
+    function of a slot name and a runtime value, and `cmdCT` forces the slots
+    the observer reads to be `Public`. -/
 theorem cmdCT_imp_specObs_eq
     (window : SpecWindow) (O : MispredOracle)
     (lt : LevelTable) (leafCT : LeafCTTable)
@@ -391,27 +396,40 @@ theorem cmdCT_imp_specObs_eq
     have hv : rs1.rsScalar idxVar = rs2.rsScalar idxVar := hEq.scalar_eq hidx
     simp only [specObs, hv]
   | RArrLoad dst src idxVar =>
+    -- The index slot and the source slot are both `Public`, so the index the
+    -- gate reads and the forwarded word both agree.
     simp only [cmdCT_RArrLoad, Bool.and_eq_true] at hCT
     have hidx : lt idxVar = .Public := level_beq_public_iff.mp hCT.1.1
+    have hsrc : lt src.locVar = .Public := level_beq_public_iff.mp hCT.2
     have hv : rs1.rsScalar idxVar = rs2.rsScalar idxVar := hEq.scalar_eq hidx
-    simp only [specObs, hv]
+    have hT : rs1.rsTower src.locVar = rs2.rsTower src.locVar := hEq.tower_eq hsrc
+    simp only [specObs, hv, rsTowerLimb, hT]
   | RCall f dest args =>
-    -- BTB/RSB: both new speculative sources read the call's destination slot,
-    -- which `cmdCT_RCall` certifies public, so the oracle's decision and the
-    -- observed target value agree on both sides.
+    -- Both call-site markers read the call's destination slot, which
+    -- `cmdCT_RCall` classifies `Public`, so the oracle's decision and the two
+    -- predicted target words agree on both sides.
     simp only [cmdCT_RCall, Bool.and_eq_true] at hCT
     have hdest : lt dest.locVar = .Public := level_beq_public_iff.mp hCT.1.2
     have hv : rs1.rsScalar dest.locVar = rs2.rsScalar dest.locVar :=
       hEq.scalar_eq hdest
-    simp only [specObs, hv]
+    have hT : rs1.rsTower dest.locVar = rs2.rsTower dest.locVar := hEq.tower_eq hdest
+    simp only [specObs, hv, rsTowerLimb, hT]
   | _ => rfl
 
-/-- **Keystone (SCT form).**  `architecturally_CT c ∧ public_control_flow c`
-    (both captured by `cmdCT c lt leafCT = true`) imply
-    `SpeculativelyConstantTime`.  This is the value deliverable of task #564:
-    for the straight-line, public-branch, public-index programs our emitted
-    CT kernels are (per `cmdCT`), the speculative leakage adds nothing
-    secret-dependent. -/
+/-- `cmdCT c lt leafCT = true` implies `SpeculativelyConstantTime` over
+    `specObs`, for every window and every misprediction oracle.
+
+    The oracle needs no side condition because every `MispredOracle` is
+    `PublicDriven`.  The three transient clauses need `cmdCT`'s classification
+    of the source and destination slots: `Separation.loadSecretArr` and
+    `Separation.callSecretDest` are architecturally constant-time and not
+    speculatively constant-time, and `cmdCT` rejects both.
+
+    `specObs` reads memory against the entry state.  A store-to-load forward
+    carrying the value a particular buffered store overwrote is expressible over
+    `SpeculativeCTStoreBuffer.specRun`, where the analogous statement needs the
+    two further hypotheses of
+    `SpeculativeCTStoreBuffer.cmdCT_cmov_publicDriven_imp_SCT_SB`. -/
 theorem architecturally_CT_imp_SCT
     (window : SpecWindow) (O : MispredOracle)
     (lt : LevelTable) (leafCT : LeafCTTable)
@@ -419,11 +437,14 @@ theorem architecturally_CT_imp_SCT
     SpeculativelyConstantTime window O lt c :=
   fun _ _ hEq => cmdCT_imp_specObs_eq window O lt leafCT c hCT hEq
 
-/-- And the architectural projection: the same hypothesis gives architectural
-    CT.  (Specialises the keystone to the never-mispredict oracle and reads
-    off `archObs = specObs neverMispred`; here we prove it directly since
-    `archObs` and `specObs neverMispred` share the public-determinacy
-    argument.) -/
+/-- The same hypothesis gives architectural CT over `archObs`.  Proved
+    directly, by the same public-determinacy induction.
+
+    `archObs` reads every condition and index against the entry state, so it
+    does not see a write the command itself performs.  The state-threading
+    committed run is `SpeculativeCTStoreBuffer.archRun`, and
+    `SpeculativeCTStoreBuffer.cmdCT_not_imp_ArchCT` exhibits a `cmdCT`-accepted
+    command whose `archRun` trace separates two `PublicEquiv` states. -/
 theorem architecturally_CT_imp_ArchCT
     (lt : LevelTable) (leafCT : LeafCTTable)
     (c : LowCT) (hCT : cmdCT c lt leafCT = true) :
@@ -476,13 +497,12 @@ theorem architecturally_CT_imp_ArchCT
 
 /-! ## §7.  Pilot: an emitted CT field-op kernel is speculatively CT
 
-We exercise the keystone on a concrete LowCT kernel in the shape our verified
-front emits for a Curve25519 base-field computation: a straight-line sequence
-of CT leaf calls (`fe25519_*`, all in `LeafCTTable.canonical`) over public
-slots, with a *public* loop counter and a *public* branch flag.  No
-secret-dependent branch and no secret-dependent index appear — exactly the
-fragment `cmdCT` accepts.  The keystone then delivers SCT *for every window
-and every misprediction oracle*. -/
+`architecturally_CT_imp_SCT` applied to a concrete `LowCT` kernel in the shape
+the front emits for a Curve25519 base-field computation: a straight-line
+sequence of CT leaf calls (`fe25519_*`, all in `LeafCTTable.canonical`) over
+public slots, with a public loop counter and a public branch flag.  No
+secret-dependent branch and no secret-dependent index appear, which is the
+fragment `cmdCT` accepts. -/
 
 namespace Pilot
 
@@ -512,22 +532,18 @@ theorem pilotKernel_cmdCT :
     cmdCT pilotKernel pilotLevels LeafCTTable.canonical = true := by
   native_decide
 
-/-- **Pilot SCT result.**  The emitted CT field-op kernel is speculatively
-    constant-time: for *any* speculation window and *any* misprediction
-    oracle, two executions whose inputs agree on the public slots produce
-    identical speculative leakage traces.  The hypotheses of the keystone
-    (`cmdCT pilotKernel pilotLevels LeafCTTable.canonical = true`) discharge
-    by `pilotKernel_cmdCT`. -/
+/-- The emitted CT field-op kernel has equal `specObs` traces on states that
+    agree on the public slots, for every speculation window and every
+    misprediction oracle. -/
 theorem pilotKernel_SCT (window : SpecWindow) (O : MispredOracle) :
     SpeculativelyConstantTime window O pilotLevels pilotKernel :=
   architecturally_CT_imp_SCT window O pilotLevels LeafCTTable.canonical
     pilotKernel pilotKernel_cmdCT
 
-/-- A pilot kernel exercising a *public* branch flag (`RIfNz` on a public
-    slot): the speculative window down the *wrong* arm still leaks only
-    public-determined observations.  This is the case that genuinely
-    exercises the speculative machinery (a mispredict produces a
-    `take window`-truncated wrong-path trace + `rollback`). -/
+/-- A pilot kernel with a public branch flag (`RIfNz` on a public slot).  This
+    is the case that exercises the branch-misprediction clause: a mispredict
+    produces the other arm's trace truncated to the window, then
+    `Obs.rollback`. -/
 def pilotKernelBranch : LowCT :=
   .RIfNz "flag"
     (.RCall "fe25519_sqr" ⟨"a", .TFp25519⟩ [⟨"x", .TFp25519⟩])
@@ -537,11 +553,9 @@ theorem pilotKernelBranch_cmdCT :
     cmdCT pilotKernelBranch pilotLevels LeafCTTable.canonical = true := by
   native_decide
 
-/-- **Pilot SCT result (branching kernel).**  Even with a public branch and a
-    speculative wrong-path window, the kernel is speculatively CT.  The
-    mispredicted-window observations are themselves public-determined,
-    because the (public) branch decision drives both the architectural path
-    and the oracle. -/
+/-- The branching kernel has equal `specObs` traces on states that agree on the
+    public slots.  The mispredicted-window observations are the other arm's,
+    read from a public branch decision at public slots. -/
 theorem pilotKernelBranch_SCT (window : SpecWindow) (O : MispredOracle) :
     SpeculativelyConstantTime window O pilotLevels pilotKernelBranch :=
   architecturally_CT_imp_SCT window O pilotLevels LeafCTTable.canonical
@@ -549,97 +563,203 @@ theorem pilotKernelBranch_SCT (window : SpecWindow) (O : MispredOracle) :
 
 end Pilot
 
-/-! ## §7b.  Non-vacuity of the extended observations
+/-! ## §7b.  The transient observations appear in a trace
 
-The keystone is an *equality* statement, vacuously satisfiable if `specObs`
-never emitted the new BTB/RSB/STL observations.  These checks witness that each
-new observation genuinely appears in a speculative trace when its oracle source
-fires — so the coverage is over a non-trivial observable. -/
+`cmdCT_imp_specObs_eq` is an equality statement, so it holds whenever the
+observations it compares are absent.  These checks compute the traces in which
+each transient observation appears, so the equality is over a trace that
+contains them.  Each carries a memory word read from the named slot. -/
 
 namespace Sanity
 
-/-- An oracle that fires *every* speculative source. -/
+/-- An oracle whose four decisions all fire. -/
 def allFire : MispredOracle :=
   ⟨fun _ _ => true, fun _ _ => true, fun _ _ => true, fun _ _ => true⟩
+
+/-- A one-byte value. -/
+def byteVal (n : Nat) : RustVal .TU8 := fun _ => BitVec.ofNat 8 n
 
 /-- A state assigning the target/index slots concrete runtime values. -/
 def st : RustState :=
   { rsTower := fun _ => none,
     rsScalar := fun s => if s = "tgt" then 7 else if s = "idx" then 3 else 0 }
 
-/-- **BTB + RSB non-vacuity.**  An indirect call with `injectTarget` and
-    `mispredRet` firing emits the `indirectTarget` (BTB) and `retTarget` (RSB)
-    observations carrying the (public) target-slot value. -/
+/-- A call with `injectTarget` and `mispredRet` firing emits the predicted
+    callee pointer and the predicted return address, read as the first two words
+    of the call's destination slot.  The slot is absent from `st`'s heap, so both
+    words are `0`. -/
 theorem btb_rsb_fires :
     specObs 8 allFire st (.RCall "f" ⟨"tgt", .TU64⟩ [])
-      = [Obs.indirectTarget "tgt" 7, Obs.rollback,
-         Obs.retTarget "tgt" 7, Obs.rollback] := by
-  native_decide
+      = [Obs.indirectTarget "tgt" 0, Obs.rollback,
+         Obs.retTarget "tgt" 0, Obs.rollback] := by
+  decide
 
-/-- **STL non-vacuity.**  A load with `bypassStore` firing emits the
-    `stlForward` observation (after the architectural `memIdx`). -/
+/-- A load with `bypassStore` firing emits, after the architectural `memIdx`,
+    the word the load is forwarded out of the source slot.  The slot is absent
+    from `st`'s heap, so that word is `0`. -/
 theorem stl_fires :
     specObs 8 allFire st (.RArrLoad ⟨"d", .TU64⟩ ⟨"a", .TU64⟩ "idx")
-      = [Obs.memIdx "idx" 3, Obs.stlForward "idx" 3, Obs.rollback] := by
-  native_decide
+      = [Obs.memIdx "idx" 3, Obs.stlForward "a" 0, Obs.rollback] := by
+  decide
+
+/-- A state holding a one-byte value in the call's destination slot and in the
+    array slot. -/
+def stMem : RustState :=
+  { rsTower := fun x =>
+      if x = "tgt" then some ⟨.TU8, byteVal 5⟩
+      else if x = "a" then some ⟨.TU8, byteVal 9⟩
+      else none,
+    rsScalar := fun s => if s = "tgt" then 7 else 0 }
+
+/-- On a state whose heap holds the destination slot, the two call-site
+    observations carry that slot's first two words. -/
+theorem btb_rsb_carries_word :
+    specObs 8 allFire stMem (.RCall "f" ⟨"tgt", .TU64⟩ [])
+      = [Obs.indirectTarget "tgt" 5, Obs.rollback,
+         Obs.retTarget "tgt" 0, Obs.rollback] := by
+  decide
+
+/-- On a state whose heap holds the source slot, the store-bypass observation
+    carries the word at the load's runtime index. -/
+theorem stl_carries_word :
+    specObs 8 allFire stMem (.RArrLoad ⟨"d", .TU64⟩ ⟨"a", .TU64⟩ "idx")
+      = [Obs.memIdx "idx" 0, Obs.stlForward "a" 9, Obs.rollback] := by
+  decide
 
 end Sanity
 
-/-! ## §8.  What this gets us, and what remains
+/-! ## §7c.  The transient observations separate states the architectural
+observer does not
 
-**Delivered (this file).**
-* A speculative leakage semantics over the *owned* `LowCT` instruction
-  stream (`specObs`), with a speculation window and a misprediction oracle,
-  whose observable is the pc / memory-address pattern (`Obs`).  As of the
-  2026-06 extension the observable + oracle cover **all four** Spectre
-  transient sources:
-  - **PHT (v1)** — `Obs.branch` + the wrong-path window (`mispredict`);
-  - **BTB (v2)** — `Obs.indirectTarget` at indirect calls (`injectTarget`);
-  - **RSB** — `Obs.retTarget` at the matching return (`mispredRet`);
-  - **STL (v4)** — `Obs.stlForward` at a load bypassing a prior store
-    (`bypassStore`).
-  All three new sources are *transient-only* (oracle-gated; they vanish under
-  `neverMispred`) and keyed on the call's destination slot / load's index slot
-  — slots `cmdCT` already certifies public.  `Sanity.btb_rsb_fires` /
-  `Sanity.stl_fires` witness the new observations are non-vacuous.
-* The SCT predicate (`SpeculativelyConstantTime`) as the speculative analogue
-  of `cmdCT_sound`'s `PublicEquiv → PublicEquiv` noninterference.
-* The structural keystone (`architecturally_CT_imp_SCT`): a program accepted
-  by the architectural CT analyser `cmdCT` is speculatively CT *for every
-  window and every oracle*, over **all four sources** — the keystone induction
-  now closes the BTB/RSB (`RCall`) and STL (`RArrLoad`) clauses from the same
-  public-slot certification.  Applied to two concrete emitted-shape CT kernels
-  (`Pilot.pilotKernel`, `Pilot.pilotKernelBranch`).
+`archObs` emits only branch decisions and runtime indices.  The three transient
+clauses read memory words, so a command whose `archObs` trace is constant can
+have a `specObs` trace that is not.  Both commands below are rejected by
+`cmdCT`, which is the hypothesis `architecturally_CT_imp_SCT` carries. -/
 
-**Variant-coverage matrix** (this file = the *model*; mitigation lives in
-`SpeculativeCTFence.lean`):
+namespace Separation
 
-| Variant | Modelled (`Obs` + oracle source) | Keystone covers (public-driven oracle) | Fence-mitigated vs *unconstrained* oracle |
-|---------|----------------------------------|----------------------------------------|-------------------------------------------|
-| PHT/v1  | `branch` + wrong-path window     | yes (`cmdCT_imp_specObs_eq`)           | yes — `lfence` at arm/loop head           |
-| BTB/v2  | `indirectTarget` / `injectTarget`| yes                                    | yes — retpoline-shape site-guard          |
-| RSB     | `retTarget` / `mispredRet`       | yes                                    | yes — RSB-stuffing site-guard             |
-| STL/v4  | `stlForward` / `bypassStore`     | yes                                    | yes — SSBD/LFENCE site-guard              |
+open Sanity (allFire byteVal)
 
-The "keystone covers" column is the *public-driven* guarantee (the oracle is a
-pure function of public slots); the "fence-mitigated" column is the
-*unconstrained adversarial* predictor guarantee proved in the fence file.
+/-- Every slot is `Public` except the array slot `sarr`. -/
+def secretLevels : LevelTable := fun x => if x = "sarr" then .Secret else .Public
 
-**What remains (honest residual / model assumptions).**
-* **Microarchitectural store-buffer model (STL).**  The STL clause models the
-  bypassed store-to-load forward as an oracle-gated read of the load's
-  *address slot*.  A finer model would track the *actual bypassed store value*
-  through a modelled store buffer; that is a model-assumption gap (the address
-  pattern is what the cache leaks, which is what we model — the bypassed
-  datum's value leakage is delegated to leaf-CT, as for ordinary loads).
-* **Indirect-target / return-slot abstraction (BTB/RSB).**  `LowCT` has no
-  dedicated indirect-jump / `ret` constructor; we attach the BTB/RSB sources
-  to the call's destination slot (the target/return register of the frame).
-  A dedicated indirect-control constructor would let the model distinguish an
-  indirect from a direct call syntactically.  Until then the coverage is sound
-  (any call site is treated as potentially indirect) but conservative.
-* **Wiring through `RustExec`.**  The observer is structural; a finer model
-  would thread `specObs` through the relational big-step `RustExec`.  For the
-  straight-line / public-branch fragment the two coincide. -/
+/-- A state whose secret array slot holds the one-byte value `n`. -/
+def sarrState (n : Nat) : RustState where
+  rsTower := fun x => if x = "sarr" then some ⟨.TU8, byteVal n⟩ else none
+  rsScalar := fun _ => 0
+
+/-- The states differ only on the secret array slot. -/
+theorem sarrState_publicEquiv (a b : Nat) :
+    PublicEquiv secretLevels (sarrState a) (sarrState b) := by
+  refine ⟨?_, fun _ _ => rfl⟩
+  intro x hx
+  have hne : x ≠ "sarr" := by
+    intro he; rw [he] at hx; simp [secretLevels] at hx
+  simp [sarrState, hne]
+
+/-- A load from the secret array slot at a public index. -/
+def loadSecretArr : LowCT := .RArrLoad ⟨"d", .TU8⟩ ⟨"sarr", .TU8⟩ "i"
+
+theorem loadSecretArr_not_cmdCT :
+    cmdCT loadSecretArr secretLevels LeafCTTable.canonical = false := by decide
+
+/-- The load is architecturally constant-time: `archObs` emits the runtime
+    index, which is read from a `Public` slot. -/
+theorem loadSecretArr_ArchCT : ArchConstantTime secretLevels loadSecretArr := by
+  intro rs1 rs2 hEq
+  have hi : rs1.rsScalar "i" = rs2.rsScalar "i" := hEq.scalar_eq (by simp [secretLevels])
+  simp only [loadSecretArr, archObs, hi]
+
+/-- **The store-bypass observation separates two states the architectural
+    observer does not.**  The forwarded word is the secret array slot's
+    contents. -/
+theorem loadSecretArr_not_SCT :
+    ¬ SpeculativelyConstantTime 8 allFire secretLevels loadSecretArr := by
+  intro h
+  have := h (sarrState 0) (sarrState 1) (sarrState_publicEquiv 0 1)
+  revert this
+  decide
+
+/-- A call whose destination is the secret array slot. -/
+def callSecretDest : LowCT := .RCall "fe25519_mul" ⟨"sarr", .TU8⟩ []
+
+theorem callSecretDest_not_cmdCT :
+    cmdCT callSecretDest secretLevels LeafCTTable.canonical = false := by decide
+
+/-- The call is architecturally constant-time: `archObs` emits nothing at a
+    call. -/
+theorem callSecretDest_ArchCT : ArchConstantTime secretLevels callSecretDest :=
+  fun _ _ _ => rfl
+
+/-- **The indirect-target observation separates two states the architectural
+    observer does not.**  The predicted callee pointer is the destination
+    slot's first word. -/
+theorem callSecretDest_not_SCT :
+    ¬ SpeculativelyConstantTime 8 allFire secretLevels callSecretDest := by
+  intro h
+  have := h (sarrState 0) (sarrState 1) (sarrState_publicEquiv 0 1)
+  revert this
+  decide
+
+/-- Architectural constant-time does not imply speculative constant-time, and
+    `cmdCT` rejects both witnesses. -/
+theorem archCT_not_imp_SCT :
+    (ArchConstantTime secretLevels loadSecretArr ∧
+        ¬ SpeculativelyConstantTime 8 allFire secretLevels loadSecretArr ∧
+          cmdCT loadSecretArr secretLevels LeafCTTable.canonical = false) ∧
+      (ArchConstantTime secretLevels callSecretDest ∧
+        ¬ SpeculativelyConstantTime 8 allFire secretLevels callSecretDest ∧
+          cmdCT callSecretDest secretLevels LeafCTTable.canonical = false) :=
+  ⟨⟨loadSecretArr_ArchCT, loadSecretArr_not_SCT, loadSecretArr_not_cmdCT⟩,
+   ⟨callSecretDest_ArchCT, callSecretDest_not_SCT, callSecretDest_not_cmdCT⟩⟩
+
+end Separation
+
+/-! ## §8.  What the model expresses
+
+**In this file.**
+* `specObs`, a leakage observer over `LowCT` with a speculation window and a
+  misprediction oracle, whose observable is the branch-decision and
+  memory-address pattern (`Obs`).
+* `SpeculativelyConstantTime`, equality of `specObs` traces on `PublicEquiv`
+  states, and `ArchConstantTime`, the same over `archObs`.
+* `cmdCT_imp_specObs_eq` and `architecturally_CT_imp_SCT`: a `cmdCT`-accepted
+  program has equal `specObs` traces, for every window and every oracle.
+  Applied to `Pilot.pilotKernel` and `Pilot.pilotKernelBranch`.
+
+* `Separation.archCT_not_imp_SCT`: two architecturally constant-time commands
+  whose `specObs` traces separate two `PublicEquiv` states, both rejected by
+  `cmdCT`.
+
+**What each observation carries.**
+
+| Clause | Transient contribution | What it reads |
+|--------|------------------------|---------------|
+| `RIfNz`, `RWhileNz` | the other arm's trace, truncated to the window, then `Obs.rollback` | the wrong path's own trace |
+| `RArrLoad`, `Obs.stlForward` | the word the load is forwarded out of the source slot at the runtime index | `rs.rsTower src.locVar`, a memory read |
+| `RCall`, `Obs.indirectTarget` | the predicted callee pointer | word `0` of `rs.rsTower dest.locVar` |
+| `RCall`, `Obs.retTarget` | the predicted return address | word `1` of `rs.rsTower dest.locVar` |
+
+**Where a per-store bypass is expressed.**
+`SpeculativeCTStoreBuffer` threads a `SpecState` carrying a store buffer of
+overwritten slot values through a run function, forwards the value a *particular*
+buffered store overwrote to a bypassing load, and lets that value reach later
+addresses.  `SpeculativeCTStoreBuffer.cmdCT_not_imp_SCT` is a `cmdCT`-accepted
+command whose store-buffer trace separates two `PublicEquiv` states under a
+public-determined predictor, and
+`SpeculativeCTStoreBuffer.cmdCT_cmov_publicDriven_imp_SCT_SB` is the statement
+that survives there.  `SpeculativeCTStoreBuffer.cmdCT_not_imp_ArchCT` is a
+`cmdCT`-accepted command whose state-threading committed trace already separates
+them.
+
+**Model assumptions.**
+* Indirect control has no `LowCT` constructor, so the predicted callee pointer
+  and the predicted return address are the first two words of the call's
+  destination slot.  A dedicated indirect-control node would let the model read
+  a target register.
+* The observer is structural and reads against the entry state, so a load sees
+  the memory the command started with; a load bypassing one of several pending
+  stores to the same slot is expressed over `SpeculativeCTStoreBuffer.specRun`.
+* The observer is not threaded through the relational big-step `RustExec`. -/
 
 end CatCrypt.Crypto.SecureCompilation.SpeculativeCT

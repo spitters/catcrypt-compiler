@@ -19,8 +19,8 @@ The Plonky3 Merkle 2-to-1 compress leaf, sourced through the verified
     --(cryptoDialectToJasminCom)-->  compressComFinal : Com jasminDialect inCtxt r64
 ```
 
-Consumers (`Plonky3OwnedEmitMain` / `Plonky3WholeProverOwnedEmit` /
-`Plonky3OrchLoopsOwnedEmit` / `ZkSumCheckWholeProverOwnedEmit`) render
+Consumers (`Plonky3EmitMain` / `Plonky3WholeProverEmit` /
+`Plonky3OrchLoopsEmit` / `ZkSumCheckWholeProverEmit`) render
 `compressComFinal` to owned AT&T `.s` via `Com.toLprogPhysAbi` (constants as
 `immSlotMap` immediates, runtime words loaded from the `RSI` input pointer,
 outputs stored via `stdOutStore 4`) under the export symbol
@@ -175,7 +175,7 @@ abbrev inCtxt : Ctxt jasminDialect := List.replicate 15 r64
 
 /-- The deployed compress `Com jasminDialect` — FRONT-GENERATED
     (`translateDialectControl` + `cryptoDialectToJasminCom`), not hand-built.
-    Rendered to owned `.s` by `Plonky3OwnedEmitMain` (and inlined by the
+    Rendered to owned `.s` by `Plonky3EmitMain` (and inlined by the
     whole-prover / orchestration emits) under `plonky3_merkle_compress_rc`. -/
 def compressComFinal : Com jasminDialect inCtxt r64 :=
   compressLoweredOpt.get compressLowered_isSome

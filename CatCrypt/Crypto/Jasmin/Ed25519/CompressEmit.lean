@@ -19,7 +19,7 @@ dialect, out-pointer C ABI) suitable for the
 ## Decomposition
 
 Matches `compress_xyz` in
-`~/Claude/BLS/curve25519-jasmin-rs/src/ed25519_rustcmd/fe25519_portable.rs`:
+`ed25519_rustcmd/fe25519_portable.rs` (curve25519-jasmin-rs crate):
 
 ```
 ed25519_compress(out, xyzt):
@@ -44,7 +44,7 @@ These 6 leaves are implemented in a small Rust shim in `bench/dalek/`
 (`src/compress_leaves.rs`) that delegates to dalek's verified field-element
 code path.  In a future track, the VIR pipeline emits `fe25519_invert_slot`
 itself as a 254-squaring + 11-multiply addition chain
-(`FieldExpChain.bernsteinInvChain`); for now we keep it as a single leaf
+(`FieldExpChain.bernsteinInvChain`); here it is a single leaf
 so the **shape of the decomposition** is the artifact under test.
 
 ## Test plan

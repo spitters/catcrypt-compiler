@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 import CatCrypt.Crypto.SecureCompilation.VIR.Sntrup761MulEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.R3MulOwnedEmit
+import CatCrypt.Crypto.SecureCompilation.VIR.R3MulEmit
 
 /-!
 # ABI maps for the owned-AsmPrinter linear export of the sntrup761 poly-mul kernels
@@ -16,7 +16,7 @@ regenerates a physical-register, two-address `Linear.lprog` from a
 `LprogAsmPrinter.renderLprogAtt` — no `jasminc`. This module provides the three
 producer-side maps so the sntrup761 `Z/q = Z/4591` polynomial-multiply kernel
 (`Sntrup761MulEmit.sntrupMulCom`) and the `Z/3` trinary `R3_mult` kernel
-(`R3MulOwnedEmit.r3MulCom`) take the same owned path the SHA-2 / ChaCha20
+(`R3MulEmit.r3MulCom`) take the same owned path the SHA-2 / ChaCha20
 bodies do.
 
 ## Argument-slot model
@@ -108,6 +108,6 @@ def r3InLoadMap : InLoadMap := fun slot =>
 
 /-- The `Z/3` output-store map: 31 stores, identical layout to the `Z/4591` one. -/
 def r3OutStoreMap : OutStoreMap :=
-  (List.range R3MulOwnedEmit.outLen).map (fun j => ("RDI", j * 8))
+  (List.range R3MulEmit.outLen).map (fun j => ("RDI", j * 8))
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport

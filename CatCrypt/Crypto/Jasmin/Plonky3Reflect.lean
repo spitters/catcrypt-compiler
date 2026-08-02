@@ -48,7 +48,7 @@ verified front. For each target depth `k`, we emit one `ReifiedFunc`.
 
 Same as `FalconReflect.lean` and `MemAbiReflect.lean`: `reifyLowCT%` does not
 consult the `LowCTPattern` registry, so we hand-build the `LowCT` body the
-reifier *would* produce. The rest of the front (`translate → cprogToJasminCom →
+reifier *would* produce. The rest of the front (`translate → cryptoDialectToJasminCom →
 emitAbiOrchRegPtr`) is unchanged.
 
 ## Relation to legacy Tier C `Plonky3MerkleEmit.lean`
@@ -191,7 +191,7 @@ destination of `TBytes (32 · M)`. The first `RCall` is `plonky3_merkle_hash_lea
 `plonky3_merkle_extract_root` (digest-arr-1 → root digest).
 
 `reifyLowCT%` does not consult the registry, so we hand-build the body.
-Downstream (`translate → cprogToJasminCom → emitAbiOrchRegPtr`) is unmodified. -/
+Downstream (`translate → cryptoDialectToJasminCom → emitAbiOrchRegPtr`) is unmodified. -/
 
 /-- TowerType for the BabyBear leaves buffer of size `N` (8 bytes/elem). -/
 def plonky3LeavesTowerType (N : Nat) : TowerType := .TBytes (8 * N)

@@ -11,6 +11,8 @@ import Veir.IR.Attribute
 /-!
 # Path (b): `Com → Veir.IRContext` lowering
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 A hand-written lowering from CatCrypt's typed-SSA VIR (`Com d Γ t`) to
 Veir's imperative pointer-graph (`Veir.IRContext`).
 

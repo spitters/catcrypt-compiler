@@ -6,13 +6,15 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.SecureCompilation.VIR.Core
 
 /-!
-# A genuine eliminating dead-code-elimination pass for `Com` (real transform)
+# An eliminating dead-code-elimination pass for `Com` (real transform)
+
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
 `DeadCodeElim.lean` ships an *analysis-as-labelling* DCE whose `Com → Com`
 rewrite is the identity (`applyDce = fun p _ => p`), so its preservation
 theorems are `rfl` and verify nothing about an actual elimination. This file
 supplies what that one avoids: a **structural** `Com → Com` transform that
-genuinely *removes* a dead let-binding, together with a **non-`rfl`**
+*removes* a dead let-binding, together with a **non-`rfl`**
 denotation-preservation proof by induction over the `Com` and the de Bruijn
 strengthening it forces.
 
@@ -32,9 +34,9 @@ strengthening is the real content. We do it at an **arbitrary** position
 is exactly what lets the proof recurse under a `.var` (where the prefix `Δ`
 grows by one).
 
-## The proof (genuinely not `rfl`)
+## The proof (not `rfl`)
 
-The keystone is
+The central lemma is
 
   `removeDeadHead_denote`:
     `(removeDeadHead body h).denote V = body.denote (V.insertAt x)`
@@ -56,7 +58,7 @@ liveness hypothesis.
 * **Scoped to the cleanest case:** `removeDeadHead` / `removeDeadHead_denote`
   specialise to `Δ = []` — dropping the *outermost* dead `.var`. The
   user-facing `dceOutermost` runs the deadness check and, when it succeeds,
-  returns the genuinely smaller program with the preservation theorem
+  returns the smaller program with the preservation theorem
   `dceOutermost_denote`.
 -/
 
@@ -173,7 +175,7 @@ def usesSlotCom : {Δ : Ctxt d} → {t' : d.Ty} → {Γ : Ctxt d} → {τ : d.Ty
   rw [usesSlotCom]
 
 /-- **The real eliminating transform.** Remove the dead slot at depth `|Δ|`
-from a slot-free `Com`, producing a genuinely smaller (re-typed) program. -/
+from a slot-free `Com`, producing a smaller (re-typed) program. -/
 def removeDead : {Δ : Ctxt d} → {t' : d.Ty} → {Γ : Ctxt d} → {τ : d.Ty} →
     (c : Com d (Δ ++ t' :: Γ) τ) → usesSlotCom c = false → Com d (Δ ++ Γ) τ
   | _,  _, _, _, .ret v, h => .ret (strengthenVar v (by rwa [usesSlotCom_ret] at h))
@@ -201,7 +203,7 @@ def insertAt : {Δ : Ctxt d} → {t' : d.Ty} → {Γ : Ctxt d} →
 
 /-! ## 4. The strengthening laws (lookups agree)
 
-These are the genuine inductive lemmas: looking up a strengthened variable in
+These are the inductive lemmas: looking up a strengthened variable in
 `V` equals looking up the original variable in `V.insertAt x`. The dead slot
 is the only place where the two valuations differ, and a slot-free variable
 never lands there. -/
@@ -252,7 +254,7 @@ theorem strengthenExpr_denote {Δ : Ctxt d} {t' : d.Ty} {Γ : Ctxt d} {s : d.Ty}
   simp only []
   rw [strengthenHV_lookupArgs e.args h V x]
 
-/-! ## 5. The keystone: denotation preservation (NON-`rfl`)
+/-! ## 5. Denotation preservation (NON-`rfl`)
 
 The transform changes the program (smaller context, fewer/strengthened
 bindings), and the two sides denote at *different* valuations (`V` vs.
@@ -310,7 +312,7 @@ abbrev bodyUsesHead {t' : d.Ty} {Γ : Ctxt d} {τ : d.Ty}
 
 /-- **Remove the outermost dead `.var`.** Given a body that provably does not
 read its head variable, drop the binding and re-type the body under the smaller
-context `Γ`. This genuinely changes the context `t' :: Γ ↝ Γ`. -/
+context `Γ`. This changes the context `t' :: Γ ↝ Γ`. -/
 def removeDeadHead {t' : d.Ty} {Γ : Ctxt d} {τ : d.Ty}
     (body : Com d (t' :: Γ) τ) (h : bodyUsesHead body = false) : Com d Γ τ :=
   removeDead (Δ := []) (t' := t') (Γ := Γ) body h
@@ -330,7 +332,7 @@ theorem removeDeadHead_denote {t' : d.Ty} {Γ : Ctxt d} {τ : d.Ty}
 /-! ## 7. End-to-end: run the deadness check, then eliminate
 
 `dceOutermost` is total: it inspects the outermost binding and, when its head
-variable is provably dead, returns the genuinely smaller program; otherwise it
+variable is provably dead, returns the smaller program; otherwise it
 leaves the program unchanged. The preservation theorem covers the eliminating
 branch — the branch the identity DCE never reaches. -/
 
@@ -356,7 +358,7 @@ theorem dceOutermost_eliminates_denote {t' : d.Ty} {Γ : Ctxt d} {τ : d.Ty}
 /-! ## 8. A concrete worked example (the transform really removes a binding)
 
 A self-contained one-type, two-op toy dialect over `Nat`, on which we exhibit a
-program with a genuinely dead outermost binding, run `removeDeadHead`, and check
+program with a dead outermost binding, run `removeDeadHead`, and check
 (via `comLen`) that the result has **one fewer** binding — the elimination is
 real, not the identity. We also confirm the denotation agrees for an arbitrary
 dead value. -/
@@ -405,10 +407,10 @@ def deadBody : Com toyDialect [()] () :=
 /-- The body has one binding (`const 7`). -/
 example : comLen deadBody = 1 := rfl
 
-/-- The head variable (the dead slot) is genuinely unused, so the check passes. -/
+/-- The head variable (the dead slot) is unused, so the check passes. -/
 example : bodyUsesHead deadBody = false := by native_decide
 
-/-- **The transform genuinely changes the program:** `removeDeadHead` re-types
+/-- **The transform changes the program:** `removeDeadHead` re-types
 `deadBody : Com toy [()] ()` to a program over the *smaller* context `[]` — the
 dead slot is gone. (The binding count is unchanged here because the dropped slot
 was an input slot, not one of `deadBody`'s own `.var`s; the *context* shrinks
@@ -435,7 +437,7 @@ def fullProg : Com toyDialect [] () :=
 example : comLen fullProg = 2 := rfl
 
 /-- After eliminating the dead outermost binding, **one** binding remains: the
-binder count genuinely drops `2 → 1`, and the result denotes the same value. -/
+binder count drops `2 → 1`, and the result denotes the same value. -/
 example : comLen (removeDeadHead deadBody (by native_decide)) = 1 := by native_decide
 
 /-- DCE preserves `fullProg`'s denotation: dropping `const 42` (the dead head

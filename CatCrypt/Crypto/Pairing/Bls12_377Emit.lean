@@ -6,6 +6,9 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 import CatCrypt.Crypto.Pairing.MsmReduce
 import CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFront
+import CatCrypt.Crypto.SecureCompilation.VIR.ArrAbiOrch
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 
 /-!
 # Production BLS12-377 emit: field leaves, the pairing leaf, the GT product, and
@@ -16,7 +19,7 @@ This is the BLS12-377 (Zexe / SnarkVM / Aleo curve) sibling of
 templated to `.jazz` (`bench/bls12_377_compare/bls12_377_emit.lean`, jasminc-
 lowered) as straight-line orchestration `Com`s over opaque `extCall` leaves, so
 they can be lowered through the **OWNED** x86 backend
-(`Com.toLprogArrAbi` + `renderLprogAtt`, see `Pairing.EcPairingOwnedEmit` and the
+(`Com.toLprogArrAbi` + `renderLprogAtt`, see `Pairing.EcPairingEmit` and the
 BN254 / BLS12-381 owned `.s`), with **no jasminc**.
 
 The leaves are the AUCurves verified-bedrock2 BLS12-377 tower
@@ -26,7 +29,7 @@ The leaves are the AUCurves verified-bedrock2 BLS12-377 tower
   fiat-crypto + Bernstein-Yang verified `Fp` field arithmetic (Montgomery,
   6 × `u64`);
 * `bls377_pairing` — the bedrock2-tower optimal-ate pairing
-  (`miller_loop` ∘ `final_exp`), genuinely opaque, never owned;
+  (`miller_loop` ∘ `final_exp`), opaque, never owned;
 * `bls377_Fp12_mul` — the bedrock2-tower GT product.
 
 These are exactly the symbols `CatCrypt.Crypto.Vale.BLS12_377` registers
@@ -104,7 +107,7 @@ def squareLeafName : String := "bls377_square"
 def invLeafName : String := "bls377_inv"
 
 /-- The optimal-ate pairing leaf (AUCurves `bls377_pairing`, Miller loop +
-    final exponentiation — genuinely opaque). -/
+    final exponentiation — opaque). -/
 def pairingLeafName : String := "bls377_pairing"
 
 /-- The GT (`Fp12`) product leaf (AUCurves `bls377_Fp12_mul`). -/
@@ -491,7 +494,7 @@ theorem pairingProductCom_isSome :
 
 /-- **The deployed pairing-product kernel, front-sourced** by `buildOrchCom` from
     `pairingProductSchedule`. Definitionally the hand shadow
-    (`pairingProductCom_eq_shadow`), so `Bls12_377OwnedEmit` + the array-ABI
+    (`pairingProductCom_eq_shadow`), so `Bls12_377Emit` + the array-ABI
     backend consume it unchanged. -/
 def pairingProductCom :
     Com jasminDialect
@@ -658,7 +661,7 @@ theorem pairingProductComShadow_denote (prims : Bls377Primitives)
   simp only [HVector.head, HVector.tail]
 
 /-- **Pairing-product denotation (deployed, front-sourced).** Via
-    `pairingProductCom_eq_shadow` + the shadow's denote, so `Bls12_377OwnedEmit`
+    `pairingProductCom_eq_shadow` + the shadow's denote, so `Bls12_377Emit`
     and downstream users of `pairingProductCom` by name are unaffected. -/
 theorem pairingProductCom_denote (prims : Bls377Primitives)
     (hPair : Bls377PairingLeavesAgree prims jasminExtSem)
@@ -668,5 +671,119 @@ theorem pairingProductCom_denote (prims : Bls377Primitives)
       = prims.fp12Mul (prims.pairing p1 q1) (prims.pairing p2 q2) := by
   rw [pairingProductCom_eq_shadow]
   exact pairingProductComShadow_denote prims hPair p1 q1 p2 q2
+
+end CatCrypt.Crypto.Pairing.Bls12_377Emit
+
+
+namespace CatCrypt.Crypto.Pairing.Bls12_377Emit
+
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (renderLprogAtt)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (strContains)
+open CatCrypt.Crypto.Pairing.Bls12_377Emit
+open CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFront (buildOrchCom)
+
+/-! ## 1. The owned `Lprog` (all BLS12-377 orchestrations in one `.s`) -/
+
+/-- BLS12-377 orchestrations: the five `Fp` field kernels (add/sub/mul/square/
+    inv), the single pairing, the GT product, and the pairing-product check, all
+    in one `.s`. Symbol names match the kernel names the jasmin `.jazz` path
+    used so the same KAT harness binds. -/
+def bls12_377Lprog : Lprog :=
+  { lp_rip := "RIP", lp_rsp := "RSP", lp_globs := [], lp_glob_names := []
+    lp_funcs :=
+      (Com.toLprogArrAbi fieldAddCom "bls377_field_add").lp_funcs
+      ++ (Com.toLprogArrAbi fieldSubCom "bls377_field_sub").lp_funcs
+      ++ (Com.toLprogArrAbi fieldMulCom "bls377_field_mul").lp_funcs
+      ++ (Com.toLprogArrAbi fieldSquareCom "bls377_field_square").lp_funcs
+      ++ (Com.toLprogArrAbi fieldInvCom "bls377_field_inv").lp_funcs
+      ++ (Com.toLprogArrAbi pairingCom "bls377_pairing_kernel").lp_funcs
+      ++ (Com.toLprogArrAbi fp12MulCom "bls377_fp12_mul_kernel").lp_funcs
+      ++ (Com.toLprogArrAbi pairingProductCom "bls377_pairing_product").lp_funcs }
+
+/-! ## 1b. Front provenance (each deployed orchestration is `buildOrchCom`-sourced)
+
+Nothing in this module hand-authors a `Com`: every orchestration `bls12_377Lprog`
+marshals through `Com.toLprogArrAbi` is `Bls12_377Emit`'s `OrchestrationFront`-generated
+kernel — the `buildOrchCom <ctxt> <schedule> <n> <retTy>` output (the phase-scheduled
+`.extCall` glue over `.stackArr` operands), consumed unchanged. The per-artifact
+equalities below name that front lowering (`buildOrchCom`) for each deployed symbol;
+each is the definitional `Option.some_get` of the front's generation gate
+(`*Com_isSome`, proved by `rfl` in `Bls12_377Emit`). Only the owned array-ABI render
+tail (`Com.toLprogArrAbi` / `renderLprogAtt`) is local. -/
+
+theorem fieldAddCom_front_sourced :
+    buildOrchCom fieldBinCtxt fieldAddSchedule 2 fpRetTy = some fieldAddCom :=
+  (Option.some_get fieldAddCom_isSome).symm
+
+theorem fieldSubCom_front_sourced :
+    buildOrchCom fieldBinCtxt fieldSubSchedule 2 fpRetTy = some fieldSubCom :=
+  (Option.some_get fieldSubCom_isSome).symm
+
+theorem fieldMulCom_front_sourced :
+    buildOrchCom fieldBinCtxt fieldMulSchedule 2 fpRetTy = some fieldMulCom :=
+  (Option.some_get fieldMulCom_isSome).symm
+
+theorem fieldSquareCom_front_sourced :
+    buildOrchCom fieldUnCtxt fieldSquareSchedule 1 fpRetTy = some fieldSquareCom :=
+  (Option.some_get fieldSquareCom_isSome).symm
+
+theorem fieldInvCom_front_sourced :
+    buildOrchCom fieldUnCtxt fieldInvSchedule 1 fpRetTy = some fieldInvCom :=
+  (Option.some_get fieldInvCom_isSome).symm
+
+theorem pairingCom_front_sourced :
+    buildOrchCom pairingCtxt pairingSchedule 2 gtRetTy = some pairingCom :=
+  (Option.some_get pairingCom_isSome).symm
+
+theorem fp12MulCom_front_sourced :
+    buildOrchCom fp12MulCtxt fp12MulSchedule 2 gtRetTy = some fp12MulCom :=
+  (Option.some_get fp12MulCom_isSome).symm
+
+theorem pairingProductCom_front_sourced :
+    buildOrchCom pairingProductCtxt pairingProductSchedule 6 gtRetTy
+      = some pairingProductCom :=
+  (Option.some_get pairingProductCom_isSome).symm
+
+/-! ## 2. The rendered AT&T `.s` blob -/
+
+def bls12_377Asm : String := renderLprogAtt bls12_377Lprog
+
+/-! ## 3. Emitted-asm shape theorem (no jasminc, no unhandled-op sentinel)
+
+The `.s` carries its SysV function labels and `call`s the opaque field/pairing
+leaves by name, with no `# UNHANDLED-OP` / `CALL:` / `BADMEM` sentinel — the
+structural guarantee the owned backend provides. -/
+
+/- The BLS12-377 owned `.s` carries the kernel labels and `call`s the field +
+    pairing + GT-multiply leaves; no unhandled-op sentinel. -/
+#guard strContains bls12_377Asm ".globl bls377_field_mul"
+    && strContains bls12_377Asm ".globl bls377_field_inv"
+    && strContains bls12_377Asm ".globl bls377_pairing_product"
+    && strContains bls12_377Asm "call bls377_add"
+    && strContains bls12_377Asm "call bls377_mul"
+    && strContains bls12_377Asm "call bls377_inv"
+    && strContains bls12_377Asm "call bls377_pairing"
+    && strContains bls12_377Asm "call bls377_Fp12_mul"
+    && !strContains bls12_377Asm "UNHANDLED"
+    && !strContains bls12_377Asm "CALL:"
+    && !strContains bls12_377Asm "BADMEM"
+
+/-! ## 4. Emit driver -/
+
+/-- Write the owned BLS12-377 `.s` blob to `bench/bls12_377_compare/gen_com/`. -/
+def emitMain : IO Unit := do
+  IO.FS.createDirAll "bench/bls12_377_compare/gen_com"
+  IO.FS.writeFile "bench/bls12_377_compare/gen_com/bls12_377_orch_owned.s"
+    bls12_377Asm
+  IO.println "wrote owned BLS12-377 field/pairing orchestration .s (no jasminc):"
+  IO.println "  bench/bls12_377_compare/gen_com/bls12_377_orch_owned.s"
+
+/-! ## Artifact generation at elaboration
+
+The render is written while this module elaborates, so `lake` produces it from
+this file and no separate driver or Makefile rule carries the dependency. -/
+
+#eval emitMain
 
 end CatCrypt.Crypto.Pairing.Bls12_377Emit

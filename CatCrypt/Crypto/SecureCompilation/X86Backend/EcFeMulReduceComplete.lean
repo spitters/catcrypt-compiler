@@ -42,10 +42,10 @@ them.
   the reduce bricks are the EC-path ones).
 * `loadConsts_secp_p_correct` — the `loadConsts` prologue, over `runBlock`, leaves
   `p0..p3` and `np` holding exactly the secp256k1 prime limbs and `n'`. This is
-  the cheap prologue-const proof: the reduce that follows genuinely sees the real
+  the cheap prologue-const proof: the reduce that follows reads those
   constants. (The fused `montRedc4_runBlock` value proof is a SEPARATE task; this
   module is the bytes-side prerequisite only.)
-* `secpLimbImms_pin` — pins the four modulus immediates to the genuine secp256k1
+* `secpLimbImms_pin` — pins the four modulus immediates to the secp256k1
   prime limbs.
 
 ## The byte-correctness gate (external, GMP)
@@ -96,7 +96,7 @@ theorem secpFeMulRunBlock_eq :
 
 /-! ## 2. The modulus-immediate pin -/
 
-/-- The four modulus immediates loaded by `loadConsts` are the genuine secp256k1
+/-- The four modulus immediates loaded by `loadConsts` are the secp256k1
     prime limbs `p = 2^256 − 2^32 − 977`: `p0 = 0xfffffffefffffc2f`,
     `p1 = p2 = p3 = 0xffffffffffffffff`. -/
 theorem secpLimbImms_pin :
@@ -112,7 +112,7 @@ The reduce bricks read the prime-limb registers `p0..p3` and the Montgomery
 constant `np`. This is the cheap prologue proof the census gap asks for: after the
 `loadConsts` prologue, `runBlock` has those five registers holding exactly the
 secp256k1 prime limbs and `n'` — so the trailing `emitMontRedc4Block ++
-emitCondSubP` genuinely sees real constants, not uninitialised registers. -/
+emitCondSubP` reads those constants, not uninitialised registers. -/
 
 /-- After the `loadConsts` prologue, `p0..p3` hold the secp256k1 prime limbs and
     `np` holds `n' = 0xd838091dd2253531`, over `runBlock`. -/
@@ -149,5 +149,12 @@ def emitMain : IO Unit := do
     secpFeMulRunBlockAsm
   IO.println
     "wrote bench/bytes_direct_secp256k1_femul_runblock/gen/secp256k1_femul_runblock.s"
+
+/-! ## Artifact generation at elaboration
+
+The render is written while this module elaborates, so `lake` produces it from
+this file and no separate driver or Makefile rule carries the dependency. -/
+
+#eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.EcFeMulReduceComplete

@@ -32,7 +32,7 @@ spec fold `runIBsL` runs a straight block via A2's call-resolving
 `lsemStraightMemC` and a region as a **data-dependent do-while** (`runRegion`:
 body-fold, then loop while the counter register is non-zero, pc reset to the
 label+1 on each taken back-edge — exactly the machine's `evalJumpMemC`), with a
-fuel budget bounding taken back-edges (any `some` result is a genuine
+fuel budget bounding taken back-edges (any `some` result is a
 termination, as A3's `runWhileMem`).
 
 `segInlineBlocks` proves: if the flattened segment occupies its positions in
@@ -85,10 +85,8 @@ SPEC fold `runIBsL`, which must equal `ggmNestedFold` (`= 14` at `num = 8`,
 `= 28` at `num = 16` — `ggm_depth3_num_sensitive`).
 
 **0 sorries; axioms = {propext, Classical.choice, Quot.sound}** for the
-segment lemma and the closed theorems (+ the pre-existing `aesSboxArrayW_size`
-`native_decide` inherited from the `jasminDialect` denotation by every
-statement mentioning `JLoopBodyN`, already carried by B4; + `Lean.ofReduceBool`
-for the `native_decide` SPEC-fold evaluations in the validate).
+segment lemma and the closed theorems (+ `Lean.ofReduceBool` for the
+`native_decide` SPEC-fold evaluations in the validate).
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestInline
@@ -264,7 +262,7 @@ data-dependent do-whiles
 back-edge resets to label+1 (the machine's `evalJumpMemC` target), the exit
 falls through to label + |body| + 2 (the instruction after the region).  The
 fuel bounds taken back-edges — as A3's `runWhileMem`, any `some` result is a
-genuine termination within the budget. -/
+termination within the budget. -/
 
 mutual
 /-- Run one block: a straight block is the call-resolving fold; a region is
@@ -1123,7 +1121,7 @@ theorem ggm_fold_value_8 :
       = some (some (BitVec.ofNat 64 (ggmNestedFold 3 8 2))) := by native_decide
 
 /-- The spec fold at `num = 16` decodes to `ggmNestedFold 3 16 2` (`= 28`):
-    the middle trip is genuinely recomputed from the `num` register. -/
+    the middle trip is recomputed from the `num` register. -/
 theorem ggm_fold_value_16 :
     (runIBsL (fun _ => none) 64 ggmBlks (ggmStart 16).base).map
         (fun b => decodeM b "acc" 64)

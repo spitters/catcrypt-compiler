@@ -62,7 +62,7 @@ The builder is proven correct by a **denotation invariant** (`§6`): each
 `emitQR` step transforms the denoted 16-word state exactly as the committed
 `quarterRoundAtCatCrypt` (hence as the RFC `quarterRoundAt`, by the committed
 `quarterRoundAtCatCrypt_eq`), so the whole single `Com` denotes to
-`chacha20BlockCatCrypt`, which the committed keystone
+`chacha20BlockCatCrypt`, which the committed
 `chacha20Block_catcrypt_denote` already equates to `ChaCha20Block.chachaBlock`.
 This is NOT a monolithic `rfl`/`native_decide` over 976 ops: the per-QR step is a
 small lemma, folded through the round structure.
@@ -76,7 +76,7 @@ small lemma, folded through the round structure.
   `bench/chacha_compare/gen_com/chacha20_block_catcrypt.s` under the symbol
   `chacha20_block`.
 
-0 sorries (the heavy denote keystone reuses the committed per-QR denote +
+0 sorries (the whole-block denote reuses the committed per-QR denote +
 block-composition lemmas).
 -/
 
@@ -338,7 +338,7 @@ theorem curState_emitRor {t : CryptoTy} {Γ : Ctxt catCryptDialect}
               orig := fun i => (st.orig i).there }).denote
           (V.extend (((st.cur dst).lookup V).rotateRight n)) := rfl
 
-/-! ### 6.2 Per-quarter-round denote transport (the load-bearing correctness unit)
+/-! ### 6.2 Per-quarter-round denote transport (the correctness unit)
 
 The single straight-line `Com` is, op-for-op, a sequence of quarter-rounds. The
 correctness unit is therefore: **one emitted quarter-round transports the denoted
@@ -346,7 +346,7 @@ correctness unit is therefore: **one emitted quarter-round transports the denote
 the RFC-8439 `quarterRoundAt`, by the committed `quarterRoundAtCatCrypt_eq`).
 Folded over the RFC §2.3 round structure (the same column/diagonal index sets the
 function-level builder uses) and then the feed-forward, this exhibits the single
-`Com`'s denote as `chacha20BlockCatCrypt s`, which the committed keystone
+`Com`'s denote as `chacha20BlockCatCrypt s`, which the committed
 `chacha20Block_catcrypt_denote` equates to `ChaCha20Block.chachaBlock`.
 
 The per-binding `rfl` transport (`§6.1`) reduces `(emitQR st a b c d k).denote V`
@@ -375,7 +375,7 @@ theorem emitQR_denote_reduces {t : CryptoTy} {Γ : Ctxt catCryptDialect}
       (emitQR st a b c d k).denote V = (k st').denote V' :=
   ⟨_, _, rfl⟩
 
-/-! ### 6.3 The whole-block denote, via the committed function keystone
+/-! ### 6.3 The whole-block denote, via the committed function-level equation
 
 `initValuation s` packs the 16-word state `s` into the 32-word context twice
 (slots `0..15` working state, `16..31` feed-forward originals). The single `Com`'s
@@ -424,20 +424,16 @@ def chacha20BlockEmitJazz : String :=
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (strContains)
 
-/-- **Render smoke: the export symbol.** The emitted text is an `export fn`
+/- **Render smoke: the export symbol.** The emitted text is an `export fn`
     named `chacha20_block`. -/
-theorem chacha20BlockEmitJazz_has_fn :
-    strContains chacha20BlockEmitJazz "fn chacha20_block" = true := by native_decide
+#guard (strContains chacha20BlockEmitJazz "fn chacha20_block")
 
-/-- **Render smoke: the rotate survives** (the diagonal ARX rotate reaches the
+/- **Render smoke: the rotate survives** (the diagonal ARX rotate reaches the
     x86 printer as `#ROR_32` through the whole seam → printer chain). -/
-theorem chacha20BlockEmitJazz_has_ror :
-    strContains chacha20BlockEmitJazz "ROR" = true := by native_decide
+#guard (strContains chacha20BlockEmitJazz "ROR")
 
-/-- **Render smoke: the add and xor survive.** -/
-theorem chacha20BlockEmitJazz_has_arith :
-    (strContains chacha20BlockEmitJazz "+" = true)
-      ∧ (strContains chacha20BlockEmitJazz "^" = true) := by native_decide
+/- **Render smoke: the add and xor survive.** -/
+#guard (strContains chacha20BlockEmitJazz "+") && (strContains chacha20BlockEmitJazz "^")
 
 /-- The lowered jasmin function takes the 32 input words as parameters (16 state
     + 16 feed-forward originals); its body is the whole straight-line unroll (960
@@ -454,5 +450,12 @@ def emit : IO Unit := do
   IO.FS.writeFile "bench/chacha_compare/gen_com/chacha20_block_catcrypt.s"
     chacha20BlockEmitJazz
   IO.println "CatCrypt whole-block emit OK : bench/chacha_compare/gen_com/chacha20_block_catcrypt.s"
+
+/-! ## Artifact generation at elaboration
+
+The render is written while this module elaborates, so `lake` produces it from
+this file and no separate driver or Makefile rule carries the dependency. -/
+
+#eval emit
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockEmit

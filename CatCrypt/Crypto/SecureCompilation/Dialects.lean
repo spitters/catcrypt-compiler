@@ -73,6 +73,7 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull
 import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherImmForms
 import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
 import CatCrypt.Crypto.SecureCompilation.X86Backend.GoldenPathByteIdentityDemo
+import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherLsemTie
 import CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialect
 import CatCrypt.Crypto.SecureCompilation.Jasmin.S2NBignumSSADialect
 import CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialectNative

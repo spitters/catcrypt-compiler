@@ -224,32 +224,30 @@ def fusedConstAt (idx : Nat) : Option Nat :=
 
 /-- The owned fused-leaf `Lprog`: the fused `Com` lowered to physical-ABI
     linear jasmin, export `plonky3_ntt_layer8x2_fused_rc`, 8-word output. -/
-def fusedOwnedLprog : Lprog :=
+def fusedLprog : Lprog :=
   let (imm, inl) := abiMaps 18 fusedConstAt
   Com.toLprogPhysAbi fusedTwoLayerCom
     "plonky3_ntt_layer8x2_fused_rc" (fun _ => none) imm inl (stdOutStore 8)
 
-def fusedOwnedAsm : String := renderLprogAtt fusedOwnedLprog
+def fusedAsm : String := renderLprogAtt fusedLprog
 
 /-- Substring test (`needle` occurs in `hay`). -/
 def hasSub (hay needle : String) : Bool :=
   (List.range (hay.length + 1)).any (fun i =>
     needle == String.ofList (hay.toList.drop i |>.take needle.length))
 
-/-- The owned `.s` carries the fused export label and no unhandled-op
+/- The owned `.s` carries the fused export label and no unhandled-op
     sentinel. -/
-theorem fusedOwned_has_label :
-    hasSub fusedOwnedAsm "plonky3_ntt_layer8x2_fused_rc" = true := by native_decide
+#guard (hasSub fusedAsm "plonky3_ntt_layer8x2_fused_rc")
 
-theorem fusedOwned_no_unhandled :
-    hasSub fusedOwnedAsm "UNHANDLED" = false := by native_decide
+#guard !(hasSub fusedAsm "UNHANDLED")
 
 /-! ## 7. Emit driver -/
 
 def emitMain : IO Unit := do
   IO.FS.createDirAll "bench/plonky3_compare/gen_com"
   IO.FS.writeFile
-    "bench/plonky3_compare/gen_com/ntt_layer_fused_owned.s" fusedOwnedAsm
+    "bench/plonky3_compare/gen_com/ntt_layer_fused_owned.s" fusedAsm
   IO.println "wrote gen_com/ntt_layer_fused_owned.s"
   IO.println "  TWO NTT layers FUSED at the LowCT source (layerStmts ++ layerStmts), front-compiled: no inter-layer copy-out/copy-in"
 

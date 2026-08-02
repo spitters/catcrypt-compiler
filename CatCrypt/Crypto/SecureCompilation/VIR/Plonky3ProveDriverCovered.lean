@@ -34,8 +34,8 @@ whole-program denote homomorphism, the same recipe as
 `ZkSumCheckCovered.zkSumCheckCovered_denote`,
 `Shake256Covered.shake256Covered_denote`, and
 `MayoSolveCovered.mayoSolveCovered_denote`. It strengthens the hand
-`Plonky3ProveDriverOwnedEmit.proveDriverFundef` OrchStep schedule (a degenerate
-no-loop `buildOrchCallSeq` band with no whole-program machine denote) to a genuine
+`Plonky3ProveDriverEmit.proveDriverFundef` OrchStep schedule (a degenerate
+no-loop `buildOrchCallSeq` band with no whole-program machine denote) to a
 high-level-source descent.
 
 ## Opaque leaves — the per-phase work, exactly the exemplar tier
@@ -43,7 +43,7 @@ high-level-source descent.
 Each phase is an **opaque leaf** (`RCall`), exactly as `keccakf1600` /
 `x25519_ladder_iter` are opaque in the exemplars — and exactly the owned phase
 loop-drivers + field leaves the hand emit `Lcall`s: `commit_trace` is the column
-LDE + Merkle leaf/compress loops (`Plonky3OrchLoopsOwnedEmit`), `fs_alpha`/`fs_zeta`
+LDE + Merkle leaf/compress loops (`Plonky3OrchLoopsEmit`), `fs_alpha`/`fs_zeta`
 are the Poseidon2 Fiat–Shamir observe/sample leaves, `deep_open` is the degree-4
 extension-field DEEP arithmetic (`ext4_*_rc`), `fri_prove` is the FRI fold/PoW/query
 loop drivers, and `serialize` is the proof serializer (`p3_ser_*`). What is banked
@@ -55,7 +55,7 @@ FIPS-202 KAT.
 
 ## The inter-phase buffer marshalling stays inside the leaves
 
-The `prove()` driver's residual — noted in `Plonky3ProveDriverOwnedEmit` as the
+The `prove()` driver's residual — noted in `Plonky3ProveDriverEmit` as the
 Gap-2 marshalling — is the loading of each phase's pointer operands into the SysV
 argument registers and the sizing of the work buffers to match p3's layout. That
 is **marshalling, not control**: it is per-phase data plumbing, not a control
@@ -145,7 +145,7 @@ def plonky3ProveDriverLowCT : LowCT :=
             (.RSeq deepOpen
               (.RSeq friProve serialize))))))
 
-/-! ## 2. Coverage — the load-bearing structural proofs -/
+/-! ## 2. Coverage — the central structural proofs -/
 
 /-- Every `prove()` phase leaf is straight-line covered (`IsCoveredS`): a single
     `RCall` threading the proof-state bundle. -/

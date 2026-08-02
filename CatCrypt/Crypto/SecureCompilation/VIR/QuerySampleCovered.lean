@@ -10,7 +10,7 @@ set_option autoImplicit false
 /-!
 # The Plonky3 DuplexChallenger query sampler as one `IsCoveredSU` program
 
-`Plonky3QuerySampleOwnedEmit` deploys the `DuplexChallenger<16,8>` sample/observe
+`Plonky3QuerySampleEmit` deploys the `DuplexChallenger<16,8>` sample/observe
 wrapper as owned `Lcmd` control flow; the prior wall analysis showed its CONTROL
 shape — `observe = if trigger { call duplex; store }`, `sample = if trigger {
 call duplex_n; store }`, and the runtime absorb loop — needs an `RCond` (a
@@ -48,9 +48,9 @@ to `srcClean` with its jasmin lowering.
 
 What the covered fragment DOES express is the natural nonzero guard `guardNz name`
 (`name != 0`) on the sponge counters — and `inlen > 0` IS exactly `guardNz
-"inlen"`.  So the witness sampler carries genuine data-dependent `!= 0` guards on
+"inlen"`.  So the witness sampler carries data-dependent `!= 0` guards on
 `inlen`/`outlen` (the observe fires iff `inlen != 0`, the sample iff `outlen !=
-0`), and a genuine `SSub` countdown absorb loop (which `srcClean` DOES cover).
+0`), and an `SSub` countdown absorb loop (which `srcClean` DOES cover).
 The CONTROL shape (`RSeq` of two `RCond`s and one `RWhileNz`) — the unification's
 whole point — is delivered in full; only the compare-in-guard is the residual.
 
@@ -182,7 +182,7 @@ def qsVm0 : VarMap [.sword 64, .sword 64, .sword 64] :=
     entry: the observe conditional fires (`inlen != 0`), the sample conditional
     skips (`outlen == 0`), and the absorb loop counts `ctr = 2` down to `0` within
     `fuel = 8`.  So the denote's `semU … = some env'` hypothesis is satisfiable —
-    the run is genuine, not an unsatisfiable premise. -/
+    the run is satisfiable, not an unsatisfiable premise. -/
 theorem querySample_semU_terminates :
     (semU 8 querySampleLowCT qsEnv0).isSome = true := by native_decide
 
@@ -193,13 +193,13 @@ theorem querySample_semU_terminates :
 theorem querySample_transU_isSome :
     (transU 8 qsVm0 qsEnv0 querySampleLowCT).isSome = true := by native_decide
 
-/-- **The observe guard genuinely FIRES here** (`inlen = 8 != 0`): the duplex call
+/-- **The observe guard FIRES here** (`inlen = 8 != 0`): the duplex call
     DOES run on this entry — the guard-true leg of the `RCond` forward branch. -/
 theorem querySample_observe_fires : guardNz "inlen" qsEnv0 = true := by native_decide
 
-/-- **The sample guard genuinely SKIPS here** (`outlen = 0`): the duplex_n call
+/-- **The sample guard SKIPS here** (`outlen = 0`): the duplex_n call
     does NOT run — the guard-false leg, the key `rCond_whole_denote` non-vacuity
-    (distinguishing the genuine forward branch from a φ-merge that would run the
+    (distinguishing the forward branch from a φ-merge that would run the
     block regardless). -/
 theorem querySample_sample_skips : guardNz "outlen" qsEnv0 = false := by native_decide
 

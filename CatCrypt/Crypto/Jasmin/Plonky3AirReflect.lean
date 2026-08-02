@@ -48,7 +48,7 @@ chain of identical RCall sites.
 
 Same as `FalconReflect.lean` / `Plonky3Reflect.lean`: `reifyLowCT%` does not
 consult the `LowCTPattern` registry, so we hand-build the body the reifier
-*would* produce. Downstream (`translate → cprogToJasminCom →
+*would* produce. Downstream (`translate → cryptoDialectToJasminCom →
 emitAbiOrchRegPtr`) is unchanged.
 
 ## Relation to legacy Tier C `Plonky3AirEmit.lean`
@@ -136,7 +136,7 @@ noncomputable def airTransitionLean3x16 (trace : Plonky3Trace 3 16) : Plonky3Air
 /-! ## 5. Hand-built `LowCT` body — the front-end input
 
 `reifyLowCT%` does not consult the registry, so we hand-build the body.
-Downstream (`translate → cprogToJasminCom → emitAbiOrchRegPtr`) is unmodified. -/
+Downstream (`translate → cryptoDialectToJasminCom → emitAbiOrchRegPtr`) is unmodified. -/
 
 /-- TowerType for the AIR trace buffer of width `W`, height `H`
     (8 bytes per BabyBear cell). -/

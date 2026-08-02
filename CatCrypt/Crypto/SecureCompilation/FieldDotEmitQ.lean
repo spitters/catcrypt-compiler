@@ -285,7 +285,7 @@ def dotQLprog : Lprog :=
 
 /-- The owned AT&T `.s` text for `dot_q3329`, rendered straight from the owned
     `Lprog` (no jasminc). -/
-def dotQOwnedAsm : String := renderLprogAtt dotQLprog
+def dotQAsm : String := renderLprogAtt dotQLprog
 
 /-- The output path for the field-kernel-emitted `.s`. -/
 def dotQTarget : System.FilePath :=
@@ -296,7 +296,7 @@ def dotQTarget : System.FilePath :=
     and writes it to `gen_com/dot_q3329.s`. -/
 def emitDotQ : IO Unit := do
   IO.FS.createDirAll "bench/field_kernel_compare/gen_com"
-  let asm := dotQOwnedAsm
+  let asm := dotQAsm
   IO.FS.writeFile dotQTarget asm
   IO.println s!"FIELD-DOT-Q emit OK : {dotQTarget} ({asm.toUTF8.size} bytes, symbol dot_q3329)"
 

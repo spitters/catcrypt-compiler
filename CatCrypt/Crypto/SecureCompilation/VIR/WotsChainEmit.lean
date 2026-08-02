@@ -410,20 +410,16 @@ def wotsSigExportJazz : String :=
 
 /-! ## 9. Structural smoke tests for the emitted `.jazz` -/
 
-/-- The WOTS+ signature `.jazz` is an `export fn` jasminc unit. -/
-theorem wotsSigExport_has_export :
-    JasminPrint.strContains wotsSigExportJazz "export fn slhdsa_wots_sign" = true := by
-  native_decide
+/- The WOTS+ signature `.jazz` is an `export fn` jasminc unit. -/
+#guard (JasminPrint.strContains wotsSigExportJazz "export fn slhdsa_wots_sign")
 
-/-- The WOTS+ signature `.jazz` has the per-chain **data-dependent** trip-count
+/- The WOTS+ signature `.jazz` has the per-chain **data-dependent** trip-count
     loops: the positions `1, 2, 3, 4` appear as the loop bounds (one per chain),
     confirming the variable trip counts are resolved into the emitted headers. -/
-theorem wotsSigExport_has_chain_positions :
-    JasminPrint.strContains wotsSigExportJazz "for i = 0 to 1" = true
-      ∧ JasminPrint.strContains wotsSigExportJazz "for i = 0 to 2" = true
-      ∧ JasminPrint.strContains wotsSigExportJazz "for i = 0 to 3" = true
-      ∧ JasminPrint.strContains wotsSigExportJazz "for i = 0 to 4" = true := by
-  refine ⟨?_, ?_, ?_, ?_⟩ <;> native_decide
+#guard (JasminPrint.strContains wotsSigExportJazz "for i = 0 to 1")
+    && (JasminPrint.strContains wotsSigExportJazz "for i = 0 to 2")
+    && (JasminPrint.strContains wotsSigExportJazz "for i = 0 to 3")
+    && (JasminPrint.strContains wotsSigExportJazz "for i = 0 to 4")
 
 /-- **Structural check: the signature is `len = 4` chains, not unrolled** — exactly
     `4` chain loops (one `acc = acc * acc` per chain), each a real `for`, not the

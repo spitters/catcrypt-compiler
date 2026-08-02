@@ -313,7 +313,7 @@ def ntt8QLprog : Lprog :=
 
 /-- The owned AT&T `.s` text for `ntt8_q3329`, rendered straight from the owned
     `Lprog` (no jasminc). -/
-def ntt8QOwnedAsm : String := renderLprogAtt ntt8QLprog
+def ntt8QAsm : String := renderLprogAtt ntt8QLprog
 
 /-- The output path for the field-kernel-emitted `.s`. -/
 def ntt8QTarget : System.FilePath :=
@@ -324,7 +324,7 @@ def ntt8QTarget : System.FilePath :=
     (`ntt8_q3329`) and writes it to `gen_com/ntt8_q3329.s`. -/
 def emitNtt8Q : IO Unit := do
   IO.FS.createDirAll "bench/field_kernel_compare/gen_com"
-  let asm := ntt8QOwnedAsm
+  let asm := ntt8QAsm
   IO.FS.writeFile ntt8QTarget asm
   IO.println s!"FIELD-NTT8-Q emit OK : {ntt8QTarget} ({asm.toUTF8.size} bytes, symbol ntt8_q3329)"
 

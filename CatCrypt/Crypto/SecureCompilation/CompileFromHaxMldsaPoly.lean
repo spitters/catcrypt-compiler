@@ -53,9 +53,9 @@ The abstract `= a % q` (canonical-rep) tie is stated and proved **separately**
 via pure-BitVec `bv_decide` — the prime-field reduce identity (the SDitH lesson),
 the analogue of the `#117` Barrett seam.
 
-## Remaining `PolyOwnedEmit` bodies (follow-up)
+## Remaining `PolyEmit` bodies (follow-up)
 
-`PolyOwnedEmit.lean` carries four owned per-coefficient bodies:
+`PolyEmit.lean` carries four owned per-coefficient bodies:
 `poly_add`, `poly_sub` (pure two's-complement add/sub — easy follow-ups, but they
 read **two** parameters and emit no reduce), `poly_reduce` (Barrett `reduce32`)
 and `poly_pointwise_montgomery` (signed Montgomery). The latter two use the
@@ -156,7 +156,7 @@ theorem mldsaCaddq_compiles :
 
 The mask-blend emit form `mldsaCaddqFold` equals abstract `a.toInt % q` over the
 centered ML-DSA domain `−q < a.toInt < q` (every centered base-field residue, the
-output range of the Barrett `reduce32`). This is the genuine conditional-reduce
+output range of the Barrett `reduce32`). This is the conditional-reduce
 identity — the analogue of the `#117` Barrett seam, not an ARX `rfl`. -/
 
 /-- **ML-DSA `caddq` mask-blend = canonical `a mod q`** on the centered domain

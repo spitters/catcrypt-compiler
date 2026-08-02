@@ -8,6 +8,11 @@ import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
 /-!
 # Field derived ops — first-class `double` / `square` / `powui`
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
+Upstream: prime-ir `field.double` / `field.square` / `field.powui` (+
+`mod_arith.double` / `mod_arith.square`).
+
 A minimal **correspondence** `VIR.Dialect` whose ops are the prime-field
 *derived-arithmetic* ops of fractalyze/prime-ir: doubling (`field.double`),
 squaring (`field.square`), and fixed-exponent power (`field.powui`).  It is the
@@ -17,7 +22,7 @@ the same maps one ring layer down).
 
 ## Why this dialect exists (the gap it closes)
 
-Per `PRIME_IR_GAP_ANALYSIS.md` (repo root, §1 & §2), CatCrypt already *computes*
+Per `PRIME_IR_OP_CORRESPONDENCE.md` (repo root, §1 & §2), CatCrypt already *computes*
 these derived ops — but only by **deriving them from the primitive ops**, never
 as standalone ops:
 
@@ -72,22 +77,6 @@ Each leaf is a total function `ZMod p → ZMod p` built from the primitive
 * `fieldPowF p k a = a ^ k`, with the Horner/repeated-square spec a power op
   needs: `fieldPow_zero`, `fieldPow_succ : fieldPow p (k+1) a = fieldPow p k a *
   a`, and `fieldPow_eq_npow : fieldPow p k a = a ^ k`.
-
-## Honest classification (read `VIR/DIALECTS.md`)
-
-This is a **HIGH-tier, prime-ir-corresponding / agreement** dialect, NOT an
-emit-wired one.  Like `mlirArithDialect`, `mlirPolynomialDialect`,
-`tensorExtDialect`, `modArithMontDialect`, and `cmpDialect` in DIALECTS.md's
-"correspondence-only" table, it has **no lowering out** (no `→ Com
-jasminDialect`, no backend edge).  It substantiates the "prime-ir
-`field.double` / `field.square` / `field.powui` (and `mod_arith.double` /
-`mod_arith.square`) aligned" claim by giving those derived maps a first-class op
-with a verified denotation tied to the primitive `+` / `*` / `^`.  It does
-**not** add a lowering or emit path — the **bytes-reaching** arithmetic still
-flows through the existing `fAdd` / `fMul` emit kernels (`FieldEmitGoldenPath`,
-the `Com → jasmin → ELF` spine in DIALECTS.md).  These ops *factor* the derived
-forms; they do not introduce a new realised schedule.  Do not overclaim an emit
-this file does not build.
 
 ## Pure-only + constant-time
 
@@ -219,7 +208,7 @@ instance : DialectSignature derivedDialect where
     | .fieldSquare p => .fp p
     | .fieldPow p _ => .fp p
 
-/-! ## 7. Op denotation (into the genuine primitive arithmetic) -/
+/-! ## 7. Op denotation (into the primitive arithmetic) -/
 
 instance derivedDenote : DialectDenote derivedDialect where
   denote op := match op with

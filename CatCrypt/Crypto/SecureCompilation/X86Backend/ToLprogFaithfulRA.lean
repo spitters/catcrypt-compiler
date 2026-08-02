@@ -6,124 +6,124 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulNary
 
 /-!
-# RA-construction facts for `CoverData`: the `physScanStep` allocation invariant
+# Allocation facts for `CoverData`: the bounded linear scan assigns distinct locations
 
 `ToLprogFaithfulNary.physBody_lsem_result_uniform` is unconditional in
-`BodyCover` for an arbitrary-length `UniformRegArith` `Com`, **given** a threaded
+`BodyCover` for an arbitrary-length `UniformRegArith` `Com`, given a threaded
 `CoverData` whose per-binding payload carries the two head-naming facts and the
 RA-correctness facts `hcol` (two-address collapse) and `hinj` (renaming
-injectivity, inside each `BinopBinding`). This module characterizes how the
-shipped linear-scan RA (`physScanStep`/`physMap`/`physTable`) actually assigns
-registers, and proves the tractable structural core from that construction.
+injectivity, inside each `BinopBinding`). This module characterizes the shipped
+allocator (`physScanSpillStep` / `physScanSpill` / `physAssign` / `physMap`,
+`JasminLprogExport.lean` §7c) and proves that it never gives two overlapping
+live ranges the same physical location.
 
-## The exact `physScanStep`/`physMap` register-assignment invariant
+## The allocator
 
-`physMap tr s` (`JasminLprogExport.lean`:1086) looks `s` up in `physAssign tr`
-(:1081), which runs `physScanAux` (:1039) — a Poletto–Sarkar linear scan. Each
-binding's allocation is one `physScanStep st en busy nextFresh`
-(`JasminLprogExport.lean`:1011–1017): it frees the physical registers whose
-owner's range ended (`busy.filter (·.2 ≥ st)`), then **takes the lowest free
-physical register** `(List.range nextFresh).find? (∉ busySlots)`, or a fresh one
-beyond `nextFresh` if none is free.
+`physMap tr s` looks `s` up in `physAssign tr`, which runs `physScanSpill` — a
+Poletto–Sarkar linear scan over a bounded pool of `numGPRegs` registers with a
+separate pool of stack cells. Each live interval is one `physScanSpillStep`: the
+register allocations whose range ended are reclaimed, and the interval takes the
+lowest free register (`freeRegIn`). When no register is free, `spillVictim` ranks
+the register-resident values by spill cost, the winner is compared against the
+incoming interval, and the higher-ranked of the two goes to a stack cell for its
+**whole** range (`allocCell`). Each cell carries the `(minStart, maxEnd)` hull of
+every range placed in it, and `firstFittingCell` admits a range only into a cell
+whose hull is disjoint from it.
 
-**Consequence for `hcol`.** `physScanStep` does **not** prefer a binding's first
-source `s0`'s register for its destination `dst` — it takes the *lowest free*
-register, which only *coincidentally* equals `s0`'s register (when `s0` died and
-its register is the lowest free one). So **`hcol` (`physRename dst = physRename
-s0`) is a derived side-condition, NOT a structural fact of `physScanStep`.** The
-lowering is robust to its failure (the collapse-or-mov dichotomy, §4).
+**Consequence for `hcol`.** The step does not prefer a binding's first source
+`s0`'s register for its destination `dst` — it takes the lowest free register, so
+`hcol` (`physRename dst = physRename s0`) is a derived side-condition, not a
+structural fact. The lowering is robust to its failure (the collapse-or-mov
+dichotomy, §5).
 
-**Consequence for `hinj`.** `physMap` is **deliberately not globally injective**:
-it reuses a register across slots whose live ranges do not overlap. Injectivity
-holds only on **simultaneously-live** slots — exactly the registers that are
-busy at the same scan position. The precise structural seed of this is the
-`physScanStep` *freshness invariant* (§1): the register a step hands out is fresh
-against everything still busy.
+**Consequence for `hinj`.** `physMap` is deliberately not globally injective: it
+reuses a location across slots whose live ranges do not overlap. Injectivity
+holds exactly on slots whose ranges overlap, which is what §4 proves.
 
-## What this module proves (zero `sorry`, axioms ⊆ {propext, Classical.choice,
-Quot.sound})
+## What this module proves
 
-* **§1 `physScanStep_fresh` / `physScanStep_busy_lt`.** One step's emitted
-  register is not among the still-busy registers, and every busy entry stays
-  `< nextFresh'` — the two invariants that thread the scan.
+* **§1 `physLoc`, overlap arithmetic.** The location a slot reads back out of an
+  assignment list, and the three arithmetic facts the invariant needs
+  (`physRangesOverlap_comm`, `not_overlap_of_end_lt`, `not_overlap_of_hull`).
 
-* **§2 `physScanStep_busy_nodup`.** One step preserves pairwise-distinctness of
-  the busy registers: combined with §1, **simultaneously-busy slots receive
-  distinct physical registers**.
+* **§2 the cell pool.** `firstFittingCell_disjoint` (the cell `allocCell` picks
+  has a hull disjoint from the incoming range), `allocCell_covers` (the chosen
+  cell's hull covers the range after the placement) and `allocCell_mono` (the
+  placement only widens hulls). These are the facts that make cell reuse safe
+  against the *whole* range of a spilled value rather than against the values
+  live at the spill point.
 
-* **§3 `scanBusyState_ScanInv` (+ `_init`).** The whole-scan recursive carrier:
-  `ScanInv` (busy `< nextFresh` ∧ busy registers `Nodup`) is maintained across
-  the entire `physScanAux` run, from the initial `ScanInv [] 0`. This is the
-  whole-body invariant a full `hinj` proof consumes.
+* **§3 `ScanInv`.** The running invariant: the in-flight register allocations sit
+  on distinct in-pool registers and agree with the assignment list; every
+  register-located slot is either still in flight or already dead; every
+  cell-located slot's range is inside its cell's hull; and no two distinct slots
+  with the same location have overlapping ranges. `inv_take_reg`,
+  `inv_evict` and `inv_spill_incoming` re-establish it for the three arms of
+  `physScanSpillStep`; `physScanSpillStep_ScanInv` assembles them and
+  `physScanSpill_ScanInv` threads it over the whole scan.
 
-* **§4 `lowerTwoAddr_dichotomy` / `lowerTwoAddr_collapse_of_eq`.** The
-  collapse-or-mov dichotomy: `lowerTwoAddr` is *exactly* the collapse form when
-  the physical `dst = s0`, and the `legalizeMov`-prefixed form otherwise. So
-  `hcol` selects the collapse branch; its negation routes through the
-  already-discharged `legalizeMov` prefix. **`hcol` is never required** — it is
-  an optimization the RA may or may not enable, and the lowering is faithful
-  either way.
+* **§4 `physScanSpill_no_collision` / `physAssign_no_collision` /
+  `physMap_no_collision`.** For two distinct slots whose live ranges overlap, the
+  scan assigns different physical locations — registers and stack cells alike.
+  `physLiveItems_sorted` and `physLiveItems_range` discharge the scan's input
+  hypotheses (starts non-decreasing, slots distinct, ranges agreeing with
+  `physLiveRange`) for the shipped item list, so `physAssign_no_collision` and
+  `physMap_no_collision` are hypothesis-free in the trace.
 
-* **§5 `physRegName_injOn_gp` / `physRegName_gp_ne_spill` / `physRegName_injOn_spill`
-  / `physRegName_inj`.** The rendering layer of `hinj`, **fully closed (global)**:
-  `physRegName` is injective on the GP-register block (via `gpRegNames_nodup`),
-  never confuses a GP index with a spill index, and is injective on the spill
-  block — the last bottoming out in the decimal-string injectivity
-  `toDigits_inj`/`toString_nat_inj` (proved here from the Batteries
+* **§5 `lowerTwoAddr_dichotomy` / `lowerTwoAddr_collapse_of_eq`.** The
+  collapse-or-mov dichotomy: `lowerTwoAddr` is exactly the collapse form when the
+  physical `dst = s0`, and the `legalizeMov`-prefixed form otherwise. So `hcol`
+  selects the collapse branch; its negation routes through the already-discharged
+  `legalizeMov` prefix. `hcol` is never required — it is an optimization the RA
+  may or may not enable, and the lowering is faithful either way.
+
+* **§6 `physRegName_injOn_gp` / `physRegName_gp_ne_spill` /
+  `physRegName_injOn_spill` / `physRegName_inj`.** The rendering layer of `hinj`,
+  global: `physRegName` is injective on the GP-register block (via
+  `gpRegNames_nodup`), never confuses a GP index with a spill index, and is
+  injective on the spill block — the last bottoming out in the decimal-string
+  injectivity `toDigits_inj`/`toString_nat_inj` (proved here from the Batteries
   `Nat.toDigits` recurrence; Mathlib/Batteries has no `Nat.repr` injectivity
-  lemma). The three combine into `physRegName_inj` (injective on all of `Nat`).
+  lemma).
 
-* **§5 `nameSlot_injOn`.** The naming layer of `hinj`, **closed on the live set**:
+* **§6 `nameSlot_injOn`.** The naming layer of `hinj`, on the live set:
   `nameSlot body n = (bodyNames body).idxOf n` is injective on names that occur in
-  the body (`List.getElem_idxOf` left inverse). It is *not* globally injective
-  (absent names collapse to the sentinel slot), which is exactly why `hinj` is
+  the body (`List.getElem_idxOf` left inverse). It is not globally injective
+  (absent names collapse to the sentinel slot), which is why `hinj` is
   live-set-scoped.
 
-* **§6 `physRename_injOn_live`.** The composition: with the rendering layer
-  (`physRegName_inj`, global) and naming layer (`nameSlot_injOn`, live) both
-  discharged, `hinj` reduces to the **single** slot-level fact that
-  `physMapTabled tbl` is injective on the (distinct, live) source/destination
-  slots. Everything *above* the linear-scan core is proved.
+* **§7 `physRename_injOn_live`.** The composition: with the rendering layer
+  (`physRegName_inj`, global) and the naming layer (`nameSlot_injOn`, live) both
+  discharged, `hinj` reduces to the single slot-level fact that `physMapTabled
+  tbl` is injective on the source/destination slots — which §4 supplies for
+  `physTable`-shaped tables whose slots are live and overlapping.
 
-## Residual (named honestly — NOT proved here)
+## Residual
 
-The **slot-level RA injectivity** `physMapTabled (physTable …)`-injectivity on
-simultaneously-live slots — the one remaining factor `physRename_injOn_live`
-(§6) consumes as its `hslot` hypothesis. Two sub-steps remain, both linear-scan
-analysis over the threaded carrier (the structural foundations §3 supplies —
-`scanBusyState_ScanInv` slot-distinctness and `physScanAux_acc_extends`
-accumulator agreement — are proved; the residual is wiring them into a
-slot-level injectivity):
+`physRename_injOn_live` takes the slot-level injectivity as the hypothesis
+`hslot`. Feeding it from §4 for a concrete binding needs two facts about the
+`Lcmd` layer that are not proved here: that `physMapTabled (physTable tr)` agrees
+with `physMap tr` on the slots in range (a `physTable`-scatter fact), and that
+the two slots of a binop's destination and source are live and have overlapping
+`physLiveRange`s at that binding (a liveness fact about `physEvents`). Both are
+statements about the trace `physEvents body` produces, not about the allocator.
 
-1. **`physMap`-from-`scanBusyState` (register half).** `physScanAux_acc_extends`
-   (§3) already shows `physAssign` is the per-step emitted `(slot, ph)` list;
-   what remains is the joint accumulator/busy invariant proving the `ph` a slot
-   `find?`s back is the register busy at its allocation step, so §3's
-   busy-register distinctness becomes distinctness of *assigned* registers.
+§4 covers `physAssign`, the single-pool scan. `physAssignClassed` runs two
+independent `physScanSpill` calls over the GP and vector item lists and
+concatenates them with the vector indices offset by `vectorBase`; each scan
+satisfies `physScanSpill_no_collision` on its own item list, but the argument
+that the concatenation keeps the two pools apart is not carried out here.
 
-2. **Live-at-same-position ⇒ simultaneously busy.** That two slots live at a
-   common trace position are both in the `busy` set at that position (so §3's
-   `Nodup` applies). This is the linear-scan liveness invariant.
-
-Both feed `physRename_injOn_live`'s `hslot`; with them `hinj` would be
-hypothesis-free, and `physBody_lsem_result_uniform` would no longer carry it.
-
-**The `JState↔Lstate` question.** `RegMachineSim.jinstr_renameBlock_sound`
-(`JInstrRegMachineSim.lean`:202) proves per-block RA soundness for a **uniform**
-renaming `ρ` over the `JInstr 64`/`JState 64` machine, under a **global**
-`Function.Injective ρ` (not "injective on the live set"). It does **not**
-transfer to `physBody`/`Lstate` directly, for two independent reasons: (a)
-`physBody` is **not a uniform renaming** — it interleaves the two-address `mov`s
-and the spill reloads (`legalizeBinop`), so there is no single `ρ` to feed
-`renameBlockS`; (b) even abstracting that, the keystone wants *global*
-injectivity, whereas `physMap` is only injective on simultaneously-live slots
-(§3). So the genuine missing bridge is **not** a mechanical `JState↔Lstate`
-state-correspondence transfer of the keystone; it is the live-set-restricted
-re-proof of the maintenance step over `Lstate` for the *non-uniform* `physBody`
-emission — which is why `ToLprogFaithfulWriteSide` already carries `hinj` as a
-per-block liveness hypothesis rather than deriving it from the keystone. This
-module supplies the RA-side fact (§3) that a future such re-proof would feed in;
-it does not perform that re-proof.
+`RegMachineSim.jinstr_renameBlock_sound` (`JInstrRegMachineSim.lean`:202) proves
+per-block RA soundness for a uniform renaming `ρ` over the `JInstr 64`/`JState 64`
+machine, under a global `Function.Injective ρ`. It does not transfer to
+`physBody`/`Lstate` directly: `physBody` is not a uniform renaming (it interleaves
+the two-address `mov`s and the spill reloads through `legalizeBinop`), and it
+requires global injectivity while `physMap` is injective on overlapping slots
+alone. So the missing bridge is the overlap-restricted re-proof of the
+maintenance step over `Lstate` for the non-uniform `physBody` emission, which is
+why `ToLprogFaithfulWriteSide` carries `hinj` as a per-block liveness hypothesis.
+This module supplies the RA-side fact such a re-proof consumes.
 -/
 
 set_option autoImplicit false
@@ -132,203 +132,865 @@ namespace CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulRA
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
-/-! ## 1. The single-step freshness invariant of `physScanStep` -/
+/-! ## 1. Locations and overlap arithmetic
 
-/-- **`physScanStep` freshness.** The physical register `physScanStep` hands out
-    is not among the registers still busy after this step's reclamation (the
-    `busy'` whose owner's range did not end before `st`). Both arms guarantee it:
-    the `some ph` arm picks `ph` with `!busySlots.contains ph` (from `find?`); the
-    `none` arm returns `nextFresh`, which is `< nextFresh`-free by the standing
-    `busy < nextFresh` invariant. -/
-theorem physScanStep_fresh (st en : Nat) (busy : List (Nat × Nat))
-    (nextFresh : Nat) (hbusy : ∀ p ∈ busy, p.1 < nextFresh) :
-    ((physScanStep st en busy nextFresh).1)
-      ∉ ((busy.filter (fun p => p.2 ≥ st)).map Prod.fst) := by
-  unfold physScanStep
-  cases hf : (List.range nextFresh).find?
-      (fun ph => !((busy.filter (fun p => p.2 ≥ st)).map Prod.fst).contains ph) with
-  | some ph =>
-      simp only [hf]
-      have hfs := List.find?_some hf
-      simpa using hfs
+`physAssign` accumulates `(slot, phys)` pairs most-recent-first, and both
+`physMap` and `physTable` read a slot's location with `find?`. `physLoc` names
+that read. -/
+
+/-- The physical location an assignment list gives a slot, `none` when the slot
+    was never assigned. -/
+def physLoc (acc : List (Nat × Nat)) (s : Nat) : Option Nat :=
+  (acc.find? (fun p => p.1 == s)).map Prod.snd
+
+@[simp] theorem physLoc_nil (s : Nat) : physLoc [] s = none := rfl
+
+/-- A newer assignment shadows the rest of the list. -/
+theorem physLoc_cons (a b : Nat) (acc : List (Nat × Nat)) (s : Nat) :
+    physLoc ((a, b) :: acc) s = if a = s then some b else physLoc acc s := by
+  unfold physLoc
+  rw [List.find?_cons]
+  by_cases h : a = s
+  · simp [h]
+  · have hb : (a == s) = false := by simpa using h
+    simp [hb, h]
+
+/-- Range overlap is symmetric. -/
+theorem physRangesOverlap_comm (r1 r2 : Nat × Nat) :
+    physRangesOverlap r1 r2 = physRangesOverlap r2 r1 := by
+  simp [physRangesOverlap, Bool.and_comm]
+
+/-- A range that ended before `st` does not overlap `[st, en]`. -/
+theorem not_overlap_of_end_lt {r : Nat × Nat} {st en : Nat} (h : r.2 < st) :
+    ¬ physRangesOverlap r (st, en) := by
+  simp only [physRangesOverlap, Bool.and_eq_true, decide_eq_true_eq, not_and]
+  omega
+
+/-- A range inside a hull inherits the hull's disjointness. -/
+theorem not_overlap_of_hull {r h R : Nat × Nat} (hlo : h.1 ≤ r.1) (hhi : r.2 ≤ h.2)
+    (hd : ¬ physRangesOverlap h R) : ¬ physRangesOverlap r R := by
+  simp only [physRangesOverlap, Bool.and_eq_true, decide_eq_true_eq, not_and] at hd ⊢
+  omega
+
+/-! ## 2. The cell pool
+
+Cell reuse is decided against a cell's hull, so what the placement guarantees is
+disjointness from the hull, and the hull covers every range placed in the cell.
+Together those give pairwise disjointness of the ranges sharing a cell. -/
+
+/-- An index with an element is inside the array. -/
+theorem lt_size_of_getElem? {α : Type} {a : Array α} {j : Nat} {x : α}
+    (h : a[j]? = some x) : j < a.size := by
+  rcases Nat.lt_or_ge j a.size with hj | hj
+  · exact hj
+  · rw [Array.getElem?_eq_none hj] at h
+    exact absurd h (by simp)
+
+/-- `firstFittingCell` scanning from `i ≤ hulls.size` stops at `hulls.size` at the
+    latest. -/
+theorem firstFittingCell_le (hulls : CellHulls) (st en : Nat) :
+    ∀ (n i : Nat), hulls.size - i ≤ n → i ≤ hulls.size →
+      firstFittingCell hulls st en i ≤ hulls.size := by
+  intro n
+  induction n with
+  | zero =>
+    intro i hn hi
+    rw [firstFittingCell]
+    have : ¬ i < hulls.size := by omega
+    simp [this, hi]
+  | succ n ih =>
+    intro i hn hi
+    rw [firstFittingCell]
+    by_cases hlt : i < hulls.size
+    · simp only [hlt, dif_pos]
+      by_cases hov : physRangesOverlap hulls[i] (st, en)
+      · simp only [hov, if_pos]
+        exact ih (i + 1) (by omega) (by omega)
+      · simp only [hov, Bool.false_eq_true, if_neg, not_false_iff]
+        omega
+    · simp [hlt, hi]
+
+/-- When `firstFittingCell` stops at an existing cell, that cell's hull is
+    disjoint from `[st, en]`. -/
+theorem firstFittingCell_disjoint (hulls : CellHulls) (st en : Nat) :
+    ∀ (n i : Nat), hulls.size - i ≤ n →
+      ∀ h, hulls[firstFittingCell hulls st en i]? = some h →
+        ¬ physRangesOverlap h (st, en) := by
+  intro n
+  induction n with
+  | zero =>
+    intro i hn h hh
+    rw [firstFittingCell] at hh
+    have hge : ¬ i < hulls.size := by omega
+    simp only [hge, dif_neg, not_false_iff] at hh
+    rw [Array.getElem?_eq_none (by omega)] at hh
+    exact absurd hh (by simp)
+  | succ n ih =>
+    intro i hn h hh
+    rw [firstFittingCell] at hh
+    by_cases hlt : i < hulls.size
+    · simp only [hlt, dif_pos] at hh
+      by_cases hov : physRangesOverlap hulls[i] (st, en)
+      · simp only [hov, if_pos] at hh
+        exact ih (i + 1) (by omega) h hh
+      · simp only [hov, Bool.false_eq_true, if_neg, not_false_iff] at hh
+        rw [Array.getElem?_eq_getElem hlt] at hh
+        cases hh
+        exact hov
+    · simp only [hlt, dif_neg, not_false_iff] at hh
+      rw [Array.getElem?_eq_none (by omega)] at hh
+      exact absurd hh (by simp)
+
+/-- The cell index `allocCell` returns. -/
+theorem allocCell_fst (hulls : CellHulls) (st en : Nat) :
+    (allocCell hulls st en).1 = firstFittingCell hulls st en 0 := by
+  simp only [allocCell]
+  split <;> rfl
+
+/-- The cell `allocCell` places `[st, en]` into had a hull disjoint from it. -/
+theorem allocCell_disjoint (hulls : CellHulls) (st en : Nat) (h : Nat × Nat)
+    (hh : hulls[(allocCell hulls st en).1]? = some h) :
+    ¬ physRangesOverlap h (st, en) := by
+  rw [allocCell_fst] at hh
+  exact firstFittingCell_disjoint hulls st en hulls.size 0 (by omega) h hh
+
+/-- After the placement the chosen cell's hull covers `[st, en]`. -/
+theorem allocCell_covers (hulls : CellHulls) (st en : Nat) :
+    ∃ h', (allocCell hulls st en).2[(allocCell hulls st en).1]? = some h'
+      ∧ h'.1 ≤ st ∧ en ≤ h'.2 := by
+  simp only [allocCell]
+  cases hc : hulls[firstFittingCell hulls st en 0]? with
+  | some c =>
+    refine ⟨(Nat.min c.1 st, Nat.max c.2 en), ?_, Nat.min_le_right _ _, Nat.le_max_right _ _⟩
+    have hlt : firstFittingCell hulls st en 0 < hulls.size := lt_size_of_getElem? hc
+    simp [Array.set!, hlt]
   | none =>
-      simp only [hf]
-      -- nextFresh ∉ busySlots because every busy slot is < nextFresh
-      intro hmem
-      rcases List.mem_map.mp hmem with ⟨p, hp, hpe⟩
-      have hsub : p ∈ busy := List.mem_of_mem_filter hp
-      exact absurd (hpe ▸ hbusy p hsub) (Nat.lt_irrefl nextFresh)
+    refine ⟨(st, en), ?_, Nat.le_refl _, Nat.le_refl _⟩
+    have hge : hulls.size ≤ firstFittingCell hulls st en 0 := by
+      rcases Nat.lt_or_ge (firstFittingCell hulls st en 0) hulls.size with hlt | hge
+      · rw [Array.getElem?_eq_getElem hlt] at hc; exact absurd hc (by simp)
+      · exact hge
+    have hle : firstFittingCell hulls st en 0 ≤ hulls.size :=
+      firstFittingCell_le hulls st en hulls.size 0 (by omega) (by omega)
+    have heq : firstFittingCell hulls st en 0 = hulls.size := by omega
+    rw [heq]
+    exact Array.getElem?_push_size
 
-/-- **`physScanStep` preserves the `busy < nextFresh` bound.** After a step, every
-    busy entry (the freshly-allocated one plus the retained `busy'`) is `<` the
-    updated `nextFresh'`. This is the invariant that threads `physScanStep_fresh`
-    across the whole scan: the next step's `hbusy` premise is re-established. -/
-theorem physScanStep_busy_lt (st en : Nat) (busy : List (Nat × Nat))
-    (nextFresh : Nat) (hbusy : ∀ p ∈ busy, p.1 < nextFresh) :
-    ∀ p ∈ (physScanStep st en busy nextFresh).2.1,
-      p.1 < (physScanStep st en busy nextFresh).2.2 := by
-  unfold physScanStep
-  cases hf : (List.range nextFresh).find?
-      (fun ph => !((busy.filter (fun p => p.2 ≥ st)).map Prod.fst).contains ph) with
-  | some ph =>
-      simp only [hf]
-      intro p hp
-      rcases List.mem_cons.mp hp with hpe | hpf
-      · subst hpe
-        have hfs := List.mem_of_find?_eq_some hf
-        exact List.mem_range.mp hfs
-      · exact hbusy p (List.mem_of_mem_filter hpf)
+/-- A placement only widens the existing hulls. -/
+theorem allocCell_mono (hulls : CellHulls) (st en : Nat) (j : Nat) (h : Nat × Nat)
+    (hj : hulls[j]? = some h) :
+    ∃ h', (allocCell hulls st en).2[j]? = some h' ∧ h'.1 ≤ h.1 ∧ h.2 ≤ h'.2 := by
+  simp only [allocCell]
+  cases hc : hulls[firstFittingCell hulls st en 0]? with
+  | some c =>
+    have hlt : firstFittingCell hulls st en 0 < hulls.size := lt_size_of_getElem? hc
+    by_cases hje : firstFittingCell hulls st en 0 = j
+    · subst hje
+      rw [hc] at hj
+      have hhc : h = c := by simpa using hj.symm
+      subst hhc
+      exact ⟨(Nat.min h.1 st, Nat.max h.2 en),
+        by simp [Array.set!, hlt],
+        Nat.min_le_left _ _, Nat.le_max_left _ _⟩
+    · exact ⟨h, by simp [Array.set!, hje, hj], Nat.le_refl _, Nat.le_refl _⟩
   | none =>
-      simp only [hf]
-      intro p hp
-      rcases List.mem_cons.mp hp with hpe | hpf
-      · subst hpe; exact Nat.lt_succ_self nextFresh
-      · exact Nat.lt_succ_of_lt (hbusy p (List.mem_of_mem_filter hpf))
+    refine ⟨h, ?_, Nat.le_refl _, Nat.le_refl _⟩
+    have hjlt : j < hulls.size := lt_size_of_getElem? hj
+    rw [Array.getElem?_push]
+    have hne : ¬ j = hulls.size := by omega
+    simp [hne, hj]
 
-/-! ## 2. Distinct physical registers for simultaneously-busy slots
+/-! ## 3. The scan invariant
 
-The freshness invariant of §1 yields the allocator's key correctness property:
-the physical registers `physScanStep` keeps *simultaneously busy* are pairwise
-distinct. This is the per-step seed of the whole-body injectivity `hinj` needs
-(distinct SSA names that are live at the same time receive distinct physical
-registers). -/
+`ScanInv numRegs rg pos act hulls acc` is the state the scan carries after
+processing every interval that starts before `pos`: `act` are the register
+allocations still in flight, `hulls` the cell hulls, `acc` the assignment list.
+`rg` is the ground-truth live range of each slot. -/
 
-/-- **`physScanStep` preserves busy-register distinctness.** If the physical
-    registers in `busy` are pairwise distinct (`busy.map Prod.fst` is `Nodup`)
-    and all `< nextFresh`, then after a step the retained-plus-new busy list still
-    has pairwise-distinct physical registers. By `physScanStep_fresh`, the new
-    register is fresh against the retained ones, and filtering preserves
-    `Nodup`. -/
-theorem physScanStep_busy_nodup (st en : Nat) (busy : List (Nat × Nat))
-    (nextFresh : Nat) (hbusy : ∀ p ∈ busy, p.1 < nextFresh)
-    (hnd : (busy.map Prod.fst).Nodup) :
-    ((physScanStep st en busy nextFresh).2.1.map Prod.fst).Nodup := by
-  have hfresh : (physScanStep st en busy nextFresh).1
-      ∉ ((busy.filter (fun p => p.2 ≥ st)).map Prod.fst) :=
-    physScanStep_fresh st en busy nextFresh hbusy
-  -- retained busy after filter
-  have hndf : (((busy.filter (fun p => p.2 ≥ st)).map Prod.fst)).Nodup :=
-    (List.filter_sublist (l := busy)).map Prod.fst |>.nodup hnd
-  -- the busy list after the step is `(reg, en) :: busy'`
-  have hstep : (physScanStep st en busy nextFresh).2.1
-      = ((physScanStep st en busy nextFresh).1, en)
-        :: (busy.filter (fun p => p.2 ≥ st)) := by
-    unfold physScanStep
-    dsimp only
-    split <;> rfl
-  rw [hstep, List.map_cons]
-  exact List.nodup_cons.mpr ⟨hfresh, hndf⟩
+/-- The state the bounded scan maintains. `noColl` is the property the allocation
+    is for: distinct slots with the same physical location have disjoint ranges. -/
+structure ScanInv (numRegs : Nat) (rg : Nat → Nat × Nat) (pos : Nat)
+    (act : List PhysActive) (hulls : CellHulls) (acc : List (Nat × Nat)) : Prop where
+  /-- In-flight allocations use pool registers. -/
+  bound : ∀ a ∈ act, a.phys < numRegs
+  /-- In-flight allocations hold pairwise-distinct registers. -/
+  nodup : (act.map PhysActive.phys).Nodup
+  /-- An in-flight allocation carries its slot's range. -/
+  range : ∀ a ∈ act, rg a.slot = (a.st, a.en)
+  /-- An in-flight allocation is what its slot reads back. -/
+  actLoc : ∀ a ∈ act, physLoc acc a.slot = some a.phys
+  /-- A register-located slot is either in flight or already dead. -/
+  regLive : ∀ t ph, ph < numRegs → physLoc acc t = some ph →
+    (∃ a ∈ act, a.slot = t ∧ a.phys = ph) ∨ (rg t).2 < pos
+  /-- A cell-located slot's range is inside its cell's hull. -/
+  cell : ∀ t i, physLoc acc t = some (numRegs + i) →
+    ∃ h, hulls[i]? = some h ∧ h.1 ≤ (rg t).1 ∧ (rg t).2 ≤ h.2
+  /-- Distinct slots sharing a location have disjoint ranges. -/
+  noColl : ∀ t₁ t₂ p, t₁ ≠ t₂ → physLoc acc t₁ = some p → physLoc acc t₂ = some p →
+    ¬ physRangesOverlap (rg t₁) (rg t₂)
 
-/-! ## 3. The whole-scan freshness/distinctness invariant
+/-- Distinct registers separate the in-flight allocations. -/
+theorem phys_inj_of_nodup : ∀ {l : List PhysActive}, (l.map PhysActive.phys).Nodup →
+    ∀ {a b : PhysActive}, a ∈ l → b ∈ l → a.phys = b.phys → a = b := by
+  intro l
+  induction l with
+  | nil => intro _ a b ha; exact absurd ha (by simp)
+  | cons c rest ih =>
+    intro hnd a b ha hb hab
+    rw [List.map_cons, List.nodup_cons] at hnd
+    rcases List.mem_cons.mp ha with rfl | ha' <;> rcases List.mem_cons.mp hb with rfl | hb'
+    · rfl
+    · exact absurd (hab ▸ List.mem_map_of_mem hb') hnd.1
+    · exact absurd (hab ▸ List.mem_map_of_mem ha') hnd.1
+    · exact ih hnd.2 ha' hb' hab
 
-The per-step lemmas of §1–2 thread through the recursive `physScanAux`: every
-intermediate `busy` list keeps physical registers `< nextFresh` and pairwise
-distinct, and each emitted assignment uses a register fresh against the busy set
-at its allocation time. We expose the recursive carrier as a predicate
-`ScanInv` and prove `physScanStep` re-establishes it, giving the inductive
-invariant the whole-body injectivity proof would consume. -/
+/-- Reclaiming allocations keeps their registers distinct. -/
+theorem nodup_phys_filter {l : List PhysActive} (p : PhysActive → Bool)
+    (h : (l.map PhysActive.phys).Nodup) : ((l.filter p).map PhysActive.phys).Nodup :=
+  h.sublist (List.filter_sublist.map PhysActive.phys)
 
-/-- The running invariant carried by `physScanAux`: the busy list's physical
-    registers are all `< nextFresh` and pairwise distinct. Re-established by every
-    `physScanStep` (combining `physScanStep_busy_lt` and
-    `physScanStep_busy_nodup`). -/
-def ScanInv (busy : List (Nat × Nat)) (nextFresh : Nat) : Prop :=
-  (∀ p ∈ busy, p.1 < nextFresh) ∧ (busy.map Prod.fst).Nodup
+/-- An allocation dropped by the reclamation filter ended before `st`. -/
+theorem dead_of_not_filtered {act : List PhysActive} {st : Nat} {a : PhysActive}
+    (hmem : a ∈ act) (h : a ∉ act.filter (fun a => a.en ≥ st)) : a.en < st := by
+  rcases Nat.lt_or_ge a.en st with hlt | hge
+  · exact hlt
+  · exact absurd (List.mem_filter.mpr ⟨hmem, by simpa using hge⟩) h
 
-/-- `physScanStep` re-establishes `ScanInv` on its updated `(busy', nextFresh')`.
-    This is the single induction step for threading freshness through the whole
-    scan: the next `physScanStep` again sees a `< nextFresh`, `Nodup` busy list,
-    so its emitted register is again fresh against everything still busy. -/
-theorem physScanStep_ScanInv (st en : Nat) (busy : List (Nat × Nat))
-    (nextFresh : Nat) (h : ScanInv busy nextFresh) :
-    ScanInv (physScanStep st en busy nextFresh).2.1
-      (physScanStep st en busy nextFresh).2.2 :=
-  ⟨physScanStep_busy_lt st en busy nextFresh h.1,
-   physScanStep_busy_nodup st en busy nextFresh h.1 h.2⟩
+/-- A slot on a register that no surviving allocation holds is dead at `st`. -/
+theorem end_lt_of_no_live_holder {numRegs : Nat} {rg : Nat → Nat × Nat} {pos : Nat}
+    {act : List PhysActive} {hulls : CellHulls} {acc : List (Nat × Nat)}
+    (inv : ScanInv numRegs rg pos act hulls acc) {st t ph : Nat}
+    (hpos : pos ≤ st) (hph : ph < numRegs) (hloc : physLoc acc t = some ph)
+    (hno : ∀ a ∈ act.filter (fun a => a.en ≥ st), ¬(a.slot = t ∧ a.phys = ph)) :
+    (rg t).2 < st := by
+  rcases inv.regLive t ph hph hloc with ⟨a, ha, hs, hp⟩ | hd
+  · by_cases hf : a ∈ act.filter (fun a => a.en ≥ st)
+    · exact absurd ⟨hs, hp⟩ (hno a hf)
+    · have hlt : a.en < st := dead_of_not_filtered ha hf
+      have hr : rg t = (a.st, a.en) := hs ▸ inv.range a ha
+      rw [hr]; exact hlt
+  · omega
 
-/-- The busy/nextFresh state threaded *out* of a whole `physScanAux` run: walk
-    the items, applying `physScanStep` and keeping only the resulting
-    `(busy, nextFresh)` (the accumulator is dropped). The carrier on which the
-    whole-scan `ScanInv` is maintained. -/
-def scanBusyState (fuel : Nat) (items : List (Nat × Nat × Nat))
-    (busy : List (Nat × Nat)) (nextFresh : Nat) : List (Nat × Nat) × Nat :=
-  match fuel, items with
-  | 0, _ => (busy, nextFresh)
-  | _, [] => (busy, nextFresh)
-  | fuel' + 1, (_, st, en) :: rest =>
-      let r := physScanStep st en busy nextFresh
-      scanBusyState fuel' rest r.2.1 r.2.2
+/-- A dead range does not overlap an interval starting at `st`. -/
+theorem not_overlap_dead_left {rg : Nat → Nat × Nat} {t s st en : Nat}
+    (hrg : rg s = (st, en)) (hd : (rg t).2 < st) : ¬ physRangesOverlap (rg s) (rg t) := by
+  rw [hrg, physRangesOverlap_comm]
+  exact not_overlap_of_end_lt hd
 
-/-- **Whole-scan invariant (the recursive carrier).** Running the linear scan
-    over any item list from a `ScanInv`-respecting `(busy, nextFresh)` keeps
-    `ScanInv` on the final threaded busy state. Inducts on `fuel`/`items`,
-    re-establishing `ScanInv` after each `physScanStep` via
-    `physScanStep_ScanInv`. This is the invariant a whole-body injectivity proof
-    consumes: at every allocation point the busy registers are pairwise distinct,
-    so simultaneously-live slots never collide. -/
-theorem scanBusyState_ScanInv (fuel : Nat) :
-    ∀ (items : List (Nat × Nat × Nat)) (busy : List (Nat × Nat)) (nextFresh : Nat),
-      ScanInv busy nextFresh →
-      ScanInv (scanBusyState fuel items busy nextFresh).1
-        (scanBusyState fuel items busy nextFresh).2 := by
-  induction fuel with
-  | zero => intro items busy nextFresh h; exact h
-  | succ fuel' ih =>
-      intro items busy nextFresh h
-      cases items with
-      | nil => exact h
-      | cons it rest =>
-          obtain ⟨s, st, en⟩ := it
-          simp only [scanBusyState]
-          exact ih rest _ _ (physScanStep_ScanInv st en busy nextFresh h)
+/-- A dead range does not overlap an interval starting at `st`. -/
+theorem not_overlap_dead_right {rg : Nat → Nat × Nat} {t s st en : Nat}
+    (hrg : rg s = (st, en)) (hd : (rg t).2 < st) : ¬ physRangesOverlap (rg t) (rg s) := by
+  rw [hrg]
+  exact not_overlap_of_end_lt hd
 
-/-- The scan starts from `ScanInv [] 0` (empty busy, no register allocated yet),
-    so by `scanBusyState_ScanInv` the whole shipped allocation
-    (`physScanAux items.length items [] 0`) threads a `ScanInv` busy state
-    throughout. -/
-theorem scanBusyState_ScanInv_init (fuel : Nat) (items : List (Nat × Nat × Nat)) :
-    ScanInv (scanBusyState fuel items [] 0).1 (scanBusyState fuel items [] 0).2 :=
-  scanBusyState_ScanInv fuel items [] 0 ⟨by intro p hp; simp at hp, by simp⟩
+/-! ### The three arms of one scan step -/
 
-/-- **`physScanAux` extends its accumulator.** Each step appends one
-    `(slot, ph)` to the accumulator and never touches the prefix, so the whole run
-    is `acc ++ (the run started from the empty accumulator)`. The structural seed
-    of Step 1 (relating the shipped `physAssign tr = physScanAux … [] 0 []`
-    `find?`-lookup to the per-step emitted assignment): the assignment slot `s`
-    receives is exactly the `physScanStep` register at the step that processes
-    `s`. -/
-theorem physScanAux_acc_extends (fuel : Nat) :
-    ∀ (items : List (Nat × Nat × Nat)) (busy : List (Nat × Nat)) (nextFresh : Nat)
-      (acc : List (Nat × Nat)),
-      ∃ rest, physScanAux fuel items busy nextFresh acc = acc ++ rest
-        ∧ physScanAux fuel items busy nextFresh [] = rest := by
-  induction fuel with
-  | zero => intro items busy nextFresh acc; exact ⟨[], by simp [physScanAux]⟩
-  | succ f ih =>
-      intro items busy nextFresh acc
-      cases items with
-      | nil => exact ⟨[], by simp [physScanAux]⟩
-      | cons it rest =>
-          obtain ⟨s, st, en⟩ := it
-          obtain ⟨r1, h1a, h1b⟩ := ih rest (physScanStep st en busy nextFresh).2.1
-            (physScanStep st en busy nextFresh).2.2 (acc ++ [(s, (physScanStep st en busy nextFresh).1)])
-          obtain ⟨r0, h0a, h0b⟩ := ih rest (physScanStep st en busy nextFresh).2.1
-            (physScanStep st en busy nextFresh).2.2 [(s, (physScanStep st en busy nextFresh).1)]
-          have hr : r1 = r0 := by rw [← h1b, ← h0b]
-          refine ⟨(s, (physScanStep st en busy nextFresh).1) :: r0, ?_, ?_⟩
-          · simp only [physScanAux]
-            rw [h1a, hr]; simp
-          · simp only [physScanAux, List.nil_append]
-            rw [h0a]; simp
+/-- The incoming interval takes a free register. -/
+theorem inv_take_reg {numRegs : Nat} {rg : Nat → Nat × Nat} {pos : Nat}
+    {act : List PhysActive} {hulls : CellHulls} {acc : List (Nat × Nat)}
+    {s st en ph : Nat}
+    (inv : ScanInv numRegs rg pos act hulls acc)
+    (hpos : pos ≤ st) (hrg : rg s = (st, en))
+    (hact : ∀ a ∈ act, a.slot ≠ s)
+    (hfr : freeRegIn numRegs
+      ((act.filter (fun a => a.en ≥ st)).map PhysActive.phys) = some ph) :
+    ScanInv numRegs rg st
+      (⟨st, en, ph, s⟩ :: act.filter (fun a => a.en ≥ st)) hulls ((s, ph) :: acc) := by
+  have hphlt : ph < numRegs := freeRegIn_lt hfr
+  have hfree : ph ∉ (act.filter (fun a => a.en ≥ st)).map PhysActive.phys :=
+    freeRegIn_not_mem hfr
+  have hdead : ∀ t, physLoc acc t = some ph → (rg t).2 < st := by
+    intro t hloc
+    refine end_lt_of_no_live_holder inv hpos hphlt hloc ?_
+    intro a ha hcon
+    exact hfree (hcon.2 ▸ List.mem_map_of_mem ha)
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  · intro a ha
+    rcases List.mem_cons.mp ha with rfl | ha'
+    · exact hphlt
+    · exact inv.bound a (List.mem_filter.mp ha').1
+  · rw [List.map_cons, List.nodup_cons]
+    exact ⟨hfree, nodup_phys_filter _ inv.nodup⟩
+  · intro a ha
+    rcases List.mem_cons.mp ha with rfl | ha'
+    · exact hrg
+    · exact inv.range a (List.mem_filter.mp ha').1
+  · intro a ha
+    rcases List.mem_cons.mp ha with rfl | ha'
+    · rw [physLoc_cons, if_pos rfl]
+    · have hne : ¬ s = a.slot := fun h => hact a (List.mem_filter.mp ha').1 h.symm
+      rw [physLoc_cons, if_neg hne]
+      exact inv.actLoc a (List.mem_filter.mp ha').1
+  · intro t ph' hph' hloc
+    rw [physLoc_cons] at hloc
+    by_cases hts : s = t
+    · subst hts
+      exact Or.inl ⟨⟨st, en, ph, s⟩, List.mem_cons_self, rfl, by simp at hloc; omega⟩
+    · rw [if_neg hts] at hloc
+      rcases inv.regLive t ph' hph' hloc with ⟨a, ha, hs, hp⟩ | hd
+      · by_cases hf : a ∈ act.filter (fun a => a.en ≥ st)
+        · exact Or.inl ⟨a, List.mem_cons_of_mem _ hf, hs, hp⟩
+        · refine Or.inr ?_
+          have hr : rg t = (a.st, a.en) := hs ▸ inv.range a ha
+          rw [hr]
+          exact dead_of_not_filtered ha hf
+      · exact Or.inr (by omega)
+  · intro t i hloc
+    rw [physLoc_cons] at hloc
+    by_cases hts : s = t
+    · rw [if_pos hts] at hloc
+      exact absurd (by simpa using hloc) (by omega)
+    · rw [if_neg hts] at hloc
+      exact inv.cell t i hloc
+  · intro t₁ t₂ p hne h1 h2
+    rw [physLoc_cons] at h1 h2
+    by_cases h1s : s = t₁ <;> by_cases h2s : s = t₂
+    · exact absurd (h1s ▸ h2s) hne
+    · rw [if_pos h1s] at h1
+      rw [if_neg h2s] at h2
+      have hp : p = ph := by simpa using h1.symm
+      subst hp
+      subst h1s
+      exact not_overlap_dead_left hrg (hdead t₂ h2)
+    · rw [if_neg h1s] at h1
+      rw [if_pos h2s] at h2
+      have hp : p = ph := by simpa using h2.symm
+      subst hp
+      subst h2s
+      exact not_overlap_dead_right hrg (hdead t₁ h1)
+    · rw [if_neg h1s] at h1
+      rw [if_neg h2s] at h2
+      exact inv.noColl t₁ t₂ p hne h1 h2
 
-/-! ## 4. The collapse-or-mov dichotomy of `lowerTwoAddr`
+/-- The incoming interval is the one that goes to a stack cell. -/
+theorem inv_spill_incoming {numRegs : Nat} {rg : Nat → Nat × Nat} {pos : Nat}
+    {act : List PhysActive} {hulls : CellHulls} {acc : List (Nat × Nat)}
+    {s st en : Nat}
+    (inv : ScanInv numRegs rg pos act hulls acc)
+    (hpos : pos ≤ st) (hrg : rg s = (st, en))
+    (hact : ∀ a ∈ act, a.slot ≠ s) :
+    ScanInv numRegs rg st (act.filter (fun a => a.en ≥ st))
+      (allocCell hulls st en).2
+      ((s, numRegs + (allocCell hulls st en).1) :: acc) := by
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  · intro a ha; exact inv.bound a (List.mem_filter.mp ha).1
+  · exact nodup_phys_filter _ inv.nodup
+  · intro a ha; exact inv.range a (List.mem_filter.mp ha).1
+  · intro a ha
+    have hne : ¬ s = a.slot := fun h => hact a (List.mem_filter.mp ha).1 h.symm
+    rw [physLoc_cons, if_neg hne]
+    exact inv.actLoc a (List.mem_filter.mp ha).1
+  · intro t ph hph hloc
+    rw [physLoc_cons] at hloc
+    by_cases hts : s = t
+    · rw [if_pos hts] at hloc
+      exact absurd (by simpa using hloc) (by omega)
+    · rw [if_neg hts] at hloc
+      rcases inv.regLive t ph hph hloc with ⟨a, ha, hs, hp⟩ | hd
+      · by_cases hf : a ∈ act.filter (fun a => a.en ≥ st)
+        · exact Or.inl ⟨a, hf, hs, hp⟩
+        · refine Or.inr ?_
+          have hr : rg t = (a.st, a.en) := hs ▸ inv.range a ha
+          rw [hr]
+          exact dead_of_not_filtered ha hf
+      · exact Or.inr (by omega)
+  · intro t i hloc
+    rw [physLoc_cons] at hloc
+    by_cases hts : s = t
+    · rw [if_pos hts] at hloc
+      have hi : (allocCell hulls st en).1 = i := by simpa using hloc
+      obtain ⟨h', hh', c1, c2⟩ := allocCell_covers hulls st en
+      rw [hi] at hh'
+      exact ⟨h', hh', by rw [← hts, hrg]; exact c1, by rw [← hts, hrg]; exact c2⟩
+    · rw [if_neg hts] at hloc
+      obtain ⟨h, hh, c1, c2⟩ := inv.cell t i hloc
+      obtain ⟨h', hh', m1, m2⟩ := allocCell_mono hulls st en i h hh
+      exact ⟨h', hh', by omega, by omega⟩
+  · intro t₁ t₂ p hne h1 h2
+    rw [physLoc_cons] at h1 h2
+    by_cases h1s : s = t₁ <;> by_cases h2s : s = t₂
+    · exact absurd (h1s ▸ h2s) hne
+    · rw [if_pos h1s] at h1
+      rw [if_neg h2s] at h2
+      have hp : numRegs + (allocCell hulls st en).1 = p := by simpa using h1
+      subst hp
+      obtain ⟨h, hh, c1, c2⟩ := inv.cell t₂ (allocCell hulls st en).1 h2
+      have hdis := allocCell_disjoint hulls st en h hh
+      rw [← h1s, hrg, physRangesOverlap_comm]
+      exact not_overlap_of_hull c1 c2 hdis
+    · rw [if_neg h1s] at h1
+      rw [if_pos h2s] at h2
+      have hp : numRegs + (allocCell hulls st en).1 = p := by simpa using h2
+      subst hp
+      obtain ⟨h, hh, c1, c2⟩ := inv.cell t₁ (allocCell hulls st en).1 h1
+      have hdis := allocCell_disjoint hulls st en h hh
+      rw [← h2s, hrg]
+      exact not_overlap_of_hull c1 c2 hdis
+    · rw [if_neg h1s] at h1
+      rw [if_neg h2s] at h2
+      exact inv.noColl t₁ t₂ p hne h1 h2
 
-`physScanStep` does **not** structurally place a binop's `dst` on its first
-source's register (it picks the lowest free register — `JasminLprogExport.lean`
-:1011–1017). So `hcol` (`physRename dst = physRename s0`) is a *derived
-side-condition*, not a structural fact of the RA. The lowering is robust to its
-failure: `lowerTwoAddr` (`JasminLprogExport.lean`:1209–1215) branches on
-`dst = s0`. When `hcol` holds (physical `dst = s0`), the leading `mov` collapses;
+/-- A register-resident value is evicted to a stack cell for its whole range and
+    the incoming interval takes the register it vacates. -/
+theorem inv_evict {numRegs : Nat} {rg : Nat → Nat × Nat} {pos : Nat}
+    {act : List PhysActive} {hulls : CellHulls} {acc : List (Nat × Nat)}
+    {s st en : Nat} {far : PhysActive}
+    (inv : ScanInv numRegs rg pos act hulls acc)
+    (hpos : pos ≤ st) (hrg : rg s = (st, en))
+    (hact : ∀ a ∈ act, a.slot ≠ s)
+    (hfar : far ∈ act.filter (fun a => a.en ≥ st)) :
+    ScanInv numRegs rg st
+      (⟨st, en, far.phys, s⟩ ::
+        (act.filter (fun a => a.en ≥ st)).filter (fun a => a.phys != far.phys))
+      (allocCell hulls far.st far.en).2
+      ((far.slot, numRegs + (allocCell hulls far.st far.en).1) ::
+        (s, far.phys) :: acc) := by
+  have hfarAct : far ∈ act := (List.mem_filter.mp hfar).1
+  have hfarLt : far.phys < numRegs := inv.bound far hfarAct
+  have hfarRg : rg far.slot = (far.st, far.en) := inv.range far hfarAct
+  have hfarLoc : physLoc acc far.slot = some far.phys := inv.actLoc far hfarAct
+  have hfarS : ¬ far.slot = s := hact far hfarAct
+  have hndF : ((act.filter (fun a => a.en ≥ st)).map PhysActive.phys).Nodup :=
+    nodup_phys_filter _ inv.nodup
+  have hdeadFar : ∀ t, ¬ t = far.slot → physLoc acc t = some far.phys → (rg t).2 < st := by
+    intro t htf hloc
+    refine end_lt_of_no_live_holder inv hpos hfarLt hloc ?_
+    intro a ha hcon
+    have hafar : a = far := phys_inj_of_nodup hndF ha hfar hcon.2
+    subst hafar
+    exact htf hcon.1.symm
+  have hslotFar : ∀ a ∈ act.filter (fun a => a.en ≥ st), ¬ a.phys = far.phys →
+      ¬ a.slot = far.slot := by
+    intro a ha hp hs
+    exact hp (by
+      have h1 := inv.actLoc a (List.mem_filter.mp ha).1
+      rw [hs, hfarLoc] at h1
+      simpa using h1.symm)
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  · intro a ha
+    rcases List.mem_cons.mp ha with rfl | ha'
+    · exact hfarLt
+    · exact inv.bound a (List.mem_filter.mp (List.mem_filter.mp ha').1).1
+  · rw [List.map_cons, List.nodup_cons]
+    refine ⟨?_, nodup_phys_filter _ hndF⟩
+    simp only [List.mem_map, not_exists, not_and]
+    intro x hx hxp
+    have hne := (List.mem_filter.mp hx).2
+    simp [hxp] at hne
+  · intro a ha
+    rcases List.mem_cons.mp ha with rfl | ha'
+    · exact hrg
+    · exact inv.range a (List.mem_filter.mp (List.mem_filter.mp ha').1).1
+  · intro a ha
+    rcases List.mem_cons.mp ha with rfl | ha'
+    · rw [physLoc_cons, if_neg hfarS, physLoc_cons, if_pos rfl]
+    · have haf : a ∈ act.filter (fun a => a.en ≥ st) := (List.mem_filter.mp ha').1
+      have hpne : ¬ a.phys = far.phys := by
+        have := (List.mem_filter.mp ha').2
+        simpa using this
+      have h1 : ¬ far.slot = a.slot := fun h => hslotFar a haf hpne h.symm
+      have h2 : ¬ s = a.slot := fun h => hact a (List.mem_filter.mp haf).1 h.symm
+      rw [physLoc_cons, if_neg h1, physLoc_cons, if_neg h2]
+      exact inv.actLoc a (List.mem_filter.mp haf).1
+  · intro t ph hph hloc
+    rw [physLoc_cons, physLoc_cons] at hloc
+    by_cases hf1 : far.slot = t
+    · rw [if_pos hf1] at hloc
+      exact absurd (by simpa using hloc) (by omega)
+    · rw [if_neg hf1] at hloc
+      by_cases hs1 : s = t
+      · rw [if_pos hs1] at hloc
+        refine Or.inl ⟨⟨st, en, far.phys, s⟩, List.mem_cons_self, hs1, ?_⟩
+        simpa using hloc
+      · rw [if_neg hs1] at hloc
+        rcases inv.regLive t ph hph hloc with ⟨a, ha, hs, hp⟩ | hd
+        · by_cases hfl : a ∈ act.filter (fun a => a.en ≥ st)
+          · by_cases hpf : a.phys = far.phys
+            · have heq : a = far := phys_inj_of_nodup hndF hfl hfar hpf
+              have hst : far.slot = t := by rw [← heq]; exact hs
+              exact absurd hst hf1
+            · refine Or.inl ⟨a, List.mem_cons_of_mem _ ?_, hs, hp⟩
+              exact List.mem_filter.mpr ⟨hfl, by simpa using hpf⟩
+          · refine Or.inr ?_
+            have hr : rg t = (a.st, a.en) := hs ▸ inv.range a ha
+            rw [hr]
+            exact dead_of_not_filtered ha hfl
+        · exact Or.inr (by omega)
+  · intro t i hloc
+    rw [physLoc_cons, physLoc_cons] at hloc
+    by_cases hf1 : far.slot = t
+    · rw [if_pos hf1] at hloc
+      have hi : (allocCell hulls far.st far.en).1 = i := by simpa using hloc
+      obtain ⟨h', hh', c1, c2⟩ := allocCell_covers hulls far.st far.en
+      rw [hi] at hh'
+      exact ⟨h', hh', by rw [← hf1, hfarRg]; exact c1, by rw [← hf1, hfarRg]; exact c2⟩
+    · rw [if_neg hf1] at hloc
+      by_cases hs1 : s = t
+      · rw [if_pos hs1] at hloc
+        exact absurd (by simpa using hloc) (by omega)
+      · rw [if_neg hs1] at hloc
+        obtain ⟨h, hh, c1, c2⟩ := inv.cell t i hloc
+        obtain ⟨h', hh', m1, m2⟩ := allocCell_mono hulls far.st far.en i h hh
+        exact ⟨h', hh', by omega, by omega⟩
+  · intro t₁ t₂ p hne h1 h2
+    rw [physLoc_cons, physLoc_cons] at h1 h2
+    by_cases hf1 : far.slot = t₁
+    · rw [if_pos hf1] at h1
+      by_cases hf2 : far.slot = t₂
+      · exact absurd (hf1 ▸ hf2) hne
+      · rw [if_neg hf2] at h2
+        by_cases hs2 : s = t₂
+        · rw [if_pos hs2] at h2
+          have hcon : numRegs + (allocCell hulls far.st far.en).1 = far.phys := by
+            simpa using h1.trans h2.symm
+          exact absurd hcon (by omega)
+        · rw [if_neg hs2] at h2
+          have hp : numRegs + (allocCell hulls far.st far.en).1 = p := by simpa using h1
+          subst hp
+          obtain ⟨h, hh, c1, c2⟩ := inv.cell t₂ (allocCell hulls far.st far.en).1 h2
+          have hdis := allocCell_disjoint hulls far.st far.en h hh
+          rw [← hf1, hfarRg, physRangesOverlap_comm]
+          exact not_overlap_of_hull c1 c2 hdis
+    · rw [if_neg hf1] at h1
+      by_cases hs1 : s = t₁
+      · rw [if_pos hs1] at h1
+        by_cases hf2 : far.slot = t₂
+        · rw [if_pos hf2] at h2
+          have hcon : far.phys = numRegs + (allocCell hulls far.st far.en).1 := by
+            simpa using h1.trans h2.symm
+          exact absurd hcon (by omega)
+        · rw [if_neg hf2] at h2
+          by_cases hs2 : s = t₂
+          · exact absurd (hs1 ▸ hs2) hne
+          · rw [if_neg hs2] at h2
+            have hp : far.phys = p := by simpa using h1
+            subst hp
+            rw [← hs1]
+            exact not_overlap_dead_left hrg (hdeadFar t₂ (fun h => hf2 h.symm) h2)
+      · rw [if_neg hs1] at h1
+        by_cases hf2 : far.slot = t₂
+        · rw [if_pos hf2] at h2
+          have hp : numRegs + (allocCell hulls far.st far.en).1 = p := by simpa using h2
+          subst hp
+          obtain ⟨h, hh, c1, c2⟩ := inv.cell t₁ (allocCell hulls far.st far.en).1 h1
+          have hdis := allocCell_disjoint hulls far.st far.en h hh
+          rw [← hf2, hfarRg]
+          exact not_overlap_of_hull c1 c2 hdis
+        · rw [if_neg hf2] at h2
+          by_cases hs2 : s = t₂
+          · rw [if_pos hs2] at h2
+            have hp : far.phys = p := by simpa using h2
+            subst hp
+            rw [← hs2]
+            exact not_overlap_dead_right hrg (hdeadFar t₁ (fun h => hf1 h.symm) h1)
+          · rw [if_neg hs2] at h2
+            exact inv.noColl t₁ t₂ p hne h1 h2
+
+/-! ### One step and the whole scan -/
+
+/-- One `physScanSpillStep` re-establishes `ScanInv` at the interval's start. -/
+theorem physScanSpillStep_ScanInv {numRegs : Nat} {uses : Array Nat}
+    {rg : Nat → Nat × Nat} {pos : Nat}
+    {act : List PhysActive} {hulls : CellHulls} {acc : List (Nat × Nat)}
+    {s st en : Nat}
+    (inv : ScanInv numRegs rg pos act hulls acc)
+    (hpos : pos ≤ st) (hrg : rg s = (st, en))
+    (hact : ∀ a ∈ act, a.slot ≠ s) :
+    ScanInv numRegs rg st
+      (physScanSpillStep numRegs uses act hulls acc s st en).1
+      (physScanSpillStep numRegs uses act hulls acc s st en).2.1
+      (physScanSpillStep numRegs uses act hulls acc s st en).2.2 := by
+  simp only [physScanSpillStep]
+  split
+  next ph hfr => exact inv_take_reg inv hpos hrg hact hfr
+  next hfr =>
+    split
+    next far hv =>
+      split
+      next hp => exact inv_evict inv hpos hrg hact (spillVictim_mem hv)
+      next hp => exact inv_spill_incoming inv hpos hrg hact
+    next hv => exact inv_spill_incoming inv hpos hrg hact
+
+/-- A step does not assign a slot other than the one it processes. -/
+theorem physScanSpillStep_fresh {numRegs : Nat} {uses : Array Nat}
+    {act : List PhysActive} {hulls : CellHulls} {acc : List (Nat × Nat)}
+    {s st en t : Nat}
+    (h1 : physLoc acc t = none) (h2 : ¬ s = t) (h3 : ∀ a ∈ act, ¬ a.slot = t) :
+    physLoc (physScanSpillStep numRegs uses act hulls acc s st en).2.2 t = none := by
+  simp only [physScanSpillStep]
+  split
+  next ph hfr => rw [physLoc_cons, if_neg h2]; exact h1
+  next hfr =>
+    split
+    next far hv =>
+      split
+      next hp =>
+        have hfarAct : far ∈ act := (List.mem_filter.mp (spillVictim_mem hv)).1
+        rw [physLoc_cons, if_neg (h3 far hfarAct), physLoc_cons, if_neg h2]
+        exact h1
+      next hp => rw [physLoc_cons, if_neg h2]; exact h1
+    next hv => rw [physLoc_cons, if_neg h2]; exact h1
+
+/-- A step keeps out of the in-flight allocations every slot it does not process. -/
+theorem physScanSpillStep_act_slot {numRegs : Nat} {uses : Array Nat}
+    {act : List PhysActive} {hulls : CellHulls} {acc : List (Nat × Nat)}
+    {s st en t : Nat}
+    (h2 : ¬ s = t) (h3 : ∀ a ∈ act, ¬ a.slot = t) :
+    ∀ a ∈ (physScanSpillStep numRegs uses act hulls acc s st en).1, ¬ a.slot = t := by
+  have hfil : ∀ (p : PhysActive → Bool) (l : List PhysActive),
+      (∀ a ∈ l, ¬ a.slot = t) → ∀ a ∈ l.filter p, ¬ a.slot = t :=
+    fun _ _ hl a ha => hl a (List.mem_filter.mp ha).1
+  simp only [physScanSpillStep]
+  split
+  next ph hfr =>
+    intro a ha
+    rcases List.mem_cons.mp ha with rfl | ha'
+    · exact h2
+    · exact hfil _ _ h3 a ha'
+  next hfr =>
+    split
+    next far hv =>
+      split
+      next hp =>
+        intro a ha
+        rcases List.mem_cons.mp ha with rfl | ha'
+        · exact h2
+        · exact hfil _ _ (hfil _ _ h3) a ha'
+      next hp => exact hfil _ _ h3
+    next hv => exact hfil _ _ h3
+
+/-- The scan's input contract: intervals in non-decreasing start order, one per
+    slot. -/
+def ItemsSorted (items : List (Nat × Nat × Nat)) : Prop :=
+  items.Pairwise (fun a b => a.2.1 ≤ b.2.1 ∧ ¬ a.1 = b.1)
+
+/-- `ScanInv` threads over the whole scan. -/
+theorem physScanSpill_ScanInv (numRegs : Nat) (uses : Array Nat) (rg : Nat → Nat × Nat) :
+    ∀ (items : List (Nat × Nat × Nat)) (pos : Nat) (act : List PhysActive)
+      (hulls : CellHulls) (acc : List (Nat × Nat)),
+      ScanInv numRegs rg pos act hulls acc →
+      ItemsSorted items →
+      (∀ it ∈ items, pos ≤ it.2.1 ∧ rg it.1 = (it.2.1, it.2.2) ∧
+        physLoc acc it.1 = none ∧ ∀ a ∈ act, ¬ a.slot = it.1) →
+      ∃ pos' act' hulls',
+        ScanInv numRegs rg pos' act' hulls'
+          (physScanSpill numRegs uses items act hulls acc) := by
+  intro items
+  induction items with
+  | nil => intro pos act hulls acc inv _ _; exact ⟨pos, act, hulls, inv⟩
+  | cons it rest ih =>
+    intro pos act hulls acc inv hsort hok
+    obtain ⟨s, stt, enn⟩ := it
+    obtain ⟨hp, hr, hf, ha⟩ := hok _ List.mem_cons_self
+    rw [ItemsSorted, List.pairwise_cons] at hsort
+    simp only [physScanSpill]
+    refine ih stt (physScanSpillStep numRegs uses act hulls acc s stt enn).1
+      (physScanSpillStep numRegs uses act hulls acc s stt enn).2.1
+      (physScanSpillStep numRegs uses act hulls acc s stt enn).2.2
+      (physScanSpillStep_ScanInv inv hp hr (fun a hA => ha a hA)) hsort.2 ?_
+    intro it' hit'
+    obtain ⟨hle, hnem⟩ := hsort.1 it' hit'
+    obtain ⟨_, hr', hf', ha'⟩ := hok it' (List.mem_cons_of_mem _ hit')
+    exact ⟨hle, hr', physScanSpillStep_fresh hf' hnem ha',
+      physScanSpillStep_act_slot hnem ha'⟩
+
+/-! ### Every processed slot ends up with a location -/
+
+theorem physLoc_cons_ne_none (p : Nat × Nat) (acc : List (Nat × Nat)) (t : Nat)
+    (h : physLoc acc t ≠ none) : physLoc (p :: acc) t ≠ none := by
+  obtain ⟨a, b⟩ := p
+  rw [physLoc_cons]
+  by_cases hat : a = t
+  · simp [hat]
+  · simpa [hat] using h
+
+theorem physScanSpillStep_keeps {numRegs : Nat} {uses : Array Nat}
+    {act : List PhysActive} {hulls : CellHulls} {acc : List (Nat × Nat)}
+    {s st en t : Nat} (h : physLoc acc t ≠ none) :
+    physLoc (physScanSpillStep numRegs uses act hulls acc s st en).2.2 t ≠ none := by
+  simp only [physScanSpillStep]
+  split
+  next ph hfr => exact physLoc_cons_ne_none _ _ _ h
+  next hfr =>
+    split
+    next far hv =>
+      split
+      next hp => exact physLoc_cons_ne_none _ _ _ (physLoc_cons_ne_none _ _ _ h)
+      next hp => exact physLoc_cons_ne_none _ _ _ h
+    next hv => exact physLoc_cons_ne_none _ _ _ h
+
+theorem physScanSpillStep_assigns {numRegs : Nat} {uses : Array Nat}
+    {act : List PhysActive} {hulls : CellHulls} {acc : List (Nat × Nat)}
+    {s st en : Nat} :
+    physLoc (physScanSpillStep numRegs uses act hulls acc s st en).2.2 s ≠ none := by
+  simp only [physScanSpillStep]
+  split
+  next ph hfr => rw [physLoc_cons, if_pos rfl]; simp
+  next hfr =>
+    split
+    next far hv =>
+      split
+      next hp =>
+        rw [physLoc_cons]
+        by_cases hfs : far.slot = s
+        · simp [hfs]
+        · rw [if_neg hfs, physLoc_cons, if_pos rfl]; simp
+      next hp => rw [physLoc_cons, if_pos rfl]; simp
+    next hv => rw [physLoc_cons, if_pos rfl]; simp
+
+theorem physScanSpill_keeps (numRegs : Nat) (uses : Array Nat) :
+    ∀ (items : List (Nat × Nat × Nat)) (act : List PhysActive) (hulls : CellHulls)
+      (acc : List (Nat × Nat)) (t : Nat), physLoc acc t ≠ none →
+      physLoc (physScanSpill numRegs uses items act hulls acc) t ≠ none := by
+  intro items
+  induction items with
+  | nil => intro act hulls acc t h; exact h
+  | cons it rest ih =>
+    intro act hulls acc t h
+    obtain ⟨s, stt, enn⟩ := it
+    simp only [physScanSpill]
+    exact ih _ _ _ t (physScanSpillStep_keeps h)
+
+theorem physScanSpill_assigns (numRegs : Nat) (uses : Array Nat) :
+    ∀ (items : List (Nat × Nat × Nat)) (act : List PhysActive) (hulls : CellHulls)
+      (acc : List (Nat × Nat)), ∀ it ∈ items,
+      physLoc (physScanSpill numRegs uses items act hulls acc) it.1 ≠ none := by
+  intro items
+  induction items with
+  | nil => intro _ _ _ it hit; exact absurd hit (by simp)
+  | cons it0 rest ih =>
+    intro act hulls acc it hit
+    obtain ⟨s, stt, enn⟩ := it0
+    simp only [physScanSpill]
+    rcases List.mem_cons.mp hit with rfl | hit'
+    · exact physScanSpill_keeps numRegs uses rest _ _ _ _ physScanSpillStep_assigns
+    · exact ih _ _ _ it hit'
+
+/-! ## 4. The allocation is collision-free
+
+The scan-level statement, then its instance for the shipped item list
+`physLiveItems` and the shipped table `physAssign`/`physMap`. -/
+
+/-- Two distinct slots whose ranges overlap never receive the same physical
+    location from the bounded scan. -/
+theorem physScanSpill_no_collision (numRegs : Nat) (uses : Array Nat)
+    (rg : Nat → Nat × Nat) (items : List (Nat × Nat × Nat))
+    (hsort : ItemsSorted items)
+    (hrg : ∀ it ∈ items, rg it.1 = (it.2.1, it.2.2))
+    {t₁ t₂ p : Nat} (hne : t₁ ≠ t₂)
+    (h1 : physLoc (physScanSpill numRegs uses items [] #[] []) t₁ = some p)
+    (h2 : physLoc (physScanSpill numRegs uses items [] #[] []) t₂ = some p) :
+    ¬ physRangesOverlap (rg t₁) (rg t₂) := by
+  obtain ⟨_, _, _, inv⟩ :=
+    physScanSpill_ScanInv numRegs uses rg items 0 [] #[] []
+      ⟨by simp, by simp, by simp, by simp, by simp, by simp, by simp⟩
+      hsort (fun it hit => ⟨Nat.zero_le _, hrg it hit, rfl, by simp⟩)
+  exact inv.noColl t₁ t₂ p hne h1 h2
+
+theorem liveCmp_trans : ∀ (a b c : Nat × Nat × Nat),
+    (a.2.1 < b.2.1 || (a.2.1 == b.2.1 && a.1 ≤ b.1)) = true →
+    (b.2.1 < c.2.1 || (b.2.1 == c.2.1 && b.1 ≤ c.1)) = true →
+    (a.2.1 < c.2.1 || (a.2.1 == c.2.1 && a.1 ≤ c.1)) = true := by
+  intro a b c hab hbc
+  simp only [Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq] at hab hbc ⊢
+  omega
+
+theorem liveCmp_total : ∀ (a b : Nat × Nat × Nat),
+    ((a.2.1 < b.2.1 || (a.2.1 == b.2.1 && a.1 ≤ b.1))
+      || (b.2.1 < a.2.1 || (b.2.1 == a.2.1 && b.1 ≤ a.1))) = true := by
+  intro a b
+  simp only [Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq]
+  omega
+
+/-- The shipped item list names each live slot once. -/
+theorem physLiveItems_slots_nodup (tr : List PhysEvent) :
+    (physLiveItems tr).Pairwise (fun a b => ¬ a.1 = b.1) := by
+  simp only [physLiveItems, physLiveData]
+  refine ((List.mergeSort_perm _ _).pairwise_iff (fun h he => h he.symm)).mpr ?_
+  rw [List.pairwise_filterMap]
+  refine List.nodup_range.imp ?_
+  intro a b hab x hx y hy
+  by_cases ha : (physLiveRange tr a).1 < tr.length
+  · by_cases hb : (physLiveRange tr b).1 < tr.length
+    · simp only [ha, hb, if_pos, Option.some.injEq] at hx hy
+      rw [← hx, ← hy]; exact hab
+    · simp only [hb, if_neg, not_false_iff] at hy
+      exact absurd hy (by simp)
+  · simp only [ha, if_neg, not_false_iff] at hx
+    exact absurd hx (by simp)
+
+/-- The shipped item list meets the scan's input contract. -/
+theorem physLiveItems_sorted (tr : List PhysEvent) : ItemsSorted (physLiveItems tr) := by
+  refine List.Pairwise.and ?_ (physLiveItems_slots_nodup tr)
+  simp only [physLiveItems, physLiveData]
+  refine (List.pairwise_mergeSort liveCmp_trans liveCmp_total _).imp ?_
+  intro a b h
+  simp only [Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq] at h
+  omega
+
+/-- The shipped item list carries each slot's `physLiveRange`. -/
+theorem physLiveItems_range (tr : List PhysEvent) :
+    ∀ it ∈ physLiveItems tr, physLiveRange tr it.1 = (it.2.1, it.2.2) := by
+  intro it hit
+  simp only [physLiveItems, physLiveData] at hit
+  rw [(List.mergeSort_perm _ _).mem_iff, List.mem_filterMap] at hit
+  obtain ⟨a, _, hfa⟩ := hit
+  by_cases ha : (physLiveRange tr a).1 < tr.length
+  · simp only [ha, if_pos, Option.some.injEq] at hfa
+    rw [← hfa]
+  · simp only [ha, if_neg, not_false_iff] at hfa
+    exact absurd hfa (by simp)
+
+/-- Two distinct slots whose conservative live ranges overlap never receive the
+    same physical location from `physAssign`. -/
+theorem physAssign_no_collision (tr : List PhysEvent) {t₁ t₂ p : Nat} (hne : t₁ ≠ t₂)
+    (h1 : physLoc (physAssign tr) t₁ = some p) (h2 : physLoc (physAssign tr) t₂ = some p) :
+    ¬ physRangesOverlap (physLiveRange tr t₁) (physLiveRange tr t₂) :=
+  physScanSpill_no_collision numGPRegs (physLiveData tr).2 (physLiveRange tr)
+    (physLiveData tr).1 (physLiveItems_sorted tr) (physLiveItems_range tr) hne h1 h2
+
+/-- `physMap` reports the location `physAssign` recorded. -/
+theorem physMap_eq_of_physLoc {tr : List PhysEvent} {s p : Nat}
+    (h : physLoc (physAssign tr) s = some p) : physMap tr s = p := by
+  unfold physMap
+  unfold physLoc at h
+  cases hfind : (physAssign tr).find? (fun q => q.1 == s) with
+  | some q => rw [hfind] at h; simpa using h
+  | none => rw [hfind] at h; exact absurd h (by simp)
+
+/-- Every live slot is assigned. -/
+theorem physAssign_physLoc_live (tr : List PhysEvent) {s : Nat}
+    (hs : ∃ it ∈ physLiveItems tr, it.1 = s) : physLoc (physAssign tr) s ≠ none := by
+  obtain ⟨it, hit, rfl⟩ := hs
+  exact physScanSpill_assigns numGPRegs (physLiveData tr).2 (physLiveData tr).1 [] #[] [] it hit
+
+/-- The physical location `physMap` reports separates any two distinct live slots
+    whose ranges overlap — registers and stack cells alike. -/
+theorem physMap_no_collision (tr : List PhysEvent) {t₁ t₂ : Nat} (hne : t₁ ≠ t₂)
+    (hl1 : ∃ it ∈ physLiveItems tr, it.1 = t₁)
+    (hl2 : ∃ it ∈ physLiveItems tr, it.1 = t₂)
+    (hov : physRangesOverlap (physLiveRange tr t₁) (physLiveRange tr t₂)) :
+    physMap tr t₁ ≠ physMap tr t₂ := by
+  intro heq
+  cases h1 : physLoc (physAssign tr) t₁ with
+  | none => exact physAssign_physLoc_live tr hl1 h1
+  | some p₁ =>
+    cases h2 : physLoc (physAssign tr) t₂ with
+    | none => exact physAssign_physLoc_live tr hl2 h2
+    | some p₂ =>
+      have e1 := physMap_eq_of_physLoc h1
+      have e2 := physMap_eq_of_physLoc h2
+      have hpp : p₁ = p₂ := by rw [← e1, ← e2]; exact heq
+      subst hpp
+      exact physAssign_no_collision tr hne h1 h2 hov
+
+/-! ## 5. The collapse-or-mov dichotomy of `lowerTwoAddr`
+
+`physScanSpillStep` does **not** structurally place a binop's `dst` on its first
+source's register (it picks the lowest free register in the pool). So `hcol`
+(`physRename dst = physRename s0`) is a *derived side-condition*, not a
+structural fact of the RA. The lowering is robust to its failure:
+`lowerTwoAddr` branches on `dst = s0`. When `hcol` holds (physical `dst = s0`), the leading `mov` collapses;
 when it fails, `lowerTwoAddr` emits the `legalizeMov dst s0` prefix — the case
 already discharged by the two-address probe's `dst ≠ s0` arm. We make the
 dichotomy explicit as a definitional case split, so the `hcol`/`mov` split is a
@@ -366,33 +1028,101 @@ theorem lowerTwoAddr_collapse_of_eq (dst s0 s1 opn : String) (hcol : dst = s0) :
       = legalizeBinop (.reg dst) (.reg s1) opn "MOV" := by
   rw [lowerTwoAddr_dichotomy, if_pos hcol]
 
-/-! ## 5. `physRegName` injectivity — the rendering layer of `hinj`
+/-! ## 6. `physRegName` injectivity — the rendering layer of `hinj`
 
 `hinj` is `physRename`-injectivity into a binding's destination:
-`physRename = physRegName ∘ physMapTabled tbl ∘ nameSlot`. The whole-body bridge
-(deferred residual) must compose three injectivities: `nameSlot` injective on
-distinct live names, `physMap` injective on simultaneously-live slots (seeded by
-the `ScanInv` of §3), and `physRegName` injective on the slot-index range. The
-last is a finite/arithmetic fact we discharge here. -/
+`physRename = physRegName ∘ physMapTabled tbl ∘ nameSlot`. It composes three
+injectivities: `nameSlot` injective on distinct live names, `physMap` injective
+on overlapping slots (§4), and `physRegName` injective on the slot-index range.
+The last is a finite/arithmetic fact discharged here. -/
 
 /-- No GP register name begins with the character `'k'`; the spill names
-    `"k." ++ …` all begin with `'k'`. The character-level discriminator that
-    separates the GP block from the spill block of `physRegName`. -/
+    `"k." ++ …` and `"kv." ++ …` all begin with `'k'`. The character-level
+    discriminator that separates the register blocks from the spill blocks. -/
 theorem gpRegNames_head_ne_k : ∀ r ∈ gpRegNames, r.toList.head? ≠ some 'k' := by decide
 
-/-- A spill name `"k." ++ toString n` begins with `'k'`. -/
+/-- No vector register name begins with the character `'k'`. -/
+theorem vectorRegNames_head_ne_k : ∀ r ∈ vectorRegNames, r.toList.head? ≠ some 'k' := by
+  decide
+
+/-- A GP spill name `"k." ++ toString n` begins with `'k'`. -/
 theorem kdot_head_eq_k (n : Nat) : ("k." ++ toString n).toList.head? = some 'k' := by
+  simp [String.toList_append]
+
+/-- A vector spill name `"kv." ++ toString n` begins with `'k'`. -/
+theorem kvdot_head_eq_k (n : Nat) : ("kv." ++ toString n).toList.head? = some 'k' := by
   simp [String.toList_append]
 
 /-- `gpRegNames` has no duplicate entries. -/
 theorem gpRegNames_nodup : gpRegNames.Nodup := by decide
 
-/-- A GP register name is never a `"k."`-spill name (their leading characters
-    differ). -/
+/-- `vectorRegNames` has no duplicate entries. -/
+theorem vectorRegNames_nodup : vectorRegNames.Nodup := by decide
+
+/-- The GP and vector register names are disjoint. -/
+theorem gpRegName_ne_vecRegName : ∀ r ∈ gpRegNames, ∀ v ∈ vectorRegNames, r ≠ v := by decide
+
+/-- A GP register name is never a `"k."`-spill name. -/
 theorem gpRegName_ne_kdot {r : String} (hr : r ∈ gpRegNames) (n : Nat) :
     r ≠ "k." ++ toString n := by
   intro he
   exact gpRegNames_head_ne_k r hr (by rw [he, kdot_head_eq_k])
+
+/-- A GP register name is never a `"kv."`-spill name. -/
+theorem gpRegName_ne_kvdot {r : String} (hr : r ∈ gpRegNames) (n : Nat) :
+    r ≠ "kv." ++ toString n := by
+  intro he
+  exact gpRegNames_head_ne_k r hr (by rw [he, kvdot_head_eq_k])
+
+/-- A vector register name is never a `"k."`-spill name. -/
+theorem vecRegName_ne_kdot {r : String} (hr : r ∈ vectorRegNames) (n : Nat) :
+    r ≠ "k." ++ toString n := by
+  intro he
+  exact vectorRegNames_head_ne_k r hr (by rw [he, kdot_head_eq_k])
+
+/-- A vector register name is never a `"kv."`-spill name. -/
+theorem vecRegName_ne_kvdot {r : String} (hr : r ∈ vectorRegNames) (n : Nat) :
+    r ≠ "kv." ++ toString n := by
+  intro he
+  exact vectorRegNames_head_ne_k r hr (by rw [he, kvdot_head_eq_k])
+
+/-- The two spill blocks are distinguished by their second character. -/
+theorem kdot_ne_kvdot (n m : Nat) : "k." ++ toString n ≠ "kv." ++ toString m := by
+  intro he
+  have h := congrArg (fun s : String => s.toList.tail.head?) he
+  simp [String.toList_append] at h
+
+/-- The GP pool sits strictly below the vector pool's base index. -/
+theorem numGPRegs_lt_vectorBase : numGPRegs < vectorBase := by decide
+
+/-- A GP-block index renders to the GP register name at that index. -/
+theorem physRegName_gp_eq {a : Nat} (ha : a < gpRegNames.length) :
+    physRegName a = gpRegNames[a] := by
+  have hv := numGPRegs_lt_vectorBase
+  have ha2 : a < numGPRegs := by simpa [numGPRegs] using ha
+  unfold physRegName
+  rw [if_neg (by omega), List.getElem?_eq_getElem ha]
+
+/-- A vector-block index renders to the vector register name at that index. -/
+theorem physRegName_vec_eq {a : Nat} (ha : vectorBase ≤ a)
+    (hb : a - vectorBase < vectorRegNames.length) :
+    physRegName a = vectorRegNames[a - vectorBase] := by
+  unfold physRegName
+  rw [if_pos (by omega)]
+  dsimp only
+  rw [List.getElem?_eq_getElem hb]
+
+/-- A GP-block index renders to a GP register name. -/
+theorem physRegName_gp_mem {a : Nat} (ha : a < numGPRegs) :
+    ∃ r ∈ gpRegNames, physRegName a = r := by
+  have ha' : a < gpRegNames.length := by simpa [numGPRegs] using ha
+  exact ⟨gpRegNames[a], List.getElem_mem ha', physRegName_gp_eq ha'⟩
+
+/-- A vector-block index renders to a vector register name. -/
+theorem physRegName_vec_mem {a : Nat} (ha : vectorBase ≤ a) (hb : a - vectorBase < numVecRegs) :
+    ∃ r ∈ vectorRegNames, physRegName a = r := by
+  have hb' : a - vectorBase < vectorRegNames.length := by simpa [numVecRegs] using hb
+  exact ⟨vectorRegNames[a - vectorBase], List.getElem_mem hb', physRegName_vec_eq ha hb'⟩
 
 /-- **`physRegName` injective on the GP-register block.** Two physical indices
     both below `numGPRegs` render to the same name only if equal — the
@@ -401,23 +1131,20 @@ theorem gpRegName_ne_kdot {r : String} (hr : r ∈ gpRegNames) (n : Nat) :
     (common) case. The rendering layer of `hinj` on the GP block. -/
 theorem physRegName_injOn_gp {a b : Nat} (ha : a < numGPRegs) (hb : b < numGPRegs)
     (hab : physRegName a = physRegName b) : a = b := by
-  unfold physRegName at hab
   have ha' : a < gpRegNames.length := by simpa [numGPRegs] using ha
   have hb' : b < gpRegNames.length := by simpa [numGPRegs] using hb
-  rw [List.getElem?_eq_getElem ha', List.getElem?_eq_getElem hb'] at hab
+  rw [physRegName_gp_eq ha', physRegName_gp_eq hb'] at hab
   exact (List.Nodup.getElem_inj_iff gpRegNames_nodup (hi := ha') (hj := hb')).mp hab
 
-/-- **`physRegName` does not confuse the GP and spill blocks.** A GP-block index
-    (`< numGPRegs`) and a spill-block index (`≥ numGPRegs`) never render to the
-    same name (GP names do not start with `'k'`, spill names do). Together with
-    `physRegName_injOn_gp` this fixes the GP block as a clean injective region. -/
-theorem physRegName_gp_ne_spill {a b : Nat} (ha : a < numGPRegs) (hb : numGPRegs ≤ b) :
-    physRegName a ≠ physRegName b := by
-  unfold physRegName
-  have ha' : a < gpRegNames.length := by simpa [numGPRegs] using ha
-  have hb' : ¬ b < gpRegNames.length := by simpa [numGPRegs] using Nat.not_lt.mpr hb
-  rw [List.getElem?_eq_getElem ha', List.getElem?_eq_none (Nat.le_of_not_lt hb')]
-  exact gpRegName_ne_kdot (List.getElem_mem ha') (b - numGPRegs)
+/-- **`physRegName` injective on the vector-register block.** -/
+theorem physRegName_injOn_vec {a b : Nat} (ha : vectorBase ≤ a) (hb : vectorBase ≤ b)
+    (ha2 : a - vectorBase < numVecRegs) (hb2 : b - vectorBase < numVecRegs)
+    (hab : physRegName a = physRegName b) : a = b := by
+  have ha' : a - vectorBase < vectorRegNames.length := by simpa [numVecRegs] using ha2
+  have hb' : b - vectorBase < vectorRegNames.length := by simpa [numVecRegs] using hb2
+  rw [physRegName_vec_eq ha ha', physRegName_vec_eq hb hb'] at hab
+  have := (List.Nodup.getElem_inj_iff vectorRegNames_nodup (hi := ha') (hj := hb')).mp hab
+  omega
 
 /-! ### `Nat.toDigits 10` injectivity — the decimal-rendering atom of the spill block
 
@@ -495,22 +1222,42 @@ theorem toString_nat_inj (m n : Nat) (h : toString m = toString n) : m = n := by
   rw [String.toList_ofList, String.toList_ofList] at ht
   exact toDigits_inj m n ht
 
-/-- The spill name `physRegName` renders for a slot index `≥ numGPRegs`. -/
-theorem physRegName_spill_eq {a : Nat} (ha : numGPRegs ≤ a) :
+/-- The GP spill name `physRegName` renders for a scalar index `≥ numGPRegs`. -/
+theorem physRegName_spill_eq {a : Nat} (ha : numGPRegs ≤ a) (hv : a < vectorBase) :
     physRegName a = "k." ++ toString (a - numGPRegs) := by
   unfold physRegName
-  rw [List.getElem?_eq_none (by simpa [numGPRegs] using ha)]
+  rw [if_neg (by omega), List.getElem?_eq_none (by simpa [numGPRegs] using ha)]
 
-/-- **`physRegName` injective on the spill block.** Two indices `≥ numGPRegs`
-    render to the same `"k." ++ toString (·-numGPRegs)` name only if equal — by
-    `toString_nat_inj` on the offsets. The spill-block counterpart of
-    `physRegName_injOn_gp`. -/
+/-- The vector spill name `physRegName` renders for a vector index beyond the
+    vector register file. -/
+theorem physRegName_vspill_eq {a : Nat} (ha : vectorBase ≤ a)
+    (hb : numVecRegs ≤ a - vectorBase) :
+    physRegName a = "kv." ++ toString (a - vectorBase - numVecRegs) := by
+  unfold physRegName
+  rw [if_pos (by omega)]
+  dsimp only
+  rw [List.getElem?_eq_none (by simpa [numVecRegs] using hb)]
+
+/-- **`physRegName` injective on the GP spill block.** Two scalar indices
+    `≥ numGPRegs` render to the same `"k." ++ toString (·-numGPRegs)` name only if
+    equal — by `toString_nat_inj` on the offsets. -/
 theorem physRegName_injOn_spill {a b : Nat} (ha : numGPRegs ≤ a) (hb : numGPRegs ≤ b)
+    (hva : a < vectorBase) (hvb : b < vectorBase)
     (hab : physRegName a = physRegName b) : a = b := by
-  rw [physRegName_spill_eq ha, physRegName_spill_eq hb] at hab
+  rw [physRegName_spill_eq ha hva, physRegName_spill_eq hb hvb] at hab
   have hoff : toString (a - numGPRegs) = toString (b - numGPRegs) :=
     (String.append_right_inj "k.").mp hab
   have : a - numGPRegs = b - numGPRegs := toString_nat_inj _ _ hoff
+  omega
+
+/-- **`physRegName` injective on the vector spill block.** -/
+theorem physRegName_injOn_vspill {a b : Nat} (ha : vectorBase ≤ a) (hb : vectorBase ≤ b)
+    (ha2 : numVecRegs ≤ a - vectorBase) (hb2 : numVecRegs ≤ b - vectorBase)
+    (hab : physRegName a = physRegName b) : a = b := by
+  rw [physRegName_vspill_eq ha ha2, physRegName_vspill_eq hb hb2] at hab
+  have hoff : toString (a - vectorBase - numVecRegs) = toString (b - vectorBase - numVecRegs) :=
+    (String.append_right_inj "kv.").mp hab
+  have : a - vectorBase - numVecRegs = b - vectorBase - numVecRegs := toString_nat_inj _ _ hoff
   omega
 
 /-! ### `nameSlot` injectivity on the live set
@@ -535,41 +1282,85 @@ theorem nameSlot_injOn {body : Lcmd} {m n : String}
     (List.idxOf_lt_length_iff.mpr hn)
   rw [← hra, ← hrb]; simp only [h]
 
-/-- **`physRegName` is globally injective.** The GP block (`< numGPRegs`,
-    `physRegName_injOn_gp`) and the spill block (`≥ numGPRegs`,
-    `physRegName_injOn_spill`) are each injective and disjoint
-    (`physRegName_gp_ne_spill`), so `physRegName` is injective on all of `Nat` —
-    the full rendering layer of `hinj`, hypothesis-free. -/
-theorem physRegName_inj {a b : Nat} (hab : physRegName a = physRegName b) : a = b := by
+/-- **`physRegName` is injective on the scalar pool.** The GP block
+    (`< numGPRegs`) and the GP spill block are each injective and are separated by
+    their leading character. -/
+theorem physRegName_injOn_scalar {a b : Nat} (hva : a < vectorBase) (hvb : b < vectorBase)
+    (hab : physRegName a = physRegName b) : a = b := by
   rcases Nat.lt_or_ge a numGPRegs with ha | ha <;> rcases Nat.lt_or_ge b numGPRegs with hb | hb
   · exact physRegName_injOn_gp ha hb hab
-  · exact absurd hab (physRegName_gp_ne_spill ha hb)
-  · exact absurd hab.symm (physRegName_gp_ne_spill hb ha)
-  · exact physRegName_injOn_spill ha hb hab
+  · obtain ⟨r, hr, hre⟩ := physRegName_gp_mem ha
+    rw [hre, physRegName_spill_eq hb hvb] at hab
+    exact absurd hab (gpRegName_ne_kdot hr _)
+  · obtain ⟨r, hr, hre⟩ := physRegName_gp_mem hb
+    rw [hre, physRegName_spill_eq ha hva] at hab
+    exact absurd hab.symm (gpRegName_ne_kdot hr _)
+  · exact physRegName_injOn_spill ha hb hva hvb hab
 
-/-! ## 6. Composing the rendering and naming layers of `hinj`
+/-- **`physRegName` is injective on the vector pool.** -/
+theorem physRegName_injOn_vector {a b : Nat} (hva : vectorBase ≤ a) (hvb : vectorBase ≤ b)
+    (hab : physRegName a = physRegName b) : a = b := by
+  rcases Nat.lt_or_ge (a - vectorBase) numVecRegs with ha | ha <;>
+    rcases Nat.lt_or_ge (b - vectorBase) numVecRegs with hb | hb
+  · exact physRegName_injOn_vec hva hvb ha hb hab
+  · obtain ⟨r, hr, hre⟩ := physRegName_vec_mem hva ha
+    rw [hre, physRegName_vspill_eq hvb hb] at hab
+    exact absurd hab (vecRegName_ne_kvdot hr _)
+  · obtain ⟨r, hr, hre⟩ := physRegName_vec_mem hvb hb
+    rw [hre, physRegName_vspill_eq hva ha] at hab
+    exact absurd hab.symm (vecRegName_ne_kvdot hr _)
+  · exact physRegName_injOn_vspill hva hvb ha hb hab
+
+/-- **`physRegName` keeps the scalar and vector pools apart.** -/
+theorem physRegName_scalar_ne_vector {a b : Nat} (hva : a < vectorBase) (hvb : vectorBase ≤ b) :
+    physRegName a ≠ physRegName b := by
+  rcases Nat.lt_or_ge a numGPRegs with ha | ha <;>
+    rcases Nat.lt_or_ge (b - vectorBase) numVecRegs with hb | hb
+  · obtain ⟨r, hr, hre⟩ := physRegName_gp_mem ha
+    obtain ⟨v, hv, hve⟩ := physRegName_vec_mem hvb hb
+    rw [hre, hve]
+    exact gpRegName_ne_vecRegName r hr v hv
+  · obtain ⟨r, hr, hre⟩ := physRegName_gp_mem ha
+    rw [hre, physRegName_vspill_eq hvb hb]
+    exact gpRegName_ne_kvdot hr _
+  · obtain ⟨v, hv, hve⟩ := physRegName_vec_mem hvb hb
+    rw [hve, physRegName_spill_eq ha hva]
+    exact fun he => vecRegName_ne_kdot hv _ he.symm
+  · rw [physRegName_spill_eq ha hva, physRegName_vspill_eq hvb hb]
+    exact kdot_ne_kvdot _ _
+
+/-- **`physRegName` is globally injective.** The scalar pool
+    (`physRegName_injOn_scalar`) and the vector pool
+    (`physRegName_injOn_vector`) are each injective and disjoint
+    (`physRegName_scalar_ne_vector`), so `physRegName` is injective on all of
+    `Nat` — the full rendering layer of `hinj`, hypothesis-free. -/
+theorem physRegName_inj {a b : Nat} (hab : physRegName a = physRegName b) : a = b := by
+  rcases Nat.lt_or_ge a vectorBase with ha | ha <;> rcases Nat.lt_or_ge b vectorBase with hb | hb
+  · exact physRegName_injOn_scalar ha hb hab
+  · exact absurd hab (physRegName_scalar_ne_vector ha hb)
+  · exact absurd hab.symm (physRegName_scalar_ne_vector hb ha)
+  · exact physRegName_injOn_vector ha hb hab
+
+/-! ## 7. Composing the rendering and naming layers of `hinj`
 
 `hinj` (carried in each `BinopBinding`) is
 `∀ m, physRename body tbl m = physRename body tbl nDst → m = nDst`, where
 `physRename body tbl n = physRegName (physMapTabled tbl (nameSlot body n))`
-(definitionally). This module discharges **two of its three composed
-injectivities outright**: `physRegName` (the rendering layer, fully — global,
+(definitionally). This module discharges two of its three composed
+injectivities outright: `physRegName` (the rendering layer, global,
 `physRegName_inj`) and `nameSlot` (the naming layer, on the live set,
 `nameSlot_injOn`). The remaining factor is `physMapTabled (physTable …)`
-injectivity on simultaneously-live slots — the linear-scan core whose structural
-seed is the `ScanInv` of §3 (slot-distinctness) plus the `physScanAux`
-accumulator characterization (`physScanAux_acc_extends`, §3). We reduce `hinj` to
-*exactly* that single slot-level hypothesis. -/
+injectivity on overlapping slots, which §4 supplies for `physMap`. `hinj`
+reduces to exactly that single slot-level hypothesis. -/
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulSpill in
 /-- **`hinj` reduced to slot-level RA injectivity.** With the two rendering/naming
     layers discharged here (`physRegName_inj` global, `nameSlot_injOn` on the live
     set), the per-binding destination injectivity `hinj` follows from the single
     remaining fact `hslot`: `physMapTabled tbl` maps the (distinct, live) source
-    slot and destination slot to distinct physical registers. This isolates the
-    residual to the linear-scan core — `physMapTabled`-injectivity on
-    simultaneously-live slots — with everything *above* it (rendering, naming)
-    proved. `physRename body tbl n` unfolds to
+    slot and destination slot to distinct physical registers, which
+    `physMap_no_collision` (§4) supplies for a `physTable`-shaped `tbl` whose two
+    slots are live and overlapping. `physRename body tbl n` unfolds to
     `physRegName (physMapTabled tbl (nameSlot body n))` by `rfl`. -/
 theorem physRename_injOn_live {body : Lcmd} {tbl : Array Nat} {m nDst : String}
     (hm : m ∈ bodyNames body) (hnDst : nDst ∈ bodyNames body)

@@ -26,7 +26,7 @@ register allocator that, unlike linear scan, reasons over the *whole* interferen
 graph at once and chooses spills by **use density** (a value used rarely over a long
 live range is a cheap spill; a hot value is kept resident), with **live-range
 splitting** so a whole-program-live value need not be spilled across its *entire*
-range — only across the stretch where pressure genuinely exceeds K.
+range — only across the stretch where pressure exceeds K.
 
 ## What is built
 
@@ -219,22 +219,32 @@ def firstFreeColor (pool : List String) (lrs : List LiveRange)
   let nbrRegs := (neighbours lrs lr).filterMap (fun b => assigned.lookup b.name)
   pool.find? (fun r => ¬ nbrRegs.contains r)
 
+/-- The select step: `st` is the remaining simplify stack, `assigned` the partial
+    coloring, `nextSpill` the next free frame offset, `acc` the decisions so far.
+    Consecutive spill offsets advance by `stride`. -/
+def selectColorsGo (pool : List String) (lrs : List LiveRange) (stride : Int)
+    (st : List LiveRange) (assigned : List (String × String)) (nextSpill : Int)
+    (acc : List (String × Slot)) : List (String × Slot) :=
+  match st with
+  | [] => acc
+  | lr :: rest =>
+    match firstFreeColor pool lrs assigned lr with
+    | some r => selectColorsGo pool lrs stride rest ((lr.name, r) :: assigned) nextSpill
+                   ((lr.name, .resident r) :: acc)
+    | none => selectColorsGo pool lrs stride rest assigned (nextSpill + stride)
+                ((lr.name, .spilled nextSpill) :: acc)
+
 /-- The **select phase**: pop the simplify stack head-first, coloring each node with
     `firstFreeColor`; a node with no free color spills to the next frame cell. Produces
-    the `name ↦ Slot` decision list (the same shape `linearScan` returns). -/
+    the `name ↦ Slot` decision list (the same shape `linearScan` returns).
+
+    `stride` is the byte width of one allocated value: consecutive spill offsets advance
+    by it, so two live spills of `stride`-byte values occupy disjoint frame cells
+    (`selectColors_slotsSeparated`). The default `8` is the general-purpose word, the
+    width of every `JInstr 64` value. -/
 def selectColors (pool : List String) (lrs : List LiveRange) (frameBase : Int)
-    (stack : List LiveRange) : List (String × Slot) :=
-  let rec go (st : List LiveRange) (assigned : List (String × String))
-      (nextSpill : Int) (acc : List (String × Slot)) : List (String × Slot) :=
-    match st with
-    | [] => acc
-    | lr :: rest =>
-      match firstFreeColor pool lrs assigned lr with
-      | some r => go rest ((lr.name, r) :: assigned) nextSpill
-                     ((lr.name, .resident r) :: acc)
-      | none => go rest assigned (nextSpill + 8)
-                  ((lr.name, .spilled nextSpill) :: acc)
-  go stack [] frameBase []
+    (stack : List LiveRange) (stride : Int := 8) : List (String × Slot) :=
+  selectColorsGo pool lrs stride stack [] frameBase []
 
 /-! ## 4. Live-range splitting (avoiding the whole-program-live false spill)
 
@@ -305,13 +315,84 @@ def linearScanValueAlloc (pinned : GpAlloc) (frameBase : Int) (block : List (JIn
     a drop-in alternative that plugs into the identical proved `spillReloadBlock`
     materialization. `k = |pool|` colors; spill choice by use-density; LIFO select.
     Allocates only the **value** names (`valueRanges`); read-only base names keep their
-    fixed address. -/
-def graphColorAlloc (pinned : GpAlloc) (frameBase : Int) (block : List (JInstr 64)) :
-    List (String × Slot) :=
+    fixed address. `stride` is the byte width of one allocated value, the spacing of
+    consecutive spill cells; the default `8` is the general-purpose word. -/
+def graphColorAlloc (pinned : GpAlloc) (frameBase : Int) (block : List (JInstr 64))
+    (stride : Int := 8) : List (String × Slot) :=
   let pool := allocPool pinned
   let lrs := valueRanges block
   let stack := simplifyStack block lrs pool.length
-  selectColors pool lrs frameBase stack
+  selectColors pool lrs frameBase stack stride
+
+/-! ### 5b. Byte separation of the frame slots
+
+The select phase's spill offsets advance by `stride`, so a spilled value of byte width
+`width ≤ stride` occupies `[off, off + width)` disjointly from every other slot
+(`GenericRegAlloc.SepAt`). This is the obligation a spill/reload argument over a
+byte-addressed frame (`Optimizer.ByteMemMachine`) imposes on the allocator, and it is
+strictly stronger than offset distinctness. -/
+
+/-- The select invariant: an offset already emitted lies at least `stride` below the next
+    free offset, so each new slot is separated from every earlier one. -/
+theorem selectColorsGo_pairwise (width : Nat) (pool : List String) (lrs : List LiveRange)
+    (stride : Int) (hw : (width : Int) ≤ stride) :
+    ∀ (st : List LiveRange) (assigned : List (String × String)) (nextSpill : Int)
+      (acc : List (String × Slot)),
+      (∀ o ∈ linearScanSpillOffsets acc, o + stride ≤ nextSpill) →
+      (linearScanSpillOffsets acc).Pairwise (GenericRegAlloc.SepAt width) →
+      (linearScanSpillOffsets (selectColorsGo pool lrs stride st assigned nextSpill acc)).Pairwise
+        (GenericRegAlloc.SepAt width) := by
+  have hw0 : (0 : Int) ≤ (width : Int) := Int.natCast_nonneg _
+  intro st
+  induction st with
+  | nil => intro assigned nextSpill acc _ hp; exact hp
+  | cons lr rest ih =>
+    intro assigned nextSpill acc hacc hp
+    have hres : ∀ (l : List (String × Slot)), linearScanSpillOffsets l = linearScanSpillOffsets acc →
+        ((∀ o ∈ linearScanSpillOffsets l, o + stride ≤ nextSpill)
+          ∧ (linearScanSpillOffsets l).Pairwise (GenericRegAlloc.SepAt width)) := by
+      intro l hl
+      rw [hl]; exact ⟨hacc, hp⟩
+    have hspill : ∀ (l : List (String × Slot)),
+        linearScanSpillOffsets l = nextSpill :: linearScanSpillOffsets acc →
+        ((∀ o ∈ linearScanSpillOffsets l, o + stride ≤ nextSpill + stride)
+          ∧ (linearScanSpillOffsets l).Pairwise (GenericRegAlloc.SepAt width)) := by
+      intro l hl
+      rw [hl]
+      refine ⟨?_, ?_⟩
+      · intro o ho
+        rcases List.mem_cons.mp ho with h | h
+        · omega
+        · have := hacc o h; omega
+      · refine List.pairwise_cons.mpr ⟨?_, hp⟩
+        intro b hb
+        have := hacc b hb
+        exact Or.inr (by omega)
+    simp only [selectColorsGo]
+    split
+    · exact ih _ nextSpill _ (hres _ rfl).1 (hres _ rfl).2
+    · exact ih _ _ _ (hspill _ rfl).1 (hspill _ rfl).2
+
+/-- **The select phase's frame stride discharges the byte-separation obligation.** At a
+    stride of at least the byte width of one allocated value, the frame slots
+    `selectColors` assigns cover pairwise-disjoint byte ranges. The hypothesis is where
+    the stride enters: a 32-byte value coloured at the default stride `8` does not
+    satisfy it. -/
+theorem selectColors_slotsSeparated (width : Nat) (pool : List String) (lrs : List LiveRange)
+    (frameBase : Int) (stack : List LiveRange) (stride : Int) (hw : (width : Int) ≤ stride) :
+    (linearScanSpillOffsets (selectColors pool lrs frameBase stack stride)).Pairwise
+      (GenericRegAlloc.SepAt width) :=
+  selectColorsGo_pairwise width pool lrs stride hw stack [] frameBase []
+    (by simp [linearScanSpillOffsets]) (by simp [linearScanSpillOffsets])
+
+/-- **The graph-coloring allocator's slots are separated at any width its stride covers.**
+    Discharged from the `stride` argument alone: it holds of every block and every pool,
+    and fails to apply exactly when the stride is narrower than the value being spilled. -/
+theorem graphColorAlloc_slotsSeparated (width : Nat) (pinned : GpAlloc) (frameBase : Int)
+    (block : List (JInstr 64)) (stride : Int) (hw : (width : Int) ≤ stride) :
+    (linearScanSpillOffsets (graphColorAlloc pinned frameBase block stride)).Pairwise
+      (GenericRegAlloc.SepAt width) :=
+  selectColors_slotsSeparated width _ _ frameBase _ stride hw
 
 /-! ## 6. Denotation preservation (the soundness statement)
 
@@ -361,7 +442,7 @@ The whole point: on a body whose values are all (nearly) whole-program-live, the
 linear-scan farthest-end heuristic spills almost everything (every active interval ends
 at the far point, so the tie-break is arbitrary and the pool overflows wholesale),
 while graph coloring with use-density spill cost keeps the hot values resident and
-spills only the genuinely-cheap (low-density) ones. We expose both spill counts so the
+spills only the cheap (low-density) ones. We expose both spill counts so the
 deliverable can report the delta directly. -/
 
 /-- The number of names the graph-coloring allocator spills (the metric to compare

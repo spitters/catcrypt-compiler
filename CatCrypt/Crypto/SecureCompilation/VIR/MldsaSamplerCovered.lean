@@ -13,7 +13,7 @@ ML-DSA-65's matrix expansion (`ExpandA`, PQClean `ml-dsa-65/clean` `poly.c`
 stream: read a 23-bit candidate `t = (b0 | b1<<8 | b2<<16) & 0x7FFFFF` from the
 3-byte window, accept it iff `< q = 8380417`, advance the byte cursor `pos += 3`,
 and repeat **until the output polynomial is full**. The number of windows is
-decided at run time by how many candidates land below `q`, so this is a genuine
+decided at run time by how many candidates land below `q`, so this is a
 *data-dependent* loop — not a fixed unroll and not a counted `RFor`. The
 termination criterion (buffer full) is the `while (name != 0)` shape `RWhileNz`
 models.
@@ -25,7 +25,7 @@ front**, using the `RWhileNz` waist denote landed in
 `RejUniformCovered` (both are the `rej_uniform` control structure; ML-DSA reads a
 23-bit candidate from a 3-byte window vs ML-KEM's 12-bit candidate) and shares
 the same coverage / `isSome` / whole-program-denote recipe. The owned byte-exact
-counterpart is `MLDSA.SamplerOwnedEmit` (`rejUniWindowBody` / `uniGuard`).
+counterpart is `MLDSA.SamplerEmit` (`rejUniWindowBody` / `uniGuard`).
 
 ## The source term
 
@@ -47,7 +47,7 @@ buffer-not-full guard.
 
 The candidate stream / hash squeeze and the arithmetic are **opaque leaves**
 (their FIPS-204 correctness is the separate byte-KAT obligation, carried by the
-owned-emit kernel `MLDSA.SamplerOwnedEmit`); what is banked here is the descent
+owned-emit kernel `MLDSA.SamplerEmit`); what is banked here is the descent
 of the **rejection control structure** — the data-dependent `while` — through the
 canonical front, with a whole-program machine denote.
 
@@ -121,7 +121,7 @@ def rejBody : LowCT :=
 def rejUniformLowCT : LowCT :=
   .RWhileNz "remaining" rejBody
 
-/-! ## 2. Coverage — the load-bearing structural proofs -/
+/-! ## 2. Coverage — the central structural proofs -/
 
 /-- The advance-and-extract tail is straight-line covered. -/
 theorem rejAdvanceExtract_coveredS : IsCoveredS rejAdvanceExtract :=
@@ -134,7 +134,7 @@ theorem acceptBranch_coveredS : IsCoveredS acceptBranch :=
   .rSeq (.rCall "rej_store" (loc "out") [loc "out", loc "cand"]) rejAdvanceExtract_coveredS
 
 /-- **The window body is Stage-2 covered** (`IsCoveredSCtl`): an `RIfNz` over two
-    straight-line branches. This is the load-bearing fact — it feeds the
+    straight-line branches. This is the central fact — it feeds the
     `RWhileNz` whole-program denote (`rWhileNz_whole_denote`). -/
 theorem rejBody_covered : IsCoveredSCtl rejBody :=
   .rIfNz (.ofStraight acceptBranch_coveredS) (.ofStraight rejAdvanceExtract_coveredS)

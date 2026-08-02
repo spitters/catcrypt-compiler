@@ -190,7 +190,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport (Com.toLprogPhysAbi
 /-- Render an owned `Lprog` for a lowered kernel under the SysV pointer ABI
     (`abiArgs`, one `u64` cell per pointer; `inLoadMap = none`,
     `outStoreMap = []`). -/
-def toOwnedAsm (name : String) (abiArgs : List String)
+def toAsm (name : String) (abiArgs : List String)
     (j : Option (Σ Γj : Ctxt jasminDialect, Σ t : JasminTy, Com jasminDialect Γj t)) :
     Option String :=
   (j.map (fun s =>
@@ -205,13 +205,13 @@ def toOwnedAsm (name : String) (abiArgs : List String)
 
 /-- The owned AT&T `.s` text of `m31_mul_owned` (RDI = out, RSI = a, RDX = b). -/
 def mulAsm : Option String :=
-  toOwnedAsm "m31_mul_owned" ["RDI", "RSI", "RDX"] (toJasmin mulFrontCom)
+  toAsm "m31_mul_owned" ["RDI", "RSI", "RDX"] (toJasmin mulFrontCom)
 /-- The owned AT&T `.s` text of `m31_add_owned` (RDI = out, RSI = a, RDX = b). -/
 def addAsm : Option String :=
-  toOwnedAsm "m31_add_owned" ["RDI", "RSI", "RDX"] (toJasmin addFrontCom)
+  toAsm "m31_add_owned" ["RDI", "RSI", "RDX"] (toJasmin addFrontCom)
 /-- The owned AT&T `.s` text of `m31_reduce_owned` (RDI = out, RSI = x). -/
 def reduceAsm : Option String :=
-  toOwnedAsm "m31_reduce_owned" ["RDI", "RSI"] (toJasmin reduceFrontCom)
+  toAsm "m31_reduce_owned" ["RDI", "RSI"] (toJasmin reduceFrontCom)
 
 /-! ## 5. Gates: the front succeeds and every kernel renders -/
 

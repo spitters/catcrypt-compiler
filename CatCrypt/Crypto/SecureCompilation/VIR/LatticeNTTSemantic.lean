@@ -5,12 +5,15 @@ Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.VIR.LatticeNTTSound
 import CatCrypt.Crypto.SecureCompilation.VIR.Core
+import CatCrypt.Crypto.SecureCompilation.VIR.LatticeDialect
 import CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic
 import CompPoly.Univariate.ToPoly.Equiv
 import Mathlib.Algebra.Field.ZMod
 
 /-!
 # Lattice dialect NTT-mul: concrete ML-KEM semantics (Phase 4, concrete)
+
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
 `LatticeNTTSound.lean` reduced the lattice dialect's `polyMulC` soundness
 obligation to CompPoly's *cyclic* convolution theorem `fastMulImpl_eq_mul`
@@ -29,7 +32,7 @@ This file closes both gaps concretely for the ML-KEM-768 parameters
 
 A full negacyclic / incomplete-NTT development already lives in CompPoly at
 `CatCrypt/Crypto/SecureCompilation/VIR/Negacyclic.lean`
-(`CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic`). The load-bearing facts:
+(`CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic`). The facts used:
 
 * `Negacyclic.negacyclic_modByMonic_coeff` — for `p` of degree `< 2n`, the
   reduction `p %ₘ (X^n + 1)` has `(p %ₘ negaPoly n).coeff k = p.coeff k −
@@ -59,7 +62,7 @@ fold, supplied directly by `negacyclic_mul_coeff`.
 * `realNttMul_toPoly` — the real CompPoly NTT multiply, transported to a
   Mathlib `Polynomial`: under `Domain.fits`, `(realNttMul D p q).toPoly =
   p.toPoly * q.toPoly`. This is `fastMulImpl_eq_mul` + `toPoly_mul`: the
-  *cyclic* product, honestly (no `rfl`).
+  *cyclic* product (not by `rfl`).
 * **`realNttMul_negacyclic_coeff`** (the headline): with the *real* CompPoly NTT
   operations (NOT the toy `id`), the negacyclic reduction of the real NTT
   product equals the negacyclic convolution of the encoded inputs:
@@ -70,7 +73,7 @@ fold, supplied directly by `negacyclic_mul_coeff`.
   combining `fastMulImpl_eq_mul` (cyclic NTT correctness) with
   `negacyclic_mul_coeff` (the `X^n ≡ −1` fold). Both halves of the ML-KEM
   multiply — the NTT-domain round-trip *and* the negacyclic reduction — are
-  genuine theorems here, not definitional identities.
+  theorems here, not definitional identities.
 
 ## Plugging `realNttMul` into a dialect denotation (the Com level)
 
@@ -81,9 +84,12 @@ The toy `latticeDialect` (`LatticeDialect.lean`) denotes its polynomial ops via
 `latticeDenote` would break them (and is not even type-compatible: the real ops
 live on `CPolynomial (ZMod q)`, not `Fin n → BitVec 16`).
 
-Instead we introduce a **real-denoting** sibling dialect `realLatticeDialect`
-whose value types `polyC q n` / `polyN q n` both denote to the genuine
-`CPolynomial (ZMod q)`, and whose `basemul` / `polyMulC` ops denote via
+Instead we read the same syntax at a second semantics. `LatticeDialect` indexes
+its type alphabet by a `LatticeSem` tag, so `latticeDialect` and
+`realLatticeDialect` are the `.bits` and `.poly` instantiations of one family:
+same type constructors, same op tags, same `DialectSignature`, different
+`TyDenote`. Here `polyC q n` / `polyN q n` both denote to
+`CPolynomial (ZMod q)`, and the `basemul` / `polyMulC` ops denote via
 `realNttMul` (CompPoly's `fastMulImpl`) over a chosen NTT `Domain` (supplied by
 the `NttDomains` class). The leaf-level NTT round-trip
 `ntt ; basemul ; invntt` and the direct `polyMulC` both compute `realNttMul`,
@@ -101,16 +107,16 @@ so the rewrite `srcCom ⇝ tgtCom` is still sound (`rfl`) — but now over the
 * **`realSrcCom_negacyclic_coeff` / `realTgtCom_negacyclic_coeff`** (the Com-level
   headline): on encoded inputs `enc a`, `enc b`, the negacyclic reduction
   `%ₘ (X^n + 1)` of the program's `Com.denote` has its `k`-th coefficient equal
-  to the genuine negacyclic convolution — `realNttMul_negacyclic_coeff` lifted
+  to the negacyclic convolution — `realNttMul_negacyclic_coeff` lifted
   from the op level to `Com.denote`. This is the statement "the NTT-mul bracket
-  denotes, under the real ops, to the genuine negacyclic product".
+  denotes, under the real ops, to the negacyclic product".
 
 ## Status: THEORY artifact, not the emit path
 
 `realLatticeDialect` is a **theory layer**, not a live lowering island. Its ops
 are the real-valued (CompPoly-backed) lattice operations over
 `CPolynomial (ZMod q)`, and it exists **only** to carry the NTT-mul soundness
-proofs above — the genuine negacyclic-product theorems at the op and `Com`
+proofs above — the negacyclic-product theorems at the op and `Com`
 levels. It performs **no `Com` emission and no lowering out**: there is no
 `realLatticeDialect → jasminDialect` (or Veir) path, and it is not type-compatible
 with the emit-path leaves (which compute over `Fin n → BitVec 16`, not
@@ -242,7 +248,7 @@ end Fits
 
 /-! ## 5. The real NTT multiply, transported to a Mathlib polynomial
 
-`realNttMul` (from `LatticeNTTSound`) is the genuine CompPoly composite
+`realNttMul` (from `LatticeNTTSound`) is the CompPoly composite
 `invntt (basemul (ntt p) (ntt q))`, definitionally `fastMulImpl`. Under
 `Domain.fits` it computes the *cyclic* full product `p * q` in `CPolynomial`,
 and hence — via the ring hom `toPoly` — the product `p.toPoly * q.toPoly` in
@@ -301,7 +307,7 @@ operations (NOT the toy `id`s of `LatticeDialect`), the negacyclic reduction of
 the real NTT product equals the explicit negacyclic convolution of the encoded
 inputs.
 
-Reduction chain (each step a genuine theorem, none `rfl`):
+Reduction chain (each step a theorem, none `rfl`):
 
 * `realNttMul_toPoly` — `(realNttMul D (enc a) (enc b)).toPoly =
   (enc a).toPoly * (enc b).toPoly`, the *cyclic* product correctness
@@ -317,7 +323,7 @@ variable {q n : Nat} [Fact (Nat.Prime q)]
 
 /-- **Headline (concrete ML-KEM-style NTT soundness).**
 
-    With the genuine CompPoly NTT operations, the negacyclic reduction
+    With the CompPoly NTT operations, the negacyclic reduction
     `%ₘ (X^n + 1)` of the real NTT product `realNttMul D (enc a) (enc b)`
     (transported to a Mathlib `Polynomial`) has its `k`-th coefficient
     (`k < n`) equal to the explicit negacyclic convolution
@@ -333,7 +339,7 @@ variable {q n : Nat} [Fact (Nat.Prime q)]
       ML-KEM ring `Z_q[X] / (X^n + 1)`.
 
     Neither half is `rfl`: this is real convolution correctness plus the
-    genuine negacyclic reduction, not the definitional `polyMulCF = id ∘ …`
+    negacyclic reduction, not the definitional `polyMulCF = id ∘ …`
     of the toy dialect. -/
 theorem realNttMul_negacyclic_coeff
     (D : Domain (ZMod q)) (hD : 2 * n ≤ D.n) (hn : 0 < n)
@@ -377,7 +383,7 @@ downstream files `LatticeToJasminDenoteUncond` / `MlirPolynomialDialect` rely on
 those toy leaves, and the real ops are not even on the same representation).
 
 Instead `realLatticeDialect` is a *sibling* dialect whose value types denote to
-the genuine `CPolynomial (ZMod q)`, with the multiply ops backed by `realNttMul`.
+the `CPolynomial (ZMod q)`, with the multiply ops backed by `realNttMul`.
 -/
 
 open CatCrypt.Crypto.SecureCompilation.VIR (realNtt realBasemul realInvntt)
@@ -394,60 +400,27 @@ class NttDomains where
   /-- The NTT domain to use for modulus `q` (when `q` is prime). -/
   dom : (q : Nat) → [Fact (Nat.Prime q)] → Domain (ZMod q)
 
-/-- The real lattice dialect's value-type alphabet. As in `latticeDialect`,
-    `polyC` and `polyN` are *distinct* constructors (coefficient form vs NTT
-    form). Unlike the toy dialect, both denote to the genuine
-    `CPolynomial (ZMod q)`. -/
-inductive RealLatticeTy where
-  /-- Coefficient form over `Z_q[X]/(X^n+1)`. -/
-  | polyC (q n : Nat)
-  /-- NTT form. -/
-  | polyN (q n : Nat)
-  deriving DecidableEq
+/-- The real lattice dialect's value-type alphabet: the alphabet `latticeDialect`
+    already fixes, read at the polynomial semantics. `polyC` and `polyN` are
+    *distinct* constructors (coefficient form vs NTT form), and here both denote
+    to the `CPolynomial (ZMod q)`. -/
+abbrev RealLatticeTy := LatticeDialect.LatticeTyG .poly
 
 /-- Both forms denote to `CPolynomial (ZMod q)`: the real CompPoly polynomial
-    type, so the genuine NTT operations type-check directly. -/
+    type, so the NTT operations type-check directly. -/
 @[reducible] instance : TyDenote RealLatticeTy where
   denote
     | .polyC q _ => CPolynomial (ZMod q)
     | .polyN q _ => CPolynomial (ZMod q)
 
-/-- Operation tags for the real lattice dialect (same shape as `LatticeOp`). -/
-inductive RealLatticeOp where
-  /-- Forward NTT: `polyC q n → polyN q n`. -/
-  | ntt (q n : Nat)
-  /-- Inverse NTT: `polyN q n → polyC q n`. -/
-  | invntt (q n : Nat)
-  /-- NTT-domain base multiplication: `polyN q n → polyN q n → polyN q n`. -/
-  | basemul (q n : Nat)
-  /-- NTT-domain addition: `polyN q n → polyN q n → polyN q n`. -/
-  | polyAddN (q n : Nat)
-  /-- Coefficient-form multiplication: `polyC q n → polyC q n → polyC q n`. -/
-  | polyMulC (q n : Nat)
-  deriving DecidableEq
-
-/-- The real lattice dialect. -/
-@[reducible] def realLatticeDialect : Dialect :=
-  { Op := RealLatticeOp, Ty := RealLatticeTy }
-
-/-- Op signatures (matching `LatticeOp`'s shape). -/
-instance : DialectSignature realLatticeDialect where
-  sig op := match op with
-    | .ntt q n => [.polyC q n]
-    | .invntt q n => [.polyN q n]
-    | .basemul q n => [.polyN q n, .polyN q n]
-    | .polyAddN q n => [.polyN q n, .polyN q n]
-    | .polyMulC q n => [.polyC q n, .polyC q n]
-  ret op := match op with
-    | .ntt q n => .polyN q n
-    | .invntt q n => .polyC q n
-    | .basemul q n => .polyN q n
-    | .polyAddN q n => .polyN q n
-    | .polyMulC q n => .polyC q n
+/-- The lattice dialect under the polynomial semantics. Its op tags and op
+    signatures are the ones `LatticeDialect` already fixes; this is the same
+    syntax read over `CPolynomial (ZMod q)` instead of `Fin n → BitVec 16`. -/
+abbrev realLatticeDialect : Dialect := LatticeDialect.latticeDialectG .poly
 
 /-- **The real denotation.** `ntt` / `invntt` are the identity on the
     `CPolynomial` value (the NTT form *is* the same polynomial); `basemul` and
-    the coefficient-form `polyMulC` both denote via the genuine `realNttMul`
+    the coefficient-form `polyMulC` both denote via the `realNttMul`
     (CompPoly's `fastMulImpl`) over the modulus's NTT domain. The deep content —
     forward transform, pointwise NTT-domain product, inverse transform — lives
     inside `realNttMul`, so the round-trip `ntt ; basemul ; invntt` computes the
@@ -497,7 +470,7 @@ def realTgtCom : Com realLatticeDialect (realInCtxt q n) (.polyC q n) :=
         (.ret .here))))
 
 /-- **Rewrite soundness for the real ops.** The NTT-form rewrite preserves
-    `Com.denote` even with the genuine CompPoly operations: both the source
+    `Com.denote` even with the CompPoly operations: both the source
     (`polyMulC`) and the target (`invntt (basemul (ntt a) (ntt b))`) reduce to
     `realNttMul` applied to the two inputs, so they are *definitionally* equal.
     The deep NTT-domain content is carried inside `realNttMul`. -/
@@ -528,12 +501,12 @@ theorem realTgtCom_denote [ND : NttDomains] [Fact (Nat.Prime q)]
     into the dialect denotation, the negacyclic reduction `%ₘ (X^n + 1)` of the
     `Com.denote` of the one-multiply program `realSrcCom`, evaluated on the
     encoded inputs `enc a`, `enc b`, has its `k`-th coefficient (`k < n`) equal
-    to the genuine negacyclic convolution
+    to the negacyclic convolution
 
       `(Σ_{i+j=k} (enc a)ᵢ (enc b)ⱼ) − (Σ_{i+j=k+n} (enc a)ᵢ (enc b)ⱼ)`.
 
     This lifts the op-level `realNttMul_negacyclic_coeff` to `Com.denote`: the
-    dialect/Com NTT-mul denotes, under the real ops, to the genuine negacyclic
+    dialect/Com NTT-mul denotes, under the real ops, to the negacyclic
     product (via CompPoly). Not a definitional collapse — the value flows through
     `realNttMul` (cyclic NTT correctness) and the `negacyclic_mul_coeff` fold. -/
 theorem realSrcCom_negacyclic_coeff [ND : NttDomains] [Fact (Nat.Prime q)]
@@ -551,7 +524,7 @@ theorem realSrcCom_negacyclic_coeff [ND : NttDomains] [Fact (Nat.Prime q)]
 /-- **Com-level headline (NTT-expanded target).** The same negacyclic-product
     fact for the *expanded* bracket `invntt (basemul (ntt a) (ntt b))`
     (`realTgtCom`): its `Com.denote` on encoded inputs, reduced `%ₘ (X^n + 1)`,
-    is the genuine negacyclic convolution. This is the precise sense in which the
+    is the negacyclic convolution. This is the precise sense in which the
     NTT-mul bracket — wired through the verified VIR dialect denotation — computes
     the ML-KEM ring product. -/
 theorem realTgtCom_negacyclic_coeff [ND : NttDomains] [Fact (Nat.Prime q)]

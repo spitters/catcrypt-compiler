@@ -556,7 +556,7 @@ theorem hpFoldChain_denote_f16 :
       = some (specSlots (hpFoldSpec ldeKAT betaKAT 1) (List.range 16)) := by
   native_decide
 
-/-- **denote = the seed at all-zero counts** (identity — the counts genuinely
+/-- **denote = the seed at all-zero counts** (identity — the counts
     drive the phases; slot 16 still carries `beta`). -/
 theorem hpFoldChain_denote_zero :
     hpDenoteSlots 0 0 0 0 (List.range 17)
@@ -665,7 +665,7 @@ theorem grind_trips :
 
 /-! ## 5. Render the front-compiled fold chain to owned `.s` -/
 
-open CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulOwnedEmit
+open CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
   (fuseMulHiLprog)
 
 /-- The fold chain rendered: `hp_fri_fold_chain(buf, lde, n16, n8, n4, n2)`.

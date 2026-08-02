@@ -73,12 +73,9 @@ Honest residuals (named, not papered over):
 * The inline-nested **machine** fold (B5) is the remaining first half for §6's
   source-side tie; the nested-call route (`calleeRunDN`) is covered via §5.
 
-**0 sorries; axioms = {propext, Classical.choice, Quot.sound} + the
-pre-existing `aesSboxArrayW_size` `native_decide` (inherited from the
-`jasminDialect` denotation by every statement mentioning `Com.denote`, already
-carried by the imported `comToLprog_lsemMem`) (+ `Lean.ofReduceBool` for the §7
-concrete witness).** The `lsem→bytes` encoder + Sail tables remain the declared
-trusted base.
+**0 sorries; axioms = {propext, Classical.choice, Quot.sound} (+
+`Lean.ofReduceBool` for the §7 concrete witness).** The `lsem→bytes` encoder +
+Sail tables remain the declared trusted base.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTie

@@ -371,7 +371,7 @@ once, the verifier runs the `r = log₂(blowup·degree)` fold rounds.  We use th
 `[hash, fold]` round helper with the "hash" slot taken by the Poseidon2
 challenge-squeeze and the "fold" slot by the FRI fold kernel.
 
-Leaf names from the real Plonky3 owned-emit (`VIR/Plonky3*OwnedEmit.lean`,
+Leaf names from the real Plonky3 owned-emit (`VIR/Plonky3*Emit.lean`,
 `Plonky3FriFoldEmit.lean`): the Poseidon2 transcript permutation `"hp_perm16"`
 (the duplex permutation that absorbs the commitments and squeezes challenges, cf.
 the Poseidon2-perm row of `MoreKernelRegistryEntries`), the per-round challenge

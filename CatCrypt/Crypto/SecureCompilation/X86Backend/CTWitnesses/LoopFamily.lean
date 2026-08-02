@@ -3,7 +3,7 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedRHPProvenance
+import CatCrypt.Crypto.SecureCompilation.X86Backend.RHPProvenance
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTForCT
 import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarCompileCorrect
 
@@ -11,12 +11,12 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarCompileCorrect
 # Owned CT-provenance witnesses: scalar, bounded-loop, and regalloc'd blocks
 
 This module wires owned-emit blocks of the verified `LowCT → JInstr` backend
-into `OwnedRHPProvenance.MachineCTWitness.ownedConcrete`, the U2 CT-provenance
+into `RHPProvenance.MachineCTWitness.ownedConcrete`, the U2 CT-provenance
 route. Each witness carries a concrete `List (JInstr 64)` block together with
 an *unconditional* `∀ s₁ s₂, blockLeak s₁ b = blockLeak s₂ b` proof drawn from
-the backend's own CT keystones — so its `isCT` projection is axiom-free of
+the backend's own CT lemmas — so its `isCT` projection is axiom-free of
 `jasminc_preserves_ct` (the cited axiom is never touched). This is the
-`OwnedRHPProvenance.§4` piggyback applied to three further owned shapes.
+`RHPProvenance.§4` piggyback applied to three further owned shapes.
 
 ## What is wired
 
@@ -34,16 +34,16 @@ the backend's own CT keystones — so its `isCT` projection is axiom-free of
 
 ## Axiom-freeness
 
-Each witness's `isCT` is its own keystone proof term; `#print axioms` on the
+Each witness's `isCT` is its own CT proof term; `#print axioms` on the
 `*_axiomFree` lemmas below shows `jasminc_preserves_ct` absent. The
 `provenanceTag` of every witness is `CTProvenance.owned`. These are the
 `#print axioms`-checkable demonstrations the orchestrator runs.
 
 ## Import closure
 
-`OwnedRHPProvenance` (the witness type + the cited axiom it contrasts with),
-`LowCTForCT` (the loop keystone, transitively `LowCTToJInstrCT` for the scalar
-keystone), and `ScalarCompileCorrect` (the regalloc keystone). Nothing under
+`RHPProvenance` (the witness type + the cited axiom it contrasts with),
+`LowCTForCT` (the loop CT lemma, transitively `LowCTToJInstrCT` for the scalar
+CT lemma), and `ScalarCompileCorrect` (the regalloc CT lemma). Nothing under
 `Bridges/` or `IrisBridge/`.
 -/
 
@@ -51,7 +51,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.CTWitnesses
 
-open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedRHPProvenance
+open CatCrypt.Crypto.SecureCompilation.X86Backend.RHPProvenance
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTForCT
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarCompileCorrect
@@ -61,7 +61,7 @@ open CatCrypt.Crypto.Optimizer.RandomizedRegAlloc (renameBlock)
 
 /-- **Owned CT witness for a single scalar-arith assignment.** The owned block
     `lowerArith ρ p` (`mov ρdst, ρa ; ⟨op⟩ ρdst, ρb`) wired into `ownedConcrete`
-    via its unconditional CT keystone `lowerArith_constant_time`. -/
+    via its unconditional CT lemma `lowerArith_constant_time`. -/
 def scalarArithCTWitness (ρ : RegMap) (p : ArithSrc) : MachineCTWitness :=
   MachineCTWitness.ownedConcrete (lowerArith ρ p)
     (fun s₁ s₂ => lowerArith_constant_time ρ p s₁ s₂)
@@ -81,8 +81,8 @@ theorem scalarArithCTWitness_axiomFree (ρ : RegMap) (p : ArithSrc) :
 
 /-- **Owned CT witness for a bounded counter loop.** The owned unrolled block
     `lowerFor ρ f` of a literal-bound scalar-arith for-loop wired into
-    `ownedConcrete` via its unconditional CT keystone `lowerFor_constant_time`.
-    This is the loop-family analogue of `OwnedRHPProvenance.ownedKernelCTWitness`:
+    `ownedConcrete` via its unconditional CT lemma `lowerFor_constant_time`.
+    This is the loop-family analogue of `RHPProvenance.ownedKernelCTWitness`:
     the bounded loop is the shape `LprogControlFlow.loopLcmd` emits for every
     public-counter pass. -/
 def loopCTWitness (ρ : RegMap) (f : ForSrc) : MachineCTWitness :=
@@ -104,7 +104,7 @@ theorem loopCTWitness_axiomFree (ρ : RegMap) (f : ForSrc) :
 
 /-- **Owned CT witness for the register-allocated block.** The two-pass
     `allocate ∘ lower` output `renameBlock ρalloc (lowerSeq ρmap ps)` wired into
-    `ownedConcrete` via its unconditional CT keystone
+    `ownedConcrete` via its unconditional CT lemma
     `scalarCompileAlloc_constant_time`. This is the regalloc-bridge witness:
     register allocation rewrites names, not the direct-addressing structure, so
     the allocated block is still CT. -/

@@ -10,6 +10,8 @@ import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 /-!
 # CatCrypt VIR dialect
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 A `VIR.Dialect` whose `Op`/`Ty` mirror CryptoSSA's `CExpr`/`CryptoTy`.
 Target for `CProg → Com` structural translation.
 
@@ -92,7 +94,7 @@ inductive CatCryptOp where
   -- carry-out else `0`. `bvAdc w` additionally takes a carry-in
   -- `cin : BitVec w` (non-zero ↦ true). These mirror `CExpr.bvAdd64`/
   -- `CExpr.bvAdc` exactly (Jasmin's `#ADD_64`/`#ADC_64`), and their pure
-  -- denotation is the full `BitVec.adc` carry chain — the keystone op for
+  -- denotation is the full `BitVec.adc` carry chain — the central op for
   -- the bignum ALU spine over `runBlock`/`Com`.
   | bvAdd64 (w : Nat)
   | bvAdc (w : Nat)
@@ -579,7 +581,7 @@ instance catCryptDenote : DialectDenote catCryptDialect where
     | .extCall _ _ retTy => fun _ => CryptoTy.default retTy
     -- Pure compile interpretation of a sample = the deterministic zero-entropy leaf
     -- (`false` / `0`). The probabilistic meaning lives in `catCryptDenoteSP`; this
-    -- pure value is never the load-bearing meaning on the compile path.
+    -- pure value is never the operative meaning on the compile path.
     | .sampleBit => fun _ => false
     | .sampleBv n => fun _ => (0 : BitVec n)
     -- 128-bit SIMD lane semantics via the backend `SimdOp.denote` waist. The

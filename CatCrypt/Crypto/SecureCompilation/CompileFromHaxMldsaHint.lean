@@ -34,7 +34,7 @@ i.e. `1` iff the low part `a0` overflows the `±γ2` window, with the
 Each clause is a signed comparison; the **arithmetic** `>> 63` of a sign-extended
 `int32` is the all-ones/all-zeros sign mask, so the whole predicate is a
 straight-line sign-mask OR — no data-dependent branch (the owned
-`HintOwnedEmit.makeHintBody`, transcribed). The negation `0 − x` is the front's
+`HintEmit.makeHintBody`, transcribed). The negation `0 − x` is the front's
 `wrapping_sub` from a `0` literal (there is no `neg` head in the front's subset;
 `0 − x` denotes identically):
 
@@ -51,7 +51,7 @@ straight-line sign-mask OR — no data-dependent branch (the owned
 ## Width `w = 64`, two parameters `["a0", "a1"]`
 
 Both inputs are signed `int32` carried sign-extended in `BitVec 64` (the owned
-`HintOwnedEmit` convention). The sign bit lives in bit 63, so `BitVec.sshiftRight
+`HintEmit` convention). The sign bit lives in bit 63, so `BitVec.sshiftRight
 _ 63` is the all-ones/all-zeros sign mask — exactly the owned `sar 63`. `nIn = 2`:
 `a0 = inp 0`, `a1 = inp 1`.
 
@@ -69,7 +69,7 @@ the Barrett/Montgomery multiply-chain walls — a pure **comparison** of the two
 sign-extended `int32` operands, so it closes by pure-BitVec `bv_decide`
 (`mldsaMakeHintForm_eq_pred`, over the `int32`-band domain). The per-coefficient
 value-correctness against PQClean over the whole buffer is KAT-pinned in
-`HintOwnedEmit` (`make_hint_*`).
+`HintEmit` (`make_hint_*`).
 -/
 
 set_option autoImplicit false

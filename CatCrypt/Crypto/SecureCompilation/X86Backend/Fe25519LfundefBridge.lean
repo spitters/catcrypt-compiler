@@ -100,33 +100,20 @@ def fe25519LeavesAsm : String :=
     , Fe25519OpsKernel.feSubAsm
     , Fe25519OpsKernel.feMul121666Asm ]
 
-/-- Each leaf symbol appears as a `.globl` in the concatenated leaf `.s`. -/
-theorem fe25519LeavesAsm_has_mul :
-    BignumMontMulKernel.hasSub fe25519LeavesAsm ".globl fe25519_mul_x86_from_lean" := by
-  native_decide
+/- Each leaf symbol appears as a `.globl` in the concatenated leaf `.s`. -/
+#guard (BignumMontMulKernel.hasSub fe25519LeavesAsm ".globl fe25519_mul_x86_from_lean")
 
-theorem fe25519LeavesAsm_has_sqr :
-    BignumMontMulKernel.hasSub fe25519LeavesAsm ".globl fe25519_sqr_x86_from_lean" := by
-  native_decide
+#guard (BignumMontMulKernel.hasSub fe25519LeavesAsm ".globl fe25519_sqr_x86_from_lean")
 
-theorem fe25519LeavesAsm_has_add :
-    BignumMontMulKernel.hasSub fe25519LeavesAsm ".globl fe25519_add_x86_from_lean" := by
-  native_decide
+#guard (BignumMontMulKernel.hasSub fe25519LeavesAsm ".globl fe25519_add_x86_from_lean")
 
-theorem fe25519LeavesAsm_has_sub :
-    BignumMontMulKernel.hasSub fe25519LeavesAsm ".globl fe25519_sub_x86_from_lean" := by
-  native_decide
+#guard (BignumMontMulKernel.hasSub fe25519LeavesAsm ".globl fe25519_sub_x86_from_lean")
 
-theorem fe25519LeavesAsm_has_mul121666 :
-    BignumMontMulKernel.hasSub fe25519LeavesAsm ".globl fe25519_mul121666_x86_from_lean" := by
-  native_decide
+#guard (BignumMontMulKernel.hasSub fe25519LeavesAsm ".globl fe25519_mul121666_x86_from_lean")
 
-/-- The faithful `mulx`/`adcx`/`adox` mnemonics survive into the concatenated leaf
+/- The faithful `mulx`/`adcx`/`adox` mnemonics survive into the concatenated leaf
     `.s` (the ADX schoolbook the `LinstrR`/byte path cannot represent). -/
-theorem fe25519LeavesAsm_has_adx :
-    BignumMontMulKernel.hasSub fe25519LeavesAsm "mulx"
-      ∧ BignumMontMulKernel.hasSub fe25519LeavesAsm "adcx"
-      ∧ BignumMontMulKernel.hasSub fe25519LeavesAsm "adox" := by native_decide
+#guard (BignumMontMulKernel.hasSub fe25519LeavesAsm "mulx") && (BignumMontMulKernel.hasSub fe25519LeavesAsm "adcx") && (BignumMontMulKernel.hasSub fe25519LeavesAsm "adox")
 
 /-! ## 2. The `JInstr → LinstrR` lift (layer 2: the FULL `Lcmd` lift)
 
@@ -905,31 +892,23 @@ rendered `.s`, so the RFC 7748 byte-KAT (`bench/x25519_ladder`,
 def x25519ScalarmultAsm : String :=
   LprogAsmPrinter.renderLfundef "x25519_scalarmult" x25519ScalarmultLcmd
 
-/-- The generated body renders the 255-iteration ladder loop back-edge
+/- The generated body renders the 255-iteration ladder loop back-edge
     (`.L0:` … `jne .L0`) — the `.loop 0 "R13"` of the schedule. -/
-theorem x25519ScalarmultAsm_has_ladder_loop :
-    BignumMontMulKernel.hasSub x25519ScalarmultAsm ".L0:"
-      ∧ BignumMontMulKernel.hasSub x25519ScalarmultAsm "jne .L0" := by native_decide
+#guard (BignumMontMulKernel.hasSub x25519ScalarmultAsm ".L0:") && (BignumMontMulKernel.hasSub x25519ScalarmultAsm "jne .L0")
 
-/-- The generated body renders the sibling `call x25519_mono_step` inside the
+/- The generated body renders the sibling `call x25519_mono_step` inside the
     ladder loop (the byte-encoded add-and-double). -/
-theorem x25519ScalarmultAsm_has_step_call :
-    BignumMontMulKernel.hasSub x25519ScalarmultAsm "call x25519_mono_step" := by native_decide
+#guard (BignumMontMulKernel.hasSub x25519ScalarmultAsm "call x25519_mono_step")
 
-/-- The generated body renders the inversion chain's field-brick sibling calls
+/- The generated body renders the inversion chain's field-brick sibling calls
     (`call fe25519_mul`/`call fe25519_sqr`), including the ones inside the counted
     squaring-run loops. -/
-theorem x25519ScalarmultAsm_has_field_calls :
-    BignumMontMulKernel.hasSub x25519ScalarmultAsm "call fe25519_mul_x86_from_lean"
-      ∧ BignumMontMulKernel.hasSub x25519ScalarmultAsm "call fe25519_sqr_x86_from_lean"
-      := by native_decide
+#guard (BignumMontMulKernel.hasSub x25519ScalarmultAsm "call fe25519_mul_x86_from_lean") && (BignumMontMulKernel.hasSub x25519ScalarmultAsm "call fe25519_sqr_x86_from_lean")
 
-/-- The generated body renders MULTIPLE counted-loop back-edges: the ladder loop
+/- The generated body renders MULTIPLE counted-loop back-edges: the ladder loop
     (`.L0:`) plus the inversion squaring-run loops (`.L14:`, `.L15:`) — the
     multiple-sequential-loops the unifying front expresses. -/
-theorem x25519ScalarmultAsm_multiple_loops :
-    BignumMontMulKernel.hasSub x25519ScalarmultAsm ".L14:"
-      ∧ BignumMontMulKernel.hasSub x25519ScalarmultAsm ".L15:" := by native_decide
+#guard (BignumMontMulKernel.hasSub x25519ScalarmultAsm ".L14:") && (BignumMontMulKernel.hasSub x25519ScalarmultAsm ".L15:")
 
 /-- The whole-function owned-RA `Lfundef`: `x25519_scalarmult(out,k,u)` with the SysV
     3-pointer ABI (`out→RDI, k→RSI, u→RDX`). The body bare-writes `RBX/R12/R13/R14`

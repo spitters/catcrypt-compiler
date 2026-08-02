@@ -15,7 +15,7 @@ one structure: `BinOpHomOn φ dom src tgt` — a homomorphism along a decode map
 on a canonical sub-domain — and `BinOpRealization`/`eq_transfer` for the
 embedding-level (both-directions) case. The Montgomery-butterfly **combine** stage
 (`a + w·b`) is exactly a `BinOpHomOn`, and the pilot
-(`SecureCompilation/OwnedMontButterflyTransfer.lean`) generates its realization off
+(`SecureCompilation/MontButterflyTransfer.lean`) generates its realization off
 `BinOpHomOn.realizes`.
 
 But the *reduce* kernels — Montgomery REDC (`·R⁻¹ mod q`), Barrett (`· % q`),
@@ -56,8 +56,8 @@ single commuting square (decode-of-call = `barrettCondsub` of decode, the
 `decodeB_encodeB` round-trip) is packaged as a `UnaryHomOn` instance
 (`barrettUnaryHom`), and the `KernelRealizes` falls out of the bridge +
 `.realizes` — NOT the original file's hand `simp only [barrettCallSpec …] ; rw
-[decodeB_encodeB …]`. The honest comparison: the *square* still consumes
-`decodeB_encodeB` (the genuine byte-codec content — there is no free lunch), but
+[decodeB_encodeB …]`. The comparison: the *square* still consumes
+`decodeB_encodeB` (the byte-codec content — there is no free lunch), but
 the *plumbing* from square to `KernelRealizes` is now the engine's, identical to
 how the binary butterfly is generated. Same statement, same axioms.
 
@@ -182,7 +182,7 @@ We re-derive `ConcreteBarrettRealizer.barrett_realizes_concrete`
 The single commuting square — decoding the Barrett leaf-call equals
 `barrettCondsub q k` of the decoded input — is the `UnaryHomOn` obligation; it is
 discharged by the same `decodeB_encodeB` round-trip the original file uses (the
-genuine byte-codec content, unavoidable), but the step from square to
+byte-codec content, unavoidable), but the step from square to
 `KernelRealizes` is now `kernelRealizes_of_unaryHomOn`, NOT a hand `simp`/`rw`. -/
 
 namespace CatCrypt.Crypto.Bridges.ReprTransferUnary.BarrettViaUnary

@@ -130,6 +130,11 @@ def encodeVsimdInst : SimdOp → (d a b : Nat) → List (BitVec 8)
   | .packed .sub 64, d, a, b => encAvx2Alu 0xfb 0 d a b
   | .packed .mul 16, d, a, b => encAvx2Alu 0xd5 0 d a b
   | .packed _ _,     d, a, b => encAvx2Alu 0xfe 0 d a b
+  | .varShift .shl 32, d, a, b => encVex3 0b00010 0b01 0 0 0x47 d a b none
+  | .varShift .shl 64, d, a, b => encVex3 0b00010 0b01 1 0 0x47 d a b none
+  | .varShift .shr 32, d, a, b => encVex3 0b00010 0b01 0 0 0x45 d a b none
+  | .varShift .shr 64, d, a, b => encVex3 0b00010 0b01 1 0 0x45 d a b none
+  | .varShift _ _,   d, a, b => encVex3 0b00010 0b01 0 0 0x47 d a b none
   | .mulhi16,        d, a, b => encAvx2Alu 0xe5 0 d a b
 
 /-- Encode a `vpslldq`/`vpsrldq` byte-shift (`0F 73 /digit ib`, `/7`=SLL,

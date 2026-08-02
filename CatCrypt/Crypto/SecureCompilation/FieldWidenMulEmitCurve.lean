@@ -7,7 +7,7 @@ import CatCrypt.Crypto.SecureCompilation.MlkemNttFieldEmit
 import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulOwnedEmit
+import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
 
 /-!
 # `128×64 → 192` widening multiply for a curve field, OWNED x86 (front-generated)
@@ -156,7 +156,7 @@ def curveWiden128Lprog : Lprog :=
     `dst_lo == dst_hi` redundant low to a scratch. -/
 def curveWiden128Asm : String :=
   renderLprogAtt
-    (CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulOwnedEmit.fuseMulHiLprog
+    (CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit.fuseMulHiLprog
       curveWiden128Lprog true)
 
 /-- The byte-correct widening-mul owned-emit driver. -/
@@ -169,5 +169,12 @@ def emitWiden : IO Unit := do
 def widenRef (a0 a1 b0 : Nat) : Nat × Nat × Nat :=
   let p := (a1 * 2 ^ 64 + a0) * b0
   (p % 2 ^ 64, (p / 2 ^ 64) % 2 ^ 64, p / 2 ^ 128)
+
+/-! ## Artifact generation at elaboration
+
+The render is written while this module elaborates, so `lake` produces it from
+this file and no separate driver or Makefile rule carries the dependency. -/
+
+#eval emitWiden
 
 end CatCrypt.Crypto.SecureCompilation.FieldWidenMulEmitCurve

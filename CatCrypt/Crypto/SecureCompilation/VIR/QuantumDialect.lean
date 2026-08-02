@@ -12,6 +12,8 @@ set_option autoImplicit false
 /-!
 # Quantum dialect over VIR (Phase 1)
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 A `VIR.Dialect` whose `Op`/`Ty` mirror the existing `CatCrypt.Quantum.QuantumSSA`
 ops, plus the additions identified by the prior-art survey:
 

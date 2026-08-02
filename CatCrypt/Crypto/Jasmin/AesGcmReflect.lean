@@ -75,7 +75,7 @@ We follow the `mayoQuadFormN8Reified` / `falconVerifyReified` pattern: define
 the pure-Lean function for documentation/spec, register the leaf in the
 `LowCTPattern` registry via `@[rust_cmd_pattern]`, then **hand-build the
 `LowCT`** the reifier *would* produce. Downstream (`translate →
-cprogToJasminCom → emitAbiOrchRegPtr`) is the unmodified verified front.
+cryptoDialectToJasminCom → emitAbiOrchRegPtr`) is the unmodified verified front.
 
 ## References
 

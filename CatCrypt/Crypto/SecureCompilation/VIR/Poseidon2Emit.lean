@@ -802,13 +802,11 @@ theorem rc_table_sizes :
       ∧ rcIntFlat.length = 13 ∧ diagVFlat.length = 16 := by
   refine ⟨?_, ?_, ?_, ?_⟩ <;> rfl
 
-/-- The emitted text declares the `export fn` and renders the field reduction
+/- The emitted text declares the `export fn` and renders the field reduction
     fold (no opaque leaf: a real `regArith` body). -/
-theorem poseidon2Jazz_shape :
-    JasminPrint.strContains poseidon2Jazz "export fn poseidon2_bb(" = true
-      ∧ JasminPrint.strContains poseidon2Jazz "hi >>= 31; hi *= BBC;" = true
-      ∧ JasminPrint.strContains poseidon2Jazz "extCall" = false := by
-  refine ⟨?_, ?_, ?_⟩ <;> native_decide
+#guard (JasminPrint.strContains poseidon2Jazz "export fn poseidon2_bb(")
+    && (JasminPrint.strContains poseidon2Jazz "hi >>= 31; hi *= BBC;")
+    && !(JasminPrint.strContains poseidon2Jazz "extCall")
 
 /-! ## SIMD-vectorized variant: emit the FIFTEENTH ABI mode (#138) -/
 
@@ -904,15 +902,13 @@ def poseidon2SimdJazz : String :=
   "  return s;\n}\n\n" ++
   emitPoseidon2SimdBodyJazz ++ "\n"
 
-/-- The SIMD-vectorized `.jazz` declares the same `export fn poseidon2_bb`
+/- The SIMD-vectorized `.jazz` declares the same `export fn poseidon2_bb`
     ABI and contains the FIFTEENTH ABI mode's `__m256i` lane registers and
     the packed-u64 `#VPADD_4u64` add intrinsic. -/
-theorem poseidon2SimdJazz_shape :
-    JasminPrint.strContains poseidon2SimdJazz "export fn poseidon2_bb(" = true
-      ∧ JasminPrint.strContains poseidon2SimdJazz "reg u256 vlo vhi;" = true
-      ∧ JasminPrint.strContains poseidon2SimdJazz "#VPADD_4u64" = true
-      ∧ JasminPrint.strContains poseidon2SimdJazz "extCall" = false := by
-  refine ⟨?_, ?_, ?_, ?_⟩ <;> native_decide
+#guard (JasminPrint.strContains poseidon2SimdJazz "export fn poseidon2_bb(")
+    && (JasminPrint.strContains poseidon2SimdJazz "reg u256 vlo vhi;")
+    && (JasminPrint.strContains poseidon2SimdJazz "#VPADD_4u64")
+    && !(JasminPrint.strContains poseidon2SimdJazz "extCall")
 
 /-! ## Denotation preservation: SIMD emit equals scalar emit (#138)
 

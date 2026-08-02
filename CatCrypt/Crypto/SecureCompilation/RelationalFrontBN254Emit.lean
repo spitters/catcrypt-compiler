@@ -30,7 +30,7 @@ This mirrors the `G1`-body routing in
 field leaves route through the **same** owned front the bls12-381 `G1` body does,
 tying the BN254 relational front to the backend.
 
-## Honest scope
+## Scope of the claims
 
 The claims here are purely **structural lowering**: that the owned front accepts
 the rendered BN254 field-op bodies and emits one `Ccall` per op. We do **not**
@@ -83,33 +83,30 @@ def bn254ComposedJasmin := toJasminCmd bn254ComposedBody
 
 /-- **The BN254 base-field ADD routes through the bridge front.** The single
     `fp_add` leaf lowers to a one-node Jasmin call program. -/
-theorem bn254AddJasmin_length : bn254AddJasmin.length = 1 := by native_decide
+theorem bn254AddJasmin_length : bn254AddJasmin.length = 1 := rfl
 
 /-- Every node the front emits for the BN254 ADD is a `Ccall` — the op is
     fully lowered (no fall-through to an unhandled construct). -/
 theorem bn254AddJasmin_all_calls :
-    bn254AddJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := by
-  native_decide
+    bn254AddJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := rfl
 
 /-- **The BN254 base-field MUL routes through the bridge front.** The single
     `fp_mul` leaf lowers to a one-node Jasmin call program. -/
-theorem bn254MulJasmin_length : bn254MulJasmin.length = 1 := by native_decide
+theorem bn254MulJasmin_length : bn254MulJasmin.length = 1 := rfl
 
 /-- Every node the front emits for the BN254 MUL is a `Ccall` — fully lowered. -/
 theorem bn254MulJasmin_all_calls :
-    bn254MulJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := by
-  native_decide
+    bn254MulJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := rfl
 
 /-- **A composed BN254 base-field body routes through the bridge front.** The
     two `RSeq`-chained field ops (`r := a*b ; s := r+c`) lower to a two-node Jasmin
     call program — one `Ccall` per op — showing multi-op routing, the same shape
     the 34-node `g1AddJasmin` exercises. -/
-theorem bn254ComposedJasmin_length : bn254ComposedJasmin.length = 2 := by native_decide
+theorem bn254ComposedJasmin_length : bn254ComposedJasmin.length = 2 := rfl
 
 /-- Every node the front emits for the composed BN254 body is a `Ccall` —
     both ops fully lowered. -/
 theorem bn254ComposedJasmin_all_calls :
-    bn254ComposedJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := by
-  native_decide
+    bn254ComposedJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := rfl
 
 end CatCrypt.Crypto.SecureCompilation.RelationalFrontBN254Emit

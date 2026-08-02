@@ -10,13 +10,9 @@ import CatCrypt.Crypto.SecureCompilation.VIR.DialectLoweringTransport
 /-!
 # `cryptoDialectToJasminCom` is denotation-preserving — UNDER leaf agreement
 
-The `CProg`-free correctness twin of
-`CryptoToJasminComCorrect.cprogToJasminCom_denote_eq`. Where that file proves the
-`CProg → Com jasminDialect` lowering preserves denotation, this file proves the
-**dialect-native** lowering `cryptoDialectToJasminCom : Com catCryptDialect → Com
-jasminDialect` (from `DialectToJasminCom.lean`) preserves `Com.denote`, so the
-`CProg`-free compile path carries the same denotation-preservation guarantee its
-`CProg` predecessor has.
+This file proves that the lowering
+`cryptoDialectToJasminCom : Com catCryptDialect → Com jasminDialect` (from
+`DialectToJasminCom.lean`) preserves `Com.denote`.
 
 ## Why this twin is structurally cleaner than the `CProg` one
 
@@ -52,7 +48,7 @@ predicate `DialectJasminLeafAgrees`.
   transport and its commute lemmas (the `Ctxt.Var`-shaped analogues of the
   `CVar`-shaped `ctMapVal_lookup`/`ctMapVal_extend`).
 * `DialectJasminLeafAgrees` — the per-`Expr` leaf-agreement predicate over
-  `toJExprD`, threaded honestly into the induction (mirroring `JasminLeafAgrees`).
+  `toJExprD`, threaded through the induction (mirroring `JasminLeafAgrees`).
 * `cryptoDialectToJasminCom_denote_eq` — the **general** parametric preservation
   theorem, by induction on the `Com`. This is the must-have.
 * `dialectJasminLeafAgrees_holds` — the *unconditional* discharge of the leaf
@@ -157,20 +153,17 @@ By induction on the `Com`. The `.ret` case is exactly `ctMapValD_lookup`; the
 `.var` case uses `DialectJasminLeafAgrees` for the bound expression and the IH
 for the body, with the `ctMapValD_extend` commute step. The `Option`/fragment
 threading splits on the two `toJExprD` / recursive `cryptoDialectToJasminCom`
-matches and the `none` branches are vacuous (mirroring
-`cprogToJasminCom_denote_eq`, minus the `SPComp.pure` read-off). -/
+matches and the `none` branches are vacuous. -/
 
 /-- **Preservation (general), parametric over leaf agreement.** Under the leaf
-    agreement hypothesis `hLeaf`, the `CProg`-free front
-    `cryptoDialectToJasminCom` preserves denotation: whenever the front succeeds
+    agreement hypothesis `hLeaf`, `cryptoDialectToJasminCom` preserves denotation: whenever the front succeeds
     (`cryptoDialectToJasminCom com = some jcom`), the lowered Jasmin program on
     the transported valuation denotes to `ctTransTy` of the source dialect
     program's denotation.
 
     Since `ctTransTy` is the (computed) identity transport on the register/array
-    forms that the lowered fragment actually produces, this is exactly "the
-    lowering preserves the denotation". The dialect-native analogue of
-    `cprogToJasminCom_denote_eq`. -/
+    forms that the lowered fragment produces, this states that the lowering
+    preserves the denotation. -/
 theorem cryptoDialectToJasminCom_denote_eq
     (hLeaf : DialectJasminLeafAgrees)
     {Γ : Ctx} {t : CryptoTy} :
@@ -276,9 +269,8 @@ theorem leafAgrees_extCallD
 /-! ## 7. Hypothesis-free corollary
 
 With `dialectJasminLeafAgrees_holds` in hand, the general preservation theorem no
-longer needs to *assume* leaf agreement. This is the unconditional form a
-downstream caller wants — the dialect-native analogue of
-`cprogToJasminCom_denote_eq'`. -/
+longer needs to assume leaf agreement. This is the unconditional form a
+downstream caller wants. -/
 
 /-- The jasmin runtime-indexed load `JasminDialect.stackGet` agrees pointwise with
     the dialect runtime-indexed load `CatCryptDialect.memGetDyn`: the two are
@@ -567,6 +559,14 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
           rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword,
             ctTransTy_sword]
           cases args with | cons a t => cases t with | cons b t2 => rfl
+      | varShift b lw =>
+          cases hop
+          simp only [toJExprD, Option.some.injEq] at he; subst he
+          show SimdOp.denote (.varShift b lw) ((toJVarD args.head).lookup (ctMapValD V))
+            ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
+          rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword,
+            ctTransTy_sword]
+          cases args with | cons a t => cases t with | cons b t2 => rfl
       | mulhi16 =>
           cases hop
           simp only [toJExprD, Option.some.injEq] at he; subst he
@@ -633,10 +633,9 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
   | _ => simp only [toJExprD, reduceCtorEq] at he
 
 /-- **Preservation, unconditional.** `cryptoDialectToJasminCom_denote_eq` with the
-    leaf-agreement hypothesis discharged by `dialectJasminLeafAgrees_holds`. The
-    `CProg`-free front `cryptoDialectToJasminCom` preserves denotation on the
-    lowered fragment with no assumed hypothesis. The dialect-native analogue of
-    `cprogToJasminCom_denote_eq'`. -/
+    leaf-agreement hypothesis discharged by `dialectJasminLeafAgrees_holds`.
+    `cryptoDialectToJasminCom` preserves denotation on the lowered fragment with
+    no assumed hypothesis. -/
 theorem cryptoDialectToJasminCom_denote_eq' {Γ : Ctx} {t : CryptoTy}
     (com : Com catCryptDialect Γ t)
     (V : Ctxt.Valuation (d := catCryptDialect) Γ)

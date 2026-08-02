@@ -121,9 +121,26 @@ def normFp6 (ξ₂ : FpBLS377) (ξ₆ : Fp2_377) (x : Fp6_377) : Fp2_377 :=
     + mul₂ ξ₂ ξ₆ (mul₂ ξ₂ x.c2 (cof1 ξ₂ ξ₆ x))
     + mul₂ ξ₂ ξ₆ (mul₂ ξ₂ x.c1 (cof2 ξ₂ ξ₆ x))
 
+/-- **The `Fp6_377` norm is multiplicative** (`normFp6 ξ₂ ξ₆ (x * y) =
+    normFp6 ξ₂ ξ₆ x * normFp6 ξ₂ ξ₆ y`). Both sides are base-`Fp2_377` elements;
+    with the base multiply opaque (`hm`) the cubic determinant norm of a product
+    equals the product of norms as a polynomial identity over the `Fp2_377`
+    `CommRing`, closed by `ring`. This is the cubic-extension analogue of
+    `Fp2_377.norm_mul` and `Fp12_377.norm12_mul`. -/
+theorem normFp6_mul (ξ₂ : FpBLS377) (ξ₆ : Fp2_377) (x y : Fp6_377) :
+    letI := commRing ξ₂ ξ₆
+    letI := Fp2_377.commRing ξ₂
+    normFp6 ξ₂ ξ₆ (x * y) = normFp6 ξ₂ ξ₆ x * normFp6 ξ₂ ξ₆ y := by
+  letI := Fp2_377.commRing ξ₂
+  letI := commRing ξ₂ ξ₆
+  have hm : ∀ a b : Fp2_377, mul₂ ξ₂ a b = a * b := fun _ _ => rfl
+  show normFp6 ξ₂ ξ₆ (mulSchoolbook ξ₂ ξ₆ x y) = normFp6 ξ₂ ξ₆ x * normFp6 ξ₂ ξ₆ y
+  simp only [normFp6, cof0, cof1, cof2, mulSchoolbook, hm]
+  ring
+
 /-! ## 2. The cofactor identity `x · cofactor x = ⟨N, 0, 0⟩`
 
-The load-bearing determinant identity: multiplying `x` by its adjugate lands in
+The determinant identity: multiplying `x` by its adjugate lands in
 the base `Fp2_377` as the scalar norm `N` (the `v¹` and `v²` slots vanish). The
 base `Fp2_377` multiply is kept opaque (`hm`) so `ring` normalizes over the
 `Fp2_377` `CommRing`. -/

@@ -3,6 +3,7 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
+import CatCrypt.Crypto.Optimizer.GenericRegAlloc
 import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 
@@ -260,56 +261,65 @@ inductive Slot where
   | spilled (off : Int)
   deriving Repr, DecidableEq
 
+/-- The scan step of `linearScan`: `active` is the `(name, reg, lastUse)` map, `freeRegs`
+    the unassigned pool, `nextSpill` the next free frame offset, `acc` the decisions so
+    far, and the final argument the remaining live ranges in `defIdx` order. Consecutive
+    spill offsets advance by `stride`. -/
+def linearScanGo (stride : Int) (active : List (String × String × Nat))
+    (freeRegs : List String) (nextSpill : Int) (acc : List (String × Slot)) :
+    List LiveRange → List (String × Slot)
+  | [] => acc
+  | lr :: rest =>
+    -- expire intervals whose lastUse < this def
+    let (live, expired) := active.partition (fun a => lr.defIdx ≤ a.2.2)
+    let freed := freeRegs ++ expired.map (fun a => a.2.1)
+    match freed with
+    | reg :: more =>
+      linearScanGo stride ((lr.name, reg, lr.lastUse) :: live) more nextSpill
+         ((lr.name, .resident reg) :: acc) rest
+    | [] =>
+      -- pool full: spill the farthest-ending interval (or the newcomer)
+      let farthestActive := live.foldl
+        (fun (best : Option (String × String × Nat)) a =>
+          match best with
+          | none => some a
+          | some b => if a.2.2 > b.2.2 then some a else best) none
+      match farthestActive with
+      | some a =>
+        if a.2.2 > lr.lastUse then
+          -- spill the active value `a`, give its register to the newcomer
+          let live' := (live.filter (fun x => x.1 ≠ a.1))
+          linearScanGo stride ((lr.name, a.2.1, lr.lastUse) :: live') [] (nextSpill + stride)
+             ((lr.name, .resident a.2.1) :: (a.1, .spilled nextSpill) :: acc) rest
+        else
+          -- spill the newcomer itself
+          linearScanGo stride live [] (nextSpill + stride)
+            ((lr.name, .spilled nextSpill) :: acc) rest
+      | none =>
+        linearScanGo stride live [] (nextSpill + stride)
+          ((lr.name, .spilled nextSpill) :: acc) rest
+
 /-- Linear-scan core: walk the live ranges in `defIdx` order; keep an active map
     (name, reg, end). On a new def, reuse an expired register if available, else
     allocate a free pool register, else spill the active interval with the farthest
     `lastUse` (or the incoming name if it is farthest). Returns name ↦ `Slot`.
 
-    `spillBase` byte-offsets are assigned sequentially from `frameBase`; each spilled
-    name gets a distinct 8-byte cell, so two live spills never alias. -/
-def linearScan (pinned : GpAlloc) (frameBase : Int) (lrs : List LiveRange) :
-    List (String × Slot) :=
-  let pool := allocPool pinned
-  -- active : (name, reg, lastUse); freeRegs : remaining pool; nextSpill : next slot offset
-  let rec go (active : List (String × String × Nat)) (freeRegs : List String)
-      (nextSpill : Int) (acc : List (String × Slot)) :
-      List LiveRange → List (String × Slot)
-    | [] => acc
-    | lr :: rest =>
-      -- expire intervals whose lastUse < this def
-      let (live, expired) := active.partition (fun a => lr.defIdx ≤ a.2.2)
-      let freed := freeRegs ++ expired.map (fun a => a.2.1)
-      match freed with
-      | reg :: more =>
-        go ((lr.name, reg, lr.lastUse) :: live) more nextSpill
-           ((lr.name, .resident reg) :: acc) rest
-      | [] =>
-        -- pool full: spill the farthest-ending interval (or the newcomer)
-        let farthestActive := live.foldl
-          (fun (best : Option (String × String × Nat)) a =>
-            match best with
-            | none => some a
-            | some b => if a.2.2 > b.2.2 then some a else best) none
-        match farthestActive with
-        | some a =>
-          if a.2.2 > lr.lastUse then
-            -- spill the active value `a`, give its register to the newcomer
-            let live' := (live.filter (fun x => x.1 ≠ a.1))
-            go ((lr.name, a.2.1, lr.lastUse) :: live') [] (nextSpill + 8)
-               ((lr.name, .resident a.2.1) :: (a.1, .spilled nextSpill) :: acc) rest
-          else
-            -- spill the newcomer itself
-            go live [] (nextSpill + 8) ((lr.name, .spilled nextSpill) :: acc) rest
-        | none =>
-          go live [] (nextSpill + 8) ((lr.name, .spilled nextSpill) :: acc) rest
-  go [] pool frameBase [] (lrs.mergeSort (fun a b => a.defIdx ≤ b.defIdx))
+    Frame byte-offsets are assigned sequentially from `frameBase`, advancing by
+    `stride` — the byte width of one allocated value, so that two live spills cover
+    disjoint byte ranges (`linearScan_slotsSeparated`). The default `8` is the
+    general-purpose word, the width of every `JInstr 64` value. -/
+def linearScan (pinned : GpAlloc) (frameBase : Int) (lrs : List LiveRange)
+    (stride : Int := 8) : List (String × Slot) :=
+  linearScanGo stride [] (allocPool pinned) frameBase []
+    (lrs.mergeSort (fun a b => a.defIdx ≤ b.defIdx))
 
 /-- The spill decisions: `name ↦ Slot` for every name, computed by the linear scan
     over the block's live ranges. The hot ladder values that fit the pool become
-    `resident`; the cold ones become `spilled` at distinct frame cells. -/
-def spillAlloc (pinned : GpAlloc) (spillFrameBase : Int) (block : List (JInstr 64)) :
-    List (String × Slot) :=
-  linearScan pinned spillFrameBase (liveRanges block)
+    `resident`; the cold ones become `spilled` at distinct frame cells `stride` bytes
+    apart. -/
+def spillAlloc (pinned : GpAlloc) (spillFrameBase : Int) (block : List (JInstr 64))
+    (stride : Int := 8) : List (String × Slot) :=
+  linearScan pinned spillFrameBase (liveRanges block) stride
 
 /-! ### 3b. Pin-aware allocation: keep the MULX multiplier in `%rdx` (#426)
 
@@ -362,15 +372,16 @@ def mulxMultiplierNames (block : List (JInstr 64)) : List String :=
     * the per-program-point printer can elide the `movq → %rdx` before each multiply
       (its `src1` is already resident in `%rdx`).
     The remaining names run through the ordinary pool linear scan (with `%rdx` already
-    reserved by `pinned`, e.g. `framePinsRA`). The multiplier decisions are *prepended*
-    so `decisions.lookup` (first-wins) returns `%rdx` for them. -/
-def spillAllocPinned (pinned : GpAlloc) (spillFrameBase : Int) (block : List (JInstr 64)) :
-    List (String × Slot) :=
+    reserved by `pinned`, e.g. `framePinsRA`) at frame stride `stride`. The multiplier
+    decisions are *prepended* so `decisions.lookup` (first-wins) returns `%rdx` for
+    them. -/
+def spillAllocPinned (pinned : GpAlloc) (spillFrameBase : Int) (block : List (JInstr 64))
+    (stride : Int := 8) : List (String × Slot) :=
   let mults := mulxMultiplierNames block
   let multDecisions : List (String × Slot) := mults.map (fun n => (n, .resident mulxMultReg))
   -- the live ranges of every NON-multiplier name (the multipliers go to %rdx directly)
   let restLrs := (liveRanges block).filter (fun lr => ¬ mults.contains lr.name)
-  multDecisions ++ linearScan pinned spillFrameBase restLrs
+  multDecisions ++ linearScan pinned spillFrameBase restLrs stride
 
 /-- Count of names that ended up spilled (the metric the deliverable reports). -/
 def spillCount (decisions : List (String × Slot)) : Nat :=
@@ -528,6 +539,107 @@ runtime KAT vs RFC 7748 + s2n. Stating (1)+(2) as a `SpillWellFormed` predicate 
 threading it through a `spillReloadBlock_runBlock` induction is the remaining work
 for the unconditional whole-program theorem; the per-spill core is done. -/
 
+/-! ### 6b. Byte separation of the frame slots
+
+`Slot.spilled off` records a **byte** offset, and a spilled value of byte width `width`
+occupies `[off, off + width)`. Two slots are usable independently exactly when those
+ranges are disjoint — `GenericRegAlloc.SepAt`, which is strictly stronger than offset
+distinctness (at `width = 32` the offsets `0` and `8` are distinct and overlap).
+
+The condition is discharged from `linearScan`'s frame stride: consecutive spill offsets
+advance by `stride`, so at `width ≤ stride` the offsets are pairwise separated. -/
+
+/-- The spilled byte offsets recorded in `decisions`. -/
+def linearScanSpillOffsets (decisions : List (String × Slot)) : List Int :=
+  decisions.filterMap (fun d => match d.2 with | .spilled off => some off | _ => none)
+
+/-- The scan invariant: an offset already emitted lies at least `stride` below the next
+    free offset, so every new slot is separated from all earlier ones. -/
+theorem linearScanGo_pairwise (width : Nat) (stride : Int) (hw : (width : Int) ≤ stride) :
+    ∀ (lrs : List LiveRange) (active : List (String × String × Nat)) (freeRegs : List String)
+      (nextSpill : Int) (acc : List (String × Slot)),
+      (∀ o ∈ linearScanSpillOffsets acc, o + stride ≤ nextSpill) →
+      (linearScanSpillOffsets acc).Pairwise (GenericRegAlloc.SepAt width) →
+      (linearScanSpillOffsets (linearScanGo stride active freeRegs nextSpill acc lrs)).Pairwise
+        (GenericRegAlloc.SepAt width) := by
+  have hw0 : (0 : Int) ≤ (width : Int) := Int.natCast_nonneg _
+  intro lrs
+  induction lrs with
+  | nil => intro active freeRegs nextSpill acc _ hp; exact hp
+  | cons lr rest ih =>
+    intro active freeRegs nextSpill acc hacc hp
+    have hres : ∀ (l : List (String × Slot)), linearScanSpillOffsets l = linearScanSpillOffsets acc →
+        ((∀ o ∈ linearScanSpillOffsets l, o + stride ≤ nextSpill)
+          ∧ (linearScanSpillOffsets l).Pairwise (GenericRegAlloc.SepAt width)) := by
+      intro l hl
+      rw [hl]; exact ⟨hacc, hp⟩
+    have hspill : ∀ (l : List (String × Slot)),
+        linearScanSpillOffsets l = nextSpill :: linearScanSpillOffsets acc →
+        ((∀ o ∈ linearScanSpillOffsets l, o + stride ≤ nextSpill + stride)
+          ∧ (linearScanSpillOffsets l).Pairwise (GenericRegAlloc.SepAt width)) := by
+      intro l hl
+      rw [hl]
+      refine ⟨?_, ?_⟩
+      · intro o ho
+        rcases List.mem_cons.mp ho with h | h
+        · omega
+        · have := hacc o h; omega
+      · refine List.pairwise_cons.mpr ⟨?_, hp⟩
+        intro b hb
+        have := hacc b hb
+        exact Or.inr (by omega)
+    simp only [linearScanGo]
+    split
+    · exact ih _ _ nextSpill _ (hres _ rfl).1 (hres _ rfl).2
+    · split
+      · split
+        · exact ih _ _ _ _ (hspill _ rfl).1 (hspill _ rfl).2
+        · exact ih _ _ _ _ (hspill _ rfl).1 (hspill _ rfl).2
+      · exact ih _ _ _ _ (hspill _ rfl).1 (hspill _ rfl).2
+
+/-- **The linear scan's frame stride discharges the byte-separation obligation.** When
+    the stride is at least the byte width of one allocated value, the slots `linearScan`
+    assigns cover pairwise-disjoint byte ranges, which is what a spill/reload argument
+    over a byte-addressed frame (`Optimizer.ByteMemMachine`) consumes. At `width > stride`
+    the hypothesis fails to apply: a 32-byte value spilled by the default 8-byte scan has
+    overlapping slots. -/
+theorem linearScan_slotsSeparated (width : Nat) (pinned : GpAlloc) (frameBase : Int)
+    (lrs : List LiveRange) (stride : Int) (hw : (width : Int) ≤ stride) :
+    (linearScanSpillOffsets (linearScan pinned frameBase lrs stride)).Pairwise
+      (GenericRegAlloc.SepAt width) :=
+  linearScanGo_pairwise width stride hw _ [] (allocPool pinned) frameBase []
+    (by simp [linearScanSpillOffsets]) (by simp [linearScanSpillOffsets])
+
+/-- The same for `spillAlloc`: a block's spill decisions are byte-separated at any value
+    width the frame stride covers. -/
+theorem spillAlloc_slotsSeparated (width : Nat) (pinned : GpAlloc) (frameBase : Int)
+    (block : List (JInstr 64)) (stride : Int) (hw : (width : Int) ≤ stride) :
+    (linearScanSpillOffsets (spillAlloc pinned frameBase block stride)).Pairwise
+      (GenericRegAlloc.SepAt width) :=
+  linearScan_slotsSeparated width pinned frameBase _ stride hw
+
+/-- **The pin-aware allocation is separated too**: the prepended `%rdx` multiplier
+    decisions are all `resident`, so they contribute no frame offset and the offsets are
+    exactly the inner linear scan's. -/
+theorem spillAllocPinned_slotsSeparated (width : Nat) (pinned : GpAlloc) (frameBase : Int)
+    (block : List (JInstr 64)) (stride : Int) (hw : (width : Int) ≤ stride) :
+    (linearScanSpillOffsets (spillAllocPinned pinned frameBase block stride)).Pairwise
+      (GenericRegAlloc.SepAt width) := by
+  have hmul : ∀ (ns : List String),
+      linearScanSpillOffsets (ns.map (fun n => (n, Slot.resident mulxMultReg))) = [] := by
+    intro ns; simp [linearScanSpillOffsets]
+  have happ : linearScanSpillOffsets (spillAllocPinned pinned frameBase block stride)
+      = linearScanSpillOffsets (linearScan pinned frameBase
+          ((liveRanges block).filter (fun lr => ¬ (mulxMultiplierNames block).contains lr.name))
+          stride) := by
+    simp only [spillAllocPinned, linearScanSpillOffsets, List.filterMap_append]
+    rw [show ((mulxMultiplierNames block).map
+        (fun n => (n, Slot.resident mulxMultReg))).filterMap
+        (fun d => match d.2 with | .spilled off => some off | _ => none) = []
+      from hmul _, List.nil_append]
+  rw [happ]
+  exact linearScan_slotsSeparated width pinned frameBase _ stride hw
+
 /-! ## 7. Live-range sanity (testable)
 
 A few `native_decide`-checked facts on a tiny straight-line body, confirming the
@@ -556,7 +668,7 @@ theorem sanity_liveranges_wellformed :
       (fun lr => lr.defIdx ≤ lr.lastUse ∧ lr.lastUse < sanityBody.length) = true := by
   native_decide
 
-/-! ## 8. The spilling capability `allocGp` lacks (the keystone demonstrator)
+/-! ## 8. The spilling capability `allocGp` lacks (the demonstrator)
 
 A body with **more simultaneously-live names than the pool** is exactly where a
 non-spilling allocator fails: `AsmPrinter.allocGp` truncates the overflow to the

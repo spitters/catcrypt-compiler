@@ -21,7 +21,7 @@ externally compiled leaf binary computes the modelled leaf semantics
 
 That rationale is correct **for adopted external leaves** (libjade / libcrux /
 the AUCurves Rocq-jasmin pairing tower): we never built those binaries, so their
-machine semantics lives outside Lean and the edge is genuinely an FFI
+machine semantics lives outside Lean and the edge is an FFI
 assumption.
 
 It is **not** correct for leaves emitted through the *owned* in-Lean x86 backend
@@ -65,7 +65,7 @@ makes that split a citable Lean object, mirroring #200's
   (M) holds **via the model**, as a theorem — the analogue of #200's
   `leafEdge_doublyCorroborated` first (unconditional) component, but now for the
   emitted-binary side rather than only the front lowering.
-* `OwnedBackendLeafResidual` (residual): the precisely-scoped named edge that
+* `BackendLeafResidual` (residual): the precisely-scoped named edge that
   *does* remain for an owned-backend leaf — sub-edges (E)+(C), the
   `AsmPrinter`-encoding + CPU-executes-the-model edge — both #281-grounded
   (`AsmPrinter.renderJInstr`, and the differential pins in
@@ -114,7 +114,7 @@ inductive LeafProvenance where
   | ownedBackend
   /-- Adopted external leaf (libjade / libcrux / AUCurves Rocq-jasmin): a binary
       Lean never produced and has no operational model of. The whole
-      `LeafFFIValidated` edge genuinely remains an FFI assumption. -/
+      `LeafFFIValidated` edge remains an FFI assumption. -/
   | adoptedExternal
   deriving DecidableEq, Repr
 
@@ -127,7 +127,7 @@ inductive LeafProvenance where
     `LeafSem` of `LeafAxiomConsolidation`: it is the state-to-state function the
     leaf is supposed to compute. For an owned-backend leaf, agreement of the
     *modelled* machine semantics with this spec is checkable in Lean. -/
-structure OwnedBackendLeaf (w : Nat) where
+structure BackendLeaf (w : Nat) where
   /-- The straight-line instruction block emitted by the backend. -/
   block   : List (JInstr w)
   /-- The intended state-transformer spec the leaf implements. -/
@@ -153,7 +153,7 @@ semantics is in Lean. -/
     `LeafAxiomConsolidation.LeafFFIValidated`, except that here the "machine
     semantics" is the in-Lean `lowerBlock`/`runBlock` model, so the predicate is
     a *provable* Lean statement rather than an FFI assumption. -/
-def LeafModelAgrees {w : Nat} (leaf : OwnedBackendLeaf w) : Prop :=
+def LeafModelAgrees {w : Nat} (leaf : BackendLeaf w) : Prop :=
   ∀ s : JState w,
     (lowerBlock (Γ := []) leaf.block).denote (.cons s .nil) = leaf.leafSem s
 
@@ -178,13 +178,13 @@ theorem leafModelAgrees_of_runBlock {w : Nat} (block : List (JInstr w)) :
 The two-limb add-with-carry `r = a + b` (`add a0,b0; adc a1,b1`) emitted through
 the owned backend. Its lowering correctness is `Add2Kernel.add2_lowering_correct`
 (an instance of `lowerBlock_denote_closed`); its value semantics is pinned by
-`Add2Kernel.add2_computes_sum`. We package it as an `OwnedBackendLeaf` and
+`Add2Kernel.add2_computes_sum`. We package it as an `BackendLeaf` and
 discharge its FFI sub-edge (M) *via the machine model*. -/
 
 /-- The owned-backend `add2` leaf: the emitted `add2Block`, with its intended
     spec being the backend's own `runBlock` transform (the validated x86 model).
     Provenance is `ownedBackend`: Lean has the operational model. -/
-def add2Leaf : OwnedBackendLeaf 64 :=
+def add2Leaf : BackendLeaf 64 :=
   { block := Add2Kernel.add2Block
     leafSem := fun s => runBlock s Add2Kernel.add2Block }
 
@@ -259,7 +259,7 @@ theorem, and only the per-leaf-independent encode/execute edge is trusted. -/
     the ADX-trio / NOT/NEG / packed-op pins). It is a named hypothesis supplied
     by the validator, never a bare global `axiom` — exactly the #200 discipline,
     but now carrying *only* the execution edge, not the value semantics. -/
-def CpuMatchesModel {w : Nat} (_leaf : OwnedBackendLeaf w) : Prop := True
+def CpuMatchesModel {w : Nat} (_leaf : BackendLeaf w) : Prop := True
 
 /-- **The reduced residual trust edge for an owned-backend leaf.** A record of the
     two sub-edges that remain *after* (M) is discharged inside Lean. It is
@@ -277,7 +277,7 @@ def CpuMatchesModel {w : Nat} (_leaf : OwnedBackendLeaf w) : Prop := True
     * `cpuMatchesModel`: the (C) sub-edge `CpuMatchesModel leaf`, warranted by
       the `TranslationValidation` differential pins (#281), supplied by the
       validator. -/
-structure OwnedBackendLeafResidual {w : Nat} (leaf : OwnedBackendLeaf w) : Prop where
+structure BackendLeafResidual {w : Nat} (leaf : BackendLeaf w) : Prop where
   /-- (E) The `AsmPrinter` renders every instruction of the leaf to a non-empty
       line — the printer is defined on the whole emitted subset. -/
   printerEncodes :
@@ -300,7 +300,7 @@ theorem add2_printerEncodes :
     1. sub-edge (M) — the value-semantics half — is a **Lean theorem**
        (`add2_leaf_machineModelDischarged`), discharged by the in-Lean
        operational model; and
-    2. the residual reduces to `OwnedBackendLeafResidual`, whose printer half (E)
+    2. the residual reduces to `BackendLeafResidual`, whose printer half (E)
        is itself proved here (the printer is total on `add2Block`), leaving only
        the CPU=model edge (C) — the #281-grounded differential warrant — to be
        supplied.
@@ -310,7 +310,7 @@ theorem add2_printerEncodes :
     emitted-binary edge. Here that edge has split, and its value-semantics half
     is gone into Lean. -/
 theorem add2_leaf_split (hCpu : CpuMatchesModel add2Leaf) :
-    LeafModelAgrees add2Leaf ∧ OwnedBackendLeafResidual add2Leaf :=
+    LeafModelAgrees add2Leaf ∧ BackendLeafResidual add2Leaf :=
   ⟨add2_leaf_machineModelDischarged,
    { printerEncodes := add2_printerEncodes, cpuMatchesModel := hCpu }⟩
 

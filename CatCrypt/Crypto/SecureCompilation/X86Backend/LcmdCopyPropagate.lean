@@ -91,7 +91,7 @@ executed at some `p₀ < p` in the same segment, and no instruction in
 its explicit `.reg` destinations — ops with implicit register writes are
 outside the alphabet and barrier the segment). Hence at `p` the machine
 satisfies `d = s` (w = 64) or `low32 d = low32 s` (w = 32, and then
-`high32 d = 0`). Rewriting a genuinely-read source operand of effective
+`high32 d = 0`). Rewriting a read source operand of effective
 width ≤ w therefore reads the *identical value*, so the rewritten instruction
 computes the same result and sets the same flags; skipped positions
 (self-sources, address registers) keep the rendered text's read set intact.
@@ -109,7 +109,7 @@ is, as always, the external byte-KAT.
 ## Ordering with the other post-passes
 
 Run this pass LAST, after any structural fuser (`AdxChainFuse.fuseAdxChain`,
-`FheMontMulOwnedEmit.fuseMulHiLprog`): those match exact operand patterns
+`FheMontMulEmit.fuseMulHiLprog`): those match exact operand patterns
 that a rewrite could break (their families are barriers here, so running
 after them is also *safe*, merely less effective if run before). Wiring
 pattern (per-emitter opt-in, byte-KAT before wider adoption):

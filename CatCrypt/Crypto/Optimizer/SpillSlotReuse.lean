@@ -3,6 +3,7 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
+import CatCrypt.Crypto.Optimizer.GenericRegAlloc
 import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
 import CatCrypt.Crypto.SecureCompilation.X86Backend.RegAllocSpillCT
 
@@ -10,8 +11,8 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.RegAllocSpillCT
 # Spill-slot **reuse**: pack non-overlapping spilled names onto shared frame cells (P6)
 
 The spilling allocator (`SpillingRegAlloc.linearScan`) gives every spilled name a
-**distinct** 8-byte frame cell: its `nextSpill` offset only ever advances, never
-reuses an expired slot. That keeps the multi-spill distinct-cell invariant trivial
+**distinct** frame cell one `stride` wide: its `nextSpill` offset only ever advances,
+never reuses an expired slot. That keeps the multi-spill distinct-cell invariant trivial
 (`SpillingRegAlloc.lean §6`, `WholeProgramResidence`), but it bloats the frame: a
 body that spills `k` names over its lifetime reserves `k` cells even when most of
 those names are never simultaneously live. A larger frame is a larger stack
@@ -67,15 +68,15 @@ module:
 ## Deferred merge-time integration
 
 To realise the frame-size win in the emitted allocator, replace the distinct-cell
-offset assignment in `SpillingRegAlloc.linearScan` — the `nextSpill`/`nextSpill + 8`
+offset assignment in `SpillingRegAlloc.linearScan` — the `nextSpill`/`nextSpill + stride`
 threading that hands each spilled name a fresh cell — with a post-pass that runs
 `reuseSlots` over the names `linearScan` marked `Slot.spilled`, remapping their
 offsets onto the packed palette. The validity certificate `slotReuseValid` on the
 block's `liveRanges` then certifies the remap sound. That edit lands in
 `SpillingRegAlloc.spillAlloc`/`linearScan` (the other terminal's hot file); it is
 **not** performed here — this module builds the reuse layer on top by import, and
-the integration point is the `nextSpill + 8` advance in `linearScan`'s `[]`/spill
-arms (`SpillingRegAlloc.lean:298,302,304`).
+the integration point is the `nextSpill + stride` advance in
+`SpillingRegAlloc.linearScanGo`'s spill arms.
 -/
 
 set_option autoImplicit false
@@ -135,34 +136,44 @@ def packStep (lr : LiveRange) (freshOff : Int) (used : List (Int × Nat)) :
     -- open a fresh offset
     (freshOff, used ++ [(freshOff, lr.lastUse)])
 
+/-- The packing step of `reuseAssign`: `used` records each opened offset with its current
+    occupant's `lastUse`, `nextFresh` is the next unopened offset, `acc` the assignment so
+    far, and the final argument the remaining spilled ranges in `defIdx` order. A fresh
+    offset advances the cursor by `stride`. -/
+def reuseAssignGo (stride : Int) (used : List (Int × Nat)) (nextFresh : Int)
+    (acc : List (String × Int)) : List LiveRange → List (String × Int)
+  | [] => acc.reverse
+  | lr :: rest =>
+    let (off, used') := packStep lr nextFresh used
+    -- advance the fresh cursor only if we actually opened `nextFresh`
+    let nextFresh' := if off = nextFresh ∧ ¬ used.any (fun p => p.1 = nextFresh)
+                      then nextFresh + stride else nextFresh
+    reuseAssignGo stride used' nextFresh' ((lr.name, off) :: acc) rest
+
 /-- The greedy packing of the spilled names onto shared offsets. Returns the
-    name ↦ offset assignment. `freshBase`/stride `8` mirror `linearScan`'s frame
-    cells; a fresh offset is opened only when no freed one fits. -/
-def reuseAssign (freshBase : Int) (spilled : List LiveRange) : List (String × Int) :=
-  let rec go (used : List (Int × Nat)) (nextFresh : Int) (acc : List (String × Int)) :
-      List LiveRange → List (String × Int)
-    | [] => acc.reverse
-    | lr :: rest =>
-      let (off, used') := packStep lr nextFresh used
-      -- advance the fresh cursor only if we actually opened `nextFresh`
-      let nextFresh' := if off = nextFresh ∧ ¬ used.any (fun p => p.1 = nextFresh)
-                        then nextFresh + 8 else nextFresh
-      go used' nextFresh' ((lr.name, off) :: acc) rest
-  go [] freshBase [] spilled
+    name ↦ offset assignment. A fresh offset is opened only when no freed one fits.
+
+    `freshBase`/`stride` mirror `linearScan`'s frame cells: `stride` is the byte width of
+    one spilled value, so the offsets the packer opens lie on the `freshBase + k * stride`
+    grid and two *distinct* offsets cover disjoint byte ranges
+    (`reuseAssign_slotsSeparated`). The default `8` is the general-purpose word. -/
+def reuseAssign (freshBase : Int) (spilled : List LiveRange) (stride : Int := 8) :
+    List (String × Int) :=
+  reuseAssignGo stride [] freshBase [] spilled
 
 /-- **The reuse slot map.** Given the original (distinct-cell) slot map and the
     block's live ranges, repack the *spilled* names onto shared frame offsets by the
     greedy left-edge algorithm. Names the original kept resident stay resident. -/
-def reuseSlots (slots : String → Option Int) (freshBase : Int) (lrs : List LiveRange) :
-    String → Option Int :=
-  slotMapOf (reuseAssign freshBase (spilledRanges slots lrs))
+def reuseSlots (slots : String → Option Int) (freshBase : Int) (lrs : List LiveRange)
+    (stride : Int := 8) : String → Option Int :=
+  slotMapOf (reuseAssign freshBase (spilledRanges slots lrs) stride)
 
 /-- The number of **distinct** frame offsets the reuse map uses — the frame-size win
     metric. `≤` the distinct-cell spill count, and `=` the peak simultaneous-spill
     count for the greedy left-edge packing. -/
-def reuseSlotCount (slots : String → Option Int) (freshBase : Int) (lrs : List LiveRange) :
-    Nat :=
-  let assign := reuseAssign freshBase (spilledRanges slots lrs)
+def reuseSlotCount (slots : String → Option Int) (freshBase : Int) (lrs : List LiveRange)
+    (stride : Int := 8) : Nat :=
+  let assign := reuseAssign freshBase (spilledRanges slots lrs) stride
   (assign.map Prod.snd).dedup.length
 
 /-! ## 3. The decidable validity certificate
@@ -192,9 +203,168 @@ def slotReuseValid (assign : List (String × Int)) (lrs : List LiveRange) : Bool
 
 /-- Validity of the slot map a `reuseAssign` produced, against the live ranges. The
     `slotReuseValid`-on-the-packer's-output form the demo checks. -/
-def reuseAssignValid (freshBase : Int) (spilled : List LiveRange) (lrs : List LiveRange) :
-    Bool :=
-  slotReuseValid (reuseAssign freshBase spilled) lrs
+def reuseAssignValid (freshBase : Int) (spilled : List LiveRange) (lrs : List LiveRange)
+    (stride : Int := 8) : Bool :=
+  slotReuseValid (reuseAssign freshBase spilled stride) lrs
+
+/-! ### 3b. Byte separation of the distinct offsets the packer opens
+
+The packer *deliberately* shares an offset between names whose live ranges do not
+overlap, so its offsets are not pairwise distinct. What separation means here is that any
+two **distinct** offsets it opens cover disjoint byte ranges at the spilled value's width:
+fresh offsets are opened only at `nextFresh`, which advances by `stride`, so every offset
+lies on the `freshBase + k * stride` grid and two distinct grid points are at least
+`stride` apart. -/
+
+/-- `OnGrid base stride o`: the offset `o` is `base + k * stride` for a natural `k` — the
+    frame grid the packer opens fresh cells on. -/
+def OnGrid (base stride o : Int) : Prop := ∃ k : Nat, o = base + k * stride
+
+/-- The base of the grid is on the grid. -/
+theorem OnGrid.base' (base stride : Int) : OnGrid base stride base := ⟨0, by simp⟩
+
+/-- The grid is closed under advancing by one stride. -/
+theorem OnGrid.succ {base stride o : Int} (h : OnGrid base stride o) :
+    OnGrid base stride (o + stride) := by
+  obtain ⟨k, rfl⟩ := h
+  exact ⟨k + 1, by push_cast; ring⟩
+
+/-- **Distinct points of a `stride`-spaced grid are byte-separated at any width the stride
+    covers.** Two grid points differ by at least `stride`, so their `width`-byte ranges are
+    disjoint once `width ≤ stride`. -/
+theorem sepAt_of_onGrid {width : Nat} {base stride o₁ o₂ : Int} (hw : (width : Int) ≤ stride)
+    (h₁ : OnGrid base stride o₁) (h₂ : OnGrid base stride o₂) (hne : o₁ ≠ o₂) :
+    GenericRegAlloc.SepAt width o₁ o₂ := by
+  obtain ⟨k₁, rfl⟩ := h₁
+  obtain ⟨k₂, rfl⟩ := h₂
+  have hw0 : (0 : Int) ≤ (width : Int) := Int.natCast_nonneg _
+  have hs : (0 : Int) ≤ stride := le_trans hw0 hw
+  rcases lt_trichotomy (k₁ : Int) (k₂ : Int) with h | h | h
+  · refine Or.inl ?_
+    have hk : (0 : Int) ≤ (k₂ : Int) - k₁ - 1 := by omega
+    nlinarith [mul_nonneg hk hs]
+  · exact absurd (by rw [h]) hne
+  · refine Or.inr ?_
+    have hk : (0 : Int) ≤ (k₁ : Int) - k₂ - 1 := by omega
+    nlinarith [mul_nonneg hk hs]
+
+/-- The lowest-expired-offset fold returns a member of the list it folded, or its seed. -/
+theorem minFold_mem : ∀ (l : List Int) (b : Option Int) (o : Int),
+    l.foldl (fun (best : Option Int) x =>
+      match best with | none => some x | some c => if x < c then some x else some c) b
+      = some o →
+    o ∈ l ∨ b = some o := by
+  intro l
+  induction l with
+  | nil => intro b o h; exact Or.inr h
+  | cons x xs ih =>
+    intro b o h
+    rw [List.foldl_cons] at h
+    rcases ih _ o h with h' | h'
+    · exact Or.inl (List.mem_cons_of_mem _ h')
+    · cases b with
+      | none =>
+        left
+        have hxo : x = o := by simpa using h'
+        exact hxo ▸ List.mem_cons_self ..
+      | some c =>
+        by_cases hx : x < c
+        · left
+          have hxo : x = o := by simp only [if_pos hx] at h'; simpa using h'
+          exact hxo ▸ List.mem_cons_self ..
+        · right
+          simp only [if_neg hx] at h'
+          exact h'
+
+/-- One packing step stays on the grid: the offset it chooses is either an offset already
+    opened (`used`) or the fresh cursor, and the updated occupancy list carries only those
+    offsets. -/
+theorem packStep_onGrid (base stride : Int) (lr : LiveRange) (freshOff : Int)
+    (used : List (Int × Nat)) (hu : ∀ p ∈ used, OnGrid base stride p.1)
+    (hf : OnGrid base stride freshOff) :
+    OnGrid base stride (packStep lr freshOff used).1
+      ∧ ∀ p ∈ (packStep lr freshOff used).2, OnGrid base stride p.1 := by
+  simp only [packStep]
+  split
+  · rename_i o ho
+    have hmem : o ∈ (used.filter (fun p => p.2 < lr.defIdx)).map Prod.fst := by
+      rcases minFold_mem _ none o ho with h | h
+      · exact h
+      · exact absurd h (by simp)
+    have hog : OnGrid base stride o := by
+      obtain ⟨p, hp, hpo⟩ := List.mem_map.mp hmem
+      exact hpo ▸ hu p (List.mem_of_mem_filter hp)
+    refine ⟨hog, ?_⟩
+    intro q hq
+    rcases List.mem_append.mp hq with hq' | hq'
+    · exact hu q (List.mem_of_mem_filter hq')
+    · have hqo : q = (o, lr.lastUse) := by simpa using hq'
+      exact hqo ▸ hog
+  · refine ⟨hf, ?_⟩
+    intro q hq
+    rcases List.mem_append.mp hq with hq' | hq'
+    · exact hu q hq'
+    · have hqo : q = (freshOff, lr.lastUse) := by simpa using hq'
+      exact hqo ▸ hf
+
+/-- The packer invariant: every opened offset, the fresh cursor, and every offset already
+    assigned lie on the `base + k * stride` grid. -/
+theorem reuseAssignGo_onGrid (base stride : Int) :
+    ∀ (l : List LiveRange) (used : List (Int × Nat)) (nextFresh : Int)
+      (acc : List (String × Int)),
+      (∀ p ∈ used, OnGrid base stride p.1) →
+      OnGrid base stride nextFresh →
+      (∀ p ∈ acc, OnGrid base stride p.2) →
+      ∀ p ∈ reuseAssignGo stride used nextFresh acc l, OnGrid base stride p.2 := by
+  intro l
+  induction l with
+  | nil =>
+    intro used nextFresh acc _ _ ha p hp
+    exact ha p (List.mem_reverse.mp hp)
+  | cons lr rest ih =>
+    intro used nextFresh acc hu hn ha
+    obtain ⟨hoff, hused'⟩ := packStep_onGrid base stride lr nextFresh used hu hn
+    simp only [reuseAssignGo]
+    refine ih _ _ _ hused' ?_ ?_
+    · split
+      · exact hn.succ
+      · exact hn
+    · intro q hq
+      rcases List.mem_cons.mp hq with rfl | hq'
+      · exact hoff
+      · exact ha q hq'
+
+/-- Every offset the packer assigns lies on the `freshBase + k * stride` grid. -/
+theorem reuseAssign_onGrid (freshBase stride : Int) (spilled : List LiveRange) :
+    ∀ p ∈ reuseAssign freshBase spilled stride, OnGrid freshBase stride p.2 :=
+  reuseAssignGo_onGrid freshBase stride spilled [] freshBase [] (by simp)
+    (OnGrid.base' _ _) (by simp)
+
+/-- **Two names the packer places on different offsets have disjoint byte ranges**, at any
+    value width the stride covers. Names it places on the *same* offset are separately
+    certified non-interfering by `slotReuseValid`. -/
+theorem reuseAssign_sepAt_of_ne (width : Nat) (freshBase : Int) (spilled : List LiveRange)
+    (stride : Int) (hw : (width : Int) ≤ stride) {p q : String × Int}
+    (hp : p ∈ reuseAssign freshBase spilled stride)
+    (hq : q ∈ reuseAssign freshBase spilled stride) (hne : p.2 ≠ q.2) :
+    GenericRegAlloc.SepAt width p.2 q.2 :=
+  sepAt_of_onGrid hw (reuseAssign_onGrid freshBase stride spilled p hp)
+    (reuseAssign_onGrid freshBase stride spilled q hq) hne
+
+/-- **The distinct offsets the packer opens are pairwise byte-separated** at any value
+    width the stride covers — the `GenericRegAlloc.SlotsSeparated` condition on the
+    deduplicated offset list, which is the form a byte-addressed frame argument
+    (`Optimizer.ByteMemMachine`) consumes. -/
+theorem reuseAssign_slotsSeparated (width : Nat) (freshBase : Int)
+    (spilled : List LiveRange) (stride : Int) (hw : (width : Int) ≤ stride) :
+    ((reuseAssign freshBase spilled stride).map Prod.snd).dedup.Pairwise
+      (GenericRegAlloc.SepAt width) := by
+  refine (List.nodup_dedup _).pairwise_of_forall_ne ?_
+  intro a ha b hb hab
+  rw [List.mem_dedup] at ha hb
+  obtain ⟨p, hp, rfl⟩ := List.mem_map.mp ha
+  obtain ⟨q, hq, rfl⟩ := List.mem_map.mp hb
+  exact reuseAssign_sepAt_of_ne width freshBase spilled stride hw hp hq hab
 
 /-! ## 4. Soundness: a reused slot never clobbers a still-needed value
 
@@ -305,7 +475,7 @@ def demoDistinct : String → Option Int :=
 
 /-- The distinct-cell map uses **3** frame slots. -/
 theorem demo_distinct_slotCount :
-    ([(0 : Int), 8, 16]).dedup.length = 3 := by native_decide
+    ([(0 : Int), 8, 16]).dedup.length = 3 := by decide
 
 /-- The greedy packer's assignment: `x → 0`, `y → 8`, `z → 0` (reusing `x`'s freed
     cell, since `x` is dead at `z`'s def). -/

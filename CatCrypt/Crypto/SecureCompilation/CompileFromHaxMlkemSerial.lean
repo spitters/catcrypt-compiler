@@ -11,7 +11,7 @@ import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 This module extends the **C4** step of the verified-compiler plan to the
 **ML-KEM-768** (FIPS-203) polynomial byte-**deserialization** primitive
 `poly_frombytes`. It is the compile-from-hax sibling of the NTT-domain owned-emit
-layer in `CatCrypt/Crypto/MLKEM/PolyOwnedEmit.lean`, here covering the 12-bit
+layer in `CatCrypt/Crypto/MLKEM/PolyEmit.lean`, here covering the 12-bit
 coefficient unpack (the `ByteEncode₁₂⁻¹` step that consumes the serialized
 secret-key / public-key polynomials).
 

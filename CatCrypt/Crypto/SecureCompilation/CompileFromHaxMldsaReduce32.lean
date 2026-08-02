@@ -25,7 +25,7 @@ int32_t reduce32(int32_t a) {
 The `>> 23` is the **arithmetic** (sign-preserving) shift of an `int32`. Unlike
 the `caddq` mask idiom (`CompileFromHaxMldsaPoly`), there is no logical-shift
 realisation: the quotient estimate `(a + 2²²) >> 23` must round toward `−∞` for
-negative `a`, i.e. it is genuinely `BitVec.sshiftRight`, not `>>>`. This is
+negative `a`, i.e. it is `BitVec.sshiftRight`, not `>>>`. This is
 exactly the surface the new front op unblocks: the recognizer head
 `arith_shift_right` (`ShiftKind.sar`, `Rhs.sarImm`) denotes `BitVec.sshiftRight`
 (commit #606/#605). With it the body compiles unchanged through the verified
@@ -35,11 +35,11 @@ SHA-256/Keccak/BLAKE2/SDitH recognizers already in place.
 ## Width `w = 64`
 
 We carry the signed `int32` `a` sign-extended into `BitVec 64` (the owned
-`PolyOwnedEmit` convention), matching `caddq`. At width 64 the arithmetic shift
+`PolyEmit` convention), matching `caddq`. At width 64 the arithmetic shift
 `BitVec.sshiftRight _ 23` is faithful to C's signed `>> 23` on the
 sign-extended word: the sign bit lives in bit 63, `sshiftRight` replicates it,
 and the in-range product `t·q` and difference `a − t·q` never wrap (the result
-is the small centered `int32` representative). The `>> 23` is the genuine
+is the small centered `int32` representative). The `>> 23` is the
 arithmetic shift — this is the body the arithmetic-shift op is for.
 
 ## Method (mirrors `CompileFromHaxMldsaPoly.mldsaCaddq_compiles`)
@@ -55,7 +55,7 @@ head is what makes the `rfl` go through: the source's `>> 23` recognizes to
 `Rhs.sarImm 23`, which denotes `BitVec.sshiftRight`, matching the form.
 
 The abstract `reduce32(a)` centered-representative tie (`a − ⌊(a+2²²)/2²³⌋·q`
-landing in the Barrett output band) is the genuine signed-Barrett identity. We
+landing in the Barrett output band) is the signed-Barrett identity. We
 state it over the `int32`-band domain and prove it by pure-BitVec `bv_decide`
 where it closes (the SDitH lesson); the form-level `_compiles` is the primary
 deliverable and stands on its own.
@@ -156,7 +156,7 @@ theorem mldsaReduce32_compiles :
 The Barrett emit form `mldsaReduce32Form` equals the abstract centered residue:
 `reduce32(a) ≡ a (mod q)` and `reduce32(a)` lands in the FIPS-204 Barrett output
 band `[−6283008, 6283008]`, for every `int32` `a` (`−2³¹ ≤ a.toInt < 2³¹`). This
-is the genuine signed-Barrett identity — the arithmetic-shift analogue of the
+is the signed-Barrett identity — the arithmetic-shift analogue of the
 `#117` Barrett seam. -/
 
 /-- **ML-DSA `reduce32` Barrett form ≡ `a (mod q)`** on the `int32` domain. The

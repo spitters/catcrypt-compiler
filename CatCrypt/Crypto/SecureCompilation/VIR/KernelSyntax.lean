@@ -12,7 +12,8 @@ import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 This module is the **reusable** home of the `kernel%` surface: a named-variable
 concrete syntax that elaborates to an intrinsically-typed `Com` leaf for **any**
 `Com` dialect. It is the shared, end-state form of the elaborator prototyped in
-`Fe25519KernelSyntax.lean` (which stays as a transition artifact).
+`Fe25519KernelSyntax.lean`, which imports this module and pins `kernel%` against
+the deployed fe25519 golden-path leaves.
 
 A `Com` leaf reads its inputs as typed de-Bruijn `Ctxt.Var`s — `.there (.there
 .here)` — a raw index that also carries the proof its slot has the right dialect

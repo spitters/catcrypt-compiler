@@ -7,10 +7,10 @@ import CatCrypt.Crypto.SecureCompilation.ImpExprToThir
 import CatCrypt.Crypto.Jasmin.LowCT
 
 /-!
-# DF keystone (base cases): the two frontend denotations COINCIDE on the
+# DF frontend coincidence (base cases): the two frontend denotations COINCIDE on the
 # heap-free scalar-ALU fragment
 
-This module is the **base-case feasibility result** for the "DF keystone" of the
+This module is the **base-case feasibility result** for the "DF result" of the
 MLIR-dialect-alignment restructure: showing that the two frontend ingestion
 paths for a *pure scalar* Rust `ImpExpr` compute the **same value** on the
 heap-free fragment, so the two paths become one meaning.
@@ -48,7 +48,7 @@ fixed `BitVec 64`, so `w = 64` is the unique clean alignment), (ii) supply the
 **`SExpr` image** `toSExpr e` of the scalar-ALU `ImpExpr` (the hand-written
 `SExpr` that the LowCT scalar evaluator would compute — the LowCT *command*
 lowering `haxToLowCT` routes scalar binops through `RCall`, not through a
-top-level `SExpr`, so the genuine point of contact is the `SExpr` evaluator, not
+top-level `SExpr`, so the point of contact is the `SExpr` evaluator, not
 a bare `haxToLowCT` image; see the *obstacle* note below), and (iii) impose the
 **env-agreement predicate** linking Path A's partial `ρ : String → Option (BitVec
 64)` (together with the `params`/`I` input convention) to Path B's total `β :
@@ -88,7 +88,7 @@ descend into a `.letBind`, so this is the complete coincidence for everything
 ### Obstacle: extending the fragment through `.letBind`
 
 `toSExpr` deliberately returns `none` on `.letBind`. Extending coincidence
-across `let` is the remaining inductive glue and is genuinely non-trivial: Path A
+across `let` is the remaining inductive glue and is non-trivial: Path A
 (`denoteScalar`) threads the bound value into a *new local* in `ρ` (the partial
 `String → Option (BitVec 64)` env), while Path B would have to thread it into the
 *total* `β : String → BitVec 64`. The induction therefore requires re-proving
@@ -96,22 +96,22 @@ across `let` is the remaining inductive glue and is genuinely non-trivial: Path 
 `ρ' = (fun y => if y = x then some vv else ρ y)` and a matching `β'` — i.e. an
 `EnvAgree`-preservation lemma for `let`-extension, plus a decision on how Path B
 materialises the bound value (LowCT lowers a scalar `let` to a fresh
-`RScalarSet`/`RLetU64Zero` *command*, so the genuine Path-B `let` lives in the
+`RScalarSet`/`RLetU64Zero` *command*, so the Path-B `let` lives in the
 `RustExec` big-step over `RustState`, not in the `SExpr` evaluator). That is the
-next keystone increment; it is out of scope for this base-case file, which leaves
+next increment; it is out of scope for this base-case file, which leaves
 no proof obligations open.
 
-## Honesty note (what is NOT claimed)
+## Note (what is NOT claimed)
 
 * **Shifts / rotates are deliberately excluded.** Path A's shift/rotate
   (`recogShift`, `ShiftKind.apply`) uses a *compile-time immediate* count `n :
   Nat` (`av.rotateRight n`, `av >>> n`). The `SExpr` shift nodes `SShr`/`SShl`
   take a *dynamic* `SExpr` shift operand evaluated via `(b.evalBV β).toNat`, and
   `SExpr` has **no rotate node at all**. So there is no clean `SExpr` image of
-  the Path-A shift/rotate arms; the genuinely coincident scalar fragment is the
+  the Path-A shift/rotate arms; the coincident scalar fragment is the
   variable/literal/binary-ALU core. This is stated, not papered over.
 
-* Each lemma below is genuinely about **both** `denoteScalar`/`denoteAtomExpr`
+* Each lemma below is about **both** `denoteScalar`/`denoteAtomExpr`
   (Path A) **and** `SExpr.evalBV` (Path B); none is a restatement of one side.
 -/
 
@@ -180,12 +180,12 @@ def EnvAgree {nIn : Nat} (params : List String) (I : Fin nIn → BitVec 64)
 
 /-! ## §3  Base-case coincidence lemmas (the deliverable)
 
-Each is genuinely about both Path A (`denoteAtomExpr`/`denoteScalar`) and Path B
+Each is about both Path A (`denoteAtomExpr`/`denoteScalar`) and Path B
 (`SExpr.evalBV`). -/
 
 /-- **Literal-atom coincidence.** A literal atom's Path-A denotation equals
-    `some` of its Path-B `evalBV` image: both are `BitVec.ofNat 64 n`. Genuinely
-    relates `denoteAtomExpr` (LHS) and `SExpr.evalBV` (RHS). -/
+    `some` of its Path-B `evalBV` image: both are `BitVec.ofNat 64 n`. Relates
+    `denoteAtomExpr` (LHS) and `SExpr.evalBV` (RHS). -/
 theorem lit_coincides {nIn : Nat} (params : List String) (I : Fin nIn → BitVec 64)
     (ρ : String → Option (BitVec 64)) (β : String → BitVec 64)
     (l : ImpLit) {n : Nat} (hl : litNat? l = some n) :
@@ -194,8 +194,8 @@ theorem lit_coincides {nIn : Nat} (params : List String) (I : Fin nIn → BitVec
   simp [denoteAtomExpr, SExpr.evalBV, hl]
 
 /-- **Variable-atom coincidence.** Under `EnvAgree`, a variable atom's Path-A
-    denotation equals `some` of its Path-B `evalBV` image `β x`. Genuinely
-    relates `denoteAtomExpr` (LHS) and `SExpr.evalBV (.SVar x)` (RHS, which is
+    denotation equals `some` of its Path-B `evalBV` image `β x`. Relates
+    `denoteAtomExpr` (LHS) and `SExpr.evalBV (.SVar x)` (RHS, which is
     `β x`); the content is supplied entirely by `EnvAgree`. -/
 theorem var_coincides {nIn : Nat} (params : List String) (I : Fin nIn → BitVec 64)
     (ρ : String → Option (BitVec 64)) (β : String → BitVec 64)
@@ -229,7 +229,7 @@ theorem atom_coincides {nIn : Nat} (params : List String) (I : Fin nIn → BitVe
 
 Each covered ALU op is the *same* `BitVec 64` operation on both sides:
 `JasminBinOp.apply op av bv` equals the corresponding `SExpr.evalBV` binary node
-applied to `av`, `bv`. These are the load-bearing op-agreement facts; each holds
+applied to `av`, `bv`. These are the op-agreement facts; each holds
 by `rfl` (the two semantics are the literally same `BitVec 64` operation). -/
 
 /-- `add`: `JasminBinOp.apply` agrees with the `SAdd` node. -/
@@ -280,7 +280,7 @@ theorem apply_eq_evalBV_of_binSExpr (β : String → BitVec 64)
 
     and the two are equal (modulo the `some`). Consumes the atom-leaf coincidence
     (`atom_coincides`) on each argument and the per-op agreement
-    (`apply_eq_evalBV_of_binSExpr`). Genuinely about both `denoteScalar` (LHS)
+    (`apply_eq_evalBV_of_binSExpr`). About both `denoteScalar` (LHS)
     and `SExpr.evalBV` (RHS). -/
 theorem bin_coincides {nIn : Nat} (params : List String) (I : Fin nIn → BitVec 64)
     (ρ : String → Option (BitVec 64)) (β : String → BitVec 64)
@@ -312,8 +312,8 @@ note in the module docstring.) -/
 /-- **Covered-fragment coincidence (atoms + one binop layer).** For any scalar
     `ImpExpr` that `toSExpr` accepts (a leaf atom, or a recognised binary-ALU head
     on two atoms), Path A `denoteScalar` equals `some` of Path B `evalBV` under
-    `EnvAgree`. The base-case theorem the DF-keystone induction would extend over
-    `letBind`. Genuinely relates `denoteScalar` and `SExpr.evalBV`. -/
+    `EnvAgree`. The base-case theorem the DF-result induction would extend over
+    `letBind`. Relates `denoteScalar` and `SExpr.evalBV`. -/
 theorem denoteScalar_coincides_evalBV {nIn : Nat} (params : List String)
     (I : Fin nIn → BitVec 64) (ρ : String → Option (BitVec 64))
     (β : String → BitVec 64) (hβ : EnvAgree params I ρ β) :
@@ -344,5 +344,84 @@ theorem denoteScalar_coincides_evalBV {nIn : Nat} (params : List String)
       simp only [toSExpr] at hs
       show denoteAtomExpr params I (.lit l) ρ = some (SExpr.evalBV β s)
       exact atom_coincides params I ρ β hβ (.lit l) hs
+
+/-! ## §5  Unary bitwise-NOT coincidence (an added covered leaf)
+
+The base `toSExpr` covers the binary ALU heads on two atoms; the unary
+bitwise-NOT `Not[a]` / `BitNot[a]` (`recogNot`) was left out because `SExpr` has
+no dedicated complement node. But it *is* expressible: at width `w`,
+`~~~v = v ^^^ allOnes w` (`BitVec.xor_allOnes`), which `denoteScalar`'s
+`recogNot` arm uses directly (`(denoteAtomExpr … a ρ).map (· ^^^ allOnes 64)`).
+Since `allOnes 64 = BitVec.ofNat 64 (2^64 - 1) = SExpr.evalBV β (.SLit (2^64-1))`,
+the Path-B image of `Not[a]` is the `SXor` of `a`'s atom image with the all-ones
+literal node. This adds the unary complement to the coincident scalar fragment,
+using only the base file's `atom_coincides`.
+
+`recogNot` produces a *unary* `.app f [a]`, whose single argument bypasses the
+binop (`[a,b]`) and immediate-shift (`[a, .lit l]`) two-argument patterns by
+arity alone — so, unlike the shift arm, no `recogBin`/`recogShift` disjointness
+side-condition is needed. -/
+
+/-- `allOnes 64` is the all-ones literal `ofNat 64 (2^64 - 1)`: the round-trip
+    `(2^64 - 1) % 2^64 = 2^64 - 1` recovers the literal. This is the one
+    numeric fact the NOT coincidence consumes (the `SLit` operand's `evalBV`). -/
+theorem allOnes64_eq : BitVec.allOnes 64 = BitVec.ofNat 64 (2 ^ 64 - 1) := by
+  apply BitVec.eq_of_toNat_eq
+  rw [BitVec.toNat_allOnes, BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]
+
+/-- `SExpr` image of a unary bitwise-NOT `ImpExpr`: a recognised NOT head
+    (`recogNot f`) on a single atom argument `a` (image `atomSExpr a`) becomes the
+    `SXor` of that image with the all-ones literal node `.SLit (2^64 - 1)`
+    (`~~~v = v ^^^ allOnes 64`). Anything else is `none`. Local to this file so the
+    base `toSExpr`'s clean binary-only statement is preserved. -/
+def notSExpr : ImpExpr → Option SExpr
+  | .app f [a] =>
+      if recogNot f then (atomSExpr a).map (fun sa => .SXor sa (.SLit (2 ^ 64 - 1)))
+      else none
+  | _ => none
+
+/-- **Unary NOT step coincidence.** A recognised NOT head `f` (`recogNot f =
+    true`) on an atom `a` (image `sa`) coincides between the paths: Path A
+    `denoteScalar (.app f [a])` routes (by arity, past the binop/shift arms) to the
+    `recogNot` arm `(denoteAtomExpr … a ρ).map (· ^^^ allOnes 64)`; Path B
+    `evalBV β (.SXor sa (.SLit (2^64-1)))` is `(evalBV β sa) ^^^ ofNat 64 (2^64-1)
+    = (evalBV β sa) ^^^ allOnes 64`. Consumes the atom-leaf coincidence
+    (`atom_coincides`) on `a` and the numeric fact `allOnes64_eq`. About
+    both `denoteScalar` (LHS) and `SExpr.evalBV` (RHS). -/
+theorem not_coincides {nIn : Nat} (params : List String) (I : Fin nIn → BitVec 64)
+    (ρ : String → Option (BitVec 64)) (β : String → BitVec 64)
+    (hβ : EnvAgree params I ρ β)
+    {f : String} (hf : recogNot f = true)
+    {a : ImpExpr} {sa : SExpr} (ha : atomSExpr a = some sa) :
+    ImpExpr.denoteScalar params I (.app f [a]) ρ
+      = some (SExpr.evalBV β (.SXor sa (.SLit (2 ^ 64 - 1)))) := by
+  unfold ImpExpr.denoteScalar
+  -- The two-argument binop/shift matches are stuck on the abstract heads; casing
+  -- them exposes the arity fallthrough (`[a]` never matches a 2-element pattern).
+  cases hb : recogBin f <;> cases hsh : recogShift f <;>
+    simp only [hf, if_true, atom_coincides params I ρ β hβ a ha, Option.map_some,
+      SExpr.evalBV] <;>
+    rw [← allOnes64_eq]
+
+/-- **Covered unary-NOT coincidence (keyed off `notSExpr`).** For any unary
+    bitwise-NOT `ImpExpr` that `notSExpr` accepts, Path A `denoteScalar` equals
+    `some` of Path B `evalBV` under `EnvAgree`. The `notSExpr` analogue of
+    `denoteScalar_coincides_evalBV`, adding the complement leaf to the coincident
+    scalar fragment. -/
+theorem denoteScalar_coincides_evalBV_not {nIn : Nat} (params : List String)
+    (I : Fin nIn → BitVec 64) (ρ : String → Option (BitVec 64))
+    (β : String → BitVec 64) (hβ : EnvAgree params I ρ β)
+    (e : ImpExpr) {s : SExpr} (hs : notSExpr e = some s) :
+    ImpExpr.denoteScalar params I e ρ = some (SExpr.evalBV β s) := by
+  match e, hs with
+  | .app f [a], hs =>
+    simp only [notSExpr] at hs
+    split at hs
+    · rename_i hf
+      simp only [Option.map_eq_some_iff] at hs
+      obtain ⟨sa, ha, hs⟩ := hs
+      subst hs
+      exact not_coincides params I ρ β hβ hf ha
+    · exact absurd hs (by simp)
 
 end CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidence

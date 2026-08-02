@@ -30,7 +30,7 @@ This mirrors the `G1`-body routing in
 field leaves route through the **same** owned front the bls12-381 `G1` body does,
 tying the Pallas relational front to the backend.
 
-## Honest scope
+## Scope of the claims
 
 The claims here are purely **structural lowering**: that the owned front accepts
 the rendered Pallas field-op bodies and emits one `Ccall` per op. We do **not**
@@ -83,33 +83,30 @@ def pallasComposedJasmin := toJasminCmd pallasComposedBody
 
 /-- **The Pallas base-field ADD routes through the bridge front.** The single
     `fp_add` leaf lowers to a one-node Jasmin call program. -/
-theorem pallasAddJasmin_length : pallasAddJasmin.length = 1 := by native_decide
+theorem pallasAddJasmin_length : pallasAddJasmin.length = 1 := rfl
 
 /-- Every node the front emits for the Pallas ADD is a `Ccall` — the op is
     fully lowered (no fall-through to an unhandled construct). -/
 theorem pallasAddJasmin_all_calls :
-    pallasAddJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := by
-  native_decide
+    pallasAddJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := rfl
 
 /-- **The Pallas base-field MUL routes through the bridge front.** The single
     `fp_mul` leaf lowers to a one-node Jasmin call program. -/
-theorem pallasMulJasmin_length : pallasMulJasmin.length = 1 := by native_decide
+theorem pallasMulJasmin_length : pallasMulJasmin.length = 1 := rfl
 
 /-- Every node the front emits for the Pallas MUL is a `Ccall` — fully lowered. -/
 theorem pallasMulJasmin_all_calls :
-    pallasMulJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := by
-  native_decide
+    pallasMulJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := rfl
 
 /-- **A composed Pallas base-field body routes through the bridge front.** The
     two `RSeq`-chained field ops (`r := a*b ; s := r+c`) lower to a two-node Jasmin
     call program — one `Ccall` per op — showing multi-op routing, the same shape
     the 34-node `g1AddJasmin` exercises. -/
-theorem pallasComposedJasmin_length : pallasComposedJasmin.length = 2 := by native_decide
+theorem pallasComposedJasmin_length : pallasComposedJasmin.length = 2 := rfl
 
 /-- Every node the front emits for the composed Pallas body is a `Ccall` —
     both ops fully lowered. -/
 theorem pallasComposedJasmin_all_calls :
-    pallasComposedJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := by
-  native_decide
+    pallasComposedJasmin.all (fun i => match i with | .Ccall .. => true | _ => false) = true := rfl
 
 end CatCrypt.Crypto.SecureCompilation.RelationalFrontPallasEmit

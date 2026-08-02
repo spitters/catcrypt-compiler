@@ -14,6 +14,12 @@ compiler (`RelationalCompile`): LowCT → clean Lean spec with a machine-checked
 `Corres` correspondence, in the AutoCorres/Ascent style, over the **real**
 compositional denotation `semScalar` (`TranslateDialectScalarDenote.semScalar`).
 
+The port of AutoCorres to Lean — "AutoCorres2 in Lean" — was begun by **Sebastian
+Graf** (`sgraf812/ascent`): proof-producing monadic abstraction read as abstract
+interpretation over the `Std.Do` WP metatheory. This calculus follows and
+instantiates that design, specialized to LowCT / `semScalar` (the `Option`-failure
+`StateT` monad). `Corres` is the AutoCorres `corres` relation in that lineage.
+
 Division of labor (see the private design notes `lowct-ascent-refinement-calculus.md`
 and `ascend-autocorres-methodology.md` — the latter for why `Corres` is the
 AutoCorres pattern, piggybacking on a proven embedding of an imperative language

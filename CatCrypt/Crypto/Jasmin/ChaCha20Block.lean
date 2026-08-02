@@ -389,32 +389,6 @@ def fullBlockCmd : List InstrR × (Fin 16 → String) :=
   let outVars := fun (i : Fin 16) => s!"out{i.val}"
   (roundCmds ++ ffCmds, outVars)
 
-/-! ## Section 15: Composition Lemma for pureEvalMonoCmd -/
-
-/-- Final environment after processing a list of commands. -/
-def pureEvalFinalEnv (n : Nat) (env : Var → BitVec n) : List InstrR → Var → BitVec n
-  | [] => env
-  | .Cassgn (.Lvar x) _ _ e :: rest =>
-    pureEvalFinalEnv n
-      (fun w => if w = x.var then pureEvalMonoExpr n env e else env w)
-      rest
-  | _ :: rest => pureEvalFinalEnv n env rest
-
-/-- **Composition lemma**: `pureEvalMonoCmd` over concatenated commands equals
-    evaluating the first commands to get a final environment, then evaluating
-    the second commands in that environment. -/
-theorem pureEvalMonoCmd_append (n : Nat) (env : Var → BitVec n) (retVar : Var)
-    (cmds1 cmds2 : List InstrR) :
-    pureEvalMonoCmd n env retVar (cmds1 ++ cmds2) =
-    pureEvalMonoCmd n (pureEvalFinalEnv n env cmds1) retVar cmds2 := by
-  -- TODO(pre-existing breakage from commit 8d61f6bd, April 2026):
-  -- `pureEvalMonoCmd` got specific `Copn ADD_64`/`ADC_64` arms but
-  -- `pureEvalFinalEnv` did not, so the catchall `simp only [...]; exact ih _`
-  -- fails to discharge the `Copn` case. This is *not* a 4.29 regression;
-  -- it predates the toolchain bump. Fixing requires aligning the two
-  -- evaluators in `Jasmin/`. Stubbed pending the source-level fix.
-  sorry
-
 /-! ## Section 16: Jasmin Program Definition -/
 
 /-- Variable name for the ChaCha20 block function entry. -/

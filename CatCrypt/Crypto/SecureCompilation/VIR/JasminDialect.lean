@@ -8,6 +8,8 @@ import CatCrypt.Crypto.SecureCompilation.VIR.Core
 /-!
 # Jasmin VIR dialect (spike)
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 A minimal `VIR.Dialect` whose `Op`/`Ty` model the word-level, register/stack,
 two-address fragment of Jasmin that `RustEmitJazz` emits empirically. This is
 spike (a) of the Jasmin ⇄ VIR convergence plan: move the optimizer onto a typed
@@ -294,6 +296,23 @@ def v128PackLanesW (laneW : Nat) (bop : JasminBinOp) (a b : BitVec 128) : BitVec
                     (BitVec.extractLsb' (laneW * k) laneW b)).setWidth 128 <<< (laneW * k)))
     0
 
+/-- Variable per-lane shift on a 128-bit (XMM) register at lane width `laneW`
+    (`VPSLLVD` = `.shl 32`, `VPSLLVQ` = `.shl 64`, `VPSRLVD` = `.shr 32`,
+    `VPSRLVQ` = `.shr 64`): split `a` (data) and `b` (per-lane counts) into
+    `128 / laneW` lanes of width `laneW`; result lane `i` is lane `i` of `a`
+    shifted by the `.toNat` of lane `i` of `b`. Each lane uses its own count from
+    `b`, unlike a uniform packed shift where every lane uses one count. `bop` is
+    `.shl` (left) or `.shr` (right); the per-lane operation is `bop.apply` at width
+    `laneW`. The per-lane fold mirrors `v128PackLanesW`. Total: `laneW = 0` gives
+    `128 / 0 = 0` lanes → `0`. -/
+def simdVarShiftW (bop : JasminBinOp) (laneW : Nat) (a b : BitVec 128) : BitVec 128 :=
+  (List.range (128 / laneW)).foldl
+    (fun acc k =>
+      acc |||
+        ((bop.apply (BitVec.extractLsb' (laneW * k) laneW a)
+                    (BitVec.extractLsb' (laneW * k) laneW b)).setWidth 128 <<< (laneW * k)))
+    0
+
 /-- One lane of `VPMULHW`: packed SIGNED 16-bit HIGH multiply. Copied verbatim from
     `Vec128Model.laneMulHiS16` (KAT-pinned, ML-KEM NTT Montgomery). -/
 def laneMulHiS16W (a b : BitVec 16) : BitVec 16 :=
@@ -337,7 +356,8 @@ def aesSboxArrayW : Array (BitVec 8) := #[
   0xE1, 0xF8, 0x98, 0x11, 0x69, 0xD9, 0x8E, 0x94, 0x9B, 0x1E, 0x87, 0xE9, 0xCE, 0x55, 0x28, 0xDF,
   0x8C, 0xA1, 0x89, 0x0D, 0xBF, 0xE6, 0x42, 0x68, 0x41, 0x99, 0x2D, 0x0F, 0xB0, 0x54, 0xBB, 0x16]
 
-@[simp] theorem aesSboxArrayW_size : aesSboxArrayW.size = 256 := by native_decide
+set_option maxRecDepth 2000 in
+@[simp] theorem aesSboxArrayW_size : aesSboxArrayW.size = 256 := rfl
 
 /-- AES S-Box: SubBytes on a single byte. Identical to `JasminOps.aesSBox`. -/
 def aesSBoxW (b : BitVec 8) : BitVec 8 :=
@@ -472,6 +492,13 @@ inductive SimdOp where
       (`VPADDD` = `packed .add 32`, `VPADDQ` = `packed .add 64`). Denote = `v128PackLanesW`.
       Unblocks the dword-lane kernels (ChaCha-4way etc.). -/
   | packed (bop : JasminBinOp) (laneW : Nat)
+  /-- Variable per-lane shift on a 128-bit register at lane width `laneW`
+      (`VPSLLVD` = `varShift .shl 32`, `VPSLLVQ` = `varShift .shl 64`,
+      `VPSRLVD` = `varShift .shr 32`, `VPSRLVQ` = `varShift .shr 64`). Each lane of
+      the first operand is shifted by its own count taken from the corresponding
+      lane of the second operand, unlike the uniform `packed` shift. `bop` is
+      `.shl` / `.shr`. Denote = `simdVarShiftW`. -/
+  | varShift (bop : JasminBinOp) (laneW : Nat)
   /-- `VPMULHW`: packed 8×i16 SIGNED high-16 multiply (ML-KEM NTT Montgomery).
       Distinct from `packed .mul 16` (which is the unsigned LOW product = VPMULLW). -/
   | mulhi16
@@ -502,6 +529,7 @@ def SimdOp.argTys : SimdOp → List JasminTy
   | .affineqb _ => [.reg 128, .reg 128]
   | .bitwise _ => [.reg 128, .reg 128]
   | .packed _ _ => [.reg 128, .reg 128]
+  | .varShift _ _ => [.reg 128, .reg 128]
   | .mulhi16 => [.reg 128, .reg 128]
   | .vaesenc => [.reg 128, .reg 128]
   | .vaesenclast => [.reg 128, .reg 128]
@@ -516,6 +544,7 @@ def SimdOp.retTy : SimdOp → JasminTy
   | .affineqb _ => .reg 128
   | .bitwise _ => .reg 128
   | .packed _ _ => .reg 128
+  | .varShift _ _ => .reg 128
   | .mulhi16 => .reg 128
   | .vaesenc => .reg 128
   | .vaesenclast => .reg 128
@@ -542,6 +571,11 @@ def SimdOp.mnemonic : SimdOp → String
   | .packed .shl 32 => "VPSLLD"
   | .packed .shr 32 => "VPSRLD"
   | .packed _ _ => "VPPACKED"
+  | .varShift .shl 32 => "VPSLLVD"
+  | .varShift .shl 64 => "VPSLLVQ"
+  | .varShift .shr 32 => "VPSRLVD"
+  | .varShift .shr 64 => "VPSRLVQ"
+  | .varShift _ _ => "VPVARSHIFT"
   | .mulhi16 => "VPMULHW"
   | .vaesenc => "VAESENC"
   | .vaesenclast => "VAESENCLAST"
@@ -558,6 +592,7 @@ def SimdOp.denote : SimdOp → BitVec 128 → BitVec 128 → BitVec 128
   | .affineqb imm => fun a A => gf2p8affineqbW a A imm
   | .bitwise bop => fun a b => bop.apply a b
   | .packed bop laneW => fun a b => v128PackLanesW laneW bop a b
+  | .varShift bop laneW => fun a b => simdVarShiftW bop laneW a b
   | .mulhi16 => vpmulhw16W
   -- AES round ops: denote = the verbatim-copied bespoke `Vec128Model.vaesenc`
   -- semantics (= `Jasmin.wAESENC` etc.), so kernels migrate semantics-identically.
@@ -614,6 +649,21 @@ def addCarryWord {w : Nat} (a b : BitVec w) (cin : BitVec 1) : BitVec w :=
     into the next limb's `addCarryWord` / `carryOutBit` as the carry-in. -/
 def carryOutBit {w : Nat} (a b : BitVec w) (cin : BitVec 1) : BitVec 1 :=
   if a.toNat + b.toNat + cin.toNat ≥ 2 ^ w then 1 else 0
+
+/-- The data result of one borrow-chain subtract `dst - src - borrow-in` at width
+    `w` (`borrow-in` a 1-bit register, `0`/`1`). The dual of `addCarryWord`;
+    identical mod `2 ^ w` to `X86Backend`'s `sub_borrow a b bin.toNat`
+    (`= BitVec.ofInt w (a.toNat - b.toNat - bin)`), the word `x86_SBB` writes. -/
+def subBorrowWord {w : Nat} (a b : BitVec w) (bin : BitVec 1) : BitVec w :=
+  a - b - BitVec.ofNat w bin.toNat
+
+/-- The borrow-out bit of one borrow-chain subtract `a - b - borrow-in` at width
+    `w`: `1` iff the unbounded difference went negative (`a < b + bin`). The dual
+    of `carryOutBit`, packaged as a `reg 1` so it threads into the next limb's
+    `subBorrowWord` / `borrowOutBit` as the borrow-in. Identical to the borrow bit
+    `x86_SBB` records in `CF`. -/
+def borrowOutBit {w : Nat} (a b : BitVec w) (bin : BitVec 1) : BitVec 1 :=
+  if a.toNat < b.toNat + bin.toNat then 1 else 0
 
 /-! ### Constant-time SELECT / cmov (task #594, E2)
 
@@ -776,7 +826,7 @@ def JasminTy.default : (t : JasminTy) → ⟦t⟧
   | .bool => false
 
 /-- The opaque-default tuple of results for a multi-result `callN`: an
-    `HVector` with `JasminTy.default` in each `retTys` slot. This is the genuine
+    `HVector` with `JasminTy.default` in each `retTys` slot. This is the
     multi-result value the `func.call` lowering consumes; the single-`ret`
     `Expr` denotation projects it to its head slot. -/
 def callNDefaults : (retTys : List JasminTy) → HVector (fun t => ⟦t⟧) retTys
@@ -833,7 +883,7 @@ their real (data-oblivious) semantics so the lowering is denotation-preserving
   the leaf is `"poly_add"`, pointwise **product** otherwise (`ntt_basemul_*`,
   `"poly_mul"`).
 
-Every other `extCall` keeps the opaque default (`JasminTy.default`), so a genuine
+Every other `extCall` keeps the opaque default (`JasminTy.default`), so an
 external leaf (e.g. a CryptoSSA `fp_*` intrinsic) is still treated as opaque —
 its agreement remains a separate obligation. -/
 /-- Offset `o` parsed from a `"slice@{o}"` leaf name (`0` if malformed). A
@@ -976,6 +1026,10 @@ instance jasminDenote : DialectDenote jasminDialect where
             let a : BitVec 128 := args.head
             let b : BitVec 128 := args.tail.head
             SimdOp.denote (.packed bop laneW) a b
+        | .varShift bop laneW => fun args =>
+            let a : BitVec 128 := args.head
+            let b : BitVec 128 := args.tail.head
+            SimdOp.denote (.varShift bop laneW) a b
         | .mulhi16 => fun args =>
             let a : BitVec 128 := args.head
             let b : BitVec 128 := args.tail.head
@@ -1049,7 +1103,7 @@ def jasminDenoteWith
 `jasminDenoteWith` makes the single-result `extCall` leaf consult an abstract
 oracle. The multi-result `callN` leaf has the same opaque-default denotation in
 `jasminDenote`; `jasminDenoteWithN` below extends the leaf-parametric family so
-that `callN` also consults an oracle, letting a kernel whose leaves are genuine
+that `callN` also consults an oracle, letting a kernel whose leaves are
 `k`-output `func.call`s be denoted faithfully to a leaf semantics.
 
 A `callN` op exposes its head/primary result slot at the framework's single-`ret`
@@ -1078,7 +1132,7 @@ def callNDefaultSem : CallNLeafSem :=
     `callN` leaves consult `callNSem`; every other op delegates to `jasminDenote`
     verbatim. This extends `jasminDenoteWith` (which parametrises only the
     single-result `extCall` leaf) with a `callN` oracle, so a kernel whose leaves
-    are genuine `k`-output `func.call`s is oracle-parametric on those leaves too.
+    are `k`-output `func.call`s is oracle-parametric on those leaves too.
 
     Taking `callNSem := callNDefaultSem` recovers `jasminDenoteWith leafSem`
     exactly (see `jasminDenoteWithN_extCall`, `jasminDenoteWithN_callN_default`),

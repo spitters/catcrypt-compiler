@@ -7,13 +7,15 @@ import CatCrypt.Crypto.SecureCompilation.VIR.Core
 import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
 
 /-!
-# A genuine software-pipelining (loop-peel) pass for `Com` (real transform)
+# A restructuring software-pipelining (loop-peel) pass for `Com` (real transform)
+
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
 `SoftwarePipelining.lean` ships an *analysis-as-labelling* software pipeliner
 whose `Com → Com` rewrite is the identity (`applySwp = fun p _ => p`), so its
 preservation theorems are `rfl` and verify nothing about an actual loop
 restructure. This file supplies what that one defers: a **structural**
-loop-level transform that genuinely *restructures the loop* — peeling the first
+loop-level transform that *restructures the loop* — peeling the first
 iteration into a prologue and running a shortened steady-state loop — together
 with a **non-`rfl`** denotation-preservation proof by the `List.foldl`
 front-peel decomposition of the loop.
@@ -53,9 +55,9 @@ The pass result is a `PipelinedLoop`: the precomputed prologue accumulator
 shortened-loop body and steady trip count `m`. Its denotation runs the steady
 loop from the prologue accumulator.
 
-## The proof (genuinely not `rfl`)
+## The proof (not `rfl`)
 
-The keystone is
+The central lemma is
 
   `peelFirst_denote :
      (peelFirst (m+1) update init).denote = loopDenote (m+1) update init`
@@ -77,20 +79,20 @@ same body once, the steady loop runs it `m` times. Since
 `ctSafeJForProg p accL = ctSafeJasmin p.update (bodyLabelCtxt accL)` depends
 **only on the body** (`JForProgCT.ctSafeJForProg_eq`), and the peel does not
 touch the body, the steady-state `JForProg` is CT-safe iff the original is —
-proved by `rfl` on the *body equality*, but stated about a genuinely different
+proved by `rfl` on the *body equality*, but stated about a different
 (shorter) loop. The prologue is one straight-line execution of the same
 CT-safe body, so it introduces no secret-dependent branch.
 
 ## What is general vs. scoped
 
 * **General:** the loop model (`loopDenote`, shared with `LICMReal`), and the
-  front-peel keystone (`loopDenote_peel`) are dialect-generic.
+  front-peel lemma (`loopDenote_peel`) are dialect-generic.
 * **Scoped to the cleanest case:** `peelFirst` / `peelFirst_denote` peel a
   *single* leading iteration (the 1-stage-overlap prologue). Peeling `s`
   leading iterations (an `s`-stage prologue) iterates this lemma `s` times;
   the epilogue (cool-down) is the symmetric back-peel via `List.range_succ`
   + `List.foldl_append`. Both reuse the same `foldl` decomposition; the
-  one-iteration peel carries the genuine non-`rfl` proof cleanly.
+  one-iteration peel carries the non-`rfl` proof cleanly.
 -/
 
 set_option autoImplicit false
@@ -125,7 +127,7 @@ def loopDenote {accTy : d.Ty} (n : Nat) (update : Com d [accTy] accTy)
     (init : ⟦accTy⟧) : ⟦accTy⟧ :=
   (List.range n).foldl (fun acc _ => stepOf update acc) init
 
-/-! ## 2. The front-peel keystone for the loop fold
+/-! ## 2. The front-peel lemma for the loop fold
 
 Peeling the first iteration off an `(m+1)`-trip loop: run the body once, then
 fold the remaining `m` iterations from the result. This is the `List.foldl`
@@ -162,7 +164,7 @@ structure PipelinedLoop (d : Dialect) [TyDenote d.Ty] [DialectSignature d]
   prologueAcc : ⟦accTy⟧
 
 /-- Pipelined-loop denotation: run the steady-state loop from the prologue
-accumulator. The first iteration is no longer inside the loop — it lives in
+accumulator. The first iteration sits outside the loop — it lives in
 `prologueAcc`. -/
 def PipelinedLoop.denote {accTy : d.Ty} (p : PipelinedLoop d accTy) : ⟦accTy⟧ :=
   loopDenote p.steadyN p.update p.prologueAcc
@@ -173,7 +175,7 @@ prologue: precompute `stepOf update init` (the warm-up) and return a
 `PipelinedLoop` whose steady-state loop runs `m` iterations of the same body
 from that prologue accumulator.
 
-This genuinely restructures the program — the trip count drops `m+1 ↝ m` and a
+This restructures the program — the trip count drops `m+1 ↝ m` and a
 prologue iteration is emitted before the loop. It is **not** the identity: the
 result is a different structure (`PipelinedLoop`) with a strictly shorter
 steady-state loop. -/
@@ -183,7 +185,7 @@ def peelFirst {accTy : d.Ty} (m : Nat) (update : Com d [accTy] accTy)
   update := update
   prologueAcc := stepOf update init
 
-/-! ## 4. The keystone: denotation preservation (NON-`rfl`)
+/-! ## 4. Denotation preservation (NON-`rfl`)
 
 The pipelined loop denotes exactly the original loop. The two programs are
 structurally different (a prologue iteration before a shorter loop vs. the
@@ -193,7 +195,7 @@ full-length loop) and agree by the `List.foldl` front-peel. -/
 iteration into the prologue and running the shortened steady-state loop
 denotes the same function as the original `(m+1)`-trip loop.
 
-The proof is genuinely not `rfl`: the original loop folds the body `m + 1`
+The proof is not `rfl`: the original loop folds the body `m + 1`
 times over `range (m+1)`, while the pipelined loop folds it `m` times from the
 peeled prologue accumulator; equating them is the `List.foldl` front-peel
 (`loopDenote_peel`). -/
@@ -223,7 +225,7 @@ def steadyJForProg {accTy : JasminTy} (m : Nat)
 of a prologue peel is CT-safe iff the original loop is. This holds because the
 peel does not touch the loop body, and `ctSafeJForProg` depends only on the
 body (`ctSafeJForProg_eq`). It is not `rfl`-vacuous: it is stated about a
-genuinely different (shorter) loop, and reduces to the body equality. -/
+different (shorter) loop, and reduces to the body equality. -/
 theorem steady_preserves_CT {accTy : JasminTy} (m : Nat)
     (p : JForProg accTy) (accL : SecretLevel) :
     ctSafeJForProg (steadyJForProg m p) accL = ctSafeJForProg p accL := by
@@ -242,13 +244,13 @@ theorem steady_preserves_RobustlyCTSafe {accTy : JasminTy} (m : Nat)
 /-- **End-to-end: the prologue peel preserves the `JForProg` denotation.** For
 `n = m + 1`, running the body once (prologue) then the `m`-trip steady-state
 loop denotes the same accumulator as the original `JForProg`. This ties the
-dialect-general keystone to the concrete `JForProg.denote`. -/
+dialect-general lemma to the concrete `JForProg.denote`. -/
 theorem peel_preserves_JForProg_denote {accTy : JasminTy} (m : Nat)
     (p : JForProg accTy) (hn : p.n = m + 1) (init : ⟦accTy⟧) :
     (steadyJForProg m p).denote (p.step init) = p.denote init := by
   -- `JForProg.denote` is a `foldl` over `range _.n`; the steady loop's count is
   -- `m`, the original's is `m + 1`. Peel the first iteration (`p.step init`)
-  -- off the original's `range (m+1)` fold — the genuine non-`rfl` content.
+  -- off the original's `range (m+1)` fold — the non-`rfl` content.
   unfold JForProg.denote JForProg.step steadyJForProg
   rw [hn, List.range_succ_eq_map, List.foldl_cons, List.foldl_map]
 
@@ -290,7 +292,7 @@ def incrBody : Com toyDialect [()] () :=
 /-- One iteration adds 1 to the accumulator. -/
 example (acc : Nat) : stepOf incrBody acc = acc + 1 := rfl
 
-/-- **The transform genuinely peels the first iteration.** The prologue
+/-- **The transform peels the first iteration.** The prologue
 accumulator (from `init = 0`) is `1` — the first iteration's result now lives
 *outside* the loop. -/
 example : (peelFirst 4 incrBody (0 : Nat)).prologueAcc = (1 : Nat) := rfl

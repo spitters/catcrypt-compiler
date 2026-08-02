@@ -11,7 +11,7 @@ import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 This module extends the **C4** step of the verified-compiler plan to the
 **ML-KEM-768** (FIPS-203) ciphertext (de)serialization rounding primitive
 `Decompress_d`. It is the compile-from-hax sibling of the owned-emit kernel in
-`CatCrypt/Crypto/MLKEM/CompressOwnedEmit.lean` (reuses its constants and the
+`CatCrypt/Crypto/MLKEM/CompressEmit.lean` (reuses its constants and the
 `polyvec_decompress`, `du = 10`, reference arithmetic verbatim).
 
 ## `Decompress_d` (the clean, logical-shift-only body)
@@ -30,7 +30,7 @@ ML-KEM (de)compress body, and the one chosen here.
 ### Why decompress and not compress (shift kind)
 
 `Compress_d` uses the reciprocal multiply `((x<<d)+1665)·magic >> sh & mask` plus
-a Barrett `mod q` (`CompressOwnedEmit.reduceModQ`); every one of its shifts is a
+a Barrett `mod q` (`CompressEmit.reduceModQ`); every one of its shifts is a
 **logical** right shift (`d0 >>= 28` / `>>= 32` on unsigned `u32`/`u64`), so
 compress is **NOT** sar-blocked — but it is a much longer body (multi-op reduce +
 magic). `Decompress_d` is the single clean mul+add+logical-shift body, so we

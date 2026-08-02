@@ -299,24 +299,16 @@ def chainedSeqExportAsm : String :=
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (strContains)
 
-/-- The framed kernel emits both blocks' instructions (the packed XOR of block 0
+/- The framed kernel emits both blocks' instructions (the packed XOR of block 0
     and the packed AND of block 1) in one body. -/
-theorem chained_asm_has_both :
-    (strContains chainedSeqExportAsm "vpxorq" = true) ∧
-    (strContains chainedSeqExportAsm "vpandq" = true) := by
-  native_decide
+#guard (strContains chainedSeqExportAsm "vpxorq") && (strContains chainedSeqExportAsm "vpandq")
 
-/-- The framed kernel names its export symbol. -/
-theorem chained_asm_has_export :
-    strContains chainedSeqExportAsm "vpackzmm_chained_seq:" = true := by
-  native_decide
+/- The framed kernel names its export symbol. -/
+#guard (strContains chainedSeqExportAsm "vpackzmm_chained_seq:")
 
-/-- The body uses 512-bit `%zmm` registers, no UPPERCASE jasmin intrinsic — the
+/- The body uses 512-bit `%zmm` registers, no UPPERCASE jasmin intrinsic — the
     owned (no-jasminc, no-`Avx512Model`) multi-block path. -/
-theorem chained_asm_owned :
-    (strContains chainedSeqExportAsm "%zmm" = true) ∧
-    (strContains chainedSeqExportAsm "#VPXOR" = false) := by
-  native_decide
+#guard (strContains chainedSeqExportAsm "%zmm") && !(strContains chainedSeqExportAsm "#VPXOR")
 
 /-! ## 7. Design note: per-block `paramsAndMap` and the alloc-keying limitation
 
@@ -606,14 +598,12 @@ def threeBlockExportAsm : String :=
 -- Print the emitted owned `.s` for visual inspection.
 #eval IO.println threeBlockExportAsm
 
-/-- The framed 3-block kernel emits all three blocks' instructions and names its
+/- The framed 3-block kernel emits all three blocks' instructions and names its
     export symbol — the owned (no-jasminc, no-`Avx512Model`) per-block-alloc path,
     using distinct aux registers `%zmm2` and `%zmm3` for blocks 2 and 3. -/
-theorem three_block_asm_complete :
-    (strContains threeBlockExportAsm "vpackzmm_three_block:" = true) ∧
-    (strContains threeBlockExportAsm "%zmm3" = true) ∧
-    (strContains threeBlockExportAsm "%zmm2" = true) ∧
-    (strContains threeBlockExportAsm "#VPXOR" = false) := by
-  native_decide
+#guard (strContains threeBlockExportAsm "vpackzmm_three_block:")
+    && (strContains threeBlockExportAsm "%zmm3")
+    && (strContains threeBlockExportAsm "%zmm2")
+    && !(strContains threeBlockExportAsm "#VPXOR")
 
 end CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmComSeq

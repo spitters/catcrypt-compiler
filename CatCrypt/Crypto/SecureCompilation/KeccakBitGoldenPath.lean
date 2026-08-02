@@ -5,6 +5,7 @@ Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
 import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
+import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfFull
 import Std.Tactic.BVDecide
 
 /-!
@@ -118,10 +119,13 @@ theorem keccakChiCom_riscv_e2e (V : Ctxt.Valuation ([.reg 64, .reg 64, .reg 64] 
       = Com.denote keccakChiCom V :=
   com_riscv_e2e keccakChiCom_ok allReg64_three V s hs
 
-/-- **The x86 owned-emit leg** (KAT-gated tier, as in `FieldEmitGoldenPath`): the same
-    source to ELF `.o` bytes via the generic driver. -/
+/-- **The x86 owned-emit leg, via the optimized full-ELF entry.**
+    Emits through `OptimizedComToElfFull.optimizedCompileComToElf`; correctness uses
+    `optimizedCompileComToElf_sound` (the optimized block is `runBlock`-equal to the
+    unoptimized gathered block on every input) together with the executed spec-KAT in
+    `bench/keccak_compare/`, not byte identity with `compileComToElf`. -/
 def keccakChiCom_x86_elf : ByteArray :=
-  X86Backend.CompileComToElfJInstrFull6.compileComToElfJInstrFull6 keccakChiCom "keccak_chi"
+  X86Backend.OptimizedComToElfFull.optimizedCompileComToElf keccakChiCom "keccak_chi"
 
 /-! ## The ρ rotations: `ρ_r a = a.rotateLeft r`
 
@@ -182,9 +186,13 @@ theorem keccakRho1Com_riscv_e2e (V : Ctxt.Valuation ([.reg 64] : Ctxt jasminDial
       = Com.denote keccakRho1Com V :=
   com_riscv_e2e keccakRho1Com_ok allReg64_one V s hs
 
-/-- **The x86 owned-emit leg** for ρ(1) (KAT-gated tier). -/
+/-- **The x86 owned-emit leg for ρ(1), via the optimized full-ELF entry.**
+    Emits through `OptimizedComToElfFull.optimizedCompileComToElf`; correctness uses
+    `optimizedCompileComToElf_sound` (the optimized block is `runBlock`-equal to the
+    unoptimized gathered block on every input) together with the executed spec-KAT in
+    `bench/keccak_compare/`, not byte identity with `compileComToElf`. -/
 def keccakRho1Com_x86_elf : ByteArray :=
-  X86Backend.CompileComToElfJInstrFull6.compileComToElfJInstrFull6 keccakRho1Com "keccak_rho1"
+  X86Backend.OptimizedComToElfFull.optimizedCompileComToElf keccakRho1Com "keccak_rho1"
 
 /-- **ρ with offset 44**, over arg `[a]`:
     `sh := a <<< 44 ; shr := a >>> 20 ; r := sh | shr ; ret r`. -/
@@ -233,8 +241,12 @@ theorem keccakRho44Com_riscv_e2e (V : Ctxt.Valuation ([.reg 64] : Ctxt jasminDia
       = Com.denote keccakRho44Com V :=
   com_riscv_e2e keccakRho44Com_ok allReg64_one V s hs
 
-/-- **The x86 owned-emit leg** for ρ(44) (KAT-gated tier). -/
+/-- **The x86 owned-emit leg for ρ(44), via the optimized full-ELF entry.**
+    Emits through `OptimizedComToElfFull.optimizedCompileComToElf`; correctness uses
+    `optimizedCompileComToElf_sound` (the optimized block is `runBlock`-equal to the
+    unoptimized gathered block on every input) together with the executed spec-KAT in
+    `bench/keccak_compare/`, not byte identity with `compileComToElf`. -/
 def keccakRho44Com_x86_elf : ByteArray :=
-  X86Backend.CompileComToElfJInstrFull6.compileComToElfJInstrFull6 keccakRho44Com "keccak_rho44"
+  X86Backend.OptimizedComToElfFull.optimizedCompileComToElf keccakRho44Com "keccak_rho44"
 
 end CatCrypt.Crypto.SecureCompilation.KeccakBit

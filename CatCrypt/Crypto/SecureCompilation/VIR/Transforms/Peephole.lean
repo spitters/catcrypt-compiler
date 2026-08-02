@@ -10,6 +10,8 @@ import CatCrypt.Crypto.SecureCompilation.VIR.Grind
 /-!
 # Verified peephole rewrites on `Com catCryptDialect`
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 A small `Com`-level peephole pass that combines
 
 * **constant folding** (Group A): when an op's two args refer to two

@@ -39,7 +39,7 @@ instructions per limb → 1), closing the residual gap the selection pass left
 
 ## What the pass does (`fuseAdxChain : Lprog → Lprog`)
 
-Mirrors `FheMontMulOwnedEmit.fuseMulHiLprog`: it maps each `Lfundef` body. In a
+Mirrors `FheMontMulEmit.fuseMulHiLprog`: it maps each `Lfundef` body. In a
 body it recognises the adjacent triple
 
 * `p`  — an `ADCX` **data** op (`Lopn [d] ADCX [a, s, cin]`, three sources), which
@@ -62,11 +62,11 @@ No intervening flag-clobber check is needed: the only op between the producer's
 (`setc`/`movzbq`, or `movq $0,slot; setc slot`) is flag-preserving on `CF`, as is
 the consumer's own setup `movq`.
 
-## What is proved (the load-bearing carry-flag identity)
+## What is proved (the carry-flag identity)
 
 The `.s` layer is not executable in Lean (as with `fuseMulHiLprog`, its
 whole-body value-correctness is gated by the orchestrator's byte-KAT against the
-AUCurves Rust tower). The load-bearing content — that the fused live-flag carry
+AUCurves Rust tower). The central content — that the fused live-flag carry
 computes *the same* carry as the materialised-bit round-trip — is proved against
 the faithful `JasminModel` machine semantics:
 
@@ -130,7 +130,7 @@ def isAdcxHiInstr (i : Linstr) : Option LOperand :=
     (`addCarryLo`/`addCarryHi` are one `Com` op-pair over the same sources), but
     the printer renders them as `setc dst` (resp. drops them), reading **none** of
     those sources. So an operand appearing in a binding op's `src` list is not a
-    genuine read. -/
+    read. -/
 def isVestigialSrcInstr (i : Linstr) : Bool :=
   match i.li_i with
   | .Lopn _ opn _ =>
@@ -138,7 +138,7 @@ def isVestigialSrcInstr (i : Linstr) : Bool :=
       b == "ADCXHI" || b == "ADOXHI" || b == "MULXHI"
   | _ => false
 
-/-- Does instruction `i` **genuinely read** `cout` as a source? The vestigial
+/-- Does instruction `i` **read** `cout` as a source? The vestigial
     source list of a carry-out / mulx-hi binding is *not* a read (its render emits
     no operand read), so those ops never count. -/
 def mentionsSrc (cout : LOperand) (i : Linstr) : Bool :=
@@ -150,9 +150,9 @@ def mentionsDst (cout : LOperand) (i : Linstr) : Bool :=
   match i.li_i with | .Lopn dsts _ _ => dsts.any (lopEq cout) | _ => false
 
 /-- **Single-use side-condition.** Scanning the instructions *after* the consumer,
-    the first **genuine** mention of `cout` is a write (`cout` redefined — its old
+    the first mention of `cout` is a write (`cout` redefined — its old
     value is dead) or there is none: then dropping the `ADCXHI` that materialised
-    `cout` loses no live value. A genuine read before any rewrite means `cout` is
+    `cout` loses no live value. A read before any rewrite means `cout` is
     live elsewhere, so the fusion must not fire. (Vestigial binding-op sources are
     not reads — see `mentionsSrc`.) -/
 def coutDeadAfter (cout : LOperand) : Lcmd → Bool
@@ -273,13 +273,13 @@ def fuseAdxChainFundef (f : Lfundef) : Lfundef :=
   { f with lfd_body := fuseAdxChainBody f.lfd_body }
 
 /-- **The pass.** Apply the ADX carry-chain fusion to every function body of an
-    `Lprog`. Sibling of `FheMontMulOwnedEmit.fuseMulHiLprog`; plugs into the owned
+    `Lprog`. Sibling of `FheMontMulEmit.fuseMulHiLprog`; plugs into the owned
     pipeline at the same stage (after physical lowering, before the AT&T printer). -/
 def fuseAdxChain (p : Lprog) : Lprog :=
   { p with
     lp_funcs := p.lp_funcs.map (fun (n, f) => (n, fuseAdxChainFundef f)) }
 
-/-! ## 2. The load-bearing carry-flag identity (model semantics)
+/-! ## 2. The carry-flag identity (model semantics)
 
 The fusion drops the `ADCXHI` `setc` materialisation and the consumer's `bt`
 re-injection. Its soundness is the fact that this `setc → bt` round-trip is the

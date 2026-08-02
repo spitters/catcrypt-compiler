@@ -267,13 +267,9 @@ theorem feLazyOps_alloc_no_overflow :
       ∧ allocOverflow feSubLazyPinned feSubLazyBlock = none
       ∧ allocOverflow feCmadd121666LazyPinned feCmadd121666LazyBlock = none := by native_decide
 
-/-- Shape checks: each emitted body contains the expected mnemonics; the lazy
+/- Shape checks: each emitted body contains the expected mnemonics; the lazy
     add/sub bodies do NOT contain the canonical-select `cmov`/`xor`-mask tail. -/
-theorem feLazyOps_asm_shape :
-    BignumMontMulKernel.hasSub feAddLazyAsm "addq"
-      ∧ BignumMontMulKernel.hasSub feSubLazyAsm "sbbq"
-      ∧ BignumMontMulKernel.hasSub feCmadd121666LazyAsm "$121666"
-      ∧ BignumMontMulKernel.hasSub feCmadd121666LazyAsm "mulx" := by native_decide
+#guard (BignumMontMulKernel.hasSub feAddLazyAsm "addq") && (BignumMontMulKernel.hasSub feSubLazyAsm "sbbq") && (BignumMontMulKernel.hasSub feCmadd121666LazyAsm "$121666") && (BignumMontMulKernel.hasSub feCmadd121666LazyAsm "mulx")
 
 /-- Emit driver: write the lazy `.s` files for the bench harness. -/
 def emitMain : IO Unit := do

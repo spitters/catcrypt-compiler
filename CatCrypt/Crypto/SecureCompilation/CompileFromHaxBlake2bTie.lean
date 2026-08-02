@@ -12,9 +12,9 @@ This module wires the committed **compile-from-hax BLAKE2b G leaves**
 (`CompileFromHaxBlake2b.blake2bG{A,B,C,D}_compiles`) onto the front's RFC 7693
 reference `ThirToComFront.blake2bGSpec` — the same 4-tuple BLAKE2b G output word
 spec that the `thirDialect` self-consistency checks (`ThirToComFront.gA_via_thirDialect`
-…) and the owned x86 emit (`X86Backend.Blake2bGThirOwnedEmit`) are written against.
+…) and the owned x86 emit (`X86Backend.Blake2bGThirEmit`) are written against.
 
-## What this is — and what it is NOT (honest framing)
+## What this is — and what it is NOT
 
 This is a **functional-equality** tie, not a security claim.
 

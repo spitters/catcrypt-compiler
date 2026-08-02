@@ -304,28 +304,25 @@ def bflyHiExportAsm : String :=
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (strContains)
 
-/-- The butterfly kernel emits the packed multiply (lowercase owned `%zmm`
+/- The butterfly kernel emits the packed multiply (lowercase owned `%zmm`
     mnemonic, not the UPPERCASE jasmin `#VPMULL_8u64` intrinsic). -/
-theorem asm_has_vpmullq : strContains bflyHiExportAsm "vpmullq" = true := by
-  native_decide
+#guard (strContains bflyHiExportAsm "vpmullq")
 
-/-- The butterfly kernel emits the packed add (lowercase owned `%zmm` mnemonic). -/
-theorem asm_has_vpaddq : strContains bflyHiExportAsm "vpaddq" = true := by
-  native_decide
+/- The butterfly kernel emits the packed add (lowercase owned `%zmm` mnemonic). -/
+#guard (strContains bflyHiExportAsm "vpaddq")
 
 /-- The owned export symbol is present. -/
 theorem asm_has_export :
     strContains bflyHiExportAsm "ntt_butterfly_hi_vpackzmm:" = true := by
   native_decide
 
-/-- The body uses 512-bit `%zmm` registers (not the 128-bit `%xmm` of the
+/- The body uses 512-bit `%zmm` registers (not the 128-bit `%xmm` of the
     `VsimdAsmPrint` fragment). -/
-theorem asm_has_zmm : strContains bflyHiExportAsm "%zmm" = true := by native_decide
+#guard (strContains bflyHiExportAsm "%zmm")
 
-/-- No UPPERCASE jasmin intrinsic survives — this is the owned (no-jasminc)
+/- No UPPERCASE jasmin intrinsic survives — this is the owned (no-jasminc)
     lowercase-mnemonic path. -/
-theorem asm_no_jasmin_intrinsic :
-    strContains bflyHiExportAsm "#VPADD_8u64" = false := by native_decide
+#guard !(strContains bflyHiExportAsm "#VPADD_8u64")
 
 /-- A `vpxorq` binding renders as the lowercase packed XOR over `%zmm`
     (EVEX order `src2, src1, dst`). -/

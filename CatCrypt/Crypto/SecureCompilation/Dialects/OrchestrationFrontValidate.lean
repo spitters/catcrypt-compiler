@@ -32,7 +32,7 @@ every downstream fact of the hand-authored one:
 * **shape gate (array-ABI KAT sketch)** — lowering the generated `Com` through
   `Com.toLprogArrAbi` + `renderLprogAtt` produces the SysV `.s` that `call`s the
   two opaque leaves with no unhandled-op sentinel (`pairingProductBuilt_asm_shape`),
-  exactly the shape `Bls12_377OwnedEmit` asserts for the hand `Com`. The
+  exactly the shape `Bls12_377Emit` asserts for the hand `Com`. The
   byte-identical correctness KAT is the existing Rust check against the AUCurves
   reference; this is the in-Lean shape gate on the emitted text.
 -/
@@ -109,7 +109,7 @@ theorem pairingProductBuilt_denote (prims : Bls377Primitives)
 Lower the front-generated `Com` through the owned array-ABI backend and render
 the SysV `.s`. The gate asserts the emitted text `call`s the two opaque leaves
 (the by-pointer gather/`call`/scatter shape) with no unhandled-op sentinel — the
-same structural guarantee `Bls12_377OwnedEmit` gives for the hand `Com`. The
+same structural guarantee `Bls12_377Emit` gives for the hand `Com`. The
 byte-identical correctness KAT is the existing Rust check against the AUCurves
 BLS12-377 reference. -/
 

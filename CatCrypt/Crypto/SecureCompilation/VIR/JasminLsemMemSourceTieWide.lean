@@ -83,7 +83,7 @@ theorem lsemStepMem_movImm (dst : String) (k : Nat) (st : LstateM) :
   have hstep : lsemStepCast (LinstrR.Lopn [.reg dst] "MOV:64" [.imm k], none) st.reg
       = some ((st.reg.setReg dst (BitVec.ofNat 64 k)).nextPc) := by
     rw [lsemStepCast_of_delegate _ _ (Or.inr rfl),
-      lsemStepMC_of_delegate _ _ rfl rfl rfl,
+      lsemStepMC_of_delegate _ _ rfl rfl rfl rfl rfl,
       lsemStepSh_of_not_sar _ _ (by simp [sarStruct?])]
     simp only [lsemStepN, stripWidthTag_MOV64, if_true]
     rw [widthFromTag_MOV64]
@@ -100,7 +100,7 @@ theorem lsemStepMem_add64Reg (dst a b : String) {w : Nat} (va vb : BitVec w)
   have hstep : lsemStepCast (LinstrR.Lopn [.reg dst] "ADD:64" [.reg a, .reg b], none) st.reg
       = some ((st.reg.setReg dst (va + vb)).nextPc) := by
     rw [lsemStepCast_of_delegate _ _ (Or.inr rfl),
-      lsemStepMC_of_delegate _ _ (by simp [mulhiStruct?, stripWidthTag_ADD64]) rfl rfl,
+      lsemStepMC_of_delegate _ _ (by simp [mulhiStruct?, stripWidthTag_ADD64]) rfl rfl rfl rfl,
       lsemStepSh_of_not_sar _ _ (by simp [sarStruct?])]
     simp only [lsemStepN, readReg_of_getW ha, evalOperandN, hb, stripWidthTag_ADD64,
       applyOpnN]
@@ -115,7 +115,7 @@ theorem lsemStepMem_sub64Reg (dst a b : String) {w : Nat} (va vb : BitVec w)
   have hstep : lsemStepCast (LinstrR.Lopn [.reg dst] "SUB:64" [.reg a, .reg b], none) st.reg
       = some ((st.reg.setReg dst (va - vb)).nextPc) := by
     rw [lsemStepCast_of_delegate _ _ (Or.inr rfl),
-      lsemStepMC_of_delegate _ _ (by simp [mulhiStruct?, stripWidthTag_SUB64]) rfl rfl,
+      lsemStepMC_of_delegate _ _ (by simp [mulhiStruct?, stripWidthTag_SUB64]) rfl rfl rfl rfl,
       lsemStepSh_of_not_sar _ _ (by simp [sarStruct?])]
     simp only [lsemStepN, readReg_of_getW ha, evalOperandN, hb, stripWidthTag_SUB64,
       applyOpnN]

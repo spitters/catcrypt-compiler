@@ -106,7 +106,7 @@ jasminc rejected. -/
 
 /-- The add block at the small sizes `n = 4, 8` uses exactly five distinct
     registers — the same constant window as `n = 16, 32`. These are the sizes
-    that previously went through jasminc; the owned backend lowers them with the
+    that the owned backend lowers with the
     identical fixed-window body. -/
 theorem addBlock_4_regs : (blockNames (addBlock 4)).length = 5 := by native_decide
 
@@ -547,33 +547,21 @@ def hasSub (hay needle : String) : Bool :=
   (List.range (hay.length + 1)).any (fun i =>
     needle == String.ofList (hay.toList.drop i |>.take needle.length))
 
-/-- The add kernel emits the streaming `add`/`adc` chain with memory operands. -/
-theorem addAsm_16_shape :
-    hasSub (addAsm 16) "addq"
-      ∧ hasSub (addAsm 16) "adcq"
-      ∧ hasSub (addAsm 16) "(%rsi)"
-      ∧ hasSub (addAsm 16) "(%rdi)" := by native_decide
+/- The add kernel emits the streaming `add`/`adc` chain with memory operands. -/
+#guard (hasSub (addAsm 16) "addq") && (hasSub (addAsm 16) "adcq") && (hasSub (addAsm 16) "(%rsi)") && (hasSub (addAsm 16) "(%rdi)")
 
-/-- The sub kernel emits the streaming `sub`/`sbb` chain. -/
-theorem subAsm_16_shape :
-    hasSub (subAsm 16) "subq" ∧ hasSub (subAsm 16) "sbbq" := by native_decide
+/- The sub kernel emits the streaming `sub`/`sbb` chain. -/
+#guard (hasSub (subAsm 16) "subq") && (hasSub (subAsm 16) "sbbq")
 
-/-- The submul_1 kernel emits the streaming MULX + borrow chain. -/
-theorem submul1Asm_16_shape :
-    hasSub (submul1Asm 16) "mulxq"
-      ∧ hasSub (submul1Asm 16) "subq"
-      ∧ hasSub (submul1Asm 16) "adcq" := by native_decide
+/- The submul_1 kernel emits the streaming MULX + borrow chain. -/
+#guard (hasSub (submul1Asm 16) "mulxq") && (hasSub (submul1Asm 16) "subq") && (hasSub (submul1Asm 16) "adcq")
 
-/-- The sqr kernel emits the streaming addmul-row schoolbook (MULX + add chain). -/
-theorem sqrAsm_16_shape :
-    hasSub (sqrAsm 16) "mulxq" ∧ hasSub (sqrAsm 16) "addq"
-      ∧ hasSub (sqrAsm 16) "adcq" := by native_decide
+/- The sqr kernel emits the streaming addmul-row schoolbook (MULX + add chain). -/
+#guard (hasSub (sqrAsm 16) "mulxq") && (hasSub (sqrAsm 16) "addq") && (hasSub (sqrAsm 16) "adcq")
 
-/-- The diagonal-sqr kernel emits the cross-product MULX chain, the `adcx`
+/- The diagonal-sqr kernel emits the cross-product MULX chain, the `adcx`
     doubling sweep, and the diagonal `adc` absorb. -/
-theorem sqrDiagAsm_16_shape :
-    hasSub (sqrDiagAsm 16) "mulxq" ∧ hasSub (sqrDiagAsm 16) "adcx"
-      ∧ hasSub (sqrDiagAsm 16) "adcq" := by native_decide
+#guard (hasSub (sqrDiagAsm 16) "mulxq") && (hasSub (sqrDiagAsm 16) "adcx") && (hasSub (sqrDiagAsm 16) "adcq")
 
 /-! ### Value-semantics pin (diagonal sqr)
 
@@ -635,7 +623,7 @@ theorem sqrDiag4_edge_matches_schoolbook :
     `n = 4, 8, 16, 32` into the bench harness directories. The small sizes
     `n = 4, 8` are the same fixed-window kernel as `n = 16, 32` (the register
     window is constant in `n`), and replace the former jasminc `.jazz` path at
-    those sizes — so the mpn small-`n` bench path no longer invokes jasminc. -/
+    those sizes — so the mpn small-`n` bench path is jasminc-free. -/
 def emitMain : IO Unit := do
   IO.FS.createDirAll "bench/mpn_addsub_adx_compare/gen_com"
   IO.FS.createDirAll "bench/mpn_submul_1_adx_compare/gen_com"

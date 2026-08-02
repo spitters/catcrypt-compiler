@@ -6,19 +6,17 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FriFoldEmit
 
 /-!
-# Plonky3 degree-4 extension-field FRI kernels as `Com jasminDialect`
+# Plonky3 degree-4 extension-field kernels FRONT-COMPILED as `Com jasminDialect`
 
-`FULL_PROVER_VS_P3.md` Gap-2 item 3 / the extension-field FRI residual: the p3
-accept-prover (`bench/plonky3_compare/p3_accept_prove.c`) needs
-`BinomialExtensionField<BabyBear, 4>` arithmetic (binomial `x^4 = 11`) — the
-quartic-extension multiply, the Frobenius/norm inverse, and the `ExtensionMmcs`
-fold — and `FULL_PROVER_VS_P3.md` records "there are no emitted extension-field
-kernels yet". This module emits the CORE ext-field kernels through the verified
-front's register-arith path (the same `emitBBMul`/`emitBBAdd`/`emitBBSub`
-builder `Plonky3FriFoldEmit` / `Plonky3GlueEmit` use), so the deg-4 ext
-arithmetic is verified-emitted rather than hand-C.
+The `BinomialExtensionField<BabyBear, 4>` arithmetic (binomial `x^4 = 11`) that
+the p3 accept-prover (`bench/plonky3_compare/p3_accept_prove.c`) performs,
+sourced through the verified front: each field op is a single `RScalarSetExpr`
+over named scalar slots, the statement list is pushed through
+`translateDialectControl` and lowered by `cryptoDialectToJasminCom` to a
+`Com jasminDialect`.  The `Plonky3FriFoldEmit` field vocabulary
+(`sBBMul`/`sBBAdd`/`sBBSub`/`seqAll`) and its 16-word source context are reused.
 
-## The reference (byte-for-byte `p3_accept_prove.c`)
+## The reference (`p3_accept_prove.c`)
 
 ```
 E = { c[0..3] }              // BinomialExtensionField<BabyBear,4>, x^4 = 11
@@ -32,255 +30,256 @@ efrob(a):  c_i = a_i · f1^i,  f1 = 11^((p-1)/4)   // x -> x^p
 einv(a):                     // Frobenius / norm inverse
   t = efrob(a)·efrob²(a)·efrob³(a);  n = (a·t).c[0]  (norm, in base field)
   return escale(t, finv(n))
+eadd/esub(a,b) = { a_i ± b_i }                     // coordinate-wise
 ```
 
-`emul` and `escale`/`efrob` are pure base-field `bbMul`/`bbAdd` on canonical
-operands (the `W = 11` reduction factor is a `bbMul` by the input constant `11`),
-so they sit in the same Barrett regime the A4/A7 leaves are KAT-validated in.
-The inverse decomposes into `emul` + `escale` + the existing base-field
-`bbInv` leaf (`Plonky3FriFoldEmit.bbInvCom`, the Fermat `a^(p-2)` chain) for
-`finv(n)`; the per-element ext-mul leaves are the new field kernels.
+`emul`, `escale`, `eadd` and `esub` are pure base-field `bbMul`/`bbAdd`/`bbSub`
+on canonical operands (the `W = 11` reduction factor is a `bbMul` by the input
+constant `11`).  `einv` decomposes into `emul` + `escale` + the base-field
+`bbInv` leaf (`Plonky3FriFoldEmit.bbInvCom`, the Fermat `a^(p−2)` chain) for
+`finv(n)`.
 
-## What is emitted here
+## The 16-input ABI
 
-Each ext4-mul output coordinate is one leaf (`ext4_mul_c0_rc … c3_rc`), taking
-the 8 input coords `a0..a3, b0..b3` and the reduction constant `W = 11`, all
-canonical, computing the coordinate by Barrett `bbMul`/`bbAdd`. The base-field
-scale `ext4_scale_rc` (one coord · scalar) covers `escale`/`efrob`. Each leaf is
-`allRegArith` (`*_is_regarith_only`, via the `RegTail` keystone reused from
-`Plonky3FriFoldEmit`), so its denotation IS the Barrett word arithmetic
-(by-construction `leaf.denote = spec`); numeric equality to `emul`/`escale` is
-KAT-witnessed against the p3 reference (`ext4_from_rustcmd_kat.c`).
+Every kernel keeps the 16-word input context of `Plonky3FriFoldEmit.inCtxt` and
+the type `Com jasminDialect inCtxt r64`, so the `Plonky3EmitMain` renderers that
+do `Com.toLprogPhysAbi … (abiMaps 16 extConstAt)` address the same words:
 
-## Scope / residual
+* `a0..a3` → `0,1,2,3`; `b0,b1` → `4,5`; `b2,b3` → `13,14`; `W = 11` → `15`;
+* Barrett `mu, p, 0, 30, 32, 63` → `7..12`; word `6` unused.
 
-LANDED (verified-emitted, KAT): the deg-4 ext multiply (all four coords) and the
-base-field scale — the CORE ext arithmetic, and the multiplicative pieces of the
-Frobenius/norm inverse. The `ExtensionMmcs` fold (flattening the arity-2 fold
-layer's 16×8 base rows and committing) is **structural marshalling** (lane
-interleave + the base-field Merkle commit, which is the existing
-`Plonky3CompressEmit`/`HashLeafEmit` leaves) over these ext-mul kernels; the
-fold's per-element ext arithmetic IS one of the emitted coords. The fold's row
-flatten/commit wiring is the precise residual (index plumbing, no new field op).
+`extConstAt` bakes words `7..12` and `15` as immediates; `0..5`, `13`, `14` are
+runtime loads.  The scale / add / sub leaves read only words `0` and `1`.
+
+The field constants are read as **`SVar` input words**, not `SLit` immediates, so
+the shift amounts `30/32/63` lower to the variable `bvShiftRV` (jasmin
+`regArith .shr`) rather than `shrImm`.
+
+## leaf.denote = spec by construction
+
+Each lowered `Com` is confined to `regArith`/`regConst`/`shlImm`/`shrImm`
+bindings (`ext4*_is_purearith`), so the owned backend renders no
+`# UNHANDLED-OP` and the emitted `.s`'s denotation IS the Barrett word
+arithmetic.  Numeric equality of that arithmetic to `emul`/`escale`/`eadd`/`esub`
+is KAT-witnessed against the p3 reference
+(`bench/plonky3_compare/ext4_from_rustcmd_kat.c`,
+`ext_fri_fold_from_rustcmd_kat.c`); Barrett reduction-correctness is not
+re-proved in Lean.
+
+## Scope
+
+The deg-4 ext multiply (all four coordinates), the base-field scale, and the
+coordinate-wise add / sub are emitted here — the core ext arithmetic and the
+multiplicative pieces of the Frobenius/norm inverse.  The `ExtensionMmcs` fold's
+row flatten (16×2-ext → 16×8 base lane interleave) and Merkle commit are
+structural marshalling over these leaves plus the existing base-field
+`Plonky3CompressEmit`/`Plonky3HashLeafEmit` leaves, and carry no field op.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ExtFieldEmit
 
+open CatCrypt.Crypto.SecureCompilation.CryptoSSA
+open CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
 open CatCrypt.Crypto.SecureCompilation.VIR
+open CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (strContains)
+open CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
+open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+open CatCrypt.Crypto.Jasmin.LowCT (LowCT SExpr)
 open CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FriFoldEmit
-  (r64 Src Cont LState emitOp emitCsub emitBBMul emitBBAdd emitBBSub
-   allRegArith RegTail allRegArith_emitOp regTail_emitCsub regTail_emitBBMul
-   regTail_emitBBAdd regTail_emitBBSub nSlots nSlots_pos slot inS stS slotName
-   inCtxt initLState comBindings)
+  (r64 nInputs inCtxt srcCtx sBBMul sBBAdd sBBSub seqAll allPureArith)
 
 set_option autoImplicit false
 
-/-! ## 1. Input-word layout
+/-! ## 1. Source context and the ext-field slot names
 
-We reuse `Plonky3FriFoldEmit`'s 16-input context (`inCtxt`) and Barrett-constant
-indices (`iMU=7 … iSh63=12`). The ext-mul leaves need the 8 coords
-`a0..a3, b0..b3` plus `W = 11`. The Barrett constants are at `7..12`, leaving
-free input words `0..6` and `13..15` (10 words). Place:
-* `a0..a3` → `0,1,2,3`
-* `b0,b1`  → `4,5`        (FriFold's `invTwo,two` slots, unused here)
-* `b2,b3`  → `13,14`
-* `W = 11` → `15`. -/
+The source `Ctx` is `Plonky3FriFoldEmit.srcCtx` (16 `sword 64` words).  Word `0`
+is the head of the context list and word `15` the innermost binding. -/
 
-def iA : Nat → Nat
-  | 0 => 0 | 1 => 1 | 2 => 2 | _ => 3
-def iB : Nat → Nat
-  | 0 => 4 | 1 => 5 | 2 => 13 | _ => 14
-def iW : Nat := 15
-/-- The `0` immediate (FriFold's `iZero`). -/
-def iZero : Nat := 9
+/-- The source `VarMap` naming the 16 input words at the ext-field ABI:
+    `a0..a3` at `0..3`, `b0,b1` at `4,5`, `b2,b3` at `13,14`, `W` at `15`, the
+    Barrett constants `mu,p,zero,sh30,sh32,sh63` at `7..12`, word `6` unused. -/
+def extVM : VarMap srcCtx :=
+  ((((((((((((((((VarMap.empty.bind "wW").bind "b3").bind "b2").bind
+    "sh63").bind "sh32").bind "sh30").bind "zero").bind "p").bind "mu").bind
+    "u6").bind "b1").bind "b0").bind "a3").bind "a2").bind "a1").bind "a0")
 
-/-! ## 2. Ext4-mul one-coordinate bodies
+/-- Translate a LowCT body over `extVM` and return the `Com` whose result is the
+    slot `name`. -/
+def extComAt (body : LowCT) (name : String) :
+    Option (Com catCryptDialect srcCtx (.sword 64)) :=
+  match translateDialectControl extVM body with
+  | some r =>
+      match r.vm.lookup name with
+      | some ⟨.sword 64, v⟩ => r.cont (Com.ret (toVIRVar v))
+      | _ => none
+  | none => none
 
-Slot plan (within `nSlots = 14`): `acc` (slot 0), `s` (slot 1, the inner sum
-folded by `W`), `t` (slot 2, per-product scratch). All Barrett `bbMul`/`bbAdd`
-on canonical operands. -/
+/-- Front-lower a leaf's statement list to a `Com jasminDialect` (result slot
+    `acc`). -/
+def frontLeafOpt (stmts : List LowCT) : Option (Com jasminDialect inCtxt r64) :=
+  (extComAt (seqAll stmts) "acc").bind DialectToJasminCom.cryptoDialectToJasminCom
 
-def eAcc : Fin nSlots := slot 0
-def eS : Fin nSlots := slot 1
-def eT : Fin nSlots := slot 2
+/-! ## 2. The ext4-mul coordinate bodies
 
-/-- `acc = acc + a_i·b_j` (one schoolbook product accumulated). -/
-def macc (ai bj : Nat) (k : Cont r64) : Cont r64 := fun st =>
-  emitBBMul st eT (inS (iA ai)) (inS (iB bj)) fun s1 =>
-  emitBBAdd s1 eAcc (.st eAcc) (.st eT) k
-
-/-- `s = s + a_i·b_j` into the `W`-folded inner sum. -/
-def saccS (ai bj : Nat) (k : Cont r64) : Cont r64 := fun st =>
-  emitBBMul st eT (inS (iA ai)) (inS (iB bj)) fun s1 =>
-  emitBBAdd s1 eS (.st eS) (.st eT) k
+`acc` accumulates the coordinate, `s` the inner sum folded by `W`, `t` the
+per-product scratch.  All Barrett `bbMul`/`bbAdd` on canonical operands. -/
 
 /-- `c0 = a0·b0 + W·(a1·b3 + a2·b2 + a3·b1)`. -/
-def c0Body (k : Cont r64) : Cont r64 := fun st =>
-  -- acc = a0·b0
-  emitBBMul st eAcc (inS (iA 0)) (inS (iB 0)) fun s1 =>
-  -- s = a1·b3
-  emitBBMul s1 eS (inS (iA 1)) (inS (iB 3)) fun s2 =>
-  saccS 2 2 (saccS 3 1 (fun s3 =>
-    -- s = W·s ; acc = acc + s
-    emitBBMul s3 eS (inS iW) (.st eS) fun s4 =>
-    emitBBAdd s4 eAcc (.st eAcc) (.st eS) k)) s2
+def c0Stmts : List LowCT :=
+  sBBMul "acc" (.SVar "a0") (.SVar "b0") ++
+  sBBMul "s" (.SVar "a1") (.SVar "b3") ++
+  sBBMul "t" (.SVar "a2") (.SVar "b2") ++ sBBAdd "s" (.SVar "s") (.SVar "t") ++
+  sBBMul "t" (.SVar "a3") (.SVar "b1") ++ sBBAdd "s" (.SVar "s") (.SVar "t") ++
+  sBBMul "s" (.SVar "wW") (.SVar "s") ++
+  sBBAdd "acc" (.SVar "acc") (.SVar "s")
 
 /-- `c1 = a0·b1 + a1·b0 + W·(a2·b3 + a3·b2)`. -/
-def c1Body (k : Cont r64) : Cont r64 := fun st =>
-  emitBBMul st eAcc (inS (iA 0)) (inS (iB 1)) fun s1 =>
-  macc 1 0 (fun s2 =>
-    -- s = a2·b3 + a3·b2
-    emitBBMul s2 eS (inS (iA 2)) (inS (iB 3)) fun s3 =>
-    saccS 3 2 (fun s4 =>
-      emitBBMul s4 eS (inS iW) (.st eS) fun s5 =>
-      emitBBAdd s5 eAcc (.st eAcc) (.st eS) k) s3) s1
+def c1Stmts : List LowCT :=
+  sBBMul "acc" (.SVar "a0") (.SVar "b1") ++
+  sBBMul "t" (.SVar "a1") (.SVar "b0") ++ sBBAdd "acc" (.SVar "acc") (.SVar "t") ++
+  sBBMul "s" (.SVar "a2") (.SVar "b3") ++
+  sBBMul "t" (.SVar "a3") (.SVar "b2") ++ sBBAdd "s" (.SVar "s") (.SVar "t") ++
+  sBBMul "s" (.SVar "wW") (.SVar "s") ++
+  sBBAdd "acc" (.SVar "acc") (.SVar "s")
 
 /-- `c2 = a0·b2 + a1·b1 + a2·b0 + W·(a3·b3)`. -/
-def c2Body (k : Cont r64) : Cont r64 := fun st =>
-  emitBBMul st eAcc (inS (iA 0)) (inS (iB 2)) fun s1 =>
-  macc 1 1 (macc 2 0 (fun s2 =>
-    -- s = W·(a3·b3)
-    emitBBMul s2 eS (inS (iA 3)) (inS (iB 3)) fun s3 =>
-    emitBBMul s3 eS (inS iW) (.st eS) fun s4 =>
-    emitBBAdd s4 eAcc (.st eAcc) (.st eS) k)) s1
+def c2Stmts : List LowCT :=
+  sBBMul "acc" (.SVar "a0") (.SVar "b2") ++
+  sBBMul "t" (.SVar "a1") (.SVar "b1") ++ sBBAdd "acc" (.SVar "acc") (.SVar "t") ++
+  sBBMul "t" (.SVar "a2") (.SVar "b0") ++ sBBAdd "acc" (.SVar "acc") (.SVar "t") ++
+  sBBMul "s" (.SVar "a3") (.SVar "b3") ++
+  sBBMul "s" (.SVar "wW") (.SVar "s") ++
+  sBBAdd "acc" (.SVar "acc") (.SVar "s")
 
 /-- `c3 = a0·b3 + a1·b2 + a2·b1 + a3·b0`. -/
-def c3Body (k : Cont r64) : Cont r64 := fun st =>
-  emitBBMul st eAcc (inS (iA 0)) (inS (iB 3)) fun s1 =>
-  macc 1 2 (macc 2 1 (macc 3 0 k)) s1
+def c3Stmts : List LowCT :=
+  sBBMul "acc" (.SVar "a0") (.SVar "b3") ++
+  sBBMul "t" (.SVar "a1") (.SVar "b2") ++ sBBAdd "acc" (.SVar "acc") (.SVar "t") ++
+  sBBMul "t" (.SVar "a2") (.SVar "b1") ++ sBBAdd "acc" (.SVar "acc") (.SVar "t") ++
+  sBBMul "t" (.SVar "a3") (.SVar "b0") ++ sBBAdd "acc" (.SVar "acc") (.SVar "t")
 
-def eFinalize : Cont r64 := fun st => .ret (st.cur eAcc)
+/-! ## 3. Base-field scale and the coordinate-wise add / sub
 
-/-! ## 3. Base-field scale (`escale` / `efrob` coordinate)
+`escale`/`efrob` per coordinate is `bbMul x s`; `eadd`/`esub` per coordinate is
+`bbAdd x y` / `bbSub x y`.  Each reads input words `0` and `1`. -/
 
-`ext4_scale_rc(x, s) = bbMul x s` — one coordinate times the (base-field) scalar.
-Inputs: `x` at word `0`, `s` at word `1`. -/
+/-- `escale` coordinate: `bbMul x s`. -/
+def scaleStmts : List LowCT := sBBMul "acc" (.SVar "a0") (.SVar "a1")
 
-def scaleBody (k : Cont r64) : Cont r64 := fun st =>
-  emitBBMul st eAcc (inS 0) (inS 1) k
+/-- `eadd` coordinate: `bbAdd x y`. -/
+def addStmts : List LowCT := sBBAdd "acc" (.SVar "a0") (.SVar "a1")
 
-/-! ## 3a. Per-coordinate ext add / ext sub (`eadd` / `esub`)
+/-- `esub` coordinate: `bbSub x y`. -/
+def subStmts : List LowCT := sBBSub "acc" (.SVar "a0") (.SVar "a1")
 
-`BinomialExtensionField` addition / subtraction is coordinate-wise base-field
-`bbAdd` / `bbSub`. The fold (`folded16[r] = escale(eadd(lo,hi),inv2) + …`) and the
-barycentric OOD/DEEP (`eadd`/`esub` over reduced openings) need these; each is one
-base-field op on the two coordinate inputs (`x` at word `0`, `y` at word `1`). -/
+/-! ## 4. The lowered `Com`s -/
 
-def addBody (k : Cont r64) : Cont r64 := fun st =>
-  emitBBAdd st eAcc (inS 0) (inS 1) k
+def ext4MulC0Opt := frontLeafOpt c0Stmts
+theorem ext4MulC0_isSome : ext4MulC0Opt.isSome := by native_decide
+/-- The `emul` coordinate `c0` leaf (front-sourced, 16-word ABI). -/
+def ext4MulC0Com : Com jasminDialect inCtxt r64 := ext4MulC0Opt.get ext4MulC0_isSome
 
-def subBody (k : Cont r64) : Cont r64 := fun st =>
-  emitBBSub st eAcc (inS 0) (inS 1) k
+def ext4MulC1Opt := frontLeafOpt c1Stmts
+theorem ext4MulC1_isSome : ext4MulC1Opt.isSome := by native_decide
+/-- The `emul` coordinate `c1` leaf (front-sourced, 16-word ABI). -/
+def ext4MulC1Com : Com jasminDialect inCtxt r64 := ext4MulC1Opt.get ext4MulC1_isSome
 
-/-! ## 4. The top-level `Com`s -/
+def ext4MulC2Opt := frontLeafOpt c2Stmts
+theorem ext4MulC2_isSome : ext4MulC2Opt.isSome := by native_decide
+/-- The `emul` coordinate `c2` leaf (front-sourced, 16-word ABI). -/
+def ext4MulC2Com : Com jasminDialect inCtxt r64 := ext4MulC2Opt.get ext4MulC2_isSome
 
-def ext4MulC0Com : Com jasminDialect inCtxt r64 := c0Body eFinalize initLState
-def ext4MulC1Com : Com jasminDialect inCtxt r64 := c1Body eFinalize initLState
-def ext4MulC2Com : Com jasminDialect inCtxt r64 := c2Body eFinalize initLState
-def ext4MulC3Com : Com jasminDialect inCtxt r64 := c3Body eFinalize initLState
-def ext4ScaleCom : Com jasminDialect inCtxt r64 := scaleBody eFinalize initLState
-def ext4AddCom : Com jasminDialect inCtxt r64 := addBody eFinalize initLState
-def ext4SubCom : Com jasminDialect inCtxt r64 := subBody eFinalize initLState
+def ext4MulC3Opt := frontLeafOpt c3Stmts
+theorem ext4MulC3_isSome : ext4MulC3Opt.isSome := by native_decide
+/-- The `emul` coordinate `c3` leaf (front-sourced, 16-word ABI). -/
+def ext4MulC3Com : Com jasminDialect inCtxt r64 := ext4MulC3Opt.get ext4MulC3_isSome
 
-/-! ## 5. allRegArith — leaf.denote = spec by construction
+def ext4ScaleOpt := frontLeafOpt scaleStmts
+theorem ext4Scale_isSome : ext4ScaleOpt.isSome := by native_decide
+/-- The `escale` coordinate leaf (front-sourced, 16-word ABI). -/
+def ext4ScaleCom : Com jasminDialect inCtxt r64 := ext4ScaleOpt.get ext4Scale_isSome
 
-Each `*Body` is built only from `emitBBMul`/`emitBBAdd` (which preserve
-`RegTail`) over the `eFinalize` `.ret`, so every binding is a `regArith` op. -/
+def ext4AddOpt := frontLeafOpt addStmts
+theorem ext4Add_isSome : ext4AddOpt.isSome := by native_decide
+/-- The `eadd` coordinate leaf (front-sourced, 16-word ABI). -/
+def ext4AddCom : Com jasminDialect inCtxt r64 := ext4AddOpt.get ext4Add_isSome
 
-/-- `eFinalize` produces an `allRegArith` body (a bare `.ret`). -/
-theorem regTail_eFinalize : RegTail eFinalize := by
-  intro Γ st; rfl
+def ext4SubOpt := frontLeafOpt subStmts
+theorem ext4Sub_isSome : ext4SubOpt.isSome := by native_decide
+/-- The `esub` coordinate leaf (front-sourced, 16-word ABI). -/
+def ext4SubCom : Com jasminDialect inCtxt r64 := ext4SubOpt.get ext4Sub_isSome
 
-theorem regTail_macc (ai bj : Nat) {k : Cont r64} (hk : RegTail k) :
-    RegTail (macc ai bj k) := by
-  intro Γ st
-  show allRegArith (macc ai bj k st) = true
-  unfold macc
-  exact regTail_emitBBMul (regTail_emitBBAdd hk eAcc _ _) eT _ _ Γ st
+/-! ## 5. Front provenance
 
-theorem regTail_saccS (ai bj : Nat) {k : Cont r64} (hk : RegTail k) :
-    RegTail (saccS ai bj k) := by
-  intro Γ st
-  show allRegArith (saccS ai bj k st) = true
-  unfold saccS
-  exact regTail_emitBBMul (regTail_emitBBAdd hk eS _ _) eT _ _ Γ st
+Each leaf `Com` IS the front lowering of its LowCT statement list: the
+`translateDialectControl` translation over `extVM`, lowered by
+`cryptoDialectToJasminCom`.  The equalities are definitional
+(`Option.some_get`). -/
 
-/-- The ext4-mul `c0` leaf is `allRegArith` (denote = Barrett word arithmetic). -/
-theorem ext4MulC0_is_regarith_only : allRegArith ext4MulC0Com = true := by
-  have h := regTail_emitBBMul
-    (regTail_emitBBMul
-      (regTail_emitBBAdd regTail_eFinalize eAcc (.st eAcc) (.st eS))
-      eS (inS iW) (.st eS))
-    eAcc (inS (iA 0)) (inS (iB 0))
-  -- assemble through the two `saccS` and the head products
-  have h2 := regTail_emitBBMul
-    (regTail_saccS 2 2 (regTail_saccS 3 1 (by
-      intro Γ st
-      exact regTail_emitBBMul
-        (regTail_emitBBAdd regTail_eFinalize eAcc (.st eAcc) (.st eS))
-        eS (inS iW) (.st eS) Γ st)))
-    eS (inS (iA 1)) (inS (iB 3))
-  exact regTail_emitBBMul h2 eAcc (inS (iA 0)) (inS (iB 0)) _ initLState
+theorem ext4MulC0_front_sourced :
+    (extComAt (seqAll c0Stmts) "acc").bind
+      DialectToJasminCom.cryptoDialectToJasminCom = some ext4MulC0Com :=
+  (Option.some_get ext4MulC0_isSome).symm
 
-theorem ext4MulC1_is_regarith_only : allRegArith ext4MulC1Com = true := by
-  have tail : RegTail (fun st =>
-      emitBBMul st eS (inS (iA 2)) (inS (iB 3)) fun s3 =>
-      saccS 3 2 (fun s4 =>
-        emitBBMul s4 eS (inS iW) (.st eS) fun s5 =>
-        emitBBAdd s5 eAcc (.st eAcc) (.st eS) eFinalize) s3) := by
-    intro Γ st
-    exact regTail_emitBBMul
-      (regTail_saccS 3 2 (by
-        intro Γ' st'
-        exact regTail_emitBBMul
-          (regTail_emitBBAdd regTail_eFinalize eAcc (.st eAcc) (.st eS))
-          eS (inS iW) (.st eS) Γ' st'))
-      eS (inS (iA 2)) (inS (iB 3)) Γ st
-  exact regTail_emitBBMul (regTail_macc 1 0 tail) eAcc (inS (iA 0)) (inS (iB 1))
-    _ initLState
+theorem ext4MulC1_front_sourced :
+    (extComAt (seqAll c1Stmts) "acc").bind
+      DialectToJasminCom.cryptoDialectToJasminCom = some ext4MulC1Com :=
+  (Option.some_get ext4MulC1_isSome).symm
 
-theorem ext4MulC2_is_regarith_only : allRegArith ext4MulC2Com = true := by
-  have tail : RegTail (fun st =>
-      emitBBMul st eS (inS (iA 3)) (inS (iB 3)) fun s3 =>
-      emitBBMul s3 eS (inS iW) (.st eS) fun s4 =>
-      emitBBAdd s4 eAcc (.st eAcc) (.st eS) eFinalize) := by
-    intro Γ st
-    exact regTail_emitBBMul
-      (regTail_emitBBMul
-        (regTail_emitBBAdd regTail_eFinalize eAcc (.st eAcc) (.st eS))
-        eS (inS iW) (.st eS))
-      eS (inS (iA 3)) (inS (iB 3)) Γ st
-  exact regTail_emitBBMul (regTail_macc 1 1 (regTail_macc 2 0 tail))
-    eAcc (inS (iA 0)) (inS (iB 2)) _ initLState
+theorem ext4MulC2_front_sourced :
+    (extComAt (seqAll c2Stmts) "acc").bind
+      DialectToJasminCom.cryptoDialectToJasminCom = some ext4MulC2Com :=
+  (Option.some_get ext4MulC2_isSome).symm
 
-theorem ext4MulC3_is_regarith_only : allRegArith ext4MulC3Com = true := by
-  exact regTail_emitBBMul
-    (regTail_macc 1 2 (regTail_macc 2 1 (regTail_macc 3 0 regTail_eFinalize)))
-    eAcc (inS (iA 0)) (inS (iB 3)) _ initLState
+theorem ext4MulC3_front_sourced :
+    (extComAt (seqAll c3Stmts) "acc").bind
+      DialectToJasminCom.cryptoDialectToJasminCom = some ext4MulC3Com :=
+  (Option.some_get ext4MulC3_isSome).symm
 
-theorem ext4Scale_is_regarith_only : allRegArith ext4ScaleCom = true := by
-  exact regTail_emitBBMul regTail_eFinalize eAcc (inS 0) (inS 1) _ initLState
+theorem ext4Scale_front_sourced :
+    (extComAt (seqAll scaleStmts) "acc").bind
+      DialectToJasminCom.cryptoDialectToJasminCom = some ext4ScaleCom :=
+  (Option.some_get ext4Scale_isSome).symm
 
-theorem ext4Add_is_regarith_only : allRegArith ext4AddCom = true := by
-  exact regTail_emitBBAdd regTail_eFinalize eAcc (inS 0) (inS 1) _ initLState
+theorem ext4Add_front_sourced :
+    (extComAt (seqAll addStmts) "acc").bind
+      DialectToJasminCom.cryptoDialectToJasminCom = some ext4AddCom :=
+  (Option.some_get ext4Add_isSome).symm
 
-theorem ext4Sub_is_regarith_only : allRegArith ext4SubCom = true := by
-  exact regTail_emitBBSub regTail_eFinalize eAcc (inS 0) (inS 1) _ initLState
+theorem ext4Sub_front_sourced :
+    (extComAt (seqAll subStmts) "acc").bind
+      DialectToJasminCom.cryptoDialectToJasminCom = some ext4SubCom :=
+  (Option.some_get ext4Sub_isSome).symm
 
-/-- **All five ext-field leaves are `allRegArith`.** Each ext4-mul coordinate and
-    the base-field scale denote the exact Barrett word arithmetic — the
-    by-construction `leaf.denote = spec` for the deg-4 ext-field kernels. -/
-theorem ext_field_all_regarith_only :
-    allRegArith ext4MulC0Com = true ∧ allRegArith ext4MulC1Com = true
-      ∧ allRegArith ext4MulC2Com = true ∧ allRegArith ext4MulC3Com = true
-      ∧ allRegArith ext4ScaleCom = true ∧ allRegArith ext4AddCom = true
-      ∧ allRegArith ext4SubCom = true :=
-  ⟨ext4MulC0_is_regarith_only, ext4MulC1_is_regarith_only,
-   ext4MulC2_is_regarith_only, ext4MulC3_is_regarith_only,
-   ext4Scale_is_regarith_only, ext4Add_is_regarith_only,
-   ext4Sub_is_regarith_only⟩
+/-! ## 6. Pure-arith predicate — leaf.denote = spec by construction
+
+Each lowered `Com` is `regArith`/`regConst`/`shlImm`/`shrImm`-only, so
+`JasminLprogExport.opToLinstrR` renders every binding and the owned backend
+emits no `# UNHANDLED-OP`. -/
+
+theorem ext4MulC0_is_purearith : allPureArith ext4MulC0Com = true := by native_decide
+theorem ext4MulC1_is_purearith : allPureArith ext4MulC1Com = true := by native_decide
+theorem ext4MulC2_is_purearith : allPureArith ext4MulC2Com = true := by native_decide
+theorem ext4MulC3_is_purearith : allPureArith ext4MulC3Com = true := by native_decide
+theorem ext4Scale_is_purearith : allPureArith ext4ScaleCom = true := by native_decide
+theorem ext4Add_is_purearith : allPureArith ext4AddCom = true := by native_decide
+theorem ext4Sub_is_purearith : allPureArith ext4SubCom = true := by native_decide
+
+/-- **All seven ext-field leaves are pure-arith.** Each `emul` coordinate, the
+    base-field `escale`, and the coordinate-wise `eadd`/`esub` denote exactly the
+    Barrett word arithmetic — the by-construction `leaf.denote = spec` for the
+    deg-4 ext-field kernels. -/
+theorem ext_field_all_purearith :
+    allPureArith ext4MulC0Com = true ∧ allPureArith ext4MulC1Com = true
+      ∧ allPureArith ext4MulC2Com = true ∧ allPureArith ext4MulC3Com = true
+      ∧ allPureArith ext4ScaleCom = true ∧ allPureArith ext4AddCom = true
+      ∧ allPureArith ext4SubCom = true :=
+  ⟨ext4MulC0_is_purearith, ext4MulC1_is_purearith,
+   ext4MulC2_is_purearith, ext4MulC3_is_purearith,
+   ext4Scale_is_purearith, ext4Add_is_purearith,
+   ext4Sub_is_purearith⟩
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ExtFieldEmit

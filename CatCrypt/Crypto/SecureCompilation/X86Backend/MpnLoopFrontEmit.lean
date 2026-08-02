@@ -75,7 +75,7 @@ lake env lean --run bench/integration/emit_mpn_front.lean
 ```
 
 writes the 8 front kernels to `bench/integration/gen_com/*.s`. Run AFTER
-`bench/integration/emit_loop_owned.lean` (the `MpnLoopOwnedEmit` driver, which
+`bench/integration/emit_loop_owned.lean` (the `MpnLoopEmit` driver, which
 still owns `mpn_{add,sub}_n_blk4_loop_owned.s` + `mpn_cmp_loop_owned.s` and
 also writes hand-tier versions of the 8): this driver's outputs are the
 front-sourced replacements. Byte-KAT:
@@ -298,7 +298,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (renderLprogAt
 
 /-- Write the 8 front-sourced runtime-N mpn kernels to
     `bench/integration/gen_com/*.s` (run from the repo root). The block-unrolled
-    `blk4` pair and `mpn_cmp` remain `MpnLoopOwnedEmit.emitMain`'s outputs. -/
+    `blk4` pair and `mpn_cmp` remain `MpnLoopEmit.emitMain`'s outputs. -/
 def emitMain : IO Unit := do
   IO.FS.createDirAll "bench/integration/gen_com"
   let wr (p : String) (o : Option Lprog) : IO Unit := do

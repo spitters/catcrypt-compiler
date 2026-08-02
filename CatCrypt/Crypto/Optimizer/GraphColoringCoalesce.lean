@@ -35,11 +35,11 @@ So coalescing reuses two already-proved facts, composed:
 
 1. **Renaming soundness** (`RandomizedRegAlloc.runBlock_renameBlock_rel`): an
    injective renaming `ρ` carries the `StateRel ρ` simulation through `runBlock`.
-   The coalescing substitution `subst d s` (send `d ↦ s`, fix everything else) is
-   injective **exactly when `d` and `s` do not both occur as distinct live names**
-   — which is the non-interference certificate `coalesceInterfereOk` (mirroring
-   `GraphColoringRegAlloc.interfere` on the two ranges). This is the Briggs/George
-   side-condition: coalesce only when provably non-interfering.
+   The coalescing substitution `subst d s` sends `d ↦ s` and fixes everything else,
+   so it identifies the two names and is injective only for `d = s`
+   (`subst_not_injective`) — the one case the non-interference certificate
+   `coalesceInterfereOk` excludes. The simulation therefore says nothing about a
+   certified copy; §7 states what separates the two runs instead.
 
 2. **Identity-mov drop** (`runBlock_dropIdMovs`, proved here, fully general): a
    `mov r (.reg r)` writes `r` the value it already holds, so it is a `runBlock`
@@ -70,6 +70,10 @@ interference is left alone.
 * §6: a worked mov-heavy demo (`mov rbx,rax; add rbx,rcx; mov rdx,rbx`) where a
   non-interfering copy is coalesced away — the coalesced block is strictly shorter
   and `runBlock`-equivalent on the result register (concrete `native_decide`).
+* §7: the separation between the coalesced and original runs
+  (`coalesce_full_state_fails`, `coalesceWitness_regs_ne`) and the unsatisfiability
+  of the simulation's injectivity hypothesis on certified copies
+  (`coalesceInterfereOk_not_injective`).
 
 ## Deferred integration (NOT done here — stated only)
 
@@ -263,12 +267,11 @@ theorem coalesceStep_cleanup_sound (block : List (JInstr 64)) (s : JState 64) :
   runBlock_dropIdMovs (coalesceStep block) s
 
 /-- **Rename-level single-step soundness (the `StateRel` simulation).** For an
-    injective substitution `ρ = subst d s` (injective exactly when `d`, `s` do not
-    both occur as distinct live names — the non-interference certificate), the
-    coalescing rename carries the `StateRel ρ` simulation through `runBlock`: the
-    coalesced run's register `ρ n` agrees with the original run's `n`. This is the
-    genuine "coalescing preserves the computation up to the merged register"
-    statement, instantiating the proved general renaming theorem. -/
+    injective substitution `ρ = subst d s`, the coalescing rename carries the
+    `StateRel ρ` simulation through `runBlock`: the coalesced run's register `ρ n`
+    agrees with the original run's `n`. This instantiates the general renaming
+    theorem; `coalesceInterfereOk_not_injective` (§7) shows the injectivity
+    hypothesis holds for no copy the coalescing certificate accepts. -/
 theorem coalesceStep_runBlock_rel {d s : String}
     (hinj : Function.Injective (subst d s))
     {sL sR : JState 64} (h : StateRel (subst d s) sL sR)
@@ -380,5 +383,94 @@ theorem demo_runBlock_result_agrees :
 theorem demo_runBlock_value :
     let s0 : JState 64 := { regs := fun r => if r = "rcx" then 5 else 0 }
     (runBlock s0 (coalesce demoBlock)).get "rbx" = (12 : BitVec 64) := by native_decide
+
+/-! ## 7. What coalescing does to the final state
+
+`X86OptPipelineComposed.ValidatedPass.sem_sound` asks for
+`agreeExcept (dead b) (runBlock s (f b)) (runBlock s b)`. The first component of
+`agreeExcept` is equality of the whole register file, and its dead set
+`dead b : List (String × Int)` ranges over memory cells. Coalescing `d := s`
+removes the write to `d` and redirects `d`'s later writes to `s`, so the two
+merged names hold different values at block exit than they do in the original
+run. The witness below carries a `coalesceInterfereOk`-certified copy and two
+final register files that differ at both merged names; a register-file
+disagreement contradicts `agreeExcept D` for every cell-set `D`.
+
+`coalesceStep_runBlock_rel` hypothesises `Function.Injective (subst d s)`.
+`subst d s` sends both `d` and `s` to `s`, so that hypothesis forces `d = s`,
+which `coalesceInterfereOk` rules out. -/
+
+/-- `subst d s` identifies the two names, so it is injective only for `d = s`. -/
+theorem subst_not_injective {d s : String} (h : d ≠ s) :
+    ¬ Function.Injective (subst d s) := fun hinj => h (hinj (by simp [subst, h.symm]))
+
+/-- A certified coalescing candidate has `d ≠ s`, hence a non-injective `subst d s`:
+    the injectivity hypothesis of `coalesceStep_runBlock_rel` is unsatisfiable on
+    every copy the certificate accepts. -/
+theorem coalesceInterfereOk_not_injective {block : List (JInstr 64)} {copyIdx : Nat}
+    {d s : String} (h : coalesceInterfereOk block copyIdx d s = true) :
+    ¬ Function.Injective (subst d s) := by
+  simp only [coalesceInterfereOk, Bool.and_eq_true, bne_iff_ne, ne_eq] at h
+  exact subst_not_injective h.1.1
+
+/-- On `demoBlock` the original run's final state is the coalesced run's final state
+    with the coalesced-away register `rdx` set to the merged register's value: the
+    two runs differ at `rdx` and nowhere else, for every start state. -/
+theorem demo_runBlock_eq_setReg (σ : JState 64) :
+    runBlock σ demoBlock =
+      (runBlock σ (coalesce demoBlock)).setReg "rdx"
+        ((runBlock σ (coalesce demoBlock)).get "rbx") := by
+  rw [demo_coalesced]; rfl
+
+/-- A block whose certified copy `mov rdx, rbx` is followed by a further write to
+    `rdx`: `rbx := 7; rdx := rbx; rdx += rcx`. Coalescing merges `rdx` into `rbx`,
+    which both leaves `rdx` unwritten and sends the `rdx += rcx` update to `rbx`. -/
+def coalesceWitnessBlock : List (JInstr 64) :=
+  [ .mov "rbx" (.imm 7)
+  , .mov "rdx" (.reg "rbx")
+  , .add "rdx" (.reg "rcx") ]
+
+/-- The copy at index 1 is certified: `rdx ≠ rbx`, the copy is `rdx`'s definition,
+    and `rbx`'s last use is the copy. -/
+theorem coalesceWitness_certified :
+    coalesceInterfereOk coalesceWitnessBlock 1 "rdx" "rbx" = true := by decide
+
+/-- The coalescer fires on the witness. -/
+theorem coalesceWitness_fires :
+    firstCoalescable coalesceWitnessBlock = some ("rdx", "rbx") := by decide
+
+/-- The coalesced witness: the copy is gone and the addition targets `rbx`. -/
+theorem coalesceWitness_coalesced :
+    coalesce coalesceWitnessBlock =
+      [ .mov "rbx" (.imm 7), .add "rbx" (.reg "rcx") ] := by rfl
+
+/-- The start state the witness separates the two runs from. -/
+def coalesceWitnessState : JState 64 := { regs := fun r => if r = "rcx" then 5 else 0 }
+
+/-- Both merged names hold different values at exit: `rbx` holds `12` after the
+    coalesced run and `7` after the original, and `rdx` holds `0` after the
+    coalesced run and `12` after the original. -/
+theorem coalesceWitness_both_names_differ :
+    (runBlock coalesceWitnessState (coalesce coalesceWitnessBlock)).get "rbx"
+        ≠ (runBlock coalesceWitnessState coalesceWitnessBlock).get "rbx" ∧
+      (runBlock coalesceWitnessState (coalesce coalesceWitnessBlock)).get "rdx"
+        ≠ (runBlock coalesceWitnessState coalesceWitnessBlock).get "rdx" := by
+  constructor <;> decide
+
+/-- The final register files of the two runs differ. Since `agreeExcept D` includes
+    register-file equality for every cell-set `D`, this refutes the footprint
+    relation on the witness under any dead set as well as full state equality. -/
+theorem coalesceWitness_regs_ne :
+    (runBlock coalesceWitnessState (coalesce coalesceWitnessBlock)).regs
+      ≠ (runBlock coalesceWitnessState coalesceWitnessBlock).regs := fun h =>
+  absurd (congrFun h "rdx") (by decide)
+
+/-- **The full-state semantic certificate is unprovable for `coalesce`.** There is
+    no `s`-uniform `runBlock`-equality between the coalesced witness and the
+    original — the obligation `ValidatedPass.sem_sound` demands. -/
+theorem coalesce_full_state_fails :
+    ¬ (∀ s : JState 64,
+        runBlock s (coalesce coalesceWitnessBlock) = runBlock s coalesceWitnessBlock) :=
+  fun hall => coalesceWitness_regs_ne (congrArg JState.regs (hall coalesceWitnessState))
 
 end CatCrypt.Crypto.Optimizer.GraphColoringCoalesce

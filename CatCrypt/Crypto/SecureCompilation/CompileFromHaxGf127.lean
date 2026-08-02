@@ -14,7 +14,7 @@ This module extends the **C4** step of the verified-compiler plan to the
 base-field multiply. `127 = 2⁷ - 1` is a **Mersenne** prime, so `2⁷ ≡ 1
 (mod 127)`: multiply is integer `a·b` followed by a `128 ≡ 1` double-fold and a
 branch-free conditional subtract — exactly the reduce CatCrypt's owned QR-UOV
-(`QRUOV/VerifyOwnedEmit.lean`) and CROSS (`CROSS/SyndromeOwnedEmit.lean`) kernels
+(`QRUOV/VerifyEmit.lean`) and CROSS (`CROSS/SyndromeEmit.lean`) kernels
 render through the GP-ALU alphabet.
 
 ## GF(127) multiply (Mersenne fold), `w = 64`
@@ -57,7 +57,7 @@ obligation `compileFromHax_meets_spec`. The emitted jasmin `Com` is *computed by
 the verified compiler* and proven equal to the Mersenne-fold form.
 
 The abstract `(a*b) % 127` tie is stated and proved **separately**
-(`gf127MulFold_eq_mod`) over the constrained domain `a, b < 127`, the genuine
+(`gf127MulFold_eq_mod`) over the constrained domain `a, b < 127`, the
 mod-reduce arithmetic identity (the prime-field analogue of the `#117` Barrett
 seam, here phrased in pure `BitVec` so `bv_decide` bitblasts the fold).
 -/
@@ -165,7 +165,7 @@ theorem gf127Mul_compiles :
 
 The Mersenne-fold emit form `gf127MulFold` equals abstract `(a*b) % 127` over the
 constrained QR-UOV / CROSS domain `a, b < 127` (every base-field residue). This
-is the genuine prime-field reduce identity — proved by pushing everything to
+is the prime-field reduce identity — proved by pushing everything to
 `toNat` and discharging the resulting bounded `Nat` arithmetic with `omega`, so
 no bit-blasting is needed. -/
 

@@ -106,6 +106,11 @@ def SimdOp.attMnemonic : SimdOp → String
   | .packed .shl 32 => "vpslld"
   | .packed .shr 32 => "vpsrld"
   | .packed _ _ => "vppacked"
+  | .varShift .shl 32 => "vpsllvd"
+  | .varShift .shl 64 => "vpsllvq"
+  | .varShift .shr 32 => "vpsrlvd"
+  | .varShift .shr 64 => "vpsrlvq"
+  | .varShift _ _ => "vpvarshift"
   | .mulhi16 => "vpmulhw"
   | .vaesenc => "vaesenc"
   | .vaesenclast => "vaesenclast"
@@ -173,7 +178,7 @@ they read `op src, dst`; `SHA256RNDS2` additionally takes its round-constant
 operand implicitly in `%xmm0`, which `gas` accepts written explicitly as a
 leading `%xmm0`. The renderers below produce the exact lines the byte encoder
 `VsimdByteEncoder.encSha256*` assembles to (gas-pinned) and that the hand
-schedule `Sha2ShaniOwnedEmit.renderQuartet` emits.
+schedule `Sha2ShaniEmit.renderQuartet` emits.
 
 For `vsha256rnds2 abef cdgh mk` the dialect denote is `vsha256rnds2W abef cdgh mk`;
 the machine mapping (validated by the byte KAT) is `src = abef`, `dst = cdgh`,
@@ -201,7 +206,7 @@ def renderSha256Msg1 (src dst : String) : String := "\tsha256msg1\t" ++ src ++ "
 def renderSha256Msg2 (src dst : String) : String := "\tsha256msg2\t" ++ src ++ ", " ++ dst
 
 -- The renderers reproduce the exact SHA-NI lines of the hand schedule
--- `Sha2ShaniOwnedEmit.renderQuartet`/`renderMsg1`/`renderMsg2` (which the
+-- `Sha2ShaniEmit.renderQuartet`/`renderMsg1`/`renderMsg2` (which the
 -- whole-compression FIPS-180-4 KAT `bench/sha2_compare/sha2_shani_kat.c`
 -- validates), and the byte encoder `VsimdByteEncoder.encSha256*` assembles them.
 example : renderSha256Rnds2 "%xmm2" "%xmm1" = "\tsha256rnds2\t%xmm0, %xmm2, %xmm1" := by
@@ -931,22 +936,20 @@ def macExportAsm : String :=
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (strContains)
 
-/-- The kernel emits the GFNI multiply (lowercase owned mnemonic, not the
+/- The kernel emits the GFNI multiply (lowercase owned mnemonic, not the
     UPPERCASE jasmin intrinsic). -/
-theorem asm_has_gfni : strContains macExportAsm "vgf2p8mulb" = true := by
-  native_decide
+#guard (strContains macExportAsm "vgf2p8mulb")
 
-/-- The accumulator is XOR-folded (the MAC), lowercase owned mnemonic. -/
-theorem asm_has_xor : strContains macExportAsm "vpxor" = true := by native_decide
+/- The accumulator is XOR-folded (the MAC), lowercase owned mnemonic. -/
+#guard (strContains macExportAsm "vpxor")
 
 /-- The owned export symbol is present. -/
 theorem asm_has_export :
     strContains macExportAsm "uov_gf256mac16_vsimd:" = true := by native_decide
 
-/-- No UPPERCASE jasmin intrinsic survives — this is the owned (no-jasminc)
+/- No UPPERCASE jasmin intrinsic survives — this is the owned (no-jasminc)
     lowercase-mnemonic path. -/
-theorem asm_no_jasmin_intrinsic :
-    strContains macExportAsm "VGF2P8MULB" = false := by native_decide
+#guard !(strContains macExportAsm "VGF2P8MULB")
 
 /-- A `clmul` binding renders with a leading `$imm` and the `vpclmulqdq`
     mnemonic (AT&T order `$imm, src2, src1, dst`). -/
@@ -1047,8 +1050,8 @@ Sections 4b/4c build the **XMM** (128-bit) auto-allocator. The AVX2 `vsimd`
 kernels — the `Avx2Instr` VEX.L=1 path: ChaCha-4way, the 8-way SHA hashes, the
 AVX2 NTT butterfly — ride the *same* `SimdOp`/`Com jasminDialect` substrate but
 emit over the 256-bit `%ymm0..15` file. Today each such leaf carries a
-hand-written `allocYmm`/`ymmOf` map (e.g. `MLKEM.NttOwnedEmit.allocYmm`,
-`MLDSA.InvNttPointwiseSimdOwnedEmit.allocYmm`, `Sha2MultiBufAvx2OwnedEmit`).
+hand-written `allocYmm`/`ymmOf` map (e.g. `MLKEM.NttEmit.allocYmm`,
+`MLDSA.InvNttPointwiseSimdEmit.allocYmm`, `Sha2MultiBufAvx2Emit`).
 
 This section extends the §4b linear scan to the YMM tier verbatim:
 
@@ -1069,7 +1072,7 @@ The XMM path of §1–§8 is untouched and byte-identical. -/
     `xmmReg`. A `%`-prefixed name is a pre-colored physical register and renders
     as itself; otherwise it is an SSA name looked up in `alloc`; an unmapped one
     yields the explicit `<UNALLOCATED:n>` sentinel (gas-rejected, never silently
-    aliased). Mirror of `MLKEM.NttOwnedEmit.ymmOf`, but `%`-passthrough-aware. -/
+    aliased). Mirror of `MLKEM.NttEmit.ymmOf`, but `%`-passthrough-aware. -/
 def ymmReg (alloc : XAlloc) (n : String) : String :=
   if n.startsWith "%" then n
   else (alloc.lookup n).getD ("<UNALLOCATED:" ++ n ++ ">")

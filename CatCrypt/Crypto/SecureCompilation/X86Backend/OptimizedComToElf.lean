@@ -130,7 +130,24 @@ theorem optimizedJBlock_sound (body : List Linstr) (g opt : List (JInstr 64))
     rw [hg] at ho
     simpa using ho.symm
   subst hopt
-  exact composeValidated_sound optPipeline g s
+  exact composeValidated_sound optPipeline g rfl s
+
+/-- **Footprint-relative soundness.** The general form of `optimizedJBlock_sound`:
+    the optimized block agrees with the gathered block modulo the pipeline's
+    accumulated dead set `composedDead optPipeline g` on every state. For this
+    pipeline that dead set is `[]`, so this specializes to the full-state
+    `optimizedJBlock_sound`. An instance of `composeValidated_sound_fp`. -/
+theorem optimizedJBlock_sound_fp (body : List Linstr) (g opt : List (JInstr 64))
+    (hg : gatherJBlock body = some g) (ho : optimizedJBlock body = some opt) :
+    ∀ s : JState 64,
+      agreeExcept (composedDead optPipeline g) (runBlock s opt) (runBlock s g) := by
+  intro s
+  have hopt : opt = composeValidated optPipeline g := by
+    unfold optimizedJBlock at ho
+    rw [hg] at ho
+    simpa using ho.symm
+  subst hopt
+  exact composeValidated_sound_fp optPipeline g s
 
 /-- **Constant-time preservation.** When `gatherJBlock body = some g` and the gathered
     block is in the direct-addressing constant-time class (`allDirect g = true`), the

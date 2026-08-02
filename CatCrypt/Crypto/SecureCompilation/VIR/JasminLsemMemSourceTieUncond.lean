@@ -43,11 +43,9 @@ decode:
    4-cell fill loop at runtime count 3 through `fillLoop_export_faithful_denote`,
    its array cells decoding to the source fold.
 
-**0 sorries; axioms = {propext, Classical.choice, Quot.sound} + the
-pre-existing `aesSboxArrayW_size` `native_decide` inherited from the
-`jasminDialect` denotation (+ `Lean.ofReduceBool` for the §8 concrete
-witnesses).** The `lsem→bytes` encoder + Sail tables remain the declared
-trusted base.
+**0 sorries; axioms = {propext, Classical.choice, Quot.sound} (+
+`Lean.ofReduceBool` for the §8 concrete witnesses).** The `lsem→bytes` encoder
++ Sail tables remain the declared trusted base.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieUncond
@@ -153,7 +151,7 @@ theorem lsemStepMem_add64Imm (dst a : String) (k : Nat) {w : Nat} (va : BitVec w
   have hstep : lsemStepCast (LinstrR.Lopn [.reg dst] "ADD:64" [.reg a, .imm k], none) st.reg
       = some ((st.reg.setReg dst (va + BitVec.ofNat w k)).nextPc) := by
     rw [lsemStepCast_of_delegate _ _ (Or.inr rfl),
-      lsemStepMC_of_delegate _ _ rfl rfl rfl,
+      lsemStepMC_of_delegate _ _ rfl rfl rfl rfl rfl,
       lsemStepSh_of_not_sar _ _ (by simp [sarStruct?, stripWidthTag_ADD64])]
     simp only [lsemStepN, readReg_of_getW ha, evalOperandN, stripWidthTag_ADD64, applyOpnN]
   rw [lsemStepMem_reg, hstep, Option.map_some]
@@ -167,7 +165,7 @@ theorem lsemStepMem_sub64Imm (dst a : String) (k : Nat) {w : Nat} (va : BitVec w
   have hstep : lsemStepCast (LinstrR.Lopn [.reg dst] "SUB:64" [.reg a, .imm k], none) st.reg
       = some ((st.reg.setReg dst (va - BitVec.ofNat w k)).nextPc) := by
     rw [lsemStepCast_of_delegate _ _ (Or.inr rfl),
-      lsemStepMC_of_delegate _ _ rfl rfl rfl,
+      lsemStepMC_of_delegate _ _ rfl rfl rfl rfl rfl,
       lsemStepSh_of_not_sar _ _ (by simp [sarStruct?, stripWidthTag_SUB64])]
     simp only [lsemStepN, readReg_of_getW ha, evalOperandN, stripWidthTag_SUB64, applyOpnN]
   rw [lsemStepMem_reg, hstep, Option.map_some]

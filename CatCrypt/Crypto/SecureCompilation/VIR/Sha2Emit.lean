@@ -1021,71 +1021,55 @@ def sha512ResidentJazz : String := residentJazz sha512Spec "sha512_compress_resi
 
 /-! ### Structural sanity checks on the state-resident emit -/
 
-/-- The SHA-256 resident export has the expected ABI (no `K[]` in `inp`,
+/- The SHA-256 resident export has the expected ABI (no `K[]` in `inp`,
     width 24). -/
-theorem sha256_resident_export_sig :
-    strContains sha256ResidentJazz
-      "export fn sha256_compress_resident(reg ptr u32[8] out, reg const ptr u32[24] inp)"
-      = true := by native_decide
+#guard (strContains sha256ResidentJazz "export fn sha256_compress_resident(reg ptr u32[8] out, reg const ptr u32[24] inp)")
 
-/-- The SHA-512 resident export has the expected ABI. -/
-theorem sha512_resident_export_sig :
-    strContains sha512ResidentJazz
-      "export fn sha512_compress_resident(reg ptr u64[8] out, reg const ptr u64[24] inp)"
-      = true := by native_decide
+/- The SHA-512 resident export has the expected ABI. -/
+#guard (strContains sha512ResidentJazz "export fn sha512_compress_resident(reg ptr u64[8] out, reg const ptr u64[24] inp)")
 
-/-- The SHA-256 resident body declares the 8 working-word named GPRs `a..h`. -/
-theorem sha256_resident_has_wk_regs :
-    strContains sha256ResidentJazz "reg u32 a b c d e_ f g h;" = true := by native_decide
+/- The SHA-256 resident body declares the 8 working-word named GPRs `a..h`. -/
+#guard (strContains sha256ResidentJazz "reg u32 a b c d e_ f g h;")
 
-/-- The SHA-512 resident body declares the 8 working-word named GPRs `a..h`. -/
-theorem sha512_resident_has_wk_regs :
-    strContains sha512ResidentJazz "reg u64 a b c d e_ f g h;" = true := by native_decide
+/- The SHA-512 resident body declares the 8 working-word named GPRs `a..h`. -/
+#guard (strContains sha512ResidentJazz "reg u64 a b c d e_ f g h;")
 
-/-- The SHA-256 resident body uses a 16-word stack array `w[16]` for the
+/- The SHA-256 resident body uses a 16-word stack array `w[16]` for the
     schedule sliding window (the 8 working words are reg-resident; W is
     spilled because 8 + 16 + 4 = 28 named regs overflows x86-64's GPR file). -/
-theorem sha256_resident_has_w_array :
-    strContains sha256ResidentJazz "stack u32[16] w;" = true := by native_decide
+#guard (strContains sha256ResidentJazz "stack u32[16] w;")
 
-/-- The SHA-512 resident body uses a 16-word stack array `w[16]` for the
+/- The SHA-512 resident body uses a 16-word stack array `w[16]` for the
     schedule sliding window. -/
-theorem sha512_resident_has_w_array :
-    strContains sha512ResidentJazz "stack u64[16] w;" = true := by native_decide
+#guard (strContains sha512ResidentJazz "stack u64[16] w;")
 
-/-- The SHA-256 resident body has 4 scratch regs `t0..t3`. -/
-theorem sha256_resident_has_scratch :
-    strContains sha256ResidentJazz "reg u32 t0 t1 t2 t3;" = true := by native_decide
+/- The SHA-256 resident body has 4 scratch regs `t0..t3`. -/
+#guard (strContains sha256ResidentJazz "reg u32 t0 t1 t2 t3;")
 
-/-- The SHA-512 resident body has 4 scratch regs `t0..t3`. -/
-theorem sha512_resident_has_scratch :
-    strContains sha512ResidentJazz "reg u64 t0 t1 t2 t3;" = true := by native_decide
+/- The SHA-512 resident body has 4 scratch regs `t0..t3`. -/
+#guard (strContains sha512ResidentJazz "reg u64 t0 t1 t2 t3;")
 
-/-- The SHA-256 resident body uses `K[0] = 0x428a2f98` as a SCALAR LITERAL
+/- The SHA-256 resident body uses `K[0] = 0x428a2f98` as a SCALAR LITERAL
     IMMEDIATE in the first round (materialised in `t1`, then `t3 += t1;`),
     not a memory read. This is the load-bearing reg-to-imm K addend; the
     intermediate move is forced by Jasmin's ADD_{32,64} signed-32 immediate
     ceiling. Net: one extra mov per round (64 + 80 = 144 extra ops vs the
     scalar emit's 64 + 80 = 144 K-memory-load ops — pure reg-imm vs memory
     load, both 1 cycle but the reg-imm avoids the inp[] indirection). -/
-theorem sha256_resident_k_is_immediate :
-    strContains sha256ResidentJazz "t1 = 1116352408;" = true := by native_decide
+#guard (strContains sha256ResidentJazz "t1 = 1116352408;")
 
-/-- The SHA-256 resident body has the working-word rotation as a reg-to-reg
+/- The SHA-256 resident body has the working-word rotation as a reg-to-reg
     move (`f = e_;`) — the storage-class refinement headline op. -/
-theorem sha256_resident_rotate_reg_to_reg :
-    strContains sha256ResidentJazz "f = e_;" = true := by native_decide
+#guard (strContains sha256ResidentJazz "f = e_;")
 
-/-- The SHA-256 resident body has NO `st[..]` stack array (the residency
+/- The SHA-256 resident body has NO `st[..]` stack array (the residency
     invariant: the canonical state-array name `st` of the §3-§6 scalar emit
     is replaced by named GPRs + `h0[]` for the feed-forward saved H). -/
-theorem sha256_resident_no_st_array :
-    strContains sha256ResidentJazz "stack u32[128] st" = false := by native_decide
+#guard !(strContains sha256ResidentJazz "stack u32[128] st")
 
-/-- The SHA-256 resident body has the saved-H stack `h0[8]` (the only stack
+/- The SHA-256 resident body has the saved-H stack `h0[8]` (the only stack
     storage; read once per block at function exit). -/
-theorem sha256_resident_has_h0 :
-    strContains sha256ResidentJazz "stack u32[8] h0;" = true := by native_decide
+#guard (strContains sha256ResidentJazz "stack u32[8] h0;")
 
 /-! ### Denotation preservation (storage-class refinement)
 
@@ -1336,39 +1320,27 @@ def sha512ResidentJazzP : String := residentJazzP sha512Spec "sha512_compress_re
 
 /-! ### Structural sanity checks -/
 
-/-- SHA-256 W-pinned ABI shape (same as §9: 24-word `inp`, 8-word `out`). -/
-theorem sha256_residentP_export_sig :
-    strContains sha256ResidentJazzP
-      "export fn sha256_compress_resident_wp(reg ptr u32[8] out, reg const ptr u32[24] inp)"
-      = true := by native_decide
+/- SHA-256 W-pinned ABI shape (same as §9: 24-word `inp`, 8-word `out`). -/
+#guard (strContains sha256ResidentJazzP "export fn sha256_compress_resident_wp(reg ptr u32[8] out, reg const ptr u32[24] inp)")
 
-/-- SHA-512 W-pinned ABI shape. -/
-theorem sha512_residentP_export_sig :
-    strContains sha512ResidentJazzP
-      "export fn sha512_compress_resident_wp(reg ptr u64[8] out, reg const ptr u64[24] inp)"
-      = true := by native_decide
+/- SHA-512 W-pinned ABI shape. -/
+#guard (strContains sha512ResidentJazzP "export fn sha512_compress_resident_wp(reg ptr u64[8] out, reg const ptr u64[24] inp)")
 
-/-- The hottest 2 schedule slots are declared as named u32 regs in the
+/- The hottest 2 schedule slots are declared as named u32 regs in the
     SHA-256 W-pinned emit (the 2 most-recently-written slots of the
     sliding window). -/
-theorem sha256_residentP_w_pinned :
-    strContains sha256ResidentJazzP "reg u32 wp0 wp1;"
-      = true := by native_decide
+#guard (strContains sha256ResidentJazzP "reg u32 wp0 wp1;")
 
-/-- The hottest 2 schedule slots are declared as named u64 regs in the
+/- The hottest 2 schedule slots are declared as named u64 regs in the
     SHA-512 W-pinned emit. -/
-theorem sha512_residentP_w_pinned :
-    strContains sha512ResidentJazzP "reg u64 wp0 wp1;"
-      = true := by native_decide
+#guard (strContains sha512ResidentJazzP "reg u64 wp0 wp1;")
 
-/-- The SHA-256 W-pinned emit retains the 16-slot stack backing for
+/- The SHA-256 W-pinned emit retains the 16-slot stack backing for
     the cold-tail of the sliding window. -/
-theorem sha256_residentP_has_w_array :
-    strContains sha256ResidentJazzP "stack u32[16] w;" = true := by native_decide
+#guard (strContains sha256ResidentJazzP "stack u32[16] w;")
 
-/-- The SHA-512 W-pinned emit retains the 16-slot stack backing. -/
-theorem sha512_residentP_has_w_array :
-    strContains sha512ResidentJazzP "stack u64[16] w;" = true := by native_decide
+/- The SHA-512 W-pinned emit retains the 16-slot stack backing. -/
+#guard (strContains sha512ResidentJazzP "stack u64[16] w;")
 
 /-! ### Denotation preservation (storage-class refinement vs §9)
 

@@ -6,13 +6,15 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.SecureCompilation.VIR.Core
 
 /-!
-# A genuine common-subexpression-elimination pass for `Com` (real transform)
+# An eliminating common-subexpression-elimination pass for `Com` (real transform)
+
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
 `CommonSubexprElim.lean` ships an *analysis-as-labelling* CSE whose `Com → Com`
 rewrite is the identity (`applyCse = fun p _ => p`), so its preservation
 theorems are `rfl` and verify nothing about an actual elimination. This file
 supplies what that one defers: a **structural** `Com → Com` transform that
-genuinely *removes* a redundant let-binding and *redirects its uses to the
+*removes* a redundant let-binding and *redirects its uses to the
 earlier, equal binding*, together with a **non-`rfl`** denotation-preservation
 proof by induction over the `Com`.
 
@@ -52,9 +54,9 @@ So `.here` and `.there .here` **merge** onto the single canonical slot — this 
 the CSE deduplication, and it is *not* the identity: the context shrinks and two
 distinct de Bruijn variables collapse to one.
 
-## The proof (genuinely not `rfl`)
+## The proof (not `rfl`)
 
-The keystone is
+The central lemma is
 
   `cseHead_denote`:
     `(cseHead e' body h_eq).denote (V.extend w) = (Com.var e' body).denote (V.extend w)`
@@ -80,7 +82,7 @@ merged slots hold the same value `w`.
   `Δ = []` — eliminating the *innermost-of-two-adjacent* redundant `.var` and
   redirecting its uses to the immediately preceding equal binding. The
   user-facing `cseAdjacent` runs on `.var e (.var e' body)`, checks the
-  equal-expression hypothesis, and returns the genuinely smaller `.var e
+  equal-expression hypothesis, and returns the smaller `.var e
   (cseHead e' body …)` with the preservation theorem `cseAdjacent_denote`.
 -/
 
@@ -209,7 +211,7 @@ def double : {Δ : Ctxt d} → {t : d.Ty} → {Γ : Ctxt d} →
 
 /-! ## 4. The substitution laws (lookups agree)
 
-The genuine inductive lemmas: looking up a substituted variable in `single V w`
+The inductive lemmas: looking up a substituted variable in `single V w`
 equals looking up the original variable in `double V w`. Both the redundant slot
 and the canonical slot hold `w` in `double`, so merging them is sound. -/
 
@@ -258,7 +260,7 @@ theorem substExpr_denote {Δ : Ctxt d} {t : d.Ty} {Γ : Ctxt d} {s : d.Ty}
   simp only []
   rw [substHV_lookupArgs e.args V w]
 
-/-! ## 5. The keystone: denotation preservation of the substitution (NON-`rfl`)
+/-! ## 5. Denotation preservation of the substitution (NON-`rfl`)
 
 The substituted program at `single V w` denotes the same function as the
 original at `double V w`. The two valuations differ at the dropped slot (where
@@ -311,7 +313,7 @@ abbrev RedundantHead {t : d.Ty} {Γ : Ctxt d}
 
 /-- **Eliminate the redundant inner binding.** Given the body of two adjacent
 bindings (context `t :: t :: Γ`), drop the redundant slot and redirect its uses
-to the canonical slot, re-typing the body under `t :: Γ`. This genuinely changes
+to the canonical slot, re-typing the body under `t :: Γ`. This changes
 the context `t :: t :: Γ ↝ t :: Γ` and merges two de Bruijn variables. -/
 def cseHead {t : d.Ty} {Γ : Ctxt d} {τ : d.Ty}
     (body : Com d (t :: t :: Γ) τ) : Com d (t :: Γ) τ :=
@@ -339,7 +341,7 @@ theorem cseHead_denote {t : d.Ty} {Γ : Ctxt d} {τ : d.Ty}
 /-! ## 7. End-to-end: run on `.var e (.var e' body)`
 
 `cseAdjacent` takes the full two-binding program plus the redundancy proof and
-returns the genuinely smaller `.var e (cseHead body)` — one fewer binding.
+returns the smaller `.var e (cseHead body)` — one fewer binding.
 `cseAdjacent_denote` is the user-facing preservation theorem. -/
 
 /-- Eliminate the redundant inner binding of an adjacent pair `e; e'`, given a
@@ -365,7 +367,7 @@ theorem cseAdjacent_denote {t : d.Ty} {Γ : Ctxt d} {τ : d.Ty}
 /-! ## 8. A concrete worked example (the transform really removes a binding)
 
 A self-contained one-type, two-op toy dialect over `Nat`, on which we exhibit a
-program with a genuinely redundant inner binding (`v1 = dbl v0`-style recompute
+program with a redundant inner binding (`v1 = dbl v0`-style recompute
 where the syntactic shift makes `e'` recompute `v0`), run `cseAdjacent`, and
 check (via `comLen`) that the result has **one fewer** binding — the elimination
 is real, not the identity. We also confirm the denotation agrees. -/
@@ -427,11 +429,11 @@ def fullProg : Com toyDialect [] () :=
 /-- The full program has **two** bindings. -/
 example : comLen fullProg = 2 := rfl
 
-/-- After CSE, **one** binding remains: the binder count genuinely drops `2 → 1`. -/
+/-- After CSE, **one** binding remains: the binder count drops `2 → 1`. -/
 example :
     comLen (CSEReal.cseAdjacent e0 e1 adjBody e1_redundant) = 1 := by native_decide
 
-/-- The substitution genuinely merges `v1`'s use onto `v0`: `cseHead adjBody`
+/-- The substitution merges `v1`'s use onto `v0`: `cseHead adjBody`
 returns `.ret v0` over the smaller context `() :: []`. -/
 example : CSEReal.cseHead adjBody = Com.ret .here := by
   unfold CSEReal.cseHead adjBody

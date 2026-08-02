@@ -8,6 +8,8 @@ import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 /-!
 # The `vector` dialect (D0 fan-out — CatCrypt-side, not in `VIR/`)
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 An upstream-aligned neutral dialect of the MLIR dialect-alignment restructure
 (D0), mirroring the
 verified `arith` triple. It is the target-neutral packed-SIMD fragment — upstream
@@ -110,7 +112,7 @@ instance vectorDenote : DialectDenote vectorDialect where
     -- jasmin waist denote does).
     | .vsimd op => match op with
         | .gf2p8mulb | .vpshufb | .clmul _ | .affineqb _ | .bitwise _ | .packed _ _
-        | .mulhi16 | .vaesenc | .vaesenclast => fun args =>
+        | .varShift _ _ | .mulhi16 | .vaesenc | .vaesenclast => fun args =>
             let a : BitVec 128 := args.head
             let b : BitVec 128 := args.tail.head
             op.denote a b

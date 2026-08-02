@@ -21,10 +21,10 @@ It imports only `JasminLprogExport` + `LprogControlFlow` — the shared owned
 backend — and NOTHING from the whole-prover emit modules, so it sits upstream of
 them with no import cycle. The whole-prover drivers
 
-* `Plonky3OrchLoopsOwnedEmit.orchLoopFundef`  — single-leaf-call strided loop,
-* `ZkSumCheckWholeProverOwnedEmit.sumcheckLoopFundef` — two-leaf-call round loop
+* `Plonky3OrchLoopsEmit.orchLoopFundef`  — single-leaf-call strided loop,
+* `ZkSumCheckWholeProverEmit.sumcheckLoopFundef` — two-leaf-call round loop
   with callee-saved base reload,
-* `Plonky3ProveDriverOwnedEmit.proveDriverFundef` — straight-line phase call
+* `Plonky3ProveDriverEmit.proveDriverFundef` — straight-line phase call
   sequence (no loop),
 
 set their DEPLOYED `Lfundef` `:= buildOrchLoop <spec>` (resp.
@@ -162,7 +162,7 @@ spec (a `rfl`, since the deployed `Lfundef` IS this front's output). -/
 
 /-- The module-1 spec: a single-leaf-call strided loop
     (`call leaf ; ADD rdi,#so ; ADD rsi,#si ; SUB r8,#1`), counter init prologue.
-    Sources `Plonky3OrchLoopsOwnedEmit.orchLoopFundef`. -/
+    Sources `Plonky3OrchLoopsEmit.orchLoopFundef`. -/
 def strideCallSpec (leaf : String) (n so si : Nat) : OrchLoopSpec :=
   { prologue := [.movImm "R8" n]
     body := [.call leaf, .addImm "RDI" so, .addImm "RSI" si, .subImm "R8" 1] }
@@ -170,7 +170,7 @@ def strideCallSpec (leaf : String) (n so si : Nat) : OrchLoopSpec :=
 /-- The module-2 spec: a two-leaf-call sum-check round loop with callee-saved
     base pointers `%r12`/`%r13` reloaded into `%rdi`/`%rsi` before each call and
     advanced at the tail. Sources
-    `ZkSumCheckWholeProverOwnedEmit.sumcheckLoopFundef`. -/
+    `ZkSumCheckWholeProverEmit.sumcheckLoopFundef`. -/
 def sumcheckSpec (n so si : Nat) : OrchLoopSpec :=
   { prologue := [.movRR "R12" "RDI", .movRR "R13" "RSI", .movImm "R8" n]
     body :=

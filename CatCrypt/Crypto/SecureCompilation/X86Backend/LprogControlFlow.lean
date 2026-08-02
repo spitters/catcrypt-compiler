@@ -37,10 +37,10 @@ the emitted code size and the compiler's peak `Com`/`Lcmd` memory.
   emitted through the same `Lcond`/`Lgoto` renderer arms (`LprogAsmPrinter`'s
   `attCC` Jcc map). Its denotation is `Cond.condBlock_lowering_denote`.
 
-## What is NOT lowered (the honest residual)
+## What is NOT lowered (the residual)
 
 A **general `RWhile`** with a *runtime* (non-counter, data-dependent) guard is
-*not* lowered to a looped emission here. The denotation backbone we reuse
+*not* lowered to a looped emission here. The denotation core we reuse
 (`runBoundedLoop`) is the bounded counter loop whose trip count is the
 compile-time / loaded limb count; a general `RWhile` would need a fixpoint
 denotation (iterate-until-guard-false) which the framework's pure A-normal
@@ -256,7 +256,7 @@ def occursIn (needle hay : String) : Bool := (hay.splitOn needle).length ≥ 2
 -- rebuild). The same shape is still asserted in-Lean for the QRUOV leaves, which
 -- are off this module's rebuild path.
 
-/-! ## 5. `cforToLcmd`: the `JForProg`/`Cfor` → looped `Lcmd` lowering (the backbone lever)
+/-! ## 5. `cforToLcmd`: the `JForProg`/`Cfor` → looped `Lcmd` lowering (the core lever)
 
 `loopLcmd` (§1) wraps a **hand-built** body `Lcmd` in the owned-backend back-edge.
 Every looped kernel `LprogBytes.encodeLprog` consumes today (Keccak, SHA-256-linear,
@@ -630,7 +630,7 @@ def cforToLprogAbiNestedBody {accTy : JasminTy} (w : Nat)
     loop with a distinct top label (`top + levelIndex`); the shared counter
     register `nReg` is re-initialised to that level's trip count at the top of the
     level, and the accumulator threads `argReg`/`resReg` (recovered from the first
-    level's RA, consistent across levels under `AllSingleVar` — the keystone's
+    level's RA, consistent across levels under `AllSingleVar` — the core
     hypothesis). Loads `acc0` from `RDI`, runs the levels in sequence, returns
     `resReg` in `RAX`. Drives the `bench/treehash` combiner treehash and is the
     level-sequencing template for the SLH-DSA / XMSS treehash spines
@@ -742,7 +742,7 @@ back-edge per level, so that the whole nest is the owned-backend control-flow sh
        cmpq $0, %c₀ ; jne .L<top₀>
 ```
 
-This is the **same** nested-back-edge shape the proven `FheNttLoopOwnedEmit`
+This is the **same** nested-back-edge shape the proven `FheNttLoopEmit`
 three-loop nest emits by hand (`.L0` m-layer / `.L1` i-group / `.L2` j-butterfly,
 each `cmpq $0,%c ; jne`), now produced by one composable helper. Each level reuses
 `loopLcmd` verbatim, so every per-level shape fact (`loopLcmd_length`, the
@@ -1067,7 +1067,7 @@ theorem whileLcmd_last (w : Nat) (top : LLabel) (gReg : String) (guard body : Lc
 The pure A-normal `Com` substrate has no label/jump denotation (that is precisely
 why a general `RWhile` was the residual): we therefore give the data-dependent
 loop a **fuel-bounded total** machine semantics `runWhile` and bridge it to the
-already-proven counted-loop backbone. The bridge is the §3 strategy generalised:
+already-proven counted-loop core. The bridge is the §3 strategy generalised:
 a `while` that halts within `fuel` runs `body` a **determined** number of times
 (`whileTrips`, fixed at run time by the values the body produces), and that many
 body iterations is exactly the proven `runBoundedLoop`/`lowerBoundedLoop` shape.
@@ -1109,7 +1109,7 @@ def whileTrips {w : Nat} (fuel : Nat) (guard : JState w → Bool)
 /-- **A terminating `while` is a counted loop of its (data-dependent) trip count.**
     `runWhile fuel guard body s = runBoundedLoop s (whileTrips …) body` — once the
     data-dependent loop halts within `fuel`, it has run `body` exactly `whileTrips`
-    times, the same iterated transformer the proven counted-loop backbone
+    times, the same iterated transformer the proven counted-loop core
     (`runBoundedLoop`) denotes. This is the bridge that lets the already-proven
     `boundedLoop_lowering_denote_closed` carry the data-dependent while: at the
     state/fuel where the guard goes false, the emission is the lowering of that
@@ -1132,7 +1132,7 @@ theorem runWhile_eq_runBoundedLoop_trips {w : Nat} (fuel : Nat)
     `whileLcmd` emission (constant-size — §7.1) denotes the **same** machine
     transformer that lowering its runtime-determined iteration count does: the
     back-edge resolves the data-dependent trip count at run time, the lowering of
-    that many body copies is the denotation backbone. This is the data-dependent
+    that many body copies is the denotation core. This is the data-dependent
     analogue of `loopLcmd_denote`; the consumer supplies `fuel` + a termination
     argument, and the capability proves the emission realises `runWhile`. -/
 theorem whileLcmd_denote {w : Nat} (fuel : Nat) (guard : JState w → Bool)
@@ -1192,7 +1192,7 @@ A `whileLcmd` is therefore admissible **only for a PUBLIC-data guard**: the
 plonky3 PoW grind runs on the public Fiat-Shamir transcript state (the nonce
 search is over public data), so its trip count is already adversary-observable and
 the back-edge leaks nothing secret. A secret-dependent guard is **forbidden** —
-it would have to be data-oblivious (`CMOVcc`, no PC divergence), which a genuine
+it would have to be data-oblivious (`CMOVcc`, no PC divergence), which an
 unbounded search cannot be.
 
 This file's combinators are **plain `Lcmd` data**: `whileLcmd` does not route

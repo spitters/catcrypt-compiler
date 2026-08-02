@@ -8,42 +8,35 @@ import CatCrypt.Crypto.SecureCompilation.SpeculativeCTFence
 /-!
 # Blade-style *selective* speculative-protection placement
 
-**Task #564 residual (Blade variant).**  `SpeculativeCT.lean` delivered the
-speculative leakage semantics over the owned `LowCT` stream (`specObs`,
-`SpeculativelyConstantTime`) and the keystone `architecturally_CT_imp_SCT`;
-`SpeculativeCTFence.lean` closed the *unconstrained-predictor* gap with the
-**blanket-fence** mitigation `insertFences` — an `lfence` (`RFence`) at *every*
-branch arm / loop head and a site-guard (`RGuard`) before *every*
-call / load / store.
+`SpeculativeCT.lean` gives the speculative leakage observer `specObs` and
+`SpeculativelyConstantTime`; `SpeculativeCTFence.lean` gives the blanket-fence
+pass `insertFences` — an `RFence` at *every* branch arm and loop head, and an
+`RGuard` before *every* call, load and store — together with the fenced
+observer `specObsF`.
 
-A blanket protection is sound but conservative: it places a barrier even at
-sites that lie on **no** speculative-leak path (e.g. a branch whose arms issue
-no transient observation, a call/load with no transient source live).  Vassena
-et al.'s **Blade** (POPL 2021) instead computes a *min-cut* of the
-*def-use leak graph* (transient **sources** → leaking **sinks**) and places a
-protection only at the cut sites — provably enough to sever every source→sink
-path, with *fewer* protections than blanket fencing.
+A blanket placement puts a barrier even at sites whose mis-speculated arm
+issues no observation.  Vassena et al.'s **Blade** (POPL 2021) instead computes
+a *min-cut* of the *def-use leak graph* (transient **sources** to leaking
+**sinks**) and places a protection only at the cut sites, severing every
+source-to-sink path with fewer protections.
 
-This file formalises the **soundness** half of Blade: a protection set that
-*covers every speculative-leak path* is still speculatively constant-time
-against an **unconstrained** misprediction oracle — and inserts no more (and,
-on any program with a leak-free site, strictly fewer) protections than the
-blanket fence pass.  We model the leak graph abstractly (sources, sinks, and a
-path-coverage predicate `coversAllPaths`), define the selective placement
-`insertSelective`, and prove the keystone
+This file formalises the *sufficiency* half of Blade: a protection set covering
+every leak path yields equal `specObsF` traces under an unconstrained
+misprediction oracle, and inserts no more protections than the blanket fence
+pass — strictly fewer on any program with a leak-free site.  The leak graph is
+modelled abstractly (sources, sinks, and a path-coverage predicate
+`coversAllPaths`); the placement is `insertSelective`; the result is
 
   `coversAllPaths protectSet c → cmdCT c lt leafCT = true →
      SpeculativelyConstantTimeF window O lt (insertSelective protectSet c)`
 
-for every window and every (adversarial) oracle.
+for every window and every oracle.
 
-**What we do NOT prove (explicit out-of-scope).**  The *optimality* of the cut —
-that the path-covering set Blade computes is a **minimum** cut (the max-flow /
-min-cut argument that no smaller covering set exists) — is the harder
-combinatorial half and is **not** attempted here.  We prove only that *a*
-path-covering protection set **suffices** for SCT (soundness), plus the perf
-win that a covering set can be strictly smaller than blanket.  This is the
-genuine security content; min-cut optimality is reported as the residual.
+**Out of scope.**  The *optimality* of the cut — that the path-covering set
+Blade computes is a **minimum** cut, so that no smaller covering set exists —
+is the max-flow / min-cut combinatorial argument, and is not attempted here.
+What is proved is that *a* path-covering set suffices, and that a covering set
+can be strictly smaller than blanket.
 
 ## What this provides
 
@@ -62,24 +55,36 @@ genuine security content; min-cut optimality is reported as the residual.
    `cmdCT_insertSelective`): the inserted protections are no-ops for the
    architectural semantics and preserve `cmdCT` acceptance.
 
-4. **The keystone** (`specObsF_insertSelective_eq_archObs`,
+4. **The collapse** (`specObsF_insertSelective_eq_archObs`,
    `insertSelective_SCT_of_covers`): a *path-covering* selective placement
    collapses the fenced speculative trace to the architectural trace, for any
-   window / oracle — every wrong-path is either fenced (drains) or leak-free
-   (empty), and every call/load/store is site-guarded — hence SCT against an
-   unconstrained predictor.
+   window and oracle — every wrong-path is either fenced (drains) or leak-free
+   (empty), and every call, load and store is site-guarded — so a
+   `cmdCT`-accepted program has equal `specObsF` traces on `PublicEquiv`
+   states.
 
-5. **The perf win** (`insertSelective_fewer`): a covering protect set inserts
+5. **Marker count** (`insertSelective_fewer`): a covering protect set inserts
    no more protections than blanket fencing
    (`selectiveMarkerCount ≤ blanketFenceCount`), and strictly fewer on any
    program with a leak-free branch (`PilotSel.selective_strictly_fewer`).
+
+## Scope
+
+`RFence` and `RGuard` are `LowCT.RAssert` labels that only `specObsF` reads.
+Over `SpeculativeCTStoreBuffer.specRun`, whose loads may be forwarded a
+buffered store value, the pass is the identity
+(`SpeculativeCTStoreBufferPasses.specRun_insertSelective`), and
+`insertSelective_not_SCT_SB` there exhibits a `cmdCT`-accepted, fully covered
+command whose selectively protected image separates two `PublicEquiv` states.
+The restatements over that run take `ArchConstantTimeSB` as hypothesis and hold
+at window `0` and under `neverSpeculate`.
 
 ## References
 
 * Vassena, Disselkoen, von Gleissenthall, Cauligi, Kıcı, Jhala, Tullsen,
   Stefan, "Automatically Eliminating Speculative Leaks with Blade", POPL 2021
-  (the def-use leak graph and its min-cut — the selective placement this file's
-  soundness half formalises).
+  (the def-use leak graph and its min-cut — the selective placement whose
+  sufficiency half this file formalises).
 * Cauligi et al., "Constant-Time Foundations for the New Spectre Era",
   PLDI 2020 (the speculative semantics).
 -/
@@ -179,8 +184,8 @@ of `c` is in `protectSet`** — i.e. every source→sink path passes through a
 protected site (the Blade cut covers the graph).  Leak-free sites (both arms
 architecturally silent) may be omitted: they lie on no path.
 
-We compute it structurally.  The genuine content is in the `RIfNz` /
-`RWhileNz` / `RFor` clauses: a leak-relevant head must be protected. -/
+It is computed structurally.  The content is in the `RIfNz` / `RWhileNz` /
+`RFor` clauses: a leak-relevant head must be protected. -/
 
 /-- Every leak-relevant branch/loop site of `c` is protected by `protectSet`.
     This is the *path-coverage* (cut) condition: every speculative source whose
@@ -341,16 +346,11 @@ theorem archObs_eq_nil_of_not_armLeaks {c : LowCT} (h : armLeaks c = false)
     (rs : RustState) : archObs rs c = [] :=
   archObs_eq_nil_of_archSilent (archSilent_of_not_armLeaks h) rs
 
-/-- `specTransient` of an architecturally-silent command is `[]`: every clause of
-    `specTransient` either returns `[]`, recurses on the same shape, or falls
-    back to `archObs`, which is `[]` here.  We prove the statement we need: a
-    command with `armLeaks = false` (architecturally silent) has empty transient
-    under any `insertSelective` image — but it suffices, for the keystone, to
-    note `specTransient` falls back to `archObs` on the non-`RAssert`/`RSeq`
-    head an arm presents, so a silent arm's transient is `[]`.
-
-    For the keystone we only feed `specTransient` an `insertSelective`-image
-    arm.  We reduce via the helper below. -/
+/-- The `specTransient` trace of the `insertSelective` image of an
+    architecturally-silent command is `[]`: every clause of `specTransient`
+    either returns `[]`, recurses on the same shape, or falls back to `archObs`,
+    which is `[]` under silence.  This is the form the collapse theorem uses,
+    which only ever feeds `specTransient` an `insertSelective`-image arm. -/
 theorem specTransient_eq_nil_of_archSilent
     (protectSet : ProtectSet) {c : LowCT} (h : archSilent c = true)
     (rs : RustState) :
@@ -396,7 +396,7 @@ theorem specTransient_eq_nil_of_not_armLeaks
     specTransient rs (insertSelective protectSet c) = [] :=
   specTransient_eq_nil_of_archSilent protectSet (archSilent_of_not_armLeaks h) rs
 
-/-! ## §6.  The keystone: covering placement collapses to the architectural trace
+/-! ## §6.  A covering placement collapses to the architectural trace
 
 For a *path-covering* selective placement, every branch wrong-path is `[]`:
 either the head is protected (fenced → `specTransient` drains) or it is
@@ -612,13 +612,11 @@ theorem insertSelective_fewer (protectSet : ProtectSet) (c : LowCT) :
 
 /-! ## §9.  Pilot: a leak-free branch is covered with *zero* protection
 
-We exercise the soundness keystone and the perf win on a kernel with a
-**leak-free** public branch (both arms architecturally silent — pure scalar
-moves, no memory access).  Its branch site lies on no source→sink path, so the
-*empty* protect set already covers all paths — selective placement inserts **no**
-fence there, while blanket fencing would insert two.  The kernel is therefore SCT
-against an unconstrained oracle with **strictly fewer** protections than
-blanket. -/
+`insertSelective_SCT_of_covers` and the marker count applied to a kernel with a
+**leak-free** public branch: both arms are architecturally silent, being pure
+scalar moves with no memory access.  Its branch site lies on no source-to-sink
+path, so the *empty* protect set covers all paths, and selective placement
+inserts no fence there while blanket fencing inserts two. -/
 
 namespace PilotSel
 
@@ -641,17 +639,15 @@ theorem pilotKernelSilentBranch_cmdCT :
     cmdCT pilotKernelSilentBranch pilotLevels LeafCTTable.canonical = true := by
   native_decide
 
-/-- **The empty protect set already covers all paths** of the silent-branch
-    kernel: its only branch is leak-free (both arms architecturally silent), so
-    no protection is needed. -/
+/-- The empty protect set covers all paths of the silent-branch kernel: its only
+    branch is leak-free, both arms being architecturally silent. -/
 theorem pilotKernelSilentBranch_covered :
     coversAllPaths noProtect pilotKernelSilentBranch = true := by
   native_decide
 
-/-- **Pilot result.**  The silent-branch kernel, with the **empty** protect set,
-    is speculatively constant-time against an **unconstrained** misprediction
-    oracle for every window — *no fence inserted*.  Coverage is non-vacuous: the
-    leak-free branch genuinely lies off every source→sink path. -/
+/-- The silent-branch kernel, with the empty protect set and so with no fence
+    inserted, has equal `specObsF` traces on `PublicEquiv` states for every
+    window and every misprediction oracle. -/
 theorem pilotKernelSilentBranch_SCT
     (window : SpecWindow) (O : MispredOracle) :
     SpeculativelyConstantTimeF window O pilotLevels
@@ -660,20 +656,16 @@ theorem pilotKernelSilentBranch_SCT
     LeafCTTable.canonical pilotKernelSilentBranch
     pilotKernelSilentBranch_cmdCT pilotKernelSilentBranch_covered
 
-/-- **Perf win, concretely.**  Selective placement (empty set) inserts **0**
-    protections on the silent-branch kernel, while blanket fencing inserts **2**
-    (a fence per arm): `0 ≤ 2`, strict. -/
+/-- Selective placement with the empty set inserts `0` protections on the
+    silent-branch kernel, while blanket fencing inserts `2`, one per arm. -/
 theorem selective_strictly_fewer :
     selectiveMarkerCount noProtect pilotKernelSilentBranch
       < blanketFenceCount pilotKernelSilentBranch := by
   native_decide
 
-/-- And a *leaking* branch genuinely needs protection: the empty set does **not**
-    cover the branching pilot whose arms issue transient observations
+/-- A branch with a load arm is leak-relevant, so the empty set fails coverage.
     (`pilotKernelBranch`'s arms are CT leaf calls, which `archObs` records as
-    silent — so to exhibit a genuinely leak-relevant branch we use a load arm).
-    A load arm leaks, so the empty set fails coverage; the singleton set
-    protecting `flag` covers it. -/
+    silent, so a load arm is used here instead.) -/
 theorem leaking_branch_needs_protection :
     coversAllPaths noProtect
         (.RIfNz "flag"
@@ -693,44 +685,42 @@ end PilotSel
 
 /-! ## §10.  What this gets us, and what remains
 
-**Delivered (this file).**
-* A *leak-graph* model over the owned `LowCT` stream: branch/loop heads as
-  speculation **sources**, transient observations as **sinks**, `armLeaks` the
-  leak-relevance of a site, and `coversAllPaths` the path-coverage (cut)
-  condition — every source→sink path passes through a protected site.
-* `insertSelective : ProtectSet → LowCT → LowCT`, the Blade-style placement:
-  fence a branch/loop **iff** its site is in the cut, site-guard every
-  call/load/store, structural elsewhere.
-* **Denotation preservation** (`archObs_insertSelective`,
-  `cmdCT_insertSelective`): the selective protections are no-ops architecturally
-  and preserve `cmdCT` acceptance.
-* **The soundness keystone** `insertSelective_SCT_of_covers`: a path-covering
-  selective placement on an architecturally-CT program is speculatively CT
-  against an **unconstrained** adversarial oracle and **any** window — every
-  wrong-path either drains (protected) or is empty (leak-free), every point sink
-  is guarded, so the fenced speculative trace collapses to the architectural one.
-* **The perf win** `insertSelective_fewer`: a covering set inserts no more
-  protections than blanket fencing, and strictly fewer on any program with a
-  leak-free branch (`PilotSel.selective_strictly_fewer`: 0 < 2).
-* Non-vacuity witnesses: `PilotSel.pilotKernelSilentBranch_covered` (a leak-free
-  branch is covered by the empty set), `PilotSel.leaking_branch_needs_protection`
-  (a genuinely leaking branch is *not* covered by the empty set) +
-  `PilotSel.flag_protect_covers_leaking_branch` (it *is* covered once protected).
+**In this file.**
+* A leak-graph model over `LowCT`: branch and loop heads as speculation
+  **sources**, transient observations as **sinks**, `armLeaks` the
+  leak-relevance of a site, and `coversAllPaths` the path-coverage condition
+  that every source-to-sink path passes through a protected site.
+* `insertSelective : ProtectSet → LowCT → LowCT`: fence a branch or loop **iff**
+  its site is in the cut, site-guard every call, load and store, structural
+  elsewhere.
+* `archObs_insertSelective` and `cmdCT_insertSelective`: the protections are
+  `RAssert` no-ops architecturally and preserve `cmdCT` acceptance.
+* `insertSelective_SCT_of_covers`: a path-covering placement on a
+  `cmdCT`-accepted program has equal `specObsF` traces on `PublicEquiv` states,
+  for every window and every oracle — every wrong-path either drains
+  (protected) or is empty (leak-free), and every point sink is guarded, so the
+  fenced speculative trace collapses to the architectural one.
+* `insertSelective_fewer`: a covering set inserts no more protections than
+  blanket fencing, and strictly fewer on any program with a leak-free branch
+  (`PilotSel.selective_strictly_fewer`: `0 < 2`).
+* `PilotSel.pilotKernelSilentBranch_covered`,
+  `PilotSel.leaking_branch_needs_protection` and
+  `PilotSel.flag_protect_covers_leaking_branch` compute coverage on a leak-free
+  branch, on a leaking branch with the empty set, and on the same branch once
+  protected.
 
-**Out of scope (the harder half — explicitly NOT proved).**
-* **Min-cut optimality.**  We prove a path-covering set *suffices* for SCT
-  (soundness) and that a covering set can be strictly smaller than blanket.  We
-  do **not** prove the covering set Blade computes is a **minimum** cut — that no
-  smaller covering set exists.  That is the max-flow / min-cut combinatorial
-  argument of the Blade paper and is the residual.
-* **Dataflow-precise leak graph.**  `armLeaks` is the address-pattern leak-
-  relevance the SCT observer reasons over (a branch arm is relevant iff it can
-  issue a transient observation).  A finer Blade-faithful graph would track
-  individual def-use edges (which *value* flows from which source to which sink);
-  the address-pattern abstraction is the granularity `cmdCT` and `specObsF`
-  already use.
+**Out of scope.**
+* **Min-cut optimality.**  What is proved is that a path-covering set suffices,
+  and that a covering set can be strictly smaller than blanket.  That the
+  covering set Blade computes is a **minimum** cut, so that no smaller covering
+  set exists, is the max-flow / min-cut combinatorial argument of the Blade
+  paper and is not proved here.
+* **Dataflow-precise leak graph.**  `armLeaks` is the address-pattern
+  leak-relevance this observer reasons over: an arm is relevant when it can
+  issue a transient observation.  A finer graph would track individual def-use
+  edges, recording which value flows from which source to which sink.
 * As in the fence file, `LowCT` has no separate executable big-step; `archObs`
-  is the leakage denotation the CT story reasons over, and the BTB/RSB/STL point
-  sinks are guarded (not min-cut-selected) here. -/
+  is the leakage denotation this file reasons over, and the call, load and
+  store sinks are guarded rather than min-cut-selected. -/
 
 end CatCrypt.Crypto.SecureCompilation.SpeculativeCT

@@ -8,6 +8,8 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
 /-!
 # Memory (`memref`) dialect over the owned x86 machine (#566)
 
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
 The memory tier of the Com/VIR substrate, companion to the `scf` dialect
 (`ScfDialect.lean`): first-class `memref.load` / `memref.store` ops over the
 owned x86 machine state's word-addressed memory `JState.mem`. Together,

@@ -18,7 +18,7 @@ fractalyze/prime-ir's `mod_arith.mont_inverse` (`ModArithOps.td`).
 
 ## Why this dialect exists (the gap it closes)
 
-Per `PRIME_IR_GAP_ANALYSIS.md` (repo root, §2), CatCrypt already *has* the field
+Per `PRIME_IR_OP_CORRESPONDENCE.md` (repo root, §2), CatCrypt already *has* the field
 inverse — `ModArithDialect.byInverse` / `FieldDialect.fInv` denote to `ZMod p`'s
 native `a⁻¹`, realised by the Bernstein–Yang / Fermat chains — but it does **not**
 expose the *Montgomery-domain* inverse as a standalone op.  The gap analysis
@@ -183,7 +183,7 @@ instance : DialectSignature montInverseDialect where
   ret op := match op with
     | .montInverse p _ => .fp p
 
-/-! ## 7. Op denotation (into the genuine Montgomery inverse) -/
+/-! ## 7. Op denotation (into the Montgomery inverse) -/
 
 instance montInverseDenote : DialectDenote montInverseDialect where
   denote op := match op with

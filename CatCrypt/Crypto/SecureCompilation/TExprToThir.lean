@@ -12,7 +12,7 @@ import CatCrypt.Crypto.SecureCompilation.ThirToComFront
 This module is the **production** typed-front for removing the deprecated untyped
 `ImpExpr` from CatCrypt's compile-from-hax front. It roots the front directly on
 the **canonical** typed AST from the `hax-lean` dependency — `Hax.TExpr`
-(`~/Claude/hax-lean/Hax/TExpr.lean`), where **every node carries its
+(`Hax/TExpr.lean`), where **every node carries its
 `ty : Hax.ImpType`** annotation from the Rust compiler — and shows that this lets
 SHA-256 σ₀ compile to the FIPS formula **without any of the string-tag pre-passes**
 the untyped front needs.
@@ -52,7 +52,7 @@ So the whole `texprToThir` is a single typed elaboration with no pre-pass stage.
 * `TExpr.denoteScalarT` — a **source** semantics of the typed subset (into
   `Option (BitVec w)`), defined independently of the translator, so preservation
   is non-vacuous.
-* `texprToThir_denoteScalarT` — the genuine value-preservation theorem: whenever
+* `texprToThir_denoteScalarT` — the value-preservation theorem: whenever
   `texprToThir params e = some t`, the typed source denotation equals the front
   denotation `t.denote`.
 * `sigma0Texpr` — σ₀ **hand-built in typed form** with the real `Hax.TExpr` /
@@ -71,7 +71,7 @@ So the whole `texprToThir` is a single typed elaboration with no pre-pass stage.
   `desugarNot` string-hack and no all-ones-literal / width-tag pre-pass** (the
   untyped front needed both).
 
-## Honest scope
+## Scope
 
 Scope mirrors `ImpExprToThir`'s scalar ARX subset: let-normalized
 `lit`/`var`/`letBind`/`app`, atom-only operator arguments — bitwise AND/OR/XOR,
@@ -166,7 +166,7 @@ def recogShiftTy (f : String) : Option ShiftKind :=
 /-- Recognise a **unary bitwise-NOT** operator head. Like `recogBinTy`, the width
     is taken from the node's `ty`, never from the head string. Accepts the
     lowercase `not`/`bitnot` forms and the capitalized `core::ops::Not` trait
-    twin (`Not`) and the `BitNot`/`bit_not` aliases. This is a genuine **typed
+    twin (`Not`) and the `BitNot`/`bit_not` aliases. This is a **typed
     op** recogniser — the typed analog of the untyped front's `desugarNot`
     string-tag pre-pass, with the desugar pass deleted: the NOT is recognised as
     a real typed op (nested inside an AND it forms the dialect's single-op
@@ -459,8 +459,8 @@ theorem rhsOfT_denote {w nIn : Nat} (params : List String)
 
 /-- **Preservation theorem (typed front).** Whenever the typed translator
     succeeds, the typed source denotation `denoteScalarT` equals the front
-    denotation `Thir.denote`. The genuine value-preservation result connecting the
-    real hax-lean typed `Hax.TExpr` AST to the verified `Thir` front, with **no
+    denotation `Thir.denote`. The value-preservation result connecting the
+    hax-lean typed `Hax.TExpr` AST to the verified `Thir` front, with **no
     string-tag pre-pass** in the pipeline. Proved by structural cases on `e`. -/
 theorem texprToThir_denoteScalarT {w nIn : Nat} (params : List String)
     (I : Fin nIn → BitVec w) :

@@ -286,25 +286,14 @@ def hasSub (hay needle : String) : Bool :=
   (List.range (hay.length + 1)).any (fun i =>
     needle == String.ofList (hay.toList.drop i |>.take needle.length))
 
-/-- Shape check: the emitted Pallas add uses the hardware ADD/ADC carry chain +
+/- Shape check: the emitted Pallas add uses the hardware ADD/ADC carry chain +
     `cmovb` select, and contains **no** `shrq $63` carry-synthesis idiom (the
     #440 branchless form) — the witness that hardware carries replaced it. -/
-theorem pallasAddAsm_shape :
-    hasSub pallasAddAsm "addq"
-      ∧ hasSub pallasAddAsm "adcq"
-      ∧ hasSub pallasAddAsm "sbbq"
-      ∧ hasSub pallasAddAsm "cmovb"
-      ∧ hasSub pallasAddAsm "(%rdi)"
-      ∧ (hasSub pallasAddAsm "shrq $63" = false) := by native_decide
+#guard (hasSub pallasAddAsm "addq") && (hasSub pallasAddAsm "adcq") && (hasSub pallasAddAsm "sbbq") && (hasSub pallasAddAsm "cmovb") && (hasSub pallasAddAsm "(%rdi)") && !(hasSub pallasAddAsm "shrq $63")
 
-/-- Shape check: the emitted Pallas sub uses the hardware SUB/SBB borrow chain +
+/- Shape check: the emitted Pallas sub uses the hardware SUB/SBB borrow chain +
     masked ADD/ADC add-back, and contains **no** `shrq $63` carry synthesis. -/
-theorem pallasSubAsm_shape :
-    hasSub pallasSubAsm "subq"
-      ∧ hasSub pallasSubAsm "sbbq"
-      ∧ hasSub pallasSubAsm "adcq"
-      ∧ hasSub pallasSubAsm "(%rdi)"
-      ∧ (hasSub pallasSubAsm "shrq $63" = false) := by native_decide
+#guard (hasSub pallasSubAsm "subq") && (hasSub pallasSubAsm "sbbq") && (hasSub pallasSubAsm "adcq") && (hasSub pallasSubAsm "(%rdi)") && !(hasSub pallasSubAsm "shrq $63")
 
 /-- Emit driver: write the in-Lean-backend-emitted `.s` for the bench harness.
     Pallas leaves use the bench's `pasta_field_{add,sub}` symbol names (drop-in

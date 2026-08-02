@@ -14,8 +14,8 @@ This module implements **P5** from `owned-vs-jasminc-perf-review.md`: a *generic
 instruction-selection pass that recognises a low-word multiply paired with the
 widening (high-word) form of the same product and rewrites the pair to a single
 two-output `MULX`. Today the fast ADX/BMI2 instructions (`MULX`/`ADCX`/`ADOX`)
-reach the emitted assembly only from hand-written `*OwnedEmit` kernels and the
-one-off `FheMontMulOwnedEmit.fuseMulHiLprog` post-pass, which runs on the
+reach the emitted assembly only from hand-written `*Emit` kernels and the
+one-off `FheMontMulEmit.fuseMulHiLprog` post-pass, which runs on the
 *string-keyed* `Lprog` layer (a syntactic `MUL`+`MULXHI` coalesce, value-checked
 externally by the orchestrator's GMP KAT). There is no generic selector that
 operates on the *typed* machine model where soundness is provable inside Lean.
@@ -44,7 +44,7 @@ This is the typed-model analogue of `fuseMulHiLprog`'s `MUL`+`MULXHI → MULX`
 coalesce, lifted off the string layer onto `JInstr` so the rewrite can be proved
 sound against the machine semantics rather than checked by an external KAT.
 
-## What is proved (honest scope)
+## What is proved (scope)
 
 * `fuseMulx_allDirect` — the rewrite **preserves the constant-time class**:
   `MUL`/`MULX` are register-only ALU ops (`IsDirect`), so a fused body is
@@ -67,7 +67,7 @@ sound against the machine semantics rather than checked by an external KAT.
   small concrete value KAT (`demoFused_kat`).
 
 The rewrite is **symbolically** sound on the produced widening words (`lo`, `hi`),
-not merely concrete-KAT-anchored. The honest caveat: the standalone low `imul`
+beyond concrete-KAT-anchored. The caveat: the standalone low `imul`
 also *sets the x86 flags* (`CF`/`OF`), which `mulx` does not; dropping it changes
 the flag state. The fusion is value-correct on the *data* words it materialises
 (which is what the high-word gap needs), and is only applied where the low
