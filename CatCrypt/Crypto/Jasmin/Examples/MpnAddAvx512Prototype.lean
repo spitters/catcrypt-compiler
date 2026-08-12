@@ -438,12 +438,14 @@ theorem MpnAddAvx512JasminRefines_holds (_h : BignumExecHasAvx512) :
 
 /-! ## §8.  Bench harness pointer
 
-The C harness at `bench/mpn_add_avx512_compare/` ships:
+The C harness lives in `bench/mpn_add_avx512_compare/`. `bench/` is the
+out-of-tree benchmark harness described in `bench.md`; it is not part of this
+repository. That directory ships:
 * `add_avx512_ref.c` — AVX-512 intrinsics implementation (`_mm512_add_epi64`,
   `_mm512_cmplt_epu64_mask`, `_kor_mask8`, `_kshiftli_mask8`, …) — the
   compiler-generated 8-way chain matching this Lean spec lane-for-lane.
-* `add_avx512_emit.lean` — emit driver (currently a stub; emits the Lean
-  spec as a comment block — full `.jazz` emission is gated on BignumExec).
+* `add_avx512_emit.lean` — emit driver; it emits the Lean spec as a comment
+  block, full `.jazz` emission is gated on BignumExec.
 * `bench.c` — 3-way perf: V-Avx512 (this C ref) vs V-ADX-Blocked-add
   (existing `mpn_add_n_adx_blk` from `mpn_addsub_adx_blocked_compare`) vs
   libgmp `__gmpn_add_n`.  Sizes n=8, 16, 32, 64, 128, 256.

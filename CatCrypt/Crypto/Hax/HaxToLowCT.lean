@@ -482,9 +482,9 @@ def haxToLowCT : ImpExpr → Option LowCT
   -- top-level `match` arm), so that the equation lemma for this branch
   -- remains a single `letBind _ (.app _ _) _` arm — that keeps the H2.2
   -- biconditional proof structurally unchanged.
-  /- TODO(simulation): haxToLowCT_simulates_full does not yet cover the
-     array_update / index / forFold sub-cases.  See
-     bench/mlkem_compare/HAXTOR_EXTENSION_PLAN.md §3. -/
+  /- TODO(simulation): `haxToLowCT_simulates_full` does not yet cover the
+     `array_update` store or `index` load sub-cases of this arm; those
+     translations are exercised only by the §5 smoke tests. -/
   | .letBind name (.app f args) body =>
       let dt := towerOfCallName f
       let dest : Located := { locVar := name, locSrc := dt }
@@ -540,7 +540,7 @@ def haxToLowCT : ImpExpr → Option LowCT
   -- (`let a = a; let b = b; let r = ZERO_VEC; ...`).  We treat the
   -- binding as a no-op and recurse on `body` directly — the alias's
   -- name is shadowed by the original `src` slot in the body's lexical
-  -- scope.  See HAXTOR_EXTENSION_PLAN §3 / smoke test in §5.
+  -- scope.  See the smoke test in §5.
   | .letBind _name (.var _src) body =>
       haxToLowCT body
   -- Tuple-component read: `let name = tup.i; body` — `.proj` of a named
@@ -629,8 +629,9 @@ def haxToLowCT : ImpExpr → Option LowCT
   | .continue_                 => none
   | .earlyReturn _             => none
   | .questionMark _            => none
-  /- TODO(simulation): haxToLowCT_simulates_full does not yet cover this case.
-     See bench/mlkem_compare/HAXTOR_EXTENSION_PLAN.md §3. -/
+  /- TODO(simulation): `haxToLowCT_simulates_full` does not yet cover the
+     bounded `forFold` arms below; they are exercised only by the §5 smoke
+     tests. -/
   -- Bounded for-fold with literal `lo = 0` and literal nonneg-int `hi = n`
   -- lowers to `RFor v n body`.  `RFor`'s second parameter is a closed `Nat`
   -- (structurally terminating); runtime-bound forms (`hi = .var k`) are
@@ -1330,17 +1331,6 @@ theorem haxToLowCT_isSome_of_representable_and_anf
     (haxToLowCT e).isSome = true :=
   (haxToLowCT_isSome_iff_anf e).mpr hanf
 
-/-- Backwards-compat shim of the original H2 placeholder.  The old
-    statement was a vacuous disjunction `... ∨ True`; we keep the name
-    so downstream code that imports it continues to compile, but discharge
-    it via the now-Qed'd biconditional. -/
-theorem haxToLowCT_isSome_of_representable_strict :
-    ∀ e : ImpExpr,
-      LowCTRepresentable.Expr e = true →
-      (haxToLowCT e).isSome = true ∨ True := by
-  intro _ _
-  exact Or.inr trivial
-
 /-! ## §5  Smoke tests
 
 `LowCT` does not derive `DecidableEq` (only `Repr` and `Inhabited`), so
@@ -1623,10 +1613,9 @@ theorem non_anf_tuple_let_iff :
 
 /-! ### Extension smoke tests (2026-05-22)
 
-Minimal positive tests for the three new patterns added by
-`HAXTOR_EXTENSION_PLAN.md` §3 — bounded `forFold` with literal bounds,
-`array_update` self-store, and `index` array load.  The simulation
-theorem (`haxToLowCT_simulates_full`) does **not** yet cover these
+Minimal positive tests for the three extension cases — bounded `forFold` with
+literal bounds, `array_update` self-store, and `index` array load.  The
+simulation theorem (`haxToLowCT_simulates_full`) does **not** yet cover these
 arms; that backfill is a separate workstream. -/
 
 /-- `forFold` with literal `lo = 0`, literal `hi = 0` and unit body

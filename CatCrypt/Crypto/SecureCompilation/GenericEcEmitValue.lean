@@ -36,7 +36,8 @@ point** `ecAffineAdd lam P Q`.
 The boundary the emitted leaf cannot prove is the byte↔field correspondence: the
 opaque leaf `<curve>_point_add`, applied to the byte encodings of the four input
 coordinates, produces the byte encoding of the group-sum coordinate.  Exactly as
-in `Bridges/ArkLibKZGDemo/ByteGroupRealization.lean` (the pairing analogue), we
+for the bilinear-operation realizations of `Bridges/ReprTransferExpr.lean`
+(`PairingRealization`, the pairing analogue), we
 bundle this as an explicit `EcEmitRealizes` structure: a coordinate encoding
 `enc : F → RustVal .TFp` plus the two commuting squares (one per output
 coordinate) tying the leaf's `call` value to the encoded `ecAffineAdd`
@@ -67,7 +68,7 @@ the commuting squares.
 * The byte↔field commuting squares are **assumed** (`EcEmitRealizes` fields), not
   proved: they are the named trust edge at the opaque-leaf granularity the
   security proofs operate at — the same status as the pairing
-  `ByteGroupRealization`.
+  `PairingRealization` squares of `Bridges/ReprTransferExpr.lean`.
 * The affine group-law *value* `ecAffineAdd lam P Q` is the one
   `ec_jacAdd_realizes_affineAdd` certifies equals the inversion-free Jacobian
   sum, so this module's output value is the genuine EC group sum (generic chart),
@@ -101,7 +102,8 @@ def fpLoc (x : String) : Located := ⟨x, .TFp⟩
 
 /-! ## 2. The realization data (named byte↔field hypothesis)
 
-`EcEmitRealizes` is the EC analogue of the pairing `ByteGroupRealization`: a
+`EcEmitRealizes` is the EC analogue of the pairing `PairingRealization`
+(`Bridges/ReprTransferExpr.lean`): a
 chosen coordinate encoding `enc : F → RustVal .TFp` and the two commuting
 squares saying the leaf, applied to the four encoded input coordinates, produces
 the encoded group-sum `x`- resp. `y`-coordinate.  The group-sum value is exactly

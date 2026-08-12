@@ -18,13 +18,13 @@ fractalyze/prime-ir's `mod_arith.mont_inverse` (`ModArithOps.td`).
 
 ## Why this dialect exists (the gap it closes)
 
-Per `PRIME_IR_OP_CORRESPONDENCE.md` (repo root, §2), CatCrypt already *has* the field
-inverse — `ModArithDialect.byInverse` / `FieldDialect.fInv` denote to `ZMod p`'s
-native `a⁻¹`, realised by the Bernstein–Yang / Fermat chains — but it does **not**
-expose the *Montgomery-domain* inverse as a standalone op.  The gap analysis
-classified `mod_arith.mont_inverse` **PARTIAL** — "Fermat chain in Montgomery
-domain; no dedicated mont-inverse op".  This dialect **factors that map as a
-first-class op**, matching prime-ir's `mod_arith.mont_inverse` one-for-one.
+CatCrypt already *has* the field inverse — `ModArithDialect.byInverse` /
+`FieldDialect.fInv` denote to `ZMod p`'s native `a⁻¹`, realised by the
+Bernstein–Yang / Fermat chains — but it does **not** otherwise expose the
+*Montgomery-domain* inverse as a standalone op: the Fermat chain runs in the
+Montgomery domain with no dedicated mont-inverse op.  This dialect **factors
+that map as a first-class op**, matching prime-ir's `mod_arith.mont_inverse`
+one-for-one.
 
 It is a **separate file** from the `to_mont`/`from_mont`/`mont_square` trio
 (`ModArithMontOps.lean`) because that file carries residues as **ℤ** with the
@@ -62,12 +62,12 @@ and `rInv` nonzero:
 * `montInverse_fromMont` : `(fromMont x) · (fromMont (montInverse x)) = 1` — the
   logical values are mutually inverse (the field-level statement).
 
-## Honest classification (read `VIR/DIALECTS.md`)
+## Honest classification
 
 This is a **HIGH-tier, prime-ir-corresponding / agreement** dialect, NOT an
 emit-wired one.  Like `ModArithMontOps`, `tensorExtDialect`, `cmpDialect`, and the
-`mlirArith*` family in DIALECTS.md's "correspondence-only" table, it has **no
-lowering out** (no `→ Com jasminDialect`, no backend edge).  It substantiates the
+`mlirArith*` family, it is correspondence-only: it has **no lowering out** (no
+`→ Com jasminDialect`, no backend edge).  It substantiates the
 "prime-ir `mod_arith.mont_inverse` aligned" claim by giving the Montgomery-domain
 inverse a first-class op tied to `ZMod`'s field inverse + the
 `ModArithDialect.montMul` convention.  It does **not** add a lowering or emit path

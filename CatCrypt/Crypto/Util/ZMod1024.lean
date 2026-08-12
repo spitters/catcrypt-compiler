@@ -9,19 +9,21 @@ import Mathlib.Tactic
 /-!
 # Verified `ZMod 1024` — the HAWK per-lane modulus
 
-A computable, verified Lean reference implementation of `Z/1024Z` for use
-by the HAWK 4-way ring-multiply bridge (`HawkHaxLowCTBridge`) to replace
-opaque encoder round-trip axioms with proven identities.
+A computable, verified Lean reference implementation of `Z/1024Z` for use by
+the HAWK 4-way ring-multiply hax bridge — in this repository, the tie
+`SecureCompilation/CompileFromHaxHawkMulTie.lean` — to replace opaque encoder
+round-trip axioms with proven identities.
 
 `q = 1024 = 2^10` is a **power of two**, not a prime. Reduction
 `mod 1024` is therefore a bit-mask `& 1023` rather than a fold-and-conditional
 subtract, and the resulting structure is a **ring** rather than a field —
 sufficient for HAWK's ring-multiply kernel which only uses add/sub/mul.
 
-This is the lattice/ring-only analogue of `Util/ZMod3329.lean`,
-`Util/ZMod8380417.lean`, and `Util/ZMod127.lean`. The shape is identical
-modulo the missing `Fact (Nat.Prime ...)` and `Field` instances (HAWK doesn't
-need inverses inside the 4-way kernel — only ring arithmetic).
+This is the lattice/ring-only analogue of the prime-modulus `Util/ZMod*.lean`
+modules (`Util/ZMod127.lean`, `Util/ZMod251.lean`, `Util/ZMod4591.lean`). The
+shape is identical modulo the missing `Fact (Nat.Prime ...)` and `Field`
+instances (HAWK doesn't need inverses inside the 4-way kernel — only ring
+arithmetic).
 
 ## API
 

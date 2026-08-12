@@ -8,7 +8,7 @@ import CatCrypt.Crypto.Jasmin.LowCTReflect
 /-!
 # AES-128-GCM chain reflect surface — multi-round chain glue through the verified front
 
-This file is the AEAD-family analogue of `FalconReflect.lean` / `MayoReflect.lean`:
+This file is the AEAD-family analogue of `FalconReflect.lean`:
 it adds AES-GCM specific opaque surface types and `@[rust_cmd_pattern]`
 registrations so that a pure-Lean AES-128-GCM **chain orchestration**
 (key-schedule → per-block AES-CTR + GHASH-multiply for `N = 4` blocks → final
@@ -59,8 +59,8 @@ exercises).
 The full AES-GCM `encrypt` takes a variable-length plaintext; the per-block
 chain length varies per call. Modelling the variable-length chain *inside*
 `LowCT` would need a `for`-loop-inside-`LowCT` (the documented `RFor` gap;
-see `MayoReflect.lean` for the parallel discussion). The same gap applies to
-AES-CCM, AES-SIV, AES-GCM-SIV, AEGIS — the AEAD multi-block chain shape needs
+see `Secp256k1Reflect.lean` for the parallel discussion). The same gap applies
+to AES-CCM, AES-SIV, AES-GCM-SIV, AEGIS — the AEAD multi-block chain shape needs
 either `RFor` in `LowCT` or a per-block-count specialisation. This file's
 design is the **specialisation route**: one leaf per fixed `N`, today `N = 4`
 (the canonical NIST GCM TC4 / `aesgcm-hax/src/gcm.rs::gcm_encrypt` 64-byte
@@ -71,7 +71,7 @@ axiom.
 
 `reifyLowCT%` reads only `LowCTReflect.knownOps`, not the dynamic
 `LowCTPattern` registry. So `reifyLowCT% aesGcmChainLean` would error.
-We follow the `mayoQuadFormN8Reified` / `falconVerifyReified` pattern: define
+We follow the `falconVerifyReified` pattern: define
 the pure-Lean function for documentation/spec, register the leaf in the
 `LowCTPattern` registry via `@[rust_cmd_pattern]`, then **hand-build the
 `LowCT`** the reifier *would* produce. Downstream (`translate →
@@ -82,13 +82,13 @@ cryptoDialectToJasminCom → emitAbiOrchRegPtr`) is the unmodified verified fron
 * NIST SP 800-38D §6, §7 — AES-GCM encryption (`GCTR`, `GHASH`, full encrypt)
 * RFC 5288, NIST Test Case 4 — canonical AES-128-GCM test vector
 * `aesgcm-hax/src/gcm.rs::gcm_encrypt` — Rust trait surface this file mirrors
-* `bench/aesgcm_compare/aesgcm_emit.lean` — Tier B per-round Com (keeper)
-* `CatCrypt/Crypto/Jasmin/MayoReflect.lean` — sibling pattern (single-leaf
-  reflect surface registering one fixed-N leaf)
 * `CatCrypt/Crypto/Jasmin/FalconReflect.lean` — sibling pattern (multi-leaf
   reflect surface)
+* `bench/aesgcm_compare/aesgcm_emit.lean` — Tier B per-round Com (keeper)
 * `bench/framework/AUDIT_EMIT_BYPASS.md` §3 — the AES-GCM family chain-glue
   gap this file closes
+* `bench/` is the out-of-tree benchmark and audit tree described in `bench.md`;
+  it is not part of this repository.
 -/
 
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect
@@ -227,8 +227,8 @@ noncomputable def aesGcmChainLean
 
 Since `reifyLowCT%` does not consult the `LowCTPattern` registry, we
 hand-build the body the reifier *would* produce for `aesGcmChainLean`.
-Shape: one `RSeq RSkip (RCall …)` — same pattern as `MayoReflect.lean`'s
-`mayoQuadFormN8Body` (single-leaf chain). -/
+Shape: one `RSeq RSkip (RCall …)` — the single-leaf chain shape used by
+`FalconReflect.lean`. -/
 
 /-- TowerType for `key` (16 bytes). -/
 def aesKeyTowerType   : TowerType := .TBytes 16

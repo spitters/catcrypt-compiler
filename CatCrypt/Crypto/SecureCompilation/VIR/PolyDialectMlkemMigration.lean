@@ -28,9 +28,8 @@ poly leaf and no broken proof.
 
 ## The one-tie-per-level payoff
 
-The plan's headline (`docs/dialect-restructure-plan.md` §"Verification payoff"):
-the realization ties connect **once per dialect level** (structural) instead of
-per-protocol.  Here that is concrete:
+The verification payoff of the layered stack: the realization ties connect
+**once per dialect level** (structural) instead of per-protocol.  Here that is concrete:
 
 * the **field** leaves tie once at L3 (`FieldDialect`);
 * the **NTT / polynomial ring** ties once at L4′ (this file):

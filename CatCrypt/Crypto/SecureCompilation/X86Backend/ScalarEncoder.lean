@@ -10,17 +10,19 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 
 `AsmPrinter.lean` prints a `JInstr w` block to AT&T assembly *text*, which is then
 handed to `gas`/`cc` to be encoded into machine bytes — that last step trusts the
-assembler's instruction encoder. This module is the **scalar analogue of
-`Avx512Encoder.lean`**: it encodes each `JInstr` directly to its x86-64 machine-code
-bytes in Lean, so the kernel body is emitted as bytes by a function whose output we
-audit against the Intel SDM and differentially validate against `gas`.
+assembler's instruction encoder. This module removes that trust for the scalar
+subset: it encodes each `JInstr` directly to its x86-64 machine-code bytes in
+Lean, so the kernel body is emitted as bytes by a function whose output we audit
+against the Intel SDM and differentially validate against `gas`.
 
-`Avx512Encoder` did this for the AVX-512 packed-integer (EVEX) subset that jasmin
-cannot express; this module does it for the **scalar GP-register subset jasminc
-emits** — the `JInstr` set of `JasminModel.lean` (`MOV`/`ADD`/`ADC`/`SUB`/`SBB`/
-`IMUL`/`NEG`/`AND`/`OR`/`XOR`/`SHL`/`SHR`/`SAR`/`CMOVcc`, the BMI2/ADX trio
-`MULX`/`ADCX`/`ADOX`, and the reg-ptr ABI's `loadMem`/`storeMem`). Together the two
-encoders cover the full emitted instruction stream with no text-printer + `gas` step.
+The subset covered here is the **scalar GP-register subset jasminc emits** — the
+`JInstr` set of `JasminModel.lean` (`MOV`/`ADD`/`ADC`/`SUB`/`SBB`/`IMUL`/`NEG`/
+`AND`/`OR`/`XOR`/`SHL`/`SHR`/`SAR`/`CMOVcc`, the BMI2/ADX trio `MULX`/`ADCX`/
+`ADOX`, and the reg-ptr ABI's `loadMem`/`storeMem`). The companion byte encoders
+`CryptoExtEncoder.lean` (SHA-NI, PCLMUL, VAES, GFNI and the AVX2 VEX.256
+packed-integer set) and `VsimdByteEncoder.lean` (the unified 128-bit `vsimd` op
+set) cover the XMM/YMM vector side; the 512-bit ZMM emits (`VpackZmmAsmPrint`)
+have no byte encoder yet and still go out as text through `gas`.
 
 ## The narrowed trust boundary
 
@@ -38,7 +40,7 @@ to *this encoder matches the SDM encoding*, discharged two ways:
   analogue);
 * **differentially** — each `encodeJInstr` output is pinned (`ScalarValidation.lean`)
   to the exact byte string `gas` produces for the same mnemonic, the posture
-  `Avx512Validation.lean` takes for the EVEX encoder and
+  `CryptoExtValidation.lean` takes for the crypto-extension encoder and
   `TranslationValidation.lean` takes for the scalar model against the Rocq `.vo`.
 
 The stronger check — a Sail-x86 *decoder* round-trip `decode (encode i) ≡ i` —

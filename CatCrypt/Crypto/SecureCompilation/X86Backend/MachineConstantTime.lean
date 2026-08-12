@@ -8,13 +8,19 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
 /-!
 # Machine-level constant-time for the emitted x86 subset
 
-`SSALeakage.lean` proves the *source-level* constant-time property: every
-CryptoSSA program has a leakage trace fixed by its syntax, so it leaks nothing
-about secret inputs (`CProg.leakTrace_constant`, `all_cprog_ct`). That argument
-lives at the CryptoSSA IR, above code generation. This module lifts the same
-guarantee to the **emitted machine code**: a real straight-line x86 leaf
-(`List (JInstr w)` in the `JasminModel` semantics) and its *machine* leakage
-trace — the sequence of control-flow decisions and **memory-access addresses**.
+The *source-level* constant-time argument lives above code generation, at the
+dialect IR: `Com.toUnifiedLeak` is a function of program syntax only, so a
+dialect program's leakage trace is the same for every input
+(`CryptoDialectUnifiedTrace.dialect_leakTrace_unified_constant`, re-exported for
+the verified middle at `emptyEvSig` as
+`RHPVerifiedMiddle.cprog_leakTrace_unified_constant` — despite its name that
+restatement is also over `Com catCryptDialect`, not `CProg`). Because
+that trace never mentions the valuation, the source-level statement is purely
+structural. This module lifts the guarantee to the **emitted machine code**,
+where it is not structural: a real straight-line x86 leaf (`List (JInstr w)` in
+the `JasminModel` semantics) and its *machine* leakage trace — the sequence of
+control-flow decisions and **memory-access addresses**, computed against the
+running machine state.
 
 ## What an attacker observes, and why it is the address that matters
 
@@ -46,7 +52,9 @@ exhibits that difference, which is what keeps the CT keystone non-vacuous: the
 property genuinely distinguishes value-independent from value-dependent
 addressing, rather than holding of every program because "there are no branches."
 
-This is the machine-level analogue of `SSALeakage.leakTrace_constant`.
+This is the machine-level analogue of the dialect-level
+`dialect_leakTrace_unified_constant`, but computed against the machine state
+rather than read off the program syntax.
 
 **0 axioms** (`native_decide` is used only for the concrete leaf value pin),
 **0 sorries**.
@@ -165,7 +173,9 @@ control flow + memory addresses — is the same from any two initial states. The
 attacker's view is therefore a function of the program text alone, so it carries
 no information about the secret register values: the leaf is constant-time.
 
-This is the machine-level analogue of `SSALeakage.leakTrace_constant`. -/
+This is the machine-level analogue of the dialect-level
+`dialect_leakTrace_unified_constant`, but computed against the machine state
+rather than read off the program syntax. -/
 
 /-- **Machine-level constant-time keystone.** A straight-line leaf all of whose
     instructions use direct (base + constant-displacement) addressing produces

@@ -9,12 +9,13 @@ import CatCrypt.Crypto.Jasmin.BignumExec
 import CatCrypt.Crypto.Jasmin.LowCTToJasmin
 
 /-!
-# UnifiedTrace: One Trace Alphabet for the Whole Pipeline (Track A1, draft 1)
+# UnifiedTrace: One Trace Alphabet for the Whole Pipeline
 
-This file is the *starting point* for `NEXT.md`'s Track A1 — a unified trace
-model spanning every stage in `SecureCompilation/`. The full track is
-estimated at ~4 weeks; this is a 2–3-hour scaffold with embeddings for
-the easy stages, `sorry`-stubs documenting follow-up for the harder ones.
+One event alphabet into which every stage in `SecureCompilation/` projects its
+observables.  This file defines the alphabet and the embeddings for the stages
+that admit a total, computable projection (CryptoSSA leakage, `BignumExec`,
+Jasmin `Cmd`); the stages still lacking an embedding are listed under
+"What's NOT done" below.
 
 ## Why a unified trace?
 
@@ -87,10 +88,10 @@ Why this draft uses a fresh inductive instead:
    (`Mem.store64`, `Mem.load64`); SPComp has no slot for this.
 3. SCIO* / RHP literature uniformly assumes a *list* of events.
 
-The right relationship is `embedSPComp : SPComp → UnifiedTrace` (which
-this file implements as `SPComp.toUnifiedTrace`, currently stubbed —
-the spec is "the trace consisting of one `.sample` per `SPComp.sample`
-plus one `.ret` at the leaf").
+The right relationship is `embedSPComp : SPComp → UnifiedTrace`: the trace
+consisting of one `.sample` per `SPComp.sample` plus one `.ret` at the leaf.
+That embedding is NOT implemented — no `SPComp.toUnifiedTrace` exists in this
+file or elsewhere in the tree; only the specification above is recorded.
 
 ## What's done in this file
 

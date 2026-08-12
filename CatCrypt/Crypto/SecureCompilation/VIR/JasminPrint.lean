@@ -7,9 +7,9 @@ import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 import CatCrypt.Crypto.Jasmin.LowCTToJasmin
 
 /-!
-# `Com jasminDialect → JasminProg` lowering (phase (a) of the convergence plan)
+# `Com jasminDialect → JasminProg` lowering
 
-This file is the next deliverable after `JasminDialect.lean`: a verified,
+A verified,
 structured AST → structured AST lowering from CatCrypt's typed-SSA VIR
 (`Com jasminDialect Γ t`) to the Jasmin program AST
 (`CatCrypt.Crypto.Jasmin.JasminProg`). The `.jazz` *text* is produced by the
@@ -20,9 +20,9 @@ producing a `JasminProg`; no string-munging happens here.
 Com[jasminDialect]  ──lowerComToProg──▶  JasminProg (AST)  ──ppJasminProg──▶ .jazz
 ```
 
-This realises §3 of `jasmin-vir-convergence-plan.md` ("emit the AST, not
-text"): the reg-vs-stack and width distinctions that `RustEmitJazz` inferred
-by hand are now *dialect types*, lowered to `JasminAST` constructs.
+The principle is "emit the AST, not text": the reg-vs-stack and width
+distinctions that `RustEmitJazz` inferred by hand are now *dialect types*,
+lowered to `JasminAST` constructs.
 
 ## Naming scheme (de Bruijn → strings)
 

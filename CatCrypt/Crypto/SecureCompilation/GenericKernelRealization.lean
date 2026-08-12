@@ -18,9 +18,10 @@ of which `Barrett` / `Fermat` (unary) and `Montgomery-mul` / `NTT-multiply` (bin
 **instances obtained by pinning `spec`** — not four separate mechanisms.
 
 The predicate `decode (leafSpec.call leaf args) = spec (decode-of-args)` is exactly the
-shape of the in-repo Trocq proof-transfer engine: it is a `RelatedBinOp.comm` /
+shape of the Trocq-style proof-transfer engine: it is a `RelatedBinOp.comm` /
 `ReprTransfer.BinOpHomOn` square with the **decoding map `decode` as the (map₁, univalence-
-free) transport witness** (`Bridges/Transfer/Related.lean`, `Bridges/ReprTransfer.lean`). So:
+free) transport witness** (ParamTransfer's `Transfer.Base.Related`, the dependency imported
+by `Bridges/Transfer/CompilerRegistry.lean`; and `Bridges/ReprTransfer.lean`). So:
 
 * `KernelRealizes` (unary, from `ProtocolEmitRealizes`) and `KernelRealizes2` (binary, here)
   are the two generic predicates.

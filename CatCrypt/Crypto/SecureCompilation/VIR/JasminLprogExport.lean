@@ -63,11 +63,10 @@ mirroring the structure exactly, prefixed with the OCaml-side magic header
 `JASMIN-LPROG-MARSHAL-v1\n`. This is the integration seam: `read_linear` as
 shipped in #144 accepts the Marshal path only — `read_text_stub` lists every
 `linstr_r` constructor and dropped field as a coverage gap and raises. Closing
-link 2/7 over the textual path requires extending `PrintLinear.pp_prog` +
-writing the textual inverse on the OCaml side (the README's "Removing the last
-trust dependency" plan), or an OCaml `Marshal` FFI on the Lean side. Either is
-out of scope for link 1/7; the value-level structure produced here is the input
-both routes consume.
+link 2/7 over the textual path requires extending `PrintLinear.pp_prog` and
+writing the textual inverse on the OCaml side, or else an OCaml `Marshal` FFI
+on the Lean side. Either is out of scope for link 1/7; the value-level
+structure produced here is the input both routes consume.
 
 ## Physical-register export (§7–8)
 

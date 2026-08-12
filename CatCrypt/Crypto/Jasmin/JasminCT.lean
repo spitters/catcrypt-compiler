@@ -1027,7 +1027,7 @@ def pureEvalMonoCmdExt (n : Nat) (env : Var → BitVec n) (retVar : Var) :
 
 /-! ### Cfor unrolling pre-pass (Extension 3A)
 
-`unrollCfor` replaces every *top-level* `Cfor v .UpTo lo hi body` in a
+`unrollAllCfor` replaces every *top-level* `Cfor v .UpTo lo hi body` in a
 command list with `hi - lo` concatenated copies of its body (the body
 itself is not recursively unrolled — for Extension 3A we restrict to
 one loop level, which covers all planned ports). The AST's
@@ -1049,7 +1049,8 @@ def unrollCfor1 : List InstrR → List InstrR
     (List.replicate count body).flatten ++ unrollCfor1 rest
   | i :: rest => i :: unrollCfor1 rest
 
-/-- Legacy alias for `unrollCfor1`. -/
+/-- The name callers use for the `Cfor` pre-pass (`unrollCfor1`); an
+    `abbrev`, so the two are interchangeable. -/
 abbrev unrollAllCfor := unrollCfor1
 
 /-- Bodies with no `Copn`. -/

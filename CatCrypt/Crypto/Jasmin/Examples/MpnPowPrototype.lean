@@ -1134,52 +1134,59 @@ this as the open obligation.
 remaining growing-width invariant; the per-bit step is now packaged as the
 proven `MpnPowJasminRefines_one_bit_holds`. -/
 
-/-! ### §6.10  Statement-rework: strengthened obligation + proven prelude
+/-! ### §6.10  Strengthened obligation + proven prelude
 
-PP2 (commit `32eec489`) identified that `mpnPow_outer_loop_obligation` as
-originally stated is **structurally under-determined** — it lacks explicit
-arena-allocator preconditions, the `"one"` register value, and per-step
-scratch-disjointness predicates.  This subsection delivers:
+`mpnPow_outer_loop_obligation` states no arena-allocator preconditions, no
+`"one"` register value and no scratch-disjointness predicates.  This
+subsection provides a form that names the first two plus the prelude-level
+`ropp`/`accp` disjointness (the per-step scratch disjointness is still not
+expressed), together with the pieces of its closure:
 
-  1. **`MpnPowArena`** — an explicit arena-allocator structure (the per-step
-     disjoint zeroed scratch windows, abstracted away from the obligation).
-  2. **`mpnPow_outer_loop_obligation'`** — the **reworked** obligation with
-     the missing preconditions made explicit.
-  3. **`MpnPowJasminRefines'`** — the canonical reworked bridge `Prop`.
+  1. **`MpnPowArena`** — an explicit arena-allocator record (per-step scratch
+     window addresses and widths, abstracted away from the obligation).
+  2. **`mpnPow_outer_loop_obligation'`** — the obligation with those
+     preconditions made explicit.
+  3. **`MpnPowJasminRefines'`** — the canonical bridge `Prop` for it.
   4. **`mpnPow_prelude_holds`** — the prelude `storeAt0 "ropp" "one"` step,
      **fully proved**: deposits `[1]` at `ropp` from a state with
      `regs "one" = 1`.  This is the "(b) prelude = mechanical" closure
      called out in §6.9.
-  5. **`mpnPow_outer_loop_step_obligation`** — the **tighter residual**: the
-     growing-width `Cfor` invariant induction, factored out of the reworked
+  5. **`mpnPow_outer_loop_step_obligation`** — the residual: the
+     growing-width `Cfor` invariant induction, factored out of the
      obligation.  This is the precise remaining open obligation — the
-     genuine algebraic step that's missing.
-  6. **`MpnPowJasminRefines_holds`** — the closure: assuming the tighter
-     `mpnPow_outer_loop_step_obligation`, the reworked
-     `MpnPowJasminRefines'` is fully discharged, with the prelude step
-     genuinely proved.
+     genuine algebraic step that is missing.
+  6. **`MpnPowJasminRefines_holds`** — the closure: assuming
+     `mpnPow_outer_loop_step_obligation`, `MpnPowJasminRefines'` is fully
+     discharged, with the prelude step genuinely proved.
 
-The legacy `mpnPow_outer_loop_obligation` / `MpnPowJasminRefines` Props are
-kept for backward compatibility with downstream documentation references
-(`MpnDivRemPrototype`, `MpnToStringMultiLimbPrototype`, etc., which only
-*mention* them as a pattern reference). -/
+The `mpnPow_outer_loop_obligation` / `MpnPowJasminRefines` Props are kept:
+downstream files (`MpnDivRemPrototype`, `MpnToStringMultiLimbPrototype`,
+`MpnAdd32Refines`, `MpnShiftPrototype`, …) cite them by name as the pattern
+reference for their own residuals. -/
 
-/-- **Per-step arena-allocator predicate.**  At loop iteration `i` (of `bits`
-    total), the arena provides:
+/-- **Per-step arena-allocator record** for the `mpn_pow` bit loop.  At loop
+    iteration `i` (of `bits` total) it names:
 
-    * `accAddr i` — the base address of the (zeroed) scratch window for the
-      `i`-th accumulator (width-`|base| · 2^min(i, bits)` bytes);
-    * `ropAddr i` — the base address of the (zeroed) scratch window for the
-      `i`-th `rop` (running product, width grows similarly);
-    * pairwise disjointness between the per-step windows and the `base`
-      input.
+    * `accAddr i` — the base address of the scratch window holding the
+      `i`-th accumulator (`base^(2^i)`);
+    * `ropAddr i` — the base address of the scratch window holding the
+      `i`-th `rop` (the running product `base^(e mod 2^(i+1))`);
+    * `accWidth i` / `ropWidth i` — those windows' widths in limbs, pinned
+      at `i = 0` to `|base|` and `|base| + |base|`.
 
-    The allocator is **abstract** here: PP2's diagnosis was that without
-    making this explicit, the residual was structurally under-determined.
-    Pinning it as a parameter is the rework.
+    `budget` is the bounded limb width of the whole arena — the static arena
+    GMP allocates for `mpz_pow_ui`; `budget_ge` records that it covers
+    `|base| · e` limbs, and `budget_fit` that `8 · budget` does not wrap a
+    `u64` byte address.
 
-    The widths are capped by the bounded `|base| · e`-limb upper bound — the
-    static arena GMP allocates for `mpz_pow_ui`. -/
+    The record is deliberately abstract, and it carries *only* those
+    addresses, widths and budget bounds: zeroing of the windows, the
+    disjointness of the per-step windows from each other, and their
+    disjointness from the `base` input are not fields here, so they cannot
+    be obtained from an `MpnPowArena`.  The obligations below take one as a
+    parameter (bound as `_arena`, i.e. currently unused in their
+    statements); constraining the state by the allocator is what would make
+    the per-step scratch-disjointness preconditions explicit. -/
 structure MpnPowArena (base : List (BitVec 64)) (e : Nat) where
   /-- Width budget (in limbs) for the bounded arena.  `≥ |base| · e`. -/
   budget : Nat
@@ -1204,25 +1211,27 @@ structure MpnPowArena (base : List (BitVec 64)) (e : Nat) where
   /-- `ropWidth 0 = |base| + |base|` (one square's worth: `base^(2·k)`). -/
   ropWidth_zero : ropWidth 0 = base.length + base.length
 
-/-- **The reworked `mpn_pow` Jasmin refinement obligation.**  PP2-strengthened
-    successor of `mpnPow_outer_loop_obligation`: adds the missing
-    preconditions (the `"one"` register, the arena allocator, the per-step
-    disjointnesses) so the statement is no longer structurally
-    under-determined.
+/-- **The `mpn_pow` Jasmin refinement obligation.**  Strengthened form of
+    `mpnPow_outer_loop_obligation`: it states the layout preconditions
+    explicitly (the `"one"` register value, an `MpnPowArena` allocator
+    parameter, and the prelude-level `ropp`/`accp` disjointness).
 
     Running `powBody bits` (`bits` = `e`'s bit-length) under `powRegistry`
     over an arena-allocated bounded-width zeroed scratch, given the base in
     memory and the layout preconditions, lands a result region at `ropp`
     holding `mpnPow base e`.
 
-    The two genuinely new (vs the legacy form) preconditions:
+    The hypotheses this form adds over the legacy one:
 
     * `regs "one" = 1`        — without this, the prelude
       `storeAt0 "ropp" "one"` doesn't deposit the value `1`;
-    * `arena : MpnPowArena`   — the per-step disjoint zeroed scratch
-      windows.  PP2's "structural" requirement: without this, the per-step
-      `MpnPowJasminRefines_one_bit_holds` invocations cannot re-establish
-      their disjointness preconditions across iterations. -/
+    * `memHoldsLimbs … ropp [0]` — the `ropp` window starts zeroed;
+    * `Disjoint (ropp, 8) (accp, 8·|base|)` — the prelude store must not
+      corrupt the `accp` window;
+    * `_arena : MpnPowArena` — the arena allocator.  It is bound but not
+      used in the statement: the per-step disjointness of the scratch
+      windows that the iterated `MpnPowJasminRefines_one_bit_holds`
+      invocations need is not yet expressed as a precondition here. -/
 def mpnPow_outer_loop_obligation' : Prop :=
   ∀ (s : BignumState) (base : List (BitVec 64)) (e : Nat)
     (_arena : MpnPowArena base e),
@@ -1303,10 +1312,10 @@ theorem mpnPow_prelude_holds (registry : BignumRegistry) (s : BignumState)
 #print axioms mpnPow_prelude_holds
 #print axioms mpnPow_outer_loop_obligation'
 
-/-- **The tighter, structurally-determined residual — the inductive bit-loop
-    step.**  PP2's "(c) growing-width Cfor invariant + arena disjointness"
-    closure, now with the **arena allocator made explicit** so the statement
-    is no longer under-determined.
+/-- **The residual: the inductive bit-loop step.**  The growing-width `Cfor`
+    invariant induction.  The arena allocator is an explicit binder
+    (`_arena`) but does not appear in the statement, so no arena
+    disjointness is asserted here.
 
     Hypothesis shape: starting from the prelude-discharged state (i.e.
     `ropp`-window holds `mpnOne = [1]` and `accp`-window holds `base`),
@@ -1345,14 +1354,14 @@ prelude-to-loop sequencing uses `bignumExecFuel_seq` against an explicit
 disjointness, now an explicit field of the obligation).
 
 This delivers:
-  * the obligation is **no longer structurally under-determined** (it has
-    arena allocator, `one = 1`, and the first-layer disjointness);
+  * the obligation names the arena allocator, `one = 1` and the first-layer
+    disjointness;
   * the prelude step is **proven** (`mpnPow_prelude_holds`);
   * the prelude-to-loop sequencing is **proven** (a `bignumExecFuel_seq`
     plus the `memHoldsLimbs_store64_frame`);
   * the remaining residual `mpnPow_outer_loop_step_obligation` is the
     **precisely-named** inductive bit-loop step — the genuine remaining
-    open obligation, no longer the structurally-under-determined catch-all. -/
+    open obligation. -/
 
 /-- A helper: the prelude `storeAt0 "ropp" "one"` step's memory effect is
     `storeMem s (UInt64.ofNat (s.regs "ropp").toNat) (UInt64.ofNat 1)` — the
@@ -1393,7 +1402,7 @@ theorem mpnPow_prelude_state (registry : BignumRegistry) (s : BignumState)
     The reworked obligation thereby splits its closure cleanly: the prelude
     is **genuinely proved**, the prelude-to-loop frame is **genuinely
     proved**, and the residual is the **precisely-named** inductive step
-    (no longer the catch-all "growing-width loop frame"). -/
+    (the inductive step alone, not a catch-all "growing-width loop frame"). -/
 theorem MpnPowJasminRefines_holds
     (hStep : mpnPow_outer_loop_step_obligation) :
     MpnPowJasminRefines' := by
@@ -1790,12 +1799,9 @@ induction* to these two narrow facts. -/
 
 /-! ### §6.11  Summary of the §6.10 statement-rework
 
-PP2 (commit `32eec489`) closed the per-bit content
-(`MpnPowJasminRefines_one_bit_holds`) and identified that
-`mpnPow_outer_loop_obligation` as originally stated was **structurally
-under-determined** — missing arena allocator, the `"one"` register
-precondition, and per-step disjointness predicates.  §6.10 (this rework)
-delivers:
+§6.10 strengthens `mpnPow_outer_loop_obligation`, whose original form left the
+arena allocator, the `"one"` register precondition and the per-step
+disjointness predicates implicit.  It delivers:
 
 | Item | Status |
 |------|--------|
@@ -1839,15 +1845,14 @@ running the per-bit `Cfor [powMulStep ++ powMulStep]` loop from the
 prelude-discharged state (`ropp` holds `[1]`, `accp` holds `base`) lands
 `ropp` holding `mpnPow base e`.
 
-This residual is *no longer structurally under-determined*: it has the
-arena allocator (`MpnPowArena base e`) as an explicit parameter, and its
-hypothesis shape captures exactly the post-prelude state.  What remains is
+This residual takes the arena allocator (`MpnPowArena base e`) as an explicit
+parameter, and its hypothesis shape captures exactly the post-prelude state.  What remains is
 the genuine **algebraic step** — the growing-width Cfor invariant
 induction, threading the per-bit
 `MpnPowJasminRefines_one_bit_holds`/`mul_square_step` lemmas through the
-arena-allocator's per-step disjoint sub-arenas.  This is the genuinely
-hard residual PP2 estimated at ~4-8 hours; it is now precisely-named and
-isolated from the prelude (which is proven). -/
+arena-allocator's per-step disjoint sub-arenas.  This is the genuinely hard
+part; it is precisely named and isolated from the prelude (which is
+proven). -/
 
 /-! ### §6.10.f  Reducing the §6.10 residual to the per-iter armed step + final-routing
 

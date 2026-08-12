@@ -13,13 +13,11 @@ import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint
 output): per lane `k ∈ 0..7`, `out[k] = x[k] + y[k] (mod 2^64)`, **no cross-lane
 carry**.
 
-The pre-migration emit (`VpackAdd8Emit.lean`) expresses this as a single
-`Avx512Model.ZInstr.vpaddq` over the bespoke AVX-512 register machine
-(`ZState`/`runZBlock`), rendered by `Avx512AsmPrinter.renderZInstr`. This module
-is the **SIMD-dialect-unification** twin: the same one-`vpaddq` kernel as a
-straight-line `Com jasminDialect` program over `reg 512` (ZMM) registers, off the
-bespoke `Avx512Model` machine, rendered through
-`VpackZmmAsmPrint.renderVpackZmmCom` + `VsimdAsmPrint.frameAsmFunction`.
+This module expresses that kernel as a straight-line `Com jasminDialect` program
+over `reg 512` (ZMM) registers — a single `JasminOp.vpackZMM .add` op — rendered
+through `VpackZmmAsmPrint.renderVpackZmmCom` + `VsimdAsmPrint.frameAsmFunction`.
+The lowering and printing path is `Com jasminDialect` only: no `jasminc`, and no
+separate AVX-512 register machine.
 
 ```
 vpackAdd8Com  (Com jasminDialect, one vpackZMM .add)
@@ -33,23 +31,19 @@ vpackAdd8Com  (Com jasminDialect, one vpackZMM .add)
 
 The import set is exactly `VpackZmmAsmPrint` (→ `JasminPrint`/`JasminDialect`, the
 de-Bruijn→name walk + the `%zmm` operand renderer; `VsimdAsmPrint`'s `XAlloc` /
-`frameAsmFunction` reused transitively). The bespoke `Avx512Model`
-(`ZInstr`/`ZState`/`runZBlock`) and its `Avx512AsmPrinter` are **not** in the
-lowering or printing path of this emit — it is the no-jasminc, no-`Avx512Model`
-route.
+`frameAsmFunction` reused transitively).
 
 ## Op mapping
 
 The body is exactly one op, the single `.add` ZOp of the pre-migration block:
 
-| `Avx512Model.ZInstr` | `Com jasminDialect` op       | denote        |
-|----------------------|------------------------------|---------------|
-| `.vpaddq "out" "x" "y"` | `JasminOp.vpackZMM .add` | `zmmPackQ .add` |
+| `Com jasminDialect` op       | denote          |
+|------------------------------|-----------------|
+| `JasminOp.vpackZMM .add`     | `zmmPackQ .add` |
 
 `zmmPackQ .add` is the carry-free 8×u64 packed-lane add — the verified-dialect
-image of `#VPADD_8u64`, the same lane semantics the bespoke `ZInstr.vpaddq`
-(`VectorTy.map₂ laneAddQ`) computes. The single `.add` op has the `vpackZMM`
-equivalent, so the migration is complete (no out-of-fragment op).
+image of `#VPADD_8u64`. The single `.add` op has the `vpackZMM` equivalent, so
+the migration is complete (no out-of-fragment op).
 
 ABI (matches `bench/thir_front_vpack/vpack_kat.c` exactly):
   `void vpack_add8(uint64_t *out /*%rdi*/, const uint64_t *inp /*%rsi*/);`
@@ -99,9 +93,8 @@ abbrev r512 : JasminTy := .reg 512
 abbrev vpackCtx : Ctxt jasminDialect := [r512, r512]
 
 /-- The migrated `vpack_add8` body as a `Com jasminDialect` over `reg 512`
-    registers — the dialect-native equivalent of the bespoke single
-    `ZInstr.vpaddq "out" "x" "y"`: `out = x + y` per 64-bit lane (no cross-lane
-    carry). `x = .here`, `y = .there .here`. -/
+    registers: `out = x + y` per 64-bit lane (no cross-lane carry).
+    `x = .here`, `y = .there .here`. -/
 def vpackAdd8Com : Com jasminDialect vpackCtx r512 :=
   -- out := x + y   (x = .here, y = .there .here)
   .var (.mk (.vpackZMM .add) rfl
@@ -117,8 +110,7 @@ program unfolds definitionally through the `vpackZMM` denote arm to the one
 
 /-- **`vpack_add8` denotation pin.** On any input valuation `⟨x, y⟩`,
     `vpackAdd8Com` denotes to `zmmPackQ .add x y` — the verified-dialect packed
-    `x + y`, exactly the value the bespoke `ZInstr.vpaddq` writes into `"out"`
-    lane-by-lane (no cross-lane carry). -/
+    `x + y`, lane-by-lane (no cross-lane carry). -/
 theorem vpackAdd8Com_denote (x y : BitVec 512) :
     vpackAdd8Com.denote (.cons x (.cons y .nil))
       = zmmPackQ .add x y :=
@@ -147,7 +139,7 @@ def vpackAbiStore : List String := [ "\tvmovdqu64\t%zmm0, (%rdi)" ]
 /-- The owned `.s` for `vpack_add8` (`out = x + y`, 8×u64, no cross-lane carry),
     under the caller-supplied `%zmm` allocation `alloc`. Renders `vpackAdd8Com`'s
     single `vpackZMM .add` binding to an owned `%zmm` AT&T line and frames it with
-    the SysV-ABI load/store glue. No `Avx512Model`, no jasminc. -/
+    the SysV-ABI load/store glue. No jasminc. -/
 def emitVpackAdd8 (alloc : XAlloc) : String :=
   frameAsmFunction "vpack_add8"
     vpackAbiLoads (renderVpackZmmCom alloc vpackAdd8Com).1 vpackAbiStore

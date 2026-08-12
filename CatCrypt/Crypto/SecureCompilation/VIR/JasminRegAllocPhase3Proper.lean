@@ -33,8 +33,8 @@ capstone (`JasminRegAllocPhase3.lean`):
       kernel, with `native_decide` only on the small fixed slice. The full 107k
       `#eval` is the orchestrator's (heavy); we state it and report the command.
 
-`set_option autoImplicit false` is intentionally *not* set (SecureCompilation
-convention; see root `CLAUDE.md`).
+`set_option autoImplicit false` is deliberately not set in this module (unlike
+most of `SecureCompilation`, which does set it).
 -/
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect

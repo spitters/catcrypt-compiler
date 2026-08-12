@@ -8,7 +8,7 @@ import CatCrypt.Crypto.Jasmin.LowCTReflect
 /-!
 # BLS12-381 reflect surface — G1 MSM + pairing-product kernels through the verified front
 
-This file is the EC/pairing analogue of `FalconReflect.lean` / `UovReflect.lean`:
+This file is the EC/pairing analogue of `FalconReflect.lean`:
 it adds BLS12-381 specific opaque surface types and `@[rust_cmd_pattern]`
 registrations so that pure-Lean BLS12-381 G1 MSM orchestration, Groth16
 pairing-product verification, and KZG opening verification can be lifted
@@ -45,11 +45,11 @@ The leaves are the AUCurves verified-bedrock2 BLS12-381 tower
 (`bls12-381-safe-rust`): fiat-crypto `Fp` field leaves, the extracted
 `Fp2/Fp6/Fp12` tower, `miller_loop`, `final_exp`, `fp12_mul`. AUCurves verifies
 the FIELD/PAIRING tower; the G1/G2 group add law stays trusted (the same
-hybrid `aucurves_backend.rs` records). The leaf-name binding in
-`CatCrypt/Crypto/Pairing/Bls12381AUCurves.lean` documents which crate symbol
-realises each leaf.
+hybrid `aucurves_backend.rs` records). The leaf-name binding that documents
+which crate symbol realises each leaf lives in the full CatCrypt development
+tree and is not part of this repository.
 
-## Reflection→front gap (same as `UovReflect` / `MayoReflect`)
+## Reflection→front gap (same as `FalconReflect`)
 
 `reifyLowCT%` reads only `LowCTReflect.knownOps`, not the dynamic
 `LowCTPattern` registry, so `reifyLowCT% g1MsmStepLean` would error. We
@@ -72,16 +72,23 @@ hand-typed string text.
 
 ## References
 
-* AUCurves: `bls12-381-safe-rust` crate (verified-bedrock2)
-* `CatCrypt/Crypto/Pairing/Bls12381Emit.lean` — abstract `BlsPrimitives`,
-  `EcLeafAgrees`, `PairingLeavesAgree`, `msmFold_eq_msm`, `groth16VerifyRhsCom_denote`
-* `CatCrypt/Crypto/Pairing/Bls12381AUCurves.lean` — AUCurves-symbol binding
-* `bench/bls12381_compare/bls12381_emit.lean` — legacy Tier C emit (superseded)
-* `CatCrypt/Crypto/Jasmin/UovReflect.lean` — canonical leaf-shim reference
-* `bench/framework/AUDIT_HAX_BRIDGE.md` — BLS12-381 hax tree available
-  (`bls-hax/`, `EUDIW/`), bridge mechanizable but kept as named hypothesis
-  here (the AUCurves field/pairing leaves are the verified production
-  witness; the hax bridge would tie the Rust spec to the same leaves).
+* AUCurves: `$HOME/Claude/BLS/AUCurves/bls12-381-safe-rust` (verified-bedrock2)
+  — the external crate supplying the verified field/pairing leaves
+* `CatCrypt/Crypto/Pairing/Bls12_377Emit.lean` — the in-repo pairing-curve
+  analogue: abstract `Bls377Primitives`, `Bls377FieldLeavesAgree`,
+  `Bls377PairingLeavesAgree`, and the pairing-product `Com` denotation lemmas
+* `Pairing.Bls12381Emit` — the abstract `BlsPrimitives`, `EcLeafAgrees` /
+  `PairingLeavesAgree`, `msmFold_eq_msm`, `groth16VerifyRhsCom_denote` and
+  `kzgVerifyLhsCom_denote` cited below; it lives in the full CatCrypt
+  development tree, not in this repository.
+* `CatCrypt/Crypto/Jasmin/FalconReflect.lean` — canonical leaf-shim reference
+* `bench/bls12381_compare/bls12381_emit.lean` — legacy Tier C emit (superseded).
+  `bench/` is the out-of-tree benchmark harness described in `bench.md`; it is
+  not part of this repository.
+* The BLS12-381 hax tree (`bls-hax/`, `EUDIW/`) makes the hax bridge
+  mechanizable, but it is kept as a named hypothesis here: the AUCurves
+  field/pairing leaves are the verified production witness, and the bridge
+  would tie the Rust spec to those same leaves.
 -/
 
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect

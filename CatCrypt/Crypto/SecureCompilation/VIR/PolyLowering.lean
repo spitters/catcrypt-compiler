@@ -9,8 +9,7 @@ import CatCrypt.Crypto.SecureCompilation.VIR.ModArithLowering
 /-!
 # Poly lowering (#482-4) — the L4′ → L2 (Poly → ModArith) step
 
-The lowering step of the layered crypto-IR stack
-(`docs/dialect-restructure-plan.md`):
+The lowering step of the layered crypto-IR stack:
 
     Poly → Field → ModArith
 

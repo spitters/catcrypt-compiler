@@ -24,8 +24,13 @@ here as a second, `SPComp`-valued interpretation of the very same dialect:
 * `Com.denoteSP` — the whole-program `SPComp` interpretation, mirroring the
   structure of `CryptoSSA.CProg.denote` (`.ret → SPComp.pure`, `.var → bind`).
 
-The full agreement `CProg.denote ≅ Com.denoteSP` (sample ops included) lives in
-`CryptoSSAToCryptoDialectFull.lean`; this file is the interpretation it targets.
+The `CProg`-side agreement `CProg.denote ≅ Com.denoteSP` is **not** part of this
+package: it belonged to the `CProg`-bridge cluster (`CryptoSSAToCryptoDialectFull`)
+that the compiler carve retired — see the provenance note in
+`VIR/DialectVarBridge.lean`. The in-package consumers of this interpretation are
+dialect-native: `Dialects/CryptoDialectRelCompile.lean` (relational compilation
+stated over `Com.denoteSP`) and `Jasmin/JasminToSSADialectNative.lean`
+(`translateMonoCmdD_denoteSP_native`).
 
 **0 axioms**, **0 sorries**.
 -/

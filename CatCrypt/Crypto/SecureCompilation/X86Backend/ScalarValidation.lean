@@ -9,11 +9,11 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.Add2Kernel
 /-!
 # Differential validation of the scalar `JInstr` byte encoder against `gas`
 
-`Avx512Validation.lean` pins the EVEX byte encoder of `Avx512Encoder.lean` to the
-exact bytes `gas` produces for each AVX-512 mnemonic. This module is its **scalar
-counterpart**: it pins the GP byte encoder of `ScalarEncoder.lean` to `gas`'s output
+This module pins the GP byte encoder of `ScalarEncoder.lean` to `gas`'s output
 for each scalar/ADX/BMI2 mnemonic, so the encoder may replace the
 `AsmPrinter` → `gas` step with no change in emitted machine code.
+`CryptoExtValidation.lean` is the same posture for the crypto-extension
+(legacy/VEX) byte encoder.
 
 The right-hand byte strings below are the **exact output of `gas`** (binutils
 `as --64`, decoded with `objdump -d -M att`) for the matching `AsmPrinter`-rendered

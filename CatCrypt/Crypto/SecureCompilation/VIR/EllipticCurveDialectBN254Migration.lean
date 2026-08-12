@@ -32,9 +32,9 @@ with no new opaque group leaf and no broken KAT.
 
 ## The one-tie-per-level payoff
 
-The plan's headline (`docs/dialect-restructure-plan.md` §"Verification payoff"):
-the UC realization ties connect **once per dialect level** (structural) instead
-of per-primitive.  Here that is concrete:
+The verification payoff of the layered stack: the UC realization ties connect
+**once per dialect level** (structural) instead of per-primitive.  Here that is
+concrete:
 
 * the **field** leaves tie once at L3 (`FieldDialect` + the BN254 `Fp2` migration);
 * the **group law** ties once at L4 (this file): `bn254_padd_realized` is the

@@ -40,25 +40,40 @@ control flow but building `Com catCryptDialect` nodes through `ComCont`:
   `toVIRExprT`-images of the six `CExpr`s `translate` emits — so no `CProg.ite`
   chain is named.
 
-## Context agreement (`translateDialectControl_ctx_agree`)
+## Context agreement (the target statement)
 
-Exactly as for the leaf-call arms, `translateTop` discards the prefix and emits
-the `constUnit; ret` terminator at the final context, so the load-bearing fact
-is **context agreement**: `translateDialectControl` and `translate` succeed
-together and emit the *same* `⟨Γ', vm⟩`. We prove it on the extended fragment
-`IsCoveredCtl` (the covered arms of `TranslateDialectDirectArms.IsCovered` plus
-`RFor` over covered bodies and `RIfNz` over covered branches), reusing the
-`loopCallNDestsD_ctx_agree` fold pattern for `RFor` (`loopRForD_ctx_agree`) and a
-case split mirroring `translate`'s (A)/(B)/(C′)/(C-otherwise) for `RIfNz`.
+Exactly as for the leaf-call arms, `translateDialectControlTop` discards the
+prefix and emits the `constUnit; ret` terminator at the final context, so the
+load-bearing fact is **context agreement**: `translateDialectControl` and
+`translate` succeed together and emit the *same* `⟨Γ', vm⟩` on the extended
+fragment `IsCoveredCtl` (the covered arms of
+`TranslateDialectDirectArms.IsCovered` plus `RFor` over covered bodies and
+`RIfNz` over covered branches). That agreement theorem is **not proved here**: it
+needs a fold lemma for `loopRForD` on `RFor` and a case split mirroring
+`translate`'s (A)/(B)/(C′)/(C-otherwise) on `RIfNz`, neither of which is landed.
+What this file does prove is `translateDialectControl_eq_full_of_covered` (on the
+leaf-call `IsCovered` fragment the control front coincides with
+`translateDialectFull`) and the two `RWhileNz` arm lemmas below.
 
 ## Coverage
 
-With `RIfNz` and `RFor` fused, the `CProg`-free front now covers the full
-**non-`while`** `LowCT` (the core + leaf-call + control arms); only `RWhileNz`
-(unbounded loops, a genuine `CProg.cwhile` region) and the not-yet-in-dialect
-ops (`RAsmOp`, `bvAdd64`/`bvAdc`, dynamic memref, sampling) remain declined.
-This completes the coverage half of the `CProg`-deletion keystone (DR collapse)
-for everything but unbounded `while`.
+With `RIfNz` and `RFor` fused, the `CProg`-free front covers the full
+**non-`while`** `LowCT` (the core + leaf-call + control arms) and is closed under
+`RSeq` of control blocks (the `RSeq` arm recurses through
+`translateDialectControl` on both children). `RWhileNz` is *accepted* by the
+context-plumbing arm: it gates on a bound-scalar guard and on the body
+front-compiling, then returns the context-invariant `DTransOut` (`Γ' = Γ`,
+`cont = ComCont.id`, `vm` unchanged). No loop node is emitted at this level — the
+`catCryptDialect` `Com` substrate has no label/branch node, so the run-time
+back-edge is emitted downstream at the `Lprog`/`Lcmd` level
+(`TranslateDialectDataWhile.rolledWhileNz`,
+`X86Backend.LprogControlFlow.whileLcmd`); accordingly `IsCoveredCtl` does not
+include `RWhileNz`. Still declined: the `LowCT` arms with no front lowering at all
+(`RAsmOp`, `RLimbStoreExpr`, `RAssert`, `RBytesSlice`, `RFnDef`/`RFnCall`,
+`RForRuntime`) — they fall through to `translateDialectFull`'s `| _ => none`.
+Dynamic-index memref is *not* among them: `RArrLoad`/`RArrStore` lower through
+`arrLoadCont`/`arrStoreCont` to `memrefGetDyn`/`memrefSetDyn` (validated in
+`Dialects/MemrefArrayFrontValidate.lean`).
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl

@@ -35,18 +35,19 @@ acting as a *witness* that our front-end accepts the source program.
 
 ## Main statement
 
-`rustcmd_ct_implies_cryptossa_ct`: given a syntactically-CT `LowCT`
-that `translate`s, the assembled `CProg (secret :: Γ₀) t` (a tail
-program slotted into the prefix `out.cont`) denotes a `ct_spComp`
-SPComp arrow.
+`rustcmd_ct_implies_dialect_ct`: given a syntactically-CT `LowCT` that
+`translateDialectControl` accepts, the assembled `Com catCryptDialect
+(secret :: Γ₀) t` (a tail program slotted into the prefix `out.cont`)
+is `CryptoDialectLeakTraceNative.Com.isConstantTime`.
 
-The theorem reduces *directly* to `cprog_ct_spComp` from
-`SSALeakage.lean`, with the `isCT_LowCT'` hypothesis discharged by
-the fact that *every* `CProg` is constant-time by construction. The
-syntactic predicate is therefore *redundant* for the conclusion's
-truth, but it is the load-bearing artefact for the *front-end's*
-acceptance: only programs the predicate accepts ever reach the
-translator.
+The theorem reduces *directly* to `CryptoDialectLeakTraceNative.Com.all_com_ct`
+(`Dialects/CryptoDialectLeakTraceNative.lean`): every straight-line
+`Com catCryptDialect` program is constant-time by construction, because
+`Com.leakTrace` is valuation-free. No hypothesis of the theorem — neither the
+`isCT_LowCT'` predicate nor the coverage/translation/assembly witnesses — is
+used in the proof. The syntactic predicate is therefore *redundant* for the
+conclusion's truth, but it is the load-bearing artefact for the *front-end's*
+acceptance: only programs the predicate accepts ever reach the translator.
 
 ## Corollaries
 
@@ -104,18 +105,19 @@ set_option autoImplicit false
 /-- **Semantic CT bridge** for Pipeline (1).
 
 Given a `LowCT` `c` that the syntactic CT predicate accepts, and a
-successful translation `translate vm c = some out`, *any* tail program
-slotted into the resulting prefix `out.cont` produces a CryptoSSA
-program whose denotation is `ct_spComp`.
+successful translation `translateDialectControl vm c = some out`, *any*
+tail program slotted into the resulting prefix `out.cont` produces a
+`Com catCryptDialect` program whose leak trace is constant-time.
 
-Stated for one-secret-input contexts `secret :: Γ₀`, matching the
-shape of `cprog_ct_spComp`. The `isCT_LowCT' leaves secrets c =
-true` hypothesis is **not load-bearing for the conclusion** (every
-`CProg` is CT by construction); it is preserved as the documentation
-of the front-end acceptance contract — it is what the *user* must
-discharge before invoking the translator.
+Stated for one-secret-input contexts `secret :: Γ₀`. The `isCT_LowCT'
+leaves secrets c = true` hypothesis is **not load-bearing for the
+conclusion** (every straight-line `Com catCryptDialect` is CT by
+construction); it is preserved as the documentation of the front-end
+acceptance contract — it is what the *user* must discharge before
+invoking the translator.
 
-The proof is a single application of `cprog_ct_spComp`. -/
+The proof is a single application of
+`CryptoDialectLeakTraceNative.Com.all_com_ct`. -/
 theorem rustcmd_ct_implies_dialect_ct
     {leaves : CTLeaves} {secrets : SecretSet}
     {secret : CryptoTy} {Γ₀ : Ctx} {t : CryptoTy}
@@ -222,12 +224,10 @@ full source→x86 CT chain *modulo* two glue facts:
    smoke test, the actual x86 binary that `jasminc` emits is supplied
    by the build pipeline; on the Lean side we treat it as a parameter.
 
-The obstruction noted in earlier drafts of this docstring (an
-auto-generated equation lemma `CExpr.denote.eq_25` allegedly
-duplicated between `SSALeakage` and `JasminToSSA`) no longer
-materialises in current Lean 4: the two modules co-import cleanly,
-so we *do* now import `JasminCompilerBridge` and `LowCTToJasmin`
-above. -/
+Both `JasminCompilerBridge` and `LowCTToJasmin` are imported directly by
+this module, so the results below are stated against the real
+`toJasminCmd` lowering and the real `jasminc` bridge rather than against
+local restatements of them. -/
 
 /-- A subset of `LowCT` for which `toJasminCmd`'s output is
 accepted by the Jasmin syntactic CT whitelist `isCT_Cmd`.
@@ -275,10 +275,9 @@ def jasminCTSafe : LowCT → Bool
   | .RLimbStoreExpr _ _ e   =>
       CatCrypt.Crypto.Jasmin.isCT_PExpr
         (CatCrypt.Crypto.Jasmin.LowCT.sexprToPExpr e)
-  -- #235: the back-end `isCT_InstrR` whitelist now covers the lowerings of
-  -- these constructors, so they are admitted here (previously rejected
-  -- pending the whitelist extension).  Each citation is to
-  -- CT_INSTRUCTION_REFERENCES.md.
+  -- The back-end `isCT_InstrR` whitelist covers the lowerings of the
+  -- following constructors, so they are admitted here.  Each citation is to
+  -- `bench/framework/CT_INSTRUCTION_REFERENCES.md`.
   --   `RCallSwap f` → two sequential `Ccall`s.  Compositional CT (the
   --   call mechanism is CT-neutral, reduces to callee CT) — §"Multi-output
   --   call".  The `isCT_InstrR` `Ccall` clause accepts both.
@@ -731,12 +730,9 @@ def smokeBridgeProg : LowCT :=
 /-- The smoke program is accepted by the relaxed CT predicate. -/
 theorem smokeBridgeProg_isCT' :
     isCT_LowCT' smokeBridgeLeaves emptySecrets smokeBridgeProg = true := by
-  -- After the 2026-05-13 LowCT IR extension (4 new structural
-  -- constructors landed in commit 425ef76a), `decide` no longer reduces
-  -- `isCT_LowCT'` past the pattern-match elaboration boundary
-  -- (Lean 4.28 well-founded recursion compiles to a wrapper that
-  -- `decide` cannot unfold).  `native_decide` evaluates through the
-  -- compiled code.
+  -- `isCT_LowCT'` compiles to a recursion wrapper that kernel reduction does
+  -- not unfold, so `decide` cannot evaluate this instance; `native_decide`
+  -- evaluates through the compiled code instead.
   native_decide
 
 /-- The smoke program also satisfies the over-strict predicate (it has
@@ -1079,11 +1075,10 @@ and bounded the gap with the decidable side-condition
   - multi-output `Ccall` (`RCallN`/`RFnCall`/`RCallSwap`) — already
     accepted (compositional CT, call mechanism CT-neutral);
   - `Cfn`/append (`RFnDef`) — compositional, via the body lowering.
-* `isCT_LowCT'` was **tightened** on `RAsmOp`: it previously accepted
-  *any* opcode name unconditionally — a CT soundness gap, since
-  `DIV`/`IDIV`/`BSF`/`BSR`/FP are NOT constant-time.  It is now gated on
-  the vendor DOIT∩DIT whitelist `ct_intrinsic name`, matching both the
-  back-end `Copn` clause and `jasminCTSafe`.
+* `isCT_LowCT'` gates `RAsmOp` on the vendor DOIT∩DIT whitelist
+  `ct_intrinsic name`, matching both the back-end `Copn` clause and
+  `jasminCTSafe`.  The gate is load-bearing for CT soundness: `DIV`/`IDIV`/
+  `BSF`/`BSR`/FP are not constant-time and are rejected by it.
 * `jasminCTSafe` was correspondingly relaxed on those eight constructors
   (`RAsmOp` gated on `ct_intrinsic`, the rest accepted/recursed).
 

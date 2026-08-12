@@ -133,11 +133,12 @@ def isCT_LowCT (leaves : CTLeaves) : LowCT → Bool
   -- Phase I (2026-05-03): tuple component store/load is structural.
   | .RTupleStore _ _ _               => true
   | .RTupleLoad _ _ _                => true
-  -- Phase Ext / Ext2 (2026-05-12, 2026-05-13): pure data-movement
-  -- constructors landed in commits `022da829` and `425ef76a`.  None
-  -- of these carry data-dependent control flow, so they're CT
-  -- unconditionally — the leak trace for each is `[]` (see
-  -- `LowCTLeakTrace.lean`).
+  -- Pure data-movement constructors: none of these carry data-dependent
+  -- control flow, so they are CT unconditionally.  Their leak traces are
+  -- constant (independent of the values moved): `RArrStore`/`RArrLoad` each
+  -- emit one opaque `extCall` event, `RBytesSlice` one event carrying its
+  -- literal `start`/`len`, and `RScalarSetExpr` none (see
+  -- `LowCTLeakTraceDef.lean`).
   | .RArrStore _ _ _                 => true
   | .RArrLoad _ _ _                  => true
   | .RScalarSetExpr _ _              => true

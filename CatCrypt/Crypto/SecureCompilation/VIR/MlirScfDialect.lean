@@ -10,9 +10,9 @@ import CatCrypt.Crypto.SecureCompilation.VIR.MlirArithDialect
 
 > **STATUS — MLIR-CORRESPONDENCE LAYER, NOT THE EMIT PATH.** `rfl`
 > semantic-agreement lemmas proving CatCrypt control flow matches upstream MLIR
-> `scf`; NO lowering out, ZERO emit traffic. Duplicates the Lprog control flow +
-> the loop emit (`ComToArmLoop`, `LprogControlFlow`), which ARE the real
-> substrate. See `CatCrypt/Crypto/SecureCompilation/VIR/DIALECTS.md`.
+> `scf`; NO lowering out, ZERO emit traffic. The real control-flow substrate is
+> the Lprog control flow plus the loop emit (`ComToArmLoop`,
+> `LprogControlFlow`); this dialect duplicates it for correspondence only.
 
 Sibling of `MlirArithDialect.lean`. Where the arith dialect's ops denote
 each as a single `BitVec → BitVec` style pure function (no sub-program

@@ -8,10 +8,9 @@ import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestDepth
 set_option autoImplicit false
 
 /-!
-# Multi-output-buffer mutation with ping-pong (ConvertToVole front-gap 4)
+# Multi-output-buffer mutation with ping-pong (FAEST `ConvertToVole` front gap)
 
-`ConvertToVoleV204FrontEmit.lean` (gap 4, lines 74–78) records the last of the four
-front walls blocking a whole-`convert_to_vole_v` emit: the committed runtime-trip
+One front wall blocks a whole-`convert_to_vole_v` emit: the committed runtime-trip
 front `rolledForLoopNRt` folds **one** accumulator `accTy` and returns it, whereas
 `convert_to_vole` mutates **several** distinct output buffers per iteration (`v`, the
 two ping-pong halves of `r`, `u`) with cross-iteration pointer swaps — the GGM
@@ -40,7 +39,7 @@ The kernel here is authored at the A1 loop-lowering target (`loopLinstrRM` over 
 general `List LinstrRM`, the compiler-infra loop node A1 exposes for exactly this —
 "the body is a general `List LinstrRM` … so a loop body can later carry a call (A2)
 or nest (A3)"), NOT through `rolledForLoopNRt`, precisely because a multi-output
-ping-pong front arm is the missing capability (gap 4).  `denote = spec` is pinned by
+ping-pong front arm is the missing capability.  `denote = spec` is pinned by
 `native_decide` against a pure ping-pong reduction fold; the branch-free swap is
 proven faithful as a `BitVec` algebra lemma.
 

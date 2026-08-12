@@ -17,15 +17,14 @@ place; π renames registers; χ is `a ^ (¬b ∧ c)` per lane; ι XORs a broadca
 round constant). So the packed permutation denotes `N` independent scalar Keccak
 permutations.
 
-The pre-migration emit (`Keccak4WayEmit.lean` + the bench driver
-`bench/keccak4way_compare/keccak_zmm_emit.lean`) expresses each θρπχι sub-step as
-a bespoke `Avx512Model.ZOp` block (`thetaBlk`/`rhoPiBlk`/`chiBlk`/`iotaBlk`),
-lowered through `Avx512Lowering.lowerZBlock` to the bespoke `ZInstr` machine and
-rendered by `Avx512AsmPrinter.renderZInstr`. This module is the
-**SIMD-dialect-unification** twin: the same per-step op-blocks as straight-line
-`Com jasminDialect` programs over `reg 512` (ZMM) registers, off the bespoke
-`Avx512Model` machine, rendered through `VpackZmmAsmPrint.renderVpackZmmCom`
-(`JasminOp.vpackZMM`) + `VsimdAsmPrint.frameAsmFunction`.
+The pre-migration emit expressed each θρπχι sub-step as a bespoke `Avx512Model.ZOp`
+block (`thetaBlk`/`rhoPiBlk`/`chiBlk`/`iotaBlk`), lowered through
+`Avx512Lowering.lowerZBlock` to the bespoke `ZInstr` machine and rendered by
+`Avx512AsmPrinter.renderZInstr`. That bespoke `Avx512Model` machine is gone from this
+package; what survives here is the **SIMD-dialect-unification** twin: the same per-step
+op-blocks as straight-line `Com jasminDialect` programs over `reg 512` (ZMM) registers,
+rendered through `VpackZmmAsmPrint.renderVpackZmmCom` (`JasminOp.vpackZMM`) +
+`VsimdAsmPrint.frameAsmFunction`.
 
 ```
 keccak sub-step Com  (Com jasminDialect, vpackZMM .xor/.and/.or/.shl/.shr ops)
@@ -109,8 +108,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (strContains)
 
 /-! ## 0. FIPS 202 constants (lane index `i = x + 5y`)
 
-Re-listed in the linear lane order this emit uses (agree with
-`Keccak4WayEmit.rhoOff` / `roundConst`). -/
+Re-listed in the linear lane order this emit uses: the ρ offsets of FIPS 202 §3.2.2 and
+the 24 ι round constants of Table 2. -/
 
 /-- ρ left-rotation offset for lane `i = x + 5y` (FIPS 202 §3.2.2). -/
 def rhoOff : Nat → Nat

@@ -8,13 +8,13 @@ import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 /-!
 # HAWK-256 negacyclic ring multiply: front-compiled emit + proof-model `Com`
 
-**SUPERSEDED (for HAWK-512) by `HawkNttEmit.lean`.** This module carries the
-schoolbook **negacyclic** ring multiply over `Z/1024[x]/(x^16 + 1)` — HAWK-256's
-ring *shape* (power-of-two modulus, `x^N = -1` fold) at a small straight-line
-degree `N = 16`. HAWK-512's byte-identical hot phase (mod-18433 NTT + pointwise
-Montgomery) is emitted owned in `HawkNttEmit.lean` / the rolled
-`HAWK/PointwiseMontymulRolledEmit.lean`. This file is kept for the HAWK-256
-ring-shape kernel: the negacyclic sibling of `Ntruhrss701MulEmit`.
+This module carries the schoolbook **negacyclic** ring multiply over
+`Z/1024[x]/(x^16 + 1)` — HAWK-256's ring *shape* (power-of-two modulus, the
+`x^N = -1` fold) at a small straight-line degree `N = 16`. It is the negacyclic
+sibling of `Ntruhrss701MulEmit`. HAWK-512's hot phase is a different kernel: the
+mod-18433 NTT butterflies and the pointwise Montgomery multiply are emitted owned
+in `X86Backend/HawkNttOwnedEmit.lean` and the rolled
+`X86Backend/HawkPointwiseOwnedEmit.lean`.
 
 ## Two `Com`s, one spec (read this)
 
@@ -26,9 +26,11 @@ ring-shape kernel: the negacyclic sibling of `Ntruhrss701MulEmit`.
       --(cryptoDialectToJasminCom)-->  hawkMulFrontCom : Com jasminDialect inCtxtF r64
   ```
 
-  `HAWK/HawkMulEmit.lean` renders it to owned AT&T `.s` (symbol
-  `hawk_mul`, no jasminc); `bench/hawk_compare/hawk_mul_kat.c` byte-KATs it
-  against the independent negacyclic-convolution-mod-1024 reference.
+  The lowered `Com` renders to owned AT&T `.s` (symbol `hawk_mul`, no jasminc)
+  through `toLprogPhysAbi` / `renderLprogAtt`; the renderer entry point is not
+  part of this repo. The external harness `bench/hawk_compare/hawk_mul_kat.c`
+  byte-KATs the rendered `.s` against the independent
+  negacyclic-convolution-mod-1024 reference.
 
 * **`hawkMulCom` (proof model)** — the CPS-built straight-line `Com` whose
   **universal** denotation tie lives in `HawkMulComDenoteTie.lean`:
@@ -341,10 +343,11 @@ theorem hawkLowered_isSome : hawkLoweredOpt.isSome := by native_decide
     pad word). -/
 abbrev inCtxtF : Ctxt jasminDialect := List.replicate 33 r64
 
-/-- The **deployed** HAWK-256 negacyclic ring-multiply tile — FRONT-GENERATED
+/-- The HAWK-256 negacyclic ring-multiply tile — FRONT-GENERATED
     (`translateDialectControl` + `cryptoDialectToJasminCom`), not hand-built.
-    Rendered to owned `.s` by `HAWK/HawkMulEmit.lean` under the `hawk_mul`
-    symbol. -/
+    Rendered to owned `.s` under the `hawk_mul` symbol by the owned x86 backend
+    (`toLprogPhysAbi` / `renderLprogAtt`); no renderer entry point for it ships
+    in this repo. -/
 def hawkMulFrontCom : Com jasminDialect inCtxtF r64 :=
   hawkLoweredOpt.get hawkLowered_isSome
 

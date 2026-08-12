@@ -123,19 +123,19 @@ def LowCT.leakTrace : LowCT → LeakTrace
       -- Over-approximation: both branches contribute. Tight
       -- characterisation requires φ-merge case analysis.
       leakTrace ct ++ leakTrace cf
-  -- CWhile uplift (#207, 2026-05-29): `translate` maps `RWhileNz e body`
-  -- to `cwhile counter bodyProg`, where `bodyProg` is the body's program
-  -- closed off by `letBind constUnit (ret here)` (one `constUnit` event).
-  -- The placeholder `cwhile` denotation runs zero iterations, so the
-  -- static leak trace is the body's trace followed by that unit tail.
+  -- `translate` maps `RWhileNz e body` to `cwhile counter bodyProg`, where
+  -- `bodyProg` is the body's program closed off by `letBind constUnit
+  -- (ret here)` (one `constUnit` event).  The placeholder `cwhile` denotation
+  -- runs zero iterations, so the static leak trace is the body's trace
+  -- followed by that unit tail.
   | .RWhileNz _ body                 =>
       leakTrace body ++ [.pureOp "constUnit"]
-  -- `RFor x N body` is inline-unrolled by translate (2026-05-27): N iterations
-  -- of `letBind (bvConst _)` (the `x := i` binding) plus body's leakTrace.
+  -- `RFor x N body` is inline-unrolled by `translate`: N iterations of
+  -- `letBind (bvConst _)` (the `x := i` binding) plus the body's leakTrace.
   | .RFor _ N body                   =>
       List.replicate N (.pureOp "bvConst" :: leakTrace body) |>.flatten
-  -- Stage 1a (2026-07-01): `translate` declines the runtime loop (its trip
-  -- count is not statically known), so it emits a single placeholder marker.
+  -- `translate` declines the runtime loop (its trip count is not statically
+  -- known), so its static leak trace is a single placeholder marker.
   | .RForRuntime _ _ _               =>
       [.pureOp "forRuntime"]
   | .RLimbStore _ _ _                =>

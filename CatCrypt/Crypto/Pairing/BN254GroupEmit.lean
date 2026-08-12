@@ -11,13 +11,16 @@ import CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFront
 /-!
 # Production BN254 `G1` group law emitted as a COMPOSITION over verified field leaves
 
-`Pairing/Bn254Emit.lean` emits the BN254 `G1` group law as an **opaque
-`extCall` group leaf** (`bn254_g1_add`): the whole short-Weierstrass formula
-is one black box, the carried trusted edge (`EcLeafAgrees`). That leaves the
-AUCurves-verified field tower (`bn254-safe-rust` `fp_add/sub/mul` + the Fermat
-inverse) *disconnected* from the emitted group op — `Util/BN254Verified.lean`
-and `BN254/EmittedFieldRealization.lean` realize the field kernels and the
-affine coordinate maps, but the tie did not reach the emitted full group op.
+The BN254 `G1` group law can also be emitted as a single **opaque `extCall`
+group leaf** (`bn254_g1_add`, the axiomatised jasmin leaf declared in
+`Jasmin/Bn254Reflect.lean` and emitted by the BN254 orchestration module of the
+full development tree, which is not part of this repository): the whole
+short-Weierstrass formula is one black box behind a trusted leaf edge
+(`EcLeafAgrees`). That leaves the AUCurves-verified field tower
+(`bn254-safe-rust` `fp_add/sub/mul` + the Fermat inverse) *disconnected* from
+the emitted group op — `Util/BN254Verified.lean` and
+`Pairing/BN254EmittedFieldRealization.lean` realize the field kernels and the
+affine coordinate maps, but that tie does not reach the emitted full group op.
 
 This module closes that gap **the way P-256 / X25519 do it**: it controls the
 export granularity and emits the affine point-add as a straight-line `Com` over
@@ -35,7 +38,7 @@ equal to `bn254AffineAdd` over `FpBN254` (`Util/BN254Verified.lean`) under
 
 1. a **field-leaf agreement** (`FieldLeafAgrees`): the dialect leaf semantics
    `jasminExtSem` on the `fp_*` leaf names is the abstract field primitive —
-   the same opaque-leaf edge `Bn254Emit` carries, but now at the *field*
+   the same opaque-leaf edge the `bn254_g1_add` leaf carries, but now at the *field*
    granularity (one `fp_mul`/`fp_sub`/`fp_inv` per leaf), and
 2. a **field realization** (`FieldRealizes`): each field primitive, transported
    by the canonical-residue interpretation `wireToFp`, equals `FpBN254`'s native
@@ -53,8 +56,8 @@ The emitted point-add term genuinely contains only `fp_mul`/`fp_sub`/`fp_inv`
 one base-field inverse (`fp_inv`); the two coordinate maps are polynomial in
 `λ`. **Scope:** this is the `G1` base-field group add only. The pairing tower
 (`Fp2`/`Fp6`/`Fp12` + Miller loop + final exponentiation) is **not** lifted —
-it remains the documented opaque-leaf edge of `Pairing/Bn254Emit.lean`
-(`PairingLeafAgrees`).
+it remains an opaque pairing leaf carried as a trusted edge by the BN254 emit
+module of the full development tree (not part of this repository).
 
 The KAT (`bench/bn254_group_compare/`) checks the re-emitted point-add is
 byte-identical to the production `G1` add on the EIP-196 generator chain.

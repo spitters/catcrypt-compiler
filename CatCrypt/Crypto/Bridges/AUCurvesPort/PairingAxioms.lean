@@ -8,14 +8,13 @@ import CatCrypt.Crypto.Bridges.AUCurvesPort.CurveGroupLaw
 set_option autoImplicit false
 
 /-!
-# AUCurves port, 5b: the pairing as an AXIOMATIZED typeclass (no Miller loop)
+# AUCurves port: the pairing as an AXIOMATIZED typeclass (no Miller loop)
 
 The curve **group law** is Mathlib-backed (see `CurveGroupLaw.lean`). The
 **pairing** is the genuine bottleneck: Mathlib has no Weil or Tate pairing.
-Per the AUCurves-port plan, this file keeps the pairing **axiomatized** — it
-states the bilinear, non-degenerate pairing interface as a **typeclass with
-fields** (a hypothesis structure), and does **not** port a Miller loop or any
-pairing construction.
+This file therefore keeps the pairing **axiomatized** — it states the bilinear,
+non-degenerate pairing interface as a **typeclass with fields** (a hypothesis
+structure), and does **not** port a Miller loop or any pairing construction.
 
 ## What this file provides
 
@@ -40,9 +39,10 @@ hypotheses live as **structure fields** of a `class`, not as global
 who wants pairing-based facts must produce a `PairingAxioms` *instance* (or take
 one as an instance-argument), at which point the obligations are explicit local
 hypotheses — discharged, eventually, by an actual construction. Contrast this
-with `ArkLibKZGDemo/PairingGroupAxioms.lean`, which uses genuine Lean `axiom`s
-for a *concrete* BLS12-381 carrier; here we stay fully parametric so the trust
-surface is a hypothesis the caller must supply, not a project-wide axiom.
+with the KZG demo's `PairingGroupAxioms` module (full development tree; not
+part of this repository), which uses genuine Lean `axiom`s for a *concrete*
+BLS12-381 carrier; here we stay fully parametric so the trust surface is a
+hypothesis the caller must supply, not a project-wide axiom.
 
 ## Mathlib has no pairing
 
@@ -77,9 +77,10 @@ satisfy.
 ## This matches the existing KZG/Marlin edge — no NEW trust
 
 The fields of `PairingAxioms` are exactly the algebraic facts that the existing
-KZG/Marlin bridge already relies on. `ArkLibKZGDemo/PairingGroupAxioms.lean`
-already axiomatizes a concrete BLS12-381 pairing (its `ee`, `ee_mul_left`,
-`ee_mul_right`, `ee_nondeg`) and wires it into the abstract `PairingGroup` that
+KZG/Marlin bridge already relies on: the KZG demo's `PairingGroupAxioms` module
+(full development tree; not part of this repository) axiomatizes a concrete
+BLS12-381 pairing (its `ee`, `ee_mul_left`, `ee_mul_right`, `ee_nondeg`) and
+wires it into the abstract `PairingGroup` that
 CatCrypt's KZG security proofs consume. The `PairingAxioms` typeclass here
 restates the **same** bilinearity/non-degeneracy shape parametrically. So
 relying on a `PairingAxioms` instance introduces **no new trust** beyond the
@@ -90,10 +91,11 @@ curve-facing typeclass form rather than as a fixed concrete axiom block.
 
 * `CatCrypt/Crypto/Bridges/AUCurvesPort/CurveGroupLaw.lean` — the
   Mathlib-backed group law and the `PairingTarget` / `HasPairing` bottleneck.
-* `CatCrypt/Crypto/Bridges/ArkLibKZGDemo/PairingGroupAxioms.lean` — the
-  existing concrete BLS12-381 axiomatized pairing this mirrors.
-* `CatCrypt/Crypto/PairingGroup.lean` — the abstract `PairingGroup` class whose
-  bilinearity/non-degeneracy shape this matches.
+* The KZG demo's `PairingGroupAxioms` module — the existing concrete BLS12-381
+  axiomatized pairing this mirrors (full development tree; not part of this
+  repository).
+* CatCrypt's abstract `PairingGroup` class — the bilinearity/non-degeneracy
+  shape this matches (full development tree; not part of this repository).
 * AUCurves — the verified elliptic-curve / pairing tower (Coq/fiat-crypto) this
   port targets; the Miller-loop / final-exponentiation / pairing-correctness
   definitions named above are what a from-scratch Lean port would reproduce.

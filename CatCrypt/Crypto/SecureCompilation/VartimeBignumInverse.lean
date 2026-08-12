@@ -6,37 +6,36 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.SecureCompilation.LowCTVartimeLeak
 
 /-!
-# Task #501 / #510 — variable-time bignum modular inverse for public-input paths
+# Variable-time bignum modular inverse for public-input paths
 
 This module rolls out the #460 variable-time support (noninterference modulo
 public, `LowCTVartimeLeak.lean`) to a GMP-class operation: a **data-dependent,
 early-terminating modular inverse**.
 
-**#510 update.** #501 showed the early-terminating GCD step count is only
-~21–25 % of the CT safegcd fixed divstep budget (the structural lever is real),
-but its *plain* hand-rolled extended-Euclid / binary-GCD ran a full-precision
-bignum division per GCD step, so they were *slower* than CT in wall-clock. #510
-replaces the per-step full-precision work with **Lehmer acceleration**
-(`bench/mpn_invert_safegcd_compare/lehmer_invert_ref.c`,
-`mpn_invert_lehmer`): the GCD is simulated on the **top ~63 bits** of the two
-operands, accumulating a single-word 2×2 cofactor matrix `[[A,B],[C,D]]`
-(Collins/Jebelean exact-quotient guard) that is then applied to the full
-bignums in **one batched multiply+add** — folding ~17–21 elementary GCD steps
-into each O(n) update. This is the same asymptotic structure GMP's
-`mpz_invert` uses (Lehmer = the single-word base case; HGCD = the recursive
-generalisation). The control-flow shape is unchanged — it is still the
-`RWhileNz` loop modelled below, now guarded by the *batched* remainder rather
-than the per-elementary-step one — so the #460 taint gating below carries over
+The early-terminating GCD step count is only ~21–25 % of the CT safegcd fixed
+divstep budget, so the structural lever is real; but a *plain* hand-rolled
+extended-Euclid / binary-GCD runs a full-precision bignum division per GCD step
+and ends up *slower* than CT in wall-clock. The inverse modelled here is
+therefore **Lehmer-accelerated**
+(`bench/mpn_invert_safegcd_compare/lehmer_invert_ref.c`, `mpn_invert_lehmer`):
+the GCD is simulated on the **top ~63 bits** of the two operands, accumulating
+a single-word 2×2 cofactor matrix `[[A,B],[C,D]]` (Collins/Jebelean
+exact-quotient guard) that is then applied to the full bignums in **one batched
+multiply+add** — folding ~17–21 elementary GCD steps into each O(n) update.
+This is the same asymptotic structure GMP's `mpz_invert` uses (Lehmer = the
+single-word base case; HGCD = the recursive generalisation). The control-flow
+shape is the `RWhileNz` loop modelled below, guarded by the *batched* remainder
+rather than the per-elementary-step one, so the #460 taint gating below applies
 verbatim: the loop is licensed exactly when its guard is public, and rejected
 (fail-closed) when secret.
 
-The bench headline (k = 16/32, i.e. 1024/2048-bit RSA): OUR Lehmer-vartime
-inverse now **beats** CT safegcd in wall-clock (LEH/CT ≈ 0.85 at 1024-bit,
-≈ 0.62 at 2048-bit), which #501's plain EEA/BGCD did not (EEA/CT ≈ 3.0–3.5
-throughout). At 256/512-bit it is at parity (≈ 1.05–1.12), where the
-per-call generic-bignum (`mpz`) constant overhead dominates the structural
-win; closing that crossover is the raw-`mpn` / HGCD-recursion residual to
-GMP's asm-tuned ceiling (LEH/GMP ≈ 3).
+The bench headline (k = 16/32, i.e. 1024/2048-bit RSA): the Lehmer-vartime
+inverse **beats** CT safegcd in wall-clock (LEH/CT ≈ 0.85 at 1024-bit, ≈ 0.62
+at 2048-bit), where a plain EEA/BGCD does not (EEA/CT ≈ 3.0–3.5 throughout).
+At 256/512-bit it is at parity (≈ 1.05–1.12), where the per-call
+generic-bignum (`mpz`) constant overhead dominates the structural win; closing
+that crossover is the raw-`mpn` / HGCD-recursion residual to GMP's asm-tuned
+ceiling (LEH/GMP ≈ 3).
 
 ## The two inverses
 
@@ -97,7 +96,7 @@ All of this **reuses** the #460 taint machinery (`cmdCT`, `guardPublic`,
   evolution awaits a verified `LowCT.exec`. It is a named hypothesis, not a
   `sorry` and not an axiom.
 * The bench (`bench/mpn_invert_safegcd_compare/vartime_invert_bench.c`) and
-  KAT (`vartime_invert_kat.c`) live on the C side: the #510 Lehmer inverse is
+  KAT (`vartime_invert_kat.c`) live on the C side: the Lehmer inverse is
   checked byte-exact (5-way KAT: `Lehmer == EEA == BGCD == GMP mpz_invert == CT
   safegcd`, random + corner inputs at 256/512/1024/2048-bit) and timed against
   CT safegcd and GMP. The wall-clock result is that OUR Lehmer-vartime beats

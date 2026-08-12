@@ -9,8 +9,7 @@ import CatCrypt.Crypto.SecureCompilation.VIR.FieldLowering
 /-!
 # EllipticCurve lowering (#482-3) — the L4 → L3 (EllipticCurve → Field) step
 
-The lowering step of the layered crypto-IR stack
-(`docs/dialect-restructure-plan.md`):
+The lowering step of the layered crypto-IR stack:
 
     EllipticCurve → Field
 

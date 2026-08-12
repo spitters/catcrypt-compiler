@@ -23,7 +23,7 @@ added inside `VIR/` would be clobbered on the next sync (and Veir already ships 
 `Crypto/SecureCompilation/Dialects/`, **consuming** the VIR `Dialect`/
 `DialectSignature`/`DialectDenote` framework. Op/type names mirror Veir's `Arith`
 `OpCode` (`addi`/`subi`/`muli`/`andi`/`ori`/`xori`/`constant`/`mului_extended`/
-shifts) as a migration contract (plan §0.3).
+shifts) as a migration contract.
 
 ## Scope of this gate
 

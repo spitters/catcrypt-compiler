@@ -12,15 +12,16 @@ import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop
 /-!
 # `runBlock` ↔ `lsemStraightMem` agreement (the machine-model bridge)
 
-`RolledScalarMulEmit.lean` names a keystone wall: the point-op bricks
-(`jacDblBlock` / `jacAddBlock` / `copyBankBlock`) are `List (JInstr 64)` with the
-**total** fold semantics `runBlock` over `JState` (`JasminModel.lean`), while the
-counted-loop node's per-trip machine body is `List LinstrRM` with the **partial**
-`lsemStraightMem` over `LstateM` (`JasminLsemMem.lean`). `JasminLsem.lean:76`
-states outright that the two straight-line machines are the *same shape* but their
-agreement is **not** proved. This module builds that bridge for the fragment on
-which the two models genuinely coincide, and reports — with a concrete witness —
-exactly where they do **not** (the honesty gate the task requires).
+Two straight-line machine models meet at the rolled scalar-multiplication emit:
+the point-op bricks (`jacDblBlock` / `jacAddBlock`) are
+`List (JInstr 64)` with the **total** fold semantics `runBlock` over `JState`
+(`JasminModel.lean`), while the counted-loop node's per-trip machine body is
+`List LinstrRM` with the **partial** `lsemStraightMem` over `LstateM`
+(`JasminLsemMem.lean`). `JasminLsem.lean` states outright that the two
+straight-line machines are the *same shape* but that their agreement is **not**
+proved. This module builds that bridge for the fragment on which the two models
+genuinely coincide, and reports — with a concrete witness — exactly where they do
+**not** (the honesty gate below).
 
 ## The state correspondence
 

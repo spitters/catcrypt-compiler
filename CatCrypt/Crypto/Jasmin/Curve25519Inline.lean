@@ -681,12 +681,11 @@ def cswap_inline : JasminInlineImpl := fun dest args =>
 /-! ## §8 The Curve25519 registry -/
 
 /-- The full Curve25519 inline registry: maps the six leaf-call names used
-by `Examples/X25519LadderDSL.lean` to their inline implementations.
-
-Currently `fp_add_inline` and `fp_mul_a24_inline` are concrete; the others
-are empty stubs (to be filled in by D4.1 follow-up). When passed to
-`toJasminCmdWithInlines`, every recognized leaf gets inlined and any
-unrecognized leaf falls through to today's `Ccall` path. -/
+by `Examples/X25519LadderDSL.lean` — `fp_add`, `fp_sub`, `fp_mul_a24`,
+`fp_mul`, `fp_sqr`, `cswap_fp` — to their inline implementations, all six
+of which are concrete. When passed to `toJasminCmdWithInlines`, every
+recognized leaf gets inlined and any unrecognized leaf falls through to the
+`Ccall` path. -/
 def curve25519InlineRegistry : InlineRegistry := fun
   | "fp_add"     => some fp_add_inline
   | "fp_sub"     => some fp_sub_inline

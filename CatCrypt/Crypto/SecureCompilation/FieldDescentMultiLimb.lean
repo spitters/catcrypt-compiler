@@ -9,11 +9,13 @@ import CatCrypt.Crypto.SecureCompilation.MultiLimbEmitBridge
 /-!
 # The curve-field Stage-2 leaves, discharged CONCRETELY for a MULTI-LIMB prime
 
-`FieldDescentBabyBear.lean` discharges the descent's Stage-2 word-realization
+`Poseidon2/FieldDescentBabyBear.lean`, in the full CatCrypt development tree
+(outside this compiler package), discharges the descent's Stage-2 word-realization
 squares (`hOpJ` at a `modMul`/`modAdd`/`modSub` node) for the **single-word**
 BabyBear prime (`p < 2^32`): there `modMul ↦ bbMul` is one `regArith mul` plus
 the 10-fold `bbReduce`, all inside a single 64-bit register, and the value
-identity `bbMul a b = (a*b) % p` is in-Lean provable (`bbMul_eq_mod_p`, #117).
+identity `bbMul a b = (a*b) % p` is in-Lean provable (`bbMul_eq_mod_p`, proved
+in-package in `VIR/Poseidon2BbMulFieldExact.lean`).
 
 Curve and MAC fields (secp256k1 / P256 / BN254 / BLS / Pasta, 254–256-bit;
 Poly1305, 130-bit) are **multi-limb**: a field element is four 64-bit limbs, and
@@ -41,11 +43,12 @@ the field-op tree (`a·b + c·d` over `Fp`) over the proven leaf — the `Com fi
 `fieldComToJasmin` descends to `Com jasminDialect` (each `fMul` node's Stage-2
 `hOpJ` leaf is the `mmMul_realizes` square below, now for a 256-bit prime).
 
-The descent transport `fieldComToJasmin` (`FieldDescent.lean`) is *not* imported
-here: it transitively pulls the `Bridges.Transfer` engine, and these three
-squares are **op-level** (the precise content of a single `hOpJ` leaf), stated
-and proved without the program-level transport — exactly as
-`FieldDescentBabyBear`'s `bbMul_realizes`/`bbAdd_realizes`/`bbSub_realizes` are.
+The three squares below are **op-level** — the precise content of a single
+`hOpJ` leaf — and are stated and proved without the program-level descent
+transport `fieldComToJasmin`, which is not imported here because it
+transitively pulls the `Bridges.Transfer` engine. That transport, and the
+single-word BabyBear Stage-2 discharge whose `bbMul`/`bbAdd`/`bbSub`
+realization squares this file mirrors, are not part of this repository.
 
 ## The Montgomery-form encoding
 

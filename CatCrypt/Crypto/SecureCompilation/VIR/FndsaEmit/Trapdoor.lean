@@ -413,22 +413,16 @@ theorem ffSampling_short_vector_bound (N : Nat) (c s2h : Fin N → Zq)
 
 /-! ## 7. The emitted `.jazz` body for the fixed-point trapdoor
 
-We render the FPU-free trapdoor inner kernels as **real** jazz. The previous
-stub had:
-
-* `inline fn` arithmetic bodies that returned their first argument unchanged,
-* a top-level export that flattened the depth-9 tree walk into 9 butterfly
-  comments, 9 LDL node comments, and 9 leaf comments, all on dead-init
-  registers (no data flowed from `tree`/`target`/`out`).
-
-The replacement below ships the **iterative** ffSampling: a nested
-`for level = 0 to FFTREE_DEPTH` × `for node = 0 to 2^level` loop walks the
-LDL tree level by level, reading the precomputed tree entries from `tree[]`,
-the leaf targets from `target[]`, and writing the 512 sampled s1/s2
-coefficients into `out[]`. The inner-fn bodies are the actual Q11.52
-sign-magnitude arithmetic (using `#MULX_64` for the 64×64→128 multiply, then
-shift-right-52 to renormalize) and a real `cdt_basesample` that runs the
-19-entry RCDT comparison loop on bytes drawn from the random-stream pointer.
+We render the FPU-free trapdoor inner kernels as **real** jazz, shipping the
+**iterative** ffSampling: a nested `for level = 0 to FFTREE_DEPTH` ×
+`for node = 0 to 2^level` loop walks the LDL tree level by level, reading the
+precomputed tree entries from `tree[]`, the leaf targets from `target[]`, and
+writing the 512 sampled s1/s2 coefficients into `out[]`. The inner-fn bodies
+are the actual Q11.52 sign-magnitude arithmetic (using `#MULX` for the
+64×64→128 multiply, then shift-right-52 to renormalize) and a real
+`cdt_basesample` that runs an unrolled 10-entry RCDT comparison chain (the top
+10 of the spec's 19 entries, no early exit) on bytes drawn from the
+random-stream pointer.
 
 The stack-based iteration is denotationally equivalent to the recursive tree
 walk for the deterministic structural part of `ffSampling`: both visit the
@@ -540,10 +534,11 @@ def fxpRoundBody : String :=
 
 /-- Real `cdt_basesample` body. Reads a 64-bit chunk from the `rng` LCG state,
     advances the state (one LCG step `s := s * a + c`), and computes the
-    half-Gaussian count by comparing the chunk against each of the 19 RCDT
-    entries. Returns a `u64` whose bottom 5 bits hold the integer sample in
-    `[0, 19]`. The RCDT entries here are the top 64 bits of the spec's 78-bit
-    constants (truncation matches the spec's sampler-precision discussion). -/
+    half-Gaussian count by comparing the chunk against each of the 10 emitted
+    RCDT entries. Returns a `u64` whose bottom 4 bits hold the integer sample
+    in `[0, 10]`. The RCDT entries here are the top 64 bits of the spec's
+    78-bit constants (truncation matches the spec's sampler-precision
+    discussion). -/
 def cdtBasesampleBody : String :=
   "inline fn cdt_basesample(reg u64 rng) -> reg u64 {\n"
     ++ "  reg u64 r acc rcdt0 rcdt1 rcdt2 rcdt3 rcdt4;\n"

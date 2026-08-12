@@ -8,12 +8,10 @@ import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 /-!
 # Keccak θ column-parity / diffusion and π rename on the UNIFIED `Com jasminDialect`
 
-This is the SIMD-dialect-unification migration of the cross-lane Keccak θ/π SIMD
-block off the bespoke `Avx512Model` (`ZInstr`) machine. The pre-existing
-realization (`OwnedKeccakThetaPiRealization.lean`) expresses the cross-lane θ/π
-data flow as straight-line `ZInstr` blocks over the bespoke AVX-512 register
-machine (`ZState`, `runZBlock`) in the 8-way batched Keccak packing (8 ZMM
-sub-lanes carry 8 independent Keccak states):
+This module realizes the cross-lane Keccak θ/π SIMD block on the verified
+`Com jasminDialect` — no bespoke AVX-512 register machine is involved. The block
+is the 8-way batched Keccak packing (8 ZMM sub-lanes carry 8 independent Keccak
+states) and consists of:
 
 * **θ column parity** — a four-`vpxorq` left fold over five column registers,
   `C[x] = a[x,0] ⊕ a[x,1] ⊕ a[x,2] ⊕ a[x,3] ⊕ a[x,4]`;
@@ -24,14 +22,14 @@ sub-lanes carry 8 independent Keccak states):
 
 The verified Jasmin VIR dialect (`JasminDialect.lean`) already carries
 `JasminOp.vpackZMM (bop)` — the carry-free 8×u64 packed-lane register op (denote
-`zmmPackQ bop`). Each `ZInstr` op of the θ block maps EXACTLY onto a `vpackZMM`:
+`zmmPackQ bop`). Each AVX-512 op of the θ block maps EXACTLY onto a `vpackZMM`:
 
 * `.vpxorq`   ↦  `JasminOp.vpackZMM .xor`   (denote `zmmPackQ .xor`)
 * `.vporq`    ↦  `JasminOp.vpackZMM .or`    (denote `zmmPackQ .or`)
 * `.vpsllvq`  ↦  `JasminOp.vpackZMM .shl`   (denote `zmmPackQ .shl`)
 * `.vpsrlvq`  ↦  `JasminOp.vpackZMM .shr`   (denote `zmmPackQ .shr`)
 
-The bespoke `vpsllvq` / `vpsrlvq` are the *variable* per-lane shifts
+`vpsllvq` / `vpsrlvq` are the *variable* per-lane shifts
 (`laneSllvQ a sh = a <<< sh.toNat`, each lane shifting by its own amount register),
 which is exactly `JasminBinOp.shl` / `.shr` (`a <<< b.toNat`) applied lane-wise by
 `zmmPackQ`. So the whole θ block is covered by the carry-free `vpackZMM` alphabet
@@ -44,7 +42,7 @@ no new op.
 
 ## Coverage classification
 
-| `ZInstr` op (θ/π block) | cross-lane? | `vpackZMM` arm | new op? |
+| AVX-512 op (θ/π block) | cross-lane? | `vpackZMM` arm | new op? |
 |--------------------------|-------------|----------------|---------|
 | `vpxorq`  | no | `zmmPackQ .xor` | no |
 | `vporq`   | no | `zmmPackQ .or`  | no |
@@ -54,13 +52,13 @@ no new op.
 
 No `vpermq` / `vpermxvarq` cross-lane permute and no `vploadc` appears in the θ/π
 block (the cross-lane structure lives at the multi-register *scheduling* level, not
-inside any single SIMD op), so the migration is total — every owned op of the block
+inside any single SIMD op), so the coverage is total — every owned op of the block
 is `vpackZMM`-expressible.
 
 ## What is proved here
 
 The θ block is built from straight-line `Com jasminDialect` programs over `reg 512`
-ZMM registers, off the bespoke `Avx512Model` machine:
+ZMM registers:
 
 * `parityCom` — the four-xor column fold `C = (((c0⊕c1)⊕c2)⊕c3)⊕c4`;
 * `dCom` — the diffusion `D = cm ⊕ ((cp ≪ 1) ||| (cp ≫ 63))`, the explicit
@@ -69,8 +67,8 @@ ZMM registers, off the bespoke `Avx512Model` machine:
 
 The `*_denote` lemmas characterize each denotation by `rfl`: `Com.denote` of the
 straight-line programs unfolds definitionally through the `vpackZMM` denote arm to
-nested `zmmPackQ` calls, the carry-free packed semantics shared with the bespoke
-`ZState` lane math (no re-proof of the lane arithmetic). This mirrors
+nested `zmmPackQ` calls, the carry-free packed
+lane math (no re-proof of the lane arithmetic). This mirrors
 `ButterflyBlockCom.lean`'s `vpackZMM` rfl-denote authoring.
 
 Invoke: `lake build CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedKeccakThetaPiCom`

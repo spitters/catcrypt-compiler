@@ -21,11 +21,10 @@ that ship in the trusted hand-written `dalek_shim.c`:
   (both walk to `z^(2^250 - 1)`); only the tail differs.
 
 Both compile to a `func.func` in the emitted MLIR via `emitFunc`,
-replacing the previously-trusted external `fp_inv` / `fp_invsqrt`. Track
-F2 of `BLS/NEXT.md`: the math is already proved (`Ed25519Spec.lean`'s
-`interp_fp_inv` via Mathlib's Fermat); reifying the chain into Lean
-shrinks the TCB by removing the only "trusted hand-written C" in the
-Ed25519 binary.
+replacing the previously-trusted external `fp_inv` / `fp_invsqrt`. The
+math is already proved (`Ed25519Spec.lean`'s `interp_fp_inv` via
+Mathlib's Fermat); reifying the chain into Lean shrinks the TCB by
+removing the only "trusted hand-written C" in the Ed25519 binary.
 
 ## Conventions
 

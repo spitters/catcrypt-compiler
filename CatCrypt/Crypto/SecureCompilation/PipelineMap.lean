@@ -20,10 +20,10 @@ LANDED. The mid-level is now the upstream-named denoting dialects in
 (`RegMachineSim` / `GenericRegAllocSim` + the x86 `JInstrRegMachineSim` instance)
 below it.  The two **physical IRs were collapsed** (`encodeLprog = encodeJBlock`
 on the covered fragment; GoldenPath kernels emit via the JInstr path).
-**`CProg`/`CExpr` and the `Lprog` kernel-emit path are DEPRECATED** (ratchet:
-`scripts/cprog-deprecation-ratchet.sh`), superseded by `catCryptDialect`
-(`Com catCryptDialect`, the MLIR-aligned successor) — do not add new
-`CProg`/`CExpr`/`Lprog` kernel uses.  The `llvm` waist (D2) is veir-deferred
+**`CProg`/`CExpr` and the `Lprog` kernel-emit path are DEPRECATED**, superseded
+by `catCryptDialect` (`Com catCryptDialect`, the MLIR-aligned successor) — do
+not add new `CProg`/`CExpr`/`Lprog` kernel uses (a convention; nothing in the
+build or CI enforces it).  The `llvm` waist (D2) is veir-deferred
 (no in-tree LLVM dialect by design).  The **frontend ingestion** below is
 UNCHANGED by the restructure (the two paths remain), and the DF keystone now
 proves their scalar denotations COINCIDE (`Dialects/FrontendCoincidence*` —
