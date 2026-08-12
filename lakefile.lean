@@ -16,30 +16,35 @@ package catcryptCompiler where
 @[default_target]
 lean_lib CatCryptCompiler where
   -- The CatCrypt verified compiler: two fronts (hax/Rust → LowCT → `Com` IR) →
-  -- one verified owned x86/ARM/RISC-V backend. The verified compiler proper is the
-  -- subtree `SecureCompilation/` + `Jasmin/` + `Optimizer/`; the module set below is
-  -- its self-contained dependency closure over the workspace (the `catcryptCore`
-  -- shims + foundational leaves it imports), computed to be free of every scheme
-  -- security proof and of the `MPC`/`Examples` protocol proofs.
+  -- one verified x86/ARM/RISC-V backend. The verified compiler proper is the
+  -- subtree `SecureCompilation/` + `Jasmin/` + `Optimizer/`; the module set below
+  -- adds its dependency closure over the workspace (the `catcryptCore` re-export
+  -- shims and the foundational leaves it imports), the per-scheme emit endpoints,
+  -- and their `*SecurityTie` bridges.
   --
-  -- Namespaces are preserved (`CatCrypt.Crypto.SecureCompilation.*`,
+  -- Namespaces match the CatCrypt workspace (`CatCrypt.Crypto.SecureCompilation.*`,
   -- `CatCrypt.Crypto.Jasmin.*`, `CatCrypt.Crypto.Optimizer.*`, and the foundational
-  -- `CatCrypt.{Core,Deep,Relational,...}.*`) so the dev tree consumes without churn.
+  -- `CatCrypt.{Core,Deep,Relational,...}.*`), so the dev tree imports it unchanged.
   --
-  -- The compiler-boundary carve severed the security/UC layer from the subtree: NO
-  -- require on the SSProve security methodology beyond the foundational cost/monad
-  -- leaves in `catcryptCore`. The closure reaches no scheme dir. This package's axiom
-  -- ledger owns the ISA / jasmin / byte-trust axioms; core's ledger stays clean
-  -- because the edge direction is compiler → core, never the reverse.
+  -- Boundary: no scheme-level security proof is in the closure — the `*SecurityTie`
+  -- modules stop at the abstract dependency record, and the scheme security chains
+  -- that consume it live outside this package. The UC/advantage methodology is in
+  -- the closure (`Crypto/UC.lean` and `Crypto/Advantage.lean` re-export
+  -- `catcryptCore`; `Crypto/UCComposition.lean`, `UCAlg.lean`, `UCDSL.lean`,
+  -- `UCAdmClass.lean` and `UCMonad/` are local). This package's axiom ledger owns
+  -- the ISA / jasmin / byte-trust axioms; core's ledger stays clean because the
+  -- edge direction is compiler → core, never the reverse.
   globs := #[.submodules `CatCrypt]
 
--- Foundational methodology leaves only: `SDist`, `Deep.RawCode`, base `UCMonad`.
--- (Core also holds the security layer, but this package imports none of it.)
+-- Imported from core: `Core.{Code,Heap,Location,SPTree}`,
+-- `Crypto.{SDist,CryptoWord,UC,Advantage}`, `Deep.{RawCode,Eval}`,
+-- `Relational.Rules`, `Tactics.FieldClear` — each behind a re-export shim under
+-- `CatCrypt/`, so `import CatCrypt.…` paths keep resolving.
 require catcryptCore from git
   "https://github.com/spitters/CatCrypt-core.git" @ "0.1.0-alpha.1"
 
--- IR lowering target (`Com` → Veir / MLIR). Pinned to the v4.29.0 tag (the only
--- Veir release; see the Veir-pin note in the carve plan).
+-- IR lowering target (`Com` → Veir / MLIR). Pinned to the v4.29.0 tag, the only
+-- Veir release.
 require Veir from git
   "https://github.com/opencompl/veir.git" @ "v4.29.0"
 
