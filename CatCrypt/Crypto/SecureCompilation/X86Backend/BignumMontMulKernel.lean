@@ -43,10 +43,10 @@ routing, same zero-extend folds at the end of each row, **and** the same
 memory-operand `MULX`. The backend's `mulxMem` arm (`JasminModel.JInstr.mulxMem`)
 reads the multiplicand straight from `[x + 8·i]` — `mulxq 8i(%rsi), %dstLo,
 %dstHi`, exactly s2n's `mulxq 8*\arg2(x), %rax, %rbx` — with no separate
-multiplicand load. The earlier `loadMem`-based emit (commit bb7ffcb5) needed one
-extra `movq 8i(%rsi), %r..` per product (16 total) because the reg-operand `mulx`
-could not fold the read; the memory-operand form (#314) closes that residual, so
-the emitted stream now matches s2n's exactly.
+multiplicand load. A `loadMem`-based emit would need one extra
+`movq 8i(%rsi), %r..` per product (16 total) because the reg-operand `mulx`
+cannot fold the read; the memory-operand form removes them, so the emitted
+stream matches s2n's exactly.
 
 ## What is proved here
 
@@ -62,8 +62,8 @@ the emitted stream now matches s2n's exactly.
 The full value identity — the eight stored words, read as a little-endian 512-bit
 integer, equal `x * y` — is the all-inputs 4×4 product. As an in-Lean close it is
 either a 512-bit `bv_decide` SAT instance or a single `omega` over the DECARRY
-system (measured non-terminating within 600 s; the file's >5400 s wall,
-`docs/slow-proof-audit.md`), both infeasible. Per REV-12 it is gated end-to-end by
+system (measured non-terminating within 600 s; >5400 s elaboration wall for this
+file), both infeasible. Per REV-12 it is gated end-to-end by
 the GMP + s2n cross-check KAT in `bench/s2n_montmul_compare/` (20000 random +
 corner vectors), the standard gate for these word kernels.
 
@@ -232,8 +232,8 @@ Two in-Lean layers, mirroring `BarrettButterflyKernel`:
 The fully-general `∀ limbs, outProduct = x*y` is a 256×256→512 bignum-multiply
 identity; discharging it in Lean would either bit-blast ~16 64×64 partial
 products into one 512-bit SAT instance (`bv_decide`) or feed the DECARRY system
-to `omega` (measured non-terminating within 600 s — see §4d and
-`docs/slow-proof-audit.md`), both infeasible. Per REV-12, the general product
+to `omega` (measured non-terminating within 600 s; >5400 s elaboration wall —
+see §4d), both infeasible. Per REV-12, the general product
 correctness is established at runtime by the KAT in
 `bench/s2n_montmul_compare/` against GMP and s2n-bignum's own `bignum_mul_4_8`
 over random + corner inputs — the standard gate for these word kernels. -/
@@ -273,7 +273,7 @@ forward-driver reachability witnesses (`twolimb_z0'`, `mul48_z0`) that the
 symbolic `runBlock` reaches the closed carry-chain forms those ingredients
 combine. The final arithmetic *close* of the all-inputs identity is the one step
 left to the KAT: as a single `omega` over the DECARRY system it does not
-terminate within 600 s (the file's >5400 s wall; `docs/slow-proof-audit.md`), and
+terminate within 600 s (>5400 s elaboration wall for this file), and
 the earlier per-input `native_decide` pin over the `String → BitVec` closure
 state compiled to a large nested term for no guarantee beyond the KAT — both were
 removed. -/
@@ -324,8 +324,8 @@ output word as the expected closed `wumul`/`waddcarry` carry-chain form.
   (y0+B·y1)` — combines those closed forms via `wumul_decompose` /
   `waddcarry_decompose` + `schoolbook_eq_mul2` in a single `omega` over the
   DECARRY system. Measured, that `omega` does **not** terminate within 600 s
-  (eleven carry-chain nodes blended with the `2^64` radix literals; the file's
-  documented >5400 s wall, `docs/slow-proof-audit.md`). The `set`+`clear_value`
+  (eleven carry-chain nodes blended with the `2^64` radix literals; >5400 s
+  elaboration wall for this file). The `set`+`clear_value`
   abstraction and generalizing the radix to an opaque `B` do not bring it under
   budget. Per REV-12 the value close is **externalized** to the GMP + s2n KAT
   (`bench/s2n_montmul_compare/mul48_compare.c`), which is the standard gate for
@@ -397,8 +397,8 @@ below). The 4-limb kernel reuses the identical step discipline (§4e).
 **Value-correctness gate (REV-12).** The all-inputs *arithmetic* close —
 `Σ z[k]·Bᵏ = (x0+B·x1)·(y0+B·y1)` — was a single `omega` over the DECARRY system
 (`c0..c6` + `d00..d11` + `schoolbook_eq_mul2`). Measured, that `omega` does **not**
-terminate within 600 s (the file's documented >5400 s elaboration wall;
-`docs/slow-proof-audit.md`): the carry-chain projection atoms blended with the
+terminate within 600 s (>5400 s elaboration wall for this file): the carry-chain
+projection atoms blended with the
 `2^64` radix literals make the linear system superlinear for `omega`, and the
 abstraction tricks (`set` + `clear_value`, generalizing the radix to an opaque
 `B`) either don't shrink the cost or drop the `B·B` weight relation `omega`
@@ -489,7 +489,7 @@ macro "step_mul24" : tactic =>
 
     The all-inputs *value* identity (`Σ z[k]·Bᵏ = (x0+B·x1)·(y0+B·y1)`) was a
     single `omega` over the DECARRY system; measured, that `omega` does not
-    terminate within 600 s (the file's >5400 s wall; `docs/slow-proof-audit.md`),
+    terminate within 600 s (>5400 s elaboration wall for this file),
     so per REV-12 the kernel's product correctness is gated externally by the
     GMP + s2n cross-check KAT in `bench/s2n_montmul_compare/mul48_compare.c`. -/
 theorem twolimb_z0' : (finalState2 x0 x1 y0 y1).load "z" 0 = (wumul y0 x0).2 := by
@@ -547,7 +547,7 @@ macro "step_mul48" : tactic =>
 
 /-! **Part B slow-build lever (scoped irreducible).** The scoped
 `attribute [local irreducible] evalInstr` below is the documented lever (cf. the
-FAEST `foldRange` 829 s → 2.9 s win, `docs/slow-proof-audit.md`): without it,
+FAEST `foldRange` 829 s → 2.9 s win): without it,
 `step_mul48`'s `simp` whnf-descends into the 64-deep `evalInstr` nest at each
 stored-word read and re-canonicalises the already-stepped history, blowing past
 the default 200000-heartbeat ceiling (a `whnf` timeout). Made opaque, `evalInstr`

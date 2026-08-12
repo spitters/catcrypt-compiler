@@ -100,8 +100,8 @@ def binOpStr : SOp2 → Option String
     Jasmin infix `dst = a OP b;` (Two-operand form: `dst = a; dst OP= b;`).
     Returns `none` for genuine leaf-function names (`poly_add`, `mat_vec_mul`,
     …), which fall through to the regular function-call emit. This mirrors
-    the `RustEmitJazz.jasminBinOp` rewrite that lives in the deprecated
-    Rust-shaped path; the AST-direct path now recognises the same set. -/
+    the `RustEmitJazz.jasminBinOp` rewrite on the `LowCT`-direct `.jazz`
+    emit path; the AST-direct path here recognises the same set. -/
 def binOpNameStr (f : String) : Option String :=
   match f with
   | "Add" | "add" | "wrapping_add" => some "+"
@@ -495,9 +495,9 @@ partial def emitInstr (ind : String) : InstrR → Option String
   -- rejects. `LowCTToJasmin.toJasminCmd`'s `RCall f dest args` arm lowers
   -- to a `Ccall .DoNotInline [locToLVal dest] { name := f } …`, so this is
   -- the on-ramp the bench drivers (e.g. MAYO `sign_rwhile`) need to land
-  -- per-iter scalar work inside an `RWhileNz` body. The previous infix
-  -- rewriter lived only in `RustEmitJazz.lean` (the deprecated Rust-shaped
-  -- path); this arm gives the canonical AST-direct path the same coverage.
+  -- per-iter scalar work inside an `RWhileNz` body. The same infix
+  -- rewriter exists in `RustEmitJazz.lean` (the `LowCT`-direct `.jazz`
+  -- emit path); this arm gives the AST-direct path the same coverage.
   --
   -- Falls through for any other shape (multi-return, more/fewer than two
   -- `Pvar` args, non-binop name, …) to the regular function-call emit.

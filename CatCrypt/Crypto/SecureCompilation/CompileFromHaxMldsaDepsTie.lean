@@ -50,17 +50,18 @@ the per-coefficient reduce function the spec specifies*, framed as
 
 ## Representation gap to the protocol `Dependencies`
 
-The abstract `MLDSADependencies` / `PureMLDSACrypto` fields that the ML-DSA
-*security* proof consumes (`HaxTypes.lean`) operate at the **whole-`Vec` / whole-
-`Poly`** level — `f_highBits : Vec → Vec`, `f_lowBits : Vec → Vec`,
-`f_mat_vecL_mul : Mat → VecL → Vec`, … — over **abstract, uninterpreted** carrier
+The abstract ML-DSA security-`Dependencies` records — `MLDSADependencies` /
+`PureMLDSACrypto`, carried by the `HaxTypes.lean` bridges of the wider CatCrypt
+development, outside this compiler package — operate at the **whole-`Vec` /
+whole-`Poly`** level: `f_highBits : Vec → Vec`, `f_lowBits : Vec → Vec`,
+`f_mat_vecL_mul : Mat → VecL → Vec`, … over **abstract, uninterpreted** carrier
 types (`Vec`, `VecL`, `Mat`, `MLDSAPoly`). The single per-coefficient field,
 `f_mod_q : MLDSACoeff → MLDSACoeff` (with `MLDSACoeff = UInt32`), is likewise an
-**uninterpreted structure field**: no in-tree `PureMLDSACrypto` instance pins it
-to the FIPS-204 Barrett `reduce32` body. There is therefore **no concrete
-`Dependencies` field whose definition is one of these leaves**, so wiring a leaf
-*into* `f_mod_q` / `f_highBits` (an `:= a` style placeholder substitution) would
-be tying to an uninterpreted/placeholder field — exactly what the task forbids.
+**uninterpreted structure field**: no `PureMLDSACrypto` instance pins it to the
+FIPS-204 Barrett `reduce32` body. There is therefore **no concrete `Dependencies`
+field whose definition is one of these leaves**, so wiring a leaf *into* `f_mod_q`
+/ `f_highBits` (an `:= a` style placeholder substitution) would tie the compiled
+leaf to an uninterpreted field and prove nothing.
 
 What this file does is the **repr-bridge layer**: pin an
 abstract per-coefficient reduce-`Dependencies` record (`MldsaReduceDeps`, the
@@ -75,12 +76,12 @@ existing definition; it is out of scope here.
 
 ## UC vacuity of the ML-DSA `*_uc_secure` conclusions
 
-`SurfaceDeps.mldsa_hax_uc_secure` is `UCEmulates 0 …` proved by
+The ML-DSA `*_uc_secure` lemma of the wider CatCrypt development is `UCEmulates 0 …` proved by
 `intro A; use A; exact le_of_eq (sdist_self _)` — simulator = adversary, ε = 0,
 i.e. it is the trivial *(composition plumbing)* lift and says nothing
 protocol-specific (per the project's standing note that crypto `*_uc_security`
 are often `∃ ε, ε ≤ bound := ⟨_, le_refl⟩`). The ML-DSA bound lives in
-`mldsa_eufcma_security` (Kiltz–Lyubashevsky–Schaffner) and is parametric over the
+the wider development's `mldsa_eufcma_security` (Kiltz–Lyubashevsky–Schaffner) and is parametric over the
 abstract `Dependencies`, never reaching down to `f_mod_q`. The tie in this file is
 therefore meaningful **at the functional-correctness layer** — the emitted leaf
 computes the FIPS reduce/caddq/montgomery/power2round/decompose function — and

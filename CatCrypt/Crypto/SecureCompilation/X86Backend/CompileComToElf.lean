@@ -58,9 +58,8 @@ def compileLprogToElfReloc (p : Lprog) : ByteArray :=
     kernels emit through it. `encodeLprog`/`compileComToElf` are **kept** as the
     byte-identity reference oracle, and the JInstr entries (`X86Backend/`) call
     `compileComToElf` as their legitimate fallback — those uses are exempt. Do NOT
-    add new *kernel-level* `compileComToElf` call sites outside `X86Backend/`; the
-    deprecation ratchet (`scripts/cprog-deprecation-ratchet.sh`) enforces zero
-    such callers. -/
+    add new *kernel-level* `compileComToElf` call sites outside `X86Backend/`
+    (a convention; nothing in the build or CI enforces it). -/
 def compileComToElf {Γ : Ctxt jasminDialect} {t : JasminTy}
     (com : Com jasminDialect Γ t) (fname : String)
     (shiftImm : ShiftImmOracle := fun _ => none)

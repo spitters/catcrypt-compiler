@@ -22,7 +22,9 @@ for quantum programs, extending the CryptoSSA design pattern to quantum computin
    (enforcing no-cloning at the type level, following QSSA [Peduri-Bhat 2021])
 2. **A-normal form**: all intermediate results are let-bound
 3. **Mixed quantum-classical**: both qubit and classical bit types
-4. **Denotational semantics**: `QSProg.denote` maps programs to `QComp`
+4. **Denotational semantics** (not yet built): `QSProg.denote` is intended to map
+   programs to `QComp`; until it exists, `QSProg.equiv`, `QSProg.isLinear` and
+   `pipeline_preserves_quc` are placeholders
 5. **Structurally compatible with lean-mlir** (`Dialect { Op, Ty, m }` pattern)
 
 ## Architecture
@@ -222,10 +224,14 @@ def QSProg.usedVars : QSProg Γ β → List ℕ
   | .letMeas _ body => body.usedVars
   | .ifBit _ kt kf => kt.usedVars ++ kf.usedVars
 
-/-- A program is **well-linear**: every qubit variable is used exactly once.
+/-- Intended meaning: a program is **well-linear** when every qubit variable is
+    used exactly once — the static no-cloning check from QSSA
+    [Peduri-Bhat 2021] — while classical (bit, unit) variables may be used any
+    number of times.
 
-    This is the static no-cloning check from QSSA [Peduri-Bhat 2021].
-    Classical (bit, unit) variables may be used any number of times. -/
+    Not implemented: the definition below is `fun _ => True`, so every program
+    satisfies `isLinear`. A real check needs use-set analysis on top of
+    `QSProg.usedVars`. -/
 def QSProg.isLinear : QSProg Γ β → Prop :=
   fun _ => True  -- placeholder: full linearity checking needs use-set analysis
 
@@ -290,8 +296,12 @@ theorem measureHadamard_measCount : measureHadamard.measCount = 1 := rfl
 
 /-! ## Section 9: Semantic Equivalence -/
 
-/-- Two QuantumSSA programs are semantically equivalent if they denote
-    the same QComp. (Placeholder: needs full denote function.) -/
+/-- Intended meaning: two QuantumSSA programs are semantically equivalent when
+    they denote the same `QComp`.
+
+    Not implemented: the definition below is the constant `True`, so any two
+    programs count as equivalent. Every obligation phrased with it — notably
+    `PeepholeRule.correct` — is therefore vacuous until `QSProg.denote` exists. -/
 def QSProg.equiv (p₁ p₂ : QSProg Γ β) : Prop :=
   True  -- placeholder: p₁.denote = p₂.denote
 
@@ -320,10 +330,16 @@ def fuseRotations : ∀ {Γ β}, QSProg Γ β → QSProg Γ β
 
 /-! ## Section 11: Connection to Compilation Pipeline -/
 
-/-- QuantumSSA programs compile to the same QComp as QPL programs
-    (when translated correctly). This ensures the full pipeline
-    QPL → QuantumSSA → Circuit → ZX → optimized Circuit
-    preserves QUC security via `quantum_robust_compilation`. -/
+/-- Placeholder for the end-to-end claim that the pipeline
+    QPL → QuantumSSA → Circuit → ZX → optimized Circuit preserves QUC
+    security. Nothing is established here: the statement below is `True`.
+
+    The intended statement is that for a QuantumSSA program `p` and its
+    Circuit translation `c`, `CompilerCorrectQ p c` (`CatCrypt.Quantum.QCircuit`)
+    implies `qdist` (`CatCrypt.Crypto.UCMonad.QuantumUC`) is preserved — the
+    quantum analogue of `ct_robust_compilation`
+    (`CatCrypt.Crypto.SecureCompilation.CTPass`). It is blocked on `QSProg.denote`,
+    which is not yet defined. -/
 theorem pipeline_preserves_quc :
     -- For any QuantumSSA program p and its Circuit translation c:
     -- CompilerCorrectQ p c → qdist is preserved

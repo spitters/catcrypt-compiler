@@ -11,8 +11,8 @@ import Mathlib.Tactic
 # Verified BN254 (alt-bn128) inner kernels over `ZMod p_BN254`
 
 This file provides the *verified reference computation* layer for the
-BN254 `G1` base-field tie, mirroring `Util/P256Verified.lean` (over the
-NIST P-256 prime) and `Util/X25519Verified.lean` (over `2^255 − 19`).
+BN254 `G1` base-field tie, in the same shape as `Util/X25519Verified.lean`
+(the field over `2^255 − 19`).
 
 BN254 (alt-bn128, the Ethereum EIP-196/EIP-197 precompile curve) is the
 short-Weierstrass curve `y² = x³ + 3` over the 254-bit base-field prime
@@ -22,11 +22,11 @@ short-Weierstrass curve `y² = x³ + 3` over the 254-bit base-field prime
    p = 21888242871839275222246405745257275088696311157297823662689037894645226208583.
 ```
 
-As with P-256/Curve25519, Lean's `native_decide` does **not** terminate on
-a 254-bit Miller–Rabin primality check on ordinary hardware, so per the
-project's fall-back gate we expose `bn254_prime : Nat.Prime p` as a
-**named axiom** rather than discharging it inside Lean (the same stance as
-`p256_prime`/`p25519_prime`). The fact is the well-known alt-bn128
+As with Curve25519, Lean's `native_decide` does **not** terminate on a
+254-bit Miller–Rabin primality check on ordinary hardware, so
+`bn254_prime : Nat.Prime p` is exposed as a **named axiom** rather than
+discharged inside Lean — the same stance as `p25519_prime` in
+`Util/X25519Verified.lean`. The fact is the well-known alt-bn128
 base-field characteristic; it is needed only to *state* the field
 structure (the realization ties below use only the `ZMod p` `CommRing`
 laws, which do not depend on primality).

@@ -121,21 +121,6 @@ def regCopy (r src : String) : InstrR :=
 
 /-! ## §2  Ccall helpers — the three mpn primitives the dispatch composes -/
 
-/-- `Ccall mpn_add_n(op, ap, bp, n);` — add `ap[0..n]` + `bp[0..n]` into
-    `op[0..n]`.  The carry-out is left in the callee's `cf` register
-    (void return at the Jasmin level; the caller sets up `op` to be
-    `n+1`-limb wide and zeroes the carry slot before the call, then
-    reads back the final carry from a follow-up byte if needed).
-
-    **Deprecated**: this void shape lets the carry escape (caller can't
-    read callee's `cf` across a void Ccall).  The same-sign branch of
-    `signedAddBody` now uses `addNCallCarry` (a non-void Ccall to the
-    wrapper `mpn_add_n_cf` introduced below). -/
-def addNCall : InstrR :=
-  .Ccall .DoNotInline []
-    { name := "mpn_add_n" }
-    [pv "op", pv "ap", pv "bp", pv "n"]
-
 /-- `Ccall mpn_add_n_cf(op, ap, bp, n) -> cf_out;` — non-void variant
     that captures the callee's final carry register into the caller's
     `cf_out` register.  The body is identical to `mpnAddNFd.body`
@@ -159,18 +144,6 @@ def subNCallSwapped : InstrR :=
     { name := "mpn_sub_n" }
     [pv "op", pv "bp", pv "ap", pv "n"]
 
-/-- `Ccall mpn_compare(ap, bp, n);` — read-only; result left in `result`.
-
-    **Deprecated**: void shape — the callee's `result` register is lost
-    across the void Ccall (the void path inherits only memory), so the
-    caller cannot read the comparison outcome.  The diff-sign branch of
-    `signedAddBody` now uses `compareCallResult` (a non-void Ccall to the
-    wrapper `mpn_compare_r`). -/
-def compareCall : InstrR :=
-  .Ccall .DoNotInline []
-    { name := "mpn_compare" }
-    [pv "ap", pv "bp", pv "n"]
-
 /-- `Ccall mpn_compare_r(ap, bp, n) -> cmp_res;` — non-void variant that
     captures the callee's `result` register into the caller's `cmp_res`
     register (via `bindResults`, per `129ee452`).  Body identical to
@@ -191,20 +164,20 @@ diff = s_a;
 diff ^= s_b;
 if (diff != 0) {
     // different sign: compare magnitudes, subtract smaller from larger
-    mpn_compare(ap, bp, n);
-    // result register now holds 0 (equal), 1 (>), -1 (<)
-    if (result != 0) {
-        // not equal: pick larger by `result == 1` (= +1)
-        if (result == 1) { mpn_sub_n(op, ap, bp, n); s_r = s_a; }
-                  else  { mpn_sub_n(op, bp, ap, n); s_r = s_b; }
+    cmp_res = mpn_compare_r(ap, bp, n);   // 0 (equal), 1 (>), -1 (<)
+    if (cmp_res != 0) {
+        if (cmp_res == 1) { mpn_sub_n(op, ap, bp, n); s_r = s_a; }
+                  else    { mpn_sub_n(op, bp, ap, n); s_r = s_b; }
     } else {
         // equal magnitudes, opposite signs: result is canonical zero
         mpn_sub_n(op, ap, bp, n);   // writes zeros; either operand works
         s_r = 0;                    // canonical non-negative zero
     }
 } else {
-    // same sign: add magnitudes, keep the common sign
-    mpn_add_n(op, ap, bp, n);
+    // same sign: add magnitudes, store the carry-out in the top limb,
+    // keep the common sign
+    cf_out = mpn_add_n_cf(op, ap, bp, n);
+    op_top = op + 8*n; *op_top = cf_out;
     s_r = s_a;
 }
 ```
@@ -215,39 +188,31 @@ emitter's `Oneq` shape (the result holds 1, -1, or 0; the only one for which
 
 /-- The body of `mpz_add`.
 
-    Pre-fix history note: the original body (commit `95b85fd9`) had a
-    spurious `binImm "diff" (.Olxor .U64) (-1)` line between the
-    `regCopy "diff" "s_a"` and the `regBin "diff" (.Olxor .U64) "s_b"`.
-    Combined with `s_a, s_b ∈ {0, 1}`, this made `diff = s_a XOR -1 XOR
-    s_b ∈ {-1, -2}`, so `diff != 0` would always hold — the same-sign
-    branch was unreachable, making the bridge as stated false.  PP's
-    earlier fix removed that line: `diff = s_a XOR s_b`, which is `0` iff
-    `s_a = s_b` (same sign), matching the docstring pseudocode and
-    `signedAdd`'s `if x.1 = y.1 then …` case split.
+    `diff = s_a XOR s_b`, so `diff = 0` exactly when the two signs agree;
+    that is the guard realising `signedAdd`'s `if x.1 = y.1 then …` case
+    split.
 
-    **Same-sign carry fix (2026-05-26).**  The earlier shape
-    `[addNCall; s_r := s_a]` was *still* counter-exampled: the void
-    `Ccall mpn_add_n` inherits only memory across the call (cf. the
-    `bignumExecFuel` Ccall arm), so the callee's final `cf` register
-    is *not* propagated back to the caller.  But
-    `addMagFull a b = (mpnAddN a b false).1 ++ [carryByte]` is `|a|+1`
-    limbs — i.e. needs the carry written into the top slot.  Concrete
-    counter-example: `signedAdd (false, [2^63]) (false, [2^63]) =
-    (false, [0, 1])` but the body left `[0, 0]` in memory.  The fix is
-    to swap `addNCall` (void) for `addNCallCarry` (non-void via the
-    `129ee452` Ccall-arm extension), calling the wrapper FunDecl
-    `mpnAddNFdCarry` (same body as `mpnAddNFd`, but `results := [cf]`).
-    The wrapper binds the callee's final `cf` into the caller's
-    `cf_out` register; we then compute `op_top := op + 8*n` (via three
-    register doublings, since `evalPExpr` has no `Omul`) and store
-    `cf_out` at `mem[op_top + 0]`.  After this, the memory at `op`
-    holds `(mpnAddN a b false).1 ++ [cf]` = `addMagFull a b`.
+    The same-sign branch calls `addNCallCarry` — a *non-void* `Ccall` to
+    the wrapper FunDecl `mpnAddNFdCarry` (same body as `mpnAddNFd`, but
+    `results := [cf]`).  A void `Ccall` inherits only memory across the
+    call (cf. the `bignumExecFuel` `Ccall` arm), so the callee's final
+    `cf` register would not reach the caller; yet
+    `addMagFull a b = (mpnAddN a b false).1 ++ [carryByte]` is `|a| + 1`
+    limbs, so the carry has to be written into the top slot.  The
+    non-void call binds the callee's `cf` into the caller's `cf_out`;
+    the body then computes `op_top := op + 8*n` (three register
+    doublings, since `evalPExpr` has no `Omul`) and stores `cf_out` at
+    `mem[op_top + 0]`.  Afterwards the memory at `op` holds
+    `(mpnAddN a b false).1 ++ [cf]` = `addMagFull a b`.  Without that
+    store the body would answer `signedAdd (false, [2^63])
+    (false, [2^63]) = (false, [0, 1])` with `[0, 0]` in memory.
 
-    Branches (b)/(c)/(d) — the different-sign arms — do *not* need
-    this fix: they use `mpn_sub_n` on larger-minus-smaller, whose
-    borrow-out is forced to `false` by `MpnSignedSpec.mpnSubN_exact`,
-    so the `|a|`-limb result fits exactly and the zero-padded top
-    limb (`k = 1`) matches `signedAdd`'s different-sign output. -/
+    The different-sign branches — `compareCallResult`, then `subNCall`
+    or `subNCallSwapped`, and `subNCall` for equal magnitudes — need no
+    such step: `mpn_sub_n` is applied larger-minus-smaller, whose
+    borrow-out is forced to `false` by `MpnSignedSpec.mpnSubN_exact`, so
+    the `|a|`-limb result fits exactly and the zero-padded top limb
+    (`k = 1`) matches `signedAdd`'s different-sign output. -/
 def signedAddBody : List InstrR :=
   [ -- diff = s_a; diff ^= s_b   (diff != 0 iff signs differ)
     regCopy "diff" "s_a"
@@ -320,15 +285,14 @@ def signedAddFd : FunDecl where
     `mpz_add(op, ap, bp, n, s_a, s_b)`, binding the result sign into
     `s_r`.
 
-    Since `129ee452` extended `bignumExecFuel`'s `Ccall` arm to support
-    non-empty `lvs` (binding callee `results` into caller LVals), the
-    Jasmin source emits as `s_r = mpz_add(...);` and jasminc accepts
-    it — matching `signedAddFd.results = [s_r]`.  The prior void shape
-    (`lvs := []`) is the obsolete pre-`129ee452` form. -/
+    The `Ccall` is non-void (`lvs := [s_r]`): `bignumExecFuel`'s `Ccall`
+    arm binds the callee's `results` into the caller's LVals and
+    `signedAddFd.results = [s_r]`, so the Jasmin source emits as
+    `s_r = mpz_add(...);`, which jasminc accepts. -/
 def signedSubBody : List InstrR :=
   [ -- s_b ^= 1   (flip the sign bit of the second operand)
     binImm "s_b" (.Olxor .U64) 1
-    -- s_r = mpz_add(op, ap, bp, n, s_a, s_b)  -- non-void via 129ee452
+    -- s_r = mpz_add(op, ap, bp, n, s_a, s_b)   -- non-void Ccall
   , .Ccall .DoNotInline [.Lvar { var := vr "s_r" }]
       { name := "mpz_add" }
       [pv "op", pv "ap", pv "bp", pv "n", pv "s_a", pv "s_b"] ]
@@ -3156,21 +3120,20 @@ What is **not** discharged here (the residual is now a single obligation):
     - The `Cif`-branch arm of `bignumExecFuel` (already used in
       `MpnPowPrototype`'s outer loop).
 
-  **Same-sign carry fix applied (2026-05-26).**  Earlier the same-sign
-  branch was `[addNCall; s_r := s_a]`, but `addNCall`'s void `Ccall mpn_add_n`
-  inherits only memory across the call — the callee's final `cf` register
-  was lost.  Since `addMagFull a b = (mpnAddN a b false).1 ++ [carryByte]`
-  is `|a|+1` limbs, the body produced wrong memory on inputs that
-  overflowed.  Counter-example: `signedAdd (false, [2^63]) (false, [2^63])
-  = (false, [0, 1])`, body left `[0, 0]`.  The fix (ZZ's option (ii)):
-  introduce `mpnAddNFdCarry` — same body as `mpnAddNFd` but
-  `results := [cf]` so the Ccall arm binds the callee's `cf` into the
-  caller via `bindResults` (per `129ee452`); the same-sign branch now
-  uses `addNCallCarry` (non-void Ccall to `mpn_add_n_cf`), then computes
+  **Same-sign carry.**  A void `Ccall` inherits only memory across the
+  call, so the callee's final `cf` register does not reach the caller.
+  Since `addMagFull a b = (mpnAddN a b false).1 ++ [carryByte]` is
+  `|a|+1` limbs, the same-sign branch instead goes through
+  `addNCallCarry` (a non-void `Ccall` to `mpn_add_n_cf`, i.e. the
+  wrapper `mpnAddNFdCarry`: same body as `mpnAddNFd` but
+  `results := [cf]`), so the `Ccall` arm binds the callee's `cf` into
+  the caller via `bindResults`.  The branch then computes
   `op_top := op + 8*n` (three register doublings, since `evalPExpr` has
-  no `Omul`), then stores `cf_out` at `mem[op_top + 0]`.  After this the
-  memory at `op` holds `(mpnAddN a b false).1 ++ [cf]` = `addMagFull a b`,
-  matching the bridge spec.
+  no `Omul`) and stores `cf_out` at `mem[op_top + 0]`, leaving at `op`
+  the memory `(mpnAddN a b false).1 ++ [cf]` = `addMagFull a b`, as the
+  bridge spec requires.  Without the carry store,
+  `signedAdd (false, [2^63]) (false, [2^63]) = (false, [0, 1])` would be
+  met by `[0, 0]`.
 
   Branches (b), (c), (d) do not suffer the carry-loss issue: they use
   `mpn_sub_n` on larger-minus-smaller, whose borrow-out is forced to

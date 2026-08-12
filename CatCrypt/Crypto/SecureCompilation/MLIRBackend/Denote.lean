@@ -21,12 +21,12 @@ direct-LLVM backend): the *external* trust statement
 prove inside Lean because it asserts agreement with an external
 toolchain (`mlir-opt → mlir-translate → llc`).
 
-What we **can** — and now **do** — prove inside Lean are the *per-arm
-shape statements*: each Stage-2 / Stage-3 PExpr / InstrR family produces
-exactly the MLIR lines the lowering table promises. Phase 4 (this file's
-current revision) closes these as `theorem`s using the auto-generated
-equation lemmas for the now-total `emitPExpr` / `emitInstrR` /
-`emitPapp2` (refactored from `partial def` in commit `c0e8826b`).
+What we **can** — and do — prove inside Lean are the *per-arm shape
+statements*: each Stage-2 / Stage-3 PExpr / InstrR family produces exactly
+the MLIR lines the lowering table promises. These are closed as `theorem`s
+using the auto-generated equation lemmas of `emitPExpr` / `emitInstrR` /
+`emitPapp2`, which is possible because all three are total definitions (a
+`partial def` would expose no such lemmas).
 
 ## What's NOT in this file
 
@@ -98,7 +98,8 @@ opaque MlirBackendSemanticsAgrees : Prop
 
 /-! ## §2. Closed (Lean-side) shape statements
 
-What we *can* prove without touching the `partial def emit*` chain. -/
+What we *can* prove from the `emit*` equation lemmas alone, without any
+external-toolchain hypothesis. -/
 
 /-- The body of the emitter on the empty command is empty (no MLIR
     lines emitted). -/
@@ -215,14 +216,12 @@ theorem vector_arith_shape_agrees : VectorArith_ShapeAgrees := by
     statements above, the Stage-2 + Stage-3 emitter's output denotes
     the same input/output function as the source `Cmd`.
 
-    This is stated *conditionally* on the external hypothesis. The
-    proposition is `True` once the hypothesis is supplied because the
-    informational content lives in the four shape theorems above plus
-    the external hypothesis — there is no Lean-side MLIR text
-    interpreter yet (~200 LOC; see plan doc Phase 4 cost line). When
-    that interpreter lands, this Prop refines to the actual equality
-    statement; the API of `denoteCmd_eq_emitFunc_full` will not
-    change. -/
+    Stated *conditionally* on the external hypothesis, and with a `True`
+    conclusion: all informational content lives in the four shape theorems
+    plus that hypothesis. There is no Lean-side interpreter for the emitted
+    MLIR text, so nothing stronger is claimed here. Were such an interpreter
+    added, this `Prop` would refine to the actual equality without changing
+    the API of `denoteCmd_eq_emitFunc_full`. -/
 def ScalarVector_DenoteAgrees : Prop :=
   MlirBackendSemanticsAgrees → True
 
@@ -310,48 +309,33 @@ theorem cwhile_shape_agrees : Cwhile_ShapeAgrees := by
   intro cbefore cond cafter s
   simp [emitInstrR, scfWhileTrailer]
 
-/-! ### Control-flow denotation under the external hypothesis
+/-! ### Control-flow denotation
 
-With the three shape lemmas closed, `ControlFlow_DenoteAgrees` is no
-longer `opaque Prop` — it is the conditional statement that, under
-`MlirBackendSemanticsAgrees` (which covers the `mlir-opt
---convert-scf-to-cf` lowering of the `scf` dialect), the emitted
-control-flow text denotes the same input/output function as the source
-`Cmd`. The conclusion is `True` here only because the Lean-side MLIR
-interpreter is still deferred (Phase 6) — once it lands this Prop
-refines to a genuine equality, identical in shape to
-`ScalarVector_DenoteAgrees`. The informational content lives in the
-three per-arm shape theorems plus the external toolchain hypothesis. -/
+With the three shape lemmas closed, `ControlFlow_DenoteAgrees` adds a real
+denotational equality for each control-flow constructor on the AST-direct
+path, with no external hypothesis. The text-emit path's control-flow
+semantics stay covered by `MlirBackendSemanticsAgrees`, which includes
+`mlir-opt --convert-scf-to-cf` lowering of the `scf` dialect. -/
 
-/-- **Phase 6d / CHES Sprint 1 H4 — FULLY CLOSED** — control-flow
-    denotation, refined.
+/-- Control-flow denotation for the AST-direct path.
 
-    Original Phase 5 form was:
-    ```
-    Cif_ShapeAgrees ∧ Cfor_ShapeAgrees ∧ Cwhile_ShapeAgrees ∧
-      (MlirBackendSemanticsAgrees → True)
-    ```
-    The `→ True` placeholder was a literal "nothing more is claimed"
-    statement (the three shape lemmas + the toolchain hypothesis are the
-    real content).
+    The conjunction of the three text-emit shape statements
+    (`Cif_ShapeAgrees`, `Cfor_ShapeAgrees`, `Cwhile_ShapeAgrees`) with one
+    **zero-hypothesis** denotation equality per control-flow constructor of
+    `ScalarDSL.ScfProg`:
 
-    With the AST-direct scf dialect (`MlirScfDialect.lean`) and the
-    `compileCfor` / `compileCwhile` denotation theorems
-    (`ComToVeir.lean §6`) landing in CHES Sprint 1 / item H, we got
-    **real denotational equalities** for `Cfor` and `Cwhile`. The
-    `Cif` case was held back pending the sum-dialect prerequisite
-    (`mlirArithDialect ⊕ mlirScfDialect`) needed to bridge the DSL's
-    `sword 1` condition into `scfIf`'s `.bit` operand.
+    * `Cif` at general heterogeneous widths (`w` and `w_in` quantified
+      independently), compiled by `compileCif` into the sum dialect
+      `mlirArithDialect ⊕ mlirScfDialect` (`VIR/MlirArithScfSum.lean`). The
+      condition bit is materialised by an `arith.cmpi 1` predecessor inside
+      the same `Com`, and the output-width independence comes from the
+      `scfIfHetero` op in `MlirScfDialect.lean`.
+    * `Cfor` and `Cwhile`, compiled by `compileCfor` / `compileCwhile` into
+      `mlirScfDialect`.
 
-    With `VIR/MlirArithScfSum.lean` (the sum dialect) and
-    `ComToVeir.lean §7` (`compileCif` + `compileCif_denote`) landing,
-    the `Cif` placeholder was first closed at the homogeneous width
-    `w = w_in`. With the `scfIfHetero` op in `MlirScfDialect.lean`
-    (Item-4 follow-up), `compileCif` and its denotation theorem are
-    now general: the fourth conjunct quantifies over both `w` and
-    `w_in` independently. All three control-flow constructors have
-    AST-direct denotation statements with **zero external
-    hypotheses**. -/
+    No external toolchain hypothesis enters: the target's denotation is pure
+    Lean computation. The compilers and their denotation theorems live in
+    `ComToVeir.lean` §6-§7. -/
 def ControlFlow_DenoteAgrees : Prop :=
   Cif_ShapeAgrees ∧ Cfor_ShapeAgrees ∧ Cwhile_ShapeAgrees ∧
     -- Cif denotation: AST-direct equality via the
@@ -491,36 +475,30 @@ theorem denoteCmd_eq_compileProg_denote_full
     (compileProg p).denote (cryptoCtxtValuation Γ V) = p.eval V :=
   compileProg_denote V p
 
-/-! ## §6. ScalarVector_DenoteAgrees — partial retirement
-
-The Phase-4 `ScalarVector_DenoteAgrees` (above) was stated as
-`MlirBackendSemanticsAgrees → True`, with the `True` conclusion
-documented as a placeholder pending the in-Lean MLIR interpreter.
-With Stage 6e in place, that interpreter exists — but only for the
-AST-direct path's typed scalar surface (`ScalarDSL`), not the
-text-emit path's `Jasmin.Cmd` directly.
-
-Replacing the placeholder with a real `Cmd → ScalarDSL.Prog → VIR.Com`
-roundtrip statement would require a `Cmd → ScalarDSL.Prog` translator
-(name resolution + width inference + bail-out on out-of-scope
-constructors). That translator is non-trivial Jasmin-side work and
-is left as a documented follow-up; meanwhile, the AST-direct path
-above stands as the load-bearing zero-hypothesis statement for the
-scalar subset, and the text-emit path's `ScalarVector_DenoteAgrees`
-keeps its existing conditional form.
-
-The honest picture, after Stage 6e:
+/-! ## §6. The two paths side by side
 
 | Path          | Top-level theorem                              | Hypothesis                       |
 |---------------|------------------------------------------------|----------------------------------|
 | AST-direct    | `denoteCmd_eq_compileProg_denote_full`         | **none** (scalar subset)         |
 | Text-emit     | `denoteCmd_eq_emitFunc_full`                   | `MlirBackendSemanticsAgrees`     |
 
-The AST-direct path is the preferred lowering when its scope covers
-the source; the text-emit path remains the fallback for control flow
-and vector arith until those subsets are extended in the AST-direct
-path (Phase 6d for scf, and a denoting vector dialect for vector
-arith). -/
+Both statements exist because they describe different translations. The
+AST-direct path starts from the typed `ScalarDSL` surface and lands in
+`VIR.Com`, whose denotation is Lean computation, so it needs no hypothesis.
+The text-emit path starts from `Jasmin.Cmd` and emits MLIR *text*, whose
+meaning is fixed externally; there is no Lean-side interpreter for that text,
+so `ScalarVector_DenoteAgrees` keeps its conditional
+`MlirBackendSemanticsAgrees → True` form.
+
+Strengthening the text-emit statement into a genuine equality would need a
+`Cmd → ScalarDSL.Prog` front-end (name resolution, width inference, bail-out
+on out-of-scope constructors) so that the AST-direct theorem could be
+transported onto `Cmd`. That translator is not implemented.
+
+The AST-direct path is preferred wherever its scope covers the source; the
+text-emit path remains the fallback for vector arithmetic, which the
+AST-direct path does not model (VIR has no denoting MLIR `vector`
+dialect). -/
 
 example {Γ : List Nat} {w : Nat} (V : ScalarDSL.Valuation Γ)
     (p : ScalarDSL.Prog Γ w) :

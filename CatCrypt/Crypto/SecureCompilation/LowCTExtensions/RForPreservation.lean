@@ -10,10 +10,10 @@ import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
 # Stage EE1 — `RFor` constructor extension lemmas
 
 This file extends the **robust-compilation** (#95) and **CT-preservation** (#146)
-meta-theorems to cover the bounded for-loop constructor `RFor` introduced by
-Agents F/L. It is a *sibling* file: it does not edit the original #95 / #146
-proof files, but states the per-constructor obligations explicitly and
-discharges them by composing existing foundation lemmas.
+meta-theorems to cover the bounded for-loop constructor `RFor`. It is a *sibling*
+file: it does not edit the original #95 / #146 proof files, but states the
+per-constructor obligations explicitly and discharges them by composing existing
+foundation lemmas.
 
 ## Scope
 

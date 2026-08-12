@@ -25,12 +25,13 @@ today and what is *the genuine new theory*:
   fully proved in Mathlib (via the addition-preserving injection into the ideal
   class group of the affine coordinate ring; see
   `Mathlib/AlgebraicGeometry/EllipticCurve/Affine/Point.lean`). So the
-  group-law edge that the existing emit chain
-  (`CatCrypt/Crypto/Pairing/Bls12381AUCurves.lean`,
-  `BLS12381ProjectiveEmit.lean`) treats as *trusted* becomes, on the abstract
-  side, a **Mathlib-backed** connection rather than an axiom: we instantiate a
-  concrete short-Weierstrass curve `y² = x³ + b` and exercise the group law
-  through Mathlib's own `add_zero`, `add_comm`, `add_neg_cancel`, `add_assoc`.
+  group-law edge that the BLS12-381 emit chain (the owned projective point-add
+  `SecureCompilation/X86Backend/Bls12381G2.lean`; its AUCurves-symbol binding
+  lives in the full development tree) treats as *trusted* becomes, on the
+  abstract side, a **Mathlib-backed** connection rather than an axiom: we
+  instantiate a concrete short-Weierstrass curve `y² = x³ + b` and exercise
+  the group law through Mathlib's own `add_zero`, `add_comm`,
+  `add_neg_cancel`, `add_assoc`.
 
   We make the connection **concrete** in two complementary ways:
 
@@ -45,8 +46,9 @@ today and what is *the genuine new theory*:
     BLS12-381 / BN254).
 
   - **(ii) The projective coordinate-model homomorphism.** The emitted
-    point-add (`BLS12381ProjectiveEmit.lean`) operates on **projective**
-    coordinate triples, not affine `Point`s. Mathlib's
+    point-add (`CatCrypt/Crypto/SecureCompilation/X86Backend/Bls12381G2.lean`,
+    `bls12381_g2_add`) operates on **projective** coordinate triples, not affine
+    `Point`s. Mathlib's
     `Projective.Point.toAffine_{add,neg,zero}` prove that the projective
     addition formula on triples maps, under `toAffine`, to the Mathlib affine
     group operation. The lemmas `projAddToAffine`, `projNegToAffine`,
@@ -56,8 +58,9 @@ today and what is *the genuine new theory*:
     representation the bytes manipulate to the abstract group.
 
 * **Partial elsewhere.** The field tower (`Fp`, `Fp2`, `Fp6`, `Fp12`) already
-  has partial Lean content under `CatCrypt/Crypto/Pairing/Fp2Tower.lean`,
-  `Fp6Fp12TowerImport.lean`, etc. That is not re-derived here.
+  has partial Lean content elsewhere in the compiler (for BLS12-381, e.g.
+  `SecureCompilation/X86Backend/Bls12381TowerTierA.lean` and
+  `Bls12381Fp6Fp12MulKernel.lean`). That is not re-derived here.
 
 * **The named bottleneck: the pairing.** Mathlib has **no** Weil or Tate
   pairing — there is no bilinear non-degenerate `e : G₁ → G₂ → Gₜ` to import,
@@ -65,9 +68,9 @@ today and what is *the genuine new theory*:
   reciprocity / Tate–Lichtenbaum construction, non-degeneracy on the
   `p`-torsion). This file does **not** construct a pairing. It only **states**
   the target interface as a `structure` whose fields are exactly the
-  bilinearity and non-degeneracy laws (the `PairingGroup` shape from
-  `CatCrypt/Crypto/PairingGroup.lean`: `e_mul_left`, `e_mul_right`,
-  `e_nondeg`). The structure has no inhabitant here — providing one is the open
+  bilinearity and non-degeneracy laws (`e_mul_left`, `e_mul_right`,
+  `e_nondeg` — the shape of CatCrypt's abstract `PairingGroup` class, which
+  lives outside this repository). The structure has no inhabitant here — providing one is the open
   work item this port exists to track.
 
 ## Curve choice
@@ -107,7 +110,8 @@ base primes — only the prime literal and `b` would change.
 
 The connection stops at the **coordinate model**. What `projAddToAffine` does
 *not* assert is that the **denotation of the emitted projective point-add**
-(the bytes produced by the compiler in `BLS12381ProjectiveEmit.lean`) equals
+(the bytes produced by the compiler in
+`CatCrypt/Crypto/SecureCompilation/X86Backend/Bls12381G2.lean`) equals
 `demoCurve.toProjective.add` on coordinate triples. That edge —
 *denotation of the emitted Jacobian/projective point-add `=` this Mathlib
 `add` on `Fin 3 → 𝔽` triples* — is the precise residual. It requires the
@@ -137,8 +141,9 @@ KAT boundary rather than a closed Lean proof.
   targets).
 * `Mathlib/AlgebraicGeometry/EllipticCurve/Affine/Point.lean` — the proved
   affine group law.
-* `CatCrypt/Crypto/PairingGroup.lean` — the abstract `PairingGroup` class whose
-  bilinearity/non-degeneracy shape `PairingTarget` mirrors.
+* CatCrypt's abstract `PairingGroup` class (full development tree; not part of
+  this repository) — the bilinearity/non-degeneracy shape `PairingTarget`
+  mirrors.
 -/
 
 namespace AUCurvesPort
@@ -244,8 +249,10 @@ theorem addExample :
 
 /-! ## 5a(ii): the projective coordinate-model homomorphism
 
-The emitted point-add (`BLS12381ProjectiveEmit.lean`) works on **projective**
-coordinate triples `Fin 3 → 𝔽`, not on Mathlib's affine `Point`. Mathlib's
+The emitted point-add
+(`CatCrypt/Crypto/SecureCompilation/X86Backend/Bls12381G2.lean`,
+`bls12381_g2_add`) works on **projective** coordinate triples `Fin 3 → 𝔽`, not
+on Mathlib's affine `Point`. Mathlib's
 `Projective.Point.toAffine_{add,neg,zero}` establish that the projective
 addition formula maps, under the conversion `toAffine`, to the Mathlib affine
 group operation. Restating them at `demoCurve` gives the precise link:
@@ -291,7 +298,7 @@ Tate–Lichtenbaum pairing, plus non-degeneracy on the `p`-torsion).
 
 `PairingTarget` below only **states** the interface we are aiming for. Its
 fields are exactly the bilinearity and non-degeneracy laws of CatCrypt's
-abstract `PairingGroup` (`CatCrypt/Crypto/PairingGroup.lean`):
+abstract `PairingGroup` class (outside this repository):
 `e_mul_left`, `e_mul_right`, `e_nondeg`. **No inhabitant of this structure is
 provided here** — providing one (for the curve's actual point groups, with a
 genuine pairing) is the open work item this port tracks. We do not assert it as
@@ -307,7 +314,7 @@ law) and `Gₜ` the relevant roots-of-unity / `Fp12` units. -/
 The target pairing interface over three (multiplicatively-written) abelian
 groups `G₁`, `G₂`, `Gₜ`: a map `e : G₁ → G₂ → Gₜ` that is bilinear and
 non-degenerate. This mirrors the bilinearity/non-degeneracy fields of
-`CatCrypt.PairingGroup`.
+CatCrypt's abstract `PairingGroup` class (outside this repository).
 
 There is **no** Mathlib Weil/Tate pairing, so this structure is **uninhabited**
 in this file by design. Building a witness — i.e. an actual pairing on the

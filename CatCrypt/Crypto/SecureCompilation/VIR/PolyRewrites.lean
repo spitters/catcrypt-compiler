@@ -8,9 +8,8 @@ import CatCrypt.Crypto.SecureCompilation.VIR.PolyLowering
 /-!
 # Poly-dialect optimization rewrites (#482-4)
 
-The Poly-level optimization passes of the layered crypto-IR stack
-(`docs/dialect-restructure-plan.md` §"Optimization passes attach at their natural
-level"): **NTT layer-fusion, Montgomery-domain NTT (#152/#160), and the 4-way
+The Poly-level optimization passes of the layered crypto-IR stack, each attached
+at its natural dialect level: **NTT layer-fusion, Montgomery-domain NTT (#152/#160), and the 4-way
 batched NTT (#150/#389)** become **Poly-dialect rewrites** here, each
 *denotation-preserving* against the abstract polynomial-ring / butterfly spec.
 

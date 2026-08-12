@@ -47,8 +47,8 @@ over any kernel and any `ρ` satisfying the per-binop no-clobber obligation
 embryo. Phase 1 then instantiates it on the concrete MDS kernel, discharging the
 obligation from `interferenceOkB = true` (the §4 bridge) by `native_decide`.
 
-`set_option autoImplicit false` is intentionally *not* set here (SecureCompilation
-convention; see root `CLAUDE.md`).
+`set_option autoImplicit false` is deliberately not set in this module (unlike
+most of `SecureCompilation`, which does set it).
 -/
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect

@@ -24,16 +24,16 @@ exactly the shape-generic verified lowering `evalTileOp ∘ lowerRegInstr` of th
 matching `regArith` op. So the existing AVX2 / NEON / RVV arithmetic IS an
 instance of `TileModel.lowerRegBlock_denote`, by these bridge theorems.
 
-For the **x86 leg** the packed ALU is re-homed onto the unified
-`Com jasminDialect`: the AVX2 4×u32 packed binop is the verified dialect's
-`vsimd (.packed bop 32)` op (denote `v128PackLanesW 32 bop`,
-`VectorBackendBridgeCom.packAvx2Com_denote`), in the PACKED-`BitVec 128` carrier.
-`v128Pack32_lane` is the packed↔lane round-trip (lane `k` of the packed result is
-`bop.apply` of the input lanes), and `vpadd32_com_is_tile_lowering` ties the
-unified op, transported to a `TileState 4 32` via `v128BvToTile`, to the
-shape-generic `evalTileOp ∘ lowerRegInstr` of the matching `regArith` op — the
-equal-strength successor of the old lane-function `vinst_is_tile_lowering`. The
-x86 leg therefore no longer references `Vec128Model`.
+For the **x86 leg** the packed ALU lives in the unified `Com jasminDialect`: the
+AVX2 4×u32 packed binop is the verified dialect's `vsimd (.packed bop 32)` op
+(denote `v128PackLanesW 32 bop`, `VectorBackendBridgeCom.packAvx2Com_denote`), in
+the PACKED-`BitVec 128` carrier. `v128Pack32_lane` is the packed↔lane round-trip
+(lane `k` of the packed result is `bop.apply` of the input lanes), and
+`vpadd32_com_is_tile_lowering` is the x86 bridge theorem: it ties the unified op,
+transported to a `TileState 4 32` via `v128BvToTile`, to the shape-generic
+`evalTileOp ∘ lowerRegInstr` of the matching `regArith` op — the AVX2 counterpart
+of `ninst_is_tile_lowering` (NEON) and `rvinst_is_tile_lowering` (RVV). The x86
+leg is stated in the unified dialect and does not reference `Vec128Model`.
 
 For the ARM / RISC-V legs the key structural fact is definitional:
 `VectorTy α n := Fin n → α` is reducible, so `Tile 4 32`, `Neon.Vec128`, and
@@ -95,9 +95,10 @@ def v128BvToTile (v : BitVec 128) : Tile 4 32 := fun k => BitVec.extractLsb' (32
     lowering.** The unified op `v128PackLanesW 32 bop a b`, transported to a
     `TileState 4 32` via `v128BvToTile`, equals `evalTileOp` of the lowered
     `regArith` op (`TileModel`'s verified lowering) at shape `4×32`, on a state
-    whose `"a"`/`"b"` tiles are the transported inputs. The equal-strength
-    successor of the old lane-function `vinst_is_tile_lowering`, now carried by
-    the unified `Com jasminDialect` packed op rather than `Vec128Model`. -/
+    whose `"a"`/`"b"` tiles are the transported inputs. The x86 counterpart of
+    `ninst_is_tile_lowering` (NEON) and `rvinst_is_tile_lowering` (RVV), carried
+    by the unified `Com jasminDialect` packed op rather than by a `Vec128Model`
+    lane function. -/
 theorem vpadd32_com_is_tile_lowering (bop : JasminBinOp) (a b : BitVec 128) :
     v128BvToTile (v128PackLanesW 32 bop a b)
       = (evalTileOp ⟨fun nm => if nm = "b" then v128BvToTile b else v128BvToTile a⟩

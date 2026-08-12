@@ -11,12 +11,13 @@ import Mathlib.Tactic.Ring
 /-!
 # The ML-KEM `q = 3329` Stage-2 word realization, discharged CONCRETELY
 
-This is the ML-KEM-prime analogue of `Poseidon2/FieldDescentBabyBear.lean`. That
-file discharges the `FieldDescent` Stage-2 leaf squares (`modMul`/`modAdd`/
-`modSub` → word block) for the BabyBear prime `p = 2013265921`; this file does
-the same for the **ML-KEM forward-NTT prime `q = 3329`**, so the field-authored
-ML-KEM NTT (`MlkemNttFieldAuthored.lean`) can descend through `fieldComToJasmin`
-with a *proved* (not assumed, not `native_decide`-pinned) word realization.
+This is the ML-KEM-prime analogue of the BabyBear Stage-2 discharge: the leaf
+squares (`modMul`/`modAdd`/`modSub` → word block) a field descent needs at each
+arithmetic node, here for the **ML-KEM forward-NTT prime `q = 3329`** rather
+than the BabyBear prime `p = 2013265921` (that counterpart discharge is not part
+of this repository). It gives the field-authored ML-KEM NTT
+(`MlkemNttFieldAuthored.lean`) a *proved* — not assumed, not
+`native_decide`-pinned — word realization to descend with.
 
 ## Why q = 3329 is the *scalar* case (no Montgomery folding)
 

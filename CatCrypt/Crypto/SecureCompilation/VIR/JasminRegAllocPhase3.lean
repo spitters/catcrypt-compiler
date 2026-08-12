@@ -44,8 +44,8 @@ the Phase-2 `liveInSeeded` cons clause, so:
 The interference check at point `i` is over `{b_i.dst} ∪ liveOut_i`, which is
 exactly the seeded def-clobbers-live-out edge.
 
-`set_option autoImplicit false` is intentionally *not* set (SecureCompilation
-convention; see root `CLAUDE.md`).
+`set_option autoImplicit false` is deliberately not set in this module (unlike
+most of `SecureCompilation`, which does set it).
 -/
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect

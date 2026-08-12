@@ -131,7 +131,7 @@ inductive RustExecTraced (N : Nat) (leafSpec : LeafSpec) :
       RustExecTraced N leafSpec (.RLimbStore loc idx v) rs
         [LeakEvent.pureOp "Copn"]
         (locatedUpdate rs loc (leafSpec.limbStore loc oldDestV idx v))
-  -- Phase R5 (2026-06-01): traced runtime-valued limb store. Same single
+  -- Traced runtime-valued limb store. Same single
   -- `Copn` leak event as `limbStore`; the stored word is the tower-aware
   -- `e.evalState rs` truncated (#356), mirroring `RustExec.limbStoreExpr`.
   | limbStoreExpr : ∀ loc idx e rs oldDestV,
@@ -140,7 +140,7 @@ inductive RustExecTraced (N : Nat) (leafSpec : LeafSpec) :
         [LeakEvent.pureOp "Copn"]
         (locatedUpdate rs loc
           (leafSpec.limbStore loc oldDestV idx (BitVec.ofNat 64 (e.evalState rs))))
-  -- Phase F/G/H/L/M (2026-05-03): traced versions of the new constructors.
+  -- Traced versions of `RAsmOp` / `RCallN` / `RSelect` / `RAssert` / `RBlock`.
   -- Trace events match the structural `LowCT.toJasminLeakTrace` shape.
   | asmOp : ∀ name dests args rs,
       RustExecTraced N leafSpec (.RAsmOp name dests args) rs
@@ -148,7 +148,7 @@ inductive RustExecTraced (N : Nat) (leafSpec : LeafSpec) :
   | callN : ∀ f dests args rs,
       RustExecTraced N leafSpec (.RCallN f dests args) rs
         [LeakEvent.pureOp "Ccall"] rs
-  /-- Phase E2 (2026-05-29): traced destination-threaded leaf call.
+  /-- Traced destination-threaded leaf call.
       Single output, mirroring `RustExec.callDstThreaded`: reads `dst`'s
       old value, builds the argument list from `dst :: args`, and writes
       the single `leafSpec.call` result back to `dst`.  Lowers to a single
@@ -178,7 +178,7 @@ inductive RustExecTraced (N : Nat) (leafSpec : LeafSpec) :
   | block : ∀ body rs t_body rs',
       RustExecTraced N leafSpec body rs t_body rs' →
       RustExecTraced N leafSpec (.RBlock body) rs t_body rs'
-  -- Phase C: traced helper definition / call.  Mirrors `RustExec.fnDef`:
+  -- Traced helper definition / call.  Mirrors `RustExec.fnDef`:
   -- the body is **not** executed at this layer (the function definition is
   -- a compile-time declaration); only `cont` runs.  Trace is `cont`'s
   -- trace.  RFnCall emits a single `Ccall` event.
@@ -189,7 +189,7 @@ inductive RustExecTraced (N : Nat) (leafSpec : LeafSpec) :
   | fnCall : ∀ f dests args rs,
       RustExecTraced N leafSpec (.RFnCall f dests args) rs
         [LeakEvent.pureOp "Ccall"] rs
-  -- Phase I.1 (2026-05-04): tuple store/load with real semantics.
+  -- Tuple store/load with real semantics.
   -- Reads dst's old value, looks up src, applies the leafSpec
   -- oracle.  Emits a single `Copn` leak event matching the
   -- byte-offset-store lowering shape used by `toJasminCmd`.
@@ -205,9 +205,9 @@ inductive RustExecTraced (N : Nat) (leafSpec : LeafSpec) :
       RustExecTraced N leafSpec (.RTupleLoad dst src idx) rs
         [LeakEvent.pureOp "Copn"]
         (locatedUpdate rs dst (leafSpec.tupleLoad dst oldV ⟨src.locDst, srcV⟩ idx))
-  -- Phase J (wave 6, 4.29): array store / array load / scalar-set-expr /
-  -- bytes-slice. Trace shape mirrors `LowCT.toJasminLeakTrace` for these
-  -- ops, where each emits a single `Copn` (or `Cassgn`) event.
+  -- Array store / array load / scalar-set-expr / bytes-slice. Trace shape
+  -- mirrors `LowCT.toJasminLeakTrace` for these ops, where each emits a single
+  -- `Copn` (or `Cassgn`) event.
   | arrStore : ∀ arr idxVar src rs idx oldV srcV,
       rs.rsScalar idxVar = idx →
       locatedLookup rs arr = some oldV →
@@ -233,7 +233,7 @@ inductive RustExecTraced (N : Nat) (leafSpec : LeafSpec) :
         [LeakEvent.pureOp "Copn"]
         (locatedUpdate rs dst
           (leafSpec.bytesSlice dst oldV ⟨src.locDst, srcV⟩ start len))
-  -- Phase DD (2026-05-28): literal-index array store/load.  Mirror of
+  -- Literal-index array store/load.  Mirror of
   -- `RustExec.arrStoreLit`/`arrLoadLit` with the static-leak tag added.
   -- `toJasminCmd` emits a single `Cassgn` (a literal-index `Laset`/`Pget`)
   -- for each, so the recorded trace is `[pureOp "Cassgn"]`, matching
@@ -295,7 +295,7 @@ theorem RustExecTraced.toExec {N : Nat} {leafSpec : LeafSpec}
     exact RustExec.limbStore loc idx v rs0 oldDestV hLk
   | limbStoreExpr loc idx e rs0 oldDestV hLk =>
     exact RustExec.limbStoreExpr loc idx e rs0 oldDestV hLk
-  -- Phase F/G/H/L/M (2026-05-03): forget trace, project to bare RustExec.
+  -- Forget trace, project to bare RustExec.
   | asmOp name dests args rs0 =>
     exact RustExec.asmOp name dests args rs0
   | callN f dests args rs0 =>
@@ -308,19 +308,19 @@ theorem RustExecTraced.toExec {N : Nat} {leafSpec : LeafSpec}
     exact RustExec.assert label rs0
   | block body rs0 _t_body rs0' _h ih =>
     exact RustExec.block body rs0 rs0' ih
-  -- Phase C: forget the trace.  RFnDef forwards to `cont`'s execution
+  -- Forget the trace.  RFnDef forwards to `cont`'s execution
   -- (matches `RustExec.fnDef`); RFnCall is identity (matches
   -- `RustExec.fnCall`).
   | fnDef name params returns body cont rs0 _t_cont rs0' _h ih =>
     exact RustExec.fnDef name params returns body cont rs0 rs0' ih
   | fnCall f dests args rs0 =>
     exact RustExec.fnCall f dests args rs0
-  -- Phase I.1:
+  -- Tuple store/load.
   | tupleStore dst idx src rs0 oldV srcV hLkDst hLkSrc =>
     exact RustExec.tupleStore dst idx src rs0 oldV srcV hLkDst hLkSrc
   | tupleLoad dst src idx rs0 oldV srcV hLkDst hLkSrc =>
     exact RustExec.tupleLoad dst src idx rs0 oldV srcV hLkDst hLkSrc
-  -- Phase J (wave 6, 4.29):
+  -- Array store/load, scalar-set-expr, bytes-slice.
   | arrStore arr idxVar src rs0 idx oldV srcV hIdx hLkArr hLkSrc =>
     exact RustExec.arrStore arr idxVar src rs0 idx oldV srcV hIdx hLkArr hLkSrc
   | arrLoad dst src idxVar rs0 idx oldV srcV hIdx hLkDst hLkSrc =>
@@ -329,7 +329,7 @@ theorem RustExecTraced.toExec {N : Nat} {leafSpec : LeafSpec}
     exact RustExec.scalarSetExpr x e rs0
   | bytesSlice dst src start len rs0 oldV srcV hLkDst hLkSrc =>
     exact RustExec.bytesSlice dst src start len rs0 oldV srcV hLkDst hLkSrc
-  -- Phase DD (2026-05-28): literal-index array store/load forget to the
+  -- Literal-index array store/load forget to the
   -- matching `RustExec` rule.
   | arrStoreLit arr idx src rs0 oldV srcV hLkArr hLkSrc =>
     exact RustExec.arrStoreLit arr idx src rs0 oldV srcV hLkArr hLkSrc
@@ -397,7 +397,7 @@ theorem RustExec.toTraced {N : Nat} {leafSpec : LeafSpec}
     exact ⟨_, RustExecTraced.limbStore loc idx v rs0 oldDestV hLk⟩
   | limbStoreExpr loc idx e rs0 oldDestV hLk =>
     exact ⟨_, RustExecTraced.limbStoreExpr loc idx e rs0 oldDestV hLk⟩
-  -- Phase F/G/H/L/M (2026-05-03): promote new RustExec cases to traced.
+  -- Promote `RAsmOp` / `RCallN` / `RSelect` / `RAssert` / `RBlock` to traced.
   | asmOp name dests args rs0 =>
     exact ⟨_, RustExecTraced.asmOp name dests args rs0⟩
   | callN f dests args rs0 =>
@@ -411,21 +411,21 @@ theorem RustExec.toTraced {N : Nat} {leafSpec : LeafSpec}
   | block body rs0 rs0' _h ih =>
     obtain ⟨t_body, h'⟩ := ih
     exact ⟨_, RustExecTraced.block body rs0 t_body rs0' h'⟩
-  -- Phase C: promote `RustExec.fnDef`/`fnCall` to traced.  RFnDef forwards
+  -- Promote `RustExec.fnDef`/`fnCall` to traced.  RFnDef forwards
   -- to `cont`'s trace; RFnCall is the singleton `[Ccall]`.
   | fnDef name params returns body cont rs0 rs0' _hcont ihcont =>
     obtain ⟨t_cont, h'⟩ := ihcont
     exact ⟨_, RustExecTraced.fnDef name params returns body cont rs0 t_cont rs0' h'⟩
   | fnCall f dests args rs0 =>
     exact ⟨_, RustExecTraced.fnCall f dests args rs0⟩
-  -- Phase I: tuple store/load are identity-stub semantics; promote
+  -- Tuple store/load are identity-stub semantics; promote
   -- to traced via the tracedSingle constructors (added below as
   -- well as `RustExecTraced.tupleStore`/`tupleLoad`).
   | tupleStore dst idx src rs0 oldV srcV hLkDst hLkSrc =>
     exact ⟨_, RustExecTraced.tupleStore dst idx src rs0 oldV srcV hLkDst hLkSrc⟩
   | tupleLoad dst src idx rs0 oldV srcV hLkDst hLkSrc =>
     exact ⟨_, RustExecTraced.tupleLoad dst src idx rs0 oldV srcV hLkDst hLkSrc⟩
-  -- Phase J (wave 6, 4.29):
+  -- Promote array store/load, scalar-set-expr, bytes-slice.
   | arrStore arr idxVar src rs0 idx oldV srcV hIdx hLkArr hLkSrc =>
     exact ⟨_, RustExecTraced.arrStore arr idxVar src rs0 idx oldV srcV
                 hIdx hLkArr hLkSrc⟩
@@ -437,7 +437,7 @@ theorem RustExec.toTraced {N : Nat} {leafSpec : LeafSpec}
   | bytesSlice dst src start len rs0 oldV srcV hLkDst hLkSrc =>
     exact ⟨_, RustExecTraced.bytesSlice dst src start len rs0 oldV srcV
                 hLkDst hLkSrc⟩
-  -- Phase DD (2026-05-28): promote literal-index array store/load.
+  -- Promote literal-index array store/load.
   | arrStoreLit arr idx src rs0 oldV srcV hLkArr hLkSrc =>
     exact ⟨_, RustExecTraced.arrStoreLit arr idx src rs0 oldV srcV hLkArr hLkSrc⟩
   | arrLoadLit dst src idx rs0 oldV srcV hLkDst hLkSrc =>
@@ -473,28 +473,29 @@ def LowCT.straightLine : LowCT → Bool
   | .RForRuntime _ _ _       => false
   | .RLimbStore _ _ _        => true
   | .RLimbStoreExpr _ _ _    => true
-  -- Phase F/G/H/L/M: the new constructors are straight-line.
+  -- `RCallSwap` / `RAsmOp` / `RCallN` / `RSelect` / `RAssert` are straight-line;
+  -- `RBlock` inherits its body's classification.
   | .RCallSwap _ _ _ _       => true
   | .RAsmOp _ _ _            => true
   | .RCallN _ _ _            => true
   | .RSelect _ _ _ _         => true
   | .RAssert _               => true
   | .RBlock body             => LowCT.straightLine body
-  -- Phase C: helper definitions cause a body/cont trace-shape mismatch
+  -- Helper definitions cause a body/cont trace-shape mismatch
   -- at this layer (dynamic `RustExec.fnDef` only runs `cont`, but the
   -- static `toJasminLeakTrace` inlines body++cont).  Gate `false` until
   -- the source-dynamic semantics is upgraded to actually run the body
   -- on each `fnCall` (Phase C.1 — separate FunDecls).
   | .RFnDef _ _ _ _ _        => false
   | .RFnCall _ _ _           => true
-  -- Phase I: tuple store/load have a static-dynamic trace mismatch
+  -- Tuple store/load have a static-dynamic trace mismatch
   -- (static `LowCT.toJasminLeakTrace` returns `[]`, dynamic
   -- `RustExecTraced.tupleStore` / `tupleLoad` emit `[Copn]`).
   -- Gate `false` so they are excluded from the straight-line subset
   -- until the static and dynamic traces are reconciled.
   | .RTupleStore _ _ _       => false
   | .RTupleLoad _ _ _        => false
-  -- Phase J (wave 6, 4.29): array / bytes / scalar-expr constructors added
+  -- Array / bytes / scalar-expr constructors added
   -- to LowCT. Gate `false` until their static and dynamic traces are
   -- wired and reconciled — straight-line coverage is unaffected because
   -- callers exclude these on entry.
@@ -502,17 +503,17 @@ def LowCT.straightLine : LowCT → Bool
   | .RArrLoad _ _ _          => false
   | .RScalarSetExpr _ _      => false
   | .RBytesSlice _ _ _ _     => false
-  -- Phase DD (2026-05-28): literal-index array store/load.  Static trace
+  -- Literal-index array store/load.  Static trace
   -- (`toJasminLeakTrace = [Cassgn]`) and dynamic trace
   -- (`RustExecTraced.arrStoreLit`/`arrLoadLit = [Cassgn]`) agree, so these are
   -- in the straight-line subset.
   | .RArrStoreLit _ _ _      => true
   | .RArrLoadLit _ _ _       => true
-  -- Phase E2 (2026-05-29): dst-threaded leaf call.  No source-dynamic
-  -- `RustExec` rule exists yet (it is only a `LowCT`/`toJasminCmd` arm), so
-  -- it never appears in a `RustExecTraced` derivation; classified as
-  -- straight-line (call-like) for the `LowCT`-level Bool, with the dynamic
-  -- correspondence vacuous.
+  -- Dst-threaded leaf call.  `RustExec.callDstThreaded` /
+  -- `RustExecTraced.callDstThreaded` emit the single `[Ccall]` that
+  -- `toJasminCmd` lowers it to, so the static and dynamic traces agree and
+  -- it is in the straight-line subset (`straightLine_trace_eq` closes the
+  -- case by `rfl`).
   | .RCallDstThreaded _ _ _  => true
 
 /-- **Correspondence**: on the straight-line subset, every dynamic
@@ -580,7 +581,7 @@ theorem RustExecTraced.straightLine_trace_eq
     rfl
   | limbStore _ _ _ _ _ _ => rfl
   | limbStoreExpr _ _ _ _ _ _ => rfl
-  -- Phase F/G/H/L/M (2026-05-03): match the structural trace.
+  -- Match the structural trace.
   | asmOp _ _ _ _ => rfl
   | callN _ _ _ _ => rfl
   | callDstThreaded _ _ _ _ _ _ _ _ _ => rfl
@@ -591,16 +592,16 @@ theorem RustExecTraced.straightLine_trace_eq
     simp only [LowCT.straightLine] at hSL
     simp only [LowCT.toJasminLeakTrace]
     exact ih hSL
-  -- Phase C: gated `false` by `straightLine` → contradictory.
+  -- Gated `false` by `straightLine` → contradictory.
   | fnDef _ _ _ _ _ _ _ _ _ _ =>
     simp [LowCT.straightLine] at hSL
   | fnCall _ _ _ _ => rfl
-  -- Phase I: gated `false` by `straightLine` → contradictory.
+  -- Gated `false` by `straightLine` → contradictory.
   | tupleStore _ _ _ _ =>
     simp [LowCT.straightLine] at hSL
   | tupleLoad _ _ _ _ =>
     simp [LowCT.straightLine] at hSL
-  -- Phase J (wave 6, 4.29): gated `false` by `straightLine` → contradictory.
+  -- Gated `false` by `straightLine` → contradictory.
   | arrStore _ _ _ _ _ _ _ _ _ _ =>
     simp [LowCT.straightLine] at hSL
   | arrLoad _ _ _ _ _ _ _ _ _ _ =>
@@ -609,7 +610,7 @@ theorem RustExecTraced.straightLine_trace_eq
     simp [LowCT.straightLine] at hSL
   | bytesSlice _ _ _ _ _ _ _ _ _ =>
     simp [LowCT.straightLine] at hSL
-  -- Phase DD (2026-05-28): both sides are the single `[Cassgn]` tag; rfl.
+  -- Both sides are the single `[Cassgn]` tag; rfl.
   | arrStoreLit _ _ _ _ _ _ _ _ => rfl
   | arrLoadLit _ _ _ _ _ _ _ _ => rfl
 
@@ -664,7 +665,8 @@ theorem toJasminCmd_cifFree_of_straightLine (c : LowCT)
     simp [LowCT.straightLine] at hSL
   | RLimbStore _ _ _ => rfl
   | RLimbStoreExpr _ _ _ => rfl
-  -- Phase F/G/H/L/M: each lowers to one CIf-free instruction (or empty).
+  -- `RCallSwap` lowers to two `Ccall`s, `RAssert` to `[]`, `RBlock` to
+  -- `toJasminCmd body`, and the rest to a single instruction — all `Cif`-free.
   | RCallSwap _ _ _ _ => rfl
   | RAsmOp _ _ _ => rfl
   | RCallN _ _ _ => rfl
@@ -674,16 +676,16 @@ theorem toJasminCmd_cifFree_of_straightLine (c : LowCT)
     simp only [LowCT.straightLine] at hSL
     show cmdCifFree (toJasminCmd body) = true
     exact ih hSL
-  -- Phase C: gated `false` by `straightLine` → contradictory.
+  -- Gated `false` by `straightLine` → contradictory.
   | RFnDef _ _ _ _ _ _ _ =>
     simp [LowCT.straightLine] at hSL
   | RFnCall _ _ _ => rfl
-  -- Phase I: gated `false` by `straightLine` → contradictory.
+  -- Gated `false` by `straightLine` → contradictory.
   | RTupleStore _ _ _ =>
     simp [LowCT.straightLine] at hSL
   | RTupleLoad _ _ _ =>
     simp [LowCT.straightLine] at hSL
-  -- Phase J (wave 6, 4.29): gated `false` by `straightLine` → contradictory.
+  -- Gated `false` by `straightLine` → contradictory.
   | RArrStore _ _ _ =>
     simp [LowCT.straightLine] at hSL
   | RArrLoad _ _ _ =>
@@ -692,7 +694,7 @@ theorem toJasminCmd_cifFree_of_straightLine (c : LowCT)
     simp [LowCT.straightLine] at hSL
   | RBytesSlice _ _ _ _ =>
     simp [LowCT.straightLine] at hSL
-  -- Phase DD/E2 (2026-05-28/29): literal-index array access and dst-threaded
+  -- Literal-index array access and dst-threaded
   -- call lower to a single Cif-free instruction (Cassgn / Ccall); rfl.
   | RArrStoreLit _ _ _ => rfl
   | RArrLoadLit _ _ _ => rfl
@@ -886,37 +888,37 @@ theorem rustExecTraced_to_jasminSemTraced
     exact jasminSemTraced_seq_compose leafSpec _ _ rs0 rs1 rs0' t1 t2 h_jt1 h_jt2
   | limbStore loc idx v rs0 oldDestV hLk =>
     exact jasminSemTraced.limb_store_oracle loc idx v rs0 oldDestV hLk
-  -- Phase R5: gated `whileFree = false`, unreachable under hWf.
+  -- Gated `whileFree = false`, unreachable under hWf.
   | limbStoreExpr _ _ _ _ _ _ => simp [whileFree] at hWf
-  -- Phase F/G/H/L/M (2026-05-03): not yet covered by simulation;
+  -- Not yet covered by simulation;
   -- gated `whileFree = false`, so each case is unreachable under hWf.
   | asmOp _ _ _ _ => simp [whileFree] at hWf
   | callN _ _ _ _ => simp [whileFree] at hWf
   | callDstThreaded _ _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
   | selectFalse _ _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
   | selectTrue _ _ _ _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
-  -- Phase L: RAssert is `whileFree = true` and lowers to `[]`;
+  -- RAssert is `whileFree = true` and lowers to `[]`;
   -- the dynamic trace is `[]`, so the goal is `jasminSemTraced [] rs [] rs`,
   -- discharged by `jasminSemTraced.nil`.
   | assert label rs0 =>
     show jasminSemTraced leafSpec [] rs0 [] rs0
     exact jasminSemTraced.nil rs0
-  -- Phase M: RBlock body is `whileFree = whileFree body`; lowers to
+  -- RBlock body is `whileFree = whileFree body`; lowers to
   -- `toJasminCmd body`.  Trace is `t_body`.  Closed via the inner IH.
   | block body rs0 t_body rs0' _hBody ih =>
     simp only [whileFree] at hWf
     exact ih hWf
   | fnDef _ _ _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
   | fnCall _ _ _ _ => simp [whileFree] at hWf
-  -- Phase I: gated `whileFree = false`, so each case is unreachable.
+  -- Gated `whileFree = false`, so each case is unreachable.
   | tupleStore _ _ _ _ => simp [whileFree] at hWf
   | tupleLoad _ _ _ _ => simp [whileFree] at hWf
-  -- Phase J (wave 6, 4.29): gated `whileFree = false`.
+  -- Gated `whileFree = false`.
   | arrStore _ _ _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
   | arrLoad _ _ _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
   | scalarSetExpr _ _ _ => simp [whileFree] at hWf
   | bytesSlice _ _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
-  -- Phase DD (2026-05-28): literal-index array store/load are `whileFree =
+  -- Literal-index array store/load are `whileFree =
   -- false` (not yet covered by the simulation theorem); contradiction.
   | arrStoreLit _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
   | arrLoadLit _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
@@ -1135,7 +1137,7 @@ theorem jasminSemTraced_to_rustExecTraced
       have hV : v = vBV := BitVec.eq_of_toNat_eq hVeq
       subst hV
       exact RustExecTraced.limbStore loc idx v rs oldDestV hLk
-  -- Phase R5: RLimbStoreExpr is gated `whileFree = false` (its reverse-trace
+  -- RLimbStoreExpr is gated `whileFree = false` (its reverse-trace
   -- inversion is future work), so unreachable under hWf.
   | .RLimbStoreExpr _ _ _, _, _, _, hWf, _, _ => by simp [whileFree] at hWf
   -- RCallSwap: lowers to two sequential `.Ccall` instructions.
@@ -1179,19 +1181,19 @@ theorem jasminSemTraced_to_rustExecTraced
       -- Compose via callSwap.
       exact RustExecTraced.callSwap f dest1 dest2 args rs t1 rs1 t2 rs'
               hR_call1 hR_call2
-  -- Phase F/G/H/L/M: RAsmOp/RCallN/RSelect are gated `whileFree = false`,
+  -- RAsmOp/RCallN/RSelect are gated `whileFree = false`,
   -- so those cases are unreachable under hWf.
   | .RAsmOp _ _ _, _, _, _, hWf, _, _ => by simp [whileFree] at hWf
   | .RCallN _ _ _, _, _, _, hWf, _, _ => by simp [whileFree] at hWf
   | .RSelect _ _ _ _, _, _, _, hWf, _, _ => by simp [whileFree] at hWf
-  -- Phase L: RAssert lowers to `[]`; the only Jasmin derivation is `nil`,
+  -- RAssert lowers to `[]`; the only Jasmin derivation is `nil`,
   -- which forces `t = []` and `rs = rs'`. Reconstruct `RustExecTraced.assert`.
   | .RAssert label, rs, rs', t, _hWf, _hFF, h => by
     simp only [toJasminCmd] at h
     have h' := jasminSemTraced.toPrime h
     cases h'
     exact RustExecTraced.assert label rs
-  -- Phase M: RBlock body lowers to `toJasminCmd body`; trace and states
+  -- RBlock body lowers to `toJasminCmd body`; trace and states
   -- match the inner derivation.  Recurse on the body via the IH.
   | .RBlock body, rs, rs', t, hWf, hFF, h => by
     simp only [whileFree] at hWf
@@ -1199,13 +1201,13 @@ theorem jasminSemTraced_to_rustExecTraced
     simp only [toJasminCmd] at h
     have hR_body := jasminSemTraced_to_rustExecTraced (N := N) body hWf hFF h
     exact RustExecTraced.block body rs t rs' hR_body
-  -- Phase C: RFnDef/RFnCall are gated `whileFree = false`.
+  -- RFnDef/RFnCall are gated `whileFree = false`.
   | .RFnDef _ _ _ _ _, _, _, _, hWf, _, _ => by simp [whileFree] at hWf
   | .RFnCall _ _ _, _, _, _, hWf, _, _ => by simp [whileFree] at hWf
-  -- Phase I: RTupleStore/RTupleLoad are gated `whileFree = false`.
+  -- RTupleStore/RTupleLoad are gated `whileFree = false`.
   | .RTupleStore _ _ _, _, _, _, hWf, _, _ => by simp [whileFree] at hWf
   | .RTupleLoad _ _ _, _, _, _, hWf, _, _ => by simp [whileFree] at hWf
-  -- Phase J (wave 6, 4.29): also gated `whileFree = false`.
+  -- Also gated `whileFree = false`.
   | .RArrStore _ _ _, _, _, _, hWf, _, _ => by simp [whileFree] at hWf
   | .RArrLoad _ _ _, _, _, _, hWf, _, _ => by simp [whileFree] at hWf
   | .RScalarSetExpr _ _, _, _, _, hWf, _, _ => by simp [whileFree] at hWf

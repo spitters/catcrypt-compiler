@@ -17,18 +17,15 @@ of fractalyze/prime-ir's **ModArith** dialect ops `mod_arith.to_mont`,
 
 ## Why this dialect exists (the gap it closes)
 
-Per `PRIME_IR_OP_CORRESPONDENCE.md` (repo root, §2), CatCrypt already *computes* in the
-Montgomery domain — `montMul N R N'` / `redc N R N'`
-(`Optimizer/Rewrite/MontgomeryRedcGeneric.lean`), with the proven defining
-property `redc T · R ≡ T (mod N)` — but it does **not** expose the
-domain-conversion maps `to_mont` / `from_mont` / `mont_square` as standalone ops.
-The gap analysis classified each **PARTIAL** — "functionality present, not
-factored as a standalone op" (`mod_arith.to_mont`/`from_mont` "implicit in
-`montMul`/`redc` domain, no standalone op"; `mod_arith.mont_square` "derived from
-`montMul a a`, no dedicated op").  This dialect **factors those three maps as
-first-class ops**, matching the three prime-ir ModArith conversion ops
-one-for-one, with denotations tied to the existing `montMul`/`redc` and the
-round-trip / inverse-domain agreement lemmas proved on top of the **already-proved**
+CatCrypt already *computes* in the Montgomery domain — `montMul N R N'` /
+`redc N R N'` (`Optimizer/Rewrite/MontgomeryRedcGeneric.lean`), with the proven
+defining property `redc T · R ≡ T (mod N)` — but it does **not** expose the
+domain-conversion maps `to_mont` / `from_mont` / `mont_square` as standalone
+ops: they are implicit in the `montMul`/`redc` domain, and the Montgomery square
+is just `montMul a a`.  This dialect **factors those three maps as first-class
+ops**, matching the three prime-ir ModArith conversion ops one-for-one, with
+denotations tied to the existing `montMul`/`redc` and the round-trip /
+inverse-domain agreement lemmas proved on top of the **already-proved**
 Montgomery reduction core (which is reused, not re-proved).
 
 ## The ops (`ModArithMontOp`), parametric in `(N R N' : ℤ)`
@@ -73,19 +70,19 @@ already-inverted form, carried explicitly so no inverse-existence is re-derived)
 * `montSquareF_mul_R` : `montSquare x · R ≡ x · x (mod N)` — the Montgomery-form
   correctness of the fused square, `redc_mul_R_modEq` at `x·x`.
 
-## Honest classification (read `VIR/DIALECTS.md`)
+## Honest classification
 
 This is a **HIGH-tier, prime-ir-corresponding / agreement** dialect, NOT an
 emit-wired one.  It has **no lowering out** (no `→ Com jasminDialect`, no backend
-edge): like `tensorExtDialect` and the `mlirArith*` family in DIALECTS.md's
-"correspondence-only" table, it substantiates the "prime-ir ModArith
+edge): like `tensorExtDialect` and the `mlirArith*` family, it is
+correspondence-only: it substantiates the "prime-ir ModArith
 domain-conversion aligned" claim and factors the previously-implicit Montgomery
 conversions into three reusable ops with denotations tied to the existing
 `montMul`/`redc` plus verified round-trip / inverse-domain laws.  It does **not**
 add a new lowering or emit path — the bytes-reaching Montgomery arithmetic still
 flows through the existing emit kernels (`MontgomeryMulEmitValue`,
 `ConcreteMontMulRealizer`, `TransferMontRedcButterfly`, the owned `runZBlock`
-REDC blocks — the `Com → jasmin → ELF` spine in DIALECTS.md).  Do not
+REDC blocks — the `Com → jasmin → ELF` spine).  Do not
 overclaim an emit this file does not build.
 
 ## Pure-only + constant-time

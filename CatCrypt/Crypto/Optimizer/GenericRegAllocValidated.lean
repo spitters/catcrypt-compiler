@@ -29,7 +29,7 @@ CompCert/Jasmin, realised generically:
 * `noAliasOn ρ block` — the decidable checker; `renameBlock_runBlock_checked`
   combines it with the keystone.
 
-The `RegMachine.instVal_rename` law is already stated with a *per-read-name*
+The `RegMachine.writes_rename` law is already stated with a *per-read-name*
 hypothesis, so the class is set up for exactly this scoping.
 -/
 

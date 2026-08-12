@@ -16,12 +16,12 @@ early-exit* — once a differing limb is observed (starting from the highest),
 the loop terminates without touching the lower-order limbs.
 
 This kernel is the right primitive for non-secret comparisons inside the Lean
-runtime (e.g. structural `Nat` equality), where the legacy MSB-first early-exit
-fallback in `~/lean4/src/runtime/mpn.cpp.legacy` outperforms the verified
-straight-line CT compare (`MpnComparePrototype.bodyCmp`) by a factor of 2× on
-the lean-fallback bench.  This variant closes that gap **without** giving up
-verification: same denotation as `mpnCompare`, but with the perf shape of the
-legacy fallback.
+runtime (e.g. structural `Nat` equality), where the Lean 4 runtime's legacy
+MSB-first early-exit fallback (`src/runtime/mpn.cpp` in the Lean 4 source tree)
+outperforms the verified straight-line CT compare
+(`MpnComparePrototype.bodyCmp`) by a factor of 2× on the lean-fallback bench.
+This variant closes that gap **without** giving up verification: same
+denotation as `mpnCompare`, but with the perf shape of the legacy fallback.
 
 ## NOT constant-time — by design
 

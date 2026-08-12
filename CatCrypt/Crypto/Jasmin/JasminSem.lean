@@ -29,12 +29,14 @@ the `handled_instr_r` subset (what `toJasminCmd` can emit).
 **Not supported** (Rocq also: `handled_instr_r = false`):
 - `Cwhile`, `Cfor`
 
-## Status 2026-04-22
+## Status
 
-- Inductive `jasminSem` defined for the entire supported subset.
-- Bridge `rustExecSoundInJasmin` proved for `RSkip`, `RScalarSet`.
-- Remaining `RustExec` constructors are `sorry` with clear TODO.
-- Total ~200 LoC; the full closure is ~600-1000 more LoC (mostly mechanical).
+- `jasminSem` is defined for the entire supported subset above.
+- `rustExecSoundInJasmin` is closed for every `RustExec` constructor: the
+  while-free ones by structural induction (with `jasminSem_seq_compose`
+  for sequencing and `unrollForJ` for `RFor`), the remaining ones by
+  contradiction with the `whileFree c = true` hypothesis.
+- No `sorry` remains in this module.
 
 ## Design choice
 

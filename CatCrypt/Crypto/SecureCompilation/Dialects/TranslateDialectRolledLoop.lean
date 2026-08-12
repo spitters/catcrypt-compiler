@@ -25,9 +25,10 @@ arrays, with the loop counter as the array index) into the
 genuine `ComL.forLoopN` node (ONE body copy + a real back-edge). The
 loop-counter variable feeds `RArrLoad`/`RArrStore` as a per-trip dynamic index
 (`memrefGetDyn`/`memrefSetDyn` → `stackLoad`/`stackStore` SIB `LOADIDX`/`STOREIDX`
-at the runtime trip counter), exactly the `N = 4` PoC pattern of
-`MAYO/KernelFromRustcmdFrontEmit.lean` — only now the index is the *loop binder*,
-not a materialised constant, and the trip is a real counted loop.
+at the runtime trip counter) — the same dynamic-index memref path that
+`Dialects/MemrefArrayFrontValidate.lean` validates for a straight-line body, except
+that here the index is the loop *binder* (advanced by the back-edge) rather than a
+free input word, and the trip is a real counted loop.
 
 ```
   bodyLowCT  (RArrLoad acc/in[idx] … RArrStore out[idx] … over the loop counter `idx`)

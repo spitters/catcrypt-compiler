@@ -21,9 +21,9 @@ Haagh–Karbyshev–Oechsner–Spitters–Strub (CSF 2018).
 * `ActiveNI` — Non-interference definition for active security (Definition 7)
 * `active_ni_implies_sim` — Active NI implies active simulation security (Theorem 2)
 
-Concrete instantiations at specific MPC protocols (Maurer, MPC-in-the-Head) live
-in `NonInterferenceProtocolConnections.lean`, so this abstract framework stays
-free of any protocol security proof.
+Concrete instantiations at specific MPC protocols (Maurer, MPC-in-the-Head) are
+not provided: this module is the abstract framework only and deliberately
+contains no protocol security proof.
 
 ## References
 

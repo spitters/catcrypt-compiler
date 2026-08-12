@@ -31,7 +31,7 @@ and so each file fits memory comfortably under the 14 GiB ceiling.
 - BitVec→Nat bridges: `shiftLeft_or_eq_mul_add`, `toNat_concat_4limbs`,
   `toNat_concat_8limbs`.
 - `mulx_correct`: 64×64 multiplication produces the high/low pair.
-- Phase A invariant ↔ chain output: `sqr4_phaseA_chain_eq_invariant_sum_bv384`.
+- Phase A invariant ↔ chain output: none — `sqr4_phaseA_chain_eq_invariant_sum_bv384` is a `True` placeholder (see Status).
 - Step 2 (per-product accumulation): `sqr4_offdiag_step_bv192`,
   `sqr4_offdiag_step_bv192_cin`.
 - Step 3 (Phase B doubling): `sqr4_shift_left_chain_bv384`.
@@ -47,28 +47,14 @@ The phase Triples (`sqr4_phaseA_triple`, …) live in
 `BignumHoare.lean` (until further split). They consume these lemmas
 as black-box rewrites.
 
-## Status (2026-05-11)
+## Status
 
-**0 sorries.**  The previously-sorried
-`sqr4_phaseA_chain_eq_invariant_sum_bv384` (a provably-false claim
-about `BignumSqr4.body`'s buggy SSA encoding) is replaced with a `True` placeholder.
-Modular squaring callers route through `MontmulAxiom.montmul_call_squaring`
-instead (see `ChainStepAxioms.chain_sqr_step_correct_generic`).
-
-Resolution of the Mathlib big-numeral asymmetry (which blocked the
-other 3 keystones): `set_option exponentiation.threshold 1024`. The
-default 256 left `2^N` for N > 256 unevaluated, leaving residuals
-like `2^320 * 2^64` symbolic instead of folding into `2^384`.
-
-## What changed since the last sorry round
-
-- `sqr4_phaseA_eq_offdiag_sum`: Qed via `linear_combination` summing
-  6 mulx hypotheses with product-form weights (commit `e156a2d1`).
-- `sqr4_sdiag_eq_diagonal_sum`: Qed via `linear_combination` summing
-  4 diagonal mulx hypotheses (commit `e156a2d1`).
-- `sqr4_chain_eq_square`: Qed via `linear_combination` summing all 11
-  hypotheses with product-form weights, after the threshold bump
-  (this commit). -/
+Sorry-free.  `sqr4_phaseA_chain_eq_invariant_sum_bv384` is a `True`
+placeholder rather than a lemma: the statement it named is provably
+false under the current SSA encoding of `BignumSqr4.body` (see the
+section preceding that declaration).  Modular-squaring callers route
+through `MontmulAxiom.montmul_call_squaring` instead — see
+`ChainStepAxioms.chain_sqr_step_correct_generic`. -/
 
 namespace CatCrypt.Crypto.Jasmin.BignumHoare
 
@@ -213,10 +199,11 @@ proof; the `BignumSqr4` module is now effectively dead code pending
 either an SSA-IR ADCX/ADOX extension or s2n-bignum-style HOL Light
 trust port for the raw squaring callee. -/
 
-/-- Placeholder for the removed `sqr4_phaseA_chain_eq_invariant_sum_bv384`.
-    Kept as `True` so downstream `import`s don't break if anyone still
-    references the name.  Use `MontmulAxiom.montmul_call_squaring` for
-    modular squaring instead. -/
+/-- Unused vacuous placeholder: the statement is `True`, so it carries no
+    mathematical content.  The lemma this name once denoted is provably false
+    under the current SSA encoding of `BignumSqr4.body` (see the section
+    above).  Nothing in the repository depends on it; use
+    `MontmulAxiom.montmul_call_squaring` for modular squaring. -/
 theorem sqr4_phaseA_chain_eq_invariant_sum_bv384 : True := trivial
 
 /-! ### Phase 4 — bignum_sqr_4 Step 2-3: per-product accumulation lemmas

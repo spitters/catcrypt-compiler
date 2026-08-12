@@ -14,8 +14,7 @@ set_option autoImplicit false
 
 The committed runtime-trip front (`TranslateDialectRuntimeLoop.rolledForLoopNRt`)
 emits exactly ONE loop node and hardcodes its continuation to `body := .ret .here`
-(return the accumulator, stop). That is the wall gap 1 of
-`ConvertToVoleV204FrontEmit` records: no committed front produces
+(return the accumulator, stop). That is the wall: no committed front produces
 `forLoopNRt … (body := <next phase>)`, so a whole-function *sequence* of phases
 (fill ; reduce ; …) could only be assembled by hand-building the `ComL` nesting —
 the emit anti-pattern.

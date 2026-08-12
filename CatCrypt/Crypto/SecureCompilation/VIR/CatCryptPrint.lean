@@ -161,9 +161,8 @@ namespace Test
 open CryptoSSA
 
 /-- `let x = 3 : sword 8; let y = 4 : sword 8; let z = x + y; ret z`, authored
-    directly as a `Com catCryptDialect` (migrated off the deprecated
-    `CProg`/`toVIRCom` route, 2026-06-18; same op structure, so the print/opCount
-    smoke tests in `CatCryptPrintCorrect` are unchanged). -/
+    directly as a `Com catCryptDialect`. The print and `opCount` smoke tests in
+    `CatCryptPrintCorrect` depend on this exact op structure. -/
 def add_3_4_vir : Com catCryptDialect [] (.sword 8) :=
   .var { op := .bvConst 8 (3 : BitVec 8), retTy_eq := rfl, args := .nil }
     (.var { op := .bvConst 8 (4 : BitVec 8), retTy_eq := rfl, args := .nil }

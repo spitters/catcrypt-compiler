@@ -739,10 +739,14 @@ on a fixed-width type). `bmod_signed w n` reduces `n` to `[-2^(w-1), 2^(w-1))`. 
 /-- one — numeric literal 1. -/
 @[inline] def one : Int := 1
 
-/-- count_ones — population count (placeholder: sum of bytes). -/
+/-- count_ones — placeholder for Rust's `count_ones` population count.
+    Not implemented: returns its argument unchanged. -/
 @[inline] def count_ones (x : Int) : Int := x
 
-/-- assert_failed — Rust assert! macro placeholder (no-op in extraction). -/
+/-- assert_failed' — alternate name for the `assert_failed` no-op placeholder
+    (Rust's `assert!` family); same signature and body, discards all arguments.
+    Nothing in this repository references it; it is kept for compatibility with
+    hax extractions that emit the primed spelling. -/
 @[inline] def assert_failed' {α β γ δ : Type} (_ : α) (_ : β) (_ : γ) (_ : δ) : Unit := ()
 
 /-- Re-wrap a nested forFoldReturn result for use in an outer forFoldReturn body.

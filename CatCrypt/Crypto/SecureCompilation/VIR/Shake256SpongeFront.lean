@@ -14,9 +14,8 @@ import CatCrypt.Crypto.SecureCompilation.VIR.QuerySampleBranchFront
 The deployed `Shake256SpongeEmit.shake256Body` is a variable-length FIPS-202
 SHAKE256 sponge — a runtime-`N` absorb loop, a byte-granular tail with the
 `pad10*1` domain pad, and a runtime-`N` squeeze loop — over the owned
-Keccak-f[1600] permutation. It was previously below every landed front. This
-module supplies the schedule language that GENERATES it, composing the three
-pieces the session's two front-landings and the sponge-flip provide:
+Keccak-f[1600] permutation. This module supplies the schedule language that
+GENERATES it, composing three pieces:
 
 * **BStep** (`QuerySampleBranchFront`) — the loop/branch/word-memory control:
   register moves, word `load`/`store` (`mem.<base>.<off>`), immediate

@@ -14,9 +14,8 @@ DRAFT (bucket-A keystone). The phase-1 `Secp256k1FeMulFront` front-generates a
 4-limb field multiply for the **Solinas** prime `p = 2^256 − 2^32 − 977` via the
 cheap fold `2^256 ≡ 2^32 + 977`. That trick only works for pseudo-Mersenne primes
 (secp256k1, Ed25519 `2^255−19`). The pairing / P-256 field-leaves
-(`Pairing/{P256,Bls12381,Bn254}Emit.lean`) are over **generic** primes with no
-such fold, so their `extCall` field/point leaves have never had a front-generated
-body.
+are over **generic** primes with no such fold, so their `extCall` field/point
+leaves have never had a front-generated body.
 
 This module front-generates a **Separated-Operand-Scanning (SOS) Montgomery**
 multiply `out = a · b · R⁻¹ mod p` (`R = 2^256`) for an arbitrary odd prime,

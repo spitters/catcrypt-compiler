@@ -21,14 +21,14 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.PhysBodyGather
    `mov RDX, RDX` (`48 89 D2`) the Lprog `encodeLopn` never emits — the latter
    encodes the same `Lopn` as the single `or %rcx, %rdx` (`48 09 CA`).
 
-2. **The count-in-tag shift representation mismatch — NOW FIXED in `encodeLopn`.**
+2. **The count-in-tag shift representation mismatch.**
    `Com.toLprogPhysAbi` emits the rotate shifts as `Lopn [RAX] "SHR:19:64" [RBX]` —
    count in the **mnemonic tag**, source a **register**. The gather lowers this to
-   `mov RAX, RBX ; shr RAX, $19` (7 bytes). `encodeLopn` USED to have **no arm** for a
-   count-in-tag register-source shift (its shift arm fired only on a separate `.imm`
-   count), so it emitted **0 bytes** — silently dropping the rotation. The
-   `encTagShift` arm now closes that: `encodeLopn` emits the `shr RAX, $19` op
-   (`[0x48,0xc1,0xe8,0x13]`), matching the trailing `shr` of the gather's block.
+   `mov RAX, RBX ; shr RAX, $19` (7 bytes), while `encodeLopn` encodes the same `Lopn`
+   as the shift op alone, `shr RAX, $19` (`[0x48,0xc1,0xe8,0x13]`), through its
+   `encTagShift` arm (the `.imm`-source arm does not match a register-source
+   count-in-tag shift). So the shift OP agrees byte-for-byte and the whole divergence
+   is the gather's leading materialise `mov`.
 
 This module is the **additive** fix for divergence (1): a new lowering
 `lowerLinstrExtCov3` with the `d == s0 ⇒ skip the leading mov` peephole on the
@@ -37,12 +37,12 @@ per-op byte-agreement theorem for the in-place case (`native_decide`-free, via t
 `BlockBytesAgreeExtended` dispatch technique), and `#eval` evidence that with the
 peephole the two-source ALU core now byte-matches `encodeLopn`.
 
-Divergence (2) — the shift — is **fixed in `encodeLopn`** (the `encTagShift` arm,
-`BlockBytesAgreeExtended.encodeLopn_shr19_emits`). §4c records the regression
-witnesses (the Lprog encoder now emits each rotation's bytes — count of dropped
-shifts `4 → 0`). The remaining shift residual between the two gathers is the
+Divergence (2) — the shift — is handled on the `encodeLopn` side by the `encTagShift`
+arm (`BlockBytesAgreeExtended.encodeLopn_shr19_emits`); the byte witnesses on the real
+kernel live in `GoldenPathByteIdentityDemo` (every ALU-core `Lopn` encodes to a
+non-empty byte list). The remaining shift residual between the two gathers is the
 gather's leading materialise `mov d, src` (the shift arm `lowerShiftImmJ` does not
-coalesce `d = src`), not a dropped op — the shift OP byte-agrees on both sides.
+coalesce `d = src`) — the shift OP itself byte-agrees on both sides.
 
 ## The peephole (divergence 1)
 
@@ -68,8 +68,9 @@ bytes — *no* leading self-`mov`. This is `or_bytes_agree` (the proven per-op
 resolver agreement) ∘ `encodeLopn_or₂` (the proven Lprog dispatch), with the
 self-`mov` of `or64_block_eq_mov_prepend_lopn` removed by the peephole. With both
 divergences addressed — (1) here, (2) in `encodeLopn`'s `encTagShift` arm — the
-shift-free ALU core byte-matches `encodeLcmd` exactly (§4b′), and the shift op itself
-agrees per-op; the only whole-core residual is the gather's per-shift materialise `mov`.
+shift-free ALU core byte-matches `encodeLcmd` exactly (witnessed on the real kernel in
+`GoldenPathByteIdentityDemo`), and the shift op agrees per-op; the only whole-core
+residual is the gather's per-shift materialise `mov`.
 
 No `sorry`, no axiom, no `native_decide` (the lemma proofs; the `#eval`/byte-length
 witnesses in §4 are interpreter evaluation, not part of any proof term).

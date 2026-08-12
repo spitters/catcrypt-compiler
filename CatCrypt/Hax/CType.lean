@@ -13,8 +13,9 @@ import Mathlib.Data.Fintype.Option
 # CType: Closed Crypto Type Universe
 
 A closed type universe mapping hax-extracted Rust types to concrete Lean types.
-Eliminates per-protocol boilerplate for `Fintype`, `DecidableEq`, `Nonempty`,
-and `Inhabited` instances that are currently duplicated across 19+ HaxBridge files.
+It declares the `Fintype`, `DecidableEq`, `Nonempty`, and `Inhabited` instances
+once, uniformly for every type of the universe, so hax-extracted protocol
+bridges need not restate them one by one.
 
 ## Main definitions
 
@@ -232,7 +233,7 @@ def instNonempty (τ : CType) : Nonempty τ.denote :=
 /-! ## Common crypto types
 
 Abbreviations for frequently-used crypto type patterns, matching
-the type aliases found in HaxBridge files. -/
+the type aliases used by the hax-extracted protocol bridges. -/
 
 /-- 128-bit block: `Vector UInt8 16` = `RustArray u8 16`. -/
 abbrev block128 : CType := .array .u8 16
@@ -255,10 +256,9 @@ example : (CType.option .u64).denote = Option UInt64 := rfl
 
 /-! ## Global instances for common crypto types
 
-These eliminate the duplicated `Fintype`/`Nonempty` boilerplate
-found in 6+ HaxBridge files. Each file previously defined:
-  `instFintypeBitVec8`, `instFintypeUInt8`, `vectorEquivFin`, `instFintypeVector`
-Now replaced by importing `CatCrypt.Hax.CType`. -/
+Shared `Fintype` and `Nonempty` instances for the scalar and `Vector` types used
+by the extracted-Rust bridge files, so those files can import
+`CatCrypt.Hax.CType` instead of restating the boilerplate. -/
 
 noncomputable instance instGlobalFintypeUInt8 : Fintype UInt8 := instFintype .u8
 noncomputable instance instGlobalFintypeUInt16 : Fintype UInt16 := instFintype .u16
