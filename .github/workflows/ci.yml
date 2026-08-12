@@ -17,6 +17,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check Markdown file links resolve
+        run: bash scripts/check-doc-links.sh
+
       - name: Install elan + the pinned Lean toolchain
         run: |
           curl -sSfL https://elan.lean-lang.org/elan-init.sh | sh -s -- -y --default-toolchain "$(cat lean-toolchain)"
