@@ -3,14 +3,17 @@ message: "If you use this software, please cite the CatCrypt paper below."
 title: "CatCrypt: From Rust to Cryptographic Security in Lean"
 abstract: >-
   A machine-checked compiler from a covered fragment of hax-extracted Rust,
-  through the Com IR, to a verified owned x86/ARM/RISC-V backend, carved out of
-  the CatCrypt workspace with an isolated ISA / jasmin / byte-level trust surface.
+  through the Com IR, to a verified x86-64 / AArch64 / RISC-V backend that emits
+  machine bytes inside Lean 4, with an isolated ISA / jasmin / byte-level trust
+  surface.
 type: software
 authors:
   - family-names: Spitters
     given-names: Bas
 license: MIT
 repository-code: "https://github.com/spitters/catcrypt-compiler"
+version: 0.1.0-alpha.1
+date-released: "2026-07-18"
 preferred-citation:
   type: article
   title: "CatCrypt: From Rust to Cryptographic Security in Lean"

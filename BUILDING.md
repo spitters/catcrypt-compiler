@@ -106,10 +106,19 @@ lake -R -Kenv=doc update
 lake -R -Kenv=doc build CatCryptCompiler:docs     # output under .lake/build/doc/
 ```
 
-Proof blueprint (leanblueprint) — the theorem-dependency graph in `blueprint/`:
+Manual (Verso) — the narrative documentation in `docs/`, a package separate from the
+compiler library so verso is not a transitive dependency:
 
 ```bash
-pip install leanblueprint
-leanblueprint pdf                 # print version
-leanblueprint web                 # dependency-graph website
+cd docs
+lake update                                    # resolve verso + write docs/lake-manifest.json
+lake build CompilerManual
+lake exe compiler-manual --output _out         # open docs/_out/html-single/index.html
 ```
+
+Proof blueprint (leanblueprint) — `blueprint/src/content.tex` is the theorem-dependency
+outline: each informal statement with the `\lean{...}` name of the formal theorem it
+maps to. It is the source text only — the leanblueprint scaffolding (`src/print.tex`,
+`src/web.tex`, `src/plastex.cfg`, `src/macros/`, the `lean_decls` wiring) is not
+committed, so `leanblueprint pdf` / `leanblueprint web` do not yet run from a fresh
+clone.

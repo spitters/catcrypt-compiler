@@ -1,5 +1,7 @@
 % CatCrypt verified compiler — blueprint (leanblueprint).
-% Build:  leanblueprint pdf     (print) ;  leanblueprint web   (dependency-graph site)
+% Source text only — the leanblueprint scaffolding is not committed, so
+% `leanblueprint pdf` / `leanblueprint web` do not yet run from a fresh clone
+% (see BUILDING.md).
 % Each \lean{...}\leanok node links an informal statement to its formal theorem.
 
 \chapter{The CatCrypt verified compiler}
@@ -8,13 +10,18 @@
 
 The compiler is proved correct on the covered sublanguage $\mathsf{IsCoveredCtl}$
 --- the fragment of hax-extracted Rust the front handles (ANF / structured
-control flow). It is \emph{not} a proof about arbitrary Rust. Concrete
-per-scheme emit endpoints live outside this package; here we state the generic
-pipeline and its end-to-end guarantees.
+control flow). It is \emph{not} a proof about arbitrary Rust. The per-scheme emit
+endpoints are in this package; the scheme-level security chains that consume them
+are not. This blueprint states the capstone nodes only: the backend machine
+models, the $\mathsf{decode}\circ\mathsf{encode}$ round-trips, and leakage/CT
+preservation are proved in Lean but are not yet nodes in the graph; front
+totality over the covered fragment is established per program (\texttt{isSome}
+witnesses), with translation success carried as an explicit hypothesis of the
+end-to-end theorems.
 
 \begin{definition}[Covered control-flow fragment]
   \label{def:covered-ctl}
-  \lean{IsCoveredCtl}
+  \lean{CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl.IsCoveredCtl}
   \leanok
   The predicate carving the source fragment for which every pipeline stage is
   total and correctness-preserving.
@@ -23,14 +30,14 @@ pipeline and its end-to-end guarantees.
 \section{Pipeline}
 
 Two fronts (hax/Rust $\to$ LowCT $\to$ \texttt{Com} IR) lower to one verified
-owned x86/ARM/RISC-V backend. The trust surface (ISA models,
+x86/ARM/RISC-V backend. The trust surface (ISA models,
 $\mathsf{decode}\circ\mathsf{encode}=\mathrm{id}$, byte-level instruction trust)
 is confined to this package.
 
 \begin{theorem}[Rust $\to$ jasmin \texttt{Com}, end to end]
   \label{thm:rust-to-jasmin}
   \uses{def:covered-ctl}
-  \lean{rustToJasminCom_endToEnd}
+  \lean{CatCrypt.Crypto.SecureCompilation.VIR.CompilerCorrectnessExtracted.rustToJasminCom_endToEnd}
   \leanok
   For a source in the covered fragment, the compiled \texttt{Com} program refines
   the reference semantics.
@@ -39,7 +46,7 @@ is confined to this package.
 \begin{theorem}[Robust compilation, source to x86]
   \label{thm:robust-x86}
   \uses{thm:rust-to-jasmin}
-  \lean{robustCompilation_source_to_x86}
+  \lean{CatCrypt.Crypto.SecureCompilation.VIR.RobustCompilationPipeline.robustCompilation_source_to_x86}
   \leanok
   The composed pipeline down to x86 bytes preserves the source guarantee
   robustly (against the covered fragment's contexts).
@@ -47,7 +54,7 @@ is confined to this package.
 
 \begin{theorem}[Backend correctness, lattice route]
   \label{thm:compile-correct-all}
-  \lean{compile_correct_all}
+  \lean{CatCrypt.Crypto.SecureCompilation.VIR.Compiler.compile_correct_all}
   \leanok
   Fix a target model choice and lattice parameters $(q,n)$. Assume
   \begin{itemize}
@@ -92,10 +99,3 @@ is confined to this package.
   \texttt{sail-arm} decode round-trip rather than by an execute-model
   refinement.
 \end{theorem}
-
-\section{What remains}
-
-The blueprint currently states the capstones. Filling in intermediate nodes
-(front totality, backend machine model, the $\mathsf{decode}\circ\mathsf{encode}$
-lemma, leakage/CT preservation) makes the dependency graph a faithful map of the
-proof and is the natural next authoring step.

@@ -2,8 +2,9 @@
 
 The compiler emits assembly inside Lean. These benchmarks measure that emitted
 assembly against the fastest deployed reference for each primitive, cycle-for-cycle
-on one host. The numbers below are a snapshot; the `bench/` directory holds the
-harness and reproduces them.
+on one host. The numbers below are a snapshot; the measurement harness (`bench/`) is part of the
+wider CatCrypt development and is not shipped in this package, so the numbers cannot
+be re-run from this repository alone.
 
 ## Method
 

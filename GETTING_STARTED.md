@@ -17,8 +17,10 @@ hax and lowered through the front — to AArch64, and prints the emitted assembl
 	orr w4, w3, w3
 ```
 
-The first run builds the dependencies (mathlib and the CatCrypt libraries); after
-that it is fast. See [BUILDING.md](BUILDING.md) for the toolchain and dependencies.
+This assumes the first-time setup in [BUILDING.md](BUILDING.md) has already been run
+(`lake update`, `lake exe cache get`, `lake build`) — `lake env` only runs Lean in the
+workspace environment, it does not build anything itself. Once the library is built,
+re-running the command is fast.
 
 ## What just happened
 
@@ -37,6 +39,6 @@ that it is fast. See [BUILDING.md](BUILDING.md) for the toolchain and dependenci
 - [bench.md](bench.md) — measured performance of the emitted assembly against the
   deployed reference for each primitive.
 - The manual — narrative and the headline theorems:
-  `cd docs && lake build CompilerManual && lake exe compiler-manual --output _out`.
+  `cd docs && lake update && lake build CompilerManual && lake exe compiler-manual --output _out`.
 - [AxiomAudit.lean](AxiomAudit.lean) — the axioms the headline theorems rest on:
   `lake env lean AxiomAudit.lean`.

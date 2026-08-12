@@ -75,7 +75,7 @@ Three theorems state the compiler's correctness end to end:
 - [`compileVia_comp_correct`](CatCrypt/Crypto/SecureCompilation/VIR/LoweringDataComp.lean)
   — for a program compiled through a chain of dialects (`d → d' → jasmin`), running
   the owned-emitted code computes the composite value transport of the program's
-  denotation. The single-dialect keystone (`compileVia_correct`) and the lattice
+  denotation. The single-dialect case (`compileVia_correct`) and the lattice
   route (`compile_correct_all`) are instances.
 
 The trusted base these rest on is described in [PROVENANCE.md](PROVENANCE.md).
@@ -83,5 +83,5 @@ The trusted base these rest on is described in [PROVENANCE.md](PROVENANCE.md).
 ## The manual
 
 ```bash
-cd docs && lake build CompilerManual && lake exe compiler-manual --output _out
+cd docs && lake update && lake build CompilerManual && lake exe compiler-manual --output _out
 ```

@@ -25,7 +25,7 @@ written at its natural level of abstraction.
 ## The three aspects
 
 - **Orchestration** — Rust, extracted through hax. The extraction eliminates traits,
-  generics, closures, and heap references, part of these transformations are proved correct in [hax-lean](https://github.com/AU-COBRA/hax-lean), and hands the
+  generics, closures, and heap references, part of these transformations are proved correct in [hax-lean](https://github.com/spitters/hax-lean), and hands the
   covered control spine to LowCT, a low level constant-time language, and further to the dialect stack.
   These can also be authored directly in a lean AST or in lean surface, using rupicola style relational compilation.
 - **Algebra** - The field, modular-arithmetic, elliptic-curve, and
@@ -79,7 +79,8 @@ lineage: AUCurves, bedrock2, Rupicola.
 
 ## The guarantees
 
-The pipeline preserves three properties from source to emitted bytes.
+The pipeline preserves three properties from source to emitted bytes. The
+[manual](docs/CompilerManual.lean) states them in full, with the headline theorems.
 
 - **Functional correctness** — each lowering is proved to preserve denotation, so a
   well-typed term over the covered fragment denotes its source specification at every
@@ -98,18 +99,25 @@ The pipeline preserves three properties from source to emitted bytes.
 - **Constant-time** — preserved over the full modern constructor set, including
   data-dependent loops: a loop is constant-time exactly when its guard is public,
   and the analyzer accepts a public-count loop and rejects a secret-dependent one.
-  An information flow calculus allows us to write non-CT code too.
-- **Security** — Hax allows us to use a protocol's source both as input to the catcrypt compiler and as a source for proofs in the computational model in CatCrypt, in the spirit of [Last yard](https://eprint.iacr.org/2023/185).
+  The constant-time clause is anchored on the x86-64 machine model; the AArch64 and
+  RISC-V backends carry functional correctness. An information flow calculus allows
+  us to write non-CT code too.
+- **Security** — Hax allows us to use a protocol's source both as input to the catcrypt compiler and as a source for proofs in the computational model in CatCrypt, in the spirit of [Last yard](https://eprint.iacr.org/2023/185). Carrying a security bound onto the emitted bytes — byte-level transfer — holds for the symmetric family and is a roadmap goal for the asymmetric families.
 
 
 ## What this repository contains
 
 The compiler: the two fronts, the dialect stack, the equality-saturation optimizer,
-the x86-64 / AArch64 / RISC-V backend, and the correctness theorems. The primitives
-compiled through it — post-quantum, symmetric, and asymmetric cryptography, and
-zero-knowledge proof systems — and their security chains live in the wider CatCrypt
-development; this package is the engine they run through. The [CatCrypt
-paper](CITATION.cff) describes the full system.
+the x86-64 / AArch64 / RISC-V backend, and the correctness theorems. Primitive kernels compiled
+through it are in this package too: AES-128, GF(2^128), HMAC, Keccak/SHAKE,
+Poly1305, SHA-256/512, BLAKE3, the BN254 and BLS12-377 pairing arithmetic, the HAWK
+negacyclic and NTRU-HRSS ring multiplies, the FN-DSA emit modules, and the Plonky3 /
+Bulletproofs reflect modules. What lives in the wider CatCrypt development is the
+security layer — the scheme security proofs and the UC/MPC protocol chains — which
+this package's module closure deliberately excludes (see the comment on
+`lean_lib CatCryptCompiler` in `lakefile.lean`). The [CatCrypt
+paper](https://eprint.iacr.org/2026/604) describes the full system;
+[CITATION.cff](CITATION.cff) carries the citation metadata.
 
 ## Source coverage — the language of constant-time crypto
 

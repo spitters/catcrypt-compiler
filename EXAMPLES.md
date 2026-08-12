@@ -1,9 +1,11 @@
 # Examples
 
-Buildable example modules, each a single file. Build one with
-`lake build <module>` or elaborate it with `lake env lean <path>` to run its
-`#eval`s. Start with [GETTING_STARTED.md](GETTING_STARTED.md) and
-[DEMO.md](DEMO.md); this is the fuller index.
+Buildable example modules, each a single file. Every module name in the table below
+is relative to the `CatCrypt.Crypto.` prefix: build one with
+`lake build CatCrypt.Crypto.<module>`, or elaborate its file with
+`lake env lean <path>` to run its `#eval`s. Start with
+[GETTING_STARTED.md](GETTING_STARTED.md) and [DEMO.md](DEMO.md); this is the fuller
+index.
 
 | Module | What it shows |
 |---|---|
