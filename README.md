@@ -4,9 +4,13 @@ A verified compiler for cryptography, built inside the Lean 4 proof assistant. A
 crypto implementation has three parts: **orchestration** (the protocol and control
 spine), **algebra** (field, curve, and polynomial mathematics), and **leaves**
 (low-level hand-tuned primitives). CatCrypt gives each part a verified source,
-lowers them through typed MLIR-style dialects (close to prime-ir), and emits constant-time x86-64,
-AArch64, and RISC-V as machine bytes inside Lean. The compiler correctness is verified.
-It is also constant time, and robust, but the precise proofs of the latter are under construction.
+lowers them through typed MLIR-style dialects (close to prime-ir), and emits x86-64,
+AArch64, and RISC-V as machine bytes inside Lean. Every lowering is proved to preserve
+the denotation, and on each of the three backends the emitted machine block is proved to
+compute the source denotation for the straight-line register fragment. Constant time and
+robust compilation are proved for parts of the pipeline; the end-to-end statements are
+under construction. The [guarantees](#the-guarantees) section names the fragment and
+the hypotheses each result carries.
 The design also takes inspiration from [AUCurves](https://github.com/AU-COBRA/AUCurves)
 
 Production rust implementation often only emphasize two layers: orchestration in Rust,
@@ -77,11 +81,20 @@ lineage: AUCurves, bedrock2, Rupicola.
 
 The pipeline preserves three properties from source to emitted bytes.
 
-- **Functional correctness** — every emitted kernel denotes its source specification.
-  Each lowering is proved to preserve denotation, so the guarantee holds for every
-  well-typed term over the covered fragment. The Rust front's end-to-end result
-  agrees with the source over the machine-word semantics and covers data-dependent
-  loops. (Example: the lattice NTT compiles to the source polynomial multiply.)
+- **Functional correctness** — each lowering is proved to preserve denotation, so a
+  well-typed term over the covered fragment denotes its source specification at every
+  dialect boundary. At machine level, `com_x86_e2e` / `com_arm_e2e` / `com_riscv_e2e`
+  prove that the compiled block, run on the backend's block semantics, computes the
+  source `Com.denote` for a straight-line program over the supported op set in an
+  all-`reg 64` context; on the base-ALU subset of that fragment,
+  `ComToArmLsem.comToArmLsem_correct` and `ComToRiscvLsem.comToRiscvLsem_correct` add
+  that every executed instruction lies in the subset checked against the vendor Sail
+  model. The whole-pipeline x86 statement `robustCompilation_source_to_x86` carries a
+  lattice-dialect source to the emitted x86 observable, with jasmin's verified compiler
+  as an explicit hypothesis. The Rust front's end-to-end result
+  (`rustToJasminCom_endToEnd`) agrees with the source over the machine-word semantics on
+  the `IsCoveredCtl` fragment, data-dependent loops included. (Example: the lattice NTT
+  compiles to the source polynomial multiply.)
 - **Constant-time** — preserved over the full modern constructor set, including
   data-dependent loops: a loop is constant-time exactly when its guard is public,
   and the analyzer accepts a public-count loop and rejects a secret-dependent one.

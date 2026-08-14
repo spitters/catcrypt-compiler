@@ -27,13 +27,11 @@ that it is fast. See [BUILDING.md](BUILDING.md) for the toolchain and dependenci
   IR.
 - **The output** is the AArch64 block held by `srcArm` in the module, rendered to
   text by the assembly printer.
-- **The certificate** is in the same file: `thirToJasmin_denote` proves the compiled
-  IR denotes the source, and `com_riscv_e2e` proves the machine block computes that
-  denotation for every supported program.
+- **The certificates** are the theorems [DEMO.md](DEMO.md) walks through.
 
 ## Next
 
-- [DEMO.md](DEMO.md) — the same routine plus the relational front (a Lean
+- [DEMO.md](DEMO.md) — what this run proves, plus the relational front (a Lean
   specification compiled by relational compilation).
 - [EXAMPLES.md](EXAMPLES.md) — a curated set of buildable example modules.
 - [bench.md](bench.md) — measured performance of the emitted assembly against the

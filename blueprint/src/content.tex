@@ -45,12 +45,52 @@ is confined to this package.
   robustly (against the covered fragment's contexts).
 \end{theorem}
 
-\begin{theorem}[Backend correctness, all covered programs]
+\begin{theorem}[Backend correctness, lattice route]
   \label{thm:compile-correct-all}
-  \uses{def:covered-ctl}
   \lean{compile_correct_all}
   \leanok
-  Every covered program compiles to a target that agrees with the reference.
+  Fix a target model choice and lattice parameters $(q,n)$. Assume
+  \begin{itemize}
+    \item $\mathsf{hVal}$: the chosen model's $\mathsf{validated}$ proposition
+      --- the ISA validation that model records (deepest for x86, a
+      $\mathsf{decode}\circ\mathsf{encode}$ round-trip for RISC-V and ARM);
+    \item $\mathsf{hLeaf} : \mathsf{LeafAgrees}\ \mathit{leafSem}$, the leaf
+      agreement edge;
+    \item $\mathsf{hInj}$: injectivity of the fresh-name supply
+      $\mathsf{freshName}$;
+    \item $\mathsf{hPinj}$: injectivity of the whole-function lowering's
+      parameter map;
+    \item $\mathsf{hCompile} : \mathsf{compile}\ q\ n\ (\mathsf{lattice}\ q\ n)
+      = \mathsf{some}\ m$.
+  \end{itemize}
+  Then the model's validation is in force and, slot-wise, decoding the model's
+  execution of the emitted code $m$ equals the source denotation
+  $\mathsf{latticeDenote}\ q\ n\ V$.
+
+  The statement is at the lattice route only: $\mathsf{compile}$ returns
+  $\mathsf{none}$ on $\mathsf{Source.front}$, whose correctness is the separate
+  $\mathsf{compile\_correct\_front}$, an instance of
+  Theorem~\ref{thm:rust-to-jasmin}. The lattice carrier's $\mathsf{exec}$ is the
+  run-output-preserving identity, so the equation concerns the emitted code's
+  denotation under that carrier; the block-executing models are
+  Theorem~\ref{thm:compile-correct-basealu}.
+\end{theorem}
+
+\begin{theorem}[Backend correctness over a block-execution semantics]
+  \label{thm:compile-correct-basealu}
+  \lean{compile_correct_riscv}
+  \leanok
+  For a straight-line \texttt{Com} whose every operation is base-ALU
+  (\texttt{ADD}/\texttt{SUB}/\texttt{AND}/\texttt{OR}/\texttt{XOR} at width 64)
+  over an all-\texttt{reg 64} context, decoding the RISC-V model's execution of
+  the compiled-and-lowered block on the encoded input state --- where
+  $\mathsf{exec}$ is the $\mathsf{runRBlock64}$ instruction fold --- reads back
+  the source $\mathsf{Com.denote}$ at the result register, and every executed
+  instruction is base-ALU, hence matches its sail-riscv
+  $\mathsf{execute\_RTYPE}$ clause. $\mathsf{compile\_correct\_arm}$ is the
+  AArch64 counterpart over $\mathsf{runBBlock}$, grounded by the
+  \texttt{sail-arm} decode round-trip rather than by an execute-model
+  refinement.
 \end{theorem}
 
 \section{What remains}

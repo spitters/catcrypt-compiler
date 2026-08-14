@@ -168,8 +168,9 @@ def X86Validated : Prop :=
 
 /-- **RISC-V — pilot.** The full emitted RV64I subset `decode∘encode` round-trip
     against the sail-riscv `encdec` discipline (`SailRiscvDecoder.roundtrip_RInst`).
-    There is no whole-`Com`→RISC-V value-preservation theorem yet; this is the
-    instruction-level pilot. Defined as exactly the type of that proved
+    This field is the instruction-level round-trip only; the whole-`Com`→RISC-V
+    value preservation is `ComToRiscvLsem.comToRiscvLsem_correct`, over the
+    base-ALU all-`reg 64` fragment. Defined as exactly the type of that proved
     theorem (`riscvValidated_proof`). -/
 def RiscvValidated : Prop :=
   ∀ (i : RISCVBackend.RInst)
@@ -182,8 +183,9 @@ def RiscvValidated : Prop :=
 /-- **ARM (AArch64) — partial.** The GP-ALU `ADD` `encode∘decode` round-trip
     against the transcribed aarch_decode Sail clause (`SailArmDecoder.roundtrip_ainst_add`),
     representative of the proved GP-ALU subset (`add/sub/and/orr/eor/mov/ror/lsr`).
-    There is no whole-`Com`→ARM value-preservation theorem yet; this is the
-    partial round-trip subset. Defined as exactly the type of that
+    This field is the round-trip subset only; the whole-`Com`→ARM value
+    preservation is `ComToArmLsem.comToArmLsem_correct`, over the base-ALU
+    all-`reg 64` fragment. Defined as exactly the type of that
     proved theorem (`armValidated_proof`). -/
 def ArmValidated : Prop :=
   ∀ (alloc : ARMBackend.GpAlloc) (d a b : String)
