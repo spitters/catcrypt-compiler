@@ -26,17 +26,18 @@ The polynomial identities behind the group law and the extended-coords
 correspondence are proved in Lean by `grobner` from the curve equation
 and the `T·Z = X·Y` well-formedness constraints. All non-vanishing facts
 about the addition-formula denominators reduce to the single leaf
-`EdwardsPointAff.affine_denom_nonsquare`, which is the file's only axiom
-and is cited from the Rocq development; it rests on a non-square
-hypothesis on `d` that `EdwardsParams F` does not carry.
+`EdwardsPointAff.affine_denom_nonsquare`, proved from the curve
+equations, the square-`a` witness and the non-square-`d` hypothesis
+carried by `EdwardsParams F`.
 
 ## What's stated here
 
 ### Curve parameters
 
 - `EdwardsParams F`: a record bundling `a`, `d`, the non-degeneracy
-  conditions `a ≠ 0`, `d ≠ 0`, `a ≠ d`, and the characteristic condition
-  `(2 : F) ≠ 0`.
+  conditions `a ≠ 0`, `d ≠ 0`, `a ≠ d`, the characteristic condition
+  `(2 : F) ≠ 0`, and the completeness conditions `∃ s, s² = a` and
+  `∀ x, x² ≠ d`.
 - The Ed25519 instance: `a = -1`, `d = -121665/121666`.
 
 ### Affine points and group operation
@@ -60,10 +61,10 @@ hypothesis on `d` that `EdwardsParams F` does not carry.
   extended points projects to `EdwardsPointAff.add` on the corresponding
   affine points.
 
-### Cited fact
+### Completeness leaf
 
-- `EdwardsPointAff.affine_denom_nonsquare` — the completeness leaf
-  `(d·x₁·x₂·y₁·y₂)² ≠ 1`, from `XYZT/Basic.v`'s `to_affine_denom_nonzero`.
+- `EdwardsPointAff.affine_denom_nonsquare` — `(d·x₁·x₂·y₁·y₂)² ≠ 1`, the
+  Lean counterpart of `Curves/Edwards/Pre.v`'s `denominator_nonzero`.
   `add_denom_pos`, `add_denom_neg` and the projective
   `EdwardsPointExt.m1add_ZneZero` are theorems over it.
 -/
@@ -95,6 +96,14 @@ structure EdwardsParams (F : Type*) [Field F] where
       completeness denominator `(2·Z₁·Z₂)² - (2·d·T₁·T₂)²` vanishes
       identically. -/
   two_ne_zero : (2 : F) ≠ 0
+  /-- `a` is a square. Counterpart of fiat-crypto's `square_a` section
+      hypothesis in `Crypto/Curves/Edwards/Pre.v`. -/
+  square_a : ∃ s : F, s ^ 2 = a
+  /-- `d` is not a square. Counterpart of fiat-crypto's `nonsquare_d` section
+      hypothesis in `Crypto/Curves/Edwards/Pre.v`. Together with `square_a`
+      this is what makes the addition formula complete: at a square `d` the
+      denominators `1 ± d·x₁·x₂·y₁·y₂` have on-curve zeros. -/
+  nonsquare_d : ∀ x : F, x ^ 2 ≠ d
 
 /-! ## 2. Affine points -/
 
@@ -147,18 +156,49 @@ noncomputable def add_xy (E : EdwardsParams F) (Px Py Qx Qy : F) : F × F :=
 /-- **Bernstein–Lange–Niederhagen completeness, affine leaf form.** For two
     on-curve affine points, `(d·Px·Qx·Py·Qy)² ≠ 1`.
 
-    Cited from fiat-crypto `src/Curves/Edwards/XYZT/Basic.v`,
-    `to_affine_denom_nonzero` (`Qed`), which derives it from
-    `AffineProofs.v`'s `E.denominator_nonzero`. That derivation runs under
-    the curve-parameter hypotheses `nonzero_a`, `square_a` and
-    `nonsquare_d`; `EdwardsParams F` carries `a ≠ 0`, and the square /
-    non-square conditions on `a` and `d` are the part this citation
-    assumes. The addition-formula denominator facts `add_denom_pos` and
+    The Lean counterpart of fiat-crypto `src/Curves/Edwards/Pre.v`'s
+    `denominator_nonzero`, and follows its proof. Writing `s` for a square
+    root of `a` (`EdwardsParams.square_a`) and `u = d·Px·Qx·Py·Qy`, the two
+    curve equations and `u² = 1` give
+
+    `(s·Px ± u·Py)² = d · ((s·Qx ± Qy)·Px·Py)²`,
+
+    so whichever of `s·Qx + Qy`, `s·Qx − Qy` is nonzero exhibits a square
+    root of `d`, contradicting `EdwardsParams.nonsquare_d`. Both vanish only
+    when `Qx = 0`, which `u² = 1` excludes.
+
+    The addition-formula denominator facts `add_denom_pos` and
     `add_denom_neg` are theorems over this leaf. -/
-axiom affine_denom_nonsquare {F : Type*} [Field F] {E : EdwardsParams F}
+theorem affine_denom_nonsquare {F : Type*} [Field F] {E : EdwardsParams F}
     (Px Py Qx Qy : F)
     (hP : OnCurveAff E Px Py) (hQ : OnCurveAff E Qx Qy) :
-    (E.d * Px * Qx * Py * Qy)^2 ≠ 1
+    (E.d * Px * Qx * Py * Qy)^2 ≠ 1 := by
+  intro h
+  have hP' : E.a * Px^2 + Py^2 = 1 + E.d * Px^2 * Py^2 := hP
+  have hQ' : E.a * Qx^2 + Qy^2 = 1 + E.d * Qx^2 * Qy^2 := hQ
+  obtain ⟨s, hs⟩ := E.square_a
+  have hPx : Px ≠ 0 := by rintro rfl; simp at h
+  have hPy : Py ≠ 0 := by rintro rfl; simp at h
+  have hQx : Qx ≠ 0 := by rintro rfl; simp at h
+  by_cases hc : s * Qx + Qy = 0
+  · by_cases hc2 : s * Qx - Qy = 0
+    · have hs0 : s ≠ 0 := fun hz => E.a_ne_zero (by rw [← hs, hz]; ring)
+      have h2 : (2 : F) * s * Qx = 0 := by linear_combination hc + hc2
+      rcases mul_eq_zero.mp h2 with h' | h'
+      · rcases mul_eq_zero.mp h' with h'' | h''
+        · exact E.two_ne_zero h''
+        · exact hs0 h''
+      · exact hQx h'
+    · refine E.nonsquare_d ((s * Px - (E.d * Px * Qx * Py * Qy) * Py)
+        / ((s * Qx - Qy) * Px * Py)) ?_
+      rw [div_pow, div_eq_iff (pow_ne_zero 2 (mul_ne_zero (mul_ne_zero hc2 hPx) hPy))]
+      linear_combination (Px^2 - E.d * Px^2 * Py^2 * Qx^2) * hs + (Py^2 - 1) * h
+        + (-(E.d * Px^2 * Py^2)) * hQ' + hP'
+  · refine E.nonsquare_d ((s * Px + (E.d * Px * Qx * Py * Qy) * Py)
+      / ((s * Qx + Qy) * Px * Py)) ?_
+    rw [div_pow, div_eq_iff (pow_ne_zero 2 (mul_ne_zero (mul_ne_zero hc hPx) hPy))]
+    linear_combination (Px^2 - E.d * Px^2 * Py^2 * Qx^2) * hs + (Py^2 - 1) * h
+      + (-(E.d * Px^2 * Py^2)) * hQ' + hP'
 
 /-- Completeness, positive form: for `Px, Py, Qx, Qy` on the curve, the
     x-coordinate denominator of `add_xy` is nonzero. -/
@@ -719,6 +759,10 @@ end EdwardsPointExt
       (`a ≠ 0`, `d ≠ 0`, `a ≠ d`); all three resolve by direct
       computation on the rational representations of -1, -121665/121666.
     - `(2 : F) ≠ 0` holds since `2^255 - 19` is odd.
+    - `square_a` holds because `2^255 - 19 ≡ 1 [MOD 4]`, so `-1` is a
+      quadratic residue.
+    - `nonsquare_d` is the quadratic-residue character of
+      `-121665/121666` at `2^255 - 19`.
 
     The companion `Ed25519Spec.lean` already uses `EdPoint` (extended
     coords) and `OnCurve` predicates as opaque axioms; once this file's
