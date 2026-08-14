@@ -247,7 +247,6 @@ CatCrypt.Crypto.SecureCompilation.CtTableEmitGoldenPath
 CatCrypt.Crypto.SecureCompilation.CubExtGeneric
 CatCrypt.Crypto.SecureCompilation.Dialects
 CatCrypt.Crypto.SecureCompilation.Dialects.ArithExportFaithful
-CatCrypt.Crypto.SecureCompilation.Dialects.ByteMemrefFrontPrototype
 CatCrypt.Crypto.SecureCompilation.Dialects.ByteMemrefFrontValidate
 CatCrypt.Crypto.SecureCompilation.Dialects.ByteMemrefRolledLoop
 CatCrypt.Crypto.SecureCompilation.Dialects.ChaChaWholeKernelFront
@@ -701,6 +700,4 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.X25519MonoLadderMem2Reg
 CatCrypt.Crypto.SecureCompilation.X86Backend.X25519SpilledLadderKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.XorCombineRolledEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.XtsTweakKernel
-CatCrypt.Crypto.SecureCompilation.X86Backend._MpnFrontCheck
-CatCrypt.Crypto.SecureCompilation.X86Backend._MpnFrontScratch
 CatCrypt.Crypto.SecureCompilation.ZkProtocolKernels

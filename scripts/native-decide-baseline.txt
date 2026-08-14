@@ -1,4 +1,4 @@
-3450
+3444
 # native_decide occurrences over CatCrypt/ ("<count>\t<file>", tab-separated). Goal: burn down.
 # Frozen baseline; auto-tightened by scripts/proof-cost-ratchet.sh.
 5	CatCrypt/Crypto/BLAKE3/CompressEmit.lean
@@ -536,7 +536,6 @@
 1	CatCrypt/Crypto/SecureCompilation/X86Backend/MpnAddCarryFrontPrototype.lean
 10	CatCrypt/Crypto/SecureCompilation/X86Backend/MpnAddFrontEmit.lean
 3	CatCrypt/Crypto/SecureCompilation/X86Backend/MpnAdxOwnedLprog.lean
-6	CatCrypt/Crypto/SecureCompilation/X86Backend/_MpnFrontScratch.lean
 29	CatCrypt/Crypto/SecureCompilation/X86Backend/MpnLinearKernels.lean
 13	CatCrypt/Crypto/SecureCompilation/X86Backend/MpnLoopEmit.lean
 8	CatCrypt/Crypto/SecureCompilation/X86Backend/MpnLoopFrontEmit.lean
