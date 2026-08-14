@@ -22,7 +22,7 @@ This is a **functional-equality** tie, not a security claim.
   emitted by the verified compiler computes the closed-form quarter-round
   reference `ThirToComFront.chachaQRSpec`
   (`qrA_compiles : … ∧ prog.denote … = (chachaQRSpec a b c d).1`, etc.).
-- The ChaCha20 AEAD / PRF security lives elsewhere: `chacha20_prf_security`
+- The ChaCha20 AEAD / PRF security lives elsewhere: `ChaCha20PrfBound`
   (in `Jasmin/ChaCha20Block.lean`) is an *assumption* that the ChaCha20 block
   function — built from `ChaCha20QR.quarterRound` via `quarterRoundAt`,
   `chachaBlock` — is a PRF. The leaf does **not** establish, and this file does

@@ -38,7 +38,8 @@ Jasmin SSA pipeline:
 - `native_decide` test vector validation against RFC 8439 §2.3.2
 - Jasmin SSA instructions with compositional correctness
 
-**0 sorries**, 1 axiom (`chacha20_prf_security` — PRF assumption).
+**0 sorries**, 0 axioms (the PRF assumption enters as the
+`ChaCha20PrfBound` hypothesis).
 -/
 
 namespace CatCrypt.Crypto.Jasmin.ChaCha20Block
@@ -197,16 +198,18 @@ def chacha20_real (counter : BitVec 32) (nonce : Fin 3 → BitVec 32) :
 def chacha20_ideal : Unit → SPComp ChaChaState :=
   fun _ => SPComp.sample ChaChaState
 
-/-- **ChaCha20 PRF assumption**: The ChaCha20 block function with a random key
-    is indistinguishable from a random function.
+/-- **ChaCha20 PRF bound at `epsPrf`**: the ChaCha20 block function with a
+    random key is indistinguishable from a random function, with every
+    distinguisher's advantage at most `epsPrf`.
 
-    This is the standard cryptographic assumption for ChaCha20 — analogous to
-    `aes_indcpa_security` for AES. The block function is a keyed PRF:
+    This is the standard cryptographic assumption for ChaCha20 — analogous
+    to `AesPrfBound` for AES. The block function is a keyed PRF:
     `ChaCha20(key, counter, nonce)` with random `key` is computationally
-    indistinguishable from random output. -/
-axiom chacha20_prf_security (epsPrf : ℝ≥0∞) :
-    ∀ (counter : BitVec 32) (nonce : Fin 3 → BitVec 32)
-      (A : ChaChaState → SPComp Bool),
+    indistinguishable from random output. Security theorems take this as a
+    hypothesis. -/
+def ChaCha20PrfBound (epsPrf : ℝ≥0∞) : Prop :=
+  ∀ (counter : BitVec 32) (nonce : Fin 3 → BitVec 32)
+    (A : ChaChaState → SPComp Bool),
     AdvantageA
       (chacha20_real counter nonce ())
       (chacha20_ideal ())
@@ -221,14 +224,14 @@ theorem chacha20_real_isPure (counter : BitVec 32) (nonce : Fin 3 → BitVec 32)
 theorem chacha20_ideal_isPure (u : Unit) : SPComp.IsPure (chacha20_ideal u) :=
   SPComp.sample_isPure _
 
-/-- Statistical distance bound from PRF assumption. -/
-theorem chacha20_sdist (epsPrf : ℝ≥0∞) (counter : BitVec 32)
-    (nonce : Fin 3 → BitVec 32) :
+/-- Statistical distance bound from the PRF assumption. -/
+theorem chacha20_sdist (epsPrf : ℝ≥0∞) (h_prf : ChaCha20PrfBound epsPrf)
+    (counter : BitVec 32) (nonce : Fin 3 → BitVec 32) :
     sdist (chacha20_real counter nonce) chacha20_ideal ≤ epsPrf := by
   apply sdist_isPure_le (chacha20_real_isPure counter nonce)
     (fun u => chacha20_ideal_isPure u)
   intro D u
-  exact chacha20_prf_security epsPrf counter nonce D
+  exact h_prf counter nonce D
 
 /-! ## Section 10: Jasmin SSA Variable Helpers -/
 

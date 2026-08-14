@@ -613,8 +613,14 @@ axiom interp_reduce_bytes :
 /-- Spec-level scalar reducer. -/
 axiom scalar_reduce_64 : ByteBuf → FpL25519
 
+/-- The byte contents of a `ByteBuf`, as a list.  Opaque view relating
+    buffer-level and list-level statements. -/
+opaque byteBufBytes : ByteBuf → List UInt8
+
+/-- `scalar_reduce_64` on a buffer agrees with the little-endian
+    interpretation of that buffer's bytes. -/
 axiom interp_scalar_reduce_64 (bs : ByteBuf) (lst : List UInt8)
-    (hlen : lst.length = 64) :
+    (hlen : lst.length = 64) (hbs : byteBufBytes bs = lst) :
     interp (scalar_reduce_64 bs) = interp_reduce_bytes lst hlen
 
 /-! ## 9. Proved corollaries combining scalar + field side -/

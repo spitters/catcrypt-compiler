@@ -48,9 +48,9 @@ these use cases.
 
 ## Trust set
 
-Inherits the generic framework's evaluator + adds **2 axioms**
-(per-chain soundness for inverse and final-exponentiation,
-analogous to Curve25519's chain soundness).
+Inherits the generic framework's evaluator + adds **3 axioms**
+(soundness of the named `Fp`/`Fr` inverse and final-exponentiation
+chains, analogous to Curve25519's chain soundness).
 
 ## What this file ships
 
@@ -132,19 +132,27 @@ def bls12_381FrInvResult (chain : List (ChainOp Loc)) (a : Nat) :
     Nat :=
   ((evalFrChain chain (initChainState_Fr a)).read OFF_op)
 
-/-- **BLS12-381 Fp inverse soundness axiom**. -/
-axiom bls12_381FpInvChain_sound
-    (chain : List (ChainOp Loc))
-    (h_intent : True)
-    (a : Nat) :
-    bls12_381FpInvResult chain a = a ^ (bls12_381_p - 2) % bls12_381_p
+/-- The BLS12-381 `Fp` inverse chain: an addition chain computing
+    `a^(p − 2) mod p`.  Opaque; stands for the blst `recip-addchain.h`
+    461-step chain (§9 transcribes its 17-op setup window). -/
+opaque bls12_381FpInvChain : List (ChainOp Loc)
 
-/-- **BLS12-381 Fr (scalar-field) inverse soundness axiom**. -/
-axiom bls12_381FrInvChain_sound
-    (chain : List (ChainOp Loc))
-    (h_intent : True)
-    (a : Nat) :
-    bls12_381FrInvResult chain a = a ^ (bls12_381_r - 2) % bls12_381_r
+/-- The BLS12-381 `Fr` (scalar-field) inverse chain: an addition chain
+    computing `a^(r − 2) mod r`.  Opaque; stands for an implementation's
+    concrete chain literal. -/
+opaque bls12_381FrInvChain : List (ChainOp Loc)
+
+/-- **BLS12-381 Fp inverse soundness axiom**: `bls12_381FpInvChain`
+    computes the Fermat inverse exponentiation. -/
+axiom bls12_381FpInvChain_sound (a : Nat) :
+    bls12_381FpInvResult bls12_381FpInvChain a =
+      a ^ (bls12_381_p - 2) % bls12_381_p
+
+/-- **BLS12-381 Fr (scalar-field) inverse soundness axiom**:
+    `bls12_381FrInvChain` computes the Fermat inverse exponentiation. -/
+axiom bls12_381FrInvChain_sound (a : Nat) :
+    bls12_381FrInvResult bls12_381FrInvChain a =
+      a ^ (bls12_381_r - 2) % bls12_381_r
 
 /-! ## §5  Final exponentiation (pairing post-processing)
 
@@ -186,12 +194,16 @@ def bls12_381FinalExpHardResult
       chain
       [(OFF_ap, a % (bls12_381_p ^ 12))]).read OFF_op)
 
-/-- **BLS12-381 final-exp hard part soundness axiom**. -/
-axiom bls12_381FinalExpHard_sound
-    (chain : List (ChainOp Loc))
-    (h_intent : True)
-    (a : Nat) :
-    bls12_381FinalExpHardResult chain a =
+/-- The BLS12-381 final-exponentiation hard-part chain: a cyclotomic
+    addition chain for the exponent `(p⁴ − p² + 1) / r`.  Opaque; stands
+    for an implementation's concrete chain literal (blst, BoringSSL, or
+    a paper-cited chain such as Aranha-Karabina-Longa-Gebotys). -/
+opaque bls12_381FinalExpHardChain : List (ChainOp Loc)
+
+/-- **BLS12-381 final-exp hard part soundness axiom**:
+    `bls12_381FinalExpHardChain` computes the hard-part exponentiation. -/
+axiom bls12_381FinalExpHard_sound (a : Nat) :
+    bls12_381FinalExpHardResult bls12_381FinalExpHardChain a =
       a ^ bls12_381_final_exp_hard_exponent % (bls12_381_p ^ 12)
 
 /-! ## §6  Use-case headlines
@@ -202,23 +214,18 @@ For each major BLS12-381 application, the relevant chain shape
 /-- **BLS signature scalar-field inverse** — used in BLS-12 sig
     aggregation / verification when computing `e(sig, g_2)`-style
     pairings with scalar inversions. -/
-theorem bls_sig_scalar_inv_correctness
-    (chain : List (ChainOp Loc))
-    (h_intent : True)
-    (s : Nat) :
-    bls12_381FrInvResult chain s = s ^ (bls12_381_r - 2) % bls12_381_r :=
-  bls12_381FrInvChain_sound chain h_intent s
+theorem bls_sig_scalar_inv_correctness (s : Nat) :
+    bls12_381FrInvResult bls12_381FrInvChain s =
+      s ^ (bls12_381_r - 2) % bls12_381_r :=
+  bls12_381FrInvChain_sound s
 
 /-- **Pairing final-exp correctness**.  After Miller-loop, the
     `Fp12` result is raised to the final-exp exponent to land in
     the correct subgroup; this is the key correctness claim. -/
-theorem bls12_381_final_exp_correctness
-    (chain : List (ChainOp Loc))
-    (h_intent : True)
-    (a : Nat) :
-    bls12_381FinalExpHardResult chain a =
+theorem bls12_381_final_exp_correctness (a : Nat) :
+    bls12_381FinalExpHardResult bls12_381FinalExpHardChain a =
       a ^ bls12_381_final_exp_hard_exponent % (bls12_381_p ^ 12) :=
-  bls12_381FinalExpHard_sound chain h_intent a
+  bls12_381FinalExpHard_sound a
 
 /-! ## §7  Worked examples — small concrete chains (✅ added 2026-05-01)
 
@@ -273,7 +280,7 @@ blocks. Each block discharges via the same per-block-instance
 pattern as the worked examples in §7:
 
 ```lean
-theorem block2_inst_bls12_381 (a : Nat) (h_intent : True) :
+theorem block2_inst_bls12_381 (a : Nat) :
     -- "block 2 of the BLS12-381 inv chain computes a²"
     ... = (a^2) % bls12_381_p := by
   simp [evalFpChain, ...] -- per-block decide / unfold
@@ -383,10 +390,10 @@ t[0], n, t[k])` becomes one
 
 1. 84 lines of mechanical transcription with no semantic content
    beyond what the setup phase demonstrates.
-2. The framework axiom `bls12_381FpInvChain_sound` already gives
-   correctness against the full chain via `chain : List (ChainOp
-   Loc)` parameterization — concrete vs abstract chain doesn't
-   change the soundness chain.
+2. The opaque `bls12_381FpInvChain` constant with its soundness
+   axiom `bls12_381FpInvChain_sound` is the interface for the full
+   chain; the transcription replaces the opaque constant with the
+   literal without changing the soundness statement's shape.
 3. Per-block lemmas (mirror of P-256's `libcruxP256_block_*`) would
    total 84 × 5 = 420 LoC, dominated by mechanical pattern-matching
    on the 12-bit window bits.

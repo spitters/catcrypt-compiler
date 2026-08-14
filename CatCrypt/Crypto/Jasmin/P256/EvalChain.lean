@@ -34,9 +34,9 @@ P-256 binding.
 
 ## Trust set
 
-Inherits the generic framework's evaluator + adds **1 axiom**
-(per-chain soundness, analogous to `invChain_eval_sound` for
-Curve25519).
+Inherits the generic framework's evaluator + adds **2 axioms**
+(soundness of the libcrux inverse chain literal and of the opaque
+sqrt chain, analogous to `invChain_eval_sound` for Curve25519).
 
 ## What this file ships
 
@@ -108,43 +108,12 @@ framework + soundness axiom produces the result. -/
 def p256InvResult (chain : List (ChainOp Loc)) (a : Nat) : Nat :=
   ((evalP256Chain chain (initChainState a)).read OFF_op)
 
-/-! ## §5  Soundness axiom for P-256 inverse
+/-! ## §5  Soundness for the P-256 inverse
 
-For any chain literal that correctly encodes the addition chain
-for `q − 2`, the result is the field inverse via Fermat. -/
-
-/-- **P-256 inverse chain soundness** (chain-parametric form).
-
-    A chain literal that's *intended* to compute `a^(q − 2) mod q`
-    via Fermat is sound iff, for every input, its evaluator
-    output equals the abstract modular exponentiation.
-
-    Discharge path: per-chain literal, the soundness axiom is
-    discharged identically to Curve25519's `invChain_eval_sound`
-    once the chain's per-block correctness lemmas are
-    established (mirror of `PowP58Algo.lean`).  The framework
-    here parametrises over chain literal so multiple
-    implementations (libcrux, openssl-style) can each
-    instantiate. -/
-axiom p256InvChain_sound
-    (chain : List (ChainOp Loc))
-    (h_chain_intent : True)  -- placeholder for "chain encodes q-2"
-    (a : Nat) :
-    p256InvResult chain a = a ^ (p256_q - 2) % p256_q
-
-/-! ## §6  Worked example: any-input verification
-
-For any input `a` and a sound chain `chain`, the inverse claim
-closes via the soundness axiom. -/
-
-/-- **Generic P-256 inverse claim**: any sound chain produces
-    the Fermat inverse on any input. -/
-theorem p256InvChain_correct
-    (chain : List (ChainOp Loc))
-    (h_intent : True)  -- chain encodes q-2
-    (a : Nat) :
-    p256InvResult chain a = a ^ (p256_q - 2) % p256_q :=
-  p256InvChain_sound chain h_intent a
+Soundness is a property of one specific chain literal, never of the
+chain parameter: the evaluator is the identity on the empty chain, so
+only a named chain can satisfy the Fermat equation.  The soundness
+axiom for the libcrux `finv` chain literal is in §10. -/
 
 /-! ## §7  P-256 sqrt / non-residue check
 
@@ -159,12 +128,16 @@ framework shape.  Exposed for completeness. -/
 def p256SqrtResult (chain : List (ChainOp Loc)) (a : Nat) : Nat :=
   ((evalP256Chain chain (initChainState a)).read OFF_op)
 
-/-- **P-256 sqrt chain soundness**: `a^((q+1)/4) mod q`. -/
-axiom p256SqrtChain_sound
-    (chain : List (ChainOp Loc))
-    (h_intent : True)
-    (a : Nat) :
-    p256SqrtResult chain a = a ^ ((p256_q + 1) / 4) % p256_q
+/-- A P-256 square-root addition chain: computes `a^((q+1)/4) mod q`.
+    Opaque; stands for an implementation's concrete chain literal
+    (libcrux / openssl transcription, in the shape of §10's inverse
+    chain). -/
+opaque p256SqrtChain : List (ChainOp Loc)
+
+/-- **P-256 sqrt chain soundness**: `p256SqrtChain` computes
+    `a^((q+1)/4) mod q`. -/
+axiom p256SqrtChain_sound (a : Nat) :
+    p256SqrtResult p256SqrtChain a = a ^ ((p256_q + 1) / 4) % p256_q
 
 /-! ## §8  Worked examples — small concrete chains (✅ added 2026-05-01)
 
@@ -256,10 +229,9 @@ offsets:
 | `a` (input)  | `OFF_ap`    |
 | result       | `OFF_op`    |
 
-Per `feedback_no_fake_tests`: this chain is the actual published
-libcrux P-256 inverse, not fabricated. Each block corresponds
-1-1 with libcrux's `unroll_for!(n, ...)` + `fmul` pair (or a
-single `fsqr` + `fmul` for n=1). -/
+This chain is the published libcrux P-256 inverse. Each block
+corresponds 1-1 with libcrux's `unroll_for!(n, ...)` + `fmul`
+pair (or a single `fsqr` + `fmul` for n=1). -/
 
 /-- The libcrux P-256 field inverse chain `finv`, transcribed from
     `libcrux/p256/src/p256.rs`. Computes `a^(p256_q − 2) mod p256_q`
@@ -301,16 +273,20 @@ def libcruxP256InvChain : List (ChainOp Loc) :=
     blocks. Updates here should also update the table comment above. -/
 example : libcruxP256InvChain.length = 12 := by native_decide
 
-/-- The libcrux chain is sound against the framework's parametric
-    soundness axiom `p256InvChain_sound`.
+/-- **P-256 inverse chain soundness (libcrux `finv`)**: the transcribed
+    libcrux chain literal computes `a^(q − 2) mod q`.
 
-    This is the consumer pattern: a concrete chain literal +
-    soundness via the parametric framework axiom. The `h_intent`
-    hypothesis is `True` (placeholder for "chain encodes q − 2",
-    which is verified upstream by libcrux's correctness audit). -/
+    The claim is verified upstream by libcrux's correctness audit
+    (HACL-derived `finv`).  Discharge path: compose the 12 per-block
+    instances of §11, mirroring `PerBlockInstances.lean`'s 13-block
+    Curve25519 closure. -/
+axiom libcruxP256InvChain_sound (a : Nat) :
+    p256InvResult libcruxP256InvChain a = a ^ (p256_q - 2) % p256_q
+
+/-- The libcrux P-256 inverse chain computes the Fermat inverse. -/
 theorem libcruxP256InvChain_correct (a : Nat) :
     p256InvResult libcruxP256InvChain a = a ^ (p256_q - 2) % p256_q :=
-  p256InvChain_sound libcruxP256InvChain trivial a
+  libcruxP256InvChain_sound a
 
 /-! ## §11  Per-block instances for the libcrux P-256 chain
     (✅ added 2026-05-01)
@@ -327,7 +303,7 @@ the destination read of a `repeatedSqrThenMul` op equals
 respects).
 
 Without per-block instances, every soundness chain goes through the
-framework axiom `p256InvChain_sound`. Per-block instances allow
+chain axiom `libcruxP256InvChain_sound`. Per-block instances allow
 finer-grained alternative reasoning (e.g., for chains that diverge
 from libcrux's at one block: prove the divergent block separately
 and reuse the unchanged blocks). -/
@@ -400,9 +376,9 @@ named theorems is mechanical and not pursued here (each would be ~3 LoC). -/
   2. Small worked examples (§§8-9)
   3. libcrux `finv` chain literal (§10)
   4. Per-block schematic lemmas (§11)
-* The libcrux chain's correctness reduces via the framework
-  soundness axiom `p256InvChain_sound`. The audit chain is:
-  Lean theorem → framework axiom → libcrux upstream correctness.
+* The libcrux chain's correctness reduces via the chain
+  soundness axiom `libcruxP256InvChain_sound`. The audit chain is:
+  Lean theorem → chain axiom → libcrux upstream correctness.
 * Per-block schematic lemmas (§11) allow alternative finer-grained
   reasoning: e.g., for a chain that diverges from libcrux's at one
   block, prove the divergent block separately and reuse the
