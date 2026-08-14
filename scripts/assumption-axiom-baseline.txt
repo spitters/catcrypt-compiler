@@ -1,0 +1,5 @@
+0
+# Crypto assumption-axiom surface (frozen baseline; auto-tightened by
+# scripts/vacuous-theorem-ratchet.sh). First line = count; the sorted
+# "<path>  <axiom>" list below is for diffability. Goal: count -> 0.
+# Scope: security-named axioms under CatCrypt/Crypto.

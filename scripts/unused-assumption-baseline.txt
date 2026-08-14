@@ -1,0 +1,5 @@
+0
+# Theorems binding an advertised crypto assumption as an UNUSED underscored
+# hypothesis (frozen baseline; auto-tightened by
+# scripts/vacuous-theorem-ratchet.sh). First line = count; the sorted
+# "<path>  <decl>  <binder>" list below is for diffability. Goal: count -> 0.

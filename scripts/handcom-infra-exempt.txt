@@ -1,0 +1,134 @@
+# Hand-Com provenance ratchet: INFRA/NON-KERNEL exemptions (consumed by
+# scripts/handcom-provenance-ratchet.sh). One 'path  # justification' per line.
+# A line here asserts the file is compiler/proof infrastructure, a front/pass/
+# predicate/driver, or a backend-arm demo WITHOUT a deployable emit artifact —
+# NOT an owned-emit kernel. Placeholder-leaf kernels are NOT exemptible (they
+# stay on the reroute worklist). Each line carries its own justification; the
+# ratchet fails when a listed path stops existing, so a rename cannot silently
+# void an exemption.
+CatCrypt/Crypto/Jasmin/Ed25519/CompressCom.lean  # self-declared hand-Com optimizer-wiring handle; byte tie lives in CompressEmitDenoteCorrect, no artifact
+CatCrypt/Crypto/Jasmin/JincElab.lean  # .jinc import elaborator (JincImportAll rot-guard infra), not an emit kernel
+CatCrypt/Crypto/Optimizer/ComCSE.lean  # verified Com-to-Com CSE optimizer pass, not an emit kernel
+CatCrypt/Crypto/Optimizer/ComDCE.lean  # verified dead-let-elim optimizer pass
+CatCrypt/Crypto/Optimizer/LoadCSE.lean  # post-RA Lprog load-CSE optimizer pass
+CatCrypt/Crypto/Optimizer/Rewrite/Egraph.lean  # verified bounded rewrite engine (compiler pass)
+CatCrypt/Crypto/Optimizer/UncomputePass.lean  # verified interior dead-store-elim pass
+CatCrypt/Crypto/SecureCompilation/Ascent/EcMultiLimbEmit.lean  # Corres/machine-wire composition proof; the sbb Lopn chain is the proof subject of the documented sbb opcode gap, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/RunBlockLsemAgreeAddImm.lean  # runBlock<->lsem opcode agreement; the JInstr list is the proof subject over universally quantified registers, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/RunBlockLsemAgreeAddSeed.lean  # runBlock<->lsem opcode agreement; proof subject, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/RunBlockLsemAgreeSubImm.lean  # runBlock<->lsem opcode agreement (immediate borrow); proof subject, no emit artifact
+CatCrypt/Crypto/SecureCompilation/CompileFromHaxSha256CompressProductTie.lean  # front product-output capability tie (proof module closing a front residual, no artifact)
+CatCrypt/Crypto/SecureCompilation/CtMemoryGoldenPath.lean  # golden-path pattern + CT-analysis exemplar, no emitted artifact
+CatCrypt/Crypto/SecureCompilation/Dialects/AndnSelect.lean  # ISel peephole pass on Com (compiler infra)
+CatCrypt/Crypto/SecureCompilation/Dialects/ByteMemrefRolledLoop.lean  # front construct: byteRolledForLoopN, a byte-cell (movb scale-1) rolled ComL.forLoopN — the loop-node front the byte-packed emits route through, not a deployed kernel (same category as the exempt loop-node emitters)
+CatCrypt/Crypto/SecureCompilation/Dialects/CryptoDialectLeakTraceValued.lean  # RHP/CT-leakage framework substrate (value-carrying trace), not an emit
+CatCrypt/Crypto/SecureCompilation/Dialects/RorImmSelect.lean  # ISel peephole pass on Com (compiler infra)
+CatCrypt/Crypto/SecureCompilation/Fe25519AddLeafGoldenPath.lean  # PROOF SUBJECT: hand-constructs a fe25519_add leaf Com to give it real jasminExtSem semantics (non-vacuous CalleeConsistent); 0 emit drivers, 0 bench consumers — not a deployed kernel, same category as the exempt JasminLsem* proof subjects
+CatCrypt/Crypto/SecureCompilation/Fe25519OrchestrationExample.lean  # worked example of the orchestration/leaf split (LowCT over named leaves), no emit artifact
+CatCrypt/Crypto/SecureCompilation/FieldEmitGoldenAddMod.lean  # golden-path step-1 template/demo kernel (FieldEmitGoldenPath is a sanctioned reroute template); no deployable KAT artifact
+CatCrypt/Crypto/SecureCompilation/Jasmin/JasminToSSADialect.lean  # IS a verified front (Jasmin MonoCmd -> Com catCryptDialect translator), not an emit kernel
+CatCrypt/Crypto/SecureCompilation/MlkemNttWidenProbe.lean  # register-allocation spilling probe (no artifact, no kernel claim)
+CatCrypt/Crypto/SecureCompilation/MultiBackendDemo.lean  # multi-backend lowering demo of the ScalarLin waist (backend-arm demo, not an emit kernel)
+CatCrypt/Crypto/SecureCompilation/MultiWidthGoldenPath.lean  # width-32 dialect-level lemma study (documents backend width gap; no emit)
+CatCrypt/Crypto/SecureCompilation/RelationalFrontInstances.lean  # relational-front (RealizedKernel) second-customer instance — front infrastructure demo, not a deployable kernel
+CatCrypt/Crypto/SecureCompilation/ScalarLinFront.lean  # IS the Com->RegProg de-Bruijn flattening front
+CatCrypt/Crypto/SecureCompilation/ScalarLinNeutralDemo.lean  # backend-neutral faithfulness keystone + AArch64 witness (proof infra demo)
+CatCrypt/Crypto/SecureCompilation/ThirToComFront.lean  # IS the verified THIR->Com front (the reroute target, 20+ owned-emit customers)
+CatCrypt/Crypto/SecureCompilation/VIR/ArrAbiOrch.lean  # array-ABI gather/scatter lowering infra for opaque extCall leaves (compiler backend arm)
+CatCrypt/Crypto/SecureCompilation/VIR/CTPredicate.lean  # VIR-level constant-time predicate (analysis infra)
+CatCrypt/Crypto/SecureCompilation/VIR/CatCryptPrint.lean  # MLIR textual printer instance for catCryptDialect (backend infra)
+CatCrypt/Crypto/SecureCompilation/VIR/ComToVeir_JasminDialect.lean  # jasminDialect->Veir op/type instance wiring (backend arm, honest trust scope)
+CatCrypt/Crypto/SecureCompilation/VIR/CommonSubexprElim.lean  # verified CSE analysis-as-decision optimizer pass
+CatCrypt/Crypto/SecureCompilation/VIR/DeadCodeElim.lean  # DCE analysis-as-decision optimizer pass
+CatCrypt/Crypto/SecureCompilation/VIR/DeadCodeElimReal.lean  # genuine verified Com->Com DCE transform (compiler proof infrastructure)
+CatCrypt/Crypto/SecureCompilation/VIR/FrontControlLsem.lean  # LowCT front control-flow to labeled-lsem faithfulness layer (increment 4d, compiler proof infra)
+CatCrypt/Crypto/SecureCompilation/VIR/FrontWhileLsem.lean  # front RWhileNz to lsem loop-simulation layer (increment 4e, compiler proof infra)
+CatCrypt/Crypto/SecureCompilation/VIR/InstructionSchedule.lean  # instruction-scheduling analysis-as-decision optimizer pass
+CatCrypt/Crypto/SecureCompilation/VIR/InstructionScheduleReal.lean  # genuine verified reorder transform (compiler proof infrastructure)
+CatCrypt/Crypto/SecureCompilation/VIR/JForProgTreehash.lean  # level-indexed loop-composition layer (compiler loop infra; treehash is the motivating shape)
+CatCrypt/Crypto/SecureCompilation/VIR/JasminLeafFusion.lean  # verified Com->Com leaf-fusion rewrite (optimizer infra)
+CatCrypt/Crypto/SecureCompilation/VIR/JasminLprogExportScalarAcc.lean  # additive runtime-N owned-export variant (scalar accumulator vs invariant out-array); compiler infra the mpn front emits THROUGH, not a hand kernel
+CatCrypt/Crypto/SecureCompilation/VIR/JasminSymmetricLeaves.lean  # extCall leaf-spec/agreement carrier (relocated out of FAEST/Leaves.lean), declares specs only, no emitted kernel
+CatCrypt/Crypto/SecureCompilation/VIR/KeccakLinearMain.lean  # compiled lean_exe emit DRIVER over KeccakEmit's Com (no hand-Com of its own)
+CatCrypt/Crypto/SecureCompilation/VIR/KeccakResidentComRenderProbe.lean  # explicit investigation probe ("NOT a committed kernel") showing resident Keccak variants reroute through the Com render path — it is the flip recipe, not a kernel
+CatCrypt/Crypto/SecureCompilation/VIR/KeccakRotateSelect.lean  # verified rotate instruction-selection rewrite (compiler infra)
+CatCrypt/Crypto/SecureCompilation/VIR/KeccakScheduledMain.lean  # compiled lean_exe emit DRIVER (scheduled variant) over KeccakEmit's Com
+CatCrypt/Crypto/SecureCompilation/VIR/KernelSyntax.lean  # dialect-generic kernel% elaborator (authoring surface) plus its jasmin instantiation demo, no emit artifact
+CatCrypt/Crypto/SecureCompilation/VIR/LoopInvariantHoist.lean  # LICM analysis-as-decision optimizer pass
+CatCrypt/Crypto/SecureCompilation/VIR/LoopInvariantHoistReal.lean  # genuine verified LICM transform (compiler proof infrastructure)
+CatCrypt/Crypto/SecureCompilation/VIR/LprogJasminWellFormed.lean  # named interface-contract hypothesis (assemble_prog wf), proof infra not a kernel
+CatCrypt/Crypto/SecureCompilation/VIR/LprogScheduler.lean  # verified Lprog list-scheduler pass (optimizer infra)
+CatCrypt/Crypto/SecureCompilation/VIR/LprogStoreToLoad.lean  # verified post-RA redundant-reload elimination pass (optimizer infra)
+CatCrypt/Crypto/SecureCompilation/VIR/MLKem768MatvecLoop.lean  # R1 multi-op nested-loop keystone demo over opaque basemul/poly_add leaves, no deployable artifact
+CatCrypt/Crypto/SecureCompilation/VIR/MaskingPredicate.lean  # masking-preservation predicate (analysis infra, Track 3c)
+CatCrypt/Crypto/SecureCompilation/VIR/MergeCom.lean  # Com merge translator (D2.1 CSE-trap infra)
+CatCrypt/Crypto/SecureCompilation/VIR/MontMulFragmentDemo.lean  # #477 dialect-capability demo (mulhi/addCarry ops), consumed by FieldEmitGoldenPath infra, not an emit kernel
+CatCrypt/Crypto/SecureCompilation/VIR/MultiComQuantum.lean  # quantum ComMulti lowering infrastructure (PairDialect + allocator), not an emit kernel
+CatCrypt/Crypto/SecureCompilation/VIR/Poseidon2LinearMain.lean  # compiled producer driver (lake exe poseidon2linear), authors no Com
+CatCrypt/Crypto/SecureCompilation/VIR/Poseidon2WholePermCom.lean  # front-infrastructure word-block emitter library (emitAdd/emitCsub/emitFold regArith/regConst CPS block builders) that FieldDescentBB.translBB descends THROUGH, plus the *_denote_ret block-correctness PROOF SUBJECTS; the layer beneath the front, same category as the exempt JasminLsem*/loop-node emitters. The hand poseidon2PermComOut whole-Com is superseded as the deployed producer by FieldPipelineEmitBB's translBB front descent
+CatCrypt/Crypto/SecureCompilation/VIR/Programs/DeutschJozsaVIR.lean  # quantum dialect demo program, no emit artifact
+CatCrypt/Crypto/SecureCompilation/VIR/Programs/GroverVIR.lean  # quantum dialect demo program, no emit artifact
+CatCrypt/Crypto/SecureCompilation/VIR/Programs/QFTVIR.lean  # quantum dialect scale-test demo, no emit artifact
+CatCrypt/Crypto/SecureCompilation/VIR/QSSAToVIR.lean  # quantum frontend translation infrastructure
+CatCrypt/Crypto/SecureCompilation/VIR/QuantumDialect.lean  # VIR quantum dialect definition (Op/Ty/signature), core IR infra
+CatCrypt/Crypto/SecureCompilation/VIR/Sha256LinearMain.lean  # compiled producer driver (lake exe sha256linear), authors no Com
+CatCrypt/Crypto/SecureCompilation/VIR/Sha2RotateSelect.lean  # verified rotate instruction-selection pass (compiler transform), not an emit kernel
+CatCrypt/Crypto/SecureCompilation/VIR/SoftwarePipelining.lean  # verified software-pipelining optimizer pass (analysis-as-decision), compiler infra
+CatCrypt/Crypto/SecureCompilation/VIR/SoftwarePipeliningReal.lean  # verified loop-peel/SWP transform, compiler infra
+CatCrypt/Crypto/SecureCompilation/VIR/StrengthReduceReal.lean  # verified strength-reduction pass over arithDialect, compiler infra
+CatCrypt/Crypto/SecureCompilation/VIR/TestHarness.lean  # dialect test harness (assertDialect suite), test infra
+CatCrypt/Crypto/SecureCompilation/VIR/Transforms/IfToCmov.lean  # verified if-to-cmov CT transform over catCryptDialect, compiler infra
+CatCrypt/Crypto/SecureCompilation/VIR/Transforms/MulByConst.lean  # verified mul-by-const shift-sub rewrite, compiler infra
+CatCrypt/Crypto/SecureCompilation/VIR/Transforms/Optimizer.lean  # verified optimizer pipeline composition (peephole+ifToCmov), compiler infra
+CatCrypt/Crypto/SecureCompilation/VIR/Transforms/Peephole.lean  # verified peephole rewriter over catCryptDialect, compiler infra
+CatCrypt/Crypto/SecureCompilation/VIR/X25519EmitMLIR.lean  # self-declared hand-written diff-benchmark/ground-truth for the CryptoSSA->VIR translation; emits .mlir text only, no deployable .s
+CatCrypt/Crypto/SecureCompilation/VarShiftGoldenPath.lean  # variable-shift dialect-semantics witness plus the record that the op is absent from SupportedOp/RegStmt, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/AdxChainFuse.lean  # verified backend Lprog->Lprog ADCX/ADOX carry-flag peephole pass (fuseAdxChain); no Com/deployed emit artifact, .Lopn are pass matchers + front-derived unit-test fixtures; deployment site (Bn254TowerFrontEmit) is already front-generated
+CatCrypt/Crypto/SecureCompilation/X86Backend/Bignum4AddArrAbiDemo.lean  # proof-of-concept demo of deriveInLoadArr/deriveOutStoreArr multi-limb ABI splice, not a deployable crypto kernel
+CatCrypt/Crypto/SecureCompilation/X86Backend/BlockBytesAgreeExtended.lean  # encoder-vs-JInstr byte-agreement proof layer (D4 collapse), no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/ComLegalityShiftBridge.lean  # D4 shift-family lowering-legality bridge lemmas, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/ComLegalityToGather.lean  # ComLegality->gatherJBlock bridge, compiler proof infrastructure
+CatCrypt/Crypto/SecureCompilation/X86Backend/ComLegalityToGatherFull.lean  # typed-Com legality->gather bridge (D4), compiler proof infrastructure
+CatCrypt/Crypto/SecureCompilation/X86Backend/CounterLoopDemo.lean  # end-to-end demo of the cforIdx counter-reading loop lowering (loop nodes = compiler infra), toy XOR body
+CatCrypt/Crypto/SecureCompilation/X86Backend/FramingReconcile.lean  # framing byte-residual reconciliation between the two emit paths, proof infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/GatherFullBody.lean  # whole-physical-body gather (framing+ALU+shift) proof infra, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/GatherImmForms.lean  # imm-form peephole byte-gap closure, proof infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/GatherInPlace.lean  # in-place gather byte-agreement proof infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/GatherLsemTie.lean  # ties gatherJBlock6 to lsemStraight on the flag-free fragment (LJCorr); the Lcmd it builds are PROOF SUBJECTS of that agreement theorem, same category as RunBlockLsemAgree/ToLprogFaithful*; no Com, no emit driver, no artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/JInstrGatherExtended.lean  # extended gatherJBlock2 covering GoldenPath bodies, compiler infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/JasminLoadSymExport.lean  # loadSym exporter-arm end-to-end proof (Option B), compiler infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/LcmdCopyPropagate.lean  # conservative reg-copy-elimination Lcmd->Lcmd optimizer pass (opt-in, references Lopn structurally in demos); backend infra, not a deployed emit kernel
+CatCrypt/Crypto/SecureCompilation/X86Backend/LcmdReloadElim.lean  # Lcmd redundant-reload elimination pass + its optimized render entry point, not an emit kernel
+CatCrypt/Crypto/SecureCompilation/X86Backend/LinkerReloc.lean  # linker keystone proof (call lands on callee) + demo prog, compiler infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/LoopCarriedDemo.lean  # loop-carried-value demo of cforIdx lowering (toy sum body), compiler infra demo
+CatCrypt/Crypto/SecureCompilation/X86Backend/LoopReduceX86Demo.lean  # array-reduction memref-load splice demo (cforIdxToLprogAbiBodyArr), compiler infra demo
+CatCrypt/Crypto/SecureCompilation/X86Backend/Lowering.lean  # scalar Lopn->x86-model lowering POC (#148), compiler infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/LoweringCoverageCmovSar.lean  # additive Linstr->JInstr coverage lemmas (SAR/CMOV), compiler infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/LoweringCoverageMulxMemSym.lean  # additive coverage lemmas (mem-folded MULX + symbol load), compiler infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/LoweringExtended.lean  # lowering coverage-gap closure (P2 load/store), compiler infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/LoweringExtendedCoverage.lean  # additive coverage lemmas (ADX + reg-indexed memory), compiler infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/LprogAsmPrinter.lean  # THE owned AT&T printer for Lcmd (task #537), backbone consumed by 100+ emit modules
+CatCrypt/Crypto/SecureCompilation/X86Backend/LprogBytes.lean  # verified byte encoder for looped owned backend (task #658), compiler infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/LprogJInstrBytesAgree.lean  # D4-collapse byte-agreement precondition proofs, compiler infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/LprogJInstrMnemDispatch.lean  # byte-agreement mnemonic-dispatch residual closure, compiler infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/OptimizedComToElf.lean  # opt-in optimized Com->ELF path with soundness guard, compiler infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/OptimizedComToElfLegality.lean  # D4 legality-predicate proof infra for the OptimizedComToElf lowering, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/PhysBodyGather.lean  # empirical step-3 probe of JInstr gather vs Lprog byte encoder, no artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/Preservation.lean  # per-op lowering semantics-preservation proofs (#148 POC), compiler infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/RunBlockLsemAgree.lean  # runBlock<->lsemStraightMem agreement bridge; hand-builds Lopn as PROOF SUBJECTS of the machine-model faithfulness theorem, same category as JasminLsem*/ToLprogFaithful*
+CatCrypt/Crypto/SecureCompilation/X86Backend/SpillSlotEncode.lean  # spill-slot-aware JInstr gather arm + byte-identity proof infra, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/ToLprogFaithfulBody.lean  # RA-faithfulness proof chain for toLprogPhysAbi, compiler infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/ToLprogFaithfulCover.lean  # faithfulness proof chain, compiler infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/ToLprogFaithfulEndToEnd.lean  # faithfulness capstone proof, compiler infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/ToLprogFaithfulFlatMap.lean  # faithfulness proof chain, compiler infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/ToLprogFaithfulNary.lean  # faithfulness proof chain, compiler infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/ToLprogFaithfulProbe.lean  # faithfulness probe proof, compiler infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/ToLprogFaithfulProlog.lean  # faithfulness proof chain, compiler infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/ToLprogFaithfulSpill.lean  # faithfulness proof chain, compiler infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/ToLprogFaithfulTwoAddr.lean  # faithfulness proof chain, compiler infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/ToLprogFaithfulWholeFn.lean  # whole-fn faithfulness capstone, compiler infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/ToLprogFaithfulWriteSide.lean  # faithfulness proof chain, compiler infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/ValidateLowering.lean  # decidable translation-validation gate for the owned lowering, compiler infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/WellFormedX86.lean  # decidable ISA-legality invariant (demotes gas from legality oracle), compiler infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/X86Dialect.lean  # the x86 backend AS a VIR dialect (#281) - core dialect definition, compiler infra
+CatCrypt/Crypto/SecureCompilation/X86Backend/XorCombineRolledEmit.lean  # PROPOSE-EXEMPT candidate: first-use demo of multi-invariant-base rolled-loop path; no harness/consumer found - OR wire a KAT harness

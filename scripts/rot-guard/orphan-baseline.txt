@@ -1,0 +1,6 @@
+# Modules under CatCrypt.Crypto.SecureCompilation / .Optimizer / .Jasmin that
+# no import and no manifest root reaches. They are the standing gap this
+# manifest has not closed; the check fails when the list GROWS, so a newly
+# added module in those namespaces must be imported by something, put in the
+# manifest, or recorded here with a reason. Regenerate with
+#   ROT_GUARD_WRITE_BASELINE=1 bash scripts/rot-guard-build.sh --check

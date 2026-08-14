@@ -1,0 +1,5 @@
+0
+# Security theorems whose statement IS one of their own hypotheses, proved by
+# returning it (frozen baseline; auto-tightened by
+# scripts/vacuous-theorem-ratchet.sh). First line = count; the sorted
+# "<path>  <decl>" list below is for diffability. Goal: count -> 0.

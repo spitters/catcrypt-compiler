@@ -1,0 +1,5 @@
+0
+# Vacuous / assumption-shaped security modules (frozen baseline; auto-tightened
+# by scripts/vacuous-theorem-ratchet.sh). First line = count; the sorted module
+# list below is for diffability. Goal: derive each bound (or mark the assumption
+# explicitly), count -> 0.

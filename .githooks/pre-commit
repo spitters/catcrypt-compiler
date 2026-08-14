@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Pre-commit gates. These are the cheap, per-file half of the checks CI runs, so
+# a problem is caught where it is cheapest to fix. Activate once per clone:
+#
+#   git config core.hooksPath .githooks
+#
+# Bypass a false positive with:  git commit --no-verify
+
+set -uo pipefail
+cd "$(git rev-parse --show-toplevel)" || exit 0
+
+staged_lean="$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null | grep '\.lean$' || true)"
+
+# Prose lint on staged Lean: a docstring states what the code defines, not the
+# session that produced it.
+if [ -n "$staged_lean" ]; then
+  # shellcheck disable=SC2086
+  if ! bash scripts/lint-lean-prose.sh $staged_lean; then
+    echo ""
+    echo "pre-commit: Lean prose lint failed (above). Reword and re-stage, or bypass"
+    echo "with 'git commit --no-verify' if a hit is a false positive."
+    exit 1
+  fi
+fi
+
+# A new module of substance states its main results in its module docstring.
+added="$(git diff --cached --name-only --diff-filter=A 2>/dev/null | grep '\.lean$' || true)"
+if [ -n "$added" ]; then
+  # shellcheck disable=SC2086
+  bash scripts/module-doc-ratchet.sh $added || exit 1
+fi
+
+# A new or deleted Lean file changes the import graph, so the build-root manifest
+# can go stale in the same commit. This is the only tree-wide check here; it is
+# a few seconds of grep and no build.
+if git diff --cached --name-only --diff-filter=AD 2>/dev/null | grep -q 'CatCrypt/.*\.lean$'; then
+  bash scripts/rot-guard-build.sh --check || {
+    echo ""
+    echo "pre-commit: the build-root manifest no longer matches the tree. Regenerate:"
+    echo "  ROT_GUARD_WRITE_MANIFEST=1 bash scripts/rot-guard-build.sh --check"
+    exit 1
+  }
+fi
+
+# Markdown links, when Markdown changed.
+if git diff --cached --name-only --diff-filter=ACM 2>/dev/null | grep -q '\.md$'; then
+  bash scripts/check-doc-links.sh || exit 1
+fi
+
+exit 0

@@ -1,0 +1,22 @@
+# Grandfathered hand-authored `List (JInstr _)` emission modules.
+# The audit FAILS when a NEW untagged one appears: tag it @kat-target/@bench-only,
+# or generate the block through the front. Removing a line by re-sourcing the
+# module through the compiler is the intended direction.
+CatCrypt/Crypto/BLAKE3/CompressEmit.lean
+CatCrypt/Crypto/BLAKE3/CompressOwnedEmit.lean
+CatCrypt/Crypto/Optimizer/GraphColoringCoalesce.lean
+CatCrypt/Crypto/Optimizer/GraphColoringRegAlloc.lean
+CatCrypt/Crypto/Optimizer/InOrderCostModel.lean
+CatCrypt/Crypto/Optimizer/JointScheduleRegAlloc.lean
+CatCrypt/Crypto/Optimizer/ModReduceSelect.lean
+CatCrypt/Crypto/Optimizer/RandomizedRegAlloc.lean
+CatCrypt/Crypto/Optimizer/RandomizedScheduleSearch.lean
+CatCrypt/Crypto/Optimizer/ScheduleSearchMontMulNtt.lean
+CatCrypt/Crypto/Optimizer/SecretTypeX86.lean
+CatCrypt/Crypto/Optimizer/SpillingRegAlloc.lean
+CatCrypt/Crypto/Optimizer/SpillReloadBlockSound.lean
+CatCrypt/Crypto/Optimizer/SpillSlotReuse.lean
+CatCrypt/Crypto/Optimizer/X86CostModel.lean
+CatCrypt/Crypto/SecureCompilation/MLIR/VectorDialect/LoweringChoice.lean
+CatCrypt/Crypto/SecureCompilation/SecureCompileChainDemo.lean
+CatCrypt/Crypto/SecureCompilation/VIR/MpnLoopCorrect.lean

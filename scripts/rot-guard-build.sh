@@ -1,0 +1,243 @@
+#!/usr/bin/env bash
+# Rot-guard driver for the compiler module set.
+#
+# ## What this guards
+#
+# A module that nothing imports is elaborated only because some build target
+# names it. If no target does, a change to a shared definition breaks it and
+# nothing goes red — the module rots in place, and anything it contains (a
+# `sorry`, a stale spec) stops being checked. This package's default target is
+# the whole-library glob `CatCrypt.+`, so nominally every module is in the build
+# set; in practice the full build is long enough that a run can be cut short
+# before reaching the tail, and a module nobody imports is exactly the kind that
+# sits in that tail.
+#
+# So the guarded set is the package's IMPORT ROOTS: every tracked module under
+# `CatCrypt/` that no other tracked module imports. They are listed in
+# scripts/rot-guard/build-roots.txt. Their transitive import closure is the
+# whole library, which is what makes the coverage check below meaningful: a
+# module outside that closure is one that neither is imported by anything nor is
+# declared a root, i.e. one nobody has taken responsibility for building.
+#
+# `--build` builds each listed root as its own lake target, in batches. Lake
+# elaborates one module per worker process, so the peak cost is the largest
+# SINGLE import closure rather than the union of all of them, and a batch that
+# dies names the modules it was building. That is the reason the list is a
+# manifest and not an aggregator Lean module: an aggregator that `import`s N
+# modules must load all N environments into one process at the end.
+#
+# Usage:
+#   scripts/rot-guard-build.sh --list            module names, one per line
+#   scripts/rot-guard-build.sh --check           manifest + coverage checks, no build
+#   scripts/rot-guard-build.sh --build [BATCH]   build every listed module (BATCH per
+#                                                lake invocation, default 64)
+#
+# Env:
+#   ROT_GUARD_MANIFEST         manifest path (default scripts/rot-guard/build-roots.txt)
+#   ROT_GUARD_PREFIX           command prefix for each build invocation, e.g.
+#                              "env LEAN_NUM_THREADS=1" to bound the number of
+#                              concurrent workers on a memory-tight box.
+#   ROT_GUARD_WRITE_BASELINE=1 rewrite the orphan baseline from the current tree.
+#   ROT_GUARD_WRITE_MANIFEST=1 regenerate the manifest from the current import graph.
+
+set -uo pipefail
+cd "$(git rev-parse --show-toplevel)" || exit 2
+
+MANIFEST="${ROT_GUARD_MANIFEST:-scripts/rot-guard/build-roots.txt}"
+ORPHAN_BASELINE="scripts/rot-guard/orphan-baseline.txt"
+CI_WORKFLOW=".github/workflows/ci.yml"
+
+# Namespaces this manifest is responsible for: the verified compiler proper.
+# `Jasmin` is in scope because that is where the leaf kernels are.
+TERRITORY='^CatCrypt\.Crypto\.(SecureCompilation|Optimizer|Jasmin)\.'
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
+# Every tracked module under CatCrypt/, as a module name.
+tracked_modules() {
+  git ls-files -- 'CatCrypt/*.lean' 'CatCrypt/**/*.lean' \
+    | sed -E 's/\.lean$//; s#/#.#g' | LC_ALL=C sort -u
+}
+
+# Import edges over the tracked sources, as "module<TAB>dependency".
+#
+# Block comments and docstrings are stripped first. A `## Use` section that shows
+# the module's own import line inside a ```lean fence otherwise reads as a
+# self-import, which drops the module out of the import-root set and then reports
+# it as an orphan — `Optimizer/SplitBytesSlice.lean` is exactly that shape.
+import_edges() {
+  git ls-files -- 'CatCrypt/*.lean' 'CatCrypt/**/*.lean' \
+    | while IFS= read -r f; do
+        m="$(echo "${f%.lean}" | tr '/' '.')"
+        perl -0777 -ne 's{/-.*?-/}{}gs; s{--[^\n]*}{}g; print;' "$f" 2>/dev/null \
+          | grep -hoE '^import[[:space:]]+CatCrypt[A-Za-z0-9_.]*' \
+          | sed -E "s/^import[[:space:]]+/${m}\t/"
+      done
+}
+
+tracked_modules > "$tmp/tracked"
+
+# Regenerate the manifest: the tracked modules that nothing imports.
+if [ "${ROT_GUARD_WRITE_MANIFEST:-0}" = "1" ]; then
+  import_edges | cut -f2 | LC_ALL=C sort -u > "$tmp/imported"
+  mkdir -p "$(dirname "$MANIFEST")"
+  { echo "-- Build roots: tracked modules under CatCrypt/ that no other tracked"
+    echo "-- module imports. Their transitive closure is the whole library, so a"
+    echo "-- module outside it is one no target and no import reaches."
+    echo "-- Regenerate with:"
+    echo "--   ROT_GUARD_WRITE_MANIFEST=1 bash scripts/rot-guard-build.sh --check"
+    LC_ALL=C comm -23 "$tmp/tracked" "$tmp/imported"; } > "$MANIFEST"
+  echo "rot-guard: wrote $MANIFEST"
+fi
+
+if [ ! -f "$MANIFEST" ]; then
+  echo "rot-guard: manifest not found: $MANIFEST" >&2
+  echo "  Seed it with: ROT_GUARD_WRITE_MANIFEST=1 bash $0 --check" >&2
+  exit 2
+fi
+
+# Manifest entries: strip comments and blank lines, in file order.
+sed -E 's/[[:space:]]*--.*$//; s/[[:space:]]+$//' "$MANIFEST" | grep -vE '^$' > "$tmp/mods"
+
+mode="${1:---check}"
+
+case "$mode" in
+  --list)
+    cat "$tmp/mods"
+    exit 0
+    ;;
+
+  --check)
+    fail=0
+    n=$(wc -l < "$tmp/mods")
+    echo "rot-guard: manifest lists $n modules ($MANIFEST)."
+
+    # 1. Every entry names a real, tracked source file. An entry that names
+    #    nothing guards nothing, and a rename would otherwise pass silently.
+    while IFS= read -r m; do
+      [ -z "$m" ] && continue
+      f="${m//./\/}.lean"
+      if [ ! -f "$f" ]; then
+        echo "  FAIL: manifest names a module with no source: $m"
+        fail=1
+      elif ! grep -qxF "$m" "$tmp/tracked"; then
+        echo "  FAIL: manifest names an untracked module: $m"
+        fail=1
+      fi
+    done < "$tmp/mods"
+
+    # 2. No duplicate entries: a duplicate hides a deletion behind a stable count.
+    if dups=$(LC_ALL=C sort "$tmp/mods" | uniq -d) && [ -n "$dups" ]; then
+      echo "  FAIL: duplicate manifest entries:"
+      printf '    %s\n' $dups
+      fail=1
+    fi
+
+    # 3. Coverage. Compute the transitive import closure of every manifest entry
+    #    plus every CatCrypt.* target named in the workflow, and report the
+    #    modules in this manifest's territory that fall outside it.
+    #
+    #    The whole-library glob of the default `lean_lib` target is deliberately
+    #    NOT a root here. Counting it would empty the orphan set by construction:
+    #    it names every module by pattern rather than by name, which is precisely
+    #    how a module nobody imports and nobody listed stays invisible until the
+    #    one long build that would have reached it is cut short.
+    : > "$tmp/roots"
+    if [ -f "$CI_WORKFLOW" ]; then
+      grep -oE '(^|[[:space:]])CatCrypt\.[A-Za-z0-9_.]+' "$CI_WORKFLOW" \
+        | sed -E 's/^[[:space:]]+//; s/\.$//' | LC_ALL=C sort -u > "$tmp/ciroots"
+      # Prose in the workflow's comments names modules too; keep only tokens that
+      # are real modules.
+      LC_ALL=C comm -12 "$tmp/ciroots" "$tmp/tracked" >> "$tmp/roots"
+    fi
+    cat "$tmp/mods" >> "$tmp/roots"
+    LC_ALL=C sort -u "$tmp/roots" -o "$tmp/roots"
+
+    import_edges > "$tmp/edges"
+
+    awk -F'\t' '
+      FNR==NR { adj[$1] = adj[$1] " " $2; next }
+      { if (!($0 in seen)) { seen[$0]=1; queue[++qn]=$0 } }
+      END {
+        for (i = 1; i <= qn; i++) {
+          split(adj[queue[i]], ds, " ")
+          for (j in ds) {
+            d = ds[j]
+            if (d != "" && !(d in seen)) { seen[d]=1; queue[++qn]=d }
+          }
+        }
+        for (m in seen) print m
+      }' "$tmp/edges" "$tmp/roots" | LC_ALL=C sort -u > "$tmp/reachable"
+
+    LC_ALL=C comm -23 "$tmp/tracked" "$tmp/reachable" | grep -E "$TERRITORY" > "$tmp/orphans"
+    orphans=$(wc -l < "$tmp/orphans")
+
+    base=0
+    if [ -f "$ORPHAN_BASELINE" ]; then
+      base=$(grep -vE '^[[:space:]]*(#|$)' "$ORPHAN_BASELINE" 2>/dev/null | wc -l)
+    fi
+    echo "rot-guard: $orphans modules in this manifest's territory are reached by no build root (baseline $base)."
+    if [ "$orphans" -gt "$base" ]; then
+      echo "  FAIL: unguarded-orphan count rose from $base to $orphans."
+      echo "        Modules that nothing imports and no root names:"
+      if [ -f "$ORPHAN_BASELINE" ]; then
+        LC_ALL=C comm -23 "$tmp/orphans" <(grep -vE '^\s*(#|$)' "$ORPHAN_BASELINE" | LC_ALL=C sort -u) \
+          | sed 's/^/          /'
+      else
+        sed 's/^/          /' "$tmp/orphans"
+      fi
+      echo "        Add each to $MANIFEST, or record it in $ORPHAN_BASELINE with"
+      echo "        the reason it is not guarded. Regenerate the manifest with:"
+      echo "          ROT_GUARD_WRITE_MANIFEST=1 bash $0 --check"
+      fail=1
+    fi
+    if [ "${ROT_GUARD_WRITE_BASELINE:-0}" = "1" ]; then
+      cp "$tmp/orphans" "$tmp/newbase"
+      { echo "# Modules under CatCrypt.Crypto.SecureCompilation / .Optimizer / .Jasmin that"
+        echo "# no import and no manifest root reaches. They are the standing gap this"
+        echo "# manifest has not closed; the check fails when the list GROWS, so a newly"
+        echo "# added module in those namespaces must be imported by something, put in the"
+        echo "# manifest, or recorded here with a reason. Regenerate with"
+        echo "#   ROT_GUARD_WRITE_BASELINE=1 bash scripts/rot-guard-build.sh --check"
+        cat "$tmp/newbase"; } > "$ORPHAN_BASELINE"
+      echo "  wrote $ORPHAN_BASELINE ($orphans entries)"
+    fi
+
+    if [ "$fail" -ne 0 ]; then
+      echo "rot-guard: FAIL (see above)."
+      exit 1
+    fi
+    echo "rot-guard: manifest and coverage OK."
+    exit 0
+    ;;
+
+  --build)
+    batch="${2:-64}"
+    prefix="${ROT_GUARD_PREFIX:-}"
+    total=$(wc -l < "$tmp/mods")
+    fail=0
+    i=0
+    split -l "$batch" "$tmp/mods" "$tmp/batch."
+    for b in "$tmp"/batch.*; do
+      # shellcheck disable=SC2046,SC2086
+      $prefix lake build $(cat "$b")
+      ec=$?
+      i=$(( i + $(wc -l < "$b") ))
+      if [ "$ec" -ne 0 ]; then
+        echo "rot-guard: FAIL — a module in this batch did not build (exit $ec):"
+        sed 's/^/    /' "$b"
+        fail=1
+      fi
+      echo "rot-guard: $i/$total modules built."
+    done
+    [ "$fail" -eq 0 ] || exit 1
+    echo "rot-guard: all $total modules built."
+    exit 0
+    ;;
+
+  *)
+    echo "usage: $0 [--list | --check | --build [BATCH]]" >&2
+    exit 2
+    ;;
+esac

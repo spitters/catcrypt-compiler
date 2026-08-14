@@ -1,0 +1,15 @@
+10
+# Hand-authored Com/Lcmd owned-emit modules (frozen baseline; auto-tightened
+# by scripts/handcom-provenance-ratchet.sh). First line = count; each path
+# below carries the reason its emitted artifact is not front-generated. The
+# goal is to re-source each through a front (-> 0).
+CatCrypt/Crypto/Optimizer/Lattice/NttButterflyComDenote.lean  # butterfly Com built from hand de-Bruijn `.var { op := ... }` chains as the subject of its denotation theorems; no front marker
+CatCrypt/Crypto/Optimizer/Lattice/NttFullFoldComDenote.lean  # full-fold Com built from hand de-Bruijn `.var { op := ... }` chains as the subject of its denotation theorems; no front marker
+CatCrypt/Crypto/Optimizer/Lattice/NttLayerComDenote.lean  # layer Com built from a hand de-Bruijn `.var { op := ... }` chain as the subject of its denotation theorems; no front marker
+CatCrypt/Crypto/SecureCompilation/VIR/Plonky3OrchLoopsEmit.lean  # the written orchestration-loop .s is rendered from hand-constructed Lopn/Linstr bodies
+CatCrypt/Crypto/SecureCompilation/VIR/Plonky3OrchLoopsOwnedEmit.lean  # the written orchestration-loop .s is rendered from hand-constructed Lopn/Linstr bodies
+CatCrypt/Crypto/SecureCompilation/VIR/Plonky3PaddingFreeSpongeOwnedEmit.lean  # the written sponge .s is rendered from hand-constructed Lopn/Linstr bodies
+CatCrypt/Crypto/SecureCompilation/VIR/Plonky3SerializeOwnedEmit.lean  # the written serialize .s is rendered from hand-constructed Lopn/Linstr bodies
+CatCrypt/Crypto/SecureCompilation/X86Backend/CmovSelectOwnedEmit.lean  # the cmov swap variant is hand-built as Lcmd and rendered; the mask swap in the same module is front-generated
+CatCrypt/Crypto/SecureCompilation/X86Backend/MpnLoopEmit.lean  # the *_handtwin.s bench artifacts and the blk4 add/sub .s are rendered from hand-built Lcmd bodies; the deployed mpn_*_loop_owned.s symbols in the same module are front-sourced
+CatCrypt/Crypto/SecureCompilation/X86Backend/MpnLoopOwnedEmit.lean  # the written mpn loop .s files are rendered from hand-built Lcmd bodies

@@ -1,0 +1,15 @@
+# Documents gated by `scripts/lint-lean-prose.sh --docs`.
+#
+# These are the documents a reader is pointed at as authority for what the
+# compiler does, where a diction slip is a claim slip. A document joins the list
+# once it passes; the list only grows.
+#
+# Not yet listed (they carry hits today): DEMO.md, bench.md.
+README.md
+BUILDING.md
+GETTING_STARTED.md
+EXAMPLES.md
+PROVENANCE.md
+CHANGELOG.md
+CatCrypt/Crypto/Optimizer/README.md
+CatCrypt/Crypto/SecureCompilation/VIR/DIALECTS.md

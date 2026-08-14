@@ -12,13 +12,76 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  # Static gates. Each is its own step so a failure names itself, and the whole
+  # job runs in seconds without a toolchain — so a claim breaks here rather than
+  # ninety minutes into the Lean build.
+  gates:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Check Markdown file links resolve
         run: bash scripts/check-doc-links.sh
+
+      - name: Build roots cover every compiler module (rot guard)
+        run: bash scripts/rot-guard-build.sh --check
+
+      - name: No new hand-authored emit kernel (Com/Lcmd provenance)
+        run: bash scripts/handcom-provenance-ratchet.sh
+
+      - name: No new untagged hand-JInstr block (emit provenance)
+        run: bash scripts/audit_emit_provenance.sh
+
+      - name: No new vacuous or assumption-shaped security theorem
+        run: bash scripts/vacuous-theorem-ratchet.sh
+
+      - name: No new plumbing-tagged security theorem
+        run: bash scripts/uc-plumbing-ratchet.sh
+
+      - name: No new native_decide or maxHeartbeats bump (proof cost)
+        run: bash scripts/proof-cost-ratchet.sh
+
+      - name: Authority documents are free of changelog prose
+        run: bash scripts/lint-lean-prose.sh --docs
+
+      - name: Added Lean files carry clean prose and a Main results section
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          if [ -z "$base" ]; then base="$(git rev-parse HEAD~1 2>/dev/null || true)"; fi
+          if [ -z "$base" ]; then echo "no base commit; nothing added to check"; exit 0; fi
+          added="$(git diff --name-only --diff-filter=A "$base" HEAD -- '*.lean' || true)"
+          if [ -z "$added" ]; then echo "no added Lean files"; exit 0; fi
+          echo "$added"
+          # shellcheck disable=SC2086
+          bash scripts/lint-lean-prose.sh $added
+          # shellcheck disable=SC2086
+          bash scripts/module-doc-ratchet.sh $added
+
+      - name: Ratchet baselines were not left rewritten
+        # Every ratchet above auto-tightens its baseline when the count falls.
+        # A tightened baseline that was not committed means the run measured
+        # something the repository does not record.
+        run: git diff --exit-code -- scripts/
+
+  build:
+    runs-on: ubuntu-latest
+    # The full library on a 16 GB runner: long, but bounded. A run that has not
+    # finished by here is stuck, not slow.
+    timeout-minutes: 240
+    env:
+      # Peak memory scales with the number of concurrent Lean workers. Lake has no
+      # scheduler of its own — it registers build jobs as Lean tasks, and the Lean
+      # runtime's task pool decides how many run at once. This variable sizes that
+      # pool, and being an environment variable it is inherited by every child
+      # `lean` process, so it bounds worker count and per-process threads together.
+      # Left unset the pool is sized from the runner's CPU count and the heavy
+      # native_decide modules in the tail exceed the runner's memory. At 1 the build
+      # runs ~3 concurrent workers, measured at ~8 GB peak.
+      LEAN_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Install elan + the pinned Lean toolchain
         run: |
@@ -32,10 +95,20 @@ jobs:
         run: lake exe cache get
 
       - name: Build the compiler
-        # Cap to two cores: under full parallelism the heavy native_decide /
-        # Plonky3 modules exceed the 16 GB runner and the build is OOM-killed
-        # near the end (~9200/9600).
-        run: taskset -c 0-1 lake build
+        # Every module in scripts/rot-guard/build-roots.txt, 64 per lake invocation.
+        # The import closure of that manifest is the whole library, so this builds
+        # the same module set as `lake build`, and each module is elaborated under
+        # the package's `-E hasSorry`. What the batching buys is attribution: a
+        # batch that dies names the modules it was building, and the workers of the
+        # preceding batches have exited, so the log locates a failure instead of
+        # ending at an anonymous kill partway through one job.
+        run: bash scripts/rot-guard-build.sh --build 64
+
+      - name: Confirm the default target is complete
+        # Nothing left to elaborate after the step above; this checks that the
+        # package's own default target — the `CatCrypt` submodule glob — is what
+        # the batched build covered.
+        run: lake build
 
       - name: Reproduce the axiom ledger
         run: lake env lean AxiomAudit.lean
