@@ -58,8 +58,8 @@ Each ratchet compares against a baseline in `scripts/` and fails when its count
 rises. When a count falls the baseline is rewritten downward; commit the tightened
 file, which is what the final CI step checks.
 
-The proof-cost baselines start high — 3450 `native_decide` occurrences over 617
-modules, and 122 `maxHeartbeats` bumps above the default — and they are an open
+The proof-cost baselines start high — about 3,400 `native_decide` occurrences over
+~620 modules, and 122 `maxHeartbeats` bumps above the default — and they are an open
 target rather than a settled state. Each `native_decide` runs a computation
 inside the build and adds the `ofReduceBool` compiler-trust axiom to what depends
 on it; each raised heartbeat budget carries a slow proof. Replacing one with a

@@ -138,7 +138,7 @@ Three machine-checked theorems govern the pipeline. `AxiomAudit.lean` prints the
 axiom set each one rests on.
 
 _Compiler correctness_ — `Compiler.compile_correct_all`. At lattice parameters `q`,
-`n`, decoding the machine execution of the emitted code `m` equals the source's
+`n`, decoding the run output of the emitted code `m` equals the source's
 per-slot denotation:
 ```
 (chosenModel choice q n).validated
@@ -151,15 +151,21 @@ agreement edge; `hInj`, injectivity of the fresh-name supply; `hPinj`, injectivi
 of the whole-function lowering's parameter map; and `hCompile`, the witness that
 `compile q n (.lattice q n)` returned `m`. The statement is at the lattice route:
 `compile` returns `none` on the front route, whose correctness is
-`Compiler.compile_correct_front`. The lattice carrier's `exec` preserves the run
-output, so this equation is about the emitted code's denotation under that carrier;
-`CompileCorrectBaseAlu.compile_correct_riscv` and `compile_correct_arm` state the
-same shape over an `exec` that runs the emitted instructions.
+`Compiler.compile_correct_front`. This is an evaluator-level statement: for the
+lattice carrier, `exec` is the identity that re-exposes the `Com` evaluator
+`runProg`, and `validated` is that carrier's encode∘decode round-trip carried as
+`hVal` — so the equation constrains the emitted `Com`'s denotation, not an
+instruction-set execution. The theorems that run actual backend instructions are
+`CompileCorrectBaseAlu.compile_correct_riscv` / `compile_correct_arm` over the
+base-ALU subset, and `com_x86_e2e` at x86.
 
 _Rust front, end to end_ — `CompilerCorrectnessExtracted.rustToJasminCom_endToEnd`. A
 hax-extracted source, lowered through the dialect stack to the Jasmin `Com`, denotes
 the value the source leaves — `jcom.denote (ctMapValD W) = ctTransTy (w.lookup V')` —
-over the machine-word semantics, data-dependent loops included.
+on the `IsCoveredCtl` fragment, data-dependent loops included, with the front's
+adequacy edge carried as an explicit hypothesis; the sibling
+`rustToJasminCom_endToEnd_unconditional` discharges that edge over the scalar
+machine-word semantics `semScalar`.
 
 _Robust source to x86_ — `RobustCompilationPipeline.robustCompilation_source_to_x86`.
 For every lattice-dialect source program, the emitted-and-compiled x86 observable is

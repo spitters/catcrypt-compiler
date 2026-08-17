@@ -93,9 +93,11 @@ The pipeline preserves three properties from source to emitted bytes. The
   model. The whole-pipeline x86 statement `robustCompilation_source_to_x86` carries a
   lattice-dialect source to the emitted x86 observable, with jasmin's verified compiler
   as an explicit hypothesis. The Rust front's end-to-end result
-  (`rustToJasminCom_endToEnd`) agrees with the source over the machine-word semantics on
-  the `IsCoveredCtl` fragment, data-dependent loops included. (Example: the lattice NTT
-  compiles to the source polynomial multiply.)
+  (`rustToJasminCom_endToEnd`) agrees with the source on the `IsCoveredCtl` fragment,
+  data-dependent loops included, with the front's adequacy edge carried as an explicit
+  hypothesis; the sibling `rustToJasminCom_endToEnd_unconditional` discharges that edge
+  over the scalar machine-word semantics. (Example: the lattice NTT compiles to the
+  source polynomial multiply.)
 - **Constant-time** — preserved over the full modern constructor set, including
   data-dependent loops: a loop is constant-time exactly when its guard is public,
   and the analyzer accepts a public-count loop and rejects a secret-dependent one.
@@ -135,7 +137,10 @@ The relational front compiles Lean specifications directly.
 
 [GETTING_STARTED.md](GETTING_STARTED.md) compiles a program in one command;
 [DEMO.md](DEMO.md) and [EXAMPLES.md](EXAMPLES.md) walk the two fronts and the
-buildable example modules; [bench.md](bench.md) reports the measured performance; the
+buildable example modules; [CAPABILITIES.md](CAPABILITIES.md) indexes each shipped
+primitive to its emit module, its correctness theorem/KAT, and its provenance class;
+[bench.md](bench.md) reports the measured performance, with the emitted artifacts and
+their provenance under [bench/](bench/); the
 [manual](docs/CompilerManual.lean) — a [Verso](https://github.com/leanprover/verso)
 document — gives the narrative and the headline theorems.
 
