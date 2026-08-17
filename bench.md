@@ -62,6 +62,17 @@ in-Lean kernel rather than riding a verified leaf, a scheduling factor remains.
 | BLS12-377 | adopted leaf — the orchestration is owned-emit; the field and pairing arithmetic are `call`ed into the AUCurves verified bedrock2 tower, not emitted here. No committed ratio. |
 | BN254 field multiply | uncurated — an auto-parsed 0.493× vs libgmp (scalar) whose tier is unconfirmed and which is not on the vetted scoreboard. |
 
+## Proof-system hashing
+
+| primitive | reference (same tier) | ratio |
+|---|---|---|
+| Poseidon2 (BabyBear, scalar owned-RA emit) | Plonky3 production (scalar) | 1.30× (slower) |
+
+The Poseidon2 permutation is emitted through the front field descent (`translBB`); the
+owned register allocator closes ~36% of the residual to the Plonky3 production scalar
+kernel (from ~1.47×), leaving a scheduling gap — the same modularity floor as the
+symmetric kernels.
+
 ## Artifacts
 
 Each emitted row above ships its `.s` under `bench/<comparison>/` with a one-line
