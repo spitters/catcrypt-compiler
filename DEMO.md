@@ -61,7 +61,7 @@ lake build CatCrypt.Crypto.SecureCompilation.RelationalFrontCurve25519
 
 ## Headline theorems
 
-Three theorems state the compiler's correctness end to end:
+Four theorems state the compiler's correctness end to end:
 
 - [`rustToJasminCom_endToEnd`](CatCrypt/Crypto/SecureCompilation/VIR/CompilerCorrectnessExtracted.lean)
   — for a source in the covered fragment (`IsCoveredCtl`), given the front's
@@ -76,7 +76,15 @@ Three theorems state the compiler's correctness end to end:
   — for a program compiled through a chain of dialects (`d → d' → jasmin`), running
   the owned-emitted code computes the composite value transport of the program's
   denotation. The single-dialect case (`compileVia_correct`) and the lattice
-  route (`compile_correct_all`) are instances.
+  route (`compile_correct_all`) are instances — evaluator-level, under an identity
+  carrier.
+- [`com_x86_e2e`](CatCrypt/Crypto/SecureCompilation/ScalarLinX86Demo.lean)
+  — the concrete machine-execution result: for a straight-line `Com` over the
+  all-`reg 64` fragment, running the emitted ops on the x86 target semantics
+  (`x86Target.runOps ∘ x86Target.compile`) lands the source `Com`'s denotation in the
+  result register. This is the step from the evaluator to actual instruction
+  execution; `comToArmLsem_correct` / `comToRiscvLsem_correct` do the same against the
+  AArch64 / RISC-V Sail models over the base-ALU subset.
 
 The trusted base these rest on is described in [PROVENANCE.md](PROVENANCE.md).
 

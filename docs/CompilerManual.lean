@@ -134,7 +134,7 @@ theorems.
 
 # Headline theorems
 
-Three machine-checked theorems govern the pipeline. `AxiomAudit.lean` prints the
+Four machine-checked theorems govern the pipeline. `AxiomAudit.lean` prints the
 axiom set each one rests on.
 
 _Compiler correctness_ — `Compiler.compile_correct_all`. At lattice parameters `q`,
@@ -173,6 +173,20 @@ the decode of the transported source meaning — no drift through lowering, emis
 or the Jasmin compiler — and the emitted code is constant-time at x86. Jasmin's
 verified compiler enters as an explicit `JasminVerifiedCompiler` hypothesis,
 alongside leaf agreement and the SSA-naming injectivity side conditions.
+
+_Concrete x86 execution_ — `ScalarLinX86Demo.com_x86_e2e`. This is the theorem that
+actually runs instructions: for a straight-line `Com` over the all-`reg 64` fragment,
+```
+(x86Target.runOps s (x86Target.compile (comToRegProg com Γ.length))).regs (comRetName …)
+  = Com.denote com V
+```
+— the emitted ops, executed on the x86 target semantics, land the source `Com`'s
+denotation in the result register (`ComOK`/`AllReg64`/`ShiftAmtOK` are the fragment's
+coverage hypotheses, not assumptions of the conclusion). Where `compile_correct_all`
+stops at the `Com` evaluator under an identity carrier, this closes the last step onto
+concrete instruction execution; `ComToArmLsem.comToArmLsem_correct` /
+`ComToRiscvLsem.comToRiscvLsem_correct` do the same for AArch64 / RISC-V against the
+vendor Sail models over the base-ALU subset.
 
 # The backends and the trusted base
 
