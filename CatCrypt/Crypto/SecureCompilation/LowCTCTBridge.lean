@@ -7,79 +7,55 @@ import CatCrypt.Crypto.SecureCompilation.LowCTCT
 import CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
 import CatCrypt.Crypto.SecureCompilation.Framework
 import CatCrypt.Crypto.SecureCompilation.JasminCompilerBridge
-import CatCrypt.Crypto.SecureCompilation.NIPreservation
 import CatCrypt.Crypto.Jasmin.LowCTToJasmin
 import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectRustSim
-import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakTraceNative
 
 /-!
-# Semantic CT bridge for Pipeline (1): LowCT → CryptoSSA
+# CT bridge for Pipeline (1): LowCT → catCryptDialect → Jasmin → x86
 
-Track C3.2: connect the syntactic CT predicate `isCT_LowCT'` (from
-`LowCTCT.lean`, C3.1) to the semantic CT predicate `ct_spComp` (from
-`CTAdmClass.lean`) by routing through the CryptoSSA target IR.
+The constant-time (CT) side of the LowCT front. It carries a source
+program from the syntactic source-level CT predicate `isCT_LowCT'`
+(`LowCTCT.lean`) to the Jasmin syntactic CT whitelist `isCT_Cmd`
+(`JasminCT.lean`) on the emitted command, and — modulo the external
+`jasminc_preserves_ct` axiom of `JasminCompilerBridge.lean` (arXiv
+2511.11292) — to the x86-64 leakage predicate `X86Prog.isCT`.
 
-## Pipeline analogy
+## Scope: no dialect-level CT conclusion
 
-This file is to Pipeline (1) what (the informal description in the
-docstrings of) `JasminCT.lean` is to Pipeline (2): a passage from a
-syntactic, decidable-by-`decide` CT predicate on the source to a
-denotational CT predicate on the SSA-typed target.
+A CT-preservation statement into `Com catCryptDialect` requires a
+value-carrying leak trace. `CryptoDialectLeakTraceValued.lean` provides
+one: `Com.leakTraceV` threads the runtime `Ctxt.Valuation`, and
+`Com.isConstantTimeV` is the corresponding input-independence predicate.
+The valuation-free `Com.leakTrace` (`CryptoDialectLeakTrace.lean`) emits
+the same `List LeakEvent` for every input, so `Com.isConstantTime`
+reduces to an argument-free equality (`Com.all_com_ct = fun _ _ _ =>
+rfl`) that holds for every term and constrains no program. A dialect
+CT-preservation theorem must therefore conclude over the valued trace:
 
-For Pipeline (1) the situation is *easier* than for Pipeline (2):
-every well-typed `CProg` is `ct_spComp` by construction (cf.
-`SSALeakage.cprog_ct_spComp`, derivable from `all_cprog_ct` plus the
-SPTree shape bridge). So once `translate` succeeds and produces a
-`CProg`, we get `ct_spComp` for free, with the syntactic precondition
-acting as a *witness* that our front-end accepts the source program.
+    isCT_LowCT' leaves secrets c = true →
+    translateDialectControl vm c = some o →
+    o.cont tail = some assembled →
+    Com.isConstantTimeV assembled
 
-## Main statement
+so that the source CT hypothesis is consumed. This is the leakage /
+robust-hyperproperty preservation port over the descent, which no lemma
+in the tree currently closes; `CryptoDialectLeakTraceValued.lean`
+records it as the outstanding follow-up. This module states no dialect
+CT conclusion.
 
-`rustcmd_ct_implies_dialect_ct`: given a syntactically-CT `LowCT` that
-`translateDialectControl` accepts, the assembled `Com catCryptDialect
-(secret :: Γ₀) t` (a tail program slotted into the prefix `out.cont`)
-is `CryptoDialectLeakTraceNative.Com.isConstantTime`.
+## Contents
 
-The theorem reduces *directly* to `CryptoDialectLeakTraceNative.Com.all_com_ct`
-(`Dialects/CryptoDialectLeakTraceNative.lean`): every straight-line
-`Com catCryptDialect` program is constant-time by construction, because
-`Com.leakTrace` is valuation-free. No hypothesis of the theorem — neither the
-`isCT_LowCT'` predicate nor the coverage/translation/assembly witnesses — is
-used in the proof. The syntactic predicate is therefore *redundant* for the
-conclusion's truth, but it is the load-bearing artefact for the *front-end's*
-acceptance: only programs the predicate accepts ever reach the translator.
-
-## Corollaries
-
-* `compose_compiler_preserves_uc`: composing the bridge with the
-  Lean-side `compiler_preserves_uc` from `Framework.lean` gives a
-  combined UC + CT transfer at the CryptoSSA level.
-* `rustcmd_ct_implies_x86_ct` (track C3.3): chains the bridge with
-  the `cryptoSSA_to_x86_preserves_ct` corollary of
-  `JasminCompilerBridge.lean` (citing arXiv 2511.11292) to deliver a
-  CT statement on the x86-64 target binary.  The intermediate step —
-  `LowCT`-syntactic-CT to Jasmin-syntactic-CT — is provided by the
-  connector lemma `isCT_Cmd_of_jasminCTSafe`, which holds on the
-  `jasminCTSafe`-restricted fragment of `LowCT`.
-* `rustcmd_strict_ct_implies_cryptossa_ct`: the over-strict
-  `isCT_LowCT` (no control flow) factors through the relaxed one
-  via `isCT_LowCT_imp_relaxed_emptySecrets`.
-
-## Non-results / follow-up
-
-`all_cprog_ct` (in `SSALeakage.lean`) is stated for the
-one-secret-input fragment `CProg (secret :: Γ) t`. The same shape is
-used here. Generalising to multi-secret inputs (e.g. `secret₁ :: secret₂
-:: Γ`) is straightforward but not needed: every secret can be packed
-into a single product type at the front of the context, and the
-existing single-secret statement covers that. We document this rather
-than perform the (out-of-scope) generalisation.
-
-**Status**: bridge `Qed`, four corollaries `Qed` (including the C3.3
-end-to-end chain `rustcmd_ct_implies_x86_ct`), smoke tests `Qed`.
-**0 user axioms on the Lean side**; the x86 conclusion depends on
-`jasminc_preserves_ct` (axiomatised in `JasminCompilerBridge.lean`,
-citing arXiv 2511.11292).
+* `compose_compiler_preserves_uc` — transports concurrent UC security
+  along compiler correctness (`compiler_preserves_uc`, `Framework.lean`).
+* `jasminCTSafe` and `isCT_Cmd_of_jasminCTSafe` — on the `jasminCTSafe`
+  fragment of `LowCT`, the Jasmin command `toJasminCmd` produces is
+  syntactically constant-time (`isCT_Cmd`), by structural induction over
+  every LowCT constructor.
+* `rustcmd_ct_implies_x86_ct` and
+  `rustcmd_ct_implies_x86_ct_of_isCT_LowCT'` — the source→x86 CT chain,
+  closing the final step with the `jasminc_preserves_ct` axiom.
+* `isCT_LowCT'_imp_jasminCTSafe` — on `inCertifiedCTFragment`, the
+  user-facing `isCT_LowCT'` implies the certified `jasminCTSafe`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.LowCTCTBridge
@@ -100,70 +76,11 @@ open scoped ENNReal
 
 set_option autoImplicit false
 
-/-! ## §1  The semantic CT bridge -/
-
-/-- **Semantic CT bridge** for Pipeline (1).
-
-Given a `LowCT` `c` that the syntactic CT predicate accepts, and a
-successful translation `translateDialectControl vm c = some out`, *any*
-tail program slotted into the resulting prefix `out.cont` produces a
-`Com catCryptDialect` program whose leak trace is constant-time.
-
-Stated for one-secret-input contexts `secret :: Γ₀`. The `isCT_LowCT'
-leaves secrets c = true` hypothesis is **not load-bearing for the
-conclusion** (every straight-line `Com catCryptDialect` is CT by
-construction); it is preserved as the documentation of the front-end
-acceptance contract — it is what the *user* must discharge before
-invoking the translator.
-
-The proof is a single application of
-`CryptoDialectLeakTraceNative.Com.all_com_ct`. -/
-theorem rustcmd_ct_implies_dialect_ct
-    {leaves : CTLeaves} {secrets : SecretSet}
-    {secret : CryptoTy} {Γ₀ : Ctx} {t : CryptoTy}
-    (c : LowCT) (_h : isCT_LowCT' leaves secrets c = true)
-    (_hCov : IsCoveredCtl c)
-    (vm : VarMap (secret :: Γ₀)) (o : DTransOut (secret :: Γ₀))
-    (_htrans : translateDialectControl vm c = some o)
-    (tail : Com catCryptDialect o.Γ' t)
-    (assembled : Com catCryptDialect (secret :: Γ₀) t)
-    (_hasm : o.cont tail = some assembled) :
-    CryptoDialectLeakTraceNative.Com.isConstantTime assembled :=
-  CryptoDialectLeakTraceNative.Com.all_com_ct assembled
-
-/-- **Strict-predicate corollary**.  The over-strict `isCT_LowCT`
-factors through the relaxed `isCT_LowCT'` under `emptySecrets` via
-`isCT_LowCT_imp_relaxed_emptySecrets`.  This corollary lets clients
-that only have the over-strict predicate (e.g. legacy ports built
-before C3.1) feed the bridge directly. -/
-theorem rustcmd_strict_ct_implies_dialect_ct
-    {leaves : CTLeaves}
-    {secret : CryptoTy} {Γ₀ : Ctx} {t : CryptoTy}
-    (c : LowCT) (h : isCT_LowCT leaves c = true)
-    (hCov : IsCoveredCtl c)
-    (vm : VarMap (secret :: Γ₀)) (o : DTransOut (secret :: Γ₀))
-    (htrans : translateDialectControl vm c = some o)
-    (tail : Com catCryptDialect o.Γ' t)
-    (assembled : Com catCryptDialect (secret :: Γ₀) t)
-    (hasm : o.cont tail = some assembled) :
-    CryptoDialectLeakTraceNative.Com.isConstantTime assembled :=
-  rustcmd_ct_implies_dialect_ct (leaves := leaves)
-    (secrets := emptySecrets)
-    c (isCT_LowCT_imp_relaxed_emptySecrets leaves c h) hCov vm o htrans tail
-    assembled hasm
-
 /-! ## §2  Composition with `compiler_preserves_uc`
 
-`compiler_preserves_uc` (in `Framework.lean`) transports UC security
-along a denotational equality.  Composing it with the bridge gives:
-*if* the source LowCT is CT-accepted *and* it lowers to a CryptoSSA
-program denotationally equal to a UC-secure target, *then* the target
-is both UC-secure (by `compiler_preserves_uc`) and the CryptoSSA
-intermediate is `ct_spComp` (by the bridge).
-
-The two conclusions are independent — UC and CT live in different
-predicates — but co-derivable from the same source-acceptance witness.
-This corollary just packages the conjunction. -/
+`compiler_preserves_uc` (in `Framework.lean`) transports concurrent UC
+security along compiler correctness.  This corollary re-exposes it at
+the LowCT front boundary. -/
 theorem compose_compiler_preserves_uc
     {E : EventSig} {n : Nat}
     (handler : ∀ e : E.Event, SPComp (E.Resp e))
@@ -172,21 +89,9 @@ theorem compose_compiler_preserves_uc
     {F : hon → StatefulITreeN S n E (out_t ⊕ view)}
     {ε : ENNReal}
     (hcc : CompilerCorrectStateful source target)
-    (hsec : UCEmulatesConcurrentStateful handler n ε source F)
-    -- CT side of the same source program (slotted at the dialect level):
-    {leaves : CTLeaves} {secrets : SecretSet}
-    {secret : CryptoTy} {Γ₀ : Ctx} {tcssa : CryptoTy}
-    (c : LowCT) (h_ct : isCT_LowCT' leaves secrets c = true)
-    (hCov : IsCoveredCtl c)
-    (vm : VarMap (secret :: Γ₀)) (transOut : DTransOut (secret :: Γ₀))
-    (htrans : translateDialectControl vm c = some transOut)
-    (tail : Com catCryptDialect transOut.Γ' tcssa)
-    (assembled : Com catCryptDialect (secret :: Γ₀) tcssa)
-    (hasm : transOut.cont tail = some assembled) :
-    UCEmulatesConcurrentStateful handler n ε target F ∧
-    CryptoDialectLeakTraceNative.Com.isConstantTime assembled :=
-  ⟨compiler_preserves_uc handler hcc hsec,
-   rustcmd_ct_implies_dialect_ct c h_ct hCov vm transOut htrans tail assembled hasm⟩
+    (hsec : UCEmulatesConcurrentStateful handler n ε source F) :
+    UCEmulatesConcurrentStateful handler n ε target F :=
+  compiler_preserves_uc handler hcc hsec
 
 /-! ## §3  Composition with `cryptoSSA_to_x86_preserves_ct` (track C3.3)
 
@@ -271,7 +176,7 @@ def jasminCTSafe : LowCT → Bool
   -- expression is CT-safe exactly when its lowered `PExpr` passes the
   -- (deliberately shallow) `isCT_PExpr` whitelist — e.g. `a[i] + b[i]`
   -- (`Papp2 Oadd (Pvar) (Pvar)`) is accepted, but a deeply-nested arithmetic
-  -- tree is not.  Reflecting the genuine guard rather than asserting `true`.
+  -- tree is not.
   | .RLimbStoreExpr _ _ e   =>
       CatCrypt.Crypto.Jasmin.isCT_PExpr
         (CatCrypt.Crypto.Jasmin.LowCT.sexprToPExpr e)
@@ -307,7 +212,7 @@ def jasminCTSafe : LowCT → Bool
   | .RTupleStore _ _ _      => true
   | .RTupleLoad _ _ _       => true
   -- #229 / Phase RND (2026-05-30): the dynamic-index array store/load and the
-  -- SExpr scalar-set NO LONGER lower to the empty `[]` Cmd.  After Phase RND,
+  -- SExpr scalar-set lower to real instructions.  Under Phase RND,
   -- `LowCTToJasmin.toJasminCmd` emits:
   --   * `.RArrStore arr idxVar src` → `Cassgn (Laset _ _ _ (Pvar idxVar)) _ _ _`
   --   * `.RArrLoad dst src idxVar`  → `Cassgn (Lvar _) _ _ (Pget _ _ _ (Pvar idxVar))`
@@ -436,9 +341,9 @@ theorem isCT_Cmd_of_jasminCTSafe (c : LowCT) (h : jasminCTSafe c = true) :
     simp only [jasminCTSafe] at h
     have hb := ih h
     simp only [CatCrypt.Crypto.Jasmin.LowCT.toJasminCmd_RFor]
-    -- Reduce `isCT_Cmd` to the list-wide `List.all` form (post body-recursion
-    -- `isCT_Cmd` is no longer definitionally `List.all`; `isCT_Cmd_eq_all`
-    -- bridges the two so the unroll induction below goes through unchanged).
+    -- Reduce `isCT_Cmd` to the list-wide `List.all` form (after body
+    -- recursion `isCT_Cmd` is not definitionally `List.all`; `isCT_Cmd_eq_all`
+    -- bridges the two so the unroll induction below goes through).
     rw [CatCrypt.Crypto.Jasmin.isCT_Cmd_eq_all]
     rw [CatCrypt.Crypto.Jasmin.isCT_Cmd_eq_all] at hb
     induction n with
@@ -497,7 +402,7 @@ theorem isCT_Cmd_of_jasminCTSafe (c : LowCT) (h : jasminCTSafe c = true) :
   -- accepts the public-flag guard shape regardless of the branches.
   | RIfNz e ct cf ih1 ih2 =>
     simp only [jasminCTSafe, Bool.and_eq_true] at h
-    -- Branch IHs are not load-bearing (matches the Cwhile pattern: the
+    -- Branch IHs are unused (matches the Cwhile pattern: the
     -- isCT_InstrR clause for `Cif` does not recurse into branches).
     simp only [CatCrypt.Crypto.Jasmin.LowCT.toJasminCmd_RIfNz,
                CatCrypt.Crypto.Jasmin.isCT_Cmd, List.all_cons, List.all_nil,
@@ -746,28 +651,6 @@ theorem smokeBridge_translateDialect_isSome :
     (translateDialectControl (Γ := []) VarMap.empty smokeBridgeProg).isSome := by
   native_decide
 
-/-- Bridge instantiation: pick the secret context to be `[.sword 64]`
-(a single 64-bit secret) and slot in **any** tail program.  The
-`cprog_ct_spComp` body delivers the conclusion uniformly.
-
-The `tail` parameter is universally quantified to dodge the question
-of *which* `Γ'` `translate` produces (which we'd have to compute via
-`decide`); the bridge holds for every choice of tail. -/
-example
-    (o : DTransOut ((CryptoTy.sword 64) :: ([] : Ctx)))
-    (htrans : translateDialectControl (Γ := (CryptoTy.sword 64) :: ([] : Ctx))
-        ((VarMap.empty).weaken (t := CryptoTy.sword 64))
-        smokeBridgeProg = some o)
-    {tcssa : CryptoTy} (tail : Com catCryptDialect o.Γ' tcssa)
-    (assembled : Com catCryptDialect ((CryptoTy.sword 64) :: ([] : Ctx)) tcssa)
-    (hasm : o.cont tail = some assembled) :
-    CryptoDialectLeakTraceNative.Com.isConstantTime assembled :=
-  rustcmd_ct_implies_dialect_ct
-    (leaves := smokeBridgeLeaves) (secrets := emptySecrets)
-    smokeBridgeProg smokeBridgeProg_isCT'
-    (IsCoveredCtl.ofCovered (.rLetU64Zero (.rScalarSet "i" 7)))
-    _ o htrans tail assembled hasm
-
 /-! ## §5  Smoke test for C3.3 end-to-end theorem
 
 `smokeBridgeProg` is in the `jasminCTSafe` fragment (it consists of
@@ -830,227 +713,6 @@ fragment. -/
 theorem smokeBridgeProgCall_jasminCTSafe :
     jasminCTSafe smokeBridgeProgCall = true := by decide
 
-/-! ## §7  NI-line bridge (track A.NI-CT-bridge)
-
-This section connects the syntactic `isCT_LowCT'` predicate (C3.1)
-to the **leakage non-interference** line of `NIPreservation.lean`
-(Almeida-style Theorem 2 = `ni_preserved_by_eq`).  The composition
-yields:
-
-* `rustcmd_ct_implies_leakageNI`   — syntactic CT ⇒ leakage NI
-  (perfect, ε = 0) on the **leakage-trace observable** of the
-  resulting CryptoSSA program.
-* `rustcmd_ct_implies_quantified_NI` — corollary at quantified level
-  (ε = 0), via `leakageNI_implies_quantified`.
-
-### What is `LeakageNI` here?
-
-`NIPreservation.LeakageNI R f` says that two `R`-related inputs
-produce **identical** SPComp computations under `f : α → SPComp β`.
-The natural CryptoSSA observable for which this is true *for any*
-relation `R` is the **leakage trace** of the program — which by
-`leakTrace_independent` (in `SSALeakage.lean`) is constant in inputs
-because CryptoSSA has no data-dependent branching.
-
-We package this as the function
-
-    leakTraceFn (p : CProg Γ t) : HVec Γ → SPComp LeakTrace
-      := fun _ => SPComp.pure p.leakTrace
-
-i.e. the trace observable lifted into `SPComp`.  Because the function
-is *constant in its input*, `LeakageNI R` holds for **every**
-relation `R`, including `(fun _ _ => True)` (the `ConstantTimeNI`
-specialisation).
-
-### Why this composition closes the C3.NI gap
-
-`ct_spComp` (semantic CT, from `CTAdmClass.lean`) is **shape-only**
-constancy: the `SPTree` shape is independent of input, but the
-compiled `SPComp` denotation may still depend on inputs.  Therefore
-*there is no direct arrow* `ct_spComp f ⇒ LeakageNI R f` for the
-`f`-as-denotation reading.  The CryptoSSA invariant that *does* yield
-`LeakageNI` is the **trace-level** statement `leakTrace_independent`,
-which we package here.  Any user wanting NI on the *value-level*
-SPComp denotation needs a different (stronger) source predicate; the
-current bridge serves the trace-leakage observation, which is what
-Almeida et al. and Barthe et al.'s side-channel literature mean by
-"leakage non-interference".
-
-### Composition with `ni_preserved_by_eq`
-
-Given any *target* trace function `target : HVec Γ → SPComp LeakTrace`
-that is denotationally equal to the source `leakTraceFn p`, the
-Almeida-style theorem `ni_preserved_by_eq` transports `LeakageNI R`
-across that equality — exactly the inputs the user asked about.
-This is exposed below as `rustcmd_ct_implies_target_leakageNI`.
-
-### Status
-
-All three theorems below are `Qed` modulo the same trust dependencies
-as `rustcmd_ct_implies_cryptossa_ct` (i.e. **0 user axioms** on the
-Lean side).  The smoke test instantiates them on `smokeBridgeProg`. -/
-
-/-- **The leakage-trace observable of a CryptoSSA program**.
-
-Lifted into `SPComp` as `fun _ => SPComp.pure p.leakTrace`.  This
-function is *constant in its input*: the leakage trace depends only
-on the program structure, not on the values flowing through it.
-That constancy is the load-bearing fact for `LeakageNI`. -/
-noncomputable def comLeakTraceFn
-    {Γ : Ctx} {t : CryptoTy} (c : Com catCryptDialect Γ t) :
-    HVec Γ → SPComp CryptoDialectLeakTrace.LeakTrace :=
-  fun _ => SPComp.pure (CryptoDialectLeakTrace.Com.leakTrace c)
-
-/-- **Constancy of the leakage-trace observable**.  Any two inputs
-produce the same `SPComp LeakTrace`.  This is the dialect
-`Com.leakTrace_input_independent` in functional clothing. -/
-theorem comLeakTraceFn_const
-    {Γ : Ctx} {t : CryptoTy} (c : Com catCryptDialect Γ t) (V₁ V₂ : HVec Γ) :
-    comLeakTraceFn c V₁ = comLeakTraceFn c V₂ := rfl
-
-/-- **The leakage-trace observable is `LeakageNI` for any relation**.
-
-Because the function is constant in its input, the conclusion
-`f x₁ = f x₂` holds for *every* pair `(x₁, x₂)` regardless of
-whether they are `R`-related.  In particular this specialises to
-`ConstantTimeNI` at `R := fun _ _ => True`. -/
-theorem comLeakTraceFn_leakageNI
-    {Γ : Ctx} {t : CryptoTy} (c : Com catCryptDialect Γ t)
-    (R : HVec Γ → HVec Γ → Prop) :
-    NIPreservation.LeakageNI R (comLeakTraceFn c) :=
-  fun V₁ V₂ _ => comLeakTraceFn_const c V₁ V₂
-
-/-- **Bridge corollary (A.NI-CT-bridge step 1)**: a syntactically-CT
-`LowCT` produces a CryptoSSA program whose leakage-trace observable
-is leakage-NI.
-
-Proof shape: we don't actually *use* `h_ct` or `h_translate` in the
-proof body — `LeakageNI` for the trace observable holds for *every*
-CryptoSSA program by `leakTraceFn_leakageNI`.  The hypotheses
-document the *front-end acceptance contract*, identical to the role
-they play in `rustcmd_ct_implies_cryptossa_ct`.  Together with
-`rustcmd_ct_implies_cryptossa_ct`, this lemma exhibits both the
-**semantic CT** (via `ct_spComp`) and the **leakage NI** (via this
-file) faces of the C3 source-level predicate. -/
-theorem rustcmd_ct_implies_leakageNI
-    {leaves : CTLeaves} {secrets : SecretSet}
-    {secret : CryptoTy} {Γ₀ : Ctx} {t : CryptoTy}
-    (c : LowCT) (_h_ct : isCT_LowCT' leaves secrets c = true)
-    (_hCov : IsCoveredCtl c)
-    (vm : VarMap (secret :: Γ₀)) (o : DTransOut (secret :: Γ₀))
-    (_h_translate : translateDialectControl vm c = some o)
-    (tail : Com catCryptDialect o.Γ' t)
-    (assembled : Com catCryptDialect (secret :: Γ₀) t)
-    (_hasm : o.cont tail = some assembled)
-    (R : HVec (secret :: Γ₀) → HVec (secret :: Γ₀) → Prop) :
-    NIPreservation.LeakageNI R (comLeakTraceFn assembled) :=
-  comLeakTraceFn_leakageNI assembled R
-
-/-- **Bridge corollary (A.NI-CT-bridge step 2)**: composition with
-`ni_preserved_by_eq` (Almeida-style Theorem 2).  If a target trace
-function is denotationally equal to the source's, leakage NI carries
-over to the target.
-
-This is the *intended consumer pattern*: a downstream pass produces
-`target : HVec _ → SPComp LeakTrace`, proves correctness as
-denotational equality with `leakTraceFn`, and feeds the witness in
-to obtain `LeakageNI` on the target. -/
-theorem rustcmd_ct_implies_target_leakageNI
-    {leaves : CTLeaves} {secrets : SecretSet}
-    {secret : CryptoTy} {Γ₀ : Ctx} {t : CryptoTy}
-    (c : LowCT) (h_ct : isCT_LowCT' leaves secrets c = true)
-    (hCov : IsCoveredCtl c)
-    (vm : VarMap (secret :: Γ₀)) (o : DTransOut (secret :: Γ₀))
-    (h_translate : translateDialectControl vm c = some o)
-    (tail : Com catCryptDialect o.Γ' t)
-    (assembled : Com catCryptDialect (secret :: Γ₀) t)
-    (hasm : o.cont tail = some assembled)
-    (R : HVec (secret :: Γ₀) → HVec (secret :: Γ₀) → Prop)
-    (target : HVec (secret :: Γ₀) → SPComp CryptoDialectLeakTrace.LeakTrace)
-    (h_correct : ∀ V, comLeakTraceFn assembled V = target V) :
-    NIPreservation.LeakageNI R target :=
-  NIPreservation.ni_preserved_by_eq h_correct
-    (rustcmd_ct_implies_leakageNI c h_ct hCov vm o h_translate tail assembled hasm R)
-
-/-- **Chain corollary (A.NI-CT-bridge step 3)**: syntactic CT ⇒
-quantified leakage NI at ε = 0.
-
-Composes `rustcmd_ct_implies_leakageNI` with
-`leakageNI_implies_quantified`. -/
-theorem rustcmd_ct_implies_quantified_NI
-    {leaves : CTLeaves} {secrets : SecretSet}
-    {secret : CryptoTy} {Γ₀ : Ctx} {t : CryptoTy}
-    (c : LowCT) (h_ct : isCT_LowCT' leaves secrets c = true)
-    (hCov : IsCoveredCtl c)
-    (vm : VarMap (secret :: Γ₀)) (o : DTransOut (secret :: Γ₀))
-    (h_translate : translateDialectControl vm c = some o)
-    (tail : Com catCryptDialect o.Γ' t)
-    (assembled : Com catCryptDialect (secret :: Γ₀) t)
-    (hasm : o.cont tail = some assembled)
-    (R : HVec (secret :: Γ₀) → HVec (secret :: Γ₀) → Prop) :
-    NIPreservation.QuantifiedLeakageNI R (comLeakTraceFn assembled) 0 :=
-  NIPreservation.leakageNI_implies_quantified
-    (rustcmd_ct_implies_leakageNI c h_ct hCov vm o h_translate tail assembled hasm R)
-
-/-- **`ConstantTimeNI` specialisation**: the trace observable of any
-CryptoSSA program produced by the bridge is `ConstantTimeNI`
-(`LeakageNI (fun _ _ => True)`).  This is the strongest reading of
-"the trace is independent of all inputs". -/
-theorem rustcmd_ct_implies_constantTimeNI
-    {leaves : CTLeaves} {secrets : SecretSet}
-    {secret : CryptoTy} {Γ₀ : Ctx} {t : CryptoTy}
-    (c : LowCT) (h_ct : isCT_LowCT' leaves secrets c = true)
-    (hCov : IsCoveredCtl c)
-    (vm : VarMap (secret :: Γ₀)) (o : DTransOut (secret :: Γ₀))
-    (h_translate : translateDialectControl vm c = some o)
-    (tail : Com catCryptDialect o.Γ' t)
-    (assembled : Com catCryptDialect (secret :: Γ₀) t)
-    (hasm : o.cont tail = some assembled) :
-    NIPreservation.ConstantTimeNI (comLeakTraceFn assembled) :=
-  rustcmd_ct_implies_leakageNI c h_ct hCov vm o h_translate tail assembled hasm _
-
-/-! ### Smoke test for the NI-CT bridge -/
-
-/-- **NI smoke test**: instantiating the bridge on `smokeBridgeProg`.
-
-Mirrors the existing `cprog_ct_spComp` smoke test; the leakage-trace
-observable of the resulting CryptoSSA program (slotted with any tail)
-is leakage-NI for every relation. -/
-example
-    (o : DTransOut ((CryptoTy.sword 64) :: ([] : Ctx)))
-    (htrans : translateDialectControl (Γ := (CryptoTy.sword 64) :: ([] : Ctx))
-        ((VarMap.empty).weaken (t := CryptoTy.sword 64))
-        smokeBridgeProg = some o)
-    {tcssa : CryptoTy} (tail : Com catCryptDialect o.Γ' tcssa)
-    (assembled : Com catCryptDialect ((CryptoTy.sword 64) :: ([] : Ctx)) tcssa)
-    (hasm : o.cont tail = some assembled)
-    (R : HVec ((CryptoTy.sword 64) :: ([] : Ctx)) →
-         HVec ((CryptoTy.sword 64) :: ([] : Ctx)) → Prop) :
-    NIPreservation.LeakageNI R (comLeakTraceFn assembled) :=
-  rustcmd_ct_implies_leakageNI
-    (leaves := smokeBridgeLeaves) (secrets := emptySecrets)
-    smokeBridgeProg smokeBridgeProg_isCT'
-    (IsCoveredCtl.ofCovered (.rLetU64Zero (.rScalarSet "i" 7)))
-    _ o htrans tail assembled hasm R
-
-/-- **Quantified NI smoke test**: same, at ε = 0. -/
-example
-    (o : DTransOut ((CryptoTy.sword 64) :: ([] : Ctx)))
-    (htrans : translateDialectControl (Γ := (CryptoTy.sword 64) :: ([] : Ctx))
-        ((VarMap.empty).weaken (t := CryptoTy.sword 64))
-        smokeBridgeProg = some o)
-    {tcssa : CryptoTy} (tail : Com catCryptDialect o.Γ' tcssa)
-    (assembled : Com catCryptDialect ((CryptoTy.sword 64) :: ([] : Ctx)) tcssa)
-    (hasm : o.cont tail = some assembled)
-    (R : HVec ((CryptoTy.sword 64) :: ([] : Ctx)) →
-         HVec ((CryptoTy.sword 64) :: ([] : Ctx)) → Prop) :
-    NIPreservation.QuantifiedLeakageNI R (comLeakTraceFn assembled) 0 :=
-  rustcmd_ct_implies_quantified_NI
-    (leaves := smokeBridgeLeaves) (secrets := emptySecrets)
-    smokeBridgeProg smokeBridgeProg_isCT'
-    (IsCoveredCtl.ofCovered (.rLetU64Zero (.rScalarSet "i" 7)))
-    _ o htrans tail assembled hasm R
-
 /-! ## §8  Linking the user-facing CT predicate to the certified one (#234, collapsed in #235)
 
 The end-to-end chain `rustcmd_ct_implies_x86_ct` is *driven* by the
@@ -1077,7 +739,7 @@ and bounded the gap with the decidable side-condition
   - `Cfn`/append (`RFnDef`) — compositional, via the body lowering.
 * `isCT_LowCT'` gates `RAsmOp` on the vendor DOIT∩DIT whitelist
   `ct_intrinsic name`, matching both the back-end `Copn` clause and
-  `jasminCTSafe`.  The gate is load-bearing for CT soundness: `DIV`/`IDIV`/
+  `jasminCTSafe`.  The gate enforces CT soundness: `DIV`/`IDIV`/
   `BSF`/`BSR`/FP are not constant-time and are rejected by it.
 * `jasminCTSafe` was correspondingly relaxed on those eight constructors
   (`RAsmOp` gated on `ct_intrinsic`, the rest accepted/recursed).
@@ -1093,7 +755,7 @@ constructors both recurse identically.
 `inCertifiedCTFragment` is the decidable fragment on which `isCT_LowCT'`
 and `jasminCTSafe` **agree**.  #229 / Phase RND (2026-05-30) re-narrowed it:
 the dynamic-index `RArrStore`/`RArrLoad` and the SExpr `RScalarSetExpr` are
-NO longer in the agreeing fragment, because their Phase-RND lowerings
+excluded from the agreeing fragment, because their Phase-RND lowerings
 (`Pvar`-indexed `Laset`/`Pget`; nested `sexprToPExpr`) are correctly rejected
 by the back-end `isCT_Cmd` whitelist while `isCT_LowCT'` (a source-level
 leak-trace abstraction) still accepts them.  The link lemma therefore again
