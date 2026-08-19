@@ -59,6 +59,21 @@ jobs:
           # shellcheck disable=SC2086
           bash scripts/module-doc-ratchet.sh $added
 
+      - name: No new proof-cost anti-pattern in changed modules (build-cost static lint)
+        # Static half only (no toolchain): a new native_decide in a reflection/emit
+        # front module, or a new maxRecDepth/maxHeartbeats budget on a proof, in a
+        # module changed since the branch base.
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          if [ -z "$base" ]; then base="$(git rev-parse HEAD~1 2>/dev/null || true)"; fi
+          if [ -z "$base" ]; then echo "no base commit; nothing changed to check"; exit 0; fi
+          changed="$(git diff --name-only --diff-filter=ACM "$base" HEAD -- 'CatCrypt/**/*.lean' || true)"
+          if [ -z "$changed" ]; then echo "no changed CatCrypt modules"; exit 0; fi
+          mods="$(printf '%s\n' "$changed" | sed 's/\.lean$//' | tr '/' '.')"
+          echo "$mods"
+          # shellcheck disable=SC2086
+          BUILD_COST_STATIC_ONLY=1 BUILD_COST_BASE="$base" bash scripts/check-build-cost.sh $mods
+
       - name: Ratchet baselines were not left rewritten
         # Every ratchet above auto-tightens its baseline when the count falls.
         # A tightened baseline that was not committed means the run measured

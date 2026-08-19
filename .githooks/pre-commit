@@ -30,6 +30,20 @@ if [ -n "$added" ]; then
   bash scripts/module-doc-ratchet.sh $added || exit 1
 fi
 
+# Proof-cost anti-pattern lint on staged compiler modules: a new native_decide in
+# a reflection/emit-front module, or a new maxRecDepth/maxHeartbeats budget on a
+# proof. Static half only (BUILD_COST_STATIC_ONLY=1) -- no build, ratcheted vs HEAD.
+staged_catcrypt="$(printf '%s\n' "$staged_lean" | grep '^CatCrypt/.*\.lean$' | sed 's/\.lean$//' | tr '/' '.' || true)"
+if [ -n "$staged_catcrypt" ]; then
+  # shellcheck disable=SC2086
+  if ! BUILD_COST_STATIC_ONLY=1 bash scripts/check-build-cost.sh $staged_catcrypt; then
+    echo ""
+    echo "pre-commit: a staged module adds a proof-cost anti-pattern (above). Rework it,"
+    echo "or bypass with 'git commit --no-verify' if the hit is a false positive."
+    exit 1
+  fi
+fi
+
 # A new or deleted Lean file changes the import graph, so the build-root manifest
 # can go stale in the same commit. This is the only tree-wide check here; it is
 # a few seconds of grep and no build.

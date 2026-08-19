@@ -85,6 +85,39 @@ bash scripts/build-cost-ratchet.sh record CatCrypt/path/To/Module.lean
 bash scripts/build-cost-ratchet.sh check
 ```
 
+## Diagnosing an out-of-memory kill
+
+An OOM-killed build dies with a signal and names no module. To attribute the cost
+to a source position, cap a single file's elaboration:
+
+```bash
+lake env lean -M 4000 CatCrypt/path/To/Module.lean
+```
+
+`-M` bounds the process's kernel memory in megabytes and reports excessive memory
+consumption at a `file:line` instead of dying with a signal. The module's imports
+must already be built.
+
+`scripts/check-build-cost.sh` applies this over the modules changed since HEAD: it
+elaborates each under the same memory cap and a wall-clock timeout and fails on a
+memory overrun or a timeout, after a static anti-pattern lint — a `native_decide`
+in a reflection/emit-front module (whose import native-compiles the pipeline), or a
+`maxRecDepth`/`maxHeartbeats` budget newly placed on a proof.
+
+```bash
+BUILD_COST_STATIC_ONLY=1 bash scripts/check-build-cost.sh   # lint only; the pre-commit hook runs this
+bash scripts/check-build-cost.sh --record                   # build + record the per-module cost row
+```
+
+`BUILD_COST_TIMEOUT`, `BUILD_COST_MEM_MB`, `BUILD_COST_CORES`, and `FRONT_RE`
+(the reflection/emit-front module regex) tune it.
+
+A memory cap on a cgroup whose working set is `.olean` mmaps is a pressure source,
+not a bound: those mapped pages are clean and reclaimable, so a build near the cap
+refaults them and reclaim keeps making progress while the machine thrashes. The
+signal that a build is against the limit is sustained memory pressure, not
+free-memory headroom; lower `LEAN_NUM_THREADS` to shrink the concurrent working set.
+
 To run the cheap ones before every commit:
 
 ```bash

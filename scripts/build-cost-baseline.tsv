@@ -1,0 +1,1 @@
+# Per-module elaboration cost baseline (target<TAB>elab_ms<TAB>import_ms<TAB>peak_MB). Populated by: bash scripts/check-build-cost.sh --record <Module.lean>  (and read by scripts/build-cost-ratchet.sh check).

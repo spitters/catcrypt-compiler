@@ -371,6 +371,7 @@ check)
   OVER_CEILING=""
   while IFS=$'\t' read -r target was_e was_i was_m; do
     [ -n "$target" ] || continue
+    case "$target" in '#'*) continue ;; esac
     if [ ! -f "$target" ]; then
       echo "  GONE     $target — baselined module is absent; drop its row"
       FAILED=1; continue
