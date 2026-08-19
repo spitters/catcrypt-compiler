@@ -1930,8 +1930,9 @@ the concrete instruction sequence and verifies (a) no instruction
 mutates `fp.outBase`, and (b) every store covers the entire footprint
 deterministically. We expose the per-instruction obligation as a `Prop`
 analogue of `NoLoadInstrRegsIndepOfMem` and discharge the trivial
-cases here; the three non-trivial cases land as `sorry`-bearing
-sub-lemmas with clear comments documenting what each gap needs.
+cases here; the three non-trivial cases (`Cassgn Lvar`, `Cassgn Lmem`,
+`Copn Oasm`) are named as `Prop`-level goals with comments documenting
+what each gap needs, rather than asserted as theorems.
 
 The body-level lift composes the per-instruction obligation by
 induction; downstream callers can supply concrete dischargers for
@@ -2049,151 +2050,86 @@ theorem bignumExec_postFootprintAgreement_of_perInstr
         simp [bignumExec, hm1, hm2]
         exact h_rest
 
-/-- `Cassgn (Lvar v)`: regs-equal preservation under no-load comes from
-`noLoadInstrRegsIndepOfMem_Cassgn_Lvar`. The footprint preservation
-case is `mem`-frame: `Cassgn Lvar` is mem-preserving, so when
-`v.var.vname ≠ fp.outBase`, both `s1'.regs fp.outBase = s1.regs fp.outBase`
-and the readFootprints reduce to those of the input states, which agree
-by hypothesis.
+/-- `Cassgn (Lvar v)` per-instruction footprint-preservation goal.
 
-PARTIAL CLOSURE: the proof case-splits on `v.var.vname = fp.outBase`;
-the equal branch (the assigned register *is* the footprint base) is
-False without extra preconditions, because the post-execution
-footprint reads from a *different* address whose content is not
-constrained by `readFootprint t1 fp = readFootprint t2 fp`. A
-counterexample exists with `none = none` precondition and the
-post-states disagreeing at the new base. Real bignum `post` regions
-never reassign `outBase`; per-leaf dischargers verify this by
-inspection. We `sorry` only the equal branch with documentation. -/
-theorem postFootprintInstrPreserved_Cassgn_Lvar
-    (v : VarI) (tag : AssgnTag) (ty : SType) (rhs : PExpr)
-    (fp : LeafFootprint) :
-    PostFootprintInstrPreserved (.Cassgn (.Lvar v) tag ty rhs) fp := by
-  intro t1 t2 h_no_load h_regs h_fp
-  have h_rhs : peLoad rhs = false := by simp [hasLoad] at h_no_load; exact h_no_load
-  -- Compute the rhs value using mem-independence (regs equal, peLoad rhs = false).
-  obtain ⟨r1, m1⟩ := t1
-  obtain ⟨r2, m2⟩ := t2
-  simp at h_regs
-  subst h_regs
-  have h_eval :
-      evalPExpr { regs := r1, mem := m1 } rhs =
-      evalPExpr { regs := r1, mem := m2 } rhs :=
-    evalPExpr_noLoad_indep_of_mem rhs r1 m1 m2 h_rhs
-  -- Unfold execInstr to get explicit successor states.
-  unfold execInstr
-  simp only [bind, h_eval]
-  cases h_w : evalPExpr { regs := r1, mem := m2 } rhs with
-  | none => trivial
-  | some w =>
-    simp only [Option.bind]
-    refine ⟨rfl, ?_⟩
-    -- Both successor states have same regs (setReg with same value) and
-    -- their respective unchanged memories. The footprint reads at the
-    -- new base register. Case-split on whether v hits fp.outBase.
-    by_cases hv : v.var.vname = fp.outBase
-    · -- GAP: v is the footprint base. The new base is `w` in both
-      -- states, but mem differs and the precondition only constrains
-      -- bytes at the OLD base, not at `w`. Unprovable without an
-      -- extra "post doesn't modify outBase" precondition.
-      sorry
-    · -- Easy case: setReg doesn't touch fp.outBase, so the new
-      -- footprint base equals the old footprint base, mem unchanged.
-      -- readFootprint depends only on the base reg + mem.
-      have hv'' : ¬ (fp.outBase = v.var.vname) := fun heq => hv heq.symm
-      simp only [readFootprint, setReg]
-      simp only [hv'', if_false]
-      exact h_fp
+Names the statement
+`∀ v tag ty rhs fp, PostFootprintInstrPreserved (.Cassgn (.Lvar v) tag ty rhs) fp`
+as a `Prop` without asserting it: the statement is false as written. In
+the branch where the assigned register `v.var.vname` equals `fp.outBase`
+the post-execution footprint reads at the newly-assigned base, whose
+content is not constrained by the precondition
+`readFootprint t1 fp = readFootprint t2 fp`. A counterexample has
+`readFootprint _ fp = none` on both sides yet post-states disagreeing at
+the new base. The claim holds under an extra precondition that the body
+does not reassign `outBase`, which real bignum `post` regions satisfy and
+per-leaf dischargers verify by inspection. In the complementary branch
+(`v.var.vname ≠ fp.outBase`) preservation follows by mem-frame from
+`noLoadInstrRegsIndepOfMem_Cassgn_Lvar`. -/
+def postFootprintInstrPreserved_Cassgn_LvarGoal : Prop :=
+  ∀ (v : VarI) (tag : AssgnTag) (ty : SType) (rhs : PExpr)
+    (fp : LeafFootprint),
+    PostFootprintInstrPreserved (.Cassgn (.Lvar v) tag ty rhs) fp
 
-/-- `Cassgn (Lmem ws base off)`: regs unchanged; mem updated via
-`storeMem`. Same-regs-determined store address and value; the
-post-store memories at the footprint window are determined by
-(addr, w) plus the original bytes outside the store window.
+/-- `Cassgn (Lmem ws base off)` per-instruction footprint-preservation goal.
 
-GAP: `readFootprint t1 fp = readFootprint t2 fp = none` is achievable
-with `m1 m2` byte-disagreements outside the footprint *window* (e.g.,
-both fail at different byte indices in the foldr). After a same-store,
-the new memories may produce different `readFootprint` results — the
-store can "fix" one side's failure but not the other's. Closing this
-generically requires either strengthening the precondition to
-byte-level equality at the footprint region (provable from
-`readFootprint` agreement when both succeed), or a per-leaf
-inspection that ensures every store covers the footprint window
-deterministically.
+Names the statement
+`∀ ws base off tag ty rhs fp, PostFootprintInstrPreserved (.Cassgn (.Lmem ws base off) tag ty rhs) fp`
+as a `Prop` without asserting it: the statement is false as written. With
+`readFootprint t1 fp = readFootprint t2 fp = none` reachable from byte
+disagreements outside the store window, a same-address store can repair
+one side's `readFootprint` failure and not the other's, so the post-store
+footprints disagree. The claim holds under byte-level memory agreement at
+the footprint window (which follows from `readFootprint` agreement when
+both sides succeed) or a per-leaf inspection that every store covers the
+footprint window deterministically. The in-tree `destAliasOk = [0]` leaves
+satisfy the byte-level form, whose per-leaf dischargers use
+`Mem.loadByte_storeByte_*` chains. -/
+def postFootprintInstrPreserved_Cassgn_LmemGoal : Prop :=
+  ∀ (ws : WSize) (base : VarI) (off : PExpr)
+    (tag : AssgnTag) (ty : SType) (rhs : PExpr) (fp : LeafFootprint),
+    PostFootprintInstrPreserved (.Cassgn (.Lmem ws base off) tag ty rhs) fp
 
-Real bignum routines satisfy the byte-level form: their post-mid
-states have byte-equal footprints (the store window is exactly the
-footprint window for `destAliasOk = [0]` leaves). Per-leaf
-dischargers close this case via `Mem.loadByte_storeByte_*` chains. -/
-theorem postFootprintInstrPreserved_Cassgn_Lmem
-    (ws : WSize) (base : VarI) (off : PExpr)
-    (tag : AssgnTag) (ty : SType) (rhs : PExpr) (fp : LeafFootprint) :
-    PostFootprintInstrPreserved (.Cassgn (.Lmem ws base off) tag ty rhs) fp := by
-  -- GAP: see docstring. Closing requires byte-level mem agreement at
-  -- the footprint window, which is strictly stronger than the
-  -- `readFootprint` equality precondition in the `none = none` corner.
-  sorry
+/-- `Copn (Oasm asm)` per-instruction footprint-preservation goal.
 
-/-- `Copn (Oasm asm)`: regs-equal preservation under no-load comes from
-`noLoadInstrRegsIndepOfMem_CopnOasm`; `writeXxxBundle` is mem-preserving
-so the footprint preservation case reduces to mem-frame as in the
-Cassgn Lvar case.
+Names the statement
+`∀ lvs tag asm args fp, PostFootprintInstrPreserved (.Copn lvs tag (.Oasm asm) args) fp`
+as a `Prop` without asserting it. Like the `Cassgn Lvar` case it is false
+as written, holding only under the unstated side-condition that no `Lvar`
+target in the bundle equals `fp.outBase`; the regs-equal part follows from
+`noLoadInstrRegsIndepOfMem_CopnOasm` and `writeXxxBundle` is
+mem-preserving. Per-leaf dischargers verify the side-condition by
+inspection. -/
+def postFootprintInstrPreserved_Copn_OasmGoal : Prop :=
+  ∀ (lvs : List LVal) (tag : AssgnTag) (asm : AsmOp) (args : List PExpr)
+    (fp : LeafFootprint),
+    PostFootprintInstrPreserved (.Copn lvs tag (.Oasm asm) args) fp
 
-GAP: like Cassgn Lvar, assumes the bundle's `dst` LVals don't target
-`fp.outBase`. Per-leaf dischargers verify this by inspection. -/
-theorem postFootprintInstrPreserved_Copn_Oasm
-    (lvs : List LVal) (tag : AssgnTag) (asm : AsmOp) (args : List PExpr)
-    (fp : LeafFootprint) :
-    PostFootprintInstrPreserved (.Copn lvs tag (.Oasm asm) args) fp := by
-  -- GAP: requires that no `Lvar` target in the bundle equals `fp.outBase`.
-  -- See docstring; per-leaf dischargers verify the side-condition.
-  sorry
+/-- Per-instruction dispatcher goal.
 
-/-- **Per-instruction dispatcher**: `PostFootprintInstrPreserved` holds
-unconditionally for any `InstrR`, modulo the three documented gap cases
-(`Cassgn Lvar`, `Cassgn Lmem`, `Copn Oasm`) which `sorry` with explicit
-documentation. -/
-theorem postFootprintInstrPreserved_all
-    (i : InstrR) (fp : LeafFootprint) :
-    PostFootprintInstrPreserved i fp := by
-  cases i with
-  | Cassgn lv tag ty rhs =>
-    cases lv with
-    | Lvar v => exact postFootprintInstrPreserved_Cassgn_Lvar v tag ty rhs fp
-    | Lmem ws base off =>
-      exact postFootprintInstrPreserved_Cassgn_Lmem ws base off tag ty rhs fp
-    | Lnone vi sty =>
-      exact postFootprintInstrPreserved_Cassgn_Lnone vi sty tag ty rhs fp
-    | Laset aa ws v idx =>
-      exact postFootprintInstrPreserved_Cassgn_Laset aa ws v idx tag ty rhs fp
-    | Lasub aa ws n v idx =>
-      exact postFootprintInstrPreserved_Cassgn_Lasub aa ws n v idx tag ty rhs fp
-  | Copn lvs tag op args =>
-    cases op with
-    | Oasm asm => exact postFootprintInstrPreserved_Copn_Oasm lvs tag asm args fp
-  | Cif cond ct cf => exact postFootprintInstrPreserved_Cif cond ct cf fp
-  | Cfor v rng body => exact postFootprintInstrPreserved_Cfor v rng body fp
-  | Cwhile cb cond ca => exact postFootprintInstrPreserved_Cwhile cb cond ca fp
-  | Ccall ii lvs fn args => exact postFootprintInstrPreserved_Ccall ii lvs fn args fp
+Names the residual content of `∀ i fp, PostFootprintInstrPreserved i fp`
+as the conjunction of the three false-as-stated leaf goals
+(`Cassgn Lvar`, `Cassgn Lmem`, `Copn Oasm`). The remaining constructor
+cases (`Cassgn Lnone/Laset/Lasub`, `Cif`, `Cfor`, `Cwhile`, `Ccall`) are
+discharged by the proved per-instruction lemmas above. -/
+def postFootprintInstrPreserved_allGoal : Prop :=
+  postFootprintInstrPreserved_Cassgn_LvarGoal ∧
+  postFootprintInstrPreserved_Cassgn_LmemGoal ∧
+  postFootprintInstrPreserved_Copn_OasmGoal
 
-/-- **Headline theorem**: `PostFootprintAgreementPreserved` holds for
-any `post` with `hasLoad = false`, modulo the three gap cases
-documented in the per-instruction sub-lemmas
-(`postFootprintInstrPreserved_Cassgn_Lvar`,
-`postFootprintInstrPreserved_Cassgn_Lmem`,
-`postFootprintInstrPreserved_Copn_Oasm`).
+/-- Headline footprint-agreement goal for a `hasLoad = false` `post`.
 
-The body-level lift composes per-instruction obligations by induction;
-the `sorry`-bearing cases live in the per-instruction dispatchers, not
-in this theorem itself. -/
-theorem postFootprintAgreementPreserved_of_noLoad
-    (post : List InstrR) (fp : LeafFootprint)
-    (h_no_load : ∀ i ∈ post, hasLoad i = false) :
-    PostFootprintAgreementPreserved post fp := by
-  intro t1 t2 _ h_regs h_fp
-  exact bignumExec_postFootprintAgreement_of_perInstr
-    post fp (fun i _ => postFootprintInstrPreserved_all i fp) h_no_load
-    t1 t2 h_regs h_fp
+Names the statement that `PostFootprintAgreementPreserved post fp` holds
+for every no-load `post`, conditioned on the per-instruction dispatcher
+goal `postFootprintInstrPreserved_allGoal`. The body-level lift from the
+per-instruction obligations to the whole `post` is the proved induction
+`bignumExec_postFootprintAgreement_of_perInstr`; the residual gap is the
+three false-as-stated leaf goals inside
+`postFootprintInstrPreserved_allGoal`. -/
+def postFootprintAgreementPreserved_of_noLoadGoal : Prop :=
+  postFootprintInstrPreserved_allGoal →
+    ∀ (post : List InstrR) (fp : LeafFootprint),
+      (∀ i ∈ post, hasLoad i = false) →
+      PostFootprintAgreementPreserved post fp
 
 /-- **InputFootprintAgree**: the leaf's output footprint reads agree
 between aliased and fresh BEFORE body execution.

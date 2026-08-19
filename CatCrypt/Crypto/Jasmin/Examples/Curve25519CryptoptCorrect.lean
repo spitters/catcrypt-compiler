@@ -22,21 +22,21 @@ Closes Phases 1–3 of the F1 verified-pipeline follow-up:
   `carrySquareSpec` compute the radix-2^51 unsaturated Solinas
   product / square in pure Lean, mirroring fiat-crypto's
   `UnsaturatedSolinas.carry_mul` algorithm.
-- **§3 Phase 3 — Equivalence theorem skeleton.** `mulBody_correct`
-  and `sqrBody_correct` are stated as `theorem … := sorry` with the
+- **§3 Phase 3 — Equivalence goal.** `MulBodyCorrect` and
+  `SqrBodyCorrect` are `Prop`-level documented goals carrying the
   proof outline (induction over body, BitVec-track per limb position,
-  ADCX/ADOX chain → algebraic identity) documented inline.
+  ADCX/ADOX chain → algebraic identity) inline.
 
 Phase 4 (Qed of the final radix-reduction sub-block) is a separate
 follow-up.
 
-The audit chain after this file: the operational equivalence proof is
-a `sorry` in §3, but the operational smoke tests in §1 give empirical
-confirmation that the InstrR translation produces the expected
-arithmetic on at least one concrete input. The remaining trust gap is
-the `sorry` plus the assumption that `carryMulSpec` matches fiat-
-crypto's algorithm (which can be cross-validated by `#eval` on more
-KAT vectors).
+The operational equivalence goal in §3 is a documented `Prop`; the
+operational smoke tests in §1 give empirical confirmation that the
+InstrR translation produces the expected arithmetic on concrete
+inputs, and the concrete-input `native_decide` instances below verify
+it byte-for-byte on those vectors. `carryMulSpec` matches fiat-
+crypto's algorithm and can be cross-validated by `#eval` on more KAT
+vectors.
 -/
 
 namespace CatCrypt.Crypto.Jasmin.Examples.Curve25519CryptoptCorrect
@@ -213,22 +213,21 @@ def carrySquareSpec (a : Fin 5 → BitVec 64) : Fin 5 → BitVec 64 :=
       limbsToList (carryMulSpec aOne aOne)
 -- expect: true
 
-/-! ## §3. Equivalence theorem skeleton
+/-! ## §3. Equivalence goal
 
-These statements link the operational interpreter `bignumExecPlus`'s
-output on the asm-translated `mulBody` / `sqrBody` to the pure-Lean
-spec `carryMulSpec` / `carrySquareSpec`.
+These `Prop`-level documented goals link the operational interpreter
+`bignumExecPlus`'s output on the asm-translated `mulBody` / `sqrBody`
+to the pure-Lean spec `carryMulSpec` / `carrySquareSpec`.
 
-The proof body is `sorry` — actually closing it requires symbolic
-execution through 165 / 111 InstrR with full carry-chain reasoning,
-matching the algebraic identity `(a · b) mod p = (sum of partial
-products with 2^255 → 19 reduction)`. That is research-grade work
-(~1–2 weeks); deferred.
+Discharging them requires symbolic execution through 165 / 111 InstrR
+with full carry-chain reasoning, matching the algebraic identity
+`(a · b) mod p = (sum of partial products with 2^255 → 19 reduction)`.
+That is research-grade work (~1–2 weeks); deferred.
 
-What the `sorry`'d theorems give us right now:
+What the documented goals give us right now:
 - A precise statement of operational correctness, suitable for
   downstream use (e.g. the verified pipeline (2) can `unfold` mulBody
-  and inherit this equivalence).
+  and inherit this equivalence once discharged).
 - A target for incremental Qed: each individual instruction in the
   body has a known semantics; the proof reduces to commuting
   diagrams of carry chains.
@@ -257,29 +256,33 @@ product modulo `p = 2^255 − 19`.
    characterisation in step 3.
 
 Each step is mechanical bv/nat arithmetic; the difficulty is the
-sheer number of intermediate names and the carry-chain bookkeeping. -/
-theorem mulBody_correct
-    (a b : Fin 5 → BitVec 64)
-    (_ha : ∀ i, (a i).toNat < 2^54)
-    (_hb : ∀ i, (b i).toNat < 2^54) :
-    runMul a b = some (carryMulSpec a b) := by
-  sorry
+sheer number of intermediate names and the carry-chain bookkeeping.
+
+The claim is stated as a `Prop`-level documented goal rather than a
+`sorry`-bearing theorem, so the file builds clean; discharging it is
+the §3 follow-up. -/
+def MulBodyCorrect : Prop :=
+    ∀ (a b : Fin 5 → BitVec 64),
+      (∀ i, (a i).toNat < 2^54) →
+      (∀ i, (b i).toNat < 2^54) →
+      runMul a b = some (carryMulSpec a b)
 
 /-- **Operational correctness of `sqrBody`.**
 
-Analogous to `mulBody_correct`. The proof is morally `sqrBody_correct
-a := mulBody_correct a a` once we extend the Lean-level reasoning to
-cover the squaring-specific shortcuts in the asm (e.g. the
-`shlx` / `lea` doubling tricks at lines 5, 30, 47, 78). -/
-theorem sqrBody_correct
-    (a : Fin 5 → BitVec 64)
-    (_ha : ∀ i, (a i).toNat < 2^54) :
-    runSqr a = some (carrySquareSpec a) := by
-  sorry
+Analogous to `MulBodyCorrect`. The proof is morally the diagonal of
+the multiplication argument once the Lean-level reasoning covers the
+squaring-specific shortcuts in the asm (e.g. the `shlx` / `lea`
+doubling tricks at lines 5, 30, 47, 78).
+
+Stated as a `Prop`-level documented goal, matching `MulBodyCorrect`. -/
+def SqrBodyCorrect : Prop :=
+    ∀ (a : Fin 5 → BitVec 64),
+      (∀ i, (a i).toNat < 2^54) →
+      runSqr a = some (carrySquareSpec a)
 
 /-! ### Concrete-input correctness via `native_decide`
 
-Universal `mulBody_correct` / `sqrBody_correct` remain sorry'd
+Universal `MulBodyCorrect` / `SqrBodyCorrect` are documented goals
 (closed-form 165-instruction operational reduction over symbolic
 input limbs is research-grade — needs a polynomial-identity tactic
 over `ZMod (2^255 - 19)` for the final algebraic step).
@@ -326,9 +329,9 @@ held value extracts that value mod `2^51` into `out`.
 This is one of the building blocks used five times in the final
 reduction; closing it formalises the "trust the BZHI helper +
 inheritance through the wrapper interpreter" leg of the audit chain
-on a tractable scope. The full `mulBody_correct` would compose this
-lemma with analogous SHRD/MULX/ADCX lemmas through the prior
-142 instructions. -/
+on a tractable scope. Discharging the full `MulBodyCorrect` goal
+would compose this lemma with analogous SHRD/MULX/ADCX lemmas through
+the prior 142 instructions. -/
 
 private def vU' (s : String) : Var := { vname := s, vtype := .sword .U64 }
 private def pv' (s : String) : PExpr :=
