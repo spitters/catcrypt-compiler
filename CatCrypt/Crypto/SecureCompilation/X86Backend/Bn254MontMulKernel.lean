@@ -4,6 +4,7 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
+import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
 # BN254 `Fp` Montgomery field-multiply, lowered through the in-Lean x86 backend
@@ -94,6 +95,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-! ## 1. The BN254 modulus and Montgomery constant (canonical) -/
 
@@ -243,7 +246,51 @@ theorem bn254MontMulBlock_lowering_correct
   lowerBlock_denote_closed bn254MontMulBlock
     (initState a0 a1 a2 a3 b0 b1 b2 b3)
 
-/-! ## 5. AT&T assembly emission (reg-ptr ABI + small stack scratch frame)
+/-! ## 5. Constant time: straight-line, all-direct addressing
+
+Every instruction of the CIOS body addresses memory through a base pointer and
+a compile-time-constant displacement (`loadMem`/`storeMem`/`mulxMem`); the
+final reduce is branch-free (`cmovb`), so no `loadMemIdx`/`storeMemIdx`
+appears and the decidable `allDirect` check carries the block into
+`ConstantTimeCoverage.allDirect_constant_time`. -/
+
+/-- One CIOS MAC step uses only direct base+displacement addressing, for every
+    column index. -/
+theorem macStep_allDirect (tlo thi : String) (j : Nat) :
+    allDirect (macStep tlo thi j) = true := rfl
+
+/-- One CIOS reduce step uses only direct base+displacement addressing, for
+    every column index. -/
+theorem redStep_allDirect (tlo thi : String) (j : Nat) :
+    allDirect (redStep tlo thi j) = true := rfl
+
+/-- One CIOS iteration uses only direct base+displacement addressing, for every
+    multiplier-word index. -/
+theorem ciosIter_allDirect (i : Nat) : allDirect (ciosIter i) = true := rfl
+
+/-- The final conditional subtract uses only direct base+displacement
+    addressing. -/
+theorem bn254FinalReduce_allDirect : allDirect bn254FinalReduce = true := rfl
+
+/-- The whole CIOS Montgomery multiply body uses only direct base+displacement
+    addressing (no secret-indexed memory access). Proved by splitting the body
+    at its two concatenations and the iteration `flatMap`, so the cost is the
+    per-piece checks rather than a reduction of the assembled block. -/
+theorem bn254MontMulBlock_allDirect : allDirect bn254MontMulBlock = true := by
+  simp only [bn254MontMulBlock, allDirect, List.all_append, List.all_flatMap,
+    Bool.and_eq_true]
+  exact ⟨⟨rfl, List.all_eq_true.mpr fun i _ => ciosIter_allDirect i⟩,
+    bn254FinalReduce_allDirect⟩
+
+/-- **Constant time.** The emitted BN254 Montgomery multiply produces the same
+    machine leakage trace from any two starting states: its observable
+    control-flow + memory-address sequence is a function of the program text
+    alone, so it carries no information about the operand limbs. -/
+theorem bn254MontMulBlock_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ bn254MontMulBlock = blockLeak s₂ bn254MontMulBlock :=
+  allDirect_constant_time bn254MontMulBlock bn254MontMulBlock_allDirect s₁ s₂
+
+/-! ## 6. AT&T assembly emission (reg-ptr ABI + small stack scratch frame)
 
 The kernel pins `z`→`%rdi`, `x`→`%rsi`, the running multiplier `yd`→`%rdx`
 (the `MULX` implicit src1), and the scratch-frame base `sp`→`%rbp` (excluded

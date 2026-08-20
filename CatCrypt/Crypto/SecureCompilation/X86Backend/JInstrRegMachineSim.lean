@@ -23,24 +23,26 @@ auxJ ρ s t := t.flags = s.flags ∧ (∀ b o, t.mem (ρ b) o = s.mem b o)
 
 — exactly the two hypotheses `writesJ_rename` consumes — and proves `aux_step`
 (`auxJ` is preserved by a renamed step), so the full instance `instRegMachineSimJInstr`
-elaborates and the generic keystone `renameBlock_runBlock_sim_reindexed` applies to x86.
+elaborates and the generic theorem `renameBlock_runBlock_sim_reindexed` applies to x86.
 
 ## `aux_step`, the only new proof
 
 `auxJ` has two clauses; a renamed `evalInstr` step preserves each:
 
-* **Flags.** `s.flags` changes only on `adcx`/`adox` (which set `cf`/`of` to the
-  `x86_ADCX` carry-out) — every other arm of `evalInstr` leaves `flags` untouched. On
-  the two ADX arms both sides compute the *same* carry-out: the data inputs agree by the
-  register read-agreement on the read-names (`dst` and the source operand), and the
-  *input* flag (`cf`/`of`) agrees because `auxJ` carries `t.flags = s.flags`. So the
-  flag-equality is preserved by `cases i <;> simp [evalInstr, …]`, the ADX arms fed the
-  read-agreement and the flag-input agreement from `auxJ.1`.
+* **Flags.** Flags are written by the `writeB5W` ALU arms, by the flag-only `test`/`cmp`
+  (a `writeB5`), by the rotates `rol`/`ror` (a `writeB2W`, which sets `of`/`cf` and
+  carries `sf`/`pf`/`zf` over), and by `adcx`/`adox` (which set `cf`/`of` to the
+  `x86_ADCX` carry-out); every other arm of `evalInstr` leaves `flags` untouched. On the
+  flag-writing arms both sides compute the *same* flags: the data inputs agree by the
+  register read-agreement on the read-names (the destination — for `test`/`cmp`, the
+  first operand; for `andn`, the two sources — and the source operand), and for
+  `adc`/`sbb`/`adcx`/`adox`/`rol`/`ror` the *incoming* flags agree because `auxJ` carries
+  `t.flags = s.flags`. The arms that touch no flag close on `hflag` alone.
 
 * **Memory (agree-under-ρ).** `s.mem` changes only on `storeMem`/`storeMemIdx` (loads
-  write a *register*, not memory) and on `loadSym` (which aliases the destination's bank
-  onto the symbol's). Every other arm leaves `mem` untouched, so `auxJ.2` carries
-  through verbatim. On the stores both sides write the *same* value (register
+  write a *register*, and `test` only flags) and on `loadSym` (which aliases the
+  destination's bank onto the symbol's). Every other arm leaves `mem` untouched, so
+  `auxJ.2` carries through verbatim. On the stores both sides write the *same* value (register
   read-agreement on the stored source) at the *same* slot under ρ (the base register is
   renamed and agrees by read-agreement); on `loadSym` injectivity of ρ turns
   `ρ b = ρ d ↔ b = d` and the aliased read `t.mem (ρ sym) o = s.mem sym o` is the `sym`
@@ -77,7 +79,7 @@ private abbrev ReadAgree (ρ : String → String) (s t : JState 64) (i : JInstr 
 /-- **`auxJ` is preserved by a renamed step.** Given `ρ` injective, register
     read-agreement on `i`'s read-names, and `auxJ ρ s t`, the step
     `runBlock s [i]` / `runBlock t [renameInstr ρ i]` again satisfies `auxJ`. Proved
-    clause-by-clause (flags, memory) over the 28 constructors. -/
+    clause-by-clause (flags, memory) over every constructor. -/
 theorem aux_stepJ (ρ : String → String) (s t : JState 64) (i : JInstr 64)
     (hinj : Function.Injective ρ) (h : ReadAgree ρ s t i) (ha : auxJ ρ s t) :
     auxJ ρ (runBlock s [i]) (runBlock t [renameInstr ρ i]) := by
@@ -97,6 +99,13 @@ theorem aux_stepJ (ρ : String → String) (s t : JState 64) (i : JInstr 64)
       have hs : (renameOperand ρ src).eval t = src.eval s :=
         renameOperand_eval_rename src (fun a ha => h a (List.mem_cons_of_mem _ ha))
       simp only [renameInstr, evalInstr, JState.writeB5W, hs, hd]
+    | test d src =>
+      -- `test`'s read-names are its first operand `d` and the source operand; it writes
+      -- the five flags through `writeB5` and no register.
+      have hd : t.get (ρ d) = s.get d := h d (List.mem_cons_self ..)
+      have hs : (renameOperand ρ src).eval t = src.eval s :=
+        renameOperand_eval_rename src (fun a ha => h a (List.mem_cons_of_mem _ ha))
+      simp only [renameInstr, evalInstr, JState.writeB5, hs, hd]
     | adc d src | sbb d src =>
       have hd : t.get (ρ d) = s.get d := h d (List.mem_cons_self ..)
       have hs : (renameOperand ρ src).eval t = src.eval s :=
@@ -115,6 +124,25 @@ theorem aux_stepJ (ρ : String → String) (s t : JState 64) (i : JInstr 64)
       have hs : (renameOperand ρ src).eval t = src.eval s :=
         renameOperand_eval_rename src (fun a ha => h a (List.mem_cons_of_mem _ ha))
       simp only [renameInstr, evalInstr, hs, hd, hof, hflag]
+    | cmp a src =>
+      -- `cmp`'s read-names are its first operand `a` and the source operand; it writes the
+      -- five flags through `writeB5` and no register.
+      have hd : t.get (ρ a) = s.get a := h a (List.mem_cons_self ..)
+      have hs : (renameOperand ρ src).eval t = src.eval s :=
+        renameOperand_eval_rename src (fun x hx => h x (List.mem_cons_of_mem _ hx))
+      simp only [renameInstr, evalInstr, JState.writeB5, hs, hd]
+    | andn d a b =>
+      -- BMI1 `andn` is non-destructive in both sources: its read-names are `a` and `b`.
+      have ha : t.get (ρ a) = s.get a := h a (List.mem_cons_self ..)
+      have hb : t.get (ρ b) = s.get b := h b (List.mem_cons_of_mem _ (List.mem_cons_self ..))
+      simp only [renameInstr, evalInstr, JState.writeB5W, ha, hb]
+    | rol d amt | ror d amt =>
+      -- The rotates write `OF`/`CF` from the inputs and carry `SF`/`PF`/`ZF` over from the
+      -- incoming flag map, so both the input agreement and `hflag` are needed.
+      have hd : t.get (ρ d) = s.get d := h d (List.mem_cons_self ..)
+      have hs : (renameOperand ρ amt).eval t = amt.eval s :=
+        renameOperand_eval_rename amt (fun x hx => h x (List.mem_cons_of_mem _ hx))
+      simp only [renameInstr, evalInstr, JState.writeB2W, hs, hd, hflag]
     | _ =>
       simp only [renameInstr, evalInstr, JState.setReg, JState.store, JState.storeIdx, hflag]
   · -- Memory clause: `∀ b o, (evalInstr t (renameInstr ρ i)).mem (ρ b) o
@@ -150,6 +178,10 @@ theorem aux_stepJ (ρ : String → String) (s t : JState 64) (i : JInstr 64)
         · rw [if_neg (fun hc => ho hc.2), if_neg (fun hc => ho hc.2)]; exact hmem b o
       · have hne : ρ b ≠ ρ base := fun he => hbb (hinj he)
         rw [if_neg (fun hc => hne hc.1), if_neg (fun hc => hbb hc.1)]; exact hmem b o
+    | test a src =>
+      -- `test` writes only the five flags, so both sides keep their own memory.
+      simp only [renameInstr, evalInstr, JState.writeB5]
+      exact hmem b o
     | loadSym d sym =>
       simp only [renameInstr, evalInstr]
       by_cases hbd : b = d
@@ -157,7 +189,8 @@ theorem aux_stepJ (ρ : String → String) (s t : JState 64) (i : JInstr 64)
       · have hne : ρ b ≠ ρ d := fun he => hbd (hinj he)
         simp only [if_neg hne, if_neg hbd]; exact hmem b o
     | _ =>
-      simp only [renameInstr, evalInstr, JState.setReg, JState.writeB5W]
+      simp only [renameInstr, evalInstr, JState.setReg, JState.writeB5W, JState.writeB5,
+        JState.writeB2W]
       exact hmem b o
 
 /-! ## 3. The full instance -/
@@ -167,7 +200,7 @@ theorem aux_stepJ (ρ : String → String) (s t : JState 64) (i : JInstr 64)
     plus the auxiliary relation `auxJ`, its `writes_rename_sim` (= `writesJ_rename` fed
     `auxJ`'s two projections), and `aux_step` (= `aux_stepJ`). This is the x86
     register-allocation soundness instance with a flags+memory simulation relation; the
-    generic keystone `renameBlock_runBlock_sim_reindexed` then gives resident-path
+    generic theorem `renameBlock_runBlock_sim_reindexed` then gives resident-path
     soundness for the full x86 scalar instruction set. -/
 instance instRegMachineSimJInstr : RegMachineSim (JInstr 64) (JState 64) where
   toMachineModel := instMachineModelJInstr
@@ -190,10 +223,10 @@ instance instRegMachineSimJInstr : RegMachineSim (JInstr 64) (JState 64) where
   writes_rename_sim := fun ρ s t i hread haux => writesJ_rename ρ s t i hread haux.1 haux.2
   aux_step := aux_stepJ
 
-/-! ## 4. Sanity: the x86 resident-path soundness through the generic keystone -/
+/-! ## 4. Sanity: the x86 resident-path soundness through the generic theorem -/
 
 /-- **x86 resident-path register-allocation soundness.** Instantiating the generic
-    simulation keystone `renameBlock_runBlock_sim_reindexed` at `JInstr 64`/`JState 64`:
+    simulation theorem `renameBlock_runBlock_sim_reindexed` at `JInstr 64`/`JState 64`:
     for an injective, discard-preserving renaming whose written names are all non-discard,
     if the source and renamed states are register-`ReindexedS`-related and satisfy `auxJ`
     at entry, then they remain `ReindexedS`-related after running the original vs renamed

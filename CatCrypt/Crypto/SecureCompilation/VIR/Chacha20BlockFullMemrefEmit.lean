@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockFullMemrefJazzEmit
 import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # The whole ChaCha20 block (FULL pointer ABI) through the OWNED x86 backend (NO jasminc)
@@ -100,7 +101,7 @@ def chachaLprog : Lprog :=
 /-- The owned-backend AT&T `.s` text of the whole ChaCha20 block
     (symbol `chacha20_block_owned`), rendered straight from the `Lprog` by the
     verified printer — no jasminc. -/
-def chachaAtt : String := renderLprogAtt chachaLprog
+def chachaAtt : String := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned chachaLprog
 
 /-! ## 1a. Front provenance
 

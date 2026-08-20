@@ -116,7 +116,22 @@ def instrTaint (R : RegTaint) (C : CellTaint) : JInstr 64 → SecretLevel
   | .and_ dst src | .or_ dst src | .xor_ dst src | .shl dst src | .shr dst src
   | .sar dst src    => R dst ⊔ₛ operandTaint R src
   | .neg dst        => R dst
+  -- `test` reads both operands and joins their taints into the five flags. It
+  -- writes no register, so `writtenRegs` keeps `stepRegTaint` from binding this
+  -- level anywhere; the level is what the flag state carries.
+  | .test a src     => R a ⊔ₛ operandTaint R src
+  -- `cmp` reads both operands into the five flags and writes no register, so
+  -- `writtenRegs` keeps `stepRegTaint` from binding this level anywhere.
+  | .cmp a src      => R a ⊔ₛ operandTaint R src
   | .setc _         => .pub
+  | .not_ dst       => R dst
+  | .andn _ a b     => R a ⊔ₛ R b
+  | .rol dst amt | .ror dst amt => R dst ⊔ₛ operandTaint R amt
+  | .rorx _ src amt => R src ⊔ₛ operandTaint R amt
+  | .shlx _ src cnt | .shrx _ src cnt | .sarx _ src cnt => R src ⊔ₛ R cnt
+  | .movzx _ _ src | .movsx _ _ src => R src
+  -- `lea` computes an address from its two registers; it reads no cell.
+  | .lea _ base idx _ _ => R base ⊔ₛ R idx
   | .cmove dst src | .cmovne dst src | .cmovb dst src => R dst ⊔ₛ operandTaint R src
   | .mulx _ _ a b   => operandTaint R a ⊔ₛ operandTaint R b
   | .mulxMem _ _ a base off => operandTaint R a ⊔ₛ C (base, off)
@@ -375,6 +390,26 @@ theorem forwardStep_taint_sound {h : Held} {C : CellTaint} {R : RegTaint}
   | neg d     => exact ⟨rfl, hv.killWrittenStep (JInstr.neg d) (by intro b o v hc; nomatch hc)⟩
   | setc d    => exact ⟨rfl, hv.killWrittenStep (JInstr.setc d) (by intro b o v hc; nomatch hc)⟩
   | and_ d s' => exact ⟨rfl, hv.killWrittenStep (JInstr.and_ d s') (by intro b o v hc; nomatch hc)⟩
+  | test a s' => exact ⟨rfl, hv.killWrittenStep (JInstr.test a s') (by intro b o v hc; nomatch hc)⟩
+  | cmp a s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.cmp a s') (by intro b o v hc; nomatch hc)⟩
+  | not_ d    => exact ⟨rfl, hv.killWrittenStep (JInstr.not_ d) (by intro b o v hc; nomatch hc)⟩
+  | andn d a c => exact ⟨rfl, hv.killWrittenStep (JInstr.andn d a c) (by intro b o v hc; nomatch hc)⟩
+  | rol d amt => exact ⟨rfl, hv.killWrittenStep (JInstr.rol d amt) (by intro b o v hc; nomatch hc)⟩
+  | ror d amt => exact ⟨rfl, hv.killWrittenStep (JInstr.ror d amt) (by intro b o v hc; nomatch hc)⟩
+  | rorx d src amt =>
+      exact ⟨rfl, hv.killWrittenStep (JInstr.rorx d src amt) (by intro b o v hc; nomatch hc)⟩
+  | shlx d src c =>
+      exact ⟨rfl, hv.killWrittenStep (JInstr.shlx d src c) (by intro b o v hc; nomatch hc)⟩
+  | shrx d src c =>
+      exact ⟨rfl, hv.killWrittenStep (JInstr.shrx d src c) (by intro b o v hc; nomatch hc)⟩
+  | sarx d src c =>
+      exact ⟨rfl, hv.killWrittenStep (JInstr.sarx d src c) (by intro b o v hc; nomatch hc)⟩
+  | movzx d sw src =>
+      exact ⟨rfl, hv.killWrittenStep (JInstr.movzx d sw src) (by intro b o v hc; nomatch hc)⟩
+  | movsx d sw src =>
+      exact ⟨rfl, hv.killWrittenStep (JInstr.movsx d sw src) (by intro b o v hc; nomatch hc)⟩
+  | lea d bs ix sc dsp =>
+      exact ⟨rfl, hv.killWrittenStep (JInstr.lea d bs ix sc dsp) (by intro b o v hc; nomatch hc)⟩
   | or_ d s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.or_ d s') (by intro b o v hc; nomatch hc)⟩
   | xor_ d s' => exact ⟨rfl, hv.killWrittenStep (JInstr.xor_ d s') (by intro b o v hc; nomatch hc)⟩
   | shl d s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.shl d s') (by intro b o v hc; nomatch hc)⟩
@@ -685,6 +720,8 @@ cell; the reload would read it back as `sec`. After forwarding, the reload
 becomes `mov d (.reg r)`, reading `r` directly — same `sec` taint. The block
 summary is `sec` and is preserved by the pass. -/
 
+-- @bench-only: the `List (JInstr _)` block below is a fixture exercising this
+-- secret-type analysis; this module emits no deployed `.s` artifact.
 /-- Demo block: store `r` to `(fp, 0)`, then load `(fp, 0)` into `d`. -/
 def demoFrameBlock : List (JInstr 64) :=
   [ .storeMem "fp" 0 (.reg "r"), .loadMem "d" "fp" 0 ]

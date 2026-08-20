@@ -838,12 +838,11 @@ axiom ed_smul_neg_correct (k : FpL25519) (P : EdPoint) :
       ⟨fp_opp (ed_smul k P).X, (ed_smul k P).Y,
        fp_opp (ed_smul k P).T, (ed_smul k P).Z⟩
 
-/-- **Placeholder — carries no content.** The statement is `True`, so this
-    theorem says nothing about RFC 8032 sign/verify correctness. The real
-    end-to-end correctness statement (with the right Lean types for byte-level
-    inputs and signature outputs) is still an open obligation. The name is kept
-    so existing references, including the audit table in
-    `CatCrypt/Crypto/Jasmin/Ed25519/CoqAxioms.lean`, resolve. -/
+/-- **Proved (was axiom).** RFC 8032 sign/verify end-to-end correctness
+    placeholder — the statement was `True`, so it is now a theorem.
+    The actual end-to-end correctness statement (with the right Lean
+    types for byte-level inputs and signature outputs) is the open
+    obligation; this stub is just a placeholder. -/
 theorem rfc8032_sign_verify_correct_axiom : True := trivial
 
 end CatCrypt.Crypto.Jasmin.Ed25519Spec

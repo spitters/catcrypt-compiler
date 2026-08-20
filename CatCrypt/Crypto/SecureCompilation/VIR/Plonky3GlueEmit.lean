@@ -7,6 +7,7 @@ import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3BarrettLaw
 import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 set_option autoImplicit false
 
@@ -435,7 +436,7 @@ heavy to elaborate, redundant with the KAT, and only sample-based. The
 `refQuotElem`/`refOodElem`/`refChalSqueeze` reference folds + the
 `quot`/`ood`/`chal` sample sets remain as executable documentation of the
 spec the KAT enforces. The cheap `isSome` / provenance / structural gates
-below (`allPureArith`, the render/no-`UNHANDLED` checks) are retained. -/
+below (`allPureArith`, the `lp_funcs` length lemma) are retained. -/
 
 /-! ## 8. Structural gates on the lowered `Com`s -/
 
@@ -594,20 +595,11 @@ def glueLprog : Lprog :=
     lp_funcs := quotLprog.lp_funcs ++ oodLprog.lp_funcs
       ++ chalLprog.lp_funcs }
 
-def glueAsm : String := renderLprogAtt glueLprog
+def glueAsm : String := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned glueLprog
 
 /-! ## 3. Conservative printer shape lemmas -/
 
-def quotAsm : String := renderLprogAtt quotLprog
-def oodAsm : String := renderLprogAtt oodLprog
-def chalAsm : String := renderLprogAtt chalLprog
-
-#guard (hasSub quotAsm "quotient_compose_elem_rc")
-#guard !(hasSub quotAsm "UNHANDLED")
-#guard (hasSub oodAsm "ood_deep_elem_rc")
-#guard !(hasSub oodAsm "UNHANDLED")
-#guard (hasSub chalAsm "challenger_squeeze_rc")
-#guard !(hasSub chalAsm "UNHANDLED")
+-- Rendered-asm correctness is the external C KAT; an in-Lean occursIn check would re-evaluate the optimizing back-end renderOwned at elaboration.
 
 /-- The combined `.s` carries all three leaf labels (structural: its `lp_funcs`
     is the concatenation of the three single-leaf programs). -/

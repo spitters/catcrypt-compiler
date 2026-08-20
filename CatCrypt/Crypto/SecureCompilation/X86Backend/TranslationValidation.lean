@@ -12,7 +12,7 @@ import Std.Tactic.BVDecide
 
 This module records the **correspondence** between our native-Lean x86 `step`
 semantics (`Model.lean`) and Jasmin's authoritative Rocq x86 instruction
-semantics, and pins our model's effect with machine-checked Lean `example`s.
+semantics, and pins our model's effect with machine-checked Lean `#guard`s.
 
 ## Why Jasmin's Rocq model is the anchor
 
@@ -39,8 +39,8 @@ Definition cf {sz} (t : sem_ltuple (b5w_ty sz)) : option bool := fst (snd t).
 ```
 
 and the same inputs were run through our Lean `step`. The Jasmin outputs are
-quoted as comments; the Lean `example`s below assert our model reproduces them.
-This is a genuine differential check, not a re-statement of our own `simp`.
+quoted as comments; the Lean `#guard`s below assert our model reproduces them.
+Each `#guard` checks a numeric output of `step` against the Jasmin value.
 
 | instr | inputs (U64) | Jasmin `x86_*` data | our `step` | flag checked |
 |---|---|---|---|---|
@@ -82,7 +82,7 @@ This is a genuine differential check, not a re-statement of our own `simp`.
   (`x86_CMOVcc`, selecting on `ZF`/`¬ZF`/`CF`, no flag written), `loadMem`/
   `storeMem` (`x86_MOV` = identity composed with `mem_read`/`mem_write`, no
   flag), and `mulxMem` (`x86_MULX_lo_hi` with the second factor read from
-  memory, no flag) — the `example`s in this file plus the quoted `rocq-mcp`
+  memory, no flag) — the `#guard`s in this file plus the quoted `rocq-mcp`
   outputs. This covers the full `JInstr`-emitted instruction set of the owned
   backend's scalar/ADX kernels.
 * **Asserted by inspection only** (the *general* word-level equation matching
@@ -170,7 +170,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 /-! ## Differential-validation pins
 
 A fresh 64-bit state with two named registers, mirroring the `rocq-mcp`
-`Compute` inputs. Each `example` asserts the data result of our `step` equals
+`Compute` inputs. Each pin asserts the data result of our `step` equals
 the numeric value Jasmin's `x86_*` produced (quoted in the table above). -/
 
 /-- `dst := v` register state at width 64. -/
@@ -181,62 +181,60 @@ private def st (v : BitVec 64) : State 64 :=
 private def stCF (v : BitVec 64) (c : Bool) : State 64 :=
   { regs := fun r => if r = "a" then v else 0, flags := { cf := c } }
 
-/-- MOV: Jasmin `x86_MOV 4242 = 4242`. -/
-example : ((step (st 0) (.mov "a" (.imm 4242))).get "a").toNat = 4242 := by native_decide
+-- MOV: Jasmin `x86_MOV 4242 = 4242`.
+#guard ((step (st 0) (.mov "a" (.imm 4242))).get "a").toNat == 4242
 
-/-- ADD: Jasmin `dw (x86_ADD 123456789 987654321) = 1111111110`. -/
-example : ((step (st 123456789) (.add "a" (.imm 987654321))).get "a").toNat
-    = 1111111110 := by native_decide
+-- ADD: Jasmin `dw (x86_ADD 123456789 987654321) = 1111111110`.
+#guard ((step (st 123456789) (.add "a" (.imm 987654321))).get "a").toNat
+    == 1111111110
 
-/-- ADD carry-out: Jasmin `cf (x86_ADD (2^64-1) 1) = Some true`; our CF flips. -/
-example : (step (st (BitVec.allOnes 64)) (.add "a" (.imm 1))).flags.cf = true := by
-  native_decide
+-- ADD carry-out: Jasmin `cf (x86_ADD (2^64-1) 1) = Some true`; our CF flips.
+#guard (step (st (BitVec.allOnes 64)) (.add "a" (.imm 1))).flags.cf
 
-/-- SUB: Jasmin `dw (x86_SUB 5 8) = 2^64-3 = 18446744073709551613`. -/
-example : ((step (st 5) (.sub "a" (.imm 8))).get "a").toNat
-    = 18446744073709551613 := by native_decide
+-- SUB: Jasmin `dw (x86_SUB 5 8) = 2^64-3 = 18446744073709551613`.
+#guard ((step (st 5) (.sub "a" (.imm 8))).get "a").toNat
+    == 18446744073709551613
 
-/-- AND: Jasmin `dw (x86_AND 13 7) = 5`. -/
-example : ((step (st 13) (.and_ "a" (.imm 7))).get "a").toNat = 5 := by native_decide
+-- AND: Jasmin `dw (x86_AND 13 7) = 5`.
+#guard ((step (st 13) (.and_ "a" (.imm 7))).get "a").toNat == 5
 
-/-- OR: Jasmin `dw (x86_OR 13 8) = 13`. -/
-example : ((step (st 13) (.or_ "a" (.imm 8))).get "a").toNat = 13 := by native_decide
+-- OR: Jasmin `dw (x86_OR 13 8) = 13`.
+#guard ((step (st 13) (.or_ "a" (.imm 8))).get "a").toNat == 13
 
-/-- XOR: Jasmin `dw (x86_XOR 13 7) = 10`. -/
-example : ((step (st 13) (.xor_ "a" (.imm 7))).get "a").toNat = 10 := by native_decide
+-- XOR: Jasmin `dw (x86_XOR 13 7) = 10`.
+#guard ((step (st 13) (.xor_ "a" (.imm 7))).get "a").toNat == 10
 
-/-- IMUL (low word): Jasmin `dw (x86_IMULt 999 1000000) = 999000000`. -/
-example : ((step (st 999) (.mul "a" (.imm 1000000))).get "a").toNat
-    = 999000000 := by native_decide
+-- IMUL (low word): Jasmin `dw (x86_IMULt 999 1000000) = 999000000`.
+#guard ((step (st 999) (.mul "a" (.imm 1000000))).get "a").toNat
+    == 999000000
 
-/-- SHL by 4: Jasmin `dw (x86_SHL 1 4) = 16`. -/
-example : ((step (st 1) (.shl "a" (.imm 4))).get "a").toNat = 16 := by native_decide
+-- SHL by 4: Jasmin `dw (x86_SHL 1 4) = 16`.
+#guard ((step (st 1) (.shl "a" (.imm 4))).get "a").toNat == 16
 
-/-- SHR by 4: Jasmin `dw (x86_SHR 256 4) = 16`. -/
-example : ((step (st 256) (.shr "a" (.imm 4))).get "a").toNat = 16 := by native_decide
+-- SHR by 4: Jasmin `dw (x86_SHR 256 4) = 16`.
+#guard ((step (st 256) (.shr "a" (.imm 4))).get "a").toNat == 16
 
-/-- ADC with CF=1: Jasmin `dw (x86_ADC 5 8 true) = 14`. -/
-example : ((step (stCF 5 true) (.adc "a" (.imm 8))).get "a").toNat = 14 := by
-  native_decide
+-- ADC with CF=1: Jasmin `dw (x86_ADC 5 8 true) = 14`.
+#guard ((step (stCF 5 true) (.adc "a" (.imm 8))).get "a").toNat == 14
 
-/-- SBB with CF=1: Jasmin `dw (x86_SBB 5 8 true) = 2^64-4 = 18446744073709551612`,
-    `cf = Some true`. Data and borrow flag both checked. -/
-example : ((step (stCF 5 true) (.sbb "a" (.imm 8))).get "a").toNat
-    = 18446744073709551612 := by native_decide
+-- SBB with CF=1: Jasmin `dw (x86_SBB 5 8 true) = 2^64-4 = 18446744073709551612`,
+-- `cf = Some true`. Data and borrow flag both checked.
+#guard ((step (stCF 5 true) (.sbb "a" (.imm 8))).get "a").toNat
+    == 18446744073709551612
 
-example : (step (stCF 5 true) (.sbb "a" (.imm 8))).flags.cf = true := by native_decide
+#guard (step (stCF 5 true) (.sbb "a" (.imm 8))).flags.cf
 
-/-- CMOV taken / not taken: Jasmin `x86_CMOVcc true 111 222 = 111`,
-    `x86_CMOVcc false 111 222 = 222`. -/
-example :
+-- CMOV taken / not taken: Jasmin `x86_CMOVcc true 111 222 = 111`,
+-- `x86_CMOVcc false 111 222 = 222`.
+#guard
     ((step { regs := fun r => if r = "a" then (222 : BitVec 64) else 0,
              flags := { zf := true } } (.cmov .e "a" (.imm 111))).get "a").toNat
-      = 111 := by native_decide
+      == 111
 
-example :
+#guard
     ((step { regs := fun r => if r = "a" then (222 : BitVec 64) else 0,
              flags := { zf := false } } (.cmov .e "a" (.imm 111))).get "a").toNat
-      = 222 := by native_decide
+      == 222
 
 /-! ## The shift-count correspondence caveat, made explicit
 
@@ -302,64 +300,59 @@ two factor registers (`"a"`, `"b"`); we read both result words back. -/
 private def stMulx (x y : BitVec 64) : State 64 :=
   { regs := fun r => if r = "a" then x else if r = "b" then y else 0 }
 
-/-- MULX, full-product split. Jasmin
-    `x86_MULX_lo_hi (2^64-1) 2 = (lo, hi) = (18446744073709551614, 1)`
-    (rocq-mcp `Compute`, both words checked). -/
-example :
+-- MULX, full-product split. Jasmin
+-- `x86_MULX_lo_hi (2^64-1) 2 = (lo, hi) = (18446744073709551614, 1)`
+-- (rocq-mcp `Compute`, both words checked).
+#guard
     let s := step (stMulx (BitVec.allOnes 64) 2) (.mulx "hi" "lo" (.reg "a") (.reg "b"))
-    (s.get "lo").toNat = 18446744073709551614 ∧ (s.get "hi").toNat = 1 := by
-  native_decide
+    (s.get "lo").toNat == 18446744073709551614 && (s.get "hi").toNat == 1
 
-/-- MULX, both words non-trivial. Jasmin
-    `x86_MULX_lo_hi 1311768467463790320 18364758544493064720
-      = (2552847189736476416, 1305938385386173474)` (rocq-mcp `Compute`). -/
-example :
+-- MULX, both words non-trivial. Jasmin
+-- `x86_MULX_lo_hi 1311768467463790320 18364758544493064720
+--   = (2552847189736476416, 1305938385386173474)` (rocq-mcp `Compute`).
+#guard
     let s := step (stMulx 1311768467463790320 18364758544493064720)
                   (.mulx "hi" "lo" (.reg "a") (.reg "b"))
-    (s.get "lo").toNat = 2552847189736476416 ∧
-    (s.get "hi").toNat = 1305938385386173474 := by
-  native_decide
+    (s.get "lo").toNat == 2552847189736476416 &&
+    (s.get "hi").toNat == 1305938385386173474
 
-/-- MULX touches no flag. Jasmin `Ox86_MULX_lo_hi_instr` output list `[Eu 1; Eu 0]`
-    is registers only — neither CF nor OF appears. -/
-example :
+-- MULX touches no flag. Jasmin `Ox86_MULX_lo_hi_instr` output list `[Eu 1; Eu 0]`
+-- is registers only — neither CF nor OF appears.
+#guard
     (step { regs := fun r => if r = "a" then (7 : BitVec 64) else if r = "b" then 9 else 0,
             flags := { cf := true, of := true } }
-          (.mulx "hi" "lo" (.reg "a") (.reg "b"))).flags = { cf := true, of := true } := by
-  native_decide
+          (.mulx "hi" "lo" (.reg "a") (.reg "b"))).flags == { cf := true, of := true }
 
-/-- ADCX with CF=1, carry-out. Jasmin `x86_ADCX (2^64-1) 1 true = (Some true, 1)`
-    (rocq-mcp `Compute`). Data and CF both checked. -/
-example :
+-- ADCX with CF=1, carry-out. Jasmin `x86_ADCX (2^64-1) 1 true = (Some true, 1)`
+-- (rocq-mcp `Compute`). Data and CF both checked.
+#guard
     let s := step (stCF (BitVec.allOnes 64) true) (.adcx "a" (.imm 1))
-    (s.get "a").toNat = 1 ∧ s.flags.cf = true := by native_decide
+    (s.get "a").toNat == 1 && s.flags.cf
 
-/-- ADCX with CF=1, no carry-out. Jasmin `x86_ADCX 5 8 true = (Some false, 14)`. -/
-example :
+-- ADCX with CF=1, no carry-out. Jasmin `x86_ADCX 5 8 true = (Some false, 14)`.
+#guard
     let s := step (stCF 5 true) (.adcx "a" (.imm 8))
-    (s.get "a").toNat = 14 ∧ s.flags.cf = false := by native_decide
+    (s.get "a").toNat == 14 && s.flags.cf == false
 
-/-- ADCX leaves OF untouched (`Ox86_ADCX_instr` writes only CF). Here OF starts
-    `true` and survives the ADCX. -/
-example :
+-- ADCX leaves OF untouched (`Ox86_ADCX_instr` writes only CF). Here OF starts
+-- `true` and survives the ADCX.
+#guard
     (step { regs := fun r => if r = "a" then (5 : BitVec 64) else 0,
-            flags := { cf := true, of := true } } (.adcx "a" (.imm 8))).flags.of = true := by
-  native_decide
+            flags := { cf := true, of := true } } (.adcx "a" (.imm 8))).flags.of
 
-/-- ADOX with OF=1, carry-out. Same `x86_ADCX` semantics as ADCX but the carry
-    is routed to OF: Jasmin `x86_ADCX (2^64-1) 1 true = (Some true, 1)` with
-    `Ox86_ADOX_instr` placing the bool in OF. Data and OF both checked. -/
-example :
+-- ADOX with OF=1, carry-out. Same `x86_ADCX` semantics as ADCX but the carry
+-- is routed to OF: Jasmin `x86_ADCX (2^64-1) 1 true = (Some true, 1)` with
+-- `Ox86_ADOX_instr` placing the bool in OF. Data and OF both checked.
+#guard
     let s := step { regs := fun r => if r = "a" then BitVec.allOnes 64 else 0,
                     flags := { of := true } } (.adox "a" (.imm 1))
-    (s.get "a").toNat = 1 ∧ s.flags.of = true := by native_decide
+    (s.get "a").toNat == 1 && s.flags.of
 
-/-- ADOX leaves CF untouched (`Ox86_ADOX_instr` writes only OF). CF starts
-    `true` and survives. -/
-example :
+-- ADOX leaves CF untouched (`Ox86_ADOX_instr` writes only OF). CF starts
+-- `true` and survives.
+#guard
     (step { regs := fun r => if r = "a" then (5 : BitVec 64) else 0,
-            flags := { cf := true, of := true } } (.adox "a" (.imm 8))).flags.cf = true := by
-  native_decide
+            flags := { cf := true, of := true } } (.adox "a" (.imm 8))).flags.cf
 
 /-! ### Composed bignum step: `MULX → ADCX → ADOX`
 
@@ -382,7 +375,7 @@ through Jasmin's compiled model in one `Compute`:
 
 i.e. `lo = 2^64-3`, `hi = 2`; ADCX → `r = 7`, CF set; ADOX → `r = 107`, OF clear.
 We replay the same three `step`s and assert each word and flag. -/
-example :
+#guard
     let s0 : State 64 :=
       { regs := fun r => if r = "b" then BitVec.allOnes 64
                          else if r = "t0" then 3
@@ -391,11 +384,10 @@ example :
     let s1 := step s0 (.mulx "hi" "lo" (.reg "b") (.reg "t0"))
     let s2 := step s1 (.adcx "r" (.reg "lo"))
     let s3 := step s2 (.adox "r" (.reg "cy"))
-    (s1.get "lo").toNat = 18446744073709551613 ∧
-    (s1.get "hi").toNat = 2 ∧
-    s2.flags.cf = true ∧ (s2.get "r").toNat = 7 ∧
-    s3.flags.of = false ∧ (s3.get "r").toNat = 107 := by
-  native_decide
+    (s1.get "lo").toNat == 18446744073709551613 &&
+    (s1.get "hi").toNat == 2 &&
+    s2.flags.cf && (s2.get "r").toNat == 7 &&
+    s3.flags.of == false && (s3.get "r").toNat == 107
 
 /-! ## ADX trio: all-inputs effect theorems
 
@@ -474,47 +466,44 @@ register only, no flag) and `NEG` (Jasmin `x86_NEG sz w`: data `v = (-w)%w`,
 The concrete Jasmin outputs below were obtained by `vm_compute`ing the compiled
 Rocq model through `rocq-mcp` on shared `U64` inputs; our `step` reproduces them. -/
 
-/-- NOT, all-zero → all-ones. Jasmin
-    `wunsigned (x86_NOT (wrepr U64 0)) = 18446744073709551615` (rocq-mcp
-    `vm_compute`). -/
-example :
-    ((step (st 0) (.not_ "a")).get "a").toNat = 18446744073709551615 := by
-  native_decide
+-- NOT, all-zero → all-ones. Jasmin
+-- `wunsigned (x86_NOT (wrepr U64 0)) = 18446744073709551615` (rocq-mcp
+-- `vm_compute`).
+#guard
+    ((step (st 0) (.not_ "a")).get "a").toNat == 18446744073709551615
 
-/-- NOT, `13 ↦ 2^64-14`. Jasmin
-    `wunsigned (x86_NOT (wrepr U64 13)) = 18446744073709551602`. -/
-example : ((step (st 13) (.not_ "a")).get "a").toNat = 18446744073709551602 := by
-  native_decide
+-- NOT, `13 ↦ 2^64-14`. Jasmin
+-- `wunsigned (x86_NOT (wrepr U64 13)) = 18446744073709551602`.
+#guard ((step (st 13) (.not_ "a")).get "a").toNat == 18446744073709551602
 
-/-- NOT, all-ones → zero. Jasmin
-    `wunsigned (x86_NOT (wrepr U64 (2^64-1))) = 0`. -/
-example :
+-- NOT, all-ones → zero. Jasmin
+-- `wunsigned (x86_NOT (wrepr U64 (2^64-1))) = 0`.
+#guard
     (step { regs := fun r => if r = "a" then BitVec.allOnes 64 else 0 } (.not_ "a")).get "a"
-      = 0 := by native_decide
+      == 0
 
-/-- NOT touches no flag (`Ox86_NOT_instr` output is the register only). -/
-example :
+-- NOT touches no flag (`Ox86_NOT_instr` output is the register only).
+#guard
     (step { regs := fun _ => (13 : BitVec 64), flags := { cf := true, of := true } }
-          (.not_ "a")).flags = { cf := true, of := true } := by
-  native_decide
+          (.not_ "a")).flags == { cf := true, of := true }
 
-/-- NEG of `0`: data `0`, `CF = false`. Jasmin `x86_NEG (wrepr U64 0)` →
-    `dw = 0`, `cf = Some false` (rocq-mcp `vm_compute`). -/
-example :
+-- NEG of `0`: data `0`, `CF = false`. Jasmin `x86_NEG (wrepr U64 0)` →
+-- `dw = 0`, `cf = Some false` (rocq-mcp `vm_compute`).
+#guard
     let s := step (st 0) (.neg "a")
-    (s.get "a").toNat = 0 ∧ s.flags.cf = false := by native_decide
+    (s.get "a").toNat == 0 && s.flags.cf == false
 
-/-- NEG of `5`: data `2^64-5`, `CF = true`. Jasmin `x86_NEG (wrepr U64 5)` →
-    `dw = 18446744073709551611`, `cf = Some true`. -/
-example :
+-- NEG of `5`: data `2^64-5`, `CF = true`. Jasmin `x86_NEG (wrepr U64 5)` →
+-- `dw = 18446744073709551611`, `cf = Some true`.
+#guard
     let s := step (st 5) (.neg "a")
-    (s.get "a").toNat = 18446744073709551611 ∧ s.flags.cf = true := by native_decide
+    (s.get "a").toNat == 18446744073709551611 && s.flags.cf
 
-/-- NEG of `1`: data `2^64-1`, `CF = true`. Jasmin `x86_NEG (wrepr U64 1)` →
-    `dw = 18446744073709551615`, `cf = Some true`. -/
-example :
+-- NEG of `1`: data `2^64-1`, `CF = true`. Jasmin `x86_NEG (wrepr U64 1)` →
+-- `dw = 18446744073709551615`, `cf = Some true`.
+#guard
     let s := step (st 1) (.neg "a")
-    (s.get "a").toNat = 18446744073709551615 ∧ s.flags.cf = true := by native_decide
+    (s.get "a").toNat == 18446744073709551615 && s.flags.cf
 
 /-- `NOT` writes `~dst` to `dst`, for all inputs (Jasmin `wnot`). -/
 theorem not_data {w : Nat} (s : State w) (dst : Reg) :
@@ -563,7 +552,7 @@ subtraction open-coded as a two's-complement add so the Lean `SExpr` model
 
 The identity is validated two ways, mirroring the trio differential pins above:
 an **all-inputs** `bv_decide` proof at a tractable narrow width, and **64-bit
-boundary pins** (`native_decide`) across the sign/magnitude spread. -/
+boundary pins** (`#guard`) across the sign/magnitude spread. -/
 
 /-- All-inputs (width 8): the high `8` bits of the signed `8×8 → 16` product
     equal the unsigned high bits minus the branchless two-term correction.
@@ -595,25 +584,24 @@ private def corrected64 (a b : Nat) : Nat :=
   let dst2 := t64 (dst1 + t64 (c2 ^^^ 18446744073709551615))
   t64 (dst2 + 2)
 
-/-- Boundary pin: small positive × small positive. -/
-example : corrected64 5 7 = mulHiS64 5 7 := by native_decide
-/-- Boundary pin: negative × positive. -/
-example : corrected64 (ofI64 (-3)) 100 = mulHiS64 (ofI64 (-3)) 100 := by native_decide
-/-- Boundary pin: positive × negative. -/
-example : corrected64 100 (ofI64 (-3)) = mulHiS64 100 (ofI64 (-3)) := by native_decide
-/-- Boundary pin: `-1 × -1`. -/
-example : corrected64 (ofI64 (-1)) (ofI64 (-1)) = mulHiS64 (ofI64 (-1)) (ofI64 (-1)) := by
-  native_decide
-/-- Boundary pin: `0 × 0`. -/
-example : corrected64 0 0 = mulHiS64 0 0 := by native_decide
-/-- Boundary pin: most-negative × most-negative (`-2^63`). -/
-example :
+-- Boundary pin: small positive × small positive.
+#guard corrected64 5 7 == mulHiS64 5 7
+-- Boundary pin: negative × positive.
+#guard corrected64 (ofI64 (-3)) 100 == mulHiS64 (ofI64 (-3)) 100
+-- Boundary pin: positive × negative.
+#guard corrected64 100 (ofI64 (-3)) == mulHiS64 100 (ofI64 (-3))
+-- Boundary pin: `-1 × -1`.
+#guard corrected64 (ofI64 (-1)) (ofI64 (-1)) == mulHiS64 (ofI64 (-1)) (ofI64 (-1))
+-- Boundary pin: `0 × 0`.
+#guard corrected64 0 0 == mulHiS64 0 0
+-- Boundary pin: most-negative × most-negative (`-2^63`).
+#guard
     corrected64 (ofI64 (-(2 ^ 63))) (ofI64 (-(2 ^ 63)))
-      = mulHiS64 (ofI64 (-(2 ^ 63))) (ofI64 (-(2 ^ 63))) := by native_decide
-/-- Boundary pin: max-positive × max-positive (`2^63 − 1`). -/
-example :
+      == mulHiS64 (ofI64 (-(2 ^ 63))) (ofI64 (-(2 ^ 63)))
+-- Boundary pin: max-positive × max-positive (`2^63 − 1`).
+#guard
     corrected64 (ofI64 (2 ^ 63 - 1)) (ofI64 (2 ^ 63 - 1))
-      = mulHiS64 (ofI64 (2 ^ 63 - 1)) (ofI64 (2 ^ 63 - 1)) := by native_decide
+      == mulHiS64 (ofI64 (2 ^ 63 - 1)) (ofI64 (2 ^ 63 - 1))
 
 /-! # Part A — Faithful transcription validation (`JasminModel.lean`, #281)
 
@@ -663,109 +651,107 @@ private def jst (v : BitVec 64) : JState 64 :=
 private def jstCF (v : BitVec 64) (c : Bool) : JState 64 :=
   { regs := fun r => if r = "a" then v else 0, flags := { cf := some c } }
 
-/-- ADD, full tuple. Jasmin `x86_ADD 123456789 987654321`:
-    word `1111111110`, `(OF,CF,SF,PF,ZF) = (F,F,F,T,F)`. -/
-example :
+-- ADD, full tuple. Jasmin `x86_ADD 123456789 987654321`:
+-- word `1111111110`, `(OF,CF,SF,PF,ZF) = (F,F,F,T,F)`.
+#guard
     let s := evalInstr (jst 123456789) (.add "a" (.imm 987654321))
-    (s.get "a").toNat = 1111111110 ∧
-    s.flags = { of := some false, cf := some false, sf := some false,
-                pf := some true, zf := some false } := by native_decide
+    (s.get "a").toNat == 1111111110 &&
+    s.flags == { of := some false, cf := some false, sf := some false,
+                 pf := some true, zf := some false }
 
-/-- SUB, full tuple. Jasmin `x86_SUB 5 8`:
-    word `2^64-3`, `(F,T,T,F,F)` (CF = borrow). -/
-example :
+-- SUB, full tuple. Jasmin `x86_SUB 5 8`:
+-- word `2^64-3`, `(F,T,T,F,F)` (CF = borrow).
+#guard
     let s := evalInstr (jst 5) (.sub "a" (.imm 8))
-    (s.get "a").toNat = 18446744073709551613 ∧
-    s.flags = { of := some false, cf := some true, sf := some true,
-                pf := some false, zf := some false } := by native_decide
+    (s.get "a").toNat == 18446744073709551613 &&
+    s.flags == { of := some false, cf := some true, sf := some true,
+                 pf := some false, zf := some false }
 
-/-- ADC with CF=1, full tuple. Jasmin `x86_ADC 5 8 true`:
-    word `14`, `(F,F,F,F,F)`. -/
-example :
+-- ADC with CF=1, full tuple. Jasmin `x86_ADC 5 8 true`:
+-- word `14`, `(F,F,F,F,F)`.
+#guard
     let s := evalInstr (jstCF 5 true) (.adc "a" (.imm 8))
-    (s.get "a").toNat = 14 ∧
-    s.flags = { of := some false, cf := some false, sf := some false,
-                pf := some false, zf := some false } := by native_decide
+    (s.get "a").toNat == 14 &&
+    s.flags == { of := some false, cf := some false, sf := some false,
+                 pf := some false, zf := some false }
 
-/-- SBB with CF=1, full tuple. Jasmin `x86_SBB 5 8 true`:
-    word `2^64-4`, `(F,T,T,T,F)`. -/
-example :
+-- SBB with CF=1, full tuple. Jasmin `x86_SBB 5 8 true`:
+-- word `2^64-4`, `(F,T,T,T,F)`.
+#guard
     let s := evalInstr (jstCF 5 true) (.sbb "a" (.imm 8))
-    (s.get "a").toNat = 18446744073709551612 ∧
-    s.flags = { of := some false, cf := some true, sf := some true,
-                pf := some true, zf := some false } := by native_decide
+    (s.get "a").toNat == 18446744073709551612 &&
+    s.flags == { of := some false, cf := some true, sf := some true,
+                 pf := some true, zf := some false }
 
-/-- AND, full tuple. Jasmin `x86_AND 13 7`: word `5`, `(F,F,F,T,F)`
-    (bitwise ops clear OF and CF). -/
-example :
+-- AND, full tuple. Jasmin `x86_AND 13 7`: word `5`, `(F,F,F,T,F)`
+-- (bitwise ops clear OF and CF).
+#guard
     let s := evalInstr (jst 13) (.and_ "a" (.imm 7))
-    (s.get "a").toNat = 5 ∧
-    s.flags = { of := some false, cf := some false, sf := some false,
-                pf := some true, zf := some false } := by native_decide
+    (s.get "a").toNat == 5 &&
+    s.flags == { of := some false, cf := some false, sf := some false,
+                 pf := some true, zf := some false }
 
-/-- IMULt low word, full tuple. Jasmin `x86_IMULt 999 1000000`:
-    word `999000000`, `(F,F,None,None,None)` (`rflags_of_mul`: only OF/CF set). -/
-example :
+-- IMULt low word, full tuple. Jasmin `x86_IMULt 999 1000000`:
+-- word `999000000`, `(F,F,None,None,None)` (`rflags_of_mul`: only OF/CF set).
+#guard
     let s := evalInstr (jst 999) (.imul "a" (.imm 1000000))
-    (s.get "a").toNat = 999000000 ∧
-    s.flags = { of := some false, cf := some false, sf := none,
-                pf := none, zf := none } := by native_decide
+    (s.get "a").toNat == 999000000 &&
+    s.flags == { of := some false, cf := some false, sf := none,
+                 pf := none, zf := none }
 
-/-- SHL by 4, full tuple. Jasmin `x86_SHL 1 4`: word `16`, `(None,F,F,F,F)`
-    (OF undefined because the count `i ≠ 1`). -/
-example :
+-- SHL by 4, full tuple. Jasmin `x86_SHL 1 4`: word `16`, `(None,F,F,F,F)`
+-- (OF undefined because the count `i ≠ 1`).
+#guard
     let s := evalInstr (jst 1) (.shl "a" (.imm 4))
-    (s.get "a").toNat = 16 ∧
-    s.flags = { of := none, cf := some false, sf := some false,
-                pf := some false, zf := some false } := by native_decide
+    (s.get "a").toNat == 16 &&
+    s.flags == { of := none, cf := some false, sf := some false,
+                 pf := some false, zf := some false }
 
-/-- SAR of a negative word by 1, full tuple. Jasmin
-    `x86_SAR (2^64-8) 1 = 2^64-4` (arithmetic shift keeps the sign bit),
-    `(F,F,T,T,F)` (OF = `some false` since `i = 1`). This is the arm with **no
-    `lprog` source op** (the source IR carries only logical `shr`); it is
-    validated directly against Jasmin here. -/
-example :
+-- SAR of a negative word by 1, full tuple. Jasmin
+-- `x86_SAR (2^64-8) 1 = 2^64-4` (arithmetic shift keeps the sign bit),
+-- `(F,F,T,T,F)` (OF = `some false` since `i = 1`). This is the arm with **no
+-- `lprog` source op** (the source IR carries only logical `shr`); it is
+-- validated directly against Jasmin here.
+#guard
     let s := evalInstr (jst (BitVec.ofNat 64 (2^64 - 8))) (.sar "a" (.imm 1))
-    (s.get "a").toNat = 18446744073709551612 ∧
-    s.flags = { of := some false, cf := some false, sf := some true,
-                pf := some true, zf := some false } := by native_decide
+    (s.get "a").toNat == 18446744073709551612 &&
+    s.flags == { of := some false, cf := some false, sf := some true,
+                 pf := some true, zf := some false }
 
-/-- SAR of a positive word: `x86_SAR 256 4 = 16`. -/
-example : ((evalInstr (jst 256) (.sar "a" (.imm 4))).get "a").toNat = 16 := by
-  native_decide
+-- SAR of a positive word: `x86_SAR 256 4 = 16`.
+#guard ((evalInstr (jst 256) (.sar "a" (.imm 4))).get "a").toNat == 16
 
-/-- MULX, full product split, no flag. Jasmin
-    `x86_MULX_lo_hi (2^64-1) 2 = (lo, hi) = (2^64-2, 1)`. -/
-example :
+-- MULX, full product split, no flag. Jasmin
+-- `x86_MULX_lo_hi (2^64-1) 2 = (lo, hi) = (2^64-2, 1)`.
+#guard
     let s := evalInstr
       { regs := fun r => if r = "a" then BitVec.allOnes 64 else if r = "b" then 2 else 0 }
       (.mulx "hi" "lo" (.reg "a") (.reg "b"))
-    (s.get "lo").toNat = 18446744073709551614 ∧ (s.get "hi").toNat = 1 := by
-  native_decide
+    (s.get "lo").toNat == 18446744073709551614 && (s.get "hi").toNat == 1
 
-/-- ADCX with CF=1, carry-out: Jasmin `x86_ADCX (2^64-1) 1 true = (Some true, 1)`,
-    routed to CF only. -/
-example :
+-- ADCX with CF=1, carry-out: Jasmin `x86_ADCX (2^64-1) 1 true = (Some true, 1)`,
+-- routed to CF only.
+#guard
     let s := evalInstr (jstCF (BitVec.allOnes 64) true) (.adcx "a" (.imm 1))
-    (s.get "a").toNat = 1 ∧ s.flags.cf = some true := by native_decide
+    (s.get "a").toNat == 1 && s.flags.cf == some true
 
-/-- ADCX leaves OF untouched (writes only CF). -/
-example :
+-- ADCX leaves OF untouched (writes only CF).
+#guard
     (evalInstr { regs := fun r => if r = "a" then (5 : BitVec 64) else 0,
                  flags := { cf := some true, of := some true } }
-               (.adcx "a" (.imm 8))).flags.of = some true := by native_decide
+               (.adcx "a" (.imm 8))).flags.of == some true
 
-/-- ADOX with OF=1, carry-out: same `x86_ADCX` data, routed to OF only. -/
-example :
+-- ADOX with OF=1, carry-out: same `x86_ADCX` data, routed to OF only.
+#guard
     let s := evalInstr { regs := fun r => if r = "a" then BitVec.allOnes 64 else 0,
                          flags := { of := some true } } (.adox "a" (.imm 1))
-    (s.get "a").toNat = 1 ∧ s.flags.of = some true := by native_decide
+    (s.get "a").toNat == 1 && s.flags.of == some true
 
-/-- ADOX leaves CF untouched (writes only OF). -/
-example :
+-- ADOX leaves CF untouched (writes only OF).
+#guard
     (evalInstr { regs := fun r => if r = "a" then (5 : BitVec 64) else 0,
                  flags := { cf := some true, of := some true } }
-               (.adox "a" (.imm 8))).flags.cf = some true := by native_decide
+               (.adox "a" (.imm 8))).flags.cf == some true
 
 /-! ## Real emitted block: the `#MULX → #ADCX → #ADOX` carry chain
 
@@ -789,9 +775,9 @@ through Jasmin's compiled model in one sequence evaluation:
 We replay the same three `evalInstr`s on the faithful state and assert each word
 and flag — the `runBlock` analogue of jasmin's sequential `eval_instr`. -/
 
-/-- The emitted `MULX → ADCX → ADOX` block, validated against Jasmin's sequence
-    evaluation, on the faithful five-flag state. -/
-example :
+-- The emitted `MULX → ADCX → ADOX` block, validated against Jasmin's sequence
+-- evaluation, on the faithful five-flag state.
+#guard
     let s0 : JState 64 :=
       { regs := fun r => if r = "b" then BitVec.allOnes 64
                          else if r = "t0" then 3
@@ -803,11 +789,11 @@ example :
     let i2 : JInstr 64 := .adox "r0" (.reg "cy")
     let s1 := evalInstr s0 i0
     let s := runBlock s0 [i0, i1, i2]
-    (s1.get "lo0").toNat = 18446744073709551613 ∧
-    (s1.get "hi0").toNat = 2 ∧
-    s.flags.cf = some true ∧
-    s.flags.of = some false ∧
-    (s.get "r0").toNat = 107 := by native_decide
+    (s1.get "lo0").toNat == 18446744073709551613 &&
+    (s1.get "hi0").toNat == 2 &&
+    s.flags.cf == some true &&
+    s.flags.of == some false &&
+    (s.get "r0").toNat == 107
 
 /-! ## Shift-count mask, made explicit (faithful side)
 
@@ -816,40 +802,37 @@ U64 = 63`); `Model.lean`'s `step` shifts by the raw count. For a count `< w` the
 agree; above the width the transcription wraps (`68 & 63 = 4`) where the prior
 model gave `0`. The transcription is the one that matches Jasmin. -/
 
-/-- Jasmin `x86_SHL 1 68 = 16` (`68 & 63 = 4`): the faithful transcription
-    reproduces the mask, where `Model.step` (`shl_count_ge_width_differs`) gave
-    `0`. -/
-example : ((evalInstr (jst 1) (.shl "a" (.imm 68))).get "a").toNat = 16 := by
-  native_decide
+-- Jasmin `x86_SHL 1 68 = 16` (`68 & 63 = 4`): the faithful transcription
+-- reproduces the mask, where `Model.step` (`shl_count_ge_width_differs`) gave
+-- `0`.
+#guard ((evalInstr (jst 1) (.shl "a" (.imm 68))).get "a").toNat == 16
 
 /-! ## Reconciliation with the prior hand-authored model
 
 `Model.lean`'s `step` (`CF`/`OF` only) agrees with the faithful transcription on
 the **data result** for the modeled subset, so `Preservation.lean`'s theorems
 carry over unchanged. The data words are equal by definitional unfolding; we pin
-the representatives by `native_decide` on a shared state to avoid restating the
+the representatives by `#guard` on a shared state to avoid restating the
 `step`/`evalInstr` defeqs. -/
 
-/-- `Model.step` and the faithful `evalInstr` produce the same destination word
-    for `ADD` on a shared input. -/
-example :
+-- `Model.step` and the faithful `evalInstr` produce the same destination word
+-- for `ADD` on a shared input.
+#guard
     (step (st 123456789) (.add "a" (.imm 987654321))).get "a"
-      = (evalInstr (jst 123456789) (.add "a" (.imm 987654321))).get "a" := by
-  native_decide
+      == (evalInstr (jst 123456789) (.add "a" (.imm 987654321))).get "a"
 
-/-- Same for `MULX` (both result words). -/
-example :
+-- Same for `MULX` (both result words).
+#guard
     let s := step (stMulx (BitVec.allOnes 64) 2) (.mulx "hi" "lo" (.reg "a") (.reg "b"))
     let s' := evalInstr
       { regs := fun r => if r = "a" then BitVec.allOnes 64 else if r = "b" then 2 else 0 }
       (.mulx "hi" "lo" (.reg "a") (.reg "b"))
-    s.get "lo" = s'.get "lo" ∧ s.get "hi" = s'.get "hi" := by native_decide
+    s.get "lo" == s'.get "lo" && s.get "hi" == s'.get "hi"
 
-/-- Same for `ADCX` data + the carry the prior model also tracked. -/
-example :
+-- Same for `ADCX` data + the carry the prior model also tracked.
+#guard
     (step (stCF (BitVec.allOnes 64) true) (.adcx "a" (.imm 1))).get "a"
-      = (evalInstr (jstCF (BitVec.allOnes 64) true) (.adcx "a" (.imm 1))).get "a" := by
-  native_decide
+      == (evalInstr (jstCF (BitVec.allOnes 64) true) (.adcx "a" (.imm 1))).get "a"
 
 /-! ## The remaining emitted-kernel arms: `CMOVcc` variants, `MULX`-mem, `MOV`-mem (#281)
 
@@ -890,79 +873,79 @@ private def jstMem (v : BitVec 64) (base : String) (off : Int) (m : BitVec 64) :
   { regs := fun r => if r = "a" then v else 0
     mem := fun b o => if b = base ∧ o = off then m else 0 }
 
-/-- CMOVE taken / not taken, against Jasmin `x86_CMOVcc (b = ZF) src dst`.
-    `ZF = true` selects the source (`111`); `ZF = false` keeps the dest (`222`).
-    Writes no flag (`Ox86_CMOVcc_instr` output is `[:: Ea 1]`). -/
-example :
+-- CMOVE taken / not taken, against Jasmin `x86_CMOVcc (b = ZF) src dst`.
+-- `ZF = true` selects the source (`111`); `ZF = false` keeps the dest (`222`).
+-- Writes no flag (`Ox86_CMOVcc_instr` output is `[:: Ea 1]`).
+#guard
     let s := evalInstr { regs := fun r => if r = "a" then (222 : BitVec 64) else 0,
                          flags := { zf := some true } } (.cmove "a" (.imm 111))
-    (s.get "a").toNat = 111 ∧ s.flags = { zf := some true } := by native_decide
+    (s.get "a").toNat == 111 && s.flags == { zf := some true }
 
-example :
+#guard
     ((evalInstr { regs := fun r => if r = "a" then (222 : BitVec 64) else 0,
                   flags := { zf := some false } } (.cmove "a" (.imm 111))).get "a").toNat
-      = 222 := by native_decide
+      == 222
 
-/-- CMOVNE reads `¬ZF`: `ZF = false` selects the source (`111`), `ZF = true`
-    keeps the dest (`222`). Same `x86_CMOVcc` selector, complemented condition. -/
-example :
+-- CMOVNE reads `¬ZF`: `ZF = false` selects the source (`111`), `ZF = true`
+-- keeps the dest (`222`). Same `x86_CMOVcc` selector, complemented condition.
+#guard
     let s := evalInstr { regs := fun r => if r = "a" then (222 : BitVec 64) else 0,
                          flags := { zf := some false } } (.cmovne "a" (.imm 111))
-    (s.get "a").toNat = 111 ∧ s.flags = { zf := some false } := by native_decide
+    (s.get "a").toNat == 111 && s.flags == { zf := some false }
 
-example :
+#guard
     ((evalInstr { regs := fun r => if r = "a" then (222 : BitVec 64) else 0,
                   flags := { zf := some true } } (.cmovne "a" (.imm 111))).get "a").toNat
-      = 222 := by native_decide
+      == 222
 
-/-- CMOVB reads `CF`: `CF = true` selects the source (`111`), `CF = false`
-    keeps the dest (`222`). The conditional-subtract carry fixup of the field
-    kernels (`P256FieldKernel`/`X25519MonoLadderKernel`). -/
-example :
+-- CMOVB reads `CF`: `CF = true` selects the source (`111`), `CF = false`
+-- keeps the dest (`222`). The conditional-subtract carry fixup of the field
+-- kernels (`P256FieldKernel`/`X25519MonoLadderKernel`).
+#guard
     let s := evalInstr { regs := fun r => if r = "a" then (222 : BitVec 64) else 0,
                          flags := { cf := some true } } (.cmovb "a" (.imm 111))
-    (s.get "a").toNat = 111 ∧ s.flags = { cf := some true } := by native_decide
+    (s.get "a").toNat == 111 && s.flags == { cf := some true }
 
-example :
+#guard
     ((evalInstr { regs := fun r => if r = "a" then (222 : BitVec 64) else 0,
                   flags := { cf := some false } } (.cmovb "a" (.imm 111))).get "a").toNat
-      = 222 := by native_decide
+      == 222
 
-/-- `loadMem`: `dst := [base + off]`, the reg-ptr ABI argument-load.
-    Jasmin `x86_MOV` is identity, so the destination receives the memory word
-    verbatim (`123456789` here); no flag is written (`Ox86_MOV_instr`). -/
-example :
+-- `loadMem`: `dst := [base + off]`, the reg-ptr ABI argument-load.
+-- Jasmin `x86_MOV` is identity, so the destination receives the memory word
+-- verbatim (`123456789` here); no flag is written (`Ox86_MOV_instr`).
+#guard
     let s := evalInstr (jstMem 0 "rp" 16 123456789) (.loadMem "a" "rp" 16)
-    (s.get "a").toNat = 123456789 ∧ s.flags = ({} : RFlags) := by native_decide
+    (s.get "a").toNat == 123456789 && s.flags == ({} : RFlags)
 
-/-- `storeMem`: `[base + off] := src`, the reg-ptr ABI result-store. The memory
-    word receives the source verbatim (Jasmin `x86_MOV` = identity); registers
-    and flags are untouched. -/
-example :
+-- `storeMem`: `[base + off] := src`, the reg-ptr ABI result-store. The memory
+-- word receives the source verbatim (Jasmin `x86_MOV` = identity); registers
+-- and flags are untouched.
+#guard
     let s := evalInstr { regs := fun r => if r = "a" then (123456789 : BitVec 64) else 0 }
                        (.storeMem "rp" 16 (.reg "a"))
-    (s.load "rp" 16).toNat = 123456789 ∧ s.flags = ({} : RFlags) := by native_decide
+    (s.load "rp" 16).toNat == 123456789 && s.flags == ({} : RFlags)
 
-/-- `mulxMem`: the full product split with the second factor read from memory,
-    against Jasmin `x86_MULX_lo_hi a [base + off]` — the **same** `wumul` as the
-    reg form (validated above), so on `a = 2^64-1`, `[base+off] = 3` it yields
-    `(lo, hi) = (2^64-3, 2) = (18446744073709551613, 2)`. No flag (s2n's
-    `mulxq off(%base), %lo, %hi`). -/
-example :
+-- `mulxMem`: the full product split with the second factor read from memory,
+-- against Jasmin `x86_MULX_lo_hi a [base + off]` — the **same** `wumul` as the
+-- reg form (validated above), so on `a = 2^64-1`, `[base+off] = 3` it yields
+-- `(lo, hi) = (2^64-3, 2) = (18446744073709551613, 2)`. No flag (s2n's
+-- `mulxq off(%base), %lo, %hi`).
+#guard
     let s := evalInstr (jstMem (BitVec.allOnes 64) "bp" 8 3)
                        (.mulxMem "hi" "lo" (.reg "a") "bp" 8)
-    (s.get "lo").toNat = 18446744073709551613 ∧
-    (s.get "hi").toNat = 2 ∧ s.flags = ({} : RFlags) := by native_decide
+    (s.get "lo").toNat == 18446744073709551613 &&
+    (s.get "hi").toNat == 2 && s.flags == ({} : RFlags)
 
-/-- `mulxMem`, both result words non-trivial — the same factors as the reg-`mulx`
-    pin above, with the second read from memory. Jasmin
-    `x86_MULX_lo_hi 1311768467463790320 18364758544493064720
-      = (lo, hi) = (2552847189736476416, 1305938385386173474)`. -/
-example :
+-- `mulxMem`, both result words non-trivial — the same factors as the reg-`mulx`
+-- pin above, with the second read from memory. Jasmin
+-- `x86_MULX_lo_hi 1311768467463790320 18364758544493064720
+--   = (lo, hi) = (2552847189736476416, 1305938385386173474)`.
+#guard
     let s := evalInstr (jstMem 1311768467463790320 "bp" 0 18364758544493064720)
                        (.mulxMem "hi" "lo" (.reg "a") "bp" 0)
-    (s.get "lo").toNat = 2552847189736476416 ∧
-    (s.get "hi").toNat = 1305938385386173474 := by native_decide
+    (s.get "lo").toNat == 2552847189736476416 &&
+    (s.get "hi").toNat == 1305938385386173474
 
 /-! ### All-inputs effect theorems for the five new arms
 

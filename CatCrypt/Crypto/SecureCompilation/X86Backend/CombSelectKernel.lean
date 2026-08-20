@@ -4,6 +4,7 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel
 
 /-!
@@ -99,6 +100,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-! ## 1. Window geometry
 
@@ -258,6 +261,39 @@ theorem combSelect_constant_time_offsets :
       ∧ (BignumMontMulKernel.hasSub combSelectAsm "(%rsi,") = false := by
   native_decide
 
+/-! ## 5b. Machine-level constant time
+
+The syntactic witness above reads the rendered text; the theorems here are on
+the instruction block itself. Every table read is a `loadMem` with a literal
+displacement `j·32 + 8·k` off `tbl` — the scan visits all sixteen entries
+unconditionally, and the secret index `d` reaches only the `mov`/`sub` that set
+`ZF` and the branch-free `cmove` that consumes it. Since no instruction is a
+register-indexed `loadMemIdx`/`storeMemIdx`, the block is in the
+direct-addressing class and its machine leakage trace is fixed by the program
+text. -/
+
+/-- The select block takes no register-indexed memory access: the linear scan
+    reads every entry at a compile-time-constant offset and selects with
+    `cmove`. -/
+theorem combSelectBlock_allDirect : allDirect combSelectBlock = true := by
+  have hA : ∀ a b : List (JInstr 64),
+      allDirect (a ++ b) = (allDirect a && allDirect b) := fun _ _ => List.all_append
+  have hF : ∀ (l : List Nat) (f : Nat → List (JInstr 64)),
+      (∀ x, allDirect (f x) = true) → allDirect (l.flatMap f) = true := by
+    intro l f h
+    induction l with
+    | nil => rfl
+    | cons x t ih => simp [hA, h x, ih]
+  rw [combSelectBlock, hA, hA, hF _ _ (fun _ => by simp [allDirect, IsDirect])]
+  simp [allDirect, IsDirect]
+
+/-- **Constant time.** The 16-entry comb window select produces the same machine
+    leakage trace from any two starting states, so the emitted address sequence
+    carries no information about the secret window index. -/
+theorem combSelectBlock_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ combSelectBlock = blockLeak s₂ combSelectBlock :=
+  allDirect_constant_time combSelectBlock combSelectBlock_allDirect s₁ s₂
+
 /-! ## 6. Wider window: the 32-entry (5-bit signed) select
 
 The signed comb sign path can use a **5-bit window** instead of 4-bit, cutting
@@ -346,6 +382,25 @@ theorem combSelect5_constant_time_offsets :
       ∧ (BignumMontMulKernel.hasSub combSelect5Asm "(%rsi,") = false := by
   native_decide
 
+/-- The 32-entry select block takes no register-indexed memory access. -/
+theorem combSelect5Block_allDirect : allDirect combSelect5Block = true := by
+  have hA : ∀ a b : List (JInstr 64),
+      allDirect (a ++ b) = (allDirect a && allDirect b) := fun _ _ => List.all_append
+  have hF : ∀ (l : List Nat) (f : Nat → List (JInstr 64)),
+      (∀ x, allDirect (f x) = true) → allDirect (l.flatMap f) = true := by
+    intro l f h
+    induction l with
+    | nil => rfl
+    | cons x t ih => simp [hA, h x, ih]
+  rw [combSelect5Block, hA, hA, hF _ _ (fun _ => by simp [allDirect, IsDirect])]
+  simp [allDirect, IsDirect]
+
+/-- **Constant time.** The 32-entry comb window select produces the same machine
+    leakage trace from any two starting states. -/
+theorem combSelect5Block_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ combSelect5Block = blockLeak s₂ combSelect5Block :=
+  allDirect_constant_time combSelect5Block combSelect5Block_allDirect s₁ s₂
+
 /-! ## 7. 64-entry (6-bit signed) select
 
 A 6-bit signed window cuts a 256-bit scalar to 43 windows; `|digit| ∈ {0,…,32}`
@@ -420,6 +475,25 @@ def combSelect6Asm : String :=
 
 /- **CT syntactic witness for the 64-entry select.** -/
 #guard (BignumMontMulKernel.hasSub combSelect6Asm "cmoveq") && (BignumMontMulKernel.hasSub combSelect6Asm "subq") && (BignumMontMulKernel.hasSub combSelect6Asm "(%rdi)") && !(BignumMontMulKernel.hasSub combSelect6Asm ",%rsi)") && !(BignumMontMulKernel.hasSub combSelect6Asm "(%rsi)") && !(BignumMontMulKernel.hasSub combSelect6Asm "(%rsi,")
+
+/-- The 64-entry select block takes no register-indexed memory access. -/
+theorem combSelect6Block_allDirect : allDirect combSelect6Block = true := by
+  have hA : ∀ a b : List (JInstr 64),
+      allDirect (a ++ b) = (allDirect a && allDirect b) := fun _ _ => List.all_append
+  have hF : ∀ (l : List Nat) (f : Nat → List (JInstr 64)),
+      (∀ x, allDirect (f x) = true) → allDirect (l.flatMap f) = true := by
+    intro l f h
+    induction l with
+    | nil => rfl
+    | cons x t ih => simp [hA, h x, ih]
+  rw [combSelect6Block, hA, hA, hF _ _ (fun _ => by simp [allDirect, IsDirect])]
+  simp [allDirect, IsDirect]
+
+/-- **Constant time.** The 64-entry comb window select produces the same machine
+    leakage trace from any two starting states. -/
+theorem combSelect6Block_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ combSelect6Block = blockLeak s₂ combSelect6Block :=
+  allDirect_constant_time combSelect6Block combSelect6Block_allDirect s₁ s₂
 
 /-- Emit driver: write the in-Lean-backend-emitted `.s` for the bench harness. -/
 def emitMain : IO Unit := do

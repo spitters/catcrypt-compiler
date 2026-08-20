@@ -180,8 +180,8 @@ end CHVector
 
 /-- Convert a runtime-typed `List (Σ t, f t)` into a typed pair
     `(argTys, CHVector f argTys)`. The `argTys` is the projected first
-    components in order. Used at call sites that build the typed argument
-    vector of an `extCall` from a dynamically-collected argument list. -/
+    components in order. Used for migrating call sites that previously
+    accumulated `List (Σ t : CryptoTy, CVar Γ t)`. -/
 def listSigmaToCHVector {f : CryptoTy → Type} :
     (xs : List (Σ t : CryptoTy, f t)) →
     Σ argTys : List CryptoTy, CHVector f argTys

@@ -5,6 +5,7 @@ Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
 # BLAKE2 compression (BLAKE2b + BLAKE2s) emitted through the OWNED x86 backend
@@ -73,6 +74,8 @@ namespace CatCrypt.Crypto.SecureCompilation.X86Backend.Blake2Emit
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-! ## 1. The BLAKE2 reference compression spec (width-parametric, on `BitVec w`)
 
@@ -301,6 +304,93 @@ theorem blake2s_block_length : blake2sCompressBlock.length = 2144 := by native_d
 /-- Instruction count for BLAKE2b: 40 loads + 12·(8·26) round ops + 16 ff
     + 8 stores. ×8 G ×12 rounds = 2496; +40 +16 +8 = 2560. -/
 theorem blake2b_block_length : blake2bCompressBlock.length = 2560 := by native_decide
+
+/-! ## 5b. Constant time, at every width and round count
+
+The compression body reads and writes only through the two pointer bases
+`inp`/`out` at word-indexed literal displacements, and the round/feed-forward
+mixing is register ALU (`add`/`xor`/`shr`/`shl`/`or`). No instruction takes a
+register-indexed address, so the whole family is in the direct-addressing
+class, uniformly in the width `w`, the round count `nr`, and the rotation
+amounts. -/
+
+/-- The load prefix is in the direct-addressing class: each word is read at the
+    literal displacement `stride w * i` off `inp`. -/
+theorem loadInputs_allDirect (w : Nat) : allDirect (loadInputs w) = true := by
+  simp [allDirect, loadInputs, IsDirect]
+
+/-- The synthesized rotate is register ALU only. -/
+theorem rorSynth_allDirect (w : Nat) (dst tmp : String) (n : Nat) :
+    allDirect (rorSynth w dst tmp n) = true := by
+  simp [allDirect, rorSynth, IsDirect]
+
+/-- One `G` mixing is register ALU only. -/
+theorem emitG_allDirect (w a b c d mx my r1 r2 r3 r4 : Nat) :
+    allDirect (emitG w a b c d mx my r1 r2 r3 r4) = true := by
+  simp [allDirect, emitG, rorSynth, IsDirect]
+
+/-- One round — eight `G` mixings — is register ALU only. -/
+theorem emitRound_allDirect (w r r1 r2 r3 r4 : Nat) :
+    allDirect (emitRound w r r1 r2 r3 r4) = true := by
+  have hA : ∀ a b : List (JInstr w),
+      allDirect (a ++ b) = (allDirect a && allDirect b) := fun _ _ => List.all_append
+  simp [emitRound, hA, emitG_allDirect]
+
+/-- The whole round loop is register ALU only, for any round count. -/
+theorem allRounds_allDirect (w nr r1 r2 r3 r4 : Nat) :
+    allDirect (allRounds w nr r1 r2 r3 r4) = true := by
+  have hA : ∀ a b : List (JInstr w),
+      allDirect (a ++ b) = (allDirect a && allDirect b) := fun _ _ => List.all_append
+  simp only [allRounds]
+  induction List.range nr with
+  | nil => rfl
+  | cons _ _ ih => simp [hA, emitRound_allDirect, ih]
+
+/-- The feed-forward is register `xor` only. -/
+theorem feedForward_allDirect (w : Nat) : allDirect (feedForward w) = true := by
+  simp [allDirect, feedForward, IsDirect]
+
+/-- The store suffix writes at literal displacements off `out`. -/
+theorem storeOutputs_allDirect (w : Nat) : allDirect (storeOutputs w) = true := by
+  simp [allDirect, storeOutputs, IsDirect]
+
+/-- The full compression body is in the direct-addressing class at every width,
+    round count, and rotation schedule. -/
+theorem blake2CompressBlock_allDirect (w nr r1 r2 r3 r4 : Nat) :
+    allDirect (blake2CompressBlock w nr r1 r2 r3 r4) = true := by
+  have hA : ∀ a b : List (JInstr w),
+      allDirect (a ++ b) = (allDirect a && allDirect b) := fun _ _ => List.all_append
+  simp [blake2CompressBlock, hA, loadInputs_allDirect, allRounds_allDirect,
+    feedForward_allDirect, storeOutputs_allDirect]
+
+/-- **Constant time, width- and round-parametric.** Every BLAKE2 compression
+    body this module emits produces the same machine leakage trace from any two
+    starting states, via `ConstantTimeCoverage.allDirect_constant_time`. -/
+theorem blake2CompressBlock_constant_time (w nr r1 r2 r3 r4 : Nat)
+    (s₁ s₂ : JState w) :
+    blockLeak s₁ (blake2CompressBlock w nr r1 r2 r3 r4)
+      = blockLeak s₂ (blake2CompressBlock w nr r1 r2 r3 r4) :=
+  allDirect_constant_time _ (blake2CompressBlock_allDirect w nr r1 r2 r3 r4) s₁ s₂
+
+/-- `blake2sCompressBlock` is in the direct-addressing class. -/
+theorem blake2sCompressBlock_allDirect : allDirect blake2sCompressBlock = true :=
+  blake2CompressBlock_allDirect 32 10 16 12 8 7
+
+/-- **Constant time.** The emitted BLAKE2s compression produces the same machine
+    leakage trace from any two starting states. -/
+theorem blake2sCompressBlock_constant_time (s₁ s₂ : JState 32) :
+    blockLeak s₁ blake2sCompressBlock = blockLeak s₂ blake2sCompressBlock :=
+  blake2CompressBlock_constant_time 32 10 16 12 8 7 s₁ s₂
+
+/-- `blake2bCompressBlock` is in the direct-addressing class. -/
+theorem blake2bCompressBlock_allDirect : allDirect blake2bCompressBlock = true :=
+  blake2CompressBlock_allDirect 64 12 32 24 16 63
+
+/-- **Constant time.** The emitted BLAKE2b compression produces the same machine
+    leakage trace from any two starting states. -/
+theorem blake2bCompressBlock_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ blake2bCompressBlock = blockLeak s₂ blake2bCompressBlock :=
+  blake2CompressBlock_constant_time 64 12 32 24 16 63 s₁ s₂
 
 /-! ## 6. Per-round denote-agreement (the round-fold composition)
 

@@ -5,6 +5,7 @@ Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.X86Backend.BlockBytesAgreeExtended
 import CatCrypt.Crypto.SecureCompilation.X86Backend.PhysBodyGather
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringCoverageCmovSar
 
 /-!
 # `GatherInPlace` — the in-place (skip-mov) gather that byte-matches the Lprog encoder on the ALU core
@@ -21,14 +22,14 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.PhysBodyGather
    `mov RDX, RDX` (`48 89 D2`) the Lprog `encodeLopn` never emits — the latter
    encodes the same `Lopn` as the single `or %rcx, %rdx` (`48 09 CA`).
 
-2. **The count-in-tag shift representation mismatch.**
+2. **The count-in-tag shift representation mismatch — NOW FIXED in `encodeLopn`.**
    `Com.toLprogPhysAbi` emits the rotate shifts as `Lopn [RAX] "SHR:19:64" [RBX]` —
    count in the **mnemonic tag**, source a **register**. The gather lowers this to
-   `mov RAX, RBX ; shr RAX, $19` (7 bytes), while `encodeLopn` encodes the same `Lopn`
-   as the shift op alone, `shr RAX, $19` (`[0x48,0xc1,0xe8,0x13]`), through its
-   `encTagShift` arm (the `.imm`-source arm does not match a register-source
-   count-in-tag shift). So the shift OP agrees byte-for-byte and the whole divergence
-   is the gather's leading materialise `mov`.
+   `mov RAX, RBX ; shr RAX, $19` (7 bytes). `encodeLopn` USED to have **no arm** for a
+   count-in-tag register-source shift (its shift arm fired only on a separate `.imm`
+   count), so it emitted **0 bytes** — silently dropping the rotation. The
+   `encTagShift` arm now closes that: `encodeLopn` emits the `shr RAX, $19` op
+   (`[0x48,0xc1,0xe8,0x13]`), matching the trailing `shr` of the gather's block.
 
 This module is the **additive** fix for divergence (1): a new lowering
 `lowerLinstrExtCov3` with the `d == s0 ⇒ skip the leading mov` peephole on the
@@ -37,12 +38,12 @@ per-op byte-agreement theorem for the in-place case (`native_decide`-free, via t
 `BlockBytesAgreeExtended` dispatch technique), and `#eval` evidence that with the
 peephole the two-source ALU core now byte-matches `encodeLopn`.
 
-Divergence (2) — the shift — is handled on the `encodeLopn` side by the `encTagShift`
-arm (`BlockBytesAgreeExtended.encodeLopn_shr19_emits`); the byte witnesses on the real
-kernel live in `GoldenPathByteIdentityDemo` (every ALU-core `Lopn` encodes to a
-non-empty byte list). The remaining shift residual between the two gathers is the
+Divergence (2) — the shift — is **fixed in `encodeLopn`** (the `encTagShift` arm,
+`BlockBytesAgreeExtended.encodeLopn_shr19_emits`). §4c records the regression
+witnesses (the Lprog encoder now emits each rotation's bytes — count of dropped
+shifts `4 → 0`). The remaining shift residual between the two gathers is the
 gather's leading materialise `mov d, src` (the shift arm `lowerShiftImmJ` does not
-coalesce `d = src`) — the shift OP itself byte-agrees on both sides.
+coalesce `d = src`), not a dropped op — the shift OP byte-agrees on both sides.
 
 ## The peephole (divergence 1)
 
@@ -55,9 +56,21 @@ coalesce `d = src`) — the shift OP itself byte-agrees on both sides.
 `[mov d s0, OP d s1]` split **except** when `s0 = .reg d`: then it emits just
 `[OP d s1]` (the destructive single-op form `encodeLopn` produces). `lowerLinstrExtCov3`
 intercepts the two-source `regArith` mnemonics (`ADD/SUB/AND/OR/XOR:64`) with this
-peephole and delegates everything else to `lowerLinstrExtCov` verbatim — a strict
-behavioural refinement (only the `s0 = d` two-source case changes; the gather now
-emits the single in-place op there, matching the Lprog encoder).
+peephole; on the `s0 = d` two-source case the gather emits the single in-place op,
+matching the Lprog encoder.
+
+## The delegation target (`lowerLinstrExtCov2`)
+
+The catch-all delegates to `LoweringCoverageCmovSar.lowerLinstrExtCov2` rather than
+straight to `lowerLinstrExtCov`. That level is a strict superset of
+`lowerLinstrExtCov` — its own catch-all is `lowerLinstrExtCov` verbatim — carrying
+the literal-tagged immediate arithmetic right-shifts `SAR:63:64` / `SAR:23:64` /
+`SAR:31` (the `sarImm` export of `opToLinstrR`), which the levels below drop:
+`parseShiftMnem` detects only the `SHL:`/`SHR:` prefixes and `lowerAluJ`'s table
+carries no `SAR:<n>` mnemonic. The lowered block is `[mov d src, sar d #n]`, whose
+`sar` the byte encoder emits as the group-2 `/7` shift-by-`imm8`
+(`ScalarEncoder.encodeJInstr`), and both ops are `IsDirect`, so the block stays in
+the unconditional `allDirect` constant-time class.
 
 ## The byte-agreement theorem (the deliverable)
 
@@ -68,9 +81,8 @@ bytes — *no* leading self-`mov`. This is `or_bytes_agree` (the proven per-op
 resolver agreement) ∘ `encodeLopn_or₂` (the proven Lprog dispatch), with the
 self-`mov` of `or64_block_eq_mov_prepend_lopn` removed by the peephole. With both
 divergences addressed — (1) here, (2) in `encodeLopn`'s `encTagShift` arm — the
-shift-free ALU core byte-matches `encodeLcmd` exactly (witnessed on the real kernel in
-`GoldenPathByteIdentityDemo`), and the shift op agrees per-op; the only whole-core
-residual is the gather's per-shift materialise `mov`.
+shift-free ALU core byte-matches `encodeLcmd` exactly (§4b′), and the shift op itself
+agrees per-op; the only whole-core residual is the gather's per-shift materialise `mov`.
 
 No `sorry`, no axiom, no `native_decide` (the lemma proofs; the `#eval`/byte-length
 witnesses in §4 are interpreter evaluation, not part of any proof term).
@@ -84,6 +96,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin (JInstr JOperand)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtended
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtendedCoverage
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringCoverageCmovSar (lowerLinstrExtCov2)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrGatherExtended
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
@@ -110,11 +123,13 @@ def lowerAluJ2InPlace (dst : String) (opn : String) (s0 s1 : JOperand) :
 /-- The in-place coverage lowering. The two-source `regArith` mnemonics
     (`ADD/SUB/AND/OR/XOR:64`, plus their untagged forms) are intercepted with the
     `lowerAluJ2InPlace` peephole (skip the leading `mov` when `s0 = dst`); the
-    high-word multiply `MULXHI:64`, the two-source memory scatters
-    `STORE`/`STOREIDX`, and every other shape delegate to `lowerLinstrExtCov`
-    verbatim. So `lowerLinstrExtCov3` differs from `lowerLinstrExtCov` only on the
-    `s0 = dst` two-source `regArith` case, where it emits the single in-place op
-    the Lprog encoder produces.
+    high-word multiply `MULXHI:64` and the two-source memory scatters
+    `STORE`/`STOREIDX` delegate to `lowerLinstrExtCov` verbatim; every other shape
+    delegates to `lowerLinstrExtCov2`, the immediate-arithmetic-right-shift
+    superset whose own catch-all is `lowerLinstrExtCov`. So `lowerLinstrExtCov3`
+    differs from `lowerLinstrExtCov` on the `s0 = dst` two-source `regArith` case,
+    where it emits the single in-place op the Lprog encoder produces, and on the
+    literal-tagged `SAR:<n>` shapes, which `lowerLinstrExtCov2` lowers.
 
     The `MULXHI:64` / `STORE` / `STOREIDX` head patterns sit above the generic
     two-source arm because those shapes also carry two sources: without them the
@@ -134,8 +149,9 @@ def lowerLinstrExtCov3 : LinstrR → Option (List (JInstr 64))
   -- generic two-source ALU (`regArith bop 64`): the in-place peephole
   | .Lopn [.reg dst] opn [s0, s1] =>
       lowerAluJ2InPlace dst opn (lowerJOperand s0) (lowerJOperand s1)
-  -- everything else: the coverage superset verbatim
-  | i => lowerLinstrExtCov i
+  -- everything else: the immediate-arithmetic-right-shift superset, whose own
+  -- catch-all is `lowerLinstrExtCov`
+  | i => lowerLinstrExtCov2 i
 
 /-- The two-source memory scatters delegate to `lowerLinstrExtCov`, so the
     register-indexed store the SSA exporter emits gathers. -/
@@ -147,6 +163,29 @@ theorem lowerLinstrExtCov3_storeidx (dst base idx : String) (scale : Nat) (val :
 theorem lowerLinstrExtCov3_store (dst base : String) (off : Nat) (val : LOperand) :
     lowerLinstrExtCov3 (.Lopn [.reg dst] "STORE" [.arr base off, val])
       = some [JInstr.storeMem base (off : Int) (lowerJOperand val)] := rfl
+
+/-- The literal-tagged immediate arithmetic right-shift `SAR:63:64` (the `>> 63`
+    sign-extract) reaches `lowerLinstrExtCov2` through the catch-all and lowers to
+    `[mov d src, sar d #63]`. -/
+theorem lowerLinstrExtCov3_sar63 (dst : String) (src : LOperand) :
+    lowerLinstrExtCov3 (.Lopn [.reg dst] "SAR:63:64" [src])
+      = some [JInstr.mov dst (lowerJOperand src), JInstr.sar dst (JOperand.imm 63)] := rfl
+
+/-- The `SAR:23:64` reduce shift, likewise. -/
+theorem lowerLinstrExtCov3_sar23 (dst : String) (src : LOperand) :
+    lowerLinstrExtCov3 (.Lopn [.reg dst] "SAR:23:64" [src])
+      = some [JInstr.mov dst (lowerJOperand src), JInstr.sar dst (JOperand.imm 23)] := rfl
+
+/-- The narrow-width `SAR:31` (no `:64` tag), likewise. -/
+theorem lowerLinstrExtCov3_sar31 (dst : String) (src : LOperand) :
+    lowerLinstrExtCov3 (.Lopn [.reg dst] "SAR:31" [src])
+      = some [JInstr.mov dst (lowerJOperand src), JInstr.sar dst (JOperand.imm 31)] := rfl
+
+/-- A single-source shape outside the `SAR:` literals delegates to
+    `lowerLinstrExtCov` through `lowerLinstrExtCov2`'s catch-all. -/
+theorem lowerLinstrExtCov3_delegates_load (dst base : String) (off : Nat) :
+    lowerLinstrExtCov3 (.Lopn [.reg dst] "LOAD" [.arr base off])
+      = lowerLinstrExtCov (.Lopn [.reg dst] "LOAD" [.arr base off]) := rfl
 
 /-- Lower a full `Linstr` (drops the position tag), in-place coverage superset. -/
 def lowerLinstrExtCov3L (i : Linstr) : Option (List (JInstr 64)) :=

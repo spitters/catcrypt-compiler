@@ -77,10 +77,8 @@ axioms.
 
 ## Canonical-map: this file is the entry point for the Keccak emit chain
 
-The 12 `VIR/Keccak*.lean` files tabulated below form one active proof chain
-plus two standalone exemplars (the directory holds further Keccak modules —
-owned-backend emits, probes, x4 variants — that are not part of this chain).
-This file (`KeccakEmit.lean`) is the **canonical
+The 12 `VIR/Keccak*.lean` files form one active proof chain plus two
+standalone exemplars. This file (`KeccakEmit.lean`) is the **canonical
 emitter / KAT artifact** — the load-bearing leaf the bench
 (`bench/keccak_compare/*`) and downstream emitters (`KeccakRaEmit`,
 `UnrolledComRA`) import. Every other Keccak VIR file imports it
@@ -101,16 +99,14 @@ emitter / KAT artifact** — the load-bearing leaf the bench
 | `KeccakEmitterLanesReadout` | per-lane factoring of `lanesReadoutResidual` (25 sub-residuals composed into the full residual) | #135 | reads `KeccakEmitterReadoutHalfFull` |
 | `KeccakEmitterLanesReadoutDirect` | direct per-lane discharge via the #116 substrate (NOT via `_lanes_after` existentials); current leaf of the chain, HONEST PARTIAL — closes per-lane shape, the 25-way simp blast through the substrate remains | #136 | reads `KeccakEmitterLanesReadout` — no internal importers (proof-chain leaf) |
 
-**Retention policy**: every file in the table above is in use; none is a
-retirement candidate. Three have no in-repo `import`er — `KeccakRaEmit`
-(consumed by the external bench `bench/keccak_compare/keccak_ra_emit.lean`,
-which lives outside this repository), `KeccakIotaIndexed` (the indexed-loop
-exemplar) and `KeccakEmitterLanesReadoutDirect` (the current tip of the
-bit-exact-emit closure) — but each is the intentional leaf of its track, and
-all of them are still built and checked, since `lakefile.lean` picks up modules
-by submodule glob rather than by import reachability. The convention is to keep
-them and pointer-map them from this file; each of the 12 carries a back-pointer
-to this map in its own docstring under "## Canonical entry point".
+**Action policy**: all 12 files are still in use. The two
+zero-importer files (`KeccakIotaIndexed`, `KeccakEmitterLanesReadoutDirect`)
+are the *intentional* leaves of two parallel tracks (the indexed-loop
+exemplar and the current bit-exact-emit closure tip respectively), not
+stale legacy. No retirement is warranted; the audit-recommended action
+is to keep all 12 and pointer-map them from this file. Per-file
+back-pointers to this map live in each file's docstring under
+"## Canonical entry point".
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit

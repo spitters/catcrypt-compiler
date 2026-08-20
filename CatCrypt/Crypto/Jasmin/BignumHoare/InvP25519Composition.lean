@@ -14,8 +14,8 @@ Lifts the 12 per-block `block{N}_correctness_via_axiom` theorems
 (in `ChainStepAxioms.lean`) — which produce existential
 `bignumExecFuel`-form witnesses — to the `BignumTripleFuel`
 predicate (defined in `PowP58LayerB.lean`).  Each lift is a tiny
-deterministic-bridge proof: the axiom asserts existence of *some*
-post-state `s'_ax`; `BignumTripleFuel` is universally quantified
+deterministic-bridge proof: the block theorem asserts existence of
+*some* post-state `s'_ax`; `BignumTripleFuel` is universally quantified
 over the actual post-state `s'` chosen by `bignumExecFuel`.  Since
 `bignumExecFuel registry n body s` is a *function* (its result is
 uniquely determined by inputs), `s'_ax = s'` by `Option.some.inj`.
@@ -30,7 +30,8 @@ op` of the Bernstein chain.
 ## Trust set delta
 
 This file adds **0 new axioms**.  All composition is pure plumbing
-above `ChainStepAxioms.lean`'s axioms.  The chain's algebraic
+above `ChainStepAxioms.lean`'s theorems, parametric over the
+`MontmulCallFacts registry` hypothesis.  The chain's algebraic
 post (proving the result equals `a^(p-2) mod p_25519`) is *not*
 addressed here — that's a Layer A concern; this file threads the
 chain-algebraic Nat result symbolically.
@@ -234,17 +235,16 @@ def post_block13 (op_addr : UInt64) (z2_250_0_val z11_val : Nat) :
   memNat4 op_addr s'.mem =
     some (((z2_250_0_val ^ (2^5)) * z11_val) % p_25519)
 
-/-! ## §2  Determinism bridge — existential axiom → `BignumTripleFuel`
+/-! ## §2  Determinism bridge — existential block theorem → `BignumTripleFuel`
 
 Each lift follows the same shape: discharge `fuel = 0` (impossible
 since `bignumExecFuel registry 0 _ _ = none`) and `fuel = succ n`
-(apply the axiom with `fuel := n`, conclude `s'_ax = s'` by
+(apply the block theorem with `fuel := n`, conclude `s'_ax = s'` by
 `Option.some.inj`). -/
 
 theorem block2_correctness_triple
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (op_addr ap_addr : UInt64)
     (a_val : Nat)
     (z2_addr : UInt64)
@@ -264,7 +264,7 @@ theorem block2_correctness_triple
   | zero => simp [bignumExecFuel] at h_exec
   | succ n =>
     obtain ⟨s_ax, h_ax_exec, h_ax_post, _h_ax_frame⟩ :=
-      block2_correctness_via_axiom registry h_registry s n
+      block2_correctness_via_axiom registry hAx s n
         op_addr ap_addr h_op h_ap a_val h_a_mem z2_addr h_z2_alloc
         h_z2_addr_eq sqr_body h_shape
     have : some s_ax = some s' := h_ax_exec ▸ h_exec
@@ -273,8 +273,7 @@ theorem block2_correctness_triple
 
 theorem block3_correctness_triple
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (op_addr ap_addr z2_addr : UInt64)
     (z2_val ap_val : Nat)
     (z9_addr : UInt64)
@@ -298,7 +297,7 @@ theorem block3_correctness_triple
   | zero => simp [bignumExecFuel] at h_exec
   | succ n =>
     obtain ⟨s_ax, h_ax_exec, h_ax_post, _h_ax_frame⟩ :=
-      block3_correctness_via_axiom registry h_registry s n
+      block3_correctness_via_axiom registry hAx s n
         op_addr ap_addr z2_addr z9_addr h_op h_ap
         z2_val ap_val h_z2_mem h_ap_mem h_z9_alloc h_z9_addr_eq
         h_z2_addr_eq (mkScratch s) rsm_body h_shape
@@ -308,8 +307,7 @@ theorem block3_correctness_triple
 
 theorem block4_correctness_triple
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (op_addr ap_addr z9_addr z2_addr : UInt64)
     (z9_val z2_val : Nat)
     (z11_addr : UInt64)
@@ -336,7 +334,7 @@ theorem block4_correctness_triple
   | zero => simp [bignumExecFuel] at h_exec
   | succ n =>
     obtain ⟨s_ax, h_ax_exec, h_ax_post, _h_ax_frame⟩ :=
-      block4_correctness_via_axiom registry h_registry s n
+      block4_correctness_via_axiom registry hAx s n
         op_addr ap_addr z9_addr z2_addr z11_addr h_op h_ap
         z9_val z2_val h_z9_mem h_z2_mem h_z11_alloc
         h_z11_addr_eq h_z9_addr_eq h_z2_addr_eq idx mul_body h_shape
@@ -346,8 +344,7 @@ theorem block4_correctness_triple
 
 theorem block5_correctness_triple
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (op_addr ap_addr z11_addr z9_addr : UInt64)
     (z11_val z9_val : Nat)
     (z2_5_0_addr : UInt64)
@@ -374,7 +371,7 @@ theorem block5_correctness_triple
   | zero => simp [bignumExecFuel] at h_exec
   | succ n =>
     obtain ⟨s_ax, h_ax_exec, h_ax_post, _h_ax_frame⟩ :=
-      block5_correctness_via_axiom registry h_registry s n
+      block5_correctness_via_axiom registry hAx s n
         op_addr ap_addr z11_addr z9_addr z2_5_0_addr h_op h_ap
         z11_val z9_val h_z11_mem h_z9_mem h_z2_5_0_alloc
         h_z2_5_0_addr_eq h_z11_addr_eq h_z9_addr_eq
@@ -385,8 +382,7 @@ theorem block5_correctness_triple
 
 theorem block6_correctness_triple
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (op_addr ap_addr z2_5_0_addr : UInt64)
     (z2_5_0_val : Nat)
     (z2_10_0_addr : UInt64)
@@ -412,7 +408,7 @@ theorem block6_correctness_triple
   | zero => simp [bignumExecFuel] at h_exec
   | succ n =>
     obtain ⟨s_ax, h_ax_exec, h_ax_post, _h_ax_frame⟩ :=
-      block6_correctness_via_axiom registry h_registry s n
+      block6_correctness_via_axiom registry hAx s n
         op_addr ap_addr z2_5_0_addr z2_10_0_addr h_op h_ap
         z2_5_0_val h_z2_5_0_mem h_z2_10_0_alloc
         h_z2_10_0_addr_eq h_z2_5_0_addr_eq
@@ -423,8 +419,7 @@ theorem block6_correctness_triple
 
 theorem block7_correctness_triple
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (op_addr ap_addr z2_10_0_addr : UInt64)
     (z2_10_0_val : Nat)
     (z2_20_0_addr : UInt64)
@@ -450,7 +445,7 @@ theorem block7_correctness_triple
   | zero => simp [bignumExecFuel] at h_exec
   | succ n =>
     obtain ⟨s_ax, h_ax_exec, h_ax_post, _h_ax_frame⟩ :=
-      block7_correctness_via_axiom registry h_registry s n
+      block7_correctness_via_axiom registry hAx s n
         op_addr ap_addr z2_10_0_addr z2_20_0_addr h_op h_ap
         z2_10_0_val h_z2_10_0_mem h_z2_20_0_alloc
         h_z2_20_0_addr_eq h_z2_10_0_addr_eq
@@ -461,8 +456,7 @@ theorem block7_correctness_triple
 
 theorem block8_correctness_triple
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (op_addr ap_addr z2_20_0_addr : UInt64)
     (z2_20_0_val : Nat)
     (z2_40_0_addr : UInt64)
@@ -488,7 +482,7 @@ theorem block8_correctness_triple
   | zero => simp [bignumExecFuel] at h_exec
   | succ n =>
     obtain ⟨s_ax, h_ax_exec, h_ax_post, _h_ax_frame⟩ :=
-      block8_correctness_via_axiom registry h_registry s n
+      block8_correctness_via_axiom registry hAx s n
         op_addr ap_addr z2_20_0_addr z2_40_0_addr h_op h_ap
         z2_20_0_val h_z2_20_0_mem h_z2_40_0_alloc
         h_z2_40_0_addr_eq h_z2_20_0_addr_eq
@@ -499,8 +493,7 @@ theorem block8_correctness_triple
 
 theorem block9_correctness_triple
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (op_addr ap_addr z2_40_0_addr z2_10_0_addr : UInt64)
     (z2_40_0_val z2_10_0_val : Nat)
     (z2_50_0_addr : UInt64)
@@ -529,7 +522,7 @@ theorem block9_correctness_triple
   | zero => simp [bignumExecFuel] at h_exec
   | succ n =>
     obtain ⟨s_ax, h_ax_exec, h_ax_post, _h_ax_frame⟩ :=
-      block9_correctness_via_axiom registry h_registry s n
+      block9_correctness_via_axiom registry hAx s n
         op_addr ap_addr z2_40_0_addr z2_10_0_addr z2_50_0_addr h_op h_ap
         z2_40_0_val z2_10_0_val h_z2_40_0_mem h_z2_10_0_mem
         h_z2_50_0_alloc h_z2_50_0_addr_eq h_z2_40_0_addr_eq h_z2_10_0_addr_eq
@@ -540,8 +533,7 @@ theorem block9_correctness_triple
 
 theorem block10_correctness_triple
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (op_addr ap_addr z2_50_0_addr : UInt64)
     (z2_50_0_val : Nat)
     (z2_100_0_addr : UInt64)
@@ -567,7 +559,7 @@ theorem block10_correctness_triple
   | zero => simp [bignumExecFuel] at h_exec
   | succ n =>
     obtain ⟨s_ax, h_ax_exec, h_ax_post, _h_ax_frame⟩ :=
-      block10_correctness_via_axiom registry h_registry s n
+      block10_correctness_via_axiom registry hAx s n
         op_addr ap_addr z2_50_0_addr z2_100_0_addr h_op h_ap
         z2_50_0_val h_z2_50_0_mem h_z2_100_0_alloc
         h_z2_100_0_addr_eq h_z2_50_0_addr_eq
@@ -578,8 +570,7 @@ theorem block10_correctness_triple
 
 theorem block11_correctness_triple
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (op_addr ap_addr z2_100_0_addr : UInt64)
     (z2_100_0_val : Nat)
     (z2_200_0_addr : UInt64)
@@ -605,7 +596,7 @@ theorem block11_correctness_triple
   | zero => simp [bignumExecFuel] at h_exec
   | succ n =>
     obtain ⟨s_ax, h_ax_exec, h_ax_post, _h_ax_frame⟩ :=
-      block11_correctness_via_axiom registry h_registry s n
+      block11_correctness_via_axiom registry hAx s n
         op_addr ap_addr z2_100_0_addr z2_200_0_addr h_op h_ap
         z2_100_0_val h_z2_100_0_mem h_z2_200_0_alloc
         h_z2_200_0_addr_eq h_z2_100_0_addr_eq
@@ -616,8 +607,7 @@ theorem block11_correctness_triple
 
 theorem block12_correctness_triple
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (op_addr ap_addr z2_200_0_addr z2_50_0_addr : UInt64)
     (z2_200_0_val z2_50_0_val : Nat)
     (z2_250_0_addr : UInt64)
@@ -646,7 +636,7 @@ theorem block12_correctness_triple
   | zero => simp [bignumExecFuel] at h_exec
   | succ n =>
     obtain ⟨s_ax, h_ax_exec, h_ax_post, _h_ax_frame⟩ :=
-      block12_correctness_via_axiom registry h_registry s n
+      block12_correctness_via_axiom registry hAx s n
         op_addr ap_addr z2_200_0_addr z2_50_0_addr z2_250_0_addr h_op h_ap
         z2_200_0_val z2_50_0_val h_z2_200_0_mem h_z2_50_0_mem
         h_z2_250_0_alloc h_z2_250_0_addr_eq h_z2_200_0_addr_eq h_z2_50_0_addr_eq
@@ -657,8 +647,7 @@ theorem block12_correctness_triple
 
 theorem block13_correctness_triple
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (op_addr ap_addr z2_250_0_addr z11_addr : UInt64)
     (z2_250_0_val z11_val : Nat)
     (h_z2_250_0_addr_eq : BitVec.ofNat 64 z2_250_0_addr.toNat =
@@ -683,7 +672,7 @@ theorem block13_correctness_triple
   | zero => simp [bignumExecFuel] at h_exec
   | succ n =>
     obtain ⟨s_ax, h_ax_exec, h_ax_post, _h_ax_frame⟩ :=
-      block13_correctness_via_axiom registry h_registry s n
+      block13_correctness_via_axiom registry hAx s n
         op_addr ap_addr z2_250_0_addr z11_addr h_op h_ap
         z2_250_0_val z11_val h_z2_250_0_mem h_z11_mem h_op_alloc
         h_z2_250_0_addr_eq h_z11_addr_eq
@@ -727,8 +716,7 @@ post" wirings — given as explicit predicate-implication arguments
     Compose via 12-fold `chain_triple_fuel_compose`. -/
 theorem inv_p25519_chain_triple
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (op_addr ap_addr : UInt64)
     (a_val : Nat)
     (z2_addr z9_addr z11_addr z2_5_0_addr z2_10_0_addr
@@ -888,26 +876,26 @@ theorem inv_p25519_chain_triple
       (pre_block2 op_addr ap_addr a_val z2_addr) b2
       (pre_block3 op_addr ap_addr z2_addr z2_val a_val z9_addr) :=
     BignumTripleFuel.consequence (fun _ h => h) bridge_2_3
-      (block2_correctness_triple registry h_registry op_addr ap_addr a_val
+      (block2_correctness_triple registry hAx op_addr ap_addr a_val
         z2_addr h_z2_addr_eq b2 h_b2_shape)
   have h3 : BignumTripleFuel registry
       (pre_block3 op_addr ap_addr z2_addr z2_val a_val z9_addr) b3
       (pre_block4 op_addr ap_addr z9_addr z2_addr z9_val z2_val z11_addr) :=
     BignumTripleFuel.consequence (fun _ h => h) bridge_3_4
-      (block3_correctness_triple registry h_registry op_addr ap_addr z2_addr
+      (block3_correctness_triple registry hAx op_addr ap_addr z2_addr
         z2_val a_val z9_addr h_z9_addr_eq h_z2_addr_eq mkScratch3 b3 h_b3_shape)
   have h4 : BignumTripleFuel registry
       (pre_block4 op_addr ap_addr z9_addr z2_addr z9_val z2_val z11_addr) b4
       (pre_block5 op_addr ap_addr z11_addr z9_addr z11_val z9_val z2_5_0_addr) :=
     BignumTripleFuel.consequence (fun _ h => h) bridge_4_5
-      (block4_correctness_triple registry h_registry op_addr ap_addr z9_addr
+      (block4_correctness_triple registry hAx op_addr ap_addr z9_addr
         z2_addr z9_val z2_val z11_addr
         h_z11_addr_eq h_z9_addr_eq h_z2_addr_eq b4_idx b4 h_b4_shape)
   have h5 : BignumTripleFuel registry
       (pre_block5 op_addr ap_addr z11_addr z9_addr z11_val z9_val z2_5_0_addr) b5
       (pre_block6 op_addr ap_addr z2_5_0_addr z2_5_0_val z2_10_0_addr) :=
     BignumTripleFuel.consequence (fun _ h => h) bridge_5_6
-      (block5_correctness_triple registry h_registry op_addr ap_addr z11_addr
+      (block5_correctness_triple registry hAx op_addr ap_addr z11_addr
         z9_addr z11_val z9_val z2_5_0_addr h_z2_5_0_addr_eq
         h_z11_addr_eq h_z9_addr_eq mkScratch5
         b5_startIdx b5 h_b5_shape)
@@ -915,14 +903,14 @@ theorem inv_p25519_chain_triple
       (pre_block6 op_addr ap_addr z2_5_0_addr z2_5_0_val z2_10_0_addr) b6
       (pre_block7 op_addr ap_addr z2_10_0_addr z2_10_0_val z2_20_0_addr) :=
     BignumTripleFuel.consequence (fun _ h => h) bridge_6_7
-      (block6_correctness_triple registry h_registry op_addr ap_addr
+      (block6_correctness_triple registry hAx op_addr ap_addr
         z2_5_0_addr z2_5_0_val z2_10_0_addr h_z2_10_0_addr_eq h_z2_5_0_addr_eq
         mkScratch6 b6_startIdx b6 h_b6_shape)
   have h7 : BignumTripleFuel registry
       (pre_block7 op_addr ap_addr z2_10_0_addr z2_10_0_val z2_20_0_addr) b7
       (pre_block8 op_addr ap_addr z2_20_0_addr z2_20_0_val z2_40_0_addr) :=
     BignumTripleFuel.consequence (fun _ h => h) bridge_7_8
-      (block7_correctness_triple registry h_registry op_addr ap_addr
+      (block7_correctness_triple registry hAx op_addr ap_addr
         z2_10_0_addr z2_10_0_val z2_20_0_addr h_z2_20_0_addr_eq h_z2_10_0_addr_eq
         mkScratch7 b7_startIdx b7 h_b7_shape)
   have h8 : BignumTripleFuel registry
@@ -930,7 +918,7 @@ theorem inv_p25519_chain_triple
       (pre_block9 op_addr ap_addr z2_40_0_addr z2_10_0_addr
         z2_40_0_val z2_10_0_val z2_50_0_addr) :=
     BignumTripleFuel.consequence (fun _ h => h) bridge_8_9
-      (block8_correctness_triple registry h_registry op_addr ap_addr
+      (block8_correctness_triple registry hAx op_addr ap_addr
         z2_20_0_addr z2_20_0_val z2_40_0_addr h_z2_40_0_addr_eq h_z2_20_0_addr_eq
         mkScratch8 b8_startIdx b8 h_b8_shape)
   have h9 : BignumTripleFuel registry
@@ -938,7 +926,7 @@ theorem inv_p25519_chain_triple
         z2_40_0_val z2_10_0_val z2_50_0_addr) b9
       (pre_block10 op_addr ap_addr z2_50_0_addr z2_50_0_val z2_100_0_addr) :=
     BignumTripleFuel.consequence (fun _ h => h) bridge_9_10
-      (block9_correctness_triple registry h_registry op_addr ap_addr
+      (block9_correctness_triple registry hAx op_addr ap_addr
         z2_40_0_addr z2_10_0_addr z2_40_0_val z2_10_0_val z2_50_0_addr
         h_z2_50_0_addr_eq h_z2_40_0_addr_eq h_z2_10_0_addr_eq
         mkScratch9 b9_startIdx b9 h_b9_shape)
@@ -946,7 +934,7 @@ theorem inv_p25519_chain_triple
       (pre_block10 op_addr ap_addr z2_50_0_addr z2_50_0_val z2_100_0_addr) b10
       (pre_block11 op_addr ap_addr z2_100_0_addr z2_100_0_val z2_200_0_addr) :=
     BignumTripleFuel.consequence (fun _ h => h) bridge_10_11
-      (block10_correctness_triple registry h_registry op_addr ap_addr
+      (block10_correctness_triple registry hAx op_addr ap_addr
         z2_50_0_addr z2_50_0_val z2_100_0_addr h_z2_100_0_addr_eq h_z2_50_0_addr_eq
         mkScratch10 b10_startIdx b10 h_b10_shape)
   have h11 : BignumTripleFuel registry
@@ -954,7 +942,7 @@ theorem inv_p25519_chain_triple
       (pre_block12 op_addr ap_addr z2_200_0_addr z2_50_0_addr
         z2_200_0_val z2_50_0_val z2_250_0_addr) :=
     BignumTripleFuel.consequence (fun _ h => h) bridge_11_12
-      (block11_correctness_triple registry h_registry op_addr ap_addr
+      (block11_correctness_triple registry hAx op_addr ap_addr
         z2_100_0_addr z2_100_0_val z2_200_0_addr h_z2_200_0_addr_eq
         h_z2_100_0_addr_eq mkScratch11 b11_startIdx b11 h_b11_shape)
   have h12 : BignumTripleFuel registry
@@ -963,14 +951,14 @@ theorem inv_p25519_chain_triple
       (pre_block13 op_addr ap_addr z2_250_0_addr z11_addr
         z2_250_0_val z11_val) :=
     BignumTripleFuel.consequence (fun _ h => h) bridge_12_13
-      (block12_correctness_triple registry h_registry op_addr ap_addr
+      (block12_correctness_triple registry hAx op_addr ap_addr
         z2_200_0_addr z2_50_0_addr z2_200_0_val z2_50_0_val z2_250_0_addr
         h_z2_250_0_addr_eq h_z2_200_0_addr_eq h_z2_50_0_addr_eq
         mkScratch12 b12_startIdx b12 h_b12_shape)
   have h13 : BignumTripleFuel registry
       (pre_block13 op_addr ap_addr z2_250_0_addr z11_addr z2_250_0_val z11_val) b13
       (post_block13 op_addr z2_250_0_val z11_val) :=
-    block13_correctness_triple registry h_registry op_addr ap_addr
+    block13_correctness_triple registry hAx op_addr ap_addr
       z2_250_0_addr z11_addr z2_250_0_val z11_val
       h_z2_250_0_addr_eq h_z11_addr_eq
       mkScratch13 b13_startIdx b13 h_b13_shape
@@ -1029,8 +1017,7 @@ def post_inv_p25519 (op_addr : UInt64) (a_val : Nat) : BignumState → Prop :=
 theorem bignum_inv_p25519_correct
     [Fact (Nat.Prime p_25519)]
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (op_addr ap_addr : UInt64)
     (a_val : Nat) (h_a_ne_zero : (a_val : ZMod p_25519) ≠ 0)
     (z2_addr z9_addr z11_addr z2_5_0_addr z2_10_0_addr
@@ -1185,7 +1172,7 @@ theorem bignum_inv_p25519_correct
        b11 ++ b12 ++ b13)
       (post_inv_p25519 op_addr a_val) := by
   -- Apply the chain triple to get the symbolic Nat post.
-  have h_chain := inv_p25519_chain_triple registry h_registry
+  have h_chain := inv_p25519_chain_triple registry hAx
     op_addr ap_addr a_val
     z2_addr z9_addr z11_addr z2_5_0_addr z2_10_0_addr
     z2_20_0_addr z2_40_0_addr z2_50_0_addr z2_100_0_addr
@@ -1254,7 +1241,7 @@ building blocks. -/
 
 /-- Lift a `memNat4` invariant through a block: if bytes at
     `chain_addr + 0..31` are unchanged by the block, the chain value
-    survives.  This is the workhorse for constructing
+    survives.  This is the step that constructs
     `pre_block_(N+1)` from `post_block_N`'s frame condition. -/
 theorem memNat4_preserved_outside_range
     {s s' : BignumState} {dst_addr chain_addr : UInt64} {v : Nat}

@@ -12,7 +12,7 @@ set_option autoImplicit false
 # Rust ↔ dialect-front simulation over the `CProg`-free front
 
 This file proves the `LowCT`-source relational simulation **directly over the
-`CProg`-free dialect front** `translateDialectControl` / `DTransOut`, by genuine
+`CProg`-free dialect front** `translateDialectControl` / `DTransOut`, by a
 induction on the `RustExec` derivation. For a control-covered `LowCT` whose
 direct dialect translation succeeds with output `o`, every concrete `RustExec`
 trace lands a post-state valuation satisfying `RustStateInterp` *at the dialect
@@ -28,12 +28,13 @@ The induction mirrors the structure of the byte-layout simulation: per
 `VarMap`/`RustState` substrate, so they carry to the dialect unchanged; the
 proof differs from the `CProg` development only in unfolding the dialect front
 (`translateDialectControl` / `translateDialectFull` / `translateDialect`) in
-place of `translate`, and in the `RCallN` fold (`loopCallNDestsD_interp_extend`).
+place of `translate`, and in the `RCallN` fold (`loopCallNDestsD_interp_extend`),
+which walks the rust state along `callNUpdate` one destination at a time.
 
 The coverage hypothesis `hCov : IsCoveredCtl c` is reverted into the induction:
 because the dialect front is *partial*, every `RustExec` constructor outside
-`IsCoveredCtl` (e.g. `RLetZero`, `RAsmOp`, `RAssert`, `RWhileNz`, `RBytesSlice`,
-…) is discharged by inversion of `hCov` (`cases hCov`), and the recursive arms
+`IsCoveredCtl` (e.g. `RLetZero`, `RAssert`, `RWhileNz`, …) is discharged by
+inversion of `hCov` (`cases hCov`), and the recursive arms
 thread sub-coverage to their IHs.
 
 The `RIfNz` arms (`ifTrue` / `ifFalse`) close via `noAlias_canonical_witness`:
@@ -55,25 +56,35 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
-open CatCrypt.Crypto.Jasmin.LowCT (LowCT RustState LeafSpec RustExec Located TowerType
-  locatedUpdate locatedLookup rsSetScalar rsSetTower rsSetTower_same)
+open CatCrypt.Crypto.Jasmin.LowCT (LowCT RustState RustVal LeafSpec RustExec Located TowerType
+  locatedUpdate locatedLookup rsSetScalar rsSetTower rsSetTower_same
+  callNLeafName callNUpdate)
 
 /-- **`loopCallNDestsD` interp-extension fold (dialect twin).**
-    The `CProg`-free analogue of `loopCallNDests_interp_extend`: from a witness
-    `(V, hInv)` for `(vm, rs)` and `loopCallNDestsD f args vm dests = some o`,
-    build a witness `V'` for `(o.vm, rs)`. The rust state is unchanged
-    (`RustExec.callN` is the identity stub); each destination adds one fresh
-    binding, discharged by `interp_cons_any_unchanged`, folded over `dests`.
-    Mirrors the `translate`-side fold but over `loopCallNDestsD` — no `CProg`. -/
-theorem loopCallNDestsD_interp_extend (fname : String) (args : List Located) :
+    From a witness `(V, hInv)` for `(vm, rs)` and
+    `loopCallNDestsD f args vm dests i = some o`, build a witness `V'` for
+    `(o.vm, callNUpdate leafSpec f argTs argList i dests rs)`.
+
+    `RustExec.callN` writes each destination in turn, so the rust state moves
+    along the fold: destination `i` is `rsSetTower` to the output of
+    `leafSpec.call (callNLeafName f i)`, matched on the dialect side by one
+    fresh binding through `interp_cons_setTower_any`. That lemma is
+    `∃`-quantified over the dialect-side value, so the witness it produces
+    records the shape of the extension, not agreement between the dialect value
+    and the oracle output. -/
+theorem loopCallNDestsD_interp_extend (leafSpec : LeafSpec) (fname : String)
+    (args : List Located) (argTs : List TowerType)
+    (argList : List (Σ t : TowerType, RustVal t)) :
     ∀ {Γ : Ctx} {vm : VarMap Γ} {rs : RustState} {V : HVec Γ}
-      (_hInv : RustStateInterp vm rs V) (dests : List Located) {o : DTransOut Γ},
-      loopCallNDestsD fname args vm dests = some o →
-        ∃ V' : HVec o.Γ', RustStateInterp o.vm rs V'
-  | _, vm, rs, V, hInv, [], o, hL => by
+      (_hInv : RustStateInterp vm rs V) (dests : List Located) (i : Nat)
+      {o : DTransOut Γ},
+      loopCallNDestsD fname args vm dests i = some o →
+        ∃ V' : HVec o.Γ',
+          RustStateInterp o.vm (callNUpdate leafSpec fname argTs argList i dests rs) V'
+  | _, vm, rs, V, hInv, [], i, o, hL => by
       simp only [loopCallNDestsD, Option.some.injEq] at hL
       subst hL; exact ⟨V, hInv⟩
-  | _, vm, rs, V, hInv, d :: rest, o, hL => by
+  | _, vm, rs, V, hInv, d :: rest, i, o, hL => by
       simp only [loopCallNDestsD] at hL
       split at hL
       · exact absurd hL (by simp)
@@ -84,27 +95,31 @@ theorem loopCallNDestsD_interp_extend (fname : String) (args : List Located) :
         · rename_i oRest hRest
           simp only [Option.some.injEq] at hL
           subst hL
-          obtain ⟨w, hInv'⟩ := interp_cons_any_unchanged hInv d.locVar (encodeTy d.locDst)
-          exact loopCallNDestsD_interp_extend fname args hInv' rest hRest
+          simp only [callNUpdate, locatedUpdate]
+          obtain ⟨w, hInv'⟩ := interp_cons_setTower_any hInv d.locVar (encodeTy d.locDst)
+            ⟨d.locDst, leafSpec.call (callNLeafName fname i) d.locDst argTs
+              ((locatedLookup rs d).getD default) argList⟩
+          exact loopCallNDestsD_interp_extend leafSpec fname args argTs argList
+            hInv' rest (i + 1) hRest
 
 /-! ## `NoAliasVM` preservation by the `CProg`-free front
 
 The `RIfNz` arms of the simulation produce a witness at the post-branch state
-via `noAlias_canonical_witness` — the genuine byte-correspondence valuation
+via `noAlias_canonical_witness` — the byte-correspondence valuation
 `HVec.ofVarFn (witVarFn o.vm rs)` (the same lever the `whileTrue` arm uses),
 which is satisfiable at *any* state given `NoAliasVM o.vm`. So we only need that
 the dialect front preserves `NoAliasVM`, proved below by structural recursion
 over `IsCoveredCtl` (no `CProg`, no `translate`). -/
 
 /-- `loopCallNDestsD` preserves `NoAliasVM`: each destination binds one fresh
-    name (`noAlias_bind`). -/
+    name (`noAlias_bind`), at any starting output index. -/
 theorem loopCallNDestsD_preserves_noAlias (fname : String) (args : List Located) :
-    ∀ {Γ : Ctx} (vm : VarMap Γ) (dests : List Located) {o : DTransOut Γ},
-      loopCallNDestsD fname args vm dests = some o → NoAliasVM vm → NoAliasVM o.vm
-  | _, vm, [], o, hL, hNA => by
+    ∀ {Γ : Ctx} (vm : VarMap Γ) (dests : List Located) {i : Nat} {o : DTransOut Γ},
+      loopCallNDestsD fname args vm dests i = some o → NoAliasVM vm → NoAliasVM o.vm
+  | _, vm, [], i, o, hL, hNA => by
       simp only [loopCallNDestsD, Option.some.injEq] at hL
       subst hL; exact hNA
-  | _, vm, d :: rest, o, hL, hNA => by
+  | _, vm, d :: rest, i, o, hL, hNA => by
       simp only [loopCallNDestsD] at hL
       split at hL
       · exact absurd hL (by simp)
@@ -292,6 +307,10 @@ theorem translateDialectFull_preserves_noAlias {Γ : Ctx} (vm : VarMap Γ) {c : 
     (hc : IsCovered c) {o : DTransOut Γ}
     (hT : translateDialectFull vm c = some o) (hNA : NoAliasVM vm) : NoAliasVM o.vm := by
   induction hc generalizing Γ vm o with
+  | rAssert _label =>
+      simp only [translateDialectFull, Option.some.injEq] at hT
+      subst hT
+      exact hNA
   | rSkip =>
       simp only [translateDialectFull, translateDialect, Option.some.injEq] at hT
       subst hT; exact hNA
@@ -332,12 +351,6 @@ theorem translateDialectFull_preserves_noAlias {Γ : Ctx} (vm : VarMap Γ) {c : 
       · rename_i ra hra; simp only [Option.some.injEq] at hT; subst hT
         exact noAlias_bind hNA dst.locVar
   | rCallDstThreaded fname dst args =>
-      simp only [translateDialectFull] at hT
-      split at hT
-      · exact absurd hT (by simp)
-      · rename_i ra hra; simp only [Option.some.injEq] at hT; subst hT
-        exact noAlias_bind hNA dst.locVar
-  | rTupleStore dst idx src =>
       simp only [translateDialectFull] at hT
       split at hT
       · exact absurd hT (by simp)
@@ -581,7 +594,7 @@ theorem rustExecSimulatesDialect
              interp_bind_sword64_scalarSet hInv x v⟩
   -- `RIfNz` φ-merge arms. The post-branch state `rs2` is reached by executing
   -- one branch; the output `o.vm` is alias-free (`translateDialectControl`
-  -- preserves `NoAliasVM`), so the genuine byte-correspondence valuation
+  -- preserves `NoAliasVM`), so the byte-correspondence valuation
   -- `noAlias_canonical_witness` realises `RustStateInterp o.vm rs2` directly —
   -- the same lever the `whileTrue` arm uses for its post-body state.
   | ifTrue e ct cf rs0 rs2 v _heval _hne _hbranch ih =>
@@ -981,10 +994,10 @@ theorem rustExecSimulatesDialect
                           hN2 (hInvW nm t' cv' hOld)
           · rw [dif_neg h] at hTrans
             exact absurd hTrans (by simp)
-  | asmOp _ _ _ _ => cases hCov with | ofCovered hc => cases hc
-  | callN f dests args rs0 =>
+  | callN f dests args rs0 argList _hArgList _hArgs _hDests =>
       simp only [translateDialectControl, translateDialectFull] at hTrans
-      exact loopCallNDestsD_interp_extend f args hInv dests hTrans
+      exact loopCallNDestsD_interp_extend leafSpec f args (args.map (·.locDst)) argList
+        hInv dests 0 hTrans
   | callDstThreaded f dst args rs0 oldDestV argList _hLook _hArgs _hArgsTyped =>
       simp only [translateDialectControl, translateDialectFull] at hTrans
       split at hTrans
@@ -1018,7 +1031,10 @@ theorem rustExecSimulatesDialect
         obtain ⟨w, hInv'⟩ := interp_cons_setTower_any hInv dst.locVar (encodeTy dst.locDst)
           ⟨dst.locDst, hTy ▸ srcV⟩
         exact ⟨HVec.cons w V, hInv'⟩
-  | assert _ _ => cases hCov with | ofCovered hc => cases hc
+  | assert label rs0 =>
+      simp only [translateDialectControl, translateDialectFull, Option.some.injEq] at hTrans
+      subst hTrans
+      exact ⟨V, hInv⟩
   | block body rs0 rs2 _hbody ih =>
       cases hCov with
       | ofCovered hc =>
@@ -1029,19 +1045,6 @@ theorem rustExecSimulatesDialect
             rw [translateDialectControl_eq_full_of_covered vm hb]
             simpa [translateDialectControl, translateDialectFull] using hTrans
           exact ih vm o hbCtl hTrBody V hInv
-  | fnDef _ _ _ _ _ _ _ _ => cases hCov with | ofCovered hc => cases hc
-  | fnCall _ _ _ _ => cases hCov with | ofCovered hc => cases hc
-  | tupleStore dst idx src rs0 oldV srcV _hLookDst _hLookSrc =>
-      simp only [translateDialectControl, translateDialectFull] at hTrans
-      split at hTrans
-      · exact absurd hTrans (by simp)
-      · rename_i ra hra
-        simp only [Option.some.injEq] at hTrans
-        subst hTrans
-        simp only [locatedUpdate]
-        obtain ⟨w, hInv'⟩ := interp_cons_setTower_any hInv dst.locVar (encodeTy dst.locDst)
-          ⟨dst.locDst, leafSpec.tupleStore dst oldV idx ⟨src.locDst, srcV⟩⟩
-        exact ⟨HVec.cons w V, hInv'⟩
   | tupleLoad dst src idx rs0 oldV srcV _hLookDst _hLookSrc =>
       simp only [translateDialectControl, translateDialectFull] at hTrans
       split at hTrans
@@ -1104,8 +1107,6 @@ theorem rustExecSimulatesDialect
       have hNAo : NoAliasVM o.vm :=
         translateDialectControl_preserves_noAlias vm hCov hTrans hInv.noAlias
       exact ⟨_, noAlias_canonical_witness hNAo (rsSetScalar rs0 x (e.eval rs0.rsScalar))⟩
-  | bytesSlice dst src start len rs0 oldV srcV _hLookDst _hLookSrc =>
-      cases hCov with | ofCovered hc => cases hc
   | callSwap fname dest1 dest2 args rsCS rs1CS rs'CS _h1 _h2 ih1 ih2 =>
       simp only [translateDialectControl, translateDialectFull] at hTrans
       cases hMA1 : resolveLocatedArgs vm args with

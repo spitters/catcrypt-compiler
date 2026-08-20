@@ -5,6 +5,7 @@ Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.Optimizer.ModReduceSelect
 import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
+import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
 # P-384 field-multiply kernel, lowered through the in-Lean x86 backend (#409)
@@ -68,7 +69,10 @@ class).
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.P384FieldKernel
 
-open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin (JInstr JOperand)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin (JInstr JOperand JState)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime (blockLeak)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+  (allDirect allDirect_append allDirect_constant_time)
 
 /-! ## 1. The 6×6 schoolbook product (proven dual-carry idiom, → scratch frame)
 
@@ -331,6 +335,48 @@ def p384Reduce : List (JInstr 64) :=
     signed-term Solinas reduce. -/
 def p384MulBlock : List (JInstr 64) :=
   p384Schoolbook ++ p384Reduce
+
+/-! ## 5a. Constant time: straight-line, all-direct addressing
+
+Both halves address memory only through a base register (`x`/`y`/`z`/`sp`) and a
+compile-time-constant displacement, and the canonical add-back / subtract steps
+are mask arithmetic rather than conditional jumps. The machine leakage trace is
+therefore a function of the program text alone
+(`ConstantTimeCoverage.allDirect_constant_time`). -/
+
+/-- The 6×6 schoolbook half uses only direct base+displacement addressing. -/
+theorem p384Schoolbook_allDirect : allDirect p384Schoolbook = true := by
+  simp only [p384Schoolbook, allDirect_append]
+  decide
+
+/-- **Constant time.** The schoolbook half produces the same machine leakage
+    trace from any two starting states. -/
+theorem p384Schoolbook_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ p384Schoolbook = blockLeak s₂ p384Schoolbook :=
+  allDirect_constant_time p384Schoolbook p384Schoolbook_allDirect s₁ s₂
+
+/-- The signed-term Solinas reduce uses only direct base+displacement
+    addressing. -/
+theorem p384Reduce_allDirect : allDirect p384Reduce = true := by
+  simp only [p384Reduce, allDirect_append]
+  decide
+
+/-- **Constant time.** The reduce half produces the same machine leakage trace
+    from any two starting states. -/
+theorem p384Reduce_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ p384Reduce = blockLeak s₂ p384Reduce :=
+  allDirect_constant_time p384Reduce p384Reduce_allDirect s₁ s₂
+
+/-- The whole P-384 field-multiply body uses only direct base+displacement
+    addressing. -/
+theorem p384MulBlock_allDirect : allDirect p384MulBlock = true := by
+  simp [p384MulBlock, allDirect_append, p384Schoolbook_allDirect, p384Reduce_allDirect]
+
+/-- **Constant time.** The emitted P-384 field multiply produces the same machine
+    leakage trace from any two starting states. -/
+theorem p384MulBlock_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ p384MulBlock = blockLeak s₂ p384MulBlock :=
+  allDirect_constant_time p384MulBlock p384MulBlock_allDirect s₁ s₂
 
 /-! ## 6. Value tie to #403's multi-term Solinas theorem
 

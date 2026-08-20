@@ -6,7 +6,9 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportPoseidon2
 import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2WholePermCom
+import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2ResidenceAlloc
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # Compiled Poseidon2-BabyBear linear-jasmin owned-RA producer (task #504)
@@ -29,26 +31,41 @@ materialises them at U64.
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
   (Com.toLprogPhysAbi Com.writeLprogPhysAbiFile
-   poseidon2ImmSlots poseidon2InLoadMap poseidon2OutStoreMap)
+   poseidon2ImmSlots poseidon2InLoadMap poseidon2OutStoreMap
+   comToLfundef residenceOfBody)
 open CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2WholePermCom
-  (poseidon2PermComOut slotTraceArr)
+  (poseidon2PermComOut)
 
-private def main : IO UInt32 := do
+def main : IO UInt32 := do
   let outPath : System.FilePath :=
     "bench/poseidon2_linear_compare/poseidon2_bb.lprogbin"
   IO.println s!"poseidon2_linear: link 1/7 (Com -> ABI-wrapped Linear.lprog) [compiled]"
   -- Register-RESIDENCE coalescing (#476): collapse the ≈107k per-binding SSA
-  -- names onto the 25 logical working slots (16 lanes + 9 scratch) so the
-  -- linear-scan allocator keeps the working state register-resident across the
-  -- 21 rounds instead of spilling it every round (the X25519 monolithic-RA move
-  -- #411/#412, applied at Poseidon2's 17× gcc-O3 headroom).
-  -- DISABLED: the residence-rename slot-trace under-counts liveness on the
-  -- 16-lane MDS step (16 values live simultaneously), so collapsing to 25 slots
-  -- clobbers live lanes and the Plonky3 KAT MISMATCHes. Sound register-residence
-  -- here needs a real interference analysis, not this sequential-reuse slot-trace.
-  let residence : Option (Array Nat) := none
-  let _ := slotTraceArr  -- machinery retained for a future interference-aware version
-  let residence := residence
+  -- names onto their physical residence slots so the linear-scan allocator keeps
+  -- the working state register-resident across the 21 rounds instead of spilling
+  -- it every round (the X25519 monolithic-RA move #411/#412, at Poseidon2's 17×
+  -- gcc-O3 headroom).
+  --
+  -- `residenceOfBody` assigns each binding a physical-slot index by first-fit
+  -- over its live range `[def, last-use]` (`Poseidon2ResidenceAlloc.allocFold`),
+  -- so two bindings share a slot only when their ranges do not overlap — the 16
+  -- MDS lanes live in the external-MDS step receive 16 distinct slots. The trace
+  -- is `bodyTraceOut`, whose appended output-read event keeps every designated
+  -- output lane live to the epilogue store. `allocFold_pairwise_disj` proves
+  -- ranges sharing a slot are non-overlapping. The prior `slotTraceArr` collapse
+  -- (one class per logical slot) under-counted liveness and clobbered live lanes.
+  let poseidon2Body :=
+    (comToLfundef poseidon2PermComOut poseidon2ImmSlots).lfd_body
+  -- Held at `none`. `residenceOfBody` is proven interference-free
+  -- (`allocFold_pairwise_disj`) and KAT-correct, and its liveness is now precise
+  -- (computed over the emit-time `materializeShiftCountImms` body). But Poseidon2
+  -- is shift-free, so the precise body equals the raw body here: measured A/B is
+  -- byte-identical to the over-approximated version (28343 stack refs, ~39032
+  -- cyc/op) vs `none` at 33848 / 2287. Poseidon2's regression is not from liveness
+  -- over-approximation but from the residence pre-colouring itself losing to the
+  -- unconstrained linear-scan on this kernel. The allocator ships proven-but-unwired.
+  let residence : Option (Array Nat) :=
+    none
   let lp : CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.Lprog :=
     Com.toLprogPhysAbi poseidon2PermComOut "poseidon2_bb_permute"
               (fun _ => none) poseidon2ImmSlots
@@ -83,7 +100,7 @@ private def main : IO UInt32 := do
   -- OWNED path (task #537): render the SAME `Lprog` to AT&T `.s` directly.
   let ownedPath : System.FilePath :=
     "bench/poseidon2_compare/gen/poseidon2_bb_permute_x86_from_lean.s"
-  let asm := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter.renderLprogAtt lp
+  let asm := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned lp
   let t0 ← IO.monoNanosNow
   IO.FS.writeFile ownedPath asm
   let t1 ← IO.monoNanosNow

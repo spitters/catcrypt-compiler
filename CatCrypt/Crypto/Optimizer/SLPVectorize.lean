@@ -30,7 +30,7 @@ group of `L = 4` isomorphic independent `BitVec 32` ALU ops
 `VPADDD` / `VPXOR` / `VPOR` / `VPSLLD` / `VPSRLD` waist — with no targeted
 machine model.
 
-## What we prove (the denotation keystone)
+## What we prove (the denotation obligation)
 
 The pass carries a **per-lane denotation-equality** theorem, exactly the `vmap`
 pattern (#107/#121) applied *straight-line* rather than across a loop:
@@ -163,7 +163,7 @@ which — read back at lane `j` — is exactly the `j`-th scalar result.
 
 We work at the abstract `vmap₂` level (the unified packed-lane op
 `v128PackLanesW 32 bop` projects lane-by-lane to `vmap₂` at `L = 4`, `w = 32`),
-so the keystone is `LaneMap.vmap₂_eq_scalar` with **no loop**. -/
+so the central lemma is `LaneMap.vmap₂_eq_scalar` with **no loop**. -/
 
 /-- Pack source-operand-`k` of a group into an SoA lane vector: lane `j` reads
     the `j`-th statement's `k`-th source from the scalar register file.  (`k = 1`
@@ -180,7 +180,7 @@ def packedResult (op : LaneOp) (g : List SStmt) (r : SRegs) (L : Nat) :
     VectorTy (BitVec 32) L :=
   vmap₂ op.apply (packSrc g r true L) (packSrc g r false L)
 
-/-- **The SLP denotation keystone.**  Reading lane `j` of the packed result of a
+/-- **The SLP denotation lemma.**  Reading lane `j` of the packed result of a
     group equals the scalar result of the `j`-th statement `op (r s1ⱼ) (r s2ⱼ)`.
     This is `vmap₂_eq_scalar` applied **straight-line** (no loop): the packed
     SIMD op denotes the per-lane scalar ops.  Holds for *any* common op; the
@@ -279,6 +279,82 @@ theorem slpVectorize_footprint_disjoint (g : List SStmt) (G : SLPGroup)
         exact hpe.2
       · simp [hp] at h
 
+/-- A fired group's members are exactly the detected block: `slpDetect` packs the
+    whole packable prefix, so `G.members = g`. -/
+theorem slpDetect_members (g : List SStmt) (G : SLPGroup) (h : slpDetect g = some G) :
+    G.members = g := by
+  cases g with
+  | nil => simp [slpDetect] at h
+  | cons s tl =>
+    cases tl with
+    | nil => simp [slpDetect] at h
+    | cons s2 rest =>
+      simp only [slpDetect] at h
+      by_cases hp : packable (s :: s2 :: rest)
+      · simp only [hp, if_true, Option.some.injEq] at h
+        subst h; rfl
+      · simp [hp] at h
+
+/-! ## §4b  Whole-block scalar execution agrees with the packed result
+
+`slpVectorize_denote` (§4) relates the packed result to the per-statement
+`LaneOp.apply`.  The scalar block's own executor is `runScalar`, which threads
+the register file left-to-right.  On a pairwise-independent group these agree:
+running the whole group and reading a member's destination yields that member's
+result computed from the *initial* registers, so the packed vector op reproduces
+exactly the scalar block's final value at every group destination. -/
+
+/-- Running a block that never writes `x` leaves `x` unchanged. -/
+theorem runScalar_preserves_of_no_write (g : List SStmt) (r : SRegs) (x : String)
+    (h : ∀ t ∈ g, t.dst ≠ x) : runScalar g r x = r x := by
+  induction g generalizing r with
+  | nil => rfl
+  | cons s tl ih =>
+    simp only [runScalar]
+    rw [ih (s.exec r) (fun t ht => h t (List.mem_cons_of_mem _ ht))]
+    simp only [SStmt.exec]
+    exact if_neg (Ne.symm (h s List.mem_cons_self))
+
+/-- On a pairwise-independent group, running the whole block and reading a
+    member's destination equals that member's scalar result computed from the
+    initial register file.  Pairwise independence rules out WAW (no later member
+    overwrites the destination) and RAW/WAR (no earlier member has rewritten the
+    member's sources). -/
+theorem runScalar_reads_own_dst (g : List SStmt) (r : SRegs) (s : SStmt)
+    (hmem : s ∈ g) (hpi : pairwiseIndep g = true) :
+    runScalar g r s.dst = s.op.apply (r s.s1) (r s.s2) := by
+  induction g generalizing r with
+  | nil => exact absurd hmem (by simp)
+  | cons h tl ih =>
+    simp only [pairwiseIndep, Bool.and_eq_true, List.all_eq_true] at hpi
+    obtain ⟨hall, hpitl⟩ := hpi
+    simp only [runScalar]
+    rcases List.mem_cons.mp hmem with rfl | htl
+    · rw [runScalar_preserves_of_no_write tl (s.exec r) s.dst]
+      · simp [SStmt.exec]
+      · intro t ht
+        have hst := hall t ht
+        simp only [indep, Bool.and_eq_true, bne_iff_ne] at hst
+        exact Ne.symm hst.1.1.1.1
+    · rw [ih (h.exec r) htl hpitl]
+      have hhs := hall s htl
+      simp only [indep, Bool.and_eq_true, bne_iff_ne] at hhs
+      simp only [SStmt.exec]
+      rw [if_neg hhs.1.2, if_neg hhs.2]
+
+/-- **Whole-block denotation.**  When `slpDetect` fires, the packed result read
+    at lane `j` equals the value the scalar block leaves at the `j`-th member's
+    destination.  Composes `slpVectorize_denote` (packed result = per-statement
+    apply) with `runScalar_reads_own_dst` (scalar block = per-statement apply,
+    from the fired group's pairwise independence). -/
+theorem slpVectorize_block_denote (g : List SStmt) (G : SLPGroup)
+    (h : slpDetect g = some G) (r : SRegs) (L : Nat) (j : Fin L) (sj : SStmt)
+    (hj : G.members[j.val]? = some sj) :
+    (packedResult G.op G.members r L) j = runScalar G.members r sj.dst := by
+  rw [slpVectorize_denote g G h r L j sj hj,
+      runScalar_reads_own_dst G.members r sj (List.mem_of_getElem? hj)
+        (slpVectorize_footprint_disjoint g G h)]
+
 /-! ## §5  Concrete lowering onto the unified `JasminOp.vsimd` packed ops
 
 The five packable `LaneOp`s lower to the verified-dialect `SimdOp` packed-lane
@@ -287,7 +363,7 @@ maps to a 4×u32 `packed _ 32` op whose denotation is `v128PackLanesW 32 bop`
 (the carry-free per-lane op, KAT-pinned in `JasminDialect`).  Reading lane `k`
 (bits `[32·k, 32·k+32)`) of the packed result agrees with the scalar op on the
 matching input lanes by the committed cross-ISA round-trip lemma
-`v128Pack32_lane`, with `slpGroup_denote` (§3) as the abstract keystone behind it. -/
+`v128Pack32_lane`, with `slpGroup_denote` (§3) as the abstract lemma behind it. -/
 
 /-- Lower a `LaneOp` to its `JasminOp.vsimd` packed-lane op over a 128-bit XMM
     register pair (the immediate-carrying shifts denote `VPSLLD`/`VPSRLD` with a
@@ -324,7 +400,7 @@ theorem vpor_lane_eq (a b : BitVec 128) (k : Fin 4) :
                          (BitVec.extractLsb' (32 * k.val) 32 b) :=
   v128Pack32_lane .or a b k
 
-/-- **Dialect-level SLP keystone.**  `LaneOp.add.toVInst` is the unified
+/-- **Dialect-level SLP lemma.**  `LaneOp.add.toVInst` is the unified
     `JasminOp.vsimd (.packed .add 32)`; lane `k` of its inner `SimdOp` denotation
     over two 128-bit XMM registers `a b` equals the `k`-th scalar add
     `(lane k a) + (lane k b)`.  This is the model-free realization of
@@ -336,6 +412,40 @@ theorem vpaddd_slp_realizes (a b : BitVec 128) (k : Fin 4) :
       = LaneOp.add.apply (BitVec.extractLsb' (32 * k.val) 32 a)
                          (BitVec.extractLsb' (32 * k.val) 32 b) :=
   ⟨rfl, v128Pack32_lane .add a b k⟩
+
+/-! ## §5b  The gather (pack scalars into a `reg 128`)
+
+The lowering in §5 reads lanes *out* of a packed result (`v128Pack32_lane`).  Its
+inverse — the SoA gather that assembles four scalar `BitVec 32` operands into the
+packed `reg 128` a `JasminOp.vsimd (.packed _ 32)` op consumes — is `packLanes32`:
+lane `k` occupies bits `[32k, 32k+32)`.  `packLanes32_lane` is the round-trip
+that reading lane `k` back recovers the `k`-th scalar, the scatter side of the
+packed↔lane pair. -/
+
+/-- Gather four scalar `BitVec 32` lane values into one packed `reg 128` (XMM)
+    register: lane `k` occupies bits `[32k, 32k+32)`. -/
+def packLanes32 (f : Fin 4 → BitVec 32) : BitVec 128 :=
+  (f 0).setWidth 128 ||| ((f 1).setWidth 128 <<< 32) |||
+    ((f 2).setWidth 128 <<< 64) ||| ((f 3).setWidth 128 <<< 96)
+
+/-- **Gather round-trip.**  Reading lane `k` (the `[32k, 32k+32)` slice) of a
+    gathered packed register returns that lane's scalar value: `packLanes32` is a
+    right inverse of the per-lane `BitVec.extractLsb' (32*k) 32`.  The scatter
+    counterpart of `v128Pack32_lane` (§5). -/
+theorem packLanes32_lane (f : Fin 4 → BitVec 32) (k : Fin 4) :
+    BitVec.extractLsb' (32 * k.val) 32 (packLanes32 f) = f k := by
+  have h : BitVec.extractLsb' 0 32 (packLanes32 f) = f 0 ∧
+      BitVec.extractLsb' 32 32 (packLanes32 f) = f 1 ∧
+      BitVec.extractLsb' 64 32 (packLanes32 f) = f 2 ∧
+      BitVec.extractLsb' 96 32 (packLanes32 f) = f 3 := by
+    refine ⟨?_, ?_, ?_, ?_⟩ <;> simp only [packLanes32] <;>
+      generalize f 0 = a0 <;> generalize f 1 = a1 <;>
+      generalize f 2 = a2 <;> generalize f 3 = a3 <;> bv_decide
+  fin_cases k
+  · exact h.1
+  · exact h.2.1
+  · exact h.2.2.1
+  · exact h.2.2.2
 
 /-! ## §6  Global lane-assignment objective (the stated hook)
 

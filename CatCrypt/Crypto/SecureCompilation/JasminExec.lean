@@ -82,7 +82,7 @@ def jasminExecSingle_assgn_u64_zero (i : InstrR) (rs : RustState) :
     Option (LeakTrace × RustState) :=
   match i with
   | .Cassgn (.Lvar { var := { vname := x, vtype := .sword .U64 },
-                     info := _ })
+                     info := { towerTag := 0 } })
             .AT_none (.sword .U64) (.Pconst 0) =>
     some ([LeakEvent.pureOp "Cassgn"], rsSetScalar rs x 0)
   | _ => none
@@ -94,7 +94,7 @@ theorem jasminExecSingle_assgn_u64_zero_sound {leafSpec : LeafSpec}
     jasminSemTracedSingle leafSpec i rs t rs' := by
   unfold jasminExecSingle_assgn_u64_zero at h
   split at h
-  · rename_i x _info
+  · rename_i x
     cases h
     exact jasminSemTracedSingle.assgn_u64_zero x rs
   · cases h

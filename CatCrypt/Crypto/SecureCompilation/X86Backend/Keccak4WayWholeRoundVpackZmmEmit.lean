@@ -9,6 +9,18 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.Keccak4WayVpackZmmEmit
 /-!
 # Whole-round owned `.s` assembly for lane-sliced Keccak-f[1600] (512-bit ZMM)
 
+**TEST/BENCH-ONLY — STRING-TEMPLATED, not verified-compiler output.** The
+emitted `bench/keccak4way_compare/gen_com/keccakf1600_zmm8_round.s` is a round
+body rendered by `renderVpackZmmAllocSeq` from the committed per-sub-step `Com`
+blocks, wrapped by `frameAsmFunction` in hand-written SysV load / `.rodata`
+broadcast / store frame lines, with no single verified-printer descent for the
+whole file. The `native_decide`/`#guard` checks are substring/structural
+assertions; the round-body denote fold `whole_round_denote` scopes the block
+model, not the hand-written frame. It is a bench/interop reference. The verified
+emit path is the FRONT-SOURCED descent; see
+`bench/framework/AUDIT_EMIT_BYPASS.md` and `EMIT_PROVENANCE.md`
+§"Which emit is verified?".
+
 The committed per-sub-step twins in
 `Keccak4WayVpackZmmEmit.{thetaColCom,rotlStepCom,chiStepCom,iotaStepCom}` each
 render ONE θ-column / ρ-rotate / χ-and-not / ι-xor block to its owned AT&T `%zmm`

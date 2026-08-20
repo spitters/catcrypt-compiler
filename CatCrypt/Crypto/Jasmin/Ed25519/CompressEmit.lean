@@ -10,8 +10,8 @@ import CatCrypt.Crypto.Jasmin.LowCT
 
 `ed25519_compress` (the operation `Edwards XYZT → 32-byte compressed`) is
 currently a single `extern "C"` leaf primitive in the bedrock2/LowCT
-pipeline (`BedrockEd25519Sign.lean` exposes it as
-`ed25519_compress_call_correct`).  This module decomposes that leaf into
+pipeline (`BedrockEd25519Sign.lean` exposes it as the
+`Ed25519SignLeafCallFacts.ed25519_compress` field).  This module decomposes that leaf into
 its arithmetic steps and emits the result as standalone MLIR (`func`
 dialect, out-pointer C ABI) suitable for the
 `mlir-opt → mlir-translate → clang` toolchain in `bench/dalek/`.

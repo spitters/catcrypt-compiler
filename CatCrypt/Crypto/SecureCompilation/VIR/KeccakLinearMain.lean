@@ -11,6 +11,7 @@ import CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad
 import CatCrypt.Crypto.Optimizer.LoadCSE
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # Compiled Keccak-p[1600,24] linear-jasmin owned-RA producer (task #472)
@@ -93,7 +94,7 @@ def main : IO UInt32 := do
   let lpCSE := CatCrypt.Crypto.Optimizer.LoadCSE.loadCSELprog lp
   IO.println s!"  cross-register loads -> reg moves (verified load-CSE) : {cseRewrites}"
   let ownedPath : System.FilePath := "bench/keccak_compare/gen/keccak_f1600_x86_from_lean.s"
-  let asm := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter.renderLprogAtt lpCSE
+  let asm := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned lpCSE
   let t0 ← IO.monoNanosNow
   IO.FS.writeFile ownedPath asm
   let t1 ← IO.monoNanosNow

@@ -506,6 +506,8 @@ exhibits the no-clobber property operationally (the §4 lemma is its general for
 /-- The shared spill cell base. -/
 def sb : String := "%rsp"
 
+-- @bench-only: the `List (JInstr _)` blocks below are fixtures exercising this
+-- spill-slot-reuse pass; this module emits no deployed `.s` artifact.
 /-- The reuse block: define `x`, store it to cell 0; define `z` (after `x` dead),
     store `z` to the **same** cell 0; reload `z` from cell 0; result `out := z`.
     Because `z`'s store overwrote the cell, the reload of `z` reads `z`'s value. -/

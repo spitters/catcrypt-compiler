@@ -9,8 +9,11 @@ import Mathlib.Data.ZMod.Basic
 /-!
 # Field VIR dialect (#482-2 — the L3 algebraic layer, over ModArith)
 
-The **L3** level of the PrimeIR-style layered crypto-IR stack, sitting between
-the elliptic-curve group law and the residue-ring ModArith dialect:
+Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
+
+The **L3** level of the PrimeIR-style layered crypto-IR stack
+(`docs/dialect-restructure-plan.md`), sitting between the elliptic-curve group
+law and the residue-ring ModArith dialect:
 
     EllipticCurve(L4) → **Field(L3)** → ModArith(L2) → {Vector | LowCT} → {jasmin | x86}
 
@@ -39,6 +42,8 @@ the once-per-dialect tie of the layered plan.
 
 * prime-field `fAdd`/`fSub`/`fNeg`/`fMul`/`fInv` — denote into `ZMod p`'s native
   ops (delegating to the ModArith leaves);
+* prime-field `fieldDouble`/`fieldSquare` — the prime-ir `field.double` /
+  `field.square` derived ops, denoting to `a + a` and `a * a`;
 * extension `ext2Mul`/`ext6Mul`/`ext12Mul` — the Karatsuba/Toom extension
   multiplies, denoting into the abstract `Fp2`/`Fp6`/`Fp12` product;
 * `ext2Add`/`ext2Sub` … — componentwise extension add/sub;
@@ -320,6 +325,12 @@ are the abstract `Fp2Val`/`Fp6Val`/`Fp12Val` operations. -/
     stages each of the N final state lanes as one trailing binding. -/
 @[reducible] def fCopyF {p : Nat} (a : ZMod p) : ZMod p := modCopyF a
 
+/-- Prime-field doubling `a ↦ a + a` (prime-ir `field.double`). -/
+@[reducible] def fDoubleF {p : Nat} (a : ZMod p) : ZMod p := a + a
+
+/-- Prime-field squaring `a ↦ a * a` (prime-ir `field.square`). -/
+@[reducible] def fSquareF {p : Nat} (a : ZMod p) : ZMod p := a * a
+
 /-- `Fp2` Karatsuba multiply (the abstract `Fp2Val` product). -/
 @[reducible] def ext2MulF {p : Nat} (a b : Fp2Val p) : Fp2Val p := a * b
 /-- `Fp2` add. -/
@@ -367,6 +378,19 @@ inductive FieldOp where
   /-- Prime-field identity/copy `a : fp p` (sig `[fp p]`). Materializes a
       designated-output lane as its own binding (multi-output staging). -/
   | fCopy (p : Nat)
+  /-- Prime-field doubling `a + a : fp p` (sig `[fp p]`), prime-ir
+      `field.double`. A fold of `derivedDialect`'s `fieldDouble` into this
+      dialect: a `Com` is indexed by one dialect, so an op kept in a dialect of
+      its own cannot sit beside `fMul`. The alternative was a coproduct
+      `fieldDialect ⊕ derivedDialect` with an injection; the value types already
+      coincide (`DerivedTy.fp p` and `FieldTy.fp p` both denote `ZMod p`), so
+      the op is carried here directly. -/
+  | fieldDouble (p : Nat)
+  /-- Prime-field squaring `a * a : fp p` (sig `[fp p]`), prime-ir
+      `field.square`. Folded in from `derivedDialect` alongside `fieldDouble`,
+      for the same reason: one-dialect indexing of `Com`, and a shared `ZMod p`
+      carrier that makes the coproduct injection unnecessary. -/
+  | fieldSquare (p : Nat)
   /-- `Fp2` Karatsuba multiply `a * b : fp2 p`. -/
   | ext2Mul (p : Nat)
   /-- `Fp2` add. -/
@@ -406,6 +430,8 @@ instance : DialectSignature fieldDialect where
     | .fInv p => [.fp p]
     | .fConst _ _ => []
     | .fCopy p => [.fp p]
+    | .fieldDouble p => [.fp p]
+    | .fieldSquare p => [.fp p]
     | .ext2Mul p => [.fp2 p, .fp2 p]
     | .ext2Add p => [.fp2 p, .fp2 p]
     | .ext2Sub p => [.fp2 p, .fp2 p]
@@ -424,6 +450,8 @@ instance : DialectSignature fieldDialect where
     | .fInv p => .fp p
     | .fConst p _ => .fp p
     | .fCopy p => .fp p
+    | .fieldDouble p => .fp p
+    | .fieldSquare p => .fp p
     | .ext2Mul p => .fp2 p
     | .ext2Add p => .fp2 p
     | .ext2Sub p => .fp2 p
@@ -446,6 +474,8 @@ instance fieldDenote : DialectDenote fieldDialect where
     | .fInv _ => fun args => fInvF args.head
     | .fConst _ c => fun _ => fConstF c
     | .fCopy _ => fun args => fCopyF args.head
+    | .fieldDouble _ => fun args => fDoubleF args.head
+    | .fieldSquare _ => fun args => fSquareF args.head
     | .ext2Mul _ => fun args => ext2MulF args.head args.tail.head
     | .ext2Add _ => fun args => ext2AddF args.head args.tail.head
     | .ext2Sub _ => fun args => ext2SubF args.head args.tail.head

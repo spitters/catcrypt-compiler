@@ -170,58 +170,58 @@ the bench Makefile's `abi-bytes-diff` target). `objdump` prints the big-endian
 word; the `.text` stores it little-endian. -/
 
 -- `stp x29, x30, [sp, #-16]!` → 0xa9bf7bfd
-example : encStpPre 29 30 31 (-16) = wordLE 0xa9bf7bfd := by native_decide
+#guard encStpPre 29 30 31 (-16) == wordLE 0xa9bf7bfd
 -- `ldp x29, x30, [sp], #16` → 0xa8c17bfd
-example : encLdpPost 29 30 31 16 = wordLE 0xa8c17bfd := by native_decide
+#guard encLdpPost 29 30 31 16 == wordLE 0xa8c17bfd
 -- `stp x19, x20, [sp, #-80]!` → 0xa9bb53f3
-example : encStpPre 19 20 31 (-80) = wordLE 0xa9bb53f3 := by native_decide
+#guard encStpPre 19 20 31 (-80) == wordLE 0xa9bb53f3
 -- `stp x21, x22, [sp, #16]` → 0xa9015bf5
-example : encStpOff 21 22 31 16 = wordLE 0xa9015bf5 := by native_decide
+#guard encStpOff 21 22 31 16 == wordLE 0xa9015bf5
 -- `ldp x21, x22, [sp, #16]` → 0xa9415bf5
-example : encLdpOff 21 22 31 16 = wordLE 0xa9415bf5 := by native_decide
+#guard encLdpOff 21 22 31 16 == wordLE 0xa9415bf5
 -- `ldp x19, x20, [sp], #80` → 0xa8c553f3
-example : encLdpPost 19 20 31 80 = wordLE 0xa8c553f3 := by native_decide
+#guard encLdpPost 19 20 31 80 == wordLE 0xa8c553f3
 -- `ret` → 0xd65f03c0
-example : encRet = wordLE 0xd65f03c0 := by native_decide
+#guard encRet == wordLE 0xd65f03c0
 -- `ldp x4, x5, [x1]` → 0xa9401424
-example : encLdpOff 4 5 1 0 = wordLE 0xa9401424 := by native_decide
+#guard encLdpOff 4 5 1 0 == wordLE 0xa9401424
 -- `ldp x6, x7, [x1, #16]` → 0xa9411c26
-example : encLdpOff 6 7 1 16 = wordLE 0xa9411c26 := by native_decide
+#guard encLdpOff 6 7 1 16 == wordLE 0xa9411c26
 -- `ldp x8, x9, [x2]` → 0xa9402448
-example : encLdpOff 8 9 2 0 = wordLE 0xa9402448 := by native_decide
+#guard encLdpOff 8 9 2 0 == wordLE 0xa9402448
 -- `ldp x10, x11, [x2, #16]` → 0xa9412c4a
-example : encLdpOff 10 11 2 16 = wordLE 0xa9412c4a := by native_decide
+#guard encLdpOff 10 11 2 16 == wordLE 0xa9412c4a
 -- `stp x4, x5, [x0]` → 0xa9001404
-example : encStpOff 4 5 0 0 = wordLE 0xa9001404 := by native_decide
+#guard encStpOff 4 5 0 0 == wordLE 0xa9001404
 -- `stp x6, x7, [x0, #16]` → 0xa9011c06
-example : encStpOff 6 7 0 16 = wordLE 0xa9011c06 := by native_decide
+#guard encStpOff 6 7 0 16 == wordLE 0xa9011c06
 -- `add x1, sp, #32` → 0x910083e1
-example : encAddImm 1 31 32 = wordLE 0x910083e1 := by native_decide
+#guard encAddImm 1 31 32 == wordLE 0x910083e1
 -- `add x2, sp, #64` → 0x910103e2
-example : encAddImm 2 31 64 = wordLE 0x910103e2 := by native_decide
+#guard encAddImm 2 31 64 == wordLE 0x910103e2
 -- `sub sp, sp, #96` → 0xd10183ff
-example : encSubImm 31 31 96 = wordLE 0xd10183ff := by native_decide
+#guard encSubImm 31 31 96 == wordLE 0xd10183ff
 -- `add sp, sp, #96` → 0x910183ff
-example : encAddImm 31 31 96 = wordLE 0x910183ff := by native_decide
+#guard encAddImm 31 31 96 == wordLE 0x910183ff
 -- `mov x0, sp` (= `add x0, sp, #0`) → 0x910003e0
-example : encAddImm 0 31 0 = wordLE 0x910003e0 := by native_decide
+#guard encAddImm 0 31 0 == wordLE 0x910003e0
 -- `cmp x10, #1` → 0xf100055f
-example : encCmpImm 10 1 = wordLE 0xf100055f := by native_decide
+#guard encCmpImm 10 1 == wordLE 0xf100055f
 -- `cmp x10, #7` → 0xf1001d5f
-example : encCmpImm 10 7 = wordLE 0xf1001d5f := by native_decide
+#guard encCmpImm 10 7 == wordLE 0xf1001d5f
 -- `svc #0` → 0xd4000001
-example : encSvc 0 = wordLE 0xd4000001 := by native_decide
+#guard encSvc 0 == wordLE 0xd4000001
 -- `bl .` (offset 0) → 0x94000000
-example : encBl 0 = wordLE 0x94000000 := by native_decide
+#guard encBl 0 == wordLE 0x94000000
 -- `ldr w16, [x1, #4]` → 0xb9400430
-example : encLdrW 16 1 4 = wordLE 0xb9400430 := by native_decide
+#guard encLdrW 16 1 4 == wordLE 0xb9400430
 -- `str w16, [x1, #4]` → 0xb9000430
-example : encStrW 16 1 4 = wordLE 0xb9000430 := by native_decide
+#guard encStrW 16 1 4 == wordLE 0xb9000430
 -- `ldr w0, [x1, #576]` → 0xb9424020
-example : encLdrW 0 1 576 = wordLE 0xb9424020 := by native_decide
+#guard encLdrW 0 1 576 == wordLE 0xb9424020
 -- `cbnz x11, .` (64-bit X form, offset 0) → 0xb500000b
-example : encCmpBranchX 1 11 0 = wordLE 0xb500000b := by native_decide
+#guard encCmpBranchX 1 11 0 == wordLE 0xb500000b
 -- `cbz x9, .` (64-bit X form, offset −1) → 0xb4ffffe9
-example : encCmpBranchX 0 9 (0x80000 - 1) = wordLE 0xb4ffffe9 := by native_decide
+#guard encCmpBranchX 0 9 (0x80000 - 1) == wordLE 0xb4ffffe9
 
 end CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAbiEncoder

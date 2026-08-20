@@ -99,6 +99,24 @@ def renameInstr (ρ : String → String) : JInstr 64 → JInstr 64
   | .neg d     => .neg (ρ d)
   | .setc d    => .setc (ρ d)
   | .and_ d s  => .and_ (ρ d) (renameOperand ρ s)
+  -- `test a s` has no destination: both operands are reads, and both are renamed.
+  | .test a s  => .test (ρ a) (renameOperand ρ s)
+  -- `cmp a s` likewise has no destination.
+  | .cmp a s   => .cmp (ρ a) (renameOperand ρ s)
+  | .not_ d    => .not_ (ρ d)
+  | .andn d a b => .andn (ρ d) (ρ a) (ρ b)
+  | .rol d amt => .rol (ρ d) (renameOperand ρ amt)
+  | .ror d amt => .ror (ρ d) (renameOperand ρ amt)
+  | .rorx d src amt => .rorx (ρ d) (ρ src) (renameOperand ρ amt)
+  | .shlx d src c => .shlx (ρ d) (ρ src) (ρ c)
+  | .shrx d src c => .shrx (ρ d) (ρ src) (ρ c)
+  | .sarx d src c => .sarx (ρ d) (ρ src) (ρ c)
+  -- `srcW` is a width, not a name, so it is carried through unchanged.
+  | .movzx d sw src => .movzx (ρ d) sw (ρ src)
+  | .movsx d sw src => .movsx (ρ d) sw (ρ src)
+  -- `lea` renames its destination and both address registers; the scale and the
+  -- displacement are literals.
+  | .lea d base idx scale off => .lea (ρ d) (ρ base) (ρ idx) scale off
   | .or_ d s   => .or_ (ρ d) (renameOperand ρ s)
   | .xor_ d s  => .xor_ (ρ d) (renameOperand ρ s)
   | .shl d s   => .shl (ρ d) (renameOperand ρ s)
@@ -209,6 +227,28 @@ theorem writeB5W_rel {ρ : String → String} (hρ : Function.Injective ρ)
   · simp [JState.writeB5W]
   · intro b o; simpa [JState.writeB5W] using h.mem b o
 
+/-- A `writeB5` (five flags, no data word) commutes through `ρ`: no register is
+    written, so the register files stay `ρ`-related without any injectivity, and
+    the two written flag states are equal because the `B5W` is. -/
+theorem writeB5_rel {ρ : String → String} {sL sR : JState 64}
+    (h : StateRel ρ sL sR) (t : B5W 64) :
+    StateRel ρ (sL.writeB5 t) (sR.writeB5 t) := by
+  refine ⟨?_, ?_, ?_⟩
+  · intro n; simpa [JState.writeB5] using h.regs n
+  · simp [JState.writeB5]
+  · intro b o; simpa [JState.writeB5] using h.mem b o
+
+/-- A `writeB2W` (data word + `OF`/`CF`, the other three flags kept) commutes
+    through `ρ`: register files stay `ρ`-related, and the retained `SF`/`PF`/`ZF`
+    agree because the pre-state flag states do. -/
+theorem writeB2W_rel {ρ : String → String} (hρ : Function.Injective ρ)
+    {sL sR : JState 64} (h : StateRel ρ sL sR) (d : String) (t : B2W 64) :
+    StateRel ρ (sL.writeB2W (ρ d) t) (sR.writeB2W d t) := by
+  refine ⟨?_, ?_, ?_⟩
+  · simpa [JState.writeB2W] using setReg_regs_rel hρ h.regs d t.word
+  · simp [JState.writeB2W, h.flags]
+  · intro b o; simpa [JState.writeB2W] using h.mem b o
+
 /-- A `setReg` commutes through `ρ`. -/
 theorem setReg_rel {ρ : String → String} (hρ : Function.Injective ρ)
     {sL sR : JState 64} (h : StateRel ρ sL sR) (d : String) (v : BitVec 64) :
@@ -302,6 +342,38 @@ theorem evalInstr_renameInstr_rel {ρ : String → String} (hρ : Function.Injec
     simp only [renameInstr, evalInstr, hcf]; exact setReg_rel hρ h d _
   | and_ d s =>
     simp only [renameInstr, evalInstr, hop, hget]; exact writeB5W_rel hρ h d _
+  | test a s =>
+    -- flags only: `writeB5_rel` needs no destination and no injectivity.
+    simp only [renameInstr, evalInstr, hop, hget]; exact writeB5_rel h _
+  | cmp a s =>
+    -- as `test`: the five flags of `a - s` and no register write.
+    simp only [renameInstr, evalInstr, hop, hget]; exact writeB5_rel h _
+  | not_ d =>
+    simp only [renameInstr, evalInstr, hget]; exact setReg_rel hρ h d _
+  | andn d a b =>
+    simp only [renameInstr, evalInstr, hget]; exact writeB5W_rel hρ h d _
+  | rol d amt =>
+    -- `OF`/`CF` come from the `B2W`; `SF`/`PF`/`ZF` are inherited from the
+    -- pre-state, which `writeB2W_rel` carries through `h.flags`.
+    simp only [renameInstr, evalInstr, hop, hget]; exact writeB2W_rel hρ h d _
+  | ror d amt =>
+    simp only [renameInstr, evalInstr, hop, hget]; exact writeB2W_rel hρ h d _
+  | rorx d src amt =>
+    simp only [renameInstr, evalInstr, hop, hget]; exact setReg_rel hρ h d _
+  | shlx d src c =>
+    simp only [renameInstr, evalInstr, hget]; exact setReg_rel hρ h d _
+  | shrx d src c =>
+    simp only [renameInstr, evalInstr, hget]; exact setReg_rel hρ h d _
+  | sarx d src c =>
+    simp only [renameInstr, evalInstr, hget]; exact setReg_rel hρ h d _
+  | movzx d sw src =>
+    simp only [renameInstr, evalInstr, hget]; exact setReg_rel hρ h d _
+  | movsx d sw src =>
+    simp only [renameInstr, evalInstr, hget]; exact setReg_rel hρ h d _
+  | lea d base idx scale off =>
+    -- the address is computed from the two renamed base/index registers, whose
+    -- values agree by `hget`; no memory is touched.
+    simp only [renameInstr, evalInstr, hget]; exact setReg_rel hρ h d _
   | or_ d s =>
     simp only [renameInstr, evalInstr, hop, hget]; exact writeB5W_rel hρ h d _
   | xor_ d s =>
@@ -532,6 +604,8 @@ free GP slots — 10 spare. `MpnLinearKernels.addBlock` streams through a consta
 ample slots for the 2 scratch names. Both admit an overflow-free randomized
 renaming. -/
 
+-- @bench-only: the `List (JInstr _)` blocks below are fixtures exercising this
+-- randomized register-allocation pass; this module emits no deployed `.s` artifact.
 /-- The two-limb add kernel (verbatim `Add2Kernel.add2Block`) — a headroom target. -/
 def add2Block : List (JInstr 64) :=
   [ .add "a0" (.reg "b0")

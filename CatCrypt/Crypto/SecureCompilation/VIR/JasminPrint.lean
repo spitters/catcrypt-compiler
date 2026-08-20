@@ -7,9 +7,9 @@ import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 import CatCrypt.Crypto.Jasmin.LowCTToJasmin
 
 /-!
-# `Com jasminDialect → JasminProg` lowering
+# `Com jasminDialect → JasminProg` lowering (phase (a) of the convergence plan)
 
-A verified,
+This file is the next deliverable after `JasminDialect.lean`: a verified,
 structured AST → structured AST lowering from CatCrypt's typed-SSA VIR
 (`Com jasminDialect Γ t`) to the Jasmin program AST
 (`CatCrypt.Crypto.Jasmin.JasminProg`). The `.jazz` *text* is produced by the
@@ -20,9 +20,9 @@ producing a `JasminProg`; no string-munging happens here.
 Com[jasminDialect]  ──lowerComToProg──▶  JasminProg (AST)  ──ppJasminProg──▶ .jazz
 ```
 
-The principle is "emit the AST, not text": the reg-vs-stack and width
-distinctions that `RustEmitJazz` inferred by hand are now *dialect types*,
-lowered to `JasminAST` constructs.
+This realises §3 of `jasmin-vir-convergence-plan.md` ("emit the AST, not
+text"): the reg-vs-stack and width distinctions that `RustEmitJazz` inferred
+by hand are now *dialect types*, lowered to `JasminAST` constructs.
 
 ## Naming scheme (de Bruijn → strings)
 
@@ -593,7 +593,17 @@ def ppExportFn (prog : JasminProg) : String :=
       CatCrypt.Crypto.Jasmin.LowCT.ppJasminProg prog
   | _ => CatCrypt.Crypto.Jasmin.LowCT.ppJasminProg prog
 
-/-- Convenience: lower + pretty-print to jasminc-compilable `.jazz` text. For a
+/-- **`.jazz` TEXT — for jasminc-comparison benchmarking / interop ONLY, NOT the
+    canonical artifact.** The deployed output is the owned `.s` emitted by the
+    verified x86 backend (`Com → toLprogPhysAbi → renderLprogAtt`, i.e.
+    `LprogOptPipeline.renderOwned`); the `.jazz` produced here exists so the
+    classic jasmin compiler (`jasminc`, an EXTERNAL toolchain) can lower the same
+    emitted `Com` for a head-to-head cycle comparison. Never treat a `.jazz`
+    (or the fact that a bench registry names one) as the deployed emit — see
+    `bench/AGENTS.md` "jasminc is also an external toolchain" and the
+    AST-direct-canonical convention.
+
+    Convenience: lower + pretty-print to jasminc-compilable `.jazz` text. For a
     scalar `reg w` kernel this is the `export fn … { … return … }` scaffold
     (compiles with `jasminc -arch x86-64` as-emitted); other shapes fall back to
     the structural `ppJasminProg`. This is the only text-producing step. -/

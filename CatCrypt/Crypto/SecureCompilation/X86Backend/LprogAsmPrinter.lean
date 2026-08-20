@@ -17,10 +17,10 @@ the only consumer of that `Lprog` was the *patched* jasmin `read_linear` +
 `compile_lprog_to_asm`, which RE-encodes the already-allocated body to `.s`.
 
 This module is the **owned** consumer: a direct `Lcmd → AT&T gas` text renderer,
-the linear-path counterpart of `AsmPrinter.renderJInstr` (which renders the
-hand-authored `JInstr` kernels). It removes the patched-jasmin encoder from the
-scalar hash / Poseidon2 path: `Com → toLprogPhysAbi → renderLprogAtt → .s`,
-assembled by `gas` exactly like the existing `*_x86_from_lean.s` kernels.
+the linear-path counterpart of `AsmPrinter.renderJInstr`, which consumes
+`JInstr` blocks rather than an `Lcmd`. It removes the patched-jasmin encoder
+from the scalar hash / Poseidon2 path: `Com → toLprogPhysAbi → renderLprogAtt →
+.s`, assembled by `gas` exactly like the existing `*_x86_from_lean.s` kernels.
 
 ## Why this is a thin syntactic map (the same trust posture as `renderJInstr`)
 
@@ -334,33 +334,6 @@ def stripAbiTag (opn : String) : String :=
     `l` for U32). -/
 def sizeSuffix (w : Nat) : String :=
   if w = 64 then "q" else if w = 16 then "w" else if w = 8 then "b" else "l"
-
-/-- Parse a **native immediate shift / rotate** mnemonic into
-    `(att, count, width)`: the AT&T opcode (`shr`/`shl`/`sar`/`ror`/`rol`), the
-    compile-time count, and the op width (`64` iff `:64`-tagged, else `32`).
-    `none` for any non-shift mnemonic.
-
-    This must read the count from the **raw** `opn`, NOT from a `stripAbiTag`-ed
-    base: the count separator is `:` (`SHR:16`), the same character the `:8`/`:16`/
-    `:64` ABI **width** tags use. `stripAbiTag`/`mnemWidth` (which the narrow-MOV
-    arm consults) would misread the count `8`/`16`/`64` as a width and strip it,
-    dropping the shift entirely (the Hawk `t1 >> 16` ⇒ `movw` bug). A unary shift
-    never carries a narrow `:8`/`:16` width tag — only the optional `:64` — so the
-    width is unambiguous once the count is parsed off the front. -/
-def parseImmShiftMnem (opn : String) : Option (String × Nat × Nat) :=
-  let isU64 := opn.endsWith ":64"
-  -- peel only the `:64` width tag, leaving `SHR:<count>`
-  let core := if isU64 then stripWidthTag opn else opn
-  match core.splitOn ":" with
-  | [mn, nStr] =>
-      let att : Option String := match mn with
-        | "ROR" => some "ror" | "ROL" => some "rol"
-        | "SHL" => some "shl" | "SHR" => some "shr" | "SAR" => some "sar"
-        | _ => none
-      match att, nStr.toNat? with
-      | some a, some n => some (a, n, if isU64 then 64 else 32)
-      | _, _ => none
-  | _ => none
 
 /-- The AT&T base mnemonic (no size suffix) for a stripped body opcode. `none`
     for an unmodeled opcode (call), which the renderer surfaces.
@@ -1251,6 +1224,61 @@ def lprogRodata (p : VIR.JasminLprogExport.Lprog) : String :=
   if p.lp_globs.isEmpty then ""
   else renderRodata (groupGlobNames (p.lp_glob_names.map (fun (n, _w, v) => (n, v))))
 
+/-! ## 7. The provenance trailer
+
+A `.ident` directive naming the producer of the render, the counterpart of the
+`.ident "Jasmin Compiler <version>"` line jasminc puts at the end of its output.
+gas places `.ident` payloads in the `.comment` section, so the trailer survives
+assembly into the object file and is ignored by the assembler and the linker.
+
+`provenanceTrailer` is a pure function of a `Provenance` record: it reads no
+environment variable, no file, and no clock, and the printer module runs no `IO`.
+Every field passes through `sanitizeProvenanceField`, which keeps only
+alphanumerics, `.`, `_` and `-`. The excluded characters include `/`, `\`, `~`,
+`:`, `@` and whitespace, so no field can render as a filesystem path, a URL, an
+email address, or a multi-token string. A revision is a caller-supplied field
+that defaults to empty; nothing in this module derives one. -/
+
+/-- The fixed tool marker in the provenance trailer, the string a checker greps
+    an assembly file for to decide the file was rendered by this printer. -/
+def provenanceMarker : String := "CatCrypt-owned-x86-emit"
+
+/-- The characters a provenance field may contain: alphanumerics, `.`, `_`, `-`.
+    `/`, `\`, `~`, `:`, `@` and whitespace are outside this set. -/
+def provenanceFieldChar (c : Char) : Bool :=
+  c.isAlphanum || c == '.' || c == '_' || c == '-'
+
+/-- A provenance field with every character outside `provenanceFieldChar`
+    dropped. -/
+def sanitizeProvenanceField (s : String) : String :=
+  String.ofList (s.toList.filter provenanceFieldChar)
+
+/-- The identity of a render: the Lean module that produced it, the front route
+    the emitter took, and a source revision. `module` is a repo-relative Lean
+    module name. `route` and `rev` are empty unless the caller supplies them. -/
+structure Provenance where
+  /-- The Lean module that produced the render, as a dotted module name. -/
+  module : String
+  /-- The front route the emitter took, as a combinator or pipeline name. -/
+  route : String := ""
+  /-- A source revision, supplied by the caller. -/
+  rev : String := ""
+
+/-- One `key=value` fragment of the trailer payload, sanitized, and empty when
+    the sanitized value is empty. -/
+def provenanceField (key value : String) : String :=
+  let v := sanitizeProvenanceField value
+  if v.isEmpty then "" else " " ++ key ++ "=" ++ v
+
+/-- The `.ident` line carrying `provenanceMarker` and the sanitized `module`,
+    `route` and `rev` fields. -/
+def provenanceTrailer (pv : Provenance) : String :=
+  "\t.ident\t\"" ++ provenanceMarker
+    ++ provenanceField "module" pv.module
+    ++ provenanceField "route" pv.route
+    ++ provenanceField "rev" pv.rev
+    ++ "\"\n"
+
 /-- Render a full owned-RA `Lprog` (one export function) to AT&T `.s` text. This
     is the owned counterpart of `drive_linear` (`read_linear` +
     `compile_lprog_to_asm`): it consumes the SAME `Lprog` the patched jasmin
@@ -1259,8 +1287,13 @@ def lprogRodata (p : VIR.JasminLprogExport.Lprog) : String :=
     A `.section .rodata` block of the program's named u64 global tables is
     appended **after** the functions, emitted **only when `lp_globs` is non-empty**
     (`lprogRodata`); every existing emit has `lp_globs = []`, so the trailing
-    `.rodata` string is empty and the output is byte-identical to before. -/
-def renderLprogAtt (p : VIR.JasminLprogExport.Lprog) : String :=
+    `.rodata` string is empty and the output is byte-identical to before.
+
+    `prov` appends the `.ident` provenance trailer (§7). It defaults to `none`,
+    which emits no trailer, so a call site that does not pass one renders exactly
+    the same text as before. -/
+def renderLprogAtt (p : VIR.JasminLprogExport.Lprog)
+    (prov : Option Provenance := none) : String :=
   -- Multiple functions in one `.s`: pass `<name>_` so each function's local
   -- `.L` labels are unique (gas local labels are file-scoped — two functions
   -- both wrapping `loopLcmd` would otherwise collide on `.L0`).
@@ -1269,6 +1302,74 @@ def renderLprogAtt (p : VIR.JasminLprogExport.Lprog) : String :=
   -- `.rodata` is appended only when the program declares globals (back-compat
   -- guard); for the default `lp_globs = []` this is `""` and `funcs` is returned
   -- unchanged (byte-identical to the pre-`.rodata` renderer).
-  funcs ++ lprogRodata p
+  funcs ++ lprogRodata p ++ (prov.map provenanceTrailer).getD ""
+
+/-! ### Trailer shape and privacy checks
+
+`sampleProvenance` is a well-formed record and `adversarialProvenance` carries a
+home-rooted path, an email address, a hostname and a timestamp in its fields; the
+guards below pin the rendered text of the first and the sanitization of the
+second. `sampleLprog` is a one-function `Lprog` with an empty body, the smallest
+render that exercises the whole `renderLprogAtt` path. -/
+
+/-- A `Provenance` with a module name and a front route, the shape an emitter
+    supplies. -/
+def sampleProvenance : Provenance :=
+  { module := "CatCrypt.Crypto.SecureCompilation.X86Backend.Sample"
+  , route := "rolledForLoopNRt" }
+
+/-- A `Provenance` whose fields carry every character class the trailer must
+    strip — a path separator, an `@`, a colon, a `+`, and a space — so no field
+    can render as a path, an email address, or a timestamp. -/
+def adversarialProvenance : Provenance :=
+  { module := "seg/seg"
+  , route := "a@b c"
+  , rev := "1:2+3 ../x" }
+
+/-- A one-function `Lprog` with an empty body. -/
+def sampleLprog : VIR.JasminLprogExport.Lprog :=
+  { lp_funcs := [("sample_fn", {})] }
+
+-- The trailer of a well-formed record is one `.ident` line carrying the marker
+-- and the two supplied fields.
+#guard provenanceTrailer sampleProvenance =
+  "\t.ident\t\"CatCrypt-owned-x86-emit"
+    ++ " module=CatCrypt.Crypto.SecureCompilation.X86Backend.Sample"
+    ++ " route=rolledForLoopNRt\"\n"
+
+-- An absent field contributes nothing: `rev` defaults to empty and no `rev=`
+-- fragment appears.
+#guard ((provenanceTrailer sampleProvenance).splitOn "rev=").length = 1
+
+-- No trailer text, for either record, contains a path separator, a backslash, a
+-- tilde, a colon or an `@` — so no field can render as a `/`-rooted path, a
+-- Windows path, a home-relative path, a timestamp, or an email address.
+#guard ((provenanceTrailer sampleProvenance).toList.any
+  (fun c => c = '/' || c = '\\' || c = '~' || c = ':' || c = '@')) = false
+#guard ((provenanceTrailer adversarialProvenance).toList.any
+  (fun c => c = '/' || c = '\\' || c = '~' || c = ':' || c = '@')) = false
+
+-- Every stripped character class — path separator, `@`, colon, `+`, space — is
+-- gone; what survives is a single token per field.
+#guard provenanceTrailer adversarialProvenance =
+  "\t.ident\t\"CatCrypt-owned-x86-emit"
+    ++ " module=segseg"
+    ++ " route=abc"
+    ++ " rev=123..x\"\n"
+
+-- A whole sample render carrying the adversarial record contains no `/`-rooted
+-- path: the render itself has no `/` at all.
+#guard ((renderLprogAtt sampleLprog (some adversarialProvenance)).toList.contains '/')
+  = false
+
+-- The default render emits no trailer, so a call site that passes no
+-- `Provenance` is unchanged.
+#guard ((renderLprogAtt sampleLprog).splitOn provenanceMarker).length = 1
+#guard renderLprogAtt sampleLprog = renderLprogAtt sampleLprog none
+
+-- The trailer is appended, not interleaved: the render with a `Provenance` is
+-- the default render followed by the trailer.
+#guard renderLprogAtt sampleLprog (some sampleProvenance)
+  = renderLprogAtt sampleLprog ++ provenanceTrailer sampleProvenance
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter

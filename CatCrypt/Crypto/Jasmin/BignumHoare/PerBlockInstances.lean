@@ -8,20 +8,30 @@ import CatCrypt.Crypto.Jasmin.BignumHoare.ChainStepAxioms
 /-!
 # Per-block correctness instances for inv and pow_p58 chains
 
-Documentation of the 13 chain-step blocks of the `bignum_inv_p25519`
-and `bignum_pow_p25519_p58` chains.  This file declares nothing.
+13 chain-step instances closing each block of the
+`bignum_inv_p25519` and `bignum_pow_p25519_p58` chains.  Each is a
+direct application of one of the chain-step axioms / theorems from
+`ChainStepAxioms.lean`.
 
 ## Status
 
-The short-form per-block instances this module was meant to provide are
-superseded by `block{N}_correctness_via_axiom` (in
-`ChainStepAxioms.lean`), which carries the frame condition, scratch
-bundle and address-derivation hypotheses directly, and by
-`block{N}_correctness_triple` (in `InvP25519Composition.lean`), which
-lifts them to `BignumTripleFuel` for chain composition.  Those extra
-arguments are what defeat the one-line application this module aimed
-at, so use those two entry points directly; only the block table below
-is still useful here.
+This file is currently **stubbed**: each theorem is stated with the
+target post-condition matching the canonical
+`block{N}_correctness_via_axiom` from `ChainStepAxioms.lean`, but the
+bodies are `sorry`s pending re-instantiation against the widened
+chain-step signatures (frame condition on `chain_{sqr,mul}_step_correct`
+landed 2026-05-09 in commit `3361273b`; address-derivation /
+allocation / non-aliasing widening of
+`chain_repeated_sqr_then_mul_correct` landed 2026-05-09 in this
+commit).
+
+The block-level correctness facts are still available through
+`block{N}_correctness_via_axiom` directly (in `ChainStepAxioms.lean`)
+and through `block{N}_correctness_triple` (in
+`InvP25519Composition.lean`).  This file's only role was to act as a
+short-form gateway, but the new signatures take many extra arguments
+(address-derivation hypotheses, scratch bundles, body-shape
+hypotheses) that defeat the original "one-line application" goal.
 
 ## The 13 blocks
 
@@ -53,5 +63,18 @@ open CatCrypt.Crypto.Jasmin.BignumExec
 open CatCrypt.Crypto.Jasmin.MemoryModel
 open CatCrypt.Crypto.Jasmin.BignumHoare.MontmulAxiom
 open CatCrypt.Crypto.Jasmin.BignumHoare.ChainStepAxioms
+
+/-! ## §6  Summary
+
+The per-block instances in this file have been **deprecated** in
+favour of `block{N}_correctness_via_axiom` (in `ChainStepAxioms.lean`,
+which carries the frame condition + scratch bundle hypotheses
+directly) and `block{N}_correctness_triple` (in
+`InvP25519Composition.lean`, which lifts to `BignumTripleFuel` for
+chain composition).
+
+Use those entry points directly; this file is retained only for
+import-graph stability.
+-/
 
 end CatCrypt.Crypto.Jasmin.BignumHoare.PerBlockInstances

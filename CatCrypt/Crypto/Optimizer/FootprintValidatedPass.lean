@@ -75,6 +75,9 @@ def memReadBases : JInstr 64 → List String
   | .loadMemIdx _ base _ _ => [base]
   | .mulxMem _ _ _ base _ => [base]
   | .loadSym _ sym => [sym]
+  -- `lea` computes `base + idx·scale + off` into a register and dereferences
+  -- nothing, so it reads memory through no base.
+  | .lea _ _ _ _ _ => []
   | _ => []
 
 /-- `instrAvoids D i`: no base `i` reads memory through is the base of a cell in
@@ -113,6 +116,49 @@ theorem agreeExcept_evalInstr {D : List (String × Int)} (i : JInstr 64)
     · simp [evalInstr, JState.writeB5W, JState.get, JOperand.eval]
     · simp [evalInstr, JState.writeB5W, JState.get, JOperand.eval]
     · intro b o hbo; simpa [evalInstr, JState.writeB5W] using hm b o hbo
+  | test a src =>
+    -- `test` writes only the five flags: the register files stay literally equal
+    -- and memory is untouched.
+    refine ⟨rfl, ?_, ?_⟩
+    · simp [evalInstr, JState.writeB5, JState.get, JOperand.eval]
+    · intro b o hbo; simpa [evalInstr, JState.writeB5] using hm b o hbo
+  | cmp a src =>
+    -- `cmp` writes only the five flags, exactly as `test` does.
+    refine ⟨rfl, ?_, ?_⟩
+    · simp [evalInstr, JState.writeB5, JState.get, JOperand.eval]
+    · intro x y hxy; simpa [evalInstr, JState.writeB5] using hm x y hxy
+  | not_ dst =>
+    refine ⟨?_, rfl, ?_⟩
+    · simp [evalInstr, JState.setReg, JState.get]
+    · intro x y hxy; simpa [evalInstr, JState.setReg] using hm x y hxy
+  | andn dst a c =>
+    refine ⟨?_, ?_, ?_⟩
+    · simp [evalInstr, JState.writeB5W, JState.get]
+    · simp [evalInstr, JState.writeB5W, JState.get]
+    · intro x y hxy; simpa [evalInstr, JState.writeB5W] using hm x y hxy
+  | rol dst amt | ror dst amt =>
+    -- the rotates write `OF`/`CF` over the shared pre-state flags.
+    refine ⟨?_, ?_, ?_⟩
+    · simp [evalInstr, JState.writeB2W, JState.get, JOperand.eval]
+    · simp [evalInstr, JState.writeB2W, JState.get, JOperand.eval]
+    · intro x y hxy; simpa [evalInstr, JState.writeB2W] using hm x y hxy
+  | rorx dst src amt =>
+    refine ⟨?_, rfl, ?_⟩
+    · simp [evalInstr, JState.setReg, JState.get, JOperand.eval]
+    · intro x y hxy; simpa [evalInstr, JState.setReg] using hm x y hxy
+  | shlx dst src cnt | shrx dst src cnt | sarx dst src cnt =>
+    refine ⟨?_, rfl, ?_⟩
+    · simp [evalInstr, JState.setReg, JState.get]
+    · intro x y hxy; simpa [evalInstr, JState.setReg] using hm x y hxy
+  | movzx dst sw src | movsx dst sw src =>
+    refine ⟨?_, rfl, ?_⟩
+    · simp [evalInstr, JState.setReg, JState.get]
+    · intro x y hxy; simpa [evalInstr, JState.setReg] using hm x y hxy
+  | lea dst bs ix sc dsp =>
+    -- an address computation: no cell is read, so `hi` is not needed.
+    refine ⟨?_, rfl, ?_⟩
+    · simp [evalInstr, JState.setReg, JState.get]
+    · intro x y hxy; simpa [evalInstr, JState.setReg] using hm x y hxy
   | adc dst src | sbb dst src =>
     refine ⟨?_, ?_, ?_⟩
     · simp [evalInstr, JState.writeB5W, JState.get, JOperand.eval, JState.flagB]

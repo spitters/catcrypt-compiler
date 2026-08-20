@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.SecureCompilation.X86Backend.X25519MonoLadderKernel
 import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
+import CatCrypt.Crypto.SecureCompilation.X86Backend.SpillingRAFiring
 
 /-!
 # Applying the verified spilling register allocator to the X25519 ladder body (#413)
@@ -75,7 +76,13 @@ namespace CatCrypt.Crypto.SecureCompilation.X86Backend.X25519SpilledLadderKernel
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
-open CatCrypt.Crypto.SecureCompilation.X86Backend.X25519MonoLadderKernel (monoLadderStepBlock)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.X25519MonoLadderKernel
+  (monoLadderStepBlock monoLadderStepBlock_allDirect)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime (blockLeak)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+  (allDirect allDirect_constant_time)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.SpillingRAFiring
+  (spillReloadBlock_allDirect)
 open CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 open CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc (graphColorAlloc)
 
@@ -103,9 +110,9 @@ def spilledBody : List (JInstr 64) :=
 
 /-! ## 2. Live-range characterization (lightweight, kernel-checkable)
 
-The peak-pressure / span-distribution facts are computed over `liveRanges`. They are
-the load-bearing measurements: the working set fits the pool, so the residual is the
-memory op-boundary, not the allocation. We expose the peak-pressure computation as a
+The peak-pressure / span-distribution facts are computed over `liveRanges`: the
+working set fits the pool, so the residual is the memory op-boundary, not the
+allocation. We expose the peak-pressure computation as a
 definition for `#eval` and keep only a tiny in-kernel sanity fact (the body is
 non-empty and its live ranges are within bounds is checked in `SpillingRegAlloc`'s
 own sanity lemmas on a small body; here the full-body version is `#eval`-measured). -/
@@ -148,17 +155,17 @@ the 1058-instruction body is too heavy for in-kernel `native_decide`):
 | graph coloring (use-density)     | 27 | 162 | 162 | 324 |
 | ratio (graph / linear)           | 1.00 | 0.67 | 0.72 | **0.69×** |
 
-**But on THIS body that traffic win is not a perf win** — and that is the honest,
-load-bearing result of §0/§2. The fused ladder body is **frame-resident by
+**But on THIS body that traffic win is not a perf win** — the result of §0/§2.
+The fused ladder body is **frame-resident by
 construction**: its peak *register* pressure is **14** (`peakPressure`), which *fits*
 the 13-slot pool once `fp` is pinned, so the 27 "spills" both allocators report are
-nominal long-span intra-leaf scratch chains, NOT genuine pool overflow. The binding
+nominal long-span intra-leaf scratch chains, not pool overflow. The binding
 cost on this body is the **cross-op `loadMem`/`storeMem` op boundary** (96 loads + 68
 stores of the ladder state through `fp`'s frame slots) — that is the *program*, not the
 *allocation*, and no register allocator (linear scan or graph coloring) removes it.
 
 So unlike the SHA-2 round and the Keccak whole-program-live skeleton — where peak
-pressure genuinely exceeds the pool and graph coloring's use-density spill choice cuts
+pressure exceeds the pool and graph coloring's use-density spill choice cuts
 the binding reload traffic — the X25519 ladder residual is **dataflow/scheduling-bound,
 not allocation-bound**. The lever is the frame→register op-boundary conversion (#412
 store-to-load forwarding did 40/96 loads); the allocator is the *second* half of that
@@ -186,5 +193,39 @@ theorem gcSpilledBody_length :
         + reloadCount gcDecisions spillBase monoLadderStepBlock
         + storeCount gcDecisions spillBase monoLadderStepBlock :=
   spillReloadBlock_length gcDecisions spillBase monoLadderStepBlock
+
+/-! ## 5. Constant time: the spill materialization keeps the direct-addressing class
+
+The inserted reload loads and spill stores address the spill base at a
+compile-time-constant slot offset, so materializing the spill of an `allDirect`
+block leaves every instruction direct
+(`SpillingRAFiring.spillReloadBlock_allDirect`). Both allocators materialize
+through the same `spillReloadBlock`, so both bodies inherit the fused step's
+constant-time class. -/
+
+/-- The linear-scan spilled body uses only direct base+displacement addressing. -/
+theorem spilledBody_allDirect : allDirect spilledBody = true := by
+  unfold spilledBody
+  exact spillReloadBlock_allDirect spillDecisions spillBase monoLadderStepBlock
+    monoLadderStepBlock_allDirect
+
+/-- **Constant time.** The linear-scan spilled ladder step produces the same
+    machine leakage trace from any two starting states. -/
+theorem spilledBody_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ spilledBody = blockLeak s₂ spilledBody :=
+  allDirect_constant_time spilledBody spilledBody_allDirect s₁ s₂
+
+/-- The graph-coloring spilled body uses only direct base+displacement
+    addressing. -/
+theorem gcSpilledBody_allDirect : allDirect gcSpilledBody = true := by
+  unfold gcSpilledBody
+  exact spillReloadBlock_allDirect gcDecisions spillBase monoLadderStepBlock
+    monoLadderStepBlock_allDirect
+
+/-- **Constant time.** The graph-coloring spilled ladder step produces the same
+    machine leakage trace from any two starting states. -/
+theorem gcSpilledBody_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ gcSpilledBody = blockLeak s₂ gcSpilledBody :=
+  allDirect_constant_time gcSpilledBody gcSpilledBody_allDirect s₁ s₂
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.X25519SpilledLadderKernel

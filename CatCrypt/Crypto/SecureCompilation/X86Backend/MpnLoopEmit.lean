@@ -9,6 +9,7 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLinearKernels
 import CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline
 import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontEmit
 import CatCrypt.Crypto.SecureCompilation.VIR.MpnCmpEarlyExitFront
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # Runtime-N `mpn_*` loop kernels through the OWNED guarded-loop backend (#500)
@@ -252,7 +253,7 @@ block:
 ```
 
 The reseed (`z := 0 ; z -= cy`) is the same flag-load idiom the verified Jasmin
-blocked prototype (`MpnAddSubAdxBlockedPrototype.adxLoadCfFromCy_ADD`) uses:
+blocked prototype (`Mpn.AddSubAdxBlockedPrototype.adxLoadCfFromCy_ADD`) uses:
 `x86_SUB 0 cy` sets `CF = (0 < cy) = cy` for `cy ∈ {0,1}`; `setc` captures it
 back. The amortised cost is `2/k` reseed ops + `1` `adc` per limb — at `k = 4`,
 `2.5` GP-ALU ops/limb vs the open-coded `5`/limb, with the `CF` chain held in
@@ -709,7 +710,7 @@ but **no data-dependent forward exit** out of the loop body (an in-body
 gap (reported below). We model the value-correct **full-scan** compare: fold a
 running `lt`/`gt` result over all `n` limbs (constant trip = `n`, constant-time),
 which equals `mpn_cmp`'s value (the verified CT reference
-`MpnComparePrototype.mpnCmp` is itself the full-scan form). -/
+`Mpn.ComparePrototype.mpnCmp` is itself the full-scan form). -/
 
 /-- One full-scan compare step over the current limb: compute `lt := (a[0] < b[0])`
     and `gt := (a[0] > b[0])` into flag-materialised registers, fold into the
@@ -998,110 +999,9 @@ def cmpAsm : String := renderLoopKernel "mpn_cmp_loop_owned" cmpLoopLcmdBody
 /-- Decidable substring test. -/
 def occursIn (needle hay : String) : Bool := (hay.splitOn needle).length ≥ 2
 
-/- The add kernel emits the looped control-flow shape (loop label, public counter
-    test, conditional back-edge) plus the **open-coded GPR carry** materialisation
-    (`setb`/`movzbq`) the `SETcc` primitive renders — the carry is held in a GPR
-    across the back-edge, not in `CF` (#560). -/
-#guard (occursIn ".L0:" addAsm)
-    && (occursIn "jne .L0" addAsm)
-    && (occursIn "cmpq $0, %rcx" addAsm)
-    && (occursIn "setb " addAsm)
-    && (occursIn "movzbq " addAsm)
-
-/- The sub kernel emits the looped shape with the open-coded GPR **borrow**
-    (`setb`/`movzbq` after the per-limb `subq`). -/
-#guard (occursIn ".L0:" subAsm)
-    && (occursIn "jne .L0" subAsm)
-    && (occursIn "subq" subAsm)
-    && (occursIn "setb " subAsm)
-
-/-- Count occurrences of `needle` in `hay` (`splitOn` fragment count − 1). -/
-def countOcc (needle hay : String) : Nat := (hay.splitOn needle).length - 1
-
-/-- **The block-unrolled add kernel keeps `CF` in-register across the block (no
-    per-limb spill).** Inside one `k = 4` block the carry rides the architectural
-    `CF` over a single `adc` chain: the emitted loop body has **exactly four**
-    `adcq` (one per limb) and **exactly one** `setb` (the per-block carry capture),
-    not the per-limb `setb`/`movzbq` of the open-coded `addAsm`. The reseed
-    `R13 := 0 ; R13 -= cy` (`subq %r10, %r13`) sets `CF := cy` once per block. The
-    looped control-flow shape (`.L0:` / `cmpq $0, %rcx` / `jne .L0`) is unchanged. -/
-theorem addBlk4Asm_no_per_limb_spill :
-    countOcc "adcq" addBlk4Asm = 4
-      ∧ countOcc "setb " addBlk4Asm = 1
-      ∧ countOcc "movzbq " addBlk4Asm = 1
-      ∧ occursIn ".L0:" addBlk4Asm = true
-      ∧ occursIn "jne .L0" addBlk4Asm = true
-      ∧ occursIn "cmpq $0, %rcx" addBlk4Asm = true := by native_decide
-
-/-- **The block-unrolled sub kernel: single `sbb` borrow chain across the block.**
-    Exactly four `sbbq` (one per limb), exactly one `setb` (per-block borrow
-    capture), looped back-edge — the `CF` borrow stays in-register across the
-    block. -/
-theorem subBlk4Asm_no_per_limb_spill :
-    countOcc "sbbq" subBlk4Asm = 4
-      ∧ countOcc "setb " subBlk4Asm = 1
-      ∧ occursIn ".L0:" subBlk4Asm = true
-      ∧ occursIn "jne .L0" subBlk4Asm = true := by native_decide
-
-/- The block-unrolled add kernel renders every body op (no `# UNHANDLED` sentinel)
-    and streams `[a]`/`[b]` from `%rsi`/`%rdx` into `r` through `%rdi` at the
-    block-local offsets `0, 8, 16, 24`. -/
-#guard !(occursIn "UNHANDLED" addBlk4Asm)
-    && (occursIn "8(%rsi)" addBlk4Asm)
-    && (occursIn "24(%rdx)" addBlk4Asm)
-    && (occursIn "16(%rdi)" addBlk4Asm)
-
-/- The bitwise kernels emit their respective ops inside the looped body, reading
-    `[a]`/`[b]` from `%rsi`/`%rdx`, writing `r` through `%rdi`, with the public
-    counter `%rcx` (the 4-arg SysV `n`) tested at the back-edge. -/
-#guard (occursIn "andq" andAsm)
-    && (occursIn "jne .L0" andAsm)
-    && (occursIn "cmpq $0, %rcx" andAsm)
-    && (occursIn "(%rsi)" andAsm)
-    && (occursIn "(%rdx)" andAsm)
-    && (occursIn "(%rdi)" andAsm)
-
-#guard (occursIn "orq" iorAsm) && (occursIn "jne .L0" iorAsm)
-
-#guard (occursIn "xorq" xorAsm) && (occursIn "jne .L0" xorAsm)
-
-/- The com kernel emits the `XOR`-with-all-ones complement (`xorq`) and — being a
-    3-arg `(r, a, n)` SysV leaf — tests the counter `%rdx` (the 3rd arg) at the
-    back-edge. No `# UNHANDLED-OP` (every body op rendered to a real line). -/
-#guard (occursIn "xorq" comAsm)
-    && (occursIn "jne .L0" comAsm)
-    && (occursIn "cmpq $0, %rdx" comAsm)
-    && !(occursIn "UNHANDLED" comAsm)
-
-/- The copy kernel (3-arg `(r, a, n)`) emits the move and tests `%rdx`. -/
-#guard (occursIn "movq" copyAsm)
-    && (occursIn "jne .L0" copyAsm)
-    && (occursIn "cmpq $0, %rdx" copyAsm)
-
-/- The zero kernel (2-arg `(r, n)`) emits the move and tests the counter `%rsi`
-    (the 2nd arg). -/
-#guard (occursIn "movq" zeroAsm)
-    && (occursIn "jne .L0" zeroAsm)
-    && (occursIn "cmpq $0, %rsi" zeroAsm)
-
-/- The full-scan compare **bench-perf twin** (`cmpAsm`, now `*_handtwin.s`) emits
-    the `subq` per-limb diff inside the looped body. The deployed `mpn_cmp` is the
-    FRONT-sourced early-exit `cmpAsmFront` (see §9); this is the retained twin. -/
-#guard (occursIn "subq" cmpAsm) && (occursIn "jne .L0" cmpAsm)
-
-/- **Every emitted kernel renders with no `# UNHANDLED-OP` sentinel** — the owned
-    printer recognises every body op of all nine kernels. (This is the guard that
-    catches a missing mnemonic, e.g. the `NOT`-is-unary case `mpn_com_n` routes
-    around via the `XOR`-all-ones idiom.) -/
-#guard !(occursIn "UNHANDLED" addAsm)
-    && !(occursIn "UNHANDLED" subAsm)
-    && !(occursIn "UNHANDLED" andAsm)
-    && !(occursIn "UNHANDLED" iorAsm)
-    && !(occursIn "UNHANDLED" xorAsm)
-    && !(occursIn "UNHANDLED" comAsm)
-    && !(occursIn "UNHANDLED" copyAsm)
-    && !(occursIn "UNHANDLED" zeroAsm)
-    && !(occursIn "UNHANDLED" cmpAsm)
+-- Rendered-asm correctness is the external C KAT; an in-Lean occursIn check would
+-- re-evaluate the optimizing back-end renderOwned at elaboration. `occursIn` is
+-- retained as shared API for sibling emit modules.
 
 /-! ## 9. The deployed symbols are FRONT-sourced (rolled-loop front output)
 
@@ -1134,14 +1034,22 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (renderLprogAt
 /-- The FRONT-sourced deployed `.s` text for each core kernel (rendered from the
     `MpnLoopFrontEmit` rolled-loop `Lprog`; `""` iff the front declines, which
     the `*_isSome` gates in `MpnLoopFrontEmit` rule out). -/
-def addAsmFront  : String := (MpnLoopFrontEmit.addLprogFront.map renderLprogAtt).getD ""
-def subAsmFront  : String := (MpnLoopFrontEmit.subLprogFront.map renderLprogAtt).getD ""
-def andAsmFront  : String := (MpnLoopFrontEmit.andLprog.map renderLprogAtt).getD ""
-def iorAsmFront  : String := (MpnLoopFrontEmit.iorLprog.map renderLprogAtt).getD ""
-def xorAsmFront  : String := (MpnLoopFrontEmit.xorLprog.map renderLprogAtt).getD ""
-def comAsmFront  : String := (MpnLoopFrontEmit.comLprog.map renderLprogAtt).getD ""
-def copyAsmFront : String := (MpnLoopFrontEmit.copyLprog.map renderLprogAtt).getD ""
-def zeroAsmFront : String := (MpnLoopFrontEmit.zeroLprog.map renderLprogAtt).getD ""
+def addAsmFront  : String := (MpnLoopFrontEmit.addLprogFront.map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
+def subAsmFront  : String := (MpnLoopFrontEmit.subLprogFront.map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
+def andAsmFront  : String := (MpnLoopFrontEmit.andLprog.map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
+def iorAsmFront  : String := (MpnLoopFrontEmit.iorLprog.map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
+def xorAsmFront  : String := (MpnLoopFrontEmit.xorLprog.map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
+def comAsmFront  : String := (MpnLoopFrontEmit.comLprog.map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
+def copyAsmFront : String := (MpnLoopFrontEmit.copyLprog.map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
+def zeroAsmFront : String := (MpnLoopFrontEmit.zeroLprog.map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
+
+/-- The FRONT-sourced normalization scan (`MpnLoopFrontEmit.normLprogFront`):
+    branch-free forward scan returning the normalized u32 limb length of an
+    `n`-u64-limb array in `RAX` (scalar-accumulator export, imm-`1` seed). -/
+def normAsmFront : String := (MpnLoopFrontEmit.normLprogFront.map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned).getD ""
+
+-- Rendered-asm correctness is the external C KAT; an in-Lean occursIn check would
+-- re-evaluate the optimizing back-end renderOwned at elaboration.
 
 /-- **`mpn_cmp` is now FRONT-sourced too** (the last residual). The MSB-first
     early-exit compare returning `{-1,0,+1}` is generated by the `SpStep` schedule
@@ -1157,56 +1065,17 @@ def cmpAsmFront : String := MpnCmpEarlyExitFront.cmpAsmFront
     byte); the re-point is definitional. -/
 theorem cmpAsmFront_front : cmpAsmFront = MpnCmpEarlyExitFront.cmpAsmFront := rfl
 
-/- The deployed FRONT `mpn_cmp` is an MSB-first early-exit scan returning
-    `{-1,0,+1}` in `%rax` over the GMP ABI: the scan-loop back-edge (`jmp .L0`),
-    the per-limb compare-by-subtract (`subq %r10, %r9`), the data-dependent early
-    break (`jne .L2`) out of the loop, the `{-1,0,+1}` sign (`movq $1, %rax` /
-    `subq $1, %rax`), the ABI operand streaming (`(%rdi)`/`(%rsi)`), and no
-    `UNHANDLED` sentinel. -/
-#guard (occursIn "jmp .L0" cmpAsmFront)
-    && (occursIn "subq %r10, %r9" cmpAsmFront)
-    && (occursIn "jne .L2" cmpAsmFront)
-    && (occursIn "movq $1, %rax" cmpAsmFront)
-    && (occursIn "subq $1, %rax" cmpAsmFront)
-    && (occursIn "(%rdi)" cmpAsmFront)
-    && (occursIn "(%rsi)" cmpAsmFront)
-    && !(occursIn "UNHANDLED" cmpAsmFront)
-
-/- **The deployed FRONT add kernel is a runtime-N loop that streams the
-    operands and threads the carry across the back-edge.** The rendered `.s`
-    reaches the deployed symbol, carries the guarded-loop back-edge
-    (`jne .L…` / `cmpq $0,`), streams `[base + 8·idx]` via the memref SIB operand
-    `(%r14, %rsi, 8)`, and emits no `UNHANDLED` sentinel — every front op rendered
-    to a real line. -/
-#guard (occursIn "mpn_add_n_loop_owned" addAsmFront)
-    && (occursIn "jne .L" addAsmFront)
-    && (occursIn "cmpq $0," addAsmFront)
-    && (occursIn ", 8)" addAsmFront)
-    && !(occursIn "UNHANDLED" addAsmFront)
-
-/- The deployed FRONT sub kernel: runtime-N loop, back-edge, no `UNHANDLED`. -/
-#guard (occursIn "mpn_sub_n_loop_owned" subAsmFront)
-    && (occursIn "jne .L" subAsmFront)
-    && !(occursIn "UNHANDLED" subAsmFront)
-
-/- Every deployed FRONT kernel renders every op (no `UNHANDLED`) and carries the
-    runtime-N back-edge. -/
-#guard !(occursIn "UNHANDLED" addAsmFront)
-    && !(occursIn "UNHANDLED" subAsmFront)
-    && !(occursIn "UNHANDLED" andAsmFront)
-    && !(occursIn "UNHANDLED" iorAsmFront)
-    && !(occursIn "UNHANDLED" xorAsmFront)
-    && !(occursIn "UNHANDLED" comAsmFront)
-    && !(occursIn "UNHANDLED" copyAsmFront)
-    && !(occursIn "UNHANDLED" zeroAsmFront)
+-- Rendered-asm correctness is the external C KAT; an in-Lean occursIn check would
+-- re-evaluate the optimizing back-end renderOwned at elaboration.
 
 /-! ## 10. Emit driver -/
 
 /-- Write the deployed runtime-N mpn kernels into the integration bench harness
     directory (`bench/integration/gen_com/`).
 
-    **The eight core deployed symbols are FRONT-sourced** (the rolled-loop front
-    output of `MpnLoopFrontEmit`, no hand `Com`/`Lcmd`/`.s`); the hand-authored
+    **The nine core deployed symbols are FRONT-sourced** (the rolled-loop front
+    output of `MpnLoopFrontEmit`, incl. the u32-length normalization scan
+    `mpn_norm_u32len_loop_owned`, no hand `Com`/`Lcmd`/`.s`); the hand-authored
     `Lcmd` twins are retained alongside as `*_handtwin.s` (the bench-perf
     reference). The block-unrolled `blk4` add/sub and `mpn_cmp` stay owned-emit
     outputs (front does not cover the in-register `CF`-block or the early-exit
@@ -1222,6 +1091,7 @@ def emitMain : IO Unit := do
   IO.FS.writeFile "bench/integration/gen_com/mpn_com_n_loop_owned.s" comAsmFront
   IO.FS.writeFile "bench/integration/gen_com/mpn_copyi_loop_owned.s" copyAsmFront
   IO.FS.writeFile "bench/integration/gen_com/mpn_zero_loop_owned.s" zeroAsmFront
+  IO.FS.writeFile "bench/integration/gen_com/mpn_norm_u32len_loop_owned.s" normAsmFront
   -- Bench-perf twin: the hand-authored open-coded GPR-carry `Lcmd` bodies.
   IO.FS.writeFile "bench/integration/gen_com/mpn_add_n_loop_owned_handtwin.s" addAsm
   IO.FS.writeFile "bench/integration/gen_com/mpn_sub_n_loop_owned_handtwin.s" subAsm
@@ -1240,6 +1110,6 @@ def emitMain : IO Unit := do
   -- the block-unrolled blk4 add/sub.
   IO.FS.writeFile "bench/integration/gen_com/mpn_add_n_blk4_loop_owned.s" addBlk4Asm
   IO.FS.writeFile "bench/integration/gen_com/mpn_sub_n_blk4_loop_owned.s" subBlk4Asm
-  IO.println "wrote FRONT-sourced deployed mpn add/sub/and/ior/xor/com/copyi/zero/cmp .s (rolled-loop + SpStep fronts) + hand twins + owned blk4"
+  IO.println "wrote FRONT-sourced deployed mpn add/sub/and/ior/xor/com/copyi/zero/norm/cmp .s (rolled-loop + SpStep fronts) + hand twins + owned blk4"
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopEmit

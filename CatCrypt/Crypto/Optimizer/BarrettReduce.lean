@@ -95,7 +95,6 @@ def barrettReduce (q : Nat) : LowCT → LowCT
   | .RForRuntime x b body => .RForRuntime x b (barrettReduce q body)
   | .RLimbStore loc idx v => .RLimbStore loc idx v
   | .RLimbStoreExpr loc idx e => .RLimbStoreExpr loc idx e
-  | .RAsmOp name dests args => .RAsmOp name dests args
   | .RCallN f dests args => .RCallN f dests args
   | .RSelect dst sel s0 s1 => .RSelect dst sel s0 s1
   | .RAssert label => .RAssert label
@@ -103,12 +102,10 @@ def barrettReduce (q : Nat) : LowCT → LowCT
   | .RFnDef name params returns body cont =>
       .RFnDef name params returns (barrettReduce q body) (barrettReduce q cont)
   | .RFnCall f dests args => .RFnCall f dests args
-  | .RTupleStore dst idx src => .RTupleStore dst idx src
   | .RTupleLoad dst src idx => .RTupleLoad dst src idx
   | .RArrStore arr idxVar src => .RArrStore arr idxVar src
   | .RArrLoad dst src idxVar => .RArrLoad dst src idxVar
   | .RScalarSetExpr x e => .RScalarSetExpr x e
-  | .RBytesSlice dst src start len => .RBytesSlice dst src start len
   | .RArrStoreLit arr idx src => .RArrStoreLit arr idx src
   | .RArrLoadLit dst src idx => .RArrLoadLit dst src idx
   | .RCallDstThreaded f dst args =>
@@ -304,12 +301,10 @@ theorem barrettReduce_denote_forward
   | limbStoreExpr loc idx e rs oldDestV hLookup =>
       simpa [barrettReduce] using
         RustExec.limbStoreExpr loc idx e rs oldDestV hLookup
-  | asmOp name dests args rs =>
+  | callN f dests args rs argList hArg hArgsBound hDestsBound =>
       simpa [barrettReduce] using
-        RustExec.asmOp (N := N) (leafSpec := leafSpec) name dests args rs
-  | callN f dests args rs =>
-      simpa [barrettReduce] using
-        RustExec.callN (N := N) (leafSpec := leafSpec) f dests args rs
+        RustExec.callN (N := N) (leafSpec := leafSpec) f dests args rs argList
+          hArg hArgsBound hDestsBound
   | selectFalse dst sel src0 src1 rs h srcV hsel hLookup =>
       simpa [barrettReduce] using
         RustExec.selectFalse (N := N) (leafSpec := leafSpec)
@@ -323,15 +318,6 @@ theorem barrettReduce_denote_forward
         RustExec.assert (N := N) (leafSpec := leafSpec) label rs
   | block body rs rs' _ ih =>
       simpa [barrettReduce] using RustExec.block _ rs rs' ih
-  | fnDef name params returns body cont rs rs' _ ih =>
-      simpa [barrettReduce] using
-        RustExec.fnDef name params returns (barrettReduce q body) _ rs rs' ih
-  | fnCall f dests args rs =>
-      simpa [barrettReduce] using
-        RustExec.fnCall (N := N) (leafSpec := leafSpec) f dests args rs
-  | tupleStore dst idx src rs oldV srcV hDst hSrc =>
-      simpa [barrettReduce] using
-        RustExec.tupleStore dst idx src rs oldV srcV hDst hSrc
   | tupleLoad dst src idx rs oldV srcV hDst hSrc =>
       simpa [barrettReduce] using
         RustExec.tupleLoad dst src idx rs oldV srcV hDst hSrc
@@ -344,9 +330,6 @@ theorem barrettReduce_denote_forward
   | scalarSetExpr x e rs =>
       simpa [barrettReduce] using
         RustExec.scalarSetExpr (N := N) (leafSpec := leafSpec) x e rs
-  | bytesSlice dst src start len rs oldV srcV hDst hSrc =>
-      simpa [barrettReduce] using
-        RustExec.bytesSlice dst src start len rs oldV srcV hDst hSrc
   | arrStoreLit arr idx src rs oldV srcV hArr hSrc =>
       simpa [barrettReduce] using
         RustExec.arrStoreLit arr idx src rs oldV srcV hArr hSrc
@@ -396,6 +379,40 @@ is structure-preserving up to call-name substitution; on each
 constructor `cases h` exposes the same derivation shape on the
 original command, modulo the per-leaf agreement at `RCall`/`RCallSwap`/
 `RCloneCall`. -/
+
+/-- Reversal along the `RFor` spine: when every `RustExec` of `body'` lifts to
+    one of `body`, every `RustExec` of `RFor x n body'` lifts to one of
+    `RFor x n body`.
+
+    The command is carried as a variable `c0` with a defining equation so that
+    the induction on the derivation has a uniform motive, and the trip count
+    `n0` is quantified inside that motive so the `forSucc` step can specialise
+    it to the shorter count.  Every `RustExec` rule is listed: the rules other
+    than `forZero`/`forSucc` are at commands whose head constructor is not
+    `RFor`, so the defining equation refutes them, and listing them makes a
+    change to the rule set a build error. -/
+private theorem rfor_spine_reverse {N : Nat} {leafSpec : LeafSpec}
+    {x : String} {body body' : LowCT}
+    (ih : ∀ (rs rs' : RustState),
+      RustExec N leafSpec body' rs rs' → RustExec N leafSpec body rs rs') :
+    ∀ (c0 : LowCT) (rs0 rs0' : RustState),
+      RustExec N leafSpec c0 rs0 rs0' →
+      ∀ (n0 : Nat), c0 = .RFor x n0 body' →
+      RustExec N leafSpec (.RFor x n0 body) rs0 rs0' := by
+  intro c0 rs0 rs0' h0
+  induction h0 with
+  | forZero x' b rs =>
+      intro n0 hEq; cases hEq; exact RustExec.forZero x body rs
+  | forSucc x' k b rs r1 rs' _ hBody ihInner _ =>
+      intro n0 hEq
+      cases hEq
+      exact RustExec.forSucc x k body rs r1 rs' (ihInner k rfl) (ih _ _ hBody)
+  | skip | seq | letZero | letU64Zero | scalarSet | ifTrue | ifFalse
+  | whileFalse | whileTrue | forRuntime | call | cloneCall | callSwap
+  | limbStore | limbStoreExpr | callN | selectFalse | selectTrue
+  | assert | block | tupleLoad | arrStore
+  | arrLoad | arrStoreLit | arrLoadLit | scalarSetExpr
+  | callDstThreaded => intro n0 hEq; cases hEq
 
 /-- Reverse direction: any `RustExec` of the rewritten command lifts
     to one on the source command. -/
@@ -543,54 +560,32 @@ theorem barrettReduce_denote_reverse
             cases hEq
             exact RustExec.whileTrue cond body rs r1 rs' v hv hne
               (ih hBody) (ihRest rfl)
-        | _ => intro hEq; cases hEq
+        -- The remaining rules are at commands whose head constructor is not
+        -- `RWhileNz`, so the defining equation refutes them.  They are listed
+        -- rather than matched by `_` so that a change to the rule set is a
+        -- build error.
+        | skip | seq | letZero | letU64Zero | scalarSet | ifTrue | ifFalse
+        | forZero | forSucc | forRuntime | call | cloneCall | callSwap
+        | limbStore | limbStoreExpr | callN | selectFalse | selectTrue
+        | assert | block | tupleLoad | arrStore
+        | arrLoad | arrStoreLit | arrLoadLit | scalarSetExpr
+        | callDstThreaded => intro hEq; cases hEq
       exact aux _ rs rs' h rfl
   | RFor x n body ih =>
       intro rs rs' h
       simp only [barrettReduce] at h
-      -- Strengthen the auxiliary so that the loop count `n0` is
-      -- universally quantified *inside* the induction motive (not
-      -- introduced before), so the recursive `forSucc` IH can be
-      -- specialised to the shorter count `k`.
-      have aux : ∀ (c0 : LowCT) (rs0 rs0' : RustState),
-          RustExec N leafSpec c0 rs0 rs0' →
-          ∀ (n0 : Nat), c0 = .RFor x n0 (barrettReduce q body) →
-          RustExec N leafSpec (.RFor x n0 body) rs0 rs0' := by
-        intro c0 rs0 rs0' h0
-        induction h0 with
-        | forZero x' b rs =>
-            intro n0 hEq; cases hEq; exact RustExec.forZero x body rs
-        | forSucc x' k b rs r1 rs' hInner hBody ihInner _ =>
-            intro n0 hEq
-            cases hEq
-            -- Outer match forces `n0 = k+1`, `x' = x`, `b = barrettReduce q body`.
-            -- Inner IH `ihInner` is applied at count `k`.
-            exact RustExec.forSucc x k body rs r1 rs'
-              (ihInner k rfl) (ih hBody)
-        | _ => intro n0 hEq; cases hEq
-      exact aux _ rs rs' h n rfl
+      exact rfor_spine_reverse (fun _ _ hb => ih hb) _ rs rs' h n rfl
   | RForRuntime x bnd body ih =>
       intro rs rs' h
       simp only [barrettReduce] at h
       -- Invert the runtime loop to its inner `RFor` at the entry trip count,
-      -- reverse that via the same RFor-spine aux, then rewrap with `forRuntime`.
+      -- reverse that along the `RFor` spine, then rewrap with `forRuntime`.
       cases h with
       | forRuntime _ _ _ _ _ hInner =>
-          have aux : ∀ (c0 : LowCT) (rs0 rs0' : RustState),
-              RustExec N leafSpec c0 rs0 rs0' →
-              ∀ (n0 : Nat), c0 = .RFor x n0 (barrettReduce q body) →
-              RustExec N leafSpec (.RFor x n0 body) rs0 rs0' := by
-            intro c0 rs0 rs0' h0
-            induction h0 with
-            | forZero x' b rs => intro n0 hEq; cases hEq; exact RustExec.forZero x body rs
-            | forSucc x' k b rs r1 rs' hInner2 hBody ihInner _ =>
-                intro n0 hEq; cases hEq
-                exact RustExec.forSucc x k body rs r1 rs' (ihInner k rfl) (ih hBody)
-            | _ => intro n0 hEq; cases hEq
-          exact RustExec.forRuntime x bnd body rs rs' (aux _ rs rs' hInner _ rfl)
+          exact RustExec.forRuntime x bnd body rs rs'
+            (rfor_spine_reverse (fun _ _ hb => ih hb) _ rs rs' hInner _ rfl)
   | RLimbStore loc idx v => intro rs rs' h; simpa [barrettReduce] using h
   | RLimbStoreExpr loc idx e => intro rs rs' h; simpa [barrettReduce] using h
-  | RAsmOp name dests args => intro rs rs' h; simpa [barrettReduce] using h
   | RCallN f dests args => intro rs rs' h; simpa [barrettReduce] using h
   | RSelect dst sel s0 s1 => intro rs rs' h; simpa [barrettReduce] using h
   | RAssert label => intro rs rs' h; simpa [barrettReduce] using h
@@ -599,19 +594,15 @@ theorem barrettReduce_denote_reverse
       simp only [barrettReduce] at h
       cases h with
       | block _ _ _ hBody => exact RustExec.block body rs rs' (ih hBody)
-  | RFnDef name params returns body cont ihBody ihCont =>
-      intro rs rs' h
+  | RFnDef _ _ _ _ _ _ _ =>
+      intro _ _ h
       simp only [barrettReduce] at h
-      cases h with
-      | fnDef _ _ _ _ _ _ _ hCont =>
-          exact RustExec.fnDef name params returns body cont rs rs' (ihCont hCont)
+      cases h
   | RFnCall f dests args => intro rs rs' h; simpa [barrettReduce] using h
-  | RTupleStore dst idx src => intro rs rs' h; simpa [barrettReduce] using h
   | RTupleLoad dst src idx => intro rs rs' h; simpa [barrettReduce] using h
   | RArrStore arr idxVar src => intro rs rs' h; simpa [barrettReduce] using h
   | RArrLoad dst src idxVar => intro rs rs' h; simpa [barrettReduce] using h
   | RScalarSetExpr x e => intro rs rs' h; simpa [barrettReduce] using h
-  | RBytesSlice dst src start len => intro rs rs' h; simpa [barrettReduce] using h
   | RArrStoreLit arr idx src => intro rs rs' h; simpa [barrettReduce] using h
   | RArrLoadLit dst src idx => intro rs rs' h; simpa [barrettReduce] using h
   | RCallDstThreaded f dst args =>

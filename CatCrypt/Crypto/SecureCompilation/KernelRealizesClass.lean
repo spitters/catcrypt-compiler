@@ -18,11 +18,9 @@ direction of a Trocq `Param` relation).  That file states the realizations as
 ordinary `Prop`s and composes them by hand (`pipe2_realizes`).
 
 This file promotes the **same** predicate to a **typeclass-resolved registry**,
-mirroring the ParamTransfer Trocq engine `Transfer.Base.Related`
-(https://github.com/spitters/ParamTransfer, imported by
-`Bridges/Transfer/CompilerRegistry.lean`) field-for-field:
+mirroring the in-repo Trocq engine `Bridges/Transfer/Related.lean` field-for-field:
 
-| Trocq (`Transfer.Base.Related`)   | here (kernel realization)             |
+| Trocq (`Related.lean`)            | here (kernel realization)             |
 |-----------------------------------|---------------------------------------|
 | `class Related enc a b`           | `class KernelRealizesC decode spec leaf leafSpec` |
 | `class RelatedBinOp enc op bop`   | `class KernelRealizes2C decode spec leaf leafSpec` (binary leaf) |
@@ -79,8 +77,7 @@ the genuinely large `.TPolyMod q n` carrier (`NttEmitRealizesP` /
   resolution finds the ML-KEM / ML-DSA NTT-multiply realizations automatically.
 
 ## References
-* `Transfer.Base.Related` — the template engine, from the ParamTransfer dependency
-  (https://github.com/spitters/ParamTransfer); `Bridges/Transfer/CompilerRegistry.lean` imports it.
+* `CatCrypt/Crypto/Bridges/Transfer/Related.lean` — the template engine.
 * NIST FIPS 203 (ML-KEM), FIPS 204 (ML-DSA).
 -/
 

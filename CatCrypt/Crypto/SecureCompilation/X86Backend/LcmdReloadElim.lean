@@ -239,54 +239,12 @@ counter, so deleting an instruction leaves every later state one program counter
 lower. `ArchAgree` is the state relation the deletion preserves: equality of the
 register map `lvm` and of memory `lmem`. -/
 
-/-- Two linear-machine states agree on the architectural component: the register
-    map and memory, ignoring the program counter. -/
-def ArchAgree {w : Nat} (s t : Lstate w) : Prop := s.lvm = t.lvm ∧ s.lmem = t.lmem
-
-theorem ArchAgree.refl {w : Nat} (s : Lstate w) : ArchAgree s s := ⟨rfl, rfl⟩
-
-theorem ArchAgree.symm {w : Nat} {s t : Lstate w} (h : ArchAgree s t) : ArchAgree t s :=
-  ⟨h.1.symm, h.2.symm⟩
-
-theorem ArchAgree.trans {w : Nat} {s t u : Lstate w} (h₁ : ArchAgree s t)
-    (h₂ : ArchAgree t u) : ArchAgree s u := ⟨h₁.1.trans h₂.1, h₁.2.trans h₂.2⟩
-
-/-- `ArchAgree` lifted to the `Option` results of `lsemStraight`. -/
-def ArchAgreeOpt {w : Nat} : Option (Lstate w) → Option (Lstate w) → Prop
-  | none, none => True
-  | some s, some t => ArchAgree s t
-  | _, _ => False
-
-@[simp] theorem archAgreeOpt_none_none {w : Nat} :
-    ArchAgreeOpt (w := w) none none = True := rfl
-
-@[simp] theorem archAgreeOpt_some_some {w : Nat} (s t : Lstate w) :
-    ArchAgreeOpt (some s) (some t) = ArchAgree s t := rfl
-
-@[simp] theorem archAgreeOpt_none_some {w : Nat} (t : Lstate w) :
-    ArchAgreeOpt none (some t) = False := rfl
-
-@[simp] theorem archAgreeOpt_some_none {w : Nat} (s : Lstate w) :
-    ArchAgreeOpt (some s) none = False := rfl
-
-theorem ArchAgreeOpt.refl {w : Nat} (o : Option (Lstate w)) : ArchAgreeOpt o o := by
-  cases o <;> simp [ArchAgree.refl]
-
-theorem ArchAgreeOpt.trans {w : Nat} {a b c : Option (Lstate w)}
-    (h₁ : ArchAgreeOpt a b) (h₂ : ArchAgreeOpt b c) : ArchAgreeOpt a c := by
-  cases a with
-  | none =>
-    cases b with
-    | none => cases c with
-      | none => trivial
-      | some _ => exact (h₂ : False).elim
-    | some _ => exact (h₁ : False).elim
-  | some x =>
-    cases b with
-    | none => exact (h₁ : False).elim
-    | some y => cases c with
-      | none => exact (h₂ : False).elim
-      | some z => exact ArchAgree.trans h₁ h₂
+export CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRobust
+  (ArchAgree ArchAgree.refl ArchAgree.symm ArchAgree.trans
+   ArchAgreeOpt ArchAgreeOpt.refl ArchAgreeOpt.trans
+   archAgreeOpt_none_none archAgreeOpt_some_some
+   archAgreeOpt_none_some archAgreeOpt_some_none
+   lsemStep_archAgree)
 
 /-! `lsemStraight` peeling, as equations rather than a `match` — the form the
 deletion proofs rewrite with. -/
@@ -306,44 +264,6 @@ theorem lvm_setReg_self {w : Nat} (s : Lstate w) (r : String) :
     (s.setReg r (s.lvm r)).lvm = s.lvm := by
   funext r'
   by_cases h : r' = r <;> simp [Lstate.setReg, h]
-
-/-- `lsemStep` reads only the register map and memory and writes only the
-    register map and the program counter, so it maps `ArchAgree` states to
-    `ArchAgree` results. -/
-theorem lsemStep_archAgree {w : Nat} (i : LinstrR) {s t : Lstate w} (h : ArchAgree s t) :
-    ArchAgreeOpt (lsemStep i s) (lsemStep i t) := by
-  obtain ⟨hv, hm⟩ := h
-  have hop : ∀ o : LOperand, evalOperand s o = evalOperand t o := by
-    intro o; cases o <;> simp [evalOperand, hv, hm]
-  cases i with
-  | Lopn dsts opn srcs =>
-    cases dsts with
-    | nil => simp [lsemStep, ArchAgreeOpt]
-    | cons d ds =>
-      cases ds with
-      | cons _ _ => simp [lsemStep, ArchAgreeOpt]
-      | nil =>
-        cases d with
-        | imm _ => simp [lsemStep, ArchAgreeOpt]
-        | arr _ _ => simp [lsemStep, ArchAgreeOpt]
-        | arrIdx _ _ _ => simp [lsemStep, ArchAgreeOpt]
-        | reg dst =>
-          have hsrc : srcs.map (evalOperand s) = srcs.map (evalOperand t) :=
-            List.map_congr_left fun o _ => hop o
-          simp only [lsemStep, hsrc]
-          cases happ : applyOpn (w := w) (stripWidthTag opn) (srcs.map (evalOperand t)) with
-          | none => simp [ArchAgreeOpt]
-          | some v =>
-            simp [ArchAgreeOpt, ArchAgree, Lstate.nextPc, Lstate.setReg, hv, hm]
-  | Lsyscall _ => simp [lsemStep, ArchAgreeOpt]
-  | Lcall _ _ => simp [lsemStep, ArchAgreeOpt]
-  | Lret => simp [lsemStep, ArchAgreeOpt]
-  | Lalign => simp [lsemStep, ArchAgreeOpt, ArchAgree, Lstate.nextPc, hv, hm]
-  | Llabel _ _ => simp [lsemStep, ArchAgreeOpt, ArchAgree, Lstate.nextPc, hv, hm]
-  | Lgoto _ => simp [lsemStep, ArchAgreeOpt]
-  | Ligoto _ => simp [lsemStep, ArchAgreeOpt]
-  | LstoreLabel _ _ => simp [lsemStep, ArchAgreeOpt]
-  | Lcond _ _ => simp [lsemStep, ArchAgreeOpt]
 
 /-- `lsemStraight` maps `ArchAgree` start states to `ArchAgree` results. -/
 theorem lsemStraight_archAgree {w : Nat} (b : List LinstrR) {s t : Lstate w}

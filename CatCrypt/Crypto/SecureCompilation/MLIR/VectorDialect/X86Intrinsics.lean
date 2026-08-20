@@ -303,11 +303,10 @@ These pin down the semantics against canonical Intel SDM examples. They
 are not consumed by downstream proofs (downstream uses the definitions
 directly), but they catch sign-error / endianness bugs early. -/
 
-/-- 0 ^^^ 0 = 0. -/
-example : vpxor_128 0#128 0#128 = 0#128 := by native_decide
-
-/-- 1 ^^^ 1 = 0. -/
-example : vpxor_128 1#128 1#128 = 0#128 := by native_decide
+-- 0 ^^^ 0 = 0.
+#guard vpxor_128 0#128 0#128 == 0#128
+-- 1 ^^^ 1 = 0.
+#guard vpxor_128 1#128 1#128 == 0#128
 
 /-- Shifting by 16 bytes yields zero. -/
 example : vpsrldq_128 0xFFFFFFFFFFFFFFFF_FFFFFFFFFFFFFFFF#128 16 = 0#128 := by
@@ -318,40 +317,32 @@ example (src : BitVec 128) : vpsrldq_128 src 0 = src := by
   unfold vpsrldq_128
   simp
 
-/-- VPCMPEQ on equal inputs gives all-ones. -/
-example : vpcmpeq_32u8_256 0#256 0#256 =
-    0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF#256 := by
-  native_decide
+-- VPCMPEQ on equal inputs gives all-ones.
+#guard vpcmpeq_32u8_256 0#256 0#256 ==
+    0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF#256
+-- VPCMPEQ on inputs differing in byte 0 gives all-ones in bytes 1..31
+-- (since those bytes are still equal — both zero). Byte 0 is 0x00.
+#guard vpcmpeq_32u8_256 0#256 1#256 ==
+    0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00#256
 
-/-- VPCMPEQ on inputs differing in byte 0 gives all-ones in bytes 1..31
-    (since those bytes are still equal — both zero). Byte 0 is 0x00. -/
-example : vpcmpeq_32u8_256 0#256 1#256 =
-    0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00#256 := by
-  native_decide
+-- VPSUB on (x, x) gives zero.
+#guard vpsub_32u8_256 0#256 0#256 == 0#256
+-- Broadcast 0 to all 4 lanes is 0.
+#guard vpbroadcast_4u64_256 0#128 == 0#256
+-- VPADDQ on zero is zero.
+#guard vpaddq_128 0#128 0#128 == 0#128
+-- VPEXTR_8 on zero is zero.
+#guard vpextr_8 0#128 0 == 0#8
+-- VEXTRACTI128 of zero is zero.
+#guard vextracti128 0#256 0 == 0#128
+#guard vextracti128 0#256 1 == 0#128
+-- VGF2P8MULB on zero is zero.
+#guard vgf2p8mulb_128 0#128 0#128 == 0#128
 
-/-- VPSUB on (x, x) gives zero. -/
-example : vpsub_32u8_256 0#256 0#256 = 0#256 := by native_decide
-
-/-- Broadcast 0 to all 4 lanes is 0. -/
-example : vpbroadcast_4u64_256 0#128 = 0#256 := by native_decide
-
-/-- VPADDQ on zero is zero. -/
-example : vpaddq_128 0#128 0#128 = 0#128 := by native_decide
-
-/-- VPEXTR_8 on zero is zero. -/
-example : vpextr_8 0#128 0 = 0#8 := by native_decide
-
-/-- VEXTRACTI128 of zero is zero. -/
-example : vextracti128 0#256 0 = 0#128 := by native_decide
-example : vextracti128 0#256 1 = 0#128 := by native_decide
-
-/-- VGF2P8MULB on zero is zero. -/
-example : vgf2p8mulb_128 0#128 0#128 = 0#128 := by native_decide
-
-/-- VGF2P8MULB by one is identity (byte-wise). -/
-example : vgf2p8mulb_128 0x0101010101010101_0101010101010101#128
-    0x0101010101010101_0101010101010101#128 =
-    0x0101010101010101_0101010101010101#128 := by native_decide
+-- VGF2P8MULB by one is identity (byte-wise).
+#guard vgf2p8mulb_128 0x0101010101010101_0101010101010101#128
+    0x0101010101010101_0101010101010101#128 ==
+    0x0101010101010101_0101010101010101#128
 
 /-! ## §13. Intrinsic count summary
 

@@ -8,15 +8,16 @@ import Mathlib.Tactic.FinCases
 import Mathlib.Tactic.IntervalCases
 
 /-!
-# Axiomatic functional contract for `bignum_montmul_p25519`
+# Functional contract for `bignum_montmul_p25519` (hypothesis structure)
 
 Bridges the per-Ccall semantic gap in `bignumExecFuel`'s registry-
 based callee dispatch.  Each `Ccall bignum_montmul_p25519 [op, a, b]`
 writes 4 limbs at `op` holding `(a · b) mod p_25519` — this file
-axiomatises that contract, citing s2n-bignum's machine-verified
+states that contract as the `MontmulCallFacts` hypothesis structure
+over one named `BignumRegistry`, citing s2n-bignum's machine-verified
 proof of `bignum_montmul_p25519`.
 
-## Why axiomatize
+## Why a per-registry contract
 
 `bignumExecFuel`'s Ccall semantics dispatches to a callee `FunDecl`
 in a `BignumRegistry`.  Walking through the callee's full body
@@ -28,8 +29,21 @@ computes**, not how it computes it.
 s2n-bignum (the upstream) proves `bignum_montmul_p25519`'s
 correctness against the abstract Montgomery-multiplication
 specification at the assembly level.  The CatCrypt verified
-pipeline cites this via `jasminc_preserves_uc` for UC bounds; we
-add a parallel functional axiom for chain-level correctness.
+pipeline cites this via `jasminc_preserves_uc` for UC bounds;
+`MontmulCallFacts` is the parallel functional contract for
+chain-level correctness.
+
+The contract cannot be an axiom over every `BignumRegistry`: a
+registry maps the montmul name to an arbitrary `FunDecl`, and
+`bignumExecFuel` runs that body, so a claim about every registry is a
+claim about every body.  A ∀-registry form with an unconstrained
+argument list is in fact refutable outright — two register aliasings
+of one call on one state force conflicting postconditions on the same
+deterministic run (`Option.some.inj` equates the two final states,
+`decide` separates the two claimed outputs).  The trust is therefore
+declared per registry, as an explicit hypothesis in the
+`X25519LeafCallFacts` pattern
+(`CatCrypt/Crypto/KeyAgreement/X25519/BedrockX25519.lean`).
 
 ## The contract
 
@@ -38,19 +52,22 @@ add a parallel functional axiom for chain-level correctness.
 ∧ memNat4 a_addr m = some a_val
 ∧ memNat4 b_addr m = some b_val
 ∧ output range allocated at op_addr }
-  Ccall bignum_montmul_p25519 [op, a, b]
+  Ccall bignum_montmul_p25519 [Pvar op_reg, Pvar a_reg, Pvar b_reg]
 { memNat4 op_addr m' = some ((a_val * b_val) % p25519) ∧
   m' agrees with m outside [op_addr, op_addr+32) }
 ```
 
 ## Trust set delta
 
-This file adds **one new axiom** (`montmul_call_correct`).  The
-axiom is discharged by s2n-bignum's machine-verified proof of
-`bignum_montmul_p25519` (per the s2n-bignum codebase's HOL Light
-proofs).  Once a Lean port of s2n-bignum's HOL Light proofs lands
-(or once the CatCrypt pipeline's Jasmin compiler verifies montmul
-through its own pathway), the axiom can be discharged.
+This file declares **0 axioms**.  The contract is the single field of
+the `MontmulCallFacts` hypothesis structure, backed by s2n-bignum's
+machine-verified proof of `bignum_montmul_p25519` (per the s2n-bignum
+codebase's HOL Light proofs).  Consumers (`ChainStepAxioms`,
+`InvP25519Composition`, `PowP58Composition`) take the structure as an
+explicit hypothesis; once a Lean port of s2n-bignum's HOL Light
+proofs lands (or once the CatCrypt pipeline's Jasmin compiler
+verifies montmul through its own pathway), the hypothesis can be
+discharged for the concrete registry.
 -/
 
 set_option autoImplicit false
@@ -228,7 +245,7 @@ theorem memNat4_imp_byte_alloc
         rw [← addr_combine 24 (k - 24) (by omega) (by omega)]
         exact hb
 
-/-! ## §2  Functional contract axiom
+/-! ## §2  Functional contract (per-registry hypothesis structure)
 
 Captures the post-state of a single `bignum_montmul_p25519` Ccall.
 The pre-state must have:
@@ -242,57 +259,67 @@ The post-state has:
 - All other memory unchanged (frame condition).
 -/
 
-/-- **Axiom: `bignum_montmul_p25519` is a verified Montgomery
-    multiplication mod p_25519.**
+/-- **`bignum_montmul_p25519` is a verified Montgomery multiplication
+    mod p_25519** — the per-call functional contract, declared of one
+    named `registry` (the `X25519LeafCallFacts` hypothesis-structure
+    pattern; backed by s2n-bignum's machine-verified HOL Light proof of
+    `bignum_montmul_p25519`).
 
-    For any registry containing `bignum_montmul_p25519`, the Ccall
-    on three address-bearing registers writes the product mod p_25519
-    at the first argument's address. -/
-axiom montmul_call_correct
-    (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
-    (s : BignumState) (fuel : Nat)
-    (op_reg a_reg b_reg : String)
-    (op_addr a_addr b_addr : UInt64)
-    (a_val b_val : Nat)
-    (h_op : s.regs op_reg = BitVec.ofNat 64 op_addr.toNat)
-    (h_a  : s.regs a_reg  = BitVec.ofNat 64 a_addr.toNat)
-    (h_b  : s.regs b_reg  = BitVec.ofNat 64 b_addr.toNat)
-    (h_a_mem : memNat4 a_addr s.mem = some a_val)
-    (h_b_mem : memNat4 b_addr s.mem = some b_val)
-    -- Output range allocated:
-    (_h_op_alloc : ∀ k : Fin 32,
-      ∃ b, s.mem.loadByte (op_addr + UInt64.ofNat k.val) = some b)
-    -- The three Ccall argument list shape:
-    (call_instr : InstrR)
-    (h_call_shape : ∃ ii lvs args,
-      call_instr = .Ccall ii lvs ⟨"bignum_montmul_p25519"⟩ args
-      ∧ args.length = 3) :
-    ∃ s' : BignumState,
-      bignumExecFuel registry (fuel + 1) [call_instr] s = some s' ∧
-      memNat4 op_addr s'.mem = some ((a_val * b_val) % p_25519) ∧
-      -- Frame condition: bytes outside the 32-byte output window
-      -- at `op_addr` are unchanged.
-      (∀ addr : UInt64,
-        ¬ MemoryModel.range op_addr 32 addr →
-        s'.mem.loadByte addr = s.mem.loadByte addr) ∧
-      -- Output range alloc preserved: `op_addr` is still 32-byte loadable
-      -- (the call OVERWRITES the 32 bytes with new values, never frees).
+    The call shape pins the instruction to a void call (`lvs = []`)
+    whose three arguments are `Pvar`s naming exactly the three
+    hypothesis registers, so the addresses the contract speaks about
+    are the addresses the call passes (`evalPExpr` on a `Pvar` reads
+    `gv.gv.var.vname` and nothing else).  A form quantified over every
+    `BignumRegistry`, with the argument list constrained only in
+    length, is refutable: the register names are then free, and two
+    aliasings of one call on one state force conflicting postconditions
+    on the same deterministic run. -/
+structure MontmulCallFacts (registry : BignumRegistry) : Prop where
+  call_correct :
+    ∀ (s : BignumState) (fuel : Nat)
+      (op_reg a_reg b_reg : String)
+      (op_addr a_addr b_addr : UInt64)
+      (a_val b_val : Nat),
+      s.regs op_reg = BitVec.ofNat 64 op_addr.toNat →
+      s.regs a_reg  = BitVec.ofNat 64 a_addr.toNat →
+      s.regs b_reg  = BitVec.ofNat 64 b_addr.toNat →
+      memNat4 a_addr s.mem = some a_val →
+      memNat4 b_addr s.mem = some b_val →
+      -- Output range allocated:
       (∀ k : Fin 32,
-        ∃ b, s'.mem.loadByte (op_addr + UInt64.ofNat k.val) = some b)
+        ∃ b, s.mem.loadByte (op_addr + UInt64.ofNat k.val) = some b) →
+      ∀ call_instr : InstrR,
+      -- The Ccall shape: void return, three register arguments naming
+      -- exactly the hypothesis registers.
+      (∃ (ii : InlineInfo) (op_v a_v b_v : GVar),
+        call_instr = .Ccall ii [] ⟨"bignum_montmul_p25519"⟩
+          [.Pvar op_v, .Pvar a_v, .Pvar b_v]
+        ∧ op_v.gv.var.vname = op_reg
+        ∧ a_v.gv.var.vname = a_reg
+        ∧ b_v.gv.var.vname = b_reg) →
+      ∃ s' : BignumState,
+        bignumExecFuel registry (fuel + 1) [call_instr] s = some s' ∧
+        memNat4 op_addr s'.mem = some ((a_val * b_val) % p_25519) ∧
+        -- Frame condition: bytes outside the 32-byte output window
+        -- at `op_addr` are unchanged.
+        (∀ addr : UInt64,
+          ¬ MemoryModel.range op_addr 32 addr →
+          s'.mem.loadByte addr = s.mem.loadByte addr) ∧
+        -- Output range alloc preserved: `op_addr` is still 32-byte loadable
+        -- (the call OVERWRITES the 32 bytes with new values, never frees).
+        (∀ k : Fin 32,
+          ∃ b, s'.mem.loadByte (op_addr + UInt64.ofNat k.val) = some b)
 
 /-! ## §3  Specialised forms for squaring
 
 A squaring Ccall has `a = b`, producing `a²` mod p_25519. -/
 
-/-- Squaring specialisation of the montmul axiom: same setup but
+/-- Squaring specialisation of the montmul contract: same setup but
     with the second and third argument registers being the same.
-    Inherits the frame condition from `montmul_call_correct`. -/
+    Inherits the frame condition from `MontmulCallFacts.call_correct`. -/
 theorem montmul_call_squaring
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (s : BignumState) (fuel : Nat)
     (op_reg a_reg : String)
     (op_addr a_addr : UInt64)
@@ -303,9 +330,12 @@ theorem montmul_call_squaring
     (h_op_alloc : ∀ k : Fin 32,
       ∃ b, s.mem.loadByte (op_addr + UInt64.ofNat k.val) = some b)
     (call_instr : InstrR)
-    (h_call_shape : ∃ ii lvs args,
-      call_instr = .Ccall ii lvs ⟨"bignum_montmul_p25519"⟩ args
-      ∧ args.length = 3) :
+    (h_call_shape : ∃ (ii : InlineInfo) (op_v a_v b_v : GVar),
+      call_instr = .Ccall ii [] ⟨"bignum_montmul_p25519"⟩
+        [.Pvar op_v, .Pvar a_v, .Pvar b_v]
+      ∧ op_v.gv.var.vname = op_reg
+      ∧ a_v.gv.var.vname = a_reg
+      ∧ b_v.gv.var.vname = a_reg) :
     ∃ s' : BignumState,
       bignumExecFuel registry (fuel + 1) [call_instr] s = some s' ∧
       memNat4 op_addr s'.mem = some ((a_val * a_val) % p_25519) ∧
@@ -314,7 +344,7 @@ theorem montmul_call_squaring
         s'.mem.loadByte addr = s.mem.loadByte addr) ∧
       (∀ k : Fin 32,
         ∃ b, s'.mem.loadByte (op_addr + UInt64.ofNat k.val) = some b) :=
-  montmul_call_correct registry h_registry s fuel
+  hAx.call_correct s fuel
     op_reg a_reg a_reg op_addr a_addr a_addr a_val a_val
     h_op h_a h_a h_a_mem h_a_mem h_op_alloc call_instr h_call_shape
 

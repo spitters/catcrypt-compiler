@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRolledLoop
 
 set_option autoImplicit false
 
@@ -18,11 +19,11 @@ set_option autoImplicit false
 translation, so a `.RFor x N body` becomes `N` copies of `body` in the straight
 line (e.g. 255× for the X25519 ladder — a huge `.s`).
 
-This module wires the **rolled** alternative as a genuine `RFor` lowering: a
+This module wires the **rolled** alternative as an `RFor` lowering: a
 `.RFor x N body` node lowers to a single `ComL.forLoopN` back-edge over ONE copy
 of the front-compiled body (one body copy, seeded `MOV Lctr, #N`, `jne .L<d>`
-back-edge, rendered size independent of `N`), and its denotation is the genuine
-`N`-fold iterate of the body's step.
+back-edge, rendered size independent of `N`), and its denotation is the `N`-fold
+iterate of the body's step.
 
 The rolled machinery is exactly the `ComL.forLoopN` node of `JasminLprogExport`
 (the loop-carrying extension of `Com jasminDialect`) whose `ComL.denote` on a
@@ -30,7 +31,8 @@ The rolled machinery is exactly the `ComL.forLoopN` node of `JasminLprogExport`
 `Poseidon2RolledRenderBB.rolledReduce` / `TranslateDialectRolledLoop.rolledForLoopN`
 use. The front loop body is front-compiled through the already-verified
 `translateDialectControl` and lowered by `cryptoDialectToJasminCom`, capped with
-`ret accName` — the `frontLoopBodyCD`/`frontLoopBodyJ` shape.
+`ret accName` — the `TranslateDialectRolledLoop.frontLoopBodyCD`/`frontLoopBodyJ`
+shape, re-exported here.
 
 ## What this file delivers
 
@@ -42,7 +44,7 @@ use. The front loop body is front-compiled through the already-verified
   (`iterStep u invs 0 a = a`; `iterStep u invs (k+1) a = stepC u invs k
   (iterStep u invs k a)`). This is the "unroll the body `N` times, threading the
   trip index" value the rolled loop must realise. Because `stepC` feeds the trip
-  index into the body, this is a genuine *index-threaded* fold, not a plain
+  index into the body, this is an *index-threaded* fold, not a plain
   `Nat.iterate` of a fixed function (it collapses to `Nat.iterate` only when the
   body ignores its index binder).
 * `iterStep_eq_denote` — **the induction on the trip count**: the structural
@@ -96,80 +98,25 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
 open CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminCom (mapTy mapCtx)
 open CatCrypt.Crypto.Jasmin.LowCT (LowCT)
 
-/-! ## 1. The front loop-body compilation (covered fragment, capped with `ret acc`)
+/-! ## 1. The front loop-body compilation and the rolled `ComL.forLoopN` builder
 
-`frontLoopBodyCD`/`frontLoopBodyJ` mirror `TranslateDialectRolledLoop`: the loop
-body runs over `Γbody = accCTy :: .sword 64 :: invCTys` (accumulator, loop index,
-invariants); `translateDialectControl` front-compiles it and we cap with the
-(post-store) accumulator return `ret accName` — the value `JLoopBodyN.update`
-carries. `frontLoopBodyJ` lowers that to the `JLoopBodyN.update`-shaped
-`Com jasminDialect` via the verified `cryptoDialectToJasminCom`. -/
+The loop body runs over `Γbody = accCTy :: .sword 64 :: invCTys` (accumulator,
+loop index, invariants); `translateDialectControl` front-compiles it and the
+result is capped with the (post-store) accumulator return `ret accName` — the
+value `JLoopBodyN.update` carries. `frontLoopBodyJ` lowers that to the
+`JLoopBodyN.update`-shaped `Com jasminDialect` via the verified
+`cryptoDialectToJasminCom`, and `rolledForLoopN` wraps it in a
+`ComL.forLoopN ⟨N, update⟩ init invs (.ret .here)` node, whose `ComL.denote` is
+the `JLoopBodyN.denote` fold.
 
-/-- Front-compile a loop body over `Γbody`, capping with `ret accName`. -/
-def frontLoopBodyCD {Γbody : Ctx} {accCTy : CryptoTy}
-    (vmBody : VarMap Γbody) (accName : String) (body : LowCT) :
-    Option (Com catCryptDialect Γbody accCTy) :=
-  match translateDialectControl vmBody body with
-  | some r =>
-      match r.vm.lookup accName with
-      | some ⟨t, v⟩ =>
-          if h : t = accCTy then
-            r.cont (Com.ret (h ▸ toVIRVar v))
-          else none
-      | none => none
-  | none => none
+`TranslateDialectRolledLoop` owns all four; this module re-exports them under its
+own namespace so that `translateRolledRFor` and the `RFor` denotation theorems
+below read against a single definition. -/
 
-/-- Lower the front loop body to the `JLoopBodyN.update`-shaped `Com jasminDialect`. -/
-def frontLoopBodyJ {Γbody : Ctx} {accCTy : CryptoTy}
-    (vmBody : VarMap Γbody) (accName : String) (body : LowCT) :
-    Option (Com jasminDialect (mapCtx Γbody) (mapTy accCTy)) :=
-  match frontLoopBodyCD (accCTy := accCTy) vmBody accName body with
-  | some com => DialectToJasminCom.cryptoDialectToJasminCom com
-  | none => none
+export CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRolledLoop
+  (frontLoopBodyCD frontLoopBodyJ rolledForLoopN rolledForLoopN_denote)
 
-/-! ## 2. The rolled `ComL.forLoopN` builder and its fold denotation
-
-`mapCtx (accCTy :: .sword 64 :: invCTys)` reduces to
-`mapTy accCTy :: .reg 64 :: invCTys.map mapTy` definitionally, so the front body
-is a `JLoopBodyN.update` over `accTy := mapTy accCTy`,
-`invTys := invCTys.map mapTy`; we wrap it in `ComL.forLoopN ⟨N, update⟩ init invs
-(.ret .here)`. The `ComL.denote` of a `forLoopN` capped with `.ret .here` is the
-`JLoopBodyN.denote` fold (`rfl`). -/
-
-/-- Build a genuine rolled `ComL.forLoopN` from the front-compiled loop body:
-    ONE body copy + back-edge. `none` if the front declines. -/
-def rolledForLoopN {Γouter : Ctxt jasminDialect}
-    {accCTy : CryptoTy} {invCTys : Ctx}
-    (N : Nat) (vmBody : VarMap (accCTy :: .sword 64 :: invCTys)) (accName : String)
-    (body : LowCT)
-    (init : Ctxt.Var Γouter (mapTy accCTy))
-    (invs : HVector (fun ty => Ctxt.Var Γouter ty) (invCTys.map mapTy)) :
-    Option (ComL Γouter (mapTy accCTy)) :=
-  match frontLoopBodyJ (accCTy := accCTy) vmBody accName body with
-  | some update => some (ComL.forLoopN ⟨N, update⟩ init invs (.ret .here))
-  | none => none
-
-/-- **Loop-node denotation = `JLoopBodyN.denote` fold.** When the body
-    front-compiles to `update`, the rolled `ComL.forLoopN` denotes to the `N`-fold
-    `JLoopBodyN.denote` of `update`, seeded by `init` and threading `invs`.
-    Structural (`ComL.denote` on `forLoopN`). -/
-theorem rolledForLoopN_denote {Γouter : Ctxt jasminDialect}
-    {accCTy : CryptoTy} {invCTys : Ctx}
-    (N : Nat) (vmBody : VarMap (accCTy :: .sword 64 :: invCTys)) (accName : String)
-    (body : LowCT)
-    (init : Ctxt.Var Γouter (mapTy accCTy))
-    (invs : HVector (fun ty => Ctxt.Var Γouter ty) (invCTys.map mapTy))
-    {update : Com jasminDialect (mapCtx (accCTy :: .sword 64 :: invCTys)) (mapTy accCTy)}
-    (hupd : frontLoopBodyJ (accCTy := accCTy) vmBody accName body = some update)
-    (V : Ctxt.Valuation Γouter) :
-    (rolledForLoopN (Γouter := Γouter) (accCTy := accCTy) (invCTys := invCTys)
-        N vmBody accName body init invs).map (fun c => ComL.denote c V)
-      = some (JLoopBodyN.denote ⟨N, update⟩ (Expr.lookupArgs invs V) (init.lookup V)) := by
-  unfold rolledForLoopN
-  rw [hupd]
-  rfl
-
-/-! ## 3. The `RFor`-keyed rolled lowering -/
+/-! ## 2. The `RFor`-keyed rolled lowering -/
 
 /-- The rolled `RFor` lowering. On `.RFor x N body` it produces the rolled
     `ComL.forLoopN` (ONE body copy + back-edge); every other LowCT node is
@@ -186,7 +133,7 @@ def translateRolledRFor {Γouter : Ctxt jasminDialect}
         N vmBody accName body init invs
   | _ => none
 
-/-! ## 4. The structural `N`-fold and the induction on the trip count -/
+/-! ## 3. The structural `N`-fold and the induction on the trip count -/
 
 /-- The structural-recursion `N`-fold of a `JLoopBodyN` step: unroll the body `N`
     times, feeding the trip index `k` into the `k`-th step. `iterStep u invs
@@ -211,7 +158,7 @@ theorem iterStep_eq_denote {accTy : JasminTy} {invTys : Ctxt jasminDialect}
   | N + 1, init => by
       rw [JLoopBodyN.denote_succ, iterStep_eq_denote u invs N init]; rfl
 
-/-! ## 5. The rolled `RFor` denotation = the `N`-fold iterate of the body -/
+/-! ## 4. The rolled `RFor` denotation = the `N`-fold iterate of the body -/
 
 /-- **The deliverable.** The rolled `RFor` lowering's denotation is the `N`-fold
     iterate (`iterStep`) of the front-compiled body's step, seeded by `init` and
@@ -237,7 +184,7 @@ theorem rolledRFor_denote {Γouter : Ctxt jasminDialect}
         N vmBody accName body init invs hupd V,
       iterStep_eq_denote update (Expr.lookupArgs invs V) N (init.lookup V)]
 
-/-! ## 6. Soundness vs the meta-unroll (`loopRForD`)
+/-! ## 5. Soundness vs the meta-unroll (`loopRForD`)
 
 The rolled form denotes to exactly the `JLoopBodyN.denote` fold — the same
 index-threaded `N`-fold value that unrolling the body `N` times computes. So

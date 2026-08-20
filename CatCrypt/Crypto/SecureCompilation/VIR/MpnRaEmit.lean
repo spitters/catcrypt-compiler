@@ -18,7 +18,7 @@ the framework into the SHA-2, Keccak, ChaCha20, Poseidon2, and ML-KEM-768
 
 This module is the **bignum ADX `mpn_addmul_1` analog** — the verified
 RA consumer for the highest-pressure pure-math kernel in tree. The target
-is `MpnAddMul1AdxPrototype.bodyAddMul1Adx` (GMP `coreihwl`-style three-op
+is `Mpn.AddMul1AdxPrototype.bodyAddMul1Adx` (GMP `coreihwl`-style three-op
 inner loop: `MULX`, `ADCX`, `ADOX`).
 
 ## Why bignum bites hard
@@ -32,7 +32,7 @@ pure-sink, one read-only) traces. Bignum is structurally different:
    AND the cross-limb carry chain `cf, of` AND the constants `b, zero`.
    On `n = 8` this is `8·4 + 4 = 36` logical slots, exceeding the 16
    x86-64 GPR file.
-2. **Genuine three-address `MULX`**: `(hi_i, lo_i) := MULX(b, t_i)`
+2. **Three-address `MULX`**: `(hi_i, lo_i) := MULX(b, t_i)`
    writes two destinations while reading two sources, none of which
    aliases the destinations. This is the FIRST consumer where the
    two-address coalescing infrastructure (`coalescePairsNoSeed`) is
@@ -87,7 +87,7 @@ Both `lo_i` and `t_i` die at this point (`t_i` is never read again
 across the whole trace; `lo_i` is consumed only by the ADCX). The events
 `⟨lo_i, [b, t_i]⟩` and `⟨r_i, [r_i, lo_i, cf]⟩` are both candidates for
 two-address coalescing: their `src1` is `b` and `r_i` respectively, but
-their `src2` (the `t_i` / `lo_i`) is the genuine three-address dying
+their `src2` (the `t_i` / `lo_i`) is the three-address dying
 operand. The `dst ≠ head rds` check on the standard `SlotEvent` head-rd
 convention identifies pairs where `dst ≠ rds.head`; for these MULX-style
 writes, `dst = hi_i ≠ b = head [b, t_i]`, so the candidate is `(hi_i,
@@ -117,7 +117,7 @@ relabel and does not enter any theorem statement.
 ## Scope
 
 The slot model and the trace structure correspond directly to the
-`adxLimbFull i` builder in `MpnAddMul1AdxPrototype.lean`. The RA's
+`adxLimbFull i` builder in `Mpn.AddMul1AdxPrototype.lean`. The RA's
 physical assignment is consumed by the emit pass (a downstream
 relabelling of the existing `MpnAddMul1AdxPrototype` register names).
 We do not modify the prototype emit; the RA is a parallel,
@@ -261,7 +261,7 @@ def addmulTrace : List UnrolledComRA.SlotEvent :=
 The carry analysis identifies `cf, of` (always read+written per limb)
 and `hi_{i-1}` (written in iter `i-1`, read in iter `i`) as carried;
 per-limb `r_i, t_i, lo_i` are not carried (each touched only in its own
-iter). The coalesce pass fires on the genuine three-address MULX
+iter). The coalesce pass fires on the three-address MULX
 ops where `dst ≠ head rds`. -/
 def addmulRA_coalesce : RegisterAllocation :=
   UnrolledComRA.unrolledSlotRAofItersCoalesce addmulTrace addmulIters
@@ -362,7 +362,7 @@ theorem addmulCoalesceCount_positive :
 /-! ## 7. RA-driven emit text
 
 The baseline emit's per-limb body uses the fixed register names from
-`MpnAddMul1AdxPrototype.{rName, tName, hiName, loName}`. The RA-driven
+`Mpn.AddMul1AdxPrototype.{rName, tName, hiName, loName}`. The RA-driven
 version routes each logical slot index through `ra.seqOf` to choose a
 physical name. For `RegisterAllocation.identity` the result is
 byte-identical to the baseline. -/
@@ -373,7 +373,7 @@ def addmulRaSlotName (ra : RegisterAllocation) (j : Nat) : String :=
 
 /-- RA-driven render of one limb's body. The op sequence and the
 constant indices (`8*i` etc.) are identical to
-`MpnAddMul1AdxPrototype.adxLimbFull`; only the slot-name resolution
+`Mpn.AddMul1AdxPrototype.adxLimbFull`; only the slot-name resolution
 routes through `ra.seqOf`. The rendered text is at the abstract jazz
 level (one statement per line) — the bench driver compiles via the
 prototype's emit path, this rendering is the audit form. -/
@@ -432,7 +432,7 @@ def renderRaBody (ra : RegisterAllocation) : List String :=
   renderRaEpilogue ra
 
 /-- **The RA-driven `mpn_addmul_1_adx_4.jazz`.** Same ABI as
-`MpnAddMul1AdxPrototype.mpnAddMul1AdxFd 4`: `(reg u64 op, reg u64 ap,
+`Mpn.AddMul1AdxPrototype.mpnAddMul1AdxFd 4`: `(reg u64 op, reg u64 ap,
 reg u64 b)`. The body assigns each logical slot to a physical name via
 `ra.seqOf`. For `RegisterAllocation.identity` the result is essentially
 byte-identical to the baseline emit (modulo the declaration-order

@@ -8,7 +8,17 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Pairing
 /-!
 # BLS12-381 final exponentiation, owned x86 (#602)
 
-**Variant: RELIC-transcribed (tests-only correctness).** This owned x86 emit is
+**Variant: RELIC-transcribed (tests-only correctness).**
+
+**STRING-TEMPLATED — not verified-compiler output:** the emitted
+`bls12381_*_x86_from_lean.s` is assembled as literal asm-line text
+(`framedDriver`/`renderLeafFn` join `movq`/`leaq`/`call` string literals), with
+no `Com`/`Lprog` IR and no verified printer, so no theorem relates the emitted
+bytes to a source; the byte-identity to RELIC below is the only corroboration.
+See `bench/framework/AUDIT_EMIT_BYPASS.md` and `EMIT_PROVENANCE.md`
+§"Which emit is verified?".
+
+This owned x86 emit is
 hand-transcribed from the RELIC pairing reference and gated **byte-identical to
 RELIC**. RELIC is unverified C, so that byte-identity is a **test**, not a
 correctness proof. The verified-correctness BLS variant — owned emit whose
@@ -363,7 +373,7 @@ theorem fp12InvCycAsm_twelve_fp_calls :
 
 /-- The owned `fp12_frb` carries the **five** real `Fp2`-multiplies by the
     Frobenius constants (the five non-trivial coordinates; `c[0][0]` is `·γ₁=1`,
-    no mul) — the genuine RELIC `fp12_frb` single-step graph. -/
+    no mul) — the RELIC `fp12_frb` single-step graph. -/
 theorem fp12FrbAsm_five_real_fp2muls :
     countSub fp12FrbAsm "callq bls12381_fp2_mul_x86_from_lean" = 5
       ∧ countSub fp12FrbAsm "callq bls12381_fp6_mul_x86_from_lean" = 0

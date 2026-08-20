@@ -66,7 +66,14 @@ the output slot. -/
     four result registers `Curve4MontMulProvenEmit.resNames` into slot `out`. No
     new `JInstr` is authored — the reduce is composed from the existing emitted
     blocks, and only a `storeSlot4` (the project's standard frame epilogue) is
-    appended. -/
+    appended.
+
+    The reduce body reads the fixed accumulator registers
+    `Curve4MontMulProvenEmit.accNames = ["t0", …, "t7"]` and the modulus and
+    constant registers `pNames`/`npName`; this epilogue contains no instruction
+    loading any of them, so the caller establishes them —
+    `EcMulConstPrologueWire.feMulFrameAtFullConst` is the multiply composition
+    that does so by its own instructions. -/
 def reduceStoreBlockMul (out : Nat) (base : String) : List (JInstr 64) :=
   Curve4MontMulProvenEmit.emitMontRedc4Block
     ++ Curve4MontMulProvenEmit.emitCondSubP
@@ -75,12 +82,22 @@ def reduceStoreBlockMul (out : Nat) (base : String) : List (JInstr 64) :=
         | _ => [])
 
 /-- **The multiply block with the Montgomery reduce emitted inside.**
-    `feMulFrameAt` (the proven emitted 256×256 product, stored to the two-slot
-    region `out`, `out+1`) composed with `reduceStoreBlockMul` (the emitted
-    Montgomery reduce + conditional subtract over those product words, with the
-    four reduced words stored back into slot `out`). The reduced canonical field
-    element lands in the output slot by execution — the reduce is no longer
-    KAT-gated scaffolding *outside* the block. -/
+    `feMulFrameAt` (the proven emitted 256×256 product over the accumulator file
+    `accs`, stored to the two-slot region `out`, `out+1`) composed with
+    `reduceStoreBlockMul` (the emitted Montgomery reduce + conditional subtract,
+    with the four reduced words stored back into slot `out`).
+
+    The reduce body reads the fixed registers
+    `Curve4MontMulProvenEmit.accNames = ["t0", …, "t7"]`, `pNames`, and
+    `npName`, independent of `accs`, and this block emits no instruction
+    loading any of them. The reduce therefore operates on the product only when
+    `accs = accNames` and the modulus and constant registers are established by
+    the caller; `EcMulConstPrologueWire.feMulFrameAtFullConst` is the
+    composition that establishes both by its own instructions.
+    `EcJacAddBlock.emitCall` instantiates `accs` at the disjoint window
+    `accWin = ["c0", …, "c7"]`, so results about it carry the product
+    identification and the `MontRedc4Load` register conjuncts as hypotheses
+    (`EcMulReduceWindowWire`). -/
 def feMulFrameAtFull (xs ys accs : List String) (hi lo base : String)
     (o a b : Nat) : List (JInstr 64) :=
   feMulFrameAt xs ys accs hi lo base o a b ++ reduceStoreBlockMul o base
@@ -151,14 +168,22 @@ def subBackStoreBlock (base : String) (o : Nat) : List (JInstr 64) :=
   | [d0, d1, d2, d3] => storeSlot4 d0 d1 d2 d3 base o
   | _ => []
 
-/-- **The subtract block with the canonicalising add-back emitted inside.**
+/-- **The SBB borrow chain with the frame epilogue — the add-back is NOT emitted.**
     `feSubFrameAt` (the proven emitted SBB borrow chain, storing the raw
-    difference to slot `o`) composed with `subBackStoreBlock` (the emitted masked
-    conditional add-back of `N` over the difference window, with the corrected
-    four words stored back into slot `o`). The reduced canonical modular
-    difference lands in the output slot by execution — the add-back is no longer
-    KAT-gated scaffolding *outside* the block, and the result is `< N` for **all**
-    reduced inputs (no `B ≤ A` no-borrow precondition). -/
+    difference to slot `o`) composed with `subBackStoreBlock`, which is a bare
+    `storeSlot4`. The masked conditional add-back of `N` is carried as the
+    predicate `EcAddSubResidueDerive.EmittedModSubWindow`, not emitted, and that
+    predicate does not hold of this block on a borrowing input: the stored
+    registers hold `A - B + 2^256`, which for `B > A` is at least `2^256 - N`,
+    while the predicate asserts a value below `N`. Results conditioned on it are
+    therefore vacuous in exactly the case the correction exists for.
+
+    `EcFeSubComplete.feSubFrameComplete` is the block that DOES emit the add-back
+    (`emitCondAddP`), with `feSubFrameComplete_value` proving it lands
+    `(a + p - b) % p` and a byte-for-byte GMP KAT; `EcJacAddCompletedReroute`
+    re-sources the point-add through it and carries no sub window. Prefer those.
+    This definition is retained for the KAT comparison against the completed
+    block and for the residue-chain lemmas already stated over it. -/
 def feSubFrameAtFull (base : String) (o a b : Nat) : List (JInstr 64) :=
   feSubFrameAt ["d0", "d1", "d2", "d3"] ["e0", "e1", "e2", "e3"] base o a b
     ++ subBackStoreBlock base o

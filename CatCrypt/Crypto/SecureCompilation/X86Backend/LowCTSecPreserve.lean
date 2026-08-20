@@ -20,10 +20,9 @@ probabilistic-RHL IND-CCA argument:
    *pure* computation `SPComp.pure (srcDenote ps rs)`.  Two programs whose
    big-step `srcDenote` agree therefore have **equal `SPComp` denotation**.
 
-2. **`uc_is_secure_compilation`** (`SCIO.lean` — part of the wider CatCrypt
-   development, not shipped in this compiler package): the
-   generic robust-compilation / RrHP fact that *equal denotation ⇒ equal `sdist`
-   ⇒ same security bound*.  Its proof body is the one-line "rewrite the equal
+2. **`uc_is_secure_compilation`** (from `SCIO.lean`): the generic robust-
+   compilation / RrHP fact that *equal denotation ⇒ equal `sdist` ⇒ same
+   security bound*.  Its proof body is the one-line "rewrite the equal
    computations under `sdist`" argument — there phrased for `CProg`/`progSdist`.
 
 The thesis (P4.3): **cryptographic-security preservation here follows from our

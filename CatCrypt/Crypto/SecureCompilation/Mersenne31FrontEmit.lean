@@ -5,6 +5,7 @@ Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 set_option autoImplicit false
 
@@ -22,7 +23,7 @@ emit path (the same straight-line route as the GF-MQ
     --(translateDialectControl)-->  Com catCryptDialect inΓ (.memref 1)
     --(cryptoDialectToJasminCom)--> Com jasminDialect …   (stackLoad/stackStore)
     --(Com.toLprogPhysAbi, [RDI,RSI(,RDX)] memref ABI)--> Lprog
-    --(renderLprogAtt)--> bench/m31_compare/gen_com/m31_field_owned.s
+    --(renderOwned = renderLprogAtt ∘ optimizeLprog)--> bench/m31_compare/gen_com/m31_field_owned.s
 ```
 
 ## The three kernels (SysV pointer ABI, one `u64` cell per pointer)
@@ -201,7 +202,8 @@ def toAsm (name : String) (abiArgs : List String)
       -- 2-pointer `reduce`: without the pin the late-born OUT arg coalesces
       -- onto the IN arg's register and the SIB reload reads the OUT qsave
       -- slot (KAT-caught). Pinning all three kernels keeps one export shape.
-      (forceLivePin := true))).map renderLprogAtt
+      (forceLivePin := true))).map
+    CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned
 
 /-- The owned AT&T `.s` text of `m31_mul_owned` (RDI = out, RSI = a, RDX = b). -/
 def mulAsm : Option String :=

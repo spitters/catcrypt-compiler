@@ -84,6 +84,9 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519OpsKernel (initState1 initState2)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime (blockLeak)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+  (allDirect allDirect_constant_time)
 
 /-! ## 1. feAddLazy: `z := x + y`, overflow folded as `+38` (s2n `add_twice4`)
 
@@ -214,6 +217,44 @@ theorem feCmadd121666LazyBlock_lowering_correct (x0 x1 x2 x3 y0 y1 y2 y3 : BitVe
         (.cons (initState2 x0 x1 x2 x3 y0 y1 y2 y3) .nil)
       = runBlock (initState2 x0 x1 x2 x3 y0 y1 y2 y3) feCmadd121666LazyBlock :=
   lowerBlock_denote_closed feCmadd121666LazyBlock (initState2 x0 x1 x2 x3 y0 y1 y2 y3)
+
+/-! ## 3a. Constant time: straight-line, all-direct addressing
+
+The three lazy-reduced bodies address memory only through a base register and a
+compile-time-constant displacement, so each machine leakage trace is a function
+of the program text alone (`ConstantTimeCoverage.allDirect_constant_time`). -/
+
+/-- The `feAddLazy` body uses only direct base+displacement addressing. -/
+theorem feAddLazyBlock_allDirect : allDirect feAddLazyBlock = true := by
+  decide
+
+/-- **Constant time.** `feAddLazy` produces the same machine leakage trace from
+    any two starting states. -/
+theorem feAddLazyBlock_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ feAddLazyBlock = blockLeak s₂ feAddLazyBlock :=
+  allDirect_constant_time feAddLazyBlock feAddLazyBlock_allDirect s₁ s₂
+
+/-- The `feSubLazy` body uses only direct base+displacement addressing. -/
+theorem feSubLazyBlock_allDirect : allDirect feSubLazyBlock = true := by
+  decide
+
+/-- **Constant time.** `feSubLazy` produces the same machine leakage trace from
+    any two starting states. -/
+theorem feSubLazyBlock_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ feSubLazyBlock = blockLeak s₂ feSubLazyBlock :=
+  allDirect_constant_time feSubLazyBlock feSubLazyBlock_allDirect s₁ s₂
+
+/-- The fused `feCmadd121666Lazy` body uses only direct base+displacement
+    addressing. -/
+theorem feCmadd121666LazyBlock_allDirect :
+    allDirect feCmadd121666LazyBlock = true := by
+  decide
+
+/-- **Constant time.** `feCmadd121666Lazy` produces the same machine leakage
+    trace from any two starting states. -/
+theorem feCmadd121666LazyBlock_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ feCmadd121666LazyBlock = blockLeak s₂ feCmadd121666LazyBlock :=
+  allDirect_constant_time feCmadd121666LazyBlock feCmadd121666LazyBlock_allDirect s₁ s₂
 
 /-! ## 4. AT&T assembly emission (in-Lean backend, no jasminc)
 

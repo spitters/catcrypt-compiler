@@ -58,51 +58,36 @@ The concrete `fm`/`fa`/`fs` are then substituted by a single application
 (`…_realizes_specG fm fa fs`), and `scheduleEval` / `jacDblSpec` / `jacAddSpec`
 are definitionally these generic forms at `fm`/`fa`/`fs`.
 
-## What is NOT proved here — the lift to `Com.denote`, and the one missing lemma
+## Where the schedule-level tie stops
 
-Lifting `scheduleEval … = spec` to `jacDblFrontCom.denote = jacDblSpec` at
-schedule granularity (avoiding the monolith) would need a **scalar
-front-preservation homomorphism** — a scalar analogue of the SIMD
-`TranslateDialectVsimdDenote.translateDialectControlV_denote`, namely
+This module proves the value half at schedule granularity. Two further links
+carry it to `jacDblFrontCom.denote = jacDblSpec`, and both are stated elsewhere.
 
-```
-theorem translateDialectControl_denote {c : LowCT} (hcov : IsCoveredCtl c) :
-    ∀ {Γ} (vm : VarMap Γ) (V : Ctxt.Valuation (d := catCryptDialect) Γ)
-      (env env' : SEnvScalar) (o : DTransOut Γ),
-      ConsistentS vm V env →
-      translateDialectControl vm c = some o →
-      semScalar c env = some env' →
-      ∃ V', ConsistentS o.vm V' env' ∧
-        ∀ {t} (tail), ∃ com, o.cont tail = some com ∧ com.denote V = tail.denote V'
-```
+The **scalar front-preservation homomorphism** is
+`Dialects.TranslateDialectScalarDenote.translateDialectControl_denote`, over
+`IsCoveredS` (`translateDialectControl_denote_ctl` over `IsCoveredSCtl`),
+against the scalar operational semantics `semScalar` and consistency relation
+`ConsistentS` in the same module. Its `rSeq` arm gives the per-concatenation
+homomorphism `denote (front (a ++ b)) = denote (front b) ∘ denote (front a)`,
+the scalar counterpart of `TranslateDialectVsimdDenote.translateDialectControlV_denote`
+on the 128-bit SIMD path.
 
-whose `rSeq`/block case gives the per-concatenation homomorphism
-`denote (front (a ++ b)) = denote (front b) ∘ denote (front a)` — exactly the
-shape the SIMD proof's `rSeq` arm already discharges via
-`ComCont.comp o₁.cont o₂.cont` (`TranslateDialectVsimdDenote.lean` lines 174-194).
-This lemma **does not exist** for the scalar `translateDialectControl` path: the
-SIMD path (`translateDialectControlV` / `semV` / `ConsistentV`, over 128-bit
-`SEnv`) is the ONLY front with a front-general preservation theorem. There is no
-scalar `semScalar : LowCT → SEnvScalar → Option SEnvScalar` operational semantics
-and no scalar `ConsistentS` consistency relation for the `RScalarSetExpr` /
-`RArrLoad` / `RArrStore` alphabet these bricks use; both must be built before the
-`IsCoveredCtl` induction can even be stated.
+The **per-brick step** — that `emitFOp i op`'s scalar semantics moves the
+schedule readout by one `stepFOpG` — is `Secp256k1PointOpFrontDenote.BrickStep`
+and its invariant-preserving form `Secp256k1PointOpBrickInv.BrickStepInv`. The
+add and subtract arms are proved symbolically by
+`Secp256k1FeAddSubBrick.brickStep_addSub`. The multiply arm splits into the
+frame half (`Secp256k1FeMulBrickFrame.brickStepMul_of_value`) and the value half
+`MulBrickValue`, proved over the `MulEntry` entry conditions by
+`Secp256k1FeMulBrickReduce.mulBrickValue_of_heads`: the 32-bit
+operand-scanning multiply against the base-2^32 limb algebra
+(`Secp256k1FeMulBrickProduct.genMul_prod`) welded to the Solinas chain
+(`Optimizer.SolinasFoldChain.secpFourFold_lt` / `secpFourFold_mod` /
+`secpSelect`). None of these is a `native_decide` KAT.
 
-Even WITH that homomorphism, the per-brick step — that `emitFOp i (.mul o a b)`'s
-scalar semantics writes `fm (env a) (env b)` into `o`'s eight half-limbs — is
-currently established only via `native_decide` KAT at 4-limb granularity
-(`Secp256k1PointOpFront.secp256k1FeMulFront_denote` /
-`secp256k1FeAddFront_denote` / `secp256k1FeSubFront_denote`); a symbolic
-(all-inputs) proof that the 32-bit operand-scanning multiply-plus-Solinas-fold
-brick computes `(a·b) mod p` is a separate, deep field-arithmetic obligation that
-`native_decide` sidesteps.
-
-The homomorphism is therefore DEEP (needs new scalar-semantics infrastructure
-PLUS symbolic per-brick field correctness), so this module STOPS at the
-schedule-level value tie and records the missing lemma above rather than stubbing
-it.
-
-**0 sorries.**
+What remains is instantiating `BrickStepInv`'s entry predicate at one that
+implies `MulEntry` for every schedule entry and is re-established by each brick,
+and then composing the homomorphism with the schedule fold.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpCompositional

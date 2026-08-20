@@ -6,52 +6,60 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.SecureCompilation.VIR.VsimdAsmPrint
 
 /-!
-# Owned AES-128 ECB single-block emit on the unified `Com jasminDialect`
+# OWNED AES-128 ECB single-block emit on the UNIFIED `Com jasminDialect`
 
-The AES-128 single-block ECB encrypt, written as a straight-line
-`Com jasminDialect` program in the `vsimd` fragment and rendered to AT&T `.s` by
-the owned printer:
+`SimdBytes.lean` (§7) emits the AES-128 single-block ECB encrypt through the
+**bespoke** `Vec128`/`VCryptOp` crypto-SIMD IR: its round chain
+`aesEcbBlk : List VCryptOp` (`VPXOR` whitening, nine `VAESENC`, one
+`VAESENCLAST`) is lowered by `Vec128Lowering.lowerVCryptBlock`, byte-encoded by
+`Vec128Encoder.encodeVCryptInst`, and stitched into a relocatable `.o`.
+
+This module re-authors the SAME AES-128 ECB single-block kernel on the
+**unified** stack
 
 ```
-Com jasminDialect  (vsimd fragment)  --renderVsimdCom-->  AT&T .s lines
+Com jasminDialect  (vsimd fragment)  ──renderVsimdCom──▶  AT&T .s lines
 ```
 
-The only crypto-SIMD import is `VIR.VsimdAsmPrint`, the owned AT&T renderer;
-nothing here goes through `jasminc`.
+with **zero** dependency on `Vec128Lowering` / `Vec128Model` / `Vec128Encoder` /
+`Vec128AsmPrinter`. The only crypto-SIMD import is `VIR.VsimdAsmPrint` (the
+committed owned AT&T renderer, whose `.bitwise .xor`/`.vaesenc`/`.vaesenclast`
+arms are byte-identical to `renderVCryptInst`).
 
 ## The AES round semantics, dialect-native
 
 Each AES op rides `JasminOp.vsimd (op : SimdOp)`:
 
-| unified `SimdOp`        | denote         |
-|-------------------------|----------------|
-| `vsimd (.bitwise .xor)` | `^^^`          |
-| `vsimd .vaesenc`        | `wAESENCW`     |
-| `vsimd .vaesenclast`    | `wAESENCLASTW` |
+| bespoke `VCryptOp`     | unified `SimdOp`        | denote        |
+|------------------------|-------------------------|---------------|
+| `.xorq`                | `vsimd (.bitwise .xor)` | `^^^`         |
+| `.aesenc`              | `vsimd .vaesenc`        | `wAESENCW`    |
+| `.aesenclast`          | `vsimd .vaesenclast`    | `wAESENCLASTW`|
 
-`wAESENCW` / `wAESENCLASTW` (in `JasminDialect`) carry the Jasmin `wAESENC` /
-`wAESENCLAST` semantics, anchored to FIPS-197 and to the Sail-x86 model by
-`SailX86Lean.aesenc_eq_sail` and its siblings.
+The `SimdOp` AES denotes (`wAESENCW`/`wAESENCLASTW` in `JasminDialect`) are the
+verbatim-copied bespoke `Vec128Model.vaesenc`/… (= the carried `Jasmin.wAESENC`
+/ FIPS-197 / Sail-x86 anchor, `SailX86Lean.aesenc_eq_sail`), so the migrated
+kernel computes the SAME AES as the bespoke `aesEcbBlk`.
 
 ## What is emitted
 
-`aes128_ecb_block(buf = %rdi)` over a 208-byte single-struct ABI: the 11
-pre-expanded round keys at `(%rdi + 16*k)` (`k = 0..10`), the plaintext block at
-`(%rdi + 176)`, the ciphertext output at `(%rdi + 192)`. The round chain is
-rendered by `renderVsimdCom` (the owned AT&T `vsimd` printer); the `vmovdqu`
-round-key / plaintext loads and the ciphertext store are straight-line ABI glue
-wrapped around it by `frameAsmFunction`. Round keys and state are pinned to
-fixed XMM slots: `ct` to `%xmm0`, `st` to `%xmm1`, `rk_k` to `%xmm(2+k)` — the
-13 live values fit in XMM with no spill.
+`aes128_ecb_block(buf=%rdi)` over the SAME 208-byte single-struct ABI as the
+bespoke driver: the 11 pre-expanded round keys at `(%rdi + 16·k)` (`k = 0..10`),
+the plaintext block at `(%rdi + 176)`, and the ciphertext output at
+`(%rdi + 192)`. The round chain is rendered by `renderVsimdCom` (the owned AT&T
+`vsimd` printer); the `vmovdqu` round-key/plaintext loads and the ciphertext
+store are the SAME straight-line ABI glue as `SimdBytes.encodeAesEcbBlock`.
+Round keys / state are pinned to the SAME XMM slots as the bespoke
+`aesEcbAlloc` (`ct ↦ %xmm0`, `st ↦ %xmm1`, `rk_k ↦ %xmm(2+k)`).
 
 ## Status
 
-`ecbCom_denote` pins `ecbCom.denote = ecbSpec` by a whole-program `rfl`
-(unfolding the `Com`/`Expr` smart constructors resolves the `vsimd` denote arms
-to the `^^^` / nine `wAESENCW` / one `wAESENCLASTW` fold). The structural
-`strContains` pins on the emitted text are proved by `native_decide` (so they
-carry `Lean.ofReduceBool`). No `sorry`. The external acceptance gate is a
-FIPS-197 Appendix B / C.1 known-answer test run against the emitted `.s`.
+The Com program is pinned `denote = spec` by a whole-program `rfl` (unfolding
+the `Com`/`Expr` smart constructors resolves the `vsimd` denote arms to the same
+`wAESENCW`/`wAESENCLASTW`/`^^^` fold the bespoke `aesEcbBlk` threads through
+`evalVCryptInst`). The structural `strContains` smoke pins match the bespoke
+driver's. The acceptance gate is the `aes128_ecb_block_owned_kat.c` FIPS-197
+Appendix B / C.1 KAT re-run on the new `.s`. Fully proved, no new axiom.
 
 Invoke:  lake env lean --run
          CatCrypt/Crypto/SecureCompilation/X86Backend/SimdBytesVsimd.lean
@@ -96,7 +104,7 @@ for i = 1..9: st = aesenc(st, rk_i)
 st = aesenclast(st, rk10)
 ```
 
-the straight-line AES-128 ECB round chain. -/
+mirroring the bespoke `SimdBytes.aesEcbBlk`. -/
 
 /-- The ECB input context: `[ct, rk0, rk1, …, rk10]` (12 × `reg 128`).
     `ct = #0`, `rk0 = #1`, …, `rk10 = #11`. -/
@@ -135,8 +143,8 @@ def ecbCom : Com jasminDialect ecbCtx r128 :=
 
 /-! ## 3. The ECB spec -/
 
-/-- The AES-128-ECB value on plaintext block `ct` and round keys `rk`: whitening
-    `^^^`, nine `wAESENCW`, one `wAESENCLASTW`. -/
+/-- The AES-128-ECB value the bespoke `aesEcbBlk` computes on plaintext block
+    `ct` and round keys `rk`. -/
 def ecbSpec (ct : BitVec 128) (rk : Nat → BitVec 128) : BitVec 128 :=
   let s0 := ct ^^^ rk 0
   let s1 := wAESENCW s0 (rk 1)
@@ -157,8 +165,9 @@ def ecbVal (ct : BitVec 128) (rk : Nat → BitVec 128) : Ctxt.Valuation ecbCtx :
     (.cons (rk 10) .nil)))))))))))
 
 set_option maxRecDepth 100000 in
-/-- **ECB denotation pin.** The Com computes AES-128-ECB on a single block:
-    whitening `^^^`, nine `wAESENCW`, one `wAESENCLASTW`. -/
+/-- **ECB denotation pin.** The migrated Com computes the SAME AES-128-ECB block
+    as the bespoke `aesEcbBlk` (whitening `^^^`, nine `wAESENCW`, one
+    `wAESENCLASTW`). -/
 theorem ecbCom_denote (ct : BitVec 128) (rk : Nat → BitVec 128) :
     ecbCom.denote (ecbVal ct rk) = ecbSpec ct rk := by
   simp only [ecbCom, ecbSpec, ecbVal, eXor, eAesenc, eAesenclast]
@@ -166,9 +175,10 @@ theorem ecbCom_denote (ct : BitVec 128) (rk : Nat → BitVec 128) :
 
 /-! ## 4. Pinning round keys / state to fixed XMM slots (the bespoke `aesEcbAlloc`)
 
-The XMM assignment pins `ct ↦ %xmm0`, `st ↦ %xmm1`, `rk_k ↦ %xmm(2+k)`. The
-running state SSA chain is all in `%xmm1`, the plaintext param `p0 = ct` in
-`%xmm0`, and `p_{k+1} = rk_k` in `%xmm(2+k)`. -/
+The bespoke `SimdBytes.aesEcbReserved = ["ct","st", rk0..rk10]` with
+`allocXmmCrypto` pins `ct ↦ %xmm0`, `st ↦ %xmm1`, `rk_k ↦ %xmm(2+k)`. Here the
+running state SSA chain is all in `%xmm1` (the bespoke `st`), the plaintext
+param `p0 = ct` in `%xmm0`, and `p_{k+1} = rk_k` in `%xmm(2+k)`. -/
 
 /-- `%xmmN`. -/
 def xmmName (i : Nat) : String := "%xmm" ++ toString i

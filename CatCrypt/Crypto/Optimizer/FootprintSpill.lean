@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.Optimizer.GenericRegAlloc
 
 /-!
-# Peak-pressure-minimizing ("reversible pebbling" / footprint) allocation
+# Peak-pressure-minimizing ("reversible pebbling" / footprint) allocation (#xxx)
 
 `GenericRegAlloc` computes the live-range structure of a straight-line block
 (`liveRanges`), the register pressure at a position (`pressureAt`), and the peak

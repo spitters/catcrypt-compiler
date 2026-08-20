@@ -29,6 +29,9 @@ and the original block differ, on the final state, exactly at the spill cells:
 no spill stores at all (the no-spill case, where it is literally the identity).
 `spillReloadBlock_store_residue` witnesses this on a well-formed single-spill
 block.
+
+> **`@bench-only`.** The `wfBlock` `List (JInstr 64)` is a well-formedness proof
+> fixture; the module emits no deployed `.s` artifact.
 -/
 
 set_option autoImplicit false

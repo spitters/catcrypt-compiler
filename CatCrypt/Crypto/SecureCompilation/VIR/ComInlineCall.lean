@@ -12,13 +12,13 @@ import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialectBlockDescent
 The A-normal `Com` export-faithfulness theorems (`loopMem_export_faithful` and the
 straight-line faithfulness it composes with) are **call-free**: they linearize a `Com`
 whose body is a straight-line chain of `Lopn`s (`straightOpsMem_isLopn`). A deployed EC
-ladder body instead genuinely `call`s a linked leaf — the loop body is a sibling
+ladder body instead `call`s a linked leaf — the loop body is a sibling
 `.Lcall x25519_mono_step`, and the field ops call `fe25519_{mul,sqr}` — lowered to a real
 `LinstrR.Lcall`. Faithfulness at that layer needs the inter-procedural region-call machine
 model (`calleeLeaf_export_com_denote`).
 
 Crypto call graphs are **shallow and static** (non-recursive leaves): so rather than
-inter-procedural denotation, we **inline** the call. This file gives the `func.call`
+inter-procedural denotation, we **inline** the call. This module supplies the `func.call`
 capability as a `Com → Com` transform: replace a `.var (extCall f args) body` — the
 `Com`-level node the ABI lowers to a linked `.Lcall f` — by the callee's whole body
 spliced in at the call site, yielding a **call-free** `Com` whose denotation is unchanged,
@@ -49,6 +49,12 @@ already-proved dialect-generic block-splice primitive
 * `inlineCalls` / `inlineCalls_preserves_denote` — the whole-`Com` single pass inlining
   every registered head call; on a body whose registered callees are themselves call-free
   it produces a call-free `Com` denote-equivalent to the original.
+* `denoteSubst` / `inlineCalls_denote_eq_denoteSubst` — the leaf-agnostic whole-`Com`
+  law: the inlined program denotes to `Com.denote` with each registered head `extCall`
+  node interpreted by the registry's callee `Com` value rather than by `jasminExtSem`.
+  Carries no registry-consistency hypothesis, so it holds for the `.reg 64` leaves whose
+  `jasminExtSem` arm is the opaque default (where `inlineCalls_preserves_denote` is
+  vacuous).
 
 All proofs are structural. No `sorry`, no `native_decide`, no new axioms.
 -/
@@ -234,5 +240,92 @@ theorem inlineCalls_preserves_denote (R : FuncRegistryN)
               Com.denote, ih]
         · simp only [inlineCalls, extCallName, hRname, dif_neg hArg, Com.denote, ih]
     all_goals (simp only [inlineCalls, Com.denote, ih])
+
+/-! ## 6. Leaf-agnostic whole-`Com` denotation of the inlined program
+
+`inlineCalls_preserves_denote` is gated on `RegistryConsistentN`, which for a
+`.reg 64` leaf demands `fb.body.denote V = jasminExtSem name … V`; the
+`jasminExtSem` return arm for `.reg 64` is the catch-all `JasminTy.default`, so
+that side condition is refutable and the theorem is vacuous for such leaves. The
+result below carries no consistency hypothesis: it characterizes the fused `Com`'s
+denotation directly in terms of the registry's callee `Com` values.
+
+`denoteSubst R c V` interprets `c` exactly as `Com.denote`, except at each
+registered head `extCall name` node — where `inlineCalls` splices the callee — it
+binds the callee `Com`'s own value `fb.body.denote (lookupArgs args V)` in place of
+the opaque `jasminExtSem name … value`. `inlineCalls_denote_eq_denoteSubst` shows
+the inlined program denotes to this substituted interpreter, unconditionally. -/
+
+/-- `Com.denote` with each registered head `extCall` node interpreted by the
+    registry's callee `Com` value (`fb.body.denote` on the looked-up args) rather
+    than by `jasminExtSem`. Mirrors `inlineCalls`: at a registered call node with
+    matching argument and return types it binds the callee value; every other node
+    (unregistered, type-mismatched, or non-`extCall`) denotes as in `Com.denote`. -/
+def denoteSubst (R : FuncRegistryN) :
+    {Γ : Ctxt jasminDialect} → {t : JasminTy} →
+    Com jasminDialect Γ t → Ctxt.Valuation Γ → ⟦t⟧
+  | _, _, .ret v, V => v.lookup V
+  | Γ, _t, .var (t := bs) e body, V =>
+    match e_op : e.op, R (extCallName e.op) with
+    | .extCall name eArgTys eRetTy, some fb =>
+      if hArg : fb.argTys = eArgTys then
+        if hRet : fb.retTy = bs then
+          let argsV : HVector (fun ty => Ctxt.Var Γ ty) fb.argTys :=
+            hArg ▸ (show HVector (fun ty => Ctxt.Var Γ ty)
+                        (DialectSignature.sig (.extCall name eArgTys eRetTy))
+                    from e_op ▸ e.args)
+          denoteSubst R body
+            (Ctxt.Valuation.extend V (hRet ▸ fb.body.denote (Expr.lookupArgs argsV V)))
+        else denoteSubst R body (Ctxt.Valuation.extend V (e.denote V))
+      else denoteSubst R body (Ctxt.Valuation.extend V (e.denote V))
+    | _, _ => denoteSubst R body (Ctxt.Valuation.extend V (e.denote V))
+
+/-- **Leaf-agnostic whole-`Com` inlining law.** The single pass `inlineCalls R` — which
+    splices in the callee body at every registered head `extCall` node — denotes to the
+    substituted interpreter `denoteSubst R`, which binds each such callee's own `Com`
+    value. No registry-consistency side condition: unlike `inlineCalls_preserves_denote`
+    it does not equate the callee value with `jasminExtSem`, so it holds for the width-64
+    (`.reg 64`) leaves whose `jasminExtSem` arm is the opaque default. -/
+theorem inlineCalls_denote_eq_denoteSubst (R : FuncRegistryN) :
+    {Γ : Ctxt jasminDialect} → {t : JasminTy} → (c : Com jasminDialect Γ t) →
+    (V : Ctxt.Valuation Γ) →
+    (inlineCalls R c).denote V = denoteSubst R c V
+  | _, _, .ret v, _ => rfl
+  | Γ, t, .var (t := bs) e body, V => by
+    obtain ⟨op, retTy_eq, args⟩ := e
+    have ih := inlineCalls_denote_eq_denoteSubst R body
+    cases op
+    case extCall name eArgTys eRetTy =>
+      cases hRname : R name with
+      | none =>
+        simp only [inlineCalls, denoteSubst, extCallName, hRname, Com.denote, ih]
+      | some fb =>
+        by_cases hArg : fb.argTys = eArgTys
+        · by_cases hRet : fb.retTy = bs
+          · simp only [inlineCalls, denoteSubst, extCallName, hRname,
+              dif_pos hArg, dif_pos hRet]
+            subst hArg; subst hRet
+            have hre : eRetTy = fb.retTy := retTy_eq
+            subst hre
+            rw [inlineCallCom_denote, ih]
+          · simp only [inlineCalls, denoteSubst, extCallName, hRname, dif_pos hArg,
+              dif_neg hRet, Com.denote, ih]
+        · simp only [inlineCalls, denoteSubst, extCallName, hRname, dif_neg hArg,
+            Com.denote, ih]
+    all_goals (simp only [inlineCalls, denoteSubst, Com.denote, ih])
+
+/-- The substituted denotation of a single registered leaf call followed by the return
+    of its result: the leaf `Com`'s own value on the call args. The `callExpr` return
+    type is the callee's `retTy`, so the registered inline branch of `denoteSubst`
+    fires. Discharges the concrete whole-`Com` fusion consequence for a one-call
+    orchestration loop-body without reducing the registry lookup by hand. -/
+theorem denoteSubst_matchedCall {Γ : Ctxt jasminDialect}
+    (R : FuncRegistryN) (name : String) (fb : FunBodyN)
+    (args : HVector (fun ty => Ctxt.Var Γ ty) fb.argTys)
+    (hR : R name = some fb) (V : Ctxt.Valuation Γ) :
+    denoteSubst R (Com.var (callExpr (retTy := fb.retTy) name args) (Com.ret .here)) V
+      = fb.body.denote (Expr.lookupArgs args V) := by
+  simp only [denoteSubst, callExpr, extCallName, hR, dif_pos]
+  rfl
 
 end CatCrypt.Crypto.SecureCompilation.VIR.ComInlineCall

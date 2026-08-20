@@ -7,6 +7,7 @@ import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRuntimeLoop
 import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportScalarAcc
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddCarryFrontPrototype
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 set_option autoImplicit false
 
@@ -41,6 +42,7 @@ SysV, positional (`argName j ↦ abiArgs[j]`), matching
 | `mpn_{add,sub,and,ior,xor}_n_loop_owned` | `(rp=RDI, ap=RSI, bp=RDX, n=RCX)` |
 | `mpn_{com_n,copyi}_loop_owned` | `(rp=RDI, ap=RSI, n=RDX)` |
 | `mpn_zero_loop_owned` | `(rp=RDI, n=RSI)` |
+| `mpn_norm_u32len_loop_owned` | `(ap=RDI, n=RSI)`, u32 length in `RAX` |
 
 **Carry-in seed: MOV-0 prologue (no 5th argument).** GMP's `mpn_add_n` has no
 carry-in parameter, so the carry seed variable sits at arg slot 4 — beyond the
@@ -67,18 +69,16 @@ with the SAME two-stage half-add carry split as `add` (`halfCarry`), `~b` as
 `< 2^64`, so the unbounded-`Nat` `SExpr` model and the 64-bit machine agree
 (the stage carries are mutually exclusive, as in `add`).
 
-## Regen driver (interpreter; run from repo root)
+## Regen driver (run from repo root)
 
 ```
-ulimit -s unlimited
-lake env lean --run bench/integration/emit_mpn_front.lean
+lake env lean bench/integration/emit_loop_owned.lean
 ```
 
-writes the 8 front kernels to `bench/integration/gen_com/*.s`. Run AFTER
-`bench/integration/emit_loop_owned.lean` (the `MpnLoopEmit` driver, which
-still owns `mpn_{add,sub}_n_blk4_loop_owned.s` + `mpn_cmp_loop_owned.s` and
-also writes hand-tier versions of the 8): this driver's outputs are the
-front-sourced replacements. Byte-KAT:
+runs `MpnLoopEmit.emitMain`, which renders the deployed kernels from this
+module's `Lprog` values (the `*AsmFront` strings) and writes them to
+`bench/integration/gen_com/*.s`, alongside the hand-tier `*_handtwin.s` perf
+twins, `mpn_cmp_loop_owned.s`, and the owned-only `blk4` pair. Byte-KAT:
 `make -f Makefile.loop_owned run` in `bench/integration/` (vs libgmp
 `__gmpn_*`, 50k trials, sizes 1..256).
 -/
@@ -277,6 +277,104 @@ def subLprogFront : Option Lprog :=
     ComL.toLprogPhysAbiScalarAcc c "mpn_sub_n_loop_owned"
       (fun _ => none) mpnSeedImm gmpAbiArgs [64, 64, 64, 64])
 
+/-! ## 2b. Normalization scan (scalar accumulator, u32-length result)
+
+`mpn_norm_u32len_loop_owned(ap=RDI, n=RSI) → RAX`: the normalized u32 limb
+length of an `n`-u64-limb little-endian array — `1 + i` for the highest
+nonzero u32 half-limb index `i`, or `1` for the all-zero array (GMP's minimum
+normalized length, via the imm-`1` accumulator seed). The scan is a
+branch-free forward full pass — data-independent trip count, no early exit,
+no data-dependent branch: each u64 limb splits into its lo/hi u32 halves,
+`nz32E` maps a half to its `{0,1}` nonzero flag, and `selE` multiplex-selects
+the running length, so a nonzero limb overwrites the accumulator and higher
+limbs overwrite lower ones. Consumed by the u32 seam adapter
+(`bench/integration_owned/lean_mpn_adapter_u32.c`) to compute `*plngc` after
+`vlmpn_add_u32`. -/
+
+/-- `2^32 - 1`, the u32 half-limb mask. -/
+def mask32 : Nat := 4294967295
+
+/-- `{0,1}` nonzero flag of a value `< 2^32`: `(x + (2^32-1)) >> 32` is `1`
+    iff `x ≥ 1`. The sum stays `< 2^33`, so the unbounded-`Nat` `SExpr` model
+    and the 64-bit machine agree (`nz32E_evalBV`). -/
+def nz32E (e : SExpr) : SExpr := .SShr (.SAdd e (.SLit mask32)) (.SLit 32)
+
+/-- Multiplex select by a `{0,1}` flag: `c*x + (1-c)*y`, with `1-c` as
+    `SXor c 1`. One addend is always `0`, so no wrap occurs
+    (`selE_evalBV`). -/
+def selE (c x y : SExpr) : SExpr :=
+  .SAdd (.SMul c x) (.SMul (.SXor c (.SLit 1)) y)
+
+/-- Per-limb normalization-scan body threading the running u32 length `len`:
+    split `a[idx]` into u32 halves, flag each half nonzero, and select
+    `2*idx + 1 + nzhi` over the running `len` iff the limb is nonzero
+    (`nzw = nzlo OR nzhi`, the or-from-xor/and identity). -/
+def normBody : LowCT := seqAll
+  [ .RScalarSetExpr "ix" (.SVar "idx")
+  , .RArrLoad ⟨"w", .TU64⟩ ⟨"a", .TBytes (8 * N)⟩ "ix"
+  , .RScalarSetExpr "lo" (.SAnd (.SVar "w") (.SLit mask32))
+  , .RScalarSetExpr "hi" (.SShr (.SVar "w") (.SLit 32))
+  , .RScalarSetExpr "nzlo" (nz32E (.SVar "lo"))
+  , .RScalarSetExpr "nzhi" (nz32E (.SVar "hi"))
+  , .RScalarSetExpr "nzw"
+      (.SXor (.SXor (.SVar "nzlo") (.SVar "nzhi"))
+             (.SAnd (.SVar "nzlo") (.SVar "nzhi")))
+  , .RScalarSetExpr "cand"
+      (.SAdd (.SAdd (.SShl (.SVar "ix") (.SLit 1)) (.SLit 1)) (.SVar "nzhi"))
+  , .RScalarSetExpr "len" (selE (.SVar "nzw") (.SVar "cand") (.SVar "len")) ]
+
+def ΓbodyNorm : Ctx := [.sword 64, .sword 64, .memref N]
+def vmNorm : VarMap ΓbodyNorm :=
+  (((VarMap.empty.bind (t := .memref N) "a").bind
+      (t := .sword 64) "idx").bind (t := .sword 64) "len")
+
+/-- `Γ` newest-first `[len0seed, n, a]`: root slots `a0 = a → RDI`,
+    `a1 = n → RSI`, `a2 = len0seed` (imm-substituted `1`, never a
+    register). -/
+def ΓouterNorm : Ctxt jasminDialect := [r64, r64, AN]
+
+/-- The MOV-1 length-seed map: arg slot 2 (`len0seed`, beyond the 2-register
+    `abiArgs`) is the compile-time constant `1`, the minimum normalized
+    length. -/
+def normSeedImm : ImmSlotMap := fun j => if j == 2 then some 1 else none
+
+/-- Normalization-scan front loop (running-length accumulator `len`,
+    seed `1`). -/
+def normRtProgOpt : Option (ComL ΓouterNorm (mapTy (.sword 64))) :=
+  rolledForLoopNRt (Γouter := ΓouterNorm) (accCTy := .sword 64)
+    (invCTys := [.memref N])
+    vmNorm "len" normBody
+    (count := .there .here)
+    (init := .here)
+    (invs := .cons (.there (.there .here)) .nil)
+
+/-- `mpn_norm_u32len_loop_owned` through the scalar-accumulator export: length
+    seeded `MOV acc, #1` (`normSeedImm`), normalized u32 length returned in
+    `RAX`. -/
+def normLprogFront : Option Lprog :=
+  normRtProgOpt.map (fun c =>
+    ComL.toLprogPhysAbiScalarAcc c "mpn_norm_u32len_loop_owned"
+      (fun _ => none) normSeedImm ["RDI", "RSI"] [64, 64])
+
+/-- `nz32E` computes the `{0,1}` nonzero flag on the wrapping-`u64` evaluator:
+    for a value with zero high half, `(x + (2^32-1)) >>> 32` is `0` iff
+    `x = 0`. -/
+theorem nz32E_evalBV (β : String → BitVec 64) (e : SExpr)
+    (h : e.evalBV β >>> 32 = 0) :
+    (nz32E e).evalBV β = if e.evalBV β = 0 then 0 else 1 := by
+  simp only [nz32E, SExpr.evalBV, mask32]
+  split <;> simp_all
+  bv_omega
+
+/-- `selE` is the two-way multiplexer on the wrapping-`u64` evaluator: with a
+    `{0,1}` selector, `c*x + (c ^^^ 1)*y` is `x` at `c = 1` and `y` at
+    `c = 0`. -/
+theorem selE_evalBV (β : String → BitVec 64) (c x y : SExpr)
+    (h : c.evalBV β = 0 ∨ c.evalBV β = 1) :
+    (selE c x y).evalBV β
+      = if c.evalBV β = 1 then x.evalBV β else y.evalBV β := by
+  rcases h with h | h <;> simp [selE, SExpr.evalBV, h]
+
 /-! ## 3. Front-acceptance gates
 
 Each kernel's front compile returns `some` (the covered lowering accepted the
@@ -292,6 +390,11 @@ theorem zeroLprog_isSome : zeroLprog.isSome := by native_decide
 theorem addLprogFront_isSome : addLprogFront.isSome := by native_decide
 theorem subLprogFront_isSome : subLprogFront.isSome := by native_decide
 
+/- The normalization-scan front compile returns `some`, and so does its
+scalar-accumulator export (elaboration-time checks; no axiom). -/
+#guard normRtProgOpt.isSome
+#guard normLprogFront.isSome
+
 /-! ## 4. Emit driver -/
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (renderLprogAtt)
@@ -303,7 +406,7 @@ def emitMain : IO Unit := do
   IO.FS.createDirAll "bench/integration/gen_com"
   let wr (p : String) (o : Option Lprog) : IO Unit := do
     match o with
-    | some lp => IO.FS.writeFile p (renderLprogAtt lp)
+    | some lp => IO.FS.writeFile p (CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned lp)
     | none => throw (IO.userError s!"front-compile failed for {p}")
   wr "bench/integration/gen_com/mpn_and_n_loop_owned.s" andLprog
   wr "bench/integration/gen_com/mpn_ior_n_loop_owned.s" iorLprog

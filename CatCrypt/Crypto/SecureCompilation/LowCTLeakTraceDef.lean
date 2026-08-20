@@ -123,19 +123,19 @@ def LowCT.leakTrace : LowCT → LeakTrace
       -- Over-approximation: both branches contribute. Tight
       -- characterisation requires φ-merge case analysis.
       leakTrace ct ++ leakTrace cf
-  -- `translate` maps `RWhileNz e body` to `cwhile counter bodyProg`, where
-  -- `bodyProg` is the body's program closed off by `letBind constUnit
-  -- (ret here)` (one `constUnit` event).  The placeholder `cwhile` denotation
-  -- runs zero iterations, so the static leak trace is the body's trace
-  -- followed by that unit tail.
+  -- CWhile uplift (#207, 2026-05-29): `translate` maps `RWhileNz e body`
+  -- to `cwhile counter bodyProg`, where `bodyProg` is the body's program
+  -- closed off by `letBind constUnit (ret here)` (one `constUnit` event).
+  -- The placeholder `cwhile` denotation runs zero iterations, so the
+  -- static leak trace is the body's trace followed by that unit tail.
   | .RWhileNz _ body                 =>
       leakTrace body ++ [.pureOp "constUnit"]
-  -- `RFor x N body` is inline-unrolled by `translate`: N iterations of
-  -- `letBind (bvConst _)` (the `x := i` binding) plus the body's leakTrace.
+  -- `RFor x N body` is inline-unrolled by translate (2026-05-27): N iterations
+  -- of `letBind (bvConst _)` (the `x := i` binding) plus body's leakTrace.
   | .RFor _ N body                   =>
       List.replicate N (.pureOp "bvConst" :: leakTrace body) |>.flatten
-  -- `translate` declines the runtime loop (its trip count is not statically
-  -- known), so its static leak trace is a single placeholder marker.
+  -- Stage 1a (2026-07-01): `translate` declines the runtime loop (its trip
+  -- count is not statically known), so it emits a single placeholder marker.
   | .RForRuntime _ _ _               =>
       [.pureOp "forRuntime"]
   | .RLimbStore _ _ _                =>
@@ -144,13 +144,13 @@ def LowCT.leakTrace : LowCT → LeakTrace
   | .RCallSwap f _ _ _               =>
       -- Two sequential single-out calls (matches LowCTToCryptoSSA).
       [.pureOp ("extCall:" ++ f), .pureOp ("extCall:" ++ f)]
-  | .RAsmOp name _ _                 =>
-      [.pureOp ("asmOp:" ++ name)]
-  -- Phase GG (#315/CONN-1): multi-output `RCallN` via `loopCallNDests` emits
-  -- one opaque `extCall "callN:f"` per destination (`dests.length` events),
-  -- matching the per-dest fold in `LowCTToCryptoSSA.translate`.
+  -- Multi-output `RCallN` emits one opaque `extCall` per destination
+  -- (`dests.length` events), named by the destination's index through
+  -- `callNLeafName` so the trace records the leaf names the call reads.
+  -- The indices are positions in the syntax, so the trace remains a
+  -- function of the program text alone.
   | .RCallN f dests _                =>
-      dests.map (fun _ => .pureOp ("extCall:" ++ ("callN:" ++ f)))
+      dests.mapIdx (fun i _ => .pureOp ("extCall:" ++ callNLeafName f i))
   -- Phase H (#280): `translate` models cmov as a single opaque
   -- `extCall "select"` (both sources read unconditionally — CT).
   | .RSelect _ _ _ _                 =>
@@ -160,10 +160,9 @@ def LowCT.leakTrace : LowCT → LeakTrace
   | .RFnDef _ _ _ body cont          => leakTrace body ++ leakTrace cont
   | .RFnCall f _ _                   =>
       [.pureOp ("extCall:" ++ f)]
-  -- Phase FF (#288/REV-9): tuple component store/load translate to one opaque
+  -- Phase FF (#288/REV-9): tuple component load translates to one opaque
   -- extCall whose name folds in the literal component index `idx` (CT — a
   -- compile-time constant, never a secret index).
-  | .RTupleStore _ idx _             => [.pureOp ("extCall:" ++ ("tupleStore:" ++ toString idx))]
   | .RTupleLoad _ _ idx              => [.pureOp ("extCall:" ++ ("tupleLoad:" ++ toString idx))]
   -- Dynamic-index array ops now translate to one opaque `extCall` (carrying the
   -- runtime index as an argument), mirroring the literal-index `RArrStoreLit`/
@@ -171,11 +170,6 @@ def LowCT.leakTrace : LowCT → LeakTrace
   | .RArrStore _ _ _                 => [.pureOp ("extCall:" ++ "arrStoreDyn")]
   | .RArrLoad _ _ _                  => [.pureOp ("extCall:" ++ "arrLoadDyn")]
   | .RScalarSetExpr _ _              => []
-  -- Phase EE (#288/REV-9): byte-slice copy translates to one opaque extCall
-  -- whose name folds in the literal `start`/`len` (CT — both are
-  -- compile-time constants, never secret indices).
-  | .RBytesSlice _ _ start len       =>
-      [.pureOp ("extCall:" ++ ("bytesSlice:" ++ toString start ++ ":" ++ toString len))]
   -- Phase DD (#280): literal-index array access now translates to a single
   -- opaque `extCall` whose name folds in the literal index (CT — the index
   -- is a compile-time constant, not a secret).  Dst-threaded leaf call still

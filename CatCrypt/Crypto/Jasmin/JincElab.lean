@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.Jasmin.JincToCom
 import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # `.jinc` elaborator: untyped `JFun` → `Com jasminDialect` → owned x86
@@ -365,7 +366,7 @@ def emitJincAsm (src : String) (fname : String) : String :=
       | some ⟨Γ, _, com⟩ =>
           let abiArgs := sysvRegs.take Γ.length
           let abiTyin := (Γ.map abiWidth).reverse
-          renderLprogAtt
+          CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned
             (Com.toLprogPhysAbi com fname (abiArgs := abiArgs) (abiTyin := abiTyin))
 
 end CatCrypt.Crypto.Jasmin.JincElab

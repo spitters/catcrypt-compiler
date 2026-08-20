@@ -8,7 +8,17 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381FinalExp
 /-!
 # BLS12-381 owned `Fp` inverse + the full owned `pp_map` (#602 / #219)
 
-**Variant: RELIC-transcribed (tests-only correctness).** This owned `pp_map`
+**Variant: RELIC-transcribed (tests-only correctness).**
+
+**STRING-TEMPLATED — not verified-compiler output:** the emitted
+`bls12381_*_x86_from_lean.s` is assembled as literal asm-line text
+(`framedDriver`/`renderLeafFn` join `movq`/`leaq`/`call` string literals), with
+no `Com`/`Lprog` IR and no verified printer, so no theorem relates the emitted
+bytes to a source; the byte-identity to RELIC below is the only corroboration.
+See `bench/framework/AUDIT_EMIT_BYPASS.md` and `EMIT_PROVENANCE.md`
+§"Which emit is verified?".
+
+This owned `pp_map`
 emit is hand-transcribed from the RELIC pairing reference and gated
 **byte-identical to RELIC** (`pp_map_oatep`). RELIC is unverified C, so that
 byte-identity is a **test**, not a correctness proof. The verified-correctness

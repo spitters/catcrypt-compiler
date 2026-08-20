@@ -100,9 +100,9 @@ namespace Simple
 #eval refSem 5 3      -- 5
 #eval refSem 100 42   -- 100
 
-example : refSem 5 3 = 5 := by native_decide
-example : refSem 0 0 = 0 := by native_decide
-example : refSem 100 42 = 100 := by native_decide
+#guard refSem 5 3 == 5
+#guard refSem 0 0 == 0
+#guard refSem 100 42 == 100
 
 -- The SSA program and its denotation-equals-`refSem` reference theorem now
 -- live on `catCryptDialect`: `S2NBignumSSADialect.Simple.dprog`,
@@ -132,16 +132,16 @@ namespace NegModInv
 
 /-! Newton correctness at concrete odd inputs: `a * refSem a + 1 ≡ 0 (mod 2^64)`. -/
 
-example : (1 : BitVec 64) * refSem 1 + 1 = 0 := by native_decide
-example : (3 : BitVec 64) * refSem 3 + 1 = 0 := by native_decide
-example : (5 : BitVec 64) * refSem 5 + 1 = 0 := by native_decide
-example : (7 : BitVec 64) * refSem 7 + 1 = 0 := by native_decide
-example : (11 : BitVec 64) * refSem 11 + 1 = 0 := by native_decide
-example : (13 : BitVec 64) * refSem 13 + 1 = 0 := by native_decide
-example : (0x123456789ABCDEF : BitVec 64) *
-              refSem 0x123456789ABCDEF + 1 = 0 := by native_decide
-example : (0xFFFFFFFFFFFFFFFF : BitVec 64) *
-              refSem 0xFFFFFFFFFFFFFFFF + 1 = 0 := by native_decide
+#guard (1 : BitVec 64) * refSem 1 + 1 == 0
+#guard (3 : BitVec 64) * refSem 3 + 1 == 0
+#guard (5 : BitVec 64) * refSem 5 + 1 == 0
+#guard (7 : BitVec 64) * refSem 7 + 1 == 0
+#guard (11 : BitVec 64) * refSem 11 + 1 == 0
+#guard (13 : BitVec 64) * refSem 13 + 1 == 0
+#guard (0x123456789ABCDEF : BitVec 64) *
+              refSem 0x123456789ABCDEF + 1 == 0
+#guard (0xFFFFFFFFFFFFFFFF : BitVec 64) *
+              refSem 0xFFFFFFFFFFFFFFFF + 1 == 0
 
 -- The closed-form Newton chain (`refSemClosed`, `refSem_eq_closed`,
 -- `seed_low5_zero`, `newton_step_error`, `word_negmodinv_correct`,
@@ -185,16 +185,15 @@ namespace ByteReverse
 #eval refSem 1                    -- expected 0x0100000000000000
 #eval refSem 0xFFFFFFFFFFFFFFFF   -- fixed point
 
-example : refSem 0x0102030405060708 = 0x0807060504030201 := by native_decide
-example : refSem 1 = 0x0100000000000000 := by native_decide
-example : refSem 0xFFFFFFFFFFFFFFFF = 0xFFFFFFFFFFFFFFFF := by native_decide
-example : refSem 0 = 0 := by native_decide
-example : refSem 0xDEADBEEFCAFEBABE = 0xBEBAFECAEFBEADDE := by native_decide
+#guard refSem 0x0102030405060708 == 0x0807060504030201
+#guard refSem 1 == 0x0100000000000000
+#guard refSem 0xFFFFFFFFFFFFFFFF == 0xFFFFFFFFFFFFFFFF
+#guard refSem 0 == 0
+#guard refSem 0xDEADBEEFCAFEBABE == 0xBEBAFECAEFBEADDE
 -- Involution on concrete inputs
-example : refSem (refSem 0) = 0 := by native_decide
-example : refSem (refSem 0x0102030405060708) = 0x0102030405060708 := by native_decide
-example : refSem (refSem 0xDEADBEEFCAFEBABE) = 0xDEADBEEFCAFEBABE := by
-  native_decide
+#guard refSem (refSem 0) == 0
+#guard refSem (refSem 0x0102030405060708) == 0x0102030405060708
+#guard refSem (refSem 0xDEADBEEFCAFEBABE) == 0xDEADBEEFCAFEBABE
 
 -- The SSA program and its denotation-equals-`refSem` reference theorem now
 -- live on `catCryptDialect`: `S2NBignumSSADialect.ByteReverse.dprog`,
@@ -230,8 +229,8 @@ def body : List InstrR :=
 def refSem (a b c d x : BitVec 64) : BitVec 64 :=
   ((a * x + b) * x + c) * x + d
 
-/-- Direct spec against the ARM-level intent. -/
-example : refSem 1 2 3 4 10 = ((1 * 10 + 2) * 10 + 3) * 10 + 4 := by native_decide
+-- Direct spec against the ARM-level intent.
+#guard refSem 1 2 3 4 10 == ((1 * 10 + 2) * 10 + 3) * 10 + 4
 
 def fd : FunDecl where
   name := { name := "horner4" }
@@ -261,7 +260,7 @@ def body : List InstrR :=
 def refSem (a b c d e f : BitVec 64) : BitVec 64 :=
   ((a + b) ^^^ (c + d)) ^^^ (e + f)
 
-example : refSem 10 20 30 40 50 60 = (30 ^^^ 70) ^^^ 110 := by native_decide
+#guard refSem 10 20 30 40 50 60 == (30 ^^^ 70) ^^^ 110
 
 def fd : FunDecl where
   name := { name := "sumxor3" }
@@ -324,7 +323,7 @@ def body : List InstrR :=
 
 def refSem (a b c : BitVec 64) : BitVec 64 := a * b + c
 
-example : refSem 3 4 5 = 17 := by native_decide
+#guard refSem 3 4 5 == 17
 
 def fd : FunDecl where
   name := { name := "word_mul_add" }
@@ -441,9 +440,8 @@ namespace WordAvg
 -- `body` and `refSem` are the `CProg`-free reference data; they live in
 -- `S2NBignumRefSem.lean` (same namespace, imported above).
 
-example : refSem 10 20 = 15 := by native_decide
-example : refSem 0xFFFFFFFFFFFFFFFF 0xFFFFFFFFFFFFFFFF = 0xFFFFFFFFFFFFFFFF := by
-  native_decide
+#guard refSem 10 20 == 15
+#guard refSem 0xFFFFFFFFFFFFFFFF 0xFFFFFFFFFFFFFFFF == 0xFFFFFFFFFFFFFFFF
 
 /-- Reference semantics via `pureEvalMonoCmd` — matches the closed form. -/
 def refSemMono (a b : BitVec 64) : BitVec 64 :=
@@ -533,7 +531,7 @@ end IdentityPipeline
 /-! ## Port 15: `horner5` — five-coefficient Horner polynomial
 
 `horner5(x, c0, c1, c2, c3, c4) = (((c0*x + c1)*x + c2)*x + c3)*x + c4`.
-6 inputs. Beyond `translateMonoFun4`, so no correctness bridge for now —
+6 inputs. Beyond `translateMonoFun4`, so no correctness bridge —
 just the Jasmin port. -/
 
 /-! ## Ports 16–18: s2n routines via flag-producing intrinsics
@@ -814,9 +812,9 @@ def refSem (a0 a1 b0 b1 : BitVec 64) : BitVec 64 × BitVec 64 :=
   let p1 := BitVec.adc a1 b1 p0.fst
   (p0.snd, p1.snd)
 
-example : refSem 1 2 3 4 = (4, 6) := by native_decide
-/-- 128-bit addition: carry propagates across limbs. -/
-example : refSem 0xFFFFFFFFFFFFFFFF 0 1 0 = (0, 1) := by native_decide
+#guard refSem 1 2 3 4 == (4, 6)
+-- 128-bit addition: carry propagates across limbs.
+#guard refSem 0xFFFFFFFFFFFFFFFF 0 1 0 == (0, 1)
 
 def fd : FunDecl where
   name := { name := "bignum_add_2" }
@@ -1074,7 +1072,8 @@ TODO at the bottom of this section.
 What this section adds: the Copn builders (`adcxCopn`, `adoxCopn`,
 `xorlCopn`) so future ports can target the dual-carry path. Validated
 against the workspace's existing BMI2 jazz code
-(the curve25519 and bls12 jasmin reference sources). -/
+(`scalarmult.jazz` in the curve25519-jasmin-rs crate,
+`bls12_*.jazz` in the bls12-jasmin-rs crate). -/
 
 namespace BignumMul4Adcx
 
@@ -2699,9 +2698,9 @@ def refSemClosed (x : BitVec 64) : BitVec 64 :=
 #eval refSem 1
 #eval refSemClosed 1
 
-example : refSem 1 = refSemClosed 1 := by native_decide
-example : refSem 42 = refSemClosed 42 := by native_decide
-example : refSem 0xDEADBEEF = refSemClosed 0xDEADBEEF := by native_decide
+#guard refSem 1 == refSemClosed 1
+#guard refSem 42 == refSemClosed 42
+#guard refSem 0xDEADBEEF == refSemClosed 0xDEADBEEF
 
 def fd : FunDecl where
   name := { name := "mix_loop_4" }
@@ -2850,35 +2849,35 @@ If any future port violates preservation, these `decide` calls break. -/
 open CatCrypt.Crypto.Jasmin.Emit (optimize)
 open CatCrypt.Crypto.Jasmin (isCT_Cmd)
 
-example : isCT_Cmd (optimize [v "r"] Simple.body).1              := by native_decide
-example : isCT_Cmd (optimize [v "ret"] NegModInv.body).1         := by native_decide
-example : isCT_Cmd (optimize [v "ret"] ByteReverse.body).1       := by native_decide
-example : isCT_Cmd (optimize [v "ret"] ByteReverseBswap.body).1  := by native_decide
-example : isCT_Cmd (optimize [v "ret"] Horner4.body).1           := by native_decide
-example : isCT_Cmd (optimize [v "ret"] SumXor3.body).1           := by native_decide
-example : isCT_Cmd (optimize [v "ret"] MulAdd.body).1            := by native_decide
-example : isCT_Cmd (optimize [v "ret"] SplitMix64.body).1        := by native_decide
-example : isCT_Cmd (optimize [v "ret"] MurmurFmix64.body).1      := by native_decide
-example : isCT_Cmd (optimize [v "ret"] FNV1aStep.body).1         := by native_decide
-example : isCT_Cmd (optimize [v "ret"] WordAvg.body).1           := by native_decide
-example : isCT_Cmd (optimize [v "ret"] SquareSubSquare.body).1   := by native_decide
-example : isCT_Cmd (optimize [v "ret"] MulXorParallel.body).1    := by native_decide
-example : isCT_Cmd (optimize [v "ret"] IdentityPipeline.body).1  := by native_decide
-example : isCT_Cmd (optimize [v "ret"] WordClz.body).1           := by native_decide
-example : isCT_Cmd (optimize [v "ret"] WordCtz.body).1           := by native_decide
-example : isCT_Cmd (optimize [v "ret"] WordPopcount.body).1      := by native_decide
-example : isCT_Cmd (optimize [v "ret"] Xorshift64.body).1        := by native_decide
-example : isCT_Cmd (optimize [v "ret"] LcgKnuth.body).1          := by native_decide
-example : isCT_Cmd (optimize [v "ret"] WyhashMix.body).1         := by native_decide
-example : isCT_Cmd (optimize [v "ret"] Xxh64Finalize.body).1     := by native_decide
-example : isCT_Cmd (optimize [v "ret"] MurmurK1.body).1          := by native_decide
-example : isCT_Cmd (optimize [v "ret"] Rotr23.body).1            := by native_decide
-example : isCT_Cmd (optimize [v "ret"] GoldenRatioHash.body).1   := by native_decide
-example : isCT_Cmd (optimize [v "r0", v "r1"] BignumAdd2.body).1            := by native_decide
-example : isCT_Cmd (optimize [v "ret"] Horner5.body).1           := by native_decide
-example : isCT_Cmd (optimize [] BignumAdd4.body).1                          := by native_decide
-example : isCT_Cmd (optimize [] BignumMul4.body).1                          := by native_decide
-example : isCT_Cmd (optimize [v "cnt"] WordBitsize.bodyWithOne).1           := by native_decide
+#guard isCT_Cmd (optimize [v "r"] Simple.body).1
+#guard isCT_Cmd (optimize [v "ret"] NegModInv.body).1
+#guard isCT_Cmd (optimize [v "ret"] ByteReverse.body).1
+#guard isCT_Cmd (optimize [v "ret"] ByteReverseBswap.body).1
+#guard isCT_Cmd (optimize [v "ret"] Horner4.body).1
+#guard isCT_Cmd (optimize [v "ret"] SumXor3.body).1
+#guard isCT_Cmd (optimize [v "ret"] MulAdd.body).1
+#guard isCT_Cmd (optimize [v "ret"] SplitMix64.body).1
+#guard isCT_Cmd (optimize [v "ret"] MurmurFmix64.body).1
+#guard isCT_Cmd (optimize [v "ret"] FNV1aStep.body).1
+#guard isCT_Cmd (optimize [v "ret"] WordAvg.body).1
+#guard isCT_Cmd (optimize [v "ret"] SquareSubSquare.body).1
+#guard isCT_Cmd (optimize [v "ret"] MulXorParallel.body).1
+#guard isCT_Cmd (optimize [v "ret"] IdentityPipeline.body).1
+#guard isCT_Cmd (optimize [v "ret"] WordClz.body).1
+#guard isCT_Cmd (optimize [v "ret"] WordCtz.body).1
+#guard isCT_Cmd (optimize [v "ret"] WordPopcount.body).1
+#guard isCT_Cmd (optimize [v "ret"] Xorshift64.body).1
+#guard isCT_Cmd (optimize [v "ret"] LcgKnuth.body).1
+#guard isCT_Cmd (optimize [v "ret"] WyhashMix.body).1
+#guard isCT_Cmd (optimize [v "ret"] Xxh64Finalize.body).1
+#guard isCT_Cmd (optimize [v "ret"] MurmurK1.body).1
+#guard isCT_Cmd (optimize [v "ret"] Rotr23.body).1
+#guard isCT_Cmd (optimize [v "ret"] GoldenRatioHash.body).1
+#guard isCT_Cmd (optimize [v "r0", v "r1"] BignumAdd2.body).1
+#guard isCT_Cmd (optimize [v "ret"] Horner5.body).1
+#guard isCT_Cmd (optimize [] BignumAdd4.body).1
+#guard isCT_Cmd (optimize [] BignumMul4.body).1
+#guard isCT_Cmd (optimize [v "cnt"] WordBitsize.bodyWithOne).1
 
 /-- **All ports are CT after the full optimizer pipeline.** Combined
     theorem using `native_decide` on the 28 concrete ports we ship.

@@ -244,30 +244,30 @@ The encoder's instruction words pinned to the exact 32-bit words
 round-trip in `SailRiscvDecoder.lean` upgrades this gas pin to a proof against
 the official sail-riscv model. -/
 
-/-- `addw a0, a0, a1` → `as`/objdump word `0x00b5053b`. -/
-example : encodeWord (.addw "a0" "a0" "a1") = 0x00b5053b := by native_decide
-/-- `xor a3, a3, a0` → `0x00a6c6b3`. -/
-example : encodeWord (.xor "a3" "a3" "a0") = 0x00a6c6b3 := by native_decide
-/-- `slliw a4, a3, 16` → `0x0106971b`. -/
-example : encodeWord (.slliw "a4" "a3" 16) = 0x0106971b := by native_decide
-/-- `srliw a3, a3, 16` → `0x0106d69b`. -/
-example : encodeWord (.srliw "a3" "a3" 16) = 0x0106d69b := by native_decide
-/-- `or a3, a4, a3` → `0x00d766b3`. -/
-example : encodeWord (.or "a3" "a4" "a3") = 0x00d766b3 := by native_decide
-/-- `subw a2, a2, a3` → `0x40d6063b`. -/
-example : encodeWord (.subw "a2" "a2" "a3") = 0x40d6063b := by native_decide
-/-- `mv a5, a0` (= `addi a5, a0, 0`) → `0x00050793`. -/
-example : encodeWord (.mv "a5" "a0") = 0x00050793 := by native_decide
+-- `addw a0, a0, a1` → `as`/objdump word `0x00b5053b`.
+#guard encodeWord (.addw "a0" "a0" "a1") == 0x00b5053b
+-- `xor a3, a3, a0` → `0x00a6c6b3`.
+#guard encodeWord (.xor "a3" "a3" "a0") == 0x00a6c6b3
+-- `slliw a4, a3, 16` → `0x0106971b`.
+#guard encodeWord (.slliw "a4" "a3" 16) == 0x0106971b
+-- `srliw a3, a3, 16` → `0x0106d69b`.
+#guard encodeWord (.srliw "a3" "a3" 16) == 0x0106d69b
+-- `or a3, a4, a3` → `0x00d766b3`.
+#guard encodeWord (.or "a3" "a4" "a3") == 0x00d766b3
+-- `subw a2, a2, a3` → `0x40d6063b`.
+#guard encodeWord (.subw "a2" "a2" "a3") == 0x40d6063b
+-- `mv a5, a0` (= `addi a5, a0, 0`) → `0x00050793`.
+#guard encodeWord (.mv "a5" "a0") == 0x00050793
 
-/-- `roriw a1, a0, 8` (Zbb single-instruction rotate) → `as -march=rv64gc_zbb` /
-    objdump word `0x6085559b` (funct7 `0x30`, funct3 `0x5`, opcode `0x1b`). -/
-example : encodeWord (.roriw "a1" "a0" 8) = 0x6085559b := by native_decide
-/-- `roriw a2, a0, 12` → `0x60c5561b`. -/
-example : encodeWord (.roriw "a2" "a0" 12) = 0x60c5561b := by native_decide
+-- `roriw a1, a0, 8` (Zbb single-instruction rotate) → `as -march=rv64gc_zbb` /
+-- objdump word `0x6085559b` (funct7 `0x30`, funct3 `0x5`, opcode `0x1b`).
+#guard encodeWord (.roriw "a1" "a0" 8) == 0x6085559b
+-- `roriw a2, a0, 12` → `0x60c5561b`.
+#guard encodeWord (.roriw "a2" "a0" 12) == 0x60c5561b
 
-/-- The first little-endian byte of `addw a0,a0,a1` is `0x3b` (the RV64 opcode
-    byte that leads the LE word in `.text`). -/
-example : (encodeRInst (.addw "a0" "a0" "a1")).head? = some 0x3b := by native_decide
+-- The first little-endian byte of `addw a0,a0,a1` is `0x3b` (the RV64 opcode
+-- byte that leads the LE word in `.text`).
+#guard (encodeRInst (.addw "a0" "a0" "a1")).head? == some 0x3b
 
 /-! ### 5b. B-type branch encoder: structure + gas differential pins (#552)
 
@@ -289,24 +289,19 @@ top (`a2=12`, `a0=10`, `a1=11`, `zero=0`):
       (match i with | .bcc _ _ _ _ => 4 | _ => 0) := by
   cases i <;> simp [encodeRBranch, wordLE]
 
-/-- `bne a2, zero, .Ltop` at back-edge byte offset `−4` → gas word `0xfe061ee3`. -/
-example : encodeBccWord .bne "a2" "zero" (BitVec.ofNat 13 (0x2000 - 4)) = 0xfe061ee3 := by
-  native_decide
-/-- `beq a0, a1, .Ltop` at offset `−8` → gas word `0xfeb50ce3`. -/
-example : encodeBccWord .beq "a0" "a1" (BitVec.ofNat 13 (0x2000 - 8)) = 0xfeb50ce3 := by
-  native_decide
-/-- `blt a0, a1, .Ltop` at offset `−12` → gas word `0xfeb54ae3`. -/
-example : encodeBccWord .blt "a0" "a1" (BitVec.ofNat 13 (0x2000 - 12)) = 0xfeb54ae3 := by
-  native_decide
-/-- `bne a2, zero, .Ltop` at offset `−16` → gas word `0xfe0618e3` — the scrambled
-    immediate packs `imm[12|10:5|4:1|11]` exactly as the ISA. -/
-example : encodeBccWord .bne "a2" "zero" (BitVec.ofNat 13 (0x2000 - 16)) = 0xfe0618e3 := by
-  native_decide
+-- `bne a2, zero, .Ltop` at back-edge byte offset `−4` → gas word `0xfe061ee3`.
+#guard encodeBccWord .bne "a2" "zero" (BitVec.ofNat 13 (0x2000 - 4)) == 0xfe061ee3
+-- `beq a0, a1, .Ltop` at offset `−8` → gas word `0xfeb50ce3`.
+#guard encodeBccWord .beq "a0" "a1" (BitVec.ofNat 13 (0x2000 - 8)) == 0xfeb50ce3
+-- `blt a0, a1, .Ltop` at offset `−12` → gas word `0xfeb54ae3`.
+#guard encodeBccWord .blt "a0" "a1" (BitVec.ofNat 13 (0x2000 - 12)) == 0xfeb54ae3
+-- `bne a2, zero, .Ltop` at offset `−16` → gas word `0xfe0618e3` — the scrambled
+-- immediate packs `imm[12|10:5|4:1|11]` exactly as the ISA.
+#guard encodeBccWord .bne "a2" "zero" (BitVec.ofNat 13 (0x2000 - 16)) == 0xfe0618e3
 
-/-- The low 7 bits of every B-type branch word are the RV64 `BRANCH` opcode
-    `0x63` (the LE head byte also carries `imm[11]` in bit 7, so it is not `0x63`
-    itself; the opcode is the low 7 bits). -/
-example : (encodeBccWord .bne "a2" "zero" (BitVec.ofNat 13 (0x2000 - 4))).toNat % 128 = 0x63 := by
-  native_decide
+-- The low 7 bits of every B-type branch word are the RV64 `BRANCH` opcode
+-- `0x63` (the LE head byte also carries `imm[11]` in bit 7, so it is not `0x63`
+-- itself; the opcode is the low 7 bits).
+#guard (encodeBccWord .bne "a2" "zero" (BitVec.ofNat 13 (0x2000 - 4))).toNat % 128 == 0x63
 
 end CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvEncoder

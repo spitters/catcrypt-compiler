@@ -172,19 +172,16 @@ partial def bindsOf : BindEnv → LowCT → BindEnv
   | env, .RCallSwap _ _ _ _ => env
   | env, .RCloneCall cv ct _ _ _ _ => env.bind cv ct
   | env, .RLimbStore _ _ _ => env
-  | env, .RAsmOp _ _ _ => env
   | env, .RCallN _ _ _ => env
   | env, .RSelect _ _ _ _ => env
   | env, .RAssert _ => env
   | env, .RBlock body => bindsOf env body
   | env, .RFnDef _ _ _ _ cont => bindsOf env cont
   | env, .RFnCall _ _ _ => env
-  | env, .RTupleStore _ _ _ => env
   | env, .RTupleLoad _ _ _ => env
   | env, .RArrStore _ _ _ => env
   | env, .RArrLoad _ _ _ => env
   | env, .RScalarSetExpr _ _ => env
-  | env, .RBytesSlice _ _ _ _ => env
 
 /-- Walk a `LowCT` applying `splitOneCall` to every `RCall` while
     tracking `RLetZero` bindings in the env. -/
@@ -220,7 +217,6 @@ partial def splitBytesSlice : BindEnv → LowCT → LowCT
       -- the continuation isn't applicable (single-step).  No nested body.
       .RCloneCall cv ct old f dest args
   | _, .RLimbStore l idx v => .RLimbStore l idx v
-  | _, .RAsmOp name dests args => .RAsmOp name dests args
   | _, .RCallN f dests args => .RCallN f dests args
   | _, .RSelect d s s0 s1 => .RSelect d s s0 s1
   | _, .RAssert e => .RAssert e
@@ -233,12 +229,10 @@ partial def splitBytesSlice : BindEnv → LowCT → LowCT
         (splitBytesSlice bodyEnv body)
         (splitBytesSlice env cont)
   | _, .RFnCall f dests args => .RFnCall f dests args
-  | _, .RTupleStore d idx s => .RTupleStore d idx s
   | _, .RTupleLoad d s idx => .RTupleLoad d s idx
   | _, .RArrStore a idx s => .RArrStore a idx s
   | _, .RArrLoad d s idx => .RArrLoad d s idx
   | _, .RScalarSetExpr x e => .RScalarSetExpr x e
-  | _, .RBytesSlice d s start len => .RBytesSlice d s start len
 
 /-! ## §3 Collector for the leaves.jinc emitter
 
@@ -274,19 +268,16 @@ partial def collectMangledLeaves : LowCT → List (Nat × Nat)
   | .RCallSwap _ _ _ _ => []
   | .RCloneCall _ _ _ _ _ _ => []
   | .RLimbStore _ _ _ => []
-  | .RAsmOp _ _ _ => []
   | .RCallN _ _ _ => []
   | .RSelect _ _ _ _ => []
   | .RAssert _ => []
   | .RBlock body => collectMangledLeaves body
   | .RFnDef _ _ _ _ cont => collectMangledLeaves cont
   | .RFnCall _ _ _ => []
-  | .RTupleStore _ _ _ => []
   | .RTupleLoad _ _ _ => []
   | .RArrStore _ _ _ => []
   | .RArrLoad _ _ _ => []
   | .RScalarSetExpr _ _ => []
-  | .RBytesSlice _ _ _ _ => []
 
 /-- Dedup a list of `(srcSize, dstSize)` pairs, keeping the first
     occurrence of each. -/

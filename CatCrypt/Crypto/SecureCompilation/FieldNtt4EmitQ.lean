@@ -7,6 +7,7 @@ import CatCrypt.Crypto.SecureCompilation.MlkemNttFieldEmit
 import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # Byte-correct 4-point forward NTT over `F_q` (`q = 3329`), FRONT-COMPILED, OWNED x86
@@ -318,7 +319,7 @@ def ntt4QLprog : Lprog :=
 
 /-- The owned AT&T `.s` text for `ntt4_q3329`, rendered straight from the owned
     `Lprog` (no jasminc). -/
-def ntt4QAsm : String := renderLprogAtt ntt4QLprog
+def ntt4QAsm : String := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned ntt4QLprog
 
 /-- The output path for the field-kernel-emitted `.s`. -/
 def ntt4QTarget : System.FilePath :=

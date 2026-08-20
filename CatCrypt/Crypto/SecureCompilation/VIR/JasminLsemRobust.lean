@@ -53,13 +53,12 @@ structure* of `dsts` and `srcs`:
 * a register-indexed element `.arrIdx base idx scale` leaks the *structure*
   `(base, idx, scale)` — i.e. *which* index register and the stride, **not** the
   value in `idx`. (For the `regArith` fragment this case never occurs; it is
-  modeled honestly so the leak function is total and faithful to the full IR.)
+  modeled so the leak function is total over the full IR.)
 
-Crucially `lsemLeak` **never reads `s.lvm`** — it never inspects a register
-value. That is the whole point: for the straight-line `regArith` fragment there
-is no data-dependent branch (`Lopn` is unconditional) and no value-dependent
-memory addressing (every operand is `.reg`/`.imm`), so the leak is *genuinely*
-state-independent — and the model reflects exactly that, by leaking the
+`lsemLeak` **never reads `s.lvm`** — it never inspects a register value. For the
+straight-line `regArith` fragment there is no data-dependent branch (`Lopn` is
+unconditional) and no value-dependent memory addressing (every operand is
+`.reg`/`.imm`), so the leak is state-independent, and the model leaks the
 instruction's opcode/operand-register structure and nothing else.
 
 This is the linear-IR analogue of `MachineConstantTime.blockLeak_state_independent`
@@ -196,6 +195,22 @@ def lsemLeak {w : Nat} : List LinstrR → Lstate w → List LLeak
           | some s' => lsemLeak is s'
           | none => []) := rfl
 
+/-- On a list that runs to completion the leakage trace is the concatenation of
+    the per-instruction leaks, hence a function of the instruction list alone.
+    Constant-timeness of a completing body follows: two runs of one list leak the
+    same trace whatever their start states. -/
+theorem lsemLeak_of_run {w : Nat} (is : List LinstrR) (s s₂ : Lstate w)
+    (h : lsemStraight is s = some s₂) : lsemLeak is s = is.flatMap linstrLeak := by
+  induction is generalizing s with
+  | nil => rfl
+  | cons i rest ih =>
+    rw [lsemStraight_cons] at h
+    cases hst : lsemStep (w := w) i s with
+    | none => rw [hst] at h; exact absurd h (by simp)
+    | some s' =>
+      rw [hst] at h
+      simp only [lsemLeak_cons, hst, List.flatMap_cons, ih s' h]
+
 /-! ## 4. `straightOps` emits only `Lopn` — hence no branch, no value-dependence
 
 The `.var`-chain `straightOps` consists entirely of `opToLinstrR (regArith …) …`
@@ -261,13 +276,18 @@ theorem lsemStep_regArith_succeeds {w nArgs curDepth : Nat} {Γ : Ctxt jasminDia
         (⟨JasminOp.regArith bop w, heq, .cons a0 (.cons a1 .nil)⟩ : Expr jasminDialect Γ (.reg w))
         = [resolveVar curDepth nArgs argName (fun _ => none) a0,
            resolveVar curDepth nArgs argName (fun _ => none) a1] := rfl
-    simp only [opToLinstrR, lsemStep, hargs, List.map_cons, List.map_nil,
-      stripWidthTag_withWidthTag_binOpName, applyOpn_binOpName]
+    simp only [opToLinstrR, hargs]
+    rw [lsemStep_reg_cons2 (regName curDepth) (withWidthTag w (binOpName bop))
+        (resolveVar curDepth nArgs argName (fun _ => none) a0)
+        (resolveVar curDepth nArgs argName (fun _ => none) a1) st
+        (fun base idx scale =>
+          resolveVar_ne_arrIdx curDepth nArgs argName (fun _ => none) a0 base idx scale)]
+    simp only [stripWidthTag_withWidthTag_binOpName, applyOpn_binOpName]
     exact ⟨_, rfl⟩
 
-/-- **Robustness / constant-time keystone (unconditional).** The linear-IR
-    leakage trace of the linearizer-emitted `.var`-chain `straightOps` is the
-    **same from any two initial states** `s₁ s₂`.
+/-- **State-independence of the linear-IR leakage trace.** The trace of the
+    linearizer-emitted `.var`-chain `straightOps` is the **same from any two
+    initial states** `s₁ s₂`, with no hypothesis on the states.
 
     The leak depends only on the instruction list, not the state: every head is
     an `Lopn` whose `linstrLeak` reads only syntax (never `s.lvm`), and every
@@ -345,7 +365,7 @@ theorem owned_lsem_correct_and_robust_straightline {w : Nat} {Γ : Ctxt jasminDi
 
 /-- The constant-time leaf takes **no** control-flow branch: the straight-line
     `regArith` chain emits only `Lopn`, so the branch channel of `lsemLeak` is
-    empty regardless of state. The branch-free half of the CT verdict (cf.
+    empty regardless of state. The branch-free half of the CT statement (cf.
     `MachineConstantTime.blockLeak_no_branch`). -/
 theorem lsemLeak_straightOps_no_branch {w : Nat} {Γ : Ctxt jasminDialect}
     {t : JasminTy} (com : Com jasminDialect Γ t) (nArgs curDepth : Nat)
@@ -369,5 +389,182 @@ theorem lsemLeak_straightOps_no_branch {w : Nat} {Γ : Ctxt jasminDialect}
           (exprArgs curDepth nArgs argName (fun _ => none) e)) s with
       | none => rfl
       | some s' => exact ih (curDepth + 1) s'
+
+/-! ## 7. Architectural state agreement
+
+`lsemStep` reads the register map and memory and writes the register map and the
+program counter. A pass that deletes or inserts an instruction shifts every later
+program counter, so the relation such a pass preserves is agreement on the
+*architectural* component alone: the register map `lvm` and memory `lmem`.
+
+`ArchAgree` is that relation; `stateStore` is its store-image form
+(`archAgree_iff_stateStore`); `ArchAgreeOpt` lifts it to the `Option` results of
+`lsemStraight`. The `Lprog`-level passes state their correctness against one of
+these three forms. -/
+
+/-- Two linear-machine states agree on the architectural component: the register
+    map and memory, ignoring the program counter. -/
+def ArchAgree {w : Nat} (s t : Lstate w) : Prop := s.lvm = t.lvm ∧ s.lmem = t.lmem
+
+theorem ArchAgree.refl {w : Nat} (s : Lstate w) : ArchAgree s s := ⟨rfl, rfl⟩
+
+theorem ArchAgree.symm {w : Nat} {s t : Lstate w} (h : ArchAgree s t) : ArchAgree t s :=
+  ⟨h.1.symm, h.2.symm⟩
+
+theorem ArchAgree.trans {w : Nat} {s t u : Lstate w} (h₁ : ArchAgree s t)
+    (h₂ : ArchAgree t u) : ArchAgree s u := ⟨h₁.1.trans h₂.1, h₁.2.trans h₂.2⟩
+
+/-- The store of a linear state: its register map paired with its memory. -/
+def stateStore {w : Nat} (s : Lstate w) : (String → BitVec w) × (String → Int → BitVec w) :=
+  (s.lvm, s.lmem)
+
+/-- `ArchAgree` is equality of the store image. -/
+theorem archAgree_iff_stateStore {w : Nat} (s t : Lstate w) :
+    ArchAgree s t ↔ stateStore s = stateStore t := by
+  simp [ArchAgree, stateStore, Prod.ext_iff]
+
+/-- `ArchAgree` lifted to the `Option` results of `lsemStraight`. -/
+def ArchAgreeOpt {w : Nat} : Option (Lstate w) → Option (Lstate w) → Prop
+  | none, none => True
+  | some s, some t => ArchAgree s t
+  | _, _ => False
+
+@[simp] theorem archAgreeOpt_none_none {w : Nat} :
+    ArchAgreeOpt (w := w) none none = True := rfl
+
+@[simp] theorem archAgreeOpt_some_some {w : Nat} (s t : Lstate w) :
+    ArchAgreeOpt (some s) (some t) = ArchAgree s t := rfl
+
+@[simp] theorem archAgreeOpt_none_some {w : Nat} (t : Lstate w) :
+    ArchAgreeOpt none (some t) = False := rfl
+
+@[simp] theorem archAgreeOpt_some_none {w : Nat} (s : Lstate w) :
+    ArchAgreeOpt (some s) none = False := rfl
+
+theorem ArchAgreeOpt.refl {w : Nat} (o : Option (Lstate w)) : ArchAgreeOpt o o := by
+  cases o <;> simp [ArchAgree.refl]
+
+theorem ArchAgreeOpt.trans {w : Nat} {a b c : Option (Lstate w)}
+    (h₁ : ArchAgreeOpt a b) (h₂ : ArchAgreeOpt b c) : ArchAgreeOpt a c := by
+  cases a with
+  | none =>
+    cases b with
+    | none => cases c with
+      | none => trivial
+      | some _ => exact (h₂ : False).elim
+    | some _ => exact (h₁ : False).elim
+  | some x =>
+    cases b with
+    | none => exact (h₁ : False).elim
+    | some y => cases c with
+      | none => exact (h₂ : False).elim
+      | some z => exact ArchAgree.trans h₁ h₂
+
+/-- `ArchAgreeOpt` is equality of the mapped store images. -/
+theorem archAgreeOpt_iff_stateStore {w : Nat} (a b : Option (Lstate w)) :
+    ArchAgreeOpt a b ↔ Option.map stateStore a = Option.map stateStore b := by
+  cases a <;> cases b <;> simp [ArchAgreeOpt, archAgree_iff_stateStore]
+
+/-- `lsemStep` reads only the register map and memory and writes only the
+    register map and the program counter, so it maps `ArchAgree` states to
+    `ArchAgree` results. -/
+theorem lsemStep_archAgree {w : Nat} (i : LinstrR) {s t : Lstate w} (h : ArchAgree s t) :
+    ArchAgreeOpt (lsemStep i s) (lsemStep i t) := by
+  obtain ⟨hv, hm⟩ := h
+  have hop : ∀ o : LOperand, evalOperand s o = evalOperand t o := by
+    intro o; cases o <;> simp [evalOperand, hv, hm]
+  cases i with
+  | Lopn dsts opn srcs =>
+    cases dsts with
+    | nil => simp [lsemStep, ArchAgreeOpt]
+    | cons d ds =>
+      cases ds with
+      | cons _ _ => simp [lsemStep, ArchAgreeOpt]
+      | nil =>
+        cases d with
+        | imm _ => simp [lsemStep, ArchAgreeOpt]
+        | arr _ _ => simp [lsemStep, ArchAgreeOpt]
+        | arrIdx _ _ _ => simp [lsemStep, ArchAgreeOpt]
+        | reg dst =>
+          have hsrc : srcs.map (evalOperand s) = srcs.map (evalOperand t) :=
+            List.map_congr_left fun o _ => hop o
+          cases srcs with
+          | nil =>
+            simp only [lsemStep, hsrc]
+            cases happ : applyOpn (w := w) (stripWidthTag opn)
+                (([] : List LOperand).map (evalOperand t)) with
+            | none => simp [ArchAgreeOpt]
+            | some v => simp [ArchAgreeOpt, ArchAgree, Lstate.nextPc, Lstate.setReg, hv, hm]
+          | cons hd tl =>
+            cases hd with
+            | reg r =>
+              simp only [lsemStep, hsrc]
+              cases happ : applyOpn (w := w) (stripWidthTag opn)
+                  ((LOperand.reg r :: tl).map (evalOperand t)) with
+              | none => simp [ArchAgreeOpt]
+              | some v => simp [ArchAgreeOpt, ArchAgree, Lstate.nextPc, Lstate.setReg, hv, hm]
+            | imm iv =>
+              simp only [lsemStep, hsrc]
+              cases happ : applyOpn (w := w) (stripWidthTag opn)
+                  ((LOperand.imm iv :: tl).map (evalOperand t)) with
+              | none => simp [ArchAgreeOpt]
+              | some v => simp [ArchAgreeOpt, ArchAgree, Lstate.nextPc, Lstate.setReg, hv, hm]
+            | arr ab ai =>
+              simp only [lsemStep, hsrc]
+              cases happ : applyOpn (w := w) (stripWidthTag opn)
+                  ((LOperand.arr ab ai :: tl).map (evalOperand t)) with
+              | none => simp [ArchAgreeOpt]
+              | some v => simp [ArchAgreeOpt, ArchAgree, Lstate.nextPc, Lstate.setReg, hv, hm]
+            | arrIdx base idx scale =>
+              simp only [lsemStep, hv, hm]
+              by_cases hload : opn = "LOADIDX"
+              · simp only [hload, if_pos]
+                simp [ArchAgreeOpt, ArchAgree, Lstate.nextPc, Lstate.setReg, hv, hm]
+              · by_cases hstore : opn = "STOREIDX"
+                · simp only [hstore, reduceIte]
+                  cases tl with
+                  | nil => simp [ArchAgreeOpt]
+                  | cons val rest =>
+                    cases rest with
+                    | nil =>
+                      simp only [ArchAgreeOpt, ArchAgree, Lstate.nextPc, hop val]
+                      exact ⟨rfl, rfl⟩
+                    | cons _ _ => simp [ArchAgreeOpt]
+                · simp only [hload, hstore, reduceIte]
+                  rw [hsrc]
+                  cases happ : applyOpn (w := w) (stripWidthTag opn)
+                      ((LOperand.arrIdx base idx scale :: tl).map (evalOperand t)) with
+                  | none => simp [ArchAgreeOpt]
+                  | some v => simp [ArchAgreeOpt, ArchAgree, Lstate.nextPc, Lstate.setReg, hv, hm]
+  | Lsyscall _ => simp [lsemStep, ArchAgreeOpt]
+  | Lcall _ _ => simp [lsemStep, ArchAgreeOpt]
+  | Lret => simp [lsemStep, ArchAgreeOpt]
+  | Lalign => simp [lsemStep, ArchAgreeOpt, ArchAgree, Lstate.nextPc, hv, hm]
+  | Llabel _ _ => simp [lsemStep, ArchAgreeOpt, ArchAgree, Lstate.nextPc, hv, hm]
+  | Lgoto _ => simp [lsemStep, ArchAgreeOpt]
+  | Ligoto _ => simp [lsemStep, ArchAgreeOpt]
+  | LstoreLabel _ _ => simp [lsemStep, ArchAgreeOpt]
+  | Lcond _ _ => simp [lsemStep, ArchAgreeOpt]
+
+/-- The step's store image is a function of the start state's store image: the
+    `stateStore` form of `lsemStep_archAgree`. -/
+theorem lsemStep_stateStore {w : Nat} (i : LinstrR) {s t : Lstate w}
+    (h : stateStore s = stateStore t) :
+    Option.map stateStore (lsemStep i s) = Option.map stateStore (lsemStep i t) :=
+  (archAgreeOpt_iff_stateStore _ _).1
+    (lsemStep_archAgree i ((archAgree_iff_stateStore s t).2 h))
+
+/-- The unbundled form of `lsemStep_archAgree`: from states with equal register
+    map and memory, a step that succeeds on one succeeds on the other and lands
+    on states with equal register map and memory. -/
+theorem lsemStep_congr_of_archAgree {w : Nat} (i : LinstrR) {s t : Lstate w}
+    (hv : s.lvm = t.lvm) (hm : s.lmem = t.lmem) {s₁ : Lstate w}
+    (hst : lsemStep i s = some s₁) :
+    ∃ t₁, lsemStep i t = some t₁ ∧ s₁.lvm = t₁.lvm ∧ s₁.lmem = t₁.lmem := by
+  have h := lsemStep_archAgree i (s := s) (t := t) ⟨hv, hm⟩
+  rw [hst] at h
+  cases ht : lsemStep i t with
+  | none => rw [ht] at h; exact (h : False).elim
+  | some t₁ => rw [ht] at h; exact ⟨t₁, rfl, h.1, h.2⟩
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRobust

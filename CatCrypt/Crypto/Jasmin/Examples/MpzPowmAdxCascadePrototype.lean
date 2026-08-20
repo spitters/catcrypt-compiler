@@ -4,9 +4,9 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.Jasmin.Examples.MpzPowmCompositionPrototype
-import CatCrypt.Crypto.Jasmin.Examples.MpnMulCascadeAdxPrototype
-import CatCrypt.Crypto.Jasmin.Examples.MpnAddMul1AdxBlockedPrototype
-import CatCrypt.Crypto.Jasmin.Examples.MpnAddSubAdxBlockedPrototype
+import CatCrypt.Crypto.Jasmin.Mpn.MulCascadeAdxPrototype
+import CatCrypt.Crypto.Jasmin.Mpn.AddMul1AdxBlockedPrototype
+import CatCrypt.Crypto.Jasmin.Mpn.AddSubAdxBlockedPrototype
 
 set_option autoImplicit false
 
@@ -15,9 +15,9 @@ set_option autoImplicit false
 
 **EXPERIMENTAL FILE.**  Composes the just-landed building blocks:
 
-* `MpnAddMul1AdxBlockedPrototype.lean` — the 8-limb dual-chain
+* `Mpn.AddMul1AdxBlockedPrototype.lean` — the 8-limb dual-chain
   MULX/ADCX/ADOX kernel; 12–32 % libgmp-beat at `n ∈ {16, 32, 64, 128}`;
-* `MpnMulCascadeAdxPrototype.lean` — the `mpn_mul` outer-row body with
+* `Mpn.MulCascadeAdxPrototype.lean` — the `mpn_mul` outer-row body with
   the inner `Ccall` rewired to `mpn_addmul_1_adx_blk_<n>` (kernel-side
   residuals: `PerBlockBodyRefines` +
   `MpnAddMul1AdxBlockedJasminRefines_step_obligation`);
@@ -105,14 +105,14 @@ open CatCrypt.Crypto.Jasmin
 open CatCrypt.Crypto.Jasmin.BignumExec
 open CatCrypt.Crypto.Jasmin.Emit
 open CatCrypt.Crypto.Jasmin.MemoryModel
-open CatCrypt.Crypto.Jasmin.Examples.MpnAddPrototype
-open CatCrypt.Crypto.Jasmin.Examples.MpnMul1Prototype
-open CatCrypt.Crypto.Jasmin.Examples.MpnMulPrototype
-open CatCrypt.Crypto.Jasmin.Examples.MpnAddmul1Prototype
-open CatCrypt.Crypto.Jasmin.Examples.MpnAddMul1AdxBlockedPrototype
-open CatCrypt.Crypto.Jasmin.Examples.MpnMulCascadeAdxPrototype
-open CatCrypt.Crypto.Jasmin.Examples.MpnMontgomeryPrototype
-open CatCrypt.Crypto.Jasmin.Examples.MpnPowPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.Mul1Prototype
+open CatCrypt.Crypto.Jasmin.Mpn.MulPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.Addmul1Prototype
+open CatCrypt.Crypto.Jasmin.Mpn.AddMul1AdxBlockedPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.MulCascadeAdxPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.MontgomeryPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.PowPrototype
 open CatCrypt.Crypto.Jasmin.Examples.MpzPowmCompositionPrototype
 
 /-! ## §1  Pure spec — definitionally `mpzPowmWindow`
@@ -195,8 +195,8 @@ the row-0 case still uses `mpn_mul_1`, see §3 of that file).
 
 /-- Short alias to fix the `vr`/`pv` ambiguity (multiple sibling
     prototypes define these). -/
-private abbrev MV (s : String) : Var := MpnMontgomeryPrototype.vr s
-private abbrev MP (s : String) : PExpr := MpnMontgomeryPrototype.pv s
+private abbrev MV (s : String) : Var := Mpn.MontgomeryPrototype.vr s
+private abbrev MP (s : String) : PExpr := Mpn.MontgomeryPrototype.pv s
 
 /-- The cascade Montgomery-multiply symbol name at width `n`.  Matches
     a hypothetical `mpn_mont_mul_cascade_adx_<n>` `FunDecl` whose
@@ -282,15 +282,15 @@ example : (emittedCascade 16 4).isSome = true := by native_decide
 Resolves
 * `mpn_mont_mul_cascade_adx_<n>` → the cascade Montgomery `FunDecl`,
 * `mpn_addmul_1_adx_blk_<n>` → the carry-storing ADX-blocked kernel
-  (from `MpnMulCascadeAdxPrototype.cascadeRegistry`),
+  (from `Mpn.MulCascadeAdxPrototype.cascadeRegistry`),
 * `mpn_mul_1` → the canonical row-0 kernel
-  (from `MpnMulCascadeAdxPrototype.cascadeRegistry`),
+  (from `Mpn.MulCascadeAdxPrototype.cascadeRegistry`),
 * `mpn_addmul_1` → the canonical kernel (preserved for non-cascaded
   callees, in case the body keeps it). -/
 def adxCascadeRegistry (n : Nat) : BignumRegistry := fun name =>
   if name = montMulCascadeSymbol n then some (mpnMontMulCascadeAdxFd n)
   else if name = "mpn_addmul_1" then
-    some CatCrypt.Crypto.Jasmin.Examples.MpnMulPrototype.mpnAddmul1CarryFd
+    some CatCrypt.Crypto.Jasmin.Mpn.MulPrototype.mpnAddmul1CarryFd
   else (cascadeRegistry (n / BLOCK)) name
 
 /-- The cascade registry resolves the cascade Montgomery symbol. -/
@@ -446,7 +446,7 @@ Inside each `Ccall mpn_mont_mul_cascade_adx_<n>`, the body is the
 canonical CIOS `Cfor` over `n`.  Inside each cascaded
 `Ccall mpn_addmul_1_adx_blk_<n>`, the body is the per-block
 straight-line MULX/ADCX/ADOX dual chain (constant-time at the AST
-level, per `MpnAddMul1AdxBlockedPrototype.§5`).
+level, per `Mpn.AddMul1AdxBlockedPrototype.§5`).
 
 The cascade inherits the per-kernel constant-time-shape proofs from
 the upstream prototypes; the only secret-dependent control flow in

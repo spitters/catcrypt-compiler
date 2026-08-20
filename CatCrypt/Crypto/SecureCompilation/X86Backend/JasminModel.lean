@@ -317,6 +317,109 @@ def x86_NEG {w : Nat} (v0 : BitVec w) : B5W w :=
 /-- `x86_AND sz v1 v2 = rflags_of_bwop_w (wand v1 v2)` (l.1008). -/
 def x86_AND {w : Nat} (v1 v2 : BitVec w) : B5W w := rflags_of_bwop (v1 &&& v2)
 
+/-- `x86_TEST sz x y = rflags_of_bwop (wand x y)` (l.993).  Jasmin gives `TEST`
+    the `b5` result shape and `AND` the `b5w` one, so the two compute the same
+    five flags and only `AND` writes the word; the word carried here is unused
+    by the `test` arm, which writes flags alone. -/
+def x86_TEST {w : Nat} (x y : BitVec w) : B5W w := rflags_of_bwop (x &&& y)
+
+/-- `wror sz x n` (`word.v`): rotate right, count already masked. -/
+def wror {w : Nat} (x : BitVec w) (n : Nat) : BitVec w :=
+  (x >>> n) ||| (x <<< (w - n))
+
+/-- `wrol sz x n` (`word.v`): rotate left, count already masked. -/
+def wrol {w : Nat} (x : BitVec w) (n : Nat) : BitVec w :=
+  (x <<< n) ||| (x >>> (w - n))
+
+/-- The `b2w_ty` result of a rotate: `OF`, `CF` and the data word.  `SF`, `PF`
+    and `ZF` are absent from Jasmin's output tuple, so a rotate leaves them as
+    it found them — which is why this cannot go through `B5W`, whose writer
+    replaces all five. -/
+structure B2W (w : Nat) where
+  of : JFlag
+  cf : JFlag
+  word : BitVec w
+  deriving Repr
+
+/-- `x86_ROR sz v i` (l.1050): mask the count; a count of zero writes neither
+    flag; otherwise `CF = msb r`, and `OF` is defined only at a count of one. -/
+def x86_ROR {w : Nat} (v : BitVec w) (icount : BitVec w) : B2W w :=
+  let i := shiftCount icount
+  if i = 0 then { of := none, cf := none, word := v }
+  else
+    let r := wror v i
+    let cf := msb r
+    { of := if i = 1 then some (decide (cf ≠ msb v)) else none
+      cf := some cf
+      word := r }
+
+/-- `x86_ROL sz v i` (l.1063): as `x86_ROR`, with `CF = lsb r`. -/
+def x86_ROL {w : Nat} (v : BitVec w) (icount : BitVec w) : B2W w :=
+  let i := shiftCount icount
+  if i = 0 then { of := none, cf := none, word := v }
+  else
+    let r := wrol v i
+    let cf := lsb r
+    { of := if i = 1 then some (decide (msb r ≠ cf)) else none
+      cf := some cf
+      word := r }
+
+/-- `x86_RORX sz v i = wror v i` (l.1250): the BMI2 rotate, `w_ty` shaped, so it
+    writes no flag at all. -/
+def x86_RORX {w : Nat} (v : BitVec w) (icount : BitVec w) : BitVec w :=
+  wror v (shiftCount icount)
+
+/-- `x86_bmi_shift sz op v i = op v (i &&& shift_mask)` (l.1257): the BMI2
+    variable shifts, `w_ty` shaped, so they write no flag. -/
+def x86_SHLX {w : Nat} (v : BitVec w) (icount : BitVec w) : BitVec w :=
+  wshl v (shiftCount icount)
+
+/-- `x86_SHRX` (l.1265): the logical BMI2 variable shift. -/
+def x86_SHRX {w : Nat} (v : BitVec w) (icount : BitVec w) : BitVec w :=
+  wshr v (shiftCount icount)
+
+/-- `x86_SARX` (l.1269): the arithmetic BMI2 variable shift. -/
+def x86_SARX {w : Nat} (v : BitVec w) (icount : BitVec w) : BitVec w :=
+  wsar v (shiftCount icount)
+
+/-- `x86_MOVZX szi szo x = zero_extend szo x` (l.692): `w_ty` shaped, no flag.
+    `srcW` is the source width; the bits above it are cleared. -/
+def x86_MOVZX {w : Nat} (srcW : Nat) (v : BitVec w) : BitVec w :=
+  v &&& (BitVec.allOnes w >>> (w - min w srcW))
+
+/-- `x86_MOVSX szi szo x = sign_extend szo x` (l.674): `w_ty` shaped, no flag.
+    The source's top bit is replicated above `srcW`. -/
+def x86_MOVSX {w : Nat} (srcW : Nat) (v : BitVec w) : BitVec w :=
+  wsar (wshl v (w - min w srcW)) (w - min w srcW)
+
+/-- `x86_LEA sz addr = addr` (l.986): the computed address itself, `w_ty`
+    shaped, so no flag is written.  This is what separates it from a load. -/
+def x86_LEA {w : Nat} (addr : BitVec w) : BitVec w := addr
+
+/-- `rflags_of_andn sz w` (l.279): `OF = CF = some false`, `SF`/`ZF` from the
+    word, and **`PF` undefined** — unlike `rflags_of_bwop`, which defines it. -/
+def rflags_of_andn {w : Nat} (res : BitVec w) : B5W w :=
+  { of := some false
+    cf := some false
+    sf := some (SF_of_word res)
+    pf := none
+    zf := some (ZF_of_word res)
+    word := res }
+
+/-- `x86_ANDN sz v1 v2 = flags_w (rflags_of_andn (wandn v1 v2))` (l.1028).
+    `wandn v1 v2` is `(~~~ v1) &&& v2`. -/
+def x86_ANDN {w : Nat} (v1 v2 : BitVec w) : B5W w := rflags_of_andn ((~~~ v1) &&& v2)
+
+/-- `x86_NOT sz v = wnot v` (l.1036): the `w_ty` shape, so no flag is written. -/
+def x86_NOT {w : Nat} (v : BitVec w) : BitVec w := ~~~ v
+
+/-- `x86_CMP sz x y = rflags_of_aluop (x - y) …` (l.1001).  Jasmin gives `CMP`
+    the `b5` shape and `SUB` the `b5w` one over the same `rflags_of_aluop`, so
+    the two compute the same five flags and only `SUB` writes the difference;
+    the word carried here is unused by the `cmp` arm, which writes flags alone.
+    The same relationship `TEST` has to `AND`. -/
+def x86_CMP {w : Nat} (x y : BitVec w) : B5W w := x86_SUB x y
+
 /-- `x86_OR sz v1 v2 = rflags_of_bwop_w (wor v1 v2)` (l.1014). -/
 def x86_OR {w : Nat} (v1 v2 : BitVec w) : B5W w := rflags_of_bwop (v1 ||| v2)
 
@@ -528,6 +631,29 @@ def JState.writeB5W {w : Nat} (s : JState w) (dst : String) (t : B5W w) : JState
     flags := { cf := t.cf, pf := t.pf, zf := t.zf, sf := t.sf, of := t.of }
     mem := s.mem }
 
+/-- Write the `B2W` result of a rotate: the data word to `dst`, `OF` and `CF`,
+    and **`SF`/`PF`/`ZF` left as they were**. Mirrors `exec_instr_op` for an
+    instruction whose `id_out` is `[OF; CF; data]` (`mk_instr_ww8_b2w_0c0`,
+    e.g. `Ox86_ROR_instr`) — the three absent flags are not written, which is
+    what distinguishes this from `writeB5W` with undefined entries. -/
+def JState.writeB2W {w : Nat} (s : JState w) (dst : String) (t : B2W w) : JState w :=
+  { regs := fun r' => if r' = dst then t.word else s.regs r'
+    flags := { s.flags with cf := t.cf, of := t.of }
+    mem := s.mem }
+
+/-- Write the five flags of a flag-setting op that has no data output, leaving
+    every register alone. Mirrors `exec_instr_op` for an instruction whose
+    `id_out` is `[OF; CF; SF; PF; ZF]` (`mk_instr_w2_b5`, e.g.
+    `Ox86_TEST_instr`). -/
+def JState.writeB5 {w : Nat} (s : JState w) (t : B5W w) : JState w :=
+  { s with flags := { cf := t.cf, pf := t.pf, zf := t.zf, sf := t.sf, of := t.of } }
+
+@[simp] theorem JState.get_writeB5 {w : Nat} (s : JState w) (t : B5W w) (x : String) :
+    (s.writeB5 t).get x = s.get x := rfl
+
+@[simp] theorem JState.writeB5_flags {w : Nat} (s : JState w) (t : B5W w) :
+    (s.writeB5 t).flags = { cf := t.cf, pf := t.pf, zf := t.zf, sf := t.sf, of := t.of } := rfl
+
 /-- Read a flag as a concrete `Bool`, treating `Undef` as `false` (the carry
     chains always have their flag defined before use). -/
 def JState.flagB {w : Nat} (s : JState w) (f : RFlags → JFlag) : Bool :=
@@ -569,7 +695,27 @@ inductive JOperand where
 
 /-- The emitted scalar x86 instruction subset, each arm naming the Jasmin
     `Ox86_*_instr` it transcribes. Two-address arithmetic/logical form (the
-    destination is also source 0). -/
+    destination is also source 0).
+
+    **Coverage against jasmin's `x86_op`, and where the line is drawn.** This is
+    a subset, and the omissions are of two kinds that should not be confused.
+
+    Declined on constant-time grounds, per the Intel DOIT ∩ AMD DIT rule in
+    `bench/framework/CT_INSTRUCTION_REFERENCES.md`: `DIV`/`IDIV` and `CQO`
+    (variable latency on the operand values), `BSR`/`BSF`, `BSWAP`, `LZCNT`,
+    `TZCNT`, `POPCNT`, and `PDEP`/`PEXT` — the last are microcoded and
+    data-dependent on AMD Zen 1 and 2, so they read as ordinary bit operations
+    while leaking through timing. These are not gaps to close; adding one would
+    put a variable-latency instruction inside a constant-time backend.
+
+    Not yet transcribed, with no reason beyond nothing having needed them:
+    `XCHG`, `INC`/`DEC`, `SHLD`/`SHRD`, `MUL`, `IMULr`/`IMULri`, `BT`/`BTR`/`BTS`,
+    `RCL`/`RCR`, and the SIMD/AES/SHA families. Add these as the fragment needs
+    them, following the transcription discipline: the `x86_*` function mirrors
+    the Rocq definition, and the writer matches the instruction's `id_out` —
+    `writeB5W` for a five-flag op with a data word, `writeB5` for flags alone
+    (`TEST`, `CMP`), `writeB2W` where only `OF`/`CF` are written and the other
+    three are PRESERVED (the rotates), and `setReg` where no flag moves. -/
 inductive JInstr (w : Nat) where
   /-- `Ox86_MOV_instr`. -/
   | mov (dst : String) (src : JOperand)
@@ -597,6 +743,39 @@ inductive JInstr (w : Nat) where
   | setc (dst : String)
   /-- `Ox86_AND_instr`. -/
   | and_ (dst : String) (src : JOperand)
+  /-- `Ox86_TEST_instr`.  Sets the five flags from `a &&& b` and writes no
+      register, which is what distinguishes it from `and_ a a`: the two agree
+      on every flag, and `and_` additionally rewrites `a` with its own value. -/
+  | test (a : String) (b : JOperand)
+  /-- `Ox86_CMP_instr`.  The five flags of `a - b`, with the difference
+      discarded; `sub` is the same flags plus the write. -/
+  | cmp (a : String) (b : JOperand)
+  /-- `Ox86_NOT_instr`.  Writes no flag. -/
+  | not_ (dst : String)
+  /-- `Ox86_ANDN_instr` (BMI1): `dst := (~~~ src1) &&& src2`, non-destructive in
+      both sources.  `PF` is undefined, unlike the other bitwise ops. -/
+  | andn (dst src1 src2 : String)
+  /-- `Ox86_ROL_instr`.  Writes `OF` and `CF` only; `SF`/`PF`/`ZF` keep the
+      values they had. -/
+  | rol (dst : String) (amt : JOperand)
+  /-- `Ox86_ROR_instr`.  As `rol`, rotating the other way. -/
+  | ror (dst : String) (amt : JOperand)
+  /-- `Ox86_RORX_instr` (BMI2): a rotate that writes no flag and reads its
+      source without destroying it. -/
+  | rorx (dst src : String) (amt : JOperand)
+  /-- `Ox86_SHLX_instr` (BMI2): variable shift left, no flag written. -/
+  | shlx (dst src cnt : String)
+  /-- `Ox86_SHRX_instr` (BMI2): variable logical shift right, no flag. -/
+  | shrx (dst src cnt : String)
+  /-- `Ox86_SARX_instr` (BMI2): variable arithmetic shift right, no flag. -/
+  | sarx (dst src cnt : String)
+  /-- `Ox86_MOVZX_instr`: zero-extend the low `srcW` bits of `src`. No flag. -/
+  | movzx (dst : String) (srcW : Nat) (src : String)
+  /-- `Ox86_MOVSX_instr`: sign-extend the low `srcW` bits of `src`. No flag. -/
+  | movsx (dst : String) (srcW : Nat) (src : String)
+  /-- `Ox86_LEA_instr`: the address `base + idx * scale + off` itself, written
+      to `dst` without a memory access. No flag. -/
+  | lea (dst base idx : String) (scale : Nat) (off : Int)
   /-- `Ox86_OR_instr`. -/
   | or_ (dst : String) (src : JOperand)
   /-- `Ox86_XOR_instr`. -/
@@ -681,6 +860,21 @@ def evalInstr {w : Nat} (s : JState w) : JInstr w → JState w
   | .neg dst      => s.writeB5W dst (x86_NEG (s.get dst))
   | .setc dst     => s.setReg dst (if s.flagB (·.cf) then 1 else 0)
   | .and_ dst src => s.writeB5W dst (x86_AND (s.get dst) (src.eval s))
+  | .test a b     => s.writeB5 (x86_TEST (s.get a) (b.eval s))
+  | .cmp a b      => s.writeB5 (x86_CMP (s.get a) (b.eval s))
+  | .not_ dst     => s.setReg dst (x86_NOT (s.get dst))
+  | .andn d a b   => s.writeB5W d (x86_ANDN (s.get a) (s.get b))
+  | .rol dst amt  => s.writeB2W dst (x86_ROL (s.get dst) (amt.eval s))
+  | .ror dst amt  => s.writeB2W dst (x86_ROR (s.get dst) (amt.eval s))
+  | .rorx d src amt => s.setReg d (x86_RORX (s.get src) (amt.eval s))
+  | .shlx d src c => s.setReg d (x86_SHLX (s.get src) (s.get c))
+  | .shrx d src c => s.setReg d (x86_SHRX (s.get src) (s.get c))
+  | .sarx d src c => s.setReg d (x86_SARX (s.get src) (s.get c))
+  | .movzx d sw src => s.setReg d (x86_MOVZX sw (s.get src))
+  | .movsx d sw src => s.setReg d (x86_MOVSX sw (s.get src))
+  | .lea d base idx scale off =>
+      s.setReg d (x86_LEA (s.get base + (s.get idx) * BitVec.ofNat _ scale
+        + BitVec.ofInt _ off))
   | .or_ dst src  => s.writeB5W dst (x86_OR (s.get dst) (src.eval s))
   | .xor_ dst src => s.writeB5W dst (x86_XOR (s.get dst) (src.eval s))
   | .shl dst src  => s.writeB5W dst (x86_SHL (s.get dst) (src.eval s))

@@ -66,7 +66,7 @@ inductive jasminSemTraced (leafSpec : LeafSpec) :
   | assgn_parr_init : ∀ x t rs,
       jasminSemTraced leafSpec
         [.Cassgn (.Lvar { var := { vname := x, vtype := .sarr t.storageBytes },
-                           info := {} })
+                           info := { towerTag := t.byteSize } })
                  .AT_none (.sarr t.storageBytes) (.Parr_init t.storageBytes)]
         rs [LeakEvent.pureOp "Cassgn"] (rsSetTower rs x ⟨t, default⟩)
   | assgn_u64_zero : ∀ x rs,
@@ -128,7 +128,7 @@ inductive jasminSemTraced (leafSpec : LeafSpec) :
                     (rs : RustState),
       jasminSemTraced leafSpec
         [.Copn [.Lvar { var := { vname := cloneVar, vtype := .sarr cloneTy.storageBytes },
-                         info := {} }] .AT_none
+                         info := { towerTag := cloneTy.byteSize } }] .AT_none
               (.Oasm { name := "CLONE_TOWER" }) [locToPExpr oldDest]]
         rs [LeakEvent.pureOp "Copn"]
         (rsSetTower rs cloneVar
@@ -359,10 +359,11 @@ mutual
     that the verified-middle subset uses. No cons; no list. -/
 inductive jasminSemTracedSingle (leafSpec : LeafSpec) :
     InstrR → RustState → LeakTrace → RustState → Prop where
-  | assgn_parr_init : ∀ x t (n : Nat) rs, n = t.storageBytes →
+  | assgn_parr_init : ∀ x t (n tag : Nat) rs,
+      n = t.storageBytes → tag = t.byteSize →
       jasminSemTracedSingle leafSpec
         (.Cassgn (.Lvar { var := { vname := x, vtype := .sarr n },
-                          info := {} })
+                          info := { towerTag := tag } })
                  .AT_none (.sarr n) (.Parr_init n))
         rs [LeakEvent.pureOp "Cassgn"] (rsSetTower rs x ⟨t, default⟩)
   | assgn_u64_zero : ∀ x rs,
@@ -401,12 +402,13 @@ inductive jasminSemTracedSingle (leafSpec : LeafSpec) :
                (.Papp1 (.Oword_of_int .U64) (.Pconst 0))) ct cf)
         rs (LeakEvent.pureOp "Cif" :: branchTag false :: tInner) rs'
   | call_oracle : ∀ (f : String) (dest : Located)
-                    (destVar' : String) (destM : Nat)
+                    (destVar' : String) (destM destTag : Nat)
                     (args : List Located)
                     (rs : RustState) (oldDestV : RustVal dest.locDst)
                     (argList : List (Σ t, RustVal t)),
       destVar' = dest.locVar →
       destM = dest.locSrc.storageBytes →
+      destTag = dest.locSrc.byteSize →
       locatedLookup rs dest = some oldDestV →
       argList = args.filterMap (fun a => rs.rsTower a.locVar) →
       -- Option-A type-recovery: each arg's locDst matches the stored
@@ -416,37 +418,41 @@ inductive jasminSemTracedSingle (leafSpec : LeafSpec) :
       jasminSemTracedSingle leafSpec
         (.Ccall .DoNotInline
                 [.Lvar { var := { vname := destVar', vtype := .sarr destM },
-                         info := {} }]
+                         info := { towerTag := destTag } }]
                 { name := f } (args.map locToPExpr))
         rs [LeakEvent.pureOp "Ccall"]
         (locatedUpdate rs dest
               (leafSpec.call f dest.locDst (args.map (·.locDst)) oldDestV argList))
-  | limb_store_oracle : ∀ (loc : Located) (locVar' : String) (m : Nat)
+  | limb_store_oracle : ∀ (loc : Located) (locVar' : String) (m mTag : Nat)
                          (idx : Nat) (v : BitVec 64)
                          (rs : RustState) (oldDestV : RustVal loc.locDst),
       locVar' = loc.locVar →
       m = loc.locSrc.storageBytes →
+      mTag = loc.locSrc.byteSize →
       locatedLookup rs loc = some oldDestV →
       jasminSemTracedSingle leafSpec
         (.Copn [.Lvar { var := { vname := locVar', vtype := .sarr m },
-                        info := {} }]
+                        info := { towerTag := mTag } }]
                .AT_none (.Oasm { name := "STORE64" })
                [.Pvar { gv := { var := { vname := locVar', vtype := .sarr m },
-                                info := {} }, gs := false },
+                                info := { towerTag := mTag } }, gs := false },
                 .Pconst idx, .Pconst v.toNat])
         rs [LeakEvent.pureOp "Copn"]
         (locatedUpdate rs loc (leafSpec.limbStore loc oldDestV idx v))
   | clone_tower : ∀ (cloneVar : String) (cloneTy : TowerType) (oldDest : Located)
-                    (oldVar' : String) (oldM : Nat) (n : Nat) (rs : RustState),
+                    (oldVar' : String) (oldM oldTag : Nat) (n cloneTag : Nat)
+                    (rs : RustState),
       oldVar' = oldDest.locVar →
       oldM = oldDest.locSrc.storageBytes →
+      oldTag = oldDest.locSrc.byteSize →
       n = cloneTy.storageBytes →
+      cloneTag = cloneTy.byteSize →
       jasminSemTracedSingle leafSpec
         (.Copn [.Lvar { var := { vname := cloneVar, vtype := .sarr n },
-                         info := {} }] .AT_none
+                         info := { towerTag := cloneTag } }] .AT_none
               (.Oasm { name := "CLONE_TOWER" })
               [.Pvar { gv := { var := { vname := oldVar', vtype := .sarr oldM },
-                               info := {} }, gs := false }])
+                               info := { towerTag := oldTag } }, gs := false }])
         rs [LeakEvent.pureOp "Copn"]
         (rsSetTower rs cloneVar
              ((rs.rsTower oldDest.locVar).getD ⟨cloneTy, default⟩))
@@ -549,10 +555,11 @@ theorem jasminSemTraced.toPrime
     exact jasminSemTraced'.cons _ _ _ _ _ _ _ h_single ih2
   | assgn_parr_init x t' rs0 =>
     -- Body = [Cassgn-Parr_init]; build cons(Single, nil).
-    have h_single := @jasminSemTracedSingle.assgn_parr_init leafSpec x t' t'.storageBytes rs0 rfl
+    have h_single := @jasminSemTracedSingle.assgn_parr_init leafSpec x t'
+                       t'.storageBytes t'.byteSize rs0 rfl rfl
     have : jasminSemTraced' leafSpec
               [.Cassgn (.Lvar { var := { vname := x, vtype := .sarr t'.storageBytes },
-                                info := {} })
+                                info := { towerTag := t'.byteSize } })
                        .AT_none (.sarr t'.storageBytes) (.Parr_init t'.storageBytes)]
               rs0
               ([LeakEvent.pureOp "Cassgn"] ++ [])
@@ -609,13 +616,14 @@ theorem jasminSemTraced.toPrime
     simpa using this
   | call_oracle f dest args rs0 oldDestV argList hLk hArgs hArgsTyped =>
     have h_single := @jasminSemTracedSingle.call_oracle leafSpec f dest
-                       dest.locVar dest.locSrc.storageBytes args rs0 oldDestV argList
-                       rfl rfl hLk hArgs hArgsTyped
+                       dest.locVar dest.locSrc.storageBytes dest.locSrc.byteSize
+                       args rs0 oldDestV argList
+                       rfl rfl rfl hLk hArgs hArgsTyped
     have : jasminSemTraced' leafSpec
               [.Ccall .DoNotInline
                       [.Lvar { var := { vname := dest.locVar,
                                          vtype := .sarr dest.locSrc.storageBytes },
-                               info := {} }]
+                               info := { towerTag := dest.locSrc.byteSize } }]
                       { name := f } (args.map locToPExpr)]
               rs0
               ([LeakEvent.pureOp "Ccall"] ++ [])
@@ -626,16 +634,18 @@ theorem jasminSemTraced.toPrime
     simpa [locToLVal, locToVar, towerToSType] using this
   | limb_store_oracle loc idx v rs0 oldDestV hLk =>
     have h_single := @jasminSemTracedSingle.limb_store_oracle leafSpec
-                       loc loc.locVar loc.locSrc.storageBytes idx v rs0 oldDestV
-                       rfl rfl hLk
+                       loc loc.locVar loc.locSrc.storageBytes loc.locSrc.byteSize
+                       idx v rs0 oldDestV
+                       rfl rfl rfl hLk
     have : jasminSemTraced' leafSpec
               [.Copn [.Lvar { var := { vname := loc.locVar,
                                         vtype := .sarr loc.locSrc.storageBytes },
-                              info := {} }]
+                              info := { towerTag := loc.locSrc.byteSize } }]
                      .AT_none (.Oasm { name := "STORE64" })
                      [.Pvar { gv := { var := { vname := loc.locVar,
                                                 vtype := .sarr loc.locSrc.storageBytes },
-                                       info := {} }, gs := false },
+                                       info := { towerTag := loc.locSrc.byteSize } },
+                              gs := false },
                       .Pconst idx, .Pconst v.toNat]]
               rs0
               ([LeakEvent.pureOp "Copn"] ++ [])
@@ -644,15 +654,17 @@ theorem jasminSemTraced.toPrime
     simpa [locToLVal, locToPExpr, locToVar, locToGVar, towerToSType] using this
   | clone_tower cv ct oldDest rs0 =>
     have h_single := @jasminSemTracedSingle.clone_tower leafSpec cv ct oldDest
-                       oldDest.locVar oldDest.locSrc.storageBytes ct.storageBytes rs0
-                       rfl rfl rfl
+                       oldDest.locVar oldDest.locSrc.storageBytes
+                       oldDest.locSrc.byteSize ct.storageBytes ct.byteSize rs0
+                       rfl rfl rfl rfl rfl
     have : jasminSemTraced' leafSpec
               [.Copn [.Lvar { var := { vname := cv, vtype := .sarr ct.storageBytes },
-                              info := {} }] .AT_none
+                              info := { towerTag := ct.byteSize } }] .AT_none
                     (.Oasm { name := "CLONE_TOWER" })
                     [.Pvar { gv := { var := { vname := oldDest.locVar,
                                                vtype := .sarr oldDest.locSrc.storageBytes },
-                                      info := {} }, gs := false }]]
+                                      info := { towerTag := oldDest.locSrc.byteSize } },
+                             gs := false }]]
               rs0
               ([LeakEvent.pureOp "Copn"] ++ [])
               (rsSetTower rs0 cv
@@ -674,11 +686,11 @@ theorem jasminSemTracedSingle.toOriginal {leafSpec : LeafSpec}
     (h : jasminSemTracedSingle leafSpec i rs t rs') :
     jasminSemTraced leafSpec [i] rs t rs' :=
   match h with
-  | .assgn_parr_init x t' n rs0 hn =>
-    -- Goal: jasminSemTraced [Cassgn (Lvar sarr n) ... (Parr_init n)] rs0 ... rs1
-    -- Original takes [Cassgn (Lvar sarr t.byteSize) ... (Parr_init t.byteSize)]
-    -- Use hn.symm : t.byteSize = n to rewrite the original to the goal shape.
-    hn.symm ▸ jasminSemTraced.assgn_parr_init x t' rs0
+  | .assgn_parr_init x t' n tag rs0 hn htag =>
+    -- Goal: jasminSemTraced [Cassgn (Lvar sarr n, tag) ... (Parr_init n)] rs0 ... rs1
+    -- The original rule states the instruction over `t'.storageBytes` /
+    -- `t'.byteSize`; the side hypotheses rewrite it to the goal shape.
+    hn.symm ▸ htag.symm ▸ jasminSemTraced.assgn_parr_init x t' rs0
   | .assgn_u64_zero x rs0 => jasminSemTraced.assgn_u64_zero x rs0
   | .assgn_u64_val x v rs0 => jasminSemTraced.assgn_u64_val x v rs0
   | .if_true e ct cf rs0 rs0' v tInner hv hne hct =>
@@ -687,14 +699,18 @@ theorem jasminSemTracedSingle.toOriginal {leafSpec : LeafSpec}
   | .if_false e ct cf rs0 rs0' tInner h0 hcf =>
     jasminSemTraced.if_false e ct cf rs0 rs0' tInner h0
       (jasminSemTraced'.toOriginal hcf)
-  | .call_oracle f dest destVar' destM args rs0 oldDestV argList
-                  hVar hM hLk hArgs hArgsTyped =>
-    hVar.symm ▸ hM.symm ▸ jasminSemTraced.call_oracle f dest args rs0 oldDestV
+  | .call_oracle f dest destVar' destM destTag args rs0 oldDestV argList
+                  hVar hM hTag hLk hArgs hArgsTyped =>
+    hVar.symm ▸ hM.symm ▸ hTag.symm ▸
+      jasminSemTraced.call_oracle f dest args rs0 oldDestV
                             argList hLk hArgs hArgsTyped
-  | .limb_store_oracle loc locVar' m idx v rs0 oldDestV hVar hM hLk =>
-    hVar.symm ▸ hM.symm ▸ jasminSemTraced.limb_store_oracle loc idx v rs0 oldDestV hLk
-  | .clone_tower cv ct oldDest oldVar' oldM n rs0 hVar hM hn =>
-    hVar.symm ▸ hM.symm ▸ hn.symm ▸ jasminSemTraced.clone_tower cv ct oldDest rs0
+  | .limb_store_oracle loc locVar' m mTag idx v rs0 oldDestV hVar hM hTag hLk =>
+    hVar.symm ▸ hM.symm ▸ hTag.symm ▸
+      jasminSemTraced.limb_store_oracle loc idx v rs0 oldDestV hLk
+  | .clone_tower cv ct oldDest oldVar' oldM oldTag n cloneTag rs0
+                  hVar hM hOldTag hn hCloneTag =>
+    hVar.symm ▸ hM.symm ▸ hOldTag.symm ▸ hn.symm ▸ hCloneTag.symm ▸
+      jasminSemTraced.clone_tower cv ct oldDest rs0
 
 theorem jasminSemTraced'.toOriginal {leafSpec : LeafSpec}
     {body : Cmd} {rs rs' : RustState} {t : LeakTrace}

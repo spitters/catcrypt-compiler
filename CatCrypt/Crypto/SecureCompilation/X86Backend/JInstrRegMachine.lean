@@ -35,10 +35,10 @@ This file builds, at the x86 `JInstr 64`/`JState 64` types and against
 * the multi-write register-effect list `writesJ` (two pairs for `mulx`, one for the
   scalar/ADX ops, none for the two stores), its names law `writesJ_names`, and its
   register-observable step law `evalInst_eq_setJ` — the data `RegMachine` needs, all
-  **unconditional** over the 28 constructors (`jinstr_regmachine_step_data`);
-* the renaming-commutation `writesJ_rename` over all 28 constructors.
+  **unconditional** over every constructor (`jinstr_regmachine_step_data`);
+* the renaming-commutation `writesJ_rename` over every constructor.
 
-**Honest scope of the `RegMachine` instance.** The full `RegMachine (JInstr 64)
+**Scope of the `RegMachine` instance.** The full `RegMachine (JInstr 64)
 (JState 64)` instance is *not* declared here: its `writes_rename` field supplies only
 register read-agreement, whereas x86's flag-reading ops (`adc`/`adcx`/…) and
 memory-reading load ops (`loadMem`/`mulxMem`/`loadMemIdx`) write values that also
@@ -47,7 +47,7 @@ agreement hypotheses (`hflag`, `hmem`) explicit and proves all arms with them; t
 register-only generic field is provable only for the flag- and memory-free subset
 (the `RInst`-shaped register-to-register ops). The §4 docstring details this — it is
 the same non-register state the x86 `JInstrRegAllocScoped.StateRelOn` (flags + memOn)
-and the ARM `BInst` keystone (`t.cf = s.cf`) carry over the register-only generic
+and the ARM `BInst` theorem (`t.cf = s.cf`) carry over the register-only generic
 `Reindexed`. So the multi-output `writtenNames` generalization is fully realized for
 x86 here (`mulx`'s two writes are first-class), independently of the orthogonal
 non-register-read limitation of the register-only renaming hypothesis.
@@ -68,8 +68,9 @@ open CatCrypt.Crypto.Optimizer.RandomizedRegAlloc
 transcribing the *register effect* of `Jasmin.evalInstr` arm-by-arm. Each single-
 output op gives a singleton `[(d, v)]` whose `v` is `evalInstr`'s written word; `mulx`
 gives the two pairs `[(dl, lo), (dh, hi)]` (lo to `dstLo` first, matching the two
-`setReg`s); the two `storeMem`/`storeMemIdx` ops write no register (`[]`). The flag
-writes of `adcx`/`adox`/the B5W ops do not appear: they are not register writes. -/
+`setReg`s); the `storeMem`/`storeMemIdx` ops and the flag-only `test`/`cmp` write no
+register (`[]`). The flag writes of `adcx`/`adox`/`test`/`cmp`/`rol`/`ror`/the B5W ops
+do not appear: they are not register writes. -/
 
 /-- The register `(name, value)` pairs one `JInstr 64` writes — the register effect of
     `Jasmin.evalInstr`. Used as `RegMachine.writes`; its names are `writtenNames i`
@@ -85,6 +86,22 @@ def writesJ (s : JState 64) : JInstr 64 → List (String × BitVec 64)
   | .neg dst      => [(dst, (x86_NEG (s.get dst)).word)]
   | .setc dst     => [(dst, if s.flagB (·.cf) then 1 else 0)]
   | .and_ dst src => [(dst, (x86_AND (s.get dst) (src.eval s)).word)]
+  | .test _ _     => []
+  -- `cmp` writes the five flags and no register: its first operand is a read.
+  | .cmp _ _      => []
+  | .not_ dst     => [(dst, x86_NOT (s.get dst))]
+  | .andn d a b   => [(d, (x86_ANDN (s.get a) (s.get b)).word)]
+  | .rol dst amt  => [(dst, (x86_ROL (s.get dst) (amt.eval s)).word)]
+  | .ror dst amt  => [(dst, (x86_ROR (s.get dst) (amt.eval s)).word)]
+  | .rorx d src amt => [(d, x86_RORX (s.get src) (amt.eval s))]
+  | .shlx d src cnt => [(d, x86_SHLX (s.get src) (s.get cnt))]
+  | .shrx d src cnt => [(d, x86_SHRX (s.get src) (s.get cnt))]
+  | .sarx d src cnt => [(d, x86_SARX (s.get src) (s.get cnt))]
+  | .movzx d sw src => [(d, x86_MOVZX sw (s.get src))]
+  | .movsx d sw src => [(d, x86_MOVSX sw (s.get src))]
+  | .lea d base idx scale off =>
+      [(d, x86_LEA (s.get base + (s.get idx) * BitVec.ofNat _ scale
+        + BitVec.ofInt _ off))]
   | .or_ dst src  => [(dst, (x86_OR (s.get dst) (src.eval s)).word)]
   | .xor_ dst src => [(dst, (x86_XOR (s.get dst) (src.eval s)).word)]
   | .shl dst src  => [(dst, (x86_SHL (s.get dst) (src.eval s)).word)]
@@ -138,7 +155,8 @@ constructor this is a `simp` against `runBlock`/`evalInstr`/`writesJ` and the
 register-file laws. The B5W ops fold to `setReg dst _` because `get` reads only
 `regs` (so `writeB5W`'s flag fields are invisible); `adcx`/`adox` likewise — their
 explicit `regs := if · = dst …` matches `setReg dst res` on `get`, and the
-`flags`/`mem` fields never reach `get`. `mulx` folds two `setReg`s in the same
+`flags`/`mem` fields never reach `get`. `test` folds the empty write list, its
+`writeB5` leaving `regs` untouched. `mulx` folds two `setReg`s in the same
 left-to-right order as `evalInstr`. -/
 
 /-- The register-observable single-step law for x86: reading any register `r` after one
@@ -149,8 +167,9 @@ theorem evalInst_eq_setJ (s : JState 64) (i : JInstr 64) (r : String) :
     (runBlock s [i]).get r
       = ((writesJ s i).foldl (fun st p => JState.setReg st p.1 p.2) s).get r := by
   cases i <;>
-    simp [runBlock, evalInstr, writesJ, JState.get, JState.setReg, JState.writeB5W,
-      JState.store, JState.storeIdx, JState.load, JState.loadIdx]
+    simp [runBlock, evalInstr, writesJ, JState.get, JState.setReg, JState.writeB5,
+      JState.writeB5W, JState.writeB2W, JState.store, JState.storeIdx, JState.load,
+      JState.loadIdx]
 
 /-! ## 3. The renaming agreement: `writesJ` commutes with `ρ` under read-agreement
 
@@ -186,7 +205,7 @@ open CatCrypt.Crypto.Optimizer.SpillingRegAlloc in
     without `hflag`/`hmem` the value-equalities `(x86_ADCX … (t.flagB ·.cf)).snd =
     (… (s.flagB ·.cf)).snd` and `x86_MOV (t.mem (ρ base) off) = x86_MOV (s.mem base off)`
     are unprovable for arbitrary register-related `s t`. This is the same non-register
-    state the ARM `BInst` backend threads through its bespoke `Reindexed` keystone
+    state the ARM `BInst` backend threads through its bespoke `Reindexed` theorem
     (`t.cf = s.cf`) and the x86 `JInstrRegAllocScoped.StateRelOn` carries explicitly
     (`flags`, `memOn`) — both *over and above* the register-only generic `Reindexed`. -/
 theorem writesJ_rename (ρ : String → String) (s t : JState 64) (i : JInstr 64)
@@ -272,6 +291,7 @@ theorem writesJ_rename (ρ : String → String) (s t : JState 64) (i : JInstr 64
   | loadMem dst base off =>
     have hload : t.mem (ρ base) off = s.mem base off := hmem base off
     simp only [writesJ, renameInstr, JState.load, hload, List.map_cons, List.map_nil]
+  | test a b => simp only [writesJ, renameInstr, List.map_nil]
   | storeMem base off src => simp only [writesJ, renameInstr, List.map_nil]
   | loadMemIdx dst base idx scale =>
     have hidx : (t.get (ρ idx)).toNat = (s.get idx).toNat :=
@@ -331,6 +351,42 @@ theorem writesJ_rename (ρ : String → String) (s t : JState 64) (i : JInstr 64
   | setc dst =>
     simp only [writesJ, renameInstr, JState.flagB, hflag, List.map_cons, List.map_nil]
     rfl
+  -- `cmp` writes no register, so both sides are the empty write list.
+  | cmp a b => simp only [writesJ, renameInstr, List.map_nil]
+  | not_ d =>
+    have hd : t.get (ρ d) = s.get d := h d (List.mem_cons_self ..)
+    simp only [writesJ, renameInstr, hd, List.map_cons, List.map_nil]
+  | andn d a b =>
+    have ha : t.get (ρ a) = s.get a := h a (List.mem_cons_self ..)
+    have hb : t.get (ρ b) = s.get b := h b (List.mem_cons_of_mem _ (List.mem_cons_self ..))
+    simp only [writesJ, renameInstr, ha, hb, List.map_cons, List.map_nil]
+  | rol d amt | ror d amt =>
+    have hd : t.get (ρ d) = s.get d := h d (List.mem_cons_self ..)
+    have hs : ∀ x ∈ srcNames amt, t.get (ρ x) = s.get x := fun x hx =>
+      h x (List.mem_cons_of_mem _ hx)
+    simp only [writesJ, renameInstr, renameOperand_eval_rename amt hs, hd, List.map_cons,
+      List.map_nil]
+  | rorx d src amt =>
+    have hsrc : t.get (ρ src) = s.get src := h src (List.mem_cons_self ..)
+    have hs : ∀ x ∈ srcNames amt, t.get (ρ x) = s.get x := fun x hx =>
+      h x (List.mem_cons_of_mem _ hx)
+    simp only [writesJ, renameInstr, renameOperand_eval_rename amt hs, hsrc, List.map_cons,
+      List.map_nil]
+  | shlx d src cnt | shrx d src cnt | sarx d src cnt =>
+    have hsrc : t.get (ρ src) = s.get src := h src (List.mem_cons_self ..)
+    have hcnt : t.get (ρ cnt) = s.get cnt :=
+      h cnt (List.mem_cons_of_mem _ (List.mem_cons_self ..))
+    simp only [writesJ, renameInstr, hsrc, hcnt, List.map_cons, List.map_nil]
+  | movzx d sw src | movsx d sw src =>
+    have hsrc : t.get (ρ src) = s.get src := h src (List.mem_cons_self ..)
+    simp only [writesJ, renameInstr, hsrc, List.map_cons, List.map_nil]
+  -- `lea`'s value is built from the two address registers, both of them read-names; it
+  -- performs no memory access, so `hmem` is not needed.
+  | lea d base idx scale off =>
+    have hbase : t.get (ρ base) = s.get base := h base (List.mem_cons_self ..)
+    have hidx : t.get (ρ idx) = s.get idx :=
+      h idx (List.mem_cons_of_mem _ (List.mem_cons_self ..))
+    simp only [writesJ, renameInstr, hbase, hidx, List.map_cons, List.map_nil]
 
 /-! ## 4. The `MachineModel` instance and the `RegMachine` near-miss
 
@@ -354,11 +410,11 @@ hypothesis is *register* read-agreement only (`get t (ρ a) = get s a` for
   `∀ b o, t.mem (ρ b) o = s.mem b o`.
 
 `writesJ_rename` above carries exactly those two extra hypotheses (`hflag`, `hmem`) and
-proves **all 28 constructors** with them — including the `mulx`/`mulxMem` two-register
+proves **every constructor** with them — including the `mulx`/`mulxMem` two-register
 writes, the central payoff of the multi-output `writtenNames` (D3) generalization. The
 generic field, lacking `hflag`/`hmem`, is *not* provable for those eleven arms over
 arbitrary register-related `s t`. This is the same non-register state the ARM `BInst`
-register allocator threads through its **bespoke** `Reindexed` keystone (`t.cf = s.cf`),
+register allocator threads through its **bespoke** `Reindexed` theorem (`t.cf = s.cf`),
 and the x86 `JInstrRegAllocScoped.StateRelOn` carries explicitly (`flags`, `memOn`):
 the register-only generic `RegMachine` is the right home for **flag- and memory-free**
 ISAs (RV64 `RInst`, and the x86 `mov`/`mulx`/scalar-ALU register-to-register subset),
@@ -378,7 +434,7 @@ instance instMachineModelJInstr : MachineModel (JInstr 64) where
 /-- The multi-write semantic data the generic `RegMachine` step needs, bundled and
     proved at the x86 types: the register write list (`writesJ`), its register-observable
     step law (`evalInst_eq_setJ`), and that its names are the model's `writtenNames`
-    (`writesJ_names`). Holds **unconditionally** for all 28 constructors — including the
+    (`writesJ_names`). Holds **unconditionally** for every constructor — including the
     `mulx` two-register write and the `adcx`/`adox` flag-bearing write, which the
     register-projected `evalInst_eq_set` admits. This is the part of the `RegMachine`
     interface the multi-output `writtenNames` generalization (D3) unblocks for x86. -/

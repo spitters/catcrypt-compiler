@@ -9,10 +9,10 @@ import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
 /-!
 # Source→machine constant-time bridge: the scalar-arith on-ramp
 
-This module builds the **first** genuine (non-toy) bridge connecting the
-`LowCT` *source* constant-time analysis (`cmdCT`, `LowCTCTAnalysis.lean`,
-over `RustState`) to the *machine* constant-time keystone (`allDirect`,
-`allDirect_constant_time`, `ConstantTimeCoverage.lean`, over `JState`).
+This module bridges the `LowCT` *source* constant-time analysis (`cmdCT`,
+`LowCTCTAnalysis.lean`, over `RustState`) to the *machine* constant-time
+class (`allDirect`, `allDirect_constant_time`, `ConstantTimeCoverage.lean`,
+over `JState`).
 
 ## The fragment
 
@@ -31,15 +31,14 @@ fragment for which `cmdCT (.RScalarSetExpr x e) lt leafCT = e.isPublic lt`
 is a pure data-flow `isPublic` test.
 
 We model the fragment as `ArithSrc` — a faithful **subset** of `LowCT`,
-connected by the embedding `ArithSrc.toLowCT : ArithSrc → LowCT` producing a
-real `LowCT.RScalarSetExpr` node (so this is **not** a disconnected toy: the
-source object is a genuine `LowCT` command, and its source CT verdict is the
-real `cmdCT`).
+connected by the embedding `ArithSrc.toLowCT : ArithSrc → LowCT` producing
+a `LowCT.RScalarSetExpr` node: the source object is a `LowCT` command, and its
+source CT result is `cmdCT`.
 
 ## What is proved
 
 * `ArithSrc.toLowCT` — the embedding into real `LowCT`.
-* `lowerArith_allDirect` — **the easy genuine half**: every lowering is in
+* `lowerArith_allDirect` — **the easy half**: every lowering is in
   the machine constant-time class.  Trivial *because* the fragment is
   memory-free: the lowering emits only register `mov`/`add`/`and`/`xor`,
   never `loadMemIdx`/`storeMemIdx`, the only two `¬ IsDirect` opcodes.
@@ -56,9 +55,9 @@ real `cmdCT`).
 ## Source CT ⇒ machine CT, end to end
 
 `lowerArith_source_to_machine_CT` packages the chain: a source command whose
-`cmdCT` verdict is `true` lowers to a machine block that is constant-time
+`cmdCT` result is `true` lowers to a machine block that is constant-time
 (same leakage trace from any two states).  This is the on-ramp tie from the
-`RustState`-level analyser to the `JState`-level keystone.
+`RustState`-level analyser to the `JState`-level constant-time class.
 -/
 
 set_option autoImplicit false
@@ -102,21 +101,20 @@ def ArithSrc.toSExpr (p : ArithSrc) : SExpr :=
   | .xor_ => .SXor av bv
   | .mul_ => .SMul av bv
 
-/-- **The embedding into real `LowCT`.**  An `ArithSrc` is the genuine
-    `LowCT` command `RScalarSetExpr p.dst (a ⟨op⟩ b)`.  This is what makes the
-    fragment non-toy: the source object whose CT we analyse is a real
-    `LowCT` node, with the real `cmdCT` verdict. -/
+/-- **The embedding into `LowCT`.**  An `ArithSrc` is the `LowCT` command
+    `RScalarSetExpr p.dst (a ⟨op⟩ b)`, so the source object whose CT is
+    analysed is a `LowCT` node carrying the `cmdCT` result. -/
 def ArithSrc.toLowCT (p : ArithSrc) : LowCT :=
   .RScalarSetExpr p.dst p.toSExpr
 
-/-- The source CT verdict for an `ArithSrc`, via the **real** `cmdCT`.  Because
+/-- The source CT result for an `ArithSrc`, via the **real** `cmdCT`.  Because
     the fragment is a single `RScalarSetExpr`, `cmdCT` reduces to the
     data-flow `isPublic` check on the read slots `a`, `b`. -/
 theorem ArithSrc.cmdCT_eq (p : ArithSrc) (lt : LevelTable) (leafCT : LeafCTTable) :
     cmdCT p.toLowCT lt leafCT = p.toSExpr.isPublic lt := by
   simp [ArithSrc.toLowCT, cmdCT_RScalarSetExpr]
 
-/-- Concretely: the source CT verdict is `true` iff both read slots `a`, `b`
+/-- Concretely: the source CT result is `true` iff both read slots `a`, `b`
     are `Public` — the noninterference data-flow condition. -/
 theorem ArithSrc.cmdCT_iff (p : ArithSrc) (lt : LevelTable) (leafCT : LeafCTTable) :
     cmdCT p.toLowCT lt leafCT = true ↔ (lt p.a == .Public) ∧ (lt p.b == .Public) := by
@@ -129,7 +127,7 @@ theorem ArithSrc.cmdCT_iff (p : ArithSrc) (lt : LevelTable) (leafCT : LeafCTTabl
 /-! ## 3. The lowering to `JInstr 64` -/
 
 /-- The register map: source scalar-slot names to machine register names.
-    A genuine register allocation would be injective on the live set; we keep
+    A register allocation would be injective on the live set; we keep
     it abstract and require injectivity only where the denote proof needs it. -/
 abbrev RegMap := String → String
 
@@ -148,7 +146,7 @@ def lowerArith (ρ : RegMap) (p : ArithSrc) : List (JInstr 64) :=
   [ .mov (ρ p.dst) (.reg (ρ p.a))
   , p.op.toJInstr (ρ p.dst) (.reg (ρ p.b)) ]
 
-/-! ## 4. The easy genuine half: machine constant-time -/
+/-! ## 4. The easy half: machine constant-time -/
 
 /-- Every emitted instruction of the lowering is `IsDirect` (true for all but
     `loadMemIdx`/`storeMemIdx`, neither of which the memory-free fragment
@@ -162,9 +160,8 @@ theorem lowerArith_allDirect (ρ : RegMap) (p : ArithSrc) :
     source command produces the **same** machine leakage trace from any two
     initial states: its observable control-flow + memory-address sequence is a
     function of the program text alone, leaking nothing about the (possibly
-    secret) register values.  Delivered by the machine keystone
-    `allDirect_constant_time` from the trivial `allDirect` check — a *real*
-    source-fragment ⇒ machine-CT tie. -/
+    secret) register values.  Delivered by `allDirect_constant_time` from the
+    `allDirect` check. -/
 theorem lowerArith_constant_time (ρ : RegMap) (p : ArithSrc) (s₁ s₂ : JState 64) :
     blockLeak s₁ (lowerArith ρ p) = blockLeak s₂ (lowerArith ρ p) :=
   allDirect_constant_time (lowerArith ρ p) (lowerArith_allDirect ρ p) s₁ s₂
@@ -277,8 +274,8 @@ theorem lowerArith_denote (ρ : RegMap) (p : ArithSrc) (rs : RustState) (js : JS
 /-- The source post-state of `p.toLowCT` under the **real** `RustExec`
     operational semantics: `RustExec.scalarSetExpr` steps
     `RScalarSetExpr p.dst p.toSExpr` to `rsSetScalar rs p.dst (eval …)`.  This
-    ties `lowerArith_denote`'s post-state to the genuine `LowCT` semantics
-    rather than a re-stated denotation. -/
+    ties `lowerArith_denote`'s post-state to the `LowCT` semantics rather than
+    to a re-stated denotation. -/
 theorem ArithSrc.rustExec (N : Nat) (leafSpec : LeafSpec) (p : ArithSrc)
     (rs : RustState) :
     RustExec N leafSpec p.toLowCT rs
@@ -286,7 +283,7 @@ theorem ArithSrc.rustExec (N : Nat) (leafSpec : LeafSpec) (p : ArithSrc)
   RustExec.scalarSetExpr p.dst p.toSExpr rs
 
 /-- **Denote preservation, against the real `RustExec`.**  Combines
-    `ArithSrc.rustExec` (the genuine source step) with `lowerArith_denote`:
+    `ArithSrc.rustExec` (the source step) with `lowerArith_denote`:
     for the unique source post-state `rs'` reached by `RustExec` on
     `p.toLowCT`, the machine run of the lowering ends in a `StateMatch`-related
     machine state.  This is the source-operational-semantics ⇒ machine-run
@@ -304,22 +301,22 @@ theorem lowerArith_denote_rustExec (N : Nat) (leafSpec : LeafSpec)
 
 /-! ## 6. Source CT ⇒ machine CT, end to end
 
-`lowerArith_source_to_machine_CT`: a source command whose `cmdCT` verdict is
+`lowerArith_source_to_machine_CT`: a source command whose `cmdCT` result is
 `true` lowers to a machine block that is constant-time — the leakage trace is
 the same from any two initial states.  The on-ramp tie from the
-`RustState`-level source analyser to the `JState`-level machine keystone. -/
+`RustState`-level source analyser to the `JState`-level machine class. -/
 
-/-- **Source CT verdict ⇒ machine constant-time.**  If the source command
+/-- **Source CT result ⇒ machine constant-time.**  If the source command
     `p.toLowCT` passes the real source CT analyser `cmdCT` (under any level
     table / leaf table), then its lowering is constant-time at the machine
     level (same leakage trace from any two states).
 
-    The `cmdCT` hypothesis is genuinely *consumed only on the source side*:
+    The `cmdCT` hypothesis is *consumed only on the source side*:
     machine CT here is unconditional for this memory-free fragment (the
     lowering is always `allDirect`), but the statement records the intended
     contract — a CT-accepted source command compiles to CT machine code.
-    For a fragment with memory operands the `cmdCT` Public-index premise would
-    be the load-bearing hypothesis selecting a direct (vs. indexed) lowering. -/
+    For a fragment with memory operands the `cmdCT` Public-index premise is the
+    hypothesis that selects a direct (vs. indexed) lowering. -/
 theorem lowerArith_source_to_machine_CT (ρ : RegMap) (p : ArithSrc)
     (lt : LevelTable) (leafCT : LeafCTTable)
     (_hsrc : cmdCT p.toLowCT lt leafCT = true) (s₁ s₂ : JState 64) :
@@ -333,13 +330,13 @@ bridge to a **straight-line basic block** — a `List ArithSrc` of scalar-arith
 assignments — and prove the same three guarantees compositionally:
 
 * `lowerSeq_allDirect` / `lowerSeq_constant_time` — machine constant-time of the
-  whole block (the easy genuine half, via `List.all_append`);
+  whole block (the easy half, via `List.all_append`);
 * `lowerSeq_denote` — denote preservation of the whole block against the folded
   source semantics `srcDenote` (the hard half, threaded by induction).
 
-The two structural helpers `runBlock_append` and `allDirect_append` are proved
-locally so the module stays self-contained (they exist elsewhere in the backend
-but are not imported here). -/
+The structural helper `runBlock_append` is proved locally so the module stays
+self-contained (it exists elsewhere in the backend but is not imported here);
+`allDirect_append` comes from `ConstantTimeCoverage`. -/
 
 /-- `runBlock` over a concatenation: run the first block, then the second from
     the resulting state.  (Local copy; the same lemma lives in
@@ -349,12 +346,6 @@ theorem runBlock_append {w : Nat} (s : JState w) (l₁ l₂ : List (JInstr w)) :
   induction l₁ generalizing s with
   | nil => rfl
   | cons i is ih => simp only [List.cons_append, runBlock_cons, ih]
-
-/-- `allDirect` distributes over concatenation (`allDirect` is a `List.all`, so
-    this is `List.all_append`). -/
-theorem allDirect_append {w : Nat} (l₁ l₂ : List (JInstr w)) :
-    allDirect (l₁ ++ l₂) = (allDirect l₁ && allDirect l₂) := by
-  simp [allDirect, List.all_append]
 
 /-- **The basic-block lowering.**  A straight-line list of scalar-arith
     assignments lowers to the concatenation of the per-statement lowerings. -/
@@ -379,7 +370,7 @@ def srcDenote (ps : List ArithSrc) (rs : RustState) : RustState :=
     srcDenote (p :: ps) rs =
       srcDenote ps (rsSetScalar rs p.dst (p.toSExpr.eval rs.rsScalar)) := rfl
 
-/-- **Machine constant-time, block-level (easy genuine half).**  Every
+/-- **Machine constant-time, block-level (easy half).**  Every
     instruction of the lowered block is `IsDirect` — the block is memory-free,
     so its lowering emits only register `mov`/`add`/`and`/`xor`/`imul`. -/
 theorem lowerSeq_allDirect (ρ : RegMap) (ps : List ArithSrc) :
@@ -417,17 +408,16 @@ theorem lowerSeq_denote (ρ : RegMap) (hρ : Function.Injective ρ)
 
 /-! ## 8. Connecting the block to a real `LowCT` sequence (end-to-end source CT)
 
-`ArithSrc.seqToLowCT` embeds the block as a genuine right-nested `LowCT.RSeq`
-chain of `RScalarSetExpr` nodes, so the source CT verdict of the whole block is
-the real `cmdCT` over that chain.  `seq_cmdCT` shows it factors through the
+`ArithSrc.seqToLowCT` embeds the block as a right-nested `LowCT.RSeq` chain of
+`RScalarSetExpr` nodes, so the source CT result of the whole block is `cmdCT`
+over that chain.  `seq_cmdCT` shows it factors through the
 per-statement `cmdCT` checks, and `lowerSeq_source_to_machine_CT` packages the
 end-to-end shape: a source block accepted by `cmdCT` lowers to a machine block
 that is constant-time. -/
 
-/-- **The block embedded into real `LowCT`.**  A right-nested `RSeq` chain of
-    the per-statement `RScalarSetExpr` nodes, terminated by `RSkip`.  This makes
-    the block a genuine `LowCT` command whose source CT verdict is the real
-    `cmdCT`. -/
+/-- **The block embedded into `LowCT`.**  A right-nested `RSeq` chain of the
+    per-statement `RScalarSetExpr` nodes, terminated by `RSkip`, making the
+    block a `LowCT` command whose source CT result is `cmdCT`. -/
 def ArithSrc.seqToLowCT (ps : List ArithSrc) : LowCT :=
   ps.foldr (fun p acc => .RSeq p.toLowCT acc) .RSkip
 
@@ -436,7 +426,7 @@ def ArithSrc.seqToLowCT (ps : List ArithSrc) : LowCT :=
 @[simp] theorem ArithSrc.seqToLowCT_cons (p : ArithSrc) (ps : List ArithSrc) :
     ArithSrc.seqToLowCT (p :: ps) = .RSeq p.toLowCT (ArithSrc.seqToLowCT ps) := rfl
 
-/-- **Block source CT verdict factors through the per-statement checks.**  The
+/-- **Block source CT result factors through the per-statement checks.**  The
     real `cmdCT` of the whole `RSeq` chain is `true` iff every statement's
     `cmdCT` is `true` (i.e. every statement's read slots are `Public`). -/
 theorem seq_cmdCT (ps : List ArithSrc) (lt : LevelTable) (leafCT : LeafCTTable) :
@@ -447,7 +437,7 @@ theorem seq_cmdCT (ps : List ArithSrc) (lt : LevelTable) (leafCT : LeafCTTable) 
   | cons p ps ih =>
     simp [ArithSrc.seqToLowCT_cons, cmdCT_RSeq, ih, List.all_cons]
 
-/-- **Source CT verdict ⇒ machine constant-time, block-level (end to end).**
+/-- **Source CT result ⇒ machine constant-time, block-level (end to end).**
     If the source block `seqToLowCT ps` passes the real source CT analyser
     `cmdCT`, its lowering is constant-time at the machine level.
 
@@ -455,7 +445,7 @@ theorem seq_cmdCT (ps : List ArithSrc) (lt : LevelTable) (leafCT : LeafCTTable) 
     the source side: machine CT is unconditional for this memory-free fragment
     (the lowering is always `allDirect`).  The statement records the intended
     contract — a CT-accepted source block compiles to CT machine code — so the
-    end-to-end source-analyser ⇒ machine-keystone shape is present. -/
+    end-to-end source-analyser ⇒ machine-class shape is present. -/
 theorem lowerSeq_source_to_machine_CT (ρ : RegMap) (ps : List ArithSrc)
     (lt : LevelTable) (leafCT : LeafCTTable)
     (_hsrc : cmdCT (ArithSrc.seqToLowCT ps) lt leafCT = true) (s₁ s₂ : JState 64) :

@@ -118,6 +118,24 @@ def zmmReg (alloc : XAlloc) (n : String) : String :=
   if n.startsWith "%" then n
   else (alloc.lookup n).getD ("<UNALLOCATED:" ++ n ++ ">")
 
+/-! ### 2b. The cross-lane permute leaf mnemonic
+
+The cross-lane MDS `P`-powers and the column-sum block-swap ride the `extCall`
+leaf with a compile-time-constant control (`vshuffle σ`, `CrossLaneReadback`),
+the same discipline as ChaCha's `vpshufb` rotate. On the owned `%zmm` printer
+they render to an AVX-512 lane-permute mnemonic. The leaf name IS the mnemonic
+(`"vpermq"` / `"vpermt2q"` / `"vpermpd"`), and the leaf is binary `[control,
+source]`: the control register holds the fixed public index (a rodata-loaded
+`c_rotIdx`/`c_rot4Idx`), the source is the permuted `%zmm`. Byte-identity of the
+emitted permute to its reference is the leaf's KAT (Tier-B, external bench), the
+same story as the `vpshufb` cross-lane leaf. -/
+
+/-- Whether a leaf name is an AVX-512 cross-lane permute mnemonic the owned `%zmm`
+    printer emits directly (`vpermq` / `vpermt2q` / `vpermpd`). Any other
+    `extCall` name stays out of the `vpackZMM` fragment. -/
+def isZmmPermuteMnemonic (name : String) : Bool :=
+  name == "vpermq" || name == "vpermt2q" || name == "vpermpd"
+
 /-! ## 3. Per-instruction renderer: a `vpackZMM` op + dst/src names → one AT&T line
 
 AT&T EVEX order is `op src2, src1, dst` for the three-operand form
@@ -156,6 +174,19 @@ def lowerVpackZmmExpr {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
       let a := argName vm e.args 0
       let b := argName vm e.args 1
       renderVpackZmmInstr alloc bop dst a b
+  | .extCall name _ _ =>
+      -- The cross-lane permute leaf (`vshuffle σ`, constant control): a binary
+      -- `[control, source]` leaf whose name is its AVX-512 permute mnemonic.
+      -- Renders in the EVEX 3-operand AT&T order `op control, source, dst`
+      -- (`vpermq %ctrl, %src, %dst`). Any non-permute `extCall` stays out of the
+      -- fragment (the comment arm below).
+      if isZmmPermuteMnemonic name then
+        let ctrl := argName vm e.args 0
+        let src := argName vm e.args 1
+        "\t" ++ name ++ " " ++ zmmReg alloc ctrl ++ ", " ++ zmmReg alloc src
+          ++ ", " ++ zmmReg alloc dst
+      else
+        "\t# <unsupported owned-AT&T op; not in the vpackZMM fragment>"
   | _ => "\t# <unsupported owned-AT&T op; not in the vpackZMM fragment>"
 
 /-- Walk a `Com jasminDialect Γ t` to its owned AT&T instruction lines plus the
@@ -336,5 +367,29 @@ example :
     renderVpackZmmInstr [("d", "%zmm2"), ("a", "%zmm0"), ("b", "%zmm1")]
       .shl "d" "a" "b"
       = "\tvpsllvq %zmm1, %zmm0, %zmm2" := by native_decide
+
+/-! ## 7. Worked example: the cross-lane permute leaf renders to `vpermq`
+
+The Poseidon2 external-MDS `P`-power (`Poseidon2MdsPermUnified.permP`) rides the
+`extCall "vpermq"` leaf: a binary `[control, source]` leaf whose lane reindex is
+`vshuffle rotσ`. A one-binding `Com` over `[idx, src]` (control, source) renders,
+through the additive permute arm, to the single AT&T line
+`vpermq %<idx>, %<src>, %<dst>`. -/
+
+/-- A one-permute `Com jasminDialect`: `out = vpermq(idx, src)` over `[idx, src]`
+    (`reg 512`). The `extCall "vpermq"` leaf is the cross-lane MDS `P`-power's
+    emit form. -/
+def permDemoCom : Com jasminDialect [.reg 512, .reg 512] (.reg 512) :=
+  .var (.mk (.extCall "vpermq" [.reg 512, .reg 512] (.reg 512)) rfl
+          (.cons .here (.cons (.there .here) .nil)))
+    (.ret .here)
+
+/- The permute-leaf `Com` renders to exactly one owned AT&T `vpermq` line
+    (EVEX 3-operand order `vpermq %ctrl, %src, %dst`), pinning `idx`(`p0`) to
+    `%zmm30`, `src`(`p1`) to `%zmm0`, and the result (`v0`) to `%zmm1`. The
+    concrete exercise of the additive permute arm. -/
+#guard (renderVpackZmmCom
+          [("p0", "%zmm30"), ("p1", "%zmm0"), ("v0", "%zmm1")] permDemoCom).1
+        == ["\tvpermq %zmm30, %zmm0, %zmm1"]
 
 end CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint

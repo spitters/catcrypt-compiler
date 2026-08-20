@@ -896,7 +896,7 @@ theorem isCT_coalesceGo (liveOut : List Var) (c : Cmd) (h : isCT_Cmd c) :
     obtain ⟨hi, hrest⟩ := h
     have hEq : (coalesceGo lo
         (.Cassgn (.Lvar x) tag ty (.Papp2 op (.Pvar y) (.Pvar z)) :: rest)).1
-        = .Cassgn (.Lvar { var := y.gv.var }) tag ty
+        = .Cassgn (.Lvar { var := y.gv.var, info := x.info }) tag ty
             (.Papp2 op (.Pvar y) (.Pvar z)) ::
           (coalesceGo (renameLiveOut x.var.vname y.gv.var.vname lo)
             (rest.map (renameInstr x.var.vname y.gv.var.vname))).1 := by
@@ -927,7 +927,7 @@ theorem isCT_coalesceGo (liveOut : List Var) (c : Cmd) (h : isCT_Cmd c) :
     obtain ⟨hi, hrest⟩ := h
     have hEq : (coalesceGo lo
         (.Cassgn (.Lvar x) tag ty (.Papp2 op (.Pvar y) (.Pconst k)) :: rest)).1
-        = .Cassgn (.Lvar { var := y.gv.var }) tag ty
+        = .Cassgn (.Lvar { var := y.gv.var, info := x.info }) tag ty
             (.Papp2 op (.Pvar y) (.Pconst k)) ::
           (coalesceGo (renameLiveOut x.var.vname y.gv.var.vname lo)
             (rest.map (renameInstr x.var.vname y.gv.var.vname))).1 := by
@@ -1027,7 +1027,7 @@ def pureEvalMonoCmdExt (n : Nat) (env : Var → BitVec n) (retVar : Var) :
 
 /-! ### Cfor unrolling pre-pass (Extension 3A)
 
-`unrollAllCfor` replaces every *top-level* `Cfor v .UpTo lo hi body` in a
+`unrollCfor` replaces every *top-level* `Cfor v .UpTo lo hi body` in a
 command list with `hi - lo` concatenated copies of its body (the body
 itself is not recursively unrolled — for Extension 3A we restrict to
 one loop level, which covers all planned ports). The AST's
@@ -1049,8 +1049,7 @@ def unrollCfor1 : List InstrR → List InstrR
     (List.replicate count body).flatten ++ unrollCfor1 rest
   | i :: rest => i :: unrollCfor1 rest
 
-/-- The name callers use for the `Cfor` pre-pass (`unrollCfor1`); an
-    `abbrev`, so the two are interchangeable. -/
+/-- Legacy alias for `unrollCfor1`. -/
 abbrev unrollAllCfor := unrollCfor1
 
 /-- Bodies with no `Copn`. -/

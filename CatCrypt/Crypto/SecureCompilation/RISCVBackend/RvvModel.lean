@@ -24,7 +24,7 @@ ChaCha 4-way SoA shape (and the NEON 128-bit/4×u32 sibling) we model a **fixed
 `VLEN = 128`, `SEW = 32` (e32), `LMUL = 1` (m1)**, giving **4 × u32 lanes** — and
 treat the `vsetvli` that pins `VL = 4` (`e32, m1`) as the model prelude that
 selects this lane shape (`VConfig` below). Every packed op below then operates on
-exactly the 4 active u32 lanes. (A genuinely length-agnostic model would carry
+exactly the 4 active u32 lanes. (A length-agnostic model would carry
 `vl`/`vtype` as state and prove the per-lane ops mask above `vl`; that is the
 honest residual — we fix the configuration the ChaCha 4-way kernel uses, the same
 posture as the fixed-128-bit NEON model.)
@@ -196,19 +196,16 @@ Unit-level witnesses for the lane ops; the integration witness is the ChaCha
 4-way KAT byte-identity (`bench/riscv_compare/`, RFC 8439 §2.1.1, qemu-riscv64
 with RVV). -/
 
-/-- `vadd.vv` lane pin: wrapping 32-bit add, `(2³²-1) + 3 = 2`. -/
-example : laneAdd (BitVec.allOnes 32) (3 : BitVec 32) = 2 := by native_decide
-
-/-- `vxor.vv` lane pin: `0xff00ff00 ^ 0x00ff00ff = 0xffffffff`. -/
-example : laneXor (BitVec.ofNat 32 0xff00ff00) (BitVec.ofNat 32 0x00ff00ff)
-    = BitVec.allOnes 32 := by native_decide
-
-/-- `vsll`/`vsrl`/`vor` realize the ChaCha rotate `x <<<ʳ 16`: on
-    `x = 0x12345678`, `(x<<16) | (x>>16) = 0x56781234`. -/
-example :
-    laneOr (laneSll (BitVec.ofNat 32 0x12345678) 16)
+-- `vadd.vv` lane pin: wrapping 32-bit add, `(2³²-1) + 3 = 2`.
+#guard laneAdd (BitVec.allOnes 32) (3 : BitVec 32) == 2
+-- `vxor.vv` lane pin: `0xff00ff00 ^ 0x00ff00ff = 0xffffffff`.
+#guard laneXor (BitVec.ofNat 32 0xff00ff00) (BitVec.ofNat 32 0x00ff00ff)
+    == BitVec.allOnes 32
+-- `vsll`/`vsrl`/`vor` realize the ChaCha rotate `x <<<ʳ 16`: on
+-- `x = 0x12345678`, `(x<<16) | (x>>16) = 0x56781234`.
+#guard laneOr (laneSll (BitVec.ofNat 32 0x12345678) 16)
            (laneSrl (BitVec.ofNat 32 0x12345678) 16)
-      = BitVec.ofNat 32 0x56781234 := by native_decide
+      == BitVec.ofNat 32 0x56781234
 
 /-- The fixed 4-way config has 4 active u32 lanes. -/
 example : vchacha4.vl = 4 ∧ vchacha4.sew = 32 := ⟨rfl, rfl⟩
@@ -274,12 +271,11 @@ def evalVInst8x16 (s : VState8x16) : VInst8x16 → VState8x16
 /-- The `e16, m1` config has 8 active i16 lanes. -/
 example : vmlkem.vl = 8 ∧ vmlkem.sew = 16 := ⟨rfl, rfl⟩
 
-/-- Lane pin: `hi16(signed(-2) · signed(0x4000)) = -1 = 0xffff`. -/
-example : laneMulHiS16 (BitVec.ofNat 16 0xfffe) (BitVec.ofNat 16 0x4000)
-    = BitVec.ofNat 16 0xffff := by native_decide
-
-/-- Lane pin: `hi16(signed(0x4000)²) = 0x1000`. -/
-example : laneMulHiS16 (BitVec.ofNat 16 0x4000) (BitVec.ofNat 16 0x4000)
-    = BitVec.ofNat 16 0x1000 := by native_decide
+-- Lane pin: `hi16(signed(-2) · signed(0x4000)) = -1 = 0xffff`.
+#guard laneMulHiS16 (BitVec.ofNat 16 0xfffe) (BitVec.ofNat 16 0x4000)
+    == BitVec.ofNat 16 0xffff
+-- Lane pin: `hi16(signed(0x4000)²) = 0x1000`.
+#guard laneMulHiS16 (BitVec.ofNat 16 0x4000) (BitVec.ofNat 16 0x4000)
+    == BitVec.ofNat 16 0x1000
 
 end CatCrypt.Crypto.SecureCompilation.RISCVBackend.Rvv

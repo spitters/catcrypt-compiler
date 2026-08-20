@@ -5,6 +5,7 @@ Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
+import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
 # Curve25519 field-OP kernels `feAdd`/`feSub`/`feMul121666`/`feSqr`, lowered through the in-Lean x86 backend (#408)
@@ -72,6 +73,9 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime (blockLeak)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+  (allDirect allDirect_constant_time)
 
 /-! ## 0. Initial machine states (reg-ptr ABI)
 
@@ -325,6 +329,54 @@ theorem feSqrBlock_lowering_correct (x0 x1 x2 x3 : BitVec 64) :
         (.cons (initState1 x0 x1 x2 x3) .nil)
       = runBlock (initState1 x0 x1 x2 x3) feSqrBlock :=
   lowerBlock_denote_closed feSqrBlock (initState1 x0 x1 x2 x3)
+
+/-! ## 4a. Constant time: straight-line, all-direct addressing
+
+Each of the four field-op bodies addresses memory only through a base register
+and a compile-time-constant displacement, so its machine leakage trace is a
+function of the program text alone
+(`ConstantTimeCoverage.allDirect_constant_time`). The branchless canonical
+selects in `feAdd`/`feSub` are mask arithmetic, not conditional jumps. -/
+
+/-- The `feAdd` body uses only direct base+displacement addressing. -/
+theorem feAddBlock_allDirect : allDirect feAddBlock = true := by
+  decide
+
+/-- **Constant time.** `feAdd` produces the same machine leakage trace from any
+    two starting states. -/
+theorem feAddBlock_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ feAddBlock = blockLeak s₂ feAddBlock :=
+  allDirect_constant_time feAddBlock feAddBlock_allDirect s₁ s₂
+
+/-- The `feSub` body uses only direct base+displacement addressing. -/
+theorem feSubBlock_allDirect : allDirect feSubBlock = true := by
+  decide
+
+/-- **Constant time.** `feSub` produces the same machine leakage trace from any
+    two starting states. -/
+theorem feSubBlock_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ feSubBlock = blockLeak s₂ feSubBlock :=
+  allDirect_constant_time feSubBlock feSubBlock_allDirect s₁ s₂
+
+/-- The `feMul121666` body uses only direct base+displacement addressing. -/
+theorem feMul121666Block_allDirect : allDirect feMul121666Block = true := by
+  decide
+
+/-- **Constant time.** `feMul121666` produces the same machine leakage trace from
+    any two starting states. -/
+theorem feMul121666Block_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ feMul121666Block = blockLeak s₂ feMul121666Block :=
+  allDirect_constant_time feMul121666Block feMul121666Block_allDirect s₁ s₂
+
+/-- The `feSqr` body uses only direct base+displacement addressing. -/
+theorem feSqrBlock_allDirect : allDirect feSqrBlock = true := by
+  decide
+
+/-- **Constant time.** `feSqr` produces the same machine leakage trace from any
+    two starting states. -/
+theorem feSqrBlock_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ feSqrBlock = blockLeak s₂ feSqrBlock :=
+  allDirect_constant_time feSqrBlock feSqrBlock_allDirect s₁ s₂
 
 /-! ## 5. AT&T assembly emission (in-Lean backend, no jasminc)
 

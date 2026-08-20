@@ -148,9 +148,6 @@ def wellLabeled (leaves : CTLeaves) (label : Labeling) : LowCT → Bool
   | .RLimbStoreExpr _ _ _            => true
   -- Phase F/G/H/L/M (2026-05-03): mirror the strict CT predicate.
   | .RCallSwap f _ _ _               => leaves f
-  -- #235: mirror `isCT_LowCT'`'s tightened `RAsmOp` gate — CT iff the
-  -- opcode is on the vendor DOIT∩DIT whitelist `ct_intrinsic`.
-  | .RAsmOp name _ _                 => CatCrypt.Crypto.Jasmin.ct_intrinsic name
   | .RCallN f _ _                    => leaves f
   | .RSelect _ _ _ _                 => true
   | .RAssert _                       => true
@@ -158,12 +155,10 @@ def wellLabeled (leaves : CTLeaves) (label : Labeling) : LowCT → Bool
   | .RFnDef _ _ _ body cont          =>
       wellLabeled leaves label body && wellLabeled leaves label cont
   | .RFnCall f _ _                   => leaves f
-  -- Phase I (2026-05-03): tuple component store/load is structural.
-  | .RTupleStore _ _ _               => true
+  -- Phase I (2026-05-03): tuple component load is structural.
   | .RTupleLoad _ _ _                => true
-  -- Phase J (added later): byte slice / array load/store / scalar-set-from-expr
+  -- Phase J (added later): array load/store / scalar-set-from-expr
   -- are structural (no data-dependent control flow).
-  | .RBytesSlice _ _ _ _             => true
   | .RScalarSetExpr _ _              => true
   | .RArrLoad _ _ _                  => true
   | .RArrStore _ _ _                 => true
@@ -223,7 +218,6 @@ theorem wellLabeled_iff_isCT_LowCT' (leaves : CTLeaves) (label : Labeling)
   | RLimbStore _ _ _ => simp [wellLabeled, isCT_LowCT']
   | RLimbStoreExpr _ _ _ => simp [wellLabeled, isCT_LowCT']
   | RCallSwap _ _ _ _ => simp [wellLabeled, isCT_LowCT']
-  | RAsmOp _ _ _ => simp [wellLabeled, isCT_LowCT']
   | RCallN _ _ _ => simp [wellLabeled, isCT_LowCT']
   | RSelect _ _ _ _ => simp [wellLabeled, isCT_LowCT']
   | RAssert _ => simp [wellLabeled, isCT_LowCT']
@@ -231,9 +225,7 @@ theorem wellLabeled_iff_isCT_LowCT' (leaves : CTLeaves) (label : Labeling)
   | RFnDef _ _ _ _ _ ih_body ih_cont =>
       simp [wellLabeled, isCT_LowCT', ih_body, ih_cont]
   | RFnCall _ _ _ => simp [wellLabeled, isCT_LowCT']
-  | RTupleStore _ _ _ => simp [wellLabeled, isCT_LowCT']
   | RTupleLoad _ _ _ => simp [wellLabeled, isCT_LowCT']
-  | RBytesSlice _ _ _ _ => simp [wellLabeled, isCT_LowCT']
   | RScalarSetExpr _ _ => simp [wellLabeled, isCT_LowCT']
   | RArrLoad _ _ _ => simp [wellLabeled, isCT_LowCT']
   | RArrStore _ _ _ => simp [wellLabeled, isCT_LowCT']

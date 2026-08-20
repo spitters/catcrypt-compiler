@@ -191,50 +191,50 @@ The encoder's instruction words pinned to the exact 32-bit words
 round-trip in `SailRvvDecoder.lean` upgrades these gas pins to a proof against the
 official sail-riscv RVV `encdec` clauses. -/
 
-/-- `vadd.vv v4, v0, v1` → `as`/objdump word `0x02008257`. -/
-example : encodeWord (.vadd "v4" "v0" "v1") = 0x02008257 := by native_decide
-/-- `vxor.vv v4, v0, v1` → `0x2e008257`. -/
-example : encodeWord (.vxor "v4" "v0" "v1") = 0x2e008257 := by native_decide
-/-- `vor.vv v4, v0, v1` → `0x2a008257`. -/
-example : encodeWord (.vor "v4" "v0" "v1") = 0x2a008257 := by native_decide
-/-- `vand.vv v4, v0, v1` → `0x26008257`. -/
-example : encodeWord (.vand "v4" "v0" "v1") = 0x26008257 := by native_decide
-/-- `vsll.vi v4, v0, 7` → `0x9603b257`. -/
-example : encodeWord (.vsll "v4" "v0" 7) = 0x9603b257 := by native_decide
-/-- `vsrl.vi v4, v0, 25` → `0xa20cb257`. -/
-example : encodeWord (.vsrl "v4" "v0" 25) = 0xa20cb257 := by native_decide
-/-- `vmv.v.v v4, v0` → `0x5e000257`. -/
-example : encodeWord (.vmv "v4" "v0") = 0x5e000257 := by native_decide
-/-- `vmulh.vv v4, v0, v1` → `0x9e00a257` (OPMVV `funct3=010`, `funct6=100111`;
-    the ML-KEM NTT signed high-mul, #4). -/
-example : encodeWord8x16 (.vmulh "v4" "v0" "v1") = 0x9e00a257 := by native_decide
+-- `vadd.vv v4, v0, v1` → `as`/objdump word `0x02008257`.
+#guard encodeWord (.vadd "v4" "v0" "v1") == 0x02008257
+-- `vxor.vv v4, v0, v1` → `0x2e008257`.
+#guard encodeWord (.vxor "v4" "v0" "v1") == 0x2e008257
+-- `vor.vv v4, v0, v1` → `0x2a008257`.
+#guard encodeWord (.vor "v4" "v0" "v1") == 0x2a008257
+-- `vand.vv v4, v0, v1` → `0x26008257`.
+#guard encodeWord (.vand "v4" "v0" "v1") == 0x26008257
+-- `vsll.vi v4, v0, 7` → `0x9603b257`.
+#guard encodeWord (.vsll "v4" "v0" 7) == 0x9603b257
+-- `vsrl.vi v4, v0, 25` → `0xa20cb257`.
+#guard encodeWord (.vsrl "v4" "v0" 25) == 0xa20cb257
+-- `vmv.v.v v4, v0` → `0x5e000257`.
+#guard encodeWord (.vmv "v4" "v0") == 0x5e000257
+-- `vmulh.vv v4, v0, v1` → `0x9e00a257` (OPMVV `funct3=010`, `funct6=100111`;
+-- the ML-KEM NTT signed high-mul, #4).
+#guard encodeWord8x16 (.vmulh "v4" "v0" "v1") == 0x9e00a257
 
-/-- The first little-endian byte of `vadd.vv v4,v0,v1` is `0x57` (the OP-V opcode
-    byte that leads the LE word in `.text`). -/
-example : (encodeVInst (.vadd "v4" "v0" "v1")).head? = some 0x57 := by native_decide
+-- The first little-endian byte of `vadd.vv v4,v0,v1` is `0x57` (the OP-V opcode
+-- byte that leads the LE word in `.text`).
+#guard (encodeVInst (.vadd "v4" "v0" "v1")).head? == some 0x57
 
 /-! ### Config / memory scaffolding pins (`vsetvli`/`vle32.v`/`vse32.v`)
 
 The three RVV prelude/epilogue scaffolding words, pinned to the exact
 `riscv64-linux-gnu-as -march=rv64gcv` objdump value. -/
 
-/-- `vsetvli t0, t0, e32,m1,ta,ma` → `0x0d02f2d7`. -/
-example : encVsetvli "t0" "t0" = 0x0d02f2d7 := by native_decide
-/-- `vsetvli t1, t0, e32,m1,ta,ma` → `0x0d02f357`. -/
-example : encVsetvli "t1" "t0" = 0x0d02f357 := by native_decide
-/-- `vsetvli t0, t0, e16,m1,ta,ma` → `0x0c82f2d7` (the ML-KEM NTT lane config, #4). -/
-example : encVsetvliE16 "t0" "t0" = 0x0c82f2d7 := by native_decide
-/-- `vle32.v v0, (t1)` → `0x02036007`. -/
-example : encVle32 "v0" "t1" = 0x02036007 := by native_decide
-/-- `vle32.v v3, (t1)` → `0x02036187`. -/
-example : encVle32 "v3" "t1" = 0x02036187 := by native_decide
-/-- `vle32.v v0, (a0)` → `0x02056007`. -/
-example : encVle32 "v0" "a0" = 0x02056007 := by native_decide
-/-- `vse32.v v0, (t1)` → `0x02036027`. -/
-example : encVse32 "v0" "t1" = 0x02036027 := by native_decide
-/-- `vse32.v v3, (t1)` → `0x020361a7`. -/
-example : encVse32 "v3" "t1" = 0x020361a7 := by native_decide
-/-- `vse32.v v2, (t1)` → `0x02036127`. -/
-example : encVse32 "v2" "t1" = 0x02036127 := by native_decide
+-- `vsetvli t0, t0, e32,m1,ta,ma` → `0x0d02f2d7`.
+#guard encVsetvli "t0" "t0" == 0x0d02f2d7
+-- `vsetvli t1, t0, e32,m1,ta,ma` → `0x0d02f357`.
+#guard encVsetvli "t1" "t0" == 0x0d02f357
+-- `vsetvli t0, t0, e16,m1,ta,ma` → `0x0c82f2d7` (the ML-KEM NTT lane config, #4).
+#guard encVsetvliE16 "t0" "t0" == 0x0c82f2d7
+-- `vle32.v v0, (t1)` → `0x02036007`.
+#guard encVle32 "v0" "t1" == 0x02036007
+-- `vle32.v v3, (t1)` → `0x02036187`.
+#guard encVle32 "v3" "t1" == 0x02036187
+-- `vle32.v v0, (a0)` → `0x02056007`.
+#guard encVle32 "v0" "a0" == 0x02056007
+-- `vse32.v v0, (t1)` → `0x02036027`.
+#guard encVse32 "v0" "t1" == 0x02036027
+-- `vse32.v v3, (t1)` → `0x020361a7`.
+#guard encVse32 "v3" "t1" == 0x020361a7
+-- `vse32.v v2, (t1)` → `0x02036127`.
+#guard encVse32 "v2" "t1" == 0x02036127
 
 end CatCrypt.Crypto.SecureCompilation.RISCVBackend.Rvv.RvvEncoder

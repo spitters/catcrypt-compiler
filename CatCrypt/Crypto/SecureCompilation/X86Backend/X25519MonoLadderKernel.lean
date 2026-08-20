@@ -76,10 +76,16 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
-open CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel (feMulBlock)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519OpsKernel (feSqrBlock)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel
+  (feMulBlock feMulBlock_allDirect)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519OpsKernel
+  (feSqrBlock feSqrBlock_allDirect)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519LazyOpsKernel
-  (feAddLazyBlock feSubLazyBlock feCmadd121666LazyBlock)
+  (feAddLazyBlock feSubLazyBlock feCmadd121666LazyBlock
+   feAddLazyBlock_allDirect feSubLazyBlock_allDirect feCmadd121666LazyBlock_allDirect)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime (blockLeak IsDirect)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+  (allDirect allDirect_append allDirect_constant_time)
 
 /-! ## 1. The rebase rewrite: retarget a leaf body's memory bases + rename scratch
 
@@ -349,6 +355,66 @@ theorem forwardedMonoLadderStepBlock_lowering_correct (s : JState 64) :
   rw [lowerBlock_denote_closed _ s]
   exact CatCrypt.Crypto.Optimizer.StoreToLoadForward.storeToLoadForward_runBlock
     monoLadderStepBlock s
+
+/-! ## 6c. Constant time: straight-line, all-direct addressing
+
+The rebase that inlines a field-op leaf at a frame slot maps each instruction to
+the same constructor with renamed registers and shifted constant displacements,
+so it keeps every instruction in the direct-addressing class. The fused step is a
+concatenation of rebased leaves, each of which is `allDirect` in its own kernel
+module, so `allDirect` for the whole step follows without reducing the
+1058-instruction body. Store-to-load forwarding preserves the class
+(`X86ComPipeline.storeToLoadForward_allDirect`), so the forwarded body inherits
+it. -/
+
+/-- Rebasing keeps an instruction in the direct-addressing class: it maps each
+    constructor to itself, renaming registers and shifting the constant
+    displacement. -/
+theorem rebaseInstr_isDirect (rmap bmap : String → String) (boff : String → Int)
+    {i : JInstr 64} (h : IsDirect i) : IsDirect (rebaseInstr rmap bmap boff i) := by
+  cases i <;> simp_all [IsDirect, rebaseInstr]
+
+/-- Rebasing a whole leaf body preserves the decidable constant-time class. -/
+theorem rebaseBlock_allDirect (rmap bmap : String → String) (boff : String → Int)
+    (block : List (JInstr 64)) (h : allDirect block = true) :
+    allDirect (rebaseBlock rmap bmap boff block) = true := by
+  rw [allDirect, List.all_eq_true]
+  intro j hj
+  rw [decide_eq_true_eq]
+  rw [rebaseBlock, List.mem_map] at hj
+  obtain ⟨i, hi, rfl⟩ := hj
+  exact rebaseInstr_isDirect rmap bmap boff
+    (ConstantTimeCoverage.allDirect_mem_isDirect block h i hi)
+
+/-- The fused ladder step uses only direct base+displacement addressing. -/
+theorem monoLadderStepBlock_allDirect : allDirect monoLadderStepBlock = true := by
+  simp [monoLadderStepBlock, opInline1, opInline2, allDirect_append,
+    rebaseBlock_allDirect, feAddLazyBlock_allDirect, feSubLazyBlock_allDirect,
+    feCmadd121666LazyBlock_allDirect, feSqrBlock_allDirect, feMulBlock_allDirect]
+
+/-- **Constant time.** The monolithic X25519 ladder step produces the same machine
+    leakage trace from any two starting states: the ladder's conditional swap is
+    the harness' branch-free word swap on frame slots, and no scalar bit reaches
+    an effective address inside the step. -/
+theorem monoLadderStepBlock_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ monoLadderStepBlock = blockLeak s₂ monoLadderStepBlock :=
+  allDirect_constant_time monoLadderStepBlock monoLadderStepBlock_allDirect s₁ s₂
+
+/-- The forwarded step uses only direct base+displacement addressing: forwarding
+    rewrites a `loadMem` to a register move, which is direct. -/
+theorem forwardedMonoLadderStepBlock_allDirect :
+    allDirect forwardedMonoLadderStepBlock = true := by
+  unfold forwardedMonoLadderStepBlock
+  exact X86ComPipeline.storeToLoadForward_allDirect monoLadderStepBlock
+    monoLadderStepBlock_allDirect
+
+/-- **Constant time.** The store-to-load-forwarded ladder step produces the same
+    machine leakage trace from any two starting states. -/
+theorem forwardedMonoLadderStepBlock_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ forwardedMonoLadderStepBlock
+      = blockLeak s₂ forwardedMonoLadderStepBlock :=
+  allDirect_constant_time forwardedMonoLadderStepBlock
+    forwardedMonoLadderStepBlock_allDirect s₁ s₂
 
 /-! ## 7. Register allocation over the fused body (no GP overflow)
 

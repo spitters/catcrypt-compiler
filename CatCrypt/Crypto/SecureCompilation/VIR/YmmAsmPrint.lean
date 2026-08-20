@@ -210,53 +210,53 @@ def renderYmmFundefText (name : String) (block : List YmmInstr) : String :=
 Each reproduces an `Avx2YmmAsmPrinter` `example` with the SAME expected AT&T
 string, asserting `renderYmmInstr` is byte-identical to `renderYInst`. -/
 
-/-- `vpmuldq %ymm4, %ymm2, %ymm6` (reference `.s` line 13). -/
-example : renderYmmInstr (.alu .vpmuldq "%ymm6" ["%ymm2", "%ymm4"])
-    = "\tvpmuldq\t%ymm4, %ymm2, %ymm6" := by native_decide
+-- `vpmuldq %ymm4, %ymm2, %ymm6` (reference `.s` line 13).
+#guard renderYmmInstr (.alu .vpmuldq "%ymm6" ["%ymm2", "%ymm4"])
+    == "\tvpmuldq\t%ymm4, %ymm2, %ymm6"
 
-/-- `vmovshdup %ymm4, %ymm5` (reference line 12). -/
-example : renderYmmInstr (.alu .vmovshdup "%ymm5" ["%ymm4"])
-    = "\tvmovshdup\t%ymm4, %ymm5" := by native_decide
+-- `vmovshdup %ymm4, %ymm5` (reference line 12).
+#guard renderYmmInstr (.alu .vmovshdup "%ymm5" ["%ymm4"])
+    == "\tvmovshdup\t%ymm4, %ymm5"
 
-/-- `vpsubq %ymm4, %ymm6, %ymm6` (reference line 19). -/
-example : renderYmmInstr (.alu .vpsubq "%ymm6" ["%ymm6", "%ymm4"])
-    = "\tvpsubq\t%ymm4, %ymm6, %ymm6" := by native_decide
+-- `vpsubq %ymm4, %ymm6, %ymm6` (reference line 19).
+#guard renderYmmInstr (.alu .vpsubq "%ymm6" ["%ymm6", "%ymm4"])
+    == "\tvpsubq\t%ymm4, %ymm6, %ymm6"
 
-/-- `vpblendd $170, %ymm2, %ymm6, %ymm2` (reference line 22). -/
-example : renderYmmInstr (.alu (.vpblendd 170) "%ymm2" ["%ymm6", "%ymm2"])
-    = "\tvpblendd\t$170, %ymm2, %ymm6, %ymm2" := by native_decide
+-- `vpblendd $170, %ymm2, %ymm6, %ymm2` (reference line 22).
+#guard renderYmmInstr (.alu (.vpblendd 170) "%ymm2" ["%ymm6", "%ymm2"])
+    == "\tvpblendd\t$170, %ymm2, %ymm6, %ymm2"
 
-/-- `vpaddd %ymm2, %ymm1, %ymm3` (reference line 23). -/
-example : renderYmmInstr (.alu .vpaddd "%ymm3" ["%ymm1", "%ymm2"])
-    = "\tvpaddd\t%ymm2, %ymm1, %ymm3" := by native_decide
+-- `vpaddd %ymm2, %ymm1, %ymm3` (reference line 23).
+#guard renderYmmInstr (.alu .vpaddd "%ymm3" ["%ymm1", "%ymm2"])
+    == "\tvpaddd\t%ymm2, %ymm1, %ymm3"
 
-/-- `vpsubd %ymm2, %ymm1, %ymm1` (reference line 24). -/
-example : renderYmmInstr (.alu .vpsubd "%ymm1" ["%ymm1", "%ymm2"])
-    = "\tvpsubd\t%ymm2, %ymm1, %ymm1" := by native_decide
+-- `vpsubd %ymm2, %ymm1, %ymm1` (reference line 24).
+#guard renderYmmInstr (.alu .vpsubd "%ymm1" ["%ymm1", "%ymm2"])
+    == "\tvpsubd\t%ymm2, %ymm1, %ymm1"
 
-/-- `vpermq $238, %ymm1, %ymm5` (reference line 1531). -/
-example : renderYmmInstr (.alu (.vpermq 238) "%ymm5" ["%ymm1"])
-    = "\tvpermq\t$238, %ymm1, %ymm5" := by native_decide
+-- `vpermq $238, %ymm1, %ymm5` (reference line 1531).
+#guard renderYmmInstr (.alu (.vpermq 238) "%ymm5" ["%ymm1"])
+    == "\tvpermq\t$238, %ymm1, %ymm5"
 
-/-- `vpshufd $245, %ymm1, %ymm5` (reference line 2811). -/
-example : renderYmmInstr (.alu (.vpshufd 245) "%ymm5" ["%ymm1"])
-    = "\tvpshufd\t$245, %ymm1, %ymm5" := by native_decide
+-- `vpshufd $245, %ymm1, %ymm5` (reference line 2811).
+#guard renderYmmInstr (.alu (.vpshufd 245) "%ymm5" ["%ymm1"])
+    == "\tvpshufd\t$245, %ymm1, %ymm5"
 
-/-- `vmovdqu (%rsi), %ymm0` — zero-displacement load (reference line 7). -/
-example : renderYmmInstr (.yload "%ymm0" ⟨"%rsi", 0⟩)
-    = "\tvmovdqu\t(%rsi), %ymm0" := by native_decide
+-- `vmovdqu (%rsi), %ymm0` — zero-displacement load (reference line 7).
+#guard renderYmmInstr (.yload "%ymm0" ⟨"%rsi", 0⟩)
+    == "\tvmovdqu\t(%rsi), %ymm0"
 
-/-- `vmovdqu 512(%rdi), %ymm4` — positive-displacement load (reference line 11). -/
-example : renderYmmInstr (.yload "%ymm4" ⟨"%rdi", 512⟩)
-    = "\tvmovdqu\t512(%rdi), %ymm4" := by native_decide
+-- `vmovdqu 512(%rdi), %ymm4` — positive-displacement load (reference line 11).
+#guard renderYmmInstr (.yload "%ymm4" ⟨"%rdi", 512⟩)
+    == "\tvmovdqu\t512(%rdi), %ymm4"
 
-/-- `vmovdqu %ymm3, (%rdi)` — zero-displacement store (reference line 329). -/
-example : renderYmmInstr (.ystore ⟨"%rdi", 0⟩ "%ymm3")
-    = "\tvmovdqu\t%ymm3, (%rdi)" := by native_decide
+-- `vmovdqu %ymm3, (%rdi)` — zero-displacement store (reference line 329).
+#guard renderYmmInstr (.ystore ⟨"%rdi", 0⟩ "%ymm3")
+    == "\tvmovdqu\t%ymm3, (%rdi)"
 
-/-- `vmovdqu %ymm1, 512(%rdi)` — positive-displacement store (reference line 26). -/
-example : renderYmmInstr (.ystore ⟨"%rdi", 512⟩ "%ymm1")
-    = "\tvmovdqu\t%ymm1, 512(%rdi)" := by native_decide
+-- `vmovdqu %ymm1, 512(%rdi)` — positive-displacement store (reference line 26).
+#guard renderYmmInstr (.ystore ⟨"%rdi", 512⟩ "%ymm1")
+    == "\tvmovdqu\t%ymm1, 512(%rdi)"
 
 /-! ## 5b. Syntax pins for the added ALU ops
 
@@ -267,67 +267,67 @@ Operand order is keyed to real emitted lines: `vpxor %ymm2, %ymm5, %ymm5` and
 from operands with a SPACE; this printer uses a TAB, matching the ML-DSA NTT
 reference `.s` it is pinned against. `gas` accepts either. -/
 
-/-- `vpmuludq %ymm5, %ymm0, %ymm16` — plain binary, `src2, src1, dst`. -/
-example : renderYmmInstr (.alu .vpmuludq "%ymm16" ["%ymm0", "%ymm5"])
-    = "\tvpmuludq\t%ymm5, %ymm0, %ymm16" := by native_decide
+-- `vpmuludq %ymm5, %ymm0, %ymm16` — plain binary, `src2, src1, dst`.
+#guard renderYmmInstr (.alu .vpmuludq "%ymm16" ["%ymm0", "%ymm5"])
+    == "\tvpmuludq\t%ymm5, %ymm0, %ymm16"
 
-/-- `vpaddq %ymm21, %ymm16, %ymm16` — plain binary. -/
-example : renderYmmInstr (.alu .vpaddq "%ymm16" ["%ymm16", "%ymm21"])
-    = "\tvpaddq\t%ymm21, %ymm16, %ymm16" := by native_decide
+-- `vpaddq %ymm21, %ymm16, %ymm16` — plain binary.
+#guard renderYmmInstr (.alu .vpaddq "%ymm16" ["%ymm16", "%ymm21"])
+    == "\tvpaddq\t%ymm21, %ymm16, %ymm16"
 
-/-- `vpmullq %ymm15, %ymm23, %ymm23` — plain binary. -/
-example : renderYmmInstr (.alu .vpmullq "%ymm23" ["%ymm23", "%ymm15"])
-    = "\tvpmullq\t%ymm15, %ymm23, %ymm23" := by native_decide
+-- `vpmullq %ymm15, %ymm23, %ymm23` — plain binary.
+#guard renderYmmInstr (.alu .vpmullq "%ymm23" ["%ymm23", "%ymm15"])
+    == "\tvpmullq\t%ymm15, %ymm23, %ymm23"
 
-/-- `vpand %ymm14, %ymm16, %ymm16` — the VEX spelling of the artifacts'
-    EVEX `vpandq`. -/
-example : renderYmmInstr (.alu .vpand "%ymm16" ["%ymm16", "%ymm14"])
-    = "\tvpand\t%ymm14, %ymm16, %ymm16" := by native_decide
+-- `vpand %ymm14, %ymm16, %ymm16` — the VEX spelling of the artifacts'
+-- EVEX `vpandq`.
+#guard renderYmmInstr (.alu .vpand "%ymm16" ["%ymm16", "%ymm14"])
+    == "\tvpand\t%ymm14, %ymm16, %ymm16"
 
-/-- `vpor %ymm3, %ymm6, %ymm3` — plain binary. -/
-example : renderYmmInstr (.alu .vpor "%ymm3" ["%ymm6", "%ymm3"])
-    = "\tvpor\t%ymm3, %ymm6, %ymm3" := by native_decide
+-- `vpor %ymm3, %ymm6, %ymm3` — plain binary.
+#guard renderYmmInstr (.alu .vpor "%ymm3" ["%ymm6", "%ymm3"])
+    == "\tvpor\t%ymm3, %ymm6, %ymm3"
 
-/-- `vpxor %ymm2, %ymm5, %ymm5` — plain binary. -/
-example : renderYmmInstr (.alu .vpxor "%ymm5" ["%ymm5", "%ymm2"])
-    = "\tvpxor\t%ymm2, %ymm5, %ymm5" := by native_decide
+-- `vpxor %ymm2, %ymm5, %ymm5` — plain binary.
+#guard renderYmmInstr (.alu .vpxor "%ymm5" ["%ymm5", "%ymm2"])
+    == "\tvpxor\t%ymm2, %ymm5, %ymm5"
 
-/-- `vpshufb %ymm0, %ymm5, %ymm5` — binary, `src1` = data, `src2` = control. -/
-example : renderYmmInstr (.alu .vpshufb "%ymm5" ["%ymm5", "%ymm0"])
-    = "\tvpshufb\t%ymm0, %ymm5, %ymm5" := by native_decide
+-- `vpshufb %ymm0, %ymm5, %ymm5` — binary, `src1` = data, `src2` = control.
+#guard renderYmmInstr (.alu .vpshufb "%ymm5" ["%ymm5", "%ymm0"])
+    == "\tvpshufb\t%ymm0, %ymm5, %ymm5"
 
-/-- `vpsrlq $26, %ymm16, %ymm22` — imm8-carrying unary shift. -/
-example : renderYmmInstr (.alu (.vpsrlq 26) "%ymm22" ["%ymm16"])
-    = "\tvpsrlq\t$26, %ymm16, %ymm22" := by native_decide
+-- `vpsrlq $26, %ymm16, %ymm22` — imm8-carrying unary shift.
+#guard renderYmmInstr (.alu (.vpsrlq 26) "%ymm22" ["%ymm16"])
+    == "\tvpsrlq\t$26, %ymm16, %ymm22"
 
-/-- `vpsllq $23, %ymm20, %ymm21` — imm8-carrying unary shift. -/
-example : renderYmmInstr (.alu (.vpsllq 23) "%ymm21" ["%ymm20"])
-    = "\tvpsllq\t$23, %ymm20, %ymm21" := by native_decide
+-- `vpsllq $23, %ymm20, %ymm21` — imm8-carrying unary shift.
+#guard renderYmmInstr (.alu (.vpsllq 23) "%ymm21" ["%ymm20"])
+    == "\tvpsllq\t$23, %ymm20, %ymm21"
 
-/-- `vpsrld $20, %ymm3, %ymm3` — imm8-carrying unary shift. -/
-example : renderYmmInstr (.alu (.vpsrld 20) "%ymm3" ["%ymm3"])
-    = "\tvpsrld\t$20, %ymm3, %ymm3" := by native_decide
+-- `vpsrld $20, %ymm3, %ymm3` — imm8-carrying unary shift.
+#guard renderYmmInstr (.alu (.vpsrld 20) "%ymm3" ["%ymm3"])
+    == "\tvpsrld\t$20, %ymm3, %ymm3"
 
-/-- `vpslld $12, %ymm3, %ymm6` — imm8-carrying unary shift. -/
-example : renderYmmInstr (.alu (.vpslld 12) "%ymm6" ["%ymm3"])
-    = "\tvpslld\t$12, %ymm3, %ymm6" := by native_decide
+-- `vpslld $12, %ymm3, %ymm6` — imm8-carrying unary shift.
+#guard renderYmmInstr (.alu (.vpslld 12) "%ymm6" ["%ymm3"])
+    == "\tvpslld\t$12, %ymm3, %ymm6"
 
 /-! ## 6. Frame pins (byte-identical to `renderYFundef`'s header/epilogue) -/
 
-/-- The frame header carries the symbol directives and the AT&T label
-    (identical to `Avx2Ymm.renderYFundef`'s header pin). -/
-example :
+-- The frame header carries the symbol directives and the AT&T label
+-- (identical to `Avx2Ymm.renderYFundef`'s header pin).
+#guard
     (renderYmmFundef "dsa_ntt_proto" []).take 6
-      = [ "\t.att_syntax", "\t.text", "\t.p2align\t5"
+      == [ "\t.att_syntax", "\t.text", "\t.p2align\t5"
         , "\t.globl\tdsa_ntt_proto", "\t.type\tdsa_ntt_proto, @function"
-        , "dsa_ntt_proto:" ] := by native_decide
+        , "dsa_ntt_proto:" ]
 
-/-- The frame epilogue is the 2-pointer-ABI return (`r` in `%rax`) + `ret`
-    (identical to `Avx2Ymm.renderYFundef`'s epilogue pin). -/
-example :
+-- The frame epilogue is the 2-pointer-ABI return (`r` in `%rax`) + `ret`
+-- (identical to `Avx2Ymm.renderYFundef`'s epilogue pin).
+#guard
     (renderYmmFundef "dsa_ntt_proto" []).drop 6
-      = [ "\tmovq\t%rdi, %rax", "\tret"
-        , "\t.section\t.note.GNU-stack,\"\",@progbits" ] := by native_decide
+      == [ "\tmovq\t%rdi, %rax", "\tret"
+        , "\t.section\t.note.GNU-stack,\"\",@progbits" ]
 
 /-! ## 7. Named-symbol (rip-relative) operands and the instruction layer over them
 

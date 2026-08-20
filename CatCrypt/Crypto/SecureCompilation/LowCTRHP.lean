@@ -19,8 +19,8 @@ adversary class).
 
 ## What this file establishes
 
-With the front-end simulation closed (`rustExecSimulatesDialect`, in
-`Dialects/CryptoDialectRustSim.lean`),
+With B1 closed (`rustExecSimulatesCryptoSSA` Qed at `[propext,
+Classical.choice, Quot.sound]` — see `LowCTToCryptoSSACorrect.lean`),
 the LowCT → CryptoSSA front-end has a non-trivial *byte-layout*
 simulation: every successful rust-side execution is witnessed by a
 CryptoSSA-side valuation that satisfies the per-name layout invariant
@@ -94,7 +94,7 @@ set_option autoImplicit false
 
 /-! ## §1. Back-translation map
 
-The simulation theorem `rustExecSimulatesDialect` is itself the
+The simulation theorem `rustExecSimulatesCryptoSSA` is itself the
 back-translation map: given a translate-success witness and an
 initial-state interpretation, every successful rust-side execution
 yields a CryptoSSA-side valuation at the post-state. Restated here in
@@ -104,7 +104,7 @@ the RHP-flavoured "back-translation" naming. -/
 front-end.** Every reachable target-side rust state has a
 corresponding CryptoSSA-side valuation witness, provided the source
 translates and the initial state is interpreted. This is just
-`rustExecSimulatesDialect` with reordered arguments to read as a
+`rustExecSimulatesCryptoSSA` with reordered arguments to read as a
 back-translation map. -/
 theorem rustcmd_backtranslate_state
     {Γ : Ctx} (vm : VarMap Γ) (c : LowCT) (out : DTransOut Γ)
@@ -195,7 +195,7 @@ theorem RHP_LowCT_full_frontend
 
 /-! ## §4b. Lift `RHP_leakage_verified_middle` to the LowCT boundary (A2.2)
 
-Using the `UnifiedTrace` leak alphabet (`LeakTrace.toUnifiedTrace`), we
+With `UnifiedTrace`'s `SPTree.toUnifiedTrace` now well-defined, we can
 package the verified-middle leakage RHP through the front-end. The
 caller supplies (i) the LowCT source whose translate succeeds and
 (ii) a target CryptoSSA program plugged after the translation — both

@@ -94,7 +94,10 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectWhileNode
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRolledLoop (frontLoopBodyJ)
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectPhaseCompose
   (rolledForLoopNCont rolledForLoopNCont_denote
-   rolledForLoopNRtNestedCont rolledForLoopNRtNestedCont_denote)
+   rolledForLoopNRtNestedCont rolledForLoopNRtNestedCont_denote
+   rolledForLoopNRtNestedCont_ret_here)
+open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRuntimeLoop
+  (rolledForLoopNRtNested)
 open CatCrypt.Crypto.Jasmin.LowCT (LowCT SExpr TowerType)
 
 /-! ## 1. The recursive lowering -/
@@ -306,11 +309,10 @@ combinators** closed by `.ret`, then wrapped once in `ComL.forLoopBlock`.
 
 The two phase kinds this needs:
 
-* an **inner countdown sweep** mid-chain — `rolledWhileNzComLCont` (below), the
-  `whileNz` analogue of `TranslateDialectPhaseCompose.rolledForLoopNRtCont`: a
+* an **inner countdown sweep** mid-chain — `rolledWhileNzComLCont`, the `whileNz`
+  analogue of `TranslateDialectPhaseCompose.rolledForLoopNRtCont`: a
   front-compiled do-while whose accumulator result is bound at `.here` for the
-  caller-supplied continuation `cont`, replacing the hardcoded `.ret .here` of
-  `rolledWhileNzComL`;
+  caller-supplied continuation `cont`;
 * a **straight-line glue phase** — `TranslateDialectPhaseCompose.rolledForLoopNCont`
   at `N = 1`: the front-compiled straight-line body run exactly once over the
   accumulator (the trip index is unused), its result bound at `.here`.  This is
@@ -324,28 +326,12 @@ outer loop's recursive body.  With `accTy = stackArr 64 N` the whole kernel stat
 accumulator.  §5 exhibits the splice on a `prefix ; sweep ; suffix` GF-flavoured
 body; its `denote` equals the sequential composition of the phases. -/
 
-/-- A **data-dependent do-while with a caller-supplied continuation** — the
-    `whileNz` analogue of `TranslateDialectPhaseCompose.rolledForLoopNRtCont`.
-    Identical to `TranslateDialectWhileNode.rolledWhileNzComL` except that its
-    hardcoded `.ret .here` continuation is lifted to a parameter `cont`, run after
-    the sweep with the sweep's final accumulator bound at `.here`.  Passing
-    `cont := .ret .here` recovers `rolledWhileNzComL`; passing the front-compiled
-    next phase splices an inner sweep mid-chain.  `none` iff the front declines. -/
-def rolledWhileNzComLCont {Γouter : Ctxt jasminDialect}
-    {accCTy : CryptoTy} {invCTys : Ctx} {s : JasminTy}
-    (vmBody : VarMap (accCTy :: .sword 64 :: invCTys)) (accName : String)
-    (body : LowCT)
-    (guard : Ctxt.Var Γouter (JasminTy.reg 64))
-    (init : Ctxt.Var Γouter (mapTy accCTy))
-    (invs : HVector (fun ty => Ctxt.Var Γouter ty) (invCTys.map mapTy))
-    (cont : ComL (mapTy accCTy :: Γouter) s) :
-    Option (ComL Γouter s) :=
-  match frontLoopBodyJ (accCTy := accCTy) vmBody accName body with
-  | some update => some (ComL.whileNz update guard init invs cont)
-  | none => none
+export CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectWhileNode
+  (rolledWhileNzComLCont)
 
 /-- Passing `cont := .ret .here` recovers `rolledWhileNzComL` exactly: the
-    continuation lift is a faithful generalisation, not a divergent path. -/
+    continuation-carrying combinator is the primitive and the fixed one is its
+    instance. -/
 theorem rolledWhileNzComLCont_ret_here {Γouter : Ctxt jasminDialect}
     {accCTy : CryptoTy} {invCTys : Ctx}
     (vmBody : VarMap (accCTy :: .sword 64 :: invCTys)) (accName : String)
@@ -356,9 +342,7 @@ theorem rolledWhileNzComLCont_ret_here {Γouter : Ctxt jasminDialect}
     rolledWhileNzComLCont (Γouter := Γouter) (accCTy := accCTy) (invCTys := invCTys)
         vmBody accName body guard init invs (.ret .here)
       = rolledWhileNzComL (Γouter := Γouter) (accCTy := accCTy) (invCTys := invCTys)
-          vmBody accName body guard init invs := by
-  unfold rolledWhileNzComLCont rolledWhileNzComL
-  cases frontLoopBodyJ (accCTy := accCTy) vmBody accName body <;> rfl
+          vmBody accName body guard init invs := rfl
 
 /-- **While-sweep phase-compose denotation.** When the body front-compiles to
     `update`, the spliced `ComL` denotes to the continuation `cont` evaluated on the
@@ -551,27 +535,21 @@ count is a value that must be *materialised* from state each outer pass.
 The `ComL.forLoopNRtNested` node already carries exactly that mechanism: its
 `innerCount : Com jasminDialect (.reg 64 :: invTys) (.reg 64)` is **re-evaluated per
 outer pass** on `[outerIdx, invs]` (`JLoopBodyN.innerTripAtC`), so the inner trip is
-`f(outerIdx)`, not a fixed register.  `rolledForLoopNRtCountedCont` front-compiles a
-caller-supplied **`countBody` LowCT** (the count expression over the covered
-alphabet `SAdd/SSub/SMul/SShr/…`) into that `innerCount`, and a **`updateBody`
-LowCT** into the sweep, closing the whole 2-deep loop through the front — the count
-is a `LowCT` `SExpr` over the outer index, front-compiled, never hand-authored.  It
-carries a continuation `cont` (the §5 phase-chain interface), so a counted sweep
-splices mid-chain with further phases after it.
+`f(outerIdx)`, not a fixed register.  That is what
+`TranslateDialectPhaseCompose.rolledForLoopNRtNestedCont` builds, and
+`rolledForLoopNRtCountedCont` is the name this module uses for it.
 
 This is the last control shape `efBody`/`backsubBody` need: a nested loop whose
 inner trip is a state-dependent computed count. -/
 
-/-- A **counted nested sweep with a caller-supplied continuation**: the inner trip
-    count is a `LowCT` expression `countBody` over the outer loop index (+ invariants),
-    front-compiled into the `ComL.forLoopNRtNested` `innerCount` slot, so the inner
-    sweep runs `f(outerIdx)` times on outer pass `outerIdx` — *not* a pre-set count
-    register.  Both bodies front-compile through the SAME verified `frontLoopBodyJ`
-    (the count as an `accCTy := .sword 64` "accumulator", the sweep as `accCTy`).
-    Passing `cont := .ret .here` recovers `rolledForLoopNRtNested`; passing the
-    front-compiled next phase splices the counted sweep mid-chain.  `none` iff either
-    front declines. -/
-def rolledForLoopNRtCountedCont {Γouter : Ctxt jasminDialect}
+/-- A **counted nested sweep with a caller-supplied continuation** — the
+    `TranslateDialectPhaseCompose.rolledForLoopNRtNestedCont` combinator under the
+    name this module's counted-sweep clients use.  The inner trip count is a
+    `LowCT` expression `countBody` over the outer loop index (+ invariants),
+    front-compiled into the `ComL.forLoopNRtNested` `innerCount` slot, which
+    `JLoopBodyN.innerTripAtC` re-evaluates per outer pass, so the inner sweep runs
+    `f(outerIdx)` times on outer pass `outerIdx` — *not* a pre-set count register. -/
+abbrev rolledForLoopNRtCountedCont {Γouter : Ctxt jasminDialect}
     {accCTy : CryptoTy} {invCTys : Ctx} {s : JasminTy}
     (vmCount : VarMap (.sword 64 :: invCTys)) (countName : String) (countBody : LowCT)
     (vmBody : VarMap (accCTy :: .sword 64 :: .sword 64 :: invCTys)) (accName : String)
@@ -581,17 +559,10 @@ def rolledForLoopNRtCountedCont {Γouter : Ctxt jasminDialect}
     (invs : HVector (fun ty => Ctxt.Var Γouter ty) (invCTys.map mapTy))
     (cont : ComL (mapTy accCTy :: Γouter) s) :
     Option (ComL Γouter s) :=
-  match frontLoopBodyJ (accCTy := .sword 64) (Γbody := .sword 64 :: invCTys)
-          vmCount countName countBody,
-        frontLoopBodyJ (accCTy := accCTy)
-          (Γbody := accCTy :: .sword 64 :: .sword 64 :: invCTys) vmBody accName updateBody with
-  | some innerCount, some innerUpdate =>
-      some (ComL.forLoopNRtNested innerCount innerUpdate outerCount init invs cont)
-  | _, _ => none
+  rolledForLoopNRtNestedCont (Γouter := Γouter) (accCTy := accCTy) (invCTys := invCTys)
+    vmCount countName countBody vmBody accName updateBody outerCount init invs cont
 
-/-- Passing `cont := .ret .here` recovers `rolledForLoopNRtNested` exactly — the
-    counted combinator is a faithful continuation-lift of the committed nested front,
-    not a divergent path. -/
+/-- Passing `cont := .ret .here` recovers `rolledForLoopNRtNested` exactly. -/
 theorem rolledForLoopNRtCountedCont_ret_here {Γouter : Ctxt jasminDialect}
     {accCTy : CryptoTy} {invCTys : Ctx}
     (vmCount : VarMap (.sword 64 :: invCTys)) (countName : String) (countBody : LowCT)
@@ -603,15 +574,11 @@ theorem rolledForLoopNRtCountedCont_ret_here {Γouter : Ctxt jasminDialect}
     rolledForLoopNRtCountedCont (Γouter := Γouter) (accCTy := accCTy) (invCTys := invCTys)
         vmCount countName countBody vmBody accName updateBody outerCount init invs
         (.ret .here)
-      = rolledForLoopNRtNestedCont (Γouter := Γouter) (accCTy := accCTy) (invCTys := invCTys)
-          vmCount countName countBody vmBody accName updateBody outerCount init invs
-          (.ret .here) := by
-  unfold rolledForLoopNRtCountedCont rolledForLoopNRtNestedCont
-  cases frontLoopBodyJ (accCTy := .sword 64) (Γbody := .sword 64 :: invCTys)
-      vmCount countName countBody <;>
-    cases frontLoopBodyJ (accCTy := accCTy)
-        (Γbody := accCTy :: .sword 64 :: .sword 64 :: invCTys) vmBody accName updateBody <;>
-    rfl
+      = rolledForLoopNRtNested (Γouter := Γouter) (accCTy := accCTy) (invCTys := invCTys)
+          vmCount countName countBody vmBody accName updateBody outerCount init invs :=
+  rolledForLoopNRtNestedCont_ret_here (Γouter := Γouter) (accCTy := accCTy)
+    (invCTys := invCTys) vmCount countName countBody vmBody accName updateBody
+    outerCount init invs
 
 /-- **Denote-preservation: the state-dependent double fold.** When both bodies
     front-compile, the counted sweep denotes to the continuation `cont` evaluated on
@@ -644,7 +611,7 @@ theorem rolledForLoopNRtCountedCont_denote {Γouter : Ctxt jasminDialect}
       = some (ComL.denote cont
           (V.extend (JLoopBodyN.nestedDenote innerCount innerUpdate
             (outerCount.lookup V).toNat (Expr.lookupArgs invs V) (init.lookup V)))) := by
-  unfold rolledForLoopNRtCountedCont
+  unfold rolledForLoopNRtCountedCont rolledForLoopNRtNestedCont
   rw [hcnt, hupd]
   rfl
 

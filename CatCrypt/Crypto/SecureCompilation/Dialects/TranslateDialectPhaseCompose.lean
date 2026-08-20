@@ -12,50 +12,48 @@ set_option autoImplicit false
 /-!
 # Multi-phase composition: front-compile a *sequence* of loop phases into ONE `ComL`
 
-The committed runtime-trip front (`TranslateDialectRuntimeLoop.rolledForLoopNRt`)
-emits exactly ONE loop node and hardcodes its continuation to `body := .ret .here`
-(return the accumulator, stop). That is the wall: no committed front produces
-`forLoopNRt … (body := <next phase>)`, so a whole-function *sequence* of phases
-(fill ; reduce ; …) could only be assembled by hand-building the `ComL` nesting —
-the emit anti-pattern.
-
-`ComL` is *already* structurally sequential: every loop node
+`ComL` is structurally sequential: every loop node
 (`forLoop`/`forLoopN`/`forLoopNRt`) carries a continuation
 `body : ComL (accTy :: Γ) s`, and `forLoopNRt` binds its final accumulator into
-that continuation before it runs. So the missing piece is not a new IR node — it is
-a *front combinator* that threads the front-compiled next phase into the `body`
-slot instead of `.ret .here`. This module adds it.
+that continuation before it runs. A whole-function *sequence* of phases
+(fill ; reduce ; …) is therefore a chain of loop-front combinators threading each
+front-compiled next phase into the `body` slot of its predecessor — no
+hand-built `ComL` nesting.
 
-## What this module builds
+The loop-front combinators take that continuation as a parameter
+(`rolledForLoopNRtCont` and its siblings, defined with their loop nodes and
+re-exported here); this module carries the phase-composition results about them.
 
-* `rolledForLoopNRtCont` — the additive generalisation of `rolledForLoopNRt`: it
-  takes a caller-supplied continuation `cont : ComL (mapTy accCTy :: Γouter) s`
-  and emits `ComL.forLoopNRt update count init invs cont`. Setting
-  `cont := .ret .here` recovers `rolledForLoopNRt` exactly; setting `cont` to the
-  front-compiled *next phase* is the lynchpin — **`.ret .here` is replaced by the
-  next phase**. No hand-authored raw `Com`: each phase's body is still produced by
-  the committed front (`frontLoopBodyJ`), and the phases are glued only through the
-  `ComL` constructor's `body` continuation. Folding a *list* of phases into one
-  `ComL` is a right-fold of `rolledForLoopNRtCont` calls whose innermost `cont` is
-  `.ret v` (§1); the concrete two-phase spine in §3 is that fold at length 2.
+## What this module carries
+
+* `rolledForLoopNRtCont` (re-exported from `TranslateDialectRuntimeLoop`) — the
+  runtime-trip loop front taking a continuation `cont : ComL (mapTy accCTy :: Γouter) s`
+  and emitting `ComL.forLoopNRt update count init invs cont`. At
+  `cont := .ret .here` it is `rolledForLoopNRt`; at the front-compiled *next
+  phase* it sequences the phases. No hand-authored raw `Com`: each phase's body is
+  produced by the committed front (`frontLoopBodyJ`), and the phases are glued
+  only through the `ComL` constructor's `body` continuation. Folding a *list* of
+  phases into one `ComL` is a right-fold of `rolledForLoopNRtCont` calls whose
+  innermost `cont` is `.ret v` (§1); the concrete two-phase spine in §3 is that
+  fold at length 2.
 
 * `rolledForLoopNRtCont_denote` — the denote bridge: the composed node denotes to
   `cont.denote (V.extend (fold …))`, i.e. **phase-1's fold result is bound into the
   valuation and phase-2 runs on it**. Iterating this is exactly the sequential
   composition of the phases (§2).
 
-* `rolledForLoopNCont` (§2b) — the **fixed-trip** twin: the same continuation lift
-  applied to `TranslateDialectRolledLoop.rolledForLoopN` / `ComL.forLoopN`. A phase
-  whose trip count is a compile-time `Nat` consumes **no count argument register**,
-  so a long chain of phases with distinct compile-time counts (the fri_proof spine's
-  `32,16,8,5,4,3,2,1,…`) no longer exhausts the 6 SysV integer registers — mixed
+* `rolledForLoopNCont` (§2b) — the **fixed-trip** twin, over
+  `TranslateDialectRolledLoop.rolledForLoopN` / `ComL.forLoopN`. A phase whose
+  trip count is a compile-time `Nat` consumes **no count argument register**, so a
+  long chain of phases with distinct compile-time counts (the fri_proof spine's
+  `32,16,8,5,4,3,2,1,…`) stays inside the 6 SysV integer registers — mixed
   fixed/runtime chains compose freely (a fixed-trip phase's `cont` can be a
   runtime-trip phase and vice versa, both live in the same `ComL`).
 
-* `rolledForLoopNRtNestedCont` (§2c) — the same lift for the genuine nested
-  runtime loop (`ComL.forLoopNRtNested`), so a per-outer-recomputed inner-trip
-  nest (a flat Merkle level-compress) can sit mid-chain with further phases as
-  its continuation.
+* `rolledForLoopNRtNestedCont` (§2c) — the twin for the nested runtime loop
+  (`ComL.forLoopNRtNested`), so a per-outer-recomputed inner-trip nest (a flat
+  Merkle level-compress) sits mid-chain with further phases as its
+  continuation.
 
 ## Sequential (continuation) composition vs. nested (per-iteration) loops
 
@@ -66,7 +64,7 @@ double fold `Σⱼ Σᵢ`. That is exactly what the four-phase `convert_to_vole_
 orchestration (PRG-expand ; zero ; GGM-tree ; `u = R`) needs at the phase seam, and
 what this module supplies.
 
-A **genuine per-iteration nested runtime loop** (`for jd<D: for idx<trip(jd): …`, the
+A **per-iteration nested runtime loop** (`for jd<D: for idx<trip(jd): …`, the
 GGM Phase-3 shape) is a *different* structure and is **NOT** `ComL`-typeable through
 the committed alphabet: `ComL.forLoopNRt`'s per-iteration body is
 `update : Com jasminDialect (accTy :: .reg 64 :: invTys) accTy`, a **straight-line**
@@ -116,35 +114,29 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRuntimeLoop
 open CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminCom (mapTy mapCtx)
 open CatCrypt.Crypto.Jasmin.LowCT (LowCT SExpr TowerType)
 
-/-! ## 1. The phase-sequencing combinator
+/-! ## 1. The phase-sequencing combinators
 
-`rolledForLoopNRtCont` is `rolledForLoopNRt` with its hardcoded `.ret .here`
-continuation lifted to a parameter `cont`. The loop body is still front-compiled
-by the committed `frontLoopBodyJ`; the *only* new freedom is what runs after the
-loop — the caller passes the front-compiled next phase there. -/
+`rolledForLoopNRtCont`, `rolledForLoopNCont` and `rolledForLoopNRtNestedCont` are
+the loop-front combinators carrying an explicit continuation `cont`. They are
+defined alongside the loop nodes they wrap (`TranslateDialectRuntimeLoop`,
+`TranslateDialectRolledLoop`) and re-exported here, where the phase-composition
+results about them live. The loop body is front-compiled by `frontLoopBodyJ`; the
+continuation is what runs after the loop — the caller passes the front-compiled
+next phase there.
 
-/-- Build a runtime-trip rolled `ComL.forLoopNRt` from a front-compiled loop body,
-    **with a caller-supplied continuation** `cont` in place of `.ret .here`.
+Each continuation-free sibling (`rolledForLoopNRt`, `rolledForLoopN`,
+`rolledForLoopNRtNested`) is that combinator at `cont := .ret .here`; the
+`*_ret_here` equations below are the `rfl` witnesses. -/
 
-    `cont : ComL (mapTy accCTy :: Γouter) s` runs after the loop, with the loop's
-    final accumulator bound at `.here`. Passing `cont := .ret .here` recovers
-    `TranslateDialectRuntimeLoop.rolledForLoopNRt`; passing the front-compiled next
-    phase sequences the phases. Returns `none` iff the front declines the body. -/
-def rolledForLoopNRtCont {Γouter : Ctxt jasminDialect}
-    {accCTy : CryptoTy} {invCTys : Ctx} {s : JasminTy}
-    (vmBody : VarMap (accCTy :: .sword 64 :: invCTys)) (accName : String)
-    (body : LowCT)
-    (count : Ctxt.Var Γouter (JasminTy.reg 64))
-    (init : Ctxt.Var Γouter (mapTy accCTy))
-    (invs : HVector (fun ty => Ctxt.Var Γouter ty) (invCTys.map mapTy))
-    (cont : ComL (mapTy accCTy :: Γouter) s) :
-    Option (ComL Γouter s) :=
-  match frontLoopBodyJ (accCTy := accCTy) vmBody accName body with
-  | some update => some (ComL.forLoopNRt update count init invs cont)
-  | none => none
+export CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRuntimeLoop
+  (rolledForLoopNRtCont rolledForLoopNRtNestedCont)
 
-/-- Passing `cont := .ret .here` recovers `rolledForLoopNRt` exactly: the generic
-    combinator is a faithful generalisation, not a divergent path. -/
+export CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRolledLoop
+  (rolledForLoopNCont)
+
+/-- Passing `cont := .ret .here` recovers `rolledForLoopNRt` exactly: the
+    continuation-carrying combinator is the primitive and the fixed one is its
+    instance. -/
 theorem rolledForLoopNRtCont_ret_here {Γouter : Ctxt jasminDialect}
     {accCTy : CryptoTy} {invCTys : Ctx}
     (vmBody : VarMap (accCTy :: .sword 64 :: invCTys)) (accName : String)
@@ -155,9 +147,7 @@ theorem rolledForLoopNRtCont_ret_here {Γouter : Ctxt jasminDialect}
     rolledForLoopNRtCont (Γouter := Γouter) (accCTy := accCTy) (invCTys := invCTys)
         vmBody accName body count init invs (.ret .here)
       = rolledForLoopNRt (Γouter := Γouter) (accCTy := accCTy) (invCTys := invCTys)
-          vmBody accName body count init invs := by
-  unfold rolledForLoopNRtCont rolledForLoopNRt
-  cases frontLoopBodyJ (accCTy := accCTy) vmBody accName body <;> rfl
+          vmBody accName body count init invs := rfl
 
 /-! ## 2. Denote bridge — the continuation runs on the fold result
 
@@ -192,34 +182,13 @@ theorem rolledForLoopNRtCont_denote {Γouter : Ctxt jasminDialect}
 
 /-! ## 2b. The fixed-trip phase combinator (`ComL.forLoopN` with a continuation)
 
-`rolledForLoopNCont` is `TranslateDialectRolledLoop.rolledForLoopN` with its
-hardcoded `.ret .here` continuation lifted to a parameter — exactly the §1 lift,
-applied to the **compile-time-count** loop node. A fixed-trip phase reads no count
-register, which is what keeps a many-phase chain inside the SysV integer-register
-budget. -/
+`rolledForLoopNCont` is the §1 combinator over the **compile-time-count** loop
+node. A fixed-trip phase reads no count register, which is what keeps a
+many-phase chain inside the SysV integer-register budget. -/
 
-/-- Build a fixed-trip rolled `ComL.forLoopN` from a front-compiled loop body,
-    **with a caller-supplied continuation** `cont` in place of `.ret .here`.
-
-    `cont : ComL (mapTy accCTy :: Γouter) s` runs after the loop, with the loop's
-    final accumulator bound at `.here`. Passing `cont := .ret .here` recovers
-    `TranslateDialectRolledLoop.rolledForLoopN`; passing the front-compiled next
-    phase sequences the phases. The trip count `N` is compile-time, so the phase
-    consumes no count-argument register. Returns `none` iff the front declines. -/
-def rolledForLoopNCont {Γouter : Ctxt jasminDialect}
-    {accCTy : CryptoTy} {invCTys : Ctx} {s : JasminTy}
-    (N : Nat) (vmBody : VarMap (accCTy :: .sword 64 :: invCTys)) (accName : String)
-    (body : LowCT)
-    (init : Ctxt.Var Γouter (mapTy accCTy))
-    (invs : HVector (fun ty => Ctxt.Var Γouter ty) (invCTys.map mapTy))
-    (cont : ComL (mapTy accCTy :: Γouter) s) :
-    Option (ComL Γouter s) :=
-  match frontLoopBodyJ (accCTy := accCTy) vmBody accName body with
-  | some update => some (ComL.forLoopN ⟨N, update⟩ init invs cont)
-  | none => none
-
-/-- Passing `cont := .ret .here` recovers `rolledForLoopN` exactly: the generic
-    combinator is a faithful generalisation, not a divergent path. -/
+/-- Passing `cont := .ret .here` recovers `rolledForLoopN` exactly: the
+    continuation-carrying combinator is the primitive and the fixed one is its
+    instance. -/
 theorem rolledForLoopNCont_ret_here {Γouter : Ctxt jasminDialect}
     {accCTy : CryptoTy} {invCTys : Ctx}
     (N : Nat) (vmBody : VarMap (accCTy :: .sword 64 :: invCTys)) (accName : String)
@@ -229,9 +198,7 @@ theorem rolledForLoopNCont_ret_here {Γouter : Ctxt jasminDialect}
     rolledForLoopNCont (Γouter := Γouter) (accCTy := accCTy) (invCTys := invCTys)
         N vmBody accName body init invs (.ret .here)
       = rolledForLoopN (Γouter := Γouter) (accCTy := accCTy) (invCTys := invCTys)
-          N vmBody accName body init invs := by
-  unfold rolledForLoopNCont rolledForLoopN
-  cases frontLoopBodyJ (accCTy := accCTy) vmBody accName body <;> rfl
+          N vmBody accName body init invs := rfl
 
 /-- **Fixed-trip phase-compose denotation.** When the body front-compiles to
     `update`, the composed `ComL` denotes to the continuation `cont` evaluated on
@@ -259,33 +226,10 @@ theorem rolledForLoopNCont_denote {Γouter : Ctxt jasminDialect}
 /-! ## 2c. The nested-runtime-loop phase combinator (`ComL.forLoopNRtNested` with a
 continuation)
 
-`rolledForLoopNRtNestedCont` is `TranslateDialectRuntimeLoop.rolledForLoopNRtNested`
-with the same continuation lift: a genuine nested runtime loop (inner trip
-recomputed per outer pass) can now sit **mid-chain** — e.g. a flat Merkle
-level-compress whose continuation is the query/auth-path walk phases. -/
-
-/-- Build a genuine **nested runtime-trip** `ComL.forLoopNRtNested` from two
-    front-compiled bodies, **with a caller-supplied continuation** `cont` in place
-    of `.ret .here`. Passing `cont := .ret .here` recovers
-    `TranslateDialectRuntimeLoop.rolledForLoopNRtNested`. `none` if either body's
-    front declines. -/
-def rolledForLoopNRtNestedCont {Γouter : Ctxt jasminDialect}
-    {accCTy : CryptoTy} {invCTys : Ctx} {s : JasminTy}
-    (vmCount : VarMap (.sword 64 :: invCTys)) (countName : String) (countBody : LowCT)
-    (vmBody : VarMap (accCTy :: .sword 64 :: .sword 64 :: invCTys)) (accName : String)
-    (updateBody : LowCT)
-    (outerCount : Ctxt.Var Γouter (JasminTy.reg 64))
-    (init : Ctxt.Var Γouter (mapTy accCTy))
-    (invs : HVector (fun ty => Ctxt.Var Γouter ty) (invCTys.map mapTy))
-    (cont : ComL (mapTy accCTy :: Γouter) s) :
-    Option (ComL Γouter s) :=
-  match frontLoopBodyJ (accCTy := .sword 64) (Γbody := .sword 64 :: invCTys)
-          vmCount countName countBody,
-        frontLoopBodyJ (accCTy := accCTy)
-          (Γbody := accCTy :: .sword 64 :: .sword 64 :: invCTys) vmBody accName updateBody with
-  | some innerCount, some innerUpdate =>
-      some (ComL.forLoopNRtNested innerCount innerUpdate outerCount init invs cont)
-  | _, _ => none
+`rolledForLoopNRtNestedCont` is the §1 combinator over the nested runtime loop
+node (inner trip recomputed per outer pass), so such a nest sits **mid-chain** —
+e.g. a flat Merkle level-compress whose continuation is the query/auth-path walk
+phases. -/
 
 /-- Passing `cont := .ret .here` recovers `rolledForLoopNRtNested` exactly. -/
 theorem rolledForLoopNRtNestedCont_ret_here {Γouter : Ctxt jasminDialect}
@@ -300,13 +244,7 @@ theorem rolledForLoopNRtNestedCont_ret_here {Γouter : Ctxt jasminDialect}
         vmCount countName countBody vmBody accName updateBody outerCount init invs
         (.ret .here)
       = rolledForLoopNRtNested (Γouter := Γouter) (accCTy := accCTy) (invCTys := invCTys)
-          vmCount countName countBody vmBody accName updateBody outerCount init invs := by
-  unfold rolledForLoopNRtNestedCont rolledForLoopNRtNested
-  cases frontLoopBodyJ (accCTy := .sword 64) (Γbody := .sword 64 :: invCTys)
-      vmCount countName countBody <;>
-    cases frontLoopBodyJ (accCTy := accCTy)
-        (Γbody := accCTy :: .sword 64 :: .sword 64 :: invCTys) vmBody accName updateBody <;>
-    rfl
+          vmCount countName countBody vmBody accName updateBody outerCount init invs := rfl
 
 /-- **Nested phase-compose denotation.** When both bodies front-compile, the
     composed `ComL` denotes to the continuation `cont` evaluated on the valuation
@@ -439,7 +377,7 @@ def composeComL : Option (ComL Γouter (.stackArr 64 1)) :=
 /-- The two-phase kernel front-compiles to a single `ComL` spine. -/
 theorem composeComL_isSome : composeComL.isSome := by native_decide
 
-/-- The composed spine is genuinely a loop-inside-a-continuation: the outer loop's
+/-- The composed spine is a loop-inside-a-continuation: the outer loop's
     body continuation is itself a `forLoopNRt` (not `.ret`). -/
 theorem composeComL_body_is_loop :
     (composeComL.map (fun c => match c with
@@ -482,8 +420,8 @@ theorem composeComL_denote_count0 :
 
 `fillOnly` is phase 1 with `cont := .ret .here` (i.e. `rolledForLoopNRt`, by
 `rolledForLoopNRtCont_ret_here`). Its denote is the filled `buf`; we pin
-`buf[i] = a[i]` for indices `< count`, confirming the fill phase does its job (so
-the composed kernel's `Σ a` genuinely rests on a real fill, not a coincidence). -/
+`buf[i] = a[i]` for indices `< count`, so the composed kernel's `Σ a` rests on a
+completed fill. -/
 
 /-- Phase 1 alone (fill), returning the filled buffer. -/
 def fillOnly : Option (ComL Γouter (.stackArr 64 paramN)) :=
@@ -501,7 +439,7 @@ theorem fillOnly_denote_idx3_count5 :
       = some (sampleA ⟨3, by decide⟩).toNat := by native_decide
 
 /-- **Phase 1 leaves `buf[6]` at its scratch value 0** at runtime count 5
-    (`6 ≥ 5`, so the fill never wrote it) — the count genuinely bounds the fill. -/
+    (`6 ≥ 5`, so the fill never wrote it) — the count bounds the fill. -/
 theorem fillOnly_denote_idx6_count5 :
     (fillOnly.map (fun c => (ComL.denote c (valAt 5) ⟨6, by decide⟩).toNat))
       = some 0 := by native_decide
@@ -543,7 +481,7 @@ theorem composeFixedComL_denote_count5 :
 /-! ## 4. Nested runtime loop: the front residual, stated against the (done) spec
 
 The GGM Phase-3 double fold (`for jd<D: for idx<trip(jd): …`) is realised as a
-genuine two-level fold in `JasminLsemMemLoopNestDepth` — `ggmNestedFold` /
+two-level fold in `JasminLsemMemLoopNestDepth` — `ggmNestedFold` /
 `runNestedVarLoopMem`, with the inner trip recomputed per outer step (`num >>>
 (jd+1)`), `native_decide`-validated at the `LinstrRM` level (real back-edges at
 three distinct labels). We re-export that spec (no re-proof) to state the front
@@ -571,11 +509,11 @@ The continuation nesting of §3 gives `f₂ ∘ f₁` (sequential), never `Σⱼ
 outer loop's per-iteration work cannot itself be a runtime loop *through the
 `forLoopNRt` node*.
 
-The genuine per-iteration nested runtime loop is the separate `ComL` constructor
+The per-iteration nested runtime loop is the separate `ComL` constructor
 `ComL.forLoopNRtNested` (`JasminLprogExport`): a runtime outer loop whose
 per-iteration body is itself a runtime loop, with the inner trip recomputed per
 outer pass. Its denote is `JLoopBodyN.nestedDenote` (the double fold matching
-`runNestedVarLoopMem`), its lowering emits genuine nested back-edges (an inner
+`runNestedVarLoopMem`), its lowering emits nested back-edges (an inner
 `forLoopLcmdNRt` inside the outer body), and the front combinator
 `TranslateDialectRuntimeLoop.rolledForLoopNRtNested` front-compiles both the
 inner-count and inner-update bodies via `frontLoopBodyJ`. See

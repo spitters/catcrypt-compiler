@@ -9,7 +9,7 @@ import CatCrypt.Crypto.Jasmin.LowCTReflect
 # AES-bitslice reflect surface — 32-block-wide AES round through the verified front
 
 This file is the bitsliced-AES SIMD-extension analogue of
-`VaesReflect.lean`: it adds AES-bitslice-specific opaque leaves and
+`UovReflect.lean`: it adds AES-bitslice-specific opaque leaves and
 `LowCTPattern` registrations so that a pure-Lean 32-block-wide AES
 round can be lifted through the verified compiler chain
 `LowCT → CryptoSSA → Com → jasmin`, **without** editing
@@ -40,7 +40,7 @@ name and the TBytes signature; the bitsliced-round semantics is pinned
 by the existing AES bitslice KAT (NIST FIPS-197 round-by-round
 intermediate values).
 
-## Reflection→front gap (same as `VaesReflect` / `FalconReflect`)
+## Reflection→front gap (same as `UovReflect` / `FalconReflect`)
 
 `reifyLowCT%` reads only `LowCTReflect.knownOps`. We follow the
 established pattern.
@@ -53,9 +53,7 @@ established pattern.
 * NIST FIPS-197 §5 — AES round
 * `bench/aes_compare/aes_bitslice_emit.lean` — legacy Tier C string-
   templated emit (superseded by this leaf-shim pattern)
-* `CatCrypt/Crypto/Jasmin/VaesReflect.lean` — sibling SIMD-leaf reference in
-  this package (the canonical `UovReflect.lean` lives in the CatCrypt dev
-  tree, outside this compiler package)
+* `CatCrypt/Crypto/Jasmin/UovReflect.lean` — sibling SIMD-leaf reference
 -/
 
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect

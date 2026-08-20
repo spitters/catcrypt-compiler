@@ -266,40 +266,48 @@ count the tag carries (ruling out the `D1 /5` count-1 short form the JInstr
 theorem encJShrDropMov_eq_lopn
     (alloc : GpAlloc) (frame spillW : Nat) (dn sn : String) (n : Nat)
     (hn : tagShiftCount "SHR:19" = n) (hn1 : n ≠ 1)
-    (hd : gpNum (regOf alloc dn) = gpNumU dn) :
+    (hd : gpNum (regOf alloc dn) = gpNumU dn)
+    (hgp : (isGpName dn && isGpName sn) = true) (hds : (dn == sn) = true) :
     encodeJBlock alloc [JInstr.shr dn (.imm n)]
       = encodeLopn frame spillW (.Lopn [.reg dn] "SHR:19:64" [.reg sn]) := by
-  rw [encodeLopn_shr19_emits, ← encJShr_eq_encTagShift alloc dn "SHR:19" n hn hn1 hd]
+  rw [encodeLopn_shr19_emits frame spillW dn sn hgp hds,
+    ← encJShr_eq_encTagShift alloc dn "SHR:19" n hn hn1 hd]
   simp [encodeJBlock]
 
 /-- **`SHR:28:64` drop-`mov` byte agreement** (asconSigma0's second rotate-hi). -/
 theorem encJShr28DropMov_eq_lopn
     (alloc : GpAlloc) (frame spillW : Nat) (dn sn : String) (n : Nat)
     (hn : tagShiftCount "SHR:28" = n) (hn1 : n ≠ 1)
-    (hd : gpNum (regOf alloc dn) = gpNumU dn) :
+    (hd : gpNum (regOf alloc dn) = gpNumU dn)
+    (hgp : (isGpName dn && isGpName sn) = true) (hds : (dn == sn) = true) :
     encodeJBlock alloc [JInstr.shr dn (.imm n)]
       = encodeLopn frame spillW (.Lopn [.reg dn] "SHR:28:64" [.reg sn]) := by
-  rw [encodeLopn_shr28_emits, ← encJShr_eq_encTagShift alloc dn "SHR:28" n hn hn1 hd]
+  rw [encodeLopn_shr28_emits frame spillW dn sn hgp hds,
+    ← encJShr_eq_encTagShift alloc dn "SHR:28" n hn hn1 hd]
   simp [encodeJBlock]
 
 /-- **`SHL:45:64` drop-`mov` byte agreement** (asconSigma0's first rotate-lo). -/
 theorem encJShl45DropMov_eq_lopn
     (alloc : GpAlloc) (frame spillW : Nat) (dn sn : String) (n : Nat)
     (hn : tagShiftCount "SHL:45" = n) (hn1 : n ≠ 1)
-    (hd : gpNum (regOf alloc dn) = gpNumU dn) :
+    (hd : gpNum (regOf alloc dn) = gpNumU dn)
+    (hgp : (isGpName dn && isGpName sn) = true) (hds : (dn == sn) = true) :
     encodeJBlock alloc [JInstr.shl dn (.imm n)]
       = encodeLopn frame spillW (.Lopn [.reg dn] "SHL:45:64" [.reg sn]) := by
-  rw [encodeLopn_shl45_emits, ← encJShl_eq_encTagShift alloc dn "SHL:45" n hn hn1 hd]
+  rw [encodeLopn_shl45_emits frame spillW dn sn hgp hds,
+    ← encJShl_eq_encTagShift alloc dn "SHL:45" n hn hn1 hd]
   simp [encodeJBlock]
 
 /-- **`SHL:36:64` drop-`mov` byte agreement** (asconSigma0's second rotate-lo). -/
 theorem encJShl36DropMov_eq_lopn
     (alloc : GpAlloc) (frame spillW : Nat) (dn sn : String) (n : Nat)
     (hn : tagShiftCount "SHL:36" = n) (hn1 : n ≠ 1)
-    (hd : gpNum (regOf alloc dn) = gpNumU dn) :
+    (hd : gpNum (regOf alloc dn) = gpNumU dn)
+    (hgp : (isGpName dn && isGpName sn) = true) (hds : (dn == sn) = true) :
     encodeJBlock alloc [JInstr.shl dn (.imm n)]
       = encodeLopn frame spillW (.Lopn [.reg dn] "SHL:36:64" [.reg sn]) := by
-  rw [encodeLopn_shl36_emits, ← encJShl_eq_encTagShift alloc dn "SHL:36" n hn hn1 hd]
+  rw [encodeLopn_shl36_emits frame spillW dn sn hgp hds,
+    ← encJShl_eq_encTagShift alloc dn "SHL:36" n hn hn1 hd]
   simp [encodeJBlock]
 
 /-! ## 4. `#eval` verification on asconSigma0's full physical body

@@ -22,7 +22,7 @@ trailing their hand-asm references on scheduling: the **BLS12-381 `Fp` CIOS
 Montgomery multiply** (`Bls12381MontMulKernel.blsMontMulBlock`, 1.11× vs blst's
 `mulx_mont_384`, MCA RThru 229.8 vs 206.5) and the **ML-KEM / ML-DSA NTT
 butterfly** (1.34× / 1.11× vs PQClean-AVX2). The result on each is the finding —
-**including the negatives, which are the load-bearing data**.
+**including the negatives**.
 
 ## The BLS CIOS finding: the search winner FAILS translation validation
 
@@ -49,7 +49,7 @@ baseline on a concrete state — `runBlock`-distinguishable, hence **rejected by
 TV**. The winner therefore **cannot be shipped**: the schedule search closes
 **zero** of the BLS gap (its output is wrong). This is exactly what TV exists for
 — the search is unverified, and only a TV-passing winner may be emitted. Here the
-TV verdict is *reject*, which is itself the honest answer: the 229.8-vs-206.5
+TV rejects the winner, and that rejection is itself the answer: the 229.8-vs-206.5
 residual is **not** reachable by this neighbourhood.
 
 The one move that *does* pass TV in isolation — hoisting the reduce-constant
@@ -81,7 +81,7 @@ register allocation (`MlkemRaEmit` / `MLKEM_NTT_RA_BENCH.md`), **not** schedule.
 For *both* modularity-floor kernels the schedule search closes **zero** of the
 hand-asm gap: on BLS because its winner fails TV (the residual is µop-count), on
 the NTT because the schedule neighbourhood is empty (the residual is residency).
-The honest scope is the parent module's: the **search** ranges over the
+The scope is the parent module's: the **search** ranges over the
 disjoint-footprint neighbourhood; the **winner TV** is the gate that here
 *rejects* the BLS winner and finds nothing to gain on the NTT.
 -/
@@ -164,7 +164,7 @@ theorem bls_reschedule_lowering_denote_eq (s : JState 64) (pj : Nat) :
   rw [lowerBlock_denote_closed _ s, lowerBlock_denote_closed _ s]
   exact bls_reschedule_runBlock_eq s pj
 
-/-! ## 3. The search WINNER fails translation validation (the load-bearing result)
+/-! ## 3. The search WINNER fails translation validation (the central result)
 
 The seeded search, run on the full CIOS body, produces — within 7 steps — a
 reschedule that **changes the result**. Because the `hi`/`lo` MULX scratch is
@@ -190,7 +190,7 @@ def zWords (b : List (JInstr 64)) : List (BitVec 64) :=
     def-use chain globally, which the per-pair disjoint-footprint predicate cannot
     see. `runBlock`-distinguishable ⇒ **TV reject**: the unverified winner is not
     denotation-preserving and may not be shipped. This is the in-Lean equivalence
-    checker doing its job — and the honest verdict that the 229.8-vs-206.5
+    checker doing its job — and the result that the 229.8-vs-206.5
     residual is *not* in this schedule neighbourhood. -/
 theorem bls_search7_breaks_runBlock :
     zWords (searchIterate 7 blsMontMulBlock 777) ≠ zWords blsMontMulBlock := by
@@ -243,6 +243,8 @@ footprint graph). The stage is `load a; load b; t = b·tw; c = a+t; d = a−t;
 store c; store d`: the `add`/`sub` both consume `t` and the stores consume
 `c`/`d`, so the arithmetic core is fully serial. -/
 
+-- @bench-only: the `List (JInstr _)` blocks below are fixtures exercising this
+-- schedule-search pass; this module emits no deployed `.s` artifact.
 /-- One emitted ML-KEM/ML-DSA NTT butterfly stage as a `JInstr` block. The packed
     `VPMULL`/`VPADD`/`VPSUB` lanes are modelled by `mulx`/`add`/`sub` (the
     dependence footprint is what the schedule search reasons over; lane width is

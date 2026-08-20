@@ -11,7 +11,7 @@ import CatCrypt.Crypto.SecureCompilation.VIR.FreshNameInjective
 
 Increment 1 (`JasminLsem.lean`) built the straight-line linear machine
 (`Lstate`/`lsemStep`/`lsemStraight`) and its composition law
-`lsemStraight_append`. This module supplies the **genuine simulation** that
+`lsemStraight_append`. This module supplies the simulation that
 connects the `Com jasminDialect` evaluator (`Com.denote`) to that linear
 machine through the SSA linearizer `JasminLprogExport.Com.toLprog`
 (`comToBody`/`resolveVar`/`opToLinstrR`).
@@ -44,7 +44,7 @@ which is what `comRetReg` names as `lfd_res`. The agreement invariant
 `StoreAgrees` for the named-store `execCom`, here phrased over the
 `resolveVar`-naming the linearizer actually uses.
 
-## Honest scope
+## Scope
 
 Only the straight-line `regArith` fragment is in scope, because that is the only
 fragment increment 1's `lsemStep` models faithfully (no `none`-fallbacks). The
@@ -327,8 +327,13 @@ theorem lsemStep_var {w nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
         (⟨JasminOp.regArith bop w, heq, .cons a0 (.cons a1 .nil)⟩ : Expr jasminDialect Γ (.reg w))
         = [resolveVar curDepth nArgs argName (fun _ => none) a0,
            resolveVar curDepth nArgs argName (fun _ => none) a1] := rfl
-    simp only [opToLinstrR, lsemStep, hargs, List.map_cons, List.map_nil,
-      stripWidthTag_withWidthTag_binOpName]
+    simp only [opToLinstrR, hargs]
+    rw [lsemStep_reg_cons2 (regName curDepth) (withWidthTag w (binOpName bop))
+        (resolveVar curDepth nArgs argName (fun _ => none) a0)
+        (resolveVar curDepth nArgs argName (fun _ => none) a1) st
+        (fun base idx scale =>
+          resolveVar_ne_arrIdx curDepth nArgs argName (fun _ => none) a0 base idx scale)]
+    simp only [stripWidthTag_withWidthTag_binOpName]
     rw [hagree a0 rfl, hagree a1 rfl, applyOpn_binOpName]
     -- LHS reduces to `some (st.setReg … (bop.apply a b)).nextPc`, which is the
     -- RHS since `e.denote V = bop.apply (a0.lookup V) (a1.lookup V)` (defeq).
@@ -481,7 +486,7 @@ theorem encode_StoreAgrees {w : Nat} {Γ : Ctxt jasminDialect}
 
 /-! ## 9. The straight-line faithfulness theorem
 
-The genuine content of `ComLsemExportFaithful` (`LsemPortAll`) for the
+The content of `ComLsemExportFaithful` (`LsemPortAll`) for the
 straight-line uniform-`regArith` fragment: running the linearizer's emitted
 `.var`-chain on the encoded inputs, then decoding the result register, recovers
 exactly the source program's denotation. -/
@@ -505,8 +510,8 @@ theorem comToLprog_lsem_straightline {w : Nat} {Γ : Ctxt jasminDialect} {t : Ja
 /-- **Faithfulness (packaged).** The straight-line fragment's faithfulness fact:
     the linearizer-emitted straight-line body, run on the encoded inputs and
     decoded at the result register, is *equal* to the source denotation. This is
-    the genuine semantic-preservation statement of `ComLsemExportFaithful` on the
-    straight-line uniform-`regArith` fragment, stated as a real theorem. -/
+    the semantic-preservation statement of `ComLsemExportFaithful` on the
+    straight-line uniform-`regArith` fragment. -/
 theorem comToLprog_faithful_straightline {w : Nat} {Γ : Ctxt jasminDialect}
     {t : JasminTy} {com : Com jasminDialect Γ t} (hcom : UniformRegArith w com)
     (hu : UniformCtxt w Γ) (V : Ctxt.Valuation Γ) :

@@ -1348,17 +1348,17 @@ private partial def reifyBindings (bindings : Array Expr) (outNames : List Strin
           let nm ← fvarDisplayName fvarId
           acc := .RSeq acc (.RSeq (.RLetU64Zero nm .RSkip) (.RScalarSet nm n))
           continue
-        -- Try the legacy `whnf`-then-`matchOp?` path FIRST, so the
-        -- in-file `knownOps` table (and the `#eval` smoke tests in this
-        -- module) never touch the computable-pattern registry — that
-        -- avoids forcing same-module `[init]` evaluation of
-        -- `rustCmdPatternComputableExt` on legacy consumers.
+        -- (2026-05-28) Try the legacy `whnf`-then-`matchOp?` path FIRST,
+        -- so the in-file `knownOps` table (and existing `#eval` smoke
+        -- tests in this module) never touch the new computable-pattern
+        -- registry — that avoids forcing same-module `[init]` evaluation
+        -- of `rustCmdPatternComputableExt` on legacy consumers.
         --
         -- Only if `matchOp?` fails do we consult the dynamic registry,
         -- and only then do we check `isComputablePatternHead?` (BEFORE
         -- running `whnf`), so that a `def`-bodied leaf's head isn't
-        -- unfolded by `whnf` and lost.  See the "Computable-body leaves"
-        -- section above for the full statement of that failure mode.
+        -- unfolded by `whnf` and lost — the "typeclass-arity" failure
+        -- mode the L3 bridge agent flagged for Path B.
         let vReducedDefault ← whnf v
         let legacyMatch := matchOp? vReducedDefault
         let matchResult ← match legacyMatch with

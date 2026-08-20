@@ -20,10 +20,10 @@ across what was previously a function-call boundary.
 
 ## Sources
 
-The Jinc bodies are in the curve25519 jasmin reference sources
-(`curve25519_field_ops.jazz`,
-top-level inlines `__add4_rrs`, `__sub4_rrs`, `__mul4_a24_rs`, `__cswap4_ssss`)
-and `scalarmult.jazz` lines 639–663 / 501–637 (`__mul4_rsr`,
+The Jinc bodies are at
+`jazz/curve25519_field_ops.jazz` (curve25519-jasmin-rs crate)
+(top-level inlines `__add4_rrs`, `__sub4_rrs`, `__mul4_a24_rs`, `__cswap4_ssss`)
+and `…/scalarmult.jazz` lines 639–663 / 501–637 (`__mul4_rsr`,
 `__sqr4_rr`, the `__mul4_c{0,1,2,3}` partials, and `__reduce4`).
 
 ## Width caveat (D4.1 open design question 1)
@@ -681,11 +681,12 @@ def cswap_inline : JasminInlineImpl := fun dest args =>
 /-! ## §8 The Curve25519 registry -/
 
 /-- The full Curve25519 inline registry: maps the six leaf-call names used
-by `Examples/X25519LadderDSL.lean` — `fp_add`, `fp_sub`, `fp_mul_a24`,
-`fp_mul`, `fp_sqr`, `cswap_fp` — to their inline implementations, all six
-of which are concrete. When passed to `toJasminCmdWithInlines`, every
-recognized leaf gets inlined and any unrecognized leaf falls through to the
-`Ccall` path. -/
+by `Examples/X25519LadderDSL.lean` to their inline implementations.
+
+Currently `fp_add_inline` and `fp_mul_a24_inline` are concrete; the others
+are empty stubs (to be filled in by D4.1 follow-up). When passed to
+`toJasminCmdWithInlines`, every recognized leaf gets inlined and any
+unrecognized leaf falls through to today's `Ccall` path. -/
 def curve25519InlineRegistry : InlineRegistry := fun
   | "fp_add"     => some fp_add_inline
   | "fp_sub"     => some fp_sub_inline

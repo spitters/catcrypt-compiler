@@ -46,9 +46,9 @@ via leaf typeclass).  The 2-call chain is the smallest XEdDSA
 operation; sign is structurally similar but more complex due to nonce
 derivation.
 
-We also include a variant that uses the new `RBytesSlice` constructor
-to demonstrate the byte-slice IR addition: splits a 64-byte signature
-into the 32-byte `r` and `s` components as separate locals.
+We also include a variant that splits a 64-byte signature into the
+32-byte `r` and `s` components as separate locals, through the
+`bytes_slice` leaf.
 -/
 import CatCrypt.Crypto.Jasmin.LowCT
 import CatCrypt.Crypto.Jasmin.RustEmit
@@ -89,10 +89,14 @@ def xeddsaVerifyBody : LowCT :=
 
 /-! ## §2.  Variant: split-signature verify body
 
-Demonstrates the new `RBytesSlice` constructor: splits the 64-byte
-signature into 32-byte `r_part` and `s_part` locals.  This variant is
-authored to exercise the new IR feature; the algebraic result is the
-same as `xeddsaVerifyBody`. -/
+Splits the 64-byte signature into 32-byte `r_part` and `s_part` locals
+before the conversion and the verify.  The algebraic result is the same
+as `xeddsaVerifyBody`.
+
+Each slice is a `bytes_slice` leaf call monomorphised in its name per
+`(offset, length)` — the form `Optimizer.SplitBytesSlice` produces for
+the size-varying wrapper that ML-KEM and ML-DSA use, and the form the
+Jasmin lowering accepts. -/
 
 def xeddsaVerifySplitBody : LowCT :=
   -- §2.1 Locals: edwards_pk, r_part, s_part.
@@ -101,9 +105,11 @@ def xeddsaVerifySplitBody : LowCT :=
   LowCT.RLetZero "s_part"     (TowerType.TBytes 32) $
     -- §2.2 Split signature: r_part := signature[0..32]; s_part := signature[32..64].
     LowCT.RSeq
-      (LowCT.RBytesSlice (bytes 32 "r_part") (bytes 64 "signature") 0 32) $
+      (LowCT.RCall "bytes_slice_0_32"
+        (bytes 32 "r_part") [bytes 64 "signature"]) $
     LowCT.RSeq
-      (LowCT.RBytesSlice (bytes 32 "s_part") (bytes 64 "signature") 32 32) $
+      (LowCT.RCall "bytes_slice_32_32"
+        (bytes 32 "s_part") [bytes 64 "signature"]) $
     -- §2.3 Convert Mont u-coordinate to Edwards.
     LowCT.RSeq
       (LowCT.RCall "mont_u_to_edwards_compressed_zero"

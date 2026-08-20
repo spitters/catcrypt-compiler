@@ -227,7 +227,8 @@ theorem encJMovImm251_eq_lopn :
     it is a hypothesis exactly as `GatherFullBody`'s shift lemmas thread theirs).
     The dispatch mirrors `BlockBytesAgreeExtended.encodeLopn_shr19_emits`. -/
 private theorem encodeLopn_shr1_emits (frame spillW : Nat) (dn sn : String)
-    (hn : tagShiftCount "SHR:1" = 1) :
+    (hn : tagShiftCount "SHR:1" = 1)
+    (hgp : (isGpName dn && isGpName sn) = true) (hds : (dn == sn) = true) :
     encodeLopn frame spillW (.Lopn [.reg dn] "SHR:1:64" [.reg sn])
       = encShift1 1 5 (gpNumU dn) := by
   simp only [encodeLopn,
@@ -238,12 +239,15 @@ private theorem encodeLopn_shr1_emits (frame spillW : Nat) (dn sn : String)
     show adxPrefix "SHR:1" = none from by decide +kernel,
     show tagShiftExt "SHR:1" = some 5 from by decide +kernel,
     show rexW (mnemWidth "SHR:1:64") = 1 from by decide +kernel,
-    Bool.false_eq_true, if_false, encTagShift, hn, if_pos]
+    hgp, hds, Bool.false_eq_true, if_false, List.nil_append,
+    encTagShift, hn, if_pos]
+  rw [if_neg (by decide)]
 
 /-- The Lprog `encodeLopn` of a count-1 left shift `SHL:1:64` reduces to the
     3-byte `D1 /4` short form `encShift1 1 4 (gpNumU dn)`, given `hn`. -/
 private theorem encodeLopn_shl1_emits (frame spillW : Nat) (dn sn : String)
-    (hn : tagShiftCount "SHL:1" = 1) :
+    (hn : tagShiftCount "SHL:1" = 1)
+    (hgp : (isGpName dn && isGpName sn) = true) (hds : (dn == sn) = true) :
     encodeLopn frame spillW (.Lopn [.reg dn] "SHL:1:64" [.reg sn])
       = encShift1 1 4 (gpNumU dn) := by
   simp only [encodeLopn,
@@ -254,7 +258,9 @@ private theorem encodeLopn_shl1_emits (frame spillW : Nat) (dn sn : String)
     show adxPrefix "SHL:1" = none from by decide +kernel,
     show tagShiftExt "SHL:1" = some 4 from by decide +kernel,
     show rexW (mnemWidth "SHL:1:64") = 1 from by decide +kernel,
-    Bool.false_eq_true, if_false, encTagShift, hn, if_pos]
+    hgp, hds, Bool.false_eq_true, if_false, List.nil_append,
+    encTagShift, hn, if_pos]
+  rw [if_neg (by decide)]
 
 /-- The `encodeJInstr6` count-1 right shift reduces to the same `encShift1 1 5`
     short form (closed `decide +kernel` on `RAX` under `physAlloc`). -/
@@ -271,18 +277,20 @@ private theorem encJ_shl1 :
     count-in-tag `SHR:1:64` bytes — both the 3-byte `D1 /5` short form, NOT the
     4-byte `C1 /5 ib`. `hn : tagShiftCount "SHR:1" = 1` pins the runtime count. -/
 theorem encJShr1_eq_lopn (frame spillW : Nat) (sn : String)
-    (hn : tagShiftCount "SHR:1" = 1) :
+    (hn : tagShiftCount "SHR:1" = 1)
+    (hgp : (isGpName "RAX" && isGpName sn) = true) (hds : ("RAX" == sn) = true) :
     encodeJInstr6 physAlloc (.shr "RAX" (.imm 1))
       = encodeLopn frame spillW (.Lopn [.reg "RAX"] "SHR:1:64" [.reg sn]) := by
-  rw [encJ_shr1, encodeLopn_shr1_emits frame spillW "RAX" sn hn]
+  rw [encJ_shr1, encodeLopn_shr1_emits frame spillW "RAX" sn hn hgp hds]
 
 /-- **Peephole 2 — shift-by-1 `SHL:1:64`.** `D1 /4` short form, byte-matching the
     Lprog `encodeLopn` count-in-tag `SHL:1:64`. -/
 theorem encJShl1_eq_lopn (frame spillW : Nat) (sn : String)
-    (hn : tagShiftCount "SHL:1" = 1) :
+    (hn : tagShiftCount "SHL:1" = 1)
+    (hgp : (isGpName "RAX" && isGpName sn) = true) (hds : ("RAX" == sn) = true) :
     encodeJInstr6 physAlloc (.shl "RAX" (.imm 1))
       = encodeLopn frame spillW (.Lopn [.reg "RAX"] "SHL:1:64" [.reg sn]) := by
-  rw [encJ_shl1, encodeLopn_shl1_emits frame spillW "RAX" sn hn]
+  rw [encJ_shl1, encodeLopn_shl1_emits frame spillW "RAX" sn hn hgp hds]
 
 /-- **Peephole 3 — `MULXHI:64` is nil.** `lowerCov6` lowers a `MULXHI:64` binding
     to the empty block, and `encodeLopn` emits 0 bytes for it (the
@@ -306,7 +314,8 @@ theorem mulxhi_nil_eq_lopn (alloc : GpAlloc) (frame spillW : Nat) (dn s0 s1 : St
     and `GatherFullBody` §3's drop-`mov` shift agreements, this covers the
     immediate-form gaps the GoldenPath survey identified. -/
 theorem imm_forms_byte_match (frame spillW : Nat) (sn s0 s1 : String)
-    (hns : tagShiftCount "SHR:1" = 1) (hnl : tagShiftCount "SHL:1" = 1) :
+    (hns : tagShiftCount "SHR:1" = 1) (hnl : tagShiftCount "SHL:1" = 1)
+    (hgp : (isGpName "RAX" && isGpName sn) = true) (hds : ("RAX" == sn) = true) :
     (encodeJInstr6 physAlloc (.mov "RAX" (.imm 18446744073709551615))
       = encodeLopn 64 64 (.Lopn [.reg "RAX"] "MOV:64" [.imm 18446744073709551615]))
     ∧ (encodeJInstr6 physAlloc (.shr "RAX" (.imm 1))
@@ -317,8 +326,8 @@ theorem imm_forms_byte_match (frame spillW : Nat) (sn s0 s1 : String)
           (.Lopn [.reg "RAX"] "MULXHI:64" [.reg s0, .reg s1])).getD [])
         = encodeLopn frame spillW (.Lopn [.reg "RAX"] "MULXHI:64" [.reg s0, .reg s1])) :=
   ⟨encJMovImm_allones_eq_lopn,
-   encJShr1_eq_lopn frame spillW sn hns,
-   encJShl1_eq_lopn frame spillW sn hnl,
+   encJShr1_eq_lopn frame spillW sn hns hgp hds,
+   encJShl1_eq_lopn frame spillW sn hnl hgp hds,
    mulxhi_nil_eq_lopn physAlloc frame spillW "RAX" s0 s1⟩
 
 /-! ## 3. `#eval` verification on the surveyed GoldenPath kernels — the milestone

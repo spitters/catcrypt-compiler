@@ -9,24 +9,12 @@ import Mathlib.Tactic.Ring
 import Mathlib.Tactic.IntervalCases
 
 /-!
-# The general de-Bruijn faithfulness of `Com → RegProg`
+# The general de-Bruijn faithfulness — lemma layer (Step 1, in progress)
 
-The `comToReg` faithfulness is proved bottom-up from discrete lemmas, all of
-them in this module:
-
-* `envOf` / `envOf_extend` — reflect a `Com` valuation into the neutral `Env`
-  (only `reg 64` bindings are placed) and the law for extending it.
-* `repr_inj`, `lvlName_inj`, and `lvlName_ne_xzr` / `lvlName_ne_zero` /
-  `lvlName_ne_x0` — level names are injective and never collide with the
-  reserved register names.
-* `envOf_lookup` and `resolveName_correct` — variable lookup through the
-  reflection.
-* `opToStmts_bin_correct`, `opToStmts_mulhi_correct`, `opToStmts_shift_correct`,
-  `opToStmts_const_correct` — one lemma per supported op class: binary ALU,
-  widening-high multiply, immediate shift, materialised constant.
-* `comToReg_faithful` — the theorem: for a `ComOK` (supported, straight-line)
-  `Com` over an all-`reg 64` context, `Com.denote` equals the neutral
-  denotation of the flattened `RegProg` read at the result name.
+Per the plan, the general `comToReg` faithfulness decomposes into discrete
+lemmas. This module builds them bottom-up. Lemmas 1–2 (`envOf`, `envOf_extend`)
+are the valuation→env reflection and its extension law; lemma 3 (`envOf_lookup`)
+is the `.ret` base case.
 -/
 
 set_option autoImplicit false

@@ -18,7 +18,7 @@ jasminc Coq operational semantics (Phase B approach 2 of the AST-direct emit
 work). Every ported definition carries a `-- mirror of <file>:<line> (<name>)`
 provenance comment pointing back to the Coq source.
 
-**Source**: the jasmin/coq reference semantics
+**Source repository**: the Jasmin `proofs/lang/` tree
 (reference, READ-ONLY).
 
 ## Tiers ported
@@ -634,7 +634,7 @@ Coq side (`expr.v:512-547`): a `_fundef` records `f_tyin`, `f_params`,
 `f_body`, `f_tyout`, `f_res` (plus dependent-record bookkeeping `f_info`
 / `f_contract` / `f_extra`).  A `_prog` is `{ p_funcs; p_globs; p_extra }`.
 We omit the extra-typeclass machinery (`progT`-class, `extra_*_t`) and the
-contracts: they are not load-bearing for our `Ccall` semantics.  The
+contracts: they are not needed for our `Ccall` semantics.  The
 result is the `uprog` shape (`extra_fun_t := unit`, `extra_prog_t := unit`).
 Placed here (after `GlobDecls`) because `Prog.pGlobs` re-uses the global
 declaration list. -/

@@ -8,6 +8,7 @@ import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportKeccak
 import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
 import CatCrypt.Crypto.Optimizer.LoadCSE
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # PROBE: the resident Keccak variants re-routed through the owned Com→render path
@@ -57,9 +58,9 @@ def chiRowLprog : CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.Lprog 
 /-- Render both to AT&T `.s` text through the owned printer — the same final step
     `KeccakLinearMain` uses for the plain kernel. -/
 def bebAsm : String :=
-  CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter.renderLprogAtt bebLprog
+  CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned bebLprog
 
 def chiRowAsm : String :=
-  CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter.renderLprogAtt chiRowLprog
+  CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned chiRowLprog
 
 end CatCrypt.Crypto.SecureCompilation.VIR.KeccakResidentComRenderProbe

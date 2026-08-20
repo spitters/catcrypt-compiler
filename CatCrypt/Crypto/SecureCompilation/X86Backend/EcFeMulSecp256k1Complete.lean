@@ -41,9 +41,13 @@ Completing the runBlock multiply is NOT the feSub-scale add-back that
 `montRedc4_runBlock` (an open increment the `MontReduceRunBlock` docstring flags
 as "the remaining increment") together with the anomalous 10-round `emitCondSubP`
 canonicalisation, plus threading a `loadConsts` prologue through every EC-path
-consumer. And that entire runBlock EC vertical is separately gated on the
-unproven `runBlock`↔`lsemStraightMem` bridge, so completing the reduce alone
-would not yield a byte-KAT'd end-to-end multiply there.
+consumer. The two gaps above are what stands in the way: `RunBlockLsemAgree` and
+its sidecars prove `runBlock`↔`lsemStraightMem` agreement for the register ALU
+core, compile-time-offset memory, the two-write `mulx`, the flag writers
+(`JLstateCorrF` / `JLstateCorrCF`) and the flag readers (`JLstateCorrZ`), each
+with a loop lift, so the machine-model axis is not what blocks this path.
+Completing the reduce alone would still not yield a byte-KAT'd end-to-end
+multiply here.
 
 A SOUND, byte-KAT'd secp256k1 multiply already exists on the verified front:
 `Secp256k1FeMulFront` sources `out = (a·b) mod p` end-to-end through the

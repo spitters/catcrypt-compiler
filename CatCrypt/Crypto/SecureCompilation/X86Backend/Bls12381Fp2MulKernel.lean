@@ -4,6 +4,7 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381MontMulKernel
+import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
 # BLS12-381 `Fp2` (quadratic extension) multiply + square, owned x86 leaf (#602/#219)
@@ -72,7 +73,7 @@ a **2-multiply** schedule:
 
 So one `Fp2` sqr = **2 `Fp` muls + 2 `Fp` adds + 1 `Fp` sub**.
 
-## What is verified vs trusted (honest scope)
+## What is verified vs trusted
 
 * The `Fp` add / sub **bodies** are `runBlock`-verified through the owned
   backend (`*Block_lowering_correct`, the denotation-preserving lowering), the
@@ -81,8 +82,8 @@ So one `Fp2` sqr = **2 `Fp` muls + 2 `Fp` adds + 1 `Fp` sub**.
   (`*Alloc_no_overflow`). The `Fp` **mul** body is the committed #490 kernel.
 * The `Fp2` mul / sqr **driver** is a sequence of `call`s into those verified
   leaves over a stack-frame layout (`re`/`im`/scratch felems). The driver's
-  call-and-frame scaffolding is **trusted ABI glue** (it is no longer a leaf —
-  it makes calls — so it carries a real `%rsp`-moving frame), exactly the
+  call-and-frame scaffolding is **trusted ABI glue** (it makes calls, so it
+  carries a real `%rsp`-moving frame), exactly the
   status of the `renderLeafFn` prologue/epilogue elsewhere. The *arithmetic* it
   composes is the verified field kernels.
 * Value-level correctness — that the emitted driver computes the `Fp2` product
@@ -107,6 +108,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381MontMulKernel (pLimbs)
 
 /-! ## 1. The six-limb `Fp` add body (`a + b mod p`)
@@ -232,7 +235,37 @@ theorem fpSubBlock_lowering_correct
   lowerBlock_denote_closed fpSubBlock
     (initState a0 a1 a2 a3 a4 a5 b0 b1 b2 b3 b4 b5)
 
-/-! ## 5. Register allocation for the `Fp` bodies (reg-ptr ABI + scratch frame)
+/-! ## 5. Constant time for the `Fp` bodies: straight-line, all-direct addressing
+
+Both six-limb bodies address memory through a base pointer and a
+compile-time-constant displacement (`loadMem`/`storeMem`); the conditional
+reduce is branch-free (`cmovb` in the add, the borrow mask in the sub), so no
+`loadMemIdx`/`storeMemIdx` appears and the decidable `allDirect` check carries
+each block into `ConstantTimeCoverage.allDirect_constant_time`. The `Fp2`
+drivers of §8 are `String` assembly with `call`s, outside the `JInstr`
+leakage model. -/
+
+/-- The six-limb `Fp` add body uses only direct base+displacement addressing. -/
+theorem fpAddBlock_allDirect : allDirect fpAddBlock = true := by decide
+
+/-- **Constant time.** The emitted six-limb `Fp` add produces the same machine
+    leakage trace from any two starting states: its observable control-flow +
+    memory-address sequence is a function of the program text alone, so it
+    carries no information about the operand limbs. -/
+theorem fpAddBlock_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ fpAddBlock = blockLeak s₂ fpAddBlock :=
+  allDirect_constant_time fpAddBlock fpAddBlock_allDirect s₁ s₂
+
+/-- The six-limb `Fp` sub body uses only direct base+displacement addressing. -/
+theorem fpSubBlock_allDirect : allDirect fpSubBlock = true := by decide
+
+/-- **Constant time.** The emitted six-limb `Fp` sub produces the same machine
+    leakage trace from any two starting states. -/
+theorem fpSubBlock_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ fpSubBlock = blockLeak s₂ fpSubBlock :=
+  allDirect_constant_time fpSubBlock fpSubBlock_allDirect s₁ s₂
+
+/-! ## 6. Register allocation for the `Fp` bodies (reg-ptr ABI + scratch frame)
 
 `z`→`%rdi`, `a`→`%rsi`, `b`→`%rdx` (the SysV argument registers); the scratch
 base `sp`→`%rbp` (excluded from `gpPool`, so it costs no pool slot — the same
@@ -252,7 +285,7 @@ theorem fpAddAlloc_no_overflow :
 theorem fpSubAlloc_no_overflow :
     allocOverflow fpAddSubPinned fpSubBlock = none := by native_decide
 
-/-! ## 6. AT&T emission of the `Fp` add/sub leaves (reg-ptr SysV ABI + frame)
+/-! ## 7. AT&T emission of the `Fp` add/sub leaves (reg-ptr SysV ABI + frame)
 
 The leaves carry a 48-byte scratch frame (`sp`→`%rbp`); the body is
 `runBlock`-verified, the prologue/epilogue + frame are trusted ABI
@@ -276,7 +309,7 @@ def fpAddAsm : String := renderFpAddSub "bls12381_fp_add_x86_from_lean" fpAddBlo
 /-- The emitted `Fp` sub leaf `bls12381_fp_sub_x86_from_lean(z, a, b)`. -/
 def fpSubAsm : String := renderFpAddSub "bls12381_fp_sub_x86_from_lean" fpSubBlock
 
-/-! ## 7. The `Fp2` mul / sqr drivers (trusted call-frame scaffolding)
+/-! ## 8. The `Fp2` mul / sqr drivers (trusted call-frame scaffolding)
 
 The drivers are **not** leaves — they call the verified `Fp` mul/add/sub
 leaves — so they carry a real `%rsp`-moving frame. The frame holds the
@@ -377,7 +410,7 @@ def fp2SqrAsm : String :=
     , "\tpopq %rbp", "\tpopq %r15", "\tpopq %r14", "\tpopq %r13", "\tpopq %r12"
     , "\tpopq %rbx", "\tret" ]
 
-/-! ## 8. Shape checks (real multiply instructions, real calls) -/
+/-! ## 9. Shape checks (real multiply instructions, real calls) -/
 
 /-- Local substring test (`needle` occurs in `hay`). -/
 def hasSub (hay needle : String) : Bool :=
@@ -416,7 +449,7 @@ theorem fp2SqrAsm_two_real_muls :
       ∧ hasSub fp2SqrAsm "callq bls12381_fp_add_x86_from_lean"
       ∧ hasSub fp2SqrAsm "callq bls12381_fp_sub_x86_from_lean" := by native_decide
 
-/-! ## 9. Emit driver -/
+/-! ## 10. Emit driver -/
 
 /-- Emit driver: write the in-Lean-backend-emitted `Fp` add/sub leaves and the
     `Fp2` mul/sqr drivers for the bench harness. The committed `Fp` mul leaf

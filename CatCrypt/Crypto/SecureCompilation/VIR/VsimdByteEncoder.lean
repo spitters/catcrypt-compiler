@@ -198,68 +198,68 @@ validation section — confirming the unified `encodeVsimdInst` reproduces the
 bespoke byte output op-by-op. -/
 
 -- gas: `vaesenc %xmm1, %xmm2, %xmm3`        →  c4 e2 69 dc d9
-example : encodeVsimdInst .vaesenc 3 2 1 = [0xc4,0xe2,0x69,0xdc,0xd9].map (BitVec.ofNat 8) := by native_decide
+#guard encodeVsimdInst .vaesenc 3 2 1 == [0xc4,0xe2,0x69,0xdc,0xd9].map (BitVec.ofNat 8)
 
 -- gas: `vaesenclast %xmm1, %xmm2, %xmm3`    →  c4 e2 69 dd d9
-example : encodeVsimdInst .vaesenclast 3 2 1 = [0xc4,0xe2,0x69,0xdd,0xd9].map (BitVec.ofNat 8) := by native_decide
+#guard encodeVsimdInst .vaesenclast 3 2 1 == [0xc4,0xe2,0x69,0xdd,0xd9].map (BitVec.ofNat 8)
 
 -- gas: `vaeskeygenassist $0x1, %xmm2, %xmm3` →  c4 e3 79 df da 01
-example : encodeVsimdInst (.vaeskeygen 1) 3 2 0 = [0xc4,0xe3,0x79,0xdf,0xda,0x01].map (BitVec.ofNat 8) := by native_decide
+#guard encodeVsimdInst (.vaeskeygen 1) 3 2 0 == [0xc4,0xe3,0x79,0xdf,0xda,0x01].map (BitVec.ofNat 8)
 
 -- gas: `vpshufd $0xff, %xmm2, %xmm3`        →  c5 f9 70 da ff
-example : encodeVsimdInst (.vpshufd 0xff) 3 2 0 = [0xc5,0xf9,0x70,0xda,0xff].map (BitVec.ofNat 8) := by native_decide
+#guard encodeVsimdInst (.vpshufd 0xff) 3 2 0 == [0xc5,0xf9,0x70,0xda,0xff].map (BitVec.ofNat 8)
 
 -- gas: `vpclmulqdq $0x11, %xmm1, %xmm2, %xmm3` →  c4 e3 69 44 d9 11
-example : encodeVsimdInst (.clmul 0x11) 3 2 1 = [0xc4,0xe3,0x69,0x44,0xd9,0x11].map (BitVec.ofNat 8) := by native_decide
+#guard encodeVsimdInst (.clmul 0x11) 3 2 1 == [0xc4,0xe3,0x69,0x44,0xd9,0x11].map (BitVec.ofNat 8)
 
 -- gas: `vgf2p8mulb %xmm1, %xmm2, %xmm3`     →  c4 e2 69 cf d9
-example : encodeVsimdInst .gf2p8mulb 3 2 1 = [0xc4,0xe2,0x69,0xcf,0xd9].map (BitVec.ofNat 8) := by native_decide
+#guard encodeVsimdInst .gf2p8mulb 3 2 1 == [0xc4,0xe2,0x69,0xcf,0xd9].map (BitVec.ofNat 8)
 
 -- gas: `vgf2p8affineqb $0x7, %xmm1, %xmm2, %xmm3` →  c4 e3 e9 ce d9 07
-example : encodeVsimdInst (.affineqb 0x07) 3 2 1 = [0xc4,0xe3,0xe9,0xce,0xd9,0x07].map (BitVec.ofNat 8) := by native_decide
+#guard encodeVsimdInst (.affineqb 0x07) 3 2 1 == [0xc4,0xe3,0xe9,0xce,0xd9,0x07].map (BitVec.ofNat 8)
 
 -- gas: `vpshufb %xmm1, %xmm2, %xmm3`        →  c4 e2 69 00 d9
-example : encodeVsimdInst .vpshufb 3 2 1 = [0xc4,0xe2,0x69,0x00,0xd9].map (BitVec.ofNat 8) := by native_decide
+#guard encodeVsimdInst .vpshufb 3 2 1 == [0xc4,0xe2,0x69,0x00,0xd9].map (BitVec.ofNat 8)
 
 -- gas: `vpand %xmm1, %xmm2, %xmm3`          →  c5 e9 db d9
-example : encodeVsimdInst (.bitwise .and) 3 2 1 = [0xc5,0xe9,0xdb,0xd9].map (BitVec.ofNat 8) := by native_decide
+#guard encodeVsimdInst (.bitwise .and) 3 2 1 == [0xc5,0xe9,0xdb,0xd9].map (BitVec.ofNat 8)
 
 -- gas: `vpor %xmm1, %xmm2, %xmm3`           →  c5 e9 eb d9
-example : encodeVsimdInst (.bitwise .or) 3 2 1 = [0xc5,0xe9,0xeb,0xd9].map (BitVec.ofNat 8) := by native_decide
+#guard encodeVsimdInst (.bitwise .or) 3 2 1 == [0xc5,0xe9,0xeb,0xd9].map (BitVec.ofNat 8)
 
 -- gas: `vpxor %xmm1, %xmm2, %xmm3`          →  c5 e9 ef d9
-example : encodeVsimdInst (.bitwise .xor) 3 2 1 = [0xc5,0xe9,0xef,0xd9].map (BitVec.ofNat 8) := by native_decide
+#guard encodeVsimdInst (.bitwise .xor) 3 2 1 == [0xc5,0xe9,0xef,0xd9].map (BitVec.ofNat 8)
 
 -- gas: `vpaddd %xmm1, %xmm2, %xmm3`         →  c5 e9 fe d9
-example : encodeVsimdInst (.packed .add 32) 3 2 1 = [0xc5,0xe9,0xfe,0xd9].map (BitVec.ofNat 8) := by native_decide
+#guard encodeVsimdInst (.packed .add 32) 3 2 1 == [0xc5,0xe9,0xfe,0xd9].map (BitVec.ofNat 8)
 
 -- gas: `vpaddq %xmm1, %xmm2, %xmm3`         →  c5 e9 d4 d9
-example : encodeVsimdInst (.packed .add 64) 3 2 1 = [0xc5,0xe9,0xd4,0xd9].map (BitVec.ofNat 8) := by native_decide
+#guard encodeVsimdInst (.packed .add 64) 3 2 1 == [0xc5,0xe9,0xd4,0xd9].map (BitVec.ofNat 8)
 
 -- gas: `vpmulhw %xmm1, %xmm2, %xmm3`        →  c5 e9 e5 d9
-example : encodeVsimdInst .mulhi16 3 2 1 = [0xc5,0xe9,0xe5,0xd9].map (BitVec.ofNat 8) := by native_decide
+#guard encodeVsimdInst .mulhi16 3 2 1 == [0xc5,0xe9,0xe5,0xd9].map (BitVec.ofNat 8)
 
 -- gas: `vpslldq $0x8, %xmm2, %xmm3`         →  c5 e1 73 fa 08
-example : encVpslldqU 0 3 2 0x08 = [0xc5,0xe1,0x73,0xfa,0x08].map (BitVec.ofNat 8) := by native_decide
+#guard encVpslldqU 0 3 2 0x08 == [0xc5,0xe1,0x73,0xfa,0x08].map (BitVec.ofNat 8)
 
 -- gas: `vpsrldq $0x8, %xmm2, %xmm3`         →  c5 e1 73 da 08
-example : encVpsrldqU 0 3 2 0x08 = [0xc5,0xe1,0x73,0xda,0x08].map (BitVec.ofNat 8) := by native_decide
+#guard encVpsrldqU 0 3 2 0x08 == [0xc5,0xe1,0x73,0xda,0x08].map (BitVec.ofNat 8)
 
 -- SHA-NI byte pins (gas `as --64` + `objdump -d`, ground truth):
 -- gas: `sha256rnds2 %xmm0, %xmm2, %xmm1`     →  0f 38 cb ca   (dst=1, src=2)
-example : encSha256Rnds2 1 2 = [0x0f,0x38,0xcb,0xca].map (BitVec.ofNat 8) := by native_decide
+#guard encSha256Rnds2 1 2 == [0x0f,0x38,0xcb,0xca].map (BitVec.ofNat 8)
 -- gas: `sha256rnds2 %xmm0, %xmm1, %xmm2`     →  0f 38 cb d1   (dst=2, src=1)
-example : encSha256Rnds2 2 1 = [0x0f,0x38,0xcb,0xd1].map (BitVec.ofNat 8) := by native_decide
+#guard encSha256Rnds2 2 1 == [0x0f,0x38,0xcb,0xd1].map (BitVec.ofNat 8)
 -- gas: `sha256rnds2 %xmm0, %xmm10, %xmm11`   →  45 0f 38 cb da  (REX.RB, dst=11, src=10)
-example : encSha256Rnds2 11 10 = [0x45,0x0f,0x38,0xcb,0xda].map (BitVec.ofNat 8) := by native_decide
+#guard encSha256Rnds2 11 10 == [0x45,0x0f,0x38,0xcb,0xda].map (BitVec.ofNat 8)
 -- gas: `sha256msg1 %xmm4, %xmm7`             →  0f 38 cc fc   (dst=7, src=4)
-example : encSha256Msg1 7 4 = [0x0f,0x38,0xcc,0xfc].map (BitVec.ofNat 8) := by native_decide
+#guard encSha256Msg1 7 4 == [0x0f,0x38,0xcc,0xfc].map (BitVec.ofNat 8)
 -- gas: `sha256msg1 %xmm12, %xmm9`            →  45 0f 38 cc cc  (REX.RB, dst=9, src=12)
-example : encSha256Msg1 9 12 = [0x45,0x0f,0x38,0xcc,0xcc].map (BitVec.ofNat 8) := by native_decide
+#guard encSha256Msg1 9 12 == [0x45,0x0f,0x38,0xcc,0xcc].map (BitVec.ofNat 8)
 -- gas: `sha256msg2 %xmm6, %xmm7`             →  0f 38 cd fe   (dst=7, src=6)
-example : encSha256Msg2 7 6 = [0x0f,0x38,0xcd,0xfe].map (BitVec.ofNat 8) := by native_decide
+#guard encSha256Msg2 7 6 == [0x0f,0x38,0xcd,0xfe].map (BitVec.ofNat 8)
 -- gas: `sha256msg2 %xmm4, %xmm5`             →  0f 38 cd ec   (dst=5, src=4)
-example : encSha256Msg2 5 4 = [0x0f,0x38,0xcd,0xec].map (BitVec.ofNat 8) := by native_decide
+#guard encSha256Msg2 5 4 == [0x0f,0x38,0xcd,0xec].map (BitVec.ofNat 8)
 
 /-! ## 2. `vmovdqu` mem loads/stores + `ret` (re-defined standalone)
 

@@ -20,13 +20,12 @@ LANDED. The mid-level is now the upstream-named denoting dialects in
 (`RegMachineSim` / `GenericRegAllocSim` + the x86 `JInstrRegMachineSim` instance)
 below it.  The two **physical IRs were collapsed** (`encodeLprog = encodeJBlock`
 on the covered fragment; GoldenPath kernels emit via the JInstr path).
-**`CProg`/`CExpr` and the `Lprog` kernel-emit path are DEPRECATED**, superseded
-by `catCryptDialect` (`Com catCryptDialect`, the MLIR-aligned successor) — do
-not add new `CProg`/`CExpr`/`Lprog` kernel uses (a convention; nothing in the
-build or CI enforces it).  The `llvm` waist (D2) is veir-deferred
+**`CProg`/`CExpr` and the `Lprog` kernel-emit path are DEPRECATED** (ratchet:
+`scripts/cprog-deprecation-ratchet.sh`), superseded by `catCryptDialect`
+(`Com catCryptDialect`, the MLIR-aligned successor) — do not add new
+`CProg`/`CExpr`/`Lprog` kernel uses.  The `llvm` waist (D2) is veir-deferred
 (no in-tree LLVM dialect by design).  The **frontend ingestion** below is
-UNCHANGED by the restructure (the two paths remain), and the DF keystone now
-proves their scalar denotations COINCIDE (`Dialects/FrontendCoincidence*` —
+the two ingestion paths, whose scalar denotations coincide by the DF result (`Dialects/FrontendCoincidence*` —
 base, shifts, let-engine, whole-body, RustState bridge).
 
 A discoverability index for the hax→Lean compiler IRs.  The EMIT side has its
@@ -70,19 +69,22 @@ silently rot.
 | `if` (public scrutinee)           | ✗              | ✓ `RIfNz`  | ✓                      |
 | `while` (var cond)                | ✗              | ✓ `RWhileNz` | ✓                    |
 | `forFold`, LITERAL bound          | ✗ (pre-unroll) | ✓ `RFor`   | ✓ (`loopRFor`)         |
-| `forFold`, SYMBOLIC bound         | ✗              | ✗ (`:563`) — use `substConsts` to make it literal | — |
-| dynamic array read `index[a,i]`   | ✗              | ✓ `RArrLoad`  | ✓ (opaque, 2026-06) |
-| dynamic array write `array_update`| ✗              | ✓ `RArrStore` | ✓ (opaque, 2026-06) |
+| `forFold`, SYMBOLIC bound         | ✗              | ✓ `RForRuntime` | ✓                    |
+| dynamic array read `index[a,i]`   | ✗              | ✓ `RArrLoad`  | ✓ (`memGetDyn`)        |
+| dynamic array write `array_update`| ✗              | ✓ `RArrStore` | ✓ (`memSetDyn`)        |
 | array-valued `forFold` body       | ✗              | ✗          | —                      |
 | nested 2-D `array_update`         | ✗              | ✗          | —                      |
 
-Key `file:line` (verified 2026-06-14):
-* `haxToLowCT`: `array_update→RArrStore` HaxToLowCT.lean:440; `index→RArrLoad`
-  :449; `whileLoop→RWhileNz` :496; `forFold (lit n)→RFor` :551/:559;
-  `forFold` symbolic / `forLoop` → `none` :563/:539.
+Key `file:line` (verified 2026-08-03, against the `haxToLowCT` translator at
+`HaxToLowCT.lean:477`; the typed `haxToLowCTEnv` at `:713` repeats the same arms):
+* `haxToLowCT`: `array_update→RArrStore` HaxToLowCT.lean:502; `index→RArrLoad`
+  :512; `whileLoop→RWhileNz` :577; `forFold (lit n)→RFor` :641/:648;
+  `forFold` with a runtime bound `→RForRuntime` :654 (zero-start) / :676
+  (offset-start); `forFold` otherwise / `forLoop` → `none` :679/:626.
 * `substConsts` + `mlkemConstTable` (K=3,N=256,Q=3329) / `mldsaConstTable`:
   `HaxToLowCT_ConstFold.lean` — turns `forFold _ _ (.var "K")` into the literal
-  form the line-551 arm accepts.
+  form the line-641 arm accepts.  This is now an optimization, not a
+  prerequisite: a bound `impBoundToSExpr` accepts reaches `RForRuntime` unfolded.
 * dynamic-array CT discipline: `cmdCT` requires the index `Public`
   (`cmdCT_RArrLoad`/`cmdCT_RArrStore`); soundness `cmdCT_sound`
   (`LowCTCTAnalysis.lean`).  The same `cmdCT` rejects a SECRET index.
@@ -94,7 +96,8 @@ Key `file:line` (verified 2026-06-14):
 * a **scalar leaf** with a value-correctness proof (SHA round, field op) →
   `compileFromHax` (literal loops pre-unrolled).
 * a **whole function with loops / dynamic arrays** (ML-KEM/ML-DSA NTT,
-  sampling) → `haxToLowCT` (+ `substConsts` for symbolic bounds).  NO THIR
+  sampling) → `haxToLowCT` (`substConsts` folds a symbolic bound to a literal
+  where an unrolled loop is wanted; otherwise it lowers to `RForRuntime`).  NO THIR
   change and NO `compileFromHax` denotation change is required for this.
 * **constant-time** of a runtime-indexed array loop → `cmdCT` on a public index
   (`Crypto/SecureCompilation/ArrayLoopCT.lean` has the worked NTT-pattern proof).
@@ -115,7 +118,7 @@ FRONT map — not just the private roadmap — tracks them:
 
 The scalar-arith arm closes the common `haxToLowCT → catCryptDialect` path for scalar
 bodies; the SIMD-ext and orchestration rows are the named residual that keeps the
-hand-authored owned-emit fleet hand-`Com` for now (see `EMIT_PROVENANCE.md`'s rule).
+hand-authored owned-emit fleet on hand-`Com` (see `EMIT_PROVENANCE.md`).
 
 ## Convention (keep this map true)
 
@@ -141,7 +144,7 @@ open CatCrypt.Crypto.SecureCompilation
 open CatCrypt.Crypto.Hax
 open CatCrypt.Crypto.Jasmin.LowCT
 
--- Rot-guards: if any load-bearing entry point is renamed/removed, this file
+-- Rot-guards: if any entry point named above is renamed or removed, this file
 -- stops building, forcing the map above to be updated.
 #check @CompileFromHax.compileFromHax
 #check @ImpExprToThir.impExprToThir

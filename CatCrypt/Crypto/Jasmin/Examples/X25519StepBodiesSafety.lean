@@ -12,18 +12,13 @@ corollary for each, following the pattern of
 `mulBody_memory_safe` / `montUToEdwardsBody_memory_safe` /
 `xeddsaVerifyBody_memory_safe`.
 
-The DSL version in `X25519BenchEmit.lean` cannot be the proof target
-because that file imports `LowCTToMLIR`/`LowCTDSL`, whose pattern
-matches predate the `RBytesSlice` / `RScalarSetExpr` /
-`RArrLoad` / `RArrStore` constructors (build-blocked at the time of
-writing).  Authoring the bodies as flat `LowCT` AST values keeps
-this file independent of those modules — the only import we need is
-`EmittedASTCorrectness` (which provides `AllSlotsBoundAt`,
-`rcall_AllSlots`, the `memory_safe` alias, etc.).
+The proof target is the flat `LowCT` AST rather than the DSL version in
+`X25519BenchEmit.lean`, which pulls in `LowCTToMLIR`/`LowCTDSL`.
+Authoring the bodies as flat AST values keeps this file's only import
+at `EmittedASTCorrectness` (which provides `AllSlotsBoundAt`,
+`rcall_AllSlots`, the `memory_safe` alias).
 
-The bodies below are PROVABLY equal to the DSL ones up to
-`decide`-reduction, so once the DSL build is fixed a one-line
-`by decide` lemma can pin the two together.
+The bodies below are equal to the DSL ones up to `decide`-reduction.
 
 ## Bodies covered
 

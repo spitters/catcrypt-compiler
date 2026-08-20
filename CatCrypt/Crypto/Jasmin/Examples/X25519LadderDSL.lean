@@ -34,21 +34,25 @@ five underlying field ops (`fp_add`, `fp_sub`, `fp_mul`, `fp_sqr`,
 `ladder255` — the 255-round unrolled ladder. Elaboration reduces the
 `for` to 255 copies of the step.
 
-## `cswap_fp` 2-output handling
+## `cswap_fp` 2-output handling (resolved 2026-05-01)
 
-Mathematically `cswap(bit, a, b)` mutates *both* `a` and `b`, which the
-single-destination `rc_call` cannot express.  `LowCT.lean` therefore has a
-dedicated 2-destination leaf constructor `RCallSwap`, with the matching
-`rc_call_swap` helper in `LowCTDSL.lean`.  The emitter
-(`RustEmit.lean::ppLowCT`) renders it as
-`cswap_fp(&mut a, &mut b, &swap)`, matching the natural Rust signature
-`pub fn cswap_fp(a: &mut Fp25519, b: &mut Fp25519, swap: &Fp25519)`.
-Used here for the four cswap sites in `ladderStep`.
+Mathematically `cswap(bit, a, b)` mutates *both* `a` and `b`.  The
+DSL's original `rc_call` constructor only had one destination, which
+forced an awkward `cswap_fp(&mut a, &b, &swap)` emit that Rust would
+reject.
 
-The borrow check for `RCallSwap` is decidable and in place: `borrowOk`
-(`LowCTBorrowCheck.lean`, `borrowOkLeaf`) requires
-`dest1.locVar ≠ dest2.locVar` and that neither destination occurs among the
-arguments.
+Resolved by adding `RCallSwap` to `LowCT.lean` and the matching
+`rc_call_swap` helper in `LowCTDSL.lean`.  The emitter (`RustEmit.
+lean::ppLowCT`) renders it as
+`cswap_fp(&mut a, &mut b, &swap)`, matching the natural Rust
+signature `pub fn cswap_fp(a: &mut Fp25519, b: &mut Fp25519,
+swap: &Fp25519)`.  Used here for the four cswap sites in
+`ladderStep`.
+
+(NOTE: borrowOk for `RCallSwap` — `dest1 ≠ dest2`, neither in
+args — is asserted by the constructor's intent but not yet
+formally proved as a `Decidable` predicate.  Tracked as a
+follow-up in NEXT.md.)
 -/
 
 namespace CatCrypt.Crypto.Jasmin.Examples.X25519LadderDSL

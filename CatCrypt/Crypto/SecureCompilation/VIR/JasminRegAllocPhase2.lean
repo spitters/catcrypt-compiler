@@ -50,8 +50,8 @@ sinked trace, exactly mirroring the Phase-0 `liveOuts`/`interferenceOkB` shape.
 The Phase-1 concrete `mds4Rho_outputs_eq` re-derives as a **corollary**
 (`mds4Rho_outputs_eq_of_general`), confirming subsumption.
 
-`set_option autoImplicit false` is deliberately not set in this module (unlike
-most of `SecureCompilation`, which does set it).
+`set_option autoImplicit false` is intentionally *not* set (SecureCompilation
+convention; see root `CLAUDE.md`).
 -/
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect

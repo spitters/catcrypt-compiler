@@ -209,13 +209,11 @@ def renderSha256Msg2 (src dst : String) : String := "\tsha256msg2\t" ++ src ++ "
 -- `Sha2ShaniEmit.renderQuartet`/`renderMsg1`/`renderMsg2` (which the
 -- whole-compression FIPS-180-4 KAT `bench/sha2_compare/sha2_shani_kat.c`
 -- validates), and the byte encoder `VsimdByteEncoder.encSha256*` assembles them.
-example : renderSha256Rnds2 "%xmm2" "%xmm1" = "\tsha256rnds2\t%xmm0, %xmm2, %xmm1" := by
-  native_decide
-example : renderSha256Rnds2 "%xmm1" "%xmm2" = "\tsha256rnds2\t%xmm0, %xmm1, %xmm2" := by
-  native_decide
-example : renderSha256Msg1 "%xmm4" "%xmm7" = "\tsha256msg1\t%xmm4, %xmm7" := by native_decide
-example : renderSha256Msg2 "%xmm6" "%xmm7" = "\tsha256msg2\t%xmm6, %xmm7" := by native_decide
-example : stageShaRnds2Mk "%xmm4" = "\tvmovdqa\t%xmm4, %xmm0" := by native_decide
+#guard renderSha256Rnds2 "%xmm2" "%xmm1" == "\tsha256rnds2\t%xmm0, %xmm2, %xmm1"
+#guard renderSha256Rnds2 "%xmm1" "%xmm2" == "\tsha256rnds2\t%xmm0, %xmm1, %xmm2"
+#guard renderSha256Msg1 "%xmm4" "%xmm7" == "\tsha256msg1\t%xmm4, %xmm7"
+#guard renderSha256Msg2 "%xmm6" "%xmm7" == "\tsha256msg2\t%xmm6, %xmm7"
+#guard stageShaRnds2Mk "%xmm4" == "\tvmovdqa\t%xmm4, %xmm0"
 
 /-! ## 4. The `Com jasminDialect → List String` walk (owned AT&T, vsimd fragment)
 
@@ -702,44 +700,39 @@ def aesChainExample : Com jasminDialect aesChainCtx (.reg 128) :=
             (.cons .here (.cons (.there (.there (.there .here))) .nil)))
       (.ret .here))
 
-/-- The in-place chain allocator keeps the rolling state on `stateReg = %xmm11`
-    across both rounds: each `vaesenc` writes its result back to `%xmm11` (the
-    in-place recycle), the round keys are read from the held `%xmm0`/`%xmm1`, and
-    the returned register is `%xmm11`. This is the AESCCM/AESSIV/GgmExpand
-    in-place layout, produced with no hand-written `ecbAlloc`/`keyRoundAlloc`. -/
-example :
-    renderVsimdComAutoInPlaceChain "%xmm11" ["%xmm0", "%xmm1"] aesChainExample
-      = (["\tvaesenc %xmm0, %xmm11, %xmm11", "\tvaesenc %xmm1, %xmm11, %xmm11"],
-         "%xmm11") := by native_decide
+-- The in-place chain allocator keeps the rolling state on `stateReg = %xmm11`
+-- across both rounds: each `vaesenc` writes its result back to `%xmm11` (the
+-- in-place recycle), the round keys are read from the held `%xmm0`/`%xmm1`, and
+-- the returned register is `%xmm11`. This is the AESCCM/AESSIV/GgmExpand
+-- in-place layout, produced with no hand-written `ecbAlloc`/`keyRoundAlloc`.
+#guard renderVsimdComAutoInPlaceChain "%xmm11" ["%xmm0", "%xmm1"] aesChainExample
+      == (["\tvaesenc %xmm0, %xmm11, %xmm11", "\tvaesenc %xmm1, %xmm11, %xmm11"],
+         "%xmm11")
 
-/-- Every chain node — input state `p0`, both temps `v0`/`v1` — maps to the single
-    `stateReg = %xmm11` (the in-place recycle: the rolling result never moves). -/
-example :
-    ((vsimdAutoAllocInPlaceChain "%xmm11" ["%xmm0", "%xmm1"] aesChainExample).lookup "p0"
-        = some "%xmm11")
-    ∧ ((vsimdAutoAllocInPlaceChain "%xmm11" ["%xmm0", "%xmm1"] aesChainExample).lookup "v0"
-        = some "%xmm11")
-    ∧ ((vsimdAutoAllocInPlaceChain "%xmm11" ["%xmm0", "%xmm1"] aesChainExample).lookup "v1"
-        = some "%xmm11") := by native_decide
+-- Every chain node — input state `p0`, both temps `v0`/`v1` — maps to the single
+-- `stateReg = %xmm11` (the in-place recycle: the rolling result never moves).
+#guard ((vsimdAutoAllocInPlaceChain "%xmm11" ["%xmm0", "%xmm1"] aesChainExample).lookup "p0"
+        == some "%xmm11")
+    && ((vsimdAutoAllocInPlaceChain "%xmm11" ["%xmm0", "%xmm1"] aesChainExample).lookup "v0"
+        == some "%xmm11")
+    && ((vsimdAutoAllocInPlaceChain "%xmm11" ["%xmm0", "%xmm1"] aesChainExample).lookup "v1"
+        == some "%xmm11")
 
-/-- The round keys land on their held registers in declaration order
-    (`rk0 = p1 ↦ %xmm0`, `rk1 = p2 ↦ %xmm1`) and are never reused as the rolling
-    temp. -/
-example :
-    ((vsimdAutoAllocInPlaceChain "%xmm11" ["%xmm0", "%xmm1"] aesChainExample).lookup "p1"
-        = some "%xmm0")
-    ∧ ((vsimdAutoAllocInPlaceChain "%xmm11" ["%xmm0", "%xmm1"] aesChainExample).lookup "p2"
-        = some "%xmm1") := by native_decide
+-- The round keys land on their held registers in declaration order
+-- (`rk0 = p1 ↦ %xmm0`, `rk1 = p2 ↦ %xmm1`) and are never reused as the rolling
+-- temp.
+#guard ((vsimdAutoAllocInPlaceChain "%xmm11" ["%xmm0", "%xmm1"] aesChainExample).lookup "p1"
+        == some "%xmm0")
+    && ((vsimdAutoAllocInPlaceChain "%xmm11" ["%xmm0", "%xmm1"] aesChainExample).lookup "p2"
+        == some "%xmm1")
 
-/-- With `heldRegs = []` the entry is a pure in-place chain on `stateReg`: the
-    state stays on `%xmm11`, but the (unheld) keys draw fresh pool registers — the
-    chain-recycle on `stateReg` is independent of how the keys are placed. The two
-    `vaesenc` results still both land on `%xmm11`. -/
-example :
-    (renderVsimdComAutoInPlaceChain "%xmm11" [] aesChainExample).2 = "%xmm11"
-    ∧ ((renderVsimdComAutoInPlaceChain "%xmm11" [] aesChainExample).1.all
-        (fun l => CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint.strContains l "%xmm11")) := by
-  native_decide
+-- With `heldRegs = []` the entry is a pure in-place chain on `stateReg`: the
+-- state stays on `%xmm11`, but the (unheld) keys draw fresh pool registers — the
+-- chain-recycle on `stateReg` is independent of how the keys are placed. The two
+-- `vaesenc` results still both land on `%xmm11`.
+#guard ((renderVsimdComAutoInPlaceChain "%xmm11" [] aesChainExample).2 == "%xmm11")
+    && ((renderVsimdComAutoInPlaceChain "%xmm11" [] aesChainExample).1.all
+        (fun l => CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint.strContains l "%xmm11"))
 
 /-! ## 5. A `.text`/`.globl`/`ret` `.s` framing helper
 
@@ -799,120 +792,105 @@ def macAlloc : XAlloc :=
 /-- The rendered body lines (just the two SIMD instructions). -/
 def macBodyLines : List String := (renderVsimdCom macAlloc macExample).1
 
-/-- The body renders to exactly the two expected owned AT&T lines:
-    `vgf2p8mulb %xmm2, %xmm1, %xmm3` (prod = gf2p8mulb(achunk, bbcast)) and
-    `vpxor %xmm3, %xmm0, %xmm0` (res = acc ^ prod). The XOR's result reuses
-    `%xmm0` because the example's allocation maps the result name to the acc
-    register — here the return name `v1` is unmapped, so this pins the renderer
-    against an explicit allocation instead. -/
-example :
-    (renderVsimdCom
+-- The body renders to exactly the two expected owned AT&T lines:
+-- `vgf2p8mulb %xmm2, %xmm1, %xmm3` (prod = gf2p8mulb(achunk, bbcast)) and
+-- `vpxor %xmm3, %xmm0, %xmm0` (res = acc ^ prod). The XOR's result reuses
+-- `%xmm0` because the example's allocation maps the result name to the acc
+-- register — here the return name `v1` is unmapped, so this pins the renderer
+-- against an explicit allocation instead.
+#guard (renderVsimdCom
       [("p0", "%xmm0"), ("p1", "%xmm1"), ("p2", "%xmm2"),
        ("v0", "%xmm3"), ("v1", "%xmm0")] macExample).1
-      = ["\tvgf2p8mulb %xmm2, %xmm1, %xmm3", "\tvpxor %xmm3, %xmm0, %xmm0"] := by
-  native_decide
+      == ["\tvgf2p8mulb %xmm2, %xmm1, %xmm3", "\tvpxor %xmm3, %xmm0, %xmm0"]
 
-/-- `renderVsimdComAuto` (the general allocator, §4b) reproduces the worked MAC
-    step with a valid spill-free XMM assignment **without** the hand-written
-    `macAlloc`: the three params pinned to `%xmm0/1/2`, the temp `prod` (`v0`)
-    to `%xmm3`, the XOR result (`v1`) to the next free `%xmm4`. -/
-example :
-    (renderVsimdComAuto macExample).1
-      = ["\tvgf2p8mulb %xmm2, %xmm1, %xmm3", "\tvpxor %xmm3, %xmm0, %xmm4"] := by
-  native_decide
+-- `renderVsimdComAuto` (the general allocator, §4b) reproduces the worked MAC
+-- step with a valid spill-free XMM assignment **without** the hand-written
+-- `macAlloc`: the three params pinned to `%xmm0/1/2`, the temp `prod` (`v0`)
+-- to `%xmm3`, the XOR result (`v1`) to the next free `%xmm4`.
+#guard (renderVsimdComAuto macExample).1
+      == ["\tvgf2p8mulb %xmm2, %xmm1, %xmm3", "\tvpxor %xmm3, %xmm0, %xmm4"]
 
-/-- The general allocator pins the parameters to the low XMM registers exactly
-    as a hand-written param map would: `p0 ↦ %xmm0`. -/
-example :
-    (allocXmm ["p0", "p1", "p2"]
+-- The general allocator pins the parameters to the low XMM registers exactly
+-- as a hand-written param map would: `p0 ↦ %xmm0`.
+#guard (allocXmm ["p0", "p1", "p2"]
       (collectVsimdDefs (JasminPrint.paramsAndMap macCtx).2 0 macExample).1).lookup "p0"
-      = some "%xmm0" := by native_decide
+      == some "%xmm0"
 
 /-! ### §4c capability pins: ret-register (C), reserved (B), pinned (A)
 
 The three allocator extensions, exercised on `macExample` (params
 `acc/achunk/bbcast` → `%xmm0/1/2`, temp `prod`(`v0`) → `%xmm3`, ret `res`(`v1`)).
-Pins are on short register strings / two-line bodies, so `native_decide`
-stays cheap. -/
+Pins are `#guard` on short register strings / two-line bodies. -/
 
-/-- (C) `renderVsimdComAutoWithReg` returns `(lines, retReg)`; `retReg` matches
-    the line that defines the ret — the allocator puts the XOR result (`v1`) on
-    the next free `%xmm4`, and that is exactly the register named back. A
-    store-bearing leaf reads `%xmm4` here for its ABI store instead of
-    reconstructing it with an `autoXAlloc` helper. -/
-example :
-    renderVsimdComAutoWithReg macExample
-      = (["\tvgf2p8mulb %xmm2, %xmm1, %xmm3", "\tvpxor %xmm3, %xmm0, %xmm4"],
-         "%xmm4") := by native_decide
+-- (C) `renderVsimdComAutoWithReg` returns `(lines, retReg)`; `retReg` matches
+-- the line that defines the ret — the allocator puts the XOR result (`v1`) on
+-- the next free `%xmm4`, and that is exactly the register named back. A
+-- store-bearing leaf reads `%xmm4` here for its ABI store instead of
+-- reconstructing it with an `autoXAlloc` helper.
+#guard renderVsimdComAutoWithReg macExample
+      == (["\tvgf2p8mulb %xmm2, %xmm1, %xmm3", "\tvpxor %xmm3, %xmm0, %xmm4"],
+         "%xmm4")
 
-/-- (C) `vsimdAutoAlloc` exposes the full map; the ret name `v1`'s physical
-    register read off it agrees with `renderVsimdComAutoWithReg`'s `retReg`. -/
-example : xmmReg (vsimdAutoAlloc macExample) "v1" = "%xmm4" := by native_decide
+-- (C) `vsimdAutoAlloc` exposes the full map; the ret name `v1`'s physical
+-- register read off it agrees with `renderVsimdComAutoWithReg`'s `retReg`.
+#guard xmmReg (vsimdAutoAlloc macExample) "v1" == "%xmm4"
 
-/-- (B) `renderVsimdComAutoReserved ["%xmm3"]` holds the driver-live `%xmm3` out
-    of the temp pool, so the temps start at `%xmm4` (`prod`) / `%xmm5` (`res`) —
-    the reserved register never appears as a temp assignment. -/
-example :
-    renderVsimdComAutoReserved ["%xmm3"] macExample
-      = (["\tvgf2p8mulb %xmm2, %xmm1, %xmm4", "\tvpxor %xmm4, %xmm0, %xmm5"],
-         "%xmm5") := by native_decide
+-- (B) `renderVsimdComAutoReserved ["%xmm3"]` holds the driver-live `%xmm3` out
+-- of the temp pool, so the temps start at `%xmm4` (`prod`) / `%xmm5` (`res`) —
+-- the reserved register never appears as a temp assignment.
+#guard renderVsimdComAutoReserved ["%xmm3"] macExample
+      == (["\tvgf2p8mulb %xmm2, %xmm1, %xmm4", "\tvpxor %xmm4, %xmm0, %xmm5"],
+         "%xmm5")
 
-/-- (A) `renderVsimdComAutoPinned "%xmm0"` forces the ret (`res`/`v1`) onto
-    `%xmm0`, the in-place ABI register (AEGIS `…,%xmm0,%xmm0`): the XOR writes
-    back to `%xmm0` and the returned `retReg` is `%xmm0`. -/
-example :
-    renderVsimdComAutoPinned "%xmm0" macExample
-      = (["\tvgf2p8mulb %xmm2, %xmm1, %xmm3", "\tvpxor %xmm3, %xmm0, %xmm0"],
-         "%xmm0") := by native_decide
+-- (A) `renderVsimdComAutoPinned "%xmm0"` forces the ret (`res`/`v1`) onto
+-- `%xmm0`, the in-place ABI register (AEGIS `…,%xmm0,%xmm0`): the XOR writes
+-- back to `%xmm0` and the returned `retReg` is `%xmm0`.
+#guard renderVsimdComAutoPinned "%xmm0" macExample
+      == (["\tvgf2p8mulb %xmm2, %xmm1, %xmm3", "\tvpxor %xmm3, %xmm0, %xmm0"],
+         "%xmm0")
 
 /-! ### §4d pins: custom param order, high-pinned params + low accumulator
 
 Exercised on `macExample` (params `acc/achunk/bbcast` = `p0/p1/p2`, temp
-`prod`(`v0`), ret `res`(`v1`)). Pins are on two-line bodies, so `native_decide`
-stays cheap. -/
+`prod`(`v0`), ret `res`(`v1`)). Pins are `#guard` on two-line bodies. -/
 
-/-- (custom order) `renderVsimdComAutoParamPinned ["%xmm2","%xmm1","%xmm0"] []`
-    places `p0→%xmm2`, `p1→%xmm1`, `p2→%xmm0` (the ZkHash1283 reversed param
-    order). The `gf2p8mulb(p1=achunk, p2=bbcast)` reads `%xmm0,%xmm1`; the temp
-    `prod`(`v0`) lands on the first free register `%xmm3` (params hold `%xmm0/1/2`
-    out of the pool); the XOR `res = acc(p0=%xmm2) ^ prod(%xmm3)` writes the next
-    free `%xmm4`. -/
-example :
-    renderVsimdComAutoParamPinned ["%xmm2", "%xmm1", "%xmm0"] [] macExample
-      = (["\tvgf2p8mulb %xmm0, %xmm1, %xmm3", "\tvpxor %xmm3, %xmm2, %xmm4"],
-         "%xmm4") := by native_decide
+-- (custom order) `renderVsimdComAutoParamPinned ["%xmm2","%xmm1","%xmm0"] []`
+-- places `p0→%xmm2`, `p1→%xmm1`, `p2→%xmm0` (the ZkHash1283 reversed param
+-- order). The `gf2p8mulb(p1=achunk, p2=bbcast)` reads `%xmm0,%xmm1`; the temp
+-- `prod`(`v0`) lands on the first free register `%xmm3` (params hold `%xmm0/1/2`
+-- out of the pool); the XOR `res = acc(p0=%xmm2) ^ prod(%xmm3)` writes the next
+-- free `%xmm4`.
+#guard renderVsimdComAutoParamPinned ["%xmm2", "%xmm1", "%xmm0"] [] macExample
+      == (["\tvgf2p8mulb %xmm0, %xmm1, %xmm3", "\tvpxor %xmm3, %xmm2, %xmm4"],
+         "%xmm4")
 
-/-- (custom order, map) the param→register map places `p0 ↦ %xmm2` (custom,
-    not the head-first `%xmm0`). -/
-example :
-    (vsimdAutoAllocParamPinned ["%xmm2", "%xmm1", "%xmm0"] [] macExample).lookup "p0"
-      = some "%xmm2" := by native_decide
+-- (custom order, map) the param→register map places `p0 ↦ %xmm2` (custom,
+-- not the head-first `%xmm0`).
+#guard (vsimdAutoAllocParamPinned ["%xmm2", "%xmm1", "%xmm0"] [] macExample).lookup "p0"
+      == some "%xmm2"
 
-/-- (high params + low accumulator) `renderVsimdComAutoParamPinned
-    ["%xmm13","%xmm14","%xmm15"] ["%xmm0"]` pins the params **high**
-    (`%xmm13/14/15`, the QsBatchDot layout) and holds the low GF-accumulator
-    register `%xmm0` out of the temp pool. The temps therefore avoid `%xmm0`
-    entirely — `prod`(`v0`) draws the first free `%xmm1`, `res`(`v1`) the next
-    `%xmm2`. -/
-example :
-    renderVsimdComAutoParamPinned ["%xmm13", "%xmm14", "%xmm15"] ["%xmm0"] macExample
-      = (["\tvgf2p8mulb %xmm15, %xmm14, %xmm1", "\tvpxor %xmm1, %xmm13, %xmm2"],
-         "%xmm2") := by native_decide
+-- (high params + low accumulator) `renderVsimdComAutoParamPinned
+-- ["%xmm13","%xmm14","%xmm15"] ["%xmm0"]` pins the params **high**
+-- (`%xmm13/14/15`, the QsBatchDot layout) and holds the low GF-accumulator
+-- register `%xmm0` out of the temp pool. The temps therefore avoid `%xmm0`
+-- entirely — `prod`(`v0`) draws the first free `%xmm1`, `res`(`v1`) the next
+-- `%xmm2`.
+#guard renderVsimdComAutoParamPinned ["%xmm13", "%xmm14", "%xmm15"] ["%xmm0"] macExample
+      == (["\tvgf2p8mulb %xmm15, %xmm14, %xmm1", "\tvpxor %xmm1, %xmm13, %xmm2"],
+         "%xmm2")
 
-/-- (high params + low accumulator) the held `%xmm0` is never handed to a temp:
-    neither `v0` nor `v1` maps to it. -/
-example :
-    ((vsimdAutoAllocParamPinned ["%xmm13", "%xmm14", "%xmm15"] ["%xmm0"] macExample).lookup "v0"
-      = some "%xmm1")
-    ∧ ((vsimdAutoAllocParamPinned ["%xmm13", "%xmm14", "%xmm15"] ["%xmm0"] macExample).lookup "v1"
-      = some "%xmm2") := by native_decide
+-- (high params + low accumulator) the held `%xmm0` is never handed to a temp:
+-- neither `v0` nor `v1` maps to it.
+#guard ((vsimdAutoAllocParamPinned ["%xmm13", "%xmm14", "%xmm15"] ["%xmm0"] macExample).lookup "v0"
+      == some "%xmm1")
+    && ((vsimdAutoAllocParamPinned ["%xmm13", "%xmm14", "%xmm15"] ["%xmm0"] macExample).lookup "v1"
+      == some "%xmm2")
 
-/-- (degeneracy) with `paramRegs = []` the entry reduces to head-first params
-    (`%xmm0/1/2`) with the held temp registers — i.e. `renderVsimdComAutoReserved
-    ["%xmm3"]`: temps start at `%xmm4`. -/
-example :
-    renderVsimdComAutoParamPinned [] ["%xmm3"] macExample
-      = renderVsimdComAutoReserved ["%xmm3"] macExample := by native_decide
+-- (degeneracy) with `paramRegs = []` the entry reduces to head-first params
+-- (`%xmm0/1/2`) with the held temp registers — i.e. `renderVsimdComAutoReserved
+-- ["%xmm3"]`: temps start at `%xmm4`.
+#guard renderVsimdComAutoParamPinned [] ["%xmm3"] macExample
+      == renderVsimdComAutoReserved ["%xmm3"] macExample
 
 /-- The full framed `.s` for the worked MAC step, with the SysV ABI load/store
     glue (`vmovdqu (%rdi), %xmm0` …) — the owned, no-jasminc, no-`VCryptOp`
@@ -951,25 +929,22 @@ theorem asm_has_export :
     lowercase-mnemonic path. -/
 #guard !(strContains macExportAsm "VGF2P8MULB")
 
-/-- A `clmul` binding renders with a leading `$imm` and the `vpclmulqdq`
-    mnemonic (AT&T order `$imm, src2, src1, dst`). -/
-example :
-    renderVsimdInstr [("d", "%xmm2"), ("a", "%xmm0"), ("b", "%xmm1")]
+-- A `clmul` binding renders with a leading `$imm` and the `vpclmulqdq`
+-- mnemonic (AT&T order `$imm, src2, src1, dst`).
+#guard renderVsimdInstr [("d", "%xmm2"), ("a", "%xmm0"), ("b", "%xmm1")]
       (.clmul 0) "d" "a" "b"
-      = "\tvpclmulqdq $0, %xmm1, %xmm0, %xmm2" := by native_decide
+      == "\tvpclmulqdq $0, %xmm1, %xmm0, %xmm2"
 
-/-- An `affineqb` binding renders with a leading `$imm` and the `vgf2p8affineqb`
-    mnemonic. -/
-example :
-    renderVsimdInstr [("d", "%xmm2"), ("a", "%xmm0"), ("A", "%xmm1")]
+-- An `affineqb` binding renders with a leading `$imm` and the `vgf2p8affineqb`
+-- mnemonic.
+#guard renderVsimdInstr [("d", "%xmm2"), ("a", "%xmm0"), ("A", "%xmm1")]
       (.affineqb 7) "d" "a" "A"
-      = "\tvgf2p8affineqb $7, %xmm1, %xmm0, %xmm2" := by native_decide
+      == "\tvgf2p8affineqb $7, %xmm1, %xmm0, %xmm2"
 
-/-- A `packed .add 32` binding renders as `vpaddd` (dword-lane add). -/
-example :
-    renderVsimdInstr [("d", "%xmm2"), ("a", "%xmm0"), ("b", "%xmm1")]
+-- A `packed .add 32` binding renders as `vpaddd` (dword-lane add).
+#guard renderVsimdInstr [("d", "%xmm2"), ("a", "%xmm0"), ("b", "%xmm1")]
       (.packed .add 32) "d" "a" "b"
-      = "\tvpaddd %xmm1, %xmm0, %xmm2" := by native_decide
+      == "\tvpaddd %xmm1, %xmm0, %xmm2"
 
 /-! ## 7b. AES round render pins (`vaesenc` / `vaesenclast` / `vaeskeygenassist`)
 
@@ -980,36 +955,32 @@ The three AES-round `SimdOp` arms render byte-identically to the bespoke
 (`vaeskeygenassist $rcon, %xmmsrc, %xmmdst`). This is the FAEST/AES owned-emit
 migration off the bespoke `Vec128.VCryptOp` AES arms. -/
 
-/-- `vaesenc` renders as the 3-operand `vaesenc %xmmrk, %xmmstate, %xmmdst`
-    (state = `a`, rk = `b`), byte-identical to `renderVCryptInst`'s `.vaesenc`. -/
-example :
-    renderVsimdInstr [("d", "%xmm2"), ("a", "%xmm0"), ("b", "%xmm1")]
+-- `vaesenc` renders as the 3-operand `vaesenc %xmmrk, %xmmstate, %xmmdst`
+-- (state = `a`, rk = `b`), byte-identical to `renderVCryptInst`'s `.vaesenc`.
+#guard renderVsimdInstr [("d", "%xmm2"), ("a", "%xmm0"), ("b", "%xmm1")]
       .vaesenc "d" "a" "b"
-      = "\tvaesenc %xmm1, %xmm0, %xmm2" := by native_decide
+      == "\tvaesenc %xmm1, %xmm0, %xmm2"
 
-/-- `vaesenclast` renders as `vaesenclast %xmmrk, %xmmstate, %xmmdst`,
-    byte-identical to `renderVCryptInst`'s `.vaesenclast`. -/
-example :
-    renderVsimdInstr [("d", "%xmm2"), ("a", "%xmm0"), ("b", "%xmm1")]
+-- `vaesenclast` renders as `vaesenclast %xmmrk, %xmmstate, %xmmdst`,
+-- byte-identical to `renderVCryptInst`'s `.vaesenclast`.
+#guard renderVsimdInstr [("d", "%xmm2"), ("a", "%xmm0"), ("b", "%xmm1")]
       .vaesenclast "d" "a" "b"
-      = "\tvaesenclast %xmm1, %xmm0, %xmm2" := by native_decide
+      == "\tvaesenclast %xmm1, %xmm0, %xmm2"
 
-/-- `vaeskeygen 1` renders as the unary `vaeskeygenassist $1, %xmmsrc, %xmmdst`
-    (leading `$rcon`, source = `a`; `b` is ignored), byte-identical to
-    `renderVCryptInst`'s `.vaeskeygen` arm. -/
-example :
-    renderVsimdInstr [("d", "%xmm2"), ("a", "%xmm0"), ("b", "%xmm1")]
+-- `vaeskeygen 1` renders as the unary `vaeskeygenassist $1, %xmmsrc, %xmmdst`
+-- (leading `$rcon`, source = `a`; `b` is ignored), byte-identical to
+-- `renderVCryptInst`'s `.vaeskeygen` arm.
+#guard renderVsimdInstr [("d", "%xmm2"), ("a", "%xmm0"), ("b", "%xmm1")]
       (.vaeskeygen 1) "d" "a" "b"
-      = "\tvaeskeygenassist $1, %xmm0, %xmm2" := by native_decide
+      == "\tvaeskeygenassist $1, %xmm0, %xmm2"
 
-/-- `vpshufd 0xFF` renders as the unary `vpshufd $255, %xmmsrc, %xmmdst`
-    (leading `$imm8` control byte, source = `a`; `b` is ignored), byte-identical
-    to `renderVCryptInst`'s `.vpshufd` arm. This is the key-schedule dword
-    broadcast (`VPSHUFD $0xFF`) the Owf128/AesNiLeaf/PrgLambda kernels emit. -/
-example :
-    renderVsimdInstr [("d", "%xmm2"), ("a", "%xmm0"), ("b", "%xmm1")]
+-- `vpshufd 0xFF` renders as the unary `vpshufd $255, %xmmsrc, %xmmdst`
+-- (leading `$imm8` control byte, source = `a`; `b` is ignored), byte-identical
+-- to `renderVCryptInst`'s `.vpshufd` arm. This is the key-schedule dword
+-- broadcast (`VPSHUFD $0xFF`) the Owf128/AesNiLeaf/PrgLambda kernels emit.
+#guard renderVsimdInstr [("d", "%xmm2"), ("a", "%xmm0"), ("b", "%xmm1")]
       (.vpshufd 0xFF) "d" "a" "b"
-      = "\tvpshufd $255, %xmm0, %xmm2" := by native_decide
+      == "\tvpshufd $255, %xmm0, %xmm2"
 
 /-! ## 8. Byte-shift render pins (`vpslldq` / `vpsrldq`)
 
@@ -1024,25 +995,23 @@ constructed single-arg `Expr` over the one-element context `[.reg 128]`. -/
 /-- The one-source context for a byte-shift pin: a single `reg 128` operand. -/
 abbrev shiftCtx : Ctxt jasminDialect := [.reg 128]
 
-/-- `lowerVsimdExpr` on a `vpslldq 4` binding (single source = arg 0) renders
-    byte-identically to `renderVCryptInst`'s `.vpslldq` arm:
-    `vpslldq $4, %xmm0, %xmm2`. -/
-example :
-    lowerVsimdExpr (Γ := shiftCtx)
+-- `lowerVsimdExpr` on a `vpslldq 4` binding (single source = arg 0) renders
+-- byte-identically to `renderVCryptInst`'s `.vpslldq` arm:
+-- `vpslldq $4, %xmm0, %xmm2`.
+#guard lowerVsimdExpr (Γ := shiftCtx)
       (JasminPrint.paramsAndMap shiftCtx).2
       [("p0", "%xmm0"), ("v0", "%xmm2")]
       (.mk (.vpslldq 4) rfl (.cons .here .nil)) "v0"
-      = "\tvpslldq $4, %xmm0, %xmm2" := by native_decide
+      == "\tvpslldq $4, %xmm0, %xmm2"
 
-/-- `lowerVsimdExpr` on a `vpsrldq 8` binding (single source = arg 0) renders
-    byte-identically to `renderVCryptInst`'s `.vpsrldq` arm (the GHASH/Karatsuba
-    byte-shift): `vpsrldq $8, %xmm0, %xmm2`. -/
-example :
-    lowerVsimdExpr (Γ := shiftCtx)
+-- `lowerVsimdExpr` on a `vpsrldq 8` binding (single source = arg 0) renders
+-- byte-identically to `renderVCryptInst`'s `.vpsrldq` arm (the GHASH/Karatsuba
+-- byte-shift): `vpsrldq $8, %xmm0, %xmm2`.
+#guard lowerVsimdExpr (Γ := shiftCtx)
       (JasminPrint.paramsAndMap shiftCtx).2
       [("p0", "%xmm0"), ("v0", "%xmm2")]
       (.mk (.vpsrldq 8) rfl (.cons .here .nil)) "v0"
-      = "\tvpsrldq $8, %xmm0, %xmm2" := by native_decide
+      == "\tvpsrldq $8, %xmm0, %xmm2"
 
 /-! ## 9. The YMM (256-bit / AVX2) auto-allocator tier
 
@@ -1200,51 +1169,44 @@ index) are identical to the XMM pins in §6 — only the prefix differs, which i
 the whole point of the YMM tier. (The kernel shape stands in for the AVX2
 leaves; `gf2p8mulb`/`vpxor` are width-agnostic mnemonics.) -/
 
-/-- The YMM auto-allocator reproduces the worked step over `%ymm`: params →
-    `%ymm0/1/2`, temp → `%ymm3`, result → `%ymm4`. Byte-for-byte the §6
-    `renderVsimdComAuto` pin with `%xmm`→`%ymm`. -/
-example :
-    (renderVsimdComAutoYmm macExample).1
-      = ["\tvgf2p8mulb %ymm2, %ymm1, %ymm3", "\tvpxor %ymm3, %ymm0, %ymm4"] := by
-  native_decide
+-- The YMM auto-allocator reproduces the worked step over `%ymm`: params →
+-- `%ymm0/1/2`, temp → `%ymm3`, result → `%ymm4`. Byte-for-byte the §6
+-- `renderVsimdComAuto` pin with `%xmm`→`%ymm`.
+#guard (renderVsimdComAutoYmm macExample).1
+      == ["\tvgf2p8mulb %ymm2, %ymm1, %ymm3", "\tvpxor %ymm3, %ymm0, %ymm4"]
 
-/-- The YMM allocator pins the first parameter to the low YMM register, exactly
-    as a hand-written `allocYmm` would: `p0 ↦ %ymm0`. -/
-example : (vsimdAutoAllocYmm macExample).lookup "p0" = some "%ymm0" := by
-  native_decide
+-- The YMM allocator pins the first parameter to the low YMM register, exactly
+-- as a hand-written `allocYmm` would: `p0 ↦ %ymm0`.
+#guard (vsimdAutoAllocYmm macExample).lookup "p0" == some "%ymm0"
 
-/-- (gap C, YMM) `renderVsimdComAutoYmmWithReg` returns `(lines, retReg)` with
-    `retReg` = `%ymm4`, the register the ret (`v1`) was allocated to — what a
-    store-bearing AVX2 leaf names for its `vmovdqu %ymm4, (%rdi)` ABI store. -/
-example :
-    renderVsimdComAutoYmmWithReg macExample
-      = (["\tvgf2p8mulb %ymm2, %ymm1, %ymm3", "\tvpxor %ymm3, %ymm0, %ymm4"],
-         "%ymm4") := by native_decide
+-- (gap C, YMM) `renderVsimdComAutoYmmWithReg` returns `(lines, retReg)` with
+-- `retReg` = `%ymm4`, the register the ret (`v1`) was allocated to — what a
+-- store-bearing AVX2 leaf names for its `vmovdqu %ymm4, (%rdi)` ABI store.
+#guard renderVsimdComAutoYmmWithReg macExample
+      == (["\tvgf2p8mulb %ymm2, %ymm1, %ymm3", "\tvpxor %ymm3, %ymm0, %ymm4"],
+         "%ymm4")
 
-/-- The pool is the 16 AVX `%ymm` registers (the `%xmm`→`%ymm` retargeting of
-    `xmmPool`). -/
-example : ymmPool.length = 16 := by native_decide
+-- The pool is the 16 AVX `%ymm` registers (the `%xmm`→`%ymm` retargeting of
+-- `xmmPool`).
+#guard ymmPool.length == 16
 
-/-- A `packed .add 32` binding renders as `vpaddd` over `%ymm` operands (the AVX2
-    dword-lane add the NTT/ChaCha kernels emit). -/
-example :
-    renderVsimdInstrY [("d", "%ymm2"), ("a", "%ymm0"), ("b", "%ymm1")]
+-- A `packed .add 32` binding renders as `vpaddd` over `%ymm` operands (the AVX2
+-- dword-lane add the NTT/ChaCha kernels emit).
+#guard renderVsimdInstrY [("d", "%ymm2"), ("a", "%ymm0"), ("b", "%ymm1")]
       (.packed .add 32) "d" "a" "b"
-      = "\tvpaddd %ymm1, %ymm0, %ymm2" := by native_decide
+      == "\tvpaddd %ymm1, %ymm0, %ymm2"
 
-/-- A `packed .mul 16` binding renders as `vpmullw` over `%ymm` operands (the
-    AVX2 NTT Montgomery low-product). -/
-example :
-    renderVsimdInstrY [("d", "%ymm2"), ("a", "%ymm0"), ("b", "%ymm1")]
+-- A `packed .mul 16` binding renders as `vpmullw` over `%ymm` operands (the
+-- AVX2 NTT Montgomery low-product).
+#guard renderVsimdInstrY [("d", "%ymm2"), ("a", "%ymm0"), ("b", "%ymm1")]
       (.packed .mul 16) "d" "a" "b"
-      = "\tvpmullw %ymm1, %ymm0, %ymm2" := by native_decide
+      == "\tvpmullw %ymm1, %ymm0, %ymm2"
 
-/-- A `mulhi16` binding renders as `vpmulhw` over `%ymm` operands (the AVX2 NTT
-    signed high-product). -/
-example :
-    renderVsimdInstrY [("d", "%ymm2"), ("a", "%ymm0"), ("b", "%ymm1")]
+-- A `mulhi16` binding renders as `vpmulhw` over `%ymm` operands (the AVX2 NTT
+-- signed high-product).
+#guard renderVsimdInstrY [("d", "%ymm2"), ("a", "%ymm0"), ("b", "%ymm1")]
       .mulhi16 "d" "a" "b"
-      = "\tvpmulhw %ymm1, %ymm0, %ymm2" := by native_decide
+      == "\tvpmulhw %ymm1, %ymm0, %ymm2"
 
 /-! ## 10. The ZMM (512-bit / AVX-512) auto-allocator tier
 
@@ -1373,48 +1335,44 @@ def zmmBflyExample : Com jasminDialect [.reg 512, .reg 512, .reg 512] (.reg 512)
             (.cons (.there (.there (.there .here))) (.cons .here .nil)))
       (.ret .here))
 
-/-- The ZMM auto-allocator pins the params to the low ZMM registers and linear-
-    scans the temps over the rest of `%zmm0..31`: `w`/`a`/`b`(`p0/p1/p2`) →
-    `%zmm0/1/2`, `prod`(`v0`) → `%zmm3`, `hi`(`v1`) → next free `%zmm4` — exactly
-    the §9 YMM / §6 XMM allocator decisions, only the `%zmm` prefix and 32-reg
-    pool differ. -/
-example :
-    vsimdAutoAllocZmm zmmBflyExample
-      = [("v1", "%zmm4"), ("v0", "%zmm3"),
-         ("p0", "%zmm0"), ("p1", "%zmm1"), ("p2", "%zmm2")] := by native_decide
+-- The ZMM auto-allocator pins the params to the low ZMM registers and linear-
+-- scans the temps over the rest of `%zmm0..31`: `w`/`a`/`b`(`p0/p1/p2`) →
+-- `%zmm0/1/2`, `prod`(`v0`) → `%zmm3`, `hi`(`v1`) → next free `%zmm4` — exactly
+-- the §9 YMM / §6 XMM allocator decisions, only the `%zmm` prefix and 32-reg
+-- pool differ.
+#guard vsimdAutoAllocZmm zmmBflyExample
+      == [("v1", "%zmm4"), ("v0", "%zmm3"),
+         ("p0", "%zmm0"), ("p1", "%zmm1"), ("p2", "%zmm2")]
 
-/-- The ZMM allocator pins the first parameter to the low ZMM register, exactly
-    as a hand-written `bflyAlloc` would: `p0 ↦ %zmm0`. -/
-example : (vsimdAutoAllocZmm zmmBflyExample).lookup "p0" = some "%zmm0" := by
-  native_decide
+-- The ZMM allocator pins the first parameter to the low ZMM register, exactly
+-- as a hand-written `bflyAlloc` would: `p0 ↦ %zmm0`.
+#guard (vsimdAutoAllocZmm zmmBflyExample).lookup "p0" == some "%zmm0"
 
-/-- The temp `prod`(`v0`) draws `%zmm3` (first free after the three pinned
-    params); the result `hi`(`v1`) the next free `%zmm4`. The reserved params are
-    never recycled, so the live input registers survive. -/
-example : (vsimdAutoAllocZmm zmmBflyExample).lookup "v0" = some "%zmm3" := by
-  native_decide
+-- The temp `prod`(`v0`) draws `%zmm3` (first free after the three pinned
+-- params); the result `hi`(`v1`) the next free `%zmm4`. The reserved params are
+-- never recycled, so the live input registers survive.
+#guard (vsimdAutoAllocZmm zmmBflyExample).lookup "v0" == some "%zmm3"
 
-/-- (gap C, ZMM) the ret value's physical register read off the alloc is
-    `%zmm4` — what a store-bearing AVX-512 leaf names for its
-    `vmovdqu64 %zmm4, (%rdi)` ABI store. -/
-example : vsimdAutoRetRegZmm zmmBflyExample = "%zmm4" := by native_decide
+-- (gap C, ZMM) the ret value's physical register read off the alloc is
+-- `%zmm4` — what a store-bearing AVX-512 leaf names for its
+-- `vmovdqu64 %zmm4, (%rdi)` ABI store.
+#guard vsimdAutoRetRegZmm zmmBflyExample == "%zmm4"
 
-/-- The ZMM pool is the 32 AVX-512 `%zmm` registers — double the 16 of `xmmPool`
-    / `ymmPool` (the AVX-512 vector-register-file widening). -/
-example : zmmPool.length = 32 := by native_decide
+-- The ZMM pool is the 32 AVX-512 `%zmm` registers — double the 16 of `xmmPool`
+-- / `ymmPool` (the AVX-512 vector-register-file widening).
+#guard zmmPool.length == 32
 
-/-- `zmmPool` indeed starts at `%zmm0` and the widening is real: `%zmm31` (index
-    31) is in the pool, unlike the 16-reg `xmmPool`/`ymmPool`. -/
-example : zmmPool.getLast? = some "%zmm31" := by native_decide
+-- `zmmPool` indeed starts at `%zmm0` and the widening is real: `%zmm31` (index
+-- 31) is in the pool, unlike the 16-reg `xmmPool`/`ymmPool`.
+#guard zmmPool.getLast? == some "%zmm31"
 
-/-- A `vpackZMMd` (dword-lane) binding is also recognized by the ZMM
-    def-collector (SHA-256/ChaCha20 ride the dword analogue), reading both source
-    args for liveness. A single-`vpackZMMd` block pins `p0 ↦ %zmm0`. -/
-example :
-    (vsimdAutoAllocZmm
+-- A `vpackZMMd` (dword-lane) binding is also recognized by the ZMM
+-- def-collector (SHA-256/ChaCha20 ride the dword analogue), reading both source
+-- args for liveness. A single-`vpackZMMd` block pins `p0 ↦ %zmm0`.
+#guard (vsimdAutoAllocZmm
       (Γ := [.reg 512, .reg 512]) (t := .reg 512)
       (.var (.mk (.vpackZMMd .xor) rfl
               (.cons .here (.cons (.there .here) .nil)))
-        (.ret .here))).lookup "p0" = some "%zmm0" := by native_decide
+        (.ret .here))).lookup "p0" == some "%zmm0"
 
 end CatCrypt.Crypto.SecureCompilation.VIR.VsimdAsmPrint

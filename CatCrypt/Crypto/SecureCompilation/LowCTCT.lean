@@ -115,14 +115,6 @@ def isCT_LowCT (leaves : CTLeaves) : LowCT → Bool
   -- by the over-strict CT predicate exactly when the corresponding
   -- leaf calls are; structural-only forms are accepted unconditionally.
   | .RCallSwap f _ _ _               => leaves f
-  -- An inline asm op is CT iff its opcode is on the vendor DOIT∩DIT list
-  -- (`ct_intrinsic` — CT_INSTRUCTION_REFERENCES.md §"Arithmetic/logic Copn").
-  -- This **rejects** `DIV`/`IDIV`/`BSF`/`BSR`/FP/variable-latency opcodes,
-  -- which are NOT on the list and would otherwise leak through timing.  It
-  -- matches the back-end `isCT_InstrR` `Copn` clause, which gates the emitted
-  -- `Copn (Oasm name)` on the same `ct_intrinsic name`, so the two predicates
-  -- agree on `RAsmOp`.
-  | .RAsmOp name _ _                 => CatCrypt.Crypto.Jasmin.ct_intrinsic name
   | .RCallN f _ _                    => leaves f
   | .RSelect _ _ _ _                 => true
   | .RAssert _                       => true
@@ -130,19 +122,16 @@ def isCT_LowCT (leaves : CTLeaves) : LowCT → Bool
   | .RFnDef _ _ _ body cont          =>
       isCT_LowCT leaves body && isCT_LowCT leaves cont
   | .RFnCall f _ _                   => leaves f
-  -- Phase I (2026-05-03): tuple component store/load is structural.
-  | .RTupleStore _ _ _               => true
+  -- Phase I (2026-05-03): tuple component load is structural.
   | .RTupleLoad _ _ _                => true
-  -- Pure data-movement constructors: none of these carry data-dependent
-  -- control flow, so they are CT unconditionally.  Their leak traces are
-  -- constant (independent of the values moved): `RArrStore`/`RArrLoad` each
-  -- emit one opaque `extCall` event, `RBytesSlice` one event carrying its
-  -- literal `start`/`len`, and `RScalarSetExpr` none (see
-  -- `LowCTLeakTraceDef.lean`).
+  -- Phase Ext / Ext2 (2026-05-12, 2026-05-13): pure data-movement
+  -- constructors landed in commits `022da829` and `425ef76a`.  None
+  -- of these carry data-dependent control flow, so they're CT
+  -- unconditionally — the leak trace for each is `[]` (see
+  -- `LowCTLeakTrace.lean`).
   | .RArrStore _ _ _                 => true
   | .RArrLoad _ _ _                  => true
   | .RScalarSetExpr _ _              => true
-  | .RBytesSlice _ _ _ _             => true
   -- Phase DD (2026-05-28): literal-index array access is pure
   -- data-movement (no data-dependent control flow), CT unconditionally.
   | .RArrStoreLit _ _ _              => true
@@ -300,9 +289,6 @@ theorem isCT_LowCT_mono {a b : CTLeaves}
       intro h
       simp only [isCT_LowCT] at h ⊢
       exact hab f h
-  -- `RAsmOp` is gated on `ct_intrinsic name` (no `leaves` dependence), so
-  -- the implication is the identity on `ct_intrinsic name = true`.
-  | RAsmOp _ _ _ => intro h; exact h
   | RCallN f _ _ =>
       intro h
       simp only [isCT_LowCT] at h ⊢
@@ -323,7 +309,6 @@ theorem isCT_LowCT_mono {a b : CTLeaves}
       intro h
       simp only [isCT_LowCT] at h ⊢
       exact hab f h
-  | RTupleStore _ _ _ => intro _; rfl
   | RTupleLoad _ _ _ => intro _; rfl
   -- Phase Ext / Ext2 (2026-05-12, 2026-05-13): structural data-movement
   -- constructors — `isCT_LowCT` returns the constant `true`, so
@@ -331,7 +316,6 @@ theorem isCT_LowCT_mono {a b : CTLeaves}
   | RArrStore _ _ _ => intro _; rfl
   | RArrLoad _ _ _ => intro _; rfl
   | RScalarSetExpr _ _ => intro _; rfl
-  | RBytesSlice _ _ _ _ => intro _; rfl
   -- Phase DD (2026-05-28): literal-index access is structurally `true`.
   | RArrStoreLit _ _ _ => intro _; rfl
   | RArrLoadLit _ _ _ => intro _; rfl
@@ -410,13 +394,6 @@ def isCT_LowCT' (leaves : CTLeaves) (secrets : SecretSet) : LowCT → Bool
   | .RLimbStoreExpr _ _ _            => true
   -- Phase F/G/H/L/M (2026-05-03): mirror the strict predicate.
   | .RCallSwap f _ _ _               => leaves f
-  -- Tightened (#235): gate the inline-asm opcode on the vendor DOIT∩DIT
-  -- whitelist `ct_intrinsic`, rejecting `DIV`/`IDIV`/`BSF`/`BSR`/FP/
-  -- variable-latency opcodes.  Was `true` (accepted *any* opcode name,
-  -- including non-CT ones) — a CT soundness gap closed here; mirrors the
-  -- back-end `isCT_InstrR` `Copn` clause.  See
-  -- CT_INSTRUCTION_REFERENCES.md §"Arithmetic/logic Copn".
-  | .RAsmOp name _ _                 => CatCrypt.Crypto.Jasmin.ct_intrinsic name
   | .RCallN f _ _                    => leaves f
   | .RSelect _ _ _ _                 => true
   | .RAssert _                       => true
@@ -424,14 +401,12 @@ def isCT_LowCT' (leaves : CTLeaves) (secrets : SecretSet) : LowCT → Bool
   | .RFnDef _ _ _ body cont          =>
       isCT_LowCT' leaves secrets body && isCT_LowCT' leaves secrets cont
   | .RFnCall f _ _                   => leaves f
-  -- Phase I (2026-05-03): tuple component store/load is structural.
-  | .RTupleStore _ _ _               => true
+  -- Phase I (2026-05-03): tuple component load is structural.
   | .RTupleLoad _ _ _                => true
   -- Phase Ext / Ext2 (2026-05-12, 2026-05-13): mirror the strict predicate.
   | .RArrStore _ _ _                 => true
   | .RArrLoad _ _ _                  => true
   | .RScalarSetExpr _ _              => true
-  | .RBytesSlice _ _ _ _             => true
   -- Phase DD (2026-05-28) / E2 (2026-05-29): mirror the strict predicate.
   | .RArrStoreLit _ _ _              => true
   | .RArrLoadLit _ _ _               => true
@@ -444,8 +419,8 @@ on `RIfNz` / `RWhileNz` — but the right-hand side under `emptySecrets`
 predicates therefore disagree exactly on programs whose only obstacle
 to CT is a (now-admissible) branch.
 
-The strict-implies-relaxed direction is the genuinely useful
-compatibility statement: anything the over-strict predicate accepts,
+The strict-implies-relaxed direction is the usable compatibility
+statement: anything the over-strict predicate accepts,
 the relaxed predicate also accepts under `emptySecrets`. -/
 theorem isCT_LowCT_imp_relaxed_emptySecrets
     (leaves : CTLeaves) (c : LowCT)
@@ -486,8 +461,6 @@ theorem isCT_LowCT_imp_relaxed_emptySecrets
   | RCallSwap f _ _ _ =>
       simp only [isCT_LowCT] at h
       simp only [isCT_LowCT', h]
-  -- Both predicates gate `RAsmOp name` on the same `ct_intrinsic name`.
-  | RAsmOp _ _ _ => simpa only [isCT_LowCT, isCT_LowCT'] using h
   | RCallN f _ _ =>
       simp only [isCT_LowCT] at h
       simp only [isCT_LowCT', h]
@@ -504,14 +477,12 @@ theorem isCT_LowCT_imp_relaxed_emptySecrets
   | RFnCall f _ _ =>
       simp only [isCT_LowCT] at h
       simp only [isCT_LowCT', h]
-  | RTupleStore _ _ _ => rfl
   | RTupleLoad _ _ _ => rfl
   -- Phase Ext / Ext2 (2026-05-12, 2026-05-13): both sides constantly
   -- return `true`, so reflexivity suffices.
   | RArrStore _ _ _ => rfl
   | RArrLoad _ _ _ => rfl
   | RScalarSetExpr _ _ => rfl
-  | RBytesSlice _ _ _ _ => rfl
   -- Phase DD (2026-05-28): both sides constantly `true`.
   | RArrStoreLit _ _ _ => rfl
   | RArrLoadLit _ _ _ => rfl

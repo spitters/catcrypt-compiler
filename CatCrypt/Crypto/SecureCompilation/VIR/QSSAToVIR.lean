@@ -33,9 +33,10 @@ program denote to?".
 
 ### Why no `DialectDenoteM quantumDialect (QComp d)` instance here
 
-This file deliberately provides no `DialectDenoteM quantumDialect (QComp d)`
-instance. Any such instance could only be a placeholder — type-correct but
-semantically vacuous, with every program denoting to `qpure ()` — because:
+The earlier Phase-2 draft attempted a `DialectDenoteM` instance routing every
+op to `QComp.qpure (default)`. That instance was a *placeholder*: it was
+type-correct but semantically vacuous (every program denoted to `qpure ()`).
+It has been removed (2026-05-14) because:
 
 * `DialectDenoteM`'s `denoteM op (args : HVector ⟦·⟧ op.sig) : M ⟦op.ret⟧`
   shape can only see the *values* under args, but `⟦.qubit⟧ = Unit` —
@@ -136,12 +137,12 @@ def toVIRVar :
 `QuantumSSA.QOp` is indexed by its return type; the dialect's `QOp` is
 not. The translation drops the index but preserves the gate identity. -/
 
-/-- Unused placeholder: maps any real angle to the `Float` literal `0.0`.
-
-    Superseded by `QuantumDialect.QOp.rzReal : ℝ → QOp`. The Phase-2 bridge
-    (`mkUnitary1Expr`) routes `QuantumSSA.QOp.rz θ` straight to
-    `QuantumDialect.QOp.rzReal θ` with no conversion loss, so nothing in this
-    repository calls `toRzFloat`; it is retained only for API stability. -/
+/-- DEPRECATED (2026-05-14): the dialect now ships `QOp.rzReal : ℝ → QOp`
+    alongside `QOp.rz : Float → QOp`. The `toRzFloat` placeholder is no
+    longer used by the Phase-2 bridge (`mkUnitary1Expr` routes
+    `QuantumSSA.QOp.rz θ` directly to `QuantumDialect.QOp.rzReal θ`).
+    Retained for legacy callers — and for the QFT-2 program in
+    `Programs/QFTVIR.lean` which still uses a `Float`-encoded `Rz`. -/
 @[reducible]
 def toRzFloat (_ : ℝ) : Float := 0.0
 

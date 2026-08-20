@@ -9,8 +9,8 @@ import CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveDialect
 /-!
 # Generic relational-EC → EllipticCurve-dialect connection (`a = 0`, proved once)
 
-Each per-curve EC-dialect connection (BLS12-377 and its
-Pallas/Vesta/secp256k1/BN254 siblings) otherwise repeats the *same* proof: embed the bespoke
+Every per-curve EC-dialect file (`RelationalFrontBls377ECDialect.lean` and its
+Pallas/Vesta/secp256k1/BN254 siblings) repeats the *same* proof: embed the bespoke
 affine point into the dialect's `ECPoint p`, unfold the dialect's branchy
 `ECParams.add` on the generic chart down to the bespoke chord/tangent coordinate
 maps, then compose with the projective-realizes-affine ties to denote into the
@@ -23,7 +23,7 @@ curve `params : ECParams p` with `params.a = 0`, on top of the generic projectiv
 realization of
 `EcRealizationGeneric.lean` (`ECAffPoint`/`ecJacDouble`/`ecJacAddZ1`/
 `ec_jacDouble_realizes_affineDbl`/`ec_jacAdd_realizes_affineAdd`, instantiated at
-`F = ZMod p`).  A per-curve EC-dialect connection is then a one-line
+`F = ZMod p`).  Each per-curve EC-dialect file then becomes a one-line
 `@ec_jacDbl_realized p curveParams …` instance — a new `a = 0` curve connects to the
 dialect with **no new proof**.
 
@@ -83,7 +83,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveDialect
 /-! ## 1. The point embedding `ECAffPoint (ZMod p) → ECPoint p`
 
 The structural map carrying the generic affine point into the dialect's abstract group
-element (`(x, y) ↦ some (x, y)`), the embedding each per-curve EC-dialect connection uses. -/
+element (`(x, y) ↦ some (x, y)`), mirroring `RelationalFrontBls377ECDialect.bls377ToEC`. -/
 
 variable {p : ℕ}
 
@@ -106,7 +106,8 @@ section Field
 variable [Fact (Nat.Prime p)] (params : ECParams p)
 
 /-- The dialect group add on two embedded **distinct** points equals the generic
-    `ecAffineAdd` with the chord slope `(y₂ − y₁)·(x₂ − x₁)⁻¹`. -/
+    `ecAffineAdd` with the chord slope `(y₂ − y₁)·(x₂ − x₁)⁻¹`.  Mirrors
+    `RelationalFrontBls377ECDialect.bls377ToEC_add_distinct`. -/
 theorem ecToEC_add_distinct (P Q : ECAffPoint (ZMod p)) (hne : P.x ≠ Q.x) :
     params.add (ecToEC P) (ecToEC Q)
       = ecToEC (ecAffineAdd ((Q.y - P.y) * (Q.x - P.x)⁻¹) P Q) := by
@@ -117,7 +118,8 @@ theorem ecToEC_add_distinct (P Q : ECAffPoint (ZMod p)) (hne : P.x ≠ Q.x) :
 /-- The dialect group double on an embedded point with `y ≠ −y` (so `2y ≠ 0`, doubling is
     defined) equals the generic `ecAffineDbl` with the tangent slope
     `ecTangentSlope x y` (the dialect's `3·x² + a` numerator collapses to the generic
-    `3·x²` at `params.a = 0`). -/
+    `3·x²` at `params.a = 0`).  Mirrors
+    `RelationalFrontBls377ECDialect.bls377ToEC_dbl`. -/
 theorem ecToEC_dbl (ha : params.a = 0) (P : ECAffPoint (ZMod p)) (hy : P.y ≠ -P.y) :
     params.add (ecToEC P) (ecToEC P)
       = ecToEC (ecAffineDbl (ecTangentSlope P.x P.y) P) := by
@@ -143,7 +145,8 @@ variable [Fact (Nat.Prime p)] (params : ECParams p)
 /-- **The projective double, projected to affine, denotes to the dialect `pdbl`.**
     The `ecJacToAffine`-projected `dbl-2009-l` double of the affine-embedded `P` (with
     `2y ≠ 0`, i.e. `y ≠ −y`) equals the dialect's `pdbl` on the embedded affine point —
-    so the inversion-free projective double *backs* the `a = 0` dialect group-double op. -/
+    so the inversion-free projective double *backs* the `a = 0` dialect group-double op.
+    Mirrors `RelationalFrontBls377ECDialect.bls377_jacDbl_realized`. -/
 theorem ec_jacDbl_realized
     (h2 : (2 : ZMod p) ≠ 0) (h3 : (3 : ZMod p) ≠ 0) (h4 : (4 : ZMod p) ≠ 0)
     (h8 : (8 : ZMod p) ≠ 0) (ha : params.a = 0) (P : ECAffPoint (ZMod p)) (hy : P.y ≠ -P.y) :
@@ -158,7 +161,8 @@ theorem ec_jacDbl_realized
 /-- **The projective add, projected to affine, denotes to the dialect `padd`.**
     The `ecJacToAffine`-projected `add-2007-bl` add of two affine-embedded **distinct**
     points equals the dialect's `padd` on the embedded affine points — so the
-    inversion-free projective add *backs* the `a = 0` dialect group-add op. -/
+    inversion-free projective add *backs* the `a = 0` dialect group-add op.  Mirrors
+    `RelationalFrontBls377ECDialect.bls377_jacAdd_realized`. -/
 theorem ec_jacAdd_realized (P Q : ECAffPoint (ZMod p)) (hne : P.x ≠ Q.x) :
     ecToEC (ecJacToAffine
         (ecJacAddZ1 (ECJacPoint.ofAffine P) (ECJacPoint.ofAffine Q)))
@@ -181,22 +185,22 @@ every curve. -/
 
 /-- **CT: the `a = 0` projective group law is constant-time as a dialect op.**  The
     dialect's `padd`/`pdbl` on any `params` are `ctSafe` by construction (a fixed schedule
-    of field ops, no secret-addressed access). -/
+    of field ops, no secret-addressed access).  Mirrors
+    `RelationalFrontBls377ECDialect.bls377_proj_grouplaw_ctSafe`. -/
 theorem ec_proj_grouplaw_ctSafe (params : ECParams p) :
     (ECOp.pdbl p params).ctSafe = true
       ∧ (ECOp.padd p params).ctSafe = true :=
   ⟨rfl, rfl⟩
 
-/-! ## 5. Consolidation witness: a per-curve EC-dialect connection is a one-line instance
+/-! ## 5. Consolidation witness: each per-curve EC-dialect file is a one-line instance
 
-A per-curve EC-dialect connection (BLS12-377, Pallas / Vesta / secp256k1 /
-BN254, …) is obtained as the `@ec_jacDbl_realized p curveParams …` /
+Every per-curve EC-dialect file (`RelationalFrontBls377ECDialect.lean`, and the Pallas /
+Vesta / secp256k1 / BN254 siblings) is the `@ec_jacDbl_realized p curveParams …` /
 `@ec_jacAdd_realized p curveParams …` instance of the generic ties above, supplying the
 concrete prime `p`, the curve `params := ⟨0, b⟩` (so `ha : params.a = 0` is `rfl`), and
 the four numeral-nonvanishing facts (consequences of `p > 8`).  We witness this at the
 tiny `a = 0` curve `y² = x³ + 1` over `ZMod 11`: the double/add ties are recovered by
-pure `@`-instantiation with **no new algebra**.  The only instance in this package is
-the `ZMod 11` witness below. -/
+pure `@`-instantiation with **no new algebra**. -/
 
 section Witness
 
@@ -210,7 +214,7 @@ def witnessCurve : ECParams 11 := ⟨0, 1⟩
 
 /-- A per-curve point-double connection at `ZMod 11`, obtained purely by instantiating the
     generic tie — no `field_simp`/`simp only` algebra here.  This is the shape every
-    per-curve EC-dialect connection takes:
+    per-curve EC-dialect file takes:
     `@ec_jacDbl_realized p curveParams h2 h3 h4 h8 rfl P hy`. -/
 example (P : ECAffPoint (ZMod 11)) (hy : P.y ≠ -P.y) :
     ecToEC (ecJacToAffine (ecJacDouble (ECJacPoint.ofAffine P)))

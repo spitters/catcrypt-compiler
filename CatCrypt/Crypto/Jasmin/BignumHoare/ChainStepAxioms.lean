@@ -8,24 +8,23 @@ import CatCrypt.Crypto.Jasmin.S2NBignumSSA
 import CatCrypt.Tactics.PreservationCombinator
 
 /-!
-# Chain-step axioms: granularity for per-block discharge
+# Chain-step contracts: granularity for per-block discharge
 
-Higher-level axiomatic contracts that abstract whole `sqr_step` /
+Higher-level contracts that abstract whole `sqr_step` /
 `mul_step` / `repeated_sqr_then_mul` operations (rather than
 individual Ccalls).  This is the natural granularity for chain-
 level proofs.
 
-Each axiom captures the post-state of running a complete chain
+Each contract captures the post-state of running a complete chain
 step (3 addrInits + 1 Ccall) starting from a state with `op`/`ap`
 bound and 4-limb-readable inputs at the source offsets.
 
 ## Trust set delta
 
-Adds **1 axiom** (`chain_repeated_sqr_then_mul_correct`); the
-previously-axiomatic `chain_sqr_step_correct` and
-`chain_mul_step_correct` are now **theorems** (see §1) discharged
-from `montmul_call_correct` plus the deterministic `addrInit`
-walk codified in §0a/§0b.
+This file declares **0 axioms**.  Every theorem takes the
+`MontmulCallFacts registry` hypothesis structure (`MontmulAxiom.lean`)
+and is discharged from its `call_correct` field plus the
+deterministic `addrInit` walk codified in §0a/§0b.
 
 ## Discharge path
 
@@ -36,7 +35,7 @@ walk codified in §0a/§0b.
    `addrInit_uses_op_offset`).
 2. After the 3 addrInits, the registers `oc`, `a`, `b` hold the
    intended addresses; memory is unchanged.
-3. The single `Ccall` then reduces to `montmul_call_correct`.
+3. The single `Ccall` then reduces to `MontmulCallFacts.call_correct`.
 -/
 
 set_option autoImplicit false
@@ -203,12 +202,11 @@ in sequence. -/
     Discharged from:
     * `addrInit_generic_succ` (for `oc := op + dstOff` with `dstOff ≠ {0,−1}`),
     * `addrInit_negOne_succ` (twice, for `a := ap` and `b := ap`),
-    * `montmul_call_correct` (for the Ccall),
+    * `MontmulCallFacts.call_correct` (for the Ccall),
     * straight-line composition via `bignumExecFuel_append_cassgn`. -/
 theorem chain_sqr_step_correct
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (s : BignumState) (fuel : Nat)
     (op_addr : UInt64) (ap_addr : UInt64)
     (h_op : s.regs "op" = BitVec.ofNat 64 op_addr.toNat)
@@ -273,7 +271,7 @@ theorem chain_sqr_step_correct
   have h_dst_alloc_at_b : ∀ k : Fin 32,
       ∃ b, s_b.mem.loadByte (dst_addr + UInt64.ofNat k.val) = some b := by
     intro k; rw [h_mem_at_b]; exact h_dst_alloc k
-  -- Apply montmul_call_correct on s_b.
+  -- Apply MontmulCallFacts.call_correct on s_b.
   let call_instr : InstrR :=
     .Ccall .DoNotInline []
       { name := "bignum_montmul_p25519" }
@@ -283,13 +281,15 @@ theorem chain_sqr_step_correct
                        info := {} }, gs := false },
        .Pvar { gv := { var := { vname := "b", vtype := .sword .U64 },
                        info := {} }, gs := false }]
-  have h_call_shape : ∃ ii lvs args,
-      call_instr = .Ccall ii lvs ⟨"bignum_montmul_p25519"⟩ args
-      ∧ args.length = 3 := by
-    refine ⟨.DoNotInline, [], _, rfl, ?_⟩
-    decide
+  have h_call_shape : ∃ (ii : InlineInfo) (op_v a_v b_v : GVar),
+      call_instr = .Ccall ii [] ⟨"bignum_montmul_p25519"⟩
+        [.Pvar op_v, .Pvar a_v, .Pvar b_v]
+      ∧ op_v.gv.var.vname = "oc"
+      ∧ a_v.gv.var.vname = "a"
+      ∧ b_v.gv.var.vname = "b" :=
+    ⟨.DoNotInline, _, _, _, rfl, rfl, rfl, rfl⟩
   obtain ⟨s_final, h_call_run, h_call_post, h_call_frame, _h_call_alloc⟩ :=
-    montmul_call_correct registry h_registry s_b fuel
+    hAx.call_correct s_b fuel
       "oc" "a" "b" dst_addr ap_addr ap_addr a_val a_val
       h_oc_at_b h_a_at_b h_b_at_b h_b_mem_for_montmul h_b_mem_for_montmul
       h_dst_alloc_at_b call_instr h_call_shape
@@ -393,12 +393,11 @@ theorem chain_sqr_step_correct
     Discharged from:
     * `addrInit_generic_succ` (three times, for `oc`, `a`, `b` with their
       respective generic offsets),
-    * `montmul_call_correct` (for the Ccall),
+    * `MontmulCallFacts.call_correct` (for the Ccall),
     * straight-line composition via `bignumExecFuel_append_cassgn`. -/
 theorem chain_mul_step_correct
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (s : BignumState) (fuel : Nat)
     (op_addr : UInt64) (ap_addr : UInt64)
     (h_op : s.regs "op" = BitVec.ofNat 64 op_addr.toNat)
@@ -436,7 +435,7 @@ theorem chain_mul_step_correct
         ¬ MemoryModel.range dst_addr 32 addr →
         s'.mem.loadByte addr = s.mem.loadByte addr) := by
   -- Mirror the proof of `chain_sqr_step_correct`: walk through the three
-  -- addrInits (all generic), then apply `montmul_call_correct`, then glue.
+  -- addrInits (all generic), then apply `MontmulCallFacts.call_correct`, then glue.
   subst h_shape
   -- Get post-state of `addrInit "oc" dstOff` (generic case).
   obtain ⟨s_oc, h_oc_run, h_oc_reg, h_oc_mem, h_oc_other⟩ :=
@@ -472,7 +471,7 @@ theorem chain_mul_step_correct
   have h_dst_alloc_at_b : ∀ k : Fin 32,
       ∃ b, s_b.mem.loadByte (dst_addr + UInt64.ofNat k.val) = some b := by
     intro k; rw [h_mem_at_b]; exact h_dst_alloc k
-  -- Apply montmul_call_correct on s_b.
+  -- Apply MontmulCallFacts.call_correct on s_b.
   let call_instr : InstrR :=
     .Ccall .DoNotInline []
       { name := "bignum_montmul_p25519" }
@@ -482,13 +481,15 @@ theorem chain_mul_step_correct
                        info := {} }, gs := false },
        .Pvar { gv := { var := { vname := "b", vtype := .sword .U64 },
                        info := {} }, gs := false }]
-  have h_call_shape : ∃ ii lvs args,
-      call_instr = .Ccall ii lvs ⟨"bignum_montmul_p25519"⟩ args
-      ∧ args.length = 3 := by
-    refine ⟨.DoNotInline, [], _, rfl, ?_⟩
-    decide
+  have h_call_shape : ∃ (ii : InlineInfo) (op_v a_v b_v : GVar),
+      call_instr = .Ccall ii [] ⟨"bignum_montmul_p25519"⟩
+        [.Pvar op_v, .Pvar a_v, .Pvar b_v]
+      ∧ op_v.gv.var.vname = "oc"
+      ∧ a_v.gv.var.vname = "a"
+      ∧ b_v.gv.var.vname = "b" :=
+    ⟨.DoNotInline, _, _, _, rfl, rfl, rfl, rfl⟩
   obtain ⟨s_final, h_call_run, h_call_post, h_call_frame, _h_call_alloc⟩ :=
-    montmul_call_correct registry h_registry s_b fuel
+    hAx.call_correct s_b fuel
       "oc" "a" "b" dst_addr a_addr b_addr a_val b_val
       h_oc_at_b h_a_at_b h_b_at_b h_a_mem_at_b h_b_mem_at_b
       h_dst_alloc_at_b call_instr h_call_shape
@@ -593,8 +594,7 @@ theorem chain_mul_step_correct
     over `{OFF_t, OFF_u}` (both generic), not `OFF_ap = -1`. -/
 theorem chain_sqr_step_correct_generic
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (s : BignumState) (fuel : Nat)
     (op_addr : UInt64) (ap_addr : UInt64)
     (h_op : s.regs "op" = BitVec.ofNat 64 op_addr.toNat)
@@ -627,7 +627,7 @@ theorem chain_sqr_step_correct_generic
   have h_eq : BignumInvP25519.sqr_step idx dstOff srcOff =
               BignumInvP25519.mul_step idx dstOff srcOff srcOff := rfl
   rw [h_eq] at h_shape
-  exact chain_mul_step_correct registry h_registry s fuel
+  exact chain_mul_step_correct registry hAx s fuel
     op_addr ap_addr h_op h_ap
     src_addr src_addr a_val a_val h_a_mem h_a_mem
     dst_addr h_dst_alloc
@@ -647,8 +647,7 @@ theorem chain_sqr_step_correct_generic
     `aOff` and `bOff` remain generic.  Result lands at `op_addr`. -/
 theorem chain_mul_step_correct_dst_zero
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (s : BignumState) (fuel : Nat)
     (op_addr ap_addr : UInt64)
     (h_op : s.regs "op" = BitVec.ofNat 64 op_addr.toNat)
@@ -714,13 +713,15 @@ theorem chain_mul_step_correct_dst_zero
                        info := {} }, gs := false },
        .Pvar { gv := { var := { vname := "b", vtype := .sword .U64 },
                        info := {} }, gs := false }]
-  have h_call_shape : ∃ ii lvs args,
-      call_instr = .Ccall ii lvs ⟨"bignum_montmul_p25519"⟩ args
-      ∧ args.length = 3 := by
-    refine ⟨.DoNotInline, [], _, rfl, ?_⟩
-    decide
+  have h_call_shape : ∃ (ii : InlineInfo) (op_v a_v b_v : GVar),
+      call_instr = .Ccall ii [] ⟨"bignum_montmul_p25519"⟩
+        [.Pvar op_v, .Pvar a_v, .Pvar b_v]
+      ∧ op_v.gv.var.vname = "oc"
+      ∧ a_v.gv.var.vname = "a"
+      ∧ b_v.gv.var.vname = "b" :=
+    ⟨.DoNotInline, _, _, _, rfl, rfl, rfl, rfl⟩
   obtain ⟨s_final, h_call_run, h_call_post, h_call_frame, _h_call_alloc⟩ :=
-    montmul_call_correct registry h_registry s_b fuel
+    hAx.call_correct s_b fuel
       "oc" "a" "b" op_addr a_addr b_addr a_val b_val
       h_oc_at_b h_a_at_b h_b_at_b h_a_mem_at_b h_b_mem_at_b
       h_op_alloc_at_b call_instr h_call_shape
@@ -801,8 +802,7 @@ theorem chain_mul_step_correct_dst_zero
     (the 4-limb value at `ap_addr`). -/
 theorem chain_mul_step_correct_b_negOne
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (s : BignumState) (fuel : Nat)
     (op_addr ap_addr : UInt64)
     (h_op : s.regs "op" = BitVec.ofNat 64 op_addr.toNat)
@@ -868,13 +868,15 @@ theorem chain_mul_step_correct_b_negOne
                        info := {} }, gs := false },
        .Pvar { gv := { var := { vname := "b", vtype := .sword .U64 },
                        info := {} }, gs := false }]
-  have h_call_shape : ∃ ii lvs args,
-      call_instr = .Ccall ii lvs ⟨"bignum_montmul_p25519"⟩ args
-      ∧ args.length = 3 := by
-    refine ⟨.DoNotInline, [], _, rfl, ?_⟩
-    decide
+  have h_call_shape : ∃ (ii : InlineInfo) (op_v a_v b_v : GVar),
+      call_instr = .Ccall ii [] ⟨"bignum_montmul_p25519"⟩
+        [.Pvar op_v, .Pvar a_v, .Pvar b_v]
+      ∧ op_v.gv.var.vname = "oc"
+      ∧ a_v.gv.var.vname = "a"
+      ∧ b_v.gv.var.vname = "b" :=
+    ⟨.DoNotInline, _, _, _, rfl, rfl, rfl, rfl⟩
   obtain ⟨s_final, h_call_run, h_call_post, h_call_frame, _h_call_alloc⟩ :=
-    montmul_call_correct registry h_registry s_b fuel
+    hAx.call_correct s_b fuel
       "oc" "a" "b" dst_addr a_addr ap_addr a_val ap_val
       h_oc_at_b h_a_at_b h_b_at_b h_a_mem_at_b h_ap_mem_at_b
       h_dst_alloc_at_b call_instr h_call_shape
@@ -951,8 +953,7 @@ theorem chain_mul_step_correct_b_negOne
     variants. -/
 theorem chain_mul_step_correct_dst_zero_b_negOne
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (s : BignumState) (fuel : Nat)
     (op_addr ap_addr : UInt64)
     (h_op : s.regs "op" = BitVec.ofNat 64 op_addr.toNat)
@@ -1009,13 +1010,15 @@ theorem chain_mul_step_correct_dst_zero_b_negOne
                        info := {} }, gs := false },
        .Pvar { gv := { var := { vname := "b", vtype := .sword .U64 },
                        info := {} }, gs := false }]
-  have h_call_shape : ∃ ii lvs args,
-      call_instr = .Ccall ii lvs ⟨"bignum_montmul_p25519"⟩ args
-      ∧ args.length = 3 := by
-    refine ⟨.DoNotInline, [], _, rfl, ?_⟩
-    decide
+  have h_call_shape : ∃ (ii : InlineInfo) (op_v a_v b_v : GVar),
+      call_instr = .Ccall ii [] ⟨"bignum_montmul_p25519"⟩
+        [.Pvar op_v, .Pvar a_v, .Pvar b_v]
+      ∧ op_v.gv.var.vname = "oc"
+      ∧ a_v.gv.var.vname = "a"
+      ∧ b_v.gv.var.vname = "b" :=
+    ⟨.DoNotInline, _, _, _, rfl, rfl, rfl, rfl⟩
   obtain ⟨s_final, h_call_run, h_call_post, h_call_frame, _h_call_alloc⟩ :=
-    montmul_call_correct registry h_registry s_b fuel
+    hAx.call_correct s_b fuel
       "oc" "a" "b" op_addr a_addr ap_addr a_val ap_val
       h_oc_at_b h_a_at_b h_b_at_b h_a_mem_at_b h_ap_mem_at_b
       h_op_alloc_at_b call_instr h_call_shape
@@ -1342,7 +1345,7 @@ iteration) with the IH (remaining j iterations) via
 
 theorem sqr_chain_loop_effect
     (registry : BignumRegistry)
-    (h_registry : ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (s : BignumState) (fuel : Nat)
     (op_addr ap_addr : UInt64)
     (h_op : s.regs "op" = BitVec.ofNat 64 op_addr.toNat)
@@ -1409,7 +1412,7 @@ theorem sqr_chain_loop_effect
     -- Stage 2: apply chain_sqr_step_correct_generic for the prefix
     -- `sqr_step idx otherOff curOff`. dst = other_addr, src = cur_addr.
     obtain ⟨s_mid, h_exec_pre, h_other_mem_post, h_frame_pre⟩ :=
-      chain_sqr_step_correct_generic registry h_registry s fuel
+      chain_sqr_step_correct_generic registry hAx s fuel
         op_addr ap_addr h_op h_ap
         cur_addr cur_val h_cur_mem
         other_addr h_other_alloc
@@ -1504,10 +1507,10 @@ theorem sqr_chain_loop_effect
 
 /-! ## §2  Repeated-squaring then multiply — proven theorems
 
-`repeated_sqr_then_mul` is the workhorse for the 12-block chain
-prefix: it computes `dst := src^(2^n) · other`.  The previously
-axiomatic correctness contract is now discharged via three proven
-theorems, one per offset shape encountered in `BignumInvP25519.body`:
+`repeated_sqr_then_mul` is the central step of the 12-block chain
+prefix: it computes `dst := src^(2^n) · other`.  Its correctness
+contract is discharged via three proven theorems, one per offset
+shape encountered in `BignumInvP25519.body`:
 
 * §2.5 `chain_repeated_sqr_then_mul_correct_generic` — the typical
   case where `dstOff`, `srcOff`, `otherOff` are all `≠ {0, -1}`
@@ -1539,8 +1542,7 @@ The two outliers (block 3 with `otherOff = -1`, block 13 with
 
 theorem chain_repeated_sqr_then_mul_correct_generic
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (s : BignumState) (fuel : Nat)
     (op_addr ap_addr : UInt64)
     (n : Nat) (h_n : n ≥ 1)
@@ -1629,7 +1631,7 @@ theorem chain_repeated_sqr_then_mul_correct_generic
   rw [h_shape, h_body]
   -- Stage 1: chain_sqr_step_correct_generic on step0.
   obtain ⟨s1, h_run1, h_t_mem1, h_frame1⟩ :=
-    chain_sqr_step_correct_generic registry h_registry s fuel
+    chain_sqr_step_correct_generic registry hAx s fuel
       op_addr ap_addr h_op h_ap
       src_addr src_val h_src_mem
       t_addr h_t_alloc
@@ -1672,7 +1674,7 @@ theorem chain_repeated_sqr_then_mul_correct_generic
     Nat.mod_lt _ (by unfold p_25519; decide)
   -- Stage 2: sqr_chain_loop_effect on the (n-1)-iter loop.
   obtain ⟨s2, h_run2, final_addr, h_final_addr_eq, h_final_mem, h_frame2⟩ :=
-    sqr_chain_loop_effect registry h_registry s1 fuel
+    sqr_chain_loop_effect registry hAx s1 fuel
       op_addr ap_addr h_op1 h_ap1 (n - 1)
       BignumInvP25519.OFF_t BignumInvP25519.OFF_u
       (by decide) (by decide) (by decide) (by decide)
@@ -1737,7 +1739,7 @@ theorem chain_repeated_sqr_then_mul_correct_generic
     rw [h_finalOff_value]; split <;> decide
   -- Stage 3: chain_mul_step_correct on mul_body.
   obtain ⟨s', h_run3, h_dst_mem3, h_frame3⟩ :=
-    chain_mul_step_correct registry h_registry s2 fuel
+    chain_mul_step_correct registry hAx s2 fuel
       op_addr ap_addr h_op2 h_ap2
       final_addr other_addr
       ((src_val * src_val % p_25519) ^ (2 ^ (n - 1)) % p_25519) other_val
@@ -1802,8 +1804,7 @@ theorem chain_repeated_sqr_then_mul_correct_generic
     multiply step. -/
 theorem chain_repeated_sqr_then_mul_correct_dst_zero
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (s : BignumState) (fuel : Nat)
     (op_addr ap_addr : UInt64)
     (n : Nat) (h_n : n ≥ 1)
@@ -1883,7 +1884,7 @@ theorem chain_repeated_sqr_then_mul_correct_dst_zero
   rw [h_shape, h_body]
   -- Stage 1: step0.
   obtain ⟨s1, h_run1, h_t_mem1, h_frame1⟩ :=
-    chain_sqr_step_correct_generic registry h_registry s fuel
+    chain_sqr_step_correct_generic registry hAx s fuel
       op_addr ap_addr h_op h_ap
       src_addr src_val h_src_mem
       t_addr h_t_alloc
@@ -1923,7 +1924,7 @@ theorem chain_repeated_sqr_then_mul_correct_dst_zero
     Nat.mod_lt _ (by unfold p_25519; decide)
   -- Stage 2: loop.
   obtain ⟨s2, h_run2, final_addr, h_final_addr_eq, h_final_mem, h_frame2⟩ :=
-    sqr_chain_loop_effect registry h_registry s1 fuel
+    sqr_chain_loop_effect registry hAx s1 fuel
       op_addr ap_addr h_op1 h_ap1 (n - 1)
       BignumInvP25519.OFF_t BignumInvP25519.OFF_u
       (by decide) (by decide) (by decide) (by decide)
@@ -1983,7 +1984,7 @@ theorem chain_repeated_sqr_then_mul_correct_dst_zero
     rw [h_finalOff_value]; split <;> decide
   -- Stage 3: chain_mul_step_correct_dst_zero on mul_body.
   obtain ⟨s', h_run3, h_dst_mem3, h_frame3⟩ :=
-    chain_mul_step_correct_dst_zero registry h_registry s2 fuel
+    chain_mul_step_correct_dst_zero registry hAx s2 fuel
       op_addr ap_addr h_op2 h_ap2
       final_addr other_addr
       ((src_val * src_val % p_25519) ^ (2 ^ (n - 1)) % p_25519) other_val
@@ -2031,8 +2032,7 @@ theorem chain_repeated_sqr_then_mul_correct_dst_zero
     `chain_mul_step_correct_b_negOne` for the final multiply step. -/
 theorem chain_repeated_sqr_then_mul_correct_other_negOne
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (s : BignumState) (fuel : Nat)
     (op_addr ap_addr : UInt64)
     (n : Nat) (h_n : n ≥ 1)
@@ -2111,7 +2111,7 @@ theorem chain_repeated_sqr_then_mul_correct_other_negOne
   rw [h_shape, h_body]
   -- Stage 1: step0.
   obtain ⟨s1, h_run1, h_t_mem1, h_frame1⟩ :=
-    chain_sqr_step_correct_generic registry h_registry s fuel
+    chain_sqr_step_correct_generic registry hAx s fuel
       op_addr ap_addr h_op h_ap
       src_addr src_val h_src_mem
       t_addr h_t_alloc
@@ -2151,7 +2151,7 @@ theorem chain_repeated_sqr_then_mul_correct_other_negOne
     Nat.mod_lt _ (by unfold p_25519; decide)
   -- Stage 2: loop.
   obtain ⟨s2, h_run2, final_addr, h_final_addr_eq, h_final_mem, h_frame2⟩ :=
-    sqr_chain_loop_effect registry h_registry s1 fuel
+    sqr_chain_loop_effect registry hAx s1 fuel
       op_addr ap_addr h_op1 h_ap1 (n - 1)
       BignumInvP25519.OFF_t BignumInvP25519.OFF_u
       (by decide) (by decide) (by decide) (by decide)
@@ -2211,7 +2211,7 @@ theorem chain_repeated_sqr_then_mul_correct_other_negOne
     rw [h_finalOff_value]; split <;> decide
   -- Stage 3: chain_mul_step_correct_b_negOne.
   obtain ⟨s', h_run3, h_dst_mem3, h_frame3⟩ :=
-    chain_mul_step_correct_b_negOne registry h_registry s2 fuel
+    chain_mul_step_correct_b_negOne registry hAx s2 fuel
       op_addr ap_addr h_op2 h_ap2
       final_addr
       ((src_val * src_val % p_25519) ^ (2 ^ (n - 1)) % p_25519) ap_val
@@ -2258,8 +2258,7 @@ theorem chain_repeated_sqr_then_mul_correct_other_negOne
     p58 chain's terminal `op := z2_250_0^4 · ap`. -/
 theorem chain_repeated_sqr_then_mul_correct_dst_zero_other_negOne
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (s : BignumState) (fuel : Nat)
     (op_addr ap_addr : UInt64)
     (n : Nat) (h_n : n ≥ 1)
@@ -2334,7 +2333,7 @@ theorem chain_repeated_sqr_then_mul_correct_dst_zero_other_negOne
           BignumInvP25519.OFF_u (startIdx + 1) step0]
   rw [h_shape, h_body]
   obtain ⟨s1, h_run1, h_t_mem1, h_frame1⟩ :=
-    chain_sqr_step_correct_generic registry h_registry s fuel
+    chain_sqr_step_correct_generic registry hAx s fuel
       op_addr ap_addr h_op h_ap
       src_addr src_val h_src_mem
       t_addr h_t_alloc
@@ -2373,7 +2372,7 @@ theorem chain_repeated_sqr_then_mul_correct_dst_zero_other_negOne
   have h_squared_lt : src_val * src_val % p_25519 < p_25519 :=
     Nat.mod_lt _ (by unfold p_25519; decide)
   obtain ⟨s2, h_run2, final_addr, h_final_addr_eq, h_final_mem, h_frame2⟩ :=
-    sqr_chain_loop_effect registry h_registry s1 fuel
+    sqr_chain_loop_effect registry hAx s1 fuel
       op_addr ap_addr h_op1 h_ap1 (n - 1)
       BignumInvP25519.OFF_t BignumInvP25519.OFF_u
       (by decide) (by decide) (by decide) (by decide)
@@ -2432,7 +2431,7 @@ theorem chain_repeated_sqr_then_mul_correct_dst_zero_other_negOne
   have h_finalOff_ne_negOne : loop_finalOff ≠ -1 := by
     rw [h_finalOff_value]; split <;> decide
   obtain ⟨s', h_run3, h_dst_mem3, h_frame3⟩ :=
-    chain_mul_step_correct_dst_zero_b_negOne registry h_registry s2 fuel
+    chain_mul_step_correct_dst_zero_b_negOne registry hAx s2 fuel
       op_addr ap_addr h_op2 h_ap2
       final_addr
       ((src_val * src_val % p_25519) ^ (2 ^ (n - 1)) % p_25519) ap_val
@@ -2514,8 +2513,8 @@ structure RsmScratch (s : BignumState) (op_addr dst_addr src_addr other_addr : U
 
 /-! ## §3  Per-block triples for the 12-block prefix
 
-With chain-step axioms in tree, each block's triple is a one-liner
-applying the appropriate chain-step axiom. -/
+With the chain-step contracts in tree, each block's triple is a
+one-liner applying the appropriate chain-step theorem. -/
 
 /-- Block 2 chain-step shape: `z2 := ap² mod p_25519`.
 
@@ -2523,8 +2522,7 @@ applying the appropriate chain-step axiom. -/
     caller supplies the body equality as `h_shape`. -/
 theorem block2_correctness_via_axiom
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (s : BignumState) (fuel : Nat)
     (op_addr ap_addr : UInt64)
     (h_op : s.regs "op" = BitVec.ofNat 64 op_addr.toNat)
@@ -2548,7 +2546,7 @@ theorem block2_correctness_via_axiom
         s'.mem.loadByte addr = s.mem.loadByte addr) := by
   -- OFF_ap = -1, OFF_z2 = 32 (≠ 0, ≠ -1), so block2 fits the
   -- generic-dst / negOne-src shape of `chain_sqr_step_correct`.
-  apply chain_sqr_step_correct registry h_registry s fuel
+  apply chain_sqr_step_correct registry hAx s fuel
     op_addr ap_addr h_op h_ap
     ap_addr rfl a_val h_a_mem
     z2_addr h_z2_alloc 0 BignumInvP25519.OFF_z2
@@ -2568,8 +2566,7 @@ theorem block2_correctness_via_axiom
     that `BignumInvP25519.body` actually emits. -/
 theorem block4_correctness_via_axiom
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (s : BignumState) (fuel : Nat)
     (op_addr ap_addr z9_addr z2_addr z11_addr : UInt64)
     (h_op : s.regs "op" = BitVec.ofNat 64 op_addr.toNat)
@@ -2598,7 +2595,7 @@ theorem block4_correctness_via_axiom
       (∀ addr : UInt64,
         ¬ MemoryModel.range z11_addr 32 addr →
         s'.mem.loadByte addr = s.mem.loadByte addr) :=
-  chain_mul_step_correct registry h_registry s fuel
+  chain_mul_step_correct registry hAx s fuel
     op_addr ap_addr h_op h_ap
     z9_addr z2_addr z9_val z2_val h_z9_mem h_z2_mem
     z11_addr h_z11_alloc
@@ -2642,8 +2639,7 @@ other, and destination addresses. Variable naming (`z2_addr`,
     (the otherOff = -1 specialised variant). -/
 theorem block3_correctness_via_axiom
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (s : BignumState) (fuel : Nat)
     (op_addr ap_addr z2_addr z9_addr : UInt64)
     (h_op : s.regs "op" = BitVec.ofNat 64 op_addr.toNat)
@@ -2672,7 +2668,7 @@ theorem block3_correctness_via_axiom
          ¬ MemoryModel.range scratch.t_addr 32 addr →
          ¬ MemoryModel.range scratch.u_addr 32 addr →
          s'.mem.loadByte addr = s.mem.loadByte addr) :=
-  chain_repeated_sqr_then_mul_correct_other_negOne registry h_registry s fuel
+  chain_repeated_sqr_then_mul_correct_other_negOne registry hAx s fuel
     op_addr ap_addr 2 (by decide) h_op h_ap
     z2_addr z9_addr z2_val ap_val h_z2_mem h_ap_mem
     h_z9_alloc 1 BignumInvP25519.OFF_z9 BignumInvP25519.OFF_z2
@@ -2691,8 +2687,7 @@ theorem block3_correctness_via_axiom
     Now discharged via `chain_repeated_sqr_then_mul_correct_generic`. -/
 theorem block5_correctness_via_axiom
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (s : BignumState) (fuel : Nat)
     (op_addr ap_addr z11_addr z9_addr z2_5_0_addr : UInt64)
     (h_op : s.regs "op" = BitVec.ofNat 64 op_addr.toNat)
@@ -2724,7 +2719,7 @@ theorem block5_correctness_via_axiom
          ¬ MemoryModel.range scratch.t_addr 32 addr →
          ¬ MemoryModel.range scratch.u_addr 32 addr →
          s'.mem.loadByte addr = s.mem.loadByte addr) :=
-  chain_repeated_sqr_then_mul_correct_generic registry h_registry s fuel
+  chain_repeated_sqr_then_mul_correct_generic registry hAx s fuel
     op_addr ap_addr 1 (by decide) h_op h_ap
     z11_addr z9_addr z2_5_0_addr z11_val z9_val h_z11_mem h_z9_mem
     h_z2_5_0_alloc startIdx BignumInvP25519.OFF_z2_5_0
@@ -2741,8 +2736,7 @@ theorem block5_correctness_via_axiom
 /-- Block 6: `z2_10_0 := (z2_5_0)^(2^5) · z2_5_0 mod p_25519` (5 sqr + 1 mul). -/
 theorem block6_correctness_via_axiom
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (s : BignumState) (fuel : Nat)
     (op_addr ap_addr z2_5_0_addr z2_10_0_addr : UInt64)
     (h_op : s.regs "op" = BitVec.ofNat 64 op_addr.toNat)
@@ -2771,7 +2765,7 @@ theorem block6_correctness_via_axiom
          ¬ MemoryModel.range scratch.t_addr 32 addr →
          ¬ MemoryModel.range scratch.u_addr 32 addr →
          s'.mem.loadByte addr = s.mem.loadByte addr) :=
-  chain_repeated_sqr_then_mul_correct_generic registry h_registry s fuel
+  chain_repeated_sqr_then_mul_correct_generic registry hAx s fuel
     op_addr ap_addr 5 (by decide) h_op h_ap
     z2_5_0_addr z2_5_0_addr z2_10_0_addr z2_5_0_val z2_5_0_val
     h_z2_5_0_mem h_z2_5_0_mem h_z2_10_0_alloc startIdx
@@ -2789,8 +2783,7 @@ theorem block6_correctness_via_axiom
 /-- Block 7: `z2_20_0 := (z2_10_0)^(2^10) · z2_10_0 mod p_25519` (10 sqr + 1 mul). -/
 theorem block7_correctness_via_axiom
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (s : BignumState) (fuel : Nat)
     (op_addr ap_addr z2_10_0_addr z2_20_0_addr : UInt64)
     (h_op : s.regs "op" = BitVec.ofNat 64 op_addr.toNat)
@@ -2819,7 +2812,7 @@ theorem block7_correctness_via_axiom
          ¬ MemoryModel.range scratch.t_addr 32 addr →
          ¬ MemoryModel.range scratch.u_addr 32 addr →
          s'.mem.loadByte addr = s.mem.loadByte addr) :=
-  chain_repeated_sqr_then_mul_correct_generic registry h_registry s fuel
+  chain_repeated_sqr_then_mul_correct_generic registry hAx s fuel
     op_addr ap_addr 10 (by decide) h_op h_ap
     z2_10_0_addr z2_10_0_addr z2_20_0_addr z2_10_0_val z2_10_0_val
     h_z2_10_0_mem h_z2_10_0_mem h_z2_20_0_alloc startIdx
@@ -2837,8 +2830,7 @@ theorem block7_correctness_via_axiom
 /-- Block 8: `z2_40_0 := (z2_20_0)^(2^20) · z2_20_0 mod p_25519` (20 sqr + 1 mul). -/
 theorem block8_correctness_via_axiom
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (s : BignumState) (fuel : Nat)
     (op_addr ap_addr z2_20_0_addr z2_40_0_addr : UInt64)
     (h_op : s.regs "op" = BitVec.ofNat 64 op_addr.toNat)
@@ -2867,7 +2859,7 @@ theorem block8_correctness_via_axiom
          ¬ MemoryModel.range scratch.t_addr 32 addr →
          ¬ MemoryModel.range scratch.u_addr 32 addr →
          s'.mem.loadByte addr = s.mem.loadByte addr) :=
-  chain_repeated_sqr_then_mul_correct_generic registry h_registry s fuel
+  chain_repeated_sqr_then_mul_correct_generic registry hAx s fuel
     op_addr ap_addr 20 (by decide) h_op h_ap
     z2_20_0_addr z2_20_0_addr z2_40_0_addr z2_20_0_val z2_20_0_val
     h_z2_20_0_mem h_z2_20_0_mem h_z2_40_0_alloc startIdx
@@ -2885,8 +2877,7 @@ theorem block8_correctness_via_axiom
 /-- Block 9: `z2_50_0 := (z2_40_0)^(2^10) · z2_10_0 mod p_25519` (10 sqr + 1 mul). -/
 theorem block9_correctness_via_axiom
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (s : BignumState) (fuel : Nat)
     (op_addr ap_addr z2_40_0_addr z2_10_0_addr z2_50_0_addr : UInt64)
     (h_op : s.regs "op" = BitVec.ofNat 64 op_addr.toNat)
@@ -2918,7 +2909,7 @@ theorem block9_correctness_via_axiom
          ¬ MemoryModel.range scratch.t_addr 32 addr →
          ¬ MemoryModel.range scratch.u_addr 32 addr →
          s'.mem.loadByte addr = s.mem.loadByte addr) :=
-  chain_repeated_sqr_then_mul_correct_generic registry h_registry s fuel
+  chain_repeated_sqr_then_mul_correct_generic registry hAx s fuel
     op_addr ap_addr 10 (by decide) h_op h_ap
     z2_40_0_addr z2_10_0_addr z2_50_0_addr z2_40_0_val z2_10_0_val
     h_z2_40_0_mem h_z2_10_0_mem h_z2_50_0_alloc startIdx
@@ -2936,8 +2927,7 @@ theorem block9_correctness_via_axiom
 /-- Block 10: `z2_100_0 := (z2_50_0)^(2^50) · z2_50_0 mod p_25519` (50 sqr + 1 mul). -/
 theorem block10_correctness_via_axiom
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (s : BignumState) (fuel : Nat)
     (op_addr ap_addr z2_50_0_addr z2_100_0_addr : UInt64)
     (h_op : s.regs "op" = BitVec.ofNat 64 op_addr.toNat)
@@ -2966,7 +2956,7 @@ theorem block10_correctness_via_axiom
          ¬ MemoryModel.range scratch.t_addr 32 addr →
          ¬ MemoryModel.range scratch.u_addr 32 addr →
          s'.mem.loadByte addr = s.mem.loadByte addr) :=
-  chain_repeated_sqr_then_mul_correct_generic registry h_registry s fuel
+  chain_repeated_sqr_then_mul_correct_generic registry hAx s fuel
     op_addr ap_addr 50 (by decide) h_op h_ap
     z2_50_0_addr z2_50_0_addr z2_100_0_addr z2_50_0_val z2_50_0_val
     h_z2_50_0_mem h_z2_50_0_mem h_z2_100_0_alloc startIdx
@@ -2984,8 +2974,7 @@ theorem block10_correctness_via_axiom
 /-- Block 11: `z2_200_0 := (z2_100_0)^(2^100) · z2_100_0 mod p_25519` (100 sqr + 1 mul). -/
 theorem block11_correctness_via_axiom
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (s : BignumState) (fuel : Nat)
     (op_addr ap_addr z2_100_0_addr z2_200_0_addr : UInt64)
     (h_op : s.regs "op" = BitVec.ofNat 64 op_addr.toNat)
@@ -3014,7 +3003,7 @@ theorem block11_correctness_via_axiom
          ¬ MemoryModel.range scratch.t_addr 32 addr →
          ¬ MemoryModel.range scratch.u_addr 32 addr →
          s'.mem.loadByte addr = s.mem.loadByte addr) :=
-  chain_repeated_sqr_then_mul_correct_generic registry h_registry s fuel
+  chain_repeated_sqr_then_mul_correct_generic registry hAx s fuel
     op_addr ap_addr 100 (by decide) h_op h_ap
     z2_100_0_addr z2_100_0_addr z2_200_0_addr z2_100_0_val z2_100_0_val
     h_z2_100_0_mem h_z2_100_0_mem h_z2_200_0_alloc startIdx
@@ -3032,8 +3021,7 @@ theorem block11_correctness_via_axiom
 /-- Block 12: `z2_250_0 := (z2_200_0)^(2^50) · z2_50_0 mod p_25519` (50 sqr + 1 mul). -/
 theorem block12_correctness_via_axiom
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (s : BignumState) (fuel : Nat)
     (op_addr ap_addr z2_200_0_addr z2_50_0_addr z2_250_0_addr : UInt64)
     (h_op : s.regs "op" = BitVec.ofNat 64 op_addr.toNat)
@@ -3065,7 +3053,7 @@ theorem block12_correctness_via_axiom
          ¬ MemoryModel.range scratch.t_addr 32 addr →
          ¬ MemoryModel.range scratch.u_addr 32 addr →
          s'.mem.loadByte addr = s.mem.loadByte addr) :=
-  chain_repeated_sqr_then_mul_correct_generic registry h_registry s fuel
+  chain_repeated_sqr_then_mul_correct_generic registry hAx s fuel
     op_addr ap_addr 50 (by decide) h_op h_ap
     z2_200_0_addr z2_50_0_addr z2_250_0_addr z2_200_0_val z2_50_0_val
     h_z2_200_0_mem h_z2_50_0_mem h_z2_250_0_alloc startIdx
@@ -3085,8 +3073,7 @@ theorem block12_correctness_via_axiom
     via `chain_repeated_sqr_then_mul_correct_dst_zero`. -/
 theorem block13_correctness_via_axiom
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (s : BignumState) (fuel : Nat)
     (op_addr ap_addr z2_250_0_addr z11_addr : UInt64)
     (h_op : s.regs "op" = BitVec.ofNat 64 op_addr.toNat)
@@ -3124,7 +3111,7 @@ theorem block13_correctness_via_axiom
         0 BignumInvP25519.OFF_z2_250_0 BignumInvP25519.OFF_z11 5).fst := by
     rw [h_shape]
     rfl
-  exact chain_repeated_sqr_then_mul_correct_dst_zero registry h_registry s fuel
+  exact chain_repeated_sqr_then_mul_correct_dst_zero registry hAx s fuel
     op_addr ap_addr 5 (by decide) h_op h_ap
     z2_250_0_addr z11_addr z2_250_0_val z11_val
     h_z2_250_0_mem h_z11_mem h_op_alloc startIdx
@@ -3145,8 +3132,7 @@ theorem block13_correctness_via_axiom
     `chain_repeated_sqr_then_mul_correct_dst_zero_other_negOne`. -/
 theorem block13b_correctness_via_axiom
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (s : BignumState) (fuel : Nat)
     (op_addr ap_addr z2_250_0_addr : UInt64)
     (h_op : s.regs "op" = BitVec.ofNat 64 op_addr.toNat)
@@ -3181,7 +3167,7 @@ theorem block13b_correctness_via_axiom
     rw [h_shape]
     rfl
   exact chain_repeated_sqr_then_mul_correct_dst_zero_other_negOne
-    registry h_registry s fuel
+    registry hAx s fuel
     op_addr ap_addr 2 (by decide) h_op h_ap
     z2_250_0_addr z2_250_0_val ap_val
     h_z2_250_0_mem h_ap_mem h_op_alloc startIdx
@@ -3197,10 +3183,9 @@ theorem block13b_correctness_via_axiom
 
 /-! ## §4  Trust set summary
 
-**Current state (2026-05-11):** This file holds **0 axioms** — the
-previously-axiomatic `chain_repeated_sqr_then_mul_correct` is now
-fully discharged.  All chain-step lemmas and the rsm correctness
-contract are proven theorems.
+This file holds **0 axioms**.  All chain-step lemmas and the rsm
+correctness contract are proven theorems over the `MontmulCallFacts`
+hypothesis.
 
 Discharge inventory:
 * §1 — `chain_sqr_step_correct`, `chain_mul_step_correct`,
@@ -3218,8 +3203,9 @@ The discharge structure is uniform: each rsm decomposes as
 → chain_mul_step[_*]; forward-sequenced via `bignumExecFuel_append_join`;
 algebraically closed by `pow_two_succ` + `Nat.mul_mod` + `Nat.pow_mod`.
 
-Remaining external trust set: `montmul_call_correct` in
-`MontmulAxiom.lean` (the s2n-bignum verified primitive), plus the
+Remaining external trust set: the `MontmulCallFacts` hypothesis
+structure in `MontmulAxiom.lean` (the s2n-bignum verified primitive,
+carried as an explicit per-registry hypothesis), plus the
 deterministic semantics of `addrInit` and `bignumExecFuel` (proven
 deterministic via §0a/§0b).
 -/

@@ -44,8 +44,8 @@ ADC` single-carry-flag chain that s2n-bignum hand-schedules):
    `Com`s of input and winner have equal denotation: the schedule change is
    denotation-preserving against the validated x86 machine model (`JasminModel`).
 
-The honest scope: the *search* is over the disjoint-footprint transposition
-neighborhood (sound for any straight-line block); the *winner TV* is a real
+Scope: the *search* is over the disjoint-footprint transposition
+neighborhood (sound for any straight-line block); the *winner TV* is an
 all-states theorem; the *result* for this block is reported in
 `bench/cryptopt_safegcd/`.
 -/
@@ -73,6 +73,8 @@ add/adc pairs are each internally CF-coupled but independent of each other.
 product-by-product interleave). The distinct temporaries `h0 l0 h1 l1` are the
 register allocation our linear-scan pass already gives. -/
 
+-- @bench-only: the `List (JInstr _)` blocks below are fixtures exercising this
+-- schedule-search pass; this module emits no deployed `.s` artifact.
 /-- The naive (strict product-by-product interleave) schedule — the baseline our
     #273/#274/#143 passes emit. -/
 def inputBlock : List (JInstr 64) :=
@@ -113,6 +115,12 @@ def instrLatency : JInstr 64 → Nat
   | .mulxMem _ _ _ _ _ => 5
   | .adcx _ _ => 1
   | .adox _ _ => 1
+  -- the compare, bitwise, rotate, variable-shift, extension and address-compute
+  -- ops are all single-cycle ALU work.
+  | .cmp _ _ | .not_ _ | .andn _ _ _ => 1
+  | .rol _ _ | .ror _ _ | .rorx _ _ _ => 1
+  | .shlx _ _ _ | .shrx _ _ _ | .sarx _ _ _ => 1
+  | .movzx _ _ _ | .movsx _ _ _ | .lea _ _ _ _ _ => 1
   | _ => 1
 
 /-- Does instruction `b` *read* a register that `a` *writes*? (true data
@@ -125,6 +133,16 @@ def writesReg : JInstr 64 → Option String
   | .adcx d _ => some d
   | .adox d _ => some d
   | .mov d _ => some d
+  -- `test` and `cmp` write the five flags and no register.
+  | .test _ _ => none
+  | .cmp _ _ => none
+  -- every remaining new op writes exactly its destination register.
+  | .not_ d => some d
+  | .andn d _ _ => some d
+  | .rol d _ | .ror d _ | .rorx d _ _ => some d
+  | .shlx d _ _ | .shrx d _ _ | .sarx d _ _ => some d
+  | .movzx d _ _ | .movsx d _ _ => some d
+  | .lea d _ _ _ _ => some d
   | _ => none
 
 /-- The register an op reads as its accumulating source (for the stall test). -/
@@ -133,6 +151,17 @@ def readsReg : JInstr 64 → Option String
   | .adc _ (.reg r) => some r
   | .adcx _ (.reg r) => some r
   | .adox _ (.reg r) => some r
+  -- `test` and `cmp` have no accumulating source; their reads are in
+  -- `readSet`/`readSet'`, as are those of the multi-source ops below.
+  | .test _ _ => none
+  | .cmp _ _ => none
+  | .andn _ _ _ => none
+  | .lea _ _ _ _ _ => none
+  -- the single-source ops name the register whose value they transform.
+  | .not_ d | .rol d _ | .ror d _ => some d
+  | .rorx _ src _ => some src
+  | .shlx _ src _ | .shrx _ src _ | .sarx _ src _ => some src
+  | .movzx _ _ src | .movsx _ _ src => some src
   | _ => none
 
 /-- Critical-path stall penalty: a `MULX` immediately followed by an op that
@@ -176,6 +205,14 @@ def writeSet : JInstr 64 → List String
   | .adcx d _ => [d]
   | .adox d _ => [d]
   | .mov d _ => [d]
+  -- `test` and `cmp` have no destination: their whole output is the flag state.
+  | .test _ _ => []
+  | .cmp _ _ => []
+  -- every remaining new op writes exactly its destination register.
+  | .not_ d | .andn d _ _ => [d]
+  | .rol d _ | .ror d _ | .rorx d _ _ => [d]
+  | .shlx d _ _ | .shrx d _ _ | .sarx d _ _ => [d]
+  | .movzx d _ _ | .movsx d _ _ | .lea d _ _ _ _ => [d]
   | _ => []
 
 /-- The set of registers an instruction reads. -/
@@ -192,6 +229,24 @@ def readSet : JInstr 64 → List String
   | .adox d (.reg r) => [d, r]
   | .adox d _ => [d]
   | .mov _ (.reg r) => [r]
+  -- Both `test` operands are reads; nothing about `test` is a destination, so a
+  -- swap across an instruction that writes either of them is not legal.
+  | .test a (.reg r) => [a, r]
+  | .test a _ => [a]
+  -- `cmp` reads both operands, exactly as `test` does.
+  | .cmp a (.reg r) => [a, r]
+  | .cmp a _ => [a]
+  -- two-address forms read their destination as well as the operand.
+  | .not_ d => [d]
+  | .rol d (.reg r) | .ror d (.reg r) => [d, r]
+  | .rol d _ | .ror d _ => [d]
+  -- three-operand forms read their sources only.
+  | .andn _ a b => [a, b]
+  | .rorx _ src (.reg r) => [src, r]
+  | .rorx _ src _ => [src]
+  | .shlx _ src c | .shrx _ src c | .sarx _ src c => [src, c]
+  | .movzx _ _ src | .movsx _ _ src => [src]
+  | .lea _ base idx _ _ => [base, idx]
   | _ => []
 
 /-- Does instruction `a` write a flag (CF/OF chain)? `ADD/ADC/SUB/...` do; `MULX`
@@ -204,6 +259,20 @@ def writesFlags : JInstr 64 → Bool
   | .mov _ _ => false
   | .loadMem _ _ _ => false
   | .storeMem _ _ _ => false
+  -- `test` and `cmp` are the flag-only writers: their entire effect is the five
+  -- flags.
+  | .test _ _ => true
+  | .cmp _ _ => true
+  -- `andn` writes all five flags; the rotates write `OF` and `CF` and keep
+  -- `SF`/`PF`/`ZF`, which still makes them flag writers.
+  | .andn _ _ _ => true
+  | .rol _ _ | .ror _ _ => true
+  -- `not_`, the BMI2 rotate/shift forms, the extension moves and `lea` write no
+  -- flag at all.
+  | .not_ _ => false
+  | .rorx _ _ _ => false
+  | .shlx _ _ _ | .shrx _ _ _ | .sarx _ _ _ => false
+  | .movzx _ _ _ | .movsx _ _ _ | .lea _ _ _ _ _ => false
   | _ => true
 
 /-- Reads a flag (carry-in)? `ADC/SBB/ADCX/ADOX` do. -/
@@ -212,6 +281,15 @@ def readsFlags : JInstr 64 → Bool
   | .sbb _ _ => true
   | .adcx _ _ => true
   | .adox _ _ => true
+  -- `test` and `cmp` read registers, not flags.
+  | .test _ _ => false
+  | .cmp _ _ => false
+  -- none of the new bitwise / rotate / shift / extension / address ops takes a
+  -- flag input.
+  | .not_ _ | .andn _ _ _ => false
+  | .rol _ _ | .ror _ _ | .rorx _ _ _ => false
+  | .shlx _ _ _ | .shrx _ _ _ | .sarx _ _ _ => false
+  | .movzx _ _ _ | .movsx _ _ _ | .lea _ _ _ _ _ => false
   | _ => false
 
 /-- Two registers-lists are disjoint. -/
@@ -415,6 +493,15 @@ def writeSet' : JInstr 64 → List String
   | .mov d _ => [d]
   | .loadMem d _ _ => [d]
   | .storeMem _ _ _ => [memCell]
+  -- `test` and `cmp` have no destination: their whole output is the flag state.
+  | .test _ _ => []
+  | .cmp _ _ => []
+  -- each remaining new op writes its destination register and nothing else;
+  -- `lea` computes an address without touching memory, so `memCell` is absent.
+  | .not_ d | .andn d _ _ => [d]
+  | .rol d _ | .ror d _ | .rorx d _ _ => [d]
+  | .shlx d _ _ | .shrx d _ _ | .sarx d _ _ => [d]
+  | .movzx d _ _ | .movsx d _ _ | .lea d _ _ _ _ => [d]
   | _ => []
 
 /-- Full read-footprint for the field-mul instruction mix. The `mov rdx`-style
@@ -449,6 +536,23 @@ def readSet' : JInstr 64 → List String
   | .mov _ (.reg r) => [r]
   | .mov _ _ => []
   | .loadMem _ base _ => [base, memCell]
+  -- Both `test` operands are reads; neither is a destination.
+  | .test a (.reg r) => [a, r]
+  | .test a _ => [a]
+  -- `cmp` reads both operands, exactly as `test` does.
+  | .cmp a (.reg r) => [a, r]
+  | .cmp a _ => [a]
+  | .not_ d => [d]
+  | .rol d (.reg r) | .ror d (.reg r) => [d, r]
+  | .rol d _ | .ror d _ => [d]
+  | .andn _ a b => [a, b]
+  | .rorx _ src (.reg r) => [src, r]
+  | .rorx _ src _ => [src]
+  | .shlx _ src c | .shrx _ src c | .sarx _ src c => [src, c]
+  | .movzx _ _ src | .movsx _ _ src => [src]
+  -- `lea` reads its two address registers and performs no memory access, so it
+  -- does not read `memCell` the way `loadMem`/`mulxMem` do.
+  | .lea _ base idx _ _ => [base, idx]
   | _ => []
 
 /-- Legal adjacent transposition under the full footprint model: read/write
@@ -752,7 +856,7 @@ entails `runBlock s (applySwaps swaps block) = runBlock s block` for **all** `s`
 def tvCertifiesSwaps (swaps : List Nat) (block : List (JInstr 64)) : Bool :=
   checkAdjTranspositions swaps block
 
-/-- **TV certificate soundness.** A passing `tvCertifiesSwaps` is a genuine
+/-- **TV certificate soundness.** A passing `tvCertifiesSwaps` yields an
     all-states `runBlock`-equality between the rescheduled block and the input —
     this is the in-Lean equivalence checker that replaces CryptOpt's external
     one. Direct corollary of `runBlock_perm_eq`. -/

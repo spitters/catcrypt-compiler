@@ -23,7 +23,7 @@ the stack array ops, `castW`, the carry/widening trio — and notes that they
 This module is **increment 5**: a **non-uniform-width** linear state `LstateN`
 (a width-tagged store, `lvm : String → Σ w, BitVec w`), a faithful step
 `lsemStepN` over it, and the widened functional ∧ CT simulation + unconditional
-capstone over a width-mixed source fragment that includes the first genuinely
+capstone over a width-mixed source fragment that includes the first
 width-mixing op, `select`. Increments 1–4 are left intact (additive: new file,
 new names).
 
@@ -49,14 +49,14 @@ possibly non-uniform) context:
   never its 1-bit value — exactly the CT story the task wants for a branch-free
   cmov.
 
-This is a genuine *width-mixing* widening of the unconditional simulation: the
+This is a *width-mixing* widening of the unconditional simulation: the
 first op whose operands do not all share one width brought into the functional ∧
 constant-time `lsem` simulation, with no new hypothesis and no `jasminc`/IR→x86
 edge. The uniform-width `regArith` fragment of increments 2–4 is recovered as a
 special case of the non-uniform `regArith` arm (the uniform context is a
 non-uniform context all of whose registers happen to share `w`).
 
-## Deferred ops, with the honest technical reason for each
+## Deferred ops, with the technical reason for each
 
 The remaining width-mixed `JasminOp`s are **not faked**; each is deferred with
 the concrete obstruction it hits against `LstateN` *given the frozen
@@ -99,7 +99,7 @@ byte-KATs):
   width, orthogonal to this increment). Modeling it here adds nothing to the
   width-mixing story, so it is left to an op-set increment.
 * **`addCarryLo w` / `addCarryHi w`** — carry-coupled: the carry-in is `.reg 1`
-  and `addCarryHi` *returns* `.reg 1`. The carry datum genuinely lives at width 1
+  and `addCarryHi` *returns* `.reg 1`. The carry datum lives at width 1
   while the data words live at width `w`, so these are width-mixing in the same
   way `select` is, and `LstateN` *can* carry them. They are deferred only to keep
   this increment to one representative width-mixing op (`select`); the same
@@ -252,6 +252,7 @@ def applyOpnN (w : Nat) : String → List (BitVec w) → Option (BitVec w)
   | "SHR", [a, b] => some (a >>> b.toNat)
   | "ANDN", [a, b] => some ((~~~a) &&& b)
   | "MOV", [a] => some a
+  | "NEG", [a] => some (0 - a)
   | _, _ => none
 
 /-- `applyOpnN` agrees with `JasminBinOp.apply` on the binary register-arithmetic
@@ -260,6 +261,25 @@ def applyOpnN (w : Nat) : String → List (BitVec w) → Option (BitVec w)
 theorem applyOpnN_binOpName {w : Nat} (bop : JasminBinOp) (a b : BitVec w) :
     applyOpnN w (binOpName bop) [a, b] = some (bop.apply a b) := by
   cases bop <;> rfl
+
+/-- The `applyOpnN` value of the one-source `"NEG"` opcode: two's-complement
+    negation, the data word `x86_NEG` writes. -/
+theorem applyOpnN_NEG {w : Nat} (a : BitVec w) :
+    applyOpnN w "NEG" [a] = some (0 - a) := rfl
+
+/-- The `applyOpnN` value of the one-source `"MOV"` opcode: the read word itself,
+    the data a register-to-register `MOV dst, src` copies. -/
+theorem applyOpnN_MOV {w : Nat} (a : BitVec w) :
+    applyOpnN w "MOV" [a] = some a := rfl
+
+/-- The width tag round-trips on every binary register-arithmetic mnemonic:
+    `stripWidthTag` recovers `binOpName bop` from the tagged form. Quantifying
+    over `JasminBinOp` discharges the per-opcode kernel evaluation once, so a
+    consumer cites this instead of re-deciding the tag at each use site. -/
+theorem stripWidthTag_withWidthTag_binOpName' (w : Nat) (bop : JasminBinOp) :
+    stripWidthTag (withWidthTag w (binOpName bop)) = binOpName bop := by
+  unfold withWidthTag
+  split <;> cases bop <;> decide +kernel
 
 /-- The register name carried by an operand (the empty string for a
     non-register operand — never reached for the in-scope `.reg`-resolved
@@ -296,6 +316,38 @@ theorem widthFromTag_withWidthTag_MOV {w : Nat} (hw : w = 64 ∨ w = 32) :
   unfold widthFromTag JasminLprogExport.withWidthTag
   rcases hw with hw | hw <;> subst hw <;> decide +kernel
 
+/-- The single one-source negate linear instruction writing `dst` from source
+    operand `src` at width `w`: `Lopn [.reg dst] (withWidthTag w "NEG") [src]`.
+    The jasmin `Ox86 (NEG ws)` arity — one source, one destination. -/
+def negLinstr (w : Nat) (dst : String) (src : LOperand) : LinstrR :=
+  .Lopn [.reg dst] (JasminLprogExport.withWidthTag w "NEG") [src]
+
+/-- The conditional-move linear instruction writing `dst` at width `w`:
+    `Lopn [.reg dst] (withWidthTag w "CMOV") srcs`, whose sources are the
+    condition register followed by the two data operands. The jasmin
+    `Ox86 (CMOVcc ws)` arity — three sources, one destination. -/
+def cmovLinstr (w : Nat) (dst : String) (srcs : List LOperand) : LinstrR :=
+  .Lopn [.reg dst] (JasminLprogExport.withWidthTag w "CMOV") srcs
+
+/-- The zero-extend linear instruction writing `dst` from the width-1 source
+    register `src`: `Lopn [.reg dst] "ZEROEXT" [.reg src]`. The mnemonic carries
+    no width tag; the destination width travels in the instruction's `MemTag`. -/
+def zeroextLinstr (dst src : String) : LinstrR :=
+  .Lopn [.reg dst] "ZEROEXT" [.reg src]
+
+/-- The immediate-move linear instruction writing the literal `n` to `dst` at
+    width `w`: `Lopn [.reg dst] (withWidthTag w "MOV") [.imm n]`. The nullary
+    `regConst` form — no source register, so the width tag is the only width
+    information on the wire. -/
+def movImmLinstr (w : Nat) (dst : String) (n : Nat) : LinstrR :=
+  .Lopn [.reg dst] (JasminLprogExport.withWidthTag w "MOV") [.imm n]
+
+/-- The base mnemonic `"NEG"` round-trips through
+    `stripWidthTag ∘ withWidthTag`. -/
+theorem stripWidthTag_withWidthTag_NEG (w : Nat) :
+    JasminLprogExport.stripWidthTag (JasminLprogExport.withWidthTag w "NEG") = "NEG" := by
+  unfold JasminLprogExport.withWidthTag; split <;> decide +kernel
+
 /-- Width-aware single-step linear semantics, faithful to Coq `eval_instr` on the
     in-scope straight-line cases:
 
@@ -311,12 +363,22 @@ theorem widthFromTag_withWidthTag_MOV {w : Nat} (hw : w = 64 ∨ w = 32) :
       immediate-MOV: write `BitVec.ofNat (widthFromTag opn) n` to `dst` (the data
       width recovered from the width tag — the only width the nullary const carries
       on the wire, exact on `w ∈ {64, 32}`), advance pc. (`regConst`.)
+    * `Lopn [.reg dst] opn [.reg a]` with `stripWidthTag opn = "NEG"` — the
+      one-source negate: read the data width `wₐ` from `a`'s store tag, apply
+      `applyOpnN wₐ "NEG"`, write `dst` at width `wₐ`, advance pc. (`regUn`.)
+    * `Lopn [.reg dst] opn [.reg a]` with `stripWidthTag opn = "MOV"` — the
+      register-to-register move: read the data width `wₐ` from `a`'s store tag,
+      apply `applyOpnN wₐ "MOV"` (the identity on the read word), write `dst` at
+      width `wₐ`, advance pc. This is the register-source counterpart of the
+      nullary immediate `MOV` arm above (`[.imm n]`), and models the `MOV dst, src`
+      copy the schoolbook column emits to route a materialised carry word.
+      A one-source `Lopn` under any other mnemonic returns `none`.
 
     The CMOV arm is matched *before* the generic binop arm (`select`'s mnemonic
     `CMOV` is not a binop name, but matching CMOV explicitly keeps the arms
     disjoint and the proofs case-split-free). All other instructions (control
     flow, out-of-scope ops, ill-shaped operand lists, and — by the frozen-wire
-    deferral — `castW`/stack/carry) return `none`: honest partiality, never a
+    deferral — `castW`/stack/carry) return `none`: partiality, never a
     fabricated step. -/
 def lsemStepN (i : LinstrR) (s : LstateN) : Option LstateN :=
   match i with
@@ -347,6 +409,25 @@ def lsemStepN (i : LinstrR) (s : LstateN) : Option LstateN :=
       -- carries on the wire; the value is the literal at that width.
       if stripWidthTag opn = "MOV" then
         some ((s.setReg dst (BitVec.ofNat (widthFromTag opn) n)).nextPc)
+      else none
+  | .Lopn [.reg dst] opn [.reg a] =>
+      -- `regUn` image (`NEG`) and the register-source `MOV`: the single source at
+      -- the data width `wₐ` from `a`'s store tag. Gated on the mnemonic, as the
+      -- `CMOV` arm is, so every other one-source `Lopn` keeps its `none`.
+      if stripWidthTag opn = "NEG" then
+        match readReg s (.reg a) with
+        | some ⟨wₐ, va⟩ =>
+            match applyOpnN wₐ "NEG" [va] with
+            | some v => some ((s.setReg dst v).nextPc)
+            | none => none
+        | none => none
+      else if stripWidthTag opn = "MOV" then
+        match readReg s (.reg a) with
+        | some ⟨wₐ, va⟩ =>
+            match applyOpnN wₐ "MOV" [va] with
+            | some v => some ((s.setReg dst v).nextPc)
+            | none => none
+        | none => none
       else none
   | .Lopn _ _ _ => none
   | .Lalign => some s.nextPc
@@ -935,7 +1016,7 @@ theorem lsemStepN_sel_succeeds {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
       = some st' :=
   ⟨_, lsemStepN_sel heq args hagree⟩
 
-/-- **Robustness / constant-time keystone (unconditional), width-mixed.** The
+/-- **Robustness / constant-time capstone (unconditional), width-mixed.** The
     linear-IR leakage trace of the width-mixed linearizer-emitted `.var`-chain
     `straightOps` is the **same from any two initial states that agree with the
     same valuation** — every head (`regArith` or the width-mixing `select`) has a
@@ -998,7 +1079,7 @@ theorem lsemLeakN_straightOps_state_independent {Γ : Ctxt jasminDialect}
     width-mixed linearizer-emitted straight-line body run by `lsemStraightN`
     (functional) and observed by `lsemLeakN` (CT). The `lsem→bytes` encoder and
     Sail tables remain the declared trusted base. The first capstone covering a
-    genuinely **width-mixing** op (`select`: cond `BitVec 1`, data `BitVec w`). -/
+    **width-mixing** op (`select`: cond `BitVec 1`, data `BitVec w`). -/
 theorem owned_lsem_correct_and_robust_widthN {Γ : Ctxt jasminDialect} {t : JasminTy}
     {com : Com jasminDialect Γ t} (hcom : ScalarArithN com) {w : Nat} (hw : t = .reg w)
     (V : Ctxt.Valuation Γ) :

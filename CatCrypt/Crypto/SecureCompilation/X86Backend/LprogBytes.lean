@@ -42,6 +42,52 @@ The whole looped body's bytes are then wrapped by `LeafBytes`/`ElfObject` into a
 linkable `.o` (`encodeLfundefObject`) — the same multi-symbol stitcher the
 straight-line leaves use, now over a body with internal control flow.
 
+## Indexed operands
+
+A register-indexed element operand is the `(%base, %idx, scale)` form
+`LprogAsmPrinter` renders for `LOADIDX`/`STOREIDX`, which `Com.toLprogPhysAbi`
+emits for a runtime array index. `encodeLopn`'s `.arrIdx` arms (§3d) encode it at
+the access width the compile-time stride fixes, over the SIB tail
+`ScalarEncoder.encMemMovSib` builds — `encMemMovSibw_w1` pins the `REX.W=1`
+member of the width-parametric encoder to that encoder byte-for-byte, and the
+narrower widths share its ModRM/SIB/displacement tail (`sibTail`). A stride
+outside `{1, 2, 4, 8}`, and an operand naming a register off `gpNumU`'s table,
+carry no bytes, so `encodableLcmd` (§5a) declines the body rather than emitting
+an access at a clamped stride or against `%rax`.
+
+## Constant time
+
+Encoding an indexed access is not a constant-time claim about it.
+`MachineConstantTime.IsDirect` is `False` exactly on `.loadMemIdx`/`.storeMemIdx`,
+so a body carrying one is not `allDirect` and
+`ConstantTimeCoverage.allDirect_constant_time` — the unconditional
+state-independence result — does not apply to it. The CT statement that does
+cover a register-indexed access is the `agreePub`/`CTAddressed` one of
+`LowCTMemCT.lean` (`lowerMemSeq_constant_time`, from
+`lowerMemStore_CTAddressed`/`lowerMemLoad_CTAddressed`): the leak is determined
+by the public registers, under the premise that the index register is public,
+which `cmdCT_supplies_storeIdx_pub`/`cmdCT_supplies_loadIdx_pub` discharge from
+source-level CT. `LoweringExtended`'s remainder note records the same split.
+
+## Adding an arm
+
+Where a new mnemonic arm sits decides how much of the surrounding proof it
+disturbs. The `if base == "MULX"` / `"MULXMEM"` chain ahead of the `adxPrefix`
+dispatch lies on the path of every dispatch lemma that quantifies over the
+mnemonic — `LprogJInstrMnemDispatch.dispatch_alu_one`/`_two`/`_mem` walk that
+chain with `base` a variable and discharge each guard from a hypothesis, so an
+arm placed there requires one further hypothesis on each such lemma and at each
+of its call sites. A proof over a closed mnemonic literal is indifferent to the
+placement, since literal disequality reduces in the kernel.
+
+The `LEA` and `LOADIDX` arms therefore sit at the end of the one-source
+`[d], [s]` cascade, and `STOREIDX` and the reg-reg `CMP` flag compare at the
+end of the two-source `[d], [a, s]` cascade, in the fallback reached only once
+`tagShiftExt`, `aluOpcode` and `twoByteOpcode` have all missed. Every variable-mnemonic dispatch lemma supplies
+one of those three as a hypothesis and so never reaches them. The `CMOV` select
+arm sits in the three-source `[d], [cond, t, f]` position, which the one- and
+two-source dispatch lemmas do not match at all.
+
 ## Trust edge
 
 The straight-line `Lopn` arms inherit `SailX86Decoder`'s `decode (encode i) = id`
@@ -49,7 +95,7 @@ round-trip (they reduce to `ScalarEncoder` shape encoders). The new control-flow
 arms get their own decode round-trips here (`roundtrip_jmp32`/`roundtrip_jcc32`/
 `roundtrip_call32`/`roundtrip_ret`): the rel32 displacement is recovered exactly.
 `push`/`pop` are the trusted leaf-ABI scaffold (no Sail-x86 GP-stack semantics in
-the ACL2 model — the existing `LeafBytes` tier), marked gas-pinned honestly in the
+the ACL2 model — the existing `LeafBytes` tier), marked gas-pinned in the
 `trust_edge_cf` tally.
 -/
 
@@ -195,7 +241,7 @@ operand becomes `encMemMov`'s `(base, off)`, the spill/qsave operand becomes
 `encRspMem`'s `(%rsp, off)` (with the mandatory SIB byte `0x24`) at the SAME offset
 `LprogAsmPrinter.spillFrameOff`/`qsaveFrameOff` compute (the frame size + body-uniform
 spill width are threaded through `encodeLcmd`), and the bare reg becomes its `gpNumU`.
-A genuinely uncovered form (mem-mem, or an immediate written directly to a spill) is
+An uncovered form (mem-mem, or an immediate written directly to a spill) is
 left as a visible empty byte list flagged in the residual rather than mis-encoded. -/
 
 /-- Parse a `mem.<base>.<off>` operand name to `(baseRegNum, offset)`. `none` if the
@@ -209,6 +255,27 @@ def parseMemName (n : String) : Option (Nat × Int) :=
     | [base, off] =>
         match String.toNat? off with
         | some o => some (gpNumU base, Int.ofNat o)
+        | none => none
+    | _ => none
+  else none
+
+/-- Is this name one of the 16 physical GP names `gpNumU` tabulates? `gpNumU` reads
+    an off-table name as `0` (`%rax`), so an arm that must not address a register the
+    body never named gates on this first. -/
+def isGpName (r : String) : Bool :=
+  match r with
+  | "RAX" | "RCX" | "RDX" | "RBX" | "RSP" | "RBP" | "RSI" | "RDI"
+  | "R8"  | "R9"  | "R10" | "R11" | "R12" | "R13" | "R14" | "R15" => true
+  | _ => false
+
+/-- `parseMemName` restricted to a tabulated GP base: `none` when the base name is
+    off `gpNumU`'s table, so an unrecognised base is not addressed as `%rax`. -/
+def parseMemNameGp (n : String) : Option (Nat × Int) :=
+  if "mem.".isPrefixOf n then
+    match ((n.drop 4).toString).splitOn "." with
+    | [b, off] =>
+        match String.toNat? off with
+        | some o => if isGpName b then some (gpNumU b, Int.ofNat o) else none
         | none => none
     | _ => none
   else none
@@ -267,7 +334,7 @@ def encRspMem (w op r : Nat) (off : Int) : List (BitVec 8) :=
     The owned looped bodies pair a register with at most one memory operand
     (`LOAD`/`STORE`/spill reload/spill store): a reg-reg pair uses `encAluRR`, a
     `mem.*` source/dest uses `encMemMov`, and a spill/qsave source/dest uses the
-    RSP-SIB encoder `encRspMem` (base `%rsp`, the SIB byte `0x24` form). A genuinely
+    RSP-SIB encoder `encRspMem` (base `%rsp`, the SIB byte `0x24` form). An
     uncovered shape (mem-mem, or a name that is neither reg / `mem.*` / spill / qsave)
     still returns `[]` (visible, KAT-catchable) rather than mis-resolving. The arm only
     encodes the **move** opcode for a memory operand (`op` is `0x89`/`0x8b` for
@@ -381,7 +448,7 @@ def encImmOp (w : Nat) (base : String) (d : LOperand) (v : Nat) : List (BitVec 8
       -- the 64-bit value fits a SIGNED 32-bit immediate — i.e. a small positive
       -- (`v < 2^31`) OR a small negative whose 64-bit two's-complement image is
       -- `≥ 2^64 - 2^31` (e.g. the all-ones mask `2^64-1` = `-1`, which gas emits as
-      -- `movq $-1` → `C7 /0 FF FF FF FF`, 7 bytes). Only a value that genuinely needs
+      -- `movq $-1` → `C7 /0 FF FF FF FF`, 7 bytes). Only a value that needs
       -- all 64 bits falls to the 10-byte `B8+r io` `movabs` form. `JasminModel`'s
       -- `MOV $imm` semantics is width-agnostic on the stored value, so this is purely
       -- a gas-matching form selection (the decoded value is identical either way).
@@ -518,7 +585,7 @@ rotation-heavy GoldenPath kernels (asconSigma0's four Σ₀ rotations, SipHash, 
 bytes the `.imm`-source arm would for the same count, reading `n` from the tag.
 
 `tagShiftExt` is the **prefix-only** detector (`group-2 /ext`: `SHL = /4`,
-`SHR = /5`) — it does NOT touch the decimal count, so it is **kernel-reducible**
+`SHR = /5`, `SAR = /7`) — it does NOT touch the decimal count, so it is **kernel-reducible**
 (`decide +kernel`) on a closed tag, unlike the `String.toNat?`-bearing
 `shiftCountOf`. The count is recovered independently by `tagShiftCount` (mirroring
 `LoweringExtended.shiftCountOf` exactly: `(String.ofList (base.toList.drop 4)).toNat?`),
@@ -527,16 +594,20 @@ which the dispatch never needs to reduce to *select* the arm — only to fill th
 emitted count is the same `n` the gather's `lowerShiftImmJ` lowers. -/
 
 /-- The group-2 shift `/ext` of a count-in-tag base (`"SHL:<n>"` → `/4`,
-    `"SHR:<n>"` → `/5`), by the **4-character prefix only** (`take 4 == "SHL:"/"SHR:"`
-    over `List Char`, so it kernel-reduces on a closed base — no `toNat?`). `none`
-    for any non-shift base. `SAR` has no count-in-tag exporter form (the physical
-    body's arithmetic-right shifts also carry the count in the tag, but the σ/Σ
-    rotates that need this fix are logical `SHR`/`SHL`); add `"SAR:"` here if a
-    count-in-tag `SAR` body is ever emitted. -/
+    `"SHR:<n>"` → `/5`, `"SAR:<n>"` → `/7`), by the **4-character prefix only**
+    (`take 4 == "SHL:"/"SHR:"/"SAR:"` over `List Char`, so it kernel-reduces on a
+    closed base — no `toNat?`). `none` for any non-shift base.
+
+    The SDM group-2 `/ext` table (Vol 2B, `SAL/SAR/SHL/SHR`) is `ROL = /0`,
+    `ROR = /1`, `RCL = /2`, `RCR = /3`, `SHL/SAL = /4`, `SHR = /5`, `SAR = /7`
+    (`/6` is reserved). The rotates `ROL`/`ROR` are not in this table: an
+    `Lopn` over them reaches no arm, so `encodableLinstrR` reads `false` on it
+    and the gate declines the body (§5a). -/
 def tagShiftExt (base : String) : Option Nat :=
   let p := base.toList.take 4
   if p == "SHL:".toList then some 4
   else if p == "SHR:".toList then some 5
+  else if p == "SAR:".toList then some 7
   else none
 
 /-- The shift count of a count-in-tag base (`"SHR:19"` → `19`), the decimal suffix
@@ -560,6 +631,137 @@ def tagShiftCount (base : String) : Nat :=
 def encTagShift (w ext dn : Nat) (base : String) : List (BitVec 8) :=
   let n := tagShiftCount base
   if n = 1 then encShift1 w ext dn else encShiftImmw w ext dn n
+
+/-! ### 3c. Branchless constant-time select — the `CMOV:<w>` arm
+
+`Com.toLprogPhysAbi` exports a `JasminOp.select` as the three-source
+`Lopn [d] "CMOV:<w>" [cond, t, f]`, denoting `d := if cond ≠ 0 then t else f`
+with no PC divergence. x86 has no three-operand conditional move, so the form is
+a flag-setting `test` on the condition register followed by a two-address
+`CMOVcc`. The destination is defaulted to whichever of `t`/`f` it does not
+already hold, and the condition of the `CMOVcc` inverted to match, so the
+defaulting `mov` never clobbers the value the conditional move reads.
+
+The instruction sequence is `LprogAsmPrinter.renderLopn`'s CMOV arm line for
+line:
+
+* `d` already holds `t`: `test cond, cond` ; `cmove f, d`;
+* `d` already holds `f`: `test cond, cond` ; `cmovne t, d`;
+* otherwise: `mov f, d` ; `test cond, cond` ; `cmovne t, d`.
+
+The encodings (SDM Vol 2A: `MOV`, `TEST`, `CMOVcc`) are `mov` = `REX.W 89 /r`
+(ModRM `reg` = source), `test` = `REX.W 85 /r` with both ModRM fields the
+condition register, `cmove` = `REX.W 0F 44 /r` and `cmovne` = `REX.W 0F 45 /r`
+(ModRM `reg` = destination). `TEST` writes no register, so the condition value
+survives the select and can be reused. -/
+
+/-- The bytes of a branchless select `d := (cond ≠ 0) ? t : f` over GP register
+    numbers, at op width bit `w`. `test cond, cond` sets `ZF` from the condition
+    register and a `CMOVcc` selects; the register `d` already holds is left in
+    place and the condition inverted, so no defaulting `mov` overwrites a source
+    the conditional move still reads. The register numbers come from `gpNumU`
+    under an `isGpName` gate, on which it is injective, so the aliasing tests
+    here decide the same three cases the printer's operand-string comparisons do.
+    Gas-pinned: `movq %rax,%r11 ; testq %rcx,%rcx ; cmovneq %rbx,%r11` =
+    `49 89 C3 | 48 85 C9 | 4C 0F 45 DB`.
+
+    The flag-setter here is `test`, matching `LprogAsmPrinter.renderLopn`, which
+    is what the encoder-oracle diff compares against. The other byte producer
+    reaches the same select through `JInstr`, where `LoweringCoverageCmovSar`
+    uses `and_ c c` because `JInstr` carries no `test`; `and c,c` and
+    `test c,c` set `ZF` alike and differ only in that `and` rewrites `c` with
+    its own value, so the two routes agree semantically and differ in one
+    opcode byte (`21` against `85`). A byte-agreement lemma tying the two
+    routes on `CMOV` needs that settled first — by giving `JInstr` a `test`,
+    since the printer is the oracle target. -/
+def encCmovSelect (w dn cn tn fn : Nat) : List (BitVec 8) :=
+  let tst := encAluRRw w 0x85 cn cn
+  if dn == tn then tst ++ enc0FRRw w 0x44 dn fn
+  else if dn == fn then tst ++ enc0FRRw w 0x45 dn tn
+  else encAluRRw w 0x89 dn fn ++ tst ++ enc0FRRw w 0x45 dn tn
+
+/-! ## 3d. Register-indexed (SIB) element access — the `LOADIDX`/`STOREIDX` arms
+
+`Com.toLprogPhysAbi` exports a runtime-index array access as an `.arrIdx base idx
+scale` operand, which `LprogAsmPrinter.resolveOperand` renders as the effective
+address `(%base, %idx, scale)` — no displacement, both registers addressed as full
+64-bit GPs, `scale` the compile-time element stride in bytes. `renderLopn`'s
+`LOADIDX` arm sizes the access by that stride (`scale * 8` bits): scale 1 and 2 are
+zero-extending loads into the 32-bit destination (`movzbl`/`movzwl`), scale 4 a
+`movl`, scale 8 a `movq`. Its `STOREIDX` arm writes width-exactly at the same
+stride (`movb`/`movw`/`movl`/`movq`), so a narrow element store does not overrun
+its neighbour.
+
+The encoders below are the byte image of those lines. `ScalarEncoder.encMemMovSib`
+is the `REX.W=1` member of the family and `encMemMovSibw_w1` proves the
+width-parametric form reduces to it; the narrower widths need the same
+ModRM/SIB/displacement tail under a different prefix and opcode, which `sibTail`
+shares out. A stride outside `{1, 2, 4, 8}` — the four the x86 SIB `ss` field
+encodes — carries no bytes, so `encodableLcmd` declines the body instead of
+emitting an instruction at a silently clamped stride. -/
+
+/-- The ModRM + SIB (+ forced `disp8 0`) tail of a register-indexed
+    `[base + index*scale]` operand, the bytes after the opcode. `ModRM.rm` is
+    `100` (the SIB escape) and the SIB byte carries `scale`/`index`/`base`
+    (`ScalarEncoder.sibByte`). A `mod=00` SIB form with base low-3 = 5
+    (`%rbp`/`%r13`) means "no base register", so that case forces `mod=01` with a
+    zero `disp8` to keep the base. `REX.X`/`REX.B` (bit 3 of index/base) live in
+    the prefix the caller emits. -/
+def sibTail (reg base index scale : Nat) : List (BitVec 8) :=
+  let needDisp := (base &&& 7) = 5
+  let md := if needDisp then 1 else 0
+  let core := [BitVec.ofNat 8 (md * 64 + ((reg &&& 7) * 8) + 4),
+               BitVec.ofNat 8 (sibByte scale index base)]
+  if needDisp then core ++ [disp8 0] else core
+
+/-- Width-aware `MOV` between a register and `[base + index*scale]`: `op` is
+    `0x8B` (load `r ← m`) or `0x89` (store `m ← r`), `w` the `REX.W` bit. The REX
+    prefix is elided per `rexOpt` when `w = 0` and no extension bit is set. -/
+def encMemMovSibw (w op r base index scale : Nat) : List (BitVec 8) :=
+  rexOpt w (bit r 3) (bit index 3) (bit base 3) ++ [BitVec.ofNat 8 op]
+    ++ sibTail r base index scale
+
+/-- A `0F`-map op (`MOVZBL` `0F B6`, `MOVZWL` `0F B7`) whose `r/m` operand is the
+    register-indexed address `[base + index*scale]`. The REX prefix precedes the
+    `0F` escape byte. -/
+def enc0FMemSibw (w op r base index scale : Nat) : List (BitVec 8) :=
+  rexOpt w (bit r 3) (bit index 3) (bit base 3)
+    ++ [BitVec.ofNat 8 0x0f, BitVec.ofNat 8 op] ++ sibTail r base index scale
+
+/-- `MOV %r16, (%base,%index,scale)` (`66 89 /r`): the width-exact 16-bit store.
+    The `0x66` operand-size prefix precedes the REX prefix. -/
+def encMovwSib (r base index scale : Nat) : List (BitVec 8) :=
+  BitVec.ofNat 8 0x66 :: encMemMovSibw 0 0x89 r base index scale
+
+/-- `MOV %r8, (%base,%index,scale)` (`88 /r`): the width-exact 8-bit store. A REX
+    prefix is emitted when an extension bit is set OR when the source register is
+    in the `4 ≤ r < 8` band (`%spl/%bpl/%sil/%dil`), whose byte forms are
+    reachable only under REX — without it the ModRM would select `AH/CH/DH/BH`. -/
+def encMovbSib (r base index scale : Nat) : List (BitVec 8) :=
+  (if bit r 3 = 0 ∧ bit index 3 = 0 ∧ bit base 3 = 0 ∧ ¬ (4 ≤ r ∧ r < 8) then []
+   else [BitVec.ofNat 8 (rex 0 (bit r 3) (bit index 3) (bit base 3))])
+    ++ [BitVec.ofNat 8 0x88] ++ sibTail r base index scale
+
+/-- The bytes of `LOADIDX dst ← (%base,%index,scale)`, at the access width the
+    stride fixes: `movzbl`/`movzwl` into the 32-bit destination for strides 1/2,
+    `movl` for 4, `movq` for 8. A stride outside `{1, 2, 4, 8}` carries no
+    bytes. -/
+def encLoadIdx (dn bn idxn scale : Nat) : List (BitVec 8) :=
+  if scale = 8 then encMemMovSibw 1 0x8b dn bn idxn 8
+  else if scale = 4 then encMemMovSibw 0 0x8b dn bn idxn 4
+  else if scale = 2 then enc0FMemSibw 0 0xb7 dn bn idxn 2
+  else if scale = 1 then enc0FMemSibw 0 0xb6 dn bn idxn 1
+  else []
+
+/-- The bytes of `STOREIDX (%base,%index,scale) ← val`, width-exact at the stride:
+    `movb`/`movw`/`movl`/`movq` for strides 1/2/4/8. A stride outside
+    `{1, 2, 4, 8}` carries no bytes. -/
+def encStoreIdx (vn bn idxn scale : Nat) : List (BitVec 8) :=
+  if scale = 8 then encMemMovSibw 1 0x89 vn bn idxn 8
+  else if scale = 4 then encMemMovSibw 0 0x89 vn bn idxn 4
+  else if scale = 2 then encMovwSib vn bn idxn 2
+  else if scale = 1 then encMovbSib vn bn idxn 1
+  else []
 
 /-! ## 4. `encodeLinstrR` — the per-instruction byte encoder
 
@@ -665,21 +867,66 @@ def encodeLopn (frame spillW : Nat) : LinstrR → List (BitVec 8)
           match s with
           | .imm v => encImmOp w base d v
           | _ =>
-            -- Count-in-tag register-source shift (`SHR:<n>:64 [reg s]`): the rotate
-            -- form `Com.toLprogPhysAbi` emits. The count is in `base` (the tag), the
-            -- source a register — the destructive in-place `shr/shl %d, $n` (`d == s`,
-            -- the gather materialises any `mov d, s` separately). Emits the SAME bytes
-            -- the `.imm`-source shift arm would (was silently `[]` — dropped rotation).
-            match tagShiftExt base, d with
-            | some ext, .reg dn => encTagShift w ext (gpNumU dn) base
-            | _, _ =>
+            -- Count-in-tag register-source shift (`SHR:<n>:64 [d] [s]`): the rotate
+            -- form `Com.toLprogPhysAbi` emits, with the count in `base` (the tag).
+            -- The byte image of the printer's four cases: a by-0 shift is the
+            -- identity, so `s == d` carries no bytes and `s ≠ d` degenerates to
+            -- the copy the binding stands for (`mov s, d`, the `89 /r` form); a
+            -- real count shifts in place when `s == d` and prepends the same
+            -- `mov` when it does not, so the shifted value is the source's.
+            match tagShiftExt base, d, s with
+            | some ext, .reg dn, .reg sn =>
+                if isGpName dn && isGpName sn then
+                  let n := tagShiftCount base
+                  let movPart :=
+                    if dn == sn then []
+                    else encAluRRw w 0x89 (gpNumU dn) (gpNumU sn)
+                  if n = 0 then movPart
+                  else movPart ++ encTagShift w ext (gpNumU dn) base
+                else []
+            | _, _, _ =>
               match aluOpcode base with
               | some op => encTwoAddr frame spillW w op d s
               | none =>
                 match twoByteOpcode base, d, s with
                 | some op, .reg dn, .reg sn => enc0FRRw w op (gpNumU dn) (gpNumU sn)
-                | _, _, _ => []
-      | [d], [_, s] =>
+                | _, _, _ =>
+                  -- Effective-address load `LEA [dst] [mem.<base>.<off>]` (`8D /r`):
+                  -- the destination sits in the ModRM `reg` field and the operand
+                  -- contributes the `[base + disp]` ModRM/SIB/displacement tail — the
+                  -- shape `encMemMovw` builds, at opcode `0x8D`. The AT&T printer's
+                  -- `LEA` arm resolves the same operand name to `<off>(%<base>)`. A
+                  -- source that is not a `mem.*` name over a tabulated GP base denotes
+                  -- no effective address and carries no bytes. `LEA` reaches this arm
+                  -- last: it is in none of `tagShiftExt` / `aluOpcode` /
+                  -- `twoByteOpcode`, so the dispatch lemmas that enumerate those
+                  -- tables are unaffected by it.
+                  if base == "LEA" then
+                    match d, s with
+                    | .reg dn, .reg mn =>
+                        if isGpName dn then
+                          match parseMemNameGp mn with
+                          | some (bb, off) => encMemMovw w 0x8d (gpNumU dn) bb off
+                          | none => []
+                        else []
+                    | _, _ => []
+                  -- Register-indexed element load `LOADIDX [dst] [.arrIdx b i s]`
+                  -- (§3d): the `(%b, %i, s)` effective address `renderLopn`'s
+                  -- `LOADIDX` arm prints, at the access width the stride fixes.
+                  -- Off-table register names denote no address and carry no
+                  -- bytes, rather than being addressed as `%rax`. `LOADIDX`
+                  -- reaches this arm last: it is in none of `tagShiftExt` /
+                  -- `aluOpcode` / `twoByteOpcode`, so the dispatch lemmas that
+                  -- enumerate those tables are unaffected by it.
+                  else if base == "LOADIDX" then
+                    match d, s with
+                    | .reg dn, .arrIdx bn idxn scale =>
+                        if isGpName dn && isGpName bn && isGpName idxn then
+                          encLoadIdx (gpNumU dn) (gpNumU bn) (gpNumU idxn) scale
+                        else []
+                    | _, _ => []
+                  else []
+      | [d], [a, s] =>
           match s with
           | .imm v => encImmOp w base d v
           | _ =>
@@ -691,7 +938,70 @@ def encodeLopn (frame spillW : Nat) : LinstrR → List (BitVec 8)
               | none =>
                 match twoByteOpcode base, d, s with
                 | some op, .reg dn, .reg sn => enc0FRRw w op (gpNumU dn) (gpNumU sn)
-                | _, _, _ => []
+                | _, _, _ =>
+                  -- Register-indexed element store `STOREIDX [arr] [.arrIdx b i s, val]`
+                  -- (§3d): the first source is the SIB destination and the second the
+                  -- stored value; the `Lopn` destination names the functionally-updated
+                  -- array (the dialect's `stackStore` result) and is not an x86 operand,
+                  -- exactly as in `renderLopn`'s `STOREIDX` arm. The store is
+                  -- width-exact at the stride. Like `LOADIDX` above, this sits below
+                  -- `tagShiftExt` / `aluOpcode` / `twoByteOpcode`, so no dispatch lemma
+                  -- over a variable mnemonic reaches it.
+                  if base == "STOREIDX" then
+                    match a, s with
+                    | .arrIdx bn idxn scale, .reg vn =>
+                        if isGpName vn && isGpName bn && isGpName idxn then
+                          encStoreIdx (gpNumU vn) (gpNumU bn) (gpNumU idxn) scale
+                        else []
+                    | _, _ => []
+                  -- Loop-guard flag compare `CMP:<w> [ctr] [ctr, r]` (the runtime-
+                  -- loop export's back-edge guard): AT&T `cmp<sz> %s, %d`, flags
+                  -- from `d − s`, the group-1 `39 /r` opcode at the `encAluRRw`
+                  -- shape (`reg`=s, `rm`=d). The immediate form (`cmp $imm, %d`)
+                  -- rides `encImmOp` via `aluImmDigit`. Register operands only: a
+                  -- spill/qsave/`mem.*` operand denotes a memory compare this arm
+                  -- does not build (the printer splits the mem-mem case through
+                  -- the `R15` scratch), and carries no bytes rather than
+                  -- mis-resolving. `CMP` reaches this arm last: it is in none of
+                  -- `tagShiftExt` / `aluOpcode` / `twoByteOpcode`, so the
+                  -- dispatch lemmas that enumerate those tables are unaffected
+                  -- by it — and `aluOpcode` must NOT gain a `CMP` row, since
+                  -- `encTwoAddr`'s memory arms encode the MOV opcodes and would
+                  -- turn a spill-operand compare into a silent move.
+                  else if base == "CMP" then
+                    match d, s with
+                    | .reg dn, .reg sn =>
+                        if isGpName dn && isGpName sn then
+                          encAluRRw w 0x39 (gpNumU dn) (gpNumU sn)
+                        else if isGpName dn && isSpillOrQsave sn then
+                          -- Spill-source guard compare `cmp<sz> k.N(%rsp), %d`:
+                          -- the `3B /r` (`r ← r/m`) direction with the spill's
+                          -- RSP-SIB address, the byte image of the printer's
+                          -- single-memory-operand `cmp` render. A dedicated
+                          -- case, not an `aluOpcode` row, for the same reason
+                          -- as the reg-reg arm: `encTwoAddr`'s memory arms
+                          -- encode the MOV opcodes.
+                          match spillQsaveOff frame spillW sn with
+                          | some off => encRspMem w 0x3B (gpNumU dn) off
+                          | none => []
+                        else []
+                    | _, _ => []
+                  else []
+      -- Branchless constant-time select `CMOV:<w> [cond, t, f]` (§3c): the byte
+      -- image of `renderLopn`'s CMOV arm, with the same aliasing-driven choice
+      -- of which source defaults into `d` and which condition the `CMOVcc`
+      -- carries. Register-resident operands only — a spill/qsave/`mem.*` operand
+      -- denotes a memory form this arm does not build, and is left as the
+      -- visible empty byte list rather than addressed as `%rax`.
+      | [d], [a, s, cin] =>
+          if base == "CMOV" then
+            match d, a, s, cin with
+            | .reg dn, .reg cn, .reg tn, .reg fn =>
+                if isGpName dn && isGpName cn && isGpName tn && isGpName fn then
+                  encCmovSelect w (gpNumU dn) (gpNumU cn) (gpNumU tn) (gpNumU fn)
+                else []
+            | _, _, _, _ => []
+          else []
       | _, _ => []
   | _ => []
 
@@ -797,6 +1107,333 @@ def encodeLcmd (body : Lcmd) : List (BitVec 8) :=
       let instrEnd := off + len
       let dispOf : LLabel → Int := fun l => Int.ofNat (lookupLabel tbl l) - Int.ofNat instrEnd
       (instrEnd, bytes ++ encodeLinstrR frame spillW dispOf i)) (0, [])).2
+
+/-! ## 5a. Encodability: which instructions carry bytes
+
+`encodeLinstrR` returns the empty byte list on every form it does not cover, and
+`encodeLcmd` concatenates, so an uncovered form leaves no trace at all: the body is
+shorter by one instruction and nothing marks the place. The AT&T printer meets the
+same situation with a visible `UNHANDLED-…` marker in its output; a byte stream has
+no room for one, so the marker here is a decidable predicate over the body plus a
+gated encoder that returns `none` instead of dropping.
+
+`carriesNoBytes` names the forms that produce no bytes by construction: the label
+and alignment pseudo-instructions, the `Lret` whose `c3` the ABI wrapper lays down
+(§6), and the `MULXHI` high-word binding whose value the paired `mulx` already
+wrote. Every other form must produce at least one byte, and `encodableLinstrR` reads
+that off `encodeLinstrR` itself — so the predicate cannot drift from the encoder as
+arms are added. -/
+
+/-- The `LinstrR` forms whose encoding is empty by construction. -/
+def carriesNoBytes : LinstrR → Bool
+  | .Lret => true
+  | .Lalign => true
+  | .Llabel _ _ => true
+  | .Lopn _ opn _ => isMulHiBinding opn
+  | _ => false
+
+/-- Does this instruction reach the byte stream? Either it carries no bytes by
+    construction, or `encodeLinstrR` gives it a non-empty encoding. The stand-in
+    displacement is immaterial: a branch encodes to 2, 5 or 6 bytes and never to
+    none, and a straight-line `Lopn` ignores the resolver. -/
+def encodableLinstrR (frame spillW : Nat) (i : LinstrR) : Bool :=
+  carriesNoBytes i || !(encodeLinstrR frame spillW (fun _ => 0) i).isEmpty
+
+/-- Does every instruction of a body reach the byte stream? The frame size and the
+    body-uniform spill width are computed exactly as `encodeLcmd` computes them, so
+    the predicate is evaluated against the same operand resolution the encoding
+    uses. -/
+def encodableLcmd (body : Lcmd) : Bool :=
+  let frame := frameSize body
+  let spillW := if bodyIsU64 body then 64 else 32
+  body.all fun instr => encodableLinstrR frame spillW instr.li_i
+
+/-- `encodeLcmd` gated on `encodableLcmd`: the body's bytes when every instruction
+    reaches the stream, `none` when one would be dropped. An emitter that byte-encodes
+    a body it did not itself build takes this route. -/
+def encodeLcmdChecked (body : Lcmd) : Option (List (BitVec 8)) :=
+  if encodableLcmd body then some (encodeLcmd body) else none
+
+/-- The gated encoder's bytes are `encodeLcmd`'s. -/
+theorem encodeLcmdChecked_eq {body : Lcmd} {bs : List (BitVec 8)}
+    (h : encodeLcmdChecked body = some bs) : bs = encodeLcmd body := by
+  unfold encodeLcmdChecked at h
+  split at h
+  · exact (Option.some.inj h).symm
+  · exact absurd h (by simp)
+
+/-- Every instruction of a body the gate accepts is encodable. -/
+theorem encodableLinstrR_of_checked {body : Lcmd} {bs : List (BitVec 8)}
+    (h : encodeLcmdChecked body = some bs) {instr : Linstr} (hi : instr ∈ body) :
+    encodableLinstrR (frameSize body) (if bodyIsU64 body then 64 else 32) instr.li_i
+      = true := by
+  unfold encodeLcmdChecked at h
+  split at h
+  · rename_i hall
+    unfold encodableLcmd at hall
+    exact (List.all_eq_true.mp hall) instr hi
+  · exact absurd h (by simp)
+
+/-- **An encodable instruction that is not empty by construction occupies at least
+    one byte, under any displacement resolver.** -/
+theorem encodeLinstrR_length_pos (frame spillW : Nat) (d : LLabel → Int) (i : LinstrR)
+    (henc : encodableLinstrR frame spillW i = true) (hc : carriesNoBytes i = false) :
+    1 ≤ (encodeLinstrR frame spillW d i).length := by
+  have hne : (encodeLinstrR frame spillW (fun _ => 0) i).isEmpty = false := by
+    unfold encodableLinstrR at henc
+    rw [hc] at henc
+    simpa using henc
+  cases i with
+  | Lopn dsts opn srcs =>
+    have hd : encodeLinstrR frame spillW d (.Lopn dsts opn srcs)
+        = encodeLinstrR frame spillW (fun _ => 0) (.Lopn dsts opn srcs) := rfl
+    rw [hd]
+    cases hl : encodeLinstrR frame spillW (fun _ => 0) (.Lopn dsts opn srcs) with
+    | nil => rw [hl] at hne; simp at hne
+    | cons a t => simp
+  | Lgoto t =>
+    obtain ⟨fn, l⟩ := t
+    simp only [encodeLinstrR]
+    split <;> simp [encJmp8, encJmp32]
+  | Lcond c l =>
+    cases c with
+    | reg cc =>
+      simp only [encodeLinstrR]
+      split <;> simp [encJcc8, encJcc32]
+    | _ => simp [encodeLinstrR] at hne
+  | Lcall ra t =>
+    obtain ⟨fn, l⟩ := t
+    simp [encodeLinstrR, encCall32]
+  | Lret => simp [carriesNoBytes] at hc
+  | Lalign => simp [carriesNoBytes] at hc
+  | Llabel k l => simp [carriesNoBytes] at hc
+  | Lsyscall n => simp [encodeLinstrR] at hne
+  | Ligoto t => simp [encodeLinstrR] at hne
+  | LstoreLabel dst l => simp [encodeLinstrR] at hne
+
+/-- The byte-carrying instructions of a body: those `carriesNoBytes` rejects. -/
+def byteCarrying (body : Lcmd) : Nat :=
+  body.countP fun instr => !carriesNoBytes instr.li_i
+
+/-- The accumulator form of the length bound, over `encodeLcmd`'s fold. -/
+theorem encodeLcmd_fold_length_ge (frame spillW : Nat) (tbl : List (LLabel × Nat)) :
+    ∀ (body : Lcmd) (off : Nat) (acc : List (BitVec 8)),
+      (∀ instr ∈ body, encodableLinstrR frame spillW instr.li_i = true) →
+      acc.length + byteCarrying body ≤
+        ((body.foldl (fun (a : Nat × List (BitVec 8)) instr =>
+            let (off, bytes) := a
+            let i := instr.li_i
+            let dispLong : LLabel → Int := fun l =>
+              Int.ofNat (lookupLabel tbl l)
+                - Int.ofNat (off + instrLenAt frame spillW (fun _ => 0) i)
+            let len := instrLenAt frame spillW dispLong i
+            let instrEnd := off + len
+            let dispOf : LLabel → Int := fun l =>
+              Int.ofNat (lookupLabel tbl l) - Int.ofNat instrEnd
+            (instrEnd, bytes ++ encodeLinstrR frame spillW dispOf i)) (off, acc)).2).length := by
+  intro body
+  induction body with
+  | nil => intro off acc _; simp [byteCarrying]
+  | cons instr rest ih =>
+    intro off acc hall
+    rw [List.foldl_cons]
+    refine Nat.le_trans ?_ (ih _ _ (fun j hj => hall j (List.mem_cons_of_mem _ hj)))
+    rw [List.length_append]
+    unfold byteCarrying
+    rw [List.countP_cons]
+    cases hc : carriesNoBytes instr.li_i with
+    | true => simp
+    | false =>
+      have h1 := encodeLinstrR_length_pos frame spillW
+        (fun l => Int.ofNat (lookupLabel tbl l)
+          - Int.ofNat (off + instrLenAt frame spillW
+              (fun l => Int.ofNat (lookupLabel tbl l)
+                - Int.ofNat (off + instrLenAt frame spillW (fun _ => 0) instr.li_i))
+              instr.li_i))
+        instr.li_i (hall instr List.mem_cons_self) hc
+      simp only [Bool.not_false, if_pos]
+      unfold byteCarrying at *
+      omega
+
+/-- **A body the gate accepts loses no instruction.** Its byte stream is at least as
+    long as the number of instructions that must reach it, so no covered form can
+    have vanished. -/
+theorem encodeLcmdChecked_length_ge {body : Lcmd} {bs : List (BitVec 8)}
+    (h : encodeLcmdChecked body = some bs) : byteCarrying body ≤ bs.length := by
+  rw [encodeLcmdChecked_eq h]
+  have := encodeLcmd_fold_length_ge (frameSize body)
+    (if bodyIsU64 body then 64 else 32)
+    (labelOffsets (frameSize body) (if bodyIsU64 body then 64 else 32) body)
+    body 0 [] (fun instr hi => encodableLinstrR_of_checked h hi)
+  simpa [encodeLcmd] using this
+
+/-! ### The unrecognised-mnemonic condition
+
+`carriesNoBytes` names the forms whose encoding is empty **by contract**; every
+other form must occupy at least one byte. "Empty encoding and not
+`carriesNoBytes`" is therefore exactly the silent-drop condition, it is
+decidable, and it is what `encodableLinstrR` reads off `encodeLinstrR` itself.
+The two results below turn that reading into the guarantee the gated encoder
+gives: an instruction no arm recognises makes `encodeLcmdChecked` answer `none`
+for every body containing it, so the drop cannot reach a byte stream through
+that entry point. -/
+
+/-- An instruction whose encoding is empty although `carriesNoBytes` does not
+    excuse it is exactly what the gate rejects. -/
+theorem encodableLinstrR_eq_false_of_dropped (frame spillW : Nat) (i : LinstrR)
+    (hc : carriesNoBytes i = false)
+    (he : encodeLinstrR frame spillW (fun _ => 0) i = []) :
+    encodableLinstrR frame spillW i = false := by
+  simp [encodableLinstrR, hc, he]
+
+/-- **A body carrying an unrecognised instruction is declined, not truncated.**
+    If some instruction of the body encodes to no bytes without `carriesNoBytes`
+    excusing it, the gated encoder returns `none`. -/
+theorem encodeLcmdChecked_eq_none_of_dropped {body : Lcmd} {instr : Linstr}
+    (hi : instr ∈ body) (hc : carriesNoBytes instr.li_i = false)
+    (he : encodeLinstrR (frameSize body) (if bodyIsU64 body then 64 else 32)
+            (fun _ => 0) instr.li_i = []) :
+    encodeLcmdChecked body = none := by
+  unfold encodeLcmdChecked
+  split
+  · rename_i hall
+    unfold encodableLcmd at hall
+    have h1 := (List.all_eq_true.mp hall) instr hi
+    rw [encodableLinstrR_eq_false_of_dropped _ _ _ hc he] at h1
+    exact absurd h1 (by simp)
+  · rfl
+
+/-! ### Firing / non-firing demos for the gate (`#guard`, evaluated at elaboration) -/
+
+/-- A one-instruction body over a covered form. -/
+def demoCoveredBody : Lcmd := [⟨0, .Lopn [.reg "R8"] "MOV:64" [.reg "RAX"]⟩]
+
+#guard encodableLcmd demoCoveredBody
+#guard byteCarrying demoCoveredBody ≤ (encodeLcmd demoCoveredBody).length
+
+/-- A one-instruction body over a form the byte encoder does not cover. -/
+def demoUncoveredBody : Lcmd := [⟨0, .Lsyscall "write"⟩]
+
+-- The instruction must reach the byte stream and does not: `encodeLcmd` returns
+-- the empty stream for a body of one instruction, and the gate declines.
+#guard byteCarrying demoUncoveredBody = 1
+#guard encodeLcmd demoUncoveredBody = []
+#guard !encodableLcmd demoUncoveredBody
+#guard encodeLcmdChecked demoUncoveredBody = none
+
+-- The effective-address load a `mem.<base>.<off>` operand denotes:
+-- `leaq 0x1(%rax), %r8` is `4C 8D 40 01` (`REX.W|R`, `8D /r`, `ModRM(01, r8, rax)`,
+-- `disp8`).
+#guard encodeLopn 0 64 (.Lopn [.reg "R8"] "LEA:64" [.reg "mem.RAX.1"])
+  = [0x4c, 0x8d, 0x40, 0x01].map (BitVec.ofNat 8)
+
+-- A `LEA` over an off-table base name denotes no effective address and is declined
+-- rather than addressed as `%rax`.
+#guard encodeLopn 0 64 (.Lopn [.reg "R8"] "LEA:64" [.reg "mem.SCRATCH.1"]) = []
+#guard !encodableLcmd [⟨0, .Lopn [.reg "R8"] "LEA:64" [.reg "mem.SCRATCH.1"]⟩]
+
+/-! ### Encodability, pinned per mnemonic
+
+Each entry of `mnemonicEncodability` pairs a representative `Lopn` over one body
+mnemonic with the value `encodableLinstrR` takes on it: `true` when the mnemonic
+reaches a byte-emitting arm or is excused by `carriesNoBytes`, `false` when it
+reaches no arm, so the gate declines any body containing it. A mnemonic that
+gains or loses an arm moves that value and fails the `#guard`, so the accepted
+set cannot change without this list changing with it.
+
+The `false` entries are mnemonics the exporter can emit that this encoder does
+not cover. They are declined rather than dropped, and the gate is what makes the
+difference visible. -/
+
+/-- Representative `Lopn`s over the body mnemonics, each with the value
+    `encodableLinstrR` takes on it at a 64-byte frame and a U64 spill width. -/
+def mnemonicEncodability : List (LinstrR × Bool) :=
+  [ (.Lopn [.reg "R8"] "MOV:64" [.reg "RAX"], true)
+  , (.Lopn [.reg "R8"] "ADD:64" [.reg "R8", .reg "RAX"], true)
+  , (.Lopn [.reg "R8"] "SHL:19:64" [.reg "R8"], true)
+  , (.Lopn [.reg "R8"] "SHR:19:64" [.reg "R8"], true)
+  , (.Lopn [.reg "R8"] "SAR:16:64" [.reg "R8"], true)
+  , (.Lopn [.reg "R8"] "CMOV:64" [.reg "RCX", .reg "RBX", .reg "RAX"], true)
+  , (.Lopn [.reg "R8"] "SETC:64" [], true)
+  , (.Lopn [.reg "R8"] "ADCXHI:64" [.reg "RAX", .reg "RBX"], true)
+  , (.Lopn [.reg "R8"] "MULXHI:64" [.reg "RAX", .reg "RBX"], true)
+  , (.Lopn [.reg "R8"] "ROL:7:64" [.reg "R8"], false)
+  , (.Lopn [.reg "R8"] "ROR:7:64" [.reg "R8"], false)
+  , (.Lopn [.reg "R8"] "ANDN:64" [.reg "RAX", .reg "RBX"], false) ]
+
+#guard mnemonicEncodability.all fun p => encodableLinstrR 64 64 p.1 == p.2
+
+/-! ### Byte pins for the `SAR:<n>` and `CMOV` arms
+
+Reference: `as` + `objdump -d`.
+
+```
+48 c1 f8 10             sar    $0x10,%rax
+48 d1 f8                sar    %rax
+49 c1 fb 3f             sar    $0x3f,%r11
+48 85 c9                test   %rcx,%rcx
+48 0f 45 c3             cmovne %rbx,%rax
+48 0f 44 d8             cmove  %rax,%rbx
+49 89 c3                mov    %rax,%r11
+4c 0f 45 db             cmovne %rbx,%r11
+```
+
+The count of a `SAR:<n>` is recovered by `tagShiftCount`, which goes through
+`String.toNat?` and so does not reduce in the kernel; the shift pins are
+therefore `#guard`s (evaluated at elaboration) rather than `rfl` theorems. The
+`encCmovSelect` pins carry no count and are `rfl`. -/
+
+-- `sarq $16, %rax` = `48 C1 F8 10`: `REX.W`, `C1 /7`, `ModRM(11, 7, rax)`, `imm8`.
+#guard encodeLopn 0 64 (.Lopn [.reg "RAX"] "SAR:16:64" [.reg "RAX"])
+  = [0x48, 0xc1, 0xf8, 0x10].map (BitVec.ofNat 8)
+
+-- A count of exactly 1 takes the `D1 /7` short form (no `imm8` byte), as gas
+-- selects: `sarq $1, %rax` = `48 D1 F8`.
+#guard encodeLopn 0 64 (.Lopn [.reg "RAX"] "SAR:1:64" [.reg "RAX"])
+  = [0x48, 0xd1, 0xf8].map (BitVec.ofNat 8)
+
+-- `sarq $63, %r11` = `49 C1 FB 3F`: `REX.W|B`, `C1 /7`, `ModRM(11, 7, r11)`.
+#guard encodeLopn 0 64 (.Lopn [.reg "R11"] "SAR:63:64" [.reg "R11"])
+  = [0x49, 0xc1, 0xfb, 0x3f].map (BitVec.ofNat 8)
+
+-- An untagged narrow `SAR:31` is a U32 op: `REX.W=0` with no extension bit set
+-- is elided, so `sarl $31, %eax` = `C1 F8 1F`.
+#guard encodeLopn 0 64 (.Lopn [.reg "RAX"] "SAR:31" [.reg "RAX"])
+  = [0xc1, 0xf8, 0x1f].map (BitVec.ofNat 8)
+
+/-- The destination already holds the false value: no defaulting `mov`, and the
+    `CMOVcc` reads the true value on the non-zero condition.
+    `testq %rcx,%rcx ; cmovneq %rbx,%rax`. -/
+theorem encCmovSelect_pin_alias_false :
+    encCmovSelect 1 0 1 3 0
+      = [0x48, 0x85, 0xc9, 0x48, 0x0f, 0x45, 0xc3].map (BitVec.ofNat 8) := rfl
+
+/-- The destination already holds the true value: the condition is inverted and
+    the false value moved in, so the defaulting `mov` that would clobber the true
+    value is not emitted. `testq %rcx,%rcx ; cmoveq %rax,%rbx`. -/
+theorem encCmovSelect_pin_alias_true :
+    encCmovSelect 1 3 1 3 0
+      = [0x48, 0x85, 0xc9, 0x48, 0x0f, 0x44, 0xd8].map (BitVec.ofNat 8) := rfl
+
+/-- Destination distinct from both sources: the false value is defaulted in
+    first. `movq %rax,%r11 ; testq %rcx,%rcx ; cmovneq %rbx,%r11`. -/
+theorem encCmovSelect_pin_disjoint :
+    encCmovSelect 1 11 1 3 0
+      = [0x49, 0x89, 0xc3, 0x48, 0x85, 0xc9, 0x4c, 0x0f, 0x45, 0xdb].map
+          (BitVec.ofNat 8) := rfl
+
+-- The three-source `CMOV:64` dispatch, end to end from the `Lopn`.
+#guard encodeLopn 0 64 (.Lopn [.reg "RAX"] "CMOV:64" [.reg "RCX", .reg "RBX", .reg "RAX"])
+  = [0x48, 0x85, 0xc9, 0x48, 0x0f, 0x45, 0xc3].map (BitVec.ofNat 8)
+
+#guard encodeLopn 0 64 (.Lopn [.reg "R11"] "CMOV:64" [.reg "RCX", .reg "RBX", .reg "RAX"])
+  = [0x49, 0x89, 0xc3, 0x48, 0x85, 0xc9, 0x4c, 0x0f, 0x45, 0xdb].map (BitVec.ofNat 8)
+
+-- A select whose operands are not all tabulated GP registers denotes a form this
+-- arm does not build, so it carries no bytes and the gate declines the body.
+#guard encodeLopn 0 64 (.Lopn [.reg "RAX"] "CMOV:64" [.reg "k.0", .reg "RBX", .reg "RAX"]) = []
+#guard !encodableLcmd
+  [⟨0, .Lopn [.reg "RAX"] "CMOV:64" [.reg "k.0", .reg "RBX", .reg "RAX"]⟩]
 
 /-! ## 5b. Cross-function calls: intra-object direct resolution + external relocations
    (task #658-continuation)
@@ -932,6 +1569,23 @@ def encodeLfundefBytes (body : Lcmd) : List (BitVec 8) :=
   pushB ++ encLeaRspFrame (-(Int.ofNat frame)) ++ encodeLcmd body
     ++ encLeaRspFrame (Int.ofNat frame) ++ popB ++ LeafBytes.encRet
 
+/-- `encodeLfundefBytes` gated on `encodableLcmd`: the function's `.text` bytes
+    when every body instruction reaches the byte stream, `none` when one would be
+    dropped. The prologue/epilogue framing is unconditional, so the body is what
+    the gate reads. This is the whole-function analogue of `encodeLcmdChecked`,
+    for an emitter that writes a `.bin` and must fail rather than write one short
+    by an instruction. -/
+def encodeLfundefBytesChecked (body : Lcmd) : Option (List (BitVec 8)) :=
+  if encodableLcmd body then some (encodeLfundefBytes body) else none
+
+/-- The gated whole-function encoder's bytes are `encodeLfundefBytes`'s. -/
+theorem encodeLfundefBytesChecked_eq {body : Lcmd} {bs : List (BitVec 8)}
+    (h : encodeLfundefBytesChecked body = some bs) : bs = encodeLfundefBytes body := by
+  unfold encodeLfundefBytesChecked at h
+  split at h
+  · exact (Option.some.inj h).symm
+  · exact absurd h (by simp)
+
 /-- A looped function as an `ElfObject.Leaf`. -/
 def encodeLfundefLeaf (name : String) (body : Lcmd) : ElfObject.Leaf :=
   { name := name, text := encodeLfundefBytes body }
@@ -1037,6 +1691,23 @@ def encodeLprogReloc (p : Lprog) : List (BitVec 8) :=
 def encodeLprog (p : Lprog) : List (BitVec 8) :=
   ElfObject.buildElfObjectMulti
     (p.lp_funcs.map (fun (n, f) => encodeLfundefLeaf n f.lfd_body))
+
+/-- `encodeLprog` gated on `encodableLcmd` for every function body: the object
+    bytes when every instruction of every function reaches the byte stream,
+    `none` when one would be dropped. The whole-object analogue of
+    `encodeLfundefBytesChecked`, for an emitter that writes a `.o` and must fail
+    rather than write one short by an instruction. -/
+def encodeLprogChecked (p : Lprog) : Option (List (BitVec 8)) :=
+  if p.lp_funcs.all (fun nf => encodableLcmd nf.2.lfd_body) then some (encodeLprog p)
+  else none
+
+/-- The gated whole-object encoder's bytes are `encodeLprog`'s. -/
+theorem encodeLprogChecked_eq {p : Lprog} {bs : List (BitVec 8)}
+    (h : encodeLprogChecked p = some bs) : bs = encodeLprog p := by
+  unfold encodeLprogChecked at h
+  split at h
+  · exact (Option.some.inj h).symm
+  · exact absurd h (by simp)
 
 /-! ## 7. Length invariants -/
 
@@ -1260,6 +1931,266 @@ theorem adcx3_bytes_gas_pin :
       = [0x4d, 0x89, 0xd3, 0x49, 0x0f, 0xba, 0xe4, 0x00,
          0x66, 0x4d, 0x0f, 0x38, 0xf6, 0xd9].map (BitVec.ofNat 8) := rfl
 
+/-! ## 7d. Register-indexed (SIB) arm invariants
+
+The `REX.W=1` member of the width-parametric SIB encoder is
+`ScalarEncoder.encMemMovSib` (`encMemMovSibw_w1`), so the scale-8 `LOADIDX`/
+`STOREIDX` bytes are that encoder's, and the narrower widths differ from it only
+in the prefix and opcode — the ModRM/SIB/displacement tail is the shared
+`sibTail`.
+
+### Gas pins (reference: `as` + `objdump -d`, binutils 2.42)
+
+```
+48 8b 04 f7             mov    (%rdi,%rsi,8),%rax
+4f 8b 04 ec             mov    (%r12,%r13,8),%r8
+48 8b 44 cd 00          mov    0x0(%rbp,%rcx,8),%rax
+49 8b 44 cd 00          mov    0x0(%r13,%rcx,8),%rax
+48 8b 04 cc             mov    (%rsp,%rcx,8),%rax
+8b 04 b7                mov    (%rdi,%rsi,4),%eax
+47 8b 04 ac             mov    (%r12,%r13,4),%r8d
+0f b7 04 77             movzwl (%rdi,%rsi,2),%eax
+47 0f b7 04 6c          movzwl (%r12,%r13,2),%r8d
+0f b6 04 37             movzbl (%rdi,%rsi,1),%eax
+0f b6 44 0d 00          movzbl 0x0(%rbp,%rcx,1),%eax
+48 89 04 f7             mov    %rax,(%rdi,%rsi,8)
+89 04 b7                mov    %eax,(%rdi,%rsi,4)
+66 89 04 77             mov    %ax,(%rdi,%rsi,2)
+66 47 89 04 6c          mov    %r8w,(%r12,%r13,2)
+88 04 37                mov    %al,(%rdi,%rsi,1)
+47 88 04 2c             mov    %r8b,(%r12,%r13,1)
+40 88 34 0f             mov    %sil,(%rdi,%rcx,1)
+40 88 2c 0f             mov    %bpl,(%rdi,%rcx,1)
+40 88 3c 0c             mov    %dil,(%rsp,%rcx,1)
+``` -/
+
+/-- At `REX.W=1` the width-parametric SIB `MOV` is `ScalarEncoder.encMemMovSib`
+    byte-for-byte: the `0x48`-class REX is never elided, and the ModRM/SIB/forced-
+    `disp8` tail is the same `sibTail` selection. -/
+theorem encMemMovSibw_w1 (op r base index scale : Nat) :
+    encMemMovSibw 1 op r base index scale = encMemMovSib op r base index scale := by
+  unfold encMemMovSibw encMemMovSib sibTail rexOpt
+  by_cases h : (base &&& 7) = 5 <;> simp [h]
+
+theorem encLoadIdx_pin_q_rdi_rsi :
+    encLoadIdx 0 7 6 8 = [0x48, 0x8b, 0x04, 0xf7].map (BitVec.ofNat 8) := rfl
+
+theorem encLoadIdx_pin_q_r12_r13 :
+    encLoadIdx 8 12 13 8 = [0x4f, 0x8b, 0x04, 0xec].map (BitVec.ofNat 8) := rfl
+
+/-- Base `%rbp` (low-3 = 5) cannot be a `mod=00` SIB base, so the forced
+    `disp8 = 0` byte is present — the case an encoder without it mis-decodes as a
+    no-base absolute address. -/
+theorem encLoadIdx_pin_q_rbp :
+    encLoadIdx 0 5 1 8 = [0x48, 0x8b, 0x44, 0xcd, 0x00].map (BitVec.ofNat 8) := rfl
+
+theorem encLoadIdx_pin_q_r13 :
+    encLoadIdx 0 13 1 8 = [0x49, 0x8b, 0x44, 0xcd, 0x00].map (BitVec.ofNat 8) := rfl
+
+theorem encLoadIdx_pin_q_rsp :
+    encLoadIdx 0 4 1 8 = [0x48, 0x8b, 0x04, 0xcc].map (BitVec.ofNat 8) := rfl
+
+theorem encLoadIdx_pin_l_rdi_rsi :
+    encLoadIdx 0 7 6 4 = [0x8b, 0x04, 0xb7].map (BitVec.ofNat 8) := rfl
+
+theorem encLoadIdx_pin_l_r12_r13 :
+    encLoadIdx 8 12 13 4 = [0x47, 0x8b, 0x04, 0xac].map (BitVec.ofNat 8) := rfl
+
+theorem encLoadIdx_pin_zwl_rdi_rsi :
+    encLoadIdx 0 7 6 2 = [0x0f, 0xb7, 0x04, 0x77].map (BitVec.ofNat 8) := rfl
+
+theorem encLoadIdx_pin_zwl_r12_r13 :
+    encLoadIdx 8 12 13 2 = [0x47, 0x0f, 0xb7, 0x04, 0x6c].map (BitVec.ofNat 8) := rfl
+
+theorem encLoadIdx_pin_zbl_rdi_rsi :
+    encLoadIdx 0 7 6 1 = [0x0f, 0xb6, 0x04, 0x37].map (BitVec.ofNat 8) := rfl
+
+theorem encLoadIdx_pin_zbl_rbp :
+    encLoadIdx 0 5 1 1 = [0x0f, 0xb6, 0x44, 0x0d, 0x00].map (BitVec.ofNat 8) := rfl
+
+theorem encStoreIdx_pin_q_rdi_rsi :
+    encStoreIdx 0 7 6 8 = [0x48, 0x89, 0x04, 0xf7].map (BitVec.ofNat 8) := rfl
+
+theorem encStoreIdx_pin_l_rdi_rsi :
+    encStoreIdx 0 7 6 4 = [0x89, 0x04, 0xb7].map (BitVec.ofNat 8) := rfl
+
+theorem encStoreIdx_pin_w_rdi_rsi :
+    encStoreIdx 0 7 6 2 = [0x66, 0x89, 0x04, 0x77].map (BitVec.ofNat 8) := rfl
+
+/-- The `0x66` operand-size prefix precedes the REX prefix. -/
+theorem encStoreIdx_pin_w_r12_r13 :
+    encStoreIdx 8 12 13 2 = [0x66, 0x47, 0x89, 0x04, 0x6c].map (BitVec.ofNat 8) := rfl
+
+theorem encStoreIdx_pin_b_rdi_rsi :
+    encStoreIdx 0 7 6 1 = [0x88, 0x04, 0x37].map (BitVec.ofNat 8) := rfl
+
+theorem encStoreIdx_pin_b_r12_r13 :
+    encStoreIdx 8 12 13 1 = [0x47, 0x88, 0x04, 0x2c].map (BitVec.ofNat 8) := rfl
+
+/-- A byte store out of `%sil`/`%bpl`/`%dil` carries the bare `0x40` REX that
+    selects the low byte rather than `AH/CH/DH/BH`. -/
+theorem encStoreIdx_pin_b_sil :
+    encStoreIdx 6 7 1 1 = [0x40, 0x88, 0x34, 0x0f].map (BitVec.ofNat 8) := rfl
+
+theorem encStoreIdx_pin_b_bpl :
+    encStoreIdx 5 7 1 1 = [0x40, 0x88, 0x2c, 0x0f].map (BitVec.ofNat 8) := rfl
+
+theorem encStoreIdx_pin_b_dil_rsp :
+    encStoreIdx 7 4 1 1 = [0x40, 0x88, 0x3c, 0x0c].map (BitVec.ofNat 8) := rfl
+
+/-- A stride the x86 SIB `ss` field cannot express carries no bytes, so the gate
+    declines the body instead of emitting an access at a clamped stride. -/
+theorem encLoadIdx_unsupported_scale : encLoadIdx 0 7 6 3 = [] := rfl
+
+theorem encStoreIdx_unsupported_scale : encStoreIdx 0 7 6 3 = [] := rfl
+
+/-! ### The `LOADIDX`/`STOREIDX` dispatch, end to end from the `Lopn` -/
+
+/-- `LOADIDX` dispatches to `encLoadIdx` on the operand's registers and stride. -/
+theorem encodeLopn_loadidx (frame spillW : Nat) :
+    encodeLopn frame spillW
+        (.Lopn [.reg "RAX"] "LOADIDX" [.arrIdx "RDI" "RSI" 8])
+      = encLoadIdx 0 7 6 8 := by
+  simp only [encodeLopn,
+    show (isCarryOutBinding "LOADIDX" || isMulHiBinding "LOADIDX") = false from by
+      decide +kernel,
+    show stripWidthTag "LOADIDX" = "LOADIDX" from by decide +kernel,
+    show ("LOADIDX" == "MULX") = false from by decide +kernel,
+    show ("LOADIDX" == "MULXMEM") = false from by decide +kernel,
+    show adxPrefix "LOADIDX" = none from by decide +kernel,
+    show tagShiftExt "LOADIDX" = none from by decide +kernel,
+    show aluOpcode "LOADIDX" = none from by decide +kernel,
+    show twoByteOpcode "LOADIDX" = none from by decide +kernel,
+    show ("LOADIDX" == "LEA") = false from by decide +kernel,
+    show ("LOADIDX" == "LOADIDX") = true from by decide +kernel,
+    Bool.false_eq_true, if_false, if_true]
+  norm_num [show isGpName "RAX" = true from by decide +kernel,
+    show isGpName "RDI" = true from by decide +kernel,
+    show isGpName "RSI" = true from by decide +kernel,
+    show gpNumU "RAX" = 0 from by decide +kernel,
+    show gpNumU "RDI" = 7 from by decide +kernel,
+    show gpNumU "RSI" = 6 from by decide +kernel]
+
+/-- `STOREIDX` dispatches to `encStoreIdx` on the SIB source operand and the
+    stored value; the `Lopn` destination names the updated array and is not an
+    x86 operand. -/
+theorem encodeLopn_storeidx (frame spillW : Nat) :
+    encodeLopn frame spillW
+        (.Lopn [.reg "R9"] "STOREIDX" [.arrIdx "RDI" "RSI" 1, .reg "RAX"])
+      = encStoreIdx 0 7 6 1 := by
+  simp only [encodeLopn,
+    show (isCarryOutBinding "STOREIDX" || isMulHiBinding "STOREIDX") = false from by
+      decide +kernel,
+    show stripWidthTag "STOREIDX" = "STOREIDX" from by decide +kernel,
+    show ("STOREIDX" == "MULX") = false from by decide +kernel,
+    show ("STOREIDX" == "MULXMEM") = false from by decide +kernel,
+    show adxPrefix "STOREIDX" = none from by decide +kernel,
+    show tagShiftExt "STOREIDX" = none from by decide +kernel,
+    show aluOpcode "STOREIDX" = none from by decide +kernel,
+    show twoByteOpcode "STOREIDX" = none from by decide +kernel,
+    show ("STOREIDX" == "STOREIDX") = true from by decide +kernel,
+    Bool.false_eq_true, if_false, if_true]
+  norm_num [show isGpName "RAX" = true from by decide +kernel,
+    show isGpName "RDI" = true from by decide +kernel,
+    show isGpName "RSI" = true from by decide +kernel,
+    show gpNumU "RAX" = 0 from by decide +kernel,
+    show gpNumU "RDI" = 7 from by decide +kernel,
+    show gpNumU "RSI" = 6 from by decide +kernel]
+
+/-! ### The gate on a body carrying indexed accesses
+
+The front's rolled bodies pair an indexed load with an indexed store at the trip
+counter. Such a body passes `encodableLcmd` and its byte count is the sum of the
+two instructions' encodings — the `byteCarrying ≤ length` bound
+(`encodeLcmdChecked_length_ge`) holds with no instruction dropped. -/
+
+/-- A body of one indexed load and one indexed store at the trip counter. -/
+def demoIndexedBody : Lcmd :=
+  [ ⟨0, .Lopn [.reg "RAX"] "LOADIDX" [.arrIdx "RDI" "RSI" 8]⟩
+  , ⟨0, .Lopn [.reg "R9"] "STOREIDX" [.arrIdx "RDX" "RSI" 8, .reg "RAX"]⟩ ]
+
+#guard encodableLcmd demoIndexedBody
+#guard byteCarrying demoIndexedBody = 2
+#guard (encodeLcmd demoIndexedBody).length = 8
+#guard encodeLcmd demoIndexedBody
+  = [0x48, 0x8b, 0x04, 0xf7, 0x48, 0x89, 0x04, 0xf2].map (BitVec.ofNat 8)
+#guard (encodeLcmdChecked demoIndexedBody).isSome
+
+/-- A body whose indexed access carries a stride the SIB `ss` field cannot
+    express. The instruction must reach the byte stream and does not, so the gate
+    declines rather than returning a stream short by one instruction. -/
+def demoIndexedBadScaleBody : Lcmd :=
+  [ ⟨0, .Lopn [.reg "RAX"] "LOADIDX" [.arrIdx "RDI" "RSI" 3]⟩ ]
+
+#guard byteCarrying demoIndexedBadScaleBody = 1
+#guard !encodableLcmd demoIndexedBadScaleBody
+#guard encodeLcmdChecked demoIndexedBadScaleBody = none
+
+/-! ### The reg-reg `CMP` loop-guard compare
+
+The runtime-loop export guards its back-edge with
+`Lopn [ctr] CMP:64 [ctr, r]` (`renderLopn`: `cmp<sz> %r, %ctr`) followed by an
+`Lcond` Jcc reading the flags. The immediate guard (`cmp $imm, %ctr`) rides
+`encImmOp` via `aluImmDigit`; the reg-reg guard is the group-1 `39 /r` compare. -/
+
+/-- `cmpq %rcx, %rbp` (`48 39 cd`): `reg`=src, `rm`=dst, flags from `dst − src`. -/
+theorem encAluRRw_pin_cmp_rbp_rcx :
+    encAluRRw 1 0x39 5 1 = [0x48, 0x39, 0xcd].map (BitVec.ofNat 8) := rfl
+
+/-- `cmpq %rbx, %rbp` (`48 39 dd`). -/
+theorem encAluRRw_pin_cmp_rbp_rbx :
+    encAluRRw 1 0x39 5 3 = [0x48, 0x39, 0xdd].map (BitVec.ofNat 8) := rfl
+
+/-- `cmpq %r8, %rdi` (`4c 39 c7`): the source's extension bit lands in `REX.R`. -/
+theorem encAluRRw_pin_cmp_rdi_r8 :
+    encAluRRw 1 0x39 7 8 = [0x4c, 0x39, 0xc7].map (BitVec.ofNat 8) := rfl
+
+/-- `CMP` dispatches to the `39 /r` reg-reg compare on the destination and the
+    second source; the first source is the destination's self-alias, exactly as
+    in `renderLopn`'s CMP arm. -/
+theorem encodeLopn_cmp (frame spillW : Nat) :
+    encodeLopn frame spillW
+        (.Lopn [.reg "RBP"] "CMP:64" [.reg "RBP", .reg "RCX"])
+      = encAluRRw 1 0x39 5 1 := by
+  simp only [encodeLopn,
+    show (isCarryOutBinding "CMP:64" || isMulHiBinding "CMP:64") = false from by
+      decide +kernel,
+    show stripWidthTag "CMP:64" = "CMP" from by decide +kernel,
+    show mnemWidth "CMP:64" = 64 from by decide +kernel,
+    show ("CMP" == "MULX") = false from by decide +kernel,
+    show ("CMP" == "MULXMEM") = false from by decide +kernel,
+    show adxPrefix "CMP" = none from by decide +kernel,
+    show tagShiftExt "CMP" = none from by decide +kernel,
+    show aluOpcode "CMP" = none from by decide +kernel,
+    show twoByteOpcode "CMP" = none from by decide +kernel,
+    show ("CMP" == "STOREIDX") = false from by decide +kernel,
+    show ("CMP" == "CMP") = true from by decide +kernel,
+    rexW, Bool.false_eq_true, if_false, if_true]
+  norm_num [show isGpName "RBP" = true from by decide +kernel,
+    show isGpName "RCX" = true from by decide +kernel,
+    show gpNumU "RBP" = 5 from by decide +kernel,
+    show gpNumU "RCX" = 1 from by decide +kernel]
+
+/-- A one-guard body: the compare reaches the byte stream at its pinned bytes. -/
+def demoCmpGuardBody : Lcmd :=
+  [ ⟨0, .Lopn [.reg "RBP"] "CMP:64" [.reg "RBP", .reg "RCX"]⟩ ]
+
+#guard encodableLcmd demoCmpGuardBody
+#guard encodeLcmd demoCmpGuardBody = [0x48, 0x39, 0xcd].map (BitVec.ofNat 8)
+
+/-- A compare against a spill slot denotes a memory form the arm does not build:
+    the `3B /r` spill-source arm encodes it against the spill's RSP-SIB
+    address, the byte image of the printer's single-memory-operand `cmp`
+    render. -/
+def demoCmpSpillBody : Lcmd :=
+  [ ⟨0, .Lopn [.reg "RBP"] "CMP:64" [.reg "RBP", .reg "k.0"]⟩ ]
+
+#guard encodableLcmd demoCmpSpillBody
+#guard (encodeLcmdChecked demoCmpSpillBody).isSome
+-- `cmpq k.0(%rsp), %rbp` opens `48 3B` (REX.W + `3B /r`, reg=%rbp, mem rm).
+#guard ((encodeLcmdChecked demoCmpSpillBody).getD []).take 2
+         = [0x48, 0x3B].map (BitVec.ofNat 8)
+
 end CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
 
 /-! ## 8. Decode round-trip for the control-flow arms (`decode (encode) = id`)
@@ -1374,9 +2305,9 @@ theorem roundtrip_jcc32 (cc : String) (o : Int)
 theorem jccOpcode_range (cc : String) : 0x80 ≤ jccOpcode cc ∧ jccOpcode cc ≤ 0x8f := by
   unfold jccOpcode; split <;> omega
 
-/-! ### Honest trust tally for the control-flow arms
+/-! ### Trust tally for the control-flow arms
 
-* **decode-round-trip-proved** (gas pin not load-bearing): `jmp rel32`
+* **decode-round-trip-proved** (no gas pin required): `jmp rel32`
   (`roundtrip_jmp32`), `jcc rel32` for every condition code (`roundtrip_jcc32` +
   `jccOpcode_range`), `call rel32` (`roundtrip_call32`). The rel32 displacement —
   the part a wrong jump would get wrong — is proved recovered exactly.

@@ -12,16 +12,15 @@ import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop
 /-!
 # `runBlock` ↔ `lsemStraightMem` agreement (the machine-model bridge)
 
-Two straight-line machine models meet at the rolled scalar-multiplication emit:
-the point-op bricks (`jacDblBlock` / `jacAddBlock`) are
-`List (JInstr 64)` with the **total** fold semantics `runBlock` over `JState`
-(`JasminModel.lean`), while the counted-loop node's per-trip machine body is
-`List LinstrRM` with the **partial** `lsemStraightMem` over `LstateM`
-(`JasminLsemMem.lean`). `JasminLsem.lean` states outright that the two
-straight-line machines are the *same shape* but that their agreement is **not**
-proved. This module builds that bridge for the fragment on which the two models
-genuinely coincide, and reports — with a concrete witness — exactly where they do
-**not** (the honesty gate below).
+`RolledScalarMulEmit.lean` names the wall this module addresses: the point-op bricks
+(`jacDblBlock` / `jacAddBlock` / `copyBankBlock`) are `List (JInstr 64)` with the
+**total** fold semantics `runBlock` over `JState` (`JasminModel.lean`), while the
+counted-loop node's per-trip machine body is `List LinstrRM` with the **partial**
+`lsemStraightMem` over `LstateM` (`JasminLsemMem.lean`). `JasminLsem.lean:76`
+states outright that the two straight-line machines are the *same shape* but their
+agreement is **not** proved. This module builds that bridge for the fragment on
+which the two models coincide, and reports — with a concrete witness —
+exactly where they do **not** (the honesty gate the task requires).
 
 ## The state correspondence
 
@@ -72,8 +71,13 @@ memory axis, orthogonal to this compile-time one. One divergence remains:
    `adox` arms compute, so the *value* agreement is already in hand. Phase 3 (§9)
    adds the **designated-register correspondence** (`JLstateCorrF`, tracking which
    `.reg 1` name currently mirrors `CF` / `OF`) and the in-place `.adcx` / `.adox`
-   1→2 lowering; the `cmove`-on-`ZF` reader is named as the residual outside the
-   CF/OF scheme.
+   1→2 lowering. The `ZF` readers sit in `RunBlockLsemAgreeCmov`, which covers
+   `setc`, `cmovb`, `cmove` and `cmovne` under `JLstateCorrZ` — `JLstateCorrF`
+   with the `OF` axis replaced by `ZF`. Outside the scheme: the *immediate*-carry
+   gadget `materialiseCarry` (`.adcx hi (.imm 0)` / `.adox hi (.imm 0)`), where
+   the structured lsem `ADCX` recognizer wants three register operands, so an
+   immediate carry-in has no structured wire — a zero register or an lsem
+   immediate-carry form is required.
 
 ## Rolling assessment (does this bridge alone re-roll a point-op body?)
 
@@ -225,8 +229,10 @@ theorem lsemStepMem_regArith
 theorem lsemStepMem_movImm (dst : String) (n : Nat) (ls : LstateM) :
     lsemStepMem (.Lopn [.reg dst] (withWidthTag 64 "MOV") [.imm n], .reg none) ls
       = some { ls with reg := (ls.reg.setReg dst (BitVec.ofNat 64 n)).nextPc } := by
-  have hstr : stripWidthTag (withWidthTag 64 "MOV") = "MOV" := by decide +kernel
-  have hwidth : widthFromTag (withWidthTag 64 "MOV") = 64 := by decide +kernel
+  have hstr : stripWidthTag (withWidthTag 64 "MOV") = "MOV" :=
+    CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemScalar.stripWidthTag_withWidthTag_MOV 64
+  have hwidth : widthFromTag (withWidthTag 64 "MOV") = 64 :=
+    widthFromTag_withWidthTag_MOV (Or.inl rfl)
   rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inr rfl),
       lsemStepMC_of_delegate _ _ rfl rfl rfl rfl rfl, lsemStepSh_of_not_sar _ _ rfl]
   simp only [lsemStepN, hstr, Option.map_some, if_pos]
@@ -380,37 +386,37 @@ theorem jToRM_agrees (i : JInstr 64) (hi : InFieldArithSubset i)
     case reg r => exact hi.elim
   case add dst src =>
     refine binop_case s ls hcorr dst src "ADD" (x86_ADD (s.get dst) (src.eval s)).word
-      (by decide +kernel) (by decide) (by decide) (by decide) (by decide) rfl
+      (stripWidthTag_withWidthTag_binOpName' 64 .add) (by decide) (by decide) (by decide) (by decide) rfl
       (.add dst src) rfl ?_ ?_
     · intro r; simp only [runBlock_cons, runBlock_nil, evalInstr, JState.writeB5W]
     · intro base off; simp only [runBlock_cons, runBlock_nil, evalInstr, JState.writeB5W]
   case sub dst src =>
     refine binop_case s ls hcorr dst src "SUB" (x86_SUB (s.get dst) (src.eval s)).word
-      (by decide +kernel) (by decide) (by decide) (by decide) (by decide) rfl
+      (stripWidthTag_withWidthTag_binOpName' 64 .sub) (by decide) (by decide) (by decide) (by decide) rfl
       (.sub dst src) rfl ?_ ?_
     · intro r; simp only [runBlock_cons, runBlock_nil, evalInstr, JState.writeB5W]
     · intro base off; simp only [runBlock_cons, runBlock_nil, evalInstr, JState.writeB5W]
   case imul dst src =>
     refine binop_case s ls hcorr dst src "MUL" (x86_IMULt (s.get dst) (src.eval s)).word
-      (by decide +kernel) (by decide) (by decide) (by decide) (by decide) rfl
+      (stripWidthTag_withWidthTag_binOpName' 64 .mul) (by decide) (by decide) (by decide) (by decide) rfl
       (.imul dst src) rfl ?_ ?_
     · intro r; simp only [runBlock_cons, runBlock_nil, evalInstr, JState.writeB5W]
     · intro base off; simp only [runBlock_cons, runBlock_nil, evalInstr, JState.writeB5W]
   case and_ dst src =>
     refine binop_case s ls hcorr dst src "AND" (x86_AND (s.get dst) (src.eval s)).word
-      (by decide +kernel) (by decide) (by decide) (by decide) (by decide) rfl
+      (stripWidthTag_withWidthTag_binOpName' 64 .and) (by decide) (by decide) (by decide) (by decide) rfl
       (.and_ dst src) rfl ?_ ?_
     · intro r; simp only [runBlock_cons, runBlock_nil, evalInstr, JState.writeB5W]
     · intro base off; simp only [runBlock_cons, runBlock_nil, evalInstr, JState.writeB5W]
   case or_ dst src =>
     refine binop_case s ls hcorr dst src "OR" (x86_OR (s.get dst) (src.eval s)).word
-      (by decide +kernel) (by decide) (by decide) (by decide) (by decide) rfl
+      (stripWidthTag_withWidthTag_binOpName' 64 .or) (by decide) (by decide) (by decide) (by decide) rfl
       (.or_ dst src) rfl ?_ ?_
     · intro r; simp only [runBlock_cons, runBlock_nil, evalInstr, JState.writeB5W]
     · intro base off; simp only [runBlock_cons, runBlock_nil, evalInstr, JState.writeB5W]
   case xor_ dst src =>
     refine binop_case s ls hcorr dst src "XOR" (x86_XOR (s.get dst) (src.eval s)).word
-      (by decide +kernel) (by decide) (by decide) (by decide) (by decide) rfl
+      (stripWidthTag_withWidthTag_binOpName' 64 .xor) (by decide) (by decide) (by decide) (by decide) rfl
       (.xor_ dst src) rfl ?_ ?_
     · intro r; simp only [runBlock_cons, runBlock_nil, evalInstr, JState.writeB5W]
     · intro base off; simp only [runBlock_cons, runBlock_nil, evalInstr, JState.writeB5W]
@@ -553,7 +559,7 @@ theorem mulx_case (s : JState 64) (ls : LstateM) (hcorr : JLstateCorr s ls)
   set ls1 : LstateM := { ls with reg := (ls.reg.setReg dstLo lo).nextPc } with hls1
   have hstep1 : lsemStepMem
       (.Lopn [.reg dstLo] (withWidthTag 64 "MUL") [.reg a, .reg b], .reg none) ls = some ls1 :=
-    lsemStepMem_regArith3 dstLo a (.reg b) ls "MUL" (by decide +kernel) (by decide) (by decide)
+    lsemStepMem_regArith3 dstLo a (.reg b) ls "MUL" (stripWidthTag_withWidthTag_binOpName' 64 .mul) (by decide) (by decide)
       (by decide) (by decide) (s.regs a) (s.regs b) lo hva hvb rfl
   have hcorr1 : JLstateCorr s1 ls1 := by
     refine JLstateCorr_setReg s s1 ls hcorr dstLo lo ?_ ?_
@@ -660,7 +666,7 @@ Two of the original three divergences are now **closed**:
    `mulHi_eq` under the aliasing side-condition; `mulx` is in `InSubsetM` and
    covered by `jToRMs_agrees` / `runBlock_lsem_agreeM`.
 
-One genuine model gap remains:
+One model gap remains:
 
 2. **Flag / carry threading.** `JState`'s `adc`/`sbb`/`adcx`/`adox`/`setc`/`cmove…`
    read and write an **implicit** flag register; the lsem register state has **no
@@ -750,7 +756,7 @@ explicit `.reg 1` operand valued by `addCarryWord` (data) / `carryOutBit`
   simultaneous flag+data write of the in-place instruction is reproduced. The new
   correspondence uses `cfNew`. `.adox` is identical on the `OF` slot.
 
-**Residuals named honestly** (outside the register-source CF/OF scheme):
+**Residuals** (outside the register-source CF/OF scheme):
 the *immediate*-carry gadget `materialiseCarry` (`.adcx hi (.imm 0)` /
 `.adox hi (.imm 0)`) — the structured lsem `ADCX` recognizer needs three
 *register* operands, so an immediate carry-in has no structured wire (a zero
@@ -1030,7 +1036,7 @@ theorem mulx_caseF (s : JState 64) (ls : LstateM) (flg : String → Prop) (cfN o
   set ls1 : LstateM := { ls with reg := (ls.reg.setReg dstLo lo).nextPc } with hls1
   have hstep1 : lsemStepMem
       (.Lopn [.reg dstLo] (withWidthTag 64 "MUL") [.reg a, .reg b], .reg none) ls = some ls1 :=
-    lsemStepMem_regArith3 dstLo a (.reg b) ls "MUL" (by decide +kernel) (by decide) (by decide)
+    lsemStepMem_regArith3 dstLo a (.reg b) ls "MUL" (stripWidthTag_withWidthTag_binOpName' 64 .mul) (by decide) (by decide)
       (by decide) (by decide) (s.regs a) (s.regs b) lo hva hvb rfl
   have hva1 : ls1.reg.getW a 64 = some (s.regs a) := by
     rw [hls1]; simp only [LstateN.getW_nextPc]
@@ -1106,11 +1112,15 @@ theorem mac_column_lsem_agree (s : JState 64) (ls : LstateM) (flg : String → P
     (hof_of : ofNew ≠ ofN) (hof_cf : ofNew ≠ cfNew) (hof_cfN : ofNew ≠ cfN) :
     ∃ ls',
       lsemStraightMem
-        (jToRMs (.mulx hi lo (.reg a) (.reg b))
-          ++ [ (.Lopn [.reg cfNew] (withWidthTag 64 "ADCXHI") [.reg acc, .reg lo, .reg cfN], .reg none),
-               (.Lopn [.reg acc]   (withWidthTag 64 "ADCX")   [.reg acc, .reg lo, .reg cfN], .reg none) ]
-          ++ [ (.Lopn [.reg ofNew] (withWidthTag 64 "ADCXHI") [.reg acc, .reg cy, .reg ofN], .reg none),
-               (.Lopn [.reg acc]   (withWidthTag 64 "ADCX")   [.reg acc, .reg cy, .reg ofN], .reg none) ])
+        (jToRMs (JInstr.mulx hi lo (JOperand.reg a) (JOperand.reg b))
+          ++ [ (LinstrR.Lopn [LOperand.reg cfNew] (withWidthTag 64 "ADCXHI")
+                  [LOperand.reg acc, LOperand.reg lo, LOperand.reg cfN], MemTag.reg none),
+               (LinstrR.Lopn [LOperand.reg acc] (withWidthTag 64 "ADCX")
+                  [LOperand.reg acc, LOperand.reg lo, LOperand.reg cfN], MemTag.reg none) ]
+          ++ [ (LinstrR.Lopn [LOperand.reg ofNew] (withWidthTag 64 "ADCXHI")
+                  [LOperand.reg acc, LOperand.reg cy, LOperand.reg ofN], MemTag.reg none),
+               (LinstrR.Lopn [LOperand.reg acc] (withWidthTag 64 "ADCX")
+                  [LOperand.reg acc, LOperand.reg cy, LOperand.reg ofN], MemTag.reg none) ])
         ls = some ls' ∧
       JLstateCorrF
         (runBlock s [.mulx hi lo (.reg a) (.reg b), .adcx acc (.reg lo), .adox acc (.reg cy)])
@@ -1129,9 +1139,11 @@ theorem mac_column_lsem_agree (s : JState 64) (ls : LstateM) (flg : String → P
   refine ⟨ls3, ?_, ?_⟩
   · -- concatenate the three straight-line lowerings (the list is `(A ++ B) ++ C`)
     have hAB : lsemStraightMem
-        (jToRMs (.mulx hi lo (.reg a) (.reg b))
-          ++ [ (.Lopn [.reg cfNew] (withWidthTag 64 "ADCXHI") [.reg acc, .reg lo, .reg cfN], .reg none),
-               (.Lopn [.reg acc]   (withWidthTag 64 "ADCX")   [.reg acc, .reg lo, .reg cfN], .reg none) ])
+        (jToRMs (JInstr.mulx hi lo (JOperand.reg a) (JOperand.reg b))
+          ++ [ (LinstrR.Lopn [LOperand.reg cfNew] (withWidthTag 64 "ADCXHI")
+                  [LOperand.reg acc, LOperand.reg lo, LOperand.reg cfN], MemTag.reg none),
+               (LinstrR.Lopn [LOperand.reg acc] (withWidthTag 64 "ADCX")
+                  [LOperand.reg acc, LOperand.reg lo, LOperand.reg cfN], MemTag.reg none) ])
         ls = some ls2 := by
       rw [lsemStraightMem_append, hstep1, Option.bind]; exact hstep2
     rw [lsemStraightMem_append, hAB, Option.bind]; exact hstep3
@@ -1296,7 +1308,7 @@ under a call frame. Two ways a call can be handled therefore split cleanly:
   discharges the inter-procedural obligation, and the composition below is its
   machine-model witness.
 
-* **A genuine (non-inlined) `.Lcall`** kept on the lsem side under `lsemFuelCallN`:
+* **A non-inlined `.Lcall`** kept on the lsem side under `lsemFuelCallN`:
   tying it to the `runBlock` side would need a `JState` call model (a `.Lcall`
   constructor with a frame save/return in `runBlock`, or a program-indexed
   `runProg` fold), which does not exist. `JasminLsemGeneralFaithfulCallN` supplies
@@ -1455,11 +1467,15 @@ theorem runBlock_lsem_agreeF_seq_migrate
     list `mac_column_lsem_agree` bridges; naming it makes the two-column
     concatenation readable. -/
 def macColumnL (acc a b cy hi lo cfN ofN cfNew ofNew : String) : List LinstrRM :=
-  jToRMs (.mulx hi lo (.reg a) (.reg b))
-    ++ [ (.Lopn [.reg cfNew] (withWidthTag 64 "ADCXHI") [.reg acc, .reg lo, .reg cfN], .reg none),
-         (.Lopn [.reg acc]   (withWidthTag 64 "ADCX")   [.reg acc, .reg lo, .reg cfN], .reg none) ]
-    ++ [ (.Lopn [.reg ofNew] (withWidthTag 64 "ADCXHI") [.reg acc, .reg cy, .reg ofN], .reg none),
-         (.Lopn [.reg acc]   (withWidthTag 64 "ADCX")   [.reg acc, .reg cy, .reg ofN], .reg none) ]
+  jToRMs (JInstr.mulx hi lo (JOperand.reg a) (JOperand.reg b))
+    ++ [ (LinstrR.Lopn [LOperand.reg cfNew] (withWidthTag 64 "ADCXHI")
+            [LOperand.reg acc, LOperand.reg lo, LOperand.reg cfN], MemTag.reg none),
+         (LinstrR.Lopn [LOperand.reg acc] (withWidthTag 64 "ADCX")
+            [LOperand.reg acc, LOperand.reg lo, LOperand.reg cfN], MemTag.reg none) ]
+    ++ [ (LinstrR.Lopn [LOperand.reg ofNew] (withWidthTag 64 "ADCXHI")
+            [LOperand.reg acc, LOperand.reg cy, LOperand.reg ofN], MemTag.reg none),
+         (LinstrR.Lopn [LOperand.reg acc] (withWidthTag 64 "ADCX")
+            [LOperand.reg acc, LOperand.reg cy, LOperand.reg ofN], MemTag.reg none) ]
 
 /-- The source-side one-column MAC block `[mulx hi lo a b; adcx acc lo; adox acc cy]`. -/
 def macColumnJ (acc a b cy hi lo : String) : List (JInstr 64) :=

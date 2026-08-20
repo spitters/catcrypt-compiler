@@ -9,9 +9,8 @@ import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
 # Prime-ir structural / reinterpret ops — `poly.to_tensor` / `poly.from_tensor`
   and `field.bitcast` / `mod_arith.bitcast`
 
-A minimal **correspondence** `VIR.Dialect` whose ops are the prime-ir
-*structural / reinterpret* ops that move data between equivalent representations
-without doing arithmetic:
+The leaf functions and round-trip laws for the prime-ir *structural / reinterpret*
+ops, which move data between equivalent representations without doing arithmetic:
 
 * `poly.to_tensor` / `poly.from_tensor` — the coefficient-vector ↔ polynomial
   maps (a polynomial in coefficient form *is* its coefficient tensor);
@@ -66,17 +65,18 @@ the round-trip lemmas a reinterpret op must satisfy — WITHOUT modifying the
   (`b.toNat < p`).  Both are the no-truncation conditions a bit-reinterpret
   needs; we state them as explicit hypotheses rather than baking in a width.
 
-## Honest classification (read `VIR/DIALECTS.md`)
+## Where the ops live
 
-This is a **HIGH-tier, prime-ir-corresponding / agreement** dialect, NOT an
-emit-wired one.  Like `mlirArithDialect`, `tensorExtDialect`, `cmpDialect`, and
-the `FieldDerivedOps` derived-arithmetic dialect in DIALECTS.md's
-"correspondence-only" table, it has **no lowering out** (no `→ Com
-jasminDialect`, no backend edge).  It substantiates the "prime-ir
-`poly.to_tensor` / `poly.from_tensor` / `field.bitcast` / `mod_arith.bitcast`
-aligned" claim by giving those reinterpret maps a first-class op with a verified
-denotation and round-trip.  It does **not** add a lowering or emit path.  Do not
-overclaim an emit this file does not build.
+`ModArithOp.polyToTensor`, `.polyFromTensor`, `.residueEncode` and
+`.residueDecode` in `ModArithDialect`, tied to the leaves below by
+`VIR/FoldedOpAgreement.lean`. They sit there rather than in a dialect of their
+own because a `Com` carries ops from one dialect, and an op alone in its dialect
+cannot appear beside the arithmetic it reinterprets for. A coproduct with an
+injection (`VIR/DialectCoproduct.lean`) was the alternative; folding was chosen
+because all four carriers already have `ModArithTy` counterparts — `poly` and
+`tensor` are `fpVec q n`, `residue` is `fp p`, `bits` is `word w`.
+
+Lowering status: `VIR/DIALECTS.md`.
 
 ## What this file does NOT close (still-PARTIAL)
 
@@ -179,192 +179,3 @@ theorem residueEncode_residueDecode {p w : Nat} [NeZero p] (b : BitVec w)
     residueEncodeF p w (residueDecodeF p w b) = b := by
   simp only [residueEncodeF, residueDecodeF, ZMod.val_natCast,
     Nat.mod_eq_of_lt hb, BitVec.ofNat_toNat, BitVec.setWidth_eq]
-
-/-! ## 3. Type (`StructTy`)
-
-The reinterpret operands.  Poly and tensor share the coefficient-vector carrier
-(distinguished as constructors so the *ops* carry the prime-ir source/dest
-distinction); the residue and bit-storage carriers are `ZMod p` and `BitVec w`. -/
-
-/-- The structural-ops dialect's value-type alphabet. -/
-inductive StructTy where
-  /-- Coefficient-form polynomial over `Z_q[X]`, degree `< n`, `⟦·⟧ = Fin n → ZMod q`
-      (the coefficient vector). -/
-  | poly (q n : Nat)
-  /-- Rank-1 length-`n` coefficient tensor over `Z_q`, `⟦·⟧ = Fin n → ZMod q`. -/
-  | tensor (q n : Nat)
-  /-- A residue in `F_p` / `Z_p` (the `FieldDialect` / `ModArithDialect` carrier),
-      `⟦·⟧ = ZMod p`. -/
-  | residue (p : Nat)
-  /-- Fixed-width `BitVec w` storage, `⟦·⟧ = BitVec w`. -/
-  | bits (w : Nat)
-  deriving DecidableEq
-
-/-- Total denotation of `StructTy`.  Poly and tensor both denote to the
-    coefficient vector `Fin n → ZMod q` (a poly in coefficient form *is* its
-    coefficient tensor); residue to `ZMod p`; bits to `BitVec w`. -/
-@[reducible] instance : TyDenote StructTy where
-  denote
-    | .poly q n => Fin n → ZMod q
-    | .tensor q n => Fin n → ZMod q
-    | .residue p => ZMod p
-    | .bits w => BitVec w
-
-/-! ## 4. Op tags (`StructOp`)
-
-The reinterpret ops.  The two bitcast directions carry the modulus `p` and the
-storage width `w`. -/
-
-/-- Operation tags for the structural-ops dialect — prime-ir's reinterpret ops. -/
-inductive StructOp where
-  /-- `poly.to_tensor` over `poly q n → tensor q n`. -/
-  | polyToTensor (q n : Nat)
-  /-- `poly.from_tensor` over `tensor q n → poly q n`. -/
-  | polyFromTensor (q n : Nat)
-  /-- `field.bitcast` / `mod_arith.bitcast` **encode** `residue p → bits w`. -/
-  | residueEncode (p w : Nat)
-  /-- `field.bitcast` / `mod_arith.bitcast` **decode** `bits w → residue p`. -/
-  | residueDecode (p w : Nat)
-  deriving DecidableEq
-
-/-! ## 5. The dialect -/
-
-/-- The structural-ops dialect: `Op` is `StructOp`, `Ty` is `StructTy`. -/
-@[reducible] def structDialect : Dialect :=
-  { Op := StructOp, Ty := StructTy }
-
-/-! ## 6. Op signatures (arg types + return type) -/
-
-instance : DialectSignature structDialect where
-  sig op := match op with
-    | .polyToTensor q n => [.poly q n]
-    | .polyFromTensor q n => [.tensor q n]
-    | .residueEncode p _ => [.residue p]
-    | .residueDecode _ w => [.bits w]
-  ret op := match op with
-    | .polyToTensor q n => .tensor q n
-    | .polyFromTensor q n => .poly q n
-    | .residueEncode _ w => .bits w
-    | .residueDecode p _ => .residue p
-
-/-! ## 7. Op denotation (into the reinterpret leaves) -/
-
-instance structDenote : DialectDenote structDialect where
-  denote op := match op with
-    | .polyToTensor q n => fun args => polyToTensorF q n args.head
-    | .polyFromTensor q n => fun args => polyFromTensorF q n args.head
-    | .residueEncode p w => fun args => residueEncodeF p w args.head
-    | .residueDecode p w => fun args => residueDecodeF p w args.head
-
-/-! ## 8. Per-op denotation / round-trip facts (the once-per-op ties)
-
-The per-op denotations hold definitionally (the op denotations are the leaf
-functions); combined with §2's round-trips, each reinterpret pair is shown
-inverse. -/
-
-/-- `poly.to_tensor` denotes to the identity on the coefficient vector. -/
-theorem polyToTensor_denote {q n : Nat} (p : Fin n → ZMod q) :
-    structDenote.denote (.polyToTensor q n) (.cons p .nil) = p := rfl
-
-/-- `poly.from_tensor` denotes to the identity on the coefficient vector. -/
-theorem polyFromTensor_denote {q n : Nat} (t : Fin n → ZMod q) :
-    structDenote.denote (.polyFromTensor q n) (.cons t .nil) = t := rfl
-
-/-- **Round-trip at the denotation level.** `⟦from_tensor⟧ (⟦to_tensor⟧ p) = p`. -/
-theorem polyFromTensor_denote_polyToTensor_denote {q n : Nat} (p : Fin n → ZMod q) :
-    structDenote.denote (.polyFromTensor q n)
-        (.cons (structDenote.denote (.polyToTensor q n) (.cons p .nil)) .nil) = p := rfl
-
-/-- `residueEncode` denotes to `BitVec.ofNat w a.val`. -/
-theorem residueEncode_denote {p w : Nat} (a : ZMod p) :
-    structDenote.denote (.residueEncode p w) (.cons a .nil) = BitVec.ofNat w a.val := rfl
-
-/-- `residueDecode` denotes to `(b.toNat : ZMod p)`. -/
-theorem residueDecode_denote {p w : Nat} (b : BitVec w) :
-    structDenote.denote (.residueDecode p w) (.cons b .nil) = (b.toNat : ZMod p) := rfl
-
-/-- **Bitcast round-trip at the denotation level (decode ∘ encode).** Under
-    `p ≤ 2^w`, `⟦decode⟧ (⟦encode⟧ a) = a`. -/
-theorem residueDecode_denote_residueEncode_denote {p w : Nat} [NeZero p]
-    (a : ZMod p) (hp : p ≤ 2 ^ w) :
-    structDenote.denote (.residueDecode p w)
-        (.cons (structDenote.denote (.residueEncode p w) (.cons a .nil)) .nil) = a :=
-  residueDecode_residueEncode a hp
-
-/-- **Bitcast round-trip at the denotation level (encode ∘ decode).** Under
-    `b.toNat < p`, `⟦encode⟧ (⟦decode⟧ b) = b`. -/
-theorem residueEncode_denote_residueDecode_denote {p w : Nat} [NeZero p]
-    (b : BitVec w) (hb : b.toNat < p) :
-    structDenote.denote (.residueEncode p w)
-        (.cons (structDenote.denote (.residueDecode p w) (.cons b .nil)) .nil) = b :=
-  residueEncode_residueDecode b hb
-
-/-! ## 9. Constant-time predicate (the dialect's CT instance)
-
-Every op is a data-oblivious reinterpret: `to_tensor`/`from_tensor` relabel the
-same vector, and the bitcast is a fixed-width bit copy.  No `ite` on data, no
-data-dependent index, so `ctSafe` is `true` for every op — exactly the
-`FieldDerivedOps`/`PolyDialect` story (and unlike `cmpDialect`'s equality
-tests, these never branch on a secret value). -/
-
-/-- Per-op CT predicate: every reinterpret op is constant-time. -/
-def StructOp.ctSafe : StructOp → Bool
-  | _ => true
-
-@[simp] theorem StructOp.ctSafe_all (op : StructOp) : op.ctSafe = true := rfl
-
-/-- Per-expression CT predicate. -/
-def ctSafeExpr {Γ : Ctxt structDialect} {t : StructTy}
-    (e : Expr structDialect Γ t) : Bool :=
-  e.op.ctSafe
-
-@[simp] theorem ctSafeExpr_true {Γ : Ctxt structDialect} {t : StructTy}
-    (e : Expr structDialect Γ t) : ctSafeExpr e = true := rfl
-
-/-- Per-program CT predicate: a `Com` is CT-safe iff every let-bound expression
-    is.  Since every op is CT, this is identically `true`. -/
-def ctSafeCom {Γ : Ctxt structDialect} {t : StructTy} :
-    Com structDialect Γ t → Bool
-  | .ret _ => true
-  | .var e body => ctSafeExpr e && ctSafeCom body
-
-/-- **CT by construction.**  Every structural-ops program is constant-time: a
-    reinterpret introduces no data-dependent control flow or memory index. -/
-theorem ctSafeCom_all {Γ : Ctxt structDialect} {t : StructTy}
-    (c : Com structDialect Γ t) : ctSafeCom c = true := by
-  induction c with
-  | ret _ => rfl
-  | var e _ ih => simp [ctSafeCom, ctSafeExpr_true, ih]
-
-/-- Propositional form, decidable. -/
-def ctSafePropCom {Γ : Ctxt structDialect} {t : StructTy}
-    (c : Com structDialect Γ t) : Prop :=
-  ctSafeCom c = true
-
-instance {Γ : Ctxt structDialect} {t : StructTy}
-    (c : Com structDialect Γ t) : Decidable (ctSafePropCom c) := by
-  unfold ctSafePropCom; infer_instance
-
-/-! ## 10. Smoke tests
-
-Two one-op `Com structDialect` programs exercising each reinterpret. -/
-
-/-- One-op smoke program: `poly.to_tensor` over `[poly 7 4]`. -/
-def smokeTensorProg : Com structDialect [.poly 7 4] (.tensor 7 4) :=
-  .var (.mk (.polyToTensor 7 4) rfl (.cons .here .nil))
-    (.ret .here)
-
-/-- The `to_tensor` smoke program is the identity on the coefficient vector. -/
-example (t : Fin 4 → ZMod 7) : smokeTensorProg.denote (.cons t .nil) = t := rfl
-
-/-- One-op smoke program: `field.bitcast` encode over `[residue 7]`, width 8. -/
-def smokeEncodeProg : Com structDialect [.residue 7] (.bits 8) :=
-  .var (.mk (.residueEncode 7 8) rfl (.cons .here .nil))
-    (.ret .here)
-
-/-- The bitcast-encode smoke program: residue `3 : ZMod 7` encodes to the
-    8-bit storage `BitVec.ofNat 8 3`. -/
-example : smokeEncodeProg.denote (.cons (3 : ZMod 7) .nil) = BitVec.ofNat 8 3 := by
-  rfl
-
-end CatCrypt.Crypto.SecureCompilation.VIR.PrimeIrStructuralOps

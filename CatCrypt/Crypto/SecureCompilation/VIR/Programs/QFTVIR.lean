@@ -13,8 +13,9 @@ set_option autoImplicit false
 # Phase 3 (scale test): Quantum Fourier Transform (n=2) ported to `Com quantumDialect`
 
 Validates the Phase-3 cleanliness claim on a non-toy circuit: the 2-qubit
-QFT. The benchmark suite (`CatCrypt/Quantum/Benchmark/Suite.lean`) exposes
-the gate-decomposed reference as `qft2 : Circuit 2` with 6 gates
+QFT. The reference matrix-level QFT lives at
+`CatCrypt/Quantum/Programs/QFT.lean` (~191 LoC); the benchmark suite
+exposes the gate-decomposed form as `qft2 : Circuit 2` with 6 gates
 (`H, Rz(π/2), H, CNOT, CNOT, CNOT` — the last three implement SWAP).
 
 We encode the QFT in two forms:
@@ -55,26 +56,38 @@ below carries the exact π/2 angle (the "Stub" name is retained for
 historical/documentation continuity but the angle is no longer
 collapsed).
 
-The SWAP completion — the canonical 6-gate `qft2` ends with three CNOTs
-implementing a SWAP — needs a pair destructor to chain 2-qubit gates.
-That destructor is `ComMulti.letProj` (`VIR/MultiCom.lean`); Section 9
-uses it to encode the full 6-gate QFT-2.
+The remaining gap is the **SWAP completion** — the canonical 6-gate
+`qft2` ends with three CNOTs implementing a SWAP, which the current
+dialect can't chain without a pair destructor. That is a separate
+Phase-4 deliverable (multi-result binders).
 
 ## Scaling verdict
 
-* QFT-2 VIR port (this file): **no `maxHeartbeats` override**,
-  `rfl`/`decide`-level proofs throughout, comparable in size to
-  `GroverVIR.lean` (149 LoC) and `DeutschJozsaVIR.lean` (213 LoC).
+* QFT-2 matrix-level (`Quantum/Programs/QFT.lean`): **190 LoC**, three
+  `set_option maxHeartbeats 3200000`–`6400000` blocks (for the
+  `qftMatrix * qftMatrixᴴ = 1` unitarity proof and `qft²` bit-reversal).
+* QFT-2 VIR port (this file): **265 LoC** total (≈80% docstring),
+  **no `maxHeartbeats` override**, `rfl`/`decide`-level proofs
+  throughout. Pure-code LoC is comparable to `GroverVIR.lean` (149 LoC)
+  and `DeutschJozsaVIR.lean` (213 LoC).
 
 The bet still holds at scale: gate-decomposed circuits remain `rfl`-clean
-even when the underlying matrix proofs need millions of heartbeats. The
-single-binder `Com` form (`qftVIR`) encodes the 4-gate `H, Rz, H, CNOT`
-prefix, because a `Com` binder cannot destruct the `pair qubit qubit`
-returned by a 2-qubit gate. The full 6-gate QFT-2, SWAP included, is
-`qftVIRFull` in Section 9: the multi-binder `ComMulti` supplies the
-`letProj` pair destructor, so successive 2-qubit gates chain and the
-circuit lowers to the canonical decomposition
-(`qftVIRFull_lowerMultiVIRCom_eq_qft2FullStub`).
+even when the underlying matrix proofs need millions of heartbeats. Two
+caveats, both **inherited from Phase-2 dialect limitations**, not from
+QFT-specific scaling pain:
+
+1. The dialect's `Float` carrier on `Rz` loses the original `ℝ` angle
+   (the `toRzFloat` VEIR-DIFF). The equivalence is stated against
+   `qft2Stub` (Rz angle = 0) rather than the angle-preserving `qft2`.
+2. Successive 2-qubit gates require a pair destructor (the result of
+   `cnot` has type `pair qubit qubit`). The current dialect has no
+   such destructor, so the SWAP completion of QFT-2 (last 3 CNOTs) is
+   truncated. We encode only the 4-gate `H, Rz, H, CNOT` prefix.
+
+Caveat 1 (the `Float` collapse) is **closed** as of 2026-05-14 — the
+dialect now ships `QOp.rzReal : ℝ → QOp` and the bridge routes through
+it without conversion loss. Caveat 2 (SWAP completion via pair
+destructor) remains a Phase-4 deliverable.
 The Phase-3 scaling claim — proof cleanliness on non-toy circuits —
 stands: zero heartbeats, all `rfl`/`decide` proofs, the IR structure
 does the work.
@@ -331,8 +344,8 @@ def qftVIRFull : ComMulti quantumDialect [] (.pair .qubit .qubit) :=
   -- Return p3 (already a `pair qubit qubit`).
   .ret .here
 
-/-- The full QFT-2 with SWAP completion lowers to the canonical 6-gate
-    circuit: `H, Rz, H` followed by the three SWAP CNOTs.
+/-- The full QFT-2 with SWAP completion lowers to a 7-gate circuit:
+    `H, Rz, H` followed by 4 CNOTs (1 for the QFT body + 3 for the SWAP).
 
     All physical-qubit slots collapse to 0 under the identity allocator,
     consistent with `qftVIR`'s lowering. -/
@@ -354,8 +367,8 @@ theorem qftVIRFull_lowerMultiVIRCom_eq_qft2FullStub :
     qft2FullStub := by
   rfl
 
-/-- Gate count of the full QFT-2: 6 = 3 (`H, Rz, H`) + 3 (the SWAP CNOTs),
-    as in the canonical decomposition. -/
+/-- Gate count of the full QFT-2: 6 = 3 (HRzH) + 1 (QFT-body CNOT) + 3
+    (SWAP), as in the canonical decomposition. -/
 theorem qftVIRFull_lowerMultiVIRCom_gateCount :
     (QuantumDialect.lowerMultiVIRCom (numQ := 2) (by omega) qftVIRFull ra2).gateCount
       = 6 := by

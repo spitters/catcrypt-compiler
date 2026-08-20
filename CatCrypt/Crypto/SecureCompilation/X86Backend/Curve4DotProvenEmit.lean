@@ -9,6 +9,20 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.FieldAddSubTierA
 /-!
 # A multi-limb curve-field COMPOSITION `a·b + c·d` emitted from PROVEN blocks
 
+**TEST/BENCH-ONLY — STRING-TEMPLATED, not verified-compiler output.** The
+emitted `bench/secp256k1_compare/gen_com/secp256k1_dot_proven.s` is assembled as
+text (the `secp256k1_montmul_proven` leaf string concatenated with the
+hand-written `dotOrchBody`/`condAddCanonBody` orchestrator `.s` lines joined
+with `String.intercalate`/`++`), with no single verified-printer descent for the
+whole file. The `secp256k1_montmul_proven` leaf and the canonical field-add
+block carry `runBlock`-level proofs (`secp256k1_mmMul_realizes`,
+`FieldAddSubTierA.modAdd_runBlock`), but the `secp256k1_dot` orchestrator
+schedule (call sequence + scratch staging + inline ripple-add text) is
+hand-written trusted scaffolding. Value identity is external (GMP KAT). It is a
+bench/interop reference. The verified emit path is the FRONT-SOURCED descent;
+see `bench/framework/AUDIT_EMIT_BYPASS.md` and `EMIT_PROVENANCE.md`
+§"Which emit is verified?".
+
 `Curve4MontMulProvenEmit.lean` emits ONE leaf — the secp256k1 Montgomery field
 multiply `secp256k1_montmul_proven` — assembled from the two proven `runBlock`
 cores. That is the curve-family analogue of BabyBear's single `bbMul` word block.

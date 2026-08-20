@@ -4,6 +4,7 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.Secp256k1FeMulFront
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 set_option autoImplicit false
 
@@ -14,8 +15,9 @@ DRAFT (bucket-A keystone). The phase-1 `Secp256k1FeMulFront` front-generates a
 4-limb field multiply for the **Solinas** prime `p = 2^256 − 2^32 − 977` via the
 cheap fold `2^256 ≡ 2^32 + 977`. That trick only works for pseudo-Mersenne primes
 (secp256k1, Ed25519 `2^255−19`). The pairing / P-256 field-leaves
-are over **generic** primes with no such fold, so their `extCall` field/point
-leaves have never had a front-generated body.
+(`Pairing/{P256,Bls12381,Bn254}Emit.lean`) are over **generic** primes with no
+such fold, so their `extCall` field/point leaves have never had a front-generated
+body.
 
 This module front-generates a **Separated-Operand-Scanning (SOS) Montgomery**
 multiply `out = a · b · R⁻¹ mod p` (`R = 2^256`) for an arbitrary odd prime,
@@ -239,7 +241,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport (Com.toLprogPhysAbi
 /-- The lowered kernel as an owned AT&T `.s` under the SysV 3-pointer ABI. -/
 def montMulAsm : Option String :=
   loweredOpt.map (fun s =>
-    renderLprogAtt
+    CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned
       (Com.toLprogPhysAbi s.2.2 "p256_fe_mont_mul"
         (fun _ => none) (fun _ => none) (fun _ => none) []
         (abiArgs := ["RDI", "RSI", "RDX"]) (abiTyin := [64, 64, 64])

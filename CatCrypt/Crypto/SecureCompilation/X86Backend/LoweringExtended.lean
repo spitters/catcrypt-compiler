@@ -23,7 +23,7 @@ already have a machine
 model **and** byte encoder for: **constant-offset memory load/store**. We target
 the memory-capable `JInstr 64` model (`JasminModel.lean`, namespace `Jasmin`) —
 whose `loadMem`/`storeMem` constructors `Model.lean`'s `Instr` lacks — and reuse
-its `runBlock` denotation plus the `ConstantTimeCoverage` `allDirect` keystone.
+its `runBlock` denotation and the `ConstantTimeCoverage` `allDirect` result.
 
 ## Why `JInstr 64`, not `Instr w`
 
@@ -35,7 +35,7 @@ register-indexed `loadMemIdx`/`storeMemIdx`. `ScalarEncoder.encodeJInstr` encode
 all four (SDM `8B`/`89` `MOV` reg↔mem, with/without SIB), so a lowering into
 these constructors stays inside the encodable subset.
 
-## Coverage delta (honest)
+## Coverage delta
 
 `lowerLinstrExt` is a **strict superset** of the POC coverage. The POC mnemonic
 table `{ADD,SUB,MUL,AND,OR,XOR,SHL,SHR,MOV}` is re-covered (now as one-element
@@ -46,14 +46,27 @@ table `{ADD,SUB,MUL,AND,OR,XOR,SHL,SHR,MOV}` is re-covered (now as one-element
 * `STORE` with a constant-offset destination `[.arr base off, val]` →
   `[storeMem base off val]` (`movq %val, off(%base)`).
 
-Still returning `none` (the honest remainder — each is a follow-up, not handled
-here): `CMOV`, `ADCX`/`ADCXHI`/`MULXHI`, `ZEROEXT`/`TRUNC`, `CALL:`/`CALLN:`,
+`lowerLinstrExt` returns `none` on everything else: `CMOV`,
+`ADCX`/`ADOX`/`ADCXHI`/`ADOXHI`, `MULXHI`, `ZEROEXT`/`TRUNC`, `CALL:`/`CALLN:`,
 the native `ROR:`/`SHR:n`/`SHL:n`/`SAR:n` immediate shifts, `ANDN`, the
-register-INDEXED `LOADIDX`/`STOREIDX` (these lower to `loadMemIdx`/`storeMemIdx`,
-which are **not** `IsDirect` — their CT shape is the `agreePub`/`CTAddressed`
-one of `LowCTMemCT.lean`, not the unconditional `allDirect`), the `VPACK8u64:`
-vector op, and every non-`Lopn` `LinstrR` constructor (`Lsyscall`/`Lcall`/`Lret`/
-`Lalign`/`Llabel`/`Lgoto`/`Ligoto`/`LstoreLabel`/`Lcond`).
+register-INDEXED `LOADIDX`/`STOREIDX`, the `VPACK8u64:` vector op, and every
+non-`Lopn` `LinstrR` constructor (`Lsyscall`/`Lcall`/`Lret`/`Lalign`/`Llabel`/
+`Lgoto`/`Ligoto`/`LstoreLabel`/`Lcond`).
+
+**That list scopes to this function.** `lowerLinstrExt` is the last level of the
+chain the byte path enters at `gatherJBlock6`: every level above it intercepts
+the shapes it adds before delegating the rest down, so much of the list is
+accepted upstream and never arrives here, and an arm added here for such a shape
+is unreachable. What the GATHER accepts — one row per shape, with the `file:line`
+of the arm that accepts it, and the chain's own declined set — is derived from
+these sources into `GATHER_COVERAGE.md` by `scripts/gen-gather-coverage.sh`,
+which CI re-derives and diffs. Consult that table before reading any entry above
+as a pipeline capability gap.
+
+`loadMemIdx`/`storeMemIdx` are **not** `IsDirect` — their CT shape is the
+`agreePub`/`CTAddressed` one of `LowCTMemCT.lean`, not the unconditional
+`allDirect`. The ADX arms compute no effective address, so an `ADCX`/`ADOX`
+block is `IsDirect` by the catch-all and passes `allDirect`.
 
 ## What is proved
 
@@ -212,7 +225,8 @@ def lowerShiftImmJ (dst : String) (opn : String) (src : JOperand) :
 `lowerLinstrExt` strictly extends the POC `lowerLinstrR`: every shape the POC
 lowered returns `some` here (as a one-element block), and the constant-offset
 `LOAD`/`STORE` shapes the POC dropped now lower too. Everything else stays
-`none` (the honest coverage remainder — see the module header). -/
+`none` — the remainder of THIS function, which the module header separates from
+what the gather chain accepts. -/
 
 /-- The extended single-instruction lowering, into `List (JInstr 64)`.
     Strict superset of `lowerLinstrR` on the ALU/`MOV` arms, plus constant-offset

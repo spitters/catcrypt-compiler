@@ -156,20 +156,17 @@ partial def emitCmd (c : LowCT) (s : State) : State :=
   | .RFor _ _ _           => s.emit "  // <RFor: not emitted>"
   | .RForRuntime _ _ _    => s.emit "  // <RForRuntime: not emitted>"
   | .RCallSwap _ _ _ _    => s.emit "  // <RCallSwap: not emitted>"
-  | .RAsmOp _ _ _         => s.emit "  // <RAsmOp: not emitted>"
   | .RCallN _ _ _         => s.emit "  // <RCallN: not emitted>"
   | .RSelect _ _ _ _      => s.emit "  // <RSelect: not emitted>"
   | .RAssert _            => s.emit "  // <RAssert: not emitted>"
   | .RBlock body          => emitCmd body s
   | .RFnDef _ _ _ body cont => emitCmd cont (emitCmd body s)
   | .RFnCall _ _ _        => s.emit "  // <RFnCall: not emitted>"
-  | .RTupleStore _ _ _    => s.emit "  // <RTupleStore: not emitted>"
   | .RTupleLoad _ _ _     => s.emit "  // <RTupleLoad: not emitted>"
   -- Phase Ext (2026-05-12) / Ext2 (2026-05-13): not used in X25519 benchmark.
   | .RArrStore _ _ _      => s.emit "  // <RArrStore: not emitted>"
   | .RArrLoad _ _ _       => s.emit "  // <RArrLoad: not emitted>"
   | .RScalarSetExpr _ _   => s.emit "  // <RScalarSetExpr: not emitted>"
-  | .RBytesSlice _ _ _ _  => s.emit "  // <RBytesSlice: not emitted>"
   -- Phase DD/E2 (2026-05-29): literal-index array ops + dst-threaded
   -- leaf call.  Not used in the X25519 benchmark subset this emitter
   -- targets; emit the same placeholder comment as the other

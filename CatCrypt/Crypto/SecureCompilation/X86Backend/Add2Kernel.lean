@@ -5,6 +5,7 @@ Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
 # A small straight-line scalar kernel emitted through the in-Lean x86 backend
@@ -23,8 +24,8 @@ adc a1, b1    -- a1 := a1 + b1 + CF, CF := carry-out
 ```
 
 `a0,a1` are the limbs of `a`; `b0,b1` the limbs of `b`. After the block,
-`(a1:a0)` is the 128-bit sum and `CF` is the 129th (carry-out) bit. This is a
-genuine straight-line block (no loops/branches), so `lowerBlock_denote` applies.
+`(a1:a0)` is the 128-bit sum and `CF` is the 129th (carry-out) bit. The block is
+straight-line (no loops/branches), so `lowerBlock_denote` applies.
 
 ## What is verified vs. trusted
 
@@ -46,6 +47,8 @@ namespace CatCrypt.Crypto.SecureCompilation.X86Backend.Add2Kernel
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-- The two-limb add-with-carry kernel body as a straight-line `JInstr 64`
     block: `add a0,b0; adc a1,b1`. -/
@@ -76,6 +79,19 @@ theorem add2_computes_sum :
   intro s0 s
   rw [show s = runBlock s0 add2Block from add2_lowering_correct s0]
   native_decide
+
+/-! ## Constant time -/
+
+/-- `add2Block` touches no memory: both instructions are register/immediate ALU
+    ops, so the body is in the direct-addressing class. -/
+theorem add2Block_allDirect : allDirect add2Block = true := by decide
+
+/-- **Constant time.** The two-limb add-with-carry produces the same machine
+    leakage trace from any two starting states, via
+    `ConstantTimeCoverage.allDirect_constant_time`. -/
+theorem add2Block_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ add2Block = blockLeak s₂ add2Block :=
+  allDirect_constant_time add2Block add2Block_allDirect s₁ s₂
 
 /-! ## Emission: pinned ABI + printed AT&T
 

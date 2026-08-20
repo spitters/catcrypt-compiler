@@ -5,6 +5,7 @@ Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherImmForms
 import CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline
+import CatCrypt.Crypto.SecureCompilation.X86Backend.X86OptPipelineComposed
 import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
 
 /-!
@@ -93,6 +94,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.GatherFullBody (lowerLinstrExt
 open CatCrypt.Crypto.SecureCompilation.X86Backend.GatherInPlace
   (lowerLinstrExtCov3 lowerAluJ2InPlace)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtendedCoverage (lowerLinstrExtCov)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringCoverageCmovSar (lowerLinstrExtCov2)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtended
   (lowerLinstrExt2 lowerAluJ lowerJOperand)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrGatherExtended (isLret)
@@ -183,9 +185,11 @@ theorem eval_stable {s : JState 64} (d : String) (v : BitVec 64) (op : LOperand)
 /-! ## 4. The gather's shape on the tied mnemonics
 
 `lower_bin` and `lower_un` walk the `lowerCov6` dispatch chain (`lowerCov5` →
-`lowerLinstrExtCov4` → `lowerLinstrExtCov3` → `lowerLinstrExtCov` →
-`lowerLinstrExt2`) for a *variable* mnemonic, taking as hypotheses the literal
-disequalities the earlier head patterns need and the `lowerAluJ` table lookup.
+`lowerLinstrExtCov4` → `lowerLinstrExtCov3` → `lowerLinstrExtCov2` →
+`lowerLinstrExtCov` → `lowerLinstrExt2`) for a *variable* mnemonic, taking as
+hypotheses the literal disequalities the earlier head patterns need (including the
+`SAR:<n>` literals `lowerLinstrExtCov2` intercepts) and the `lowerAluJ` table
+lookup.
 The `stripWidthTag` computation on each concrete mnemonic is a closed fact and is
 supplied by the `strip_*` lemmas; it does not reduce inside `rfl`. -/
 
@@ -215,20 +219,22 @@ theorem lower_bin (frame spillW : Nat) (d opn : String) (s0 s1 : LOperand) (i : 
     whose tag-stripped mnemonic is in the `lowerAluJ` table. -/
 theorem lower_un (frame spillW : Nat) (d opn : String) (src : LOperand) (i : JInstr 64)
     (hsrc : tiedOperand src = true) (h1 : opn ≠ "MOVQ")
+    (hs1 : opn ≠ "SAR:63:64") (hs2 : opn ≠ "SAR:23:64") (hs3 : opn ≠ "SAR:31")
     (hsh : CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtended.parseShiftMnem opn = none)
+    (hsar : CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringCoverageCmovSar.sarCountOf opn = none)
     (halu : lowerAluJ d (stripWidthTag opn) (lowerJOperand src) = some i) :
     lowerCov6 frame spillW (.Lopn [.reg d] opn [src]) = some [i] := by
   cases src with
   | reg r =>
     unfold lowerCov6
     split <;>
-      simp_all [lowerCov5, lowerLinstrExtCov4, lowerLinstrExtCov3, lowerLinstrExtCov,
-        lowerLinstrExt2]
+      simp_all [lowerCov5, lowerLinstrExtCov4, lowerLinstrExtCov3, lowerLinstrExtCov2,
+        lowerLinstrExtCov, lowerLinstrExt2]
   | imm v =>
     unfold lowerCov6
     split <;>
-      simp_all [lowerCov5, lowerLinstrExtCov4, lowerLinstrExtCov3, lowerLinstrExtCov,
-        lowerLinstrExt2]
+      simp_all [lowerCov5, lowerLinstrExtCov4, lowerLinstrExtCov3, lowerLinstrExtCov2,
+        lowerLinstrExtCov, lowerLinstrExt2]
   | arr _ _ => simp [tiedOperand] at hsrc
   | arrIdx _ _ _ => simp [tiedOperand] at hsrc
 
@@ -312,7 +318,8 @@ theorem mov_case (frame spillW : Nat) {ls : Lstate 64} {s : JState 64} (hc : LJC
   have halu : lowerAluJ d (stripWidthTag "MOV:64") (lowerJOperand src)
       = some (JInstr.mov d (lowerJOperand src)) := by rw [strip_MOV]; rfl
   have hlow := lower_un frame spillW d "MOV:64" src (JInstr.mov d (lowerJOperand src))
-    hsrc (by decide) pshift_MOV halu
+    hsrc (by decide) (by decide) (by decide) (by decide) pshift_MOV
+    (by rfl) halu
   have hstep : lsemStep (.Lopn [.reg d] "MOV:64" [src]) ls
       = some ((ls.setReg d (evalOperand ls src)).nextPc) := by
     simp only [lsemStep, List.map_cons, List.map_nil, strip_MOV, applyOpn]
@@ -442,6 +449,27 @@ theorem gatherJBlock6_optimized_lsem_agree (body : List Linstr)
       LJCorr ls' (runBlock s (optimizeX86Block g)) := by
   obtain ⟨g, ls', hg, hstep, hc'⟩ := gatherJBlock6_lsem_agree body hb hc
   exact ⟨g, ls', hg, hstep, by rw [optimizeX86Block_runBlock]; exact hc'⟩
+
+/-- **The validated optimizer pipeline runs on the emit path.** Composing the tie
+    with `X86OptPipelineComposed.defaultValidatedPipeline_sound`: the block that the
+    graph-coloring register allocator, mem2reg and spill-slot-reuse pipeline
+    produces from the gathered body lands in the same register file the source
+    `Lcmd`'s `lsemStraight` reaches. The pipeline soundness is an unconditional
+    `runBlock`-equality, so the tie carries over with `tiedInstr` on the body as its
+    only side condition. -/
+theorem gatherJBlock6_composeValidated_lsem_agree (body : List Linstr)
+    (hb : ∀ i ∈ body, tiedInstr i = true) {ls : Lstate 64} {s : JState 64} (hc : LJCorr ls s)
+    (prot : List (String × Int))
+    (pinned : CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter.GpAlloc)
+    (frameBase : Int) (spillBase : String) :
+    ∃ g ls', gatherJBlock6 body = some g ∧
+      lsemStraight (body.map (·.li_i)) ls = some ls' ∧
+      LJCorr ls' (runBlock s
+        (X86OptPipelineComposed.composeValidated
+          (X86OptPipelineComposed.defaultValidatedPipeline prot pinned frameBase spillBase) g)) := by
+  obtain ⟨g, ls', hg, hstep, hc'⟩ := gatherJBlock6_lsem_agree body hb hc
+  exact ⟨g, ls', hg, hstep, by
+    rw [X86OptPipelineComposed.defaultValidatedPipeline_sound]; exact hc'⟩
 
 /-- Every instruction of the body is tied. The decidable entry point for
     measuring how much of a real emitted body the tie covers. -/

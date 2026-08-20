@@ -10,19 +10,17 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 
 `AsmPrinter.lean` prints a `JInstr w` block to AT&T assembly *text*, which is then
 handed to `gas`/`cc` to be encoded into machine bytes — that last step trusts the
-assembler's instruction encoder. This module removes that trust for the scalar
-subset: it encodes each `JInstr` directly to its x86-64 machine-code bytes in
-Lean, so the kernel body is emitted as bytes by a function whose output we audit
-against the Intel SDM and differentially validate against `gas`.
+assembler's instruction encoder. This module is the **scalar analogue of
+`Avx512Encoder.lean`**: it encodes each `JInstr` directly to its x86-64 machine-code
+bytes in Lean, so the kernel body is emitted as bytes by a function whose output we
+audit against the Intel SDM and differentially validate against `gas`.
 
-The subset covered here is the **scalar GP-register subset jasminc emits** — the
-`JInstr` set of `JasminModel.lean` (`MOV`/`ADD`/`ADC`/`SUB`/`SBB`/`IMUL`/`NEG`/
-`AND`/`OR`/`XOR`/`SHL`/`SHR`/`SAR`/`CMOVcc`, the BMI2/ADX trio `MULX`/`ADCX`/
-`ADOX`, and the reg-ptr ABI's `loadMem`/`storeMem`). The companion byte encoders
-`CryptoExtEncoder.lean` (SHA-NI, PCLMUL, VAES, GFNI and the AVX2 VEX.256
-packed-integer set) and `VsimdByteEncoder.lean` (the unified 128-bit `vsimd` op
-set) cover the XMM/YMM vector side; the 512-bit ZMM emits (`VpackZmmAsmPrint`)
-have no byte encoder yet and still go out as text through `gas`.
+`Avx512Encoder` did this for the AVX-512 packed-integer (EVEX) subset that jasmin
+cannot express; this module does it for the **scalar GP-register subset jasminc
+emits** — the `JInstr` set of `JasminModel.lean` (`MOV`/`ADD`/`ADC`/`SUB`/`SBB`/
+`IMUL`/`NEG`/`AND`/`OR`/`XOR`/`SHL`/`SHR`/`SAR`/`CMOVcc`, the BMI2/ADX trio
+`MULX`/`ADCX`/`ADOX`, and the reg-ptr ABI's `loadMem`/`storeMem`). Together the two
+encoders cover the full emitted instruction stream with no text-printer + `gas` step.
 
 ## The narrowed trust boundary
 
@@ -40,16 +38,16 @@ to *this encoder matches the SDM encoding*, discharged two ways:
   analogue);
 * **differentially** — each `encodeJInstr` output is pinned (`ScalarValidation.lean`)
   to the exact byte string `gas` produces for the same mnemonic, the posture
-  `CryptoExtValidation.lean` takes for the crypto-extension encoder and
+  `Avx512Validation.lean` takes for the EVEX encoder and
   `TranslationValidation.lean` takes for the scalar model against the Rocq `.vo`.
 
 The stronger check — a Sail-x86 *decoder* round-trip `decode (encode i) ≡ i` —
 is in `SailX86Decoder.lean`: for the register-direct GP forms (`ADD ADC SUB SBB
 AND OR XOR MOV` reg-reg, `IMUL`/`CMOVcc`, `MOV`/`IMUL $imm32`, the `SHL/SHR/SAR`
 shifts, `NEG`) the encoder is proved to produce bytes the Sail-x86 decode
-discipline maps back to the same operands, so the `gas` pin is no longer
-load-bearing for them; this module establishes the gas differential anchor that
-the decoder upgrades.
+discipline maps back to the same operands, so those forms rest on the round-trip
+rather than on the `gas` pin; this module establishes the gas differential anchor
+the decoder strengthens.
 
 ## Encoding layout (the SDM forms this transcribes)
 
@@ -88,9 +86,25 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 /-! ## 1. Register-name → number, and bit helpers -/
 
 /-- The numeric index `0..15` of a `%rN` GP-register name, in the SDM register
-    encoding (`rax=0 rcx=1 rdx=2 rbx=3 rsp=4 rbp=5 rsi=6 rdi=7 r8=8 … r15=15`). A
-    name not in the pool reads as `0` (never produced by `allocGp` on a fitting
-    block; an overflow yields the `<UNALLOCATED:_>` sentinel, encoded as `0`). -/
+    encoding (`rax=0 rcx=1 rdx=2 rbx=3 rsp=4 rbp=5 rsi=6 rdi=7 r8=8 … r15=15`), or
+    `none` on any other string. Register-number resolution is total with failure
+    here: the two strings that reach the encoder without naming a canonical
+    register — `regOf`'s `<UNALLOCATED:n>` sentinel for a name the allocation does
+    not cover, and a pinned register spelled outside the sixteen — are both
+    `none`, and `encodeJBlock?` refuses to encode a block containing either. -/
+def gpNum? (r : String) : Option Nat :=
+  match r with
+  | "%rax" => some 0  | "%rcx" => some 1  | "%rdx" => some 2  | "%rbx" => some 3
+  | "%rsp" => some 4  | "%rbp" => some 5  | "%rsi" => some 6  | "%rdi" => some 7
+  | "%r8"  => some 8  | "%r9"  => some 9  | "%r10" => some 10 | "%r11" => some 11
+  | "%r12" => some 12 | "%r13" => some 13 | "%r14" => some 14 | "%r15" => some 15
+  | _      => none
+
+/-- The numeric index `0..15` of a `%rN` GP-register name, in the SDM register
+    encoding (`rax=0 rcx=1 rdx=2 rbx=3 rsp=4 rbp=5 rsi=6 rdi=7 r8=8 … r15=15`),
+    with any other string reading as `0`. This is `gpNum?` with its failure case
+    defaulted (`gpNum_eq_getD`); the encoder arms read it, and `encodeJBlock?`'s
+    gate is what keeps a defaulted value out of the byte stream. -/
 def gpNum (r : String) : Nat :=
   match r with
   | "%rax" => 0  | "%rcx" => 1  | "%rdx" => 2  | "%rbx" => 3
@@ -98,6 +112,29 @@ def gpNum (r : String) : Nat :=
   | "%r8"  => 8  | "%r9"  => 9  | "%r10" => 10 | "%r11" => 11
   | "%r12" => 12 | "%r13" => 13 | "%r14" => 14 | "%r15" => 15
   | _      => 0
+
+/-- `gpNum` is `gpNum?` with the unresolvable case defaulted to `0` — the number
+    of `%rax`. -/
+theorem gpNum_eq_getD (r : String) : gpNum r = (gpNum? r).getD 0 := by
+  unfold gpNum gpNum?
+  split <;> rfl
+
+/-- The sixteen canonical `%rN` names, the domain on which `gpNum?` is defined. -/
+def gpNames : List String :=
+  [ "%rax", "%rcx", "%rdx", "%rbx", "%rsp", "%rbp", "%rsi", "%rdi",
+    "%r8", "%r9", "%r10", "%r11", "%r12", "%r13", "%r14", "%r15" ]
+
+/-- A string `gpNum?` resolves is one of the sixteen canonical `%rN` names. -/
+theorem mem_gpNames_of_gpNum?_isSome (r : String) (h : (gpNum? r).isSome = true) :
+    r ∈ gpNames := by
+  unfold gpNum? at h
+  split at h <;> simp_all [gpNames]
+
+/-- Every canonical `%rN` name is resolved by `gpNum?`. -/
+theorem gpNum?_isSome_of_mem_gpNames (r : String) (h : r ∈ gpNames) :
+    (gpNum? r).isSome = true := by
+  simp only [gpNames, List.mem_cons, List.not_mem_nil, or_false] at h
+  rcases h with rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl <;> rfl
 
 /-- Bit `i` of `n` (0 or 1). -/
 @[simp] def bit (n i : Nat) : Nat := (n >>> i) &&& 1
@@ -197,6 +234,20 @@ def encAluRR (op d s : Nat) : List (BitVec 8) :=
 def enc0FRR (op d s : Nat) : List (BitVec 8) :=
   [ rex 1 (bit d 3) 0 (bit s 3), 0x0f, op, modRMReg d s ].map (BitVec.ofNat 8)
 
+/-- A one-byte-opcode reg-reg op with `reg`=dst, `rm`=src — the operand order of
+    `MOVSXD` (`63 /r`), opposite to `encAluRR`'s.
+    Gas-pinned: `movslq %ecx,%rax` = `48 63 C1`. -/
+def encAluRRrev (op d s : Nat) : List (BitVec 8) :=
+  [ rex 1 (bit d 3) 0 (bit s 3), op, modRMReg d s ].map (BitVec.ofNat 8)
+
+/-- A shift/rotate by exactly one (`D1 /ext`), the form the assembler picks over
+    `C1 /ext 01`.  Gas-pinned: `rolq $1,%rcx` = `48 D1 C1`.  Named apart from
+    `LprogBytes.encShift1`, which is the same form on the other byte route and
+    carries an operand width; a shared name makes both ambiguous in the modules
+    that open the two namespaces together. -/
+def encShiftByOne (ext d : Nat) : List (BitVec 8) :=
+  [ rex 1 0 0 (bit d 3), 0xd1, modRMReg ext d ].map (BitVec.ofNat 8)
+
 /-- `MOV $imm32, %dst` (`C7 /0 id`). -/
 def encMovImm (d v : Nat) : List (BitVec 8) :=
   ([ rex 1 0 0 (bit d 3), 0xc7, modRMReg 0 d ].map (BitVec.ofNat 8)) ++ imm32LE v
@@ -231,6 +282,18 @@ def encAluImm (digit d v : Nat) : List (BitVec 8) :=
 /-- A shift-by-`imm8` op (`C1 /ext ib`): `reg`=ext, `rm`=dst, then `imm8`. -/
 def encShiftImm (ext d imm : Nat) : List (BitVec 8) :=
   [ rex 1 0 0 (bit d 3), 0xc1, modRMReg ext d, imm &&& 0xff ].map (BitVec.ofNat 8)
+
+/-- `TEST r/m64, imm32` is `REX.W F7 /0 id` — group 3, NOT the group-1 `81 /ext`
+    that `encAluImm` emits, whose `/0` digit is `ADD`.  For `RAX` the assembler
+    picks the accumulator short form `REX.W A9 id`, one byte shorter because it
+    carries no ModRM; matched here so the bytes agree with the printer's
+    rendering assembled by `as` (`testq $0x12345678,%rax` = `48 a9 78 56 34 12`,
+    `testq $0x12345678,%r11` = `49 f7 c3 78 56 34 12`). -/
+def encTestImm (d v : Nat) : List (BitVec 8) :=
+  if d == 0 then
+    ([ rex 1 0 0 0, 0xa9 ].map (BitVec.ofNat 8)) ++ imm32LE v
+  else
+    ([ rex 1 0 0 (bit d 3), 0xf7, modRMReg 0 d ].map (BitVec.ofNat 8)) ++ imm32LE v
 
 /-- A unary `F7 /ext` op (`NEG` = `/3`). -/
 def encUnaryF7 (ext d : Nat) : List (BitVec 8) :=
@@ -322,6 +385,42 @@ def encMemMovSib (op r base index scale : Nat) : List (BitVec 8) :=
                sibByte scale index base ].map (BitVec.ofNat 8)
   if needDisp then pfx ++ [disp8 0] else pfx
 
+/-- A three-byte-VEX register-register form, `W=1` (64-bit), `L=0`.  `mm` is the
+    opcode map (`0b00010` = `0F38`, `0b00011` = `0F3A`), `pp` the mandatory-prefix
+    field (`00` none, `01` `66`, `10` `F3`, `11` `F2`), `vvvv` the register the
+    `~vvvv` field carries, `dst` the `ModRM.reg` operand and `rm` the `ModRM.rm`
+    one.  `encMulxRR` is this shape at `mm=0F38, pp=F2, op=F6`.
+    Gas-pinned: `andn %rcx,%rbx,%rax` = `C4 E2 E0 F2 C1`,
+    `shlx %rbx,%rcx,%rax` = `C4 E2 E1 F7 C1`. -/
+def encVex3RR (mm pp op dst vvvv rm : Nat) : List (BitVec 8) :=
+  let rbar := 1 - bit dst 3
+  let bbar := 1 - bit rm 3
+  let vex1 := rbar * 128 + 1 * 64 + bbar * 32 + mm     -- X̄ = 1
+  let vbar := 15 - (vvvv &&& 15)
+  let vex2 := 128 + vbar * 8 + pp                       -- W = 1, L = 0
+  [ 0xc4, vex1, vex2, op, modRMReg dst rm ].map (BitVec.ofNat 8)
+
+/-- `RORX $imm8, %rm, %dst` — the VEX form above with no `vvvv` operand and a
+    trailing `imm8`.  Gas-pinned: `rorx $7,%rcx,%rax` = `C4 E3 FB F0 C1 07`. -/
+def encRorx (dst rm imm : Nat) : List (BitVec 8) :=
+  encVex3RR 0b00011 0b11 0xf0 dst 0 rm ++ [BitVec.ofNat 8 (imm &&& 0xff)]
+
+/-- `LEA off(%base,%index,scale), %dst` — the address itself, no memory access.
+    `8D /r` with the SIB escape; a nonzero displacement (or a `%rbp`/`%r13` base,
+    which has no `mod=00` form) forces a `disp8`/`disp32`.
+    Gas-pinned: `leaq 24(%rbx,%rcx,8),%rax` = `48 8D 44 CB 18`,
+    `leaq (%rbx,%rcx,1),%rax` = `48 8D 04 0B`. -/
+def encLeaSib (dst base index scale : Nat) (off : Int) : List (BitVec 8) :=
+  let needDisp := off ≠ 0 || (base &&& 7) = 5
+  let short := -128 ≤ off && off ≤ 127
+  let md := if !needDisp then 0 else if short then 1 else 2
+  let pfx := [ rex 1 (bit dst 3) (bit index 3) (bit base 3), 0x8d,
+               md * 64 + ((dst &&& 7) * 8) + 4,
+               sibByte scale index base ].map (BitVec.ofNat 8)
+  if !needDisp then pfx
+  else if short then pfx ++ [disp8 off]
+  else pfx ++ disp32LE off
+
 /-! ## 4. The per-`JInstr` encoder
 
 Each arm resolves its register names through the allocation `alloc`, then dispatches
@@ -369,6 +468,72 @@ def encodeJInstr (alloc : GpAlloc) : JInstr 64 → List (BitVec 8)
       match s with
       | .reg r => encAluRR 0x21 (gpNum (regOf alloc d)) (gpNum (regOf alloc r))
       | .imm v => encAluImm 4 (gpNum (regOf alloc d)) v  -- AND = 81 /4 id
+  -- TEST = REX.W 85 /r register form, REX.W F7 /0 id immediate form. The
+  -- ModRM `reg` field carries the second operand, so the two register numbers
+  -- go in the same order as `and_`'s; `test` writes no register.
+  | .test a b =>
+      match b with
+      | .reg r => encAluRR 0x85 (gpNum (regOf alloc a)) (gpNum (regOf alloc r))
+      | .imm v => encTestImm (gpNum (regOf alloc a)) v
+  -- CMP = 39 /r register form, 81 /7 id immediate form; the difference is
+  -- discarded, so like `test` this writes no register.
+  | .cmp a b =>
+      match b with
+      | .reg r => encAluRR 0x39 (gpNum (regOf alloc a)) (gpNum (regOf alloc r))
+      | .imm v => encAluImm 7 (gpNum (regOf alloc a)) v
+  -- NOT = F7 /2.
+  | .not_ d => encUnaryF7 2 (gpNum (regOf alloc d))
+  -- ANDN = VEX.LZ.0F38.W1 F2 /r; `vvvv` carries the complemented source.
+  | .andn d a b =>
+      encVex3RR 0b00010 0b00 0xf2 (gpNum (regOf alloc d))
+        (gpNum (regOf alloc a)) (gpNum (regOf alloc b))
+  -- ROL/ROR = C1 /0 and /1 with an imm8, D1 /0 and /1 at a count of one.
+  | .rol d amt =>
+      match amt with
+      | .imm 1 => encShiftByOne 0 (gpNum (regOf alloc d))
+      | .imm v => encShiftImm 0 (gpNum (regOf alloc d)) v
+      | .reg _ => []
+  | .ror d amt =>
+      match amt with
+      | .imm 1 => encShiftByOne 1 (gpNum (regOf alloc d))
+      | .imm v => encShiftImm 1 (gpNum (regOf alloc d)) v
+      | .reg _ => []
+  -- RORX = VEX.LZ.F2.0F3A.W1 F0 /r ib, non-destructive and flag-free.
+  | .rorx d src amt =>
+      match amt with
+      | .imm v => encRorx (gpNum (regOf alloc d)) (gpNum (regOf alloc src)) v
+      | .reg _ => []
+  -- SHLX/SHRX/SARX = VEX.LZ.{66,F2,F3}.0F38.W1 F7 /r; `vvvv` carries the count.
+  | .shlx d src c =>
+      encVex3RR 0b00010 0b01 0xf7 (gpNum (regOf alloc d))
+        (gpNum (regOf alloc c)) (gpNum (regOf alloc src))
+  | .shrx d src c =>
+      encVex3RR 0b00010 0b11 0xf7 (gpNum (regOf alloc d))
+        (gpNum (regOf alloc c)) (gpNum (regOf alloc src))
+  | .sarx d src c =>
+      encVex3RR 0b00010 0b10 0xf7 (gpNum (regOf alloc d))
+        (gpNum (regOf alloc c)) (gpNum (regOf alloc src))
+  -- MOVZX from 8/16 is `0F B6`/`0F B7`; from 32 the plain 32-bit `MOV` (89 /r,
+  -- no REX.W) already zeroes the upper half, which is why gas emits `movl`.
+  | .movzx d sw src =>
+      let dn := gpNum (regOf alloc d); let sn := gpNum (regOf alloc src)
+      if sw = 8 then enc0FRR 0xb6 dn sn
+      else if sw = 16 then enc0FRR 0xb7 dn sn
+      else if sw = 32 then
+        (if bit dn 3 = 0 && bit sn 3 = 0 then [] else [BitVec.ofNat 8 (rex 0 (bit dn 3) 0 (bit sn 3))])
+          ++ [BitVec.ofNat 8 0x89, BitVec.ofNat 8 (modRMReg sn dn)]
+      else []
+  -- MOVSX from 8/16 is `0F BE`/`0F BF`; from 32 it is MOVSXD `63 /r`.
+  | .movsx d sw src =>
+      let dn := gpNum (regOf alloc d); let sn := gpNum (regOf alloc src)
+      if sw = 8 then enc0FRR 0xbe dn sn
+      else if sw = 16 then enc0FRR 0xbf dn sn
+      else if sw = 32 then encAluRRrev 0x63 dn sn
+      else []
+  -- LEA = 8D /r with the SIB escape; no memory is touched.
+  | .lea d base idx scale off =>
+      encLeaSib (gpNum (regOf alloc d)) (gpNum (regOf alloc base))
+        (gpNum (regOf alloc idx)) scale off
   | .or_ d s =>
       match s with
       | .reg r => encAluRR 0x09 (gpNum (regOf alloc d)) (gpNum (regOf alloc r))
@@ -449,6 +614,85 @@ def encodeJInstr (alloc : GpAlloc) : JInstr 64 → List (BitVec 8)
     contiguous machine-code stream a `.text` section / loader consumes. -/
 def encodeJBlock (alloc : GpAlloc) (block : List (JInstr 64)) : List (BitVec 8) :=
   block.flatMap (encodeJInstr alloc)
+
+/-! ## 4b. The encodable gate and the checked entry point
+
+Two allocations put a register name into the encoder that names no register.
+`regOf` returns the sentinel `<UNALLOCATED:n>` for a name the allocation does not
+cover — the state `allocOverflow` reports — and `gpNum` defaults it to `0`, the
+number of `%rax`. `gpPool` contains `%rax`, so on a block whose distinct name count
+exceeds the pool two block names share one physical register. A pinned register
+spelled outside the canonical sixteen defaults the same way, and `allocOverflow`
+reports nothing, because the name *is* mapped; so does a `pinned` list sending two
+names to one register.
+
+`encodableJBlock` is the decidable gate that excludes all three: every register
+name the block mentions resolves through the allocation to a canonical `%rN`
+(`gpNum? ≠ none`), and distinct names resolve to distinct registers.
+`encodeJBlock?` is the entry point that fails rather than encoding, so pool
+exhaustion or a bad spelling is an emit failure and not a wrong instruction. -/
+
+/-- The name resolves through the allocation to one of the sixteen canonical
+    `%rN` register names. -/
+def regResolvable (alloc : GpAlloc) (n : String) : Bool :=
+  (gpNum? (regOf alloc n)).isSome
+
+/-- Every register name the block mentions resolves through the allocation. -/
+def blockRegsResolvable (alloc : GpAlloc) (block : List (JInstr 64)) : Bool :=
+  (blockNames block).all (regResolvable alloc)
+
+/-- The allocation sends the block's distinct register names to distinct physical
+    registers. -/
+def blockRegsDistinct (alloc : GpAlloc) (block : List (JInstr 64)) : Bool :=
+  decide (((blockNames block).map (regOf alloc)).Nodup)
+
+/-- The allocation resolves every register name of the block, and resolves
+    distinct names to distinct registers. -/
+def encodableJBlock (alloc : GpAlloc) (block : List (JInstr 64)) : Bool :=
+  blockRegsResolvable alloc block && blockRegsDistinct alloc block
+
+/-- Encode a block, or fail: `none` when the allocation leaves a register name of
+    the block unresolvable, or sends two of its names to one register. -/
+def encodeJBlock? (alloc : GpAlloc) (block : List (JInstr 64)) :
+    Option (List (BitVec 8)) :=
+  if encodableJBlock alloc block then some (encodeJBlock alloc block) else none
+
+/-- On a block the gate accepts, the checked entry point returns the encoder's
+    bytes. -/
+theorem encodeJBlock?_eq_some (alloc : GpAlloc) (block : List (JInstr 64))
+    (h : encodableJBlock alloc block = true) :
+    encodeJBlock? alloc block = some (encodeJBlock alloc block) := by
+  simp [encodeJBlock?, h]
+
+/-- The checked entry point succeeds exactly on the blocks the gate accepts. -/
+theorem encodeJBlock?_isSome (alloc : GpAlloc) (block : List (JInstr 64)) :
+    (encodeJBlock? alloc block).isSome = encodableJBlock alloc block := by
+  unfold encodeJBlock?
+  split <;> simp_all
+
+/-- Every byte stream the checked entry point returns is an `encodeJBlock`
+    stream, so the encoder's structural and round-trip results carry over
+    unchanged to it. -/
+theorem eq_encodeJBlock_of_encodeJBlock?_eq_some (alloc : GpAlloc)
+    (block : List (JInstr 64)) {bs : List (BitVec 8)}
+    (h : encodeJBlock? alloc block = some bs) : bs = encodeJBlock alloc block := by
+  unfold encodeJBlock? at h
+  split at h <;> simp_all
+
+/-- A name the gate accepts resolves to a canonical `%rN`. -/
+theorem regResolvable_of_encodable {alloc : GpAlloc} {block : List (JInstr 64)}
+    (h : encodableJBlock alloc block = true) {n : String}
+    (hn : n ∈ blockNames block) : regResolvable alloc n = true := by
+  unfold encodableJBlock blockRegsResolvable at h
+  exact List.all_eq_true.mp (Bool.and_eq_true_iff.mp h).1 n hn
+
+/-- The registers the gate's allocation assigns the block's distinct names are
+    themselves distinct. -/
+theorem regOf_nodup_of_encodable {alloc : GpAlloc} {block : List (JInstr 64)}
+    (h : encodableJBlock alloc block = true) :
+    ((blockNames block).map (regOf alloc)).Nodup := by
+  unfold encodableJBlock blockRegsDistinct at h
+  exact of_decide_eq_true (Bool.and_eq_true_iff.mp h).2
 
 /-! ## 5. A minimal ELF object wrapper
 

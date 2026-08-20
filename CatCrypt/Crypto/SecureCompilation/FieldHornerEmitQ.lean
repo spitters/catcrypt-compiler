@@ -7,6 +7,7 @@ import CatCrypt.Crypto.SecureCompilation.MlkemNttFieldEmit
 import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # Byte-correct degree-3 Horner over `F_q` (`q = 3329`), FRONT-COMPILED, OWNED x86
@@ -268,7 +269,7 @@ def hornerQLprog : Lprog :=
 
 /-- The owned AT&T `.s` text for `horner_q3329`, rendered straight from the
     owned `Lprog` (no jasminc). -/
-def hornerQAsm : String := renderLprogAtt hornerQLprog
+def hornerQAsm : String := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned hornerQLprog
 
 /-- The output path for the field-kernel-emitted `.s`. -/
 def hornerQTarget : System.FilePath :=

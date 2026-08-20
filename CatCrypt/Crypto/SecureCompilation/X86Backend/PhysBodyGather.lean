@@ -52,16 +52,18 @@ did NOT eliminate the divergence, for two independent structural reasons:
    body — the physical body's destructiveness does not help, because the gather
    re-splits regardless.
 
-2. **The count-in-tag immediate shift — only the materialise `mov` differs.**
+2. **The count-in-tag immediate shift — `encodeLopn` USED to drop it, now fixed.**
    `Com.toLprogPhysAbi` (default oracle) emits the shift as `Lopn [RAX]
    "SHR:19:64" [RBX]` — the count `19` is in the **mnemonic tag**, the source is
    a **register**. `lowerLinstrExtCovL` lowers this to `mov RAX, RBX ; shr RAX,
-   $19` (7 bytes). `LprogBytes.encodeLopn` covers that form in its `encTagShift`
-   arm (detected by `tagShiftExt`, pinned by
-   `BlockBytesAgreeExtended.encodeLopn_shr19_emits`), encoding it as the
-   `shr RAX, $19` op (`48 c1 e8 13`); the separate `.imm`-count shifts go through
-   `encImmOp`. So the shift OP byte-agrees with the gather's trailing `shr`, and
-   the only shift residual is the gather's leading materialise `mov`.
+   $19` (7 bytes). `LprogBytes.encodeLopn` used to have **no arm** for a
+   count-in-tag register-source shift (its shift arm was reached only via
+   `encImmOp`, i.e. a separate `.imm` count); the `Lopn [d] "SHR:n:64" [reg s]`
+   form fell through to `[]` — **0 bytes**, silently dropping every rotation.
+   The `encTagShift` arm (`LprogBytes.encodeLopn`,
+   `BlockBytesAgreeExtended.encodeLopn_shr19_emits`) now encodes it as the
+   `shr RAX, $19` op (`48 c1 e8 13`), so the shift OP agrees with the gather's
+   trailing `shr`; the residual is just the gather's leading materialise `mov`.
 
 ## Bottom line
 
@@ -69,12 +71,13 @@ Gathering the physical body does **not** by itself make byte-identical re-point
 feasible modulo framing: the divergence is **not** a virtual-vs-physical
 artifact. The self-`mov` persists in the non-in-place `gatherJBlock2` because its
 two-source lowering is unconditionally SSA-splitting (the `d == s0 ⇒ skip the mov`
-peephole that avoids it lives in `GatherInPlace.gatherJBlock3`). On the
-count-in-tag shift the two encoders agree on the OP — `encodeLopn`'s
-`encTagShift` arm emits the same `shr` — leaving only the gather's per-shift
-materialise `mov` as the shift residual. So re-point needs the in-place gather
-(`gatherJBlock3`) over the physical body; the `encTagShift` encoder arm it relies
-on is already in place.
+peephole that fixes it lives in `GatherInPlace.gatherJBlock3`). The count-in-tag
+shift USED to diverge structurally (the two encoders disagreed on
+count-in-tag-vs-`.imm`); that is now fixed in `encodeLopn`'s `encTagShift` arm —
+the shift OP byte-agrees, leaving only the gather's per-shift materialise `mov` as
+the shift residual. So re-point needs the in-place gather (`gatherJBlock3`) plus
+the (already-landed) `encTagShift` encoder arm, not merely a switch to the
+physical body.
 
 No `sorry`, no axiom, no `native_decide`.
 -/
@@ -127,10 +130,10 @@ The physical body does NOT by itself remove the self-`mov` divergence:
 `lowerLinstrExtCovL` SSA-splits every two-source `Lopn` unconditionally (no
 `d == s0` peephole), so a destructive `OR:64 [RDX] [RDX, RCX]` still lowers to
 `mov RDX, RDX ; or RDX, RCX` whereas the `Lprog` encoder emits the single
-`or %rcx, %rdx`. The count-in-tag immediate shift (`SHR:n:64 [d] [reg s]`) has
-its own arm in `encodeLopn` (`encTagShift`), so the shift OP byte-agrees; the
-remaining shift residual is the gather's leading materialise `mov`.
-Byte-identical re-point therefore needs the in-place gather
+`or %rcx, %rdx`. The count-in-tag immediate shift (`SHR:n:64 [d] [reg s]`) now
+HAS an arm in `encodeLopn` (the `encTagShift` arm — it used to emit `[]`), so the
+shift OP byte-agrees; the remaining shift residual is the gather's leading
+materialise `mov`. Byte-identical re-point therefore needs the in-place gather
 (`GatherInPlace.gatherJBlock3`) over the physical body, with the `encTagShift`
 encoder arm already in place.
 

@@ -192,5 +192,5 @@ def main' (args : List String) : IO Unit := do
 end CatCrypt.Crypto.Jasmin.Test.EmitDiffTestRs
 
 /-- Top-level `main` so `lake env lean --run` finds it. -/
-private def main (args : List String) : IO Unit :=
+def main (args : List String) : IO Unit :=
   CatCrypt.Crypto.Jasmin.Test.EmitDiffTestRs.main' args

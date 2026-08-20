@@ -5,6 +5,7 @@ Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.Optimizer.ModReduceSelect
 import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
+import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
 # P-256 field-multiply kernel, lowered through the in-Lean x86 backend (#407)
@@ -73,7 +74,10 @@ slot), exactly as `Fe25519MulKernel` recovers a slot via `zr`→`%rbp`.
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.P256FieldKernel
 
-open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin (JInstr JOperand)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin (JInstr JOperand JState)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime (blockLeak)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+  (allDirect allDirect_append allDirect_constant_time)
 
 /-! ## 1. The schoolbook product half (proven dual-carry idiom, → scratch frame)
 
@@ -282,6 +286,47 @@ def p256Reduce : List (JInstr 64) :=
     signed-term Solinas reduce. -/
 def p256MulBlock : List (JInstr 64) :=
   p256Schoolbook ++ p256Reduce
+
+/-! ## 5a. Constant time: straight-line, all-direct addressing
+
+Both halves address memory only through a base register (`x`/`y`/`z`/`sp`) and a
+compile-time-constant displacement, and the canonical add-back / subtract steps
+are mask arithmetic rather than conditional jumps. The machine leakage trace is
+therefore a function of the program text alone
+(`ConstantTimeCoverage.allDirect_constant_time`). -/
+
+/-- The schoolbook half uses only direct base+displacement addressing. -/
+theorem p256Schoolbook_allDirect : allDirect p256Schoolbook = true := by
+  decide
+
+/-- **Constant time.** The schoolbook half produces the same machine leakage
+    trace from any two starting states. -/
+theorem p256Schoolbook_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ p256Schoolbook = blockLeak s₂ p256Schoolbook :=
+  allDirect_constant_time p256Schoolbook p256Schoolbook_allDirect s₁ s₂
+
+/-- The signed-term Solinas reduce uses only direct base+displacement
+    addressing. -/
+theorem p256Reduce_allDirect : allDirect p256Reduce = true := by
+  simp only [p256Reduce, allDirect_append]
+  decide
+
+/-- **Constant time.** The reduce half produces the same machine leakage trace
+    from any two starting states. -/
+theorem p256Reduce_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ p256Reduce = blockLeak s₂ p256Reduce :=
+  allDirect_constant_time p256Reduce p256Reduce_allDirect s₁ s₂
+
+/-- The whole P-256 field-multiply body uses only direct base+displacement
+    addressing. -/
+theorem p256MulBlock_allDirect : allDirect p256MulBlock = true := by
+  simp [p256MulBlock, allDirect_append, p256Schoolbook_allDirect, p256Reduce_allDirect]
+
+/-- **Constant time.** The emitted P-256 field multiply produces the same machine
+    leakage trace from any two starting states. -/
+theorem p256MulBlock_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ p256MulBlock = blockLeak s₂ p256MulBlock :=
+  allDirect_constant_time p256MulBlock p256MulBlock_allDirect s₁ s₂
 
 /-! ## 6. Value tie to #403's multi-term Solinas theorem
 

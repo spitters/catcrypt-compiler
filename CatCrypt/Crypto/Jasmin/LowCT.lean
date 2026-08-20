@@ -144,7 +144,7 @@ inductive TowerType where
   /-- P-256 base field.  32 bytes (4×u64 saturated). -/
   | TFpP256 : TowerType
   /-- **Phase D — bounds-tracked saturated 4-limb representation.**
-      Each limb < 2^bound.  Used for the Sqr4 keystone, Solinas
+      Each limb < 2^bound.  Used for Sqr4, Solinas
       reduction, and any kernel where carry-bound tracking
       strengthens the Hoare invariants without runtime checks. -/
   | TFp25519_4Bounded : (bound : Nat) → TowerType
@@ -467,8 +467,7 @@ def sexprMulHiS (a b : Nat) : Nat :=
     a value oracle.  **For VALUE-level (emit-correctness) reasoning use
     `SExpr.evalBV` (wrapping-`u64`-faithful); the two agree only under the
     explicit `SExpr.inRange` side condition (`SExpr.evalBV_eq_ofNat_eval`, the
-    #250 reconciliation).**  (See the upstream fidelity note on the
-    saturating-`Nat` wart.) -/
+    #250 reconciliation).** -/
 def SExpr.eval (σ : String → Nat) : SExpr → Nat
   | .SVar x   => σ x
   | .SLit n   => n
@@ -861,14 +860,6 @@ inductive LowCT where
       is `(BitVec.ofNat 64 (e.eval rs.rsScalar))` fed through
       `leafSpec.limbStore`. -/
   | RLimbStoreExpr : Located → Nat → SExpr → LowCT
-  /-- **Phase F — inline asm-opcode injection.**  `RAsmOp name dests args`
-      lowers to a single Jasmin `Copn` instruction.  The oracle
-      `LeafSpec.asmOp` gives its semantics; the borrow checker requires
-      `dests` mutually distinct and `dests ∩ args = ∅`.  Used to expose
-      individual CT-classified machine instructions (ADCX/ADOX/MULX/CMOV/…)
-      to LowCT source — see `feedback_bv_decide_workflow.md` for the
-      bignum schedules that benefit. -/
-  | RAsmOp     : String → List Located → List Located → LowCT
   /-- **Phase G — N-output function call.**  Generalisation of `RCall`
       (1-out) and `RCallSwap` (2-out) to arbitrary destination count.
       The oracle `LeafSpec.callN` is the multi-output analogue of
@@ -919,12 +910,6 @@ inductive LowCT where
               → (dests : List Located)
               → (args : List Located)
               → LowCT
-  /-- **Phase I — tuple component store.**
-      `RTupleStore dst idx src` writes the value of `src` into
-      component `idx` of the tuple-typed slot `dst`.  Component
-      indexing is structural over `TTuple a b` (idx 0 → a, idx 1 → b).
-      Lowering: array-index store at the matching byte offset. -/
-  | RTupleStore : (dst : Located) → (idx : Nat) → (src : Located) → LowCT
   /-- **Phase I — tuple component load.**
       `RTupleLoad dst src idx` reads component `idx` of `src` into
       `dst`.  Lowering: array-index load.  -/
@@ -968,24 +953,17 @@ inductive LowCT where
       a literal Nat).  Unlocks index arithmetic like `k := i * 16 + d`
       for runtime-bound `i`, `d`. -/
   | RScalarSetExpr : (x : String) → (e : SExpr) → LowCT
-  /-- **Phase Ext2 (2026-05-13) — compile-time byte-slice copy.**
-      `RBytesSlice dst src start len` copies bytes `src[start..start+len]`
-      into `dst`.  Requires `dst.locSrc = TBytes len` and `src.locSrc =
-      TBytes n` with `start + len ≤ n` (these are syntactic, compile-time
-      conditions, not checked here; the borrow-check / type-check layers
-      enforce them).  Lowering: `dst.copy_from_slice(&src[start..start+len])`. -/
-  | RBytesSlice : (dst : Located) → (src : Located) → (start : Nat) → (len : Nat) → LowCT
   /-- **Phase E2 (2026-05-29) — dst-threaded leaf call.**
       `RCallDstThreaded f dst args` calls leaf `f` with the destination
       slot threaded as both the first argument **and** the receiving
-      lvalue: `dst = f(dst, args)`.  This is the standard ABI for
-      MQ/lattice arithmetic kernels (MAYO `mayo_quadform_n8`, UOV
-      `uov_gf256_dot_l8`, HAWK `hawk_mul_4way_packed_kernel`, Falcon
-      `falcon_poly_sub_12289_512`, ML-DSA `mldsa_ntt_4way`) whose
-      shim signature receives the output buffer by value, mutates it
-      in place, and returns it.  Lowering: a single Jasmin `Ccall`
+      lvalue: `dst = f(dst, args)`.  It is the shape for a shim whose
+      signature receives the output buffer by value, mutates it in
+      place, and returns it.  Lowering: a single Jasmin `Ccall`
       with `dst` as the lvalue and `(dst :: args)` as the call
-      arguments.  Borrow check: `dst ∉ args` (same as `RCall`).  -/
+      arguments.  Borrow check: `dst ∉ args` (same as `RCall`).
+
+      Construction sites are `bench/` drivers and optimizer passes; no
+      protocol kernel builds this node.  -/
   | RCallDstThreaded : (name : String) → (dst : Located) →
                        (args : List Located) → LowCT
   /-- Runtime-bound for-loop. `RForRuntime x bound body` runs `body` with
@@ -1054,7 +1032,7 @@ analysis with carrier type `α` supplies:
   `RLetZero`/`RLetU64Zero`/`RWhileNz`/`RFor`/`RBlock`.
 
 Because *only* the eight recursive constructors recurse, this captures the
-entire structural skeleton.  Analyses that are genuine monoidal folds
+entire structural skeleton.  Analyses that are monoidal folds
 (`destsOf` = list-append, `rcSize` = sum, `borrowOk` = conjunction) collapse
 to a one-line algebra; the per-leaf arm stays where it belongs.
 
@@ -1227,23 +1205,11 @@ def CallSpec :=
 def LimbStoreSpec :=
   ∀ (loc : Located), RustVal loc.locDst → Nat → BitVec 64 → RustVal loc.locDst
 
-/-- **Phase I.1 (2026-05-04) — TupleStore oracle.**  Specification
-    of `RTupleStore dst idx src`: given the old dst value, the
-    component index, and the src value (with src's TowerType in
-    the dependent pair to handle the heterogeneous binary-product
-    case), returns the new dst value with the `idx`-th component
-    overwritten.  Concrete instances slice dst's underlying byte
-    array and overwrite the appropriate offset; abstract reasoning
-    treats the operation as an opaque function. -/
-def TupleStoreSpec :=
-  ∀ (dst : Located), RustVal dst.locDst → Nat →
-    (Σ t : TowerType, RustVal t) → RustVal dst.locDst
-
 /-- **Phase I.1 (2026-05-04) — TupleLoad oracle.**  Specification
     of `RTupleLoad dst src idx`: reads the `idx`-th component of
-    src and produces a new dst value carrying that component.
-    Same dependent-pair shape as `TupleStoreSpec` for the
-    heterogeneous case. -/
+    src and produces a new dst value carrying that component.  The
+    dependent pair carries src's TowerType, for the heterogeneous
+    binary-product case. -/
 def TupleLoadSpec :=
   ∀ (dst : Located), RustVal dst.locDst →
     (Σ t : TowerType, RustVal t) → Nat → RustVal dst.locDst
@@ -1264,15 +1230,6 @@ def ArrStoreSpec :=
 def ArrLoadSpec :=
   ∀ (dst : Located), RustVal dst.locDst →
     (Σ t : TowerType, RustVal t) → Nat → RustVal dst.locDst
-
-/-- **Phase Ext2 (2026-05-13) — byte-slice copy oracle.**
-    Specification of `RBytesSlice dst src start len`: given dst's old value,
-    src (as a dependent pair), start offset, and length, produce dst's new
-    value with bytes `src[start..start+len]` overwritten in.  Default
-    implementation is identity (preserves old dst). -/
-def BytesSliceSpec :=
-  ∀ (dst : Located), RustVal dst.locDst →
-    (Σ t : TowerType, RustVal t) → (start : Nat) → (len : Nat) → RustVal dst.locDst
 
 /-- **Phase I (2026-05-03) — byte-offset arithmetic for tuple
     components.**  For `t = TTuple a b`:
@@ -1308,27 +1265,17 @@ def TowerType.tupleComponentType : TowerType → Nat → TowerType
     `jasmin_translate.v`'s use of `handled_program` (for calls) and
     `asm_correct` (for `Oasm` operators).
 
-    **Phase F/G additions** (2026-05-03): `asmOp` and `callN` are added
-    *after* `RustState` is defined — see `Phase_F_G_oracles` section
-    below.  This split exists because the new oracles take/return
-    `RustState` directly, while the original `call`/`limbStore`
-    oracles are per-value.  Existing `LeafSpec.mk call limbStore`
-    literals stay valid via `default`-supplied fields. -/
+    A `LeafSpec.mk call limbStore` literal is complete: every
+    later field carries a `default`. -/
 structure LeafSpec where
   call      : CallSpec
   limbStore : LimbStoreSpec
-  /-- Phase I.1: tuple-store oracle.  Defaults to identity (no-op
-      on dst), so existing `LeafSpec.mk call limbStore` literals
-      stay valid; concrete instances override for real semantics. -/
-  tupleStore : TupleStoreSpec := fun _ oldV _ _ => oldV
   /-- Phase I.1: tuple-load oracle.  Defaults to identity. -/
   tupleLoad  : TupleLoadSpec := fun _ oldV _ _ => oldV
   /-- Phase Ext: array-element store oracle.  Defaults to identity. -/
   arrStore   : ArrStoreSpec := fun _ oldV _ _ => oldV
   /-- Phase Ext: array-element load oracle.  Defaults to identity. -/
   arrLoad    : ArrLoadSpec := fun _ oldV _ _ => oldV
-  /-- Phase Ext2: byte-slice copy oracle.  Defaults to identity. -/
-  bytesSlice : BytesSliceSpec := fun _ oldV _ _ _ => oldV
 
 /-- Runtime state: a tower-variable heap and a scalar heap.  `rsScalar`'s `Nat`
     carrier is the MEMORY-SAFETY layer's convenience (frame reasoning is easier
@@ -1716,6 +1663,134 @@ theorem locatedUpdate_other (rs : RustState) (loc1 loc2 : Located)
 
 /-! ## §6  Big-step semantics -/
 
+/-- Leaf name for output `i` of the multi-output call to `f`.
+
+    An `Expr` in the `Com` framework has exactly one return type, so a
+    multi-output call is carried as one single-output call per output, named
+    apart by its index. `RCallN f dests args` therefore reads output `i`
+    through the ordinary `LeafSpec.call` oracle at `callNLeafName f i`, and a
+    leaf supplying an `n`-output primitive registers `n` names. This is the
+    same monomorphisation `Optimizer.SplitBytesSlice` performs on the
+    size-varying `bytes_slice` wrapper. -/
+def callNLeafName (f : String) (i : Nat) : String :=
+  "callN:" ++ f ++ "#" ++ toString i
+
+/-- Write each destination of an N-output call, left to right: destination `i`
+    receives output `i` of `f` on the argument values `argList`.
+
+    `argList` and `argTs` are read once from the pre-state by the `callN` rule,
+    so every destination sees the same inputs — the borrow checker keeps
+    `dests` distinct and disjoint from `args`, so no destination write can
+    reach a later destination's arguments. -/
+def callNUpdate (leafSpec : LeafSpec) (f : String) (argTs : List TowerType)
+    (argList : List (Σ t : TowerType, RustVal t)) :
+    Nat → List Located → RustState → RustState
+  | _, [], rs => rs
+  | i, d :: rest, rs =>
+      callNUpdate leafSpec f argTs argList (i + 1) rest
+        (locatedUpdate rs d
+          (leafSpec.call (callNLeafName f i) d.locDst argTs
+            ((locatedLookup rs d).getD default) argList))
+
+/-- A slot whose name is none of the destinations is untouched by the fold:
+    the write-set of `RCallN f dests args` is exactly `dests`. -/
+theorem locatedLookup_callNUpdate_other (leafSpec : LeafSpec) (f : String)
+    (argTs : List TowerType) (argList : List (Σ t : TowerType, RustVal t)) :
+    ∀ (dests : List Located) (i : Nat) (rs : RustState) (loc : Located),
+      loc.locVar ∉ dests.map (·.locVar) →
+      locatedLookup (callNUpdate leafSpec f argTs argList i dests rs) loc
+        = locatedLookup rs loc := by
+  intro dests
+  induction dests with
+  | nil => intro _ _ _ _; rfl
+  | cons d rest ih =>
+    intro i rs loc hNotIn
+    simp only [List.map_cons, List.mem_cons, not_or] at hNotIn
+    obtain ⟨hd, hrest⟩ := hNotIn
+    show locatedLookup
+      (callNUpdate leafSpec f argTs argList (i + 1) rest (locatedUpdate rs d _)) loc = _
+    rw [ih (i + 1) _ loc (by simpa using hrest)]
+    exact locatedUpdate_other _ _ _ _ (Ne.symm hd)
+
+/-- The `rsTower`-level counterpart of `locatedLookup_callNUpdate_other`.
+    `locatedLookup` equality does not imply `rsTower` equality — it forgets a
+    type mismatch — so a frame stated at the raw heap needs this one. -/
+theorem rsTower_callNUpdate_other (leafSpec : LeafSpec) (f : String)
+    (argTs : List TowerType) (argList : List (Σ t : TowerType, RustVal t)) :
+    ∀ (dests : List Located) (i : Nat) (rs : RustState) (y : String),
+      y ∉ dests.map (·.locVar) →
+      (callNUpdate leafSpec f argTs argList i dests rs).rsTower y = rs.rsTower y := by
+  intro dests
+  induction dests with
+  | nil => intro _ _ _ _; rfl
+  | cons d rest ih =>
+    intro i rs y hNotIn
+    simp only [List.map_cons, List.mem_cons, not_or] at hNotIn
+    obtain ⟨hd, hrest⟩ := hNotIn
+    show (callNUpdate leafSpec f argTs argList (i + 1) rest
+            (locatedUpdate rs d _)).rsTower y = _
+    rw [ih (i + 1) _ y (by simpa using hrest)]
+    unfold locatedUpdate
+    exact rsSetTower_other _ _ _ _ (Ne.symm hd)
+
+/-- The fold writes tower slots only, so the scalar heap is untouched. -/
+theorem callNUpdate_rsScalar (leafSpec : LeafSpec) (f : String)
+    (argTs : List TowerType) (argList : List (Σ t : TowerType, RustVal t)) :
+    ∀ (dests : List Located) (i : Nat) (rs : RustState),
+      (callNUpdate leafSpec f argTs argList i dests rs).rsScalar = rs.rsScalar := by
+  intro dests
+  induction dests with
+  | nil => intro _ _; rfl
+  | cons d rest ih =>
+    intro i rs
+    show (callNUpdate leafSpec f argTs argList (i + 1) rest (locatedUpdate rs d _)).rsScalar = _
+    rw [ih (i + 1)]
+    rfl
+
+/-- The `j`-th destination reads back its own write: after the fold started at
+    index `i`, the slot named by `dests[j]` holds output `i + j` of `f`, applied
+    to the pre-state's old value at that slot.
+
+    Distinctness of the destination *names* is what makes this hold — with a
+    repeated name the later write shadows the earlier one, and the slot carries
+    only the last output written to it. -/
+theorem rsTower_callNUpdate_nth (leafSpec : LeafSpec) (f : String)
+    (argTs : List TowerType) (argList : List (Σ t : TowerType, RustVal t)) :
+    ∀ (dests : List Located) (i j : Nat) (rs : RustState) (d : Located),
+      (dests.map (·.locVar)).Nodup →
+      dests[j]? = some d →
+      (callNUpdate leafSpec f argTs argList i dests rs).rsTower d.locVar
+        = some ⟨d.locDst,
+            leafSpec.call (callNLeafName f (i + j)) d.locDst argTs
+              ((locatedLookup rs d).getD default) argList⟩ := by
+  intro dests
+  induction dests with
+  | nil => intro _ _ _ _ _ hj; simp at hj
+  | cons d' rest ih =>
+    intro i j rs d hNodup hj
+    simp only [List.map_cons, List.nodup_cons] at hNodup
+    obtain ⟨hHead, hRest⟩ := hNodup
+    cases j with
+    | zero =>
+      have hd : d = d' := by simpa using hj.symm
+      subst hd
+      show (callNUpdate leafSpec f argTs argList (i + 1) rest
+              (locatedUpdate rs d _)).rsTower d.locVar = _
+      rw [rsTower_callNUpdate_other leafSpec f argTs argList rest (i + 1) _
+            d.locVar hHead, locatedUpdate_dest]
+      simp
+    | succ k =>
+      simp only [List.getElem?_cons_succ] at hj
+      have hmem : d ∈ rest := List.mem_of_getElem? hj
+      have hne : d'.locVar ≠ d.locVar := by
+        intro hEq
+        exact hHead (hEq ▸ List.mem_map_of_mem hmem)
+      show (callNUpdate leafSpec f argTs argList (i + 1) rest
+              (locatedUpdate rs d' _)).rsTower d.locVar = _
+      rw [ih (i + 1) k _ d hRest hj, locatedUpdate_other _ _ _ _ hne]
+      have hidx : i + 1 + k = i + (k + 1) := by omega
+      rw [hidx]
+
 /-- Big-step execution relation for `LowCT`.
 
     `RustExec N leafSpec c rs rs'` means: running `c` from state `rs`
@@ -1723,7 +1798,20 @@ theorem locatedUpdate_other (rs : RustState) (loc1 loc2 : Located)
 
     `N` bounds `RWhileNz` loop iterations (via the `while_true` case's
     induction structure — the bound appears implicitly in the finite derivation
-    tree). -/
+    tree).
+
+    `RFnCall` and `RFnDef` have no rule. Giving `RFnCall` its meaning
+    requires a function environment — a map from name to `FnSpec`, threaded
+    through this relation's indices, so the rule can run the callee's body
+    on the argument slots and write back to `dests`. This relation is
+    indexed only by `N` and `leafSpec`, so that is a change to its type.
+    Until then the relation is unsatisfiable at those two nodes: a
+    hypothesis `RustExec … c rs rs'` for a program containing one cannot be
+    discharged, rather than being discharged by a rule that moves no state.
+    `toJasminCmd` still lowers `RFnCall` to a `Ccall`, so such a program
+    compiles; what it does not have is an operational claim at this
+    layer. `TranslateDialectFnCall`'s `fnCallD`/`fnDefD` are the dialect-side
+    shape a future rule would mirror. -/
 inductive RustExec (N : Nat) (leafSpec : LeafSpec) :
     LowCT → RustState → RustState → Prop where
   | skip   : ∀ rs, RustExec N leafSpec .RSkip rs rs
@@ -1778,6 +1866,11 @@ inductive RustExec (N : Nat) (leafSpec : LeafSpec) :
       RustExec N leafSpec (.RCall f dest args) rs
         (locatedUpdate rs dest
           (leafSpec.call f dest.locDst (args.map (·.locDst)) oldDestV argList))
+  /-- The clone binding stays in the tower on exit, matching Jasmin, where a
+      call introduces no scope to leave.  The AUCurves rule this is imported
+      from drops it (`XR_clone_call` ends in `remove_var`), so on this
+      constructor the relation is not a conservative extension of that one:
+      a post-state here binds `cloneVar`, and there it does not. -/
   | cloneCall : ∀ cloneVar cloneTy oldDest innerF dest args
                    rs rsClone rs',
       rsClone = rsSetTower rs cloneVar
@@ -1785,7 +1878,7 @@ inductive RustExec (N : Nat) (leafSpec : LeafSpec) :
       RustExec N leafSpec (.RCall innerF dest args) rsClone rs' →
       RustExec N leafSpec
         (.RCloneCall cloneVar cloneTy oldDest innerF dest args)
-        rs rs'  -- aligns with Jasmin semantics: no variable removal
+        rs rs'
   /-- 2-output cswap-shape leaf.  Semantically: two sequential 1-out
       calls in Jasmin: `f(dest1, args); f(dest2, args)`.  borrowOk for
       `RCallSwap` forbids `dest1 = dest2` and either dest in args. -/
@@ -1805,9 +1898,9 @@ inductive RustExec (N : Nat) (leafSpec : LeafSpec) :
 
       `evalState` reads the **tower heap** (by byte offset `j*8`, per
       `rsTowerLimb`/`towerLimb`) for any `SLimb v j` node, so an
-      `SLimb`-valued store now has its faithful runtime effect: the two
-      Fp2 / tower halves are no longer treated as independent opaque
-      slots.  On `SLimb`-free expressions `evalState rs e = eval
+      `SLimb`-valued store carries its runtime effect: the two
+      Fp2 / tower halves share one slot rather than reading as
+      independent ones.  On `SLimb`-free expressions `evalState rs e = eval
       rs.rsScalar e` (see `SExpr.evalState_eq_eval`), so the
       scalar-fragment stores are unchanged (see
       `SExpr.evalState_eq_eval`); the literal-valued
@@ -1818,21 +1911,18 @@ inductive RustExec (N : Nat) (leafSpec : LeafSpec) :
       RustExec N leafSpec (.RLimbStoreExpr loc idx e) rs
         (locatedUpdate rs loc
           (leafSpec.limbStore loc oldDestV idx (BitVec.ofNat 64 (e.evalState rs))))
-  /-- **Phase F semantics — identity stub.**  The real per-opcode
-      effect is supplied by the Hoare-layer oracle (analogue of
-      `leafSpec.call` for individual `Copn` instructions); the
-      bare-`RustExec` step is identity so that the inductive carries
-      no opcode-table baggage.  Hoare rules pin the post-state via
-      external hypotheses about the opcode named `name`.  Mirrors the
-      pattern used in Rocq `jasmin_translate.v`'s `Oasm` axiomatic
-      treatment. -/
-  | asmOp : ∀ name dests args rs,
-      RustExec N leafSpec (.RAsmOp name dests args) rs rs
-  /-- **Phase G semantics — identity stub.**  As `asmOp`: the real
-      multi-output side effect comes from the Hoare-level
-      `callN`-spec; the inductive step is identity. -/
-  | callN : ∀ f dests args rs,
-      RustExec N leafSpec (.RCallN f dests args) rs rs
+  /-- **Phase G semantics — N-output leaf call.**  Reads the argument values
+      from the pre-state, then writes each destination in turn: destination
+      `i` receives `leafSpec.call (callNLeafName f i)` on those arguments.
+      Naming the outputs apart by index is what distinguishes destinations of
+      the same tower type — the `(carry, sum)` of an add-with-carry shape are
+      both `TU64`, and a single leaf name would give them one value. -/
+  | callN : ∀ f dests args rs argList,
+      argList = args.filterMap (fun a => rs.rsTower a.locVar) →
+      (∀ a ∈ args, ∃ v, rs.rsTower a.locVar = some ⟨a.locDst, v⟩) →
+      (∀ d ∈ dests, ∃ v, rs.rsTower d.locVar = some ⟨d.locDst, v⟩) →
+      RustExec N leafSpec (.RCallN f dests args) rs
+        (callNUpdate leafSpec f (args.map (·.locDst)) argList 0 dests rs)
   /-- **Phase H semantics — CT-safe conditional move.**  Reads the
       scalar `sel`; if zero, copies `src0`'s tower value into `dst`;
       else copies `src1`.  Hardware analogue: a `CMOV` chain at the
@@ -1862,31 +1952,6 @@ inductive RustExec (N : Nat) (leafSpec : LeafSpec) :
   | block : ∀ body rs rs',
       RustExec N leafSpec body rs rs' →
       RustExec N leafSpec (.RBlock body) rs rs'
-  /-- **Phase C — `RFnDef` semantics.**  Identity stub: the function
-      definition is a compile-time declaration, not a runtime event.
-      The continuation `cont` runs with the (statically-known) helper
-      bound in the function environment.  At this layer, the
-      environment is implicit — proven via a per-`RFnCall` Hoare
-      rule that takes the helper's `FnSpec` as a hypothesis. -/
-  | fnDef : ∀ name params returns body cont rs rs',
-      RustExec N leafSpec cont rs rs' →
-      RustExec N leafSpec (.RFnDef name params returns body cont) rs rs'
-  /-- **Phase C — `RFnCall` semantics — identity stub.**  Like
-      `asmOp` / `callN`: the real per-helper effect comes from a
-      Hoare-level oracle parameterised by the helper's `FnSpec`. -/
-  | fnCall : ∀ f dests args rs,
-      RustExec N leafSpec (.RFnCall f dests args) rs rs
-  /-- **Phase I.1 (2026-05-04) — tuple component store.**  Reads
-      `dst`'s old value, looks up `src` (with its dependent tower
-      type), and writes `leafSpec.tupleStore dst oldV idx ⟨src.locDst, srcV⟩`
-      to `dst`'s tower slot.  Concrete instances of `LeafSpec` override
-      `tupleStore` to perform the real byte-offset overwrite; the
-      default (identity) preserves backwards compatibility. -/
-  | tupleStore : ∀ dst idx src rs oldV srcV,
-      locatedLookup rs dst = some oldV →
-      locatedLookup rs src = some srcV →
-      RustExec N leafSpec (.RTupleStore dst idx src) rs
-        (locatedUpdate rs dst (leafSpec.tupleStore dst oldV idx ⟨src.locDst, srcV⟩))
   /-- **Phase I.1 — tuple component load.**  Reads the `idx`-th
       component of `src` into `dst` via `leafSpec.tupleLoad`. -/
   | tupleLoad : ∀ dst src idx rs oldV srcV,
@@ -1937,18 +2002,6 @@ inductive RustExec (N : Nat) (leafSpec : LeafSpec) :
   | scalarSetExpr : ∀ x e rs,
       RustExec N leafSpec (.RScalarSetExpr x e) rs
         (rsSetScalar rs x (e.eval rs.rsScalar))
-  /-- **Phase Ext2 (2026-05-13) — byte-slice copy.**  Reads `dst`'s
-      old value, looks up `src` (with its dependent tower type), and
-      writes `leafSpec.bytesSlice dst oldV ⟨src.locDst, srcV⟩ start len`
-      to `dst`'s tower slot.  Concrete `LeafSpec` instances override
-      `bytesSlice` to perform the real byte-range copy; the default
-      (identity) preserves backwards compatibility. -/
-  | bytesSlice : ∀ dst src start len rs oldV srcV,
-      locatedLookup rs dst = some oldV →
-      locatedLookup rs src = some srcV →
-      RustExec N leafSpec (.RBytesSlice dst src start len) rs
-        (locatedUpdate rs dst
-          (leafSpec.bytesSlice dst oldV ⟨src.locDst, srcV⟩ start len))
   /-- **Phase E2 semantics — destination-threaded leaf call.**  Single
       output, shape-compatible with `call`, but the destination slot is
       threaded as the first call argument *and* the receiving lvalue:
@@ -1965,7 +2018,7 @@ inductive RustExec (N : Nat) (leafSpec : LeafSpec) :
         (locatedUpdate rs dst
           (leafSpec.call f dst.locDst ((dst :: args).map (·.locDst)) oldDestV argList))
 
-/-- **Runtime-store reconciliation (#250, the load-bearing tie).**  The word
+/-- **Runtime-store reconciliation (#250).**  The word
     that `RustExec.limbStoreExpr` records — `BitVec.ofNat 64 (e.evalState rs)`,
     i.e. the saturating-then-truncate-at-storage Nat model — equals the
     intermediate-wrapping hardware value `e.evalStateBV rs` **exactly** under

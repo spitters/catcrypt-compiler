@@ -65,23 +65,23 @@ where
   -- Phase R5: runtime-valued limb store.  Same as `RLimbStore` — writes
   -- one limb of `loc`, reads scalar slots in `e`; no aliasing concern.
   | .RLimbStoreExpr _ _ _       => true
-  -- Phase F: dests must be mutually distinct and disjoint from args.
-  | .RAsmOp _ dests args        =>
-      dests.Nodup && dests.all (fun d => !callAliases d args)
-  -- Phase G: same as F.
+  -- Phase G: dests must be mutually distinct and disjoint from args.  The
+  -- distinctness is over VARIABLE NAMES, as in `RCallSwap` above: a tower slot
+  -- is keyed by `locVar` alone, so `[⟨"x", TU64⟩, ⟨"x", TFp⟩]` is `Nodup` as a
+  -- list of `Located` while both writes land on `x` and the second shadows the
+  -- first.
   | .RCallN _ dests args        =>
-      dests.Nodup && dests.all (fun d => !callAliases d args)
+      (dests.map (·.locVar)).Nodup && dests.all (fun d => !callAliases d args)
   -- Phase H: dst, src0, src1 base vars distinct (for the simple
   -- discipline; cmov-with-aliased-src is a future refinement).
   | .RSelect dst _ src0 src1    =>
       (dst.locVar != src0.locVar) && (dst.locVar != src1.locVar)
   -- Phase L: assertion has no destination, no args.
   | .RAssert _                  => true
-  -- Phase C: function-call same shape as RCallN.
+  -- Phase C: function-call same shape as RCallN, distinctness over names.
   | .RFnCall _ dests args       =>
-      dests.Nodup && dests.all (fun d => !callAliases d args)
-  -- Phase I: tuple component store/load — single destination, no aliasing concern.
-  | .RTupleStore dst _ src      => dst.locVar != src.locVar
+      (dests.map (·.locVar)).Nodup && dests.all (fun d => !callAliases d args)
+  -- Phase I: tuple component load — single destination, no aliasing concern.
   | .RTupleLoad dst src _       => dst.locVar != src.locVar
   -- Phase Ext (2026-05-12): runtime array load/store + scalar expression assign.
   -- Conservative defaults: array load/store require dst.locVar ≠ src.locVar
@@ -94,10 +94,6 @@ where
   | .RArrStoreLit arr _ src     => arr.locVar != src.locVar
   | .RArrLoadLit dst src _      => dst.locVar != src.locVar
   | .RScalarSetExpr _ _         => true
-  -- Phase Ext2 (2026-05-13): byte-slice copy.  Dst and src must be
-  -- distinct base variables (slice copy with overlapping memory is
-  -- UB at the Rust level; copy_from_slice panics on overlap).
-  | .RBytesSlice dst src _ _    => dst.locVar != src.locVar
   -- Phase E2 (2026-05-29): dst-threaded leaf call.  Same alias
   -- discipline as `RCall`: dst must not appear in args (the kernel
   -- reads its own threaded dst from the first arg slot then writes;
@@ -134,7 +130,6 @@ def destsOf : LowCT → List String
   | .RForRuntime _ _ body        => destsOf body
   | .RLimbStore loc _ _          => [loc.locVar]
   | .RLimbStoreExpr loc _ _      => [loc.locVar]
-  | .RAsmOp _ dests _            => dests.map (·.locVar)
   | .RCallN _ dests _            => dests.map (·.locVar)
   | .RSelect dst _ _ _           => [dst.locVar]
   | .RAssert _                   => []
@@ -142,8 +137,7 @@ def destsOf : LowCT → List String
   -- Phase C: function-def's writes are body ∪ cont (under static analysis).
   | .RFnDef _ _ _ body cont      => destsOf body ++ destsOf cont
   | .RFnCall _ dests _           => dests.map (·.locVar)
-  -- Phase I: tuple component store/load — single destination.
-  | .RTupleStore dst _ _         => [dst.locVar]
+  -- Phase I: tuple component load — single destination.
   | .RTupleLoad dst _ _          => [dst.locVar]
   -- Phase Ext (2026-05-12): runtime array load/store + scalar expression assign.
   | .RArrStore arr _ _           => [arr.locVar]  -- mutates the array variable
@@ -152,8 +146,6 @@ def destsOf : LowCT → List String
   | .RArrStoreLit arr _ _        => [arr.locVar]
   | .RArrLoadLit dst _ _         => [dst.locVar]
   | .RScalarSetExpr _ _          => []           -- writes a scalar, not in destsOf
-  -- Phase Ext2 (2026-05-13): byte-slice copy mutates dst.
-  | .RBytesSlice dst _ _ _       => [dst.locVar]
   -- Phase E2 (2026-05-29): dst-threaded leaf call writes its threaded dst.
   | .RCallDstThreaded _ dst _    => [dst.locVar]
 
@@ -279,11 +271,12 @@ theorem seqFrame (N : Nat) (leafSpec : LeafSpec)
     rw [List.mem_singleton] at hNotIn
     exact locatedUpdate_other _ _ _ _ (Ne.symm hNotIn)
 
-  -- Phase F: identity-stub semantics → state unchanged.
-  | asmOp _ _ _ _ => rfl
-
-  -- Phase G: identity-stub semantics → state unchanged.
-  | callN _ _ _ _ => rfl
+  -- Phase G: the N-output call writes exactly `dests`; `destsOf` is that list
+  -- of names, so the fold's frame lemma applies directly.
+  | callN f dests args rs argList _ _ _ =>
+    simp only [destsOf] at hNotIn
+    exact locatedLookup_callNUpdate_other leafSpec f (args.map (·.locDst)) argList
+      dests 0 rs loc hNotIn
 
   -- Phase H — selectFalse: dst gets updated, others untouched.
   | selectFalse dst _ _ _ _ _ _ _ _ =>
@@ -305,22 +298,8 @@ theorem seqFrame (N : Nat) (leafSpec : LeafSpec)
     simp only [destsOf] at hNotIn
     exact ih hNotIn
 
-  -- Phase C: fnDef is identity at the runtime level (cont runs); IH
-  -- on cont covers the post-state.
-  | fnDef _ _ _ _ _ _ _ _ ih =>
-    simp only [destsOf, List.mem_append, not_or] at hNotIn
-    exact ih hNotIn.2
-
-  -- Phase C: fnCall is identity-stub semantics → state unchanged.
-  | fnCall _ _ _ _ => rfl
-
-  -- Phase I.1 (2026-05-04): tuple store writes to dst → use
+  -- Phase I.1 (2026-05-04): tuple load writes to dst → use
   -- locatedUpdate_other to preserve other locations' lookups.
-  | tupleStore dst _ _ _ _ _ _ _ =>
-    simp only [destsOf, List.mem_singleton] at hNotIn
-    exact locatedUpdate_other _ _ _ _ (Ne.symm hNotIn)
-
-  -- Phase I.1: same as tupleStore.
   | tupleLoad dst _ _ _ _ _ _ _ =>
     simp only [destsOf, List.mem_singleton] at hNotIn
     exact locatedUpdate_other _ _ _ _ (Ne.symm hNotIn)
@@ -342,11 +321,6 @@ theorem seqFrame (N : Nat) (leafSpec : LeafSpec)
   | scalarSetExpr _ _ _ =>
     -- RScalarSetExpr writes to rsScalar only (not rsTower); leaves tower lookups intact.
     exact locatedLookup_rsSetScalar _ _ _ _
-
-  -- Phase Ext2 (2026-05-13): RBytesSlice updates dst → locatedUpdate_other for others.
-  | bytesSlice dst _ _ _ _ _ _ _ _ =>
-    simp only [destsOf, List.mem_singleton] at hNotIn
-    exact locatedUpdate_other _ _ _ _ (Ne.symm hNotIn)
 
 /-! ## §5  Call frame theorems -/
 

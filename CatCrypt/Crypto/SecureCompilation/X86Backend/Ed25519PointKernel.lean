@@ -4,8 +4,8 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519OpsKernel
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel
 import CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectKernel
+import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
 # Ed25519 twisted-Edwards point add/double + fixed-base scalarmul, owned x86 backend (#414)
@@ -103,6 +103,9 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime (blockLeak IsDirect)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+  (allDirect allDirect_append allDirect_constant_time)
 
 /-! ## 1. Frame geometry
 
@@ -513,6 +516,57 @@ theorem edwardsAddBlock_length : edwardsAddBlock.length = 1184 := by
 theorem edwardsDblBlock_length : edwardsDblBlock.length = 1051 := by
   native_decide
 
+/-! ## 6a. Constant time: straight-line, all-direct addressing
+
+Each frame-relative field-op generator addresses memory through the frame base
+`"f"` and a compile-time-constant slot displacement, for every slot argument;
+the point ops are concatenations of those generators, so `allDirect` for a point
+op follows from the generator lemmas and the distribution of `List.all` over
+`++` — no reduction of the 1000-instruction body is needed. The leakage trace is
+then state-independent by `ConstantTimeCoverage.allDirect_constant_time`. -/
+
+/-- The frame-relative multiply generator uses only direct base+displacement
+    addressing, at every slot triple. -/
+theorem feMulAt_allDirect (o a b : Nat) : allDirect (feMulAt o a b) = true := by
+  unfold feMulAt; rfl
+
+/-- The frame-relative square generator uses only direct base+displacement
+    addressing, at every slot pair. -/
+theorem feSqrAt_allDirect (o a : Nat) : allDirect (feSqrAt o a) = true := by
+  unfold feSqrAt; rfl
+
+/-- The frame-relative add generator uses only direct base+displacement
+    addressing, at every slot triple. -/
+theorem feAddAt_allDirect (o a b : Nat) : allDirect (feAddAt o a b) = true := by
+  unfold feAddAt; rfl
+
+/-- The frame-relative subtract generator uses only direct base+displacement
+    addressing, at every slot triple. -/
+theorem feSubAt_allDirect (o a b : Nat) : allDirect (feSubAt o a b) = true := by
+  unfold feSubAt; rfl
+
+/-- The Edwards add body uses only direct base+displacement addressing. -/
+theorem edwardsAddBlock_allDirect : allDirect edwardsAddBlock = true := by
+  simp [edwardsAddBlock, allDirect_append, feMulAt_allDirect,
+    feAddAt_allDirect, feSubAt_allDirect]
+
+/-- **Constant time.** The extended-twisted-Edwards add produces the same machine
+    leakage trace from any two starting states. -/
+theorem edwardsAddBlock_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ edwardsAddBlock = blockLeak s₂ edwardsAddBlock :=
+  allDirect_constant_time edwardsAddBlock edwardsAddBlock_allDirect s₁ s₂
+
+/-- The Edwards double body uses only direct base+displacement addressing. -/
+theorem edwardsDblBlock_allDirect : allDirect edwardsDblBlock = true := by
+  simp [edwardsDblBlock, allDirect_append, feMulAt_allDirect,
+    feSqrAt_allDirect, feAddAt_allDirect, feSubAt_allDirect]
+
+/-- **Constant time.** The dedicated Edwards double produces the same machine
+    leakage trace from any two starting states. -/
+theorem edwardsDblBlock_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ edwardsDblBlock = blockLeak s₂ edwardsDblBlock :=
+  allDirect_constant_time edwardsDblBlock edwardsDblBlock_allDirect s₁ s₂
+
 /-! ## 7. Fixed-base scalarmul `acc := s·B`
 
 Ed25519 signing computes `A = a·B` and `R = r·B`, both fixed-base. The fast path
@@ -582,15 +636,31 @@ theorem combWindowStep_lowering_correct (fr : Nat → Fin 4 → BitVec 64)
       = runBlock (initScalarMul fr tab didx) combWindowStep :=
   lowerBlock_denote_closed combWindowStep (initScalarMul fr tab didx)
 
+/-- The comb-window step uses only direct base+displacement addressing: the
+    window point is read by a full linear scan of the 16 table rows at constant
+    displacements with a `cmove` per row, so the secret window index `"d"` never
+    enters an effective address. -/
+theorem combWindowStep_allDirect : allDirect combWindowStep = true := by
+  simp only [combWindowStep, allDirect_append, edwardsAddBlock_allDirect,
+    Bool.and_true]
+  decide
+
+/-- **Constant time.** One fixed-base comb-window step — CT-select plus Edwards
+    add — produces the same machine leakage trace from any two starting states,
+    so the selected table row is not observable in the address channel. -/
+theorem combWindowStep_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ combWindowStep = blockLeak s₂ combWindowStep :=
+  allDirect_constant_time combWindowStep combWindowStep_allDirect s₁ s₂
+
 /-! ## 8. AT&T assembly emission (in-Lean backend, no jasminc)
 
 A whole point op (`edwardsAddBlock` = 9 `feMul` + 4 `feAdd` + 2 `feSub`, with
 the reused scratch names `t0..t7`/`lo`/`hi`/`y`/`d0..d3`/`c0..c3`/`m`/`c`)
 exceeds the **14-register** GP pool if every name is forced register-resident at
 once: `allocOverflow` is therefore deliberately **not** asserted `none` for the
-monolithic block — that is the genuine register-budget wall this self-emit line
-documents (closed by the verified spill/inline/mem2reg passes #410–#418 for the
-X25519 ladder). The faithful, overflow-free emission — and the one the brief's
+monolithic block — the register-budget wall this self-emit line documents
+(closed by the verified spill/inline/mem2reg passes #410–#418 for the X25519
+ladder). The overflow-free emission — and the one the brief's
 own model names ("each point op is a fixed sequence of field-op leaves") — keeps
 each field op as its **own** leaf (the landed `Fe25519MulKernel.feMulAsm` /
 `Fe25519OpsKernel.fe{Add,Sub,Sqr}Asm`, each `allocOverflow = none`, each

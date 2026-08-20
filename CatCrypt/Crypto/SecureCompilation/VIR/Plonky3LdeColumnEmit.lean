@@ -8,6 +8,7 @@ import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # Plonky3 coset-NTT column LDE FRONT-COMPILED as seven `Com jasminDialect` leaves
@@ -431,7 +432,7 @@ def ldeColumnLprog : Lprog :=
         ++ (nttLprog 2).lp_funcs ++ (nttLprog 3).lp_funcs
         ++ (nttLprog 4).lp_funcs }
 
-def ldeColumnAsm : String := renderLprogAtt ldeColumnLprog
+def ldeColumnAsm : String := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned ldeColumnLprog
 
 /-! ## 2b. Front provenance (per-leaf, small)
 
@@ -480,26 +481,9 @@ theorem ntt4_front_sourced :
       DialectToJasminCom.cryptoDialectToJasminCom = some (nttLeafCom 4) :=
   (Option.some_get nttLeaf4_isSome).symm
 
-/-! ## 3. Conservative printer shape lemmas
+/-! ## 3. Structural gates on the lowered program -/
 
-Each leaf's export label is present and its body contains no `UNHANDLED` op
-sentinel (every binding is a handled `regArith` op). The shape checks are done
-**per leaf** (each render ≈ the proven-feasible 57 KB `fri_fold_from_rustcmd`
-scale) rather than over the ~350 KB concatenation, keeping each `native_decide`
-`hasSub` scan in the established size regime. -/
-
-def inttAsm : String := renderLprogAtt inttLprog
-def twistAsm : String := renderLprogAtt twistLprog
-def nttAsm (layer : Nat) : String := renderLprogAtt (nttLprog layer)
-
-#guard (hasSub inttAsm "lde_intt8_rc")
-#guard !(hasSub inttAsm "UNHANDLED")
-#guard (hasSub twistAsm "lde_twist_rc")
-#guard !(hasSub twistAsm "UNHANDLED")
-#guard (hasSub (nttAsm 0) "lde_ntt32_l0_rc")
-#guard !(hasSub (nttAsm 0) "UNHANDLED")
-#guard (hasSub (nttAsm 4) "lde_ntt32_l4_rc")
-#guard !(hasSub (nttAsm 4) "UNHANDLED")
+-- Rendered-asm correctness is the external C KAT; an in-Lean occursIn check would re-evaluate the optimizing back-end renderOwned at elaboration.
 
 /-- The combined `.s` carries all seven leaf labels (structural: its `lp_funcs`
     is the concatenation of the seven single-leaf programs). -/

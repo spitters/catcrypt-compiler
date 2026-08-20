@@ -50,9 +50,11 @@ not `sorry`. Extending coverage is a mechanical added case.
 
 ## What is proved (all sorry-free)
 
-* `translateWSize`, `translateSType`, `translateSOp2`, `translateVar`,
-  `translateVarI`, `translateGVar`, `translateLVal`, `translatePExpr`,
-  `translateInstrR` — real total `Option`-valued functions.
+* `translateWSize`, `translateSType`, `translateSOp1`, `translateSOp2`,
+  `translateVar`, `translateVarI`, `translateGVar`, `translateLVal`,
+  `translatePExpr`, `translateInstrR` — real total `Option`-valued functions.
+  `translatePExpr` covers the `Papp1` `castW` width-cast family in addition to
+  the `Papp2`/`Pvar`/constant golden-path shapes.
 * `translateInstrR_regArith` — the **fragment-correctness lemma**: on the
   emitted shape `Cassgn (Lvar dst) tag (sword ws) (Papp2 op (Pvar a) (Pvar b))`,
   `translateInstrR` produces *exactly* the field-by-field-translated
@@ -88,6 +90,7 @@ refer to constructors via fully-qualified `.Cassgn` etc. -/
 
 abbrev AWSize    := CatCrypt.Crypto.Jasmin.WSize
 abbrev ASType    := CatCrypt.Crypto.Jasmin.SType
+abbrev ASOp1     := CatCrypt.Crypto.Jasmin.SOp1
 abbrev ASOp2     := CatCrypt.Crypto.Jasmin.SOp2
 abbrev AVar      := CatCrypt.Crypto.Jasmin.Var
 abbrev AVarI     := CatCrypt.Crypto.Jasmin.VarI
@@ -99,6 +102,7 @@ abbrev AAssgnTag := CatCrypt.Crypto.Jasmin.AssgnTag
 
 abbrev MWSize    := CatCrypt.Crypto.Jasmin.CoqSemMirror.WSize
 abbrev MAtype    := CatCrypt.Crypto.Jasmin.CoqSemMirror.Atype
+abbrev MSOp1     := CatCrypt.Crypto.Jasmin.CoqSemMirror.SOp1
 abbrev MSOp2     := CatCrypt.Crypto.Jasmin.CoqSemMirror.SOp2
 abbrev MVar      := CatCrypt.Crypto.Jasmin.CoqSemMirror.Var
 abbrev MVarI     := CatCrypt.Crypto.Jasmin.CoqSemMirror.VarI
@@ -172,6 +176,36 @@ def translateSOp2 : ASOp2 → Option MSOp2
   | .Ovadd _ _ | .Ovsub _ _ | .Ovmul _ _
   | .Ovlsr _ _ | .Ovlsl _ _ | .Ovasr _ _ => none
 
+/-! ## 3b. Unary operators: `SOp1` → `SOp1` — the width-cast family
+
+The `castW` shapes the golden-path `Papp1` carries are exactly the width casts:
+`Oword_of_int` (int → word), `Osignext`/`Ozeroext` (word → wider/narrower word),
+and `Oint_of_word` (word → int). All seven `SOp1` constructors have an exact
+mirror image; the only partiality is the shared `U512` width narrowing. The
+mirror tags `Oint_of_word` with a `Signedness` (`Unsigned`, matching the
+`JasminAST` unsigned reading) and `Oneg` with an `OpKind` (`Op_w`), exactly as
+`translateSOp2` tags `Oadd`/`Osub`. -/
+
+/-- Translate a `JasminAST.SOp1` to a `CoqSemMirror.SOp1`. The width-cast family
+    (`Oword_of_int`/`Oint_of_word`/`Osignext`/`Ozeroext`) — the `castW`
+    expressions the `Papp1` golden-path carries — plus `Onot`/`Olnot`/`Oneg`
+    each translate exactly; the only partiality is the `U512` width narrowing
+    inherited from `translateWSize`. -/
+def translateSOp1 : ASOp1 → Option MSOp1
+  | .Oword_of_int ws  => (translateWSize ws).map .Oword_of_int
+  | .Oint_of_word ws  => (translateWSize ws).map (fun w => .Oint_of_word .Unsigned w)
+  | .Osignext wso wsi =>
+      match translateWSize wso, translateWSize wsi with
+      | some o, some i => some (.Osignext o i)
+      | _, _ => none
+  | .Ozeroext wso wsi =>
+      match translateWSize wso, translateWSize wsi with
+      | some o, some i => some (.Ozeroext o i)
+      | _, _ => none
+  | .Onot     => some .Onot
+  | .Olnot ws => (translateWSize ws).map .Olnot
+  | .Oneg ws  => (translateWSize ws).map (fun w => .Oneg (.Op_w w))
+
 /-! ## 4. Assignment tags — total, exact (same five constructors) -/
 
 /-- Translate a `JasminAST.AssgnTag` to a `CoqSemMirror.AssgnTag`.
@@ -211,13 +245,19 @@ def translateLVal : ALVal → Option MLval
   | _       => none
 
 /-- Translate a `JasminAST.PExpr` to a `CoqSemMirror.Pexpr`. In-fragment: a
-    register read `Pvar`, an integer/bool constant, and the binary application
-    `Papp2`. (The golden-path `regArith` rhs is `Papp2 op (Pvar a) (Pvar b)`.)
-    Array/load/`Papp1`/`PappN`/`Pif` shapes are out-of-fragment. -/
+    register read `Pvar`, an integer/bool constant, the unary application
+    `Papp1` (the `castW` width-cast family), and the binary application `Papp2`.
+    (The golden-path `regArith` rhs is `Papp2 op (Pvar a) (Pvar b)`; a `castW`
+    rhs is `Papp1 (Oword_of_int ws) (Pvar a)`.) Array (`Pget`/`Psub`), load
+    (`Pload`), `PappN`, and `Pif` shapes are out-of-fragment. -/
 def translatePExpr : APExpr → Option MPexpr
   | .Pconst z      => some (.Pconst z)
   | .Pbool b       => some (.Pbool b)
   | .Pvar g        => (translateGVar g).map .Pvar
+  | .Papp1 op e =>
+      match translateSOp1 op, translatePExpr e with
+      | some op', some e' => some (.Papp1 op' e')
+      | _, _ => none
   | .Papp2 op e1 e2 =>
       match translateSOp2 op, translatePExpr e1, translatePExpr e2 with
       | some op', some e1', some e2' => some (.Papp2 op' e1' e2')
@@ -260,8 +300,8 @@ gap #1 over the emit fragment. -/
     same word type (`translateSType (sword ws)`), same `OpKind`-tagged operator
     (`translateSOp2 op`), same operand reads (`translateGVar ga`/`gb`), same
     tag — with the whole instruction succeeding iff every field succeeds. This
-    is the load-bearing structure-preservation content of bridge gap #1 over the
-    emit fragment. -/
+    is the structure-preservation content of bridge gap #1 over the emit
+    fragment. The `castW` expression analogue is `translatePExpr_castW`. -/
 theorem translateInstrR_regArith
     (dst : AVarI) (ga gb : AGVar) (tag : AAssgnTag) (ws : AWSize) (op : ASOp2) :
     translateInstrR
@@ -280,6 +320,24 @@ theorem translateInstrR_regArith
   cases translateSOp2 op <;>
   cases translateGVar ga <;>
   cases translateGVar gb <;>
+  rfl
+
+/-- **Fragment correctness for the `castW` shape (structure preservation).** On
+    the golden-path cast-of-register shape `Papp1 (Oword_of_int ws) (Pvar g)`,
+    `translatePExpr` produces the field-by-field-translated mirror `Papp1`
+    iff every field is in-fragment — the same word type
+    (`translateWSize ws`, carried into the mirror `Oword_of_int`) and the same
+    operand read (`translateGVar g`) — with the whole expression succeeding iff
+    both fields succeed. This is the `Papp1` analogue of `translateInstrR_regArith`
+    over the `castW` expression fragment of bridge gap #1. -/
+theorem translatePExpr_castW (ws : AWSize) (g : AGVar) :
+    translatePExpr (.Papp1 (.Oword_of_int ws) (.Pvar g))
+      = (match translateWSize ws, translateGVar g with
+         | some ws', some g' => some (.Papp1 (.Oword_of_int ws') (.Pvar g'))
+         | _, _ => none) := by
+  simp only [translatePExpr, translateSOp1, Option.map]
+  cases translateWSize ws <;>
+  cases translateGVar g <;>
   rfl
 
 /-! ## 9. The worked example — `x := y + 1`
@@ -336,6 +394,27 @@ theorem golden_translate_lval_is_x :
       = some "x" := by
   rfl
 
+/-! ### The worked `castW` example — `(u64) y`
+
+The register-cast expression `(u64) y = Papp1 (Oword_of_int U64) (Pvar y)`, over
+the same golden-path `y : reg u64`, translates to its exact mirror image. -/
+
+/-- The golden-path source cast expression `(u64) y` in `JasminAST`:
+    `Papp1 (Oword_of_int U64) (Pvar y)`. -/
+def goldenCastSrc : APExpr :=
+  .Papp1 (.Oword_of_int .U64)
+    (.Pvar (CatCrypt.Crypto.Jasmin.GVar.mk { var := yVarA } false))
+
+/-- The expected `CoqSemMirror` image of `goldenCastSrc`. -/
+def goldenCastTgt : MPexpr :=
+  .Papp1 (.Oword_of_int .U64)
+    (.Pvar (mkLvarM { v_var := { vname := "y", vtype := .aword .U64 } }))
+
+/-- **Worked `castW` example.** The register cast `(u64) y` translates to exactly
+    the expected `CoqSemMirror.Pexpr` — sorry-free, by `rfl`. -/
+theorem golden_translate_castW : translatePExpr goldenCastSrc = some goldenCastTgt := by
+  rfl
+
 /-! ## 10. Out-of-fragment is honest `none`, not silent loss
 
 These confirm the translation *rejects* (returns `none`) on the shapes outside
@@ -350,6 +429,13 @@ theorem translate_u512_rejected :
         .AT_none (.sword .U512)
         (.Pvar (CatCrypt.Crypto.Jasmin.GVar.mk { var := xVarA } false)))
       = none := by
+  rfl
+
+/-- A `castW` at the `U512` AVX-512 width has no faithful mirror — the `Papp1`
+    case rejects it through the same `translateWSize` narrowing, rather than
+    silently coercing the width. -/
+theorem translate_papp1_u512_rejected (g : AGVar) :
+    translatePExpr (.Papp1 (.Oword_of_int .U512) (.Pvar g)) = none := by
   rfl
 
 /-- A `Copn` (asm-op) instruction is out of *this* fragment (it belongs to the

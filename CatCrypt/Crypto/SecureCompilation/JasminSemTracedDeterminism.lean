@@ -24,39 +24,26 @@ open CatCrypt.Crypto.Jasmin.LowCT
 open CatCrypt.Crypto.Jasmin.SemBridge
 open CatCrypt.Crypto.SecureCompilation.CryptoSSA
 
-/-! ### Determinism (A1.18 main result) — Option-1 partial closure
+/-! ### Determinism (A1.18 main result)
 
-`TowerType.byteSize` injectivity (proved below as `byteSize_inj`)
-combined with the Nat-index refactor of `assgn_parr_init` and
-`clone_tower` does close the determinism cases for those constructors.
-The same approach handles `assgn_u64_zero`, `assgn_u64_val`, `if_true`,
-`if_false` cleanly.
+The width-keyed `jasminSemTraced` constructors carry, besides the
+`.sarr` storage width, the ghost `VarInfo.towerTag` — the
+`TowerType.byteSize` of the tower type each `.sarr` variable was
+lowered from.  `byteSize` is injective (`byteSize_inj` below), so the
+instruction pins the tower type, and two derivations over the same
+`InstrR` recover the same type.  This is what makes the per-pair
+`det_*_pair` lemmas and the mutual
+`jasminSemTracedSingle.deterministic` / `jasminSemTraced'.deterministic`
+unconditional.
 
-A *second* dependent-elimination obstacle blocks `call_oracle` and
-`limb_store_oracle`: both index the InstrR via `locToLVal dest` /
-`locToLVal loc`, where `dest`/`loc` are `Located` structures. After
-`cases h1`, `cases h2` on the matching constructor produces equations
-on `Located` projections (`dest1.locVar = dest2.locVar`) that Lean's
-dependent eliminator cannot solve without a similar Nat-index style
-refactor of `Located` references — the same pattern as Option 1, but
-applied to `Located` projections rather than `TowerType.byteSize`.
-
-A third obstacle blocks the cross-pair `(limb_store_oracle, clone_tower)`
-because both share the outer `Copn` shape and differ only in the
-`AsmOp.name` literal (`"STORE64"` vs `"CLONE_TOWER"`); Lean's eliminator
-doesn't decide string-literal equality automatically.
-
-The Nat-index refactor of `Located`-using constructors, plus a similar
-refactor for the `AsmOp.name`-using constructors, is what closes determinism
-end-to-end for those cases. Both are mechanical extensions of Option 1
-(tracked as A1.18).
-
-Option 1 supplies:
-* `byteSize_inj` lemma (`decide`-based).
-* `assgn_parr_init`/`clone_tower` taking a Nat index + side hypothesis
-  (`n = t.byteSize`).
-* Bridges `Single.toOriginal`, `toPrime` handling the new constructor
-  signatures (via `hn.symm ▸`). -/
+Two residual dependent-elimination wrinkles remain, handled per proof:
+* `Located`-projection and `List.map locToPExpr` subterms in an
+  `InstrR` index are generalized to fresh variables before `cases`
+  (the eliminator only assigns *variable* index positions).
+* The `(limb_store_oracle, clone_tower)` cross-pair shares the outer
+  `Copn` shape and differs in the `AsmOp.name` literal; generalizing
+  the literal moves the mismatch into an equation dischargeable by
+  `decide`/`simp` (demonstrated in `toy_no_cross_store_clone` below). -/
 
 /-- `TowerType.byteSize` is injective.
 
@@ -164,47 +151,13 @@ theorem TowerType.byteSize_inj : Function.Injective TowerType.byteSize := by
           rw [hq, hn, hkm.1, hkm.2]
       | _ => simp_all [TowerType.byteSize]
 
-/-- **Named trust edge — emitted-trace TowerType faithfulness.**
-
-    The traced Jasmin semantics index a `TowerType` only through its
-    `storageBytes` (the runtime allocation width): the `assgn_parr_init`,
-    `clone_tower`, `call_oracle` and `limb_store_oracle` constructors all
-    carry `t.storageBytes` in their `InstrR` index, never `t` itself. Two
-    distinct tower types with the same storage width (e.g. the several
-    32-byte field types `TFp25519_64` / `TFpL25519` / `TFpP256` /
-    `TFp25519_4Bounded _`) are therefore *indistinguishable* inside a
-    trace, so `TowerType.storageBytes` is **not** injective and
-    `t.storageBytes = t'.storageBytes` does **not** prove `t = t'`.
-
-    The runtime and emitted trace are keyed on the real allocation width
-    `storageBytes`, not on the injective proof tag `byteSize` (disjoint
-    `Nat.pair` ranges, `TowerType.byteSize_inj` above). Type identity is
-    therefore not recoverable from the `storageBytes`-keyed index alone.
-
-    We name here the **static-compiler emission contract**: the verified
-    lowering emits a given `storageBytes` for exactly one source
-    `TowerType`, so on the emitted-trace path the width *does* determine
-    the type. This is sound for the compiler we provide, but it cannot be
-    a Lean theorem against the current `storageBytes`-keyed model (which
-    has lost the witness); recovering it properly means re-threading a
-    `byteSize` side hypothesis through the `assgn_parr_init` /
-    `clone_tower` / oracle constructors of `JasminSemTraced.lean`.
-
-    Stated as an explicit injectivity-on-the-emitted-trace assumption,
-    following the `LeafFFIValidated` (#200) / `ZKSoundness` (#366)
-    named-trust-edge discipline: a documented assumption, not a `sorry`.
-    Shared by
-    the determinism proofs below and by the reverse compiler-correctness
-    theorem `jasminSemTraced_to_rustExecTraced` (`RustExecTraced.lean`). -/
-axiom emittedTrace_storageBytes_faithful :
-    ∀ {t t' : TowerType}, t.storageBytes = t'.storageBytes → t = t'
-
-/-- Storage-size equality reflects tower-type equality, via the faithfulness
-    trust edge. `@[simp]` so the determinism proofs discharge `loc₁ = loc₂` from
-    the shared emitted `.sarr` size without naming `cases`-introduced hypotheses. -/
-@[simp] theorem TowerType.storageBytes_inj_iff {t t' : TowerType} :
-    t.storageBytes = t'.storageBytes ↔ t = t' :=
-  ⟨emittedTrace_storageBytes_faithful, fun h => h ▸ rfl⟩
+/-- `TowerType.storageBytes` is not injective — the 32-byte constructors
+    `TFp25519_64` / `TFpL25519` / `TFpP256` / `TFp25519_4Bounded _` share
+    a width, and `TBytes n` shares width `n` with every type of storage
+    width `n`.  The trace model therefore pins the tower type through the
+    ghost `VarInfo.towerTag` (a `byteSize` value, injective by
+    `byteSize_inj`), never through the `.sarr` width alone. -/
+example : (TowerType.TFp25519_64).storageBytes = (TowerType.TFpP256).storageBytes := rfl
 
 /-! ### `decide` + `generalize` demonstration
 
@@ -242,41 +195,29 @@ private theorem toy_no_cross_store_clone
 
 /-! ### Concrete determinism for the `assgn_parr_init` pair
 
-Verifies that the byteSize Nat-index refactor (Option 1) closes
-determinism for `assgn_parr_init`. This is the simplest determinism
-case after the refactor — and it works end-to-end with `byteSize_inj`. -/
+The `towerTag` in the shared `InstrR` index pins the tower type on both
+derivations via `byteSize_inj`. -/
 
 theorem jasminSemTracedSingle.det_assgn_parr_init_pair {leafSpec : LeafSpec}
-    {x : String} {n : Nat} {rs : RustState}
+    {x : String} {n tag : Nat} {rs : RustState}
     {t1 t2 : LeakTrace} {rs1 rs2 : RustState}
     (h1 : jasminSemTracedSingle leafSpec
             (.Cassgn (.Lvar { var := { vname := x, vtype := .sarr n },
-                              info := {} })
+                              info := { towerTag := tag } })
                      .AT_none (.sarr n) (.Parr_init n))
             rs t1 rs1)
     (h2 : jasminSemTracedSingle leafSpec
             (.Cassgn (.Lvar { var := { vname := x, vtype := .sarr n },
-                              info := {} })
+                              info := { towerTag := tag } })
                      .AT_none (.sarr n) (.Parr_init n))
             rs t2 rs2) :
     t1 = t2 ∧ rs1 = rs2 := by
   -- Both derivations invert to `assgn_parr_init`, recovering tower types
-  -- `t`, `t'` with `t.storageBytes = n = t'.storageBytes`. Post-`065d459f`
-  -- the index is keyed on `storageBytes`, so `t = t'` is the named
-  -- emitted-trace faithfulness trust edge (`byteSize` injectivity is no
-  -- longer applicable to the migrated, `storageBytes`-shaped hypotheses).
-  cases h1 with
-  | assgn_parr_init _ t hn1 =>
-    cases h2 with
-    | assgn_parr_init _ t' hn2 =>
-      -- The two `cases` expose `hn1 : n = t.storageBytes` and
-      -- `hn2 : n = t'.storageBytes`; transitivity gives the storage-width
-      -- equality, and the named faithfulness edge recovers `t = t'`.
-      rename_i hn1 hn2
-      have hTy : t = t' :=
-        emittedTrace_storageBytes_faithful (hn1.symm.trans hn2)
-      subst hTy
-      exact ⟨rfl, rfl⟩
+  -- `t`, `t'` with `t.byteSize = tag = t'.byteSize`; `byteSize_inj`
+  -- gives `t = t'`.
+  cases h1 <;> cases h2 <;>
+    simp_all only [TowerType.byteSize_inj.eq_iff] <;>
+    subst_vars <;> exact ⟨trivial, rfl⟩
 
 /-! ### Concrete determinism for the `assgn_u64_zero` pair
 
@@ -350,118 +291,110 @@ theorem locatedLookup_locDst_eq
       · simp [h2] at hLk2
     · simp [h1] at hLk1
 
-/-! ### Determinism for `limb_store_oracle` pair (Option-1 closure)
+/-! ### Determinism for `limb_store_oracle` pair
 
-Same-constructor determinism for two `limb_store_oracle` derivations.
-After Option-1 Located lifting, we recover `loc1 = loc2` from:
-* `loc1.locVar = locVar' = loc2.locVar` (from `hVar1`, `hVar2`)
-* `loc1.locSrc.byteSize = m = loc2.locSrc.byteSize` + `byteSize_inj`
-* `loc1.locDst = loc2.locDst` from `locatedLookup_locDst_eq`. -/
+Same-constructor determinism for two `limb_store_oracle` derivations:
+`loc1 = loc2` from the shared `locVar` plus the shared `towerTag`
+(`byteSize_inj`), and the shared lookup forces `oldDestV1 = oldDestV2`. -/
 
 theorem jasminSemTracedSingle.det_limb_store_oracle_pair {leafSpec : LeafSpec}
-    {locVar' : String} {m idx : Nat} {v : BitVec 64} {rs : RustState}
+    {locVar' : String} {m mTag idx : Nat} {v : BitVec 64} {rs : RustState}
     {t1 t2 : LeakTrace} {rs1 rs2 : RustState}
     (h1 : jasminSemTracedSingle leafSpec
             (.Copn [.Lvar { var := { vname := locVar', vtype := .sarr m },
-                            info := {} }]
+                            info := { towerTag := mTag } }]
                    .AT_none (.Oasm { name := "STORE64" })
                    [.Pvar { gv := { var := { vname := locVar', vtype := .sarr m },
-                                     info := {} }, gs := false },
+                                     info := { towerTag := mTag } }, gs := false },
                     .Pconst idx, .Pconst v.toNat])
             rs t1 rs1)
     (h2 : jasminSemTracedSingle leafSpec
             (.Copn [.Lvar { var := { vname := locVar', vtype := .sarr m },
-                            info := {} }]
+                            info := { towerTag := mTag } }]
                    .AT_none (.Oasm { name := "STORE64" })
                    [.Pvar { gv := { var := { vname := locVar', vtype := .sarr m },
-                                     info := {} }, gs := false },
+                                     info := { towerTag := mTag } }, gs := false },
                     .Pconst idx, .Pconst v.toNat])
             rs t2 rs2) :
     t1 = t2 ∧ rs1 = rs2 := by
   -- Generalizing the `AsmOp.name` literal and the `.Pconst v.toNat` index to
   -- fresh variables per hypothesis defeats the dependent-elimination failure, so
   -- `cases` discriminates to the single `limb_store_oracle` case; `loc1 = loc2`
-  -- follows from the shared `locVar`/`.sarr` size (`storageBytes_inj_iff`) and
+  -- follows from the shared `locVar` and `towerTag` (`byteSize_inj.eq_iff`), and
   -- the shared lookup forces `oldDestV1 = oldDestV2`.
   generalize hop1 : (SOpn.Oasm { name := "STORE64" }) = op1 at h1
   generalize hop2 : (SOpn.Oasm { name := "STORE64" }) = op2 at h2
   generalize hv1 : v.toNat = vn1 at h1
   generalize hv2 : v.toNat = vn2 at h2
   cases h1 <;> cases h2 <;>
-    simp_all only [BitVec.toNat_inj, reduceCtorEq, TowerType.storageBytes_inj_iff,
+    simp_all only [BitVec.toNat_inj, reduceCtorEq, TowerType.byteSize_inj.eq_iff,
       Located.mk.injEq, and_true, true_and, and_self] <;>
     casesm* Located <;> subst_vars <;> simp_all [locatedUpdate, locatedLookup]
 
 /-! ### Determinism for `clone_tower` pair
 
 Two `clone_tower` derivations on the same InstrR. The InstrR fixes
-`cloneVar`, `n`, `oldVar'`, `oldM`. The `cloneTy` is recovered from
-`n = cloneTy.byteSize` via `byteSize_inj`. The output state depends only
-on `cloneTy` and `oldVar'`, so determinism follows. -/
+`cloneVar`, `n`, `cloneTag`, `oldVar'`, `oldM`, `oldTag`; `cloneTy` is
+recovered from `cloneTag = cloneTy.byteSize` via `byteSize_inj`. The
+output state depends only on `cloneTy` and `oldVar'`, so determinism
+follows. -/
 
 theorem jasminSemTracedSingle.det_clone_tower_pair {leafSpec : LeafSpec}
-    {cloneVar oldVar' : String} {oldM n : Nat} {rs : RustState}
+    {cloneVar oldVar' : String} {oldM oldTag n cloneTag : Nat} {rs : RustState}
     {t1 t2 : LeakTrace} {rs1 rs2 : RustState}
     (h1 : jasminSemTracedSingle leafSpec
             (.Copn [.Lvar { var := { vname := cloneVar, vtype := .sarr n },
-                            info := {} }] .AT_none
+                            info := { towerTag := cloneTag } }] .AT_none
                    (.Oasm { name := "CLONE_TOWER" })
                    [.Pvar { gv := { var := { vname := oldVar', vtype := .sarr oldM },
-                                     info := {} }, gs := false }])
+                                     info := { towerTag := oldTag } }, gs := false }])
             rs t1 rs1)
     (h2 : jasminSemTracedSingle leafSpec
             (.Copn [.Lvar { var := { vname := cloneVar, vtype := .sarr n },
-                            info := {} }] .AT_none
+                            info := { towerTag := cloneTag } }] .AT_none
                    (.Oasm { name := "CLONE_TOWER" })
                    [.Pvar { gv := { var := { vname := oldVar', vtype := .sarr oldM },
-                                     info := {} }, gs := false }])
+                                     info := { towerTag := oldTag } }, gs := false }])
             rs t2 rs2) :
     t1 = t2 ∧ rs1 = rs2 := by
-  -- STATED-BUT-UNPROVED (documented named assumption). The semantic
-  -- content is straightforward: the output state
-  -- `rsSetTower rs cloneVar ((rs.rsTower oldDest.locVar).getD
-  -- ⟨cloneTy, default⟩)` depends on the recovered data only through
-  -- `oldDest.locVar` (shared as `oldVar'`) and `cloneTy` (recovered from
-  -- `n = cloneTy.storageBytes` via `emittedTrace_storageBytes_faithful`).
-  -- The residual obstacle is the third dependent-elimination one
-  -- documented at lines 44-47: `clone_tower` and `limb_store_oracle`
-  -- share the outer `Copn` shape and differ only in the `AsmOp.name`
-  -- literal (`"CLONE_TOWER"` vs `"STORE64"`), which Lean's eliminator
-  -- cannot discriminate. Generalizing the `AsmOp.name` literal per hypothesis
-  -- defeats that; `cases` discriminates to the single `clone_tower` case, where
-  -- `cloneTy` is recovered from the shared `.sarr` size via `storageBytes_inj_iff`
-  -- and the output depends only on the shared `oldDest.locVar`.
+  -- `clone_tower` and `limb_store_oracle` share the outer `Copn` shape
+  -- and differ only in the `AsmOp.name` literal (`"CLONE_TOWER"` vs
+  -- `"STORE64"`), which Lean's eliminator cannot discriminate.
+  -- Generalizing the `AsmOp.name` literal per hypothesis defeats that;
+  -- `cases` discriminates to the single `clone_tower` case, where
+  -- `cloneTy` is recovered from the shared `towerTag` via
+  -- `byteSize_inj.eq_iff` and the output depends only on the shared
+  -- `oldDest.locVar`.
   generalize hop1 : (SOpn.Oasm { name := "CLONE_TOWER" }) = op1 at h1
   generalize hop2 : (SOpn.Oasm { name := "CLONE_TOWER" }) = op2 at h2
   cases h1 <;> cases h2 <;>
-    simp_all only [reduceCtorEq, TowerType.storageBytes_inj_iff, Located.mk.injEq,
+    simp_all only [reduceCtorEq, TowerType.byteSize_inj.eq_iff, Located.mk.injEq,
       and_true, true_and, and_self] <;>
     casesm* Located <;> subst_vars <;> simp_all [rsSetTower, locatedLookup]
 
 /-! ### Helpers for `call_oracle` determinism
 
-`locToPExpr` is injective on `(locVar, locSrc)` pairs (it discards
-`locDst`). For two `args` lists producing the same `args.map locToPExpr`,
-we get per-arg equality of `locVar` and `locSrc`. -/
+`locToPExpr` is injective: it carries `locVar` in the variable name and
+`locSrc.byteSize` in the `VarInfo.towerTag`, and `byteSize` is
+injective. For two `args` lists producing the same
+`args.map locToPExpr`, we get per-arg equality of `locVar` and
+`locSrc`. -/
 
 theorem locToPExpr_inj {a1 a2 : Located}
     (h : locToPExpr a1 = locToPExpr a2) :
     a1.locVar = a2.locVar ∧ a1.locSrc = a2.locSrc := by
   -- `locToPExpr loc = .Pvar { gv := { var := { vname := loc.locVar,
-  --   vtype := towerToSType loc.locSrc }, info := {} }, gs := false }`.
-  -- Unfolding gives `locVar` equality outright and
-  -- `towerToSType a1.locSrc = towerToSType a2.locSrc`. Since
-  -- `towerToSType t = .sarr t.storageBytes`, the latter reduces to
-  -- `a1.locSrc.storageBytes = a2.locSrc.storageBytes`; the named
-  -- emitted-trace faithfulness edge recovers `a1.locSrc = a2.locSrc`
-  -- (`towerToSType` is not injective — it sees only the storage width).
+  --   vtype := towerToSType loc.locSrc },
+  --   info := { towerTag := loc.locSrc.byteSize } }, gs := false }`.
+  -- Unfolding gives `locVar` equality outright and towerTag equality;
+  -- `byteSize_inj` recovers `a1.locSrc = a2.locSrc`.
   unfold locToPExpr locToGVar locToVar towerToSType at h
   injection h with hgv
   injection hgv with hv _
-  injection hv with hvar
-  injection hvar with hname htype
-  injection htype with hsb
-  exact ⟨hname, emittedTrace_storageBytes_faithful hsb⟩
+  injection hv with hvar hinfo
+  injection hvar with hname _htype
+  injection hinfo with htag
+  exact ⟨hname, TowerType.byteSize_inj htag⟩
 
 /-- `args.map locToPExpr` is injective on argument lists: two lists with
     the same `locToPExpr` images are equal.  `Located` has only the two
@@ -530,37 +463,28 @@ The `args.map (·.locDst)` is recovered via the new `hArgsTyped`
 hypothesis (per-arg type-recovery) plus same-state lookup. -/
 
 theorem jasminSemTracedSingle.det_call_oracle_pair {leafSpec : LeafSpec}
-    {f destVar' : String} {destM : Nat} {argEs : List PExpr}
+    {f destVar' : String} {destM destTag : Nat} {argEs : List PExpr}
     {rs : RustState}
     {t1 t2 : LeakTrace} {rs1 rs2 : RustState}
     (h1 : jasminSemTracedSingle leafSpec
             (.Ccall .DoNotInline
                     [.Lvar { var := { vname := destVar', vtype := .sarr destM },
-                             info := {} }]
+                             info := { towerTag := destTag } }]
                     { name := f } argEs)
             rs t1 rs1)
     (h2 : jasminSemTracedSingle leafSpec
             (.Ccall .DoNotInline
                     [.Lvar { var := { vname := destVar', vtype := .sarr destM },
-                             info := {} }]
+                             info := { towerTag := destTag } }]
                     { name := f } argEs)
             rs t2 rs2) :
     t1 = t2 ∧ rs1 = rs2 := by
-  -- STATED-BUT-UNPROVED (documented named assumption — see below).
-  --
-  -- All the ingredients are proved (`map_locToPExpr_listInj` recovers
-  -- `args1 = args2`, `emittedTrace_storageBytes_faithful` recovers the
-  -- `dest` and per-arg tower types, the shared-state lookup forces the
-  -- dependent `oldDestV`). The residual obstacle is purely a
-  -- dependent-elimination one: `cases h1` unifies the shared `Ccall`
-  -- argument-list index with `args1.map locToPExpr` (substituting the
-  -- index away), so the second `cases h2` must solve
+  -- `cases h1` unifies the shared `Ccall` argument-list index with
+  -- `args1.map locToPExpr` (substituting the index away), so a direct
+  -- second `cases h2` would have to solve
   -- `args1.map locToPExpr = args2.map locToPExpr` *as an index
   -- equation* — which Lean's dependent eliminator cannot decompose
-  -- through the `List.map`/`locToPExpr` layer. Closing it needs the
-  -- same Nat-index refactor of the `Ccall` argument-list index that
-  -- Option 1 applied to the `assgn_parr_init`/`clone_tower` `TowerType`
-  -- index (documented as A1.18 follow-up, lines 27-61). Left as a
+  -- through the `List.map`/`locToPExpr` layer.
   -- Generalizing the `Ccall` argument-list index to a fresh variable per
   -- hypothesis defeats the dependent-elimination failure; `map_locToPExpr_listInj`
   -- then recovers `args1 = args2` from the shared `argEs`, and the rest closes as
@@ -571,8 +495,8 @@ theorem jasminSemTracedSingle.det_call_oracle_pair {leafSpec : LeafSpec}
     first
     | (simp_all only [reduceCtorEq]; done)
     | (obtain rfl := map_locToPExpr_listInj _ _ (hg1.symm.trans hg2)
-       simp_all only [reduceCtorEq, TowerType.storageBytes_inj_iff, Located.mk.injEq,
-         and_true, true_and, and_self]
+       simp_all only [reduceCtorEq, TowerType.byteSize_inj.eq_iff,
+         Located.mk.injEq, and_true, true_and, and_self]
        casesm* Located <;> subst_vars <;> simp_all [rsSetTower, locatedLookup])
 
 /-! ### Full mutual determinism
@@ -585,29 +509,83 @@ the inner branch; the `cons` case in Prime recurses into
 
 mutual
 
+/-- Single-step determinism: two `jasminSemTracedSingle` derivations on
+    the same `InstrR` and input state agree on trace and output state.
+    Each non-`Cif` constructor dispatches to its `det_*_pair` lemma; the
+    `Cif` cases recurse into `jasminSemTraced'.deterministic` on the
+    taken branch, and the `(if_true, if_false)` cross-pairs contradict
+    on the shared scalar value. -/
 theorem jasminSemTracedSingle.deterministic {leafSpec : LeafSpec}
     {i : InstrR} {rs : RustState}
     {t1 t2 : LeakTrace} {rs1 rs2 : RustState}
     (h1 : jasminSemTracedSingle leafSpec i rs t1 rs1)
     (h2 : jasminSemTracedSingle leafSpec i rs t2 rs2) :
-    t1 = t2 ∧ rs1 = rs2 := by
-  -- Single-step determinism. Each non-`Cif` constructor reduces to its
-  -- `det_*_pair` lemma; the `Cif` cases recurse into the companion
-  -- `jasminSemTraced'.deterministic` on the branch sub-derivation. A
-  -- documented named assumption: no headline result consumes
-  -- `RustExecTraced.deterministic`.
-  exact sorry
+    t1 = t2 ∧ rs1 = rs2 :=
+  match h1, h2 with
+  | .assgn_parr_init x t n tag rs hn htag, h2 =>
+      jasminSemTracedSingle.det_assgn_parr_init_pair
+        (.assgn_parr_init x t n tag rs hn htag) h2
+  | .assgn_u64_zero x rs, h2 =>
+      jasminSemTracedSingle.det_assgn_u64_zero_pair
+        (.assgn_u64_zero x rs) h2
+  | .assgn_u64_val x v rs, h2 =>
+      jasminSemTracedSingle.det_assgn_u64_val_pair
+        (.assgn_u64_val x v rs) h2
+  | .if_true e ct cf rs rs1' v tInner hv hne hct, h2 => by
+      cases h2 with
+      | if_true _ _ _ _ _ v' tInner' hv' hne' hct' =>
+          obtain ⟨hT, hS⟩ := jasminSemTraced'.deterministic hct hct'
+          exact ⟨by rw [hT], hS⟩
+      | if_false _ _ _ _ _ tInner' h0' hcf' =>
+          exact absurd (hv.symm.trans h0') hne
+  | .if_false e ct cf rs rs1' tInner h0 hcf, h2 => by
+      cases h2 with
+      | if_true _ _ _ _ _ v' tInner' hv' hne' hct' =>
+          exact absurd (hv'.symm.trans h0) hne'
+      | if_false _ _ _ _ _ tInner' h0' hcf' =>
+          obtain ⟨hT, hS⟩ := jasminSemTraced'.deterministic hcf hcf'
+          exact ⟨by rw [hT], hS⟩
+  | .call_oracle f dest destVar' destM destTag args rs oldDestV argList
+      hVar hM hTag hLk hArgs hArgsTyped, h2 =>
+      jasminSemTracedSingle.det_call_oracle_pair
+        (.call_oracle f dest destVar' destM destTag args rs oldDestV argList
+          hVar hM hTag hLk hArgs hArgsTyped) h2
+  | .limb_store_oracle loc locVar' m mTag idx v rs oldDestV
+      hVar hM hTag hLk, h2 =>
+      jasminSemTracedSingle.det_limb_store_oracle_pair
+        (.limb_store_oracle loc locVar' m mTag idx v rs oldDestV
+          hVar hM hTag hLk) h2
+  | .clone_tower cv cloneTy oldDest oldVar' oldM oldTag n cloneTag rs
+      hVar hM hOldTag hn hCloneTag, h2 =>
+      jasminSemTracedSingle.det_clone_tower_pair
+        (.clone_tower cv cloneTy oldDest oldVar' oldM oldTag n cloneTag rs
+          hVar hM hOldTag hn hCloneTag) h2
+termination_by sizeOf i
+decreasing_by all_goals (simp_wf <;> omega)
 
+/-- Cmd-level determinism: two `jasminSemTraced'` derivations on the
+    same `Cmd` and input state agree on trace and output state. `nil`
+    is immediate; `cons` uses single-step determinism on the head to
+    align the intermediate states, then recurses on the tail. -/
 theorem jasminSemTraced'.deterministic {leafSpec : LeafSpec}
     {body : Cmd} {rs : RustState}
     {t1 t2 : LeakTrace} {rs1 rs2 : RustState}
     (h1 : jasminSemTraced' leafSpec body rs t1 rs1)
     (h2 : jasminSemTraced' leafSpec body rs t2 rs2) :
-    t1 = t2 ∧ rs1 = rs2 := by
-  -- Cmd-level companion to `jasminSemTracedSingle.deterministic`: `nil`
-  -- is immediate; `cons` recurses into single-step determinism on the
-  -- head and into itself on the tail. Same documented named assumption.
-  exact sorry
+    t1 = t2 ∧ rs1 = rs2 :=
+  match h1, h2 with
+  | .nil rs, h2 => by cases h2; exact ⟨rfl, rfl⟩
+  | .cons i is rs ta rsa tb rsb hS hR, h2 => by
+      cases h2 with
+      | cons _ _ _ ta' rsa' tb' _ hS' hR' =>
+          obtain ⟨hta, hrsa⟩ := jasminSemTracedSingle.deterministic hS hS'
+          subst hta
+          subst hrsa
+          obtain ⟨htb, hrsb⟩ := jasminSemTraced'.deterministic hR hR'
+          subst htb
+          exact ⟨rfl, hrsb⟩
+termination_by sizeOf body
+decreasing_by all_goals (simp_wf <;> omega)
 
 end
 
@@ -623,7 +601,7 @@ theorem jasminSemTraced.deterministic {leafSpec : LeafSpec}
     (h2 : jasminSemTraced leafSpec body rs t2 rs2) :
     t1 = t2 ∧ rs1 = rs2 :=
   jasminSemTraced'.deterministic (jasminSemTraced.toPrime h1)
-                                  (jasminSemTraced.toPrime h2)
+                                 (jasminSemTraced.toPrime h2)
 
 /-- Non-traced determinism for `jasminSem`: derived via promotion to
     the traced form (`jasminSem.toTraced`) plus
@@ -638,181 +616,28 @@ theorem jasminSem.deterministic {leafSpec : LeafSpec}
   obtain ⟨_, h2'⟩ := jasminSem.toTraced leafSpec h2
   exact (jasminSemTraced.deterministic h1' h2').2
 
-/-! ### A1.18 — Determinism CLOSED end-to-end
+/-! ### A1.18 — Determinism status
 
-Three top-level theorems shipped (all `propext`, `Classical.choice`,
-`Quot.sound`):
-* `jasminSemTracedSingle.deterministic` — single-instruction
-  determinism for all 8 constructors of the refactored mutual
-  inductive. Uses the per-pair lemmas + mutual recursion through
-  `jasminSemTraced'.deterministic` for `if_true` / `if_false`.
-* `jasminSemTraced'.deterministic` — Cmd-level determinism for the
-  refactored cons-takes-Single-plus-tail form. Trivial recursion
-  on the cons structure.
-* `jasminSemTraced.deterministic` — original-form determinism via
-  the forward bridge `jasminSemTraced.toPrime`.
+Determinism of the trace model is unconditional: every width-keyed
+`InstrR` index also carries the ghost `VarInfo.towerTag`, so two
+derivations on the same instruction recover the same tower type via
+`byteSize_inj`. The per-pair lemmas
+(`det_assgn_parr_init_pair`, `det_assgn_u64_zero_pair`,
+`det_assgn_u64_val_pair`, `det_limb_store_oracle_pair`,
+`det_clone_tower_pair`, `det_call_oracle_pair`) are hypothesis-free,
+as are the mutual wrappers `jasminSemTracedSingle.deterministic` /
+`jasminSemTraced'.deterministic` and the lifted
+`jasminSemTraced.deterministic` / `jasminSem.deterministic`.
 
-Six per-pair determinism lemmas remain available for direct use:
-* `det_assgn_parr_init_pair` (`propext`)
-* `det_assgn_u64_zero_pair` / `det_assgn_u64_val_pair` (**0 axioms**)
-* `det_limb_store_oracle_pair` (`propext`)
-* `det_clone_tower_pair` (`propext`)
-* `det_call_oracle_pair` (`propext`, `Classical.choice`, `Quot.sound`)
-
-The `(if_true, if_false)` cross-pair is discharged inline (the
-hypotheses `rs.rsScalar e = v ≠ 0` and `rs.rsScalar e = 0` directly
-contradict). -/
-
-/-! ### `call_oracle` determinism — CLOSED via Option A
-
-The previous "structurally non-deterministic" finding is resolved by
-Option A (per-arg type-recovery side hypothesis):
-`(∀ a ∈ args, ∃ v, rs.rsTower a.locVar = some ⟨a.locDst, v⟩)`.
-This propagates through `RustExec.call`, `RustExecTraced.call`,
-`jasminSem.call_oracle`, and `jasminSemTraced.call_oracle`. With
-this hypothesis, `det_call_oracle_pair` closes via:
-* `dest1 = dest2` from the existing Located-projection lift +
-  `locatedLookup_locDst_eq`.
-* `args1 = args2` from `map_locToPExpr_inj` (per-index `locVar`/`locSrc`)
-  + `args_locDst_eq_at` (per-index `locDst` from same-state lookup).
-* `oldDestV1 = oldDestV2` from same lookup result.
-* `argList1 = argList2` from same `args.filterMap`.
-The proof uses `propext`, `Classical.choice`, `Quot.sound` (standard
-mathlib axioms).
-
---- Original analysis (preserved for context) ---
-
-After a deep analysis, the `call_oracle` constructor admits an
-*irreducible* non-determinism that Option-1 lifting cannot fix.
-
-The constructor's InstrR shape is:
-```
-.Ccall .DoNotInline [locToLVal dest] { name := f } (args.map locToPExpr)
-```
-
-Two derivations on the same InstrR share `f`, `dest.locVar`,
-`dest.locSrc`, and (per-arg) `args[i].locVar`, `args[i].locSrc`.
-The output state is:
-```
-locatedUpdate rs dest
-  (leafSpec.call f dest.locDst (args.map (·.locDst)) oldDestV argList)
-```
-
-Both `dest.locDst` (recoverable via `locatedLookup_locDst_eq`) AND
-`args.map (·.locDst)` flow into the output. But `args[i].locDst` is
-**not constrained** by the InstrR (since `locToPExpr` drops `locDst`)
-and is **not constrained** by any side hypothesis (the existing
-`hArgs : argList = args.filterMap (fun a => rs.rsTower a.locVar)`
-uses `a.locVar`, not `a.locDst`). So two derivations with
-`args1[i].locDst ≠ args2[i].locDst` produce different
-`leafSpec.call` outputs in general.
-
-**Resolution paths (each requires a structural refactor beyond
-this loop's scope):**
-1. Add a per-arg type-recovery side hypothesis:
-   `∀ i, ∃ v, rs.rsTower args[i].locVar = some ⟨args[i].locDst, v⟩`.
-   This ties `args[i].locDst` to the stored type, making it
-   recoverable.
-2. Modify `leafSpec.call` so the output doesn't depend on
-   `args.locDst` (only on the stored Sigma values). This rewrites
-   the leafSpec interface.
-3. Path 2 (`jasminExec` interpreter) sidesteps via well-typedness:
-   the executable form reads `rs.rsTower a.locVar` and uses the
-   stored type, so it never sees ill-typed `args.locDst`. The
-   inductive-to-executable direction holds only for "well-typed"
-   derivations.
-
-All six same-constructor `det_*_pair` lemmas are proved (each inverts the two
-derivations by generalizing the offending `Copn`/`Ccall` index subterms to fresh
-variables per hypothesis before `cases`, then recovers type identity through the
-`emittedTrace_storageBytes_faithful` edge). The two mutual `*.deterministic`
-wrappers dispatch to those lemmas per constructor. -/
-
-/-! ### Why the demonstration doesn't directly transfer to `jasminSemTracedSingle`
-
-For the actual `(limb_store_oracle, clone_tower)` cross-pair in
-`jasminSemTracedSingle`, both constructors *additionally* use `Located`
-projections in the index (`locToLVal loc`, `locToPExpr loc`). After
-`generalize` resolves the string-literal blocker, `cases h2` then hits
-the **`Located`-projection** blocker (`loc.1 = loc.1`-style equations
-between distinct binders), which is the second structural issue.
-
-So `decide` + `generalize` resolves the AsmOp-string blocker cleanly.
-Closing the full determinism for `(limb_store_oracle, clone_tower)`
-also requires the per-projection `Located` lift (call it
-"option-1-Located"): refactor the constructor's index to bind
-`(locVar : String) (locSrc : TowerType) (locDst : TowerType)` directly
-instead of `Located` (with side hypotheses tying them back to the
-original `loc` via `Located.mk`). That's a separate refactor of the
-same flavour as the byteSize fix. -/
-
-/-! ### Practical-subset determinism — Option 1 closure summary
-
-What Option 1 closes: the byteSize-driven dependent-elim issues for
-`assgn_parr_init` and `clone_tower`. With `byteSize_inj` plus the
-Nat-index refactor, simultaneous matching of two same-constructor
-derivations on those rules recovers the underlying `TowerType` cleanly.
-The `assgn_u64_zero` / `assgn_u64_val` / `if_true` / `if_false` cases
-have no TowerType in their indices, so they were never blocked.
-
-What Option 1 does NOT close: the `Located`-projection issue for
-`call_oracle` and `limb_store_oracle`, and the `AsmOp.name` literal
-issue for the `(limb_store_oracle, clone_tower)` cross-pair. Closing
-those requires the same Option-1 pattern applied to `Located` and
-`AsmOp` (lift their components into the index with side hypotheses).
-
-A subtlety: `locToLVal` is **not injective** (it uses only `locVar`
-and `locSrc`, dropping `locDst`). So even after lifting `LVal` into
-the index, recovering `dest1 = dest2` from `locToLVal dest1 = locToLVal dest2`
-is impossible without using `oldDestV`'s dependent type. The full
-fix may be to lift each `Located` projection (`locVar`, `locSrc`,
-`locDst`) separately into the index, plus a side hypothesis bundling
-them back. That's a larger structural refactor than what fits in this
-loop.
-
-The practical impact: `Hyperproperty.monotone_preservation` (A1.17)
-remains the default transfer theorem, applicable to single-trace
-properties of the dynamic Jasmin trace. For the assgn-and-if-only
-subset, determinism could be proved directly (no `call_oracle` etc.
-ever fires), giving unrestricted hyperproperty preservation on that
-subset. Such a partial-determinism theorem would be a natural target
-for a follow-up session. -/
-
-/-! ## A1.18 — Determinism of `jasminSemTraced` (deferred)
-
-The natural completion of A1.17 is a determinism lemma: for any
-`leafSpec`, `body`, and `rs`, any two `jasminSemTraced` derivations
-agree on output (trace and final state).
-
-A direct attempt by induction on `h1` and `cases h2` runs into two
-structural obstacles in the current `jasminSemTraced` formulation:
-
-1. **Cons / single-instr overlap.** For body `[i]`, both `cons` (with
-   empty tail) and the matching single-instr rule produce a valid
-   derivation. The cons-wrap can iterate arbitrarily, so a singleton
-   determinism lemma needs well-founded recursion on derivation size,
-   not on the IH from `h1`'s structure.
-
-2. **TowerType-dependent typing.** Several inversion goals require
-   solving equations on `TowerType.byteSize` between matched binders
-   (e.g., `t' = t''` in the `assgn_parr_init` case forces a
-   match-on-byteSize equation that Lean's dependent eliminator cannot
-   discharge).
-
-The clean path forward is to either:
-* refactor `jasminSemTraced` so `cons` requires the tail to be
-  non-empty (eliminating the overlap), or
-* derive determinism via an executable interpreter
-  `jasminExec : Cmd → RustState → Option (LeakTrace × RustState)`
-  proven equivalent to the inductive form (functions are deterministic
-  by definition).
-
-Both are tractable but multi-session refactors. The hyperproperty
-preservation in A1.17 currently quantifies over *monotone* H, which
-covers most properties of interest (constant-time-style claims,
-bounded-language traces, "no event of kind K"); upgrading to
-unrestricted H is the payoff once A1.18 lands. Tracked as a deferred
-follow-up. -/
-
+`call_oracle` determinism additionally relies on the per-arg
+type-recovery side hypothesis
+`(∀ a ∈ args, ∃ v, rs.rsTower a.locVar = some ⟨a.locDst, v⟩)` carried
+by the constructor itself (propagated through `RustExec.call`,
+`RustExecTraced.call`, `jasminSem.call_oracle`, and
+`jasminSemTraced.call_oracle`), which ties each argument's `locDst` to
+the stored Sigma type; `locatedLookup_locDst_eq` and
+`args_locDst_eq_at` recover the remaining `locDst` data from the
+shared state. The `(if_true, if_false)` cross-pair contradicts on the
+shared scalar value (`rs.rsScalar e = v ≠ 0` vs `rs.rsScalar e = 0`). -/
 
 end CatCrypt.Crypto.SecureCompilation.JasminSemTraced

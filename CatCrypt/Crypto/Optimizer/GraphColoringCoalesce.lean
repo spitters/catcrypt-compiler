@@ -340,6 +340,8 @@ interfere away from the copy — it is coalescable. Coalescing merges `rdx` into
 `rbx`, turning `mov rdx, rbx` into `mov rbx, rbx` (dropped): one fewer instruction,
 and `rbx` now holds the value `rdx` used to. -/
 
+-- @bench-only: the `List (JInstr _)` blocks below are fixtures exercising this
+-- copy-coalescing pass; this module emits no deployed `.s` artifact.
 /-- The demo block: `rbx := 7` (immediate, not a register copy), `rbx += rcx`,
     then the copy `rdx := rbx`. The only register-to-register copy is the final
     `mov rdx, rbx`: `rbx` is dead after it, so `rdx` and `rbx` do not interfere and

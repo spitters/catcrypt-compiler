@@ -9,36 +9,37 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
 set_option autoImplicit false
 
 /-!
-# `RWhileNz` front arm + back-edge in isolation (data-dependent while)
+# Prototype: the `RWhileNz` front arm for `translateDialectControl` (data-dependent while)
 
-A standalone, single-body-sized copy of the two halves that make a
-data-dependent `while (name != 0)` compile — the plonky3 query-sample /
-PoW-grind / reject-sampling shape. Its trip count is fixed only at run time by
-the values the body produces, so its back-edge lives at the `Lprog`/`Lcmd` level
-(a real `Llabel`/`Lcond` jump), **not** as a straight-line `catCryptDialect`
-region: the pure A-normal `Com` substrate has no label/branch node.
+`translateDialectControl` (`TranslateDialectDirectControl.lean`) fuses the scalar
+front's control-flow arms `RIfNz` (φ-merge) and `RFor` (static unroll via
+`loopRForD`), but **declines** `RWhileNz` (`.RWhileNz _ _ => none`). A
+data-dependent `while (name != 0)` — the plonky3 query-sample / PoW-grind /
+reject-sampling shape — has a trip fixed only at run time by the values the body
+produces, so its back-edge lives at the `Lprog`/`Lcmd` level (a real
+`Llabel`/`Lcond` jump), **not** as a straight-line `catCryptDialect` region: the
+pure A-normal `Com` substrate has no label/branch node.
 
-Both halves are landed in the pipeline proper; this file keeps them isolated and
-separately validated:
+This file prototypes the missing arm **additively and standalone** — it does NOT
+modify `translateDialectControl`. It shows the two halves the real integration
+needs, and validates them at single-body size:
 
-1. **Front context-plumbing** (`translateWhileArm`): gates on the guard being a
-   bound scalar (mirroring `RIfNz`'s `some ⟨.sword w, _⟩` lookup) and on the body
-   front-compiling (recursively via `translateDialectControl`), and emits the
-   **context-invariant** `DTransOut` (`Γ' = Γ`, `cont = ComCont.id`, `vm`
-   unchanged) — the loop-region invariant (§4). This is the arm
-   `TranslateDialectDirectControl.translateDialectControl` carries inline for
-   `.RWhileNz`, with the same two facts proved there
-   (`translateDialectControl_rWhileNz_isSome_of_body` / `_ctx_invariant`).
+1. **Front context-plumbing** (`translateWhileArm`): the piece that belongs
+   inside `translateDialectControl`. It gates on the guard being a bound scalar
+   (mirroring `RIfNz`'s `some ⟨.sword w, _⟩` lookup) and on the body
+   front-compiling (recursively via the **existing** `translateDialectControl`),
+   and emits the **context-invariant** `DTransOut` (`Γ' = Γ`, `cont = ComCont.id`,
+   `vm` unchanged) — the loop-region invariant (see §4).
 
 2. **Back-edge emission** (`translateWhileLcmd`): the real loop, reusing the
    owned backend's `X86Backend.LprogControlFlow.whileLcmd` combinator verbatim —
    `Llabel top ; body ; CMP gReg,#0 ; Lcond NZ → top` (renders `jne .L<top>`).
-   `whileLcmd` **composes directly**; no bespoke `Lcmd` is hand-built. The
-   production `Lprog`-level lowering is
-   `TranslateDialectDataWhile.rolledWhileNz`, wrapping `whileLinstrRM`.
+   `whileLcmd` **composes directly**; no bespoke `Lcmd` was hand-built.
 
-No module imports this one: it is an exposition file, kept for the worked
-single-body example (§3) and the design note on the front↔`Lprog` split (§4).
+The actual owned lowering already exists at the `Lprog` level
+(`TranslateDialectDataWhile.rolledWhileNz`, wrapping `whileLinstrRM`); this
+prototype isolates the *front arm* that `translateDialectControl` is missing so
+the orchestrator can wire it in (recipe in §4).
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectWhilePrototype
@@ -62,13 +63,13 @@ must not escape into the outer straight-line context. So the arm returns the
 *entry* context unchanged (`Γ' = Γ`), gated on the body front-compiling. The
 actual per-iteration instructions are emitted at the `Lcmd` level by §2. -/
 
-/-- **The `RWhileNz` front arm, in isolation.** Mirrors `RIfNz`'s guard lookup
-    (`some ⟨.sword w, _⟩`) and recurses into `translateDialectControl` on the loop
-    `body`; succeeds iff the guard is a bound scalar and the body front-compiles,
-    returning the context-invariant `DTransOut` (`Γ' = Γ`, `cont = ComCont.id`, `vm`
-    unchanged — the loop-region invariant, §4). Declines (`none`) exactly when
-    `translateDialectControl`'s own `.RWhileNz` arm declines: an unbound / non-scalar
-    guard, or a body the front declines. -/
+/-- **The missing `RWhileNz` arm (front half).** Mirrors `RIfNz`'s guard lookup
+    (`some ⟨.sword w, _⟩`) and recurses into the **existing**
+    `translateDialectControl` on the loop `body`; succeeds iff the guard is a
+    bound scalar and the body front-compiles, returning the context-invariant
+    `DTransOut` (`Γ' = Γ`, `cont = ComCont.id`, `vm` unchanged — the loop-region
+    invariant, §4). Declines (`none`) exactly when the current arm declines: an
+    unbound / non-scalar guard, or an uncovered body. -/
 def translateWhileArm {Γ : Ctx} (vm : VarMap Γ) (name : String) (body : LowCT) :
     Option (DTransOut Γ) :=
   match vm.lookup name with
@@ -195,14 +196,29 @@ theorem demoWhile_backEdge_last :
       = some ⟨0, .Lcond (.reg "NZ") 0⟩ :=
   translateWhileLcmd_last 64 0 "n" _
 
-/-! ## 4. Design note: the front↔`Lprog` split
+/-! ## 4. Core-integration recipe (for the orchestrator)
 
-The front half is integrated in `TranslateDialectDirectControl.lean`:
-`translateDialectControl`'s `.RWhileNz` arm is `translateWhileArm`'s body
-inlined (it has to be inline so the recursive `translateDialectControl vm body`
-sits inside the same `def` rather than being a forward reference), and
-`translateDialectControl_rWhileNz_isSome_of_body` / `_ctx_invariant` are the
-two facts proved there.
+Wiring this into `translateDialectControl` proper is a **one-arm replacement** in
+`TranslateDialectDirectControl.lean`. Replace the current declining arm
+
+```
+  | .RWhileNz _ _ => … none
+```
+
+with
+
+```
+  | .RWhileNz name body =>
+      match vm.lookup name with
+      | some ⟨.sword _, _⟩ =>
+          (translateDialectControl vm body).map
+            (fun _ => { Γ' := Γ, cont := ComCont.id, vm := vm })
+      | _ => none
+```
+
+i.e. `translateWhileArm`'s body inlined (it must be *inline* so the recursive
+`translateDialectControl vm body` sits inside the same `def`, not a forward
+reference).
 
 **Invariant the arm must preserve** (matching the `RIfNz` case-(A)/(B) shape,
 where a non-extending branch passes `⟨Γ, vm⟩` through): the `RWhileNz` arm is

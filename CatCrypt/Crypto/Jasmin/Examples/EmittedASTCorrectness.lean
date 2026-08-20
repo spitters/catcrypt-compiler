@@ -39,6 +39,7 @@ import CatCrypt.Crypto.Jasmin.Examples.Fe25519Invert
 import CatCrypt.Crypto.Jasmin.Examples.Scalar25519Ops
 import CatCrypt.Crypto.Jasmin.Examples.MontUToEdwards
 import CatCrypt.Crypto.Jasmin.Examples.CombTableInitArrV2
+import Mathlib.Data.ZMod.Basic
 
 namespace CatCrypt.Crypto.Jasmin.Examples.EmittedASTCorrectness
 
@@ -68,28 +69,19 @@ lemma rscalarSetExpr_panic_free (x : String) (e : SExpr) (rs : RustState) :
     ∃ rs', RustExec N leafSpec (LowCT.RScalarSetExpr x e) rs rs' :=
   ⟨_, RustExec.scalarSetExpr x e rs⟩
 
-/-- `RAsmOp` is unconditionally executable (identity stub semantics). -/
-lemma rasmOp_panic_free (name : String) (dests args : List Located)
-    (rs : RustState) :
-    ∃ rs', RustExec N leafSpec (LowCT.RAsmOp name dests args) rs rs' :=
-  ⟨rs, RustExec.asmOp name dests args rs⟩
-
-/-- `RCallN` is unconditionally executable (identity stub semantics). -/
+/-- `RCallN` is executable from any state that binds every argument slot and
+    every destination slot at its declared tower type. -/
 lemma rcallN_panic_free (f : String) (dests args : List Located)
-    (rs : RustState) :
+    (rs : RustState)
+    (hArgs : ∀ a ∈ args, ∃ v, rs.rsTower a.locVar = some ⟨a.locDst, v⟩)
+    (hDests : ∀ d ∈ dests, ∃ v, rs.rsTower d.locVar = some ⟨d.locDst, v⟩) :
     ∃ rs', RustExec N leafSpec (LowCT.RCallN f dests args) rs rs' :=
-  ⟨rs, RustExec.callN f dests args rs⟩
+  ⟨_, RustExec.callN f dests args rs _ rfl hArgs hDests⟩
 
 /-- `RAssert` is unconditionally executable (identity stub semantics). -/
 lemma rassert_panic_free (label : String) (rs : RustState) :
     ∃ rs', RustExec N leafSpec (LowCT.RAssert label) rs rs' :=
   ⟨rs, RustExec.assert label rs⟩
-
-/-- `RFnCall` is unconditionally executable (identity stub semantics). -/
-lemma rfnCall_panic_free (f : String) (dests args : List Located)
-    (rs : RustState) :
-    ∃ rs', RustExec N leafSpec (LowCT.RFnCall f dests args) rs rs' :=
-  ⟨rs, RustExec.fnCall f dests args rs⟩
 
 /-- `RSeq` composes: if both halves are panic-free for all states,
     so is the sequence. -/
@@ -288,6 +280,53 @@ def hasBindOf (x : String) : LowCT → Bool
   | .RFnDef _ _ _ body cont => hasBindOf x body || hasBindOf x cont
   | _ => false
 
+/-- A single `locatedUpdate` at a slot bound at its own declared tower type
+    preserves every slot's tower type: an unrelated slot is untouched, and the
+    written slot receives a value at the type it already held. -/
+private lemma locatedUpdate_preserves_slot_type
+    (rs : RustState) (d : Located) (w : RustVal d.locDst)
+    (hd : ∃ v, rs.rsTower d.locVar = some ⟨d.locDst, v⟩)
+    (x : String) (t : TowerType) (hx : ∃ v, rs.rsTower x = some ⟨t, v⟩) :
+    ∃ v', (locatedUpdate rs d w).rsTower x = some ⟨t, v'⟩ := by
+  obtain ⟨vx, hvx⟩ := hx
+  by_cases hxd : x = d.locVar
+  · subst hxd
+    obtain ⟨vd, hvd⟩ := hd
+    rw [hvx] at hvd
+    have ht : t = d.locDst := congrArg Sigma.fst (Option.some.inj hvd)
+    subst ht
+    exact ⟨w, locatedUpdate_dest rs d w⟩
+  · refine ⟨vx, ?_⟩
+    show (rsSetTower rs d.locVar _).rsTower x = _
+    rw [rsSetTower_other rs d.locVar x _ (fun h => hxd h.symm)]
+    exact hvx
+
+/-- The destination fold of an N-output call preserves every slot's tower type,
+    given that each destination is bound at its declared type in the pre-state. -/
+private lemma callNUpdate_preserves_slot_type
+    (leafSpec : LeafSpec) (f : String) (argTs : List TowerType)
+    (argList : List (Σ t : TowerType, RustVal t)) :
+    ∀ (dests : List Located) (i : Nat) (rs : RustState)
+      (x : String) (t : TowerType),
+      (∀ d ∈ dests, ∃ v, rs.rsTower d.locVar = some ⟨d.locDst, v⟩) →
+      (∃ v, rs.rsTower x = some ⟨t, v⟩) →
+      ∃ v', (callNUpdate leafSpec f argTs argList i dests rs).rsTower x
+              = some ⟨t, v'⟩ := by
+  intro dests
+  induction dests with
+  | nil => intro _ _ _ _ _ hx; exact hx
+  | cons d rest ih =>
+    intro i rs x t hDests hx
+    have hdBound : ∃ v, rs.rsTower d.locVar = some ⟨d.locDst, v⟩ :=
+      hDests d (by simp)
+    show ∃ v', (callNUpdate leafSpec f argTs argList (i + 1) rest
+        (locatedUpdate rs d _)).rsTower x = some ⟨t, v'⟩
+    refine ih (i + 1) _ x t ?_
+      (locatedUpdate_preserves_slot_type rs d _ hdBound x t hx)
+    intro d' hd'
+    exact locatedUpdate_preserves_slot_type rs d _ hdBound d'.locVar d'.locDst
+      (hDests d' (List.mem_cons_of_mem d hd'))
+
 /-- **Slot-type preservation** (key infrastructure lemma).
 
     Under the two syntactic checks (no `RSelect`; no fresh-let
@@ -464,8 +503,10 @@ theorem rustExec_preserves_slot_type
       unfold locatedUpdate
       rw [rsSetTower_other rs0 loc.locVar x _ (fun h => hxl h.symm)]
       exact hv
-  | asmOp _ _ _ _ => intro x t _ h; exact h
-  | callN _ _ _ _ => intro x t _ h; exact h
+  | callN f dests args rs0 argList _ _ hDests =>
+    intro x t _ h
+    exact callNUpdate_preserves_slot_type leafSpec f (args.map (·.locDst)) argList
+      dests 0 rs0 x t hDests h
   | callDstThreaded f dst args rs0 oldDestV argList hLook _ _ =>
     -- Same shape as `call`: post-state is `locatedUpdate rs0 dst (...)`.
     intro x t _ h
@@ -498,32 +539,6 @@ theorem rustExec_preserves_slot_type
     have h_noSel' : hasSelect body = false := by simp [hasSelect] at h_noSel; exact h_noSel
     have hNoBind' : hasBindOf x body = false := by simp [hasBindOf] at hNoBind; exact hNoBind
     exact ih h_noSel' x t hNoBind' h
-  | fnDef _ _ _ _ _ _ _ _ ih =>
-    intro x t hNoBind h
-    simp [hasSelect] at h_noSel
-    simp [hasBindOf] at hNoBind
-    obtain ⟨_, hc⟩ := h_noSel
-    obtain ⟨_, hbc⟩ := hNoBind
-    exact ih hc x t hbc h
-  | fnCall _ _ _ _ => intro x t _ h; exact h
-  | tupleStore dst idx src rs0 oldV srcV hLookDst _hLookSrc =>
-    intro x t _ h
-    obtain ⟨vv, hv⟩ := h
-    by_cases hxd : x = dst.locVar
-    · subst hxd
-      have hTypeEq : t = dst.locDst := by
-        unfold locatedLookup at hLookDst
-        rw [hv] at hLookDst
-        by_cases hh : t = dst.locDst
-        · exact hh
-        · simp [hh] at hLookDst
-      subst hTypeEq
-      exact ⟨_, locatedUpdate_dest rs0 dst _⟩
-    · refine ⟨vv, ?_⟩
-      show (locatedUpdate rs0 dst _).rsTower x = _
-      unfold locatedUpdate
-      rw [rsSetTower_other rs0 dst.locVar x _ (fun h => hxd h.symm)]
-      exact hv
   | tupleLoad dst src idx rs0 oldV srcV hLookDst _hLookSrc =>
     intro x t _ h
     obtain ⟨vv, hv⟩ := h
@@ -625,24 +640,6 @@ theorem rustExec_preserves_slot_type
     refine ⟨vv, ?_⟩
     show (rsSetScalar rs0 y _).rsTower x = _
     exact hv
-  | bytesSlice dst src start len rs0 oldV srcV hLookDst _hLookSrc =>
-    intro x t _ h
-    obtain ⟨vv, hv⟩ := h
-    by_cases hxd : x = dst.locVar
-    · subst hxd
-      have hTypeEq : t = dst.locDst := by
-        unfold locatedLookup at hLookDst
-        rw [hv] at hLookDst
-        by_cases hh : t = dst.locDst
-        · exact hh
-        · simp [hh] at hLookDst
-      subst hTypeEq
-      exact ⟨_, locatedUpdate_dest rs0 dst _⟩
-    · refine ⟨vv, ?_⟩
-      show (locatedUpdate rs0 dst _).rsTower x = _
-      unfold locatedUpdate
-      rw [rsSetTower_other rs0 dst.locVar x _ (fun h => hxd h.symm)]
-      exact hv
 
 
 /-! ## §1.  Generic `RCall` panic-freeness lemma -/
@@ -1272,59 +1269,323 @@ theorem fe25519InvertBody_panic_free
                                                               (RustExec.seq _ _ _ _ _ ht30
                                                                 ht31)))))))))))))))))))))))))))))))))))))))))))
 
-open CatCrypt.Crypto.Jasmin.Examples.Fe25519Invert in
-/-- Abstract specification linking `fpInv` to the chain semantics.
+/-! ### Field reading of `TFp25519` slots
 
-    `fpInv vA` is, by the addition-chain decomposition of `p - 2`,
-    the value computed by the 254-sqr + 11-mul ladder over `mathSqr`
-    and `mathMul`.  This `Prop` is left abstract (held as a hypothesis
-    by the FC theorem); a concrete instantiation supplies the
-    closed-form composition.  Equivalent to "the math operations
-    compose to inversion modulo `p = 2^255 - 19`". -/
-def Fe25519InversionSpec
-    (_mathSqr : RustVal TowerType.TFp25519 → RustVal TowerType.TFp25519)
-    (_mathMul : RustVal TowerType.TFp25519 → RustVal TowerType.TFp25519 →
+A `TFp25519` slot holds a byte array.  Its base-field value is exposed
+through a decoder carried as a parameter — the shape used by
+`AUCurvesImport.FieldLeafBridge` for the `fe25519_mul` leaf, and the
+image of the Rocq section variable `Fp25519_holds` in
+`AUCurves/src/Bedrock/End2End/Ed25519/Fe25519InvertCorrect.v`. -/
+
+/-- Curve25519 base-field modulus `2^255 - 19`. -/
+def fe25519Modulus : ℕ := 2 ^ 255 - 19
+
+/-- Reading of a `TFp25519` slot value as an element of the Curve25519
+    base field. -/
+abbrev Fe25519Decode := RustVal TowerType.TFp25519 → ZMod fe25519Modulus
+
+/-- Slot `x` of `rs` is bound at `TFp25519` and its value decodes to `v`. -/
+def Fp25519Holds (decode : Fe25519Decode) (rs : RustState) (x : String)
+    (v : ZMod fe25519Modulus) : Prop :=
+  ∃ w : RustVal TowerType.TFp25519,
+    rs.rsTower x = some ⟨TowerType.TFp25519, w⟩ ∧ decode w = v
+
+/-- Every slot other than `exclude` keeps its field value from `rs` to `rs'`. -/
+def Fp25519Frame (decode : Fe25519Decode) (rs rs' : RustState)
+    (exclude : String) : Prop :=
+  ∀ (y : String) (v : ZMod fe25519Modulus),
+    y ≠ exclude → Fp25519Holds decode rs y v → Fp25519Holds decode rs' y v
+
+/-- Binding a slot `x` leaves the field value of any other slot `y` intact. -/
+lemma Fp25519Holds_rsSetTower_other
+    (decode : Fe25519Decode) (rs : RustState) (x y : String)
+    (s : Σ t, RustVal t) (v : ZMod fe25519Modulus) (hne : y ≠ x)
+    (h : Fp25519Holds decode rs y v) :
+    Fp25519Holds decode (rsSetTower rs x s) y v := by
+  obtain ⟨w, hw, hdec⟩ := h
+  exact ⟨w, by rw [rsSetTower_other rs x y s (Ne.symm hne)]; exact hw, hdec⟩
+
+/-- Setting a scalar slot leaves every tower slot's field value intact. -/
+lemma Fp25519Holds_rsSetScalar
+    (decode : Fe25519Decode) (rs : RustState) (x y : String) (n : Nat)
+    (v : ZMod fe25519Modulus) (h : Fp25519Holds decode rs y v) :
+    Fp25519Holds decode (rsSetScalar rs x n) y v := h
+
+/-! ### Field-level leaf specifications
+
+The `RCall`-level counterparts of the Rocq hypotheses `sqr_correct`,
+`mul_correct` and `copy_correct` of `Fe25519InvertCorrect.v`: each says
+what a single leaf call does to the destination slot's field value, and
+that it leaves every other slot's field value alone. -/
+
+/-- `fe25519_sqr dest [src]` squares the field value of `src` into `dest`. -/
+def Fe25519SqrCallCorrect (N : Nat) (leafSpec : LeafSpec)
+    (decode : Fe25519Decode) : Prop :=
+  ∀ (dest src : String) (rs rs' : RustState) (x : ZMod fe25519Modulus),
+    dest ≠ src → Fp25519Holds decode rs src x →
+    RustExec N leafSpec
+      (LowCT.RCall "fe25519_sqr" ⟨dest, TowerType.TFp25519⟩
+        [⟨src, TowerType.TFp25519⟩]) rs rs' →
+    Fp25519Holds decode rs' dest (x ^ 2) ∧ Fp25519Frame decode rs rs' dest
+
+/-- `fe25519_mul dest [a, b]` multiplies the field values of `a` and `b`
+    into `dest`. -/
+def Fe25519MulCallCorrect (N : Nat) (leafSpec : LeafSpec)
+    (decode : Fe25519Decode) : Prop :=
+  ∀ (dest a b : String) (rs rs' : RustState) (xa xb : ZMod fe25519Modulus),
+    dest ≠ a → dest ≠ b →
+    Fp25519Holds decode rs a xa → Fp25519Holds decode rs b xb →
+    RustExec N leafSpec
+      (LowCT.RCall "fe25519_mul" ⟨dest, TowerType.TFp25519⟩
+        [⟨a, TowerType.TFp25519⟩, ⟨b, TowerType.TFp25519⟩]) rs rs' →
+    Fp25519Holds decode rs' dest (xa * xb) ∧ Fp25519Frame decode rs rs' dest
+
+/-- `fe25519_copy dest [src]` transfers the field value of `src` to `dest`. -/
+def Fe25519CopyCallCorrect (N : Nat) (leafSpec : LeafSpec)
+    (decode : Fe25519Decode) : Prop :=
+  ∀ (dest src : String) (rs rs' : RustState) (x : ZMod fe25519Modulus),
+    dest ≠ src → Fp25519Holds decode rs src x →
+    RustExec N leafSpec
+      (LowCT.RCall "fe25519_copy" ⟨dest, TowerType.TFp25519⟩
+        [⟨src, TowerType.TFp25519⟩]) rs rs' →
+    Fp25519Holds decode rs' dest x ∧ Fp25519Frame decode rs rs' dest
+
+/-- `decode` carries the leaf value functions to the field operations of
+    `ZMod (2^255 - 19)`. -/
+structure Fe25519LeafFieldOps (decode : Fe25519Decode)
+    (mathSqr mathCopy : RustVal TowerType.TFp25519 → RustVal TowerType.TFp25519)
+    (mathMul : RustVal TowerType.TFp25519 → RustVal TowerType.TFp25519 →
+               RustVal TowerType.TFp25519) : Prop where
+  /-- The sqr leaf value squares the decoded input. -/
+  sqr : ∀ v, decode (mathSqr v) = decode v ^ 2
+  /-- The mul leaf value multiplies the decoded inputs. -/
+  mul : ∀ a b, decode (mathMul a b) = decode a * decode b
+  /-- The copy leaf value preserves the decoded input. -/
+  copy : ∀ v, decode (mathCopy v) = decode v
+
+/-- The frame half of a field-level leaf specification: every slot other
+    than an `RCall` destination keeps its field value. -/
+lemma fp25519Frame_of_rcall
+    {N : Nat} {leafSpec : LeafSpec} {decode : Fe25519Decode}
+    {f : String} {dest : Located} {args : List Located} {rs rs' : RustState}
+    (hExec : RustExec N leafSpec (LowCT.RCall f dest args) rs rs') :
+    Fp25519Frame decode rs rs' dest.locVar := by
+  intro y v hy hHolds
+  obtain ⟨w, hw, hdec⟩ := hHolds
+  exact ⟨w, by rw [(rcall_post_bindings hExec).2 y hy]; exact hw, hdec⟩
+
+/-- A unary `TFp25519` leaf whose value function acts on decoded inputs by
+    `fieldOp` sends a source slot holding `x` to a destination slot holding
+    `fieldOp x`. -/
+lemma fp25519Holds_of_unopLeaf
+    {N : Nat} {leafSpec : LeafSpec} {decode : Fe25519Decode} {name : String}
+    {mathOp : RustVal TowerType.TFp25519 → RustVal TowerType.TFp25519}
+    {fieldOp : ZMod fe25519Modulus → ZMod fe25519Modulus}
+    (hLeaf : Fe25519UnopLeafCorrect leafSpec name mathOp)
+    (hField : ∀ v, decode (mathOp v) = fieldOp (decode v))
+    {dest src : String} {rs rs' : RustState} {x : ZMod fe25519Modulus}
+    (hSrc : Fp25519Holds decode rs src x)
+    (hExec : RustExec N leafSpec
+      (LowCT.RCall name ⟨dest, TowerType.TFp25519⟩
+        [⟨src, TowerType.TFp25519⟩]) rs rs') :
+    Fp25519Holds decode rs' dest (fieldOp x) := by
+  obtain ⟨w, hw, hdec⟩ := hSrc
+  cases hExec with
+  | call _ _ _ _ oldV argList _hLook hArgList _ =>
+    refine ⟨_, locatedUpdate_dest rs ⟨dest, TowerType.TFp25519⟩ _, ?_⟩
+    have hArgList' : argList = [⟨TowerType.TFp25519, w⟩] := by
+      rw [hArgList]
+      show ([{ locVar := src, locSrc := TowerType.TFp25519 }] : List Located).filterMap
+              (fun a => rs.rsTower a.locVar) = _
+      simp only [List.filterMap, hw]
+    rw [hArgList']
+    show decode (leafSpec.call name TowerType.TFp25519 [TowerType.TFp25519] oldV
+        [⟨TowerType.TFp25519, w⟩]) = fieldOp x
+    rw [hLeaf oldV w, hField, hdec]
+
+/-- A binary `TFp25519` leaf whose value function acts on decoded inputs by
+    `fieldOp` sends source slots holding `xa`, `xb` to a destination slot
+    holding `fieldOp xa xb`. -/
+lemma fp25519Holds_of_binopLeaf
+    {N : Nat} {leafSpec : LeafSpec} {decode : Fe25519Decode} {name : String}
+    {mathOp : RustVal TowerType.TFp25519 → RustVal TowerType.TFp25519 →
+              RustVal TowerType.TFp25519}
+    {fieldOp : ZMod fe25519Modulus → ZMod fe25519Modulus → ZMod fe25519Modulus}
+    (hLeaf : Fe25519BinopLeafCorrect leafSpec name mathOp)
+    (hField : ∀ u v, decode (mathOp u v) = fieldOp (decode u) (decode v))
+    {dest a b : String} {rs rs' : RustState} {xa xb : ZMod fe25519Modulus}
+    (hA : Fp25519Holds decode rs a xa) (hB : Fp25519Holds decode rs b xb)
+    (hExec : RustExec N leafSpec
+      (LowCT.RCall name ⟨dest, TowerType.TFp25519⟩
+        [⟨a, TowerType.TFp25519⟩, ⟨b, TowerType.TFp25519⟩]) rs rs') :
+    Fp25519Holds decode rs' dest (fieldOp xa xb) := by
+  obtain ⟨wa, hwa, hdeca⟩ := hA
+  obtain ⟨wb, hwb, hdecb⟩ := hB
+  cases hExec with
+  | call _ _ _ _ oldV argList _hLook hArgList _ =>
+    refine ⟨_, locatedUpdate_dest rs ⟨dest, TowerType.TFp25519⟩ _, ?_⟩
+    have hArgList' : argList =
+        [⟨TowerType.TFp25519, wa⟩, ⟨TowerType.TFp25519, wb⟩] := by
+      rw [hArgList]
+      show ([{ locVar := a, locSrc := TowerType.TFp25519 },
+             { locVar := b, locSrc := TowerType.TFp25519 }] : List Located).filterMap
+              (fun l => rs.rsTower l.locVar) = _
+      simp only [List.filterMap, hwa, hwb]
+    rw [hArgList']
+    show decode (leafSpec.call name TowerType.TFp25519
+        [TowerType.TFp25519, TowerType.TFp25519] oldV
+        [⟨TowerType.TFp25519, wa⟩, ⟨TowerType.TFp25519, wb⟩]) = fieldOp xa xb
+    rw [hLeaf oldV wa wb, hField, hdeca, hdecb]
+
+/-- The `fe25519_sqr` field-level specification follows from the leaf-value
+    specification plus `decode`-compatibility of the leaf value function. -/
+lemma Fe25519SqrCallCorrect_of_leaf
+    {N : Nat} {leafSpec : LeafSpec} {decode : Fe25519Decode}
+    {mathSqr mathCopy : RustVal TowerType.TFp25519 → RustVal TowerType.TFp25519}
+    {mathMul : RustVal TowerType.TFp25519 → RustVal TowerType.TFp25519 →
+               RustVal TowerType.TFp25519}
+    (hLeaf : Fe25519UnopLeafCorrect leafSpec "fe25519_sqr" mathSqr)
+    (hOps : Fe25519LeafFieldOps decode mathSqr mathCopy mathMul) :
+    Fe25519SqrCallCorrect N leafSpec decode := fun _ _ _ _ _ _ hSrc hExec =>
+  ⟨fp25519Holds_of_unopLeaf (fieldOp := fun z => z ^ 2) hLeaf hOps.sqr hSrc hExec,
+   fp25519Frame_of_rcall hExec⟩
+
+/-- The `fe25519_mul` field-level specification follows from the leaf-value
+    specification plus `decode`-compatibility of the leaf value function. -/
+lemma Fe25519MulCallCorrect_of_leaf
+    {N : Nat} {leafSpec : LeafSpec} {decode : Fe25519Decode}
+    {mathSqr mathCopy : RustVal TowerType.TFp25519 → RustVal TowerType.TFp25519}
+    {mathMul : RustVal TowerType.TFp25519 → RustVal TowerType.TFp25519 →
+               RustVal TowerType.TFp25519}
+    (hLeaf : Fe25519BinopLeafCorrect leafSpec "fe25519_mul" mathMul)
+    (hOps : Fe25519LeafFieldOps decode mathSqr mathCopy mathMul) :
+    Fe25519MulCallCorrect N leafSpec decode :=
+  fun _ _ _ _ _ _ _ _ _ hA hB hExec =>
+  ⟨fp25519Holds_of_binopLeaf (fieldOp := fun u v => u * v) hLeaf hOps.mul hA hB hExec,
+   fp25519Frame_of_rcall hExec⟩
+
+/-- The `fe25519_copy` field-level specification follows from the leaf-value
+    specification plus `decode`-compatibility of the leaf value function. -/
+lemma Fe25519CopyCallCorrect_of_leaf
+    {N : Nat} {leafSpec : LeafSpec} {decode : Fe25519Decode}
+    {mathSqr mathCopy : RustVal TowerType.TFp25519 → RustVal TowerType.TFp25519}
+    {mathMul : RustVal TowerType.TFp25519 → RustVal TowerType.TFp25519 →
+               RustVal TowerType.TFp25519}
+    (hLeaf : Fe25519UnopLeafCorrect leafSpec "fe25519_copy" mathCopy)
+    (hOps : Fe25519LeafFieldOps decode mathSqr mathCopy mathMul) :
+    Fe25519CopyCallCorrect N leafSpec decode := fun _ _ _ _ _ _ hSrc hExec =>
+  ⟨fp25519Holds_of_unopLeaf (fieldOp := fun z => z) hLeaf hOps.copy hSrc hExec,
+   fp25519Frame_of_rcall hExec⟩
+
+open CatCrypt.Crypto.Jasmin.Examples.Fe25519Invert in
+/-- **Rocq-cited trust assumption.**
+
+    NAME: `fe25519InvertBody_holds_pow`.
+
+    STATEMENT: given the field-level specifications of the `fe25519_sqr`,
+    `fe25519_mul` and `fe25519_copy` leaves, running `fe25519InvertBody`
+    from a state whose `"a"` slot decodes to `x` reaches a state whose
+    `"out"` slot decodes to `x ^ (2^255 - 21)`.
+
+    PROVENANCE: `AUCurves/src/Bedrock/End2End/Ed25519/Fe25519InvertCorrect.v`,
+    theorem `fe25519_invert_correct` (line 355, `Qed` at line 1218),
+    concluding `Fp25519_holds rs2 dest.(loc_var) (F.pow x (Z.to_N (p - 2)))`
+    for `p = 2^255 - 19`.
+
+    The Rocq theorem lives in a section with `Variable Fp25519_holds` and the
+    hypotheses `sqr_correct`, `mul_correct`, `copy_correct`,
+    `scalar_set_preserves_holds`, `let_zero_preserves_holds`.  This axiom
+    instantiates `Fp25519_holds` by `Fp25519Holds decode`; the two
+    preservation hypotheses hold for that instantiation by
+    `Fp25519Holds_rsSetScalar` and `Fp25519Holds_rsSetTower_other`, and the
+    three leaf hypotheses are the arguments `hSqr`, `hMul`, `hCopy`.  The
+    Rocq side-conditions `dest.(loc_var) <> a_loc.(loc_var)`,
+    `not_in_scratch a_loc.(loc_var)` and `not_in_scratch dest.(loc_var)` are
+    satisfied by the slot names `"a"` and `"out"` that `fe25519InvertBody`
+    hard-codes, against the scratch list
+    `["tmp", "scratch", "z2", "z9", "z11", "z2_5_0", "z2_10_0", "z2_20_0",
+      "z2_40_0", "z2_50_0", "z2_100_0", "t2", "t3"]`.
+
+    AUDIT CHECKLIST:
+    - [ ] `fe25519_invert_correct` still ends in `Qed` in the cited file.
+    - [ ] The Rocq `Fp25519_holds`, `sqr_correct`, `mul_correct`,
+          `copy_correct` shapes still match `Fp25519Holds`,
+          `Fe25519SqrCallCorrect`, `Fe25519MulCallCorrect`,
+          `Fe25519CopyCallCorrect`.
+    - [ ] `Fe25519Invert.fe25519InvertBody` and the Rocq
+          `Fe25519InvertBody.fe25519_invert_body` are the same addition
+          chain, over the same 13 scratch slots.
+    - [ ] `fe25519Modulus` equals the Rocq `Crypto.Spec.Curve25519.p`. -/
+axiom fe25519InvertBody_holds_pow
+    (N : Nat) (leafSpec : LeafSpec) (decode : Fe25519Decode)
+    (hSqr : Fe25519SqrCallCorrect N leafSpec decode)
+    (hMul : Fe25519MulCallCorrect N leafSpec decode)
+    (hCopy : Fe25519CopyCallCorrect N leafSpec decode)
+    (rs rs' : RustState) (x : ZMod fe25519Modulus)
+    (hA : Fp25519Holds decode rs "a" x)
+    (hExec : RustExec N leafSpec fe25519InvertBody rs rs') :
+    Fp25519Holds decode rs' "out" (x ^ (fe25519Modulus - 2))
+
+open CatCrypt.Crypto.Jasmin.Examples.Fe25519Invert in
+/-- **Functional correctness for `fe25519InvertBody`.**
+
+    Under the leaf-value specifications for `fe25519_sqr`, `fe25519_mul`,
+    `fe25519_copy` and a decoder carrying those leaf values to the field
+    operations of `ZMod (2^255 - 19)`, the post-state's `"out"` slot decodes
+    to `x ^ (2^255 - 21)`, where `x` is the decoding of the `"a"` slot.
+
+    The chain step is `fe25519InvertBody_holds_pow`. -/
+theorem fe25519InvertBody_functional_correctness
+    (N : Nat) (leafSpec : LeafSpec) (decode : Fe25519Decode)
+    (mathSqr mathCopy : RustVal TowerType.TFp25519 → RustVal TowerType.TFp25519)
+    (mathMul : RustVal TowerType.TFp25519 → RustVal TowerType.TFp25519 →
                RustVal TowerType.TFp25519)
-    (_mathCopy : RustVal TowerType.TFp25519 → RustVal TowerType.TFp25519)
-    (_fpInv : RustVal TowerType.TFp25519 → RustVal TowerType.TFp25519) : Prop :=
-  -- Held as a hypothesis at call sites; concrete instances supply the
-  -- closed-form chain decomposition.  See the addition chain in
-  -- `Fe25519Invert.fe25519InvertBody` doc-comment for the 254-step recipe.
-  True
+    (hSqr : Fe25519UnopLeafCorrect leafSpec "fe25519_sqr" mathSqr)
+    (hMul : Fe25519BinopLeafCorrect leafSpec "fe25519_mul" mathMul)
+    (hCopy : Fe25519UnopLeafCorrect leafSpec "fe25519_copy" mathCopy)
+    (hOps : Fe25519LeafFieldOps decode mathSqr mathCopy mathMul)
+    (rs rs' : RustState)
+    (vA : RustVal TowerType.TFp25519)
+    (hA : rs.rsTower "a" = some ⟨TowerType.TFp25519, vA⟩)
+    (hExec : RustExec N leafSpec fe25519InvertBody rs rs') :
+    Fp25519Holds decode rs' "out" (decode vA ^ (fe25519Modulus - 2)) :=
+  fe25519InvertBody_holds_pow N leafSpec decode
+    (Fe25519SqrCallCorrect_of_leaf hSqr hOps)
+    (Fe25519MulCallCorrect_of_leaf hMul hOps)
+    (Fe25519CopyCallCorrect_of_leaf hCopy hOps)
+    rs rs' (decode vA) ⟨vA, hA, rfl⟩ hExec
+
+/-- `fpInv` computes the Fermat power `x ^ (p - 2)` on decoded field values,
+    the characterisation of multiplicative inversion in `ZMod (2^255 - 19)`
+    that the `fe25519_invert` addition chain realises. -/
+def Fe25519InversionSpec (decode : Fe25519Decode)
+    (fpInv : RustVal TowerType.TFp25519 → RustVal TowerType.TFp25519) : Prop :=
+  ∀ v, decode (fpInv v) = decode v ^ (fe25519Modulus - 2)
 
 open CatCrypt.Crypto.Jasmin.Examples.Fe25519Invert in
-/-- **Functional-correctness goal for `fe25519InvertBody`.**
+/-- **Functional correctness for `fe25519InvertBody`, inversion form.**
 
-    Under leaf-correctness hypotheses for `fe25519_sqr`, `fe25519_mul`,
-    `fe25519_copy` and the inversion-chain contract `Fe25519InversionSpec`,
-    the post-state's `out` slot equals the abstract inversion function
-    `fpInv` applied to the `a` slot value `vA`.
-
-    Discharging it requires inverting through the body's `seqN` of 13
-    RLetZero + ~50 RCall + ~12 RFor (sqrN) sites.  Each iteration of an
-    `sqrN` is a 2-op RSeq (sqr + copy); functional-correctness via
-    `rfor_invariant`.  Estimated 3000-5000 LoC of structurally regular
-    but lengthy bookkeeping; deferred.
-
-    Stated as a `Prop`-level documented goal rather than a `sorry`-bearing
-    theorem, so the file builds clean. -/
-def Fe25519InvertBodyFunctionalCorrectnessGoal : Prop :=
-    ∀ (N : Nat) (leafSpec : LeafSpec)
-      (mathSqr : RustVal TowerType.TFp25519 → RustVal TowerType.TFp25519)
-      (mathMul : RustVal TowerType.TFp25519 → RustVal TowerType.TFp25519 →
-                 RustVal TowerType.TFp25519)
-      (mathCopy : RustVal TowerType.TFp25519 → RustVal TowerType.TFp25519)
-      (fpInv : RustVal TowerType.TFp25519 → RustVal TowerType.TFp25519),
-      Fe25519UnopLeafCorrect leafSpec "fe25519_sqr" mathSqr →
-      Fe25519BinopLeafCorrect leafSpec "fe25519_mul" mathMul →
-      Fe25519UnopLeafCorrect leafSpec "fe25519_copy" mathCopy →
-      Fe25519InversionSpec mathSqr mathMul mathCopy fpInv →
-      ∀ (rs rs' : RustState),
-        Fe25519InvertInputsWellFormed rs →
-        ∀ (vA : RustVal TowerType.TFp25519),
-          rs.rsTower "a" = some ⟨TowerType.TFp25519, vA⟩ →
-          RustExec N leafSpec fe25519InvertBody rs rs' →
-          rs'.rsTower "out" = some ⟨TowerType.TFp25519, fpInv vA⟩
+    The post-state's `"out"` slot decodes to the same field element as
+    `fpInv vA`, for any `fpInv` satisfying `Fe25519InversionSpec`. -/
+theorem fe25519InvertBody_inversion_correctness
+    (N : Nat) (leafSpec : LeafSpec) (decode : Fe25519Decode)
+    (mathSqr mathCopy : RustVal TowerType.TFp25519 → RustVal TowerType.TFp25519)
+    (mathMul : RustVal TowerType.TFp25519 → RustVal TowerType.TFp25519 →
+               RustVal TowerType.TFp25519)
+    (fpInv : RustVal TowerType.TFp25519 → RustVal TowerType.TFp25519)
+    (hSqr : Fe25519UnopLeafCorrect leafSpec "fe25519_sqr" mathSqr)
+    (hMul : Fe25519BinopLeafCorrect leafSpec "fe25519_mul" mathMul)
+    (hCopy : Fe25519UnopLeafCorrect leafSpec "fe25519_copy" mathCopy)
+    (hOps : Fe25519LeafFieldOps decode mathSqr mathCopy mathMul)
+    (hSpec : Fe25519InversionSpec decode fpInv)
+    (rs rs' : RustState)
+    (vA : RustVal TowerType.TFp25519)
+    (hA : rs.rsTower "a" = some ⟨TowerType.TFp25519, vA⟩)
+    (hExec : RustExec N leafSpec fe25519InvertBody rs rs') :
+    Fp25519Holds decode rs' "out" (decode (fpInv vA)) := by
+  rw [hSpec vA]
+  exact fe25519InvertBody_functional_correctness N leafSpec decode
+    mathSqr mathCopy mathMul hSqr hMul hCopy hOps rs rs' vA hA hExec
 
 /-! ## §5.  `MontUToEdwards` -/
 

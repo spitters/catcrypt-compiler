@@ -98,7 +98,7 @@ increment 1's `Lstate` (lvm/lmem/lpc), `lsemStep` (for the straight-line and
 3. **Fuel + halting.** `lsemFuel P fuel s` iterates `lsemStepP P` up to `fuel`
    times, short-circuiting to `some s` when the machine has **halted**: a state
    is halted (Coq `lsem_final`, l.266–268) when `lpc` has reached the end of the
-   current function's body (`find_instr` returns `none`). On a genuine error
+   current function's body (`find_instr` returns `none`). On an error
    (`find_instr` finds an instruction but `evalInstrP` returns `none` — an
    unmodeled op or a failed jump) `lsemFuel` returns `none`. Running out of fuel
    before halting also returns `none`. So `lsemFuel P fuel s = some t` means "the
@@ -109,7 +109,7 @@ increment 1's `Lstate` (lvm/lmem/lpc), `lsemStep` (for the straight-line and
 * **Covered** (modeled faithfully): `Lgoto` (via `evalJump`), `Lcond` (condition
   + `evalJump`/`lnext_pc`), `Llabel` (pc bump, and as a `findLabel` target),
   `Lalign`, and all straight-line `Lopn` arms (delegated to increment 1).
-* **Honestly deferred** (`none`, out of scope — they read the whole-program
+* **Deferred** (`none`, out of scope — they read the whole-program
   label *encoding* table / memory / syscall oracle, increment 5+):
   `Lcall`, `Lret`, `Lsyscall`, `Ligoto`, `LstoreLabel`.
 
@@ -259,7 +259,7 @@ state), so the word-op model is shared verbatim. -/
       `lsemStep` on the base state, then carry `lfn` through (these arms only
       touch lvm/lmem/lpc; `lsemStep` already does `lnext_pc`).
 
-    Honestly deferred (`none`): `Lcall`, `Lret`, `Lsyscall`, `Ligoto`,
+    Deferred (`none`): `Lcall`, `Lret`, `Lsyscall`, `Ligoto`,
     `LstoreLabel` (out of scope — read the label-encoding table / memory /
     syscall oracle). -/
 def evalInstrP (P : Lprog) {w : Nat} (i : LinstrR) (s : LstateP w) :
@@ -274,7 +274,7 @@ def evalInstrP (P : Lprog) {w : Nat} (i : LinstrR) (s : LstateP w) :
       (lsemStep (.Lopn dsts opn srcs) s.base).map (fun b => { s with base := b })
   | .Llabel k l => (lsemStep (.Llabel k l) s.base).map (fun b => { s with base := b })
   | .Lalign => (lsemStep .Lalign s.base).map (fun b => { s with base := b })
-  -- Honestly deferred (out of scope for 4a/4b).
+  -- Deferred (out of scope for 4a/4b).
   | .Ligoto _ => none
   | .Lcall _ _ => none
   | .Lret => none
@@ -284,7 +284,7 @@ def evalInstrP (P : Lprog) {w : Nat} (i : LinstrR) (s : LstateP w) :
 /-- `step s` (Coq `linear_sem.v` l.175–178): fetch the instruction at `lpc` via
     `find_instr`, then `eval_instr` it. `none` when there is no instruction (the
     machine has halted — Coq `step = type_error` on `find_instr = None`, which is
-    the terminal/`lsem_final` case rather than a genuine error). -/
+    the terminal/`lsem_final` case rather than an error). -/
 def lsemStepP (P : Lprog) {w : Nat} (s : LstateP w) : Option (LstateP w) :=
   match findInstr P s with
   | some i => evalInstrP P i s
@@ -312,7 +312,7 @@ encoding of Coq's `clos_refl_trans lstate lsem1`. -/
       past the end of the current body — Coq `lsem_final`), return `some s`
       (reflexive/terminal).
     * Otherwise, if `lsemStepP P s = some s'`, recurse with one less fuel.
-    * On a genuine error (`findInstr` finds an instruction but `evalInstrP`
+    * On an error (`findInstr` finds an instruction but `evalInstrP`
       returns `none`) or fuel exhaustion before halting, return `none`. -/
 def lsemFuel (P : Lprog) {w : Nat} : Nat → LstateP w → Option (LstateP w)
   | 0, s => match findInstr P s with
@@ -464,13 +464,74 @@ theorem lsemStep_lpc_succ {w : Nat} (i : LinstrR) (s b : Lstate w)
               cases ds with
               | cons _ _ => simp [lsemStep] at h
               | nil =>
-                  simp only [lsemStep] at h
-                  cases happ : applyOpn (stripWidthTag opn) (srcs.map (evalOperand s)) with
-                  | none => rw [happ] at h; simp at h
-                  | some v =>
-                      rw [happ] at h
-                      simp only [Option.some.injEq] at h
-                      rw [← h]; rfl
+                  cases srcs with
+                  | nil =>
+                      simp only [lsemStep] at h
+                      cases happ : applyOpn (stripWidthTag opn)
+                          (List.map (evalOperand s) ([] : List LOperand)) with
+                      | none => rw [happ] at h; simp at h
+                      | some v =>
+                          rw [happ] at h
+                          simp only [Option.some.injEq] at h
+                          rw [← h]; rfl
+                  | cons hd rest =>
+                      cases hd with
+                      | reg r =>
+                          rw [lsemStep_reg_srcs dst opn (LOperand.reg r :: rest) s
+                            (by intro b i sc rst; simp)] at h
+                          cases happ : applyOpn (stripWidthTag opn)
+                              (List.map (evalOperand s) (LOperand.reg r :: rest)) with
+                          | none => rw [happ] at h; simp at h
+                          | some v =>
+                              rw [happ] at h
+                              simp only [Option.some.injEq] at h
+                              rw [← h]; rfl
+                      | imm im =>
+                          rw [lsemStep_reg_srcs dst opn (LOperand.imm im :: rest) s
+                            (by intro b i sc rst; simp)] at h
+                          cases happ : applyOpn (stripWidthTag opn)
+                              (List.map (evalOperand s) (LOperand.imm im :: rest)) with
+                          | none => rw [happ] at h; simp at h
+                          | some v =>
+                              rw [happ] at h
+                              simp only [Option.some.injEq] at h
+                              rw [← h]; rfl
+                      | arr a o =>
+                          rw [lsemStep_reg_srcs dst opn (LOperand.arr a o :: rest) s
+                            (by intro b i sc rst; simp)] at h
+                          cases happ : applyOpn (stripWidthTag opn)
+                              (List.map (evalOperand s) (LOperand.arr a o :: rest)) with
+                          | none => rw [happ] at h; simp at h
+                          | some v =>
+                              rw [happ] at h
+                              simp only [Option.some.injEq] at h
+                              rw [← h]; rfl
+                      | arrIdx base idx scale =>
+                          simp only [lsemStep] at h
+                          by_cases hL : opn = "LOADIDX"
+                          · rw [if_pos hL] at h
+                            simp only [Option.some.injEq] at h
+                            rw [← h]; rfl
+                          · rw [if_neg hL] at h
+                            by_cases hS : opn = "STOREIDX"
+                            · rw [if_pos hS] at h
+                              cases rest with
+                              | nil => simp at h
+                              | cons val vrest =>
+                                  cases vrest with
+                                  | nil =>
+                                      simp only [Option.some.injEq] at h
+                                      rw [← h]; rfl
+                                  | cons _ _ => simp at h
+                            · rw [if_neg hS] at h
+                              cases happ : applyOpn (stripWidthTag opn)
+                                  (List.map (evalOperand s)
+                                    (LOperand.arrIdx base idx scale :: rest)) with
+                              | none => rw [happ] at h; simp at h
+                              | some v =>
+                                  rw [happ] at h
+                                  simp only [Option.some.injEq] at h
+                                  rw [← h]; rfl
           | imm _ => simp [lsemStep] at h
           | arr _ _ => simp [lsemStep] at h
           | arrIdx _ _ _ => simp [lsemStep] at h
@@ -514,7 +575,7 @@ theorem lsemFuel_straightline_suffix (fn : String) {w : Nat}
   | nil =>
       intro s hfn hpc
       -- zero fuel; the program is at lpc = pre.length = (pre++[]).length, so halted.
-      simp only [List.length_nil, lsemFuel, lsemStraight_nil, Option.map_some]
+      simp only [lsemFuel, lsemStraight_nil, Option.map_some]
       have hhalt : findInstr (singletonProg fn (pre ++ [])) s = none := by
         apply findInstr_singleton_halt fn (pre ++ []) s hfn
         simp [hpc]

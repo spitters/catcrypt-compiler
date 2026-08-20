@@ -83,13 +83,9 @@ realization hypotheses; what remains is a single, shared residual:
   jasmin-emitted machine bytes must equal the realizer's `LeafSpec` (emitted
   assembly ≡ realizer `leafSpec`).  This is **one global obligation per kernel**,
   discharged by the owned route — *not* a per-protocol or per-kernel hypothesis,
-  and *not* a KAT.  For the ML-KEM NTT the owned route is the routed combine tree of
-  `OwnedMlkemNttFullAssembly.lean` / `OwnedMlkemNttConcreteRoots.lean` (no
-  `jasminc_preserves_ct` in any theorem there; the Montgomery-operand encoding of the
-  per-layer twiddles is the named machine-wiring residual).  The same owned-emit route
-  is demonstrated end-to-end at a different NTT prime in
-  `X86Backend/FheNttLoopOwnedEmit.lean` (inner butterfly layer loop emitted by the owned
-  `JInstr` machine, no `jasminc` step; the outer `m`/`i` schedule is still C-driven).
+  and *not* a KAT.  The NTT route discharges it structurally
+  (`X86Backend/LoopRealization.lean`; the owned realization is free of
+  `jasminc_preserves_ct` under `#print axioms`).
 
 Two protocols carry one further caveat, neither a kernel hypothesis:
 

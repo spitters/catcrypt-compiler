@@ -31,6 +31,10 @@ authoritative microarchitecture data.** Refresh them per-microarchitecture from
 using the cost function in a production optimizer. The structure, the
 critical-path algorithm, and the port-pressure formula are the contribution;
 the exact integers are a TCB-free steering heuristic.
+
+> **`@bench-only`.** The `inputBlockEx` / `hoistedBlockEx` `List (JInstr 64)`
+> blocks are cost-model example fixtures; the module emits no deployed `.s`
+> artifact.
 -/
 
 set_option autoImplicit false
@@ -109,6 +113,7 @@ Placeholder latencies (see module docstring):
 - Store ops        : 1 c (store-data p4 + AGU p23)
 - `cmov*`          : 1 c
 - `neg`/`setc`     : 1 c
+- `cmp`/`not_`/`andn`/`rol`/`ror`/`rorx`/`shlx`/`shrx`/`sarx`/`movzx`/`movsx`/`lea` : 1 c
 - `loadSym`        : 3 c (RIP-relative LEA)
 
 Sources to consult for refresh: <https://uops.info/> (filter Skylake /
@@ -130,6 +135,30 @@ def costOf : JInstr 64 → InstrCost
   | .setc _              => ⟨1, 1, [.p0, .p1], 1⟩
   -- Bitwise ALU.
   | .and_ _ _            => ⟨1, 1, [.p0, .p1, .p5, .p6], 1⟩
+  -- TEST: the same ALU cost as AND. It produces only flags, so it never appears
+  -- as the producer of a true register dependence (`writtenNames .test = []`);
+  -- the `latency` field is what a flag consumer would wait on.
+  | .test _ _            => ⟨1, 1, [.p0, .p1, .p5, .p6], 1⟩
+  -- CMP: the same ALU cost as SUB, and like TEST it produces only flags, so
+  -- `writtenNames .cmp = []` keeps it from ever being a true-dependence producer.
+  | .cmp _ _             => ⟨1, 1, [.p0, .p1, .p5, .p6], 1⟩
+  -- NOT: 1c ALU, no flag.
+  | .not_ _              => ⟨1, 1, [.p0, .p1, .p5, .p6], 1⟩
+  -- ANDN (BMI1): 1c, p1/p5.
+  | .andn _ _ _          => ⟨1, 1, [.p1, .p5], 1⟩
+  -- ROL/ROR: 1c on the shift ports.
+  | .rol _ _             => ⟨1, 1, [.p0, .p6], 1⟩
+  | .ror _ _             => ⟨1, 1, [.p0, .p6], 1⟩
+  -- RORX/SHLX/SHRX/SARX (BMI2): 1c on the shift ports, no flag written.
+  | .rorx _ _ _          => ⟨1, 1, [.p0, .p6], 1⟩
+  | .shlx _ _ _          => ⟨1, 1, [.p0, .p6], 1⟩
+  | .shrx _ _ _          => ⟨1, 1, [.p0, .p6], 1⟩
+  | .sarx _ _ _          => ⟨1, 1, [.p0, .p6], 1⟩
+  -- MOVZX/MOVSX (register source): 1c ALU.
+  | .movzx _ _ _         => ⟨1, 1, [.p0, .p1, .p5, .p6], 1⟩
+  | .movsx _ _ _         => ⟨1, 1, [.p0, .p1, .p5, .p6], 1⟩
+  -- LEA: 1c on the AGU-fed p1/p5; it performs no memory access, so no p23 µop.
+  | .lea _ _ _ _ _       => ⟨1, 1, [.p1, .p5], 1⟩
   | .or_  _ _            => ⟨1, 1, [.p0, .p1, .p5, .p6], 1⟩
   | .xor_ _ _            => ⟨1, 1, [.p0, .p1, .p5, .p6], 1⟩
   -- Shift: p0 or p6.

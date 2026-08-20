@@ -3,8 +3,8 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Examples.MpnMontgomeryPrototype
-import CatCrypt.Crypto.Jasmin.Examples.MpnPowPrototype
+import CatCrypt.Crypto.Jasmin.Mpn.MontgomeryPrototype
+import CatCrypt.Crypto.Jasmin.Mpn.PowPrototype
 
 set_option autoImplicit false
 
@@ -12,8 +12,8 @@ set_option autoImplicit false
 # Composition: `mpz_powm` = Montgomery + square-and-multiply
 
 **EXPERIMENTAL FILE.** Composes the Montgomery prototype
-(`MpnMontgomeryPrototype.lean`, providing `mpnMontMul` / `montN0Prime`) with
-the mpn_pow loop-induction prototype (`MpnPowPrototype.lean`, providing
+(`Mpn.MontgomeryPrototype.lean`, providing `mpnMontMul` / `montN0Prime`) with
+the mpn_pow loop-induction prototype (`Mpn.PowPrototype.lean`, providing
 `mpnPow_loop_unroll_invariant` and friends) into modular exponentiation
 `g^e mod N` — the headline GMP `mpz_powm` contract.
 
@@ -79,13 +79,13 @@ open CatCrypt.Crypto.Jasmin
 open CatCrypt.Crypto.Jasmin.BignumExec
 open CatCrypt.Crypto.Jasmin.Emit
 open CatCrypt.Crypto.Jasmin.MemoryModel
-open CatCrypt.Crypto.Jasmin.Examples.MpnAddPrototype
-open CatCrypt.Crypto.Jasmin.Examples.MpnMul1Prototype
-open CatCrypt.Crypto.Jasmin.Examples.MpnMulPrototype
-open CatCrypt.Crypto.Jasmin.Examples.MpnAddmul1Prototype
-open CatCrypt.Crypto.Jasmin.Examples.MpnSubPrototype
-open CatCrypt.Crypto.Jasmin.Examples.MpnMontgomeryPrototype
-open CatCrypt.Crypto.Jasmin.Examples.MpnPowPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.Mul1Prototype
+open CatCrypt.Crypto.Jasmin.Mpn.MulPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.Addmul1Prototype
+open CatCrypt.Crypto.Jasmin.Mpn.SubPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.MontgomeryPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.PowPrototype
 
 /-! ## §1  Pure spec `mpzPowm` -/
 
@@ -290,7 +290,7 @@ square-and-multiply loop in Montgomery form computes `g^e · R mod N`,
 and the final `MontMul(_, 1)` peels one `R⁻¹` to land at `g^e mod N`.
 
 The Montgomery primitive correctness is the algebraic residual of
-`MpnMontgomeryPrototype.lean`.  That file proves the CIOS *list*-level
+`Mpn.MontgomeryPrototype.lean`.  That file proves the CIOS *list*-level
 loop invariant; the *value*-level correctness (`= u·v·R⁻¹ mod N`) is a
 separate algebraic theorem, deferred to a future PR.  We treat it as a
 named hypothesis here. -/
@@ -351,8 +351,8 @@ theorem mpzPowm_eq_pow_mod
 
 /-- Local short alias to fix ambiguity (`vr`/`pv` are defined in several
     sibling prototype files; we pick the Montgomery one's). -/
-private abbrev MV (s : String) : Var := MpnMontgomeryPrototype.vr s
-private abbrev MP (s : String) : PExpr := MpnMontgomeryPrototype.pv s
+private abbrev MV (s : String) : Var := Mpn.MontgomeryPrototype.vr s
+private abbrev MP (s : String) : PExpr := Mpn.MontgomeryPrototype.pv s
 
 /-- One `Ccall mpn_mont_mul(op, ap, bp, Np, n, n0p, tp)`. -/
 def powmMontMulCcall : List InstrR :=
@@ -386,7 +386,7 @@ theorem powmRegistry_montmul (k : Nat) :
 
 theorem powmRegistry_addmul (k : Nat) :
     powmRegistry k "mpn_addmul_1"
-      = some CatCrypt.Crypto.Jasmin.Examples.MpnMulPrototype.mpnAddmul1CarryFd := by
+      = some CatCrypt.Crypto.Jasmin.Mpn.MulPrototype.mpnAddmul1CarryFd := by
   simp [powmRegistry, montRegistry]
 
 /-- `mpz_powm` as a Jasmin `FunDecl`.  The width `k` is implicit (the

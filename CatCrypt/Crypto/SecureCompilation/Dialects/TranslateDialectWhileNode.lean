@@ -9,7 +9,7 @@ import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieWhile
 set_option autoImplicit false
 
 /-!
-# Front-compiling a data-dependent `while (n != 0)` into a genuine `ComL.whileNz`
+# Front-compiling a data-dependent `while (n != 0)` into a `ComL.whileNz`
 
 `TranslateDialectDataWhile.rolledWhileNz` front-compiles a covered while body
 and wraps it in A3's `whileLinstrRM` **at the instruction level** — there is no
@@ -51,7 +51,7 @@ The residual shape `while (n != 0) { n -= 1; acc += a[i] }` (scalar accumulate
 over a 3-element array, countdown guard `n`):
 
 * `whileAccum_isSome` — the body front-compiles and wraps into ONE `ComL.whileNz`;
-* `whileAccum_is_whileNz_node` — the spine is genuinely the while node;
+* `whileAccum_is_whileNz_node` — the spine is the while node;
 * `whileAccum_denote_n3` / `_n2` — `ComL.denote = 60` at seed `n = 3` and `= 30`
   at `n = 2` (SAME program — the trip is read off the seed, not baked in);
 * `whileAccum_machine_matches_denote` — A3's `lsemFuelMemLC` run of the emitted
@@ -61,7 +61,7 @@ over a 3-element array, countdown guard `n`):
 * `whileAccum_trips_data_dependent` — the machine trip `whileTripsMem = 3` is
   read off the run (the initial `n`), not supplied;
 * `whileAccum_lowering_dowhile` — the `comLToBody` lowering carries exactly ONE
-  `Lcond NZ` back-edge and NO `Lcond Z` zero-trip guard — a genuine bottom-test
+  `Lcond NZ` back-edge and NO `Lcond Z` zero-trip guard — a bottom-test
   do-while, not `forLoopNRt`'s top-guarded shape.
 
 **0 sorries; axioms ⊆ {propext, Classical.choice, Quot.sound} (+
@@ -85,11 +85,14 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestWhile
 open CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminCom (mapTy mapCtx)
 open CatCrypt.Crypto.Jasmin.LowCT (LowCT SExpr TowerType)
 
-/-! ## 1. Wrapping the front body into a genuine `ComL.whileNz` -/
+/-! ## 1. Wrapping the front body into a `ComL.whileNz`
 
-/-- Build a genuine **data-dependent do-while** `ComL.whileNz` from a
+The continuation is the primitive parameter: `rolledWhileNzComL` is
+`rolledWhileNzComLCont` at `cont := .ret .here`. -/
+
+/-- Build a **data-dependent do-while** `ComL.whileNz` from a
     front-compiled loop body. Identical to
-    `TranslateDialectRuntimeLoop.rolledForLoopNRt` except the wrapper: the
+    `TranslateDialectRuntimeLoop.rolledForLoopNRtCont` except the wrapper: the
     count-driven `forLoopNRt` is replaced by the guard-driven `whileNz` (the
     `RWhileNz` countdown idiom — the emitted counter is re-read and bottom-tested
     each pass, `whileLcmdNz`).
@@ -103,8 +106,25 @@ open CatCrypt.Crypto.Jasmin.LowCT (LowCT SExpr TowerType)
       the `whileNz` `update` over `accTy := mapTy accCTy`,
       `invTys := invCTys.map mapTy`).
 
-    Returns a `ComL Γouter accTy` that binds the loop result and returns it
-    (`.ret .here`). `none` if the front declines. -/
+    `cont : ComL (mapTy accCTy :: Γouter) s` runs after the sweep, with the
+    sweep's final accumulator bound at `.here`, so a sweep can sit mid-chain with
+    further phases as its continuation. `none` if the front declines. -/
+def rolledWhileNzComLCont {Γouter : Ctxt jasminDialect}
+    {accCTy : CryptoTy} {invCTys : Ctx} {s : JasminTy}
+    (vmBody : VarMap (accCTy :: .sword 64 :: invCTys)) (accName : String)
+    (body : LowCT)
+    (guard : Ctxt.Var Γouter (JasminTy.reg 64))
+    (init : Ctxt.Var Γouter (mapTy accCTy))
+    (invs : HVector (fun ty => Ctxt.Var Γouter ty) (invCTys.map mapTy))
+    (cont : ComL (mapTy accCTy :: Γouter) s) :
+    Option (ComL Γouter s) :=
+  match frontLoopBodyJ (accCTy := accCTy) vmBody accName body with
+  | some update => some (ComL.whileNz update guard init invs cont)
+  | none => none
+
+/-- Build a **data-dependent do-while** `ComL.whileNz` from a front-compiled loop
+    body, binding the loop result and returning it — `rolledWhileNzComLCont` at
+    `cont := .ret .here`. `none` if the front declines. -/
 def rolledWhileNzComL {Γouter : Ctxt jasminDialect}
     {accCTy : CryptoTy} {invCTys : Ctx}
     (vmBody : VarMap (accCTy :: .sword 64 :: invCTys)) (accName : String)
@@ -113,9 +133,8 @@ def rolledWhileNzComL {Γouter : Ctxt jasminDialect}
     (init : Ctxt.Var Γouter (mapTy accCTy))
     (invs : HVector (fun ty => Ctxt.Var Γouter ty) (invCTys.map mapTy)) :
     Option (ComL Γouter (mapTy accCTy)) :=
-  match frontLoopBodyJ (accCTy := accCTy) vmBody accName body with
-  | some update => some (ComL.whileNz update guard init invs (.ret .here))
-  | none => none
+  rolledWhileNzComLCont (Γouter := Γouter) (accCTy := accCTy) (invCTys := invCTys)
+    vmBody accName body guard init invs (.ret .here)
 
 /-- **While-node-wrapper denotation = the countdown fold at the seed.** When the
     body front-compiles to `update`, the `ComL.whileNz`'s denotation at any
@@ -137,7 +156,7 @@ theorem rolledWhileNzComL_denote {Γouter : Ctxt jasminDialect}
         vmBody accName body guard init invs).map (fun c => ComL.denote c V)
       = some (JLoopBodyN.denote ⟨(guard.lookup V).toNat, update⟩
                 (Expr.lookupArgs invs V) (init.lookup V)) := by
-  unfold rolledWhileNzComL
+  unfold rolledWhileNzComL rolledWhileNzComLCont
   rw [hupd]
   rfl
 
@@ -179,7 +198,7 @@ def whileAccum : Option (ComL Γouter (.reg 64)) :=
 /-- The body front-compiles and wraps into ONE `ComL.whileNz`. -/
 theorem whileAccum_isSome : whileAccum.isSome := by native_decide
 
-/-- The spine is genuinely the data-dependent while node. -/
+/-- The spine is the data-dependent while node. -/
 theorem whileAccum_is_whileNz_node :
     (whileAccum.map (fun c => match c with
       | .whileNz _ _ _ _ _ => true
@@ -269,7 +288,7 @@ theorem whileAccum_trips_data_dependent :
         whileMachineBody 10 (whileMachineStart 3).base = 3 := by
   native_decide
 
-/-! ## 4. The lowering is a genuine bottom-test do-while -/
+/-! ## 4. The lowering is a bottom-test do-while -/
 
 /-- Collect the `Lcond` labels of an `Lcmd` by flag condition name. -/
 def condEdges (cc : String) (body : Lcmd) : List LLabel :=
@@ -280,7 +299,7 @@ def condEdges (cc : String) (body : Lcmd) : List LLabel :=
 
 /-- The `comLToBody` lowering of the while node carries exactly **one**
     `Lcond NZ` back-edge (the bottom test at the loop top label) and **no**
-    `Lcond Z` — there is no zero-trip top guard: a genuine do-while, not
+    `Lcond Z` — there is no zero-trip top guard: a do-while, not
     `forLoopNRt`'s top-guarded counted loop. -/
 theorem whileAccum_lowering_dowhile :
     (whileAccum.map (fun c =>

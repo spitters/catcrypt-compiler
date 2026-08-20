@@ -246,10 +246,8 @@ a `sample_ntt_poly` rejection-sampler, a `shake256` noise sampler, and the
 over the running KEM state, so the spine is exactly the heterogeneous `pipeN` the
 template threads.
 
-Leaf-names from the real ML-KEM extraction and kernel surface of the full CatCrypt
-development tree (`CatCrypt/Crypto/MLKEM/Extraction/`,
-`CatCrypt/Crypto/MLKEM/MlkemLowCT.lean` — outside this compiler package) and the
-registered Keccak/SHAKE rows:
+Leaf-names from the real extraction (`CatCrypt/Crypto/MLKEM/Extraction/`,
+`MlkemLowCT.lean`) and the registered Keccak/SHAKE rows:
 `"sha3_512"`, `"shake128"`, `"sample_ntt_poly"`, `"shake256"`,
 `"compress_coeff"`, `"decompress_coeff"`.
 
@@ -372,20 +370,14 @@ the running ladder state `σ`.  The whole scalar multiplication is therefore a
 *pure `n`-fold* of one `ladder_step` leaf — the `foldPipe` unary pipeline,
 parametric in the bit count `n` (`n = 255` for Curve25519).
 
-The ladder field arithmetic is the emitted Curve25519 ladder-step kernel
-`x25519_ladder_step`, authored in the LowCT DSL in
-`CatCrypt/Crypto/Jasmin/Examples/X25519LadderDSL.lean` (`ladderStep` /
-`ladder_step_call`, emitted by `X25519LadderDSLEmit.lean`); its body is a
-straight-line sequence of `cswap_fp` / `fp_add` / `fp_sub` / `fp_mul` /
-`fp_sqr` leaf calls.  (A separate, fused x86 realization of the same step —
-the Fe25519 leaves inlined into one no-call body — is
-`X86Backend/X25519MonoLadderKernel.monoLadderStepBlock`.)  The leaf name
-below is the emitted name.  Each step's spec is a distinct abstract `C → C`
-(the bit-`i` ladder transition), all realized by the one `ladder_step`
-kernel. -/
+The ladder field arithmetic is the emitted Curve25519 field kernel
+(`CatCrypt/Crypto/X25519/EmittedFieldRealization.lean`'s `feLadderStep`); the
+ladder-step leaf is its emitted name.  Each step's spec is a distinct abstract
+`C → C` (the bit-`i` ladder transition), all realized by the one
+`ladder_step` kernel. -/
 
-/-- The emitted X25519 Montgomery-ladder step kernel leaf (RFC 7748 §5:
-    `cswap` + double-and-add; authored as `X25519LadderDSL.ladderStep`). -/
+/-- The emitted X25519 Montgomery-ladder step kernel leaf (RFC 7748 §5,
+    `EmittedFieldRealization.feLadderStep`: `cswap` + double-and-add). -/
 def x25519LadderStepLeaf : String := "x25519_ladder_step"
 
 /-- The X25519 leaf list: `n` copies of the ladder-step leaf (`n = 255` for

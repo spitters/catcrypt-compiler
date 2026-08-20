@@ -77,9 +77,9 @@ open CatCrypt.Crypto.Jasmin
 open CatCrypt.Crypto.Jasmin.BignumExec
 open CatCrypt.Crypto.Jasmin.Emit
 open CatCrypt.Crypto.Jasmin.MemoryModel
-open CatCrypt.Crypto.Jasmin.Examples.MpnAddPrototype
-open CatCrypt.Crypto.Jasmin.Examples.MpnMontgomeryPrototype
-open CatCrypt.Crypto.Jasmin.Examples.MpnPowPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.MontgomeryPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.PowPrototype
 open CatCrypt.Crypto.Jasmin.Examples.MpzPowmCompositionPrototype
 
 /-! ## §1  Pure spec helpers -/
@@ -363,9 +363,9 @@ theorem mpzPowmRsaCrt_eq_pow_mod
 
 /-! ## §6  Jasmin body `bodyMpzPowmRsaCrt` -/
 
-/-- Local short alias picked from MpnMontgomeryPrototype. -/
-private abbrev MV (s : String) : Var := MpnMontgomeryPrototype.vr s
-private abbrev MP (s : String) : PExpr := MpnMontgomeryPrototype.pv s
+/-- Local short alias picked from Mpn.MontgomeryPrototype. -/
+private abbrev MV (s : String) : Var := Mpn.MontgomeryPrototype.vr s
+private abbrev MP (s : String) : PExpr := Mpn.MontgomeryPrototype.pv s
 
 /-- One `Ccall mpz_powm_window` invocation (the half-size modexp). -/
 def rsaCrtModexpCcall (outVar inVar dVar Nvar : String) : InstrR :=

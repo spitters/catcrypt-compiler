@@ -13,8 +13,8 @@ import Mathlib.Data.ZMod.Basic
 Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
 The single, shared modular-arithmetic dialect of the PrimeIR-style layered
-crypto-IR stack. It is the **L2** level between the abstract field math and the
-IR backends:
+crypto-IR stack (`docs/dialect-restructure-plan.md`). It is the **L2** level
+between the abstract field math and the IR backends:
 
     EllipticCurve(L4) → Field(L3) → **ModArith(L2)** → {Vector | LowCT} → {jasmin | x86}
 
@@ -33,6 +33,11 @@ dialect gives the whole algebraic layer **one** verified home:
   denoting to `ZMod`'s native inverse `a⁻¹`;
 * **batch inverse** (`batchInverse`, Montgomery's trick #481) — `n` inverses with
   one inversion + `3n` mults, denoting pointwise to `aᵢ⁻¹`;
+* **Montgomery-domain inverse** (`montInverse`) — `x ↦ x⁻¹ · R²`, the residue
+  whose Montgomery product with `x̃` is the Montgomery unit `R`;
+* the **structural reinterprets** (`polyToTensor`, `polyFromTensor`,
+  `residueEncode`, `residueDecode`) — the coefficient-vector ↔ tensor and
+  residue ↔ fixed-width-bits maps, carrying no arithmetic;
 * the **widening-multiply + carry-chain** ops (`mulHi`, `addCarryLo`,
   `addCarryHi` — the #261/#477 ops) — their single verified home, with the
   `BitVec` semantics **reused from the owned x86 model**
@@ -163,6 +168,32 @@ equality, not a re-derivation. -/
     spec; the dialect op is the spec. -/
 @[reducible] def byInverseF {p : Nat} (a : ZMod p) : ZMod p := a⁻¹
 
+/-- Montgomery-domain inverse: `x ↦ x⁻¹ · rInv⁻¹ · rInv⁻¹` (`= x⁻¹ · R²`, since
+    `rInv⁻¹ = R`). The residue whose Montgomery product with `x̃` is the
+    Montgomery unit `R`, under the `montMulF` / `montReduceF` convention. -/
+@[reducible] def montInverseF {p : Nat} (rInv x : ZMod p) : ZMod p :=
+  x⁻¹ * rInv⁻¹ * rInv⁻¹
+
+/-- Coefficient-vector-to-tensor reinterpret: a degree-`< n` coefficient-form
+    polynomial over `Z_p` viewed as its rank-1 length-`n` coefficient tensor.
+    Both sides are the coefficient vector, so the map is the identity. -/
+@[reducible] def polyToTensorF (p n : Nat) (v : Fin n → ZMod p) : Fin n → ZMod p := v
+
+/-- Tensor-to-coefficient-vector reinterpret, inverse to `polyToTensorF`; again
+    the identity on the coefficient vector. -/
+@[reducible] def polyFromTensorF (p n : Nat) (v : Fin n → ZMod p) : Fin n → ZMod p := v
+
+/-- Residue-to-bits reinterpret: a residue `a : ZMod p` as its canonical
+    fixed-width `BitVec w` storage, the little-endian bits of `a.val`. -/
+@[reducible] def residueEncodeF (p w : Nat) (a : ZMod p) : BitVec w :=
+  BitVec.ofNat w a.val
+
+/-- Bits-to-residue reinterpret: a `BitVec w` storage `b` as the residue
+    `b.toNat : ZMod p`, inverse to `residueEncodeF` when the storage neither
+    truncates the modulus nor holds a non-canonical value. -/
+@[reducible] def residueDecodeF (p w : Nat) (b : BitVec w) : ZMod p :=
+  (b.toNat : ZMod p)
+
 /-- Batch inverse (Montgomery's trick, #481): invert all `n` lanes. Denoted
     pointwise to `aᵢ⁻¹` — the abstract spec the prefix-product schedule (one
     inversion + `3n` mults) realises. -/
@@ -233,6 +264,39 @@ inductive ModArithOp where
   | byInverse (p : Nat)
   /-- Batch inverse `(aᵢ⁻¹)ᵢ : fpVec p n` (Montgomery's trick, #481). -/
   | batchInverse (p n : Nat)
+  /-- Montgomery-domain inverse `x⁻¹ · R² : fp p`, carrying the radix-inverse
+      `rInv` (prime-ir `mod_arith.mont_inverse`). Folded in from
+      `montInverseDialect` rather than kept as a dialect of its own: a `Com`
+      carries ops from one dialect only, so an op in a separate dialect can
+      never appear beside `montMul`. A coproduct
+      `modArithDialect ⊕ montInverseDialect` with an injection was the
+      alternative; the carriers already coincide (`MontInverseTy.fp p` and
+      `ModArithTy.fp p` both denote `ZMod p`). -/
+  | montInverse (p : Nat) (rInv : ZMod p)
+  /-- Coefficient-vector-to-tensor reinterpret `fpVec p n → fpVec p n`
+      (prime-ir `poly.to_tensor`). Folded in from `structDialect`, whose four
+      types all land in `ModArithTy`; the one-dialect indexing of `Com` is what
+      rules out keeping it separate, and a dialect coproduct with an injection
+      was the alternative. -/
+  | polyToTensor (p n : Nat)
+  /-- Tensor-to-coefficient-vector reinterpret `fpVec p n → fpVec p n`
+      (prime-ir `poly.from_tensor`), folded in from `structDialect` with
+      `polyToTensor`. -/
+  | polyFromTensor (p n : Nat)
+  /-- Residue-to-bits reinterpret `fp p → word w` (prime-ir `field.bitcast` /
+      `mod_arith.bitcast`, encode direction), folded in from `structDialect`
+      (`StructTy.residue p` is `fp p`, `StructTy.bits w` is `word w`). -/
+  | residueEncode (p w : Nat)
+  /-- Bits-to-residue reinterpret `word w → fp p` (prime-ir `field.bitcast` /
+      `mod_arith.bitcast`, decode direction), folded in from `structDialect`
+      with `residueEncode`.
+
+      It shares `modReduce`'s signature and denotation, and is distinct for the
+      reason `solinasReduce` and `barrettReduce` are: the spec coincides while the
+      intent does not. `modReduce` reduces a word; this reinterprets bits already
+      known to lie below `p`, and `structDialect`'s round-trip laws hold only
+      under that range condition. -/
+  | residueDecode (p w : Nat)
   /-- High word of the widening multiply (the `hi` of `MULX`): `[word w, word w]
       → word w`. (#477) -/
   | mulHi (w : Nat)
@@ -267,6 +331,11 @@ instance : DialectSignature modArithDialect where
     | .barrettReduce _ w => [.word w]
     | .byInverse p => [.fp p]
     | .batchInverse p n => [.fpVec p n]
+    | .montInverse p _ => [.fp p]
+    | .polyToTensor p n => [.fpVec p n]
+    | .polyFromTensor p n => [.fpVec p n]
+    | .residueEncode p _ => [.fp p]
+    | .residueDecode _ w => [.word w]
     | .mulHi w => [.word w, .word w]
     | .addCarryLo w => [.word w, .word w, .carry]
     | .addCarryHi w => [.word w, .word w, .carry]
@@ -284,6 +353,11 @@ instance : DialectSignature modArithDialect where
     | .barrettReduce p _ => .fp p
     | .byInverse p => .fp p
     | .batchInverse p n => .fpVec p n
+    | .montInverse p _ => .fp p
+    | .polyToTensor p n => .fpVec p n
+    | .polyFromTensor p n => .fpVec p n
+    | .residueEncode _ w => .word w
+    | .residueDecode p _ => .fp p
     | .mulHi w => .word w
     | .addCarryLo w => .word w
     | .addCarryHi _ => .carry
@@ -305,6 +379,11 @@ instance modArithDenote : DialectDenote modArithDialect where
     | .barrettReduce _ _ => fun args => modReduceF (args.head : BitVec _).toNat
     | .byInverse _ => fun args => byInverseF args.head
     | .batchInverse _ _ => fun args => batchInverseF args.head
+    | .montInverse _ rInv => fun args => montInverseF rInv args.head
+    | .polyToTensor p n => fun args => polyToTensorF p n args.head
+    | .polyFromTensor p n => fun args => polyFromTensorF p n args.head
+    | .residueEncode p w => fun args => residueEncodeF p w args.head
+    | .residueDecode p w => fun args => residueDecodeF p w args.head
     | .mulHi _ => fun args => mulHiF args.head args.tail.head
     | .addCarryLo _ => fun args => addCarryLoF args.head args.tail.head args.tail.tail.head
     | .addCarryHi _ => fun args => addCarryHiF args.head args.tail.head args.tail.tail.head

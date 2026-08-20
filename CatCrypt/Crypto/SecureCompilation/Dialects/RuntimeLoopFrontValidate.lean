@@ -5,6 +5,7 @@ Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRuntimeLoop
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 set_option autoImplicit false
 
@@ -244,7 +245,7 @@ theorem physBody_one_indexed_store :
     rolled). -/
 def kernelAsm : Option String :=
   sumComL.map (fun c =>
-    renderLprogAtt
+    CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned
       (ComL.toLprogPhysAbi c "sum_front_rt" (argName 0) [argName 1]
         (fun _ => none) (fun _ => none) ["RDI", "RSI", "RDX"] [64, 64, 64]))
 

@@ -41,7 +41,7 @@ construct, in a companion combinator:
   `IsCoveredSCtlSeq` body whose `transCtlSeq` succeeds, the emitted `Com`-prefix
   denotes exactly the body's `semScalar` waist. The `ofCtl` leaves delegate to
   `translateDialectControl_denote_ctl`; the `RSeq` spine is the `ComCont.comp`
-  fold (the same backbone the (C-otherwise) `RIfNz` case uses), reconciled with
+  fold (the same fold the (C-otherwise) `RIfNz` case uses), reconciled with
   `semScalar`'s `RSeq = bind`; `RBlock` is the direct pass-through.
 
 Everything is proved against the EXISTING `semScalar` / `scalar_step` /
@@ -103,6 +103,7 @@ inductive IsCoveredSCtlSeq : LowCT → Prop
 theorem transCtlSeq_eq_full_of_covered {c : LowCT} (h : IsCovered c) :
     ∀ {Γ : Ctx} (vm : VarMap Γ), transCtlSeq vm c = translateDialectFull vm c := by
   induction h with
+  | rAssert _ => intro Γ vm; rfl
   | rSeq _ _ ih1 ih2 =>
       intro Γ vm
       simp only [transCtlSeq, translateDialectFull]
@@ -123,7 +124,6 @@ theorem transCtlSeq_eq_full_of_covered {c : LowCT} (h : IsCovered c) :
   | rCall _ _ _ => intro Γ vm; rfl
   | rSelect _ _ _ _ => intro Γ vm; rfl
   | rCallDstThreaded _ _ _ => intro Γ vm; rfl
-  | rTupleStore _ _ _ => intro Γ vm; rfl
   | rTupleLoad _ _ _ => intro Γ vm; rfl
   | rArrLoadLit _ _ _ => intro Γ vm; rfl
   | rArrStoreLit _ _ _ => intro Γ vm; rfl

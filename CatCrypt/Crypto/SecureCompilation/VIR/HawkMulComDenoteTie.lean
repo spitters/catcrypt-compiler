@@ -14,8 +14,7 @@ straight-line kernel for the HAWK-256 negacyclic ring multiply over
 `Z/1024[x]/(x^16 + 1)` (512 `regArith` bindings: schoolbook `mul`, accumulating
 `add`/`sub` for the `x^N=-1` sign, and a final `& 1023` field mask). The
 *deployed* artifact is the front-generated `HawkMulEmit.hawkMulFrontCom`
-(rendered to owned `.s` by `toLprogPhysAbi` / `renderLprogAtt`; no renderer
-entry point for it ships in this repo); this model carries the universal
+(rendered by `HAWK/HawkMulEmit`); this model carries the universal
 verification content for the same spec.
 `HawkMul4WayRealization.hawkNegacyclicMul` is the abstract spec over
 `ZMod 1024`. This module proves they agree: the **denotation** of the model

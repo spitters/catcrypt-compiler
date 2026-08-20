@@ -9,6 +9,18 @@ import CatCrypt.Crypto.SecureCompilation.VIR.VPCmpEmit
 /-!
 # The SIMD→GP extract gap: owned `vpcmpeqq` + `vpmovmskb gpr, ymm` (model-free)
 
+**TEST/BENCH-ONLY — STRING-TEMPLATED, not verified-compiler output.** The
+emitted `bench/mpn_compare_simd_compare/gen/mpn_simd_compare_owned.s` is a body
+rendered from the typed `mpnSimdChunkBlock` by the module-local printer
+`renderXInst` wrapped in hand-written frame lines (string lists joined with
+`String.intercalate`), with no single verified-printer descent for the whole
+file. The `native_decide`/`example` checks are structural assertions; the block
+denotation `mpnSimdChunk_denotation` (tied to the verified `VPCmpEmit` lane
+reference) scopes the compare/extract block, not the emitted frame. It is a
+bench/interop reference. The verified emit path is the FRONT-SOURCED descent;
+see `bench/framework/AUDIT_EMIT_BYPASS.md` and `EMIT_PROVENANCE.md`
+§"Which emit is verified?".
+
 The **model-free** mpn SIMD-compare owned `.s` emit (the `vpcmpeqq`/`vpmovmskb`
 extract kernel). It writes
 `bench/mpn_compare_simd_compare/gen/mpn_simd_compare_owned.s` with no dependency

@@ -37,14 +37,12 @@ open CatCryptDialect
 
 /-! ## Constant-time properties -/
 
-/-- `ConstantTimeProperties` is the **statement** that an op is CT-preserving:
-    its timing is independent of any data-dependent value (no data-dependent
-    branch, no data-dependent memory index). `CatCryptOp.propertiesOf`
-    (`CatCryptOpInfo.lean`) selects it per op.
+/-- `ConstantTimeProperties op` is the **statement** that `op` is
+    CT-preserving: its timing is independent of any data-dependent value
+    (no data-dependent branch, no data-dependent memory index).
 
-    The fields are declarative flags with all-true defaults, not proofs: this
-    structure records an intent, it does not discharge it. The proved
-    VIR-level CT obligations live in `CTPredicate.lean`. -/
+    Today this is a unit-style placeholder; tracks 3a will refine it with
+    concrete obligations per op. -/
 structure ConstantTimeProperties where
   /-- Op cannot leak data through control flow. -/
   noDataDependentBranch : Bool := true

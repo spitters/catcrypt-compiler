@@ -206,7 +206,7 @@ deriving instance Lean.ToExpr for PExpr
 deriving instance Lean.ToExpr for LVal
 deriving instance Lean.ToExpr for InstrR
 
-/-! ## §4. Small builders mirroring `MpnMul1Prototype.{vr, pv}`
+/-! ## §4. Small builders mirroring `Mpn.Mul1Prototype.{vr, pv}`
 
 We replicate these locally (not `import`ed) to keep `InstrRReflect`
 dependency-light: only `BignumExec`. -/

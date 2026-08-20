@@ -28,10 +28,11 @@ data-dependent** (it depends on the sampled mask), not a compile-time / loaded
 limb count. ML-DSA's signing resamples until the norm check `‖z‖∞ < γ₁-β`
 (and the low-bits / hint-weight checks) pass; MAYO/UOV/HAWK have the analogous
 resample. The inner kernels (NTT, the per-`κ` body, the norm reduction) already
-emit through the verified front; the **outer resample loop** is the residual that
-kept the *whole* protocol on `jasminc`. The ML-DSA `LowCT` kernel front models
-that loop outside the kernel, as repeated calls, and emits only the per-`κ` body.
-This module lowers the loop itself.
+emit through the verified front (`MldsaLowCT`, `full-ntt-simd-parity`); the
+**outer resample loop** is the residual that kept the *whole* protocol on
+`jasminc`. `MldsaLowCT.lean` says so explicitly: *"the rejection-sample loop is
+modeled outside the kernel as repeated calls; the kernel emits the per-`κ`
+body."* This module lowers that loop.
 
 ## Why this is not just `runBoundedLoop`
 
@@ -683,8 +684,8 @@ theorem rejectLoopLcmd_length (w : Nat)
 /-! ## 7. KAT: the ML-DSA signing rejection loop emitted through the verified front
 
 We model the **outer** Fiat-Shamir-with-aborts loop of ML-DSA signing (FIPS 204
-§Algorithm 7) — the loop the ML-DSA `LowCT` kernel front leaves out of the kernel,
-modeling it outside the kernel as repeated calls.
+§Algorithm 7), the loop `MldsaLowCT.lean` explicitly left out of the kernel
+("the rejection-sample loop is modeled outside the kernel as repeated calls").
 The inner per-`κ` kernel (ExpandMask + the response/`z` computation + the
 ∞-norm reduction) already emits straight-line through the dialect; here we wrap
 **that kernel body once** in the terminating guarded loop and let the public

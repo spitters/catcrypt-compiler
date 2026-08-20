@@ -43,6 +43,9 @@ dependence — is the contribution; refresh the integers from the target core's
 optimization guide before using as a production fitness function. The model is a
 TCB-free steering heuristic: all soundness lives in the translation-validation
 theorems of `RandomizedScheduleSearch`, which this module does not touch.
+
+> **`@bench-only`.** The `List (JInstr 64)` blocks in this module are cost-model
+> fixtures; the module emits no deployed `.s` artifact.
 -/
 
 set_option autoImplicit false

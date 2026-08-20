@@ -10,21 +10,27 @@ import Mathlib.Tactic.FieldSimp
 import Mathlib.Tactic.Ring
 
 /-!
-# ModArith Montgomery-domain inverse — first-class `mont_inverse`
+# ModArith Montgomery-domain inverse — the `mont_inverse` leaf
 
-A minimal **correspondence** `VIR.Dialect` whose single op is `montInverse`, the
-Montgomery-domain field inverse.  It is the CatCrypt counterpart of
-fractalyze/prime-ir's `mod_arith.mont_inverse` (`ModArithOps.td`).
+The Montgomery-domain field inverse and its correctness lemmas. The op it backs is
+`ModArithOp.montInverse` in `ModArithDialect`; prime-ir calls it
+`mod_arith.mont_inverse` (`ModArithOps.td`).
 
-## Why this dialect exists (the gap it closes)
+The op sits in `modArithDialect` rather than a dialect of its own, because a `Com`
+carries ops from one dialect and an op alone in its dialect cannot appear beside
+`modMul`. A coproduct with an injection (`VIR/DialectCoproduct.lean`) was the
+alternative; folding was chosen because the value types already coincide at
+`ZMod p`. `VIR/FoldedOpAgreement.lean` ties the folded op to `montInverseF` below.
 
-CatCrypt already *has* the field inverse — `ModArithDialect.byInverse` /
-`FieldDialect.fInv` denote to `ZMod p`'s native `a⁻¹`, realised by the
-Bernstein–Yang / Fermat chains — but it does **not** otherwise expose the
-*Montgomery-domain* inverse as a standalone op: the Fermat chain runs in the
-Montgomery domain with no dedicated mont-inverse op.  This dialect **factors
-that map as a first-class op**, matching prime-ir's `mod_arith.mont_inverse`
-one-for-one.
+## What the leaf computes
+
+Per `PRIME_IR_OP_CORRESPONDENCE.md` (repo root, §2), CatCrypt already *has* the field
+inverse — `ModArithDialect.byInverse` / `FieldDialect.fInv` denote to `ZMod p`'s
+native `a⁻¹`, realised by the Bernstein–Yang / Fermat chains — but it does **not**
+expose the *Montgomery-domain* inverse as a standalone op.  The gap analysis
+classified `mod_arith.mont_inverse` **PARTIAL** — "Fermat chain in Montgomery
+domain; no dedicated mont-inverse op".  This dialect **factors that map as a
+first-class op**, matching prime-ir's `mod_arith.mont_inverse` one-for-one.
 
 It is a **separate file** from the `to_mont`/`from_mont`/`mont_square` trio
 (`ModArithMontOps.lean`) because that file carries residues as **ℤ** with the
@@ -40,17 +46,12 @@ Montgomery-radix inverse.  A *residue* `x̃` is the Montgomery form of the logic
 value `montReduce rInv x̃ = x̃ · R⁻¹`, and the Montgomery unit (the form of `1`) is
 `R = rInv⁻¹`.
 
-## The op (`MontInverseOp`), parametric in `(p, rInv)`
+## The leaf, parametric in `(p, rInv)`
 
 * `montInverse p rInv` — `x ↦ x⁻¹ · rInv⁻¹ · rInv⁻¹` (`= x⁻¹ · R²`, since
   `rInv⁻¹ = R`).  This is the residue whose Montgomery product with `x̃` is the
   unit `R`: `montMul rInv x̃ (montInverse x̃) = R`.  Equivalently, its logical value
   is the inverse of `x̃`'s logical value (`montInverse_fromMont`).
-
-## Type (`MontInverseTy`)
-
-* `fp p` — a Montgomery residue at modulus `p`, `⟦·⟧ = ZMod p` (the
-  `ModArithDialect.fp` carrier).
 
 ## Correctness lemmas (assembled from `ZMod`'s field inverse)
 
@@ -62,24 +63,11 @@ and `rInv` nonzero:
 * `montInverse_fromMont` : `(fromMont x) · (fromMont (montInverse x)) = 1` — the
   logical values are mutually inverse (the field-level statement).
 
-## Honest classification
+## Constant-time
 
-This is a **HIGH-tier, prime-ir-corresponding / agreement** dialect, NOT an
-emit-wired one.  Like `ModArithMontOps`, `tensorExtDialect`, `cmpDialect`, and the
-`mlirArith*` family, it is correspondence-only: it has **no lowering out** (no
-`→ Com jasminDialect`, no backend edge).  It substantiates the
-"prime-ir `mod_arith.mont_inverse` aligned" claim by giving the Montgomery-domain
-inverse a first-class op tied to `ZMod`'s field inverse + the
-`ModArithDialect.montMul` convention.  It does **not** add a lowering or emit path
-— the bytes-reaching field inverse still flows through the existing Fermat /
-Bernstein–Yang emit kernels.  Do not overclaim an emit this file does not build.
-
-## Pure-only + constant-time
-
-The Montgomery inverse is realised by a fixed Fermat / divstep schedule
-(data-oblivious by construction — the exponent / step count is public), so its
-denotation is a total pure function and it is constant-time (`ctSafe = true`),
-exactly the `ModArithDialect.byInverse` CT story.
+The Montgomery inverse is realised by a fixed Fermat / divstep schedule, whose
+exponent and step count are public, so the leaf is a total pure function and the
+folded op is constant-time on the `ModArithDialect.byInverse` story.
 -/
 
 set_option autoImplicit false
@@ -144,115 +132,3 @@ theorem montInverse_fromMont {p : Nat} [Fact (Nat.Prime p)] (rInv x : ZMod p)
         = (x * x⁻¹) * (rInv * rInv⁻¹) * (rInv⁻¹ * rInv) by ring,
     ex, emr, er, one_mul, one_mul]
 
-/-! ## 3. Type -/
-
-/-- The Montgomery-inverse dialect's value-type alphabet: a Montgomery residue at
-    modulus `p`, `⟦·⟧ = ZMod p` (the `ModArithDialect.fp` carrier). -/
-inductive MontInverseTy where
-  /-- A Montgomery residue mod `p`, `⟦·⟧ = ZMod p`. -/
-  | fp (p : Nat)
-  deriving DecidableEq
-
-/-- Total denotation of `MontInverseTy`: the residue denotes exactly to the
-    `ModArithDialect.fp` carrier `ZMod p`. -/
-@[reducible] instance : TyDenote MontInverseTy where
-  denote
-    | .fp p => ZMod p
-
-/-! ## 4. Op tag -/
-
-/-- Operation tag for the Montgomery-inverse dialect — prime-ir's
-    `mod_arith.mont_inverse`, carrying the Montgomery-radix inverse `rInv`. -/
-inductive MontInverseOp where
-  /-- `mod_arith.mont_inverse` over `fp p`: `x ↦ x⁻¹ · rInv · rInv`. -/
-  | montInverse (p : Nat) (rInv : ZMod p)
-  deriving DecidableEq
-
-/-! ## 5. The dialect -/
-
-/-- The Montgomery-inverse dialect: `Op` is `MontInverseOp`, `Ty` is
-    `MontInverseTy`. -/
-@[reducible] def montInverseDialect : Dialect :=
-  { Op := MontInverseOp, Ty := MontInverseTy }
-
-/-! ## 6. Op signature (arg types + return type — unary `fp → fp`) -/
-
-instance : DialectSignature montInverseDialect where
-  sig op := match op with
-    | .montInverse p _ => [.fp p]
-  ret op := match op with
-    | .montInverse p _ => .fp p
-
-/-! ## 7. Op denotation (into the Montgomery inverse) -/
-
-instance montInverseDenote : DialectDenote montInverseDialect where
-  denote op := match op with
-    | .montInverse _ rInv => fun args => montInverseF rInv args.head
-
-/-! ## 8. Per-op denotation / correctness facts -/
-
-/-- `montInverse` denotes to `x ↦ x⁻¹ · rInv⁻¹ · rInv⁻¹`. -/
-theorem montInverse_denote {p : Nat} (rInv x : ZMod p) :
-    montInverseDenote.denote (.montInverse p rInv) (.cons x .nil)
-      = x⁻¹ * rInv⁻¹ * rInv⁻¹ := rfl
-
-/-- **Op-level Montgomery-inverse spec.** The op's Montgomery product with `x̃` is
-    the unit `R = rInv⁻¹`. -/
-theorem montInverse_denote_spec {p : Nat} [Fact (Nat.Prime p)] (rInv x : ZMod p)
-    (hx : x ≠ 0) (hr : rInv ≠ 0) :
-    montMulF rInv x (montInverseDenote.denote (.montInverse p rInv) (.cons x .nil))
-      = rInv⁻¹ := by
-  rw [montInverse_denote]
-  exact montInverse_spec rInv x hx hr
-
-/-! ## 9. Constant-time predicate (the dialect's CT instance)
-
-The Montgomery inverse is a fixed Fermat / divstep schedule (public exponent /
-step count, no data-dependent branch), so `ctSafe` is `true` for the op. -/
-
-/-- Per-op CT predicate: the Montgomery-inverse op is constant-time. -/
-def MontInverseOp.ctSafe : MontInverseOp → Bool
-  | _ => true
-
-@[simp] theorem MontInverseOp.ctSafe_all (op : MontInverseOp) : op.ctSafe = true := rfl
-
-/-- Per-expression CT predicate. -/
-def ctSafeExpr {Γ : Ctxt montInverseDialect} {t : MontInverseTy}
-    (e : Expr montInverseDialect Γ t) : Bool :=
-  e.op.ctSafe
-
-@[simp] theorem ctSafeExpr_true {Γ : Ctxt montInverseDialect} {t : MontInverseTy}
-    (e : Expr montInverseDialect Γ t) : ctSafeExpr e = true := rfl
-
-/-- Per-program CT predicate: a `Com` is CT-safe iff every let-bound expression
-    is.  Since the only op is CT, this is identically `true`. -/
-def ctSafeCom {Γ : Ctxt montInverseDialect} {t : MontInverseTy} :
-    Com montInverseDialect Γ t → Bool
-  | .ret _ => true
-  | .var e body => ctSafeExpr e && ctSafeCom body
-
-/-- **CT by construction.** Every Montgomery-inverse program is constant-time. -/
-theorem ctSafeCom_all {Γ : Ctxt montInverseDialect} {t : MontInverseTy}
-    (c : Com montInverseDialect Γ t) : ctSafeCom c = true := by
-  induction c with
-  | ret _ => rfl
-  | var e _ ih => simp [ctSafeCom, ctSafeExpr_true, ih]
-
-/-! ## 10. Smoke test
-
-A one-op `Com montInverseDialect`: `let r = montInverse rInv x; ret r` over
-`ZMod 7` with `rInv = 1` (Montgomery radix `R = 1`, i.e. the plain field-inverse
-specialisation).  On `x = 3` (`3⁻¹ = 5` since `3·5 = 15 = 1 mod 7`) it returns
-`5 · 1⁻¹ · 1⁻¹ = 5`. -/
-
-/-- One-op smoke program: a `montInverse` (with `rInv = 1`) over `[fp 7]`. -/
-def smokeProg : Com montInverseDialect [.fp 7] (.fp 7) :=
-  .var (.mk (.montInverse 7 1) rfl (.cons .here .nil))
-    (.ret .here)
-
-/-- The smoke program denotes to `x⁻¹ · 1 · 1 = x⁻¹`; on `x = 3` that is
-    `3⁻¹ = 5 (mod 7)`. -/
-example : smokeProg.denote (.cons (3 : ZMod 7) .nil) = (5 : ZMod 7) := by
-  rfl
-
-end CatCrypt.Crypto.SecureCompilation.VIR.ModArithMontInverse

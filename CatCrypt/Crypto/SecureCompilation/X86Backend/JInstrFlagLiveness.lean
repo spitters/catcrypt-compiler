@@ -28,12 +28,18 @@ whose `runBlock`-equivalence is unconditional.
 * `readsFlag i` — `i` observes a flag: `adc`/`sbb`/`setc`/`cmovb`/`adcx` read `CF`,
   `adox` reads `OF`, `cmove`/`cmovne` read `ZF`.
 * `writesAllFlags i` — `i` overwrites **all five** flags as a pure function of its
-  register/immediate inputs (any `writeB5W` op that does not first read a flag):
-  `add`/`sub`/`imul`/`neg`/`and_`/`or_`/`xor_`/`shl`/`shr`/`sar`.
+  register/immediate inputs (any `writeB5W`/`writeB5` op that does not first read a
+  flag): `add`/`sub`/`imul`/`neg`/`and_`/`or_`/`xor_`/`shl`/`shr`/`sar`/`andn`, and
+  `test`/`cmp`, whose only output is the five flags.
 
-Every remaining constructor (`mov`, `mulx`, `mulxMem`, the memory moves, `loadSym`)
-touches no flag at all.  The two predicates are disjoint, and a constructor whose
-classification would be ambiguous is treated as reading a flag (conservative).
+The rotates `rol`/`ror` are a **partial** flag write: they set `OF`/`CF` through
+`JState.writeB2W` and leave `SF`/`PF`/`ZF` at their incoming values, so they are neither
+flag reads nor full flag writes.  The scan skips them, which is sound because their
+register and memory effect is a function of the register file alone.  Every remaining
+constructor (`mov`, `mulx`, `mulxMem`, the memory moves, `loadSym`, the BMI2
+`rorx`/`shlx`/`shrx`/`sarx`, `not_`, the extension moves and `lea`) touches no flag at
+all.  The two predicates are disjoint, and a constructor whose classification would be
+ambiguous is treated as reading a flag (conservative).
 
 `flagsDeadFrom instrs` scans the suffix straight-line: a leading flag **read**
 makes the flags live (`false`); a leading full flag **write** re-establishes every
@@ -79,11 +85,14 @@ def readsFlag {w : Nat} : JInstr w → Bool
   | _           => false
 
 /-- `writesAllFlags i` is `true` when `evalInstr` overwrites all five flags as a
-    pure function of the register/immediate inputs (a `writeB5W` op that does not
-    first read a flag): `add`, `sub`, `imul`, `neg`, `and_`, `or_`, `xor_`, `shl`,
-    `shr`, `sar`.  The partial-write `adcx`/`adox` and the flag-reading `adc`/`sbb`
-    are excluded (they appear under `readsFlag`). -/
+    pure function of the register/immediate inputs (a `writeB5W`/`writeB5` op that
+    does not first read a flag): `add`, `sub`, `imul`, `neg`, `and_`, `or_`, `xor_`,
+    `shl`, `shr`, `sar`, `andn`, and `test`/`cmp`, whose five flags are their only
+    output.  The partial-write `adcx`/`adox`/`rol`/`ror` and the flag-reading
+    `adc`/`sbb` are excluded (`adcx`/`adox`/`adc`/`sbb` appear under `readsFlag`). -/
 def writesAllFlags {w : Nat} : JInstr w → Bool
+  | .test _ _ => true
+  | .cmp _ _  => true
   | .add _ _  => true
   | .sub _ _  => true
   | .imul _ _ => true
@@ -94,6 +103,14 @@ def writesAllFlags {w : Nat} : JInstr w → Bool
   | .shl _ _  => true
   | .shr _ _  => true
   | .sar _ _  => true
+  -- BMI1 `andn` writes the full `B5W` tuple: `OF`/`CF` cleared, `SF`/`ZF` from the
+  -- result, `PF` undefined.  All five entries are a function of the sources, so the
+  -- state after it is determined by the register file.
+  | .andn _ _ _ => true
+  -- The rotates write `OF`/`CF` only and preserve `SF`/`PF`/`ZF`, so they do not
+  -- re-establish the whole flag map from the registers.
+  | .rol _ _  => false
+  | .ror _ _  => false
   | _         => false
 
 /-! ## 2. The backward liveness scan -/
@@ -127,7 +144,8 @@ theorem evalInstr_full_eq_of_writesAll {i : JInstr 64} (hw : writesAllFlags i = 
     {s₁ s₂ : JState 64} (hr : s₁.regs = s₂.regs) (hm : s₁.mem = s₂.mem) :
     evalInstr s₁ i = evalInstr s₂ i := by
   cases i <;>
-    simp_all [writesAllFlags, evalInstr, JState.writeB5W, JState.get, JOperand.eval]
+    simp_all [writesAllFlags, evalInstr, JState.writeB5W, JState.writeB5, JState.get,
+      JOperand.eval]
 
 /-- A flag-neutral instruction (neither reading nor fully writing flags) updates the
     register file and memory as a function of the register file and memory alone, so
@@ -139,8 +157,9 @@ theorem evalInstr_regsMem_congr {i : JInstr 64} (hnr : readsFlag i = false)
     (evalInstr s₁ i).regs = (evalInstr s₂ i).regs ∧
       (evalInstr s₁ i).mem = (evalInstr s₂ i).mem := by
   cases i <;>
-    simp_all [readsFlag, writesAllFlags, evalInstr, JState.setReg, JState.store,
-      JState.storeIdx, JState.load, JState.loadIdx, JState.get, JOperand.eval]
+    simp_all [readsFlag, writesAllFlags, evalInstr, JState.setReg, JState.writeB2W,
+      JState.store, JState.storeIdx, JState.load, JState.loadIdx, JState.get,
+      JOperand.eval]
 
 /-! ## 4. Liveness discharges the flag side condition -/
 

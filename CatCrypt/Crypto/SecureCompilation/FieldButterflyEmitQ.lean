@@ -7,6 +7,7 @@ import CatCrypt.Crypto.SecureCompilation.MlkemNttFieldEmit
 import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # Byte-correct ML-KEM forward-NTT butterfly over `F_q` (`q = 3329`), FRONT-COMPILED, OWNED x86
@@ -29,7 +30,7 @@ and NO hand-authored assembly:
     --(translateDialectControl)-->   Com catCryptDialect srcCtx (.sword 64)
     --(cryptoDialectToJasminCom)-->  bflyQCom : Com jasminDialect inCtxt r64
     --(Com.toLprogPhysAbi, owned RA + 2-address)-->  Lprog
-    --(LprogAsmPrinter.renderLprogAtt)-->  gen_com/bfly_q3329.s
+    --(LprogOptPipeline.renderOwned)-->  gen_com/bfly_q3329.s
 ```
 
 ## The Barrett mul-reduce and csub add/sub (`q = 3329`, mirrors `MlkemNttFieldEmit`)
@@ -306,9 +307,10 @@ def bflyQLprog : Lprog :=
     (abiArgs := ["RDI", "RSI"]) (abiTyin := [64, 64]) (residence := none)
     (abiW := 64)
 
-/-- The owned AT&T `.s` text for `bfly_q3329`, rendered straight from the owned
-    `Lprog` (no jasminc). -/
-def bflyQAsm : String := renderLprogAtt bflyQLprog
+/-- The owned AT&T `.s` text for `bfly_q3329`, rendered from the owned `Lprog`
+    through the optimizing back-end `renderOwned` (no jasminc). -/
+def bflyQAsm : String :=
+  CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned bflyQLprog
 
 /-- The output path for the field-kernel-emitted `.s`. -/
 def bflyQTarget : System.FilePath :=

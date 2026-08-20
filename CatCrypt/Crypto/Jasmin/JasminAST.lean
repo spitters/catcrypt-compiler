@@ -82,10 +82,17 @@ inductive SType where
 
 /-! ## Variables -/
 
-/-- Variable information (source location, etc.). Opaque for our purposes. -/
+/-- Variable metadata, mirroring Jasmin's semantically inert `var_info`.
+    `towerTag` is the ghost tower-type tag of a `.sarr` variable: the
+    `TowerType.byteSize` of the tower type it was lowered from, and `0`
+    for variables with no tower provenance (scalars, flags). Printers
+    ignore it; the operational semantics (`jasminSem` /
+    `jasminSemTraced`) read it to pin the ghost tower type, which the
+    `.sarr` storage width alone does not determine (several tower types
+    share a storage width). -/
 structure VarInfo where
-  dummy : Unit := ()
-  deriving Inhabited, Repr
+  towerTag : Nat := 0
+  deriving DecidableEq, Inhabited, Repr
 
 /-- Variable declaration: name + type. -/
 structure Var where

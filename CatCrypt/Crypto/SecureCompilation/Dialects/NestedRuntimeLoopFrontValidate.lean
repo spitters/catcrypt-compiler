@@ -3,21 +3,22 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRuntimeLoop
+import CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
 import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestDepth
 
 set_option autoImplicit false
 
 /-!
-# Validate: a genuine **nested** runtime loop, front-compiled into `ComL.forLoopNRtNested`
+# Validate: a **nested** runtime loop, front-compiled into `ComL.forLoopNRtNested`
 
 `TranslateDialectPhaseCompose` §4 recorded the front residual precisely: there was
 no `ComL` value whose denote is the GGM Phase-3 double fold `for jd<D: for
 idx<num>>(jd+1): …`, because `ComL.forLoopNRt`'s per-iteration body is a
 straight-line `Com`. `ComL.forLoopNRtNested` (JasminLprogExport) makes the inner
-loop first-class, and `TranslateDialectRuntimeLoop.rolledForLoopNRtNested`
-front-compiles both the inner-count body and the inner-update body via
-`frontLoopBodyJ` (no hand-authored `Com`). This module closes the residual with a
+loop first-class, and the rolled-loop dispatcher's nested route
+(`FrontRoutePlan.compileNested` at the `plain` body front) front-compiles both the
+inner-count body and the inner-update body via `frontLoopBodyJ` (no hand-authored
+`Com`). This module closes the residual with a
 `native_decide` validate against the *already-proven* interpreter semantics.
 
 ## The GGM Phase-3 shape
@@ -33,7 +34,7 @@ front-compiles both the inner-count body and the inner-update body via
 ## What is validated (`native_decide`)
 
 * `nestGGM_isSome` — the two bodies front-compile and wrap into ONE `forLoopNRtNested`.
-* `nestGGM_is_nested_node` — the spine is genuinely the nested node.
+* `nestGGM_is_nested_node` — the spine is the nested node.
 * `nestGGM_denote_num8` / `nestGGM_denote_num16` — `ComL.denote = ggmNestedFold 3 num 2`
   (`= 14` at `num=8`, `= 28` at `num=16`), the double fold.
 * `nestGGM_denote_matches_ggmProg` — the front-compiled node's denote **equals the
@@ -41,7 +42,7 @@ front-compiles both the inner-count body and the inner-update body via
   `loopLinstrRM` back-edges validated in `JasminLsemMemLoopNestDepth`). This ties
   our front node to the proven nested back-edge semantics, transitively.
 * `nestGGM_num_sensitive` — `num=8 ↦ 14`, `num=16 ↦ 28` differ, so the inner trip is
-  genuinely recomputed per outer pass (not a baked-in schedule).
+  recomputed per outer pass, not a baked-in schedule.
 * `nestGGM_lowering_has_two_backedges` — the `comLToBody` lowering emits exactly two
   `Lcond NZ` back-edges at two distinct labels (outer + inner) — real nested
   back-edges, not a flattened single loop.
@@ -124,8 +125,8 @@ def Γouter : Ctxt jasminDialect := [.reg 64, .stackArr 64 1, .reg 64]
     `idx < num >> (jd+1)` (recomputed per outer pass), innermost `acc[0] += 2`. ONE
     `ComL.forLoopNRtNested` spine, both bodies front-compiled. -/
 def nestGGM : Option (ComL Γouter (.stackArr 64 1)) :=
-  rolledForLoopNRtNested (Γouter := Γouter) (accCTy := .memref 1)
-    (invCTys := [.sword 64])
+  FrontRoutePlan.compileNested (Γouter := Γouter) (accCTy := .memref 1)
+    (invCTys := [.sword 64]) .plain
     vmCount "cnt" countBody
     vmUpd "acc" updateBody
     (outerCount := .here)                       -- D
@@ -137,7 +138,7 @@ def nestGGM : Option (ComL Γouter (.stackArr 64 1)) :=
 /-- Both bodies front-compile and wrap into ONE `forLoopNRtNested`. -/
 theorem nestGGM_isSome : nestGGM.isSome := by native_decide
 
-/-- The spine is genuinely the nested runtime-loop node. -/
+/-- The spine is the nested runtime-loop node. -/
 theorem nestGGM_is_nested_node :
     (nestGGM.map (fun c => match c with
       | .forLoopNRtNested _ _ _ _ _ _ => true
@@ -174,7 +175,7 @@ theorem nestGGM_denote_matches_ggmProg :
             ggmProg 4000 (ggmStart 8)).map
           (fun t => decodeM t.base "acc" 64) := by native_decide
 
-/-- **The inner trip is genuinely recomputed per outer pass:** `num=8 ↦ 14`,
+/-- **The inner trip is recomputed per outer pass:** `num=8 ↦ 14`,
     `num=16 ↦ 28` differ, so the inner bound is read from `num >> (jd+1)` each outer
     pass, not a baked-in `4,2,1` schedule. -/
 theorem nestGGM_num_sensitive :
@@ -185,8 +186,8 @@ theorem nestGGM_num_sensitive :
 
 `comLToBody` on the nested node emits an inner runtime loop (top label
 `curDepth+1`) inside the outer runtime loop (top label `curDepth`). We count the
-`Lcond (.reg "NZ") _` back-edges: exactly two, at two distinct labels — a genuine
-nested back-edge, not a flattened single loop. -/
+`Lcond (.reg "NZ") _` back-edges: exactly two, at two distinct labels — a nested
+back-edge, not a flattened single loop. -/
 
 /-- Count `Lcond (.reg "NZ") lbl` back-edges in an `Lcmd`, returning their labels. -/
 def nzBackEdges (body : Lcmd) : List LLabel :=

@@ -91,7 +91,7 @@ Copn's LVal bundle, and emits the equivalent `List InstrR`. -/
 
     — one Copn per ADX instruction, with register names taken verbatim
     from the Lean source's let-binders.  Matches the
-    `MpnAddMul1AdxPrototype.adxLimbStep` shape exactly. -/
+    `Mpn.AddMul1AdxPrototype.adxLimbStep` shape exactly. -/
 def reifiedStep : List InstrR := reifyInstrR% addmulStepLean
 
 /-- Sanity: the reified body has exactly three Copns whose opcode names are
@@ -192,7 +192,7 @@ theorem reifiedStep_correct_exists :
 /-! ## §4. Reflection on the shape
 
 The reified body matches the kernel-emitted shape from
-`MpnAddMul1AdxPrototype.adxLimbStep i` exactly (with `i = 0` and the
+`Mpn.AddMul1AdxPrototype.adxLimbStep i` exactly (with `i = 0` and the
 "zero" prev-hi replaced by an explicit `ofIn` parameter).  This is the
 infrastructure proof that the elaborator can stand in for hand-written
 `mulxCopn` / `adcxCopn` / `adoxCopn` builders.

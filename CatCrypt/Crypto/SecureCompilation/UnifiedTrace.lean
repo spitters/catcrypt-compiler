@@ -9,13 +9,12 @@ import CatCrypt.Crypto.Jasmin.BignumExec
 import CatCrypt.Crypto.Jasmin.LowCTToJasmin
 
 /-!
-# UnifiedTrace: One Trace Alphabet for the Whole Pipeline
+# UnifiedTrace: One Trace Alphabet for the Whole Pipeline (Track A1, draft 1)
 
-One event alphabet into which every stage in `SecureCompilation/` projects its
-observables.  This file defines the alphabet and the embeddings for the stages
-that admit a total, computable projection (CryptoSSA leakage, `BignumExec`,
-Jasmin `Cmd`); the stages still lacking an embedding are listed under
-"What's NOT done" below.
+This file is the *starting point* for `NEXT.md`'s Track A1 — a unified trace
+model spanning every stage in `SecureCompilation/`. The full track is
+estimated at ~4 weeks; this is a 2–3-hour scaffold with embeddings for
+the easy stages, `sorry`-stubs documenting follow-up for the harder ones.
 
 ## Why a unified trace?
 
@@ -88,10 +87,10 @@ Why this draft uses a fresh inductive instead:
    (`Mem.store64`, `Mem.load64`); SPComp has no slot for this.
 3. SCIO* / RHP literature uniformly assumes a *list* of events.
 
-The right relationship is `embedSPComp : SPComp → UnifiedTrace`: the trace
-consisting of one `.sample` per `SPComp.sample` plus one `.ret` at the leaf.
-That embedding is NOT implemented — no `SPComp.toUnifiedTrace` exists in this
-file or elsewhere in the tree; only the specification above is recorded.
+The right relationship is `embedSPComp : SPComp → UnifiedTrace` (which
+this file implements as `SPComp.toUnifiedTrace`, currently stubbed —
+the spec is "the trace consisting of one `.sample` per `SPComp.sample`
+plus one `.ret` at the leaf").
 
 ## What's done in this file
 
@@ -547,11 +546,10 @@ def LowCT.toJasminLeakTrace : LowCT → LeakTrace
   | .RLimbStore _ _ _                 => [LeakEvent.pureOp "Copn"]
   | .RLimbStoreExpr _ _ _             => [LeakEvent.pureOp "Copn"]
   -- Phase F/G/H/L/M (2026-05-03): match `LowCTToJasmin.toJasminCmd`.
-  -- RAsmOp / RSelect → single `Copn`.
-  -- RCallN          → single `Ccall`.
-  -- RAssert         → empty (no Jasmin emission).
-  -- RBlock          → recurse on body.
-  | .RAsmOp _ _ _                     => [LeakEvent.pureOp "Copn"]
+  -- RSelect → single `Copn`.
+  -- RCallN  → single `Ccall`.
+  -- RAssert → empty (no Jasmin emission).
+  -- RBlock  → recurse on body.
   | .RCallN _ _ _                     => [LeakEvent.pureOp "Ccall"]
   | .RSelect _ _ _ _                  => [LeakEvent.pureOp "Copn"]
   | .RAssert _                        => []
@@ -560,11 +558,8 @@ def LowCT.toJasminLeakTrace : LowCT → LeakTrace
   | .RFnDef _ _ _ body cont           =>
       LowCT.toJasminLeakTrace body ++ LowCT.toJasminLeakTrace cont
   | .RFnCall _ _ _                    => [LeakEvent.pureOp "Ccall"]
-  -- Phase I (2026-05-03): tuple component store/load lowers to `[]`.
-  | .RTupleStore _ _ _                => []
+  -- Phase I (2026-05-03): tuple component load lowers to `[]`.
   | .RTupleLoad _ _ _                 => []
-  -- Phase Ext (2026-05-12/14): toJasminCmd routes `RBytesSlice` to [].
-  | .RBytesSlice _ _ _ _              => []
   -- Phase RND (2026-05-30, #261): the dynamic-index array store/load and the
   -- runtime-scalar SExpr assignment now emit REAL `Pvar`-indexed
   -- `Laset`/`Pget`/`Cassgn` jasmin (needed for the safegcd-62 limb vectors and
@@ -640,7 +635,6 @@ theorem Cmd.leakTrace_toJasminCmd (c : LowCT) :
   | RLimbStoreExpr _ _ _ => rfl
   -- Phase F/G/H/L/M (2026-05-03): each lowers to a single instruction
   -- (or empty / body-recursion); reduces by `rfl` after `simp`.
-  | RAsmOp _ _ _ => rfl
   | RCallN _ _ _ => rfl
   | RSelect _ _ _ _ => rfl
   | RAssert _ => rfl
@@ -652,10 +646,7 @@ theorem Cmd.leakTrace_toJasminCmd (c : LowCT) :
     simp [toJasminCmd_RFnDef, Cmd.leakTrace_append, ih_body, ih_cont,
           LowCT.toJasminLeakTrace]
   | RFnCall _ _ _ => rfl
-  | RTupleStore _ _ _ => rfl
   | RTupleLoad _ _ _ => rfl
-  -- Phase Ext (2026-05-12/14): RBytesSlice → []; rfl closes.
-  | RBytesSlice _ _ _ _ => rfl
   -- Phase RND (2026-05-30, #261): the dynamic-index array store/load and the
   -- runtime-scalar SExpr assignment now emit a single real instruction.  The
   -- emit branches on `arrElemWS arr` (store/load) and on the `SExpr` shape
@@ -805,18 +796,15 @@ def LowCT.ifFree : LowCT → Bool
   | .RLimbStore _ _ _            => true
   | .RLimbStoreExpr _ _ _        => true
   -- Phase F/G/H/L/M (2026-05-03): the new constructors emit no `Cif`.
-  | .RAsmOp _ _ _                => true
   | .RCallN _ _ _                => true
   | .RSelect _ _ _ _             => true
   | .RAssert _                   => true
   | .RBlock body                 => LowCT.ifFree body
   | .RFnDef _ _ _ body cont      => LowCT.ifFree body && LowCT.ifFree cont
   | .RFnCall _ _ _               => true
-  -- Phase I (2026-05-03): tuple component store/load emits no `Cif`.
-  | .RTupleStore _ _ _           => true
+  -- Phase I (2026-05-03): tuple component load emits no `Cif`.
   | .RTupleLoad _ _ _            => true
   -- Phase Ext (2026-05-12/14): new constructors emit no `Cif`.
-  | .RBytesSlice _ _ _ _         => true
   | .RScalarSetExpr _ _          => true
   | .RArrLoad _ _ _              => true
   | .RArrStore _ _ _             => true
@@ -1070,8 +1058,6 @@ theorem ifFree_iff_backTranslate_TargetCifFree (c : LowCT) :
   | RLimbStoreExpr _ _ _ =>
     simp [LowCT.ifFree, LowCT.toJasminLeakTrace]
   -- Phase F/G/H/L/M (2026-05-03): the new constructors emit no `Cif`.
-  | RAsmOp _ _ _ =>
-    simp [LowCT.ifFree, LowCT.toJasminLeakTrace]
   | RCallN _ _ _ =>
     simp [LowCT.ifFree, LowCT.toJasminLeakTrace]
   | RSelect _ _ _ _ =>
@@ -1086,11 +1072,7 @@ theorem ifFree_iff_backTranslate_TargetCifFree (c : LowCT) :
     simp [LowCT.ifFree, LowCT.toJasminLeakTrace, ih_body, ih_cont]
   | RFnCall _ _ _ =>
     simp [LowCT.ifFree, LowCT.toJasminLeakTrace]
-  | RTupleStore _ _ _ =>
-    simp [LowCT.ifFree, LowCT.toJasminLeakTrace]
   | RTupleLoad _ _ _ =>
-    simp [LowCT.ifFree, LowCT.toJasminLeakTrace]
-  | RBytesSlice _ _ _ _ =>
     simp [LowCT.ifFree, LowCT.toJasminLeakTrace]
   -- Phase RND (2026-05-30, #261): `RScalarSetExpr` now emits a single
   -- `Copn` (high-mul) or `Cassgn` (general SExpr); `RArrLoad`/`RArrStore`

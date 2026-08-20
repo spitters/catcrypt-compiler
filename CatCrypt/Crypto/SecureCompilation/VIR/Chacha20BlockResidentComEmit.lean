@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockFullMemrefJazzEmit
 import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # The whole ChaCha20 block, STATE-RESIDENT, through the OWNED x86 backend (NO jasminc)
@@ -484,7 +485,7 @@ def emit : IO Unit := do
     let lprog := Com.toLprogPhysAbi jcom "chacha20_block_resident_com"
       (fun _ => none) (fun _ => none) (fun _ => none) []
       (abiArgs := ["RSI", "RDI"]) (abiTyin := [64, 64])
-    let att := renderLprogAtt lprog
+    let att := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned lprog
     let dir := "bench/chacha_compare/gen_com"
     IO.FS.createDirAll dir
     IO.FS.writeFile (dir ++ "/chacha20_block_resident_com.s") att

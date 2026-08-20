@@ -64,6 +64,7 @@ import CatCrypt.Crypto.SecureCompilation.Ascent.InvariantSchemas
 import CatCrypt.Crypto.SecureCompilation.Ascent.MontBounds
 import CatCrypt.Crypto.SecureCompilation.Ascent.CorresScalar
 import CatCrypt.Crypto.SecureCompilation.Ascent.CorresScalarDemo
+import CatCrypt.Crypto.SecureCompilation.Ascent.MpnAdxCorres
 
 /-!
 # The LowCT ascent refinement calculus — import aggregator (rot guard)

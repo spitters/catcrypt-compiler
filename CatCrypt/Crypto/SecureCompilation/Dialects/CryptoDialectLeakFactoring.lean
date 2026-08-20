@@ -154,10 +154,10 @@ theorem loopRForD_leakFactors_cond {Γ : Ctx}
     `extCall` per destination; whenever it succeeds, its `ComCont` prefix
     leak-factors (one event per bound destination). By induction on the dest list. -/
 theorem loopCallNDestsD_leakFactors {Γ : Ctx} (fname : String) (args : List Located)
-    (vm : VarMap Γ) (dests : List Located) {o : DTransOut Γ}
-    (h : loopCallNDestsD fname args vm dests = some o) :
+    (vm : VarMap Γ) (dests : List Located) {i : Nat} {o : DTransOut Γ}
+    (h : loopCallNDestsD fname args vm dests i = some o) :
     ∃ k : Nat, ComCont.LeakFactors o.cont k := by
-  induction dests generalizing Γ vm with
+  induction dests generalizing Γ vm i with
   | nil =>
       rw [loopCallNDestsD, Option.some.injEq] at h
       subst h; exact ⟨0, ComCont.id_leakFactors⟩
@@ -474,6 +474,9 @@ theorem translateDialectFull_cont_leakFactors {Γ : Ctx} (vm : VarMap Γ) {c : L
           | (split at h; dsimp only at h; rw [Option.some.injEq] at h; subst h;
              exact ⟨1, arrStoreCont_leakFactors _ _ _ _⟩)
           | exact absurd h (by simp)
+  | rAssert label =>
+      simp only [translateDialectFull, Option.some.injEq] at h
+      subst h; exact ⟨0, ComCont.id_leakFactors⟩
   | _ =>
       rw [translateDialectFull] at h
       split at h <;>
@@ -608,10 +611,10 @@ theorem ComCont.comp_leakFactorsTrace {Γ Γ' Γ'' : Ctx} {f : ComCont Γ Γ'} {
 
 /-- The N-call dest-fold's trace-factoring. -/
 theorem loopCallNDestsD_leakFactorsTrace {Γ : Ctx} (fname : String) (args : List Located)
-    (vm : VarMap Γ) (dests : List Located) {o : DTransOut Γ}
-    (h : loopCallNDestsD fname args vm dests = some o) :
+    (vm : VarMap Γ) (dests : List Located) {i : Nat} {o : DTransOut Γ}
+    (h : loopCallNDestsD fname args vm dests i = some o) :
     ∃ pre : LeakTrace, ComCont.LeakFactorsTrace o.cont pre := by
-  induction dests generalizing Γ vm with
+  induction dests generalizing Γ vm i with
   | nil => rw [loopCallNDestsD, Option.some.injEq] at h; subst h; exact ⟨[], ComCont.id_leakFactorsTrace⟩
   | cons d rest ih =>
       rw [loopCallNDestsD] at h
@@ -933,6 +936,9 @@ theorem translateDialectFull_cont_leakFactorsTrace {Γ : Ctx} (vm : VarMap Γ) {
         | (split at h; dsimp only at h; rw [Option.some.injEq] at h; subst h;
            exact arrStoreCont_leakFactorsTrace _ _ _ _)
         | exact absurd h (by simp)
+  | rAssert label =>
+      simp only [translateDialectFull, Option.some.injEq] at h
+      subst h; exact ⟨[], ComCont.id_leakFactorsTrace⟩
   | _ =>
       rw [translateDialectFull] at h
       split at h <;> first

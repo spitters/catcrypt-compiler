@@ -15,11 +15,9 @@ The `CProg`-free substrate shared by both `LowCT → CryptoSSA` fronts: the
 `asSingleScalarSet`) used by the `RIfNz` φ-merge, and the argument
 resolver (`resolveLocatedArgs`).
 
-The front that consumes this substrate here is `translateDialectControl`
-(`Dialects/TranslateDialectDirectControl.lean`) — the verified, `CProg`-free
-front lowering `LowCT` directly to `Com catCryptDialect`. The substrate is
-front-agnostic: it was also shared with an earlier `CProg`/`CExpr` front
-(`translate`), which is not part of this repository.
+One front consumes this substrate: `translateDialectControl`
+(`Dialects/TranslateDialectDirectControl.lean`), which lowers `LowCT` directly to
+`Com catCryptDialect`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA

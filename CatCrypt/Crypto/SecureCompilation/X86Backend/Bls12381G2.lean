@@ -8,6 +8,19 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Fp2MulKernel
 /-!
 # BLS12-381 G2 (E'/Fp2) projective group law, owned x86 backend (Miller prerequisite)
 
+**TEST/BENCH-ONLY — STRING-TEMPLATED, not verified-compiler output.** The
+emitted `bench/bls12381_g2_compare/gen_com/bls12381_g2_{add,dbl}.s` and
+`bls12381_fp2_{add,sub,dbl,copy}_x86_from_lean.s` are assembled as text
+(`renderLeafFn` wrapping hand-written prologue / `callFp`/`c2`/`c3`/`mul3` body
+line lists / epilogue joined with `++`), with no single verified-printer descent
+for the whole file. The `native_decide` shape checks are `countSub`/`hasSub`
+substring assertions. The composed `Fp` add/sub leaves are `runBlock`-verified
+in `Bls12381Fp2MulKernel` and the `Fp` mul is the #490 CIOS kernel (block
+model); the `Fp2`/`G2` drivers here are hand-written SysV call-frame
+scaffolding. It is a bench/interop reference. The verified emit path is the
+FRONT-SOURCED descent; see `bench/framework/AUDIT_EMIT_BYPASS.md` and
+`EMIT_PROVENANCE.md` §"Which emit is verified?".
+
 **Variant: RELIC-transcribed (tests-only correctness).** This owned x86 emit is
 hand-transcribed from the RELIC pairing reference and gated **byte-identical to
 RELIC**. RELIC is unverified C, so that byte-identity is a **test**, not a

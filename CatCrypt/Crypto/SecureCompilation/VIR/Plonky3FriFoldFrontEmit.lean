@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # FRONT-COMPILED BabyBear field kernels (bucket-C flip: FriFold + Poseidon2 vocab)
@@ -328,6 +329,6 @@ def friFrontLprog : Lprog :=
     four (`regArith`→`Lopn`, `regConst`→`MOV #imm`, `shlImm`→`SHL:n`,
     `shrImm`→`SHR:n`). The byte identity to the `fri_fold`/`bbInv` spec is the
     external `cc` KAT (`fri_fold_from_rustcmd_kat.c`, relinked). -/
-def friFrontAsm : String := renderLprogAtt friFrontLprog
+def friFrontAsm : String := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned friFrontLprog
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FriFoldFrontEmit

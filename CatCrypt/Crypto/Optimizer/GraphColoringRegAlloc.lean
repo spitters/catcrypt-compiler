@@ -482,6 +482,8 @@ def klane (x y : Nat) : String := s!"A_{x}_{y}"
 /-- Column-parity name `C[x]`. -/
 def kpar (x : Nat) : String := s!"C_{x}"
 
+-- @bench-only: the `List (JInstr _)` blocks below are fixtures exercising this
+-- register-allocation pass; this module emits no deployed `.s` artifact.
 /-- One round of the lane-granularity Keccak skeleton: compute the 5 column parities
     from all 25 lanes (`C[x] := A[x][0] ⊕ … ⊕ A[x][4]`, modelled as XOR-accumulate),
     then fold each parity back into every lane (`A[x][y] ⊕= C[x±1]`). Every one of the

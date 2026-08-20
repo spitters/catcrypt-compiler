@@ -81,6 +81,7 @@ def jinstrNames : {w : Nat} → JInstr w → List String
   | _, .neg d     => [d]
   | _, .setc d    => [d]
   | _, .and_ d s  => d :: srcNames s
+  | _, .test a b  => a :: srcNames b
   | _, .or_ d s   => d :: srcNames s
   | _, .xor_ d s  => d :: srcNames s
   | _, .shl d s   => d :: srcNames s
@@ -99,6 +100,17 @@ def jinstrNames : {w : Nat} → JInstr w → List String
   | _, .storeMemIdx base idx _ s  => base :: idx :: srcNames s
   -- `loadSym dst sym` writes the base register `dst`; `sym` is a `.rodata`
   -- *symbol* (an assembler label), NOT a register name, so it is not allocated.
+  -- `cmp a b` has no destination: both operands are reads, and both are allocated.
+  | _, .cmp a b   => a :: srcNames b
+  | _, .not_ d    => [d]
+  | _, .andn d a b => [d, a, b]
+  | _, .rol d amt | _, .ror d amt => d :: srcNames amt
+  | _, .rorx d src amt => d :: src :: srcNames amt
+  | _, .shlx d src cnt | _, .shrx d src cnt | _, .sarx d src cnt => [d, src, cnt]
+  -- the extension moves' `srcW` is a width, not a register name.
+  | _, .movzx d _ src | _, .movsx d _ src => [d, src]
+  -- `lea` names a destination and the two address registers; `scale`/`off` are literals.
+  | _, .lea d base idx _ _ => [d, base, idx]
   | _, .loadSym d _   => [d]
 
 /-- Collect the distinct register names of a block, in first-seen order. -/
@@ -168,6 +180,29 @@ def gpReg8 (r : String) : String :=
   | "%r12" => "%r12b"| "%r13" => "%r13b"| "%r14" => "%r14b" | "%r15" => "%r15b"
   | other  => other
 
+/-- The AT&T 16-bit subregister name for a `%rN` 64-bit register name
+    (`"%rax" → "%ax"`, `"%r8" → "%r8w"`). The source operand of a 16-bit-source
+    `MOVZX`/`MOVSX` is a word register. -/
+def gpReg16 (r : String) : String :=
+  match r with
+  | "%rax" => "%ax"  | "%rcx" => "%cx"  | "%rdx" => "%dx"  | "%rbx" => "%bx"
+  | "%rsp" => "%sp"  | "%rbp" => "%bp"  | "%rsi" => "%si"  | "%rdi" => "%di"
+  | "%r8"  => "%r8w" | "%r9"  => "%r9w" | "%r10" => "%r10w" | "%r11" => "%r11w"
+  | "%r12" => "%r12w"| "%r13" => "%r13w"| "%r14" => "%r14w" | "%r15" => "%r15w"
+  | other  => other
+
+/-- The AT&T 32-bit subregister name for a `%rN` 64-bit register name
+    (`"%rax" → "%eax"`, `"%r8" → "%r8d"`). A 32-bit-source zero extension is
+    written `movl %src32, %dst32`, since writing a 32-bit destination register
+    zeroes the upper half. -/
+def gpReg32 (r : String) : String :=
+  match r with
+  | "%rax" => "%eax" | "%rcx" => "%ecx" | "%rdx" => "%edx" | "%rbx" => "%ebx"
+  | "%rsp" => "%esp" | "%rbp" => "%ebp" | "%rsi" => "%esi" | "%rdi" => "%edi"
+  | "%r8"  => "%r8d" | "%r9"  => "%r9d" | "%r10" => "%r10d" | "%r11" => "%r11d"
+  | "%r12" => "%r12d"| "%r13" => "%r13d"| "%r14" => "%r14d" | "%r15" => "%r15d"
+  | other  => other
+
 /-! ## 2. The AT&T mnemonic printer (one line per `JInstr`)
 
 AT&T two-operand order is `op src, dst` (`addq %rB, %rA` ≡ `A := A + B`). Shifts
@@ -200,6 +235,54 @@ def renderJInstr {w : Nat} (alloc : GpAlloc) : JInstr w → String
       let r := regOf alloc d
       "\tsetb " ++ gpReg8 r ++ "\n\tmovzbq " ++ gpReg8 r ++ ", " ++ r
   | .and_ d s  => "\tandq "  ++ renderOperand alloc s ++ ", " ++ regOf alloc d
+  | .test a b  => "\ttestq " ++ renderOperand alloc b ++ ", " ++ regOf alloc a
+  -- AT&T `cmpq src, a` computes `a - src` and writes the five flags; `a` is a read,
+  -- and no register is written.
+  | .cmp a b   => "\tcmpq "  ++ renderOperand alloc b ++ ", " ++ regOf alloc a
+  | .not_ d    => "\tnotq "  ++ regOf alloc d
+  -- BMI1 `ANDN dst, src1, src2` = `dst := ~src1 & src2`; AT&T reverses the operand
+  -- order to `andnq %src2, %src1, %dst`.
+  | .andn d a b =>
+      "\tandnq " ++ regOf alloc b ++ ", " ++ regOf alloc a ++ ", " ++ regOf alloc d
+  | .rol d amt => "\trolq "  ++ renderOperand alloc amt ++ ", " ++ regOf alloc d
+  | .ror d amt => "\trorq "  ++ renderOperand alloc amt ++ ", " ++ regOf alloc d
+  -- BMI2 three-operand forms: AT&T lists the count/shift first, then the source,
+  -- then the destination.
+  | .rorx d src amt =>
+      "\trorxq " ++ renderOperand alloc amt ++ ", " ++ regOf alloc src
+        ++ ", " ++ regOf alloc d
+  | .shlx d src cnt =>
+      "\tshlxq " ++ regOf alloc cnt ++ ", " ++ regOf alloc src ++ ", " ++ regOf alloc d
+  | .shrx d src cnt =>
+      "\tshrxq " ++ regOf alloc cnt ++ ", " ++ regOf alloc src ++ ", " ++ regOf alloc d
+  | .sarx d src cnt =>
+      "\tsarxq " ++ regOf alloc cnt ++ ", " ++ regOf alloc src ++ ", " ++ regOf alloc d
+  -- Zero extension to 64 bits, by source width: `movzbq`/`movzwq` for the byte and
+  -- word sources, `movl %src32, %dst32` for a 32-bit source (writing a 32-bit
+  -- destination zeroes the upper half; the SDM has no `movzlq`), and a plain `movq`
+  -- for the identity at 64. Any other width has no x86 form, so it renders as a
+  -- bracketed sentinel the assembler rejects rather than a wrong instruction.
+  | .movzx d sw src =>
+      match sw with
+      | 8  => "\tmovzbq " ++ gpReg8 (regOf alloc src) ++ ", " ++ regOf alloc d
+      | 16 => "\tmovzwq " ++ gpReg16 (regOf alloc src) ++ ", " ++ regOf alloc d
+      | 32 => "\tmovl "   ++ gpReg32 (regOf alloc src) ++ ", " ++ gpReg32 (regOf alloc d)
+      | 64 => "\tmovq "   ++ regOf alloc src ++ ", " ++ regOf alloc d
+      | n  => "\t<UNSUPPORTED-MOVZX-WIDTH:" ++ toString n ++ ">"
+  -- Sign extension to 64 bits, by source width: `movsbq`/`movswq`/`movslq`, and a
+  -- plain `movq` for the identity at 64. Other widths render as the same sentinel.
+  | .movsx d sw src =>
+      match sw with
+      | 8  => "\tmovsbq " ++ gpReg8 (regOf alloc src) ++ ", " ++ regOf alloc d
+      | 16 => "\tmovswq " ++ gpReg16 (regOf alloc src) ++ ", " ++ regOf alloc d
+      | 32 => "\tmovslq " ++ gpReg32 (regOf alloc src) ++ ", " ++ regOf alloc d
+      | 64 => "\tmovq "   ++ regOf alloc src ++ ", " ++ regOf alloc d
+      | n  => "\t<UNSUPPORTED-MOVSX-WIDTH:" ++ toString n ++ ">"
+  -- `leaq off(%base, %idx, scale), %dst` computes the address in the AGU and writes
+  -- it to `dst`; it performs no memory access.
+  | .lea d base idx scale off =>
+      "\tleaq " ++ toString off ++ "(" ++ regOf alloc base ++ ", " ++ regOf alloc idx
+        ++ ", " ++ toString scale ++ "), " ++ regOf alloc d
   | .or_ d s   => "\torq "   ++ renderOperand alloc s ++ ", " ++ regOf alloc d
   | .xor_ d s  => "\txorq "  ++ renderOperand alloc s ++ ", " ++ regOf alloc d
   | .shl d s   => "\tshlq "  ++ renderOperand alloc s ++ ", " ++ regOf alloc d
@@ -429,8 +512,8 @@ callee-saved registers and the alignment is computed, not assumed.
   ABI-conformant and re-callable), saves only the registers the body clobbers,
   and is leaner than both the old `pushq`/`popq`+pad scaffold and jasmin's
   `lea/and` realign idiom — closing the #466 `bignum_mul_4_8` prologue overhead.
-  (Should a kernel ever gain a `call`, it would no longer be a leaf and would need
-  an `%rsp`-moving frame; the word kernels here never call.) -/
+  (A kernel containing a `call` is not a leaf and needs an `%rsp`-moving frame;
+  the word kernels here never call.) -/
 
 /-- The System V AMD64 integer/pointer argument registers, in order. The *i*-th
     integer/pointer argument is passed in `intArgRegs[i]` (arguments beyond the

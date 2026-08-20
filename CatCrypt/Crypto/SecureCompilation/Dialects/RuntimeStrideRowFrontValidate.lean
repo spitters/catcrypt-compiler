@@ -5,20 +5,21 @@ Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRuntimeLoop
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 set_option autoImplicit false
 
 /-!
-# Front gap (FAEST `ConvertToVole`): runtime-STRIDE row addressing via the front
+# Front-gap 3 (ConvertToVole): runtime-STRIDE row addressing via the front
 
-The dynamic-index memref arms (`memrefGetDyn`/`memrefSetDyn`, the SIB
-`LOADIDX`/`STOREIDX`) index a memref by a `.sword 64` **element** index, whereas
-`convert_to_vole`'s rows are runtime-length `outlen`-word slabs whose per-row base is
-`base + idx * runtimeStride` (`r+j*outlen`, `v+jd*outlen`, `sd+j*16`) with a
-**runtime** stride (a register). The SIB scale field is a static immediate (1/2/4/8),
-so a runtime stride cannot ride the scale; it needs a computed offset
-`off := idx * stride` (a reg×reg `MUL`) then the access at `[base + off]` (an `ADD`
-folded into the memref element index).
+`ConvertToVoleV204FrontEmit` (GAP 3) records that the dynamic-index memref arms
+(`memrefGetDyn`/`memrefSetDyn`, the SIB `LOADIDX`/`STOREIDX`) index a memref by a
+`.sword 64` **element** index, whereas `convert_to_vole`'s rows are runtime-length
+`outlen`-word slabs whose per-row base is `base + idx * runtimeStride` (`r+j*outlen`,
+`v+jd*outlen`, `sd+j*16`) with a **runtime** stride (a register). The SIB scale
+field is a static immediate (1/2/4/8), so a runtime stride cannot ride the scale;
+it needs a computed offset `off := idx * stride` (a reg×reg `MUL`) then the access
+at `[base + off]` (an `ADD` folded into the memref element index).
 
 ## What closes the gap: compose the committed front arms (no new node)
 
@@ -254,7 +255,7 @@ theorem physBody_has_backedge :
 /-- The runtime-stride row-copy fragment renders to AT&T `.s`. -/
 def strideKernelAsm : Option String :=
   strideComL.map (fun c =>
-    renderLprogAtt
+    CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned
       (ComL.toLprogPhysAbi c "stride_row_copy" (argName 0) [argName 1, argName 2]
         (fun _ => none) (fun _ => none) ["RDI", "RSI", "RDX", "RCX"]
         [64, 64, 64, 64]))

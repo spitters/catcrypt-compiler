@@ -202,9 +202,6 @@ def cmdCT (cmd : LowCT) (lt : LevelTable) (leafCT : LeafCTTable) : Bool :=
           leafCT innerF && lt cloneVar == .Public && lt oldDest.locVar == .Public &&
             lt dest.locVar == .Public &&
             args.all (fun a => lt a.locVar == .Public)
-      | .RAsmOp _ dests args          =>
-          dests.all (fun d => lt d.locVar == .Public) &&
-            args.all (fun a => lt a.locVar == .Public)
       | .RSelect dst _ src0 src1      =>
           lt dst.locVar == .Public && lt src0.locVar == .Public &&
             lt src1.locVar == .Public
@@ -217,11 +214,7 @@ def cmdCT (cmd : LowCT) (lt : LevelTable) (leafCT : LeafCTTable) : Bool :=
       | .RArrLoad dst src idxVar      =>
           lt idxVar == .Public && lt dst.locVar == .Public &&
             lt src.locVar == .Public
-      | .RTupleStore dst _ src        =>
-          lt dst.locVar == .Public && lt src.locVar == .Public
       | .RTupleLoad dst src _         =>
-          lt dst.locVar == .Public && lt src.locVar == .Public
-      | .RBytesSlice dst src _ _      =>
           lt dst.locVar == .Public && lt src.locVar == .Public
       | .RArrLoadLit dst src _        =>
           lt dst.locVar == .Public && lt src.locVar == .Public
@@ -347,12 +340,6 @@ These `@[simp]` equations reproduce the old open-match RHS verbatim, each by
           lt dest.locVar == .Public &&
           args.all (fun a => lt a.locVar == .Public)) := rfl
 
-@[simp] theorem cmdCT_RAsmOp (op : String) (dests args : List Located)
-    (lt : LevelTable) (leafCT : LeafCTTable) :
-    cmdCT (.RAsmOp op dests args) lt leafCT
-      = (dests.all (fun d => lt d.locVar == .Public) &&
-          args.all (fun a => lt a.locVar == .Public)) := rfl
-
 @[simp] theorem cmdCT_RSelect (dst : Located) (sel : String) (src0 src1 : Located)
     (lt : LevelTable) (leafCT : LeafCTTable) :
     cmdCT (.RSelect dst sel src0 src1) lt leafCT
@@ -380,19 +367,9 @@ These `@[simp]` equations reproduce the old open-match RHS verbatim, each by
       = (lt idxVar == .Public && lt dst.locVar == .Public &&
           lt src.locVar == .Public) := rfl
 
-@[simp] theorem cmdCT_RTupleStore (dst : Located) (i : Nat) (src : Located)
-    (lt : LevelTable) (leafCT : LeafCTTable) :
-    cmdCT (.RTupleStore dst i src) lt leafCT
-      = (lt dst.locVar == .Public && lt src.locVar == .Public) := rfl
-
 @[simp] theorem cmdCT_RTupleLoad (dst src : Located) (i : Nat)
     (lt : LevelTable) (leafCT : LeafCTTable) :
     cmdCT (.RTupleLoad dst src i) lt leafCT
-      = (lt dst.locVar == .Public && lt src.locVar == .Public) := rfl
-
-@[simp] theorem cmdCT_RBytesSlice (dst src : Located) (start len : Nat)
-    (lt : LevelTable) (leafCT : LeafCTTable) :
-    cmdCT (.RBytesSlice dst src start len) lt leafCT
       = (lt dst.locVar == .Public && lt src.locVar == .Public) := rfl
 
 @[simp] theorem cmdCT_RArrLoadLit (dst src : Located) (i : Nat)
@@ -746,8 +723,8 @@ def CMOVInvariant : LowCT → Prop
 /-! ### §4.3  Helper lemmas for hard cases
 
 For cases involving inter-procedural calls and memory aliasing (RCall,
-RCallSwap, RCloneCall, RArrLoad, RArrStore, RSelect, RTupleStore,
-RTupleLoad, RBytesSlice, RLimbStore), the Public-equivalence preservation
+RCallSwap, RCloneCall, RArrLoad, RArrStore, RSelect,
+RTupleLoad, RLimbStore), the Public-equivalence preservation
 requires reasoning about both `locatedLookup` and the per-oracle
 specification's behaviour on Public-equivalent inputs.  We state each as
 a separate lemma so the main induction stays manageable. -/
@@ -769,6 +746,36 @@ private lemma args_filterMap_eq
     have hT : rs1.rsTower a.locVar = rs2.rsTower a.locVar :=
       hEq.tower_eq hHeadP
     simp [List.filterMap_cons, hT, ih hTail]
+
+/-- The destination fold of an N-output call preserves `PublicEquiv` when every
+    destination slot is Public-classified.  Each destination's old value is read
+    from a Public slot, so it agrees on the two states, and the argument list is
+    the same on both sides, so the leaf oracle returns the same value at every
+    index. -/
+private lemma callNUpdate_PublicEquiv
+    {leafSpec : LeafSpec} {lt : LevelTable} {f : String}
+    {argTs : List TowerType} {argList : List (Σ t : TowerType, RustVal t)} :
+    ∀ (dests : List Located) (i : Nat) {rs1 rs2 : RustState},
+      PublicEquiv lt rs1 rs2 →
+      dests.all (fun d => lt d.locVar == .Public) = true →
+      PublicEquiv lt (callNUpdate leafSpec f argTs argList i dests rs1)
+        (callNUpdate leafSpec f argTs argList i dests rs2) := by
+  intro dests
+  induction dests with
+  | nil => intro _ _ _ hEq _; exact hEq
+  | cons d rest ih =>
+    intro i rs1 rs2 hEq hDests
+    simp only [List.all_cons, Bool.and_eq_true] at hDests
+    obtain ⟨hHead, hTail⟩ := hDests
+    have hHeadP : lt d.locVar = .Public := level_beq_public_iff.mp hHead
+    have hLookEq : locatedLookup rs1 d = locatedLookup rs2 d :=
+      hEq.locatedLookup_eq hHeadP
+    show PublicEquiv lt
+      (callNUpdate leafSpec f argTs argList (i + 1) rest (locatedUpdate rs1 d _))
+      (callNUpdate leafSpec f argTs argList (i + 1) rest (locatedUpdate rs2 d _))
+    refine ih (i + 1) ?_ hTail
+    rw [hLookEq]
+    exact hEq.set_tower_same d.locVar _
 
 /-- `RCall` preserves `PublicEquiv` given the per-leaf CT assumption and
     that both `dest` and every `arg` are Public-classified slots.  The
@@ -1273,50 +1280,6 @@ lemma RLimbStoreExpr_CT_step
         ⟨loc.locDst,
          leafSpec.limbStore loc oldV1 idx (BitVec.ofNat 64 (e.evalState rs2))⟩
 
-/-- `RTupleStore`: needs both dst and src Public. -/
-lemma RTupleStore_CT_step
-    {leafSpec : LeafSpec} {lt : LevelTable}
-    {N : Nat} {dst : Located} {idx : Nat} {src : Located}
-    (hCTdst : lt dst.locVar = .Public)
-    (hCTsrc : lt src.locVar = .Public)
-    {rs1 rs2 rs1' rs2' : RustState}
-    (hEq : PublicEquiv lt rs1 rs2)
-    (hExec1 : RustExec N leafSpec (.RTupleStore dst idx src) rs1 rs1')
-    (hExec2 : RustExec N leafSpec (.RTupleStore dst idx src) rs2 rs2') :
-    PublicEquiv lt rs1' rs2' := by
-  cases hExec1 with
-  | tupleStore _ _ _ _ oldV1 srcV1 hLookupDst1 hLookupSrc1 =>
-    cases hExec2 with
-    | tupleStore _ _ _ _ oldV2 srcV2 hLookupDst2 hLookupSrc2 =>
-      have hTdst : rs1.rsTower dst.locVar = rs2.rsTower dst.locVar :=
-        hEq.tower_eq hCTdst
-      have hTsrc : rs1.rsTower src.locVar = rs2.rsTower src.locVar :=
-        hEq.tower_eq hCTsrc
-      have hOldV : oldV1 = oldV2 := by
-        unfold locatedLookup at hLookupDst1 hLookupDst2
-        rw [hTdst] at hLookupDst1
-        rcases h2 : rs2.rsTower dst.locVar with _ | ⟨t', v'⟩
-        · rw [h2] at hLookupDst1; cases hLookupDst1
-        · rw [h2] at hLookupDst1 hLookupDst2
-          by_cases hT : t' = dst.locDst
-          · simp [hT] at hLookupDst1 hLookupDst2
-            rw [← hLookupDst1, ← hLookupDst2]
-          · simp [hT] at hLookupDst1
-      have hSrcV : (⟨src.locDst, srcV1⟩ : Σ t, RustVal t) = ⟨src.locDst, srcV2⟩ := by
-        unfold locatedLookup at hLookupSrc1 hLookupSrc2
-        rw [hTsrc] at hLookupSrc1
-        rcases h2 : rs2.rsTower src.locVar with _ | ⟨t', v'⟩
-        · rw [h2] at hLookupSrc1; cases hLookupSrc1
-        · rw [h2] at hLookupSrc1 hLookupSrc2
-          by_cases hT : t' = src.locDst
-          · simp [hT] at hLookupSrc1 hLookupSrc2
-            rw [← hLookupSrc1, ← hLookupSrc2]
-          · simp [hT] at hLookupSrc1
-      subst hOldV
-      rw [hSrcV]
-      exact hEq.set_tower_same dst.locVar
-        ⟨dst.locDst, leafSpec.tupleStore dst oldV1 idx ⟨src.locDst, srcV2⟩⟩
-
 /-- `RTupleLoad`: needs both dst and src Public. -/
 lemma RTupleLoad_CT_step
     {leafSpec : LeafSpec} {lt : LevelTable}
@@ -1360,50 +1323,6 @@ lemma RTupleLoad_CT_step
       rw [hSrcV]
       exact hEq.set_tower_same dst.locVar
         ⟨dst.locDst, leafSpec.tupleLoad dst oldV1 ⟨src.locDst, srcV2⟩ idx⟩
-
-/-- `RBytesSlice`: byte-range copy.  Needs dst and src Public. -/
-lemma RBytesSlice_CT_step
-    {leafSpec : LeafSpec} {lt : LevelTable}
-    {N : Nat} {dst src : Located} {start len : Nat}
-    (hCTdst : lt dst.locVar = .Public)
-    (hCTsrc : lt src.locVar = .Public)
-    {rs1 rs2 rs1' rs2' : RustState}
-    (hEq : PublicEquiv lt rs1 rs2)
-    (hExec1 : RustExec N leafSpec (.RBytesSlice dst src start len) rs1 rs1')
-    (hExec2 : RustExec N leafSpec (.RBytesSlice dst src start len) rs2 rs2') :
-    PublicEquiv lt rs1' rs2' := by
-  cases hExec1 with
-  | bytesSlice _ _ _ _ _ oldV1 srcV1 hLookupDst1 hLookupSrc1 =>
-    cases hExec2 with
-    | bytesSlice _ _ _ _ _ oldV2 srcV2 hLookupDst2 hLookupSrc2 =>
-      have hTdst : rs1.rsTower dst.locVar = rs2.rsTower dst.locVar :=
-        hEq.tower_eq hCTdst
-      have hTsrc : rs1.rsTower src.locVar = rs2.rsTower src.locVar :=
-        hEq.tower_eq hCTsrc
-      have hOldV : oldV1 = oldV2 := by
-        unfold locatedLookup at hLookupDst1 hLookupDst2
-        rw [hTdst] at hLookupDst1
-        rcases h2 : rs2.rsTower dst.locVar with _ | ⟨t', v'⟩
-        · rw [h2] at hLookupDst1; cases hLookupDst1
-        · rw [h2] at hLookupDst1 hLookupDst2
-          by_cases hT : t' = dst.locDst
-          · simp [hT] at hLookupDst1 hLookupDst2
-            rw [← hLookupDst1, ← hLookupDst2]
-          · simp [hT] at hLookupDst1
-      have hSrcV : (⟨src.locDst, srcV1⟩ : Σ t, RustVal t) = ⟨src.locDst, srcV2⟩ := by
-        unfold locatedLookup at hLookupSrc1 hLookupSrc2
-        rw [hTsrc] at hLookupSrc1
-        rcases h2 : rs2.rsTower src.locVar with _ | ⟨t', v'⟩
-        · rw [h2] at hLookupSrc1; cases hLookupSrc1
-        · rw [h2] at hLookupSrc1 hLookupSrc2
-          by_cases hT : t' = src.locDst
-          · simp [hT] at hLookupSrc1 hLookupSrc2
-            rw [← hLookupSrc1, ← hLookupSrc2]
-          · simp [hT] at hLookupSrc1
-      subst hOldV
-      rw [hSrcV]
-      exact hEq.set_tower_same dst.locVar
-        ⟨dst.locDst, leafSpec.bytesSlice dst oldV1 ⟨src.locDst, srcV2⟩ start len⟩
 
 /-! ### §4.4  Main soundness theorem -/
 
@@ -1632,13 +1551,17 @@ theorem cmdCT_sound
           (leafSpec.limbStore loc oldDestV idx (BitVec.ofNat 64 (e.evalState rs)))) :=
       RustExec.limbStoreExpr loc idx e rs oldDestV hLookup
     exact RLimbStoreExpr_CT_step (lt := lt) hCTloc hCTe hEq hExec1' hExec2
-  | asmOp name dests args rs =>
-    -- Identity stub semantics: rs1' = rs and rs2' = rs2.
-    cases hExec2
-    exact hEq
-  | callN f dests args rs =>
-    cases hExec2
-    exact hEq
+  | callN f dests args rs argList hArgList _ _ =>
+    have hCTdests : dests.all (fun d => lt d.locVar == .Public) = true := by
+      simp only [cmdCT_RCallN, Bool.and_eq_true] at hCT; exact hCT.1.2
+    have hCTargs : args.all (fun a => lt a.locVar == .Public) = true := by
+      simp only [cmdCT_RCallN, Bool.and_eq_true] at hCT; exact hCT.2
+    cases hExec2 with
+    | callN _ _ _ _ argList2 hArgList2 _ _ =>
+      have hArgListEq : argList = argList2 := by
+        rw [hArgList, hArgList2]; exact args_filterMap_eq hEq hCTargs
+      subst hArgListEq
+      exact callNUpdate_PublicEquiv dests 0 hEq hCTdests
   | callDstThreaded f dst args rs oldDestV argList hLookup hArgList hArgTypes =>
     -- Dispatch to RCallDstThreaded_CT_step helper (mirrors `call`).
     have hCTf : leafCT f = true := by
@@ -1696,27 +1619,6 @@ theorem cmdCT_sound
     cases hExec2 with
     | block _ _ _ hBody2 =>
       exact ih hCTb hCMOVb _ _ hEq hBody2
-  | fnDef name params returns body cont rs rs' hCont ihCont =>
-    have hCTcont : cmdCT cont lt leafCT = true := by
-      simp only [cmdCT_RFnDef, Bool.and_eq_true] at hCT; exact hCT.2
-    have hCMOVcont : CMOVInvariant cont := hCMOV.2
-    cases hExec2 with
-    | fnDef _ _ _ _ _ _ _ hCont2 =>
-      exact ihCont hCTcont hCMOVcont _ _ hEq hCont2
-  | fnCall f dests args rs =>
-    cases hExec2
-    exact hEq
-  | tupleStore dst idx src rs oldV srcV hLookupDst hLookupSrc =>
-    have hCTdst : lt dst.locVar = .Public := by
-      simp only [cmdCT_RTupleStore, Bool.and_eq_true] at hCT
-      exact level_beq_public_iff.mp hCT.1
-    have hCTsrc : lt src.locVar = .Public := by
-      simp only [cmdCT_RTupleStore, Bool.and_eq_true] at hCT
-      exact level_beq_public_iff.mp hCT.2
-    have hExec1' : RustExec N leafSpec (.RTupleStore dst idx src) rs
-        (locatedUpdate rs dst (leafSpec.tupleStore dst oldV idx ⟨src.locDst, srcV⟩)) :=
-      RustExec.tupleStore dst idx src rs oldV srcV hLookupDst hLookupSrc
-    exact RTupleStore_CT_step (lt := lt) hCTdst hCTsrc hEq hExec1' hExec2
   | tupleLoad dst src idx rs oldV srcV hLookupDst hLookupSrc =>
     have hCTdst : lt dst.locVar = .Public := by
       simp only [cmdCT_RTupleLoad, Bool.and_eq_true] at hCT
@@ -1846,19 +1748,6 @@ theorem cmdCT_sound
         SExpr.eval_eq_of_isPublic hEq e hPub
       rw [hEval]
       exact hEq.set_scalar_same x _
-  | bytesSlice dst src start len rs oldV srcV hLookupDst hLookupSrc =>
-    have hCTdst : lt dst.locVar = .Public := by
-      simp only [cmdCT_RBytesSlice, Bool.and_eq_true] at hCT
-      exact level_beq_public_iff.mp hCT.1
-    have hCTsrc : lt src.locVar = .Public := by
-      simp only [cmdCT_RBytesSlice, Bool.and_eq_true] at hCT
-      exact level_beq_public_iff.mp hCT.2
-    have hExec1' : RustExec N leafSpec
-                     (.RBytesSlice dst src start len) rs
-                     (locatedUpdate rs dst
-                       (leafSpec.bytesSlice dst oldV ⟨src.locDst, srcV⟩ start len)) :=
-      RustExec.bytesSlice dst src start len rs oldV srcV hLookupDst hLookupSrc
-    exact RBytesSlice_CT_step (lt := lt) hCTdst hCTsrc hEq hExec1' hExec2
 
 /-! ## §5.  Negative test: a leaky AST -/
 

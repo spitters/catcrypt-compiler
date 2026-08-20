@@ -9,7 +9,17 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Fp6Fp12MulKernel
 /-!
 # BLS12-381 Miller loop, owned x86 backend (toward `pp_map`)
 
-**Variant: RELIC-transcribed (tests-only correctness).** This owned x86 emit is
+**Variant: RELIC-transcribed (tests-only correctness).**
+
+**STRING-TEMPLATED — not verified-compiler output:** the emitted
+`bls12381_*_x86_from_lean.s` is assembled as literal asm-line text
+(`framedDriver`/`renderLeafFn` join `movq`/`leaq`/`call` string literals), with
+no `Com`/`Lprog` IR and no verified printer, so no theorem relates the emitted
+bytes to a source; the byte-identity to RELIC below is the only corroboration.
+See `bench/framework/AUDIT_EMIT_BYPASS.md` and `EMIT_PROVENANCE.md`
+§"Which emit is verified?".
+
+This owned x86 emit is
 hand-transcribed from the RELIC pairing reference and gated **byte-identical to
 RELIC**. RELIC is unverified C, so that byte-identity is a **test**, not a
 correctness proof. The verified-correctness BLS variant — owned emit whose
@@ -70,7 +80,7 @@ sparse pattern the M-type `fp12_mul_dxs` reads (`relic_fp12_mul.c`,
 `l[one][one]=J → l00`, `l[zero][zero]=B·yₚ → l11` (the M-type `one=0, zero=1`
 swap sends `J` to `l00` and `B·yₚ` to `l11`).
 
-## Honest scope
+## Scope
 
 Same trust boundary as the committed tower: the `Fp` add/sub/mul leaves are the
 verified word kernels; everything emitted here is a **trusted SysV-ABI driver**
@@ -550,7 +560,7 @@ theorem fp6MulDxsAsm_counts :
 
 /-- `fp12_mul_dxs` carries **two `fp6_mul_dxs` calls** (the sparse `t0`, `c₁`
     products), one `fp6_mul_art` (the `v·t1` fold), and the `fp2_mul_nor` of the
-    `a₁`-half — the genuine M-type sparse dodecic schedule. -/
+    `a₁`-half — the M-type sparse dodecic schedule. -/
 theorem fp12MulDxsAsm_counts :
     countSub fp12MulDxsAsm "callq bls12381_fp6_mul_dxs_x86_from_lean" = 2
       ∧ countSub fp12MulDxsAsm "callq bls12381_fp6_mul_art_x86_from_lean" = 1

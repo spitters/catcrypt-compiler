@@ -7,6 +7,7 @@ import CatCrypt.Crypto.SecureCompilation.MlkemNttFieldEmit
 import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # Byte-correct 4-term dot product over `F_q` (`q = 3329`), FRONT-COMPILED, OWNED x86
@@ -285,7 +286,7 @@ def dotQLprog : Lprog :=
 
 /-- The owned AT&T `.s` text for `dot_q3329`, rendered straight from the owned
     `Lprog` (no jasminc). -/
-def dotQAsm : String := renderLprogAtt dotQLprog
+def dotQAsm : String := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned dotQLprog
 
 /-- The output path for the field-kernel-emitted `.s`. -/
 def dotQTarget : System.FilePath :=

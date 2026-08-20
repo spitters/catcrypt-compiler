@@ -181,32 +181,23 @@ The rendered lines match the expected GAS RV64 RVV text for representative ops
 (the syntactic half of the trust boundary, audited against `as` mnemonic
 syntax). -/
 
-/-- `vadd.vv v2, v0, v1` ≡ packed `v2 = v0 + v1` (dst first, `vs2` then `vs1`). -/
-example :
-    renderVInst [("d","v2"),("a","v0"),("b","v1")] (.vadd "d" "a" "b")
-      = "\tvadd.vv v2, v0, v1" := by native_decide
-
-/-- `vxor.vv v2, v0, v1` ≡ packed `v2 = v0 ^ v1`. -/
-example :
-    renderVInst [("d","v2"),("a","v0"),("b","v1")] (.vxor "d" "a" "b")
-      = "\tvxor.vv v2, v0, v1" := by native_decide
-
-/-- `vsll.vi v2, v0, 16` — the rotate's left half. -/
-example :
-    renderVInst [("d","v2"),("a","v0")] (.vsll "d" "a" 16)
-      = "\tvsll.vi v2, v0, 16" := by native_decide
-
-/-- `vsrl.vi v2, v0, 16` — the rotate's right half. -/
-example :
-    renderVInst [("d","v2"),("a","v0")] (.vsrl "d" "a" 16)
-      = "\tvsrl.vi v2, v0, 16" := by native_decide
-
-/-- The arg-pinned quarter-round allocates `a b c d` to `v0 v1 v2 v3` and emits
-    the first instruction as `vadd.vv v0, v0, v1` (`a += b`). -/
-example :
-    (renderVBlockBody
+-- `vadd.vv v2, v0, v1` ≡ packed `v2 = v0 + v1` (dst first, `vs2` then `vs1`).
+#guard renderVInst [("d","v2"),("a","v0"),("b","v1")] (.vadd "d" "a" "b")
+      == "\tvadd.vv v2, v0, v1"
+-- `vxor.vv v2, v0, v1` ≡ packed `v2 = v0 ^ v1`.
+#guard renderVInst [("d","v2"),("a","v0"),("b","v1")] (.vxor "d" "a" "b")
+      == "\tvxor.vv v2, v0, v1"
+-- `vsll.vi v2, v0, 16` — the rotate's left half.
+#guard renderVInst [("d","v2"),("a","v0")] (.vsll "d" "a" 16)
+      == "\tvsll.vi v2, v0, 16"
+-- `vsrl.vi v2, v0, 16` — the rotate's right half.
+#guard renderVInst [("d","v2"),("a","v0")] (.vsrl "d" "a" 16)
+      == "\tvsrl.vi v2, v0, 16"
+-- The arg-pinned quarter-round allocates `a b c d` to `v0 v1 v2 v3` and emits
+-- the first instruction as `vadd.vv v0, v0, v1` (`a += b`).
+#guard (renderVBlockBody
       (allocV ["a","b","c","d"] (lowerVBlock (qrBlk "q" "a" "b" "c" "d")))
       (lowerVBlock (qrBlk "q" "a" "b" "c" "d"))).head?
-      = some "\tvadd.vv v0, v0, v1" := by native_decide
+      == some "\tvadd.vv v0, v0, v1"
 
 end CatCrypt.Crypto.SecureCompilation.RISCVBackend.Rvv

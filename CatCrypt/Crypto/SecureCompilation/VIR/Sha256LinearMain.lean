@@ -9,6 +9,7 @@ import CatCrypt.Crypto.SecureCompilation.VIR.Sha2Emit
 import CatCrypt.Crypto.SecureCompilation.VIR.Sha2RotateSelect
 import CatCrypt.Crypto.SecureCompilation.VIR.AesBitsliceEmit
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
 import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElf
 
@@ -89,7 +90,7 @@ def emitOne {w : Nat} (com : Com jasminDialect (inCtxt w) (Rw w))
   -- `gas` exactly like the hand-authored `*_x86_from_lean.s` kernels.
   let base := outPath.toString.dropRight 9   -- strip ".lprogbin"
   let ownedPath : System.FilePath := base ++ "_x86_from_lean.s"
-  let asm := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter.renderLprogAtt lp
+  let asm := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned lp
   let t0 ← IO.monoNanosNow
   IO.FS.writeFile ownedPath asm
   let t1 ← IO.monoNanosNow
@@ -152,7 +153,7 @@ def emitRorS {w : Nat} (com : Com jasminDialect (inCtxt w) (Rw w))
   IO.println s!"{fnName}: OWNED native-ROR emit (Com -> ABI Lprog -> AT&T .s) [compiled]"
   let lp : Lprog :=
     Com.toLprogPhysAbi com fnName (fun _ => none) immSlots inLoad outStore
-  let asm := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter.renderLprogAtt lp
+  let asm := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned lp
   IO.FS.writeFile outS (asm ++ "\n")
   IO.println s!"OWNED emit OK : {outS} ({asm.toUTF8.size} bytes, symbol {fnName})"
   return 0
@@ -171,7 +172,7 @@ def emitResidentS {w : Nat} (com : Com jasminDialect (inCtxt w) (Rw w))
   IO.println s!"{fnName}: OWNED resident emit (Com -> ABI Lprog -> AT&T .s) [compiled]"
   let lp : Lprog :=
     Com.toLprogPhysAbi com fnName (fun _ => none) immSlots inLoad outStore
-  let asm := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter.renderLprogAtt lp
+  let asm := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned lp
   IO.FS.writeFile outS (asm ++ "\n")
   IO.println s!"OWNED emit OK : {outS} ({asm.toUTF8.size} bytes, symbol {fnName})"
   return 0

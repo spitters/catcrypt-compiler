@@ -14,10 +14,12 @@ The SHA-256 round-function bodies expressed on a single 32-bit dword lane
 with their bit-exact ties to the abstract `UInt32` FIPS-180-4 spec
 (`Crypto.Primitives.SHA256`).
 
-These are **pure `BitVec 32` ↔ `UInt32` facts** — independent of any register-file
-or instruction-set model — so they live in a module that imports only the
-abstract spec. Consumers that need "the dword lane SHA-256 body equals the
-spec" depend on this module without pulling in any AVX-512 machine model.
+These functions and ties were previously stated inside the AVX-512 dword machine
+model (`X86Backend/Avx512DwordModel.lean` + `Sha256DwordRoundRealization.lean`).
+They are **pure `BitVec 32` ↔ `UInt32` facts** — independent of any register-file
+or instruction-set model — so they live here, importing only the abstract spec.
+Consumers that need "the dword lane SHA-256 body equals the spec" depend on this
+module without pulling in the AVX-512 model.
 
 The lane is already 32-bit, so every tie is **bit-exact** (no `setWidth 32`
 truncation): on a 32-bit lane the right rotate `rorD` wraps mod 32 — the

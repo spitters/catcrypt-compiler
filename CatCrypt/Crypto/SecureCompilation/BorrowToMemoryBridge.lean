@@ -13,70 +13,67 @@ import CatCrypt.Crypto.Jasmin.Hoare
 set_option autoImplicit false
 
 /-!
-# Compositional bridge: borrow check ↔ bedrock-style memory model
+# Track B2 — Compositional bridge: borrow check ↔ bedrock memory model
 
-This file states, and partially proves, the compositional theorem that ties three
-already-proved layers together:
+This file states (and partially proves) the compositional theorem that
+ties the three already-Qed layers together:
 
-1. `LowCTBorrowCheck.lean` — high-level `borrowOk` / `destsOf` / `seqFrame`.
-2. `PointerBorrow.lean`    — middle bridge: `isPointerSafe`, `MemBasesIn`,
-                             `disjointObligations_distinct`.
-3. `MemoryModel.lean`      — low-level `Mem`, `Disjoint`, `array64`,
-                             `array64_storeByte_disjoint`.
+1. `LowCTBorrowCheck.lean`  — high-level `borrowOk`/`destsOf`/`seqFrame`.
+2. `PointerBorrow.lean`       — middle bridge: `isPointerSafe`, `MemBasesIn`,
+                                  `disjointObligations_distinct`.
+3. `MemoryModel.lean`         — low-level `Mem`, `Disjoint`, `array64`,
+                                  `array64_storeByte_disjoint`.
 
-plus the Hoare skeleton in `Hoare.lean`, which supplies `JasminMemState`,
-`StepRel`, `RespectsFootprint`, and `frame_array64`.
+Plus the Hoare-skeleton in `Hoare.lean` that already supplies
+`JasminMemState`, `StepRel`, `RespectsFootprint`, and `frame_array64`.
 
 ## Bridge theorem (informal)
 
-> If a `LowCT` `c` satisfies `borrowOk c` (no aliasing at every call site), then
-> any execution through a `RespectsFootprint`-respecting step relation preserves
-> every `array64` invariant on a region disjoint from the body's write footprint.
-> (Pointer safety of the lowering — `isPointerSafe` on the enclosing `FunDecl` —
-> is the intended source-side side condition, but the formal theorem does not
-> take it as a hypothesis; it consumes the footprint disjointness directly.)
+> If a `LowCT` `c` satisfies `borrowOk c` (no aliasing at every call
+> site) and its lowered Jasmin program `toJasminCmd c` satisfies
+> `isPointerSafe` (every memory base is a parameter), then any execution
+> through any `RespectsFootprint`-respecting step relation preserves
+> every `array64` invariant on a region disjoint from the body's write
+> footprint.
 
-`disjointObligations_distinct` guarantees the obligations the caller sees are
-between syntactically distinct names (no `Disjoint A A` self-pairs). The
-variable-level `seqFrame` shows the register state of every non-destination input
-is preserved. Composing these with `frame_array64` from `Hoare.lean` yields the
-memory invariant.
+The middle layer's `disjointObligations_distinct` guarantees the
+obligations the caller sees are syntactically between distinct names
+(no `Disjoint A A` self-pairs). The variable-level `seqFrame` shows the
+register state of every non-destination input is preserved. Composing
+these with `frame_array64` from `Hoare.lean` yields the full memory
+invariant.
 
-## What is proved, and what is assumed
+## Status
 
-- `borrowOk_implies_memory_invariants_preserved` elaborates against the existing
-  types and its framing-level statement is proved, as are the structural cases
-  (`RSkip`, `RSeq` of two preserved bodies).
-- Proved sub-lemmas: `borrowOk_seqFrame_corollary` (variable-level corollary of
-  `seqFrame`), `pointerSafe_disjointObligations_irreflexive` (wrap of
-  `disjointObligations_distinct`), and `array64_preserved_by_disjoint_step` (the
-  `array64` frame closure against `RespectsFootprint`).
-- The operational arms (`RCall`, `RIfNz`, `RWhileNz`, `RCloneCall`, `RLimbStore`)
-  are in **hypothesis-discharge form**: each takes its structural footprint shape
-  (union for `RIfNz`, fixed point for `RWhileNz`, inner-call equivalence for
-  `RCloneCall`) as a hypothesis and discharges the disjointness from it. The file
-  contains no `sorry`, but it does not derive those hypotheses either.
-- `bridge_smoke_RCall_fp_add` instantiates the theorem on a single
-  `RCall "fp_add" out [x, y]` program with `borrowOk = true`, exercising the
-  statement shape; its operational premise is taken as a hypothesis.
+- **Statement**: `borrowOk_implies_memory_invariants_preserved` is
+  type-correct and elaborates against the existing types.
+- **Structural-trivial cases**: `RSkip`, `RSeq` of two preserved bodies.
+- **Sub-lemmas Qed**:
+    * `borrowOk_seqFrame_corollary` — variable-level corollary of
+      `seqFrame` packaged for downstream use.
+    * `pointerSafe_disjointObligations_irreflexive` — wrap of
+      `disjointObligations_distinct`.
+    * `array64_preserved_by_disjoint_step` — the array64 frame closure
+      against `RespectsFootprint`.
+- **Hypothesis-discharge form** (no `sorry`): the operational arms
+  (`RCall`, `RIfNz`, `RWhileNz`, `RCloneCall`, `RLimbStore`) take
+  the structural footprint shape (union for `RIfNz`, fixed-point for
+  `RWhileNz`, inner-call equivalence for `RCloneCall`) as a
+  hypothesis and discharge the disjointness directly. B4 will
+  supply each `h_union` / `h_loop` / `h_clone` via the operational
+  rules.
+- **Smoke test**: `bridge_smoke_RCall_fp_add` instantiates the
+  theorem on a single `RCall "fp_add" out [x, y]` program with
+  `borrowOk = true`, exercising the statement shape.
 
-## Known gaps
+## Documented follow-ups
 
-- `jasminSem` has no `Mem` extension, so there is no operational glue linking
-  `RustExec` / `jasminSem` to a concrete `step`. `StepSimulatesJasmin` is a
-  placeholder: its body concludes `True`, so it constrains nothing. A constructive
-  simulation witness must replace it before the operational arms carry content.
-- `WriteFootprint` is an opaque `List InstrR → AddrSet` parameter. A concrete
-  footprint function (for example `bignumStaticFootprint`) is what would let the
-  per-`InstrR` arms unfold — in particular the `STORE64` byte range
-  `[loc.base + 8·idx, loc.base + 8·idx + 8)`, which `footprint_RLimbStore_disjoint`
-  currently only restates rather than derives.
-- `BignumHoare`'s `Pload` / `Lmem` per-instruction frame proofs
-  (`MemoryModel.Mem.loadByte_storeByte_other`) are not yet composed with
-  `array64_preserved_by_disjoint_step` to give a body-level frame.
-- `BorrowToMemoryBridgeRustState.lean` carries the follow-up that connects this
-  bridge to the strengthened `RustStateInterp`, so that the memory frame becomes
-  the rightmost arrow of the `RustExec → jasminSem → step` simulation chain.
+- **B2.1**: close the per-`InstrR`-shape cases (mostly mechanical
+  induction once the operational rules in B4 are merged).
+- **B2.2**: connect to `BignumHoare`'s memory-frame theorems where
+  they apply (the `Pload`/`Lmem` arm).
+- **B2.3**: integrate with the strengthened `RustStateInterp` from B1
+  so the bridge becomes part of the full simulation chain.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.BorrowToMemoryBridge
@@ -185,31 +182,28 @@ It concludes that every region's `array64` survives the step.
 
 Importantly, the **operational** glue (linking `RustExec` /
 `jasminSem` to `step`) is currently wrapped in a per-arm hypothesis
-`StepSimulatesJasmin` because the operational semantics that
-ties `Mem` into `jasminSem` is future work. Once the operational
-`Mem`-extension of `jasminSem` lands, that hypothesis discharges
-automatically, and the per-arm cases specialise without changing
-the statement. -/
+`step_simulates_jasmin` because the operational semantics that
+ties `Mem` into `jasminSem` is scheduled for B4. Once B4 lands,
+that hypothesis discharges automatically, and the per-arm cases
+specialise without changing the statement. -/
 
 /-- A step relation `simulates` `jasminSem` at a given fuel `N` if every
     `RustExec` derivation can be lifted to a `step` derivation on
-    the corresponding `JasminMemState`. The lift is the operational
-    `Mem`-extension of `jasminSem`. For the structural cases
-    (skip / seq) the simulation is purely propagation, hence trivially
-    provable below. -/
+    the corresponding `JasminMemState`. The lift is the `B4` glue.
+    For the structural cases (skip / seq) the simulation is purely
+    propagation, hence trivially provable below. -/
 def StepSimulatesJasmin
     (step : StepRel) (leafSpec : LeafSpec) : Prop :=
   ∀ (N : Nat) (c : LowCT) (rs rs' : RustState) (mem mem' : Mem),
     RustExec N leafSpec c rs rs' →
-    -- Hypothesis: the chosen `step` lifts the `RustExec`.
-    -- For now this is the bridge's interface; the witness
-    -- comes from the operational `Mem`-extension of `jasminSem`.
+    -- B4 hypothesis: the chosen `step` lifts the `RustExec`.
+    -- For now this is the bridge's interface; in B4 the witness
+    -- comes from `jasminSem` extended with `Mem`.
     step (toJasminCmd c)
          { regs := rs,  mem := mem }
          { regs := rs', mem := mem' } →
-    True   -- placeholder discharger; a constructive simulation witness
-           -- from the operational `Mem`-extension of `jasminSem` will
-           -- replace this.
+    True   -- placeholder discharger; the real B4 closure will
+           -- replace this with a constructive simulation witness.
 
 /-- Skip is trivially simulated. -/
 theorem step_simulates_RSkip
@@ -294,8 +288,8 @@ Below we give one statement per constructor; each one is the natural
 factor in the per-arm decomposition. The trivial structural cases
 (`RSkip`, `RSeq`, `RLetZero`, `RLetU64Zero`, `RScalarSet`) close;
 the operational cases (`RIfNz`, `RWhileNz`, `RCall`, `RCloneCall`,
-`RLimbStore`) are stubbed because they need the operational
-`Mem`-extension of `jasminSem`. -/
+`RLimbStore`) are stubbed because they need the B4 operational
+extension of `step` over `Mem`. -/
 
 /-- The body's footprint of `RSkip` is empty, so it is disjoint from
     every region. -/
@@ -375,9 +369,8 @@ theorem footprint_RLetU64Zero_disjoint
 
 Each of these needs the operational rule for the corresponding Jasmin
 shape: `Cif` (`RIfNz`), `Cwhile` (`RWhileNz`), `Ccall` (`RCall`,
-`RCloneCall`), and the `Oasm "STORE64"` `Copn` (`RLimbStore`). The
-operational `Mem`-extension of `jasminSem` will discharge each of
-the structural shape hypotheses
+`RCloneCall`), and the `Oasm "STORE64"` `Copn` (`RLimbStore`). B4
+will discharge each of the structural shape hypotheses
 (`h_union`, `h_loop`, `h_clone`, `h_dest_disj`) directly from the
 operational rules; here we discharge the disjointness consequence
 modulo those hypotheses. -/
@@ -399,10 +392,10 @@ theorem footprint_RCall_disjoint
 
 /-- `RIfNz e ct cf` write footprint is the union of the two branches;
     the disjointness reduces to `ct` and `cf` separately. The
-    union-shape (`h_union`) is the structural property that the
-    operational `Mem`-extension of `jasminSem` will discharge for
-    `Cif`; the framing-level lemma takes it as a hypothesis and closes
-    the disjointness, mirroring `footprint_RSeq_disjoint`. -/
+    union-shape (`h_union`) is the structural property that B4 will
+    discharge for `Cif`; the framing-level lemma takes it as a
+    hypothesis and closes the disjointness, mirroring
+    `footprint_RSeq_disjoint`. -/
 theorem footprint_RIfNz_disjoint
     (footprint : WriteFootprint) (e : String) (ct cf : LowCT)
     (h_union : ∀ a, footprint (toJasminCmd (.RIfNz e ct cf)) a ↔
@@ -422,10 +415,9 @@ theorem footprint_RIfNz_disjoint
 
 /-- `RWhileNz e body` write footprint is `body`'s footprint (the loop
     closes over the same writable variables). The fixed-point shape
-    (`h_loop`) is the structural property that the operational
-    `Mem`-extension of `jasminSem` will discharge for `Cwhile`; here
-    we take it as a hypothesis and discharge the disjointness
-    directly. -/
+    (`h_loop`) is the structural property that B4 will discharge for
+    `Cwhile`; here we take it as a hypothesis and discharge the
+    disjointness directly. -/
 theorem footprint_RWhileNz_disjoint
     (footprint : WriteFootprint) (e : String) (body : LowCT)
     (h_loop : ∀ a, footprint (toJasminCmd (.RWhileNz e body)) a ↔
@@ -441,10 +433,9 @@ theorem footprint_RWhileNz_disjoint
 /-- `RCloneCall` copies a tower slot then dispatches an inner call;
     its memory footprint coincides with the inner-call footprint
     (clone writes only to a fresh local register `cloneVar`, never
-    memory). The shape (`h_clone`) is the structural property the
-    operational `Mem`-extension of `jasminSem` will discharge for
-    `CLONE_TOWER`; here we take it as a hypothesis and reduce to the
-    inner-call disjointness. -/
+    memory). The shape (`h_clone`) is the structural property B4
+    will discharge for `CLONE_TOWER`; here we take it as a hypothesis
+    and reduce to the inner-call disjointness. -/
 theorem footprint_RCloneCall_disjoint
     (footprint : WriteFootprint)
     (cloneVar : String) (cloneTy : TowerType) (oldDest : Located)
@@ -463,14 +454,13 @@ theorem footprint_RCloneCall_disjoint
   exact h_inner a ⟨(h_clone a).mp ha, hb⟩
 
 /-- `RLimbStore loc idx v` writes a single 64-bit word at `loc`'s
-    footprint. **Identity form**: this lemma assumes exactly the disjointness it
-    concludes. Deriving it needs a concrete `WriteFootprint` that fixes the
-    STORE64 byte range to `[loc.base + 8·idx, loc.base + 8·idx + 8)`. -/
+    footprint. **Sorry**: blocks on B4's STORE64 memory rule which
+    fixes the byte range to `[loc.base + 8·idx, loc.base + 8·idx + 8)`. -/
 theorem footprint_RLimbStore_disjoint
     (footprint : WriteFootprint)
     (loc : Located) (idx : Nat) (v : BitVec 64)
     (region : TrackedRegion) :
-    -- A concrete `WriteFootprint` would give us:
+    -- Hypothesis the B4 STORE64 rule will give us:
     -- `footprint (toJasminCmd (.RLimbStore loc idx v))`
     -- = `range (loc.base + UInt64.ofNat (8*idx)) 8`.
     MemoryModel.Disjoint (footprint (toJasminCmd (.RLimbStore loc idx v)))
@@ -480,10 +470,9 @@ theorem footprint_RLimbStore_disjoint
   intro h
   exact h
   -- The non-trivial closure is the **derivation** of this Disjoint
-  -- under STORE64's footprint shape — that awaits a concrete
-  -- `WriteFootprint`.
+  -- under STORE64's footprint shape — that is the B4 work.
 
-/-! ## §6b. Hoare-triple form of the multi-region preservation
+/-! ## §6b. B2.2 — Hoare-triple form of the multi-region preservation
 
 Compose the multi-region bridge with `BignumHoare.frame_array64`'s
 HoareTriple shape. Given a step that respects a footprint, and a list
@@ -523,8 +512,8 @@ theorem hoare_multi_region_preserved
 Instantiate the bridge on a single `RCall "fp_add" out [x, y]` with
 `borrowOk = true`, two tracked regions for the inputs and one for the
 output, all pairwise-disjoint. Exercises the statement shape; the
-operational hypothesis is taken as a hypothesis (it awaits the
-operational `Mem`-extension of `jasminSem` to handle `Ccall`).
+operational hypothesis is admitted as `sorry` (it consumes the B4
+extension of `step` to handle `Ccall`).
 -/
 
 namespace Smoke
@@ -543,9 +532,8 @@ example : borrowOk prog = true := by decide
 end Smoke
 
 /-- Smoke instance: invoking the bridge on the `fp_add` call. The
-    operational hypothesis (`step` lifts the call) is taken as a
-    hypothesis for the smoke test, pending the operational
-    `Mem`-extension of `jasminSem`. -/
+    operational hypothesis (`step` lifts the call) is `sorry` for the
+    smoke test — replacing it is the B4 task. -/
 theorem bridge_smoke_RCall_fp_add
     (step : StepRel) (footprint : WriteFootprint)
     (h_resp : RespectsFootprint step footprint)
@@ -563,5 +551,30 @@ theorem bridge_smoke_RCall_fp_add
     step footprint h_resp Smoke.prog
     (by decide)        -- borrowOk Smoke.prog = true
     regions h_pairwise h_disjoint_body s s' h_init h_step
+
+/-! ## §8. Documented follow-ups
+
+* **B2.1** — close the per-`InstrR`-shape cases. The five operational
+  arms above all reduce to: "the Jasmin lowering's footprint equals
+  the union of the constituent shapes' footprints." The current
+  blocker is that `WriteFootprint` is an opaque `List InstrR → AddrSet`
+  parameter; once B4 supplies a concrete `footprint :=
+  bignumStaticFootprint`, these unfold mechanically. Estimate ~1 day
+  per arm once that lands.
+
+* **B2.2** — bridge to `BignumHoare`. The `Pload`/`Lmem` arms there
+  ship their own per-instruction frame proofs (the
+  `MemoryModel.Mem.loadByte_storeByte_other` chain); composing those
+  with `array64_preserved_by_disjoint_step` gives a body-level frame
+  for free. Estimate ~3 days.
+
+* **B2.3** — integrate with B1's strengthened `RustStateInterp`. The
+  end-to-end simulation chain `RustExec → jasminSem → step` now exists
+  in pieces; B2 provides the memory frame on the rightmost arrow. The
+  full simulation theorem is `RustExec_preserves_array64`, obtained by
+  composing this file's bridge with B1's `bindingOK` invariant
+  preservation. Estimate ~2 days once B1 closes (currently 5 of 12
+  cases left in B1).
+-/
 
 end CatCrypt.Crypto.SecureCompilation.BorrowToMemoryBridge

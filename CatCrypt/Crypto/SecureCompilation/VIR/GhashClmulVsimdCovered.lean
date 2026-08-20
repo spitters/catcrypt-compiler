@@ -11,13 +11,15 @@ set_option autoImplicit false
 # GHASH GF(2^128) one-block multiply re-sourced through the vsimd front (whole-program denote)
 
 The GHASH `out = (y ⊕ x) ·_clmul h` block (the `VPCLMULQDQ` GF(2^128) multiply at
-the core of AES-GCM's authenticator) is sourced here from a high-level `LowCT`
-term routed through `translateDialectControlV` — the CLMUL analogue of the scalar
-`Shake256Covered` — rather than authored directly as a straight-line
-`Com jasminDialect` program that bypasses the vsimd front.
+the core of AES-GCM's authenticator) is currently hand-built on `Com jasminDialect`
+in `GHASH/BytesVsimdEmit.lean` (`ghashBlockCom`) — a straight-line eight-binding
+program authored directly as `Com`, which does NOT descend through the vsimd
+front. This module re-sources the SAME block from a high-level `LowCT` term
+routed through `translateDialectControlV`, the CLMUL analogue of the scalar
+`Shake256Covered`.
 
 The block is the four-schoolbook-`clmul`-product XOR collapse (NO modular
-reduction — exactly `ghashMulSpec` below):
+reduction — exactly the `ghashBlockSpec` the hand emit realizes):
 
 ```
 xv  = y ⊕ x;
@@ -33,9 +35,9 @@ schoolbook products are `clmul.<imm>` (decimal imm `0`/`1`/`16`/`17` = `0x00`/
 `0x01`/`0x10`/`0x11`), the whitening and collapse are `vsimd.xor`. All eight ops
 live in the `SimdOp` alphabet already carried by `translateDialectControlV`, so no
 new front constructor and no shape outside `IsCoveredV` is needed. The GHASH block
-is UNREDUCED, so no `vpsrldq`/`vpslldq` reduction shifts appear; a fully reduced
-GF(2^128) product would add those (also in the alphabet) but would no longer
-match the unreduced `ghashMulSpec`.
+is UNREDUCED (the hand emit is too), so no `vpsrldq`/`vpslldq` reduction shifts
+appear; a fully reduced GF(2^128) product would add those (also in the alphabet)
+but would no longer byte-match the hand `ghashBlockSpec`.
 
 ## What is banked
 
@@ -49,8 +51,8 @@ match the unreduced `ghashMulSpec`.
   denote of the block through the vsimd front, a one-line instantiation of the
   front-general homomorphism `translateDialectControlV_denote`.
 * `ghashMulDenote_spec` + samples — the front-emitted program denotes
-  `ghashMulSpec` (the `clmul128W`-written GF(2^128) value), plus a
-  carry-suppression KAT.
+  `ghashMulSpec` (the `clmul128W`-written GF(2^128) value, byte-identical to the
+  hand `ghashBlockSpec`), plus a carry-suppression KAT.
 
 Invoke:  `lake build CatCrypt.Crypto.SecureCompilation.VIR.GhashClmulVsimdCovered`
 -/
@@ -83,7 +85,8 @@ def ghVM : VarMap ghΓ := ((VarMap.empty.bind "h").bind "x").bind "y"
 /-- The GHASH one-block multiply `out = (y ⊕ x) ·_clmul h` (unreduced): the
     `xv = y ⊕ x` whitening, the four schoolbook `clmul` products at lane immediates
     `0x00`/`0x01`/`0x10`/`0x11` (decimal `0`/`1`/`16`/`17`), and the three-`xor`
-    collapse — authored as `RVsimdSetExpr` ops through the vsimd front. -/
+    collapse — the same body as the hand `ghashBlockCom`, authored as `RVsimdSetExpr`
+    ops through the vsimd front. -/
 def ghashMulVsimdLowCT : LowCT :=
   .RSeq (LowCT.RVsimdSetExpr "xv"  "vsimd.xor" ["y", "x"])
   (.RSeq (LowCT.RVsimdSetExpr "tLL" "clmul.0"   ["xv", "h"])
@@ -126,16 +129,17 @@ theorem ghashMulProg_isSome : ghashMulProg.isSome := by native_decide
 theorem ghashMulProg_lowers :
     (ghashMulProg.bind cryptoDialectToJasminCom).isSome := by native_decide
 
-/-! ## 4. `denote = spec`
+/-! ## 4. `denote = spec` — byte-matching the hand `ghashBlockSpec`
 
 `ghashMulSpec` is written in terms of `clmul128W` (the byte-identical PCLMULQDQ
-lane semantics): the `xv = y ⊕ x` whitening, the four schoolbook carry-less products,
-the XOR collapse, NO modular reduction. The front-emitted `.vsimd (.clmul imm)` / `.vsimd (.bitwise
+lane semantics), the SAME formula as `GHASH.BytesVsimdEmit.ghashBlockSpec` — the
+`xv = y ⊕ x` whitening, the four schoolbook carry-less products, the XOR collapse,
+NO modular reduction. The front-emitted `.vsimd (.clmul imm)` / `.vsimd (.bitwise
 .xor)` ops denote by the same `SimdOp.denote` waist as `clmul128W` / `^^^`, so the
 front-routed program computes exactly this value. -/
 
-/-- The GF(2^128) value of the GHASH block, written with `clmul128W` (the
-    byte-identical PCLMULQDQ lane semantics). -/
+/-- The GF(2^128) value of the GHASH block, written with `clmul128W` (byte-identical
+    to `GHASH.BytesVsimdEmit.ghashBlockSpec`). -/
 def ghashMulSpec (yv xv hv : BitVec 128) : BitVec 128 :=
   let w := yv ^^^ xv
   let tLL := clmul128W w hv 0

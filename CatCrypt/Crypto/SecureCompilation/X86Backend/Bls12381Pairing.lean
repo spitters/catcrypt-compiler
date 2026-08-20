@@ -8,7 +8,17 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Fp6Fp12MulKernel
 /-!
 # BLS12-381 pairing tower, squaring layer + cyclotomic squaring, owned x86 (#602/#219)
 
-**Variant: RELIC-transcribed (tests-only correctness).** This owned x86 emit is
+**Variant: RELIC-transcribed (tests-only correctness).**
+
+**STRING-TEMPLATED — not verified-compiler output:** the emitted
+`bls12381_*_x86_from_lean.s` is assembled as literal asm-line text
+(`framedDriver`/`renderLeafFn` join `movq`/`leaq`/`call` string literals), with
+no `Com`/`Lprog` IR and no verified printer, so no theorem relates the emitted
+bytes to a source; the byte-identity to RELIC below is the only corroboration.
+See `bench/framework/AUDIT_EMIT_BYPASS.md` and `EMIT_PROVENANCE.md`
+§"Which emit is verified?".
+
+This owned x86 emit is
 hand-transcribed from the RELIC pairing reference and gated **byte-identical to
 RELIC**. RELIC is unverified C, so that byte-identity is a **test**, not a
 correctness proof. The verified-correctness BLS variant — owned emit whose
@@ -44,16 +54,16 @@ so owned (basic) and RELIC (lazyr) must both equal the canonical product. This
 is exactly the byte-identical-via-canonical-bridge gate the committed mul layer
 passed.
 
-## Real `Fp`-mul call counts (the genuine tower call graph)
+## Real `Fp`-mul call counts (the tower call graph)
 
-* `fp12_sqr`     = 2 `Fp6`-muls = **108 `Fp`-muls** (= 2 × 54), the genuine
+* `fp12_sqr`     = 2 `Fp6`-muls = **108 `Fp`-muls** (= 2 × 54), the
   RELIC `fp12_sqr_basic` Karatsuba graph (not a 0–1-mul stub).
 * `fp12_sqr_cyc` = 9 `Fp2`-squarings = **27 `Fp`-muls** (each `Fp2`-sqr = 3
   `Fp`-muls); cyclotomic squaring is *much* cheaper than a generic `Fp12`
   square — that is the whole point of compressing into the cyclotomic subgroup
   for the final exponentiation.
 
-## Honest scope: the remaining gap to a fully-owned `pp_map`
+## Scope: the remaining gap to a fully-owned `pp_map`
 
 This module lands the **squaring** layer of the tower. The two remaining layers
 to a fully-owned `pp_map` are documented but **not** emitted here:
@@ -461,7 +471,7 @@ theorem fp12SqrCyc_value_pin :
 /-! ## 5. Shape checks (real tower call graph, not a stub) -/
 
 /-- **The owned `Fp12` square carries two real `Fp6`-multiply calls** (= 108
-    `Fp`-muls), the genuine RELIC `fp12_sqr_basic` Karatsuba graph (`t0·t1` and
+    `Fp`-muls), the RELIC `fp12_sqr_basic` Karatsuba graph (`t0·t1` and
     `a₀·a₁`), plus two `fp6_mul_art` (mul-by-`v`) and the `Fp6` add/sub/dbl. -/
 theorem fp12SqrAsm_two_real_fp6muls :
     countSub fp12SqrAsm "callq bls12381_fp6_mul_x86_from_lean" = 2
@@ -471,7 +481,7 @@ theorem fp12SqrAsm_two_real_fp6muls :
       ∧ hasSub fp12SqrAsm "callq bls12381_fp6_sub_x86_from_lean" := by native_decide
 
 /-- **The owned cyclotomic `Fp12` square carries nine real `Fp2`-squarings**
-    (= 27 `Fp`-muls) — the genuine Granger–Scott `fp12_sqr_cyc_basic` graph,
+    (= 27 `Fp`-muls) — the Granger–Scott `fp12_sqr_cyc_basic` graph,
     cheaper than a generic `Fp12` square (which would need 3 `Fp6`-muls) — plus
     the `Fp2` mul-by-ξ / add / sub / dbl. No `Fp6`-mul appears. -/
 theorem fp12SqrCycAsm_nine_real_fp2sqrs :

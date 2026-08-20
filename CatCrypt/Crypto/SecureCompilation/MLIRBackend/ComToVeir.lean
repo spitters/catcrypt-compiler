@@ -17,44 +17,81 @@ text emit stays as a secondary debug/interop path; this file is the
 canonical lowering, with denotation preservation proved end-to-end in
 `VeirDenote.lean`.
 
-## Framework: in-tree VIR, not the `Veir` package
+## Stage 6a — Veir API survey (read before reading the code)
 
-The typed-SSA machinery this file targets is **in-tree**. `VIR/Core.lean`
-supplies `Dialect` / `Com` / `Expr` / `Ctxt` / `Var` / `HVector`, the
-`TyDenote` / `DialectSignature` / `DialectDenote` classes, and `Com.denote`
-— a pure Lean function, so no external interpreter is trusted. The target
-dialects are `VIR/MlirArithDialect.lean` (MLIR `arith.*` integer semantics,
-with per-op `agree_*` lemmas and `translate` + `translate_denote_eq`),
-`VIR/MlirScfDialect.lean` (`scf.for` / `scf.while` / `scf.if`, plus the
-heterogeneous-width `scfIfHetero`), and their sum
-`VIR/MlirArithScfSum.lean`.
+The original Phase 6′ framing assumed `opencompl/veir` provides a typed-SSA
+AST in the shape `Com` / `Expr` / `Ctxt` / `HVector` / `TyDenote` /
+`DialectSignature` / `DialectDenote`. The actual landscape on
+`leanprover/lean4:v4.29.1` (`Veir@v4.29.0`, the only release branch
+consumable by our toolchain — `main` is on a 2025-12 nightly):
 
-The upstream `opencompl/veir` package (`Veir@v4.29.0`, the only tagged Veir
-release; `main` tracks a Lean nightly, while this repo is on
-`leanprover/lean4:v4.30.0`) supplies something different: `Veir.OpCode`
-(arith/func/vector/x86vector/memref/llvm tags, used by the naming check in
-`Smoke.lean`) and `Veir.IR.Basic`, a pointer-based untyped MLIR AST used by
-the `VIR/CatCryptPrint.lean` text-emit chain. Neither is used here.
-`VIR/Core.lean` is an API-compatible mirror of `opencompl/lean-mlir`, so the
-import root can be swapped for upstream once a v4.29.x-compatible release
-exists; **the file name** keeps `ComToVeir` for that lineage, and because
-renaming to `ComToVIR` would be accurate but obscure it.
+| Component                | Provided by                                                           |
+|--------------------------|-----------------------------------------------------------------------|
+| Operation/Block/Region IR | `Veir.IR.Basic` — pointer-based untyped MLIR AST (`OperationPtr`, …) |
+| OpCode enum              | `Veir.OpCode` — arith/func/vector/x86vector/memref/llvm tags          |
+| Typed-SSA `Com`/`Expr`   | **`CatCrypt/Crypto/SecureCompilation/VIR/Core.lean`** (in-tree)       |
+| `TyDenote` / `DialectSignature` / `DialectDenote` | in-tree `VIR/Core.lean`                                |
+| Denoting MLIR arith dialect | `VIR/MlirArithDialect.lean` (in-tree)                               |
+| `Com catCryptDialect → Com mlirArithDialect` with denote-preservation | `VIR/MlirArithDialect.lean` (`translate` + `translate_denote_eq`) |
 
-Two structural restrictions shape the code below:
+So upstream `Veir` is **not** the typed-SSA framework the task spec
+described — its IR is the pointer-based untyped layer that text emits
+into. The typed-SSA framework lives **in-tree**, in the local
+`VIR/Core.lean` mirror of `opencompl/lean-mlir` (whose own docstring
+says it is "API-compatible with `opencompl/lean-mlir` so we can migrate
+later once a v4.29.x-compatible upstream release exists").
 
-* `VIR.Com` is straight-line ANF with **no nested regions**. Control flow is
-  therefore expressed with dedicated `scf` ops whose branch / loop bodies are
-  closed sub-programs over a singleton context (§6, §7); outer-context
-  capture inside a body is excluded, since it would need `Com`-level
-  weakening machinery the in-tree mirror does not ship.
-* Jasmin `Cmd` is a named-variable imperative AST while `Com` is
-  intrinsically-typed De Bruijn SSA. This file therefore compiles from the
-  typed `ScalarDSL` surface defined in §4; the `Cmd → ScalarDSL` pre-pass
-  (name resolution, width inference for `Pconst`, bail-out on out-of-scope
-  constructors) is not implemented.
+Per the task's fall-back guidance ("If Veir's dialect coverage is too
+thin: pivot — use the in-tree `VIR/Core.lean` API"), this file uses the
+in-tree typed-SSA framework. **The file name** retains `ComToVeir`
+because:
 
-Vector arithmetic stays out of scope: VIR has no denoting MLIR `vector`
-dialect — `MlirArithDialect.lean` covers scalar `iN` only.
+1. The in-tree `VIR` namespace is what the user-facing types use
+   (`VIR.Com`, `VIR.Expr`, etc.) — calling the file `ComToVIR` would be
+   accurate but obscure the lineage.
+2. When CatCrypt's toolchain bumps to a Lean 4 nightly and we swap the
+   in-tree mirror for upstream `opencompl/lean-mlir`, the import root
+   changes one line and the file name stays.
+
+### What we got from Veir (the package)
+
+* `Veir.OpCode` — for the smoke-test naming check in `Smoke.lean`.
+* The pointer-based `Operation` / `Block` / `Region` AST — used by the
+  existing `VIR/CatCryptPrint.lean` chain for text emission; **not used
+  here**.
+
+### What we got from in-tree VIR (the typed-SSA framework)
+
+* `VIR.Dialect` / `VIR.Com` / `VIR.Expr` / `VIR.Ctxt` / `VIR.Var` /
+  `VIR.HVector` — the typed-SSA AST.
+* `VIR.TyDenote` / `VIR.DialectSignature` / `VIR.DialectDenote` — the
+  denotation classes.
+* `VIR.Com.denote` — the denotation function (a pure Lean function: no
+  external interpreter).
+* `MlirArithDialect.mlirArithDialect` — the target dialect, with the
+  standard MLIR `arith.*` integer semantics already proved equivalent to
+  the catCrypt source semantics (per-op `agree_*` lemmas, `translate` +
+  `translate_denote_eq` for `Com → Com`).
+
+### What we'd have wanted but didn't get
+
+* A VIR `Com` with **control-flow regions** (analogue of MLIR's `scf.if`
+  / `scf.for` / `scf.while`). The in-tree `VIR/Core.lean` is straight-line
+  ANF only — no regions. Upstream `opencompl/lean-mlir` does have regions
+  (via the `Com.var` body recursion); the in-tree mirror was scoped down
+  to "what CatCrypt needs" and regions are still on the TODO list. So
+  Phase 6′ closes scalar straight-line; control-flow is honestly deferred
+  (still routes through the text-emit path).
+* A **typed Jasmin source** to translate from. Jasmin `Cmd` is a
+  named-variable imperative-style AST; VIR `Com` is intrinsically-typed
+  De Bruijn SSA. Bridging requires name resolution, type inference for
+  `Pconst`, and bailing out on anything outside the well-typed scalar
+  subset. We package this as `Cmd → Option (VIR.Com _ _ _)` returning
+  `none` on out-of-scope input. The denotation theorem is conditional on
+  successful translation.
+* A **denoting MLIR `vector` dialect** in VIR. `MlirArithDialect.lean`
+  covers scalar `iN` only. Phase 6′ scalar deliverable lands without
+  this; vector arith denotation is left as a clearly-stated follow-up.
 
 ## Stage 6b–6e — coverage matrix
 
@@ -71,8 +108,8 @@ dialect — `MlirArithDialect.lean` covers scalar `iN` only.
 | `Papp2 (Olsl w) e1 e2`            | `MlirArithOp.shli w k` (k extracted from `Pconst`)    |
 | `Papp2 (Olsr w) e1 e2`            | `MlirArithOp.shrui w k`                               |
 | `Cassgn (Lvar x) tag (sword w) e` | A new `.var` binding in the VIR `Com`                 |
-| `Cif` / `Cfor` / `Cwhile`         | `MlirScfOp.scfIfHetero` / `scfFor` / `scfWhile` via `compileCif` / `compileCfor` / `compileCwhile` (§6-§7); bodies are closed sub-programs over a singleton context |
-| `Ccall` / `Copn`                  | **out of scope** — needs call-boundary and side-effecting-op modelling VIR does not have |
+| `Cif` / `Cfor` / `Cwhile`         | **out of scope** (VIR has no regions; text-emit path) |
+| `Ccall` / `Copn`                  | **out of scope** (deferred per plan doc Phase 8)      |
 | vector arith (`Ov*`)              | **out of scope** (no denoting MLIR vector dialect)    |
 
 For the in-scope arms, translation success ⇒ Lean-side denotational

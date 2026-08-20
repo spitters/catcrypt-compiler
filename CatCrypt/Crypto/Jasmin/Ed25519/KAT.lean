@@ -10,8 +10,8 @@ set_option autoImplicit false
 # RFC 8032 §7.1 — Ed25519 Known-Answer Test vectors
 
 Canonical Lean-side declaration of the Ed25519 KAT vectors. The bench
-(`bench/bench_ed25519_sign.c`,
-`KATS[]`) must hold the same bytes; the audit script
+(`bench_ed25519_sign.c` in catcrypt-bench, `KATS[]`)
+must hold the same bytes; the audit script
 `scripts/check_kat_consistency.sh` diffs them.
 
 ## Why this lives in Lean rather than only the bench

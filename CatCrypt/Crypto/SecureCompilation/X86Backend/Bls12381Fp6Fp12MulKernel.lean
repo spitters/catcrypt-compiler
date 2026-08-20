@@ -8,7 +8,17 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Fp2MulKernel
 /-!
 # BLS12-381 `Fp6` + `Fp12` (GT-field) multiply, owned x86 (#602/#219)
 
-**Variant: RELIC-transcribed (tests-only correctness).** This owned x86 emit is
+**Variant: RELIC-transcribed (tests-only correctness).**
+
+**STRING-TEMPLATED — not verified-compiler output:** the emitted
+`bls12381_*_x86_from_lean.s` is assembled as literal asm-line text
+(`framedDriver`/`renderLeafFn` join `movq`/`leaq`/`call` string literals), with
+no `Com`/`Lprog` IR and no verified printer, so no theorem relates the emitted
+bytes to a source; the byte-identity to RELIC below is the only corroboration.
+See `bench/framework/AUDIT_EMIT_BYPASS.md` and `EMIT_PROVENANCE.md`
+§"Which emit is verified?".
+
+This owned x86 emit is
 hand-transcribed from the RELIC pairing reference and gated **byte-identical to
 RELIC**. RELIC is unverified C, so that byte-identity is a **test**, not a
 correctness proof. The verified-correctness BLS variant — owned emit whose
@@ -58,10 +68,10 @@ multiply is **exactly** RELIC's `fp12_mul_basic` (3 `Fp6`-muls + one
 * one `Fp12` mul = 3 `Fp6`-muls = **54 `Fp`-muls**.
 
 The shape theorems below witness 6 `callq …fp2_mul…` in the `Fp6` driver and
-3 `callq …fp6_mul…` in the `Fp12` driver — the genuine tower call graph, not a
+3 `callq …fp6_mul…` in the `Fp12` driver — the tower call graph, not a
 0–1-multiply stub.
 
-## What is verified vs trusted (honest scope)
+## What is verified vs trusted (scope)
 
 Identical status to the committed `Fp2` module: the `Fp` add/sub bodies are
 `runBlock`-verified leaves (in the committed module); the `Fp2`/`Fp6`/`Fp12`
@@ -578,7 +588,7 @@ def countSub (hay needle : String) : Nat :=
       then acc + 1 else acc) 0
 
 /-- **The owned `Fp6` mul carries six real `Fp2`-multiply calls** (= 18 `Fp`-muls),
-    the genuine RELIC `fp6_mul_basic` call graph, plus two `fp2_mul_nor` (ξ) calls
+    the RELIC `fp6_mul_basic` call graph, plus two `fp2_mul_nor` (ξ) calls
     and the Karatsuba `Fp2` add/subs — not the 0–1-multiply stub the RELIC bench
     previously flagged. -/
 theorem fp6MulAsm_six_real_fp2muls :
@@ -588,7 +598,7 @@ theorem fp6MulAsm_six_real_fp2muls :
       ∧ hasSub fp6MulAsm "callq bls12381_fp2_sub_x86_from_lean" := by native_decide
 
 /-- **The owned `Fp12` mul carries three real `Fp6`-multiply calls** (= 54
-    `Fp`-muls), the genuine RELIC `fp12_mul_basic` call graph, plus one
+    `Fp`-muls), the RELIC `fp12_mul_basic` call graph, plus one
     `fp6_mul_art` (mul-by-`v`) and the Karatsuba `Fp6` add/subs. -/
 theorem fp12MulAsm_three_real_fp6muls :
     countSub fp12MulAsm "callq bls12381_fp6_mul_x86_from_lean" = 3

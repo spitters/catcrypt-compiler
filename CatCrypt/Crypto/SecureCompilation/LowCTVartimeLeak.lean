@@ -16,7 +16,7 @@ constant-time-with-public-values policy (FaCT, the Jasmin CT type system,
 CT-wasm), and the leak-nothing guarantee is recovered as the special case
 where *no* input is classified `Public`.
 
-## Where the existing pieces live, and what is genuinely new here
+## Where the existing pieces live, and what this module adds
 
 The repository already has, in the orphaned RHP/cmdCT/leakTrace chain:
 
@@ -26,7 +26,7 @@ The repository already has, in the orphaned RHP/cmdCT/leakTrace chain:
   the same program produce identical traces *trivially* — there is nothing
   for a secret to perturb. That is the right model for the
   branch-free / data-oblivious fragment, but it cannot express the leakage
-  of a genuine variable-time construct (a data-dependent branch leaks
+  of a variable-time construct (a data-dependent branch leaks
   *which* branch ran; a data-dependent loop leaks its *iteration count*).
 
 * `cmdCT : LowCT → LevelTable → LeafCTTable → Bool`
@@ -155,8 +155,8 @@ theorem cmdCT_RIfNz_secret_rejected (cond : String) (ct cf : LowCT)
 /-! ## §2. The dynamic, state-dependent leak trace -/
 
 /-- A variable-time-aware leak event tag. We reuse the existing
-`LeakEvent.pureOp` carrier and distinguish the two genuinely
-variable-time observations by name:
+`LeakEvent.pureOp` carrier and distinguish the two variable-time
+observations by name:
 
 * `"branch:1"` / `"branch:0"` — a data-dependent branch took the
   true / false arm (the guard was nonzero / zero).
@@ -262,15 +262,12 @@ theorem dynLeakTrace_noninterference
   | .RCallN _ _ _, _, _, _, _ => rfl
   | .RFnCall _ _ _, _, _, _, _ => rfl
   | .RCloneCall _ _ _ _ _ _, _, _, _, _ => rfl
-  | .RAsmOp _ _ _, _, _, _, _ => rfl
   | .RSelect _ _ _ _, _, _, _, _ => rfl
   | .RLimbStore _ _ _, _, _, _, _ => rfl
   | .RLimbStoreExpr _ _ _, _, _, _, _ => rfl
   | .RArrStore _ _ _, _, _, _, _ => rfl
   | .RArrLoad _ _ _, _, _, _, _ => rfl
-  | .RTupleStore _ _ _, _, _, _, _ => rfl
   | .RTupleLoad _ _ _, _, _, _, _ => rfl
-  | .RBytesSlice _ _ _ _, _, _, _, _ => rfl
   | .RArrLoadLit _ _ _, _, _, _, _ => rfl
   | .RArrStoreLit _ _ _, _, _, _, _ => rfl
   | .RCallDstThreaded _ _ _, _, _, _, _ => rfl
@@ -383,7 +380,7 @@ theorem exampleVartimeIf_secret_guard_rejected (leafCT : LeafCTTable) :
       (fun _ => .Secret) leafCT = false :=
   cmdCT_RIfNz_secret_rejected "pc" _ _ (fun _ => .Secret) leafCT rfl
 
-/-- Concrete witness that the dynamic trace genuinely *records the branch*:
+/-- Concrete witness that the dynamic trace *records the branch*:
 on a state where the public guard is nonzero the trace begins with
 `branch:1`; on one where it is zero it begins with `branch:0`. (This is the
 observation a variable-time branch leaks — and which the NI theorem proves

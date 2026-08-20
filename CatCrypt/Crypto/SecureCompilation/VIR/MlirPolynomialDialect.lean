@@ -10,9 +10,10 @@ import CatCrypt.Crypto.SecureCompilation.VIR.LatticeDialect
 
 > **STATUS — MLIR-CORRESPONDENCE LAYER, NOT THE EMIT PATH.** `rfl`
 > semantic-agreement lemmas proving CatCrypt polynomial ops match upstream MLIR
-> `polynomial`; NO lowering out, ZERO emit traffic (see "Status: THEORY artifact,
-> not the emit path" below). `polyDialect` / `latticeDialect` are the real
-> lattice substrate; this dialect duplicates them for correspondence only.
+> `polynomial`; NO lowering out, ZERO emit traffic (this file already
+> self-documents "THEORY artifact … do not mistake it for a backend"). Duplicates
+> `polyDialect` / `latticeDialect`, which ARE the real lattice substrate. See
+> `CatCrypt/Crypto/SecureCompilation/VIR/DIALECTS.md`.
 
 This is the **lattice** analogue of `MlirArithDialect.lean` and
 `MlirMemrefDialect.lean`. Those files supply denoting MLIR `arith` / `memref`

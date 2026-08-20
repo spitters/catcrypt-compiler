@@ -251,12 +251,11 @@ The body has 33 instructions; only 4 of them are `Cassgn` of
 `Copn _ _ (Oasm _) _`. We prove a structural lemma that says any
 non-`Lmem` instruction preserves `mem`. -/
 
-/-! `writeXBundle` mem-preservation is deduplicated against
-    `CatCrypt.Tactics.PreservationCombinator` §4.1 (the per-bundle
-    `write*Bundle_preserves_mem` helpers). The six private wrappers below —
-    `writeSubBundle_mem`, `writeMulxBundle_mem`, `writeAdxBundle_mem`,
-    `writeXorBundle_mem`, `writeDivBundle_mem`, `writeShiftBundle_mem` — are thin
-    delegating proxies to the corresponding public lemma. -/
+/-! `writeXBundle` mem-preservation deduplicated against
+    `CatCrypt.Tactics.PreservationCombinator.writeXBundle_preserves_mem`
+    (§4 of that file, line 760+). The four private `writeXBundle_mem`
+    wrappers used to live here; they were structurally identical to the
+    public versions, so they're now thin delegating proxies. -/
 
 private theorem writeSubBundle_mem
     (s s' : BignumState) (lvs : List LVal) (cf r : BitVec 64)

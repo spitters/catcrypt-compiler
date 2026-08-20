@@ -281,17 +281,16 @@ theorem bfPair_denote (p : Nat) (ζ a b : ZMod p) :
 
 end BfDemo
 
-/-! ## 4. Descent to `Com jasminDialect` → `.s` (not in this repository)
+/-! ## 4. Descent to `Com jasminDialect` → `.s` (companion module)
 
-The field-authored programs above are meant to descend to `Com jasminDialect`
-through the same verified field descent (`fieldComToJasmin.lowerCom`) the
-BabyBear Poseidon2 field pipeline rides, and from there to `.s` via
-`toLprogPhysAbi |> renderLprogAtt`. That descent is deliberately not imported
-here, so this authoring file stays independent of the `Bridges.Transfer`
-(ParamTransfer) engine — and it is not part of this repository. What is present
-is the q = 3329 Stage-2 leaf: the word-realization squares of
-`FieldDescentMlkem.lean` and the word blocks of `MlkemNttFieldEmit.lean`
-(which authors no NTT `Com` and emits no `.s`). -/
+The field-authored programs above descend to `Com jasminDialect` through the
+committed `FieldDescent.fieldComToJasmin.lowerCom` — the SAME verified descent
+the BabyBear Poseidon2 field pipeline rides — and from there to `.s` via
+`toLprogPhysAbi |> renderLprogAtt`. That descent (and the q = 3329 word
+realization mirroring `FieldDescentBabyBear`) lives in the companion
+`MlkemNttFieldDescent.lean`, which imports `FieldDescent`. It is split out so
+this authoring file stays independent of the `Bridges.Transfer` (ParamTransfer)
+engine that `FieldDescent` pulls in. -/
 
 /-! ## 5. Tiny `#eval`-safe single-residue checks (mod q = 3329)
 

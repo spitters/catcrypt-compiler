@@ -35,6 +35,10 @@ extractor (Phase-2) plug in at the same interface.
 See [`README.md`](README.md) §"Design choices: lowering selection" for the
 verified-compiler argument for following the *eqsat* native-embedding
 approach over DialEgg.
+
+> **`@bench-only`.** The `demoScalarBlock` / `demoVecBlock` `List (JInstr 64)`
+> blocks are lowering-selector demo fixtures; the module emits no deployed `.s`
+> artifact.
 -/
 
 set_option autoImplicit false
@@ -140,7 +144,7 @@ an `n`-lane op fans out to `n` independent scalar instructions, all competing
 for the same ALU ports, so its port-pressure score is `n`; the **vectorized**
 candidate issues a single packed µop scoring `1`. The cost model therefore
 *sees* the lane-parallelism and the cost-minimizing selector AUTO-PICKS the
-vectorized candidate — the human no longer hand-chooses the scalar lowering.
+vectorized candidate, without the scalar lowering being hand-chosen.
 
 The `render` argument is the candidate → `JInstr 64` block renderer; it is the
 target-specific knowledge (which `VectorOp` maps to which packed mnemonic).
@@ -372,7 +376,7 @@ def demoRender {α : Type} {n : Nat} (c : LoweringCandidate α n) :
   if c.name = "scalar4" then demoScalarBlock else demoVecBlock
 
 /-- `loweredAdd`'s denotation is the abstract `map₂` of the lane op — the
-    `add`-lowering keystone, re-exported here so the demo can discharge the
+    `add`-lowering result, re-exported here so the demo can discharge the
     equivalence-class invariant. -/
 theorem loweredAdd_denote {α : Type} {n : Nat} (init : α) (op : α → α → α)
     (v w : VectorTy α n) :

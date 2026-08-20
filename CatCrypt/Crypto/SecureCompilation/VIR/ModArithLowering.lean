@@ -8,7 +8,8 @@ import CatCrypt.Crypto.SecureCompilation.VIR.ModArithDialect
 /-!
 # ModArith lowering (#482-1) — the L2 → {Vector | LowCT} step
 
-The lowering step of the layered crypto-IR stack:
+The lowering step of the layered crypto-IR stack
+(`docs/dialect-restructure-plan.md`):
 
     ModArith → {Vector  if redundant-limb-vectorizable (#442)
               | LowCT/Com scalar otherwise}
@@ -30,11 +31,9 @@ multiply is an inherently sequential CIOS carry chain, so it lowers to the
 **scalar** LowCT/Com path (a `mulHi`/`addCarry*` schedule), NOT the Vector path.
 
 This is the single home of the routing decision: `vectorizable p` below. The
-polynomial layer consumes it directly
-(`PolyLowering.routeOfModulus_scalar_of_not_vectorizable`); the Vector dialect's
-own lowering (`MLIR/VectorDialect/Lowering.lean`) does not read the predicate
-today, so keeping the decision here at L2 is what stops it being rediscovered
-per primitive.
+Vector dialect's own lowering (`MLIR/VectorDialect/Lowering.lean`) is *gated by
+this same predicate* (per the plan's "Vector: …gated by the redundant-limb rule
+(#442)" row), so the choice is made once, at L2, not rediscovered.
 
 ## What is proven here
 
@@ -123,6 +122,9 @@ def ModArithOp.modulus? : ModArithOp → Option Nat
   | .modReduce p _ | .montMul p _ | .montReduce p _ => some p
   | .solinasReduce p _ | .barrettReduce p _ => some p
   | .byInverse p | .batchInverse p _ => some p
+  | .montInverse p _ => some p
+  | .polyToTensor p _ | .polyFromTensor p _ => some p
+  | .residueEncode p _ | .residueDecode p _ => some p
   | .mulHi _ | .addCarryLo _ | .addCarryHi _ => none
 
 /-- The routing decision for a ModArith op: `vector` iff the op carries a
@@ -135,7 +137,7 @@ noncomputable def routeOf (op : ModArithOp) : LowerTarget :=
 
 /-- The Barrett-reduce / generic CIOS ops at a non-vectorizable prime route to
     `scalar` — the L2 statement of "Pasta/BN254 base lower to ModArith→LowCT
-    scalar instead" (the #442 routing rule). Stated as: if the modulus is not
+    scalar instead" (the #442 row of the plan). Stated as: if the modulus is not
     vectorizable, the route is `scalar`. -/
 theorem routeOf_scalar_of_not_vectorizable (op : ModArithOp) (p : Nat)
     (hp : op.modulus? = some p) (hv : ¬ vectorizable p) :

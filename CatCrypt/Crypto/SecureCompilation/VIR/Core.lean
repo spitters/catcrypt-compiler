@@ -11,11 +11,29 @@ Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
 Reimplementation of lean-mlir's core `Dialect`/`Com`/`Ctxt`/`Expr` framework,
 stripped to what CatCrypt needs: single-return-type, no monadic effect kinds,
-no regions, no `Qq`/reflection. Designed to be API-compatible with
-opencompl/lean-mlir so we can migrate later once a v4.28.0-compatible
-upstream release exists.
+no regions, no `Qq`/reflection. 171 lines against upstream's ~3400.
 
-~300 LoC instead of upstream's ~3400; we re-expand features as we need them.
+## Loops live outside `Com`
+
+`Dialect` carries `Op : Type`, and `Com d` is defined afterwards over `d`. An op
+therefore cannot mention `Com d`, so a dialect cannot declare a loop op whose body
+is a program.
+
+Loops live in `ComL` (`VIR/JasminLprogExport.lean`) instead, a separate inductive
+monomorphic in `jasminDialect`. The two `scf` dialects encode a body as op data:
+`X86Backend/ScfDialect` carries a `List (JInstr w)`, already lowered and opaque to
+any `Com` pass; `VIR/MlirScfDialect` carries a denotation, which runs but does not
+compile.
+
+This costs a proof, not a capability. A loop lowering cannot be a `LoweringData`,
+so it does not inherit `fundamental`, and each rolled `_denote` lemma is instead
+conditioned on the front's own output. A closed instruction set avoids the problem
+— Jasmin's `Cfor` and `Cwhile` carry `seq instr` by mutual induction. An
+extensible IR needs regions instead.
+
+Keep this encoding while `jasminDialect` is the only dialect with loops. A second
+dialect needing a first-class loop would mean duplicating `ComL` per dialect, and
+regions become the cheaper option at that point.
 
 ## References
 

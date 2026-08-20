@@ -9,6 +9,7 @@ import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
 import CatCrypt.Crypto.SecureCompilation.VIR.LprogScheduler
 import CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # ILP-scheduled Keccak-p[1600,24] owned producer (#590 / #555)
@@ -42,7 +43,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
   (keccakImmSlots keccakInLoadMap keccakOutStoreMap)
 open CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit (keccakF1600Com)
 
-private def main : IO UInt32 := do
+def main : IO UInt32 := do
   IO.println s!"keccak_scheduled: link (Com -> SCHEDULED virtual body -> RA -> owned .s) [compiled]"
   -- Keep the last 26 list elements fixed: the 25 output-staging `Lopn` bindings
   -- (the ABI epilogue's store targets, selected as the last `numBindings - 25`)
@@ -68,7 +69,9 @@ private def main : IO UInt32 := do
   | none => pure ()
   let ownedPath : System.FilePath :=
     "bench/keccak_compare/gen/keccak_f1600_scheduled.s"
-  let asm := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter.renderLprogAtt lp
+  let asm := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned lp
+  let unoptMovq := ((CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter.renderLprogAtt lp).splitOn "movq").length - 1
+  IO.println s!"  optimizer movq  : unopt {unoptMovq} -> opt {(asm.splitOn "movq").length - 1}"
   let t0 ← IO.monoNanosNow
   IO.FS.writeFile ownedPath asm
   let t1 ← IO.monoNanosNow

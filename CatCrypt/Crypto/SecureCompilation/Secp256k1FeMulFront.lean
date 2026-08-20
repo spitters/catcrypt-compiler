@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdReloadElim
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 set_option autoImplicit false
 
@@ -366,7 +367,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport (Com.toLprogPhysAbi
 /-- The lowered kernel as an owned AT&T `.s` under the SysV 3-pointer ABI. -/
 def femulAsm : Option String :=
   loweredOpt.map (fun s =>
-    renderLprogAttOpt
+    CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned
       (Com.toLprogPhysAbi s.2.2 "secp256k1_femul"
         (fun _ => none) (fun _ => none) (fun _ => none) []
         (abiArgs := ["RDI", "RSI", "RDX"]) (abiTyin := [64, 64, 64])

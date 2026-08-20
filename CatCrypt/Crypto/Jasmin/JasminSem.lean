@@ -31,12 +31,17 @@ the `handled_instr_r` subset (what `toJasminCmd` can emit).
 
 ## Status
 
-- `jasminSem` is defined for the entire supported subset above.
-- `rustExecSoundInJasmin` is closed for every `RustExec` constructor: the
-  while-free ones by structural induction (with `jasminSem_seq_compose`
-  for sequencing and `unrollForJ` for `RFor`), the remaining ones by
-  contradiction with the `whileFree c = true` hypothesis.
-- No `sorry` remains in this module.
+- Inductive `jasminSem` covers the entire supported subset.
+- Bridge `rustExecSoundInJasmin` covers every `whileFree` `RustExec`
+  constructor; all goals closed.
+
+## Ghost tower-type tags
+
+The width-keyed rules (`assgn_parr_init`, `clone_tower`, and the
+`locToLVal`/`locToPExpr`-built oracles) carry the tower type in the
+instruction's `VarInfo.towerTag` (a `TowerType.byteSize` value,
+injective), so the relation is deterministic: the `.sarr` storage width
+alone does not determine the type (several tower types share a width).
 
 ## Design choice
 
@@ -60,11 +65,14 @@ inductive jasminSem (leafSpec : LeafSpec) : Cmd → RustState → RustState → 
       jasminSem leafSpec [i] rs rs1 →
       jasminSem leafSpec is rs1 rs' →
       jasminSem leafSpec (i :: is) rs rs'
-  /-- `Cassgn` of `Parr_init` to an sarr variable → zero-init the tower slot. -/
+  /-- `Cassgn` of `Parr_init` to an sarr variable → zero-init the tower slot.
+      The `VarInfo.towerTag` in the instruction pins the tower type `t`
+      (via `TowerType.byteSize` injectivity); the `.sarr` storage width
+      alone does not determine it. -/
   | assgn_parr_init : ∀ x t rs,
       jasminSem leafSpec
         [.Cassgn (.Lvar { var := { vname := x, vtype := .sarr t.storageBytes },
-                           info := {} })
+                           info := { towerTag := t.byteSize } })
                  .AT_none (.sarr t.storageBytes) (.Parr_init t.storageBytes)]
         rs (rsSetTower rs x ⟨t, default⟩)
   /-- `Cassgn` of `Pconst 0` to a u64 scalar → set rsScalar to 0. -/
@@ -128,7 +136,7 @@ inductive jasminSem (leafSpec : LeafSpec) : Cmd → RustState → RustState → 
                     (rs : RustState),
       jasminSem leafSpec
         [.Copn [.Lvar { var := { vname := cloneVar, vtype := .sarr cloneTy.storageBytes },
-                         info := {} }] .AT_none
+                         info := { towerTag := cloneTy.byteSize } }] .AT_none
               (.Oasm { name := "CLONE_TOWER" }) [locToPExpr oldDest]]
         rs (rsSetTower rs cloneVar
              ((rs.rsTower oldDest.locVar).getD ⟨cloneTy, default⟩))
@@ -292,7 +300,7 @@ theorem rustExecSoundInJasmin
     -- via ih (after whileFree).
     have h1 : jasminSem leafSpec
         [.Copn [.Lvar { var := { vname := cloneVar, vtype := .sarr cloneTy.storageBytes },
-                         info := {} }] .AT_none
+                         info := { towerTag := cloneTy.byteSize } }] .AT_none
               (.Oasm { name := "CLONE_TOWER" }) [locToPExpr oldDest]]
         rs0 rsClone := by
       rw [hClone_eq]
@@ -316,11 +324,10 @@ theorem rustExecSoundInJasmin
     exact jasminSem.limb_store_oracle loc idx v rs0 oldDestV hLk
   -- Phase R5: RLimbStoreExpr is gated out by `whileFree = false`.
   | limbStoreExpr _ _ _ _ _ _ => simp [whileFree] at hWf
-  -- Phase F/G/H/L/M (2026-05-03): the new constructors are gated out
+  -- Phase F/G/H/L/M (2026-05-03): these constructors are gated out
   -- of the simulation theorem by `whileFree = false`, so each case
   -- closes by contradiction with `hWf`.
-  | asmOp _ _ _ _ => simp [whileFree] at hWf
-  | callN _ _ _ _ => simp [whileFree] at hWf
+  | callN _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
   | callDstThreaded _ _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
   | selectFalse _ _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
   | selectTrue _ _ _ _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
@@ -332,12 +339,8 @@ theorem rustExecSoundInJasmin
     simp only [whileFree] at hWf
     simp only [toJasminCmd_RBlock]
     exact ih hWf
-  | fnDef _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
-  | fnCall _ _ _ _ => simp [whileFree] at hWf
-  | tupleStore _ _ _ _ => simp [whileFree] at hWf
   | tupleLoad _ _ _ _ => simp [whileFree] at hWf
-  -- Phase Ext (2026-05-12/14): whileFree-rejects the new constructors.
-  | bytesSlice _ _ _ _ _ _ _ => simp [whileFree] at hWf
+  -- Phase Ext (2026-05-12/14): whileFree-rejects these constructors.
   | scalarSetExpr _ _ _ => simp [whileFree] at hWf
   | arrLoad _ _ _ _ _ _ _ => simp [whileFree] at hWf
   | arrStore _ _ _ _ _ _ _ => simp [whileFree] at hWf

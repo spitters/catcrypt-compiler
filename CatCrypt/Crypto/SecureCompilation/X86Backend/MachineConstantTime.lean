@@ -8,19 +8,13 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
 /-!
 # Machine-level constant-time for the emitted x86 subset
 
-The *source-level* constant-time argument lives above code generation, at the
-dialect IR: `Com.toUnifiedLeak` is a function of program syntax only, so a
-dialect program's leakage trace is the same for every input
-(`CryptoDialectUnifiedTrace.dialect_leakTrace_unified_constant`, re-exported for
-the verified middle at `emptyEvSig` as
-`RHPVerifiedMiddle.cprog_leakTrace_unified_constant` — despite its name that
-restatement is also over `Com catCryptDialect`, not `CProg`). Because
-that trace never mentions the valuation, the source-level statement is purely
-structural. This module lifts the guarantee to the **emitted machine code**,
-where it is not structural: a real straight-line x86 leaf (`List (JInstr w)` in
-the `JasminModel` semantics) and its *machine* leakage trace — the sequence of
-control-flow decisions and **memory-access addresses**, computed against the
-running machine state.
+`SSALeakage.lean` proves the *source-level* constant-time property: every
+CryptoSSA program has a leakage trace fixed by its syntax, so it leaks nothing
+about secret inputs (`CProg.leakTrace_constant`, `all_cprog_ct`). That argument
+lives at the CryptoSSA IR, above code generation. This module lifts the same
+guarantee to the **emitted machine code**: a real straight-line x86 leaf
+(`List (JInstr w)` in the `JasminModel` semantics) and its *machine* leakage
+trace — the sequence of control-flow decisions and **memory-access addresses**.
 
 ## What an attacker observes, and why it is the address that matters
 
@@ -48,13 +42,11 @@ The honest dual: a register-indexed `storeMemIdx base idx scale` (an
 has effective offset `scale · (s.get idx).toNat` — a function of the **value**
 in `idx`. Its address leak therefore *differs* between two states that disagree
 on `idx`, so it is **not** constant-time. `nonCT_storeMemIdx_leaks_value` below
-exhibits that difference, which is what keeps the CT keystone non-vacuous: the
-property genuinely distinguishes value-independent from value-dependent
+exhibits that difference, which is what keeps the CT theorem non-vacuous: the
+property distinguishes value-independent from value-dependent
 addressing, rather than holding of every program because "there are no branches."
 
-This is the machine-level analogue of the dialect-level
-`dialect_leakTrace_unified_constant`, but computed against the machine state
-rather than read off the program syntax.
+This is the machine-level analogue of `SSALeakage.leakTrace_constant`.
 
 **0 axioms** (`native_decide` is used only for the concrete leaf value pin),
 **0 sorries**.
@@ -102,7 +94,7 @@ def MLeak.isBranch : MLeak → Bool
 `instrLeak s i` is the leakage of executing `i` from state `s`. We thread the
 state so the emitted address of a memory op is its **real effective address** in
 that state — not a syntactic placeholder. This is what makes the constant-time
-claim about genuine addresses: the keystone says the *emitted address trace* is
+claim about effective addresses: the theorem says the *emitted address trace* is
 the same from any two states, so the cache-line sequence carries no value
 information.
 
@@ -120,6 +112,10 @@ def instrLeak {w : Nat} (s : JState w) : JInstr w → List MLeak
       [.mem base ((scale * (s.get idx).toNat : Nat) : Int)]
   | .storeMemIdx base idx scale _ =>
       [.mem base ((scale * (s.get idx).toNat : Nat) : Int)]
+  -- `lea` computes the address `base + idx·scale + off` in the AGU and writes it to a
+  -- register; it performs no memory access, so it emits no memory event even though its
+  -- operands name a base and an index register.
+  | .lea _ _ _ _ _ => []
   -- every scalar ALU / mov / shift / cmov / mulx-reg op: no observable leak
   | _ => []
 
@@ -154,6 +150,9 @@ constant-time class as the bodies that avoid the register-indexed ops. -/
 def IsDirect {w : Nat} : JInstr w → Prop
   | .loadMemIdx _ _ _ _    => False
   | .storeMemIdx _ _ _ _   => False
+  -- `lea` reads an index register but performs no memory access, so its (empty) leak is
+  -- state-independent: it is in the direct class.
+  | .lea _ _ _ _ _         => True
   | _ => True
 
 instance {w : Nat} (i : JInstr w) : Decidable (IsDirect i) := by
@@ -161,23 +160,21 @@ instance {w : Nat} (i : JInstr w) : Decidable (IsDirect i) := by
 
 /-- A direct instruction's leak does not depend on the machine state: for the
     scalar ops it is `[]`, and for the direct memory ops it is the constant
-    `[.mem base off]`. This is the per-instruction core of the keystone. -/
+    `[.mem base off]`. This is the per-instruction core of the theorem. -/
 theorem instrLeak_state_independent {w : Nat} (i : JInstr w) (h : IsDirect i)
     (s₁ s₂ : JState w) : instrLeak s₁ i = instrLeak s₂ i := by
   cases i <;> first | rfl | (simp [IsDirect] at h)
 
-/-! ## 5. The constant-time keystone
+/-! ## 5. The constant-time theorem
 
 If every instruction of a leaf is direct, its **whole machine leakage trace** —
 control flow + memory addresses — is the same from any two initial states. The
 attacker's view is therefore a function of the program text alone, so it carries
 no information about the secret register values: the leaf is constant-time.
 
-This is the machine-level analogue of the dialect-level
-`dialect_leakTrace_unified_constant`, but computed against the machine state
-rather than read off the program syntax. -/
+This is the machine-level analogue of `SSALeakage.leakTrace_constant`. -/
 
-/-- **Machine-level constant-time keystone.** A straight-line leaf all of whose
+/-- **Machine-level constant-time theorem.** A straight-line leaf all of whose
     instructions use direct (base + constant-displacement) addressing produces
     the **same** machine leakage trace from any two initial states `s₁ s₂`. Hence
     the observable control-flow + memory-address sequence is independent of every
@@ -217,7 +214,7 @@ theorem blockLeak_no_branch {w : Nat} (body : List (JInstr w))
 
 /-! ## 6. A real worked leaf: a base+offset field/bignum store-back
 
-A genuine straight-line leaf in the modeled `JInstr 64` subset using the reg-ptr
+A straight-line leaf in the modeled `JInstr 64` subset using the reg-ptr
 ABI's base+displacement memory ops: load two limbs `a[0]`, `a[1]` from a pointer
 base `ap`, fold them with a scalar (`MULX` widening multiply + an `ADD`), and
 store the result back to the output base `op`. This is the shape of an emitted
@@ -225,7 +222,7 @@ field-element / bignum word leaf (cf. `mpn_addmul_1`'s inner pass), restricted t
 a fixed limb count so the body is straight-line.
 
 Every instruction uses direct base+offset addressing or is a scalar ALU op, so
-the leaf is in the constant-time class and the keystone applies. -/
+the leaf is in the constant-time class and the theorem applies. -/
 def fieldStoreLeaf : List (JInstr 64) :=
   [ .loadMem "t0" "ap" 0          -- t0 = a[0]   (load, addr ap+0)
   , .loadMem "t1" "ap" 8          -- t1 = a[1]   (load, addr ap+8)
@@ -263,7 +260,7 @@ theorem fieldStoreLeaf_no_branch (s : JState 64) :
 
 /-! ## 7. The non-vacuity contrast: a register-indexed store is NOT constant-time
 
-To witness that the keystone is not trivially true of every leaf, we exhibit a
+To witness that the theorem is not trivially true of every leaf, we exhibit a
 one-instruction body that **fails** it. A register-indexed scatter
 `storeMemIdx "op" "idx" 8 src` (an `mov %src, (%op,%idx,8)` — a secret-dependent
 table write) has effective offset `8 · (value in idx)`. Two states that disagree
@@ -281,11 +278,11 @@ theorem indexedScatterLeaf_not_direct :
   have := h (.storeMemIdx "op" "idx" 8 (.reg "lo")) (by simp [indexedScatterLeaf])
   simp [IsDirect] at this
 
-/-- **The contrast that keeps the keystone non-vacuous.** The register-indexed
+/-- **The contrast that keeps the theorem non-vacuous.** The register-indexed
     scatter leaks the index register's *value* into its memory-address trace:
     two states differing only on `idx` (here `idx = 0` vs `idx = 1`) produce
     **different** leakage traces (`op+0` vs `op+8`). So `indexedScatterLeaf` is
-    *not* constant-time — the keystone's direct-addressing hypothesis is doing
+    *not* constant-time — the theorem's direct-addressing hypothesis is doing
     real work, not holding of every program. -/
 theorem nonCT_storeMemIdx_leaks_value :
     ∃ s₁ s₂ : JState 64, blockLeak s₁ indexedScatterLeaf ≠ blockLeak s₂ indexedScatterLeaf := by
@@ -319,30 +316,40 @@ def agreePub (pub : PubPred) {w : Nat} (s₁ s₂ : JState w) : Prop :=
   ∀ r, pub r = true → s₁.get r = s₂.get r
 
 /-- The registers an instruction writes (its destination(s)); stores write memory,
-    not registers, so they write none. -/
+    not registers, and `test`/`cmp` write only the five flags, so they write none. -/
 def dstRegs {w : Nat} : JInstr w → List String
   | .mulx dHi dLo _ _ => [dHi, dLo]
   | .mulxMem dHi dLo _ _ _ => [dHi, dLo]
   | .storeMem _ _ _ => []
   | .storeMemIdx _ _ _ _ => []
+  | .test _ _ => []
+  -- `cmp a b` has no destination: `a` is a read, the difference is discarded and only the
+  -- five flags are written.
+  | .cmp _ _ => []
   | .mov d _ | .add d _ | .sub d _ | .adc d _ | .sbb d _ | .imul d _ | .neg d
   | .setc d | .and_ d _ | .or_ d _ | .xor_ d _ | .shl d _ | .shr d _ | .sar d _
   | .cmove d _ | .cmovne d _ | .cmovb d _ | .adcx d _ | .adox d _
-  | .loadMem d _ _ | .loadMemIdx d _ _ _ | .loadSym d _ => [d]
+  | .loadMem d _ _ | .loadMemIdx d _ _ _ | .loadSym d _
+  | .not_ d | .andn d _ _ | .rol d _ | .ror d _ | .rorx d _ _
+  | .shlx d _ _ | .shrx d _ _ | .sarx d _ _
+  | .movzx d _ _ | .movsx d _ _ | .lea d _ _ _ _ => [d]
 
 /-- The index register an instruction reads to form a memory address, if any
     (only the register-indexed ops have one). -/
 def idxReg {w : Nat} : JInstr w → Option String
   | .loadMemIdx _ _ idx _ => some idx
   | .storeMemIdx _ idx _ _ => some idx
+  -- `lea`'s index register scales into an address that is *written to a register*, never
+  -- dereferenced, so it forms no memory address here.
+  | .lea _ _ _ _ _ => none
   | _ => none
 
 /-- `evalInstr` leaves a register it does not write unchanged. -/
 theorem evalInstr_get_of_not_dst {w : Nat} (s : JState w) (i : JInstr w) (r : String)
     (h : r ∉ dstRegs i) : (evalInstr s i).get r = s.get r := by
   cases i <;>
-    simp_all [evalInstr, dstRegs, JState.get, JState.setReg, JState.writeB5W,
-      JState.store, JState.storeIdx]
+    simp_all [evalInstr, dstRegs, JState.get, JState.setReg, JState.writeB5,
+      JState.writeB5W, JState.writeB2W, JState.store, JState.storeIdx]
 
 /-- A leaf is **CT-addressed** w.r.t. `pub`: every memory index register it uses is
     public, and it never overwrites a public register (the address/counter frame is
@@ -376,7 +383,7 @@ theorem agreePub_preserved (pub : PubPred) {w : Nat} (i : JInstr w)
   rw [evalInstr_get_of_not_dst s₁ i r hnd, evalInstr_get_of_not_dst s₂ i r hnd]
   exact hag r hr
 
-/-- **The standard-CT keystone.** A leaf all of whose instructions are CT-addressed
+/-- **The standard-CT theorem.** A leaf all of whose instructions are CT-addressed
     (index registers public, public registers never overwritten) produces the same
     machine leakage trace from any two states that **agree on the public registers**
     — regardless of the secret-register values. So the observable trace is a
@@ -400,8 +407,8 @@ theorem blockLeak_pub_determined (pub : PubPred) {w : Nat} (body : List (JInstr 
 /-! ## 9. A public-indexed leaf IS constant-time (what the strict version excluded)
 
 A Merkle/FRI loop body indexes memory by a **public** loop position (`pos`), then
-folds secret data. The strict `IsDirect` keystone rejects it (`storeMemIdx` is not
-direct); the standard keystone accepts it: with `pos` public and the data registers
+folds secret data. The strict `IsDirect` theorem rejects it (`storeMemIdx` is not
+direct); the standard theorem accepts it: with `pos` public and the data registers
 secret, the address trace is determined by `pos` alone. -/
 
 /-- The public/secret split for the worked indexed leaf: the loop position `pos`
@@ -426,7 +433,7 @@ theorem pubIndexedLeaf_ctAddressed : ∀ i ∈ pubIndexedLeaf, CTAddressed demoP
 /-- **The public-indexed leaf is constant-time** in the standard sense: any two
     states agreeing on the public registers (`pos`, `op`, `ap`) — but differing
     arbitrarily on the secret `data` — produce the same leakage trace. This is the
-    generalization the strict keystone could not express. -/
+    generalization the strict theorem could not express. -/
 theorem pubIndexedLeaf_constant_time (s₁ s₂ : JState 64)
     (hag : agreePub demoPub s₁ s₂) :
     blockLeak s₁ pubIndexedLeaf = blockLeak s₂ pubIndexedLeaf :=
@@ -447,7 +454,7 @@ control-flow constructs the covered front fragment emits (`RFor`/`RIfNz`):
   guard, take the **same** arm, and produce the same branch-plus-arm leakage.
 
 Both hold *only* under the public-control-flow discipline: a **secret** trip count
-or a **secret** guard is genuinely not constant-time
+or a **secret** guard is not constant-time
 (`nonCT_secretGuard_leaks_value` below witnesses the guard case).
 
 Unlike the emitted `LinstrR`/`lsem` control flow (`Lcond`/`Lgoto`, whose CT is
@@ -576,7 +583,7 @@ theorem cfLoop_pub_determined (pub : PubPred) {w : Nat} (body : OwnedCF w)
     · simp only [cfLoop]; rw [hl, hl']
     · simp only [cfLoop]; exact ha'
 
-/-- **The control-flow constant-time keystone.** A CT-controlled structured owned
+/-- **The control-flow constant-time theorem.** A CT-controlled structured owned
     block (`CFControlled pub cf`) produces the **same** machine leakage trace from
     any two states that **agree on the public registers** — regardless of the
     secret-register values — and preserves that agreement on the post-states. So the
@@ -725,7 +732,7 @@ theorem cfIfDemo_constant_time (s₁ s₂ : JState 64)
 def cfSecretIf : OwnedCF 64 :=
   .ifPub "sec" (.straight [.loadMem "t" "A" 0]) (.straight [.loadMem "t" "B" 0])
 
-/-- **The contrast that keeps the control-flow keystone non-vacuous.** A conditional
+/-- **The contrast that keeps the control-flow theorem non-vacuous.** A conditional
     on a **secret** guard leaks the guard's value through the memory-address trace:
     two states differing only on `sec` (here `sec = 1` vs `sec = 0`) take different
     arms and so touch different addresses (`A+0` vs `B+0`), producing **different**

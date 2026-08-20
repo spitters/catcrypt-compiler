@@ -129,10 +129,8 @@ full source→x86 CT chain *modulo* two glue facts:
    smoke test, the actual x86 binary that `jasminc` emits is supplied
    by the build pipeline; on the Lean side we treat it as a parameter.
 
-Both `JasminCompilerBridge` and `LowCTToJasmin` are imported directly by
-this module, so the results below are stated against the real
-`toJasminCmd` lowering and the real `jasminc` bridge rather than against
-local restatements of them. -/
+`SSALeakage` and `JasminToSSA` co-import cleanly, so
+`JasminCompilerBridge` and `LowCTToJasmin` are imported above. -/
 
 /-- A subset of `LowCT` for which `toJasminCmd`'s output is
 accepted by the Jasmin syntactic CT whitelist `isCT_Cmd`.
@@ -180,18 +178,14 @@ def jasminCTSafe : LowCT → Bool
   | .RLimbStoreExpr _ _ e   =>
       CatCrypt.Crypto.Jasmin.isCT_PExpr
         (CatCrypt.Crypto.Jasmin.LowCT.sexprToPExpr e)
-  -- The back-end `isCT_InstrR` whitelist covers the lowerings of the
-  -- following constructors, so they are admitted here.  Each citation is to
-  -- `bench/framework/CT_INSTRUCTION_REFERENCES.md`.
+  -- #235: the back-end `isCT_InstrR` whitelist now covers the lowerings of
+  -- these constructors, so they are admitted here (previously rejected
+  -- pending the whitelist extension).  Each citation is to
+  -- CT_INSTRUCTION_REFERENCES.md.
   --   `RCallSwap f` → two sequential `Ccall`s.  Compositional CT (the
   --   call mechanism is CT-neutral, reduces to callee CT) — §"Multi-output
   --   call".  The `isCT_InstrR` `Ccall` clause accepts both.
   | .RCallSwap _ _ _ _      => true
-  --   `RAsmOp name` → `Copn (Oasm name)`.  CT iff the opcode is on the
-  --   vendor DOIT∩DIT list (§"Arithmetic/logic Copn"); gated on
-  --   `ct_intrinsic name`, matching the back-end `Copn` clause and the
-  --   user-facing `isCT_LowCT'` gate.  Rejects DIV/IDIV/BSF/BSR/FP.
-  | .RAsmOp name _ _        => CatCrypt.Crypto.Jasmin.ct_intrinsic name
   --   `RCallN f` → multi-output `Ccall`.  Compositional CT (§"Multi-output
   --   call").
   | .RCallN _ _ _           => true
@@ -207,9 +201,8 @@ def jasminCTSafe : LowCT → Bool
   -- compositionality); `RFnCall f` → multi-output `Ccall` (compositional CT).
   | .RFnDef _ _ _ body cont => jasminCTSafe body && jasminCTSafe cont
   | .RFnCall _ _ _          => true
-  -- Phase I (2026-05-03): tuple component store/load lowers to `[]` at
+  -- Phase I (2026-05-03): tuple component load lowers to `[]` at
   -- this layer, so the resulting Jasmin Cmd is trivially CT.
-  | .RTupleStore _ _ _      => true
   | .RTupleLoad _ _ _       => true
   -- #229 / Phase RND (2026-05-30): the dynamic-index array store/load and the
   -- SExpr scalar-set lower to real instructions.  Under Phase RND,
@@ -232,7 +225,7 @@ def jasminCTSafe : LowCT → Bool
   -- Sound-conservative fix: reject these three arms (`false`).  A dynamic-index
   -- array access must be routed through `RArrStoreLit`/`RArrLoadLit` (literal,
   -- public index) to be admitted; compound scalar arithmetic must be unfolded
-  -- into single-op `RScalarSet`/`RAsmOp` steps.  Soundly accepting a dynamic
+  -- into single-op `RScalarSet` steps.  Soundly accepting a dynamic
   -- index under a public-index hypothesis requires the `LevelTable`-threaded
   -- `cmdCT` analyser (`LowCTCTAnalysis.lean`, `cmdCT_sound`); `jasminCTSafe`
   -- carries no level info, so it cannot gate on index publicness here.  See
@@ -240,8 +233,6 @@ def jasminCTSafe : LowCT → Bool
   | .RArrStore _ _ _        => false
   | .RArrLoad _ _ _         => false
   | .RScalarSetExpr _ _     => false
-  -- `RBytesSlice` still lowers to the empty `[]` Cmd at this layer.
-  | .RBytesSlice _ _ _ _    => true
   -- #235: literal-indexed array store/load lower to a `Cassgn` with a
   -- `Laset`/`Pget` at a **literal (`Pconst`) index**.  The back-end
   -- `isCT_InstrR` whitelist now admits these (the leaked address is the
@@ -435,8 +426,8 @@ theorem isCT_Cmd_of_jasminCTSafe (c : LowCT) (h : jasminCTSafe c = true) :
     -- arg's CT-ness is exactly `h`.
     simp only [h]
     rfl
-  -- #235: RCallSwap/RAsmOp/RCallN/RSelect now lower to back-end-accepted
-  -- shapes (two/multi `Ccall`, `ct_intrinsic`-gated `Copn`, `CMOV` `Copn`).
+  -- #235: RCallSwap/RCallN/RSelect lower to back-end-accepted
+  -- shapes (two/multi `Ccall`, `CMOV` `Copn`).
   -- RAssert lowers to the empty Cmd; RBlock recurses.
   -- `RCallSwap f d1 d2 args` → `[Ccall [d1] f args, Ccall [d2] f args]`.
   | RCallSwap f dest1 dest2 args =>
@@ -454,20 +445,6 @@ theorem isCT_Cmd_of_jasminCTSafe (c : LowCT) (h : jasminCTSafe c = true) :
             (args.map CatCrypt.Crypto.Jasmin.LowCT.locToPExpr).all
                 CatCrypt.Crypto.Jasmin.isCT_PExpr) = true
       rw [all_locToPExpr_isCT]; rfl
-  -- `RAsmOp name dests args` → `[Copn (dests) (Oasm name) (args)]`.  The
-  -- back-end `Copn` clause needs `ct_intrinsic name && lvs.all isCT_LVal &&
-  -- args.all isCT_PExpr`; the first conjunct is exactly `h`.
-  | RAsmOp name dests args =>
-    simp only [jasminCTSafe] at h
-    simp only [CatCrypt.Crypto.Jasmin.LowCT.toJasminCmd_RAsmOp,
-               CatCrypt.Crypto.Jasmin.isCT_Cmd, CatCrypt.Crypto.Jasmin.isCT_InstrR,
-               Bool.and_true]
-    show (CatCrypt.Crypto.Jasmin.ct_intrinsic name &&
-          (dests.map CatCrypt.Crypto.Jasmin.LowCT.locToLVal).all
-              CatCrypt.Crypto.Jasmin.isCT_LVal &&
-          (args.map CatCrypt.Crypto.Jasmin.LowCT.locToPExpr).all
-              CatCrypt.Crypto.Jasmin.isCT_PExpr) = true
-    rw [all_locToLVal_isCT, all_locToPExpr_isCT, h, Bool.and_true, Bool.and_true]
   -- `RCallN f dests args` → `[Ccall (dests) f (args)]`.
   | RCallN f dests args =>
     simp only [CatCrypt.Crypto.Jasmin.LowCT.toJasminCmd_RCallN,
@@ -508,10 +485,7 @@ theorem isCT_Cmd_of_jasminCTSafe (c : LowCT) (h : jasminCTSafe c = true) :
           (args.map CatCrypt.Crypto.Jasmin.LowCT.locToPExpr).all
               CatCrypt.Crypto.Jasmin.isCT_PExpr) = true
     rw [all_locToLVal_isCT, all_locToPExpr_isCT, Bool.and_true]
-  -- Phase I: tuple component store/load lowers to `[]` (empty Cmd is CT).
-  | RTupleStore _ _ _ =>
-    simp [CatCrypt.Crypto.Jasmin.LowCT.toJasminCmd_RTupleStore,
-          CatCrypt.Crypto.Jasmin.isCT_Cmd]
+  -- Phase I: tuple component load lowers to `[]` (empty Cmd is CT).
   | RTupleLoad _ _ _ =>
     simp [CatCrypt.Crypto.Jasmin.LowCT.toJasminCmd_RTupleLoad,
           CatCrypt.Crypto.Jasmin.isCT_Cmd]
@@ -523,10 +497,6 @@ theorem isCT_Cmd_of_jasminCTSafe (c : LowCT) (h : jasminCTSafe c = true) :
   | RArrStore _ _ _ => simp [jasminCTSafe] at h
   | RArrLoad _ _ _ => simp [jasminCTSafe] at h
   | RScalarSetExpr _ _ => simp [jasminCTSafe] at h
-  -- `RBytesSlice` still lowers to the empty `[]` Cmd (`isCT_Cmd [] = true`).
-  | RBytesSlice _ _ _ _ =>
-    simp [CatCrypt.Crypto.Jasmin.LowCT.toJasminCmd_RBytesSlice,
-          CatCrypt.Crypto.Jasmin.isCT_Cmd]
   -- #235: literal-indexed array store/load lower to a `Cassgn` whose
   -- `Laset`/`Pget` carries a literal (`Pconst`) index — now in the
   -- `isCT_InstrR` whitelist (public/data-independent address).
@@ -577,9 +547,9 @@ Composes:
 
 Trust dependencies:
 
-* The Lean-side bridge — `isCT_LowCT'` ⇒ `ct_spComp` (this file's
-  `rustcmd_ct_implies_cryptossa_ct`) and the connector lemma
-  `isCT_Cmd_of_jasminCTSafe` — is **Qed**.
+* The Lean-side connector lemma `isCT_Cmd_of_jasminCTSafe` — lifting
+  `jasminCTSafe` to the Jasmin syntactic CT predicate `isCT_Cmd` on
+  the emitted command — is proved in full.
 * The `jasminc_preserves_ct` axiom in `JasminCompilerBridge.lean`
   cites arXiv 2511.11292 (Arranz-Olmos et al., 2025).
 * The opaque types `X86Prog`, `Jasminc.compilesTo`, and
@@ -635,9 +605,11 @@ def smokeBridgeProg : LowCT :=
 /-- The smoke program is accepted by the relaxed CT predicate. -/
 theorem smokeBridgeProg_isCT' :
     isCT_LowCT' smokeBridgeLeaves emptySecrets smokeBridgeProg = true := by
-  -- `isCT_LowCT'` compiles to a recursion wrapper that kernel reduction does
-  -- not unfold, so `decide` cannot evaluate this instance; `native_decide`
-  -- evaluates through the compiled code instead.
+  -- `decide` does not reduce
+  -- `isCT_LowCT'` past the pattern-match elaboration boundary
+  -- (Lean 4.28 well-founded recursion compiles to a wrapper that
+  -- `decide` cannot unfold).  `native_decide` evaluates through the
+  -- compiled code.
   native_decide
 
 /-- The smoke program also satisfies the over-strict predicate (it has
@@ -737,20 +709,15 @@ and bounded the gap with the decidable side-condition
   - multi-output `Ccall` (`RCallN`/`RFnCall`/`RCallSwap`) — already
     accepted (compositional CT, call mechanism CT-neutral);
   - `Cfn`/append (`RFnDef`) — compositional, via the body lowering.
-* `isCT_LowCT'` gates `RAsmOp` on the vendor DOIT∩DIT whitelist
-  `ct_intrinsic name`, matching both the back-end `Copn` clause and
-  `jasminCTSafe`.  The gate enforces CT soundness: `DIV`/`IDIV`/
-  `BSF`/`BSR`/FP are not constant-time and are rejected by it.
-* `jasminCTSafe` was correspondingly relaxed on those eight constructors
-  (`RAsmOp` gated on `ct_intrinsic`, the rest accepted/recursed).
+* `jasminCTSafe` was correspondingly relaxed on those constructors
+  (accepted or recursed).
 
 The result: on **every** constructor, `isCT_LowCT' leaves secrets c =
 true` implies `jasminCTSafe c = true`.  For the call constructors the
 implication is monotone (`isCT_LowCT'` gates on `leaves f`, which is a
 *restriction*; `jasminCTSafe` accepts unconditionally, so any
-`isCT_LowCT'`-accepted call is `jasminCTSafe`-accepted).  For `RAsmOp`
-both gate on `ct_intrinsic name` — they coincide.  For the structural
-constructors both recurse identically.
+`isCT_LowCT'`-accepted call is `jasminCTSafe`-accepted).  For the
+structural constructors both recurse identically.
 
 `inCertifiedCTFragment` is the decidable fragment on which `isCT_LowCT'`
 and `jasminCTSafe` **agree**.  #229 / Phase RND (2026-05-30) re-narrowed it:
@@ -805,8 +772,6 @@ induction:
 * structural (`RSeq`/`RLetZero`/`RLetU64Zero`/`RIfNz`/`RWhileNz`/`RFor`/
   `RBlock`/`RFnDef`) — both predicates recurse identically; close by IH
   (carrying the fragment hypothesis through);
-* `RAsmOp name` — both gate on `ct_intrinsic name`; the hypothesis is the
-  goal;
 * the three excluded constructors — `inCertifiedCTFragment = false`, so the
   fragment hypothesis is vacuous;
 * every remaining call/structural-leaf constructor — `jasminCTSafe = true`
@@ -858,8 +823,6 @@ theorem isCT_LowCT'_imp_jasminCTSafe
     simp only [inCertifiedCTFragment, Bool.and_eq_true] at hfrag
     simp only [jasminCTSafe, Bool.and_eq_true]
     exact ⟨ihBody hct.1 hfrag.1, ihCont hct.2 hfrag.2⟩
-  -- `RAsmOp name`: both predicates are `ct_intrinsic name`.
-  | RAsmOp _ _ _ => simpa only [isCT_LowCT', jasminCTSafe] using hct
   -- #229: the three dynamic-index / SExpr constructors are excluded from the
   -- fragment, so `hfrag : false = true` is vacuous.
   | RArrStore _ _ _ => simp only [inCertifiedCTFragment, Bool.false_eq_true] at hfrag

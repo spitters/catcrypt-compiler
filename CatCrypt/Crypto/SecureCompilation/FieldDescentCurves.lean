@@ -4,6 +4,7 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.FieldDescentMultiLimb
+import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4LimbTierA
 
 /-!
 # The multi-limb curve-field Stage-2 leaves, re-instantiated for P256 and BN254
@@ -15,7 +16,7 @@ squares (`mmMul_realizes` / `mmAdd_realizes` / `mmSub_realizes`) for the
 
 The three op-level squares there are stated **prime-parametric** (any `p, R, nP`
 with `0 < p`, `p ≤ R`, `p · nP ≡ R − 1 mod R`). This file demonstrates that the
-multi-limb skeleton is genuinely a **curve family** by re-instantiating those same
+multi-limb skeleton is a **curve family** by re-instantiating those same
 prime-parametric squares at two more 256-bit curve primes:
 
 * **P256 / secp256r1** — `p = 2^256 − 2^224 + 2^192 + 2^96 − 1`

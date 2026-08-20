@@ -219,15 +219,10 @@ theorem compiled_length (alloc : GpAlloc) (p : RegProg) :
 def regProgToArmBytes (alloc : GpAlloc) (p : RegProg) : List (BitVec 8) :=
   ArmEncoder.encodeBBlock alloc (lowerBBlock (regToBOp p))
 
-/-- **End-to-end compiler correctness at the `RegProg` waist**: the emitted
-    machine block computes the source denotation, and the byte stream is its
-    `4·|·|` fixed-width encoding. This is the content the `Jasmin/ISA.lean`
-    `aarch64Compile`/`aarch64CompilerCorrect` axioms assert, discharged as a
-    theorem — but stated over a `RegProg` straight-line block (reached from
-    `Com jasminDialect` by the verified de-Bruijn front `comToReg_faithful`),
-    not over the `JasminProg` AST with entry points and arguments that those
-    axioms range over. No `JasminProg → RegProg` translation is in the tree, so
-    this theorem does not by itself replace the axioms. -/
+/-- **End-to-end compiler correctness** (the content the `Jasmin/ISA.lean`
+    `aarch64Compile`/`aarch64CompilerCorrect` axioms assert, now a theorem modulo
+    the legacy `JasminProg → RegProg` adapter): the emitted machine block computes
+    the source denotation, and the byte stream is its `4·|·|` fixed-width encoding. -/
 theorem regProgToArmBytes_spec (alloc : GpAlloc) (p : RegProg) (s : BState) :
     runBBlock s (lowerBBlock (regToBOp p)) = armTarget.denote p s
     ∧ (regProgToArmBytes alloc p).length = 4 * (regToBOp p).length :=

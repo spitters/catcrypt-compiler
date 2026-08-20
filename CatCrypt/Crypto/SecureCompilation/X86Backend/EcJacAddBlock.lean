@@ -182,12 +182,20 @@ def yWin : List String := ["y0", "y1", "y2", "y3"]
 def accWin : List String := ["c0", "c1", "c2", "c3", "c4", "c5", "c6", "c7"]
 
 /-- Compile one `JacFieldCall` to the assembled frame-wrapped reduce-inside
-    field-op block over the frame `"f"`, so each op outputs a **reduced** (`< N`)
-    canonical slot value: a `mul` lands its 512-bit product and the emitted
-    Montgomery reduce + conditional subtract via `EcFieldOpsFull.feMulFrameAtFull`;
-    an `add` runs the ADC chain then the emitted conditional subtract via
-    `feAddFrameAtFull`; a `sub` runs the SBB chain then the emitted modular
-    add-back via `feSubFrameAtFull`. -/
+    field-op block over the frame `"f"`: a `mul` lands its 512-bit product and
+    appends the emitted Montgomery reduce + conditional subtract via
+    `EcFieldOpsFull.feMulFrameAtFull`; an `add` runs the ADC chain then the
+    emitted conditional subtract via `feAddFrameAtFull`; a `sub` runs the SBB
+    chain then the emitted modular add-back via `feSubFrameAtFull`.
+
+    The multiply case computes its product in `accWin = ["c0", …, "c7"]`,
+    disjoint from the registers `Curve4MontMulProvenEmit.accNames` that the
+    emitted reduce inside `feMulFrameAtFull` reads, and emits no instruction
+    materialising the modulus registers `p0..p3` or the constant `np`; results
+    about this dispatch carry the product identification and the
+    `MontRedc4Load` register conjuncts as hypotheses (`EcMulReduceWindowWire`).
+    `EcMulConstPrologueWire.emitCallConst` is the dispatch whose multiply
+    establishes both by execution. -/
 def emitCall : JacFieldCall → List (JInstr 64)
   | .mul out in0 in1 =>
       EcFieldOpsFull.feMulFrameAtFull xWin yWin accWin "hi" "lo" "f" out in0 in1

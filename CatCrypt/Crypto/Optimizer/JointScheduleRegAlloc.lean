@@ -38,6 +38,9 @@ renamed instructions — so the aliasing is visible and the hazard is caught.
    `schedOnlyLegal` is blind to colliding renames but `jointLegal` is not.
 5. `searchJoint` — a heuristic driver over `JointMove`s, parameterised over
    an external cost function so it composes with `X86CostModel` later.
+
+> **`@bench-only`.** The `distinctNamesBlock` `List (JInstr 64)` is a
+> search-regression fixture; the module emits no deployed `.s` artifact.
 -/
 
 set_option autoImplicit false
@@ -136,6 +139,27 @@ def writesFlags' : JInstr 64 → Bool
   | .loadMemIdx _ _ _ _ => false
   | .storeMemIdx _ _ _ _ => false
   | .loadSym _ _       => false
+  -- `test` and `cmp` are the flag-only writers: all five flags, no register.
+  | .test _ _          => true
+  | .cmp _ _           => true
+  -- `not_` writes its destination and no flag.
+  | .not_ _            => false
+  -- `andn` writes all five flags (`PF` undefined).
+  | .andn _ _ _        => true
+  -- the rotates write `OF` and `CF`, so they are flag writers even though
+  -- `SF`/`PF`/`ZF` keep their values.
+  | .rol _ _           => true
+  | .ror _ _           => true
+  -- the BMI2 rotate/shift forms write no flag at all — that is what
+  -- distinguishes them from `ror`/`shl`/`shr`/`sar`.
+  | .rorx _ _ _        => false
+  | .shlx _ _ _        => false
+  | .shrx _ _ _        => false
+  | .sarx _ _ _        => false
+  -- extension moves and `lea` write only their destination register.
+  | .movzx _ _ _       => false
+  | .movsx _ _ _       => false
+  | .lea _ _ _ _ _     => false
   | _                  => true
 
 /-- Does instruction `b` read flags (carry-in for ADC/SBB/ADCX/ADOX)? -/
@@ -144,6 +168,15 @@ def readsFlags' : JInstr 64 → Bool
   | .sbb _ _  => true
   | .adcx _ _ => true
   | .adox _ _ => true
+  -- `test` and `cmp` read their two operands, no flag.
+  | .test _ _ => false
+  | .cmp _ _  => false
+  -- the bitwise, rotate, shift, extension and address-computation ops take no
+  -- flag input.
+  | .not_ _ | .andn _ _ _ => false
+  | .rol _ _ | .ror _ _ | .rorx _ _ _ => false
+  | .shlx _ _ _ | .shrx _ _ _ | .sarx _ _ _ => false
+  | .movzx _ _ _ | .movsx _ _ _ | .lea _ _ _ _ _ => false
   | _         => false
 
 /-- Flag-chain hazard: one writes a flag that the other reads, or both write

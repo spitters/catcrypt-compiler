@@ -3,6 +3,7 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
+import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 import CatCrypt.Crypto.SecureCompilation.X86Backend.PastaFieldAddSubKernel
 
 /-!
@@ -61,6 +62,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PastaFieldAddSubKernel (pallasLimbs vestaLimbs)
 
 /-! ## 1. The Montgomery constants -/
@@ -172,7 +175,66 @@ theorem vestaMontMulBlock_lowering_correct
   lowerBlock_denote_closed (montMulBlock vestaLimbs vestaNPrime)
     (initState a0 a1 a2 a3 b0 b1 b2 b3)
 
-/-! ## 5. Register allocation + AT&T emission (reg-ptr ABI + 32-byte scratch) -/
+/-! ## 5. Constant time: straight-line, all-direct addressing
+
+The CIOS body's instruction sequence does not depend on the modulus limbs, only
+its immediates do, so the `allDirect` check holds for **every** modulus and
+Montgomery constant. Memory is addressed through a base pointer and a
+compile-time-constant displacement (`loadMem`/`storeMem`/`mulxMem`), and the
+final reduce is branch-free (`cmovb`), so no `loadMemIdx`/`storeMemIdx`
+appears. -/
+
+/-- One CIOS MAC step uses only direct base+displacement addressing. -/
+theorem macStep_allDirect (tlo thi : String) (j : Nat) :
+    allDirect (macStep tlo thi j) = true := rfl
+
+/-- One CIOS reduce step uses only direct base+displacement addressing. -/
+theorem redStep_allDirect (p : List Nat) (tlo thi : String) (j : Nat) :
+    allDirect (redStep p tlo thi j) = true := rfl
+
+/-- One CIOS iteration uses only direct base+displacement addressing. -/
+theorem ciosIter_allDirect (p : List Nat) (nPrime i : Nat) :
+    allDirect (ciosIter p nPrime i) = true := rfl
+
+/-- The final conditional subtract uses only direct base+displacement
+    addressing. -/
+theorem finalReduce_allDirect (p : List Nat) :
+    allDirect (finalReduce p) = true := rfl
+
+/-- The CIOS Montgomery multiply body uses only direct base+displacement
+    addressing, over any modulus limbs and Montgomery constant. Proved by
+    splitting the body at its two concatenations and the iteration `flatMap`,
+    so the cost is the per-piece checks rather than a reduction of the
+    assembled block. -/
+theorem montMulBlock_allDirect (p : List Nat) (nPrime : Nat) :
+    allDirect (montMulBlock p nPrime) = true := by
+  simp only [montMulBlock, allDirect, List.all_append, List.all_flatMap,
+    Bool.and_eq_true]
+  exact ⟨⟨rfl, List.all_eq_true.mpr fun i _ => ciosIter_allDirect p nPrime i⟩,
+    finalReduce_allDirect p⟩
+
+/-- **Constant time, for every modulus.** The emitted CIOS Montgomery multiply
+    produces the same machine leakage trace from any two starting states: its
+    observable control-flow + memory-address sequence is a function of the
+    program text alone, so it carries no information about the operand limbs. -/
+theorem montMulBlock_constant_time (p : List Nat) (nPrime : Nat)
+    (s₁ s₂ : JState 64) :
+    blockLeak s₁ (montMulBlock p nPrime) = blockLeak s₂ (montMulBlock p nPrime) :=
+  allDirect_constant_time _ (montMulBlock_allDirect p nPrime) s₁ s₂
+
+/-- **Constant time** for the Pallas Montgomery multiply leaf. -/
+theorem pallasMontMul_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ (montMulBlock pallasLimbs pallasNPrime)
+      = blockLeak s₂ (montMulBlock pallasLimbs pallasNPrime) :=
+  montMulBlock_constant_time _ _ s₁ s₂
+
+/-- **Constant time** for the Vesta Montgomery multiply leaf. -/
+theorem vestaMontMul_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ (montMulBlock vestaLimbs vestaNPrime)
+      = blockLeak s₂ (montMulBlock vestaLimbs vestaNPrime) :=
+  montMulBlock_constant_time _ _ s₁ s₂
+
+/-! ## 6. Register allocation + AT&T emission (reg-ptr ABI + 32-byte scratch) -/
 
 /-- Pin pointers + the `MULX` multiplier `yd`→`%rdx` + scratch base `sp`→`%rbp`. -/
 def montMulPinned : GpAlloc :=

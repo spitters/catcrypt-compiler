@@ -86,14 +86,14 @@ open CatCrypt.Crypto.Jasmin
 open CatCrypt.Crypto.Jasmin.BignumExec
 open CatCrypt.Crypto.Jasmin.Emit
 open CatCrypt.Crypto.Jasmin.MemoryModel
-open CatCrypt.Crypto.Jasmin.Examples.MpnAddPrototype
-open CatCrypt.Crypto.Jasmin.Examples.MpnMul1Prototype
-open CatCrypt.Crypto.Jasmin.Examples.MpnMulPrototype
-open CatCrypt.Crypto.Jasmin.Examples.MpnAddmul1Prototype
-open CatCrypt.Crypto.Jasmin.Examples.MpnAddMul1AdxBlockedPrototype
-open CatCrypt.Crypto.Jasmin.Examples.MpnMulCascadeAdxPrototype
-open CatCrypt.Crypto.Jasmin.Examples.MpnMontgomeryPrototype
-open CatCrypt.Crypto.Jasmin.Examples.MpnPowPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.Mul1Prototype
+open CatCrypt.Crypto.Jasmin.Mpn.MulPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.Addmul1Prototype
+open CatCrypt.Crypto.Jasmin.Mpn.AddMul1AdxBlockedPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.MulCascadeAdxPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.MontgomeryPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.PowPrototype
 open CatCrypt.Crypto.Jasmin.Examples.MpzPowmCompositionPrototype
 open CatCrypt.Crypto.Jasmin.Examples.MpzPowmRsaCrtPrototype
 open CatCrypt.Crypto.Jasmin.Examples.MpzPowmAdxCascadePrototype
@@ -251,8 +251,8 @@ Inside each cascaded `mpz_powm_adx_cascade_<n>`, every
 -/
 
 /-- Local short alias to fix the `vr`/`pv` ambiguity. -/
-private abbrev MV (s : String) : Var := MpnMontgomeryPrototype.vr s
-private abbrev MP (s : String) : PExpr := MpnMontgomeryPrototype.pv s
+private abbrev MV (s : String) : Var := Mpn.MontgomeryPrototype.vr s
+private abbrev MP (s : String) : PExpr := Mpn.MontgomeryPrototype.pv s
 
 /-- The cascade modexp symbol name at half-width `k_half`. -/
 def cascadeModexpSymbol (k_half : Nat) : String :=

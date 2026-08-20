@@ -59,7 +59,7 @@ are the syntactic/value trust boundary, exactly as the SM2 template. No `sorry`,
 no new `axiom`. The MULX/ADX legalizations and the verified spilling allocator
 are reused unchanged.
 
-The curve moduli and the per-word `n'` are `native_decide`-pinned to the genuine
+The curve moduli and the per-word `n'` are `native_decide`-pinned to the curve
 primes: each `<curve>Limbs_value` (vendored in `Cios4LimbProven` /
 `Curve4LimbTierA` / `PastaBignumTierA`) and each `<curve>NPrime_pin`
 (`(p₀ · n') % 2^64 = 2^64 − 1`).
@@ -181,7 +181,7 @@ def emitMontRedcStepAt (i : Nat) : List (JInstr 64) :=
   -- through ALL of these — a single `adc accNames[i+5], 0` (the previous code)
   -- DROPS the carry when `accNames[i+5]` is at `2^64−1`, desynchronising the
   -- higher words from `rtop`. That dropped carry is exactly what made `rtop`
-  -- a non-genuine bit-256 for `p < 2^255` (top limb `p3 < 2^63`): the lost
+  -- an incorrect bit-256 for `p < 2^255` (top limb `p3 < 2^63`): the lost
   -- intermediate carry surfaced as a spurious `rtop = 1`, so the final
   -- conditional subtract's `sbb rtop, 0` mis-set `CF` and the `cmovb` kept the
   -- unreduced `result` (== gmp + p) when `result ∈ [p, 2p)`. Propagating the
@@ -204,7 +204,7 @@ def emitMontRedcStepAt (i : Nat) : List (JInstr 64) :=
     -- inter-step routing (trusted emit scaffolding): the accumulate's carry-out
     -- `rcy` is added into `accNames[i+4]`, and that add's carry-out is propagated
     -- through every higher accumulator word and finally into `rtop` — no carry
-    -- is ever dropped, so `rtop` is the genuine 257th bit of the running value.
+    -- is ever dropped, so `rtop` is exactly the 257th bit of the running value.
     ++ [ JInstr.add nextCarryWord (.reg rcyName) ]
     ++ foldChain
 
@@ -212,17 +212,37 @@ def emitMontRedcStepAt (i : Nat) : List (JInstr 64) :=
 def emitMontRedc4Block : List (JInstr 64) :=
   emitMontRedcStepAt 0 ++ emitMontRedcStepAt 1 ++ emitMontRedcStepAt 2 ++ emitMontRedcStepAt 3
 
+/-- The parametric branch-free conditional-subtract round: trial-subtract
+    `(q0,…,q3)` from the limbs `(r0,…,r3)` through the borrow chain and the top
+    word `rtop`, then `CMOVB`-restore each limb from its saved copy `(v0,…,v3)` on
+    a final borrow. The register-name parameters stand for the concrete register
+    names of an emit module's round (its result / modulus-limb / saved-copy /
+    top-word names). The right-nested `++` shape is the singleton-per-step
+    decomposition the block-agreement proofs chain over. -/
+def condSubRoundJ (r0 r1 r2 r3 q0 q1 q2 q3 v0 v1 v2 v3 rtop : String) :
+    List (JInstr 64) :=
+  [JInstr.sub r0 (.reg q0)]
+    ++ ([JInstr.sbb r1 (.reg q1)]
+    ++ ([JInstr.sbb r2 (.reg q2)]
+    ++ ([JInstr.sbb r3 (.reg q3)]
+    ++ ([JInstr.sbb rtop (.imm 0)]
+    ++ ([JInstr.cmovb r0 (.reg v0)]
+    ++ ([JInstr.cmovb r1 (.reg v1)]
+    ++ ([JInstr.cmovb r2 (.reg v2)]
+    ++  [JInstr.cmovb r3 (.reg v3)])))))))
+
 /-- One branch-free conditional-subtract round on the 4-word value in `resNames`
     (5th word `rtop`): trial `res − p` (borrow chain through `rtop`), then `CMOVB`
     each `res[k]` back to the saved copy `acc[k+4]` on a final borrow (`res < p`).
     Leaves `res = (res ≥ p) ? res − p : res`. -/
 def condSubRound : List (JInstr 64) :=
-  [ JInstr.sub (resNames.getD 0 default) (.reg (pNames.getD 0 default)) ]
-    ++ (List.range 3).map (fun (k : Nat) =>
-        JInstr.sbb (resNames.getD (k + 1) default) (.reg (pNames.getD (k + 1) default)))
-    ++ [ JInstr.sbb rtopName (.imm 0) ]
-    ++ (List.range 4).map (fun (k : Nat) =>
-        JInstr.cmovb (resNames.getD k default) (.reg (accNames.getD (k + 4) default)))
+  condSubRoundJ (resNames.getD 0 default) (resNames.getD 1 default)
+    (resNames.getD 2 default) (resNames.getD 3 default)
+    (pNames.getD 0 default) (pNames.getD 1 default)
+    (pNames.getD 2 default) (pNames.getD 3 default)
+    (accNames.getD 4 default) (accNames.getD 5 default)
+    (accNames.getD 6 default) (accNames.getD 7 default)
+    rtopName
 
 /-- Number of conditional-subtract rounds. The emitted reduce leaves a value that
     is correct mod `p` but a loose representative (the chained per-step
@@ -230,7 +250,7 @@ def condSubRound : List (JInstr 64) :=
     `p` once the value is `≥ p` and is a no-op once `< p`, so enough rounds
     canonicalise. `condSubRounds` is generous (covers `< (n+1)·p`); KAT-gated. -/
 -- The emitted CIOS reduce is tight (< 2p, confirmed by measurement: raw
--- floor(result/p) ≤ 1, rtop genuine 0 for p<2^255). One conditional subtract
+-- floor(result/p) ≤ 1, rtop equal to 0 for p<2^255). One conditional subtract
 -- *should* canonicalize, but the cond-sub corrupts at 1 round (a subtle
 -- rtop/borrow interaction that pinning rtop did not resolve); the iterated
 -- subtract (idempotent once < p) converges. KAT-gated trusted scaffolding.

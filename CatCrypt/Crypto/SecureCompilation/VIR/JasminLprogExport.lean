@@ -63,10 +63,11 @@ mirroring the structure exactly, prefixed with the OCaml-side magic header
 `JASMIN-LPROG-MARSHAL-v1\n`. This is the integration seam: `read_linear` as
 shipped in #144 accepts the Marshal path only — `read_text_stub` lists every
 `linstr_r` constructor and dropped field as a coverage gap and raises. Closing
-link 2/7 over the textual path requires extending `PrintLinear.pp_prog` and
-writing the textual inverse on the OCaml side, or else an OCaml `Marshal` FFI
-on the Lean side. Either is out of scope for link 1/7; the value-level
-structure produced here is the input both routes consume.
+link 2/7 over the textual path requires extending `PrintLinear.pp_prog` +
+writing the textual inverse on the OCaml side (the README's "Removing the last
+trust dependency" plan), or an OCaml `Marshal` FFI on the Lean side. Either is
+out of scope for link 1/7; the value-level structure produced here is the input
+both routes consume.
 
 ## Physical-register export (§7–8)
 
@@ -261,6 +262,33 @@ def withWidthTag (w : Nat) (mnem : String) : String :=
 def stripWidthTag (mnem : String) : String :=
   if mnem.endsWith ":64" then String.ofList (mnem.toList.dropLast.dropLast.dropLast)
   else mnem
+
+/-- Parse a count-tagged immediate shift/rotate mnemonic (`SHL:0`, `SHR:32`,
+    `SAR:k`, `ROL:k`, `ROR:k`) into the AT&T direction, the compile-time count,
+    and the op width (`64` iff `:64`-tagged, else `32`). `none` for any
+    non-shift mnemonic.
+
+    This must read the count from the **raw** `opn`, NOT from a `stripWidthTag`-ed
+    base: the count separator is `:` (`SHR:16`), the same character the `:8`/`:16`/
+    `:64` ABI **width** tags use. `stripWidthTag`/`mnemWidth` (which the narrow-MOV
+    arm consults) would misread the count `8`/`16`/`64` as a width and strip it,
+    dropping the shift entirely (the Hawk `t1 >> 16` bug). A unary shift never
+    carries a narrow `:8`/`:16` width tag — only the optional `:64` — so the width
+    is unambiguous once the count is parsed off the front. -/
+def parseImmShiftMnem (opn : String) : Option (String × Nat × Nat) :=
+  let isU64 := opn.endsWith ":64"
+  -- peel only the `:64` width tag, leaving `SHR:<count>`
+  let core := if isU64 then stripWidthTag opn else opn
+  match core.splitOn ":" with
+  | [mn, nStr] =>
+      let att : Option String := match mn with
+        | "ROR" => some "ror" | "ROL" => some "rol"
+        | "SHL" => some "shl" | "SHR" => some "shr" | "SAR" => some "sar"
+        | _ => none
+      match att, nStr.toNat? with
+      | some a, some n => some (a, n, if isU64 then 64 else 32)
+      | _, _ => none
+  | _ => none
 
 /-- The reserved `extCall` name prefix that designates a `.rodata` symbol-base
     load (`leaq sym(%rip), %dst`). An `extCall` whose `name` is
@@ -5079,6 +5107,44 @@ def canonicalizeMemrefThread (body : Lcmd) : Lcmd :=
           (srcs.map (canonMemrefOperand m))⟩
     | _ => i)
 
+/-- Whether an `extCall` argument vector forwards the enclosing function's
+    parameters unchanged: entry `j` is the parameter at root position `j`, i.e.
+    De Bruijn index `nArgs - 1 - j` in the newest-first context. `expected`
+    counts down from `nArgs - 1`; the vector must be non-empty and its last
+    entry the oldest parameter (index `0`). -/
+def argsForwardParams {Γ : Ctxt jasminDialect} :
+    {tys : List JasminTy} → HVector (fun ty => Ctxt.Var Γ ty) tys → Nat → Bool
+  | [], .nil, _ => false
+  | _ :: _, .cons v rest, expected =>
+      varIndex v == expected &&
+        (match rest with
+         | .nil => expected == 0
+         | .cons _ _ => expected != 0 && argsForwardParams rest (expected - 1))
+
+/-- Recognise a degenerate zero-marshalling forwarder `Com`: a single
+    `extCall sym` binding whose arguments forward the enclosing parameters
+    unchanged (`argsForwardParams`) and which is returned directly (`.ret .here`).
+    Returns the callee symbol only when the inbound ABI `abiArgs` already equals
+    the callee's SysV argument registers in order (`RDI, RSI, RDX, …`) and every
+    parameter is forwarded — so `call sym; ret` needs no argument moves or result
+    staging. Every other `Com` (and any argument permutation, partial forward, or
+    non-`.here` return) yields `none` and falls through to the marshalling
+    export unchanged. -/
+def degenerateForwarderSym? {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (com : Com jasminDialect Γ t) (abiArgs : List String) : Option String :=
+  match com with
+  | .var e body =>
+      match e, body with
+      | ⟨.extCall sym argTys _, _, args⟩, .ret v =>
+          if varIndex v == 0
+             && Γ.length ≥ 1
+             && argTys.length == Γ.length
+             && abiArgs == (List.range Γ.length).map (fun j => sysvArgRegs.getD j "")
+             && argsForwardParams args (Γ.length - 1)
+          then some sym else none
+      | _, _ => none
+  | _ => none
+
 /-- The ABI-wrapped physical `lfundef` for a `Com`: same args/types as the
     underlying physical export, but `lfd_arg` is reset to a fixed 2-pointer
     SysV signature (`[RDI, RSI]` for the canonical `out, inp` C ABI), the body
@@ -5260,8 +5326,22 @@ def comToLfundefPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy}
   -- Insert the callee-saved-register restore just before the final `Lret`.
   let bodyWithRestore :=
     insertEpilogue bodyWithInlineStores (retMat ++ calleeSaveRestoreEpilogue)
+  -- Degenerate zero-marshalling forwarder (`degenerateForwarderSym?`): a `Com`
+  -- that is a single `extCall sym` binding forwarding the enclosing parameters
+  -- unchanged and returned directly, whose inbound ABI already equals the
+  -- callee's SysV argument registers. Its body is `call sym; ret` with no
+  -- argument moves or result staging — bypassing the `prologue`/`argMat`/
+  -- marshalling above. Only the `lfd_body` field is affected; every other
+  -- field (`lfd_export`, `lfd_callee_saved`, `lfd_arg`, `lfd_tyin`, `lfd_res`,
+  -- `lfd_tyout`) is the same structure literal as the general path, so the
+  -- reduction behaviour of those projections is unchanged. A non-degenerate
+  -- `Com` yields `none`, so its body is `prologue ++ argMat ++ bodyWithRestore`
+  -- byte-for-byte as before.
+  let forwarderBody? : Option Lcmd :=
+    (degenerateForwarderSym? com abiArgs).map
+      (fun sym => [⟨0, .Lcall none (sym, 0)⟩, ⟨0, .Lret⟩])
   { virt with
-    lfd_body := prologue ++ argMat ++ bodyWithRestore
+    lfd_body := forwarderBody?.getD (prologue ++ argMat ++ bodyWithRestore)
     lfd_arg := abiArgs
     lfd_tyin := abiTyin
     lfd_res := []
@@ -5694,25 +5774,60 @@ def aliasRegBody (from_ to_ : String) (body : Lcmd) : Lcmd :=
           (srcs.map (aliasRegOperand from_ to_))⟩
     | _ => i)
 
+/-- The base names of the **array-typed** (`.stackArr`) entries of a variable
+    vector, in vector order, under the `resolveVar` convention. The array-typed
+    restriction of `exprArgsHV`.
+
+    A scalar invariant (`.reg`, `.inlineInt`, `.bool`) is never a
+    `LOADIDX`/`STOREIDX` SIB base, so it takes no red-zone reload slot; dropping
+    it here keeps the array bases at the positions the memref ABI assigns them.
+    Entries that resolve to an immediate are dropped, as in `exprArgsHV`'s
+    `.reg`-filtered use. -/
+def arrArgNamesHV (curDepth nArgs : Nat) (immSlotMap : ImmSlotMap)
+    {Γ : Ctxt jasminDialect} :
+    {tys : Ctxt jasminDialect} → HVector (fun ty => Ctxt.Var Γ ty) tys →
+    List String
+  | [], _ => []
+  | ty :: _, .cons v rest =>
+      let rest' := arrArgNamesHV curDepth nArgs immSlotMap rest
+      match ty, resolveVar curDepth nArgs argName immSlotMap v with
+      | .stackArr _ _, LOperand.reg n => n :: rest'
+      | _, _ => rest'
+
+/-- The out-base name and the array-typed invariant base names of one loop node's
+    `init` / `invs`. The arm every array-carrying `ComL` loop constructor
+    shares. -/
+def loopArgBasesOf (curDepth nArgs : Nat) (immSlotMap : ImmSlotMap)
+    {Γ : Ctxt jasminDialect} {τ : JasminTy} {tys : Ctxt jasminDialect}
+    (init : Ctxt.Var Γ τ) (invs : HVector (fun ty => Ctxt.Var Γ ty) tys) :
+    Option (String × List String) :=
+  match resolveVar curDepth nArgs argName immSlotMap init with
+  | LOperand.reg outNm =>
+      some (outNm, arrArgNamesHV curDepth nArgs immSlotMap invs)
+  | _ => none
+
 /-- Resolve a looped `ComL`'s **canonical loop-argument base names** from the
     `forLoopN` (or `forLoop`) node's `init` and `invs`, using the *same*
-    `resolveVar`/`exprArgsHV` convention the body lowering (`comLToBody`) uses.
+    `resolveVar` convention the body lowering (`comLToBody`) uses.
     Returns `(outBase, inBases)` where `outBase` is the name the body's
     accumulator / out-array base resolves to (`resolveVar init`) and `inBases`
-    are the input-array base names in `invs` order (`exprArgsHV invs`).
+    are the base names of the **array-typed** invariants, in `invs` order
+    (`arrArgNamesHV invs`).
 
-    **Why this is needed (the qruov/sdith base-mis-resolution fix).** `resolveVar`
-    maps a `Var` to `argName (curDepth-1-deBruijn)` — it counts the slot from the
-    program root, i.e. the **reverse** of the newest-first `Γ`. For a top-level
-    `ComL` whose `Γ` is the argument list, the loop's `init` (the newest binder
-    `.here`, the out/accumulator) therefore resolves to the **highest** arg slot,
-    and the last `invs` entry resolves to `a0`. The single-input array-map caller
-    (`mapAddOne`, `out = "a1"`) happened to pass names consistent with this; the
-    multi-input GF-dot callers (`qruov`/`sdith`, `out = "a0", ins = [a1,a2]`)
-    passed `Γ`-ordered names, so the 2nd input's base (`b`) resolved to `a0` (the
-    out slot) and reloaded from the out qsave slot — the byte-KAT-confirmed
-    `42864 vs 69` garbage. Deriving the names from `init`/`invs` here makes the
-    role→name mapping match the body unconditionally, so both shapes are correct.
+    `ComL.toLfundefPhysAbi` zips `inBases` against `abiArgs.drop 1`, so a base's
+    ABI register is fixed by its position among the array invariants. A scalar
+    invariant holds no array base and is dropped, keeping that position count
+    independent of where a kernel lists its scalars: with scalars in the list,
+    every array base to their right would be paired with an ABI register one
+    place too far, reloading the array through a scalar's red-zone slot.
+
+    `resolveVar` maps a `Var` to `argName (curDepth - 1 - deBruijn)` — the slot
+    counted from the program root, i.e. the **reverse** of the newest-first `Γ`.
+    For a top-level `ComL` whose `Γ` is the argument list, the loop's `init` (the
+    newest binder `.here`, the out/accumulator) resolves to the **highest** arg
+    slot and the last `invs` entry resolves to `a0`. Deriving the names here
+    makes the role→name mapping match the body regardless of how a caller ordered
+    its `outArg`/`inArgs` hints.
 
     Returns `none` for a loop-free `ComL` (no `forLoop`/`forLoopN` node). -/
 def ComL.loopArgBaseNames (nArgs : Nat) (immSlotMap : ImmSlotMap)
@@ -5726,40 +5841,15 @@ def ComL.loopArgBaseNames (nArgs : Nat) (immSlotMap : ImmSlotMap)
       | LOperand.reg n => some (n, [])
       | _ => none
   | ComL.forLoopN _ init invs _ =>
-      let outOp := resolveVar curDepth nArgs argName immSlotMap init
-      let inNms := (exprArgsHV curDepth nArgs argName immSlotMap invs).filterMap
-        (fun o => match o with | LOperand.reg n => some n | _ => none)
-      match outOp with
-      | LOperand.reg outNm => some (outNm, inNms)
-      | _ => none
+      loopArgBasesOf curDepth nArgs immSlotMap init invs
   | ComL.forLoopNRt _ _ init invs _ =>
-      let outOp := resolveVar curDepth nArgs argName immSlotMap init
-      let inNms := (exprArgsHV curDepth nArgs argName immSlotMap invs).filterMap
-        (fun o => match o with | LOperand.reg n => some n | _ => none)
-      match outOp with
-      | LOperand.reg outNm => some (outNm, inNms)
-      | _ => none
+      loopArgBasesOf curDepth nArgs immSlotMap init invs
   | ComL.forLoopNRtNested _ _ _ init invs _ =>
-      let outOp := resolveVar curDepth nArgs argName immSlotMap init
-      let inNms := (exprArgsHV curDepth nArgs argName immSlotMap invs).filterMap
-        (fun o => match o with | LOperand.reg n => some n | _ => none)
-      match outOp with
-      | LOperand.reg outNm => some (outNm, inNms)
-      | _ => none
+      loopArgBasesOf curDepth nArgs immSlotMap init invs
   | ComL.whileNz _ _ init invs _ =>
-      let outOp := resolveVar curDepth nArgs argName immSlotMap init
-      let inNms := (exprArgsHV curDepth nArgs argName immSlotMap invs).filterMap
-        (fun o => match o with | LOperand.reg n => some n | _ => none)
-      match outOp with
-      | LOperand.reg outNm => some (outNm, inNms)
-      | _ => none
+      loopArgBasesOf curDepth nArgs immSlotMap init invs
   | ComL.forLoopBlock _ _ init invs _ =>
-      let outOp := resolveVar curDepth nArgs argName immSlotMap init
-      let inNms := (exprArgsHV curDepth nArgs argName immSlotMap invs).filterMap
-        (fun o => match o with | LOperand.reg n => some n | _ => none)
-      match outOp with
-      | LOperand.reg outNm => some (outNm, inNms)
-      | _ => none
+      loopArgBasesOf curDepth nArgs immSlotMap init invs
 
 /-- The 2-pointer-ABI physical `lfundef` for a **looped** `ComL` array-map kernel
     (`out[i] := f(in[i])`, the `mayo_encode` / `*_sign_rwhile` shape) — the
@@ -5796,8 +5886,10 @@ def ComL.toLfundefPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy} (c : ComL Γ 
   -- name each role's `LOADIDX`/`STOREIDX` SIB base ACTUALLY uses in `virt0`, so
   -- the alias and the qsave-reload map below key on the right names regardless of
   -- how the caller ordered `outArg`/`inArgs` (the qruov/sdith fix — see
-  -- `ComL.loopArgBaseNames`). Falls back to the caller's hints for a loop-free
-  -- `ComL` (no loop node), preserving the previous behaviour there.
+  -- `ComL.loopArgBaseNames`). Only the ARRAY-typed invariants appear in `inArgs'`,
+  -- so the positional pairing with `abiArgs.drop 1` below counts array bases and
+  -- is unaffected by where the kernel lists its scalar invariants. Falls back to
+  -- the caller's hints for a loop-free `ComL` (no loop node).
   let derived : String × List String :=
     match ComL.loopArgBaseNames nArgs immSlotMap c nArgs with
     | some (o, ins) => (o, ins)
@@ -5859,6 +5951,11 @@ def ComL.toLfundefPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy} (c : ComL Γ 
   -- RA-assigned physical register to its red-zone qsave slot, so every SIB base
   -- is reloaded from memory into `R14` immediately before the access — never a
   -- body-clobberable register.
+  -- The out base takes `abiArgs[0]` and the i-th ARRAY invariant `abiArgs[i+1]`:
+  -- the memref ABI places the output pointer first and the input pointers next,
+  -- ahead of any scalar argument. `inArgs'` holds only the array invariants
+  -- (`arrArgNamesHV`), so a scalar listed among the invariants does not shift the
+  -- array bases to the right of it onto the following ABI register.
   let argAbi : List (String × String) :=
     (outArg', abiArgs.headD "RDI") :: (inArgs'.zip (abiArgs.drop 1))
   -- `abiSaveOfExt` (not `abiSaveOf`): each input base — including the 3rd+ ABI
@@ -7330,6 +7427,61 @@ theorem mapAddOneAbiBody_unchanged_by_fix :
     (ComL.toLfundefPhysAbi mapAddOneProg "a1" ["a0"]).lfd_body = mapAddOneAbiBody := by
   rfl
 
+/-! ### 7g″. Scalar-before-array invariant order
+
+The `mpn_mul_1` / `mpn_divrem_1` shape: a runtime-trip fold whose loop invariants
+are a scalar multiplier and an input array, with the scalar listed first. The
+reload map pairs array bases with `abiArgs.drop 1` by position, so a scalar
+counted as a position would push the input array's base onto the next ABI
+register — reloading the array through a scalar argument's red-zone slot and
+dereferencing an integer as a pointer. `arrArgNamesHV` keeps only the array
+invariants, so the pairing is fixed by the array count alone. -/
+
+/-- One `acc[0] := acc[0] + arr[i]·s` iteration over the loop context
+    `[acc(stackArr 1), idx, s(reg 64), arr(stackArr N)]` — a scalar invariant
+    ahead of an array invariant. -/
+def dsBody : Com jasminDialect
+    [.stackArr DGW 1, .reg 64, .reg 64, .stackArr DGW DGN] (.stackArr DGW 1) :=
+  .var (.mk (.regConst 64 0) rfl .nil)
+  (.var (.mk (.stackLoad DGW DGN) rfl
+        (.cons (.there (.there (.there (.there .here))))
+          (.cons (.there (.there .here)) .nil)))
+  (.var (.mk (.regArith .mul DGW) rfl
+        (.cons .here (.cons (.there (.there (.there (.there .here)))) .nil)))
+  (.var (.mk (.stackLoad DGW 1) rfl
+        (.cons (.there (.there (.there .here))) (.cons (.there (.there .here)) .nil)))
+  (.var (.mk (.regArith .add DGW) rfl (.cons .here (.cons (.there .here) .nil)))
+  (.var (.mk (.stackStore DGW 1) rfl
+        (.cons (.there (.there (.there (.there (.there .here)))))
+          (.cons (.there (.there (.there (.there .here)))) (.cons .here .nil))))
+  (.ret .here))))))
+
+def dsLoop : JLoopBodyN (.stackArr DGW 1) [.reg 64, .stackArr DGW DGN] := ⟨DGN, dsBody⟩
+
+/-- The scaled-accumulate kernel over the argument context `[s, arr, acc]`, so
+    that `acc` is argument slot 0 (`RDI`), `arr` slot 1 (`RSI`) and the scalar `s`
+    slot 2 (`RDX`). The invariants list the scalar first. -/
+def dsProg : ComL [.reg 64, .stackArr DGW DGN, .stackArr DGW 1] (.stackArr DGW 1) :=
+  .forLoopN dsLoop (.there (.there .here))
+    (.cons .here (.cons (.there .here) .nil)) (.ret .here)
+
+/-- The 3-argument-ABI rolled body of the scalar-before-array kernel. -/
+def dsBodyR : Lcmd := (ComL.toLfundefPhysAbi dsProg (argName 0) [argName 1]
+    (fun _ => none) (fun _ => none) ["RDI","RSI","RDX"] [64,64,64]).lfd_body
+
+/-- The qsave slot each memref access reloads its SIB base from, in body order. -/
+def dsReloads : List String :=
+  (dsBodyR.zip (dsBodyR.drop 1)).filterMap (fun (prev, cur) =>
+    match cur.li_i, prev.li_i with
+    | .Lopn _ "LOADIDX" (.arrIdx "R14" _ _ :: _), .Lopn [.reg "R14"] _ [.reg q] => some q
+    | .Lopn _ "STOREIDX" (.arrIdx "R14" _ _ :: _), .Lopn [.reg "R14"] _ [.reg q] => some q
+    | _, _ => none)
+
+-- The input array reloads from the `RSI` slot, both accumulator accesses from the
+-- `RDI` slot. The scalar's slot `qsave.RDX` is not a base for any access.
+#guard dsReloads = ["qsave.RSI", "qsave.RDI", "qsave.RDI"]
+#guard !(dsReloads.contains "qsave.RDX")
+
 /-! ## Real-`Lcall` leaf-call-in-loop-body smoke test (`loopBodyWalkNCall`)
 
 The loop body MSM's Straus inner loop and the GGM real AES-PRG node need: a body
@@ -7717,6 +7869,79 @@ def framedAbiCallMarshal (frameOff : String → Option Nat) (regOf : String → 
         | none => []
   mkArg "RDI" ++ mkArg "RSI" ++ [⟨0, .Lcall none (sym, 0)⟩]
 
+/-- Marshal one array base into a SysV argument register `dstReg`: a frame-local
+    array is `leaq off(%rsp),%dstReg`; a register-parked caller pointer is
+    `mov %hold,%dstReg`; a frame-slot-parked caller pointer reloads into
+    `%dstReg`. The single-base helper for the distinct-buffer marshal below;
+    identical in shape to `framedAbiCallMarshal`'s inner `mkArg`. -/
+def framedAbiMarshalArg (frameOff : String → Option Nat) (regOf : String → Option String)
+    (slotOff : String → Option Nat) (base dstReg : String) : Lcmd :=
+  match frameOff base with
+  | some fo => [⟨0, .Lopn [.reg dstReg] "LEA:64" [.reg (memName "RSP" fo)]⟩]
+  | none =>
+    match regOf base with
+    | some r => if r == dstReg then [] else [⟨0, .Lopn [.reg dstReg] "MOV:64" [.reg r]⟩]
+    | none =>
+      match slotOff base with
+      | some so => [⟨0, .Lopn [.reg dstReg] "LOAD:64" [.reg (memName "RSP" so)]⟩]
+      | none => []
+
+/-- The System V AMD64 integer-argument registers, in call order. -/
+def framedAbiArgRegs : List String := ["RDI", "RSI", "RDX", "RCX", "R8", "R9"]
+
+/-- The **distinct-buffer** SysV pointer marshalling for a leaf call
+    `sym(base₀, base₁, …)`: each array base is passed in its own SysV argument
+    register (`base₀ → RDI`, `base₁ → RSI`, `base₂ → RDX`, …), then `call sym`. No
+    `RAX` capture (void return: the leaf writes through its out pointer). This is
+    the generalization of the in-place `framedAbiCallMarshal` (which passes ONE
+    base to both RDI and RSI) to a leaf whose destination and source buffers are
+    distinct — e.g. `sdith_shake128_into(out_state, in_msg)`. -/
+def framedAbiCallMarshalN (frameOff : String → Option Nat) (regOf : String → Option String)
+    (slotOff : String → Option Nat) (sym : String) (bases : List String) : Lcmd :=
+  ((bases.zip framedAbiArgRegs).flatMap (fun ⟨b, r⟩ =>
+      framedAbiMarshalArg frameOff regOf slotOff b r))
+    ++ [⟨0, .Lcall none (sym, 0)⟩]
+
+/-- The in-place-thread alias map for a framed body: `dst ↦ canonical(base)` for
+    every `STOREIDX dst, (base,…), val` (the memref store result aliases its input
+    array) AND every `CALL:/CALLN: dst, (base₀, …)` (the leaf-call result aliases
+    its destination buffer, argument `0`). Processed in program order with each
+    base already resolved through earlier aliases, so a functionally-threaded
+    frame array — a `ComL` that rebinds its self-owned buffer through each store
+    and leaf call — resolves every threaded name straight back to its frame base.
+    Extends `arrChainAlias` with the leaf-call arm; on a body that threads only
+    original bases (every current framed caller) it maps unreferenced result
+    labels and the rewrite is a no-op on emitted operands. -/
+def framedAbiArrChainAlias (body : Lcmd) : Std.HashMap String String := Id.run do
+  let mut m : Std.HashMap String String := {}
+  let resolve (m : Std.HashMap String String) (n : String) : String := m.getD n n
+  for i in body do
+    match i.li_i with
+    | .Lopn [.reg dst] opn (.arrIdx base _ _ :: _) =>
+        if isMemStore opn then m := m.insert dst (resolve m base)
+    | .Lopn [.reg dst] opn (.reg base0 :: _) =>
+        if opn.startsWith "CALL:" || opn.startsWith "CALLN:" then
+          m := m.insert dst (resolve m base0)
+    | _ => pure ()
+  return m
+
+/-- Collapse a framed body's forward-threaded frame-array chain (STOREIDX and
+    leaf-call results) onto its root base name, so a `ComL` that threads its
+    self-owned buffer through stores and distinct-buffer leaf calls resolves every
+    reference back to its frame slot. The op mnemonics, widths, immediates, and
+    order are preserved — only the threaded array labels change. When the body
+    threads only original bases (`framedAbiArrChainAlias` maps no referenced
+    operand), this is the identity on emitted operands. -/
+def framedAbiCanonThread (body : Lcmd) : Lcmd :=
+  let m := framedAbiArrChainAlias body
+  if m.isEmpty then body
+  else body.map (fun i =>
+    match i.li_i with
+    | .Lopn dsts opn srcs =>
+        ⟨i.li_ii, .Lopn (dsts.map (canonMemrefOperand m)) opn
+          (srcs.map (canonMemrefOperand m))⟩
+    | _ => i)
+
 /-- The direct offset-folding physical lowering of a straight-line memref
     word-move + in-place-call virtual body (see §7g‴). `regConst` index bindings
     are deferred and folded into `scale*k` offsets; `LOADIDX`/`STOREIDX` become
@@ -7753,11 +7978,20 @@ def framedAbiLowerBody (frameOff : String → Option Nat) (regOf : String → Op
           (imm, out ++ valMat ++ prelude ++
             [⟨0, .Lopn [.reg (memName breg (boff + scale * k))] "STORE:64" [.reg "RAX"]⟩])
         else (imm, out ++ [i])
-    | .Lopn [.reg _d] opn (.reg base :: _) =>
-        if opn.startsWith "CALL:" then
-          (imm, out ++ framedAbiCallMarshal frameOff regOf slotOff (opn.drop 5).toString base)
-        else if opn.startsWith "CALLN:" then
-          (imm, out ++ framedAbiCallMarshal frameOff regOf slotOff (opn.drop 6).toString base)
+    | .Lopn [.reg _d] opn (.reg base :: rest) =>
+        if opn.startsWith "CALL:" || opn.startsWith "CALLN:" then
+          let sym := if opn.startsWith "CALLN:" then (opn.drop 6).toString
+                     else (opn.drop 5).toString
+          -- The array bases the leaf call passes, in argument order. A single
+          -- base keeps the in-place `framedAbiCallMarshal` (RDI = RSI = base),
+          -- byte-identical for every current single-arg in-place caller; two or
+          -- more DISTINCT bases route to `framedAbiCallMarshalN` (base₀ → RDI,
+          -- base₁ → RSI, …), the distinct-buffer generalization.
+          let regBases : List String := (LOperand.reg base :: rest).filterMap (fun o =>
+            match o with | .reg b => some b | _ => none)
+          match regBases with
+          | [_] => (imm, out ++ framedAbiCallMarshal frameOff regOf slotOff sym base)
+          | _ => (imm, out ++ framedAbiCallMarshalN frameOff regOf slotOff sym regBases)
         else (imm, out ++ [i])
     | _ => (imm, out ++ [i]))
     ({}, [])).2
@@ -7799,7 +8033,13 @@ def ComL.toLfundefPhysFramedAbi {Γ : Ctxt jasminDialect} {t : JasminTy}
     slotParks.map (fun ⟨_, slot, abiReg⟩ =>
       ⟨0, .Lopn [.reg (memName "RSP" slot)] "STORE:64" [.reg abiReg]⟩)
   let frameDir : Linstr := ⟨0, .Lopn [] "FRAME" [.imm frameBytes]⟩
-  let lowered := framedAbiLowerBody frameOff regOf slotOff virt.lfd_body
+  -- Collapse any forward-threaded frame-array chain (STOREIDX / leaf-call
+  -- results) back onto its base name, so a `ComL` that functionally rebinds its
+  -- self-owned buffer through each store and distinct-buffer leaf call resolves
+  -- every base to its frame slot. Identity on emitted operands for a body that
+  -- threads only original bases (every current single-buffer in-place caller).
+  let lowered := framedAbiLowerBody frameOff regOf slotOff
+    (framedAbiCanonThread virt.lfd_body)
   { virt with
     lfd_body := frameDir :: (parkReg ++ parkSlot ++ lowered)
     lfd_arg := abiArgs

@@ -8,6 +8,8 @@ import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
 import CatCrypt.Crypto.SecureCompilation.VIR.FheMontMulLaw
 import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
 
 /-!
 # Single-word 60-bit FHE Montgomery modmul through the OWNED x86 backend (no jasminc)
@@ -65,10 +67,6 @@ host-side step. This mirrors the §13 BabyBear lazy-leaf discipline.
   trips the kernel recursion guard, so the value check is the orchestrator's GMP
   KAT on the emitted `.s` (the lazy-leaf discipline; see the §13 note in MEMORY
   about avoiding heavy in-kernel KATs).
-* **Verified (printer shape)**: `fheMontMulAsm_shape` pins the `fhe_montmul`
-  leaf label, the absence of an unhandled-op sentinel, the presence of real
-  `mulx` instructions, and the absence of a dropped `MULXHI` binding, all by
-  `native_decide`.
 * **High-word gap CLOSED by the §4b MULX-fusion post-pass**: `fuseMulHiLprog`
   coalesces each paired low `MUL` + `MULXHI` into the printer's two-output `mulx`
   (multiplicand pinned into `%rdx`, the first product's `%rdx`-homed high word
@@ -80,7 +78,7 @@ host-side step. This mirrors the §13 BabyBear lazy-leaf discipline.
   high word was coalesced onto the `ADCX` destination; that MOV is absent for
   this allocation, so the carry propagation is not yet faithful. Closing it is a
   shared-printer / two-address-lowering concern (out of scope for this contained
-  emit-module pass). See the note on `fheMontMulAsm_shape`.
+  emit-module pass).
 * **Trusted (thin)**: `renderLfundef` / `as`/`cc` / the SysV leaf ABI frame.
 -/
 
@@ -488,6 +486,82 @@ def fuseMulHiLprog (p : Lprog) (saveRdx : Bool := false) : Lprog :=
     lp_funcs := p.lp_funcs.map (fun (n, f) =>
       (n, { f with lfd_body := fuseMulHiBody f.lfd_body saveRdx })) }
 
+/-! ## 4c. MULX-fusion step soundness (model semantics)
+
+The fusion coalesces the split low `MUL` + dropped-`MULXHI` pair — whose intended
+denotation is the low product in `loDst` and the high product in `hiDst` — into
+the single two-output `MOV RDX, s1 ; MULX hiDst loDst RDX s2`. Its correctness is
+the fact that the fused `MULX` computes **both** product words the pair intended,
+proved against the faithful `JasminModel` machine semantics (`evalInstr`,
+`x86_MULX_lo_hi`, `runBlock`) — the only machine model that carries the
+two-output `MULX` (`JasminLsem`'s single-output word-op fragment models neither
+`MULX` nor `MULXHI`). -/
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
+  (JInstr JState JOperand evalInstr runBlock x86_MULX_lo_hi x86_MOV)
+
+/-- **The two-output `MULX` computes both product words.** From every start
+    state, `mulx hiDst loDst a b` writes the low product `(x86_MULX_lo_hi ⟦a⟧ ⟦b⟧).1`
+    to `loDst` and the high product `(x86_MULX_lo_hi ⟦a⟧ ⟦b⟧).2` to `hiDst`, and
+    writes no flag and no memory. `loDst ≠ hiDst` is required for both words to
+    land in distinct registers. -/
+theorem mulx_computes (s : JState 64) (hiDst loDst : String) (a b : JOperand)
+    (hlh : loDst ≠ hiDst) :
+    (evalInstr s (.mulx hiDst loDst a b)).get loDst = (x86_MULX_lo_hi (a.eval s) (b.eval s)).1
+    ∧ (evalInstr s (.mulx hiDst loDst a b)).get hiDst = (x86_MULX_lo_hi (a.eval s) (b.eval s)).2
+    ∧ (evalInstr s (.mulx hiDst loDst a b)).flags = s.flags
+    ∧ (evalInstr s (.mulx hiDst loDst a b)).mem = s.mem := by
+  cases hp : x86_MULX_lo_hi (a.eval s) (b.eval s) with
+  | mk lo hi =>
+    have hev : evalInstr s (.mulx hiDst loDst a b) = (s.setReg loDst lo).setReg hiDst hi := by
+      simp only [evalInstr, hp]
+    rw [hev]
+    refine ⟨?_, ?_, rfl, rfl⟩
+    · simp only [Jasmin.JState.get, Jasmin.JState.setReg]
+      rw [if_neg hlh]; simp
+    · simp only [Jasmin.JState.get, Jasmin.JState.setReg]; simp
+
+/-- The fused `MULX`'s low word is exactly the low product `v1 · v2` the
+    standalone low-`MUL` already materialised, so re-deriving it in the fused op
+    is value-neutral. Ties the fused low word (`x86_MULX_lo_hi …).1`) to the
+    two-address low-`MUL` value. -/
+theorem mulx_lo_eq_mul (v1 v2 : BitVec 64) : (x86_MULX_lo_hi v1 v2).1 = v1 * v2 := by
+  apply BitVec.eq_of_toNat_eq
+  simp [x86_MULX_lo_hi, Jasmin.wumul, BitVec.toNat_ofNat, BitVec.toNat_mul]
+
+/-- **The MULX-fusion fragment is value-sound.** The fused two-instruction
+    fragment `MOV RDX, s1 ; MULX hiDst loDst RDX s2` reaches the low product
+    `s1·s2` in `loDst` and the high product `mulhi(s1, s2)` in `hiDst`, writing no
+    flag and no memory — the two words the dropped low-`MUL` + `MULXHI` pair
+    intended. `s2 ≠ "RDX"` (the multiplicand is not clobbered by the `%rdx` pin)
+    and `loDst ≠ hiDst` (the products land in distinct registers) are the pass's
+    allocation invariants. -/
+theorem fuseMulHiStep_sound (s : JState 64) (s1 s2 hiDst loDst : String)
+    (hs2 : s2 ≠ "RDX") (hlh : loDst ≠ hiDst) :
+    (runBlock s [.mov "RDX" (.reg s1), .mulx hiDst loDst (.reg "RDX") (.reg s2)]).get loDst
+        = (x86_MULX_lo_hi (s.get s1) (s.get s2)).1
+    ∧ (runBlock s [.mov "RDX" (.reg s1), .mulx hiDst loDst (.reg "RDX") (.reg s2)]).get hiDst
+        = (x86_MULX_lo_hi (s.get s1) (s.get s2)).2
+    ∧ (runBlock s [.mov "RDX" (.reg s1), .mulx hiDst loDst (.reg "RDX") (.reg s2)]).flags = s.flags
+    ∧ (runBlock s [.mov "RDX" (.reg s1), .mulx hiDst loDst (.reg "RDX") (.reg s2)]).mem = s.mem := by
+  -- After `MOV RDX, s1`, `RDX = s1`; `s2 ≠ RDX` keeps the multiplicand intact.
+  have hmov : evalInstr s (.mov "RDX" (.reg s1)) = s.setReg "RDX" (s.get s1) := by
+    simp only [evalInstr, JOperand.eval, x86_MOV]
+  obtain ⟨hlo, hhi, hfl, hmem⟩ :=
+    mulx_computes (evalInstr s (.mov "RDX" (.reg s1))) hiDst loDst (.reg "RDX") (.reg s2) hlh
+  have ha : (JOperand.reg "RDX").eval (evalInstr s (.mov "RDX" (.reg s1))) = s.get s1 := by
+    rw [hmov]; simp [JOperand.eval, Jasmin.JState.get, Jasmin.JState.setReg]
+  have hb : (JOperand.reg s2).eval (evalInstr s (.mov "RDX" (.reg s1))) = s.get s2 := by
+    rw [hmov]; simp only [JOperand.eval, Jasmin.JState.get, Jasmin.JState.setReg, if_neg hs2]
+  have hflmov : (evalInstr s (.mov "RDX" (.reg s1))).flags = s.flags := by rw [hmov]; rfl
+  have hmemmov : (evalInstr s (.mov "RDX" (.reg s1))).mem = s.mem := by rw [hmov]; rfl
+  simp only [runBlock]
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · rw [hlo, ha, hb]
+  · rw [hhi, ha, hb]
+  · rw [hfl, hflmov]
+  · rw [hmem, hmemmov]
+
 /-! ## 5. The owned `Lprog` and AT&T emission (no jasminc)
 
 The single-output REDC is lowered through the thirDialect spine
@@ -499,8 +573,7 @@ shift-immediate legalisation pass is needed: the REDC has no `thShrImm`/`thRor`
 lazy REDC); its ops are `MUL` (`thBin .mul`), `MULXHI` (`thMulHi`),
 `ADCX`/`ADCXHI` (`thAddCarryLo`/`thAddCarryHi`) and `regConst`. After the §4b
 fusion the high words `hi`/`mqHi` ARE materialised (two `mulx` lines); the
-remaining un-closed seam is the ADX carry-chain rendering (see the note on
-`fheMontMulAsm_shape` in §6). -/
+remaining un-closed seam is the ADX carry-chain rendering. -/
 
 /-- The FHE Montgomery REDC lowered through the thirDialect spine and exported to
     a physical, two-address SysV `Lprog`. The `fname` `"fhe_montmul"` becomes the
@@ -516,64 +589,16 @@ def fheMontMulLprog : Lprog :=
       [64, 64])                             -- abiTyin (a, b)
 
 /-- The rendered owned-backend AT&T `.s` for `fhe_montmul` (no jasminc). -/
-def fheMontMulAsm : String := renderLprogAtt fheMontMulLprog
+def fheMontMulAsm : String := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned fheMontMulLprog
 
-/-! ## 6. Shape check on the emitted asm (conservative) -/
+/-! ## 6. Substring helper -/
 
 /-- Local substring test (`needle` occurs in `hay`). -/
 def hasSub (hay needle : String) : Bool :=
   (List.range (hay.length + 1)).any (fun i =>
     needle == String.ofList (hay.toList.drop i |>.take needle.length))
 
-/-- The emitted `.s` carries the `fhe_montmul` leaf label. -/
-theorem fheMontMulAsm_has_leaf :
-    hasSub fheMontMulAsm "fhe_montmul" = true := by native_decide
-
-/-- The emitted `.s` contains no unhandled-op sentinel. -/
-theorem fheMontMulAsm_no_unhandled :
-    hasSub fheMontMulAsm "UNHANDLED" = false := by native_decide
-
-/-- The emitted `.s` now contains real `mulx` instructions (the §4b fusion
-    materialised the `64×64→128` high words). -/
-theorem fheMontMulAsm_uses_mulx :
-    hasSub fheMontMulAsm "mulx" = true := by native_decide
-
-/-- The emitted `.s` carries no dropped/unhandled `MULXHI` binding (the
-    §4b fusion rewrote every `MULXHI` into a two-output `mulx`). -/
-theorem fheMontMulAsm_no_mulxhi :
-    hasSub fheMontMulAsm "MULXHI" = false := by native_decide
-
-/-- Shape check on the emitted REDC `.s`: the `fhe_montmul` leaf is present,
-    there is no unhandled-op sentinel, the `64×64→128` high words are now emitted
-    as real `mulx` instructions, and no dropped `MULXHI` binding remains.
-
-    **Post-§4b status (for the orchestrator's GMP KAT).** The §4b MULX-fusion
-    post-pass closes the high-word gap: each paired low `MUL` + `MULXHI` is
-    coalesced into the printer's two-output `mulx` (multiplicand pinned into
-    `%rdx`; the first product's `%rdx`-homed high word is evacuated to the
-    caller-saved scratch `R8`, with a `RDX → R8` rename threaded through the rest
-    of the body so the live high word survives the second site's `MOV RDX, …`).
-    The emitted `.s` therefore now materialises both high words `hi`/`mqHi`.
-
-    **Remaining seam (NOT closed here; flagged for the KAT).** The ADX
-    carry-chain at the tail (`ADCXHI` cout = carryout(`lo + mqLo`); `ADCX`
-    `u = hi + mqHi + cout`) is rendered by the shared `LprogAsmPrinter` ADX arm,
-    which drops the `ADCXHI` carry-out binding and emits the `ADCX` data op as a
-    two-address `adcx s, d` *assuming* the self-source (the high word) was already
-    coalesced onto `d`. That coalescing MOV is not present for this allocation, so
-    the final `adcxq` accumulates onto the low word rather than the high word, and
-    the low-word carry `cout` is not generated by a discrete instruction. Fixing
-    this is a `LprogAsmPrinter`/two-address-lowering concern (a shared file, out of
-    scope for this contained emit-module pass); it is called out so the GMP KAT can
-    target the carry-propagation specifically. The Lean-level `fheMontMulThir` /
-    `fheMontMulSpec64` denotation remains the correct REDC reference. -/
-theorem fheMontMulAsm_shape :
-    hasSub fheMontMulAsm "fhe_montmul"
-      ∧ hasSub fheMontMulAsm "UNHANDLED" = false
-      ∧ hasSub fheMontMulAsm "mulx" = true
-      ∧ hasSub fheMontMulAsm "MULXHI" = false :=
-  ⟨fheMontMulAsm_has_leaf, fheMontMulAsm_no_unhandled,
-   fheMontMulAsm_uses_mulx, fheMontMulAsm_no_mulxhi⟩
+-- Rendered-asm correctness is the external C KAT; an in-Lean hasSub check would re-evaluate the optimizing back-end renderOwned at elaboration.
 
 /-! ## 7. Emit driver -/
 

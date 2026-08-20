@@ -4,6 +4,7 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.X86Backend.Bn254MontMulKernel
+import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
 # BN254 `Fp2` add / sub, owned x86 leaves + component-wise driver (#222 tower)
@@ -60,6 +61,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Bn254MontMulKernel (pLimbs)
 
 /-! ## 1. The four-limb `Fp` add body (`a + b mod p`) -/
@@ -150,7 +153,37 @@ theorem fpSubBlock_lowering_correct (a0 a1 a2 a3 b0 b1 b2 b3 : BitVec 64) :
       = runBlock (initState a0 a1 a2 a3 b0 b1 b2 b3) fpSubBlock :=
   lowerBlock_denote_closed fpSubBlock (initState a0 a1 a2 a3 b0 b1 b2 b3)
 
-/-! ## 5. Register allocation for the `Fp` bodies (reg-ptr ABI + scratch frame)
+/-! ## 5. Constant time for the `Fp` bodies: straight-line, all-direct addressing
+
+Both four-limb bodies address memory through a base pointer and a
+compile-time-constant displacement (`loadMem`/`storeMem`); the conditional
+reduce is branch-free (`cmovb` in the add, the borrow mask in the sub), so no
+`loadMemIdx`/`storeMemIdx` appears and the decidable `allDirect` check carries
+each block into `ConstantTimeCoverage.allDirect_constant_time`. The `Fp2`
+drivers of §8 are `String` assembly with `call`s, outside the `JInstr`
+leakage model. -/
+
+/-- The four-limb `Fp` add body uses only direct base+displacement addressing. -/
+theorem fpAddBlock_allDirect : allDirect fpAddBlock = true := by decide
+
+/-- **Constant time.** The emitted four-limb `Fp` add produces the same machine
+    leakage trace from any two starting states: its observable control-flow +
+    memory-address sequence is a function of the program text alone, so it
+    carries no information about the operand limbs. -/
+theorem fpAddBlock_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ fpAddBlock = blockLeak s₂ fpAddBlock :=
+  allDirect_constant_time fpAddBlock fpAddBlock_allDirect s₁ s₂
+
+/-- The four-limb `Fp` sub body uses only direct base+displacement addressing. -/
+theorem fpSubBlock_allDirect : allDirect fpSubBlock = true := by decide
+
+/-- **Constant time.** The emitted four-limb `Fp` sub produces the same machine
+    leakage trace from any two starting states. -/
+theorem fpSubBlock_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ fpSubBlock = blockLeak s₂ fpSubBlock :=
+  allDirect_constant_time fpSubBlock fpSubBlock_allDirect s₁ s₂
+
+/-! ## 6. Register allocation for the `Fp` bodies (reg-ptr ABI + scratch frame)
 
 `z`→`%rdi`, `a`→`%rsi`, `b`→`%rdx` (the SysV argument registers); the scratch
 base `sp`→`%rbp` (excluded from `gpPool`, so it costs no pool slot). No `MULX`,
@@ -160,7 +193,7 @@ so `%rdx` is free for the `b` pointer. -/
 def fpAddSubPinned : GpAlloc :=
   [("z", "%rdi"), ("a", "%rsi"), ("b", "%rdx"), ("sp", "%rbp")]
 
-/-! ## 6. AT&T emission of the `Fp` add/sub leaves (reg-ptr SysV ABI + frame)
+/-! ## 7. AT&T emission of the `Fp` add/sub leaves (reg-ptr SysV ABI + frame)
 
 The leaves carry a 32-byte scratch frame (`sp`→`%rbp`); the body is
 `runBlock`-verified, the prologue/epilogue + frame are trusted ABI
@@ -184,7 +217,7 @@ def fpAddAsm : String := renderFpAddSub "bn254_fp_add_x86_from_lean" fpAddBlock
 /-- The emitted `Fp` sub leaf `bn254_fp_sub_x86_from_lean(z, a, b)`. -/
 def fpSubAsm : String := renderFpAddSub "bn254_fp_sub_x86_from_lean" fpSubBlock
 
-/-! ## 7. The `Fp2` add / sub component-wise drivers (trusted call frame)
+/-! ## 8. The `Fp2` add / sub component-wise drivers (trusted call frame)
 
 The drivers call the verified four-limb `Fp` add/sub leaves on the two `Fp`
 halves of an `Fp2` (`c0` at byte offset `0`, `c1` at offset `32`). The pointer
@@ -239,7 +272,7 @@ def fp2SubAsm : String :=
     , "\tpopq %rbp", "\tpopq %r15", "\tpopq %r14", "\tpopq %r13", "\tpopq %r12"
     , "\tpopq %rbx", "\tret" ]
 
-/-! ## 8. Denotation evidence (`#eval`, expect `true`)
+/-! ## 9. Denotation evidence (`#eval`, expect `true`)
 
 The `Fp` add/sub blocks compute `(a ± b) mod p` over the BN254 base prime,
 checked against the independent `Nat` reference on the published EIP-197 BN254
@@ -294,7 +327,7 @@ def denoteSpecOk : Bool :=
 
 #eval denoteSpecOk   -- expect: true
 
-/-! ## 9. Emit driver -/
+/-! ## 10. Emit driver -/
 
 /-- Emit driver: write the owned-backend-emitted four-limb `Fp` add/sub leaves
     and the component-wise `Fp2` add/sub drivers for the bench harness. -/

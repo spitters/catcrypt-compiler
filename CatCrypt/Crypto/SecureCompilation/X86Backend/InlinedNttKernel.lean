@@ -74,6 +74,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLeafFusion (callU callU_denote)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 open CatCrypt.Crypto.SecureCompilation.X86Backend.BarrettButterflyKernel
   (muN pN)
 
@@ -186,10 +188,9 @@ theorem inlineThenRA_denote_preserves (init : ⟦nttAcc⟧) :
   exact inline_preserves_denote nttRegistry nttRegistry_consistent boundaryUpdate
     (.cons init .nil)
 
-/-- Sanity: the inline pass genuinely changed the body — the wrapper call is
-    replaced by the primitive call (the boundary is gone), so the inlined body
-    is not syntactically the boundary body. (The pass eliminated the boundary
-    `extCall name = wrapperName` and spliced in the registered primitive call.) -/
+/-- The inlined body is not syntactically the boundary body: the pass
+    eliminates the boundary `extCall name = wrapperName` and splices in the
+    registered primitive call. -/
 theorem inline_changed_the_call :
     inlinedUpdate
       = .var (callU primName (Γ := [nttAcc]) (tf := nttAcc) .here) (.ret .here) := by
@@ -338,6 +339,42 @@ def abiTaxInstrs : Nat := abiBoundaryBlock.length - inlinedMergedBlock.length
     forwarded `o0`'s store + reload, and the `o1` store + reload that the
     register-resident form avoids. -/
 theorem abiTaxInstrs_eq : abiTaxInstrs = 4 := by native_decide
+
+/-! ### B.2b Constant time: both compositions
+
+Removing the leaf boundary changes which memory accesses happen, not whether
+any of them is secret-indexed. Both blocks address `inp`/`out`/`scratch` only
+through literal displacements and reduce with branch-free sign-mask arithmetic,
+so both are in the direct-addressing class and both have a machine leakage
+trace fixed by the program text. -/
+
+/-- One butterfly body is register ALU only, whatever names it is instantiated
+    at. -/
+theorem butterflyBody_allDirect (p ra rb rw oLo oHi : String) :
+    allDirect (butterflyBody p ra rb rw oLo oHi) = true := by
+  simp [allDirect, butterflyBody, IsDirect]
+
+/-- The ABI-boundary chained block is in the direct-addressing class: the
+    copy-out/copy-in round trip uses literal `scratch` displacements. -/
+theorem abiBoundaryBlock_allDirect : allDirect abiBoundaryBlock = true := by
+  simp [allDirect, abiBoundaryBlock, butterflyBody, IsDirect]
+
+/-- **Constant time.** The ABI-boundary composition produces the same machine
+    leakage trace from any two starting states. -/
+theorem abiBoundaryBlock_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ abiBoundaryBlock = blockLeak s₂ abiBoundaryBlock :=
+  allDirect_constant_time abiBoundaryBlock abiBoundaryBlock_allDirect s₁ s₂
+
+/-- The inlined-merged block is in the direct-addressing class. -/
+theorem inlinedMergedBlock_allDirect : allDirect inlinedMergedBlock = true := by
+  simp [allDirect, inlinedMergedBlock, butterflyBody, IsDirect]
+
+/-- **Constant time.** The inlined-merged composition produces the same machine
+    leakage trace from any two starting states — eliminating the boundary
+    store/reload keeps the block in the constant-time class. -/
+theorem inlinedMergedBlock_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ inlinedMergedBlock = blockLeak s₂ inlinedMergedBlock :=
+  allDirect_constant_time inlinedMergedBlock inlinedMergedBlock_allDirect s₁ s₂
 
 /-! ### B.3 Both blocks lower denotation-preservingly through W3's backend -/
 

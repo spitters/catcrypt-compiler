@@ -10,7 +10,7 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumConstantTime
 
 `MachineConstantTime.lean` builds the machine-level constant-time framework over
 `List (JInstr w)` (the leakage model `MLeak`/`blockLeak`, the direct-addressing
-class `IsDirect`, and the keystone `blockLeak_state_independent`); `BignumConstantTime.lean`
+class `IsDirect`, and `blockLeak_state_independent`); `BignumConstantTime.lean`
 exercises it on a *sample* (`bignumAdd4`, `mulAdd2`), with each kernel's
 constant-time obligation discharged by a hand proof (`bignumAdd4_ctAddressed` etc.).
 
@@ -27,7 +27,7 @@ subsumed: a conforming kernel gets constant-time *for free*.
 
 We then **sweep** the corollary across the real JInstr-level bignum/field kernels:
 `bignumAdd4` and `mulAdd2` (re-derived through the corollary, showing it subsumes
-the hand proofs), plus three further genuine kernels built here —
+the hand proofs), plus three further kernels built here —
 
 * `bignumSub4`  — 4-limb subtract-with-borrow (`SUB`/`SBB` borrow chain);
 * `bignumMontReduce` — one Montgomery word reduction step (`m := lo · μ mod 2^64`
@@ -35,8 +35,8 @@ the hand proofs), plus three further genuine kernels built here —
 * `schoolbookMulStep` — a two-limb schoolbook multiply-accumulate
   (`MULX` partial products + the carry fold).
 
-Each carries a **functional KAT** (`native_decide` against the real multi-limb
-arithmetic — genuine carry/borrow/mul, not a placeholder) and a
+Each carries a **functional KAT** (`native_decide` against the multi-limb
+arithmetic — carry, borrow and multiply) and a
 constant-time theorem `<name>_constant_time` obtained by the corollary with
 `by native_decide` on `allDirect`.
 
@@ -46,7 +46,7 @@ The **JInstr-level straight-line bignum/field kernels** are now constant-time *b
 construction*: any body that passes the decidable `allDirect` check is
 constant-time via `allDirect_constant_time`, and the roster below
 (`bignumAdd4`, `mulAdd2`, `bignumSub4`, `bignumMontReduce`, `schoolbookMulStep`)
-instantiates that across the genuine carry/borrow/multiply kernels expressible in
+instantiates that across the carry/borrow/multiply kernels expressible in
 the `JInstr 64` model.
 
 What this sweep does **not** cover — the honest boundary:
@@ -56,9 +56,10 @@ What this sweep does **not** cover — the honest boundary:
   `List (JInstr w)`. Their leakage model (`MLeak`, `instrLeak`, `blockLeak`) is
   defined only for `JInstr`; covering them would need the leakage framework
   **lifted** to the vector instruction type (a `ZOp`-indexed `instrLeak` with the
-  vector load/store addressing modes, then a re-proof of the keystone).
+  vector load/store addressing modes, then a re-proof of
+  `blockLeak_state_independent`).
 * **`Lcmd`/`Com`-layer kernels** (the structured-control loop bodies and the
-  whole-function `Com` programs). The strict keystone is straight-line only; the
+  whole-function `Com` programs). `blockLeak_state_independent` is straight-line only; the
   loop/branch IRs would additionally need the control-flow channel
   (`MLeak.branch`) connected to the structured-control evaluator, i.e. a
   `blockLeak` analogue threaded through the `Lcmd`/`Com` semantics rather than the
@@ -95,7 +96,8 @@ constant-time obligation mechanically rather than by a hand `ctAddressed` proof.
 def allDirect {w : Nat} (body : List (JInstr w)) : Bool :=
   body.all (fun i => decide (IsDirect i))
 
-/-! ## 2. Bridge: the decidable check to the membership form the keystone needs -/
+/-! ## 2. Bridge: the decidable check to the membership form
+`blockLeak_state_independent` needs -/
 
 /-- `allDirect body = true` ⇒ every instruction of `body` is `IsDirect`, the
     hypothesis shape `blockLeak_state_independent` consumes. -/
@@ -105,9 +107,30 @@ theorem allDirect_mem_isDirect {w : Nat} (body : List (JInstr w))
   have := (List.all_eq_true.mp h) i hi
   exact of_decide_eq_true this
 
+/-! ## 2a. Structural lemmas: the class under concatenation and `flatMap`
+
+`allDirect` is a `List.all`, so it distributes over `++`; a body assembled by
+`flatMap` from conforming steps therefore conforms. These are the two shapes in
+which composite kernel bodies are built, so a composite discharges its
+`allDirect` obligation from its parts rather than by reducing the whole body. -/
+
+/-- `allDirect` distributes over concatenation. -/
+theorem allDirect_append {w : Nat} (l₁ l₂ : List (JInstr w)) :
+    allDirect (l₁ ++ l₂) = (allDirect l₁ && allDirect l₂) :=
+  List.all_append
+
+/-- A body assembled by `flatMap` is in the direct-addressing class whenever
+    every step is. -/
+theorem allDirect_flatMap {w : Nat} {α : Type} (l : List α)
+    (f : α → List (JInstr w)) (h : ∀ x, allDirect (f x) = true) :
+    allDirect (l.flatMap f) = true := by
+  induction l with
+  | nil => rfl
+  | cons x t ih => simp [allDirect_append, h x, ih]
+
 /-! ## 3. The by-construction constant-time corollary
 
-The keystone `blockLeak_state_independent` says an all-direct body has a leakage
+`blockLeak_state_independent` says an all-direct body has a leakage
 trace independent of the initial state. Composing it with the decidable bridge
 gives the corollary: **any** kernel whose `allDirect` check passes is
 constant-time, with the obligation discharged by `decide`/`native_decide`. -/
@@ -165,8 +188,8 @@ theorem mulAdd2_constant_time' (s₁ s₂ : JState 64) :
 operands) compiles to: load `a[0..3]`/`b[0..3]` through the public pointers
 `ap`/`bp`, run the `SUB`/`SBB` **borrow chain** across the four limbs (the borrow
 threaded through `CF`, exactly as on the machine — `SUB` for limb 0, then `SBB`
-for limbs 1–3), and store `r[0..3]` to `rp`. Genuine two's-complement borrow
-propagation. -/
+for limbs 1–3), and store `r[0..3]` to `rp`. The borrow propagation is
+two's-complement. -/
 
 /-- A real 4-limb `bignum_sub`: `r[0..3] := a[0..3] − b[0..3]` (mod 2²⁵⁶) with a
     borrow chain. Inputs behind the public bases `ap`/`bp`, output behind `rp`;
@@ -271,13 +294,13 @@ then fold `m · p` back into the two-word accumulator `(t0, t1)` via a `MULX` an
 the `ADD`/`ADC` carry — making the low word `t0` a multiple of `2⁶⁴` (i.e. zero
 after the add), exactly as Montgomery's reduction clears one word per step.
 
-We model the genuine arithmetic: `m`, the product `m·p = (hi,lo)`, and the carry
+We model the arithmetic: `m`, the product `m·p = (hi,lo)`, and the carry
 fold into `(t0,t1)`. The modulus `p` and `μ` are read through public pointers. -/
 
 /-- One Montgomery word-reduction step. `t0`/`t1` are the two accumulator words
     (loaded from `cp`), `μ` the Montgomery inverse (from `mu`), `p` the modulus
     word (from `pp`). Computes `m := t0·μ`, then `(t0,t1) += m·p`, and stores the
-    updated accumulator back to `rp`. Genuine `MULX` + `ADD`/`ADC` arithmetic. -/
+    updated accumulator back to `rp`, over `MULX` + `ADD`/`ADC`. -/
 def bignumMontReduce : List (JInstr 64) :=
   [ .loadMem "t0" "cp" 0                          -- accumulator low
   , .loadMem "t1" "cp" 8                          -- accumulator high
@@ -306,7 +329,7 @@ def montState (t0 t1 mu p0 : BitVec 64) : JState 64 :=
 
 /-- Reference for the Montgomery step: `m = (t0·μ) mod 2⁶⁴`; the two-word sum
     `(t0 + t1·2⁶⁴) + m·p` truncated to 128 bits, returned as `(low, high)` 64-bit
-    words. Genuine multiply + carry, matching the kernel's `MULX`+`ADD`/`ADC`. -/
+    words. Multiply + carry, matching the kernel's `MULX`+`ADD`/`ADC`. -/
 def refMont (t0 t1 mu p0 : BitVec 64) : BitVec 64 × BitVec 64 :=
   let m := (t0.toNat * mu.toNat) % 2^64
   let acc := (t0.toNat + t1.toNat * 2^64) + m * p0.toNat
@@ -355,12 +378,11 @@ multiply inner loop emits: load a multiplier `m` and two multiplicand limbs
 `a[0]`, `a[1]` through public pointers, form the two partial products
 `m·a[0] = (hi0,lo0)` and `m·a[1] = (hi1,lo1)` with `MULX`, then fold them into a
 three-word result `(r0,r1,r2)` with the `ADD`/`ADC` carry — `r0 = lo0`,
-`r1 = hi0 + lo1`, `r2 = hi1 + carry`. Genuine schoolbook partial-product +
-carry arithmetic. -/
+`r1 = hi0 + lo1`, `r2 = hi1 + carry`. -/
 
 /-- A two-limb schoolbook multiply step: `(r0,r1,r2) := m · (a0 + a1·2⁶⁴)`.
-    Multiplier from `mp`, multiplicand limbs from `ap`, result to `rp`. Genuine
-    `MULX` partial products + `ADD`/`ADC` carry fold. -/
+    Multiplier from `mp`, multiplicand limbs from `ap`, result to `rp`, over
+    `MULX` partial products + an `ADD`/`ADC` carry fold. -/
 def schoolbookMulStep : List (JInstr 64) :=
   [ .loadMem "m"  "mp" 0                          -- multiplier
   , .loadMem "a0" "ap" 0                           -- multiplicand limb 0
@@ -389,7 +411,7 @@ def mulState (m a0 a1 : BitVec 64) : JState 64 :=
       else 0 }
 
 /-- Reference: the `k`-th 64-bit limb (`k ∈ {0,1,2}`) of the 192-bit product
-    `m · (a0 + a1·2⁶⁴)`. Genuine full-width multiply. -/
+    `m · (a0 + a1·2⁶⁴)`, at full width. -/
 def refMul (m a0 a1 : BitVec 64) (k : Nat) : BitVec 64 :=
   let P := m.toNat * (a0.toNat + a1.toNat * 2^64)
   BitVec.ofNat 64 (P / 2^(64*k))

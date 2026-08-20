@@ -8,7 +8,7 @@ import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRolledLoop
 set_option autoImplicit false
 
 /-!
-# Front-compiling a LowCT loop body to a genuine `ComL.forLoopNRt` (runtime-trip emit)
+# Front-compiling a LowCT loop body to a `ComL.forLoopNRt` (runtime-trip emit)
 
 `TranslateDialectRolledLoop.rolledForLoopN` front-compiles a covered LowCT loop
 body and wraps it in a `ComL.forLoopN` whose trip count is a **compile-time**
@@ -68,7 +68,7 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRolledLoop
 open CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminCom (mapTy mapCtx)
 open CatCrypt.Crypto.Jasmin.LowCT (LowCT)
 
-/-! ## 1. Wrapping the front body into a genuine `ComL.forLoopNRt`
+/-! ## 1. Wrapping the front body into a `ComL.forLoopNRt`
 
 `ComL.forLoopNRt` needs the body as a `Com jasminDialect (accTy :: .reg 64 ::
 invTys) accTy` — exactly the `JLoopBodyN.update` shape `frontLoopBodyJ` produces.
@@ -78,7 +78,42 @@ When the body context is `Γbody = accCTy :: .sword 64 :: invCTys`,
 *definitionally* a runtime-loop `update` over `accTy := mapTy accCTy`,
 `invTys := invCTys.map mapTy`. -/
 
-/-- Build a genuine **runtime-trip** rolled `ComL.forLoopNRt` from a front-compiled
+/-- Build a **runtime-trip** rolled `ComL.forLoopNRt` from a front-compiled loop
+    body, with a caller-supplied continuation. Identical to
+    `TranslateDialectRolledLoop.rolledForLoopNCont` except the trip count is an
+    in-scope `.reg 64` variable `count` (read at run time), not a static `Nat`.
+
+    * `Γouter` is the outer context (the kernel's argument slots, jasmin types);
+    * `count` is the in-scope runtime trip-count variable (`.reg 64`); the lowering
+      seeds the loop counter `MOV Lctr, <count-reg>` from it, not `MOV Lctr, #N`;
+    * `init` is the in-scope accumulator seed variable;
+    * `invs` are the in-scope loop-invariant seed variables (input array bases);
+    * the loop body is `frontLoopBodyJ vmBody accName body` over
+      `Γbody = accCTy :: .sword 64 :: invCTys` (so its jasmin image matches
+      `accTy :: .reg 64 :: invTys`);
+    * `cont : ComL (mapTy accCTy :: Γouter) s` runs after the loop, with the
+      loop's final accumulator bound at `.here` — passing the front-compiled next
+      phase sequences the phases.
+
+    `none` iff the front declines the body. -/
+def rolledForLoopNRtCont {Γouter : Ctxt jasminDialect}
+    {accCTy : CryptoTy} {invCTys : Ctx} {s : JasminTy}
+    (vmBody : VarMap (accCTy :: .sword 64 :: invCTys)) (accName : String)
+    (body : LowCT)
+    (count : Ctxt.Var Γouter (JasminTy.reg 64))
+    (init : Ctxt.Var Γouter (mapTy accCTy))
+    (invs : HVector (fun ty => Ctxt.Var Γouter ty) (invCTys.map mapTy))
+    (cont : ComL (mapTy accCTy :: Γouter) s) :
+    Option (ComL Γouter s) :=
+  match frontLoopBodyJ (accCTy := accCTy) vmBody accName body with
+  | some update =>
+      -- `mapCtx (accCTy :: .sword 64 :: invCTys)` reduces to
+      -- `mapTy accCTy :: .reg 64 :: invCTys.map mapTy` definitionally, so `update`
+      -- is directly the `ComL.forLoopNRt` body over `invTys := invCTys.map mapTy`.
+      some (ComL.forLoopNRt update count init invs cont)
+  | none => none
+
+/-- Build a **runtime-trip** rolled `ComL.forLoopNRt` from a front-compiled
     loop body. Identical to `TranslateDialectRolledLoop.rolledForLoopN` except the
     trip count is an in-scope `.reg 64` variable `count` (read at run time), not a
     static `Nat`.
@@ -92,8 +127,9 @@ When the body context is `Γbody = accCTy :: .sword 64 :: invCTys`,
       `Γbody = accCTy :: .sword 64 :: invCTys` (so its jasmin image matches
       `accTy :: .reg 64 :: invTys`).
 
-    Returns a `ComL Γouter accTy` that binds the loop result and returns it
-    (`.ret .here`). `none` if the front declines. -/
+    Returns a `ComL Γouter accTy` that binds the loop result and returns it —
+    `rolledForLoopNRtCont` at `cont := .ret .here`. `none` if the front
+    declines. -/
 def rolledForLoopNRt {Γouter : Ctxt jasminDialect}
     {accCTy : CryptoTy} {invCTys : Ctx}
     (vmBody : VarMap (accCTy :: .sword 64 :: invCTys)) (accName : String)
@@ -102,13 +138,8 @@ def rolledForLoopNRt {Γouter : Ctxt jasminDialect}
     (init : Ctxt.Var Γouter (mapTy accCTy))
     (invs : HVector (fun ty => Ctxt.Var Γouter ty) (invCTys.map mapTy)) :
     Option (ComL Γouter (mapTy accCTy)) :=
-  match frontLoopBodyJ (accCTy := accCTy) vmBody accName body with
-  | some update =>
-      -- `mapCtx (accCTy :: .sword 64 :: invCTys)` reduces to
-      -- `mapTy accCTy :: .reg 64 :: invCTys.map mapTy` definitionally, so `update`
-      -- is directly the `ComL.forLoopNRt` body over `invTys := invCTys.map mapTy`.
-      some (ComL.forLoopNRt update count init invs (.ret .here))
-  | none => none
+  rolledForLoopNRtCont (Γouter := Γouter) (accCTy := accCTy) (invCTys := invCTys)
+    vmBody accName body count init invs (.ret .here)
 
 /-! ## 2. Loop-wrapper simulation skeleton
 
@@ -142,16 +173,15 @@ theorem rolledForLoopNRt_denote {Γouter : Ctxt jasminDialect}
         vmBody accName body count init invs).map (fun c => ComL.denote c V)
       = some (JLoopBodyN.denote ⟨(count.lookup V).toNat, update⟩
                 (Expr.lookupArgs invs V) (init.lookup V)) := by
-  unfold rolledForLoopNRt
+  unfold rolledForLoopNRt rolledForLoopNRtCont
   rw [hupd]
   rfl
 
 /-! ## 3. Top-level: runtime-count loop body → owned `Lprog` via the committed export
 
 `rolledForLoopNRtLprog` composes `rolledForLoopNRt` with the committed multi-pointer
-memref ABI export `ComL.toLprogPhysAbi` (the same export the fixed-trip
-`rolledForLoopNLprog` uses; it already routes a runtime count through the 3rd+ SysV
-integer register). The result is a genuine runtime-trip rolled `Lprog` — ONE body
+memref ABI export `ComL.toLprogPhysAbi`, which routes a runtime count through the
+3rd+ SysV integer register. The result is a runtime-trip rolled `Lprog` — ONE body
 copy, a real `jne .L<d>` back-edge, a `MOV Lctr, <argReg>` counter seed — with NO
 hand-built body `Com`. -/
 
@@ -173,7 +203,7 @@ def rolledForLoopNRtLprog {Γouter : Ctxt jasminDialect}
       ComL.toLprogPhysAbi c fname outArg inArgs
         (fun _ => none) (fun _ => none) abiArgs abiTyin)
 
-/-! ## 4. Front-compiling a genuine **nested** runtime loop (`ComL.forLoopNRtNested`)
+/-! ## 4. Front-compiling a **nested** runtime loop (`ComL.forLoopNRtNested`)
 
 `rolledForLoopNRt` above rolls a single runtime loop. Several kernels need a
 runtime loop whose per-iteration body is *itself* a runtime loop with a trip
@@ -199,11 +229,38 @@ Both the inner-count body and the inner-update body are front-compiled by
 the two front bodies are *definitionally* the `forLoopNRtNested` fields over
 `invTys := invCTys.map mapTy`. -/
 
-/-- Build a genuine **nested runtime-trip** `ComL.forLoopNRtNested` from two
+/-- Build a **nested runtime-trip** `ComL.forLoopNRtNested` from two
+    front-compiled bodies — the inner-count body (per-outer recompute) and the
+    inner-update body — with a runtime outer count and a caller-supplied
+    continuation. The inner loop is first-class: its trip count is recomputed from
+    the outer index each outer pass. `cont : ComL (mapTy accCTy :: Γouter) s` runs
+    after the nest, with its final accumulator bound at `.here`, so a nest can sit
+    mid-chain with further phases as its continuation. `none` if either body's
+    front declines. -/
+def rolledForLoopNRtNestedCont {Γouter : Ctxt jasminDialect}
+    {accCTy : CryptoTy} {invCTys : Ctx} {s : JasminTy}
+    (vmCount : VarMap (.sword 64 :: invCTys)) (countName : String) (countBody : LowCT)
+    (vmBody : VarMap (accCTy :: .sword 64 :: .sword 64 :: invCTys)) (accName : String)
+    (updateBody : LowCT)
+    (outerCount : Ctxt.Var Γouter (JasminTy.reg 64))
+    (init : Ctxt.Var Γouter (mapTy accCTy))
+    (invs : HVector (fun ty => Ctxt.Var Γouter ty) (invCTys.map mapTy))
+    (cont : ComL (mapTy accCTy :: Γouter) s) :
+    Option (ComL Γouter s) :=
+  match frontLoopBodyJ (accCTy := .sword 64) (Γbody := .sword 64 :: invCTys)
+          vmCount countName countBody,
+        frontLoopBodyJ (accCTy := accCTy)
+          (Γbody := accCTy :: .sword 64 :: .sword 64 :: invCTys) vmBody accName updateBody with
+  | some innerCount, some innerUpdate =>
+      some (ComL.forLoopNRtNested innerCount innerUpdate outerCount init invs cont)
+  | _, _ => none
+
+/-- Build a **nested runtime-trip** `ComL.forLoopNRtNested` from two
     front-compiled bodies — the inner-count body (per-outer recompute) and the
     inner-update body — with a runtime outer count. The inner loop is first-class:
-    its trip count is recomputed from the outer index each outer pass. `none` if
-    either body's front declines. -/
+    its trip count is recomputed from the outer index each outer pass.
+    `rolledForLoopNRtNestedCont` at `cont := .ret .here`. `none` if either body's
+    front declines. -/
 def rolledForLoopNRtNested {Γouter : Ctxt jasminDialect}
     {accCTy : CryptoTy} {invCTys : Ctx}
     (vmCount : VarMap (.sword 64 :: invCTys)) (countName : String) (countBody : LowCT)
@@ -213,13 +270,9 @@ def rolledForLoopNRtNested {Γouter : Ctxt jasminDialect}
     (init : Ctxt.Var Γouter (mapTy accCTy))
     (invs : HVector (fun ty => Ctxt.Var Γouter ty) (invCTys.map mapTy)) :
     Option (ComL Γouter (mapTy accCTy)) :=
-  match frontLoopBodyJ (accCTy := .sword 64) (Γbody := .sword 64 :: invCTys)
-          vmCount countName countBody,
-        frontLoopBodyJ (accCTy := accCTy)
-          (Γbody := accCTy :: .sword 64 :: .sword 64 :: invCTys) vmBody accName updateBody with
-  | some innerCount, some innerUpdate =>
-      some (ComL.forLoopNRtNested innerCount innerUpdate outerCount init invs (.ret .here))
-  | _, _ => none
+  rolledForLoopNRtNestedCont (Γouter := Γouter) (accCTy := accCTy) (invCTys := invCTys)
+    vmCount countName countBody vmBody accName updateBody outerCount init invs
+    (.ret .here)
 
 /-- **Nested-runtime-loop-wrapper denotation = `JLoopBodyN.nestedDenote` fold.**
     When both bodies front-compile, the `ComL.forLoopNRtNested`'s denotation at any
@@ -249,7 +302,7 @@ theorem rolledForLoopNRtNested_denote {Γouter : Ctxt jasminDialect}
         (fun c => ComL.denote c V)
       = some (JLoopBodyN.nestedDenote innerCount innerUpdate (outerCount.lookup V).toNat
                 (Expr.lookupArgs invs V) (init.lookup V)) := by
-  unfold rolledForLoopNRtNested
+  unfold rolledForLoopNRtNested rolledForLoopNRtNestedCont
   rw [hcnt, hupd]
   rfl
 

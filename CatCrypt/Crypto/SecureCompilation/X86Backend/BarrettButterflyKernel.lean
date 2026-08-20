@@ -4,6 +4,7 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3BarrettLaw
 
 /-!
@@ -46,7 +47,7 @@ same shape with no leading `− p`.
   canonical residues `a, b, w < p`. This reuses the proved Barrett law
   (`Plonky3BarrettLaw.barrettMul_correct`) and the conditional-subtract laws
   (`Poseidon2Emit.bbCsub_correct`, `bbAdd_correct`), so the in-Lean-lowered kernel
-  computes the BabyBear butterfly, not merely some word arithmetic.
+  computes the BabyBear field butterfly.
 
 ## Trust story
 
@@ -65,6 +66,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 open CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
   (bbP bbCsub bbMul bbAdd bbMul_correct)
 open CatCrypt.Crypto.SecureCompilation.VIR.Plonky3BarrettLaw
@@ -288,6 +291,21 @@ theorem butterfly_out1_spec (a b w : BitVec 64)
   have hww : wb < (2013265921 : BitVec 64) := by simpa [bbP] using hwb
   simp only [kSubReduce, bbP]
   bv_decide
+
+/-! ## 6b. Constant time -/
+
+/-- Every memory reference in the butterfly body is a base+displacement
+    `loadMem`/`storeMem` on `inp`/`out` with a literal offset; the Barrett
+    reduce and both conditional subtracts are branch-free sign-mask arithmetic.
+    The body is therefore in the direct-addressing class. -/
+theorem butterflyBlock_allDirect : allDirect butterflyBlock = true := by decide
+
+/-- **Constant time.** The BabyBear butterfly produces the same machine leakage
+    trace from any two starting states, via
+    `ConstantTimeCoverage.allDirect_constant_time`. -/
+theorem butterflyBlock_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ butterflyBlock = blockLeak s₂ butterflyBlock :=
+  allDirect_constant_time butterflyBlock butterflyBlock_allDirect s₁ s₂
 
 /-! ## 7. AT&T assembly emission (in-Lean backend, no jasminc)
 

@@ -5,6 +5,7 @@ Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
+import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
 # Curve25519 field-multiply `fe25519_mul`, lowered through the in-Lean x86 backend (#380)
@@ -104,6 +105,9 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime (blockLeak)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+  (allDirect allDirect_constant_time)
 
 /-! ## 1. The straight-line body as a `List (JInstr 64)`
 
@@ -254,6 +258,21 @@ theorem feMulBlock_lowering_correct (x0 x1 x2 x3 y0 y1 y2 y3 : BitVec 64) :
         (.cons (initState x0 x1 x2 x3 y0 y1 y2 y3) .nil)
       = runBlock (initState x0 x1 x2 x3 y0 y1 y2 y3) feMulBlock :=
   lowerBlock_denote_closed feMulBlock (initState x0 x1 x2 x3 y0 y1 y2 y3)
+
+/-! ## 3a. Constant time: straight-line, all-direct addressing -/
+
+/-- The whole field-multiply body uses only direct base+displacement addressing
+    (no secret-indexed memory access). -/
+theorem feMulBlock_allDirect : allDirect feMulBlock = true := by
+  decide
+
+/-- **Constant time.** The emitted Curve25519 field multiply produces the same
+    machine leakage trace from any two starting states, discharged by the
+    decidable `allDirect` check through
+    `ConstantTimeCoverage.allDirect_constant_time`. -/
+theorem feMulBlock_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ feMulBlock = blockLeak s₂ feMulBlock :=
+  allDirect_constant_time feMulBlock feMulBlock_allDirect s₁ s₂
 
 /-! ## 4. The denoted output = `(x·y) mod p25519`, read little-endian -/
 

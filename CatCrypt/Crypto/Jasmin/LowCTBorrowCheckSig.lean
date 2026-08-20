@@ -18,9 +18,9 @@ unparameterized `borrowOk` (= `borrowOk' emptySigDb`).
 
 ## Why a separate file
 
-The existing `LowCTBorrowCheck.lean` is a load-bearing dependency
-for `seqFrame` and the entire LowCT verification stack. We don't
-want to perturb its API. This file extends in additive form:
+`LowCTBorrowCheck.lean` is a dependency of `seqFrame` and the LowCT
+verification stack, and keeps its API fixed. This file extends it in
+additive form:
 
 1. `borrowOk'` — new check, parameterized by a sig database.
 2. `borrowOk_iff_borrowOk'_empty` — the existing `borrowOk` is exactly
@@ -86,8 +86,6 @@ where
   | .RLimbStore _ _ _               => true
   | .RLimbStoreExpr _ _ _           => true
   -- Phase F/G/H/L/M (2026-05-03):
-  | .RAsmOp _ dests args            =>
-      dests.Nodup && dests.all (fun d => !callAliases d args)
   | .RCallN _ dests args            =>
       dests.Nodup && dests.all (fun d => !callAliases d args)
   | .RSelect dst _ src0 src1        =>
@@ -95,15 +93,12 @@ where
   | .RAssert _                      => true
   | .RFnCall _ dests args           =>
       dests.Nodup && dests.all (fun d => !callAliases d args)
-  -- Phase I: tuple component store/load — single destination.
-  | .RTupleStore dst _ src          => dst.locVar != src.locVar
+  -- Phase I: tuple component load — single destination.
   | .RTupleLoad dst src _           => dst.locVar != src.locVar
   -- Phase Ext (2026-05-12): runtime array load/store + scalar expression assign.
   | .RArrStore arr _ src            => arr.locVar != src.locVar
   | .RArrLoad dst src _             => dst.locVar != src.locVar
   | .RScalarSetExpr _ _             => true
-  -- Phase Ext2 (2026-05-13): byte-slice copy mutates dst; dst and src must be distinct.
-  | .RBytesSlice dst src _ _        => dst.locVar != src.locVar
   -- Phase DD/E2: literal-index array ops + dst-threaded call.  Same alias
   -- discipline as their dynamic siblings / RCall (these arms previously
   -- caused a missing-cases compile error — closed by this migration).

@@ -27,13 +27,10 @@ over the heavier Mathlib `Vector α n` (`List`-backed) because:
 A future Phase-2 may swap in Mathlib `Vector` if a particular consumer needs
 list-style operations; the current ops do not.
 
-This is the first file of the MLIR-style **VectorDialect** scaffolding
-(task #183). The op alphabet is in `Ops.lean`, its denotation in
-`Denote.lean`, and the progressive lowering in `Lowering.lean`,
-`LoweringAVX512.lean` and `LoweringChoice.lean`. The BitVec-lane,
-already-denoting analogue inside the VIR framework is
-`VIR/MlirVectorDialect.lean`; `Ops.lean` explains the contrast (element type
-`α` kept abstract here, pinned to `BitVec w` there).
+This is the first file of the new MLIR-style **VectorDialect** scaffolding
+(task #183). See `README.md` in the same directory for the progressive-lowering
+plan and the relationship with the existing `VIR/MlirVectorDialect.lean`
+(BitVec-lane, already-denoting analogue).
 -/
 
 set_option autoImplicit false

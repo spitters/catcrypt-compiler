@@ -210,7 +210,7 @@ def evalPExpr (s : BignumState) : PExpr → Option (BitVec 64)
   --     kernel the pointers, indices and the length counter are still
   --     `reg u64`, so pointer/counter arithmetic uses the 64-bit
   --     `Oadd .U64` arm and the loop guard `n != 0` uses the
-  --     width-agnostic `Oneq _` arm.  Genuine 32-bit *limb* arithmetic
+  --     width-agnostic `Oneq _` arm.  32-bit *limb* arithmetic
   --     goes through the masking intrinsics `ADD_32` / `ADC_32` /
   --     `SUB_32` in `execInstr` (which mask to 32 bits and report the
   --     bit-32 carry), exactly as a real Jasmin u32 kernel emits.
@@ -401,7 +401,7 @@ example :
 
 /-! ### §5a-shift. (Shift, additive) 64-bit shift intrinsics
 
-Backs the verified `mpn_lshift` / `mpn_rshift` kernels (`MpnShiftSpec.lean`).
+Backs the verified `mpn_lshift` / `mpn_rshift` kernels (`Mpn.ShiftSpec.lean`).
 The algorithm-level toNat correctness theorems (`mpnShiftLeft_spec`,
 `mpnShiftRight_spec`) already prove that the cross-limb `|||` merge is an
 honest addition (`nat_lor_eq_add_of_disjoint`) — that's why the
@@ -581,7 +581,7 @@ def mulx32 (a b : BitVec 64) : BitVec 64 × BitVec 64 :=
 /-! ## §5c. (U32, additive) `load32Mem` / `Mem.store32` memory algebra
 
 The u32 analogues of `MpnAddPrototype`'s `load64Mem_store64_same` /
-`load64Mem_store64_disjoint`.  These are the load-bearing plumbing the
+`load64Mem_store64_disjoint`.  These are the plumbing the
 later u32 `add_n` bridge consumes: read-back of a just-stored 4-byte
 word, and a frame rule for disjoint 4-byte blocks.  As in the u64 case,
 `bv_decide` is the tool for the UInt64 address (in)equalities (`omega`
@@ -2679,7 +2679,7 @@ clean BitVec form so `bv_decide` and BitVec-level helpers apply.
 
 Use as: `simp [..., bv_normalize_set]` or `simp_all [bv_normalize_set]`.
 
-This is the keystone simp set for Phase 4 ports. -/
+The simp set for Phase 4 ports. -/
 
 /-- Reverse-direction simp lemmas converting Nat-encoded BitVec ops
     back to BitVec form. -/
@@ -2698,7 +2698,7 @@ theorem bv_normalize_xor {n : Nat} (x y : BitVec n) :
 /-! ### Bridge lemma
 
 Connects the monadic and functional forms. The `emptyRegistry`
-specialization is the load-bearing direction: existing `BignumHoare`
+specialization is the useful direction: existing `BignumHoare`
 proofs about `bignumExec` lift to `bignumExecM` (and vice versa) via
 this iff. -/
 

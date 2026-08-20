@@ -26,14 +26,17 @@ writes are disjoint:
 - `mov × mov`, `mov × mulx`, `mulx × mulx`: flag-free pairs (trivially disjoint).
 - `mov × adcx`, `mov × adox`, `mulx × adcx`, `mulx × adox`: one side flag-free.
 - `adcx × adox`: CF (adcx) and OF (adox) are disjoint flag sets — the ADX
-  dual-carry keystone.
+  dual-carry case.
 - `adcx × adcx`, `adox × adox`: rejected (CF–CF / OF–OF conflict).
 - `loadMem`/`storeMem`/`mulxMem`/`loadSym`/`loadMemIdx`/`storeMemIdx`: excluded (touch memory).
-- `add`/`sub`/`adc`/`sbb`/`imul`/`neg`/`and`/`or`/`xor`/`shl`/`shr`/`sar`: excluded (write all 5 flags).
-- `setc`/`cmov*`: excluded (not in commClass).
+- `add`/`sub`/`adc`/`sbb`/`imul`/`neg`/`and`/`or`/`xor`/`shl`/`shr`/`sar`/`test`/`cmp`/
+  `andn`: excluded (write all 5 flags).
+- `rol`/`ror`: excluded (write `OF`/`CF`, preserve `SF`/`PF`/`ZF`).
+- `setc`/`cmov*`/`not_`/`rorx`/`shlx`/`shrx`/`sarx`/`movzx`/`movsx`/`lea`: excluded
+  (not in commClass).
 
 Every mixed-flag pair (`mov`/`mulx` × `adcx`/`adox`, and the `adcx × adox`
-dual-carry keystone) is discharged by a standalone abstract-output lemma:
+dual-carry case) is discharged by a standalone abstract-output lemma:
 `evalInstr` is unfolded but `x86_MULX_lo_hi` / `x86_ADCX` are kept opaque, so the
 proof reasons only about which register/flag receives each opaque value, never
 the product or carry expression — sidestepping the `whnf`/`isDefEq` blow-up that
@@ -67,14 +70,19 @@ inductive FlagId where
 /-- The flags an instruction **writes**. -/
 def flagWrites : JInstr 64 → List FlagId
   | .add _ _  | .sub _ _  | .adc _ _  | .sbb _ _  | .imul _ _ | .neg _
-  | .and_ _ _ | .or_ _ _  | .xor_ _ _ | .shl _ _  | .shr _ _  | .sar _ _ =>
+  | .and_ _ _ | .or_ _ _  | .xor_ _ _ | .shl _ _  | .shr _ _  | .sar _ _
+  | .test _ _ | .cmp _ _   | .andn _ _ _ =>
       [.CF, .PF, .ZF, .SF, .OF]
   | .adcx _ _ => [.CF]
   | .adox _ _ => [.OF]
+  -- The rotates write `OF`/`CF` and preserve `SF`/`PF`/`ZF` (`JState.writeB2W`).
+  | .rol _ _ | .ror _ _ => [.CF, .OF]
   | .mov _ _   | .setc _     | .cmove _ _  | .cmovne _ _ | .cmovb _ _
   | .mulx _ _ _ _ | .mulxMem _ _ _ _ _
   | .loadMem _ _ _ | .storeMem _ _ _ | .loadMemIdx _ _ _ _
-  | .storeMemIdx _ _ _ _ | .loadSym _ _ => []
+  | .storeMemIdx _ _ _ _ | .loadSym _ _
+  | .not_ _ | .rorx _ _ _ | .shlx _ _ _ | .shrx _ _ _ | .sarx _ _ _
+  | .movzx _ _ _ | .movsx _ _ _ | .lea _ _ _ _ _ => []
 
 /-- The flags an instruction **reads**. -/
 def flagReads : JInstr 64 → List FlagId
@@ -83,10 +91,13 @@ def flagReads : JInstr 64 → List FlagId
   | .cmove _ _ | .cmovne _ _ => [.ZF]
   | _ => []
 
-/-- Whether an instruction reads or writes memory (conservative). -/
+/-- Whether an instruction reads or writes memory (conservative). `lea` computes an
+    address in the AGU and writes it to a register without dereferencing it, so it does
+    not touch memory. -/
 def touchesMem : JInstr 64 → Bool
   | .loadMem _ _ _  | .storeMem _ _ _  | .mulxMem _ _ _ _ _
   | .loadMemIdx _ _ _ _ | .storeMemIdx _ _ _ _ | .loadSym _ _ => true
+  | .lea _ _ _ _ _ => false
   | _ => false
 
 /-- The set of instructions whose pairwise commutativity we prove here.
@@ -131,7 +142,9 @@ theorem evalInstr_flagsEq (s : JState 64) (i : JInstr 64)
 theorem evalInstr_memEq (s : JState 64) (i : JInstr 64)
     (hm : touchesMem i = false) :
     (evalInstr s i).mem = s.mem := by
-  cases i <;> simp_all [touchesMem, evalInstr, JState.setReg, JState.writeB5W]
+  cases i <;>
+    simp_all [touchesMem, evalInstr, JState.setReg, JState.writeB5, JState.writeB5W,
+      JState.writeB2W]
 
 /-- Operand eval is unchanged by `setReg r _` when `r ∉ srcNames src`. -/
 private theorem eval_setReg_notMem (s : JState 64) (src : JOperand)
@@ -240,7 +253,7 @@ private theorem evalInstr_comm_mov_adox (s : JState 64)
   · rfl
   · rfl
 
-/-! ### Abstract-output ADX × ADX dual-carry keystone (`adcx × adox`)
+/-! ### Abstract-output ADX × ADX dual-carry case (`adcx × adox`)
 
 The `adcx × adox` reorder is the point of the ADX widening: `adcx` reads/writes
 CF, `adox` reads/writes OF, and CF/OF are distinct `RFlags` fields, so the two
@@ -251,7 +264,7 @@ value, sidestepping the `whnf`/`isDefEq` blow-up that unfolding the carry
 arithmetic in `simp_all` produces. -/
 
 /-- `adcx dst1 src1` commutes with `adox dst2 src2` (abstract carry outputs):
-    the ADX dual-carry keystone. -/
+    the ADX dual-carry case. -/
 private theorem evalInstr_comm_adcx_adox (s : JState 64)
     (dst1 : String) (src1 : JOperand) (dst2 : String) (src2 : JOperand)
     (hd12 : dst1 ≠ dst2)
@@ -651,7 +664,7 @@ theorem evalInstr_comm (s : JState 64) (i1 i2 : JInstr 64)
         (Bool.eq_false_iff.mp hne_dh2_r1.2 ∘ List.contains_iff_mem.mpr)
         (Bool.eq_false_iff.mp hne_dl2_r1.2 ∘ List.contains_iff_mem.mpr)).symm
     | adox dst2 src2 =>
-      -- adcx × adox: THE KEYSTONE CASE — discharged by the abstract-output lemma.
+      -- adcx × adox: the ADX dual-carry case — discharged by the abstract-output lemma.
       -- adcx reads/writes CF; adox reads/writes OF; CF ≠ OF so they don't conflict.
       -- `readNames` of both ADX ops leads with its destination, so peel via `or_eq_false_iff`.
       simp only [writtenNames, readNames, List.all_cons, List.all_nil, Bool.and_true,
@@ -692,7 +705,7 @@ theorem evalInstr_comm (s : JState 64) (i1 i2 : JInstr 64)
         (Bool.eq_false_iff.mp hne_dh2_r1.2 ∘ List.contains_iff_mem.mpr)
         (Bool.eq_false_iff.mp hne_dl2_r1.2 ∘ List.contains_iff_mem.mpr)).symm
     | adcx dst2 src2 =>
-      -- adox × adcx: `.symm` of the ADX dual-carry keystone (`adcx × adox`).
+      -- adox × adcx: `.symm` of the ADX dual-carry case (`adcx × adox`).
       simp only [writtenNames, readNames, List.all_cons, List.all_nil, Bool.and_true,
                  Bool.and_eq_true, Bool.not_eq_true', List.contains_cons,
                  List.contains_nil, Bool.or_false, Bool.or_eq_false_iff,

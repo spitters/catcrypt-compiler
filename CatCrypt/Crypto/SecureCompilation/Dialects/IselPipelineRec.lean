@@ -81,9 +81,9 @@ def rorCexV : Ctxt.Valuation (d := jasminDialect) [.reg 8] := .cons (1 : BitVec 
 theorem rorImmSelect_rorCex_not_fired : rorImmSelect rorCex = rorCex := rfl
 
 /-- **`rorImmSelect` preserves `rorCex`'s denotation** (it is the identity there), on
-    every input — in particular on `rorCexV`, the input the old tag-only matcher
-    diverged on. No denotation-changing counterexample survives the operand guard:
-    the matcher does not fire on a non-canonical `or`. -/
+    every input — in particular on the input the old miscompile diverged on. The
+    former `rorImmSelect_not_denote_preserving` is therefore no longer derivable: the
+    matcher does not fire on a non-canonical `or`. -/
 theorem rorImmSelect_rorCex_denote_preserved (V : Ctxt.Valuation (d := jasminDialect) [.reg 8]) :
     (rorImmSelect rorCex).denote V = rorCex.denote V := by
   rw [rorImmSelect_rorCex_not_fired]
@@ -112,9 +112,8 @@ def andnCexV : Ctxt.Valuation (d := jasminDialect) [.reg 8, .reg 8] :=
 theorem andnSelect_andnCex_not_fired : andnSelect andnCex = andnCex := rfl
 
 /-- **`andnSelect` preserves `andnCex`'s denotation** (it is the identity there), on
-    every input — in particular on `andnCexV`, the input the old tag-only matcher
-    diverged on. No denotation-changing counterexample survives the `regConst`-value
-    guard: the matcher does not fire on a non-`allOnes` mask. -/
+    every input. The former `andnSelect_not_denote_preserving` is therefore no longer
+    derivable: the matcher does not fire on a non-`allOnes` mask. -/
 theorem andnSelect_andnCex_denote_preserved
     (V : Ctxt.Valuation (d := jasminDialect) [.reg 8, .reg 8]) :
     (andnSelect andnCex).denote V = andnCex.denote V := by

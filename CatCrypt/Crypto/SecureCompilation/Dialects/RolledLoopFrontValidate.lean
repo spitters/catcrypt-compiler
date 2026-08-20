@@ -5,6 +5,7 @@ Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRolledLoop
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 set_option autoImplicit false
 
@@ -204,7 +205,7 @@ theorem physBody_one_indexed_store :
 /-- The owned AT&T `.s` text for `qruov_dot_front` (front-compiled, rolled). -/
 def kernelAsm : Option String :=
   dotComL.map (fun c =>
-    renderLprogAtt
+    CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned
       (ComL.toLprogPhysAbi c "qruov_dot_front" (argName 0) [argName 1, argName 2]
         (fun _ => none) (fun _ => none) ["RDI", "RSI", "RDX"] [64, 64, 64]))
 

@@ -45,7 +45,7 @@ require successful termination.
   the existing `bignum_mod_p25519_4_correct_universal` re-stated in
   upstream Triple notation, proved by `iff.mpr` of the bridge.
 
-These lemmas are the load-bearing infrastructure that lets
+These lemmas are the bridge infrastructure that lets
 existing `BignumTriple`-shape proofs be re-used with upstream
 mvcgen' once it lands.
 
@@ -56,7 +56,7 @@ When `mvcgen'` is promoted out of `tests/bench/`:
 1. Add `import Lean.Meta.Sym` etc. to this file.
 2. Replace the Phase 1 Triple lemmas with native `mvcgen'`
    invocations.
-3. Annotate the chain-step axioms (`MontmulAxiom.lean`,
+3. Annotate the chain-step contracts (`MontmulAxiom.lean`,
    `ChainStepAxioms.lean`) with `@[spec]`.
 4. Re-prove `bignum_mod_p25519_4_correct` via single
    `mvcgen'` call.
@@ -233,27 +233,25 @@ theorem bignum_mod_p25519_4_correct_triple
 
 /-! ## §4  Spec annotations target
 
-Once `mvcgen'` is in place, the chain-step axioms become spec-
-annotated for automatic dispatch:
+Once `mvcgen'` is in place, the chain-step contracts become spec-
+annotated for automatic dispatch (`MontmulCallFacts.call_correct` is
+the hypothesis-structure field the chain theorems consume):
 
 ```
 @[spec]
-axiom montmul_call_correct ...
+theorem chain_sqr_step_correct ...
 
 @[spec]
-axiom chain_sqr_step_correct ...
+theorem chain_mul_step_correct ...
 
 @[spec]
-axiom chain_mul_step_correct ...
-
-@[spec]
-axiom chain_repeated_sqr_then_mul_correct ...
+theorem chain_repeated_sqr_then_mul_correct_generic ...
 ```
 
 The 13 per-block instances in `PerBlockInstances.lean` then
 discharge automatically: `mvcgen'` walks the chain, encounters
 each block's pattern, dispatches the appropriate `chain_*_correct`
-axiom from the spec database, glues via the WPMonad bind law.
+theorem from the spec database, glues via the WPMonad bind law.
 
 Result: 13 individual ~5-LoC theorems collapse to one
 `mvcgen'` call covering the full chain.

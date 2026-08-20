@@ -3,8 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRolledLoop
+import CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 set_option autoImplicit false
 
@@ -14,9 +15,10 @@ set_option autoImplicit false
 CAPABILITY G2 witness. It authors a **128-bit SIMD** loop body — a `.sword 128`
 accumulator updated by a `vsimd` op each trip (`t := gf2p8mulb(x,x)`;
 `acc := acc ⊕ t`) — and front-compiles it through the vsimd-aware
-`TranslateDialectVsimd.translateDialectControlV` (via `rolledForLoopNV`) to a
-genuine `ComL.forLoopN`: ONE vsimd body copy + a real back-edge (`jne`), NOT `N`
-unrolled copies.
+`TranslateDialectVsimd.translateDialectControlV`, reached through the rolled-loop
+dispatcher `FrontRoutePlan.compileLoop` at the `vsimd` body front and a
+compile-time trip count, to a `ComL.forLoopN`: ONE vsimd body copy + a back-edge
+(`jne`), NOT `N` unrolled copies.
 
 ```
   vloopBody (RVsimdSetExpr t := gf2p8mulb(x,x); RVsimdSetExpr acc := acc ⊕ t)
@@ -24,18 +26,18 @@ unrolled copies.
                                                           -->  Com catCryptDialect
     --(cryptoDialectToJasminCom)------------------------------>  Com jasminDialect (= JLoopBodyN.update)
     --(ComL.forLoopN ⟨N, update⟩ acc [x] (ret acc))---------->  ComL  (ONE vsimd body copy + back-edge)
-    --(comLToBody / renderLprogAtt)-------------------------->  .s  (genuine `jne .L<d>`, VGF2P8MULB/VPXOR)
+    --(comLToBody / renderLprogAtt)-------------------------->  .s  (`jne .L<d>`, VGF2P8MULB/VPXOR)
 ```
 
-The scalar `rolledForLoopN` cannot express this: its body flows through the
-SCALAR `translateDialectControl`, which has no `.sword 128` binding and does not
-intercept `vsimd`-tagged `RCall`s. `rolledForLoopNV` swaps only the body front to
-`translateDialectControlV`; everything downstream (`cryptoDialectToJasminCom`
-lowering, the `ComL.forLoopN` wrapper) is shared verbatim. When `accCTy =
-.sword 128`, `mapTy accCTy = .reg 128`, so the accumulator carried across the
-back-edge is a 128-bit register.
+The `plain` body front cannot express this: its body flows through the SCALAR
+`translateDialectControl`, which has no `.sword 128` binding and does not
+intercept `vsimd`-tagged `RCall`s. The `vsimd` value of the body-front axis swaps
+only that front to `translateDialectControlV`; everything downstream
+(`cryptoDialectToJasminCom` lowering, the `ComL.forLoopN` wrapper) is shared
+verbatim. When `accCTy = .sword 128`, `mapTy accCTy = .reg 128`, so the
+accumulator carried across the back-edge is a 128-bit register.
 
-The validation checks: (i) the vsimd front succeeds (`rolledForLoopNV`); (ii)
+The validation checks: (i) the vsimd front succeeds; (ii)
 `ComL.denote = the independent N-fold XOR spec`; (iii) the lowered body has a REAL
 back-edge (`Lcond`/`Llabel`) with ONE vsimd body copy (one `VGF2P8MULB`, one
 `VPXOR` — NOT `N` unrolled).
@@ -100,7 +102,7 @@ def vmBody : VarMap Γbody :=
   (((VarMap.empty.bind (t := .sword 128) "x").bind (t := .sword 64) "idx").bind
       (t := .sword 128) "acc")
 
-/-! ## 3. The outer program: vsimd front body → genuine `ComL.forLoopN`
+/-! ## 3. The outer program: vsimd front body → `ComL.forLoopN`
 
 Outer context `[acc:.reg 128, x:.reg 128]` (`mapTy .sword 128 = .reg 128`): `acc`
 is the accumulator seed (`.here`), `x` the invariant seed (`.there .here`). -/
@@ -111,15 +113,15 @@ def Γouter : Ctxt jasminDialect := [.reg 128, .reg 128]
 /-- The front-compiled rolled vsimd `ComL.forLoopN` (one vsimd body copy +
     back-edge), or `none` if the vsimd front declines. -/
 def vloopComL : Option (ComL Γouter (.reg 128)) :=
-  rolledForLoopNV (Γouter := Γouter) (accCTy := .sword 128)
+  FrontRoutePlan.compileLoop (Γouter := Γouter) (accCTy := .sword 128)
     (invCTys := [.sword 128])
-    vN vmBody "acc" vloopBody
+    .vsimd (.static vN) vmBody "acc" vloopBody
     (init := .here)
     (invs := .cons (.there .here) .nil)
 
 /-! ## 4. Gate: the vsimd front succeeds -/
 
-/-- The 128-bit vsimd loop body front-compiles to a genuine `ComL.forLoopN`. -/
+/-- The 128-bit vsimd loop body front-compiles to a `ComL.forLoopN`. -/
 theorem vloopComL_isSome : vloopComL.isSome := by native_decide
 
 /-! ## 5. denote = independent N-fold XOR spec -/
@@ -153,8 +155,8 @@ lowered by `forLoopLcmdN` (call-free), exactly as the `reg 64` smoke test. -/
 def vloopBodyLcmd : Option Lcmd :=
   vloopComL.map (fun c => comLToBody 2 argName (fun _ => none) c 1)
 
-/-- **Real back-edge:** the lowered body has both an internal `Llabel` and a `Lcond`
-    (`jne .L<d>`) — a genuine counted loop, NOT an unrolled chain. -/
+/-- **Back-edge:** the lowered body has both an internal `Llabel` and a `Lcond`
+    (`jne .L<d>`) — a counted loop, NOT an unrolled chain. -/
 theorem vloopBodyLcmd_has_backedge :
     vloopBodyLcmd.map (fun b =>
       (b.any (fun i => match i.li_i with | .Lcond _ _ => true | _ => false))
@@ -189,7 +191,7 @@ sibling `VsimdAsmPrint` render path, so no `isSome` gate is asserted here. -/
 /-- The owned AT&T `.s` text for `vsimd_xoracc` (front-compiled, rolled). -/
 def kernelAsm : Option String :=
   vloopComL.map (fun c =>
-    renderLprogAtt
+    CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned
       (ComL.toLprogPhysAbi c "vsimd_xoracc" (argName 0) [argName 1]
         (fun _ => none) (fun _ => none) ["XMM0", "XMM1"] [128, 128]))
 

@@ -161,9 +161,9 @@ inductive QOp where
 
 /-! ## VEIR-DIFF: `Float` vs `ℝ` — RESOLVED via `rzReal`
 
-`QuantumSSA.QOp.rz` carries an exact `θ : ℝ`, whereas the dialect's original
-`rz` constructor uses `Float` so that `QOp` itself stays computable
-(`decide`/`rfl` work on dialect programs).
+The plan doc spec'd `rz (θ : ℝ)` to match `QuantumSSA.QOp.rz`. The
+original `rz` constructor uses `Float` so that `QOp` itself is
+computable (`decide`/`rfl` work on dialect programs).
 
 As of 2026-05-14 we ship an additional `rzReal (θ : ℝ)` constructor
 so the Phase-2 bridge (`QSSAToVIR.lean`) can route
@@ -172,9 +172,13 @@ any conversion loss. `QOp` carries `Real`, which is noncomputable, but
 existing pattern matches over `QOp` that don't touch `rzReal` still
 reduce by `rfl` — the noncomputability is local to the `rzReal` arm.
 
-Both constructors stay in the enum: every match over `QOp` — `QOp.sig`,
-`QOp.ret`, the circuit lowering, the agreement lemmas — has to cover the `rz`
-and `rzReal` arms.
+Approach picked: **A** (add `rzReal` alongside `rz`). Pros: zero blast
+radius for callers using `Float` (QFT-2 hand-encoding still type-checks
+`as-is`); the exact-ℝ path coexists. Cons: dialect Op enum has two `Rz`
+constructors; downstream code must handle both. The alternative was
+Approach B (replace `rz : Float` with `rz : ℝ`, accepting `noncomputable`
+cascading) — rejected as too invasive given the existing hand-written
+VIR programs.
 -/
 
 /-! ## 3. The dialect -/

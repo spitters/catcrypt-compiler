@@ -70,16 +70,23 @@ projections so a name's live range is `[def, lastUse]`.
 `AsmPrinter`-side notion); `readNames` are the source names it reads. A `mulx`
 writes two; for live-range purposes we record both as defs.  -/
 
-/-- Register names an instruction **writes** (its destinations). `storeMem` writes
-    no register. -/
+/-- Register names an instruction **writes** (its destinations). `storeMem`,
+    `test` and `cmp` write no register. -/
 def writtenNames : JInstr 64 → List String
   | .mov d _ | .add d _ | .sub d _ | .adc d _ | .sbb d _ | .imul d _ | .neg d | .setc d
   | .and_ d _ | .or_ d _ | .xor_ d _ | .shl d _ | .shr d _ | .sar d _
   | .cmove d _ | .cmovne d _ | .cmovb d _ | .adcx d _ | .adox d _ | .loadMem d _ _
-  | .loadMemIdx d _ _ _ | .loadSym d _ => [d]
+  | .loadMemIdx d _ _ _ | .loadSym d _
+  | .not_ d | .andn d _ _ | .rol d _ | .ror d _ | .rorx d _ _
+  | .shlx d _ _ | .shrx d _ _ | .sarx d _ _
+  | .movzx d _ _ | .movsx d _ _ | .lea d _ _ _ _ => [d]
   | .mulx dh dl _ _ => [dh, dl]
   | .mulxMem dh dl _ _ _ => [dh, dl]
   | .storeMem _ _ _ | .storeMemIdx _ _ _ _ => []
+  -- `test` writes the five flags and no register: both its operands are reads.
+  | .test _ _ => []
+  -- `cmp` is `sub` with the difference discarded: five flags, no register.
+  | .cmp _ _ => []
 
 /-- Register names an instruction **reads** (its source operands and, for the
     two-address ALU ops, the destination, which is also a source; memory bases are
@@ -92,8 +99,25 @@ def readNames : JInstr 64 → List String
   | .adcx d s | .adox d s
   | .cmove d s | .cmovne d s | .cmovb d s => d :: srcNames s
   | .neg d => [d]
+  -- `test a b` reads both operands; neither is a destination.
+  | .test a b => a :: srcNames b
+  -- `cmp a b` reads both operands; neither is a destination.
+  | .cmp a b => a :: srcNames b
   -- `setc` reads no GP register (its only input is the implicit CF flag).
   | .setc _ => []
+  -- one-address bitwise complement: `dst` is both source and destination.
+  | .not_ d => [d]
+  -- BMI1 `andn`: non-destructive in both sources, `dst` is write-only.
+  | .andn _ a b => [a, b]
+  -- rotates are two-address: `dst` is also a source, and the count may be a register.
+  | .rol d amt | .ror d amt => d :: srcNames amt
+  -- BMI2 rotate/shift: `dst` is write-only, the source and the count are reads.
+  | .rorx _ src amt => src :: srcNames amt
+  | .shlx _ src cnt | .shrx _ src cnt | .sarx _ src cnt => [src, cnt]
+  -- extension moves read only the source; `dst` is write-only.
+  | .movzx _ _ src | .movsx _ _ src => [src]
+  -- `lea` computes `base + idx * scale + off` in the AGU; both address registers are reads.
+  | .lea _ base idx _ _ => [base, idx]
   -- `loadSym d sym` is an RIP-relative `lea` of a static label: reads no GP register.
   | .loadSym _ _ => []
   | .mulx _ _ a b => srcNames a ++ srcNames b
@@ -647,6 +671,8 @@ analysis is non-vacuous: every name's live range is within the body and `def ≤
 lastUse`. The body defines `t` then uses it twice, mirroring a spilled ladder
 temporary. -/
 
+-- @bench-only: the `List (JInstr _)` blocks below are fixtures exercising this
+-- spilling register-allocation pass; this module emits no deployed `.s` artifact.
 /-- A toy body: `t := a + b`, `r := t + c`, `s := t + r` — `t` is defined at 0 and
     last used at 2 (live across the whole body), the spill-candidate shape. -/
 def sanityBody : List (JInstr 64) :=

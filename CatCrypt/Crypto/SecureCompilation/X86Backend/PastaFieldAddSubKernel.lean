@@ -4,6 +4,7 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
+import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
 # Pasta (Pallas/Vesta) field add/sub, lowered through the in-Lean x86 backend
@@ -32,8 +33,8 @@ conditional add of `p` for sub.)
 `addBlock pLimbs` (inputs `a, b ∈ [0, p)`):
 
 1. **Carry-add** `t := a + b` over five words: `add t0, b0`; `adc t1, b1`; … ;
-   the overflow lands in a fifth word `t4` (`mov t4,0; adc t4,0`) — a genuine
-   hardware ADD/ADC chain, not synthesised carries.
+   the overflow lands in a fifth word `t4` (`mov t4,0; adc t4,0`) — a hardware
+   ADD/ADC chain, not synthesised carries.
 2. **Trial subtract** `s := t − p`: copy `t0..t3` to `s0..s3`, `sub s0, p0`;
    `sbb s1, p1`; … ; `sbb t4, 0`. The final borrow `CF = 1` iff `t < p`.
 3. **Branch-free select** (`cmovb`): when `CF = 1` (`t < p`) keep the original
@@ -89,6 +90,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-! ## 1. The Pasta moduli (canonical little-endian limbs) -/
 
@@ -230,7 +233,57 @@ theorem vestaSubBlock_lowering_correct
   lowerBlock_denote_closed (subBlock vestaLimbs)
     (initState a0 a1 a2 a3 b0 b1 b2 b3)
 
-/-! ## 6. Register allocation (reg-ptr ABI, no scratch frame)
+/-! ## 6. Constant time: straight-line, all-direct addressing
+
+Neither body's instruction sequence depends on the modulus limbs, only its
+immediates do, so the `allDirect` check holds for **every** modulus. Memory is
+addressed through a base pointer and a compile-time-constant displacement
+(`loadMem`/`storeMem`); the conditional reduce is branch-free (`cmovb` in the
+add, the borrow mask in the sub), so no `loadMemIdx`/`storeMemIdx` appears. -/
+
+/-- The field-add body uses only direct base+displacement addressing, over any
+    modulus limbs. -/
+theorem addBlock_allDirect (p : List Nat) : allDirect (addBlock p) = true := rfl
+
+/-- **Constant time, for every modulus.** The emitted field add produces the
+    same machine leakage trace from any two starting states: its observable
+    control-flow + memory-address sequence is a function of the program text
+    alone, so it carries no information about the operand limbs. -/
+theorem addBlock_constant_time (p : List Nat) (s₁ s₂ : JState 64) :
+    blockLeak s₁ (addBlock p) = blockLeak s₂ (addBlock p) :=
+  allDirect_constant_time _ (addBlock_allDirect p) s₁ s₂
+
+/-- The field-sub body uses only direct base+displacement addressing, over any
+    modulus limbs. -/
+theorem subBlock_allDirect (p : List Nat) : allDirect (subBlock p) = true := rfl
+
+/-- **Constant time, for every modulus.** The emitted field sub produces the
+    same machine leakage trace from any two starting states. -/
+theorem subBlock_constant_time (p : List Nat) (s₁ s₂ : JState 64) :
+    blockLeak s₁ (subBlock p) = blockLeak s₂ (subBlock p) :=
+  allDirect_constant_time _ (subBlock_allDirect p) s₁ s₂
+
+/-- **Constant time** for the Pallas field add leaf. -/
+theorem pallasAdd_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ (addBlock pallasLimbs) = blockLeak s₂ (addBlock pallasLimbs) :=
+  addBlock_constant_time _ s₁ s₂
+
+/-- **Constant time** for the Pallas field sub leaf. -/
+theorem pallasSub_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ (subBlock pallasLimbs) = blockLeak s₂ (subBlock pallasLimbs) :=
+  subBlock_constant_time _ s₁ s₂
+
+/-- **Constant time** for the Vesta field add leaf. -/
+theorem vestaAdd_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ (addBlock vestaLimbs) = blockLeak s₂ (addBlock vestaLimbs) :=
+  addBlock_constant_time _ s₁ s₂
+
+/-- **Constant time** for the Vesta field sub leaf. -/
+theorem vestaSub_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ (subBlock vestaLimbs) = blockLeak s₂ (subBlock vestaLimbs) :=
+  subBlock_constant_time _ s₁ s₂
+
+/-! ## 7. Register allocation (reg-ptr ABI, no scratch frame)
 
 `z`→`%rdi`, `a`→`%rsi`, `b`→`%rdx` (the SysV argument registers). No `MULX`, so
 `%rdx` is free for the `b` pointer; no stack scratch frame is needed (the trial
@@ -256,7 +309,7 @@ theorem vestaAddAlloc_no_overflow :
 theorem vestaSubAlloc_no_overflow :
     allocOverflow pastaAddSubPinned (subBlock vestaLimbs) = none := by native_decide
 
-/-! ## 7. AT&T assembly emission (reg-ptr SysV ABI, no scratch frame) -/
+/-! ## 8. AT&T assembly emission (reg-ptr SysV ABI, no scratch frame) -/
 
 /-- Render one add/sub leaf. The three pointer args are already in their SysV
     registers (`z`→`%rdi`, `a`→`%rsi`, `b`→`%rdx`); the prologue only saves the

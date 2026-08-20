@@ -110,17 +110,22 @@ def arrElemWS (loc : Located) : WSize :=
 def locToVar (loc : Located) : Var :=
   { vname := loc.locVar, vtype := towerToSType loc.locSrc }
 
-/-- Make a `GVar` (local variable reference) for a Located. -/
+/-- Make a `GVar` (local variable reference) for a Located. The
+    `VarInfo.towerTag` carries `loc.locSrc.byteSize`, the injective
+    tower-type tag; it pins the ghost tower type that the `.sarr`
+    storage width in `towerToSType` does not determine. -/
 def locToGVar (loc : Located) : GVar :=
-  { gv := { var := locToVar loc, info := {} }, gs := false }
+  { gv := { var := locToVar loc, info := { towerTag := loc.locSrc.byteSize } },
+    gs := false }
 
 /-- Emit a Located as a Jasmin expression (variable read). -/
 def locToPExpr (loc : Located) : PExpr :=
   .Pvar (locToGVar loc)
 
-/-- Emit a Located as a Jasmin left-value (variable write). -/
+/-- Emit a Located as a Jasmin left-value (variable write). The
+    `VarInfo.towerTag` carries `loc.locSrc.byteSize`, as in `locToGVar`. -/
 def locToLVal (loc : Located) : LVal :=
-  .Lvar { var := locToVar loc, info := {} }
+  .Lvar { var := locToVar loc, info := { towerTag := loc.locSrc.byteSize } }
 
 /-! ## §2  Syntax translation -/
 
@@ -272,7 +277,8 @@ def toJasminCmdLeaf : LowCT → Cmd
       -- Then the inlined call.
       let cloneVar' : Var := { vname := cloneVar, vtype := .sarr cloneTy.storageBytes }
       let cloneInstr : InstrR :=
-        .Copn [.Lvar { var := cloneVar', info := {} }] .AT_none
+        .Copn [.Lvar { var := cloneVar', info := { towerTag := cloneTy.byteSize } }]
+              .AT_none
               (.Oasm { name := "CLONE_TOWER" })
               [locToPExpr oldDest]
       [cloneInstr,
@@ -287,11 +293,6 @@ def toJasminCmdLeaf : LowCT → Cmd
   | .RLimbStoreExpr loc idx e =>
       [.Copn [locToLVal loc] .AT_none (.Oasm { name := "STORE64" })
              [locToPExpr loc, .Pconst idx, sexprToPExpr e]]
-  -- Phase F: emit a single Jasmin `Copn` named after the asm op.
-  -- The whitelisted CT-classified opcodes (ADCX/ADOX/MULX/CMOV/…)
-  -- become `.Oasm { name := "ADCX" }` etc.
-  | .RAsmOp name dests args =>
-      [.Copn (dests.map locToLVal) .AT_inline (.Oasm { name }) (args.map locToPExpr)]
   -- Phase G: emit a single Jasmin `Ccall` with multiple destinations.
   | .RCallN f dests args =>
       [.Ccall .DoNotInline (dests.map locToLVal) { name := f } (args.map locToPExpr)]
@@ -309,10 +310,8 @@ def toJasminCmdLeaf : LowCT → Cmd
   -- Phase C: helper call → multi-dest Ccall.
   | .RFnCall f dests args =>
       [.Ccall .DoNotInline (dests.map locToLVal) { name := f } (args.map locToPExpr)]
-  -- Phase I: tuple component store/load — identity stub at this level (no
-  -- runtime effect modelled in the simulation theorem).  Real lowering is
-  -- a byte-offset array store; see Phase I plan.
-  | .RTupleStore _ _ _ => []
+  -- Phase I: tuple component load — identity stub at this level (no
+  -- runtime effect modelled in the simulation theorem).
   | .RTupleLoad _ _ _ => []
   -- Phase RND (2026-05-30): dynamic-index array store / load — the
   -- runnable counterpart of the literal-index `RArrStoreLit`/`RArrLoadLit`
@@ -374,14 +373,11 @@ def toJasminCmdLeaf : LowCT → Cmd
   -- and assigns it to the `u64` scalar slot `x`.  jasminc renders the nested
   -- expression as a parenthesised arithmetic RHS (`x = ((a >> 13) + 1);`)
   -- via the recursive `ppArithExpr` arm in `JasminEmit.emitInstr`.  This is
-  -- the rounding-leaf workhorse: Power2Round / Decompose / MakeHint / UseHint
-  -- are sequences of `RArrLoad`→`RScalarSetExpr`→`RArrStore`.
+  -- the constructor the rounding leaves are built from: Power2Round /
+  -- Decompose / MakeHint / UseHint are sequences of
+  -- `RArrLoad`→`RScalarSetExpr`→`RArrStore`.
   | .RScalarSetExpr x e =>
       sexprSetExprCmd x e
-  -- Phase Ext2 (2026-05-13): byte-slice copy.  No Jasmin lowering yet; the
-  -- emitted Rust `copy_from_slice` does not have a direct Jasmin
-  -- counterpart (would require memcpy-shaped pseudo-instruction).
-  | .RBytesSlice _ _ _ _ => []
   -- Phase E2 (2026-05-29): dst-threaded leaf call.  Emits a single
   -- Jasmin `Ccall` whose lvalue is `dst` and whose argument list is
   -- `dst :: args` — the existing JasminEmit `Ccall` arm renders this
@@ -448,7 +444,8 @@ def toJasminCmd : LowCT → Cmd :=
       | .RLetZero x t _ =>
           let zeroExpr : PExpr := .Parr_init t.storageBytes
           let initInstr : InstrR :=
-            .Cassgn (.Lvar { var := { vname := x, vtype := .sarr t.storageBytes }, info := {} })
+            .Cassgn (.Lvar { var := { vname := x, vtype := .sarr t.storageBytes },
+                             info := { towerTag := t.byteSize } })
                     .AT_none (.sarr t.storageBytes) zeroExpr
           initInstr :: r
       | .RLetU64Zero x _ =>
@@ -484,7 +481,8 @@ each by `rfl` through the `foldNode` reduction lemmas.  Emit proofs use
 
 @[simp] theorem toJasminCmd_RLetZero (x : String) (t : TowerType) (body : LowCT) :
     toJasminCmd (.RLetZero x t body)
-      = (.Cassgn (.Lvar { var := { vname := x, vtype := .sarr t.storageBytes }, info := {} })
+      = (.Cassgn (.Lvar { var := { vname := x, vtype := .sarr t.storageBytes },
+                          info := { towerTag := t.byteSize } })
                  .AT_none (.sarr t.storageBytes) (.Parr_init t.storageBytes))
         :: toJasminCmd body := rfl
 
@@ -513,7 +511,7 @@ each by `rfl` through the `foldNode` reduction lemmas.  Emit proofs use
     (oldDest : Located) (innerF : String) (dest : Located) (args : List Located) :
     toJasminCmd (.RCloneCall cloneVar cloneTy oldDest innerF dest args)
       = [.Copn [.Lvar { var := { vname := cloneVar, vtype := .sarr cloneTy.storageBytes },
-                        info := {} }] .AT_none
+                        info := { towerTag := cloneTy.byteSize } }] .AT_none
               (.Oasm { name := "CLONE_TOWER" }) [locToPExpr oldDest],
          .Ccall .DoNotInline [locToLVal dest] { name := innerF } (args.map locToPExpr)] := rfl
 
@@ -546,10 +544,6 @@ each by `rfl` through the `foldNode` reduction lemmas.  Emit proofs use
       = [.Copn [locToLVal loc] .AT_none (.Oasm { name := "STORE64" })
               [locToPExpr loc, .Pconst idx, sexprToPExpr e]] := rfl
 
-@[simp] theorem toJasminCmd_RAsmOp (name : String) (dests args : List Located) :
-    toJasminCmd (.RAsmOp name dests args)
-      = [.Copn (dests.map locToLVal) .AT_inline (.Oasm { name }) (args.map locToPExpr)] := rfl
-
 @[simp] theorem toJasminCmd_RCallN (f : String) (dests args : List Located) :
     toJasminCmd (.RCallN f dests args)
       = [.Ccall .DoNotInline (dests.map locToLVal) { name := f } (args.map locToPExpr)] := rfl
@@ -574,9 +568,6 @@ each by `rfl` through the `foldNode` reduction lemmas.  Emit proofs use
 @[simp] theorem toJasminCmd_RFnCall (f : String) (dests args : List Located) :
     toJasminCmd (.RFnCall f dests args)
       = [.Ccall .DoNotInline (dests.map locToLVal) { name := f } (args.map locToPExpr)] := rfl
-
-@[simp] theorem toJasminCmd_RTupleStore (dst : Located) (i : Nat) (src : Located) :
-    toJasminCmd (.RTupleStore dst i src) = [] := rfl
 
 @[simp] theorem toJasminCmd_RTupleLoad (dst src : Located) (i : Nat) :
     toJasminCmd (.RTupleLoad dst src i) = [] := rfl
@@ -634,9 +625,6 @@ each by `rfl` through the `foldNode` reduction lemmas.  Emit proofs use
 
 @[simp] theorem toJasminCmd_RScalarSetExpr (x : String) (e : SExpr) :
     toJasminCmd (.RScalarSetExpr x e) = sexprSetExprCmd x e := rfl
-
-@[simp] theorem toJasminCmd_RBytesSlice (dst src : Located) (start len : Nat) :
-    toJasminCmd (.RBytesSlice dst src start len) = [] := rfl
 
 @[simp] theorem toJasminCmd_RCallDstThreaded (f : String) (dst : Located)
     (args : List Located) :
@@ -777,7 +765,7 @@ theorem extractFnDefs_id_no_RFnDef : ∀ (c : LowCT),
     (∀ name params returns body cont, c ≠ .RFnDef name params returns body cont) →
     -- and similarly recursively no inner RFnDef:
     True := by
-  intros; trivial  -- weakened; full property documented but not load-bearing here.
+  intros; trivial
 
 /-- Smoke test: `extractFnDefs` on `RFnDef "f" [] [] RSkip RSkip` produces
     exactly one FunDecl named "f" plus a residual of `RSkip`. -/
@@ -848,7 +836,8 @@ def toJasminCmdWithInlines (env : InlineRegistry) : LowCT → Cmd
   | .RLetZero x t body =>
       let zeroExpr : PExpr := .Parr_init t.storageBytes
       let initInstr : InstrR :=
-        .Cassgn (.Lvar { var := { vname := x, vtype := .sarr t.storageBytes }, info := {} })
+        .Cassgn (.Lvar { var := { vname := x, vtype := .sarr t.storageBytes },
+                         info := { towerTag := t.byteSize } })
                 .AT_none (.sarr t.storageBytes) zeroExpr
       initInstr :: toJasminCmdWithInlines env body
   | .RLetU64Zero x body =>
@@ -875,7 +864,8 @@ def toJasminCmdWithInlines (env : InlineRegistry) : LowCT → Cmd
   | .RCloneCall cloneVar cloneTy oldDest innerF dest args =>
       let cloneVar' : Var := { vname := cloneVar, vtype := .sarr cloneTy.storageBytes }
       let cloneInstr : InstrR :=
-        .Copn [.Lvar { var := cloneVar', info := {} }] .AT_none
+        .Copn [.Lvar { var := cloneVar', info := { towerTag := cloneTy.byteSize } }]
+              .AT_none
               (.Oasm { name := "CLONE_TOWER" })
               [locToPExpr oldDest]
       -- For RCloneCall, we always keep the inner call as Ccall — clone only
@@ -909,8 +899,6 @@ def toJasminCmdWithInlines (env : InlineRegistry) : LowCT → Cmd
   | .RLimbStoreExpr loc idx e =>
       [.Copn [locToLVal loc] .AT_none (.Oasm { name := "STORE64" })
              [locToPExpr loc, .Pconst idx, sexprToPExpr e]]
-  | .RAsmOp name dests args =>
-      [.Copn (dests.map locToLVal) .AT_inline (.Oasm { name }) (args.map locToPExpr)]
   | .RCallN f dests args =>
       match env f with
       | some impl =>
@@ -935,8 +923,7 @@ def toJasminCmdWithInlines (env : InlineRegistry) : LowCT → Cmd
           dests.foldl (fun acc d => acc ++ impl d args) []
       | none =>
           [.Ccall .DoNotInline (dests.map locToLVal) { name := f } (args.map locToPExpr)]
-  -- Phase I: tuple component store/load — identity stub.
-  | .RTupleStore _ _ _ => []
+  -- Phase I: tuple component load — identity stub.
   | .RTupleLoad _ _ _ => []
   -- Phase RND (2026-05-30): dynamic-index array + SExpr — mirror toJasminCmd.
   | .RArrStore arr idxVar src =>
@@ -978,8 +965,6 @@ def toJasminCmdWithInlines (env : InlineRegistry) : LowCT → Cmd
         (.Pget .AAscale .U8 (locToGVar src) (.Pconst (Int.ofNat idx)))]
   | .RScalarSetExpr x e =>
       sexprSetExprCmd x e
-  -- Phase Ext2 (2026-05-13): byte-slice copy; no Jasmin lowering yet.
-  | .RBytesSlice _ _ _ _ => []
   -- Phase E2 (2026-05-29): dst-threaded leaf call.  Mirror toJasminCmd
   -- (inline registries don't carry dst-threaded variants today; the
   -- common Ccall path is the canonical lowering).
@@ -1019,7 +1004,6 @@ theorem toJasminCmdWithInlines_emptyRegistry_eq_toJasminCmd :
       simp [toJasminCmdWithInlines, toJasminCmd, ih]
   | RLimbStore loc idx v => rfl
   | RLimbStoreExpr loc idx e => rfl
-  | RAsmOp name dests args => rfl
   | RCallN f dests args =>
       simp [toJasminCmdWithInlines, toJasminCmd_RCallN, emptyInlineRegistry]
   | RSelect dst sel src0 src1 => rfl
@@ -1030,14 +1014,12 @@ theorem toJasminCmdWithInlines_emptyRegistry_eq_toJasminCmd :
       simp [toJasminCmdWithInlines, toJasminCmd, ihBody, ihCont]
   | RFnCall f dests args =>
       simp [toJasminCmdWithInlines, toJasminCmd_RFnCall, emptyInlineRegistry]
-  | RTupleStore _ _ _ => rfl
   | RTupleLoad _ _ _ => rfl
   | RArrStore _ _ _ => rfl
   | RArrLoad _ _ _ => rfl
   | RArrStoreLit _ _ _ => rfl
   | RArrLoadLit _ _ _ => rfl
   | RScalarSetExpr _ _ => rfl
-  | RBytesSlice _ _ _ _ => rfl
   | RCallDstThreaded _ _ _ => rfl
   | RForRuntime _ _ _ => rfl
 
@@ -1084,14 +1066,14 @@ def whileFree : LowCT → Bool
   -- exactly like `RWhileNz`, so the refinement theorem's `forRuntime` case
   -- closes by `whileFree`-contradiction.
   | .RForRuntime _ _ _ => false
-  -- Phase F/G/H/L/M (2026-05-03): the simulation theorem
-  -- `rustExecSimulates` is not yet extended to the new constructors,
+  -- Phase G/H/L/M (2026-05-03): the simulation theorem
+  -- `rustExecSimulates` is not yet extended to these constructors,
   -- so we exclude them here.  Once a per-constructor simulation case
   -- is proved (each is straight-line by construction), flip these
   -- to the natural `true` / `whileFree body` values.  The lowering
   -- (`toJasminCmd`) already emits the right Jasmin; this gate is
   -- purely about which programs the simulation theorem covers.
-  | .RAsmOp _ _ _ | .RCallN _ _ _ | .RSelect _ _ _ _ => false
+  | .RCallN _ _ _ | .RSelect _ _ _ _ => false
   -- Phase R5 (2026-06-01): runtime-valued limb store — not yet covered
   -- by the standalone `rustExecSimulates` theorem (its `STORE64`-with-
   -- runtime-arg simulation case is future work), so excluded here like
@@ -1107,14 +1089,12 @@ def whileFree : LowCT → Bool
   -- Phase C: not yet covered by simulation theorem.
   | .RFnDef _ _ _ _ _ | .RFnCall _ _ _ => false
   -- Phase I: not yet covered by simulation theorem.
-  | .RTupleStore _ _ _ | .RTupleLoad _ _ _ => false
+  | .RTupleLoad _ _ _ => false
   -- Phase Ext (2026-05-12): TArr/SExpr — not yet covered by simulation theorem.
   | .RArrStore _ _ _ | .RArrLoad _ _ _ | .RScalarSetExpr _ _ => false
   -- Phase DD (2026-05-28): literal-index variants — not yet covered by
   -- simulation theorem (would close via single-instruction Cassgn case).
   | .RArrStoreLit _ _ _ | .RArrLoadLit _ _ _ => false
-  -- Phase Ext2 (2026-05-13): byte-slice — not yet covered by simulation theorem.
-  | .RBytesSlice _ _ _ _ => false
   -- Phase E2 (2026-05-29): dst-threaded leaf call — not yet covered by
   -- simulation theorem (analogous to RCall, which is also false).
   | .RCallDstThreaded _ _ _ => false
@@ -1136,19 +1116,17 @@ def forFree : LowCT → Bool
   | .RFor _ _ _ => false
   -- Stage 1a (2026-07-01): runtime loop is a for-loop; excluded like `RFor`.
   | .RForRuntime _ _ _ => false
-  | .RAsmOp _ _ _ | .RCallN _ _ _ | .RSelect _ _ _ _ | .RAssert _ => true
+  | .RCallN _ _ _ | .RSelect _ _ _ _ | .RAssert _ => true
   -- Phase R5: runtime-valued limb store has no RFor inside.
   | .RLimbStoreExpr _ _ _ => true
   | .RBlock body => forFree body
   | .RFnDef _ _ _ body cont => forFree body && forFree cont
   | .RFnCall _ _ _ => true
-  | .RTupleStore _ _ _ | .RTupleLoad _ _ _ => true
+  | .RTupleLoad _ _ _ => true
   -- Phase Ext (2026-05-12): TArr/SExpr — no RFor inside, treat as for-free.
   | .RArrStore _ _ _ | .RArrLoad _ _ _ | .RScalarSetExpr _ _ => true
   -- Phase DD (2026-05-28): literal-index variants — no RFor inside.
   | .RArrStoreLit _ _ _ | .RArrLoadLit _ _ _ => true
-  -- Phase Ext2 (2026-05-13): byte-slice — no RFor inside.
-  | .RBytesSlice _ _ _ _ => true
   -- Phase E2 (2026-05-29): dst-threaded leaf call has no RFor inside.
   | .RCallDstThreaded _ _ _ => true
 
@@ -1182,8 +1160,7 @@ def jasminFuel : LowCT → Nat
   | .RFor _ n body       => n * (jasminFuel body + 2) + 1
   -- Stage 1a: runtime loop is rejected to `[]`; fuel value is irrelevant.
   | .RForRuntime _ _ body => jasminFuel body + 1
-  -- Phase F/G/H: single-instruction commands like RCall.
-  | .RAsmOp _ _ _        => 2
+  -- Phase G/H: single-instruction commands like RCall.
   | .RCallN _ _ _        => 2
   | .RSelect _ _ _ _     => 2
   -- Phase L: emits no Jasmin code.
@@ -1193,15 +1170,13 @@ def jasminFuel : LowCT → Nat
   -- Phase C: fnDef = body fuel + cont fuel (both translated inline).
   | .RFnDef _ _ _ body cont => jasminFuel body + jasminFuel cont
   | .RFnCall _ _ _       => 2
-  -- Phase I: tuple component store/load translates to `[]`.
-  | .RTupleStore _ _ _ | .RTupleLoad _ _ _ => 1
+  -- Phase I: tuple component load translates to `[]`.
+  | .RTupleLoad _ _ _ => 1
   -- Phase RND (2026-05-30): dynamic-index array + SExpr now lower to a
   -- single `Cassgn` each (length 1), so fuel must exceed 1.
   | .RArrStore _ _ _ | .RArrLoad _ _ _ | .RScalarSetExpr _ _ => 2
   -- Phase DD (2026-05-28): literal-index variants translate to a single Cassgn.
   | .RArrStoreLit _ _ _ | .RArrLoadLit _ _ _ => 2
-  -- Phase Ext2 (2026-05-13): byte-slice translates to `[]`.
-  | .RBytesSlice _ _ _ _ => 1
   -- Phase E2 (2026-05-29): single-Ccall instruction lowering.
   | .RCallDstThreaded _ _ _ => 2
 
@@ -1217,8 +1192,6 @@ def callFree : LowCT → Bool
   | .RCloneCall _ _ _ _ _ _ | .RLimbStore _ _ _ => false
   -- Phase R5: mirror `RLimbStore` (conservatively non-call-free).
   | .RLimbStoreExpr _ _ _ => false
-  -- Phase F: asm opcodes are not "calls" semantically; treat as call-free.
-  | .RAsmOp _ _ _ => true
   -- Phase G: multi-out call IS a call.
   | .RCallN _ _ _ => false
   -- Phase H: cmov is not a call.
@@ -1231,13 +1204,11 @@ def callFree : LowCT → Bool
   | .RFnDef _ _ _ body cont => callFree body && callFree cont
   | .RFnCall _ _ _ => false
   -- Phase I: not yet covered by simulation theorem.
-  | .RTupleStore _ _ _ | .RTupleLoad _ _ _ => false
+  | .RTupleLoad _ _ _ => false
   -- Phase Ext (2026-05-12): TArr/SExpr — not yet covered by simulation theorem.
   | .RArrStore _ _ _ | .RArrLoad _ _ _ | .RScalarSetExpr _ _ => false
   -- Phase DD (2026-05-28): literal-index variants — not yet covered.
   | .RArrStoreLit _ _ _ | .RArrLoadLit _ _ _ => false
-  -- Phase Ext2 (2026-05-13): byte-slice — not yet covered by simulation.
-  | .RBytesSlice _ _ _ _ => false
   -- Phase E2 (2026-05-29): dst-threaded IS a call (analogous to RCall).
   | .RCallDstThreaded _ _ _ => false
 
@@ -1266,15 +1237,15 @@ def scalarSetsSmall : LowCT → Bool
   -- Stage 1a: runtime loop rejected; recurse into the body for totality.
   | .RForRuntime _ _ body => scalarSetsSmall body
   | .RScalarSet _ v => decide (v < 2^64)
-  -- Phase F/G/H/L: no RScalarSet inside.
-  | .RAsmOp _ _ _ | .RCallN _ _ _ | .RSelect _ _ _ _ | .RAssert _ => true
+  -- Phase G/H/L: no RScalarSet inside.
+  | .RCallN _ _ _ | .RSelect _ _ _ _ | .RAssert _ => true
   -- Phase M: scope inherits.
   | .RBlock body => scalarSetsSmall body
   -- Phase C.
   | .RFnDef _ _ _ body cont => scalarSetsSmall body && scalarSetsSmall cont
   | .RFnCall _ _ _ => true
   -- Phase I: no RScalarSet inside.
-  | .RTupleStore _ _ _ | .RTupleLoad _ _ _ => true
+  | .RTupleLoad _ _ _ => true
   -- Phase Ext (2026-05-12): RScalarSetExpr writes a scalar via an SExpr
   -- evaluation; we approximate the bound check by `true` (the SExpr.eval
   -- is in Nat, so unbounded — a separate `sexprBoundedSmall` predicate
@@ -1284,8 +1255,6 @@ def scalarSetsSmall : LowCT → Bool
   | .RLimbStoreExpr _ _ _ => true
   -- Phase DD (2026-05-28): literal-index variants have no RScalarSet inside.
   | .RArrStoreLit _ _ _ | .RArrLoadLit _ _ _ => true
-  -- Phase Ext2 (2026-05-13): byte-slice has no RScalarSet inside.
-  | .RBytesSlice _ _ _ _ => true
   -- Phase E2 (2026-05-29): dst-threaded leaf call has no RScalarSet inside.
   | .RCallDstThreaded _ _ _ => true
 
@@ -1489,7 +1458,6 @@ private lemma jasminFuel_gt_length : ∀ (c : LowCT), (toJasminCmd c).length < j
     simp only [toJasminCmd_RForRuntime, jasminFuel, List.length_nil]; omega
   | RLimbStore loc idx v => simp [toJasminCmd_RLimbStore, jasminFuel]
   | RLimbStoreExpr loc idx e => simp [toJasminCmd_RLimbStoreExpr, jasminFuel]
-  | RAsmOp name dests args => simp [toJasminCmd_RAsmOp, jasminFuel]
   | RCallN f dests args => simp [toJasminCmd_RCallN, jasminFuel]
   | RSelect dst sel src0 src1 => simp [toJasminCmd_RSelect, jasminFuel]
   | RAssert label => simp [toJasminCmd_RAssert, jasminFuel]
@@ -1499,7 +1467,6 @@ private lemma jasminFuel_gt_length : ∀ (c : LowCT), (toJasminCmd c).length < j
     simp only [toJasminCmd_RFnDef, jasminFuel, List.length_append]
     omega
   | RFnCall f dests args => simp [toJasminCmd_RFnCall, jasminFuel]
-  | RTupleStore _ _ _ => simp [toJasminCmd_RTupleStore, jasminFuel]
   | RTupleLoad _ _ _ => simp [toJasminCmd_RTupleLoad, jasminFuel]
   | RArrStore arr _ _ =>
     -- element-width-driven (#261): one `Cassgn` in either branch.
@@ -1515,7 +1482,6 @@ private lemma jasminFuel_gt_length : ∀ (c : LowCT), (toJasminCmd c).length < j
     -- (a `Cassgn`, or — for a top-level high-mul — a single `Copn`).
     simp only [toJasminCmd_RScalarSetExpr, jasminFuel]
     cases e <;> simp [sexprSetExprCmd]
-  | RBytesSlice _ _ _ _ => simp [toJasminCmd_RBytesSlice, jasminFuel]
   | RCallDstThreaded _ _ _ => simp [toJasminCmd_RCallDstThreaded, jasminFuel]
 
 /-! ### Scalar assignment eval helpers -/
@@ -1805,17 +1771,9 @@ private lemma callFree_toJasmin_newSid
   | RCloneCall _ _ _ _ _ _ => simp [callFree] at hCF
   | RLimbStore _ _ _ => simp [callFree] at hCF
   | RLimbStoreExpr _ _ _ => simp [callFree] at hCF
-  -- Phase F: RAsmOp is call-free; emit one Copn, no newSid change.
-  | RAsmOp name dests args =>
-    cases fuel with
-    | zero => simp [translateCmd]
-    | succ n =>
-      cases n with
-      | zero => simp [toJasminCmd_RAsmOp, translateCmd, translateInstrR]
-      | succ m => simp [toJasminCmd_RAsmOp, translateCmd, translateInstrR]
   -- Phase G: RCallN IS a call.
   | RCallN _ _ _ => simp [callFree] at hCF
-  -- Phase H: RSelect emits a Copn; like RAsmOp.
+  -- Phase H: RSelect emits a Copn, which leaves newSid unchanged.
   | RSelect dst sel src0 src1 =>
     cases fuel with
     | zero => simp [translateCmd]
@@ -1837,8 +1795,7 @@ private lemma callFree_toJasmin_newSid
     simp only [toJasminCmd_RFnDef, translateCmd_append_newSid, ihBody hCF.1 sid fuel,
                ihCont hCF.2 sid _]
   | RFnCall _ _ _ => simp [callFree] at hCF
-  -- Phase I: RTupleStore/RTupleLoad excluded by callFree.
-  | RTupleStore _ _ _ => simp [callFree] at hCF
+  -- Phase I: RTupleLoad excluded by callFree.
   | RTupleLoad _ _ _ => simp [callFree] at hCF
   -- Phase Ext (2026-05-12): TArr/SExpr excluded by callFree.
   | RArrStore _ _ _ => simp [callFree] at hCF
@@ -1846,7 +1803,6 @@ private lemma callFree_toJasmin_newSid
   | RArrStoreLit _ _ _ => simp [callFree] at hCF
   | RArrLoadLit _ _ _ => simp [callFree] at hCF
   | RScalarSetExpr _ _ => simp [callFree] at hCF
-  | RBytesSlice _ _ _ _ => simp [callFree] at hCF
   | RCallDstThreaded _ _ _ => simp [callFree] at hCF
 
 /-- `RLimbStore` translates to a single `.Copn` instruction, which preserves
@@ -1965,7 +1921,8 @@ private lemma translateCmd_cons_cassgn_sarr_init_eval
     (env : TransEnv) (sid : ScopeId) (x : String) (t : TowerType)
     (rest : Cmd) (n : Nat) (heap : Heap) :
     (translateCmd env
-      (.Cassgn (.Lvar { var := { vname := x, vtype := .sarr t.storageBytes }, info := {} })
+      (.Cassgn (.Lvar { var := { vname := x, vtype := .sarr t.storageBytes },
+                        info := { towerTag := t.byteSize } })
                .AT_none (.sarr t.storageBytes) (.Parr_init t.storageBytes) :: rest)
       sid (n + 2)).code.eval heap =
     (translateCmd env rest sid (n + 1)).code.eval
@@ -1980,7 +1937,8 @@ private lemma translateCmd_cons_cassgn_sarr_init_newSid
     (env : TransEnv) (sid : ScopeId) (x : String) (t : TowerType)
     (rest : Cmd) (n : Nat) :
     (translateCmd env
-      (.Cassgn (.Lvar { var := { vname := x, vtype := .sarr t.storageBytes }, info := {} })
+      (.Cassgn (.Lvar { var := { vname := x, vtype := .sarr t.storageBytes },
+                        info := { towerTag := t.byteSize } })
                .AT_none (.sarr t.storageBytes) (.Parr_init t.storageBytes) :: rest)
       sid (n + 2)).newSid =
     (translateCmd env rest sid (n + 1)).newSid := by
@@ -2402,10 +2360,9 @@ theorem rustExecSimulates
   -- Phase R5: `whileFree (.RLimbStoreExpr ..) = false`, so unreachable under `hWf`.
   | limbStoreExpr _ _ _ _ => simp [whileFree] at hWf
 
-  -- Phase F/G/H/L/M: not yet covered by the simulation theorem;
+  -- Phase G/H/L/M: not yet covered by the simulation theorem;
   -- `whileFree` is gated false for these constructors so this case
   -- is unreachable under `hWf`.
-  | asmOp _ _ _ _ => simp [whileFree] at hWf
   | callN _ _ _ _ => simp [whileFree] at hWf
   | selectFalse _ _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
   | selectTrue _ _ _ _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
@@ -2426,9 +2383,6 @@ theorem rustExecSimulates
     simp only [jasminFuel] at hFuel
     simp only [toJasminCmd_RBlock]
     exact ih fuel hWf hCF hSSS hFuel sid heap hInv hSInv hBounded
-  | fnDef _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
-  | fnCall _ _ _ _ => simp [whileFree] at hWf
-  | tupleStore _ _ _ _ => simp [whileFree] at hWf
   | tupleLoad _ _ _ _ => simp [whileFree] at hWf
   -- Phase Ext (2026-05-12): TArr/SExpr operational semantics — excluded by
   -- `whileFree` (returns `false` for these constructors).
@@ -2438,8 +2392,6 @@ theorem rustExecSimulates
   | arrStoreLit _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
   | arrLoadLit _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
   | scalarSetExpr _ _ _ => simp [whileFree] at hWf
-  -- Phase Ext2 (2026-05-13): byte-slice — excluded by `whileFree = false`.
-  | bytesSlice _ _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
 
 /-- **Standalone call simulation**: an `RCall` instruction simulates correctly
     given `LeafImplOk`. This is the case that `rustExecSimulates` omits via
@@ -2596,7 +2548,7 @@ def CloneImplOk (env : TransEnv) (fuel : Nat) : Prop :=
     ∃ heap1 : Heap,
       (translateCmd env
         [.Copn [.Lvar { var := { vname := cloneVar, vtype := .sarr cloneTy.storageBytes },
-                        info := {} }] .AT_none
+                        info := { towerTag := cloneTy.byteSize } }] .AT_none
               (.Oasm { name := "CLONE_TOWER" }) [locToPExpr oldDest]]
         sid fuel).code.eval heap0 =
         CatCrypt.Prob.SDistr.pure (⟨()⟩, heap1) ∧
@@ -2669,7 +2621,7 @@ lemma rustCloneCallSimulates
     -- Decompose translateCmd [cloneInstr, callInstr] via append
     have h_toJ : toJasminCmd (.RCloneCall cloneVar cloneTy oldDest innerF dest args) =
         [.Copn [.Lvar { var := { vname := cloneVar, vtype := .sarr cloneTy.storageBytes },
-                         info := {} }] .AT_none
+                         info := { towerTag := cloneTy.byteSize } }] .AT_none
               (.Oasm { name := "CLONE_TOWER" }) [locToPExpr oldDest]] ++
         (toJasminCmd (.RCall innerF dest args)) := by
       rfl
@@ -2678,7 +2630,7 @@ lemma rustCloneCallSimulates
     -- newSid after the clone = sid (Copn doesn't change newSid)
     have h_newSid : (translateCmd env
         [.Copn [.Lvar { var := { vname := cloneVar, vtype := .sarr cloneTy.storageBytes },
-                         info := {} }] .AT_none
+                         info := { towerTag := cloneTy.byteSize } }] .AT_none
               (.Oasm { name := "CLONE_TOWER" }) [locToPExpr oldDest]]
         sid fuel).newSid = sid := by
       cases fuel with
@@ -2694,90 +2646,33 @@ lemma rustCloneCallSimulates
         rsClone rs' hCall sid heap1 hInv1 hSInv1 hBounded1
     exact ⟨heap2, hEvalCall, hInv2, hSInv2, hB2⟩
 
-/-! ### Phase F.1 / G.1 / H.1 — simulation lemmas for new constructors
+/-! ### Phase G.1 / H.1 — simulation lemmas for the call/select constructors
 
-The new LowCT constructors `RAsmOp` (Phase F), `RCallN` (Phase G),
-and `RSelect` (Phase H) each get a standalone simulation lemma
-mirroring the `rustCallSimulates` / `rustLimbStoreSimulates` pattern:
+The LowCT constructors `RCallN` (Phase G) and `RSelect` (Phase H)
+each get a standalone simulation lemma mirroring the
+`rustCallSimulates` / `rustLimbStoreSimulates` pattern:
 
 * An `*ImplOk` hypothesis classes the Jasmin instruction's heap
   effect as compatible with the abstract `RustExec` semantics
-  (Rocq-style `asm_correct` axiom for the new opcodes).
+  (Rocq-style `asm_correct` axiom for these opcodes).
 * The lemma proves the simulation step from the `ImplOk`
   hypothesis plus heap-encoding invariants (`HeapInv`, `ScalarInv`,
   `ScalarsBounded`).
 
-For Phase F (`RAsmOp`) and Phase G (`RCallN`), the `RustExec`
-semantics is currently an identity stub (`rs' = rs`); the
-`ImplOk` hypothesis correspondingly requires that the Jasmin
-`Copn`/`Ccall` instruction preserves the heap-level encoding of
-`rs` (no tower or scalar updates).  Future tightening to real
-multi-output semantics would parameterise over a per-instruction
-oracle in `LeafSpec`; the current shape captures the
-"opcode-as-no-op" lowering that the verified pipeline emits for
-these constructors.
+For Phase G (`RCallN`), the `RustExec` semantics is an identity
+stub (`rs' = rs`); the `ImplOk` hypothesis correspondingly requires
+that the Jasmin `Ccall` instruction preserves the heap-level
+encoding of `rs` (no tower or scalar updates).  Future tightening to
+real multi-output semantics would parameterise over a
+per-instruction oracle in `LeafSpec`; the current shape captures the
+"opcode-as-no-op" lowering that the verified pipeline emits for this
+constructor.
 
 For Phase H (`RSelect`), the `RustExec` semantics is a real
 conditional copy (selectFalse / selectTrue cases); the `ImplOk`
 hypothesis encodes that the Jasmin `CMOV` opcode writes the
 correct source value to `dst` based on the runtime value of `sel`.
 -/
-
-/-- **Phase F.1 — AsmOp oracle hypothesis**: the translated
-    `.Copn (...) .AT_inline (.Oasm { name }) (...)` instruction
-    (run from any heap encoding `rs`) produces a heap that preserves
-    the encoding of `rs` (i.e. tower and scalar locations are
-    unchanged), matching the `RustExec.asmOp` identity-stub
-    semantics. -/
-def AsmOpImplOk (env : TransEnv) (fuel : Nat) : Prop :=
-  ∀ (name : String) (dests args : List Located)
-    (rs0 : RustState) (sid : ScopeId) (heap0 : Heap),
-    HeapInv rs0 heap0 sid →
-    ∃ heap1 : Heap,
-      (translateCmd env
-        [.Copn (dests.map locToLVal) .AT_inline (.Oasm { name }) (args.map locToPExpr)]
-        sid fuel).code.eval heap0 =
-        CatCrypt.Prob.SDistr.pure (⟨()⟩, heap1) ∧
-      (∀ (x : String) (t : TowerType),
-        heap1.get (towerLoc sid x t) = heap0.get (towerLoc sid x t)) ∧
-      (∀ (x : String),
-        heap1.get (translateVar sid { vname := x, vtype := .sword .U64 }) =
-        heap0.get (translateVar sid { vname := x, vtype := .sword .U64 }))
-
-/-- **Phase F.1 — Standalone RAsmOp simulation**.  Identity-stub
-    semantics: post-state equals pre-state.  The `AsmOpImplOk`
-    hypothesis carries the proof that the Jasmin `Copn` is a no-op
-    on the heap encoding of `rs`. -/
-lemma rustAsmOpSimulates
-    (N : Nat) (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat)
-    (hAsm : ∀ fuel', AsmOpImplOk env fuel')
-    (name : String) (dests args : List Located)
-    (rs rs' : RustState)
-    (hExec : RustExec N leafSpec (.RAsmOp name dests args) rs rs')
-    (sid : ScopeId) (heap : Heap)
-    (hInv : HeapInv rs heap sid)
-    (hSInv : ScalarInv rs heap sid)
-    (hBounded : ScalarsBounded rs) :
-    ∃ heap' : Heap,
-      (translateCmd env (toJasminCmd (.RAsmOp name dests args)) sid fuel).code.eval heap =
-        CatCrypt.Prob.SDistr.pure (⟨()⟩, heap') ∧
-      HeapInv rs' heap' sid ∧
-      ScalarInv rs' heap' sid ∧
-      ScalarsBounded rs' := by
-  cases hExec with
-  | asmOp _ _ _ _ =>
-    obtain ⟨heap1, hEval, hTowerEq, hScalarEq⟩ :=
-      hAsm fuel name dests args rs sid heap hInv
-    refine ⟨heap1, ?_, ?_, ?_, ?_⟩
-    · simp only [toJasminCmd_RAsmOp]; exact hEval
-    · -- HeapInv rs heap1 sid (rs' = rs since asmOp is identity)
-      intro x t v hxTower
-      rw [hTowerEq x t]
-      exact hInv x t v hxTower
-    · intro x
-      rw [hScalarEq x]
-      exact hSInv x
-    · exact hBounded
 
 /-- **Phase G.1 — CallN oracle hypothesis**: the translated
     `.Ccall .DoNotInline (...) { name := f } (...)` instruction (run
@@ -2786,26 +2681,29 @@ lemma rustAsmOpSimulates
     semantics).  Future tightening to multi-output semantics would
     parameterise over a `CallNSpec` oracle; this shape captures the
     current verified-pipeline lowering. -/
-def CallNImplOk (env : TransEnv) (fuel : Nat) : Prop :=
+def CallNImplOk (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat) : Prop :=
   ∀ (f : String) (dests args : List Located)
     (rs0 : RustState) (sid : ScopeId) (heap0 : Heap),
     HeapInv rs0 heap0 sid →
+    (∀ a ∈ args, ∃ v, rs0.rsTower a.locVar = some ⟨a.locDst, v⟩) →
+    (∀ d ∈ dests, ∃ v, rs0.rsTower d.locVar = some ⟨d.locDst, v⟩) →
     ∃ heap1 : Heap,
       (translateCmd env
         [.Ccall .DoNotInline (dests.map locToLVal) { name := f } (args.map locToPExpr)]
         sid fuel).code.eval heap0 =
         CatCrypt.Prob.SDistr.pure (⟨()⟩, heap1) ∧
-      (∀ (x : String) (t : TowerType),
-        heap1.get (towerLoc sid x t) = heap0.get (towerLoc sid x t)) ∧
+      HeapInv (callNUpdate leafSpec f (args.map (·.locDst))
+                 (args.filterMap (fun a => rs0.rsTower a.locVar)) 0 dests rs0) heap1 sid ∧
       (∀ (x : String),
         heap1.get (translateVar sid { vname := x, vtype := .sword .U64 }) =
         heap0.get (translateVar sid { vname := x, vtype := .sword .U64 }))
 
-/-- **Phase G.1 — Standalone RCallN simulation**.  Same identity-stub
-    pattern as `rustAsmOpSimulates`. -/
+/-- **Phase G.1 — Standalone RCallN simulation**.  The emitted Jasmin `Ccall`
+    lands each destination on the value the `callN` rule writes there, which is
+    what `CallNImplOk` supplies; the scalar heap is untouched on both sides. -/
 lemma rustCallNSimulates
     (N : Nat) (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat)
-    (hCallN : ∀ fuel', CallNImplOk env fuel')
+    (hCallN : ∀ fuel', CallNImplOk leafSpec env fuel')
     (f : String) (dests args : List Located)
     (rs rs' : RustState)
     (hExec : RustExec N leafSpec (.RCallN f dests args) rs rs')
@@ -2820,18 +2718,18 @@ lemma rustCallNSimulates
       ScalarInv rs' heap' sid ∧
       ScalarsBounded rs' := by
   cases hExec with
-  | callN _ _ _ _ =>
-    obtain ⟨heap1, hEval, hTowerEq, hScalarEq⟩ :=
-      hCallN fuel f dests args rs sid heap hInv
-    refine ⟨heap1, ?_, ?_, ?_, ?_⟩
+  | callN _ _ _ _ argList hArg hArgsBound hDestsBound =>
+    subst hArg
+    obtain ⟨heap1, hEval, hInv1, hScalarEq⟩ :=
+      hCallN fuel f dests args rs sid heap hInv hArgsBound hDestsBound
+    refine ⟨heap1, ?_, hInv1, ?_, ?_⟩
     · simp only [toJasminCmd_RCallN]; exact hEval
-    · intro x t v hxTower
-      rw [hTowerEq x t]
-      exact hInv x t v hxTower
     · intro x
       rw [hScalarEq x]
+      simp only [callNUpdate_rsScalar]
       exact hSInv x
-    · exact hBounded
+    · show ScalarsBounded (callNUpdate _ _ _ _ 0 dests rs)
+      simpa [ScalarsBounded, callNUpdate_rsScalar] using hBounded
 
 /-- **Phase H.1 — Select oracle hypothesis**: the translated
     `.Copn [dst] .AT_none (.Oasm { name := "CMOV" }) [sel; src0; src1]`
@@ -3119,8 +3017,6 @@ theorem toJasminCmdWithInlines_eq_toJasminCmd_of_callFree
   | RLimbStoreExpr loc idx e =>
       intro hCF
       simp [callFree] at hCF
-  -- Phase F: RAsmOp is call-free; emits identical code with both registries.
-  | RAsmOp name dests args => intro _; rfl
   -- Phase G: RCallN IS a call → contradiction with callFree = true.
   | RCallN f dests args =>
       intro hCF
@@ -3142,10 +3038,7 @@ theorem toJasminCmdWithInlines_eq_toJasminCmd_of_callFree
   | RFnCall _ _ _ =>
       intro hCF
       simp [callFree] at hCF
-  -- Phase I: RTupleStore/RTupleLoad excluded by callFree → contradiction.
-  | RTupleStore _ _ _ =>
-      intro hCF
-      simp [callFree] at hCF
+  -- Phase I: RTupleLoad excluded by callFree → contradiction.
   | RTupleLoad _ _ _ =>
       intro hCF
       simp [callFree] at hCF
@@ -3164,9 +3057,6 @@ theorem toJasminCmdWithInlines_eq_toJasminCmd_of_callFree
       intro hCF
       simp [callFree] at hCF
   | RScalarSetExpr _ _ =>
-      intro hCF
-      simp [callFree] at hCF
-  | RBytesSlice _ _ _ _ =>
       intro hCF
       simp [callFree] at hCF
   | RCallDstThreaded _ _ _ =>
@@ -3226,12 +3116,12 @@ in its conclusion and requires `callFree c = true`.  The reason is
 that `translateInstrR .Ccall` returns `newSid := freshId sid |>.1`
 (a fresh `sid'`), so the next instruction's translation operates at
 `sid'` ≠ `sid`.  Therefore, when `c` contains an `RCall`, the
-`callFree`-rewrite `(translateCmd c sid fuel).newSid = sid` no longer
-holds, and the seq case's composition step (which uses this rewrite
+`callFree`-rewrite `(translateCmd c sid fuel).newSid = sid` fails,
+and the seq case's composition step (which uses this rewrite
 to align the IH₂ heap location with the conclusion) breaks down.
 
-**Audit conclusion (2026-05-12):** The current Lean LowCT → Jasmin
-translation has a genuine architectural mismatch: `translateInstrR .Ccall`
+**Audit conclusion (2026-05-12):** The Lean LowCT → Jasmin
+translation carries an architectural mismatch: `translateInstrR .Ccall`
 advances `newSid` to a fresh sid, but `LeafImplOk` writes the abstract
 result at the *caller's* sid. The subsequent code translation operates
 at the fresh sid, where the state is unconstrained by `LeafImplOk`.
@@ -3360,7 +3250,7 @@ private lemma cloneCall_toJasmin_newSid
   have h_toJ :
       toJasminCmd (.RCloneCall cloneVar cloneTy oldDest innerF dest args) =
       [.Copn [.Lvar { var := { vname := cloneVar, vtype := .sarr cloneTy.storageBytes },
-                       info := {} }] .AT_none
+                       info := { towerTag := cloneTy.byteSize } }] .AT_none
             (.Oasm { name := "CLONE_TOWER" }) [locToPExpr oldDest]] ++
       (toJasminCmd (.RCall innerF dest args)) := rfl
   rw [h_toJ, translateCmd_append_newSid]
@@ -3368,7 +3258,7 @@ private lemma cloneCall_toJasmin_newSid
   have h_clone_newSid :
       (translateCmd env
         [.Copn [.Lvar { var := { vname := cloneVar, vtype := .sarr cloneTy.storageBytes },
-                         info := {} }] .AT_none
+                         info := { towerTag := cloneTy.byteSize } }] .AT_none
               (.Oasm { name := "CLONE_TOWER" }) [locToPExpr oldDest]]
         sid fuel).newSid = sid := by
     cases fuel with
@@ -3449,13 +3339,13 @@ lemma rustCloneCallSimulates_newSid
     -- Decompose translateCmd [cloneInstr, callInstr] via append.
     have h_toJ : toJasminCmd (.RCloneCall cloneVar cloneTy oldDest innerF dest args) =
         [.Copn [.Lvar { var := { vname := cloneVar, vtype := .sarr cloneTy.storageBytes },
-                         info := {} }] .AT_none
+                         info := { towerTag := cloneTy.byteSize } }] .AT_none
               (.Oasm { name := "CLONE_TOWER" }) [locToPExpr oldDest]] ++
         (toJasminCmd (.RCall innerF dest args)) := rfl
     -- newSid after the clone Copn = sid (Copn doesn't change newSid).
     have h_clone_newSid : (translateCmd env
         [.Copn [.Lvar { var := { vname := cloneVar, vtype := .sarr cloneTy.storageBytes },
-                         info := {} }] .AT_none
+                         info := { towerTag := cloneTy.byteSize } }] .AT_none
               (.Oasm { name := "CLONE_TOWER" }) [locToPExpr oldDest]]
         sid fuel).newSid = sid := by
       cases fuel with
@@ -3576,7 +3466,6 @@ lemma callFreePlusCall_of_callFree :
   | .RFor _ _ _ => simp [callFreePlusCall, hCF]
   | .RForRuntime _ _ _ => simp [callFreePlusCall, hCF]
   | .RAssert _ => simp [callFreePlusCall, hCF]
-  | .RAsmOp _ _ _ => simp [callFreePlusCall, hCF]
   | .RBlock _ => simp [callFreePlusCall, hCF]
   | .RFnDef _ _ _ _ _ => simp [callFreePlusCall, hCF]
   | .RSelect _ _ _ _ => simp [callFreePlusCall, hCF]
@@ -3588,14 +3477,12 @@ lemma callFreePlusCall_of_callFree :
     -- (`RLimbStore` is now in `callFreePlusCall = true`, but unreachable
     -- here because the hypothesis is on `callFree`, which excludes it.)
   | .RLimbStoreExpr _ _ _ => simp [callFreePlusCall, hCF]
-  | .RTupleStore _ _ _ => simp [callFreePlusCall, hCF]
   | .RTupleLoad _ _ _ => simp [callFreePlusCall, hCF]
   | .RArrStore _ _ _ => simp [callFreePlusCall, hCF]
   | .RArrLoad _ _ _ => simp [callFreePlusCall, hCF]
   | .RArrStoreLit _ _ _ => simp [callFreePlusCall, hCF]
   | .RArrLoadLit _ _ _ => simp [callFreePlusCall, hCF]
   | .RScalarSetExpr _ _ => simp [callFreePlusCall, hCF]
-  | .RBytesSlice _ _ _ _ => simp [callFreePlusCall, hCF]
   | .RCallDstThreaded _ _ _ => simp [callFree] at hCF
 
 /-- **Branch-symmetric merge property for `RIfNz` (2026-05-13).**
@@ -3737,21 +3624,18 @@ lemma branchScopeMerges_of_callFree
   | RCloneCall _ _ _ _ _ _ => simp [callFree] at hCF
   | RLimbStore _ _ _ => simp [callFree] at hCF
   | RLimbStoreExpr _ _ _ => simp [callFree] at hCF
-  | RAsmOp _ _ _ => simp [BranchScopeMerges]
   | RCallN _ _ _ => simp [callFree] at hCF
   | RSelect _ _ _ _ => simp [BranchScopeMerges]
   | RAssert _ => simp [BranchScopeMerges]
   | RBlock _ _ => simp [BranchScopeMerges]
   | RFnDef _ _ _ _ _ _ _ => simp [BranchScopeMerges]
   | RFnCall _ _ _ => simp [callFree] at hCF
-  | RTupleStore _ _ _ => simp [callFree] at hCF
   | RTupleLoad _ _ _ => simp [callFree] at hCF
   | RArrStore _ _ _ => simp [callFree] at hCF
   | RArrLoad _ _ _ => simp [callFree] at hCF
   | RArrStoreLit _ _ _ => simp [callFree] at hCF
   | RArrLoadLit _ _ _ => simp [callFree] at hCF
   | RScalarSetExpr _ _ => simp [callFree] at hCF
-  | RBytesSlice _ _ _ _ => simp [callFree] at hCF
   | RCallDstThreaded _ _ _ => simp [callFree] at hCF
 
 end RustExecWithCalls
@@ -4101,17 +3985,14 @@ theorem rustExecSimulates_withCalls
     rw [hNewSid]
     exact rustLimbStoreSimulates N leafSpec env fuel hLimb
       loc idx v rs rs' hExec sid heap hInv hSInv hBounded
-  | .RAsmOp _ _ _ => subst h; simp [whileFree] at hWf
   | .RCallN _ _ _ => subst h; simp [whileFree] at hWf
   | .RSelect _ _ _ _ => subst h; simp [whileFree] at hWf
   | .RFnDef _ _ _ _ _ => subst h; simp [whileFree] at hWf
   | .RFnCall _ _ _ => subst h; simp [whileFree] at hWf
-  | .RTupleStore _ _ _ => subst h; simp [whileFree] at hWf
   | .RTupleLoad _ _ _ => subst h; simp [whileFree] at hWf
   | .RArrStore _ _ _ => subst h; simp [whileFree] at hWf
   | .RArrLoad _ _ _ => subst h; simp [whileFree] at hWf
   | .RScalarSetExpr _ _ => subst h; simp [whileFree] at hWf
-  | .RBytesSlice _ _ _ _ => subst h; simp [whileFree] at hWf
 termination_by sizeOf c
 
 end SimulationTheorem

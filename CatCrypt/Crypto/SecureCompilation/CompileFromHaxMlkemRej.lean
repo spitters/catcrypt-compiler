@@ -11,13 +11,9 @@ import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 This module extends the **C4** step of the verified-compiler plan to the
 **ML-KEM-768** (FIPS-203 `SampleNTT` / Algorithm 13) rejection-sampling
 per-candidate **extraction** body. It is the compile-from-hax sibling of the
-owned-emit rejection-loop kernel `MLKEM.RejUniformOwnedEmit`, which lives in the
-wider CatCrypt development and is not part of this compiler package; the body
-below reuses that kernel's `q = 3329`, its `0xFFF` mask, and its exact
-`>> | << & 0xFFF` extraction arithmetic. In-package, the rejection *control
-structure* is re-sourced through the canonical front in
-`VIR/RejUniformCovered.lean`, over the guarded-loop machinery of
-`X86Backend/RejectLoop.lean`.
+owned-emit rejection loop in `CatCrypt/Crypto/MLKEM/RejUniformEmit.lean`
+(reuses its `q = 3329`, the `0xFFF` mask, and the exact `>> | << & 0xFFF`
+extraction arithmetic verbatim).
 
 ## `rej_uniform` (the scalar per-candidate body, NOT the data-dependent loop)
 
@@ -30,14 +26,13 @@ val1 = ((buf[pos+1] >> 4) | ((uint16_t)buf[pos+2] << 4)) & 0xFFF;  /* the high c
 ```
 
 each then **accepted** iff `< q = 3329`. The data-dependent accept/store loop is
-Tier-3 (the owned rejection loop of the out-of-package `MLKEM.RejUniformOwnedEmit`,
-whose generic machine-level shape is `X86Backend/RejectLoop.runGuardedLoop`; not a
+Tier-3 (it is the owned `runGuardedLoop` of `RejUniformEmit.lean`, not a
 compile-from-hax leaf), so we derive the **scalar per-candidate body**: the first
 12-bit candidate `d1 = (b0 | (b1 << 8)) & 0xFFF`. This is pure `shift_left` /
 `BitOr` / `BitAnd` — all **logical** shifts (the inputs are unsigned bytes), a
 single straight-line output, in scope with no front change. (Contrast ML-DSA
-`reduce32`, whose `>> 23` on a *signed* `int32` is an arithmetic shift and needs
-the front's `arith_shift_right` head; ML-KEM `rej_uniform` has no `sar`.)
+`reduce32`, whose `>> 23` on a *signed* `int32` is an arithmetic shift, which the
+front has no `sar` recognizer for. ML-KEM `rej_uniform` has no `sar`.)
 
 The reduce form `mlkemRejVal0Form` is the closed `BitVec 32` body the source
 denotes to; `mlkemRejVal0_compiles` routes the `rfl` source-spec
@@ -50,19 +45,17 @@ recovers the exact 12-bit candidate from `(b0, b1)` on the byte input domain is
 ## The `< q` acceptance predicate: front-head gap (documented, not stubbed)
 
 The acceptance decision `d1 < 3329` produces a 0/1 mask in the owned emit via a
-`SUB`/`CMOVB` (borrow-flag → CMOV) idiom (`rejWindowBody` of the out-of-package
-`MLKEM.RejUniformOwnedEmit`). The compile-from-hax front
-(`ImpExprToThir.recogBin`/`recogShift`/`recogNot`) recognizes only
-`BitXor`/`BitAnd`/`BitOr`/`wrapping_{add,mul,sub}`/`shift_{left,right}`/
-`arith_shift_right`/`rotate_right`/`Not` — there is **no compare-producing-mask
-head** (no `Lt`/`lt`/`borrow`/`cmovb`) in the front. So the `< q` acceptance mask
-is **not** a single compile-from-hax leaf with the current recognizer set; it
-would require adding a compare/select head to `recogBin` (and a matching `Rhs`
-form lowering to `SUB`+`CMOVB` / `SETB`). We therefore derive only the 12-bit
-**extract** here and leave the acceptance mask to the owned x86 backend, where
-the `SUB`/`CMOVB` idiom is KAT'd against PQClean. This matches the C4 scope: the
-extraction arithmetic is the logical-shift body the front covers; the comparison
-is a back-end concern.
+`SUB`/`CMOVB` (borrow-flag → CMOV) idiom (see `RejUniformEmit.rejWindowBody`).
+The compile-from-hax front (`ImpExprToThir.recogBin`/`recogShift`) recognizes only
+`BitXor`/`BitAnd`/`BitOr`/`wrapping_{add,mul,sub}`/`shift_{left,right}` — there is
+**no compare-producing-mask head** (no `Lt`/`lt`/`borrow`/`cmovb`) in the front.
+So the `< q` acceptance mask is **not** a single compile-from-hax leaf with the
+current recognizer set; it would require adding a compare/select head to
+`recogBin` (and a matching `Rhs` form lowering to `SUB`+`CMOVB` / `SETB`). We
+therefore derive only the 12-bit **extract** here and leave the acceptance mask to
+the owned x86 backend (`RejUniformEmit.lean`, where the `SUB`/`CMOVB` idiom is
+KAT'd against PQClean). This matches the C4 scope: the extraction arithmetic is the
+logical-shift body the front covers; the comparison is a back-end concern.
 -/
 
 set_option autoImplicit false

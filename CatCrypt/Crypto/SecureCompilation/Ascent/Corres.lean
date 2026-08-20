@@ -14,13 +14,19 @@ compiler (`RelationalCompile`): LowCT → clean Lean spec with a machine-checked
 `Corres` correspondence, in the AutoCorres/Ascent style, over the **real**
 compositional denotation `semScalar` (`TranslateDialectScalarDenote.semScalar`).
 
-Division of labor:
+The port of AutoCorres to Lean — "AutoCorres2 in Lean" — was begun by **Sebastian
+Graf** (`sgraf812/ascent`): proof-producing monadic abstraction read as abstract
+interpretation over the `Std.Do` WP metatheory. This calculus follows and
+instantiates that design, specialized to LowCT / `semScalar` (the `Option`-failure
+`StateT` monad). `Corres` is the AutoCorres `corres` relation in that lineage.
+
+Division of labor (see the private design notes `lowct-ascent-refinement-calculus.md`
+and `ascend-autocorres-methodology.md` — the latter for why `Corres` is the
+AutoCorres pattern, piggybacking on a proven embedding of an imperative language
+into type theory, and its applications):
 * **`Corres`** (here) owns the monad/control structure and the arithmetic side
   conditions (the precondition `P`) — the structural lemmas `corres_seq`/`_skip`/
   `_block`/`_weaken` rest on `semScalar`'s definitional Kleisli-in-`Option` fold.
-  This is the AutoCorres pattern: the abstraction proof piggybacks on a proven
-  embedding of an imperative language into type theory, so every refinement step
-  is discharged against the real denotation rather than a bespoke semantics.
 * **ParamTransfer** (`Transfer.Related`/`RelatedBinOp`) owns the unconditional
   value representation change (`γV`): the word iso `BitVec 64 ≅ ZMod 2^64` (below)
   and — for the store phase — the Hex dense-storage↔Mathlib limb-packing.

@@ -35,19 +35,19 @@ or transfer control:
 * `Lret` (the function-return terminator) — modeled by `lsemRun` (§6), which
   *ends* a whole-function straight-line run at the trailing `Lret`
   (`comToBody_ends_Lret`) returning the current `Lstate`, the state `lfd_res` is
-  read off. The single-step `lsemStep .Lret` stays `none` (it is genuine control
+  read off. The single-step `lsemStep .Lret` stays `none` (it is control
   flow at the instruction level); the terminator semantics live in the
   whole-function fold `lsemRun`, which agrees with `lsemStraight` on the
   `Lret`-free body prefix (`lsemRun_eq_lsemStraight` / `lsemRun_body_ret`).
 
-**Out of scope for increment 1** (control flow / effects — modeled as `none`,
-*not* faked): `Lgoto`, `Lcond`, `Ligoto`, `Lcall`, `LstoreLabel`, `Lsyscall`.
+**Out of scope for increment 1** (control flow / effects — modeled as `none`):
+`Lgoto`, `Lcond`, `Ligoto`, `Lcall`, `LstoreLabel`, `Lsyscall`.
 Each of these in Coq calls `eval_jump`/`find_label`/`rencode_label`/
 `exec_syscall`, i.e. it reads the whole-program label table `label_in_lprog` or
 the syscall oracle. Modeling them faithfully needs the program `P`, the label
 machinery (`find_label`, `eval_jump`), and the memory/syscall effects — that is
-**increment 2/3**. Here their `lsemStep` is honestly `none` ("not modeled in
-the straight-line foundation"), never a fabricated step.
+**increment 2/3**. Here their `lsemStep` is `none` (not modeled in
+the straight-line foundation).
 
 ## What increment 2 will need
 
@@ -134,6 +134,8 @@ def Lstate.nextPc {w : Nat} (s : Lstate w) : Lstate w := { s with lpc := s.lpc +
 
 @[simp] theorem Lstate.lvm_nextPc {w : Nat} (s : Lstate w) : s.nextPc.lvm = s.lvm := rfl
 
+@[simp] theorem Lstate.lmem_nextPc {w : Nat} (s : Lstate w) : s.nextPc.lmem = s.lmem := rfl
+
 /-! ## 2. Operand evaluation and the word-op fragment of `exec_sopn`
 
 `eval_instr`'s `Lopn` arm runs `sem_rexprs s es` then `exec_sopn o args`. We
@@ -157,14 +159,18 @@ def evalOperand {w : Nat} (s : Lstate w) : LOperand → BitVec w
 /-- The modeled word-op fragment of `exec_sopn`: map a *stripped* (width-tag
     removed) mnemonic and the evaluated source words to the result word, when the
     opcode is one we model. This is the `JasminBinOp.apply` image of
-    `JasminLprogExport.binOpName` (binary register arithmetic) plus the immediate
-    `MOV` (a `regConst`/`castW` nullary/unary move) and the ABI `MOVQ` (the
-    64-bit register/memory move the prologue/arg-materialization/epilogue emit;
-    same word semantics as `MOV`).
+    `JasminLprogExport.binOpName` (binary register arithmetic), the immediate
+    `MOV` (a `regConst`/`castW` nullary/unary move), the ABI `MOVQ` (the 64-bit
+    register/memory move the prologue/arg-materialization/epilogue emit; same word
+    semantics as `MOV`), and the widening-multiply / carry-chain word ops
+    `MULXHI`/`ADCX`/`ADCXHI` (the high-word `MULX` binding and the carry-chain
+    add's data and carry-out bindings), denoted by the same `JasminDialect`
+    functions `mulHiW`/`addCarryWord`/`carryOutBit` the dialect uses for
+    `mulhi`/`addCarryLo`/`addCarryHi`.
 
     Returns `none` for any opcode outside the modeled straight-line word
-    fragment (e.g. `MULXHI`, `CALL:…`, `LOAD`/`STORE`, `CMOV`) — honest
-    partiality, not a default value. -/
+    fragment (e.g. `CALL:…`, `LOAD`/`STORE`, `CMOV`) — honest partiality, not a
+    default value. -/
 def applyOpn {w : Nat} : String → List (BitVec w) → Option (BitVec w)
   | "ADD", [a, b] => some (a + b)
   | "SUB", [a, b] => some (a - b)
@@ -176,6 +182,19 @@ def applyOpn {w : Nat} : String → List (BitVec w) → Option (BitVec w)
   | "SHR", [a, b] => some (a >>> b.toNat)
   | "ANDN", [a, b] => some ((~~~a) &&& b)
   | "MOV", [a] => some a
+  -- `MULXHI`: the high word of the full product `a * b` (the `hi` binding of a
+  -- `MULX`; the low word is exported as `MUL`, already modeled). Denoted by the
+  -- dialect's `mulHiW`, so the `lsem` model and the `mulhi` dialect op agree.
+  | "MULXHI", [a, b] => some (mulHiW a b)
+  -- `ADCX`: the data word of one carry-chain add `a + b + carry-in`. The carry-in
+  -- register holds a `0`/`1` value at the uniform width; its low bit
+  -- (`BitVec.setWidth 1`) is the `reg 1` carry the dialect threads. Denoted by
+  -- the dialect's `addCarryWord`.
+  | "ADCX", [a, b, cin] => some (addCarryWord a b (BitVec.setWidth 1 cin))
+  -- `ADCXHI`: the carry-out bit of that same add, packaged at the uniform width
+  -- (`BitVec.setWidth w` of the dialect's `carryOutBit`), so it threads into the
+  -- next limb's carry-in register.
+  | "ADCXHI", [a, b, cin] => some (BitVec.setWidth w (carryOutBit a b (BitVec.setWidth 1 cin)))
   -- `MOVQ`: the 64-bit register/memory move the ABI prologue, arg-pointer
   -- materialization, and epilogue emit (`buildPrologue`/`buildArgPtrMaterialize`/
   -- `buildEpilogue`/`calleeSaveRestoreEpilogue`). Identical word semantics to
@@ -186,6 +205,40 @@ def applyOpn {w : Nat} : String → List (BitVec w) → Option (BitVec w)
   -- via `LOperand.reg (memName …)` / `"qsave.…"`, so they are uniform `lvm`
   -- entries at this model's granularity).
   | "MOVQ", [a] => some a
+  -- `MOV:8` / `MOV:16`: the narrow ABI buffer moves the exporter tags at a `u8` /
+  -- `u16` C-buffer element width (`abiMovBuf`). The asm printer renders a
+  -- memory-source narrow move as the zero-extending `movzbl` / `movzwl` load and a
+  -- memory-destination one as the width-exact `movb` / `movw` store. Both directions
+  -- have the same word semantics at this model's granularity: keep the low `8` /
+  -- `16` bits of the single evaluated source, clearing the rest (`BitVec.zeroExtend`
+  -- of the narrow slice), which is exactly `movz{b,w}l`'s zero-extend on a load and
+  -- the low-bits value a byte / word store deposits. `stripWidthTag` peels only the
+  -- `:64` tag, so the `:8` / `:16` tag survives to this arm.
+  | "MOV:8", [a] => some (a &&& BitVec.ofNat w 0xFF)
+  | "MOV:16", [a] => some (a &&& BitVec.ofNat w 0xFFFF)
+  -- Runtime-indexed memory opcodes are modeled by `lsemStep`'s `.arrIdx` arm, not
+  -- by `applyOpn`. They are named here, before the count-tagged shift arm, so that
+  -- `applyOpn "LOADIDX"`/`"STOREIDX"` still reduces to `none` on a symbolic source
+  -- list — the shift arm below matches any single-source op and would otherwise
+  -- block that reduction on the list shape.
+  | "LOADIDX", _ => none
+  | "STOREIDX", _ => none
+  -- Count-tagged immediate shift / rotate (`SHL:0`, `SHR:32`, `SAR:k`, `ROL:k`,
+  -- `ROR:k`): a single-source op whose mnemonic carries the shift count.
+  -- `stripWidthTag` keeps the count tag, so the mnemonic reaching `applyOpn` still
+  -- carries it and `parseImmShiftMnem` recovers the direction and count. The result
+  -- is that shift / rotate applied to the one evaluated source word. Distinct from
+  -- the two-source `SHL`/`SHR` arms above, which are the variable-count form (count
+  -- in a register/immediate operand); this arm requires exactly one source.
+  | opn, [a] =>
+      match parseImmShiftMnem opn with
+      | some (att, k, _) =>
+          some (if att = "shl" then a <<< k
+                else if att = "sar" then BitVec.sshiftRight a k
+                else if att = "rol" then a.rotateLeft k
+                else if att = "ror" then a.rotateRight k
+                else a >>> k)
+      | none => none
   | _, _ => none
 
 /-- `applyOpn` agrees with `JasminBinOp.apply` (the dialect denotation) on the
@@ -195,6 +248,23 @@ def applyOpn {w : Nat} : String → List (BitVec w) → Option (BitVec w)
 theorem applyOpn_binOpName {w : Nat} (bop : JasminBinOp) (a b : BitVec w) :
     applyOpn (binOpName bop) [a, b] = some (bop.apply a b) := by
   cases bop <;> rfl
+
+/-- `applyOpn` on `MULXHI` denotes the dialect's `mulHiW` — the fidelity tie
+    between the `lsem` high-multiply model and the `mulhi` dialect op. -/
+@[simp] theorem applyOpn_mulhi {w : Nat} (a b : BitVec w) :
+    applyOpn "MULXHI" [a, b] = some (mulHiW a b) := rfl
+
+/-- `applyOpn` on `ADCX` denotes the dialect's `addCarryWord`, reading the
+    carry-in register's low bit — the fidelity tie for the carry-chain data word
+    (`addCarryLo`). -/
+@[simp] theorem applyOpn_addCarryLo {w : Nat} (a b cin : BitVec w) :
+    applyOpn "ADCX" [a, b, cin] = some (addCarryWord a b (BitVec.setWidth 1 cin)) := rfl
+
+/-- `applyOpn` on `ADCXHI` denotes the dialect's `carryOutBit`, widened to the
+    uniform word width — the fidelity tie for the carry-out bit (`addCarryHi`). -/
+@[simp] theorem applyOpn_addCarryHi {w : Nat} (a b cin : BitVec w) :
+    applyOpn "ADCXHI" [a, b, cin]
+      = some (BitVec.setWidth w (carryOutBit a b (BitVec.setWidth 1 cin))) := rfl
 
 /-- The ABI `MOVQ` opcode copies its single source word unchanged — the fidelity
     tie for the 64-bit move the prologue/arg-materialization/epilogue emit (same
@@ -211,17 +281,35 @@ theorem applyOpn_binOpName {w : Nat} (bop : JasminBinOp) (a b : BitVec w) :
 theorem applyOpn_MOVQ_eq_MOV {w : Nat} (a : BitVec w) :
     applyOpn "MOVQ" [a] = applyOpn "MOV" [a] := rfl
 
+/-- The narrow `MOV:8` buffer move keeps the low byte of its source (the
+    zero-extend a `movzbl` load and the low-bits value a `movb` store share). -/
+@[simp] theorem applyOpn_MOV8 {w : Nat} (a : BitVec w) :
+    applyOpn "MOV:8" [a] = some (a &&& BitVec.ofNat w 0xFF) := rfl
+
+/-- The narrow `MOV:16` buffer move keeps the low word of its source (the
+    zero-extend a `movzwl` load and the low-bits value a `movw` store share). -/
+@[simp] theorem applyOpn_MOV16 {w : Nat} (a : BitVec w) :
+    applyOpn "MOV:16" [a] = some (a &&& BitVec.ofNat w 0xFFFF) := rfl
+
 /-! ## 3. `lsemStep` / `lsem1`: the single-instruction step
 
 Mirror of Coq `eval_instr (i : linstr) (s1 : lstate) : exec lstate`
 (`linear_sem.v` l.112–173), restricted to the straight-line cases. Coq's `exec`
 monad is `result error`; we use `Option` (the partiality), with `none` for both
-"genuine error" (a modeled op applied to ill-typed args) and "out of scope"
-(control-flow cases). The distinction is documented per-arm. -/
+a type error (a modeled op applied to ill-typed args) and an out-of-scope
+control-flow case. The distinction is documented per-arm. -/
 
 /-- The single-step linear semantics for one `LinstrR`, faithful to Coq
     `eval_instr` on the straight-line cases:
 
+    * `Lopn [dst] opn (.arrIdx base idx scale :: rest)` — a runtime-indexed
+      memory op, recognised by its `.arrIdx`-headed source (the SIB cell
+      `base[idx*scale]` at byte offset `scale · ⟦idx⟧`, the shape
+      `JasminLprogExport` emits for `stackLoad`/`stackStore` with a register
+      index). `LOADIDX` reads that cell into `dst` and bumps the pc; `STOREIDX`
+      writes the trailing value operand into the cell, writes no register (the
+      `.reg dst` is the dialect's nominal array-result name), and bumps the pc.
+      An `.arrIdx`-headed source under any other opcode is unmodeled (`none`).
     * `Lopn [dst] opn srcs` — evaluate `srcs` against the store, apply the
       modeled `applyOpn` opcode, write `dst`, and advance the pc
       (`lnext_pc (lset_estate' …)`). `none` if the opcode is unmodeled or the
@@ -235,6 +323,26 @@ monad is `result error`; we use `Option` (the partiality), with `none` for both
     `none` — they are not modeled, not faked (see module docstring). -/
 def lsemStep {w : Nat} (i : LinstrR) (s : Lstate w) : Option (Lstate w) :=
   match i with
+  | .Lopn [.reg dst] opn (.arrIdx base idx scale :: rest) =>
+      let off : Int := Int.ofNat (scale * (s.lvm idx).toNat)
+      if opn = "LOADIDX" then
+        some ((s.setReg dst (s.lmem base off)).nextPc)
+      else if opn = "STOREIDX" then
+        match rest with
+        | [val] =>
+            some ({ s with lmem := fun b o =>
+                      if b = base then (if o = off then evalOperand s val else s.lmem b o)
+                      else s.lmem b o }.nextPc)
+        | _ => none
+      else
+        -- Any other opcode over an `.arrIdx`-headed source falls through to the
+        -- word-op path, byte-identical to the register arm below: the only new
+        -- behaviour of this arm is intercepting the two runtime-indexed memory
+        -- opcodes, so every previously modeled op keeps its meaning.
+        match applyOpn (stripWidthTag opn)
+            ((LOperand.arrIdx base idx scale :: rest).map (evalOperand s)) with
+        | some v => some ((s.setReg dst v).nextPc)
+        | none => none
   | .Lopn [.reg dst] opn srcs =>
       match applyOpn (stripWidthTag opn) (srcs.map (evalOperand s)) with
       | some v => some ((s.setReg dst v).nextPc)
@@ -264,6 +372,62 @@ theorem lsem1_deterministic {w : Nat} (i : LinstrR) (s1 s2 s3 : Lstate w)
     (h12 : lsem1 i s1 s2) (h13 : lsem1 i s1 s3) : s2 = s3 := by
   rw [lsem1] at h12 h13; rw [h12] at h13; exact Option.some.inj h13
 
+/-! ### 3a′. Reducing `lsemStep` past the `.arrIdx`-headed memory arm
+
+The `lsemStep` `Lopn` cases are ordered so a runtime-indexed memory op
+(`.arrIdx`-headed source) is intercepted before the register/word-op arm. A
+proof reducing `lsemStep (.Lopn [.reg dst] opn srcs)` over a symbolic `srcs`
+cannot decide which arm fires unless it knows the head is not `.arrIdx`. The two
+lemmas here supply that: `resolveVar` never produces an `.arrIdx`, and given any
+non-`.arrIdx`-headed `srcs` the step collapses to the word-op form. -/
+
+/-- `resolveVar` returns either a register or an immediate, never a
+    register-indexed (`.arrIdx`) operand. -/
+theorem resolveVar_ne_arrIdx {Γ : Ctxt jasminDialect} {τ : JasminTy}
+    (curDepth nArgs : Nat) (argNames : Nat → String) (immSlotMap : ImmSlotMap)
+    (v : Ctxt.Var Γ τ) (base idx : String) (scale : Nat) :
+    resolveVar curDepth nArgs argNames immSlotMap v ≠ LOperand.arrIdx base idx scale := by
+  rw [resolveVar]
+  split
+  · split <;> simp
+  · simp
+
+/-- Reducer for a non-`.arrIdx`-headed source list: `lsemStep` of
+    `Lopn [.reg dst] opn srcs` collapses to the word-op arm (`applyOpn` on the
+    evaluated sources, write `dst`, bump the pc) whenever `srcs` does not start
+    with an `.arrIdx` operand. The hypothesis is discharged by
+    `resolveVar_ne_arrIdx` at the call sites where `srcs` is built from
+    `resolveVar`. -/
+theorem lsemStep_reg_srcs {w : Nat} (dst : String) (opn : String)
+    (srcs : List LOperand) (s : Lstate w)
+    (h : ∀ base idx scale rest, srcs ≠ LOperand.arrIdx base idx scale :: rest) :
+    lsemStep (.Lopn [.reg dst] opn srcs) s
+      = match applyOpn (stripWidthTag opn) (srcs.map (evalOperand s)) with
+        | some v => some ((s.setReg dst v).nextPc)
+        | none => none := by
+  cases srcs with
+  | nil => simp [lsemStep]
+  | cons o rest =>
+    cases o with
+    | reg => simp [lsemStep]
+    | arr => simp [lsemStep]
+    | imm => simp [lsemStep]
+    | arrIdx base idx scale => exact absurd rfl (h base idx scale rest)
+
+/-- The two-source specialisation of `lsemStep_reg_srcs`: neither operand is an
+    `.arrIdx`, so the step is the word-op arm on `[o0, o1]`. The common shape for
+    binary-arithmetic call sites (`[resolveVar … a0, resolveVar … a1]`). -/
+theorem lsemStep_reg_cons2 {w : Nat} (dst : String) (opn : String)
+    (o0 o1 : LOperand) (s : Lstate w)
+    (h0 : ∀ base idx scale, o0 ≠ LOperand.arrIdx base idx scale) :
+    lsemStep (.Lopn [.reg dst] opn [o0, o1]) s
+      = match applyOpn (stripWidthTag opn) [evalOperand s o0, evalOperand s o1] with
+        | some v => some ((s.setReg dst v).nextPc)
+        | none => none := by
+  apply lsemStep_reg_srcs
+  intro base idx scale rest hcontra
+  exact h0 base idx scale (by cases hcontra; rfl)
+
 /-! ### 3a. Per-op `MOVQ` step lemmas (ABI prologue / arg-materialization / epilogue)
 
 The ABI wrapper (`buildPrologue`, `buildArgPtrMaterialize`, `buildEpilogue`,
@@ -285,7 +449,7 @@ register-copy step — exactly the `MOV` single-arg arm with mnemonic `"MOVQ"`. 
 theorem lsemStep_movq {w : Nat} (dst : String) (src : LOperand) (s : Lstate w) :
     lsemStep (.Lopn [.reg dst] "MOVQ" [src]) s
       = some ((s.setReg dst (evalOperand s src)).nextPc) := by
-  simp only [lsemStep, stripWidthTag_MOVQ, List.map_cons, List.map_nil, applyOpn_MOVQ]
+  cases src <;> simp [lsemStep, applyOpn]
 
 /-- `MOVQ` reg←reg (the `qsave.*` saves/restores and ABI-register copies): writes
     `s.lvm src` to `dst`, pc bumped. -/
@@ -310,6 +474,66 @@ theorem movq_store_lsem {w : Nat} (memCell src : String) (s : Lstate w) :
     lsemStep (.Lopn [.reg memCell] "MOVQ" [.reg src]) s
       = some ((s.setReg memCell (s.lvm src)).nextPc) := by
   rw [lsemStep_movq]; rfl
+
+/-! ### 3b. Runtime-indexed memory step lemmas (`LOADIDX` / `STOREIDX`)
+
+`JasminLprogExport` emits a register-indexed `stackLoad`/`stackStore` as an
+`Lopn` whose first (and only address-carrying) source is the SIB operand
+`.arrIdx base idx scale`. `lsemStep` recognises those two opcodes by that
+`.arrIdx`-headed source: `LOADIDX` reads the addressed cell into the
+destination register, `STOREIDX` writes the trailing value operand into the
+cell. Both address the byte offset `scale · ⟦idx⟧` — the same effective offset
+`evalOperand` reads an `.arrIdx` source at, so a `LOADIDX` after a `STOREIDX`
+to the same `(base, idx, scale)` observes the stored word. -/
+
+/-- **`LOADIDX` step.** Running `Lopn [.reg dst] "LOADIDX" [.arrIdx base idx scale]`
+    reads the SIB cell `base[idx*scale]` (byte offset `scale · ⟦idx⟧`) into `dst`
+    and advances the pc. The read value is exactly `evalOperand` on the same
+    `.arrIdx` source. -/
+theorem lsemStep_loadidx {w : Nat} (dst base idx : String) (scale : Nat)
+    (s : Lstate w) :
+    lsemStep (.Lopn [.reg dst] "LOADIDX" [.arrIdx base idx scale]) s
+      = some ((s.setReg dst (evalOperand s (.arrIdx base idx scale))).nextPc) := by
+  simp [lsemStep, evalOperand]
+
+/-- **`STOREIDX` step.** Running
+    `Lopn [.reg dst] "STOREIDX" [.arrIdx base idx scale, val]` writes
+    `evalOperand s val` into the SIB cell `base[idx*scale]` (byte offset
+    `scale · ⟦idx⟧`), leaves every register (and every other memory cell)
+    unchanged, and advances the pc. The nominal destination register `dst` (the
+    dialect's array-result name) is not written — a `STOREIDX` is a pure memory
+    write. The `lmem` update coincides with `Lstate.setMem base (scale · ⟦idx⟧)`. -/
+theorem lsemStep_storeidx {w : Nat} (dst base idx : String) (scale : Nat)
+    (val : LOperand) (s : Lstate w) :
+    lsemStep (.Lopn [.reg dst] "STOREIDX" [.arrIdx base idx scale, val]) s
+      = some ({ s with lmem := fun b o =>
+                  if b = base then
+                    (if o = Int.ofNat (scale * (s.lvm idx).toNat) then evalOperand s val
+                     else s.lmem b o)
+                  else s.lmem b o }.nextPc) := by
+  simp [lsemStep]
+
+/-- The `STOREIDX` step writes the stored word into the addressed cell: reading
+    `(base, scale · ⟦idx⟧)` from the resulting `lmem` returns `evalOperand s val`.
+    The faithfulness fact that memory records the store. -/
+theorem lsemStep_storeidx_lmem_hit {w : Nat} (dst base idx : String) (scale : Nat)
+    (val : LOperand) (s t : Lstate w)
+    (h : lsemStep (.Lopn [.reg dst] "STOREIDX" [.arrIdx base idx scale, val]) s = some t) :
+    t.lmem base (Int.ofNat (scale * (s.lvm idx).toNat)) = evalOperand s val := by
+  rw [lsemStep_storeidx] at h
+  simp only [Option.some.injEq] at h
+  subst h
+  simp
+
+/-- The `STOREIDX` step leaves the register file untouched: the resulting `lvm`
+    equals `s.lvm` (the nominal destination register is not written). -/
+theorem lsemStep_storeidx_lvm {w : Nat} (dst base idx : String) (scale : Nat)
+    (val : LOperand) (s t : Lstate w)
+    (h : lsemStep (.Lopn [.reg dst] "STOREIDX" [.arrIdx base idx scale, val]) s = some t) :
+    t.lvm = s.lvm := by
+  rw [lsemStep_storeidx] at h
+  simp only [Option.some.injEq] at h
+  subst h; rfl
 
 /-! ## 4. `lsemStraight`: the straight-line multi-step execution
 
@@ -348,6 +572,26 @@ theorem lsemStraight_singleton {w : Nat} (i : LinstrR) (s : Lstate w) :
     lsemStraight [i] s = lsemStep i s := by
   simp only [lsemStraight]
   cases lsemStep i s <;> rfl
+
+/-- `stripWidthTag` fixes the carry-chain mnemonics — they carry no `":64"` tag,
+    so the body mnemonic the `lsemStep` `Lopn` arm recovers them as. -/
+@[simp] theorem stripWidthTag_MULXHI : stripWidthTag "MULXHI" = "MULXHI" := by decide +kernel
+
+@[simp] theorem stripWidthTag_ADCX : stripWidthTag "ADCX" = "ADCX" := by decide +kernel
+
+@[simp] theorem stripWidthTag_ADCXHI : stripWidthTag "ADCXHI" = "ADCXHI" := by decide +kernel
+
+/-- **Non-vacuity witness.** A body holding the widening-multiply / carry-chain
+    ops `MULXHI`/`ADCX`/`ADCXHI` runs to a defined state — `lsemStraight` is
+    `some`, not `none`. Before these `applyOpn` arms, such a body short-circuited
+    to `none` at the first `MULXHI`, making any store-preservation guarantee over
+    an mpn/Montgomery carry body vacuous. -/
+theorem lsemStraight_carryChain_isSome {w : Nat} (s : Lstate w) :
+    (lsemStraight
+      [ .Lopn [.reg "hi"] "MULXHI" [.reg "a", .reg "b"],
+        .Lopn [.reg "d"] "ADCX" [.reg "a", .reg "b", .reg "c"],
+        .Lopn [.reg "co"] "ADCXHI" [.reg "a", .reg "b", .reg "c"] ] s).isSome := by
+  simp [lsemStraight, lsemStep, evalOperand]
 
 /-! ## 5. The proved structural law: sequential composition (`lsem_trans`)
 

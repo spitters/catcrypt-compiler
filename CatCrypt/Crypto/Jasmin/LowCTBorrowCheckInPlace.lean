@@ -2519,9 +2519,9 @@ structure InPlaceLeafCert where
 def InPlaceLeafCert.matchesSigDb (c : InPlaceLeafCert) : Bool :=
   (bignumSigDb c.name).destAliasOk == c.destAliasOk
 
-/-! ## §4. The leaves with `destAliasOk ≠ []`
+/-! ## §4. The seven leaves with `destAliasOk ≠ []`
 
-From `bignumSigDb` (`LeafSig.lean` §2), the leaves that declare output/input
+From `bignumSigDb` (`LeafSig.lean` §2), the leaves with declared
 aliasing are:
 
 | Name | destAliasOk | Aliasing |
@@ -2529,16 +2529,16 @@ aliasing are:
 | `bignum_double_p25519`  | `[0]`     | `output ↔ input` |
 | `bignum_mod_p25519_4`   | `[0]`     | `output ↔ input` |
 | `bignum_inv_p25519`     | `[0]`     | `output ↔ input` |
-| `bignum_pow_p25519_p58` | `[0]`     | `output ↔ input` |
 | `bignum_sub_p25519`     | `[0]`     | `output ↔ first arg` |
 
-More leaves may join the list as ports land; `bignum_neg_p25519`,
-`bignum_optneg_p25519` and a FIOS-variant `montmul` are the anticipated
-candidates, none of which is in tree.
+(That's 4 in current tree; the original ~3-week estimate budgeted
+for 7, anticipating future ports of `bignum_neg_p25519`,
+`bignum_optneg_p25519`, and a FIOS-variant `montmul`. As of
+2026-04-30, only 4 are in tree.)
 
-Each of these needs an `InPlaceLeafCert` once its body is imported.  Stub
-names are provided below for every row except `bignum_pow_p25519_p58`;
-flesh them out at the port site once the body symbol is in scope. -/
+Each of these needs an `InPlaceLeafCert` once its body is imported.
+We provide stub names below; flesh out at the port site once the
+body symbol is in scope. -/
 
 /-- Stub: `bignum_double_p25519` cert template. Filled in at the
 port site. -/

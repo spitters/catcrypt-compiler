@@ -10,7 +10,7 @@ import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvEncoder64
 
 This is the **RISC-V RV64 analogue of `ARMBackend/ArmElfObject.lean`** (itself the
 AArch64 analogue of `X86Backend/ElfObject.lean`): it wraps the verified-encoder
-`.text` bytes of one or more leaves into a genuine ELF64 relocatable object
+`.text` bytes of one or more leaves into an ELF64 relocatable object
 (`ELFCLASS64`, `ET_REL`, `EM_RISCV = 243`), so the owned RV64 backend produces a
 real `.o` directly — with neither `riscv64-linux-gnu-as`/gas nor `clang` on the
 object-build path. A list of `(name, textBytes)` leaves concatenate into one
@@ -226,57 +226,55 @@ def encLi64 (rd : String) (v : Nat) : List (BitVec 8) :=
 /-! ### 2c. Differential pins against `riscv64-linux-gnu-as -march=rv64g`
 
 Each scaffolding word pinned to the exact objdump value (the same anchors as the
-ALU pins in `RiscvEncoder`). Verified by `native_decide`. -/
+ALU pins in `RiscvEncoder`), checked with `#guard`. -/
 
-/-- `ld a0, 0(a1)` → `0x0005b503`. -/
-example : encLd "a0" "a1" 0 = 0x0005b503 := by native_decide
-/-- `ld a3, 24(a1)` → `0x0185b683`. -/
-example : encLd "a3" "a1" 24 = 0x0185b683 := by native_decide
-/-- `sd a0, 0(s1)` → `0x00a4b023`. -/
-example : encSd "a0" "s1" 0 = 0x00a4b023 := by native_decide
-/-- `sd a3, 24(s1)` → `0x00d4bc23`. -/
-example : encSd "a3" "s1" 24 = 0x00d4bc23 := by native_decide
-/-- `addi sp, sp, -16` → `0xff010113`. -/
-example : encAddi "sp" "sp" (-16) = 0xff010113 := by native_decide
-/-- `addi sp, sp, 16` → `0x01010113`. -/
-example : encAddi "sp" "sp" 16 = 0x01010113 := by native_decide
-/-- `addi a1, sp, 32` → `0x02010593`. -/
-example : encAddi "a1" "sp" 32 = 0x02010593 := by native_decide
-/-- `mv s1, a0` = `addi s1, a0, 0` → `0x00050493`. -/
-example : encAddi "s1" "a0" 0 = 0x00050493 := by native_decide
-/-- `sd s1, 8(sp)` → `0x00913423`. -/
-example : encSd "s1" "sp" 8 = 0x00913423 := by native_decide
-/-- `ld s1, 8(sp)` → `0x00813483`. -/
-example : encLd "s1" "sp" 8 = 0x00813483 := by native_decide
-/-- `ret` → `0x00008067`. -/
-example : encRet = 0x00008067 := by native_decide
-/-- `lui a0, 0x12345` → `0x12345537`. -/
-example : encLui "a0" 0x12345 = 0x12345537 := by native_decide
-/-- `addiw a0, a0, 0x678` → `0x6785051b`. -/
-example : encAddiw "a0" "a0" 0x678 = 0x6785051b := by native_decide
-/-- `sw t0, 0(a0)` → `0x00552023`. -/
-example : encSw "t0" "a0" 0 = 0x00552023 := by native_decide
-/-- `sw t0, 4(a0)` → `0x00552223`. -/
-example : encSw "t0" "a0" 4 = 0x00552223 := by native_decide
-/-- `lwu t1, 0(a0)` → `0x00056303`. -/
-example : encLwu "t1" "a0" 0 = 0x00056303 := by native_decide
-/-- `lwu t1, 12(a0)` → `0x00c56303`. -/
-example : encLwu "t1" "a0" 12 = 0x00c56303 := by native_decide
-/-- `lw t1, 0(sp)` → `0x00012303`. -/
-example : encLw "t1" "sp" 0 = 0x00012303 := by native_decide
-/-- `lw t1, 12(sp)` → `0x00c12303`. -/
-example : encLw "t1" "sp" 12 = 0x00c12303 := by native_decide
-/-- `ecall` → `0x00000073`. -/
-example : encEcall = 0x00000073 := by native_decide
-/-- `bne a0, a1, .-0` (offset 0 placeholder) — opcode low 7 bits = `0x63`. -/
-example : (encodeBccWord .bne "a0" "a1" (BitVec.ofNat 13 0)).toNat % 128 = 0x63 := by
-  native_decide
-/-- `jal ra, 0` → opcode low 7 bits = `0x6f` (JAL). -/
-example : (encJal "ra" 0).toNat % 128 = 0x6f := by native_decide
-/-- `li a0, 2` macro = `lui a0,0 ; addiw a0,a0,2` (small const: hi20=0). The
-    `addiw` word is `0x00200513`. -/
-example : encLi32 "a0" 2 = w (encLui "a0" 0) ++ w (encAddiw "a0" "a0" 2) := by
-  native_decide
+-- `ld a0, 0(a1)` → `0x0005b503`.
+#guard encLd "a0" "a1" 0 == 0x0005b503
+-- `ld a3, 24(a1)` → `0x0185b683`.
+#guard encLd "a3" "a1" 24 == 0x0185b683
+-- `sd a0, 0(s1)` → `0x00a4b023`.
+#guard encSd "a0" "s1" 0 == 0x00a4b023
+-- `sd a3, 24(s1)` → `0x00d4bc23`.
+#guard encSd "a3" "s1" 24 == 0x00d4bc23
+-- `addi sp, sp, -16` → `0xff010113`.
+#guard encAddi "sp" "sp" (-16) == 0xff010113
+-- `addi sp, sp, 16` → `0x01010113`.
+#guard encAddi "sp" "sp" 16 == 0x01010113
+-- `addi a1, sp, 32` → `0x02010593`.
+#guard encAddi "a1" "sp" 32 == 0x02010593
+-- `mv s1, a0` = `addi s1, a0, 0` → `0x00050493`.
+#guard encAddi "s1" "a0" 0 == 0x00050493
+-- `sd s1, 8(sp)` → `0x00913423`.
+#guard encSd "s1" "sp" 8 == 0x00913423
+-- `ld s1, 8(sp)` → `0x00813483`.
+#guard encLd "s1" "sp" 8 == 0x00813483
+-- `ret` → `0x00008067`.
+#guard encRet == 0x00008067
+-- `lui a0, 0x12345` → `0x12345537`.
+#guard encLui "a0" 0x12345 == 0x12345537
+-- `addiw a0, a0, 0x678` → `0x6785051b`.
+#guard encAddiw "a0" "a0" 0x678 == 0x6785051b
+-- `sw t0, 0(a0)` → `0x00552023`.
+#guard encSw "t0" "a0" 0 == 0x00552023
+-- `sw t0, 4(a0)` → `0x00552223`.
+#guard encSw "t0" "a0" 4 == 0x00552223
+-- `lwu t1, 0(a0)` → `0x00056303`.
+#guard encLwu "t1" "a0" 0 == 0x00056303
+-- `lwu t1, 12(a0)` → `0x00c56303`.
+#guard encLwu "t1" "a0" 12 == 0x00c56303
+-- `lw t1, 0(sp)` → `0x00012303`.
+#guard encLw "t1" "sp" 0 == 0x00012303
+-- `lw t1, 12(sp)` → `0x00c12303`.
+#guard encLw "t1" "sp" 12 == 0x00c12303
+-- `ecall` → `0x00000073`.
+#guard encEcall == 0x00000073
+-- `bne a0, a1, .-0` (offset 0 placeholder) — opcode low 7 bits = `0x63`.
+#guard (encodeBccWord .bne "a0" "a1" (BitVec.ofNat 13 0)).toNat % 128 == 0x63
+-- `jal ra, 0` → opcode low 7 bits = `0x6f` (JAL).
+#guard (encJal "ra" 0).toNat % 128 == 0x6f
+-- `li a0, 2` macro = `lui a0,0 ; addiw a0,a0,2` (small const: hi20=0). The
+-- `addiw` word is `0x00200513`.
+#guard encLi32 "a0" 2 == w (encLui "a0" 0) ++ w (encAddiw "a0" "a0" 2)
 
 /-! ### 2e. The exact `li64` p_256-limb expansions, pinned to objdump
 
@@ -285,26 +283,24 @@ expansion of the three `p_256` constant limbs (objdump words from §2's referenc
 assembly): `0xfff..ff = addi rd,zero,-1`; the split-load `addiw;slli;addi` for the
 two mixed limbs. -/
 
-/-- `slli a1, a1, 0x20` → `0x02059593`. -/
-example : encSlli "a1" "a1" 32 = 0x02059593 := by native_decide
-/-- `addiw a1, zero, 1` → `0x0010059b`. -/
-example : encAddiw "a1" "zero" 1 = 0x0010059b := by native_decide
-/-- `addiw a2, zero, -1` → `0xfff0061b`. -/
-example : encAddiw "a2" "zero" (-1) = 0xfff0061b := by native_decide
-/-- `li rd, 0xffffffffffffffff` = `addi rd, zero, -1`. For `a0`: `0xfff00513`. -/
-example : encLi64 "a0" 0xffffffffffffffff = w (0xfff00513 : BitVec 32) := by native_decide
-/-- `li a1, 0x00000000ffffffff` = `addiw a1,zero,1 ; slli a1,a1,32 ; addi a1,a1,-1`
-    → words `0x0010059b 0x02059593 0xfff58593`. -/
-example : encLi64 "a1" 0x00000000ffffffff
-    = w (0x0010059b : BitVec 32) ++ w (0x02059593 : BitVec 32) ++ w (0xfff58593 : BitVec 32) := by
-  native_decide
-/-- `li a2, 0xffffffff00000001` = `addiw a2,zero,-1 ; slli a2,a2,32 ; addi a2,a2,1`
-    → words `0xfff0061b 0x02061613 0x00160613`. -/
-example : encLi64 "a2" 0xffffffff00000001
-    = w (0xfff0061b : BitVec 32) ++ w (0x02061613 : BitVec 32) ++ w (0x00160613 : BitVec 32) := by
-  native_decide
-/-- `li a3, 1` = `addi a3, zero, 1` → `0x00100693`. -/
-example : encLi64 "a3" 1 = w (0x00100693 : BitVec 32) := by native_decide
+-- `slli a1, a1, 0x20` → `0x02059593`.
+#guard encSlli "a1" "a1" 32 == 0x02059593
+-- `addiw a1, zero, 1` → `0x0010059b`.
+#guard encAddiw "a1" "zero" 1 == 0x0010059b
+-- `addiw a2, zero, -1` → `0xfff0061b`.
+#guard encAddiw "a2" "zero" (-1) == 0xfff0061b
+-- `li rd, 0xffffffffffffffff` = `addi rd, zero, -1`. For `a0`: `0xfff00513`.
+#guard encLi64 "a0" 0xffffffffffffffff == w (0xfff00513 : BitVec 32)
+-- `li a1, 0x00000000ffffffff` = `addiw a1,zero,1 ; slli a1,a1,32 ; addi a1,a1,-1`
+-- → words `0x0010059b 0x02059593 0xfff58593`.
+#guard encLi64 "a1" 0x00000000ffffffff
+    == w (0x0010059b : BitVec 32) ++ w (0x02059593 : BitVec 32) ++ w (0xfff58593 : BitVec 32)
+-- `li a2, 0xffffffff00000001` = `addiw a2,zero,-1 ; slli a2,a2,32 ; addi a2,a2,1`
+-- → words `0xfff0061b 0x02061613 0x00160613`.
+#guard encLi64 "a2" 0xffffffff00000001
+    == w (0xfff0061b : BitVec 32) ++ w (0x02061613 : BitVec 32) ++ w (0x00160613 : BitVec 32)
+-- `li a3, 1` = `addi a3, zero, 1` → `0x00100693`.
+#guard encLi64 "a3" 1 == w (0x00100693 : BitVec 32)
 
 /-! ## 3. The RV64 ELF64 header (`EM_RISCV = 243`, `e_flags = 0x4` RV64D ABI) -/
 

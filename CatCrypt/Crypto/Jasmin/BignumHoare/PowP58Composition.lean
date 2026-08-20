@@ -37,7 +37,8 @@ swapped in for the tail.
 ## Trust set delta
 
 This file adds **0 new axioms**.  All work is plumbing above
-`ChainStepAxioms.lean`'s now-zero-axiom contracts.
+`ChainStepAxioms.lean`'s zero-axiom contracts, parametric over the
+`MontmulCallFacts registry` hypothesis.
 -/
 
 set_option autoImplicit false
@@ -82,8 +83,7 @@ def post_block13b (op_addr : UInt64) (z2_250_0_val ap_val : Nat) :
     `Option.some.inj`. -/
 theorem block13b_correctness_triple
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (op_addr ap_addr z2_250_0_addr : UInt64)
     (z2_250_0_val ap_val : Nat)
     (h_z2_250_0_addr_eq : BitVec.ofNat 64 z2_250_0_addr.toNat =
@@ -107,7 +107,7 @@ theorem block13b_correctness_triple
   | zero => simp [bignumExecFuel] at h_exec
   | succ n =>
     obtain ⟨s_ax, h_ax_exec, h_ax_post, _h_ax_frame⟩ :=
-      block13b_correctness_via_axiom registry h_registry s n
+      block13b_correctness_via_axiom registry hAx s n
         op_addr ap_addr z2_250_0_addr h_op h_ap
         z2_250_0_val ap_val h_z2_250_0_mem h_ap_mem h_op_alloc
         h_z2_250_0_addr_eq (mkScratch s) startIdx rsm_body h_shape
@@ -134,8 +134,7 @@ open CatCrypt.Crypto.Jasmin.BignumHoare.InvP25519Composition
     the p58-specific tail (`op := z2_250_0^4 · ap`). -/
 theorem pow_p58_chain_triple
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (op_addr ap_addr : UInt64)
     (a_val : Nat)
     (z2_addr z9_addr z11_addr z2_5_0_addr z2_10_0_addr
@@ -277,26 +276,26 @@ theorem pow_p58_chain_triple
       (pre_block2 op_addr ap_addr a_val z2_addr) b2
       (pre_block3 op_addr ap_addr z2_addr z2_val a_val z9_addr) :=
     BignumTripleFuel.consequence (fun _ h => h) bridge_2_3
-      (block2_correctness_triple registry h_registry op_addr ap_addr a_val
+      (block2_correctness_triple registry hAx op_addr ap_addr a_val
         z2_addr h_z2_addr_eq b2 h_b2_shape)
   have h3 : BignumTripleFuel registry
       (pre_block3 op_addr ap_addr z2_addr z2_val a_val z9_addr) b3
       (pre_block4 op_addr ap_addr z9_addr z2_addr z9_val z2_val z11_addr) :=
     BignumTripleFuel.consequence (fun _ h => h) bridge_3_4
-      (block3_correctness_triple registry h_registry op_addr ap_addr z2_addr
+      (block3_correctness_triple registry hAx op_addr ap_addr z2_addr
         z2_val a_val z9_addr h_z9_addr_eq h_z2_addr_eq mkScratch3 b3 h_b3_shape)
   have h4 : BignumTripleFuel registry
       (pre_block4 op_addr ap_addr z9_addr z2_addr z9_val z2_val z11_addr) b4
       (pre_block5 op_addr ap_addr z11_addr z9_addr z11_val z9_val z2_5_0_addr) :=
     BignumTripleFuel.consequence (fun _ h => h) bridge_4_5
-      (block4_correctness_triple registry h_registry op_addr ap_addr z9_addr
+      (block4_correctness_triple registry hAx op_addr ap_addr z9_addr
         z2_addr z9_val z2_val z11_addr
         h_z11_addr_eq h_z9_addr_eq h_z2_addr_eq b4_idx b4 h_b4_shape)
   have h5 : BignumTripleFuel registry
       (pre_block5 op_addr ap_addr z11_addr z9_addr z11_val z9_val z2_5_0_addr) b5
       (pre_block6 op_addr ap_addr z2_5_0_addr z2_5_0_val z2_10_0_addr) :=
     BignumTripleFuel.consequence (fun _ h => h) bridge_5_6
-      (block5_correctness_triple registry h_registry op_addr ap_addr z11_addr
+      (block5_correctness_triple registry hAx op_addr ap_addr z11_addr
         z9_addr z11_val z9_val z2_5_0_addr h_z2_5_0_addr_eq
         h_z11_addr_eq h_z9_addr_eq mkScratch5
         b5_startIdx b5 h_b5_shape)
@@ -304,14 +303,14 @@ theorem pow_p58_chain_triple
       (pre_block6 op_addr ap_addr z2_5_0_addr z2_5_0_val z2_10_0_addr) b6
       (pre_block7 op_addr ap_addr z2_10_0_addr z2_10_0_val z2_20_0_addr) :=
     BignumTripleFuel.consequence (fun _ h => h) bridge_6_7
-      (block6_correctness_triple registry h_registry op_addr ap_addr
+      (block6_correctness_triple registry hAx op_addr ap_addr
         z2_5_0_addr z2_5_0_val z2_10_0_addr h_z2_10_0_addr_eq h_z2_5_0_addr_eq
         mkScratch6 b6_startIdx b6 h_b6_shape)
   have h7 : BignumTripleFuel registry
       (pre_block7 op_addr ap_addr z2_10_0_addr z2_10_0_val z2_20_0_addr) b7
       (pre_block8 op_addr ap_addr z2_20_0_addr z2_20_0_val z2_40_0_addr) :=
     BignumTripleFuel.consequence (fun _ h => h) bridge_7_8
-      (block7_correctness_triple registry h_registry op_addr ap_addr
+      (block7_correctness_triple registry hAx op_addr ap_addr
         z2_10_0_addr z2_10_0_val z2_20_0_addr h_z2_20_0_addr_eq h_z2_10_0_addr_eq
         mkScratch7 b7_startIdx b7 h_b7_shape)
   have h8 : BignumTripleFuel registry
@@ -319,7 +318,7 @@ theorem pow_p58_chain_triple
       (pre_block9 op_addr ap_addr z2_40_0_addr z2_10_0_addr
         z2_40_0_val z2_10_0_val z2_50_0_addr) :=
     BignumTripleFuel.consequence (fun _ h => h) bridge_8_9
-      (block8_correctness_triple registry h_registry op_addr ap_addr
+      (block8_correctness_triple registry hAx op_addr ap_addr
         z2_20_0_addr z2_20_0_val z2_40_0_addr h_z2_40_0_addr_eq h_z2_20_0_addr_eq
         mkScratch8 b8_startIdx b8 h_b8_shape)
   have h9 : BignumTripleFuel registry
@@ -327,7 +326,7 @@ theorem pow_p58_chain_triple
         z2_40_0_val z2_10_0_val z2_50_0_addr) b9
       (pre_block10 op_addr ap_addr z2_50_0_addr z2_50_0_val z2_100_0_addr) :=
     BignumTripleFuel.consequence (fun _ h => h) bridge_9_10
-      (block9_correctness_triple registry h_registry op_addr ap_addr
+      (block9_correctness_triple registry hAx op_addr ap_addr
         z2_40_0_addr z2_10_0_addr z2_40_0_val z2_10_0_val z2_50_0_addr
         h_z2_50_0_addr_eq h_z2_40_0_addr_eq h_z2_10_0_addr_eq
         mkScratch9 b9_startIdx b9 h_b9_shape)
@@ -335,7 +334,7 @@ theorem pow_p58_chain_triple
       (pre_block10 op_addr ap_addr z2_50_0_addr z2_50_0_val z2_100_0_addr) b10
       (pre_block11 op_addr ap_addr z2_100_0_addr z2_100_0_val z2_200_0_addr) :=
     BignumTripleFuel.consequence (fun _ h => h) bridge_10_11
-      (block10_correctness_triple registry h_registry op_addr ap_addr
+      (block10_correctness_triple registry hAx op_addr ap_addr
         z2_50_0_addr z2_50_0_val z2_100_0_addr h_z2_100_0_addr_eq h_z2_50_0_addr_eq
         mkScratch10 b10_startIdx b10 h_b10_shape)
   have h11 : BignumTripleFuel registry
@@ -343,7 +342,7 @@ theorem pow_p58_chain_triple
       (pre_block12 op_addr ap_addr z2_200_0_addr z2_50_0_addr
         z2_200_0_val z2_50_0_val z2_250_0_addr) :=
     BignumTripleFuel.consequence (fun _ h => h) bridge_11_12
-      (block11_correctness_triple registry h_registry op_addr ap_addr
+      (block11_correctness_triple registry hAx op_addr ap_addr
         z2_100_0_addr z2_100_0_val z2_200_0_addr h_z2_200_0_addr_eq
         h_z2_100_0_addr_eq mkScratch11 b11_startIdx b11 h_b11_shape)
   have h12 : BignumTripleFuel registry
@@ -351,7 +350,7 @@ theorem pow_p58_chain_triple
         z2_200_0_val z2_50_0_val z2_250_0_addr) b12
       (pre_block13b op_addr ap_addr z2_250_0_addr z2_250_0_val a_val) :=
     BignumTripleFuel.consequence (fun _ h => h) bridge_12_13b
-      (block12_correctness_triple registry h_registry op_addr ap_addr
+      (block12_correctness_triple registry hAx op_addr ap_addr
         z2_200_0_addr z2_50_0_addr z2_200_0_val z2_50_0_val z2_250_0_addr
         h_z2_250_0_addr_eq h_z2_200_0_addr_eq h_z2_50_0_addr_eq
         mkScratch12 b12_startIdx b12 h_b12_shape)
@@ -359,7 +358,7 @@ theorem pow_p58_chain_triple
   have h13b : BignumTripleFuel registry
       (pre_block13b op_addr ap_addr z2_250_0_addr z2_250_0_val a_val) b13b
       (post_block13b op_addr z2_250_0_val a_val) :=
-    block13b_correctness_triple registry h_registry op_addr ap_addr
+    block13b_correctness_triple registry hAx op_addr ap_addr
       z2_250_0_addr z2_250_0_val a_val
       h_z2_250_0_addr_eq mkScratch13b b13b_startIdx b13b h_b13b_shape
   -- 12-fold sequential composition (left-associative to match ++).
@@ -402,8 +401,7 @@ def post_pow_p58 (op_addr : UInt64) (a_val : Nat) : BignumState → Prop :=
     `op_addr` such that `r ≡ a^((p − 5)/8) (mod p_25519)`. -/
 theorem bignum_pow_p25519_p58_correct
     (registry : BignumRegistry)
-    (h_registry :
-      ∃ fd : FunDecl, registry "bignum_montmul_p25519" = some fd)
+    (hAx : MontmulCallFacts registry)
     (op_addr ap_addr : UInt64)
     (a_val : Nat)
     (z2_addr z9_addr z11_addr z2_5_0_addr z2_10_0_addr
@@ -552,7 +550,7 @@ theorem bignum_pow_p25519_p58_correct
       (b2 ++ b3 ++ b4 ++ b5 ++ b6 ++ b7 ++ b8 ++ b9 ++ b10 ++
        b11 ++ b12 ++ b13b)
       (post_pow_p58 op_addr a_val) := by
-  have h_chain := pow_p58_chain_triple registry h_registry
+  have h_chain := pow_p58_chain_triple registry hAx
     op_addr ap_addr a_val
     z2_addr z9_addr z11_addr z2_5_0_addr z2_10_0_addr
     z2_20_0_addr z2_40_0_addr z2_50_0_addr z2_100_0_addr

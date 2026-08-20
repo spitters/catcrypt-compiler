@@ -167,12 +167,6 @@ partial def ppLowCT (paramNames : List String) (resultNames : List String)
       -- but the RHS is the rendered `SExpr` rather than a literal.
       rustIndent ind (rustLocName loc ++ ".limbs[" ++ toString idx ++ "] = " ++
                        e.ppRust ++ ";")
-  | .RAsmOp name dests args =>
-      -- Phase F: emit a placeholder Rust comment naming the asm op.
-      let dStr := String.intercalate ", " (dests.map (rustLocRefMut resultNames))
-      let aStr := String.intercalate ", " (args.map (rustLocRef paramNames))
-      rustIndent ind ("// asm " ++ name ++ "(" ++ dStr ++
-        (if args.isEmpty then "" else " <- " ++ aStr) ++ ");")
   | .RCallN f dests args =>
       -- Phase G: multi-output call.  Pass all destinations as &mut, then args.
       let dStr := String.intercalate ", " (dests.map (rustLocRefMut resultNames))
@@ -214,10 +208,6 @@ partial def ppLowCT (paramNames : List String) (resultNames : List String)
       let aStr := String.intercalate ", " (args.map (rustLocRef paramNames))
       rustIndent ind (f ++ "(" ++ dStr ++
         (if args.isEmpty then "" else ", " ++ aStr) ++ ");")
-  | .RTupleStore dst idx src =>
-      -- Phase I: tuple component store; emit as `dst.idx = src.clone();`.
-      rustIndent ind (rustLocName dst ++ "." ++ toString idx ++ " = " ++
-        rustLocName src ++ ".clone();")
   | .RTupleLoad dst src idx =>
       -- Phase I: tuple component load; emit as `dst = src.idx.clone();`.
       rustIndent ind (rustLocName dst ++ " = " ++ rustLocName src ++ "." ++
@@ -259,23 +249,6 @@ partial def ppLowCT (paramNames : List String) (resultNames : List String)
   | .RScalarSetExpr x e =>
       -- Phase Ext: assign SExpr value to scalar slot.
       rustIndent ind (x ++ " = " ++ e.ppRust ++ ";")
-  | .RBytesSlice dst src start len =>
-      -- Phase Ext2: compile-time byte-slice copy.  Emits
-      -- `dst.copy_from_slice(&src[start..start+len])`.  When `src` is
-      -- a function-parameter (already `&[u8; N]`), Rust accepts the
-      -- direct slice without an additional `&` (auto-deref via the
-      -- `Index<Range<usize>>` impl on `[u8]`); when it's an owned
-      -- local, we need an explicit `&`.
-      let srcExpr :=
-        if paramNames.contains src.locVar
-          then rustLocName src ++ "[" ++ toString start ++ ".." ++
-                 toString (start + len) ++ "]"
-          else "&" ++ rustLocName src ++ "[" ++ toString start ++ ".." ++
-                 toString (start + len) ++ "]"
-      let dstExpr :=
-        if resultNames.contains dst.locVar then rustLocName dst
-        else rustLocName dst
-      rustIndent ind (dstExpr ++ ".copy_from_slice(&" ++ srcExpr ++ ");")
 
 /-- Emit a full Rust function from a `LowCT`, given name, inputs (as
     `(name, type)` pairs), outputs (same), and the body command. -/

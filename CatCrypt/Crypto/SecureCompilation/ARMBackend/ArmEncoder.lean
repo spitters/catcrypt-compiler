@@ -38,7 +38,7 @@ auditable field by field against the Arm Architecture Reference Manual (the C4.1
   official sail-arm `decode64` field splits (transcribed from
   `bench/reference_install/sail-arm/arm-v8.5-a/model/aarch_decode.sail`), so the
   encoder's bytes are *proved* to decode back to the same instruction under the
-  authoritative Arm decode discipline, not merely matched to `as`.
+  authoritative Arm decode discipline, not just matched to `as`.
 
 The bench differential pin (`bench/arm_compare`) cross-checks the emitted words
 against `aarch64-linux-gnu-as` output for the same quarter-round (the qemu KAT).
@@ -253,25 +253,25 @@ decode-round-trip-proved. -/
 def qrAlloc : GpAlloc :=
   [("a","w0"), ("b","w1"), ("c","w2"), ("d","w3")]
 
-/-- `add w0, w0, w1` — gas word `0x0b010000`, little-endian `00 00 01 0b`. -/
-example : encodeAInst qrAlloc (.add "a" "a" "b")
-    = [0x00, 0x00, 0x01, 0x0b].map (BitVec.ofNat 8) := by native_decide
+-- `add w0, w0, w1` — gas word `0x0b010000`, little-endian `00 00 01 0b`.
+#guard encodeAInst qrAlloc (.add "a" "a" "b")
+    == [0x00, 0x00, 0x01, 0x0b].map (BitVec.ofNat 8)
 
-/-- `eor w3, w3, w0` — gas word `0x4a000063`, little-endian `63 00 00 4a`. -/
-example : encodeAInst qrAlloc (.eor "d" "d" "a")
-    = [0x63, 0x00, 0x00, 0x4a].map (BitVec.ofNat 8) := by native_decide
+-- `eor w3, w3, w0` — gas word `0x4a000063`, little-endian `63 00 00 4a`.
+#guard encodeAInst qrAlloc (.eor "d" "d" "a")
+    == [0x63, 0x00, 0x00, 0x4a].map (BitVec.ofNat 8)
 
-/-- `ror w3, w3, #16` — gas word `0x13834063`, little-endian `63 40 83 13`. -/
-example : encodeAInst qrAlloc (.ror "d" "d" 16)
-    = [0x63, 0x40, 0x83, 0x13].map (BitVec.ofNat 8) := by native_decide
+-- `ror w3, w3, #16` — gas word `0x13834063`, little-endian `63 40 83 13`.
+#guard encodeAInst qrAlloc (.ror "d" "d" 16)
+    == [0x63, 0x40, 0x83, 0x13].map (BitVec.ofNat 8)
 
-/-- `ror w1, w1, #20` — gas word `0x13815021`, little-endian `21 50 81 13`. -/
-example : encodeAInst qrAlloc (.ror "b" "b" 20)
-    = [0x21, 0x50, 0x81, 0x13].map (BitVec.ofNat 8) := by native_decide
+-- `ror w1, w1, #20` — gas word `0x13815021`, little-endian `21 50 81 13`.
+#guard encodeAInst qrAlloc (.ror "b" "b" 20)
+    == [0x21, 0x50, 0x81, 0x13].map (BitVec.ofNat 8)
 
-/-- `add w2, w2, w3` — gas word `0x0b030042`, little-endian `42 00 03 0b`. -/
-example : encodeAInst qrAlloc (.add "c" "c" "d")
-    = [0x42, 0x00, 0x03, 0x0b].map (BitVec.ofNat 8) := by native_decide
+-- `add w2, w2, w3` — gas word `0x0b030042`, little-endian `42 00 03 0b`.
+#guard encodeAInst qrAlloc (.add "c" "c" "d")
+    == [0x42, 0x00, 0x03, 0x0b].map (BitVec.ofNat 8)
 
 /-! ### 5b. Branch-encoder well-formedness + gas differential pins (#551)
 
@@ -286,25 +286,25 @@ theorem encodeABranch_length (alloc : GpAlloc) (resolve : ALabel → Nat) (i : A
     (encodeABranch alloc resolve i).length = (match i with | .label _ => 0 | _ => 4) := by
   cases i <;> simp [encodeABranch, encB, encBcond, encCmpBranch]
 
-/-- `cbnz w9, .L` with back-edge offset `−1` (`imm19 = 2^19−1`) — gas word
-    `0x35ffffe9`, little-endian `e9 ff ff 35`. -/
-example : encCmpBranch 1 9 (0x80000 - 1)
-    = [0xe9, 0xff, 0xff, 0x35].map (BitVec.ofNat 8) := by native_decide
+-- `cbnz w9, .L` with back-edge offset `−1` (`imm19 = 2^19−1`) — gas word
+-- `0x35ffffe9`, little-endian `e9 ff ff 35`.
+#guard encCmpBranch 1 9 (0x80000 - 1)
+    == [0xe9, 0xff, 0xff, 0x35].map (BitVec.ofNat 8)
 
-/-- `b.ne .L` with offset `−2` (`imm19 = 2^19−2`) — gas word `0x54ffffc1`,
-    little-endian `c1 ff ff 54`. -/
-example : encBcond 1 (0x80000 - 2)
-    = [0xc1, 0xff, 0xff, 0x54].map (BitVec.ofNat 8) := by native_decide
+-- `b.ne .L` with offset `−2` (`imm19 = 2^19−2`) — gas word `0x54ffffc1`,
+-- little-endian `c1 ff ff 54`.
+#guard encBcond 1 (0x80000 - 2)
+    == [0xc1, 0xff, 0xff, 0x54].map (BitVec.ofNat 8)
 
-/-- `b .L` with offset `−3` (`imm26 = 2^26−3`) — gas word `0x17fffffd`,
-    little-endian `fd ff ff 17`. -/
-example : encB (0x4000000 - 3)
-    = [0xfd, 0xff, 0xff, 0x17].map (BitVec.ofNat 8) := by native_decide
+-- `b .L` with offset `−3` (`imm26 = 2^26−3`) — gas word `0x17fffffd`,
+-- little-endian `fd ff ff 17`.
+#guard encB (0x4000000 - 3)
+    == [0xfd, 0xff, 0xff, 0x17].map (BitVec.ofNat 8)
 
-/-- `cbz w9, .L` with offset `−4` (`imm19 = 2^19−4`) — gas word `0x34ffff89`,
-    little-endian `89 ff ff 34`. -/
-example : encCmpBranch 0 9 (0x80000 - 4)
-    = [0x89, 0xff, 0xff, 0x34].map (BitVec.ofNat 8) := by native_decide
+-- `cbz w9, .L` with offset `−4` (`imm19 = 2^19−4`) — gas word `0x34ffff89`,
+-- little-endian `89 ff ff 34`.
+#guard encCmpBranch 0 9 (0x80000 - 4)
+    == [0x89, 0xff, 0xff, 0x34].map (BitVec.ofNat 8)
 
 /-! ## 6. The 64-bit bignum/field instruction encoder (#547)
 
@@ -448,41 +448,41 @@ def addp256Alloc : GpAlloc :=
   , ("n0","x8"),("n1","x9"),("n2","x10"),("n3","x11")
   , ("c","x3"),("p0","x12"),("p1","x13"),("p3","x14") ]
 
-/-- `adds x4, x4, x8` — gas word `0xab080084`, little-endian `84 00 08 ab`. -/
-example : encodeBInst addp256Alloc (.adds "d0" "d0" "n0")
-    = [0x84, 0x00, 0x08, 0xab].map (BitVec.ofNat 8) := by native_decide
+-- `adds x4, x4, x8` — gas word `0xab080084`, little-endian `84 00 08 ab`.
+#guard encodeBInst addp256Alloc (.adds "d0" "d0" "n0")
+    == [0x84, 0x00, 0x08, 0xab].map (BitVec.ofNat 8)
 
-/-- `adcs x5, x5, x9` — gas word `0xba0900a5`, little-endian `a5 00 09 ba`. -/
-example : encodeBInst addp256Alloc (.adcs "d1" "d1" "n1")
-    = [0xa5, 0x00, 0x09, 0xba].map (BitVec.ofNat 8) := by native_decide
+-- `adcs x5, x5, x9` — gas word `0xba0900a5`, little-endian `a5 00 09 ba`.
+#guard encodeBInst addp256Alloc (.adcs "d1" "d1" "n1")
+    == [0xa5, 0x00, 0x09, 0xba].map (BitVec.ofNat 8)
 
-/-- `adc x3, xzr, xzr` — gas word `0x9a1f03e3`, little-endian `e3 03 1f 9a`. -/
-example : encodeBInst addp256Alloc (.adc "c" "xzr" "xzr")
-    = [0xe3, 0x03, 0x1f, 0x9a].map (BitVec.ofNat 8) := by native_decide
+-- `adc x3, xzr, xzr` — gas word `0x9a1f03e3`, little-endian `e3 03 1f 9a`.
+#guard encodeBInst addp256Alloc (.adc "c" "xzr" "xzr")
+    == [0xe3, 0x03, 0x1f, 0x9a].map (BitVec.ofNat 8)
 
-/-- `subs x8, x4, x12` — gas word `0xeb0c0088`, little-endian `88 00 0c eb`. -/
-example : encodeBInst addp256Alloc (.subs "n0" "d0" "p0")
-    = [0x88, 0x00, 0x0c, 0xeb].map (BitVec.ofNat 8) := by native_decide
+-- `subs x8, x4, x12` — gas word `0xeb0c0088`, little-endian `88 00 0c eb`.
+#guard encodeBInst addp256Alloc (.subs "n0" "d0" "p0")
+    == [0x88, 0x00, 0x0c, 0xeb].map (BitVec.ofNat 8)
 
-/-- `sbcs x9, x5, x13` — gas word `0xfa0d00a9`, little-endian `a9 00 0d fa`. -/
-example : encodeBInst addp256Alloc (.sbcs "n1" "d1" "p1")
-    = [0xa9, 0x00, 0x0d, 0xfa].map (BitVec.ofNat 8) := by native_decide
+-- `sbcs x9, x5, x13` — gas word `0xfa0d00a9`, little-endian `a9 00 0d fa`.
+#guard encodeBInst addp256Alloc (.sbcs "n1" "d1" "p1")
+    == [0xa9, 0x00, 0x0d, 0xfa].map (BitVec.ofNat 8)
 
-/-- `sbcs x10, x6, xzr` — gas word `0xfa1f00ca`, little-endian `ca 00 1f fa`. -/
-example : encodeBInst addp256Alloc (.sbcs "n2" "d2" "xzr")
-    = [0xca, 0x00, 0x1f, 0xfa].map (BitVec.ofNat 8) := by native_decide
+-- `sbcs x10, x6, xzr` — gas word `0xfa1f00ca`, little-endian `ca 00 1f fa`.
+#guard encodeBInst addp256Alloc (.sbcs "n2" "d2" "xzr")
+    == [0xca, 0x00, 0x1f, 0xfa].map (BitVec.ofNat 8)
 
-/-- `csel x4, x4, x8, cc` — gas word `0x9a883084`, little-endian `84 30 88 9a`. -/
-example : encodeBInst addp256Alloc (.csel "d0" "d0" "n0" .cc)
-    = [0x84, 0x30, 0x88, 0x9a].map (BitVec.ofNat 8) := by native_decide
+-- `csel x4, x4, x8, cc` — gas word `0x9a883084`, little-endian `84 30 88 9a`.
+#guard encodeBInst addp256Alloc (.csel "d0" "d0" "n0" .cc)
+    == [0x84, 0x30, 0x88, 0x9a].map (BitVec.ofNat 8)
 
-/-- `movz x12, #0xffff` — gas word `0xd29fffec`, little-endian `ec ff 9f d2`. -/
-example : encodeBInst addp256Alloc (.movz "p0" 0xffff)
-    = [0xec, 0xff, 0x9f, 0xd2].map (BitVec.ofNat 8) := by native_decide
+-- `movz x12, #0xffff` — gas word `0xd29fffec`, little-endian `ec ff 9f d2`.
+#guard encodeBInst addp256Alloc (.movz "p0" 0xffff)
+    == [0xec, 0xff, 0x9f, 0xd2].map (BitVec.ofNat 8)
 
-/-- `movk x12, #0xffff, lsl #16` — gas word `0xf2bfffec`, little-endian `ec ff bf f2`. -/
-example : encodeBInst addp256Alloc (.movk "p0" 0xffff 1)
-    = [0xec, 0xff, 0xbf, 0xf2].map (BitVec.ofNat 8) := by native_decide
+-- `movk x12, #0xffff, lsl #16` — gas word `0xf2bfffec`, little-endian `ec ff bf f2`.
+#guard encodeBInst addp256Alloc (.movk "p0" 0xffff 1)
+    == [0xec, 0xff, 0xbf, 0xf2].map (BitVec.ofNat 8)
 
 /-! ### 64-bit logical-op pins (the Plonky3 AArch64 Merkle-mixer ops)
 
@@ -490,29 +490,29 @@ The owned AArch64 Plonky3 scalar Poseidon2 path (`plonky3_merkle_compress_rc` /
 `plonky3_merkle_hash_leaf_rc`, `bench/arm_compare/plonky3_kernels_a64_emit.lean`)
 uses the 64-bit logical ops; these pin them to `aarch64-linux-gnu-as`. -/
 
-/-- `eor x16, x16, x17` — gas word `0xca110210`, little-endian `10 02 11 ca`. -/
-example : encodeBInst [("d","x16"),("a","x16"),("b","x17")] (.eor "d" "a" "b")
-    = [0x10, 0x02, 0x11, 0xca].map (BitVec.ofNat 8) := by native_decide
+-- `eor x16, x16, x17` — gas word `0xca110210`, little-endian `10 02 11 ca`.
+#guard encodeBInst [("d","x16"),("a","x16"),("b","x17")] (.eor "d" "a" "b")
+    == [0x10, 0x02, 0x11, 0xca].map (BitVec.ofNat 8)
 
-/-- `and x0, x1, x2` — gas word `0x8a020020`, little-endian `20 00 02 8a`. -/
-example : encodeBInst [("d","x0"),("a","x1"),("b","x2")] (.and "d" "a" "b")
-    = [0x20, 0x00, 0x02, 0x8a].map (BitVec.ofNat 8) := by native_decide
+-- `and x0, x1, x2` — gas word `0x8a020020`, little-endian `20 00 02 8a`.
+#guard encodeBInst [("d","x0"),("a","x1"),("b","x2")] (.and "d" "a" "b")
+    == [0x20, 0x00, 0x02, 0x8a].map (BitVec.ofNat 8)
 
-/-- `orr x3, x4, x5` — gas word `0xaa050083`, little-endian `83 00 05 aa`. -/
-example : encodeBInst [("d","x3"),("a","x4"),("b","x5")] (.orr "d" "a" "b")
-    = [0x83, 0x00, 0x05, 0xaa].map (BitVec.ofNat 8) := by native_decide
+-- `orr x3, x4, x5` — gas word `0xaa050083`, little-endian `83 00 05 aa`.
+#guard encodeBInst [("d","x3"),("a","x4"),("b","x5")] (.orr "d" "a" "b")
+    == [0x83, 0x00, 0x05, 0xaa].map (BitVec.ofNat 8)
 
-/-- `mul x0, x1, x2` — gas word `0x9b027c20`, little-endian `20 7c 02 9b`. -/
-example : encodeBInst [("lo","x0"),("a","x1"),("b","x2")] (.mul "lo" "a" "b")
-    = [0x20, 0x7c, 0x02, 0x9b].map (BitVec.ofNat 8) := by native_decide
+-- `mul x0, x1, x2` — gas word `0x9b027c20`, little-endian `20 7c 02 9b`.
+#guard encodeBInst [("lo","x0"),("a","x1"),("b","x2")] (.mul "lo" "a" "b")
+    == [0x20, 0x7c, 0x02, 0x9b].map (BitVec.ofNat 8)
 
-/-- `umulh x0, x1, x2` — gas word `0x9bc27c20`, little-endian `20 7c c2 9b`. -/
-example : encodeBInst [("hi","x0"),("a","x1"),("b","x2")] (.umulh "hi" "a" "b")
-    = [0x20, 0x7c, 0xc2, 0x9b].map (BitVec.ofNat 8) := by native_decide
+-- `umulh x0, x1, x2` — gas word `0x9bc27c20`, little-endian `20 7c c2 9b`.
+#guard encodeBInst [("hi","x0"),("a","x1"),("b","x2")] (.umulh "hi" "a" "b")
+    == [0x20, 0x7c, 0xc2, 0x9b].map (BitVec.ofNat 8)
 
-/-- `mov x4, x8` (= `ORR x4, xzr, x8`) — gas word `0xaa0803e4`, little-endian
-    `e4 03 08 aa`. -/
-example : encodeBInst [("d","x4"),("s","x8")] (.mov "d" "s")
-    = [0xe4, 0x03, 0x08, 0xaa].map (BitVec.ofNat 8) := by native_decide
+-- `mov x4, x8` (= `ORR x4, xzr, x8`) — gas word `0xaa0803e4`, little-endian
+-- `e4 03 08 aa`.
+#guard encodeBInst [("d","x4"),("s","x8")] (.mov "d" "s")
+    == [0xe4, 0x03, 0x08, 0xaa].map (BitVec.ofNat 8)
 
 end CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmEncoder

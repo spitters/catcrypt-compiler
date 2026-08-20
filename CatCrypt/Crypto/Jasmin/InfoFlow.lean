@@ -76,9 +76,9 @@ def _root_.CatCrypt.Crypto.Jasmin.LowCT.LevelTable.markSecret
     Recurses into all body subterms (`RSeq`, `RLetZero`, `RLetU64Zero`,
     both arms of `RIfNz`, the body of `RFor`, `RBlock`, `RFnDef`).
     Leaf constructors (`RSkip`, `RScalarSet`, `RCall`, `RCallSwap`,
-    `RCloneCall`, `RLimbStore`, `RAsmOp`, `RCallN`, `RSelect`,
-    `RAssert`, `RFnCall`, `RTupleStore`, `RTupleLoad`, `RArrStore`,
-    `RArrLoad`, `RScalarSetExpr`, `RBytesSlice`) return `true`. -/
+    `RCloneCall`, `RLimbStore`, `RCallN`, `RSelect`, `RAssert`,
+    `RFnCall`, `RTupleLoad`, `RArrStore`, `RArrLoad`,
+    `RScalarSetExpr`) return `true`. -/
 def infoFlowOk (lt : LevelTable) : LowCT → Bool
   | .RSkip                       => true
   | .RSeq c1 c2                  => infoFlowOk lt c1 && infoFlowOk lt c2
@@ -99,14 +99,12 @@ def infoFlowOk (lt : LevelTable) : LowCT → Bool
   | .RFor _ _ body               => infoFlowOk lt body
   | .RLimbStore _ _ _            => true
   | .RLimbStoreExpr _ _ _        => true
-  | .RAsmOp _ _ _                => true
   | .RCallN _ _ _                => true
   | .RSelect _ _ _ _             => true
   | .RAssert _                   => true
   | .RBlock body                 => infoFlowOk lt body
   | .RFnDef _ _ _ body cont      => infoFlowOk lt body && infoFlowOk lt cont
   | .RFnCall _ _ _               => true
-  | .RTupleStore _ _ _           => true
   | .RTupleLoad _ _ _            => true
   -- Phase Ext (2026-05-12) / Ext2 (2026-05-13): no control-flow.
   | .RArrStore _ _ _             => true
@@ -116,7 +114,6 @@ def infoFlowOk (lt : LevelTable) : LowCT → Bool
   | .RArrStoreLit _ _ _          => true
   | .RArrLoadLit _ _ _           => true
   | .RScalarSetExpr _ _          => true
-  | .RBytesSlice _ _ _ _         => true
   | .RCallDstThreaded _ _ _      => true
   | .RForRuntime _ _ body        => infoFlowOk lt body
 
@@ -159,7 +156,7 @@ example :
   rfl
 
 /-- The same `RIfNz` with the condition variable left at `.Public`
-    passes.  Smoke test 3: classification controls the verdict. -/
+    passes.  Smoke test 3: the classification decides the result. -/
 example :
     let lt : LevelTable := LevelTable.allPublic
     infoFlowOk lt (.RIfNz "public_cond" .RSkip .RSkip) = true := by

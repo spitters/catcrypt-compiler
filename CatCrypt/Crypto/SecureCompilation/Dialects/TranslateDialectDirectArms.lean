@@ -23,7 +23,7 @@ opaque `extCall` leaf bindings (the crypto leaf calls) or a `memrefSet` chain:
 * `RCall`            — one `extCall fname` rebinding the destination;
 * `RSelect`          — one `extCall "select"` (CT-safe cmov);
 * `RCallDstThreaded` — one `extCall fname` with `dst :: args`;
-* `RTupleStore` / `RTupleLoad` — one `extCall "tupleStore:i"` / `"tupleLoad:i"`;
+* `RTupleLoad`       — one `extCall "tupleLoad:i"`;
 * `RArrLoadLit` / `RArrStoreLit` — one `extCall "arrLoad:i"` / `"arrStore:i"`;
 * `RArrLoad` / `RArrStore` — a `memrefGetDyn` / `memrefSetDyn` `varBind` when the
   operands match the dynamic-index memref ABI (array `.memref n`, index/value
@@ -32,7 +32,9 @@ opaque `extCall` leaf bindings (the crypto leaf calls) or a `memrefSet` chain:
 * `RLimbStore`       — a `bvConst`; `memrefSet` pair;
 * `RCallSwap`        — two sequential `extCall`s;
 * `RCloneCall`       — `extCall "clone"`; inner `extCall innerF`;
-* `RCallN`           — a left-to-right fold of `extCall "callN:f"` per dest.
+* `RCallN`           — a left-to-right fold of `extCall (callNLeafName f i)` per
+  dest, indexed by output position;
+* `RAssert`          — no dialect node at all (§2b).
 
 For each, the fused arm builds the same `catCryptDialect` `Expr` that
 `toVIRExprT ∘ translate` would have produced (`extCall` via `toVIRArgs`,
@@ -74,7 +76,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
-open CatCrypt.Crypto.Jasmin.LowCT (LowCT RustState LeafSpec RustExec Located TowerType)
+open CatCrypt.Crypto.Jasmin.LowCT (LowCT RustState LeafSpec RustExec Located TowerType
+  callNLeafName)
 
 /-! ## 1. Fused dialect `extCall` / `memrefSet` builders
 
@@ -608,21 +611,28 @@ Mirrors `translate`'s control flow on the leaf-call arms, building `ComCont`
 prefixes. Core arms delegate to `translateDialect`; the unhandled
 multi-control-flow arms (`RIfNz`, `RFor`, `RWhileNz`, helper defs) decline. -/
 
-/-- Dialect twin of `loopCallNDests`: a left-to-right fold of `extCall "callN:f"`
-    bindings, one per destination, building `ComCont` prefixes. -/
+/-- Dialect twin of `loopCallNDests`: a left-to-right fold of
+    `extCall (callNLeafName fname i)` bindings, one per destination, building
+    `ComCont` prefixes.
+
+    `i` is the output index of the head destination, counting up along the fold
+    and defaulting to `0` at the call site. It is the same index
+    `RustExec.callN` reads output `i` at, so destinations of the same encoded
+    type — the `(carry, sum)` pair of an add-with-carry shape, both `TU64` —
+    bind distinct leaf names. -/
 def loopCallNDestsD {Γ : Ctx} (fname : String) (args : List Located) (vm : VarMap Γ) :
-    List Located → Option (DTransOut Γ)
-  | [] => some { Γ' := Γ, cont := ComCont.id, vm := vm }
-  | d :: rest =>
+    List Located → (i : Nat := 0) → Option (DTransOut Γ)
+  | [], _ => some { Γ' := Γ, cont := ComCont.id, vm := vm }
+  | d :: rest, i =>
       match resolveLocatedArgs vm args with
       | none => none
       | some resolvedArgs =>
           let retTy := encodeTy d.locDst
           match listSigmaToCHVector resolvedArgs with
           | ⟨_argTys, hv⟩ =>
-            let e : Expr catCryptDialect Γ retTy := extCallExpr ("callN:" ++ fname) retTy hv
+            let e : Expr catCryptDialect Γ retTy := extCallExpr (callNLeafName fname i) retTy hv
             let vm' : VarMap (retTy :: Γ) := vm.bind d.locVar
-            match loopCallNDestsD fname args vm' rest with
+            match loopCallNDestsD fname args vm' rest (i + 1) with
             | none => none
             | some oRest =>
                 some { Γ' := oRest.Γ'
@@ -652,6 +662,13 @@ def translateDialectFull {Γ : Ctx} (vm : VarMap Γ) :
           some { Γ' := o.Γ', cont := ComCont.comp (ComCont.varBind e) o.cont, vm := o.vm }
       | none => none
   | .RBlock body => translateDialectFull vm body
+  -- **Contract assertion.** `RAssert label` names a proposition in the proof
+  -- context and carries no operands; its `RustExec` step is the identity, and
+  -- `LowCT.cmdCT` accepts it unconditionally. The arm emits no dialect node and
+  -- threads the entry context, `ComCont` prefix and `VarMap` through unchanged —
+  -- the same image the jasmin lowering gives it
+  -- (`LowCTToJasmin.toJasminCmd_RAssert`: the empty instruction list).
+  | .RAssert _label => some { Γ' := Γ, cont := ComCont.id, vm := vm }
   -- Leaf-call arms (the new multi-binding coverage):
   | .RCall fname dest args =>
       match resolveLocatedArgs vm args with
@@ -679,16 +696,6 @@ def translateDialectFull {Γ : Ctx} (vm : VarMap Γ) :
           match listSigmaToCHVector resolvedArgs with
           | ⟨_argTys, hv⟩ =>
             let e : Expr catCryptDialect Γ retTy := extCallExpr fname retTy hv
-            some { Γ' := retTy :: Γ, cont := ComCont.varBind e, vm := vm.bind dst.locVar }
-  | .RTupleStore dst idx src =>
-      match resolveLocatedArgs vm [src] with
-      | none => none
-      | some resolvedArgs =>
-          let retTy := encodeTy dst.locDst
-          match listSigmaToCHVector resolvedArgs with
-          | ⟨_argTys, hv⟩ =>
-            let e : Expr catCryptDialect Γ retTy :=
-              extCallExpr ("tupleStore:" ++ toString idx) retTy hv
             some { Γ' := retTy :: Γ, cont := ComCont.varBind e, vm := vm.bind dst.locVar }
   | .RTupleLoad dst src idx =>
       match resolveLocatedArgs vm [src] with
@@ -833,16 +840,42 @@ def translateDialectFullTop {Γ : Ctx} (vm : VarMap Γ) (c : LowCT) :
       some ⟨o.Γ', term⟩
   | none => none
 
+/-! ## 2b. Assertion erasure
+
+`RAssert` emits no dialect node, so an assertion sequenced in front of a body
+leaves the front's output — context, `ComCont` prefix and `VarMap` — equal to
+the one the body alone produces. -/
+
+/-- Composing the identity prefix before another prefix gives that prefix. The
+    `@Eq` annotation pins the equation at the `ComCont` type, whose leading
+    binder is implicit. -/
+theorem ComCont.id_comp {Γ Γ' : Ctx} (f : ComCont Γ Γ') :
+    @Eq (ComCont Γ Γ') (ComCont.comp ComCont.id f) f := by
+  funext t body
+  cases h : f body <;> simp [ComCont.comp, ComCont.id, h]
+
+/-- Prefixing a body with a contract assertion leaves the front's output
+    unchanged: `RSeq (RAssert label) c` and `c` translate to the same
+    `Option (DTransOut Γ)`. -/
+theorem translateDialectFull_rAssert_seq {Γ : Ctx} (vm : VarMap Γ) (label : String)
+    (c : LowCT) :
+    translateDialectFull vm (.RSeq (.RAssert label) c) = translateDialectFull vm c := by
+  cases h : translateDialectFull vm c with
+  | none => simp only [translateDialectFull, h]
+  | some o => simp only [translateDialectFull, h, ComCont.id_comp]
+
 /-! ## 3. The covered fragment and context agreement
 
 `IsCovered` is the syntactic fragment `translateDialectFull` lowers directly:
 the core arms (`RSkip`/`RScalarSet`/`RSeq`/`RLetU64Zero`/`RBlock`) plus the
 leaf-call multi-binding arms (`RCall`, `RSelect`, `RCallDstThreaded`,
-`RTuple*`, `RArr*`, `RLimbStore`, `RCallSwap`, `RCloneCall`, `RCallN`). On it,
+`RTuple*`, `RArr*`, `RLimbStore`, `RCallSwap`, `RCloneCall`, `RCallN`) and the
+contract assertion `RAssert`. On it,
 `translateDialectFull` and `translate` emit the **same** `⟨Γ', vm⟩` — the only
 data the top-level wrappers consume from the prefix. -/
 
-/-- The covered `LowCT` fragment: core arms + leaf-call multi-binding arms. -/
+/-- The covered `LowCT` fragment: core arms, leaf-call multi-binding arms, and
+    the zero-emission contract assertion. -/
 inductive IsCovered : LowCT → Prop
   | rSkip : IsCovered .RSkip
   | rScalarSet (name : String) (n : Nat) : IsCovered (.RScalarSet name n)
@@ -856,8 +889,6 @@ inductive IsCovered : LowCT → Prop
       IsCovered (.RSelect dst sel src0 src1)
   | rCallDstThreaded (fname : String) (dst : Located) (args : List Located) :
       IsCovered (.RCallDstThreaded fname dst args)
-  | rTupleStore (dst : Located) (idx : Nat) (src : Located) :
-      IsCovered (.RTupleStore dst idx src)
   | rTupleLoad (dst src : Located) (idx : Nat) :
       IsCovered (.RTupleLoad dst src idx)
   | rArrLoadLit (dst src : Located) (idx : Nat) :
@@ -879,6 +910,7 @@ inductive IsCovered : LowCT → Prop
       IsCovered (.RCallN fname dests args)
   | rScalarSetExpr (x : String) (e : CatCrypt.Crypto.Jasmin.LowCT.SExpr) :
       IsCovered (.RScalarSetExpr x e)
+  | rAssert (label : String) : IsCovered (.RAssert label)
 
 /-! ## 4. Worked examples -/
 
@@ -886,5 +918,16 @@ inductive IsCovered : LowCT → Prop
     `Com catCryptDialect` via the `CProg`-free multi-binding front. -/
 example (fname : String) (dest : Located) (args : List Located) :
     IsCovered (.RCall fname dest args) := .rCall fname dest args
+
+/- A contract assertion sequenced with a scalar assignment front-compiles. -/
+#guard (translateDialectFull (Γ := []) VarMap.empty
+  (.RSeq (.RAssert "loop_inv") (.RScalarSet "x" 7))).isSome
+
+/- The assertion pushes no slot: the emitted context of the assertion-carrying
+   body has the same length as that of the body alone. -/
+#guard ((translateDialectFull (Γ := []) VarMap.empty
+    (.RSeq (.RAssert "loop_inv") (.RScalarSet "x" 7))).map (fun o => o.Γ'.length)
+  == (translateDialectFull (Γ := []) VarMap.empty (.RScalarSet "x" 7)).map
+    (fun o => o.Γ'.length))
 
 end CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms

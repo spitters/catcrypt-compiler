@@ -8,6 +8,7 @@ import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # `128×64 → 192` widening multiply for a curve field, OWNED x86 (front-generated)
@@ -155,7 +156,7 @@ def curveWiden128Lprog : Lprog :=
     high word across the next `mulx`'s multiplicand pin; the printer routes any
     `dst_lo == dst_hi` redundant low to a scratch. -/
 def curveWiden128Asm : String :=
-  renderLprogAtt
+  CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned
     (CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit.fuseMulHiLprog
       curveWiden128Lprog true)
 

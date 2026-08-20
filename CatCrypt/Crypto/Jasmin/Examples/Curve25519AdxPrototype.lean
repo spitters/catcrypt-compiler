@@ -3,7 +3,7 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Examples.MpnAddPrototype
+import CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
 
 set_option autoImplicit false
 
@@ -675,7 +675,7 @@ For the **general** correctness statement — that for *every* (scalar,
 point) pair, `x25519` returns the RFC 7748 scalar multiplication — we
 carry a named hypothesis `X25519LadderInvariant`.  This is the
 established residual pattern (compare
-`MpnMontgomeryPrototype.mpn_mont_mul_outer_loop_step_obligation`).
+`Mpn.MontgomeryPrototype.mpn_mont_mul_outer_loop_step_obligation`).
 The C bench (`bench/curve25519_adx_compare/conform.c`) operationally
 validates the residual against libsodium on RFC 7748 §5.2 + 1000 random
 trials, complementing the two `native_decide`-discharged KAT cases.

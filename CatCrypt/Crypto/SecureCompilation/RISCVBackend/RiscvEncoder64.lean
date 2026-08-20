@@ -95,26 +95,26 @@ def encodeRBlock64 (block : List RInst64) : List (BitVec 8) :=
 The encoder's words pinned to the exact 32-bit words `riscv64-linux-gnu-as`
 produces for the same mnemonic (the `objdump -d` value, the bench oracle). -/
 
-/-- `add a0, a0, a1` → `0x00b50533`. -/
-example : encodeWord64 (.add "a0" "a0" "a1") = some 0x00b50533 := by native_decide
-/-- `sub a2, a2, a3` → `0x40d60633`. -/
-example : encodeWord64 (.sub "a2" "a2" "a3") = some 0x40d60633 := by native_decide
-/-- `sltu a3, a0, a1` → `0x00b536b3`. -/
-example : encodeWord64 (.sltu "a3" "a0" "a1") = some 0x00b536b3 := by native_decide
-/-- `mul a4, a0, a1` → `0x02b50733`. -/
-example : encodeWord64 (.mul "a4" "a0" "a1") = some 0x02b50733 := by native_decide
-/-- `mulhu a5, a0, a1` → `0x02b537b3`. -/
-example : encodeWord64 (.mulhu "a5" "a0" "a1") = some 0x02b537b3 := by native_decide
-/-- `and a0, a1, a2` → `0x00c5f533`. -/
-example : encodeWord64 (.and "a0" "a1" "a2") = some 0x00c5f533 := by native_decide
-/-- `or a0, a1, a2` → `0x00c5e533`. -/
-example : encodeWord64 (.or "a0" "a1" "a2") = some 0x00c5e533 := by native_decide
-/-- `xor a0, a1, a2` → `0x00c5c533`. -/
-example : encodeWord64 (.xor "a0" "a1" "a2") = some 0x00c5c533 := by native_decide
-/-- `mv a5, a0` (= `addi a5, a0, 0`) → `0x00050793`. -/
-example : encodeWord64 (.mv "a5" "a0") = some 0x00050793 := by native_decide
+-- `add a0, a0, a1` → `0x00b50533`
+#guard encodeWord64 (.add "a0" "a0" "a1") == some 0x00b50533
+-- `sub a2, a2, a3` → `0x40d60633`
+#guard encodeWord64 (.sub "a2" "a2" "a3") == some 0x40d60633
+-- `sltu a3, a0, a1` → `0x00b536b3`
+#guard encodeWord64 (.sltu "a3" "a0" "a1") == some 0x00b536b3
+-- `mul a4, a0, a1` → `0x02b50733`
+#guard encodeWord64 (.mul "a4" "a0" "a1") == some 0x02b50733
+-- `mulhu a5, a0, a1` → `0x02b537b3`
+#guard encodeWord64 (.mulhu "a5" "a0" "a1") == some 0x02b537b3
+-- `and a0, a1, a2` → `0x00c5f533`
+#guard encodeWord64 (.and "a0" "a1" "a2") == some 0x00c5f533
+-- `or a0, a1, a2` → `0x00c5e533`
+#guard encodeWord64 (.or "a0" "a1" "a2") == some 0x00c5e533
+-- `xor a0, a1, a2` → `0x00c5c533`
+#guard encodeWord64 (.xor "a0" "a1" "a2") == some 0x00c5c533
+-- `mv a5, a0` (= `addi a5, a0, 0`) → `0x00050793`
+#guard encodeWord64 (.mv "a5" "a0") == some 0x00050793
 
-/-- `LI` is the one pseudo-op left to `as` (no fixed encoding). -/
-example : encodeWord64 (.li "a0" 0xffffffffffffffff) = none := by native_decide
+-- `LI` is the one pseudo-op left to `as` (no fixed encoding).
+#guard encodeWord64 (.li "a0" 0xffffffffffffffff) == none
 
 end CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvEncoder64

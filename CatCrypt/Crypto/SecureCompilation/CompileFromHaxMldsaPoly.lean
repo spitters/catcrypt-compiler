@@ -20,11 +20,12 @@ int32_t caddq(int32_t a) { a += (a >> 31) & Q; return a; }
 ```
 
 `a >> 31` is the **signed** (arithmetic) shift of an `int32`: all-ones if `a < 0`,
-else `0`. It is realised here branch-free at `w = 64` with the SDitH
-(`CompileFromHaxSdithGf251`) mask idiom rather than with the front's
-`arith_shift_right` head: at width 64 the sign-extended `int32` word `a` has its
-sign bit in bit `63`, so the **logical** shift `a >>> 63 ∈ {0, 1}` *is* the sign
-indicator, and `0 − (a >>> 63)` is the all-ones / all-zero mask:
+else `0`. The verified front (`ImpExprToThir`) only recognises **logical** shift
+(`shr`/`shift_right` ↦ `>>>`), not arithmetic `sar`. We therefore realise the same
+sign-mask branch-free, at `w = 64`, with the SDitH (`CompileFromHaxSdithGf251`)
+mask idiom: at width 64 the sign-extended `int32` word `a` has its sign bit in bit
+`63`, so the **logical** shift `a >>> 63 ∈ {0, 1}` *is* the sign indicator, and
+`0 − (a >>> 63)` is the all-ones / all-zero mask:
 
 ```
    m  := a >> 63                 -- logical: 1 if a<0 (sign bit), else 0
@@ -35,8 +36,8 @@ indicator, and `0 − (a >>> 63)` is the all-ones / all-zero mask:
 
 All steps are `>>`/`-`/`&`/`+` over GPRs — the SHA-256 / Keccak / BLAKE2 / SDitH
 recognizers (`shift_right`/`wrapping_sub`/`BitAnd`/`wrapping_add` with a literal
-shift count) accept them, so **no change to the verified front is required**.
-This is the first ML-DSA (lattice) fan-out point.
+shift count) already accept them, so **no change to the verified front is
+required**. This is the first ML-DSA (lattice) fan-out point.
 
 ## Method (mirrors `CompileFromHaxSdithGf251.gf251Mul_compiles`)
 
@@ -52,19 +53,16 @@ The abstract `= a % q` (canonical-rep) tie is stated and proved **separately**
 via pure-BitVec `bv_decide` — the prime-field reduce identity (the SDitH lesson),
 the analogue of the `#117` Barrett seam.
 
-## The rest of the owned per-coefficient poly family
+## Remaining `PolyEmit` bodies (follow-up)
 
-The owned `PolyOwnedEmit.lean` kernel — in the wider CatCrypt development, not in
-this compiler package — carries four per-coefficient bodies: `poly_add`,
-`poly_sub`, `poly_reduce` (Barrett `reduce32`) and `poly_pointwise_montgomery`
-(signed Montgomery). Two of them are now derived here as compile-from-hax leaves,
-through the front's `arith_shift_right` head (`ShiftKind.sar` / `Rhs.sarImm`,
-denoting `BitVec.sshiftRight`): `poly_reduce` in `CompileFromHaxMldsaReduce32`
-(`mldsaReduce32_compiles`) and `poly_pointwise_montgomery` in
-`CompileFromHaxMldsaMontgomery` (`mldsaMontgomery_compiles`). `poly_add` /
-`poly_sub` are pure two's-complement add/sub and remain open only because they
-read **two** parameters and emit no reduce. `caddq` is the cleanest
-single-output body that compiles unchanged.
+`PolyEmit.lean` carries four owned per-coefficient bodies:
+`poly_add`, `poly_sub` (pure two's-complement add/sub — easy follow-ups, but they
+read **two** parameters and emit no reduce), `poly_reduce` (Barrett `reduce32`)
+and `poly_pointwise_montgomery` (signed Montgomery). The latter two use the
+**arithmetic** shift `sar` (`>>23` / `>>32` on signed values), which the front
+does **not** yet recognise — they need an `.sar` / `Rhs.sarImm` recognizer
+(`ASR`) added to `ImpExprToThir` before they can be derived here. `caddq` is the
+cleanest single-output body that compiles unchanged.
 -/
 
 set_option autoImplicit false

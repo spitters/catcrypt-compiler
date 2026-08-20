@@ -4,6 +4,7 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
+import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
 
 /-!
@@ -48,7 +49,7 @@ After six iterations `T = a·b·R⁻¹ + k·p` for some `k < p`, so a final
 conditional subtract of `p` (branch-free, gated on the trial-subtract borrow)
 lands the result in `[0, p)`. The six output words are stored to `z[0..5]`.
 
-## The modulus + Montgomery constant (canonical, NOT fabricated)
+## The modulus + Montgomery constant
 
 * `p` little-endian limbs and `n′` are taken verbatim from blst's own
   `src/consts.c` (`BLS12_381_P`, `BLS12_381_p0`); `p` agrees with
@@ -87,6 +88,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 open CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 open CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc (graphColorAlloc linearScanValueAlloc
   valueRanges graphColorSpillCount graphColor_spillReload_sound)
@@ -262,7 +265,51 @@ theorem blsMontMulBlock_lowering_correct
   lowerBlock_denote_closed blsMontMulBlock
     (initState a0 a1 a2 a3 a4 a5 b0 b1 b2 b3 b4 b5)
 
-/-! ## 5. AT&T assembly emission (reg-ptr ABI + small stack scratch frame)
+/-! ## 5. Constant time: straight-line, all-direct addressing
+
+Every instruction of the CIOS body addresses memory through a base pointer and
+a compile-time-constant displacement (`loadMem`/`storeMem`/`mulxMem`); the
+final reduce is branch-free (`cmovb`), so no `loadMemIdx`/`storeMemIdx`
+appears and the decidable `allDirect` check carries the block into
+`ConstantTimeCoverage.allDirect_constant_time`. -/
+
+/-- One CIOS MAC step uses only direct base+displacement addressing, for every
+    column index. -/
+theorem macStep_allDirect (tlo thi : String) (j : Nat) :
+    allDirect (macStep tlo thi j) = true := rfl
+
+/-- One CIOS reduce step uses only direct base+displacement addressing, for
+    every column index. -/
+theorem redStep_allDirect (tlo thi : String) (j : Nat) :
+    allDirect (redStep tlo thi j) = true := rfl
+
+/-- One CIOS iteration uses only direct base+displacement addressing, for every
+    multiplier-word index. -/
+theorem ciosIter_allDirect (i : Nat) : allDirect (ciosIter i) = true := rfl
+
+/-- The final conditional subtract uses only direct base+displacement
+    addressing. -/
+theorem blsFinalReduce_allDirect : allDirect blsFinalReduce = true := rfl
+
+/-- The whole CIOS Montgomery multiply body uses only direct base+displacement
+    addressing (no secret-indexed memory access). Proved by splitting the body
+    at its two concatenations and the iteration `flatMap`, so the cost is the
+    per-piece checks rather than a reduction of the assembled block. -/
+theorem blsMontMulBlock_allDirect : allDirect blsMontMulBlock = true := by
+  simp only [blsMontMulBlock, allDirect, List.all_append, List.all_flatMap,
+    Bool.and_eq_true]
+  exact ⟨⟨rfl, List.all_eq_true.mpr fun i _ => ciosIter_allDirect i⟩,
+    blsFinalReduce_allDirect⟩
+
+/-- **Constant time.** The emitted BLS12-381 Montgomery multiply produces the
+    same machine leakage trace from any two starting states: its observable
+    control-flow + memory-address sequence is a function of the program text
+    alone, so it carries no information about the operand limbs. -/
+theorem blsMontMulBlock_constant_time (s₁ s₂ : JState 64) :
+    blockLeak s₁ blsMontMulBlock = blockLeak s₂ blsMontMulBlock :=
+  allDirect_constant_time blsMontMulBlock blsMontMulBlock_allDirect s₁ s₂
+
+/-! ## 6. AT&T assembly emission (reg-ptr ABI + small stack scratch frame)
 
 The kernel pins `z`→`%rdi`, `x`→`%rsi`, the running multiplier `yd`→`%rdx`
 (the `MULX` implicit src1), and the scratch-frame base `sp`→`%rbp` (excluded
@@ -322,12 +369,12 @@ def emitMain : IO Unit := do
     blsMontMulAsm
   IO.println "wrote gen_com/bls12381_mont_mul_x86_from_lean.s (in-Lean x86 backend CIOS, no jasminc)"
 
-/-! ## 6. Graph-coloring register allocation — the pairing-tower pressure case (gap #2)
+/-! ## 7. Graph-coloring register allocation — the pairing-tower pressure case (gap #2)
 
 The hand-authored CIOS body keeps `z`/`x`/`yd`/`sp` pinned and the seven-word accumulator
 window `t0..t6` plus the `lo`/`hi`/`zr` scratch in registers. It has **11 distinct value
 names whose PEAK SIMULTANEOUS liveness is 11** (all eleven are live together during the
-carry-chain — verified by `blsMontMul_pressure_exceeds_pool`): this is the genuinely
+carry-chain — verified by `blsMontMul_pressure_exceeds_pool`): this is the
 register-pressure-bound BLS12-381 `Fp`-multiply leg of the pairing tower, the documented
 #259/#474 regalloc wall. (Contrast BN254 — peak 9, fits — and the 4×4 schoolbook
 `bignum_mul_4_8` — peak 8, fits — which are pure no-ops for any spiller.)
@@ -352,7 +399,7 @@ drop-in `List (String × Slot)`, materialized by the same allocation-agnostic
 `spillReloadBlock` and proved transparent by the same per-spill checker
 (`graphColor_spillReload_sound`); only the spill *choice* differs.
 
-**The MCA verdict is honest and partial.** On the deterministic llvm-mca gate the gc leaf
+**What the MCA gate does and does not show.** On the deterministic llvm-mca gate the gc leaf
 has 587 instructions vs the linear-scan leaf's 812 (the 225-instruction reload-traffic
 delta), and TotalCyc/iter drops 300.63 → 270.09 (**0.90×**) — gc shaves the reload
 latency. But the throughput-bound `BlockRThroughput` is **229.8 for both (1.00×)**: this
@@ -408,7 +455,7 @@ def peakLive : Nat :=
 
 /-- **Peak simultaneous register pressure is 11** — all eleven value names of the CIOS
     body are live together at some program point (the carry-chain), so no spill-free
-    allocation exists in fewer than 11 registers. This is the genuine pairing-tower
+    allocation exists in fewer than 11 registers. This is the pairing-tower
     register-pressure wall (#259/#474): the shipped first-fit leaf fits because it uses
     the full 11-register GP allocation (no reserved working registers); the verified
     spilling discipline reserves `%r14`/`%r15` (→ 8-register pool) and so FORCES a 3-name

@@ -33,7 +33,7 @@ Three new pieces (the scalar twins of `semV` / `ConsistentV`):
 * `ConsistentS vm V env` — every name's `env` value is exactly the slot it
   resolves to in the `Γ`-valuation `V` (the heterogeneous twin of `ConsistentV`).
 
-The keystone theorem `translateDialectControl_denote` is proved by induction on
+The theorem `translateDialectControl_denote` is proved by induction on
 the straight-line coverage `IsCoveredS`, its `rSeq` arm discharging the
 per-concatenation homomorphism `denote (front (a ++ b)) = denote (front b) ∘
 denote (front a)` via `ComCont.comp o₁.cont o₂.cont` — the exact shape the SIMD
@@ -47,20 +47,21 @@ constructors.
 `IsCoveredS` / the proved theorem cover the whole straight-line mechanical
 fragment: the `RSeq` / `RBlock` / `RSkip` closure; the const/zero scalar binds
 (`RScalarSet`, `RLetU64Zero`); every opaque leaf-call arm (`RCall`, `RSelect`,
-`RCallDstThreaded`, `RTupleStore`/`RTupleLoad`, `RArrLoadLit`/`RArrStoreLit`, the
+`RCallDstThreaded`, `RTupleLoad`, `RArrLoadLit`/`RArrStoreLit`, the
 two-dest `RCallSwap` and `RCloneCall`, the N-dest `RCallN`); the dynamic-index
 array **load**/**store** arms (`RArrLoad` via `memGetDyn`, `RArrStore` via
-`memSetDyn`); and the memref limb write `RLimbStore` (a weaken-step + a
-`memrefSet` bind). Every single-binding arm reduces to `scalar_step`; the
+`memSetDyn`); the memref limb write `RLimbStore` (a weaken-step + a
+`memrefSet` bind); and the contract assertion `RAssert` (no emission, identity
+waist — §4b). Every single-binding arm reduces to `scalar_step`; the
 multi-binding arms (`RLetU64Zero`, `RCallSwap`, `RCloneCall`, `RLimbStore`,
-`RCallN`) compose per-bind via `ComCont.comp` on the RSeq backbone (`RCallN` by
+`RCallN`) compose per-bind via `ComCont.comp` along the `RSeq` spine (`RCallN` by
 induction on its dest list, generalizing the context).
 
 The scalar-`SExpr` assignment (`RScalarSetExpr`) — the point-op brick route — is
 now proved over its `srcClean` fragment (`SVar` / `SLit` / `SAdd` / `SSub` /
 `SMul` / `SAnd` / `SXor` / `SShl` / `SShr` / `SMulHiU` over non-`__sx` source
 variables and `< 2^64` literals — the full alphabet of the Keccak-f1600 round
-bodies and the secp256k1 `feMul` brick). The keystone is the `SExpr`-recursion
+bodies and the secp256k1 `feMul` brick). It rests on the `SExpr`-recursion
 homomorphism `lowerSExpr_denote` (§5f): by induction on `SExpr`, the front's
 fresh-temp `varBind` chain denotes its env-level mirror `semLowerSExpr`, and its
 result slot resolves to the closed-form word evaluator `SExpr.evalBV (envReader
@@ -82,8 +83,8 @@ fragment `IsCoveredSCtl` — arm-for-arm the shape of
 `TranslateDialectDirectControl.IsCoveredCtl` (with the `srcClean` side
 condition on `RScalarSetExpr`, exactly as `IsCoveredS` refines `IsCovered`).
 
-**0 sorries.** `IsCoveredS` is the full straight-line `IsCovered` (19 arms);
-`IsCoveredSCtl` adds `RFor` + `RIfNz` on top.
+`IsCoveredS` is the full straight-line `IsCovered`; `IsCoveredSCtl` adds
+`RFor` + `RIfNz` on top.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
@@ -96,7 +97,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
-open CatCrypt.Crypto.Jasmin.LowCT (LowCT Located TowerType SExpr)
+open CatCrypt.Crypto.Jasmin.LowCT (LowCT Located TowerType SExpr callNLeafName)
 
 /-! ## 1. Heterogeneously-typed scalar environment -/
 
@@ -466,6 +467,10 @@ def semRForD (semBody : SEnvScalar → Option SEnvScalar) (x : String) :
 def semScalar : LowCT → SEnvScalar → Option SEnvScalar
   | .RSkip, env => some env
   | .RBlock body, env => semScalar body env
+  -- `RAssert label` names a proposition in the proof context and reads no
+  -- operand; `RustExec.assert` leaves the state unchanged, so the waist is the
+  -- identity on the env — the same waist the front's empty emission denotes by.
+  | .RAssert _label, env => some env
   | .RSeq c₁ c₂, env => (semScalar c₁ env).bind (fun e => semScalar c₂ e)
   | .RScalarSet name n, env =>
       some (env.upd name (t := .sword 64) (BitVec.ofNat 64 n))
@@ -478,9 +483,6 @@ def semScalar : LowCT → SEnvScalar → Option SEnvScalar
       let retTy := encodeTy dst.locDst
       some (env.upd dst.locVar (t := retTy) (CryptoTy.default retTy))
   | .RCallDstThreaded _fname dst _args, env =>
-      let retTy := encodeTy dst.locDst
-      some (env.upd dst.locVar (t := retTy) (CryptoTy.default retTy))
-  | .RTupleStore dst _idx _src, env =>
       let retTy := encodeTy dst.locDst
       some (env.upd dst.locVar (t := retTy) (CryptoTy.default retTy))
   | .RTupleLoad dst _src _idx, env =>
@@ -540,7 +542,7 @@ def semScalar : LowCT → SEnvScalar → Option SEnvScalar
       -- The waist the front's `RIfNz` lowering denotes by (the exact mirror of
       -- `translateDialectControl`'s case analysis): the guard must be a bound
       -- scalar; when both branches are a single `RScalarSet` on the SAME name —
-      -- the (C′) φ-merge, the only case the front compiles as a genuine
+      -- the (C′) φ-merge, the only case the front compiles as a
       -- conditional — bind that name to the cmov-selected value (`zero → else`,
       -- `nonzero → then`); every other case composes the branch semantics
       -- sequentially (`then; else`), which is what the front's pass-through /
@@ -572,8 +574,9 @@ scalar-`SExpr` assignment (`RScalarSetExpr x e`, with `srcClean e`) is now
 covered via the `SExpr`-recursion homomorphism `lowerSExpr_denote` (§5f, §7); its
 constructor carries the `srcClean` side condition (`SExpr` over the arithmetic /
 bitwise / shift / high-multiply fragment, non-`__sx` source variables). The
+contract assertion `RAssert` is covered with no side condition (§4b). The
 control arms `RFor` / `RIfNz` are covered by the Stage-2 extension
-`IsCoveredSCtl` (§8). -/
+`IsCoveredSCtl` (§8), which reaches `RAssert` through `ofStraight`. -/
 
 /-- The straight-line scalar-covered `LowCT` fragment. -/
 inductive IsCoveredS : LowCT → Prop
@@ -589,8 +592,6 @@ inductive IsCoveredS : LowCT → Prop
       IsCoveredS (.RSelect dst sel src0 src1)
   | rCallDstThreaded (fname : String) (dst : Located) (args : List Located) :
       IsCoveredS (.RCallDstThreaded fname dst args)
-  | rTupleStore (dst : Located) (idx : Nat) (src : Located) :
-      IsCoveredS (.RTupleStore dst idx src)
   | rTupleLoad (dst src : Located) (idx : Nat) :
       IsCoveredS (.RTupleLoad dst src idx)
   | rArrLoadLit (dst src : Located) (idx : Nat) :
@@ -612,6 +613,7 @@ inductive IsCoveredS : LowCT → Prop
       IsCoveredS (.RArrStore arr idxVar src)
   | rScalarSetExpr (x : String) (e : SExpr) (hclean : srcClean e) :
       IsCoveredS (.RScalarSetExpr x e)
+  | rAssert (label : String) : IsCoveredS (.RAssert label)
 
 /-- `IsCoveredS` refines the front-simulation coverage `IsCovered`: the arms
     are 1:1, with `rScalarSetExpr` forgetting the `srcClean` side condition.
@@ -627,7 +629,6 @@ theorem IsCoveredS.toIsCovered {c : LowCT} (h : IsCoveredS c) : IsCovered c := b
   | rCall fname dst args => exact .rCall fname dst args
   | rSelect dst sel src0 src1 => exact .rSelect dst sel src0 src1
   | rCallDstThreaded fname dst args => exact .rCallDstThreaded fname dst args
-  | rTupleStore dst idx src => exact .rTupleStore dst idx src
   | rTupleLoad dst src idx => exact .rTupleLoad dst src idx
   | rArrLoadLit dst src idx => exact .rArrLoadLit dst src idx
   | rArrStoreLit arr idx src => exact .rArrStoreLit arr idx src
@@ -639,6 +640,24 @@ theorem IsCoveredS.toIsCovered {c : LowCT} (h : IsCoveredS c) : IsCovered c := b
   | rArrLoad dst src idxVar => exact .rArrLoad dst src idxVar
   | rArrStore arr idxVar src => exact .rArrStore arr idxVar src
   | rScalarSetExpr x e _ => exact .rScalarSetExpr x e
+  | rAssert label => exact .rAssert label
+
+/-! ### 4b. Assertion erasure
+
+`RAssert label` carries a proof-context label and no operand: no value is read,
+so the front emits nothing (`translateDialectFull_rAssert_seq`) and the waist
+semantics steps the env by the identity. The two erasure statements are the
+correctness obligation for dropping an assertion — the emitted program and the
+`semScalar` result of a sequence are both independent of an assertion in front
+of it. Because the constructor holds no expression, the arm carries no
+publicness side condition: there is no operand whose secrecy could make the
+dropped check a branch on a secret (`LowCT.cmdCT` accepts `RAssert`
+unconditionally, and its `LowCTLeakTraceDef` leak trace is empty). -/
+
+/-- The waist semantics of a sequence is unchanged by an assertion in front. -/
+theorem semScalar_rAssert_seq (label : String) (c : LowCT) (env : SEnvScalar) :
+    semScalar (.RSeq (.RAssert label) c) env = semScalar c env := by
+  simp [semScalar]
 
 /-! ## 5. Op-denotation helpers (the waist each single-binding arm binds by) -/
 
@@ -797,21 +816,23 @@ theorem arrStoreCont_eq {Γ : Ctx} (dty : TowerType)
 /-! ## 5d. The `RCallN` multi-dest fold
 
 `RCallN` lowers via `loopCallNDestsD`, a left-to-right fold that binds each
-destination through an `extCall "callN:f"` `varBind` (growing both the context
-and the `VarMap` by one slot per dest). The homomorphism over the fold is proved
-by induction on the destination list — generalizing the context `Γ` (each
-recursive step lands in `retTy :: Γ`) — with each step closing exactly like a
-`scalar_step` composed via `ComCont.comp` (the RSeq backbone), and the base case
+destination through an `extCall (callNLeafName f i)` `varBind` at its output
+index `i` (growing both the context and the `VarMap` by one slot per dest). The
+homomorphism over the fold is proved by induction on the destination list —
+generalizing the index `i` and the context `Γ` (each recursive step lands at
+`i + 1` in `retTy :: Γ`) — with each step closing exactly like a `scalar_step`
+composed via `ComCont.comp` (the `RSeq` spine), and the base case
 (`ComCont.id`) closing like `RSkip`. -/
 
 /-- Front-general preservation over the `RCallN` destination fold. Each dest
     binds the opaque leaf waist `CryptoTy.default`, so the emitted prefix denotes
-    exactly `semCallNDests`. Induction on `dests`, generalizing `Γ`/`vm`/`V`/`env`. -/
+    exactly `semCallNDests`. Induction on `dests`, generalizing the output index
+    `i` and `Γ`/`vm`/`V`/`env`. -/
 theorem loopCallNDestsD_denote (fname : String) (args : List Located) :
-    ∀ (dests : List Located) {Γ : Ctx} (vm : VarMap Γ)
+    ∀ (dests : List Located) {i : Nat} {Γ : Ctx} (vm : VarMap Γ)
       (V : Ctxt.Valuation (d := catCryptDialect) Γ) (env : SEnvScalar) (o : DTransOut Γ),
       ConsistentS vm V env →
-      loopCallNDestsD fname args vm dests = some o →
+      loopCallNDestsD fname args vm dests i = some o →
       ∃ V' : Ctxt.Valuation (d := catCryptDialect) o.Γ',
         ConsistentS o.vm V' (semCallNDests dests env) ∧
         ∀ {t : CryptoTy} (tail : Com catCryptDialect o.Γ' t),
@@ -819,23 +840,23 @@ theorem loopCallNDestsD_denote (fname : String) (args : List Located) :
   intro dests
   induction dests with
   | nil =>
-      intro Γ vm V env o hc htr
+      intro i Γ vm V env o hc htr
       simp only [loopCallNDestsD] at htr
       obtain rfl := Option.some.inj htr
       exact ⟨V, hc, fun tail => ⟨tail, rfl, rfl⟩⟩
   | cons d rest ih =>
-      intro Γ vm V env o hc htr
+      intro i Γ vm V env o hc htr
       rcases hra : resolveLocatedArgs vm args with _ | resolvedArgs
       · simp [loopCallNDestsD, hra] at htr
       · simp only [loopCallNDestsD, hra] at htr
-        rcases hrest : loopCallNDestsD fname args (vm.bind d.locVar) rest with _ | oRest
+        rcases hrest : loopCallNDestsD fname args (vm.bind d.locVar) rest (i + 1) with _ | oRest
         · rw [hrest] at htr; simp at htr
         · rw [hrest] at htr
           simp only [Option.some.injEq] at htr
           obtain rfl := htr
           obtain ⟨hcons1, hcont1⟩ :=
             scalar_step vm V env hc d.locVar
-              (extCallExpr ("callN:" ++ fname) (encodeTy d.locDst)
+              (extCallExpr (callNLeafName fname i) (encodeTy d.locDst)
                 (listSigmaToCHVector resolvedArgs).snd)
           obtain ⟨V', hc', hcont2⟩ :=
             ih (vm.bind d.locVar) (V.extend _) _ oRest hcons1 hrest
@@ -1719,6 +1740,13 @@ theorem translateDialectFull_denote {c : LowCT} (hcov : IsCoveredS c) :
       obtain rfl := Option.some.inj hsem
       obtain rfl := Option.some.inj htr
       exact ⟨V, hc, fun tail => ⟨tail, rfl, rfl⟩⟩
+  | rAssert label =>
+      intro Γ vm V env env' o hc htr hsem
+      simp only [translateDialectFull] at htr
+      simp only [semScalar] at hsem
+      obtain rfl := Option.some.inj hsem
+      obtain rfl := Option.some.inj htr
+      exact ⟨V, hc, fun tail => ⟨tail, rfl, rfl⟩⟩
   | @rBlock body hbody ih =>
       intro Γ vm V env env' o hc htr hsem
       simp only [translateDialectFull] at htr
@@ -1814,19 +1842,6 @@ theorem translateDialectFull_denote {c : LowCT} (hcov : IsCoveredS c) :
         obtain ⟨hcons, hcont⟩ :=
           scalar_step vm V env hc dst.locVar
             (extCallExpr fname (encodeTy dst.locDst) (listSigmaToCHVector resolvedArgs).snd)
-        exact ⟨_, hcons, fun tail => hcont tail⟩
-  | rTupleStore dst idx src =>
-      intro Γ vm V env env' o hc htr hsem
-      rcases hra : resolveLocatedArgs vm [src] with _ | resolvedArgs
-      · simp [translateDialectFull, hra] at htr
-      · simp only [translateDialectFull, hra] at htr
-        obtain rfl := Option.some.inj htr
-        simp only [semScalar] at hsem
-        obtain rfl := Option.some.inj hsem
-        obtain ⟨hcons, hcont⟩ :=
-          scalar_step vm V env hc dst.locVar
-            (extCallExpr ("tupleStore:" ++ toString idx) (encodeTy dst.locDst)
-              (listSigmaToCHVector resolvedArgs).snd)
         exact ⟨_, hcons, fun tail => hcont tail⟩
   | rTupleLoad dst src idx =>
       intro Γ vm V env env' o hc htr hsem
@@ -2123,11 +2138,11 @@ theorem translateDialectControl_denote {c : LowCT} (hcov : IsCoveredS c) :
 
 /-! ## 7. Mechanical straight-line arms closed; outstanding obligation (scalar-`SExpr`)
 
-The whole mechanical straight-line fragment is now proved. Beyond the composition
-keystone (`RSeq`/`RBlock`/`RSkip`), three shapes of arm close uniformly:
+The whole mechanical straight-line fragment is proved. Beyond the composition
+arms (`RSeq`/`RBlock`/`RSkip`), three shapes of arm close uniformly:
 
 * **Single-binding opaque leaf** (`RCall`, `RSelect`, `RCallDstThreaded`,
-  `RTupleStore`/`RTupleLoad`, `RArrLoadLit`/`RArrStoreLit`) and single concrete
+  `RTupleLoad`, `RArrLoadLit`/`RArrStoreLit`) and single concrete
   bind (`RScalarSet`, a `bvConst`): one `ComCont.varBind` closed directly by
   `scalar_step`; the emitted `extCallExpr`/`bvConst` denotes to the same waist
   (`CryptoTy.default` / the literal) `semScalar` binds, so the `exact` closes by
@@ -2136,7 +2151,7 @@ keystone (`RSeq`/`RBlock`/`RSkip`), three shapes of arm close uniformly:
   `RCloneCall` = two binds; `RLimbStore` = a weaken-step + a `memrefSet` bind;
   `RCallN` = N binds by induction on the dest list, generalizing the context):
   each per-bind step is a `scalar_step` (or `consistentS_weaken` for the anonymous
-  `RLimbStore` temp), composed via `ComCont.comp` on the RSeq backbone.
+  `RLimbStore` temp), composed via `ComCont.comp` along the `RSeq` spine.
 
 The dynamic-index **load** and **store** arms (`RArrLoad`, `RArrStore`) are now
 proved cases of the homomorphism (§5b/§5c + the `rArrLoad`/`rArrStore` arms of
@@ -2207,9 +2222,9 @@ twin of `TranslateDialectDirectControl.IsCoveredCtl`). Three layers:
 * **the extension/inertness invariant** (`translateDialectControl_ext`) — every
   accepted translation's output context is `Δ ++ Γ` for some pushed prefix `Δ`,
   and a context-invariant translation (`Δ = []`) is env-INERT (`semScalar` is
-  the identity on it). This is the load-bearing fact for `RIfNz`'s (A)/(B)
-  cases, where the front passes through ONE branch's prefix and discards the
-  other: the discarded branch is exactly the context-invariant one, and
+  the identity on it). This is the fact `RIfNz`'s (A)/(B) cases rest on: there
+  the front passes through ONE branch's prefix and discards the
+  other, the discarded branch is exactly the context-invariant one, and
   inertness makes the sequential waist semantics agree with the single-branch
   denotation. Proved over ALL of `LowCT` (no coverage hypothesis) by structural
   induction, with per-chain auxiliaries for `lowerSExpr` / `loopCallNDestsD` /
@@ -2330,22 +2345,22 @@ theorem lowerSExpr_ext (e : SExpr) :
 
 /-- `loopCallNDestsD` only pushes slots, one per destination. -/
 theorem loopCallNDestsD_ext (fname : String) (args : List Located) :
-    ∀ (dests : List Located) {Γ : Ctx} (vm : VarMap Γ) (o : DTransOut Γ),
-      loopCallNDestsD fname args vm dests = some o →
+    ∀ (dests : List Located) {i : Nat} {Γ : Ctx} (vm : VarMap Γ) (o : DTransOut Γ),
+      loopCallNDestsD fname args vm dests i = some o →
       ∃ Δ : Ctx, o.Γ' = Δ ++ Γ ∧ (Δ = [] → dests = []) := by
   intro dests
   induction dests with
   | nil =>
-      intro Γ vm o htr
+      intro i Γ vm o htr
       simp only [loopCallNDestsD] at htr
       obtain rfl := Option.some.inj htr
       exact ⟨[], rfl, fun _ => rfl⟩
   | cons d rest ih =>
-      intro Γ vm o htr
+      intro i Γ vm o htr
       rcases hra : resolveLocatedArgs vm args with _ | resolvedArgs
       · simp [loopCallNDestsD, hra] at htr
       · simp only [loopCallNDestsD, hra] at htr
-        rcases hrest : loopCallNDestsD fname args (vm.bind d.locVar) rest with _ | oRest
+        rcases hrest : loopCallNDestsD fname args (vm.bind d.locVar) rest (i + 1) with _ | oRest
         · rw [hrest] at htr; simp at htr
         · rw [hrest] at htr
           simp only [Option.some.injEq] at htr
@@ -2369,6 +2384,11 @@ theorem translateDialectFull_ext (c : LowCT) :
         (Δ = [] → ∀ env env' : SEnvScalar, semScalar c env = some env' → env' = env) := by
   induction c <;> intro Γ vm o htr
   case RSkip =>
+      obtain rfl := Option.some.inj htr
+      refine ⟨[], rfl, fun _ env env' hsem => ?_⟩
+      simp only [semScalar] at hsem
+      exact (Option.some.inj hsem).symm
+  case RAssert label =>
       obtain rfl := Option.some.inj htr
       refine ⟨[], rfl, fun _ env env' hsem => ?_⟩
       simp only [semScalar] at hsem
@@ -2432,12 +2452,6 @@ theorem translateDialectFull_ext (c : LowCT) :
         exact ⟨[encodeTy dst.locDst], rfl, fun h => absurd h (by simp)⟩
   case RCallDstThreaded fname dst args =>
       rcases hra : resolveLocatedArgs vm (dst :: args) with _ | resolvedArgs
-      · simp [translateDialectFull, hra] at htr
-      · simp only [translateDialectFull, hra] at htr
-        obtain rfl := Option.some.inj htr
-        exact ⟨[encodeTy dst.locDst], rfl, fun h => absurd h (by simp)⟩
-  case RTupleStore dst idx src =>
-      rcases hra : resolveLocatedArgs vm [src] with _ | resolvedArgs
       · simp [translateDialectFull, hra] at htr
       · simp only [translateDialectFull, hra] at htr
         obtain rfl := Option.some.inj htr
@@ -2834,8 +2848,8 @@ theorem phiIteExpr_denote {Γ : Ctx} (w : Nat)
 /-! ### 8d. Front-general scalar preservation over the FULL control-extended
 fragment -/
 
-/-- **Front-general scalar preservation, control-extended** (the Stage-2
-    keystone). For any `IsCoveredSCtl`-covered body — the full
+/-- **Front-general scalar preservation, control-extended** (Stage 2).
+    For any `IsCoveredSCtl`-covered body — the full
     `IsCoveredCtl`-shaped fragment, `RFor` and `RIfNz` included — the emitted
     `Com`-prefix denotes exactly the body's `semScalar` waist semantics.
     Induction on the coverage: the straight-line arms delegate to
@@ -2845,7 +2859,7 @@ fragment -/
     `translateDialectControl_inert`, the (C′) φ-merge composes five
     `consistentS_weaken` steps with one `scalar_step` on `phiIteExpr` (its
     value reconciled by `phiIteExpr_denote`), and (C-otherwise) is the `RSeq`
-    backbone over the re-translated `elseBr`. -/
+    spine over the re-translated `elseBr`. -/
 theorem translateDialectControl_denote_ctl {c : LowCT} (hcov : IsCoveredSCtl c) :
     ∀ {Γ : Ctx} (vm : VarMap Γ) (V : Ctxt.Valuation (d := catCryptDialect) Γ)
       (env env' : SEnvScalar) (o : DTransOut Γ),
@@ -2970,7 +2984,7 @@ theorem translateDialectControl_denote_ctl {c : LowCT} (hcov : IsCoveredSCtl c) 
                   exact ⟨_, hcons, fun tail => ⟨_, rfl, rfl⟩⟩
                 · next hname =>
                   -- (C-otherwise, names differ): sequential re-translation —
-                  -- the `RSeq` backbone.
+                  -- the `RSeq` spine.
                   split at htr
                   · next o₂' ht₂' =>
                     simp only [Option.some.injEq] at htr
@@ -2992,7 +3006,7 @@ theorem translateDialectControl_denote_ctl {c : LowCT} (hcov : IsCoveredSCtl c) 
                         simp only [ComCont.comp, hcom₂, hcom]
                       · rw [hden, hden₂]
                   · exact absurd htr (by simp)
-              · -- (C-otherwise, not both single scalar-sets): same backbone.
+              · -- (C-otherwise, not both single scalar-sets): same spine.
                 rename_i hnot
                 split at htr
                 · next o₂' ht₂' =>
@@ -3040,5 +3054,11 @@ example (name y : String) :
 example (x name y : String) (N : Nat) :
     IsCoveredSCtl (.RFor x N (.RIfNz name (.RScalarSet y 1) (.RScalarSet y 0))) :=
   .rFor (.rIfNz (.ofStraight (.rScalarSet y 1)) (.ofStraight (.rScalarSet y 0)))
+
+/-- A loop body carrying a contract assertion is Stage-2 covered: `IsCoveredSCtl`
+    picks the assertion up through `ofStraight`. -/
+example (x label y : String) (N : Nat) :
+    IsCoveredSCtl (.RFor x N (.RSeq (.RAssert label) (.RScalarSet y 1))) :=
+  .rFor (.ofStraight (.rSeq (.rAssert label) (.rScalarSet y 1)))
 
 end CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar

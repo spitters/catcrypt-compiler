@@ -8,7 +8,7 @@ import CatCrypt.Crypto.Jasmin.LowCTReflect
 /-!
 # ChaCha 4-way (XMM-resident) reflect surface — through the verified front
 
-This file is the ChaCha-AVX SIMD-extension analogue of `VaesReflect.lean`:
+This file is the ChaCha-AVX SIMD-extension analogue of `UovReflect.lean`:
 it adds a ChaCha-4way-specific opaque leaf and a `LowCTPattern`
 registration so that a pure-Lean ChaCha20 4-way block kernel can be
 lifted through the verified compiler chain `LowCT → CryptoSSA → Com →
@@ -32,7 +32,7 @@ leaf name and the TBytes signature; the per-round semantics is RFC 8439
 §2.3 and pinned by the existing single-block ChaCha emit
 (`bench/chacha_compare/chacha_emit.lean`, Tier B).
 
-## Reflection→front gap (same as `FalconReflect`)
+## Reflection→front gap (same as `UovReflect` / `FalconReflect`)
 
 `reifyLowCT%` reads only `LowCTReflect.knownOps`. We follow the
 established pattern: define the pure-Lean function for documentation,
@@ -57,10 +57,8 @@ artifact; this reflect surface lifts it under the same byte-level shape.
 * `bench/chacha_compare/chacha_emit.lean` — sibling Tier B single-block
   Com (verified emit on hand-built Com)
 * `bench/chacha_compare/chacha_4way_xmm_emit.lean` — legacy Tier C
-  string-templated 4-way emit (superseded by this leaf-shim pattern).
-  `bench/` is the out-of-tree benchmark harness described in `bench.md`; it
-  is not part of this repository.
-* `CatCrypt/Crypto/Jasmin/VaesReflect.lean` — sibling SIMD-leaf reflect surface
+  string-templated 4-way emit (superseded by this leaf-shim pattern)
+* `CatCrypt/Crypto/Jasmin/UovReflect.lean` — sibling SIMD-leaf reference
 -/
 
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect

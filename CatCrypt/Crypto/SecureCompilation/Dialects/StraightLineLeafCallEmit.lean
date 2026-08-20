@@ -5,6 +5,7 @@ Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # Mixed straight-line body: arithmetic + memory ABI AROUND named leaf calls
@@ -68,7 +69,7 @@ def leafMixLprog : Lprog :=
     (fun s => if s < nIn then some ("RSI", (nIn - 1 - s) * 8) else none)
     [("RDI", 0)]
 
-def leafMixAtt : String := renderLprogAtt leafMixLprog
+def leafMixAtt : String := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned leafMixLprog
 
 /-! ## Shape lemmas: the mixed body renders a REAL `call`, no shadow, arithmetic intact -/
 

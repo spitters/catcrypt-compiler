@@ -55,16 +55,14 @@ soundness content.
 ## Coverage (honest)
 
 The collapse is licensed only for an **in-range immediate** `n < w` (every SHA-512
-Σ/σ and Keccak ρ rotate is in range). The pass carries that as the `n < w` conjunct
-of `rorImmSelect`'s match guard, and the theorems as the `hlt : n < w` hypothesis of
-`rorImmSelect_fires` / `rorImmSelect_denote`, rather than firing on an out-of-range `n`
-(where
-`rotateRight` and the shift-or form differ) — the same discipline as
-`MLIR/VectorDialect/LoweringAVX512.lean`, whose `lowerAVX512` returns `none`
-outside its supported op fragment. On a matched, in-range subtree the pass
-rewrites to `rorImm` and the denotation is preserved (`rorImmSelect_denote`, the
-headline). On every non-matching or out-of-range shape the pass is the identity
-(so it is total and never changes a denotation it cannot prove equal).
+Σ/σ and Keccak ρ rotate is in range). We carry that as the `RorPattern` predicate's
+`hlt : n < w` field rather than firing on an out-of-range `n` (where
+`rotateRight` and the shift-or form differ) — exactly as
+`VectorToAvx512.lean` conditions its lowering on the carry-free lane ops. On a
+matched, in-range subtree the pass rewrites to `rorImm` and the denotation is
+preserved (`rorSelectExpr_denote`, the headline). On every non-matching or
+out-of-range shape the pass is the identity (so it is total and never changes a
+denotation it cannot prove equal).
 -/
 
 set_option autoImplicit false
@@ -179,8 +177,8 @@ in the pass file, touching no shared substrate).
 
 The `n < w` guard is the honest fragment condition: out of range, `rotateRight`
 and the shift-or form differ, so the pass declines to fire (cf.
-`MLIR/VectorDialect/LoweringAVX512.lean`, whose `lowerAVX512` likewise returns
-`none` outside its supported op fragment). -/
+`VectorToAvx512.lean`, which likewise conditions its lowering on the supported
+op fragment). -/
 
 /-- Structural decidable equality for intrinsically-typed De Bruijn variables.
     `Ctxt.Var` is an inductive (`here`/`there`) but carries no derived

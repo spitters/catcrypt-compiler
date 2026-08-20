@@ -938,17 +938,15 @@ theorem poseidon2_simd_lane_add_preserves_scalar
     vmap₂ (· + ·) state rc = (fun i => state i + rc i) :=
   vmap₂_eq_scalar (· + ·) state rc
 
-/-- **The Poseidon2 S-box lane map** (`LaneMap.poseidon2_sbox_lane_map`)
-    instantiated at the 16 BabyBear state slots: `poseidon2SBoxStub state`
-    is the per-slot map `x ↦ x * x * x * x * x`.
-
-    Caveat: `LaneMap.poseidon2SBoxStub` is *defined* as exactly that per-slot
-    lambda, so this equality holds by `rfl`. It records the per-slot shape of
-    the stub; it is not an independently proven agreement between a packed
-    SIMD encoding and a scalar one. The current FIFTEENTH ABI mode keeps the
-    per-slot S-box scalar (sharing the scalar `sbox` helper for KAT
-    robustness); a genuinely lane-parallel S-box would need its own
-    denotation-preservation proof. -/
+/-- **The Poseidon2 SIMD S-box lane-map stub** (committed at 6450ca07 with
+    `LaneMap.poseidon2_sbox_lane_map`) instantiated at the 16 BabyBear state
+    slots: the packed (SIMD) per-slot S-box form
+    `poseidon2SBoxStub state` denotes the same per-slot map as the scalar
+    sequential `fun i => state i * state i * state i * state i * state i`.
+    The current FIFTEENTH ABI mode keeps the per-slot S-box scalar (sharing
+    the committed scalar `sbox` helper for KAT robustness); this corollary
+    licences the next refinement step where the S-box itself runs lane-
+    parallel. -/
 theorem poseidon2_simd_sbox_lane_map (state : Fin 16 → BitVec 64) :
     poseidon2SBoxStub state =
       (fun i => let x := state i; x * x * x * x * x) :=

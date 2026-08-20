@@ -13,7 +13,7 @@ set_option autoImplicit false
 
 **EXPERIMENTAL / SELF-CONTAINED FILE.**  This is the *first verified milestone*
 of the lean-mlir backend for the verified-GMP project.  It isolates the two
-genuinely-new verification obligations that block the verified `scf.for` lowering
+verification obligations that block the verified `scf.for` lowering
 of `mpn_add_n`, in a toy setting that depends on nothing in the real VIR / Veir
 chain:
 
@@ -31,7 +31,7 @@ chain:
 
 The structure deliberately mirrors the `agree_*` style of the real
 `MlirMemrefDialect.lean` (per-op semantic-agreement lemmas) and the loop
-induction style of `MpnAddPrototype.lean` (`bignumExecFuel_loop_step` + limb-list
+induction style of `Mpn.AddPrototype.lean` (`bignumExecFuel_loop_step` + limb-list
 induction).
 
 ## What is proved here (all axiom-clean, no `sorry`)
@@ -49,7 +49,7 @@ induction).
   with a static `Fin`-indexed reference loop, under the per-iteration
   `i < len` invariant.
 
-## Honest scope
+## Scope
 
 This is a *toy*.  It is a standalone denotational model: `forN` and `DynArr`
 are Lean functions, not `VIR.Op` constructors wired through `Com.denote`.  The
@@ -119,7 +119,7 @@ induction, in the toy region setting.  Two forms:
   `MlirMemrefDialect` per-op `agree_*` lemmas, lifted across the region.
 * **Invariant rule** (`forN_invariant`): a relation `R` between two parallel
   loops, preserved by each step, is preserved by the whole loop.  This is the
-  load-bearing form for the §4 composition (the static/dynamic loops are not
+  form used by the §4 composition (the static/dynamic loops are not
   *equal* bodies; they agree only *under* the in-bounds invariant). -/
 
 /-- **Pointwise body agreement (by `Nat.rec` on `n`).**  If two loop bodies are
@@ -150,7 +150,7 @@ theorem agree_forN {Acc : Type} (n : Nat) (body₁ body₂ : Nat → Acc → Acc
     `a₁, a₂` with `R a₁ a₂`, we have `R (body₁ i a₁) (body₂ i a₂)` — then `R`
     holds between the two final accumulators.
 
-    This is the genuinely-useful loop rule: the static (`Fin`) and dynamic
+    The loop rule: the static (`Fin`) and dynamic
     (`DynArr`) loops in §4 do **not** have pointwise-equal bodies; they relate
     only through an in-bounds invariant, which `R` carries.  Directly mirrors a
     Hoare-style `scf.for` loop-invariant rule. -/

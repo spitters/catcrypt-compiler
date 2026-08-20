@@ -98,10 +98,10 @@ def binOpStr : SOp2 → Option String
     `Add` / `Sub` / `BitXor` / …, so when the emitter sees a `Ccall` to one
     of these names with exactly two `Pvar` operands it must rewrite into a
     Jasmin infix `dst = a OP b;` (Two-operand form: `dst = a; dst OP= b;`).
-    Returns `none` for genuine leaf-function names (`poly_add`, `mat_vec_mul`,
+    Returns `none` for leaf-function names (`poly_add`, `mat_vec_mul`,
     …), which fall through to the regular function-call emit. This mirrors
-    the `RustEmitJazz.jasminBinOp` rewrite on the `LowCT`-direct `.jazz`
-    emit path; the AST-direct path here recognises the same set. -/
+    the `RustEmitJazz.jasminBinOp` rewrite that lives in the deprecated
+    Rust-shaped path; the AST-direct path now recognises the same set. -/
 def binOpNameStr (f : String) : Option String :=
   match f with
   | "Add" | "add" | "wrapping_add" => some "+"
@@ -469,7 +469,7 @@ partial def emitInstr (ind : String) : InstrR → Option String
   -- the same `Papp2 (Oneq _) (Pvar _) (Pconst 0)` guard shape accepted by
   -- the `Cwhile` clause above (and by `isCT_Cmd`'s `Cif` whitelist). It
   -- covers the sign-equality / `mpn_compare`-result branches used by the
-  -- signed-mpz dispatcher in `MpnSignedJasminPrototype.lean`. The bodies
+  -- signed-mpz dispatcher in `Mpn.SignedJasminPrototype.lean`. The bodies
   -- are rendered with a deeper indent; an unsupported body instruction
   -- propagates `none` as everywhere else. Emitted form:
   --   if (<gv> != 0) {
@@ -495,9 +495,9 @@ partial def emitInstr (ind : String) : InstrR → Option String
   -- rejects. `LowCTToJasmin.toJasminCmd`'s `RCall f dest args` arm lowers
   -- to a `Ccall .DoNotInline [locToLVal dest] { name := f } …`, so this is
   -- the on-ramp the bench drivers (e.g. MAYO `sign_rwhile`) need to land
-  -- per-iter scalar work inside an `RWhileNz` body. The same infix
-  -- rewriter exists in `RustEmitJazz.lean` (the `LowCT`-direct `.jazz`
-  -- emit path); this arm gives the AST-direct path the same coverage.
+  -- per-iter scalar work inside an `RWhileNz` body. The previous infix
+  -- rewriter lived only in `RustEmitJazz.lean` (the deprecated Rust-shaped
+  -- path); this arm gives the canonical AST-direct path the same coverage.
   --
   -- Falls through for any other shape (multi-return, more/fewer than two
   -- `Pvar` args, non-binop name, …) to the regular function-call emit.
@@ -580,7 +580,7 @@ partial def emitInstr (ind : String) : InstrR → Option String
   -- This arm is placed LAST among the `Cassgn (.Lvar _)` arms so the
   -- specific flat shapes above (single `Pvar`, single `Pconst`, two-operand
   -- `Papp2`) take priority and emit their compact two-operand form; only
-  -- genuinely nested expressions reach here.
+  -- nested expressions reach here.
   | .Cassgn (.Lvar x) _ _ rhs => do
       let es ← ppArithExpr rhs
       some (ind ++ x.var.vname ++ " = " ++ es ++ ";")
@@ -882,7 +882,7 @@ partial def collectLoopIdxNames : List InstrR → List String
 /-! ### GPR-use detection for flag-named variables
 
 A variable named like an x86 status flag (`of`/`cf`/`sf`/`pf`/`zf`) is only a
-*genuine* `reg bool` flag if it appears **solely** in flag positions: as a
+`reg bool` flag if it appears **solely** in flag positions: as a
 `Copn` flag-bundle `Lvar` output, or as a flag carry-input *operand* (a
 top-level `Pvar` argument) of a flag-consuming intrinsic such as `#ADC_64` /
 `#SBB_64`, possibly with a `Pconst 0` initializer.
@@ -901,7 +901,7 @@ declared and initialized as a u64, instead of being misclassified into the
 `reg bool of cf sf pf zf;` bank (which makes `cf = 0` a spurious
 `int → bool` cast). -/
 
-/-- Names read in a genuine **arithmetic / memory** context inside an
+/-- Names read in an **arithmetic / memory** context inside an
     expression: anything reached through `Papp1`/`Papp2`/`Pif`/`Pget`/`Psub`,
     or as a memory base/offset. A *bare* top-level `Pvar` is **not** counted
     here (so a top-level `Copn` carry-input operand like `#ADC_64(_, _, cf)`
@@ -1020,7 +1020,7 @@ selector lowers any `#SETcc(reg bool)` to the right `setcc` mnemonic regardless
 of which arithmetic produced the bool, so the **same materialization recipe
 works for CF (ADCX) and OF (ADOX)**.
 
-The pass leaves bundles whose carry slot is `Lnone` (discarded) or a genuine
+The pass leaves bundles whose carry slot is `Lnone` (discarded) or a
 physical-flag register (not GPR-used, e.g. the `cf` / `of` threaded through a
 pure dual-chain) untouched, so existing `#ADC_64` and `#ADCX`/`#ADOX` chain
 kernels emit exactly as before.
@@ -1406,7 +1406,7 @@ def tbytesStackLayout (n : Nat) : WSize × Nat :=
 
 /-! ### #253: Keccak-f1600 u64-ptr-array layout case
 
-The #251 leaf-ABI keystone renders an `.sarr n` buffer as `reg ptr u32[n/4]`
+The #251 leaf-ABI pass renders an `.sarr n` buffer as `reg ptr u32[n/4]`
 (the ML-DSA u32-packed poly layout, 4 bytes / coefficient).  The SHAKE sponge
 that drives the ML-DSA seed schedule (ExpandA's SHAKE128, ExpandMask's
 SHAKE256, the H(tr‖M) / c̃ digests) calls the real `keccak_f1600` permutation,
@@ -1650,7 +1650,7 @@ def emitFunDeclCore (fd : FunDecl) (spillScalars : Bool := false) :
   -- plus the `.sarr`-typed (byte%8==0) Ccall operands that are NOT u32-accessed
   -- (a u64 array threaded through a `Ccall` appears as a bare `.sarr` operand
   -- with no in-orchestrator scaled access).
-  -- Names accessed through a genuinely `.AAscale .U32`-scaled `Pget`/`Laset`
+  -- Names accessed through an `.AAscale .U32`-scaled `Pget`/`Laset`
   -- (the real u32-poly buffers).  A u64 array threaded through a `Ccall` is
   -- never *also* u32-scaled, so this set disambiguates the bare-`.sarr` Ccall
   -- operand: if a `.sarr` (byte%8==0) operand is NOT in this set, it is the
@@ -1834,7 +1834,7 @@ other means — e.g. a sibling `fn` in the same `.jazz`).  -/
     shim that the bench's hand-edited `.jazz` references via a
     top-of-file `require ".../<x>_leaves.jinc"`.  E3 lets the
     verified emit produce that prologue automatically so the bench
-    drivers no longer need a manual edit.  Returning `none` means
+    drivers need no manual edit.  Returning `none` means
     the kernel is in scope by some other means (e.g. a sibling
     `fn` definition in the same `.jazz`); no require line is
     emitted in that case.  -/

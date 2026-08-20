@@ -375,6 +375,60 @@ theorem fuseAdxStep_sound (s : JState 64) (cout d' : String) (src' : JOperand)
   · rw [adcx_get_self, adcx_get_self, hd', hsrc', hcf3, hcfs]
   · rw [adcx_cf_self, adcx_cf_self, hd', hsrc', hcf3, hcfs]
 
+/-- **Whole-store soundness of one fusion step.** From every start state whose
+    `CF = some b` (the producer's carry-out), the unfused fragment
+    `setc cout ; bt cout ; adcx d' src'` and the fused `adcx d' src'` reach the
+    **same store**: identical flags, identical memory, and identical registers
+    everywhere except the dropped carry materialisation `cout`, which the
+    recognition side-condition (`coutDeadAfter`) certifies dead. This is the
+    `LprogOptPipeline` "reaches the same store from every start state" shape for
+    one fusion, stated over the CF-modelling `JasminModel` — the only machine
+    model that carries the carry flag the fusion threads (`JasminLsem`'s word-op
+    fragment models none of `ADCX`/`ADCXHI`/`SETC`). -/
+theorem fuseAdxStep_store_sound (s : JState 64) (cout d' : String) (src' : JOperand)
+    (b : Bool) (hcf : s.flags.cf = some b) (hne : cout ≠ d')
+    (hsrc : ∀ r, src' = .reg r → r ≠ cout) :
+    (evalInstr (btCF (evalInstr s (.setc cout)) cout) (.adcx d' src')).flags
+        = (evalInstr s (.adcx d' src')).flags
+    ∧ (evalInstr (btCF (evalInstr s (.setc cout)) cout) (.adcx d' src')).mem
+        = (evalInstr s (.adcx d' src')).mem
+    ∧ ∀ r, r ≠ cout →
+        (evalInstr (btCF (evalInstr s (.setc cout)) cout) (.adcx d' src')).get r
+          = (evalInstr s (.adcx d' src')).get r := by
+  obtain ⟨hval, hcfeq⟩ := fuseAdxStep_sound s cout d' src' b hcf hne hsrc
+  -- The pre-`adcx` round-trip state agrees with `s` on flags-off-`CF`, on memory,
+  -- and on every register except `cout`.
+  have htf : (btCF (evalInstr s (.setc cout)) cout).flags
+      = { s.flags with cf := some (((evalInstr s (.setc cout)).get cout).getLsbD 0) } := by
+    simp only [btCF, setc_flags]
+  have htm : (btCF (evalInstr s (.setc cout)) cout).mem = s.mem := by
+    simp only [btCF, evalInstr, JState.setReg]
+  have htr : ∀ r, r ≠ cout → (btCF (evalInstr s (.setc cout)) cout).regs r = s.regs r := by
+    intro r hr
+    simp only [btCF, evalInstr, JState.setReg]
+    rw [if_neg hr]
+  refine ⟨?_, ?_, ?_⟩
+  · -- flags: both are `{ pre.flags with cf := co }`; the `co` agree by `hcfeq`,
+    -- the non-`CF` fields agree because the round-trip only writes `CF`.
+    have eL : (evalInstr (btCF (evalInstr s (.setc cout)) cout) (.adcx d' src')).flags
+        = { (btCF (evalInstr s (.setc cout)) cout).flags with
+              cf := (evalInstr (btCF (evalInstr s (.setc cout)) cout) (.adcx d' src')).flags.cf } :=
+      rfl
+    have eR : (evalInstr s (.adcx d' src')).flags
+        = { s.flags with cf := (evalInstr s (.adcx d' src')).flags.cf } := rfl
+    rw [eL, htf, hcfeq, eR]
+  · -- memory: `setc`/`bt`/`adcx` write no memory.
+    show (btCF (evalInstr s (.setc cout)) cout).mem = s.mem
+    exact htm
+  · -- registers: `d'` by the value soundness, everything else (≠ `cout`) unchanged.
+    intro r hr
+    by_cases hd : r = d'
+    · subst hd; exact hval
+    · show (if r = d' then _ else (btCF (evalInstr s (.setc cout)) cout).regs r)
+          = (if r = d' then _ else s.regs r)
+      rw [if_neg hd, if_neg hd]
+      exact htr r hr
+
 /-! ## 4. Constant-time preservation
 
 Every instruction the fusion drops or keeps is register-only (`IsDirect`), so a

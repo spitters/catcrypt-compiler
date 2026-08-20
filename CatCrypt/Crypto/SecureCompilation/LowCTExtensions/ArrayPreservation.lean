@@ -11,8 +11,8 @@ import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
 
 This file extends the **robust-compilation** (#95) and **CT-preservation**
 (#146) meta-theorems to cover the array-element load/store constructors
-`RArrLoad` and `RArrStore`. It is a *sibling* file: no edits to foundation
-files.
+`RArrLoad` and `RArrStore` introduced by Agent DD (Phase Ext, 2026-05-12).
+It is a *sibling* file: no edits to foundation files.
 
 ## Honest status (read this section first)
 

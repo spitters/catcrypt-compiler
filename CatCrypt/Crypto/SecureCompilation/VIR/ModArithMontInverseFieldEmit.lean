@@ -44,7 +44,7 @@ The op's downstream correctness — that its Montgomery product with `x̃` is th
 unit `R = rInv⁻¹` — is `ModArithMontInverse.montInverse_spec` (over a prime
 modulus); here we only tie the field schedule to that op's leaf.
 
-## Honest classification
+## Honest classification (read `VIR/DIALECTS.md`)
 
 This is a **denote-preserving `fieldDialect` schedule**, NOT an emit-wired
 kernel.  It descends to jasmin/bytes through the certified

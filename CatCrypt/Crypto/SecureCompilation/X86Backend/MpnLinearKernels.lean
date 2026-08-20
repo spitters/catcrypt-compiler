@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
+import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
 # `mpn_add_n` / `mpn_sub_n` / `mpn_submul_1` at n ≥ 16 through the owned x86 backend (#351)
@@ -66,6 +67,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-! ## 1. The pointer-streaming blocks (constant register pressure in `n`)
 
@@ -468,6 +471,147 @@ theorem sqrDiagBlock_mulx_lt_schoolbook_16 :
 
 theorem sqrDiagBlock_mulx_lt_schoolbook_32 :
     mulxCount (sqrDiagBlock 32) < mulxCount (sqrBlock 32) := by native_decide
+
+/-! ## 4d. Constant time, at every limb count
+
+Every block in this module streams through the pointer bases `r`/`a`/`b` at
+literal `8·i` displacements; the carry, borrow and product chains are register
+ALU. No step emits a register-indexed `loadMemIdx`/`storeMemIdx`, so each
+family is in the direct-addressing class uniformly in the limb count `n`, and
+`ConstantTimeCoverage.allDirect_constant_time` gives a state-independent
+machine leakage trace for every `n`. -/
+
+/-- One add step reads `a[i]`/`b[i]` and writes `r[i]` at literal displacements. -/
+theorem addStep_allDirect (i : Nat) : allDirect (addStep i) = true := by
+  by_cases hi : i = 0 <;> simp [allDirect, addStep, hi, IsDirect]
+
+/-- The `mpn_add_n` body is in the direct-addressing class at every limb count. -/
+theorem addBlock_allDirect (n : Nat) : allDirect (addBlock n) = true :=
+  allDirect_flatMap _ _ addStep_allDirect
+
+/-- **Constant time, every limb count.** The streaming add chain produces the
+    same machine leakage trace from any two starting states. -/
+theorem addBlock_constant_time (n : Nat) (s₁ s₂ : JState 64) :
+    blockLeak s₁ (addBlock n) = blockLeak s₂ (addBlock n) :=
+  allDirect_constant_time _ (addBlock_allDirect n) s₁ s₂
+
+/-- One sub step reads `a[i]`/`b[i]` and writes `r[i]` at literal displacements. -/
+theorem subStep_allDirect (i : Nat) : allDirect (subStep i) = true := by
+  by_cases hi : i = 0 <;> simp [allDirect, subStep, hi, IsDirect]
+
+/-- The `mpn_sub_n` body is in the direct-addressing class at every limb count. -/
+theorem subBlock_allDirect (n : Nat) : allDirect (subBlock n) = true :=
+  allDirect_flatMap _ _ subStep_allDirect
+
+/-- **Constant time, every limb count.** The streaming borrow chain produces the
+    same machine leakage trace from any two starting states. -/
+theorem subBlock_constant_time (n : Nat) (s₁ s₂ : JState 64) :
+    blockLeak s₁ (subBlock n) = blockLeak s₂ (subBlock n) :=
+  allDirect_constant_time _ (subBlock_allDirect n) s₁ s₂
+
+/-- One `submul_1` step: the `MULX` reads `a[i]` at a literal displacement and
+    the accumulator temp reads/writes `r[i]` at a literal displacement. -/
+theorem submul1Step_allDirect (i : Nat) : allDirect (submul1Step i) = true := by
+  simp [allDirect, submul1Step, IsDirect]
+
+/-- The `mpn_submul_1` body is in the direct-addressing class at every limb
+    count. -/
+theorem submul1Block_allDirect (n : Nat) : allDirect (submul1Block n) = true := by
+  have h : allDirect ((List.range n).flatMap submul1Step) = true :=
+    allDirect_flatMap _ _ submul1Step_allDirect
+  rw [show submul1Block n
+        = [JInstr.mov "hc" (.imm 0)] ++ (List.range n).flatMap submul1Step from rfl,
+    allDirect_append, h]
+  simp [allDirect, IsDirect]
+
+/-- **Constant time, every limb count.** The streaming `submul_1` product/borrow
+    chain produces the same machine leakage trace from any two starting states. -/
+theorem submul1Block_constant_time (n : Nat) (s₁ s₂ : JState 64) :
+    blockLeak s₁ (submul1Block n) = blockLeak s₂ (submul1Block n) :=
+  allDirect_constant_time _ (submul1Block_allDirect n) s₁ s₂
+
+/-- Zeroing one result limb writes at a literal displacement. -/
+theorem zeroStep_allDirect (k : Nat) : allDirect (zeroStep k) = true := by
+  simp [allDirect, zeroStep, IsDirect]
+
+/-- One schoolbook inner step addresses `a[i]` and `r[i+j]` at literal
+    displacements. -/
+theorem sqrInnerStep_allDirect (j i : Nat) : allDirect (sqrInnerStep j i) = true := by
+  simp [allDirect, sqrInnerStep, IsDirect]
+
+/-- One schoolbook row is in the direct-addressing class. -/
+theorem sqrRow_allDirect (n j : Nat) : allDirect (sqrRow n j) = true := by
+  have h : allDirect ((List.range n).flatMap (fun i => sqrInnerStep j i)) = true :=
+    allDirect_flatMap _ _ (sqrInnerStep_allDirect j)
+  rw [sqrRow, allDirect_append, allDirect_append, h]
+  simp [allDirect, IsDirect]
+
+/-- The schoolbook `mpn_sqr_basecase` body is in the direct-addressing class at
+    every limb count. -/
+theorem sqrBlock_allDirect (n : Nat) : allDirect (sqrBlock n) = true := by
+  rw [sqrBlock, allDirect_append,
+    allDirect_flatMap _ _ zeroStep_allDirect,
+    allDirect_flatMap _ _ (fun j => sqrRow_allDirect n j)]
+  rfl
+
+/-- **Constant time, every limb count.** The schoolbook square produces the same
+    machine leakage trace from any two starting states. -/
+theorem sqrBlock_constant_time (n : Nat) (s₁ s₂ : JState 64) :
+    blockLeak s₁ (sqrBlock n) = blockLeak s₂ (sqrBlock n) :=
+  allDirect_constant_time _ (sqrBlock_allDirect n) s₁ s₂
+
+/-- One cross-product row of the diagonal schedule is in the direct-addressing
+    class. -/
+theorem crossRow_allDirect (j : Nat) : allDirect (crossRow j) = true := by
+  have h : allDirect ((List.range j).flatMap (fun i => crossInnerStep j i)) = true :=
+    allDirect_flatMap _ _ (sqrInnerStep_allDirect j)
+  rw [crossRow, allDirect_append, allDirect_append, h]
+  simp [allDirect, IsDirect]
+
+/-- Stage 1 of the diagonal square (zero + lower triangle) is in the
+    direct-addressing class. -/
+theorem crossBlock_allDirect (n : Nat) : allDirect (crossBlock n) = true := by
+  rw [crossBlock, allDirect_append,
+    allDirect_flatMap _ _ zeroStep_allDirect,
+    allDirect_flatMap _ _ (fun j => crossRow_allDirect j)]
+  rfl
+
+/-- One doubling step reads and writes `r[k]` at a literal displacement. -/
+theorem doubleStep_allDirect (k : Nat) : allDirect (doubleStep k) = true := by
+  simp [allDirect, doubleStep, IsDirect]
+
+/-- Stage 2 of the diagonal square (the `ADCX` doubling sweep) is in the
+    direct-addressing class. -/
+theorem doubleBlock_allDirect (n : Nat) : allDirect (doubleBlock n) = true := by
+  have h : allDirect ((List.range (2 * n)).flatMap doubleStep) = true :=
+    allDirect_flatMap _ _ doubleStep_allDirect
+  rw [doubleBlock, allDirect_append, h]
+  simp [allDirect, IsDirect]
+
+/-- One diagonal step addresses `a[i]`, `r[2i]` and `r[2i+1]` at literal
+    displacements. -/
+theorem diagStep_allDirect (i : Nat) : allDirect (diagStep i) = true := by
+  by_cases hi : i = 0 <;> simp [allDirect, diagStep, hi, IsDirect]
+
+/-- Stage 3 of the diagonal square (the diagonal squares) is in the
+    direct-addressing class. -/
+theorem diagBlock_allDirect (n : Nat) : allDirect (diagBlock n) = true := by
+  refine allDirect_flatMap _ _ (fun i => ?_)
+  rw [allDirect_append, diagStep_allDirect i]
+  simp [allDirect, IsDirect]
+
+/-- The diagonal-symmetry `mpn_sqr_basecase` body is in the direct-addressing
+    class at every limb count. -/
+theorem sqrDiagBlock_allDirect (n : Nat) : allDirect (sqrDiagBlock n) = true := by
+  rw [sqrDiagBlock, allDirect_append, allDirect_append, crossBlock_allDirect n,
+    doubleBlock_allDirect n, diagBlock_allDirect n]
+  rfl
+
+/-- **Constant time, every limb count.** The diagonal-symmetry square produces
+    the same machine leakage trace from any two starting states. -/
+theorem sqrDiagBlock_constant_time (n : Nat) (s₁ s₂ : JState 64) :
+    blockLeak s₁ (sqrDiagBlock n) = blockLeak s₂ (sqrDiagBlock n) :=
+  allDirect_constant_time _ (sqrDiagBlock_allDirect n) s₁ s₂
 
 /-! ## 5. AT&T assembly emission (owned backend, no jasminc)
 

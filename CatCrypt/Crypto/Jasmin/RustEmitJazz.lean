@@ -44,9 +44,8 @@ TU64              → reg u64
 TTuple a b        → fallback: `stack u8` flat-pack to (sizeOf a + sizeOf b)
 ```
 
-`TPolyMod` / `TPolyVec` / `TPolyMat` are the load-bearing additions;
-the other tower types either match the existing `JasminEmit` path or
-get a placeholder.  Real formosa-mlkem uses `stack u16[MLKEM_VECN]`
+`TPolyMod` / `TPolyVec` / `TPolyMat` carry the array shapes; the other
+tower types either match the `JasminEmit` path or get a placeholder.  Real formosa-mlkem uses `stack u16[MLKEM_VECN]`
 for polyvec (= `stack u16[k*256]` = `stack u16[768]` for ML-KEM-768),
 which exactly matches `TPolyVec 3329 256 3`'s lowering.
 
@@ -178,21 +177,18 @@ partial def collectLetZeros : LowCT → List (String × TowerType)
   | .RCloneCall cv t _ _ _ _       => [(cv, t)]
   | .RLimbStore _ _ _              => []
   | .RLimbStoreExpr _ _ _          => []
-  | .RAsmOp _ _ _                  => []
   | .RCallN _ _ _                  => []
   | .RSelect _ _ _ _               => []
   | .RAssert _                     => []
   | .RBlock body                   => collectLetZeros body
   | .RFnDef _ _ _ _ cont           => collectLetZeros cont
   | .RFnCall _ _ _                 => []
-  | .RTupleStore _ _ _             => []
   | .RTupleLoad _ _ _              => []
   | .RArrStore _ _ _               => []
   | .RArrLoad _ _ _                => []
   | .RArrStoreLit _ _ _            => []
   | .RArrLoadLit _ _ _             => []
   | .RScalarSetExpr _ _            => []
-  | .RBytesSlice _ _ _ _           => []
   | .RCallDstThreaded _ _ _        => []
 
 /-- `RFor` loops with bound above this lower to a runtime `while` (a
@@ -227,21 +223,18 @@ partial def collectLoopIdxs (large : Bool) : LowCT → List String
   | .RCloneCall _ _ _ _ _ _        => []
   | .RLimbStore _ _ _              => []
   | .RLimbStoreExpr _ _ _          => []
-  | .RAsmOp _ _ _                  => []
   | .RCallN _ _ _                  => []
   | .RSelect _ _ _ _               => []
   | .RAssert _                     => []
   | .RBlock body                   => collectLoopIdxs large body
   | .RFnDef _ _ _ _ cont           => collectLoopIdxs large cont
   | .RFnCall _ _ _                 => []
-  | .RTupleStore _ _ _             => []
   | .RTupleLoad _ _ _              => []
   | .RArrStore _ _ _               => []
   | .RArrLoad _ _ _                => []
   | .RArrStoreLit _ _ _            => []
   | .RArrLoadLit _ _ _             => []
   | .RScalarSetExpr _ _            => []
-  | .RBytesSlice _ _ _ _           => []
   | .RCallDstThreaded _ _ _        => []
 
 /-- Small (`≤ forLoopThreshold`) loop indices — declared `inline int`. -/
@@ -266,21 +259,18 @@ partial def collectLetU64s : LowCT → List String
   | .RCloneCall _ _ _ _ _ _        => []
   | .RLimbStore _ _ _              => []
   | .RLimbStoreExpr _ _ _          => []
-  | .RAsmOp _ _ _                  => []
   | .RCallN _ _ _                  => []
   | .RSelect _ _ _ _               => []
   | .RAssert _                     => []
   | .RBlock body                   => collectLetU64s body
   | .RFnDef _ _ _ _ cont           => collectLetU64s cont
   | .RFnCall _ _ _                 => []
-  | .RTupleStore _ _ _             => []
   | .RTupleLoad _ _ _              => []
   | .RArrStore _ _ _               => []
   | .RArrLoad _ _ _                => []
   | .RArrStoreLit _ _ _            => []
   | .RArrLoadLit _ _ _             => []
   | .RScalarSetExpr _ _            => []
-  | .RBytesSlice _ _ _ _           => []
   | .RCallDstThreaded _ _ _        => []
 
 /-- Walk `c` collecting every variable used as an array **index**
@@ -306,21 +296,18 @@ partial def collectIndexVars : LowCT → List String
   | .RCloneCall _ _ _ _ _ _        => []
   | .RLimbStore _ _ _              => []
   | .RLimbStoreExpr _ _ _          => []
-  | .RAsmOp _ _ _                  => []
   | .RCallN _ _ _                  => []
   | .RSelect _ _ _ _               => []
   | .RAssert _                     => []
   | .RBlock body                   => collectIndexVars body
   | .RFnDef _ _ _ _ cont           => collectIndexVars cont
   | .RFnCall _ _ _                 => []
-  | .RTupleStore _ _ _             => []
   | .RTupleLoad _ _ _              => []
   | .RArrStore _ idxVar _          => [idxVar]
   | .RArrLoad _ _ idxVar           => [idxVar]
   | .RArrStoreLit _ _ _            => []   -- literal index, no index var
   | .RArrLoadLit _ _ _             => []   -- literal index, no index var
   | .RScalarSetExpr _ _            => []
-  | .RBytesSlice _ _ _ _           => []
   | .RCallDstThreaded _ _ _        => []
 
 /-- Walk `c` collecting every array slot that is **read**: an
@@ -343,21 +330,18 @@ partial def collectArrReadSlots : LowCT → List String
   | .RCloneCall _ _ _ _ _ args     => args.map (·.locVar)
   | .RLimbStore _ _ _              => []
   | .RLimbStoreExpr _ _ _          => []
-  | .RAsmOp _ _ args               => args.map (·.locVar)
   | .RCallN _ _ args               => args.map (·.locVar)
   | .RSelect _ _ _ _               => []
   | .RAssert _                     => []
   | .RBlock body                   => collectArrReadSlots body
   | .RFnDef _ _ _ _ cont           => collectArrReadSlots cont
   | .RFnCall _ _ args              => args.map (·.locVar)
-  | .RTupleStore _ _ _             => []
   | .RTupleLoad _ _ _              => []
   | .RArrStore _ _ _               => []
   | .RArrLoad _ src _              => [src.locVar]
   | .RArrStoreLit _ _ _            => []
   | .RArrLoadLit _ src _           => [src.locVar]
   | .RScalarSetExpr _ _            => []
-  | .RBytesSlice _ _ _ _           => []
   | .RCallDstThreaded _ _ args     => args.map (·.locVar)
 
 /-- Walk `c` collecting every `RArrLoad` *destination* slot — i.e. a
@@ -378,21 +362,18 @@ partial def collectArrLoadDsts : LowCT → List String
   | .RCloneCall _ _ _ _ _ _        => []
   | .RLimbStore _ _ _              => []
   | .RLimbStoreExpr _ _ _          => []
-  | .RAsmOp _ _ _                  => []
   | .RCallN _ _ _                  => []
   | .RSelect _ _ _ _               => []
   | .RAssert _                     => []
   | .RBlock body                   => collectArrLoadDsts body
   | .RFnDef _ _ _ _ cont           => collectArrLoadDsts cont
   | .RFnCall _ _ _                 => []
-  | .RTupleStore _ _ _             => []
   | .RTupleLoad _ _ _              => []
   | .RArrStore _ _ _               => []
   | .RArrLoad dst _ _              => [dst.locVar]
   | .RArrStoreLit _ _ _            => []
   | .RArrLoadLit dst _ _           => [dst.locVar]
   | .RScalarSetExpr _ _            => []
-  | .RBytesSlice _ _ _ _           => []
   | .RCallDstThreaded _ _ _        => []
 
 /-! ## §3 Body pretty-printer
@@ -409,7 +390,7 @@ private def jasIndent (n : Nat) (s : String) : String :=
     The hax extraction emits binary arithmetic and bit operations as
     `RCall`s with operator names (`Mul`, `Add`, `BitAnd#32`, `Shr#32`,
     …); jasminc has no such functions — they must become infix
-    operators.  Returns `none` for genuine leaf calls (poly_add etc.). -/
+    operators.  Returns `none` for leaf calls (poly_add etc.). -/
 def jasminBinOp (f : String) : Option String :=
   match f with
   | "Add" | "add" | "wrapping_add" => some "+"
@@ -539,8 +520,8 @@ partial def ppJasminBody (ind : Nat) : LowCT → String
   | .RCall f dest args =>
       -- Recognise arithmetic / bitwise / cast operator names emitted by
       -- the hax extraction and lower them to Jasmin infix / cast syntax.
-      -- Genuine leaf calls (poly_add, mat_vec_mul, …) fall through to
-      -- the function-call form.
+      -- Leaf calls (poly_add, mat_vec_mul, …) fall through to the
+      -- function-call form.
       match jasminBinOp f, jasminCastWidth f, args with
       | some op, _, [a, b] =>
           -- Jasmin reg arithmetic is *two-address* (`d op= b`).  Emitting
@@ -582,11 +563,6 @@ partial def ppJasminBody (ind : Nat) : LowCT → String
   | .RLimbStoreExpr loc idx e =>
       jasIndent ind (loc.locVar ++ "[" ++ toString idx ++ "] = " ++
                      e.ppJazz ++ ";")
-  | .RAsmOp name dests args =>
-      let dStr := String.intercalate ", " (dests.map (·.locVar))
-      let aStr := String.intercalate ", " (args.map (·.locVar))
-      jasIndent ind ("// asm " ++ name ++ " " ++ dStr ++
-                     (if args.isEmpty then "" else " <- " ++ aStr))
   | .RCallN f dests args =>
       let dStr := String.intercalate ", " (dests.map (·.locVar))
       let aStr := String.intercalate ", " (args.map (·.locVar))
@@ -630,9 +606,6 @@ partial def ppJasminBody (ind : Nat) : LowCT → String
       let dStr := String.intercalate ", " (dests.map (·.locVar))
       let aStr := String.intercalate ", " (args.map (·.locVar))
       jasIndent ind (dStr ++ " = " ++ f ++ "(" ++ aStr ++ ");")
-  | .RTupleStore dst idx src =>
-      jasIndent ind (dst.locVar ++ "[" ++ toString idx ++ "] = " ++
-                     src.locVar ++ ";")
   | .RTupleLoad dst src idx =>
       jasIndent ind (dst.locVar ++ " = " ++ src.locVar ++ "[" ++
                      toString idx ++ "];")
@@ -711,13 +684,6 @@ partial def ppJasminBody (ind : Nat) : LowCT → String
       -- pretty-printer emits `.saturating_sub(...)`, `0u64`, etc. which
       -- jasminc rejects; `ppJazz` emits plain `-`, suffix-less literals.
       jasIndent ind (x ++ " = " ++ e.ppJazz ++ ";")
-  | .RBytesSlice dst src start len =>
-      -- Jasmin's slice-copy idiom: per-byte loop.  We emit a
-      -- `for`-style pseudo-loop so the developer can replace it
-      -- with the appropriate Jasmin builtin.
-      jasIndent ind (dst.locVar ++ "[0:" ++ toString len ++ "] = " ++
-                     src.locVar ++ "[" ++ toString start ++ ":" ++
-                     toString (start + len) ++ "];")
   | .RArrStoreLit arr idx src =>
       -- Literal-index store: `arr[idx] = src;`.  This is the constant-
       -- index sibling of `RArrStore`; the slice-aware container logic of
@@ -804,7 +770,7 @@ def WMap.bump (m : WMap) (k : String) (v : Nat) : WMap :=
   m.set k (max (m.get k) v)
 
 /-- Collect every `cast#N` destination — these are *pinned* to width `N`
-    and never raised by arithmetic unification (a `cast#16` is a genuine
+    and never raised by arithmetic unification (a `cast#16` is a
     truncation boundary). -/
 partial def collectCastDests : LowCT → List String
   | .RSeq c1 c2                    => collectCastDests c1 ++ collectCastDests c2

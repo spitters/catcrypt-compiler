@@ -16,7 +16,7 @@ file re-proves the simulation in that scoped form — `RenInjOn ns ρ` in place 
 `Function.Injective ρ`, with `∈ ns` side-conditions on the written/read names —
 so the checker's certificate is exactly what the soundness theorem consumes. This
 is the x86 analogue of the generic `GenericRegAlloc.renameBlock_runBlock_on`
-keystone, carried through the x86 `StateRel` simulation (memory + flags +
+theorem, carried through the x86 `StateRel` simulation (memory + flags +
 `mulx`'s two destinations).
 
 The scoped carrier is `StateRelOn ns ρ`: registers agree at `ρ n` with the source
@@ -32,7 +32,7 @@ names, the same list `noAliasX` checks).
 `SpillingRegAlloc.readNames` is `[]` — `sym` is a fixed link-time label, **not** a
 program register name — so `sym ∉ bNamesX`. For the scoped *memory* relation to
 carry through the aliasing read (`sL.mem (ρ sym) o = sR.mem sym o`) we need
-`sym ∈ ns`; that fact is genuinely outside the block-names certificate. The step
+`sym ∈ ns`; that fact lies outside the block-names certificate. The step
 lemma therefore takes an explicit `loadSym`-only hypothesis (`hsym`) supplying it.
 The block driver threads it via `bNamesXsym`, the block names *augmented with each
 `loadSym`'s symbol*; the top theorem scopes to `blockNamesXsym block` and
@@ -102,6 +102,27 @@ theorem writeB5W_rel_on {ns : List String} {ρ : String → String}
   · simpa [JState.writeB5W] using setReg_regs_rel_on hinj h.regsOn d hd t.word
   · simp [JState.writeB5W]
   · intro b hb o; simpa [JState.writeB5W] using h.memOn b hb o
+
+/-- A `writeB5` commutes through `ρ` on `ns`. It writes only the five flags, so no
+    name has to be in scope and no injectivity is needed. -/
+theorem writeB5_rel_on {ns : List String} {ρ : String → String}
+    {sL sR : JState 64} (h : StateRelOn ns ρ sL sR) (t : B5W 64) :
+    StateRelOn ns ρ (sL.writeB5 t) (sR.writeB5 t) := by
+  refine ⟨?_, ?_, ?_⟩
+  · intro n hn; simpa [JState.writeB5] using h.regsOn n hn
+  · simp [JState.writeB5]
+  · intro b hb o; simpa [JState.writeB5] using h.memOn b hb o
+
+/-- A `writeB2W` commutes through `ρ` on `ns` (needs `d ∈ ns`). The `SF`/`PF`/`ZF`
+    the rotate keeps are inherited from the pre-states, which agree. -/
+theorem writeB2W_rel_on {ns : List String} {ρ : String → String}
+    (hinj : RenInjOn ns ρ) {sL sR : JState 64} (h : StateRelOn ns ρ sL sR)
+    (d : String) (hd : d ∈ ns) (t : B2W 64) :
+    StateRelOn ns ρ (sL.writeB2W (ρ d) t) (sR.writeB2W d t) := by
+  refine ⟨?_, ?_, ?_⟩
+  · simpa [JState.writeB2W] using setReg_regs_rel_on hinj h.regsOn d hd t.word
+  · simp [JState.writeB2W, h.flags]
+  · intro b hb o; simpa [JState.writeB2W] using h.memOn b hb o
 
 /-- A `setReg` commutes through `ρ` on `ns` (needs `d ∈ ns`). -/
 theorem setReg_rel_on {ns : List String} {ρ : String → String}
@@ -255,6 +276,102 @@ theorem evalInstr_renameInstr_rel_on {ns : List String} {ρ : String → String}
       hsubX n (by simp [bNamesX, SpillingRegAlloc.readNames, hn])
     simp only [renameInstr, evalInstr, hop_on s hs, hget_on d hd]
     exact writeB5W_rel_on hinj h d hd _
+  | test a s =>
+    -- `test` has no destination: `a` is a *read* name, and the write is flags only.
+    have ha : a ∈ ns := hsubX a (by simp [bNamesX, SpillingRegAlloc.writtenNames,
+      SpillingRegAlloc.readNames])
+    have hs : ∀ n ∈ srcNames s, n ∈ ns := fun n hn =>
+      hsubX n (by simp [bNamesX, SpillingRegAlloc.writtenNames,
+        SpillingRegAlloc.readNames, hn])
+    simp only [renameInstr, evalInstr, hop_on s hs, hget_on a ha]
+    exact writeB5_rel_on h _
+  | cmp a s =>
+    -- as `test`: `a` is a read name and the write is flags only.
+    have ha : a ∈ ns := hsubX a (by simp [bNamesX, SpillingRegAlloc.writtenNames,
+      SpillingRegAlloc.readNames])
+    have hs : ∀ n ∈ srcNames s, n ∈ ns := fun n hn =>
+      hsubX n (by simp [bNamesX, SpillingRegAlloc.writtenNames,
+        SpillingRegAlloc.readNames, hn])
+    simp only [renameInstr, evalInstr, hop_on s hs, hget_on a ha]
+    exact writeB5_rel_on h _
+  | not_ d =>
+    have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    simp only [renameInstr, evalInstr, hget_on d hd]
+    exact setReg_rel_on hinj h d hd _
+  | andn d a b =>
+    have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    have ha : a ∈ ns := hsubX a (by simp [bNamesX, SpillingRegAlloc.writtenNames,
+      SpillingRegAlloc.readNames])
+    have hb : b ∈ ns := hsubX b (by simp [bNamesX, SpillingRegAlloc.writtenNames,
+      SpillingRegAlloc.readNames])
+    simp only [renameInstr, evalInstr, hget_on a ha, hget_on b hb]
+    exact writeB5W_rel_on hinj h d hd _
+  | rol d amt =>
+    have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    have hs : ∀ n ∈ srcNames amt, n ∈ ns := fun n hn =>
+      hsubX n (by simp [bNamesX, SpillingRegAlloc.readNames, hn])
+    simp only [renameInstr, evalInstr, hop_on amt hs, hget_on d hd]
+    exact writeB2W_rel_on hinj h d hd _
+  | ror d amt =>
+    have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    have hs : ∀ n ∈ srcNames amt, n ∈ ns := fun n hn =>
+      hsubX n (by simp [bNamesX, SpillingRegAlloc.readNames, hn])
+    simp only [renameInstr, evalInstr, hop_on amt hs, hget_on d hd]
+    exact writeB2W_rel_on hinj h d hd _
+  | rorx d src amt =>
+    have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    have hsrc : src ∈ ns := hsubX src (by simp [bNamesX,
+      SpillingRegAlloc.writtenNames, SpillingRegAlloc.readNames])
+    have hs : ∀ n ∈ srcNames amt, n ∈ ns := fun n hn =>
+      hsubX n (by simp [bNamesX, SpillingRegAlloc.readNames, hn])
+    simp only [renameInstr, evalInstr, hop_on amt hs, hget_on src hsrc]
+    exact setReg_rel_on hinj h d hd _
+  | shlx d src c =>
+    have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    have hsrc : src ∈ ns := hsubX src (by simp [bNamesX,
+      SpillingRegAlloc.writtenNames, SpillingRegAlloc.readNames])
+    have hc : c ∈ ns := hsubX c (by simp [bNamesX,
+      SpillingRegAlloc.writtenNames, SpillingRegAlloc.readNames])
+    simp only [renameInstr, evalInstr, hget_on src hsrc, hget_on c hc]
+    exact setReg_rel_on hinj h d hd _
+  | shrx d src c =>
+    have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    have hsrc : src ∈ ns := hsubX src (by simp [bNamesX,
+      SpillingRegAlloc.writtenNames, SpillingRegAlloc.readNames])
+    have hc : c ∈ ns := hsubX c (by simp [bNamesX,
+      SpillingRegAlloc.writtenNames, SpillingRegAlloc.readNames])
+    simp only [renameInstr, evalInstr, hget_on src hsrc, hget_on c hc]
+    exact setReg_rel_on hinj h d hd _
+  | sarx d src c =>
+    have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    have hsrc : src ∈ ns := hsubX src (by simp [bNamesX,
+      SpillingRegAlloc.writtenNames, SpillingRegAlloc.readNames])
+    have hc : c ∈ ns := hsubX c (by simp [bNamesX,
+      SpillingRegAlloc.writtenNames, SpillingRegAlloc.readNames])
+    simp only [renameInstr, evalInstr, hget_on src hsrc, hget_on c hc]
+    exact setReg_rel_on hinj h d hd _
+  | movzx d sw src =>
+    have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    have hsrc : src ∈ ns := hsubX src (by simp [bNamesX,
+      SpillingRegAlloc.writtenNames, SpillingRegAlloc.readNames])
+    simp only [renameInstr, evalInstr, hget_on src hsrc]
+    exact setReg_rel_on hinj h d hd _
+  | movsx d sw src =>
+    have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    have hsrc : src ∈ ns := hsubX src (by simp [bNamesX,
+      SpillingRegAlloc.writtenNames, SpillingRegAlloc.readNames])
+    simp only [renameInstr, evalInstr, hget_on src hsrc]
+    exact setReg_rel_on hinj h d hd _
+  | lea d base idx scale off =>
+    -- an address computation, not a memory access: the two address registers are
+    -- reads and the destination is the only write.
+    have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    have hbase : base ∈ ns := hsubX base (by simp [bNamesX,
+      SpillingRegAlloc.writtenNames, SpillingRegAlloc.readNames])
+    have hidx : idx ∈ ns := hsubX idx (by simp [bNamesX,
+      SpillingRegAlloc.writtenNames, SpillingRegAlloc.readNames])
+    simp only [renameInstr, evalInstr, hget_on base hbase, hget_on idx hidx]
+    exact setReg_rel_on hinj h d hd _
   | or_ d s =>
     have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
     have hs : ∀ n ∈ srcNames s, n ∈ ns := fun n hn =>
