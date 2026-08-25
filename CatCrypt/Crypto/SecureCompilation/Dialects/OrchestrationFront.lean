@@ -85,6 +85,23 @@ structure CallPhase where
   retTy : JasminTy
   /-- The root-order slots of the operand buffers, in argument order. -/
   argSlots : List Nat
+  /-- The byte offset into each operand buffer, in argument order: operand `i`
+      addresses the sub-buffer at `base + argOffs[i]`. A missing or short entry
+      is offset `0` (the whole buffer). Carried on the schedule as an
+      export-layer addressing detail (it is not a dialect-typed operand, so it
+      does not appear in the generated `Com`); the array-ABI emitter reads it via
+      `ArrAbiOrch.ArrCallRec.argOffs`. Empty is whole-buffer addressing. -/
+  argOffs : List Nat := []
+
+/-- The per-call operand byte offsets of a schedule, in call order: the
+    `argOffs` of each phase. This is the `schedOffs` argument the array-ABI
+    export (`ArrAbiOrch.Com.toLprogArrAbi` / `comToLfundefArrAbi`) threads onto
+    its records, so a consumer lowers a schedule-derived `Com` with
+    `Com.toLprogArrAbi com fname (schedArgOffs sched)` rather than re-deriving
+    the lowering in-module. An all-whole-buffer schedule yields all-empty
+    offsets (whole-buffer addressing). -/
+def schedArgOffs (sched : List CallPhase) : List (List Nat) :=
+  sched.map CallPhase.argOffs
 
 /-! ## 2. `mkVarDB` / `mkVarSlot`: resolve a dependent `Ctxt.Var` from a slot
 

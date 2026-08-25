@@ -50,7 +50,7 @@ agreement of the orchestration is untouched: the per-leaf `*_denote` theorems in
 `g1MsmTermCom_denote`, `ecdsaVerifyCom_denote`, …) carry the meaning, reducing the
 `Com` to the abstract BLS/EC primitives under the carried leaf agreements. The
 leaves stay **opaque** `extCall`s — `bls12_pairing` (Miller loop + final exp) is
-genuinely opaque and is a `call` to the verified AUCurves leaf, never owned.
+a `call` to the verified AUCurves leaf, never owned.
 
 The obligation discharged here is **structural** (`comToLfundefArrAbi_wf` and the
 shape lemmas), the same discipline as `Com.toLprogPhysAbi_wf`.
@@ -101,6 +101,11 @@ structure ArrCallRec where
   /-- The program-root slots of the operand buffers (arg array if `< nArgs`,
       prior binding if `≥ nArgs`). -/
   argSlots : List Nat
+  /-- The byte offset into each operand buffer, in argument order: operand `i`
+      addresses the sub-buffer at `base + argOffs[i]` rather than the whole
+      buffer. A missing or short entry is offset `0` (the whole buffer), so an
+      empty list is the whole-buffer addressing of every operand. -/
+  argOffs : List Nat := []
 deriving Repr
 
 /-- Collect the operand slots of an `extCall` `Expr` (program-root order). Mirrors
@@ -183,11 +188,13 @@ scratch buffer `mem.RSP.<binBufOff>`. The `LEA` source is that `mem.` reference;
 
 /-- The buffer-address `mem.` operand for operand slot `s`. `nArgs` arg arrays come
     first (addressed off the parked input pointer `inBaseReg`, default `R10`);
-    binding `s - nArgs` is a scratch buffer off `%rsp`. -/
+    binding `s - nArgs` is a scratch buffer off `%rsp`. `extraOff` is a byte
+    offset into the buffer, addressing the sub-buffer at `base + extraOff`; the
+    default `0` addresses the whole buffer (`base + 0 = base`). -/
 def slotBufMem (nArgs : Nat) (argBytes binBytes : List Nat) (inBaseReg : String)
-    (s : Nat) : LOperand :=
-  if s < nArgs then .reg (memName inBaseReg (inArgOff argBytes s))
-  else .reg (memName "RSP" (binBufOff binBytes (s - nArgs)))
+    (s : Nat) (extraOff : Nat := 0) : LOperand :=
+  if s < nArgs then .reg (memName inBaseReg (inArgOff argBytes s + extraOff))
+  else .reg (memName "RSP" (binBufOff binBytes (s - nArgs) + extraOff))
 
 /-! ## 6. The array-ABI body
 
@@ -209,10 +216,13 @@ def emitOneCall (nArgs : Nat) (argBytes binBytes : List Nat)
   -- RDI ← &(this binding's scratch buffer)  (the leaf's out-pointer)
   let outLea : Linstr :=
     ⟨0, .Lopn [.reg "RDI"] "LEA:64" [.reg (memName "RSP" (binBufOff binBytes b))]⟩
-  -- the operand buffers, in SysV order RSI, RDX, … (sysvArgRegs.tail)
+  -- the operand buffers, in SysV order RSI, RDX, … (sysvArgRegs.tail); each
+  -- operand's leaq displacement carries its per-arg byte offset (0 when the
+  -- argOffs list is empty or shorter than the operand index, via getD)
   let argLeas : Lcmd :=
-    (r.argSlots.zip (sysvArgRegs.drop 1)).map (fun (s, reg) =>
-      ⟨0, .Lopn [.reg reg] "LEA:64" [slotBufMem nArgs argBytes binBytes "R10" s]⟩)
+    (r.argSlots.zip (sysvArgRegs.drop 1)).zipIdx.map (fun ((s, reg), i) =>
+      ⟨0, .Lopn [.reg reg] "LEA:64"
+        [slotBufMem nArgs argBytes binBytes "R10" s (r.argOffs.getD i 0)]⟩)
   let call : Linstr := ⟨0, .Lcall none (r.leaf, 0)⟩
   reloadIn :: outLea :: (argLeas ++ [call])
 
@@ -251,14 +261,25 @@ def emitSave (binBytes : List Nat) : Lcmd :=
     the scratch + saved-pointer frame, the save prologue, one gather/`call` per
     leaf, and the scatter epilogue. The body issues only `LEA`/`MOVQ`/`call`
     (and the inert `FRAME`), all handled by the landed printer arms — no
-    `UNHANDLED-OP`. -/
+    `UNHANDLED-OP`.
+
+    `schedOffs` (call order) threads each leaf call's per-operand byte offsets
+    (`ArrCallRec.argOffs`) onto the records before `emitOneCall`, so the array-ABI
+    path itself addresses each operand's sub-buffer at `base + argOffs[i]`.
+    `schedOffs.getD i []` supplies the offsets for record `i`; a missing entry (a
+    shorter list) is the whole-buffer offset `[]`, so the default empty list
+    leaves every `argOffs` at `[]` (whole-buffer addressing) — identical to the
+    record's own default. -/
 def comToLfundefArrAbi {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (com : Com jasminDialect Γ t) : Lfundef :=
+    (com : Com jasminDialect Γ t) (schedOffs : List (List Nat) := []) : Lfundef :=
   let nArgs := Γ.length
   -- arg byte sizes in program-root order (Γ lists most-recent-first)
   let argBytes := Γ.reverse.map tyByteSize
   let recsRet := comArrRecords nArgs com nArgs
-  let recs := recsRet.1
+  -- thread the per-call operand byte offsets onto the records; an empty
+  -- `schedOffs` leaves every `argOffs` at `[]` (whole-buffer, unchanged)
+  let recs : List ArrCallRec :=
+    recsRet.1.zipIdx.map (fun (r, i) => { r with argOffs := schedOffs.getD i [] })
   let retSlot := recsRet.2
   let binBytes := recs.map ArrCallRec.retBytes
   let frame := arrFrameRaw binBytes
@@ -286,14 +307,19 @@ def comToLfundefArrAbi {Γ : Ctxt jasminDialect} {t : JasminTy}
 
 /-- Export an `extCall`-over-`stackArr` orchestration `Com` to a 2-pointer-SysV
     `Lprog` via the array-ABI orchestration. The owned counterpart of the jasminc
-    `.jazz` orchestration export, calling the opaque EC/pairing leaves by name. -/
+    `.jazz` orchestration export, calling the opaque EC/pairing leaves by name.
+
+    `schedOffs` (call order) is the schedule's per-call operand byte offsets,
+    forwarded to `comToLfundefArrAbi`; the default empty list is whole-buffer
+    addressing, identical to the previous export. -/
 def Com.toLprogArrAbi {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (com : Com jasminDialect Γ t) (fname : String) : Lprog :=
+    (com : Com jasminDialect Γ t) (fname : String)
+    (schedOffs : List (List Nat) := []) : Lprog :=
   { lp_rip := "RIP"
     lp_rsp := "RSP"
     lp_globs := []
     lp_glob_names := []
-    lp_funcs := [(fname, comToLfundefArrAbi com)] }
+    lp_funcs := [(fname, comToLfundefArrAbi com schedOffs)] }
 
 /-! ## 7. Structural well-formedness -/
 
@@ -493,7 +519,7 @@ theorem arrAbi_preserves_input_arrays
        `⌈retBytes/8⌉`-word out-buffer, with the word count tight to `retBytes`
        (no overrun) (`h_scatter_bounds`, `h_scatter_tight`).
 
-    Honest scope: this is the **framing-level** guarantee (disjointness + bounds
+    The scope is the **framing-level** guarantee (disjointness + bounds
     over the `Mem`/`array64` model), parametric in the abstract `step`; it shares
     the **B4 operational-glue residual** (a concrete `step` lifting the printed
     `LEA`/`MOVQ`/`call` body, `StepSimulatesJasmin`) with the general
