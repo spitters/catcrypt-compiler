@@ -20,9 +20,8 @@ position.
 
 Downstream Com → Com passes (CSE / GVN, LICM, dead-code elimination) can only
 optimise across function-call boundaries if those boundaries are first removed.
-Inlining is the third of the three highest-leverage missing -O2 passes
-alongside CSE/GVN and LICM. Adding it lets CSE/GVN see across function bodies
-and LICM hoist work out of loops whose bodies used to hide it behind a call.
+Inlining removes them: CSE/GVN then sees across function bodies, and LICM hoists
+work out of loops whose bodies would otherwise hide it behind a call.
 
 The closest existing Com → Com pass is `JasminLeafFusion.lean`, which fuses
 **two adjacent leaves** into a single fused leaf. That pass operates on
@@ -373,6 +372,7 @@ theorem tryInlineExpr_denote {Γ : Ctxt jasminDialect} {bs : JasminTy}
   | vpslldq => unfold tryInlineExpr at h_match; cases h_match
   | vpsrldq => unfold tryInlineExpr at h_match; cases h_match
   | vsimd => unfold tryInlineExpr at h_match; cases h_match
+  | vymm => unfold tryInlineExpr at h_match; cases h_match
   | mulhi => unfold tryInlineExpr at h_match; cases h_match
   | addCarryLo => unfold tryInlineExpr at h_match; cases h_match
   | addCarryHi => unfold tryInlineExpr at h_match; cases h_match

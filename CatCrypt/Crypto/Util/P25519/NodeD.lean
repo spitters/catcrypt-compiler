@@ -15,7 +15,7 @@ the Fermat and witness checks by `native_decide`.
 -/
 
 set_option autoImplicit false
-set_option maxRecDepth 10000
+set_option maxRecDepth 50000
 
 namespace CatCrypt.Crypto.Util.P25519.NodeD
 
@@ -33,10 +33,10 @@ theorem pfD_prod : pfDFactors.prod = pfD - 1 := by decide
 theorem pfD_primeFactors : ∀ q ∈ pfDFactors, Nat.Prime q := by
   intro q hq; fin_cases hq <;> norm_num
 
-theorem pfD_fermat : powMod 10 (pfD - 1) pfD = 1 := by native_decide
+theorem pfD_fermat : powMod 10 (pfD - 1) pfD = 1 := by decide
 
 theorem pfD_witness :
-    ∀ q ∈ pfDFactors, powMod 10 ((pfD - 1) / q) pfD ≠ 1 := by native_decide
+    ∀ q ∈ pfDFactors, powMod 10 ((pfD - 1) / q) pfD ≠ 1 := by decide
 
 /-- `Nat.Prime pfD`, machine-checked by a Lucas certificate (witness `10`). -/
 theorem pfD_prime : Nat.Prime pfD :=

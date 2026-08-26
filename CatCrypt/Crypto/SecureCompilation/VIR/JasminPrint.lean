@@ -330,6 +330,19 @@ def lowerExpr {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
       .Ccall .DoInline [.Lvar (mkVarI dst (.reg 128))]
         { name := op.mnemonic }
         [pvarOf a (.reg 128), pvarOf b (.reg 128)]
+  | .vymm op =>
+      -- AVX2 256-bit vector op: emit the `op.jasminMnemonic` intrinsic call on
+      -- `reg 256` (= YMM) operands, mirroring the `vsimd` Ccall arm with the
+      -- YmmOp-chosen mnemonic. Binary ops read two operands, unary ops read one.
+      let a := argName vm e.args 0
+      if op.isBinary then
+        .Ccall .DoInline [.Lvar (mkVarI dst (.reg 256))]
+          { name := op.jasminMnemonic }
+          [pvarOf a (.reg 256), pvarOf (argName vm e.args 1) (.reg 256)]
+      else
+        .Ccall .DoInline [.Lvar (mkVarI dst (.reg 256))]
+          { name := op.jasminMnemonic }
+          [pvarOf a (.reg 256)]
   | .mulhi w =>
       -- Widening multiply high word (#477): emit the BMI2 `#MULXHI` intrinsic on
       -- the two `reg w` factors. The paired low word is the producer's

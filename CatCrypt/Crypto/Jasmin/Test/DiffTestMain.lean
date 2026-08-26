@@ -59,8 +59,8 @@ def Config.fromEnv : IO Config := do
     | some v => pure v
     | none => pure fallback
   pure {
-    ssprove := ← envOr "SSPROVEL" "."
-    jasminc := ← envOr "JASMINC" "jasminc"
+    ssprove := ← envOr "SSPROVEL" "/home/au528660/Claude/SSProve-lean"
+    jasminc := ← envOr "JASMINC" "/home/au528660/.opam/rocq-9/bin/jasminc"
     rustc := ← envOr "RUSTC" "rustc"
     portLibDir := ← envOr "PORT_LIB_DIR" "/tmp"
   }
@@ -301,7 +301,7 @@ end CatCrypt.Crypto.Jasmin.Test.DiffTestMain
 
 open CatCrypt.Crypto.Jasmin.Test.DiffTestMain
 
-private def main (args : List String) : IO UInt32 := do
+def main (args : List String) : IO UInt32 := do
   let cfg ← Config.fromEnv
   match args with
   | [] | ["all"] =>

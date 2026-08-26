@@ -11,8 +11,8 @@ import Mathlib.Tactic
 # Verified BN254 (alt-bn128) inner kernels over `ZMod p_BN254`
 
 This file provides the *verified reference computation* layer for the
-BN254 `G1` base-field tie, in the same shape as `Util/X25519Verified.lean`
-(the field over `2^255 − 19`).
+BN254 `G1` base-field tie, mirroring `Util/P256Verified.lean` (over the
+NIST P-256 prime) and `Util/X25519Verified.lean` (over `2^255 − 19`).
 
 BN254 (alt-bn128, the Ethereum EIP-196/EIP-197 precompile curve) is the
 short-Weierstrass curve `y² = x³ + 3` over the 254-bit base-field prime
@@ -22,19 +22,19 @@ short-Weierstrass curve `y² = x³ + 3` over the 254-bit base-field prime
    p = 21888242871839275222246405745257275088696311157297823662689037894645226208583.
 ```
 
-As with Curve25519, Lean's `native_decide` does **not** terminate on a
-254-bit Miller–Rabin primality check on ordinary hardware, so
-`bn254_prime : Nat.Prime p` is exposed as a **named axiom** rather than
-discharged inside Lean — the same stance as `p25519_prime` in
-`Util/X25519Verified.lean`. The fact is the well-known alt-bn128
-base-field characteristic; it is needed only to *state* the field
-structure (the realization ties below use only the `ZMod p` `CommRing`
-laws, which do not depend on primality).
+`bn254_prime : Nat.Prime p` is discharged by a recursive Lucas/Pratt
+certificate (`BN254PrimeCert.bn254lit_prime`): its Fermat and witness checks
+are kernel `decide` over fast modular exponentiation, so the proof carries no
+`native_decide` reduction axiom (the same route as
+`p256_prime`/`p25519_prime`). `p` is the alt-bn128 base-field
+characteristic; it is needed to *state* the field structure (the realization
+ties below use only the `ZMod p` `CommRing` laws, which do not depend on
+primality).
 
 ## API
 
 * `BN254` : the BN254 base-field prime `p` (as a `Nat`)
-* `bn254_prime` : `Nat.Prime BN254` (named axiom; the `Fact` instance below
+* `bn254_prime` : `Nat.Prime BN254` (proved via `BN254PrimeCert`; the `Fact` instance below
   carries it through Mathlib's `ZMod`-as-field machinery)
 * `FpBN254` : `ZMod BN254` — the BN254 prime field
 * `FpBN254.fromNat`, `FpBN254.asNat`, `FpBN254.fromInt`, `FpBN254.asInt` — encoders
@@ -59,9 +59,9 @@ namespace CatCrypt.Util
 /-! ## §1  The BN254 modulus and field
 
 `p = 21888242871839275222246405745257275088696311157297823662689037894645226208583`
-is a 254-bit prime. We expose the primality as a named axiom (carried via a
-`Fact` instance) rather than discharging by `native_decide` — see the file
-header for rationale (fall-back gate). -/
+is a 254-bit prime, discharged via the Lucas/Pratt certificate
+`BN254PrimeCert.bn254lit_prime` (kernel `decide`) and carried through a `Fact`
+instance — see the file header. -/
 
 /-- The BN254 (alt-bn128) base-field modulus `p`. -/
 abbrev BN254 : Nat :=

@@ -467,7 +467,8 @@ def sexprMulHiS (a b : Nat) : Nat :=
     a value oracle.  **For VALUE-level (emit-correctness) reasoning use
     `SExpr.evalBV` (wrapping-`u64`-faithful); the two agree only under the
     explicit `SExpr.inRange` side condition (`SExpr.evalBV_eq_ofNat_eval`, the
-    #250 reconciliation).** -/
+    #250 reconciliation).**  See `../catcrypt-private/docs/aucurves-rustexec-
+    saturating-nat-wart.md` (upstream fidelity note). -/
 def SExpr.eval (σ : String → Nat) : SExpr → Nat
   | .SVar x   => σ x
   | .SLit n   => n

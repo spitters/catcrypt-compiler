@@ -10,44 +10,25 @@ import CatCrypt.Crypto.Jasmin.Examples.Curve25519CryptoptPort
 set_option autoImplicit false
 
 /-!
-# Preservation combinator: register and memory framing for Jasmin asm
+# Preservation combinator: replace 95 per-chunk preservation lemmas with one
 
-Proving that a block of straight-line asm leaves a register or memory
-untouched is otherwise done once per block, as near-identical boilerplate.
-This file factors that out into decidable write predicates plus a handful
-of combinators that discharge the whole block at once.
+The chunked composition in `ChunkedComposition.lean` proves 95 individual
+preservation lemmas (mem, a-reg, b-reg for ~30 chunks). Most are
+near-identical boilerplate.
 
-The predicates (§1, §1b) are `InstrR.preservesReg i r` and
-`InstrR.preservesMem i`, both decidable on concrete instructions; §1c and
-§1d give the variants `preservesRegRec` / `preservesMemRec` that also
-traverse the sub-bodies of `Cif` / `Cfor` / `Cwhile` / `Ccall`.
-
-The combinators come in two flavours:
-
-* straight-line, over `bignumExecPlus` on a literal instruction list —
-  `bignumExecPlus_preserves_reg` (§3) and `bignumExecPlus_preserves_mem`
-  (§4.3);
-* CFG-aware, over `bignumExecFuel` — `bignumExecFuel_preserves_reg` (§4c)
-  and `bignumExecFuel_preserves_mem` (§6).
-
-A whole block's preservation proof is then one line, with the side
-condition closed by `decide`:
+This file extracts the common structure into a single combinator:
+`bignumExecPlus_preserves_reg` plus a decidable `writesTo` predicate.
+With these, every per-chunk preservation lemma reduces to:
 
 ```
-example (s s' : BignumState)
-    (h : bignumExecPlus chunk s = some s') :
-    s'.regs "a" = s.regs "a" :=
-  bignumExecPlus_preserves_reg chunk "a" (by decide) s s' h
+chunk_X_preserves_a := bignumExecPlus_preserves_reg chunk_X "a" (by decide)
 ```
 
-Supporting these are per-bundle lemmas (`writeSubBundle_preserves`,
-`writeMulxBundle_preserves_mem`, …) covering each `write*Bundle` helper of
-`BignumExec.lean`; `BignumHoare.lean` wraps them in private hypothesis-shape
-proxies (`writeSubBundle_regs`, `writeMulxBundle_regs`, …) that convert the
-`∀ v, .Lvar v ∈ lvs → v.var.vname ≠ x` hypothesis shape.
-The main consumers are `BignumHoare.lean` and
-`BignumHoare/ChainStepAxioms.lean`, where the CFG-aware register
-combinator discharges the framing side conditions of the chain steps.
+(One line per chunk, vs ~15 LoC of boilerplate today.)
+
+The cost: a single induction-over-instruction-list proof of the
+combinator (~30 LoC) plus a per-opcode preservation lemma table
+(~200 LoC, but reusable across all chunks AND any future asm).
 -/
 
 namespace CatCrypt.Crypto.Jasmin
@@ -1095,14 +1076,12 @@ Mirrors §1–§3 but for memory: an instruction that doesn't have an
 `Lmem` Cassgn target (decidable via `InstrR.preservesMem`) preserves
 `s.mem`. Every `writeXBundle` only calls `setReg` / `setReg'`, both of
 which preserve memory by `setReg_mem` (a `@[simp]` lemma in
-`BignumStep.lean`). A whole block's memory-preservation proof is then one
-line, with the side condition closed by `decide`:
+`BignumStep.lean`). The combinator collapses each per-chunk
+`_mem_preserved` lemma in `ChunkedComposition.lean` to one line:
 
 ```
-example (s s' : BignumState)
-    (h : bignumExecPlus chunk s = some s') :
-    s'.mem = s.mem :=
-  bignumExecPlus_preserves_mem chunk (by decide) s s' h
+chunk_X_mem_preserved s ... s' h :=
+  bignumExecPlus_preserves_mem chunk_X (by decide) s s' h
 ```
 -/
 

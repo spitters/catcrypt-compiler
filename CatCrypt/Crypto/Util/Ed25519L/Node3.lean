@@ -14,7 +14,7 @@ witness `2`, using the child node `H`.
 -/
 
 set_option autoImplicit false
-set_option maxRecDepth 10000
+set_option maxRecDepth 50000
 
 namespace CatCrypt.Crypto.Util.Ed25519L.Node3
 
@@ -34,10 +34,10 @@ theorem factorGFactors_prime : ∀ q ∈ factorGFactors, Nat.Prime q := by
   simp only [factorGFactors] at hq
   fin_cases hq <;> first | exact factorH_prime | norm_num
 
-theorem factorGFermat : powMod 2 (factorG - 1) factorG = 1 := by native_decide
+theorem factorGFermat : powMod 2 (factorG - 1) factorG = 1 := by decide
 
 theorem factorGWitness :
-    ∀ q ∈ factorGFactors, powMod 2 ((factorG - 1) / q) factorG ≠ 1 := by native_decide
+    ∀ q ∈ factorGFactors, powMod 2 ((factorG - 1) / q) factorG ≠ 1 := by decide
 
 theorem factorG_prime : Nat.Prime factorG :=
   lucas_of_certificate factorG (by decide) 2 factorGFactors

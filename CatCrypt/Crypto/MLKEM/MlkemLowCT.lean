@@ -336,44 +336,44 @@ def polyvec_dot_kernel (s e acc : String) : LowCT := rustcmd| do
 
 Each primitive must pass the static borrow check — i.e. its
 destination base-variable name does not appear in its argument list.
-These are `native_decide` lemmas; the failure mode is a `decide`
-failure at definition time (immediate feedback during authoring). -/
+These are `#guard` checks; the failure mode is a compile-time error
+at definition time (immediate feedback during authoring). -/
 
-example : borrowOk (reduce "r" "a") = true := by native_decide
-example : borrowOk (add "c" "a" "b") = true := by native_decide
-example : borrowOk (sub "c" "a" "b") = true := by native_decide
-example : borrowOk (mul "c" "a" "b") = true := by native_decide
-example : borrowOk (neg "r" "a") = true := by native_decide
+#guard borrowOk (reduce "r" "a")
+#guard borrowOk (add "c" "a" "b")
+#guard borrowOk (sub "c" "a" "b")
+#guard borrowOk (mul "c" "a" "b")
+#guard borrowOk (neg "r" "a")
 
-example : borrowOk (poly_add "c" "a" "b") = true := by native_decide
-example : borrowOk (poly_sub "c" "a" "b") = true := by native_decide
-example : borrowOk (poly_mul "c" "a" "b") = true := by native_decide
-example : borrowOk (poly_scalar "r" "c" "f") = true := by native_decide
+#guard borrowOk (poly_add "c" "a" "b")
+#guard borrowOk (poly_sub "c" "a" "b")
+#guard borrowOk (poly_mul "c" "a" "b")
+#guard borrowOk (poly_scalar "r" "c" "f")
 
-example : borrowOk (polyvec_add "c" "a" "b") = true := by native_decide
-example : borrowOk (polyvec_sub "c" "a" "b") = true := by native_decide
-example : borrowOk (polyvec_dot "r" "a" "b") = true := by native_decide
+#guard borrowOk (polyvec_add "c" "a" "b")
+#guard borrowOk (polyvec_sub "c" "a" "b")
+#guard borrowOk (polyvec_dot "r" "a" "b")
 
-example : borrowOk (mat_vec_mul "r" "A" "s") = true := by native_decide
-example : borrowOk (mat_transpose "r" "A") = true := by native_decide
+#guard borrowOk (mat_vec_mul "r" "A" "s")
+#guard borrowOk (mat_transpose "r" "A")
 
-example : borrowOk (compress_coeff "y" "x" "d") = true := by native_decide
-example : borrowOk (decompress_coeff "x" "y" "d") = true := by native_decide
-example : borrowOk (poly_compress_du "b" "p") = true := by native_decide
-example : borrowOk (poly_compress_dv "b" "p") = true := by native_decide
-example : borrowOk (poly_decompress_du "p" "b") = true := by native_decide
-example : borrowOk (poly_decompress_dv "p" "b") = true := by native_decide
-example : borrowOk (polyvec_encode "b" "v") = true := by native_decide
-example : borrowOk (polyvec_decode "v" "b") = true := by native_decide
+#guard borrowOk (compress_coeff "y" "x" "d")
+#guard borrowOk (decompress_coeff "x" "y" "d")
+#guard borrowOk (poly_compress_du "b" "p")
+#guard borrowOk (poly_compress_dv "b" "p")
+#guard borrowOk (poly_decompress_du "p" "b")
+#guard borrowOk (poly_decompress_dv "p" "b")
+#guard borrowOk (polyvec_encode "b" "v")
+#guard borrowOk (polyvec_decode "v" "b")
 
-example : borrowOk (poly_mul_kernel "a" "b" "c") = true := by native_decide
-example : borrowOk (poly_madd_kernel "a" "b" "c" "d") = true := by native_decide
-example : borrowOk (polyvec_dot_kernel "s" "e" "acc") = true := by native_decide
+#guard borrowOk (poly_mul_kernel "a" "b" "c")
+#guard borrowOk (poly_madd_kernel "a" "b" "c" "d")
+#guard borrowOk (polyvec_dot_kernel "s" "e" "acc")
 
-/-- The borrow checker correctly rejects an aliased destination —
-    `poly_add "a" "a" "b"` writes to `a` while reading it, which is
-    a borrow violation. -/
-example : borrowOk (poly_add "a" "a" "b") = false := by native_decide
+-- The borrow checker correctly rejects an aliased destination —
+-- `poly_add "a" "a" "b"` writes to `a` while reading it, which is
+-- a borrow violation.
+#guard borrowOk (poly_add "a" "a" "b") == false
 
 /-! ## §5 (Stretch) Goal 5 — a keygen-shaped composition
 
@@ -479,9 +479,9 @@ def kpke_decrypt_compute_mu : LowCT :=
 
 /-! `borrowOk` smoke checks for the stretch kernels. -/
 
-example : borrowOk kpke_keygen_compute_t = true := by native_decide
-example : borrowOk kpke_encrypt_compute_uv = true := by native_decide
-example : borrowOk kpke_decrypt_compute_mu = true := by native_decide
+#guard borrowOk kpke_keygen_compute_t
+#guard borrowOk kpke_encrypt_compute_uv
+#guard borrowOk kpke_decrypt_compute_mu
 
 /-! ## §6 Byte-side / KDF primitive wrappers (Stage B, 2026-05-22)
 
@@ -703,24 +703,23 @@ def bytes_neq (dst a b : String) (n : Nat) : LowCT :=
 
 /-! ### §6.6  `borrowOk` smoke checks for byte-side leaves -/
 
-example : borrowOk (hash_g "g" "src" 33) = true := by native_decide
-example : borrowOk (hash_h "h" "src" 1184) = true := by native_decide
-example : borrowOk (hash_j "j" "src" 1120) = true := by native_decide
-example : borrowOk (gen_matrix "A" "rho") = true := by native_decide
-example : borrowOk (cbd_eta1_polyvec "s" "sigma" "n") = true := by native_decide
-example : borrowOk (cbd_eta2_polyvec "e1" "sigma" "n") = true := by native_decide
-example : borrowOk (cbd_eta2_poly "e2" "sigma" "n") = true := by native_decide
-example : borrowOk (polyvec_compress_du "b" "v") = true := by native_decide
-example : borrowOk (polyvec_decompress_du "v" "b") = true := by native_decide
-example : borrowOk (msg_decode "mu" "m") = true := by native_decide
-example : borrowOk (msg_encode "m" "mu") = true := by native_decide
-example : borrowOk (bytes_concat_2 "d" "a" "b" 32 32) = true := by native_decide
-example : borrowOk (bytes_concat_3 "d" "a" "b" "c" 32 32 32) = true := by native_decide
-example : borrowOk (bytes_concat_4 "d" "a" "b" "c" "e" 32 32 32 32) = true :=
-  by native_decide
-example : borrowOk (bytes_slice "d" "s" "off" 32) = true := by native_decide
-example : borrowOk (bytes_cmov "d" "c" "a" "b" 32) = true := by native_decide
-example : borrowOk (bytes_neq "d" "a" "b" 32) = true := by native_decide
+#guard borrowOk (hash_g "g" "src" 33)
+#guard borrowOk (hash_h "h" "src" 1184)
+#guard borrowOk (hash_j "j" "src" 1120)
+#guard borrowOk (gen_matrix "A" "rho")
+#guard borrowOk (cbd_eta1_polyvec "s" "sigma" "n")
+#guard borrowOk (cbd_eta2_polyvec "e1" "sigma" "n")
+#guard borrowOk (cbd_eta2_poly "e2" "sigma" "n")
+#guard borrowOk (polyvec_compress_du "b" "v")
+#guard borrowOk (polyvec_decompress_du "v" "b")
+#guard borrowOk (msg_decode "mu" "m")
+#guard borrowOk (msg_encode "m" "mu")
+#guard borrowOk (bytes_concat_2 "d" "a" "b" 32 32)
+#guard borrowOk (bytes_concat_3 "d" "a" "b" "c" 32 32 32)
+#guard borrowOk (bytes_concat_4 "d" "a" "b" "c" "e" 32 32 32 32)
+#guard borrowOk (bytes_slice "d" "s" "off" 32)
+#guard borrowOk (bytes_cmov "d" "c" "a" "b" 32)
+#guard borrowOk (bytes_neq "d" "a" "b" 32)
 
 /-! ## §7 Top-level ML-KEM-768 kernels (Stage B, 2026-05-22)
 
@@ -1110,9 +1109,9 @@ without the prefix, slots like `r_vec` / `e1` / `u` / `v` would
 collide between the outer "split-c" use and the inner "re-encrypt"
 use of the same names. -/
 
-example : borrowOk mlkem_keygen_kernel = true := by native_decide
-example : borrowOk mlkem_encaps_kernel = true := by native_decide
-example : borrowOk mlkem_decaps_kernel = true := by native_decide
+#guard borrowOk mlkem_keygen_kernel
+#guard borrowOk mlkem_encaps_kernel
+#guard borrowOk mlkem_decaps_kernel
 
 /-! ## §8 Spec-faithfulness notes
 

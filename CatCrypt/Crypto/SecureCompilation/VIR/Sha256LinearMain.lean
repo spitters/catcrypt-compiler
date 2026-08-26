@@ -12,6 +12,8 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
 import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElf
+import CatCrypt.Crypto.Optimizer.Batch8
+import CatCrypt.Crypto.Optimizer.Batch8Emit
 
 /-!
 # Compiled SHA-2 linear-jasmin owned-RA producer (task #469 / #462 / #475)
@@ -49,6 +51,53 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
    sha512ResidentImmSlots sha512ResidentInLoadMap)
 open CatCrypt.Crypto.SecureCompilation.VIR.Sha2Emit (compressCom sha256Spec sha512Spec inCtxt Rw)
 open CatCrypt.Crypto.SecureCompilation.VIR.Sha2RotateSelect (compressComRor)
+open CatCrypt.Crypto.Optimizer.Batch8 (batch8)
+open CatCrypt.Crypto.Optimizer.Batch8Emit (batch8ToLprogPhysAbi)
+
+/-! ## batch8 SoA reg-256 ABI maps (SHA-256 x8)
+
+The batch8 widening (`Batch8.batch8`) packs eight `u32` SHA-256 lanes into one
+256-bit YMM register per binding. `widen8Ctxt = Γ.map widen8Ty` preserves the
+argument prefix length and order (the `#ROR` expansion adds body bindings, not
+arguments), so these reg-256 maps reuse the SAME argument-slot indices as the
+scalar `sha256*` maps in `JasminLprogExportSha2`, widening only the memory
+stride from 4 to 32 bytes (one YMM = 8 lanes × 4 bytes). -/
+
+/-- reg-256 immediate-slot map: empty. In the widened body every shift literal
+    rides inside `.vpslld n` / `.vpsrld n` (the printer emits the immediate) and
+    the all-ones mask moves from an immediate to a broadcast YMM load
+    (`sha256InLoad256`, slot 70), so no argument slot is rendered as an
+    immediate. -/
+def sha256ImmSlots256 : ImmSlotMap := fun slot =>
+  -- Shift-amount literals (input `200+n` ↦ slot `69-n`, so slots 39..69) are the
+  -- per-lane shift COUNTS. They stay immediates (`n = 69 - slot`); the widened
+  -- `vpsllvd`/`vpsrlvd` with a constant count is rendered as the immediate
+  -- `vpslld`/`vpsrld $n` (a uniform per-lane shift). The all-ones mask (slot 70)
+  -- is NOT an immediate here — it is a broadcast YMM loaded via `sha256InLoad256`,
+  -- since a 256-bit constant cannot be a scalar immediate operand of `vpxor`.
+  if 39 ≤ slot ∧ slot ≤ 69 then some (69 - slot) else none
+
+/-- Byte offset from `RSI` of the pre-broadcast all-ones YMM the mask slot reads:
+    just past the 88 loaded YMM words at slots 182..269, i.e.
+    `(269 - 182 + 1) * 32 = 2816`. The KAT harness writes an all-ones YMM there. -/
+def sha256Mask256Off : Nat := 2816
+
+/-- reg-256 SoA input-load map: argument slot → `(base, byte offset)` with YMM
+    stride 32. Slots 182..269 read word `269 - slot` from `RSI` at
+    `(269 - slot) * 32` (constant slots read a pre-broadcast YMM, message and
+    chaining slots read a SoA YMM — the KAT harness lays the buffer out so); slot
+    70 (the all-ones mask) reads the broadcast YMM at `sha256Mask256Off`. -/
+def sha256InLoad256 : InLoadMap := fun slot =>
+  if 182 ≤ slot ∧ slot ≤ 269 then
+    some ("RSI", (269 - slot) * 32)
+  else if slot = 70 then
+    some ("RSI", sha256Mask256Off)
+  else none
+
+/-- reg-256 SoA output-store map: eight YMM stores, output word `j` to `RDI` at
+    byte offset `j * 32`. -/
+def sha256OutStore256 : OutStoreMap :=
+  (List.range 8).map (fun j => ("RDI", j * 32))
 
 /-- Emit one SHA-2 variant's owned-RA `.lprogbin`, reporting the body size and
     the max spill slot index (so the #470 reserved-frame layout can be checked).
@@ -177,6 +226,29 @@ def emitResidentS {w : Nat} (com : Com jasminDialect (inCtxt w) (Rw w))
   IO.println s!"OWNED emit OK : {outS} ({asm.toUTF8.size} bytes, symbol {fnName})"
   return 0
 
+/-- Emit the batch8 (8-lane SoA, reg-256/YMM) SHA-2 compression body as an OWNED
+    AT&T `.s`. The scalar `com` is widened by `Batch8.batch8` (each covered `u32`
+    lane op becomes its packed YMM block), wrapped by the reg-256 SoA ABI maps
+    (`sha256ImmSlots256` / `sha256InLoad256` / `sha256OutStore256`, YMM stride
+    32) and rendered by the owned backend `renderOwned`. The exported symbol is
+    `<fnName>_x8`; the `.s` is written next to `outPath` as
+    `<base>_x8_x86_from_lean.s`. `cellBytes` is the per-lane word width (4 for
+    SHA-256 U32). Reached via the `batch8` CLI argument, separate from the
+    scalar `emitOne`. -/
+def emitOneBatch8 {w : Nat} (com : Com jasminDialect (inCtxt w) (Rw w))
+    (fnName : String) (outPath : System.FilePath) (cellBytes : Nat) : IO UInt32 := do
+  IO.println s!"{fnName}_x8: OWNED batch8 SoA emit (Com -> fused widen8+ABI Lprog -> AT&T .s) [compiled]"
+  let lp : Lprog :=
+    batch8ToLprogPhysAbi com (fnName ++ "_x8") (fun _ => none)
+      sha256ImmSlots256 sha256InLoad256 sha256OutStore256 (abiW := 256)
+  IO.println s!"  [stage] Lprog lowered: {lp.lp_funcs.length} func(s); rendering..."
+  let asm := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwnedReserveVecScratch lp
+  let base := outPath.toString.dropRight 9   -- strip ".lprogbin"
+  let ownedPath : System.FilePath := base ++ "_x8_x86_from_lean.s"
+  IO.FS.writeFile ownedPath (asm ++ "\n")
+  IO.println s!"OWNED batch8 emit OK : {ownedPath} ({asm.toUTF8.size} bytes, symbol {fnName}_x8, {cellBytes}B x8 lanes)"
+  return 0
+
 def main (args : List String) : IO UInt32 := do
   if args.contains "resident" then
     -- State-resident (#179) + W-pinned (#180) owned `.s` for the
@@ -224,6 +296,13 @@ def main (args : List String) : IO UInt32 := do
     emitOne (compressCom sha512Spec) "sha512_compress"
       "bench/sha2_linear_compare/sha512.lprogbin"
       sha512ImmSlots sha512InLoadMap sha512OutStoreMap 8
+  else if args.contains "batch8" then
+    -- batch8 (8-lane SoA / YMM) owned `.s`: produces
+    -- `sha256_compress_x8_x86_from_lean.s` for the batched byte-KAT harness.
+    -- Runs in isolation from the scalar emit so the widening pass's peak
+    -- footprint does not stack on top of the scalar render.
+    emitOneBatch8 (compressCom sha256Spec) "sha256_compress"
+      "bench/sha2_linear_compare/sha256.lprogbin" 4
   else
     emitOne (compressCom sha256Spec) "sha256_compress"
       "bench/sha2_linear_compare/sha256.lprogbin"

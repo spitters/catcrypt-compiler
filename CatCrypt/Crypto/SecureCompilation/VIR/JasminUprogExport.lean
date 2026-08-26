@@ -294,6 +294,8 @@ def opToInstrR (op : JasminOp) (dst : String) (srcs : List UOperand) : InstrR :=
       .Copn [.var dst] .none "VPSRLDQ" srcs
   | .vsimd op =>
       .Copn [.var dst] .none op.mnemonic srcs
+  | .vymm op =>
+      .Copn [.var dst] .none op.jasminMnemonic srcs
   | .callN name _ _ =>
       .Copn [.var dst] .none ("CALLN:" ++ name) srcs
 

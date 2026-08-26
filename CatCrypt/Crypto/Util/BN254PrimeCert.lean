@@ -21,7 +21,7 @@ corroborated against AUCurves `bn254_prime_certif.v`.
 -/
 
 set_option autoImplicit false
-set_option maxRecDepth 10000
+set_option maxRecDepth 50000
 
 namespace CatCrypt.Crypto.Util.BN254PrimeCert
 
@@ -54,11 +54,11 @@ theorem bn254lit_primeFactors : ∀ q ∈ bn254litFactors, Nat.Prime q := by
     · exact pf0_prime
     · exact pf3_prime
 
-theorem bn254lit_fermat : powMod 3 (bn254lit - 1) bn254lit = 1 := by native_decide
+theorem bn254lit_fermat : powMod 3 (bn254lit - 1) bn254lit = 1 := by decide
 
 theorem bn254lit_witness :
     ∀ q ∈ bn254litFactors, powMod 3 ((bn254lit - 1) / q) bn254lit ≠ 1 := by
-  native_decide
+  decide
 
 /-- `Nat.Prime bn254lit`, machine-checked by a Lucas certificate (witness `3`). -/
 theorem bn254lit_prime : Nat.Prime bn254lit :=

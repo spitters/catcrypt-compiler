@@ -21,21 +21,17 @@ X25519 (RFC 7748) operates over the prime field
    Fp25519 = ℤ / (2^255 − 19) ℤ
 ```
 
-`p = 2^255 − 19` is prime (Curve25519 design constant). Lean's
-`native_decide` does **not** terminate on this primality check on
-ordinary hardware — Miller–Rabin on a 256-bit modulus is too costly for
-the reflection engine — so per the project's fall-back gate, we expose
-`p25519_prime : Nat.Prime (2^255 - 19)` as a **named hypothesis** rather
-than proving it inside Lean. (The fact is well-known and machine-checked
-elsewhere; see `CatCrypt/Crypto/Util/X25519Verified.lean` header.)
+`p = 2^255 − 19` is prime (Curve25519 design constant). `p25519_prime :
+Nat.Prime (2^255 - 19)` is discharged by a recursive Lucas/Pratt certificate
+(`P25519PrimeCert.p25519lit_prime`): its Fermat and witness checks are kernel
+`decide` over fast modular exponentiation, so the proof carries no
+`native_decide` reduction axiom.
 
-This is identical in spirit to how AUCurves treats large-modulus primes
-and how `Bls12381Reflect` treats the BLS12-381 field characteristic — the
-primality of the curve modulus is **not** load-bearing for the bridge
-because the bridge claim is operational (the leaf computes the algebraic
-formula on the bijected inputs); the field structure is only needed to
-state the formula, and the rustcmd's leaf-axiom side never invokes
-inversion (Montgomery-ladder steps use only +, −, ×).
+The bridge claim does not depend on the modulus being prime: it is
+operational (the leaf computes the algebraic formula on the bijected inputs),
+the field structure is only needed to state the formula, and the rustcmd's
+leaf-axiom side never invokes inversion (Montgomery-ladder steps use only
++, −, ×).
 
 ## API
 
@@ -64,9 +60,9 @@ namespace CatCrypt.Util
 
 /-! ## §1  The Curve25519 modulus and field
 
-`p = 2^255 − 19` is a 256-bit prime. We expose the primality as a named
-hypothesis (`Fact (Nat.Prime _)`) rather than discharging by
-`native_decide` — see the file header for rationale (fall-back gate). -/
+`p = 2^255 − 19` is a 256-bit prime, discharged via the Lucas/Pratt
+certificate `P25519PrimeCert.p25519lit_prime` (kernel `decide`) and carried
+through a `Fact (Nat.Prime _)` instance — see the file header. -/
 
 /-- The Curve25519 modulus `p = 2^255 − 19`. -/
 abbrev P25519 : Nat := 2^255 - 19
@@ -75,11 +71,10 @@ abbrev P25519 : Nat := 2^255 - 19
 example : P25519 = 57896044618658097711785492504343953926634992332820282019728792003956564819949 := by
   decide
 
-/-- `Nat.Prime p` for `p = 2^255 − 19`. Standard cryptographic fact;
-    Lean's `native_decide` doesn't terminate on a 256-bit Miller–Rabin in
-    a reasonable time, so we take primality as a named hypothesis (the
+/-- `Nat.Prime p` for `p = 2^255 − 19`, discharged via the Lucas/Pratt
+    certificate `P25519PrimeCert.p25519lit_prime` (kernel `decide`); the
     `Fact` instance below carries it through Mathlib's `ZMod`-as-field
-    machinery). -/
+    machinery. -/
 theorem p25519_prime : Nat.Prime P25519 :=
   CatCrypt.Crypto.Util.P25519PrimeCert.p25519lit_prime
 

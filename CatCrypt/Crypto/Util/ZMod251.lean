@@ -10,10 +10,10 @@ import Mathlib.Tactic
 /-!
 # Verified `ZMod 251` — the MQOM / SDitH base prime field
 
-A computable, verified Lean reference implementation of `Z/251Z` for use by the
-hax bridges over the MQOM / SDitH base field — in this repository, the SDitH
-GF(251) tie `SecureCompilation/CompileFromHaxSdithGf251Tie.lean` — to replace
-opaque encoder round-trip axioms with proven identities.
+A computable, verified Lean reference implementation of `Z/251Z` for use by
+the MQOM and SDitH bridges (`MqomHaxLowCTBridge` and
+`SdithHaxLowCTBridge`) to replace opaque encoder round-trip axioms with
+proven identities.
 
 `q = 251` is the largest prime fitting in a single byte. It is the base
 field of the MQOM2-L1-gf251-fast parameter set (`mqom-hax/src/mq_eval.rs`)
@@ -30,11 +30,8 @@ ring/field structure automatically once `Fact (Nat.Prime 251)` is in scope.
   identities used by bridge proofs to discharge previously-axiomatised
   encoder round-trips.
 
-This file is the prime-field analogue of the other per-modulus `Util/ZMod*.lean`
-modules, `Util/ZMod127.lean` (QR-UOV) and `Util/ZMod4591.lean` (sntrup761). The
-ML-KEM and ML-DSA lane rings have no `Util` module of their own; they are
-declared inline as `Zq3329` / `Zq8380417` in
-`SecureCompilation/VIR/LatticeNttEmit.lean`.
+This file is the prime-field analogue of `Util/ZMod3329.lean` for ML-KEM
+and `Util/ZMod8380417.lean` for ML-DSA.
 -/
 
 set_option autoImplicit false

@@ -4,6 +4,7 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.VIR.Core
+import CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
 
 /-!
 # Jasmin VIR dialect (spike)
@@ -809,6 +810,12 @@ inductive JasminOp where
       of `extCall`'s single opaque default; the framework's single-`ret`
       `Expr` arm projects this tuple to its head slot (`retTys.headD`). -/
   | callN (name : String) (argTys : List JasminTy) (retTys : List JasminTy)
+  /-- Parametrized 256-bit YMM (AVX2/VEX.256) op: mixed arity dispatched by the
+      inner `YmmOp` — unary ops take one `reg 256` operand, binary ops two, and
+      the result is always a `reg 256`. Adding a YMM op extends `YmmOp` (not
+      `JasminOp`), so uniform `JasminOp` consumers match `| .vymm _` once and
+      never change. -/
+  | vymm (op : YmmDialect.YmmOp)
   deriving DecidableEq
 
 /-! ## 4. The dialect -/
@@ -931,6 +938,7 @@ instance : DialectSignature jasminDialect where
     | .vpslldq _ => [.reg 128]
     | .vpsrldq _ => [.reg 128]
     | .vsimd op => op.argTys
+    | .vymm op => if op.isBinary then [.reg 256, .reg 256] else [.reg 256]
     | .mulhi w => [.reg w, .reg w]
     | .addCarryLo w => [.reg w, .reg w, .reg 1]
     | .addCarryHi w => [.reg w, .reg w, .reg 1]
@@ -953,6 +961,7 @@ instance : DialectSignature jasminDialect where
     | .vpslldq _ => .reg 128
     | .vpsrldq _ => .reg 128
     | .vsimd op => op.retTy
+    | .vymm _ => .reg 256
     | .mulhi w => .reg w
     | .addCarryLo w => .reg w
     | .addCarryHi _ => .reg 1
@@ -964,6 +973,19 @@ instance : DialectSignature jasminDialect where
     | .callN _ _ retTys => callNRet retTys
 
 /-! ## 6. Op denotation -/
+
+/-- Project a `vymm` op's operands from its arity-dependent argument vector and
+    denote them: binary ops read two `reg 256` operands, unary ops read one.
+    The plain-`Bool` parameter `b = op.isBinary` refines the argument-vector
+    type, so the `JasminOp.vymm` denote arm passes `op.isBinary` and the raw
+    argument vector directly. -/
+def vymmDenote (op : YmmDialect.YmmOp) :
+    (b : Bool) →
+    HVector (fun t => ⟦t⟧)
+      (if b then [JasminTy.reg 256, JasminTy.reg 256] else [JasminTy.reg 256]) →
+    BitVec 256
+  | true, .cons a (.cons b .nil) => op.denoteBinary a b
+  | false, .cons a _ => op.denoteUnary a
 
 instance jasminDenote : DialectDenote jasminDialect where
   denote op := match op with
@@ -1051,6 +1073,7 @@ instance jasminDenote : DialectDenote jasminDialect where
             -- unary: `argTys = [reg 128]`, only `args.head`; denote ignores op 2.
             let src : BitVec 128 := args.head
             SimdOp.denote (.vpshufd imm) src src
+    | .vymm op => fun args => vymmDenote op op.isBinary args
     | .mulhi w => fun args =>
         let a : BitVec w := args.head
         let b : BitVec w := args.tail.head

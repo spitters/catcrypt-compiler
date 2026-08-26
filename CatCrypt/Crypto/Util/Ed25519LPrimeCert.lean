@@ -33,7 +33,7 @@ independently.
 -/
 
 set_option autoImplicit false
-set_option maxRecDepth 10000
+set_option maxRecDepth 50000
 
 namespace CatCrypt.Crypto.Util.Ed25519LPrimeCert
 
@@ -58,10 +58,10 @@ theorem ed25519LFactors_prime : ∀ q ∈ ed25519LFactors, Nat.Prime q := by
   simp only [ed25519LFactors] at hq
   fin_cases hq <;> first | exact factorA_prime | exact factorB_prime | norm_num
 
-theorem ed25519LFermat : powMod 2 (ed25519Llit - 1) ed25519Llit = 1 := by native_decide
+theorem ed25519LFermat : powMod 2 (ed25519Llit - 1) ed25519Llit = 1 := by decide
 
 theorem ed25519LWitness :
-    ∀ q ∈ ed25519LFactors, powMod 2 ((ed25519Llit - 1) / q) ed25519Llit ≠ 1 := by native_decide
+    ∀ q ∈ ed25519LFactors, powMod 2 ((ed25519Llit - 1) / q) ed25519Llit ≠ 1 := by decide
 
 /-- `Nat.Prime ed25519Llit`, machine-checked by a recursive Lucas certificate. -/
 theorem ed25519Llit_prime : Nat.Prime ed25519Llit :=

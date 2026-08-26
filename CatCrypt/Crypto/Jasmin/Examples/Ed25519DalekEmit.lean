@@ -80,7 +80,7 @@ def ed25519MaddMLIR : String :=
   emitReifiedFp "ed25519_madd_z3" edwardsMaddZ3Reified
 
 #eval maybeWrite
-  "bench/ed25519_madd.mlir"
+  "/home/au528660/Claude/BLS/catcrypt-bench/src/ed25519_madd.mlir"
   ed25519MaddMLIR
 
 /-! ## 3. Compress / decompress -/
@@ -96,11 +96,11 @@ def ed25519DecompressMLIR : String :=
   emitReifiedFp "ed25519_decompress_t" edwardsDecompressTReified
 
 #eval maybeWrite
-  "bench/ed25519_compress.mlir"
+  "/home/au528660/Claude/BLS/catcrypt-bench/src/ed25519_compress.mlir"
   ed25519CompressMLIR
 
 #eval maybeWrite
-  "bench/ed25519_decompress.mlir"
+  "/home/au528660/Claude/BLS/catcrypt-bench/src/ed25519_decompress.mlir"
   ed25519DecompressMLIR
 
 /-! ## 4. Scalar arithmetic (sign-step `s = r + h·a mod L`) -/
@@ -110,7 +110,7 @@ def ed25519ScalarMLIR : String :=
   emitReifiedFpL "ed25519_scalar_s" ed25519ScalarSReified
 
 #eval maybeWrite
-  "bench/ed25519_scalar.mlir"
+  "/home/au528660/Claude/BLS/catcrypt-bench/src/ed25519_scalar.mlir"
   ed25519ScalarMLIR
 
 /-! ## 4b. Curve25519 base-field addition chains (Track F2 reification)
@@ -141,7 +141,7 @@ def ed25519AddChainsMLIR : String :=
   emitFunc "fp_invsqrt" [("z", .TFp25519)] "out" .TFp25519 fpPowP58Chain
 
 #eval maybeWrite
-  "bench/ed25519_addchains.mlir"
+  "/home/au528660/Claude/BLS/catcrypt-bench/src/ed25519_addchains.mlir"
   ed25519AddChainsMLIR
 
 /-! ## 5. Ristretto255 compress / decompress -/
@@ -154,7 +154,7 @@ def ristrettoMLIR : String :=
   emitReifiedFp "ristretto_decompress_t" ristrettoDecompressTReified
 
 #eval maybeWrite
-  "bench/ristretto255.mlir"
+  "/home/au528660/Claude/BLS/catcrypt-bench/src/ristretto255.mlir"
   ristrettoMLIR
 
 end CatCrypt.Crypto.Jasmin.Examples.Ed25519DalekEmit

@@ -329,6 +329,37 @@ def emitRounds (sp : Sha2Spec) :
   | [], _, e, k => k e
   | rt :: rest, _, e, k => emitRound sp rt e fun e1 => emitRounds sp rest e1 k
 
+/-- One schedule-expansion step:
+    `W[tt] = σ1(W[tt-2]) + W[tt-7] + σ0(W[tt-15]) + W[tt-16]`, stored into slot `tt`. -/
+def emitSchedStep (sp : Sha2Spec) (tt : Nat) {Γ : Ctxt jasminDialect}
+    (e : Env sp.w Γ) (k : SCont sp.w (Rw sp.w)) : Com jasminDialect Γ (Rw sp.w) :=
+  emitSigma e sigS (tt - 2) sp.smallSig1.1 sp.smallSig1.2.1 sp.smallSig1.2.2 true
+      scA scB scC fun e1 =>
+  emitOp e1 .add scD (.sl sigS) (.sl (tt - 7)) fun e2 =>
+  emitSigma e2 sigS (tt - 15) sp.smallSig0.1 sp.smallSig0.2.1 sp.smallSig0.2.2 true
+      scA scB scC fun e3 =>
+  emitOp e3 .add scD (.sl scD) (.sl sigS) fun e4 =>
+  emitOp e4 .add tt (.sl scD) (.sl (tt - 16)) fun e5 =>
+  k e5
+
+/-- Emit the rounds with the schedule expansion interleaved: for `rt ≥ 16`, `W[rt]`
+    is produced by `emitSchedStep` immediately before round `rt`; its dependencies
+    `W[rt-2,-7,-15,-16]` are already produced by then. A schedule word is live across
+    the span from its production to its last read (≤16 rounds), so the peak live set is
+    the 16-word schedule window together with the eight working words. The logical slot
+    map matches the sequential `emitSched`-then-`emitRounds` form, so the denotation is
+    the same; the binding order, and hence the register-pressure profile, differs. -/
+def emitRoundsSched (sp : Sha2Spec) :
+    List Nat → {Γ : Ctxt jasminDialect} → Env sp.w Γ → SCont sp.w (Rw sp.w) →
+    Com jasminDialect Γ (Rw sp.w)
+  | [], _, e, k => k e
+  | rt :: rest, _, e, k =>
+      if rt ≥ 16 then
+        emitSchedStep sp rt e fun e0 =>
+        emitRound sp rt e0 fun e1 => emitRoundsSched sp rest e1 k
+      else
+        emitRound sp rt e fun e1 => emitRoundsSched sp rest e1 k
+
 /-- Emit the 8-word feed-forward: output word `j` = `H[j] + working[wkA+j]`,
     written to slot `outA + j`. These are the **last 8 bindings**, so they are
     the output words `0..7` per the `emitAbiOrchReg` convention. -/
@@ -386,8 +417,7 @@ def initEnv (sp : Sha2Spec) : Env sp.w (inCtxt sp.w) where
     last feed-forward binding (output word 7); the export reads all 8 via the
     last-8 convention. -/
 def compressCom (sp : Sha2Spec) : Com jasminDialect (inCtxt sp.w) (Rw sp.w) :=
-  emitSched sp ((List.range (sp.rounds - 16)).map (· + 16)) (initEnv sp) fun e1 =>
-  emitRounds sp (List.range sp.rounds) e1 fun e2 =>
+  emitRoundsSched sp (List.range sp.rounds) (initEnv sp) fun e2 =>
   emitFeed sp (List.range 8) e2 fun e3 =>
   .ret (e3.slot (outA + 7))
 

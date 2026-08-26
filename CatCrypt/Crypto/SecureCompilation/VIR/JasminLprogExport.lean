@@ -406,6 +406,7 @@ def opToLinstrR (op : JasminOp) (dst : String) (srcs : List LOperand) : LinstrR 
   | .vpslldq n => .Lopn [.reg dst] ("VPSLLDQ:" ++ toString n) srcs
   | .vpsrldq n => .Lopn [.reg dst] ("VPSRLDQ:" ++ toString n) srcs
   | .vsimd op => .Lopn [.reg dst] op.mnemonic srcs
+  | .vymm op => .Lopn [.reg dst] op.jasminMnemonic srcs
   -- Widening-multiply + carry-chain ops (#477). `mulhi`/`addCarryLo`/
   -- `addCarryHi` are single-output `Com` ops, but `MULX` / `ADCX` / `ADOX`
   -- are two-output / flag-coupled at the asm level. The textual mnemonic
@@ -2495,6 +2496,22 @@ def linstrRegNames : LinstrR → Option (Option String × List String)
 def bodyOpNames (body : Lcmd) : List (Option String × List String) :=
   body.filterMap (fun i => linstrRegNames i.li_i)
 
+/-- Does the body contain a `MULXHI` binding? The post-RA `fuseMulHiLprog` pass
+    overwrites `%rdx` at every such site (`MOV %rdx, s1` to pin the `mulx`
+    multiplicand), so when this holds the allocator must withhold `%rdx` (physical
+    index 3) from the pool — otherwise a value the scan parks there is clobbered.
+    `false` leaves the pool at the full 13 registers, so a body with no mul-hi
+    allocates exactly as before. -/
+def bodyHasMulHi (body : Lcmd) : Bool :=
+  body.any (fun i => match i.li_i with
+    | .Lopn _ opn _ => opn.startsWith "MULXHI"
+    | _ => false)
+
+/-- The physical slots the allocator withholds for a body: `[3]` (`%rdx`) when the
+    body has a `MULXHI` binding (see `bodyHasMulHi`), else none. -/
+def bodyReservedGP (body : Lcmd) : List Nat :=
+  if bodyHasMulHi body then [3] else []
+
 /-! ### Compiled name-slot cache (performance)
 
 The reference definitions `bodyNames` / `nameSlot` / `bodyTrace` are the spec.
@@ -2732,9 +2749,18 @@ structure PhysActive where
   slot : Nat
   deriving Repr, DecidableEq, Inhabited
 
-/-- The lowest physical index in `[0, numRegs)` held by no active allocation. -/
-def freeRegIn (numRegs : Nat) (used : List Nat) : Option Nat :=
-  (List.range numRegs).find? (fun ph => !used.contains ph)
+/-- The lowest physical index in `[0, numRegs)` held by no active allocation and
+    not in `reserved`. `reserved` names physical slots withheld from allocation for
+    the whole body — used to keep `%rdx` (index 3) free when the body has a mul-hi
+    binding, which the post-RA `fuseMulHiLprog` pass overwrites at every fused
+    `mulx` site (mirrors the JInstr route's resident-pool `%rdx` reservation). The
+    `[]` case is definitionally the un-reserved scan, so every 2-argument caller
+    and its proofs are unchanged. -/
+def freeRegIn (numRegs : Nat) (used : List Nat) (reserved : List Nat := []) :
+    Option Nat :=
+  match reserved with
+  | [] => (List.range numRegs).find? (fun ph => !used.contains ph)
+  | r  => (List.range numRegs).find? (fun ph => !used.contains ph && !r.contains ph)
 
 /-- Per-cell occupancy hulls: entry `i` is the `(minStart, maxEnd)` hull of the
     ranges placed in stack cell `i`, whose physical index is `numRegs + i`. -/
@@ -2793,10 +2819,11 @@ def spillVictim (st : Nat) (uses : Array Nat) (act : List PhysActive) :
     the final location of a slot that a later step moved to a cell. -/
 def physScanSpillStep (numRegs : Nat) (uses : Array Nat)
     (act : List PhysActive) (hulls : CellHulls) (acc : List (Nat × Nat))
-    (s st en : Nat) : List PhysActive × CellHulls × List (Nat × Nat) :=
+    (s st en : Nat) (reserved : List Nat := []) :
+    List PhysActive × CellHulls × List (Nat × Nat) :=
   let act' := act.filter (fun a => a.en ≥ st)
   let used := act'.map PhysActive.phys
-  match freeRegIn numRegs used with
+  match freeRegIn numRegs used reserved with
   | some ph => (⟨st, en, ph, s⟩ :: act', hulls, (s, ph) :: acc)
   | none =>
       let inc : PhysActive := ⟨st, en, numRegs, s⟩
@@ -2816,13 +2843,13 @@ def physScanSpillStep (numRegs : Nat) (uses : Array Nat)
 /-- Run the bounded scan over `(slot, start, end)` triples sorted by start. -/
 def physScanSpill (numRegs : Nat) (uses : Array Nat)
     (items : List (Nat × Nat × Nat)) (act : List PhysActive) (hulls : CellHulls)
-    (acc : List (Nat × Nat)) : List (Nat × Nat) :=
+    (acc : List (Nat × Nat)) (reserved : List Nat := []) : List (Nat × Nat) :=
   match items with
   | [] => acc
   | (s, st, en) :: rest =>
       let (act', hulls', acc') :=
-        physScanSpillStep numRegs uses act hulls acc s st en
-      physScanSpill numRegs uses rest act' hulls' acc'
+        physScanSpillStep numRegs uses act hulls acc s st en reserved
+      physScanSpill numRegs uses rest act' hulls' acc' reserved
 
 /-! #### The scan's register-distinctness invariant
 
@@ -3007,24 +3034,29 @@ the result is byte-identical to the GP-only allocator. -/
     (`vecArr`), run two independent linear scans, and offset the vector class's
     physical indices by `vectorBase`. Reduces to `physAssign tr` when no slot is
     vector. -/
-def physAssignClassed (tr : List PhysEvent) (vecArr : Array Bool) :
-    List (Nat × Nat) :=
+def physAssignClassed (tr : List PhysEvent) (vecArr : Array Bool)
+    (reserved : List Nat := []) (reservedVec : List Nat := []) : List (Nat × Nat) :=
   let d := physLiveData tr
   let gpItems := d.1.filter (fun it => !slotIsVec vecArr it.1)
   let vecItems := d.1.filter (fun it => slotIsVec vecArr it.1)
-  let gpAssign := physScanSpill numGPRegs d.2 gpItems [] #[] []
-  let vecAssign := physScanSpill numVecRegs d.2 vecItems [] #[] []
+  let gpAssign := physScanSpill numGPRegs d.2 gpItems [] #[] [] reserved
+  -- `reservedVec` (default `[]`) lists vector-pool indices the scan must avoid.
+  -- The batch8 path passes `[numVecRegs - 1]` (= `[15]`) to reserve `%ymm15` as
+  -- the printer's spill-legalization scratch: the excluded index is never handed
+  -- out, and the first spill takes index `numVecRegs` (→ `kv.0`), so the register
+  -- boundary in `physRegName` (and its faithfulness lemmas) is unchanged.
+  let vecAssign := physScanSpill numVecRegs d.2 vecItems [] #[] [] reservedVec
   gpAssign ++ vecAssign.map (fun p => (p.1, p.2 + vectorBase))
 
 /-- Compiled class-aware `physTable`: scatter the class-aware assignment into an
     identity-seeded array in one pass. -/
-@[inline] def physTableClassedImpl (tr : List PhysEvent) (vecArr : Array Bool) :
-    Array Nat :=
+@[inline] def physTableClassedImpl (tr : List PhysEvent) (vecArr : Array Bool)
+    (reserved : List Nat := []) (reservedVec : List Nat := []) : Array Nat :=
   let univ := physUniverse tr
   Id.run do
     let mut t : Array Nat := (Array.range univ)
     -- Reverse for the same last-write-wins reason as `physTableImpl`.
-    for (s, ph) in (physAssignClassed tr vecArr).reverse do
+    for (s, ph) in (physAssignClassed tr vecArr reserved reservedVec).reverse do
       if s < univ then t := t.set! s ph
     return t
 
@@ -3032,8 +3064,9 @@ def physAssignClassed (tr : List PhysEvent) (vecArr : Array Bool) :
     vector slots are allocated from disjoint pools (`physAssignClassed`). For a
     body with no vector slot this is `physTable tr` exactly. -/
 @[implemented_by physTableClassedImpl]
-def physTableClassed (tr : List PhysEvent) (vecArr : Array Bool) : Array Nat :=
-  let assign := physAssignClassed tr vecArr
+def physTableClassed (tr : List PhysEvent) (vecArr : Array Bool)
+    (reserved : List Nat := []) (reservedVec : List Nat := []) : Array Nat :=
+  let assign := physAssignClassed tr vecArr reserved reservedVec
   let univ := physUniverse tr
   (Array.range univ).map (fun s =>
     match assign.find? (fun p => p.1 == s) with
@@ -3046,7 +3079,7 @@ def physTableClassed (tr : List PhysEvent) (vecArr : Array Bool) : Array Nat :=
     bindings to `XMM`. For a pure-scalar body (`bodyVecSlots` all-`false`) it is
     `physTable (bodyTrace body)`, so existing kernels are byte-identical. -/
 def bodyPhysTable (body : Lcmd) : Array Nat :=
-  physTableClassed (bodyTrace body) (bodyVecSlots body)
+  physTableClassed (bodyTrace body) (bodyVecSlots body) (bodyReservedGP body)
 
 /-! ### 7d. Two-address lowering of one binop
 
@@ -4197,11 +4230,14 @@ def bodyTraceOut (body : Lcmd) (outStoreMap : OutStoreMap) : List PhysEvent :=
     body name to its post-RA physical register so that the `n` distinct outputs
     occupy `n` distinct physical registers across the epilogue stores. Reduces to
     `physTable (bodyTrace body)` when `outStoreMap = []`. -/
-def physTableOut (body : Lcmd) (outStoreMap : OutStoreMap) : Array Nat :=
+def physTableOut (body : Lcmd) (outStoreMap : OutStoreMap)
+    (reservedVec : List Nat := []) : Array Nat :=
   -- Class-aware (`bodyVecSlots`): GP outputs → GP regs, vector outputs → XMM, in
   -- one scan. For a body with no vector op this is `physTable (bodyTraceOut …)`,
-  -- so the GP-only multi-output allocation is byte-identical.
+  -- so the GP-only multi-output allocation is byte-identical. `reservedVec`
+  -- (default `[]`) excludes vector indices; the batch8 path passes `[numVecRegs-1]`.
   physTableClassed (bodyTraceOut body outStoreMap) (bodyVecSlots body)
+    (bodyReservedGP body) reservedVec
 
 /-- Conservative upper bound on the argument-slot count referenced by a virtual
     body: the maximum `s` such that `argName s` appears anywhere in the body,
@@ -4526,11 +4562,12 @@ def insertEpilogue (body : Lcmd) (epi : Lcmd) : Lcmd :=
     (body : Lcmd) (inLoadMap : InLoadMap) (loadBase : String)
     (outStoreMap : OutStoreMap) (storeBase : String) (abiW : Nat := 0)
     (memrefBaseReload : String → Option String := fun _ => none)
-    (callArgBaseReload : List (String × String) := []) : Lcmd :=
+    (callArgBaseReload : List (String × String) := [])
+    (reservedVec : List Nat := []) : Lcmd :=
   -- Output-liveness-extended allocation: the `n` designated output slots are kept
   -- in `n` distinct physical registers across the epilogue stores (see
   -- `bodyTraceOut`). Reduces to `physTable (bodyTrace body)` for `outStoreMap=[]`.
-  let tbl := straightCallComposeTable body (physTableOut body outStoreMap)
+  let tbl := straightCallComposeTable body (physTableOut body outStoreMap reservedVec)
   -- Caller-save clobber barrier (matches the spec `physBodyWithStores`): a body
   -- carrying a real `Lcall` renames through `remapOperandCalleeSave`; a call-free
   -- body keeps `remapOperand` (byte-identical).
@@ -4561,8 +4598,11 @@ def insertEpilogue (body : Lcmd) (epi : Lcmd) : Lcmd :=
   --     register / register to spill). This must stay full-width (`MOV:64`/`MOV`):
   --     the spill holds the body's working value, so narrowing it would truncate.
   -- `abiW = 0` (every existing caller) makes both legs the pre-#656
-  -- `MOV:64`/`MOV`, so the emitted body is byte-identical.
-  let abiMovReg : String := if bodyIsU64 then "MOV:64" else "MOV"
+  -- `MOV:64`/`MOV`, so the emitted body is byte-identical. `abiW = 256` (the
+  -- batch8 packed SoA ABI) makes both legs `VMOVDQU`, so the printer renders the
+  -- `mem ↔ %ymm` loads/stores as `vmovdqu`.
+  let abiMovReg : String :=
+    if abiW == 256 then "VMOVDQU" else if bodyIsU64 then "MOV:64" else "MOV"
   let abiMovBuf : String :=
     if abiW == 16 then "MOV:16"
     else if abiW == 8 then "MOV:8"
@@ -4731,10 +4771,11 @@ def physBodyWithStores (shiftImm : ShiftImmOracle) (body : Lcmd)
     (inLoadMap : InLoadMap) (loadBase : String)
     (outStoreMap : OutStoreMap) (storeBase : String) (abiW : Nat := 0)
     (memrefBaseReload : String → Option String := fun _ => none)
-    (callArgBaseReload : List (String × String) := []) : Lcmd :=
+    (callArgBaseReload : List (String × String) := [])
+    (reservedVec : List Nat := []) : Lcmd :=
   -- Output-liveness-extended allocation (multi-output store fix): see
   -- `bodyTraceOut`. `physTableOut body []` = `physTable (bodyTrace body)`.
-  let tbl := straightCallComposeTable body (physTableOut body outStoreMap)
+  let tbl := straightCallComposeTable body (physTableOut body outStoreMap reservedVec)
   -- Caller-save clobber barrier: a body carrying a real `Lcall` (an expanded
   -- `CALL:`/`CALLN:` leaf-call shadow, `expandCallShadows`) renames through
   -- `remapOperandCalleeSave` — the SysV hardware marshalling names (`RDI…`,`RAX`)
@@ -4757,7 +4798,9 @@ def physBodyWithStores (shiftImm : ShiftImmOracle) (body : Lcmd)
   -- ABI MOV widths (#656). See `physBodyWithStoresImpl` for the buffer-leg
   -- (`abiMovBuf`, narrow `MOV:16`/`MOV:8`) vs spill-routing-leg (`abiMovReg`,
   -- full-width) split; `abiW = 0` makes both `MOV:64`/`MOV` (byte-identical).
-  let abiMovReg : String := if bodyIsU64 then "MOV:64" else "MOV"
+  -- `abiW = 256` (batch8 packed SoA) makes both `VMOVDQU`.
+  let abiMovReg : String :=
+    if abiW == 256 then "VMOVDQU" else if bodyIsU64 then "MOV:64" else "MOV"
   let abiMovBuf : String :=
     if abiW == 16 then "MOV:16"
     else if abiW == 8 then "MOV:8"
@@ -5145,33 +5188,37 @@ def degenerateForwarderSym? {Γ : Ctxt jasminDialect} {t : JasminTy}
       | _, _ => none
   | _ => none
 
-/-- The ABI-wrapped physical `lfundef` for a `Com`: same args/types as the
-    underlying physical export, but `lfd_arg` is reset to a fixed 2-pointer
-    SysV signature (`[RDI, RSI]` for the canonical `out, inp` C ABI), the body
-    is prefixed with the prologue (loads inputs from `[RSI + ...]`) and
-    suffixed with the epilogue (stores outputs to `[RDI + ...]`), and `lfd_res`
-    is empty (the body returns its result via memory at `*out`).
+/-- The ABI-wrapping tail of `comToLfundefPhysAbi`, over an already-built virtual
+    `Lfundef` (`comToLfundef`'s output). Everything here operates on the flat,
+    string-named body, so an emit path that produces the virtual body by other
+    means — a fused lowering that avoids a quadratic intermediate `Com` — calls
+    this directly. `forwarderBody?` supplies the degenerate zero-marshalling
+    forwarder body when applicable (`none` on the general path).
 
     * `shiftImm` — legacy SSA-name-keyed shift-count oracle.
-    * `immSlotMap` — producer-level slot → constant map (default: none).
     * `inLoadMap` — argument slot → `(base, off)` memory load (default: none —
       which reproduces `comToLfundefPhys`'s register-only behaviour).
     * `outStoreMap` — list of output store targets (default: empty — no stores).
     * `abiArgs` — the `lfd_arg` list (default: `["RDI", "RSI"]` for `out, inp`).
     * `abiTyin` — the `lfd_tyin` list (default: two 64-bit pointer widths).
 -/
-def comToLfundefPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (com : Com jasminDialect Γ t) (shiftImm : ShiftImmOracle := fun _ => none)
-    (immSlotMap : ImmSlotMap := fun _ => none)
+def comToLfundefPhysAbiFromVirt (virt0 : Lfundef)
+    (shiftImm : ShiftImmOracle := fun _ => none)
     (inLoadMap : InLoadMap := fun _ => none)
     (outStoreMap : OutStoreMap := [])
     (abiArgs : List String := ["RDI", "RSI"])
     (abiTyin : List Nat := [64, 64])
     (residence : Option (Array Nat) := none)
     (abiW : Nat := 0)
-    (forceLivePin : Bool := false) :
+    (forceLivePin : Bool := false)
+    (forwarderBody? : Option Lcmd := none)
+    (reserveVecScratch : Bool := false) :
     Lfundef :=
-  let virt0 := comToLfundef com immSlotMap
+  -- `reserveVecScratch` (batch8 SoA path): cap the vector RA pool at
+  -- `numVecRegs - 1`, reserving `%ymm15` as the printer's spill-legalization
+  -- scratch so its bounce needs no per-op save/restore. `false` (every existing
+  -- caller) uses the full pool, so the emitted bytes are unchanged.
+  let reservedVec : List Nat := if reserveVecScratch then [numVecRegs - 1] else []
   -- Expand any straight-line `CALL:`/`CALLN:` leaf-call shadow into a real
   -- `Lcall` + SysV marshalling (`expandCallShadows`) before the RA runs, so the
   -- linear scan sees the call as a caller-save clobber barrier (the marshalled
@@ -5235,7 +5282,7 @@ def comToLfundefPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy}
   -- indices) then reads one coherent table via `physNameForBody`'s plain
   -- lookup. Identity on call-free and looped bodies.
   let tbl := straightCallComposeTable virt.lfd_body
-    (physTableOut virt.lfd_body outStoreMap)
+    (physTableOut virt.lfd_body outStoreMap reservedVec)
   -- Each EXTRA SysV argument register beyond `RDI`/`RSI` (`RDX`/`RCX`/`R8`/`R9`,
   -- a 3+-argument signature) gets its own red-zone qsave slot, appended after the
   -- fixed prologue, so the argument materialize / SIB-base reloads can source it
@@ -5298,7 +5345,8 @@ def comToLfundefPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy}
     fun base => (pairs.find? (fun p => p.1 == base)).map Prod.snd
   -- Drop the synthetic argument-liveness pin (it carried no value, only liveness).
   let bodyWithInlineStores := (physBodyWithStores shiftImm' virt.lfd_body
-    inLoadMap reloadScratch2 outStoreMap reloadScratch2 abiW memrefBaseReload).filter
+    inLoadMap reloadScratch2 outStoreMap reloadScratch2 abiW memrefBaseReload
+    (reservedVec := reservedVec)).filter
     (fun i => match i.li_i with | .Lopn _ opn _ => opn != "LIVEPIN" | _ => true)
   -- Straight-line-call return materialization: the liveness-computed barrier
   -- homes the final capture (`MOV dst, RAX`) in a callee-saved register or a
@@ -5326,26 +5374,55 @@ def comToLfundefPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy}
   -- Insert the callee-saved-register restore just before the final `Lret`.
   let bodyWithRestore :=
     insertEpilogue bodyWithInlineStores (retMat ++ calleeSaveRestoreEpilogue)
-  -- Degenerate zero-marshalling forwarder (`degenerateForwarderSym?`): a `Com`
-  -- that is a single `extCall sym` binding forwarding the enclosing parameters
-  -- unchanged and returned directly, whose inbound ABI already equals the
-  -- callee's SysV argument registers. Its body is `call sym; ret` with no
-  -- argument moves or result staging — bypassing the `prologue`/`argMat`/
-  -- marshalling above. Only the `lfd_body` field is affected; every other
-  -- field (`lfd_export`, `lfd_callee_saved`, `lfd_arg`, `lfd_tyin`, `lfd_res`,
-  -- `lfd_tyout`) is the same structure literal as the general path, so the
-  -- reduction behaviour of those projections is unchanged. A non-degenerate
-  -- `Com` yields `none`, so its body is `prologue ++ argMat ++ bodyWithRestore`
-  -- byte-for-byte as before.
-  let forwarderBody? : Option Lcmd :=
-    (degenerateForwarderSym? com abiArgs).map
-      (fun sym => [⟨0, .Lcall none (sym, 0)⟩, ⟨0, .Lret⟩])
+  -- Degenerate zero-marshalling forwarder (`forwarderBody?`, supplied by the
+  -- caller): a `Com` that is a single `extCall sym` binding forwarding the
+  -- enclosing parameters unchanged and returned directly, whose inbound ABI
+  -- already equals the callee's SysV argument registers. Its body is
+  -- `call sym; ret` with no argument moves or result staging — bypassing the
+  -- `prologue`/`argMat`/marshalling above. Only the `lfd_body` field is
+  -- affected; every other field is the same structure literal as the general
+  -- path. `none` yields `prologue ++ argMat ++ bodyWithRestore` byte-for-byte.
   { virt with
     lfd_body := forwarderBody?.getD (prologue ++ argMat ++ bodyWithRestore)
     lfd_arg := abiArgs
     lfd_tyin := abiTyin
     lfd_res := []
     lfd_tyout := [] }
+
+/-- The ABI-wrapped physical `lfundef` for a `Com`: same args/types as the
+    underlying physical export, but `lfd_arg` is reset to a fixed 2-pointer
+    SysV signature (`[RDI, RSI]` for the canonical `out, inp` C ABI), the body
+    is prefixed with the prologue (loads inputs from `[RSI + ...]`) and
+    suffixed with the epilogue (stores outputs to `[RDI + ...]`), and `lfd_res`
+    is empty (the body returns its result via memory at `*out`). Builds the
+    virtual `Lfundef` with `comToLfundef` and wraps it with
+    `comToLfundefPhysAbiFromVirt`.
+
+    * `shiftImm` — legacy SSA-name-keyed shift-count oracle.
+    * `immSlotMap` — producer-level slot → constant map (default: none).
+    * `inLoadMap` — argument slot → `(base, off)` memory load (default: none —
+      which reproduces `comToLfundefPhys`'s register-only behaviour).
+    * `outStoreMap` — list of output store targets (default: empty — no stores).
+    * `abiArgs` — the `lfd_arg` list (default: `["RDI", "RSI"]` for `out, inp`).
+    * `abiTyin` — the `lfd_tyin` list (default: two 64-bit pointer widths).
+-/
+def comToLfundefPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (com : Com jasminDialect Γ t) (shiftImm : ShiftImmOracle := fun _ => none)
+    (immSlotMap : ImmSlotMap := fun _ => none)
+    (inLoadMap : InLoadMap := fun _ => none)
+    (outStoreMap : OutStoreMap := [])
+    (abiArgs : List String := ["RDI", "RSI"])
+    (abiTyin : List Nat := [64, 64])
+    (residence : Option (Array Nat) := none)
+    (abiW : Nat := 0)
+    (forceLivePin : Bool := false) :
+    Lfundef :=
+  comToLfundefPhysAbiFromVirt (comToLfundef com immSlotMap)
+    (shiftImm := shiftImm) (inLoadMap := inLoadMap) (outStoreMap := outStoreMap)
+    (abiArgs := abiArgs) (abiTyin := abiTyin) (residence := residence)
+    (abiW := abiW) (forceLivePin := forceLivePin)
+    (forwarderBody? := (degenerateForwarderSym? com abiArgs).map
+      (fun sym => [⟨0, .Lcall none (sym, 0)⟩, ⟨0, .Lret⟩]))
 
 /-- Export a `Com` to a 2-pointer-ABI physical-register, two-address `Lprog`.
     See `comToLfundefPhysAbi` for the ABI wrapping (prologue loads + epilogue

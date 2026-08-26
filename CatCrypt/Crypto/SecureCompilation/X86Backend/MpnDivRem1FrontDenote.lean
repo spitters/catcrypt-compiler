@@ -82,6 +82,44 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1FrontEmit
 open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1FrontTotal (divFrontOk)
 open CatCrypt.Crypto.Jasmin.LowCT (LowCT Located TowerType SExpr)
 
+/-! ## Precomputed name-freshness
+
+Each source variable's not-a-temporary fact is proved once — the `by decide` on
+the below-`4` name length is paid a single time per name — and referenced at the
+freshness sites below, instead of re-deciding the string length at each site. -/
+
+private theorem nt_c0 : ¬ isTmpName "c0" := notTmp_of_short _ (by decide)
+private theorem nt_c0q : ¬ isTmpName "c0q" := notTmp_of_short _ (by decide)
+private theorem nt_c0r : ¬ isTmpName "c0r" := notTmp_of_short _ (by decide)
+private theorem nt_c1 : ¬ isTmpName "c1" := notTmp_of_short _ (by decide)
+private theorem nt_c1q : ¬ isTmpName "c1q" := notTmp_of_short _ (by decide)
+private theorem nt_c1r : ¬ isTmpName "c1r" := notTmp_of_short _ (by decide)
+private theorem nt_c2 : ¬ isTmpName "c2" := notTmp_of_short _ (by decide)
+private theorem nt_c2q : ¬ isTmpName "c2q" := notTmp_of_short _ (by decide)
+private theorem nt_c2r : ¬ isTmpName "c2r" := notTmp_of_short _ (by decide)
+private theorem nt_c3 : ¬ isTmpName "c3" := notTmp_of_short _ (by decide)
+private theorem nt_d : ¬ isTmpName "d" := notTmp_of_short _ (by decide)
+private theorem nt_idx : ¬ isTmpName "idx" := notTmp_of_short _ (by decide)
+private theorem nt_j : ¬ isTmpName "j" := notTmp_of_short _ (by decide)
+private theorem nt_m1 : ¬ isTmpName "m1" := notTmp_of_short _ (by decide)
+private theorem nt_m3 : ¬ isTmpName "m3" := notTmp_of_short _ (by decide)
+private theorem nt_n : ¬ isTmpName "n" := notTmp_of_short _ (by decide)
+private theorem nt_p : ¬ isTmpName "p" := notTmp_of_short _ (by decide)
+private theorem nt_qh : ¬ isTmpName "qh" := notTmp_of_short _ (by decide)
+private theorem nt_qhb : ¬ isTmpName "qhb" := notTmp_of_short _ (by decide)
+private theorem nt_qhc : ¬ isTmpName "qhc" := notTmp_of_short _ (by decide)
+private theorem nt_ql : ¬ isTmpName "ql" := notTmp_of_short _ (by decide)
+private theorem nt_qla : ¬ isTmpName "qla" := notTmp_of_short _ (by decide)
+private theorem nt_qp : ¬ isTmpName "qp" := notTmp_of_short _ (by decide)
+private theorem nt_r : ¬ isTmpName "r" := notTmp_of_short _ (by decide)
+private theorem nt_ra : ¬ isTmpName "ra" := notTmp_of_short _ (by decide)
+private theorem nt_rs : ¬ isTmpName "rs" := notTmp_of_short _ (by decide)
+private theorem nt_top : ¬ isTmpName "top" := notTmp_of_short _ (by decide)
+private theorem nt_u0 : ¬ isTmpName "u0" := notTmp_of_short _ (by decide)
+private theorem nt_u1 : ¬ isTmpName "u1" := notTmp_of_short _ (by decide)
+private theorem nt_u1p : ¬ isTmpName "u1p" := notTmp_of_short _ (by decide)
+private theorem nt_up : ¬ isTmpName "up" := notTmp_of_short _ (by decide)
+
 /-! ## 1. New `SExpr`-lowering progress lemmas -/
 
 /-- A non-temp name misses the whole reserved `__sx` index range. -/
@@ -240,73 +278,73 @@ theorem hones : ones < 2 ^ 64 := by decide
 
 /-- The `mpn_divrem_1` limb body is covered straight-line `LowCT`. -/
 theorem divLimbBody_coveredS : IsCoveredS divLimbBodyLowCT :=
-  .rSeq (.rScalarSetExpr _ _ ⟨notTmp_of_short "n" (by decide), (by decide : (1 : Nat) < 2 ^ 64)⟩)
+  .rSeq (.rScalarSetExpr _ _ ⟨nt_n, (by decide : (1 : Nat) < 2 ^ 64)⟩)
    (.rSeq (.rScalarSetExpr _ _
-        ⟨notTmp_of_short "top" (by decide), notTmp_of_short "idx" (by decide)⟩)
+        ⟨nt_top, nt_idx⟩)
     (.rSeq (.rScalarSetExpr _ _ (by decide : (RS : Nat) < 2 ^ 64))
      (.rSeq (.rArrLoad _ _ _)
       (.rSeq (.rArrLoad _ _ _)
        (.rSeq (.rScalarSetExpr _ _
-            ⟨notTmp_of_headNe rfl (by decide), notTmp_of_short "u1" (by decide)⟩)
+            ⟨notTmp_of_headNe rfl (by decide), nt_u1⟩)
         (.rSeq (.rScalarSetExpr _ _
-             ⟨notTmp_of_headNe rfl (by decide), notTmp_of_short "u1" (by decide)⟩)
+             ⟨notTmp_of_headNe rfl (by decide), nt_u1⟩)
          (.rSeq (.rScalarSetExpr _ _
-              ⟨notTmp_of_short "ql" (by decide), notTmp_of_short "u0" (by decide)⟩)
+              ⟨nt_ql, nt_u0⟩)
           -- ltuCmds "c0" qla ql
           (.rSeq (.rScalarSetExpr _ _
-               ⟨⟨notTmp_of_short "qla" (by decide), hones⟩, notTmp_of_short "ql" (by decide)⟩)
+               ⟨⟨nt_qla, hones⟩, nt_ql⟩)
            (.rSeq (.rScalarSetExpr _ _
-                ⟨⟨⟨notTmp_of_short "qla" (by decide), notTmp_of_short "ql" (by decide)⟩, hones⟩,
-                  ⟨notTmp_of_short "qla" (by decide), notTmp_of_short "ql" (by decide)⟩⟩)
+                ⟨⟨⟨nt_qla, nt_ql⟩, hones⟩,
+                  ⟨nt_qla, nt_ql⟩⟩)
             (.rSeq (.rScalarSetExpr _ _
-                 ⟨⟨⟨notTmp_of_short "c0q" (by decide), notTmp_of_short "c0r" (by decide)⟩,
-                     ⟨notTmp_of_short "c0q" (by decide), notTmp_of_short "c0r" (by decide)⟩⟩,
+                 ⟨⟨⟨nt_c0q, nt_c0r⟩,
+                     ⟨nt_c0q, nt_c0r⟩⟩,
                    (by decide : (63 : Nat) < 2 ^ 64)⟩)
              (.rSeq (.rScalarSetExpr _ _
-                  ⟨notTmp_of_short "u1" (by decide), (by decide : (1 : Nat) < 2 ^ 64)⟩)
+                  ⟨nt_u1, (by decide : (1 : Nat) < 2 ^ 64)⟩)
               (.rSeq (.rScalarSetExpr _ _
-                   ⟨⟨notTmp_of_short "qh" (by decide), notTmp_of_short "u1p" (by decide)⟩,
-                     notTmp_of_short "c0" (by decide)⟩)
+                   ⟨⟨nt_qh, nt_u1p⟩,
+                     nt_c0⟩)
                (.rSeq (.rScalarSetExpr _ _
-                    ⟨notTmp_of_short "qhb" (by decide), notTmp_of_short "d" (by decide)⟩)
+                    ⟨nt_qhb, nt_d⟩)
                 (.rSeq (.rScalarSetExpr _ _
-                     ⟨notTmp_of_short "u0" (by decide), notTmp_of_short "p" (by decide)⟩)
+                     ⟨nt_u0, nt_p⟩)
                  -- ltuCmds "c1" qla r
                  (.rSeq (.rScalarSetExpr _ _
-                      ⟨⟨notTmp_of_short "qla" (by decide), hones⟩, notTmp_of_short "r" (by decide)⟩)
+                      ⟨⟨nt_qla, hones⟩, nt_r⟩)
                   (.rSeq (.rScalarSetExpr _ _
-                       ⟨⟨⟨notTmp_of_short "qla" (by decide), notTmp_of_short "r" (by decide)⟩, hones⟩,
-                         ⟨notTmp_of_short "qla" (by decide), notTmp_of_short "r" (by decide)⟩⟩)
+                       ⟨⟨⟨nt_qla, nt_r⟩, hones⟩,
+                         ⟨nt_qla, nt_r⟩⟩)
                    (.rSeq (.rScalarSetExpr _ _
-                        ⟨⟨⟨notTmp_of_short "c1q" (by decide), notTmp_of_short "c1r" (by decide)⟩,
-                            ⟨notTmp_of_short "c1q" (by decide), notTmp_of_short "c1r" (by decide)⟩⟩,
+                        ⟨⟨⟨nt_c1q, nt_c1r⟩,
+                            ⟨nt_c1q, nt_c1r⟩⟩,
                           (by decide : (63 : Nat) < 2 ^ 64)⟩)
                     (.rSeq (.rScalarSetExpr _ _
-                         ⟨⟨notTmp_of_short "c1" (by decide), hones⟩, (by decide : (1 : Nat) < 2 ^ 64)⟩)
+                         ⟨⟨nt_c1, hones⟩, (by decide : (1 : Nat) < 2 ^ 64)⟩)
                      (.rSeq (.rScalarSetExpr _ _
-                          ⟨notTmp_of_short "qhb" (by decide), notTmp_of_short "m1" (by decide)⟩)
+                          ⟨nt_qhb, nt_m1⟩)
                       (.rSeq (.rScalarSetExpr _ _
-                           ⟨notTmp_of_short "r" (by decide),
-                             ⟨notTmp_of_short "m1" (by decide), notTmp_of_short "d" (by decide)⟩⟩)
+                           ⟨nt_r,
+                             ⟨nt_m1, nt_d⟩⟩)
                        -- ltuCmds "c2" ra d
                        (.rSeq (.rScalarSetExpr _ _
-                            ⟨⟨notTmp_of_short "ra" (by decide), hones⟩, notTmp_of_short "d" (by decide)⟩)
+                            ⟨⟨nt_ra, hones⟩, nt_d⟩)
                         (.rSeq (.rScalarSetExpr _ _
-                             ⟨⟨⟨notTmp_of_short "ra" (by decide), notTmp_of_short "d" (by decide)⟩, hones⟩,
-                               ⟨notTmp_of_short "ra" (by decide), notTmp_of_short "d" (by decide)⟩⟩)
+                             ⟨⟨⟨nt_ra, nt_d⟩, hones⟩,
+                               ⟨nt_ra, nt_d⟩⟩)
                          (.rSeq (.rScalarSetExpr _ _
-                              ⟨⟨⟨notTmp_of_short "c2q" (by decide), notTmp_of_short "c2r" (by decide)⟩,
-                                  ⟨notTmp_of_short "c2q" (by decide), notTmp_of_short "c2r" (by decide)⟩⟩,
+                              ⟨⟨⟨nt_c2q, nt_c2r⟩,
+                                  ⟨nt_c2q, nt_c2r⟩⟩,
                                 (by decide : (63 : Nat) < 2 ^ 64)⟩)
                           (.rSeq (.rScalarSetExpr _ _
-                               ⟨notTmp_of_short "c2" (by decide), (by decide : (1 : Nat) < 2 ^ 64)⟩)
+                               ⟨nt_c2, (by decide : (1 : Nat) < 2 ^ 64)⟩)
                            (.rSeq (.rScalarSetExpr _ _
-                                ⟨⟨notTmp_of_short "c3" (by decide), hones⟩, (by decide : (1 : Nat) < 2 ^ 64)⟩)
+                                ⟨⟨nt_c3, hones⟩, (by decide : (1 : Nat) < 2 ^ 64)⟩)
                             (.rSeq (.rScalarSetExpr _ _
-                                 ⟨notTmp_of_short "qhc" (by decide), notTmp_of_short "c3" (by decide)⟩)
+                                 ⟨nt_qhc, nt_c3⟩)
                              (.rSeq (.rScalarSetExpr _ _
-                                  ⟨notTmp_of_short "ra" (by decide),
-                                    ⟨notTmp_of_short "m3" (by decide), notTmp_of_short "d" (by decide)⟩⟩)
+                                  ⟨nt_ra,
+                                    ⟨nt_m3, nt_d⟩⟩)
                               (.rSeq (.rArrStore _ _ _)
                                (.rArrStore _ _ _)))))))))))))))))))))))))))))
 
@@ -402,27 +440,27 @@ theorem divLimbBody_run (up : Fin NU → BitVec 64) (dinv d : BitVec 64)
   obtain ⟨e1, hs1, h1top, hf1⟩ := semScalar_setExpr_run (y := "top")
     (lower_sub_lit 1 (envReadU64_of_bound (divEnv_n up dinv d acc iv nv)) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound (divEnv_n up dinv d acc iv nv)] at h1top
-  have h1qp := (hf1 "qp" (notTmp_of_short "qp" (by decide)) (by decide)).trans (divEnv_qp up dinv d acc iv nv)
-  have h1idx := (hf1 "idx" (notTmp_of_short "idx" (by decide)) (by decide)).trans (divEnv_idx up dinv d acc iv nv)
-  have h1d := (hf1 "d" (notTmp_of_short "d" (by decide)) (by decide)).trans (divEnv_d up dinv d acc iv nv)
+  have h1qp := (hf1 "qp" (nt_qp) (by decide)).trans (divEnv_qp up dinv d acc iv nv)
+  have h1idx := (hf1 "idx" (nt_idx) (by decide)).trans (divEnv_idx up dinv d acc iv nv)
+  have h1d := (hf1 "d" (nt_d) (by decide)).trans (divEnv_d up dinv d acc iv nv)
   have h1dinv := (hf1 "dinv" (notTmp_of_headNe rfl (by decide)) (by decide)).trans (divEnv_dinv up dinv d acc iv nv)
-  have h1up := (hf1 "up" (notTmp_of_short "up" (by decide)) (by decide)).trans (divEnv_up up dinv d acc iv nv)
+  have h1up := (hf1 "up" (nt_up) (by decide)).trans (divEnv_up up dinv d acc iv nv)
   -- step 2: j := top - idx
   obtain ⟨e2, hs2, h2j, hf2⟩ := semScalar_setExpr_run (y := "j")
     (lower_sub_vv (envReadU64_of_bound h1top) (envReadU64_of_bound h1idx))
   simp only [SExpr.evalBV, envReader_of_bound h1top, envReader_of_bound h1idx] at h2j
-  have h2qp := (hf2 "qp" (notTmp_of_short "qp" (by decide)) (by decide)).trans h1qp
-  have h2d := (hf2 "d" (notTmp_of_short "d" (by decide)) (by decide)).trans h1d
+  have h2qp := (hf2 "qp" (nt_qp) (by decide)).trans h1qp
+  have h2d := (hf2 "d" (nt_d) (by decide)).trans h1d
   have h2dinv := (hf2 "dinv" (notTmp_of_headNe rfl (by decide)) (by decide)).trans h1dinv
-  have h2up := (hf2 "up" (notTmp_of_short "up" (by decide)) (by decide)).trans h1up
+  have h2up := (hf2 "up" (nt_up) (by decide)).trans h1up
   -- step 3: rs := RS
   obtain ⟨e3, hs3, h3rs, hf3⟩ := semScalar_setExpr_run (y := "rs") (lower_lit (env := e2) RS)
   simp only [SExpr.evalBV] at h3rs
-  have h3qp := (hf3 "qp" (notTmp_of_short "qp" (by decide)) (by decide)).trans h2qp
-  have h3j := (hf3 "j" (notTmp_of_short "j" (by decide)) (by decide)).trans h2j
-  have h3d := (hf3 "d" (notTmp_of_short "d" (by decide)) (by decide)).trans h2d
+  have h3qp := (hf3 "qp" (nt_qp) (by decide)).trans h2qp
+  have h3j := (hf3 "j" (nt_j) (by decide)).trans h2j
+  have h3d := (hf3 "d" (nt_d) (by decide)).trans h2d
   have h3dinv := (hf3 "dinv" (notTmp_of_headNe rfl (by decide)) (by decide)).trans h2dinv
-  have h3up := (hf3 "up" (notTmp_of_short "up" (by decide)) (by decide)).trans h2up
+  have h3up := (hf3 "up" (nt_up) (by decide)).trans h2up
   -- step 4: u1 := qp[rs]
   obtain ⟨e4, hs4, h4u1, hf4⟩ :=
     semScalar_arrLoad (dstN := "u1") (tw := .TBytes (8 * NR)) (idxN := "rs") h3qp h3rs
@@ -447,258 +485,258 @@ theorem divLimbBody_run (up : Fin NU → BitVec 64) (dinv d : BitVec 64)
   obtain ⟨e6, hs6, h6ql, hf6⟩ := semScalar_setExpr_run (y := "ql")
     (lower_mul_vv (envReadU64_of_bound h5dinv) (envReadU64_of_bound h5u1))
   simp only [SExpr.evalBV, envReader_of_bound h5dinv, envReader_of_bound h5u1] at h6ql
-  have h6qp := (hf6 "qp" (notTmp_of_short "qp" (by decide)) (by decide)).trans h5qp
-  have h6j := (hf6 "j" (notTmp_of_short "j" (by decide)) (by decide)).trans h5j
-  have h6rs := (hf6 "rs" (notTmp_of_short "rs" (by decide)) (by decide)).trans h5rs
-  have h6d := (hf6 "d" (notTmp_of_short "d" (by decide)) (by decide)).trans h5d
+  have h6qp := (hf6 "qp" (nt_qp) (by decide)).trans h5qp
+  have h6j := (hf6 "j" (nt_j) (by decide)).trans h5j
+  have h6rs := (hf6 "rs" (nt_rs) (by decide)).trans h5rs
+  have h6d := (hf6 "d" (nt_d) (by decide)).trans h5d
   have h6dinv := (hf6 "dinv" (notTmp_of_headNe rfl (by decide)) (by decide)).trans h5dinv
-  have h6u1 := (hf6 "u1" (notTmp_of_short "u1" (by decide)) (by decide)).trans h5u1
-  have h6u0 := (hf6 "u0" (notTmp_of_short "u0" (by decide)) (by decide)).trans h5u0
+  have h6u1 := (hf6 "u1" (nt_u1) (by decide)).trans h5u1
+  have h6u0 := (hf6 "u0" (nt_u0) (by decide)).trans h5u0
   -- step 7: qh := mulhi(dinv, u1)
   obtain ⟨e7, hs7, h7qh, hf7⟩ := semScalar_setExpr_run (y := "qh")
     (lower_hiu_vv (envReadU64_of_bound h6dinv) (envReadU64_of_bound h6u1))
   simp only [SExpr.evalBV, envReader_of_bound h6dinv, envReader_of_bound h6u1, hiU_eq] at h7qh
-  have h7qp := (hf7 "qp" (notTmp_of_short "qp" (by decide)) (by decide)).trans h6qp
-  have h7j := (hf7 "j" (notTmp_of_short "j" (by decide)) (by decide)).trans h6j
-  have h7rs := (hf7 "rs" (notTmp_of_short "rs" (by decide)) (by decide)).trans h6rs
-  have h7d := (hf7 "d" (notTmp_of_short "d" (by decide)) (by decide)).trans h6d
-  have h7u1 := (hf7 "u1" (notTmp_of_short "u1" (by decide)) (by decide)).trans h6u1
-  have h7u0 := (hf7 "u0" (notTmp_of_short "u0" (by decide)) (by decide)).trans h6u0
-  have h7ql := (hf7 "ql" (notTmp_of_short "ql" (by decide)) (by decide)).trans h6ql
+  have h7qp := (hf7 "qp" (nt_qp) (by decide)).trans h6qp
+  have h7j := (hf7 "j" (nt_j) (by decide)).trans h6j
+  have h7rs := (hf7 "rs" (nt_rs) (by decide)).trans h6rs
+  have h7d := (hf7 "d" (nt_d) (by decide)).trans h6d
+  have h7u1 := (hf7 "u1" (nt_u1) (by decide)).trans h6u1
+  have h7u0 := (hf7 "u0" (nt_u0) (by decide)).trans h6u0
+  have h7ql := (hf7 "ql" (nt_ql) (by decide)).trans h6ql
   -- step 8: qla := ql + u0
   obtain ⟨e8, hs8, h8qla, hf8⟩ := semScalar_setExpr_run (y := "qla")
     (lower_add_vv (envReadU64_of_bound h7ql) (envReadU64_of_bound h7u0))
   simp only [SExpr.evalBV, envReader_of_bound h7ql, envReader_of_bound h7u0] at h8qla
-  have h8qp := (hf8 "qp" (notTmp_of_short "qp" (by decide)) (by decide)).trans h7qp
-  have h8j := (hf8 "j" (notTmp_of_short "j" (by decide)) (by decide)).trans h7j
-  have h8rs := (hf8 "rs" (notTmp_of_short "rs" (by decide)) (by decide)).trans h7rs
-  have h8d := (hf8 "d" (notTmp_of_short "d" (by decide)) (by decide)).trans h7d
-  have h8u1 := (hf8 "u1" (notTmp_of_short "u1" (by decide)) (by decide)).trans h7u1
-  have h8u0 := (hf8 "u0" (notTmp_of_short "u0" (by decide)) (by decide)).trans h7u0
-  have h8ql := (hf8 "ql" (notTmp_of_short "ql" (by decide)) (by decide)).trans h7ql
-  have h8qh := (hf8 "qh" (notTmp_of_short "qh" (by decide)) (by decide)).trans h7qh
+  have h8qp := (hf8 "qp" (nt_qp) (by decide)).trans h7qp
+  have h8j := (hf8 "j" (nt_j) (by decide)).trans h7j
+  have h8rs := (hf8 "rs" (nt_rs) (by decide)).trans h7rs
+  have h8d := (hf8 "d" (nt_d) (by decide)).trans h7d
+  have h8u1 := (hf8 "u1" (nt_u1) (by decide)).trans h7u1
+  have h8u0 := (hf8 "u0" (nt_u0) (by decide)).trans h7u0
+  have h8ql := (hf8 "ql" (nt_ql) (by decide)).trans h7ql
+  have h8qh := (hf8 "qh" (nt_qh) (by decide)).trans h7qh
   -- step 9: c0q := (~qla) & ql
   obtain ⟨e9, hs9, h9c0q, hf9⟩ := semScalar_setExpr_run (y := "c0q")
     (lower_cq ones (envReadU64_of_bound h8qla) (envReadU64_of_bound h8ql) (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h8qla, envReader_of_bound h8ql] at h9c0q
-  have h9qp := (hf9 "qp" (notTmp_of_short "qp" (by decide)) (by decide)).trans h8qp
-  have h9j := (hf9 "j" (notTmp_of_short "j" (by decide)) (by decide)).trans h8j
-  have h9rs := (hf9 "rs" (notTmp_of_short "rs" (by decide)) (by decide)).trans h8rs
-  have h9d := (hf9 "d" (notTmp_of_short "d" (by decide)) (by decide)).trans h8d
-  have h9u1 := (hf9 "u1" (notTmp_of_short "u1" (by decide)) (by decide)).trans h8u1
-  have h9u0 := (hf9 "u0" (notTmp_of_short "u0" (by decide)) (by decide)).trans h8u0
-  have h9ql := (hf9 "ql" (notTmp_of_short "ql" (by decide)) (by decide)).trans h8ql
-  have h9qh := (hf9 "qh" (notTmp_of_short "qh" (by decide)) (by decide)).trans h8qh
-  have h9qla := (hf9 "qla" (notTmp_of_short "qla" (by decide)) (by decide)).trans h8qla
+  have h9qp := (hf9 "qp" (nt_qp) (by decide)).trans h8qp
+  have h9j := (hf9 "j" (nt_j) (by decide)).trans h8j
+  have h9rs := (hf9 "rs" (nt_rs) (by decide)).trans h8rs
+  have h9d := (hf9 "d" (nt_d) (by decide)).trans h8d
+  have h9u1 := (hf9 "u1" (nt_u1) (by decide)).trans h8u1
+  have h9u0 := (hf9 "u0" (nt_u0) (by decide)).trans h8u0
+  have h9ql := (hf9 "ql" (nt_ql) (by decide)).trans h8ql
+  have h9qh := (hf9 "qh" (nt_qh) (by decide)).trans h8qh
+  have h9qla := (hf9 "qla" (nt_qla) (by decide)).trans h8qla
   -- step 10: c0r := (~(qla ^ ql)) & (qla - ql)
   obtain ⟨e10, hs10, h10c0r, hf10⟩ := semScalar_setExpr_run (y := "c0r")
     (lower_cr ones (envReadU64_of_bound h9qla) (envReadU64_of_bound h9ql) (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h9qla, envReader_of_bound h9ql] at h10c0r
-  have h10qp := (hf10 "qp" (notTmp_of_short "qp" (by decide)) (by decide)).trans h9qp
-  have h10j := (hf10 "j" (notTmp_of_short "j" (by decide)) (by decide)).trans h9j
-  have h10rs := (hf10 "rs" (notTmp_of_short "rs" (by decide)) (by decide)).trans h9rs
-  have h10d := (hf10 "d" (notTmp_of_short "d" (by decide)) (by decide)).trans h9d
-  have h10u1 := (hf10 "u1" (notTmp_of_short "u1" (by decide)) (by decide)).trans h9u1
-  have h10u0 := (hf10 "u0" (notTmp_of_short "u0" (by decide)) (by decide)).trans h9u0
-  have h10qh := (hf10 "qh" (notTmp_of_short "qh" (by decide)) (by decide)).trans h9qh
-  have h10qla := (hf10 "qla" (notTmp_of_short "qla" (by decide)) (by decide)).trans h9qla
-  have h10c0q := (hf10 "c0q" (notTmp_of_short "c0q" (by decide)) (by decide)).trans h9c0q
+  have h10qp := (hf10 "qp" (nt_qp) (by decide)).trans h9qp
+  have h10j := (hf10 "j" (nt_j) (by decide)).trans h9j
+  have h10rs := (hf10 "rs" (nt_rs) (by decide)).trans h9rs
+  have h10d := (hf10 "d" (nt_d) (by decide)).trans h9d
+  have h10u1 := (hf10 "u1" (nt_u1) (by decide)).trans h9u1
+  have h10u0 := (hf10 "u0" (nt_u0) (by decide)).trans h9u0
+  have h10qh := (hf10 "qh" (nt_qh) (by decide)).trans h9qh
+  have h10qla := (hf10 "qla" (nt_qla) (by decide)).trans h9qla
+  have h10c0q := (hf10 "c0q" (nt_c0q) (by decide)).trans h9c0q
   -- step 11: c0 := ((c0q | c0r) >> 63) = bSltu qla ql
   obtain ⟨e11, hs11, h11c0, hf11⟩ := semScalar_setExpr_run (y := "c0")
     (lower_orshr 63 (envReadU64_of_bound h10c0q) (envReadU64_of_bound h10c0r) (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h10c0q, envReader_of_bound h10c0r] at h11c0
   rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, ltu_chain] at h11c0
-  have h11qp := (hf11 "qp" (notTmp_of_short "qp" (by decide)) (by decide)).trans h10qp
-  have h11j := (hf11 "j" (notTmp_of_short "j" (by decide)) (by decide)).trans h10j
-  have h11rs := (hf11 "rs" (notTmp_of_short "rs" (by decide)) (by decide)).trans h10rs
-  have h11d := (hf11 "d" (notTmp_of_short "d" (by decide)) (by decide)).trans h10d
-  have h11u1 := (hf11 "u1" (notTmp_of_short "u1" (by decide)) (by decide)).trans h10u1
-  have h11u0 := (hf11 "u0" (notTmp_of_short "u0" (by decide)) (by decide)).trans h10u0
-  have h11qh := (hf11 "qh" (notTmp_of_short "qh" (by decide)) (by decide)).trans h10qh
-  have h11qla := (hf11 "qla" (notTmp_of_short "qla" (by decide)) (by decide)).trans h10qla
+  have h11qp := (hf11 "qp" (nt_qp) (by decide)).trans h10qp
+  have h11j := (hf11 "j" (nt_j) (by decide)).trans h10j
+  have h11rs := (hf11 "rs" (nt_rs) (by decide)).trans h10rs
+  have h11d := (hf11 "d" (nt_d) (by decide)).trans h10d
+  have h11u1 := (hf11 "u1" (nt_u1) (by decide)).trans h10u1
+  have h11u0 := (hf11 "u0" (nt_u0) (by decide)).trans h10u0
+  have h11qh := (hf11 "qh" (nt_qh) (by decide)).trans h10qh
+  have h11qla := (hf11 "qla" (nt_qla) (by decide)).trans h10qla
   -- step 12: u1p := u1 + 1
   obtain ⟨e12, hs12, h12u1p, hf12⟩ := semScalar_setExpr_run (y := "u1p")
     (lower_add_lit 1 (envReadU64_of_bound h11u1) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h11u1] at h12u1p
-  have h12qp := (hf12 "qp" (notTmp_of_short "qp" (by decide)) (by decide)).trans h11qp
-  have h12j := (hf12 "j" (notTmp_of_short "j" (by decide)) (by decide)).trans h11j
-  have h12rs := (hf12 "rs" (notTmp_of_short "rs" (by decide)) (by decide)).trans h11rs
-  have h12d := (hf12 "d" (notTmp_of_short "d" (by decide)) (by decide)).trans h11d
-  have h12u0 := (hf12 "u0" (notTmp_of_short "u0" (by decide)) (by decide)).trans h11u0
-  have h12qh := (hf12 "qh" (notTmp_of_short "qh" (by decide)) (by decide)).trans h11qh
-  have h12qla := (hf12 "qla" (notTmp_of_short "qla" (by decide)) (by decide)).trans h11qla
-  have h12c0 := (hf12 "c0" (notTmp_of_short "c0" (by decide)) (by decide)).trans h11c0
+  have h12qp := (hf12 "qp" (nt_qp) (by decide)).trans h11qp
+  have h12j := (hf12 "j" (nt_j) (by decide)).trans h11j
+  have h12rs := (hf12 "rs" (nt_rs) (by decide)).trans h11rs
+  have h12d := (hf12 "d" (nt_d) (by decide)).trans h11d
+  have h12u0 := (hf12 "u0" (nt_u0) (by decide)).trans h11u0
+  have h12qh := (hf12 "qh" (nt_qh) (by decide)).trans h11qh
+  have h12qla := (hf12 "qla" (nt_qla) (by decide)).trans h11qla
+  have h12c0 := (hf12 "c0" (nt_c0) (by decide)).trans h11c0
   -- step 13: qhb := (qh + u1p) + c0
   obtain ⟨e13, hs13, h13qhb, hf13⟩ := semScalar_setExpr_run (y := "qhb")
     (lower_add2 (envReadU64_of_bound h12qh) (envReadU64_of_bound h12u1p)
       (envReadU64_of_bound h12c0) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h12qh, envReader_of_bound h12u1p,
     envReader_of_bound h12c0] at h13qhb
-  have h13qp := (hf13 "qp" (notTmp_of_short "qp" (by decide)) (by decide)).trans h12qp
-  have h13j := (hf13 "j" (notTmp_of_short "j" (by decide)) (by decide)).trans h12j
-  have h13rs := (hf13 "rs" (notTmp_of_short "rs" (by decide)) (by decide)).trans h12rs
-  have h13d := (hf13 "d" (notTmp_of_short "d" (by decide)) (by decide)).trans h12d
-  have h13u0 := (hf13 "u0" (notTmp_of_short "u0" (by decide)) (by decide)).trans h12u0
-  have h13qla := (hf13 "qla" (notTmp_of_short "qla" (by decide)) (by decide)).trans h12qla
+  have h13qp := (hf13 "qp" (nt_qp) (by decide)).trans h12qp
+  have h13j := (hf13 "j" (nt_j) (by decide)).trans h12j
+  have h13rs := (hf13 "rs" (nt_rs) (by decide)).trans h12rs
+  have h13d := (hf13 "d" (nt_d) (by decide)).trans h12d
+  have h13u0 := (hf13 "u0" (nt_u0) (by decide)).trans h12u0
+  have h13qla := (hf13 "qla" (nt_qla) (by decide)).trans h12qla
   -- step 14: p := qhb * d
   obtain ⟨e14, hs14, h14p, hf14⟩ := semScalar_setExpr_run (y := "p")
     (lower_mul_vv (envReadU64_of_bound h13qhb) (envReadU64_of_bound h13d))
   simp only [SExpr.evalBV, envReader_of_bound h13qhb, envReader_of_bound h13d] at h14p
-  have h14qp := (hf14 "qp" (notTmp_of_short "qp" (by decide)) (by decide)).trans h13qp
-  have h14j := (hf14 "j" (notTmp_of_short "j" (by decide)) (by decide)).trans h13j
-  have h14rs := (hf14 "rs" (notTmp_of_short "rs" (by decide)) (by decide)).trans h13rs
-  have h14d := (hf14 "d" (notTmp_of_short "d" (by decide)) (by decide)).trans h13d
-  have h14u0 := (hf14 "u0" (notTmp_of_short "u0" (by decide)) (by decide)).trans h13u0
-  have h14qla := (hf14 "qla" (notTmp_of_short "qla" (by decide)) (by decide)).trans h13qla
-  have h14qhb := (hf14 "qhb" (notTmp_of_short "qhb" (by decide)) (by decide)).trans h13qhb
+  have h14qp := (hf14 "qp" (nt_qp) (by decide)).trans h13qp
+  have h14j := (hf14 "j" (nt_j) (by decide)).trans h13j
+  have h14rs := (hf14 "rs" (nt_rs) (by decide)).trans h13rs
+  have h14d := (hf14 "d" (nt_d) (by decide)).trans h13d
+  have h14u0 := (hf14 "u0" (nt_u0) (by decide)).trans h13u0
+  have h14qla := (hf14 "qla" (nt_qla) (by decide)).trans h13qla
+  have h14qhb := (hf14 "qhb" (nt_qhb) (by decide)).trans h13qhb
   -- step 15: r := u0 - p
   obtain ⟨e15, hs15, h15r, hf15⟩ := semScalar_setExpr_run (y := "r")
     (lower_sub_vv (envReadU64_of_bound h14u0) (envReadU64_of_bound h14p))
   simp only [SExpr.evalBV, envReader_of_bound h14u0, envReader_of_bound h14p] at h15r
-  have h15qp := (hf15 "qp" (notTmp_of_short "qp" (by decide)) (by decide)).trans h14qp
-  have h15j := (hf15 "j" (notTmp_of_short "j" (by decide)) (by decide)).trans h14j
-  have h15rs := (hf15 "rs" (notTmp_of_short "rs" (by decide)) (by decide)).trans h14rs
-  have h15d := (hf15 "d" (notTmp_of_short "d" (by decide)) (by decide)).trans h14d
-  have h15qla := (hf15 "qla" (notTmp_of_short "qla" (by decide)) (by decide)).trans h14qla
-  have h15qhb := (hf15 "qhb" (notTmp_of_short "qhb" (by decide)) (by decide)).trans h14qhb
+  have h15qp := (hf15 "qp" (nt_qp) (by decide)).trans h14qp
+  have h15j := (hf15 "j" (nt_j) (by decide)).trans h14j
+  have h15rs := (hf15 "rs" (nt_rs) (by decide)).trans h14rs
+  have h15d := (hf15 "d" (nt_d) (by decide)).trans h14d
+  have h15qla := (hf15 "qla" (nt_qla) (by decide)).trans h14qla
+  have h15qhb := (hf15 "qhb" (nt_qhb) (by decide)).trans h14qhb
   -- step 16: c1q := (~qla) & r
   obtain ⟨e16, hs16, h16c1q, hf16⟩ := semScalar_setExpr_run (y := "c1q")
     (lower_cq ones (envReadU64_of_bound h15qla) (envReadU64_of_bound h15r) (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h15qla, envReader_of_bound h15r] at h16c1q
-  have h16qp := (hf16 "qp" (notTmp_of_short "qp" (by decide)) (by decide)).trans h15qp
-  have h16j := (hf16 "j" (notTmp_of_short "j" (by decide)) (by decide)).trans h15j
-  have h16rs := (hf16 "rs" (notTmp_of_short "rs" (by decide)) (by decide)).trans h15rs
-  have h16d := (hf16 "d" (notTmp_of_short "d" (by decide)) (by decide)).trans h15d
-  have h16qla := (hf16 "qla" (notTmp_of_short "qla" (by decide)) (by decide)).trans h15qla
-  have h16qhb := (hf16 "qhb" (notTmp_of_short "qhb" (by decide)) (by decide)).trans h15qhb
-  have h16r := (hf16 "r" (notTmp_of_short "r" (by decide)) (by decide)).trans h15r
+  have h16qp := (hf16 "qp" (nt_qp) (by decide)).trans h15qp
+  have h16j := (hf16 "j" (nt_j) (by decide)).trans h15j
+  have h16rs := (hf16 "rs" (nt_rs) (by decide)).trans h15rs
+  have h16d := (hf16 "d" (nt_d) (by decide)).trans h15d
+  have h16qla := (hf16 "qla" (nt_qla) (by decide)).trans h15qla
+  have h16qhb := (hf16 "qhb" (nt_qhb) (by decide)).trans h15qhb
+  have h16r := (hf16 "r" (nt_r) (by decide)).trans h15r
   -- step 17: c1r := (~(qla ^ r)) & (qla - r)
   obtain ⟨e17, hs17, h17c1r, hf17⟩ := semScalar_setExpr_run (y := "c1r")
     (lower_cr ones (envReadU64_of_bound h16qla) (envReadU64_of_bound h16r) (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h16qla, envReader_of_bound h16r] at h17c1r
-  have h17qp := (hf17 "qp" (notTmp_of_short "qp" (by decide)) (by decide)).trans h16qp
-  have h17j := (hf17 "j" (notTmp_of_short "j" (by decide)) (by decide)).trans h16j
-  have h17rs := (hf17 "rs" (notTmp_of_short "rs" (by decide)) (by decide)).trans h16rs
-  have h17d := (hf17 "d" (notTmp_of_short "d" (by decide)) (by decide)).trans h16d
-  have h17qhb := (hf17 "qhb" (notTmp_of_short "qhb" (by decide)) (by decide)).trans h16qhb
-  have h17r := (hf17 "r" (notTmp_of_short "r" (by decide)) (by decide)).trans h16r
-  have h17c1q := (hf17 "c1q" (notTmp_of_short "c1q" (by decide)) (by decide)).trans h16c1q
+  have h17qp := (hf17 "qp" (nt_qp) (by decide)).trans h16qp
+  have h17j := (hf17 "j" (nt_j) (by decide)).trans h16j
+  have h17rs := (hf17 "rs" (nt_rs) (by decide)).trans h16rs
+  have h17d := (hf17 "d" (nt_d) (by decide)).trans h16d
+  have h17qhb := (hf17 "qhb" (nt_qhb) (by decide)).trans h16qhb
+  have h17r := (hf17 "r" (nt_r) (by decide)).trans h16r
+  have h17c1q := (hf17 "c1q" (nt_c1q) (by decide)).trans h16c1q
   -- step 18: c1 := ((c1q | c1r) >> 63) = bSltu qla r
   obtain ⟨e18, hs18, h18c1, hf18⟩ := semScalar_setExpr_run (y := "c1")
     (lower_orshr 63 (envReadU64_of_bound h17c1q) (envReadU64_of_bound h17c1r) (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h17c1q, envReader_of_bound h17c1r] at h18c1
   rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, ltu_chain] at h18c1
-  have h18qp := (hf18 "qp" (notTmp_of_short "qp" (by decide)) (by decide)).trans h17qp
-  have h18j := (hf18 "j" (notTmp_of_short "j" (by decide)) (by decide)).trans h17j
-  have h18rs := (hf18 "rs" (notTmp_of_short "rs" (by decide)) (by decide)).trans h17rs
-  have h18d := (hf18 "d" (notTmp_of_short "d" (by decide)) (by decide)).trans h17d
-  have h18qhb := (hf18 "qhb" (notTmp_of_short "qhb" (by decide)) (by decide)).trans h17qhb
-  have h18r := (hf18 "r" (notTmp_of_short "r" (by decide)) (by decide)).trans h17r
+  have h18qp := (hf18 "qp" (nt_qp) (by decide)).trans h17qp
+  have h18j := (hf18 "j" (nt_j) (by decide)).trans h17j
+  have h18rs := (hf18 "rs" (nt_rs) (by decide)).trans h17rs
+  have h18d := (hf18 "d" (nt_d) (by decide)).trans h17d
+  have h18qhb := (hf18 "qhb" (nt_qhb) (by decide)).trans h17qhb
+  have h18r := (hf18 "r" (nt_r) (by decide)).trans h17r
   -- step 19: m1 := (~c1) + 1
   obtain ⟨e19, hs19, h19m1, hf19⟩ := semScalar_setExpr_run (y := "m1")
     (lower_notadd1 ones 1 (envReadU64_of_bound h18c1) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h18c1] at h19m1
   rw [notW] at h19m1
-  have h19qp := (hf19 "qp" (notTmp_of_short "qp" (by decide)) (by decide)).trans h18qp
-  have h19j := (hf19 "j" (notTmp_of_short "j" (by decide)) (by decide)).trans h18j
-  have h19rs := (hf19 "rs" (notTmp_of_short "rs" (by decide)) (by decide)).trans h18rs
-  have h19d := (hf19 "d" (notTmp_of_short "d" (by decide)) (by decide)).trans h18d
-  have h19qhb := (hf19 "qhb" (notTmp_of_short "qhb" (by decide)) (by decide)).trans h18qhb
-  have h19r := (hf19 "r" (notTmp_of_short "r" (by decide)) (by decide)).trans h18r
+  have h19qp := (hf19 "qp" (nt_qp) (by decide)).trans h18qp
+  have h19j := (hf19 "j" (nt_j) (by decide)).trans h18j
+  have h19rs := (hf19 "rs" (nt_rs) (by decide)).trans h18rs
+  have h19d := (hf19 "d" (nt_d) (by decide)).trans h18d
+  have h19qhb := (hf19 "qhb" (nt_qhb) (by decide)).trans h18qhb
+  have h19r := (hf19 "r" (nt_r) (by decide)).trans h18r
   -- step 20: qhc := qhb + m1
   obtain ⟨e20, hs20, h20qhc, hf20⟩ := semScalar_setExpr_run (y := "qhc")
     (lower_add_vv (envReadU64_of_bound h19qhb) (envReadU64_of_bound h19m1))
   simp only [SExpr.evalBV, envReader_of_bound h19qhb, envReader_of_bound h19m1] at h20qhc
-  have h20qp := (hf20 "qp" (notTmp_of_short "qp" (by decide)) (by decide)).trans h19qp
-  have h20j := (hf20 "j" (notTmp_of_short "j" (by decide)) (by decide)).trans h19j
-  have h20rs := (hf20 "rs" (notTmp_of_short "rs" (by decide)) (by decide)).trans h19rs
-  have h20d := (hf20 "d" (notTmp_of_short "d" (by decide)) (by decide)).trans h19d
-  have h20r := (hf20 "r" (notTmp_of_short "r" (by decide)) (by decide)).trans h19r
-  have h20m1 := (hf20 "m1" (notTmp_of_short "m1" (by decide)) (by decide)).trans h19m1
+  have h20qp := (hf20 "qp" (nt_qp) (by decide)).trans h19qp
+  have h20j := (hf20 "j" (nt_j) (by decide)).trans h19j
+  have h20rs := (hf20 "rs" (nt_rs) (by decide)).trans h19rs
+  have h20d := (hf20 "d" (nt_d) (by decide)).trans h19d
+  have h20r := (hf20 "r" (nt_r) (by decide)).trans h19r
+  have h20m1 := (hf20 "m1" (nt_m1) (by decide)).trans h19m1
   -- step 21: ra := r + (m1 & d)
   obtain ⟨e21, hs21, h21ra, hf21⟩ := semScalar_setExpr_run (y := "ra")
     (lower_add_and (envReadU64_of_bound h20r) (envReadU64_of_bound h20m1)
       (envReadU64_of_bound h20d) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h20r, envReader_of_bound h20m1,
     envReader_of_bound h20d] at h21ra
-  have h21qp := (hf21 "qp" (notTmp_of_short "qp" (by decide)) (by decide)).trans h20qp
-  have h21j := (hf21 "j" (notTmp_of_short "j" (by decide)) (by decide)).trans h20j
-  have h21rs := (hf21 "rs" (notTmp_of_short "rs" (by decide)) (by decide)).trans h20rs
-  have h21d := (hf21 "d" (notTmp_of_short "d" (by decide)) (by decide)).trans h20d
-  have h21qhc := (hf21 "qhc" (notTmp_of_short "qhc" (by decide)) (by decide)).trans h20qhc
+  have h21qp := (hf21 "qp" (nt_qp) (by decide)).trans h20qp
+  have h21j := (hf21 "j" (nt_j) (by decide)).trans h20j
+  have h21rs := (hf21 "rs" (nt_rs) (by decide)).trans h20rs
+  have h21d := (hf21 "d" (nt_d) (by decide)).trans h20d
+  have h21qhc := (hf21 "qhc" (nt_qhc) (by decide)).trans h20qhc
   -- step 22: c2q := (~ra) & d
   obtain ⟨e22, hs22, h22c2q, hf22⟩ := semScalar_setExpr_run (y := "c2q")
     (lower_cq ones (envReadU64_of_bound h21ra) (envReadU64_of_bound h21d) (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h21ra, envReader_of_bound h21d] at h22c2q
-  have h22qp := (hf22 "qp" (notTmp_of_short "qp" (by decide)) (by decide)).trans h21qp
-  have h22j := (hf22 "j" (notTmp_of_short "j" (by decide)) (by decide)).trans h21j
-  have h22rs := (hf22 "rs" (notTmp_of_short "rs" (by decide)) (by decide)).trans h21rs
-  have h22d := (hf22 "d" (notTmp_of_short "d" (by decide)) (by decide)).trans h21d
-  have h22qhc := (hf22 "qhc" (notTmp_of_short "qhc" (by decide)) (by decide)).trans h21qhc
-  have h22ra := (hf22 "ra" (notTmp_of_short "ra" (by decide)) (by decide)).trans h21ra
+  have h22qp := (hf22 "qp" (nt_qp) (by decide)).trans h21qp
+  have h22j := (hf22 "j" (nt_j) (by decide)).trans h21j
+  have h22rs := (hf22 "rs" (nt_rs) (by decide)).trans h21rs
+  have h22d := (hf22 "d" (nt_d) (by decide)).trans h21d
+  have h22qhc := (hf22 "qhc" (nt_qhc) (by decide)).trans h21qhc
+  have h22ra := (hf22 "ra" (nt_ra) (by decide)).trans h21ra
   -- step 23: c2r := (~(ra ^ d)) & (ra - d)
   obtain ⟨e23, hs23, h23c2r, hf23⟩ := semScalar_setExpr_run (y := "c2r")
     (lower_cr ones (envReadU64_of_bound h22ra) (envReadU64_of_bound h22d) (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h22ra, envReader_of_bound h22d] at h23c2r
-  have h23qp := (hf23 "qp" (notTmp_of_short "qp" (by decide)) (by decide)).trans h22qp
-  have h23j := (hf23 "j" (notTmp_of_short "j" (by decide)) (by decide)).trans h22j
-  have h23rs := (hf23 "rs" (notTmp_of_short "rs" (by decide)) (by decide)).trans h22rs
-  have h23d := (hf23 "d" (notTmp_of_short "d" (by decide)) (by decide)).trans h22d
-  have h23qhc := (hf23 "qhc" (notTmp_of_short "qhc" (by decide)) (by decide)).trans h22qhc
-  have h23ra := (hf23 "ra" (notTmp_of_short "ra" (by decide)) (by decide)).trans h22ra
-  have h23c2q := (hf23 "c2q" (notTmp_of_short "c2q" (by decide)) (by decide)).trans h22c2q
+  have h23qp := (hf23 "qp" (nt_qp) (by decide)).trans h22qp
+  have h23j := (hf23 "j" (nt_j) (by decide)).trans h22j
+  have h23rs := (hf23 "rs" (nt_rs) (by decide)).trans h22rs
+  have h23d := (hf23 "d" (nt_d) (by decide)).trans h22d
+  have h23qhc := (hf23 "qhc" (nt_qhc) (by decide)).trans h22qhc
+  have h23ra := (hf23 "ra" (nt_ra) (by decide)).trans h22ra
+  have h23c2q := (hf23 "c2q" (nt_c2q) (by decide)).trans h22c2q
   -- step 24: c2 := ((c2q | c2r) >> 63) = bSltu ra d
   obtain ⟨e24, hs24, h24c2, hf24⟩ := semScalar_setExpr_run (y := "c2")
     (lower_orshr 63 (envReadU64_of_bound h23c2q) (envReadU64_of_bound h23c2r) (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h23c2q, envReader_of_bound h23c2r] at h24c2
   rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, ltu_chain] at h24c2
-  have h24qp := (hf24 "qp" (notTmp_of_short "qp" (by decide)) (by decide)).trans h23qp
-  have h24j := (hf24 "j" (notTmp_of_short "j" (by decide)) (by decide)).trans h23j
-  have h24rs := (hf24 "rs" (notTmp_of_short "rs" (by decide)) (by decide)).trans h23rs
-  have h24d := (hf24 "d" (notTmp_of_short "d" (by decide)) (by decide)).trans h23d
-  have h24qhc := (hf24 "qhc" (notTmp_of_short "qhc" (by decide)) (by decide)).trans h23qhc
-  have h24ra := (hf24 "ra" (notTmp_of_short "ra" (by decide)) (by decide)).trans h23ra
+  have h24qp := (hf24 "qp" (nt_qp) (by decide)).trans h23qp
+  have h24j := (hf24 "j" (nt_j) (by decide)).trans h23j
+  have h24rs := (hf24 "rs" (nt_rs) (by decide)).trans h23rs
+  have h24d := (hf24 "d" (nt_d) (by decide)).trans h23d
+  have h24qhc := (hf24 "qhc" (nt_qhc) (by decide)).trans h23qhc
+  have h24ra := (hf24 "ra" (nt_ra) (by decide)).trans h23ra
   -- step 25: c3 := c2 ^ 1
   obtain ⟨e25, hs25, h25c3, hf25⟩ := semScalar_setExpr_run (y := "c3")
     (lower_xor_lit 1 (envReadU64_of_bound h24c2) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h24c2] at h25c3
-  have h25qp := (hf25 "qp" (notTmp_of_short "qp" (by decide)) (by decide)).trans h24qp
-  have h25j := (hf25 "j" (notTmp_of_short "j" (by decide)) (by decide)).trans h24j
-  have h25rs := (hf25 "rs" (notTmp_of_short "rs" (by decide)) (by decide)).trans h24rs
-  have h25d := (hf25 "d" (notTmp_of_short "d" (by decide)) (by decide)).trans h24d
-  have h25qhc := (hf25 "qhc" (notTmp_of_short "qhc" (by decide)) (by decide)).trans h24qhc
-  have h25ra := (hf25 "ra" (notTmp_of_short "ra" (by decide)) (by decide)).trans h24ra
+  have h25qp := (hf25 "qp" (nt_qp) (by decide)).trans h24qp
+  have h25j := (hf25 "j" (nt_j) (by decide)).trans h24j
+  have h25rs := (hf25 "rs" (nt_rs) (by decide)).trans h24rs
+  have h25d := (hf25 "d" (nt_d) (by decide)).trans h24d
+  have h25qhc := (hf25 "qhc" (nt_qhc) (by decide)).trans h24qhc
+  have h25ra := (hf25 "ra" (nt_ra) (by decide)).trans h24ra
   -- step 26: m3 := (~c3) + 1
   obtain ⟨e26, hs26, h26m3, hf26⟩ := semScalar_setExpr_run (y := "m3")
     (lower_notadd1 ones 1 (envReadU64_of_bound h25c3) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h25c3] at h26m3
   rw [notW] at h26m3
-  have h26qp := (hf26 "qp" (notTmp_of_short "qp" (by decide)) (by decide)).trans h25qp
-  have h26j := (hf26 "j" (notTmp_of_short "j" (by decide)) (by decide)).trans h25j
-  have h26rs := (hf26 "rs" (notTmp_of_short "rs" (by decide)) (by decide)).trans h25rs
-  have h26d := (hf26 "d" (notTmp_of_short "d" (by decide)) (by decide)).trans h25d
-  have h26qhc := (hf26 "qhc" (notTmp_of_short "qhc" (by decide)) (by decide)).trans h25qhc
-  have h26ra := (hf26 "ra" (notTmp_of_short "ra" (by decide)) (by decide)).trans h25ra
-  have h26c3 := (hf26 "c3" (notTmp_of_short "c3" (by decide)) (by decide)).trans h25c3
+  have h26qp := (hf26 "qp" (nt_qp) (by decide)).trans h25qp
+  have h26j := (hf26 "j" (nt_j) (by decide)).trans h25j
+  have h26rs := (hf26 "rs" (nt_rs) (by decide)).trans h25rs
+  have h26d := (hf26 "d" (nt_d) (by decide)).trans h25d
+  have h26qhc := (hf26 "qhc" (nt_qhc) (by decide)).trans h25qhc
+  have h26ra := (hf26 "ra" (nt_ra) (by decide)).trans h25ra
+  have h26c3 := (hf26 "c3" (nt_c3) (by decide)).trans h25c3
   -- step 27: qout := qhc + c3
   obtain ⟨e27, hs27, h27qout, hf27⟩ := semScalar_setExpr_run (y := "qout")
     (lower_add_vv (envReadU64_of_bound h26qhc) (envReadU64_of_bound h26c3))
   simp only [SExpr.evalBV, envReader_of_bound h26qhc, envReader_of_bound h26c3] at h27qout
-  have h27qp := (hf27 "qp" (notTmp_of_short "qp" (by decide)) (by decide)).trans h26qp
-  have h27j := (hf27 "j" (notTmp_of_short "j" (by decide)) (by decide)).trans h26j
-  have h27rs := (hf27 "rs" (notTmp_of_short "rs" (by decide)) (by decide)).trans h26rs
-  have h27d := (hf27 "d" (notTmp_of_short "d" (by decide)) (by decide)).trans h26d
-  have h27ra := (hf27 "ra" (notTmp_of_short "ra" (by decide)) (by decide)).trans h26ra
-  have h27m3 := (hf27 "m3" (notTmp_of_short "m3" (by decide)) (by decide)).trans h26m3
+  have h27qp := (hf27 "qp" (nt_qp) (by decide)).trans h26qp
+  have h27j := (hf27 "j" (nt_j) (by decide)).trans h26j
+  have h27rs := (hf27 "rs" (nt_rs) (by decide)).trans h26rs
+  have h27d := (hf27 "d" (nt_d) (by decide)).trans h26d
+  have h27ra := (hf27 "ra" (nt_ra) (by decide)).trans h26ra
+  have h27m3 := (hf27 "m3" (nt_m3) (by decide)).trans h26m3
   -- step 28: rout := ra - (m3 & d)
   obtain ⟨e28, hs28, h28rout, hf28⟩ := semScalar_setExpr_run (y := "rout")
     (lower_sub_and (envReadU64_of_bound h27ra) (envReadU64_of_bound h27m3)
       (envReadU64_of_bound h27d) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h27ra, envReader_of_bound h27m3,
     envReader_of_bound h27d] at h28rout
-  have h28qp := (hf28 "qp" (notTmp_of_short "qp" (by decide)) (by decide)).trans h27qp
-  have h28j := (hf28 "j" (notTmp_of_short "j" (by decide)) (by decide)).trans h27j
-  have h28rs := (hf28 "rs" (notTmp_of_short "rs" (by decide)) (by decide)).trans h27rs
+  have h28qp := (hf28 "qp" (nt_qp) (by decide)).trans h27qp
+  have h28j := (hf28 "j" (nt_j) (by decide)).trans h27j
+  have h28rs := (hf28 "rs" (nt_rs) (by decide)).trans h27rs
   have h28qout := (hf28 "qout" (notTmp_of_headNe rfl (by decide)) (by decide)).trans h27qout
   -- step 29: qp[j] := qout
   obtain ⟨e29, hs29, h29qp, hf29⟩ :=

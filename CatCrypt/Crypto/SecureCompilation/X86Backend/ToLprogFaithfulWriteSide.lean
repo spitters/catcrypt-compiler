@@ -52,7 +52,7 @@ For the destination fibre we need `ρ` to separate `nDst` from every *other* liv
 logical name: if `ρ m = ρ nDst` with `m ≠ nDst`, the physical write to `ρ nDst`
 would silently overwrite `m`'s value. This is exactly the **RA-correctness**
 property (the allocator gives distinct live names distinct slots); the
-`RegMachineSim` keystone `jinstr_renameBlock_sound` proves the analogue for the
+`RegMachineSim` lemma `jinstr_renameBlock_sound` proves the analogue for the
 `JInstr`/`JState` machine under a uniform renaming. We keep it as the explicit
 hypothesis `hinj : ∀ m, ρ m = ρ nDst → m = nDst` of the maintenance step (the
 liveness-relative injectivity at the binding's destination), not derived here.
@@ -67,7 +67,7 @@ PROVED (against the real `lsemStraight`):
   re-established after one `legalizeBinop` binding, given the read relation, the
   dead-scratch facts (discharged), and the destination injectivity `hinj`.
 
-RESIDUAL (named honestly, NOT proved here):
+RESIDUAL (NOT proved here):
 * the full `physBody` induction threading `StoreRel` across **all** bindings: it
   carries `hinj` as a *liveness* invariant of the whole block — large
   bookkeeping, not the single-step content. (The whole-body threading itself is
@@ -178,12 +178,9 @@ theorem lsemStep_Lopn_frame {w : Nat} (d o : String) (args : List LOperand)
     (hstep : lsemStep (.Lopn [.reg d] o args) s = some s') (y : String) (hy : y ≠ d) :
     s'.lvm y = s.lvm y := by
   simp only [lsemStep] at hstep
-  cases happ : applyOpn (stripWidthTag o) (args.map (evalOperand s)) with
-  | none => rw [happ] at hstep; exact absurd hstep (by simp)
-  | some v =>
-    rw [happ] at hstep
-    rw [← Option.some.inj hstep]
-    simp [Lstate.setReg, Lstate.nextPc, hy]
+  split at hstep <;> (repeat' split at hstep) <;>
+    simp_all [Lstate.setReg, Lstate.nextPc]
+  all_goals (rw [← hstep] <;> simp [hy])
 
 /-- Cons-inversion of a successful straight-line run: the head steps to some
     intermediate state from which the tail runs to the final state. -/
@@ -270,7 +267,7 @@ def StoreRel {w : Nat} (body : Lcmd) (tbl : Array Nat) (s s' : Lstate w) : Prop 
       `legalizeBinop_writeFrame`);
     * the **destination injectivity** `hinj : ∀ m, ρ m = ρ nDst → m = nDst` (the
       RA-correctness property — distinct live names get distinct slots; the
-      `RegMachineSim` keystone `jinstr_renameBlock_sound` proves the uniform-
+      `RegMachineSim` lemma `jinstr_renameBlock_sound` proves the uniform-
       renaming analogue) confines the physical write at `ρ nDst` to exactly the
       `nDst` fibre, matching the virtual `setReg nDst`.
 

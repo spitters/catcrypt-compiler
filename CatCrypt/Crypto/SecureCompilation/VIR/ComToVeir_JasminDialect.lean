@@ -86,8 +86,8 @@ same trust hypothesis on the MLIR toolchain.
 Every arithmetic / memory / cast op now routes to a registered MLIR
 dialect. The only escape hatches are:
 * `castW w w` (identity-width cast) → `catcrypt_unknown` since MLIR's
-  `arith.extui`/`arith.trunci` reject equal-width operands. A genuine
-  bit-preserving identity would emit nothing; for now we keep a marker.
+  `arith.extui`/`arith.trunci` reject equal-width operands. A
+  bit-preserving identity would emit nothing; this arm keeps a marker.
 * `extCall` to a leaf without an MLIR-registered counterpart (e.g.
   `"poly_mul"` would map to `polynomial.mul` once `LatticeDialect` is
   wired through; jasmin keeps it as `func.call` to a private symbol).
@@ -131,7 +131,7 @@ example : JasminBinOp.toArithOpCode .shr = .arith_shrui := rfl
     Every arithmetic op → registered `arith.*`; every memory op →
     registered `memref.*`; `castW` to a wider type → `arith.extui`; to a
     narrower type → `arith.trunci`; equal-width → `catcrypt.unknown`
-    (identity, no genuine MLIR op). `extCall` → `func.call`. -/
+    (identity, no registered MLIR op). `extCall` → `func.call`. -/
 def JasminOp.toMlirOpCode : JasminOp → Veir.OpCode
   | .regArith bop _ => bop.toArithOpCode
   | .stackLoad _ _  => .memref_load
@@ -153,6 +153,9 @@ def JasminOp.toMlirOpCode : JasminOp → Veir.OpCode
   -- Parametrized 128-bit SIMD op: a per-lane vector machine op with no single
   -- registered scalar `arith.*`; kept opaque here, like `vpackZMM`.
   | .vsimd _ => .catcrypt_unknown
+  -- AVX2 256-bit vector op: a per-lane vector machine op with no single
+  -- registered scalar `arith.*`; kept opaque here, like `vsimd`.
+  | .vymm _ => .catcrypt_unknown
   -- Widening multiply + carry chain (#477): the high word is still a multiply,
   -- the carry-data / carry-out are adds. These scalar `arith.*` codes capture
   -- the closest registered op; the full two-output / carry semantics is the
@@ -389,7 +392,7 @@ Crucially, the `rfl` here is NOT the same shape as the earlier op-to-opcode
 `rfl` table. There, both sides were freshly-named constants. Here, BOTH
 sides are MEANINGFUL: the LHS is the MLIR-spec-faithful denotation we
 wrote down, the RHS is the verified `JasminBinOp.apply` already
-in-scope. The `rfl` discharges the genuine semantic equivalence claim
+in-scope. The `rfl` discharges the semantic equivalence claim
 for the three arms, modulo the implicit trust that
 `denoteVeirArithBin .addi` is in fact what MLIR's `arith.addi` denotes —
 which is the EXTERNALLY-OBSERVABLE definition that's stable across MLIR
@@ -451,7 +454,7 @@ def JasminBinOp.toArithBinKind : JasminBinOp → ArithBinKind
   | .andn => .andn
 
 /-- The MLIR `arith` denotation agrees with `JasminBinOp.apply` at every
-    arm. This is a GENUINE semantic-equivalence theorem (both sides are
+    arm. This is a semantic-equivalence theorem (both sides are
     meaningful, MLIR-spec on the left, jasmin-verified on the right) —
     not a definitional check on freshly-named constants. -/
 theorem denoteVeirArith_eq_jasmin

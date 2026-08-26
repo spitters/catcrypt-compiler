@@ -14,7 +14,7 @@ using the child node `D`.
 -/
 
 set_option autoImplicit false
-set_option maxRecDepth 10000
+set_option maxRecDepth 50000
 
 namespace CatCrypt.Crypto.Util.Ed25519L.Node8
 
@@ -34,10 +34,10 @@ theorem factorBFactors_prime : ∀ q ∈ factorBFactors, Nat.Prime q := by
   simp only [factorBFactors] at hq
   fin_cases hq <;> first | exact factorD_prime | norm_num
 
-theorem factorBFermat : powMod 2 (factorB - 1) factorB = 1 := by native_decide
+theorem factorBFermat : powMod 2 (factorB - 1) factorB = 1 := by decide
 
 theorem factorBWitness :
-    ∀ q ∈ factorBFactors, powMod 2 ((factorB - 1) / q) factorB ≠ 1 := by native_decide
+    ∀ q ∈ factorBFactors, powMod 2 ((factorB - 1) / q) factorB ≠ 1 := by decide
 
 theorem factorB_prime : Nat.Prime factorB :=
   lucas_of_certificate factorB (by decide) 2 factorBFactors

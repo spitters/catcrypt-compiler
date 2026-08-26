@@ -22,7 +22,7 @@ apples-to-apples comparison.
 
 ```
 #eval IO.FS.writeFile
-  "bench/x25519_halfstep_dsl.mlir"
+  "/home/au528660/Claude/BLS/catcrypt-bench/src/x25519_halfstep_dsl.mlir"
   halfstepMLIR
 ```
 -/
@@ -152,10 +152,10 @@ private def maybeWrite (path : String) (write : String → IO Unit) : IO Unit :=
     write path
 
 #eval maybeWrite
-  "bench/x25519_halfstep_dsl.mlir"
+  "/home/au528660/Claude/BLS/catcrypt-bench/src/x25519_halfstep_dsl.mlir"
   writeHalfstepMLIR
 #eval maybeWrite
-  "bench/x25519_fullstep_dsl.mlir"
+  "/home/au528660/Claude/BLS/catcrypt-bench/src/x25519_fullstep_dsl.mlir"
   writeFullstepMLIR
 
 end CatCrypt.Crypto.Jasmin.Examples.X25519BenchEmit

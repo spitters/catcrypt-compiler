@@ -964,6 +964,22 @@ def emitBodyReg {Γ : Ctxt jasminDialect} (dstName : Nat → String)
           let (names, stmts, cnt) :=
             emitBodyReg dstName (vm.extend (t := tEx) dst) (next + 1) body
           (dst :: names, lines ++ stmts, cnt)
+      | .vymm op =>
+          -- AVX2 256-bit vector op (`JasminOp.vymm`): one
+          -- `dst = <op.jasminMnemonic>(a[, b]);` intrinsic line on `reg 256`
+          -- (YMM) inputs. Binary ops read args 0,1; unary ops read arg 0.
+          -- Mirrors the `.vsimd` arm with the YmmOp-chosen jasmin mnemonic.
+          let a := argName vm e.args 0
+          let dst := dstName next
+          let lines :=
+            if op.isBinary then
+              [dst ++ " = " ++ op.jasminMnemonic ++ "(" ++ a ++ ", "
+                ++ argName vm e.args 1 ++ ");"]
+            else
+              [dst ++ " = " ++ op.jasminMnemonic ++ "(" ++ a ++ ");"]
+          let (names, stmts, cnt) :=
+            emitBodyReg dstName (vm.extend (t := tEx) dst) (next + 1) body
+          (dst :: names, lines ++ stmts, cnt)
       | .callN name argTys _ =>
           -- Multi-result function call (`func.call` lowering target). At this
           -- single-output register-emit layer it binds its head result slot,

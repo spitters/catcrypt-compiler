@@ -14,7 +14,7 @@ below `2^32`.
 -/
 
 set_option autoImplicit false
-set_option maxRecDepth 10000
+set_option maxRecDepth 50000
 
 namespace CatCrypt.Crypto.Util.Ed25519L.Node4
 
@@ -33,10 +33,10 @@ theorem factorF213Factors_prime : ∀ q ∈ factorF213Factors, Nat.Prime q := by
   simp only [factorF213Factors] at hq
   fin_cases hq <;> norm_num
 
-theorem factorF213Fermat : powMod 13 (factorF213 - 1) factorF213 = 1 := by native_decide
+theorem factorF213Fermat : powMod 13 (factorF213 - 1) factorF213 = 1 := by decide
 
 theorem factorF213Witness :
-    ∀ q ∈ factorF213Factors, powMod 13 ((factorF213 - 1) / q) factorF213 ≠ 1 := by native_decide
+    ∀ q ∈ factorF213Factors, powMod 13 ((factorF213 - 1) / q) factorF213 ≠ 1 := by decide
 
 theorem factorF213_prime : Nat.Prime factorF213 :=
   lucas_of_certificate factorF213 (by decide) 13 factorF213Factors

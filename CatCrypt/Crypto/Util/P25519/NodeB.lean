@@ -16,7 +16,7 @@ product check reduces by `decide` and the Fermat and witness checks by
 -/
 
 set_option autoImplicit false
-set_option maxRecDepth 10000
+set_option maxRecDepth 50000
 
 namespace CatCrypt.Crypto.Util.P25519.NodeB
 
@@ -45,10 +45,10 @@ theorem pfB_primeFactors : ∀ q ∈ pfBFactors, Nat.Prime q := by
   · fin_cases h
     · exact pfA_prime
 
-theorem pfB_fermat : powMod 7 (pfB - 1) pfB = 1 := by native_decide
+theorem pfB_fermat : powMod 7 (pfB - 1) pfB = 1 := by decide
 
 theorem pfB_witness :
-    ∀ q ∈ pfBFactors, powMod 7 ((pfB - 1) / q) pfB ≠ 1 := by native_decide
+    ∀ q ∈ pfBFactors, powMod 7 ((pfB - 1) / q) pfB ≠ 1 := by decide
 
 /-- `Nat.Prime pfB`, machine-checked by a Lucas certificate (witness `7`). -/
 theorem pfB_prime : Nat.Prime pfB :=

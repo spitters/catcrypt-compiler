@@ -629,6 +629,17 @@ on a fixed-width type). `bmod_signed w n` reduces `n` to `[-2^(w-1), 2^(w-1))`. 
   let n := i.toNat
   if h : n < arr.size then arr.set n v else arr
 
+/-- Functional field update on a tuple-encoded struct: replace the head field.
+    A field at position `i` of `n` (with `i < n - 1`) updates as
+    `struct_update_snd^i` around one `struct_update_fst`; the last field uses
+    `struct_update_snd` at depth `n - 2`. The emitter composes these from the
+    `struct_update#S#i#n` head. -/
+@[inline] def struct_update_fst {α β : Type} (s : α × β) (v : α) : α × β := (v, s.2)
+
+/-- Functional field update on a tuple-encoded struct: replace the tail
+    (the fields after the first), keeping the head field. -/
+@[inline] def struct_update_snd {α β : Type} (s : α × β) (t : β) : α × β := (s.1, t)
+
 /-- Push an element onto an array. -/
 @[inline] def push {α : Type} (arr : Array α) (x : α) : Array α := arr.push x
 
@@ -739,14 +750,22 @@ on a fixed-width type). `bmod_signed w n` reduces `n` to `[-2^(w-1), 2^(w-1))`. 
 /-- one — numeric literal 1. -/
 @[inline] def one : Int := 1
 
-/-- count_ones — placeholder for Rust's `count_ones` population count.
-    Not implemented: returns its argument unchanged. -/
-@[inline] def count_ones (x : Int) : Int := x
+/-- Number of `1` bits in the binary representation of a natural number. -/
+def bitCount (n : Nat) : Nat :=
+  if h : n = 0 then 0 else n % 2 + bitCount (n / 2)
+decreasing_by omega
 
-/-- assert_failed' — alternate name for the `assert_failed` no-op placeholder
-    (Rust's `assert!` family); same signature and body, discards all arguments.
-    Nothing in this repository references it; it is kept for compatibility with
-    hax extractions that emit the primed spelling. -/
+/-- count_ones — Rust's population count.
+
+    Defined on non-negative arguments, which is the range of every
+    width-aware bit operation in this runtime (`bitand_w`, `bitxor_w`,
+    `mod2w` all return `Int.ofNat`). A negative argument has no finite
+    binary representation and yields `-1`, a value outside the range of a
+    population count. -/
+@[inline] def count_ones (x : Int) : Int :=
+  if 0 ≤ x then (bitCount x.toNat : Int) else -1
+
+/-- assert_failed — Rust assert! macro placeholder (no-op in extraction). -/
 @[inline] def assert_failed' {α β γ δ : Type} (_ : α) (_ : β) (_ : γ) (_ : δ) : Unit := ()
 
 /-- Re-wrap a nested forFoldReturn result for use in an outer forFoldReturn body.

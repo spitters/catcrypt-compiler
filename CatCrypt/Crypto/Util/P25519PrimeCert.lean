@@ -18,7 +18,7 @@ file assembles the top node.
 -/
 
 set_option autoImplicit false
-set_option maxRecDepth 10000
+set_option maxRecDepth 50000
 
 namespace CatCrypt.Crypto.Util.P25519PrimeCert
 
@@ -48,11 +48,11 @@ theorem p25519lit_primeFactors : ∀ q ∈ p25519litFactors, Nat.Prime q := by
   · fin_cases h
     · exact pfF_prime
 
-theorem p25519lit_fermat : powMod 2 (p25519lit - 1) p25519lit = 1 := by native_decide
+theorem p25519lit_fermat : powMod 2 (p25519lit - 1) p25519lit = 1 := by decide
 
 theorem p25519lit_witness :
     ∀ q ∈ p25519litFactors, powMod 2 ((p25519lit - 1) / q) p25519lit ≠ 1 := by
-  native_decide
+  decide
 
 /-- `Nat.Prime p25519lit`, machine-checked by a nested Lucas certificate (witness `2`). -/
 theorem p25519lit_prime : Nat.Prime p25519lit :=

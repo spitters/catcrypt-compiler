@@ -69,11 +69,11 @@ def fullstepMLIR : String :=
 /-! ## 4. Emit at elaboration -/
 
 #eval maybeWrite
-  "bench/x25519_halfstep_reflect.mlir"
+  "/home/au528660/Claude/BLS/catcrypt-bench/src/x25519_halfstep_reflect.mlir"
   halfstepMLIR
 
 #eval maybeWrite
-  "bench/x25519_fullstep_reflect.mlir"
+  "/home/au528660/Claude/BLS/catcrypt-bench/src/x25519_fullstep_reflect.mlir"
   fullstepMLIR
 
 /-! ## 5. Ed25519 Edwards point-add (4 outputs) from reified pure Lean -/
@@ -97,11 +97,11 @@ def ed25519DblMLIR : String :=
   emitReified "ed25519_dbl_z3" edwardsDblZ3Reified
 
 #eval maybeWrite
-  "bench/ed25519_add.mlir"
+  "/home/au528660/Claude/BLS/catcrypt-bench/src/ed25519_add.mlir"
   ed25519AddMLIR
 
 #eval maybeWrite
-  "bench/ed25519_dbl.mlir"
+  "/home/au528660/Claude/BLS/catcrypt-bench/src/ed25519_dbl.mlir"
   ed25519DblMLIR
 
 /-! ## 6. Out-param variant — fiat-crypto-direct, no shim pool
@@ -161,9 +161,9 @@ def ed25519DblMLIRv : String :=
   emitReifiedOutParam "ed25519_dbl_z3_v" edwardsDblZ3Reified
 
 #eval maybeWrite
-  "bench/ed25519_add_v.mlir" ed25519AddMLIRv
+  "/home/au528660/Claude/BLS/catcrypt-bench/src/ed25519_add_v.mlir" ed25519AddMLIRv
 
 #eval maybeWrite
-  "bench/ed25519_dbl_v.mlir" ed25519DblMLIRv
+  "/home/au528660/Claude/BLS/catcrypt-bench/src/ed25519_dbl_v.mlir" ed25519DblMLIRv
 
 end CatCrypt.Crypto.Jasmin.Examples.X25519ReflectEmit

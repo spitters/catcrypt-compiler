@@ -15,7 +15,7 @@ set_option autoImplicit false
 This file ports the *reduction-correctness core* of fiat-crypto's
 `WordByWordMontgomery` (the result the in-tree CIOS kernels —
 `Bn254/Bls12381/Pasta/BignumMontMulKernel`, and the `mpnMontMul` reference in
-`Jasmin/Examples/MpnMontgomeryPrototype.lean` — only validate by KAT) into a
+`Jasmin/Mpn/.MontgomeryPrototype.lean` — only validate by KAT) into a
 single **prime-parametric** Lean theorem over `Nat`.
 
 For an odd modulus `N`, a Montgomery radix `R` coprime to `N`, and the

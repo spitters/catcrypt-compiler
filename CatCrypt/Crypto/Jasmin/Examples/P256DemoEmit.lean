@@ -88,7 +88,7 @@ def p256DemoMLIR : String :=
 -- silently so the file builds in environments without that sibling repo.
 #eval (do
   let path : System.FilePath :=
-    "bench/p256_demo.mlir"
+    "/home/au528660/Claude/BLS/catcrypt-bench/src/p256_demo.mlir"
   if ← System.FilePath.pathExists path.parent.get! then
     IO.FS.writeFile path p256DemoMLIR
   : IO Unit)

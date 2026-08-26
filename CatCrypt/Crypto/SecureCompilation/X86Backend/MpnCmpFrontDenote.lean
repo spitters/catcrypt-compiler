@@ -75,6 +75,33 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpFrontEmit
 open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpFrontTotal (cmpFrontOk)
 open CatCrypt.Crypto.Jasmin.LowCT (LowCT Located TowerType SExpr)
 
+/-! ## Precomputed name-freshness
+
+Each source variable's not-a-temporary fact is proved once — the `by decide` on
+the below-`4` name length is paid a single time per name — and referenced at the
+freshness sites below, instead of re-deciding the string length at each site. -/
+
+private theorem nt_ap : ¬ isTmpName "ap" := notTmp_of_short _ (by decide)
+private theorem nt_bp : ¬ isTmpName "bp" := notTmp_of_short _ (by decide)
+private theorem nt_dif : ¬ isTmpName "dif" := notTmp_of_short _ (by decide)
+private theorem nt_gt : ¬ isTmpName "gt" := notTmp_of_short _ (by decide)
+private theorem nt_gtq : ¬ isTmpName "gtq" := notTmp_of_short _ (by decide)
+private theorem nt_gtr : ¬ isTmpName "gtr" := notTmp_of_short _ (by decide)
+private theorem nt_idx : ¬ isTmpName "idx" := notTmp_of_short _ (by decide)
+private theorem nt_j : ¬ isTmpName "j" := notTmp_of_short _ (by decide)
+private theorem nt_lt : ¬ isTmpName "lt" := notTmp_of_short _ (by decide)
+private theorem nt_ltq : ¬ isTmpName "ltq" := notTmp_of_short _ (by decide)
+private theorem nt_ltr : ¬ isTmpName "ltr" := notTmp_of_short _ (by decide)
+private theorem nt_n : ¬ isTmpName "n" := notTmp_of_short _ (by decide)
+private theorem nt_nz : ¬ isTmpName "nz" := notTmp_of_short _ (by decide)
+private theorem nt_nzq : ¬ isTmpName "nzq" := notTmp_of_short _ (by decide)
+private theorem nt_nzr : ¬ isTmpName "nzr" := notTmp_of_short _ (by decide)
+private theorem nt_rp : ¬ isTmpName "rp" := notTmp_of_short _ (by decide)
+private theorem nt_top : ¬ isTmpName "top" := notTmp_of_short _ (by decide)
+private theorem nt_x : ¬ isTmpName "x" := notTmp_of_short _ (by decide)
+private theorem nt_y : ¬ isTmpName "y" := notTmp_of_short _ (by decide)
+private theorem nt_z : ¬ isTmpName "z" := notTmp_of_short _ (by decide)
+
 /-! ## 1. New `SExpr`-lowering progress lemmas -/
 
 /-- A non-temp name misses the whole reserved `__sx` index range. -/
@@ -193,36 +220,36 @@ theorem hones : ones < 2 ^ 64 := by decide
     assignments, three dynamic array reads, three `ltuCmds` blocks, the mask
     select, one dynamic array write. -/
 theorem cmpLimbBody_coveredS : IsCoveredS cmpLimbBodyLowCT :=
-  .rSeq (.rScalarSetExpr _ _ ⟨notTmp_of_short "n" (by decide), (by decide : (1 : Nat) < 2 ^ 64)⟩)
+  .rSeq (.rScalarSetExpr _ _ ⟨nt_n, (by decide : (1 : Nat) < 2 ^ 64)⟩)
    (.rSeq (.rScalarSetExpr _ _
-        ⟨notTmp_of_short "top" (by decide), notTmp_of_short "idx" (by decide)⟩)
+        ⟨nt_top, nt_idx⟩)
     (.rSeq (.rScalarSetExpr _ _ (by decide : (0 : Nat) < 2 ^ 64))
      (.rSeq (.rArrLoad _ _ _)
       (.rSeq (.rArrLoad _ _ _)
        (.rSeq (.rArrLoad _ _ _)
         -- ltuCmds "lt" x y
         (.rSeq (.rScalarSetExpr _ _
-            ⟨⟨notTmp_of_short "x" (by decide), hones⟩, notTmp_of_short "y" (by decide)⟩)
+            ⟨⟨nt_x, hones⟩, nt_y⟩)
          (.rSeq (.rScalarSetExpr _ _
-             ⟨⟨⟨notTmp_of_short "x" (by decide), notTmp_of_short "y" (by decide)⟩, hones⟩,
-               ⟨notTmp_of_short "x" (by decide), notTmp_of_short "y" (by decide)⟩⟩)
+             ⟨⟨⟨nt_x, nt_y⟩, hones⟩,
+               ⟨nt_x, nt_y⟩⟩)
           (.rSeq (.rScalarSetExpr _ _
-              ⟨⟨⟨notTmp_of_short "ltq" (by decide), notTmp_of_short "ltr" (by decide)⟩,
-                  ⟨notTmp_of_short "ltq" (by decide), notTmp_of_short "ltr" (by decide)⟩⟩,
+              ⟨⟨⟨nt_ltq, nt_ltr⟩,
+                  ⟨nt_ltq, nt_ltr⟩⟩,
                 (by decide : (63 : Nat) < 2 ^ 64)⟩)
            -- ltuCmds "gt" y x
            (.rSeq (.rScalarSetExpr _ _
-               ⟨⟨notTmp_of_short "y" (by decide), hones⟩, notTmp_of_short "x" (by decide)⟩)
+               ⟨⟨nt_y, hones⟩, nt_x⟩)
             (.rSeq (.rScalarSetExpr _ _
-                ⟨⟨⟨notTmp_of_short "y" (by decide), notTmp_of_short "x" (by decide)⟩, hones⟩,
-                  ⟨notTmp_of_short "y" (by decide), notTmp_of_short "x" (by decide)⟩⟩)
+                ⟨⟨⟨nt_y, nt_x⟩, hones⟩,
+                  ⟨nt_y, nt_x⟩⟩)
              (.rSeq (.rScalarSetExpr _ _
-                 ⟨⟨⟨notTmp_of_short "gtq" (by decide), notTmp_of_short "gtr" (by decide)⟩,
-                     ⟨notTmp_of_short "gtq" (by decide), notTmp_of_short "gtr" (by decide)⟩⟩,
+                 ⟨⟨⟨nt_gtq, nt_gtr⟩,
+                     ⟨nt_gtq, nt_gtr⟩⟩,
                    (by decide : (63 : Nat) < 2 ^ 64)⟩)
               -- step := gt - lt
               (.rSeq (.rScalarSetExpr _ _
-                  ⟨notTmp_of_short "gt" (by decide), notTmp_of_short "lt" (by decide)⟩)
+                  ⟨nt_gt, nt_lt⟩)
                -- ltuCmds "nz" 0 prev
                (.rSeq (.rScalarSetExpr _ _
                    ⟨⟨(by decide : (0 : Nat) < 2 ^ 64), hones⟩,
@@ -231,19 +258,19 @@ theorem cmpLimbBody_coveredS : IsCoveredS cmpLimbBodyLowCT :=
                     ⟨⟨⟨(by decide : (0 : Nat) < 2 ^ 64), notTmp_of_headNe rfl (by decide)⟩, hones⟩,
                       ⟨(by decide : (0 : Nat) < 2 ^ 64), notTmp_of_headNe rfl (by decide)⟩⟩)
                  (.rSeq (.rScalarSetExpr _ _
-                     ⟨⟨⟨notTmp_of_short "nzq" (by decide), notTmp_of_short "nzr" (by decide)⟩,
-                         ⟨notTmp_of_short "nzq" (by decide), notTmp_of_short "nzr" (by decide)⟩⟩,
+                     ⟨⟨⟨nt_nzq, nt_nzr⟩,
+                         ⟨nt_nzq, nt_nzr⟩⟩,
                        (by decide : (63 : Nat) < 2 ^ 64)⟩)
                   -- keep := nz - 1
                   (.rSeq (.rScalarSetExpr _ _
-                      ⟨notTmp_of_short "nz" (by decide), (by decide : (1 : Nat) < 2 ^ 64)⟩)
+                      ⟨nt_nz, (by decide : (1 : Nat) < 2 ^ 64)⟩)
                    -- dif := step ^ prev
                    (.rSeq (.rScalarSetExpr _ _
                        ⟨notTmp_of_headNe rfl (by decide), notTmp_of_headNe rfl (by decide)⟩)
                     -- out := prev ^ (keep & dif)
                     (.rSeq (.rScalarSetExpr _ _
                         ⟨notTmp_of_headNe rfl (by decide),
-                          ⟨notTmp_of_headNe rfl (by decide), notTmp_of_short "dif" (by decide)⟩⟩)
+                          ⟨notTmp_of_headNe rfl (by decide), nt_dif⟩⟩)
                      (.rArrStore _ _ _)))))))))))))))))))
 
 /-- The limb body sits in the control-extended covered fragment. -/
@@ -319,24 +346,24 @@ theorem cmpLimbBody_run (ap bp : Fin NU → BitVec 64) (acc : Fin NR → BitVec 
   obtain ⟨e1, hs1, h1top, hf1⟩ := semScalar_setExpr_run (y := "top")
     (lower_sub_lit 1 (envReadU64_of_bound (cmpEnv_n ap bp acc iv nv)) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound (cmpEnv_n ap bp acc iv nv)] at h1top
-  have h1rp := (hf1 "rp" (notTmp_of_short "rp" (by decide)) (by decide)).trans (cmpEnv_rp ap bp acc iv nv)
-  have h1idx := (hf1 "idx" (notTmp_of_short "idx" (by decide)) (by decide)).trans (cmpEnv_idx ap bp acc iv nv)
-  have h1ap := (hf1 "ap" (notTmp_of_short "ap" (by decide)) (by decide)).trans (cmpEnv_ap ap bp acc iv nv)
-  have h1bp := (hf1 "bp" (notTmp_of_short "bp" (by decide)) (by decide)).trans (cmpEnv_bp ap bp acc iv nv)
+  have h1rp := (hf1 "rp" (nt_rp) (by decide)).trans (cmpEnv_rp ap bp acc iv nv)
+  have h1idx := (hf1 "idx" (nt_idx) (by decide)).trans (cmpEnv_idx ap bp acc iv nv)
+  have h1ap := (hf1 "ap" (nt_ap) (by decide)).trans (cmpEnv_ap ap bp acc iv nv)
+  have h1bp := (hf1 "bp" (nt_bp) (by decide)).trans (cmpEnv_bp ap bp acc iv nv)
   -- step 2: j := top - idx
   obtain ⟨e2, hs2, h2j, hf2⟩ := semScalar_setExpr_run (y := "j")
     (lower_sub_vv (envReadU64_of_bound h1top) (envReadU64_of_bound h1idx))
   simp only [SExpr.evalBV, envReader_of_bound h1top, envReader_of_bound h1idx] at h2j
-  have h2rp := (hf2 "rp" (notTmp_of_short "rp" (by decide)) (by decide)).trans h1rp
-  have h2ap := (hf2 "ap" (notTmp_of_short "ap" (by decide)) (by decide)).trans h1ap
-  have h2bp := (hf2 "bp" (notTmp_of_short "bp" (by decide)) (by decide)).trans h1bp
+  have h2rp := (hf2 "rp" (nt_rp) (by decide)).trans h1rp
+  have h2ap := (hf2 "ap" (nt_ap) (by decide)).trans h1ap
+  have h2bp := (hf2 "bp" (nt_bp) (by decide)).trans h1bp
   -- step 3: z := 0
   obtain ⟨e3, hs3, h3z, hf3⟩ := semScalar_setExpr_run (y := "z") (lower_lit (env := e2) 0)
   simp only [SExpr.evalBV] at h3z
-  have h3rp := (hf3 "rp" (notTmp_of_short "rp" (by decide)) (by decide)).trans h2rp
-  have h3ap := (hf3 "ap" (notTmp_of_short "ap" (by decide)) (by decide)).trans h2ap
-  have h3bp := (hf3 "bp" (notTmp_of_short "bp" (by decide)) (by decide)).trans h2bp
-  have h3j := (hf3 "j" (notTmp_of_short "j" (by decide)) (by decide)).trans h2j
+  have h3rp := (hf3 "rp" (nt_rp) (by decide)).trans h2rp
+  have h3ap := (hf3 "ap" (nt_ap) (by decide)).trans h2ap
+  have h3bp := (hf3 "bp" (nt_bp) (by decide)).trans h2bp
+  have h3j := (hf3 "j" (nt_j) (by decide)).trans h2j
   -- step 4: x := ap[j]
   obtain ⟨e4, hs4, h4x, hf4⟩ :=
     semScalar_arrLoad (dstN := "x") (tw := .TBytes (8 * NU)) (idxN := "j") h3ap h3j
@@ -363,106 +390,106 @@ theorem cmpLimbBody_run (ap bp : Fin NU → BitVec 64) (acc : Fin NR → BitVec 
   obtain ⟨e7, hs7, h7ltq, hf7⟩ := semScalar_setExpr_run (y := "ltq")
     (lower_cq ones (envReadU64_of_bound h6x) (envReadU64_of_bound h6y) (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h6x, envReader_of_bound h6y] at h7ltq
-  have h7rp := (hf7 "rp" (notTmp_of_short "rp" (by decide)) (by decide)).trans h6rp
-  have h7z := (hf7 "z" (notTmp_of_short "z" (by decide)) (by decide)).trans h6z
-  have h7x := (hf7 "x" (notTmp_of_short "x" (by decide)) (by decide)).trans h6x
-  have h7y := (hf7 "y" (notTmp_of_short "y" (by decide)) (by decide)).trans h6y
+  have h7rp := (hf7 "rp" (nt_rp) (by decide)).trans h6rp
+  have h7z := (hf7 "z" (nt_z) (by decide)).trans h6z
+  have h7x := (hf7 "x" (nt_x) (by decide)).trans h6x
+  have h7y := (hf7 "y" (nt_y) (by decide)).trans h6y
   have h7prev := (hf7 "prev" (notTmp_of_headNe rfl (by decide)) (by decide)).trans h6prev
   -- step 8: ltr := (~(x ^ y)) & (x - y)
   obtain ⟨e8, hs8, h8ltr, hf8⟩ := semScalar_setExpr_run (y := "ltr")
     (lower_cr ones (envReadU64_of_bound h7x) (envReadU64_of_bound h7y) (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h7x, envReader_of_bound h7y] at h8ltr
-  have h8rp := (hf8 "rp" (notTmp_of_short "rp" (by decide)) (by decide)).trans h7rp
-  have h8z := (hf8 "z" (notTmp_of_short "z" (by decide)) (by decide)).trans h7z
-  have h8x := (hf8 "x" (notTmp_of_short "x" (by decide)) (by decide)).trans h7x
-  have h8y := (hf8 "y" (notTmp_of_short "y" (by decide)) (by decide)).trans h7y
+  have h8rp := (hf8 "rp" (nt_rp) (by decide)).trans h7rp
+  have h8z := (hf8 "z" (nt_z) (by decide)).trans h7z
+  have h8x := (hf8 "x" (nt_x) (by decide)).trans h7x
+  have h8y := (hf8 "y" (nt_y) (by decide)).trans h7y
   have h8prev := (hf8 "prev" (notTmp_of_headNe rfl (by decide)) (by decide)).trans h7prev
-  have h8ltq := (hf8 "ltq" (notTmp_of_short "ltq" (by decide)) (by decide)).trans h7ltq
+  have h8ltq := (hf8 "ltq" (nt_ltq) (by decide)).trans h7ltq
   -- step 9: lt := ((ltq | ltr) >> 63) = bSltu x y
   obtain ⟨e9, hs9, h9lt, hf9⟩ := semScalar_setExpr_run (y := "lt")
     (lower_orshr 63 (envReadU64_of_bound h8ltq) (envReadU64_of_bound h8ltr) (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h8ltq, envReader_of_bound h8ltr] at h9lt
   rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, ltu_chain] at h9lt
-  have h9rp := (hf9 "rp" (notTmp_of_short "rp" (by decide)) (by decide)).trans h8rp
-  have h9z := (hf9 "z" (notTmp_of_short "z" (by decide)) (by decide)).trans h8z
-  have h9x := (hf9 "x" (notTmp_of_short "x" (by decide)) (by decide)).trans h8x
-  have h9y := (hf9 "y" (notTmp_of_short "y" (by decide)) (by decide)).trans h8y
+  have h9rp := (hf9 "rp" (nt_rp) (by decide)).trans h8rp
+  have h9z := (hf9 "z" (nt_z) (by decide)).trans h8z
+  have h9x := (hf9 "x" (nt_x) (by decide)).trans h8x
+  have h9y := (hf9 "y" (nt_y) (by decide)).trans h8y
   have h9prev := (hf9 "prev" (notTmp_of_headNe rfl (by decide)) (by decide)).trans h8prev
   -- step 10: gtq := (~y) & x
   obtain ⟨e10, hs10, h10gtq, hf10⟩ := semScalar_setExpr_run (y := "gtq")
     (lower_cq ones (envReadU64_of_bound h9y) (envReadU64_of_bound h9x) (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h9y, envReader_of_bound h9x] at h10gtq
-  have h10rp := (hf10 "rp" (notTmp_of_short "rp" (by decide)) (by decide)).trans h9rp
-  have h10z := (hf10 "z" (notTmp_of_short "z" (by decide)) (by decide)).trans h9z
-  have h10x := (hf10 "x" (notTmp_of_short "x" (by decide)) (by decide)).trans h9x
-  have h10y := (hf10 "y" (notTmp_of_short "y" (by decide)) (by decide)).trans h9y
+  have h10rp := (hf10 "rp" (nt_rp) (by decide)).trans h9rp
+  have h10z := (hf10 "z" (nt_z) (by decide)).trans h9z
+  have h10x := (hf10 "x" (nt_x) (by decide)).trans h9x
+  have h10y := (hf10 "y" (nt_y) (by decide)).trans h9y
   have h10prev := (hf10 "prev" (notTmp_of_headNe rfl (by decide)) (by decide)).trans h9prev
-  have h10lt := (hf10 "lt" (notTmp_of_short "lt" (by decide)) (by decide)).trans h9lt
+  have h10lt := (hf10 "lt" (nt_lt) (by decide)).trans h9lt
   -- step 11: gtr := (~(y ^ x)) & (y - x)
   obtain ⟨e11, hs11, h11gtr, hf11⟩ := semScalar_setExpr_run (y := "gtr")
     (lower_cr ones (envReadU64_of_bound h10y) (envReadU64_of_bound h10x) (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h10y, envReader_of_bound h10x] at h11gtr
-  have h11rp := (hf11 "rp" (notTmp_of_short "rp" (by decide)) (by decide)).trans h10rp
-  have h11z := (hf11 "z" (notTmp_of_short "z" (by decide)) (by decide)).trans h10z
+  have h11rp := (hf11 "rp" (nt_rp) (by decide)).trans h10rp
+  have h11z := (hf11 "z" (nt_z) (by decide)).trans h10z
   have h11prev := (hf11 "prev" (notTmp_of_headNe rfl (by decide)) (by decide)).trans h10prev
-  have h11lt := (hf11 "lt" (notTmp_of_short "lt" (by decide)) (by decide)).trans h10lt
-  have h11gtq := (hf11 "gtq" (notTmp_of_short "gtq" (by decide)) (by decide)).trans h10gtq
+  have h11lt := (hf11 "lt" (nt_lt) (by decide)).trans h10lt
+  have h11gtq := (hf11 "gtq" (nt_gtq) (by decide)).trans h10gtq
   -- step 12: gt := ((gtq | gtr) >> 63) = bSltu y x
   obtain ⟨e12, hs12, h12gt, hf12⟩ := semScalar_setExpr_run (y := "gt")
     (lower_orshr 63 (envReadU64_of_bound h11gtq) (envReadU64_of_bound h11gtr) (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h11gtq, envReader_of_bound h11gtr] at h12gt
   rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, ltu_chain] at h12gt
-  have h12rp := (hf12 "rp" (notTmp_of_short "rp" (by decide)) (by decide)).trans h11rp
-  have h12z := (hf12 "z" (notTmp_of_short "z" (by decide)) (by decide)).trans h11z
+  have h12rp := (hf12 "rp" (nt_rp) (by decide)).trans h11rp
+  have h12z := (hf12 "z" (nt_z) (by decide)).trans h11z
   have h12prev := (hf12 "prev" (notTmp_of_headNe rfl (by decide)) (by decide)).trans h11prev
-  have h12lt := (hf12 "lt" (notTmp_of_short "lt" (by decide)) (by decide)).trans h11lt
+  have h12lt := (hf12 "lt" (nt_lt) (by decide)).trans h11lt
   -- step 13: step := gt - lt
   obtain ⟨e13, hs13, h13step, hf13⟩ := semScalar_setExpr_run (y := "step")
     (lower_sub_vv (envReadU64_of_bound h12gt) (envReadU64_of_bound h12lt))
   simp only [SExpr.evalBV, envReader_of_bound h12gt, envReader_of_bound h12lt] at h13step
-  have h13rp := (hf13 "rp" (notTmp_of_short "rp" (by decide)) (by decide)).trans h12rp
-  have h13z := (hf13 "z" (notTmp_of_short "z" (by decide)) (by decide)).trans h12z
+  have h13rp := (hf13 "rp" (nt_rp) (by decide)).trans h12rp
+  have h13z := (hf13 "z" (nt_z) (by decide)).trans h12z
   have h13prev := (hf13 "prev" (notTmp_of_headNe rfl (by decide)) (by decide)).trans h12prev
   -- step 14: nzq := (~0) & prev
   obtain ⟨e14, hs14, h14nzq, hf14⟩ := semScalar_setExpr_run (y := "nzq")
     (lower_nzq (envReadU64_of_bound h13prev) (notTmp_of_headNe rfl (by decide)))
   simp only [SExpr.evalBV, envReader_of_bound h13prev] at h14nzq
-  have h14rp := (hf14 "rp" (notTmp_of_short "rp" (by decide)) (by decide)).trans h13rp
-  have h14z := (hf14 "z" (notTmp_of_short "z" (by decide)) (by decide)).trans h13z
+  have h14rp := (hf14 "rp" (nt_rp) (by decide)).trans h13rp
+  have h14z := (hf14 "z" (nt_z) (by decide)).trans h13z
   have h14prev := (hf14 "prev" (notTmp_of_headNe rfl (by decide)) (by decide)).trans h13prev
   have h14step := (hf14 "step" (notTmp_of_headNe rfl (by decide)) (by decide)).trans h13step
   -- step 15: nzr := (~(0 ^ prev)) & (0 - prev)
   obtain ⟨e15, hs15, h15nzr, hf15⟩ := semScalar_setExpr_run (y := "nzr")
     (lower_nzr (envReadU64_of_bound h14prev) (notTmp_of_headNe rfl (by decide)))
   simp only [SExpr.evalBV, envReader_of_bound h14prev] at h15nzr
-  have h15rp := (hf15 "rp" (notTmp_of_short "rp" (by decide)) (by decide)).trans h14rp
-  have h15z := (hf15 "z" (notTmp_of_short "z" (by decide)) (by decide)).trans h14z
+  have h15rp := (hf15 "rp" (nt_rp) (by decide)).trans h14rp
+  have h15z := (hf15 "z" (nt_z) (by decide)).trans h14z
   have h15prev := (hf15 "prev" (notTmp_of_headNe rfl (by decide)) (by decide)).trans h14prev
   have h15step := (hf15 "step" (notTmp_of_headNe rfl (by decide)) (by decide)).trans h14step
-  have h15nzq := (hf15 "nzq" (notTmp_of_short "nzq" (by decide)) (by decide)).trans h14nzq
+  have h15nzq := (hf15 "nzq" (nt_nzq) (by decide)).trans h14nzq
   -- step 16: nz := ((nzq | nzr) >> 63) = bSltu 0 prev
   obtain ⟨e16, hs16, h16nz, hf16⟩ := semScalar_setExpr_run (y := "nz")
     (lower_orshr 63 (envReadU64_of_bound h15nzq) (envReadU64_of_bound h15nzr) (by decide) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h15nzq, envReader_of_bound h15nzr] at h16nz
   rw [show (BitVec.ofNat 64 63).toNat = 63 from rfl, ltu_chain] at h16nz
-  have h16rp := (hf16 "rp" (notTmp_of_short "rp" (by decide)) (by decide)).trans h15rp
-  have h16z := (hf16 "z" (notTmp_of_short "z" (by decide)) (by decide)).trans h15z
+  have h16rp := (hf16 "rp" (nt_rp) (by decide)).trans h15rp
+  have h16z := (hf16 "z" (nt_z) (by decide)).trans h15z
   have h16prev := (hf16 "prev" (notTmp_of_headNe rfl (by decide)) (by decide)).trans h15prev
   have h16step := (hf16 "step" (notTmp_of_headNe rfl (by decide)) (by decide)).trans h15step
   -- step 17: keep := nz - 1
   obtain ⟨e17, hs17, h17keep, hf17⟩ := semScalar_setExpr_run (y := "keep")
     (lower_sub_lit 1 (envReadU64_of_bound h16nz) (by decide))
   simp only [SExpr.evalBV, envReader_of_bound h16nz] at h17keep
-  have h17rp := (hf17 "rp" (notTmp_of_short "rp" (by decide)) (by decide)).trans h16rp
-  have h17z := (hf17 "z" (notTmp_of_short "z" (by decide)) (by decide)).trans h16z
+  have h17rp := (hf17 "rp" (nt_rp) (by decide)).trans h16rp
+  have h17z := (hf17 "z" (nt_z) (by decide)).trans h16z
   have h17prev := (hf17 "prev" (notTmp_of_headNe rfl (by decide)) (by decide)).trans h16prev
   have h17step := (hf17 "step" (notTmp_of_headNe rfl (by decide)) (by decide)).trans h16step
   -- step 18: dif := step ^ prev
   obtain ⟨e18, hs18, h18dif, hf18⟩ := semScalar_setExpr_run (y := "dif")
     (lower_xor_vv (envReadU64_of_bound h17step) (envReadU64_of_bound h17prev))
   simp only [SExpr.evalBV, envReader_of_bound h17step, envReader_of_bound h17prev] at h18dif
-  have h18rp := (hf18 "rp" (notTmp_of_short "rp" (by decide)) (by decide)).trans h17rp
-  have h18z := (hf18 "z" (notTmp_of_short "z" (by decide)) (by decide)).trans h17z
+  have h18rp := (hf18 "rp" (nt_rp) (by decide)).trans h17rp
+  have h18z := (hf18 "z" (nt_z) (by decide)).trans h17z
   have h18prev := (hf18 "prev" (notTmp_of_headNe rfl (by decide)) (by decide)).trans h17prev
   have h18keep := (hf18 "keep" (notTmp_of_headNe rfl (by decide)) (by decide)).trans h17keep
   -- step 19: out := prev ^ (keep & dif)
@@ -471,8 +498,8 @@ theorem cmpLimbBody_run (ap bp : Fin NU → BitVec 64) (acc : Fin NR → BitVec 
       (envReadU64_of_bound h18dif) (notTmp_of_headNe rfl (by decide)))
   simp only [SExpr.evalBV, envReader_of_bound h18prev, envReader_of_bound h18keep,
     envReader_of_bound h18dif] at h19out
-  have h19rp := (hf19 "rp" (notTmp_of_short "rp" (by decide)) (by decide)).trans h18rp
-  have h19z := (hf19 "z" (notTmp_of_short "z" (by decide)) (by decide)).trans h18z
+  have h19rp := (hf19 "rp" (nt_rp) (by decide)).trans h18rp
+  have h19z := (hf19 "z" (nt_z) (by decide)).trans h18z
   -- step 20: rp[z] := out
   obtain ⟨e20, hs20, h20rp, -⟩ :=
     semScalar_arrStore (fw := 8 * NR) h19rp h19z h19out

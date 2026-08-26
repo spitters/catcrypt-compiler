@@ -18,7 +18,7 @@ witness checks by `native_decide`.
 -/
 
 set_option autoImplicit false
-set_option maxRecDepth 10000
+set_option maxRecDepth 50000
 
 namespace CatCrypt.Crypto.Util.P25519.NodeF
 
@@ -51,10 +51,10 @@ theorem pfF_primeFactors : ∀ q ∈ pfFFactors, Nat.Prime q := by
     · exact pfD_prime
     · exact pfE_prime
 
-theorem pfF_fermat : powMod 2 (pfF - 1) pfF = 1 := by native_decide
+theorem pfF_fermat : powMod 2 (pfF - 1) pfF = 1 := by decide
 
 theorem pfF_witness :
-    ∀ q ∈ pfFFactors, powMod 2 ((pfF - 1) / q) pfF ≠ 1 := by native_decide
+    ∀ q ∈ pfFFactors, powMod 2 ((pfF - 1) / q) pfF ≠ 1 := by decide
 
 /-- `Nat.Prime pfF`, machine-checked by a Lucas certificate (witness `2`). -/
 theorem pfF_prime : Nat.Prime pfF :=

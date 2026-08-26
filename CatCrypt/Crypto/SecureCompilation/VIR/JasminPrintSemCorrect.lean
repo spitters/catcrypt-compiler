@@ -254,6 +254,11 @@ def execExpr {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
              -- unary (`argTys = [reg 128]`): only `args.head`; denote ignores arg 2.
              SimdOp.denote (.vpshufd imm)
                (s.get (vm _ args.head) (.reg 128)) (s.get (vm _ args.head) (.reg 128)))
+    | .vymm op, args =>
+        -- AVX2 256-bit vector op: read the looked-up arguments into an `HVector`
+        -- and apply the dialect's `vymmDenote`, exactly as the dialect-denote
+        -- `.vymm` arm does (arity split on `op.isBinary` handled inside).
+        vymmDenote op op.isBinary (lookupArgsStore vm s args)
     | .mulhi w, args =>
         let a : BitVec w := s.get (vm _ args.head) (.reg w)
         let b : BitVec w := s.get (vm _ args.tail.head) (.reg w)
@@ -546,6 +551,13 @@ theorem execExpr_eq {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
           show (SimdOp.vpshufd imm).denote (s.get (vm _ a) (.reg 128)) (s.get (vm _ a) (.reg 128))
               = (SimdOp.vpshufd imm).denote (a.lookup V) (a.lookup V)
           rw [hS _ a]
+  | vymm op =>
+      -- AVX2 256-bit vector op: both sides are `vymmDenote op op.isBinary`
+      -- applied to the looked-up arguments, which agree under `StoreAgrees`
+      -- via `lookupArgsStore_eq`.
+      show vymmDenote op op.isBinary (lookupArgsStore vm s args)
+        = vymmDenote op op.isBinary (Expr.lookupArgs args V)
+      rw [lookupArgsStore_eq hS]
   | mulhi w =>
       -- #477 widening-multiply high word: both sides are `mulHiW` on two
       -- looked-up `reg w` factors.
@@ -636,7 +648,7 @@ list* — rather than re-deriving the semantics from the typed `Com` — we defi
 single emitted instruction `lowerExpr e bound` does. The bridge lemma
 `execInstr_lowerExpr_eq` records that one emitted instruction performs exactly
 this store update for the `regArith`/`castW` shapes (`extCall` parametric),
-making `execCom` the genuine semantics of running `(lowerCom …).1`. -/
+making `execCom` the semantics of running `(lowerCom …).1`. -/
 
 /-- Run the store-threaded evaluator on a `Com`, mirroring `lowerCom`'s fold:
     each `var e body` step writes `execExpr e` to the result name

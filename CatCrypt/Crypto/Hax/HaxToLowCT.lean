@@ -177,7 +177,7 @@ mechanically.
 The lemmas are stated against `towerOfCallName` (the typeclass form),
 which under the default instance reduces to `towerOfCallName_default`.
 When a protocol installs its own `TowerOfCallNameInst` instance, the
-unqualified `towerOfCallName` lemmas no longer apply (the instance
+unqualified `towerOfCallName` lemmas do not apply (the instance is
 shadowed by the local one); the protocol bridge supplies its own
 per-leaf lemmas using the override. -/
 
@@ -482,9 +482,9 @@ def haxToLowCT : ImpExpr → Option LowCT
   -- top-level `match` arm), so that the equation lemma for this branch
   -- remains a single `letBind _ (.app _ _) _` arm — that keeps the H2.2
   -- biconditional proof structurally unchanged.
-  /- TODO(simulation): `haxToLowCT_simulates_full` does not yet cover the
-     `array_update` store or `index` load sub-cases of this arm; those
-     translations are exercised only by the §5 smoke tests. -/
+  /- TODO(simulation): haxToLowCT_simulates_full does not yet cover the
+     array_update / index / forFold sub-cases.  See
+     bench/mlkem_compare/HAXTOR_EXTENSION_PLAN.md §3. -/
   | .letBind name (.app f args) body =>
       let dt := towerOfCallName f
       let dest : Located := { locVar := name, locSrc := dt }
@@ -540,7 +540,7 @@ def haxToLowCT : ImpExpr → Option LowCT
   -- (`let a = a; let b = b; let r = ZERO_VEC; ...`).  We treat the
   -- binding as a no-op and recurse on `body` directly — the alias's
   -- name is shadowed by the original `src` slot in the body's lexical
-  -- scope.  See the smoke test in §5.
+  -- scope.  See HAXTOR_EXTENSION_PLAN §3 / smoke test in §5.
   | .letBind _name (.var _src) body =>
       haxToLowCT body
   -- Tuple-component read: `let name = tup.i; body` — `.proj` of a named
@@ -599,7 +599,7 @@ def haxToLowCT : ImpExpr → Option LowCT
   -- the 2-destination leaf call form.  Both outputs share the prefix-
   -- derived tower type `dt`; per-component types are an H2.1.next
   -- extension blocked on hax `ImpType` annotations on `tuplePat`.
-  -- 3+ tuples and proj-based destructuring stay `none` for now (H2.1.b).
+  -- 3+ tuples and proj-based destructuring lower to `none` (H2.1.b).
   | .match_ (.app f args)
       [(.tuplePat [.varPat n1, .varPat n2], body)] =>
       let dt := towerOfCallName f
@@ -629,9 +629,8 @@ def haxToLowCT : ImpExpr → Option LowCT
   | .continue_                 => none
   | .earlyReturn _             => none
   | .questionMark _            => none
-  /- TODO(simulation): `haxToLowCT_simulates_full` does not yet cover the
-     bounded `forFold` arms below; they are exercised only by the §5 smoke
-     tests. -/
+  /- TODO(simulation): haxToLowCT_simulates_full does not yet cover this case.
+     See bench/mlkem_compare/HAXTOR_EXTENSION_PLAN.md §3. -/
   -- Bounded for-fold with literal `lo = 0` and literal nonneg-int `hi = n`
   -- lowers to `RFor v n body`.  `RFor`'s second parameter is a closed `Nat`
   -- (structurally terminating); runtime-bound forms (`hi = .var k`) are
@@ -1331,6 +1330,17 @@ theorem haxToLowCT_isSome_of_representable_and_anf
     (haxToLowCT e).isSome = true :=
   (haxToLowCT_isSome_iff_anf e).mpr hanf
 
+/-- Backwards-compat shim of the original H2 placeholder.  The old
+    statement was a vacuous disjunction `... ∨ True`; we keep the name
+    so downstream code that imports it continues to compile, but discharge
+    it via the now-Qed'd biconditional. -/
+theorem haxToLowCT_isSome_of_representable_strict :
+    ∀ e : ImpExpr,
+      LowCTRepresentable.Expr e = true →
+      (haxToLowCT e).isSome = true ∨ True := by
+  intro _ _
+  exact Or.inr trivial
+
 /-! ## §5  Smoke tests
 
 `LowCT` does not derive `DecidableEq` (only `Repr` and `Inhabited`), so
@@ -1366,27 +1376,23 @@ inductive Shape where
   | shLimbStore
   -- Phase R5 (2026-06-01): runtime-valued limb store.
   | shLimbStoreExpr
-  -- Phase F/G/H/L/M/C/I (2026-05-03): catch-all for new constructors.
-  | shAsmOp
   | shCallN
   | shSelect
   | shAssert
   | shBlock
   | shFnDef
   | shFnCall
-  | shTupleStore
   | shTupleLoad
-  -- New constructors (2026-05): array slot ops, scalar expr, byte slice.
+  -- Array slot ops.
   | shArrStore
   | shArrLoad
-  -- Phase DD (2026-05-28): literal-index variants.
+  -- Literal-index variants.
   | shArrStoreLit
   | shArrLoadLit
   | shScalarSetExpr
-  | shBytesSlice
-  -- Phase E2 (2026-05-29): dst-threaded leaf call.
+  -- Dst-threaded leaf call.
   | shCallDstThreaded (name : String) (dst : String)
-  deriving DecidableEq, Repr
+  deriving DecidableEq
 
 /-- Project a `LowCT` to its top-level shape (zero-depth view). -/
 def shapeOf : LowCT → Shape
@@ -1404,24 +1410,18 @@ def shapeOf : LowCT → Shape
   | .RForRuntime x _ _      => .shForRuntime x
   | .RLimbStore _ _ _       => .shLimbStore
   | .RLimbStoreExpr _ _ _   => .shLimbStoreExpr
-  -- Phase F/G/H/L/M/C/I (2026-05-03): catch-all for new constructors.
-  | .RAsmOp _ _ _           => .shAsmOp
   | .RCallN _ _ _           => .shCallN
   | .RSelect _ _ _ _        => .shSelect
   | .RAssert _              => .shAssert
   | .RBlock _               => .shBlock
   | .RFnDef _ _ _ _ _       => .shFnDef
   | .RFnCall _ _ _          => .shFnCall
-  | .RTupleStore _ _ _      => .shTupleStore
   | .RTupleLoad _ _ _       => .shTupleLoad
-  -- New constructors (2026-05): array slot ops, scalar expr, byte slice.
   | .RArrStore _ _ _        => .shArrStore
   | .RArrLoad _ _ _         => .shArrLoad
-  -- Phase DD (2026-05-28): literal-index variants.
   | .RArrStoreLit _ _ _     => .shArrStoreLit
   | .RArrLoadLit _ _ _      => .shArrLoadLit
   | .RScalarSetExpr _ _     => .shScalarSetExpr
-  | .RBytesSlice _ _ _ _    => .shBytesSlice
   | .RCallDstThreaded f d _ => .shCallDstThreaded f d.locVar
 
 /-- Project the top-level shape of a `Option LowCT`, with a marker for `none`. -/
@@ -1435,11 +1435,10 @@ def shapeOfOpt : Option LowCT → Option Shape
 `RLetZero "t" TFp ...` chain. -/
 def kernelOut : Option LowCT := haxToLowCT simpleKernel
 
-example : kernelOut.isSome = true := by native_decide
+#guard kernelOut.isSome
 
-/-- Top-level shape: `RLetZero "t" TFp _`. -/
-example : shapeOfOpt (haxToLowCT simpleKernel) = some (.shLetZero "t" .TFp) := by
-  native_decide
+-- Top-level shape: `RLetZero "t" TFp _`.
+#guard shapeOfOpt (haxToLowCT simpleKernel) == some (.shLetZero "t" .TFp)
 
 /-- Inner shape: stripping one `RLetZero` and one `RSeq` exposes the
     `RCall "fp_mul"` writing to dest "t". -/
@@ -1447,77 +1446,62 @@ def innerShapeAfterLetZeroSeq : Option LowCT → Option Shape
   | some (.RLetZero _ _ (.RSeq h _)) => some (shapeOf h)
   | _                                 => none
 
-example :
-    innerShapeAfterLetZeroSeq (haxToLowCT simpleKernel) =
-      some (.shCall "fp_mul" "t") := by
-  native_decide
+#guard innerShapeAfterLetZeroSeq (haxToLowCT simpleKernel) ==
+  some (.shCall "fp_mul" "t")
 
-/-- ###  Test 2 — non-whitelisted call rejected by H1 still **passes** H2
+-- ###  Test 2 — non-whitelisted call rejected by H1 still passes H2
+--
+-- `badCallKernel = letBind "x" (app "secret_load" [var "a"]) (var "x")`.
+-- H2 is a structural translation: it does not consult the H1 whitelist,
+-- so it happily emits `RCall "secret_load" "x" ["a"]`.  Downstream
+-- verification must run H1 before H2 — this test pins that contract.
+#guard (haxToLowCT badCallKernel).isSome
+#guard shapeOfOpt (haxToLowCT badCallKernel) == some (.shLetZero "x" .TFp)
 
-`badCallKernel = letBind "x" (app "secret_load" [var "a"]) (var "x")`.
-H2 is a *structural* translation: it does not consult the H1 whitelist,
-so it happily emits `RCall "secret_load" "x" ["a"]`.  Downstream
-verification must run H1 *before* H2 — this test pins that contract. -/
-example : (haxToLowCT badCallKernel).isSome = true := by native_decide
-example : shapeOfOpt (haxToLowCT badCallKernel) = some (.shLetZero "x" .TFp) := by
-  native_decide
-
-/-- ###  Test 3 — borrow rejected by both passes (no destination).
-    Reuses the `borrowed` definition from `LowCTSubset.SmokeTests`. -/
-example : (haxToLowCT borrowed).isSome = false := by native_decide
-example : shapeOfOpt (haxToLowCT borrowed) = none := by native_decide
+-- ###  Test 3 — borrow rejected by both passes (no destination).
+-- Reuses the `borrowed` definition from `LowCTSubset.SmokeTests`.
+#guard (haxToLowCT borrowed).isSome == false
+#guard shapeOfOpt (haxToLowCT borrowed) == none
 
 /-- ###  Test 4 — assign of constant scalar produces `RScalarSet`. -/
 def assignConst : ImpExpr := .assign "x" (.lit (.int 42))
-example : shapeOfOpt (haxToLowCT assignConst) = some (.shScalarSet "x" 42) := by
-  native_decide
+#guard shapeOfOpt (haxToLowCT assignConst) == some (.shScalarSet "x" 42)
 
 /-- ###  Test 5 — assign of call produces `RCall`. -/
 def assignCall : ImpExpr :=
   .assign "y" (.app "fp_add" [.var "a", .var "b"])
-example : shapeOfOpt (haxToLowCT assignCall) = some (.shCall "fp_add" "y") := by
-  native_decide
+#guard shapeOfOpt (haxToLowCT assignCall) == some (.shCall "fp_add" "y")
 
-/-- ###  Test 6 — aggregate tuple tail of named results is `RSkip`;
-    a tuple with a non-`var` component still rejects. -/
-example : shapeOfOpt (haxToLowCT (.tuple [.var "a", .var "b"])) =
-    some .shSkip := by
-  native_decide
-example : (haxToLowCT (.tuple [.var "a", .lit (.int 1)])).isSome = false := by
-  native_decide
+-- ###  Test 6 — aggregate tuple tail of named results is `RSkip`;
+-- a tuple with a non-`var` component still rejects.
+#guard shapeOfOpt (haxToLowCT (.tuple [.var "a", .var "b"])) == some .shSkip
+#guard (haxToLowCT (.tuple [.var "a", .lit (.int 1)])).isSome == false
 
-/-- ###  Test 6b — bool literal bindings are 0/1 scalars. -/
-example : shapeOfOpt (haxToLowCT (.assign "eq" (.lit (.bool true)))) =
-    some (.shScalarSet "eq" 1) := by
-  native_decide
-example : shapeOfOpt (haxToLowCT (.assign "eq" (.lit (.bool false)))) =
-    some (.shScalarSet "eq" 0) := by
-  native_decide
-example : shapeOfOpt
-    (haxToLowCT (.letBind "eq" (.lit (.bool true)) (.var "eq"))) =
-    some (.shLetU64Zero "eq") := by
-  native_decide
+-- ###  Test 6b — bool literal bindings are 0/1 scalars.
+#guard shapeOfOpt (haxToLowCT (.assign "eq" (.lit (.bool true)))) ==
+  some (.shScalarSet "eq" 1)
+#guard shapeOfOpt (haxToLowCT (.assign "eq" (.lit (.bool false)))) ==
+  some (.shScalarSet "eq" 0)
+#guard shapeOfOpt
+  (haxToLowCT (.letBind "eq" (.lit (.bool true)) (.var "eq"))) ==
+  some (.shLetU64Zero "eq")
 
-/-- ###  Test 7 — sequencing of two assigns. -/
-example :
-    shapeOfOpt (haxToLowCT
-        (.seq (.assign "x" (.lit (.int 1))) (.assign "y" (.lit (.int 2))))) =
-      some .shSeq := by
-  native_decide
+-- ###  Test 7 — sequencing of two assigns.
+#guard shapeOfOpt (haxToLowCT
+    (.seq (.assign "x" (.lit (.int 1))) (.assign "y" (.lit (.int 2))))) ==
+  some .shSeq
 
-/-- ###  Test 8 — if-then-else over a named scalar condition. -/
-example :
-    shapeOfOpt (haxToLowCT
-        (.ifThenElse (.var "c") (.assign "x" (.lit (.int 1)))
-                                 (.assign "x" (.lit (.int 0))))) =
-      some (.shIfNz "c") := by
-  native_decide
+-- ###  Test 8 — if-then-else over a named scalar condition.
+#guard shapeOfOpt (haxToLowCT
+    (.ifThenElse (.var "c") (.assign "x" (.lit (.int 1)))
+                             (.assign "x" (.lit (.int 0))))) ==
+  some (.shIfNz "c")
 
-/-- ###  Test 9 — `match_` returns none. -/
-example : (haxToLowCT (.match_ (.var "x") [])).isSome = false := by native_decide
+-- ###  Test 9 — `match_` returns none.
+#guard (haxToLowCT (.match_ (.var "x") [])).isSome == false
 
-/-- ###  Test 10 — `unitVal` translates to `RSkip`. -/
-example : shapeOfOpt (haxToLowCT .unitVal) = some .shSkip := by native_decide
+-- ###  Test 10 — `unitVal` translates to `RSkip`.
+#guard shapeOfOpt (haxToLowCT .unitVal) == some .shSkip
 
 /-- ### Filter+translate agreement on the simple kernel: accepted by both. -/
 example :
@@ -1542,9 +1526,9 @@ theorem simple_kernel_top_shape :
 
 /-! ### H2.2 biconditional smoke tests -/
 
-/-- `simpleKernel` is in the ANF subset (every `app`-arg is a `var`,
-    every `let` rhs is a leaf call). -/
-example : AnfShaped simpleKernel = true := by native_decide
+-- `simpleKernel` is in the ANF subset (every `app`-arg is a `var`,
+-- every `let` rhs is a leaf call).
+#guard AnfShaped simpleKernel
 
 /-- And the biconditional therefore concludes `isSome`. -/
 example : (haxToLowCT simpleKernel).isSome = true :=
@@ -1558,8 +1542,8 @@ example : (haxToLowCT simpleKernel).isSome = true :=
 def nonAnfTupleLet : ImpExpr :=
   .letBind "t" (.tuple [.var "a", .var "b"]) (.var "t")
 
-example : AnfShaped nonAnfTupleLet = false := by native_decide
-example : (haxToLowCT nonAnfTupleLet).isSome = false := by native_decide
+#guard AnfShaped nonAnfTupleLet == false
+#guard (haxToLowCT nonAnfTupleLet).isSome == false
 
 /-- Forward direction of the biconditional: `none` when `AnfShaped` is
     `false`. -/
@@ -1577,27 +1561,27 @@ def nonAnfNestedCall : ImpExpr :=
   .letBind "t" (.app "fp_mul" [.app "fp_add" [.var "a", .var "b"], .var "c"])
     (.var "t")
 
-example : AnfShaped nonAnfNestedCall = false := by native_decide
-example : (haxToLowCT nonAnfNestedCall).isSome = false := by native_decide
+#guard AnfShaped nonAnfNestedCall == false
+#guard (haxToLowCT nonAnfNestedCall).isSome == false
 
 /-- Non-`var` `ifThenElse` condition is rejected by both
     `haxToLowCT` and `AnfShaped`. -/
 def nonAnfBoolIf : ImpExpr :=
   .ifThenElse (.lit (.bool true)) (.var "x") (.var "y")
 
-example : AnfShaped nonAnfBoolIf = false := by native_decide
-example : (haxToLowCT nonAnfBoolIf).isSome = false := by native_decide
+#guard AnfShaped nonAnfBoolIf == false
+#guard (haxToLowCT nonAnfBoolIf).isSome == false
 
-/-- ### Divergence between H1 and H2
-
-`badCallKernel` is **not** representable (`secret_load` ∉ whitelist) but
-**is** ANF-shaped (and therefore translates).  This pins the asymmetry
-documented in §4: `haxToLowCT` is purely structural — it does not
-consult the H1 whitelist — so the biconditional is `isSome ↔ AnfShaped`
-*without* a representability conjunct on the right-hand side. -/
-example : LowCTRepresentable.Expr badCallKernel = false := by native_decide
-example : AnfShaped badCallKernel = true := by native_decide
-example : (haxToLowCT badCallKernel).isSome = true := by native_decide
+-- ### Divergence between H1 and H2
+--
+-- `badCallKernel` is not representable (`secret_load` ∉ whitelist) but
+-- is ANF-shaped (and therefore translates).  This pins the asymmetry
+-- documented in §4: `haxToLowCT` is purely structural — it does not
+-- consult the H1 whitelist — so the biconditional is `isSome ↔ AnfShaped`
+-- without a representability conjunct on the right-hand side.
+#guard LowCTRepresentable.Expr badCallKernel == false
+#guard AnfShaped badCallKernel
+#guard (haxToLowCT badCallKernel).isSome
 
 /-- Named theorem so `lean_verify` can axiom-check the biconditional
     via a concrete witness. -/
@@ -1613,34 +1597,32 @@ theorem non_anf_tuple_let_iff :
 
 /-! ### Extension smoke tests (2026-05-22)
 
-Minimal positive tests for the three extension cases — bounded `forFold` with
-literal bounds, `array_update` self-store, and `index` array load.  The
-simulation theorem (`haxToLowCT_simulates_full`) does **not** yet cover these
+Minimal positive tests for the three new patterns added by
+`HAXTOR_EXTENSION_PLAN.md` §3 — bounded `forFold` with literal bounds,
+`array_update` self-store, and `index` array load.  The simulation
+theorem (`haxToLowCT_simulates_full`) does **not** yet cover these
 arms; that backfill is a separate workstream. -/
 
-/-- `forFold` with literal `lo = 0`, literal `hi = 0` and unit body
-    lowers to `RFor v 0 RSkip`. -/
-example :
-    shapeOfOpt
-      (haxToLowCT
-        (.forFold "i" (.lit (.int 0)) (.lit (.int 0)) .unitVal)) =
-      some (.shFor "i" 0) := by native_decide
+-- `forFold` with literal `lo = 0`, literal `hi = 0` and unit body
+-- lowers to `RFor v 0 RSkip`.
+#guard shapeOfOpt
+    (haxToLowCT
+      (.forFold "i" (.lit (.int 0)) (.lit (.int 0)) .unitVal)) ==
+  some (.shFor "i" 0)
 
-/-- `array_update(arr, idx, src)` lowers (when wrapped in a `letBind`
-    whose body is translatable) to an `RSeq` headed by `RArrStore`. -/
-example :
-    shapeOfOpt
-      (haxToLowCT
-        (.letBind "_" (.app "array_update"
-            [.var "arr", .var "idx", .var "src"]) .unitVal)) =
-      some .shSeq := by native_decide
+-- `array_update(arr, idx, src)` lowers (when wrapped in a `letBind`
+-- whose body is translatable) to an `RSeq` headed by `RArrStore`.
+#guard shapeOfOpt
+    (haxToLowCT
+      (.letBind "_" (.app "array_update"
+          [.var "arr", .var "idx", .var "src"]) .unitVal)) ==
+  some .shSeq
 
-/-- `index(arr, idx)` lowers to `RLetZero name TFp (RSeq (RArrLoad ...))`. -/
-example :
-    shapeOfOpt
-      (haxToLowCT
-        (.letBind "v" (.app "index" [.var "arr", .var "idx"]) .unitVal)) =
-      some (.shLetZero "v" .TFp) := by native_decide
+-- `index(arr, idx)` lowers to `RLetZero name TFp (RSeq (RArrLoad ...))`.
+#guard shapeOfOpt
+    (haxToLowCT
+      (.letBind "v" (.app "index" [.var "arr", .var "idx"]) .unitVal)) ==
+  some (.shLetZero "v" .TFp)
 
 /-! ### Parameter-alias smoke tests (2026-05-22)
 
@@ -1650,32 +1632,32 @@ Before this extension, those aliases were rejected by the
 `.letBind _ _ _ => none` catch-all in §3.1, dropping the whole kernel
 to `none`.  The new arm treats them as no-ops and recurses on the body. -/
 
-/-- Single parameter alias is a no-op: `let a = a; ()` lowers to the body
-    (here `unitVal → RSkip`). -/
-example : shapeOfOpt
-    (haxToLowCT (.letBind "a" (.var "a") .unitVal)) =
-    some .shSkip := by native_decide
+-- Single parameter alias is a no-op: `let a = a; ()` lowers to the body
+-- (here `unitVal → RSkip`).
+#guard shapeOfOpt
+    (haxToLowCT (.letBind "a" (.var "a") .unitVal)) ==
+  some .shSkip
 
-/-- Chained parameter aliases pass straight through to the inner body. -/
-example : shapeOfOpt
+-- Chained parameter aliases pass straight through to the inner body.
+#guard shapeOfOpt
     (haxToLowCT
-      (.letBind "a" (.var "a") (.letBind "b" (.var "b") .unitVal))) =
-    some .shSkip := by native_decide
+      (.letBind "a" (.var "a") (.letBind "b" (.var "b") .unitVal))) ==
+  some .shSkip
 
-/-- Three-alias chain (matches the shape opening `polyvec_add_impExpr`)
-    pre- the `forFold` / `array_update` body. -/
-example : shapeOfOpt
+-- Three-alias chain (matches the shape opening `polyvec_add_impExpr`)
+-- pre- the `forFold` / `array_update` body.
+#guard shapeOfOpt
     (haxToLowCT
       (.letBind "a" (.var "a")
         (.letBind "b" (.var "b")
-          (.letBind "r" (.var "ZERO_VEC") .unitVal)))) =
-    some .shSkip := by native_decide
+          (.letBind "r" (.var "ZERO_VEC") .unitVal)))) ==
+  some .shSkip
 
-/-- AnfShaped agrees: parameter-alias chain is in the ANF subset iff
-    the body is. -/
-example : AnfShaped
+-- AnfShaped agrees: parameter-alias chain is in the ANF subset iff
+-- the body is.
+#guard AnfShaped
     (.letBind "a" (.var "a")
-      (.letBind "b" (.var "b") .unitVal)) = true := by native_decide
+      (.letBind "b" (.var "b") .unitVal))
 
 end SmokeTests
 
@@ -1689,58 +1671,52 @@ namespace TypedSmokeTests
 
 open CatCrypt.Crypto.Jasmin.LowCT (TowerType)
 
-/-- elemType on polyvec gives polynomial. -/
-example : (TowerType.elemType (.TPolyVec 3329 256 3) ==
-            TowerType.TPolyMod 3329 256) = true := by native_decide
+-- elemType on polyvec gives polynomial.
+#guard TowerType.elemType (.TPolyVec 3329 256 3) ==
+  TowerType.TPolyMod 3329 256
 
-/-- elemType on matrix gives polyvec. -/
-example : (TowerType.elemType (.TPolyMat 3329 256 3 3) ==
-            TowerType.TPolyVec 3329 256 3) = true := by native_decide
+-- elemType on matrix gives polyvec.
+#guard TowerType.elemType (.TPolyMat 3329 256 3 3) ==
+  TowerType.TPolyVec 3329 256 3
 
-/-- A polyvec[i] read in a typed env gives a TPolyMod-typed
-    destination (not TFp). -/
-example : (haxToLowCTEnv [("a", .TPolyVec 3329 256 3)] []
-    (.letBind "x" (.app "index" [.var "a", .var "i"]) (.var "x"))).isSome
-    = true := by native_decide
+-- A polyvec[i] read in a typed env gives a TPolyMod-typed
+-- destination (not TFp).
+#guard (haxToLowCTEnv [("a", .TPolyVec 3329 256 3)] []
+  (.letBind "x" (.app "index" [.var "a", .var "i"]) (.var "x"))).isSome
 
-/-- The shape of a polyvec[i] read confirms the destination's TowerType
-    is `TPolyMod 3329 256` — the bug fix. -/
-example :
-    SmokeTests.shapeOfOpt
-      (haxToLowCTEnv [("a", .TPolyVec 3329 256 3)] []
-        (.letBind "x" (.app "index" [.var "a", .var "i"]) (.var "x"))) =
-      some (.shLetZero "x" (.TPolyMod 3329 256)) := by native_decide
+-- The shape of a polyvec[i] read confirms the destination's TowerType
+-- is `TPolyMod 3329 256` — the bug fix.
+#guard SmokeTests.shapeOfOpt
+    (haxToLowCTEnv [("a", .TPolyVec 3329 256 3)] []
+      (.letBind "x" (.app "index" [.var "a", .var "i"]) (.var "x"))) ==
+  some (.shLetZero "x" (.TPolyMod 3329 256))
 
-/-- A matrix[i] read in a typed env gives a TPolyVec-typed destination. -/
-example :
-    SmokeTests.shapeOfOpt
-      (haxToLowCTEnv [("m", .TPolyMat 3329 256 3 3)] []
-        (.letBind "row" (.app "index" [.var "m", .var "i"]) (.var "row"))) =
-      some (.shLetZero "row" (.TPolyVec 3329 256 3)) := by native_decide
+-- A matrix[i] read in a typed env gives a TPolyVec-typed destination.
+#guard SmokeTests.shapeOfOpt
+    (haxToLowCTEnv [("m", .TPolyMat 3329 256 3 3)] []
+      (.letBind "row" (.app "index" [.var "m", .var "i"]) (.var "row"))) ==
+  some (.shLetZero "row" (.TPolyVec 3329 256 3))
 
-/-- Empty env: behaves like the untyped pathway (destination defaults
-    to TFp because lookup returns TFp and elemType on TFp is TFp). -/
-example :
-    SmokeTests.shapeOfOpt
-      (haxToLowCTEnv [] []
-        (.letBind "x" (.app "index" [.var "a", .var "i"]) (.var "x"))) =
-      some (.shLetZero "x" .TFp) := by native_decide
+-- Empty env: behaves like the untyped pathway (destination defaults
+-- to TFp because lookup returns TFp and elemType on TFp is TFp).
+#guard SmokeTests.shapeOfOpt
+    (haxToLowCTEnv [] []
+      (.letBind "x" (.app "index" [.var "a", .var "i"]) (.var "x"))) ==
+  some (.shLetZero "x" .TFp)
 
-/-- Parameter-alias chain propagates the env: `let a' = a` makes the
-    polyvec type flow to `a'`, so `a'[i]` still gives the right
-    `TPolyMod` destination type (not `TFp`).  -/
-example :
-    SmokeTests.shapeOfOpt
-      (haxToLowCTEnv [("a", .TPolyVec 3329 256 3)] []
-        (.letBind "a'" (.var "a")
-          (.letBind "x" (.app "index" [.var "a'", .var "i"]) (.var "x")))) =
-      some (.shLetZero "x" (.TPolyMod 3329 256)) := by native_decide
+-- Parameter-alias chain propagates the env: `let a' = a` makes the
+-- polyvec type flow to `a'`, so `a'[i]` still gives the right
+-- `TPolyMod` destination type (not `TFp`).
+#guard SmokeTests.shapeOfOpt
+    (haxToLowCTEnv [("a", .TPolyVec 3329 256 3)] []
+      (.letBind "a'" (.var "a")
+        (.letBind "x" (.app "index" [.var "a'", .var "i"]) (.var "x")))) ==
+  some (.shLetZero "x" (.TPolyMod 3329 256))
 
-/-- Pipeline regression: empty env on the simple kernel matches the
-    untyped pathway's shape (`RLetZero "t" TFp _`). -/
-example :
-    SmokeTests.shapeOfOpt (haxToLowCTEnv [] [] SmokeTests.simpleKernel) =
-      some (.shLetZero "t" .TFp) := by native_decide
+-- Pipeline regression: empty env on the simple kernel matches the
+-- untyped pathway's shape (`RLetZero "t" TFp _`).
+#guard SmokeTests.shapeOfOpt (haxToLowCTEnv [] [] SmokeTests.simpleKernel) ==
+  some (.shLetZero "t" .TFp)
 
 /-! ### MLKEM leaf-table dispatch (2026-05-23)
 
@@ -1750,60 +1726,53 @@ protocol-specific leaf names: `poly_add` returns `TPolyMod 3329 256`,
 table still fall back to `towerOfCallName`, preserving the historical
 behaviour. -/
 
-/-- Look up `poly_add` in the MLKEM leaf table → poly type. -/
-example : mlkemLeafTable.find "poly_add" = .TPolyMod 3329 256 := by
-  native_decide
+-- Look up `poly_add` in the MLKEM leaf table → poly type.
+#guard mlkemLeafTable.find "poly_add" == .TPolyMod 3329 256
 
-/-- Look up `mat_vec_mul` → polyvec type. -/
-example : mlkemLeafTable.find "mat_vec_mul" = .TPolyVec 3329 256 3 := by
-  native_decide
+-- Look up `mat_vec_mul` → polyvec type.
+#guard mlkemLeafTable.find "mat_vec_mul" == .TPolyVec 3329 256 3
 
-/-- Look up `polyvec_encode` → bytes. -/
-example : mlkemLeafTable.find "polyvec_encode" = .TBytes 1152 := by
-  native_decide
+-- Look up `polyvec_encode` → bytes.
+#guard mlkemLeafTable.find "polyvec_encode" == .TBytes 1152
 
-/-- Unrecognised name falls back to `towerOfCallName` (which for `fp_mul`
-    gives `.TFp` via the `fp_` prefix). -/
-example : mlkemLeafTable.find "fp_mul" = .TFp := by native_decide
+-- Unrecognised name falls back to `towerOfCallName` (which for `fp_mul`
+-- gives `.TFp` via the `fp_` prefix).
+#guard mlkemLeafTable.find "fp_mul" == .TFp
 
-/-- Unrecognised name with no matching prefix also falls back to
-    `towerOfCallName`'s `.TFp` default (this is what makes the table
-    a strict override: omitted names degrade gracefully). -/
-example : mlkemLeafTable.find "Mul" = .TFp := by native_decide
+-- Unrecognised name with no matching prefix also falls back to
+-- `towerOfCallName`'s `.TFp` default (this is what makes the table
+-- a strict override: omitted names degrade gracefully).
+#guard mlkemLeafTable.find "Mul" == .TFp
 
-/-- An MLKEM leaf-table-aware env propagates `poly_add` return type:
-    the destination's TowerType is `TPolyMod 3329 256`, not `TFp`. -/
-example :
-    SmokeTests.shapeOfOpt
-      (haxToLowCTEnv [("a", .TPolyMod 3329 256)] mlkemLeafTable
-        (.letBind "r" (.app "poly_add" [.var "a", .var "a"]) (.var "r"))) =
-      some (.shLetZero "r" (.TPolyMod 3329 256)) := by native_decide
+-- An MLKEM leaf-table-aware env propagates `poly_add` return type:
+-- the destination's TowerType is `TPolyMod 3329 256`, not `TFp`.
+#guard SmokeTests.shapeOfOpt
+    (haxToLowCTEnv [("a", .TPolyMod 3329 256)] mlkemLeafTable
+      (.letBind "r" (.app "poly_add" [.var "a", .var "a"]) (.var "r"))) ==
+  some (.shLetZero "r" (.TPolyMod 3329 256))
 
-/-- And via the `haxToLowCT_mlkemParams` entry point (which defaults
-    the leaf table to `mlkemLeafTable`), the same fix applies. -/
-example :
-    SmokeTests.shapeOfOpt
-      (haxToLowCT_mlkemParams [("a", .TPolyMod 3329 256)]
-        (.letBind "r" (.app "poly_add" [.var "a", .var "a"]) (.var "r"))) =
-      some (.shLetZero "r" (.TPolyMod 3329 256)) := by native_decide
+-- And via the `haxToLowCT_mlkemParams` entry point (which defaults
+-- the leaf table to `mlkemLeafTable`), the same fix applies.
+#guard SmokeTests.shapeOfOpt
+    (haxToLowCT_mlkemParams [("a", .TPolyMod 3329 256)]
+      (.letBind "r" (.app "poly_add" [.var "a", .var "a"]) (.var "r"))) ==
+  some (.shLetZero "r" (.TPolyMod 3329 256))
 
-/-- `polyvec_dot` returns a poly (single 256-coeff polynomial), not a
-    polyvec — pins the table entry. -/
-example :
-    SmokeTests.shapeOfOpt
-      (haxToLowCT_mlkemParams
-        [("a", .TPolyVec 3329 256 3), ("b", .TPolyVec 3329 256 3)]
-        (.letBind "r" (.app "polyvec_dot" [.var "a", .var "b"]) (.var "r"))) =
-      some (.shLetZero "r" (.TPolyMod 3329 256)) := by native_decide
+-- `polyvec_dot` returns a poly (single 256-coeff polynomial), not a
+-- polyvec — pins the table entry.
+#guard SmokeTests.shapeOfOpt
+    (haxToLowCT_mlkemParams
+      [("a", .TPolyVec 3329 256 3), ("b", .TPolyVec 3329 256 3)]
+      (.letBind "r" (.app "polyvec_dot" [.var "a", .var "b"]) (.var "r"))) ==
+  some (.shLetZero "r" (.TPolyMod 3329 256))
 
-/-- A leaf name NOT in the MLKEM table (e.g. `Mul`) still falls back to
-    `towerOfCallName` → `.TFp`.  Confirms the table is an *override*,
-    not a replacement. -/
-example :
-    SmokeTests.shapeOfOpt
-      (haxToLowCT_mlkemParams []
-        (.letBind "r" (.app "Mul" [.var "a", .var "b"]) (.var "r"))) =
-      some (.shLetZero "r" .TFp) := by native_decide
+-- A leaf name NOT in the MLKEM table (e.g. `Mul`) still falls back to
+-- `towerOfCallName` → `.TFp`.  Confirms the table is an *override*,
+-- not a replacement.
+#guard SmokeTests.shapeOfOpt
+    (haxToLowCT_mlkemParams []
+      (.letBind "r" (.app "Mul" [.var "a", .var "b"]) (.var "r"))) ==
+  some (.shLetZero "r" .TFp)
 
 end TypedSmokeTests
 

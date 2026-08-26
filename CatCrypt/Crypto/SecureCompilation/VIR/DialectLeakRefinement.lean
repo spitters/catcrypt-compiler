@@ -151,6 +151,7 @@ def jOpLeakEvent : JasminOp → LeakEvent
   | .vpslldq _ => .pureOp "vpslldq"
   | .vpsrldq _ => .pureOp "vpsrldq"
   | .vsimd op => .pureOp ("vsimd:" ++ op.mnemonic)
+  | .vymm op => .pureOp ("vymm:" ++ op.jasminMnemonic)
   | .mulhi _ => .pureOp "mulhi"
   | .addCarryLo _ => .pureOp "addCarryLo"
   | .addCarryHi _ => .pureOp "addCarryHi"

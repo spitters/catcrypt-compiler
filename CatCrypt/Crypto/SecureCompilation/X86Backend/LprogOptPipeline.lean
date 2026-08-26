@@ -1223,4 +1223,58 @@ def optimizeLprogBasicBlocks (p : Lprog) : Lprog := mapBodies optimizeBasicBlock
     NOT go through this. -/
 def renderOwned (p : Lprog) : String := renderLprogAtt (optimizeLprogBasicBlocks p)
 
+/-- Fold a use-once ABI memory load into its single vector consumer: a
+    `VMOVDQU [kv.d] [mem.m]` whose spill `d` is defined once (this load) and read
+    once is deleted, and its consumer's `kv.d` source is rewritten to the memory
+    operand `mem.m`. The ABI inputs (`mem.RSI`/`mem.RDI`) are read-only in the body,
+    so the value is stable between the load and the use; the VEX packed ALU takes a
+    memory source in its first slot (the printer places it there). This removes the
+    load, the induced `kv.N` spill, and the mem→mem bounce for each round constant. -/
+def foldAbiLoadBody (body : Lcmd) : Lcmd :=
+  let srcRegs : Linstr → List String := fun i =>
+    match i.li_i with
+    | .Lopn _ _ srcs => srcs.filterMap (fun o => match o with | .reg n => some n | _ => none)
+    | _ => []
+  let dstRegs : Linstr → List String := fun i =>
+    match i.li_i with
+    | .Lopn dsts _ _ => dsts.filterMap (fun o => match o with | .reg n => some n | _ => none)
+    | _ => []
+  let allSrc := body.flatMap srcRegs
+  let allDst := body.flatMap dstRegs
+  let useCount := fun nm => (allSrc.filter (· == nm)).length
+  let defCount := fun nm => (allDst.filter (· == nm)).length
+  let foldMap : List (String × String) := body.filterMap (fun i =>
+    match i.li_i with
+    | .Lopn [.reg d] "VMOVDQU" [.reg m] =>
+        if "kv.".isPrefixOf d && "mem.".isPrefixOf m
+           && defCount d == 1 && useCount d == 1 then some (d, m) else none
+    | _ => none)
+  let foldNames := foldMap.map Prod.fst
+  body.filterMap (fun i =>
+    match i.li_i with
+    | .Lopn [.reg d] "VMOVDQU" [.reg _] =>
+        if foldNames.contains d then none else some i
+    | .Lopn dsts opn srcs =>
+        let srcs' := srcs.map (fun o =>
+          match o with
+          | .reg n => match foldMap.find? (fun p => p.1 == n) with
+                      | some (_, m) => LOperand.reg m
+                      | none => o
+          | _ => o)
+        some ⟨i.li_ii, .Lopn dsts opn srcs'⟩
+    | _ => some i)
+
+/-- `foldAbiLoadBody` over every function body of an `Lprog`. -/
+def foldAbiLoad (p : Lprog) : Lprog :=
+  { p with lp_funcs := p.lp_funcs.map (fun (n, f) =>
+      (n, { f with lfd_body := foldAbiLoadBody f.lfd_body })) }
+
+/-- `renderOwned` for a body whose RA reserved `%ymm15` (the batch8 SoA path via
+    `comToLfundefPhysAbiFromVirt (reserveVecScratch := true)`): folds use-once ABI
+    loads into their consumers, then omits the per-op `%ymm15` save/reload in the
+    vector-spill legalization, since the register is provably free. Identical to
+    `renderOwned` for every other body. -/
+def renderOwnedReserveVecScratch (p : Lprog) : String :=
+  renderLprogAtt (optimizeLprogBasicBlocks (foldAbiLoad p)) none true
+
 end CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline

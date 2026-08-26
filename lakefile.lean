@@ -43,10 +43,13 @@ lean_lib CatCryptCompiler where
 require catcryptCore from git
   "https://github.com/spitters/CatCrypt-core.git" @ "0.1.0-alpha.1"
 
--- IR lowering target (`Com` → Veir / MLIR). Pinned to the v4.29.0 tag, the only
--- Veir release.
+-- IR lowering target (`Com` → Veir / MLIR). Pinned to a private staging fork:
+-- the v4.29.0 release plus the CatCrypt additions (the catcrypt/memref/
+-- polynomial/vector/x86vector lowering dialects, `Func.call`, and the
+-- `Veir.List.*` namespacing that avoids a Mathlib/Batteries name collision).
+-- Building requires read access to `spitters/veir-catcrypt`.
 require Veir from git
-  "https://github.com/opencompl/veir.git" @ "v4.29.0"
+  "git@github.com:spitters/veir-catcrypt.git" @ "v4.29.0-catcrypt.1"
 
 -- ParamTransfer (proof-transfer bridge) + CompPoly (NTT algebraic theory).
 require paramTransfer from git

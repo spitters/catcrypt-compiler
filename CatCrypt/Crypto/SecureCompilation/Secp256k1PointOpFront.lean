@@ -4,13 +4,14 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.Secp256k1FeMulFront
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 set_option autoImplicit false
 
 /-!
 # secp256k1 Jacobian point-op step (`jacDbl` / `jacAdd`), FRONT-COMPILED to owned x86
 
-Phase 2 of the field-arith LowCT front.
+Phase 2 of the field-arith LowCT front (`../catcrypt-private/docs/field-arith-front-plan.md`).
 Phase 1 (`Secp256k1FeMulFront`) front-generated a single 4-limb secp256k1 field
 multiply `feMul = (a·b) mod p`. This module COMPOSES that brick — together with
 front-generated framed field add/sub over the same 32-bit-limb operand-scanning
@@ -615,7 +616,7 @@ def ownedAsm (name : String) (abiArgs : List String)
     (j : Option (Σ Γj : Ctxt jasminDialect, Σ t : JasminTy, Com jasminDialect Γj t)) :
     Option String :=
   j.map (fun s =>
-    renderLprogAtt
+    CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned
       (Com.toLprogPhysAbi s.2.2 name
         (fun _ => none) (fun _ => none) (fun _ => none) []
         (abiArgs := abiArgs) (abiTyin := abiArgs.map (fun _ => 64))

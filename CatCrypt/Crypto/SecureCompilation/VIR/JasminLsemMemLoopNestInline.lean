@@ -902,24 +902,25 @@ trip" it concludes `JLoopBodyN.nestedDenote` — the source semantics of
 `ComL.forLoopNRtNested` (`comL_forLoopNRtNested_ret_denote` reaches
 `ComL.denote`). -/
 
-/-- **The bounded-fold decode induction.**  If the start state decodes the seed
-    and every pass `t < m` of the region body computes one `step t` under the
-    `decodeM` correspondence, the `m`-fold decodes to the `m`-fold of `step` —
-    stated exactly like B4's `runBoundedLoopMem_decodes_denote`, over the
-    region-body fold `runIBsL` (which may itself contain inner regions). -/
-theorem runBoundedIBs_decodes_fold {w : Nat} (env : LeafEnvM) (wf : Nat)
-    (body : List IBlock) (p : Nat) (accReg : String)
-    (step : Nat → BitVec w → BitVec w) (s0 : LstateM) (acc0 : BitVec w)
-    (hinit : decodeM s0 accReg w = some acc0) :
+/-- **The bounded-fold decode induction, over an arbitrary decoder.**  If the start
+    state decodes the seed under `dec` and every pass `t < m` of the region body
+    computes one `step t` under `dec`, the `m`-fold decodes to the `m`-fold of
+    `step`. The decoder enters only through the seed and the `setLpc`-invariance
+    `hset`; the register form `runBoundedIBs_decodes_fold` and the array-carrier
+    form both instantiate it. -/
+theorem runBoundedIBs_decodes_fold_gen {α : Type} (env : LeafEnvM) (wf : Nat)
+    (body : List IBlock) (p : Nat) (dec : LstateM → Option α)
+    (hset : ∀ (b : LstateM) (k : Nat), dec (b.setLpc k) = dec b)
+    (step : Nat → α → α) (s0 : LstateM) (acc0 : α)
+    (hinit : dec s0 = some acc0) :
     ∀ m : Nat,
-      (∀ t, t < m → ∀ (bt : LstateM) (acct : BitVec w),
+      (∀ t, t < m → ∀ (bt : LstateM) (acct : α),
         runBoundedIBs env wf body p t s0 = some bt →
-        decodeM bt accReg w = some acct →
+        dec bt = some acct →
         ∀ bt', runIBsL env wf body bt = some bt' →
-        decodeM bt' accReg w = some (step t acct)) →
+        dec bt' = some (step t acct)) →
       ∀ bfin : LstateM, runBoundedIBs env wf body p m s0 = some bfin →
-        decodeM bfin accReg w
-          = some ((List.range m).foldl (fun a t => step t a) acc0) := by
+        dec bfin = some ((List.range m).foldl (fun a t => step t a) acc0) := by
   intro m
   induction m with
   | zero =>
@@ -941,9 +942,31 @@ theorem runBoundedIBs_decodes_fold {w : Nat} (env : LeafEnvM) (wf : Nat)
               obtain rfl := Option.some.inj hrun
               have hdk := ih (fun t ht => hsim t (Nat.lt_succ_of_lt ht)) bk hbk
               have hstep := hsim k (Nat.lt_succ_self k) bk _ hbk hdk bt' hbt'
-              rw [decodeM_setLpc, List.range_succ, List.foldl_append, List.foldl_cons,
+              rw [hset, List.range_succ, List.foldl_append, List.foldl_cons,
                 List.foldl_nil]
               exact hstep
+
+/-- **The bounded-fold decode induction (register accumulator).**  If the start
+    state decodes the seed and every pass `t < m` of the region body computes one
+    `step t` under the `decodeM` correspondence, the `m`-fold decodes to the
+    `m`-fold of `step` — stated exactly like B4's `runBoundedLoopMem_decodes_denote`,
+    over the region-body fold `runIBsL` (which may itself contain inner regions).
+    The `decodeM` instance of `runBoundedIBs_decodes_fold_gen`. -/
+theorem runBoundedIBs_decodes_fold {w : Nat} (env : LeafEnvM) (wf : Nat)
+    (body : List IBlock) (p : Nat) (accReg : String)
+    (step : Nat → BitVec w → BitVec w) (s0 : LstateM) (acc0 : BitVec w)
+    (hinit : decodeM s0 accReg w = some acc0) :
+    ∀ m : Nat,
+      (∀ t, t < m → ∀ (bt : LstateM) (acct : BitVec w),
+        runBoundedIBs env wf body p t s0 = some bt →
+        decodeM bt accReg w = some acct →
+        ∀ bt', runIBsL env wf body bt = some bt' →
+        decodeM bt' accReg w = some (step t acct)) →
+      ∀ bfin : LstateM, runBoundedIBs env wf body p m s0 = some bfin →
+        decodeM bfin accReg w
+          = some ((List.range m).foldl (fun a t => step t a) acc0) :=
+  runBoundedIBs_decodes_fold_gen env wf body p (fun s => decodeM s accReg w)
+    (fun b k => decodeM_setLpc b k accReg w) step s0 acc0 hinit
 
 /-- **The bounded fold decodes to `JLoopBodyN.nestedDenote`.**  Instantiating
     the per-pass effect at outer index `jd` with "the inner fold of

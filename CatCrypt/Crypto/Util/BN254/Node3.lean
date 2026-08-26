@@ -17,7 +17,7 @@ check reduces by `decide`.
 -/
 
 set_option autoImplicit false
-set_option maxRecDepth 10000
+set_option maxRecDepth 50000
 
 namespace CatCrypt.Crypto.Util.BN254.Node3
 
@@ -46,11 +46,11 @@ theorem pf3_primeFactors : ∀ q ∈ pf3Factors, Nat.Prime q := by
   · fin_cases h
     · exact pf2_prime
 
-theorem pf3_fermat : powMod 17 (pf3 - 1) pf3 = 1 := by native_decide
+theorem pf3_fermat : powMod 17 (pf3 - 1) pf3 = 1 := by decide
 
 theorem pf3_witness :
     ∀ q ∈ pf3Factors, powMod 17 ((pf3 - 1) / q) pf3 ≠ 1 := by
-  native_decide
+  decide
 
 /-- `Nat.Prime pf3`, machine-checked by a Lucas certificate (witness `17`). -/
 theorem pf3_prime : Nat.Prime pf3 :=

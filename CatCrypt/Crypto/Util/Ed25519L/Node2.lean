@@ -14,7 +14,7 @@ Primality of the factor `H` of `G - 1`, via `H - 1 = 2 · 41 · 43 · I` with wi
 -/
 
 set_option autoImplicit false
-set_option maxRecDepth 10000
+set_option maxRecDepth 50000
 
 namespace CatCrypt.Crypto.Util.Ed25519L.Node2
 
@@ -34,10 +34,10 @@ theorem factorHFactors_prime : ∀ q ∈ factorHFactors, Nat.Prime q := by
   simp only [factorHFactors] at hq
   fin_cases hq <;> first | exact factorI_prime | norm_num
 
-theorem factorHFermat : powMod 17 (factorH - 1) factorH = 1 := by native_decide
+theorem factorHFermat : powMod 17 (factorH - 1) factorH = 1 := by decide
 
 theorem factorHWitness :
-    ∀ q ∈ factorHFactors, powMod 17 ((factorH - 1) / q) factorH ≠ 1 := by native_decide
+    ∀ q ∈ factorHFactors, powMod 17 ((factorH - 1) / q) factorH ≠ 1 := by decide
 
 theorem factorH_prime : Nat.Prime factorH :=
   lucas_of_certificate factorH (by decide) 17 factorHFactors

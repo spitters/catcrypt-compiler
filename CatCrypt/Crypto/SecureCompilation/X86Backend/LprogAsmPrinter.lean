@@ -226,6 +226,21 @@ def resolveName (frame spillW w : Nat) (n : String) : String :=
         | some o => (if o = 0 then "" else toString o) ++ "(" ++ gpReg64 base ++ ")"
         | none => "<BADMEM:" ++ n ++ ">"
     | _ => "<BADMEM:" ++ n ++ ">"
+  else if "kv.".isPrefixOf n then
+    -- a **vector spill slot** `kv.idx`: a 32-byte YMM cell in the frame's
+    -- vector-spill region, anchored at the BOTTOM of the frame at offset
+    -- `32·(idx+1)` from the post-`leaq` `%rsp` (slot `0(%rsp)` is reserved as the
+    -- `%ymm15` save cell for spill legalization, `vecSpillScratch`). The region is
+    -- disjoint from the top-anchored qsave/GP `k.N` cells, so a GP-only body
+    -- reserves no vector region and stays byte-identical. `frameSize` sizes it.
+    match String.toNat? (n.drop 3).toString with
+    | some idx => toString (32 * (idx + 1)) ++ "(%rsp)"
+    | none => "<BADVSPILL:" ++ n ++ ">"
+  else if "XMM".isPrefixOf n then
+    -- a packed 256-bit vector operand: the `XMM<k>` name a SIMD-RA `Lcmd`
+    -- carries for a batch8 packed lane value resolves to the AVX `%ymm<k>`
+    -- register (256-bit lane width), independent of the scalar op width `w`.
+    "%ymm" ++ (n.drop 3).toString
   else
     -- a bare physical GP register, sized by the op width: full reg for U64, the
     -- 32-bit subreg for U32 (and as the zero-extension target of a narrow load),
@@ -265,6 +280,30 @@ def isMemOperand : LOperand → Bool
   | .arr _ _ => true
   | .arrIdx _ _ _ => true
   | .imm _ => false
+
+/-- True iff the operand is a **vector spill slot** `kv.N` (a `%rsp`-relative
+    32-byte YMM stack cell). Distinct from `isMemOperand` (GP `k.N` / qsave /
+    `mem.<base>`); used by the packed-op legalizer to detect an illegal
+    memory-destination or memory-to-memory YMM move. -/
+def isVSpill : LOperand → Bool
+  | .reg n => "kv.".isPrefixOf n
+  | _ => false
+
+/-- True iff the operand resolves to any memory location (GP spill / qsave /
+    `mem.<base>` / vector spill). -/
+def isAnyMem (o : LOperand) : Bool := isMemOperand o || isVSpill o
+
+/-- The `%rsp`-relative operand of the vector-spill legalization scratch cell
+    (slot `0` of the vector region): the 32-byte stack cell into which `%ymm15` is
+    saved before it is borrowed as the bounce register for an illegal
+    memory-destination vector op or a memory-to-memory `vmovdqu`, and from which it
+    is restored after. Using a save/restore cell rather than a reserved register
+    keeps every non-vector-spilling kernel's register allocation unchanged. -/
+def vecSpillScratch : String := "0(%rsp)"
+
+/-- The bounce register borrowed for vector-spill legalization: `%ymm15`, saved to
+    `vecSpillScratch` around each use so no register is reserved. -/
+def vecSpillReg : String := "%ymm15"
 
 /-- The AT&T text of a **memory-class** operand (spill `k.N`, qsave `X`,
     `mem.<base>.<off>`) at byte offset `+delta` from its base address. Used by
@@ -469,10 +508,11 @@ plain move `mov<sz> src, dst`. The flag-setting side effects the x86 ISA attache
       the implicit x86 destination-source) → `op<sz> s, d`;
     * **ADX carry-chain** `Lopn [d] ADCX/ADOX [d, s, cin]` (three sources: the
       dst self-source, the data source, and the `reg 1` carry-in flag) →
-      `adcx<sz> s, d` / `adox<sz> s, d`. The dst self-source and the implicit
-      flag source are dropped (the x86 op reads CF/OF as a side input, not an
-      operand). -/
-def renderLopn (frame spillW : Nat) :
+      `adcx<sz> s, d` / `adox<sz> s, d`, with the carry-in first reconstructed
+      into CF via `bt $0, cin` (dropped only for the fused-flag sentinel, where
+      the flag flows directly). The dst self-source is the implicit x86
+      destination-source, not a printed operand. -/
+def renderLopn (frame spillW : Nat) (rvs : Bool := false) :
     List LOperand → String → List LOperand → List String
   -- `SETcc` (`SETC`, set-on-carry → byte GPR, zero-extended): one destination,
   -- **zero** data sources (the carry-in is the implicit `CF` flag, not a printed
@@ -489,6 +529,72 @@ def renderLopn (frame spillW : Nat) :
       else [ "\t# UNHANDLED-OP " ++ opn ]
   | [d], opn, [s] =>
       let base := stripAbiTag opn
+      -- **YMM packed shift-by-immediate VEX** (batch8): the 256-bit unary packed
+      -- logical shifts `VPSLLD:<n>` / `VPSRLD:<n>`, `d := a shift n` per 32-bit
+      -- lane. The count `<n>` is carried in the mnemonic (mirroring the ZMM
+      -- `VPRORD:<n>` form), so this must precede the `mnemWidth` logic below: a
+      -- count of 8/16 would otherwise be misread as a narrow width tag and the
+      -- shift dropped. AT&T VEX order `vpslld $<n>, %ymm<a>, %ymm<d>`; the source
+      -- operand `XMM<k>` resolves to `%ymm<k>` via `resolveName`.
+      if "VPSLLD".isPrefixOf opn || "VPSRLD".isPrefixOf opn then
+        let mn := if "VPSLLD".isPrefixOf opn then "vpslld" else "vpsrld"
+        match opn.splitOn ":", s, d with
+        | [_, nStr], .reg sn, .reg dn =>
+            [ "\t" ++ mn ++ " $" ++ nStr ++ ", " ++ resolveName frame spillW 32 sn
+                ++ ", " ++ resolveName frame spillW 32 dn ]
+        | _, _, _ => [ "\t# UNHANDLED-VYMM " ++ opn ]
+      -- **YMM cross-/in-lane permutes by immediate** (NTT lane routing):
+      -- `VPSHUFD:<n>` (in-lane dword shuffle) / `VPERMQ:<n>` (cross-lane qword
+      -- permute), `d := perm s n`. The imm `<n>` is carried in the mnemonic
+      -- exactly as the shifts above; AT&T order `vp… $<n>, %ymm<s>, %ymm<d>`.
+      else if "VPSHUFD".isPrefixOf opn || "VPERMQ".isPrefixOf opn then
+        let mn := if "VPSHUFD".isPrefixOf opn then "vpshufd" else "vpermq"
+        match opn.splitOn ":", s, d with
+        | [_, nStr], .reg sn, .reg dn =>
+            [ "\t" ++ mn ++ " $" ++ nStr ++ ", " ++ resolveName frame spillW 32 sn
+                ++ ", " ++ resolveName frame spillW 32 dn ]
+        | _, _, _ => [ "\t# UNHANDLED-VYMM " ++ opn ]
+      -- **VMOVSHDUP** (NTT odd-lane duplicate): `d := dup_odd s`. Single-source
+      -- two-operand VEX move, no immediate. AT&T `vmovshdup %ymm<s>, %ymm<d>`.
+      else if base == "VMOVSHDUP" then
+        match s, d with
+        | .reg sn, .reg dn =>
+            [ "\tvmovshdup " ++ resolveName frame spillW 32 sn
+                ++ ", " ++ resolveName frame spillW 32 dn ]
+        | _, _ => [ "\t# UNHANDLED-VYMM " ++ opn ]
+      -- **256-bit vector ABI move** (`VMOVDQU`, batch8 SoA ABI): the packed
+      -- input load (`mem → %ymm`) / output store (`%ymm → mem`) and any packed
+      -- spill move. The `XMM<k>` operands resolve to `%ymm<k>` (width-independent,
+      -- see `resolveName`) and the `mem.<base>.<off>` operand to `off(%base)`; the
+      -- unaligned `vmovdqu` handles a C buffer of any alignment. AT&T src,dst order.
+      else if base == "VMOVDQU" then
+        if isAnyMem s && isAnyMem d then
+          -- memory-to-memory YMM move (an ABI load whose destination the RA
+          -- placed in a `kv.N` spill): x86 has no mem→mem move, so bounce through
+          -- `%ymm15`. When `rvs` (batch8 reserves `%ymm15`) the bounce needs no
+          -- save/restore; otherwise it is saved to / restored from `vecSpillScratch`.
+          (if rvs then [] else [ "\tvmovdqu " ++ vecSpillReg ++ ", " ++ vecSpillScratch ])
+            ++ [ "\tvmovdqu " ++ resolveOperand frame spillW 32 s ++ ", " ++ vecSpillReg,
+                 "\tvmovdqu " ++ vecSpillReg ++ ", " ++ resolveOperand frame spillW 32 d ]
+            ++ (if rvs then [] else [ "\tvmovdqu " ++ vecSpillScratch ++ ", " ++ vecSpillReg ])
+        else
+          [ "\tvmovdqu " ++ resolveOperand frame spillW 32 s ++ ", "
+              ++ resolveOperand frame spillW 32 d ]
+      else if (base == "MOV" || base == "MOVQ")
+              && (match s with | .reg n => "XMM".isPrefixOf n | _ => false)
+              && !isAnyMem d then
+        -- A plain `MOV` reading a packed vector register into a GP register: the
+        -- dead return-value materialization for a memory-return (`lfd_res = []`)
+        -- kernel — the batch8 body's `comRetReg` is a vector slot, but the result
+        -- is returned through memory, so `%rax` is ignored. Render the valid
+        -- `movq %xmm<k>, <gp>` (low-64 extract) rather than the ill-formed
+        -- `movq %ymm<k>, …` gas rejects.
+        match s with
+        | .reg sn =>
+            [ "\tmovq %xmm" ++ (sn.drop 3).toString ++ ", "
+                ++ resolveOperand frame spillW 64 d ]
+        | _ => [ "\t# UNHANDLED-VMOV " ++ opn ]
+      else
       -- **imm64 store** (the fri_proof Merkle u64 mixer constants): x86 has no
       -- imm64-to-memory encoding (`movq $imm, mem` takes a SIGN-EXTENDED imm32,
       -- so gas rejects any value ≥ 2³¹), and no scratch register exists at
@@ -681,6 +787,155 @@ def renderLopn (frame spillW : Nat) :
         | .reg an, .reg bn, .reg dn =>
             [ "\t" ++ mn ++ " " ++ zmmReg bn ++ ", " ++ zmmReg an ++ ", " ++ zmmReg dn ]
         | _, _, _ => [ "\t# UNHANDLED-VPACK " ++ opn ]
+      -- **YMM packed binary VEX ALU** (batch8): the 256-bit two-source packed
+      -- add / bitwise ops `VPADDD` / `VPXOR` / `VPOR` / `VPAND`, `d := a OP b`.
+      -- AT&T VEX 3-operand order is `src2, src1, dst`, so the sources print in
+      -- reverse of their IR order (`b` then `a`): `vpxor %ymm<b>, %ymm<a>,
+      -- %ymm<d>`. Operands are `XMM<k>` names resolved to `%ymm<k>` by
+      -- `resolveName` (the packed-lane width is fixed by the mnemonic, so the
+      -- scalar width argument is immaterial).
+      -- The commutative set also carries the packed multiplies and the qword add
+      -- (`VPMULDQ` signed 32×32→64, `VPMULUDQ` unsigned, `VPMULLQ` low-64,
+      -- `VPADDQ` qword add) — all `a OP b = b OP a`, so the spilled-operand-first
+      -- swap is sound for them exactly as for the bitwise ops.
+      else if opn == "VPADDD" || opn == "VPXOR" || opn == "VPOR"
+              || opn == "VPAND" || opn == "VPADDQ" || opn == "VPMULDQ"
+              || opn == "VPMULUDQ" || opn == "VPMULLQ" then
+        let mn := if opn == "VPADDD" then "vpaddd"
+                  else if opn == "VPXOR" then "vpxor"
+                  else if opn == "VPOR" then "vpor"
+                  else if opn == "VPAND" then "vpand"
+                  else if opn == "VPADDQ" then "vpaddq"
+                  else if opn == "VPMULDQ" then "vpmuldq"
+                  else if opn == "VPMULUDQ" then "vpmuludq"
+                  else "vpmullq"
+        match a, b, d with
+        | .reg an, .reg bn, .reg dn =>
+            -- AT&T VEX order is `mn <first>, <second>, <dest>` with `<first>` = `b`,
+            -- `<second>` = `a`. x86 requires `<dest>` and `<second>` to be
+            -- registers; `<first>` may be memory. These packed ops are commutative,
+            -- so a spilled operand is placed in the first (memory-allowed) slot by
+            -- swapping the two sources, and a spilled destination is computed into
+            -- `%ymm15` (saved to / restored from `vecSpillScratch`) then stored.
+            let bStr := resolveName frame spillW 32 bn
+            let aStr := resolveName frame spillW 32 an
+            let dStr := resolveName frame spillW 32 dn
+            let mB := isAnyMem b   -- first AT&T source in memory?
+            let mA := isAnyMem a   -- second AT&T source in memory?
+            if isVSpill d then
+              -- spilled dest: compute into %ymm15 (saved/restored), then store.
+              -- At most one source is memory here (no all-three-memory op occurs);
+              -- put the memory source first (commutative) so the second is a reg.
+              let (x, y) := if mA then (aStr, bStr) else (bStr, aStr)
+              (if rvs then [] else [ "\tvmovdqu " ++ vecSpillReg ++ ", " ++ vecSpillScratch ])
+                ++ [ "\t" ++ mn ++ " " ++ x ++ ", " ++ y ++ ", " ++ vecSpillReg,
+                     "\tvmovdqu " ++ vecSpillReg ++ ", " ++ dStr ]
+                ++ (if rvs then [] else [ "\tvmovdqu " ++ vecSpillScratch ++ ", " ++ vecSpillReg ])
+            else if mA && mB then
+              -- both sources in memory, register dest: use the dest register as the
+              -- accumulator — load the first source into it, then apply the op with
+              -- the second source as the (memory-allowed) first operand.
+              [ "\tvmovdqu " ++ bStr ++ ", " ++ dStr,
+                "\t" ++ mn ++ " " ++ aStr ++ ", " ++ dStr ++ ", " ++ dStr ]
+            else if mA then
+              -- only the second source is memory: swap so it is first.
+              [ "\t" ++ mn ++ " " ++ aStr ++ ", " ++ bStr ++ ", " ++ dStr ]
+            else
+              [ "\t" ++ mn ++ " " ++ bStr ++ ", " ++ aStr ++ ", " ++ dStr ]
+        | _, _, _ => [ "\t# UNHANDLED-VYMM " ++ opn ]
+      -- **YMM packed variable per-lane shift** (batch8 rotations): `VPSLLVD` /
+      -- `VPSRLVD`, `d := data (<<|>>) count` lane-wise. The `Lopn` sources are
+      -- `[data, count]`; AT&T VEX order is `mn <count>, <data>, <dst>` (count =
+      -- src2 = first, may be memory; data = src1 and dst must be registers). NOT
+      -- commutative, so a spilled `data`/`dst` is bounced through `%ymm15`
+      -- (saved/restored to `vecSpillScratch`); a spilled `count` stays memory.
+      else if opn == "VPSLLVD" || opn == "VPSRLVD" then
+        let mn := if opn == "VPSLLVD" then "vpsllvd" else "vpsrlvd"
+        match a, b, d with
+        | .reg an, .imm n, .reg dn =>
+            -- constant shift count: the per-lane counts are all `n`, so render the
+            -- immediate form `vpslld/vpsrld $n, <data>, <dst>` (data may be memory;
+            -- a spilled dst bounces through %ymm15).
+            let mnImm := if opn == "VPSLLVD" then "vpslld" else "vpsrld"
+            let dataStr := resolveName frame spillW 32 an
+            let dStr := resolveName frame spillW 32 dn
+            if isVSpill d then
+              (if rvs then [] else [ "\tvmovdqu " ++ vecSpillReg ++ ", " ++ vecSpillScratch ])
+                ++ [ "\t" ++ mnImm ++ " $" ++ toString n ++ ", " ++ dataStr ++ ", " ++ vecSpillReg,
+                     "\tvmovdqu " ++ vecSpillReg ++ ", " ++ dStr ]
+                ++ (if rvs then [] else [ "\tvmovdqu " ++ vecSpillScratch ++ ", " ++ vecSpillReg ])
+            else
+              [ "\t" ++ mnImm ++ " $" ++ toString n ++ ", " ++ dataStr ++ ", " ++ dStr ]
+        | .reg an, .reg bn, .reg dn =>
+            let cStr := resolveName frame spillW 32 bn   -- count (first AT&T)
+            let dataStr := resolveName frame spillW 32 an -- data (second AT&T)
+            let dStr := resolveName frame spillW 32 dn    -- dst
+            let mData := isVSpill a
+            let mDst := isVSpill d
+            if mDst && mData then
+              [ "\tvmovdqu " ++ vecSpillReg ++ ", " ++ vecSpillScratch,
+                "\tvmovdqu " ++ dataStr ++ ", " ++ vecSpillReg,
+                "\t" ++ mn ++ " " ++ cStr ++ ", " ++ vecSpillReg ++ ", " ++ vecSpillReg,
+                "\tvmovdqu " ++ vecSpillReg ++ ", " ++ dStr,
+                "\tvmovdqu " ++ vecSpillScratch ++ ", " ++ vecSpillReg ]
+            else if mDst then
+              [ "\tvmovdqu " ++ vecSpillReg ++ ", " ++ vecSpillScratch,
+                "\t" ++ mn ++ " " ++ cStr ++ ", " ++ dataStr ++ ", " ++ vecSpillReg,
+                "\tvmovdqu " ++ vecSpillReg ++ ", " ++ dStr,
+                "\tvmovdqu " ++ vecSpillScratch ++ ", " ++ vecSpillReg ]
+            else if mData then
+              [ "\tvmovdqu " ++ vecSpillReg ++ ", " ++ vecSpillScratch,
+                "\tvmovdqu " ++ dataStr ++ ", " ++ vecSpillReg,
+                "\t" ++ mn ++ " " ++ cStr ++ ", " ++ vecSpillReg ++ ", " ++ dStr,
+                "\tvmovdqu " ++ vecSpillScratch ++ ", " ++ vecSpillReg ]
+            else
+              [ "\t" ++ mn ++ " " ++ cStr ++ ", " ++ dataStr ++ ", " ++ dStr ]
+        | _, _, _ => [ "\t# UNHANDLED-VYMM " ++ opn ]
+      -- **YMM packed subtract** (NTT butterflies): `VPSUBD` / `VPSUBQ`,
+      -- `d := a - b` lane-wise. NOT commutative, so the operand roles are fixed:
+      -- AT&T VEX order `vpsub{d,q} <b>, <a>, <d>` computes `d = a - b`, where `b`
+      -- (src2, first) may be memory and `a` (src1, second) and `d` must be
+      -- registers — the same spill posture as `VPSLLVD`'s data/count split with
+      -- `a` in the data (must-be-reg) role and `b` in the count (may-be-mem) role.
+      else if opn == "VPSUBD" || opn == "VPSUBQ" then
+        let mn := if opn == "VPSUBD" then "vpsubd" else "vpsubq"
+        match a, b, d with
+        | .reg an, .reg bn, .reg dn =>
+            let bStr := resolveName frame spillW 32 bn    -- b = src2 (first, may be mem)
+            let aStr := resolveName frame spillW 32 an     -- a = src1 (second, reg)
+            let dStr := resolveName frame spillW 32 dn      -- dst (reg)
+            let mA := isVSpill a
+            let mDst := isVSpill d
+            if mDst && mA then
+              [ "\tvmovdqu " ++ vecSpillReg ++ ", " ++ vecSpillScratch,
+                "\tvmovdqu " ++ aStr ++ ", " ++ vecSpillReg,
+                "\t" ++ mn ++ " " ++ bStr ++ ", " ++ vecSpillReg ++ ", " ++ vecSpillReg,
+                "\tvmovdqu " ++ vecSpillReg ++ ", " ++ dStr,
+                "\tvmovdqu " ++ vecSpillScratch ++ ", " ++ vecSpillReg ]
+            else if mDst then
+              [ "\tvmovdqu " ++ vecSpillReg ++ ", " ++ vecSpillScratch,
+                "\t" ++ mn ++ " " ++ bStr ++ ", " ++ aStr ++ ", " ++ vecSpillReg,
+                "\tvmovdqu " ++ vecSpillReg ++ ", " ++ dStr,
+                "\tvmovdqu " ++ vecSpillScratch ++ ", " ++ vecSpillReg ]
+            else if mA then
+              [ "\tvmovdqu " ++ vecSpillReg ++ ", " ++ vecSpillScratch,
+                "\tvmovdqu " ++ aStr ++ ", " ++ vecSpillReg,
+                "\t" ++ mn ++ " " ++ bStr ++ ", " ++ vecSpillReg ++ ", " ++ dStr,
+                "\tvmovdqu " ++ vecSpillScratch ++ ", " ++ vecSpillReg ]
+            else
+              [ "\t" ++ mn ++ " " ++ bStr ++ ", " ++ aStr ++ ", " ++ dStr ]
+        | _, _, _ => [ "\t# UNHANDLED-VYMM " ++ opn ]
+      -- **VPBLENDD:<n>** (NTT lane recombine): `d := blend a b n`, per-dword
+      -- select `dst[i] = imm[i] ? b[i] : a[i]`. NOT commutative (the immediate
+      -- fixes the operand roles), so no spilled-operand swap. AT&T VEX order
+      -- `vpblendd $<n>, <b>, <a>, <d>` (src2 = b, src1 = a, dst = d).
+      else if "VPBLENDD".isPrefixOf opn then
+        match opn.splitOn ":", a, b, d with
+        | [_, nStr], .reg an, .reg bn, .reg dn =>
+            [ "\tvpblendd $" ++ nStr ++ ", " ++ resolveName frame spillW 32 bn
+                ++ ", " ++ resolveName frame spillW 32 an
+                ++ ", " ++ resolveName frame spillW 32 dn ]
+        | _, _, _, _ => [ "\t# UNHANDLED-VYMM " ++ opn ]
       else if stripAbiTag opn == "ANDN" then
         let w := mnemWidth opn
         [ "\tandn" ++ sizeSuffix w ++ " "
@@ -898,13 +1153,49 @@ def renderLopn (frame spillW : Nat) :
       [ "\t# UNHANDLED-LOPN " ++ opn ++ " dsts=" ++ toString dsts.length
           ++ " srcs=" ++ toString srcs.length ]
 
+/-! ### Printer pins: batch8 YMM VEX arms
+
+`XMM<k>` operand names resolve to the AVX `%ymm<k>` register, and the packed
+binary / shift-by-immediate `renderLopn` arms emit the AT&T VEX 3-operand form
+(`src2, src1, dst`). -/
+
+#guard resolveName 0 0 32 "XMM3" = "%ymm3"
+#guard renderLopn 0 0 false [.reg "XMM0"] "VPXOR" [.reg "XMM1", .reg "XMM2"]
+        = ["\tvpxor %ymm2, %ymm1, %ymm0"]
+#guard renderLopn 0 0 false [.reg "XMM0"] "VPADDD" [.reg "XMM1", .reg "XMM2"]
+        = ["\tvpaddd %ymm2, %ymm1, %ymm0"]
+#guard renderLopn 0 0 false [.reg "XMM0"] "VPSLLD:7" [.reg "XMM1"]
+        = ["\tvpslld $7, %ymm1, %ymm0"]
+#guard renderLopn 0 0 false [.reg "XMM0"] "VPSRLD:25" [.reg "XMM1"]
+        = ["\tvpsrld $25, %ymm1, %ymm0"]
+-- NTT butterfly arithmetic: signed/unsigned packed multiply, qword add, and the
+-- non-commutative packed subtract (`d = a - b`, sources printed `b, a`).
+#guard renderLopn 0 0 false [.reg "XMM0"] "VPMULDQ" [.reg "XMM1", .reg "XMM2"]
+        = ["\tvpmuldq %ymm2, %ymm1, %ymm0"]
+#guard renderLopn 0 0 false [.reg "XMM0"] "VPMULUDQ" [.reg "XMM1", .reg "XMM2"]
+        = ["\tvpmuludq %ymm2, %ymm1, %ymm0"]
+#guard renderLopn 0 0 false [.reg "XMM0"] "VPADDQ" [.reg "XMM1", .reg "XMM2"]
+        = ["\tvpaddq %ymm2, %ymm1, %ymm0"]
+#guard renderLopn 0 0 false [.reg "XMM0"] "VPSUBD" [.reg "XMM1", .reg "XMM2"]
+        = ["\tvpsubd %ymm2, %ymm1, %ymm0"]
+-- NTT lane routing: in-/cross-lane permutes by immediate, odd-lane dup, blend.
+#guard renderLopn 0 0 false [.reg "XMM0"] "VPSHUFD:216" [.reg "XMM1"]
+        = ["\tvpshufd $216, %ymm1, %ymm0"]
+#guard renderLopn 0 0 false [.reg "XMM0"] "VPERMQ:78" [.reg "XMM1"]
+        = ["\tvpermq $78, %ymm1, %ymm0"]
+#guard renderLopn 0 0 false [.reg "XMM0"] "VMOVSHDUP" [.reg "XMM1"]
+        = ["\tvmovshdup %ymm1, %ymm0"]
+#guard renderLopn 0 0 false [.reg "XMM0"] "VPBLENDD:170" [.reg "XMM1", .reg "XMM2"]
+        = ["\tvpblendd $170, %ymm2, %ymm1, %ymm0"]
+
 /-- Render one owned-RA `LinstrR` to its AT&T line(s) in a frame of size `frame`.
 
     Returns `[]` for `Lret`/`Lalign` (the leaf wrapper emits `ret`) and for the
     carry-out / MULX-high *bindings* (the flag / high word is a side effect of
     the matching data op), and a visible sentinel comment for any unexpected
     shape (never a silent drop). -/
-def renderLinstrR (frame spillW : Nat) (i : LinstrR) (lblPfx : String := "") : List String :=
+def renderLinstrR (frame spillW : Nat) (i : LinstrR) (lblPfx : String := "")
+    (rvs : Bool := false) : List String :=
   -- `lblPfx` makes the local `.L<l>` labels **function-scoped**: gas local labels
   -- are file-scoped, so two functions in one `.s` that both wrap a `loopLcmd`
   -- (top label `0`) would emit two `.L0:` and collide at assembly. `renderLfundef`
@@ -935,8 +1226,17 @@ def renderLinstrR (frame spillW : Nat) (i : LinstrR) (lblPfx : String := "") : L
       -- *standalone* widening (the `Com`-path `addCarryHi`) consumes the carry as
       -- a `reg 1` DATA value (zero-extended into the next add), so it MUST be
       -- materialised. Emit `setc`/`seto` + `movzbq` (matching the PROVEN
-      -- `lowerLinstrExtCov` `ADCXHI → setc dst` expansion). The data `ADCX` arm
-      -- below leaves CF as the carry-out and only flag-safe moves intervene.
+      -- `lowerLinstrExtCov` `ADCXHI → setc dst` expansion).
+      --
+      -- KNOWN GAP (carry-out flag-adjacency): `setc`/`seto` reads CF/OF from the
+      -- ambient flags the matching data `ADCX`/`ADOX` set. The DATA arm above
+      -- reconstructs its carry-IN from the RA-live `cin` register (`bt $0, cin`),
+      -- so its `adcx`/`adox` does not depend on flag order; the carry-OUT is held
+      -- in no register before this `setc`, so it cannot be reconstructed here. The
+      -- read is correct only when no flag-writing instruction sits between the
+      -- data op and this binding. The allocator carries no EFLAGS liveness, so
+      -- nothing enforces that adjacency; the emitted bodies keep the data op and
+      -- its `ADCXHI`/`ADOXHI` binding adjacent, which is what makes it hold.
       if isCarryOutBinding opn then
         match dsts with
         | [.reg dn] =>
@@ -954,7 +1254,7 @@ def renderLinstrR (frame spillW : Nat) (i : LinstrR) (lblPfx : String := "") : L
               [ "\t" ++ setcc ++ " " ++ gpReg8 dn, "\tmovzbq " ++ gpReg8 dn ++ ", " ++ gpReg64 dn ]
         | _ => []
       else
-        renderLopn frame spillW dsts opn srcs
+        renderLopn frame spillW rvs dsts opn srcs
   | .Lret => []
   | .Lalign => []
   | .Llabel _ l => [ ".L" ++ lblPfx ++ toString l ++ ":" ]
@@ -997,6 +1297,32 @@ def maxSpillIdx (body : VIR.JasminLprogExport.Lcmd) : Option Nat :=
           | _ => acc') acc
     | _ => acc) none
 
+/-- The maximum `kv.N` **vector-spill** slot index used in the body (`none` if the
+    body has no vector spills). Mirrors `maxSpillIdx` for the `kv.` class; a
+    GP-only / non-spilling body returns `none`, so no vector region is reserved. -/
+def maxVecSpillIdx (body : VIR.JasminLprogExport.Lcmd) : Option Nat :=
+  body.foldl (fun acc i =>
+    match i.li_i with
+    | .Lopn dsts _ srcs =>
+        (dsts ++ srcs).foldl (fun acc' o =>
+          match o with
+          | .reg nm =>
+              if "kv.".isPrefixOf nm then
+                match String.toNat? (nm.drop 3).toString with
+                | some k => some (max (acc'.getD 0) k)
+                | none => acc'
+              else acc'
+          | _ => acc') acc
+    | _ => acc) none
+
+/-- Bytes reserved for the vector-spill region: slot `0(%rsp)` is the `%ymm15`
+    save cell used by spill legalization, slots `1 … maxVec+1` are the `kv.N`
+    cells, so `32·(maxVec+2)`; `0` when the body has no `kv.N` slots. -/
+def vecSpillBytes (body : VIR.JasminLprogExport.Lcmd) : Nat :=
+  match maxVecSpillIdx body with
+  | some m => 32 * (m + 2)
+  | none => 0
+
 /-- True iff the body is a U64 kernel (any body mnemonic carries the `:64` tag or
     is `MOVQ`). The spill stride is then 8 bytes, else 4 — kernels are uniform
     width (`comToLfundefPhysAbi` tags every `regArith` op at the source width). -/
@@ -1034,7 +1360,11 @@ def frameSize (body : VIR.JasminLprogExport.Lcmd) : Nat :=
     let spillBytes := match maxSpillIdx body with
                       | some m => cell * (m + 1)
                       | none => 0
-    let raw := qsaveBytes + spillBytes
+    -- The vector-spill region sits at the BOTTOM of the frame (offsets `32·idx`
+    -- from `%rsp`); reserving it grows `frame` so the top-anchored qsave and GP
+    -- `k.N` cells stay disjoint from it. `0` for a body with no `kv.N` slots, so
+    -- every existing (GP-only) kernel's frame is unchanged.
+    let raw := qsaveBytes + spillBytes + vecSpillBytes body
     let f16 := (raw + 15) / 16 * 16
     -- A body that issues a real `call` needs `%rsp ≡ 0 (mod 16)` AT each call
     -- instruction (SysV): function entry is `≡ 8` (the pushed return address),
@@ -1048,8 +1378,8 @@ def frameSize (body : VIR.JasminLprogExport.Lcmd) : Nat :=
     epilogue (output stores + callee-save restore) are themselves ordinary
     `Lopn`s `comToLfundefPhysAbi` produced, so they render uniformly here. -/
 def renderLcmd (frame spillW : Nat) (body : VIR.JasminLprogExport.Lcmd)
-    (lblPfx : String := "") : List String :=
-  body.flatMap (fun i => renderLinstrR frame spillW i.li_i lblPfx)
+    (lblPfx : String := "") (rvs : Bool := false) : List String :=
+  body.flatMap (fun i => renderLinstrR frame spillW i.li_i lblPfx rvs)
 
 /-! ### Callee-saved GP park/restore for hand-built bodies (#596)
 
@@ -1138,7 +1468,7 @@ entry value before `ret`, so the function is re-callable. -/
     `comToLfundefPhysAbi`-produced body the save list is empty and this emits
     byte-identical `.s` to before. -/
 def renderLfundef (name : String) (body : VIR.JasminLprogExport.Lcmd)
-    (lblPfx : String := "") : String :=
+    (lblPfx : String := "") (rvs : Bool := false) : String :=
   let frame := frameSize body
   let spillW := if bodyIsU64 body then 64 else 32
   let saves := calleeSavedToSave body
@@ -1157,7 +1487,7 @@ def renderLfundef (name : String) (body : VIR.JasminLprogExport.Lcmd)
   -- (`renderLprogAtt`, or a driver concatenating several `renderLfundef`) passes
   -- `<name>_` so each function's labels are unique; a standalone single-function
   -- `.s` keeps the default `""` (bare `.L<l>`, no collision possible).
-  String.intercalate "\n" (header ++ renderLcmd frame spillW body lblPfx ++ footer) ++ "\n"
+  String.intercalate "\n" (header ++ renderLcmd frame spillW body lblPfx rvs ++ footer) ++ "\n"
 
 /-! ## 6. `.rodata` global constant tables (the NTT twiddle-table seam)
 
@@ -1293,12 +1623,12 @@ def provenanceTrailer (pv : Provenance) : String :=
     which emits no trailer, so a call site that does not pass one renders exactly
     the same text as before. -/
 def renderLprogAtt (p : VIR.JasminLprogExport.Lprog)
-    (prov : Option Provenance := none) : String :=
+    (prov : Option Provenance := none) (rvs : Bool := false) : String :=
   -- Multiple functions in one `.s`: pass `<name>_` so each function's local
   -- `.L` labels are unique (gas local labels are file-scoped — two functions
   -- both wrapping `loopLcmd` would otherwise collide on `.L0`).
   let funcs := String.intercalate "\n"
-    (p.lp_funcs.map (fun (n, f) => renderLfundef n f.lfd_body (n ++ "_")))
+    (p.lp_funcs.map (fun (n, f) => renderLfundef n f.lfd_body (n ++ "_") rvs))
   -- `.rodata` is appended only when the program declares globals (back-compat
   -- guard); for the default `lp_globs = []` this is `""` and `funcs` is returned
   -- unchanged (byte-identical to the pre-`.rodata` renderer).

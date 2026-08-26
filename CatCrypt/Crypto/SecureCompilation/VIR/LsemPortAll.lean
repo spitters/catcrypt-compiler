@@ -106,5 +106,5 @@ to concurrent edits of that shared manifest.
 Build this to force-compile the whole `lsem` port:
 `lake build CatCrypt.Crypto.SecureCompilation.VIR.LsemPortAll`.
 
-Status: see the compiler roadmap.
+Status: `../catcrypt-private/docs/compiler-correctness-status.md`.
 -/

@@ -14,7 +14,7 @@ factors of `E - 1` are below `2^32`.
 -/
 
 set_option autoImplicit false
-set_option maxRecDepth 10000
+set_option maxRecDepth 50000
 
 namespace CatCrypt.Crypto.Util.Ed25519L.Node6
 
@@ -33,10 +33,10 @@ theorem factorEFactors_prime : ∀ q ∈ factorEFactors, Nat.Prime q := by
   simp only [factorEFactors] at hq
   fin_cases hq <;> norm_num
 
-theorem factorEFermat : powMod 5 (factorE - 1) factorE = 1 := by native_decide
+theorem factorEFermat : powMod 5 (factorE - 1) factorE = 1 := by decide
 
 theorem factorEWitness :
-    ∀ q ∈ factorEFactors, powMod 5 ((factorE - 1) / q) factorE ≠ 1 := by native_decide
+    ∀ q ∈ factorEFactors, powMod 5 ((factorE - 1) / q) factorE ≠ 1 := by decide
 
 theorem factorE_prime : Nat.Prime factorE :=
   lucas_of_certificate factorE (by decide) 5 factorEFactors

@@ -13,7 +13,7 @@ with witness `2`. All factors of `I - 1` are below `2^32`.
 -/
 
 set_option autoImplicit false
-set_option maxRecDepth 10000
+set_option maxRecDepth 50000
 
 namespace CatCrypt.Crypto.Util.Ed25519L.Node1
 
@@ -32,10 +32,10 @@ theorem factorIFactors_prime : ∀ q ∈ factorIFactors, Nat.Prime q := by
   simp only [factorIFactors] at hq
   fin_cases hq <;> norm_num
 
-theorem factorIFermat : powMod 2 (factorI - 1) factorI = 1 := by native_decide
+theorem factorIFermat : powMod 2 (factorI - 1) factorI = 1 := by decide
 
 theorem factorIWitness :
-    ∀ q ∈ factorIFactors, powMod 2 ((factorI - 1) / q) factorI ≠ 1 := by native_decide
+    ∀ q ∈ factorIFactors, powMod 2 ((factorI - 1) / q) factorI ≠ 1 := by decide
 
 theorem factorI_prime : Nat.Prime factorI :=
   lucas_of_certificate factorI (by decide) 2 factorIFactors

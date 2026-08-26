@@ -15,7 +15,7 @@ modulus is below `2^64`, so the Fermat, witness, and product checks reduce by
 -/
 
 set_option autoImplicit false
-set_option maxRecDepth 10000
+set_option maxRecDepth 50000
 
 namespace CatCrypt.Crypto.Util.BN254.Node1
 
@@ -32,10 +32,10 @@ theorem pf1_prod : pf1Factors.prod = pf1 - 1 := by decide
 
 theorem pf1_primeFactors : ∀ q ∈ pf1Factors, Nat.Prime q := by intro q hq; fin_cases hq <;> norm_num
 
-theorem pf1_fermat : powMod 2 (pf1 - 1) pf1 = 1 := by native_decide
+theorem pf1_fermat : powMod 2 (pf1 - 1) pf1 = 1 := by decide
 
 theorem pf1_witness :
-    ∀ q ∈ pf1Factors, powMod 2 ((pf1 - 1) / q) pf1 ≠ 1 := by native_decide
+    ∀ q ∈ pf1Factors, powMod 2 ((pf1 - 1) / q) pf1 ≠ 1 := by decide
 
 /-- `Nat.Prime pf1`, machine-checked by a Lucas certificate (witness `2`). -/
 theorem pf1_prime : Nat.Prime pf1 :=

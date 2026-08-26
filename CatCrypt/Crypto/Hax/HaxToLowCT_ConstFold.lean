@@ -329,277 +329,252 @@ namespace SmokeTests
 /-! Smoke tests use `BEq` (via `==`) rather than `=` because
     `substConsts` is a `partial def`: its equation compiler does not
     expose definitional equations, so `Eq` cannot be decided.
-    `ImpExpr.beq` from `Hax/AST.lean` IS reducible, so `decide` (or
-    `native_decide`) discharges the BEq form. -/
+    `ImpExpr.beq` from `Hax/AST.lean` IS reducible, so `#guard`
+    evaluates the BEq form through the interpreter. -/
 
 -- Basic lookups: var → lit.
-example : (substMlkemConsts (.var "K") == .lit (.int 3)) = true := by native_decide
-example : (substMlkemConsts (.var "N") == .lit (.int 256)) = true := by native_decide
-example : (substMlkemConsts (.var "Q") == .lit (.int 3329)) = true := by native_decide
-example : (substMlkemConsts (.var "ETA1") == .lit (.int 2)) = true := by native_decide
-example : (substMlkemConsts (.var "ETA2") == .lit (.int 2)) = true := by native_decide
-example : (substMlkemConsts (.var "DU") == .lit (.int 10)) = true := by native_decide
-example : (substMlkemConsts (.var "DV") == .lit (.int 4)) = true := by native_decide
-example : (substMlkemConsts (.var "SS_BYTES") == .lit (.int 32)) = true := by
-  native_decide
-example : (substMlkemConsts (.var "SEED_BYTES") == .lit (.int 32)) = true := by
-  native_decide
+#guard substMlkemConsts (.var "K") == .lit (.int 3)
+#guard substMlkemConsts (.var "N") == .lit (.int 256)
+#guard substMlkemConsts (.var "Q") == .lit (.int 3329)
+#guard substMlkemConsts (.var "ETA1") == .lit (.int 2)
+#guard substMlkemConsts (.var "ETA2") == .lit (.int 2)
+#guard substMlkemConsts (.var "DU") == .lit (.int 10)
+#guard substMlkemConsts (.var "DV") == .lit (.int 4)
+#guard substMlkemConsts (.var "SS_BYTES") == .lit (.int 32)
+#guard substMlkemConsts (.var "SEED_BYTES") == .lit (.int 32)
 
 -- Unknown name passes through unchanged.
-example : (substMlkemConsts (.var "unknown") == .var "unknown") = true := by
-  native_decide
+#guard substMlkemConsts (.var "unknown") == .var "unknown"
 
 -- Literals and unitVal are identity.
-example : (substMlkemConsts (.lit (.int 7)) == .lit (.int 7)) = true := by
-  native_decide
-example : (substMlkemConsts .unitVal == .unitVal) = true := by native_decide
+#guard substMlkemConsts (.lit (.int 7)) == .lit (.int 7)
+#guard substMlkemConsts .unitVal == .unitVal
 
 -- The motivating forFold motif: var-bound → lit-bound.
-example : (substMlkemConsts
+#guard substMlkemConsts
     (.forFold "i" (.lit (.int 0)) (.var "K") .unitVal) ==
-    (.forFold "i" (.lit (.int 0)) (.lit (.int 3)) .unitVal)) = true := by
-  native_decide
+    (.forFold "i" (.lit (.int 0)) (.lit (.int 3)) .unitVal)
 
 -- Nested substitution under `.app`.
-example : (substMlkemConsts
+#guard substMlkemConsts
     (.app "Mul" [.var "K", .var "N"]) ==
-    (.app "Mul" [.lit (.int 3), .lit (.int 256)])) = true := by native_decide
+    (.app "Mul" [.lit (.int 3), .lit (.int 256)])
 
 -- Tuple recursion.
-example : (substMlkemConsts
+#guard substMlkemConsts
     (.tuple [.var "K", .var "N", .var "Q"]) ==
-    (.tuple [.lit (.int 3), .lit (.int 256), .lit (.int 3329)])) = true := by
-  native_decide
+    (.tuple [.lit (.int 3), .lit (.int 256), .lit (.int 3329)])
 
 -- letBind recursion (rhs and body).
-example : (substMlkemConsts
+#guard substMlkemConsts
     (.letBind "x" (.var "K") (.var "N")) ==
-    (.letBind "x" (.lit (.int 3)) (.lit (.int 256)))) = true := by native_decide
+    (.letBind "x" (.lit (.int 3)) (.lit (.int 256)))
 
 -- ifThenElse recursion.
-example : (substMlkemConsts
+#guard substMlkemConsts
     (.ifThenElse (.var "K") (.var "N") (.var "Q")) ==
-    (.ifThenElse (.lit (.int 3)) (.lit (.int 256)) (.lit (.int 3329)))) = true := by
-  native_decide
+    (.ifThenElse (.lit (.int 3)) (.lit (.int 256)) (.lit (.int 3329)))
 
 -- proj recursion.
-example : (substMlkemConsts
+#guard substMlkemConsts
     (.proj (.var "K") 0) ==
-    (.proj (.lit (.int 3)) 0)) = true := by native_decide
+    (.proj (.lit (.int 3)) 0)
 
 -- seq recursion.
-example : (substMlkemConsts
+#guard substMlkemConsts
     (.seq (.var "K") (.var "N")) ==
-    (.seq (.lit (.int 3)) (.lit (.int 256)))) = true := by native_decide
+    (.seq (.lit (.int 3)) (.lit (.int 256)))
 
 -- borrow / deref recursion.
-example : (substMlkemConsts (.borrow (.var "K")) == .borrow (.lit (.int 3))) = true := by
-  native_decide
-example : (substMlkemConsts (.deref (.var "K")) == .deref (.lit (.int 3))) = true := by
-  native_decide
+#guard substMlkemConsts (.borrow (.var "K")) == .borrow (.lit (.int 3))
+#guard substMlkemConsts (.deref (.var "K")) == .deref (.lit (.int 3))
 
 -- assign recursion (rhs only; name is a string, not an expression).
-example : (substMlkemConsts (.assign "x" (.var "K")) == .assign "x" (.lit (.int 3))) =
-    true := by native_decide
+#guard substMlkemConsts (.assign "x" (.var "K")) == .assign "x" (.lit (.int 3))
 
 -- forLoop recursion (lo, hi, body).
-example : (substMlkemConsts
+#guard substMlkemConsts
     (.forLoop "i" (.var "K") (.var "N") .unitVal) ==
-    (.forLoop "i" (.lit (.int 3)) (.lit (.int 256)) .unitVal)) = true := by
-  native_decide
+    (.forLoop "i" (.lit (.int 3)) (.lit (.int 256)) .unitVal)
 
 -- forLoopRev recursion.
-example : (substMlkemConsts
+#guard substMlkemConsts
     (.forLoopRev "i" (.var "K") (.var "N") .unitVal) ==
-    (.forLoopRev "i" (.lit (.int 3)) (.lit (.int 256)) .unitVal)) = true := by
-  native_decide
+    (.forLoopRev "i" (.lit (.int 3)) (.lit (.int 256)) .unitVal)
 
 -- whileLoop / whileFold recursion.
-example : (substMlkemConsts
+#guard substMlkemConsts
     (.whileLoop (.var "K") (.var "N")) ==
-    (.whileLoop (.lit (.int 3)) (.lit (.int 256)))) = true := by native_decide
+    (.whileLoop (.lit (.int 3)) (.lit (.int 256)))
 
-example : (substMlkemConsts
+#guard substMlkemConsts
     (.whileFold (.var "K") (.var "N")) ==
-    (.whileFold (.lit (.int 3)) (.lit (.int 256)))) = true := by native_decide
+    (.whileFold (.lit (.int 3)) (.lit (.int 256)))
 
 -- break_ / continue_.
-example : (substMlkemConsts (.break_ none) == .break_ none) = true := by native_decide
-example : (substMlkemConsts (.break_ (some (.var "K"))) ==
-    .break_ (some (.lit (.int 3)))) = true := by native_decide
-example : (substMlkemConsts .continue_ == .continue_) = true := by native_decide
+#guard substMlkemConsts (.break_ none) == .break_ none
+#guard substMlkemConsts (.break_ (some (.var "K"))) ==
+    .break_ (some (.lit (.int 3)))
+#guard substMlkemConsts .continue_ == .continue_
 
 -- earlyReturn / questionMark.
-example : (substMlkemConsts (.earlyReturn (.var "K")) ==
-    .earlyReturn (.lit (.int 3))) = true := by native_decide
-example : (substMlkemConsts (.questionMark (.var "K")) ==
-    .questionMark (.lit (.int 3))) = true := by native_decide
+#guard substMlkemConsts (.earlyReturn (.var "K")) ==
+    .earlyReturn (.lit (.int 3))
+#guard substMlkemConsts (.questionMark (.var "K")) ==
+    .questionMark (.lit (.int 3))
 
 -- forFoldRev / forFoldReturn / forFoldRevReturn / whileFoldReturn.
-example : (substMlkemConsts
+#guard substMlkemConsts
     (.forFoldRev "i" (.var "K") (.var "N") .unitVal) ==
-    (.forFoldRev "i" (.lit (.int 3)) (.lit (.int 256)) .unitVal)) = true := by
-  native_decide
+    (.forFoldRev "i" (.lit (.int 3)) (.lit (.int 256)) .unitVal)
 
-example : (substMlkemConsts
+#guard substMlkemConsts
     (.forFoldReturn "i" (.var "K") (.var "N") .unitVal) ==
-    (.forFoldReturn "i" (.lit (.int 3)) (.lit (.int 256)) .unitVal)) = true := by
-  native_decide
+    (.forFoldReturn "i" (.lit (.int 3)) (.lit (.int 256)) .unitVal)
 
-example : (substMlkemConsts
+#guard substMlkemConsts
     (.forFoldRevReturn "i" (.var "K") (.var "N") .unitVal) ==
-    (.forFoldRevReturn "i" (.lit (.int 3)) (.lit (.int 256)) .unitVal)) = true := by
-  native_decide
+    (.forFoldRevReturn "i" (.lit (.int 3)) (.lit (.int 256)) .unitVal)
 
-example : (substMlkemConsts
+#guard substMlkemConsts
     (.whileFoldReturn (.var "K") (.var "N")) ==
-    (.whileFoldReturn (.lit (.int 3)) (.lit (.int 256)))) = true := by native_decide
+    (.whileFoldReturn (.lit (.int 3)) (.lit (.int 256)))
 
 -- cfBreak / cfContinue / cfBreakContinue.
-example : (substMlkemConsts (.cfBreak (.var "K")) == .cfBreak (.lit (.int 3))) =
-    true := by native_decide
-example : (substMlkemConsts (.cfContinue (.var "K")) == .cfContinue (.lit (.int 3))) =
-    true := by native_decide
-example : (substMlkemConsts (.cfBreakContinue (.var "K")) ==
-    .cfBreakContinue (.lit (.int 3))) = true := by native_decide
+#guard substMlkemConsts (.cfBreak (.var "K")) == .cfBreak (.lit (.int 3))
+#guard substMlkemConsts (.cfContinue (.var "K")) == .cfContinue (.lit (.int 3))
+#guard substMlkemConsts (.cfBreakContinue (.var "K")) ==
+    .cfBreakContinue (.lit (.int 3))
 
 -- match_ recursion (scrutinee and arm bodies; patterns are unchanged).
-example : (substMlkemConsts
+#guard substMlkemConsts
     (.match_ (.var "K") [(.wildcard, .var "N")]) ==
-    (.match_ (.lit (.int 3)) [(.wildcard, .lit (.int 256))])) = true := by
-  native_decide
+    (.match_ (.lit (.int 3)) [(.wildcard, .lit (.int 256))])
 
 -- ML-DSA table sanity check.
-example : (substMldsaConsts (.var "Q") == .lit (.int 8380417)) = true := by
-  native_decide
-example : (substMldsaConsts (.var "K") == .lit (.int 6)) = true := by native_decide
-example : (substMldsaConsts (.var "L") == .lit (.int 5)) = true := by native_decide
+#guard substMldsaConsts (.var "Q") == .lit (.int 8380417)
+#guard substMldsaConsts (.var "K") == .lit (.int 6)
+#guard substMldsaConsts (.var "L") == .lit (.int 5)
 
 /-! ### foldArith smoke tests -/
 
 -- Basic arithmetic folds (each op + lowercase alias).
-example : (foldArith (.app "Mul" [.lit (.int 7), .lit (.int 6)]) ==
-            ImpExpr.lit (.int 42)) = true := by native_decide
-example : (foldArith (.app "mul" [.lit (.int 7), .lit (.int 6)]) ==
-            ImpExpr.lit (.int 42)) = true := by native_decide
-example : (foldArith (.app "Add" [.lit (.int 100), .lit (.int 28)]) ==
-            ImpExpr.lit (.int 128)) = true := by native_decide
-example : (foldArith (.app "add" [.lit (.int 100), .lit (.int 28)]) ==
-            ImpExpr.lit (.int 128)) = true := by native_decide
-example : (foldArith (.app "Sub" [.lit (.int 256), .lit (.int 1)]) ==
-            ImpExpr.lit (.int 255)) = true := by native_decide
-example : (foldArith (.app "sub" [.lit (.int 256), .lit (.int 1)]) ==
-            ImpExpr.lit (.int 255)) = true := by native_decide
-example : (foldArith (.app "Div" [.lit (.int 256), .lit (.int 2)]) ==
-            ImpExpr.lit (.int 128)) = true := by native_decide
-example : (foldArith (.app "div" [.lit (.int 256), .lit (.int 2)]) ==
-            ImpExpr.lit (.int 128)) = true := by native_decide
-example : (foldArith (.app "Rem" [.lit (.int 17), .lit (.int 5)]) ==
-            ImpExpr.lit (.int 2)) = true := by native_decide
-example : (foldArith (.app "rem" [.lit (.int 17), .lit (.int 5)]) ==
-            ImpExpr.lit (.int 2)) = true := by native_decide
+#guard foldArith (.app "Mul" [.lit (.int 7), .lit (.int 6)]) ==
+            ImpExpr.lit (.int 42)
+#guard foldArith (.app "mul" [.lit (.int 7), .lit (.int 6)]) ==
+            ImpExpr.lit (.int 42)
+#guard foldArith (.app "Add" [.lit (.int 100), .lit (.int 28)]) ==
+            ImpExpr.lit (.int 128)
+#guard foldArith (.app "add" [.lit (.int 100), .lit (.int 28)]) ==
+            ImpExpr.lit (.int 128)
+#guard foldArith (.app "Sub" [.lit (.int 256), .lit (.int 1)]) ==
+            ImpExpr.lit (.int 255)
+#guard foldArith (.app "sub" [.lit (.int 256), .lit (.int 1)]) ==
+            ImpExpr.lit (.int 255)
+#guard foldArith (.app "Div" [.lit (.int 256), .lit (.int 2)]) ==
+            ImpExpr.lit (.int 128)
+#guard foldArith (.app "div" [.lit (.int 256), .lit (.int 2)]) ==
+            ImpExpr.lit (.int 128)
+#guard foldArith (.app "Rem" [.lit (.int 17), .lit (.int 5)]) ==
+            ImpExpr.lit (.int 2)
+#guard foldArith (.app "rem" [.lit (.int 17), .lit (.int 5)]) ==
+            ImpExpr.lit (.int 2)
 
 -- Division by 0 is not folded.
-example : (foldArith (.app "Div" [.lit (.int 10), .lit (.int 0)]) ==
-            .app "Div" [.lit (.int 10), .lit (.int 0)]) = true := by native_decide
+#guard foldArith (.app "Div" [.lit (.int 10), .lit (.int 0)]) ==
+            .app "Div" [.lit (.int 10), .lit (.int 0)]
 
 -- Remainder by 0 is not folded.
-example : (foldArith (.app "Rem" [.lit (.int 10), .lit (.int 0)]) ==
-            .app "Rem" [.lit (.int 10), .lit (.int 0)]) = true := by native_decide
+#guard foldArith (.app "Rem" [.lit (.int 10), .lit (.int 0)]) ==
+            .app "Rem" [.lit (.int 10), .lit (.int 0)]
 
 -- Non-arithmetic ops pass through (preserving recursion on children).
-example : (foldArith (.app "poly_add" [.var "a", .var "b"]) ==
-            .app "poly_add" [.var "a", .var "b"]) = true := by native_decide
+#guard foldArith (.app "poly_add" [.var "a", .var "b"]) ==
+            .app "poly_add" [.var "a", .var "b"]
 
 -- Unrecognized op with literal args also passes through.
-example : (foldArith (.app "BitAnd" [.lit (.int 7), .lit (.int 3)]) ==
-            .app "BitAnd" [.lit (.int 7), .lit (.int 3)]) = true := by native_decide
+#guard foldArith (.app "BitAnd" [.lit (.int 7), .lit (.int 3)]) ==
+            .app "BitAnd" [.lit (.int 7), .lit (.int 3)]
 
 -- Arity ≠ 2: no fold.
-example : (foldArith (.app "Add" [.lit (.int 1), .lit (.int 2), .lit (.int 3)]) ==
-            .app "Add" [.lit (.int 1), .lit (.int 2), .lit (.int 3)]) = true := by
-  native_decide
-example : (foldArith (.app "Add" [.lit (.int 1)]) ==
-            .app "Add" [.lit (.int 1)]) = true := by native_decide
+#guard foldArith (.app "Add" [.lit (.int 1), .lit (.int 2), .lit (.int 3)]) ==
+            .app "Add" [.lit (.int 1), .lit (.int 2), .lit (.int 3)]
+#guard foldArith (.app "Add" [.lit (.int 1)]) ==
+            .app "Add" [.lit (.int 1)]
 
 -- One operand non-literal: no fold (but children still recursed into).
-example : (foldArith (.app "Mul" [.var "x", .lit (.int 2)]) ==
-            .app "Mul" [.var "x", .lit (.int 2)]) = true := by native_decide
+#guard foldArith (.app "Mul" [.var "x", .lit (.int 2)]) ==
+            .app "Mul" [.var "x", .lit (.int 2)]
 
 -- Nested fold (bottom-up): inner Div reduces, then outer Mul.
-example : (foldArith
+#guard foldArith
     (.app "Mul" [.lit (.int 2), .app "Div" [.lit (.int 256), .lit (.int 2)]])
-    == ImpExpr.lit (.int 256)) = true := by native_decide
+    == ImpExpr.lit (.int 256)
 
 -- Triple nesting: Sub (Mul 4 8) (Div 16 8) = 32 - 2 = 30.
-example : (foldArith
+#guard foldArith
     (.app "Sub"
       [.app "Mul" [.lit (.int 4), .lit (.int 8)],
        .app "Div" [.lit (.int 16), .lit (.int 8)]])
-    == ImpExpr.lit (.int 30)) = true := by native_decide
+    == ImpExpr.lit (.int 30)
 
 -- Literal pass-through.
-example : (foldArith (.lit (.int 7)) == .lit (.int 7)) = true := by native_decide
-example : (foldArith .unitVal == .unitVal) = true := by native_decide
-example : (foldArith (.var "x") == .var "x") = true := by native_decide
+#guard foldArith (.lit (.int 7)) == .lit (.int 7)
+#guard foldArith .unitVal == .unitVal
+#guard foldArith (.var "x") == .var "x"
 
 -- Recursion through letBind: rhs and body both folded.
-example : (foldArith
+#guard foldArith
     (.letBind "x" (.app "Mul" [.lit (.int 3), .lit (.int 4)])
       (.app "Add" [.lit (.int 1), .lit (.int 2)])) ==
-    .letBind "x" (.lit (.int 12)) (.lit (.int 3))) = true := by native_decide
+    .letBind "x" (.lit (.int 12)) (.lit (.int 3))
 
 -- Recursion through tuple.
-example : (foldArith
+#guard foldArith
     (.tuple [.app "Mul" [.lit (.int 2), .lit (.int 3)],
              .app "Add" [.lit (.int 4), .lit (.int 5)]]) ==
-    .tuple [.lit (.int 6), .lit (.int 9)]) = true := by native_decide
+    .tuple [.lit (.int 6), .lit (.int 9)]
 
 -- Recursion through ifThenElse.
-example : (foldArith
+#guard foldArith
     (.ifThenElse (.app "Sub" [.lit (.int 5), .lit (.int 5)])
       (.app "Mul" [.lit (.int 2), .lit (.int 3)])
       (.app "Add" [.lit (.int 1), .lit (.int 1)])) ==
-    .ifThenElse (.lit (.int 0)) (.lit (.int 6)) (.lit (.int 2))) = true := by
-  native_decide
+    .ifThenElse (.lit (.int 0)) (.lit (.int 6)) (.lit (.int 2))
 
 -- Recursion through forFold (lo, hi, body all folded).
-example : (foldArith
+#guard foldArith
     (.forFold "i" (.lit (.int 0)) (.app "Div" [.lit (.int 256), .lit (.int 2)])
       (.app "Mul" [.lit (.int 2), .lit (.int 3)])) ==
-    .forFold "i" (.lit (.int 0)) (.lit (.int 128)) (.lit (.int 6))) = true := by
-  native_decide
+    .forFold "i" (.lit (.int 0)) (.lit (.int 128)) (.lit (.int 6))
 
 -- Recursion through match_ (scrutinee + arm bodies).
-example : (foldArith
+#guard foldArith
     (.match_ (.app "Add" [.lit (.int 1), .lit (.int 2)])
       [(.wildcard, .app "Mul" [.lit (.int 4), .lit (.int 5)])]) ==
-    .match_ (.lit (.int 3)) [(.wildcard, .lit (.int 20))]) = true := by
-  native_decide
+    .match_ (.lit (.int 3)) [(.wildcard, .lit (.int 20))]
 
 -- Combined pipeline: substMlkemConsts then foldArith reduces forFold hi.
-example : (foldArith (substMlkemConsts
+#guard foldArith (substMlkemConsts
     (.forFold "i" (.lit (.int 0)) (.app "Div" [.var "N", .lit (.int 2)]) .unitVal))
-    == .forFold "i" (.lit (.int 0)) (.lit (.int 128)) .unitVal) = true := by
-  native_decide
+    == .forFold "i" (.lit (.int 0)) (.lit (.int 128)) .unitVal
 
 -- mlkemFold convenience: same as the previous example.
-example : (mlkemFold
+#guard mlkemFold
     (.forFold "i" (.lit (.int 0)) (.app "Div" [.var "N", .lit (.int 2)]) .unitVal)
-    == .forFold "i" (.lit (.int 0)) (.lit (.int 128)) .unitVal) = true := by
-  native_decide
+    == .forFold "i" (.lit (.int 0)) (.lit (.int 128)) .unitVal
 
 -- mlkemFold on K * N = 3 * 256 = 768.
-example : (mlkemFold (.app "Mul" [.var "K", .var "N"]) ==
-            .lit (.int 768)) = true := by native_decide
+#guard mlkemFold (.app "Mul" [.var "K", .var "N"]) ==
+            .lit (.int 768)
 
 -- mldsaFold on K * L = 6 * 5 = 30.
-example : (mldsaFold (.app "Mul" [.var "K", .var "L"]) ==
-            .lit (.int 30)) = true := by native_decide
+#guard mldsaFold (.app "Mul" [.var "K", .var "L"]) ==
+            .lit (.int 30)
 
 -- mldsaFold on GAMMA1 / 2 = 524288 / 2 = 262144.
-example : (mldsaFold (.app "Div" [.var "GAMMA1", .lit (.int 2)]) ==
-            .lit (.int 262144)) = true := by native_decide
+#guard mldsaFold (.app "Div" [.var "GAMMA1", .lit (.int 2)]) ==
+            .lit (.int 262144)
 
 end SmokeTests
 

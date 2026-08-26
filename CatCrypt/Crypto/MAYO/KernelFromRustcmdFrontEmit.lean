@@ -5,6 +5,7 @@ Authors: CatCrypt Contributors
 -/
 import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 set_option autoImplicit false
 
@@ -239,7 +240,7 @@ def kernelLprog (N : Nat) : Option Lprog :=
       (abiW := 0))
 
 /-- The owned AT&T `.s` text (the front-generated `mayo_quadform_n8_rc`). -/
-def kernelAsm (N : Nat) : Option String := (kernelLprog N).map renderLprogAtt
+def kernelAsm (N : Nat) : Option String := (kernelLprog N).map CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned
 
 /-! ## 7. Independent schoolbook `GF(16)` reference (`mayo_kernel_ref.h`) -/
 

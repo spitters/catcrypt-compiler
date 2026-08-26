@@ -8,6 +8,8 @@ import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta
 import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta_LeafAgrees
 import CatCrypt.Crypto.Hax.HaxToLowCTSim_AppSideCond
 import CatCrypt.Crypto.MLKEM.NttPolyVerified
+import CatCrypt.Crypto.Jasmin.TowerLimbStore
+import CatCrypt.Crypto.Jasmin.TowerTupleLoad
 
 /-!
 # ML-KEM simulation bridge (fourth protocol; first PQC)
@@ -711,10 +713,12 @@ def mlkemBuiltins : Builtins := fun f _vals =>
   -- `mlkemBridge ≡ True` pairing (Friction #13).
   | _                    => none
 
-/-- The concrete ML-KEM LeafSpec.  All calls return `default`. -/
+/-- The concrete ML-KEM LeafSpec.  All calls return `default`; a limb store
+    writes the word into the destination's limb. -/
 def mlkemLeafSpec : LeafSpec where
   call      := fun _f _dt _argTs _oldDest _args => default
-  limbStore := fun _loc _oldV _idx _v => default
+  limbStore := CatCrypt.Crypto.Jasmin.LowCT.concreteLimbStore
+  tupleLoad := CatCrypt.Crypto.Jasmin.LowCT.concreteTupleLoad
 
 /-! ### §12.1  Bridge-trivial key lemma -/
 
@@ -953,9 +957,8 @@ constructors as the natural ML-KEM slot types.  For other tower
 types it falls through to the vacuous `True`, matching the existing
 `mlkemBridge` on legacy slots.
 
-Content semantics on the polynomial constructors are deliberately
-left as `True` for now: a full content-bearing relation would need
-to model
+Content semantics on the polynomial constructors are `True`: a full
+content-bearing relation would need to model
 
 * coefficient-vs-NTT representation (Friction #13);
 * byte-encoding for `polyvec_encode` / `polyvec_decode` (12-bit
@@ -1562,8 +1565,8 @@ restructure):
 Net axiom-count change: **+6** in this section, BUT strictly weaker
 axiom content.  The algebraic content of (iii) is now verified inside
 Lean (the def's body uses `polyAddVerified` etc. from
-`NttPolyVerified`), and the byte-encoder of (ii) is no longer load-
-bearing in the trust boundary.  This matches the MAYO/UOV
+`NttPolyVerified`), and the byte-encoder of (ii) sits outside the
+trust boundary.  This matches the MAYO/UOV
 restructure exactly: the irreducible trust boundary becomes
 compilation correctness of a non-Lean artifact (rust + jasmin +
 LLVM codegen) against a verified Lean def, with no arithmetic in
