@@ -150,9 +150,23 @@ jobs:
         # ending at an anonymous kill partway through one job. The time bound keeps
         # the VM alive for the cache save; an early stop is not a failure here —
         # the completeness step is the verdict.
+        # The memory guard stops the lean workers before the VM is out of
+        # memory: a hard VM death skips the cache save and pins every later
+        # run to the same module, while a stopped batch fails gracefully, the
+        # save runs, and the next run resumes at the guard point with a warm
+        # cache and full free memory.
         run: |
+          ( while sleep 20; do
+              avail=$(awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo)
+              if [ "$avail" -lt 1500 ]; then
+                echo "mem-guard: MemAvailable=${avail}M - stopping lean workers to keep the cache save alive"
+                pkill -f 'bin/lean' || true
+              fi
+            done ) &
+          GUARD=$!
           timeout 60m bash scripts/rot-guard-build.sh --build 64 \
             || echo "build stopped early (rc=$?); progress is kept by the cache save"
+          kill "$GUARD" 2>/dev/null || true
 
       - name: Save the package build cache
         if: always()
