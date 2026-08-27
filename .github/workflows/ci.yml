@@ -98,6 +98,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The mathlib cache, the package build cache, and the build outputs
+      # together exceed the runner OS volume's ~14 GB headroom; exhausting it
+      # kills the VM without logs. Dropping the preinstalled toolchains the
+      # job never uses reclaims ~25 GB.
+      - name: Free runner disk
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+            /usr/local/.ghcup /opt/hostedtoolcache/CodeQL 2>/dev/null || true
+          df -h / | tail -1
+
       - name: Install elan + the pinned Lean toolchain
         run: |
           curl -sSfL https://elan.lean-lang.org/elan-init.sh | sh -s -- -y --default-toolchain "$(cat lean-toolchain)"
@@ -156,10 +166,12 @@ jobs:
         # save runs, and the next run resumes at the guard point with a warm
         # cache and full free memory.
         run: |
-          ( while sleep 3; do
+          ( n=0; while sleep 3; do
               avail=$(awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo)
-              if [ "$avail" -lt 3000 ]; then
-                echo "mem-guard: MemAvailable=${avail}M - stopping lean workers to keep the cache save alive"
+              dfree=$(df -m --output=avail / | tail -1 | tr -d ' ')
+              n=$((n+1)); [ $((n % 40)) -eq 0 ] && echo "heartbeat: mem=${avail}M disk=${dfree}M"
+              if [ "$avail" -lt 3000 ] || [ "$dfree" -lt 2000 ]; then
+                echo "guard: mem=${avail}M disk=${dfree}M - stopping lean workers to keep the cache save alive"
                 pkill -f 'bin/lean' || true
               fi
             done ) &
