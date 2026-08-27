@@ -156,9 +156,9 @@ jobs:
         # save runs, and the next run resumes at the guard point with a warm
         # cache and full free memory.
         run: |
-          ( while sleep 20; do
+          ( while sleep 3; do
               avail=$(awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo)
-              if [ "$avail" -lt 1500 ]; then
+              if [ "$avail" -lt 3000 ]; then
                 echo "mem-guard: MemAvailable=${avail}M - stopping lean workers to keep the cache save alive"
                 pkill -f 'bin/lean' || true
               fi
