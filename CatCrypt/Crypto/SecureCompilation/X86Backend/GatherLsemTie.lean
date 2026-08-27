@@ -277,7 +277,11 @@ theorem bin_case (frame spillW : Nat) {ls : Lstate 64} {s : JState 64} (hc : LJC
     hne1 hne2 hne3 (halu (lowerJOperand s1))
   have hstep : lsemStep (.Lopn [.reg d] opn [s0, s1]) ls
       = some ((ls.setReg d (f (evalOperand ls s0) (evalOperand ls s1))).nextPc) := by
-    simp only [lsemStep, List.map_cons, List.map_nil, happly]
+    cases s0 with
+    | reg r => simp only [lsemStep, List.map_cons, List.map_nil, happly]
+    | imm v => simp only [lsemStep, List.map_cons, List.map_nil, happly]
+    | arr b o => simp [tiedOperand] at h0
+    | arrIdx b i sc => simp [tiedOperand] at h0
   refine ⟨_, _, hlow, hstep, ?_⟩
   rw [evalOperand_agree hc s0 h0, evalOperand_agree hc s1 h1]
   by_cases hd : lowerJOperand s0 = JOperand.reg d
@@ -322,7 +326,11 @@ theorem mov_case (frame spillW : Nat) {ls : Lstate 64} {s : JState 64} (hc : LJC
     (by rfl) halu
   have hstep : lsemStep (.Lopn [.reg d] "MOV:64" [src]) ls
       = some ((ls.setReg d (evalOperand ls src)).nextPc) := by
-    simp only [lsemStep, List.map_cons, List.map_nil, strip_MOV, applyOpn]
+    cases src with
+    | reg r => simp only [lsemStep, List.map_cons, List.map_nil, strip_MOV, applyOpn]
+    | imm v => simp only [lsemStep, List.map_cons, List.map_nil, strip_MOV, applyOpn]
+    | arr b o => simp [tiedOperand] at hsrc
+    | arrIdx b i sc => simp [tiedOperand] at hsrc
   refine ⟨_, _, hlow, hstep, ?_⟩
   rw [evalOperand_agree hc src hsrc]
   refine LJCorr_write hc d _ _ (fun r => ?_)

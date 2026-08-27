@@ -93,6 +93,7 @@ def main : IO UInt32 := do
   -- — a separate encoder increment, not a load-CSE concern.
   let lpCSE := CatCrypt.Crypto.Optimizer.LoadCSE.loadCSELprog lp
   IO.println s!"  cross-register loads -> reg moves (verified load-CSE) : {cseRewrites}"
+  IO.FS.createDirAll "bench/keccak_compare/gen"
   let ownedPath : System.FilePath := "bench/keccak_compare/gen/keccak_f1600_x86_from_lean.s"
   let asm := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned lpCSE
   let t0 ← IO.monoNanosNow

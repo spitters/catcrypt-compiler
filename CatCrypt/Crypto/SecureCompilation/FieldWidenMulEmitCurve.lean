@@ -163,6 +163,7 @@ def curveWiden128Asm : String :=
 /-- The byte-correct widening-mul owned-emit driver. -/
 def emitWiden : IO Unit := do
   let path : System.FilePath := "bench/secp256k1_compare/gen_com/curve_widen128.s"
+  IO.FS.createDirAll "bench/secp256k1_compare/gen_com"
   IO.FS.writeFile path curveWiden128Asm
   IO.println s!"CURVE-WIDEN128 emit OK : {path} ({curveWiden128Asm.toUTF8.size} bytes, symbol curve_widen128)"
 

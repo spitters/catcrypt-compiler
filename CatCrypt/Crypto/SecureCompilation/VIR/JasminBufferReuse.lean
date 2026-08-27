@@ -327,6 +327,9 @@ theorem expr_denote_agreeOff {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
   | vsimd sop =>
       exact expr_denote_of_argTys hag _
         (by cases sop <;> simp [DialectSignature.sig, SimdOp.argTys])
+  | vymm op =>
+      exact expr_denote_of_argTys hag _
+        (by by_cases h : op.isBinary <;> simp [DialectSignature.sig, h])
   | mulhi w => exact expr_denote_of_argTys hag _ (by simp [DialectSignature.sig])
   | addCarryLo w => exact expr_denote_of_argTys hag _ (by simp [DialectSignature.sig])
   | addCarryHi w => exact expr_denote_of_argTys hag _ (by simp [DialectSignature.sig])

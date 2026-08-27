@@ -447,6 +447,7 @@ theorem chacha20BlockEmit_shape :
     directory, under the symbol `chacha20_block`. The orchestrator assembles +
     perf-compares it against HACL* (`bench/chacha_compare`). -/
 def emit : IO Unit := do
+  IO.FS.createDirAll "bench/chacha_compare/gen_com"
   IO.FS.writeFile "bench/chacha_compare/gen_com/chacha20_block_catcrypt.s"
     chacha20BlockEmitJazz
   IO.println "CatCrypt whole-block emit OK : bench/chacha_compare/gen_com/chacha20_block_catcrypt.s"

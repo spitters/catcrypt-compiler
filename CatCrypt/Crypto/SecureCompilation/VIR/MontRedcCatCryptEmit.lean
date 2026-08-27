@@ -190,7 +190,7 @@ def montRedcWordCom : Com catCryptDialect Γᵣ (.sword 64) :=
 /-- **The single-word REDC step denotes EXACTLY the spec's reduced word.**
 
     The first Montgomery-REDC-through-`catCryptDialect` `denote = spec` witness:
-    the `Com catCryptDialect` built from the keystone `bvMul`/`bvMulHi`/
+    the `Com catCryptDialect` built from the `bvMul`/`bvMulHi`/
     `bvAddCarryLo`/`bvAddCarryHi` ops computes precisely the reduced word `t` of
     the clean Montgomery REDC spec `montRedcWordSpec`. -/
 theorem montRedcWordCom_denote (Tlo Thi q qp : BitVec 64) :
@@ -266,7 +266,7 @@ word-op schedule and the `denote = spec` tie above are not vacuous. -/
 /-- The radix of the single-word step, `R = 2⁶⁴`. -/
 @[reducible] def Rword : Nat := 2 ^ 64
 
-/-- **Non-vacuity: the REDC word schedule computes the genuine Montgomery
+/-- **Non-vacuity: the REDC word schedule computes the Montgomery
     reduction.** At a worked corner (`q = 3329`, `q' = 3327` the ML-KEM
     constants, an input `T = Tlo + Thi·R` with `T < R·q`), the spec's reduced word
     equals `Number.montgomeryReduce q R q' T` — the abstract prime-parametric
@@ -294,7 +294,8 @@ def montRedcWordJazz : String := emitJazz "mont_redc_step" montRedcWordJasmin
 
 /-- Emit driver: write the lowered Montgomery REDC step to a `.s` file for the
     orchestrator to `jasminc` + micro-bench. -/
-def emit : IO Unit :=
+def emit : IO Unit := do
+  IO.FS.createDirAll "bench/bls12381_fieldmul_compare/gen_com"
   IO.FS.writeFile "bench/bls12381_fieldmul_compare/gen_com/mont_redc_step.s" montRedcWordJazz
 
 end CatCrypt.Crypto.SecureCompilation.VIR.MontRedcCatCryptEmit

@@ -8,8 +8,8 @@ import CatCrypt.Crypto.Optimizer.Rewrite.Peephole
 /-!
 # Secret/public taint qualifier for the `Com`/VIR substrate (#594)
 
-This file gives the typed VIR `jasminDialect` `Com` substrate a first-class
-**secret / public taint qualifier** and proves that one existing optimizer
+A **secret / public taint qualifier** for the typed VIR `jasminDialect`
+`Com` substrate, with a proof that one existing optimizer
 pass (`peepCom`, the verified local peephole rewrite) preserves the taint
 typing invariant. It is the seed of *CT-preservation as a compositional typing
 invariant*: rather than re-deriving constant-time safety after every pass from
@@ -66,7 +66,7 @@ collapse only ever *drops* an input variable, so a binder's taint can only move
 So the compositional-CT invariant extends across two passes: peephole *preserves*
 taint, the egraph engine *declassifies monotonically* — both keep the program
 within its taint budget. `WellTainted` itself is total (each binder's level is
-*defined* as `exprTaint`), so the egraph pass's genuine content is the
+*defined* as `exprTaint`), so the egraph pass's content here is the
 monotonicity, not a bare `WellTainted` lift.
 
 All goals closed.
@@ -236,6 +236,7 @@ theorem peepExpr_exprTaint {Γ : Ctxt jasminDialect} {t : JasminTy}
   | vpslldq n => rfl
   | vpsrldq n => rfl
   | vsimd op => rfl
+  | vymm op => rfl
   | mulhi w => rfl
   | addCarryLo w => rfl
   | addCarryHi w => rfl
@@ -307,7 +308,7 @@ collapses *change* the argument set of a binder — `x + 0` (args `x`, `zero`)
 becomes `or x x` (args `x`, `x`); `x * 0` (args `x`, `zero`) becomes
 `and zero zero`. So `exprTaint` is **not** preserved exactly.
 
-What it *does* satisfy is the genuine declassification discipline the module
+What it *does* satisfy is the declassification discipline the module
 header describes: every rewrite only ever drops one of the two input variables,
 so a binder's output taint can only **stay the same or move down** the lattice
 (`⊑ₛ`) — never up. The engine never turns a public binder secret. Because the
@@ -413,6 +414,7 @@ theorem rewriteExpr_taint_le {Γ : Ctxt jasminDialect} {t : JasminTy}
   | vpslldq n => simp [rewriteExpr]
   | vpsrldq n => simp [rewriteExpr]
   | vsimd op => simp [rewriteExpr]
+  | vymm op => simp [rewriteExpr]
   | mulhi w => simp [rewriteExpr]
   | addCarryLo w => simp [rewriteExpr]
   | addCarryHi w => simp [rewriteExpr]
@@ -569,7 +571,7 @@ theorem rewriteCom_comMaxTaint_le {Γ : Ctxt jasminDialect} {t : JasminTy} :
 composing the per-pass bound (`rewriteCom_comMaxTaint_le`) via transitivity of
 `⊑ₛ` — the scalar summary is transitively composable where the per-binder
 `ComTaintLe` is not. The egraph analogue of `peepCom_wellTainted`: this pass's
-genuine, non-vacuous, *composable* declassification invariant. -/
+composable declassification invariant. -/
 theorem saturateCom_comMaxTaint_le {Γ : Ctxt jasminDialect} {t : JasminTy} :
     ∀ (fuel : Nat) (T : Taint Γ) (c : Com jasminDialect Γ t) (k : KEnv Γ),
       comMaxTaint T (saturateCom fuel c k) ⊑ₛ comMaxTaint T c
@@ -588,7 +590,7 @@ theorem saturateCom_comMaxTaint_le {Γ : Ctxt jasminDialect} {t : JasminTy} :
 The `demoMulZero` program from `Egraph.lean` (`x * 0` via an explicit
 `regConst 0` binder) under a `sec`-input assignment: the engine rewrites the
 `mul x c0` binder (args `x`, `c0`) to `and c0 c0`, dropping the secret `x` and
-keeping only the public constant `c0` — a genuine declassification of that
+keeping only the public constant `c0` — a declassification of that
 binder from `sec` to `pub`. `ComTaintLe` records this drop per-binder; the
 overall secrecy level of the whole program drops from `sec` to `pub`. -/
 
@@ -606,8 +608,8 @@ example : ComTaintLe egDemoTaint (rewriteCom demoMulZero demoK) demoMulZero :=
 joins the secret `x`). -/
 example : comMaxTaint egDemoTaint demoMulZero = .sec := by decide
 
-/-- After saturation it has dropped to `pub` — the secret no longer flows into
-any surviving binder. -/
+/-- After saturation the maximum taint is `pub`: the secret flows into no
+surviving binder. -/
 example : comMaxTaint egDemoTaint (saturateCom 4 demoMulZero demoK) = .pub := by
   decide
 

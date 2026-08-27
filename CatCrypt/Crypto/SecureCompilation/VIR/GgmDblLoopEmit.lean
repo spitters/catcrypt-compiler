@@ -226,10 +226,10 @@ theorem ggm_phys_body_expected :
 /-! ## 5. KAT smoke checks -/
 
 -- Concrete functional KAT: doubling `1` twelve times = `4096`.
-/-- info: 0x0000000000001000#64 -/
+/-- info: 4096#64 -/
 #guard_msgs in #eval (ggmDblLoop 12).denote (.cons (1 : BitVec 64) .nil)
 
-/-- info: 0x0000000000001000#64 -/
+/-- info: 4096#64 -/
 #guard_msgs in #eval ((1 : BitVec 64) <<< 12)
 
 end CatCrypt.Crypto.SecureCompilation.VIR.GgmDblLoopEmit

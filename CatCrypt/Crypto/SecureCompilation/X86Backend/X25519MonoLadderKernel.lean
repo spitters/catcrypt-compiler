@@ -120,6 +120,23 @@ def rebaseInstr (rmap : String → String) (bmap : String → String)
   | .neg d     => .neg (rmap d)
   | .setc d    => .setc (rmap d)
   | .and_ d s  => .and_ (rmap d) (rebaseOperand rmap s)
+  -- `test`/`cmp` have no destination: both operands are reads, both renamed.
+  | .test a s  => .test (rmap a) (rebaseOperand rmap s)
+  | .cmp a s   => .cmp (rmap a) (rebaseOperand rmap s)
+  | .not_ d    => .not_ (rmap d)
+  | .andn d a b => .andn (rmap d) (rmap a) (rmap b)
+  | .rol d amt => .rol (rmap d) (rebaseOperand rmap amt)
+  | .ror d amt => .ror (rmap d) (rebaseOperand rmap amt)
+  | .rorx d src amt => .rorx (rmap d) (rmap src) (rebaseOperand rmap amt)
+  | .shlx d src c => .shlx (rmap d) (rmap src) (rmap c)
+  | .shrx d src c => .shrx (rmap d) (rmap src) (rmap c)
+  | .sarx d src c => .sarx (rmap d) (rmap src) (rmap c)
+  -- `srcW` is a width, not a name, so it is carried through unchanged.
+  | .movzx d sw src => .movzx (rmap d) sw (rmap src)
+  | .movsx d sw src => .movsx (rmap d) sw (rmap src)
+  -- `lea` performs no memory access: destination and both address registers are
+  -- register names (renamed via `rmap`); the scale and displacement are literals.
+  | .lea d base idx scale off => .lea (rmap d) (rmap base) (rmap idx) scale off
   | .or_ d s   => .or_ (rmap d) (rebaseOperand rmap s)
   | .xor_ d s  => .xor_ (rmap d) (rebaseOperand rmap s)
   | .shl d s   => .shl (rmap d) (rebaseOperand rmap s)

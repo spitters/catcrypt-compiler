@@ -330,8 +330,9 @@ def rfcOut : BitVec 32 × BitVec 32 × BitVec 32 × BitVec 32 :=
   , getLane0 (qrComC.denote V)
   , getLane0 (qrComD.denote V) )
 
--- Expected RFC-8439 §2.1 single-quarter-round output (printed as `(0x…, …)`).
-/-- info: (0xea2a92f4#32, 0xcb1cf8ce#32, 0x4581472e#32, 0x5881c4bb#32) -/
+-- Expected RFC-8439 §2.1 single-quarter-round output
+-- (0xea2a92f4, 0xcb1cf8ce, 0x4581472e, 0x5881c4bb in decimal).
+/-- info: (3928658676#32, 3407673550#32, 1166100270#32, 1484899515#32) -/
 #guard_msgs in
 #eval rfcOut
 

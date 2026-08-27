@@ -9,7 +9,7 @@ import CatCrypt.Crypto.Optimizer.Rewrite.AbsentRewrites
 /-!
 # Verified double-negation elimination pass for `Com` (`neg(neg x) ↦ x`)
 
-A **genuine denotation-preserving `Com → Com` optimizer pass** over the typed
+A denotation-preserving `Com → Com` optimizer pass over the typed
 VIR `jasminDialect`, complementary to the bounded equality-saturation engine in
 `Egraph.lean` and the local syntactic peephole in `Peephole.lean`. It eliminates
 **double negation** at the expression level: `neg (neg x) ↦ x`.
@@ -55,7 +55,7 @@ identity form `binE .or y y` (which denotes `y ||| y = y`, cost 1, reuses the
 already-in-scope `y` — no De Bruijn renumbering, exactly the identity-collapse
 discipline of `Egraph.rewriteBin`).
 
-## Preservation theorems (genuine, not `rfl`)
+## Preservation theorems
 
 * `negElimExpr_denote` : per-`Expr` denotation equality under a consistent
   environment (real `BitVec` algebra: `0 - (0 - y) = y`, via
@@ -211,7 +211,7 @@ theorem zsub_neg_or {w : Nat} (y : BitVec w) :
 
 /-- **Soundness of `negElimBin`.** Under a consistent env, any expression
 `negElimBin` produces denotes the same value as the original `binE bop a b`.
-A genuine `BitVec`-algebra proof (the `0 - (0 - y) = y` double-negation
+A `BitVec`-algebra proof (the `0 - (0 - y) = y` double-negation
 identity via `neg_neg_rewrite`), **not** `rfl`. -/
 theorem negElimBin_sound {Γ : Ctxt jasminDialect} {w : Nat}
     (bop : JasminBinOp) (a b : Ctxt.Var Γ (.reg w)) (k : NEnv Γ)
@@ -280,6 +280,7 @@ theorem negElimExpr_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
   | vpslldq n => simp [negElimExpr]
   | vpsrldq n => simp [negElimExpr]
   | vsimd op => simp [negElimExpr]
+  | vymm op => simp [negElimExpr]
   | mulhi w => simp [negElimExpr]
   | addCarryLo w => simp [negElimExpr]
   | addCarryHi w => simp [negElimExpr]
@@ -341,6 +342,7 @@ theorem negElimExpr_cost_le {Γ : Ctxt jasminDialect} {t : JasminTy}
   | vpslldq n => simp [negElimExpr]
   | vpsrldq n => simp [negElimExpr]
   | vsimd op => simp [negElimExpr]
+  | vymm op => simp [negElimExpr]
   | mulhi w => simp [negElimExpr]
   | addCarryLo w => simp [negElimExpr]
   | addCarryHi w => simp [negElimExpr]
@@ -435,6 +437,7 @@ theorem exprEntry_holds {Γ : Ctxt jasminDialect} {w : Nat}
   | vpslldq n => exact True.intro
   | vpsrldq n => exact True.intro
   | vsimd op => exact True.intro
+  | vymm op => exact True.intro
   | mulhi w => exact True.intro
   | addCarryLo w => exact True.intro
   | addCarryHi w => exact True.intro

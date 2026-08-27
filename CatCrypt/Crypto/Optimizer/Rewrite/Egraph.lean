@@ -8,7 +8,7 @@ import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 /-!
 # Verified bounded equality-saturation rewrite engine for `Com` (#274, Pass 1)
 
-This is a **genuine structural `Com → Com` rewrite engine** over the typed VIR
+This is a structural `Com → Com` rewrite engine over the typed VIR
 `jasminDialect` (`CatCrypt/Crypto/SecureCompilation/VIR/JasminDialect.lean`),
 not an analysis-as-decision identity pass. Where `StrengthReduce.lean`,
 `DeadCodeElim.lean`, `CommonSubexprElim.lean`, etc. keep the `Com` unchanged
@@ -55,7 +55,7 @@ reduction (`x*2^k → x<<k`) is the core lowering used in NTT butterflies and
 Montgomery ladders; the identity/annihilator collapses remove the algebraic
 no-ops a Montgomery restructuring leaves behind.
 
-## Preservation theorems (genuine, not `rfl`)
+## Preservation theorems
 
 * `rewriteExpr_denote` : per-Expr denotation equality (real BitVec algebra).
 * `saturateCom_denote`  : `(saturateCom k c).denote V = c.denote V`, by
@@ -161,7 +161,7 @@ def binE {Γ : Ctxt jasminDialect} {w : Nat} (op : JasminBinOp)
 
 /-! ### Soundness lemmas for the BitVec identities -/
 
-/-- `x * 2^k = x <<< k` on `BitVec w` (genuine strength reduction). This is the
+/-- `x * 2^k = x <<< k` on `BitVec w`. This is the
 core algebraic rewrite: replace a multiply (cost 4) with a shift (cost 1). -/
 theorem mul_pow2_eq_shl {w : Nat} (x : BitVec w) (k : Nat) :
     x * (BitVec.ofNat w (2 ^ k)) = x <<< k := by
@@ -257,8 +257,7 @@ def rewriteBin {Γ : Ctxt jasminDialect} {w : Nat}
 /-- **Soundness of `rewriteBin`.** When the known-constant env is consistent
 with `V`, any expression `rewriteBin` produces denotes the same value as the
 original `binE bop a b`. This is the per-rule denotation-equality the
-equality-saturation engine composes — a genuine `BitVec`-algebra proof, not
-`rfl`. -/
+equality-saturation engine composes, proved by `BitVec` algebra. -/
 theorem rewriteBin_sound {Γ : Ctxt jasminDialect} {w : Nat}
     (bop : JasminBinOp) (a b : Ctxt.Var Γ (.reg w))
     (k : KEnv Γ) (V : Ctxt.Valuation Γ) (hk : KEnv.Consistent k V)
@@ -335,6 +334,7 @@ theorem rewriteExpr_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
   | vpslldq n => simp [rewriteExpr]
   | vpsrldq n => simp [rewriteExpr]
   | vsimd op => simp [rewriteExpr]
+  | vymm op => simp [rewriteExpr]
   | mulhi w => simp [rewriteExpr]
   | addCarryLo w => simp [rewriteExpr]
   | addCarryHi w => simp [rewriteExpr]
@@ -390,6 +390,7 @@ theorem rewriteExpr_cost_le {Γ : Ctxt jasminDialect} {t : JasminTy}
   | vpslldq n => simp [rewriteExpr]
   | vpsrldq n => simp [rewriteExpr]
   | vsimd op => simp [rewriteExpr]
+  | vymm op => simp [rewriteExpr]
   | mulhi w => simp [rewriteExpr]
   | addCarryLo w => simp [rewriteExpr]
   | addCarryHi w => simp [rewriteExpr]
@@ -467,8 +468,8 @@ theorem extendK_consistent {Γ : Ctxt jasminDialect} {t : JasminTy}
 
 /-- **Denotation preservation for one pass.** `rewriteCom c k` denotes the same
 function as `c`, for any env `k` consistent with the valuation. Proved by
-induction over the `Com` let-chain — **not** `rfl`: each binder's expression is
-genuinely rewritten via the denotation-preserving `rewriteExpr`. -/
+induction over the `Com` let-chain: each binder's expression is
+rewritten via the denotation-preserving `rewriteExpr`. -/
 theorem rewriteCom_denote {Γ : Ctxt jasminDialect} {t : JasminTy} :
     ∀ (c : Com jasminDialect Γ t) (k : KEnv Γ) (V : Ctxt.Valuation Γ),
       KEnv.Consistent k V → (rewriteCom c k).denote V = c.denote V
@@ -606,7 +607,7 @@ example : ctSafeComJ (saturateCom 4 demoMulZero demoK) = ctSafeComJ demoMulZero 
 
 /-! ## 13. Strength-reduction lemma exercised on a concrete width
 
-`mul_pow2_eq_shl` is the genuine `x * 2^k = x <<< k` strength-reduction identity.
+`mul_pow2_eq_shl` is the `x * 2^k = x <<< k` strength-reduction identity.
 Although the in-engine rule set keeps shift-amount materialisation as the
 documented residual, the lemma itself is fully proved and usable; we exercise it
 on a concrete 32-bit instance. -/

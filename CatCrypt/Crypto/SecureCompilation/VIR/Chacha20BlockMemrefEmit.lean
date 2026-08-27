@@ -610,6 +610,7 @@ def chacha20BlockMemrefJazz : String :=
     buffer, no `jasminc` DCE drops them — fairly benchable + KAT-able vs HACL*. The
     orchestrator assembles + perf-compares against HACL* (`bench/chacha_compare`). -/
 def emit : IO Unit := do
+  IO.FS.createDirAll "bench/chacha_compare/gen_com"
   IO.FS.writeFile "bench/chacha_compare/gen_com/chacha20_block_memref.s"
     chacha20BlockMemrefJazz
   IO.println "CatCrypt whole-block memref emit OK : bench/chacha_compare/gen_com/chacha20_block_memref.s"

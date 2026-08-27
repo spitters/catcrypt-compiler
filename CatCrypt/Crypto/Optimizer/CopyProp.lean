@@ -41,7 +41,7 @@ Replacing `z` by `a.there` throughout the body is therefore denotation-preservin
   then recurses;
 * otherwise it leaves the binding and recurses.
 
-## Preservation theorem (genuine, not `rfl`)
+## Preservation theorem
 
 * `copyProp_denote` : `(copyProp c).denote V = c.denote V`, by induction over the
   `Com` let-chain, using the de-Bruijn substitution laws
@@ -243,6 +243,7 @@ theorem isCopy_denote {Γ : Ctxt jasminDialect} {bs : JasminTy}
   | vpslldq n => simp only [isCopy] at he; exact absurd he (by simp)
   | vpsrldq n => simp only [isCopy] at he; exact absurd he (by simp)
   | vsimd op => simp only [isCopy] at he; exact absurd he (by simp)
+  | vymm op => simp only [isCopy] at he; exact absurd he (by simp)
   | mulhi w => simp only [isCopy] at he; exact absurd he (by simp)
   | addCarryLo w => simp only [isCopy] at he; exact absurd he (by simp)
   | addCarryHi w => simp only [isCopy] at he; exact absurd he (by simp)

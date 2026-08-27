@@ -8,7 +8,7 @@ import CatCrypt.Crypto.Optimizer.Rewrite.Egraph
 /-!
 # Verified constant-folding / partial-evaluation for `Com` (jasminDialect)
 
-A **genuine structural `Com → Com` constant-folding pass** over the typed VIR
+A structural `Com → Com` constant-folding pass over the typed VIR
 `jasminDialect`, in the same vein as `Optimizer/Rewrite/Egraph.lean` (which it
 imports for its known-constant-environment infrastructure) and
 `Optimizer/ComDCE.lean`. Where `Egraph.lean` fires algebraic rules when the
@@ -35,7 +35,7 @@ optimisation: a known classical operand of a gate is folded in, collapsing the
 gate. Here the "gate" is a `regArith` op and the "classical operand" is a
 `regConst` binder.
 
-## Preservation theorem (genuine, not `rfl`)
+## Preservation theorem
 
 * `foldBin_sound` : per-fold `BitVec`-algebra denotation equality (real, not
   `rfl`): the full-fold arm relies on `BitVec.ofNat_toNat` to undo the
@@ -132,7 +132,7 @@ def foldBin {Γ : Ctxt jasminDialect} {w : Nat}
 
 /-- **Soundness of `foldBin`.** Under a known-constant env consistent with `V`,
 any expression `foldBin` produces denotes the same value as the original
-`binE bop a b`. The full-fold arm is a genuine `BitVec`-algebra fact (undoing
+`binE bop a b`. The full-fold arm is a `BitVec`-algebra fact (undoing
 the `toNat` round-trip of the materialised constant via `BitVec.ofNat_toNat`),
 not `rfl`. -/
 theorem foldBin_sound {Γ : Ctxt jasminDialect} {w : Nat}
@@ -249,6 +249,7 @@ theorem foldExpr_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
   | vpslldq n => simp [foldExpr]
   | vpsrldq n => simp [foldExpr]
   | vsimd op => simp [foldExpr]
+  | vymm op => simp [foldExpr]
   | mulhi w => simp [foldExpr]
   | addCarryLo w => simp [foldExpr]
   | addCarryHi w => simp [foldExpr]
@@ -275,7 +276,7 @@ def foldCom {Γ : Ctxt jasminDialect} {t : JasminTy} :
 /-- **Denotation preservation for `foldCom`.** `foldCom c k` denotes the same
 function as `c`, for any env `k` consistent with the valuation. Proved by
 induction over the `Com` let-chain — **not** `rfl`: each binder's expression is
-genuinely folded via the denotation-preserving `foldExpr`, and the env is
+folded via the denotation-preserving `foldExpr`, and the env is
 threaded consistently using `Egraph.extendK_consistent` (folding `e` does not
 change its denotation, so the constant the binder claims is unchanged). -/
 theorem foldCom_denote {Γ : Ctxt jasminDialect} {t : JasminTy} :

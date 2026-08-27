@@ -23,8 +23,8 @@ that result as a Lean axiom and uses it to build an end-to-end transfer
 theorem from CryptoSSA programs to x86-64 assembly, by composition with
 the (unconditionally proved) `compiler_preserves_uc` of `Framework.lean`.
 
-Track A3 in `BLS/NEXT.md`: "cite path" — make the Jasmin paper
-load-bearing in Lean without re-mechanizing x86 semantics ourselves.
+Track A3 in `BLS/NEXT.md`: "cite path" — cite the Jasmin paper's
+x86 CT result in Lean without re-mechanizing x86 semantics ourselves.
 
 ## What is and isn't axiomatized
 
@@ -165,7 +165,7 @@ that property across the trusted back-end.
 ### Boundary of the Lean CT guarantee (read before citing this)
 
 This axiom is **the boundary** of what the Lean development proves about
-constant-time.  Everything *above* it is a genuine Lean proof; everything
+constant-time.  Everything *above* it is a Lean proof; everything
 *at and below* it is trusted, imported from the cited paper:
 
 * **Proved in Lean (syntactic, axiom-free of this axiom):**
@@ -192,7 +192,7 @@ constant-time.  Everything *above* it is a genuine Lean proof; everything
   meaning lives entirely in the cited paper's model and in `jasminc`'s
   implementation matching that model.
 
-Stated honestly: the Lean development establishes *syntactic*
+The Lean development establishes *syntactic*
 CT-whitelist preservation from the user-facing source predicate down to
 the emitted Jasmin; the leap to hardware CT is this external axiom over
 an opaque `X86Prog.isCT`, not a Lean proof. -/
@@ -266,11 +266,12 @@ theorem cryptoSSA_to_x86_preserves_ct
 /-! ## Smoke test
 
 Pick a tiny Jasmin program and exercise the connector end-to-end.
-The instantiation uses `sorry` for the parts that aren't yet lemma'd
-(the CryptoSSA ↔ Jasmin denotational match, the `Jasminc.compilesTo`
-fact about a specific `jasminc` invocation, and the source-side UC
-proof). The point of the smoke test is to check that the *axiom shape*
-typechecks: `cryptoSSA_to_x86_preserves_uc` accepts these inputs and
+The facts that live outside Lean — the CryptoSSA ↔ Jasmin denotational
+match, the `Jasminc.compilesTo` fact about a specific `jasminc`
+invocation, and the source-side UC proof — are hypotheses of the
+example, so its body is an actual application of
+`cryptoSSA_to_x86_preserves_uc`. The point of the smoke test is to
+check the *axiom shape*: the connector accepts these inputs and
 delivers a UC statement about the x86 target.
 
 The example mirrors `S2NBignumSSA.Simple` (a 2-instruction add/sub).
@@ -289,12 +290,12 @@ def trivialJasmin : JasminProg :=
 
 /-- Existence of *some* x86 program that `jasminc` produces from
 `trivialJasmin`, plus an end-to-end UC statement about it derived
-through the connector. This is a *type-level* smoke test: the body
-is left as `sorry` because it depends on facts about an external
-toolchain (`Jasminc.compilesTo`, the actual x86 binary, and the
-CryptoSSA-side denotational match). The point is that
-`cryptoSSA_to_x86_preserves_uc` accepts these inputs and produces a
-UC statement about the x86 target. -/
+through the connector. This is a *type-level* smoke test: the facts
+about the external toolchain — the x86 binary `jasminc` emits for
+`trivialJasmin`, its `Jasminc.compilesTo` witness, and the
+CryptoSSA-side denotational match — are hypotheses, so the body is
+an application of `cryptoSSA_to_x86_preserves_uc` producing a UC
+statement about the x86 target. -/
 example
     {E : EventSig} {n : Nat}
     (handler : ∀ e : E.Event, SPComp (E.Resp e))
@@ -302,21 +303,19 @@ example
     (cssa : hon → StatefulITreeN S n E (out ⊕ leak))
     (F : hon → StatefulITreeN S n E (out ⊕ view))
     (ε : ℝ≥0∞)
-    (hsec : UCEmulatesConcurrentStateful handler n ε cssa F) :
+    (hsec : UCEmulatesConcurrentStateful handler n ε cssa F)
+    (x86 : X86Prog)
+    (h_jasmin_x86 : Jasminc.compilesTo trivialJasmin x86)
+    (h_cssa_jasmin :
+      CompilerCorrectStateful cssa
+        (denoteJasmin (hon := hon) (S := S) (out := out) (leak := leak)
+                      (E := E) (n := n) trivialJasmin)) :
     ∃ x86 : X86Prog,
       UCEmulatesConcurrentStateful handler n ε
         (denoteX86 (hon := hon) (S := S) (out := out) (leak := leak)
-                   (E := E) (n := n) x86) F := by
-  -- A real instantiation would supply: (1) the actual x86 binary that
-  -- `jasminc` emits for `trivialJasmin`, (2) the `compilesTo` witness,
-  -- and (3) a `CompilerCorrectStateful` between the chosen `cssa` and
-  -- `denoteJasmin trivialJasmin`. Each is left as `sorry`.
-  refine ⟨?x86, ?_⟩
-  case x86 => exact (sorry : X86Prog)
-  exact cryptoSSA_to_x86_preserves_uc handler cssa trivialJasmin _
-          (h_cssa_jasmin := sorry)
-          (h_jasmin_x86  := sorry)
-          hsec
+                   (E := E) (n := n) x86) F :=
+  ⟨x86, cryptoSSA_to_x86_preserves_uc handler cssa trivialJasmin x86
+          h_cssa_jasmin h_jasmin_x86 hsec⟩
 
 end Smoke
 

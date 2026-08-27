@@ -8,7 +8,7 @@ import CatCrypt.Crypto.Optimizer.Rewrite.Egraph
 /-!
 # Verified local peephole rewrite pass for `Com` (#274, Pass 2)
 
-A **genuine structural `Com → Com` peephole pass** over the typed VIR
+A structural `Com → Com` peephole pass over the typed VIR
 `jasminDialect`, complementary to the bounded equality-saturation engine in
 `Egraph.lean`. Where the egraph pass fires *algebraic* rules that depend on a
 known-constant operand, the peephole pass fires *purely local, syntactic*
@@ -18,7 +18,7 @@ analysis — only that two argument variables are syntactically equal.
 
 Like the egraph pass, the rewrite is at the `Expr` level (context- and
 return-type-preserving), lifted homomorphically over `Com`. Each pattern carries
-a genuine `BitVec`-identity soundness lemma; denotation preservation for the
+a `BitVec`-identity soundness lemma; denotation preservation for the
 whole `Com` is an induction (**not** `rfl`).
 
 ## The peephole pattern set
@@ -37,7 +37,7 @@ Both are redundant-move / identity cleanups: each takes a binder that is really 
 copy or a zero and rewrites it to its canonical encoding-friendly form, without
 disturbing De Bruijn indices (the rewrite reuses the same argument variable `a`).
 
-## Preservation theorems (genuine, not `rfl`)
+## Preservation theorems
 
 * `peepExpr_denote` : per-Expr denotation equality (real BitVec algebra,
   conditioned on the syntactic equality witnessed by `varEq`).
@@ -101,7 +101,7 @@ def peepBin {Γ : Ctxt jasminDialect} {w : Nat}
   else none
 
 /-- **Soundness of `peepBin`.** Any expression `peepBin` produces denotes the
-same value as the original `binE bop a b`. A genuine `BitVec`-algebra proof
+same value as the original `binE bop a b`. A `BitVec`-algebra proof
 (using the syntactic `a = b` from `varEq`), **not** `rfl`. -/
 theorem peepBin_sound {Γ : Ctxt jasminDialect} {w : Nat}
     (bop : JasminBinOp) (a b : Ctxt.Var Γ (.reg w)) (V : Ctxt.Valuation Γ)
@@ -160,6 +160,7 @@ theorem peepExpr_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
   | vpslldq n => simp [peepExpr]
   | vpsrldq n => simp [peepExpr]
   | vsimd op => simp [peepExpr]
+  | vymm op => simp [peepExpr]
   | mulhi w => simp [peepExpr]
   | addCarryLo w => simp [peepExpr]
   | addCarryHi w => simp [peepExpr]
@@ -216,6 +217,7 @@ theorem peepExpr_cost_le {Γ : Ctxt jasminDialect} {t : JasminTy}
   | vpslldq n => simp [peepExpr]
   | vpsrldq n => simp [peepExpr]
   | vsimd op => simp [peepExpr]
+  | vymm op => simp [peepExpr]
   | mulhi w => simp [peepExpr]
   | addCarryLo w => simp [peepExpr]
   | addCarryHi w => simp [peepExpr]

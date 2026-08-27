@@ -299,6 +299,7 @@ def chacha20BlockFullMemrefJazz : String :=
     arguments — jasminc compiles it (the 32-reg-arg version did not). The
     orchestrator assembles + perf-compares against HACL* (`bench/chacha_compare`). -/
 def emit : IO Unit := do
+  IO.FS.createDirAll "bench/chacha_compare/gen_com"
   IO.FS.writeFile "bench/chacha_compare/gen_com/chacha20_block_full.s"
     chacha20BlockFullMemrefJazz
   IO.println "CatCrypt whole-block FULL-memref emit OK : bench/chacha_compare/gen_com/chacha20_block_full.s"

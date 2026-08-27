@@ -381,7 +381,7 @@ ancilla" guarantee at the count level. -/
 binder count by one; strengthening survivors preserves it. -/
 theorem comLen_uncompute_le {d : Dialect} [DialectSignature d] {Γ : Ctxt d}
     {t : d.Ty} : ∀ c : Com d Γ t, comLen (uncompute c) ≤ comLen c
-  | .ret v => by rw [uncompute]; exact Nat.le_refl _
+  | .ret v => by rw [uncompute]
   | .var e body => by
       rw [uncompute]
       split

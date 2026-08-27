@@ -180,7 +180,7 @@ theorem sbb_chain_eq_sub_bv256
     t256 = a256 - b256 := by
   bv_decide
 
-/-! ### Phase 4 starting point — BignumDoubleP25519 keystone
+/-! ### BignumDoubleP25519
 
 The 4-limb (ADC then SBB then mask-cmov) chain on input a<p produces
 the canonical reduction of `2a mod p`. Identity at the BitVec 256
@@ -226,7 +226,7 @@ theorem double_p25519_chain_bv256
     o256 = if r256.ult p256 then r256 else r256 - p256 := by
   bv_decide
 
-/-! ### Phase 4 — BignumSubP25519 keystone
+/-! ### BignumSubP25519
 
 Two-input shape: SBB chain on `(a, b)` produces `t = (a - b) mod B`;
 mask = -borrow_final. Output = `t + (mask AND p)` mod B. -/
@@ -266,7 +266,7 @@ theorem sub_p25519_chain_bv256
     let p256 : BitVec 256 := 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFED
     let s256 : BitVec 256 := s3 ++ s2 ++ s1 ++ s0
     s256 = if a256.ult b256 then a256 - b256 + p256 else a256 - b256 := by
-  bv_decide
+  bv_decide (config := { timeout := 120 })
 
 /-! ### Phase 4 — abstracted algoNat lemmas
 

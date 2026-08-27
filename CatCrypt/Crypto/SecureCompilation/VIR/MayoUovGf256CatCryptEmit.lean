@@ -287,7 +287,8 @@ def mayoGf256MacJazz : String := emitJazz "mayo_gf256_mac" gf256MacStepJasmin
 
 /-- Emit driver: write the lowered GF(2⁸) MAC step to a `.s` file for the
     orchestrator to `jasminc` + micro-bench. -/
-def emit : IO Unit :=
+def emit : IO Unit := do
+  IO.FS.createDirAll "bench/uov_compare/gen_com"
   IO.FS.writeFile "bench/uov_compare/gen_com/mayo_gf256_mac.s" mayoGf256MacJazz
 
 /-! ## Artifact generation at elaboration

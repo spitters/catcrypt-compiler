@@ -371,6 +371,7 @@ theorem ladderStep_roundtrip :
 
 /-! ### Display pins — the delaborator renders the raw `LowCT` as the surface. -/
 
+set_option pp.unicode.fun true in
 /--
 info: def CatCrypt.Crypto.SecureCompilation.Fe25519SurfaceDelab.macAccumulate : ℕ → LowCT :=
 fun n ↦ orch% for "i" in 0..n {|"p":=callN fe25519_mul("a_i", "b_i");"acc":=call fe25519_add("p")|}
