@@ -58,7 +58,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect (lowerThir thirDialect Th
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (renderLprogAtt)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ChaChaQRThirEmit
-  (legalizeShiftImmLprog hasSub)
+  (legalizeShiftImmLprog)
 
 /-! ## 1. The LSH-512 Mix reference spec over `BitVec 64` -/
 

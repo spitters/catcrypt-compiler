@@ -31,7 +31,7 @@ in `X25519Ladder.lean` is exactly: the fe25519 leaves are `JInstr` blocks, not
 ## What this module bridges
 
 This is the `JInstr`-block → call-target-symbol bridge. There are two layers, and
-this module is honest about which one is faithful for the ADX/MULX schoolbook:
+the one faithful for the ADX/MULX schoolbook is stated per layer:
 
 1. **`.s`-symbol bridge (the artifact path, faithful).** Each fe25519 leaf already
    emits a correct SysV `.s` function via `renderSysVLeafFn` — the verified
@@ -54,8 +54,8 @@ this module is honest about which one is faithful for the ADX/MULX schoolbook:
    built on the ADX schoolbook (`mul`/`sqr`/`mul121666`) IS now byte-encoded by
    `encodeLprogReloc` — the residual the prior version recorded is closed. The
    `hasUnrepAdx` predicate is `false` for every fe25519 leaf (see §2a), and the
-   byte-encoder `.o` route carries the whole field-op set (the `.s`+gas route is no
-   longer load-bearing for the field leaves).
+   byte-encoder `.o` route carries the whole field-op set (the `.s`+gas route is a
+   comparison artifact for the field leaves).
 
 ## The multi-function ladder `Lcall`
 
@@ -128,8 +128,8 @@ ALU/move/load/store/shift subset AND the BMI2/ADX trio
 `mulx`/`mulxMem`/`adcx`/`adox` (#656-residual), which lift to the faithful
 `MULX`/`MULXMEM`/`ADCX`/`ADOX` `Lopn` forms the byte encoder
 (`LprogBytes.encodeLopn`) delegates to `ScalarEncoder`'s
-`encMulxRR`/`encMulxMem`/`encAdxCarry`. The legacy `UNREP-ADX:…` sentinel form is
-no longer produced; `hasUnrepAdx` (§2a) is `false` for every fe25519 leaf. -/
+`encMulxRR`/`encMulxMem`/`encAdxCarry`. No `UNREP-ADX:…` sentinel form is
+produced; `hasUnrepAdx` (§2a) is `false` for every fe25519 leaf. -/
 
 /-- The uppercase bare GP register name for a `%rN` AT&T name (`"%rax" → "RAX"`),
     the form `LprogBytes.gpNumU` / `LprogAsmPrinter.gpReg64` consume. Unknown
@@ -219,6 +219,33 @@ def jinstrToLinstrR (alloc : GpAlloc) : JInstr 64 → LinstrR
   | .storeMemIdx base idx scale s =>
       .Lopn [.arrIdx (upperReg (regOf alloc base)) (upperReg (regOf alloc idx)) scale]
         (withWidthTag 64 "STOREIDX") [resolveJOp alloc s]
+  -- Flag/BMI/extension ops the fe25519/x25519 field leaves never emit; lifted in
+  -- the natural `Lopn` shape so a mnemonic outside the renderer's vocabulary
+  -- surfaces as the visible `# UNHANDLED-OP` sentinel (the `loadSym` policy).
+  | .test a b   => .Lopn [] (withWidthTag 64 "TEST")
+                     [resolveReg alloc a, resolveJOp alloc b]
+  | .cmp a b    => .Lopn [] (withWidthTag 64 "CMP")
+                     [resolveReg alloc a, resolveJOp alloc b]
+  | .not_ d     => .Lopn [resolveReg alloc d] (withWidthTag 64 "NOT") [resolveReg alloc d]
+  | .andn d s1 s2 => .Lopn [resolveReg alloc d] (withWidthTag 64 "ANDN")
+                       [resolveReg alloc s1, resolveReg alloc s2]
+  | .rol d amt  => .Lopn [resolveReg alloc d] (withWidthTag 64 "ROL")
+                     [resolveReg alloc d, resolveJOp alloc amt]
+  | .ror d amt  => .Lopn [resolveReg alloc d] (withWidthTag 64 "ROR")
+                     [resolveReg alloc d, resolveJOp alloc amt]
+  | .rorx d s amt => .Lopn [resolveReg alloc d] (withWidthTag 64 "RORX")
+                       [resolveReg alloc s, resolveJOp alloc amt]
+  | .shlx d s c => .Lopn [resolveReg alloc d] (withWidthTag 64 "SHLX")
+                     [resolveReg alloc s, resolveReg alloc c]
+  | .shrx d s c => .Lopn [resolveReg alloc d] (withWidthTag 64 "SHRX")
+                     [resolveReg alloc s, resolveReg alloc c]
+  | .sarx d s c => .Lopn [resolveReg alloc d] (withWidthTag 64 "SARX")
+                     [resolveReg alloc s, resolveReg alloc c]
+  | .movzx d _ s => .Lopn [resolveReg alloc d] (withWidthTag 64 "MOVZX")
+                      [resolveReg alloc s]
+  | .movsx d _ s => .Lopn [resolveReg alloc d] (withWidthTag 64 "MOVSX")
+                      [resolveReg alloc s]
+  | .lea d _ _ _ _ => .Lopn [resolveReg alloc d] (withWidthTag 64 "LEA") []
   -- `loadSym dst sym` (`leaq sym(%rip), %dst`): writes register `dst`, reads no
   -- register. `LOperand` carries no `.rodata`-symbol operand and the fe25519/
   -- x25519 field leaves this bridge serves never index a `.rodata` table (the
@@ -326,8 +353,8 @@ A field op's lifted `Lcmd` is byte-encodable by `LprogBytes.encodeLprogReloc`
 delegates to `ScalarEncoder`'s `encMulxRR`/`encMulxMem`/`encAdxCarry`, so the whole
 fe25519 field-op set — `feAdd`/`feSub` (pure GP-ALU) AND `feMul`/`feSqr`/
 `feMul121666` (the ADX schoolbook) — is now byte-direct: NO sentinels remain, the
-`.o` byte route carries the whole family (the verified `.s`+gas route is no longer
-load-bearing for the field leaves). -/
+`.o` byte route carries the whole family; the verified `.s`+gas route is a
+comparison artifact for the field leaves. -/
 
 /-- Does a lifted `Lcmd` carry an `UNREP-ADX:…` sentinel (an op with no faithful
     `LinstrR`/byte image)? -/
@@ -386,7 +413,7 @@ def countByte (b : BitVec 8) (bs : List (BitVec 8)) : Nat :=
   bs.countP (· == b)
 
 /-- The byte encoder produces a `feMul` body carrying VEX-`MULX` lead bytes
-    (`0xC4`) — the `mulx`/`mulxMem` arms are genuinely exercised (not dropped), so
+    (`0xC4`) — the `mulx`/`mulxMem` arms are exercised, so
     the field multiply is byte-direct. The exact count (and full byte-identity to
     gas, including every VEX/0F38 byte) is the bench `fieldbytes-validate`. -/
 theorem feMulEncodedBytes_has_mulx_vex :
@@ -534,7 +561,7 @@ theorem monoStepObject_nonempty : monoStepObject ≠ [] := by
   exact fun h => by simp [h] at this
 
 /-- The step body bytes carry VEX-`MULX` lead bytes (`0xC4`) — the inlined
-    multiplies/squares are genuinely byte-encoded. -/
+    multiplies/squares are byte-encoded. -/
 theorem monoStepEncoded_has_mulx :
     0 < countByte (BitVec.ofNat 8 0xc4)
       (LprogBytes.encodeLfundefBytes monoStepLcmd) := by native_decide
@@ -604,7 +631,7 @@ def FB : String := "RBX"
     `frameSize = 952` (the 110-cell region below the 64-byte qsave block, `+8` call
     parity: the orchestrator body calls the field leaves, so the frame is sized
     `≡ 8 (mod 16)` to keep every call site SysV 16-aligned). The cell is used as
-    genuine scratch (the saved swap mask) so the reference is live, not dead. -/
+    scratch (the saved swap mask) so the reference is live, not dead. -/
 def SENT : String := "k.109"
 
 /-- The byte offset (within the work frame, base `FB`) of the ladder frame the step
@@ -846,7 +873,7 @@ def x25519Schedule : List UStep :=
   [ .movRR FB "RSP"
   , .movRR "R12" "RDI"
   -- sizing sentinel: park the initial swap accumulator (0) in the lowest cell `k.109`
-  -- (this single `k.N` reference sizes the frame; the cell is genuine scratch).
+  -- (this single `k.N` reference sizes the frame; the cell is working scratch).
   , .movImm "RAX" 0, .store SENT "RAX"
   , .movImm "R14" 0 ]                                -- swap accumulator = 0
   ++ decodeClampScalar
