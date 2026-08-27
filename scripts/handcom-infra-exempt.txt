@@ -132,3 +132,4 @@ CatCrypt/Crypto/SecureCompilation/X86Backend/ValidateLowering.lean  # decidable 
 CatCrypt/Crypto/SecureCompilation/X86Backend/WellFormedX86.lean  # decidable ISA-legality invariant (demotes gas from legality oracle), compiler infra
 CatCrypt/Crypto/SecureCompilation/X86Backend/X86Dialect.lean  # the x86 backend AS a VIR dialect (#281) - core dialect definition, compiler infra
 CatCrypt/Crypto/SecureCompilation/X86Backend/XorCombineRolledEmit.lean  # PROPOSE-EXEMPT candidate: first-use demo of multi-invariant-base rolled-loop path; no harness/consumer found - OR wire a KAT harness
+CatCrypt/Crypto/Optimizer/ComSStmtBridge.lean  # Com<->SStmt semantics bridge (verified pass infrastructure); the Expr matches are proof subjects, no emit artifact

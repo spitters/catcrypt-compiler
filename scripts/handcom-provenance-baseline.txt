@@ -1,9 +1,8 @@
-5
+4
 # Hand-authored Com/Lcmd owned-emit modules (frozen baseline; auto-tightened
 # by scripts/handcom-provenance-ratchet.sh). First line = count; each path
 # below carries the reason its emitted artifact is not front-generated. The
 # goal is to re-source each through a front (-> 0).
-CatCrypt/Crypto/Optimizer/ComSStmtBridge.lean  
 CatCrypt/Crypto/SecureCompilation/VIR/Peephole.lean  
 CatCrypt/Crypto/SecureCompilation/X86Backend/LegalizeShiftImm.lean  
 CatCrypt/Crypto/SecureCompilation/X86Backend/LprogOptPipeline.lean  
