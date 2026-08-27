@@ -162,10 +162,10 @@ theorem WSBlock_aBack_congr (r : Nat) (l : List Nat) (bound : List String) :
 
 /-! ### Structural (`decide`-free) well-scopedness of one round
 
-`round_wellscoped` used to `decide` well-scopedness over each Keccak sub-block, but
-each `decide (n ∈ bound)` scans a growing 100+-name string alist, so the kernel
-`decide` is quadratic and stalls (and `native_decide` OOMs gcc C-gen). The
-replacement below reasons at the GENERATOR level: name-membership is by structural
+A `decide` of well-scopedness over a Keccak sub-block scans a growing 100+-name
+string alist per membership test, so the kernel `decide` is quadratic and stalls,
+and `native_decide` exhausts memory in gcc C-gen. `round_wellscoped` therefore
+reasons at the GENERATOR level: name-membership is by structural
 `List.map`/`List.range` lemmas (no alist scan), each θ/ρ/π/χ/ι builder has one
 small scope contract, and a single `WSBlock_map` induction lifts each builder to
 its whole `(List.range k).map` block. The blocks recompose via `WSBlock_append`.
@@ -541,7 +541,7 @@ the real front `translateDialectControl` (which coincides with
 `translateDialectFull` on this straight-line body), the `o24` lane resolves, the
 `ContGood` prefix applies to the `ret` terminator, and the pure-arith backend
 `cryptoDialectToJasminCom` lowers the result — all without ever materialising the
-~9768-binding lowered `Com` that OOMs the monolithic `native_decide`. -/
+~9768-binding lowered `Com` whose monolithic `native_decide` exhausts memory. -/
 
 /-- **The 24-round shape run succeeds and `o24` resolves at `.sword 64`.**
     Discharged per-round compositionally (`shapeRun24_ok'`): the a-lane invariant
@@ -620,7 +620,24 @@ theorem front24_spec : ∃ c, frontFull 24 = some c ∧ PureLower c := by
   obtain ⟨o, htf, hago, hcgo⟩ := shapeTranslate_sim (fullBody 24) hST srcVM agrees_srcVM
   obtain ⟨v, hvlk⟩ := lookup_sword_of_agrees hago hSL
   obtain ⟨c, hc, hpl⟩ := hcgo (Com.ret (toVIRVar v)) trivial
-  exact ⟨c, by simp only [frontFull, tdc_eq_tdf_fullBody, htf, hvlk, hc], hpl⟩
+  have h1 : translateDialectControl srcVM (fullBody 24) = some o := by
+    rw [tdc_eq_tdf_fullBody]; exact htf
+  refine ⟨c, ?_, hpl⟩
+  -- `split` case-splits the two `frontFull` matches syntactically; unfolding
+  -- `frontFull` with `simp` instead lets the match congruence whnf the
+  -- discriminant, which runs the whole front on the closed 24-round body.
+  rw [frontFull.eq_def, h1]
+  split
+  · next res hres =>
+      cases hres
+      split
+      · next v2 hv2 =>
+          rw [hvlk] at hv2
+          cases hv2
+          exact hc
+      · next hne2 =>
+          exact absurd hvlk (hne2 _)
+  · next h0 => cases h0
 
 /-- **The 24-round front-composed Keccak `Com` exists** — `isSome` discharged
     compositionally, with no monolithic `native_decide` over the lowered `Com`. -/
