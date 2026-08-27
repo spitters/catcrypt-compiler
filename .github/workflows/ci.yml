@@ -119,6 +119,27 @@ jobs:
       - name: Fetch prebuilt mathlib cache
         run: lake exe cache get
 
+      # The package and its non-mathlib deps rebuild from source; on a 16 GB
+      # runner a cold full build can exceed the VM. The cache ratchets progress
+      # across runs: restore the newest entry for this toolchain, save whatever
+      # this run built (also on failure), and let the completeness step below be
+      # the pass/fail signal. The build step itself is time-bounded so the VM
+      # survives to the save step instead of dying mid-elaboration.
+      - name: Restore the package build cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .lake/build
+            .lake/packages/catcryptCore/.lake/build
+            .lake/packages/hax-lean/.lake/build
+            .lake/packages/paramTransfer/.lake/build
+            .lake/packages/Veir/.lake/build
+            .lake/packages/CompPoly/.lake/build
+            .lake/packages/nominalLean/.lake/build
+          key: lake-build-${{ hashFiles('lean-toolchain', 'lakefile.lean') }}-${{ github.run_id }}
+          restore-keys: |
+            lake-build-${{ hashFiles('lean-toolchain', 'lakefile.lean') }}-
+
       - name: Build the compiler
         # Every module in scripts/rot-guard/build-roots.txt, 64 per lake invocation.
         # The import closure of that manifest is the whole library, so this builds
@@ -126,8 +147,26 @@ jobs:
         # the package's `-E hasSorry`. What the batching buys is attribution: a
         # batch that dies names the modules it was building, and the workers of the
         # preceding batches have exited, so the log locates a failure instead of
-        # ending at an anonymous kill partway through one job.
-        run: bash scripts/rot-guard-build.sh --build 64
+        # ending at an anonymous kill partway through one job. The time bound keeps
+        # the VM alive for the cache save; an early stop is not a failure here —
+        # the completeness step is the verdict.
+        run: |
+          timeout 60m bash scripts/rot-guard-build.sh --build 64 \
+            || echo "build stopped early (rc=$?); progress is kept by the cache save"
+
+      - name: Save the package build cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .lake/build
+            .lake/packages/catcryptCore/.lake/build
+            .lake/packages/hax-lean/.lake/build
+            .lake/packages/paramTransfer/.lake/build
+            .lake/packages/Veir/.lake/build
+            .lake/packages/CompPoly/.lake/build
+            .lake/packages/nominalLean/.lake/build
+          key: lake-build-${{ hashFiles('lean-toolchain', 'lakefile.lean') }}-${{ github.run_id }}
 
       - name: Confirm the default target is complete
         # Nothing left to elaborate after the step above; this checks that the
