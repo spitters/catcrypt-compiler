@@ -499,4 +499,4 @@ end CatCrypt.Crypto.SecureCompilation.VIR.KeccakSimdSingleEmit
 
 open CatCrypt.Crypto.SecureCompilation.VIR.KeccakSimdSingleEmit in
 /-- `lake env lean --run` entry point: emit the owned single-instance YMM-θ Keccak. -/
-@[expose] def keccakSimdSingleEmitMain : IO Unit := emit
+def keccakSimdSingleEmitMain : IO Unit := emit

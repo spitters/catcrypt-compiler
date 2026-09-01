@@ -388,4 +388,4 @@ end CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockResidentEmit
 
 open CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockResidentEmit in
 /-- `lake env lean --run` entry point: emit the owned state-resident ChaCha20 block. -/
-@[expose] def chacha20BlockResidentEmitMain : IO Unit := emit
+def chacha20BlockResidentEmitMain : IO Unit := emit

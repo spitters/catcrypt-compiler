@@ -205,4 +205,4 @@ end CatCrypt.Crypto.SecureCompilation.VIR.KeccakResidentBebEmit
 
 open CatCrypt.Crypto.SecureCompilation.VIR.KeccakResidentBebEmit in
 /-- `lake env lean --run` entry point: emit the owned lane-complement resident Keccak. -/
-@[expose] def keccakResidentBebEmitMain : IO Unit := emit
+def keccakResidentBebEmitMain : IO Unit := emit

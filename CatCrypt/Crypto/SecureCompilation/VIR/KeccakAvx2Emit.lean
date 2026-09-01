@@ -605,4 +605,4 @@ end CatCrypt.Crypto.SecureCompilation.VIR.KeccakAvx2Emit
 
 open CatCrypt.Crypto.SecureCompilation.VIR.KeccakAvx2Emit in
 /-- `lake env lean --run` entry point: emit the owned-backend 4-way YMM Keccak. -/
-@[expose] def keccakAvx2EmitMain : IO Unit := emit
+def keccakAvx2EmitMain : IO Unit := emit

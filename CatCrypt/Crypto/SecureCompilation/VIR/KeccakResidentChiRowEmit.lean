@@ -200,4 +200,4 @@ end CatCrypt.Crypto.SecureCompilation.VIR.KeccakResidentChiRowEmit
 
 open CatCrypt.Crypto.SecureCompilation.VIR.KeccakResidentChiRowEmit in
 /-- `lake env lean --run` entry point: emit the owned row-resident χ Keccak. -/
-@[expose] def keccakResidentChiRowEmitMain : IO Unit := emit
+def keccakResidentChiRowEmitMain : IO Unit := emit
