@@ -177,13 +177,6 @@ This file provides the **shape contract** for the WPMonad
 instance.  The actual implementation lands when the migration
 phase begins. -/
 
-/-- Documentation anchor for the WPMonad instance for
-    `bignumExecM`.  Phase 2 deliverable. -/
-def wpMonad_bignumExec_shape : Prop := True
-
-theorem wpMonad_bignumExec_shape_anchor : wpMonad_bignumExec_shape :=
-  trivial
-
 /-! ## §3  Phase 1 smoke test — `bignum_mod_p25519_4` (✅ landed)
 
 Re-states the existing universal correctness theorem
@@ -258,14 +251,6 @@ Result: 13 individual ~5-LoC theorems collapse to one
 
 Total LoC delta target: -300 LoC across `PerBlockInstances.lean`,
 `PowP58LayerB.lean`, `BignumHoare.lean` chunked recipes. -/
-
-/-- Documentation anchor for the spec-annotation target.
-    Phase 3 deliverable. -/
-def spec_annotation_target_shape : Prop := True
-
-theorem spec_annotation_target_shape_anchor :
-    spec_annotation_target_shape :=
-  trivial
 
 /-! ## §5  Summary
 

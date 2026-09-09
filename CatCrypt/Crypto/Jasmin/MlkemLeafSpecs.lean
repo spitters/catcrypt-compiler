@@ -80,9 +80,8 @@ the real CompPoly NTT product is a *proved* Lean theorem:
 which establishes, for the real NTT/pointwise-multiply/inverse-NTT pipeline
 over `Z_q[X]/(X^n + 1)`, that the coefficient-wise result equals the
 negacyclic convolution (cyclic full product folded by the `X^n ≡ −1`
-reduction) — not a definitional `rfl`. See §7 below for the in-tree
-`ntt_basemul_is_proven` marker that records this distinction in the leaf
-table.
+reduction) — not a definitional `rfl`. The NTT class is therefore not among
+the trusted leaves of this file (§7).
 
 ## What this file does NOT claim
 
@@ -405,16 +404,8 @@ Lean theorem
 
 > `CatCrypt.Crypto.SecureCompilation.VIR.LatticeNTTSemantic.realNttMul_negacyclic_coeff`
 
-(over `CompPoly`, i.e. `Z_q[X]/(X^n + 1)`; not `rfl`). We record the
-distinction with a `Prop`-level marker so a `#print axioms`-style audit of
-this file shows the NTT class is *not* among the trusted leaves. -/
-
-/-- Marker recording that the NTT/basemul/invntt leaf class is discharged by
-    an in-tree Lean proof (`realNttMul_negacyclic_coeff`), not by a trust
-    axiom in this file. Proved by `rfl`; its *value* is the citation in its
-    statement/docstring, not the proposition's logical strength. -/
-def ntt_basemul_is_proven : Prop := True
-
-theorem ntt_basemul_is_proven_holds : ntt_basemul_is_proven := trivial
+(over `CompPoly`, i.e. `Z_q[X]/(X^n + 1)`; not `rfl`). The NTT class is
+discharged by that proof, `realNttMul_negacyclic_coeff`, and no trust axiom
+for it appears in this file. -/
 
 end CatCrypt.Crypto.Jasmin.MlkemLeafSpecs

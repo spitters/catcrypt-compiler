@@ -25,9 +25,8 @@ ops, plus the additions identified by the prior-art survey:
 
 * Op enum + Ty enum
 * `DialectSignature` mapping
-* A `Quantum.State` placeholder and a stub `DialectDenoteM quantumDialect
-  (StateM Quantum.State)` instance with identity-on-state semantics
-* A smoke test verifying that `Com.denoteM` plumbs through the dialect
+* No `DialectDenoteM` instance: the dialect's semantics is the lowering into
+  the circuit model (see the VEIR-DIFF entry below)
 
 Phase 2 (separate file `VIR/QSSAToVIR.lean`) bridges to the real unitary
 semantics from `CatCrypt/Quantum/GateUnitarity.lean`. This file does not
@@ -59,9 +58,9 @@ coupling the IR layer to the existing pure-state model.
   `CatCrypt/Crypto/SecureCompilation/VIR/QSSAToVIRCircuit.lean`, via
   `Com.realDenoteQComp := unitaryDenote ∘ lowerVIRCom` — a direct
   translation into the existing `Quantum/QSSAToCircuit` framework that
-  threads a `RegAlloc` for De Bruijn-to-physical resolution. Phase 1
-  ships only a *stub* `DialectDenoteM (StateM Quantum.State)` instance
-  that increments a step counter (see the smoke test); a Phase 4
+  threads a `RegAlloc` for De Bruijn-to-physical resolution. This file
+  ships no `DialectDenoteM` instance, so nothing can be stated about a
+  quantum program's semantics except through that lowering; a Phase 4
   refactor that indexes `QTy.qubit` by a physical register slot would
   be needed to host a meaningful `DialectDenoteM` instance.
 
@@ -233,99 +232,5 @@ def QOp.ret : QOp → QTy
 instance : DialectSignature quantumDialect where
   sig := QOp.sig
   ret := QOp.ret
-
-/-! ## 6. `Quantum.State` placeholder + stub denotation
-
-The Phase 1 goal is to demonstrate that the dialect type-checks against
-`DialectDenoteM`, not to verify quantum semantics. The state is a
-trivial unit-like carrier and every op returns the default value of its
-return type (with `measure` returning `false` for the bit). -/
-
-/-- Placeholder quantum state. Phase 2 replaces this with the real
-    state carrier (likely indexed by qubit count). -/
-structure Quantum.State where
-  /-- Step counter so the type is non-trivial and `StateM` actually
-      threads state through `bind`. -/
-  step : Nat := 0
-
-/-- Default value at every dialect type. Used by the stub denotation. -/
-def QTy.default : (t : QTy) → QTy.denote t
-  | .qubit => ()
-  | .bit => false
-  | .unit => ()
-  | .pair a b => (QTy.default a, QTy.default b)
-  | .qureg _ => fun _ => ()
-
-/-- Stub denotation: increment the step counter and return the default
-    value for the return type.
-
-    VEIR-DIFF: in upstream Catalyst / QIRO the denotation is *not*
-    in-IR — they rely on an external runtime. CatCrypt's plan is to
-    eventually bridge to `CatCrypt/Quantum/GateUnitarity.denoteGateU`
-    here. -/
-def QOp.denoteStub (op : QOp) (_args : HVector QTy.denote op.sig) :
-    StateM Quantum.State (QTy.denote op.ret) := do
-  modify (fun s => { s with step := s.step + 1 })
-  pure (QTy.default op.ret)
-
-instance : DialectDenoteM quantumDialect (StateM Quantum.State) where
-  denoteM op args := QOp.denoteStub op args
-
-/-! ## 7. Smoke test
-
-A tiny `Com quantumDialect [] qubit` program: initialize |0⟩, apply
-Hadamard, measure (extract the post-measurement qubit). Verifies the
-dialect plumbs through `Com.denoteM`. -/
-
-namespace SmokeTest
-
-open Ctxt
-
-/-- `init0 : qubit` expression. -/
-def eInit0 : Expr quantumDialect [] .qubit :=
-  { op := .init0
-    retTy_eq := rfl
-    args := .nil }
-
-/-- `hadamard : qubit → qubit` expression. -/
-def eHadamard (Γ : Ctxt quantumDialect) (v : Var Γ .qubit) :
-    Expr quantumDialect Γ .qubit :=
-  { op := .hadamard
-    retTy_eq := rfl
-    args := .cons v .nil }
-
-/-- `measure : qubit → pair bit qubit` expression. -/
-def eMeasure (Γ : Ctxt quantumDialect) (v : Var Γ .qubit) :
-    Expr quantumDialect Γ (.pair .bit .qubit) :=
-  { op := .measure
-    retTy_eq := rfl
-    args := .cons v .nil }
-
--- Note: `snd : pair bit qubit → qubit` is not a quantum dialect op
--- (the dialect is per-gate, not structural). The smoke test instead
--- returns the pair itself.
-
-/-- Smoke-test program: initialize, Hadamard, measure, return the
-    `(bit, qubit)` pair. -/
-def initHMeasure : Com quantumDialect [] (.pair .bit .qubit) :=
-  .var eInit0 <|                                       -- q  = init0
-  .var (eHadamard [.qubit] .here) <|                   -- q' = H q
-  .var (eMeasure (.qubit :: .qubit :: []) .here) <|    -- p  = measure q'
-  .ret .here
-
-/-- The smoke test program denotes (via the stub) and runs cleanly. -/
-example :
-    ((initHMeasure.denoteM (M := StateM Quantum.State)
-        .nil).run { step := 0 }).fst = (false, ()) := by
-  rfl
-
-/-- The stub denotation increments the step counter once per op (3 ops:
-    init, H, measure). Acts as a "monad threads through" smoke check. -/
-example :
-    ((initHMeasure.denoteM (M := StateM Quantum.State)
-        .nil).run { step := 0 }).snd.step = 3 := by
-  rfl
-
-end SmokeTest
 
 end CatCrypt.Crypto.SecureCompilation.VIR.QuantumDialect

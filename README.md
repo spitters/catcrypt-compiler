@@ -87,7 +87,9 @@ The pipeline preserves three properties from source to emitted bytes. The
   dialect boundary. At machine level, `com_x86_e2e` / `com_arm_e2e` / `com_riscv_e2e`
   prove that the compiled block, run on the backend's block semantics, computes the
   source `Com.denote` for a straight-line program over the supported op set in an
-  all-`reg 64` context; on the base-ALU subset of that fragment,
+  all-`reg 64` context; register allocation (`physScanSpill`, linear scan with
+  spills) has its own faithfulness theorem, `physBody_lsem_result_uniform`, on the
+  binop fragment (see [Limitations](#limitations)); on the base-ALU subset of that fragment,
   `ComToArmLsem.comToArmLsem_correct` and `ComToRiscvLsem.comToRiscvLsem_correct` add
   that every executed instruction lies in the subset checked against the vendor Sail
   model. The whole-pipeline x86 statement `robustCompilation_source_to_x86` carries a
@@ -106,6 +108,41 @@ The pipeline preserves three properties from source to emitted bytes. The
   us to write non-CT code too.
 - **Security** — Hax allows us to use a protocol's source both as input to the catcrypt compiler and as a source for proofs in the computational model in CatCrypt, in the spirit of [Last yard](https://eprint.iacr.org/2023/185). Carrying a security bound onto the emitted bytes — byte-level transfer — holds for the symmetric family and is a roadmap goal for the asymmetric families.
 
+
+## Limitations
+
+- The machine-level correctness theorems (`com_x86_e2e`, `com_arm_e2e`,
+  `com_riscv_e2e`) cover straight-line programs over the supported op set in an
+  all-`reg 64` context. Loops are covered at the dialect level and by the
+  constant-time analysis; the byte-level statement for a loop is under construction.
+- Register allocation is the linear-scan-with-spill allocator `physScanSpill`. Its
+  faithfulness theorem, `physBody_lsem_result_uniform`
+  (`X86Backend/ToLprogFaithfulNary.lean`), is stated on the binop prefix of a
+  `UniformRegArith` program, with the terminal return out of scope and the
+  two-address collapse of each binding carried as a hypothesis. The whole-function
+  statement is not closed.
+- `robustCompilation_source_to_x86` carries Jasmin's verified compiler as a
+  hypothesis. `rustToJasminCom_endToEnd` carries the Rust front's adequacy edge as
+  a hypothesis; only its `_unconditional` sibling discharges that edge, over the
+  scalar machine-word semantics.
+- Constant time is anchored on the x86-64 machine model. The AArch64 and RISC-V
+  backends carry functional correctness only.
+- Byte-level transfer of a security bound holds for the symmetric family only.
+- The quantum dialect (`VIR/QuantumDialect.lean`) has no denotation of its own:
+  quantum semantics needs the physical qubit a gate acts on, and the dialect's
+  qubit values are nominal handles. Its semantics is the lowering `lowerVIRCom`
+  into the circuit model (`VIR/QSSAToVIRCircuit.lean`), and the commutation
+  theorem with the direct lowering holds on the `WellFormedForCircuit` subset: no
+  `ifBit`, no `init0`/`init1` inside a `letQ`.
+- The ML-KEM value-tower bridge `mlkemBridge` (`MLKEM/MlkemHaxLowCTBridge.lean`) is
+  the constant `True`, so `mlkem_haxToLowCT_simulates`, stated over it, says
+  nothing about polynomial values; the content-aware bridge is
+  `mlkemBridgePolyAware` in the same file.
+- `CpuMatchesModel` (`X86Backend/LeafFFIViaMachineModel.lean`) is the constant
+  `True`: the edge from the machine model to the hardware a leaf runs on is
+  assumed, not checked.
+- This is a research prototype: interfaces, the covered fragment, and the emitted
+  surface change without notice.
 
 ## What this repository contains
 

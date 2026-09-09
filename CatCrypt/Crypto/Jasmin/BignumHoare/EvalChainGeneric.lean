@@ -157,26 +157,9 @@ provide the modulus + chain literal + soundness axiom.
 
 ## §6  Cross-instantiation properties
 
-A useful framework-level lemma: if two chains compute the same
-exponent over the same modulus, they produce the same result.
-
-This lets us factor "two implementations of `bignum_inv` must
-agree" out of per-curve code into a generic framework lemma. -/
-
-/-- **Generic agreement lemma** (statement only).  For any two
-    chain literals `c1, c2` over the same modulus `p`, if they
-    compute the same exponent `k`, they produce the same result.
-
-    This is *implied by* per-chain soundness axioms whenever
-    both chains' soundness axioms cite the same exponent.
-
-    This file leaves it as a documentation anchor; concrete
-    discharge is a `simp` + soundness-axiom application. -/
-def generic_chain_agreement_shape : Prop := True
-
-theorem generic_chain_agreement_anchor :
-    generic_chain_agreement_shape :=
-  trivial
+Two chains over the same modulus that compute the same exponent produce the
+same result; this follows from their soundness axioms whenever both cite
+that exponent, and is not stated as a lemma in this file. -/
 
 /-! ## §7  What this enables for downstream curves
 

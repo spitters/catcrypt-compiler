@@ -149,15 +149,6 @@ framework structure carries through.
 We expose the *shape* here; the concrete P-256 chain (with its
 own `OFF_*` constants and prefix) would land as a separate file. -/
 
-/-- Documentation anchor for P-256 inverse chain support.  The
-    actual chain ops would live in
-    `CatCrypt/Crypto/Jasmin/P256/PInvChain.lean` parametric
-    over the P-256 modulus `q = 2²⁵⁶ − 2²²⁴ + 2¹⁹² + 2⁹⁶ − 1`.
-    -/
-def p256_chain_anchor : Prop := True
-
-theorem p256_chain_anchor_witness : p256_chain_anchor := trivial
-
 /-! ## §4  Ed25519 compress/decompress integration
 
 The Ed25519 compress/decompress operations use both the inv
