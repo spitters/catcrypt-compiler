@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RupicolaField
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.RupicolaField
+public import CatCrypt.Crypto.SecureCompilation.RupicolaField
 
 /-!
 # `RupicolaFieldExt`: full-kernel combinators for the shift-free authoring layer
@@ -47,6 +50,8 @@ read its assembled `FRefines` proof straight off the builder and confirm a singl
 `ZMod 7` residue by `rfl`. The one residual — a fully rehoming handle on
 intermediate *results* — is named in §3.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

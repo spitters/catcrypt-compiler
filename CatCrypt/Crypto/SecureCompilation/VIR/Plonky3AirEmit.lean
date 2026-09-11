@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3LdeEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3LdeEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3LdeEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 
 /-!
 # Plonky3 AIR constraint evaluator emitted through the verified front
@@ -46,6 +51,8 @@ The Lean models mirror them. KAT theorems:
 Field arithmetic reuses `Plonky3LdeEmit` (`bbAdd` / `bbSub`); the constraint
 evaluator emits with no opaque leaf.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
-import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+public import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
 
 /-!
 # Verified strength reduction for `Com` — analysis-as-decision pass
@@ -160,6 +165,8 @@ identity-at-Com architectural choice.
   be added to the table whenever a new protocol needs one (LWE,
   Saber-q, etc.).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

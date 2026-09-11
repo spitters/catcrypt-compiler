@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.NegacyclicTransformGeneric
+module
+
+public import CatCrypt.Crypto.Optimizer.Lattice.NegacyclicTransformGeneric
 
 /-!
 # The twist-defined negacyclic convolution is the explicit signed convolution
@@ -19,6 +21,8 @@ of the two operands combine, after the outer `untwist`, into a `+1`/`−1` sign:
 `−xᵢ y_{k−i}` when it does. That signed sum is exactly the negacyclic
 convolution `signedNegaConv`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

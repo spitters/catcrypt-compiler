@@ -3,9 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519OpsKernel
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectKernel
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519OpsKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519OpsKernel
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectKernel
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
 # Ed25519 twisted-Edwards point add/double + fixed-base scalarmul, owned x86 backend (#414)
@@ -94,6 +100,8 @@ transcription of Jasmin's Rocq x86 semantics; `AsmPrinter` + `gas` is the
 syntactic boundary, and the System-V leaf prologue/epilogue is trusted ABI
 scaffolding. No `sorry`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

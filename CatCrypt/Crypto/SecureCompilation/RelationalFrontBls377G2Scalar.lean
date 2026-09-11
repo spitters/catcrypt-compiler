@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377G2Affine
-import Mathlib.Algebra.Group.Defs
-import Mathlib.Tactic
+module
+
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377G2Affine
+public import Mathlib.Algebra.Group.Defs
+public import Mathlib.Tactic.Group
 
 /-!
 # Binary (double-and-add) scalar multiplication on `bls12-377` `G2`
@@ -75,6 +77,8 @@ new construction.
 0 sorries; no custom axioms; the ladder correctness holds over any
 `[AddCommGroup G]`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.LatticeDialect
-import CatCrypt.Crypto.Optimizer.Lattice.NTTHoist
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeDialect
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTHoist
 
 /-!
 # The `invntt` hoist, re-platformed onto the lattice dialect
@@ -29,6 +31,8 @@ abstract lattice operations (the re-platforming of
 `nttHoist_maccLoop_eq`); `latticeHoist_eq` instantiates it at the lattice
 dialect's concrete denotations.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.LatticeDialect
 

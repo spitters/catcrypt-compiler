@@ -3,11 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithToJasminComOK
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithToJasminDenote
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithEmulations
-import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
-import Std.Tactic.BVDecide
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithToJasminComOK
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithToJasminDenote
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithEmulations
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+public import Std.Tactic.BVDecide
+
+@[expose] public section
 
 set_option autoImplicit false
 

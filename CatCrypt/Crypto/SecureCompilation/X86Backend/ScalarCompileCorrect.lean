@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
-import CatCrypt.Crypto.Optimizer.JInstrRegAllocScoped
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
+public import CatCrypt.Crypto.Optimizer.JInstrRegAllocScoped
 
 /-!
 # The verified-compiler theorem for the straight-line scalar fragment
@@ -33,6 +35,8 @@ the CT dimension.
   scoped to the block's live slots — and `scalarCompileAlloc_denote_checked` with the
   decidable `noAliasXsym` discharging the allocation.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

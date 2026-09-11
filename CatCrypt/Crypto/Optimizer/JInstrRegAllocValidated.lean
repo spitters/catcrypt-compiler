@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.GenericRegAllocValidated
-import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
-import CatCrypt.Crypto.Optimizer.RandomizedRegAlloc
+module
+
+public import CatCrypt.Crypto.Optimizer.GenericRegAllocValidated
+public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+public import CatCrypt.Crypto.Optimizer.RandomizedRegAlloc
 
 /-!
 # A decidable no-alias checker for the x86 (`JInstr`) register allocator
@@ -37,6 +39,8 @@ name-scoped form (`StateRelOn`); see `docs/jasmin-parity-plan.md` (x86 X2). The
 `ZInstr` vector backend, being memory-free and single-output, already gets the
 *scoped* keystone for free via `Avx512RegAllocValidated`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

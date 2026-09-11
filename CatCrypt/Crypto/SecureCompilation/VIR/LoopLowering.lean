@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgSemCorrect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgSemCorrect
 
 /-!
 # A first-class counted-loop lowering pass: `loopN n body` denotes `step^[n]`
@@ -73,6 +75,8 @@ nested-loop work in the roadmap.
 0 sorries; the only hypothesis is the opaque-leaf edge `LeafAgrees`, the same
 edge carried throughout the emit-correctness theory.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

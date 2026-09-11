@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
 
 /-!
 # Barrett field-reduction law for the emitted Plonky3 NTT butterfly
@@ -42,6 +44,8 @@ so a single conditional subtract canonicalises `t` into `[0, p)`. This is the
 standard Barrett bound; the asymmetric shifts `(30, 32)` make the slack tight
 (empirical max `t ≈ 3.84·10^9`, well below `2p`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

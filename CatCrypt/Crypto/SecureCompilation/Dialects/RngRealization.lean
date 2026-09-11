@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.RngLeaf
-import CatCrypt.Core.Code
+module
 
+public import CatCrypt.Crypto.SecureCompilation.Dialects.RngLeaf
+public import CatCrypt.Core.Code
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!
@@ -90,7 +94,7 @@ open scoped ENNReal
 /-- The canonical equivalence `BitVec n ≃ Fin (2 ^ n)` used only to compute the
     cardinality independently of which (irreducible) `Fintype` instance is in
     scope. -/
-private def bvEquivFin (n : Nat) : BitVec n ≃ Fin (2 ^ n) where
+def bvEquivFin (n : Nat) : BitVec n ≃ Fin (2 ^ n) where
   toFun := BitVec.toFin
   invFun := BitVec.ofFin
   left_inv := fun b => by ext; simp

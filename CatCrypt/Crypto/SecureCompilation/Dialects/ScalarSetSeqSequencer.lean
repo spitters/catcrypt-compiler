@@ -3,12 +3,41 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSExprWidth32Prototype
+module
 
+-- The demo's per-statement provenance reduces the front (`lowerSExprW`,
+-- `seqProg`, `cryptoDialectToJasminCom`) by `rfl`; under the module system that
+-- reduction needs the front closure imported with `all`, and `Nat.repr` (the
+-- front's slot names) exposed through `Init.Data.Repr`.
+import all Init.Data.Repr
+import all CatCrypt.Core.Code
+import all CatCrypt.Crypto.CryptoWord
+import all CatCrypt.Crypto.Jasmin.JasminAST
+import all CatCrypt.Crypto.Jasmin.JasminTypes
+import all CatCrypt.Crypto.Jasmin.LowCT
+import all CatCrypt.Crypto.SDist
+import all CatCrypt.Crypto.SecureCompilation.CryptoSSA
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+import all CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSExprWidth32Prototype
+import all CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
+import all CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.Core
+import all CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+import all CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSExprWidth32Prototype
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSExprWidth32Prototype
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!
-# Width-parametric scalar-statement SEQUENCER (the whole-kernel keystone)
+# Width-parametric scalar-statement SEQUENCER
 
 `ScalarSExprWidth32Prototype.lowerSExprW` front-sources a SINGLE `.sword w`
 `SExpr` to a `Com catCryptDialect`, and the `FrontSourced` namespaces
@@ -16,13 +45,13 @@ set_option autoImplicit false
 `(progOf …).isSome := by rfl` (axiom-clean). But a WHOLE crypto kernel is a
 SEQUENCE of `RScalarSetExpr`-style statements `dst := e` (≈64 SHA rounds ⇒ ~4000
 named-intermediate bindings). `translateDialectControlTop` over that sequence does
-NOT reduce by `rfl`, and a single `native_decide` over its `isSome` OOMs — it must
+NOT reduce by `rfl`, and a single `native_decide` over its `isSome` exhausts memory — it must
 build/normalise the whole ~4000-node `Com` term at once.
 
 This module supplies the missing combinator: a statement SEQUENCER
 `lowerScalarSetSeqW` that folds `lowerSExprW` over a `List (String × SExpr)`
 (each statement lowers its RHS `SExpr`, then aliases the destination name to the
-result slot), and — the keystone — a `.isSome` theorem proved BY INDUCTION over
+result slot), and a `.isSome` theorem proved BY INDUCTION over
 the statement list (`lowerScalarSetSeqW_isSome`), composing per-statement
 `lowerSExprW`-`isSome` facts. Each per-statement fact is `rfl`-checkable at the
 size of ONE statement; the induction glues them WITHOUT ever normalising the
@@ -101,7 +130,7 @@ inductive SeqCovers (w : Nat) :
       (htail : SeqCovers w (aliasBind r.vm dst resName) cnt' rest) :
       SeqCovers w vm cnt ((dst, e) :: rest)
 
-/-! ## 4. The keystone: `isSome` by induction over the statement list -/
+/-! ## 4. `isSome` by induction over the statement list -/
 
 /-- The whole sequence lowers to a `Com catCryptDialect` prefix, provided each
     statement's RHS is coverable at the `VarMap` it is reached with. Proved BY
@@ -188,7 +217,7 @@ A mini ChaCha-quarter-round-style kernel over three `.sword 32` slots `a b d`:
 
 (the last as the disjoint shift pair `(x << 16) ^ (x >> 16)`), each statement
 referencing an earlier destination. The whole-sequence `isSome` closes through
-the keystone `lowerScalarSetSeqW_isSome` fed a `SeqCovers` derivation whose head
+`lowerScalarSetSeqW_isSome` fed a `SeqCovers` derivation whose head
 facts are ONE-STATEMENT `rfl`s — NO `native_decide`, no whole-`Com` normalisation.
 The jasmin landing goes through `cryptoDialectToJasminCom_isSome`. -/
 
@@ -211,7 +240,7 @@ theorem demo_covers : SeqCovers 32 demoVM 0 demoStmts :=
   .cons _ _ _ rfl (.cons _ _ _ rfl (.cons _ _ _ rfl .nil))
 
 /-- The WHOLE 3-statement sequence lowers to a `Com catCryptDialect` — through the
-    keystone, composing the per-statement `rfl` facts. NO `native_decide`. -/
+    `lowerScalarSetSeqW_isSome`, composing the per-statement `rfl` facts. NO `native_decide`. -/
 theorem demo_isSome : (lowerScalarSetSeqW 32 demoVM 0 demoStmts).isSome :=
   lowerScalarSetSeqW_isSome 32 demoVM 0 demoStmts demo_covers
 
@@ -488,7 +517,7 @@ theorem seqProg_comJLowerable (w : Nat) {Γ : Ctx} (vm : VarMap Γ)
     · simp at hsp
   · simp at hsp
 
-/-- **The keystone jasmin landing at scale.** Whenever the whole `RScalarSetExpr`
+/-- **The jasmin landing at scale.** Whenever the whole `RScalarSetExpr`
     sequence is coverable (`SeqCovers`) and its program resolves (`seqProg` is
     `some`), the program reaches the owned x86 backend through
     `cryptoDialectToJasminCom`. Footprint `[propext, Quot.sound]` — the jasmin

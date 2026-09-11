@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GroundedZkProtocol
-import CatCrypt.Crypto.SecureCompilation.GroundedMultiKernelProtocol
-import CatCrypt.Crypto.SecureCompilation.GroundedKdfKem
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GroundedZkProtocol
+public import CatCrypt.Crypto.SecureCompilation.GroundedMultiKernelProtocol
+public import CatCrypt.Crypto.SecureCompilation.GroundedKdfKem
 
 /-!
 # Grounded SNARK / STARK proof-system computational backbones — whole-pipeline
@@ -117,6 +119,8 @@ Each reuses the proved concrete realizers already in-repo:
   SHAKE / sponge); Grassi et al., *Poseidon2*, ePrint 2023/323; Plonky3
   `p3-merkle-tree` vector commitments.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,15 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportKeccak
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakRotateSelect
-import CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad
-import CatCrypt.Crypto.Optimizer.LoadCSE
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportKeccak
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakRotateSelect
+public import CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad
+public import CatCrypt.Crypto.Optimizer.LoadCSE
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # Compiled Keccak-p[1600,24] linear-jasmin owned-RA producer (task #472)
@@ -31,6 +33,8 @@ loads, and the output stores are all 64-bit; the emitted blob carries the
 `:64` width tag on its body mnemonics (see `JasminLprogExport.binOpName`) and
 the patched `read_linear` materialises them at U64.
 -/
+
+@[expose] public section
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
   (Com.toLprogPhysAbi Com.writeLprogPhysAbiFile

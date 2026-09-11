@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.LoweringAVX512
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Poseidon2LaneVec
+module
+
+import all Init.Data.Repr
+import all Init.Data.String.Defs
+import all CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.LoweringAVX512
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.LoweringAVX512
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Poseidon2LaneVec
 
 /-!
 # Poseidon2 BabyBear — AVX-512 (ZMM, 8×u64) lowering (task #283)
@@ -40,17 +45,17 @@ vs the `__m256i`'s 4. The 16-element BabyBear state thus packs into **2 zmm**
 ## Denotation grounding (no new axioms)
 
 Each AVX-512 lowering's denotation is proven equal to the abstract
-`denoteVectorOp` of the *same* op — the `lowerAVX512_*_correct` keystones of
+`denoteVectorOp` of the *same* op — the `lowerAVX512_*_correct` theorems of
 #276, instantiated at the Poseidon2 lane shape and the `.w8u64` width. The
 S-box chain's per-lane meaning is the proven
-`Poseidon2LaneVec.sbox_denotation_preserves` keystone
+`Poseidon2LaneVec.sbox_denotation_preserves` theorem
 (`LaneMap.poseidon2_sbox_lane_map`); the width is a purely emit-side concern,
 so the per-lane semantics is width-independent. The cross-target invariant
 (`poseidon2_avx2_avx512_agree`) states that the AVX2 lowering and the
 AVX-512 lowering of the *same* `VectorOp` term denote the same lane vector —
 only the emit text width differs. No axiom beyond the existing Poseidon2 /
 VectorDialect bridge is introduced (every proof below is `rfl`-shaped or
-delegates to a #276 keystone).
+delegates to a #276 theorem).
 
 The measured AVX-512 perf for the full permutation in the Montgomery domain
 is reported in `bench/poseidon2_compare/` (`poseidon2_avx512_mont_ref.c`,
@@ -67,6 +72,8 @@ differentially validates it against the `MpnAvx512Emit.denoteVPaddQ8` model.
 extension beyond the faithful Rocq mirror, which stays at six widths. The C
 reference measures the same permutation's AVX-512 ceiling.)
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -96,7 +103,7 @@ theorem mds_add_avx512_eq (v w : VectorTy (BitVec 64) poseidon2LaneN512) :
 theorem mds_add_avx512_render (v w : VectorTy (BitVec 64) poseidon2LaneN512) :
     ((lowerAVX512 .w8u64 (.add padd v w : VectorOp (BitVec 64) poseidon2LaneN512)).map
         (renderAVX512 "vS" ["vS", "vrc"]))
-      = some "vS = #VPADD_8u64(vS, vrc);" := rfl
+      = some "vS = #VPADD_8u64(vS, vrc);" := (rfl)
 
 /-! ## 3. S-box `x⁵` multiply chain → `#VPMULL_8u64` (re-target of `.mul pmul`) -/
 
@@ -121,7 +128,7 @@ theorem sbox_chain_avx512_eq (v : VectorTy (BitVec 64) poseidon2LaneN512) :
 theorem sbox_mul_avx512_render (v w : VectorTy (BitVec 64) poseidon2LaneN512) :
     ((lowerAVX512 .w8u64 (.mul pmul v w : VectorOp (BitVec 64) poseidon2LaneN512)).map
         (renderAVX512 "vsq" ["va", "vb"]))
-      = some "vsq = #VPMULL_8u64(va, vb);" := rfl
+      = some "vsq = #VPMULL_8u64(va, vb);" := (rfl)
 
 /-! ## 4. Montgomery high-half product → `#VPMULH_8u64` (re-target of `.mulHi`)
 
@@ -143,7 +150,7 @@ theorem mont_mulHi_avx512_eq (v w : VectorTy (BitVec 64) poseidon2LaneN512) :
 theorem mont_mulHi_avx512_render (v w : VectorTy (BitVec 64) poseidon2LaneN512) :
     ((lowerAVX512 .w8u64 (.mulHi pmul v w : VectorOp (BitVec 64) poseidon2LaneN512)).map
         (renderAVX512 "vt" ["vm", "vp"]))
-      = some "vt = #VPMULH_8u64(vm, vp);" := rfl
+      = some "vt = #VPMULH_8u64(vm, vp);" := (rfl)
 
 /-! ## 5. BabyBear field-reduce shift `>>> 31` → `#VPSRL_8u64`
     (re-target of `.shiftR pshr`) -/

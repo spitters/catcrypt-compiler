@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulBody
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulBody
 
 /-!
 # `toLprogPhysAbi` faithfulness — the end-to-end straight-line binop result
@@ -79,6 +81,8 @@ indexing is the named residual below.
 * **`hinj`, the leading `mov dst, s0`, `arr`/`arrIdx` memory, ABI/`Lret`** remain
   exactly as named in `ToLprogFaithfulBody` / `ToLprogFaithfulWriteSide`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

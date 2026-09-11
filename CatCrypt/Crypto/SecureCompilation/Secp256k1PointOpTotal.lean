@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpAddVertical
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpAddVertical
 
 /-!
 # Termination of the front-compiled secp256k1 point-op bodies
@@ -40,6 +42,8 @@ same named step functions, so no generated command list is reduced.
   builders: the length of their result-name lists, and the run of the commands
   they emit from a bound operand set.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpTotal
 

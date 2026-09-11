@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
+module
+
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
 # Ed25519 sign / verify — Lean specification layer
@@ -68,6 +70,8 @@ in C for variable-time efficiency (allowed because `A`, `R`, `k` are
 public). Both `s · B` and `k · A'` use the emitted `ed25519_add` /
 `ed25519_dbl` MLIR functions as leaves.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.Ed25519
 

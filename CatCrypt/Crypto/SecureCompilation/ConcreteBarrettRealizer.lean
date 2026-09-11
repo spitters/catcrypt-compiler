@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GenericKernelRealization
-import CatCrypt.Crypto.SecureCompilation.BarrettReduceEmitValue
-import CatCrypt.Crypto.SecureCompilation.ConcreteSymFieldRealizer
-import CatCrypt.Crypto.Optimizer.Rewrite.BarrettReduceGeneric
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GenericKernelRealization
+public import CatCrypt.Crypto.SecureCompilation.BarrettReduceEmitValue
+public import CatCrypt.Crypto.SecureCompilation.ConcreteSymFieldRealizer
+public import CatCrypt.Crypto.Optimizer.Rewrite.BarrettReduceGeneric
 
 /-!
 # Concrete realizer for the Barrett modular-reduction kernel — KAT-free
@@ -76,6 +78,8 @@ fully unconditional.
 * P. Barrett, "Implementing the Rivest Shamir and Adleman public key encryption
   algorithm on a standard digital signal processor", CRYPTO 1986.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

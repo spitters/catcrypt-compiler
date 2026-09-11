@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.EcRealizationGeneric
-import Mathlib.Tactic
+module
+
+public import CatCrypt.Crypto.SecureCompilation.EcRealizationGeneric
+public import Mathlib.Tactic.FieldSimp
+public import Mathlib.Tactic.Group
+public import Mathlib.Tactic.LinearCombination
 
 /-!
 # Generic short-Weierstrass (`a = 0`) on-curve closure of the affine group law
@@ -30,6 +34,8 @@ no new on-curve proof: instantiate at its own `ZMod p` and `b`.
 
 0 sorries; no custom axioms.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Util.PrattCertificate
+module
+
+public import Mathlib.Tactic.NormNum.Prime
+public import CatCrypt.Crypto.Util.PrattCertificate
 
 /-!
 # Lucas node `I = 1257559732178653`
@@ -11,6 +14,8 @@ import CatCrypt.Crypto.Util.PrattCertificate
 Primality of the factor `I` of `H - 1`, via `I - 1 = 2^2 · 3 · 7 · 23 · 531581 · 1224481`
 with witness `2`. All factors of `I - 1` are below `2^32`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxRecDepth 50000

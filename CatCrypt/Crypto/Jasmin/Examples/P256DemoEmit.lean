@@ -3,8 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
-import CatCrypt.Crypto.Jasmin.LowCTToMLIR
+module
+
+public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
+public meta import CatCrypt.Crypto.Jasmin.LowCTToMLIR
+public import CatCrypt.Crypto.Jasmin.LowCTToMLIR
+public meta import CatCrypt.Crypto.Jasmin.Examples.BenchOut
+public import CatCrypt.Crypto.Jasmin.Examples.BenchOut
 
 /-!
 # P-256 demonstration: same pipeline, different curve
@@ -26,6 +32,8 @@ Demonstrates that adding a new curve to the pipeline is mechanical:
 This file does steps 4 + 5; the C-side bench harness wiring is left
 as a follow-up (the shim is auto-generated and ready).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.Examples.P256DemoEmit
 
@@ -86,11 +94,6 @@ def p256DemoMLIR : String :=
 
 -- Emit MLIR to the catcrypt-bench source tree if it exists; otherwise skip
 -- silently so the file builds in environments without that sibling repo.
-#eval (do
-  let path : System.FilePath :=
-    "/home/au528660/Claude/BLS/catcrypt-bench/src/p256_demo.mlir"
-  if ← System.FilePath.pathExists path.parent.get! then
-    IO.FS.writeFile path p256DemoMLIR
-  : IO Unit)
+#eval BenchOut.writeBench "p256_demo.mlir" p256DemoMLIR
 
 end CatCrypt.Crypto.Jasmin.Examples.P256DemoEmit

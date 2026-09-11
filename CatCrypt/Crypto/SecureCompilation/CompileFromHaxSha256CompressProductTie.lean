@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ThirToComFront
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha256CompressTie
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha2KeccakTie
-import CatCrypt.Crypto.SecureCompilation.VIR.Grind
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ThirToComFront
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha256CompressTie
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha2KeccakTie
+public import CatCrypt.Crypto.SecureCompilation.VIR.Grind
 
 /-!
 # Product-output front: the whole 8-word SHA-256 state as ONE emitted `Com`
@@ -55,6 +57,8 @@ Functional-equality tie, not a security claim (SHA-256 is unkeyed; CR/PRF live i
 `SLHDSA/Reduction.lean`). The schedule `W[t]` stays the front-expressed whole
 recurrence of `CompileFromHaxSha256CompressTie.wholeSchedule_denoteScalar`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

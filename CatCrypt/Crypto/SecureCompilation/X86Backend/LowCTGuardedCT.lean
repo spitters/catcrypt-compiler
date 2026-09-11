@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
 
 /-!
 # Source→machine bridge, Phase 1b: the *guarded* scalar ops
@@ -46,7 +48,7 @@ bridge is the source→machine companion of the in-tree
 ## What is proved
 
 * `GuardedSrc.toLowCT` — the embedding into real `LowCT` (`RScalarSetExpr`),
-  so the source object is a genuine `LowCT` node with the real `cmdCT` verdict.
+  so the source object is a `LowCT` node with the real `cmdCT` result.
 * `lowerGuarded_allDirect` / `lowerGuarded_constant_time` — **the easy
   unconditional half**: the lowering is memory-free (`mov`; `sub`/`shl`/`shr`
   over register/immediate operands), so it is in the machine constant-time
@@ -58,10 +60,12 @@ bridge is the source→machine companion of the in-tree
   on the *source* values, and `StateMatch ρ`, the lowered block tracks the
   source `RScalarSetExpr` semantics.
 * `lowerGuarded_denote_rustExec` — the same against the real `RustExec`.
-* `GuardedSrc.cmdCT_iff` — the source CT verdict reduces to operand publicness.
+* `GuardedSrc.cmdCT_iff` — the source CT result reduces to operand publicness.
 * `lowerGuarded_source_to_machine_CT` — the end-to-end source-CT ⇒ machine-CT
   shape.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -111,20 +115,20 @@ def GuardedSrc.toSExpr (p : GuardedSrc) : SExpr :=
   | .shl b => .SShl av (.SLit b)
   | .shr b => .SShr av (.SLit b)
 
-/-- **The embedding into real `LowCT`.** A `GuardedSrc` is the genuine `LowCT`
+/-- **The embedding into real `LowCT`.** A `GuardedSrc` is the `LowCT`
     command `RScalarSetExpr p.dst (a ⟨op⟩ b)`; the source object whose CT we
-    analyse is a real `LowCT` node with the real `cmdCT` verdict. -/
+    analyse is a real `LowCT` node with the real `cmdCT` result. -/
 def GuardedSrc.toLowCT (p : GuardedSrc) : LowCT :=
   .RScalarSetExpr p.dst p.toSExpr
 
-/-- The source CT verdict for a `GuardedSrc`, via the **real** `cmdCT`: for a
+/-- The source CT result for a `GuardedSrc`, via the **real** `cmdCT`: for a
     single `RScalarSetExpr`, `cmdCT` reduces to the data-flow `isPublic` check
     on the read slots. -/
 theorem GuardedSrc.cmdCT_eq (p : GuardedSrc) (lt : LevelTable) (leafCT : LeafCTTable) :
     cmdCT p.toLowCT lt leafCT = p.toSExpr.isPublic lt := by
   simp [GuardedSrc.toLowCT, cmdCT_RScalarSetExpr]
 
-/-- Concretely: the source CT verdict is `true` iff the read slot(s) are
+/-- Concretely: the source CT result is `true` iff the read slot(s) are
     `Public` — `a` (and `b` for subtraction; the shift count is a literal and
     reads nothing). -/
 theorem GuardedSrc.cmdCT_iff (p : GuardedSrc) (lt : LevelTable) (leafCT : LeafCTTable) :
@@ -346,7 +350,7 @@ theorem lowerGuarded_denote (ρ : RegMap) (p : GuardedSrc) (rs : RustState) (js 
            | .sub b => rs.rsScalar p.a < 2 ^ 64 ∧ rs.rsScalar b ≤ rs.rsScalar p.a
            | .shl b => b < 64 ∧ rs.rsScalar p.a <<< b < 2 ^ 64
            | .shr b => b < 64 ∧ rs.rsScalar p.a < 2 ^ 64) := by
-    simpa [GuardedSrc.guard] using hg
+    exact hg
   by_cases hv : v = p.dst
   · -- `v = dst`: the register `ρ dst` now holds the computed value.
     subst hv
@@ -383,7 +387,7 @@ theorem lowerGuarded_denote (ρ : RegMap) (p : GuardedSrc) (rs : RustState) (js 
 /-- The source post-state of `p.toLowCT` under the **real** `RustExec`
     operational semantics: `RustExec.scalarSetExpr` steps
     `RScalarSetExpr p.dst p.toSExpr` to `rsSetScalar rs p.dst (eval …)`. Ties
-    `lowerGuarded_denote`'s post-state to the genuine `LowCT` semantics. -/
+    `lowerGuarded_denote`'s post-state to the `LowCT` semantics. -/
 theorem GuardedSrc.rustExec (N : Nat) (leafSpec : LeafSpec) (p : GuardedSrc)
     (rs : RustState) :
     RustExec N leafSpec p.toLowCT rs
@@ -391,7 +395,7 @@ theorem GuardedSrc.rustExec (N : Nat) (leafSpec : LeafSpec) (p : GuardedSrc)
   RustExec.scalarSetExpr p.dst p.toSExpr rs
 
 /-- **Denote preservation, against the real `RustExec`.** Combines
-    `GuardedSrc.rustExec` (the genuine source step) with `lowerGuarded_denote`:
+    `GuardedSrc.rustExec` (the source step) with `lowerGuarded_denote`:
     for the unique source post-state `rs'` reached by `RustExec` on `p.toLowCT`,
     the machine run of the lowering ends `StateMatch`-related — **under the
     source-value guard** `p.guard rs`. The source-operational-semantics ⇒
@@ -408,13 +412,13 @@ theorem lowerGuarded_denote_rustExec (N : Nat) (leafSpec : LeafSpec)
 /-! ## 7. Source CT ⇒ machine CT, end to end
 
 `lowerGuarded_source_to_machine_CT`: a guarded source command whose `cmdCT`
-verdict is `true` lowers to a machine block that is constant-time. As in the
+result is `true` lowers to a machine block that is constant-time. As in the
 homomorphic case the `cmdCT` hypothesis is consumed only on the source side —
 machine CT is unconditional for this memory-free fragment, and (separately) it
 does **not** depend on the value guard. The statement records the intended
 contract: a CT-accepted guarded source command compiles to CT machine code. -/
 
-/-- **Source CT verdict ⇒ machine constant-time.** If the guarded source command
+/-- **Source CT result ⇒ machine constant-time.** If the guarded source command
     `p.toLowCT` passes the real source CT analyser `cmdCT`, its lowering is
     constant-time at the machine level (same leakage trace from any two states).
     Independent of the value guard `p.guard`. -/

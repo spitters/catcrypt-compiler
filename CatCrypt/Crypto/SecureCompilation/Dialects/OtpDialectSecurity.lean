@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectSecurityNative
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectSecurityNative
 
 /-!
 # OTP perfect security on `Com catCryptDialect`
@@ -18,6 +20,8 @@ samples directly), and the distance is computed natively through `Com.denoteSP`
 and the uniform-sample-XOR bijection — not the valuation-free `Com.all_com_ct`
 shadow.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

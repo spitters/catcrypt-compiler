@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.AddModKernel
-import Mathlib
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.AddModKernel
+public import Mathlib.Tactic.Linarith
+public import Mathlib.Tactic.NormNum
 
 /-!
 # Field multiplication `(a · b) mod p` via Barrett reduction
@@ -23,13 +27,15 @@ the `mulhi` register is the remaining assembly (a `bv_decide` factoring of the
 conditional-subtract block over an abstract remainder), pending here.
 -/
 
+@[expose] public section
+
 namespace CatCrypt.Crypto.SecureCompilation.MulModKernel
 
 open CatCrypt.Crypto.SecureCompilation.ScalarLin
 open CatCrypt.Crypto.SecureCompilation.FieldReduceIdioms
 
 /-- `n < (n / m + 1) * m` for `0 < m`. -/
-private theorem lt_div_add_one_mul (n m : Nat) (hm : 0 < m) : n < (n / m + 1) * m := by
+theorem lt_div_add_one_mul (n m : Nat) (hm : 0 < m) : n < (n / m + 1) * m := by
   have h1 := Nat.div_add_mod n m
   have h2 := Nat.mod_lt n hm
   nlinarith [h1, h2]

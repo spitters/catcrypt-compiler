@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.IselPipelineGeneral
-import CatCrypt.Crypto.SecureCompilation.Dialects.AndnSelect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.IselPipelineGeneral
+public import CatCrypt.Crypto.SecureCompilation.Dialects.AndnSelect
 
 /-!
 # D3 — the GENERAL ISel pass: ROR + ANDN, both UNCONDITIONAL
@@ -43,6 +45,8 @@ the op-match in the `Option`-returning recognizer, so the `Com` recursion in
 descent with **no** body hypothesis. The ANDN value collapse (`mkAndnOp_denote`) is
 unconditional, so unlike ROR there is not even a width-range side condition to thread.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

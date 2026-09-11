@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
 
 /-!
 # A real fixed-size bignum kernel: functionally correct AND constant-time
@@ -43,6 +47,8 @@ carries the identical constant-time proof, showing the fast path is CT too.
 **0 axioms beyond the `native_decide` KAT pins** (`propext`, `Quot.sound`,
 `Lean.ofReduceBool`), **0 sorries**.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

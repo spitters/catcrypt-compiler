@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
-import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
-import CatCrypt.Crypto.Util.X25519Verified
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+public meta import CatCrypt.Crypto.Util.X25519Verified
+public import CatCrypt.Crypto.Util.X25519Verified
 
 /-!
 # SIMD Ristretto / Curve25519 4-way packed field through the VectorDialect (task #461)
@@ -80,6 +85,8 @@ the single final canonical subtract is a masked select, branch-free). So the
 packed field stays constant-time — confirmed structurally by `ct_data_indep`
 (the op list contains no branch / data-indexed load). No vartime path.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

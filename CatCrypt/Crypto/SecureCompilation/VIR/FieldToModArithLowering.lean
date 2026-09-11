@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.FieldLowering
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectLoweringTransport
-import CatCrypt.Crypto.SecureCompilation.VIR.ComParametricityTransport
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.FieldLowering
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectLoweringTransport
+public import CatCrypt.Crypto.SecureCompilation.VIR.ComParametricityTransport
 
 /-!
 # Field → ModArith as a `Com`-level program transport (the L3→L2 structure)
@@ -81,6 +83,8 @@ no-`mapTy`-target / op-splitting obstruction stated).
 
 **0 sorries**; target axiom set `{propext, Classical.choice, Quot.sound}`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ScalarLinNeutral
-import CatCrypt.Crypto.SecureCompilation.ScalarLinFront
-import CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ScalarLinNeutral
+public import CatCrypt.Crypto.SecureCompilation.ScalarLinFront
+public import CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
 
 /-!
 # The de-Bruijn proof, shared across all backends
@@ -18,6 +20,8 @@ semantics — generically, over an abstract `ScalarTarget`. AArch64 is instantia
 here as a concrete witness (`hstep_arm`); RISC-V / x86 / GPU plug in identically
 via their own register projection (RISC-V uses the `zero`/`x0` convention).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

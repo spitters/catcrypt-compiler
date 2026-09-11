@@ -3,8 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTBorrowCheckInPlace
-import CatCrypt.Crypto.Jasmin.S2NBignumSSA
+module
+
+public meta import CatCrypt.Crypto.Jasmin.LowCTBorrowCheckInPlace
+public import CatCrypt.Crypto.Jasmin.LowCTBorrowCheckInPlace
+public meta import CatCrypt.Crypto.Jasmin.S2NBignumSSA
+public import CatCrypt.Crypto.Jasmin.S2NBignumSSA
+
+@[expose] public section
 
 set_option autoImplicit false
 

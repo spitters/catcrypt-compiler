@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
 
 /-!
 # Prime-ir structural / reinterpret ops — `poly.to_tensor` / `poly.from_tensor`
@@ -101,6 +104,8 @@ data-dependent index.  So `ctSafe` is `true` for every op — exactly the
 `FieldDerivedOps`/`PolyDialect` data-oblivious story (and unlike the
 equality-test ops of `cmpDialect`, these never branch on a secret value).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

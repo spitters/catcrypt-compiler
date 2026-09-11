@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 
 /-!
 # `.rodata` global table + RIP-relative base load: the NTT-twiddle seam (probe)
@@ -54,6 +58,8 @@ so `out[0] = table[inp[0]]`.
   load `(%base,%idx,8)` reads the 8 table words. These are the standard `.rodata`
   + RIP-relative trust the backend's other RIP-relative leaves already carry.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

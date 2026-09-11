@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Add
-import Mathlib.Data.ZMod.Basic
+module
+
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Add
+public import Mathlib.Data.ZMod.Basic
 
 /-!
 # The `bls12_377` quadratic extension `Fp2 = Fp[u]/(u² − ξ)`, with KARATSUBA mul
@@ -54,6 +56,8 @@ lift, one further step, deliberately not attempted here to keep the pass focused
 and sorry-free). The base-field ADD relational tie lives in
 `RelationalFrontBls377Add`; this module is the field-algebra gateway above it.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Transfer.Congruence.ParamSolve
-import CatCrypt.Crypto.SecureCompilation.VIR.ModArithDialect
+module
+
+public import Transfer.Congruence.ParamSolve
+public import CatCrypt.Crypto.SecureCompilation.VIR.ModArithDialect
 
 /-!
 # PQC NTT-kernel lowering transport synthesized by the Param engine (`param_solve`)
@@ -101,6 +103,8 @@ synthesis: only the modular-arithmetic op-tree synthesizes here.
 
 **0 sorries**; target axiom set `{propext, Classical.choice, Quot.sound}`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

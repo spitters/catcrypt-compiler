@@ -3,10 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdCopyPropagate
-import CatCrypt.Crypto.SecureCompilation.X86Backend.RedundantReloadElim
-import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElf
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdCopyPropagate
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdCopyPropagate
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.RedundantReloadElim
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.RedundantReloadElim
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElf
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElf
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
 
 /-!
 # Redundant spill-reload elimination on the owned-RA `Lcmd`, and the optimized render
@@ -66,6 +72,8 @@ Pairing is adjacency-based, so a deleted reload is always in the same
 straight-line segment as its store and is never a jump target (a jump target is
 preceded by an `Llabel`, not by a spill store).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

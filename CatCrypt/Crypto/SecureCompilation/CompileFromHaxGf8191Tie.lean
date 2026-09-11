@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxGf8191
-import Mathlib.Data.ZMod.Basic
-import Mathlib.FieldTheory.Finite.Basic
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxGf8191
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxGf8191
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.FieldTheory.Finite.Basic
 
 /-!
 # #606 fan-out: the emitted GF(8191) multiply leaf EQUALS the abstract field op
@@ -28,6 +31,8 @@ is the field product `↑a · ↑b`. No `decide`/`native_decide` here — it is 
 genuine prime-field reduce identity, lifted to the Mathlib field through
 `ZMod.natCast_*`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

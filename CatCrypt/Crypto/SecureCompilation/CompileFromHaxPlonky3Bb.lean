@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
-import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
 
 /-!
 # C4 fan-out: the verified compiler emits the Plonky3 BabyBear field multiply
@@ -54,6 +59,8 @@ closed structurally by `Poseidon2Emit.bbMul_correct` (folds bound + residue +
 two exact csubs, via structured `Nat` arithmetic), and `bbMulReduceForm` is
 definitionally `bbMul`, so the tie is `bbMul_correct` verbatim.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -168,7 +175,7 @@ theorem bbMul_compiles :
       bbMulSrc (fun _ => none) = some (bbMulReduceForm a b) := by
     have h := bbMulSrc_denoteScalar (nIn := 2) ![a, b]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 64) (nIn := 2) ["a", "b"]
     ![a, b] bbMulSrc _ hc hspec
 

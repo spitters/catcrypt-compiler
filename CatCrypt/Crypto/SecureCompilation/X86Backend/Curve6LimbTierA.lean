@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookProductRunBlock
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookProductRunBlock
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookProductRunBlock
 
 /-!
 # Tier-A Montgomery multiply over `runBlock` for the 6-limb curves
@@ -57,6 +61,8 @@ the hypothesis `(p · Nprime384) % 2^384 = 2^384 − 1` (exactly as `Nprime256` 
 the 4-limb headlines); the reduction law is the prime-parametric
 `Number.montgomeryMul_correct` instantiated at each curve's canonical prime.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxHeartbeats 1000000

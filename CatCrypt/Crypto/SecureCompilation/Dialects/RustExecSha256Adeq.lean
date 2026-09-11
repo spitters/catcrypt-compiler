@@ -3,9 +3,36 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecKernelAdeq
-import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecRoundAdeq
-import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecARXAdeq
+module
+
+-- The closed-kernel route reduces the front (`translateDialectControl`,
+-- `semScalar`, `cryptoDialectToJasminCom`) by `rfl`/`decide`; under the module
+-- system that reduction needs the front closure imported with `all`, and
+-- `Nat.repr` (the front's slot names) exposed through `Init.Data.Repr`.
+import all Init.Data.Repr
+import all CatCrypt.Core.Code
+import all CatCrypt.Crypto.CryptoWord
+import all CatCrypt.Crypto.Jasmin.JasminAST
+import all CatCrypt.Crypto.Jasmin.JasminTypes
+import all CatCrypt.Crypto.Jasmin.LowCT
+import all CatCrypt.Crypto.SDist
+import all CatCrypt.Crypto.SecureCompilation.CryptoSSA
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+import all CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
+import all CatCrypt.Crypto.SecureCompilation.Dialects.RustExecKernelAdeq
+import all CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
+import all CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.Core
+import all CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+import all CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
+public import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecKernelAdeq
+public import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecRoundAdeq
+public import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecARXAdeq
 
 /-!
 # A whole SHA-256 compression round STEP through the closed-kernel `emitted = RustExec` route
@@ -87,6 +114,8 @@ leg (`RustExecKernelAdeq.entry_trio_unsat_empty`, the `P3`-composition wall),
 orthogonal to the round assembly done here.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 -- The whole round step is a large closed kernel; the `.get`/`rfl` front-tracking
 -- and the concrete `decide` value tie reduce a bigger term than the single-arm
@@ -118,7 +147,7 @@ namespace CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSha256Adeq
 /-- The 32-bit mask `0xFFFFFFFF`. -/
 def M : Nat := 4294967295
 
-/-- `ror32(x, n) = (x >> n) ⊕ ((x << (32-n)) & 0xFFFFFFFF)` — a genuine 32-bit
+/-- `ror32(x, n) = (x >> n) ⊕ ((x << (32-n)) & 0xFFFFFFFF)` — a 32-bit
     right rotation in `⊕`-form (disjoint bit ranges). -/
 def rorE (n : Nat) (x : String) : SExpr :=
   .SXor (.SShr (.SVar x) (.SLit n)) (.SAnd (.SShl (.SVar x) (.SLit (32 - n))) (.SLit M))
@@ -356,16 +385,32 @@ theorem shHSem : semScalar sha256C (fun _ => none) = some shEnv :=
 
 theorem shNameSome : (shO.vm.lookup "na").isSome := by rfl
 
-noncomputable def shW : CVar shO.Γ' (.sword 64) :=
-  ((shO.vm.lookup "na").get shNameSome).2
+/-- The tracked slot's type is the 64-bit word: decided, since the slot name
+    goes through `Nat.repr`, which the elaborator's definitional check does not
+    reduce. -/
+theorem shNameTy : ((shO.vm.lookup "na").get shNameSome).1 = .sword 64 := by
+  decide
 
-theorem shHName : shO.vm.lookup "na" = some ⟨.sword 64, shW⟩ := by rfl
+/-- The tracked output slot for `na`. -/
+noncomputable def shW : CVar shO.Γ' (.sword 64) :=
+  cast (congrArg (CVar shO.Γ') shNameTy) ((shO.vm.lookup "na").get shNameSome).2
+
+theorem shHName : shO.vm.lookup "na" = some ⟨.sword 64, shW⟩ := by decide
 
 theorem shValSome : (shEnv "na").isSome := by rfl
 
-noncomputable def shVal : BitVec 64 := ((shEnv "na").get shValSome).2
+theorem shValTy : ((shEnv "na").get shValSome).1 = .sword 64 := by decide
 
-theorem shHVal : shEnv "na" = some ⟨.sword 64, shVal⟩ := by rfl
+/-- The word `semScalar` leaves in `na`. -/
+noncomputable def shVal : BitVec 64 :=
+  cast (congrArg CryptoTy.denote shValTy) ((shEnv "na").get shValSome).2
+
+theorem shHVal : shEnv "na" = some ⟨.sword 64, shVal⟩ := by
+  rw [← Option.some_get shValSome]
+  exact congrArg some (Sigma.ext shValTy
+    (by unfold shVal
+        exact (cast_heq (congrArg CryptoTy.denote shValTy)
+          ((shEnv "na").get shValSome).2).symm))
 
 theorem shRetSome : (shO.cont (Com.ret (toVIRVar shW))).isSome := by rfl
 

@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Veir.OpCode
+module
+
+import all Init.Data.Repr
+public import Veir.OpCode
 
 /-!
 # MLIR backend — Stage 1 smoke test (task #183)
@@ -67,6 +70,8 @@ The "round-trip" check is a `#eval` on the textual representation —
 nothing here is verified semantically. The proper denotation-preservation
 theorem lives in `ComToMLIR.lean` (Stage 4).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,10 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Core
-import Veir.IR.Basic
-import Veir.IR.OpInfo
-import Veir.IR.Attribute
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public import Veir.IR.Basic
+public import Veir.IR.OpInfo
+public import Veir.IR.Attribute
 
 /-!
 # Path (b): `Com → Veir.IRContext` lowering
@@ -53,6 +56,8 @@ file (`ComToVeirCorrect.lean`, future work).
 Scaffold + `Expr` lowering + `Com` lowering + smoke test compile
 clean. No `sorry`, no `axiom`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -173,7 +178,7 @@ This mirrors Veir's allocation pattern: a freshly-allocated
 `{op := op, index := <old length>}`, which is exactly what
 `OperationPtr.getResult` would return.
 -/
-private def pushFreshResult (op : Veir.OperationPtr) (ty : Veir.TypeAttr) :
+def pushFreshResult (op : Veir.OperationPtr) (ty : Veir.TypeAttr) :
     ComToVeirM (ToVeirOp.Op (d := d)) Veir.OpResultPtr := do
   let ctx ← get
   let idx := op.getNumResults! ctx
@@ -195,7 +200,7 @@ previous-use list) is the job of Veir's higher-level builder and is
 out of scope here. The graph produced is therefore "shape-correct"
 but not "use-list-canonical".
 -/
-private def pushFreshOperand (op : Veir.OperationPtr) (value : Veir.ValuePtr) :
+def pushFreshOperand (op : Veir.OperationPtr) (value : Veir.ValuePtr) :
     ComToVeirM (ToVeirOp.Op (d := d)) Unit := do
   let ctx ← get
   let operand : Veir.OpOperand :=
@@ -210,7 +215,7 @@ private def pushFreshOperand (op : Veir.OperationPtr) (value : Veir.ValuePtr) :
     results) but immediately receives the op's static attribute
     dictionary (from `ToVeirOp.attrsOf`). The caller is responsible
     for pushing operands and results. -/
-private def allocOp (vop : d.Op) :
+def allocOp (vop : d.Op) :
     ComToVeirM (ToVeirOp.Op (d := d)) Veir.OperationPtr := do
   let ctx ← get
   let veop := ToVeirOp.toOp (d := d) vop
@@ -237,7 +242,7 @@ emitting one `pushFreshOperand` per argument.
 Defined by recursion on the type-list `tys` so it doesn't need
 well-founded reasoning.
 -/
-private def pushAllOperands {Γ : Ctxt d} (vm : VarMap Γ)
+def pushAllOperands {Γ : Ctxt d} (vm : VarMap Γ)
     (op : Veir.OperationPtr) :
     {tys : List d.Ty} → HVector (fun ty => Var Γ ty) tys →
     ComToVeirM (ToVeirOp.Op (d := d)) Unit
@@ -423,7 +428,7 @@ variable [ToVeirOp d] [ToVeirTy d]
 
 /-- De Bruijn depth of a `Var Γ t`: `.here` has depth 0, each
     `.there` shifts by one. -/
-private def varDepth : {Γ : Ctxt d} → {t : d.Ty} → Var Γ t → Nat
+def varDepth : {Γ : Ctxt d} → {t : d.Ty} → Var Γ t → Nat
   | _, _, .here => 0
   | _, _, .there v => varDepth v + 1
 
@@ -434,19 +439,19 @@ private def varDepth : {Γ : Ctxt d} → {t : d.Ty} → Var Γ t → Nat
     `.there (.there .here) ↦ arg 2`, … . This is consistent with
     `pushBlockArgs` pushing `Γ` head-first (so the head of `Γ` becomes
     arg 0). -/
-private def varToBlockArg (blk : Veir.BlockPtr) {Γ : Ctxt d} {t : d.Ty}
+def varToBlockArg (blk : Veir.BlockPtr) {Γ : Ctxt d} {t : d.Ty}
     (v : Var Γ t) : Veir.BlockArgumentPtr :=
   blk.getArgument (varDepth v)
 
 /-- Build a `VarMap` whose entries are the block arguments of `blk`,
     indexed by De Bruijn depth (`.here ↦ arg 0`). -/
-private def varMapOfBlockArgs {Γ : Ctxt d} (blk : Veir.BlockPtr) :
+def varMapOfBlockArgs {Γ : Ctxt d} (blk : Veir.BlockPtr) :
     VarMap Γ :=
   fun _ v => Veir.ValuePtr.blockArgument (varToBlockArg blk v)
 
 /-- Push one fresh `BlockArgument` for each type in `tys` (in source
     order: `tys.head` ⇒ arg 0). -/
-private def pushBlockArgs (blk : Veir.BlockPtr) :
+def pushBlockArgs (blk : Veir.BlockPtr) :
     (tys : List d.Ty) →
     ComToVeirM (ToVeirOp.Op (d := d)) Unit
   | [] => pure ()

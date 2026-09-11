@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.ZMod.Basic
-import CatCrypt.Crypto.Util.P25519PrimeCert
-import Mathlib.Tactic
+module
+
+public import Mathlib.Data.ZMod.Basic
+public meta import CatCrypt.Crypto.Util.P25519PrimeCert
+public import CatCrypt.Crypto.Util.P25519PrimeCert
+public import Mathlib.Tactic.Group
+public import Mathlib.Tactic.Ring
 
 /-!
 # Verified Curve25519 inner kernels over `ZMod (2^255 - 19)`
@@ -53,6 +57,8 @@ rustcmd leaf claim to an identity at this verified-spec level.
 * RFC 7748: Elliptic Curves for Security, §5 (X25519, Montgomery ladder)
 * RFC 7748 §5.2: KAT vectors for X25519 with the Curve25519 base point
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

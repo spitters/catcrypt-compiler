@@ -3,8 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTBorrowCheckInPlace
-import CatCrypt.Crypto.Jasmin.Curve25519InPlaceCerts
+module
+
+public meta import CatCrypt.Crypto.Jasmin.LowCTBorrowCheckInPlace
+public import CatCrypt.Crypto.Jasmin.LowCTBorrowCheckInPlace
+public meta import CatCrypt.Crypto.Jasmin.Curve25519InPlaceCerts
+public import CatCrypt.Crypto.Jasmin.Curve25519InPlaceCerts
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -99,7 +105,6 @@ theorem doubleP25519_pre_no_store :
   intro i hi
   simp [List.all_eq_true] at h
   have hi' := h i hi
-  simp at hi'
   intro hs
   rw [hi'] at hs
   cases hs
@@ -121,7 +126,6 @@ theorem doubleP25519_post_no_load :
   intro i hi
   simp [List.all_eq_true] at h
   have hi' := h i hi
-  simp at hi'
   intro hs
   rw [hi'] at hs
   cases hs
@@ -400,7 +404,6 @@ theorem subP25519_pre_no_store :
   intro i hi
   simp [List.all_eq_true] at h
   have hi' := h i hi
-  simp at hi'
   intro hs
   rw [hi'] at hs
   cases hs
@@ -419,7 +422,6 @@ theorem subP25519_post_no_load :
   intro i hi
   simp [List.all_eq_true] at h
   have hi' := h i hi
-  simp at hi'
   intro hs
   rw [hi'] at hs
   cases hs
@@ -539,7 +541,6 @@ theorem modP25519_4_pre_no_store :
   intro i hi
   simp [List.all_eq_true] at h
   have hi' := h i hi
-  simp at hi'
   intro hs
   rw [hi'] at hs
   cases hs
@@ -558,7 +559,6 @@ theorem modP25519_4_post_no_load :
   intro i hi
   simp [List.all_eq_true] at h
   have hi' := h i hi
-  simp at hi'
   intro hs
   rw [hi'] at hs
   cases hs
@@ -686,7 +686,6 @@ theorem invP25519_no_store_witness :
   have h := invP25519_body_no_direct_store
   simp [List.all_eq_true] at h
   have hi' := h i hi
-  simp at hi'
   rw [hi'] at hs
   cases hs
 

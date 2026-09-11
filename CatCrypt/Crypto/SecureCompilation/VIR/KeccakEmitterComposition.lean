@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterReduction
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterReduction
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterReduction
 
 /-!
 # Composition of the substrate through `KeccakEmit.emitRound`
@@ -74,6 +78,8 @@ See `KeccakEmit.lean` for the full 12-file Keccak VIR canonical map. This
 file is step #118 in that chain: denotation-half composition + via-residual
 FIPS bridge.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

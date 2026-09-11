@@ -3,9 +3,18 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Add
-import Mathlib.Data.ZMod.Basic
-import Mathlib.Tactic
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Add
+public import Mathlib.Tactic.NormNum.Prime
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Add
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.Algebra.Field.ZMod
+public import Mathlib.Tactic.FieldSimp
+public import Mathlib.Tactic.Group
+public import Mathlib.Tactic.NormNum
+public import Mathlib.Tactic.Ring
 
 /-!
 # BLS12-377 `G1` PROJECTIVE (Jacobian) point-add / point-double over the abstract base field
@@ -24,7 +33,7 @@ so the realization ties below are `b`-agnostic — identical algebra to the BLS1
 
 ## The abstract field
 
-The `bls12_377` base field is `ZMod bls377Q` for the genuine 377-bit prime `bls377Q`
+The `bls12_377` base field is `ZMod bls377Q` for the 377-bit prime `bls377Q`
 (defined in `RelationalFrontBls377Add.lean`).  The repo carries `bls377Q` only as a `Nat`
 modulus (its primality is the well-known SnarkVM/Zexe base-field characteristic, not
 discharged in Lean — a 377-bit Miller–Rabin does not terminate under `native_decide`).  We
@@ -72,6 +81,8 @@ generic-chart scope of the BLS12-381 version.
 0 sorries; no new custom axioms (primality is a section hypothesis, not an asserted axiom);
 the field-algebra ties are unconditional given the field structure.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

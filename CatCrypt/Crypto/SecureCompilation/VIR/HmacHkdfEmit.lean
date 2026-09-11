@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Sha2Emit
-import CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSExprWidth32Prototype
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Sha2Emit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Sha2Emit
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSExprWidth32Prototype
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSExprWidth32Prototype
 
 /-!
 # HMAC-SHA256/SHA512 and HKDF emitted from `Com jasminDialect` over the SHA-2 emit
@@ -110,6 +115,8 @@ The RFC 4231 HMAC-SHA-384 vectors are checked byte-for-byte by
 `bench/hmac_compare/hmac384_kat.c` over the **emitted** `sha512_compress` core
 and the **emitted** `hmac512_xor_pad`. `§7` records the reuse facts in Lean.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.HmacHkdfEmit
 

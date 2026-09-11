@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.X86CostModel
-import CatCrypt.Crypto.Optimizer.RandomizedScheduleSearch
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Optimizer.X86CostModel
+public import CatCrypt.Crypto.Optimizer.X86CostModel
+public meta import CatCrypt.Crypto.Optimizer.RandomizedScheduleSearch
+public import CatCrypt.Crypto.Optimizer.RandomizedScheduleSearch
 
 /-!
 # In-order (Cortex-A/M-class) schedule cost model — where SLOTHY actually pays
@@ -47,6 +52,8 @@ theorems of `RandomizedScheduleSearch`, which this module does not touch.
 > **`@bench-only`.** The `List (JInstr 64)` blocks in this module are cost-model
 > fixtures; the module emits no deployed `.s` artifact.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Ed25519.PowP58
-import CatCrypt.Crypto.Jasmin.S2NBignumSSA
+module
+
+public import CatCrypt.Crypto.Jasmin.Ed25519.PowP58
+public import CatCrypt.Crypto.Jasmin.S2NBignumSSA
 
 /-!
 # Bridge: `fp_pow_p58` (spec) ↔ `bignum_pow_p25519_p58` (chain)
@@ -46,6 +48,8 @@ today; this file documents the discharge path.
   refSem:       a^((p−5)/8) mod p
 ```
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

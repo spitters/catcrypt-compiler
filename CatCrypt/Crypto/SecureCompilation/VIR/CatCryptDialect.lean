@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Core
-import CatCrypt.Crypto.SecureCompilation.CryptoSSA
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public import CatCrypt.Crypto.SecureCompilation.CryptoSSA
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
 # CatCrypt VIR dialect
@@ -23,6 +25,8 @@ excluded. The translation `CryptoToVIR.lean` returns `none` on those.
 
 Later: extend VIR with effectful denotation to cover the full CryptoSSA.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
 

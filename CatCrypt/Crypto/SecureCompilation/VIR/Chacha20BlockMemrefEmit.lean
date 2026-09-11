@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.BignumAddMemrefEmit
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockEmit
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.BignumAddMemrefEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.BignumAddMemrefEmit
 
 /-!
 # The whole ChaCha20 block emitted with ALL 16 output words written to an output memref
@@ -59,6 +64,8 @@ word.
 * `chacha20BlockMemrefJazz` / `emit` — the whole-function `.s` text, symbol
   `chacha20_block`, to `bench/chacha_compare/gen_com/chacha20_block_memref.s`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxHeartbeats 4000000
@@ -620,6 +627,6 @@ def emit : IO Unit := do
 The render is written while this module elaborates, so `lake` produces it from
 this file and no separate driver or Makefile rule carries the dependency. -/
 
-#eval emit
+-- #eval emit
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockMemrefEmit

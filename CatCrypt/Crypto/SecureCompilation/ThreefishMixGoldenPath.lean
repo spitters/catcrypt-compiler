@@ -3,10 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
-import CatCrypt.Crypto.SecureCompilation.RotateSynth
-import Std.Tactic.BVDecide
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
+public import CatCrypt.Crypto.SecureCompilation.RotateSynth
+public import Std.Tactic.BVDecide
 
 /-!
 # Golden path: Threefish-512 / Skein MIX as `Com jasminDialect`, emitted by the verified compiler
@@ -35,6 +38,8 @@ Two instances are worked, with genuine Threefish-512 rotation constants **R = 46
 each instance gives two single-output `Com`s — `y0` (one `add`) and `y1` (rotate-xor).
 Both lower through the *same* `comToReg_faithful` as the field/Keccak ops — so the
 Threefish ARX words emit to both backends with no new machinery, only a new kernel body. -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

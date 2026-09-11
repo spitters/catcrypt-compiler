@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.Func
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.Func
 
 /-!
 # `Com func → Com jasmin` — the D0 call-lowering (lattice/`extCall` mirror)
@@ -26,6 +28,8 @@ the `callN` head-projection) — exactly lattice's `jasminOpOf`/`lowerExpr` shap
 The `Com func → Com jasmin → .jazz` end-to-end path and denotation preservation
 (`FuncToJasminDenote.lean`) mirror `LatticeToJasmin` / `LatticeToJasminDenote`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.Func
 

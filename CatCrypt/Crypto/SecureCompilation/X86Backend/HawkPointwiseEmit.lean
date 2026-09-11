@@ -3,10 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRolledLoop
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRolledLoop
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRolledLoop
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # HAWK-512 NTT-domain pointwise Montgomery multiply, OWNED x86, 2-pointer packed ABI
@@ -64,6 +71,8 @@ the first product `a·b < q² ≈ 3.4·10⁸` never wraps at all).
 2-pointer SysV ABI `hawk18433_pointwise_montymul(out, inp)` (`RDI = out`,
 `RSI = inp`), both passed as `uint32_t*` and addressed as `uint64_t` words.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

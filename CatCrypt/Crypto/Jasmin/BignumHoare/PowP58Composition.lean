@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.BignumHoare.ChainStepAxioms
-import CatCrypt.Crypto.Jasmin.BignumHoare.PowP58LayerB
-import CatCrypt.Crypto.Jasmin.BignumHoare.InvP25519Composition
-import CatCrypt.Crypto.Jasmin.Ed25519.PowP58Algo
+module
+
+public import CatCrypt.Crypto.Jasmin.BignumHoare.ChainStepAxioms
+public import CatCrypt.Crypto.Jasmin.BignumHoare.PowP58LayerB
+public import CatCrypt.Crypto.Jasmin.BignumHoare.InvP25519Composition
+public import CatCrypt.Crypto.Jasmin.Ed25519.PowP58Algo
 
 /-!
 # `bignum_pow_p25519_p58`: end-to-end `BignumTripleFuel` composition
@@ -40,6 +42,8 @@ This file adds **0 new axioms**.  All work is plumbing above
 `ChainStepAxioms.lean`'s zero-axiom contracts, parametric over the
 `MontmulCallFacts registry` hypothesis.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -113,7 +117,7 @@ theorem block13b_correctness_triple
         h_z2_250_0_addr_eq (mkScratch s) startIdx rsm_body h_shape
     have : some s_ax = some s' := h_ax_exec ▸ h_exec
     have h_eq : s_ax = s' := Option.some.inj this
-    simpa [post_block13b, h_eq] using h_ax_post
+    simpa [post_block13b, h_eq] using! h_ax_post
 
 /-! ## §3  Full p58 chain triple
 

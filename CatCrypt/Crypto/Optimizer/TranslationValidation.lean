@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Rewrite.ComPipeline
+module
+
+public import CatCrypt.Crypto.Optimizer.Rewrite.ComPipeline
 
 /-!
 # Verified translation validation for the `Com jasminDialect` optimiser (#591)
@@ -51,6 +53,8 @@ equality-saturation witness, observational refinement) extends the checker
 without enlarging the TCB, as long as each extension carries its own soundness
 lemma.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

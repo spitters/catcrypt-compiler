@@ -3,10 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Sha512X8VpackZmmEmit
-import CatCrypt.Crypto.Primitives.SHA512
-import Mathlib.Tactic.FinCases
-import Mathlib.Tactic.NormNum
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Sha512X8VpackZmmEmit
+public import CatCrypt.Crypto.Primitives.SHA512
+public import Mathlib.Tactic.FinCases
+public import Mathlib.Tactic.NormNum
 
 /-!
 # Abstract FIPS-180-4 SHA-512 σ₀ tie for the unified-`Com` lane kernel (model-free)
@@ -85,6 +88,8 @@ it now stands on the unified `Com` denotation.
 
 Invoke: `lake build CatCrypt.Crypto.SecureCompilation.VIR.ShaRoundAbstractCom`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

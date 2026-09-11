@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
-import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 
 /-!
 # Verified CryptOpt: randomized register allocation with in-Lean translation validation (#386)
@@ -69,6 +74,8 @@ stays `none`) — the structural prerequisite the schoolbook lacked. Whether a
 spread renaming is a measured win is a CPU question deferred to a bench harness;
 the verified pass + its acceptance check is the infrastructure deliverable.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

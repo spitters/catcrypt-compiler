@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Algebra.CharP.Frobenius
-import Mathlib.FieldTheory.Finite.Basic
+module
 
+public import Mathlib.Algebra.CharP.Frobenius
+public import Mathlib.FieldTheory.Finite.Basic
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!

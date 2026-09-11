@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.StructuredControlFlow
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.StructuredControlFlow
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
 
 /-!
 # The loop-emit correctness bridge — emitted back-edge loop = verified `scfRepeat`
@@ -52,6 +54,8 @@ The body step `bodyStep body` is a *front* fold in `runBoundedLoop`
 front recursion `f^[k+1] x = f^[k] (f x)`; `scfRepeat` end-unrolls but is proved
 equal to the iterate, so all three agree.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

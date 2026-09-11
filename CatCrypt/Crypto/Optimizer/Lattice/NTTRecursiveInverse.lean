@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.NTTRecursiveFull
-import CatCrypt.Crypto.Optimizer.Lattice.NTTFullInversionGeneric
+module
+
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTRecursiveFull
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTFullInversionGeneric
 
 /-!
 # Recursive (butterfly-network) inverse NTT
@@ -38,6 +40,8 @@ inverse network, and the `(2^e)⁻¹` factor is the normalisation.
   reducing both concrete transforms to their abstract counterparts and invoking
   `idft_dft`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # C4: the verified compiler emits correct crypto leaves from extracted source
@@ -54,6 +57,8 @@ The point: the emitted jasmin `Com` is *computed by the verified compiler from
 the extracted source*, and proven to match the reference spec — the compiler,
 not a human, authored the leaf.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -219,9 +224,7 @@ theorem maj_compiles :
   -- i-th component, so the spec is the plain `(x∧y) ⊕ (x∧z) ⊕ (y∧z)`.
   have hspec : ImpExpr.denoteScalar ["x", "y", "z"] ![x, y, z] majSrc (fun _ => none)
       = some ((x &&& y) ^^^ (x &&& z) ^^^ (y &&& z)) := by
-    have h := majSrc_denoteScalar (nIn := 3) ![x, y, z]
-    simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+    exact majSrc_denoteScalar (nIn := 3) ![x, y, z]
   exact compileFromHax_meets_spec (w := 32) (nIn := 3) ["x", "y", "z"] ![x, y, z]
     majSrc _ hc hspec
 
@@ -293,9 +296,7 @@ theorem ch_compiles :
   -- i-th component, so the spec is the plain `(x∧y) ⊕ (¬x∧z)`.
   have hspec : ImpExpr.denoteScalar ["x", "y", "z"] ![x, y, z] chSrc (fun _ => none)
       = some ((x &&& y) ^^^ ((~~~x) &&& z)) := by
-    have h := chSrc_denoteScalar (nIn := 3) ![x, y, z]
-    simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+    exact chSrc_denoteScalar (nIn := 3) ![x, y, z]
   exact compileFromHax_meets_spec (w := 32) (nIn := 3) ["x", "y", "z"] ![x, y, z]
     chSrc _ hc hspec
 
@@ -320,7 +321,7 @@ i.e. `acc = (((0·x + c₀)·x + c₁)·x + c₂)·x + c₃` evaluating
 `ImpExprToThir` §7 unrolls it into a flat `ImpExpr` let-chain — two ops with a
 fresh temporary per iteration, exactly `dotTail`'s discipline — which the §3
 `impExprToThir` already compiles; `hornerProgram_denoteScalar` proves the unrolled
-chain denotes to the genuine `List.foldl` Horner meaning. Here `N = 4`,
+chain denotes to the `List.foldl` Horner meaning. Here `N = 4`,
 array parameter `["w"]`, `nIn = 5` (`w[0..3]` coefficients, `w[4]` the point `x`).
 
 The demo wires that through `compileFromHax_meets_spec` exactly like `maj_compiles`:
@@ -335,7 +336,7 @@ open CatCrypt.Crypto.SecureCompilation.ImpExprToThir
 def horner4Src : ImpExpr := hornerProgram "w" 4 4
 
 /-- The Horner source denotes (under `denoteScalar`, array parameter `["w"]`) to
-    the genuine `hornerFold` source meaning, which unfolds to the explicit
+    the `hornerFold` source meaning, which unfolds to the explicit
     `BitVec 32` Horner form `((c₀·x + c₁)·x + c₂)·x + c₃` with `cⱼ = inpGet I j`,
     `x = inpGet I 4`. -/
 theorem horner4Src_denoteScalar {nIn : Nat} (I : Fin nIn → BitVec 32) :
@@ -416,7 +417,7 @@ i.e. seeds `W[0] = w[0]`, `W[1] = w[1]`, then `W[i] = W[i-1] + W[i-2]` for
 into a flat per-element-SSA let-chain (`arrRecProgram "w" 2 5`) — each write a
 fresh local reading two earlier elements (locals or input seeds) — which the §3
 `impExprToThir` compiles directly; `arrRecProgram_denoteScalar` proves the chain
-denotes to the genuine `arrFold` array-state meaning via the array-SSA invariant.
+denotes to the `arrFold` array-state meaning via the array-SSA invariant.
 
 The closed form: `W[2] = w[1]+w[0]`, `W[3] = W[2]+w[1]`,
 `W[4] = W[3]+W[2] = ((w[1]+w[0])+w[1]) + (w[1]+w[0])`. The demo wires that through
@@ -439,7 +440,7 @@ theorem w_ne_wName (k : Nat) : ("w" : String) ≠ wName k := by
   simp at hc
 
 /-- The recurrence source denotes (under `denoteScalar`, array parameter `["w"]`)
-    to the genuine `arrFold` array-state meaning, which unfolds to the explicit
+    to the `arrFold` array-state meaning, which unfolds to the explicit
     `BitVec 32` form `((w[1]+w[0])+w[1]) + (w[1]+w[0])` (`w[j] = inpGet I j`). -/
 theorem fibSrc_denoteScalar {nIn : Nat} (I : Fin nIn → BitVec 32) :
     ImpExpr.denoteScalar ["w"] I fibSrc (fun _ => none)
@@ -487,7 +488,7 @@ theorem fib_compiles :
 /-! ## §7  The real SHA-256 message-schedule σ recurrence (the convergence demo)
 
 This is **the convergence demo**: the §6 array-write recurrence (per-element SSA)
-combined with a genuine multi-op σ step body, giving the **real SHA-256 message
+combined with a multi-op σ step body, giving the **SHA-256 message
 schedule** (FIPS 180-4 §6.2.2), value-preserving from hax `ImpExpr` through the
 compiler to jasmin. Where §6 fixed the step to `W[i-1]+W[i-2]`, here the step is
 the full four-read σ body:
@@ -502,7 +503,7 @@ with `W[0..15]` the input message words. `ImpExprToThir` §9 unrolls this into a
 flat per-element-SSA let-chain (`schedProgram 18`): each write computes σ₁/σ₀ (the
 rotate/shift/xor let-chains the §5/§7 leaves already prove) into scratch locals,
 then the three wrapping adds, binding a fresh per-element local. The §9
-`schedProgram_denoteScalar` proves the chain denotes to the genuine `schedFold`
+`schedProgram_denoteScalar` proves the chain denotes to the `schedFold`
 array-state meaning, via the same array-SSA invariant as §6 carried over the wider
 σ step.
 
@@ -516,7 +517,7 @@ W[17] = σ₁(w[15]) + w[10] + σ₀(w[2]) + w[1].
 ```
 
 No new dialect op, no hardware leaf: the **whole** machinery is the §6 array-SSA
-recurrence plus the §5/§7 σ leaves. Honest scope: this is a small-`N` slice (two
+recurrence plus the §5/§7 σ leaves. Scope: this is a small-`N` slice (two
 schedule words) exercising exactly the mechanism the full 64-round `W` uses — the
 same `schedProgram`/`schedProgram_denoteScalar` at `N = 64`, just a heavier
 `isSome` compute. -/
@@ -527,9 +528,9 @@ same `schedProgram`/`schedProgram_denoteScalar` at `N = 64`, just a heavier
 def schedSrc : ImpExpr := schedProgram 18
 
 /-- The σ-schedule source denotes (under `denoteScalar`, array parameter `["w"]`)
-    to the genuine `schedFold` array state at `W[17]`, which unfolds to the
+    to the `schedFold` array state at `W[17]`, which unfolds to the
     explicit FIPS form `σ₁(w[15]) + w[10] + σ₀(w[2]) + w[1]` (`w[j] = inpGet I j`).
-    The σ₁/σ₀ of the specific input words `w[15]`/`w[2]` are the load-bearing
+    The σ₁/σ₀ of the specific input words `w[15]`/`w[2]` are the
     multi-op step the §6 fixed-body recurrence did not reach. -/
 theorem schedSrc_denoteScalar {nIn : Nat} (I : Fin nIn → BitVec 32) :
     ImpExpr.denoteScalar ["w"] I schedSrc (fun _ => none)

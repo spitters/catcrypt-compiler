@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.FieldTheory.Finite.Basic
-import Mathlib.Tactic
+module
+
+public import Mathlib.FieldTheory.Finite.Basic
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulFlatMap
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemSimulation
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulFlatMap
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemSimulation
 
 /-!
 # Discharging `BodyCover` from a `UniformRegArith` `Com`
@@ -37,7 +39,7 @@ curDepth)` (`hcol`, the RA invariant). The three opcode side-conditions
 (`isBinop`, `¬isShift`, `¬:64`) are **discharged** from `binOpName` for any
 non-shift (`bop ∉ {shl,shr,andn}`), default-width (`w ≠ 64`) binding
 (`binOpName_isBinop_of_nonshift` / `binOpName_not_isShift_of_nonshift` /
-`withWidthTag_binOpName_not_endsWith64`).
+`withWidthTag_binOpName_not_hasSuffix64`).
 
 ## What this module proves
 
@@ -58,14 +60,14 @@ PROVED (zero `sorry`, axiom-clean — `propext`/`Classical.choice`/`Quot.sound`)
   **constructed** (not assumed), making `physBody_lsem_result` **unconditional in
   `BodyCover`** on that body.
 * `bodyCover_two` / `physBody_lsem_result_two`: the same for a two-binop body —
-  the cons-step composes for length > 1 (genuinely non-degenerate: two bindings,
+  the cons-step composes for length > 1 (non-degenerate: two bindings,
   each at its own SSA depth, each with its own RA collapse).
 
 So `physBody_lsem_result` is unconditional on `BodyCover` for any concrete
 binop body assembled as `regArithHead`s, via the cons-step. (The single- and
 two-binding instances exhibit this with the cover fully built.)
 
-## Residual (named honestly — NOT proved here)
+## Residual (not proved here)
 
 * **The whole-`Com` `comToBody.dropLast` ↔ heads-list structural equation.** The
   cons-step `regArithHead_cover_cons` covers `regArithHead … :: is` from a cover
@@ -86,6 +88,8 @@ two-binding instances exhibit this with the cover fully built.)
   memory, the ABI prologue/epilogue and `Lret` remain out of scope exactly as in
   the sibling modules.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -155,12 +159,12 @@ theorem binOpName_not_isShift_of_nonshift (bop : JasminBinOp)
 /-- At a width `w ≠ 64` the tagged mnemonic `withWidthTag w (binOpName bop)` is
     just `binOpName bop`, which never ends with the `:64` width tag. (The default-
     width arm of `physBody`'s `isShift`/`movFor` dispatch.) -/
-theorem withWidthTag_binOpName_not_endsWith64 (w : Nat) (bop : JasminBinOp)
+theorem withWidthTag_binOpName_not_hasSuffix64 (w : Nat) (bop : JasminBinOp)
     (hw : w ≠ 64) :
-    ¬ (withWidthTag w (binOpName bop)).endsWith ":64" = true := by
+    ¬ hasSuffix (withWidthTag w (binOpName bop)) ":64" = true := by
   rw [show withWidthTag w (binOpName bop) = binOpName bop from by
     simp only [withWidthTag, if_neg hw]]
-  cases bop <;> decide +kernel
+  cases bop <;> decide
 
 /-! ## The realization of a `comToBody` head by a `BinopBinding` -/
 
@@ -214,7 +218,7 @@ theorem regArithHead_realizes {w' : Nat} (body : Lcmd) (tbl : Array Nat)
     simp only [regArithHead, hdst, hopn, hsrc]
   · rw [hopn, htag]; exact binOpName_isBinop_of_nonshift bop hns
   · rw [hopn, htag]; exact binOpName_not_isShift_of_nonshift bop hns
-  · rw [hopn]; exact withWidthTag_binOpName_not_endsWith64 w bop hw
+  · rw [hopn]; exact withWidthTag_binOpName_not_hasSuffix64 w bop hw
   · rw [hdst]; exact hcol
 
 /-! ## The `BodyCover` cons step from a `comToBody` head
@@ -310,7 +314,7 @@ theorem physBody_lsem_result_single {w : Nat} (body : Lcmd)
 /-- **Two-binop body cover, constructed.** A body that *is* two `regArithHead`s
     (the binop fragment of a two-binding `UniformRegArith` `Com`) has its cover
     built by two applications of the cons-step — exhibiting the cons-step
-    composing for length > 1 (genuinely non-degenerate: two distinct bindings,
+    composing for length > 1 (non-degenerate: two distinct bindings,
     each at its own SSA depth, each with its own RA collapse). The two bindings'
     naming/collapse obligations stay as hypotheses, exactly as scoped. -/
 theorem bodyCover_two (body : Lcmd)

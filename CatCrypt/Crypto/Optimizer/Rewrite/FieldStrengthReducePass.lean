@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Algebra.Ring.Defs
-import Mathlib.Data.ZMod.Basic
+module
+
+public import Mathlib.Algebra.Ring.Defs
+public import Mathlib.Data.ZMod.Basic
 
 /-!
 # Algebraic strength-reduction pass for the field/ModArith dialect
@@ -35,6 +37,8 @@ structural induction; each rewrite is discharged by the ring axioms
 (`two_mul`, `mul_zero`, `mul_one`, `add_zero`, `sub_zero`, `sub_self`, …) via
 `simp`/`ring`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

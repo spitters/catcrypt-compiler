@@ -3,16 +3,18 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GroundedPortfolio
-import CatCrypt.Crypto.SecureCompilation.GroundedKdfKem
-import CatCrypt.Crypto.SecureCompilation.GroundedKdfHardening
-import CatCrypt.Crypto.SecureCompilation.GroundedSigTransport
-import CatCrypt.Crypto.SecureCompilation.GroundedPqcSignatures
-import CatCrypt.Crypto.SecureCompilation.GroundedHandshake
-import CatCrypt.Crypto.SecureCompilation.GroundedMpcZk
-import CatCrypt.Crypto.SecureCompilation.GroundedSnarkBackbones
-import CatCrypt.Crypto.SecureCompilation.GroundedFheThreshold
-import CatCrypt.Crypto.SecureCompilation.GroundedAdvancedProtocols
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GroundedPortfolio
+public import CatCrypt.Crypto.SecureCompilation.GroundedKdfKem
+public import CatCrypt.Crypto.SecureCompilation.GroundedKdfHardening
+public import CatCrypt.Crypto.SecureCompilation.GroundedSigTransport
+public import CatCrypt.Crypto.SecureCompilation.GroundedPqcSignatures
+public import CatCrypt.Crypto.SecureCompilation.GroundedHandshake
+public import CatCrypt.Crypto.SecureCompilation.GroundedMpcZk
+public import CatCrypt.Crypto.SecureCompilation.GroundedSnarkBackbones
+public import CatCrypt.Crypto.SecureCompilation.GroundedFheThreshold
+public import CatCrypt.Crypto.SecureCompilation.GroundedAdvancedProtocols
 
 /-!
 # Grounded suite portfolio — capstone index over the whole grounding effort
@@ -82,6 +84,8 @@ Two further honest caveats, neither a kernel hypothesis:
   the FHE / threshold strict portfolio conjoins only the strictly clean fold and
   pointwise-multiply backbones).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

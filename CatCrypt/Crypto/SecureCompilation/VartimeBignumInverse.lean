@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.LowCTVartimeLeak
+module
+
+public import CatCrypt.Crypto.SecureCompilation.LowCTVartimeLeak
 
 /-!
 # Task #501 / #510 — variable-time bignum modular inverse for public-input paths
@@ -106,6 +108,8 @@ All of this **reuses** the #460 taint machinery (`cmdCT`, `guardPublic`,
   recursion GMP has and this Lehmer base case does not.
 -/
 
+@[expose] public section
+
 namespace CatCrypt.Crypto.SecureCompilation.VartimeBignumInverse
 
 open CatCrypt.Crypto.Jasmin.LowCT
@@ -132,7 +136,7 @@ iterations is `RWhileNz`-driven by `"g"`, the body early-terminates on the
 actual GCD path — unlike the fixed-trip-count CT kernel. -/
 
 /-- A `TU64` slot at the given variable name. -/
-private def u64 (v : String) : Located :=
+def u64 (v : String) : Located :=
   { locVar := v, locSrc := TowerType.TU64 }
 
 /-- The verified leaf performing one variable-time GCD reduction: shrinks

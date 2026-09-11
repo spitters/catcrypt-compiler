@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.GenericRegAlloc
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvRegAlloc
+module
+
+public meta import CatCrypt.Crypto.Optimizer.GenericRegAlloc
+public import CatCrypt.Crypto.Optimizer.GenericRegAlloc
+public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvRegAlloc
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvRegAlloc
 
 /-!
 # Generic graph-coloring register allocation + move-coalescing (P4) over `MachineModel`
@@ -71,6 +75,8 @@ which is exactly the part that reuses the generic `renameBlock_runBlock` result.
 
 This file uses `set_option autoImplicit false` (the `Optimizer/` convention).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,10 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontInstances
-import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenMul
-import CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveDialect
-import Std.Tactic.BVDecide
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.RelationalFrontInstances
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontInstances
+public meta import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenMul
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenMul
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveDialect
+public import Std.Tactic.BVDecide
 
 /-!
 # The relational front over the EC GROUP LAW: a Jacobian point-doubling sub-step
@@ -104,6 +110,8 @@ This module establishes the **EC-group-law leg** of the relational front on the
 smallest honest spec: a genuine, fully-provable Jacobian-doubling field sub-step
 over a small field, with the full injective-not-onto encoding tie.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

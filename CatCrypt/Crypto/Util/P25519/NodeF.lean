@@ -3,9 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Util.PrattCertificate
-import CatCrypt.Crypto.Util.P25519.NodeD
-import CatCrypt.Crypto.Util.P25519.NodeE
+module
+
+public meta import CatCrypt.Crypto.Util.PrattCertificate
+public import Mathlib.Tactic.NormNum.Prime
+public import CatCrypt.Crypto.Util.PrattCertificate
+public meta import CatCrypt.Crypto.Util.P25519.NodeD
+public import CatCrypt.Crypto.Util.P25519.NodeD
+public meta import CatCrypt.Crypto.Util.P25519.NodeE
+public import CatCrypt.Crypto.Util.P25519.NodeE
 
 /-!
 # P25519 primality certificate — nested factor node `pfF`
@@ -16,6 +22,8 @@ large factor of `2^255 - 20`, using the sub-certificates `pfD` from `NodeD` and
 `pfE` from `NodeE`. The product check reduces by `decide` and the Fermat and
 witness checks by `native_decide`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxRecDepth 50000

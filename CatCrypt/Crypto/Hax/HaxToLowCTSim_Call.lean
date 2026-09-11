@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
+module
+
+public import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
 
 /-!
 # H3.tertia: leaf-call simulation cases
@@ -13,6 +15,8 @@ Handles `letBind _ (app _ _) _` and `assign _ (app _ _)` arms of
 agreement predicate that consumers populate when they wire a
 concrete `LeafSpec`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -120,7 +124,8 @@ theorem evalImp_app_vars_inv (bi : Builtins) (fuel : Nat) (f : String)
     simp [StateT.pure] at h
   | some w =>
     rw [hbi] at h
-    simp [StateT.pure] at h
+    simp only [StateT.pure, pure, Pure.pure, Option.some.injEq,
+               Prod.mk.injEq] at h
     obtain ⟨hvw, henv⟩ := h
     exact ⟨vals, hAV, by rw [hbi, hvw], henv.symm⟩
 

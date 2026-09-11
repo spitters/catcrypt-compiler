@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfLegality
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.Dialects.ComLegality
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfLegality
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ComLegality
 
 /-!
 # D4 (typed-`Com` step): bridging `ComLegality` to `gatherJBlock` success
@@ -95,6 +97,8 @@ straight-line export of c)).isSome = true` closes for the whole legal set. Until
 then, the verified gate holds for the constant subset and for any
 externally-normalized block via `normBody_blockSupported_gate` below.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

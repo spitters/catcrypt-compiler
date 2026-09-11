@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridge
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridge
 
 /-!
 # Gap #2 of the generic `Com ↔ Jasmin` bridge: the `Store ↔ Estate`
@@ -83,6 +86,8 @@ the relational witness (`golden_add_bridge`) already live in `ComJasminBridge`.
 
 0 sorries.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

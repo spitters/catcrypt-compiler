@@ -3,13 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ThirToComFront
-import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.FheShoupMulLaw
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
-import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ThirToComFront
+public import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.FheShoupMulLaw
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
 
 /-!
 # Single-word 60-bit FHE **Shoup** modmul through the OWNED x86 backend (no jasminc)
@@ -89,6 +91,8 @@ two options the task allows).
   SUB operand order `lo1 − lo2`.)
 * **Trusted (thin)**: `renderLfundef` / `as`/`cc` / the SysV leaf ABI frame.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

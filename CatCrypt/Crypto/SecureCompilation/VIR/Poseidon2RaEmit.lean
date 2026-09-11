@@ -3,9 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Montgomery
-import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
-import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Montgomery
+public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Montgomery
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+public import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
+public import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
 
 /-!
 # Poseidon2 BabyBear with live-range-aware register allocation
@@ -111,6 +117,8 @@ exactly as `Poseidon2Montgomery`'s NINETEENTH and TWENTIETH-mode emits
 do. The slot-remap is a string-level relabeling of declarations and
 does not enter any theorem statement.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

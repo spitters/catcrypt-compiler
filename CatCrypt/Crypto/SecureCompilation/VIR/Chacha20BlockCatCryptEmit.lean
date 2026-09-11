@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Chacha20QRCatCryptEmit
-import CatCrypt.Crypto.Jasmin.ChaCha20Block
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Chacha20QRCatCryptEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Chacha20QRCatCryptEmit
+public meta import CatCrypt.Crypto.Jasmin.ChaCha20Block
+public import CatCrypt.Crypto.Jasmin.ChaCha20Block
 
 /-!
 # The whole ChaCha20 block routed through `catCryptDialect`
@@ -57,6 +61,8 @@ packed quarter-round into the whole block:
 
 0 sorries.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect
 
 /-!
 # `freshName` is injective — discharging the carried hypothesis
@@ -35,6 +38,8 @@ caller of `execCom_eq` (in particular the multi-op loop keystone of
 `JForProgMultiOp.lean`) discharges the carried `hInj` with this lemma, removing
 the last side-condition from the straight-line whole-`Com` preservation path.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

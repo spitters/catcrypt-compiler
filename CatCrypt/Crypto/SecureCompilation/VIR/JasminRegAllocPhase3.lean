@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminRegAllocPhase2
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminRegAllocPhase2
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminRegAllocPhase2
 
 /-!
 # Verified register allocation — Phase 3 prerequisite (generic Boolean bridge)
@@ -47,6 +50,8 @@ exactly the seeded def-clobbers-live-out edge.
 `set_option autoImplicit false` is intentionally *not* set (SecureCompilation
 convention; see root `CLAUDE.md`).
 -/
+
+@[expose] public section
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 

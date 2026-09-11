@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrGatherExtended
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrMnemDispatch
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrGatherExtended
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrGatherExtended
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrMnemDispatch
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrMnemDispatch
 
 /-!
 # Block byte-agreement extended to the real GoldenPath op set: the `hbody` reconciliation
@@ -101,6 +105,8 @@ No `sorry`, no axiom, no `native_decide` — every byte-level claim below is `de
 on a closed mnemonic / `simp only` on the post-dispatch byte function, the kernel-clean
 route of `LprogJInstrMnemDispatch`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -295,7 +301,7 @@ so the two sides' shift counts now agree). -/
     detector fires — no `String.toNat?`, so kernel-reducible). So `encodeLopn`'s `[d],[s]`
     arm with `s = .reg sn` now routes to the new `encTagShift` arm. Frame / spill width
     stay symbolic. -/
-private theorem dispatch_tagshift_reg_emits
+theorem dispatch_tagshift_reg_emits
     (frame spillW : Nat) (mnem base : String) (ext : Nat) (dn sn : String)
     (hbind : (isCarryOutBinding mnem || isMulHiBinding mnem) = false)
     (hstrip : stripWidthTag mnem = base)

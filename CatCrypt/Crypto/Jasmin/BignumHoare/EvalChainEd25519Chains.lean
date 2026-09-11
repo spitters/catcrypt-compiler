@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.BignumHoare.LowCTReflectiveEval
+module
+
+public import CatCrypt.Crypto.Jasmin.BignumHoare.LowCTReflectiveEval
 
 /-!
 # Reflective evaluator for Ed25519 / Ristretto255 chain variants
@@ -52,6 +54,8 @@ soundness axiom** (per-chain final exponent claim) — discharged
 identically to `invChain_eval_sound` and `powP58Chain_eval_sound`
 once `mvcgen'` lands.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -107,7 +111,7 @@ explicitly.  We expose this as a *composed* evalChain. -/
 
 /-- Compose two chains: feed the output of the first into the
     `OFF_ap` slot of a second chain run on the post-state. -/
-private def composeChains (chain1 chain2 : List ChainOp)
+def composeChains (chain1 chain2 : List ChainOp)
     (cs : ChainState) : ChainState :=
   let cs1 := evalChain chain1 cs
   -- Read chain1's output, store at OFF_ap for chain2.

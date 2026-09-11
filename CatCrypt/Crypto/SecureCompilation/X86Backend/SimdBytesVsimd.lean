@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.VsimdAsmPrint
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.VsimdAsmPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.VsimdAsmPrint
 
 /-!
 # OWNED AES-128 ECB single-block emit on the UNIFIED `Com jasminDialect`
@@ -65,6 +69,8 @@ Invoke:  lake env lean --run
          CatCrypt/Crypto/SecureCompilation/X86Backend/SimdBytesVsimd.lean
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.SimdBytesVsimd
@@ -79,17 +85,17 @@ open CatCrypt.Crypto.SecureCompilation.VIR.VsimdAsmPrint
 abbrev r128 : JasminTy := .reg 128
 
 /-- `vaesenc(state, rk)` Expr at two source vars. -/
-private def eAesenc {Γ : Ctxt jasminDialect} (vs vk : Ctxt.Var Γ r128) :
+def eAesenc {Γ : Ctxt jasminDialect} (vs vk : Ctxt.Var Γ r128) :
     Expr jasminDialect Γ r128 :=
   .mk (.vsimd .vaesenc) rfl (.cons vs (.cons vk .nil))
 
 /-- `vaesenclast(state, rk)` Expr at two source vars. -/
-private def eAesenclast {Γ : Ctxt jasminDialect} (vs vk : Ctxt.Var Γ r128) :
+def eAesenclast {Γ : Ctxt jasminDialect} (vs vk : Ctxt.Var Γ r128) :
     Expr jasminDialect Γ r128 :=
   .mk (.vsimd .vaesenclast) rfl (.cons vs (.cons vk .nil))
 
 /-- `xorq` (whole-128 bitwise xor) Expr at two source vars. -/
-private def eXor {Γ : Ctxt jasminDialect} (va vb : Ctxt.Var Γ r128) :
+def eXor {Γ : Ctxt jasminDialect} (va vb : Ctxt.Var Γ r128) :
     Expr jasminDialect Γ r128 :=
   .mk (.vsimd (.bitwise .xor)) rfl (.cons va (.cons vb .nil))
 
@@ -230,7 +236,7 @@ def aesEcbExportAsm : String :=
     [aesEcbStoreLine]
 
 -- Print the emitted owned `.s` for visual inspection.
-#eval IO.println aesEcbExportAsm
+-- #eval IO.println aesEcbExportAsm
 
 /-! ## 6. Structural smoke pins (matching the bespoke driver) -/
 

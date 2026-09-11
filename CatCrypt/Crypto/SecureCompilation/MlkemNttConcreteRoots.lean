@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MlkemNttFullAssembly
-import CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.MlkemNttFullAssembly
+public import CatCrypt.Crypto.SecureCompilation.MlkemNttFullAssembly
+public meta import CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots
+public import CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots
 
 /-!
 # The owned routed NTT tree at the CONCRETE ML-KEM root of unity ζ = 17
@@ -72,6 +77,8 @@ number-theory proof.
 ## References
 * NIST FIPS 203 (ML-KEM); `3329 - 1 = 2^8 · 13`; Cooley & Tukey 1965.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

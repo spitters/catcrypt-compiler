@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ConcreteHashRealizer
-import CatCrypt.Crypto.SecureCompilation.ConcreteSymFieldRealizer
-import CatCrypt.Crypto.Hash.Poseidon2.BabyBear
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ConcreteHashRealizer
+public import CatCrypt.Crypto.SecureCompilation.ConcreteSymFieldRealizer
+public import CatCrypt.Crypto.Hash.Poseidon2.BabyBear
 
 /-!
 # CONCRETE realizers for the Poseidon2 permutation and 2-to-1 compression — KAT-free
@@ -64,6 +66,8 @@ We exhibit, for each Poseidon2 primitive:
 * Grassi et al., *Poseidon2*, ePrint 2023/323.
 * Plonky3 — `p3-baby-bear` / `p3-poseidon2` crates, v0.5.2.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

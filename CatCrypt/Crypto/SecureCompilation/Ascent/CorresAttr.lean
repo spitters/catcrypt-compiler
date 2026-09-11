@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Lean
+module
+
+public import Lean
 
 /-!
 # The `@[corres]` leaf-lemma label attribute
@@ -14,6 +16,8 @@ lemma has conclusion `CorresJ SR (fun _ => True) step [i]` for a single instruct
 `i`. The attribute lives in its own file because a label attribute is usable only in
 modules that import the one registering it.
 -/
+
+@[expose] public section
 
 /-- Per-instruction `CorresJ` ascent leaves, composed by `corres_solve`. -/
 register_label_attr corres

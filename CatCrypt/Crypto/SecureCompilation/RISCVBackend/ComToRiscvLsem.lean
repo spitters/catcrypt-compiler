@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscv64Refinement
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RegToRiscv
-import CatCrypt.Crypto.SecureCompilation.MultiBackendDemo
-import CatCrypt.Crypto.SecureCompilation.VIR.Compiler
+module
+
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscv64Refinement
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RegToRiscv
+public import CatCrypt.Crypto.SecureCompilation.MultiBackendDemo
+public import CatCrypt.Crypto.SecureCompilation.VIR.Compiler
 
 /-!
 # `Com → RISC-V`: a Sail-grounded block-execution model + value-preservation keystone
@@ -61,6 +63,8 @@ grounding here does not cover them; folding them in is a mechanical extension of
 `rinstRop`/the case split, left out so the base-ALU keystone stays clean. `SLTU`
 (carry synthesis) is likewise not in this R-type-uniform statement.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

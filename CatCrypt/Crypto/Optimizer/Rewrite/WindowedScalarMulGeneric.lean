@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Algebra.Group.Defs
-import Mathlib.Tactic
+module
+
+import all Init.Data.Repr
+public import Mathlib.Algebra.Group.Defs
+public import Mathlib.Data.List.Induction
+public import Mathlib.Tactic.Group
 
 /-!
 # Fixed-window (2^w-ary) scalar multiplication, generic over `[AddCommGroup G]`
@@ -36,13 +40,13 @@ instantiates to any elliptic-curve point group realized as an `AddCommGroup`.
 
 ## Main theorems
 
-* `windowedSmul_correct` — **the keystone**:
+* `windowedSmul_correct` — the correctness theorem:
   `windowedSmul w (windowDigits w n) P = n • P`.  The `2^w`-ary windowed ladder
   driven by the base-`2^w` digits of `n` computes `n • P`, over any
   `[AddCommGroup G]`.
 * `windowedSmul_decode` — the per-list form `windowedSmul w ds P =
-  (digitsToNat w ds) • P` for *every* digit list, from which the keystone
-  follows by `windowDigits_decode`.
+  (digitsToNat w ds) • P` for *every* digit list, from which the correctness
+  theorem follows by `windowDigits_decode`.
 
 ## Relation to the binary ladder (base-`2^w` vs base-`2` Horner)
 
@@ -55,6 +59,8 @@ shifts by `(2^w)•·`.  Correctness therefore rests on the *windowed* doubling
 identity `nsmul_window`: `(2^w · n) • P = (2^w) • (n • P)`, the base-`2^w`
 analogue of the binary `nsmul_double`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -189,7 +195,7 @@ theorem windowedSmul_decode [AddCommGroup G] (w : ℕ) (ds : List ℕ) (P : G) :
     rw [windowedSmul_append_one, digitsToNat_append_one, ih,
       nsmul_add_digit, nsmul_window]
 
-/-- **Fixed-window scalar-multiplication correctness (the keystone).**  Feeding
+/-- **Fixed-window scalar-multiplication correctness.**  Feeding
     the base-`2^(w+1)` digits of `n` to the windowed ladder computes `n • P`:
     `windowedSmul (w+1) (windowDigits w n) P = n • P`, over any
     `[AddCommGroup G]`.  This is the windowed optimization of double-and-add
@@ -212,9 +218,9 @@ variable {G2 : Type*} [AddCommGroup G2]
 /-- **Worked example.**  At window size `2^2 = 4` (`w = 1`), the windowed ladder
     on the scalar `13` computes `13 • P` in any abelian group: `13` decomposes
     MSB-first into base-`4` digits `[3, 1]` (`3·4 + 1 = 13`), and the ladder
-    reproduces `13 • P` from those digits.  Stated via the general keystone so it
-    holds for every `[AddCommGroup G2]`, in particular any elliptic-curve point
-    group. -/
+    reproduces `13 • P` from those digits.  Stated via `windowedSmul_correct` so
+    it holds for every `[AddCommGroup G2]`, in particular any elliptic-curve
+    point group. -/
 example (P : G2) : windowedSmul 2 (windowDigits 1 13) P = 13 • P :=
   windowedSmul_correct 1 13 P
 

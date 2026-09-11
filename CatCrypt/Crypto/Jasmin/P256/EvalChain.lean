@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.BignumHoare.EvalChainGeneric
+module
+
+public meta import CatCrypt.Crypto.Jasmin.BignumHoare.EvalChainGeneric
+public import CatCrypt.Crypto.Jasmin.BignumHoare.EvalChainGeneric
 
 /-!
 # P-256 inverse chain via the generic reflective framework
@@ -45,6 +48,8 @@ sqrt chain, analogous to `invChain_eval_sound` for Curve25519).
   caller-supplied `List ChainOp` literal.
 * Soundness axiom for the headline.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakTrace
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakTrace
 
 /-!
 # Value-carrying leak trace for `catCryptDialect` (RHP-off-CProg substrate, step 1)
@@ -60,6 +63,8 @@ re-prove `progSdist` / `LowCTRHP` / the full pipeline RHP (the large follow-up).
 
 **0 axioms**, **0 sorries**.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # Plonky3 `PaddingFreeSponge<16,8,8>` hash as a front-sourced owned `.s`
@@ -71,6 +76,8 @@ SysV pre-call alignment. The frame is 144 bytes (128 state + 8 output slot +
   vector must equal the upstream `PLONKY3_HASH_KAT`, with these owned `.s` + the
   owned permute `.s` linked, no jasminc.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

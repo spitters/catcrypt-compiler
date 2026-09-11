@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminTranslate
-import CatCrypt.Deep.Eval
+module
+
+public import CatCrypt.Crypto.Jasmin.JasminTranslate
+public import CatCrypt.Deep.Eval
 
 /-!
 # Jasmin Compiler Pass Framework
@@ -26,6 +28,8 @@ bridging the deep → shallow embedding.
 * Jasmin 2025 paper (arXiv 2511.11292): compiler pass correctness via ITree semantics
 * "The Last Yard" (CPP 2024): Jasmin → CatCrypt bridge
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin
 
@@ -160,7 +164,7 @@ The `translateForLoop` case requires an auxiliary induction on the index list. -
 
 /-- Auxiliary: `translateForLoop` preserves eval under expression mapping,
     given that `translateCmd` preserves eval at the same fuel level. -/
-private theorem translateForLoop_map_eval (pass : PExpr → PExpr)
+theorem translateForLoop_map_eval (pass : PExpr → PExpr)
     (h : ExprPassCorrect pass) (fuel : Nat)
     (hcmd_eval : ∀ env cmd sid,
       (translateCmd env (cmd.map (mapInstrExprs pass)) sid fuel).code.eval =
@@ -193,7 +197,7 @@ theorem translateCmd_cons_newSid (env : TransEnv) (i : InstrR) (is : Cmd)
 
 /-- Joint fuel induction: an expression pass lifts to both cmd and instr levels.
     Returns `(cmd_correct ∧ cmd_newSid, instr_correct ∧ instr_newSid)`. -/
-private theorem exprPass_lifting_joint (pass : PExpr → PExpr) (h : ExprPassCorrect pass) :
+theorem exprPass_lifting_joint (pass : PExpr → PExpr) (h : ExprPassCorrect pass) :
     ∀ fuel,
       (∀ env cmd sid,
         (translateCmd env (cmd.map (mapInstrExprs pass)) sid fuel).code.eval =
@@ -323,7 +327,7 @@ The proof follows the same joint fuel induction as the expression pass lifting:
 2. instr_step(n+1) from cmd_step(n+1) -/
 
 /-- Auxiliary: `translateForLoop` is stable under fuel increase. -/
-private theorem translateForLoop_fuel_step (fuel : Nat)
+theorem translateForLoop_fuel_step (fuel : Nat)
     (hcmd : ∀ env cmd sid, fuelBoundCmd cmd ≤ fuel →
       (translateCmd env cmd sid (fuel + 1)).code.eval =
       (translateCmd env cmd sid fuel).code.eval ∧
@@ -344,7 +348,7 @@ private theorem translateForLoop_fuel_step (fuel : Nat)
 
 /-- Joint fuel step: `translateCmd` and `translateInstrR` are unchanged when
     fuel increases beyond `fuelBound`. -/
-private theorem fuel_step_joint :
+theorem fuel_step_joint :
     ∀ fuel,
       (∀ env cmd sid, fuelBoundCmd cmd ≤ fuel →
         (translateCmd env cmd sid (fuel + 1)).code.eval =

@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
-import CatCrypt.Crypto.SecureCompilation.RotateSynth
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
+public import CatCrypt.Crypto.SecureCompilation.RotateSynth
 
 /-!
 # Golden path: SipHash `SipRound` as `Com jasminDialect`, emitted by the verified compiler
@@ -63,6 +66,8 @@ been tried. The `com_arm_e2e` and `com_riscv_e2e` instantiations cost roughly 25
 binding and do not respond to supplying their implicit arguments; those two lemmas are
 themselves the shared form, and what remains is one instantiation per word per
 backend. -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

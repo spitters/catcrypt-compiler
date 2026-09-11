@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
 
 /-!
 # Loop-over-call orchestration front (combinator core)
@@ -39,6 +41,8 @@ the two whole-prover loop specs (`strideCallSpec`/`sumcheckSpec`) live here. The
 output — live in the downstream `OrchLoopFront`, which imports both this module
 and the emit modules.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

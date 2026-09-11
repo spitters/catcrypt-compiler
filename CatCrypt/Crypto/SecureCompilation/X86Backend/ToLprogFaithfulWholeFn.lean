@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulNary
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulProbe
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulNary
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulProbe
 
 /-!
 # Whole-function physical correctness: the argument-materialization glue
@@ -89,6 +91,8 @@ observed bug collapsed both memrefs onto slot 0 (a single register), which
 the precondition explicitly and prove (`memrefPtrsDistinct_of_collapse_false`)
 that a lowering placing both pointers on the same register cannot satisfy it.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

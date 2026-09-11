@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.BignumExec
-import Mathlib.Tactic.FinCases
-import Mathlib.Tactic.IntervalCases
+module
+
+public import CatCrypt.Crypto.Jasmin.BignumExec
+public import Mathlib.Tactic.FinCases
+public import Mathlib.Tactic.IntervalCases
 
 /-!
 # Functional contract for `bignum_montmul_p25519` (hypothesis structure)
@@ -69,6 +71,8 @@ proofs lands (or once the CatCrypt pipeline's Jasmin compiler
 verifies montmul through its own pathway), the hypothesis can be
 discharged for the concrete registry.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

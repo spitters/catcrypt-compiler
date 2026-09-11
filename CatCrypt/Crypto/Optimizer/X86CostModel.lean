@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 
 /-!
 # SLOTHY-grade x86 instruction cost model (#376 companion)
@@ -36,6 +40,8 @@ the exact integers are a TCB-free steering heuristic.
 > blocks are cost-model example fixtures; the module emits no deployed `.s`
 > artifact.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -300,7 +306,7 @@ section Examples
     `mulx h0 l0; add acc_lo l0; adc acc_hi h0; mulx h1 l1; add acc_lo l1; adc acc_hi h1`
     — the second `mulx`'s latency is on the critical path (it is immediately
     followed by the dependent `add`). -/
-private def inputBlockEx : List (JInstr 64) :=
+def inputBlockEx : List (JInstr 64) :=
   [ .mulx "h0" "l0" (.reg "di0") (.reg "m0")
   , .add  "acc_lo" (.reg "l0")
   , .adc  "acc_hi" (.reg "h0")
@@ -311,7 +317,7 @@ private def inputBlockEx : List (JInstr 64) :=
 /-- The mulx-hoisted schedule from `RandomizedScheduleSearch.hoistedBlock`.
     Both independent `mulx`es issue first, so the second multiply's latency
     overlaps the first product's accumulate chain. -/
-private def hoistedBlockEx : List (JInstr 64) :=
+def hoistedBlockEx : List (JInstr 64) :=
   [ .mulx "h0" "l0" (.reg "di0") (.reg "m0")
   , .mulx "h1" "l1" (.reg "di1") (.reg "m1")
   , .add  "acc_lo" (.reg "l0")

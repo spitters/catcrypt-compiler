@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Bridges.ReprTransfer
+module
+
+public import CatCrypt.Crypto.Bridges.ReprTransfer
 
 /-!
 # Joint-domain operation homomorphism (`BinOpHomOn2`) and its butterfly application
@@ -44,6 +46,8 @@ transport witness): no injectivity on the domains, **no univalence**, and no
 fresh `simp` over the machine block.  The only trust is the `BitVec`/lane-arithmetic
 TCB the butterfly file already carries.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

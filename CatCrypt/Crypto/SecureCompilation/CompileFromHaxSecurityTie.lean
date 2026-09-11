@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxLeaves
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxLeaves
 
 /-!
 # C-tie: compile-from-hax output realizes an abstract `Dependencies` record
@@ -63,6 +66,8 @@ separate, independently-proved property (the RD5 `thirDialect` RHP arc), not in
 scope here.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
@@ -117,7 +122,7 @@ the compiled `Com` and carry its value-agreement clause. -/
 /-- The compiled big-sigma-0 `Com` together with its FIPS value-agreement, taken
     from the committed leaf `bigSigma0_compiles`. -/
 noncomputable def bigSigma0Compiled := bigSigma0_compiles.choose
-private theorem bigSigma0Compiled_spec :
+theorem bigSigma0Compiled_spec :
     compileFromHax (w := 32) (nIn := 1) ["x"] bigSigma0Src = some bigSigma0Compiled ∧
     ∀ (x : BitVec 32),
       bigSigma0Compiled.denote (inputValuation 32 1 (fun _ => x))
@@ -126,7 +131,7 @@ private theorem bigSigma0Compiled_spec :
 
 /-- The compiled big-sigma-1 `Com` together with its FIPS value-agreement. -/
 noncomputable def bigSigma1Compiled := bigSigma1_compiles.choose
-private theorem bigSigma1Compiled_spec :
+theorem bigSigma1Compiled_spec :
     compileFromHax (w := 32) (nIn := 1) ["x"] bigSigma1Src = some bigSigma1Compiled ∧
     ∀ (x : BitVec 32),
       bigSigma1Compiled.denote (inputValuation 32 1 (fun _ => x))
@@ -135,7 +140,7 @@ private theorem bigSigma1Compiled_spec :
 
 /-- The compiled majority `Com` together with its FIPS value-agreement. -/
 noncomputable def majCompiled := maj_compiles.choose
-private theorem majCompiled_spec :
+theorem majCompiled_spec :
     compileFromHax (w := 32) (nIn := 3) ["x", "y", "z"] majSrc = some majCompiled ∧
     ∀ (x y z : BitVec 32),
       majCompiled.denote (inputValuation 32 3 ![x, y, z])
@@ -144,7 +149,7 @@ private theorem majCompiled_spec :
 
 /-- The compiled choose `Com` together with its FIPS value-agreement. -/
 noncomputable def chCompiled := ch_compiles.choose
-private theorem chCompiled_spec :
+theorem chCompiled_spec :
     compileFromHax (w := 32) (nIn := 3) ["x", "y", "z"] chSrc = some chCompiled ∧
     ∀ (x y z : BitVec 32),
       chCompiled.denote (inputValuation 32 3 ![x, y, z])

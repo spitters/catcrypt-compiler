@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
 
 /-!
 # Machine-level constant-time for the emitted x86 subset
@@ -56,6 +59,8 @@ This is the machine-level analogue of `SSALeakage.leakTrace_constant`.
 * Barthe, Betarte, Campo, Luna, Pichardie,
   "System-Level Non-Interference for Constant-Time Cryptography", CCS 2014.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.VIR.Sha2Emit
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.Sha2Emit
 
 /-!
 # ABI maps for the owned-RA linear export of the SHA-256 compression
@@ -46,6 +48,8 @@ need no memory load. All operands are U32 (SHA-256 word width), matching the
 linear path's `default_ws = U32` and 4-byte `k.N` spill slots, so no jasmin-side
 width extension is needed.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

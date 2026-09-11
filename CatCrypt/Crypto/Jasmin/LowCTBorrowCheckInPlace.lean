@@ -3,9 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LeafSig
-import CatCrypt.Crypto.Jasmin.BignumExec
+module
 
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.LeafSig
+public import CatCrypt.Crypto.Jasmin.LeafSig
+public meta import CatCrypt.Crypto.Jasmin.BignumExec
+public import CatCrypt.Crypto.Jasmin.BignumExec
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!
@@ -965,7 +972,7 @@ def NoLoadInstrRegsIndepOfMem_CopnOasm_Obligation : Prop :=
     NoLoadInstrRegsIndepOfMem (.Copn lvs tag (.Oasm asm) args)
 
 /-- Helper: from `args.any peLoad = false`, all elements have `peLoad = false`. -/
-private theorem peLoad_of_args_no_load
+theorem peLoad_of_args_no_load
     (args : List PExpr) (h : args.any peLoad = false)
     (e : PExpr) (he : e ∈ args) : peLoad e = false := by
   cases hp : peLoad e

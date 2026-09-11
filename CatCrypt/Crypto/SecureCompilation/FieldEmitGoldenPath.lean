@@ -3,12 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ScalarLinNeutralDemo
-import CatCrypt.Crypto.SecureCompilation.MultiBackendDemo
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElf
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
-import CatCrypt.Crypto.SecureCompilation.VIR.MontMulFragmentDemo
-import Std.Tactic.BVDecide
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.ScalarLinNeutralDemo
+public import CatCrypt.Crypto.SecureCompilation.MultiBackendDemo
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElf
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
+public import CatCrypt.Crypto.SecureCompilation.VIR.MontMulFragmentDemo
+public import Std.Tactic.BVDecide
 
 /-!
 # Golden path: field arithmetic as `Com jasminDialect`, emitted by the verified compiler
@@ -41,6 +44,8 @@ step from `BitVec.uaddOverflow`). All lower through the *same* `comToReg_faithfu
 so the field-arithmetic primitives a multi-limb Montgomery multiply needs (widening
 product + carry accumulation) all emit to both backends with no new machinery.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

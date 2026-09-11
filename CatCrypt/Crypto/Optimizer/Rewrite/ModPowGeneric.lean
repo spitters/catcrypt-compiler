@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.ZMod.Basic
-import Mathlib.Tactic
-import CatCrypt.Crypto.Optimizer.Rewrite.MonoidPowLadderPass
+module
+
+import all Init.Data.Repr
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.Tactic.Ring
+public import CatCrypt.Crypto.Optimizer.Rewrite.MonoidPowLadderPass
 
 /-!
 # Modular exponentiation by square-and-multiply (generic)
@@ -52,6 +55,8 @@ The composition here — generic ladder ∘ modular reduction — is uncondition
 
 0 sorries; no custom axioms; correctness holds over every modulus `m`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

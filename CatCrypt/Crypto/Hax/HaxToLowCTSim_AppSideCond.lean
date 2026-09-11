@@ -3,11 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Hax.HaxToLowCT
-import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
-import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta
-import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta_Discharge
-import CatCrypt.Crypto.Jasmin.LowCTBorrowCheck
+module
+
+public import CatCrypt.Crypto.Hax.HaxToLowCT
+public import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta_Discharge
+public import CatCrypt.Crypto.Jasmin.LowCTBorrowCheck
 
 /-!
 # H3 Blocker 4 (part): derive app-call side-conditions from agreement
@@ -45,6 +47,8 @@ that initialized its tower slot.  We package this invariant
 abstractly as `EnvTotalOnArgs` / `RsHasArgsBindings` / `RsHasDestBinding`
 so that callers can discharge it once at the top of the pipeline.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

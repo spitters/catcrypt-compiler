@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.Jasmin.MemoryModel
-import CatCrypt.Crypto.SecureCompilation.BorrowToMemoryBridge
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.Jasmin.MemoryModel
+public import CatCrypt.Crypto.SecureCompilation.BorrowToMemoryBridge
 
 /-!
 # Array-ABI gather/scatter orchestration for opaque `.stackArr` `extCall` leaves
@@ -55,6 +57,8 @@ a `call` to the verified AUCurves leaf, never owned.
 The obligation discharged here is **structural** (`comToLfundefArrAbi_wf` and the
 shape lemmas), the same discipline as `Com.toLprogPhysAbi_wf`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

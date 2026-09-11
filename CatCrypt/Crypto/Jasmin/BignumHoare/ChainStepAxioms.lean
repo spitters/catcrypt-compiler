@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.BignumHoare.MontmulAxiom
-import CatCrypt.Crypto.Jasmin.S2NBignumSSA
-import CatCrypt.Tactics.PreservationCombinator
+module
+
+public import CatCrypt.Crypto.Jasmin.BignumHoare.MontmulAxiom
+public import CatCrypt.Crypto.Jasmin.S2NBignumSSA
+public import CatCrypt.Tactics.PreservationCombinator
 
 /-!
 # Chain-step contracts: granularity for per-block discharge
@@ -38,6 +40,8 @@ deterministic `addrInit` walk codified in §0a/§0b.
 3. The single `Ccall` then reduces to `MontmulCallFacts.call_correct`.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Jasmin.BignumHoare.ChainStepAxioms
@@ -60,7 +64,7 @@ purely structural. -/
     if `body1` (only `Cassgn`s) succeeds and `body2` succeeds, then so
     does `body1 ++ body2`.  Specialised to bodies whose every
     instruction is a `Cassgn`. -/
-private theorem bignumExecFuel_append_cassgn
+theorem bignumExecFuel_append_cassgn
     (registry : BignumRegistry) (fuel : Nat) (body1 body2 : List InstrR)
     (h_cassgn : ∀ i ∈ body1, ∃ lv tag ty rhs, i = .Cassgn lv tag ty rhs)
     (s s_mid s' : BignumState)
@@ -98,7 +102,7 @@ post-state. -/
 /-- Specialised `addrInit "name" 0`: `name := op`.  Only register
     `name` is changed (set to the value of `op`); memory is
     untouched. -/
-private theorem addrInit_zero_succ
+theorem addrInit_zero_succ
     (registry : BignumRegistry) (fuel : Nat) (s : BignumState)
     (lvalName : String) :
     ∃ s' : BignumState,
@@ -120,7 +124,7 @@ private theorem addrInit_zero_succ
 /-- Specialised `addrInit "name" (-1)`: `name := ap`.  Only register
     `name` is changed (set to the value of `ap`); memory is
     untouched. -/
-private theorem addrInit_negOne_succ
+theorem addrInit_negOne_succ
     (registry : BignumRegistry) (fuel : Nat) (s : BignumState)
     (lvalName : String) :
     ∃ s' : BignumState,
@@ -145,7 +149,7 @@ private theorem addrInit_negOne_succ
     `name := op; name := name + k`, so the post-state has
     `name = op + k`.  Memory is unchanged.  Registers other than
     `name` are unchanged. -/
-private theorem addrInit_generic_succ
+theorem addrInit_generic_succ
     (registry : BignumRegistry) (fuel : Nat) (s : BignumState)
     (lvalName : String) (k : Int) (hk0 : k ≠ 0) (hkm1 : k ≠ -1) :
     ∃ s' : BignumState,

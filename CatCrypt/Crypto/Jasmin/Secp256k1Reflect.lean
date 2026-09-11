@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
+module
+
+public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
 # secp256k1 reflect surface — scalar-mul MSM + ECDSA-verify kernels via the
@@ -71,6 +74,8 @@ cryptoDialectToJasminCom → emitAbiOrchRegPtr`) is the unmodified verified fron
 * `CatCrypt/Crypto/Jasmin/UovReflect.lean` — sibling reference for the
   hand-built-body around `@[rust_cmd_pattern]` registration
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 
@@ -146,7 +151,7 @@ def secp256k1ScalarTowerType : TowerType := .TBytes 32
 /-- Tower type of a secp256k1 affine point. -/
 def secp256k1PointTowerType : TowerType := .TBytes 64
 
-private def loc (n : String) (t : TowerType) : Located :=
+def locSecp256k1 (n : String) (t : TowerType) : Located :=
   { locVar := n, locSrc := t }
 
 /-! ## 5. Pure-Lean secp256k1 kernel functions — the specs -/
@@ -173,9 +178,9 @@ spec above. The leaf names match the `@[rust_cmd_pattern]` registrations. -/
 /-- The `LowCT` body the reifier *would* produce for the per-term MSM
     `t = secp256k1_scalar_mul(k, P)`. -/
 def secp256k1MsmTermBody : LowCT :=
-  let k_l      := loc "k"        secp256k1ScalarTowerType
-  let P_l      := loc "P"        secp256k1PointTowerType
-  let result_l := loc "__result" secp256k1PointTowerType
+  let k_l      := locSecp256k1 "k"        secp256k1ScalarTowerType
+  let P_l      := locSecp256k1 "P"        secp256k1PointTowerType
+  let result_l := locSecp256k1 "__result" secp256k1PointTowerType
   .RSeq .RSkip
     (.RCall "secp256k1_scalar_mul" result_l [k_l, P_l])
 
@@ -195,13 +200,13 @@ def secp256k1MsmTermReified : ReifiedFunc :=
     ```
 -/
 def secp256k1EcdsaVerifyBody : LowCT :=
-  let u1_l     := loc "u1"       secp256k1ScalarTowerType
-  let G_l      := loc "G"        secp256k1PointTowerType
-  let u2_l     := loc "u2"       secp256k1ScalarTowerType
-  let Q_l      := loc "Q"        secp256k1PointTowerType
-  let t1_l     := loc "t1"       secp256k1PointTowerType
-  let t2_l     := loc "t2"       secp256k1PointTowerType
-  let result_l := loc "__result" secp256k1PointTowerType
+  let u1_l     := locSecp256k1 "u1"       secp256k1ScalarTowerType
+  let G_l      := locSecp256k1 "G"        secp256k1PointTowerType
+  let u2_l     := locSecp256k1 "u2"       secp256k1ScalarTowerType
+  let Q_l      := locSecp256k1 "Q"        secp256k1PointTowerType
+  let t1_l     := locSecp256k1 "t1"       secp256k1PointTowerType
+  let t2_l     := locSecp256k1 "t2"       secp256k1PointTowerType
+  let result_l := locSecp256k1 "__result" secp256k1PointTowerType
   .RSeq (.RSeq (.RSeq .RSkip
     (.RCall "secp256k1_scalar_mul" t1_l [u1_l, G_l]))
     (.RCall "secp256k1_scalar_mul" t2_l [u2_l, Q_l]))

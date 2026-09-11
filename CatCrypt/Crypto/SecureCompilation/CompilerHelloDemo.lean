@@ -3,11 +3,19 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ThirToComFront
-import CatCrypt.Crypto.SecureCompilation.ScalarLinFront
-import CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAsmPrinter
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.ThirToComFront
+public import CatCrypt.Crypto.SecureCompilation.ThirToComFront
+public meta import CatCrypt.Crypto.SecureCompilation.ScalarLinFront
+public import CatCrypt.Crypto.SecureCompilation.ScalarLinFront
+public meta import CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
+public import CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
+public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
+public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAsmPrinter
 
 /-!
 # Hello, compiler: a program compiled to assembly, and printed
@@ -15,6 +23,8 @@ import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAsmPrinter
 The compiler takes input through a front. Here the hax front lowers a straight-line
 arithmetic routine, and the compiled AArch64 block is printed by `#eval`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

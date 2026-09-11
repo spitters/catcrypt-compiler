@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
 
 /-!
 # Field derived ops — first-class `double` / `square` / `powui`
@@ -86,6 +88,8 @@ add/multiply/(fixed-exponent square-and-multiply) schedule, never branching on a
 secret operand value.  So they are CT by construction (`ctSafe = true` for every
 op), exactly like `FieldDialect`/`ModArithDialect`'s primitive arithmetic.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

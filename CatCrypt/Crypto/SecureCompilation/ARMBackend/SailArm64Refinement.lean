@@ -3,35 +3,58 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmModel
-import Mathlib.Data.BitVec
-import Mathlib.Tactic.NormNum
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmModel
+public import Mathlib.Data.BitVec
+public import Mathlib.Tactic.NormNum
 
 /-!
-# Sail-execute refinement for the 64-bit AArch64 GP-ALU model (`ArmModel`)
+# A hand-transcribed Sail-execute-shaped model for the 64-bit AArch64 GP-ALU (`ArmModel`)
 
-This is the AArch64 analogue of `RISCVBackend/SailRiscv64Refinement.lean`. It
-connects our **trusted hand-written effect semantics** (the 64-bit `X`-register
-GP-ALU effects that `evalBInst`'s `.add`/`.sub`/`.and`/`.orr`/`.eor` arms apply —
-`s.get a + s.get b`, `s.get a - s.get b`, `opAnd64`, `opOrr64`, `opEor64`) to the
-authoritative Arm execute semantics, by transcribing the `integer_*_shiftedreg`
-execute clauses from the official `rems-project/sail-arm` ASL-derived Sail model.
+This is the AArch64 analogue of `RISCVBackend/SailRiscv64Refinement.lean`, in
+intent: it defines Lean renderings of two Arm ARM pseudocode clauses
+(`integer_arithmetic_addsub_shiftedreg`, `integer_logical_shiftedreg`, no-flags
+`LSL #0` shape) over a small hand-written `RegFile`/`SailM`, and proves that
+running them writes the same value `ArmModel`'s `.add`/`.sub`/`.and`/`.orr`/
+`.eor` `evalBInst` arms would. For AND/ORR/EOR this is a real machine-checked
+equality against `ArmModel`'s own `opAnd64`/`opOrr64`/`opEor64` (imported and
+referenced directly, not just named in comments); for ADD/SUB the comparison
+is to raw `BitVec` `+`/`-` (`s.get a + s.get b`, `s.get a - s.get b`), matching
+`evalBInst`'s arms only by inspection, since there is no named op function to
+import. What this file does **not** reference anywhere outside comments is
+`evalBInst`, `runBBlock`, or `BState` itself: no theorem here states that these
+per-op values are what `evalBInst` actually writes into a `BState`, or that
+`rget`'s `XZR`-aware read matches `BState.get`'s. That link — and the
+correspondence between this file's hand-written `RegFile`/`SailM` and
+`ArmModel`'s real `BState`/state monad — is asserted in prose, not proved.
+Also unlike its RISC-V analogue, nothing in the package imports this file
+(`ComToArmLsem.lean` only mentions its name in a comment); it does import
+`ArmModel.lean` (for the op functions above), but the connection runs one way
+and stops at these value-level lemmas.
 
-## What grounds ARM was: a decode round-trip only
+## What grounds ARM: a decode round-trip only
 
-`SailArmDecoder.lean` proves `decode (encode i) = i` against the `sail-arm`
-`aarch_decode.sail` *parse* clauses — which operand bits each instruction names.
-That left a residual versus RISC-V, whose `SailRiscv64Refinement` additionally
-equates each model **step** with the value the vendored `execute_RTYPE` Sail
-clause writes (a value-level *execute* refinement). This module closes that gap
-for the GP-ALU fragment: it transcribes the sail-arm *execute* clauses and proves
-the model's per-op value equals what the Sail clause writes.
+`SailArmDecoder.lean` proves `decode (encode i) = i` against Lean field-split
+clauses transcribed by hand from the sail-arm `aarch_decode.sail` *parse*
+clauses — which operand bits each instruction names. That leaves a residual
+versus RISC-V, whose `SailRiscv64Refinement` additionally equates each model
+**step** with the value the `execute_RTYPE` Sail clause writes (a value-level
+*execute* refinement, machine-checked against an in-file excerpt of the
+sail-riscv-lean generated output — commit `9eba3f07`; upstream not vendored).
+This module is an attempt at closing that gap for the GP-ALU fragment: it
+hand-transcribes the shape of the sail-arm *execute* clauses into this file's
+own `RegFile`/`SailM` and proves the transcription's per-op value equals what
+`ArmModel`'s ops compute — a same-file result, checked only against this file's
+own transcription (upstream sail-arm is not vendored), and not against
+`ArmModel`'s `evalBInst` itself.
 
 ## Source of the transcribed clauses (the trust-critical provenance)
 
-The clauses are transcribed **verbatim in structure** from the vendored
-`rems-project/sail-arm` checkout at
-`bench/reference_install/sail-arm/arm-v8.5-a/model/aarch64.sail`:
+The clauses below are the authors' hand transcription of what they believe are
+the `rems-project/sail-arm` `aarch64.sail` clauses. They were **not** read from a
+checkout vendored in this repo (there is none: `bench/` is untracked and has no
+`sail-arm` subtree), and the transcription's provenance is not recorded:
 
 * `integer_arithmetic_addsub_shiftedreg` (`aarch64.sail:4944`):
 
@@ -80,6 +103,8 @@ The flag-setting forms (`ADDS`/`ADCS`/`SUBS`/`SBCS`), the multiplies
 (`MOVZ`/`MOVK`) are out of this no-flags GP-ALU fragment, exactly as RISC-V's
 refinement scopes to `execute_RTYPE`'s `ADD`/`SUB`/`AND`/`OR`/`XOR`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -193,14 +218,14 @@ def rget (s : RegFile) (i : BitVec 5) : BitVec 64 := if i.toNat = 31 then 0 else
 def runXd (m : SailM Unit) (s : RegFile) (d : BitVec 5) : BitVec 64 := (m.run s).2 d
 
 /-- Low 64 bits of the unsigned sum is `BitVec` addition (the ADD result). -/
-private theorem addWithCarryResult_add (x y : BitVec 64) :
+theorem addWithCarryResult_add (x y : BitVec 64) :
     addWithCarryResult x y false = x + y := by
   apply BitVec.eq_of_toNat_eq
   simp [addWithCarryResult, uintBit]
 
 /-- Low 64 bits of `UInt(x) + UInt(~y) + 1` is `x - y` (the SUB result: the Arm
     `AddWithCarry(x, NOT(y), 1)` two's-complement subtract). -/
-private theorem addWithCarryResult_sub (x y : BitVec 64) :
+theorem addWithCarryResult_sub (x y : BitVec 64) :
     addWithCarryResult x (~~~ y) true = x - y := by
   apply BitVec.eq_of_toNat_eq
   simp only [addWithCarryResult, uintBit, if_true, BitVec.toNat_ofNat,
@@ -259,28 +284,35 @@ theorem logical_eor (s : RegFile) (m n d : BitVec 5) (hd : d.toNat ≠ 31) :
       bind, StateT.bind, StateT.run, pure, StateT.pure, get, getThe, MonadStateOf.get,
       modify, modifyGet, MonadStateOf.modifyGet, StateT.get, StateT.modifyGet]
 
-/-! ## 5. `armStep_sail_grounded`: every GP-ALU model step is a Sail-execute step
+/-! ## 5. `armStep_transcription_matches_model`: the transcription's per-op value
+matches `ArmModel`
 
-The five per-op equalities, bundled as the AArch64 analogue of RISC-V's
-`riscvStep64_sail_grounded`: for each GP-ALU `BInst` arm, the value the model's
-`evalBInst` writes to the destination equals the value the transcribed sail-arm
-execute clause writes — so the model's effect *is* the authoritative Sail
-execute semantics on this fragment, not merely a hand-written semantics validated
-by decode round-trip + qemu.
+The five per-op equalities, bundled in the shape of RISC-V's
+`riscvStep64_sail_grounded`: for each GP-ALU op, the value the hand-transcribed
+clause of §3 writes equals `s.get a + s.get b` / `s.get a - s.get b` (ADD/SUB)
+or `ArmModel`'s own `opAnd64`/`opOrr64`/`opEor64` (AND/ORR/EOR) — the AND/ORR/
+EOR cases are real machine-checked equalities against `ArmModel`'s op
+functions; ADD/SUB match `evalBInst`'s `.add`/`.sub` arms only by inspection
+(raw `+`/`-`, no named function to reference). What is **not** proved anywhere
+in this file is that these are the values `evalBInst` actually writes: neither
+`evalBInst`, `runBBlock`, nor `ArmModel.BState` is referenced outside comments
+(see the module docstring), so the bundle below is a same-file value fact
+about this file's own transcribed clauses, not a theorem about `evalBInst`'s
+Lean definition.
 
-The model side is read off `evalBInst`'s GP-ALU arms (`ArmModel.lean`):
-`.add ↦ s.get a + s.get b`, `.sub ↦ s.get a - s.get b`, `.and ↦ opAnd64`,
-`.orr ↦ opOrr64`, `.eor ↦ opEor64`. We phrase the bundle over the abstract operand values
-`va = rget s n`, `vb = rget s m` so it is independent of the register-name vs
-register-index encoding (the model keys on `String` names, the Sail clause on
-`BitVec 5` indices; both apply the same `op`). -/
+We phrase the bundle over the abstract operand values `va = rget s n`,
+`vb = rget s m` so it is independent of the register-name vs register-index
+encoding (`ArmModel` keys on `String` names, this file's clauses on `BitVec 5`
+indices; both apply the same `op`). -/
 
-/-- **`armStep_sail_grounded` (the GP-ALU Sail-execute grounding).** For every
-    GP-ALU op, the value the transcribed sail-arm execute clause writes to `Xd`
-    equals the corresponding `ArmModel` 64-bit op applied to the read operands —
-    the AArch64 mirror of `SailRiscv64Ref.rtype_*`. Bundled as one statement over
-    all five ops, with the `BState`-level op functions on the right. -/
-theorem armStep_sail_grounded (s : RegFile) (m n d : BitVec 5) (hd : d.toNat ≠ 31) :
+/-- **`armStep_transcription_matches_model` (the hand-transcription/`ArmModel`
+    value match).** For every GP-ALU op, the value the hand-transcribed clause
+    (§3) writes to `Xd` equals the corresponding `ArmModel` 64-bit op applied to
+    the read operands — `opAnd64`/`opOrr64`/`opEor64` by direct Lean reference,
+    `+`/`-` by shape only; none of it via `evalBInst` (see the module
+    docstring). Bundled as one statement over all five ops. -/
+theorem armStep_transcription_matches_model
+    (s : RegFile) (m n d : BitVec 5) (hd : d.toNat ≠ 31) :
     runXd (integer_arithmetic_addsub_shiftedreg d m n 0 false) s d
         = (rget s n) + (rget s m)
     ∧ runXd (integer_arithmetic_addsub_shiftedreg d m n 0 true) s d
@@ -294,24 +326,28 @@ theorem armStep_sail_grounded (s : RegFile) (m n d : BitVec 5) (hd : d.toNat ≠
   ⟨addsub_add s m n d hd, addsub_sub s m n d hd, logical_and s m n d hd,
     logical_orr s m n d hd, logical_eor s m n d hd⟩
 
-/-! ## 6. The Sail-execute-grounded ARM base-ALU proposition
+/-! ## 6. `TranscribedClauseMatchesArmModelGpAlu`: the proposition this file proves
 
 `ComToArmLsem.ArmBaseAluGrounded` records the whole-`Com` value-preservation
 keystone but is explicitly *not* a Sail-execute refinement — its GP-ALU coverage
-is grounded only by the decode round-trip + qemu. `SailExecuteGroundedGpAlu` is
-the strengthening this module supplies: every GP-ALU op the model executes has
-its written value proved equal to the authoritative sail-arm *execute* clause.
-This is the proposition that brings ARM to RISC-V depth (the
-`RiscvBaseAluGrounded` analogue: a value-level execute refinement, not a parse
-round-trip). -/
+is grounded only by the decode round-trip + qemu.
+`TranscribedClauseMatchesArmModelGpAlu` is what this module proves in its place:
+every GP-ALU op this file's own transcribed clause (§3) computes has its written
+value equal to the corresponding `ArmModel` op, for the hand-written
+`RegFile`/`SailM` state defined above — **not** a statement about `evalBInst`,
+`runBBlock`, or `ArmModel.BState`, which this file never references outside
+comments, and **not** a check against upstream sail-arm, which is not vendored
+here (see the module docstring). It is, in shape, the AArch64 analogue of
+RISC-V's value-level `RiscvBaseAluGrounded` — a same-file arithmetic fact about
+the transcription in §3, offered as evidence for (but not a machine-checked
+proof of) a genuine execute refinement. -/
 
-/-- **The Sail-execute grounding of the ARM GP-ALU fragment.** For every base-ALU
-    op and every register state and operand registers (`d ≠ XZR`), the value the
-    transcribed sail-arm execute clause writes equals the `ArmModel` op — i.e. the
-    model's per-step effect is the authoritative Arm execute semantics on the
-    GP-ALU subset. The AArch64 analogue of RISC-V's value-level
-    `execute_RTYPE`-grounded `RiscvBaseAluGrounded`. -/
-def SailExecuteGroundedGpAlu : Prop :=
+/-- **The value match between this file's transcribed clause and `ArmModel`.**
+    For every base-ALU op and every register state and operand registers
+    (`d ≠ XZR`), the value the hand-transcribed clause (§3) writes equals the
+    `ArmModel` op — established here only over this file's own `RegFile`/
+    `SailM`, with no reference to `evalBInst`/`runBBlock`/`ArmModel.BState`. -/
+def TranscribedClauseMatchesArmModelGpAlu : Prop :=
   ∀ (s : RegFile) (m n d : BitVec 5), d.toNat ≠ 31 →
     runXd (integer_arithmetic_addsub_shiftedreg d m n 0 false) s d
         = (rget s n) + (rget s m)
@@ -324,9 +360,14 @@ def SailExecuteGroundedGpAlu : Prop :=
     ∧ runXd (integer_logical_shiftedreg d m n 0 .EOR) s d
         = opEor64 (rget s n) (rget s m)
 
-/-- `SailExecuteGroundedGpAlu` is inhabited by the proved per-op refinements (not
-    `True`): the ARM GP-ALU model is grounded in the sail-arm execute semantics. -/
-theorem sailExecuteGroundedGpAlu_proof : SailExecuteGroundedGpAlu :=
-  fun s m n d hd => armStep_sail_grounded s m n d hd
+/-- `TranscribedClauseMatchesArmModelGpAlu` is inhabited by the proved per-op
+    value matches (not `True`): this file's own transcribed clauses and
+    `ArmModel`'s ops agree, for every GP-ALU op — a fact about this file's
+    transcription, not a machine-checked link to `evalBInst`/`ArmModel.BState`
+    and not a check against upstream sail-arm, which is not vendored here (see
+    the module docstring for the full caveat). -/
+theorem transcribedClauseMatchesArmModelGpAlu_proof :
+    TranscribedClauseMatchesArmModelGpAlu :=
+  fun s m n d hd => armStep_transcription_matches_model s m n d hd
 
 end CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArm64Ref

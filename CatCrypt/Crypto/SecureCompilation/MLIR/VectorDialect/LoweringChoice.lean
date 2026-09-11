@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
-import CatCrypt.Crypto.Optimizer.X86CostModel
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
+public meta import CatCrypt.Crypto.Optimizer.X86CostModel
+public import CatCrypt.Crypto.Optimizer.X86CostModel
 
 /-!
 # MLIR `vector` dialect — Lowering-choice abstraction
@@ -40,6 +44,8 @@ approach over DialEgg.
 > blocks are lowering-selector demo fixtures; the module emits no deployed `.s`
 > artifact.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -266,7 +272,7 @@ theorem selectLowering_classMember {α : Type} {n : Nat} :
 /-- The fold used by the cost selectors keeps the accumulator inside the list:
     folding the "pick smaller cost" combinator over `rest` starting from a
     member of `c :: rest` returns a member of `c :: rest`. -/
-private theorem foldl_min_mem {α : Type} {n : Nat}
+theorem foldl_min_mem {α : Type} {n : Nat}
     (cost : LoweringCandidate α n → Nat) :
     ∀ (rest : List (LoweringCandidate α n)) (acc : LoweringCandidate α n)
       (full : List (LoweringCandidate α n)),
@@ -397,7 +403,7 @@ def demoClass {α : Type} (init : α) (op : α → α → α)
     head_nonempty := by simp }
 
 /-- Every candidate of `demoClass` carries the `loweredAdd` expansion. -/
-private theorem demoClass_expansion {α : Type} (init : α) (op : α → α → α)
+theorem demoClass_expansion {α : Type} (init : α) (op : α → α → α)
     (v w : VectorTy α 4) :
     ∀ c ∈ (demoClass init op v w).candidates,
       c.expansion = loweredAdd init op v w := by

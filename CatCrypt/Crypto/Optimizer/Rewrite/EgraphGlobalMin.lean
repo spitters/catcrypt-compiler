@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Rewrite.ProofCarryingExtraction
-import CatCrypt.Crypto.Optimizer.Rewrite.MultiplyMethodEquiv
-import CatCrypt.Crypto.Optimizer.Rewrite.MultiplyMethodSelect
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Optimizer.Rewrite.ProofCarryingExtraction
+public import CatCrypt.Crypto.Optimizer.Rewrite.MultiplyMethodEquiv
+public import CatCrypt.Crypto.Optimizer.Rewrite.MultiplyMethodSelect
 
 /-!
 # Global cost-minimum extraction over an explicit e-class
@@ -52,6 +55,8 @@ through the general `extractMin` rather than the finite `argmin` of
 `MultiplyMethodSelect`. The recovered selection is proved to coincide with that
 module's `selectMul2`/`selectMul3`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

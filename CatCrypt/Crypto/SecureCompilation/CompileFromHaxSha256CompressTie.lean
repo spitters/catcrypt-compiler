@@ -3,10 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxLeaves
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha2KeccakTie
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSlhdsaChainTie
-import CatCrypt.Crypto.Util.Sha256Verified
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxLeaves
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxLeaves
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha2KeccakTie
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha2KeccakTie
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSlhdsaChainTie
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSlhdsaChainTie
+public meta import CatCrypt.Crypto.Util.Sha256Verified
+public import CatCrypt.Crypto.Util.Sha256Verified
 
 /-!
 # Whole SHA-256 compression: the 64-round loop + the message-schedule recurrence
@@ -89,6 +95,8 @@ whole verified next state, and `wholeCompressProduct` folds it 64× to the FIPS
 whole-block compression `sha256Compress`. The round-loop *engine* is also tied
 here word-by-word to the verified-compiled chain leaves.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

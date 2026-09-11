@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
 
 /-!
 # Grounded PASSWORD-HASHING / KEY-HARDENING and RECORD-LAYER KEY-UPDATE
@@ -125,6 +127,8 @@ discharged by the proved realizer.
 * NIST SP 800-56C Rev. 2, SP 800-108 (SHA-3 / KMAC as a KDF PRF); FIPS 202
   (Keccak / SHA-3 / SHAKE).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.NTTRecursionPass
-import Mathlib.RingTheory.RootsOfUnity.PrimitiveRoots
+module
+
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTRecursionPass
+public import Mathlib.RingTheory.RootsOfUnity.PrimitiveRoots
 
 /-!
 # The DFT diagonalizes cyclic convolution
@@ -21,6 +23,8 @@ The proof reindexes the inner convolution sum by the bijection `j ↦ j + i` on
 `Fin n` and uses `ω ^ (a % n) = ω ^ a` (a consequence of `ω ^ n = 1`) to undo the
 modular wraparound introduced by `Fin n` addition.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

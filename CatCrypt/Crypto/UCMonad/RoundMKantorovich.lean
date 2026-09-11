@@ -3,7 +3,9 @@ Copyright (c) 2024 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.UCMonad.RoundM
+module
+
+public import CatCrypt.Crypto.UCMonad.RoundM
 
 /-!
 # Kantorovich Bisimulation Metric on RoundM
@@ -18,6 +20,8 @@ preserves round structure by using Lipschitz dispatchers at each continuation po
 * Balle, Gaboardi, Geumlek (2024): Kantorovich liftings for probabilistic programs
 * Desharnais, Gupta, Jagadeesan, Panangaden (2004): Bisimulation metrics
 -/
+
+@[expose] public section
 
 namespace UCMonad.RoundMUC
 
@@ -54,7 +58,7 @@ noncomputable def discreteMetric (α : Type) : EPseudoMetric α where
 /-! ### Sum distance with explicit reduction lemmas -/
 
 /-- Distance function for the sum metric. Defined separately for better reduction. -/
-private noncomputable def sumDist {α β : Type}
+noncomputable def sumDist {α β : Type}
     (d₁ : EPseudoMetric α) (d₂ : EPseudoMetric β) :
     (α ⊕ β) → (α ⊕ β) → ℝ≥0∞
   | .inl a₁, .inl a₂ => d₁.dist a₁ a₂
@@ -62,19 +66,19 @@ private noncomputable def sumDist {α β : Type}
   | .inl _, .inr _ => ⊤
   | .inr _, .inl _ => ⊤
 
-@[simp] private theorem sumDist_inl_inl {α β : Type}
+@[simp] theorem sumDist_inl_inl {α β : Type}
     {d₁ : EPseudoMetric α} {d₂ : EPseudoMetric β} {a₁ a₂ : α} :
     sumDist d₁ d₂ (.inl a₁) (.inl a₂) = d₁.dist a₁ a₂ := rfl
 
-@[simp] private theorem sumDist_inr_inr {α β : Type}
+@[simp] theorem sumDist_inr_inr {α β : Type}
     {d₁ : EPseudoMetric α} {d₂ : EPseudoMetric β} {b₁ b₂ : β} :
     sumDist d₁ d₂ (.inr b₁) (.inr b₂) = d₂.dist b₁ b₂ := rfl
 
-@[simp] private theorem sumDist_inl_inr {α β : Type}
+@[simp] theorem sumDist_inl_inr {α β : Type}
     {d₁ : EPseudoMetric α} {d₂ : EPseudoMetric β} {a : α} {b : β} :
     sumDist d₁ d₂ (.inl a) (.inr b) = ⊤ := rfl
 
-@[simp] private theorem sumDist_inr_inl {α β : Type}
+@[simp] theorem sumDist_inr_inl {α β : Type}
     {d₁ : EPseudoMetric α} {d₂ : EPseudoMetric β} {b : β} {a : α} :
     sumDist d₁ d₂ (.inr b) (.inl a) = ⊤ := rfl
 
@@ -188,11 +192,11 @@ theorem kantLift_comp_left {β γ : Type} (d : EPseudoMetric γ)
         from SPComp.bind_assoc _ _ _]
   set ε := ⨆ (b : β), kantLift d (g₁ b) (g₂ b)
   apply absDiff_prTrue_bind_le c _ _ h₀ ε
-  · intro b h'; dsimp only
+  · intro b h'
     apply le_add_of_absDiff_le
     apply le_trans _ (le_iSup (fun b => kantLift d (g₁ b) (g₂ b)) b)
     exact le_iSup₂_of_le D hD (le_iSup_of_le h' le_rfl)
-  · intro b h'; dsimp only
+  · intro b h'
     apply le_add_of_absDiff_le; rw [absDiff_comm]
     apply le_trans _ (le_iSup (fun b => kantLift d (g₁ b) (g₂ b)) b)
     exact le_iSup₂_of_le D hD (le_iSup_of_le h' le_rfl)
@@ -233,7 +237,7 @@ theorem kdistRoundM_triangle {α β : Type} (n : Nat)
 
 /-- Auxiliary: any `d`-Lip distinguisher composed with flatCont₀ is
     `sumMetric disc (kdistRoundM_pt 0 β)`-Lip. -/
-private theorem flatCont_zero_lip {β : Type} (D' : β → SPComp Bool) (hD' : IsLipDist (discreteMetric β) D') :
+theorem flatCont_zero_lip {β : Type} (D' : β → SPComp Bool) (hD' : IsLipDist (discreteMetric β) D') :
     IsLipDist (sumMetric (discreteMetric β) (kdistRoundM_pt 0 β))
       (fun x : β ⊕ RoundM 0 β => match x with
         | .inl a => SPComp.bind (SPComp.pure a) D'
@@ -253,7 +257,7 @@ private theorem flatCont_zero_lip {β : Type} (D' : β → SPComp Bool) (hD' : I
 
 /-- Auxiliary: any `sumMetric disc (kdistRoundM_pt m)`-Lip distinguisher composed with
     flatCont_{m+1} is `sumMetric disc (kdistRoundM_pt (m+1))`-Lip. -/
-private theorem flatCont_succ_lip {β : Type} (m : Nat) (D' : (β ⊕ RoundM m β) → SPComp Bool)
+theorem flatCont_succ_lip {β : Type} (m : Nat) (D' : (β ⊕ RoundM m β) → SPComp Bool)
     (hD' : IsLipDist (sumMetric (discreteMetric β) (kdistRoundM_pt m β)) D') :
     IsLipDist (sumMetric (discreteMetric β) (kdistRoundM_pt (m + 1) β))
       (fun x : β ⊕ RoundM (m + 1) β => match x with
@@ -275,7 +279,7 @@ private theorem flatCont_succ_lip {β : Type} (m : Nat) (D' : (β ⊕ RoundM m �
       exact le_iSup₂_of_le D' hD' (le_iSup_of_le h₀ le_rfl)
 
 /-- flatten is non-expansive from `kdistRoundM_pt (m+1)` to `kdistRoundM_pt m`. -/
-private theorem flatten_nonexpansive (m : Nat) {β : Type}
+theorem flatten_nonexpansive (m : Nat) {β : Type}
     (μ ν : RoundM (m + 1) β) :
     (kdistRoundM_pt m β).dist (RoundM.flatten m μ) (RoundM.flatten m ν) ≤
     (kdistRoundM_pt (m + 1) β).dist μ ν := by
@@ -327,7 +331,7 @@ private theorem flatten_nonexpansive (m : Nat) {β : Type}
 
 /-! ### Right PPL -/
 
-private theorem kdistRoundM_pt_comp_right :
+theorem kdistRoundM_pt_comp_right :
     ∀ (n : Nat) {β γ : Type} (μ ν : RoundM n β) (k : β → RoundM n γ),
     (kdistRoundM_pt n γ).dist (RoundM.bind' n μ k) (RoundM.bind' n ν k) ≤
     (kdistRoundM_pt n β).dist μ ν := by
@@ -378,7 +382,7 @@ theorem kdistRoundM_comp_right {α β γ : Type} (n : Nat)
 
 /-! ### Left PPL -/
 
-private theorem kdistRoundM_pt_comp_left :
+theorem kdistRoundM_pt_comp_left :
     ∀ (n : Nat) {β γ : Type} (c : RoundM n β) (g₁ g₂ : β → RoundM n γ),
     (kdistRoundM_pt n γ).dist (RoundM.bind' n c g₁) (RoundM.bind' n c g₂) ≤
     ⨆ (b : β), (kdistRoundM_pt n γ).dist (g₁ b) (g₂ b) := by
@@ -433,7 +437,7 @@ theorem kdistRoundM_comp_left {α β γ : Type} (n : Nat)
 
 /-! ## Phase 4: Comparison + UCMonadMetric -/
 
-private theorem sdist_flattenAll_le_kdistRoundM_pt :
+theorem sdist_flattenAll_le_kdistRoundM_pt :
     ∀ (n : Nat) {β : Type} (μ ν : RoundM n β),
     kantLift (discreteMetric β) (RoundM.flattenAll n μ) (RoundM.flattenAll n ν) ≤
     (kdistRoundM_pt n β).dist μ ν := by
@@ -454,7 +458,7 @@ theorem sdistRoundM_le_kdistRoundM {α β : Type} (n : Nat)
   apply le_trans _ (sdist_flattenAll_le_kdistRoundM_pt n (f a) (g a))
   exact le_iSup₂_of_le D (isLipDist_discrete D) (le_iSup_of_le h₀ le_rfl)
 
-noncomputable def UCMonadMetric_RoundM_Kantorovich (n : Nat) :
+@[reducible] noncomputable def UCMonadMetric_RoundM_Kantorovich (n : Nat) :
     UCMonadMetric (RoundM n) where
   ucMapSum := mapSumRoundM n
   ucMapSum_inl := fun _f _g _a => rfl

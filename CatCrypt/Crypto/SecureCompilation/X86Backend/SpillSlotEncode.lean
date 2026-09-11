@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherFullBody
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherFullBody
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherFullBody
 
 /-!
 # `SpillSlotEncode` — the spill-slot-aware JInstr `mov`, closing the last residual
@@ -76,6 +79,8 @@ physical export carries its framing in-body rather than as separate
 `pushq`/`popq` segments), which is a `.text`-assembly bridge shape, not a body
 byte gap — the body bytes now agree in full.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

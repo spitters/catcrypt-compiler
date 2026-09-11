@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.HaxToThirFront
-import CatCrypt.Crypto.SecureCompilation.JasminCTByConstruction
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.HaxToThirFront
+public import CatCrypt.Crypto.SecureCompilation.HaxToThirFront
+public meta import CatCrypt.Crypto.SecureCompilation.JasminCTByConstruction
+public import CatCrypt.Crypto.SecureCompilation.JasminCTByConstruction
 
 /-!
 # Front ingestion lands in the index-free (CT-by-construction) jasmin fragment
@@ -33,6 +37,8 @@ no public-index hypothesis required. The worked example is `HaxToThirFront.maddS
 (`(w[0]*w[1]) + w[0]`), the same body whose value-correctness
 (`maddSrc_front_e2e`) the front already proves.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterReadoutHalfFull
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterReadoutHalfFull
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterReadoutHalfFull
 
 /-!
 # Keccak emitter lanes-readout — per-lane factoring of `lanesReadoutResidual` (task #135)
@@ -67,6 +71,8 @@ No new custom axioms. No `sorry`. No `native_decide`.
 See `KeccakEmit.lean` for the full 12-file Keccak VIR canonical map. This
 file is step #135 in that chain: per-lane factoring of `lanesReadoutResidual`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxHeartbeats 4000000

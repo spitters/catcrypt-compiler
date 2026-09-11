@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminAST
-import CatCrypt.Crypto.Jasmin.JasminToRustEmit
+module
+
+public import CatCrypt.Crypto.Jasmin.JasminAST
+public import CatCrypt.Crypto.Jasmin.JasminToRustEmit
 
 /-!
 # SHA-256 inner bit-functions in Lean Jasmin AST + safe-Rust emit
@@ -33,6 +35,8 @@ BSig0(x)      = ROTR_2(x)  XOR ROTR_13(x) XOR ROTR_22(x)
 BSig1(x)      = ROTR_6(x)  XOR ROTR_11(x) XOR ROTR_25(x)
 ```
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.Examples.Sha256JasminDemo
 

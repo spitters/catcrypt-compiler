@@ -3,12 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.LatticeNTTSound
-import CatCrypt.Crypto.SecureCompilation.VIR.PolyEncodingMLKEM
-import CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic
-import CompPoly.Univariate.ToPoly.Equiv
-import CompPoly.Univariate.ToPoly.Impl
+module
 
+public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeNTTSound
+public import CatCrypt.Crypto.SecureCompilation.VIR.PolyEncodingMLKEM
+public import CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic
+public import CompPoly.Univariate.ToPoly.Equiv
+public import CompPoly.Univariate.ToPoly.Impl
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!

@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
-import Std.Tactic.BVDecide
+module
+
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
+public import Std.Tactic.BVDecide
 
 /-!
 # Golden path: a constant-time fixed-table gather, emitted through the width-64 path
@@ -52,6 +54,8 @@ the emitting alternative to a `stackLoad`/memory backend op for a small fixed ta
 The worked table is the first four entries of the AES S-box, `[0x63, 0x7c, 0x77, 0x7b]`
 (FIPS 197 §5.1.1, the standard AES `SubBytes` substitution table, entries `S[0..3]`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,9 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectVsimd
-import CatCrypt.Crypto.SecureCompilation.VIR.VsimdAsmPrint
+module
 
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectVsimd
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectVsimd
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.VsimdAsmPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.VsimdAsmPrint
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!

@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.TowerLimbStore
+module
+
+public import CatCrypt.Crypto.Jasmin.TowerLimbStore
 
 /-!
 # Component load on tower tuple values
@@ -34,6 +36,8 @@ this a load and not a partial write.
 * `towerTupleLoad_fst` / `towerTupleLoad_snd` — on a `TTuple a b` source the
   two components read back at their own offsets.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.LowCT
 
@@ -70,7 +74,7 @@ theorem towerTupleLoad_fst {dstT a b : TowerType} (v : RustVal (.TTuple a b))
     (k : Nat) (hk : k < dstT.storageBytes) (hsz : k < a.storageBytes) :
     rustValByte (towerTupleLoad (dstT := dstT) ⟨.TTuple a b, v⟩ 0) k =
       rustValByte v k := by
-  rw [rustValByte_towerTupleLoad_inside _ 0 k hk (by simpa using hsz)]
+  rw [rustValByte_towerTupleLoad_inside _ 0 k hk (by simpa using! hsz)]
   simp [TowerType.tupleComponentByteOffset]
 
 /-- Component 1 of a `TTuple a b` source reads from offset `a.storageBytes`. -/
@@ -78,7 +82,7 @@ theorem towerTupleLoad_snd {dstT a b : TowerType} (v : RustVal (.TTuple a b))
     (k : Nat) (hk : k < dstT.storageBytes) (hsz : k < b.storageBytes) :
     rustValByte (towerTupleLoad (dstT := dstT) ⟨.TTuple a b, v⟩ 1) k =
       rustValByte v (a.storageBytes + k) := by
-  rw [rustValByte_towerTupleLoad_inside _ 1 k hk (by simpa using hsz)]
+  rw [rustValByte_towerTupleLoad_inside _ 1 k hk (by simpa using! hsz)]
   rfl
 
 /-- The tuple-load oracle: `RTupleLoad dst src idx` sets the value at `dst` to

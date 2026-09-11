@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.BigNat
-import CatCrypt.Crypto.SecureCompilation.BigNatDivMod
-import CatCrypt.Crypto.SecureCompilation.BigNatCompare
-import CatCrypt.Crypto.SecureCompilation.BigNatKaratsuba
+module
+
+public import CatCrypt.Crypto.SecureCompilation.BigNat
+public import CatCrypt.Crypto.SecureCompilation.BigNatDivMod
+public import CatCrypt.Crypto.SecureCompilation.BigNatCompare
+public import CatCrypt.Crypto.SecureCompilation.BigNatKaratsuba
 
 /-!
 # Recursive divide-and-conquer division on the `BigNat` carrier
@@ -36,6 +38,8 @@ this module.
   `bignumVal q = bignumVal a / bignumVal b ∧ bignumVal r = bignumVal a % bignumVal b`
   for `bignumVal b ≠ 0`, by induction on the fuel and Euclidean uniqueness.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

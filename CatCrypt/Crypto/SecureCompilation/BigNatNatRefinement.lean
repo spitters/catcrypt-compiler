@@ -3,13 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.BigNatMulLadder
-import CatCrypt.Crypto.SecureCompilation.BigNatBitwise
-import CatCrypt.Crypto.SecureCompilation.BigNatShift
-import CatCrypt.Crypto.SecureCompilation.BigNatPow
-import CatCrypt.Crypto.SecureCompilation.BigNatCompare
-import CatCrypt.Crypto.SecureCompilation.BigNatDivMod
-import CatCrypt.Crypto.SecureCompilation.BigNatGcd
+module
+
+public import CatCrypt.Crypto.SecureCompilation.BigNatMulLadder
+public import CatCrypt.Crypto.SecureCompilation.BigNatBitwise
+public import CatCrypt.Crypto.SecureCompilation.BigNatShift
+public import CatCrypt.Crypto.SecureCompilation.BigNatPow
+public import CatCrypt.Crypto.SecureCompilation.BigNatCompare
+public import CatCrypt.Crypto.SecureCompilation.BigNatDivMod
+public import CatCrypt.Crypto.SecureCompilation.BigNatGcd
+
+@[expose] public section
 
 set_option autoImplicit false
 

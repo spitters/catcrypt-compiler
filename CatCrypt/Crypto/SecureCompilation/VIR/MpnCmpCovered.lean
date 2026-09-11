@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectWhileDenote
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectWhileDenote
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectWhileDenote
 
 /-!
 # MSB-first early-exit `mpn_cmp` whole-program denote through the covered `RWhileNz` fragment
@@ -56,6 +59,8 @@ per-limb sign carrier `rs := a[ix] - b[ix]` is the arithmetic waist; the
 
 **0 sorries; no axioms beyond the front's existing set.**
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

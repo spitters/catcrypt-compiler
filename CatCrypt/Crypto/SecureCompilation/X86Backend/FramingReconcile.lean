@@ -3,8 +3,68 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherInPlace
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ComToFramedJInstrLeaq
+module
+import all CatCrypt.Core.Heap
+import all CatCrypt.Core.Location
+import all CatCrypt.Crypto.CryptoWord
+import all CatCrypt.Crypto.Jasmin.JasminAST
+import all CatCrypt.Crypto.Jasmin.JasminOps
+import all CatCrypt.Crypto.Jasmin.JasminTranslate
+import all CatCrypt.Crypto.Jasmin.JasminTypes
+import all CatCrypt.Crypto.Jasmin.JasminVar
+import all CatCrypt.Crypto.Jasmin.LowCT
+import all CatCrypt.Crypto.Jasmin.LowCTBorrowCheck
+import all CatCrypt.Crypto.Jasmin.LowCTReflect
+import all CatCrypt.Crypto.Jasmin.LowCTToJasmin
+import all CatCrypt.Crypto.Primitives.AES128
+import all CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Types
+import all CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.X86Intrinsics
+import all CatCrypt.Crypto.SecureCompilation.VIR.Core
+import all CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
+import all CatCrypt.Crypto.SecureCompilation.VIR.JForProgNested
+import all CatCrypt.Crypto.SecureCompilation.VIR.JForProgSemCorrect
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminCTPredicate
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect
+import all CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+import all CatCrypt.Crypto.SecureCompilation.VIR.LatticeDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasmin
+import all CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasminDenote
+import all CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasminDenoteUncond
+import all CatCrypt.Crypto.SecureCompilation.VIR.RobustSafety
+import all CatCrypt.Crypto.SecureCompilation.VIR.VPClmulEmit
+import all CatCrypt.Crypto.SecureCompilation.VIR.VectorReduce
+import all CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
+import all CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+import all CatCrypt.Crypto.SecureCompilation.X86Backend.ElfObject
+import all CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+import all CatCrypt.Crypto.SecureCompilation.X86Backend.LeafBytes
+import all CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
+import all CatCrypt.Crypto.SecureCompilation.X86Backend.Lowering
+import all CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+import all CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+import all CatCrypt.Crypto.SecureCompilation.X86Backend.Model
+import all CatCrypt.Crypto.SecureCompilation.X86Backend.Preservation
+import all CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Decoder
+import all CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Lean
+import all CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Validation
+import all CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
+import all CatCrypt.Crypto.SecureCompilation.X86Backend.TranslationValidation
+import all CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+import all CatCrypt.Deep.Eval
+import all CatCrypt.Deep.RawCode
+import all CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
+import all CatCrypt.Crypto.SecureCompilation.X86Backend.GatherInPlace
+import all CatCrypt.Crypto.SecureCompilation.X86Backend.ComToFramedJInstrLeaq
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherInPlace
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherInPlace
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ComToFramedJInstrLeaq
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ComToFramedJInstrLeaq
 
 /-!
 # `FramingReconcile` — the System-V framing byte-residual between the two emit paths
@@ -111,6 +171,8 @@ those (no `native_decide`, no `sorry`, no axiom). The `#eval`s are interpreter
 evidence on the real `AsconLinear.asconSigma0Com` kernel, not part of any proof
 term.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

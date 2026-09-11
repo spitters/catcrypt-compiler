@@ -3,10 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3NttLayerEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3NttLayerEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3NttLayerEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # Plonky3 two-NTT-layer fusion, FRONT-COMPILED (`plonky3_ntt_layer8x2_fused_rc`)
@@ -64,6 +71,8 @@ immediates), 8 output words as the last eight bindings. Export
 `make plonky3-ntt-layer-fused-kat`) checks the fused leaf byte-identical to
 the C reference applied twice AND to running the emitted single layer twice.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.Plonky3NttLayerInlineEmit
 

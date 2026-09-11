@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.NTTRecursionPass
+module
+
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTRecursionPass
 
 /-!
 # `R`-linearity of the generic discrete / number-theoretic transform
@@ -33,6 +35,8 @@ linear pre- or post-operation through an NTT stage**:
 All three are `Finset.sum` distributivity identities, so the proofs are one
 `simp` line each.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

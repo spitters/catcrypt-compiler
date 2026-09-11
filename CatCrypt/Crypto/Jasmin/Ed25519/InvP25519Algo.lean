@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.FieldTheory.Finite.Basic
+module
+
+public import Mathlib.FieldTheory.Finite.Basic
 
 /-!
 # Layer A: Nat-level chain correctness for `bignum_inv_p25519`
@@ -52,6 +54,8 @@ By Fermat's little theorem, `z^(p − 2) mod p = z⁻¹ mod p` (for
 This file adds **no new axioms**.  It's a pure Nat-level
 verification that the chain's published exponents are correct.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -221,7 +225,7 @@ The proof is a Nat-level chain of `Nat.pow_mod` / `Nat.mul_mod` /
     This is the algebraic identity underlying each chain step of the
     form `z_new = z_prev^(2^b) · z_other` where `z_prev` has exponent
     `2^a - 1` and `z_other` has exponent `2^b - 1`. -/
-private lemma chain_arith (a b : Nat) :
+lemma chain_arith (a b : Nat) :
     (2^a - 1) * 2^b + (2^b - 1) = 2^(a + b) - 1 := by
   have h_pow : (2 : Nat)^(a + b) = 2^a * 2^b := pow_add 2 a b
   have h1 : 1 ≤ (2 : Nat)^a := Nat.one_le_two_pow
@@ -234,7 +238,7 @@ private lemma chain_arith (a b : Nat) :
   omega
 
 /-- Terminal-step arithmetic: `(2^250 - 1) · 2^5 + 11 = 2^255 - 21`. -/
-private lemma terminal_arith :
+lemma terminal_arith :
     (2^250 - 1) * 2^5 + 11 = 2^255 - 21 := by
   have h : (2^255 : Nat) = 2^250 * 2^5 := by
     rw [show (255 : Nat) = 250 + 5 from rfl, pow_add]

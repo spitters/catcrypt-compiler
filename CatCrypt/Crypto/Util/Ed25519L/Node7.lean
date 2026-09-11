@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Util.PrattCertificate
-import CatCrypt.Crypto.Util.Ed25519L.Node6
+module
+
+public import Mathlib.Tactic.NormNum.Prime
+public import CatCrypt.Crypto.Util.PrattCertificate
+public import CatCrypt.Crypto.Util.Ed25519L.Node6
 
 /-!
 # Lucas node `A = 198211423230930754013084525763697`
@@ -12,6 +15,8 @@ import CatCrypt.Crypto.Util.Ed25519L.Node6
 Primality of the factor `A` of `ℓ - 1`, via `A - 1 = 2^4 · 3 · 23 · 58964693 · E`
 with witness `5`, using the child node `E`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxRecDepth 50000

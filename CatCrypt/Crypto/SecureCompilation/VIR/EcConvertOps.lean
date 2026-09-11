@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveDialect
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveDialect
 
 /-!
 # EC point-representation conversion ops — first-class `convert_point_type`
@@ -78,6 +81,8 @@ data-dependent branch).  So each op's denotation is a total pure function and it
 is constant-time by construction (`ctSafe = true`), exactly the
 `EllipticCurveDialect` group-law CT story.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

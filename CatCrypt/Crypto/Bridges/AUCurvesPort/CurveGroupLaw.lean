@@ -3,11 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.AlgebraicGeometry.EllipticCurve.Affine.Point
-import Mathlib.AlgebraicGeometry.EllipticCurve.Projective.Point
-import Mathlib.Data.ZMod.Basic
-import Mathlib.FieldTheory.Finite.Basic
+module
 
+import all Init.Data.Repr
+public import Mathlib.AlgebraicGeometry.EllipticCurve.Affine.Point
+public import Mathlib.AlgebraicGeometry.EllipticCurve.Projective.Point
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.FieldTheory.Finite.Basic
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!
@@ -103,7 +108,7 @@ base primes — only the prime literal and `b` would change.
   projective-coordinate-model homomorphism: `toAffine` carries the projective
   addition/negation/identity to the Mathlib affine group operation (5a(ii)).
 
-## Residual (named, not fabricated)
+## Residual
 
 The connection stops at the **coordinate model**. What `projAddToAffine` does
 *not* assert is that the **denotation of the emitted projective point-add**
@@ -240,7 +245,7 @@ theorem addExample :
     (Affine.Point.some 1 2 nsP + Affine.Point.some 3 38 nsQ : demoAffine.Point)
       = Affine.Point.some 17 13 nsR := by
   rw [Affine.Point.add_of_X_ne (by decide)]
-  congr 1
+  congr 1 <;> decide +kernel
 
 /-! ## 5a(ii): the projective coordinate-model homomorphism
 

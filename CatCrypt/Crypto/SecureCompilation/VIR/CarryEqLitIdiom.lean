@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+module
 
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!
@@ -89,7 +93,7 @@ def isEqLitIdiom {w : Nat} (a : BitVec w) (k : Nat) : BitVec w :=
     extension argument: `getLsbD j` of the shifted value equals `getLsbD (w-1)`
     of `v` when `j = 0` (the only in-range bit), and `false` for `j ≥ 1`
     (out-of-range, `BitVec.getLsbD_of_ge`). -/
-private theorem ushiftRight_wm1_eq_msb {w : Nat} (hw : 0 < w) (v : BitVec w) :
+theorem ushiftRight_wm1_eq_msb {w : Nat} (hw : 0 < w) (v : BitVec w) :
     v >>> (w - 1) = if v.msb then 1#w else 0#w := by
   apply BitVec.eq_of_getLsbD_eq
   intro i _hi
@@ -119,7 +123,7 @@ private theorem ushiftRight_wm1_eq_msb {w : Nat} (hw : 0 < w) (v : BitVec w) :
     Formally: `msb_neg` gives `(-x).msb = (x ≠ 0 ∧ x ≠ intMin w) ^^^ x.msb`;
     when `x.msb = false` and `x ≠ 0`, `x ≠ intMin w` follows because
     `intMin w` has `msb = true` (`BitVec.msb_intMin`). -/
-private theorem msb_or_neg {w : Nat} (hw : 0 < w) (x : BitVec w) :
+theorem msb_or_neg {w : Nat} (hw : 0 < w) (x : BitVec w) :
     (x ||| -x).msb = decide (x ≠ 0#w) := by
   rw [BitVec.msb_or, BitVec.msb_neg]
   by_cases hxz : x = 0#w
@@ -144,7 +148,7 @@ private theorem msb_or_neg {w : Nat} (hw : 0 < w) (x : BitVec w) :
     This is the core of `isEqLitIdiom_eq`: the shift extracts the MSB of
     `x ||| (-x)`, which is the "is-nonzero" bit.  For `w = 0` every `BitVec 0`
     is `0#0`; for `w ≥ 1` use `ushiftRight_wm1_eq_msb` and `msb_or_neg`. -/
-private theorem or_neg_ushiftRight_wm1 {w : Nat} (x : BitVec w) :
+theorem or_neg_ushiftRight_wm1 {w : Nat} (x : BitVec w) :
     (x ||| (0#w - x)) >>> (w - 1) = if x = 0#w then 0#w else 1#w := by
   rcases Nat.eq_zero_or_pos w with rfl | hw
   · have hx0 : x = 0#0 := BitVec.eq_of_toNat_eq (by

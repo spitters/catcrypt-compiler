@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulBody
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulBody
 
 /-!
 # `lowerTwoAddr` faithfulness — the leading two-address `mov dst, s0` (`dst ≠ s0`)
@@ -71,6 +73,8 @@ RESIDUAL (named honestly — NOT proved here):
   memory operands, the ABI prologue/epilogue and `Lret` — exactly the residuals
   inherited from `ToLprogFaithfulBody` / `ToLprogFaithfulWriteSide`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

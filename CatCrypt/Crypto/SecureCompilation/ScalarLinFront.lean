@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ScalarLin
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.ScalarLin
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
 # `Com jasminDialect → RegProg`: the de-Bruijn flattening front
@@ -27,6 +30,8 @@ the dependently-typed de-Bruijn/`HVector` proof — the analogue of the proved
 this file provides the executable front and a worked end-to-end demonstration,
 leaving that theorem as the next obligation.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

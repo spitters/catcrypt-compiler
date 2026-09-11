@@ -3,10 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookRunBlock
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve6LimbTierA
-import CatCrypt.Crypto.SecureCompilation.X86Backend.PastaFieldAddSubKernel
-import CatCrypt.Crypto.SecureCompilation.X86Backend.BarrettButterflyKernel
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookRunBlock
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookRunBlock
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve6LimbTierA
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve6LimbTierA
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.PastaFieldAddSubKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.PastaFieldAddSubKernel
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.BarrettButterflyKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.BarrettButterflyKernel
 
 /-!
 # Tier-A modular field add/sub: limb/`runBlock` value = `(a ± b) mod p`
@@ -71,6 +77,8 @@ masked `ADD`/`ADC` add-back computes); the emitted SUB/SBB borrow-chain over
 `runBlock` (the `.sub`/`.sbb`/`CMOVB` analogue of `emitAdcChain`) is the named
 remainder for the 4-limb / 6-limb curves.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxHeartbeats 1000000

@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
-import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
+public import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
 
 /-!
 # The `corres_setExpr` value leaf — the arithmetic `RScalarSetExpr` fragment
@@ -43,6 +46,8 @@ this leaf is therefore `SRword` **restricted to non-temp names** (`SRwordNT`);
 supplies it for free. Non-temp names are exactly the source names a real kernel
 reads and writes; the fresh-temp scribbles are invisible to it.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -296,6 +301,22 @@ theorem isWordClean_srcClean : ∀ e, IsWordClean e → srcClean e := by
     kernel, so the relation constrains only non-temp names. -/
 def SRwordBV (env : SEnvScalar) (a : String → BitVec 64) : Prop :=
   ∀ x, ¬ isTmpName x → env x = some ⟨.sword 64, a x⟩
+
+/-- `RScalarSet name n` over the bitwise non-temp relation `SRwordBV` — the literal
+    leaf of the bitwise ascent. The abstract value is the word `BitVec.ofNat 64 n`
+    itself (no `ZMod` abstraction), so a bitwise kernel that loads a round constant
+    and then mixes it lifts through one fragment. -/
+theorem corres_setScalar_BV (name : String) (n : Nat) :
+    Corres SRwordBV (fun _ => True)
+      (fun a s => if s = name then BitVec.ofNat 64 n else a s)
+      (.RScalarSet name n) := by
+  intro env a hSR _
+  refine ⟨env.upd name (t := .sword 64) (BitVec.ofNat 64 n), rfl, ?_⟩
+  intro x hnt
+  by_cases hx : x = name
+  · subst hx; simp [SEnvScalar.upd]
+  · simp only [SEnvScalar.upd, if_neg hx]
+    exact hSR x hnt
 
 /-- `corres_setExprBitwise` — the bitwise `RScalarSetExpr x e` value leaf. From a
     concrete env `SRwordBV`-related to abstract `a : String → BitVec 64`, the real

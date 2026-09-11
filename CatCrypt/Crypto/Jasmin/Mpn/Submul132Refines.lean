@@ -3,13 +3,19 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.Submul132Emit
-import CatCrypt.Crypto.Jasmin.Mpn.Add32Refines
-import CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
-import CatCrypt.Crypto.Jasmin.Mpn.Submul1Prototype
-import CatCrypt.Crypto.Jasmin.Mpn.GenericWidth
-import CatCrypt.Crypto.Jasmin.Mpn.WidthInstances
-import CatCrypt.Crypto.Jasmin.BignumExec
+module
+
+import all Init.Data.Repr
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.Mpn.Submul132Emit
+public import CatCrypt.Crypto.Jasmin.Mpn.Add32Refines
+public import CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.Submul1Prototype
+public import CatCrypt.Crypto.Jasmin.Mpn.GenericWidth
+public import CatCrypt.Crypto.Jasmin.Mpn.WidthInstances
+public import CatCrypt.Crypto.Jasmin.BignumExec
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -264,7 +270,7 @@ theorem mulx32_lo_lt (a b : BitVec 64) :
   exact Nat.mod_lt _ (by positivity)
 
 /-- `w64`-mask: a `BitVec 32` zero-extended to `BitVec 64` is fixed by `&&& mask32`. -/
-private theorem w64_mask (w : BitVec 32) : (w64 w) &&& mask32 = w64 w := by
+theorem w64_mask (w : BitVec 32) : (w64 w) &&& mask32 = w64 w := by
   unfold w64 mask32
   have hzx : (BitVec.ofNat 64 w.toNat) = BitVec.setWidth 64 w := by
     apply BitVec.eq_of_toNat_eq
@@ -274,7 +280,7 @@ private theorem w64_mask (w : BitVec 32) : (w64 w) &&& mask32 = w64 w := by
   bv_decide
 
 /-- The `BitVec 64` denotation of `w64 w` equals `w.toNat`. -/
-private theorem w64_toNat (w : BitVec 32) : (w64 w).toNat = w.toNat := by
+theorem w64_toNat (w : BitVec 32) : (w64 w).toNat = w.toNat := by
   unfold w64
   have hw : w.toNat < 2 ^ 32 := w.isLt
   simp only [BitVec.toNat_ofNat]

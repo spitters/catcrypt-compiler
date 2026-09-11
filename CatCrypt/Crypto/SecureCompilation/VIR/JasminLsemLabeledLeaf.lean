@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLeaf
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeledMC
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLeaf
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeledMC
+
+@[expose] public section
 
 set_option autoImplicit false
 

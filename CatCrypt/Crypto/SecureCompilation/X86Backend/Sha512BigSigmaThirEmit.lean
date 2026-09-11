@@ -3,12 +3,20 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ThirToComFront
-import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LegalizeShiftImm
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.ThirToComFront
+public import CatCrypt.Crypto.SecureCompilation.ThirToComFront
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LegalizeShiftImm
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LegalizeShiftImm
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # SHA-512 Σ₀ and Σ₁ uppercase-sigma words through the OWNED x86 backend (no jasminc)
@@ -75,6 +83,8 @@ So the emitted `.s` carries no unhandled-op sentinel.
 The byte-identity `sha512_bigsigma{0,1}(x) == Σ{0,1}(x)` is the external `as`/`cc`
 KAT in `bench/thir_front_sha512_bigsigma_owned/` (no jasminc).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -192,7 +202,7 @@ def legalizeShiftImmInstr (i : Linstr) : List Linstr :=
   | .Lopn [d] opn [s] =>
       match parseShiftImm opn with
       | some (baseMnem, n) =>
-          let movMnem := if baseMnem.endsWith ":64" then "MOV:64" else "MOV"
+          let movMnem := if hasSuffix baseMnem ":64" then "MOV:64" else "MOV"
           if d = s then
             [⟨i.li_ii, .Lopn [d] baseMnem [d, .imm n]⟩]
           else
@@ -287,6 +297,6 @@ def emitMain : IO Unit := do
 The render is written while this module elaborates, so `lake` produces it from
 this file and no separate driver or Makefile rule carries the dependency. -/
 
-#eval emitMain
+-- #eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.Sha512BigSigmaThirEmit

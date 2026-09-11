@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectWhileDenote
+module
 
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectWhileDenote
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!

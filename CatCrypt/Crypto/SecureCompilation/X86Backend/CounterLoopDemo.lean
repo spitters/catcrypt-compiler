@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
 
 /-!
 # Counter-reading loop emit — end-to-end demo (task #538, STEP 5)
@@ -41,6 +44,8 @@ rejection-loop family: a sign-rejection loop is a counter-reading loop whose
 body, instead of `acc XOR ctr`, runs the (richer) candidate-derive + accept
 test. The lowering path proven here is identical; only the body `Com` grows.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

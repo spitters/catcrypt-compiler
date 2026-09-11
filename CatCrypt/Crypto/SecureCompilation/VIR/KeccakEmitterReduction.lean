@@ -3,8 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakDiffuseExact
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.KeccakDiffuseExact
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakDiffuseExact
 
 /-!
 # Substrate for `KeccakEmit.emitRound`'s `Com.denote` reduction
@@ -79,6 +85,8 @@ Verified by `lean_verify`:
 See `KeccakEmit.lean` for the full 12-file Keccak VIR canonical map. This
 file is step #116 in that chain: the per-helper `Com.denote` substrate.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialectBlockDescent
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialectBlockDescent
 
 /-!
 # Pair-elimination pass: `bvAdd64`/`bvAdc` → single-output carry twins
@@ -72,6 +74,8 @@ loops are hand-authored `JInstr 64` / `Com (x86Dialect 64)` at the machine level
 pass unblocks the `SExpr → catCryptDialect` FRONT carry class, whose pair ops
 were previously unlowerable.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

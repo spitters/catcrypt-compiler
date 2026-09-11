@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmLowering
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmLowering
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmLowering
 
 /-!
 # s2n-bignum's `bignum_add_p256`, lowered through the owned AArch64 backend (#547)
@@ -62,6 +65,8 @@ proof obligation (`arm/proofs/bignum_add_p256.ml`); as an in-Lean close it is a
 posture as the x86 bignum kernels (REV-12). Here we pin the worked vector that
 exercises the reduce branch.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

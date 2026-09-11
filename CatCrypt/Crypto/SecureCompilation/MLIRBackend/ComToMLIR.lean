@@ -3,10 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MLIRBackend.Smoke
-import CatCrypt.Crypto.Jasmin.JasminAST
-import CatCrypt.Crypto.Optimizer.Rewrite.ComPipeline
-import CatCrypt.Crypto.Optimizer.ComCanonical
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.MLIRBackend.Smoke
+public import CatCrypt.Crypto.SecureCompilation.MLIRBackend.Smoke
+public meta import CatCrypt.Crypto.Jasmin.JasminAST
+public import CatCrypt.Crypto.Jasmin.JasminAST
+public meta import CatCrypt.Crypto.Optimizer.Rewrite.ComPipeline
+public import CatCrypt.Crypto.Optimizer.Rewrite.ComPipeline
+public meta import CatCrypt.Crypto.Optimizer.ComCanonical
+public import CatCrypt.Crypto.Optimizer.ComCanonical
 
 /-!
 # MLIR backend — Stage 2 scalar translation skeleton (task #183)
@@ -50,6 +57,8 @@ so the Stage-2 lowering is straightforward to read and audit. A future
 stage may swap to a proper `IRContext` construction; the existing
 `VIR/ComToVeir.lean` is the template.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -450,11 +459,11 @@ A two-instruction `Cmd` that adds two parameters and binds the result, to
 check the Stage-2 emitter produces well-shaped MLIR. -/
 
 /-- Sample Jasmin variable. -/
-private def mkVar (name : String) : VarI :=
+def mkVar (name : String) : VarI :=
   { var := { vname := name, vtype := .sword .U64 }, info := {} }
 
 /-- Sample global-variable reference. -/
-private def mkGV (name : String) : GVar :=
+def mkGV (name : String) : GVar :=
   { gv := mkVar name, gs := false }
 
 /-- Example: `c := a + b`, where `a`, `b` are function parameters. -/

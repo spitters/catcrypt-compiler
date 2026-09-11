@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumCarryDecomp
-import CatCrypt.Crypto.SecureCompilation.MultiLimbEmitBridge
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumCarryDecomp
+public import CatCrypt.Crypto.SecureCompilation.MultiLimbEmitBridge
 
 /-!
 # An emitted N-limb `adcx` add proven against the multi-limb proof stack
@@ -39,6 +41,8 @@ step — so the proof never leaves the machine's own ALU model. This is the
 emission needs, now at the full N-limb width the curves (P256 = 4 limbs,
 P384/BLS12-381 = 6 limbs) require.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

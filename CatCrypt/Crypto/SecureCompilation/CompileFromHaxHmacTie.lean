@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxHmac
-import CatCrypt.Crypto.SecureCompilation.VIR.HmacHkdfEmit
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxHmac
+public import CatCrypt.Crypto.SecureCompilation.VIR.HmacHkdfEmit
 
 /-!
 # #607 fan-out: functional tie — verified-compiler HMAC/HKDF bodies = the hand-emit word forms
@@ -40,6 +43,8 @@ accumulator) — see the `CompileFromHaxHmac` module doc. Both sides are the
 *same word function* (`padWord`, `expandSkelWord`); the slice index / register
 width is the only delta, exactly as the leaf module documents.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

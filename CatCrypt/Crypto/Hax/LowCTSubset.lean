@@ -3,9 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
-import CatCrypt.Hax.AST
-import CatCrypt.Hax.ImpType
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Hax.ImpType
+public meta import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCT
+public meta import CatCrypt.Hax.AST
+public import CatCrypt.Hax.AST
+public import CatCrypt.Hax.ImpType
 
 /-!
 # H1: LowCT Subset Filter for hax `ImpExpr`
@@ -58,6 +64,8 @@ concrete `LowCT`.
 5. Smoke tests (`decide`-checked).
 6. Documented follow-ups (H2 / H3 / H4).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

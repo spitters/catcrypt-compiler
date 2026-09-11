@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X86OptPipelineComposed
-import CatCrypt.Crypto.Optimizer.SpillFootprintGeneral
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.X86OptPipelineComposed
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86OptPipelineComposed
+public meta import CatCrypt.Crypto.Optimizer.SpillFootprintGeneral
+public import CatCrypt.Crypto.Optimizer.SpillFootprintGeneral
 
 /-!
 # The graph-coloring register allocator as a firing footprint-validated pass
@@ -35,6 +39,8 @@ the allocator pool, so `graphColorAlloc` spills: `graphColorRAValidatedFiring`'s
 certificate fires and its dead set is nonempty, whereas the no-op-gated
 `graphColorRAValidated` rejects (its dead set stays empty).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

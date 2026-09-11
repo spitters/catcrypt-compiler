@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgIndexed
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopCarriedDemo
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JForProgIndexed
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgIndexed
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopCarriedDemo
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopCarriedDemo
 
 /-!
 # Array-reduction loop emit — `v := v + a[i]` over a memref (task #538, wall #2)
@@ -72,6 +76,8 @@ genuine x86-backend extension, not reachable by reuse alone). This module pins t
 array-reduction **value semantics** and the **abstract array-loop control-flow
 tie**; the x86 memref-load register-pin splice is the next wall.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Primitives.Keccak
+module
+
+public import CatCrypt.Crypto.Primitives.Keccak
 
 /-!
 # SHAKE-128 Extendable-Output Function (FIPS 202)
@@ -21,6 +23,8 @@ All definitions are sealed with `@[irreducible]`.
 * FIPS 202, Section 6.2 — SHAKE128
 * Bertoni, Daemen, Peeters, Van Assche — *Keccak Specifications Summary*
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

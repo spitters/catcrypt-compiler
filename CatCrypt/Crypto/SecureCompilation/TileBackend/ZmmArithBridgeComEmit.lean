@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint
-import CatCrypt.Crypto.SecureCompilation.TileBackend.ZmmArithBridgeCom
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint
+public meta import CatCrypt.Crypto.SecureCompilation.TileBackend.ZmmArithBridgeCom
+public import CatCrypt.Crypto.SecureCompilation.TileBackend.ZmmArithBridgeCom
 
 /-!
 # Owned AT&T `.s` emit of the migrated ZMM-arithmetic `Com jasminDialect` kernels
@@ -47,6 +51,8 @@ two-operand kernel needs three `%zmm` slots.
 Invoke:
 `lake build CatCrypt.Crypto.SecureCompilation.TileBackend.ZmmArithBridgeComEmit`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

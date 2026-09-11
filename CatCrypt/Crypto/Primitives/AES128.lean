@@ -4,7 +4,10 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 
-import Mathlib.Logic.Function.Basic
+module
+
+import all Init.Data.Repr
+public import Mathlib.Logic.Function.Basic
 
 /-!
 # AES-128 Block Cipher (FIPS 197)
@@ -28,6 +31,8 @@ AES-128 uses:
 * FIPS 197 — Advanced Encryption Standard (AES)
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Primitives.AES128
@@ -41,7 +46,7 @@ The S-box is the composition of:
 
 We embed the standard lookup table directly. -/
 
-private def sboxData : List UInt8 := [
+def sboxData : List UInt8 := [
   0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
   0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
   0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7, 0xcc, 0x34, 0xa5, 0xe5, 0xf1, 0x71, 0xd8, 0x31, 0x15,
@@ -66,7 +71,7 @@ def sbox (b : UInt8) : UInt8 :=
 
 /-! ## Round constant (Rcon) for key expansion -/
 
-private def rconData : List UInt8 := [
+def rconData : List UInt8 := [
   0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36
 ]
 

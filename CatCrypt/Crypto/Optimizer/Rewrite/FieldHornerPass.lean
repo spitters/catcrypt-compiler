@@ -3,10 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Algebra.Ring.Defs
-import Mathlib.Algebra.BigOperators.Ring.List
-import Mathlib.Data.ZMod.Basic
-import Mathlib.Tactic.Ring
+module
+
+import all Init.Data.Repr
+public import Mathlib.Algebra.Ring.Defs
+public import Mathlib.Algebra.BigOperators.Ring.List
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.Tactic.Ring
 
 /-!
 # Horner-form polynomial-evaluation rewrite
@@ -41,6 +44,8 @@ where the second factors a single `x` out of every monomial of the tail. We use
 a `List.foldr`-based naive evaluator so that this factoring is a clean
 `List.map`/`mul_sum` manipulation rather than a `Finset.range` reindex.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

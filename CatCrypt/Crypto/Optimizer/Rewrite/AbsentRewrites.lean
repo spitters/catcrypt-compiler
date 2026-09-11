@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.ZMod.Basic
+module
+
+import all Init.Data.Repr
+public import Mathlib.Data.ZMod.Basic
 
 /-!
 # Three verified algebraic rewrites that the pass library was missing
@@ -27,6 +30,8 @@ denotation-preserving identity over its natural carrier.
    an NTT/INTT cancel). Carrier: `BitVec w` indices (`BitVec.reverse`), plus the
    list-permutation form for a whole reordering stage.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

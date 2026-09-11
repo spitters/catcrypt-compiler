@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.MlirArithDialect
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.MlirArithDialect
 
 /-!
 # A *denoting* MLIR `scf` dialect in the VIR framework — CHES Sprint 1 / item H
@@ -83,6 +86,8 @@ to a printable form (or emits it inline from the source `Prog`). The
 text-emit path is decoupled from the denotation path, exactly as Phase
 6′ promises.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

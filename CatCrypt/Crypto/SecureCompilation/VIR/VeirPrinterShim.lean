@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Veir.Printer
+module
+
+public import Veir.Printer
 
 /-!
 # Veir Printer Shim — `IO Unit` → `IO String`
@@ -62,6 +64,8 @@ def lowerComToMLIRText {d : Dialect} (com : Com d ... t)
 `ComToVeir_CatCryptDialect.lean` which is currently blocked on the
 Veir-Mathlib import wall.  Wire it in once that wall is lifted.)
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

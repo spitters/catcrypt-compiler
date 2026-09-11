@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ShaRoundAbstractCom
-import CatCrypt.Crypto.SecureCompilation.X86Backend.KeccakThetaPiCom
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.ShaRoundAbstractCom
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.KeccakThetaPiCom
 
 /-!
 # Abstract FIPS-180-4 SHA-512 σ₁ / Σ₀ / Σ₁ ties for the unified-`Com` lane kernels
@@ -53,6 +55,8 @@ rotate-xor lane function, and out of scope for this rotate-anchoring web.
 
 Invoke: `lake build CatCrypt.Crypto.SecureCompilation.VIR.ShaSigmaAbstractCom`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

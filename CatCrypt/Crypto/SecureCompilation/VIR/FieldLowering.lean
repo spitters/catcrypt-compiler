@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.ModArithLowering
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.ModArithLowering
 
 /-!
 # Field lowering (#482-2) — the L3 → L2 (Field → ModArith) step
@@ -51,6 +53,8 @@ schedule) because `Com.denote` is a structural fold; the op-level
 denotation- and CT-preserving statement lifts to whole programs by the `Com`
 recursion, exactly as in `ModArithLowering`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

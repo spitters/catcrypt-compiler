@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.LoopLowering
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgMultiOp
-import CatCrypt.Crypto.SecureCompilation.VIR.WholeFnLowering
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.LoopLowering
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgMultiOp
+public import CatCrypt.Crypto.SecureCompilation.VIR.WholeFnLowering
 
 /-!
 # Counted loop with a **multi-binder** straight-line body: `loopNMulti n body`
@@ -78,6 +80,8 @@ it did **not** block, because `JForProgMultiOp` already carried it through
 
 0 sorries; the only carried hypotheses are `LeafAgrees` and `StraightLine body`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -221,7 +225,7 @@ theorem roundBody_loop_iterate {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
       = (fun acc => (acc + acc) ^^^ acc)^[3] init := by
   have h := loopNMulti_lower_denote_iterate hLeaf 3 roundBody
     roundBody_straightLine init
-  simpa using h
+  simpa using! h
 
 /-- **Worked example (concrete KAT).** At seed `init = 1`, the emitted
     multi-binder counted loop computes the unrolled reference

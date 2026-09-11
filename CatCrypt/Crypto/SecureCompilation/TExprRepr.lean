@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import HaxLean.TExpr
+module
+
+import all Init.Data.Repr
+public import HaxLean.TExpr
 
 /-!
 # `Repr` for `Hax.TExpr` (CatCrypt-side, no hax-lean edit)
@@ -16,6 +19,8 @@ parsed `TExpr` as a reducible `def foo_texpr : Hax.TExpr := <literal>`, which th
 typed front `texprToThir` can then consume + prove by `rfl` (a runtime
 `parseHaxTExpr` result is `partial` and not kernel-reducible).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

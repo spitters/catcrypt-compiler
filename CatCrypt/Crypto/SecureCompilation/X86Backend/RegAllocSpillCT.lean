@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarCompileCorrect
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompilableCT
-import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarCompileCorrect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompilableCT
+public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 
 /-!
 # Spill insertion preserves machine constant-time (the load-bearing middle)
@@ -65,6 +67,8 @@ The `ImpExpr ↔ LowCT` source-IR bridge needed to plug this into
 `secure_compile_constant_time` *directly* (matching its `ImpExpr` lowering type)
 is separate wiring.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

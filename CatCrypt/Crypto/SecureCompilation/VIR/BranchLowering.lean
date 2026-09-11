@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.MultiPhaseBody
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.MultiPhaseBody
 
 /-!
 # A verified two-way branch over the emit `Phase` substrate: run = `ite` of arms
@@ -82,6 +84,8 @@ condition keeps it CT.
 `StraightLine` witness), supplied once when the arm `Phase`s are built by the
 `MultiPhaseBody` smart constructors.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

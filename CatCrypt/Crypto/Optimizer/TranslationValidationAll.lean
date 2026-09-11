@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.TranslationValidationEgraph
-import CatCrypt.Crypto.Optimizer.TranslationValidationSched
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Optimizer.TranslationValidationEgraph
+public import CatCrypt.Crypto.Optimizer.TranslationValidationSched
 
 /-!
 # The #591 master verified translation-validation checker
@@ -60,6 +63,8 @@ The accepted relation widens — more verified rewrites, the canonicalisation
 pipeline, the latency schedule — without enlarging the TCB, because each arm
 carries its own soundness lemma.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

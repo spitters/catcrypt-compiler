@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakTrace
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakTrace
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
 
 /-!
 # Leak-trace factoring for the CProg-free dialect front
@@ -27,6 +29,8 @@ leak-trace length a prefix contributes is the same for any two tails, so it does
 not depend on the tail — the constancy fact behind leakage non-interference at the
 front-end boundary, stated over `Com.leakTrace` with no `CProg`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

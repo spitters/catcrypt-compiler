@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.LoopLowering
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgNested
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.LoopLowering
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgNested
 
 /-!
 # Nested counted-loop lowering: the emitted outer-over-inner loop denotes the
@@ -79,6 +81,8 @@ outer/inner bounds. Those remain the whole-function / runtime-loop roadmap work.
 
 0 sorries; the only hypothesis is the opaque-leaf edge `LeafAgrees`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

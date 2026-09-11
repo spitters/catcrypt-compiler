@@ -3,9 +3,12 @@ Copyright (c) 2024 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminTypes
-import CatCrypt.Core.Location
-import Mathlib.Data.Nat.Pairing
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Jasmin.JasminTypes
+public import CatCrypt.Core.Location
+public import Mathlib.Data.Nat.Pairing
 
 /-!
 # Jasmin Variable/Memory Model
@@ -24,6 +27,8 @@ is injectivity of the variable-to-location mapping.
 Memory is represented as a single location holding a `JArray memSize` value.
 Loads and stores go through this location.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin
 

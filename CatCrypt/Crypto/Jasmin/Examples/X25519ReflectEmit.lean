@@ -3,8 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
-import CatCrypt.Crypto.Jasmin.LowCTToMLIR
+module
+
+public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
+public meta import CatCrypt.Crypto.Jasmin.LowCTToMLIR
+public import CatCrypt.Crypto.Jasmin.LowCTToMLIR
+public meta import CatCrypt.Crypto.Jasmin.Examples.BenchOut
+public import CatCrypt.Crypto.Jasmin.Examples.BenchOut
 
 /-!
 # X25519 half-step + fullstep emitted via the Lean→LowCT reifier
@@ -21,19 +27,14 @@ Writes three files:
 - (Compared against hand-VIR and DSL variants via `bench_reflect.c`.)
 -/
 
+@[expose] public section
+
 namespace CatCrypt.Crypto.Jasmin.Examples.X25519ReflectEmit
 
 open CatCrypt.Crypto.Jasmin.LowCT
 open CatCrypt.Crypto.Jasmin.LowCTReflect
 open CatCrypt.Crypto.Jasmin.LowCTToMLIR
 
-/-- Helper: write a string to `path`, but skip silently if the parent
-directory is missing (e.g. CI environments without the sibling
-`catcrypt-bench` source tree). -/
-private def maybeWrite (path : String) (content : String) : IO Unit := do
-  let p : System.FilePath := path
-  if ← System.FilePath.pathExists p.parent.get! then
-    IO.FS.writeFile path content
 
 /-! ## 1. Externs (same as DSL path) -/
 
@@ -56,7 +57,7 @@ def halfstepMLIR : String :=
 
 /-! ## 3. Four full-step functions from the reified Lean code -/
 
-private def emitReified (name : String) (rf : ReifiedFunc) : String :=
+def emitReified (name : String) (rf : ReifiedFunc) : String :=
   emitFunc name rf.args rf.retName .TFp25519 rf.body
 
 def fullstepMLIR : String :=
@@ -68,12 +69,12 @@ def fullstepMLIR : String :=
 
 /-! ## 4. Emit at elaboration -/
 
-#eval maybeWrite
-  "/home/au528660/Claude/BLS/catcrypt-bench/src/x25519_halfstep_reflect.mlir"
+#eval BenchOut.writeBench
+  "x25519_halfstep_reflect.mlir"
   halfstepMLIR
 
-#eval maybeWrite
-  "/home/au528660/Claude/BLS/catcrypt-bench/src/x25519_fullstep_reflect.mlir"
+#eval BenchOut.writeBench
+  "x25519_fullstep_reflect.mlir"
   fullstepMLIR
 
 /-! ## 5. Ed25519 Edwards point-add (4 outputs) from reified pure Lean -/
@@ -96,12 +97,12 @@ def ed25519DblMLIR : String :=
   emitReified "ed25519_dbl_t3" edwardsDblT3Reified ++ "\n\n" ++
   emitReified "ed25519_dbl_z3" edwardsDblZ3Reified
 
-#eval maybeWrite
-  "/home/au528660/Claude/BLS/catcrypt-bench/src/ed25519_add.mlir"
+#eval BenchOut.writeBench
+  "ed25519_add.mlir"
   ed25519AddMLIR
 
-#eval maybeWrite
-  "/home/au528660/Claude/BLS/catcrypt-bench/src/ed25519_dbl.mlir"
+#eval BenchOut.writeBench
+  "ed25519_dbl.mlir"
   ed25519DblMLIR
 
 /-! ## 6. Out-param variant — fiat-crypto-direct, no shim pool
@@ -143,7 +144,7 @@ def fiatDirectExterns : List (String × Nat × TowerType × TowerType) :=
   , ("fiat_25519_opp",             1, .TFp25519, .TFp25519)
   , ("fiat_25519_carry_scmul_121666", 1, .TFp25519, .TFp25519) ]
 
-private def emitReifiedOutParam (name : String) (rf : ReifiedFunc) : String :=
+def emitReifiedOutParam (name : String) (rf : ReifiedFunc) : String :=
   emitFuncOutParam name rf.args rf.retName .TFp25519 (remapLeafs rf.body)
 
 def ed25519AddMLIRv : String :=
@@ -160,10 +161,10 @@ def ed25519DblMLIRv : String :=
   emitReifiedOutParam "ed25519_dbl_t3_v" edwardsDblT3Reified ++ "\n\n" ++
   emitReifiedOutParam "ed25519_dbl_z3_v" edwardsDblZ3Reified
 
-#eval maybeWrite
-  "/home/au528660/Claude/BLS/catcrypt-bench/src/ed25519_add_v.mlir" ed25519AddMLIRv
+#eval BenchOut.writeBench
+  "ed25519_add_v.mlir" ed25519AddMLIRv
 
-#eval maybeWrite
-  "/home/au528660/Claude/BLS/catcrypt-bench/src/ed25519_dbl_v.mlir" ed25519DblMLIRv
+#eval BenchOut.writeBench
+  "ed25519_dbl_v.mlir" ed25519DblMLIRv
 
 end CatCrypt.Crypto.Jasmin.Examples.X25519ReflectEmit

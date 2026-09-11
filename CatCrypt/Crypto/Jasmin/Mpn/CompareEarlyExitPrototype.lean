@@ -3,7 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.ComparePrototype
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.Mpn.ComparePrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.ComparePrototype
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -72,7 +78,7 @@ open CatCrypt.Crypto.Jasmin
 open CatCrypt.Crypto.Jasmin.BignumExec
 open CatCrypt.Crypto.Jasmin.Emit
 open CatCrypt.Crypto.Jasmin.MemoryModel
-open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype hiding vr pv loadAt0 storeAt0 binImm
 open CatCrypt.Crypto.Jasmin.Mpn.ComparePrototype
 
 /-- `dst = src` register copy.  Local copy of
@@ -303,7 +309,7 @@ def mpnCompareEEFd : FunDecl where
 -- via the early-exit `n := notmask & (n - 1)`.  Use only on non-secret
 -- inputs (structural `Nat` equality in the Lean runtime).  We do not assert
 -- `isCT_Cmd` here either way: the existing CT predicate is a syntactic
--- check unaware of the body-internal `n`-jump trick, so its verdict on this
+-- check unaware of the body-internal `n`-jump trick, so its result on this
 -- body would be misleading.
 
 /-- Emit the real `.jazz` source. -/

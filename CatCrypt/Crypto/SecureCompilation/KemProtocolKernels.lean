@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ProtocolEmitRealizes
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ProtocolEmitRealizes
 
 /-!
 # A BATCH of KEM / PKE / key-exchange protocols as axis-6 `ProtocolKernels` instances
@@ -70,6 +72,8 @@ honest hypothesis here), and apply `runRealizes`.  ML-KEM's NTT arithmetic is th
 registered binary NTT row linked in separately; the unary pipeline here is the
 symmetric/sampling spine.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

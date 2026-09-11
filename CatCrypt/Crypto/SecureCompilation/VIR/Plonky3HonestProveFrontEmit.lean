@@ -3,18 +3,24 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FriProofFrontEmit
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectGuardWhile
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FriProofFrontEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FriProofFrontEmit
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectGuardWhile
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectGuardWhile
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+
+@[expose] public section
 
 set_option autoImplicit false
 
 /-!
 # plonky3 `honest_prove`: the FRONT-COMPILED spine phases, validated against the spec pin
 
-`bench/plonky3_compare/plonky3_honest_prove.s` (whitelist row `# L`) is the
-jasminc compilation of `hp_prove`
-(`bench/plonky3_compare/include/plonky3_honest_prover.jinc`), the honest
+`plonky3_honest_prove.s` (whitelist row `# L`) is the jasminc compilation of
+`hp_prove` (`bench/plonky3_compare/include/plonky3_honest_prover.jinc`), the honest
 Fibonacci-STARK prover over the verified Poseidon2-BabyBear permutation:
 trace-LDE → depth-5 Merkle → Fiat-Shamir → FRI fold `32→16→8→4→2` → PoW grind →
 8-query opening → 980-word scatter.  Its bit-exact executable reference is the
@@ -114,7 +120,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FriProofFrontEmit
 
 /-- `RSeq`-chain (the fri_proof twin's `seqAll`; aliased because
     `TranslateDialectLoopCallLink` exports a `seqAll` too). -/
-private def sqAll : List LowCT → LowCT :=
+def sqAll : List LowCT → LowCT :=
   CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FriProofFrontEmit.seqAll
 
 /-! ## 1. The spec-pin fragment (restated from

@@ -3,10 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMayoGf16
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxUovGf256
-import CatCrypt.Crypto.Util.Gf16
-import CatCrypt.Crypto.Util.Gf256
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMayoGf16
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMayoGf16
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxUovGf256
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxUovGf256
+public meta import CatCrypt.Crypto.Util.Gf16
+public import CatCrypt.Crypto.Util.Gf16
+public meta import CatCrypt.Crypto.Util.Gf256
+public import CatCrypt.Crypto.Util.Gf256
 
 /-!
 # #607 Phase 3d: the emitted GF(16) multiply leaf EQUALS the abstract field op
@@ -48,6 +55,8 @@ truncated to 4 bits in terms of `a.setWidth 4` and `b.setWidth 4` (proved by
 the `32`-bit operands are masked away by the `&&& lo4` / `&&& one` steps). The
 core tie `gf16MulCore = Gf16.mul` is then `decide` over `BitVec 4 × BitVec 4`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

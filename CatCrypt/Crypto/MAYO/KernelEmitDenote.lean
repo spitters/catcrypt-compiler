@@ -3,8 +3,29 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.MAYO.KernelFromRustcmdFrontEmit
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresScalar
+module
+import all CatCrypt.Core.Code
+import all CatCrypt.Crypto.CryptoWord
+import all CatCrypt.Crypto.Jasmin.JasminAST
+import all CatCrypt.Crypto.Jasmin.JasminTypes
+import all CatCrypt.Crypto.Jasmin.LowCT
+import all CatCrypt.Crypto.SDist
+import all CatCrypt.Crypto.SecureCompilation.CryptoSSA
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+import all CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
+import all CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.Core
+import all CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
+
+public meta import CatCrypt.Crypto.MAYO.KernelFromRustcmdFrontEmit
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.MAYO.KernelFromRustcmdFrontEmit
+public meta import CatCrypt.Crypto.SecureCompilation.Ascent.CorresScalar
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresScalar
 
 /-!
 # `semScalar`-level GF(16) correctness of the front-authored MAYO quadform kernel
@@ -35,6 +56,8 @@ kernel of `KernelFromRustcmdFrontEmit` reads and writes `.memref` arrays, whose
 slots are outside the word relation `SRwordBV`; its `frontDenote = quadRefBV`
 statement is the memref-`ConsistentS` seam.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxRecDepth 4000

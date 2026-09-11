@@ -3,11 +3,20 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddFrontEmit
-import CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
-import CatCrypt.Crypto.SecureCompilation.X86Backend.AdxChainFuse
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddFrontEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddFrontEmit
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
+public import CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.AdxChainFuse
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AdxChainFuse
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -166,8 +175,8 @@ def acceptanceLine (tag : String) (asm? : Option String) : String :=
       s!"backedge={strContains s "jne .L"} unhandled={strContains s "UNHANDLED"} " ++
       s!"lines={(s.splitOn "\n").length}"
 
-#eval IO.println (acceptanceLine "adxroll (1 limb/trip)" addAdxRollAsm)
-#eval IO.println (acceptanceLine "adxroll4 (4 limbs/trip)" addAdxRoll4Asm)
+-- #eval IO.println (acceptanceLine "adxroll (1 limb/trip)" addAdxRollAsm)
+-- #eval IO.println (acceptanceLine "adxroll4 (4 limbs/trip)" addAdxRoll4Asm)
 
 /-! ## 4. Emit driver (writes accepted kernels only) -/
 
@@ -185,6 +194,6 @@ def emitMain : IO Unit := do
   wr "bench/integration/gen_com/mpn_add_n_adxroll4_loop_owned.s"
     "adxroll4" addAdxRoll4Asm
 
-#eval emitMain
+-- #eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddNAdxRolledFrontEmit

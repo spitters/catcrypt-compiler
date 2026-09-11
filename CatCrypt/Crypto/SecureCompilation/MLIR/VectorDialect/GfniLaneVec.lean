@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
-import CatCrypt.Crypto.SecureCompilation.VIR.GfniEmit
+module
+
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
+public import CatCrypt.Crypto.SecureCompilation.VIR.GfniEmit
 
 /-!
 # GFNI byte-lane map through the structured VectorDialect (task #275)
@@ -31,6 +33,8 @@ Because the dialect-rendered lines are *identical* to `renderGfniLine` and the
 dialect denotation is *equal* to `denoteGfni`, the demonstrator KAT
 (`bench/uov_compare/`) validating the direct GFNI emit validates this path.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

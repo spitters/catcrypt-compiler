@@ -3,10 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.CifLowering
-import CatCrypt.Crypto.SecureCompilation.VIR.WhileLowering
-import CatCrypt.Crypto.SecureCompilation.VIR.CallLowering
-import CatCrypt.Crypto.SecureCompilation.VIR.LoopLowering
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.CifLowering
+public import CatCrypt.Crypto.SecureCompilation.VIR.CifLowering
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.WhileLowering
+public import CatCrypt.Crypto.SecureCompilation.VIR.WhileLowering
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.CallLowering
+public import CatCrypt.Crypto.SecureCompilation.VIR.CallLowering
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.LoopLowering
+public import CatCrypt.Crypto.SecureCompilation.VIR.LoopLowering
 
 /-!
 # Operational ASSIGN run-correctness + the `InstrR` coverage capstone
@@ -81,6 +87,8 @@ All goals are closed; no opaque-leaf hypothesis is needed for the `Cassgn`,
 functional definitions). The `Cfor` *counted-loop* keystone carries the same
 `LeafAgrees` opaque-leaf edge as the rest of the emit-correctness theory.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

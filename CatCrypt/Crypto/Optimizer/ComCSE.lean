@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.CopyProp
+module
+
+public import CatCrypt.Crypto.Optimizer.CopyProp
 
 /-!
 # Verified common-subexpression elimination for `Com` — a denotation-preserving rewrite
@@ -66,6 +68,8 @@ redirected to `v0` — and a later dead-code pass (`ComDCE`) removes it.
 All goals closed. No `sorry`. Axiom set inherited from `CopyProp` (the standard
 Lean/Mathlib `propext` / `Quot.sound` / `Classical.choice` trio).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -294,7 +298,7 @@ A `Com jasminDialect [reg 32] (reg 32)` with an **adjacent redundant binder**:
 programs map `x` to `x + x`; the rewrite shifts the returned variable's index. -/
 
 /-- A `reg 32` binary `regArith` helper for the demo. -/
-private def binR32 {Γ : Ctxt jasminDialect} (op : JasminBinOp)
+def binR32 {Γ : Ctxt jasminDialect} (op : JasminBinOp)
     (a b : Ctxt.Var Γ (.reg 32)) : Expr jasminDialect Γ (.reg 32) :=
   { op := .regArith op 32, retTy_eq := rfl, args := .cons a (.cons b .nil) }
 

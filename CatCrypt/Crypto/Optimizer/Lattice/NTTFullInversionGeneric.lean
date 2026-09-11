@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.NTTInverseGeneric
+module
+
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTInverseGeneric
 
 /-!
 # Full DFT inversion keystone: `idft ∘ dft = id`
@@ -30,6 +32,8 @@ exactly `∑_j ω^(l·j) · (ω⁻¹)^(k·j)` — the left-hand side of
 else 0`; `Finset.sum_ite_eq'` kills the outer `l`-sum, leaving
 `(n)⁻¹ · (x k · n) = x k` via `inv_mul_cancel₀`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

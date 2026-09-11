@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MontReduceRunBlock
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4MontMulProvenEmit
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MontReduceRunBlock
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4MontMulProvenEmit
 
 /-!
 # Fusing the 4-limb Montgomery reduce over one `runBlock` trace
@@ -72,6 +74,8 @@ shift brick proved here, the two residuals catalogued in `montRedc4RunBlock_gap`
 The shift brick proved here is one of the two things needed for residual (1); the
 `add`/`adc` fold cascade is the other.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxHeartbeats 1000000

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveLowering
-import CatCrypt.Crypto.Pairing.BN254GroupEmit
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveLowering
+public import CatCrypt.Crypto.Pairing.BN254GroupEmit
 
 /-!
 # EllipticCurve-dialect BN254 `G1` migration tie (#482-3, step 4 — additive)
@@ -64,6 +66,8 @@ same `bnToEC`-style structural embedding lifts each curve's emitted group/MSM
 kernel onto the dialect.  Only the `padd` tie is landed here as the
 proof-of-concept of the one-tie-per-level structure.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

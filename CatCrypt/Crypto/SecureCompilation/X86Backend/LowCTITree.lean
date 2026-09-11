@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
 
 /-!
 # Plain interaction-tree (free-monad) denotational layer with calls as events
@@ -55,6 +57,8 @@ For the call-bearing case, `interp_scall` shows the handler resolves a call
 event and the interpretation resumes from the handler-supplied return word —
 the Phase-4 call-composition hook.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

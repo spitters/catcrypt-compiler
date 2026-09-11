@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Rewrite.Egraph
-import CatCrypt.Crypto.Optimizer.Rewrite.KaratsubaGenericPass
-import CatCrypt.Crypto.Optimizer.Rewrite.RegistryEgraphBridge
+module
+
+import all Init.Data.Repr
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Optimizer.Rewrite.Egraph
+public import CatCrypt.Crypto.Optimizer.Rewrite.KaratsubaGenericPass
+public import CatCrypt.Crypto.Optimizer.Rewrite.RegistryEgraphBridge
 
 /-!
 # `grind` as the congruence-closure discharger for the compiler e-graph
@@ -53,6 +57,8 @@ certificate, not driving the search.)
   `mul_pow2_eq_shl`'s own `BitVec` proof stays `bv`-level); it composes that rule
   once proven.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Optimizer.Rewrite.EgraphGrindIntegration
 

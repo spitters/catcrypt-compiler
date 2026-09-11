@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
+module
+
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
 # BN254 (alt-bn128) reflect surface — G1 MSM + EIP-197 pairing-product through
@@ -57,6 +59,8 @@ the bn254 crate's `pairing_optimal` linked by the Rust KAT.
 * `bench/framework/AUDIT_HAX_BRIDGE.md` — confirms NO hax extraction
 * EIP-196 / EIP-197 — published precompile test vectors
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 
@@ -138,7 +142,7 @@ def bn254G1PointTowerType : TowerType := .TBytes 64
 def bn254G2PointTowerType : TowerType := .TBytes 128
 def bn254Fp12TowerType : TowerType := .TBytes 384
 
-private def loc (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
+def locBn254 (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
 
 /-! ## 5. Pure-Lean BN254 kernel functions -/
 
@@ -164,11 +168,11 @@ noncomputable def eip197VerifyLean
 /-- The `LowCT` body for `bn254G1MsmStepLean`: scalar-mul into `__term`,
     G1-add into `__result`. -/
 def bn254G1MsmStepBody : LowCT :=
-  let acc_l    := loc "acc"      bn254G1PointTowerType
-  let k_l      := loc "k"        bn254FrTowerType
-  let p_l      := loc "p"        bn254G1PointTowerType
-  let term_l   := loc "__term"   bn254G1PointTowerType
-  let result_l := loc "__result" bn254G1PointTowerType
+  let acc_l    := locBn254 "acc"      bn254G1PointTowerType
+  let k_l      := locBn254 "k"        bn254FrTowerType
+  let p_l      := locBn254 "p"        bn254G1PointTowerType
+  let term_l   := locBn254 "__term"   bn254G1PointTowerType
+  let result_l := locBn254 "__result" bn254G1PointTowerType
   .RSeq
     (.RSeq .RSkip
       (.RCall "bn254_g1_scalar_mul" term_l [k_l, p_l]))
@@ -184,13 +188,13 @@ def bn254G1MsmStepReified : ReifiedFunc :=
 /-- The `LowCT` body for `eip197VerifyLean`: 2 pairings into `__e1` / `__e2`,
     then `__result = __e1 · __e2`. -/
 def eip197VerifyBody : LowCT :=
-  let p1_l     := loc "p1"       bn254G1PointTowerType
-  let q1_l     := loc "q1"       bn254G2PointTowerType
-  let p2_l     := loc "p2"       bn254G1PointTowerType
-  let q2_l     := loc "q2"       bn254G2PointTowerType
-  let e1_l     := loc "__e1"     bn254Fp12TowerType
-  let e2_l     := loc "__e2"     bn254Fp12TowerType
-  let result_l := loc "__result" bn254Fp12TowerType
+  let p1_l     := locBn254 "p1"       bn254G1PointTowerType
+  let q1_l     := locBn254 "q1"       bn254G2PointTowerType
+  let p2_l     := locBn254 "p2"       bn254G1PointTowerType
+  let q2_l     := locBn254 "q2"       bn254G2PointTowerType
+  let e1_l     := locBn254 "__e1"     bn254Fp12TowerType
+  let e2_l     := locBn254 "__e2"     bn254Fp12TowerType
+  let result_l := locBn254 "__result" bn254Fp12TowerType
   .RSeq
     (.RSeq
       (.RSeq .RSkip
@@ -376,9 +380,9 @@ the front allocates as a `stack u64[N]` scratch buffer. -/
 
 /-- `bn254_Fp2_add`: two component-wise `Fp` adds (real, imaginary). -/
 def bn254Fp2AddBody : LowCT :=
-  let xr := loc "x_re" bn254FpTowerType; let xi := loc "x_im" bn254FpTowerType
-  let yr := loc "y_re" bn254FpTowerType; let yi := loc "y_im" bn254FpTowerType
-  let or := loc "__re" bn254FpTowerType; let oi := loc "__im" bn254FpTowerType
+  let xr := locBn254 "x_re" bn254FpTowerType; let xi := locBn254 "x_im" bn254FpTowerType
+  let yr := locBn254 "y_re" bn254FpTowerType; let yi := locBn254 "y_im" bn254FpTowerType
+  let or := locBn254 "__re" bn254FpTowerType; let oi := locBn254 "__im" bn254FpTowerType
   .RSeq (.RSeq .RSkip (.RCall "bn254_add" or [xr, yr]))
         (.RCall "bn254_add" oi [xi, yi])
 
@@ -393,11 +397,11 @@ def bn254Fp2AddReified : ReifiedFunc :=
     SSA-renamed: scratch `v0=ac`, `v1=bd`, `v2=a+b`, then the Karatsuba combine
     via the `out_im`/`out_re` slots). -/
 def bn254Fp2MulBody : LowCT :=
-  let xr := loc "x_re" bn254FpTowerType; let xi := loc "x_im" bn254FpTowerType
-  let yr := loc "y_re" bn254FpTowerType; let yi := loc "y_im" bn254FpTowerType
-  let v0 := loc "v0" bn254FpTowerType; let v1 := loc "v1" bn254FpTowerType
-  let v2 := loc "v2" bn254FpTowerType
-  let oi := loc "__im" bn254FpTowerType; let orr := loc "__re" bn254FpTowerType
+  let xr := locBn254 "x_re" bn254FpTowerType; let xi := locBn254 "x_im" bn254FpTowerType
+  let yr := locBn254 "y_re" bn254FpTowerType; let yi := locBn254 "y_im" bn254FpTowerType
+  let v0 := locBn254 "v0" bn254FpTowerType; let v1 := locBn254 "v1" bn254FpTowerType
+  let v2 := locBn254 "v2" bn254FpTowerType
+  let oi := locBn254 "__im" bn254FpTowerType; let orr := locBn254 "__re" bn254FpTowerType
   .RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq .RSkip
     (.RCall "bn254_mul" v0  [xr, yr]))            -- v0 = a·c
     (.RCall "bn254_mul" v1  [xi, yi]))            -- v1 = b·d
@@ -426,14 +430,14 @@ halves (`4 + out = 5`, within the ABI). -/
 /-- `bn254_Fp6_add`: extract the c0/c1/c2 `Fp2` components of each `Fp6`
     operand, three component-wise `Fp2` adds, re-assemble. -/
 def bn254Fp6AddBody : LowCT :=
-  let x := loc "x" bn254Fp6TowerType; let y := loc "y" bn254Fp6TowerType
-  let x0 := loc "x_c0" bn254Fp2TowerType; let x1 := loc "x_c1" bn254Fp2TowerType
-  let x2 := loc "x_c2" bn254Fp2TowerType
-  let y0 := loc "y_c0" bn254Fp2TowerType; let y1 := loc "y_c1" bn254Fp2TowerType
-  let y2 := loc "y_c2" bn254Fp2TowerType
-  let o0 := loc "__c0" bn254Fp2TowerType; let o1 := loc "__c1" bn254Fp2TowerType
-  let o2 := loc "__c2" bn254Fp2TowerType
-  let r := loc "__result" bn254Fp6TowerType
+  let x := locBn254 "x" bn254Fp6TowerType; let y := locBn254 "y" bn254Fp6TowerType
+  let x0 := locBn254 "x_c0" bn254Fp2TowerType; let x1 := locBn254 "x_c1" bn254Fp2TowerType
+  let x2 := locBn254 "x_c2" bn254Fp2TowerType
+  let y0 := locBn254 "y_c0" bn254Fp2TowerType; let y1 := locBn254 "y_c1" bn254Fp2TowerType
+  let y2 := locBn254 "y_c2" bn254Fp2TowerType
+  let o0 := locBn254 "__c0" bn254Fp2TowerType; let o1 := locBn254 "__c1" bn254Fp2TowerType
+  let o2 := locBn254 "__c2" bn254Fp2TowerType
+  let r := locBn254 "__result" bn254Fp6TowerType
   .RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq .RSkip
     (.RCall "bn254_Fp6_get_c0" x0 [x]))
     (.RCall "bn254_Fp6_get_c1" x1 [x]))
@@ -455,17 +459,17 @@ def bn254Fp6AddReified : ReifiedFunc :=
     (the import-file `fp6MulExpected` chain: 23 `Fp2` leaf calls over scratch
     `a0b0`/`a1b1`/`a2b2`/`t`/`u`, SSA-renamed), re-assemble the `Fp6` result. -/
 def bn254Fp6MulBody : LowCT :=
-  let x := loc "x" bn254Fp6TowerType; let y := loc "y" bn254Fp6TowerType
-  let x0 := loc "x_c0" bn254Fp2TowerType; let x1 := loc "x_c1" bn254Fp2TowerType
-  let x2 := loc "x_c2" bn254Fp2TowerType
-  let y0 := loc "y_c0" bn254Fp2TowerType; let y1 := loc "y_c1" bn254Fp2TowerType
-  let y2 := loc "y_c2" bn254Fp2TowerType
-  let a0b0 := loc "a0b0" bn254Fp2TowerType; let a1b1 := loc "a1b1" bn254Fp2TowerType
-  let a2b2 := loc "a2b2" bn254Fp2TowerType
-  let t := loc "t" bn254Fp2TowerType; let u := loc "u" bn254Fp2TowerType
-  let o0 := loc "__c0" bn254Fp2TowerType; let o1 := loc "__c1" bn254Fp2TowerType
-  let o2 := loc "__c2" bn254Fp2TowerType
-  let r := loc "__result" bn254Fp6TowerType
+  let x := locBn254 "x" bn254Fp6TowerType; let y := locBn254 "y" bn254Fp6TowerType
+  let x0 := locBn254 "x_c0" bn254Fp2TowerType; let x1 := locBn254 "x_c1" bn254Fp2TowerType
+  let x2 := locBn254 "x_c2" bn254Fp2TowerType
+  let y0 := locBn254 "y_c0" bn254Fp2TowerType; let y1 := locBn254 "y_c1" bn254Fp2TowerType
+  let y2 := locBn254 "y_c2" bn254Fp2TowerType
+  let a0b0 := locBn254 "a0b0" bn254Fp2TowerType; let a1b1 := locBn254 "a1b1" bn254Fp2TowerType
+  let a2b2 := locBn254 "a2b2" bn254Fp2TowerType
+  let t := locBn254 "t" bn254Fp2TowerType; let u := locBn254 "u" bn254Fp2TowerType
+  let o0 := locBn254 "__c0" bn254Fp2TowerType; let o1 := locBn254 "__c1" bn254Fp2TowerType
+  let o2 := locBn254 "__c2" bn254Fp2TowerType
+  let r := locBn254 "__result" bn254Fp6TowerType
   .RSeq (.RSeq (.RSeq (.RSeq (.RSeq
    (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq
    (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq
@@ -509,11 +513,11 @@ def bn254Fp6MulReified : ReifiedFunc :=
     two `Fp6` halves (the import-file `fp12MulExpected` chain: nine `Fp6` leaf
     calls over scratch `v0`/`v1`/`v2`, SSA-renamed). -/
 def bn254Fp12MulBody : LowCT :=
-  let x0 := loc "x_c0" bn254Fp6TowerType; let x1 := loc "x_c1" bn254Fp6TowerType
-  let y0 := loc "y_c0" bn254Fp6TowerType; let y1 := loc "y_c1" bn254Fp6TowerType
-  let v0 := loc "v0" bn254Fp6TowerType; let v1 := loc "v1" bn254Fp6TowerType
-  let v2 := loc "v2" bn254Fp6TowerType
-  let o0 := loc "__c0" bn254Fp6TowerType; let o1 := loc "__c1" bn254Fp6TowerType
+  let x0 := locBn254 "x_c0" bn254Fp6TowerType; let x1 := locBn254 "x_c1" bn254Fp6TowerType
+  let y0 := locBn254 "y_c0" bn254Fp6TowerType; let y1 := locBn254 "y_c1" bn254Fp6TowerType
+  let v0 := locBn254 "v0" bn254Fp6TowerType; let v1 := locBn254 "v1" bn254Fp6TowerType
+  let v2 := locBn254 "v2" bn254Fp6TowerType
+  let o0 := locBn254 "__c0" bn254Fp6TowerType; let o1 := locBn254 "__c1" bn254Fp6TowerType
   .RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq .RSkip
     (.RCall "bn254_Fp6_mul"      v0 [x0, y0]))
     (.RCall "bn254_Fp6_mul"      v1 [x1, y1]))
@@ -698,20 +702,20 @@ The Miller doubling step body chains the §9a leaf composition as an
 /-- `bn254_miller_double_step`: the fused line-eval + accumulate doubling step.
     ABI: `(f : Fp12, tx, ty : Fp2, px, py : Fp)`. -/
 def bn254MillerDoubleStepBody : LowCT :=
-  let f   := loc "f"   bn254Fp12TowerTy
-  let tx  := loc "tx"  bn254Fp2TowerType
-  let ty  := loc "ty"  bn254Fp2TowerType
-  let px  := loc "px"  bn254FpTowerType
-  let py  := loc "py"  bn254FpTowerType
-  let tx2 := loc "tx2" bn254Fp2TowerType
-  let two := loc "two" bn254Fp2TowerType
-  let lamN:= loc "lamN" bn254Fp2TowerType
-  let tyD := loc "tyD" bn254Fp2TowerType
-  let tyI := loc "tyI" bn254Fp2TowerType
-  let lam := loc "lam" bn254Fp2TowerType
-  let line:= loc "line" bn254Fp12TowerTy
-  let fsq := loc "fsq" bn254Fp12TowerTy
-  let r   := loc "__result" bn254Fp12TowerTy
+  let f   := locBn254 "f"   bn254Fp12TowerTy
+  let tx  := locBn254 "tx"  bn254Fp2TowerType
+  let ty  := locBn254 "ty"  bn254Fp2TowerType
+  let px  := locBn254 "px"  bn254FpTowerType
+  let py  := locBn254 "py"  bn254FpTowerType
+  let tx2 := locBn254 "tx2" bn254Fp2TowerType
+  let two := locBn254 "two" bn254Fp2TowerType
+  let lamN:= locBn254 "lamN" bn254Fp2TowerType
+  let tyD := locBn254 "tyD" bn254Fp2TowerType
+  let tyI := locBn254 "tyI" bn254Fp2TowerType
+  let lam := locBn254 "lam" bn254Fp2TowerType
+  let line:= locBn254 "line" bn254Fp12TowerTy
+  let fsq := locBn254 "fsq" bn254Fp12TowerTy
+  let r   := locBn254 "__result" bn254Fp12TowerTy
   .RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq .RSkip
     (.RCall "bn254_Fp2_square" tx2  [tx]))
     (.RCall "bn254_Fp2_add"    two  [tx2, tx2]))
@@ -731,10 +735,10 @@ def bn254MillerDoubleStepReified : ReifiedFunc :=
 /-- `bn254_cyclo_pow_step_set`: one `pow_u` iteration in the bit-set branch —
     cyclotomic square then multiply by `base`. ABI: `(r, base : Fp12)`. -/
 def bn254CycloPowStepBody : LowCT :=
-  let r    := loc "r"    bn254Fp12TowerTy
-  let base := loc "base" bn254Fp12TowerTy
-  let rsq  := loc "rsq"  bn254Fp12TowerTy
-  let out  := loc "__result" bn254Fp12TowerTy
+  let r    := locBn254 "r"    bn254Fp12TowerTy
+  let base := locBn254 "base" bn254Fp12TowerTy
+  let rsq  := locBn254 "rsq"  bn254Fp12TowerTy
+  let out  := locBn254 "__result" bn254Fp12TowerTy
   .RSeq (.RSeq .RSkip
     (.RCall "bn254_Fp12_cyclotomic_square" rsq [r]))
     (.RCall "bn254_fp12_mul" out [rsq, base])
@@ -746,13 +750,13 @@ def bn254CycloPowStepReified : ReifiedFunc :=
 /-- `bn254_final_exp_easy`: the easy-part `r = (conj f · conj f) · frob²(r)`
     leaf chain. ABI: `(f : Fp12)`. -/
 def bn254FinalExpEasyBody : LowCT :=
-  let f   := loc "f"   bn254Fp12TowerTy
-  let cf  := loc "cf"  bn254Fp12TowerTy
-  let fi  := loc "fi"  bn254Fp12TowerTy
-  let r   := loc "r"   bn254Fp12TowerTy
-  let fr1 := loc "fr1" bn254Fp12TowerTy
-  let fr2 := loc "fr2" bn254Fp12TowerTy
-  let out := loc "__result" bn254Fp12TowerTy
+  let f   := locBn254 "f"   bn254Fp12TowerTy
+  let cf  := locBn254 "cf"  bn254Fp12TowerTy
+  let fi  := locBn254 "fi"  bn254Fp12TowerTy
+  let r   := locBn254 "r"   bn254Fp12TowerTy
+  let fr1 := locBn254 "fr1" bn254Fp12TowerTy
+  let fr2 := locBn254 "fr2" bn254Fp12TowerTy
+  let out := locBn254 "__result" bn254Fp12TowerTy
   .RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq .RSkip
     (.RCall "bn254_Fp12_conjugate" cf  [f]))
     (.RCall "bn254_Fp12_conjugate" fi  [f]))

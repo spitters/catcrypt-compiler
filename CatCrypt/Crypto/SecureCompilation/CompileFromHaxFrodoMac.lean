@@ -3,13 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # C4 fan-out: the verified compiler emits the FrodoKEM LWE multiply-accumulate step
 
 This module extends the **C4** step of the verified-compiler plan to the
-load-bearing inner-loop body of FrodoKEM's dense-LWE matrix–vector product
+inner-loop body of FrodoKEM's dense-LWE matrix–vector product
 (`Frodo/FrodoMatmulVerified.lean`). FrodoKEM is the conservative,
 no-ring-structure lattice KEM; its core arithmetic is the dense integer
 matrix–vector product
@@ -58,6 +62,8 @@ The abstract `Zq65536` field tie (`frodoMacForm_eq_field`, in the companion
 toNat`, computes exactly the `ZMod 65536` MAC `accZ + aZ · bZ` that
 `FrodoMatmulVerified.matmulRow` sums.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -139,9 +145,7 @@ theorem frodoMac_compiles :
   intro acc a b
   have hspec : ImpExpr.denoteScalar ["acc", "a", "b"] ![acc, a, b]
       frodoMacSrc (fun _ => none) = some (frodoMacForm acc a b) := by
-    have h := frodoMacSrc_denoteScalar (nIn := 3) ![acc, a, b]
-    simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+    exact frodoMacSrc_denoteScalar (nIn := 3) ![acc, a, b]
   exact compileFromHax_meets_spec (w := 64) (nIn := 3) ["acc", "a", "b"]
     ![acc, a, b] frodoMacSrc _ hc hspec
 
@@ -149,7 +153,7 @@ theorem frodoMac_compiles :
 
 The emit form `frodoMacForm` equals the abstract `(acc + a*b) mod 2^16`. Because
 the modulus is a power of two dividing `2^64`, the `& 0xFFFF` mask is exactly
-`% 65536` at the `BitVec` level, so this is the genuine (and exact) LWE reduce —
+`% 65536` at the `BitVec` level, so this is the exact LWE reduce —
 phrased in pure `BitVec` so `bv_decide` bitblasts the mask. No domain
 restriction is needed: the mask reduces *any* 64-bit accumulator into `[0,2^16)`,
 matching the `u16` wraparound semantics. -/

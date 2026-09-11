@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Core
-import CatCrypt.Crypto.SecureCompilation.VIR.LatticeNTTSemantic
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.LatticeNTTSemantic
+public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeNTTSemantic
 
 /-!
 # TensorExt VIR dialect — bit-reversal as a first-class tensor op
@@ -76,6 +80,8 @@ The op is a fixed, data-independent index permutation (the bit-reversal schedule
 is index-only, never data-dependent), so its denotation is a total pure function
 and it is constant-time by construction (`ctSafe = true`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

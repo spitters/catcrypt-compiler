@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.GenericRegAlloc
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
-import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+module
+
+public meta import CatCrypt.Crypto.Optimizer.GenericRegAlloc
+public import CatCrypt.Crypto.Optimizer.GenericRegAlloc
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 
 /-!
 # Verified spilling register allocator (#413): the spiller `allocGp`/`RandomizedRegAlloc` lack
@@ -50,6 +55,8 @@ discipline). What a *fully general* "any allocator output is sound" proof would
 additionally need — that the allocator never reuses a live spill slot and never
 reloads a cell across an intervening store — is stated precisely in §6.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -656,11 +663,8 @@ theorem spillAllocPinned_slotsSeparated (width : Nat) (pinned : GpAlloc) (frameB
       = linearScanSpillOffsets (linearScan pinned frameBase
           ((liveRanges block).filter (fun lr => ¬ (mulxMultiplierNames block).contains lr.name))
           stride) := by
-    simp only [spillAllocPinned, linearScanSpillOffsets, List.filterMap_append]
-    rw [show ((mulxMultiplierNames block).map
-        (fun n => (n, Slot.resident mulxMultReg))).filterMap
-        (fun d => match d.2 with | .spilled off => some off | _ => none) = []
-      from hmul _, List.nil_append]
+    rw [spillAllocPinned, linearScanSpillOffsets, List.filterMap_append,
+      ← linearScanSpillOffsets, ← linearScanSpillOffsets, hmul, List.nil_append]
   rw [happ]
   exact linearScan_slotsSeparated width pinned frameBase _ stride hw
 

@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CarryChainSelect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CarryChainSelect
 
 /-!
 # Block-local flag-liveness for the MUL→MULX fusion (`fuseMulx`)
@@ -59,6 +61,8 @@ from the low destination (`a ≠ lo`, `b ≠ lo`).  `fuseMulxGuarded_runBlock` i
 an unconditional `runBlock`-equality (a no-op where the guard fails, sound where it
 fires), and `fuseMulxGuarded_allDirect` carries the constant-time class.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

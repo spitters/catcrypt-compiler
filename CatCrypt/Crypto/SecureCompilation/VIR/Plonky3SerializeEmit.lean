@@ -3,11 +3,22 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.Dialects.MemrefToJasminDenote
-import CatCrypt.Crypto.SecureCompilation.VIR.QuerySampleBranchFront
+module
+
+import all Init.Data.Repr
+import all Init.Data.String.Defs
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+import all CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.MemrefToJasminDenote
+public import CatCrypt.Crypto.SecureCompilation.Dialects.MemrefToJasminDenote
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.QuerySampleBranchFront
+public import CatCrypt.Crypto.SecureCompilation.VIR.QuerySampleBranchFront
 
 /-!
 # Plonky3 `Proof<SC>` bincode SERIALIZATION as owned byte-packer `Lcmd` (FULL_PROVER_VS_P3 Gap 2 item 2)
@@ -82,6 +93,8 @@ the `LprogControlFlow.loopLcmd` semantics pin), so the owned byte-packer and a C
 `for (i = 0; i < n; i++) out[i] = (v >> 8i) & 0xff` over the same body agree by
 construction.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -345,7 +358,7 @@ theorem leWriterFundef_body_eq (n : Nat) :
       = (⟨0, .Lopn [.reg "RDX"] "LOAD:64" [.reg "mem.RSI.0"]⟩
           :: ⟨0, .Lopn [.reg "R8"] "MOV:64" [.imm n]⟩
           :: ⟨0, .Lopn [.reg "R9"] "MOV:64" [.imm 0]⟩
-          :: leByteLoop "RDI" "RDX") := rfl
+          :: leByteLoop "RDI" "RDX") := (rfl)
 
 /-- The single-byte writer body: the value load, the zero index, the byte store,
     the output-pointer advance. -/
@@ -354,7 +367,7 @@ theorem serU8Fundef_body_eq :
       = [ ⟨0, .Lopn [.reg "RDX"] "LOAD:64" [.reg "mem.RSI.0"]⟩
         , ⟨0, .Lopn [.reg "R9"] "MOV:64" [.imm 0]⟩
         , ⟨0, frontByteStoreLinstr "RDI" "RDI" "R9" "RDX" 8⟩
-        , ⟨0, .Lopn [.reg "RDI"] "ADD:64" [.reg "RDI", .imm 1]⟩ ] := rfl
+        , ⟨0, .Lopn [.reg "RDI"] "ADD:64" [.reg "RDI", .imm 1]⟩ ] := (rfl)
 
 /-- The digest writer body: the element-counter init, then the `loopLcmd`
     back-edge over `call p3_ser_u32_le` plus the input-pointer stride. -/

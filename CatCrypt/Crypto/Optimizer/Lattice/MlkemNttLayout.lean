@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.IterativeNttEqRec
+module
+
+public import CatCrypt.Crypto.Optimizer.Lattice.IterativeNttEqRec
 
 /-!
 # Lane↔coefficient layout for the ML-KEM-768 16-way AVX2 NTT, and the
@@ -86,6 +88,8 @@ the tie in Lean is an *emit-denotation* function
 and a lemma `⟦…⟧ = mlkemNttKernelSpec`; this file proves everything reachable on
 the spec side of that lemma. No emit denotation is fabricated here.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulWholeFn
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulWholeFn
 
 /-!
 # Discharging the prologue hypotheses of `toLprogPhysAbi_lsem` by construction
@@ -64,6 +67,8 @@ condition, carried as an explicit named hypothesis (it is the same class as the
 `MemrefPtrsDistinct` / `hinj` RA invariants already carried by the whole-function
 theorem) — never `sorry`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

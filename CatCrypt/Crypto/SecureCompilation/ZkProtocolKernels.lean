@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ProtocolEmitRealizes
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ProtocolEmitRealizes
 
 /-!
 # A batch of zero-knowledge proof-system verifiers as `ProtocolKernels` instances
@@ -64,6 +66,8 @@ kernels (Fiat-Shamir duplex `"p3_fs_observe"` / `"p3_fs_sample"`, FRI fold
 Poseidon2 transcript permutation `"hp_perm16"`); the abstract specs stand for the
 composite each round computes.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
-import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+module
+
+public meta import CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArmLoop
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArmLoop
 
 /-!
 # Golden path for an ITERATED kernel: a bounded accumulate loop, emitted by the compiler
@@ -60,6 +62,8 @@ loop wraps it, and the whole loop is pinned to `acc + n·step` for every `n`.
   *denotational value* the loop computes, which is the part the spec pins.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.LoopEmit
@@ -90,7 +94,7 @@ theorem accStep_denote (acc step : String) (s : BState) :
 
 /-- A write to a *different* register leaves the read unchanged. (Proved locally so the
     file depends only on the loop keystone import.) -/
-private theorem get_set_ne (s : BState) (r r' : String) (v : X64) (h : r ≠ r') :
+theorem get_set_ne (s : BState) (r r' : String) (v : X64) (h : r ≠ r') :
     (s.set r' v).get r = s.get r := by
   by_cases hr' : r' = "xzr"
   · simp [BState.set, hr']

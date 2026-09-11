@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.AesKernelRegistryEntry
-import CatCrypt.Crypto.SecureCompilation.GenericFieldEmitValue
+module
+
+public import CatCrypt.Crypto.SecureCompilation.AesKernelRegistryEntry
+public import CatCrypt.Crypto.SecureCompilation.GenericFieldEmitValue
 
 /-!
 # Concrete realizers for the AES-128 and field-op kernel rows — KAT-free
@@ -63,6 +65,8 @@ exhibit, for AES and for field add/mul:
 ## References
 * NIST FIPS 197 (AES-128)
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

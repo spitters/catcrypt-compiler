@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
-import CatCrypt.Crypto.Optimizer.RandomizedRegAlloc
-import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+public meta import CatCrypt.Crypto.Optimizer.RandomizedRegAlloc
+public import CatCrypt.Crypto.Optimizer.RandomizedRegAlloc
+public meta import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 
 /-!
 # Joint schedule + register-allocation search (SLOTHY phase-ordering fix)
@@ -42,6 +47,8 @@ renamed instructions — so the aliasing is visible and the hazard is caught.
 > **`@bench-only`.** The `distinctNamesBlock` `List (JInstr 64)` is a
 > search-regression fixture; the module emits no deployed `.s` artifact.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

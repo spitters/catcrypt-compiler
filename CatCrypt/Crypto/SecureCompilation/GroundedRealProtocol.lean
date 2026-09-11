@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GroundedMultiKernelProtocol
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GroundedMultiKernelProtocol
 
 /-!
 # Two REAL protocols grounded UNCONDITIONALLY — nothing assumed about their kernels
@@ -55,6 +57,8 @@ protocol's whole emit-realization is a Lean theorem carrying **zero
 * NIST FIPS 197 (AES-128); SP 800-38A (OFB mode).
 * Horner's rule / polynomial evaluation: standard; used in KZG/FRI opening checks.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieWhile
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieUncond
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestDepth
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieWhile
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieUncond
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestDepth
+
+@[expose] public section
 
 set_option autoImplicit false
 

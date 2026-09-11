@@ -71,8 +71,8 @@ import_edges() {
     | while IFS= read -r f; do
         m="$(echo "${f%.lean}" | tr '/' '.')"
         perl -0777 -ne 's{/-.*?-/}{}gs; s{--[^\n]*}{}g; print;' "$f" 2>/dev/null \
-          | grep -hoE '^import[[:space:]]+CatCrypt[A-Za-z0-9_.]*' \
-          | sed -E "s/^import[[:space:]]+/${m}\t/"
+          | grep -hoE '^(public[[:space:]]+)?(meta[[:space:]]+)?import([[:space:]]+all)?[[:space:]]+CatCrypt[A-Za-z0-9_.]*' \
+          | sed -E "s/^(public[[:space:]]+)?(meta[[:space:]]+)?import([[:space:]]+all)?[[:space:]]+/${m}\t/"
       done
 }
 

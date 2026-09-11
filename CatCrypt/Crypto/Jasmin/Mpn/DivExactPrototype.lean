@@ -3,9 +3,18 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.DivExactSpec
-import CatCrypt.Crypto.Jasmin.Mpn.Submul1Prototype
-import CatCrypt.Crypto.Jasmin.Mpn.MulPrototype
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.Mpn.DivExactSpec
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.Mpn.DivExactSpec
+public meta import CatCrypt.Crypto.Jasmin.Mpn.Submul1Prototype
+public import CatCrypt.Crypto.Jasmin.Mpn.Submul1Prototype
+public meta import CatCrypt.Crypto.Jasmin.Mpn.MulPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.MulPrototype
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -672,7 +681,7 @@ theorem digitStepBodyExactSingle_eq_halves :
 Local inline of `Mpn.AddNAdcSpillPrototype.bignumExec_append_some_local`
 to avoid the cross-prototype import — identical statement and proof. -/
 
-private theorem bignumExec_append_some_local
+theorem bignumExec_append_some_local
     (b1 b2 : List InstrR) (s s_mid s' : BignumState)
     (h1 : bignumExec b1 s = some s_mid)
     (h2 : bignumExec b2 s_mid = some s') :
@@ -1109,7 +1118,7 @@ been reverted to match (see its §5.5 note). -/
     cross-prototype import).  Running a single `Cif` whose guard
     evaluates to `0` reduces to running the `else`-branch.  Identical
     statement and proof to `Mpn.DivRemPrototype.cif_else_run_local`. -/
-private theorem cif_else_run_local (reg : BignumRegistry) (F : Nat) (cond : PExpr)
+theorem cif_else_run_local (reg : BignumRegistry) (F : Nat) (cond : PExpr)
     (ct ce : List InstrR) (s s' : BignumState)
     (hg : evalPExpr s cond = some 0)
     (hrun : bignumExecFuel reg F ce s = some s') :
@@ -1127,7 +1136,7 @@ theorem execInstr_regCopy (s : BignumState) (r other : String) :
   simp only [regCopy, execInstr, evalPExpr, pv, vr, Option.bind_some, bind, Option.bind]
 
 /-- Decrementing `BitVec.ofNat 64 1` gives `0`. -/
-private theorem ofNat64_one_sub_one :
+theorem ofNat64_one_sub_one :
     (BitVec.ofNat 64 1 : BitVec 64) - 1 = 0 := by bv_decide
 
 /-- The dispatch-guard register `lden_m1` is `0` after running the two
@@ -1547,7 +1556,7 @@ for `lden = 1`) with the two tighter residuals to assemble the full
     cross-prototype import).  Running a single `Cif` whose guard evaluates
     to a nonzero value reduces to running the `then`-branch.  Identical
     statement and proof to `Mpn.SignedJasminPrototype.cif_then_run`. -/
-private theorem cif_then_run_local (reg : BignumRegistry) (F : Nat) (cond : PExpr)
+theorem cif_then_run_local (reg : BignumRegistry) (F : Nat) (cond : PExpr)
     (ct ce : List InstrR) (s s' : BignumState) (v : BitVec 64) (hv : v ≠ 0)
     (hg : evalPExpr s cond = some v)
     (hrun : bignumExecFuel reg F ct s = some s') :
@@ -1869,14 +1878,14 @@ def mpnDivExact_outer_loop_obligation' : Prop :=
 abbrev MpnDivExactJasminRefines' : Prop := mpnDivExact_outer_loop_obligation'
 
 /-- A singleton `memHoldsLimbs` unfolds to a single `load64Mem`. -/
-private theorem memHoldsLimbs_singleton (m : MemoryModel.Mem) (ptr : UInt64) (d : BitVec 64)
+theorem memHoldsLimbs_singleton (m : MemoryModel.Mem) (ptr : UInt64) (d : BitVec 64)
     (h : memHoldsLimbs m ptr [d]) :
     load64Mem m ptr = some (UInt64.ofNat d.toNat) := by
   rcases h with ⟨h1, _⟩
   exact h1
 
 /-- `toNat [d] = d.toNat`. -/
-private theorem toNat_singleton (d : BitVec 64) : toNat [d] = d.toNat := by
+theorem toNat_singleton (d : BitVec 64) : toNat [d] = d.toNat := by
   simp [toNat]
 
 /-- **The single-arm `postCif` residual, restated for `divExactRegistry`.**

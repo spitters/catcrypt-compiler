@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithIselPass
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithIselPass
 
 /-!
 # D3 — the `rorImm` peephole: a subtree-collapsing ISel pass on `Com jasminDialect`
@@ -64,6 +66,8 @@ preserved (`rorSelectExpr_denote`, the headline). On every non-matching or
 out-of-range shape the pass is the identity (so it is total and never changes a
 denotation it cannot prove equal).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
 
 /-!
 # A concrete covered kernel through the `RustExec` value-adequacy bridge
@@ -52,6 +55,8 @@ obtained instead through the empty-entry-env route
 straight-line kernel's reads all follow their writes, so `semScalar` succeeds
 from the empty env with no entry `EnvRel` needed — see §D.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

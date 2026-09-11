@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompilableCT
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Mul48ProvenEmit
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CompilableCT
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompilableCT
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Mul48ProvenEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Mul48ProvenEmit
 
 /-!
 # Phase 1 — the generic emit driver
@@ -29,6 +34,8 @@ The chain is the exact factoring of `Curve4MontMulProvenEmit.provenAsm` /
 `Mul48ProvenEmit.mul48ProvenAsm`; the §3 self-test re-emits `bignum_mul_4_8`
 through it and the GMP KAT confirms byte-correctness.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -176,6 +183,6 @@ def emitMainGenericMul48 : IO Unit := do
 The render is written while this module elaborates, so `lake` produces it from
 this file and no separate driver or Makefile rule carries the dependency. -/
 
-#eval emitMainGenericMul48
+-- #eval emitMainGenericMul48
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.GenericEmit

@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
 # Memory-pointer ABI reflect surface: the ML-KEM FO "J" hash
@@ -67,6 +71,8 @@ sends each `memref n` to `stackArr 64 n`; `emitAbiOrchMem` renders **every**
 `stackArr` as a raw `reg u64` caller-memory pointer — the all-`reg u64` shape of
 the formosa leaf.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 

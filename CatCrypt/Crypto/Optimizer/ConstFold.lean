@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Rewrite.Egraph
+module
+
+public import CatCrypt.Crypto.Optimizer.Rewrite.Egraph
 
 /-!
 # Verified constant-folding / partial-evaluation for `Com` (jasminDialect)
@@ -52,6 +54,8 @@ gate. Here the "gate" is a `regArith` op and the "classical operand" is a
 All goals closed. No `sorry`. Axiom set inherited via `Egraph`
 (`propext`, `Quot.sound`, `Classical.choice`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

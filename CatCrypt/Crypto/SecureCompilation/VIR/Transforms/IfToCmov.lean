@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.CTPredicate
-import CatCrypt.Crypto.SecureCompilation.VIR.Grind
-import CatCrypt.Crypto.SecureCompilation.VIR.Regions
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.CTPredicate
+public import CatCrypt.Crypto.SecureCompilation.VIR.Grind
+public import CatCrypt.Crypto.SecureCompilation.VIR.Regions
 
 /-!
 # `if`-to-`cmov` rewriter on `ComR catCryptDialect`
@@ -62,6 +64,8 @@ is follow-up work.
    bit case, the rewrite produces a CT-safe program.
 5. `ifToCmov_ctSafe_or_unchanged` — global non-decrease of CT-safety.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR
 namespace Transforms

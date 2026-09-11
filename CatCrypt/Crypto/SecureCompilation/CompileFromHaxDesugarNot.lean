@@ -3,8 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
-import CatCrypt.Crypto.SHA256.Extraction.Sha256_haxpipe
+module
+
+import all Init.Data.Repr
+import all CatCrypt.Crypto.SecureCompilation.ImpExprToThir
+import all CatCrypt.Crypto.SecureCompilation.ThirToComFront
+import all CatCrypt.Crypto.SecureCompilation.CompileFromHax
+import all CatCrypt.Crypto.SHA256.Extraction.Sha256_haxpipe
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public meta import CatCrypt.Crypto.SHA256.Extraction.Sha256_haxpipe
+public import CatCrypt.Crypto.SHA256.Extraction.Sha256_haxpipe
 
 /-!
 # A `desugarNot` pre-pass: compiling the verbatim SHA-256 `Ch` extraction
@@ -56,6 +65,8 @@ against the FIPS `Ch` formula. The two forms denote identically; the emit form
 only differs by hoisting the constant into a local, the same register
 materialization `chSrc` performs by hand.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

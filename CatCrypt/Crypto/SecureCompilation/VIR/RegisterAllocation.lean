@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgMultiOp
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JForProgMultiOp
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgMultiOp
+public import Mathlib.Data.List.GetD
 
 /-!
 # Verified register allocation for `JForProg` — Com→Com framework
@@ -49,12 +53,14 @@ Com→Com pass in Lean.
   diagram is provided per-RA via the `WellFormed` predicate's `preserves`
   field.
 
-* `linearScanRA : JForProg accTy → RegisterAllocation` — a concrete RA
-  construction. For this first committable deliverable we ship the
-  **identity allocation**: every Com-variable maps to itself. This confirms
-  the framework is correct and gives a no-op RA against which future RAs can
-  be tested. The optimisation-aware linear-scan algorithm (live-range
-  computation, non-overlap, spill costs) is the documented residual.
+* `linearScanRA_real : JForProg accTy → RegisterAllocation` — the linear-scan
+  allocation: live ranges from `computeLastUse`, lowest-free-slot assignment
+  from `linearScanAssign`. Its guarantee is `SlotOfInjectiveOnLive` —
+  simultaneously-live binders get distinct slots. Spill costs are a residual.
+
+* `linearScanRA : JForProg accTy → RegisterAllocation` — the framework-facing
+  entry point, whose `slotOf` is the identity and whose `seqOf` carries the
+  linear-scan decisions for the emit pass to read.
 
 ## Why split well-formedness from optimality?
 
@@ -80,9 +86,12 @@ work is plug-in.
 * `applyRA_denote_preserves` — the central denotation theorem.
 * `RegisterAllocation.identity` and `identity_WellFormed` — the trivial
   identity RA.
-* `linearScanRA` and `linearScanRA_WellFormed` — concrete RA construction
-  shipping today: identity allocation. Documented residual: the
-  optimisation-aware linear-scan algorithm with live-range non-overlap.
+* `linearScanRA` and `linearScanRA_WellFormed` — the framework-facing RA, whose
+  framework `slotOf` is the identity (`linearScanRA_slotOf_eq_id`).
+* `SlotOfInjectiveOnLive` and `linearScanRA_real_slotOfInjectiveOnLive` — the
+  linear scan's own guarantee, from the walker invariant in §7b: `busy` holds
+  the pair of every allocated binder still live at the current position, and
+  `linearScanStep` picks a slot outside it.
 
 No `sorry`, no new axioms — the framework's Com-level rewrite preserves
 `JForProg.denote` by `rfl`; the framework's well-formedness predicate
@@ -91,6 +100,8 @@ statement remains uniform. Sanity tests for `linearScanAssign` on small
 synthetic patterns use `native_decide` (closed via the kernel's native
 evaluator); the main definitions and theorems do not.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -440,29 +451,349 @@ def applyRA_real {accTy : JasminTy} (p : Com jasminDialect [accTy] accTy)
     (_ra : RegisterAllocation) : Com jasminDialect [accTy] accTy :=
   p
 
-/-- **`linearScanRA_real` is well-formed.**
+/-! ### The allocator's own obligation
 
-The injectivity of `slotOf` on the live range follows from the
-linear-scan invariant: when binder `i` is assigned a slot `s` at step
-`i`, the slot `s` is not in `busy'`, so no other live binder `j` with
-`lastUse j ≥ i` has `slotOf j = s`. This guarantees that any two
-*simultaneously-live* binders get distinct slots.
+`WellFormed` receives the injectivity of `id` (see `linearScanRA` in §8), and
+its `preserves` field is `rfl` because `applyRA_real` is the identity
+Com-rewrite. The `Prop` below is the property that carries the allocator's
+content; §7b proves it of `linearScanRA_real`. -/
 
-For the framework's `WellFormed` Prop we discharge the *Function.Injective*
-field with the looser global injectivity — we package `slotOf` so it
-*is* injective on its defined domain `[0, n)` by extending it with the
-fallback `slots.length + k` for out-of-range indices (each out-of-range
-index gets a globally-unique fallback slot).
+/-- Two binders that are simultaneously live -- each still live at the other's
+    position -- get distinct slots under the real allocation.
+    `linearScanRA_real_slotOfInjectiveOnLive` proves it. -/
+def SlotOfInjectiveOnLive {accTy : JasminTy} (p : JForProg accTy) : Prop :=
+  ∀ k₁ k₂, k₁ ≠ k₂ →
+    k₂ ≤ (computeLastUse p.update).getD k₁ 0 →
+    k₁ ≤ (computeLastUse p.update).getD k₂ 0 →
+    (linearScanRA_real p).slotOf k₁ ≠ (linearScanRA_real p).slotOf k₂
 
-The `preserves` field is `rfl` because `applyRA_real` is the identity
-Com-rewrite (see the §7 discussion). For the framework theorem
-`applyRA_denote_preserves` this is exactly the witness shape required. -/
-theorem linearScanRA_real_slotOf_injective_on_outOfRange
-    {accTy : JasminTy} (p : JForProg accTy) :
-    ∀ k₁ k₂, k₁ ≠ k₂ →
-      (linearScanRA_real p).slotOf k₁ ≠ (linearScanRA_real p).slotOf k₂ ∨
-      True := by
-  intros; right; trivial
+/-- `applyRA` is the identity Com-rewrite, so the framework's denotation
+    preservation holds for EVERY allocation, well-formed or not: the
+    `WellFormed` argument of `applyRA_denote_preserves` carries no content at
+    this level. Any correctness the allocator has is in the emit pass that reads
+    `seqOf`, and is not stated here. -/
+theorem applyRA_denote_preserves_of_any {accTy : JasminTy} (p : JForProg accTy)
+    (ra : RegisterAllocation) (init : ⟦accTy⟧) :
+    (applyRA p ra).denote init = p.denote init := rfl
+
+/-! ### 7b. The linear scan gives simultaneously-live binders distinct slots
+
+`linearScanAssignAux` walks the binder positions in increasing order. The
+invariant carried below is that `busy` holds the `(slot, lastUse)` pair of every
+already-allocated binder still live at the current position, and that every slot
+in `busy` is smaller than `nextFresh`. `linearScanStep` picks a slot outside
+`busy`, so a binder still live when a later binder is allocated keeps its slot to
+itself. -/
+
+/-- Fuel exhaustion returns the accumulator. -/
+theorem linearScanAssignAux_zero (pos : Nat) (lastUse : List Nat)
+    (busy : List (Nat × Nat)) (nextFresh : Nat) (acc : List Nat) :
+    linearScanAssignAux 0 pos lastUse busy nextFresh acc = acc := rfl
+
+/-- Past the last binder position the walk returns the accumulator. -/
+theorem linearScanAssignAux_succ_none {fuel pos : Nat} {lastUse : List Nat}
+    {busy : List (Nat × Nat)} {nextFresh : Nat} {acc : List Nat}
+    (h : lastUse[pos]? = none) :
+    linearScanAssignAux (fuel + 1) pos lastUse busy nextFresh acc = acc := by
+  simp [linearScanAssignAux, h]
+
+/-- One walk step: the slot chosen at `pos` is appended to the accumulator and
+    the walk continues at `pos + 1` with the updated busy list. -/
+theorem linearScanAssignAux_succ_some {fuel pos : Nat} {lastUse : List Nat}
+    {busy : List (Nat × Nat)} {nextFresh lu : Nat} {acc : List Nat}
+    (h : lastUse[pos]? = some lu) :
+    linearScanAssignAux (fuel + 1) pos lastUse busy nextFresh acc =
+      linearScanAssignAux fuel (pos + 1) lastUse
+        (linearScanStep pos lu busy nextFresh).2.1
+        (linearScanStep pos lu busy nextFresh).2.2
+        (acc ++ [(linearScanStep pos lu busy nextFresh).1]) := by
+  simp [linearScanAssignAux, h]
+
+/-- The slot handed out at `currentPos` differs from the slot of every binder in
+    `busy` that is still live at `currentPos`. -/
+theorem linearScanStep_slot_ne_of_live (currentPos lu : Nat)
+    (busy : List (Nat × Nat)) (nextFresh : Nat)
+    (hbusy : ∀ q ∈ busy, q.1 < nextFresh)
+    (q : Nat × Nat) (hq : q ∈ busy) (hlive : currentPos ≤ q.2) :
+    q.1 ≠ (linearScanStep currentPos lu busy nextFresh).1 := by
+  have hmem : q.1 ∈ (busy.filter (fun p => p.2 ≥ currentPos)).map Prod.fst :=
+    List.mem_map.mpr ⟨q, List.mem_filter.mpr ⟨hq, by simpa using hlive⟩, rfl⟩
+  simp only [linearScanStep]
+  cases hfind : (List.range nextFresh).find?
+      (fun s => !((busy.filter (fun p => p.2 ≥ currentPos)).map Prod.fst).contains s) with
+  | none => exact Nat.ne_of_lt (hbusy q hq)
+  | some s =>
+      dsimp only
+      have hs := List.find?_some hfind
+      simp only [Bool.not_eq_true', List.contains_eq_mem, decide_eq_false_iff_not] at hs
+      intro hEq
+      exact hs (hEq ▸ hmem)
+
+/-- The pair allocated at `currentPos` is in the updated busy list. -/
+theorem linearScanStep_mem_self (currentPos lu : Nat)
+    (busy : List (Nat × Nat)) (nextFresh : Nat) :
+    ((linearScanStep currentPos lu busy nextFresh).1, lu) ∈
+      (linearScanStep currentPos lu busy nextFresh).2.1 := by
+  simp only [linearScanStep]
+  cases hfind : (List.range nextFresh).find?
+      (fun s => !((busy.filter (fun p => p.2 ≥ currentPos)).map Prod.fst).contains s) with
+  | none => simp
+  | some s => simp
+
+/-- A pair still live at `currentPos` survives the reclaim filter. -/
+theorem linearScanStep_mem_of_live (currentPos lu : Nat)
+    (busy : List (Nat × Nat)) (nextFresh : Nat)
+    (q : Nat × Nat) (hq : q ∈ busy) (hlive : currentPos ≤ q.2) :
+    q ∈ (linearScanStep currentPos lu busy nextFresh).2.1 := by
+  have hmem : q ∈ busy.filter (fun p => p.2 ≥ currentPos) :=
+    List.mem_filter.mpr ⟨hq, by simpa using hlive⟩
+  simp only [linearScanStep]
+  cases hfind : (List.range nextFresh).find?
+      (fun s => !((busy.filter (fun p => p.2 ≥ currentPos)).map Prod.fst).contains s) with
+  | none => simp [hmem]
+  | some s => simp [hmem]
+
+/-- Every slot in the updated busy list is below the updated `nextFresh`. -/
+theorem linearScanStep_busy_lt (currentPos lu : Nat)
+    (busy : List (Nat × Nat)) (nextFresh : Nat)
+    (hbusy : ∀ q ∈ busy, q.1 < nextFresh) :
+    ∀ q ∈ (linearScanStep currentPos lu busy nextFresh).2.1,
+      q.1 < (linearScanStep currentPos lu busy nextFresh).2.2 := by
+  simp only [linearScanStep]
+  cases hfind : (List.range nextFresh).find?
+      (fun s => !((busy.filter (fun p => p.2 ≥ currentPos)).map Prod.fst).contains s) with
+  | none =>
+      dsimp only
+      intro q hq
+      rcases List.mem_cons.mp hq with h | h
+      · subst h; omega
+      · exact Nat.lt_succ_of_lt (hbusy q (List.mem_of_mem_filter h))
+  | some s =>
+      have hs : s ∈ List.range nextFresh := List.mem_of_find?_eq_some hfind
+      intro q hq
+      rcases List.mem_cons.mp hq with h | h
+      · subst h; simpa using List.mem_range.mp hs
+      · exact hbusy q (List.mem_of_mem_filter h)
+
+/-- The accumulator is a prefix of the walk's result. -/
+theorem linearScanAssignAux_prefix (fuel : Nat) :
+    ∀ (pos : Nat) (lastUse : List Nat) (busy : List (Nat × Nat))
+      (nextFresh : Nat) (acc : List Nat),
+      ∃ tail, linearScanAssignAux fuel pos lastUse busy nextFresh acc = acc ++ tail := by
+  induction fuel with
+  | zero =>
+      intro pos lastUse busy nextFresh acc
+      exact ⟨[], by simp [linearScanAssignAux_zero]⟩
+  | succ fuel ih =>
+      intro pos lastUse busy nextFresh acc
+      cases hlu : lastUse[pos]? with
+      | none => exact ⟨[], by simp [linearScanAssignAux_succ_none hlu]⟩
+      | some lu =>
+          obtain ⟨tail, htail⟩ := ih (pos + 1) lastUse
+            (linearScanStep pos lu busy nextFresh).2.1
+            (linearScanStep pos lu busy nextFresh).2.2
+            (acc ++ [(linearScanStep pos lu busy nextFresh).1])
+          refine ⟨(linearScanStep pos lu busy nextFresh).1 :: tail, ?_⟩
+          rw [linearScanAssignAux_succ_some hlu, htail]
+          simp
+
+/-- Slots already recorded in the accumulator are unchanged by the rest of the
+    walk. -/
+theorem linearScanAssignAux_getD_of_lt {fuel pos : Nat} {lastUse : List Nat}
+    {busy : List (Nat × Nat)} {nextFresh : Nat} {acc : List Nat} {k : Nat}
+    (hk : k < acc.length) :
+    (linearScanAssignAux fuel pos lastUse busy nextFresh acc).getD k 0 =
+      acc.getD k 0 := by
+  obtain ⟨tail, htail⟩ := linearScanAssignAux_prefix fuel pos lastUse busy nextFresh acc
+  rw [htail, List.getD_append _ _ _ _ hk]
+
+/-- **Slot injectivity on the live range, for the walker.** If binder `k₁` is
+    still live at the position of a later binder `k₂`, the two get distinct
+    slots. The busy list holds the pair of every allocated binder still live at
+    the current position, so the step at `k₂` picks a slot that `k₁` does not
+    hold. -/
+theorem linearScanAssignAux_live_ne (fuel : Nat) :
+    ∀ (pos : Nat) (lastUse : List Nat) (busy : List (Nat × Nat))
+      (nextFresh : Nat) (acc : List Nat),
+      acc.length = pos →
+      (∀ j, j < pos → pos ≤ lastUse.getD j 0 →
+        (acc.getD j 0, lastUse.getD j 0) ∈ busy) →
+      (∀ q ∈ busy, q.1 < nextFresh) →
+      lastUse.length ≤ pos + fuel →
+      ∀ k₁ k₂, k₁ < k₂ → pos ≤ k₂ → k₂ < lastUse.length →
+        k₂ ≤ lastUse.getD k₁ 0 →
+        (linearScanAssignAux fuel pos lastUse busy nextFresh acc).getD k₁ 0 ≠
+          (linearScanAssignAux fuel pos lastUse busy nextFresh acc).getD k₂ 0 := by
+  induction fuel with
+  | zero =>
+      intro pos lastUse busy nextFresh acc _ _ _ hfuel k₁ k₂ _ hpos hk₂ _
+      omega
+  | succ fuel ih =>
+      intro pos lastUse busy nextFresh acc hlen hinv hfresh hfuel k₁ k₂ hk12 hpos hk₂ hlive
+      cases hlu : lastUse[pos]? with
+      | none =>
+          exact absurd (List.getElem?_eq_none_iff.mp hlu) (by omega)
+      | some lu =>
+          have hluD : lastUse.getD pos 0 = lu := by
+            simp [List.getD_eq_getElem?_getD, hlu]
+          rw [linearScanAssignAux_succ_some hlu]
+          rcases Nat.lt_or_ge pos k₂ with hlt | hge
+          · refine ih (pos + 1) lastUse (linearScanStep pos lu busy nextFresh).2.1
+              (linearScanStep pos lu busy nextFresh).2.2
+              (acc ++ [(linearScanStep pos lu busy nextFresh).1])
+              (by simp [hlen]) ?_
+              (linearScanStep_busy_lt pos lu busy nextFresh hfresh)
+              (by omega) k₁ k₂ hk12 hlt hk₂ hlive
+            intro j hj hjlive
+            rcases Nat.lt_or_ge j pos with hjp | hjp
+            · rw [List.getD_append _ _ _ _ (by omega)]
+              exact linearScanStep_mem_of_live pos lu busy nextFresh _
+                (hinv j hjp (by omega)) (by omega)
+            · have hjeq : j = pos := by omega
+              subst hjeq
+              rw [List.getD_append_right _ _ _ _ (by omega), hluD]
+              simpa [hlen] using linearScanStep_mem_self _ lu busy nextFresh
+          · have hk2 : k₂ = pos := by omega
+            subst hk2
+            rw [linearScanAssignAux_getD_of_lt (by simp [hlen]; omega),
+              linearScanAssignAux_getD_of_lt (by simp [hlen]),
+              List.getD_append _ _ _ _ (by omega),
+              List.getD_append_right _ _ _ _ (by omega)]
+            simpa [hlen] using
+              linearScanStep_slot_ne_of_live _ lu busy nextFresh hfresh
+                (acc.getD k₁ 0, lastUse.getD k₁ 0) (hinv k₁ (by omega) hlive) hlive
+
+/-- The slot handed out at a step is below the step's updated `nextFresh`. -/
+theorem linearScanStep_slot_lt_next (currentPos lu : Nat)
+    (busy : List (Nat × Nat)) (nextFresh : Nat) :
+    (linearScanStep currentPos lu busy nextFresh).1 <
+      (linearScanStep currentPos lu busy nextFresh).2.2 := by
+  simp only [linearScanStep]
+  cases hfind : (List.range nextFresh).find?
+      (fun s => !((busy.filter (fun p => p.2 ≥ currentPos)).map Prod.fst).contains s) with
+  | none => dsimp only; omega
+  | some s =>
+      have hs := List.mem_range.mp (List.mem_of_find?_eq_some hfind)
+      dsimp only; omega
+
+/-- A step raises `nextFresh` by at most one, and never lowers it. -/
+theorem linearScanStep_next_bounds (currentPos lu : Nat)
+    (busy : List (Nat × Nat)) (nextFresh : Nat) :
+    nextFresh ≤ (linearScanStep currentPos lu busy nextFresh).2.2 ∧
+      (linearScanStep currentPos lu busy nextFresh).2.2 ≤ nextFresh + 1 := by
+  simp only [linearScanStep]
+  cases hfind : (List.range nextFresh).find?
+      (fun s => !((busy.filter (fun p => p.2 ≥ currentPos)).map Prod.fst).contains s) with
+  | none => dsimp only; omega
+  | some s => dsimp only; omega
+
+/-- The walk assigns one slot per remaining binder position. -/
+theorem linearScanAssignAux_length (fuel : Nat) :
+    ∀ (pos : Nat) (lastUse : List Nat) (busy : List (Nat × Nat))
+      (nextFresh : Nat) (acc : List Nat),
+      acc.length = pos → pos + fuel = lastUse.length →
+      (linearScanAssignAux fuel pos lastUse busy nextFresh acc).length =
+        lastUse.length := by
+  induction fuel with
+  | zero =>
+      intro pos lastUse busy nextFresh acc hlen hfuel
+      rw [linearScanAssignAux_zero]; omega
+  | succ fuel ih =>
+      intro pos lastUse busy nextFresh acc hlen hfuel
+      obtain ⟨lu, hlu⟩ : ∃ lu, lastUse[pos]? = some lu :=
+        ⟨lastUse[pos]'(by omega), List.getElem?_eq_getElem (by omega)⟩
+      rw [linearScanAssignAux_succ_some hlu]
+      exact ih (pos + 1) lastUse _ _ _ (by simp [hlen]) (by omega)
+
+/-- Every slot the walk hands out is below the number of binders it has walked. -/
+theorem linearScanAssignAux_lt_length (fuel : Nat) :
+    ∀ (pos : Nat) (lastUse : List Nat) (busy : List (Nat × Nat))
+      (nextFresh : Nat) (acc : List Nat),
+      acc.length = pos → nextFresh ≤ pos → (∀ x ∈ acc, x < nextFresh) →
+      ∀ x ∈ linearScanAssignAux fuel pos lastUse busy nextFresh acc,
+        x < (linearScanAssignAux fuel pos lastUse busy nextFresh acc).length := by
+  induction fuel with
+  | zero =>
+      intro pos lastUse busy nextFresh acc hlen hnext hacc x hx
+      rw [linearScanAssignAux_zero] at hx ⊢
+      exact Nat.lt_of_lt_of_le (hacc x hx) (by omega)
+  | succ fuel ih =>
+      intro pos lastUse busy nextFresh acc hlen hnext hacc x hx
+      cases hlu : lastUse[pos]? with
+      | none =>
+          rw [linearScanAssignAux_succ_none hlu] at hx ⊢
+          exact Nat.lt_of_lt_of_le (hacc x hx) (by omega)
+      | some lu =>
+          rw [linearScanAssignAux_succ_some hlu] at hx ⊢
+          obtain ⟨hge, hle⟩ := linearScanStep_next_bounds pos lu busy nextFresh
+          refine ih (pos + 1) lastUse _ _ _ (by simp [hlen]) (by omega) ?_ x hx
+          intro y hy
+          rcases List.mem_append.mp hy with h | h
+          · exact Nat.lt_of_lt_of_le (hacc y h) hge
+          · rw [List.mem_singleton.mp h]
+            exact linearScanStep_slot_lt_next pos lu busy nextFresh
+
+/-- **The linear scan gives simultaneously-live binders distinct slots.** If
+    binder `k₁` is still live at the position of the later binder `k₂`, the two
+    slots differ. -/
+theorem linearScanAssign_live_ne (lastUse : List Nat) (k₁ k₂ : Nat)
+    (hlt : k₁ < k₂) (hk₂ : k₂ < lastUse.length)
+    (hlive : k₂ ≤ lastUse.getD k₁ 0) :
+    (linearScanAssign lastUse).getD k₁ 0 ≠ (linearScanAssign lastUse).getD k₂ 0 :=
+  linearScanAssignAux_live_ne lastUse.length 0 lastUse [] 0 [] rfl
+    (by intro j hj; omega) (by simp) (by omega) k₁ k₂ hlt (Nat.zero_le _) hk₂ hlive
+
+/-- The two binders of the `[1, 1]` last-use pattern are each live at the
+    other's position, so the separation theorem applies to them. -/
+example : (linearScanAssign [1, 1]).getD 0 0 ≠ (linearScanAssign [1, 1]).getD 1 0 :=
+  linearScanAssign_live_ne [1, 1] 0 1 (by omega) (by decide) (by decide)
+
+/-- The assignment has one entry per binder position. -/
+theorem linearScanAssign_length (lastUse : List Nat) :
+    (linearScanAssign lastUse).length = lastUse.length :=
+  linearScanAssignAux_length lastUse.length 0 lastUse [] 0 [] rfl (by omega)
+
+/-- Every assigned slot is below the number of binders. -/
+theorem linearScanAssign_lt_length (lastUse : List Nat) :
+    ∀ x ∈ linearScanAssign lastUse, x < (linearScanAssign lastUse).length :=
+  linearScanAssignAux_lt_length lastUse.length 0 lastUse [] 0 [] rfl (by omega)
+    (by simp)
+
+/-- **Slot separation including the out-of-range fallback.** Two distinct
+    indices, each still live at the other's position, get distinct values from
+    the slot map `linearScanRA_real` exposes: in range they are separated by the
+    linear scan, and out of range the fallback `length + k` is injective and
+    above every assigned slot. -/
+theorem linearScanAssign_getD_ne_of_live (lastUse : List Nat) (k₁ k₂ : Nat)
+    (hne : k₁ ≠ k₂) (h₁ : k₂ ≤ lastUse.getD k₁ 0) (h₂ : k₁ ≤ lastUse.getD k₂ 0) :
+    (linearScanAssign lastUse).getD k₁ ((linearScanAssign lastUse).length + k₁) ≠
+      (linearScanAssign lastUse).getD k₂
+        ((linearScanAssign lastUse).length + k₂) := by
+  have hlen := linearScanAssign_length lastUse
+  rcases Nat.lt_or_ge k₁ (linearScanAssign lastUse).length with hk₁ | hk₁ <;>
+    rcases Nat.lt_or_ge k₂ (linearScanAssign lastUse).length with hk₂ | hk₂
+  · rw [List.getD_eq_getElem _ _ hk₁, List.getD_eq_getElem _ _ hk₂,
+      ← List.getD_eq_getElem _ 0 hk₁, ← List.getD_eq_getElem _ 0 hk₂]
+    rcases Nat.lt_or_gt_of_ne hne with h | h
+    · exact linearScanAssign_live_ne lastUse k₁ k₂ h (by omega) h₁
+    · exact (linearScanAssign_live_ne lastUse k₂ k₁ h (by omega) h₂).symm
+  · rw [List.getD_eq_getElem _ _ hk₁, List.getD_eq_default _ _ hk₂]
+    have : (linearScanAssign lastUse)[k₁] < (linearScanAssign lastUse).length :=
+      linearScanAssign_lt_length lastUse _ (List.getElem_mem hk₁)
+    omega
+  · rw [List.getD_eq_getElem _ _ hk₂, List.getD_eq_default _ _ hk₁]
+    have : (linearScanAssign lastUse)[k₂] < (linearScanAssign lastUse).length :=
+      linearScanAssign_lt_length lastUse _ (List.getElem_mem hk₂)
+    omega
+  · rw [List.getD_eq_default _ _ hk₁, List.getD_eq_default _ _ hk₂]
+    omega
+
+/-- **The real linear-scan allocation is injective on the live range.** Two
+    binders each still live at the other's position get distinct slots. -/
+theorem linearScanRA_real_slotOfInjectiveOnLive {accTy : JasminTy}
+    (p : JForProg accTy) : SlotOfInjectiveOnLive p :=
+  fun k₁ k₂ hne h₁ h₂ =>
+    linearScanAssign_getD_ne_of_live (computeLastUse p.update) k₁ k₂ hne h₁ h₂
 
 /-! ## 8. Plugging the real RA into the framework
 
@@ -538,6 +869,17 @@ theorem linearScanRA_denote_preserves {accTy : JasminTy} (p : JForProg accTy)
     (init : ⟦accTy⟧) :
     (applyRA p (linearScanRA p)).denote init = p.denote init :=
   applyRA_denote_preserves p (linearScanRA p) (linearScanRA_WellFormed p) init
+
+/-- The framework `slotOf` of `linearScanRA` is the identity, so
+    `linearScanRA_WellFormed`'s `injOnLive` is the injectivity of `id` and says
+    nothing about `linearScanAssign`. Together with
+    `applyRA_denote_preserves_of_any` this pins what the chain above does and
+    does not establish: `linearScanRA_denote_preserves` holds because the
+    program is unchanged, not because an allocation was validated. The
+    allocation's own guarantee is `SlotOfInjectiveOnLive`, proved of
+    `linearScanRA_real` by `linearScanRA_real_slotOfInjectiveOnLive`. -/
+theorem linearScanRA_slotOf_eq_id {accTy : JasminTy} (p : JForProg accTy) :
+    (linearScanRA p).slotOf = id := rfl
 
 /-! ## 9. Sanity tests for the live-range / slot-assignment infrastructure
 

@@ -3,8 +3,36 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.KeystoneControl
-import CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd
+module
+
+-- The closed-kernel route reduces the front (`translateDialectControl`,
+-- `cryptoDialectToJasminCom`) by `rfl`/`decide`; under the module system that
+-- reduction needs the front closure imported with `all`, and `Nat.repr` (the
+-- front's slot names) exposed through `Init.Data.Repr`.
+import all Init.Data.Repr
+import all CatCrypt.Core.Code
+import all CatCrypt.Crypto.CryptoWord
+import all CatCrypt.Crypto.Jasmin.JasminAST
+import all CatCrypt.Crypto.Jasmin.JasminTypes
+import all CatCrypt.Crypto.Jasmin.LowCT
+import all CatCrypt.Crypto.SDist
+import all CatCrypt.Crypto.SecureCompilation.CryptoSSA
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+import all CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
+import all CatCrypt.Crypto.SecureCompilation.Dialects.RustExecKernelAdeq
+import all CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
+import all CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.Core
+import all CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+import all CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
+import all CatCrypt.Crypto.SecureCompilation.Ascent.KeystoneControl
+public import CatCrypt.Crypto.SecureCompilation.Ascent.KeystoneControl
+public import CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd
 
 /-!
 # A control-flow kernel capstone: a branch from source to the emit interface
@@ -15,7 +43,7 @@ see `Corres.lean`._
 This is the control-flow analogue of `FeSubEndToEnd.feSub_endToEnd` for a kernel
 with a **branch**: a select `r := if c then x else y` — two `RScalarSet` arms on
 the same name `r`, merged by `RIfNz` (the (C′) cmov shape). It carries the branch
-kernel through the ascent leg (`corres_if`) and the control keystone (`keystone_if`)
+kernel through the ascent leg (`corres_if`) and the control welding theorem (`keystone_if`)
 so the emitted output word is pinned to the clean branch-select spec
 `if c' then wEnc x else wEnc y` in `ZMod 2^64`, with **no free `Corres` hypothesis**.
 
@@ -33,11 +61,11 @@ here as two proved theorems:
 * **`condBackend_declines`** — the VIR `Com`→jasmin lowering *declines* that `Com`:
   `cryptoDialectToJasminCom` returns `none`, because the φ-merge is built from the
   `.bvEq` / `.not` / `.ite` ops, all outside the straight-line fragment `toJExprD`
-  lowers. This is the precise wall: a genuine conditional select produces a `Com`
+  lowers. This is the precise wall: a conditional select produces a `Com`
   the current owned backend cannot emit (control reaches bytes only through the
   separate `Lprog`/`Lcond` labelled-branch emitter, not this `Com` route).
 
-So the byte instantiation of the keystone is stated as the honest **emit interface**
+So the byte instantiation of `keystone_if` is stated as the **emit interface**
 `condKernel_bytes_of_emit`: for *any* emitted artefact denoting the select word
 `ifClosedVal`, its clean `ZMod 2^64` spec is the branch select. The hypothesis
 `hEmit` is exactly the fact a backend cmov/select lowering would supply — the one
@@ -52,6 +80,8 @@ and at the top-level empty varmap its guard is unbound (the front declines it).
 The abstraction leg itself is stated on the bare `RIfNz` (`corres_if`, the genuine
 φ-merge rule); the closed kernel is what the front consumes.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxRecDepth 10000
@@ -78,7 +108,7 @@ namespace CatCrypt.Crypto.SecureCompilation.Ascent
 /-- The bare φ-merge branch kernel `o := if c ≠ 0 then 7 else 9` (two literal
     `RScalarSet` arms on the SAME name `o`, merged by `RIfNz` reading guard `c`).
     This is the (C′) cmov shape — the only conditional shape the front compiles as
-    a genuine select. -/
+    a select. -/
 def condBranchKernel : LowCT :=
   .RIfNz "c" (.RScalarSet "o" 7) (.RScalarSet "o" 9)
 
@@ -87,7 +117,7 @@ def condBranchKernel : LowCT :=
     env-independent (`ifClosed_hAgree`) — the shape the front actually consumes. -/
 def condClosedKernel : LowCT := ifClosedKernel "c" "o" 0 7 9
 
-/-! ## The abstraction leg: the genuine φ-merge correspondence -/
+/-! ## The abstraction leg: the φ-merge correspondence -/
 
 /-- **The branch ascent leg.** Over the word state relation `SRword`, the concrete
     `phiSelect` cmov denotes the abstract branch select on the abstract guard's
@@ -101,9 +131,9 @@ theorem condKernel_ascends :
       condBranchKernel :=
   corres_if "c" "o" 7 9
 
-/-! ## The keystone at the emit interface -/
+/-! ## `keystone_if` at the emit interface -/
 
-/-- **`condKernel_bytes_of_emit` — the branch keystone at the byte interface.**
+/-- **`condKernel_bytes_of_emit` — the branch welding theorem at the byte interface.**
     For the closed branch kernel, given *any* emitted artefact `jdenote` that
     denotes the select output word (`hEmit : jdenote = ctTransTy (ifClosedVal 0 7 9)`),
     the emitted word's clean `ZMod 2^64` spec is the branch select — here `9`, the
@@ -133,9 +163,18 @@ theorem condFront_translates :
 noncomputable def condFrontOut : DTransOut ([] : Ctx) :=
   (translateDialectControl VarMap.empty condClosedKernel).get condFront_translates
 
+theorem condRetSome : (condFrontOut.vm.lookup "o").isSome := by rfl
+
+/-- The tracked slot's type is the 64-bit word: decided, since the slot name
+    goes through `Nat.repr`, which the elaborator's definitional check does not
+    reduce. -/
+theorem condRetTy : ((condFrontOut.vm.lookup "o").get condRetSome).1 = .sword 64 := by
+  decide
+
 /-- The tracked output slot `o` in the front output. -/
 noncomputable def condRetVar : CVar condFrontOut.Γ' (.sword 64) :=
-  ((condFrontOut.vm.lookup "o").get (by rfl)).2
+  cast (congrArg (CVar condFrontOut.Γ') condRetTy)
+    ((condFrontOut.vm.lookup "o").get condRetSome).2
 
 /-- The full φ-merge `Com` (the six-op `bvConst; bvConst; bvConst; bvEq; not; ite`
     prefix applied to the return of the output slot). -/
@@ -147,7 +186,7 @@ noncomputable def condFrontCom : Com catCryptDialect ([] : Ctx) (.sword 64) :=
     `.bvEq` / `.not` / `.ite` ops the select emits are outside the straight-line
     fragment `toJExprD` lowers, so the owned backend cannot emit the branch through
     this route. This is exactly the `hEmit` edge `condKernel_bytes_of_emit` leaves
-    open — a genuine conditional select is the precise point at which the present
+    open — a conditional select is the precise point at which the present
     `Com` pipeline stops short of bytes. -/
 theorem condBackend_declines : cryptoDialectToJasminCom condFrontCom = none := by rfl
 

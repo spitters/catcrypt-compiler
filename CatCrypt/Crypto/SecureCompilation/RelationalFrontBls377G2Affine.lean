@@ -3,10 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377G2
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Fp2Inv
-import Mathlib.Data.ZMod.Basic
-import Mathlib.Tactic
+module
+
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377G2
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Fp2Inv
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.Tactic.FieldSimp
+public import Mathlib.Tactic.Group
+public import Mathlib.Tactic.LinearCombination
+public import Mathlib.Tactic.Ring
 
 /-!
 # BLS12-377 `G2` Jacobian→affine projection and the affine group-law realization
@@ -68,6 +73,8 @@ deferred.
 0 sorries; no custom axioms; the realizations hold over `commRing ξ` under the
 stated norm-nonzero hypotheses.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

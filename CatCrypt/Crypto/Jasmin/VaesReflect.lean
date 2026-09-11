@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
+module
+
+public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
 # VAES reflect surface — 2-way VAESENC / VAESDEC leaves through the verified front
@@ -75,6 +78,8 @@ VAES-specific difference (the VEX/EVEX encoding) is byte-validated in
 * `CatCrypt/Crypto/Jasmin/UovReflect.lean` — sibling SIMD-leaf reference
 -/
 
+@[expose] public section
+
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 
 open CatCrypt.Crypto.Jasmin.LowCT
@@ -129,7 +134,7 @@ def vaesDec2WayPattern : LowCTPattern where
 /-- Tower type of a 2-way VAES packed operand (`memref 4`). -/
 def vaes2BlockTowerType : TowerType := .TBytes 32
 
-private def loc (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
+def locVaes (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
 
 /-! ## 5. Pure-Lean VAES kernels — the specs -/
 
@@ -146,9 +151,9 @@ noncomputable def vaesDec2WayLean (state rk : Vaes2Block) : Vaes2Block :=
 /-- The `LowCT` body for `vaesEnc2WayLean`. Shape:
     `RSeq RSkip (RCall "vaesenc_2way_256" __result [state, rk])`. -/
 def vaesEnc2WayBody : LowCT :=
-  let state_l  := loc "state"    vaes2BlockTowerType
-  let rk_l     := loc "rk"       vaes2BlockTowerType
-  let result_l := loc "__result" vaes2BlockTowerType
+  let state_l  := locVaes "state"    vaes2BlockTowerType
+  let rk_l     := locVaes "rk"       vaes2BlockTowerType
+  let result_l := locVaes "__result" vaes2BlockTowerType
   .RSeq .RSkip
     (.RCall "vaesenc_2way_256" result_l [state_l, rk_l])
 
@@ -161,9 +166,9 @@ def vaesEnc2WayReified : ReifiedFunc :=
 /-- The `LowCT` body for `vaesDec2WayLean`. Shape:
     `RSeq RSkip (RCall "vaesdec_2way_256" __result [state, rk])`. -/
 def vaesDec2WayBody : LowCT :=
-  let state_l  := loc "state"    vaes2BlockTowerType
-  let rk_l     := loc "rk"       vaes2BlockTowerType
-  let result_l := loc "__result" vaes2BlockTowerType
+  let state_l  := locVaes "state"    vaes2BlockTowerType
+  let rk_l     := locVaes "rk"       vaes2BlockTowerType
+  let result_l := locVaes "__result" vaes2BlockTowerType
   .RSeq .RSkip
     (.RCall "vaesdec_2way_256" result_l [state_l, rk_l])
 

@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.BignumHoare
-import CatCrypt.Crypto.Jasmin.BignumHoare.ModWrap
+module
+
+public import CatCrypt.Crypto.Jasmin.BignumHoare
+public import CatCrypt.Crypto.Jasmin.BignumHoare.ModWrap
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -54,12 +58,9 @@ open CatCrypt.Crypto.Jasmin.MemoryModel
     The algorithmic kernel — that the four `oi` registers hold limbs
     of `algoNat a_val` — is delegated to `pre_oi_values` above.
 
-    Status: structural framing complete; the 4-read chain is fully
-    closed (h_L3 via `load64Mem_store64_self`; h_L0, h_L1, h_L2 via
-    iterated `load64Mem_store64_offset_const` then `_store64_self`).
-    The kernel content has been factored out into `pre_oi_values` (which
-    currently contains the only `sorry` in the file — the mvcgen Phase 3
-    work item). -/
+    The 4-read chain is closed by `load64Mem_store64_self` for h_L3 and
+    by iterated `load64Mem_store64_offset_const` then `_store64_self`
+    for h_L0, h_L1 and h_L2. -/
 theorem bodyComputesAlgoNat
     (base_a base_op : UInt64)
     (_h_disj : MemoryModel.Disjoint
@@ -422,37 +423,37 @@ theorem bodyPreservesInput
           have e9 : s5.mem.loadByte (base_a + 8 + 1) =
                     s.mem.loadByte (base_a + 8 + 1) := by
             have := h_pres_at 9 (by omega)
-            have h9 : base_a + 8 + 1 = base_a + UInt64.ofNat 9 := by ext; simp [UInt64.toNat_add]
+            have h9 : base_a + 8 + 1 = base_a + UInt64.ofNat 9 := by apply UInt64.toNat_inj.1; simp [UInt64.toNat_add]
             rw [h9]; exact this
           have e10 : s5.mem.loadByte (base_a + 8 + 2) =
                      s.mem.loadByte (base_a + 8 + 2) := by
             have := h_pres_at 10 (by omega)
-            have h10 : base_a + 8 + 2 = base_a + UInt64.ofNat 10 := by ext; simp [UInt64.toNat_add]
+            have h10 : base_a + 8 + 2 = base_a + UInt64.ofNat 10 := by apply UInt64.toNat_inj.1; simp [UInt64.toNat_add]
             rw [h10]; exact this
           have e11 : s5.mem.loadByte (base_a + 8 + 3) =
                      s.mem.loadByte (base_a + 8 + 3) := by
             have := h_pres_at 11 (by omega)
-            have h11 : base_a + 8 + 3 = base_a + UInt64.ofNat 11 := by ext; simp [UInt64.toNat_add]
+            have h11 : base_a + 8 + 3 = base_a + UInt64.ofNat 11 := by apply UInt64.toNat_inj.1; simp [UInt64.toNat_add]
             rw [h11]; exact this
           have e12 : s5.mem.loadByte (base_a + 8 + 4) =
                      s.mem.loadByte (base_a + 8 + 4) := by
             have := h_pres_at 12 (by omega)
-            have h12 : base_a + 8 + 4 = base_a + UInt64.ofNat 12 := by ext; simp [UInt64.toNat_add]
+            have h12 : base_a + 8 + 4 = base_a + UInt64.ofNat 12 := by apply UInt64.toNat_inj.1; simp [UInt64.toNat_add]
             rw [h12]; exact this
           have e13 : s5.mem.loadByte (base_a + 8 + 5) =
                      s.mem.loadByte (base_a + 8 + 5) := by
             have := h_pres_at 13 (by omega)
-            have h13 : base_a + 8 + 5 = base_a + UInt64.ofNat 13 := by ext; simp [UInt64.toNat_add]
+            have h13 : base_a + 8 + 5 = base_a + UInt64.ofNat 13 := by apply UInt64.toNat_inj.1; simp [UInt64.toNat_add]
             rw [h13]; exact this
           have e14 : s5.mem.loadByte (base_a + 8 + 6) =
                      s.mem.loadByte (base_a + 8 + 6) := by
             have := h_pres_at 14 (by omega)
-            have h14 : base_a + 8 + 6 = base_a + UInt64.ofNat 14 := by ext; simp [UInt64.toNat_add]
+            have h14 : base_a + 8 + 6 = base_a + UInt64.ofNat 14 := by apply UInt64.toNat_inj.1; simp [UInt64.toNat_add]
             rw [h14]; exact this
           have e15 : s5.mem.loadByte (base_a + 8 + 7) =
                      s.mem.loadByte (base_a + 8 + 7) := by
             have := h_pres_at 15 (by omega)
-            have h15 : base_a + 8 + 7 = base_a + UInt64.ofNat 15 := by ext; simp [UInt64.toNat_add]
+            have h15 : base_a + 8 + 7 = base_a + UInt64.ofNat 15 := by apply UInt64.toNat_inj.1; simp [UInt64.toNat_add]
             rw [h15]; exact this
           have e16 : s5.mem.loadByte (base_a + 16) =
                      s.mem.loadByte (base_a + 16) := by
@@ -460,37 +461,37 @@ theorem bodyPreservesInput
           have e17 : s5.mem.loadByte (base_a + 16 + 1) =
                      s.mem.loadByte (base_a + 16 + 1) := by
             have := h_pres_at 17 (by omega)
-            have h : base_a + 16 + 1 = base_a + UInt64.ofNat 17 := by ext; simp [UInt64.toNat_add]
+            have h : base_a + 16 + 1 = base_a + UInt64.ofNat 17 := by apply UInt64.toNat_inj.1; simp [UInt64.toNat_add]
             rw [h]; exact this
           have e18 : s5.mem.loadByte (base_a + 16 + 2) =
                      s.mem.loadByte (base_a + 16 + 2) := by
             have := h_pres_at 18 (by omega)
-            have h : base_a + 16 + 2 = base_a + UInt64.ofNat 18 := by ext; simp [UInt64.toNat_add]
+            have h : base_a + 16 + 2 = base_a + UInt64.ofNat 18 := by apply UInt64.toNat_inj.1; simp [UInt64.toNat_add]
             rw [h]; exact this
           have e19 : s5.mem.loadByte (base_a + 16 + 3) =
                      s.mem.loadByte (base_a + 16 + 3) := by
             have := h_pres_at 19 (by omega)
-            have h : base_a + 16 + 3 = base_a + UInt64.ofNat 19 := by ext; simp [UInt64.toNat_add]
+            have h : base_a + 16 + 3 = base_a + UInt64.ofNat 19 := by apply UInt64.toNat_inj.1; simp [UInt64.toNat_add]
             rw [h]; exact this
           have e20 : s5.mem.loadByte (base_a + 16 + 4) =
                      s.mem.loadByte (base_a + 16 + 4) := by
             have := h_pres_at 20 (by omega)
-            have h : base_a + 16 + 4 = base_a + UInt64.ofNat 20 := by ext; simp [UInt64.toNat_add]
+            have h : base_a + 16 + 4 = base_a + UInt64.ofNat 20 := by apply UInt64.toNat_inj.1; simp [UInt64.toNat_add]
             rw [h]; exact this
           have e21 : s5.mem.loadByte (base_a + 16 + 5) =
                      s.mem.loadByte (base_a + 16 + 5) := by
             have := h_pres_at 21 (by omega)
-            have h : base_a + 16 + 5 = base_a + UInt64.ofNat 21 := by ext; simp [UInt64.toNat_add]
+            have h : base_a + 16 + 5 = base_a + UInt64.ofNat 21 := by apply UInt64.toNat_inj.1; simp [UInt64.toNat_add]
             rw [h]; exact this
           have e22 : s5.mem.loadByte (base_a + 16 + 6) =
                      s.mem.loadByte (base_a + 16 + 6) := by
             have := h_pres_at 22 (by omega)
-            have h : base_a + 16 + 6 = base_a + UInt64.ofNat 22 := by ext; simp [UInt64.toNat_add]
+            have h : base_a + 16 + 6 = base_a + UInt64.ofNat 22 := by apply UInt64.toNat_inj.1; simp [UInt64.toNat_add]
             rw [h]; exact this
           have e23 : s5.mem.loadByte (base_a + 16 + 7) =
                      s.mem.loadByte (base_a + 16 + 7) := by
             have := h_pres_at 23 (by omega)
-            have h : base_a + 16 + 7 = base_a + UInt64.ofNat 23 := by ext; simp [UInt64.toNat_add]
+            have h : base_a + 16 + 7 = base_a + UInt64.ofNat 23 := by apply UInt64.toNat_inj.1; simp [UInt64.toNat_add]
             rw [h]; exact this
           have e24 : s5.mem.loadByte (base_a + 24) =
                      s.mem.loadByte (base_a + 24) := by
@@ -498,37 +499,37 @@ theorem bodyPreservesInput
           have e25 : s5.mem.loadByte (base_a + 24 + 1) =
                      s.mem.loadByte (base_a + 24 + 1) := by
             have := h_pres_at 25 (by omega)
-            have h : base_a + 24 + 1 = base_a + UInt64.ofNat 25 := by ext; simp [UInt64.toNat_add]
+            have h : base_a + 24 + 1 = base_a + UInt64.ofNat 25 := by apply UInt64.toNat_inj.1; simp [UInt64.toNat_add]
             rw [h]; exact this
           have e26 : s5.mem.loadByte (base_a + 24 + 2) =
                      s.mem.loadByte (base_a + 24 + 2) := by
             have := h_pres_at 26 (by omega)
-            have h : base_a + 24 + 2 = base_a + UInt64.ofNat 26 := by ext; simp [UInt64.toNat_add]
+            have h : base_a + 24 + 2 = base_a + UInt64.ofNat 26 := by apply UInt64.toNat_inj.1; simp [UInt64.toNat_add]
             rw [h]; exact this
           have e27 : s5.mem.loadByte (base_a + 24 + 3) =
                      s.mem.loadByte (base_a + 24 + 3) := by
             have := h_pres_at 27 (by omega)
-            have h : base_a + 24 + 3 = base_a + UInt64.ofNat 27 := by ext; simp [UInt64.toNat_add]
+            have h : base_a + 24 + 3 = base_a + UInt64.ofNat 27 := by apply UInt64.toNat_inj.1; simp [UInt64.toNat_add]
             rw [h]; exact this
           have e28 : s5.mem.loadByte (base_a + 24 + 4) =
                      s.mem.loadByte (base_a + 24 + 4) := by
             have := h_pres_at 28 (by omega)
-            have h : base_a + 24 + 4 = base_a + UInt64.ofNat 28 := by ext; simp [UInt64.toNat_add]
+            have h : base_a + 24 + 4 = base_a + UInt64.ofNat 28 := by apply UInt64.toNat_inj.1; simp [UInt64.toNat_add]
             rw [h]; exact this
           have e29 : s5.mem.loadByte (base_a + 24 + 5) =
                      s.mem.loadByte (base_a + 24 + 5) := by
             have := h_pres_at 29 (by omega)
-            have h : base_a + 24 + 5 = base_a + UInt64.ofNat 29 := by ext; simp [UInt64.toNat_add]
+            have h : base_a + 24 + 5 = base_a + UInt64.ofNat 29 := by apply UInt64.toNat_inj.1; simp [UInt64.toNat_add]
             rw [h]; exact this
           have e30 : s5.mem.loadByte (base_a + 24 + 6) =
                      s.mem.loadByte (base_a + 24 + 6) := by
             have := h_pres_at 30 (by omega)
-            have h : base_a + 24 + 6 = base_a + UInt64.ofNat 30 := by ext; simp [UInt64.toNat_add]
+            have h : base_a + 24 + 6 = base_a + UInt64.ofNat 30 := by apply UInt64.toNat_inj.1; simp [UInt64.toNat_add]
             rw [h]; exact this
           have e31 : s5.mem.loadByte (base_a + 24 + 7) =
                      s.mem.loadByte (base_a + 24 + 7) := by
             have := h_pres_at 31 (by omega)
-            have h : base_a + 24 + 7 = base_a + UInt64.ofNat 31 := by ext; simp [UInt64.toNat_add]
+            have h : base_a + 24 + 7 = base_a + UInt64.ofNat 31 := by apply UInt64.toNat_inj.1; simp [UInt64.toNat_add]
             rw [h]; exact this
           simp only [bind, Option.bind, e0, e1, e2, e3, e4, e5, e6, e7, e8,
                      e9, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19,

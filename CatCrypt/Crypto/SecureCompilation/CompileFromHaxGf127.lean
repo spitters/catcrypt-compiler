@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
-import CatCrypt.Crypto.SecureCompilation.BitVecNatBridge
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public meta import CatCrypt.Crypto.SecureCompilation.BitVecNatBridge
+public import CatCrypt.Crypto.SecureCompilation.BitVecNatBridge
 
 /-!
 # C4 fan-out: the verified compiler emits a GF(127) Mersenne-fold multiply
@@ -61,6 +66,8 @@ The abstract `(a*b) % 127` tie is stated and proved **separately**
 mod-reduce arithmetic identity (the prime-field analogue of the `#117` Barrett
 seam, here phrased in pure `BitVec` so `bv_decide` bitblasts the fold).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -157,7 +164,7 @@ theorem gf127Mul_compiles :
       gf127MulSrc (fun _ => none) = some (gf127MulFold a b) := by
     have h := gf127MulSrc_denoteScalar (nIn := 2) ![a, b]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 64) (nIn := 2) ["a", "b"]
     ![a, b] gf127MulSrc _ hc hspec
 

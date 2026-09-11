@@ -3,8 +3,10 @@ Copyright (c) 2024 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.UCMonad.ITreeN
-import CatCrypt.Crypto.UCMonad.RoundMKantorovich
+module
+
+public import CatCrypt.Crypto.UCMonad.ITreeN
+public import CatCrypt.Crypto.UCMonad.RoundMKantorovich
 
 /-!
 # Kantorovich Bisimulation Metric on ITreeN
@@ -29,6 +31,8 @@ get the supremum over responses of the recursive metric.
 following the structure of `RoundMKantorovich` with additional Vis branch case analysis.
 -/
 
+@[expose] public section
+
 namespace UCMonad.ITreeNUC
 
 open CatCrypt.Core CatCrypt.Prob CatCrypt.Crypto
@@ -40,19 +44,19 @@ open Classical
 
 /-- Metric on `Σ e, E.Resp e → X`: different events → ⊤,
     same event → sup over responses of the component metric. -/
-private noncomputable def visDist {X : Type} (E : EventSig) (dX : EPseudoMetric X)
+noncomputable def visDist {X : Type} (E : EventSig) (dX : EPseudoMetric X)
     (p q : Σ (e : E.Event), E.Resp e → X) : ℝ≥0∞ :=
   if h : p.1 = q.1 then
     ⨆ (r : E.Resp p.1), dX.dist (p.2 r) (q.2 (h ▸ r))
   else ⊤
 
-private theorem visDist_self {X : Type} (E : EventSig) (dX : EPseudoMetric X)
+theorem visDist_self {X : Type} (E : EventSig) (dX : EPseudoMetric X)
     (p : Σ (e : E.Event), E.Resp e → X) : visDist E dX p p = 0 := by
   unfold visDist; rw [dif_pos rfl]
   apply le_antisymm _ (zero_le)
   exact iSup_le (fun r => le_of_eq (dX.dist_self _))
 
-private theorem visDist_sym {X : Type} (E : EventSig) (dX : EPseudoMetric X)
+theorem visDist_sym {X : Type} (E : EventSig) (dX : EPseudoMetric X)
     (p q : Σ (e : E.Event), E.Resp e → X) :
     visDist E dX p q = visDist E dX q p := by
   obtain ⟨ep, fp⟩ := p; obtain ⟨eq, fq⟩ := q
@@ -64,7 +68,7 @@ private theorem visDist_sym {X : Type} (E : EventSig) (dX : EPseudoMetric X)
     · rw [dX.dist_sym]; exact le_iSup_of_le r le_rfl
   · rw [dif_neg h, dif_neg (Ne.symm h)]
 
-private theorem visDist_triangle {X : Type} (E : EventSig) (dX : EPseudoMetric X)
+theorem visDist_triangle {X : Type} (E : EventSig) (dX : EPseudoMetric X)
     (p q s : Σ (e : E.Event), E.Resp e → X) :
     visDist E dX p s ≤ visDist E dX p q + visDist E dX q s := by
   obtain ⟨ep, fp⟩ := p; obtain ⟨eq, fq⟩ := q; obtain ⟨es, fs⟩ := s
@@ -152,7 +156,7 @@ theorem kdistITreeN_pt_vis_cast_le {β : Type} {E : EventSig}
 /-! ## Pointwise Right PPL -/
 
 /-- Abbreviation for the step metric at level n. -/
-private noncomputable abbrev stepMetric (n : Nat) (E : EventSig) (β : Type) :=
+noncomputable abbrev stepMetric (n : Nat) (E : EventSig) (β : Type) :=
   sumMetric (discreteMetric β)
     (sumMetric (kdistITreeN_pt n E β) (visContinuationMetric E (kdistITreeN_pt n E β)))
 
@@ -539,7 +543,7 @@ noncomputable def UCMonadMetric_ITreeN_Kantorovich (n : Nat) (E : EventSig)
 /-- Pointwise: flattening distance ≤ Kantorovich distance.
     `flattenAll` composes `n` flatten steps; each is non-expansive
     w.r.t. the Kantorovich metric, so the composed distance is ≤. -/
-private theorem sdist_flattenAll_le_kdistITreeN_pt :
+theorem sdist_flattenAll_le_kdistITreeN_pt :
     ∀ (n : Nat) (E : EventSig) {β : Type}
     (handler : ∀ e : E.Event, SPComp (E.Resp e))
     (μ ν : ITreeN n E β),

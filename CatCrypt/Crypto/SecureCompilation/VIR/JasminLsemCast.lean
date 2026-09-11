@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMulCarry
-import Transfer.Base.Related
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMulCarry
+public import Transfer.Base.Related
 
 /-!
 # Faithful `lsem` for the width-cast fragment
@@ -83,6 +86,8 @@ reasons as increments 5–7: `regConst` (string-baked width on the wire),
 `jasminc_preserves_ct`.** The `lsem→bytes` encoder and Sail tables remain the
 declared trusted base, as for every verified compiler.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

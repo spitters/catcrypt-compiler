@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.VsimdAsmPrint
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CryptoExtEncoder
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.VsimdAsmPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.VsimdAsmPrint
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CryptoExtEncoder
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CryptoExtEncoder
 
 /-!
 # Standalone ChaCha byte-helper layer (Vec128 teardown)
@@ -45,6 +50,8 @@ gas-pinned (`as --64` + `objdump -d`).  The decode round-trip for the VEX SIMD
 opcodes is the same gas-pinned tier (the ACL2 x86isa / sail-x86 model has no VEX
 SIMD decode tables) — the residual, the same ceiling `SimdBytes` records.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

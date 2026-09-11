@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrontDenote
-import CatCrypt.Crypto.SecureCompilation.Dialects.CarryChainSelectAdequacy
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrontDenote
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CarryChainSelectAdequacy
 
 /-!
 # The secp256k1 field add and subtract bricks, on all inputs
@@ -47,6 +50,8 @@ columns stay inside 64 bits only for 32-bit limbs. `brickStep_addSub` re-establi
   `Secp256k1PointOpFrontDenote` on the `add` and `sub` arms, over `BrickScope`.
 -/
 
+@[expose] public section
+
 namespace CatCrypt.Crypto.SecureCompilation.Secp256k1FeAddSubBrick
 
 open CatCrypt.Crypto.Jasmin.LowCT (LowCT SExpr)
@@ -74,7 +79,7 @@ theorem hdAppend {u v : String} {c : Char} (h : hd u = some c) : hd (u ++ v) = s
   rw [String.toList_append]
   cases hu : u.toList with
   | nil => rw [hu] at h; simp at h
-  | cons a t => rw [hu] at h; simpa using h
+  | cons a t => rw [hu] at h; simpa using! h
 
 /-- Names whose first characters differ are different. -/
 theorem neOfHd {u v : String} {c d : Char} (hu : hd u = some c) (hv : hd v = some d)
@@ -104,7 +109,7 @@ theorem forInRange'Idx {σ : Type} (P : Nat → σ → Prop) (f : Nat → σ →
       P (start + len) (forIn (List.range' start len 1) init f) := by
   intro len
   induction len with
-  | zero => intro start init h; simpa using h
+  | zero => intro start init h; simpa using! h
   | succ len ih =>
       intro start init h
       rw [List.range'_succ, List.forIn_cons]
@@ -116,7 +121,7 @@ theorem forInRange'Idx {σ : Type} (P : Nat → σ → Prop) (f : Nat → σ →
       | done b => exact absurd hfa (hnd start init b)
       | yield b =>
           have := ih (start + 1) b (hstep start init b h hfa)
-          simpa [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using this
+          simpa [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using! this
 
 /-- A trip-indexed state predicate carried across an `Id`-monad `forIn` over `[:n]`. -/
 theorem forInRangeIdx {σ : Type} (P : Nat → σ → Prop) (n : Nat)
@@ -169,7 +174,7 @@ theorem tagNe {a b : String} {ca cb : Char} (ha : hd a = some ca) (hb : hd b = s
 
 theorem idxNe (a : String) {i j : Nat} (h : i ≠ j) : a ++ toString i ≠ a ++ toString j := by
   intro he
-  exact h (repr_injective (by simpa [toString] using (String.append_right_inj a).mp he))
+  exact h (repr_injective (by simpa [toString] using! (String.append_right_inj a).mp he))
 
 /-- Two indexed names under a common prefix differ when their tag-and-index suffixes do. -/
 theorem nmNe (p : String) {a b : String} {i j : Nat} (h : a ++ toString i ≠ b ++ toString j) :
@@ -246,14 +251,14 @@ theorem setBang_get_ne (a : Array String) {p k : Nat} (v : String) (h : k ≠ p)
     (a.set! p v)[k]! = a[k]! := by
   show (a.setIfInBounds p v)[k]! = a[k]!
   by_cases hk : k < a.size
-  · rw [getElem!_pos (a.setIfInBounds p v) k (by simpa using hk), getElem!_pos a k hk]
+  · rw [getElem!_pos (a.setIfInBounds p v) k (by simpa using! hk), getElem!_pos a k hk]
     exact Array.getElem_setIfInBounds_ne hk (Ne.symm h)
-  · rw [getElem!_neg (a.setIfInBounds p v) k (by simpa using hk), getElem!_neg a k hk]
+  · rw [getElem!_neg (a.setIfInBounds p v) k (by simpa using! hk), getElem!_neg a k hk]
 
 theorem setBang_get_eq (a : Array String) {p : Nat} (v : String) (h : p < a.size) :
     (a.set! p v)[p]! = v := by
   show (a.setIfInBounds p v)[p]! = v
-  rw [getElem!_pos (a.setIfInBounds p v) p (by simpa using h)]
+  rw [getElem!_pos (a.setIfInBounds p v) p (by simpa using! h)]
   simp
 
 /-! ## 9. The operand-scanning add, unrolled -/
@@ -358,7 +363,7 @@ theorem splitApp {l₁ l₂ : List LowCT} {env env' : SEnvScalar}
   rw [semList_append] at h
   cases he : semList l₁ env with
   | none => rw [he] at h; simp at h
-  | some e => exact ⟨e, rfl, by rw [he] at h; simpa using h⟩
+  | some e => exact ⟨e, rfl, by rw [he] at h; simpa using! h⟩
 
 /-- A name outside the `pfx` namespace differs from an indexed `pfx` name. -/
 theorem outNe {s pfx : String} (hs : ∀ w : String, s ≠ pfx ++ w) (a : String) (i : Nat) :
@@ -719,7 +724,7 @@ theorem feHN_inj {u v : String} {k j : Nat} (hk : k < 8) (hj : j < 8)
     (h : feHN u k = feHN v j) : u = v ∧ k = j := by
   rw [feHN_assoc, feHN_assoc] at h
   obtain ⟨h1, h2⟩ := appSuffixInj h (by rw [digitLen hk, digitLen hj])
-  refine ⟨h1, repr_injective (by simpa [toString] using (String.append_right_inj "h").mp h2)⟩
+  refine ⟨h1, repr_injective (by simpa [toString] using! (String.append_right_inj "h").mp h2)⟩
 
 /-- A two-character name is never a half-limb slot name of a nonempty field element. -/
 theorem feHN_ne_short {u v : String} {k : Nat} (hk : k < 8) {c : Char} (hu : hd u = some c)
@@ -2046,7 +2051,7 @@ theorem brickStep_sub (idx : Nat) (o a b : String) (hop : FOpSchedOkB (FOp.sub o
     refine genAdd_name "ZZ" (genSub "ZZ" (feH a) (feH b) (s!"op{idx}" ++ "S")).2.1
       (pmNamesOf s!"op{idx}") (s!"op{idx}" ++ "A") k ?_
     rw [genSub_len, feH_len, pmNamesOf_len]
-    simpa using hk
+    simpa using! hk
   have hcr : accN (fun k =>
         (envReader Eb ((feSubHalves s!"op{idx}" (feH a) (feH b)).2[k]!)).toNat) 8
       = accN (fun k => (envReader Eb s!"{s!"op{idx}" ++ "A"}s{k}").toNat) 8 :=

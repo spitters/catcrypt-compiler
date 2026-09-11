@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrontEmit
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrontEmit
 
 /-!
 # Owned producer entry point for the front-generated secp256k1 point ops
@@ -20,6 +22,8 @@ gates the write on the `selfCheck` KAT battery, whose own docstring measures a
 single whole-op `Com.denote` at over 11 GB on a 14 GB host, so that route is
 killed before it writes.
 -/
+
+@[expose] public section
 
 def main : IO Unit :=
   CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrontEmit.emitProven

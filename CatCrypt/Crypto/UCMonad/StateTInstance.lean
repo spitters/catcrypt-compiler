@@ -3,7 +3,9 @@ Copyright (c) 2024 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.UCMonad
+module
+
+public import CatCrypt.Crypto.UCMonad
 
 /-!
 # StateT Preserves UCMonadMetric
@@ -58,6 +60,8 @@ hyperproperty preservation with stateful contexts and distinguishers.
 * Capucci, Gavranović — *Actegories for the Working Amthematician* (2022)
 * Bonchi, Milius, Pous, Pratt — *Lawvere Metric Spaces* (BMPP 2022)
 -/
+
+@[expose] public section
 
 open scoped ENNReal
 

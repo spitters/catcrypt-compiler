@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Core
-import CatCrypt.Crypto.Optimizer.Rewrite.MontgomeryRedcGeneric
-import Mathlib.Data.ZMod.Basic
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public import CatCrypt.Crypto.Optimizer.Rewrite.MontgomeryRedcGeneric
+public import Mathlib.Data.ZMod.Basic
 
 /-!
 # ModArith Montgomery domain-conversion ops — `to_mont` / `from_mont` / `mont_square`
@@ -95,6 +97,8 @@ multiply/shift, index-only, never data-dependent on a secret-chosen branch), so
 its denotation is a total pure function and it is constant-time by construction
 (`ctSafe = true`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

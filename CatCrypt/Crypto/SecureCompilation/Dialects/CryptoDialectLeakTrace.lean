@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
 
 /-!
 # Dialect-level leakage / constant-time trace for `catCryptDialect`
@@ -39,6 +41,8 @@ live in `CryptoDialectLeakTraceNative.lean`.
 
 **0 axioms**, **0 sorries**.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

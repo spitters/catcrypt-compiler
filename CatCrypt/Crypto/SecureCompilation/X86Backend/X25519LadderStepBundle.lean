@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X25519MonoLadderKernel
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Cios4LimbProven
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.X25519MonoLadderKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X25519MonoLadderKernel
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Cios4LimbProven
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Cios4LimbProven
 
 /-!
 # Owned X25519 Montgomery-ladder step at the `(out, acc)` bundle ABI
@@ -82,6 +87,8 @@ and (b) drives the full 255-step ladder through `x25519_ladder_step_rustcmd`
 and validates byte-for-byte against RFC 7748 §5.2 and s2n `curve25519_x25519`.
 The whitelisted artifact's spine, by contrast, computes nothing (shim leaf).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -311,6 +318,6 @@ def emitMain : IO Unit := do
 The render is written while this module elaborates, so `lake` produces it from
 this file and no separate driver or Makefile rule carries the dependency. -/
 
-#eval emitMain
+-- #eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.X25519LadderStepBundle

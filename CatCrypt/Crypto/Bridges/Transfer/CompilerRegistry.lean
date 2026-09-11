@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Transfer.Base.Related
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Preservation
+module
+
+public import Transfer.Base.Related
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Preservation
 
 /-!
 # The compiler's preservation lemmas, wired into the `Related` registry
@@ -26,6 +28,8 @@ the `Preservation.⟨op⟩_preserves` lemma in pure form. Registering it as
 registry; resolution does the rest, never inventing a preservation it wasn't given.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace Transfer
@@ -36,7 +40,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 variable {w : Nat}
 
 /-- A two-register initial state binding `"x" ↦ a`, `"y" ↦ b`. -/
-private def st2 (a b : BitVec w) : State w :=
+def st2 (a b : BitVec w) : State w :=
   { regs := fun r => if r = "x" then a else if r = "y" then b else 0 }
 
 /-! ## Per-instruction preservation in pure binary-function form -/

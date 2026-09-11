@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.EcPairingCheckOps
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.EcPairingCheckOps
 
 /-!
 # `pairing_check` is SOUND relative to an ASSUMED bilinear, non-degenerate pairing
@@ -69,6 +71,8 @@ interface, so the converse is left as a documented gap rather than proved by a
 fabricated cancellation axiom.  Adding a `gt_mul_right_cancel` field would close
 it, at the cost of a stronger assumption; we keep the interface minimal.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

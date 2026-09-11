@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # C4 fan-out: the verified compiler emits the BLAKE3 compress `G` from extracted source
@@ -57,6 +60,8 @@ Inputs `(a, b, c, d, m0, m1)` are parameters `["a","b","c","d","m0","m1"]`
 
 All four components are derived (`blake3GA_compiles` … `blake3GD_compiles`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -211,7 +216,7 @@ theorem blake3GA_compiles :
       gASrc (fun _ => none) = some (blake3GSpec a b c d m0 m1).1 := by
     have h := gASrc_denoteScalar (nIn := 6) ![a, b, c, d, m0, m1]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 32) (nIn := 6) ["a", "b", "c", "d", "m0", "m1"]
     ![a, b, c, d, m0, m1] gASrc _ hc hspec
 
@@ -233,7 +238,7 @@ theorem blake3GB_compiles :
       gBSrc (fun _ => none) = some (blake3GSpec a b c d m0 m1).2.1 := by
     have h := gBSrc_denoteScalar (nIn := 6) ![a, b, c, d, m0, m1]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 32) (nIn := 6) ["a", "b", "c", "d", "m0", "m1"]
     ![a, b, c, d, m0, m1] gBSrc _ hc hspec
 
@@ -255,7 +260,7 @@ theorem blake3GC_compiles :
       gCSrc (fun _ => none) = some (blake3GSpec a b c d m0 m1).2.2.1 := by
     have h := gCSrc_denoteScalar (nIn := 6) ![a, b, c, d, m0, m1]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 32) (nIn := 6) ["a", "b", "c", "d", "m0", "m1"]
     ![a, b, c, d, m0, m1] gCSrc _ hc hspec
 
@@ -277,7 +282,7 @@ theorem blake3GD_compiles :
       gDSrc (fun _ => none) = some (blake3GSpec a b c d m0 m1).2.2.2 := by
     have h := gDSrc_denoteScalar (nIn := 6) ![a, b, c, d, m0, m1]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 32) (nIn := 6) ["a", "b", "c", "d", "m0", "m1"]
     ![a, b, c, d, m0, m1] gDSrc _ hc hspec
 

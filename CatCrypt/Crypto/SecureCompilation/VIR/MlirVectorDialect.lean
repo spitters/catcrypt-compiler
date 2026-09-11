@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Core
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
 
 /-!
 # A *denoting* MLIR `vector` dialect in the VIR framework ("AVX-in-MLIR")
@@ -74,6 +77,8 @@ carry the CompPoly `realNttMul_negacyclic_coeff` proof through the vectorized
 form. This file is the dialect + the elementwise agreement + the poly-add PoC;
 the full vectorized-NTT emit + the `mlir-opt` AVX pass are the follow-ons.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

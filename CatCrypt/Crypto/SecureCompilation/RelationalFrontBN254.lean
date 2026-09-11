@@ -3,11 +3,18 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFront
-import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Add
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Mul
-import Mathlib.Data.ZMod.Basic
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.RelationalFront
+public import CatCrypt.Crypto.SecureCompilation.RelationalFront
+public meta import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
+public import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
+public meta import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Add
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Add
+public meta import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Mul
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Mul
+public import Mathlib.Data.ZMod.Basic
 
 /-!
 # The BN254 base field ADD and MUL, realized relationally over a 4×64-bit carrier
@@ -48,6 +55,8 @@ With ADD + MUL both realized over the 4-limb carrier, the BN254 base-field op se
 complete for the inversion-free EC group law (Jacobian add/double are straight-line
 `+`/`·`; field inversion is the separate safegcd leaf in `Vale/SafegcdBN254.lean`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

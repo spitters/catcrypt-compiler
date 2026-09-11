@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.BignumHoare.ChainStepAxioms
-import CatCrypt.Crypto.Jasmin.BignumHoare.PowP58LayerB
-import CatCrypt.Crypto.Jasmin.Ed25519.InvP25519Algo
+module
+
+public import CatCrypt.Crypto.Jasmin.BignumHoare.ChainStepAxioms
+public import CatCrypt.Crypto.Jasmin.BignumHoare.PowP58LayerB
+public import CatCrypt.Crypto.Jasmin.Ed25519.InvP25519Algo
 
 /-!
 # `bignum_inv_p25519`: end-to-end `BignumTripleFuel` composition
@@ -36,6 +38,8 @@ post (proving the result equals `a^(p-2) mod p_25519`) is *not*
 addressed here — that's a Layer A concern; this file threads the
 chain-algebraic Nat result symbolically.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -269,7 +273,7 @@ theorem block2_correctness_triple
         h_z2_addr_eq sqr_body h_shape
     have : some s_ax = some s' := h_ax_exec ▸ h_exec
     have h_eq : s_ax = s' := Option.some.inj this
-    simpa [post_block2, h_eq] using h_ax_post
+    simpa [post_block2, h_eq] using! h_ax_post
 
 theorem block3_correctness_triple
     (registry : BignumRegistry)
@@ -303,7 +307,7 @@ theorem block3_correctness_triple
         h_z2_addr_eq (mkScratch s) rsm_body h_shape
     have : some s_ax = some s' := h_ax_exec ▸ h_exec
     have h_eq : s_ax = s' := Option.some.inj this
-    simpa [post_block3, h_eq] using h_ax_post
+    simpa [post_block3, h_eq] using! h_ax_post
 
 theorem block4_correctness_triple
     (registry : BignumRegistry)
@@ -340,7 +344,7 @@ theorem block4_correctness_triple
         h_z11_addr_eq h_z9_addr_eq h_z2_addr_eq idx mul_body h_shape
     have : some s_ax = some s' := h_ax_exec ▸ h_exec
     have h_eq : s_ax = s' := Option.some.inj this
-    simpa [post_block4, h_eq] using h_ax_post
+    simpa [post_block4, h_eq] using! h_ax_post
 
 theorem block5_correctness_triple
     (registry : BignumRegistry)
@@ -378,7 +382,7 @@ theorem block5_correctness_triple
         (mkScratch s) startIdx rsm_body h_shape
     have : some s_ax = some s' := h_ax_exec ▸ h_exec
     have h_eq : s_ax = s' := Option.some.inj this
-    simpa [post_block5, h_eq] using h_ax_post
+    simpa [post_block5, h_eq] using! h_ax_post
 
 theorem block6_correctness_triple
     (registry : BignumRegistry)
@@ -415,7 +419,7 @@ theorem block6_correctness_triple
         (mkScratch s) startIdx rsm_body h_shape
     have : some s_ax = some s' := h_ax_exec ▸ h_exec
     have h_eq : s_ax = s' := Option.some.inj this
-    simpa [post_block6, h_eq] using h_ax_post
+    simpa [post_block6, h_eq] using! h_ax_post
 
 theorem block7_correctness_triple
     (registry : BignumRegistry)
@@ -452,7 +456,7 @@ theorem block7_correctness_triple
         (mkScratch s) startIdx rsm_body h_shape
     have : some s_ax = some s' := h_ax_exec ▸ h_exec
     have h_eq : s_ax = s' := Option.some.inj this
-    simpa [post_block7, h_eq] using h_ax_post
+    simpa [post_block7, h_eq] using! h_ax_post
 
 theorem block8_correctness_triple
     (registry : BignumRegistry)
@@ -489,7 +493,7 @@ theorem block8_correctness_triple
         (mkScratch s) startIdx rsm_body h_shape
     have : some s_ax = some s' := h_ax_exec ▸ h_exec
     have h_eq : s_ax = s' := Option.some.inj this
-    simpa [post_block8, h_eq] using h_ax_post
+    simpa [post_block8, h_eq] using! h_ax_post
 
 theorem block9_correctness_triple
     (registry : BignumRegistry)
@@ -529,7 +533,7 @@ theorem block9_correctness_triple
         (mkScratch s) startIdx rsm_body h_shape
     have : some s_ax = some s' := h_ax_exec ▸ h_exec
     have h_eq : s_ax = s' := Option.some.inj this
-    simpa [post_block9, h_eq] using h_ax_post
+    simpa [post_block9, h_eq] using! h_ax_post
 
 theorem block10_correctness_triple
     (registry : BignumRegistry)
@@ -566,7 +570,7 @@ theorem block10_correctness_triple
         (mkScratch s) startIdx rsm_body h_shape
     have : some s_ax = some s' := h_ax_exec ▸ h_exec
     have h_eq : s_ax = s' := Option.some.inj this
-    simpa [post_block10, h_eq] using h_ax_post
+    simpa [post_block10, h_eq] using! h_ax_post
 
 theorem block11_correctness_triple
     (registry : BignumRegistry)
@@ -603,7 +607,7 @@ theorem block11_correctness_triple
         (mkScratch s) startIdx rsm_body h_shape
     have : some s_ax = some s' := h_ax_exec ▸ h_exec
     have h_eq : s_ax = s' := Option.some.inj this
-    simpa [post_block11, h_eq] using h_ax_post
+    simpa [post_block11, h_eq] using! h_ax_post
 
 theorem block12_correctness_triple
     (registry : BignumRegistry)
@@ -643,7 +647,7 @@ theorem block12_correctness_triple
         (mkScratch s) startIdx rsm_body h_shape
     have : some s_ax = some s' := h_ax_exec ▸ h_exec
     have h_eq : s_ax = s' := Option.some.inj this
-    simpa [post_block12, h_eq] using h_ax_post
+    simpa [post_block12, h_eq] using! h_ax_post
 
 theorem block13_correctness_triple
     (registry : BignumRegistry)
@@ -679,7 +683,7 @@ theorem block13_correctness_triple
         (mkScratch s) startIdx rsm_body h_shape
     have : some s_ax = some s' := h_ax_exec ▸ h_exec
     have h_eq : s_ax = s' := Option.some.inj this
-    simpa [post_block13, h_eq] using h_ax_post
+    simpa [post_block13, h_eq] using! h_ax_post
 
 /-! ## §3  End-to-end composition
 

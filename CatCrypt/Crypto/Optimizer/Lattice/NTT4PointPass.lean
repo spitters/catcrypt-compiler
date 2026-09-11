@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.NTTButterflyPass
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTButterflyPass
 
 /-!
 # Verified 4-point radix-2 Cooley–Tukey NTT (base case of the recursion)
@@ -48,6 +51,8 @@ lanes as `(top.1, bottom.1, top.2, bottom.2)`, they line up with the natural
 The single arithmetic fact used to close the proof is `ω² = -1`, from which
 `ring` (after rewriting `ω³ = ω·ω² = -ω`) discharges every lane.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

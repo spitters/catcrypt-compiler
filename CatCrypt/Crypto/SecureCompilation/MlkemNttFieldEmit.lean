@@ -3,10 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2WholePermCom
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.FieldDescentMlkem
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2WholePermCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.FieldDescentMlkem
 
 /-!
 # ML-KEM (`q = 3329`) field-op word blocks + their `mkEnc` realizations
@@ -54,11 +57,13 @@ blocks realize the field ops under the canonical encoding `mkEnc`.
   the `Poseidon2WholePermCom` `BState` builder with the FIPS-203 twiddles as
   `regConst`. (Per the N=256 RA probe, `Com.toLprogPhysAbi` already spills over a
   `Nat` slot universe, so the widening is builder generalization + layer-fold
-  authoring, not an RA gap — the genuine remaining work is the butterfly Com and
-  its denotation tie, not the arithmetic, which is closed here.)
+  authoring, not an RA gap. What remains is the butterfly Com and its denotation
+  tie; the arithmetic is closed here.)
 * Any `.s` emit (`Com.toLprogPhysAbi |> renderLprogAtt`) and any KAT. There is no
   `mlkem_ntt8_field_kat.c`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -155,7 +160,7 @@ theorem mkBarrettRem_umod (r : BitVec 64) (h : r < (11082241 : BitVec 64)) :
   -- equality is pure `Nat` arithmetic (subtracting a multiple of `q`).
   have hq : ((r * (5039 : BitVec 64)) >>> (24 : Nat)) < (3329 : BitVec 64) := by bv_decide
   have hb : ((r * (5039 : BitVec 64)) >>> (24 : Nat)) * (3329 : BitVec 64) ≤ r := by bv_decide
-  have hqn : (((r * (5039 : BitVec 64)) >>> (24 : Nat))).toNat < 3329 := by simpa using hq
+  have hqn : (((r * (5039 : BitVec 64)) >>> (24 : Nat))).toNat < 3329 := by simpa using! hq
   have h3 : (3329 : BitVec 64).toNat = 3329 := by decide
   have hm : (((r * (5039 : BitVec 64)) >>> (24 : Nat))).toNat * 3329 < 2 ^ 64 := by nlinarith [hqn]
   have hbn : (((r * (5039 : BitVec 64)) >>> (24 : Nat))).toNat * 3329 ≤ r.toNat := by

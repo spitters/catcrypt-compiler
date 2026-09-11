@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ChaChaPolyEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ChaChaPolyEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.ChaChaPolyEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 
 /-!
 # Poly1305 MAC kernel — HACL-schedule 5×26 field-dot, runtime block loop (#421)
@@ -104,6 +109,8 @@ MAC accumulator is KAT-checked byte-identical to the unrolled variant — which
 The remaining whole-AEAD residual is the C-side AEAD orchestration + the
 fixed-block path having no zero-padding to reclaim, not the Poly1305 schedule.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

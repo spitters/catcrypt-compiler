@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Examples.X25519LadderDSL
-import CatCrypt.Crypto.Jasmin.RustEmit
+module
+
+public import CatCrypt.Crypto.Jasmin.Examples.X25519LadderDSL
+public import CatCrypt.Crypto.Jasmin.RustEmit
 
 /-!
 # Safe-Rust emit of the X25519 ladder
@@ -26,6 +28,8 @@ Run via:
     lake env lean --run \
       CatCrypt/Crypto/Jasmin/Examples/X25519LadderDSLEmit.lean
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.Examples.X25519LadderDSLEmit
 

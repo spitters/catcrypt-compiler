@@ -3,68 +3,82 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
-import CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf
-import CatCrypt.Crypto.SecureCompilation.Ascent.StoreRefinement
-import CatCrypt.Crypto.SecureCompilation.Ascent.MultiLimb
-import CatCrypt.Crypto.SecureCompilation.Ascent.Control
-import CatCrypt.Crypto.SecureCompilation.Ascent.While
-import CatCrypt.Crypto.SecureCompilation.Ascent.Ascend
-import CatCrypt.Crypto.SecureCompilation.Ascent.Capstone
-import CatCrypt.Crypto.SecureCompilation.Ascent.CapstoneField
-import CatCrypt.Crypto.SecureCompilation.Ascent.EmitBridge
-import CatCrypt.Crypto.SecureCompilation.Ascent.KeystoneControl
-import CatCrypt.Crypto.SecureCompilation.Ascent.Phases
-import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockCorres
-import CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd
-import CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSourceTower
-import CatCrypt.Crypto.SecureCompilation.Ascent.FeAddEndToEnd
-import CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbCapstone
-import CatCrypt.Crypto.SecureCompilation.Ascent.PipelineWeld
-import CatCrypt.Crypto.SecureCompilation.Ascent.LoopSourceTower
-import CatCrypt.Crypto.SecureCompilation.Ascent.ArrStoreLeaf
-import CatCrypt.Crypto.SecureCompilation.Ascent.ArrStoreEmit
-import CatCrypt.Crypto.SecureCompilation.Ascent.LoopSourceLeaf
-import CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbEmit
-import CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone
-import CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbMul
-import CatCrypt.Crypto.SecureCompilation.Ascent.FieldReduce
-import CatCrypt.Crypto.SecureCompilation.Ascent.SelectLeaf
-import CatCrypt.Crypto.SecureCompilation.Ascent.ArrLoadLeaf
-import CatCrypt.Crypto.SecureCompilation.Ascent.RotateLeaf
-import CatCrypt.Crypto.SecureCompilation.Ascent.Width32Leaf
-import CatCrypt.Crypto.SecureCompilation.Ascent.BitwiseOrNot
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridge
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeArith
-import CatCrypt.Crypto.SecureCompilation.Ascent.MlkemFieldLeaf
-import CatCrypt.Crypto.SecureCompilation.Ascent.MlkemPolyAddCapstone
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeArithComplete
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeCtrl
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMem
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresGeneric
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineTie
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMemStore
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineTieFragments
-import CatCrypt.Crypto.SecureCompilation.Ascent.JasminComRunBlockTie
-import CatCrypt.Crypto.SecureCompilation.Ascent.JasminComRunBlockSeq
-import CatCrypt.Crypto.SecureCompilation.Ascent.JasminComRunBlockRealloc
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresHoare
-import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockMvcgen
-import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockMvcgenMorphism
-import CatCrypt.Crypto.SecureCompilation.Ascent.JStateSepLogic
-import CatCrypt.Crypto.SecureCompilation.Ascent.RelationalProductMvcgen
-import CatCrypt.Crypto.SecureCompilation.Ascent.RelationalExceptTMvcgen
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
+public import CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf
+public import CatCrypt.Crypto.SecureCompilation.Ascent.StoreRefinement
+public import CatCrypt.Crypto.SecureCompilation.Ascent.MultiLimb
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Control
+public import CatCrypt.Crypto.SecureCompilation.Ascent.While
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Ascend
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Capstone
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CapstoneField
+public import CatCrypt.Crypto.SecureCompilation.Ascent.EmitBridge
+public import CatCrypt.Crypto.SecureCompilation.Ascent.KeystoneControl
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Phases
+public import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockCorres
+public import CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd
+public import CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSourceTower
+public import CatCrypt.Crypto.SecureCompilation.Ascent.FeAddEndToEnd
+public import CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbCapstone
+public import CatCrypt.Crypto.SecureCompilation.Ascent.PipelineWeld
+public import CatCrypt.Crypto.SecureCompilation.Ascent.LoopSourceTower
+public import CatCrypt.Crypto.SecureCompilation.Ascent.ArrStoreLeaf
+public import CatCrypt.Crypto.SecureCompilation.Ascent.ArrStoreEmit
+public import CatCrypt.Crypto.SecureCompilation.Ascent.LoopSourceLeaf
+public import CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbEmit
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone
+public import CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbMul
+public import CatCrypt.Crypto.SecureCompilation.Ascent.FieldReduce
+public import CatCrypt.Crypto.SecureCompilation.Ascent.SelectLeaf
+public import CatCrypt.Crypto.SecureCompilation.Ascent.ArrLoadLeaf
+public import CatCrypt.Crypto.SecureCompilation.Ascent.RotateLeaf
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Width32Leaf
+public import CatCrypt.Crypto.SecureCompilation.Ascent.BitwiseOrNot
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridge
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeArith
+public import CatCrypt.Crypto.SecureCompilation.Ascent.MlkemFieldLeaf
+public import CatCrypt.Crypto.SecureCompilation.Ascent.MlkemPolyAddCapstone
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeArithComplete
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeCtrl
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMem
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresGeneric
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineTie
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMemStore
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineTieFragments
+public import CatCrypt.Crypto.SecureCompilation.Ascent.JasminComRunBlockTie
+public import CatCrypt.Crypto.SecureCompilation.Ascent.JasminComRunBlockSeq
+public import CatCrypt.Crypto.SecureCompilation.Ascent.JasminComRunBlockRealloc
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresHoare
+public import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockMvcgen
+public import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockMvcgenMorphism
+public import CatCrypt.Crypto.SecureCompilation.Ascent.JStateSepLogic
+public import CatCrypt.Crypto.SecureCompilation.Ascent.RelationalProductMvcgen
+public import CatCrypt.Crypto.SecureCompilation.Ascent.RelationalExceptTMvcgen
 -- MlkemPolyFoldCorres: the index-dependent bounded-loop combinator (corres_for_indexed)
 -- + polyAdd_fold_corres, lifting the per-coefficient ZMod 3329 add over the poly loop
 -- to a whole-polynomial corres tie (the ascent granularity-lift for ML-KEM poly-add).
-import CatCrypt.Crypto.SecureCompilation.Ascent.MlkemPolyFoldCorres
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresAttr
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresSolver
-import CatCrypt.Crypto.SecureCompilation.Ascent.InvariantSchemas
-import CatCrypt.Crypto.SecureCompilation.Ascent.MontBounds
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresScalar
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresScalarDemo
-import CatCrypt.Crypto.SecureCompilation.Ascent.MpnAdxCorres
+public import CatCrypt.Crypto.SecureCompilation.Ascent.MlkemPolyFoldCorres
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresAttr
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresSolver
+public import CatCrypt.Crypto.SecureCompilation.Ascent.InvariantSchemas
+public import CatCrypt.Crypto.SecureCompilation.Ascent.MontBounds
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresScalar
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresScalarDemo
+public import CatCrypt.Crypto.SecureCompilation.Ascent.MpnAdxCorres
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresDescentX86
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresDescentRiscv
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.LeanSourceX86
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.LeanSourceRiscv
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.X86StraightLine
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Scalar
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Decide
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.SourceToBytes
+public import CatCrypt.Crypto.SecureCompilation.Ascent.XrunRunBlockTie
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresRiscvLeaves
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresRiscvSolver
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Riscv
 
 /-!
 # The LowCT ascent refinement calculus — import aggregator (rot guard)
@@ -152,3 +166,5 @@ Frontier (= the descent's): the uncovered LowCT arms (`SLt`/`SAsr`/`SMulS`/`SMul
 are excluded because the target dialect lacks the ops — the descent cannot lower them
 either; extending them is shared IR/dialect work, after which the ascent follows.
 -/
+
+@[expose] public section

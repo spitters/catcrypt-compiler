@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAsmPrinter
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAsmPrinter
 
 /-!
 # A verified machine-code byte encoder for the scalar A64 `AInst` instructions (#533 sub-2)
@@ -14,7 +18,8 @@ trusts the assembler's instruction encoder. This module is the **AArch64 analogu
 of `X86Backend/ScalarEncoder.lean`**: it encodes each `AInst` directly to its
 AArch64 fixed-width 32-bit machine-code word in Lean, so the kernel body is emitted
 as bytes by a function whose output we audit against the Arm ARM and round-trip
-against the official `rems-project/sail-arm` decode tables (`SailArmDecoder.lean`).
+against the hand-transcribed `rems-project/sail-arm` decode tables
+(`SailArmDecoder.lean`; upstream is not vendored in this repo).
 
 A64 is a **fixed-width** ISA: every instruction is exactly one little-endian
 32-bit word (4 bytes). This is dramatically simpler than the x86 variable-length
@@ -34,14 +39,16 @@ auditable field by field against the Arm Architecture Reference Manual (the C4.1
 
 * **structurally** — `encodeAInst` always emits a well-formed 4-byte word
   (`encode_length` below), proved unconditionally for all inputs;
-* **round-trip** — `SailArmDecoder.lean` proves `decode (encode i) = i` against the
-  official sail-arm `decode64` field splits (transcribed from
-  `bench/reference_install/sail-arm/arm-v8.5-a/model/aarch_decode.sail`), so the
-  encoder's bytes are *proved* to decode back to the same instruction under the
-  authoritative Arm decode discipline, not just matched to `as`.
+* **round-trip** — `SailArmDecoder.lean` proves `decode (encode i) = i` against
+  `decode64` field splits transcribed by hand from the public sail-arm sources
+  (this repo does not vendor a sail-arm checkout, so the transcription is not
+  machine-checked against the upstream model), so the encoder's bytes are
+  *proved* to decode back to the same instruction under that transcribed decode
+  discipline, and not only matched to `as`.
 
-The bench differential pin (`bench/arm_compare`) cross-checks the emitted words
-against `aarch64-linux-gnu-as` output for the same quarter-round (the qemu KAT).
+The bench differential pin (an untracked local `aarch64-linux-gnu-as`
+comparison checkout, not vendored in this repo) cross-checks the emitted words
+against `as` output for the same quarter-round (the qemu KAT).
 
 ## Encoding layout (the C4.1 A64 forms this transcribes, W-registers, `sf=0`)
 
@@ -62,6 +69,8 @@ All fields are at the bit positions the sail-arm `decode64` clauses read
   (`immr=sh`, `imms=31`); `LSL Wd, Wn, #sh` = `UBFM Wd, Wn, #(-sh mod 32), #(31-sh)`.
 * **MOV (register)** — the alias `ORR Wd, WZR, Wm` (`Rn=31` = WZR).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

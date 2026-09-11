@@ -3,11 +3,20 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgMultiOp
-import CatCrypt.Crypto.SecureCompilation.VIR.VectorReduce
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
-import CatCrypt.Crypto.Hash.Poseidon2.BabyBear
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JForProgMultiOp
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgMultiOp
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.VectorReduce
+public import CatCrypt.Crypto.SecureCompilation.VIR.VectorReduce
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public meta import CatCrypt.Crypto.Hash.Poseidon2.BabyBear
+public import CatCrypt.Crypto.Hash.Poseidon2.BabyBear
 
 /-!
 # Poseidon2 over Baby Bear emitted through the verified front
@@ -56,6 +65,8 @@ reduction `∑`, the verified-vectorizer core
   `test_default_babybear_poseidon2_width_16` vector. Validated byte-identically
   in `bench/poseidon2_compare/` against the emitted `.jazz`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

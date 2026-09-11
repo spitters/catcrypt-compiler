@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Fp2
-import Mathlib.Data.ZMod.Basic
-import Mathlib.Tactic
+module
+
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Fp2
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.Tactic.FieldSimp
+public import Mathlib.Tactic.Group
+public import Mathlib.Tactic.Ring
 
 /-!
 # BLS12-377 `G2` TWIST point-add / point-double over the quadratic extension `Fp2`
@@ -85,6 +89,8 @@ captured; only the inverse-amortization step is deferred.
 
 0 sorries; no custom axioms; the cleared ties are unconditional over `commRing ξ`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

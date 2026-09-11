@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ThirToJasminViaCatCrypt
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.ThirToJasminViaCatCrypt
 
 /-!
 # Making the `thir → catCrypt → jasmin` route a LIVE compile option, flat as FALLBACK
@@ -48,6 +50,8 @@ round-trip equalities `hΓ`/`ht`), transporting the catCrypt output back along
 them; the demonstrator supplies `rfl` for both. This keeps both branches at the
 single jasmin type `Γ ⊢ t`, so the meta-theorem is one clean equation.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,10 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
-import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfFull
-import Std.Tactic.BVDecide
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfFull
+public import Std.Tactic.BVDecide
 
 /-!
 # Golden path: u32 arithmetic emitted through the width-64 path by masked-u64 emulation
@@ -46,6 +49,8 @@ masked-u64 through the width-64 path.
 existing width-64 pipeline with zero new machinery. A *native* 32-bit register file
 (half the mask traffic, narrower spills) remains a perf optimization, characterized
 separately in `MultiWidthGoldenPath`; it is not needed for `u32` code to emit. -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

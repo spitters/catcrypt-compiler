@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminAST
-import CatCrypt.Crypto.Jasmin.JasminMonoSem
+module
+
+public import CatCrypt.Crypto.Jasmin.JasminAST
+public import CatCrypt.Crypto.Jasmin.JasminMonoSem
 
 /-!
 # Dead-code elimination on the Jasmin SSA subset
@@ -38,6 +40,8 @@ carry intrinsics. The remaining `Copn` catch-all in
 structural gap (Lean's `match` compiler drops the negative shape
 information in the no-op wildcard arm).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.ToSSA
 

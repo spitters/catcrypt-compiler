@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Bn254Reflect
+module
+
+public import CatCrypt.Crypto.Jasmin.Bn254Reflect
 
 /-!
 # Marlin KZG prover reflect surface — Tier 3 full-emit (ZK honesty roadmap)
@@ -64,6 +66,8 @@ small Marlin size.
   leaves reused here), `CatCrypt/Crypto/Jasmin/JoltProverReflect.lean` (the
   sum-check transcript reflect shape).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 
@@ -167,25 +171,25 @@ def marlinG2TowerType : TowerType := .TBytes 128
 def marlinFrTowerType : TowerType := .TBytes 32
 def marlinFp12TowerType : TowerType := .TBytes 384
 
-private def loc (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
+def locMarlinKZGProver (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
 
 /-- Body for the `n = 3` Marlin KZG prover: KZG commit, three sum-check rounds,
     batched KZG opening, two pairings against the SRS-H G2 element, the GT
     combine, and the accept/reject digest. The pairing leaf is the
     already-registered `bn254_pairing`; the GT multiply is `bn254_fp12_mul`. -/
 def marlinKZGProverBody8 : LowCT :=
-  let c_l    := loc "coeffs"   (marlinCoeffTowerType 8)
-  let srs_l  := loc "srs"      (marlinSRSTowerType 8)
-  let srsH_l := loc "srsH"     marlinG2TowerType
-  let cmt_l  := loc "cmt"      marlinG1TowerType
-  let a0_l   := loc "a0"       marlinFrTowerType
-  let a1_l   := loc "a1"       marlinFrTowerType
-  let a2_l   := loc "a2"       marlinFrTowerType
-  let w_l    := loc "w"        marlinG1TowerType
-  let lhs_l  := loc "lhs"      marlinFp12TowerType
-  let rhs_l  := loc "rhs"      marlinFp12TowerType
-  let chk_l  := loc "chk"      marlinFp12TowerType
-  let res_l  := loc "__result" (marlinCoeffTowerType 8)
+  let c_l    := locMarlinKZGProver "coeffs"   (marlinCoeffTowerType 8)
+  let srs_l  := locMarlinKZGProver "srs"      (marlinSRSTowerType 8)
+  let srsH_l := locMarlinKZGProver "srsH"     marlinG2TowerType
+  let cmt_l  := locMarlinKZGProver "cmt"      marlinG1TowerType
+  let a0_l   := locMarlinKZGProver "a0"       marlinFrTowerType
+  let a1_l   := locMarlinKZGProver "a1"       marlinFrTowerType
+  let a2_l   := locMarlinKZGProver "a2"       marlinFrTowerType
+  let w_l    := locMarlinKZGProver "w"        marlinG1TowerType
+  let lhs_l  := locMarlinKZGProver "lhs"      marlinFp12TowerType
+  let rhs_l  := locMarlinKZGProver "rhs"      marlinFp12TowerType
+  let chk_l  := locMarlinKZGProver "chk"      marlinFp12TowerType
+  let res_l  := locMarlinKZGProver "__result" (marlinCoeffTowerType 8)
   .RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq .RSkip
     (.RCall "marlin_kzg_commit_8"   cmt_l [c_l, srs_l]))
     (.RCall "marlin_sumcheck_round" a0_l  [cmt_l]))

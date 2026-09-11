@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Primitives.SHA256
+module
+
+public meta import CatCrypt.Crypto.Primitives.SHA256
+public import CatCrypt.Crypto.Primitives.SHA256
 
 /-!
 # HMAC-SHA256 (RFC 2104)
@@ -22,6 +25,8 @@ All definitions are sealed with `@[irreducible]`.
 * RFC 2104 — HMAC: Keyed-Hashing for Message Authentication
 * RFC 5869 — HMAC-based Extract-and-Expand Key Derivation Function (HKDF)
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

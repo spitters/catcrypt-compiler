@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.LatticeDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeDialect
 
 /-!
 # A *denoting* MLIR `polynomial` dialect in the VIR framework
@@ -65,6 +67,8 @@ emission. The real lattice lowering on the emit path goes
 `VIR/LatticeToJasmin.lean`. Keep this module for the semantic-agreement proofs;
 do not mistake it for a backend.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

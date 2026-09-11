@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Lowering
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Lowering
 
 /-!
 # Semantics preservation for the representative scalar subset (#148 POC)
@@ -53,6 +56,8 @@ facts to a whole-`lcmd` simulation against jasmin's `lsem` is the
 `ComLsemExportFaithful[MC]` predicate (`LsemPortAll`), proved over the lsem port
 for the modeled straight-line fragments.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

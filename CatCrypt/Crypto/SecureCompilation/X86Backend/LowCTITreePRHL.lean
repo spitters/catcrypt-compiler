@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTITree
-import CatCrypt.Relational.Rules
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTITree
+public import CatCrypt.Relational.Rules
 
 /-!
 # Bridging the P4.1 interaction-tree layer to the existing pRHL (`rHoare`)
@@ -60,6 +62,8 @@ is the path to **P4.3** (probabilistic cryptographic-security preservation
 across compilation); it is *not* built here.  This file establishes only the
 call-free bridge plus that hook.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

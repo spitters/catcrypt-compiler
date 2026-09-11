@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.List.Basic
-import Mathlib.Data.List.Range
-import Mathlib.Tactic
+module
+
+public import Mathlib.Data.List.Basic
+public import Mathlib.Data.List.Range
+
+@[expose] public section
 
 set_option autoImplicit false
 

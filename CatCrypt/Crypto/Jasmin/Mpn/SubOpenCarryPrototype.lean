@@ -3,8 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.SubPrototype
-import CatCrypt.Crypto.Jasmin.Mpn.AddOpenCarryPrototype
+module
+
+public meta import CatCrypt.Crypto.Jasmin.Mpn.SubPrototype
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.Mpn.SubPrototype
+public meta import CatCrypt.Crypto.Jasmin.Mpn.AddOpenCarryPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.AddOpenCarryPrototype
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -68,7 +75,7 @@ open CatCrypt.Crypto.Jasmin
 open CatCrypt.Crypto.Jasmin.BignumExec
 open CatCrypt.Crypto.Jasmin.Emit
 open CatCrypt.Crypto.Jasmin.MemoryModel
-open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype hiding vr pv loadAt0 storeAt0 binImm
 open CatCrypt.Crypto.Jasmin.Mpn.SubPrototype
 
 /-! ## §1  The open-coded Jasmin `mpn_sub_n` body
@@ -337,7 +344,7 @@ theorem mpnSubN_openLoop :
       exact bignumExecFuel_loop_exit emptyRegistry extra _ loopBody s
         (Mpn.SubPrototype.evalPExpr_loopCond_false s hn0)
     · simp [mpnSubN, memHoldsLimbs]
-    · simpa [mpnSubN, borrowNat] using hbw
+    · simpa [mpnSubN, borrowNat] using! hbw
     · intro b _; rfl
   | cons a as ih =>
     intro bs s bin extra hlen hbw hn hap hbp hdoa hdob

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.BignumHoare
-import CatCrypt.Crypto.Jasmin.S2NBignumSSA
+module
+
+public import CatCrypt.Crypto.Jasmin.BignumHoare
+public import CatCrypt.Crypto.Jasmin.S2NBignumSSA
 
 /-!
 # Layer B: Hoare triples for `bignum_inv_p25519` and `bignum_pow_p25519_p58`
@@ -67,6 +69,8 @@ Per-block effort is bounded by the same `bignumExec` machinery the
 existing `bignum_mod_p25519_4` / `bignum_double_p25519` /
 `bignum_sub_p25519` ports use.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

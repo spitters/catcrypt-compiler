@@ -3,7 +3,34 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSha256Adeq
+module
+
+-- The closed-kernel route reduces the front (`translateDialectControl`,
+-- `semScalar`, `cryptoDialectToJasminCom`) by `rfl`/`decide`; under the module
+-- system that reduction needs the front closure imported with `all`, and
+-- `Nat.repr` (the front's slot names) exposed through `Init.Data.Repr`.
+import all Init.Data.Repr
+import all CatCrypt.Core.Code
+import all CatCrypt.Crypto.CryptoWord
+import all CatCrypt.Crypto.Jasmin.JasminAST
+import all CatCrypt.Crypto.Jasmin.JasminTypes
+import all CatCrypt.Crypto.Jasmin.LowCT
+import all CatCrypt.Crypto.SDist
+import all CatCrypt.Crypto.SecureCompilation.CryptoSSA
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+import all CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
+import all CatCrypt.Crypto.SecureCompilation.Dialects.RustExecKernelAdeq
+import all CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
+import all CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.Core
+import all CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+import all CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
+public import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSha256Adeq
 
 /-!
 # The SHA-256 compression as an `RFor` round loop through the `emitted = RustExec` route
@@ -27,7 +54,7 @@ each along one axis:
   `semScalar` that succeeds from the EMPTY entry env — i.e. every read must follow
   a write *inside* the command. `loopA = RFor "i" 2 bodyA` with a self-contained
   body (each iteration re-establishes its own `a,b,c` before computing `Maj`) is
-  exactly such a closed loop: the FIRST genuine `RFor` control node taken to jasmin
+  exactly such a closed loop: the FIRST `RFor` control node taken to jasmin
   bytes = `RustExec` reference, axiom-free.
 
 * **The symbolic value-adequacy leg (`§B`)** — `rustExec_semScalar_agree` ties the
@@ -48,7 +75,7 @@ condition (`SAnd`/`SXor` carry only their operand conditions). The `Σ`/`σ`
 rotations (`SShl`) and the `T1`/`T2` modular adds (`SAdd`) do NOT — a left-shift or
 an add of two full-range `u64`s overflows the saturating-`Nat` model, so the
 input-agnostic `hir` fails on those arms (the `RustExecARXAdeq` §Residual wall).
-So the threading round loop `bodyB` here is the maximal genuinely-iterated SHA-256
+So the threading round loop `bodyB` here is the maximal iterated SHA-256
 round expressible on the symbolic leg: the nonlinear `Ch`/`Maj` layer plus the
 `⊕`-state mixing. The ARX `Σ`/`σ`/`+` arms reconcile only under a per-kernel
 concrete input bound (`RustExecSha256Adeq.t1E_inRange_of_bound` /
@@ -80,13 +107,15 @@ theorem; each is orthogonal and documented here:
    `translateDialectFull`, which declines every `RFor` (`| _ => none`). So a
    setup-before-loop kernel is not front-translatable; the loop must stand alone.
 
-The genuine ARX round STEP is carried concretely by
+The ARX round STEP is carried concretely by
 `RustExecSha256Adeq.sha256C_emitted_eq_rustexec` (whole round, one `decide`); the
 round LOOP is carried on the closed leg (`§A`, self-contained body, bytes) and the
 symbolic leg (`§B`, threading body, any `M`); closing all three walls at once — a
 threading full-ARX loop to bytes with symbolic `M` — is the standing composition
 residual, orthogonal to the round arms and loop bridge established here.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 -- The `RFor` front-tracking (`loopRForD`) and `semScalar` (`semRForD`) unroll the
@@ -148,7 +177,7 @@ def bodyA : LowCT :=
       (.RSeq (.RScalarSet "c" cv)
         (.RScalarSetExpr "mj" majE)))
 
-/-- The round loop: run the self-contained round body twice. A genuine `RFor`
+/-- The round loop: run the self-contained round body twice. An `RFor`
     control node (loop count `2`); the `RScalarSet`-reset body keeps it closed. -/
 def loopA : LowCT := .RFor "i" 2 bodyA
 
@@ -212,16 +241,32 @@ theorem loopAHSem : semScalar loopA (fun _ => none) = some loopAEnv :=
 
 theorem loopANameSome : (loopAO.vm.lookup "mj").isSome := by rfl
 
-noncomputable def loopAW : CVar loopAO.Γ' (.sword 64) :=
-  ((loopAO.vm.lookup "mj").get loopANameSome).2
+/-- The tracked slot's type is the 64-bit word: decided, since the slot name
+    goes through `Nat.repr`, which the elaborator's definitional check does not
+    reduce. -/
+theorem loopANameTy : ((loopAO.vm.lookup "mj").get loopANameSome).1 = .sword 64 := by
+  decide
 
-theorem loopAHName : loopAO.vm.lookup "mj" = some ⟨.sword 64, loopAW⟩ := by rfl
+/-- The tracked output slot for `mj`. -/
+noncomputable def loopAW : CVar loopAO.Γ' (.sword 64) :=
+  cast (congrArg (CVar loopAO.Γ') loopANameTy) ((loopAO.vm.lookup "mj").get loopANameSome).2
+
+theorem loopAHName : loopAO.vm.lookup "mj" = some ⟨.sword 64, loopAW⟩ := by decide
 
 theorem loopAValSome : (loopAEnv "mj").isSome := by rfl
 
-noncomputable def loopAVal : BitVec 64 := ((loopAEnv "mj").get loopAValSome).2
+theorem loopAValTy : ((loopAEnv "mj").get loopAValSome).1 = .sword 64 := by decide
 
-theorem loopAHVal : loopAEnv "mj" = some ⟨.sword 64, loopAVal⟩ := by rfl
+/-- The word `semScalar` leaves in `mj`. -/
+noncomputable def loopAVal : BitVec 64 :=
+  cast (congrArg CryptoTy.denote loopAValTy) ((loopAEnv "mj").get loopAValSome).2
+
+theorem loopAHVal : loopAEnv "mj" = some ⟨.sword 64, loopAVal⟩ := by
+  rw [← Option.some_get loopAValSome]
+  exact congrArg some (Sigma.ext loopAValTy
+    (by unfold loopAVal
+        exact (cast_heq (congrArg CryptoTy.denote loopAValTy)
+          ((loopAEnv "mj").get loopAValSome).2).symm))
 
 theorem loopARetSome : (loopAO.cont (Com.ret (toVIRVar loopAW))).isSome := by rfl
 
@@ -250,7 +295,7 @@ theorem loopAVal_eq_ref : loopAVal = BitVec.ofNat 64 (rsFA.rsScalar "mj") := by 
     (`RFor "i" 2` over a self-contained `Maj` round) denotes to the `ctTransTy`
     image of the `RustExec` reference output word `rsFA.rsScalar "mj"`. Obtained
     through the closed-kernel route `rustToJasminCom_endToEnd_topLevel_unconditional`
-    applied to a genuine `RFor` control node (`IsCoveredSCtl.rFor`): the loop is
+    applied to an `RFor` control node (`IsCoveredSCtl.rFor`): the loop is
     closed, so `semScalar` succeeds from the empty entry env and no entry seam is
     needed; the value reconciliation is discharged concretely (`loopAVal_eq_ref`).
     Axiom-free. -/
@@ -266,7 +311,7 @@ theorem loopA_emitted_eq_rustexec (N : Nat) (leafSpec : LeafSpec) :
 /-! ## §B — a state-threading round loop through the symbolic `agreeFor` bridge
 
 The threading round body reads the eight-word state and writes back the mixed
-`a`/`e`, so iteration `i` consumes iteration `i−1`'s outputs — a genuinely iterated
+`a`/`e`, so iteration `i` consumes iteration `i−1`'s outputs — an iterated
 SHA-shaped round. Its arms are the nonlinear `Ch`/`Maj` and the `⊕`-mixes, all
 all-`u64` `inRange`-clean, so `IsCoveredAdeq` covers it and `rustExec_semScalar_agree`
 ties its `semScalar` output to the `RustExec` reference for ANY loop count `M`. -/

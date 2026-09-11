@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Core.Code
-import CatCrypt.Crypto.SDist
-import CatCrypt.Crypto.CryptoWord
+module
+
+public import CatCrypt.Core.Code
+public import CatCrypt.Crypto.SDist
+public import CatCrypt.Crypto.CryptoWord
 
 /-!
 # CryptoSSA: the typed substrate for cryptographic compilation
@@ -39,6 +41,8 @@ lowered via `DialectToJasminCom.cryptoDialectToJasminCom`.
 * lean-mlir (opencompl): `Dialect`, `Com`, `PeepholeRewrite`
 * Barthe et al., "Secure Compilation of Side-Channel Countermeasures", POPL 2025
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.CryptoSSA
 

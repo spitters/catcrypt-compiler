@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSlhdsaChain
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha2KeccakTie
-import CatCrypt.Crypto.Util.Sha256Verified
+module
+
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSlhdsaChain
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha2KeccakTie
+public import CatCrypt.Crypto.Util.Sha256Verified
 
 /-!
 # Hash-composition tie: the SLH-DSA WOTS+ chain-step combiners = the FIPS-180-4 round engine
@@ -56,6 +58,8 @@ the round engine's locals. The two single-component ties compose into the
 combiner tie, which composes into the full round-`a` tie — the hash-composition
 arc the WOTS+ chain step is built from.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

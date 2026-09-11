@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.AutoVectorize.Patterns
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.AutoVectorize.Patterns
 
 /-!
 # Auto-Vectorize — Pattern detection (task #108)
@@ -49,6 +52,8 @@ an argument to the detection function); a Phase-2 follow-on threads a
 notion of "syntactic op tag" through the surface and discharges this
 check by `decide`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

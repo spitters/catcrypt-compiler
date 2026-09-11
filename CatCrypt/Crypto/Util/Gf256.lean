@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.BitVec
-import Mathlib.Algebra.Group.Defs
-import Mathlib.Tactic
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import Mathlib.Data.BitVec
+public import Mathlib.Algebra.Group.Defs
+public import Std.Tactic.BVDecide
 
 /-!
 # Verified GF(256) — `GF(2)[x] / (x^8 + x^4 + x^3 + x + 1)`
@@ -33,6 +36,8 @@ formula for the bit-serial multiply suffice for the UOV bridge — which
 needs encoder round-trips and a single-byte semantics, not the full
 field theory.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

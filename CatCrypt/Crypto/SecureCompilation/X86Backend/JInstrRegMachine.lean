@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.GenericRegAlloc
-import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
-import CatCrypt.Crypto.Optimizer.RandomizedRegAlloc
+module
+
+public import CatCrypt.Crypto.Optimizer.GenericRegAlloc
+public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+public import CatCrypt.Crypto.Optimizer.RandomizedRegAlloc
 
 /-!
 # The x86 multi-write `MachineModel`/`RegMachine` data (the D3 `writtenNames` payoff, #552)
@@ -52,6 +54,8 @@ and the ARM `BInst` theorem (`t.cf = s.cf`) carry over the register-only generic
 x86 here (`mulx`'s two writes are first-class), independently of the orthogonal
 non-register-read limitation of the register-only renaming hypothesis.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

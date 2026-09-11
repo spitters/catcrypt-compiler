@@ -3,8 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestDepth
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
+public import CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestDepth
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestDepth
+
+@[expose] public section
 
 set_option autoImplicit false
 

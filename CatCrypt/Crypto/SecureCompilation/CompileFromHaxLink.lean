@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # C8: the leaf registry and linker for the two crypto-authoring fronts
@@ -53,6 +55,8 @@ This mirrors the existing leaf-agreement vocabulary —
 `FAEST.Leaves.FaestLeafAgrees` — and lifts it to the *registry* level so a whole
 outer `Com` can be linked against a *map* of leaves.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

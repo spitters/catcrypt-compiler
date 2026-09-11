@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Fe25519OrchestrationExample
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.Fe25519OrchestrationExample
 
 /-!
 # Concrete syntax for the fe25519 orchestration layer (the ergonomic win)
@@ -46,6 +49,8 @@ kernel variable into its `Ctxt.Var` index needs a typed symbol-table elaborator
 (the index carries the proof its slot has the right `JasminTy`), which is the
 genuinely hard part — reported, not faked.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.DivRemPrototype
-import CatCrypt.Crypto.Jasmin.Mpn.MulPrototype
+module
+
+public meta import CatCrypt.Crypto.Jasmin.Mpn.DivRemPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.DivRemPrototype
+public meta import CatCrypt.Crypto.Jasmin.Mpn.MulPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.MulPrototype
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -136,9 +142,9 @@ We define it directly via `fromNat`, capturing the exact Euclidean
 `floor(B^{2n} / d) − B^n` value. -/
 
 /-- The limb base. -/
-private def B : Nat := 2 ^ 64
+def B : Nat := 2 ^ 64
 
-private theorem B_eq : B = 2 ^ 64 := rfl
+theorem B_eq : B = 2 ^ 64 := rfl
 
 /-- **Precomputed Newton-Raphson reciprocal** for a normalized `n`-limb
     divisor `d`.

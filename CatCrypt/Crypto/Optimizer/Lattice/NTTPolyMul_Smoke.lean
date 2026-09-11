@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul
 
 /-!
 # Pass 3.1 — NTT poly-mul rewrite smoke tests
@@ -24,6 +27,8 @@ Covers:
 * Name-generation `nttPolyMulName` round-trip.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul.Smoke
@@ -34,22 +39,22 @@ open CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul
 /-! ## §1  Concrete `Located` / `TowerType` fixtures -/
 
 /-- ML-KEM polynomial type: `TPolyMod 3329 256`. -/
-private def aPolyTy : TowerType := .TPolyMod 3329 256
+def aPolyTy : TowerType := .TPolyMod 3329 256
 
 /-- A destination slot of polynomial type. -/
-private def dstL : Located := ⟨"out", aPolyTy⟩
+def dstL : Located := ⟨"out", aPolyTy⟩
 
 /-- First argument slot. -/
-private def arg1 : Located := ⟨"a", aPolyTy⟩
+def arg1 : Located := ⟨"a", aPolyTy⟩
 
 /-- Second argument slot. -/
-private def arg2 : Located := ⟨"b", aPolyTy⟩
+def arg2 : Located := ⟨"b", aPolyTy⟩
 
 /-- An auxiliary destination slot for the `RCallSwap` test. -/
-private def dst2L : Located := ⟨"out2", aPolyTy⟩
+def dst2L : Located := ⟨"out2", aPolyTy⟩
 
 /-- Old-destination location for the `RCloneCall` test. -/
-private def odL : Located := ⟨"old", aPolyTy⟩
+def odL : Located := ⟨"old", aPolyTy⟩
 
 /-! ## §2  ML-KEM rewrites (q = 3329, n = 256) -/
 

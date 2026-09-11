@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Transforms.Optimizer
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.Transforms.Optimizer
 
 /-!
 # Dialect backend testing harness
@@ -29,6 +31,8 @@ structure TestCase (Γ : Ctx) (t : CryptoTy) where
   name : String                    -- for reporting
 ```
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.TestHarness
 

@@ -3,11 +3,13 @@ Copyright (c) 2024 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.AES.AESSpec
-import CatCrypt.Crypto.Jasmin.AES.AESJazz
-import CatCrypt.Crypto.Jasmin.JasminTranslate
-import CatCrypt.Core.Code
-import CatCrypt.Deep.Eval
+module
+
+public import CatCrypt.Crypto.Jasmin.AES.AESSpec
+public import CatCrypt.Crypto.Jasmin.AES.AESJazz
+public import CatCrypt.Crypto.Jasmin.JasminTranslate
+public import CatCrypt.Core.Code
+public import CatCrypt.Deep.Eval
 
 /-!
 # AES Equivalence: Jasmin Implementation = Functional Spec
@@ -42,6 +44,8 @@ Remaining axioms:
 - `aes.v` from CatCrypt jasmin branch (aes_E theorem)
 - `aes_spec.v` (functional spec)
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.AES
 
@@ -141,25 +145,25 @@ theorem aes_code_correct (key msg : BitVec 128) :
 -- Step lemmas for the 10-round telescoping proof
 
 /-- wAESDEC applied to SR(SB(s)) with key K simplifies via ISR∘ISB∘SR∘SB = id. -/
-private theorem wAESDEC_SR_SB (s K : BitVec 128) :
+theorem wAESDEC_SR_SB (s K : BitVec 128) :
     wAESDEC (aesShiftRows (aesSubBytes s)) K =
     aesInvMixColumns (s ^^^ K) := by
   simp only [wAESDEC, aesInvShiftRows_aesInvSubBytes_aesShiftRows_aesSubBytes]
 
 /-- wAESDEC cancels wAESENC when applied with the same key. -/
-private theorem wAESDEC_wAESENC (prev K : BitVec 128) :
+theorem wAESDEC_wAESENC (prev K : BitVec 128) :
     wAESDEC (aesShiftRows (aesSubBytes (wAESENC prev K))) K =
     aesShiftRows (aesSubBytes prev) := by
   rw [wAESDEC_SR_SB, wAESENC, BitVec.xor_assoc, BitVec.xor_self, BitVec.xor_zero,
       aesInvMixColumns_aesMixColumns]
 
 /-- wAESDECLAST cancels SR∘SB via ISR∘ISB∘SR∘SB = id. -/
-private theorem wAESDECLAST_SR_SB (s K : BitVec 128) :
+theorem wAESDECLAST_SR_SB (s K : BitVec 128) :
     wAESDECLAST (aesShiftRows (aesSubBytes s)) K = s ^^^ K := by
   simp only [wAESDECLAST, aesInvShiftRows_aesInvSubBytes_aesShiftRows_aesSubBytes]
 
 /-- XOR is self-inverse. -/
-private theorem bv_xor_cancel {n : Nat} (a b : BitVec n) : (a ^^^ b) ^^^ b = a := by
+theorem bv_xor_cancel {n : Nat} (a b : BitVec n) : (a ^^^ b) ^^^ b = a := by
   rw [BitVec.xor_assoc, BitVec.xor_self, BitVec.xor_zero]
 
 set_option maxHeartbeats 4000000 in

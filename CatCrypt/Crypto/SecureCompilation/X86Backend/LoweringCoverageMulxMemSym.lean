@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtendedCoverage
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtendedCoverage
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtendedCoverage
 
 /-!
 # Additive `Linstr → JInstr` coverage superset: mem-folded `MULX` + `.rodata` symbol load
@@ -95,6 +98,8 @@ unconditional `allDirect` constant-time class — unlike the SIB `LOADIDX`/
 a register-dependent index; that is the SIB-CT story, separate from the symbol-
 base `lea` itself.)
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

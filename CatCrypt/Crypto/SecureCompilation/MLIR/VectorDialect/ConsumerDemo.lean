@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
+module
+
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
 
 /-!
 # VectorDialect consumer demo — ChaCha 4-way packed `add`
@@ -26,6 +28,8 @@ input words. We show this is `VectorOp.add` applied to two
 `VectorTy (BitVec 32) 4` operands, and that both the abstract denotation
 and the lowered `ScalarExpansion` agree with the lane-map.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

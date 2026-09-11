@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GenericNttEmitValue
-import CatCrypt.Crypto.Optimizer.Lattice.NegacyclicMultiplyCorrect
-import CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots
-import CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttInstances
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GenericNttEmitValue
+public import CatCrypt.Crypto.Optimizer.Lattice.NegacyclicMultiplyCorrect
+public import CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots
+public import CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttInstances
 
 /-!
 # The NEGACYCLIC NTT-multiply emit → poly-VALUE bridge
@@ -58,6 +60,8 @@ twist root `ψ` (so `ψ² = ω` is the underlying primitive `n`-th root).
 cross-prover content is the gap between this canonical realizer and the emitted
 negacyclic NTT kernel's real byte semantics, which lives outside Lean.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

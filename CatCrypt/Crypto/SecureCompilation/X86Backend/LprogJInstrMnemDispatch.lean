@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrBytesAgree
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrBytesAgree
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrBytesAgree
 
 /-!
 # Closing the byte-agreement's mnemonic-dispatch residual (kernel-clean, no `native_decide`)
@@ -58,6 +61,8 @@ obligation is now discharged in the kernel by `decide +kernel`, so the D4 byte-a
 is `native_decide`-free (and axiom-free) end-to-end.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrMnemDispatch
@@ -84,7 +89,7 @@ straight through the ALU arm (no further string dispatch), so they may stay symb
     `Lopn [.reg dn] "<MNEM>:64" [.reg sn]`, the full `encodeLopn` dispatch reduces to the
     width-`1` reg-reg byte function `encTwoAddr frame spillW 1 op …`, with the SDM opcode
     `op` already resolved by the (closed-string) `aluOpcode` dispatch. -/
-private theorem dispatch_alu_one
+theorem dispatch_alu_one
     (frame spillW op : Nat) (mnem base : String) (dn sn : String)
     (hbind : (isCarryOutBinding mnem || isMulHiBinding mnem) = false)
     (hstrip : stripWidthTag mnem = base)
@@ -100,7 +105,7 @@ private theorem dispatch_alu_one
 /-- **ALU/`MOV` two-source (dst self-source) dispatch.** The same reduction on the
     two-source export form `Lopn [.reg dn] "<MNEM>:64" [.reg d0, .reg sn]` (`d0` the dst
     self-source). The `[d], [_, s]` arm routes identically to `encTwoAddr`. -/
-private theorem dispatch_alu_two
+theorem dispatch_alu_two
     (frame spillW op : Nat) (mnem base : String) (dn d0 sn : String)
     (hbind : (isCarryOutBinding mnem || isMulHiBinding mnem) = false)
     (hstrip : stripWidthTag mnem = base)
@@ -116,7 +121,7 @@ private theorem dispatch_alu_two
 /-- **`LOAD`/`STORE` dispatch (width-`0`, untagged).** The memory mnemonics carry no
     `:64` tag, so `mnemWidth = 32` and `w = 0`; the dispatch reduces to
     `encTwoAddr frame spillW 0 op …`. -/
-private theorem dispatch_mem
+theorem dispatch_mem
     (frame spillW op : Nat) (mnem base : String) (dn sn : String)
     (hbind : (isCarryOutBinding mnem || isMulHiBinding mnem) = false)
     (hstrip : stripWidthTag mnem = base)

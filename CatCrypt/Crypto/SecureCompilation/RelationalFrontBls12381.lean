@@ -3,11 +3,18 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFront
-import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Add
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Mul
-import Mathlib.Data.ZMod.Basic
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.RelationalFront
+public import CatCrypt.Crypto.SecureCompilation.RelationalFront
+public meta import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
+public import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
+public meta import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Add
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Add
+public meta import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Mul
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Mul
+public import Mathlib.Data.ZMod.Basic
 
 /-!
 # The `bls12_381` BASE-field ADD + MUL, realized relationally over a 6×64-bit carrier
@@ -56,6 +63,8 @@ as a `Nat` modulus but as a single decimal `abbrev`, not a 6×64-bit limb vector
 defined in `RelationalFrontBls377Add`) so the limb transcription check `bignumVal
 bls381Limbs = bls381Q` is local and self-contained.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GenericKernelRealization
-import CatCrypt.Crypto.Primitives.SHA256
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GenericKernelRealization
+public import CatCrypt.Crypto.Primitives.SHA256
 
 /-!
 # SHA-256 compression is a registry row of the one generic kernel predicate
@@ -46,6 +48,8 @@ multi-block hash is a `link`-composed chain of compression rows over the same
 carrier and `decode` — see `link_sha256_then`. This covers SHA-2-based
 protocols (HMAC, HKDF, signatures) the generic way.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

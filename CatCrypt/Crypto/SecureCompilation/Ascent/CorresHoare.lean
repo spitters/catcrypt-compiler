@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockCorres
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockCorres
 
 /-!
 # `CorresJ` as a Hoare triple — joining ascend to the Hoare-logic style
@@ -33,6 +35,8 @@ machine) additionally needs the `runBlock ↔ bignumStep` semantics bridge — t
 `runBlock ↔ lsem` territory as `RunBlockLsemAgree`. This module supplies the
 formalism-level half.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

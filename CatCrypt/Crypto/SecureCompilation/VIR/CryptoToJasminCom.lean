@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CryptoSSA
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+module
+
+public import CatCrypt.Crypto.SecureCompilation.CryptoSSA
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 
 /-!
 # CryptoSSA → VIR (Jasmin dialect): shared type/context/variable maps
@@ -40,6 +42,8 @@ argument-vector translation `toJArgs` is the pointwise extension.
 fragment, so `mapTy` sends them to a placeholder `reg 0`. The placeholder only
 ever appears as a context entry that the lowered fragment never reads.
 -/
+
+@[expose] public section
 
 set_option autoImplicit true -- SSA IR front: many context/type variables
 

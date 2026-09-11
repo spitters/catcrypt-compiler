@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrBytesAgree
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrBytesAgree
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrBytesAgree
 
 /-!
 # Resolver agreement: discharging the byte-agreement's `gpNum (regOf alloc ·) = gpNumU ·` side-condition (D4)
@@ -72,6 +75,8 @@ fragment under the standard allocation, with the resolver side-condition fully
 discharged** — retiring the Lprog owned encoder is a KAT-free swap on the resolver axis
 (D4).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpArrMemN
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1FrontTotal
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1FrontDenote
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpArrMemN
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1FrontTotal
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1FrontDenote
 
 /-!
 # The front-compiled `mpn_divrem_1` limb body is an `ArrMemN` member
@@ -28,6 +30,8 @@ quotient limb and new remainder back to `qp`.
 * `divUpdate_arrMemN` — the front-compiled `mpn_divrem_1` limb body is a member of
   the array-returning stack-memory fragment `ArrMemN`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -55,13 +59,13 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1FrontDenote (divUpda
 open CatCrypt.Crypto.Jasmin.LowCT (LowCT SExpr TowerType Located)
 
 /-- A `srcClean` high-multiply reads from `R` when both factors do. -/
-private theorem readsFrom_mulHiU {R : String → Prop} {a b : SExpr} (ha : ReadsFrom R a)
+theorem readsFrom_mulHiU {R : String → Prop} {a b : SExpr} (ha : ReadsFrom R a)
     (hb : ReadsFrom R b) : ReadsFrom R (SExpr.SMulHiU a b) :=
   ⟨⟨ha.1, hb.1⟩, fun s hs => by
     simp only [sexprVars, List.mem_append] at hs; exact hs.elim (ha.2 s) (hb.2 s)⟩
 
 /-- A pinned scalar read from a bound name. -/
-private def rdVar {R : String → Prop} (nm : String) {c : Char} {t : List Char}
+def rdVar {R : String → Prop} (nm : String) {c : Char} {t : List Char}
     (hh : nm.toList = c :: t) (hc : c ≠ '_') (hm : R nm) : ReadsFrom R (sv nm) :=
   readsFrom_var (x := nm) (notTmp_of_headNe hh hc) hm
 

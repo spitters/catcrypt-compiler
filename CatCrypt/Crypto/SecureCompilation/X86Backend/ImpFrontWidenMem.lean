@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ImpFrontWiden
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTUnifiedMem
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ImpFrontWiden
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTUnifiedMem
 
 /-!
 # w6-mem — widening the source front over MEMORY ops via the public-index route
@@ -77,6 +79,8 @@ memory statements) and the uniform CT covers it; threading the source `forLoop`
 into `UMStmt.forM` is a clean extension that mirrors `ImpFrontWiden.impHeadToU`'s
 loop case but to the memory loop constructor.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

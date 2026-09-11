@@ -4,6 +4,8 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 
+module
+
 /-!
 # Ed25519 Lean axioms ↔ Coq theorem index
 
@@ -224,3 +226,5 @@ explicit hypotheses by the consuming theorems.
 | `Ed25519SignLeafCallFacts.ed25519_compress` | 📌 cite-only | AUCurves `ed25519_compress_spec`: 200-byte XYZT point → 32-byte canonical encoding. |
 
 -/
+
+@[expose] public section

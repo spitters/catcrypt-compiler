@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GroundedFieldProtocol
-import CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
-import CatCrypt.Crypto.SecureCompilation.GroundedMlkemNtt
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GroundedFieldProtocol
+public import CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
+public import CatCrypt.Crypto.SecureCompilation.GroundedMlkemNtt
 
 /-!
 # Grounded PQC SIGNATURE computational backbones — whole-pipeline emit-realization
@@ -119,6 +121,8 @@ hypothesis; it is isolated out of the strict portfolio.
   Keccak sponge); Falcon (Fouque et al.).
 * NIST FIPS 203 (ML-KEM, the NTT parameters `q = 3329`, `n = 256`, `ω = 17`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+module
+
+import all Init.Data.Repr
+import all Init.Data.String.TakeDrop
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-!
 # `WellFormedX86`: a decidable ISA-legality invariant for the owned x86 backend
@@ -106,6 +111,8 @@ bypass the helper's routing.
   makes the catch structural once the three residuals are discharged.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.WellFormedX86
@@ -125,24 +132,53 @@ def x86PhysRegNames : List String :=
   ["RAX", "RBX", "RCX", "RDX", "RSI", "RDI", "RBP", "RSP",
    "R8", "R9", "R10", "R11", "R12", "R13", "R14", "R15"]
 
-/-- A spill-slot name `k.<n>` is resolved iff `<n>` parses as a natural number. -/
+/-- `String.isPrefixOf` is `JasminLprogExport.hasPrefix` with the arguments
+    swapped: both test `p.toList <+: s.toList`. The recognizers below are stated
+    over `hasPrefix`, which `decide` computes through inside a module. -/
+theorem isPrefixOf_eq_hasPrefix (p s : String) :
+    p.isPrefixOf s = JasminLprogExport.hasPrefix s p := by
+  rw [JasminLprogExport.hasPrefix, String.isPrefixOf, Bool.eq_iff_iff,
+    String.startsWith_string_iff, List.isPrefixOf_iff_prefix]
+
+/-- `digitSepOk cs lastDigit` holds iff `cs` is a run of decimal digits and `_`
+    separators in which every `_` is preceded by a digit (`lastDigit` stands for
+    the character before `cs`) and the run ends in a digit. This is the
+    acceptance rule of `String.isNat`. -/
+def digitSepOk : List Char → Bool → Bool
+  | [], lastDigit => lastDigit
+  | c :: rest, lastDigit =>
+      if c = '_' then lastDigit && digitSepOk rest false
+      else ('0' ≤ c && c ≤ '9') && digitSepOk rest true
+
+/-- The list form of `String.toNat?`: the decimal value of `cs` when
+    `digitSepOk cs false`, with `_` separators dropped, and `none` otherwise.
+    `String.toNat?` does not reduce inside a module; this parse does. -/
+def natOfDigitsSep? (cs : List Char) : Option Nat :=
+  if digitSepOk cs false then JasminLprogExport.natOfDigits? (cs.filter (fun c => c != '_'))
+  else none
+
+/-- A spill-slot name `k.<n>` is resolved iff `<n>` parses as a natural number
+    (`natOfDigitsSep?`, the list form of `String.toNat?`). -/
 def spillNameResolved (n : String) : Bool :=
-  "k.".isPrefixOf n && (String.toNat? (n.drop 2).toString).isSome
+  JasminLprogExport.hasPrefix n "k." && (natOfDigitsSep? (n.toList.drop 2)).isSome
 
 /-- An ABI save-slot name `qsave.<reg>` is resolved iff `<reg>` is one of the
     eight save registers the printer's `qsaveSlot` map knows. -/
 def qsaveNameResolved (n : String) : Bool :=
-  "qsave.".isPrefixOf n &&
-    (((n.drop 6).toString) ∈
-      (["RDI", "RSI", "RBX", "RBP", "R12", "R13", "R14", "R15"] : List String))
+  JasminLprogExport.hasPrefix n "qsave." &&
+    (n.toList.drop 6 ∈
+      (["RDI", "RSI", "RBX", "RBP", "R12", "R13", "R14", "R15"] : List String).map
+        String.toList)
 
-/-- A base+offset memory name `mem.<base>.<off>` is resolved iff it splits into
-    exactly `[base, off]`, `base` is a resolvable physical register, and `off`
-    parses as a natural number. Mirrors the printer's `mem.`-arm split. -/
+/-- A base+offset memory name `mem.<base>.<off>` is resolved iff the text after
+    `mem.` is `<base>.<off>` with `base` a resolvable physical register (which
+    contains no `.`) and `off` a natural number (so it contains no `.` either):
+    the `[base, off]` split of the printer's `mem.` arm. -/
 def memNameResolved (n : String) : Bool :=
-  "mem.".isPrefixOf n &&
-    (match ((n.drop 4).toString).splitOn "." with
-     | [base, off] => (base ∈ x86PhysRegNames) && (String.toNat? off).isSome
+  JasminLprogExport.hasPrefix n "mem." &&
+    (match (n.toList.drop 4).span (· ≠ '.') with
+     | (base, '.' :: off) =>
+         (base ∈ x86PhysRegNames.map String.toList) && (natOfDigitsSep? off).isSome
      | _ => false)
 
 /-- A register *name* is **x86-resolved** iff it is a real physical register, a
@@ -195,7 +231,7 @@ def atMostOneMem : LinstrR → Bool
 
 /-- True iff the mnemonic carries a 64-bit width tag (`:64` or `MOVQ`). -/
 def isU64Mnem (opn : String) : Bool :=
-  opn.endsWith ":64" || opn = "MOVQ"
+  hasSuffix opn ":64" || opn = "MOVQ"
 
 /-- **(c) width consistency.** The operand width is fixed by the mnemonic tag
     (the printer sizes all operands of an op uniformly off `mnemWidth`), so there
@@ -282,13 +318,15 @@ def memCoincidesSpill (o : LOperand) : Prop := isMemX86 o = LOperand.isSpill o
     `.reg R15` is not a memory operand. -/
 theorem reloadScratch_ok :
     opResolved (LOperand.reg reloadScratch) = true ∧
-    isMemX86 (LOperand.reg reloadScratch) = false := by native_decide
+    isMemX86 (LOperand.reg reloadScratch) = false := by
+  simp only [isMemX86, isPrefixOf_eq_hasPrefix]; decide
 
 /-- `R14` (secondary reload scratch) is a resolved physical register, and a
     `.reg R14` is not a memory operand. -/
 theorem reloadScratch2_ok :
     opResolved (LOperand.reg reloadScratch2) = true ∧
-    isMemX86 (LOperand.reg reloadScratch2) = false := by native_decide
+    isMemX86 (LOperand.reg reloadScratch2) = false := by
+  simp only [isMemX86, isPrefixOf_eq_hasPrefix]; decide
 
 /-- A two-operand `mov`/load `[d] op [s]` is WF when `d`, `s` are resolved and at
     most one is a memory operand. The base case for the single-instruction arms. -/
@@ -371,29 +409,22 @@ theorem wf_store_core (dArr addr' v : LOperand) (opn : String)
     base+offset memory name. -/
 theorem scratch2Mem_resolved :
     opResolved (LOperand.reg ("mem." ++ reloadScratch2 ++ ".0")) = true := by
-  have hpfx : ("mem." : String).isPrefixOf "mem.R14.0" = true := by
-    simp [String.isPrefixOf, String.startsWith]
-  have hdrop : (("mem.R14.0" : String).drop 4).toString = "R14.0" := by decide
-  have hsplit : ("R14.0" : String).splitOn "." = ["R14", "0"] := by
-    simp +decide [String.splitOn, String.splitOnAux]
-  have hnat : ("0" : String).toNat?.isSome = true := by
-    simp [String.toNat?, String.Slice.toNat?, String.Slice.isNat]
-  simp only [opResolved, reloadScratch2, regNameResolved, memNameResolved,
-    String.reduceAppend, hpfx, hdrop, hsplit, x86PhysRegNames]
-  simp [hnat]
+  decide
 
 /-- A physical register name is never a SIB spill (`k.`-prefixed) name. -/
 theorem physReg_not_sibSpill {n : String} (h : n ∈ x86PhysRegNames) :
     sibNameSpill n = false := by
   simp only [x86PhysRegNames, List.mem_cons, List.not_mem_nil, or_false] at h
-  rcases h with h|h|h|h|h|h|h|h|h|h|h|h|h|h|h|h <;> subst h <;> native_decide
+  rcases h with h|h|h|h|h|h|h|h|h|h|h|h|h|h|h|h <;> subst h <;>
+    simp only [sibNameSpill, isPrefixOf_eq_hasPrefix] <;> decide
 
 /-- A physical register name is never a memory operand (`isMemX86 = false`): it
     carries none of the `k.`/`qsave.`/`mem.` prefixes. -/
 theorem physReg_not_mem {n : String} (h : n ∈ x86PhysRegNames) :
     isMemX86 (.reg n) = false := by
   simp only [x86PhysRegNames, List.mem_cons, List.not_mem_nil, or_false] at h
-  rcases h with h|h|h|h|h|h|h|h|h|h|h|h|h|h|h|h <;> subst h <;> native_decide
+  rcases h with h|h|h|h|h|h|h|h|h|h|h|h|h|h|h|h <;> subst h <;>
+    simp only [isMemX86, isPrefixOf_eq_hasPrefix] <;> decide
 
 /-- On an already-`opResolved` operand, `legalizeSibElem` is the identity (no
     reload): a resolved `arrIdx` already has physical base/index, so neither is a
@@ -605,7 +636,7 @@ theorem spillResolved_isSibSpill {n : String} (h : spillNameResolved n = true) :
     sibNameSpill n = true := by
   unfold spillNameResolved at h
   unfold sibNameSpill
-  rw [Bool.and_eq_true] at h; exact h.1
+  rw [Bool.and_eq_true] at h; rw [isPrefixOf_eq_hasPrefix]; exact h.1
 
 /-- A SIB-ok name, when it is a spill (`sibNameSpill`), is a *resolved* spill. -/
 theorem sibArgOk_spill_resolved {n : String}
@@ -645,10 +676,10 @@ theorem legalizeSibElem_fixed_resolved (base idx : String) (scale : Nat)
   by_cases hbs : sibNameSpill base = true <;> by_cases his : sibNameSpill idx = true <;>
     simp only [hbs, his, if_true, if_false, Bool.false_eq_true, opResolved,
       Bool.and_eq_true, decide_eq_true_eq]
-  · exact ⟨⟨by native_decide, by native_decide⟩, hs⟩
-  · refine ⟨⟨by native_decide, ?_⟩, hs⟩
+  · exact ⟨⟨by decide, by decide⟩, hs⟩
+  · refine ⟨⟨by decide, ?_⟩, hs⟩
     exact sibArgOk_nonspill_phys hi (by rw [Bool.not_eq_true] at his; exact his)
-  · refine ⟨⟨?_, by native_decide⟩, hs⟩
+  · refine ⟨⟨?_, by decide⟩, hs⟩
     exact sibArgOk_nonspill_phys hb (by rw [Bool.not_eq_true] at hbs; exact hbs)
   · refine ⟨⟨?_, ?_⟩, hs⟩
     · exact sibArgOk_nonspill_phys hb (by rw [Bool.not_eq_true] at hbs; exact hbs)
@@ -667,16 +698,16 @@ theorem legalizeSibElem_prelude_wf (base idx : String) (scale : Nat)
       Bool.false_eq_true] at hmem
   · rcases hmem with hm | hm
     · subst hm
-      exact sib_reload_wf reloadScratch2 base _ (by native_decide)
+      exact sib_reload_wf reloadScratch2 base _ (by decide)
         (sibArgOk_spill_resolved hb hbs)
     · subst hm
-      exact sib_reload_wf reloadScratch idx _ (by native_decide)
+      exact sib_reload_wf reloadScratch idx _ (by decide)
         (sibArgOk_spill_resolved hi his)
   · subst hmem
-    exact sib_reload_wf reloadScratch2 base _ (by native_decide)
+    exact sib_reload_wf reloadScratch2 base _ (by decide)
       (sibArgOk_spill_resolved hb hbs)
   · subst hmem
-    exact sib_reload_wf reloadScratch idx _ (by native_decide)
+    exact sib_reload_wf reloadScratch idx _ (by decide)
       (sibArgOk_spill_resolved hi his)
 
 /-! ## 6c. The full memory load/store legalization is WF on a **spilled-base SIB**
@@ -845,9 +876,10 @@ preservation theorem — every other step is proved on top. -/
 /-- The single String-round-trip fact `physRegName`'s spill block rests on: a
     rendered spill name `"k." ++ toString k` parses as a `spillNameResolved`
     slot, and carries the `"k."` prefix (so `isMemX86`/`isSpill` see it). The
-    `(toString k).toNat?`-`.isSome` decimal round-trip has no library lemma in
-    this toolchain (see the module docstring), so it is carried as a hypothesis
-    rather than proved by `decide` (which cannot reduce it for symbolic `k`). -/
+    decimal round-trip `natOfDigitsSep? (toString k).toList = some k` has no
+    library lemma in this toolchain (see the module docstring), so it is carried
+    as a hypothesis rather than proved by `decide` (which cannot reduce it for
+    symbolic `k`). -/
 def SpillNameWF : Prop := ∀ k : Nat,
   spillNameResolved ("k." ++ toString k) = true ∧
   "k.".isPrefixOf ("k." ++ toString k) = true
@@ -860,7 +892,8 @@ theorem gpRegNames_subset_phys :
     (decidable) — so a GP physical register is never a memory operand. -/
 theorem gp_not_spillPrefix : ∀ r ∈ JasminLprogExport.gpRegNames,
     "k.".isPrefixOf r = false ∧ "qsave.".isPrefixOf r = false ∧
-      "mem.".isPrefixOf r = false := by native_decide
+      "mem.".isPrefixOf r = false := by
+  simp only [isPrefixOf_eq_hasPrefix]; decide
 
 /-- The spill name `physRegName` renders for a slot index `≥ numGPRegs`
     (local copy of `ToLprogFaithfulRA.physRegName_spill_eq`, inlined to keep this
@@ -1020,7 +1053,7 @@ theorem materializeWideImm_wf (s1 : LOperand) (mov : String)
       memCoincidesSpill (.reg reloadScratch2) := by
     refine ⟨reloadScratch2_ok.1, ?_⟩
     rw [memCoincidesSpill, reloadScratch2_ok.2]
-    simp only [LOperand.isSpill, reloadScratch2]; native_decide
+    simp only [LOperand.isSpill, reloadScratch2, isPrefixOf_eq_hasPrefix]; decide
   cases s1 with
   | imm w =>
     unfold JasminLprogExport.materializeWideImm
@@ -1093,8 +1126,9 @@ theorem remap_reg_coincides (hspill : SpillNameWF) (body : Lcmd) (tbl : Array Na
 
 /-- The second String-API residual: the inline ABI load/store / epilogue memory
     operand `mem.R14.<off>` resolves (`memNameResolved`) and carries the `mem.`
-    prefix (so `isMemX86` sees it). Same `splitOn`/`toNat?`-over-`++ toString`
-    toolchain gap as `SpillNameWF`; carried as a hypothesis. -/
+    prefix (so `isMemX86` sees it). The same decimal round-trip
+    (`natOfDigitsSep? (toString off).toList`) as `SpillNameWF`; carried as a
+    hypothesis. -/
 def MemNameWF : Prop := ∀ off : Nat,
   memNameResolved (JasminLprogExport.memName reloadScratch2 off) = true ∧
   "mem.".isPrefixOf (JasminLprogExport.memName reloadScratch2 off) = true
@@ -1137,24 +1171,28 @@ theorem wfLcmd_append (a b : Lcmd) (ha : wfLcmd a = true) (hb : wfLcmd b = true)
 /-- **The ABI prologue is WF.** The 9-instruction pointer-save + callee-save +
     RSI-park prelude is a fixed list of `MOVQ`s, each a register↔`qsave.`-slot
     move (one memory operand). Fully concrete (`buildPrologue` ignores its
-    arguments), so `native_decide` per instruction. -/
+    arguments), so `decide` per instruction. -/
 theorem buildPrologue_wf (virt : Lfundef) (tbl : Array Nat)
     (inLoadMap : JasminLprogExport.InLoadMap) :
     ∀ o ∈ JasminLprogExport.buildPrologue virt tbl inLoadMap, wfLinstr o.li_i = true := by
   intro o ho
   unfold JasminLprogExport.buildPrologue at ho
   simp only [List.mem_cons, List.not_mem_nil, or_false] at ho
-  rcases ho with h|h|h|h|h|h|h|h|h <;> subst h <;> native_decide
+  rcases ho with h|h|h|h|h|h|h|h|h <;> subst h <;>
+    simp +decide [wfLinstr, instrOperands, atMostOneMem, countMem, isMemX86,
+      isPrefixOf_eq_hasPrefix]
 
 /-- **The callee-save restore epilogue is WF.** A fixed list of 6 `MOVQ`s, each a
     register ← `qsave.`-slot restore (one memory operand). Concrete, so
-    `native_decide` per instruction. -/
+    `decide` per instruction. -/
 theorem calleeSaveRestoreEpilogue_wf :
     ∀ o ∈ JasminLprogExport.calleeSaveRestoreEpilogue, wfLinstr o.li_i = true := by
   intro o ho
   unfold JasminLprogExport.calleeSaveRestoreEpilogue at ho
   simp only [List.mem_cons, List.not_mem_nil, or_false] at ho
-  rcases ho with h|h|h|h|h|h <;> subst h <;> native_decide
+  rcases ho with h|h|h|h|h|h <;> subst h <;>
+    simp +decide [wfLinstr, instrOperands, atMostOneMem, countMem, isMemX86,
+      isPrefixOf_eq_hasPrefix]
 
 /-! ## 6g. The inline ABI load/store legs and the whole-body assembly
 
@@ -1185,7 +1223,9 @@ theorem loadLeg_wf (dst : LOperand) (off : Nat) (abiMovReg abiMovBuf : String)
       wfLinstr o.li_i = true := by
   intro o ho
   have hRI : wfLinstr (.Lopn [.reg reloadScratch2] "MOVQ"
-      [.reg JasminLprogExport.abiSaveRsiName]) = true := by native_decide
+      [.reg JasminLprogExport.abiSaveRsiName]) = true := by
+    simp +decide [wfLinstr, instrOperands, atMostOneMem, countMem, isMemX86,
+      isPrefixOf_eq_hasPrefix]
   have hmd := memDst_resolved hmem off
   by_cases hsp : dst.isSpill = true
   · rw [if_pos hsp] at ho
@@ -1222,7 +1262,9 @@ theorem storeLeg_wf (src : LOperand) (off : Nat) (abiMovReg abiMovBuf : String)
       wfLinstr o.li_i = true := by
   intro o ho
   have hRO : wfLinstr (.Lopn [.reg reloadScratch2] "MOVQ"
-      [.reg JasminLprogExport.abiSaveRdiName]) = true := by native_decide
+      [.reg JasminLprogExport.abiSaveRdiName]) = true := by
+    simp +decide [wfLinstr, instrOperands, atMostOneMem, countMem, isMemX86,
+      isPrefixOf_eq_hasPrefix]
   have hmd := memDst_resolved hmem off
   by_cases hsp : src.isSpill = true
   · rw [if_pos hsp] at ho
@@ -1274,7 +1316,7 @@ theorem abiWrap_wf (prologue bws : Lcmd) (virt : Lfundef) (tbl : Array Nat)
     · apply wfLcmd_append
       · exact wfLcmd_dropLast bws hbws
       · exact wfLcmd_of_forall _ calleeSaveRestoreEpilogue_wf
-    · native_decide
+    · decide
 
 /-! ## 7. The lowering-preserves-WF goal (checker-gated) -/
 
@@ -1339,24 +1381,30 @@ example :
         lp_funcs := [("smoke",
           { lfd_body :=
               [⟨0, .Lopn [.reg "RAX"] "MOV" [.reg "RBX"]⟩, ⟨0, .Lret⟩] })] }
-      = true := by native_decide
+      = true := by
+  simp +decide [wfLprog, wfLfundef, wfLcmd, wfLinstr, instrOperands, atMostOneMem, countMem,
+    isMemX86, isPrefixOf_eq_hasPrefix]
 
 /-- A concrete smoke test that the checker **rejects** the bug-class-1/2 shape:
     a `mem → mem` move (`mov k.1, k.0`) is not WF (two memory operands). -/
 example :
-    wfLinstr (.Lopn [.reg "k.1"] "MOV" [.reg "k.0"]) = false := by native_decide
+    wfLinstr (.Lopn [.reg "k.1"] "MOV" [.reg "k.0"]) = false := by
+  simp +decide [wfLinstr, instrOperands, atMostOneMem, countMem, isMemX86,
+    isPrefixOf_eq_hasPrefix]
 
 /-- A concrete smoke test that the checker **rejects** the bug-class-3 shape: an
     unresolved spill placeholder (a `k.` with no parseable index) is not WF. -/
 example :
-    wfLinstr (.Lopn [.reg "RAX"] "MOV" [.reg "k."]) = false := by native_decide
+    wfLinstr (.Lopn [.reg "RAX"] "MOV" [.reg "k."]) = false := by
+  simp +decide
 
 /-- A concrete smoke test that the checker **rejects** the third remaining ChaCha
     shape: a store into a SIB element whose **base** is a spill slot
     (`movq %r15, (%<UNKNOWN:k.5>, %rax, 8)`) — the SIB base must be a register. -/
 example :
     wfLinstr (.Lopn [.reg "RBX"] "STOREIDX:64"
-      [.arrIdx "k.5" "RAX" 8, .reg "R15"]) = false := by native_decide
+      [.arrIdx "k.5" "RAX" 8, .reg "R15"]) = false := by
+  simp +decide
 
 /-- A concrete smoke test that `legalizeMemStore` **fixes** the spilled-SIB-base
     store: every emitted instruction (the `mov R14, k.5` base reload and the
@@ -1365,6 +1413,8 @@ example :
 example :
     (JasminLprogExport.legalizeMemStore (.reg "RBX") (.arrIdx "k.5" "RAX" 8)
       (.reg "R15") "STOREIDX:64").all (fun i => wfLinstr i) = true := by
-  native_decide
+  simp +decide [JasminLprogExport.legalizeMemStore, JasminLprogExport.legalizeSibElem,
+    sibNameSpill, LOperand.isSpill, reloadScratch, reloadScratch2, wfLinstr, instrOperands,
+    atMostOneMem, countMem, isMemX86, isPrefixOf_eq_hasPrefix]
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.WellFormedX86

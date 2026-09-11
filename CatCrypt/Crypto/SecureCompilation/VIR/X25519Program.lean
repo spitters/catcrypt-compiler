@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptPrint
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptPrint
 
 /-!
 # X25519 field-element shape
@@ -13,6 +16,8 @@ The Curve25519 field element `Fp25519` modeled as a `memref 5`
 shape shared by the Ed25519 emit-correctness chain (`FieldExpChain` and
 its semantics).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.X25519Program
 

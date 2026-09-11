@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookEmit
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookEmit
 
 /-!
 # Schoolbook multiply over `runBlock`: the flag-resetting multi-column assembly
@@ -76,6 +78,8 @@ The persistent-flag / full-ILP ADX schedule (no per-column reset, marginally
 faster) is a separate *perf-equivalence* increment, not done here; it does not
 change the value spec.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxHeartbeats 1000000

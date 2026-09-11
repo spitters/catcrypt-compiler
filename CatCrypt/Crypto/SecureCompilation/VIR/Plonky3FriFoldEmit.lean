@@ -3,9 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 
 /-!
 # Plonky3 FRI fold-layer arithmetic FRONT-COMPILED as a `Com jasminDialect`
@@ -54,6 +60,8 @@ to `Plonky3FriEmit.friFold` / `bbInv` is KAT-witnessed
 (`fri_fold_from_rustcmd_kat.c`); Barrett reduction-correctness is not re-proved
 in Lean.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FriFoldEmit
 

@@ -3,13 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel
-import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrFlagLiveness
-import CatCrypt.Crypto.Optimizer.StoreToLoadForward
-import CatCrypt.Crypto.Optimizer.Mem2Reg
-import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
-import CatCrypt.Crypto.Optimizer.GraphColoringCoalesce
-import CatCrypt.Crypto.Optimizer.RedundantReloadElim
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrFlagLiveness
+public import CatCrypt.Crypto.Optimizer.StoreToLoadForward
+public import CatCrypt.Crypto.Optimizer.Mem2Reg
+public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+public import CatCrypt.Crypto.Optimizer.GraphColoringCoalesce
+public import CatCrypt.Crypto.Optimizer.RedundantReloadElim
 
 /-!
 # The composed owned x86-`Com` optimizer driver (#555 core)
@@ -121,6 +124,8 @@ are discharged per kernel.  The reusable *unconditional* driver and the hooks
   wiring (and its denotation equality) collapses to a **single
   `optimizeX86Block feMulBlock` call**, demonstrating the driver on a real kernel.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

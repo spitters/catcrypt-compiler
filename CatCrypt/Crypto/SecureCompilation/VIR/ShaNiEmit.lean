@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
 
 /-!
 # SHA-NI dialect ops (Intel SHA-256 acceleration) — denotation + bridge
@@ -78,6 +82,8 @@ by unsealing the primitive — orthogonal to the dialect-op work.
 
 Invoke:  `lake build CatCrypt.Crypto.SecureCompilation.VIR.ShaNiEmit`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

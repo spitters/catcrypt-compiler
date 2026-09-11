@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # C4 fan-out: the verified compiler emits the UOV GF(256) multiply from extracted source
@@ -54,6 +57,8 @@ by `native_decide`; `gf256Mul_compiles` routes the source-spec through
 `compileFromHax_meets_spec`. The two-input valuation is `![a, b]` (`w = 32`,
 `nIn = 2`), the result is the GF(256) product in the low byte.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -204,7 +209,7 @@ theorem gf256Mul_compiles :
       = some (gf256MulSpec a b) := by
     have h := gf256MulSrc_denoteScalar (nIn := 2) ![a, b]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 32) (nIn := 2) gf256Params
     ![a, b] gf256MulSrc _ hc hspec
 

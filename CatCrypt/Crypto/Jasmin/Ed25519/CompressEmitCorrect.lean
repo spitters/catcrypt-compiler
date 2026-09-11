@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.FieldExpChainSemantics
-import CatCrypt.Crypto.Jasmin.Ed25519.CompressEmit
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.FieldExpChainSemantics
+public import CatCrypt.Crypto.Jasmin.Ed25519.CompressEmit
 
 /-!
 # `ed25519_compress` — chain-to-spec correctness
@@ -72,6 +74,8 @@ empirical witness for the deferred piece.
   the algebraic correctness of the chain.
 * `InvP25519Algo.zmod_pow_p_sub_two_eq_inv` — Fermat's little theorem.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

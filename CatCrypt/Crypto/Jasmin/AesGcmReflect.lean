@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
+module
+
+public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
 # AES-128-GCM chain reflect surface — multi-round chain glue through the verified front
@@ -63,7 +66,7 @@ see `MayoReflect.lean` for the parallel discussion). The same gap applies to
 AES-CCM, AES-SIV, AES-GCM-SIV, AEGIS — the AEAD multi-block chain shape needs
 either `RFor` in `LowCT` or a per-block-count specialisation. This file's
 design is the **specialisation route**: one leaf per fixed `N`, today `N = 4`
-(the canonical NIST GCM TC4 / `aesgcm-hax/src/gcm.rs::gcm_encrypt` 64-byte
+(the canonical NIST GCM TC4 / `hax-specs/aesgcm-hax/src/gcm.rs::gcm_encrypt` 64-byte
 shape). Adding `N = 16` or `N = 256` is a copy of the `@[rust_cmd_pattern]` +
 axiom.
 
@@ -81,7 +84,7 @@ cryptoDialectToJasminCom → emitAbiOrchRegPtr`) is the unmodified verified fron
 
 * NIST SP 800-38D §6, §7 — AES-GCM encryption (`GCTR`, `GHASH`, full encrypt)
 * RFC 5288, NIST Test Case 4 — canonical AES-128-GCM test vector
-* `aesgcm-hax/src/gcm.rs::gcm_encrypt` — Rust trait surface this file mirrors
+* `hax-specs/aesgcm-hax/src/gcm.rs::gcm_encrypt` — Rust trait surface this file mirrors
 * `bench/aesgcm_compare/aesgcm_emit.lean` — Tier B per-round Com (keeper)
 * `CatCrypt/Crypto/Jasmin/MayoReflect.lean` — sibling pattern (single-leaf
   reflect surface registering one fixed-N leaf)
@@ -90,6 +93,8 @@ cryptoDialectToJasminCom → emitAbiOrchRegPtr`) is the unmodified verified fron
 * `bench/framework/AUDIT_EMIT_BYPASS.md` §3 — the AES-GCM family chain-glue
   gap this file closes
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 
@@ -112,7 +117,7 @@ plus a 16-byte authentication tag (which we bundle as 80 bytes of
 | `GcmCt4Tag`       | `TBytes 80`|           80 | 10 (64 ct + 16 tag)|
 
 All five are opaque on the Lean side; the leaf `aesgcm_chain_n4` implements the
-concrete byte layout (matches `aesgcm-hax/src/gcm.rs` and the existing
+concrete byte layout (matches `hax-specs/aesgcm-hax/src/gcm.rs` and the existing
 `bench/aesgcm_compare/aesgcm_kat.c` ABI). -/
 
 /-- AES-128 key (16 bytes). Opaque on the Lean side; the chain leaf reads it as
@@ -128,12 +133,12 @@ axiom GcmNonce : Type
 noncomputable instance : Inhabited GcmNonce := ⟨GcmNonce.default⟩
 
 /-- AES-GCM AAD: one 16-byte block (matches the canonical NIST GCM TC4 / the
-    `aesgcm-hax/src/gcm.rs::gcm_encrypt` AAD shape). Opaque. -/
+    `hax-specs/aesgcm-hax/src/gcm.rs::gcm_encrypt` AAD shape). Opaque. -/
 axiom GcmAad : Type
 /-- Axiomatic inhabitant. -/ axiom GcmAad.default : GcmAad
 noncomputable instance : Inhabited GcmAad := ⟨GcmAad.default⟩
 
-/-- AES-GCM plaintext: 4 AES blocks = 64 bytes (matches the `aesgcm-hax`
+/-- AES-GCM plaintext: 4 AES blocks = 64 bytes (matches the `hax-specs/aesgcm-hax`
     fixed-size `gcm_encrypt` test case and the legacy
     `bench/aesgcm_compare/aesgcm_kat.c` ABI). Opaque; the chain leaf
     encrypts it via AES-CTR keystream. -/
@@ -241,7 +246,7 @@ def gcmPt4TowerType   : TowerType := .TBytes 64
 /-- TowerType for the `(ct, tag)` bundle (64 B ct + 16 B tag = 80 bytes). -/
 def gcmCt4TagTowerType : TowerType := .TBytes 80
 
-private def loc (n : String) (t : TowerType) : Located :=
+def locAesGcm (n : String) (t : TowerType) : Located :=
   { locVar := n, locSrc := t }
 
 /-- The `LowCT` body the reifier *would* produce for `aesGcmChainLean`:
@@ -254,11 +259,11 @@ private def loc (n : String) (t : TowerType) : Located :=
     fixed-`N=4` leaf), with result name `__result` matching the reifier's
     end-of-chain convention. -/
 def aesGcmChainBody : LowCT :=
-  let key_l    := loc "key"      aesKeyTowerType
-  let nonce_l  := loc "nonce"    gcmNonceTowerType
-  let aad_l    := loc "aad"      gcmAadTowerType
-  let pt_l     := loc "pt"       gcmPt4TowerType
-  let result_l := loc "__result" gcmCt4TagTowerType
+  let key_l    := locAesGcm "key"      aesKeyTowerType
+  let nonce_l  := locAesGcm "nonce"    gcmNonceTowerType
+  let aad_l    := locAesGcm "aad"      gcmAadTowerType
+  let pt_l     := locAesGcm "pt"       gcmPt4TowerType
+  let result_l := locAesGcm "__result" gcmCt4TagTowerType
   .RSeq .RSkip
     (.RCall "aesgcm_chain_n4" result_l [key_l, nonce_l, aad_l, pt_l])
 

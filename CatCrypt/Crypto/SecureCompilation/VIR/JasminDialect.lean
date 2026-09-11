@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Core
-import CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public import CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
 
 /-!
 # Jasmin VIR dialect (spike)
@@ -62,6 +65,8 @@ A `Com jasminDialect → CatCrypt.Crypto.Jasmin.LowCT.JasminProg` lowering
 it is intentionally not attempted in this spike, whose core is the dialect plus
 a `Com.denote` smoke test.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 

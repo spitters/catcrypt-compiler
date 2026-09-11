@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrontDenote
-import CatCrypt.Crypto.SecureCompilation.Dialects.CarryChainSelectAdequacy
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrontDenote
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CarryChainSelectAdequacy
 
 /-!
 # The write set of the emitted secp256k1 field-multiply brick
@@ -50,6 +53,8 @@ per-brick step.
   the residual value obligation over them, and the `mul` arm of the per-brick
   step assembled from the value obligation and the frame.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Secp256k1FeMulBrickFrame
 

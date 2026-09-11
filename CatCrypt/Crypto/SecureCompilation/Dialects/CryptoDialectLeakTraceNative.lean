@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakTrace
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakTrace
 
 /-!
 # Native dialect constant-time / leak-trace input-independence
@@ -43,6 +45,8 @@ With `Com.all_com_ct` the dialect leak/CT view is self-contained: the statement
 
 **0 axioms**, **0 sorries**.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

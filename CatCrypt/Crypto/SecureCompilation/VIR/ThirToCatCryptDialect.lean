@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
 
 /-!
 # The verified `Com[thir] → Com[catCrypt]` lowering (the HIGH-stack edge)
@@ -78,6 +80,8 @@ subset is faithful and gap-free.
   *has* `extCall`; the leaf is wired but its arg-vector transport needs the
   general `tcTy`-mapped `argsTc`, deferred with the `thExtCall` arm.)
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

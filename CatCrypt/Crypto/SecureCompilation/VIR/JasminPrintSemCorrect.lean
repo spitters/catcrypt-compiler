@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 
 /-!
 # `lowerComToProg` is denotation-preserving — semantic (not just structural) half
@@ -17,7 +20,7 @@ final result equals `Com.denote`.
 ## Why a fresh minimal evaluator (and the gap to `jasminSemTraced'`)
 
 The repository's existing Jasmin evaluator
-(`CatCrypt/Crypto/SecureCompilation/JasminSemTraced.lean`,
+(`CatCrypt/Crypto/CompilerSecurity/JasminSemTraced.lean`,
 `JasminExec.lean`) is the *leakage-trace* semantics over `RustState`: values are
 stored as `TowerType`-encoded **byte arrays** (`JArray`), the evaluator is
 `Option`-partial (returns `none` outside its supported subset), and it tracks a
@@ -72,6 +75,8 @@ valuation that `Com.denote` threads.
 
 0 sorries. The leaf edge is parametric (a hypothesis), never a `sorry`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

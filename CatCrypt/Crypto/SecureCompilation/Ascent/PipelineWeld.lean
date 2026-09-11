@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSourceTower
-import HaxLean.Pipeline
-import HaxLean.PipelineCF
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSourceTower
+public import HaxLean.Pipeline
+public import HaxLean.PipelineCF
 
 /-!
 # Welding hax-lean's `pipeline_correct` on top of the `feSub` source tower
@@ -47,6 +49,8 @@ hypothesis.  So the remaining interface is precisely `hBridge`, the concrete
 
 Part of the AutoCorres-in-Lean ascent begun by Sebastian Graf (sgraf812/ascent).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxRecDepth 10000

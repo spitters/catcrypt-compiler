@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
+module
+
+import all Init.Data.Repr
+public import Mathlib.Data.String.Defs
+public import CatCrypt.Crypto.Jasmin.LowCT
 
 /-!
 # `ed25519_compress` — VIR-extracted curve leaf
@@ -59,6 +63,8 @@ Byte-for-byte equality is the correctness witness.
 The emitter writes `bench/dalek/extracted/ed25519_compress.mlir`.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Jasmin.Ed25519.CompressEmit
@@ -112,17 +118,17 @@ def compressLeafPrimitives : List (String × List TowerType) :=
   ```
 -/
 
-private def ξ_xyzt : String := "xyzt"
-private def ξ_out  : String := "out"
-private def ξ_xs   : String := "x_slot"
-private def ξ_ys   : String := "y_slot"
-private def ξ_zs   : String := "z_slot"
-private def ξ_zinv : String := "z_inv"
-private def ξ_yaff : String := "y_aff"
-private def ξ_xaff : String := "x_aff"
+def ξ_xyzt : String := "xyzt"
+def ξ_out  : String := "out"
+def ξ_xs   : String := "x_slot"
+def ξ_ys   : String := "y_slot"
+def ξ_zs   : String := "z_slot"
+def ξ_zinv : String := "z_inv"
+def ξ_yaff : String := "y_aff"
+def ξ_xaff : String := "x_aff"
 
 /-- Helper: build a `Located` from slot name + tower type. -/
-private def L (name : String) (t : TowerType) : Located := ⟨name, t⟩
+def L (name : String) (t : TowerType) : Located := ⟨name, t⟩
 
 /-- The `LowCT` body for `ed25519_compress`.  Mirrors `compress_xyz`'s
     7-call sequence verbatim. -/
@@ -158,7 +164,7 @@ def ed25519_compress_cmd : LowCT :=
 Locally defined so this file does NOT depend on `MLIRExtract.lean` —
 which has unrelated build breaks during the ongoing LowCT refactor. -/
 
-private def emitCall (name : String) (dest : Located) (args : List Located) : String :=
+def emitCall (name : String) (dest : Located) (args : List Located) : String :=
   let argRefs := args.map (fun a => "%" ++ a.locVar)
   let argTys  := args.map (fun a => renderTowerType a.locDst)
   let allRefs := ("%" ++ dest.locVar) :: argRefs
@@ -167,7 +173,7 @@ private def emitCall (name : String) (dest : Located) (args : List Located) : St
   let tyStr  := String.intercalate ", " allTys
   s!"func.call @{name}({refStr}) : ({tyStr}) -> ()"
 
-private partial def emitBody : LowCT → List String
+partial def emitBody : LowCT → List String
   | .RSkip        => []
   | .RSeq c1 c2   => emitBody c1 ++ emitBody c2
   | .RBlock body  => emitBody body
@@ -177,7 +183,7 @@ private partial def emitBody : LowCT → List String
   | _ => ["// unsupported"]
 
 /-- Render an extern declaration `func.func private @name(args)`. -/
-private def externLine (name : String) (params : List TowerType) : String :=
+def externLine (name : String) (params : List TowerType) : String :=
   let paramStr := String.intercalate ", " (params.map renderTowerType)
   s!"  func.func private @{name}({paramStr})"
 

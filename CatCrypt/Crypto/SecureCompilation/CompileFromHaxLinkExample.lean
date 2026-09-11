@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxLink
+module
+
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxLink
 
 /-!
 # C8 worked example: the Mode-A two-front combiner on a SHA-256 σ₀ leaf
@@ -53,6 +55,8 @@ outer `Com`, driven by `linkNames`/`LeafRegistry` (the fold skeleton already in
 `CompileFromHaxLink.§4`). The single-boundary case here is the acceptable C8
 deliverable and the inductive base of that walk.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

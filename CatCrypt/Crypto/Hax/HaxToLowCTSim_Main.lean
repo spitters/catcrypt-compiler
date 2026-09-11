@@ -3,12 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
-import CatCrypt.Crypto.Hax.HaxToLowCTSim_Agreement
-import CatCrypt.Crypto.Hax.HaxToLowCTSim_AssignMatch
-import CatCrypt.Crypto.Hax.HaxToLowCTSim_Call
-import CatCrypt.Crypto.Hax.HaxToLowCTSim_If
-import CatCrypt.Crypto.Hax.HaxToLowCTSim_While
+module
+
+public import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Agreement
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_AssignMatch
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Call
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_If
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_While
 
 /-!
 # H3.final: Assembly of the Hax → LowCT simulation theorem
@@ -74,6 +76,8 @@ To discharge the three `Hyp_*` parameters, H3.quarta must:
 * Provide per-leaf `LeafCallAgrees` instances grounded in the
   extracted leaf-call semantics.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

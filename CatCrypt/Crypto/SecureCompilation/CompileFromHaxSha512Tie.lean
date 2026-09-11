@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha512
-import CatCrypt.Crypto.Util.Sha512Verified
+module
+
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha512
+public import CatCrypt.Crypto.Util.Sha512Verified
 
 /-!
 # #607 Phase 3b: DIRECT functional ties — SHA-512 compile-from-hax leaves = FIPS spec fns
@@ -48,6 +50,8 @@ The leaves are stated with `BitVec.rotateRight n`; `Sha512Verified.rotr` is the 
 of `CompileFromHaxSha2KeccakTie.rotateRight_eq_rotr`. The σ-functions' logical right shift is
 `Sha512Verified.shr x k = x >>> (k : Nat)`, spelled identically to the leaf form.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

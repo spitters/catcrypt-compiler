@@ -2,6 +2,10 @@
 # native_decide occurrences over CatCrypt/ ("<count>\t<file>", tab-separated). Goal: burn down.
 # Frozen baseline; auto-tightened by scripts/proof-cost-ratchet.sh.
 5	CatCrypt/Crypto/BLAKE3/CompressEmit.lean
+3	CatCrypt/Crypto/CompilerSecurity/LowCTCTBridge.lean
+1	CatCrypt/Crypto/CompilerSecurity/LowCTWorkedKernel.lean
+2	CatCrypt/Crypto/CompilerSecurity/RejectionLoopEmitDemo.lean
+1	CatCrypt/Crypto/CompilerSecurity/UnifiedTrace.lean
 1	CatCrypt/Crypto/Hash/Poseidon2/BabyBear.lean
 18	CatCrypt/Crypto/Hax/HaxToLowCT.lean
 11	CatCrypt/Crypto/Hax/LowCTSubset.lean
@@ -231,7 +235,6 @@
 1	CatCrypt/Crypto/SecureCompilation/HaxToThirFront.lean
 3	CatCrypt/Crypto/SecureCompilation/ImpExprToThir.lean
 2	CatCrypt/Crypto/SecureCompilation/LoadU32LeCompiles.lean
-3	CatCrypt/Crypto/SecureCompilation/LowCTCTBridge.lean
 5	CatCrypt/Crypto/SecureCompilation/Mersenne31FrontEmit.lean
 3	CatCrypt/Crypto/SecureCompilation/MLIRBackend/ComToNvptx.lean
 3	CatCrypt/Crypto/SecureCompilation/MLIR/VectorDialect/ChaCha4WayVec.lean
@@ -241,7 +244,6 @@
 2	CatCrypt/Crypto/SecureCompilation/MlkemNttFieldAuthored.lean
 3	CatCrypt/Crypto/SecureCompilation/MlkemNttWidenProbe.lean
 4	CatCrypt/Crypto/SecureCompilation/P256FieldMulMontFront.lean
-2	CatCrypt/Crypto/SecureCompilation/RejectionLoopEmitDemo.lean
 1	CatCrypt/Crypto/SecureCompilation/RelationalFrontEC.lean
 9	CatCrypt/Crypto/SecureCompilation/RISCVBackend/EncoderDiffAudit.lean
 3	CatCrypt/Crypto/SecureCompilation/RISCVBackend/RiscvAsmPrinter64.lean
@@ -270,7 +272,6 @@
 4	CatCrypt/Crypto/SecureCompilation/TileBackend/ZmmArithBridgeComEmit.lean
 1	CatCrypt/Crypto/SecureCompilation/TransferDwordTransport.lean
 4	CatCrypt/Crypto/SecureCompilation/TransientTyping.lean
-1	CatCrypt/Crypto/SecureCompilation/UnifiedTrace.lean
 15	CatCrypt/Crypto/SecureCompilation/VIR/AesniRoundVsimdCovered.lean
 6	CatCrypt/Crypto/SecureCompilation/VIR/AsconEmit.lean
 8	CatCrypt/Crypto/SecureCompilation/VIR/BarrettRaEmit.lean
@@ -494,7 +495,6 @@
 1	CatCrypt/Crypto/SecureCompilation/X86Backend/LowCTMulx.lean
 3	CatCrypt/Crypto/SecureCompilation/X86Backend/LowCTUnified.lean
 2	CatCrypt/Crypto/SecureCompilation/X86Backend/LowCTUnifiedMem.lean
-1	CatCrypt/Crypto/SecureCompilation/X86Backend/LowCTWorkedKernel.lean
 2	CatCrypt/Crypto/SecureCompilation/X86Backend/LoweringExtended.lean
 1	CatCrypt/Crypto/SecureCompilation/X86Backend/MpnAddCarryFrontPrototype.lean
 8	CatCrypt/Crypto/SecureCompilation/X86Backend/MpnAddFrontEmit.lean

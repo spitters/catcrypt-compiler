@@ -3,10 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.MemoryModel
-import CatCrypt.Crypto.Jasmin.PointerBorrow
-import CatCrypt.Crypto.Jasmin.JasminSem
+module
 
+public import CatCrypt.Crypto.Jasmin.MemoryModel
+public import CatCrypt.Crypto.Jasmin.PointerBorrow
+public import CatCrypt.Crypto.Jasmin.JasminSem
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!
@@ -29,18 +33,22 @@ ports in `S2NBignumSSA.lean`).
     written variables (paired with `seqFrame` from
     `LowCTBorrowCheck.lean`).
 
-## What's deferred
+## Where the parameters are instantiated
 
-- **Operational semantics** for the bignum InstrR fragment (`Pload`,
-  `Lmem` stores, ADD_64/SBB_64/MULX intrinsics). The judgment is
-  parameterized by a `body → JasminMemState → JasminMemState → Prop`
-  step relation; once the operational rules land, the judgment
-  immediately specializes.
-- **`mvcgen` attachment.** The next step after the operational rules
-  are in place. The judgment shape here is what mvcgen consumes.
-- **First port closure.** Proving `body bignum_mod_p25519_4 → algoNat`.
+The judgment is parameterized by a `body → JasminMemState → JasminMemState →
+Prop` step relation. `CatCrypt.Crypto.Jasmin.BignumHoare` supplies the
+instances:
 
-The skeleton here is what unblocks each of those steps.
+- **Operational semantics** for the bignum `InstrR` fragment (`Pload`,
+  `Lmem` stores, ADD_64/SBB_64/MULX intrinsics): `BignumHoare.bignumStep`,
+  defined as `BignumExec.bignumExec body s = some s'`.
+- **`mvcgen` attachment**: `BignumHoare/MVCGenPrimeSmoke.lean`, where `BignumM`
+  gets its `WPMonad` instance by search over `.arg BignumState (.except PUnit
+  .pure)` and nine `@[spec]` step lemmas — one per SSA builder shape — drive
+  `mvcgen'`.
+- **Port closure** for `bignum_mod_p25519_4`:
+  `BignumHoare.bignum_mod_p25519_4_correct_universal` in
+  `BignumHoare/ModP25519Final.lean`.
 -/
 
 namespace CatCrypt.Crypto.Jasmin.Hoare
@@ -66,14 +74,14 @@ instance : Inhabited JasminMemState where
 The Hoare judgment is parameterized by a step relation
 `Step body s s'`. This factoring lets us:
 
-1. Define and prove all the structural rules (consequence, seq, frame)
-   without committing to the operational semantics yet.
-2. Plug in the bignum-fragment rules once they're written, getting all
-   the Hoare structure for free.
+1. Prove the structural rules (consequence, seq, frame) once, independently
+   of any operational semantics.
+2. Instantiate with the bignum-fragment step relation and inherit that whole
+   Hoare structure.
 
-The expected concrete instantiation: `Step body s s'` is
-"executing `body : List InstrR` from state `s` reaches `s'`," to be
-defined by an inductive in a follow-up file `JasminMemSem.lean`. -/
+The concrete instantiation is `BignumHoare.bignumStep`: `Step body s s'`
+holds when executing `body : List InstrR` from state `s` under
+`BignumExec.bignumExec` reaches `s'`. -/
 
 /-- A big-step relation between programs and pre/post `JasminMemState`. -/
 abbrev StepRel := List InstrR → JasminMemState → JasminMemState → Prop

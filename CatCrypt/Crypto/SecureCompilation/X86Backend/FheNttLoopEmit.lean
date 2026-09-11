@@ -3,9 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.RejectLoop
-import CatCrypt.Crypto.SecureCompilation.X86Backend.IndexedAddrEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.RodataProbe
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.RejectLoop
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.RejectLoop
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.IndexedAddrEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.IndexedAddrEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.RodataProbe
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.RodataProbe
 
 /-!
 # In-place forward negacyclic NTT loop through the OWNED x86 backend (no jasminc)
@@ -127,6 +133,8 @@ extern void fhe_ntt(uint64_t *a);   // in-place on N coefficients, a -> %rdi
   loop the multiplier (`omega'`/`omega`) must be re-pinned to `%rdx` each iteration
   (the printer's `mulxRdxSetup` materialises it). Inherited from the butterfly.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

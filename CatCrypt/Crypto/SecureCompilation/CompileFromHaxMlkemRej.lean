@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # C4 fan-out: the verified compiler emits the ML-KEM `rej_uniform` 12-bit candidate extract
@@ -57,6 +61,8 @@ the owned x86 backend (`RejUniformEmit.lean`, where the `SUB`/`CMOVB` idiom is
 KAT'd against PQClean). This matches the C4 scope: the extraction arithmetic is the
 logical-shift body the front covers; the comparison is a back-end concern.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -138,9 +144,7 @@ theorem mlkemRejVal0_compiles :
   have hspec : ImpExpr.denoteScalar ["b0", "b1"] ![b0, b1]
       mlkemRejVal0Src (fun _ => none)
         = some (mlkemRejVal0Form b0 b1) := by
-    have h := mlkemRejVal0Src_denoteScalar (nIn := 2) ![b0, b1]
-    simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+    exact mlkemRejVal0Src_denoteScalar (nIn := 2) ![b0, b1]
   exact compileFromHax_meets_spec (w := 32) (nIn := 2) ["b0", "b1"]
     ![b0, b1] mlkemRejVal0Src _ hc hspec
 

@@ -3,9 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgMultiOp
-import CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSExprWidth32Prototype
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JForProgMultiOp
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgMultiOp
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSExprWidth32Prototype
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSExprWidth32Prototype
 
 /-!
 # SHA-2 compression emitted from a `Com jasminDialect` through the register-arith front
@@ -81,6 +88,8 @@ constructor `regConst (w : Nat) (v : BitVec w)` (or an immediate-shift
 `regShiftImm`), which the emit path already renders (it treats a digit-leading
 operand as an immediate) but which has no `Com`-level op.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.Sha2Emit
 

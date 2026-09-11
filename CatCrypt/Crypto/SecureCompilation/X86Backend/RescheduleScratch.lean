@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrRegMachine
-import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+module
 
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrRegMachine
+public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+
+
+@[expose] public section
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.RescheduleScratch
@@ -17,7 +21,7 @@ theorem JState.ext {w : Nat} {s t : JState w}
     (hr : s.regs = t.regs) (hf : s.flags = t.flags) (hm : s.mem = t.mem) : s = t := by
   cases s; cases t; simp_all
 
-private theorem eval_setReg_notMem (s : JState 64) (src : JOperand)
+theorem eval_setReg_notMem (s : JState 64) (src : JOperand)
     (r : String) (v : BitVec 64) (h : ¬ r ∈ AsmPrinter.srcNames src) :
     src.eval (s.setReg r v) = src.eval s := by
   cases src with

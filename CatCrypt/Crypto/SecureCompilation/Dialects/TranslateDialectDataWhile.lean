@@ -3,8 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectLoopCallLink
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestWhile
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectLoopCallLink
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectLoopCallLink
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestWhile
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestWhile
+
+@[expose] public section
 
 set_option autoImplicit false
 

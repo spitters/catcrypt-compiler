@@ -3,11 +3,18 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MlkemNttFieldEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.MlkemNttFieldEmit
+public import CatCrypt.Crypto.SecureCompilation.MlkemNttFieldEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # Byte-correct degree-3 Horner over `F_q` (`q = 3329`), FRONT-COMPILED, OWNED x86
@@ -81,6 +88,8 @@ context is exactly the 5 real input words.
   against the independent `% 3329` reference
   (`make -C bench/field_kernel_compare horner-q-kat`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFront
-import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
-import Mathlib.Data.ZMod.Basic
+module
+
+import all Init.Data.Repr
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.RelationalFront
+public import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
+public import Mathlib.Data.ZMod.Basic
 
 /-!
 # The MULTI-LIMB field-carrier port for the relational EC realization
@@ -76,6 +80,8 @@ are already stated for `n`-limb lists).
   `MUL`/`UMULH` primitives — but the modular reduce *of that product* is the heavy
   Montgomery-`CIOS` value correctness, not closed here.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,9 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
-import CatCrypt.Crypto.SecureCompilation.Fe25519AddLeafGoldenPath
-import CatCrypt.Crypto.SecureCompilation.Fe25519MulLeafGoldenPath
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCT
+public meta import CatCrypt.Crypto.SecureCompilation.Fe25519AddLeafGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.Fe25519AddLeafGoldenPath
+public meta import CatCrypt.Crypto.SecureCompilation.Fe25519MulLeafGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.Fe25519MulLeafGoldenPath
 
 /-!
 # Worked example: Rust orchestrating jasmin-like fe25519 leaves
@@ -45,6 +51,8 @@ denotes exactly the real add leaf.
 The concrete-syntax prototype (the ergonomic layer over this AST) lives in the
 companion `Fe25519OrchestrationSyntax.lean`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

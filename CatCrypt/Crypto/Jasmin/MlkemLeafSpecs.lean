@@ -3,10 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.ZMod.Basic
-import CatCrypt.Crypto.MLKEM.ByteCodec
-import CatCrypt.Crypto.MLKEM.Compress
-import CatCrypt.Crypto.MLKEM.Sampler
+module
+
+import all Init.Data.Repr
+public import Mathlib.Data.ZMod.Basic
+public import CatCrypt.Crypto.MLKEM.ByteCodec
+public import CatCrypt.Crypto.MLKEM.Compress
+public import CatCrypt.Crypto.MLKEM.Sampler
 
 /-!
 # ML-KEM jasmin leaf functional-correctness specs (citation-style axioms)
@@ -105,6 +108,8 @@ replace these axioms with theorems.
 | `__polyvec_tobytes` / `__polyvec_frombytes`| ByteEncode/Decode  | §5 |
 | `_poly_ntt`/`_poly_basemul`/`_poly_invntt`| NTT (PROVEN)       | §7 |
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

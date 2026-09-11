@@ -3,14 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3CompressEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3HashLeafEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FriFoldEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ScfDialect
-import CatCrypt.Crypto.SecureCompilation.Dialects.OrchFront
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3CompressEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3HashLeafEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FriFoldEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ScfDialect
+public import CatCrypt.Crypto.SecureCompilation.Dialects.OrchFront
 
 /-!
 # Spartan / Jolt BabyBear sum-check FIELD-CORE whole-prover as owned control flow
@@ -73,6 +75,8 @@ sum-check + FS half), and the per-prover apples-to-apples whole-prover number
 that includes the PCS curve MSM stays the documented jasminc+C prod-KAT figure,
 with the curve-MSM-not-owned-emitted gap named.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

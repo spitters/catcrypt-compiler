@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMersenne31Tie
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMersenne31Tie
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMersenne31Tie
 
 /-!
 # #606 fan-out: the verified compiler emits the Mersenne-31 field ADD and REDUCE
@@ -54,6 +58,8 @@ theorems route the source-spec `rfl`s through the C3 per-primitive obligation
 `m31ReduceFold_eq_field`) lift them to the Mathlib field, the add/reduce
 analogues of `CompileFromHaxMersenne31Tie.m31MulFold_eq_field`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -127,7 +133,7 @@ theorem m31Add_compiles :
       m31AddSrc (fun _ => none) = some (m31AddFold a b) := by
     have h := m31AddSrc_denoteScalar (nIn := 2) ![a, b]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 64) (nIn := 2) ["a", "b"]
     ![a, b] m31AddSrc _ hc hspec
 
@@ -203,7 +209,7 @@ theorem m31Reduce_compiles :
   have hspec : ImpExpr.denoteScalar ["x"] (fun _ : Fin 1 => x)
       m31ReduceSrc (fun _ => none) = some (m31ReduceFold x) := by
     have h := m31ReduceSrc_denoteScalar (nIn := 1) (fun _ => x)
-    simpa only [inpGet] using h
+    simpa only [inpGet] using! h
   exact compileFromHax_meets_spec (w := 64) (nIn := 1) ["x"]
     (fun _ => x) m31ReduceSrc _ hc hspec
 

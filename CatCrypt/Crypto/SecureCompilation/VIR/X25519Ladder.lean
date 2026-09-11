@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgSemCorrect
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JForProgSemCorrect
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgSemCorrect
 
 /-!
 # X25519 Montgomery ladder as a verified `JForProg` loop
@@ -34,6 +38,8 @@ exists to provide. The field-op-level body (inlining the verified single step,
 sub-array-slice op to pass slices to the field leaves — the one remaining
 framework piece for a field-granular emitted ladder.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.X25519Ladder
 

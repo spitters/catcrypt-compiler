@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Algebra.BigOperators.Fin
-import Mathlib.Data.BitVec
+module
+
+public import Mathlib.Algebra.BigOperators.Fin
+public import Mathlib.Data.BitVec
 
 /-!
 # Verified vectorization core: sequential scalar fold = horizontal reduction
@@ -33,6 +35,8 @@ per-opcode `psem` alignment for `#VPMULL`/`#VPADD` are the separate (engineering
 TCB) layers built on top.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.VectorReduce
@@ -53,7 +57,7 @@ def scalarFold (v : Fin L → M) : M := (List.ofFn v).foldl (· + ·) 0
 
 /-- `foldl (+) a l = a + l.sum` in an additive commutative monoid: the running
     accumulator factors out of the left-fold. -/
-private theorem foldl_add_eq (l : List M) (a : M) :
+theorem foldl_add_eq (l : List M) (a : M) :
     l.foldl (· + ·) a = a + l.sum := by
   induction l generalizing a with
   | nil => simp

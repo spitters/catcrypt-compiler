@@ -3,9 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Bitexact
-import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2DiffuseExact
-import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2BbMulFieldExact
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Bitexact
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Bitexact
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2DiffuseExact
+public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2DiffuseExact
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2BbMulFieldExact
+public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2BbMulFieldExact
 
 /-!
 # Poseidon2 emitter readout half — closing the Plonky3 internal-round bridge
@@ -98,6 +104,8 @@ chain here — only the per-lane S-box layer (which closes by `funext`
 from `pos2_sbox_bitexact`). The external MDS row-spelling is the
 named precise residual: `external_mds_row_spelling_residual`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxHeartbeats 4000000

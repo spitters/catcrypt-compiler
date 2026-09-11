@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.FrontControlLsem
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.FrontControlLsem
 
 /-!
 # Tying the front `RWhileNz` (PUBLIC-guard while loop) to the program-level `lsem`
@@ -69,6 +71,8 @@ c+1`. The `FrontLoopEncodes` commuting square (one front iteration ↔ one `lsem
 **0 sorries; axioms ⊆ {propext, Classical.choice, Quot.sound}; no
 `jasminc_preserves_ct`, no `JasminIRToX86` edge.**
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.FieldDescentMultiLimb
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4LimbTierA
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.FieldDescentMultiLimb
+public import CatCrypt.Crypto.SecureCompilation.FieldDescentMultiLimb
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4LimbTierA
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4LimbTierA
 
 /-!
 # The multi-limb curve-field Stage-2 leaves, re-instantiated for P256 and BN254
@@ -55,6 +59,8 @@ shared LSP).
 the `native_decide` LRAT certificates the per-curve prime pins cite
 (`p256Limbs_value`, `bn254Limbs_value`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

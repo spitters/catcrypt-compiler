@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvEncoder64
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscvDecoder
+module
+
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvEncoder64
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscvDecoder
 
 /-!
 # sail-riscv decoder round-trip for the 64-bit bignum subset: `decode (encode i) ≡ i` (#549)
@@ -27,17 +29,29 @@ the M-extension funct7 `0b0000001 = 0x01` dispatch.
 
 ## Scope
 
-Every **fixed-width** instruction the 64-bit backend emits round-trips here:
-`ADD`/`SUB`/`SLTU`/`AND`/`OR`/`XOR` (RTYPE), `MUL`/`MULHU` (M-extension RTYPE),
-`MV` (= `ADDI rd,rs,0`, ITYPE) and `SLLI`/`SRLI` (SHIFTIOP, ITYPE). The single
-exception is `LI` — the assembler pseudo-op `as` expands to a *variable-length*
-`lui`+`addi`(+…) sequence; it has no single 32-bit word, so
-`encodeWord64 (.li ..) = none` and it is **not** round-trip-proved (it is the
-trusted constant-materialisation scaffolding, the RV64 analogue of the prologue).
-The capstone `roundtrip_RInst64` quantifies over all non-`LI` `RInst64` with the
-backend's register-name well-formedness side-condition and, for `SLLI`/`SRLI`, a
-shift count within the RV64 6-bit `shamt` field (`sh < 64`).
+Every **fixed-width** `RInst64` arm round-trips here: `ADD`/`SUB`/`SLTU`/`AND`/
+`OR`/`XOR` (RTYPE), `MUL`/`MULHU` (M-extension RTYPE), `MV` (= `ADDI rd,rs,0`,
+ITYPE) and `SLLI`/`SRLI` (SHIFTIOP, ITYPE). The single exception is `LI` — the
+assembler pseudo-op `as` expands to a *variable-length* `lui`+`addi`(+…)
+sequence; it has no single 32-bit word, so `encodeWord64 (.li ..) = none` and it
+is **not** round-trip-proved (it is the trusted constant-materialisation
+scaffolding, the RV64 analogue of the prologue). The capstone
+`roundtrip_RInst64` quantifies over all non-`LI` `RInst64` with the
+`SailRiscvDecoder.emittedRegs` register-name well-formedness side-condition and,
+for `SLLI`/`SRLI`, a shift count within the RV64 6-bit `shamt` field
+(`sh < 64`).
+
+**Register ceiling:** `emittedRegs = {zero, a0..a7, t0..t6}` (16 names). The
+64-bit backend's own allocator pool, `RiscvAsmPrinter64.gpPool64`, is wider — it
+also allocates the callee-saved `s2..s11` (25 names total, since the bignum body
+has a larger live set than the ChaCha QR). So `roundtrip_RInst64`'s round-trip
+is proved only for the `emittedRegs` register names; an `RInst64` whose operand
+is allocated from `s2..s11` satisfies the capstone's hypothesis only if that
+name is separately shown to be in `emittedRegs` (it is not) — the round-trip is
+not yet extended to the full `gpPool64` range.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
 
 /-!
 # SoA ↔ AoS transpose for the 4-way Keccak-f1600 batch (#587)
@@ -28,6 +30,8 @@ states.
 Everything here is `Fin`-indexed bookkeeping over `BitVec 64` lane words; there
 is no cryptographic content and no dialect `Com` — the round-trip is a pure
 `funext` + index `omega`/`decide`. -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.KeccakX4Transpose
 

@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
+module
+
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
 # Bulletproofs inner-product argument — architecture + scaled skeleton
@@ -69,6 +71,8 @@ crypto; C handles the protocol loop.
   Transactions and More*, S&P 2018.
 * `dalek-cryptography/bulletproofs` — reference Rust implementation.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.Bulletproofs
 

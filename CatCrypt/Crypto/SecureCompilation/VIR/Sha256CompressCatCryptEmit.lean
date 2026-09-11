@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Sha256RoundCatCryptEmit
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Sha256RoundCatCryptEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Sha256RoundCatCryptEmit
 
 /-!
 # The whole SHA-256 compression routed through `catCryptDialect`
@@ -63,6 +66,8 @@ mirroring `Chacha20BlockCatCryptEmit.lean`:
 
 0 sorries.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

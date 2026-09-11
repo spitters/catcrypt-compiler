@@ -3,9 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectWhileDenote
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectCondDenote
+module
 
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectWhileDenote
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectWhileDenote
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectCondDenote
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectCondDenote
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!

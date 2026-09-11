@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1CarrySelectEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1CarrySelectEmit
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1CarrySelectEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # `mpn_cmp` as a front-generated runtime-trip loop
@@ -101,6 +106,8 @@ reads as a statement about the emitted kernel — is the separate
 source-preservation step (`translateDialectControl_denote_ctl` composed with
 `cryptoDialectToJasminCom`), not established here.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -455,6 +462,6 @@ def emitMain : IO Unit := do
       IO.println "WROTE bench/mpn_cmp_front_compare/gen_com/mpn_cmp_ct_owned.s"
   | none => throw (IO.userError "the runtime-loop front declined mpn_cmp")
 
-#eval emitMain
+-- #eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpFrontEmit

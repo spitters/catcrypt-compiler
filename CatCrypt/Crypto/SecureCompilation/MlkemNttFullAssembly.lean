@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MlkemNttPermutation
+module
+
+public import CatCrypt.Crypto.SecureCompilation.MlkemNttPermutation
 
 /-!
 # Full multi-layer assembly: owned routed combine tree = abstract `dft` to depth `n`
@@ -89,6 +91,8 @@ setup, handled in the separate machine-realization web.  No
 ## References
 * NIST FIPS 203 (ML-KEM); Cooley & Tukey 1965 (radix-2 FFT, bit-reversal).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

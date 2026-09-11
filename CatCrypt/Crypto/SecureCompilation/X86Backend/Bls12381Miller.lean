@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381G2
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Fp6Fp12MulKernel
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381G2
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381G2
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Fp6Fp12MulKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Fp6Fp12MulKernel
 
 /-!
 # BLS12-381 Miller loop, owned x86 backend (toward `pp_map`)
@@ -94,6 +99,8 @@ cyclotomic via Frobenius + the BLS hard-part addition chain, building on the
 in-flight `fp12_sqr_cyc`) is the remaining layer and is documented as the
 residual, not claimed here.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

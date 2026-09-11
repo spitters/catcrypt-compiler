@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
-import Mathlib.Data.Fin.VecNotation
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
+public import CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
+public import Mathlib.Data.Fin.VecNotation
 
 /-!
 # The 256-bit YMM op family: `JasminTy` routing and smoke pins
@@ -40,6 +44,8 @@ The **data movement** mnemonics `vmovdqu`/`vmovdqu64`/`vmovdqa64` and the
 register/memory boundary or act on the whole vector state. `vmovdqu` lives at
 the instruction level as `YmmAsmPrint.YmmInstr.ymov`/`.yload`/`.ystore`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockCorres
-import Mathlib.Tactic.IntervalCases
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockCorres
+public import Mathlib.Tactic.IntervalCases
 
 /-!
 # `mont_bound` — a bounded-arithmetic discharger for the bignum/Montgomery side goals
@@ -39,6 +41,8 @@ At a real callsite the window bound `a < (2^64)^k` is `FieldReduce.valLimbs_lt_p
 and the range bound `MR < 2·⟦p⟧` is `Number.montgomeryReduce_correct`; the examples
 below carry those as hypotheses to keep the file's import surface small.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

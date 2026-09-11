@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
 # BIT-EXACT 16-way ChaCha20 dword quarter-round on the UNIFIED `Com jasminDialect`
@@ -72,6 +75,8 @@ real reference output, catching any de-Bruijn off-by-one the denote pin would mi
 
 Invoke: `lake build CatCrypt.Crypto.SecureCompilation.VIR.Chacha20DwordCom`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -317,10 +322,10 @@ def lane0 (w : BitVec 32) : BitVec 512 := w.zeroExtend 512
 def getLane0 (v : BitVec 512) : BitVec 32 := v.extractLsb' 0 32
 
 -- RFC-8439 §2.1 inputs.
-private def rfcA : BitVec 32 := 0x11111111
-private def rfcB : BitVec 32 := 0x01020304
-private def rfcC : BitVec 32 := 0x9b8d6f43
-private def rfcD : BitVec 32 := 0x01234567
+def rfcA : BitVec 32 := 0x11111111
+def rfcB : BitVec 32 := 0x01020304
+def rfcC : BitVec 32 := 0x9b8d6f43
+def rfcD : BitVec 32 := 0x01234567
 
 /-- Lane-0 output of the four programs on the RFC §2.1 input vector. -/
 def rfcOut : BitVec 32 × BitVec 32 × BitVec 32 × BitVec 32 :=

@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakFactoring
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakFactoring
 
 /-!
 # Verified-middle leakage RHP on `Com catCryptDialect`
@@ -22,6 +24,8 @@ the asymmetric-adversary version (target contexts observing more than source
 contexts) is out of scope on both IRs. Stated over `Com.leakTrace`, with no
 `CProg`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.BigNat
-import CatCrypt.Crypto.SecureCompilation.BigNatShift
+module
+
+public import CatCrypt.Crypto.SecureCompilation.BigNat
+public import CatCrypt.Crypto.SecureCompilation.BigNatShift
 
 /-!
 # Recursive integer Karatsuba multiplication on the `BigNat` carrier
@@ -28,6 +30,8 @@ crossover it uses the schoolbook `BigNat.mul`.
   correctness `bignumVal (karatsuba a b) = bignumVal a * bignumVal b`.
 * `mulDispatch` / `mulDispatch_val` — a size dispatcher wrapping `karatsuba`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

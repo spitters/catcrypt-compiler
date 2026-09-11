@@ -3,12 +3,24 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.LatticeNTTSound
-import CatCrypt.Crypto.SecureCompilation.VIR.Core
-import CatCrypt.Crypto.SecureCompilation.VIR.LatticeDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic
-import CompPoly.Univariate.ToPoly.Equiv
-import Mathlib.Algebra.Field.ZMod
+module
+import all CompPoly.Univariate.ToPoly.Core
+import all CompPoly.Univariate.ToPoly.Impl
+import all CompPoly.Univariate.Raw.Core
+import all CompPoly.Univariate.Basic
+import all CatCrypt.Crypto.Bridges.CoqEAL.SeqPoly
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.LatticeNTTSound
+public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeNTTSound
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.LatticeDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeDialect
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic
+public import CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic
+public import CompPoly.Univariate.ToPoly.Equiv
+public import Mathlib.Algebra.Field.ZMod
 
 /-!
 # Lattice dialect NTT-mul: concrete ML-KEM semantics (Phase 4, concrete)
@@ -136,6 +148,8 @@ schoolbook negacyclic product computed by `negacyclic_mul_coeff` is the
 specification. CompPoly's `incompleteNTT` would refine the *representation*;
 correctness of the *value* is fully discharged here.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

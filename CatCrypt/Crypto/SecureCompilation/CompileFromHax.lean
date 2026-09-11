@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ImpExprToThir
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.ImpExprToThir
+public import CatCrypt.Crypto.SecureCompilation.ImpExprToThir
 
 /-!
 # C3: the single compile-from-hax correctness meta-theorem
@@ -48,6 +51,8 @@ to a source-level spec-agreement obligation.
 *through* the meta-theorem (`compileFromHax_meets_spec`), not as a fresh proof —
 demonstrating that the universal statement composes on the concrete leaf.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,27 +3,31 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.VsimdByteEncoder
-import Mathlib.Tactic.IntervalCases
-import Mathlib.Tactic.FinCases
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.VsimdByteEncoder
+public import Mathlib.Tactic.IntervalCases
+public import Mathlib.Tactic.FinCases
 
 /-!
-# Sail-x86 VEX decoder round-trip for the *unified* `vsimd` byte path (Vec128 teardown)
+# Sail-x86 VEX decoder round-trip for the unified `vsimd` byte path
 
-`SailX86SimdDecoder.lean` (#gap6 / #659) proved `decode (encode i) = i` for the
-SIMD byte path against the Sail-x86 VEX/EVEX parse discipline, but it took the
-encode side from the **bespoke** `X86Backend.Vec128Encoder`
-(`encodeVInst`/`encVexShiftImmOp`/`encVpshufd`) — one of the last two consumers
-keeping the whole `Vec128*` IR alive.
+This module proves `decode (encode i) = i` for the SIMD byte path against the
+VEX prefix / ModRM field-split discipline, with the encode side taken from the
+**unified** `VsimdByteEncoder.encodeVsimdInst` (and its `encVpshufdU` /
+`encodeVsimdShift` siblings) over the unified `SimdOp` op set. The VEX prefix
+decode fields below (`vex2_byte1`, `vex3_byte*` naming) are transcribed by
+hand from the SDM's VEX bit layout (§2.3.5) — the same kind of field-level
+transcription `SailX86Decoder.lean` does for the GP-ALU ModRM/REX layout, and
+subject to the same honest-scope caveat that module states: this is a
+structural field parser, not a re-implementation of the Sail-x86 opcode
+dispatch tables. The only encoder dependency is the shared `X86Backend.CryptoExt`
+prefix layer that `encodeVsimdInst` is built on.
 
-This module reproduces that **Sail-x86 `decode (encode) = id` validation on the
-unified encoder** — `VsimdByteEncoder.encodeVsimdInst` (and its `encVpshufdU` /
-`encodeVsimdShift` siblings) over the unified `SimdOp` op set — with **zero**
-`Vec128*` imports. The Sail-x86 VEX prefix decode tables (`vex2_byte1`,
-`vex3_byte*`) are themselves `Vec128`-free (they read raw `BitVec 8` prefix
-bytes), so they are re-homed here verbatim; the only encoder dependency is the
-shared, audited `X86Backend.CryptoExt` prefix layer that `encodeVsimdInst` is
-built on (and that `Vec128Encoder` was *also* built on).
+**Provenance note:** nothing in this repository currently imports this file,
+and this repository has no `SailX86SimdDecoder.lean` module and no
+`X86Backend.Vec128Encoder` module. The scope below stands on its own terms: it
+decode-round-trips `VsimdByteEncoder`'s unified encoder directly.
 
 ## Scope (the unified SIMD classes that are decode-round-trip-proved)
 
@@ -40,16 +44,37 @@ built on (and that `Vec128Encoder` was *also* built on).
 * **VEX-2 imm-shift NDD set** — `encodeVsimdShift` / `encVpslldqU`/`encVpsrldqU`
   (`0F 73 /7,/3 ib`): `decodeVex2Shift` / `roundtrip_encodeVsimdShift`.
 
+## What the VEX-3 round-trip does *not* pin (`DecVex3` has no `pp`/`L` field)
+
+`DecVex3` (§5 below) records only `opcode`/`mm`/`d`/`v`/`m`/`w` — it has **no
+`pp` and no `L` field**. `decodeVex3` never reads VEX-3 byte-2's `pp` bits
+(the mandatory-prefix selector, SDM §2.3.6) or the vector-length `L` bit, and
+`roundtrip_vex3` proves nothing about either: `encVex3 mm pp w l op d v m imm`
+round-trips for *every* `pp < 4` and `l < 2` the caller supplies, with the
+conclusion silent on whether the decoded bytes actually carry that `pp`/`l`
+back out. So the VEX-3 round-trip (`roundtrip_vex3`, `roundtrip_vpshufb`,
+`roundtrip_encodeVsimdInst_vpshufb`) certifies the opcode, opcode map (`mm`),
+the destination/source register fields, and `W` — it does **not** certify that
+the mandatory-prefix or vector-length bits the encoder wrote are recoverably
+present in the byte stream, even though a real decoder relies on `pp` to pick
+the SIMD-prefix-selected opcode table and on `L` for 128- vs 256-bit width.
+
 ## Honest residual (the crypto-ext decode ceiling, #444 — stays gas-pinned)
 
 The VAES (`vaesenc`/`vaesenclast`/`vaeskeygen`), PCLMUL (`clmul`) and GFNI
 (`gf2p8mulb`/`affineqb`) `SimdOp` arms are 3-byte-VEX *encodable*, but their
-**semantics** live in the ACL2/Sail-x86 model (`cryptoext_spec.sail`) only as
-*execute* clauses, never a byte-decode operand parse — so their byte forms stay
-gas-pinned, exactly as `VsimdByteEncoder`'s per-arm gas pins and the #444 ceiling
-record. The proved set here is the unified byte path's full SIMD *body* off the
-gas pin, with `Vec128Encoder` out of the trusted path entirely.
+**semantics** live in the ACL2/Sail-x86 model (`cryptoext_spec.sail`, in the
+authors' external, not-vendored `sail-x86-from-acl2` checkout — see
+`SailX86Validation.lean`) only as *execute* clauses, never a byte-decode
+operand parse — so their byte forms stay gas-pinned, exactly as
+`VsimdByteEncoder`'s per-arm gas pins and the #444 ceiling record. The proved
+set here is the unified byte path's SIMD *body* off the gas pin (field
+placement only — opcode legality is unchecked, as `SailX86Decoder.lean`
+records for the GP-ALU decoder, and the VEX-3 forms additionally leave `pp`/`L`
+unpinned per the note above).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -412,8 +437,8 @@ theorem roundtrip_encVpsrldqU (d m imm : Nat)
 /-! ## 8. The unified SIMD byte-level trust edge
 
 `trust_edge_vsimd_pilot` records that the round-trip-proved unified SIMD set is
-non-empty and rides the `VsimdByteEncoder.encodeVsimdInst` path — the
-`Vec128Encoder` consumer is removed from the trusted decode path. -/
+non-empty and rides the `VsimdByteEncoder.encodeVsimdInst` path directly — no
+bespoke per-family encoder sits in the trusted decode path. -/
 
 /-- A doc-anchor: the unified round-trip-proved SIMD set is non-empty and includes
     the VEX-128 `VPXOR` pilot off `encodeVsimdInst`. -/

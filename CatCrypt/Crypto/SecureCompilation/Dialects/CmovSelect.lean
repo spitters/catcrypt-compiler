@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithIselPass
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithIselPass
 
 /-!
 # D3 — the `select`/CMOV peephole: a subtree-collapsing ISel pass on `Com jasminDialect`
@@ -52,6 +54,8 @@ materialisation invariant `c = condMask w cond`, the bound `out` changes from
 `(x &&& c) ||| (y &&& (~~~ c))` to `selectW cond x y`, equal by
 `ArithIselSoundness.select_eq_maskSelect`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

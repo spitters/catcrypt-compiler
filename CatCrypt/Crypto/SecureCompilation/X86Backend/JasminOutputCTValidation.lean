@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompilableCT
-import CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Decoder
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompilableCT
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Decoder
 
 /-!
 # U1 — per-output translation validation of jasminc's constant-time
@@ -68,6 +70,8 @@ The remaining offline step — run jasminc, `objdump` the `.text` bytes, feed th
 to `validateDecodedCT` — is a scripted harness, not part of this Lean file; the
 exact wiring is recorded in §6.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

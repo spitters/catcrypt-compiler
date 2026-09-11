@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # C4 fan-out: the verified compiler emits the sntrup761 schoolbook-multiply MAC step
@@ -62,6 +66,8 @@ companion `...Tie.lean`) shows the emitted leaf, read back through
 `Zq4591.fromNat ∘ toNat`, computes exactly the `ZMod 4591` MAC `accZ + aZ · bZ`
 that `Sntrup761MulVerified.coeffSum` sums.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -142,7 +148,7 @@ theorem sntrupMac_compiles :
       sntrupMacSrc (fun _ => none) = some (sntrupMacForm acc a b) := by
     have h := sntrupMacSrc_denoteScalar (nIn := 3) ![acc, a, b]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 64) (nIn := 3) ["acc", "a", "b"]
     ![acc, a, b] sntrupMacSrc _ hc hspec
 

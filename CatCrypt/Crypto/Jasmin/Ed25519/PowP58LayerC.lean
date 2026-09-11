@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Ed25519.PowP58Algo
-import CatCrypt.Crypto.Jasmin.BignumHoare.Sqr4Algebra
-import Mathlib.Data.ZMod.Basic
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Jasmin.Ed25519.PowP58Algo
+public import CatCrypt.Crypto.Jasmin.BignumHoare.Sqr4Algebra
+public import Mathlib.Data.ZMod.Basic
 
 /-!
 # Layer C: `Fp25519 ↔ Nat` bridge for chain output
@@ -60,6 +63,8 @@ in `ZMod fpModulus`.
 
 The proof composes Layer A + Layer B + Layer C.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

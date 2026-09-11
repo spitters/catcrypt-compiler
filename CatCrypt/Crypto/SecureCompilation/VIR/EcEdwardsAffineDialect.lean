@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveLowering
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveLowering
 
 /-!
 # Twisted-Edwards affine dialect — a curve point is a coordinate pair
@@ -51,6 +54,8 @@ hypothesis.
   neutral for `EdwardsParams.add` on affine points.
 * `edAffDialect_ctSafe_all` — every op of the dialect is data-oblivious.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

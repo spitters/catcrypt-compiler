@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ProtocolEmitRealizes
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ProtocolEmitRealizes
 
 /-!
 # Hash-based signatures as `ProtocolKernels` instantiations (axis-6, batch)
@@ -74,6 +76,8 @@ proof skeleton.  The contribution is that the hash-chain / Merkle-fold structure
 of an entire family of standardised signature schemes assembles for free from
 the per-kernel residuals.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

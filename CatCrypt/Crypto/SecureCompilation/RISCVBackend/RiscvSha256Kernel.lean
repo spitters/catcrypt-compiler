@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering
 
 /-!
 # The whole SHA-256 block compression, lowered through the owned RV64 backend (#550)
@@ -66,6 +70,8 @@ emitted leaf `.s` (`bench/riscv_compare/sha256_rv64_emit.lean`) is stack-residen
 (the live set far exceeds 31 GP registers) and its qemu-riscv64 KAT against the
 same FIPS digest is in `bench/riscv_compare/` (`sha256-rv64-kat`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

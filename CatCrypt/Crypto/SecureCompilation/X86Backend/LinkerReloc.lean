@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
 
 /-!
 # Linker keystone: the cross-object `call` displacement lands on its callee
@@ -84,6 +87,8 @@ layer, NOT a full operational call semantics:
   theorem carries `-2^31 ≤ disp < 2^31` as a hypothesis (always met for the small
   single-object images the backend emits, and discharged by `decide` in the demo).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.LinkerReloc
 

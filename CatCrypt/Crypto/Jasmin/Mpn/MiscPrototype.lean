@@ -3,10 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
-import CatCrypt.Crypto.Jasmin.Mpn.DivRemSpec
-import Mathlib.Data.Nat.Log
-import Mathlib.Tactic
+module
+
+public import CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.DivRemSpec
+public import Mathlib.Data.Nat.Log
+public import Mathlib.Tactic.Ring
+
+@[expose] public section
 
 set_option autoImplicit false
 

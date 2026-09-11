@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Types
+module
+
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Types
 
 /-!
 # MLIR `vector` dialect — Ops
@@ -40,6 +42,8 @@ We declare a minimal viable set (cf. the task spec):
 `insert`, `add`, `mul` are exercised in `Lowering.lean` for the first
 landing. The remainder ride along for free; their lowerings are Phase-2.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

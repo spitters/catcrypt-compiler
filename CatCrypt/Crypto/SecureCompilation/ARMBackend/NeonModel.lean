@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Types
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Types
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Types
 
 /-!
 # A Lean AArch64 NEON/ASIMD machine model, 128-bit V-register, 4 × u32 lane shape (#548)
@@ -23,8 +26,9 @@ analogue of `Vec128Lowering.vec128Block_lowering_denote`, proved by induction
 with no new custom axioms); `NeonAsmPrinter.lean` renders the lowered `NInst`
 block to GAS AArch64 ASIMD assembly text with a linear-scan V allocator;
 `NeonEncoder.lean` + `SailNeonDecoder.lean` give the verified-to-bytes
-`decode(encode i) = i` against the official `rems-project/sail-arm` `decode64`
-ASIMD clauses.
+`decode(encode i) = i` against the hand-transcribed `rems-project/sail-arm`
+`decode64` ASIMD clauses (upstream is not vendored in this repo and the
+transcription is not machine-checked).
 
 ## The honest anchor (same posture as the x86 Vec128 model)
 
@@ -59,6 +63,8 @@ the three primitives directly. (`MUL.4S` and `SUB.4S` are modelled for the
 butterfly/field SIMD path; `REV32`/`EXT` byte-permute shuffles are in
 `NeonShuffle` below for the rotate-by-shuffle optimization the bench uses.)
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

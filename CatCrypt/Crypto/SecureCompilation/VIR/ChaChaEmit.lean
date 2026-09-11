@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
-import CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSExprWidth32Prototype
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSExprWidth32Prototype
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSExprWidth32Prototype
 
 /-!
 # ChaCha20 emitted from a `Com jasminDialect` through the register-arith front
@@ -39,6 +44,8 @@ emitted binding. Each emitted binding:
 The emitted `.jazz` is validated against the RFC 8439 §2.3.2 known-answer test in
 `bench/chacha_compare/`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.ChaChaEmit
 

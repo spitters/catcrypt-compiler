@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.HawkNttEmit
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.HawkNttEmit
 
 /-!
 # Compiled HAWK mod-18433 NTT owned-emit producer
@@ -16,6 +18,8 @@ required (as `poseidon2scalarowned` / `plonky3owned`). The emitted `.s` symbols
 (`hawk18433_ntt_bfly` etc.) and the `reg ptr u32 out, reg const ptr u32 inp` ABI
 match `bench/hawk_compare/hawk_ntt_kat.c`'s externs exactly.
 -/
+
+@[expose] public section
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.HawkNttEmit
 

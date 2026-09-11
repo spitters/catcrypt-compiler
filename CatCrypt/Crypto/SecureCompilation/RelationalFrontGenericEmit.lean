@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTToJasmin
+module
+
+public meta import CatCrypt.Crypto.Jasmin.LowCTToJasmin
+public import CatCrypt.Crypto.Jasmin.LowCTToJasmin
 
 /-!
 # Generic field-op routing through the owned compiler front
@@ -53,6 +56,8 @@ relational-front Add/Mul squares (e.g. `encMLK_add_commutes`). Here we exhibit
 only that those same ops lower through the front to their `fp_add` / `fp_mul`
 leaves, uniformly across curves.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

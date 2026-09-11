@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
-import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 
 /-!
 # Verified store-to-load forwarding: recover register-residence on a frame-resident
@@ -53,6 +55,8 @@ dimension, the companion to `RandomizedRegAlloc.regalloc_runBlock_sound` for the
 **renaming** dimension. Together they are the two CryptOpt-class moves (allocation
 + memory-traffic elimination) on a frame-resident body.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
-import Mathlib.Tactic.Ring
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+public import Mathlib.Tactic.Ring
 
 /-!
 # Structured carry-decomposition for bignum schoolbook multiplies (#325, SB-4)
@@ -34,6 +37,8 @@ montmul / add / sub kernels can reuse the same DECARRY steps and the same
 schoolbook identity. `BignumMontMulKernel.lean` instantiates them at `w = 64`,
 `k = 4` for `bignum_mul_4_8`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.MulBaseCaseAdxPrototype
-import CatCrypt.Crypto.Jasmin.Mpn.AddMul1AdxBlockedPrototype
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.Mpn.MulBaseCaseAdxPrototype
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.Mpn.MulBaseCaseAdxPrototype
+public meta import CatCrypt.Crypto.Jasmin.Mpn.AddMul1AdxBlockedPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.AddMul1AdxBlockedPrototype
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -65,7 +73,7 @@ For this **blocked** variant we take the same pragmatic stance as
 `bench/mpn_mulbase_adx_compare/mulbase_adx.c`'s `SQRBASE_BODY` macro: the
 sqr kernel calls the mul kernel with `b = a`.  This is **not** the
 diagonal-saving schedule; it costs ~2× the multiplies of GMP's
-`mpn_sqr_basecase`.  We document this honestly — the blocked-sqr column
+`mpn_sqr_basecase`.  The blocked-sqr column
 in the bench will trail GMP by exactly that factor.
 
 A future revision can add the diagonal schedule (off-diagonal column
@@ -135,7 +143,7 @@ open CatCrypt.Crypto.Jasmin
 open CatCrypt.Crypto.Jasmin.BignumExec
 open CatCrypt.Crypto.Jasmin.Emit
 open CatCrypt.Crypto.Jasmin.MemoryModel
-open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype hiding vr pv loadAt0 storeAt0 binImm
 open CatCrypt.Crypto.Jasmin.Mpn.Mul1Prototype
 open CatCrypt.Crypto.Jasmin.Mpn.Addmul1Prototype
 open CatCrypt.Crypto.Jasmin.Mpn.MulPrototype

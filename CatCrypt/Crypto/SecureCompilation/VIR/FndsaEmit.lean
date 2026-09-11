@@ -3,10 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
-import CatCrypt.Crypto.SecureCompilation.VIR.FndsaEmit.Sampler
-import Mathlib.Data.ZMod.Basic
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.FndsaEmit.Sampler
+public import CatCrypt.Crypto.SecureCompilation.VIR.FndsaEmit.Sampler
+public import Mathlib.Data.ZMod.Basic
 
 /-!
 # FN-DSA / Falcon emit through the verified compiler
@@ -74,6 +80,8 @@ shape `LaneMap.laneMap` covers.
 * Falcon specification, Round 3 (2022), §3 (verify), §3.10 (sampler)
 * FIPS 206 (draft) Appendix A (FPU-free Falcon)
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

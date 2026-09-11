@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Algebra.Ring.Basic
-import Mathlib.Tactic.Ring
+module
+
+public import Mathlib.Algebra.Ring.Basic
+public import Mathlib.Tactic.Ring
 
 /-!
 # The generic cubic field extension `K[v]/(v³ − ξ)`, with TOOM-3/KARATSUBA mul
@@ -73,6 +75,8 @@ the generic core focused and sorry-free. It also does not prove `CubExt K` is a
 *field* (that needs `ξ` non-residuosity, a number-theoretic fact about the
 concrete base).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

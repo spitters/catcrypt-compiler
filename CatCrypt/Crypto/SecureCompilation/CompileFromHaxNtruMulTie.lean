@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxNtruMul
-import CatCrypt.Crypto.Util.ZMod8192
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxNtruMul
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxNtruMul
+public meta import CatCrypt.Crypto.Util.ZMod8192
+public import CatCrypt.Crypto.Util.ZMod8192
 
 /-!
 # C4 fan-out: the emitted NTRU MAC leaf EQUALS the abstract `Zq8192` ring op
@@ -30,6 +34,8 @@ through `ZMod.natCast_*`. Like the FrodoKEM tie (and unlike the prime-field
 GF(127)/sntrup ties) there is **no domain restriction**: the mask handles full
 `Z/8192` wraparound for any 64-bit inputs.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

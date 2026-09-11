@@ -3,8 +3,11 @@ Copyright (c) 2024 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.UCMonad.ITreeNMetric
-import CatCrypt.Crypto.UCMonad.ITreeNInterleave
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.UCMonad.ITreeNMetric
+public import CatCrypt.Crypto.UCMonad.ITreeNInterleave
 
 /-!
 # Kantorovich-Based Concurrent UC Composition
@@ -39,6 +42,8 @@ original `UCEmulatesConcurrent`.
 **0 axioms**, **0 sorries**. All proofs complete.
 -/
 
+@[expose] public section
+
 namespace UCMonad.ITreeNUC
 
 open CatCrypt.Core CatCrypt.Prob CatCrypt.Crypto
@@ -48,7 +53,7 @@ open UCMonad.RoundMUC
 /-! ## Pointwise ≤ Kleisli -/
 
 /-- Each pointwise distance is ≤ the sup (Kleisli distance). -/
-private theorem kdistITreeN_pt_le {α β : Type} (n : Nat) (E : EventSig)
+theorem kdistITreeN_pt_le {α β : Type} (n : Nat) (E : EventSig)
     (handler : ∀ e : E.Event, SPComp (E.Resp e))
     (f g : α → ITreeN n E β) (a : α) :
     (kdistITreeN_pt n E β).dist (f a) (g a) ≤ kdistITreeN n E handler f g :=

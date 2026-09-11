@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
 # Ergonomic `Com.denote = field spec` for `mul`-based kernels
@@ -64,6 +67,8 @@ all-ALU `fieldCondSub251Com`. It exercises a `regArith .mul` (against a
 a real `mul` binding, not just `mulhi`. We prove `Com.denote = the BitVec spec`
 by the method, NOT `native_decide`, NOT a heartbeat-bumped `rfl`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

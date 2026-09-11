@@ -20,9 +20,13 @@ Compare to:
   * TArr-without-SExpr (CombTableInitArr.lean):    331 KB / 8145 lines / similar nodes
   * TArr + SExpr (THIS FILE):                       ~3 KB / ~30 lines / ~10 nodes
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
-import CatCrypt.Crypto.Jasmin.RustEmit
+module
 
+public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.RustEmit
+
+
+@[expose] public section
 namespace CatCrypt.Crypto.Jasmin.Examples.CombTableInitArrV2
 
 open CatCrypt.Crypto.Jasmin.LowCT

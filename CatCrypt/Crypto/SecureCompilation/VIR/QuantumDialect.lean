@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Core
-import CatCrypt.Crypto.SecureCompilation.VIR.CoreM
-import Mathlib.Data.Real.Basic
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public import CatCrypt.Crypto.SecureCompilation.VIR.CoreM
+public import Mathlib.Data.Real.Basic
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -55,7 +59,7 @@ coupling the IR layer to the existing pure-state model.
   dialect are nominal handles (`⟦.qubit⟧ = Unit`), so `args` carries
   no index. The real semantics for VIR quantum programs is therefore
   defined *outside* `DialectDenoteM`, in
-  `CatCrypt/Crypto/SecureCompilation/VIR/QSSAToVIRCircuit.lean`, via
+  `CatCrypt/Crypto/Quantum/VIR/QSSAToVIRCircuit.lean`, via
   `Com.realDenoteQComp := unitaryDenote ∘ lowerVIRCom` — a direct
   translation into the existing `Quantum/QSSAToCircuit` framework that
   threads a `RegAlloc` for De Bruijn-to-physical resolution. This file

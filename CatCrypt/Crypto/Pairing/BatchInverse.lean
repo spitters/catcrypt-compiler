@@ -3,10 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Algebra.Field.Basic
-import Mathlib.Algebra.BigOperators.Group.List.Lemmas
-import Mathlib.Algebra.BigOperators.Ring.List
-import Mathlib.Data.List.Basic
+module
+
+import all Init.Data.Repr
+public import Mathlib.Algebra.Field.Basic
+public import Mathlib.Algebra.BigOperators.Group.List.Lemmas
+public import Mathlib.Algebra.BigOperators.Ring.List
+public import Mathlib.Data.List.Basic
 
 /-!
 # Montgomery's trick: batch (simultaneous) field inversion
@@ -54,6 +57,8 @@ to the per-point-inversion result — with one inverse instead of `n`.
 All goals are closed by standard mathlib automation; only the standard
 `propext`/`Classical.choice`/`Quot.sound` axioms are used.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemChainBridge
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemGeneralFaithfulMC
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemChainBridge
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemChainBridge
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemGeneralFaithfulMC
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemGeneralFaithfulMC
+
+@[expose] public section
 
 set_option autoImplicit false
 

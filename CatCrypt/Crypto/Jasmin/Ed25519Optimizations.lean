@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Ed25519Spec
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Jasmin.Ed25519Spec
 
 /-!
 # Ed25519 optimization correctness
@@ -29,6 +32,8 @@ The four optimizations:
 Each Rocq citation pins the file/line so a Lean re-port has a target.
 Total in this file: **4 cited axioms + 8 proved theorems**.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.Ed25519Optimizations
 

@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.BignumHoare.EvalChainGeneric
+module
+
+public meta import CatCrypt.Crypto.Jasmin.BignumHoare.EvalChainGeneric
+public import CatCrypt.Crypto.Jasmin.BignumHoare.EvalChainGeneric
 
 /-!
 # BLS12-381 chain support via the generic reflective framework
@@ -59,6 +62,8 @@ chains, analogous to Curve25519's chain soundness).
 * Soundness axioms for both.
 * Buffer-offset constants for typical chain implementations.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

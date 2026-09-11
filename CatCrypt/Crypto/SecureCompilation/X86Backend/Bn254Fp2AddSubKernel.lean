@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Bn254MontMulKernel
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Bn254MontMulKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Bn254MontMulKernel
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
 # BN254 `Fp2` add / sub, owned x86 leaves + component-wise driver (#222 tower)
@@ -52,6 +57,8 @@ generator coordinates (Montgomery form, the exact KAT anchor in
 `AsmPrinter` + `gas` step is the syntactic trust boundary; the driver call frame
 is trusted scaffolding outside the verified field bodies.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -325,7 +332,7 @@ def denoteSpecOk : Bool :=
     && (runSub 5 7 == (5 + pNat - 7) % pNat)                           -- sub underflow (wraps)
     && (runSub (runAdd qx_c0 qy_c0) qy_c0 == qx_c0)                    -- add/sub round-trip
 
-#eval denoteSpecOk   -- expect: true
+-- #eval denoteSpecOk   -- expect: true
 
 /-! ## 10. Emit driver -/
 

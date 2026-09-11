@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.SpeculativeCT
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.SpeculativeCT
+public import CatCrypt.Crypto.SecureCompilation.SpeculativeCT
 
 /-!
 # Three-level transient security typing (à la *Spectre Declassified*)
@@ -95,6 +98,8 @@ collapses `Transient` back down to `Public`, the architectural view.
 * Cauligi et al., "Constant-Time Foundations for the New Spectre Era",
   PLDI 2020 (the `SpeculativelyConstantTime` model).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.TransientTyping
 

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxGf524287Tie
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
+module
+
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxGf524287Tie
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
 
 /-!
 # #607 security tie: the compile-from-hax GF(524287) multiply leaf realizes the
@@ -40,6 +42,8 @@ assumption; the realization equality `toMulDeps = mulDepsSpec` is genuine on the
 residue domain (`encF` produces canonical residues `< 524287`), the domain on
 which `gf524287MulFold_eq_field` is stated.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # C4 fan-out: the verified compiler emits a Keccak χ leaf from extracted source
@@ -58,6 +62,8 @@ The emitted jasmin `Com` is *computed by the verified compiler from the extracte
 source*, proven equal to the FIPS 202 χ-lane formula — the compiler authored the
 leaf, with no front change beyond the SHA-256 `Ch` leaf.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -144,7 +150,7 @@ theorem chiLane_compiles :
       = some (a0 ^^^ ((~~~a1) &&& a2)) := by
     have h := chiLaneSrc_denoteScalar (nIn := 3) ![a0, a1, a2]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 32) (nIn := 3) ["a0", "a1", "a2"] ![a0, a1, a2]
     chiLaneSrc _ hc hspec
 
@@ -214,7 +220,7 @@ theorem iotaLane_compiles :
       = some (a ^^^ (1 : BitVec 64)) := by
     have h := iotaSrc_denoteScalar (nIn := 1) ![a]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_fin_one,
-      Matrix.cons_val] using h
+      Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 64) (nIn := 1) ["a"] ![a]
     iotaSrc _ hc hspec
 
@@ -284,7 +290,7 @@ theorem thetaDLane_compiles :
       = some (c0 ^^^ c1.rotateRight 63) := by
     have h := thetaDSrc_denoteScalar (nIn := 2) ![c0, c1]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 64) (nIn := 2) ["c0", "c1"] ![c0, c1]
     thetaDSrc _ hc hspec
 
@@ -345,7 +351,7 @@ theorem thetaCLane_compiles :
       = some (a0 ^^^ a1 ^^^ a2 ^^^ a3 ^^^ a4) := by
     have h := thetaCSrc_denoteScalar (nIn := 5) ![a0, a1, a2, a3, a4]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 64) (nIn := 5) ["a0", "a1", "a2", "a3", "a4"]
     ![a0, a1, a2, a3, a4] thetaCSrc _ hc hspec
 
@@ -412,7 +418,7 @@ theorem rhoLane_compiles :
       = some (a.rotateRight 28) := by
     have h := rhoLaneSrc_denoteScalar (nIn := 1) ![a]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_fin_one,
-      Matrix.cons_val] using h
+      Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 64) (nIn := 1) ["a"] ![a]
     rhoLaneSrc _ hc hspec
 

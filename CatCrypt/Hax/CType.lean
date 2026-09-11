@@ -3,11 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.Fintype.Basic
-import Mathlib.Data.Fintype.Pi
-import Mathlib.Data.Fintype.Prod
-import Mathlib.Data.Fintype.Sum
-import Mathlib.Data.Fintype.Option
+module
+
+public import Mathlib.Data.Fintype.Basic
+public import Mathlib.Data.Fintype.Pi
+public import Mathlib.Data.Fintype.Prod
+public import Mathlib.Data.Fintype.Sum
+public import Mathlib.Data.Fintype.Option
 
 /-!
 # CType: Closed Crypto Type Universe
@@ -44,6 +46,8 @@ The key application is `CType.array .u8 16`, which denotes to
 | `.array .u8 16`  | `Vector UInt8 16` | `RustArray u8 16`  |
 | `.array .u8 32`  | `Vector UInt8 32` | `RustArray u8 32`  |
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

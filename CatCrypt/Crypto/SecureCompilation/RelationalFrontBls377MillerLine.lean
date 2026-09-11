@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Fp6
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377EC
+module
+
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Fp6
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377EC
 
 /-!
 # The `bls12_377` Miller-loop LINE FUNCTION, valued in the `Fp12` tower
@@ -73,6 +75,8 @@ curve), exactly as the `AUCurvesPort` / `PairingAxioms` layer defers them. The
 function is the right object; the loop and the bilinearity/non-degeneracy
 theory are deliberately out of scope here.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

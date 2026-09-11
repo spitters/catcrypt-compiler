@@ -3,13 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFront
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontInstances
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontEC
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontECMul
-import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenMul
-import Mathlib.FieldTheory.Finite.Basic
-import Std.Tactic.BVDecide
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import Mathlib.Tactic.NormNum.Prime
+public import CatCrypt.Crypto.SecureCompilation.RelationalFront
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontInstances
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontEC
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontECMul
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenMul
+public import Mathlib.FieldTheory.Finite.Basic
+public import Std.Tactic.BVDecide
 
 /-!
 # GF(251) FIELD INVERSION via Fermat — the last field-op building block
@@ -90,6 +94,8 @@ index-free CT fragment must handle by the standard select idiom, not a jump).
 (encoding + commuting square + emitted `Com`) ports verbatim, only the carrier
 and per-op kernels change.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

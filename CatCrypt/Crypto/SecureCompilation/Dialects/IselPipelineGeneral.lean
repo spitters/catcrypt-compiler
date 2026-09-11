@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.RorImmSelect
-import CatCrypt.Crypto.SecureCompilation.Dialects.AndnSelect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.RorImmSelect
+public import CatCrypt.Crypto.SecureCompilation.Dialects.AndnSelect
 
 /-!
 # D3 — the UNCONDITIONAL recursive ISel pass (refactored to generate equation lemmas)
@@ -56,6 +58,8 @@ The recognizer is operand-sound: `rorRecognize c = some site` carries
 `c = mkRotrSubtree site.w site.n site.src site.deepBody`, so a fired site is always
 the canonical rotate subtree — no miscompile (`IselPipelineRec.rorCex` is not matched).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

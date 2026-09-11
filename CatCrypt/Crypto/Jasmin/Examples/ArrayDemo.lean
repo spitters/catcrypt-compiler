@@ -22,20 +22,24 @@ hand-coded equivalent is out of scope here (the comb-table KAT in the
 curve25519-jasmin-rs crate covers the leaves; the IR extension is
 syntactic).
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
-import CatCrypt.Crypto.Jasmin.RustEmit
-import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
+module
 
+public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.RustEmit
+public import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
+
+
+@[expose] public section
 namespace CatCrypt.Crypto.Jasmin.Examples.ArrayDemo
 
 open CatCrypt.Crypto.Jasmin.LowCT
 
 /-- The array slot: 4 cells of 200 bytes each = TArr 4 (TBytes 200). -/
-private def arrLoc : Located :=
+def arrLoc : Located :=
   { locVar := "cells", locSrc := TowerType.TArr 4 (TowerType.TBytes 200) }
 
 /-- A single 200-byte cell scratch. -/
-private def scratchLoc : Located :=
+def scratchLoc : Located :=
   { locVar := "scratch", locSrc := TowerType.TBytes 200 }
 
 /-- Body: for i in 0..4 { cells[i] = scratch }.  Demonstrates

@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Fp2
+module
+
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Fp2
 
 /-!
 # The `bls12_377` cubic tower `Fp6 = Fp2[v]/(v³ − ξ₆)` and dodecic `Fp12`, KARATSUBA mul
@@ -49,6 +51,8 @@ does it prove `Fp6` / `Fp12` are *fields* (that needs `ξ₆` / `v` non-residuos
 a number-theoretic fact about the concrete `bls12_377` twist parameters). It is
 the field-algebra gateway above the `Fp2` layer (`RelationalFrontBls377Fp2`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

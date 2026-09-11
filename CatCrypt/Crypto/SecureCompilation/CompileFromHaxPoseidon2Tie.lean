@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxPoseidon2
-import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
+module
+
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxPoseidon2
+public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
 
 /-!
 # #607 Phase 3 (Category-A tie): the compile-from-hax Poseidon2 round-loop body
@@ -52,6 +54,8 @@ partial-round loop keystone (`roundLoop_denote_eq`) iterates.
   of the accumulator), not a security bound. Poseidon2 is an unkeyed permutation
   component; there is no security claim here, only `<emitted> = <hand-authored>`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,11 +3,19 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminToSSA
-import CatCrypt.Crypto.Jasmin.JasminEmit
-import CatCrypt.Crypto.CTAdmClass
-import CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialect
-import CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialectNative
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.JasminToSSA
+public import CatCrypt.Crypto.Jasmin.JasminToSSA
+public meta import CatCrypt.Crypto.Jasmin.JasminEmit
+public import CatCrypt.Crypto.Jasmin.JasminEmit
+public meta import CatCrypt.Crypto.CTAdmClass
+public import CatCrypt.Crypto.CTAdmClass
+public meta import CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialect
+public import CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialect
+public meta import CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialectNative
+public import CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialectNative
 
 /-!
 # Syntactic constant-time predicate for the Jasmin SSA subset + ADC extension
@@ -85,6 +93,8 @@ The per-port `native_decide` checks in `S2NBignumSSA.lean` remain as
 empirical evidence; they are now strictly redundant given the universal
 preservation theorems, but kept as a regression net.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin
 
@@ -343,7 +353,7 @@ require unfolding `JasminEmit`'s private helpers and are deferred
 
 /-- `isCT_InstrR (Cif cond a b)` is independent of the branches `a`, `b`:
     every CT-accepting `Cif` arm only inspects the guard `cond`. -/
-private lemma isCT_Cif_branch_irrel (cond : PExpr) (a b a' b' : Cmd) :
+lemma isCT_Cif_branch_irrel (cond : PExpr) (a b a' b' : Cmd) :
     isCT_InstrR (.Cif cond a b) = isCT_InstrR (.Cif cond a' b') := by
   -- Both sides are a `match` on the same guard `cond`; only `Papp2 (Oneq _)`
   -- arms are accepting, and they ignore the branches.  Splitting `cond` to a
@@ -359,7 +369,7 @@ private lemma isCT_Cif_branch_irrel (cond : PExpr) (a b a' b' : Cmd) :
 /-- For a `Cwhile` with empty `cbefore`, `isCT_InstrR` depends only on the
     guard and on `isCT_Cmd` of the `cafter` body — so it transfers from one
     `cafter` to another whenever the second `cafter` is CT. -/
-private lemma isCT_Cwhile_nil_transfer (cond : PExpr) (ca ca' : Cmd)
+lemma isCT_Cwhile_nil_transfer (cond : PExpr) (ca ca' : Cmd)
     (hca' : isCT_Cmd ca' = true)
     (h : isCT_InstrR (.Cwhile [] cond ca) = true) :
     isCT_InstrR (.Cwhile [] cond ca') = true := by
@@ -368,7 +378,7 @@ private lemma isCT_Cwhile_nil_transfer (cond : PExpr) (ca ca' : Cmd)
   split <;> intro h <;> first | exact hca' | exact h | simp_all
 
 /-- A CT `Cwhile` with empty `cbefore` has a CT `cafter` body. -/
-private lemma isCT_Cwhile_nil_body (cond : PExpr) (ca : Cmd)
+lemma isCT_Cwhile_nil_body (cond : PExpr) (ca : Cmd)
     (h : isCT_InstrR (.Cwhile [] cond ca) = true) : isCT_Cmd ca = true := by
   revert h
   unfold isCT_InstrR
@@ -463,10 +473,10 @@ theorem isCT_deadCodeElim (liveOut : List Var) (c : Cmd) (h : isCT_Cmd c) :
 open CatCrypt.Crypto.Jasmin.Emit
 
 /-- `isCT_PExpr (Pvar _) = true` unconditionally. -/
-private lemma isCT_PExpr_Pvar (gv : GVar) : isCT_PExpr (.Pvar gv) = true := rfl
+lemma isCT_PExpr_Pvar (gv : GVar) : isCT_PExpr (.Pvar gv) = true := rfl
 
 /-- Renaming a `Pvar` yields a `Pvar`. -/
-private lemma renameExpr_Pvar_eq (old new : String) (gv : GVar) :
+lemma renameExpr_Pvar_eq (old new : String) (gv : GVar) :
     isCT_PExpr (renameExpr old new (.Pvar gv)) = true := by
   unfold renameExpr
   split <;> rfl
@@ -729,7 +739,7 @@ lemma isCT_synth_copy (y : VarI) (ty : SType) (ya : GVar) :
     contrapositive form `peepholeArith.induct` produces in its catch-all
     case (no pair of `(Cassgn (Lvar _) _ _ (Papp2 _ (Pvar _) (Pvar _)))`
     instructions at the head). Pure case-bash on the AST constructors. -/
-private lemma peepholeArith_no_fire_eq (i : InstrR) (rest : List InstrR)
+lemma peepholeArith_no_fire_eq (i : InstrR) (rest : List InstrR)
     (hNoFire : ∀ (x : VarI) (tag : AssgnTag) (ty1 : SType) (op1 : SOp2)
         (ya c1 : GVar) (y : VarI) (tag_1 : AssgnTag) (ty : SType)
         (op2 : SOp2) (xr c2 : GVar) (rest_1 : List InstrR),
@@ -865,12 +875,12 @@ CT by `isCT_renameBody`. -/
     `Cassgn (Lvar x) tag ty (Papp2 op (Pvar y) (Pvar/Pconst _))`
     (LHS: `Lvar`, RHS: `Papp2`).  Both reduce to `isCT_PExpr (Papp2 …)`,
     which is independent of the LHS variable. -/
-private lemma isCT_merged_instr_pvar (y' : VarI) (tag : AssgnTag) (ty : SType)
+lemma isCT_merged_instr_pvar (y' : VarI) (tag : AssgnTag) (ty : SType)
     (op : SOp2) (y z : GVar) :
     isCT_InstrR (.Cassgn (.Lvar y') tag ty (.Papp2 op (.Pvar y) (.Pvar z))) =
     isCT_PExpr (.Papp2 op (.Pvar y) (.Pvar z)) := rfl
 
-private lemma isCT_merged_instr_pconst (y' : VarI) (tag : AssgnTag) (ty : SType)
+lemma isCT_merged_instr_pconst (y' : VarI) (tag : AssgnTag) (ty : SType)
     (op : SOp2) (y : GVar) (k : Int) :
     isCT_InstrR (.Cassgn (.Lvar y') tag ty (.Papp2 op (.Pvar y) (.Pconst k))) =
     isCT_PExpr (.Papp2 op (.Pvar y) (.Pconst k)) := rfl

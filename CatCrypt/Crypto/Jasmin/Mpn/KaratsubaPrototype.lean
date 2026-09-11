@@ -3,7 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.PowPrototype
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.Mpn.PowPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.PowPrototype
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -95,7 +101,7 @@ open CatCrypt.Crypto.Jasmin
 open CatCrypt.Crypto.Jasmin.BignumExec
 open CatCrypt.Crypto.Jasmin.Emit
 open CatCrypt.Crypto.Jasmin.MemoryModel
-open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype hiding vr pv loadAt0 storeAt0 binImm
 open CatCrypt.Crypto.Jasmin.Mpn.Mul1Prototype
 open CatCrypt.Crypto.Jasmin.Mpn.MulPrototype
 open CatCrypt.Crypto.Jasmin.Mpn.PowPrototype
@@ -294,7 +300,7 @@ exactly (proved below by induction on `n`). -/
     output limb representation; the structural recursion happens at the value
     level for verification purposes (proving Karatsuba's identity).
 
-    The genuine recursive algorithm has *exactly the same* `toNat` denotation
+    The recursive algorithm has *exactly the same* `toNat` denotation
     (by `karatsuba_recombine`); we expose the recursion structure in
     `mpnKaratsubaR_unfold` below. -/
 def mpnKaratsubaR (a b : List (BitVec 64)) : List (BitVec 64) :=
@@ -615,7 +621,7 @@ theorem karatsubaFd_params_eq_mulFd : mpnKaratsubaFd.params = (mpnMulFd 0).param
 
 /-! ## §11  The full recursive-form residual
 
-The genuine recursive Karatsuba emit (with three sub-product Ccalls +
+The recursive Karatsuba emit (with three sub-product Ccalls +
 recombination) requires a recursion-depth invariant: at depth `d`, the result
 region holds the partial product, with each sub-product residing in a
 disjoint scratch buffer.  The Ccall machinery (`mul_ccall_step`-style) and the
@@ -705,7 +711,7 @@ theorem MpnKaratsubaJasminRefines_holds : MpnKaratsubaJasminRefines := by
 
 The `mpnKaratsuba_outer_recursion_obligation` above runs the *multiply* callee
 body `mulBody b.length` under `powRegistry b.length` — the same shape as if
-the parent were Ccalling `mpn_mul` directly.  The genuinely recursive form
+the parent were Ccalling `mpn_mul` directly.  The recursive form
 runs the *Karatsuba* callee body `karatsubaBody` under `karatsubaRegistry
 b.length` — the body and registry that an actual `Ccall mpn_karatsuba`
 invocation would dispatch to.
@@ -724,7 +730,7 @@ straightforward Ccall-arm bookkeeping that turns these five pieces into one
 /-- **The tighter, fully-recursive Karatsuba Jasmin refinement obligation.**
 
     Same precondition shape as `mpnKaratsuba_outer_recursion_obligation`, but
-    runs the genuine Karatsuba callee body `karatsubaBody` (the body of
+    runs the Karatsuba callee body `karatsubaBody` (the body of
     `mpnKaratsubaFd`) under the recursive registry `karatsubaRegistry b.length`
     (which contains the `mpn_karatsuba` self-entry), starting from the
     `Ccall`-built callee init state for `mpnKaratsubaFd`.
@@ -1009,7 +1015,7 @@ recombination cost grows and the leaf-level win is amortised across
 more O(n) work; the ratio softens to ~5-10 % at the highest sizes.
 
 This is a documentation-only audit: no instruction-list edits land in
-this file (any genuine routing change is at the `mulOuterBody` level, a
+this file (any routing change is at the `mulOuterBody` level, a
 different file and out of scope for this pass).  The `karatsubaBody`,
 `karatsubaRegistry`, and all six `MpnKaratsubaJasminRefines*` theorems
 in §§8-11 above remain unchanged. -/

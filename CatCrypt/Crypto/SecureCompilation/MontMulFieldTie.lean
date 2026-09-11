@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4LimbTierA
-import CatCrypt.Crypto.SecureCompilation.MultiLimbEmitBridge
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4LimbTierA
+public import CatCrypt.Crypto.SecureCompilation.MultiLimbEmitBridge
 
 /-!
 # The shipped Montgomery curve multiply, read as a `ZMod p` field relation
@@ -16,6 +18,8 @@ multiply's `runBlock` output satisfies the Montgomery congruence `out Â· 2^256 â
 product. This ties the production-path emitted P256 `.s` (the one that ships and is
 KAT-gated against GMP/s2n) to the abstract prime field `ZMod (valLimbs p256Limbs)`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.MontMulFieldTie
 

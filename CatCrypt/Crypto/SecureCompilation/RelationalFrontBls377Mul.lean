@@ -3,10 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFront
-import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Add
-import Mathlib.Data.ZMod.Basic
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.RelationalFront
+public import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Add
+public import Mathlib.Data.ZMod.Basic
 
 /-!
 # The `bls12_377` base-field MULTIPLICATION, realized relationally over a 6×64-bit carrier
@@ -62,6 +65,8 @@ is met by construction.
   EC group law (Jacobian add/double are straight-line `+`/`·`; field inversion is the
   separate piece, computed by an addition chain over the same MUL).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

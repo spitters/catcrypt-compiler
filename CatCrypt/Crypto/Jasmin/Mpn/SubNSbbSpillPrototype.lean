@@ -3,8 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.SubPrototype
-import CatCrypt.Crypto.Jasmin.Mpn.AddNAdcSpillPrototype
+module
+
+public meta import CatCrypt.Crypto.Jasmin.Mpn.SubPrototype
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.Mpn.SubPrototype
+public meta import CatCrypt.Crypto.Jasmin.Mpn.AddNAdcSpillPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.AddNAdcSpillPrototype
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -562,7 +569,7 @@ theorem mpnSubN_spillLoop :
       exact bignumExecFuel_loop_exit emptyRegistry extra _ loopBody s
         (Mpn.SubPrototype.evalPExpr_loopCond_false s hn0)
     · simp [mpnSubN, memHoldsLimbs]
-    · simpa [mpnSubN, borrowNat] using hcc
+    · simpa [mpnSubN, borrowNat] using! hcc
     · intro b _; rfl
   | cons a as ih =>
     intro bs s bin extra hlen hcc hn hap hbp hdoa hdob

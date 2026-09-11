@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridge
-import CatCrypt.Crypto.SecureCompilation.Ascent.ArrStoreLeaf
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMemDenote
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMulx
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridge
+public import CatCrypt.Crypto.SecureCompilation.Ascent.ArrStoreLeaf
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMemDenote
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMulx
 
 /-!
 # The value-level middle tie for the array-memory fragment (Route B, memory axis)
@@ -57,6 +59,8 @@ cell back (`memGetDyn … i.toNat`) recovers `v = st.regs m.src`. The machine st
 `st.regs m.src`. Both round-trip to the source word — the write landed in the
 matching cell on both machines.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

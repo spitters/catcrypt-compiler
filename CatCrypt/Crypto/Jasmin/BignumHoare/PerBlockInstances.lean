@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.BignumHoare.ChainStepAxioms
+module
+
+public import CatCrypt.Crypto.Jasmin.BignumHoare.ChainStepAxioms
 
 /-!
 # Per-block correctness instances for inv and pow_p58 chains
@@ -54,6 +56,8 @@ plus 1 protocol-specific tail block.
 | 13a   | repeated_sqr_then_mul n=5 (inv)  | op := z2_250_0^32 · z11               |
 | 13b   | repeated_sqr_then_mul n=2 (pow)  | op := z2_250_0^4 · ap                 |
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

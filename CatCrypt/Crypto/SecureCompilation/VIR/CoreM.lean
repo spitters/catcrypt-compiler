@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Core
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
 
 /-!
 # Effectful VIR denotation
@@ -47,6 +49,8 @@ uses a state-passing interpreter rather than a parametric monad. Our
 parametric approach matches lean-mlir's `EffectKind` shape more closely
 without requiring a regions/EffectKind refactor of `Com`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR
 

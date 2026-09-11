@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemScalar
+module
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemScalar
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemScalar
 
 /-!
 # A non-uniform-width linear machine and the widened `correct ∧ robust`
@@ -125,6 +129,8 @@ byte-KATs):
 `jasminc_preserves_ct`.** The `lsem→bytes` encoder and Sail tables remain the
 declared trusted base, as for every verified compiler.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -304,7 +310,8 @@ def readReg (s : LstateN) : LOperand → Option (Σ w, BitVec w)
     on the two widths the wire format distinguishes (`{32, 64}`). For the nullary
     `regConst` image `withWidthTag w "MOV" [.imm n]` (which carries no source
     register to read a width from), this is the only width information on the wire. -/
-def widthFromTag (opn : String) : Nat := if opn.endsWith ":64" then 64 else 32
+def widthFromTag (opn : String) : Nat :=
+  if JasminLprogExport.hasSuffix opn ":64" then 64 else 32
 
 /-- The width tag recovers the data width on the two wire-distinguished widths
     `{64, 32}`: `widthFromTag (withWidthTag w "MOV") = w` when `w` is `64` or `32`

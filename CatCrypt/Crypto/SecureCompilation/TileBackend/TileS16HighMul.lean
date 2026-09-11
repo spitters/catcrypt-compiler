@@ -3,11 +3,20 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel
-import CatCrypt.Crypto.SecureCompilation.TileBackend.VectorBackendBridge
-import CatCrypt.Crypto.SecureCompilation.TileBackend.TileS16HighMulCom
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonModel
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvvModel
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel
+public meta import CatCrypt.Crypto.SecureCompilation.TileBackend.VectorBackendBridge
+public import CatCrypt.Crypto.SecureCompilation.TileBackend.VectorBackendBridge
+public meta import CatCrypt.Crypto.SecureCompilation.TileBackend.TileS16HighMulCom
+public import CatCrypt.Crypto.SecureCompilation.TileBackend.TileS16HighMulCom
+public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonModel
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonModel
+public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvvModel
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvvModel
 
 /-!
 # Signed 16-bit high-multiply tile operation (Kyber/FIPS-203 Montgomery path)
@@ -48,8 +57,15 @@ The naturally realising hardware instructions are:
   result of `VPMULHW a, b` is the high 16 bits of each signed `i16 × i16`
   product, which together with `VPMULLW` (the low 16 bits) reconstructs the
   full 32-bit product used by Montgomery.
-- **ARM NEON**: `SQDMULH Vd.8H, Vn.8H, Vm.8H` (signed high half, 8 × i16; the
-  exact-Montgomery `SMULL/SMULL2/UZP2` high-half on A64) — per Arm ARM §C7.2.
+- **ARM NEON**: `SQDMULH Vd.8H, Vn.8H, Vm.8H` (8 × i16) — per Arm ARM §C7.2.
+  **`SQDMULH` is not the model op.** It is the signed saturating *doubling*
+  high-multiply; the model op (`laneMulHiS16`, the `.mulhs` arm below) is the
+  plain signed high half. The doubling and the saturation are a real
+  discrepancy, not a naming difference; the exact-Montgomery A64 realization is
+  the `SMULL/SMULL2/UZP2` widening sequence. The encoder emits `SQDMULH` anyway
+  (the single-instruction form) and the gap is neither decode-round-trip-proved
+  nor otherwise discharged — see `ARMBackend/NeonEncoder.lean`'s `baseSqdmulh`
+  note and `NeonModel.lean §5`.
 - **RISC-V RVV**: `vmulh.vv vd, vs2, vs1` (OPMVV signed multiply returning
   high half) at `SEW = 16`, `LMUL = 1`, `VL = 8`.
 
@@ -71,6 +87,8 @@ correctness against the Montgomery identity `fqmul(a,1) = a·R⁻¹ mod q` is
 pinned by the KAT at the bottom of this file. The 16-bit arithmetic is small
 enough for `native_decide` on the 8-lane worked vector.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.TileBackend.TileS16HighMul
 
@@ -158,6 +176,12 @@ theorem tileMontMulS16_lane (a b : Tile 8 16) (i : Fin 8) :
 Each ISA's packed signed high-multiply (`VPMULHW` / `SQDMULH` / `vmulh.vv`),
 transported to the shape-generic `TileState 8 16`, equals `evalTileOp` of the
 lowered `RegInstr.mulhs` op (`TileModel`'s verified `lowerRegInstr`).
+
+Read the ARM leg with the §"Per-ISA lowering status" caveat in force: the lemma
+is about `NeonModel`'s `.mulhs` *model* op (the plain signed high half), and the
+A64 mnemonic the encoder actually emits for it, `SQDMULH`, differs from that op
+by the architectural doubling and saturation (`NeonEncoder.baseSqdmulh`). The
+lemma does not close that gap, and nothing else here does.
 
 * The **x86 leg** rides the unified `Com jasminDialect` op (`s16HighMulCom`,
   denote `vpmulhw16W`) over the PACKED `BitVec 128` carrier; since that carrier is
@@ -280,7 +304,13 @@ op, bridged packed↔lane), ARM `SQDMULH`, and RISC-V `vmulh.vv` all land on the
 NTT Montgomery high-multiply is one verified tile op across all three backends, the
 `Tile 8 16` analogue of the `VectorBackendBridge` consolidation (`Tile 4 32` ALU).
 The per-lane meaning is `montMulS16Spec`'s high-multiply step (`laneMulHiS16W`),
-pinned by the KAT in §5. -/
+pinned by the KAT in §5.
+
+The consolidation is over the three *model* ops. For ARM that model op is the
+plain signed high half, while the mnemonic the encoder emits for it is `SQDMULH`,
+which doubles and saturates (`NeonEncoder.baseSqdmulh`, `NeonModel §5`) — an
+undischarged gap between this consolidated tile op and the A64 bytes on the ARM
+leg only. -/
 
 /-- The three per-ISA high-multiplies lower to the same tile op: each leg targets
     `evalTileOp _ (lowerRegInstr (.mulhs …))`. The x86 leg is now carried by the

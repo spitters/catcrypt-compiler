@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 
 /-!
 # Ascon permutation (`ascon_pa` / `ascon_pb`), FRONT-COMPILED
@@ -58,6 +62,8 @@ renderLprogAtt`) under the export symbols `ascon_pa` / `ascon_pb`.
 The math source of truth is `CatCrypt/Crypto/Ascon/Permutation.lean`
 (`ascon_add_const` / `ascon_sub_layer` / `ascon_linear_layer` / `ascon_round`).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.AsconEmit
 

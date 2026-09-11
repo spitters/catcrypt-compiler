@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.RobustSafety
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.RobustSafety
+public import CatCrypt.Crypto.SecureCompilation.VIR.RobustSafety
 
 /-!
 # A context model for robust constant-time safety (fuller RSP/RHP)
@@ -95,6 +98,8 @@ context is realised by a source context", and `robustCTPreservation_ctx_of_back`
 shows that *given* such a back-translation the source-to-target robust
 implication holds. The forward result needs no such hypothesis.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

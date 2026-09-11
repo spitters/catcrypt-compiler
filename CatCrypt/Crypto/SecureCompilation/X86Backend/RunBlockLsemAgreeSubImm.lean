@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgree
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgree
 
 /-!
 # `runBlock` ↔ `lsemStraightMem` agreement for the immediate-source `sbb`
@@ -35,6 +37,8 @@ opcode bridge.
   lsem straight-line image `[MOV z n; SBBHI fr←dst,z,cfN; SBB dst←dst,z,cfN]` and
   lands in `JLstateCorrCF` with the borrow migrated to `fr`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgreeSubImm
 

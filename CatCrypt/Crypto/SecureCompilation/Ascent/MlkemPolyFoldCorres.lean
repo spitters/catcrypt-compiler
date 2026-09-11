@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.MlkemPolyAddCapstone
-import CatCrypt.Crypto.SecureCompilation.Ascent.KeystoneControl
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.Ascent.MlkemPolyAddCapstone
+public import CatCrypt.Crypto.SecureCompilation.Ascent.KeystoneControl
 
 /-!
 # The ML-KEM ascent fold-lift: per-coefficient tie ↦ whole-polynomial op
@@ -72,6 +75,8 @@ is exactly the loop rule that will consume it once the array-load leaf exists.
 Part of the AutoCorres-in-Lean ascent begun by Sebastian Graf (`sgraf812/ascent`);
 see `Corres.lean`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

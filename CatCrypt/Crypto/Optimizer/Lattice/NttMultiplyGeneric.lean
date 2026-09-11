@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.NTTConvolutionTheorem
+module
+
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTConvolutionTheorem
 
 /-!
 # NTT-based polynomial multiply: the forward (analysis) half
@@ -59,6 +61,8 @@ via root-of-unity orthogonality `∑ₖ ω^{(i−j)k} = n · [i = j]`). That hyp
 and the inverse NTT it underwrites, are deliberately **not** developed here; this
 file is the forward/analysis half only.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

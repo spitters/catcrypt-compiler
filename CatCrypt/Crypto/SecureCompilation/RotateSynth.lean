@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Init.Data.BitVec.Lemmas
+module
 
+public meta import Std.Tactic.BVDecide.Reflect
+public import Init.Data.BitVec.Lemmas
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!

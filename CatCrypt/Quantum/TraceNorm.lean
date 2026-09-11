@@ -3,10 +3,12 @@ Copyright (c) 2024 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Analysis.Matrix.Spectrum
-import Mathlib.Analysis.Matrix.PosDef
-import Mathlib.LinearAlgebra.Matrix.PosDef
-import Mathlib.LinearAlgebra.Matrix.Trace
+module
+
+public import Mathlib.Analysis.Matrix.Spectrum
+public import Mathlib.Analysis.Matrix.PosDef
+public import Mathlib.LinearAlgebra.Matrix.PosDef
+public import Mathlib.LinearAlgebra.Matrix.Trace
 
 /-!
 # Trace Norm for Hermitian Matrices
@@ -34,6 +36,8 @@ the Helstrom dual characterization.
 * Helstrom, "Quantum Detection and Estimation Theory" (1976)
 * Wilde, *Quantum Information Theory* (Cambridge, 2017), Chapter 9
 -/
+
+@[expose] public section
 
 open scoped Matrix ComplexOrder
 open Matrix Polynomial Unitary
@@ -208,7 +212,8 @@ private lemma effect_diag_re_bounds (F : Matrix n n ℂ) (hF : IsEffect F) (i : 
     0 ≤ (F i i).re ∧ (F i i).re ≤ 1 := by
   refine ⟨(Complex.nonneg_iff.mp (hF.1.diag_nonneg)).1, ?_⟩
   have h : 0 ≤ ((1 - F) i i).re := (Complex.nonneg_iff.mp (hF.2.diag_nonneg)).1
-  simp only [sub_apply, one_apply_eq, Complex.sub_re, Complex.one_re] at h; linarith
+  simp only [Matrix.sub_apply, Matrix.one_apply_eq, Complex.sub_re, Complex.one_re] at h
+  linarith
 
 /-- Express `tr(EX)` in the eigenvector basis of `X`: the trace reduces to a sum
     over diagonal entries of the conjugated effect times eigenvalues. -/

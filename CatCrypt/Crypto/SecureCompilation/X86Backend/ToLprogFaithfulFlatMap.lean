@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulEndToEnd
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulEndToEnd
 
 /-!
 # `physBody` `flatMap`-identity — tying the literal emitter output to the block list
@@ -74,6 +76,8 @@ PROVED (against the literal `physBody`, zero `sorry`):
   exactly as in the sibling modules.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulFlatMap
@@ -98,7 +102,7 @@ def physBodyElem (body : Lcmd) (tbl : Array Nat) (i : Linstr) : Lcmd :=
   let isShift (opn : String) : Bool :=
     stripWidthTag opn == "SHL" || stripWidthTag opn == "SHR"
   let movFor (opn : String) : String :=
-    if opn.endsWith ":64" then "MOV:64" else "MOV"
+    if hasSuffix opn ":64" then "MOV:64" else "MOV"
   let shiftImmVal (s1 : LOperand) : Option Nat :=
     match s1 with
     | .imm v => some v
@@ -161,7 +165,7 @@ theorem physBodyElem_binopCollapse (body : Lcmd) (tbl : Array Nat)
     (hbin : ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR"].contains
       (stripWidthTag opn) = true)
     (hsh : ¬ (stripWidthTag opn == "SHL" || stripWidthTag opn == "SHR") = true)
-    (h64 : ¬ opn.endsWith ":64" = true)
+    (h64 : ¬ hasSuffix opn ":64" = true)
     (hcol : remapOperand body tbl d = remapOperand body tbl s0) :
     physBodyElem body tbl ⟨ii, .Lopn (d :: ds) opn (s0 :: s1 :: ss)⟩
       = (legalizeBinop (remapOperand body tbl d) (remapOperand body tbl s1) opn "MOV").map
@@ -191,7 +195,7 @@ def InstrRealizesBinding {w : Nat} (body : Lcmd) (tbl : Array Nat)
     ∧ (["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR"].contains
         (stripWidthTag b.opn) = true)
     ∧ (¬ (stripWidthTag b.opn == "SHL" || stripWidthTag b.opn == "SHR") = true)
-    ∧ (¬ b.opn.endsWith ":64" = true)
+    ∧ (¬ hasSuffix b.opn ":64" = true)
     ∧ physRename body tbl nS0 = physRename body tbl b.nDst
 
 /-- One realising instruction's `physBodyElem` expansion is its binding's block

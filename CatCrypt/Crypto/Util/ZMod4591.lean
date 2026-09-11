@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.ZMod.Basic
-import Mathlib.Tactic
+module
+
+public meta import Mathlib.Data.Nat.Prime.Defs
+public import Mathlib.Algebra.Field.ZMod
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.Tactic.Ring
 
 /-!
 # Verified `ZMod 4591` — the sntrup761 coefficient modulus
@@ -31,6 +35,8 @@ and `Util/ZMod251.lean`.
   identities used by bridge proofs to discharge previously-axiomatised
   encoder round-trips.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

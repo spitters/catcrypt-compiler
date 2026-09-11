@@ -3,9 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Sha2Emit
-import CatCrypt.Crypto.SecureCompilation.VIR.Sha2Bitexact
-import CatCrypt.Crypto.SecureCompilation.VIR.Grind
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Sha2Emit
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.Sha2Emit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Sha2Bitexact
+public import CatCrypt.Crypto.SecureCompilation.VIR.Sha2Bitexact
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Grind
+public import CatCrypt.Crypto.SecureCompilation.VIR.Grind
 
 /-!
 # The SHA-2 round-constant-INDEPENDENT mixing layer is bit-exactly the FIPS spec
@@ -59,6 +65,8 @@ for the arithmetic slots. The carried axiom is the standard
 `Lean.ofReduceBool` (LRAT) edge — a real proof. No `sorry`, no
 `native_decide`, no new custom axioms.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 
 /-!
 # Plonky3 Merkle-tree commitment emitted through the verified front
@@ -51,6 +55,8 @@ byte-for-byte. The KAT theorems pin the reference regression vectors:
 
 Validated byte-identically at the bench level in `bench/plonky3_compare/`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

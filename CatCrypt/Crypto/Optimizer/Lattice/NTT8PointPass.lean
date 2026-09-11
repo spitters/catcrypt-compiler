@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.NTTButterflyPass
+module
+
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTButterflyPass
 
 /-!
 # Verified 8-point radix-2 Cooley–Tukey NTT
@@ -49,6 +51,8 @@ absorbed into the input pairing and the output wiring, exactly as in
 The single arithmetic fact used is `ω⁴ = -1`; after reducing every `ωⁿ` to
 `±ωⁿ mod 4`, `ring` discharges each lane.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

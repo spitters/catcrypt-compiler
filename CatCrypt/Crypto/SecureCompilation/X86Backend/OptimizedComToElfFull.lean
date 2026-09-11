@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherImmForms
-import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElf
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherImmForms
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElf
 
 /-!
 # `optimizedCompileComToElf` — the optimized full-ELF emit for GoldenPath kernels
@@ -48,6 +50,8 @@ A kernel pointed to this entry is therefore anchored on `runBlock`-equivalence
 plus an executed spec-KAT against authoritative vectors, rather than on byte
 identity with the reference encoder.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

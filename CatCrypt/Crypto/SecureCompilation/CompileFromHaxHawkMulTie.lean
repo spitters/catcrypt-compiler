@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxHawkMul
-import CatCrypt.Crypto.Util.ZMod1024
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxHawkMul
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxHawkMul
+public meta import CatCrypt.Crypto.Util.ZMod1024
+public import CatCrypt.Crypto.Util.ZMod1024
 
 /-!
 # C4 fan-out: the emitted HAWK MAC leaf EQUALS the abstract `Zq1024` ring op
@@ -30,6 +34,8 @@ through `ZMod.natCast_*`. Like the FrodoKEM (`2^16`) and NTRU-HRSS (`2^13`) ties
 (and unlike the prime-field GF(127)/sntrup ties) there is **no domain
 restriction**: the mask handles full `Z/1024` wraparound for any 64-bit inputs.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

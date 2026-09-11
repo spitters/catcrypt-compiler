@@ -3,7 +3,9 @@ Copyright (c) 2024 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.UCMonad.ITreeN
+module
+
+public import CatCrypt.Crypto.UCMonad.ITreeN
 
 /-!
 # ITreeN Composition and Simulation
@@ -17,6 +19,8 @@ This file defines composition operations for `ITreeN n E α`, including:
 
 **0 axioms**, **0 sorries**. All proofs complete.
 -/
+
+@[expose] public section
 
 namespace UCMonad.ITreeNUC
 

@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.HawkMulEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.HawkMul4WayRealization
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.HawkMulEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.HawkMul4WayRealization
 
 /-!
 # HAWK ring-multiply: the proof-model `Com` kernel denotes the spec
@@ -62,6 +65,8 @@ vectors). The emitted x86 bytes vs the reference remain **KAT-anchored**
 (`bench/hawk_compare/hawk_mul_kat.c` / `hawk_mul_4way_kat.c`). We tie the model
 Com denotation; we do not claim the x86 bytes are proven.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

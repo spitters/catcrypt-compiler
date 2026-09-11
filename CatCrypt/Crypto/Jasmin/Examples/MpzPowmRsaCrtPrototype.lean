@@ -3,7 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Examples.MpzPowmCompositionPrototype
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.Examples.MpzPowmCompositionPrototype
+public import CatCrypt.Crypto.Jasmin.Examples.MpzPowmCompositionPrototype
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -209,17 +215,17 @@ The smoke test exercises the spec at k=1 limb per prime (so n is k=2 limbs).
 -/
 
 /-- p = 11, k_p = 1 limb. -/
-private def pTest1 : List (BitVec 64) := [11]
+def pTest1 : List (BitVec 64) := [11]
 /-- q = 13, k_q = 1 limb. -/
-private def qTest1 : List (BitVec 64) := [13]
+def qTest1 : List (BitVec 64) := [13]
 /-- d_p = 3 -/
-private def dpTest1 : List (BitVec 64) := [3]
+def dpTest1 : List (BitVec 64) := [3]
 /-- d_q = 11 -/
-private def dqTest1 : List (BitVec 64) := [11]
+def dqTest1 : List (BitVec 64) := [11]
 /-- q_inv mod p = 6 -/
-private def qInvTest1 : List (BitVec 64) := [6]
+def qInvTest1 : List (BitVec 64) := [6]
 /-- c = 7 -/
-private def cTest1 : List (BitVec 64) := [7]
+def cTest1 : List (BitVec 64) := [7]
 
 /-- Length sanity at k_p = k_q = 1. -/
 example : (mpzPowmRsaCrt cTest1 pTest1 qTest1 dpTest1 dqTest1 qInvTest1).length = 2 := by
@@ -364,8 +370,8 @@ theorem mpzPowmRsaCrt_eq_pow_mod
 /-! ## §6  Jasmin body `bodyMpzPowmRsaCrt` -/
 
 /-- Local short alias picked from Mpn.MontgomeryPrototype. -/
-private abbrev MV (s : String) : Var := Mpn.MontgomeryPrototype.vr s
-private abbrev MP (s : String) : PExpr := Mpn.MontgomeryPrototype.pv s
+abbrev MV (s : String) : Var := Mpn.MontgomeryPrototype.vr s
+abbrev MP (s : String) : PExpr := Mpn.MontgomeryPrototype.pv s
 
 /-- One `Ccall mpz_powm_window` invocation (the half-size modexp). -/
 def rsaCrtModexpCcall (outVar inVar dVar Nvar : String) : InstrR :=

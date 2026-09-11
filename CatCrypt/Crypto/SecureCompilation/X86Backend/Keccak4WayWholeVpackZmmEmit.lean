@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmComSeq
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Keccak4WayVpackZmmEmit
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmComSeq
+public import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmComSeq
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Keccak4WayVpackZmmEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Keccak4WayVpackZmmEmit
 
 /-!
 # Whole multi-step Keccak-f[1600] sub-kernel as ONE owned `.s` via the threaded `vpackZMM` sequence renderer
@@ -94,6 +98,8 @@ Two pins, mirroring `VpackZmmComSeq.{chained_seq_lines, chained_seq_denote}`:
   `(a0 ⊕ a1 ⊕ a2 ⊕ a3 ⊕ a4) ⊕ rc`, the fold of the two step denotes. The
   threaded render realises exactly that fold. `rfl`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -250,7 +256,7 @@ def keccak_theta_iota_whole_vpackzmm_asm : String :=
   ++ keccakThetaIotaExportAsm ++ "\n"
 
 -- Print the emitted owned whole-sub-kernel `.s` for visual inspection.
-#eval IO.println keccak_theta_iota_whole_vpackzmm_asm
+-- #eval IO.println keccak_theta_iota_whole_vpackzmm_asm
 
 /-! ## 6. Structural smoke pins on the emitted whole-sub-kernel `.s` text
 

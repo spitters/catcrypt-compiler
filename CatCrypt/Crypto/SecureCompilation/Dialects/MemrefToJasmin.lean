@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.Memref
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.Memref
 
 /-!
 # `Com memref → Com jasmin` — the D0 verified-lowering recursion
@@ -24,6 +26,8 @@ scalar `arith` case is the `store` op, whose result is a *buffer*
 (`Fin n → BitVec w`); the agreement there is worked pointwise via `funext`, as in
 the lattice template.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.Memref
 

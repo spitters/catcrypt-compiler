@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Algebra.Group.Defs
-import Mathlib.Tactic
+module
+
+import all Init.Data.Repr
+public import Mathlib.Algebra.Group.Defs
+public import Mathlib.Data.List.Induction
+public import Mathlib.Tactic.Group
 
 /-!
 # Binary (square-and-multiply) exponentiation over a monoid
@@ -63,6 +67,8 @@ is unconditional.
 
 0 sorries; no custom axioms; correctness holds over any `[Monoid M]`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

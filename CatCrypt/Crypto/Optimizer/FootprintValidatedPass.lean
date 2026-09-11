@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.SpillReloadBlockSound
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X86OptPipelineComposed
+module
+
+public import CatCrypt.Crypto.Optimizer.SpillReloadBlockSound
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86OptPipelineComposed
 
 /-!
 # Footprint-relative semantic certificates for spilling passes
@@ -33,6 +35,8 @@ spill/scratch cells**.
   full-state certificate is unprovable for the same rewrite
   (`spill_full_state_fails`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

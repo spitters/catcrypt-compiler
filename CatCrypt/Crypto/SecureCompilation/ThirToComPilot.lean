@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Core
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
 
 /-!
 # Pilot: a verified THIR → `Com` lowering ("Aeneas-for-compilation", #568)
@@ -87,6 +89,8 @@ normaliser and adding only the final `ImpExpr_core → Com` leg. `Thir` here is 
 faithful ANF subset of those surviving core constructors so the wiring is a
 refinement, not a rewrite.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

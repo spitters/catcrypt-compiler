@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.FrontLoopBodyStepC
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.FrontLoopBodyStepC
 
 /-!
 # The front-compiled nested loop as a `JLoopBodyN.nestedDenote` double fold
@@ -34,6 +36,8 @@ it. The outer induction threads that per-row identity through the outer fold.
   model double fold `(List.range outerN).foldl (fun a jd =>
   (List.range (cnt jd)).foldl (fj jd) a) init`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

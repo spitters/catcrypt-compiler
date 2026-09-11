@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.NTTRecursionPass
-import CatCrypt.Crypto.Optimizer.Lattice.PolyConvGeneric
+module
+
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTRecursionPass
+public import CatCrypt.Crypto.Optimizer.Lattice.PolyConvGeneric
 
 /-!
 # The NTT is multi-point polynomial evaluation at the powers of `ω`
@@ -51,6 +53,8 @@ hypothesis is only needed for the *inverse* transform (interpolation), which is
 out of scope here.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Optimizer.Lattice.NTTConvolutionTheorem
@@ -88,7 +92,7 @@ theorem eval_range_map (n : ℕ) (f : ℕ → R) (x : R) :
     PolyConvGeneric.eval ((List.range n).map f) x
       = ∑ i ∈ Finset.range n, f i * x ^ i := by
   rw [PolyConvGeneric.eval_eq_polyEval, PolyConvGeneric.toPoly_range_map,
-    Polynomial.eval_finset_sum]
+    Polynomial.eval_finsetSum]
   apply Finset.sum_congr rfl
   intro i _
   simp

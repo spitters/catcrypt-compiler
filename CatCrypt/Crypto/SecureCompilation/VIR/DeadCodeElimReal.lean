@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Core
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
 
 /-!
 # An eliminating dead-code-elimination pass for `Com` (real transform)
@@ -61,6 +64,8 @@ liveness hypothesis.
   returns the smaller program with the preservation theorem
   `dceOutermost_denote`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 -- Several equation/lookup lemmas legitimately do not use every ambient

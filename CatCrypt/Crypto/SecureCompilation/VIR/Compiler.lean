@@ -3,13 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.RunOutputReadback
-import CatCrypt.Crypto.SecureCompilation.VIR.CompilerCorrectnessExtracted
-import CatCrypt.Crypto.SecureCompilation.VIR.CompilerGeneric
-import CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasminDenoteUncond
-import CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Decoder
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscvDecoder
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArmDecoder
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.RunOutputReadback
+public import CatCrypt.Crypto.SecureCompilation.VIR.CompilerCorrectnessExtracted
+public import CatCrypt.Crypto.SecureCompilation.VIR.CompilerGeneric
+public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasminDenoteUncond
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Decoder
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscvDecoder
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArmDecoder
 
 /-!
 # The compiler-correctness theorem: one `compile`, one `compile_correct_all`
@@ -44,45 +46,83 @@ What this theorem claims is stated precisely here:
   theorem `lowerComToProg_sem_eq'` already discharges the latter two
   internally, leaving only the leaf edge.
 * **Front route** (`Source.front`, the haxpipe-extracted Rust path) is
-  **hypothesis-carrying**: `rustToJasminCom_endToEnd` requires `hAdequacy`
+  **hypothesis-carrying** in the form used here: `compile_correct_front` cites
+  `rustToJasminCom_endToEnd`, which over `IsCoveredCtl` requires `hAdequacy`
   (front `Com.denote` = the operational post-state value of the extracted
-  program) and `JasminLeafAgrees` (the CryptoSSA `extCall` leaves agree with
-  their jasmin denotations), plus the per-pass success witnesses.
+  program) on top of the per-pass success witnesses. Leaf agreement is
+  *discharged* internally by the dialect lowering, so no `JasminLeafAgrees`
+  hypothesis is carried. The hypothesis-free sibling
+  `rustToJasminCom_endToEnd_unconditional` does not *prove* the adequacy edge —
+  it **avoids** it, by stating the value leg over the machine-word source
+  semantics `semScalar` rather than over the operational `RustExec` post-state,
+  on the smaller `IsCoveredSCtl` fragment
+  (`CompilerCorrectnessExtracted.lean:436`); it makes no claim about the
+  `RustExec` value of the tracked output. The in-tree kernel capstones ride its
+  top-level form.
 
-**(b) Per-model validation depth, carried in `MachineModel.validated`.**
+**(b) What each model's `validated` field carries.**
 
-* **x86** — *deepest.* The ALU `step` semantics are proved against the per-op
-  Sail-validated preservation (`X86Backend.Preservation.add_preserves` …, in
-  pure form `Bridges.Transfer.x86Add_eq`), and the instruction `encode`/`decode`
-  round-trips against the transcribed Sail tables
-  (`SailX86Decoder.roundtrip_*`). `x86Model.validated` records exactly these.
-* **RISC-V** — *pilot.* The R/I-type `encode`/`decode` round-trips against the
-  Sail-riscv tables (`SailRiscvDecoder.roundtrip_RInst`, `…_roriw`) and the
-  RV32 lo-32 ALU-value refinements (`SailRiscv32Ref.addw_lo32` …) are proved;
-  there is no whole-`Com`→RISC-V value-preservation theorem yet.
-  `riscvModel.validated` records the round-trip + value-refinement pilot.
-* **ARM (AArch64)** — *partial.* The GP-ALU `encode`/`decode` round-trips are
-  proved (`SailArmDecoder.roundtrip_ainst_{add,sub,and,orr,eor,mov,ror,lsr}`),
-  and one effect edge is the explicitly-named `trust_edge_pilot`; there is no
-  whole-`Com`→ARM value-preservation theorem yet. `armModel.validated`
-  records the round-trip subset.
+Every `validated` field below is *definitionally the statement of one proved
+`decode ∘ encode` round-trip theorem* — no more. The decoders those round-trips
+run against are hand-written Lean, transcribed by hand from the vendor Sail
+sources (`rems-project/sail-x86-from-acl2`, `riscv/sail-riscv`,
+`rems-project/sail-arm`); the upstream models are not vendored in this tree, and
+the transcription itself is not machine-checked.
+
+* **x86** — `x86Model.validated` is `X86Validated`, which is exactly
+  `SailX86Decoder.roundtrip_AluRR`: the register-direct ALU round-trip against
+  the transcribed ModRM/REX parse rules. It carries **no** ALU *semantics*.
+  The step-level facts live elsewhere and are not in this field:
+  `X86Backend.Preservation.add_preserves` … (pure form
+  `Bridges.Transfer.x86Add_eq`) equates the owned `step` model with
+  `JasminBinOp.apply` — an owned-model fact, not a Sail one — while the
+  comparison against the Sail-x86 semantics (`X86Backend.SailX86Lean`) is a set
+  of `native_decide` pins at concrete inputs, not a ∀-quantified refinement.
+* **RISC-V** — `riscvModel.validated` is `RiscvValidated`, exactly
+  `SailRiscvDecoder.roundtrip_RInst`: the round-trip for the full emitted RV64I
+  subset. The value-level results are *not* in this field. The whole-`Com`→
+  RISC-V value preservation is `ComToRiscvLsem.comToRiscvLsem_correct`, over the
+  base-ALU all-`reg 64` fragment, and it is that module's `riscvBaseAluModel` —
+  not `riscvModel` — whose `validated` carries the ∀-quantified execute-level
+  refinement (`SailRiscv64Ref`, ADD/SUB/AND/OR/XOR) against the `execute_RTYPE`
+  clause quoted in-file from the `sail-riscv-lean` generated output (a
+  hand-pasted excerpt at a pinned commit; the upstream is not vendored). This is
+  the deepest ISA grounding in the tree.
+* **ARM (AArch64)** — `armModel.validated` is `ArmValidated`, exactly
+  `SailArmDecoder.roundtrip_ainst_add`: the `ADD` round-trip alone, one
+  representative of the proved GP-ALU subset
+  (`roundtrip_ainst_{add,sub,and,orr,eor,mov,ror,lsr}`;
+  `SailArmDecoder.trust_edge_pilot` is a doc-anchor alias of that same ADD
+  round-trip, not a separate effect edge). The whole-`Com`→ARM value
+  preservation is `ComToArmLsem.comToArmLsem_correct`, over the base-ALU
+  all-`reg 64` fragment, carried by that module's `armBaseAluModel`. There is no
+  ARM execute-level refinement anywhere in the chain:
+  `ARMBackend.SailArm64Refinement` renders two Arm ARM execute clauses into its
+  own hand-written register model and proves the `ArmModel` GP-ALU op functions
+  against them, but it never mentions `evalBInst`/`runBBlock`, and no module
+  imports it.
 
 **(c) Open edges that remain hypotheses** (not discharged here):
 
-1. *front adequacy* (`hAdequacy`) — the extracted-Rust denotation = operational
-   post-state value; per-protocol bridge obligation.
-2. *leaf agreement* (`LeafAgrees` / `JasminLeafAgrees`) — opaque `extCall`
+1. *front adequacy* (`hAdequacy`, on the `IsCoveredCtl` form only) — the
+   extracted-Rust denotation = operational post-state value; per-protocol bridge
+   obligation. The `IsCoveredSCtl` sibling does not discharge it either: it
+   sidesteps it by stating the value leg over `semScalar` instead of over the
+   `RustExec` post-state.
+2. *leaf agreement* (`LeafAgrees`, on the lattice route) — opaque `extCall`
    leaves agree with their jasmin denotations.
 3. *whole-array / SIMD read-back* — `runOutputToWords` reads back one scalar
    slot; the vector/SIMD multi-slot read-back is per-slot of this.
 4. *`.jazz`/`.o` → silicon* — the assembler and the silicon are the deliberate
-   trusted base; `MachineModel.validated` records the ISA-level validation each
-   model carries, not a silicon-level proof.
+   trusted base; `MachineModel.validated` records the one encoder round-trip
+   each model carries, not a silicon-level proof.
 
 This module makes **no** claim of "fully verified to silicon for all models."
 The theorem is: `compile` is correct relative to each model's validated
 semantics, at that model's depth, under the stated hypotheses.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -119,8 +159,9 @@ open CatCrypt.Crypto.SecureCompilation
 /-- **A target machine model.** Bundles, for one target ISA, the emitted
     artifact type, the value ↔ machine-state maps, the execution semantics, and
     — crucially — an *explicit* `validated` proposition recording the
-    ISA-validation the model carries (the Sail-validation; its content and depth
-    differ per model, so it is a field, never a hidden assumption).
+    ISA-validation the model carries (for the three models below, the encoder
+    round-trip against the transcribed Sail decode rules; its content differs
+    per model, so it is a field, never a hidden assumption).
 
     The model is deliberately abstract over the carrier: `Code` is the emitted
     program, `State` the machine state, `encodeIn`/`decodeOut` the value/state
@@ -142,35 +183,41 @@ structure MachineModel where
   decodeOut : State → Value
   /-- The execution semantics: run the emitted code on a state. -/
   exec : Code → State → State
-  /-- **The ISA-validation this model carries.** An explicit proposition — the
-      Sail-validation facts (decode∘encode round-trips and/or step-vs-Sail
-      preservation) that ground `exec`. Its depth differs per model; see the
-      module `Scope`. -/
+  /-- **The ISA-validation this model carries.** An explicit proposition — for
+      the three models below, the `decode ∘ encode` round-trip against the
+      transcribed Sail decode rules. Which instructions it covers differs per
+      model; see the module `Scope`. -/
   validated : Prop
 
-/-! ## 2. The per-model validation depth (the real Sail facts)
+/-! ## 2. The per-model validation (the real Sail-decode facts)
 
 Each model's `validated` field is set to one of these aliases, each of which is
 *definitionally the statement of an existing, proved round-trip theorem* in the
 corresponding backend. The `*_validated` lemmas below discharge them by citing
 exactly that theorem — so `MachineModel.validated` is never `True`-by-fiat: it is
-the ISA-validation the backend carries, at its real depth. -/
+the encoder round-trip the backend carries, and nothing beyond it. -/
 
-/-- **x86 — deepest.** The register-direct ALU `encode∘decode` round-trip against
-    the transcribed Sail tables (`SailX86Decoder.roundtrip_AluRR`). Together with
-    the step-vs-Sail ALU preservation (`Bridges.Transfer.x86Add_eq`), this is the
-    deepest validation any model carries. Defined as exactly the type of that
-    proved theorem (`x86Validated_proof`). -/
+/-- **x86.** The register-direct ALU `decode∘encode` round-trip against the
+    hand-transcribed Sail-x86 ModRM/REX parse rules
+    (`SailX86Decoder.roundtrip_AluRR`), and *only* that: no ALU semantics are
+    recorded here. Defined as exactly the type of that proved theorem
+    (`x86Validated_proof`). -/
 def X86Validated : Prop :=
   ∀ (op d s : Nat), op < 256 → d < 16 → s < 16 →
     X86Backend.SailX86Decoder.decodeReg (X86Backend.ScalarEncoder.encAluRR op d s)
       = some { opcode := op, reg := s, rm := d }
 
-/-- **RISC-V — pilot.** The full emitted RV64I subset `decode∘encode` round-trip
-    against the sail-riscv `encdec` discipline (`SailRiscvDecoder.roundtrip_RInst`).
-    There is no whole-`Com`→RISC-V value-preservation theorem yet; this is the
-    instruction-level pilot. Defined as exactly the type of that proved
-    theorem (`riscvValidated_proof`). -/
+/-- **RISC-V.** The full emitted RV64I subset `decode∘encode` round-trip against
+    the hand-transcribed sail-riscv `encdec` discipline
+    (`SailRiscvDecoder.roundtrip_RInst`). This field is the instruction-level
+    round-trip only; the whole-`Com`→RISC-V value preservation is
+    `ComToRiscvLsem.comToRiscvLsem_correct`, over the base-ALU all-`reg 64`
+    fragment, and the execute-level refinement against the `execute_RTYPE`
+    clause — an in-file excerpt of the sail-riscv-lean generated output (commit
+    `9eba3f07`; upstream not vendored) — is that module's
+    `riscvBaseAluModel.validated`.
+    Defined as exactly the type of that proved theorem
+    (`riscvValidated_proof`). -/
 def RiscvValidated : Prop :=
   ∀ (i : RISCVBackend.RInst)
     (_hregs : (RISCVBackend.rinstDstSrcs i).1 ∈ RISCVBackend.SailRiscvDecoder.emittedRegs ∧
@@ -179,11 +226,13 @@ def RiscvValidated : Prop :=
     (_hror : ∀ d a m, i = .roriw d a m → m < 32),
     RISCVBackend.SailRiscvDecoder.riscvDecode (RISCVBackend.RiscvEncoder.encodeWord i) = some i
 
-/-- **ARM (AArch64) — partial.** The GP-ALU `ADD` `encode∘decode` round-trip
-    against the transcribed aarch_decode Sail clause (`SailArmDecoder.roundtrip_ainst_add`),
-    representative of the proved GP-ALU subset (`add/sub/and/orr/eor/mov/ror/lsr`).
-    There is no whole-`Com`→ARM value-preservation theorem yet; this is the
-    partial round-trip subset. Defined as exactly the type of that
+/-- **ARM (AArch64).** The GP-ALU `ADD` `decode∘encode` round-trip against the
+    hand-transcribed `aarch_decode` Sail clause
+    (`SailArmDecoder.roundtrip_ainst_add`) — `ADD` alone, one representative of
+    the proved GP-ALU subset (`add/sub/and/orr/eor/mov/ror/lsr`), not the subset
+    itself. This field is that round-trip only; the whole-`Com`→ARM value
+    preservation is `ComToArmLsem.comToArmLsem_correct`, over the base-ALU
+    all-`reg 64` fragment. Defined as exactly the type of that
     proved theorem (`armValidated_proof`). -/
 def ArmValidated : Prop :=
   ∀ (alloc : ARMBackend.GpAlloc) (d a b : String)
@@ -217,14 +266,17 @@ shared dialect-chain interface: `Value` is the structured stack-array run-output
 (`Fin n → BitVec 16`) the lowered ML-KEM NTT-multiply computes, `decodeOut` is
 the per-slot read-back `runOutputToWords`, and `exec` runs the emitted
 single-function jasmin program (`runProg`). Only the `validated` field differs
-per model — and that difference is the honest content (x86 deepest, RISC-V
-pilot, ARM partial). -/
+per model, and it names, per model, the one proved encoder round-trip that model
+carries: x86 the register-direct ALU forms, RISC-V the full emitted RV64I
+subset, ARM the `ADD` representative. The value-level machine results live in
+the grounded models of `ComToRiscvLsem` / `ComToArmLsem`, not here. -/
 
 /-- The shared dialect-chain carrier, parametric only in the per-model
     `validated` proposition: the emitted jasmin `Com` as `Code`, the structured
     stack-array run-output `Fin n → BitVec 16` as both `State` and `Value`, with
     `id` encode/decode and the run-output-preserving `exec`. The three target
-    models differ *only* in `validated` — that difference is the honest content. -/
+    models differ *only* in `validated` — the one encoder round-trip each
+    backend carries. -/
 def latticeModel (q n : Nat) (validated : Prop) : MachineModel where
   Code := Com jasminDialect ((inCtxt q n).map tau) (tau (.polyC q n))
   State := Fin n → BitVec 16
@@ -234,13 +286,16 @@ def latticeModel (q n : Nat) (validated : Prop) : MachineModel where
   exec := fun _ s => s
   validated := validated
 
-/-- **x86 model — deepest validation** (`X86Validated`). -/
+/-- **x86 model** — `validated` is the register-direct ALU round-trip
+    (`X86Validated`). -/
 def x86Model (q n : Nat) : MachineModel := latticeModel q n X86Validated
 
-/-- **RISC-V model — pilot validation** (`RiscvValidated`). -/
+/-- **RISC-V model** — `validated` is the emitted-RV64I round-trip
+    (`RiscvValidated`). -/
 def riscvModel (q n : Nat) : MachineModel := latticeModel q n RiscvValidated
 
-/-- **ARM (AArch64) model — partial validation** (`ArmValidated`). -/
+/-- **ARM (AArch64) model** — `validated` is the `ADD` round-trip
+    (`ArmValidated`). -/
 def armModel (q n : Nat) : MachineModel := latticeModel q n ArmValidated
 
 /-! ## 3. The source surface and the compile function -/
@@ -286,16 +341,16 @@ noncomputable def compile (q n : Nat) :
 
 /-- The supported target ISAs (the `MachineModel`s the theorem ranges over). -/
 inductive ModelChoice where
-  /-- x86 — deepest validation. -/
+  /-- x86 — the register-direct ALU round-trip. -/
   | x86 : ModelChoice
-  /-- RISC-V — pilot validation. -/
+  /-- RISC-V — the emitted-RV64I round-trip. -/
   | riscv : ModelChoice
-  /-- ARM (AArch64) — partial validation. -/
+  /-- ARM (AArch64) — the `ADD` round-trip. -/
   | arm : ModelChoice
 
 /-- The `validated` proposition each target ISA carries (the honest per-model
-    content): x86 `X86Validated` (deepest), RISC-V `RiscvValidated` (pilot), ARM
-    `ArmValidated` (partial). -/
+    content): x86 `X86Validated` (register-direct ALU), RISC-V `RiscvValidated`
+    (full emitted RV64I subset), ARM `ArmValidated` (`ADD`). -/
 def ModelChoice.validated : ModelChoice → Prop
   | .x86 => X86Validated
   | .riscv => RiscvValidated
@@ -325,10 +380,11 @@ def chosenModel (choice : ModelChoice) (q n : Nat) : MachineModel :=
     This assembles the existing per-stage theorems for the (unconditional)
     lattice route: `latticeNttMul_compile_correct` (dialect level)
     `>> lowerComToProg_sem_eq'` (whole-function lowering)
-    `>> runOutputToWords_chain_eq` (scalar-slot read-back). For x86 the
-    `validated` field is the deepest (`X86Validated`, by `x86Validated_proof`);
-    for RISC-V/ARM it is the pilot/partial round-trip each model records
-    (`RiscvValidated`/`ArmValidated`). -/
+    `>> runOutputToWords_chain_eq` (scalar-slot read-back). The `validated`
+    field is the encoder round-trip each model records — `X86Validated` (by
+    `x86Validated_proof`), `RiscvValidated`, `ArmValidated` — and nothing
+    stronger; the machine-execution results are `ComToRiscvLsem` /
+    `ComToArmLsem` and `ScalarLinX86Demo.com_x86_e2e`. -/
 theorem compile_correct_all
     (leafSem : LeafSem)
     (q n : Nat)

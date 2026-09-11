@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.CompilerCorrectnessExtracted
-import ReprTransfer
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.CompilerCorrectnessExtracted
+public import ReprTransfer
 
 /-!
 # The `RustExec` ↔ `semScalar` value-adequacy bridge (reading B)
@@ -57,6 +59,8 @@ every opaque leaf to a fixed `CryptoTy.default`, so tying such a slot back to th
 `RustStateInterp`'s (byte-leg) job, discharged already by
 `rustExecSimulatesDialect` in the e2e's existence conjunct.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

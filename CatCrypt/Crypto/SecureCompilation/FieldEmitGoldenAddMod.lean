@@ -3,11 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ScalarLinNeutralDemo
-import CatCrypt.Crypto.SecureCompilation.MultiBackendDemo
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElf
-import CatCrypt.Crypto.SecureCompilation.VIR.MontMulFragmentDemo
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ScalarLinNeutralDemo
+public import CatCrypt.Crypto.SecureCompilation.MultiBackendDemo
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElf
+public import CatCrypt.Crypto.SecureCompilation.VIR.MontMulFragmentDemo
 
 /-!
 # Golden path, step 1: GF(251) add-with-reduce `(a + b) mod 251` as `Com jasminDialect`
@@ -40,6 +42,8 @@ only the leading `s := a + b` binding is new. Eight bindings total, all in the
 straight-line `SupportedOp` fragment, so the denote is a cheap `rfl` and
 `com_arm_e2e`/`com_riscv_e2e` emit both backends from the one source.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

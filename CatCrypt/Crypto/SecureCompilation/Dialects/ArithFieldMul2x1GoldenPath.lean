@@ -3,10 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithFieldGoldenPath
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithGoldenPathField
-import CatCrypt.Crypto.SecureCompilation.VIR.MontMulFragmentDemo
-import Std.Tactic.BVDecide
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithFieldGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithGoldenPathField
+public import CatCrypt.Crypto.SecureCompilation.VIR.MontMulFragmentDemo
+public import Std.Tactic.BVDecide
+
+@[expose] public section
 
 set_option autoImplicit false
 

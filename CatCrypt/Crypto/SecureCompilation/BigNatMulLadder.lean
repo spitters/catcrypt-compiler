@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.BigNatKaratsuba
-import CatCrypt.Crypto.SecureCompilation.BigNatToom3
-import CatCrypt.Crypto.SecureCompilation.BigNatToom4
+module
+
+public import CatCrypt.Crypto.SecureCompilation.BigNatKaratsuba
+public import CatCrypt.Crypto.SecureCompilation.BigNatToom3
+public import CatCrypt.Crypto.SecureCompilation.BigNatToom4
 
 /-!
 # The size-dispatched integer multiply ladder
@@ -21,6 +23,8 @@ only. This is the canonical fast multiply over the `BigNat` carrier.
 
 * `mulLadder_val` — `bignumVal (mulLadder a b) = bignumVal a * bignumVal b`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

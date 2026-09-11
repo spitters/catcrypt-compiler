@@ -3,8 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.BitVec
-import Mathlib.Tactic
+module
+
+public import Mathlib.Data.BitVec
 
 /-!
 # Verified SHA-512 single-round body — `BitVec 64` word arithmetic
@@ -41,6 +42,8 @@ budget gate applies here).
 * `Sha512CompressSpec` — named hypothesis type for the published
   80-round + schedule composition
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

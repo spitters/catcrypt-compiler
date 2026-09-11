@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ProveDriverEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ProveDriverEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ProveDriverEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
 
 /-!
 # The whole-prover object as verified BYTES — `gas` out of the trusted base
@@ -27,6 +31,8 @@ the printer's text to bytes. This file emits the SAME object as a relocatable EL
 The result is a linkable `.o` whose `.text` is the verified encoder's bytes, not
 `gas`'s — removing `gas` from the prover object's trusted base.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ProveDriverBytes
 

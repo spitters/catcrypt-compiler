@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmLowering
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmLowering
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmLowering
 
 /-!
 # GAS AArch64 asm printer for the scalar A64 machine instructions (#533)
@@ -39,6 +43,8 @@ of temps, well under the 18 caller-saved GP registers, so it never spills.
 `reserved` names (args/outputs) are pinned to the low registers `w0..` for the
 whole function (matching the AAPCS64 argument registers `w0–w7`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

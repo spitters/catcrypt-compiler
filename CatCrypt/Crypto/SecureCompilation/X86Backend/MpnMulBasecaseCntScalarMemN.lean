@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMulBasecaseFrontDenote
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMulBasecaseFrontDenote
 
 /-!
 # The front-compiled `mpn_mul_basecase` inner-count body is a `ScalarMemN` member
@@ -18,6 +21,8 @@ register-returning stack-memory fragment `ScalarMemN`.
 * `bcCntUpdate_scalarMemN` — the front-compiled inner-count body is a `ScalarMemN`
   member.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

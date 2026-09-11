@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTDSL
+module
+
+public import CatCrypt.Crypto.Jasmin.LowCTDSL
 
 /-!
 # Ed25519 variable-base scalar multiplication in the LowCT DSL
@@ -86,6 +88,8 @@ When P is in projective form `(X1, Y1, Z1, T1)` and Q in affine
 
 This is what `pt_madd_niels` in `bench_ed25519_sign.c` computes.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.Examples.Ed25519Scalarmult
 

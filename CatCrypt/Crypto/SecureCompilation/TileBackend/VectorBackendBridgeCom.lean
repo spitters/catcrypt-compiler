@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
 # The AVX2 128-bit packed-ALU bridge on the UNIFIED `Com jasminDialect`
@@ -50,6 +52,8 @@ denote arm to the `v128PackLanesW` call.
 
 Invoke: `lake build CatCrypt.Crypto.SecureCompilation.TileBackend.VectorBackendBridgeCom`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

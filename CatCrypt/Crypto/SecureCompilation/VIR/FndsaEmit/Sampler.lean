@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.BitVec
-import Mathlib.Data.Vector.Defs
+module
+
+public import Mathlib.Data.BitVec
+public import Mathlib.Data.Vector.Defs
 
 /-!
 # Fixed-point CDT Gaussian sampler for FN-DSA (FALCON / FIPS 206)
@@ -64,6 +66,8 @@ verified-compiler emit pass.
 * Lyubashevsky, Wichs — Simple Lattice Trapdoor Sampling from a Broad Class
   of Distributions, PKC 2015
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -170,7 +174,7 @@ def fixedPointCDTGaussian (bs : Vector UInt8 9) (signByte : UInt8) : Int :=
 /-! ## 4. Range bound and CT-safety -/
 
 /-- foldl of `cdtStep r` over a list adds at most `xs.length` to `acc`. -/
-private theorem cdtStep_foldl_le (r : Nat) :
+theorem cdtStep_foldl_le (r : Nat) :
     ∀ (xs : List Nat) (acc : Nat),
       xs.foldl (cdtStep r) acc ≤ acc + xs.length := by
   intro xs

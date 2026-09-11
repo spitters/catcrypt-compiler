@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.BignumCondSubEmit
+module
+
+public import CatCrypt.Crypto.SecureCompilation.BignumCondSubEmit
 
 /-!
 # Curve-width (4-limb) emitted conditional subtract = x mod p
@@ -17,6 +19,8 @@ data-oblivious conditional subtract reducing a 256-bit value `x ∈ [0, 2p)` to 
 over the `JInstr`/`JState` x86 machine — `x − p` via a 4-limb SBB borrow chain, then a
 per-limb `CMOVcc` keeping `x` when the subtract borrowed (`x < p`).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Bignum4CondSubEmit
 

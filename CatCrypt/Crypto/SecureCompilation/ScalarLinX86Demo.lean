@@ -3,15 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ScalarLinNeutral
-import CatCrypt.Crypto.SecureCompilation.ScalarLinFront
-import CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Model
-import CatCrypt.Crypto.SecureCompilation.MultiBackendDemo
-import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ScalarLinNeutral
+public import CatCrypt.Crypto.SecureCompilation.ScalarLinFront
+public import CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Model
+public import CatCrypt.Crypto.SecureCompilation.MultiBackendDemo
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
 
 /-!
-# `Com → x86`: the x86-64 `ScalarTarget` instance + the end-to-end keystone
+# `Com → x86`: the x86-64 `ScalarTarget` instance + the end-to-end theorem
 
 The x86 analogue of `com_arm_e2e` / `com_riscv_e2e`: a `ScalarTarget` over the
 executable native-Lean x86 model (`X86Backend.Model`), and the composed
@@ -33,6 +35,8 @@ programs. We therefore plug into the **restricted** neutral lift
 `X86FaithfulStmt` predicate (`dst` fresh + no `"xzr"`), discharged automatically
 by `comToRegProg_X86Faithful`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -99,10 +103,10 @@ def x86Target : ScalarTarget where
 /-- Compile a whole program to an x86 instruction block. -/
 def regToX86 (p : RegProg) : List XInstr := x86Target.compile p
 
-/-! ## 3. The keystone — instantiated, not re-proved -/
+/-! ## 3. The compile-denote theorem, as an instance -/
 
-/-- **Keystone** (the x86 instance of `ScalarTarget.compile_denote`). The
-    compiled-and-run x86 block computes the source program's denotation. -/
+/-- The x86 instance of `ScalarTarget.compile_denote`: the compiled-and-run x86
+    block computes the source program's denotation. -/
 theorem regToX86_denote (p : RegProg) (s : XState) :
     xrun s (regToX86 p) = x86Target.denote p s :=
   x86Target.compile_denote p s
@@ -353,9 +357,13 @@ theorem fieldAddCom_x86_e2e
       = Com.denote FieldEmitGoldenPath.fieldAddCom V :=
   com_x86_e2e FieldEmitGoldenPath.fieldAddCom_ok FieldEmitGoldenPath.allReg64_two V s hs
     (by intro stmt hm
-        rw [show comToRegProg FieldEmitGoldenPath.fieldAddCom
-                  ([JasminTy.reg 64, JasminTy.reg 64] : Ctxt jasminDialect).length
-              = [RegStmt.add "v2" "v0" "v1"] from rfl] at hm
-        rw [List.mem_singleton.mp hm]; trivial)
+        -- The emitted statement is an `add`, for which `ShiftAmtOK` is `True`; the
+        -- register names (`lvlName`, a `toString`) are not reduced.
+        simp [comToRegProg, comToReg, opToStmts, FieldEmitGoldenPath.fieldAddCom] at hm
+        split at hm
+        · rw [List.mem_singleton] at hm
+          subst hm
+          exact trivial
+        · simp at hm)
 
 end CatCrypt.Crypto.SecureCompilation.ScalarLinX86Demo

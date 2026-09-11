@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Std.Data.HashMap
+module
+
+import all Init.Data.Repr
+public import Std.Data.HashMap
 
 /-!
 # Owned-backend (no-jasminc) AVX2/YMM 4-way Keccak-p[1600,24]
@@ -67,6 +70,8 @@ four independent scalar Keccak-p permutations (the lane-independence the bench's
 Invoke (emit the owned-backend `.s`):
   lake env lean --run bench/keccak_compare/keccak_avx2_owned_emit.lean
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -565,7 +570,7 @@ the emit names the verified SoA ABI symbol `keccak_f1600_x4`; loads from
 (χ) / `vpsllq` / `vpsrlq` / `vpor` (the ρ / θ-D rotates); emits the 24
 round-constant vectors `.LRC0 … .LRC23` in `.rodata` with `RC[0] = 1` first; and
 the unrolled block is exactly 24 rounds. -/
-private def asmHas (sub : String) : Bool := (keccakX4ExportAsm.splitOn sub).length ≥ 2
+def asmHas (sub : String) : Bool := (keccakX4ExportAsm.splitOn sub).length ≥ 2
 
 /-- The emitted `.s` has the expected ABI / op-alphabet / round-constant shape. -/
 def structuralChecksPass : Bool :=

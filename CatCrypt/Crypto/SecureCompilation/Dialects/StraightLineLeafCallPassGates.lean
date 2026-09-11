@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.StraightLineLeafCallEmit
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.StraightLineLeafCallEmit
+public import CatCrypt.Crypto.SecureCompilation.Dialects.StraightLineLeafCallEmit
 
 /-!
 # Pass-level coverage of `expandCallShadows` (additive; fires exactly on calls)
@@ -16,6 +19,8 @@ tripped a `lake`-only mimalloc SIGSEGV in the elaborating `lean` process
 crash is a toolchain allocation-pattern artifact, not a content defect),
 and the module boundary dodges the pattern.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

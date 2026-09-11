@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering64
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering64
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering64
 
 /-!
 # s2n-bignum's `bignum_add_p256`, lowered through the owned RV64 backend (#549)
@@ -51,6 +54,8 @@ The full all-inputs correctness is the s2n proof obligation; as an in-Lean close
 it is a 256-bit modular-arithmetic identity gated by the qemu-riscv64 KAT, the
 same posture as the ARM/x86 kernels.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

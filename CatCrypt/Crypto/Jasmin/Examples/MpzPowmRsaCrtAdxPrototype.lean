@@ -3,8 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Examples.MpzPowmRsaCrtPrototype
-import CatCrypt.Crypto.Jasmin.Examples.MpzPowmAdxCascadePrototype
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.Examples.MpzPowmRsaCrtPrototype
+public import CatCrypt.Crypto.Jasmin.Examples.MpzPowmRsaCrtPrototype
+public meta import CatCrypt.Crypto.Jasmin.Examples.MpzPowmAdxCascadePrototype
+public import CatCrypt.Crypto.Jasmin.Examples.MpzPowmAdxCascadePrototype
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -158,19 +165,19 @@ cascade is definitionally the same spec, so the smoke tests carry
 through unchanged. -/
 
 /-- p = 11, k_p = 1 limb. -/
-private def pTest1 : List (BitVec 64) := [11]
+def pTest1 : List (BitVec 64) := [11]
 /-- q = 13, k_q = 1 limb. -/
-private def qTest1 : List (BitVec 64) := [13]
+def qTest1 : List (BitVec 64) := [13]
 /-- d full-form = 23 (only structural here). -/
-private def dTest1 : List (BitVec 64) := [23]
+def dTest1 : List (BitVec 64) := [23]
 /-- d_p = 3 -/
-private def dpTest1 : List (BitVec 64) := [3]
+def dpTest1 : List (BitVec 64) := [3]
 /-- d_q = 11 -/
-private def dqTest1 : List (BitVec 64) := [11]
+def dqTest1 : List (BitVec 64) := [11]
 /-- q_inv mod p = 6 -/
-private def qInvTest1 : List (BitVec 64) := [6]
+def qInvTest1 : List (BitVec 64) := [6]
 /-- c = 7 -/
-private def cTest1 : List (BitVec 64) := [7]
+def cTest1 : List (BitVec 64) := [7]
 
 /-- Length sanity at k_p = k_q = 1. -/
 example : (mpzPowmRsaCrtAdx cTest1 dTest1 pTest1 qTest1 dpTest1 dqTest1 qInvTest1).length
@@ -251,8 +258,8 @@ Inside each cascaded `mpz_powm_adx_cascade_<n>`, every
 -/
 
 /-- Local short alias to fix the `vr`/`pv` ambiguity. -/
-private abbrev MV (s : String) : Var := Mpn.MontgomeryPrototype.vr s
-private abbrev MP (s : String) : PExpr := Mpn.MontgomeryPrototype.pv s
+abbrev MV (s : String) : Var := Mpn.MontgomeryPrototype.vr s
+abbrev MP (s : String) : PExpr := Mpn.MontgomeryPrototype.pv s
 
 /-- The cascade modexp symbol name at half-width `k_half`. -/
 def cascadeModexpSymbol (k_half : Nat) : String :=

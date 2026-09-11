@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 
 /-!
 # A verified byte encoder for the x86 crypto-extension instruction families
@@ -55,6 +58,8 @@ association list, mirroring `Avx512`'s `ZAlloc`/`zmmOf`. Bit 3 of a register
 number routes to the (inverted) VEX `R̄`/`B̄`/`v̄v̄v̄v̄` extension fields, so all 16
 XMM/YMM registers are addressable.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

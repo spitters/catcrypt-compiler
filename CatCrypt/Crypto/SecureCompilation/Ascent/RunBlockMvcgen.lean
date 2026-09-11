@@ -3,11 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresHoare
-import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
-import Std.Do.Triple
-import Std.Tactic.Do
+module
 
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresHoare
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+public import Std.Do.Triple
+public import Std.Tactic.Do
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!

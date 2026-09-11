@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.ChaCha20QR
-import CatCrypt.Crypto.Jasmin.ISA
+module
+
+public meta import CatCrypt.Crypto.Jasmin.ChaCha20QR
+public import CatCrypt.Crypto.Jasmin.ChaCha20QR
+public meta import CatCrypt.Crypto.Jasmin.ISA
+public import CatCrypt.Crypto.Jasmin.ISA
 
 /-!
 # ChaCha20 Full Block Function (RFC 8439)
@@ -41,6 +45,8 @@ Jasmin SSA pipeline:
 **0 sorries**, 0 axioms (the PRF assumption enters as the
 `ChaCha20PrfBound` hypothesis).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.ChaCha20Block
 
@@ -236,19 +242,19 @@ theorem chacha20_sdist (epsPrf : ℝ≥0∞) (h_prf : ChaCha20PrfBound epsPrf)
 /-! ## Section 10: Jasmin SSA Variable Helpers -/
 
 /-- Helper to create a Jasmin `Var` with 32-bit word type. -/
-private def mkVar32 (name : String) : Var :=
+def mkVar32 (name : String) : Var :=
   { vname := name, vtype := .sword .U32 }
 
 /-- Helper to create a `VarI` (variable with info). -/
-private def mkVarI (name : String) : VarI :=
+def mkVarI (name : String) : VarI :=
   { var := mkVar32 name }
 
 /-- Helper to create a `PExpr.Pvar`. -/
-private def pvar (name : String) : PExpr :=
+def pvar (name : String) : PExpr :=
   .Pvar { gv := mkVarI name, gs := false }
 
 /-- Helper to create an assignment instruction. -/
-private def assign (dst : String) (e : PExpr) : InstrR :=
+def assign (dst : String) (e : PExpr) : InstrR :=
   .Cassgn (.Lvar (mkVarI dst)) .AT_none (.sword .U32) e
 
 /-! ## Section 11: Parametric Quarter-Round Instruction Generator

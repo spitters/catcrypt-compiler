@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Rewrite.ComPipeline
-import CatCrypt.Crypto.Optimizer.CopyProp
-import CatCrypt.Crypto.Optimizer.ComDCE
+module
+
+public import CatCrypt.Crypto.Optimizer.Rewrite.ComPipeline
+public import CatCrypt.Crypto.Optimizer.CopyProp
+public import CatCrypt.Crypto.Optimizer.ComDCE
 
 /-!
 # The full `Com → Com` optimizer pipeline (#555/#566 consolidation)
@@ -58,6 +60,8 @@ components.
 
 All goals closed. No `sorry`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

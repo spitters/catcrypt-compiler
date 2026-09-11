@@ -3,11 +3,19 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MlkemNttFieldEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.MlkemNttFieldEmit
+public import CatCrypt.Crypto.SecureCompilation.MlkemNttFieldEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # Byte-correct 4-point forward NTT over `F_q` (`q = 3329`), FRONT-COMPILED, OWNED x86
@@ -92,6 +100,8 @@ in order), so the body ends with the four output copies `q0..q3 := y0..y3`
   checks the rendered `.s` produces `out[0..3] = ntt4NatRef` byte-for-byte
   (`make -C bench/field_kernel_compare ntt4-kat`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

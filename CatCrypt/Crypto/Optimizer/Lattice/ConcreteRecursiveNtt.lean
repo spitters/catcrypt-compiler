@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots
-import CatCrypt.Crypto.Optimizer.Lattice.NTTRecursiveInverse
+module
+
+public import Mathlib.Algebra.Field.ZMod
+public import CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTRecursiveInverse
 
 /-!
 # The recursive butterfly NTT/INTT at the concrete ML-KEM/ML-DSA parameters
@@ -17,6 +20,8 @@ from `ConcreteNttRoots`, tying the actual butterfly *algorithm* — not just the
 abstract `dft`/`idft` — to ML-KEM (`ZMod 3329`, `2⁸ = 256`, root `17`) and ML-DSA
 (`ZMod 8380417`, `2⁹ = 512`, root `1753`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

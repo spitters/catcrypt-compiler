@@ -4,7 +4,9 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 
-import Mathlib.Logic.Function.Basic
+module
+
+public import Mathlib.Logic.Function.Basic
 
 /-!
 # SHA-512 Hash Function (FIPS 180-4)
@@ -36,6 +38,8 @@ All definitions are sealed with `@[irreducible]`.
   parts of the square roots of the first 8 primes)
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Primitives.SHA512
@@ -43,7 +47,7 @@ namespace CatCrypt.Crypto.Primitives.SHA512
 /-! ## Constants -/
 
 /-- SHA-512 round constants K (FIPS 180-4, §4.2.3) — 80 entries. -/
-private def kData : Vector UInt64 80 := #v[
+def kData : Vector UInt64 80 := #v[
   0x428a2f98d728ae22, 0x7137449123ef65cd, 0xb5c0fbcfec4d3b2f, 0xe9b5dba58189dbbc,
   0x3956c25bf348b538, 0x59f111f1b605d019, 0x923f82a4af194f9b, 0xab1c5ed5da6d8118,
   0xd807aa98a3030242, 0x12835b0145706fbe, 0x243185be4ee4b28c, 0x550c7dc3d5ffb4e2,
@@ -69,7 +73,7 @@ private def kData : Vector UInt64 80 := #v[
 def kConst (t : Nat) : UInt64 := kData.toArray.getD t 0
 
 /-- SHA-512 initial hash values H₀ (FIPS 180-4, §5.3.5). -/
-private def h0Vec : Vector UInt64 8 := #v[
+def h0Vec : Vector UInt64 8 := #v[
   0x6a09e667f3bcc908, 0xbb67ae8584caa73b, 0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1,
   0x510e527fade682d1, 0x9b05688c2b3e6c1f, 0x1f83d9abfb41bd6b, 0x5be0cd19137e2179
 ]
@@ -145,7 +149,7 @@ def messageSchedule (block : Fin 128 → UInt8) : Fin 80 → UInt64 :=
 abbrev State512 := Fin 8 → UInt64
 
 /-- One round of SHA-512 compression using Vector state. -/
-private def compressRoundVec (state : Vector UInt64 8) (wt kt : UInt64) : Vector UInt64 8 :=
+def compressRoundVec (state : Vector UInt64 8) (wt kt : UInt64) : Vector UInt64 8 :=
   let a := state[0]; let b := state[1]; let c := state[2]; let d := state[3]
   let e := state[4]; let f := state[5]; let g := state[6]; let h := state[7]
   let t1 := h + bigSigma1 e + ch e f g + kt + wt

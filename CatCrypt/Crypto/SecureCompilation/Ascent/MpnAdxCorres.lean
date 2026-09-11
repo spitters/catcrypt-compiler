@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbCapstone
-import CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbMul
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbCapstone
+public import CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbMul
 
 /-!
 # The multi-precision add/sub value capstone over the ascent `CorresJ` runBlock layer
@@ -54,6 +56,8 @@ instruction, a flag, or a register.
 * `mpnAddKernel_runBlock` / `mpnSubKernel_runBlock` — the same over the
   three-instruction kernel limb, under slot disjointness.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -455,7 +459,7 @@ theorem corresJ_kernelLimb (f : BitVec 64 → BitVec 64 → Bool → BitVec 64)
   have h1 := corresJ_append SRcarry (corresJ_mov L.acc L.aSlot) (hleaf L.acc L.bSlot)
     (fun _ _ => trivial)
   have h2 := corresJ_append SRcarry h1 (corresJ_mov L.rSlot L.acc) (fun _ _ => trivial)
-  simpa [kernelLimbBlock, kernelLimbAbs] using h2
+  simpa [kernelLimbBlock, kernelLimbAbs] using! h2
 
 /-- **The kernel-chain refinement.** The whole limb chain refines the composed
     abstract kernel fold, assembled from `corresJ_kernelLimb` through

@@ -3,10 +3,18 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Validation
-import CatCrypt.Crypto.Jasmin.JasminOps
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.X86Intrinsics
-import CatCrypt.Crypto.SecureCompilation.VIR.VPClmulEmit
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Validation
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Validation
+public meta import CatCrypt.Crypto.Jasmin.JasminOps
+public import CatCrypt.Crypto.Jasmin.JasminOps
+public meta import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.X86Intrinsics
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.X86Intrinsics
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.VPClmulEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.VPClmulEmit
 
 /-!
 # Sail-x86 → Lean export: a Lean-level semantic anchor (#441, upgrades #437)
@@ -18,12 +26,17 @@ instructions × concrete inputs and comparing against quoted output strings.
 
 This module upgrades that to a **Lean-level** anchor. Sail `0.20.1` ships a Lean
 backend (`sail --lean`); we ran it on the per-instruction `*_spec.sail` functions
-(`add_spec.sail`, `sub_spec.sail`, `and/or/xor_spec.sail`, `multiply_spec.sail`,
-`shifts_spec.sail` + their `prelude.sail`/`structures.sail`/`rflags_spec.sail`
-dependencies) and it produced a complete Lean package (`gpr_add_spec_8`,
-`gpr_sub_spec_8`, …, as `SailM`-monadic Lean `def`s over `BitVec`). So the
-authoritative x86 instruction semantics is *available as Lean definitions*, not
-just as an external interpreter.
+(`add_spec.sail`, `sub_spec.sail`, `and/or/xor_spec.sail` + their
+`prelude.sail`/`structures.sail`/`rflags_spec.sail` dependencies) and it
+produced a complete Lean package (`gpr_add_spec_8`, `gpr_sub_spec_8`, …, as
+`SailM`-monadic Lean `def`s over `BitVec`). So the authoritative x86
+instruction semantics is *available as Lean definitions*, not just as an
+external interpreter. (`multiply_spec.sail`/`shifts_spec.sail` — `IMUL`/`MUL`/
+`SHL`/`SHR`/`SAR` — are **not** part of this cone: this module has no Sail-side
+definition or theorem for them. `MULX` below is the distinct BMI2 op, exported
+from `adx_spec.sail`, not from `multiply_spec.sail`; the legacy `IMUL`/`MUL`/
+shift instructions are still only cross-checked as literal recorded numbers in
+`SailX86Validation.lean`, not against an in-repo Sail-Lean definition.)
 
 The Sail-exported spec bodies for the data word and the five `rflagsbits`
 (`cf/of/sf/zf/pf`) are pure arithmetic over `BitVec 64`; the `SailM` monad only
@@ -34,6 +47,13 @@ them. This is a *Lean-level equality* between the owned model and the Sail-x86
 semantics — strictly stronger than #437's test-vector agreement.
 
 ## Exact Sail-exported bodies (from `sail --lean` output, `Out/*.lean`)
+
+Every `Out/*.lean`, `model/*.sail`, `x86_diff_RESULTS.txt`, and `regenerate.sh`
+citation in this file — here and below — names a file in the authors'
+**external** `sail-x86-from-acl2` checkout (the `sail --lean` run and its
+generated package). None of that checkout is vendored in this repository; the
+citations are provenance pointers for reproducing the export, not paths that
+resolve here.
 
 ```lean
 -- AddSpec.lean
@@ -54,22 +74,26 @@ unsigned_byte_p_int bits x := 0 ≤ x ∧ x < 2^bits
 signed_byte_p_int   bits x := -2^(bits-1) ≤ x ∧ x < 2^(bits-1)
 ```
 
-`SUB`/`AND`/`OR`/`XOR`/`MUL`/`shift` bodies are quoted in their respective
-defs below. We reproduce the **defined-flag** projection (a `JFlag`-shaped tuple)
-of each Sail spec as `sail*Out`, and prove `evalInstr … = sail*Out` (data + the
-flags Sail defines).
+`SUB`/`AND`/`OR`/`XOR`/`ADC`/`SBB` bodies are quoted in their respective defs
+below (there is no `MUL`/`shift` def or theorem in this module — see above).
+We reproduce the **defined-flag** projection (a `JFlag`-shaped tuple) of each
+Sail spec as `sail*Out`, and prove `evalInstr … = sail*Out` (data + the flags
+Sail defines).
 
 ## Build-portability note (honest)
 
 The `sail --lean` package targets Lean `nightly-2025-11-18` (its
 `lean-toolchain`). The literal package now **imports and elaborates under
-CatCrypt's `v4.29.1`** for the GP-ALU instruction-spec cone (`gpr_add_spec_8`,
-`gpr_adc_spec_8`, `gpr_sub_spec_*`, ...): the generated `Out.AddSpec` and its
-`Prelude`/`Structures`/`RflagsSpec`/runtime dependencies build with only the
-standard axioms. The port (recorded as whole-file replacements + a
-regenerate-and-patch script in the model checkout at
-`bench_refs/sail-x86-from-acl2/lean-import-v4.29.1/`) covers two drift classes
-between the two toolchains:
+CatCrypt's own toolchain** for the GP-ALU instruction-spec cone
+(`gpr_add_spec_8`, `gpr_adc_spec_8`, `gpr_sub_spec_*`, ...): the generated
+`Out.AddSpec` and its `Prelude`/`Structures`/`RflagsSpec`/runtime dependencies
+build with only the standard axioms. The port (recorded as whole-file
+replacements + a regenerate-and-patch script) lives in the authors' **external**
+`sail-x86-from-acl2` checkout, at a `lean-import-<toolchain>/` directory keyed
+to the CatCrypt toolchain version it was ported against — that checkout is
+**not vendored in this repository**; the citation below is a provenance
+pointer for anyone reproducing the port, not a path that resolves here. It
+covers two drift classes between the two toolchains:
 
 * **Sail-Lean runtime shims** (`Out/Sail/`): `String.take`/`drop`/`dropWhile`
   now return `String.Slice` (wrap with `.toString`); `ForM`/`ForIn'` instances
@@ -87,6 +111,8 @@ package that the toolchain can elaborate, not only to the transcription. The
 remaining residual is the full dispatch/decoder surface (EVEX/VEX tables,
 `Step`), which the full export contains but which this anchor does not build.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -226,11 +252,11 @@ The local width-64 states reuse `SailX86Validation`'s pattern: register `"a"`
 holds the destination value, optional preset `CF`. -/
 
 /-- Faithful state with `"a" := v`, no preset flags. -/
-private def jst (v : BitVec 64) : JState 64 :=
+def jst (v : BitVec 64) : JState 64 :=
   { regs := fun r => if r = "a" then v else 0 }
 
 /-- Faithful state with `"a" := v` and `CF := some c`. -/
-private def jstCF (v : BitVec 64) (c : Bool) : JState 64 :=
+def jstCF (v : BitVec 64) (c : Bool) : JState 64 :=
   { regs := fun r => if r = "a" then v else 0, flags := { cf := some c } }
 
 /-- ADD `123456789 + 987654321`: owned `evalInstr` = Sail-x86 `gpr_add_spec_8`
@@ -472,7 +498,7 @@ flag routed to `OF`
 value-producing spec as `ADCX`; only the routed flag differs. -/
 
 /-- Faithful state with `"a" := v` and `OF := some c`. -/
-private def jstO (v : BitVec 64) (c : Bool) : JState 64 :=
+def jstO (v : BitVec 64) (c : Bool) : JState 64 :=
   { regs := fun r => if r = "a" then v else 0, flags := { of := some c } }
 
 /-- `ADOX 5 + 8 + OF(1)`: data + new `OF` = Sail `adcx_adox_spec_64`; `CF`
@@ -496,7 +522,7 @@ theorem adox_eq_sail₃ :
 
 /-- Faithful two-register state with `"a" := v`, `"b" := sv` and `OF := some c`,
     the `ADOX` analogue of `jstC2` (carry-in routed through `OF`). -/
-private def jstO2 (v sv : BitVec 64) (c : Bool) : JState 64 :=
+def jstO2 (v sv : BitVec 64) (c : Bool) : JState 64 :=
   { regs := fun r => if r = "a" then v else if r = "b" then sv else 0
     flags := { of := some c } }
 
@@ -616,7 +642,10 @@ theorem gf256_mul_eq_sail_pairs :
     gf28_byte_mul 0xFF#8 0xFF#8 = sailGf256Mul 0xFF#8 0xFF#8 := by native_decide
 
 /-- `GF2P8MULB` on a 128-bit lane of `0x02` bytes × `0x03` bytes: owned
-    `vgf2p8mulb_128` = byte-wise Sail `gf256_mul` (every byte = `0x06`). -/
+    `vgf2p8mulb_128` = byte-wise Sail `gf256_mul` (every byte = `0x06`). The RHS
+    `0x06…06` is a plain hex literal, not an application of `sailGf256Mul` — for
+    these inputs `0x02 · 0x03 = 0x06` needs no field reduction, so the constant
+    is checkable by hand, not only quoted from the external run. -/
 theorem gf2p8mulb_eq_sail :
     vgf2p8mulb_128 0x02020202020202020202020202020202#128
                    0x03030303030303030303030303030303#128
@@ -629,7 +658,12 @@ re-elaborate the 256-way S-box `match` here we pin the owned `wAESENC` /
 `wAESENCLAST` to the **Sail interpreter outputs** on the FIPS-197 worked-example
 block (`0x3243f6a8…0734`) and cipher key (`0x2b7e1516…4f3c`), recorded in
 `x86_diff_RESULTS.txt` (`AESENC`/`AESENCLAST`/`AESENC_zk`). These are exactly the
-per-lane VAES semantics as well. -/
+per-lane VAES semantics as well. The hex-literal RHS of each `*_eq_sail` theorem
+below is one of those recorded constants from the authors' external interpreter
+run, quoted verbatim — it is not the result of applying an in-repo Sail-side
+`aesenc_spec` definition (there is none here; the S-box is not re-elaborated in
+Lean), so these theorems pin the owned model to a recorded number, not to a
+checked Sail-side computation. -/
 
 def fipsBlk : BitVec 128 := 0x3243f6a8885a308d313198a2e0370734#128
 def fipsKey : BitVec 128 := 0x2b7e151628aed2a6abf7158809cf4f3c#128
@@ -663,7 +697,11 @@ theorem aeskeygenassist_eq_sail :
 `polyMul64` (`VPClmulEmit`) is the owned carry-less 64×64 → 128 multiply (the
 exact `PCLMULQDQ` semantics on the `imm8`-selected halves). Sail `clmul64_spec`
 is the same GF(2)[x] product, fully unrolled. Pinned to the GHASH-style KAT
-vectors run through the Sail interpreter (`CLMUL_*` in `x86_diff_RESULTS`). -/
+vectors run through the Sail interpreter (`CLMUL_*` in `x86_diff_RESULTS`);
+`clmul_eq_sail_ff`/`clmul_eq_sail_max` below compare `polyMul64` against those
+recorded outputs directly (no in-repo `clmul64_spec` definition is applied —
+`clmul_eq_sail_small` is the exception, its RHS a hand-computable polynomial
+identity rather than a quoted run result). -/
 
 /-- `clmul (x+1)·(x+1) = x²+1` (`3 · 3 = 5`) and `1 · 1 = 1`. -/
 theorem clmul_eq_sail_small :

@@ -3,8 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.AddMul1AdxPrototype
-import CatCrypt.Crypto.Jasmin.Mpn.MulPrototype
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.Mpn.AddMul1AdxPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.AddMul1AdxPrototype
+public meta import CatCrypt.Crypto.Jasmin.Mpn.MulPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.MulPrototype
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -109,7 +116,7 @@ open CatCrypt.Crypto.Jasmin
 open CatCrypt.Crypto.Jasmin.BignumExec
 open CatCrypt.Crypto.Jasmin.Emit
 open CatCrypt.Crypto.Jasmin.MemoryModel
-open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype hiding vr pv loadAt0 storeAt0 binImm
 open CatCrypt.Crypto.Jasmin.Mpn.Mul1Prototype
 open CatCrypt.Crypto.Jasmin.Mpn.Addmul1Prototype
 open CatCrypt.Crypto.Jasmin.Mpn.MulPrototype
@@ -517,7 +524,7 @@ theorem mpnSqrBasecaseAdx_nil :
   show mpnMul ([] : List (BitVec 64)) [] = []
   exact mpnMul_nil_nil
 
-/-- For `n = 0`, the mul body is genuinely empty. -/
+/-- For `n = 0`, the mul body is empty. -/
 theorem bodyMulBasecaseAdx_zero : bodyMulBasecaseAdx 0 = [] := by
   unfold bodyMulBasecaseAdx initResultZero mulCols storeResult
   rfl

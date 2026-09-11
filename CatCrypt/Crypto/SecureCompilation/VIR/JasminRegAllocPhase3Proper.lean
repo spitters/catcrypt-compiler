@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminRegAllocPhase3
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportPoseidon2
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminRegAllocPhase3
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminRegAllocPhase3
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportPoseidon2
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportPoseidon2
 
 /-!
 # Verified register allocation — Phase 3 PROPER
@@ -36,6 +40,8 @@ capstone (`JasminRegAllocPhase3.lean`):
 `set_option autoImplicit false` is intentionally *not* set (SecureCompilation
 convention; see root `CLAUDE.md`).
 -/
+
+@[expose] public section
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
@@ -245,7 +251,7 @@ theorem runLowered_runKernel_agree_off {w : Nat} (S : Nat → Prop)
     (stL stK : RegStore w) (hstart : ∀ t, ¬ S t → stL t = stK t) :
     ∀ t, ¬ S t → runLoweredBody stL lbs t = runKernel stK (loweredKernel lbs) t := by
   induction lbs generalizing stL stK with
-  | nil => intro t ht; simpa using hstart t ht
+  | nil => intro t ht; simpa using! hstart t ht
   | cons lb rest ih =>
       intro t ht
       simp only [runLoweredBody_cons, loweredKernel_cons, runKernel_cons]
@@ -525,14 +531,14 @@ orchestrator's heavy `#eval` (a compiled run, not an in-kernel `native_decide`;
 compiled exe:
 
 * `poseidon2ResidenceCheck` (in `JasminLprogExportPoseidon2`) — the *rejected*
-  `proposedRho slotTraceArr`; expected `false` (the MDS over-collapse).
+  `proposedRho (slotTraceArr ())`; expected `false` (the MDS over-collapse).
 * `poseidon2IdentityCheck` — the identity positive control; expected `true`.
 
 A *checker-accepted coalescing* ρ for the full body — one that collapses the
 ≈107 000 SSA names onto few classes yet the array `interferenceOkB` accepts — is
 the genuine open coalescing-allocator deliverable. What it needs (read off the
 slice's accepting ρ and the rejected residence ρ): the residence map
-`proposedRho slotTraceArr` is rejected because the `emitApplyMat4` / `emitColSums`
+`proposedRho (slotTraceArr ())` is rejected because the `emitApplyMat4` / `emitColSums`
 staging parks values in `tmp2,tmp4,acc0,acc1,prod0,prod1` (slots `19..24`) that
 are simultaneously live with the 16 lanes across the MDS window — the residence
 map (keyed on binding ordinal → its `Fin 25` slot) can re-enter a logical slot
@@ -563,7 +569,7 @@ def poseidon2FullIdentityCheck : Bool :=
   CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.poseidon2IdentityCheck
 
 /-- Orchestrator `#eval` entry: the full-107k Phase-0 array checker on the
-    proposed residence collapse `proposedRho slotTraceArr`. Expected `false` —
+    proposed residence collapse `proposedRho (slotTraceArr ())`. Expected `false` —
     the MDS over-collapse (the slice's `colSum16RhoBad` analogue at scale).
 
     Orchestrator command:

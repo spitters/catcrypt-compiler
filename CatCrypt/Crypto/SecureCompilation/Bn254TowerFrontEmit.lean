@@ -3,11 +3,21 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
-import CatCrypt.Crypto.SecureCompilation.X86Backend.AdxChainFuse
-import CatCrypt.Crypto.SecureCompilation.Dialects.CarryChainSelect
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.AdxChainFuse
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AdxChainFuse
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.CarryChainSelect
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CarryChainSelect
+
+@[expose] public section
 
 set_option autoImplicit false
 

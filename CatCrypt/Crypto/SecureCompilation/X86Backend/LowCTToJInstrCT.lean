@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
-import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+public import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
 
 /-!
 # Source→machine constant-time bridge: the scalar-arith on-ramp
@@ -59,6 +61,8 @@ source CT result is `cmdCT`.
 (same leakage trace from any two states).  This is the on-ramp tie from the
 `RustState`-level analyser to the `JState`-level constant-time class.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

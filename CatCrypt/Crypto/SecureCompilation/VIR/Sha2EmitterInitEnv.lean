@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Sha2EmitterComposition
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Sha2EmitterComposition
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.Sha2EmitterComposition
 
 /-!
 # `Sha2Emit.initEnv` discharges the faithful-environment Prop
@@ -70,6 +74,8 @@ Verified by `lean_verify`:
 
 No `sorry`, no `native_decide`, no new custom axioms.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

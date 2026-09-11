@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.NTTMultiplyCorrectGeneric
-import CatCrypt.Crypto.Optimizer.Lattice.NegacyclicTransformGeneric
+module
+
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTMultiplyCorrectGeneric
+public import CatCrypt.Crypto.Optimizer.Lattice.NegacyclicTransformGeneric
 
 /-!
 # Negacyclic NTT-multiply correctness
@@ -25,6 +27,8 @@ The proof is immediate from the construction: `negaConv` is *defined* as
 negacyclic pipeline equals `negaConv` with no new mathematical content beyond the
 cyclic theorem and the twist construction.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

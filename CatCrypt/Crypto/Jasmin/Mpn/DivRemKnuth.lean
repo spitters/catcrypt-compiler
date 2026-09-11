@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.QhatBound
-import CatCrypt.Crypto.Jasmin.Mpn.DivRemSpec
-import CatCrypt.Crypto.Jasmin.Mpn.Submul1Prototype
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Jasmin.Mpn.QhatBound
+public import CatCrypt.Crypto.Jasmin.Mpn.DivRemSpec
+public import CatCrypt.Crypto.Jasmin.Mpn.Submul1Prototype
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -923,7 +928,7 @@ theorem rawQhat_valid_of_test (V W : Nat) (hnorm : B ≤ 2 * (V / topPlace V))
     -- the test, in `s`'s field names; `s.toKnuthBStep.qhat = rawQhat V W`, `s.v2 = (V/M2)%B`,
     -- `s.b = B`, `s.u0 = (W/M2)%B`.
     show s.toKnuthBStep.qhat * s.v2 ≤ s.rhat * s.toKnuthBStep.b + s.u0
-    simpa [hs, refineOf, ← heq] using htest)
+    simpa [hs, refineOf, ← heq] using! htest)
   -- `s.toKnuthBStep.W / s.toKnuthBStep.V = W / V`, `s.toKnuthBStep.qhat = rawQhat V W`.
   rw [heq]
   simpa [hs, refineOf, stepOf, KnuthBStep.q] using hbound

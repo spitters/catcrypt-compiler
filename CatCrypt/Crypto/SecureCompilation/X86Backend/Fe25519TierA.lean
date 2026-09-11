@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookProductRunBlock
-import CatCrypt.Crypto.Optimizer.ModReduceSelect
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookProductRunBlock
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookProductRunBlock
+public meta import CatCrypt.Crypto.Optimizer.ModReduceSelect
+public import CatCrypt.Crypto.Optimizer.ModReduceSelect
 
 /-!
 # Tier-A Curve25519 field-multiply over `runBlock` (Solinas `2^255 − 19`)
@@ -65,6 +70,8 @@ axiom) so the remainder is explicit. The product is fully Tier A;
 the reduce is value-proven; the emitted-reduce-over-`runBlock` block is the
 remainder.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxHeartbeats 1000000

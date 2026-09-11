@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GenericFieldEmitValue
-import CatCrypt.Crypto.SecureCompilation.GenericKernelRealization
-import CatCrypt.Crypto.SecureCompilation.KernelRealizesClass
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GenericFieldEmitValue
+public import CatCrypt.Crypto.SecureCompilation.GenericKernelRealization
+public import CatCrypt.Crypto.SecureCompilation.KernelRealizesClass
 
 /-!
 # Field add/mul are rows of the one generic kernel-realization registry
@@ -55,6 +57,8 @@ instance of the **one** generic predicate `KernelRealizes2` (or its unary twin
 `KernelRealizes`), connected by `Iff.rfl`. Adding a primitive is a table row, not
 a new mechanism.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

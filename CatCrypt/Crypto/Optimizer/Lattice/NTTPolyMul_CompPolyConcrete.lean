@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul
-import CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul_CompPoly
-import CompPoly.Univariate.NTT.FastMul
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul_CompPoly
+public import CompPoly.Univariate.NTT.FastMul
 
 /-!
 # Pass 3.1 — CompPoly algebraic discharge (Stage F)
@@ -73,6 +76,8 @@ encoding-side handles this; CompPoly delivers the cyclic product.
 `p * q : CPolynomial R`.  That's the entire algebraic content; everything
 else here is plumbing.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

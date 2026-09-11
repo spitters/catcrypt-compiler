@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Algebra.Ring.Defs
-import Mathlib.Data.ZMod.Basic
+module
+
+public import Mathlib.Algebra.Ring.Defs
+public import Mathlib.Data.ZMod.Basic
 
 /-!
 # Verified common-subexpression elimination (CSE) for a let-binding field IR
@@ -62,6 +64,8 @@ invariant through arbitrarily many nested `letB`s additionally needs a
 freshness/capture-avoidance discipline on the introduced names; that bookkeeping
 is orthogonal to the algebraic content proved here and is deliberately left out.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

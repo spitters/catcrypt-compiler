@@ -4,6 +4,8 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 
+module
+
 /-!
 # Runtime Library for Generated Lean 4 Code
 
@@ -31,6 +33,8 @@ Fold operations thread an accumulator through a closure that returns
 | `cfContinue e`         | `ControlFlow.Continue` |
 | `cfBreakContinue e`    | `ControlFlow.Break (ControlFlow.Continue e)` |
 -/
+
+@[expose] public section
 
 /-- Rust's `ControlFlow<B, C>`: either stop with `Break b` or continue
     with `Continue c`. -/
@@ -724,6 +728,21 @@ on a fixed-width type). `bmod_signed w n` reduces `n` to `[-2^(w-1), 2^(w-1))`. 
 @[inline] def slice_range {α : Type} (arr : Array α) (lo hi : Int) : Array α :=
   arr.extract lo.toNat hi.toNat
 
+/-- Range update: `arr` with position `lo + k` set to `src[k]` for every `k`
+    below both `hi - lo` and `src.size`. Positions outside `lo ..< hi`, and
+    positions of that range beyond `src`'s length or `arr`'s size, keep their
+    values, so the result has the size of `arr`.
+
+    The functional form of `arr[lo..hi].copy_from_slice(src)`, whose Rust
+    precondition is `hi - lo = src.len()`. -/
+def slice_update {α : Type} (arr : Array α) (lo hi : Int) (src : Array α) : Array α :=
+  let l := lo.toNat
+  let n := min (hi.toNat - l) src.size
+  (List.range n).foldl
+    (fun acc k => match src[k]? with
+      | some v => acc.setIfInBounds (l + k) v
+      | none => acc) arr
+
 /-- Range constructor placeholder (for collect(0..n)). -/
 @[inline] def range (lo hi : Int) : Array Int :=
   (List.range (hi - lo).toNat |>.map (· + lo.toNat) |>.map Int.ofNat).toArray
@@ -777,6 +796,45 @@ def rewrapForFoldReturn {α β γ : Type}
   | .Break v => .Break (.Break v)
   | .Continue (.Break v) => .Break (.Continue v)
   | .Continue (.Continue a) => .Continue a
+
+/-! ### Width-indexed byte (de)serialization and overflowing arithmetic
+
+The inherent integer methods `uN::to_be_bytes`, `uN::from_le_bytes`,
+`uN::overflowing_add`, … depend on the width `N`. The adapter suffixes each
+call with its width (`to_be_bytes#32`), and the printer renders it as the
+builtin of that width below, so the extraction carries no untyped dependency
+field for them. -/
+
+/-- The `w / 8` big-endian bytes of `a mod 2^w`, most significant first. -/
+@[inline] def to_be_bytes_w (w : Nat) (a : Int) : Array Int :=
+  let n := w / 8
+  let v := mod2w w a
+  (Array.range n).map fun k => v / (256 : Int) ^ (n - 1 - k) % 256
+
+/-- The `w / 8` little-endian bytes of `a mod 2^w`, least significant first. -/
+@[inline] def to_le_bytes_w (w : Nat) (a : Int) : Array Int :=
+  let v := mod2w w a
+  (Array.range (w / 8)).map fun k => v / (256 : Int) ^ k % 256
+
+/-- The big-endian integer of a byte array, reduced to width `w`; the first
+    element is the most significant byte. -/
+@[inline] def from_be_bytes_w (w : Nat) (a : Array Int) : Int :=
+  mod2w w (a.foldl (fun acc b => acc * 256 + b % 256) 0)
+
+/-- The little-endian integer of a byte array, reduced to width `w`; the first
+    element is the least significant byte. -/
+@[inline] def from_le_bytes_w (w : Nat) (a : Array Int) : Int :=
+  mod2w w (a.foldr (fun b acc => acc * 256 + b % 256) 0)
+
+/-- `(a + b) mod 2^w`, with the carry-out. -/
+@[inline] def overflowing_add_w (w : Nat) (a b : Int) : Int × Bool :=
+  let s := a + b
+  (mod2w w s, decide (s ≥ (2 : Int) ^ w))
+
+/-- `(a - b) mod 2^w`, with the borrow-out. -/
+@[inline] def overflowing_sub_w (w : Nat) (a b : Int) : Int × Bool :=
+  let d := a - b
+  (mod2w w d, decide (d < 0))
 
 end Hax
 

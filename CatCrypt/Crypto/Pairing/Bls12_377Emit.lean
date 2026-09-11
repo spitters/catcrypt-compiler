@@ -3,12 +3,21 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-import CatCrypt.Crypto.Pairing.MsmReduce
-import CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFront
-import CatCrypt.Crypto.SecureCompilation.VIR.ArrAbiOrch
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public meta import CatCrypt.Crypto.Pairing.MsmReduce
+public import CatCrypt.Crypto.Pairing.MsmReduce
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFront
+public import CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFront
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ArrAbiOrch
+public import CatCrypt.Crypto.SecureCompilation.VIR.ArrAbiOrch
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 
 /-!
 # Production BLS12-377 emit: field leaves, the pairing leaf, the GT product, and
@@ -61,6 +70,8 @@ primitives under the carried leaf agreements; this emit does not touch the
 0 sorries; the only hypotheses are the opaque-leaf agreements
 (`Bls377FieldLeavesAgree` / `Bls377PairingLeavesAgree`), the AUCurves-leaf edge.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -784,6 +795,6 @@ def emitMain : IO Unit := do
 The render is written while this module elaborates, so `lake` produces it from
 this file and no separate driver or Makefile rule carries the dependency. -/
 
-#eval emitMain
+-- #eval emitMain
 
 end CatCrypt.Crypto.Pairing.Bls12_377Emit

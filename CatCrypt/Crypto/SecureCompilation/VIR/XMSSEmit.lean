@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgTreehash
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JForProgTreehash
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgTreehash
 
 /-!
 # XMSS core emitted through the verified front: WOTS+ hash chains + Merkle treehash
@@ -79,6 +82,8 @@ level sequence the keystones reason about.
 No `sorry`, axiom-clean (`[propext, Quot.sound]`, the same closure as the two
 keystones).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

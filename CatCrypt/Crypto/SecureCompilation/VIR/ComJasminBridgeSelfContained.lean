@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeCmd
-import CatCrypt.Crypto.SecureCompilation.VIR.OperandReadCorr
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeCmd
+public import CatCrypt.Crypto.SecureCompilation.VIR.OperandReadCorr
 
 /-!
 # The self-contained whole straight-line command `Com ↔ Jasmin` bridge
@@ -108,6 +110,8 @@ None of these is introduced as a `sorry` here.
 
 0 sorries.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

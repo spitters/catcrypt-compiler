@@ -3,12 +3,21 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.FieldMul2x1GoldenPath
-import CatCrypt.Crypto.SecureCompilation.Fe25519AddLeafGoldenPath
-import CatCrypt.Crypto.SecureCompilation.VIR.KernelSyntax
-import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfFull
-import CatCrypt.Crypto.SecureCompilation.VIR.Grind
-import Std.Tactic.BVDecide
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.FieldMul2x1GoldenPath
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.FieldMul2x1GoldenPath
+public meta import CatCrypt.Crypto.SecureCompilation.Fe25519AddLeafGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.Fe25519AddLeafGoldenPath
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.KernelSyntax
+public import CatCrypt.Crypto.SecureCompilation.VIR.KernelSyntax
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfFull
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfFull
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Grind
+public import CatCrypt.Crypto.SecureCompilation.VIR.Grind
+public import Std.Tactic.BVDecide
 
 /-!
 # Golden path: the fe25519 field-multiply leaf as a word-level `Com jasminDialect`
@@ -158,6 +167,8 @@ The reduction algebra, the MAC-column `Com`, the five per-column composition val
 (`feMulModel_eq_feCarryNat`), and the full multiply-mod-`p` correctness on the front-generated
 computation (`fe25519_mul_model_leaf_congr`) are what this file lands.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

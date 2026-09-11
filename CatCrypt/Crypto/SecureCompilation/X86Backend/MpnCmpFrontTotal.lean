@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpFrontEmit
-import CatCrypt.Crypto.SecureCompilation.Dialects.TransFromMemref
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpFrontEmit
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TransFromMemref
 
 /-!
 # The runtime-trip `mpn_cmp` front-success gate, `maxRecDepth`-free
@@ -24,6 +26,8 @@ supplied by `Dialects.TransFromMemref`.
 * `cmpFrontOk` — `(frontLoopBodyJ … vmBody "rp" cmpLimbBodyLowCT).isSome`, with no
   evaluation of the body's command list.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -168,7 +172,7 @@ theorem transSteps_seqAll : ∀ {l : List LowCT} {σ σ' : NameTys},
       | cons hc ht => exact .rSeq hc (transSteps_seqAll ht)
 
 /-- A pinned scalar read from a bound name. -/
-private def rdVar {R : String → Prop} (nm : String) {c : Char} {t : List Char}
+def rdVar {R : String → Prop} (nm : String) {c : Char} {t : List Char}
     (hh : nm.toList = c :: t) (hc : c ≠ '_') (hm : R nm) : ReadsFrom R (sv nm) :=
   readsFrom_var (x := nm) (notTmp_of_headNe hh hc) hm
 

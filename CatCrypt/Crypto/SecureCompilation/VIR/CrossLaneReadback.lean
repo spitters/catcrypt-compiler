@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.PackedRunOutputReadback
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.PackedRunOutputReadback
 
 /-!
 # The CROSS-LANE run-output read-back: splicing a lane PERMUTATION (shuffle) into the chain
@@ -80,6 +83,8 @@ shape; the horizontal-fold shape is the sibling primitive and is **not** spliced
 
 All goals closed.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

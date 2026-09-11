@@ -3,9 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.Nat.GCD.Basic
-import Mathlib.Data.Nat.ModEq
-import Mathlib.Tactic
+module
+
+public import Mathlib.Data.Nat.GCD.Basic
+public import Mathlib.Data.Nat.ModEq
+public import Mathlib.Tactic.GCongr
+public import Mathlib.Tactic.IntervalCases
+public import Mathlib.Tactic.Linarith
+public import Mathlib.Tactic.Ring
+
+@[expose] public section
 
 set_option autoImplicit false
 

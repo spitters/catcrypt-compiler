@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminValTransport
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectLoweringTransport
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminValTransport
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectLoweringTransport
 
 /-!
 # `cryptoDialectToJasminCom` is denotation-preserving — UNDER leaf agreement
@@ -63,6 +65,8 @@ leaf-spec'd Jasmin `extCall` denotation (a *functional* leaf, carried
 per-protocol) is a separate, stronger discharge; the stub denotation the
 meta-theorem ships with is closed here on the opaque default.
 -/
+
+@[expose] public section
 
 set_option autoImplicit true -- SSA IR front: many context/type variables
 

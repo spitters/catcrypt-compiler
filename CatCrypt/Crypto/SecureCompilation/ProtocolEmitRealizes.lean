@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GenericNttEmitValue
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GenericNttEmitValue
 
 /-!
 # The generic PROTOCOL emit-realization template (axis-6 enabler)
@@ -44,6 +46,8 @@ as in `GenericNttEmitValue.nttKernelRealizes_canonical`), and apply the
 template.  Nothing here is protocol-specific: the law is purely the algebra of
 substituting realized leaf-calls into one another.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

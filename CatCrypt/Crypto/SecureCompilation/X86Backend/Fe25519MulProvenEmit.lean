@@ -3,12 +3,20 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookProductRunBlock
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519ReduceRunBlock
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519TierA
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Cios4LimbProven
-import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
-import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookProductRunBlock
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookProductRunBlock
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519ReduceRunBlock
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519ReduceRunBlock
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519TierA
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519TierA
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Cios4LimbProven
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Cios4LimbProven
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public meta import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 
 /-!
 # Curve25519 plain field multiply emitted from the PROVEN product + a Solinas reduce
@@ -63,6 +71,8 @@ reused unchanged from the Montgomery template.
 The modulus limbs are `Fe25519TierA.p25519Limbs`, pinned by `native_decide`
 to the prime `2^255 − 19 = solinasParams25519.modulus`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -397,6 +407,6 @@ def emitMain : IO Unit := do
 The render is written while this module elaborates, so `lake` produces it from
 this file and no separate driver or Makefile rule carries the dependency. -/
 
-#eval emitMain
+-- #eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulProvenEmit

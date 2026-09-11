@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgUnroll
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JForProgUnroll
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgUnroll
 
 /-!
 # Denotation-preserving loop-invariant code motion (LICM) — the hoist transform
@@ -82,6 +85,8 @@ over `List.range n` (the same fold-congruence skeleton as
 `JForProgUnroll.foldl_step_congr`).
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Optimizer.LoopInvariantMotion
@@ -140,7 +145,7 @@ def licm {accTy invTy : JasminTy} (n : Nat)
     that agree pointwise produce the same fold from any seed. (Same shape as
     `JForProgUnroll.foldl_step_congr`; re-stated locally to keep this file's
     dependency surface minimal.) -/
-private theorem foldl_range_congr {accTy : JasminTy}
+theorem foldl_range_congr {accTy : JasminTy}
     {f g : ⟦accTy⟧ → ⟦accTy⟧} (hfg : ∀ acc, f acc = g acc) (n : Nat) :
     ∀ init : ⟦accTy⟧,
       (List.range n).foldl (fun acc _ => f acc) init

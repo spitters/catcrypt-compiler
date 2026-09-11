@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ComToFramedJInstr
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ComToFramedJInstr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ComToFramedJInstr
 
 /-!
 # Closing the D4 framed byte-residual: the `leaq` open/close pair
@@ -65,6 +68,8 @@ With `framedLeaqText_eq_lprog` the framed `JInstr` path (with the `leaq`-pair
 framing) is a **literal whole-`.text` byte match** for the framed `Lprog` path on
 the covered fragment — the D4 framed byte-residual is closed.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

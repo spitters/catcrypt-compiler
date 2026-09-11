@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul
 
 /-!
 # Pass 3.1 — Algebraic Bridge to CompPoly's `fastMulImpl_eq_mul`
@@ -68,6 +71,8 @@ imported by any concrete instantiation that wants to discharge the
 agreement assumption — e.g. an ML-KEM `LeafSpec` whose NTT leaf is built
 on a verified Rust transcription of `CompPoly.NTT.fastMulImpl`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,10 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Transfer.Base.Related
-import CatCrypt.Crypto.Optimizer.Rewrite.Egraph
-import CatCrypt.Crypto.Optimizer.Rewrite.KaratsubaGenericPass
-import CatCrypt.Crypto.Optimizer.Rewrite.ProofCarryingExtraction
+module
+
+import all Init.Data.Repr
+public import Transfer.Base.Related
+public import CatCrypt.Crypto.Optimizer.Rewrite.Egraph
+public import CatCrypt.Crypto.Optimizer.Rewrite.KaratsubaGenericPass
+public import CatCrypt.Crypto.Optimizer.Rewrite.ProofCarryingExtraction
 
 /-!
 # Registry ↔ e-graph bridge: one "denotation-preserving equation" representation
@@ -65,6 +68,8 @@ The two representations genuinely differ where there is nothing to bridge:
   between the two triple-valued evaluators (`karatsubaMul B …` and
   `schoolbookMul B …`), documented below.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

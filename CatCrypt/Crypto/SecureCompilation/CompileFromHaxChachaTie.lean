@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxChaCha
-import CatCrypt.Crypto.Jasmin.ChaCha20QR
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxChaCha
+public import CatCrypt.Crypto.Jasmin.ChaCha20QR
 
 /-!
 # #607 Phase 3b: functional tie — verified-compiler ChaCha20 quarter-round = protocol's abstract QR
@@ -55,6 +58,8 @@ function (`quarterRound`, the building block of `chachaBlock` / the PRF
 assumption) exist. The full block (`chachaBlock`) is *not* emitted as a single
 leaf, so no block-level functional tie is claimed.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

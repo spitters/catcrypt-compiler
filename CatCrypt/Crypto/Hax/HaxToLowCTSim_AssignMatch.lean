@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
+module
+
+public import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
 
 /-!
 # H3.tertia: assign-lit and match-tuple-destructure simulation cases
@@ -12,6 +14,8 @@ import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
 * `match_ (app f args) [(tuplePat [varPat n1, varPat n2], body)]` →
   `RLetZero n1 dt (RLetZero n2 dt (RSeq (RCallSwap f d1 d2 args') bodyC))`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -96,7 +100,7 @@ This duplicates `envAgreesRust_extend_scalar` from
 dependency.  Once that file lands stable, this local copy can be
 deleted and the import added. -/
 
-private theorem envAgreesRust_extend_scalar_local
+theorem envAgreesRust_extend_scalar_local
     (env : Env) (rs : RustState) (name : String) (n : Nat)
     (hAgree : envAgreesRust env rs) :
     envAgreesRust (env.extend name (.int n)) (rsSetScalar rs name n) := by
@@ -163,7 +167,7 @@ Bools are 0/1 scalars (consistent with `RIfNz` / `RWhileNz` reading
 nonzero as true), so the bool arm mirrors the uintLit case with
 `n = if b then 1 else 0`. -/
 
-private theorem envAgreesRust_extend_scalar_bool_local
+theorem envAgreesRust_extend_scalar_bool_local
     (env : Env) (rs : RustState) (name : String) (b : Bool)
     (hAgree : envAgreesRust env rs) :
     envAgreesRust (env.extend name (.bool b))

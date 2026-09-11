@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Algebra.Ring.Defs
-import Mathlib.Tactic.Ring
+module
+
+import all Init.Data.Repr
+public import Mathlib.Algebra.Ring.Defs
+public import Mathlib.Tactic.Ring
 
 /-!
 # Generic single-level Karatsuba multiplication identity
@@ -38,6 +41,8 @@ and any e-graph / peephole rewrite that replaces a four-multiply schoolbook
 expansion with the three-multiply form. Being parametric over `[CommRing R]`
 and the base `B`, it is proved once here by `ring`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

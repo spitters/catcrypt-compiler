@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.Arith
-import CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
+module
 
+public import CatCrypt.Crypto.SecureCompilation.Dialects.Arith
+public import CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!

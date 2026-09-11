@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Fp6
+module
+
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Fp6
 
 /-!
 # The `bls12_377` `Fp12` cyclotomic conjugation and `Fp12 → Fp6` norm
@@ -56,6 +58,8 @@ here). The conjugation ring-hom facts and the norm's `Fp6`-landing are the
 deliverables, mirroring `RelationalFrontBls377Fp2Conj` one tower level up.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.RelationalFront
@@ -88,7 +92,7 @@ under any `Fp6_377` `CommRing`; we install a fixed one). -/
     involution facts. The `Fp6_377` `Add`/`Neg` are global componentwise
     instances, so the parameters do not affect those goals; any choice gives
     `ring` an `Fp6`-ring to normalize the sign rearrangements over. -/
-private abbrev fp6Ring : CommRing Fp6_377 := Fp6_377.commRing (0 : FpBLS377) (0 : Fp2_377)
+abbrev fp6Ring : CommRing Fp6_377 := Fp6_377.commRing (0 : FpBLS377) (0 : Fp2_377)
 
 /-- **`conj12` is additive** (`conj12 (x + y) = conj12 x + conj12 y`). -/
 theorem conj12_add (x y : Fp12_377) : conj12 (x + y) = conj12 x + conj12 y := by

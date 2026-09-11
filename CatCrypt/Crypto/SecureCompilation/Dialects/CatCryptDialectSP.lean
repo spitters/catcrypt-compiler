@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
 
 /-!
 # DR-collapse Phase 2 — the crypto dialect's `SPComp` security interpretation
@@ -29,6 +31,8 @@ The full agreement `CProg.denote ≅ Com.denoteSP` (sample ops included) lives i
 
 **0 axioms**, **0 sorries**.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

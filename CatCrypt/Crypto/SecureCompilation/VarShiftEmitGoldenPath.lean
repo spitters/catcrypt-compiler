@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
-import Std.Tactic.BVDecide
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
+public import Std.Tactic.BVDecide
 
 /-!
 # Golden path: a bounded **public** variable-distance shift, emitted unchanged
@@ -59,6 +62,8 @@ The deliverable: `boundedShrCom` over inputs `[a, n]`, with `boundedShrCom_spec`
 the non-vacuous `n.toNat < 2 → Com.denote boundedShrCom … = a >>> n.toNat`, and the
 e2e quartet proving it emits to all three backends through the unchanged path.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Bridges.ReprTransferBinaryDom
-import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
+module
+
+public import CatCrypt.Crypto.Bridges.ReprTransferBinaryDom
+public import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
 
 /-!
 # Applying `BinOpHomOn2` to the fixed-width multi-limb multiply
@@ -63,6 +65,8 @@ recombination is *not* re-derived. As in the butterfly and the linear-combine
 pilots, only the (exact, homomorphic) product is transported; any subsequent field
 reduce (`condSubLimbs` / `barrettReduce`) is a separate unary stage.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

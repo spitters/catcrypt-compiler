@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
 
 /-!
 # Grounded KDF / KEM backbones — whole-pipeline emit-realization with ZERO
@@ -85,6 +87,8 @@ backbone is grounded with **zero `KernelRealizesT` hypotheses**.
 * NIST FIPS 202 (SHA-3 / SHAKE / sponge), SP 800-185 (cSHAKE / KMAC XOFs).
 * NIST FIPS 203 (ML-KEM); Fujisaki–Okamoto transform (KEM Decaps/Encaps).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Core
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
 
 /-!
 # A restructuring software-pipelining (loop-peel) pass for `Com` (real transform)
@@ -94,6 +98,8 @@ CT-safe body, so it introduces no secret-dependent branch.
   + `List.foldl_append`. Both reuse the same `foldl` decomposition; the
   one-iteration peel carries the non-`rfl` proof cleanly.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 -- Equation/lookup lemmas legitimately do not use every ambient typeclass

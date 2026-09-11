@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.NTTRecursionPass
-import Mathlib.RingTheory.RootsOfUnity.PrimitiveRoots
-import Mathlib.Algebra.BigOperators.Ring.Finset
+module
+
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTRecursionPass
+public import Mathlib.RingTheory.RootsOfUnity.PrimitiveRoots
+public import Mathlib.Algebra.BigOperators.Ring.Finset
 
 /-!
 # Inverse number-theoretic transform: the synthesis half (DFT inversion)
@@ -40,6 +42,8 @@ orthogonality to collapse the inner one to `n · [l = k]`, and cancel `(n)⁻¹ 
 The DFT is invertible — this closes the inverse/synthesis half that the forward
 `NttMultiplyGeneric` deliberately left open.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

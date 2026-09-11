@@ -3,9 +3,36 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.EmitBridge
-import CatCrypt.Crypto.SecureCompilation.Ascent.CapstoneField
-import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecRoundAdeq
+module
+
+-- The closed-kernel route reduces the front (`translateDialectControl`,
+-- `semScalar`, `cryptoDialectToJasminCom`) by `rfl`/`decide`; under the module
+-- system that reduction needs the front closure imported with `all`, and
+-- `Nat.repr` (the front's slot names) exposed through `Init.Data.Repr`.
+import all Init.Data.Repr
+import all CatCrypt.Core.Code
+import all CatCrypt.Crypto.CryptoWord
+import all CatCrypt.Crypto.Jasmin.JasminAST
+import all CatCrypt.Crypto.Jasmin.JasminTypes
+import all CatCrypt.Crypto.Jasmin.LowCT
+import all CatCrypt.Crypto.SDist
+import all CatCrypt.Crypto.SecureCompilation.CryptoSSA
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+import all CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
+import all CatCrypt.Crypto.SecureCompilation.Dialects.RustExecKernelAdeq
+import all CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
+import all CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.Core
+import all CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+import all CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
+public import CatCrypt.Crypto.SecureCompilation.Ascent.EmitBridge
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CapstoneField
+public import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecRoundAdeq
 
 /-!
 # `feSub` end-to-end: the ascent leg welded to the emit leg, no free hypotheses
@@ -33,14 +60,16 @@ holds only over the non-temp restriction `SRwordNT`: the LowCT lowering scribble
 the fresh-temp namespace, so the total relation is *not* preserved across an
 expression assignment (a source kernel never observes those temps). `SRword`
 weakens into `SRwordNT` (`srword_srwordNT`) but not conversely, and
-`Corres SRword _ _ (.RScalarSetExpr …)` is genuinely unprovable. So this module
+`Corres SRword _ _ (.RScalarSetExpr …)` is unprovable. So this module
 uses the faithful `SRwordNT` counterparts `keystone_NT` / `keystone_emit_NT`
-(exact copies of `keystone` / `keystone_emit` with `SRword` replaced by
+(exact copies of the two `EmitBridge` welding theorems with `SRword` replaced by
 `SRwordNT` and the extra readout-name non-temp side condition `¬ isTmpName name`,
 discharged by `not_isTmp_short`). This is the honest reconciliation of the
 `SRword`/`SRwordNT` seam the `welding` structure leaves open for `RScalarSetExpr`
 kernels.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxRecDepth 10000
@@ -65,9 +94,9 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.RustExecRoundAdeq (not_isTmp_sho
 
 namespace CatCrypt.Crypto.SecureCompilation.Ascent
 
-/-! ## The `SRwordNT` counterparts of the keystone -/
+/-! ## The `SRwordNT` welding theorems -/
 
-/-- **`keystone_NT`.** The `SRword` keystone (`EmitBridge.keystone`) over the
+/-- **`keystone_NT`.** The `SRword` welding theorem of `EmitBridge` over the
     non-temp restriction `SRwordNT`, which is the honest relation for a
     `RScalarSetExpr` value leaf. Identical proof, plus the extra readout-name
     side condition `¬ isTmpName name` (`SRwordNT` only constrains non-temp
@@ -89,7 +118,7 @@ theorem keystone_NT {β : Type} (Emit : BitVec 64 → β)
   subst hwv
   exact ⟨hEmit, hwenc⟩
 
-/-- **`keystone_emit_NT`.** The `SRword` composed keystone
+/-- **`keystone_emit_NT`.** The composed `SRword` welding theorem
     (`EmitBridge.keystone_emit`) over `SRwordNT`: the emit supplier is the real
     end-to-end theorem `rustToJasminCom_endToEnd_topLevel_unconditional`, the
     abstraction leg is an `SRwordNT` `Corres`, and the readout name carries the
@@ -185,16 +214,32 @@ theorem fHSem : semScalar feSubC (fun _ => none) = some fEnv :=
 
 theorem fNameSome : (fO.vm.lookup "r0").isSome := by rfl
 
-noncomputable def fW : CVar fO.Γ' (.sword 64) :=
-  ((fO.vm.lookup "r0").get fNameSome).2
+/-- The tracked slot's type is the 64-bit word: decided, since the slot name
+    goes through `Nat.repr`, which the elaborator's definitional check does not
+    reduce. -/
+theorem fNameTy : ((fO.vm.lookup "r0").get fNameSome).1 = .sword 64 := by
+  decide
 
-theorem fHName : fO.vm.lookup "r0" = some ⟨.sword 64, fW⟩ := by rfl
+/-- The tracked output slot for `r0`. -/
+noncomputable def fW : CVar fO.Γ' (.sword 64) :=
+  cast (congrArg (CVar fO.Γ') fNameTy) ((fO.vm.lookup "r0").get fNameSome).2
+
+theorem fHName : fO.vm.lookup "r0" = some ⟨.sword 64, fW⟩ := by decide
 
 theorem fValSome : (fEnv "r0").isSome := by rfl
 
-noncomputable def feVal : BitVec 64 := ((fEnv "r0").get fValSome).2
+theorem fValTy : ((fEnv "r0").get fValSome).1 = .sword 64 := by decide
 
-theorem fHVal : fEnv "r0" = some ⟨.sword 64, feVal⟩ := by rfl
+/-- The word `semScalar` leaves in `r0`. -/
+noncomputable def feVal : BitVec 64 :=
+  cast (congrArg CryptoTy.denote fValTy) ((fEnv "r0").get fValSome).2
+
+theorem fHVal : fEnv "r0" = some ⟨.sword 64, feVal⟩ := by
+  rw [← Option.some_get fValSome]
+  exact congrArg some (Sigma.ext fValTy
+    (by unfold feVal
+        exact (cast_heq (congrArg CryptoTy.denote fValTy)
+          ((fEnv "r0").get fValSome).2).symm))
 
 theorem fRetSome : (fO.cont (Com.ret (toVIRVar fW))).isSome := by rfl
 

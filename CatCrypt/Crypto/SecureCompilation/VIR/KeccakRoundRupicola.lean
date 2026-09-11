@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalCompile
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.RelationalCompile
 
 /-!
 # Re-deriving the Keccak round emit-denotes-spec through the Rupicola framework
@@ -57,6 +60,8 @@ token `rupicola_keccak` — no `KRefines.seq`/`consOp` composition tree, no
 We re-derive the round bottom-up by sub-block (θ-C, θ-D, ρπ, χ, ι) and then the
 **entire** `emitRound` — each in a single `rupicola_keccak` call.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 -- The whole round is ~600 bindings; the splitter recurses once per binding.

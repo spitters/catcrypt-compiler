@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ScalarLin
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ScalarLin
 
 /-!
 # Backend-neutral `RegProg` semantics — so the de-Bruijn proof is proved ONCE
@@ -28,6 +30,8 @@ So: prove the de-Bruijn lemma once against `denotePure`; compose with
 `compile_denote_pure` (already generic) to get `Com → AArch64`, `Com → RISC-V`,
 `Com → x86`, `Com → GPU` faithfulness — no per-backend de-Bruijn proof.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

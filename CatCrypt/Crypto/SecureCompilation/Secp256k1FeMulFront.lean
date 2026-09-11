@@ -3,10 +3,18 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdReloadElim
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdReloadElim
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdReloadElim
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -115,50 +123,98 @@ intended arithmetic. `zero` is the name of a slot bound to `0`. -/
 /-- `SVar` shorthand. -/
 def sv (n : String) : SExpr := .SVar n
 
+abbrev MulI : Type := MProd (Array String) (MProd String (List LowCT))
+abbrev MulO : Type := MProd (Array String) (List LowCT)
+
+/-- The inner column step of `genMul`: one partial product accumulated into the
+    column, split into a 32-bit digit and a carry. -/
+def genMulInnerStep (_zero : String) (aN bN : List String) (pfx : String) (i : Nat) :
+    Nat → MulI → Id (ForInStep MulI) :=
+  fun j r =>
+    let acc := r.fst
+    let carry := r.snd.fst
+    let cmds := r.snd.snd
+    let pos := i + j
+    let tn := s!"{pfx}t{i}_{j}"
+    let cmds := cmds ++ [(LowCT.RScalarSetExpr tn
+      (.SAdd (.SAdd (.SMul (sv (aN[i]!)) (sv (bN[j]!))) (sv (acc[pos]!))) (sv carry)))]
+    let pn := s!"{pfx}p{i}_{j}"
+    let cmds := cmds ++ [(LowCT.RScalarSetExpr pn (.SAnd (sv tn) (.SLit mask32)))]
+    let kn := s!"{pfx}k{i}_{j}"
+    let cmds := cmds ++ [(LowCT.RScalarSetExpr kn (.SShr (sv tn) (.SLit 32)))]
+    ForInStep.yield ⟨acc.set! pos pn, kn, cmds⟩
+
+def genMulOuterStep (zero : String) (aN bN : List String) (pfx : String) :
+    Nat → MulO → Id (ForInStep MulO) :=
+  fun i r =>
+    let res : MulI :=
+      (forIn [:bN.length] (⟨r.fst, zero, r.snd⟩) (genMulInnerStep zero aN bN pfx i) : Id _)
+    ForInStep.yield ⟨res.fst.set! (i + bN.length) res.snd.fst, res.snd.snd⟩
+
+def genMulRun (zero : String) (aN bN : List String) (pfx : String) : MulO :=
+  (forIn [:aN.length] (⟨Array.replicate (aN.length + bN.length) zero, ([] : List LowCT)⟩)
+    (genMulOuterStep zero aN bN pfx) : Id _)
+
+abbrev AddS : Type := MProd String (MProd (List LowCT) (Array String))
+
+def genAddStep (zero : String) (aN bN : List String) (pfx : String) :
+    Nat → AddS → Id (ForInStep AddS) :=
+  fun i r =>
+    let carry := r.fst
+    let cmds := r.snd.fst
+    let res := r.snd.snd
+    let ai := aN.getD i zero
+    let bi := bN.getD i zero
+    let tn := s!"{pfx}t{i}"
+    let cmds := cmds ++ [(LowCT.RScalarSetExpr tn (.SAdd (.SAdd (sv ai) (sv bi)) (sv carry)))]
+    let sn := s!"{pfx}s{i}"
+    let cmds := cmds ++ [(LowCT.RScalarSetExpr sn (.SAnd (sv tn) (.SLit mask32)))]
+    let kn := s!"{pfx}k{i}"
+    let cmds := cmds ++ [(LowCT.RScalarSetExpr kn (.SShr (sv tn) (.SLit 32)))]
+    ForInStep.yield ⟨kn, cmds, res.set! i sn⟩
+
+def genAddRun (zero : String) (aN bN : List String) (pfx : String) : AddS :=
+  (forIn [:max aN.length bN.length]
+    (⟨zero, ([] : List LowCT), Array.replicate (max aN.length bN.length + 1) zero⟩)
+    (genAddStep zero aN bN pfx) : Id _)
+
+abbrev SubS : Type := MProd String (MProd (List LowCT) (Array String))
+
+def genSubStep (zero : String) (aN pN : List String) (pfx : String) :
+    Nat → SubS → Id (ForInStep SubS) :=
+  fun i r =>
+    let borrow := r.fst
+    let cmds := r.snd.fst
+    let res := r.snd.snd
+    let tn := s!"{pfx}t{i}"
+    let cmds := cmds ++ [(LowCT.RScalarSetExpr tn
+      (.SSub (.SSub (.SAdd (sv (aN[i]!)) (.SLit 4294967296)) (sv (pN.getD i zero)))
+        (sv borrow)))]
+    let dn := s!"{pfx}d{i}"
+    let cmds := cmds ++ [(LowCT.RScalarSetExpr dn (.SAnd (sv tn) (.SLit mask32)))]
+    let hn := s!"{pfx}h{i}"
+    let cmds := cmds ++ [(LowCT.RScalarSetExpr hn (.SShr (sv tn) (.SLit 32)))]
+    let bn := s!"{pfx}b{i}"
+    let cmds := cmds ++ [(LowCT.RScalarSetExpr bn (.SSub (.SLit 1) (sv hn)))]
+    ForInStep.yield ⟨bn, cmds, res.set! i dn⟩
+
+def genSubRun (zero : String) (aN pN : List String) (pfx : String) : SubS :=
+  (forIn [:aN.length] (⟨zero, ([] : List LowCT), Array.replicate aN.length zero⟩)
+    (genSubStep zero aN pN pfx) : Id _)
+
 /-- Operand-scanning `na × nb` limb multiply. Returns the bindings and the
     `na + nb` result-limb names. Each column step `acc + a·b + carry < 2^64`. -/
 def genMul (zero : String) (aN bN : List String) (pfx : String) :
-    List LowCT × List String := Id.run do
-  let na := aN.length; let nb := bN.length
-  let mut cmds : List LowCT := []
-  let mut acc : Array String := Array.replicate (na + nb) zero
-  for i in [0:na] do
-    let mut carry := zero
-    for j in [0:nb] do
-      let pos := i + j
-      let tn := s!"{pfx}t{i}_{j}"
-      cmds := cmds ++ [ (.RScalarSetExpr tn
-        (.SAdd (.SAdd (.SMul (sv (aN[i]!)) (sv (bN[j]!))) (sv (acc[pos]!))) (sv carry)) : LowCT) ]
-      let pn := s!"{pfx}p{i}_{j}"
-      cmds := cmds ++ [ (.RScalarSetExpr pn (.SAnd (sv tn) (.SLit mask32)) : LowCT) ]
-      let kn := s!"{pfx}k{i}_{j}"
-      cmds := cmds ++ [ (.RScalarSetExpr kn (.SShr (sv tn) (.SLit 32)) : LowCT) ]
-      acc := acc.set! pos pn
-      carry := kn
-    acc := acc.set! (i + nb) carry
-  return (cmds, acc.toList)
+    List LowCT × List String :=
+  let r := genMulRun zero aN bN pfx
+  (r.snd, r.fst.toList)
 
 /-- Operand-scanning limb add. Returns bindings and `max(|a|,|b|) + 1` result
     names (the extra top limb is the final carry). -/
 def genAdd (zero : String) (aN bN : List String) (pfx : String) :
-    List LowCT × List String := Id.run do
-  let n := max aN.length bN.length
-  let mut cmds : List LowCT := []
-  let mut res : Array String := Array.replicate (n + 1) zero
-  let mut carry := zero
-  for i in [0:n] do
-    let ai := aN.getD i zero
-    let bi := bN.getD i zero
-    let tn := s!"{pfx}t{i}"
-    cmds := cmds ++ [ (.RScalarSetExpr tn (.SAdd (.SAdd (sv ai) (sv bi)) (sv carry)) : LowCT) ]
-    let sn := s!"{pfx}s{i}"
-    cmds := cmds ++ [ (.RScalarSetExpr sn (.SAnd (sv tn) (.SLit mask32)) : LowCT) ]
-    let kn := s!"{pfx}k{i}"
-    cmds := cmds ++ [ (.RScalarSetExpr kn (.SShr (sv tn) (.SLit 32)) : LowCT) ]
-    res := res.set! i sn
-    carry := kn
-  res := res.set! n carry
-  return (cmds, res.toList)
+    List LowCT × List String :=
+  let r := genAddRun zero aN bN pfx
+  (r.snd.fst, (r.snd.snd.set! (max aN.length bN.length) r.fst).toList)
 
 /-- One Solinas fold `R = lo(8) + c · hi(rest)` on a limb list `full`, `c` given by
     its two limb names `c0N`, `c1N`. Returns the bindings and result names. -/
@@ -178,24 +234,9 @@ def genFold (zero c0N c1N : String) (full : List String) (pfx : String) :
     `d[i] = t & mask`, `bout = 1 − (t >>> 32)`. Returns bindings, the `|a|`
     difference names, and the final-borrow name (`1` iff `a < p`). -/
 def genSub (zero : String) (aN pN : List String) (pfx : String) :
-    List LowCT × List String × String := Id.run do
-  let n := aN.length
-  let mut cmds : List LowCT := []
-  let mut res : Array String := Array.replicate n zero
-  let mut borrow := zero
-  for i in [0:n] do
-    let tn := s!"{pfx}t{i}"
-    cmds := cmds ++ [ (.RScalarSetExpr tn
-      (.SSub (.SSub (.SAdd (sv (aN[i]!)) (.SLit 4294967296)) (sv (pN.getD i zero))) (sv borrow)) : LowCT) ]
-    let dn := s!"{pfx}d{i}"
-    cmds := cmds ++ [ (.RScalarSetExpr dn (.SAnd (sv tn) (.SLit mask32)) : LowCT) ]
-    let hn := s!"{pfx}h{i}"
-    cmds := cmds ++ [ (.RScalarSetExpr hn (.SShr (sv tn) (.SLit 32)) : LowCT) ]
-    let bn := s!"{pfx}b{i}"
-    cmds := cmds ++ [ (.RScalarSetExpr bn (.SSub (.SLit 1) (sv hn)) : LowCT) ]
-    res := res.set! i dn
-    borrow := bn
-  return (cmds, res.toList, borrow)
+    List LowCT × List String × String :=
+  let r := genSubRun zero aN pN pfx
+  (r.snd.fst, r.snd.snd.toList, r.fst)
 
 /-! ## 2. The `feMul` body
 

@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.SLPVectorize
-import CatCrypt.Crypto.SecureCompilation.VIR.Peephole
-import Mathlib.Logic.Function.Basic
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Optimizer.SLPVectorize
+public import CatCrypt.Crypto.SecureCompilation.VIR.Peephole
+public import Mathlib.Logic.Function.Basic
 
 /-!
 # Bridge between the typed `Com jasminDialect` IR and the `SStmt` scalar block IR
@@ -68,6 +71,8 @@ c.denote V`.  The reg-128 gather is `gatherCom`, a cast/shift/or chain denoting
 * `embed_lookup`: reading the embedded register file at a `reg 32` variable's
   level name returns that variable's value.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

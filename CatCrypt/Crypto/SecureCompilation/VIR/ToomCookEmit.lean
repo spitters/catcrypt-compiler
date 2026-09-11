@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
 
 /-!
 # Toom-Cook-3 sub-quadratic polynomial multiplication
@@ -82,6 +85,8 @@ Toom-3 over Karatsuba, documented as a future extension.
   scaling to two-level Toom-3 is documented as a follow-up step.
 
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.ToomCookEmit
 

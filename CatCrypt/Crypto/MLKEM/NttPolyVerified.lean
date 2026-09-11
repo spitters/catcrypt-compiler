@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Util.ZMod3329
+module
+
+public import CatCrypt.Crypto.Util.ZMod3329
 
 /-!
 # Verified ML-KEM NTT poly arithmetic over `Zq3329`
@@ -38,6 +40,8 @@ abstract field surface (this is the lattice analogue of
 * `matVecMulVerified` — `(A · s)[i] = Σ_j A[i][j] · s[j]` — the
   matrix-vector product used by ML-KEM keygen/encaps/decaps.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

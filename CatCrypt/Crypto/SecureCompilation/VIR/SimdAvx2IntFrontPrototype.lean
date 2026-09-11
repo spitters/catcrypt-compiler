@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
 
 /-!
 # SIMD AVX2 INTEGER-VECTOR front prototype (`vpxor` end-to-end) + breadth map
@@ -53,6 +57,8 @@ is exactly the alphabet of the ARX + NTT + Keccak-SIMD + Poly1305 group. All of
 it is representable in the front dialect TODAY; the residual work is byte-level.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.SimdAvx2IntFrontPrototype
@@ -76,8 +82,8 @@ lowering + encoder arms listed in the worklist; the structure is identical.) -/
 /-- Context `[a, b]`, each a 128-bit vector carried as `.sword 128`. -/
 abbrev xorCtx : Ctx := [.sword 128, .sword 128]
 
-private def vA : Ctxt.Var (d := catCryptDialect) xorCtx (.sword 128) := .here
-private def vB : Ctxt.Var (d := catCryptDialect) xorCtx (.sword 128) := .there .here
+def vA : Ctxt.Var (d := catCryptDialect) xorCtx (.sword 128) := .here
+def vB : Ctxt.Var (d := catCryptDialect) xorCtx (.sword 128) := .there .here
 
 /-- `VPXOR` (128-bit lane-wise xor) expressed as a real FRONT-dialect
     `.vsimd (.bitwise .xor)` op — the OWNED inlined route, not an `extCall` leaf. -/

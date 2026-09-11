@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.HawkMul4WayEmit
-import Mathlib.Algebra.BigOperators.Fin
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.HawkMul4WayEmit
+public import Mathlib.Algebra.BigOperators.Fin
 
 /-!
 # HAWK 4-way: the genuine negacyclic ring multiply and a non-vacuous lane tie
@@ -77,6 +79,8 @@ claim the emitted SIMD kernel is proven to compute `hawkNegacyclicMul` — that 
 the external KAT's job. The deliverable here is the genuine spec plus the
 in-Lean negacyclic-multiply correctness (unit + shift) and the genuine lane tie.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

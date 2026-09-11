@@ -3,80 +3,147 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithToJasminDenote
-import CatCrypt.Crypto.SecureCompilation.Dialects.MemrefToJasminDenote
-import CatCrypt.Crypto.SecureCompilation.Dialects.FuncToJasminDenote
-import CatCrypt.Crypto.SecureCompilation.Dialects.VectorToJasminDenote
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithLegality
-import CatCrypt.Crypto.SecureCompilation.Dialects.ComLegality
-import CatCrypt.Crypto.SecureCompilation.Dialects.MlirArithArithAgree
-import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidence
-import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidenceShifts
-import CatCrypt.Crypto.SecureCompilation.Dialects.ConstantTimeTrait
-import CatCrypt.Crypto.SecureCompilation.Dialects.RngRealization
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithToLprog
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithIselSoundness
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithIselPass
-import CatCrypt.Crypto.SecureCompilation.Dialects.RorImmSelect
-import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidenceLet
-import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidenceRustState
-import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidenceBody
-import CatCrypt.Crypto.SecureCompilation.Dialects.RngRealizationFinite
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithEmulations
-import CatCrypt.Crypto.SecureCompilation.Dialects.RngLeaf
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.ArithToJasminDenote
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithToJasminDenote
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.MemrefToJasminDenote
+public import CatCrypt.Crypto.SecureCompilation.Dialects.MemrefToJasminDenote
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.FuncToJasminDenote
+public import CatCrypt.Crypto.SecureCompilation.Dialects.FuncToJasminDenote
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.VectorToJasminDenote
+public import CatCrypt.Crypto.SecureCompilation.Dialects.VectorToJasminDenote
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.ArithLegality
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithLegality
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.ComLegality
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ComLegality
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.MlirArithArithAgree
+public import CatCrypt.Crypto.SecureCompilation.Dialects.MlirArithArithAgree
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidence
+public import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidence
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidenceShifts
+public import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidenceShifts
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.ConstantTimeTrait
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ConstantTimeTrait
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.RngRealization
+public import CatCrypt.Crypto.SecureCompilation.Dialects.RngRealization
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.ArithToLprog
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithToLprog
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.ArithIselSoundness
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithIselSoundness
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.ArithIselPass
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithIselPass
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.RorImmSelect
+public import CatCrypt.Crypto.SecureCompilation.Dialects.RorImmSelect
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidenceLet
+public import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidenceLet
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidenceRustState
+public import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidenceRustState
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidenceBody
+public import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidenceBody
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.RngRealizationFinite
+public import CatCrypt.Crypto.SecureCompilation.Dialects.RngRealizationFinite
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.ArithEmulations
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithEmulations
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.RngLeaf
+public import CatCrypt.Crypto.SecureCompilation.Dialects.RngLeaf
 -- DR collapse phase 2: the crypto dialect's SPComp security interpretation + the
 -- full CryptoSSA ≅ crypto agreement (sample ops included).
-import CatCrypt.Crypto.SecureCompilation.Dialects.CatCryptDialectSP
-import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectSecurity
-import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakTrace
-import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectSecurityNative
-import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakTraceNative
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.CatCryptDialectSP
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CatCryptDialectSP
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectSecurity
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectSecurity
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakTrace
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakTrace
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectSecurityNative
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectSecurityNative
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakTraceNative
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakTraceNative
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
 -- Item 1 (crypto kernels lifted to the neutral arith dialect): the emit-legality
 -- foundation (ArithOK64 + lowerArithToJasmin_ComOK) + the ~50 lifted kernels, each
 -- denote=spec + ArithOK64 + lowered ComOK + arm/riscv e2e through the proven lowering.
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithToJasminComOK
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithGoldenPathField
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithHashesGoldenPath
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithAsconGoldenPath
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithArxGoldenPath
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithFieldGoldenPath
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithBitwiseGoldenPath
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithVarShiftGoldenPath
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithFieldMul2x1GoldenPath
-import CatCrypt.Crypto.SecureCompilation.Dialects.MemrefCtGoldenPath
-import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminLoadSymExport
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.ArithToJasminComOK
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithToJasminComOK
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.ArithGoldenPathField
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithGoldenPathField
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.ArithHashesGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithHashesGoldenPath
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.ArithAsconGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithAsconGoldenPath
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.ArithArxGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithArxGoldenPath
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.ArithFieldGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithFieldGoldenPath
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.ArithBitwiseGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithBitwiseGoldenPath
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.ArithVarShiftGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithVarShiftGoldenPath
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.ArithFieldMul2x1GoldenPath
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithFieldMul2x1GoldenPath
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.MemrefCtGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.Dialects.MemrefCtGoldenPath
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminLoadSymExport
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminLoadSymExport
 -- D4 collapse encoder-maturation (rot-guarded here to avoid the churning
 -- SecureCompilationAll manifest): the encodeLprog≡encodeJBlock byte-agreement +
 -- its native_decide-free mnemonic dispatch, the additive framed/reloc JInstr emit
 -- path, and the Linstr→JInstr lowering-coverage superset (ADX + indexed memory).
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrBytesAgree
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrMnemDispatch
-import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrFramedEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtendedCoverage
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ComToFramedJInstr
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ComToFramedJInstrLeaq
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ResolverAgree
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringCoverageCmovSar
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringCoverageMulxMemSym
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstr
-import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrGatherExtended
-import CatCrypt.Crypto.SecureCompilation.X86Backend.BlockBytesAgreeExtended
-import CatCrypt.Crypto.SecureCompilation.X86Backend.PhysBodyGather
-import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherInPlace
-import CatCrypt.Crypto.SecureCompilation.X86Backend.FramingReconcile
-import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherFullBody
-import CatCrypt.Crypto.SecureCompilation.X86Backend.SpillSlotEncode
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull
-import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherImmForms
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
-import CatCrypt.Crypto.SecureCompilation.X86Backend.GoldenPathByteIdentityDemo
-import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherLsemTie
-import CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialect
-import CatCrypt.Crypto.SecureCompilation.Jasmin.S2NBignumSSADialect
-import CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialectNative
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrBytesAgree
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrBytesAgree
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrMnemDispatch
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrMnemDispatch
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrFramedEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrFramedEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtendedCoverage
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtendedCoverage
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ComToFramedJInstr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ComToFramedJInstr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ComToFramedJInstrLeaq
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ComToFramedJInstrLeaq
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ResolverAgree
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ResolverAgree
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringCoverageCmovSar
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringCoverageCmovSar
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringCoverageMulxMemSym
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringCoverageMulxMemSym
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrGatherExtended
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrGatherExtended
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.BlockBytesAgreeExtended
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.BlockBytesAgreeExtended
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.PhysBodyGather
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.PhysBodyGather
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherInPlace
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherInPlace
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.FramingReconcile
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.FramingReconcile
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherFullBody
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherFullBody
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.SpillSlotEncode
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.SpillSlotEncode
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherImmForms
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherImmForms
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.GoldenPathByteIdentityDemo
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.GoldenPathByteIdentityDemo
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherLsemTie
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherLsemTie
+public meta import CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialect
+public import CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialect
+public meta import CatCrypt.Crypto.SecureCompilation.Jasmin.S2NBignumSSADialect
+public import CatCrypt.Crypto.SecureCompilation.Jasmin.S2NBignumSSADialect
+public meta import CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialectNative
+public import CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialectNative
 
 /-!
 # The upstream-aligned neutral dialects (D0 manifest / rot-guard)
@@ -140,3 +207,5 @@ Two further D0/DR results ship alongside the dialect triples:
   meaning stays a *separate* security interpretation (the uniform-entropy realization
   theorem is the next DR step).
 -/
+
+@[expose] public section

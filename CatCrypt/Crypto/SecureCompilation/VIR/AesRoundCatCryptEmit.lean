@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
-import CatCrypt.Crypto.Primitives.AES128
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+public import CatCrypt.Crypto.Primitives.AES128
+public import Std.Tactic.BVDecide
 
 /-!
 # The AES round on the high `catCryptDialect`: GF(2⁸) capability + MixColumns / AddRoundKey
@@ -51,6 +55,8 @@ lookup) and is discussed in the final section.
 
 0 sorries.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

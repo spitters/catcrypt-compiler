@@ -3,9 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgMultiOp
-import CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSExprWidth32Prototype
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JForProgMultiOp
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgMultiOp
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSExprWidth32Prototype
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSExprWidth32Prototype
 
 /-!
 # Keccak-p[1600,24] emitted from a `Com jasminDialect` (the SHA-3 / XOF core)
@@ -108,6 +115,8 @@ is to keep all 12 and pointer-map them from this file. Per-file
 back-pointers to this map live in each file's docstring under
 "## Canonical entry point".
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
 

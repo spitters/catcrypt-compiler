@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.MergeCom
-import CatCrypt.Crypto.SecureCompilation.VIR.ComParametricityTransport
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.MergeCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.ComParametricityTransport
 
 /-!
 # Block-expanding `Com d → Com d'` descent functor (one-op→a-block lowering)
@@ -59,9 +61,11 @@ reg 64`, `transTy = bbEnc`, and `lowerExprBlock` the Poseidon2 word blocks
 square `BlockOpTransports` at an `fAdd`/`fMul`/`fSub` node is exactly
 `FieldDescentBabyBear.bbAdd_realizes`/`bbMul_realizes`/`bbSub_realizes` composed with
 the block's own `emit*_denote_ret`. `blockFundamental` then delivers the whole-perm
-`fieldPermComAt → poseidon2PermComOut` transport that `FieldPipelineEmitBB` currently
+`fieldPermComAt → (poseidon2PermComOut ())` transport that `FieldPipelineEmitBB` currently
 carries only as the named residual. See §"Remaining work" in the report.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

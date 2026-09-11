@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontGenericEcEmit
-import CatCrypt.Crypto.SecureCompilation.EcRealizationGeneric
+module
+
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontGenericEcEmit
+public import CatCrypt.Crypto.SecureCompilation.EcRealizationGeneric
 
 /-!
 # Generic EC emit → value: the emitted point-add realizes the affine group law
@@ -75,6 +77,8 @@ the commuting squares.
 * Vertical-line / point-at-infinity exceptional cases are out of scope, exactly
   as for `ec_jacAdd_realizes_affineAdd`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

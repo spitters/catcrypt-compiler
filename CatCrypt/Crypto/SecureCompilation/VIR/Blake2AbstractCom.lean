@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ShaRoundAbstractCom
-import CatCrypt.Crypto.SecureCompilation.X86Backend.KeccakThetaPiCom
-import CatCrypt.Crypto.SecureCompilation.ThirToComFront
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.ShaRoundAbstractCom
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.KeccakThetaPiCom
+public import CatCrypt.Crypto.SecureCompilation.ThirToComFront
 
 /-!
 # Abstract RFC-7693 §3.1 BLAKE2b `G` tie for the unified-`Com` `zmmPackQ` kernel
@@ -72,6 +74,8 @@ verified `Com jasminDialect` denotation and the abstract RFC-7693 §3.1 `G`.
 Invoke: `lake build CatCrypt.Crypto.SecureCompilation.VIR.Blake2AbstractCom`
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.Blake2AbstractCom
@@ -132,7 +136,7 @@ abbrev gCtx : Ctxt jasminDialect :=
 
 /-- A `vpackZMM bop` binding over two source variables, the building block of the
     `G` programs. -/
-private abbrev vp {Γ : Ctxt jasminDialect} (bop : JasminBinOp)
+abbrev vp {Γ : Ctxt jasminDialect} (bop : JasminBinOp)
     (va vb : Ctxt.Var Γ r512) :
     Expr jasminDialect Γ r512 :=
   Expr.mk (JasminOp.vpackZMM bop) rfl (.cons va (.cons vb .nil))

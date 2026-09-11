@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAdd6Block
-import CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacDblBlock
-import CatCrypt.Crypto.SecureCompilation.EcProjectiveGeneric
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAdd6Block
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacDblBlock
+public import CatCrypt.Crypto.SecureCompilation.EcProjectiveGeneric
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxHeartbeats 1000000
@@ -52,7 +56,7 @@ identity `jacDblBlock6_realizes_jacDblGen` against `EcProjectiveGeneric.jacDoubl
   `ring`-based dataflow proof as the four-limb double
   `EcJacDblValue.jacDblBlock_realizes_jacDblGen`, over `slotFieldVal6`.
 
-The value identity is a genuine dataflow proof — the same structure as the
+The value identity is a dataflow proof with the same structure as the
 four-limb double — with `jacDoubleGen` reused curve-generic. No `rfl`/`True` fill.
 -/
 
@@ -248,62 +252,43 @@ theorem jacDblBlock6_realizes_jacDblGen
     rw [hLHS, (R.realizes k hk).out_val, hI0, hI1]
   clear align
   have c0 : V 6 = V 1 * V 1 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 0 (by decide) (by decide) (by decide) (by decide)
+    exact callV 0 (by decide) (by decide) (by decide) (by decide)
   have c1 : V 8 = V 0 * V 6 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 1 (by decide) (by decide) (by decide) (by decide)
+    exact callV 1 (by decide) (by decide) (by decide) (by decide)
   have c2 : V 10 = V 8 + V 8 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 2 (by decide) (by decide) (by decide) (by decide)
+    exact callV 2 (by decide) (by decide) (by decide) (by decide)
   have c3 : V 11 = V 10 + V 10 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 3 (by decide) (by decide) (by decide) (by decide)
+    exact callV 3 (by decide) (by decide) (by decide) (by decide)
   have c4 : V 12 = V 0 * V 0 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 4 (by decide) (by decide) (by decide) (by decide)
+    exact callV 4 (by decide) (by decide) (by decide) (by decide)
   have c5 : V 14 = V 12 + V 12 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 5 (by decide) (by decide) (by decide) (by decide)
+    exact callV 5 (by decide) (by decide) (by decide) (by decide)
   have c6 : V 15 = V 14 + V 12 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 6 (by decide) (by decide) (by decide) (by decide)
+    exact callV 6 (by decide) (by decide) (by decide) (by decide)
   have c7 : V 16 = V 15 * V 15 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 7 (by decide) (by decide) (by decide) (by decide)
+    exact callV 7 (by decide) (by decide) (by decide) (by decide)
   have c8 : V 18 = V 11 + V 11 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 8 (by decide) (by decide) (by decide) (by decide)
+    exact callV 8 (by decide) (by decide) (by decide) (by decide)
   have c9 : V 3 = V 16 - V 18 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 9 (by decide) (by decide) (by decide) (by decide)
+    exact callV 9 (by decide) (by decide) (by decide) (by decide)
   have c10 : V 19 = V 11 - V 3 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 10 (by decide) (by decide) (by decide) (by decide)
+    exact callV 10 (by decide) (by decide) (by decide) (by decide)
   have c11 : V 20 = V 15 * V 19 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 11 (by decide) (by decide) (by decide) (by decide)
+    exact callV 11 (by decide) (by decide) (by decide) (by decide)
   have c12 : V 22 = V 6 * V 6 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 12 (by decide) (by decide) (by decide) (by decide)
+    exact callV 12 (by decide) (by decide) (by decide) (by decide)
   have c13 : V 24 = V 22 + V 22 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 13 (by decide) (by decide) (by decide) (by decide)
+    exact callV 13 (by decide) (by decide) (by decide) (by decide)
   have c14 : V 25 = V 24 + V 24 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 14 (by decide) (by decide) (by decide) (by decide)
+    exact callV 14 (by decide) (by decide) (by decide) (by decide)
   have c15 : V 26 = V 25 + V 25 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 15 (by decide) (by decide) (by decide) (by decide)
+    exact callV 15 (by decide) (by decide) (by decide) (by decide)
   have c16 : V 4 = V 20 - V 26 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 16 (by decide) (by decide) (by decide) (by decide)
+    exact callV 16 (by decide) (by decide) (by decide) (by decide)
   have c17 : V 28 = V 1 * V 2 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 17 (by decide) (by decide) (by decide) (by decide)
+    exact callV 17 (by decide) (by decide) (by decide) (by decide)
   have c18 : V 5 = V 28 + V 28 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 18 (by decide) (by decide) (by decide) (by decide)
+    exact callV 18 (by decide) (by decide) (by decide) (by decide)
   clear callV
   simp only [EcProjectiveGeneric.jacDoubleGen, inX, inY, inZ,
     EcJacDblBlock.sX, EcJacDblBlock.sY, EcJacDblBlock.sZ,

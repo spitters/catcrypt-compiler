@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Ed25519.CompressEmitDenoteCorrect
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Jasmin.Ed25519.CompressEmitDenoteCorrect
 
 /-!
 # `ed25519_compress` — concrete leaf-spec discharge
@@ -48,6 +51,8 @@ the byte-spec level and leave the `Fp25519`-bridge headline theorem
 as future work; the empirical witness for the bridge is the
 80/80-vector difftest against dalek in `bench/dalek/`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

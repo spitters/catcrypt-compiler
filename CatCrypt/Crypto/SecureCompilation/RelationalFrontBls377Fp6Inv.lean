@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Fp6
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Fp2Inv
+module
+
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Fp6
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Fp2Inv
 
 /-!
 # The `bls12_377` cubic-extension `Fp6` inversion — `Fp6_377` is operationally a field
@@ -69,6 +71,8 @@ parametric (generic over the tower, not hand-inlined), and keep every base
 `CommRing`, so `ring` normalizes the cubic expansion). We do not wire inversion
 to emitted base kernels.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

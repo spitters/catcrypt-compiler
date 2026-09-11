@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmEncoder
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmEncoder
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmEncoder
 
 /-!
 # A64 ABI / scaffolding-instruction byte encoder (the whole-function residual, #552-obj)
@@ -31,6 +34,8 @@ Each builder places the register numbers / immediate at the exact bit positions
 the Arm Architecture Reference Manual C4.1 tables specify; the differential pins
 at the foot anchor every word to `aarch64-linux-gnu-as`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

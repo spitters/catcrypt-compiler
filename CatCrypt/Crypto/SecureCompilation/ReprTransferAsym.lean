@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Bridges.ReprTransferBinaryDom
-import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
+module
+
+public import CatCrypt.Crypto.Bridges.ReprTransferBinaryDom
+public import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
 
 /-!
 # Asymmetric operation homomorphism (`OpHomOn`) and the scalar-multiply application
@@ -63,6 +65,8 @@ no schoolbook arithmetic is re-derived here. The `field_mul_2x1` reconstruction
 is `Com.denote`-phrased; see the closing note for the precise (small) bridge it
 would require, which is why the worked application here is `mulScalar`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

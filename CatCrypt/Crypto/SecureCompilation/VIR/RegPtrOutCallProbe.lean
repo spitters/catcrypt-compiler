@@ -3,13 +3,22 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFront
-import CatCrypt.Crypto.SecureCompilation.VIR.ArrAbiOrch
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMulBasecaseFrontEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddNAdxRolledFrontEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul2FixedFrontEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAdd4FixedFrontEmit
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFront
+public import CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFront
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ArrAbiOrch
+public import CatCrypt.Crypto.SecureCompilation.VIR.ArrAbiOrch
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMulBasecaseFrontEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMulBasecaseFrontEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddNAdxRolledFrontEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddNAdxRolledFrontEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul2FixedFrontEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul2FixedFrontEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAdd4FixedFrontEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAdd4FixedFrontEmit
 
 /-!
 # Reg-ptr-out multi-buffer leaf-call probe (sub-quadratic-owned-emit Phase 3, step 1)
@@ -70,6 +79,8 @@ the denotation gate demonstrably does not.
   `probe_orch`, via `Com.toLprogArrAbi` then `renderOwned`.
 * `emitMain` — writes `probe_orch_owned.s` (and the callee `.s`) for the byte-KAT.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -242,6 +253,6 @@ def emitMain : IO Unit := do
       IO.println "  fixed-4 leaf (buffers-only ABI [RDI,RSI,RDX]); KAT bench/regptr_out_probe/kat_add4.c"
   | none => IO.println "SKIP probe_add4: fixed-4 ripple-carry add front declined"
 
-#eval emitMain
+-- #eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.VIR.RegPtrOutCallProbe

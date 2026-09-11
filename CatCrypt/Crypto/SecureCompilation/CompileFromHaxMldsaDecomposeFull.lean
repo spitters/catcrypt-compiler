@@ -3,7 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # C4 fan-out: the verified compiler emits the ML-DSA `decompose` low part `a0`
@@ -75,6 +80,8 @@ to the explicit `mldsaDecomposeA0Form`) and stands on its own. The per-coefficie
 value-correctness against PQClean (including the boundary fix-up coefficient) is
 KAT-pinned in `DecomposeEmit` (`decompose_a0_coeff{0,17,4}`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -188,9 +195,7 @@ theorem mldsaDecomposeA0_compiles :
   intro a
   have hspec : ImpExpr.denoteScalar ["a"] ![a]
       mldsaDecomposeA0Src (fun _ => none) = some (mldsaDecomposeA0Form a) := by
-    have h := mldsaDecomposeA0Src_denoteScalar (nIn := 1) ![a]
-    simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+    exact mldsaDecomposeA0Src_denoteScalar (nIn := 1) ![a]
   exact compileFromHax_meets_spec (w := 64) (nIn := 1) ["a"]
     ![a] mldsaDecomposeA0Src _ hc hspec
 

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
-import Std.Tactic.BVDecide
+module
+
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+public import Std.Tactic.BVDecide
 
 /-!
 # Golden-path capstone: 2-limb × 1-word multiply from the emitted primitives
@@ -33,6 +35,8 @@ r2  = hi1 + c1
 reconstruction is closed by the single-`MULX` widening law
 `MontMulFragmentDemo.mulx_reconstruct` (twice, for `a0·b` and `a1·b`), the
 limb-1 carry split `fieldAdd_carry_reconstruct`, and `omega`. -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,11 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontEC
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontECMul
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontECDouble
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontECInv
-import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+module
+
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontEC
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontECMul
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontECDouble
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontECInv
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
 
 /-!
 # The AFFINE short-Weierstrass point ADD over GF(251) — closing the EC group law
@@ -97,6 +99,8 @@ per-coordinate `ZMod 251` commuting square, modulo the degenerate-branch CT-sele
 and the `Option` sum-type encoding documented above as the gap to the unified
 `ECParams.add` over `ECPoint`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -307,7 +311,7 @@ theorem worked_distinct : (0 : ZMod 251) ≠ (2 : ZMod 251) := by decide
     and `Q = (2,3)` is `(250, 0)` (`λ = 1`, `x₃ = −1 = 250`, `y₃ = −251 = 0`). -/
 theorem worked_add_abstract :
     ecAddAffine (0, 1) (2, 3) = ((250 : ZMod 251), (0 : ZMod 251)) := by
-  unfold ecAddAffine chordSlope251; decide
+  unfold ecAddAffine chordSlope251; decide +kernel
 
 /-- **The sum is on the curve.**  `P + Q = (250, 0)` lies on `blsClassCurve`
     (`0² = 250³ + 1`, since `250 = −1` and `(−1)³ + 1 = 0`).  Confirms the realized

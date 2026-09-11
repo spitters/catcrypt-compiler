@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
 # Model-free ChaCha20 little-endian byte serialization (RFC 8439 §2.3)
@@ -26,6 +28,8 @@ The statements (`leByte`, `serializeLE32`, `serializeLE32_byte`) are bit-for-bit
 the same as the bespoke realization-file versions; they were already model-free
 and merely happened to live alongside the `ZState32` finalization realization.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.Chacha20DwordSerializeCom
 

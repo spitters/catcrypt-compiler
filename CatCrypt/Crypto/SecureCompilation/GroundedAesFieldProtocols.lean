@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GroundedFieldProtocol
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GroundedFieldProtocol
 
 /-!
 # Fully-grounded AES-mode and field protocol realizations — ZERO assumed kernel
@@ -48,6 +50,8 @@ obligation, NOT a per-kernel hypothesis and NOT a KAT.
   multiply-accumulate `x ↦ x + a * b` over the binary concrete kernels, proved
   by chaining `fieldMul_realizes_concrete` then `fieldAdd_realizes_concrete`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

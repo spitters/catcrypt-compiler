@@ -3,8 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakBitexact
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.KeccakBitexact
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakBitexact
 
 /-!
 # The Keccak θ∘ρ∘π∘χ diffusion layer is bit-exactly the FIPS 202 spec
@@ -67,6 +73,8 @@ proof. No `sorry`, no `native_decide`, no new custom axioms.
 See `KeccakEmit.lean` for the full 12-file Keccak VIR canonical map. This
 file is step #113 in that chain: the BitVec-level diffusion identity.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

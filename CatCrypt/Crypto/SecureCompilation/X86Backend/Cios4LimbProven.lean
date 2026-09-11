@@ -3,9 +3,18 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-import CatCrypt.Crypto.Number.MontgomeryReduction
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import Mathlib.Tactic.GCongr
+public import Mathlib.Tactic.Linarith
+public import Mathlib.Tactic.NormNum
+public import Mathlib.Tactic.Positivity
+public import Mathlib.Tactic.Ring
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public meta import CatCrypt.Crypto.Number.MontgomeryReduction
+public import CatCrypt.Crypto.Number.MontgomeryReduction
 
 /-!
 # A 4-limb (256-bit) carry-chain reconstruction layer for CIOS Montgomery
@@ -69,6 +78,8 @@ faithfulness for the modeled straight-line fragments is the proved
 (`Com → Lprog → .s`, encoder round-trip / external KAT) remains the trusted
 boundary, unchanged.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxRecDepth 4000

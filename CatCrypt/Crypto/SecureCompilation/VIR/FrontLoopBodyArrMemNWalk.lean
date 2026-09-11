@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.FrontLoopBodyArrMemN
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.FrontLoopBodyArrMemN
 
 /-!
 # The inductive walk that discharges `ContArrMemN o.cont`
@@ -44,6 +46,8 @@ template bodies. It does not reach the carry-select / compare bodies (`cmp`,
 `divrem`), whose `bvAddCarryLo` / `select` heads are emitted by the separate
 `CarryChainSelect.emitAll` front, not by `translateDialectControl`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.FrontLoopBodyArrMemNWalk
 

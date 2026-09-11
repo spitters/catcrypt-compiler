@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
 
 /-!
 # VPCMPEQQ + VPMOVMSKB dialect ops (SIMD per-lane compare + sign-mask extract)
@@ -68,6 +70,8 @@ early-exit semantics.
 
 Invoke:  `lake build CatCrypt.Crypto.SecureCompilation.VIR.VPCmpEmit`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

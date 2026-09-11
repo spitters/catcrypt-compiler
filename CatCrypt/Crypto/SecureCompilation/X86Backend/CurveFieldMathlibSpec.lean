@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CurveFieldRefinement
-import CatCrypt.Crypto.SecureCompilation.VIR.Refinement
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CurveFieldRefinement
+public import CatCrypt.Crypto.SecureCompilation.VIR.Refinement
 
 /-!
 # Mathlib-anchored refinement spine for the curve field multiplies
@@ -70,6 +72,8 @@ stated here as the documented path, not proved: it needs the point-addition
 schedule's `Refines` against `WeierstrassCurve.Affine.add`, which composes these
 field-op refinements via `Refines.congr_postcomp`/`Refines.trans`.)
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 -- The Montgomery radices `2^256` / `2^384` appear as literals in the `ZMod p`

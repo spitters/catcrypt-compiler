@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeArith
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeArith
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
 
 /-!
 # Arithmetic-fragment residuals of the ascent middle tie (`semScalar` ↔ `runBlock`)
@@ -31,6 +33,8 @@ The block tie needs each statement's source reads `a`, `b` to be non-temp
 (`isTmpName`-free) so the fresh SExpr temporaries never collide with a source
 slot; real arithmetic blocks (named slots, small shift constants) satisfy it.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

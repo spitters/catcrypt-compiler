@@ -3,10 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockCorres
-import CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbMul
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresAttr
-import Lean
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.Ascent.CorresAttr
+public import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockCorres
+public import CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbMul
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresAttr
+public import Lean
 
 /-!
 # `corres_solve`: composing `CorresJ` leaves over a straight-line `JInstr` block
@@ -39,6 +42,8 @@ This module makes the fold a tactic.
 Extending the solver to a new instruction is one `@[corres]` lemma; the tactic is
 unchanged.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

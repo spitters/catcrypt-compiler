@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
-import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+public import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
+public import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
 
 /-!
 # Keccak-p[1600,24] with linear-scan register allocation — the proof-of-concept
@@ -90,6 +95,8 @@ See `KeccakEmit.lean` for the full 12-file Keccak VIR canonical map. This
 file is steps #153 / #158 in that chain: the canonical RA-driven sibling
 emit, consumed by `bench/keccak_compare/keccak_ra_emit.lean`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.KeccakRaEmit
 

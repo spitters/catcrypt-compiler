@@ -3,12 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportKeccak
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
-import CatCrypt.Crypto.Optimizer.LoadCSE
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportKeccak
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
+public import CatCrypt.Crypto.Optimizer.LoadCSE
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # PROBE: the resident Keccak variants re-routed through the owned Com→render path
@@ -31,6 +33,8 @@ pipeline that `KeccakLinearMain.lean` already uses for the plain owned `.s`:
 This file only type-checks the composition; it does not force-evaluate the
 ~6900-binding term (that needs the compiled `lean_exe`, per `KeccakLinearMain`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

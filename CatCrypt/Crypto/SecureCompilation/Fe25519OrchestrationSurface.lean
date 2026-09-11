@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Fe25519OrchestrationSyntax
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.Fe25519OrchestrationSyntax
 
 /-!
 # `orch%` — a usable authoring surface for the covered orchestration fragment
@@ -50,6 +53,8 @@ scalar slots `TU64`; `cswap`'s mask argument is threaded as a field-typed
 `Located` too, so the whole surface uses one slot builder — the transparency
 `rfl`s pin exactly the AST that builder produces.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

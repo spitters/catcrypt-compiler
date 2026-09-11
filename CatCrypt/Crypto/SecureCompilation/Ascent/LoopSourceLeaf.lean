@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Hax.RustSubsetToLowCT
-import CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf
-import CatCrypt.Crypto.SecureCompilation.Ascent.KeystoneControl
+module
+
+public meta import CatCrypt.Crypto.Hax.RustSubsetToLowCT
+public import CatCrypt.Crypto.Hax.RustSubsetToLowCT
+public meta import CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf
+public import CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf
+public meta import CatCrypt.Crypto.SecureCompilation.Ascent.KeystoneControl
+public import CatCrypt.Crypto.SecureCompilation.Ascent.KeystoneControl
 
 /-!
 # Closing the loop source-preimage gap: a `RustSrc.forN` kernel welded to `corres_for`
@@ -70,6 +75,8 @@ needs a `keystone` instance over the `RScalarSetExpr` loop body.
 Part of the AutoCorres-in-Lean ascent begun by Sebastian Graf (`sgraf812/ascent`);
 see `Corres.lean`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

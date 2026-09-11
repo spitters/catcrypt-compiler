@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxVerbatim
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxDesugarNot
+module
+
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxVerbatim
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxDesugarNot
 
 /-!
 # The SHA-256 round-component set compiles verbatim from hax extraction
@@ -31,6 +33,8 @@ Each conjunct is the per-component verbatim result proved in its own module
 aggregate entry point that states "the whole round-component set compiles
 verbatim" in one theorem.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

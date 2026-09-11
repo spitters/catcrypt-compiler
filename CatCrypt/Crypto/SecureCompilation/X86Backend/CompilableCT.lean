@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
 # Phase 0 — the compilable constant-time subset contract
@@ -37,6 +40,8 @@ straight-line subset has no conditional branch at all. That is precisely
 `ConstantTimeCoverage.allDirect`, so `CompilableCT` is its `Prop` form, and the
 guarantee is the already-proven `allDirect_constant_time`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

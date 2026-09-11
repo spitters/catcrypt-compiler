@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-!
 # Byte-wise XOR combine as a rolled `ComL.forLoopN` (3-pointer dual-input map)
@@ -50,6 +54,8 @@ The orchestrator emits the `.s` from `xorProgReal` (`ComL.writeLprogPhysAbiFile
 … "xor_combine" "a2" ["a1","a0"] … ["RDI","RSI","RDX"] [64,64,64]`) and byte-KATs
 against an independent `out[i] = a[i] ^ b[i]` reference.
 -/
+
+@[expose] public section
 
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect

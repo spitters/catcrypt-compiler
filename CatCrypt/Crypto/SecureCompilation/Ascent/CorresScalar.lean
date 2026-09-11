@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf
-import Lean
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf
+public import Lean
 
 /-!
 # The scalar-`Corres` scaffold over the `srcClean` word algebra
@@ -27,15 +29,22 @@ algebra (`SRwordBV`), and the weld tying such a result to the front-compiled
   `corres_setExprWord` at each leaf and discharging the `srcClean` side condition,
   synthesizing the folded abstract step. The scalar analogue of
   `Ascent.CorresSolver.corres_solve` (over `CorresJ` / `JInstr`).
-* `corresScalar_frontDenote` welds a `Corres SRwordBV` result to the front
-  homomorphism `translateDialectControl_denote_ctl`: from entry `ConsistentS`
-  consistency and the state relation at entry, the front-compiled kernel's
-  `Com.denote` at the tracked output slot reads out the abstract value the
-  `Corres` result computes. This is the seam UOV / MAYO / NTRU / SNOVA / HAWK /
-  Frodo `KernelEmitDenote` leaves left open; it composes
-  `translateDialectControl_denote_ctl` with `ConsistentS.lookup_eq`, the same
-  pieces `VIR.CompilerCorrectnessExtracted.semScalarToJasminCom_denote_eq` uses.
+* `corresScalar_frontDenote_two` welds a `Corres SRwordBV` result to the front
+  homomorphism `translateDialectControl_denote_ctl`, with the front and the
+  `Corres` result run at separate entry environments: the front from an
+  environment consistent with the entry valuation (`ConsistentS`), the `Corres`
+  result from one related to the abstract state (`SRwordBV`), tied at the
+  destination by a closed-kernel agreement hypothesis of the same shape as the
+  `hAgree` of `FeSubEndToEnd.keystone_NT`. The front-compiled kernel's
+  `Com.denote` at the tracked output slot is the abstract value the `Corres`
+  result computes. `corresScalar_frontDenote` is its single-environment
+  corollary, applicable when the entry `VarMap` tracks every non-temp name (the
+  `MAYO` / `SNOVA` / `UOV` `KernelEmitDenote` entry maps). Both compose
+  `translateDialectControl_denote_ctl` with `ConsistentS.lookup_eq`, the pieces
+  `VIR.CompilerCorrectnessExtracted.semScalarToJasminCom_denote_eq` uses.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -151,7 +160,7 @@ theorem corres_seqAll {AState : Type} (SR : SEnvScalar → AState → Prop) :
   | nil =>
       intro steps h
       cases h
-      simpa using corres_skip SR
+      simpa using! corres_skip SR
   | cons c cs ih =>
       intro steps h
       cases h with
@@ -277,21 +286,83 @@ example :
 
 The front homomorphism `translateDialectControl_denote_ctl` transports the
 `semScalar` waist of a covered kernel into the front-compiled
-`Com catCryptDialect` denotation. Feeding it a `Corres SRwordBV` result — which
-packages both the `semScalar c env = some env'` progress and the readout
-`env' dst = some ⟨.sword 64, fa a dst⟩` at a non-temp destination — welds the
-value model to the emitted program: closing the front prefix with the return of
-the tracked slot `w`, the `Com.denote` reads out `fa a dst`. -/
+`Com catCryptDialect` denotation. A `Corres SRwordBV` result packages the
+`semScalar c env = some env'` progress and the readout
+`env' dst = some ⟨.sword 64, fa a dst⟩` at a non-temp destination. The weld
+closes the front prefix with the return of the tracked slot `w` and reads
+`fa a dst` out of the `Com.denote`.
 
-/-- **The scalar weld.** From a `Corres SRwordBV` result for an `IsCoveredSCtl`
-    kernel `c`, entry consistency `ConsistentS vm V env`, the state relation
-    `SRwordBV env a` at entry, the front success `translateDialectControl vm c =
-    some o`, and the tracked non-temp output `dst ↦ w`, the front prefix closed by
-    returning `w` denotes exactly the abstract value `fa a dst` the `Corres` result
-    leaves at `dst`. Composes `translateDialectControl_denote_ctl` (the front
-    homomorphism) with `ConsistentS.lookup_eq` (the slot readout), the same route
-    as `VIR.CompilerCorrectnessExtracted.semScalarToJasminCom_denote_eq`, but
-    sourced from an `Ascent.Corres` result over the identity word algebra. -/
+The two hypotheses on the entry environment pull in opposite directions.
+`ConsistentS vm V env` fixes `env s = none` for every name `vm` does not track,
+and `SRwordBV env a` fixes `env s = some ⟨.sword 64, a s⟩` for every non-temp
+name; one environment satisfies both only when `vm` tracks every non-temp name.
+The front's own entry `VarMap.empty` tracks none, so the front and the `Corres`
+result must then run at different environments. `corresScalar_frontDenote_two`
+takes the two environments separately — `env₀` for the front, `env₁` for the
+`Corres` result — and ties the runs at the destination by the agreement
+hypothesis `hAgree`, of the same shape as `FeSubEndToEnd.keystone_NT`'s. For a
+closed kernel the output word at `dst` is independent of the entry environment,
+so `hAgree` holds by evaluation. `corresScalar_frontDenote` is the
+single-environment corollary, for entry maps that track every non-temp name. -/
+
+/-- A bound `SEnvScalar` slot of word type is `some ⟨.sword 64, v⟩` for the word
+    `v` it carries. The slot type `ht` and the word `hv` are the decidable data of
+    the readout; on a front-produced environment the slot names go through
+    `Nat.repr`, which `decide` reduces and the elaborator's definitional check
+    does not. -/
+theorem envSlot_eq_some_sword (env : SEnvScalar) (s : String) (h : (env s).isSome)
+    (ht : ((env s).get h).1 = .sword 64) (v : BitVec 64)
+    (hv : cast (congrArg CryptoTy.denote ht) ((env s).get h).2 = v) :
+    env s = some ⟨.sword 64, v⟩ := by
+  subst hv
+  exact (Option.some_get h).symm.trans (congrArg some (Sigma.ext ht (cast_heq _ _).symm))
+
+/-- **The scalar weld, two entry environments.** For an `IsCoveredSCtl` kernel
+    `c` with a `Corres SRwordBV` result: the front is entered at `env₀`,
+    consistent with the entry valuation `V` through `vm`, and runs to `env₀'`,
+    which holds the word `val` at the non-temp destination `dst`; the `Corres`
+    result runs at `env₁`, related to the abstract state `a`, and `hAgree` states
+    that this run also leaves `val` at `dst`. Then the front prefix closed by
+    returning the tracked slot `w` denotes the abstract value `fa a dst`.
+    Composes `translateDialectControl_denote_ctl` (the front homomorphism) with
+    `ConsistentS.lookup_eq` (the slot readout), the route of
+    `VIR.CompilerCorrectnessExtracted.semScalarToJasminCom_denote_eq`, sourced
+    from an `Ascent.Corres` result over the identity word algebra. The
+    `Com.denote` counterpart of `FeSubEndToEnd.keystone_NT`. -/
+theorem corresScalar_frontDenote_two
+    {c : LowCT} (hcov : IsCoveredSCtl c)
+    {fa : (String → BitVec 64) → (String → BitVec 64)}
+    (hcorr : Corres SRwordBV (fun _ => True) fa c)
+    {Γ : Ctx} (vm : VarMap Γ) (V : Ctxt.Valuation (d := catCryptDialect) Γ)
+    (env₀ env₀' : SEnvScalar) (hcons : ConsistentS vm V env₀)
+    (hSem : semScalar c env₀ = some env₀')
+    (env₁ : SEnvScalar) (a : String → BitVec 64) (hSR : SRwordBV env₁ a)
+    (dst : String) (hdst : ¬ isTmpName dst) (val : BitVec 64)
+    (hVal : env₀' dst = some ⟨.sword 64, val⟩)
+    (hAgree : ∀ e, semScalar c env₁ = some e → e dst = some ⟨.sword 64, val⟩)
+    (o : DTransOut Γ) (htr : translateDialectControl vm c = some o)
+    (w : CVar o.Γ' (.sword 64)) (hw : o.vm.lookup dst = some ⟨.sword 64, w⟩)
+    (com : Com catCryptDialect Γ (.sword 64))
+    (hRet : o.cont (Com.ret (toVIRVar w)) = some com) :
+    com.denote V = fa a dst := by
+  obtain ⟨env₁', hSem₁, hSR'⟩ := hcorr env₁ a hSR trivial
+  have hval : val = fa a dst := by
+    have h := (Option.some.injEq _ _).mp ((hAgree env₁' hSem₁).symm.trans (hSR' dst hdst))
+    simpa using h
+  obtain ⟨V', hc', hcont⟩ :=
+    translateDialectControl_denote_ctl hcov vm V env₀ env₀' o hcons htr hSem
+  obtain ⟨com', hcom', hden⟩ := hcont (Com.ret (toVIRVar w))
+  rw [hRet] at hcom'
+  obtain rfl := Option.some.inj hcom'
+  rw [hden, ← hval]
+  exact hc'.lookup_eq hw hVal
+
+/-- **The scalar weld, one entry environment.** `corresScalar_frontDenote_two`
+    with the front and the `Corres` result run at the same entry environment
+    `env`, so that the `Corres` progress supplies the front's `semScalar` run and
+    the agreement is the `Corres` readout itself. The hypotheses `ConsistentS vm V
+    env` and `SRwordBV env a` hold together only when `vm` tracks every non-temp
+    name; at `VarMap.empty` use `corresScalar_frontDenote_two`. -/
 theorem corresScalar_frontDenote
     {c : LowCT} (hcov : IsCoveredSCtl c)
     {fa : (String → BitVec 64) → (String → BitVec 64)}
@@ -306,13 +377,11 @@ theorem corresScalar_frontDenote
     (hRet : o.cont (Com.ret (toVIRVar w)) = some com) :
     com.denote V = fa a dst := by
   obtain ⟨env', hSem, hSR'⟩ := hcorr env a hSR trivial
-  have hVal : env' dst = some ⟨.sword 64, fa a dst⟩ := hSR' dst hdst
-  obtain ⟨V', hc', hcont⟩ :=
-    translateDialectControl_denote_ctl hcov vm V env env' o hcons htr hSem
-  obtain ⟨com', hcom', hden⟩ := hcont (Com.ret (toVIRVar w))
-  rw [hRet] at hcom'
-  obtain rfl := Option.some.inj hcom'
-  rw [hden]
-  exact hc'.lookup_eq hw hVal
+  refine corresScalar_frontDenote_two hcov hcorr vm V env env' hcons hSem env a hSR
+    dst hdst (fa a dst) (hSR' dst hdst) ?_ o htr w hw com hRet
+  intro e he
+  rw [hSem] at he
+  obtain rfl := Option.some.inj he
+  exact hSR' dst hdst
 
 end CatCrypt.Crypto.SecureCompilation.Ascent

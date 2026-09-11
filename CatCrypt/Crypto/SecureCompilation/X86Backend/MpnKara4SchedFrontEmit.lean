@@ -3,16 +3,28 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul2FixedFrontEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddSub2FixedFrontEmit
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
-import CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFront
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.VIR.ArrAbiOrch
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul2FixedFrontEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul2FixedFrontEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddSub2FixedFrontEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddSub2FixedFrontEmit
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFront
+public import CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFront
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ArrAbiOrch
+public import CatCrypt.Crypto.SecureCompilation.VIR.ArrAbiOrch
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # 4×4 → 8-limb Karatsuba multiply as a reg-ptr-out leaf-call schedule
@@ -108,6 +120,8 @@ register order.
 * `emitMain` — writes `mpn_kara4_sched_owned.s` and the leaf `.s` for the
   byte-KAT.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -752,6 +766,6 @@ def emitMain : IO Unit := do
       IO.println "WROTE bench/regptr_out_probe/gen_com/probe_add2c_owned.s"
   | none => IO.println "SKIP probe_add2c: fixed-2 add-with-carry front declined"
 
-#eval emitMain
+-- #eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.MpnKara4SchedFrontEmit

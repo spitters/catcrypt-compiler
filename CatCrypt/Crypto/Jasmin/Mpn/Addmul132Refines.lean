@@ -3,11 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.Addmul132Emit
-import CatCrypt.Crypto.Jasmin.Mpn.Add32Refines
-import CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
-import CatCrypt.Crypto.Jasmin.Mpn.Mul132Refines
-import CatCrypt.Crypto.Jasmin.BignumExec
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.Mpn.Addmul132Emit
+public import CatCrypt.Crypto.Jasmin.Mpn.Add32Refines
+public import CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.Mul132Refines
+public import CatCrypt.Crypto.Jasmin.BignumExec
+
+@[expose] public section
 
 set_option autoImplicit false
 

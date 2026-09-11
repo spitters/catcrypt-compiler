@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.ZMod.Basic
-import Mathlib.Data.List.OfFn
+module
+
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.Data.List.OfFn
 
 /-!
 # FIPS 203 ByteEncode / ByteDecode (general bit width)
@@ -24,6 +26,8 @@ each coefficient fits in `d` bits, i.e. `m ≤ 2 ^ d` (covering `m = 2 ^ d` for
 
 * NIST FIPS 203 §4.2.1, Algorithm 5 (ByteEncode), Algorithm 6 (ByteDecode)
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -109,11 +113,11 @@ theorem unpackLE_packLE (base : ℕ) (hb : 0 < base) :
 /-! ## Byte-level helpers -/
 
 /-- Reading back a byte built from a value below `256` returns that value. -/
-private theorem toNat_ofNat_lt {x : ℕ} (h : x < 256) : (UInt8.ofNat x).toNat = x := by
+theorem toNat_ofNat_lt {x : ℕ} (h : x < 256) : (UInt8.ofNat x).toNat = x := by
   rw [UInt8.toNat_ofNat', Nat.mod_eq_of_lt h]
 
 /-- Reading the `i`-th entry of `List.ofFn g` returns `g i`. -/
-private theorem getD_ofFn_val {n : ℕ} (g : Fin n → ℕ) (i : Fin n) :
+theorem getD_ofFn_val {n : ℕ} (g : Fin n → ℕ) (i : Fin n) :
     (List.ofFn g).getD i.val 0 = g i := by
   simp [List.getD_eq_getElem?_getD, List.getElem?_ofFn, i.isLt]
 

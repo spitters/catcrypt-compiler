@@ -3,11 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ScalarLin
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmLowering
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmEncoder
-import Std.Tactic.BVDecide
-import Mathlib.Tactic
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.ScalarLin
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmLowering
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmEncoder
+public import Std.Tactic.BVDecide
+public import Mathlib.Tactic.NormNum
 
 /-!
 # `Com → AArch64`: the AArch64 `ScalarTarget` instance
@@ -31,6 +34,8 @@ encode/decode vs GNU `as`/objdump + LLVM, 237/237 execute vs real AArch64 under
 qemu). The remaining verified piece is the `Com`-tree flattening
 `Com jasminDialect → RegProg` feeding this waist (the de-Bruijn front).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -86,7 +91,7 @@ backend-neutral faithfulness layer stays free of SAT-certificate axioms. -/
 
 /-- Normalise `movkInsert`'s field to a pure `BitVec` shift (so `bv_decide` sees
     through the `ofNat`-of-Nat-shift). -/
-private theorem mk_clean (old b : BitVec 64) (hw : Nat) (hb : b < 65536) :
+theorem mk_clean (old b : BitVec 64) (hw : Nat) (hb : b < 65536) :
     movkInsert old b.toNat hw
       = (old &&& ~~~(BitVec.ofNat 64 (0xffff <<< (hw*16)))) ||| (b <<< (hw*16)) := by
   have hb' : b.toNat < 65536 := by have := BitVec.lt_def.mp hb; simpa using this
@@ -94,7 +99,7 @@ private theorem mk_clean (old b : BitVec 64) (hw : Nat) (hb : b < 65536) :
   rw [show ((b.toNat % 0x10000) <<< (hw*16)) = (b.toNat <<< (hw*16)) from by rw [Nat.mod_eq_of_lt hb']]
   congr 1
 
-private theorem mk_hwin (n k : Nat) (hk : k ≤ 3) :
+theorem mk_hwin (n k : Nat) (hk : k ≤ 3) :
     BitVec.ofNat 64 ((n / 2^(16*k)) % 65536) = (BitVec.ofNat 64 n >>> (16*k)) &&& 0xffff := by
   apply BitVec.eq_of_toNat_eq
   have hffff : ((0xffff : BitVec 64).toNat) = 65535 := by decide
@@ -108,20 +113,20 @@ private theorem mk_hwin (n k : Nat) (hk : k ≤ 3) :
   rw [hand, e64, Nat.mod_mul_right_div_self, Nat.mod_mod_of_dvd _ hdvd]
   exact Nat.mod_eq_of_lt (by rw [← e64]; exact lt_of_lt_of_le (Nat.mod_lt _ (by norm_num)) (by norm_num))
 
-private theorem mk_himm (n k : Nat) (hk : k ≤ 3) :
+theorem mk_himm (n k : Nat) (hk : k ≤ 3) :
     (n / 2^(16*k)) % 65536 = ((BitVec.ofNat 64 n >>> (16*k)) &&& 0xffff).toNat := by
   have h := congrArg BitVec.toNat (mk_hwin n k hk)
   rw [BitVec.toNat_ofNat,
       Nat.mod_eq_of_lt (lt_of_lt_of_le (Nat.mod_lt _ (by norm_num)) (by norm_num : (65536:Nat) ≤ 2^64))] at h
   exact h
 
-private theorem mk_recon (x : BitVec 64) :
+theorem mk_recon (x : BitVec 64) :
     movkInsert (movkInsert (movkInsert (x &&& 0xffff) ((x >>> 16 &&& 0xffff).toNat) 1)
         ((x >>> 32 &&& 0xffff).toNat) 2) ((x >>> 48 &&& 0xffff).toNat) 3 = x := by
   rw [mk_clean _ _ 1 (by bv_decide), mk_clean _ _ 2 (by bv_decide), mk_clean _ _ 3 (by bv_decide)]
   bv_decide
 
-private theorem mk_recon_n (n : Nat) :
+theorem mk_recon_n (n : Nat) :
     movkInsert (movkInsert (movkInsert (BitVec.ofNat 64 (n % 65536))
         ((n / 2^16) % 65536) 1) ((n / 2^32) % 65536) 2) ((n / 2^48) % 65536) 3
       = BitVec.ofNat 64 n := by
@@ -135,7 +140,7 @@ private theorem mk_recon_n (n : Nat) :
     have := mk_himm n 3 (by omega); simpa using this
   rw [h0, e1, e2, e3]; exact mk_recon _
 
-private theorem bstate_set_set (s : BState) (d : String) (a b : X64) :
+theorem bstate_set_set (s : BState) (d : String) (a b : X64) :
     (s.set d a).set d b = s.set d b := by
   by_cases h : d = "xzr"
   · simp [BState.set, h]
@@ -144,7 +149,7 @@ private theorem bstate_set_set (s : BState) (d : String) (a b : X64) :
 
 /-- The `movz`/`movk` chain for `loadImm d n`, run on the machine, sets `d` to
     `BitVec.ofNat 64 n` (and leaves the rest of the state untouched). -/
-private theorem loadImm_lower (s : BState) (d : String) (n : Nat) :
+theorem loadImm_lower (s : BState) (d : String) (n : Nat) :
     (regStmtToBOp (.loadImm d n)).foldl (fun st op => evalBInst st (toBInst op)) s
       = s.set d (BitVec.ofNat 64 n) := by
   have hmz : ∀ (st : BState) (i : Nat),

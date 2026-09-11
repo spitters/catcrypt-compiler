@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GenericKernelRealization
-import CatCrypt.Crypto.Primitives.AES128
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GenericKernelRealization
+public import CatCrypt.Crypto.Primitives.AES128
 
 /-!
 # AES block encryption is a registry row of the one generic kernel predicate
@@ -39,6 +41,8 @@ block` shape would instead be a `KernelRealizes2` row, but the key-fixed unary f
 cleaner and matches the Keccak hash row, so we register that. AES-256 or the AES round
 function (`aesRound`) would be further rows of the same kind.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

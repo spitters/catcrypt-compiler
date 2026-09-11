@@ -3,11 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ProtocolEmitRealizes
-import CatCrypt.Crypto.SecureCompilation.GenericNttEmitValue
-import CatCrypt.Crypto.SecureCompilation.BarrettReduceEmitValue
-import CatCrypt.Crypto.SecureCompilation.FermatInverseEmitValue
-import CatCrypt.Crypto.SecureCompilation.MontgomeryMulEmitValue
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ProtocolEmitRealizes
+public import CatCrypt.Crypto.SecureCompilation.GenericNttEmitValue
+public import CatCrypt.Crypto.SecureCompilation.BarrettReduceEmitValue
+public import CatCrypt.Crypto.SecureCompilation.FermatInverseEmitValue
+public import CatCrypt.Crypto.SecureCompilation.MontgomeryMulEmitValue
 
 /-!
 # One generic kernel-realization mechanism — the per-primitive seams are a table
@@ -35,6 +37,8 @@ free) transport witness** (`Bridges/Transfer/Related.lean`, `Bridges/ReprTransfe
 Adding a primitive = a table row (a `leaf`, a `spec`, and its commuting-square discharge),
 never a new predicate. This is the fractalyze `!field.pf<p>`-style table over one transport.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

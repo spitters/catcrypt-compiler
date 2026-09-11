@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrontCovered
-import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpCompositional
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrontCovered
+public import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrontCovered
+public meta import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpCompositional
+public import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpCompositional
 
 /-!
 # The front-compiled secp256k1 `jacDbl` kernel, from `Com.denote` to the schedule
@@ -71,6 +75,8 @@ epilogue `storeField` (half-limbs back to frame cells).
 * `jacDblSchedule_waist_value` — under `BrickStep`, the `jacDbl` schedule's waist
   semantics carries `jacDblSpec`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrontDenote
 

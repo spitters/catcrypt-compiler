@@ -3,20 +3,22 @@ Copyright (c) 2024 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.LinearAlgebra.Matrix.PosDef
-import Mathlib.LinearAlgebra.Matrix.Trace
-import Mathlib.Analysis.Complex.Order
-import Mathlib.Topology.Instances.Matrix
-import Mathlib.Topology.Algebra.InfiniteSum.Module
-import Mathlib.Topology.Algebra.InfiniteSum.ENNReal
-import Mathlib.Topology.Algebra.InfiniteSum.Constructions
-import Mathlib.Topology.Instances.Complex
-import Mathlib.Topology.Algebra.Module.FiniteDimension
-import Mathlib.Topology.Algebra.InfiniteSum.Ring
-import Mathlib.Analysis.Matrix.Normed
-import Mathlib.Analysis.Matrix.PosDef
-import Mathlib.Analysis.Normed.Module.FiniteDimension
-import Mathlib.Algebra.Order.Chebyshev
+module
+
+public import Mathlib.LinearAlgebra.Matrix.PosDef
+public import Mathlib.LinearAlgebra.Matrix.Trace
+public import Mathlib.Analysis.Complex.Order
+public import Mathlib.Topology.Instances.Matrix
+public import Mathlib.Topology.Algebra.InfiniteSum.Module
+public import Mathlib.Topology.Algebra.InfiniteSum.ENNReal
+public import Mathlib.Topology.Algebra.InfiniteSum.Constructions
+public import Mathlib.Topology.Instances.Complex
+public import Mathlib.Topology.Algebra.Module.FiniteDimension
+public import Mathlib.Topology.Algebra.InfiniteSum.Ring
+public import Mathlib.Analysis.Matrix.Normed
+public import Mathlib.Analysis.Matrix.PosDef
+public import Mathlib.Analysis.Normed.Module.FiniteDimension
+public import Mathlib.Algebra.Order.Chebyshev
 
 /-!
 # Quantum Instruments and the QComp Monad
@@ -38,6 +40,8 @@ and `instrument_l1_le` are proved via Hermitian shift decomposition:
 2. For general M: decompose M = H₁ + (-i)·H₂ (Hermitian parts), triangle inequality
 3. Bound: C(d) = 2d(2d+1) for both single-branch and instrument L1 norms
 -/
+
+@[expose] public section
 
 open scoped Matrix ComplexOrder ENNReal Matrix.Norms.Elementwise
 open Matrix Classical
@@ -683,7 +687,7 @@ private theorem instrument_l1_le
 /-! ## Bind -/
 
 set_option maxHeartbeats 400000 in
-private theorem QComp.bind_summable (I : QComp d α) (f : α → QComp d β)
+theorem QComp.bind_summable (I : QComp d α) (f : α → QComp d β)
     (b : β) (ρ : Matrix (Fin d) (Fin d) ℂ) :
     Summable (fun a => (f a).branch b (I.branch a ρ)) :=
   Summable.of_norm_bounded
@@ -697,7 +701,7 @@ private theorem QComp.bind_summable (I : QComp d α) (f : α → QComp d β)
 
 set_option maxHeartbeats 400000 in
 /-- Joint summability of the uncurried family for Fubini in `qbind_assoc`. -/
-private theorem QComp.bind_summable_uncurry (I : QComp d α) (f : α → QComp d β)
+theorem QComp.bind_summable_uncurry (I : QComp d α) (f : α → QComp d β)
     (g : β → QComp d γ) (c : γ) (ρ : Matrix (Fin d) (Fin d) ℂ) :
     Summable (Function.uncurry fun a b =>
       (g b).branch c ((f a).branch b (I.branch a ρ))) := by

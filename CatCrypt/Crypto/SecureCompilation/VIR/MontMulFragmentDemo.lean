@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-!
 # Multi-limb widening-multiply + carry-propagation demonstration (task #477)
@@ -48,6 +51,8 @@ r2       = hi1 + c1           -- ADCX/ADOX with the propagated carry
 top add is `addCarryWord hi1 0 c1`. Every arrow is one of the new ops; the two
 `MULX`es are `(mulhi, regArith .mul)` pairs.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

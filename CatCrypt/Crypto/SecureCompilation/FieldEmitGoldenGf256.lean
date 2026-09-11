@@ -3,11 +3,18 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ComBuilder
-import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
-import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfFull
-import CatCrypt.Crypto.SecureCompilation.VIR.MulDenoteErgonomics
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.ComBuilder
+public import CatCrypt.Crypto.SecureCompilation.ComBuilder
+public meta import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfFull
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfFull
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.MulDenoteErgonomics
+public import CatCrypt.Crypto.SecureCompilation.VIR.MulDenoteErgonomics
 
 /-!
 # Golden path, generated: the GF(2⁸) bit-serial multiply via the `Com` builder
@@ -43,6 +50,8 @@ FIPS-197 GF(2⁸) test vectors by `native_decide` (the canonical closed-vector
 validation — exercising the auto-resolved de-Bruijn resolution across all 91
 bindings; the all-inputs symbolic `rfl` is impractical at this size).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

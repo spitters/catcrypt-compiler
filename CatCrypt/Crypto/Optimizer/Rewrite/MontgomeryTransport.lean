@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Algebra.Field.Basic
-import Mathlib.Data.ZMod.Basic
-import CatCrypt.Crypto.Optimizer.Lattice.NTTButterflyPass
+module
+
+import all Init.Data.Repr
+public import Mathlib.Algebra.Field.Basic
+public import Mathlib.Data.ZMod.Basic
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTButterflyPass
 
 /-!
 # Montgomery-domain transport for NTT arithmetic
@@ -34,6 +37,8 @@ of the ordinary `ctButterfly ω a b`. So a Montgomery-domain butterfly *reads as
 the ordinary butterfly under the representation map, closing the
 `Montgomery ↔ ZMod` (field) transport gap.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

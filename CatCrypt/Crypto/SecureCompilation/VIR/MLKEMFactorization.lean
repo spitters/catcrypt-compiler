@@ -3,11 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.MLKEMNegacyclicSound
-import CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic
-import Mathlib.FieldTheory.KummerExtension
-import Mathlib.RingTheory.RootsOfUnity.Basic
+module
 
+public import Mathlib.Tactic.NormNum.Prime
+public import CatCrypt.Crypto.SecureCompilation.VIR.MLKEMNegacyclicSound
+public import CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic
+public import Mathlib.FieldTheory.KummerExtension
+public import Mathlib.RingTheory.RootsOfUnity.Basic
+
+
+@[expose] public section
 set_option autoImplicit false
 set_option maxRecDepth 4000
 
@@ -27,7 +32,7 @@ This file **discharges both** for the concrete ML-KEM-768 twiddle family
 and instantiates `mlkem_incompleteNTT_map_mul` to obtain an **unconditional**
 incomplete-NTT `map_mul` over `(ZMod 3329)[X] / (X^256 + 1)` — no hypotheses.
 
-## The arithmetic backbone (kernel-checked `decide +kernel`)
+## The arithmetic facts (kernel-checked `decide +kernel`)
 
 `17` is a primitive `256`-th root of unity in `ZMod 3329`:
 `17^256 = 1` and `17^128 = 3328 = -1 ≠ 1` (both by kernel `decide`, so no
@@ -69,7 +74,7 @@ open scoped Function
 open CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic (negaPoly quadPoly quadPoly_monic
   incompleteNTTOfModulus incompleteNTTOfModulus_map_mul)
 
-/-! ## 1. The concrete twiddle family and the primitive-root backbone -/
+/-! ## 1. The concrete twiddle family and the primitive-root facts -/
 
 /-- The ML-KEM-768 twiddle family: the `128` odd powers of the primitive
     `256`-th root `17` over `ZMod 3329`. These are exactly the roots of
@@ -80,7 +85,7 @@ def mlkemZeta : Fin 128 → MLKEMField := fun i => (17 : MLKEMField) ^ (2 * (i :
 theorem mlkemRoot_pow_256 : (17 : MLKEMField) ^ 256 = 1 := by
   decide +kernel
 
-/-- `17^128 = -1` in `ZMod 3329` — the load-bearing 2-adicity fact: `17` is a
+/-- `17^128 = -1` in `ZMod 3329` — the 2-adicity fact: `17` is a
     primitive `256`-th root with `(17^128)^2 = 1` but `17^128 ≠ 1`. -/
 theorem mlkemRoot_pow_128 : (17 : MLKEMField) ^ 128 = -1 := by
   decide +kernel
@@ -167,7 +172,6 @@ theorem mlkem_X256_add_one_eq_prod :
   -- Substitute `X ↦ X^2` into the linear splitting of `X^128 + 1`.
   have hcomp := congrArg (Polynomial.comp · (X ^ 2 : MLKEMField[X]))
     mlkem_X128_add_one_eq_prod
-  dsimp only at hcomp
   -- LHS: `(X^128 + 1).comp (X^2) = X^256 + 1`.
   rw [add_comp, pow_comp, X_comp, one_comp, ← pow_mul,
     show (128 * 2 : ℕ) = 256 from rfl] at hcomp

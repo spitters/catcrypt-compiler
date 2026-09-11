@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
 # FAEST symmetric-leaf specs (AES-128 and SHAKE128)
@@ -49,6 +51,8 @@ independent of the emitter (`JasminAbiEmit` / `JasmincSemAlignment` /
 
 0 sorries. The leaf edge is parametric (a hypothesis), never a `sorry`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

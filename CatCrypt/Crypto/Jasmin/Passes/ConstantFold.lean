@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.PassFramework
+module
+
+public import CatCrypt.Crypto.Jasmin.PassFramework
 
 /-!
 # Constant Folding Pass
@@ -25,6 +27,8 @@ case, the key step is: `eval(ret x >>= f) = f(x)` via `SPComp.pure_bind`,
 which shows that pre-computing a pure expression yields the same result.
 -/
 
+@[expose] public section
+
 namespace CatCrypt.Crypto.Jasmin
 
 open CatCrypt.Deep (RawCode eval_bind eval_ret)
@@ -39,14 +43,14 @@ clean equations and keep the main proof manageable. -/
 
 /-- Fold a unary operation applied to a (possibly constant) expression.
     Currently folds: `Onot (Pbool b) → Pbool (!b)` -/
-private def foldApp1 (op : SOp1) (e : PExpr) : PExpr :=
+def foldApp1 (op : SOp1) (e : PExpr) : PExpr :=
   match op, e with
   | .Onot, .Pbool b => .Pbool (!b)
   | _, _ => .Papp1 op e
 
 /-- Fold a binary operation applied to (possibly constant) expressions.
     Currently folds boolean ops: Oand, Oor, Obeq on Pbool arguments. -/
-private def foldApp2 (op : SOp2) (e₁ e₂ : PExpr) : PExpr :=
+def foldApp2 (op : SOp2) (e₁ e₂ : PExpr) : PExpr :=
   match op, e₁, e₂ with
   | .Oand, .Pbool a, .Pbool b => .Pbool (a && b)
   | .Oor,  .Pbool a, .Pbool b => .Pbool (a || b)
@@ -55,7 +59,7 @@ private def foldApp2 (op : SOp2) (e₁ e₂ : PExpr) : PExpr :=
 
 /-- Fold a conditional with a (possibly constant) condition.
     `Pbool true → et`, `Pbool false → ef`, otherwise keep. -/
-private def foldIf (ty : SType) (cond et ef : PExpr) : PExpr :=
+def foldIf (ty : SType) (cond et ef : PExpr) : PExpr :=
   match cond with
   | .Pbool true  => et
   | .Pbool false => ef
@@ -81,7 +85,7 @@ noncomputable section
 
 /-- Key lemma: `foldApp1` preserves eval when the input expression
     has the same eval as some original expression. -/
-private theorem foldApp1_spec (op : SOp1) (e e₀ : PExpr) (sid : ScopeId)
+theorem foldApp1_spec (op : SOp1) (e e₀ : PExpr) (sid : ScopeId)
     (h : (translatePExpr sid e).eval = (translatePExpr sid e₀).eval) :
     (translatePExpr sid (foldApp1 op e)).eval =
     (translatePExpr sid (.Papp1 op e₀)).eval := by
@@ -96,7 +100,7 @@ private theorem foldApp1_spec (op : SOp1) (e e₀ : PExpr) (sid : ScopeId)
     simp only [translatePExpr, eval_bind, eval_ret, h]
 
 /-- Key lemma: `foldApp2` preserves eval. -/
-private theorem foldApp2_spec (op : SOp2) (e₁ e₂ e₁₀ e₂₀ : PExpr) (sid : ScopeId)
+theorem foldApp2_spec (op : SOp2) (e₁ e₂ e₁₀ e₂₀ : PExpr) (sid : ScopeId)
     (h₁ : (translatePExpr sid e₁).eval = (translatePExpr sid e₁₀).eval)
     (h₂ : (translatePExpr sid e₂).eval = (translatePExpr sid e₂₀).eval) :
     (translatePExpr sid (foldApp2 op e₁ e₂)).eval =
@@ -131,7 +135,7 @@ private theorem foldApp2_spec (op : SOp2) (e₁ e₂ e₁₀ e₂₀ : PExpr) (s
     simp only [translatePExpr, eval_bind, eval_ret, h₁, h₂]
 
 /-- Key lemma: `foldIf` preserves eval. -/
-private theorem foldIf_spec (ty : SType) (cond et ef cond₀ et₀ ef₀ : PExpr)
+theorem foldIf_spec (ty : SType) (cond et ef cond₀ et₀ ef₀ : PExpr)
     (sid : ScopeId)
     (hc : (translatePExpr sid cond).eval = (translatePExpr sid cond₀).eval)
     (ht : (translatePExpr sid et).eval = (translatePExpr sid et₀).eval)

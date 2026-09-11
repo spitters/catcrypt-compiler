@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1FrontDenote
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1PreinvAgree
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1FrontDenote
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1PreinvAgree
 
 /-!
 # `mpn_divrem_1` front-denote value capstone
@@ -24,6 +26,8 @@ module composes those into the value statement: the program's denotation is
 * `preinvFold_eq_divFold`: the `k`-fold identification, `k ≤ top + 1`.
 * `divRtProg_val`: the compiled program denotes `divFold`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1FrontDenoteVal
 

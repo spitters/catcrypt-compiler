@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSlhdsaChainTie
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha256CompressTie
+module
+
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSlhdsaChainTie
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha256CompressTie
 
 /-!
 # #607 security tie: the compile-from-hax SLH-DSA (`sha2-*`) WOTS+ chain leaves
@@ -47,6 +49,8 @@ that equality to `tie_transfer`.
   tweakable-hash `F` runs. Reducing the abstract `TweakableHashParams` to this
   concrete SHA-256 engine is a separate concrete instantiation, not invented here.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

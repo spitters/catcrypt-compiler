@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAsmPrinter
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAsmPrinter
 
 /-!
 # Looped (non-unrolled) control-flow lowering for the owned AArch64 backend (#551)
@@ -70,6 +74,8 @@ bound or branch is forbidden in the constant-time subset (it would compile to
 `CSEL`, no PC divergence). The bounded-for layer here is public-counter by
 construction, so it is CT-admissible.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

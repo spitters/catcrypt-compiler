@@ -3,12 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.AlgebraicGeometry.EllipticCurve.Affine.Point
-import Mathlib.Data.ZMod.Basic
-import Mathlib.Algebra.Field.ZMod
-import CatCrypt.Crypto.SecureCompilation.VIR.VectorReduce
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-import CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFront
+module
+
+import all Init.Data.Repr
+public import Mathlib.AlgebraicGeometry.EllipticCurve.Affine.Point
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.Algebra.Field.ZMod
+public import CatCrypt.Crypto.SecureCompilation.VIR.VectorReduce
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public import CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFront
 
 /-!
 # The pairing-ZK shared hot kernel: multi-scalar multiplication (MSM) over an EC group
@@ -79,6 +82,8 @@ substrate the three systems share.
 0 sorries; the only hypotheses are the opaque EC-leaf agreements
 (`EcLeafAgrees`), the edge carried throughout this theory.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

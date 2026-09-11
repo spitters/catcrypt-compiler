@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Lean
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+module
+
+public import Lean
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
 # `kernel%` — a dialect-generic typed symbol-table elaborator for `Com` leaves
@@ -67,7 +69,7 @@ The **type proof rides for free on intrinsic typing.** `Ctxt.Var.here` has type
 demands. The elaborator therefore never manufactures a proof term; it computes
 indices only, and intrinsic typing discharges the `Ty` obligation.
 
-`kernel%` is an `elab` (not a `macro`): the scope is genuine monadic state
+`kernel%` is an `elab` (not a `macro`): the scope is monadic state
 threaded through the statement list, which a `macro`'s independent per-statement
 `$[…]` expansion cannot express.
 
@@ -81,6 +83,8 @@ per authored program: once the elaborator is trusted, a leaf is written
 `def foo := kernel% (…){ … }` directly and needs no `= raw-AST` twin (the surface
 IS the definition). See `Fe25519TwoLanguageProgram.lean` for that end state.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -111,11 +115,13 @@ syntax (name := kbind) ident " := " term:max "[" ident,* "]" : kstmt
 /-- Terminal return of a named value. -/
 syntax (name := kret) "ret " ident : kstmt
 
+meta section
+
 /-- Resolve a named use to its typed de-Bruijn `Ctxt.Var`. The name's position
     `i` in `scope` is its de-Bruijn index, so this emits
     `Ctxt.Var.there^i Ctxt.Var.here`. The typing proof is discharged by
     intrinsic typing when the emitted index is checked against the context. -/
-private def resolveVar (scope : Array Name) (nm : Name) : TermElabM (TSyntax `term) := do
+def resolveVar (scope : Array Name) (nm : Name) : TermElabM (TSyntax `term) := do
   match scope.findIdx? (· == nm) with
   | none => throwError "kernel%: unbound variable `{nm}`"
   | some i => do
@@ -125,7 +131,7 @@ private def resolveVar (scope : Array Name) (nm : Name) : TermElabM (TSyntax `te
     return v
 
 /-- Build the `HVector` argument spine `.cons a₀ (.cons a₁ … .nil)`. -/
-private def mkHVector (vs : List (TSyntax `term)) : TermElabM (TSyntax `term) := do
+def mkHVector (vs : List (TSyntax `term)) : TermElabM (TSyntax `term) := do
   let mut acc ← `(HVector.nil)
   for v in vs.reverse do
     acc ← `(HVector.cons $v $acc)
@@ -134,7 +140,7 @@ private def mkHVector (vs : List (TSyntax `term)) : TermElabM (TSyntax `term) :=
 /-- Fold the statement list into a `Com`, threading the compile-time scope.
     A binding prepends its name to the scope (new index `0`); `ret` emits the
     return of the resolved var. -/
-private partial def buildCom (scope : Array Name) : List Syntax → TermElabM (TSyntax `term)
+partial def buildCom (scope : Array Name) : List Syntax → TermElabM (TSyntax `term)
   | [] => throwError "kernel%: empty body"
   | [s] =>
     if s.isOfKind ``kret then do
@@ -169,6 +175,8 @@ elab (name := kernelStx) "kernel% " fs:kformal+ "{" ss:sepBy1(kstmt, ";") "}" : 
   let stmts := ss.getElems.toList.map (·.raw)
   let comTerm ← buildCom formalNames stmts
   elabTerm comTerm (some expectedType)
+
+end            -- meta section
 
 /-! ## 2. Jasmin instantiation demo + the fixed elaborator-regression suite
 

@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ComToFramedJInstrLeaq
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ComToFramedJInstrLeaq
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ComToFramedJInstrLeaq
 
 /-!
 # `compileComToElfJInstr` — the JInstr owned-emit ELF entry, byte-equal to `compileComToElf`
@@ -88,6 +91,8 @@ to `LprogBytes.encodeLprogReloc` / the JInstr `jinstrRelocEmit`) is the
 **multi-function** object with cross-function relocations — a separate stitch. The
 GoldenPath kernels are all single-function, so they are on the covered path.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

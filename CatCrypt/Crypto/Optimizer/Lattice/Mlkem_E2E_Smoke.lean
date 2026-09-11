@@ -3,10 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.MLKEM.MlkemLowCT
-import CatCrypt.Crypto.Optimizer.Pipeline
-import CatCrypt.Crypto.Jasmin.LowCTToJasmin
-import CatCrypt.Crypto.Jasmin.LowCTDSL
+module
+
+public meta import CatCrypt.Crypto.MLKEM.MlkemLowCT
+public import CatCrypt.Crypto.MLKEM.MlkemLowCT
+public meta import CatCrypt.Crypto.Optimizer.Pipeline
+public import CatCrypt.Crypto.Optimizer.Pipeline
+public meta import CatCrypt.Crypto.Jasmin.LowCTToJasmin
+public import CatCrypt.Crypto.Jasmin.LowCTToJasmin
+public meta import CatCrypt.Crypto.Jasmin.LowCTDSL
+public import CatCrypt.Crypto.Jasmin.LowCTDSL
 
 /-!
 # Stage I — End-to-end smoke test for the NTT poly-mul pass
@@ -41,6 +47,8 @@ will see the NTT name and dispatch to an NTT-backed implementation
   recursive definition (no extra theorem needed).
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Optimizer.Lattice.Mlkem_E2E_Smoke
@@ -55,11 +63,11 @@ open CatCrypt.Crypto.MLKEM.MlkemLowCT
 /-- The original `poly_mul_kernel "a" "b" "c"` is a single
     `RCall "poly_mul"` (modulo DSL `RSkip`-pairing).  We compute the
     rewrite into a `let` so the proof goal stays compact. -/
-private def origPolyMul : LowCT :=
+def origPolyMul : LowCT :=
   poly_mul_kernel "a" "b" "c"
 
 /-- Result of applying the Tier-3 ML-KEM pass to the single-site kernel. -/
-private def rewrittenPolyMul : LowCT :=
+def rewrittenPolyMul : LowCT :=
   nttPolyMulMlkem origPolyMul
 
 /-- The pass swaps the leaf name `"poly_mul"` → `"ntt_poly_mul_3329_256"`.
@@ -72,11 +80,11 @@ example : rewrittenPolyMul =
 
 /-- `poly_madd_kernel` runs `poly_mul` then `poly_add` on adjacent slots.
     Only the `poly_mul` is rewritten by the pass; `poly_add` is left as-is. -/
-private def origPolyMadd : LowCT :=
+def origPolyMadd : LowCT :=
   poly_madd_kernel "a" "b" "c" "d"
 
 /-- Result of applying the Tier-3 ML-KEM pass to the composite kernel. -/
-private def rewrittenPolyMadd : LowCT :=
+def rewrittenPolyMadd : LowCT :=
   nttPolyMulMlkem origPolyMadd
 
 example : rewrittenPolyMadd =
@@ -91,7 +99,7 @@ strings are large.
 -/
 
 /-- Jasmin pretty-print of the single-site rewrite. -/
-private def jasminSingleSite : String :=
+def jasminSingleSite : String :=
   ppJasminProg
     (toJasminProg "poly_mul_test"
       [loc "a" MlkemPolyTy, loc "b" MlkemPolyTy]
@@ -99,7 +107,7 @@ private def jasminSingleSite : String :=
       rewrittenPolyMul)
 
 /-- Jasmin pretty-print of the composite rewrite. -/
-private def jasminComposite : String :=
+def jasminComposite : String :=
   ppJasminProg
     (toJasminProg "poly_madd_test"
       [loc "a" MlkemPolyTy, loc "b" MlkemPolyTy]
@@ -107,7 +115,7 @@ private def jasminComposite : String :=
       rewrittenPolyMadd)
 
 /-- Helper: substring containment via `String.splitOn` length. -/
-private def String.containsSubstr (s sub : String) : Bool :=
+def String.containsSubstr (s sub : String) : Bool :=
   (s.splitOn sub).length > 1
 
 /-- The single-site Jasmin output contains the NTT leaf name. -/

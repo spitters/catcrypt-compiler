@@ -3,7 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib
+module
+
+public import Mathlib.Tactic.NormNum.Prime
+public import Mathlib.NumberTheory.LucasPrimality
+public import Mathlib.Tactic.NormNum
+public import Transfer.Examples.ZModPowMod
 
 /-!
 # Pratt/Lucas prime certificates over fast modular exponentiation
@@ -29,91 +34,38 @@ the `a ^ (p - 1) = 1` hypothesis of `lucas_primality`.
   prime factors of `p - 1`, and fast `powMod` checks.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.PrattCertificate
 
-/-- Binary modular exponentiation with an explicit fuel bounding the number of
-squarings. For `k < 2 ^ fuel`, `powModFuel a n fuel k = a ^ k % n`. -/
-def powModFuel (a n : ℕ) : ℕ → ℕ → ℕ
-  | 0, _ => 1 % n
-  | fuel + 1, k =>
-    if k = 0 then 1 % n
-    else
-      let half := powModFuel a n fuel (k / 2)
-      let sq := (half * half) % n
-      if k % 2 = 1 then (sq * a) % n else sq
-
 /-- Binary (square-and-multiply) modular exponentiation: `powMod a k n = a ^ k % n`
-(for `0 < n`), computed in `O(log k)` multiplications. -/
-def powMod (a k n : ℕ) : ℕ := powModFuel a n k k
+(for `0 < n`), computed in `O(log k)` multiplications. Reuses the **tail-recursive**
+`Transfer.ZModPowMod.powMod` (which carries the running square as an accumulator),
+so kernel `decide` reduces it in `O(log k)` steps — fast and axiom-free at
+cryptographic sizes, unlike `native_decide` (which needs a `leanc` compile and adds
+a `Lean.ofReduceBool` axiom). The tree-recursive `powModFuel` this replaced was
+`decide`-slow because the kernel materialised the whole recursion. -/
+def powMod (a k n : ℕ) : ℕ := Transfer.ZModPowMod.powMod a k n
 
-theorem powModFuel_modEq (a n : ℕ) :
-    ∀ (fuel k : ℕ), k < 2 ^ fuel → powModFuel a n fuel k ≡ a ^ k [MOD n] := by
-  intro fuel
-  induction fuel with
-  | zero =>
-    intro k hk
-    simp only [pow_zero] at hk
-    have hk0 : k = 0 := by omega
-    subst hk0
-    simp only [powModFuel, pow_zero]
-    exact Nat.mod_modEq 1 n
-  | succ fuel ih =>
-    intro k hk
-    by_cases hk0 : k = 0
-    · subst hk0
-      simp only [powModFuel, pow_zero]
-      exact Nat.mod_modEq 1 n
-    · have hhalf : k / 2 < 2 ^ fuel := by
-        have h2 : (2 : ℕ) ^ (fuel + 1) = 2 ^ fuel * 2 := pow_succ 2 fuel
-        omega
-      have ihh := ih (k / 2) hhalf
-      simp only [powModFuel, if_neg hk0]
-      by_cases hpar : k % 2 = 1
-      · simp only [if_pos hpar]
-        set h := powModFuel a n fuel (k / 2) with hdef
-        have hpow : a ^ (k / 2) * a ^ (k / 2) * a = a ^ k := by
-          rw [← pow_add, ← pow_succ]; congr 1; omega
-        refine (Nat.mod_modEq _ _).trans ?_
-        exact hpow ▸ (Nat.ModEq.mul_right a ((Nat.mod_modEq _ _).trans (ihh.mul ihh)))
-      · simp only [if_neg hpar]
-        set h := powModFuel a n fuel (k / 2) with hdef
-        have hpow : a ^ (k / 2) * a ^ (k / 2) = a ^ k := by
-          rw [← pow_add]; congr 1; omega
-        exact (Nat.mod_modEq _ _).trans (hpow ▸ (ihh.mul ihh))
-
-theorem powModFuel_lt (a n : ℕ) (hn : 0 < n) :
-    ∀ (fuel k : ℕ), powModFuel a n fuel k < n := by
-  intro fuel
-  induction fuel with
-  | zero => intro k; exact Nat.mod_lt 1 hn
-  | succ fuel ih =>
-    intro k
-    simp only [powModFuel]
-    by_cases hk0 : k = 0
-    · simp only [if_pos hk0]; exact Nat.mod_lt 1 hn
-    · simp only [if_neg hk0]
-      by_cases hpar : k % 2 = 1
-      · simp only [if_pos hpar]; exact Nat.mod_lt _ hn
-      · simp only [if_neg hpar]; exact Nat.mod_lt _ hn
+/-- The output is a residue: `powMod a k n < n` for `0 < n`. -/
+theorem powMod_lt (a k n : ℕ) (hn : 0 < n) : powMod a k n < n :=
+  Transfer.ZModPowMod.powModGo_lt n hn k (a % n) k (1 % n) (Nat.mod_lt 1 hn)
 
 /-- Correctness of binary modular exponentiation. -/
 theorem powMod_eq (a k n : ℕ) (hn : 0 < n) : powMod a k n = a ^ k % n := by
-  have hlt : powModFuel a n k k < n := powModFuel_lt a n hn k k
-  have hmod : powModFuel a n k k ≡ a ^ k [MOD n] :=
-    powModFuel_modEq a n k k (Nat.lt_two_pow_self)
-  calc powMod a k n = powModFuel a n k k := rfl
-    _ = powModFuel a n k k % n := (Nat.mod_eq_of_lt hlt).symm
-    _ = a ^ k % n := hmod
+  have hml : a ^ k % n < n := Nat.mod_lt _ hn
+  have hc : ((powMod a k n : ℕ) : ZMod n) = ((a ^ k % n : ℕ) : ZMod n) := by
+    rw [powMod, Transfer.ZModPowMod.powMod_cast, ZMod.natCast_mod, Nat.cast_pow]
+  have hmeq := (ZMod.natCast_eq_natCast_iff _ _ _).mp hc
+  rwa [Nat.ModEq, Nat.mod_eq_of_lt (powMod_lt a k n hn), Nat.mod_eq_of_lt hml] at hmeq
 
 /-- The fast `powMod` result cast into `ZMod n` equals the abstract power there,
 so a `powMod … = 1` check discharges an `a ^ k = 1` hypothesis over `ZMod n`. -/
 theorem powMod_cast (a k n : ℕ) [NeZero n] :
     ((powMod a k n : ℕ) : ZMod n) = (a : ZMod n) ^ k := by
-  have hn : 0 < n := Nat.pos_of_ne_zero (NeZero.ne n)
-  rw [powMod_eq a k n hn,
-    (ZMod.natCast_eq_natCast_iff _ _ _).mpr (Nat.mod_modEq (a ^ k) n), Nat.cast_pow]
+  rw [powMod, Transfer.ZModPowMod.powMod_cast]
 
 /-- A prime dividing the product of a list of primes is a member of the list. -/
 theorem prime_mem_of_dvd_listProd {q : ℕ} (hq : q.Prime) :

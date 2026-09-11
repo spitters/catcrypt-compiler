@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
-import Std.Tactic.BVDecide
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
+public import Std.Tactic.BVDecide
 
 /-!
 # Golden path: branchless subtract-with-borrow as `Com jasminDialect`
@@ -31,6 +34,8 @@ The value step `r.toNat + b.toNat = a.toNat + borrow · 2^64` (`field_sub_borrow
 the subtract-analogue of `fieldAdd_carry_reconstruct`) threads the borrow through the
 borrow spec and `BitVec.toNat_sub` + `omega`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

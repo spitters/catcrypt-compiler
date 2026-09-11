@@ -3,8 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
 
 /-!
 # Pilot front lane (#568, #605): width-parameterized THIR → `Com jasminDialect` → owned-x86
@@ -77,6 +83,8 @@ no-effect model, no structs/enums/match/refs). The new things over the pilot are
 indexed array reads (`Atom.inp`), the ARX op surface (`Rhs.ror`/`Rhs.bin`),
 width-parameterization, and retargeting onto `jasminDialect`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -4144,7 +4152,7 @@ def treehashChainJazz (n : Nat) : String :=
 
 /-- The `dot4` THIR denotes `dotSpec 4`: the inner product
     `Σ_{i<4} a[i]·b[i]` with `a[i] = I i` and `b[i] = I (4 + i)`. -/
-theorem dot4Thir_denote (I : Fin 8 → BitVec 64) :
+private theorem dot4Thir_denote (I : Fin 8 → BitVec 64) :
     dot4.denote I (LEnv.empty 64) = some (dotSpec 4 I) := rfl
 
 end CatCrypt.Crypto.SecureCompilation.ThirToComFront

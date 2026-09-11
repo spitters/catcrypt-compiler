@@ -3,10 +3,18 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
-import CatCrypt.Crypto.Number.MontgomeryReduction
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public meta import CatCrypt.Crypto.Number.MontgomeryReduction
+public import CatCrypt.Crypto.Number.MontgomeryReduction
 
 /-!
 # A single-word Montgomery **REDC** step on the HIGH `catCryptDialect`
@@ -84,6 +92,8 @@ split-word ops are MULX/ADCX-covered).
 
 **0 sorries.**
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

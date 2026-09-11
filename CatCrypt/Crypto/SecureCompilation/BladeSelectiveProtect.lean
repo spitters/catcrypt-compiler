@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.SpeculativeCTFence
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.SpeculativeCTFence
+public import CatCrypt.Crypto.SecureCompilation.SpeculativeCTFence
 
 /-!
 # Blade-style *selective* speculative-protection placement
@@ -88,6 +91,8 @@ at window `0` and under `neverSpeculate`.
 * Cauligi et al., "Constant-Time Foundations for the New Spectre Era",
   PLDI 2020 (the speculative semantics).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.SpeculativeCT
 

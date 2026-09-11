@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
 
 /-!
 # Memory (`memref`) dialect over the owned x86 machine (#566)
@@ -43,6 +45,8 @@ denotation coincides.
   transformer as its lowered single-`JInstr` `cf` image (`lowerBlock` of the
   matching `loadMem` / `storeMem`), via `lowerBlock_denote`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.MemrefDialect
 

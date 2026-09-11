@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GenericFieldEmitValue
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Mul
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontCurveRegistry
-import CatCrypt.Crypto.SecureCompilation.FieldEmitRealizesFromCommSquare
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GenericFieldEmitValue
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Mul
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontCurveRegistry
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitRealizesFromCommSquare
 
 /-!
 # Discharging `FieldEmitRealizes` from the relational MUL commuting square
@@ -88,6 +90,8 @@ threads it through to a full `FieldEmitRealizes` witness, confirming the bridge
 delivers an inhabitant of the `GenericFieldEmitValue` hypothesis from the
 relational MUL law.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

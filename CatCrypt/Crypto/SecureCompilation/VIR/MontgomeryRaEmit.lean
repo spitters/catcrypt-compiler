@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
-import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+public import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
+public import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
 
 /-!
 # Montgomery multiplication inner kernel — register allocation
@@ -110,6 +114,8 @@ captures the seed-filtered total.
 
 `[propext, Quot.sound]` only. Same shape as `BarrettRaEmit`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

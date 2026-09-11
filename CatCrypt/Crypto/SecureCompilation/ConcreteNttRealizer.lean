@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GenericNttEmitValue
-import CatCrypt.Crypto.SecureCompilation.ConcreteNttEmitRealization
-import CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots
-import CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttInstances
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GenericNttEmitValue
+public import CatCrypt.Crypto.SecureCompilation.ConcreteNttEmitRealization
+public import CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots
+public import CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttInstances
 
 /-!
 # A CONCRETE NTT realizer: round-trip-verified encoding, KAT-free realization
@@ -69,6 +71,8 @@ and re-run the same commuting-square discharge (the math content
 ## References
 * NIST FIPS 203 (ML-KEM), FIPS 204 (ML-DSA)
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

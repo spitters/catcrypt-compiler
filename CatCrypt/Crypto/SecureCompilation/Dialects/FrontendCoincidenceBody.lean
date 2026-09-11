@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidenceRustState
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidenceRustState
+public import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidenceRustState
 
 /-!
 # DF whole-body coincidence — the two frontend denotations agree on the whole
@@ -68,6 +71,8 @@ as an explicit hypothesis on each let, not a hidden `sorry`.
 
 No `sorry`, no new axioms, no `native_decide`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

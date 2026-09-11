@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
 # P5 — a generic MUL→MULX instruction-selection pass over `List (JInstr 64)`
@@ -95,6 +100,8 @@ low `imul`'s `CF`/`OF` are dead before the next flag write) licenses the coalesc
 on every body, discharging the side condition the per-pair data proof leaves to
 the integrator.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

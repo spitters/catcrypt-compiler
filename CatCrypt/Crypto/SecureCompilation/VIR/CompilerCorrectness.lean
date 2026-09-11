@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasminDenoteUncond
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintCorrect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasminDenoteUncond
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintCorrect
 
 /-!
 # End-to-end compiler correctness on the `Com` chain
@@ -60,6 +62,8 @@ route below is the verified optimizer+backend half.
 
 0 sorries.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.CompilerCorrectness
 

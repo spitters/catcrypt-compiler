@@ -3,19 +3,21 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFront
-import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Add
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Mul
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontPallas
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontVesta
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontSecp256k1
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontCurve25519
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBN254
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontP256
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontP384
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls12381
-import Mathlib.Data.ZMod.Basic
+module
+
+public import CatCrypt.Crypto.SecureCompilation.RelationalFront
+public import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Add
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Mul
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontPallas
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontVesta
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontSecp256k1
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontCurve25519
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBN254
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontP256
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontP384
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls12381
+public import Mathlib.Data.ZMod.Basic
 
 /-!
 # The generic, table-driven curve-field registry (fractalyze `!field.pf<p>`)
@@ -77,6 +79,8 @@ datum: it already captures "a field is a prime + its limb count + its modulus
 limb-vector + its product-width reciprocal" as data. This module names that
 fact and exhibits the table.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

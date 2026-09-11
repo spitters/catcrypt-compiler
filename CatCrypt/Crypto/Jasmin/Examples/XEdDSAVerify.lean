@@ -50,20 +50,24 @@ We also include a variant that splits a 64-byte signature into the
 32-byte `r` and `s` components as separate locals, through the
 `bytes_slice` leaf.
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
-import CatCrypt.Crypto.Jasmin.RustEmit
-import CatCrypt.Crypto.Jasmin.Examples.EmittedASTCorrectness
+module
 
+public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.RustEmit
+public import CatCrypt.Crypto.Jasmin.Examples.EmittedASTCorrectness
+
+
+@[expose] public section
 namespace CatCrypt.Crypto.Jasmin.Examples.XEdDSAVerify
 
 open CatCrypt.Crypto.Jasmin.LowCT
 
 /-- A `TBytes n` slot at the given variable name. -/
-private def bytes (n : Nat) (v : String) : Located :=
+def bytes (n : Nat) (v : String) : Located :=
   { locVar := v, locSrc := TowerType.TBytes n }
 
 /-- A `TU64` slot. -/
-private def u64 (v : String) : Located :=
+def u64 (v : String) : Located :=
   { locVar := v, locSrc := TowerType.TU64 }
 
 /-! ## §1.  Happy-path verify body
@@ -123,11 +127,11 @@ def xeddsaVerifySplitBody : LowCT :=
 
 /-- Inputs: `pubkey : &[u8; 32]`, `signature : &[u8; 64]`,
     `message_buf : &[u8; 32]`. -/
-private def params : List Located :=
+def params : List Located :=
   [ bytes 32 "pubkey", bytes 64 "signature", bytes 32 "message_buf" ]
 
 /-- Outputs: `verified : &mut u64`. -/
-private def results : List Located := [ u64 "verified" ]
+def results : List Located := [ u64 "verified" ]
 
 /-- The Rust source string for `xeddsa_verify_field`. -/
 def emitXEdDSAVerify : String :=

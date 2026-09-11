@@ -3,11 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.KeccakThetaPiCom
-import CatCrypt.Crypto.Primitives.Keccak
-import Mathlib.Tactic.FinCases
-import Mathlib.Tactic.NormNum
-import Mathlib.Data.BitVec
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.KeccakThetaPiCom
+public import CatCrypt.Crypto.Primitives.Keccak
+public import Mathlib.Tactic.FinCases
+public import Mathlib.Tactic.NormNum
+public import Mathlib.Data.BitVec
 
 /-!
 # Abstract FIPS-202 θ/π ties for the unified-`Com` Keccak block (model-free)
@@ -68,6 +71,8 @@ denotation and the abstract FIPS-202 spec.
 
 Invoke: `lake build CatCrypt.Crypto.SecureCompilation.VIR.KeccakThetaPiAbstractCom`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

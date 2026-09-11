@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherImmForms
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X86OptPipelineComposed
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherImmForms
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86OptPipelineComposed
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
 
 /-!
 # `lsemStraight` of an `Lcmd` against `runBlock` of its gathered `JInstr` block
@@ -80,6 +82,8 @@ is the seam to the `Std.Do` kernel: it consumes exactly the register-file
 postcondition that `Ascent.RunBlockMvcgen.runBlockM_triple_iff` produces from an
 `mvcgen`-proved triple over `runBlockM`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,11 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Quantum.Instrument
-import CatCrypt.Quantum.CPMap
-import Mathlib.LinearAlgebra.Matrix.Trace
-import Mathlib.Data.Fin.VecNotation
-import Mathlib.Data.Fin.Tuple.Basic
+module
+
+public import CatCrypt.Quantum.Instrument
+public import CatCrypt.Quantum.CPMap
+public import Mathlib.LinearAlgebra.Matrix.Trace
+public import Mathlib.Data.Fin.VecNotation
+public import Mathlib.Data.Fin.Tuple.Basic
 
 /-!
 # Tensor Products for QComp
@@ -38,6 +40,8 @@ The Kronecker product `A ⊗ B` satisfies:
 
 * Watrous — The Theory of Quantum Information, Chapter 2
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -322,7 +326,7 @@ theorem trace_localOp₁_fun (op : QComp d₁ α) (a : α)
     Fintype.sum_prod_type, Finset.sum_comm]
 
 /-- The raw function underlying `localOp₂.branch b`. -/
-private def localOp₂_fun (op : QComp d₂ β) (b : β)
+def localOp₂_fun (op : QComp d₂ β) (b : β)
     (ρ : Matrix (Fin (d₁ * d₂)) (Fin (d₁ * d₂)) ℂ) :
     Matrix (Fin (d₁ * d₂)) (Fin (d₁ * d₂)) ℂ :=
   Matrix.of fun i j =>
@@ -372,8 +376,7 @@ def localOp₁ (op : QComp d₁ α) (hcp : ∀ a, IsCPMap (op.branch a)) :
   branch_psd := fun a ρ hρ => by
     let g : Fin d₂ × Fin d₁ ≃ Fin (d₁ * d₂) :=
       (Equiv.prodComm (Fin d₂) (Fin d₁)).trans (finProdEquiv d₁ d₂)
-    have h := (hcp a d₂ (ρ.submatrix g g) (hρ.submatrix g)).submatrix (⇑g.symm)
-    convert h using 1
+    exact (hcp a d₂ (ρ.submatrix g g) (hρ.submatrix g)).submatrix (⇑g.symm)
   branch_summable := fun ρ => by
     apply Pi.summable.mpr; intro i
     apply Pi.summable.mpr; intro j
@@ -433,8 +436,7 @@ def localOp₂ (op : QComp d₂ β) (hcp : ∀ b, IsCPMap (op.branch b)) :
   }
   branch_psd := fun b ρ hρ => by
     let e := finProdEquiv d₁ d₂
-    have h := (hcp b d₁ (ρ.submatrix e e) (hρ.submatrix e)).submatrix (⇑e.symm)
-    convert h using 1
+    exact (hcp b d₁ (ρ.submatrix e e) (hρ.submatrix e)).submatrix (⇑e.symm)
   branch_summable := fun ρ => by
     apply Pi.summable.mpr; intro i
     apply Pi.summable.mpr; intro j

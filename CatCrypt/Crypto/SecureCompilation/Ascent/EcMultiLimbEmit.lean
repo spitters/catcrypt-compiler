@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbCapstone
-import CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgree
-import Mathlib.Tactic.Ring
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbCapstone
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgree
+public import Mathlib.Tactic.Ring
 
 /-!
 # Welding the multi-limb EC subtract capstone to emitted machine-wire bytes
@@ -49,6 +51,8 @@ lowering. Closing it means extending the bridge's flag axis with an `sbb` leaf t
 threads the borrow-out (the mirror of `adcx_case` on the underflow predicate) — the
 same shape `corresJ_sbb` already proved on the abstraction side.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

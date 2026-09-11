@@ -3,7 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.ComparePrototype
+module
+
+public meta import CatCrypt.Crypto.Jasmin.Mpn.ComparePrototype
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.Mpn.ComparePrototype
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -87,7 +93,7 @@ open CatCrypt.Crypto.Jasmin
 open CatCrypt.Crypto.Jasmin.BignumExec
 open CatCrypt.Crypto.Jasmin.Emit
 open CatCrypt.Crypto.Jasmin.MemoryModel
-open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype hiding vr pv loadAt0 storeAt0 binImm
 open CatCrypt.Crypto.Jasmin.Mpn.ComparePrototype
 
 /-! ## §1  The non-aliasing `mpn_compare` body -/
@@ -156,7 +162,7 @@ within recursion limits.
 /-- Effect of one `loadAt0 x base` instruction.  Produces a state with `x` set
     to the loaded value, memory unchanged.  Cloned from
     `Mpn.AddNAdcSpillPrototype.execInstr_loadAt0` (we don't import that file). -/
-private theorem execInstr_loadAt0 (s : BignumState) (x base : String) (v : BitVec 64)
+theorem execInstr_loadAt0 (s : BignumState) (x base : String) (v : BitVec 64)
     (hv : load64Mem s.mem (UInt64.ofNat (s.regs base).toNat)
             = some (UInt64.ofNat v.toNat)) :
     execInstr s (loadAt0 x base) = some (setReg s x v) := by
@@ -167,7 +173,7 @@ private theorem execInstr_loadAt0 (s : BignumState) (x base : String) (v : BitVe
   simp only [bv_uint_roundtrip, bind, Option.bind, Option.bind_some]
 
 /-- Effect of `movReg dst src`: writes `s.regs src` into `dst`. -/
-private theorem execInstr_movReg (s : BignumState) (dst src : String) :
+theorem execInstr_movReg (s : BignumState) (dst src : String) :
     execInstr s (movReg dst src) = some (setReg s dst (s.regs src)) := by
   simp only [movReg, execInstr, evalPExpr, pv, vr,
              Option.bind_some, bind, Option.bind]
@@ -175,7 +181,7 @@ private theorem execInstr_movReg (s : BignumState) (dst src : String) :
 /-- Effect of `subCopn cfName dstName aName bName`: sets the `cfName` register
     to the borrow flag and the `dstName` register to the difference.
     Cloned-up from MpnComparePrototype style. -/
-private theorem execInstr_subCopn (s : BignumState)
+theorem execInstr_subCopn (s : BignumState)
     (cfName dstName aName bName : String) :
     execInstr s (subCopn cfName dstName aName bName) = some
       (setReg (setReg s cfName (subBorrow (s.regs aName) (s.regs bName)).1)
@@ -186,7 +192,7 @@ private theorem execInstr_subCopn (s : BignumState)
 
 /-- Forward append-join for `bignumExec` (local copy of
     `LowCTBorrowCheckInPlace.bignumExec_append_some`). -/
-private theorem bignumExec_append_some
+theorem bignumExec_append_some
     (b1 b2 : List InstrR) (s s_mid s' : BignumState)
     (h1 : bignumExec b1 s = some s_mid)
     (h2 : bignumExec b2 s_mid = some s') :

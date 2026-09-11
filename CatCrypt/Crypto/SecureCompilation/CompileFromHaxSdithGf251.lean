@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
-import CatCrypt.Crypto.SecureCompilation.BitVecNatBridge
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public meta import CatCrypt.Crypto.SecureCompilation.BitVecNatBridge
+public import CatCrypt.Crypto.SecureCompilation.BitVecNatBridge
 
 /-!
 # C4 fan-out: the verified compiler emits an SDitH GF(251) prime-field multiply
@@ -60,6 +64,8 @@ The abstract `(a*b) % 251` tie is stated and proved **separately**
 mod-reduce arithmetic identity (the hard part — the prime-field analogue of the
 `#117` Barrett seam).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -159,7 +165,7 @@ theorem gf251Mul_compiles :
       gf251MulSrc (fun _ => none) = some (gf251MulFold a b) := by
     have h := gf251MulSrc_denoteScalar (nIn := 2) ![a, b]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 64) (nIn := 2) ["a", "b"]
     ![a, b] gf251MulSrc _ hc hspec
 

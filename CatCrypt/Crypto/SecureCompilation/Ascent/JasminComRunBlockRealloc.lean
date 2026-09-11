@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.JasminComRunBlockSeq
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.JasminComRunBlockSeq
 
 /-!
 # Extending the ascent keystone toward a general D: register reuse + a non-arith op
@@ -48,6 +50,8 @@ Both sides of every tie are genuine — a real machine register read after a rea
 `runBlock`, and a real `Com jasminDialect` denotation (`bop.apply` / `mulHiW`
 folds), never `default`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

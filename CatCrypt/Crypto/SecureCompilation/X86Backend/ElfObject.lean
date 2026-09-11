@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Decoder
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Decoder
 
 /-!
 # A verified multi-symbol ELF64 relocatable-object stitcher (#556)
@@ -52,6 +54,8 @@ pin the object's *structure* (where each function lives, how big it is) for all
 inputs, so a linker / loader reading the symbol table recovers exactly the leaves
 the stitcher was given.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.ElfObject
 

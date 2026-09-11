@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GenericKernelRealization
-import CatCrypt.Crypto.Jasmin.ChaCha20Block
-import CatCrypt.Crypto.Primitives.Poly1305
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GenericKernelRealization
+public import CatCrypt.Crypto.Jasmin.ChaCha20Block
+public import CatCrypt.Crypto.Primitives.Poly1305
 
 /-!
 # The ChaCha20 block and the Poly1305 step are registry ROWS of the one generic predicate
@@ -48,6 +50,8 @@ Both `chachaBlock` (`ChaChaState → ChaChaState`) and Poly1305's `processBlock`
 (`Vale.ChaCha20Vec256`, `Jasmin.Chacha4WayReflect`) are opaque vectorised leaves with no pure
 spec, so we register the scalar `chachaBlock` row, not the vectorised ones.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

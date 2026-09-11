@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.SchedulerPass
+module
+
+public meta import CatCrypt.Crypto.Optimizer.SchedulerPass
+public import CatCrypt.Crypto.Optimizer.SchedulerPass
 
 /-!
 # Validation of the ILP scheduler on the safegcd-62 Montgomery chain
@@ -61,6 +64,8 @@ sched_microbench.c`) measures the two issue orders' cyc/op; see the
 honest read-out in this file's closing docstring and the bench output.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Optimizer.SchedulerPassValidation
@@ -71,7 +76,7 @@ open CatCrypt.Crypto.Optimizer.SchedulerPass
 /-! ## §1  The validation block (mirror of `accAddProd` ×2) -/
 
 /-- A scalar read. -/
-private def v (x : String) : SExpr := .SVar x
+def v (x : String) : SExpr := .SVar x
 
 /-- One `accAddProd`-shaped multiply-accumulate into `acc` of `a * b`,
     with product temps suffixed `t`.  Mirrors
@@ -79,7 +84,7 @@ private def v (x : String) : SExpr := .SVar x
     (the carry-bit-trick `_g{0,1,2}`/`cyy` ops are elided — they sit on
     the same serial `acc_lo`/`acc_hi` chain and don't change the
     independence structure between two products). -/
-private def prodChain (acc a b t : String) : List BBStmt :=
+def prodChain (acc a b t : String) : List BBStmt :=
   [ .sset s!"plo{t}"   (.SMulS   (v a) (v b))                  -- #IMUL low word
   , .sset s!"phi{t}"   (.SMulHiS (v a) (v b))                  -- #IMUL high word (long-latency)
   , .sset s!"nlo{t}"   (.SAdd (v s!"{acc}_lo") (v s!"plo{t}")) -- 128-bit add, low

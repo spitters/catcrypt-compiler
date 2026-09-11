@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLoop
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgSemCorrect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLoop
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgSemCorrect
 
 /-!
 # The LITERAL emitted counted loop (with `CMP`/flag) — increment 4c, gaps 1 & 2
@@ -69,6 +71,8 @@ decodes to `JForProg.denote`, and is public-counter constant-time.
 **0 sorries; axioms ⊆ {propext, Classical.choice, Quot.sound}; no
 `jasminc_preserves_ct`, no `JasminIRToX86` edge; no edit to `JasminLsem.lean`.**
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

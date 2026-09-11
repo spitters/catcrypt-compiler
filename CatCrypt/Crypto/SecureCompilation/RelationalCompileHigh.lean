@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
 
 /-!
 # A relational-compilation layer over the HIGH algebraic dialect (`fieldDialect`)
@@ -65,6 +68,8 @@ refine its algebraic state-step via the assembled `seq`/`fieldOp` lemmas, and
 (2) to denote exactly `a*b + c*d` — a small, `rfl`/`#eval`-checkable closed-form
 lemma (NOT a full-kernel `native_decide`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

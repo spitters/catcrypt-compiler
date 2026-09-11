@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.NttPassAlgebraBridge
+module
+
+import all Init.Data.Repr
+import all CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul
+public import CatCrypt.Crypto.SecureCompilation.NttPassAlgebraBridge
 
 /-!
 # Pass 3.1 — discharging the off-signature residual of the NTT pass→algebra bridge
@@ -64,6 +68,8 @@ the fully *unconditional* `nttAgreesPolyMul mlkemLeafSpec 3329 256` and hence
 the unconditional ML-KEM pass soundness — we do not claim it here, since (a)
 (b)(c) are not yet grounded in this file.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

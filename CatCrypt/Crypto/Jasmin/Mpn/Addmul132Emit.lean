@@ -3,10 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminAST
-import CatCrypt.Crypto.Jasmin.JasminEmit
-import CatCrypt.Crypto.Jasmin.JasminCT
+module
 
+public meta import CatCrypt.Crypto.Jasmin.JasminAST
+public import CatCrypt.Crypto.Jasmin.JasminAST
+public meta import CatCrypt.Crypto.Jasmin.JasminEmit
+public import CatCrypt.Crypto.Jasmin.JasminEmit
+public meta import CatCrypt.Crypto.Jasmin.JasminCT
+public import CatCrypt.Crypto.Jasmin.JasminCT
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!

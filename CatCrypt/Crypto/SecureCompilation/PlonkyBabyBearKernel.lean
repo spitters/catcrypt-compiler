@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MulModKernel
-import CatCrypt.Crypto.SecureCompilation.AddModKernel
+module
+
+public import CatCrypt.Crypto.SecureCompilation.MulModKernel
+public import CatCrypt.Crypto.SecureCompilation.AddModKernel
 
 /-!
 # Routing plonky3's BabyBear field through the compiler
@@ -15,6 +17,8 @@ kernels at the BabyBear prime gives BabyBear field arithmetic compiled through t
 `Com → RegProg → {AArch64, RISC-V}` pipeline, value-correct against `ZMod p`. This is
 the field layer of plonky3 routed through the verified compiler.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.PlonkyBabyBearKernel
 

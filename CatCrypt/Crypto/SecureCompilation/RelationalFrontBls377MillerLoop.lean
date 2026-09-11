@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377MillerLine
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377G2Scalar
+module
+
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377MillerLine
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377G2Scalar
 
 /-!
 # The `bls12_377` Miller-loop ACCUMULATION over the `Fp12` tower
@@ -65,6 +67,8 @@ its algebraic recurrences only.
 
 0 sorries; no custom axioms.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

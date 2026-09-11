@@ -3,19 +3,22 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
-import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
-import CatCrypt.Crypto.Optimizer.BarrettReduce
-import CatCrypt.Crypto.Optimizer.MontgomeryReduce
-import CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul
-import CatCrypt.Crypto.Optimizer.Lattice.NTTHoist
-import CatCrypt.Crypto.Optimizer.SchedulerPass
-import CatCrypt.Crypto.SecureCompilation.VIR.CommonSubexprElim
-import CatCrypt.Crypto.SecureCompilation.VIR.StrengthReduce
-import CatCrypt.Crypto.SecureCompilation.VIR.DeadCodeElim
-import CatCrypt.Crypto.SecureCompilation.VIR.CtPreservationNewTransforms
-import CatCrypt.Crypto.Optimizer.RegAllocLeakTrace
-import CatCrypt.Crypto.Optimizer.Rewrite.ComPipeline
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
+public import CatCrypt.Crypto.Optimizer.BarrettReduce
+public import CatCrypt.Crypto.Optimizer.MontgomeryReduce
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTHoist
+public import CatCrypt.Crypto.Optimizer.SchedulerPass
+public import CatCrypt.Crypto.SecureCompilation.VIR.CommonSubexprElim
+public import CatCrypt.Crypto.SecureCompilation.VIR.StrengthReduce
+public import CatCrypt.Crypto.SecureCompilation.VIR.DeadCodeElim
+public import CatCrypt.Crypto.SecureCompilation.VIR.CtPreservationNewTransforms
+public import CatCrypt.Crypto.Optimizer.RegAllocLeakTrace
+public import CatCrypt.Crypto.Optimizer.Rewrite.ComPipeline
 
 /-!
 # Pass Pipeline Orchestrator (Tier 4.1)
@@ -59,6 +62,8 @@ bound for termination).  Verification: each iteration preserves
 semantics by the per-pass theorems; fixed-point convergence is
 syntactic, not semantic.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -370,10 +375,10 @@ single `ntt_invntt_3329_256` is appended after the loop.  The
 `RLetZero acc` / `RLetZero prod` wrappers are what license the guarded
 hoist (the accumulator is provably zeroed at loop entry). -/
 
-private def hoistSmokeTy : TowerType := .TPolyMod 3329 256
+def hoistSmokeTy : TowerType := .TPolyMod 3329 256
 
 /-- Canonical kernel (k = 3): declare `acc`, `prod`, then the loop. -/
-private def hoistSmokeKernel : LowCT :=
+def hoistSmokeKernel : LowCT :=
   .RLetZero "acc" hoistSmokeTy (.RLetZero "prod" hoistSmokeTy
     (.RFor "i" 3
       (.RSeq (.RCall "poly_mul" ⟨"prod", hoistSmokeTy⟩
@@ -383,7 +388,7 @@ private def hoistSmokeKernel : LowCT :=
 
 /-- Expected output: NTT-domain `basemul` loop + a single closing
     `invntt`, inside the same accumulator scope. -/
-private def hoistSmokeExpected : LowCT :=
+def hoistSmokeExpected : LowCT :=
   .RLetZero "acc" hoistSmokeTy (.RLetZero "prod" hoistSmokeTy
     (.RSeq
       (.RFor "i" 3
@@ -393,16 +398,12 @@ private def hoistSmokeExpected : LowCT :=
                   [⟨"acc", hoistSmokeTy⟩, ⟨"prod", hoistSmokeTy⟩])))
       (.RCall (nttInvnttName 3329 256) ⟨"acc", hoistSmokeTy⟩ [⟨"acc", hoistSmokeTy⟩])))
 
-/-- The optimizer (Tier-3.1 ∘ Tier-3.2) rewrites the canonical loop into
-    the hoisted form. -/
-theorem tier3MlkemHoisted_smoke :
-    tier3MlkemHoisted hoistSmokeKernel = hoistSmokeExpected := by
-  rfl
+-- `tier3MlkemHoisted_smoke` moved out of Lean: checked by `lake exe optimizer-smoke-kat`.
 
-private def hoistSmokeTyDsa : TowerType := .TPolyMod 8380417 256
+def hoistSmokeTyDsa : TowerType := .TPolyMod 8380417 256
 
 /-- ML-DSA-65 canonical kernel. -/
-private def hoistSmokeKernelDsa : LowCT :=
+def hoistSmokeKernelDsa : LowCT :=
   .RLetZero "acc" hoistSmokeTyDsa (.RLetZero "prod" hoistSmokeTyDsa
     (.RFor "i" 6
       (.RSeq (.RCall "poly_mul" ⟨"prod", hoistSmokeTyDsa⟩
@@ -411,7 +412,7 @@ private def hoistSmokeKernelDsa : LowCT :=
                 [⟨"acc", hoistSmokeTyDsa⟩, ⟨"prod", hoistSmokeTyDsa⟩]))))
 
 /-- ML-DSA-65 expected hoisted form. -/
-private def hoistSmokeExpectedDsa : LowCT :=
+def hoistSmokeExpectedDsa : LowCT :=
   .RLetZero "acc" hoistSmokeTyDsa (.RLetZero "prod" hoistSmokeTyDsa
     (.RSeq
       (.RFor "i" 6
@@ -422,10 +423,7 @@ private def hoistSmokeExpectedDsa : LowCT :=
       (.RCall (nttInvnttName 8380417 256) ⟨"acc", hoistSmokeTyDsa⟩
         [⟨"acc", hoistSmokeTyDsa⟩])))
 
-/-- The ML-DSA-65 optimizer wiring rewrites its canonical loop too. -/
-theorem tier3MldsaHoisted_smoke :
-    tier3MldsaHoisted hoistSmokeKernelDsa = hoistSmokeExpectedDsa := by
-  rfl
+-- `tier3MldsaHoisted_smoke` moved out of Lean: checked by `lake exe optimizer-smoke-kat`.
 
 /-! ## §7  Composition theorem (top-level meta-theorem)
 

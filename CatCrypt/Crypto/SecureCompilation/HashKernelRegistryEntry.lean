@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GenericKernelRealization
-import CatCrypt.Crypto.Hash.Keccak
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GenericKernelRealization
+public import CatCrypt.Crypto.Hash.Keccak
 
 /-!
 # A hash permutation is a registry row of the one generic kernel predicate
@@ -36,6 +38,8 @@ permutation just as it accepts a modular reduce. Keccak-f is the cleanest pure p
 `def` in-repo (`KeccakState → KeccakState` with `steps` fixed); SHA-2 compression would be
 another row of the same kind.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

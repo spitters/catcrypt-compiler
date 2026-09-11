@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Rewrite.Peephole
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Optimizer.Rewrite.Peephole
 
 /-!
 # `Com jasminDialect` rewrite pipeline: peephole then equality-saturation (#274)
@@ -54,6 +57,8 @@ is canonicalised here, and the lowered `LowCT` block is scheduled there.
 All goals closed. Axiom set: `propext`, `Quot.sound` (inherited from the
 two passes' preservation theorems).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

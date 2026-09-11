@@ -3,7 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+module
+
+public meta import CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -527,7 +533,7 @@ theorem mpnSubN_loop :
       exact bignumExecFuel_loop_exit emptyRegistry extra _ loopBodySub s
         (evalPExpr_loopCond_false s hn0)
     · simp [mpnSubN, memHoldsLimbs]
-    · simpa [mpnSubN, borrowNat] using hcf
+    · simpa [mpnSubN, borrowNat] using! hcf
     · intro b _; rfl
   | cons a as ih =>
     intro bs s bin extra hlen hcf hn hap hbp hdoa hdob

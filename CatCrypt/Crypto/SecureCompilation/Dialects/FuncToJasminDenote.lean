@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.FuncToJasmin
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.FuncToJasmin
 
 /-!
 # `lowerFuncToJasmin` is denotation-preserving — UNCONDITIONALLY
@@ -40,6 +42,8 @@ the value unchanged in its single branch — exactly the `arith` template.
 
 0 sorries.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.Func
 
@@ -104,7 +108,7 @@ defaults:
 /-- A jasmin `extCall` with a **scalar `reg w` return** denotes to the opaque default,
     for ANY argument types: its `reg w` result is type-incompatible with the `stackArr 16`
     arms of `jasminExtSem`, so the match is forced to the catch-all. -/
-private theorem jasminExtSem_reg_default {name : String} {argTys : List JasminTy} {w : Nat}
+theorem jasminExtSem_reg_default {name : String} {argTys : List JasminTy} {w : Nat}
     (args : HVector (fun t => ⟦t⟧) argTys) :
     jasminExtSem name argTys (.reg w) args = JasminTy.default (.reg w) := by
   rcases argTys with _ | ⟨a, _ | ⟨b, rest⟩⟩ <;> simp only [jasminExtSem]

@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmModel
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmModel
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmModel
 
 /-!
 # Wiring a register-named scalar op alphabet to the A64 machine model (#533)
@@ -29,6 +32,8 @@ The trust boundary is the same shape as the x86 path: the lowering is verified
 down to the model; the model's per-op semantics is differential-validated (the
 RFC 8439 KAT below; the assembled-object check + qemu KAT live in `bench/`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

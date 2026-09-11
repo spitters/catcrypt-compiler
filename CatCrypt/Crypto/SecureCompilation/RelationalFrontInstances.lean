@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFront
-import Mathlib.Data.ZMod.Basic
-import Std.Tactic.BVDecide
+module
+
+import all Init.Data.Repr
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.RelationalFront
+public import Mathlib.Data.ZMod.Basic
+public import Std.Tactic.BVDecide
 
 /-!
 # The relational front's second customer: a non-`id` (injective-not-surjective) encoding
@@ -80,6 +84,8 @@ lifting it to `ECParams.add` reuses this `EndoOpRealization` shape but swaps the
 carrier for `Option (ZMod p × ZMod p)` and the kernel for the lowered group-law
 schedule — tracked, not done here.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

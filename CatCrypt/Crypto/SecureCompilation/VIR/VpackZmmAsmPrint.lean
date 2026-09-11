@@ -3,9 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
-import CatCrypt.Crypto.SecureCompilation.VIR.VsimdAsmPrint
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ButterflyBlockCom
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.VsimdAsmPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.VsimdAsmPrint
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ButterflyBlockCom
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ButterflyBlockCom
 
 /-!
 # Owned AT&T `.s` printer for the `vpackZMM` (512-bit ZMM) fragment of `Com jasminDialect`
@@ -71,6 +77,8 @@ mnemonic for the `%zmm` (EVEX) form:
 `zmmPackQ .shl` / `.shr`'s `a.qword[k] <<< b.qword[k].toNat` semantics — not the
 immediate-count `vpsllq` / `vpsrlq`.)
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

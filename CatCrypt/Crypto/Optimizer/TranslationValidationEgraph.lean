@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.TranslationValidation
+module
+
+public import CatCrypt.Crypto.Optimizer.TranslationValidation
 
 /-!
 # Translation validation against the algebraic canonicalisation pipeline (#591)
@@ -43,6 +45,8 @@ drives equality-saturation must agree with the valuation at which we evaluate.
 Sound and incomplete, like the base checker, and with no enlargement of the TCB
 beyond the already-proved pipeline.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

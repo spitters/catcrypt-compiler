@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontECAdd
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontECAdd
 
 /-!
 # The UNIFIED short-Weierstrass group law `ECParams.add` over `ECPoint` (GF(251))
@@ -101,6 +104,8 @@ GF(251) field by a 6×64-limb CIOS field; the relational *structure*
 (tagged encoding + per-branch commuting square + branchless select) ports
 verbatim — only the per-op kernels change.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -464,7 +469,7 @@ theorem worked_vertical_unified_realized :
 theorem worked_double_unified :
     blsClassCurve.add (some (0, 1)) (some (0, 1)) = some (0, 250) := by
   rw [dblCase_eq_ECParams_add 0 1 1 (by decide)]
-  simp only [ecDblAffine, tangentSlope251]; decide
+  simp only [ecDblAffine, tangentSlope251]; decide +kernel
 
 /-- **The doubling `P + P`, encoded/branchless side.**  `ecAddUnifiedBV` (after
     the O-flags fail, `x₁ = x₂`, and the vertical flag fails) computes the tangent

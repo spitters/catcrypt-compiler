@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.QuadExtConjGeneric
+module
+
+public import CatCrypt.Crypto.SecureCompilation.QuadExtConjGeneric
 
 /-!
 # Generic norm-tower for `QuadExt K = K[u]/(u² − ξ)` — multiplicativity and composition
@@ -41,6 +43,8 @@ instance makes `QuadExt K` a `CommRing` (so `QuadExt (QuadExt K)` is again a
 to an emitted base kernel — that lift is per-instantiation and deliberately out
 of scope here, to keep the generic core focused and sorry-free.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

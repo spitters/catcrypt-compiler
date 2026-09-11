@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.LoopEmitBridge
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.LoopEmitBridge
+public import CatCrypt.Crypto.SecureCompilation.VIR.LoopEmitBridge
 
 /-!
 # The runtime-N `mpn_add_n` loop is the `n`-fold iterate of its verified per-limb body
@@ -63,6 +66,8 @@ claimed here. This is a **functional-correctness + runtime-N** result — the lo
 combinator computes the real `mpn_add_n` value and is verified as a machine
 transformer, parametric in the runtime limb count.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

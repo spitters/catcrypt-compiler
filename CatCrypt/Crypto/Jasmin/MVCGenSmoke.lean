@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Std.Do.Triple
-import Std.Tactic.Do
+module
 
+public import Std.Do.Triple
+public import Std.Tactic.Do
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!

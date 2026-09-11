@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
 
 /-!
 # Cross-side leaf-axiom consolidation (#200, #232)
@@ -66,6 +68,8 @@ the running binary is trusted and explicitly delimited.
 No bare axiom, no `sorry`: `LeafFFIValidated` is a parametric hypothesis, not a
 global `axiom`, exactly like the per-protocol `*LeafAgrees` it generalises.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

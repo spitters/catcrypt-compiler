@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.BigNatCompare
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivQrFrontEmit
+module
+
+public import CatCrypt.Crypto.SecureCompilation.BigNatCompare
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivQrFrontEmit
 
 /-!
 # Euclidean division and modulo on the `BigNat` carrier
@@ -32,6 +34,8 @@ digit steps the quotient window `Q` and remaining window `R` satisfy
   `bignumVal (mod a b) = bignumVal a % bignumVal b`, for arbitrary `b`
   (including `bignumVal b = 0`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.BigInt
-import CatCrypt.Crypto.SecureCompilation.ToomInterpolation
+module
+
+public import CatCrypt.Crypto.SecureCompilation.BigInt
+public import CatCrypt.Crypto.SecureCompilation.ToomInterpolation
 
 /-!
 # Recursive integer Toom-Cook-4 multiplication on the `BigNat` carrier
@@ -40,6 +42,8 @@ the recursion needs.
 * `toom4` / `toom4_val` — the recursive multiply and its value correctness
   `bignumVal (toom4 a b) = bignumVal a * bignumVal b`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

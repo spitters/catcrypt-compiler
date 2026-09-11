@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.LatticeHoist
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeHoist
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 
 /-!
 # The `invntt` hoist as a SYNTACTIC loop pass over the lattice dialect
@@ -54,6 +57,8 @@ to the step. The deliverable is therefore: a loop representation (fold of
 `Com`-level iterations) + a denotation-preserving hoist rewrite reusing the
 verified fusion core `latticeHoist_eq`/`latticeHoist_generic`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.LatticeDialect
 

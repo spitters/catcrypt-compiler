@@ -28,10 +28,14 @@ proofs are:
 
 Total: 16 IR bodies with mechanised memory-safety witnesses.
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
-import CatCrypt.Crypto.Jasmin.Examples.EmittedASTCorrectness
-import CatCrypt.Crypto.Jasmin.Examples.XEdDSAVerify
+module
 
+public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.Examples.EmittedASTCorrectness
+public import CatCrypt.Crypto.Jasmin.Examples.XEdDSAVerify
+
+
+@[expose] public section
 namespace CatCrypt.Crypto.Jasmin.Examples.XEdDSAVerifySplitSafety
 
 open CatCrypt.Crypto.Jasmin.LowCT
@@ -49,15 +53,15 @@ The three locals introduced by `RLetZero` (`edwards_pk`, `r_part`,
 applications. -/
 
 /-- `TBytes 32` slot helper (mirrors the private one in `XEdDSAVerify`). -/
-private def bytes32 (v : String) : Located :=
+def bytes32 (v : String) : Located :=
   { locVar := v, locSrc := TowerType.TBytes 32 }
 
 /-- `TBytes 64` slot helper. -/
-private def bytes64 (v : String) : Located :=
+def bytes64 (v : String) : Located :=
   { locVar := v, locSrc := TowerType.TBytes 64 }
 
 /-- `TU64` slot helper. -/
-private def u64slot (v : String) : Located :=
+def u64slot (v : String) : Located :=
   { locVar := v, locSrc := TowerType.TU64 }
 
 /-! ## §2.  Strong panic-freeness + memory safety -/

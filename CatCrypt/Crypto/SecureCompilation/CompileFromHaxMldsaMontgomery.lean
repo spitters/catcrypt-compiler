@@ -3,7 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # C4 fan-out: the verified compiler emits the ML-DSA `montgomery_reduce`
@@ -65,6 +70,8 @@ state it in the exact multiple-of-`q` form `montgomery_reduce` removes
 pure-BitVec `bv_decide`; the form-level `_compiles` is the primary deliverable and
 stands on its own.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -160,9 +167,7 @@ theorem mldsaMontgomery_compiles :
   intro a
   have hspec : ImpExpr.denoteScalar ["a"] ![a]
       mldsaMontgomerySrc (fun _ => none) = some (mldsaMontgomeryForm a) := by
-    have h := mldsaMontgomerySrc_denoteScalar (nIn := 1) ![a]
-    simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+    exact mldsaMontgomerySrc_denoteScalar (nIn := 1) ![a]
   exact compileFromHax_meets_spec (w := 64) (nIn := 1) ["a"]
     ![a] mldsaMontgomerySrc _ hc hspec
 

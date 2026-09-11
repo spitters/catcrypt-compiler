@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLoop
-import CatCrypt.Crypto.Jasmin.LowCT
-import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLoop
+public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
 
 /-!
 # Tying the `LowCT` FRONT control flow to the emitted control flow + labeled `lsem`
@@ -75,6 +77,8 @@ The front is `LowCT` over `RustState`, with big-step semantics `RustExec`:
 **0 sorries; axioms ⊆ {propext, Classical.choice, Quot.sound}; no
 `jasminc_preserves_ct`, no `JasminIRToX86` edge.**
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -179,7 +183,7 @@ theorem enc_frontForRun_eq_reentry {w : Nat} {body : List LinstrR}
     (hstart : E.enc rs = { sb with lpc := 1 }) (k : Nat) :
     E.enc (frontForRun frontStep k rs) = (reentry spec sb k).base := by
   induction k with
-  | zero => simpa using hstart
+  | zero => simpa using! hstart
   | succ m ih =>
       rw [frontForRun_succ, E.comm, ih, reentry_succ_data]
 

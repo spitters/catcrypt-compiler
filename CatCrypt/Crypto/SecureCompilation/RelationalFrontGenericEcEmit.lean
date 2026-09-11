@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontGenericEmit
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.RelationalFrontGenericEmit
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontGenericEmit
 
 /-!
 # Generic EC-operation routing through the owned compiler front
@@ -70,6 +73,8 @@ the relational-front squares over the curve's group structure.  Here we exhibit
 only that EC ops lower through the front to their `<curve>_point_*` leaves,
 uniformly across curves.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

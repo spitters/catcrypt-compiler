@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminCoqSemMirror
+module
+
+public meta import CatCrypt.Crypto.Jasmin.JasminCoqSemMirror
+public import CatCrypt.Crypto.Jasmin.JasminCoqSemMirror
 
 /-!
 # A runtime-bound (`while`) loop lowering: emitted `Cwhile` run = condition-driven iteration
@@ -85,6 +88,8 @@ in the deliverable, not papered over.
 All goals are closed; no opaque-leaf hypothesis is needed (the executor and `whileExec`
 are both concrete functional definitions).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

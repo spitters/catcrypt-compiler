@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.TranslationValidation
-import CatCrypt.Crypto.Optimizer.SchedulerPass
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Optimizer.TranslationValidation
+public import CatCrypt.Crypto.Optimizer.SchedulerPass
 
 /-!
 # Schedule-aware translation validation (#591 continuation)
@@ -55,6 +58,8 @@ The base `tvCheck`/`tvCheck_sound` over `Com` is re-exported unchanged
   certified) but **never unsound**: it never certifies a candidate that changes
   the denotation.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Rewrite.KaratsubaGenericPass
-import CatCrypt.Crypto.Optimizer.Rewrite.Toom3GenericPass
+module
+
+public import CatCrypt.Crypto.Optimizer.Rewrite.KaratsubaGenericPass
+public import CatCrypt.Crypto.Optimizer.Rewrite.Toom3GenericPass
 
 /-!
 # Tying the verified multiplication methods: method-selection is sound
@@ -43,6 +45,8 @@ We expose the two arities as small `inductive` selectors and a dispatch
 `evalMethod*` so the substitution theorem can be stated once, quantified over
 the chosen method, rather than as a matrix of pairwise equalities.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

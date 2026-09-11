@@ -3,13 +3,22 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ThirToComFront
-import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
-import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.FheNttButterflyEmit
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.ThirToComFront
+public import CatCrypt.Crypto.SecureCompilation.ThirToComFront
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.FheNttButterflyEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.FheNttButterflyEmit
 
 /-!
 # A straight-line BLOCK of `K` inlined lazy (Harvey) FHE-NTT Shoup CT butterflies
@@ -115,6 +124,8 @@ bounds `K` (see the `K = 4` decision above). Operand orders are inherited
 verbatim from `fheBflyThir`: `r = v − c`, `Tlz = lo1 − lo2 = Y·ω − q̂·q`,
 `Yo = Xn2q − T`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -416,6 +427,6 @@ def emitMain : IO Unit := do
 -- `bench/fhe_ntt_compare/gen` is a build output of this module, and
 -- `bfly_block_kat` therefore links what this module currently produces rather
 -- than a checked-in copy.
-#eval emitMain
+-- #eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.FheNttBlockEmit

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmBInstRegAlloc
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArmFront
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmBInstRegAlloc
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArmFront
 
 /-!
 # Closing the concrete-allocator gap: the shipped allocation satisfies `allocValidOn`
@@ -49,6 +51,8 @@ over. Closing it requires first generalizing `ArmAsmPrinter.allocGp` (currently
 `AInst`-specific via `ainstDstSrcs`) to `BInst` via `binstDstSrcs`, then proving
 the linear-scan distinct-live-names invariant. That is reported, not attempted.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

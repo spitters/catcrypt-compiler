@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
 
 /-!
 # CProg-free variable / valuation bridge (substrate ↔ `catCryptDialect`)
@@ -26,6 +28,8 @@ support module that imports nothing from the retiring cluster.
 Imports only the substrate + dialect (`CatCryptDialect`, which itself re-exports
 `VIR/Core` and `CryptoSSA`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

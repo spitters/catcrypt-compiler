@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel
-import Mathlib.Logic.Function.Iterate
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel
+public import CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel
+public import Mathlib.Logic.Function.Iterate
 
 /-!
 # Structured control flow — the verified `scf` layer (bounded counted loop)
@@ -45,6 +48,8 @@ verified leaves (`TileModel.lowerRegBlock_denote`).
 which is the form a round-loop wants (`scfFor (count+1) = step count ∘ scfFor
 count`). Both directions are proved below.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.StructuredControlFlow
 

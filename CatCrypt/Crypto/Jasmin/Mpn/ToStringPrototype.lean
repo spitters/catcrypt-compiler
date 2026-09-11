@@ -3,9 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.DecimalSpec
-import CatCrypt.Crypto.Jasmin.Mpn.AddNAdcSpillPrototype
-import CatCrypt.Crypto.Jasmin.Mpn.PowPrototype
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.Mpn.DecimalSpec
+public import CatCrypt.Crypto.Jasmin.Mpn.DecimalSpec
+public meta import CatCrypt.Crypto.Jasmin.Mpn.AddNAdcSpillPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.AddNAdcSpillPrototype
+public meta import CatCrypt.Crypto.Jasmin.Mpn.PowPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.PowPrototype
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -734,7 +742,7 @@ theorem bignumExecFuel_qLoop_step (reg : BignumRegistry) (f : Nat)
 
 /-- Local copy of `bignumExec_append_some_local` — forward append join
     for `bignumExec`. -/
-private theorem bignumExec_append_some_local
+theorem bignumExec_append_some_local
     (b1 b2 : List InstrR) (s s_mid s' : BignumState)
     (h1 : bignumExec b1 s = some s_mid)
     (h2 : bignumExec b2 s_mid = some s') :

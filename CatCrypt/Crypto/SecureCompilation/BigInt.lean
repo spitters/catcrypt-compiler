@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.BigNatKaratsuba
-import CatCrypt.Crypto.SecureCompilation.BigNatDivMod
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.BigNatKaratsuba
+public import CatCrypt.Crypto.SecureCompilation.BigNatDivMod
 
 /-!
 # BigInt: a signed sign-magnitude big-integer carrier
@@ -30,6 +33,8 @@ carrier operation is proven to compute the corresponding `Int` operation.
 * `divExactSmall` / `divExactSmall_val` — exact division by a small `Nat`,
   `intVal (divExactSmall x d h) = intVal x / d`, given `(d : Int) ∣ intVal x`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

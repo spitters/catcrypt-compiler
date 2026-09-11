@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.BignumHoare.LowCTReflectiveEval
+module
+
+public meta import CatCrypt.Crypto.Jasmin.BignumHoare.LowCTReflectiveEval
+public import CatCrypt.Crypto.Jasmin.BignumHoare.LowCTReflectiveEval
 
 /-!
 # Test-vector verification via reflective `evalChain`
@@ -37,6 +40,8 @@ Inherits the soundness axioms from
 
 Per-vector closure adds **0 new axioms**.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

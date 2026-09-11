@@ -3,13 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3CompressEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3HashLeafEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3NttLayerEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FriFoldEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3CompressEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3HashLeafEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3NttLayerEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FriFoldEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # Plonky3 whole-prover SINGLE-BINARY composing module (FULL_PROVER_VS_P3 Gap 2)
@@ -52,6 +54,8 @@ concatenated.
   these specific loop bodies is the open work). This module closes the
   field-kernel single-`.s` composition, which is the central half of Gap 2.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

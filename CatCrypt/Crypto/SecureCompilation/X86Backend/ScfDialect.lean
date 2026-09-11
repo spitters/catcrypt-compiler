@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
 
 /-!
 # Structured-control-flow (`scf`) dialect over the owned x86 machine (#566)
@@ -49,6 +51,8 @@ this packages the proven machinery as a composable dialect op.
   `scfFor_succ` (peel one iteration), `scfIf_true` / `scfIf_false` (constant-flag
   fold) — the denotation-level rewrites a `canonicalize`/`fold` pass applies.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.ScfDialect
 

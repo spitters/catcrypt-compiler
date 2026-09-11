@@ -3,10 +3,19 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRuntimeLoopCarrySelect
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectPhaseCompose
-import CatCrypt.Crypto.SecureCompilation.Dialects.RolledFront
-import CatCrypt.Crypto.SecureCompilation.Dialects.FrontSiblingLoops
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRuntimeLoopCarrySelect
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRuntimeLoopCarrySelect
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectPhaseCompose
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectPhaseCompose
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.RolledFront
+public import CatCrypt.Crypto.SecureCompilation.Dialects.RolledFront
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.FrontSiblingLoops
+public import CatCrypt.Crypto.SecureCompilation.Dialects.FrontSiblingLoops
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -493,29 +502,29 @@ theorem compileLoop_denote {Γouter : Ctxt jasminDialect} {accCTy : CryptoTy}
       have hc' : rolledForLoopN n vmBody accName body init invs = some c := hc
       have h := rolledForLoopN_denote n vmBody accName body init invs hupd V
       rw [hc'] at h
-      simpa using h
+      simpa using! h
     case runtime cv =>
       have hc' : rolledForLoopNRt vmBody accName body cv init invs = some c := hc
       have h := rolledForLoopNRt_denote vmBody accName body cv init invs hupd V
       rw [hc'] at h
-      simpa using h
+      simpa using! h
     case countdown g =>
       have hc' : rolledWhileNzComL vmBody accName body g init invs = some c := hc
       have h := rolledWhileNzComL_denote vmBody accName body g init invs hupd V
       rw [hc'] at h
-      simpa using h
+      simpa using! h
   case carrySelect =>
     cases trip
     case static n =>
       have hc' : rolledForLoopNC n vmBody accName body init invs = some c := hc
       have h := rolledForLoopNC_denote n vmBody accName body init invs hupd V
       rw [hc'] at h
-      simpa using h
+      simpa using! h
     case runtime cv =>
       have hc' : rolledForLoopNRtC vmBody accName body cv init invs = some c := hc
       have h := rolledForLoopNRtC_denote vmBody accName body cv init invs hupd V
       rw [hc'] at h
-      simpa using h
+      simpa using! h
     case countdown g =>
       exact absurd hc (by simp [compileLoop])
   case vsimd =>
@@ -524,7 +533,7 @@ theorem compileLoop_denote {Γouter : Ctxt jasminDialect} {accCTy : CryptoTy}
       have hc' : rolledForLoopNV n vmBody accName body init invs = some c := hc
       have h := rolledForLoopNV_denote n vmBody accName body init invs hupd V
       rw [hc'] at h
-      simpa using h
+      simpa using! h
     case runtime cv =>
       exact absurd hc (by simp [compileLoop])
     case countdown g =>
@@ -588,14 +597,14 @@ theorem compileNested_denote {Γouter : Ctxt jasminDialect} {accCTy : CryptoTy}
     have h := rolledForLoopNRtNested_denote vmCount countName countBody vmBody accName
       updateBody outerCount init invs hcnt hupd V
     rw [hc'] at h
-    simpa using h
+    simpa using! h
   case carrySelect =>
     have hc' : rolledForLoopNRtNestedC vmCount countName countBody vmBody accName
         updateBody outerCount init invs = some c := hc
     have h := rolledForLoopNRtNestedC_denote vmCount countName countBody vmBody accName
       updateBody outerCount init invs hcnt hupd V
     rw [hc'] at h
-    simpa using h
+    simpa using! h
   case vsimd =>
     exact absurd hc (by simp [compileNested])
 
@@ -649,17 +658,17 @@ theorem compileLoopCont_denote {Γouter : Ctxt jasminDialect} {accCTy : CryptoTy
     have hc' : rolledForLoopNCont n vmBody accName body init invs cont = some c := hc
     have h := rolledForLoopNCont_denote n vmBody accName body init invs cont hupd V
     rw [hc'] at h
-    simpa using h
+    simpa using! h
   case runtime cv =>
     have hc' : rolledForLoopNRtCont vmBody accName body cv init invs cont = some c := hc
     have h := rolledForLoopNRtCont_denote vmBody accName body cv init invs cont hupd V
     rw [hc'] at h
-    simpa using h
+    simpa using! h
   case countdown g =>
     have hc' : rolledWhileNzComLCont vmBody accName body g init invs cont = some c := hc
     have h := rolledWhileNzComLCont_denote vmBody accName body g init invs cont hupd V
     rw [hc'] at h
-    simpa using h
+    simpa using! h
 
 /-- The continuation-free plain routes are the continuation-carrying ones at
     `.ret .here`, at every trip-count kind. -/

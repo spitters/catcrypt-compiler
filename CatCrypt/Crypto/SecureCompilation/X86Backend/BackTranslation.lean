@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarCompileCorrect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarCompileCorrect
 
 /-!
 # The non-identity back-translation for the register-allocation refinement
@@ -86,6 +88,8 @@ outside the owned straight-line scalar-arith fragment. It is the value-observati
 back-translation for the one refinement stage (allocation) that is a
 renaming, complementing the identity back-translation of the equivalence lowering.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpWholeBody
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpWholeBody
 
 /-!
 # The front-compiled doubling kernel denotes its spec
@@ -27,6 +29,8 @@ the evaluation `selfCheck` measured as infeasible.
   valuation consistent with a `PrologueEntry` environment, denotes the 12-cell
   frame holding `pointCells (jacDblSpec X Y Z)`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrontValue
 

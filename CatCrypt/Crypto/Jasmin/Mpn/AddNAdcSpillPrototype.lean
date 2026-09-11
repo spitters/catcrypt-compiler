@@ -3,7 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+module
+
+public meta import CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -663,7 +669,7 @@ theorem mpnAddN_spillLoop :
       exact bignumExecFuel_loop_exit emptyRegistry extra _ loopBody s
         (evalPExpr_loopCond_false s hn0)
     · simp [mpnAddN, memHoldsLimbs]
-    · simpa [mpnAddN, carryNat] using hcc
+    · simpa [mpnAddN, carryNat] using! hcc
     · intro b _; rfl
   | cons a as ih =>
     intro bs s cin extra hlen hcc hn hap hbp hdoa hdob

@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpEpilogue
-import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpPrologue
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpEpilogue
+public import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpPrologue
 
 /-!
 # The whole `jacDbl` body, from the input point frame to the output cells
@@ -53,6 +56,8 @@ brick, whose commands are all scalar assignments, cannot unbind them.
   12-cell frame, running `jacDblBody` leaves `out` holding
   `pointCells (jacDblSpec X Y Z)`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpWholeBody
 

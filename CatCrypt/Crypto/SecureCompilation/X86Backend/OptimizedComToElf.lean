@@ -3,10 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElf
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtended
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X86OptPipelineComposed
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElf
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElf
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtended
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtended
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.X86OptPipelineComposed
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86OptPipelineComposed
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
 
 /-!
 # An OPT-IN optimized `Com → owned-x86 → ELF` path (P1 activation)
@@ -61,6 +67,8 @@ existing `compileComToElf`. There is no partial / silently-truncated emission.
   byte-KAT verification and (for spill coverage) extending `lowerLinstrExtL` to
   the spill/frame operand shapes.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

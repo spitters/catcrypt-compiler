@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.YmmDialectOps
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.YmmDialectOps
+public import CatCrypt.Crypto.SecureCompilation.VIR.YmmDialectOps
 
 /-!
 # Owned AT&T `.s` printer for the 256-bit `YmmOp` family (no `Avx2YmmModel`)
@@ -78,6 +82,8 @@ physical-register names, no instruction selection / scheduling / regalloc) and
 `gas` performs only assembly. The trusted edge is: the printer is correct AT&T
 syntax for each mnemonic, and `gas` encodes each mnemonic per the SDM.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

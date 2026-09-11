@@ -3,12 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportPoseidon2
-import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2WholePermCom
-import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2ResidenceAlloc
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportPoseidon2
+public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2WholePermCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2ResidenceAlloc
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # Compiled Poseidon2-BabyBear linear-jasmin owned-RA producer (task #504)
@@ -28,6 +30,8 @@ state-lane loads, and the output stores are all 64-bit; the emitted blob carries
 the `:64` width tag on its body mnemonics and the patched `read_linear`
 materialises them at U64.
 -/
+
+@[expose] public section
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
   (Com.toLprogPhysAbi Com.writeLprogPhysAbiFile
@@ -55,7 +59,7 @@ def main : IO UInt32 := do
   -- ranges sharing a slot are non-overlapping. The prior `slotTraceArr` collapse
   -- (one class per logical slot) under-counted liveness and clobbered live lanes.
   let poseidon2Body :=
-    (comToLfundef poseidon2PermComOut poseidon2ImmSlots).lfd_body
+    (comToLfundef (poseidon2PermComOut ()) poseidon2ImmSlots).lfd_body
   -- Held at `none`. `residenceOfBody` is proven interference-free
   -- (`allocFold_pairwise_disj`) and KAT-correct, and its liveness is now precise
   -- (computed over the emit-time `materializeShiftCountImms` body). But Poseidon2
@@ -67,7 +71,7 @@ def main : IO UInt32 := do
   let residence : Option (Array Nat) :=
     none
   let lp : CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.Lprog :=
-    Com.toLprogPhysAbi poseidon2PermComOut "poseidon2_bb_permute"
+    Com.toLprogPhysAbi (poseidon2PermComOut ()) "poseidon2_bb_permute"
               (fun _ => none) poseidon2ImmSlots
               poseidon2InLoadMap poseidon2OutStoreMap
               (residence := residence)
@@ -92,7 +96,7 @@ def main : IO UInt32 := do
         | _ => pure ()
       IO.println s!"  max spill k.N : {maxSpill}  (reserved frame holds {maxSpill + 1} U64 spill cells + 8 qsave)"
   | none => pure ()
-  Com.writeLprogPhysAbiFile poseidon2PermComOut "poseidon2_bb_permute" outPath
+  Com.writeLprogPhysAbiFile (poseidon2PermComOut ()) "poseidon2_bb_permute" outPath
     (fun _ => none) poseidon2ImmSlots poseidon2InLoadMap poseidon2OutStoreMap
     (residence := residence)
   let sz := (← outPath.metadata).byteSize

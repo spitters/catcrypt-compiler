@@ -3,8 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRobust
+module
+import all CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRobust
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRobust
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRobust
 
 /-!
 # Move propagation + dead-move elimination on the owned-RA `Lcmd`
@@ -154,6 +161,8 @@ def kernelAsm : String :=
   renderLprogAtt (LcmdCopyPropagate.copyPropagateLprog kernelLprog)
 ```
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -1097,19 +1106,19 @@ theorem suffix_eq_of_length {α : Type} {l₁ l₂ L : List α} (h₁ : l₁ <:+
   exact (List.append_inj heq hlen).2
 
 /-- A mnemonic carrying the narrow `:16` width tag does not also carry `:64`. -/
-theorem endsWith_16_not_64 (s : String) (h : s.endsWith ":16" = true) :
-    s.endsWith ":64" = false := by
-  rw [String.endsWith_eq_endsWith_toSlice] at h ⊢
-  rw [String.Slice.endsWith_string_iff] at h
-  rw [String.Slice.endsWith_string_eq_false_iff]
+theorem endsWith_16_not_64 (s : String) (h : hasSuffix s ":16" = true) :
+    hasSuffix s ":64" = false := by
+  unfold hasSuffix at h ⊢
+  rw [List.isSuffixOf_iff_suffix] at h
+  rw [Bool.eq_false_iff, ne_eq, List.isSuffixOf_iff_suffix]
   intro h64; exact absurd (suffix_eq_of_length h h64 (by decide)) (by decide)
 
 /-- A mnemonic carrying the narrow `:8` width tag does not also carry `:64`. -/
-theorem endsWith_8_not_64 (s : String) (h : s.endsWith ":8" = true) :
-    s.endsWith ":64" = false := by
-  rw [String.endsWith_eq_endsWith_toSlice] at h ⊢
-  rw [String.Slice.endsWith_string_iff] at h
-  rw [String.Slice.endsWith_string_eq_false_iff]
+theorem endsWith_8_not_64 (s : String) (h : hasSuffix s ":8" = true) :
+    hasSuffix s ":64" = false := by
+  unfold hasSuffix at h ⊢
+  rw [List.isSuffixOf_iff_suffix] at h
+  rw [Bool.eq_false_iff, ne_eq, List.isSuffixOf_iff_suffix]
   intro h64
   obtain ⟨t₁, ht₁⟩ := h
   obtain ⟨t₂, ht₂⟩ := h64
@@ -1130,23 +1139,23 @@ theorem stripWidthTag_mov_of_moveShape (opn : String)
     (hmn : (stripAbiTag opn == "MOV" || stripAbiTag opn == "MOVQ") = true)
     (hw : (mnemWidth opn == 32 || mnemWidth opn == 64) = true) :
     stripWidthTag opn = "MOV" ∨ stripWidthTag opn = "MOVQ" := by
-  by_cases e16 : opn.endsWith ":16" = true
+  by_cases e16 : hasSuffix opn ":16" = true
   · exfalso
     have e64 := endsWith_16_not_64 opn e16
     have hq : opn ≠ "MOVQ" := by
       rintro rfl
-      rw [show ("MOVQ".endsWith ":16") = false from by decide +kernel] at e16
+      rw [show (hasSuffix "MOVQ" ":16") = false from by decide +kernel] at e16
       exact absurd e16 (by simp)
     have hmw : mnemWidth opn = 16 := by unfold mnemWidth; simp [e64, e16, hq]
     rw [hmw] at hw; simp at hw
-  · by_cases e8 : opn.endsWith ":8" = true
+  · by_cases e8 : hasSuffix opn ":8" = true
     · exfalso
       have e64 := endsWith_8_not_64 opn e8
       have hq : opn ≠ "MOVQ" := by
         rintro rfl
-        rw [show ("MOVQ".endsWith ":8") = false from by decide +kernel] at e8
+        rw [show (hasSuffix "MOVQ" ":8") = false from by decide +kernel] at e8
         exact absurd e8 (by simp)
-      have e16f : opn.endsWith ":16" = false := by simpa using e16
+      have e16f : hasSuffix opn ":16" = false := by simpa using e16
       have hmw : mnemWidth opn = 8 := by unfold mnemWidth; simp [e64, e8, e16f, hq]
       rw [hmw] at hw; simp at hw
     · simp only [Bool.not_eq_true] at e16 e8

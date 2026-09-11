@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
-import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+public import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
+public import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
 
 /-!
 # Bignum ADCX/ADOX/MULX dual-chain `mpn_addmul_1` with live-range-aware RA
@@ -123,6 +128,8 @@ relabelling of the existing `MpnAddMul1AdxPrototype` register names).
 We do not modify the prototype emit; the RA is a parallel,
 analysis-driven naming scheme that the bench driver can route through.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.BorrowToMemoryBridge
-import CatCrypt.Crypto.SecureCompilation.RustStateSubstrate
-import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectRustSim
+module
+
+public import CatCrypt.Crypto.SecureCompilation.BorrowToMemoryBridge
+public import CatCrypt.Crypto.SecureCompilation.RustStateSubstrate
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectRustSim
 
 /-!
 # B2.3: integrating B1's `RustStateInterp` with the borrow ↔ memory bridge
@@ -39,6 +41,8 @@ it. The compositional shape stated here is what callers will hold.
 
 **0 sorries.** Standard axioms + the operational hypothesis.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.BorrowToMemoryBridgeRustState
 

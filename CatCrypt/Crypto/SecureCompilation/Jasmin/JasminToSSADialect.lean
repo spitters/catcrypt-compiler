@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminMonoSem
-import CatCrypt.Crypto.Jasmin.JasminAST
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
-import CatCrypt.Crypto.SecureCompilation.Dialects.CatCryptDialectSP
+module
+
+public import CatCrypt.Crypto.Jasmin.JasminMonoSem
+public import CatCrypt.Crypto.Jasmin.JasminAST
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CatCryptDialectSP
 
 /-!
 # Dialect-targeting Jasmin → SSA translation (`catCryptDialect`)
@@ -47,6 +49,8 @@ The straight bignum ALU spine — the arms `S2NBignumSSA`'s ports actually use
 (copy / add / sub / mul / and / xor / or / not / shifts / const / ret) plus
 the `ADD_64`/`ADC_64` carry intrinsics — is fully covered.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.ToSSADialect
 

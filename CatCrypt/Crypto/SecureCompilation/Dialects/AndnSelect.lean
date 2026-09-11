@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithIselPass
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithIselPass
 
 /-!
 # D3 — the `andn` peephole: a subtree-collapsing ISel pass on `Com jasminDialect`
@@ -53,6 +55,8 @@ the structural one the headline carries: the body must be a pass fixed point
 rewrites to `andn` and the denotation is preserved; on every non-matching shape it
 is the identity.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

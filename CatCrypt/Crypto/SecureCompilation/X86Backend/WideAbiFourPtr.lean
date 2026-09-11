@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 
 /-!
 # Wide / multi-pointer leaf ABI — the 4- and 5-pointer (modulus-as-pointer) witnesses
@@ -33,6 +35,8 @@ separately).
   pointer arguments (`p`, `w`) are already home and need no plumbing, so the only
   move is freeing the MULX funnel `%rdx` for operand `y`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.WideAbiFourPtr
 

@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCT
 
 /-!
 # Limb-level store on tower values
@@ -44,6 +48,8 @@ a short `TBytes`) admits no write at any index.
 * `towerLimb_towerLimbSet_ne` — every other limb is unchanged.
 * `rustValByte_towerLimbSet_inside` / `_outside` — the byte-level frame.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.LowCT
 
@@ -115,7 +121,7 @@ def concreteLimbStore : LimbStoreSpec :=
 `TFp` is 48 bytes, i.e. six `u64` limbs: indices 0–5 fit, index 6 does not. -/
 
 /-- A `TFp` value carrying `7` in limb 2 and zero elsewhere. -/
-private def limbStoreFixture : RustVal .TFp := towerLimbSet default 2 7
+def limbStoreFixture : RustVal .TFp := towerLimbSet default 2 7
 
 -- The written limb reads back.
 #guard towerLimb (towerLimbSet limbStoreFixture 1 0x0123456789ABCDEF) 1 == 0x0123456789ABCDEF

@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.BigNatCompare
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnShiftFrontEmit
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.BigNatCompare
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnShiftFrontEmit
 
 /-!
 # Shift operations on the `BigNat` carrier
@@ -39,6 +42,8 @@ through the `cells ↔ bignumVal` adapter (`bignumVal_cells_full`), giving the
 * `lshift_carrier` / `rshift_carrier` — the `≤ 64`-bit front loop result, read
   through the adapter as `* 2 ^ cnt` / `/ 2 ^ cnt` of the carrier list.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

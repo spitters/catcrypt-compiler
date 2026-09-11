@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.BitVec
-import Mathlib.Algebra.Group.Defs
-import Mathlib.Tactic
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import Mathlib.Data.BitVec
+public import Mathlib.Algebra.Group.Defs
+public import Std.Tactic.BVDecide
 
 /-!
 # Verified GF(16) — `GF(2)[x] / (x^4 + x + 1)`
@@ -33,6 +36,8 @@ Closed by `decide` / `native_decide` / `bv_decide` over the 16-element
 domain. No `sorry`, no axioms beyond Lean's kernel + Mathlib's standard
 `BitVec` infrastructure.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

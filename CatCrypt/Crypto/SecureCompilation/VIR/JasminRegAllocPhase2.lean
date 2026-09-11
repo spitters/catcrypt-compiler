@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminRegAllocPhase1
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminRegAllocPhase1
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminRegAllocPhase1
 
 /-!
 # Verified register allocation — Phase 2 (general whole-body theorem)
@@ -53,6 +56,8 @@ The Phase-1 concrete `mds4Rho_outputs_eq` re-derives as a **corollary**
 `set_option autoImplicit false` is intentionally *not* set (SecureCompilation
 convention; see root `CLAUDE.md`).
 -/
+
+@[expose] public section
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
@@ -177,7 +182,7 @@ theorem runKernel_allocKernel_live {w : Nat} (L0 : List Nat) (ρ : Nat → Nat)
     (hstart : AgreeOnLive ρ st' st (liveInSeeded L0 k)) :
     AgreeOnLive ρ (runKernel st' (allocKernel ρ k)) (runKernel st k) L0 := by
   induction k generalizing st' st with
-  | nil => simpa using hstart
+  | nil => simpa using! hstart
   | cons b rest ih =>
       have hncb : ρ b.dst ≠ ρ b.src1 := hnc b List.mem_cons_self
       have hncrest : allBinopsNoClobber ρ rest :=

@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
 # Jasmin leaf fusion: a verified `Com → Com` rewrite
@@ -80,6 +82,8 @@ leaf computes `g ∘ f`* — is exactly
 i.e. the fused leaf, on `(x, y)`, returns what `g` returns on
 `(f x, y)`. Under this hypothesis the two `Com`s denote equally.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.JasminLeafFusion
 

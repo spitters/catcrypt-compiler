@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectLoweringTransport
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectLoweringTransport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect
 
 /-!
 # The lowering-pass registry — genuine program transports + a derived 3-pass chain
@@ -88,6 +91,8 @@ program-level passes above are registered here.
 
 All goals closed.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

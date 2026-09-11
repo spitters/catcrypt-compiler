@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
-import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 
 /-!
 # PROBE: a lazy (Harvey) FHE-NTT Shoup butterfly through the OWNED x86 backend
@@ -83,6 +87,8 @@ isolate the *conditional-reduction* question; the Shoup high-word `mulx` should 
 routed through `fuseMulHiLprog` (as `FheShoupEmit` does) for a shippable
 kernel. The conditional-reduction result is independent of this and fully stands.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

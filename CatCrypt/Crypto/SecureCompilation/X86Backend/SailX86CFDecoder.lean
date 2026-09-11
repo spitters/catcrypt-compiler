@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Decoder
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Decoder
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Decoder
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
 
 /-!
 # Decode-verification for the rel32 control-flow forms (`jmp`/`call`/`jcc`)
@@ -44,6 +48,8 @@ stated up to `jccOpcode cc` (the opcode the encoder emitted), which is the
 faithful invertible target — the bytes decode to the same opcode, hence the same
 condition the CPU tests.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 
 /-!
 # HAWK-256 negacyclic ring multiply: front-compiled emit + proof-model `Com`
@@ -70,6 +74,8 @@ are the **last 16 bindings** (identity copies of `o[0..15]` in order —
 `toLprogPhysAbi`'s last-`nOut` convention). C side:
 `uint64_t *hawk_mul(uint64_t *out, const uint64_t *inp)`, 8-byte stride.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.HawkMulEmit
 

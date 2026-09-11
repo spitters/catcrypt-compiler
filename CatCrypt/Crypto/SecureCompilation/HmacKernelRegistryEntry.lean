@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GenericKernelRealization
-import CatCrypt.Crypto.Primitives.HMAC
-import CatCrypt.Crypto.Primitives.SHAKE128
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GenericKernelRealization
+public import CatCrypt.Crypto.Primitives.HMAC
+public import CatCrypt.Crypto.Primitives.SHAKE128
 
 /-!
 # HMAC and SHA-3/SHAKE are registry rows of the one generic kernel predicate
@@ -45,6 +47,8 @@ hash and an XOF just as it accepts a modular reduce. `hmacSha256` / `shake128_32
 cleanest pure keyed-hash / XOF `def`s in-repo; SHA3-256 (`Keccak.sha3_256_params`-driven)
 would be another unary row of the same kind once its pure `msg → digest` `def` is exposed.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

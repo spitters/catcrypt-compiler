@@ -4,6 +4,8 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 
+module
+
 /-!
 # Keccak-f[1600] Permutation
 
@@ -21,6 +23,8 @@ during proof checking.
 * FIPS 202 — SHA-3 Standard: Permutation-Based Hash and Extendable-Output Functions
 * Keccak reference: https://keccak.team/keccak_specs_summary.html
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

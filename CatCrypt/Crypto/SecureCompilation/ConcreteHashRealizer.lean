@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ConcreteNttRealizer
-import CatCrypt.Crypto.SecureCompilation.HashKernelRegistryEntry
-import CatCrypt.Crypto.SecureCompilation.Sha256KernelRegistryEntry
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ConcreteNttRealizer
+public import CatCrypt.Crypto.SecureCompilation.HashKernelRegistryEntry
+public import CatCrypt.Crypto.SecureCompilation.Sha256KernelRegistryEntry
 
 /-!
 # CONCRETE hash realizers: round-trip-verified codecs, KAT-free realization
@@ -65,6 +67,8 @@ which have enough room; `kernelRealizesT_TFp_iff` records that at `.TFp` this is
 ## References
 * NIST FIPS 202 (Keccak / SHA-3), FIPS 180-4 (SHA-256)
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

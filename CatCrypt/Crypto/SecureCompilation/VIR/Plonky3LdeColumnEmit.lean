@@ -3,12 +3,19 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # Plonky3 coset-NTT column LDE FRONT-COMPILED as seven `Com jasminDialect` leaves
@@ -56,6 +63,8 @@ Every leaf is confined to `regArith`/`regConst`/`shlImm`/`shrImm` bindings
 Barrett/branchless word arithmetic.  Numeric equality to `computeColumnLde` is
 KAT-witnessed (`lde_column_from_rustcmd_kat.c`).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.Plonky3LdeColumnEmit
 
@@ -344,10 +353,10 @@ def comBindings : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
   | _, _, .ret _ => 0
   | _, _, .var _ body => 1 + comBindings body
 
-#eval IO.println ("lde leaf bindings — intt8: " ++ toString (comBindings inttLeafCom)
-  ++ ", twist: " ++ toString (comBindings twistLeafCom)
-  ++ ", ntt-l0: " ++ toString (comBindings nttLeaf0Com)
-  ++ ", ntt-l4: " ++ toString (comBindings nttLeaf4Com))
+-- #eval IO.println ("lde leaf bindings — intt8: " ++ toString (comBindings inttLeafCom)
+--   ++ ", twist: " ++ toString (comBindings twistLeafCom)
+--   ++ ", ntt-l0: " ++ toString (comBindings nttLeaf0Com)
+--   ++ ", ntt-l4: " ++ toString (comBindings nttLeaf4Com))
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Plonky3LdeColumnEmit
 

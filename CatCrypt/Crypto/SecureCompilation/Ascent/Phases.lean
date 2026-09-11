@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
+module
+
+import all Init.Data.Repr
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
 
 /-!
 # The ascent calculus as composable AutoCorres phases (design prototype)
@@ -48,6 +52,8 @@ op and is where the bitwise spec lives.
 `0` sorries; no axioms beyond the front's existing set (plus `Classical.choice`, used
 once to extract a word witness from the existential field relation).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # C4 fan-out: the verified compiler emits the ML-DSA `reduce32` Barrett reduce
@@ -60,6 +65,8 @@ state it over the `int32`-band domain and prove it by pure-BitVec `bv_decide`
 where it closes (the SDitH lesson); the form-level `_compiles` is the primary
 deliverable and stands on its own.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -145,9 +152,7 @@ theorem mldsaReduce32_compiles :
   intro a
   have hspec : ImpExpr.denoteScalar ["a"] ![a]
       mldsaReduce32Src (fun _ => none) = some (mldsaReduce32Form a) := by
-    have h := mldsaReduce32Src_denoteScalar (nIn := 1) ![a]
-    simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+    exact mldsaReduce32Src_denoteScalar (nIn := 1) ![a]
   exact compileFromHax_meets_spec (w := 64) (nIn := 1) ["a"]
     ![a] mldsaReduce32Src _ hc hspec
 

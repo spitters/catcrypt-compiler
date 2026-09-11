@@ -3,12 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAdd6FieldOps
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve6MontMulProvenEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAddBlock
-import CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAddValue
-import CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAddMontReduceBridge
-import CatCrypt.Crypto.SecureCompilation.EcProjectiveAddGeneric
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAdd6FieldOps
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve6MontMulProvenEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAddBlock
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAddValue
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAddMontReduceBridge
+public import CatCrypt.Crypto.SecureCompilation.EcProjectiveAddGeneric
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxHeartbeats 1000000
@@ -60,7 +65,7 @@ the just-landed six-limb frame foundation (`EcJacAdd6RunBlock` / `EcJacAdd6Field
   `EcMulReduceEmit.opResidue_mul_full_of_runBlock`.
 * Non-vacuity witnesses `deMont6_montMul` / `deMont6_canonAdd` / `deMont6_canonSub`.
 
-The value identity is a genuine dataflow proof — the same structure as the
+The value identity is a dataflow proof with the same structure as the
 four-limb one — with `jacAddGen` reused curve-generic. No `rfl`/`True` fill.
 -/
 
@@ -151,7 +156,7 @@ def EmittedReduceWindow6 (N : Nat) (Nprime : Nat) (reduceLeaf : Nat → Nat)
     is inhabited by any state whose emitted-reduce result over slot `out` matches
     the canonicalised Montgomery value — confirming `EmittedReduceWindow6` is a
     satisfiable runBlock-state claim, not an unsatisfiable over-constraint. The
-    genuine content is the gap between this and the value the KAT-validated
+    content is the gap between this and the value the KAT-validated
     `emitMontRedc6Block ++ emitCondSubP` computes, validated against GMP/s2n outside
     Lean. Mirror of `EcMulReduceEmit.emittedReduceWindow_inhabited`. -/
 theorem emittedReduceWindow6_inhabited (N : Nat) (Nprime : Nat) (reduceLeaf : Nat → Nat)
@@ -445,74 +450,51 @@ theorem jacAddBlock6_realizes_jacAddGen
     rw [hLHS, (R.realizes k hk).out_val, hI0, hI1]
   clear align
   have c0 : V 10 = V 2 * V 2 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 0 (by decide) (by decide) (by decide) (by decide)
+    exact callV 0 (by decide) (by decide) (by decide) (by decide)
   have c1 : V 12 = V 5 * V 5 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 1 (by decide) (by decide) (by decide) (by decide)
+    exact callV 1 (by decide) (by decide) (by decide) (by decide)
   have c2 : V 14 = V 10 * V 2 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 2 (by decide) (by decide) (by decide) (by decide)
+    exact callV 2 (by decide) (by decide) (by decide) (by decide)
   have c3 : V 16 = V 12 * V 5 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 3 (by decide) (by decide) (by decide) (by decide)
+    exact callV 3 (by decide) (by decide) (by decide) (by decide)
   have c4 : V 18 = V 0 * V 12 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 4 (by decide) (by decide) (by decide) (by decide)
+    exact callV 4 (by decide) (by decide) (by decide) (by decide)
   have c5 : V 20 = V 3 * V 10 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 5 (by decide) (by decide) (by decide) (by decide)
+    exact callV 5 (by decide) (by decide) (by decide) (by decide)
   have c6 : V 22 = V 1 * V 16 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 6 (by decide) (by decide) (by decide) (by decide)
+    exact callV 6 (by decide) (by decide) (by decide) (by decide)
   have c7 : V 24 = V 4 * V 14 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 7 (by decide) (by decide) (by decide) (by decide)
+    exact callV 7 (by decide) (by decide) (by decide) (by decide)
   have c8 : V 26 = V 20 - V 18 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 8 (by decide) (by decide) (by decide) (by decide)
+    exact callV 8 (by decide) (by decide) (by decide) (by decide)
   have c9 : V 27 = V 24 - V 22 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 9 (by decide) (by decide) (by decide) (by decide)
+    exact callV 9 (by decide) (by decide) (by decide) (by decide)
   have c10 : V 28 = V 26 * V 26 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 10 (by decide) (by decide) (by decide) (by decide)
+    exact callV 10 (by decide) (by decide) (by decide) (by decide)
   have c11 : V 30 = V 28 * V 26 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 11 (by decide) (by decide) (by decide) (by decide)
+    exact callV 11 (by decide) (by decide) (by decide) (by decide)
   have c12 : V 32 = V 18 * V 28 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 12 (by decide) (by decide) (by decide) (by decide)
+    exact callV 12 (by decide) (by decide) (by decide) (by decide)
   have c13 : V 34 = V 27 * V 27 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 13 (by decide) (by decide) (by decide) (by decide)
+    exact callV 13 (by decide) (by decide) (by decide) (by decide)
   have c14 : V 36 = V 34 - V 30 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 14 (by decide) (by decide) (by decide) (by decide)
+    exact callV 14 (by decide) (by decide) (by decide) (by decide)
   have c15 : V 37 = V 32 + V 32 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 15 (by decide) (by decide) (by decide) (by decide)
+    exact callV 15 (by decide) (by decide) (by decide) (by decide)
   have c16 : V 6 = V 36 - V 37 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 16 (by decide) (by decide) (by decide) (by decide)
+    exact callV 16 (by decide) (by decide) (by decide) (by decide)
   have c17 : V 38 = V 32 - V 6 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 17 (by decide) (by decide) (by decide) (by decide)
+    exact callV 17 (by decide) (by decide) (by decide) (by decide)
   have c18 : V 40 = V 27 * V 38 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 18 (by decide) (by decide) (by decide) (by decide)
+    exact callV 18 (by decide) (by decide) (by decide) (by decide)
   have c19 : V 42 = V 22 * V 30 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 19 (by decide) (by decide) (by decide) (by decide)
+    exact callV 19 (by decide) (by decide) (by decide) (by decide)
   have c20 : V 7 = V 40 - V 42 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 20 (by decide) (by decide) (by decide) (by decide)
+    exact callV 20 (by decide) (by decide) (by decide) (by decide)
   have c21 : V 44 = V 2 * V 5 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 21 (by decide) (by decide) (by decide) (by decide)
+    exact callV 21 (by decide) (by decide) (by decide) (by decide)
   have c22 : V 8 = V 44 * V 26 := by
-    simpa [EcJacAddValue.callOut, EcJacAddValue.callIn0, EcJacAddValue.callIn1, EcJacAddValue.callOp]
-      using callV 22 (by decide) (by decide) (by decide) (by decide)
+    exact callV 22 (by decide) (by decide) (by decide) (by decide)
   clear callV
   simp only [EcProjectiveGeneric.jacAddGen, inX1, inY1, inZ1, inX2, inY2, inZ2,
     sX1, sY1, sZ1, sX2, sY2, sZ2, sX3, sY3, sZ3, Prod.mk.injEq]
@@ -649,7 +631,7 @@ over `runBlock` follows from factoring the append. Mirror of
     slot `o`'s six-limb field value, after running `feMulFrameAt6Full`, is
     `deMont6 (valLimbs p384Limbs) (reduceLeaf (montgomeryReduce (valLimbs p384Limbs)
     (2^384) Nprime384 product))`, where `product = valLimbs (slotLimbs6 s base a) ·
-    valLimbs (slotLimbs6 s base b)` is the genuine emitted product of the inputs.
+    valLimbs (slotLimbs6 s base b)` is the emitted product of the inputs.
 
     The product is the proven emitted `runBlock` (`feMulFrameAt6_value`); the
     reduce-window value is the adopted `EmittedReduceWindow6`; the slot read-back is
@@ -853,7 +835,7 @@ theorem opResidue6_add_of_runBlock
     have ho : EcJacAddValue.callOut (JacFieldCall.add out in0 in1) = out := rfl
     rw [ho, hStore]
     simpa [EcJacAddValue.callOp, EcJacAddValue.callIn0, EcJacAddValue.callIn1,
-      slotFieldVal6_deMont6] using hadd
+      slotFieldVal6_deMont6] using! hadd
   others := by
     intro slot hslot
     have heq : EcJacAddValue.callOut (JacFieldCall.add out in0 in1) = out := rfl
@@ -929,7 +911,7 @@ theorem opResidue6_sub_of_runBlock
     have ho : EcJacAddValue.callOut (JacFieldCall.sub out in0 in1) = out := rfl
     rw [ho, hStore]
     simpa [EcJacAddValue.callOp, EcJacAddValue.callIn0, EcJacAddValue.callIn1,
-      slotFieldVal6_deMont6] using hsub
+      slotFieldVal6_deMont6] using! hsub
   others := by
     intro slot hslot
     have heq : EcJacAddValue.callOut (JacFieldCall.sub out in0 in1) = out := rfl

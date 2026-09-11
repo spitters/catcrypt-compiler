@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Bridges.ReprTransferBinaryDom
-import CatCrypt.Crypto.SecureCompilation.VIR.Sha256DwordLane
+module
+
+public meta import CatCrypt.Crypto.Bridges.ReprTransferBinaryDom
+public import CatCrypt.Crypto.Bridges.ReprTransferBinaryDom
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Sha256DwordLane
+public import CatCrypt.Crypto.SecureCompilation.VIR.Sha256DwordLane
 
 /-!
 # The P3×P4 bridge, mechanized: `lo32` transport via `BinOpHomOn2`
@@ -51,6 +55,8 @@ the `BitVec` lane-arithmetic TCB the model-free dword-lane ties already carry.
 * FIPS 180-4 — Secure Hash Standard (§4.1.2 `Ch`/`Maj`/`Σ₀`/`Σ₁`).
 * Intel SDM — `VPANDD`/`VPORD`/`VPXORD`/`VPADDD`/`VPRORD` (`AVX512F`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

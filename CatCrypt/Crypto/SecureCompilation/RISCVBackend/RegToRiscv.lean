@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ScalarLin
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering64
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ScalarLin
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering64
 
 /-!
 # `Com → RISC-V (RV64)`: the RV64 `ScalarTarget` instance
@@ -23,6 +25,8 @@ and the backend-neutral `loadImm` (lowered to RV64's full-width `li`). The one
 non-selectable `RegStmt` is the ARM-specific `movk` (the front emits `loadImm`
 instead), on which `evalRegStmtRV` is the identity.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

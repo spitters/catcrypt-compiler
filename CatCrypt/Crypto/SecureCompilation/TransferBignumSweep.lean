@@ -3,11 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Bridges.ReprTransferBinaryDom
-import CatCrypt.Crypto.Bridges.ReprTransferUnary
-import CatCrypt.Crypto.SecureCompilation.BignumCondSubEmit
-import CatCrypt.Crypto.SecureCompilation.Bignum4CondSubEmit
-import CatCrypt.Crypto.SecureCompilation.BignumAddEmitN
+module
+
+public import CatCrypt.Crypto.Bridges.ReprTransferBinaryDom
+public import CatCrypt.Crypto.Bridges.ReprTransferUnary
+public import CatCrypt.Crypto.SecureCompilation.BignumCondSubEmit
+public import CatCrypt.Crypto.SecureCompilation.Bignum4CondSubEmit
+public import CatCrypt.Crypto.SecureCompilation.BignumAddEmitN
 
 /-!
 # Trocq bignum sweep: the multi-limb add combine and conditional-subtract reduce
@@ -71,6 +73,8 @@ exact-sum fact, the reduce square is the conditional-subtract residue fact.  The
 emit-side ties (§4) carry, in addition, exactly the x86 machine-semantics content
 the cited `condSub*_bignumVal` already proves.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

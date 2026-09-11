@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel
+public import CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel
 
 /-!
 # `Com → Tile → NVIDIA Tile IR`: the emit (Phase 3 of the spike)
@@ -48,6 +52,8 @@ dims; our 8 BabyBear lanes as `i64` for the Barrett intermediates).
   denotation are what this increment delivers; toolchain round-trip is the next
   step once `cuda-tile` is built.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.TileBackend.ComToTileIR
 
@@ -175,6 +181,6 @@ def main : IO Unit := do
   IO.println "wrote bench/gpu_compare/gen/bb_mul_tile.cuda_tile.mlir (BabyBear bbMul, cuda_tile dialect)"
   IO.println s!"  {bbMulTile.length} tile ops -> cuda_tile MLIR (tile<8xi64>)"
 
-#eval main
+-- #eval main
 
 end CatCrypt.Crypto.SecureCompilation.TileBackend.ComToTileIR

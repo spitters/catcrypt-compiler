@@ -3,11 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.NTTButterflyPass
-import CatCrypt.Crypto.Optimizer.Lattice.IterativeNttEqRec
-import CatCrypt.Crypto.Optimizer.Lattice.MlkemNttLayout
-import CatCrypt.Crypto.Optimizer.Lattice.NTTConvolutionTheorem
-import CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots
+module
+
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTButterflyPass
+public import CatCrypt.Crypto.Optimizer.Lattice.IterativeNttEqRec
+public import CatCrypt.Crypto.Optimizer.Lattice.MlkemNttLayout
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTConvolutionTheorem
+public import CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots
 
 /-!
 # The ML-KEM NTT butterfly stage computes the number-theoretic transform
@@ -54,6 +56,8 @@ string to rewrite against, so that one step remains checked by the bench-level
 byte-KAT against `PQCLEAN_MLKEM768_CLEAN_ntt`. Everything algebraic below is a
 machine-checked proof.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

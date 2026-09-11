@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.NTTButterflyPass
+module
+
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTButterflyPass
 
 /-!
 # Verified radix-2 NTT/INTT *stage* round-trip
@@ -33,6 +35,8 @@ The per-lane work is already discharged upstream by
 `ctButterfly_inverse_cancel`; this module supplies the `List`/stage induction.
 Everything is closed by a `List.map` induction plus the per-lane lemma.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

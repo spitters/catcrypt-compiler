@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.SchedulerPass
-import CatCrypt.Crypto.Optimizer.SecretType
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Optimizer.SchedulerPass
+public import CatCrypt.Crypto.Optimizer.SecretType
 
 /-!
 # A third pass for the compositional-CT taint story: the ILP scheduler (#594)
@@ -64,6 +67,8 @@ by *exactly* the independence predicate the scheduler certifies each swap with.
 
 All goals closed.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

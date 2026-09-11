@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrRegMachine
-import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrRegMachine
+public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 
 /-!
 # Verified reschedule-equivalence for `JInstr 64` basic blocks
@@ -50,6 +52,8 @@ are vacuous (CF–CF / OF–OF flag write conflict rejected by `indepJ`).
 2. `jinstr_bbSwap_exec`: adjacent-swap block equivalence.
 3. `runBlock_perm_eq`: certificate checker soundness for swap sequences.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -147,7 +151,7 @@ theorem evalInstr_memEq (s : JState 64) (i : JInstr 64)
       JState.writeB2W]
 
 /-- Operand eval is unchanged by `setReg r _` when `r ∉ srcNames src`. -/
-private theorem eval_setReg_notMem (s : JState 64) (src : JOperand)
+theorem eval_setReg_notMem (s : JState 64) (src : JOperand)
     (r : String) (v : BitVec 64) (h : ¬ r ∈ AsmPrinter.srcNames src) :
     src.eval (s.setReg r v) = src.eval s := by
   cases src with
@@ -164,7 +168,7 @@ private theorem eval_setReg_notMem (s : JState 64) (src : JOperand)
     the record-shaped analogue of `eval_setReg_notMem` used by the
     `mulx × adcx` / `mulx × adox` arms. The flag fields are universally quantified
     so the lemma covers both the `cf` (adcx) and `of` (adox) overwrite shapes. -/
-private theorem eval_adcxRecord_notMem (s : JState 64) (src : JOperand) (dst : String)
+theorem eval_adcxRecord_notMem (s : JState 64) (src : JOperand) (dst : String)
     (cf' pf' zf' sf' of' : JFlag) (res : BitVec 64)
     (h : ¬ dst ∈ AsmPrinter.srcNames src) :
     JOperand.eval
@@ -188,7 +192,7 @@ the same value in either order. Like the other ADX lemmas these keep `x86_ADCX`
 both `adcx` (CF) and `adox` (OF) by passing the appropriate carry record. -/
 
 /-- `mov d1 src1` commutes with `adcx dst2 src2` (abstract carry output). -/
-private theorem evalInstr_comm_mov_adcx (s : JState 64)
+theorem evalInstr_comm_mov_adcx (s : JState 64)
     (d1 : String) (src1 : JOperand) (dst2 : String) (src2 : JOperand)
     (hd12 : d1 ≠ dst2)
     (hsrc1_dst2 : ¬ dst2 ∈ AsmPrinter.srcNames src1)
@@ -221,7 +225,7 @@ private theorem evalInstr_comm_mov_adcx (s : JState 64)
   · rfl
 
 /-- `mov d1 src1` commutes with `adox dst2 src2` (abstract carry output). -/
-private theorem evalInstr_comm_mov_adox (s : JState 64)
+theorem evalInstr_comm_mov_adox (s : JState 64)
     (d1 : String) (src1 : JOperand) (dst2 : String) (src2 : JOperand)
     (hd12 : d1 ≠ dst2)
     (hsrc1_dst2 : ¬ dst2 ∈ AsmPrinter.srcNames src1)
@@ -265,7 +269,7 @@ arithmetic in `simp_all` produces. -/
 
 /-- `adcx dst1 src1` commutes with `adox dst2 src2` (abstract carry outputs):
     the ADX dual-carry case. -/
-private theorem evalInstr_comm_adcx_adox (s : JState 64)
+theorem evalInstr_comm_adcx_adox (s : JState 64)
     (dst1 : String) (src1 : JOperand) (dst2 : String) (src2 : JOperand)
     (hd12 : dst1 ≠ dst2)
     (hsrc1_dst2 : ¬ dst2 ∈ AsmPrinter.srcNames src1)
@@ -321,7 +325,7 @@ The shared shape: collapse the second instruction's reads (evaluated in the
 first's result state) back to reads in `s`, then `JState.ext`. -/
 
 /-- `mulx dh1 dl1 a1 b1` commutes with `adcx dst2 src2` (abstract output). -/
-private theorem evalInstr_comm_mulx_adcx (s : JState 64)
+theorem evalInstr_comm_mulx_adcx (s : JState 64)
     (dh1 dl1 : String) (a1 b1 : JOperand) (dst2 : String) (src2 : JOperand)
     (hdh1 : dh1 ≠ dst2) (hdl1 : dl1 ≠ dst2)
     (ha1 : ¬ dst2 ∈ AsmPrinter.srcNames a1) (hb1 : ¬ dst2 ∈ AsmPrinter.srcNames b1)
@@ -359,7 +363,7 @@ private theorem evalInstr_comm_mulx_adcx (s : JState 64)
   · simp [JState.setReg]
 
 /-- `mulx dh1 dl1 a1 b1` commutes with `adox dst2 src2` (abstract output). -/
-private theorem evalInstr_comm_mulx_adox (s : JState 64)
+theorem evalInstr_comm_mulx_adox (s : JState 64)
     (dh1 dl1 : String) (a1 b1 : JOperand) (dst2 : String) (src2 : JOperand)
     (hdh1 : dh1 ≠ dst2) (hdl1 : dl1 ≠ dst2)
     (ha1 : ¬ dst2 ∈ AsmPrinter.srcNames a1) (hb1 : ¬ dst2 ∈ AsmPrinter.srcNames b1)

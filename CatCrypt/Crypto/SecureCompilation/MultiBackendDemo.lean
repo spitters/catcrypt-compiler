@@ -3,11 +3,42 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ScalarLinFront
-import CatCrypt.Crypto.SecureCompilation.ScalarLinNeutral
-import CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RegToRiscv
+module
+import all CatCrypt.Core.Code
+import all CatCrypt.Core.Heap
+import all CatCrypt.Core.Location
+import all CatCrypt.Crypto.CryptoWord
+import all CatCrypt.Crypto.Jasmin.JasminAST
+import all CatCrypt.Crypto.Jasmin.JasminOps
+import all CatCrypt.Crypto.Jasmin.JasminTranslate
+import all CatCrypt.Crypto.Jasmin.JasminTypes
+import all CatCrypt.Crypto.Jasmin.JasminVar
+import all CatCrypt.Crypto.Jasmin.LowCT
+import all CatCrypt.Crypto.Jasmin.LowCTBorrowCheck
+import all CatCrypt.Crypto.Jasmin.LowCTReflect
+import all CatCrypt.Crypto.Jasmin.LowCTToJasmin
+import all CatCrypt.Crypto.SDist
+import all CatCrypt.Crypto.SecureCompilation.CryptoSSA
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+import all CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
+import all CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.Core
+import all CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminCom
+import all CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+import all CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+import all CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
+import all CatCrypt.Deep.Eval
+import all CatCrypt.Deep.RawCode
+
+public import CatCrypt.Crypto.SecureCompilation.ScalarLinFront
+public import CatCrypt.Crypto.SecureCompilation.ScalarLinNeutral
+public import CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RegToRiscv
 
 /-!
 # One kernel, four backends: the migration payoff (steps 2–3)
@@ -23,6 +54,8 @@ replace each hand-written `List BOp`/`List ROp64` leaf with `regToBOp`/`regToROp
 of the kernel's `RegProg` (itself the flattening of the verified `Com`), so the
 emitted block provably computes the source denotation on each target.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

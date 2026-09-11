@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminAST
-import CatCrypt.Crypto.Jasmin.JasminCoqSemMirror
+module
+
+public import CatCrypt.Crypto.Jasmin.JasminAST
+public import CatCrypt.Crypto.Jasmin.JasminCoqSemMirror
 
 /-!
 # A verified AST translation `JasminAST.InstrR → CoqSemMirror.InstrR`
@@ -76,6 +78,8 @@ golden-path witness here at the value level only.
 
 0 sorries.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

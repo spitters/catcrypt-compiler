@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Core
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
 
 /-!
 # Multi-return VIR (D2 skeleton)
@@ -28,6 +30,8 @@ it needs to emit multiple correlated outputs from a single SSA region.
 
 Follow-ups (D2.1 – D2.4) are listed at the bottom of this file.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR
 

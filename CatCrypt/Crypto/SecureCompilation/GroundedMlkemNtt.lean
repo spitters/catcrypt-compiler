@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ConcreteNttRealizer
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ConcreteNttRealizer
 
 /-!
 # A fully-grounded ML-KEM NTT-multiply — the realization is a THEOREM, not a KAT
@@ -47,6 +49,8 @@ realization), *not* a per-kernel hypothesis of any theorem here.
 ## References
 * NIST FIPS 203 (ML-KEM)
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

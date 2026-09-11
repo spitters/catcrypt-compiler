@@ -3,8 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
-import CatCrypt.Crypto.SHA256.Extraction.Sha256_haxpipe
+module
+
+import all Init.Data.Repr
+import all CatCrypt.Crypto.SecureCompilation.ImpExprToThir
+import all CatCrypt.Crypto.SecureCompilation.ThirToComFront
+import all CatCrypt.Crypto.SecureCompilation.CompileFromHax
+import all CatCrypt.Crypto.SHA256.Extraction.Sha256_haxpipe
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public meta import CatCrypt.Crypto.SHA256.Extraction.Sha256_haxpipe
+public import CatCrypt.Crypto.SHA256.Extraction.Sha256_haxpipe
 
 /-!
 # Compiling a CALL IN LET-RHS position (SHA-256 σ₀ via let-flatten)
@@ -69,6 +78,8 @@ the FIPS σ₀ value, proved by reducing `letCallPipe` to the explicit flat
 position compiled correctly, via let-flatten composed with call-inline + ANF.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.CompileFromHaxLetFlatten
@@ -118,7 +129,7 @@ def letCallNorm : ImpExpr :=
     `rfl`. This is the demo's rfl-probe pin — it confirms the pass-composition
     *order* (`letFlatten` last) lands a flat atom-arg let-chain with no
     `letBind`-as-RHS. -/
-theorem letCallPipe_eq : letCallPipe = letCallNorm := rfl
+private theorem letCallPipe_eq : letCallPipe = letCallNorm := rfl
 
 /-- **The let-flattened inlined-call body is value-preserving.** Its `denoteScalar`
     (the §2 source semantics, parameter `"x"`, single input `I 0 = x`) is exactly

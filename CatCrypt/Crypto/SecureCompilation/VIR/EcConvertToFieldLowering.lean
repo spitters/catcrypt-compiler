@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.EcConvertFieldEmit
-import Mathlib.Algebra.Field.ZMod
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.EcConvertFieldEmit
+public import Mathlib.Algebra.Field.ZMod
 
 /-!
 # `ecConvertDialect` → `fieldDialect` per-coordinate lowering
@@ -73,6 +76,8 @@ Carrying a hypothesis:
   the Jacobian weights recovers `(X, Y, Z)`, so the output is a representative of
   the input's projective class.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

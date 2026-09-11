@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminMonoSem
-import CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialect
+module
+
+public import CatCrypt.Crypto.Jasmin.JasminMonoSem
+public import CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialect
 
 /-!
 # Native dialect-translator correctness (no `CProg` detour)
@@ -57,6 +59,8 @@ that the full bignum ALU spine + carry intrinsics — everything the
 `S2NBignumSSA` ports use — denotes to the Jasmin reference semantics on
 `catCryptDialect` **without** a `CProg` detour, and sorry-free.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.ToSSADialect
 

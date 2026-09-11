@@ -3,12 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.BignumExec
-import CatCrypt.Crypto.Jasmin.BignumStepSpecs
-import CatCrypt.Crypto.Jasmin.BignumHoare
-import CatCrypt.Crypto.Jasmin.Hoare
-import CatCrypt.Crypto.Jasmin.S2NBignumSSA
-import CatCrypt.Crypto.Jasmin.BignumHoare.Sqr4Algebra
+module
+
+public import CatCrypt.Crypto.Jasmin.BignumExec
+public import CatCrypt.Crypto.Jasmin.BignumStepSpecs
+public import CatCrypt.Crypto.Jasmin.BignumHoare
+public import CatCrypt.Crypto.Jasmin.Hoare
+public import CatCrypt.Crypto.Jasmin.S2NBignumSSA
+public import CatCrypt.Crypto.Jasmin.BignumHoare.Sqr4Algebra
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -56,29 +60,29 @@ Local copies of `BignumStepSpecs.setReg_regs` / `setReg_mem` /
 `load_addr_bridge` (same statements; keeping them here lets the
 per-load VC simp set live next to its consumer). -/
 
-private theorem sqr_setReg_regs (s : BignumState) (x y : String) (v : BitVec 64) :
+theorem sqr_setReg_regs (s : BignumState) (x y : String) (v : BitVec 64) :
     (BignumExec.setReg s x v).regs y = if y = x then v else s.regs y := rfl
 
-private theorem sqr_setReg_mem (s : BignumState) (x : String) (v : BitVec 64) :
+theorem sqr_setReg_mem (s : BignumState) (x : String) (v : BitVec 64) :
     (BignumExec.setReg s x v).mem = s.mem := rfl
 
-private theorem sqr_load_addr_bridge (b : UInt64) (k : BitVec 64) :
+theorem sqr_load_addr_bridge (b : UInt64) (k : BitVec 64) :
     UInt64.ofNat ((BitVec.ofNat 64 b.toNat + k).toNat)
       = b + UInt64.ofNat k.toNat := by
   apply UInt64.toNat_inj.mp
   simp [UInt64.toNat_add, BitVec.toNat_add, Nat.add_mod]
 
-private theorem sqr_ofNat_toNat (a : UInt64) :
+theorem sqr_ofNat_toNat (a : UInt64) :
     BitVec.ofNat 64 a.toNat = a.toBitVec := by
   rw [show a.toNat = a.toBitVec.toNat from rfl, BitVec.ofNat_toNat,
       BitVec.setWidth_eq]
 
 /-- `storeMem` does not touch the register file. -/
-private theorem sqr_storeMem_regs (s : BignumState) (a v : UInt64)
+theorem sqr_storeMem_regs (s : BignumState) (a v : UInt64)
     (y : String) : (BignumExec.storeMem s a v).regs y = s.regs y := rfl
 
 /-- `storeMem` is `Mem.store64` on the memory component. -/
-private theorem sqr_storeMem_mem (s : BignumState) (a v : UInt64) :
+theorem sqr_storeMem_mem (s : BignumState) (a v : UInt64) :
     (BignumExec.storeMem s a v).mem = s.mem.store64 a v := rfl
 
 /-! ### Phase-C memory peels
@@ -90,7 +94,7 @@ from `BignumHoare.lean` in the `base + UInt64.ofNat k` normal form the
 `@[spec]`-route simp produces); the `_skip0` / `_self0` variants handle
 the offset-0 read whose address is the bare `base_op`. -/
 
-private theorem sqr_load64Mem_store64_skip (m : MemoryModel.Mem)
+theorem sqr_load64Mem_store64_skip (m : MemoryModel.Mem)
     (base : UInt64) (ks kr : Nat) (v : UInt64)
     (h_disj : kr + 8 ≤ ks ∨ ks + 8 ≤ kr)
     (h_bound : ks + 8 ≤ 256 ∧ kr + 8 ≤ 256) :
@@ -99,7 +103,7 @@ private theorem sqr_load64Mem_store64_skip (m : MemoryModel.Mem)
       = BignumExec.load64Mem m (base + UInt64.ofNat kr) :=
   load64Mem_store64_offset_const m base ks kr v h_disj h_bound
 
-private theorem sqr_load64Mem_store64_skip0 (m : MemoryModel.Mem)
+theorem sqr_load64Mem_store64_skip0 (m : MemoryModel.Mem)
     (base : UInt64) (ks : Nat) (v : UInt64)
     (h_lo : 8 ≤ ks) (h_hi : ks + 8 ≤ 256) :
     BignumExec.load64Mem (m.store64 (base + UInt64.ofNat ks) v) base
@@ -108,7 +112,7 @@ private theorem sqr_load64Mem_store64_skip0 (m : MemoryModel.Mem)
     (Or.inl (by omega)) ⟨h_hi, by omega⟩
   simpa [show (UInt64.ofNat 0 : UInt64) = 0 from rfl] using h
 
-private theorem sqr_load64Mem_store64_self0 (m : MemoryModel.Mem)
+theorem sqr_load64Mem_store64_self0 (m : MemoryModel.Mem)
     (base : UInt64) (v : UInt64) :
     BignumExec.load64Mem (m.store64 (base + UInt64.ofNat 0) v) base
       = some v := by
@@ -123,7 +127,7 @@ init phase (zero, 4 loads, 6 d_k = 0, cf/of init). Postcondition pins
 regs zero, a0..a3 (loaded values), d_k_0 = 0 for k ∈ 1..6, and
 cf = of = 0 (set up for the ADCX/ADOX dual chain in Phase A). -/
 
-private theorem sqr4_init_triple
+theorem sqr4_init_triple
     (base_a base_op : UInt64) (a0 a1 a2 a3 : UInt64) :
     Triple (BignumExec.bignumExecM BignumExec.emptyRegistry
               (S2NBignumSSA.BignumSqr4.body.take 13))
@@ -202,7 +206,7 @@ Postcondition: 8 memory values at op+0..op+56 exist and were stored
 by the chain. The algebraic content (= a²) is added externally via
 `sqr4_chain_eq_square` once the mulx hypotheses are in scope. -/
 
-private theorem sqr4_phaseC_triple
+theorem sqr4_phaseC_triple
     (base_op : UInt64) (a0 a1 a2 a3 e1 e2 e3 e4 e5 e6 : BitVec 64) :
     Triple (BignumExec.bignumExecM BignumExec.emptyRegistry
               ((S2NBignumSSA.BignumSqr4.body.drop 40).take 23))
@@ -321,7 +325,7 @@ This avoids transcribing the full ~80-equation chain trace into the
 Triple postcondition; the existential captures everything Phase B
 needs. -/
 
-private theorem sqr4_phaseA_triple
+theorem sqr4_phaseA_triple
     (base_a base_op : UInt64) (a0 a1 a2 a3 : BitVec 64) :
     Triple (BignumExec.bignumExecM BignumExec.emptyRegistry
               ((S2NBignumSSA.BignumSqr4.body.drop 13).take 21))
@@ -374,7 +378,7 @@ private theorem sqr4_phaseA_triple
 Phase B: 6-instruction shift-left chain doubling d_1..d_6 → e_1..e_6.
 Mirrors `double_p25519_phaseA` (ADC chain) but 6-limb. -/
 
-private theorem sqr4_phaseB_triple
+theorem sqr4_phaseB_triple
     (base_a base_op : UInt64) (a0 a1 a2 a3 : BitVec 64)
     (d1 d2 d3 d4 d5 d6 : BitVec 64) :
     Triple (BignumExec.bignumExecM BignumExec.emptyRegistry

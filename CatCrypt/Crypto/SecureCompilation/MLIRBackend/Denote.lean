@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MLIRBackend.ComToMLIR
-import CatCrypt.Crypto.SecureCompilation.MLIRBackend.ComToVeir
+module
+
+import all Init.Data.Repr
+import all CatCrypt.Crypto.SecureCompilation.MLIRBackend.ComToMLIR
+public import CatCrypt.Crypto.SecureCompilation.MLIRBackend.ComToMLIR
+public import CatCrypt.Crypto.SecureCompilation.MLIRBackend.ComToVeir
 
 /-!
 # MLIR backend — Stage 4 denotation-preservation (task #183)
@@ -65,6 +69,8 @@ them. `ControlFlow_DenoteAgrees` has been promoted from `opaque Prop`
 to a concrete `def` + closed `theorem`.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.MLIRBackend
@@ -122,7 +128,9 @@ theorem emit_empty_names :
     emit at the most basic shape level. -/
 theorem emit_func_empty_nonempty :
     (emitFunc "f" [] [] "c").length ≥ 11 := by
-  decide
+  have h : (toString "func.func @" : String).length = 11 := rfl
+  simp [emitFunc, bindParams, EmitState.init, EmitState.lookup, EmitState.getLines, emitCmd]
+  omega
 
 /-! ## §3. Per-arm shape statements (Phase 4 — closed)
 
@@ -505,7 +513,7 @@ roundtrip statement would require a `Cmd → ScalarDSL.Prog` translator
 (name resolution + width inference + bail-out on out-of-scope
 constructors). That translator is non-trivial Jasmin-side work and
 is left as a documented follow-up; meanwhile, the AST-direct path
-above stands as the load-bearing zero-hypothesis statement for the
+above is the zero-hypothesis statement for the
 scalar subset, and the text-emit path's `ScalarVector_DenoteAgrees`
 keeps its existing conditional form.
 

@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
 # Redundant spill-reload elimination over `List (JInstr 64)`
@@ -33,6 +35,8 @@ constant-time class because the output is a sublist of the input.
 * `dropReloads_allDirect` — constant-time-class preservation, from
   `dropReloads_sublist`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

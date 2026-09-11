@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvvAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvEncoder
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvvAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvvAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvEncoder
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvEncoder
 
 /-!
 # A verified machine-code byte encoder for the packed-u32 RVV `VInst` (#549 RVV residual)
@@ -40,6 +45,8 @@ exactly the OPIVV/OPIVI ALU forms; the byte-diff (`bench/riscv_compare`,
 block), with the prelude/epilogue factored out, exactly as the NEON QR byte-diff
 spans the ASIMD body.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -187,9 +194,10 @@ theorem encodeVBlock_length (block : List VInst) :
 
 The encoder's instruction words pinned to the exact 32-bit words
 `riscv64-linux-gnu-as -march=rv64gcv` produces for the same mnemonic (the
-`objdump -d` value, the bench `riscv_compare` oracle). The `decode(encode)=i`
-round-trip in `SailRvvDecoder.lean` upgrades these gas pins to a proof against the
-official sail-riscv RVV `encdec` clauses. -/
+`objdump -d` value, from an untracked local harness, not vendored in this repo).
+The `decode(encode)=i` round-trip in `SailRvvDecoder.lean` upgrades these gas pins
+to a proof against the transcribed sail-riscv RVV `encdec` field split
+(`SailRvvDecoder.lean`). -/
 
 -- `vadd.vv v4, v0, v1` → `as`/objdump word `0x02008257`.
 #guard encodeWord (.vadd "v4" "v0" "v1") == 0x02008257

@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectVsimdDenote
-import CatCrypt.Crypto.SecureCompilation.VIR.ShaNiEmit
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectVsimdDenote
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectVsimdDenote
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ShaNiEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.ShaNiEmit
 
 /-!
 # SHA-256 (SHA-NI) re-sourced through the vector front (`translateDialectControlV`)
@@ -49,6 +53,8 @@ does by hand) before the 2-operand machine instruction. Until then the owned
 
 Invoke: `lake build CatCrypt.Crypto.SecureCompilation.VIR.Sha2ShaniVsimdCovered`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

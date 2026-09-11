@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.JasminComRunBlockTie
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.JasminComRunBlockTie
 
 /-!
 # The straight-line multi-op `Com jasminDialect` ↔ `runBlock` tie (ascent keystone)
@@ -52,6 +54,8 @@ Register *reuse* (dead-slot reallocation) is proved separately by
 `JasminComRunBlockTie.regalloc_composition_note`); it composes on top of this
 block tie to add reuse. This file does not re-prove allocation.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

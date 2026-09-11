@@ -3,7 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # C4 fan-out: the verified compiler emits the ML-KEM CBD_η=2 per-window coefficient
@@ -66,6 +71,8 @@ window is 6 bits and the coefficient is `(b&1)+((b>>1)&1)+((b>>2)&1) −
 ((b>>3)&1)−((b>>4)&1)−((b>>5)&1)` — two more `shift_right`/`BitAnd`/`wrapping_add`
 and one more `wrapping_sub`, all in the same recognizer set.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -162,9 +169,7 @@ theorem cbd2_compiles :
   intro b
   have hspec : ImpExpr.denoteScalar ["b"] ![b] cbd2Src (fun _ => none)
       = some (cbd2Spec b) := by
-    have h := cbd2Src_denoteScalar (nIn := 1) ![b]
-    simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_fin_one,
-      Matrix.cons_val] using h
+    exact cbd2Src_denoteScalar (nIn := 1) ![b]
   exact compileFromHax_meets_spec (w := 32) (nIn := 1) ["b"]
     ![b] cbd2Src _ hc hspec
 

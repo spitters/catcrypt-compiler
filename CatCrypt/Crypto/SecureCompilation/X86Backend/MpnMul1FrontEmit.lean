@@ -3,12 +3,20 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
-import CatCrypt.Crypto.SecureCompilation.VIR.MontMulFragmentDemo
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRuntimeLoop
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
-import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
+public import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.MontMulFragmentDemo
+public import CatCrypt.Crypto.SecureCompilation.VIR.MontMulFragmentDemo
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRuntimeLoop
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRuntimeLoop
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
 
 /-!
 # `mpn_mul_1` as a front-generated runtime-trip loop
@@ -86,6 +94,8 @@ whose rendered SIB accesses are byte-offset and so size-agnostic.
 source-preservation step (`translateDialectControl_denote_ctl` composed with
 `cryptoDialectToJasminCom`), not established here.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -578,6 +588,6 @@ def emitMain : IO Unit := do
       IO.println "WROTE bench/mpn_mul_1_front_compare/gen_com/mpn_mul_1_rt_owned.s"
   | none => throw (IO.userError "the runtime-loop front declined mpn_mul_1")
 
-#eval emitMain
+-- #eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontEmit

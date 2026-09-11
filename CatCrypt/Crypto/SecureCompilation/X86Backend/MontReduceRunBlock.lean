@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookRunBlock
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookRunBlock
 
 /-!
 # The emitted Montgomery REDUCE word-step over `runBlock`
@@ -63,6 +65,8 @@ remaining increment (the same multi-block register-routing the schoolbook's
 `SchoolbookRunBlock` named for its inter-row combine). It does not change the
 value spec: each step's value IS a genuine `runBlock`-of-emitted reduction step.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxHeartbeats 1000000

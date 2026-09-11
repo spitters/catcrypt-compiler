@@ -3,12 +3,21 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
-import CatCrypt.Crypto.Jasmin.Examples.Fe25519Invert
-import CatCrypt.Crypto.Jasmin.Examples.Scalar25519Ops
-import CatCrypt.Crypto.Jasmin.Examples.MontUToEdwards
-import CatCrypt.Crypto.Jasmin.Examples.CombTableInitArrV2
-import CatCrypt.Crypto.Jasmin.Examples.XEdDSAVerify
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCT
+public meta import CatCrypt.Crypto.Jasmin.Examples.Fe25519Invert
+public import CatCrypt.Crypto.Jasmin.Examples.Fe25519Invert
+public meta import CatCrypt.Crypto.Jasmin.Examples.Scalar25519Ops
+public import CatCrypt.Crypto.Jasmin.Examples.Scalar25519Ops
+public meta import CatCrypt.Crypto.Jasmin.Examples.MontUToEdwards
+public import CatCrypt.Crypto.Jasmin.Examples.MontUToEdwards
+public meta import CatCrypt.Crypto.Jasmin.Examples.CombTableInitArrV2
+public import CatCrypt.Crypto.Jasmin.Examples.CombTableInitArrV2
+public meta import CatCrypt.Crypto.Jasmin.Examples.XEdDSAVerify
+public import CatCrypt.Crypto.Jasmin.Examples.XEdDSAVerify
 
 /-!
 # Phase J — `cmdCT` constant-time analyser for `LowCT`
@@ -53,6 +62,8 @@ derivation.  The formulation is a *leakage-equivalence* (noninterference)
 claim — `PublicEquiv` inputs give `PublicEquiv` outputs — conditional on a
 `CMOVInvariant` side condition on the program.  See `LeakageEquiv` below.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.LowCT
 
@@ -731,7 +742,7 @@ a separate lemma so the main induction stays manageable. -/
 
 /-- Helper: if every arg's locVar is Public-classified, then
     `args.filterMap (rs.rsTower)` agrees on Public-equiv states. -/
-private lemma args_filterMap_eq
+lemma args_filterMap_eq
     {lt : LevelTable} {rs1 rs2 : RustState}
     (hEq : PublicEquiv lt rs1 rs2) {args : List Located}
     (hArgs : args.all (fun a => lt a.locVar == .Public) = true) :
@@ -752,7 +763,7 @@ private lemma args_filterMap_eq
     from a Public slot, so it agrees on the two states, and the argument list is
     the same on both sides, so the leaf oracle returns the same value at every
     index. -/
-private lemma callNUpdate_PublicEquiv
+lemma callNUpdate_PublicEquiv
     {leafSpec : LeafSpec} {lt : LevelTable} {f : String}
     {argTs : List TowerType} {argList : List (Σ t : TowerType, RustVal t)} :
     ∀ (dests : List Located) (i : Nat) {rs1 rs2 : RustState},

@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
 
 /-!
 # Variable-distance shift: the one primitive the emit alphabet cannot yet reach
@@ -85,6 +88,8 @@ full register-amount op (§2) is only needed for an unbounded public amount.
 
 No `sorry`, no new `axiom`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

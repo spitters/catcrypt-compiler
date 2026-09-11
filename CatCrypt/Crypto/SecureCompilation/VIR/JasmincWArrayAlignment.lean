@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasmincSemAlignment
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasmincSemAlignment
 
 /-!
 # Aligning our element-indexed stack arrays with jasmin's byte-addressed `WArray`
@@ -47,6 +49,8 @@ is the byte-memory analogue of `JasmincSemAlignment.alu_cast_agrees_jasmin`.
 * `proofs/lang/memory_model.v` — `LE.encode`/`decode`/`wread8`, `CoreMem.read`/
   `write` (little-endian byte assembly of a `word ws`).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.JasmincWArrayAlignment
 

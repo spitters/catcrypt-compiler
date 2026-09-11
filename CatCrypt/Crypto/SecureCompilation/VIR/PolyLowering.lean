@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.PolyDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.ModArithLowering
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.PolyDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.ModArithLowering
 
 /-!
 # Poly lowering (#482-4) — the L4′ → L2 (Poly → ModArith) step
@@ -59,6 +61,8 @@ keeps the lanes scalar.  We surface that gate here via `routeOfModulus` (reusing
 the L2 `routeOf` decision) so the Vector-vs-scalar choice for the NTT lanes is
 made once, at L2, not re-decided per protocol.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

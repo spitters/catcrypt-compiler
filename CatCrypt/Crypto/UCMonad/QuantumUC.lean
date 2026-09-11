@@ -3,8 +3,11 @@ Copyright (c) 2024 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.UCMonad
-import CatCrypt.Quantum.Instrument
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.UCMonad
+public import CatCrypt.Quantum.Instrument
 
 /-!
 # Quantum UC via the UCMonad Framework — Concrete Construction
@@ -38,7 +41,7 @@ where the supremum ranges over:
 
 The input `ρ` is a state on dimension `d` with **no reference register**, so
 `qdist` is the *induced* distinguishability distance, not the diamond norm.
-The reference-stabilized (genuine diamond / completely-bounded) distance is
+The reference-stabilized (diamond / completely-bounded) distance is
 `DiamondNorm.qdistDiamond`; it is the metric that supports parallel composition
 and entangled environments. `qdist` is the right metric for single-register,
 sequential reasoning (data-processing holds).
@@ -56,6 +59,8 @@ sequential reasoning (data-processing holds).
 | classicalEmbed           | `axiom` (5)        | **dropped** (Heap/Fin d mismatch) |
 | IsClassical              | `axiom` (3)        | **dropped** |
 -/
+
+@[expose] public section
 
 open scoped ENNReal
 open CatCrypt.Quantum
@@ -114,7 +119,7 @@ theorem qdist_comp_right {α β γ : Type} (f g : α → QComp d β)
     (le_iSup_of_le a (le_iSup_of_le ρ le_rfl))
 
 /-- Auxiliary: `absDiff a b ≤ ε` implies `a ≤ b + ε` (quantum namespace). -/
-private theorem le_add_of_absDiff_le {a b ε : ℝ≥0∞} (h : absDiff a b ≤ ε) :
+theorem le_add_of_absDiff_le {a b ε : ℝ≥0∞} (h : absDiff a b ≤ ε) :
     a ≤ b + ε := by
   have hab : a - b ≤ ε := le_trans (le_max_left _ _) h
   calc a ≤ a - b + b := le_tsub_add

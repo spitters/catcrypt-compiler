@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect
 
 /-!
 # A non-aliasing memory model for `stackStore` in the Jasmin dialect
@@ -47,6 +49,8 @@ worked instance:
 All four pieces have all goals closed; the only axioms are the standard
 `propext` / `Quot.sound`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

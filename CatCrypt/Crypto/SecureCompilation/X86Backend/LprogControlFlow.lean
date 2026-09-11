@@ -3,11 +3,19 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgNested
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JForProgNested
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgNested
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 
 /-!
 # Looped (non-unrolled) control-flow lowering for the owned backend (task #538)
@@ -75,6 +83,8 @@ term, not the emitted ISA) and the `#460` vartime policy: a looped emission is
 CT **iff** its trip count / guard is public. The bounded-for layer here is
 public-counter by construction, so it is CT-admissible.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -361,7 +371,7 @@ def cforToLprogAbiBody {accTy : JasminTy} (w : Nat) (top : LLabel) (nReg : Strin
     (immSlotMap : ImmSlotMap := fun _ => none) : Lcmd :=
   let virt := comToLfundef p.update immSlotMap
   let phys := comToLfundefPhys p.update shiftImm immSlotMap
-  let tbl := physTable (bodyTrace virt.lfd_body)
+  let tbl := bodyPhysTable virt.lfd_body
   let argReg := physRegName (physMapTabled tbl (nameSlot virt.lfd_body (virt.lfd_arg.head?.getD "a0")))
   let resReg := phys.lfd_res.head?.getD "RAX"
   let movR : String → String → Linstr :=
@@ -422,7 +432,7 @@ def cforIdxToLprogAbiBody {accTy : JasminTy} (w : Nat) (top : LLabel)
     (immSlotMap : ImmSlotMap := fun _ => none) : Lcmd :=
   let virt := comToLfundef body immSlotMap
   let phys := comToLfundefPhys body shiftImm immSlotMap
-  let tbl := physTable (bodyTrace virt.lfd_body)
+  let tbl := bodyPhysTable virt.lfd_body
   -- The accumulator is the first arg (`a0`), the loop counter the second (`a1`).
   let accReg := physRegName (physMapTabled tbl
     (nameSlot virt.lfd_body (virt.lfd_arg.head?.getD "a0")))
@@ -459,7 +469,7 @@ def cforIdxToLprogAbiBodyZeroAcc {accTy : JasminTy} (w : Nat) (top : LLabel)
     (immSlotMap : ImmSlotMap := fun _ => none) : Lcmd :=
   let virt := comToLfundef body immSlotMap
   let phys := comToLfundefPhys body shiftImm immSlotMap
-  let tbl := physTable (bodyTrace virt.lfd_body)
+  let tbl := bodyPhysTable virt.lfd_body
   let accReg := physRegName (physMapTabled tbl
     (nameSlot virt.lfd_body (virt.lfd_arg.head?.getD "a0")))
   let ctrArgReg := physRegName (physMapTabled tbl
@@ -543,7 +553,7 @@ def cforIdxToLprogAbiBodyArr {accTy : JasminTy} {nRC : Nat} (w : Nat) (top : LLa
     (immSlotMap : ImmSlotMap := fun _ => none) : Lcmd :=
   let virt := comToLfundef body immSlotMap
   let phys := comToLfundefPhys body shiftImm immSlotMap
-  let tbl := physTable (bodyTrace virt.lfd_body)
+  let tbl := bodyPhysTable virt.lfd_body
   -- Arg-slot → role map. `tabCtxt accTy nRC = [accTy, .reg 64, .stackArr 64 nRC]`
   -- lists the accumulator at the *head* (`.here`) and the array at the *tail*
   -- (`.there (.there .here)`); `comToLfundef`'s **program-root** order (`Γ.reverse`)
@@ -608,7 +618,7 @@ def cforToLprogAbiNestedBody {accTy : JasminTy} (w : Nat)
     (immSlotMap : ImmSlotMap := fun _ => none) : Lcmd :=
   let virt := comToLfundef p.inner.update immSlotMap
   let phys := comToLfundefPhys p.inner.update shiftImm immSlotMap
-  let tbl := physTable (bodyTrace virt.lfd_body)
+  let tbl := bodyPhysTable virt.lfd_body
   let argReg := physRegName (physMapTabled tbl (nameSlot virt.lfd_body (virt.lfd_arg.head?.getD "a0")))
   let resReg := phys.lfd_res.head?.getD "RAX"
   let movR : String → String → Linstr :=
@@ -644,7 +654,7 @@ def cforToLprogAbiSeq {accTy : JasminTy} (w : Nat) (top : LLabel) (nReg : String
   | (p0 :: _) =>
     let virt := comToLfundef p0.update immSlotMap
     let phys := comToLfundefPhys p0.update shiftImm immSlotMap
-    let tbl := physTable (bodyTrace virt.lfd_body)
+    let tbl := bodyPhysTable virt.lfd_body
     let argReg := physRegName (physMapTabled tbl (nameSlot virt.lfd_body (virt.lfd_arg.head?.getD "a0")))
     let resReg := phys.lfd_res.head?.getD "RAX"
     let movR : String → String → Linstr :=

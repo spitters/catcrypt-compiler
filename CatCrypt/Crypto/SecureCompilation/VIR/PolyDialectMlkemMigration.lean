@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.PolyRewrites
-import CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.PolyRewrites
+public import CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic
 
 /-!
 # Poly-dialect ML-KEM NTT migration tie (#482-4, step 4 — additive)
@@ -61,6 +63,8 @@ emitter onto it.  Only the ML-KEM `nttMul` tie is landed here as the
 proof-of-concept of the one-tie-per-level structure (mirroring the BN254 `padd`
 proof-of-concept of the EllipticCurve migration).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

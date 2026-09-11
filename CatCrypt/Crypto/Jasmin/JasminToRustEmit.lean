@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminAST
+module
+
+import all Init.Data.Repr
+public import Mathlib.Data.String.Defs
+public import CatCrypt.Crypto.Jasmin.JasminAST
 
 /-!
 # Jasmin AST → safe-Rust source emitter
@@ -21,21 +25,23 @@ shift / bswap), `Cif`, `Cfor`, `Ccall`.  SIMD ops, `Cwhile`, `PappN`
 emit a placeholder comment.
 -/
 
+@[expose] public section
+
 namespace CatCrypt.Crypto.Jasmin.JasminToRustEmit
 
 open CatCrypt.Crypto.Jasmin
 
 /-! ## §1.  String helpers -/
 
-private def LF : String := "\n"
+def LF : String := "\n"
 
 /-- `n` spaces.  (Reimplemented locally because `String.replicate`'s
     visibility varies across Lean stdlib versions.) -/
-private def spaces : Nat → String
+def spaces : Nat → String
   | 0     => ""
   | n + 1 => " " ++ spaces n
 
-private def indent (n : Nat) (s : String) : String := spaces n ++ s
+def indent (n : Nat) (s : String) : String := spaces n ++ s
 
 /-- Map a `WSize` to the Rust integer type name. -/
 def rustWSize : WSize → String
@@ -217,7 +223,7 @@ entry to the body; bodies don't pollute the outer `declared`. -/
 
 /-- Helper: emit a single line and (if the LVal is a fresh Lvar) add
     its name to `declared`.  Returns (line, updated declared). -/
-private def ppOneLineAssign (declared : List String) (ind : Nat)
+def ppOneLineAssign (declared : List String) (ind : Nat)
     (lv : LVal) (rhsTy : String) (rhsExpr : String) : String × List String :=
   match lv with
   | .Lvar x =>
@@ -234,7 +240,7 @@ private def ppOneLineAssign (declared : List String) (ind : Nat)
 
 /-- Asm-op assignment (re-uses ppAsmCopn for the RHS expression but
     with assignment-vs-declaration aware of `declared`). -/
-private def ppAsmStateful (declared : List String) (ind : Nat)
+def ppAsmStateful (declared : List String) (ind : Nat)
     (lvs : List LVal) (op : AsmOp) (es : List PExpr) : String × List String :=
   match lvs.head? with
   | none => (indent ind "/* asm op with no destination */" ++ LF, declared)

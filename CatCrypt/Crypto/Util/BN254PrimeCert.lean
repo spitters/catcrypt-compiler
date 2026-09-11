@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Util.BN254.Node0
-import CatCrypt.Crypto.Util.BN254.Node3
+module
+
+public import Mathlib.Tactic.NormNum.Prime
+public import CatCrypt.Crypto.Util.BN254.Node0
+public import CatCrypt.Crypto.Util.BN254.Node3
 
 /-!
 # Machine-checked primality of the BN254 (alt-bn128) base-field prime
@@ -19,6 +22,8 @@ Lucas certificate; the deepest chain descends through `2480874801745591` and
 `BN254.Node0`–`BN254.Node3`; this file assembles the top node. Factor data
 corroborated against AUCurves `bn254_prime_certif.v`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxRecDepth 50000

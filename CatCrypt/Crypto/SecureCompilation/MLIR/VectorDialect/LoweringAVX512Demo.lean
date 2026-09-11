@@ -3,9 +3,19 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.LoweringAVX512
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.ConsumerDemo
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.MldsaNtt4WayVec
+module
+
+import all Init.Data.Repr
+import all CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Types
+import all CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Ops
+import all CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Denote
+import all CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
+import all CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.LoweringAVX512
+import all CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.ConsumerDemo
+import all CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.MldsaNtt4WayVec
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.LoweringAVX512
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.ConsumerDemo
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.MldsaNtt4WayVec
 
 /-!
 # AVX-512 lowering — the #183 architectural win, demonstrated (task #276)
@@ -32,6 +42,8 @@ consumer's original abstract spec.
   build the *same* `VectorOp.mulHi` / `VectorOp.shiftRA` terms and lower them
   to the 512-bit `#VPMULH_32u16` / `#VPSRA_32u16` mnemonics.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -67,7 +79,10 @@ theorem chacha_add_avx512_eq_spec (a b : W32x4) :
 theorem chacha_add_avx512_render (a b : W32x4) :
     ((lowerAVX512 .w16u32 (vpadd4u32_vectorOp a b)).map
         (renderAVX512 "c" ["a", "b"]))
-      = some "c = #VPADD_16u32(a, b);" := rfl
+      = some "c = #VPADD_16u32(a, b);" := by
+  simp only [vpadd4u32_vectorOp, lowerAVX512, Option.map, renderAVX512, List.take,
+    String.intercalate_cons_cons, String.intercalate_singleton]
+  rfl
 
 /-! ## 2. ML-DSA / ML-KEM Montgomery reduction — same ops, 512-bit `zmm`
 
@@ -100,7 +115,10 @@ theorem mldsa_reduction_avx512_render (v w : VectorTy (BitVec 16) 32) (m : Nat) 
       ∧ ((lowerAVX512 .w32u16 (.shiftRA shiftRA16 m v)).map
           (renderAVX512 "r" ["a"]))
         = some ("r = #VPSRA_32u16(a, " ++ toString m ++ ");") := by
-  refine ⟨rfl, rfl⟩
+  refine ⟨?_, rfl⟩
+  simp only [lowerAVX512, Option.map, renderAVX512, List.take,
+    String.intercalate_cons_cons, String.intercalate_singleton]
+  rfl
 
 /-! ## 3. Cross-target consistency — AVX2 and AVX-512 agree on the same term
 

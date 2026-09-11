@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.OpSemCoverage
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.OpSemCoverage
+public import CatCrypt.Crypto.SecureCompilation.VIR.OpSemCoverage
 
 /-!
 # Whole-command run-correctness: `execCmd` is the monadic fold of `execInstr`
@@ -64,6 +67,8 @@ end-to-end concrete KAT (`block_kat`: `x := y + 1 ; z := x + x` started at
   semantics. The opaque-leaf edge (`LeafAgrees`) only enters when one rewrites a
   *specific* instruction's effect via a keystone that itself denotes a leaf.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

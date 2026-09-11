@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxBlake2
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Blake2Emit
+module
+
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxBlake2
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Blake2Emit
 
 /-!
 # #607 fan-out: functional tie — verified-compiler BLAKE2s G output word = the reference `gSpec`
@@ -38,6 +40,8 @@ see `CompileFromHaxBlake2`'s module doc). The full four-word G is the same
 `+`/`^`/`>>>` shape replicated; this tie is at the `a'`-word granularity, the only
 output the leaf emits.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

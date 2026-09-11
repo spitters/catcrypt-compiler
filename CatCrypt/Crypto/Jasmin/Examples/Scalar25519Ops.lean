@@ -46,19 +46,24 @@ of each method: exactly one fiat-crypto call, with the expected
 in/out slot types.  Composition (e.g. wide-reduction) is then a Rust
 shim concern, not an AST extension.
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
-import CatCrypt.Crypto.Jasmin.RustEmit
+module
 
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.RustEmit
+
+
+@[expose] public section
 namespace CatCrypt.Crypto.Jasmin.Examples.Scalar25519Ops
 
 open CatCrypt.Crypto.Jasmin.LowCT
 
 /-- A `TFpL25519` (Mont-domain scalar) slot. -/
-private def scalar (v : String) : Located :=
+def scalar (v : String) : Located :=
   { locVar := v, locSrc := TowerType.TFpL25519 }
 
 /-- A `TBytes 32` slot. -/
-private def bytes32 (v : String) : Located :=
+def bytes32 (v : String) : Located :=
   { locVar := v, locSrc := TowerType.TBytes 32 }
 
 /-! ## §1.  `from_bytes_mod_order` body
@@ -69,8 +74,8 @@ private def bytes32 (v : String) : Located :=
 def fromBytesModOrderBody : LowCT :=
   LowCT.RCall "scalar25519_bytes_to_mont" (scalar "out") [bytes32 "bytes_in"]
 
-private def fromBytesModOrderParams  : List Located := [ bytes32 "bytes_in" ]
-private def fromBytesModOrderResults : List Located := [ scalar "out" ]
+def fromBytesModOrderParams  : List Located := [ bytes32 "bytes_in" ]
+def fromBytesModOrderResults : List Located := [ scalar "out" ]
 
 def emitFromBytesModOrder : String :=
   ppRustFunction "scalar25519_from_bytes_mod_order_emit"
@@ -84,8 +89,8 @@ def emitFromBytesModOrder : String :=
 def toBytesBody : LowCT :=
   LowCT.RCall "scalar25519_mont_to_bytes" (bytes32 "out") [scalar "mont"]
 
-private def toBytesParams  : List Located := [ scalar "mont" ]
-private def toBytesResults : List Located := [ bytes32 "out" ]
+def toBytesParams  : List Located := [ scalar "mont" ]
+def toBytesResults : List Located := [ bytes32 "out" ]
 
 def emitToBytes : String :=
   ppRustFunction "scalar25519_to_bytes_emit"
@@ -99,8 +104,8 @@ def emitToBytes : String :=
 def mulBody : LowCT :=
   LowCT.RCall "scalar25519_mul_mont" (scalar "out") [scalar "a", scalar "b"]
 
-private def mulParams  : List Located := [ scalar "a", scalar "b" ]
-private def mulResults : List Located := [ scalar "out" ]
+def mulParams  : List Located := [ scalar "a", scalar "b" ]
+def mulResults : List Located := [ scalar "out" ]
 
 def emitMul : String :=
   ppRustFunction "scalar25519_mul_emit"
@@ -131,8 +136,8 @@ def emitSub : String :=
 def negateBody : LowCT :=
   LowCT.RCall "scalar25519_opp_mont" (scalar "out") [scalar "a"]
 
-private def negateParams  : List Located := [ scalar "a" ]
-private def negateResults : List Located := [ scalar "out" ]
+def negateParams  : List Located := [ scalar "a" ]
+def negateResults : List Located := [ scalar "out" ]
 
 def emitNegate : String :=
   ppRustFunction "scalar25519_negate_emit"

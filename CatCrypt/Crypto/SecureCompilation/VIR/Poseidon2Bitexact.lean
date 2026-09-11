@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgIndexed
-import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JForProgIndexed
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgIndexed
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
 
 /-!
 # The Poseidon2-BabyBear round loop is bit-exact in its per-round constants
@@ -59,6 +64,8 @@ carried hypothesis is the opaque-leaf edge `LeafAgrees`, **vacuous** here (the
 round body is pure `regArith`/`stackLoad`, no `extCall`). No `sorry`, no new
 axioms, no `native_decide` for the bit-exactness.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -203,7 +210,7 @@ def pos2InternalRef (init : BitVec 64) : BitVec 64 :=
   (List.range nPartial).foldl (fun acc r => pos2Round r acc) init
 
 /-- Fold congruence under a per-element side condition (mirrors the exemplar). -/
-private theorem foldl_congr_mem (f g : BitVec 64 → Nat → BitVec 64) :
+theorem foldl_congr_mem (f g : BitVec 64 → Nat → BitVec 64) :
     ∀ (l : List Nat), (∀ i ∈ l, ∀ acc, f acc i = g acc i) →
       ∀ init, l.foldl f init = l.foldl g init
   | [], _, _ => rfl

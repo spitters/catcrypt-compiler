@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Rewrite.MultiplyMethodEquiv
-import CatCrypt.Crypto.Optimizer.Rewrite.ProofCarryingExtraction
+module
+
+public import CatCrypt.Crypto.Optimizer.Rewrite.MultiplyMethodEquiv
+public import CatCrypt.Crypto.Optimizer.Rewrite.ProofCarryingExtraction
 
 /-!
 # Certified cost-minimizing selection over proven-equivalent multiply methods
@@ -46,6 +48,8 @@ The multiplication count is the standard metric distinguishing these algorithms
 Each count is weighted by `Egraph.opCost (.regArith .mul w)` so the model reuses
 the engine's op cost rather than an ad-hoc constant.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,9 @@ Copyright (c) 2024 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.UCMonad.ITreeNCompose
+module
+
+public import CatCrypt.Crypto.UCMonad.ITreeNCompose
 
 /-!
 # ITreeN Multi-Session and Parallel Composition
@@ -26,6 +28,8 @@ lifting the SPComp-level results from `RC.lean` to the ITreeN level.
 **0 axioms**, **0 sorries**. All proofs complete.
 -/
 
+@[expose] public section
+
 namespace UCMonad.ITreeNUC
 
 open CatCrypt.Core CatCrypt.Prob CatCrypt.Crypto
@@ -33,7 +37,7 @@ open scoped ENNReal
 
 /-! ## Section 1: flattenAll commutes with done -/
 
-private theorem flatten_done_aux {α : Type} {E : EventSig}
+theorem flatten_done_aux {α : Type} {E : EventSig}
     (handler : ∀ e : E.Event, SPComp (E.Resp e)) :
     (n : Nat) → (a : α) →
     ITreeN.flatten handler n (ITreeN.done (E := E) (n + 1) a) = ITreeN.done n a

@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemShift
-import Transfer.Base.Related
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemShift
+public import Transfer.Base.Related
 
 /-!
 # Faithful `lsem` for the widening-multiply / carry-chain fragment
@@ -89,6 +92,8 @@ hypothesis). Still deferred, with the same honest frozen-wire reasons as increme
 `jasminc_preserves_ct`.** The `lsem→bytes` encoder and Sail tables remain the
 declared trusted base, as for every verified compiler.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

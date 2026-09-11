@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Core
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
 
 /-!
 # Lattice VIR dialect
@@ -75,6 +78,8 @@ transformation, with soundness reducing to exactly that leaf agreement (see
 Like `JasminDialect`, this dialect uses VIR's pure denotation. All op
 denotations are total functions; no memory or sampling effect.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.LatticeDialect
 

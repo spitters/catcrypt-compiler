@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MontRedc4RunBlockProven
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MontRedc4RunBlockProven
 
 /-!
 # Parametrized invariant schemas for Ascent's covered kernel families
@@ -49,6 +52,8 @@ conjunct and reduce a single `valLimbs` window. Nothing here folds the register 
 into a decidable blob. The generator's `wf` field carries the layout's length
 constraints as ordinary hypotheses.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

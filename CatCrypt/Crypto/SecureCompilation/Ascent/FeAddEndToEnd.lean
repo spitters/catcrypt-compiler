@@ -3,8 +3,35 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd
-import CatCrypt.Crypto.Hax.RustSubsetToLowCT
+module
+
+-- The closed-kernel route reduces the front (`translateDialectControl`,
+-- `semScalar`, `cryptoDialectToJasminCom`) by `rfl`/`decide`; under the module
+-- system that reduction needs the front closure imported with `all`, and
+-- `Nat.repr` (the front's slot names) exposed through `Init.Data.Repr`.
+import all Init.Data.Repr
+import all CatCrypt.Core.Code
+import all CatCrypt.Crypto.CryptoWord
+import all CatCrypt.Crypto.Jasmin.JasminAST
+import all CatCrypt.Crypto.Jasmin.JasminTypes
+import all CatCrypt.Crypto.Jasmin.LowCT
+import all CatCrypt.Crypto.SDist
+import all CatCrypt.Crypto.SecureCompilation.CryptoSSA
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+import all CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
+import all CatCrypt.Crypto.SecureCompilation.Dialects.RustExecKernelAdeq
+import all CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
+import all CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.Core
+import all CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+import all CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
+public import CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd
+public import CatCrypt.Crypto.Hax.RustSubsetToLowCT
 
 /-!
 # `feAdd` end-to-end: the second closed source→bytes ascend capstone
@@ -44,6 +71,8 @@ counterparts.
 
 Part of the AutoCorres-in-Lean ascent begun by Sebastian Graf (sgraf812/ascent).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxRecDepth 10000
@@ -142,16 +171,32 @@ theorem faHSem : semScalar feAddC (fun _ => none) = some faEnv :=
 
 theorem faNameSome : (faO.vm.lookup "r0").isSome := by rfl
 
-noncomputable def faW : CVar faO.Γ' (.sword 64) :=
-  ((faO.vm.lookup "r0").get faNameSome).2
+/-- The tracked slot's type is the 64-bit word: decided, since the slot name
+    goes through `Nat.repr`, which the elaborator's definitional check does not
+    reduce. -/
+theorem faNameTy : ((faO.vm.lookup "r0").get faNameSome).1 = .sword 64 := by
+  decide
 
-theorem faHName : faO.vm.lookup "r0" = some ⟨.sword 64, faW⟩ := by rfl
+/-- The tracked output slot for `r0`. -/
+noncomputable def faW : CVar faO.Γ' (.sword 64) :=
+  cast (congrArg (CVar faO.Γ') faNameTy) ((faO.vm.lookup "r0").get faNameSome).2
+
+theorem faHName : faO.vm.lookup "r0" = some ⟨.sword 64, faW⟩ := by decide
 
 theorem faValSome : (faEnv "r0").isSome := by rfl
 
-noncomputable def feAddVal : BitVec 64 := ((faEnv "r0").get faValSome).2
+theorem faValTy : ((faEnv "r0").get faValSome).1 = .sword 64 := by decide
 
-theorem faHVal : faEnv "r0" = some ⟨.sword 64, feAddVal⟩ := by rfl
+/-- The word `semScalar` leaves in `r0`. -/
+noncomputable def feAddVal : BitVec 64 :=
+  cast (congrArg CryptoTy.denote faValTy) ((faEnv "r0").get faValSome).2
+
+theorem faHVal : faEnv "r0" = some ⟨.sword 64, feAddVal⟩ := by
+  rw [← Option.some_get faValSome]
+  exact congrArg some (Sigma.ext faValTy
+    (by unfold feAddVal
+        exact (cast_heq (congrArg CryptoTy.denote faValTy)
+          ((faEnv "r0").get faValSome).2).symm))
 
 theorem faRetSome : (faO.cont (Com.ret (toVIRVar faW))).isSome := by rfl
 

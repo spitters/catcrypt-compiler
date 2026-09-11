@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.PlonkyBabyBearKernel
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RegToRiscv
+module
+
+public meta import Mathlib.Tactic.Ring
+public import Mathlib.Tactic.Ring
+public import CatCrypt.Crypto.SecureCompilation.PlonkyBabyBearKernel
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RegToRiscv
 
 /-!
 # A whole plonky3 operation routed through the compiler
@@ -23,6 +27,8 @@ The result `bbFriFoldProg`:
 Composition needs one ingredient — that a kernel leaves the registers it never writes
 untouched (`denotePure_app_ne`), so an input held across a kernel call survives.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.PlonkyRouting
 
@@ -301,7 +307,7 @@ def bbButterflyProg : RegProg :=
     ++ [RegStmt.mov "o0" "res", RegStmt.mov "a" "fa", RegStmt.mov "b" "wb"] ++ submodProg babyBear
 
 /-- Shared setup: the value-and-preservation facts up to (and including) the add kernel. -/
-private theorem bb_butterfly_pre (env : Env)
+theorem bb_butterfly_pre (env : Env)
     (hfa : (env "fa").toNat < babyBear) (hfw : (env "fw").toNat < babyBear)
     (hfb : (env "fb").toNat < babyBear) :
     ∃ ma : Env,

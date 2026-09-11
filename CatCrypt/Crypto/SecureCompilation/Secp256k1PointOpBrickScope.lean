@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Secp256k1FeMulBrickReduce
-import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpBrickInv
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Secp256k1FeMulBrickReduce
+public import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpBrickInv
 
 /-!
 # The doubling schedule's value tie, from the brick scope
@@ -27,6 +29,8 @@ an entry environment in the brick scope, with no residual hypothesis.
   brick scope whose schedule readout is the operation's initial environment, the
   emitted schedule's waist holds `jacDblSpec` / `jacAddSpec`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpBrickScope
 

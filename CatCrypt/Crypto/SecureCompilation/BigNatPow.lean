@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.BigNat
+module
+
+public import CatCrypt.Crypto.SecureCompilation.BigNat
 
 /-!
 # BigNatPow: exponentiation on the `BigNat` carrier
@@ -19,6 +21,8 @@ Repeated-multiply exponentiation over the verified `BigNat` carrier `mul`
 * `pow_val` — `bignumVal (pow a n) = bignumVal a ^ n`.
 * `pow_natPow` — the same equation stated with `Nat.pow`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Logic.Function.Basic
-import Mathlib.Logic.Equiv.Defs
+module
+
+import all Init.Data.Repr
+public import Mathlib.Logic.Function.Basic
+public import Mathlib.Logic.Equiv.Defs
 
 /-!
 # Representation transfer for emit-realization bridges
@@ -43,6 +46,8 @@ emit-realization bridges need.
 * `BinOpRealization.eq_transfer` — the transfer theorem: an abstract equation
   `op a b = op a' b'` holds **iff** `bop` agrees on the encoded operands.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

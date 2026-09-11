@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.BigNat
+module
+
+public import CatCrypt.Crypto.SecureCompilation.BigNat
 
 /-!
 # Single-limb short division over the BigNat limb carrier
@@ -30,6 +32,8 @@ divisor.
   `shortDivMod_val`: `bignumVal (shortDivMod a d).1 = bignumVal a / d.toNat`
   and `bignumVal (shortDivMod a d).2 = bignumVal a % d.toNat`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

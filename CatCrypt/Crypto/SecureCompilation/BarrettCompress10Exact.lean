@@ -3,6 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
+module
+
+
+@[expose] public section
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.BarrettCompress10Exact

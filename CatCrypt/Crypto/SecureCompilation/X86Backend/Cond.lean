@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 
 /-!
 # Forward-conditional lowering (#281 increment)
@@ -60,6 +63,8 @@ Quot.sound]`). `runCond` is a `Bool`-guarded choice of two `runBlock`s;
 `lowerBlock_denote`. Backward jumps, general unstructured CFG/labels, and calls
 are out of scope (later increments).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

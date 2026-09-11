@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.SchedulerPass
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Optimizer.SchedulerPass
 
 /-!
 # `keccakPipeline`: software-pipelining the sequential Keccak-f1600 θ-step
@@ -69,6 +72,8 @@ transform is denotation-preserving by construction (every move is an
 primitive plus the general θ-block pipeline, not a whole-permutation
 emitter.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

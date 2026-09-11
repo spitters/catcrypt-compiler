@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Core
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
 
 /-!
 # A reordering instruction-scheduling pass for `Com` (real transform)
@@ -81,6 +84,8 @@ variable lands on the slot now holding its old value.
   reordered `.var e2' (.var e1' body')` with the preservation theorem
   `scheduleSwap_denote`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 -- Several equation/lookup lemmas legitimately do not use every ambient

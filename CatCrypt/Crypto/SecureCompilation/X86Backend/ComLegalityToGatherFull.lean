@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ComLegalityToGather
+module
+import all CatCrypt.Crypto.SecureCompilation.X86Backend.ComLegalityToGather
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ComLegalityToGather
 
 /-!
 # D4 (typed-`Com` step), completed: the supported-op set lowers under `lowerLinstrExt2`
@@ -81,6 +85,8 @@ the invariant *every emitted instruction lowers via `lowerLinstrExt2L` **or** is
 the terminal `Lret`* (`comToBody_lower_or_ret`); the gather success is stated for
 the straight-line image (the body with its `Lret` terminator dropped).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

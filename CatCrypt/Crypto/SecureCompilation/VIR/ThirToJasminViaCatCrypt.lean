@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ThirToCatCryptDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ThirToCatCryptDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.ThirToCatCryptDialect
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
 
 /-!
 # The composed `thir → catCrypt → jasmin` spine (the convergence route, LIVE)
@@ -65,6 +69,8 @@ immediate shifts requires the parallel `catCryptDialect`-ops work that teaches
 `cryptoDialectToJasminCom` to lower `bvShiftL`/`bvShiftR` (it already lowers the
 *variable* shifts `bvShiftLV`/`bvShiftRV` and the rotates `bvRor`/`bvShiftRA`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

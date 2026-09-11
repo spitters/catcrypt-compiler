@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
 # Jasmin source `Expr._uprog` value-level producer (Phase A.1)
@@ -93,6 +96,8 @@ The value-level obligations that *are* discharged here: the export is total,
 structurally well-formed (`Com.toUprog_wf`), and round-trips through the
 textual serializer (`Com.toUprogText_magic`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Lowering
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Lowering
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Lowering
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
 # Closing the lowering COVERAGE gap: constant-offset memory load/store (P2)
@@ -96,6 +101,8 @@ with the bodies of `lowerLoad`/`lowerStore` here. Because the memory ops live in
 `Instr w` to `JInstr 64` (the union model) — tracked as the next step in the
 perf-review P2 item.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -197,17 +204,17 @@ def lowerMulHiJ (dst : String) (s0 s1 : JOperand) : List (JInstr 64) :=
     case for an exporter-emitted mnemonic). Defined via `String.toList`/`drop` so it
     reduces in the kernel (the `splitOn`-based form did not). -/
 def shiftCountOf (bare : String) : Nat :=
-  ((String.ofList (bare.toList.drop 4)).toNat?).getD 0
+  (natOfDigits? (bare.toList.drop 4)).getD 0
 
 /-- Parse a (tag-stripped) immediate-shift mnemonic `SHL:<n>` / `SHR:<n>` into
     `(isLeft, n)`. `none` for any other mnemonic. Detection is by the 4-character
-    `startsWith` prefix (kernel-reducible on a closed mnemonic), so the per-op
+    `hasPrefix` prefix (kernel-reducible on a closed mnemonic), so the per-op
     bridge's `parseShiftMnem "BOP" = none` / `…"SHR:<n>" = some _` facts are
     provable by reduction; the count is recovered separately by `shiftCountOf`. -/
 def parseShiftMnem (opn : String) : Option (Bool × Nat) :=
   let bare := stripWidthTag opn
-  if bare.startsWith "SHL:" then some (true, shiftCountOf bare)
-  else if bare.startsWith "SHR:" then some (false, shiftCountOf bare)
+  if hasPrefix bare "SHL:" then some (true, shiftCountOf bare)
+  else if hasPrefix bare "SHR:" then some (false, shiftCountOf bare)
   else none
 
 /-- Lower a native immediate shift `dst := src >> n` (`SHR:<n>`) /

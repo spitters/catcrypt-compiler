@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxCompress
+module
+
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxCompress
 
 /-!
 # General-N value-correctness of the SHA-256 compression loop
@@ -22,6 +24,8 @@ read hypothesis.
 materialisation one binding at a time, alongside the four block lemmas of
 `CompileFromHaxCompress` §7.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.CompileFromHaxCompress
 

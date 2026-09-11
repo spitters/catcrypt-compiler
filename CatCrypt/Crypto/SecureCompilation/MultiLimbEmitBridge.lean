@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Cios4LimbProven
+module
+public import Mathlib.Data.ZMod.Basic
+
+public import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Cios4LimbProven
 
 /-!
 # Bridging the emitted curve kernels and the multi-limb proof stack
@@ -22,6 +25,8 @@ result proven in one is a result in the other.
   defining property of the Montgomery product), the tie from emitted bytes to the
   abstract field.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.MultiLimbEmitBridge
 

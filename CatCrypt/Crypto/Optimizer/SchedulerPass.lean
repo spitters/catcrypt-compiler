@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
-import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
+module
+
+public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
 
 /-!
 # `scheduleBlock`: verified intra-block instruction scheduling for ILP
@@ -68,6 +70,8 @@ The kernel of both proofs is the **adjacent independent-swap**
 commutation lemma (`bbSwap_exec_iff`), proved separately for the scalar
 and call statement shapes against `LowCT`'s big-step `RustExec`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

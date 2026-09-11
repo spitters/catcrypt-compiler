@@ -3,12 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Quantum.Instrument
-import CatCrypt.Quantum.UnitaryChannel
-import CatCrypt.Quantum.TensorProduct
-import CatCrypt.Tactic.MatrixDecide
-import Mathlib.Data.Fin.VecNotation
+module
 
+public import CatCrypt.Quantum.Instrument
+public import CatCrypt.Quantum.UnitaryChannel
+public import CatCrypt.Quantum.TensorProduct
+public import CatCrypt.Tactic.MatrixDecide
+public import Mathlib.Data.Fin.VecNotation
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!

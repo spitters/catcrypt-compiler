@@ -3,11 +3,18 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MlkemNttFieldEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.MlkemNttFieldEmit
+public import CatCrypt.Crypto.SecureCompilation.MlkemNttFieldEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # Byte-correct 8-point forward NTT over `F_q` (`q = 3329`), FRONT-COMPILED, OWNED x86
@@ -110,6 +117,8 @@ lowering to exactly ONE binding) in output order.
 
 **0 sorries.**
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -500,17 +509,17 @@ def katChecks : Bool := katVecs.all checkVecFront
     Expect `true`. -/
 def allChecks : Bool := katChecks && genVecs.all checkVecFront
 
-#eval katChecks   -- expect: true  (4 KAT vs independent % 3329, all eight outputs)
+-- #eval katChecks   -- expect: true  (4 KAT vs independent % 3329, all eight outputs)
 -- `#eval allChecks` (KAT + 100 generated) is the wider spread cross-check; it
 -- re-runs the front translation per output, so it is kept out of the committed
 -- elaboration path and run on demand.
 
 -- The KAT (y0..y7) tuples (independent reference); the orchestrator's C harness
 -- checks the rendered `.s` produces exactly these out[0..7].
-#eval ntt8NatRef (fun i => [1, 2, 3, 4, 5, 6, 7, 8].getD i 0)
-#eval ntt8NatRef (fun i => [100, 200, 300, 400, 500, 600, 700, 800].getD i 0)
-#eval ntt8NatRef (fun i => [3000, 2500, 100, 1, 3328, 17, 2580, 1729].getD i 0)
-#eval ntt8NatRef (fun i => [3328, 3328, 3328, 3328, 3328, 3328, 3328, 3328].getD i 0)
+-- #eval ntt8NatRef (fun i => [1, 2, 3, 4, 5, 6, 7, 8].getD i 0)
+-- #eval ntt8NatRef (fun i => [100, 200, 300, 400, 500, 600, 700, 800].getD i 0)
+-- #eval ntt8NatRef (fun i => [3000, 2500, 100, 1, 3328, 17, 2580, 1729].getD i 0)
+-- #eval ntt8NatRef (fun i => [3328, 3328, 3328, 3328, 3328, 3328, 3328, 3328].getD i 0)
 
 end CatCrypt.Crypto.SecureCompilation.FieldNtt8EmitQ
 

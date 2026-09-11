@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
 # Poseidon2 BabyBear width-16 — reflect surface for the verified-front emit (4 variants)
@@ -74,6 +78,8 @@ front.
   leaf-shim file that provides SIMD-intrinsic bodies.
 * Plonky3 `default_babybear_poseidon2_16` (p3-baby-bear v0.5) — KAT reference.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 
@@ -173,7 +179,7 @@ def poseidon2MontgomeryResidentPartialPattern : LowCTPattern where
 /-- Tower type of one Poseidon2-BabyBear state: 16 × `u64` = 128 bytes. -/
 def poseidon2BbStateTowerType : TowerType := .TBytes 128
 
-private def loc (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
+def locPoseidon2 (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
 
 /-! ## 5. Pure-Lean Poseidon2 kernel functions — the specs
 
@@ -215,8 +221,8 @@ names match the `@[rust_cmd_pattern]` registrations above. -/
 
 /-- The `LowCT` body for `poseidon2BaselineLean`. -/
 def poseidon2BaselineBody : LowCT :=
-  let s_l      := loc "s"        poseidon2BbStateTowerType
-  let result_l := loc "__result" poseidon2BbStateTowerType
+  let s_l      := locPoseidon2 "s"        poseidon2BbStateTowerType
+  let result_l := locPoseidon2 "__result" poseidon2BbStateTowerType
   .RSeq .RSkip
     (.RCall "poseidon2_bb_baseline" result_l [s_l])
 
@@ -228,8 +234,8 @@ def poseidon2BaselineReified : ReifiedFunc :=
 
 /-- The `LowCT` body for `poseidon2MontgomeryLean`. -/
 def poseidon2MontgomeryBody : LowCT :=
-  let s_l      := loc "s"        poseidon2BbStateTowerType
-  let result_l := loc "__result" poseidon2BbStateTowerType
+  let s_l      := locPoseidon2 "s"        poseidon2BbStateTowerType
+  let result_l := locPoseidon2 "__result" poseidon2BbStateTowerType
   .RSeq .RSkip
     (.RCall "poseidon2_bb_montgomery" result_l [s_l])
 
@@ -241,8 +247,8 @@ def poseidon2MontgomeryReified : ReifiedFunc :=
 
 /-- The `LowCT` body for `poseidon2MontgomeryResidentLean`. -/
 def poseidon2MontgomeryResidentBody : LowCT :=
-  let s_l      := loc "s"        poseidon2BbStateTowerType
-  let result_l := loc "__result" poseidon2BbStateTowerType
+  let s_l      := locPoseidon2 "s"        poseidon2BbStateTowerType
+  let result_l := locPoseidon2 "__result" poseidon2BbStateTowerType
   .RSeq .RSkip
     (.RCall "poseidon2_bb_montgomery_resident" result_l [s_l])
 
@@ -254,8 +260,8 @@ def poseidon2MontgomeryResidentReified : ReifiedFunc :=
 
 /-- The `LowCT` body for `poseidon2MontgomeryResidentPartialLean`. -/
 def poseidon2MontgomeryResidentPartialBody : LowCT :=
-  let s_l      := loc "s"        poseidon2BbStateTowerType
-  let result_l := loc "__result" poseidon2BbStateTowerType
+  let s_l      := locPoseidon2 "s"        poseidon2BbStateTowerType
+  let result_l := locPoseidon2 "__result" poseidon2BbStateTowerType
   .RSeq .RSkip
     (.RCall "poseidon2_bb_montgomery_resident_partial" result_l [s_l])
 

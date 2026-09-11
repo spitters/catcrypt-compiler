@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvvModel
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvvModel
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvvModel
 
 /-!
 # Wiring a register-named packed-u32 op alphabet to the RVV machine model (#549 RVV residual)
@@ -28,6 +32,8 @@ The trust boundary is the same shape as the NEON path: the lowering is verified
 down to the model; the model's lane semantics is differential-validated (the RFC
 8439 KAT below + the qemu-riscv64 emitted-kernel KAT in `bench/riscv_compare/`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

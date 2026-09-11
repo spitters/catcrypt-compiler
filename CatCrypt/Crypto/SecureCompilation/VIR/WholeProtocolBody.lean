@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.WholeFnLowering
-import CatCrypt.Crypto.SecureCompilation.VIR.LoopLowering
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.WholeFnLowering
+public import CatCrypt.Crypto.SecureCompilation.VIR.LoopLowering
 
 /-!
 # Whole-protocol body: a straight-line setup feeding a counted loop, in one
@@ -82,6 +84,8 @@ pass applied to the fused body. Those are the remaining whole-protocol-body work
 
 0 sorries; the only hypotheses are `LeafAgrees` and `StraightLine setup`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

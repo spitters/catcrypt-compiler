@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Core
-import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.Grind
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.Grind
 
 /-!
 # Mul-by-constant strength reduction on `Com catCryptDialect`
@@ -58,6 +60,8 @@ for this task), or (ii) inventing a Com-level "fresh randomness source"
 that VIR currently does not have. Auto-fresh-random insertion is
 documented as needing Phase-5 effectful-`Com`; see `MaskingPredicate.lean`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR
 

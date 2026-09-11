@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ThirToComFront
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ThirToComFront
 
 /-!
 # A canonical refinement relation for Com-lowering correctness
@@ -33,6 +35,8 @@ restated below as `Refines` corollaries, so adopting the upstream relation is a
 mechanical rename of `Refines`/`ComRefines` and their refl/trans lemmas rather
 than a re-derivation of the lowering soundness.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.Refinement
 

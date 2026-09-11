@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Fp12Inv
+module
+
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Fp12Inv
 
 /-!
 # A CONCRETE BLS12-377 final-exponentiation schedule on the relational `Fp12_377`
@@ -77,6 +79,8 @@ cyclotomic conjugation is an involution.
 
 **0 sorries.**
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

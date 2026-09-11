@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.KernelSyntax
-import CatCrypt.Crypto.SecureCompilation.Fe25519MulLeafGoldenPath
-import CatCrypt.Crypto.SecureCompilation.Fe25519AddLeafGoldenPath
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.KernelSyntax
+public import CatCrypt.Crypto.SecureCompilation.Fe25519MulLeafGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.Fe25519AddLeafGoldenPath
 
 /-!
 # `kernel%` against the deployed fe25519 golden-path leaves
@@ -63,6 +65,8 @@ Both are `rfl` against the deployed golden-path leaves — the named notation ad
 readability and index-safety with **no new trust**: the elaborated term is
 definitionally the hand-authored one.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

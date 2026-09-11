@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMulx
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTSelectCT
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTForCT
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMulx
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMulx
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTSelectCT
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTSelectCT
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTForCT
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTForCT
 
 /-!
 # w7: cross-construct unification — one program type, one compile_correct, one CT
@@ -102,6 +107,8 @@ unconditional-CT unification.  Folding the memory fragment into a *single*
 program type with a *single* (now conditional) CT theorem is the **w7-mem**
 follow-on.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

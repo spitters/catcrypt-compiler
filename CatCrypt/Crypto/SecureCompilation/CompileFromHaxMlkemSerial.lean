@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # C4 fan-out: the verified compiler emits an ML-KEM `poly_frombytes` 12-bit unpack
@@ -50,6 +54,8 @@ verified compiler* and proven equal to the form. An abstract tie that the body
 recovers the exact 12-bit field-element `c1` from `(b1, b2)` on the byte domain
 is `mlkemFrombytesC1Form_eq_decode` (pure-`BitVec` `bv_decide`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -134,9 +140,7 @@ theorem mlkemFrombytesC1_compiles :
   have hspec : ImpExpr.denoteScalar ["b1", "b2"] ![b1, b2]
       mlkemFrombytesC1Src (fun _ => none)
         = some (mlkemFrombytesC1Form b1 b2) := by
-    have h := mlkemFrombytesC1Src_denoteScalar (nIn := 2) ![b1, b2]
-    simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+    exact mlkemFrombytesC1Src_denoteScalar (nIn := 2) ![b1, b2]
   exact compileFromHax_meets_spec (w := 32) (nIn := 2) ["b1", "b2"]
     ![b1, b2] mlkemFrombytesC1Src _ hc hspec
 

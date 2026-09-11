@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Algebra.Ring.Basic
-import Mathlib.Tactic.Ring
+module
+
+public import Mathlib.Algebra.Ring.Basic
+public import Mathlib.Tactic.Ring
 
 /-!
 # The generic quadratic field extension `K[u]/(u² − ξ)`, with KARATSUBA mul
@@ -62,6 +64,8 @@ any emitted base kernel; that lift is per-instantiation
 (`RelationalFrontBls377Fp2`-style) and deliberately out of scope here, to keep
 the generic core focused and sorry-free.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

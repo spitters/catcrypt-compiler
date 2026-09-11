@@ -3,12 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad
-import CatCrypt.Crypto.SecureCompilation.VIR.LprogScheduler
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdReloadElim
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdCopyPropagate
-import CatCrypt.Crypto.Optimizer.LoadCSE
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeled
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad
+public import CatCrypt.Crypto.SecureCompilation.VIR.LprogScheduler
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdReloadElim
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdCopyPropagate
+public import CatCrypt.Crypto.Optimizer.LoadCSE
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeled
 
 /-!
 # The `Lprog` optimization pipeline an emitter applies
@@ -40,6 +42,8 @@ every other width, so it cannot re-emit a 64-bit move at a narrower width;
   and `optimizeVerifiedBody_stateStore` — the composed store-image preservation
   across those five passes.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
@@ -305,7 +309,7 @@ theorem splitStraightRunsAux_flatten (cur body : List Linstr) :
     the straight-line runs together flatten back to the original. -/
 theorem splitStraightRuns_flatten (body : List Linstr) :
     (splitStraightRuns body).flatten = body := by
-  simpa using splitStraightRunsAux_flatten [] body
+  simpa using! splitStraightRunsAux_flatten [] body
 
 /-- Map the verified sub-pipeline over each straight-line run, leaving the
     control-flow segments unchanged, and concatenate. -/

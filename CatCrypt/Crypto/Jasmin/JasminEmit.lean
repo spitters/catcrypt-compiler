@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminAST
-import CatCrypt.Crypto.Jasmin.Passes.DeadCode
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Jasmin.JasminAST
+public import CatCrypt.Crypto.Jasmin.Passes.DeadCode
 
 /-!
 # Jasmin surface-syntax emitter for SSA u64 programs
@@ -43,6 +46,8 @@ whenever it can reuse the source register.
 
 Any other shape produces `none`, and `emitFunDecl` propagates failure.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.Emit
 

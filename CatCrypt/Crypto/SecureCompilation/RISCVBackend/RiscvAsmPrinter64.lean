@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering64
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering64
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering64
 
 /-!
 # GAS RV64 asm printer for the 64-bit bignum `RInst64` (#549)
@@ -23,6 +27,8 @@ carry-synthesis macros). This printer + `as` is the thin syntactic edge; the
 byte-level encoder + `decode(encode)=i` against sail-riscv is in
 `RiscvEncoder64.lean`/`SailRiscvDecoder64.lean`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

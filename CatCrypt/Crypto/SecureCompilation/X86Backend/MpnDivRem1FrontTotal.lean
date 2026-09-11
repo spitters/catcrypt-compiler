@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1FrontEmit
-import CatCrypt.Crypto.SecureCompilation.Dialects.TransFromMemref
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1FrontEmit
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TransFromMemref
 
 /-!
 # The runtime-trip `mpn_divrem_1` front-success gate, `maxRecDepth`-free
@@ -25,6 +27,8 @@ name-to-type map, supplied by `Dialects.TransFromMemref`.
 * `divFrontOk` — `(frontLoopBodyJ … vmBody "qp" divLimbBodyLowCT).isSome`, with no
   evaluation of the body's command list.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -80,7 +84,7 @@ theorem divMem_notTmp : ∀ x t, divMem x = some t → ¬ isTmpName x := by
 
 /-- A `srcClean` high-multiply reads from `R` when both factors do — the
     `SMulHiU` companion of the `TransFromMemref` reads-bound builders. -/
-private theorem readsFrom_mulHiU {R : String → Prop} {a b : SExpr} (ha : ReadsFrom R a)
+theorem readsFrom_mulHiU {R : String → Prop} {a b : SExpr} (ha : ReadsFrom R a)
     (hb : ReadsFrom R b) : ReadsFrom R (SExpr.SMulHiU a b) :=
   ⟨⟨ha.1, hb.1⟩, fun s hs => by
     simp only [sexprVars, List.mem_append] at hs; exact hs.elim (ha.2 s) (hb.2 s)⟩
@@ -187,7 +191,7 @@ theorem transSteps_seqAll : ∀ {l : List LowCT} {σ σ' : NameTys},
       | cons hc ht => exact .rSeq hc (transSteps_seqAll ht)
 
 /-- A pinned scalar read from a bound name. -/
-private def rdVar {R : String → Prop} (nm : String) {c : Char} {t : List Char}
+def rdVar {R : String → Prop} (nm : String) {c : Char} {t : List Char}
     (hh : nm.toList = c :: t) (hc : c ≠ '_') (hm : R nm) : ReadsFrom R (sv nm) :=
   readsFrom_var (x := nm) (notTmp_of_headNe hh hc) hm
 

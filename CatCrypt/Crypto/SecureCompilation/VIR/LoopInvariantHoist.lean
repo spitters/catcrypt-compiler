@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
-import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
-import CatCrypt.Crypto.SecureCompilation.VIR.DeadCodeElim
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+public import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DeadCodeElim
+public import CatCrypt.Crypto.SecureCompilation.VIR.DeadCodeElim
 
 /-!
 # Verified loop-invariant code motion (LICM) for `JForProg` — analysis-as-decision pass
@@ -119,6 +124,8 @@ but the *theorem statements* stay the same — the rewrite just supplies
 a different `preserves` witness, mirroring the `RegisterAllocation`
 and `DeadCodeElim` extension story.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -385,13 +392,13 @@ example {accTy : JasminTy} (v : Ctxt.Var (d := jasminDialect) [accTy] accTy) :
 
 /-- A `regArith` binary `Expr` over `reg 64`, local helper for the sanity
     tests below. (Mirrors the DeadCodeElim local helper.) -/
-private def binExprR64 {Γ : Ctxt jasminDialect} (op : JasminBinOp)
+def binExprR64 {Γ : Ctxt jasminDialect} (op : JasminBinOp)
     (a b : Ctxt.Var Γ (.reg 64)) : Expr jasminDialect Γ (.reg 64) :=
   { op := .regArith op 64, retTy_eq := rfl, args := .cons a (.cons b .nil) }
 
 /-- A `regConst` nullary `Expr` over `reg w`. The canonical LICM target:
     a compile-time constant materialised at every loop iteration. -/
-private def constExprRw {Γ : Ctxt jasminDialect} (w : Nat) (k : Nat) :
+def constExprRw {Γ : Ctxt jasminDialect} (w : Nat) (k : Nat) :
     Expr jasminDialect Γ (.reg w) :=
   { op := .regConst w k, retTy_eq := rfl, args := .nil }
 
@@ -412,7 +419,7 @@ private def constExprRw {Γ : Ctxt jasminDialect} (w : Nat) (k : Nat) :
     This is the canonical "hoist a round constant out of the loop"
     pattern: the constant lands in the pre-loop prelude, freeing one
     `Cassgn` per iteration. -/
-private def licmFireBody :
+def licmFireBody :
     Com jasminDialect [JasminTy.reg 64] (JasminTy.reg 64) :=
   -- Position 0: v0 = acc + acc. Context after: [v0, acc].
   .var (binExprR64 .add .here .here)
@@ -446,7 +453,7 @@ example : Com.numBinders licmFireBody = 3 := rfl
     No binder is invariant; the analysis flags nothing. Confirms the
     analysis does not produce false positives on a tight `acc`-bound
     body shape. -/
-private def licmNoneBody :
+def licmNoneBody :
     Com jasminDialect [JasminTy.reg 64] (JasminTy.reg 64) :=
   .var (binExprR64 .add .here .here)
     (.var (binExprR64 .add (.there .here) (.there .here))

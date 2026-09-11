@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots
-import CatCrypt.Crypto.Optimizer.Lattice.NTTMultiplyCorrectGeneric
-import CatCrypt.Crypto.Optimizer.Lattice.NegacyclicTransformGeneric
+module
+public import Mathlib.Algebra.Field.ZMod
+
+public import CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTMultiplyCorrectGeneric
+public import CatCrypt.Crypto.Optimizer.Lattice.NegacyclicTransformGeneric
 
 /-!
 # Concrete NTT-multiply correctness at the ML-KEM and ML-DSA parameters
@@ -33,6 +36,8 @@ an order-`512` element (`ζ = 1753`), so ML-DSA gets the genuine **negacyclic**
 diagonalization (`mldsa_ndft_negaConv`) — the real ML-DSA NTT operation — as well
 as the cyclic statement at `n = 512`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

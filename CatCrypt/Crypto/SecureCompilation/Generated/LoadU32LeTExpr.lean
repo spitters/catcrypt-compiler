@@ -1,4 +1,8 @@
-import HaxLean.TExpr
+module
+
+public import HaxLean.TExpr
+
+@[expose] public section
 /-
 Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.

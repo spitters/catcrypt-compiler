@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.ModReduceSelect
-import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+module
+
+public meta import CatCrypt.Crypto.Optimizer.ModReduceSelect
+public import CatCrypt.Crypto.Optimizer.ModReduceSelect
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
 # SM2 PLAIN (Solinas) field-multiply kernel, generated through the multi-term pass
@@ -65,6 +70,8 @@ shape (like secp256k1 / x25519): `(x·y) mod p`, validated against GMP `mod p`.
   vectors. The 512-bit iterated fold is infeasible as one in-Lean symbolic
   identity, hence the external gate, exactly as for P-256.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

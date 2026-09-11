@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTDSL
+module
 
+public import CatCrypt.Crypto.Jasmin.LowCTDSL
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!
@@ -66,7 +70,7 @@ open TowerType
 Identical first 12 blocks of `fe_invert` and `fe_pow_p58`. After this
 prefix, `t0` holds `z^(2^250 - 1)` and `z11` holds `z^11`. -/
 
-private def prefix2_250minus1 : Rcm Unit := do
+def prefix2_250minus1 : Rcm Unit := do
   /- Block 1–4 (shim lines 148–152): build `z2`, `z9`, `z11`. -/
   rc_call "fp_sqr" (loc "z2"  TFp25519) [loc "z"   TFp25519]
   rc_call "fp_sqr" (loc "t1"  TFp25519) [loc "z2"  TFp25519]   -- z^4

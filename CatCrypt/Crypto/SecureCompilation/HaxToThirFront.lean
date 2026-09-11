@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ImpExprToThir
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.ImpExprToThir
+public import CatCrypt.Crypto.SecureCompilation.ImpExprToThir
 
 /-!
 # Front ingestion composition: `ImpExpr → Com jasminDialect` in one entry point
@@ -80,6 +83,8 @@ The actual `cargo hax into lean` JSON → `ImpExpr` parse is the hax frontend's 
 (out of scope here); this is the **Lean-side** composition that consumes the
 already-parsed `ImpExpr`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

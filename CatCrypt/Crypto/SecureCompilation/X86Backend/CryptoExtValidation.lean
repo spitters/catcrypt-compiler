@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CryptoExtEncoder
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CryptoExtEncoder
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CryptoExtEncoder
 
 /-!
 # Differential validation of the crypto-extension byte encoder against `gas`
@@ -28,6 +32,8 @@ decode tables — so they remain at this gas-pinned validation tier.
 high-8 registers (`%xmm5`/`%xmm8` for the legacy REX forms, `%ymm13`..`%ymm15`
 for the VEX extension bits) so the `R`/`B`/`vvvv` extension fields are exercised.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

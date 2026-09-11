@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.EcProjectiveGeneric
+module
+public import Mathlib.Tactic.LinearCombination
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.EcProjectiveGeneric
 
 /-!
 # Generic short-Weierstrass (`a = 0`) Jacobian point-add for two general-`Z` points
@@ -59,6 +63,8 @@ the base field).  0 sorries; no custom axioms; the field-algebra tie is uncondit
 field structure plus `Z₁ ≠ 0`, `Z₂ ≠ 0`, `H ≠ 0`.  The add formula introduces no numerals (unlike
 the double's `2, 3, 4, 8`), so no numeral-nonvanishing hypotheses are needed.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

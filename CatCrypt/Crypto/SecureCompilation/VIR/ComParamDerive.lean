@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ComParametricityTransport
-import Transfer.Combinators.ParamData
-import Transfer.Deriving.ParamDerive
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.ComParametricityTransport
+public import Transfer.Combinators.ParamData
+public import Transfer.Deriving.ParamDerive
 
 /-!
 # A combinator-built `Param`-`Com` relation, and the *generated* whole-program transport
@@ -65,6 +67,8 @@ indices simultaneously (the recursive `var` clause descends into `t :: Γ`).
 set (`{propext, Classical.choice, Quot.sound}`), with **no**
 `jasminc_preserves_ct`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

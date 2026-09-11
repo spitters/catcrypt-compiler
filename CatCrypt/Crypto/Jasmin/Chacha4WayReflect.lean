@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
+module
+
+public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
 # ChaCha 4-way (XMM-resident) reflect surface — through the verified front
@@ -61,6 +64,8 @@ artifact; this reflect surface lifts it under the same byte-level shape.
 * `CatCrypt/Crypto/Jasmin/UovReflect.lean` — sibling SIMD-leaf reference
 -/
 
+@[expose] public section
+
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 
 open CatCrypt.Crypto.Jasmin.LowCT
@@ -104,7 +109,7 @@ def chacha4WayXmmBlockPattern : LowCTPattern where
 /-- Tower type of a packed 4-way ChaCha state (`memref 32`). -/
 def chacha4WayStateTowerType : TowerType := .TBytes 256
 
-private def loc (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
+def locChacha4Way (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
 
 /-! ## 5. Pure-Lean ChaCha-4way kernel — the spec -/
 
@@ -118,8 +123,8 @@ noncomputable def chacha4WayXmmBlockLean (s : Chacha4WayState) : Chacha4WayState
 /-- The `LowCT` body for `chacha4WayXmmBlockLean`. Shape:
     `RSeq RSkip (RCall "chacha_4way_xmm_block" __result [s])`. -/
 def chacha4WayXmmBlockBody : LowCT :=
-  let s_l      := loc "s"        chacha4WayStateTowerType
-  let result_l := loc "__result" chacha4WayStateTowerType
+  let s_l      := locChacha4Way "s"        chacha4WayStateTowerType
+  let result_l := locChacha4Way "__result" chacha4WayStateTowerType
   .RSeq .RSkip
     (.RCall "chacha_4way_xmm_block" result_l [s_l])
 

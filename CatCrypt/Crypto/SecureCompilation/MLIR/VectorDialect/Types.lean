@@ -4,6 +4,8 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 
+module
+
 /-!
 # MLIR `vector` dialect — Types
 
@@ -32,6 +34,8 @@ This is the first file of the new MLIR-style **VectorDialect** scaffolding
 plan and the relationship with the existing `VIR/MlirVectorDialect.lean`
 (BitVec-lane, already-denoting analogue).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

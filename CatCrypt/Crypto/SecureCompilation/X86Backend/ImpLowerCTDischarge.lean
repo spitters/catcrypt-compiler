@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.SecureCompileChain
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
+module
+
+public import CatCrypt.Crypto.SecureCompilation.SecureCompileChain
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
 
 /-!
 # Discharging the assumed middle (`LoweringCTPreserving`) for a concrete lowering
@@ -61,6 +63,8 @@ fragment-widening work and returns `none` here. The point of this module is
 narrow and exact: the capstone's middle is **no longer an assumption** — it is
 proved for `impLower`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
+module
+
+public import CatCrypt.Crypto.Jasmin.LowCT
 
 /-!
 # Pass 1.1 — Barrett Reduction
@@ -28,6 +30,8 @@ This pass is one slot in the optimizer pipeline (orchestrator Tier 4.1).
 The orchestrator composes the per-pass equivalences into the global
 `optimize_denote_eq` correctness theorem.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -391,7 +395,7 @@ original command, modulo the per-leaf agreement at `RCall`/`RCallSwap`/
     than `forZero`/`forSucc` are at commands whose head constructor is not
     `RFor`, so the defining equation refutes them, and listing them makes a
     change to the rule set a build error. -/
-private theorem rfor_spine_reverse {N : Nat} {leafSpec : LeafSpec}
+theorem rfor_spine_reverse {N : Nat} {leafSpec : LeafSpec}
     {x : String} {body body' : LowCT}
     (ih : ∀ (rs rs' : RustState),
       RustExec N leafSpec body' rs rs' → RustExec N leafSpec body rs rs') :

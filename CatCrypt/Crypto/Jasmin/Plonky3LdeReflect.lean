@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
 # Plonky3 LDE (coset-FFT low-degree extension) reflect surface — Tier A migration
@@ -80,6 +84,8 @@ compiler. The legacy emit is kept as an out-of-chain reference until the
 * Mirror pattern: `CatCrypt/Crypto/Jasmin/FalconReflect.lean` (#191).
 * Driver template: `bench/fndsa_compare/verify_from_rustcmd.lean`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 
@@ -297,7 +303,7 @@ unmodified. -/
 /-- TowerType for a BabyBear vector of length `M` (`8·M` bytes). -/
 def babybearVecTowerType (M : Nat) : TowerType := .TBytes (8 * M)
 
-private def loc (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
+def locPlonky3Lde (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
 
 /-- Leaf-name helpers (string interpolation of widths). -/
 def babybearNttInverseLeafName (N : Nat) : String :=
@@ -311,11 +317,11 @@ def babybearNttForwardLeafName (kN : Nat) : String :=
 
 /-- Body for `(N=64, k=4)`: four RCalls (inverse, extend, twist, forward). -/
 def ldeCosetFftBody64x4 : LowCT :=
-  let evals_l   := loc "evals"   (babybearVecTowerType 64)
-  let coeffs_l  := loc "coeffs"  (babybearVecTowerType 64)
-  let coffsN_l  := loc "coeffs_kN" (babybearVecTowerType 256)
-  let twisted_l := loc "twisted" (babybearVecTowerType 256)
-  let result_l  := loc "__result" (babybearVecTowerType 256)
+  let evals_l   := locPlonky3Lde "evals"   (babybearVecTowerType 64)
+  let coeffs_l  := locPlonky3Lde "coeffs"  (babybearVecTowerType 64)
+  let coffsN_l  := locPlonky3Lde "coeffs_kN" (babybearVecTowerType 256)
+  let twisted_l := locPlonky3Lde "twisted" (babybearVecTowerType 256)
+  let result_l  := locPlonky3Lde "__result" (babybearVecTowerType 256)
   .RSeq (.RSeq (.RSeq (.RSeq .RSkip
     (.RCall (babybearNttInverseLeafName 64)      coeffs_l  [evals_l]))
     (.RCall (babybearZeroExtendLeafName 64 256)  coffsN_l  [coeffs_l]))
@@ -324,11 +330,11 @@ def ldeCosetFftBody64x4 : LowCT :=
 
 /-- Body for `(N=256, k=4)`: four RCalls at the medium regime. -/
 def ldeCosetFftBody256x4 : LowCT :=
-  let evals_l   := loc "evals"   (babybearVecTowerType 256)
-  let coeffs_l  := loc "coeffs"  (babybearVecTowerType 256)
-  let coffsN_l  := loc "coeffs_kN" (babybearVecTowerType 1024)
-  let twisted_l := loc "twisted" (babybearVecTowerType 1024)
-  let result_l  := loc "__result" (babybearVecTowerType 1024)
+  let evals_l   := locPlonky3Lde "evals"   (babybearVecTowerType 256)
+  let coeffs_l  := locPlonky3Lde "coeffs"  (babybearVecTowerType 256)
+  let coffsN_l  := locPlonky3Lde "coeffs_kN" (babybearVecTowerType 1024)
+  let twisted_l := locPlonky3Lde "twisted" (babybearVecTowerType 1024)
+  let result_l  := locPlonky3Lde "__result" (babybearVecTowerType 1024)
   .RSeq (.RSeq (.RSeq (.RSeq .RSkip
     (.RCall (babybearNttInverseLeafName 256)       coeffs_l  [evals_l]))
     (.RCall (babybearZeroExtendLeafName 256 1024)  coffsN_l  [coeffs_l]))
@@ -337,11 +343,11 @@ def ldeCosetFftBody256x4 : LowCT :=
 
 /-- Body for `(N=1024, k=4)`: four RCalls at the deep regime. -/
 def ldeCosetFftBody1024x4 : LowCT :=
-  let evals_l   := loc "evals"   (babybearVecTowerType 1024)
-  let coeffs_l  := loc "coeffs"  (babybearVecTowerType 1024)
-  let coffsN_l  := loc "coeffs_kN" (babybearVecTowerType 4096)
-  let twisted_l := loc "twisted" (babybearVecTowerType 4096)
-  let result_l  := loc "__result" (babybearVecTowerType 4096)
+  let evals_l   := locPlonky3Lde "evals"   (babybearVecTowerType 1024)
+  let coeffs_l  := locPlonky3Lde "coeffs"  (babybearVecTowerType 1024)
+  let coffsN_l  := locPlonky3Lde "coeffs_kN" (babybearVecTowerType 4096)
+  let twisted_l := locPlonky3Lde "twisted" (babybearVecTowerType 4096)
+  let result_l  := locPlonky3Lde "__result" (babybearVecTowerType 4096)
   .RSeq (.RSeq (.RSeq (.RSeq .RSkip
     (.RCall (babybearNttInverseLeafName 1024)        coeffs_l  [evals_l]))
     (.RCall (babybearZeroExtendLeafName 1024 4096)   coffsN_l  [coeffs_l]))

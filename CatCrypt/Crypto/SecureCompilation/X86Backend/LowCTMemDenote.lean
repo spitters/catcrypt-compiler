@@ -3,7 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMemCT
+module
+
+import all Init.Data.Repr
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMemCT
+public import Std.Tactic.BVDecide
 
 /-!
 # Source→machine bridge, Phase 2 (denotation half): the MEMORY/ARRAY fragment
@@ -73,12 +78,14 @@ JArray.getWord (JArray.setWord a .U64 (scale*idx) v) .U64 (scale*idx) = v
 with `|||`/`<<<`/`>>>`/`truncate`); the roundtrip (`getWord_setWord_same`) is
 proved by unrolling the eight byte writes/reads (distinct-index
 `Function.update` non-interference) and closing the 64-bit little-endian
-recompose identity with `bv_decide`. The in-bounds bound is load-bearing —
+recompose identity with `bv_decide`. The in-bounds bound is required:
 without it `setWord` drops out-of-range bytes and the roundtrip is false. This
 discharges the source tower-array (flat `JArray` byte) ↔ flat byte-offset
 machine memory bridge; the machine side, index correspondence, offset equality,
 and the wiring into the real `RustExec` post-state are all proved on top.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -240,7 +247,7 @@ theorem arrElem_arrSetElem_same {n : Nat} (a : JArray n) (scale i : Nat)
     post-state: the targeted array element holds the stored word, and every other
     cell is unchanged.
 
-    Here we state the **targeted-cell** correctness (the load-bearing content):
+    Here we state the **targeted-cell** correctness:
     after the lowered store the machine cell `(ρ arr, scale * idx)` holds the
     stored word `valWord srcV`, matching the source oracle
     `byteOffsetLeafSpec.arrStore`'s element-`idx` update read back by `arrElem`.
@@ -333,7 +340,7 @@ operational step is a re-statement against the post-state's array slot. -/
 
 /-- The source `RArrStore` post-state under the concrete oracle: the updated
     array slot value is `arrSetElem oldV scale idx (valWord srcV)`.  This is the
-    genuine `RustExec.arrStore` result with `leafSpec := byteOffsetLeafSpec`. -/
+    `RustExec.arrStore` result with `leafSpec := byteOffsetLeafSpec`. -/
 theorem byteOffsetLeafSpec_arrStore_post (scale : Nat) (arr : Located)
     (oldV : RustVal arr.locDst) (idx : Nat)
     (srcLoc : Located) (srcV : RustVal srcLoc.locDst) :

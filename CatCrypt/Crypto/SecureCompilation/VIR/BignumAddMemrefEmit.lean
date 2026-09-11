@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.BignumAddCatCryptEmit
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.BignumAddCatCryptEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.BignumAddCatCryptEmit
 
 /-!
 # Multi-output 256-bit bignum ADD: the WHOLE result emitted via an output memref
@@ -49,6 +52,8 @@ freshly-stack-allocated value.)
 
 **0 sorries.**
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,11 +3,19 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.VIR.QuerySampleBranchFront
-import CatCrypt.Crypto.SecureCompilation.VIR.Shake256SpongeFront
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.QuerySampleBranchFront
+public import CatCrypt.Crypto.SecureCompilation.VIR.QuerySampleBranchFront
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Shake256SpongeFront
+public import CatCrypt.Crypto.SecureCompilation.VIR.Shake256SpongeFront
 
 /-!
 # Unifying owned-backend front for the whole X25519 scalarmult orchestrator
@@ -75,6 +83,8 @@ owned-backend `loopLcmd` / `.Lcall` shape the byte encoder consumes (the deploye
 `frameSize`/byte-encodability facts re-verify against this front's output) and the
 byte-identical re-source.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

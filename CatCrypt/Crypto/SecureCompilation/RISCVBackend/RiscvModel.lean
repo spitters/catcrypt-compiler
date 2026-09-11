@@ -4,6 +4,8 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 
+module
+
 /-!
 # A Lean RV64 (RISC-V 64-bit) machine model for the scalar GP-ALU subset (#535)
 
@@ -35,8 +37,9 @@ the integer op the RV64 mnemonic computes (the RISC-V ISA `ADDW`/`XOR`/`SLLIW`/
 differentially validated against the RFC 8439 KAT.
 
 **Deferred to sub-2/sub-3** (per the task plan): the machine-code byte `Encoder`
-+ `decode(encode i) = i` against the official `riscv/sail-riscv` model (the RV64
-analogue of `SailX86Decoder`/`SailX86Validation`), and the RVV vector / Zvk
++ `decode(encode i) = i` against the hand-transcribed `riscv/sail-riscv` `encdec`
+clauses (upstream is not vendored in this repo; the RV64 analogue of
+`SailX86Decoder`/`SailX86Validation`), and the RVV vector / Zvk
 crypto extensions. This module deliberately covers only the scalar 32-bit-word
 GP-ALU subset (RV64I, no `B`-extension rotate).
 
@@ -80,6 +83,8 @@ prologue/epilogue to read args / write results are trusted scaffolding rendered
 by the printer; the verified straight-line body is register-to-register, exactly
 the x86/ARM `renderLeafFn` posture.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

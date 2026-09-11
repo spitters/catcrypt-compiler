@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
+module
+
+public meta import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
+public import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
 
 /-!
 # Speculative constant-time for the owned `LowCT` instruction stream
@@ -73,6 +76,8 @@ command that leaks under that model.
 * Barthe et al., "System-Level Non-Interference for Constant-Time
   Cryptography", CCS 2014 (the architectural baseline `cmdCT` extends).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.SpeculativeCT
 

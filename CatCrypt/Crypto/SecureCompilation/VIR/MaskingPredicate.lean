@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptOpInfo
-import CatCrypt.Crypto.SecureCompilation.VIR.Grind
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptOpInfo
+public import CatCrypt.Crypto.SecureCompilation.VIR.Grind
 
 /-!
 # VIR-level masking-preservation predicate
@@ -36,6 +38,8 @@ Track 3c-v2 (deferred): a strengthened predicate that distinguishes
 accepts `and`/`mul` when paired with an explicit re-randomization
 (`refreshMask`) op.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR
 

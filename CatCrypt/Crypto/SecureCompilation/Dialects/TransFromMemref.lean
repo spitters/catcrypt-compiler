@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectTotality
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectTotality
 
 /-!
 # The reads-bound walk over multi-memref name-to-type maps
@@ -36,6 +38,8 @@ its name at its own type, fixing the shape.
   `transFromM_arrStore1` and their snoc forms) — the reads-bound walk over a
   command list.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.TransFromMemref
 

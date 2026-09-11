@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxKeccak
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxKeccak
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxKeccak
 
 /-!
 # C4 hash-composition fan-out: the SLH-DSA (SHAKE-128f) WOTS+ chain-step Keccak engine leaf
@@ -77,6 +80,8 @@ preimage/collision resistance or the WOTS+/FORS EUF-CMA reduction (those live in
 `<emit-form> = <FIPS-202 lane-mix / step quantity>` — the engine the `shake-*`
 chain step `F` runs.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -152,7 +157,7 @@ theorem shakeAbsorb_compiles :
       shakeAbsorbSrc (fun _ => none) = some (seed ^^^ tweak ^^^ block) := by
     have h := shakeAbsorbSrc_denoteScalar (nIn := 3) ![seed, tweak, block]
     simpa only [shakeAbsorbForm, inpGet, Matrix.cons_val_zero, Matrix.cons_val_one,
-      Matrix.head_cons, Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.head_cons, Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 64) (nIn := 3) ["seed", "tweak", "block"]
     ![seed, tweak, block] shakeAbsorbSrc _ hc hspec
 

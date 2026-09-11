@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMersenne31
-import Mathlib.Data.ZMod.Basic
-import Mathlib.FieldTheory.Finite.Basic
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMersenne31
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMersenne31
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.FieldTheory.Finite.Basic
 
 /-!
 # #606 fan-out: the emitted Mersenne-31 multiply leaf EQUALS the abstract field op
@@ -31,6 +35,8 @@ prime-field reduce identity, lifted to the Mathlib field through
 proved over in the leaf module by **`Nat` arithmetic on `toNat`**, not
 `bv_decide` — the #117 Barrett seam SAT-times-out at `p = 2³¹`.)
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

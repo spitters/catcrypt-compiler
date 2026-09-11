@@ -3,12 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFront
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontInstances
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontGf256
-import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
-import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenAddMod
-import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenGf256
+module
+
+public import CatCrypt.Crypto.SecureCompilation.RelationalFront
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontInstances
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontGf256
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenAddMod
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenGf256
 
 /-!
 # The relational front, all the way to the emitted machine code
@@ -66,6 +68,8 @@ thread. The relational front-end and the IR seam (`RealizedKernel`,
 corollary applies to the golden-path-backed ones (which, for the worked
 instances, is all of them).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.Core
-import CatCrypt.Crypto.Primitives.Keccak
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public import CatCrypt.Crypto.Primitives.Keccak
 
 /-!
 # The Keccak-f[1600] round (SHA-3) routed through `catCryptDialect` (scalar)
@@ -64,6 +66,8 @@ at MCP heartbeats. Instead, mirroring `Chacha20BlockCatCryptEmit`:
 
 0 sorries.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

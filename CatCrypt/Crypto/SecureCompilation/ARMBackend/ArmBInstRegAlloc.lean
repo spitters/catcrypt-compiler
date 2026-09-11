@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
 
 /-!
 # Register-allocation soundness for the 64-bit bignum path (`BInst`/`BState`)
@@ -32,6 +34,8 @@ non-`xzr` names) and the same carry flag. For an **injective**, `xzr`-preserving
 `ρ` — the validity condition a non-aliasing allocation satisfies — renaming
 commutes with the machine semantics.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

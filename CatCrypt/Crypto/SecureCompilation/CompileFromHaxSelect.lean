@@ -3,8 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
-import CatCrypt.Crypto.SecureCompilation.JasminCTByConstruction
+module
+
+import all Init.Data.Repr
+import all CatCrypt.Crypto.SecureCompilation.ImpExprToThir
+import all CatCrypt.Crypto.SecureCompilation.ThirToComFront
+import all CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public meta import CatCrypt.Crypto.SecureCompilation.JasminCTByConstruction
+public import CatCrypt.Crypto.SecureCompilation.JasminCTByConstruction
 
 /-!
 # A `desugarSelect` pre-pass: compiling a public `ifThenElse` branchlessly
@@ -37,6 +46,8 @@ The Emit form (`desugarSelectEmit`) materializes the `0` literal into a fresh lo
 literal — the same register-materialization `desugarNotEmit` does for its all-ones
 constant).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

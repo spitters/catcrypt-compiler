@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Fp6Fp12MulKernel
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Fp6Fp12MulKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Fp6Fp12MulKernel
 
 /-!
 # BLS12-381 pairing tower, squaring layer + cyclotomic squaring, owned x86 (#602/#219)
@@ -85,6 +89,8 @@ The squaring layer emitted here is the field-arithmetic prerequisite both of
 those layers consume; the precise remaining gap is **`G2` arithmetic +
 Frobenius + the curve-config-locked sparse mul**, not more tower field ops.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

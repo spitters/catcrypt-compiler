@@ -4,6 +4,8 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 
+module
+
 /-!
 # VIR: a minimal verified MLIR-style SSA framework
 
@@ -42,6 +44,8 @@ regions become the cheaper option at that point.
 * `CatCrypt/Crypto/SecureCompilation/CryptoSSA.lean`: already mirrors this
   framework informally; VIR makes the mirror structural.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR
 

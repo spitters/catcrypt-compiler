@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.Arith
-import CatCrypt.Crypto.SecureCompilation.VIR.MlirArithDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.Arith
+public import CatCrypt.Crypto.SecureCompilation.VIR.MlirArithDialect
 
 /-!
 # Integer-fragment semantic agreement: FRONT `mlirArithDialect` ≡ BACK `arithDialect`
@@ -66,6 +68,8 @@ The constant ops carry different payloads: the back op carries a `Nat`
 
 The `agree_*` lemmas below cover exactly the 9 ops in the shared fragment.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

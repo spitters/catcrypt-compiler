@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ChaChaEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.VectorReduce
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ChaChaEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.ChaChaEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.VectorReduce
+public import CatCrypt.Crypto.SecureCompilation.VIR.VectorReduce
 
 /-!
 # ChaCha20-Poly1305 AEAD (RFC 8439) emitted through the verified front (#87)
@@ -88,6 +93,8 @@ parity from the verified front, correctness carried from the proven
 
 Invoke:  lake env lean bench/chachapoly_compare/chachapoly_emit.lean
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.ChaChaPolyEmit
 

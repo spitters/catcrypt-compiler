@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.ZMod.Basic
-import CatCrypt.Crypto.Util.BN254PrimeCert
-import Mathlib.Tactic
+module
+
+public import Mathlib.Data.ZMod.Basic
+public meta import CatCrypt.Crypto.Util.BN254PrimeCert
+public import CatCrypt.Crypto.Util.BN254PrimeCert
+public import Mathlib.Tactic.Group
+public import Mathlib.Tactic.Ring
 
 /-!
 # Verified BN254 (alt-bn128) inner kernels over `ZMod p_BN254`
@@ -51,6 +55,8 @@ primality).
 * `bn254-safe-rust` (AUCurves verified-bedrock2 tower, `y² = x³ + 3`,
   generator `G1 = (1, 2)`)
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

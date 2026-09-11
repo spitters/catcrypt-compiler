@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.GenericRegAlloc
+module
+
+public import CatCrypt.Crypto.Optimizer.GenericRegAlloc
 
 /-!
 # A byte-addressed spill memory: the non-interference law carries a width
@@ -82,6 +84,8 @@ of spill stores alone.
   invariant across one step, across a block, and the resulting spill/reload transparency
   over a block of frame-touching instructions
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

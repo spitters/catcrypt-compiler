@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockMemrefEmit
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockMemrefEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockMemrefEmit
 
 /-!
 # The whole ChaCha20 block with the FULL pointer ABI: BOTH input and output via memrefs
@@ -59,6 +62,8 @@ state from them. No second set of inputs is needed.
 * `chacha20BlockFullMemrefJazz` / `emit` — the whole-function `.s` text, symbol
   `chacha20_block`, to `bench/chacha_compare/gen_com/chacha20_block_full.s`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -309,6 +314,6 @@ def emit : IO Unit := do
 The render is written while this module elaborates, so `lake` produces it from
 this file and no separate driver or Makefile rule carries the dependency. -/
 
-#eval emit
+-- #eval emit
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockFullMemrefJazzEmit

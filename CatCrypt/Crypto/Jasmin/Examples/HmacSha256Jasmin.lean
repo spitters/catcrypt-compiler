@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminAST
-import CatCrypt.Crypto.Jasmin.JasminToRustEmit
+module
+
+public import CatCrypt.Crypto.Jasmin.JasminAST
+public import CatCrypt.Crypto.Jasmin.JasminToRustEmit
 
 /-!
 # HMAC-SHA-256 (RFC 2104) in Lean Jasmin AST
@@ -37,6 +39,8 @@ encoding.  The structural part (the 64-byte XOR loops with the magic
 
 References: RFC 2104 §2; FIPS 198-1 §4.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.Examples.HmacSha256Jasmin
 

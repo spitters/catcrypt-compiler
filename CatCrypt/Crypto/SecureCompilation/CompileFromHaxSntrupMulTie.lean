@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSntrupMul
-import CatCrypt.Crypto.Util.ZMod4591
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSntrupMul
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSntrupMul
+public meta import CatCrypt.Crypto.Util.ZMod4591
+public import CatCrypt.Crypto.Util.ZMod4591
 
 /-!
 # C4 fan-out: the emitted sntrup MAC leaf EQUALS the abstract `Zq4591` field op
@@ -40,6 +45,8 @@ the true accumulator never exceeds `16 · 4591² ≈ 3.4·10^8 < 2^63`.
 No `decide`/`native_decide` — it is the genuine prime-field reduce identity,
 lifted to the Mathlib field through `ZMod.natCast_*`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

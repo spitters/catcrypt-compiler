@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemSimulation
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMulCarry
-import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemSimulation
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMulCarry
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+
+@[expose] public section
 
 set_option autoImplicit false
 

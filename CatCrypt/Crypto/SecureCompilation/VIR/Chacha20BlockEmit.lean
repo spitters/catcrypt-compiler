@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockCatCryptEmit
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockCatCryptEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockCatCryptEmit
 
 /-!
 # The whole ChaCha20 block as a SINGLE straight-line `Com catCryptDialect` (the unroll emit)
@@ -79,6 +82,8 @@ small lemma, folded through the round structure.
 0 sorries (the whole-block denote reuses the committed per-QR denote +
 block-composition lemmas).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxHeartbeats 4000000
@@ -457,6 +462,6 @@ def emit : IO Unit := do
 The render is written while this module elaborates, so `lake` produces it from
 this file and no separate driver or Makefile rule carries the dependency. -/
 
-#eval emit
+-- #eval emit
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockEmit

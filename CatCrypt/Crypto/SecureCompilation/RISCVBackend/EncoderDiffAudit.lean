@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvEncoder64
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvEncoder64
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvEncoder64
 
 /-!
 # Hardwired-zero (`x0`) byte-differential audit for the RV64 encoder
@@ -17,6 +20,8 @@ word-for-word, against the bytes `riscv64-linux-gnu-as -march=rv64g_zbb`
 word), for the **`zero`-in-every-slot stress alphabet**. The reference words
 come from `objdump -d -M no-aliases` on the assembled stress file.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

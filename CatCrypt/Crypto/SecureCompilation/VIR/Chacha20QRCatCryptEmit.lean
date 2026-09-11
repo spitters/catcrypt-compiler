@@ -3,9 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
-import CatCrypt.Crypto.Jasmin.ChaCha20QR
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public meta import CatCrypt.Crypto.Jasmin.ChaCha20QR
+public import CatCrypt.Crypto.Jasmin.ChaCha20QR
 
 /-!
 # ChaCha20 quarter-round as a `catCryptDialect → jasmin → x86` path
@@ -60,6 +66,8 @@ program — which uses only seam-lowering ops — denotes to the RFC quarter-rou
 
 0 sorries.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

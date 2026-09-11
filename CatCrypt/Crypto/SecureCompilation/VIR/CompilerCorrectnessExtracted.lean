@@ -3,12 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RustStateSubstrate
-import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectRustSim
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintCorrect
-import CatCrypt.Crypto.SecureCompilation.BorrowSafety
+module
+
+public import CatCrypt.Crypto.SecureCompilation.RustStateSubstrate
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectRustSim
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintCorrect
+public import CatCrypt.Crypto.SecureCompilation.BorrowSafety
 
 /-!
 # Extraction-rooted compiler correctness on the `CProg`-free dialect front
@@ -90,6 +92,8 @@ parametric edge of the front lowering.
 All goals closed (no `sorry`); the gaps are carried as the explicit
 hypotheses listed above.
 -/
+
+@[expose] public section
 
 set_option autoImplicit true -- SSA IR front: many context/type variables
 

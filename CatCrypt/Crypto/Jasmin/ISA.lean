@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminTranslate
+module
+
+public import CatCrypt.Crypto.Jasmin.JasminTranslate
 
 /-!
 # ISA Abstraction for Jasmin Compiler Targets
@@ -44,6 +46,8 @@ The `AArch64ISA` and `RiscVISA` instances are axiomized here but can be
 connected to concrete ISA semantics by instantiating `asmSemantics` with
 LNSym or Sail definitions, then proving `compilerCorrect`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin
 

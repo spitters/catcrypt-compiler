@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul_CompPoly
-import CatCrypt.Crypto.SecureCompilation.ConcreteNttEmitRealization
+module
+import all Init.Data.Repr
+import all CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul
+
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul_CompPoly
+public import CatCrypt.Crypto.SecureCompilation.ConcreteNttEmitRealization
 
 /-!
 # Pass 3.1 — the NTT poly-mul agreement, reduced to leaf realization
@@ -94,6 +98,8 @@ witness) and an off-signature `oldV`-pass-through law — exactly the
 gap"`.  We do **not** fabricate such a `LeafSpec` here (doing so would smuggle
 in the conclusion); we expose the residuals as hypotheses.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

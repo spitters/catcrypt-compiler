@@ -3,13 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel
-import CatCrypt.Crypto.SecureCompilation.TileBackend.VectorBackendBridgeCom
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonModel
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvvModel
-import Mathlib.Tactic.FinCases
-import Mathlib.Data.Fintype.Pi
-import Std.Tactic.BVDecide
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel
+public import CatCrypt.Crypto.SecureCompilation.TileBackend.VectorBackendBridgeCom
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonModel
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvvModel
+public import Mathlib.Tactic.FinCases
+public import Mathlib.Data.Fintype.Pi
+public import Std.Tactic.BVDecide
 
 /-!
 # The vector backends are instances of the shape-generic tile lowering
@@ -48,6 +51,8 @@ two-operand `regArith` binop subset) and everything above the vector layer
 (control flow, scalar GP-ALU, memory) — those stay in `Com`. This is the vector
 arithmetic layer collapsing onto one proof.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.TileBackend.VectorBackendBridge
 

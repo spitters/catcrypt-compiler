@@ -3,9 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumCarryDecomp
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumCarryDecomp
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumCarryDecomp
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
 # s2n-bignum's `bignum_mul_4_8` fast idiom, lowered through the in-Lean x86 backend (#312)
@@ -78,6 +84,8 @@ boundary, and the System-V leaf prologue/epilogue is trusted ABI scaffolding
 outside the verified body. No `sorry`; axioms are `[propext, Quot.sound,
 Lean.ofReduceBool]` (the last for the `native_decide` numeric/shape pins).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -610,7 +618,7 @@ def mul48Args : List AbiArg :=
 def mul48Asm : String :=
   renderSysVLeafFn "bignum_mul_4_8_x86_from_lean" mul48Alloc mul48Args mul48AsmBody []
 
-#eval IO.println mul48Asm
+-- #eval IO.println mul48Asm
 
 /-- The emitted asm has one body line per instruction. -/
 theorem mul48AsmBody_length : mul48AsmBody.length = 63 := by native_decide

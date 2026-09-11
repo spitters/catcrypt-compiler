@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.LowCTLeakTraceDef
-import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
+module
+
+public import CatCrypt.Crypto.SecureCompilation.LowCTLeakTraceDef
+public import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
 
 /-!
 # Task #460 — foundation for sound variable-time support
@@ -81,6 +83,8 @@ What is **new** in this file:
 No `sorry`, no new axiom. The one gap (loop-body state evolution) is an
 explicit hypothesis with this docstring, as required.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.LowCTVartimeLeak
 

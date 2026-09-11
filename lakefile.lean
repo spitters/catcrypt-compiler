@@ -40,29 +40,31 @@ lean_lib CatCryptCompiler where
 -- `Crypto.{SDist,CryptoWord,UC,Advantage}`, `Deep.{RawCode,Eval}`,
 -- `Relational.Rules`, `Tactics.FieldClear` — each behind a re-export shim under
 -- `CatCrypt/`, so `import CatCrypt.…` paths keep resolving.
+-- The sibling packages are pinned by commit on their `lean-upgrade-4.32`
+-- branches; they carry no release label at Lean 4.32 yet.
 require catcryptCore from git
-  "https://github.com/spitters/CatCrypt-core.git" @ "0.1.0-alpha.1"
+  "https://github.com/spitters/CatCrypt-core.git" @ "b581de1fc429be83737ea2a27ca1092f9d5ee34f"
 
 -- IR lowering target (`Com` → Veir / MLIR). Pinned to a private staging fork:
--- the v4.29.0 release plus the CatCrypt additions (the catcrypt/memref/
+-- upstream Veir at Lean 4.32 plus the CatCrypt additions (the catcrypt/memref/
 -- polynomial/vector/x86vector lowering dialects, `Func.call`, and the
 -- `Veir.List.*` namespacing that avoids a Mathlib/Batteries name collision).
 -- Building requires read access to `spitters/veir-catcrypt`.
 require Veir from git
-  "git@github.com:spitters/veir-catcrypt.git" @ "v4.29.0-catcrypt.1"
+  "https://github.com/spitters/veir-catcrypt" @ "v4.32.0-catcrypt.2"
 
 -- ParamTransfer (proof-transfer bridge) + CompPoly (NTT algebraic theory).
 require paramTransfer from git
-  "https://github.com/spitters/ParamTransfer.git" @ "0.1.0-alpha.1"
+  "https://github.com/spitters/ParamTransfer.git" @ "e36404b34001d20ac9175a35fa16929ca72c66ad"
 require CompPoly from git
-  "https://github.com/Verified-zkEVM/CompPoly" @ "v4.30.0-patch1"
+  "https://github.com/Verified-zkEVM/CompPoly" @ "v4.32.2"
 
 -- hax-lean: the typed haxpipeT front (`Hax.TExpr`).
 require «hax-lean» from git
-  "https://github.com/spitters/hax-lean.git" @ "v0.1.0-alpha.1"
+  "https://github.com/spitters/hax-lean.git" @ "7b407d1c296ca7fcbb336d56563b5075f9b34b6b"
 
 require mathlib from git
-  "https://github.com/leanprover-community/mathlib4" @ "v4.30.0"
+  "https://github.com/leanprover-community/mathlib4" @ "v4.32.0"
 
 -- API documentation (opt-in, dev only — not in the normal build closure).
 --   lake -R -Kenv=doc build CatCryptCompiler:docs
@@ -71,4 +73,4 @@ require mathlib from git
 -- library build.
 meta if get_config? env = some "doc" then
 require «doc-gen4» from git
-  "https://github.com/leanprover/doc-gen4" @ "v4.30.0"
+  "https://github.com/leanprover/doc-gen4" @ "v4.32.0"

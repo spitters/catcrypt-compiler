@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalCompileHigh
-import CatCrypt.Crypto.SecureCompilation.VIR.MergeCom
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.RelationalCompileHigh
+public import CatCrypt.Crypto.SecureCompilation.RelationalCompileHigh
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.MergeCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.MergeCom
 
 /-!
 # `RupicolaField`: a shift-free authoring layer over the high `fieldDialect`
@@ -66,6 +71,8 @@ Each comes with the engine's `FRefines` proof (read off the builder) **and** a
 small closed-form `denote = …` lemma, plus a single-element `ZMod 7`
 `example` (one tiny field evaluation — safe for the shared LSP).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

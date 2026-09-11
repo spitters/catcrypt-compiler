@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxBlake2b
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxBlake2b
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxBlake2b
 
 /-!
 # BLAKE2b G as a genuine `catCryptDialect → jasmin → x86` path
@@ -67,6 +72,8 @@ BLAKE2b G rotates *right*, so each rotate maps **directly** to `bvRor 64 n`
 
 0 sorries.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

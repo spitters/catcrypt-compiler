@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Algebra.Module.Defs
-import Mathlib.Algebra.BigOperators.Group.List.Basic
+module
+
+public import Mathlib.Algebra.Module.Defs
+public import Mathlib.Algebra.BigOperators.Group.List.Basic
 
 /-!
 # Generic verified linear-combination / inner-product evaluation
@@ -35,6 +37,8 @@ and proves the structural laws a rewrite/optimizer pass needs:
   `CatCrypt.Crypto.Pairing.BLS12381MsmEmit.msm_append` (Pippenger sub-MSM
   recombination over a curve point list); this file is its module-generic core.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

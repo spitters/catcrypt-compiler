@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
-import Mathlib.Data.ZMod.Basic
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public import Mathlib.Data.ZMod.Basic
 
 /-!
 # Lattice 4-way batched NTT — ML-KEM-768 and ML-DSA-65
@@ -81,6 +86,8 @@ prints; they are KAT-checked at the bench level against the PQClean reference
 (when installed; otherwise against `Mathlib.Polynomial` reduce-mod-q evaluation
 as the primary correctness oracle).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

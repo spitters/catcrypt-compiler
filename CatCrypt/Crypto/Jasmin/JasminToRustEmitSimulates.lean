@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminToRustEmit
-import CatCrypt.Crypto.Jasmin.JasminAST
-import CatCrypt.Crypto.Jasmin.JasminSem
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Jasmin.JasminToRustEmit
+public import CatCrypt.Crypto.Jasmin.JasminAST
+public import CatCrypt.Crypto.Jasmin.JasminSem
 
 /-!
 # Simulation theorem for `JasminToRustEmit.ppFunDecl`
@@ -33,6 +36,8 @@ operational semantics") is isolated to a single named axiom
 LLVM" leg: the leaf is auditable, replacing what was previously an
 implicit `sorry`-bearing placeholder.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.JasminToRustEmitSimulates
 

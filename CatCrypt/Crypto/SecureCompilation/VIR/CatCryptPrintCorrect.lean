@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptPrint
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptPrint
 
 /-!
 # Structural correctness of the CatCrypt VIR text printer (v0)
@@ -69,6 +72,8 @@ The v0 properties suffice to rule out trivial printer bugs (an op silently
 dropped, a binding losing its op name, off-by-one in line emission) without
 committing to a parser model.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

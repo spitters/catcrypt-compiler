@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GroundedMultiKernelProtocol
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GroundedMultiKernelProtocol
 
 /-!
 # A grounded Schnorr / EdDSA signature SCALAR-ARITHMETIC core — ZERO assumed
@@ -60,6 +62,8 @@ a proved-unconditional realizer.
 ## References
 * RFC 8032 (EdDSA / Ed25519), the Schnorr Σ-protocol signature.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Hax.AST
+module
 
+public meta import CatCrypt.Hax.AST
+public import CatCrypt.Hax.AST
+
+
+@[expose] public section
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Hax

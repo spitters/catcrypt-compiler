@@ -3,8 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDataWhile
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieWhile
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDataWhile
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDataWhile
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieWhile
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieWhile
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,11 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
-import CatCrypt.Crypto.Jasmin.LowCTDSL
-import CatCrypt.Crypto.Jasmin.LowCTBorrowCheck
-import CatCrypt.Crypto.Jasmin.LowCTReflect
-import CatCrypt.Crypto.MLKEM.MlkemHaxLowCTBridge
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCT
+public meta import CatCrypt.Crypto.Jasmin.LowCTDSL
+public import CatCrypt.Crypto.Jasmin.LowCTDSL
+public meta import CatCrypt.Crypto.Jasmin.LowCTBorrowCheck
+public import CatCrypt.Crypto.Jasmin.LowCTBorrowCheck
+public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
 # ML-KEM-768 — spec-faithful LowCT implementation
@@ -52,6 +58,8 @@ consumes.  The two are orthogonal — content-bearing simulation would
 require a richer `mlkemBridgePolyAware`, deferred per Friction #13
 (NTT vs coefficient form) in the bridge file.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

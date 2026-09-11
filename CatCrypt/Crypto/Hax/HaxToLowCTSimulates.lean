@@ -3,10 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Hax.HaxToLowCT
-import CatCrypt.Hax.Semantics
-import CatCrypt.Hax.Value
-import CatCrypt.Crypto.Jasmin.LowCT
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Hax.HaxToLowCT
+public import CatCrypt.Hax.Semantics
+public import CatCrypt.Hax.Value
+public import CatCrypt.Crypto.Jasmin.LowCT
 
 /-!
 # H3: Hax → LowCT Semantic Simulation
@@ -72,6 +75,8 @@ statement; the per-case dispatch is the H3.bis closure target.
 The file deliberately does **NOT** appear in `CatCrypt.lean`'s import
 graph yet; closing the phases gates inclusion in the main build.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -145,7 +150,7 @@ The bi-directional lemmas (`_inv` variants) lift `evalImp e env = some
 per-case proofs of the main theorem. -/
 
 /-- The standard simp set for unfolding StateM operations on `denote`. -/
-private abbrev stateMUnfolds : List Lean.Name := [] -- documentation only
+abbrev stateMUnfolds : List Lean.Name := [] -- documentation only
 
 /-- `unitVal` evaluates to `.unit` with env unchanged. -/
 theorem evalImp_unitVal (bi : Builtins) (fuel : Nat) (env : Env) :

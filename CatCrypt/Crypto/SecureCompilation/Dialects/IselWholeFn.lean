@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.IselPipeline
-import CatCrypt.Crypto.SecureCompilation.VIR.WholeFnLowering
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.IselPipeline
+public import CatCrypt.Crypto.SecureCompilation.VIR.WholeFnLowering
 
 /-!
 # Connecting the ISel optimizer (#1) to the whole-function emit (#5)
@@ -64,6 +66,8 @@ same edge carried throughout the emit-correctness theory.
 
 0 sorries.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.EmitBridge
-import CatCrypt.Crypto.SecureCompilation.Ascent.Control
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.EmitBridge
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Control
 
 /-!
 # Discharging the keystone adapter `hAgree` for control kernels
@@ -42,6 +44,8 @@ literal `ofNat v` into `r` on the last trip, so the loop output at `r` is `ofNat
 v`, independent of the entry env. `forClosed_hAgree` proves this via
 `semRForD`'s last-trip peel.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

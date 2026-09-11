@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.Nat.ModEq
-import Mathlib.Tactic.Ring
+module
+
+public import Mathlib.Data.Nat.ModEq
+public import Mathlib.Tactic.Ring
 
 /-!
 # Layer A: Nat-level chain correctness for `bignum_pow_p25519_p58`
@@ -47,6 +49,8 @@ op       = z2_250_0^(2²) · z                exponent: 2²⁵² − 3 = (p−5)
 This file adds **no new axioms**.  It's a pure Nat-level
 verification that the chain's published exponents are correct.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -208,7 +212,7 @@ identities) but with a different terminal step. -/
 /-- Symbolic chain-step arithmetic (shared with the inv chain): the
     inv-side `chain_arith` lemma already gives
     `(2^a − 1) · 2^b + (2^b − 1) = 2^(a + b) − 1`. -/
-private lemma chain_arith (a b : Nat) :
+lemma chain_arith (a b : Nat) :
     (2^a - 1) * 2^b + (2^b - 1) = 2^(a + b) - 1 := by
   have h_pow : (2 : Nat)^(a + b) = 2^a * 2^b := pow_add 2 a b
   have h1 : 1 ≤ (2 : Nat)^a := Nat.one_le_two_pow
@@ -221,7 +225,7 @@ private lemma chain_arith (a b : Nat) :
 
 /-- Terminal-step arithmetic for the p58 chain:
     `(2^250 − 1) · 2^2 + 1 = 2^252 − 3`. -/
-private lemma terminal_arith_p58 :
+lemma terminal_arith_p58 :
     (2^250 - 1) * 2^2 + 1 = 2^252 - 3 := by
   have h : (2^252 : Nat) = 2^250 * 2^2 := by
     rw [show (252 : Nat) = 250 + 2 from rfl, pow_add]

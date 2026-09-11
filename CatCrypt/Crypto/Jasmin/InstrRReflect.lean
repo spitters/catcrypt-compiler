@@ -3,10 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.BignumExec
-import CatCrypt.Crypto.Jasmin.JasminCoqSemMirror
-import Lean
+module
 
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.BignumExec
+public import CatCrypt.Crypto.Jasmin.BignumExec
+public meta import CatCrypt.Crypto.Jasmin.JasminCoqSemMirror
+public import CatCrypt.Crypto.Jasmin.JasminCoqSemMirror
+public import Lean
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!
@@ -157,7 +164,13 @@ table.  Each entry records:
 * `asm`  — the `Oasm` instruction name (`"MULX"`, `"ADCX"`, `"ADOX"`)
 * `arity` — number of arguments (used to validate full application)
 * `outs`  — number of `LVal`s in the Copn bundle (always 2 for the MVP)
+
+§2–§7 are Lean metaprogramming (the op table, the `ToExpr` instances, the
+`MetaM` walker and the `reifyInstrR%` elaborator) and sit in a
+`meta section`; the value-level surface (§1, §8) stays outside it.
 -/
+
+meta section
 
 /-- Spec of a known pair-returning ADX op. -/
 structure KnownPairOp where
@@ -442,6 +455,8 @@ elab "reifyInstrR% " e:term : term => do
   let body ← reifyBody e'
   return Lean.toExpr body
 
+end            -- meta section
+
 /-! ## §8. Self-test (kept here so any breakage shows up immediately)
 
 This block reifies a tiny three-op kernel and `#eval`'s the result.  The
@@ -497,7 +512,9 @@ The structural translation is mechanical.  We expose:
 
 -- Derive `ToExpr` for the new AST at the *top level* (not inside `Mirror`)
 -- so the auto-generated instance names live in the namespace where the
--- types do.  We open the namespace temporarily for brevity.
+-- types do.  The instances are metaprogramming and sit in a `meta section`.
+
+meta section
 
 deriving instance Lean.ToExpr for CoqSemMirror.WSize
 deriving instance Lean.ToExpr for CoqSemMirror.Signedness
@@ -521,6 +538,8 @@ deriving instance Lean.ToExpr for CoqSemMirror.Dir
 deriving instance Lean.ToExpr for CoqSemMirror.Pexpr
 deriving instance Lean.ToExpr for CoqSemMirror.Range
 deriving instance Lean.ToExpr for CoqSemMirror.Lval
+
+end            -- meta section
 
 namespace Mirror
 
@@ -550,6 +569,8 @@ def mkIM (ir : CoqSemMirror.InstrR) : CoqSemMirror.Instr := .MkI () ir
 -- `InstrR` is mutually recursive with `Instr`; `deriving ToExpr` on a
 -- mutual block isn't supported, so we hand-write the two instances via
 -- explicit recursion.
+meta section
+
 open Lean in
 mutual
 partial def instrRToExpr : CoqSemMirror.InstrR → Expr
@@ -597,6 +618,8 @@ instance : Lean.ToExpr CoqSemMirror.Instr where
   toTypeExpr := Lean.mkConst ``CoqSemMirror.Instr
   toExpr := instrToExpr
 
+end            -- meta section
+
 end Mirror
 
 /-! ### §9.b. Translation: `JasminAST.InstrR` → `CoqSemMirror.Instr`
@@ -617,9 +640,14 @@ matching the new AST constructor needed.
 
 Both ASTs export sorts named `InstrR`, `Lval`/`LVal`, `Pexpr`/`PExpr`,
 `Sopn`/`SOpn` — so we use fully-qualified names below to make the
-direction of translation explicit. -/
+direction of translation explicit.
+
+The translation is consumed only by the `reifyInstrRMirror%` elaborator,
+so it sits in a `meta section`. -/
 
 namespace Mirror
+
+meta section
 
 /-- Translate the old AST `LVal` to a new AST `Lval`.
     Only the MVP shape `Lvar { var := { vname, vtype := .sword .U64 } }`
@@ -666,6 +694,8 @@ def cmdToMirror (irs : List CatCrypt.Crypto.Jasmin.InstrR) :
     CatCrypt.Crypto.Jasmin.CoqSemMirror.Cmd :=
   irs.map instrRToMirror
 
+end            -- meta section
+
 end Mirror
 
 /-! ### §9.c. `reifyInstrRMirror%` elaborator
@@ -675,12 +705,16 @@ Same input as `reifyInstrR%`, but the output term has type
 run the existing walker, then translate the result via
 `cmdToMirror`. -/
 
+meta section
+
 elab "reifyInstrRMirror% " e:term : term => do
   let e' ← Term.elabTerm e none
   let e' ← instantiateMVars e'
   let body ← reifyBody e'
   let mirrorBody := Mirror.cmdToMirror body
   return Lean.toExpr mirrorBody
+
+end            -- meta section
 
 /-! ## §10. Mirror-side self-test -/
 

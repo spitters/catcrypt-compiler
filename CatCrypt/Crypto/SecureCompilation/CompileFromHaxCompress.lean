@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxScope
+module
+
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxScope
 
 /-!
 # The SHA-256 compression round loop compiles, value-correct
@@ -30,6 +32,8 @@ has atom arguments, so it compiles through the unchanged `compileFromHax` with n
 `rfl`; the general-N preservation (the §9 induction with the eight-word state) and
 the full 64-round result build on it.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

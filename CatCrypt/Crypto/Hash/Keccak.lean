@@ -3,8 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Advantage
-import CatCrypt.Crypto.CryptoWord
+module
+
+public import CatCrypt.Crypto.CryptoWord
 
 /-!
 # Keccak Permutation (FIPS 202)
@@ -42,6 +43,8 @@ random permutation. The `RPAssumption` in `Security.lean` captures this.
 
 **0 axioms**, **0 sorries**.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

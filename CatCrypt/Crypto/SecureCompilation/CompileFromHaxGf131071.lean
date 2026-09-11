@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
-import CatCrypt.Crypto.SecureCompilation.BitVecNatBridge
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public meta import CatCrypt.Crypto.SecureCompilation.BitVecNatBridge
+public import CatCrypt.Crypto.SecureCompilation.BitVecNatBridge
 
 /-!
 # #606 fan-out: the verified compiler emits a GF(131071) Mersenne-fold multiply
@@ -39,6 +43,8 @@ Mersenne-fold **emit form** the source denotes to; `_compiles` routes the
 FOLD-FORM source-spec (a `rfl`) through `compileFromHax_meets_spec`. The abstract
 `(a*b) % 131071` tie is `gf131071MulFold_eq_mod` over `a, b < 131071`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -116,7 +122,7 @@ theorem gf131071Mul_compiles :
       gf131071MulSrc (fun _ => none) = some (gf131071MulFold a b) := by
     have h := gf131071MulSrc_denoteScalar (nIn := 2) ![a, b]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 64) (nIn := 2) ["a", "b"]
     ![a, b] gf131071MulSrc _ hc hspec
 

@@ -3,8 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.ZMod.Basic
-import Mathlib.Tactic
+module
+
+import all Init.Data.Repr
+public import Mathlib.Tactic.NormNum.Prime
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.Tactic.FieldSimp
+public import Mathlib.Tactic.Group
+public import Mathlib.Tactic.NormNum
+public import Mathlib.Tactic.Ring
 
 /-!
 # Generic short-Weierstrass (`a = 0`) inversion-free Jacobian group law
@@ -65,6 +72,8 @@ scope of the per-curve versions.
 0 sorries; no custom axioms; the field-algebra ties are unconditional given the field
 structure plus the four numeral-nonvanishing hypotheses.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

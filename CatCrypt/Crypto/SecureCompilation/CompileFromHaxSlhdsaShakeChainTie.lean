@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSlhdsaShakeChain
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha2KeccakTie
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxKeccakStepTie
-import CatCrypt.Crypto.Primitives.Keccak
+module
+
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSlhdsaShakeChain
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha2KeccakTie
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxKeccakStepTie
+public import CatCrypt.Crypto.Primitives.Keccak
 
 /-!
 # Keccak-engine tie: the SLH-DSA (SHAKE-128f) WOTS+ chain step = the FIPS-202 round engine
@@ -62,6 +64,8 @@ iterates 24×), and the absorb-prep lane XOR is the chain step's pre-permute mix
 The sponge padding / ADRS / multi-block iteration are reported as out of the
 front's fragment, not forced.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

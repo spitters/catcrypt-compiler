@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Core
-import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
 
 /-!
 # The x86 backend as a VIR/MLIR `Com` dialect (#281)
@@ -79,6 +83,8 @@ SIMD/AVX subset are out of scope (the source `JInstr` is the straight-line
 scalar+ADX subset); a general lowering from jasmin's `Linear.lprog` with control
 flow into a multi-block `Com` is the stated next increment (not modeled here).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -187,7 +193,7 @@ theorem lowerBlock_denote {w : Nat} {Γ : Ctxt (x86Dialect w)}
           = runBlock s (i :: is)
       have hstep : (instrExpr Γ i).denote (.cons s V) = evalInstr s i := rfl
       rw [hstep]
-      simpa using ih (Γ := X86Ty.machine w :: Γ) (s := evalInstr s i)
+      simpa using! ih (Γ := X86Ty.machine w :: Γ) (s := evalInstr s i)
         (V := .cons s V)
 
 /-- The closed-block specialisation: on a singleton context `[machine w]`, the

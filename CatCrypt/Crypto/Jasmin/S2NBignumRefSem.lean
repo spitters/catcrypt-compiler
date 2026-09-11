@@ -3,7 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminMonoSem
+module
+
+public meta import CatCrypt.Crypto.Jasmin.JasminMonoSem
+public meta import Std.Tactic.BVDecide.Reflect
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Jasmin.JasminMonoSem
+public import Std.Tactic.BVDecide
 
 /-!
 # `CProg`-free reference data for the s2n-bignum SSA ports
@@ -39,6 +45,8 @@ The SSA builder helpers (`v`, `assignConst`, `assignBin`, `assignShL`,
 port in `S2NBignumSSA.lean`.
 -/
 
+@[expose] public section
+
 namespace CatCrypt.Crypto.Jasmin.S2NBignumSSA
 
 open CatCrypt.Crypto.Jasmin
@@ -51,9 +59,9 @@ set_option autoImplicit false
 /-- A u64 variable with the given name. -/
 def v (s : String) : Var := { vname := s, vtype := .sword .U64 }
 
-private def pvar (s : String) : PExpr := .Pvar { gv := { var := v s }, gs := false }
-private def plval (s : String) : LVal := .Lvar { var := v s }
-private def cassgn (s : String) (e : PExpr) : InstrR :=
+def pvar (s : String) : PExpr := .Pvar { gv := { var := v s }, gs := false }
+def plval (s : String) : LVal := .Lvar { var := v s }
+def cassgn (s : String) (e : PExpr) : InstrR :=
   .Cassgn (plval s) .AT_none (.sword .U64) e
 
 /-- `s := k` (constant). -/
@@ -192,21 +200,21 @@ theorem seed_low5_zero (a : BitVec 64) (h_odd : a &&& 1 = 1) :
 /-- Squaring a `BitVec 64` whose low `k` bits are zero gives a value
     whose low `min(2k, 64)` bits are zero. We only need the four
     instantiations `k = 5, 10, 20, 40`. -/
-private theorem sq_low5_to_low10 (e : BitVec 64) (h : e &&& 0x1F = 0) :
+theorem sq_low5_to_low10 (e : BitVec 64) (h : e &&& 0x1F = 0) :
     (e * e) &&& 0x3FF = 0 := by
   bv_decide (config := { acNf := true })
 
-private theorem sq_low10_to_low20 (e : BitVec 64) (h : e &&& 0x3FF = 0) :
+theorem sq_low10_to_low20 (e : BitVec 64) (h : e &&& 0x3FF = 0) :
     (e * e) &&& 0xFFFFF = 0 := by
   bv_decide (config := { acNf := true })
 
-private theorem sq_low20_to_low40 (e : BitVec 64) (h : e &&& 0xFFFFF = 0) :
+theorem sq_low20_to_low40 (e : BitVec 64) (h : e &&& 0xFFFFF = 0) :
     (e * e) &&& 0xFFFFFFFFFF = 0 := by
   bv_decide (config := { acNf := true })
 
 /-- Once 40 low bits are zero, one more squaring gives a value with all
     64 bits zero — i.e. plain equality with `0`. Final piece. -/
-private theorem sq_low40_to_zero (e : BitVec 64) (h : e &&& 0xFFFFFFFFFF = 0) :
+theorem sq_low40_to_zero (e : BitVec 64) (h : e &&& 0xFFFFFFFFFF = 0) :
     e * e = 0 := by
   bv_decide (config := { acNf := true })
 

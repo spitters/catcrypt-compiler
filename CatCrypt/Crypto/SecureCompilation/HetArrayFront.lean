@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import HaxLean.TExpr
-import CatCrypt.Crypto.SecureCompilation.ThirToComFront
+module
+
+import all Init.Data.Repr
+public import HaxLean.TExpr
+public import CatCrypt.Crypto.SecureCompilation.ThirToComFront
 
 /-!
 # Heterogeneous array-input front pilot — runtime `arr[i]` reads (the §9 deferral)
@@ -57,6 +60,8 @@ As for §20, the dialect's `JasminCTPredicate.opIndexPublic` admits the emitted
 constant-time `select`-scan (the §17 idiom); this front lowers the gather
 faithfully and leaves the public-index obligation to that predicate.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

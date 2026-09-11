@@ -3,9 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
-import CatCrypt.Crypto.SecureCompilation.FieldReduceIdioms
+module
 
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+public meta import CatCrypt.Crypto.SecureCompilation.FieldReduceIdioms
+public import CatCrypt.Crypto.SecureCompilation.FieldReduceIdioms
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!
@@ -796,7 +804,7 @@ section SmokeTest
 open CatCrypt.Crypto.Jasmin.LowCT (LowCT SExpr)
 
 /-- `ltuCmds`-shaped window (mirrors `Bn254TowerFrontEmit.ltuCmds`). -/
-private def ltuCmdsT (dst : String) (x y : SExpr) : List LowCT :=
+def ltuCmdsT (dst : String) (x y : SExpr) : List LowCT :=
   [ .RScalarSetExpr (dst ++ "q") (.SAnd (.SXor x (.SLit onesLit)) y),
     .RScalarSetExpr (dst ++ "r")
       (.SAnd (.SXor (.SXor x y) (.SLit onesLit)) (.SSub x y)),
@@ -804,24 +812,24 @@ private def ltuCmdsT (dst : String) (x y : SExpr) : List LowCT :=
       (.SShr (.SXor (.SXor (.SVar (dst ++ "q")) (.SVar (dst ++ "r")))
         (.SAnd (.SVar (dst ++ "q")) (.SVar (dst ++ "r")))) (.SLit 63)) ]
 
-private def seqAllT : List LowCT → LowCT
+def seqAllT : List LowCT → LowCT
   | [] => .RSkip
   | [c] => c
   | c :: cs => .RSeq c (seqAllT cs)
 
 /-- The smoke body. -/
-private def smokeBody : LowCT :=
+def smokeBody : LowCT :=
   seqAllT ([ .RScalarSetExpr "s0" (.SAdd (.SVar "a0") (.SVar "b0")) ]
     ++ ltuCmdsT "c0" (.SVar "s0") (.SVar "a0")
     ++ [ .RScalarSetExpr "m" (.SSub (.SLit 0) (.SVar "c0")) ])
 
-private def smokeΓ : Ctx := [.sword 64, .sword 64]
+def smokeΓ : Ctx := [.sword 64, .sword 64]
 
-private def smokeVM : VarMap smokeΓ :=
+def smokeVM : VarMap smokeΓ :=
   (VarMap.empty.bind (t := .sword 64) "a0").bind (t := .sword 64) "b0"
 
 /-- Run a front on the smoke body and read back `m` (cap with `ret m`). -/
-private def smokeRun
+def smokeRun
     (front : VarMap smokeΓ → LowCT → Option (DTransOut smokeΓ))
     (a0 b0 : BitVec 64) : Option (BitVec 64) :=
   match front smokeVM smokeBody with

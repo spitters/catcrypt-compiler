@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.MultiReturnCom
-import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.MultiReturnCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
 
 /-!
 # Direct merge translator (D2.1 approach #3)
@@ -41,6 +43,8 @@ introduced variable's type) and `s` is the **output** type. When
 pattern-matching, use `(t := bs)` to bind the binding type.
 `MultiReturnCom.var` similarly uses `t` for the binding type.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR
 

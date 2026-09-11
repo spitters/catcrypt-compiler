@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
 
 /-!
 # ABI maps for the owned-RA linear export of Keccak-p[1600,24]
@@ -52,6 +54,8 @@ ABI loads of the 25 state lanes are 8-byte loads (`inp[i]` at byte `8*i`) and th
 `read_linear` sizes spill/save cells at 8 bytes uniformly, covering Keccak's
 U64 spills.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

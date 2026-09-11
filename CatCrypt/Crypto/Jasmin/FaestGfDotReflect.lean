@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
+module
+
+public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
 # FAEST gf_dot_vec reflect surface — GF(2^128) PCLMUL Karatsuba dot through the verified front
@@ -52,6 +55,8 @@ established pattern.
   templated emit (superseded by this leaf-shim pattern)
 * `CatCrypt/Crypto/Jasmin/UovReflect.lean` — sibling SIMD-leaf reference
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 
@@ -103,7 +108,7 @@ def faestGfVec8TowerType : TowerType := .TBytes 128
 /-- Tower type of a single GF(2^128) element (`memref 2`). -/
 def faestGf128TowerType : TowerType := .TBytes 16
 
-private def loc (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
+def locFaestGfDot (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
 
 /-! ## 5. Pure-Lean FAEST gf_dot_vec kernel — the spec -/
 
@@ -116,9 +121,9 @@ noncomputable def faestGfDotVecLean (a b : FaestGfVec8) : FaestGf128 :=
 /-- The `LowCT` body for `faestGfDotVecLean`. Shape:
     `RSeq RSkip (RCall "faest_gf_dot_vec_l8" __result [a, b])`. -/
 def faestGfDotVecBody : LowCT :=
-  let a_l      := loc "a"        faestGfVec8TowerType
-  let b_l      := loc "b"        faestGfVec8TowerType
-  let result_l := loc "__result" faestGf128TowerType
+  let a_l      := locFaestGfDot "a"        faestGfVec8TowerType
+  let b_l      := locFaestGfDot "b"        faestGfVec8TowerType
+  let result_l := locFaestGfDot "__result" faestGf128TowerType
   .RSeq .RSkip
     (.RCall "faest_gf_dot_vec_l8" result_l [a_l, b_l])
 

@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminCom
-import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminCom
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
 
 /-!
 # `Com catCryptDialect → Com jasminDialect` lowering
@@ -67,6 +72,8 @@ so the dialect carries it as a faithful denotation but declines to lower it).
 Front and smoke test. The `fp_add` leaf kernel lowers to a single `regArith add`
 over two `reg 64` inputs, checked by `native_decide`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit true -- SSA IR front: many context/type variables
 

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminAST
-import CatCrypt.Crypto.Jasmin.JasminToRustEmit
+module
+
+public import CatCrypt.Crypto.Jasmin.JasminAST
+public import CatCrypt.Crypto.Jasmin.JasminToRustEmit
 
 /-!
 # HKDF-SHA-256 (RFC 5869) in Lean Jasmin AST
@@ -28,6 +30,8 @@ are one-liners best left as glue.)
 `Extract`, `Expand`, and the outer T-loop are hand-glue, mirroring the
 HMAC pattern: thin Rust composition over the Lean-emitted core.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.Examples.HkdfSha256Jasmin
 

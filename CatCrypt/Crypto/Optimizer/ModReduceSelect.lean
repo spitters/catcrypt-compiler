@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel
-import Mathlib.Data.BitVec
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel
+public import Mathlib.Data.BitVec
 
 /-!
 # A verified `Com→Com` instruction-selection pass for pseudo-Mersenne / Solinas reduction (#393)
@@ -68,6 +72,8 @@ reproduce it at `(255, 19)` and to carry the right Solinas constants at the othe
 primes. The all-inputs byte-identity of the emitted asm against a reference stays
 the external KAT discipline (`bench/x25519_fieldmul_compare`), as for #391.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

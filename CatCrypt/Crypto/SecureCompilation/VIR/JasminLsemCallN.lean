@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLeaf
+module
+
+import all Init.Data.Repr
+import all Init.Data.String.Defs
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLeaf
 
 /-!
 # Faithful `lsem` for the multi-result external-call `callN`
@@ -35,7 +39,7 @@ Concretely:
   srcs` — emits exactly **one** destination slot `[.reg dst]`, the same wire shape
   as `extCall`'s `"CALL:"` modulo the disjoint `"CALLN:"` prefix.
 
-The genuine `k`-output tuple (`callNDefaults`) is consumed **only** by the
+The `k`-output tuple (`callNDefaults`) is consumed **only** by the
 `func.call` lowering, a *different* lowering path than
 `opToLinstrR`/`comToBody`. The straight-line linearizer
 (`straightOpsMC`/`straightOps*`) and `comToBody` only ever emit the single head
@@ -102,6 +106,8 @@ wire is an `Lopn` and `lsemLeakLeaf` leaks `linstrLeak i.fst`.
 `jasminc_preserves_ct`, no emit-path edit.** The `lsem→bytes` encoder and Sail
 tables remain the declared trusted base, as for every verified compiler.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -1263,7 +1269,7 @@ theorem lsemLeakCallN_straightOps_state_independent {leaf : LeafEnvCN}
     This is **unconditional in the runtime inputs**: no IR→x86 faithfulness
     hypothesis, no `jasminc_preserves_ct`. The **only** carried hypotheses are the
     leaf agreements — the external primitives' own KATs, *documented* (a `callN` is a
-    genuinely external multi-result leaf, exactly like `JasminLeafAgrees`). Both
+    external multi-result leaf, exactly like `JasminLeafAgrees`). Both
     conjuncts concern one and the same object — the linearizer-emitted straight-line
     body run by `lsemStraightCallN` (functional) and observed by `lsemLeakCallN`
     (CT). The call is read over the REAL bare `"CALLN:name"` `opToLinstrR` already

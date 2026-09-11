@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ProtocolEmitRealizes
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ProtocolEmitRealizes
 
 /-!
 # A BATCH of AEAD protocols as axis-6 `ProtocolKernels` instantiations
@@ -62,6 +64,8 @@ and apply `runRealizes`.  No per-protocol proof skeleton: the
 encrypt-then-authenticate structure fits the unary `ProtocolKernels` template
 exactly, so the protocol-level composition assembles for free.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

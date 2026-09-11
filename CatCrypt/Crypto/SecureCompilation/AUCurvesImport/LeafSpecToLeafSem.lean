@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.AUCurvesImport.FieldLeafBridge
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.AUCurvesImport.FieldLeafBridge
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
 # `LeafSpec ⇒ LeafSem` lift: carrying the AUCurves field-mul byte-edge to the VIR denotes
@@ -51,6 +53,8 @@ consuming two named hypotheses:
 No new `axiom` is introduced: the `fp_mul` byte edge is closed to a **proof**
 modulo the two already-named cross-prover / cross-layer assumptions.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

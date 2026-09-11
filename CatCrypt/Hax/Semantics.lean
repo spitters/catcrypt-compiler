@@ -3,8 +3,10 @@ Copyright (c) 2025 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Hax.AST
-import CatCrypt.Hax.Value
+module
+
+public import CatCrypt.Hax.AST
+public import CatCrypt.Hax.Value
 
 /-!
 # Fuel-Bounded Big-Step Semantics
@@ -33,6 +35,8 @@ Termination uses a lexicographic measure `(fuel, sizeOf expr)`:
 - Loop helpers decrease `fuel` when iterating, and their calls to
   `denote body` decrease `sizeOf` relative to the helper's measure.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Hax
 

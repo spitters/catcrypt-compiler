@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve6LimbTierA
-import Mathlib.Data.ZMod.Basic
-import Mathlib.Tactic
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve6LimbTierA
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.Tactic.LinearCombination
+public import Mathlib.Tactic.Ring
 
 /-!
 # BLS12-381 extension-field multiply — in-`ZMod p` value-correctness over the
@@ -83,6 +86,8 @@ specifications of `+`/`-`, *not* a `runBlock` reconstruction. The genuine
 content tying the kernel to its algebra is the multiply leaf
 (`bls12381_emit_montmul_runBlock`) plus the `Fp2` Karatsuba identity.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 -- `R = 2^384` and the leaf congruence carry the `2^384` literal; we never

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminAST
-import CatCrypt.Crypto.Jasmin.JasminToRustEmit
+module
+
+public import CatCrypt.Crypto.Jasmin.JasminAST
+public import CatCrypt.Crypto.Jasmin.JasminToRustEmit
 
 /-!
 # SHA-256: full inner functions + compression + schedule, in Lean Jasmin AST
@@ -38,6 +40,8 @@ T2 = Σ₀(a) + Maj(a,b,c)
 h ← g, g ← f, f ← e, e ← d + T1, d ← c, c ← b, b ← a, a ← T1 + T2
 ```
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.Examples.Sha256JasminFull
 

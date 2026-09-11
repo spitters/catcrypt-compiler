@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
+module
+
+public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
 # AES-bitslice reflect surface — 32-block-wide AES round through the verified front
@@ -56,6 +59,8 @@ established pattern.
 * `CatCrypt/Crypto/Jasmin/UovReflect.lean` — sibling SIMD-leaf reference
 -/
 
+@[expose] public section
+
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 
 open CatCrypt.Crypto.Jasmin.LowCT
@@ -97,7 +102,7 @@ def aesBitsliceRound32Pattern : LowCTPattern where
 /-- Tower type of a 32-block packed AES state (`memref 64`). -/
 def aesBitslice32TowerType : TowerType := .TBytes 512
 
-private def loc (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
+def locAesBitslice (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
 
 /-! ## 5. Pure-Lean AES-bitslice kernel — the spec -/
 
@@ -111,9 +116,9 @@ noncomputable def aesBitsliceRound32Lean (state rk : AesBitslice32) : AesBitslic
 /-- The `LowCT` body for `aesBitsliceRound32Lean`. Shape:
     `RSeq RSkip (RCall "aes_bitslice_round32" __result [state, rk])`. -/
 def aesBitsliceRound32Body : LowCT :=
-  let state_l  := loc "state"    aesBitslice32TowerType
-  let rk_l     := loc "rk"       aesBitslice32TowerType
-  let result_l := loc "__result" aesBitslice32TowerType
+  let state_l  := locAesBitslice "state"    aesBitslice32TowerType
+  let rk_l     := locAesBitslice "rk"       aesBitslice32TowerType
+  let result_l := locAesBitslice "__result" aesBitslice32TowerType
   .RSeq .RSkip
     (.RCall "aes_bitslice_round32" result_l [state_l, rk_l])
 

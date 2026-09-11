@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontGenericEmit
-import CatCrypt.Crypto.SecureCompilation.AUCurvesImport.FieldLeafBridge
+module
+
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontGenericEmit
+public import CatCrypt.Crypto.SecureCompilation.AUCurvesImport.FieldLeafBridge
 
 /-!
 # The generic field-op emit → field-VALUE bridge
@@ -64,6 +66,8 @@ gap between this canonical realizer and the emitted Rust leaf's real semantics,
 which lives outside Lean (in the per-curve commuting square + the AUCurves
 field-mul correctness).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.StructuredControlFlow
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.StructuredControlFlow
+public import CatCrypt.Crypto.SecureCompilation.VIR.StructuredControlFlow
 
 /-!
 # Data-dependent control flow — the verified layer above counted loops
@@ -40,6 +43,8 @@ are straight-line `runRegBlock` blocks over the verified tile leaves
 (`TileModel.lowerRegBlock_denote`), so a data-dependent prover phase becomes a
 verified combinator over the same verified straight-line backend.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.DataDependentControlFlow
 

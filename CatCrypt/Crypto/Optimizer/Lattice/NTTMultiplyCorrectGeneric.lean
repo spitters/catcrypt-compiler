@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.NTTFullInversionGeneric
-import CatCrypt.Crypto.Optimizer.Lattice.NTTConvolutionTheorem
-import CatCrypt.Crypto.Optimizer.Lattice.CyclicConvolutionGeneric
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTFullInversionGeneric
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTConvolutionTheorem
+public import CatCrypt.Crypto.Optimizer.Lattice.CyclicConvolutionGeneric
 
 /-!
 # NTT-multiply correctness: transform, pointwise-multiply, inverse-transform
@@ -42,6 +45,8 @@ carried by the forward `NttTransform`) does not fit a length-`n` `Fin` vector
 and so is not the object `idft` inverts. Stating correctness against the
 length-`n` cyclic convolution `c` is what composes cleanly with `idft_dft`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

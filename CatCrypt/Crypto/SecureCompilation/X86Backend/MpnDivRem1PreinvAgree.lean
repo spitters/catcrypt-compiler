@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1FrontEmit
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1FrontEmit
 
 /-!
 # `PreinvStepAgrees`: the Möller–Granlund reciprocal step equals the exact Euclidean step
@@ -28,6 +31,8 @@ returns exactly the Euclidean quotient digit and remainder of `u1 · 2^64 + u0` 
 * `preinvStep_agrees` / `preinvStepAgrees_proof`: `preinvStep dinv d u1 u0 = divLimb u1 u0 d`,
   i.e. `PreinvStepAgrees`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

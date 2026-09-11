@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Ed25519.CompressEmitCorrect
-import CatCrypt.Crypto.Jasmin.Examples.EmittedASTCorrectness
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Jasmin.Ed25519.CompressEmitCorrect
+public import CatCrypt.Crypto.Jasmin.Examples.EmittedASTCorrectness
 
 /-!
 # `ed25519_compress` — denote-level correctness
@@ -46,6 +49,8 @@ between the 40-byte slot encoding (`RustVal (TBytes 40)`) and `Fp25519`;
 that bridge is out of scope for this file (it lives in the dalek shim
 verified empirically via byte-for-byte difftesting).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -170,7 +175,7 @@ Given the leaf-spec bundle and an `RustExec` derivation of
 /-- Names used inside `ed25519_compress_cmd`.  Pinned here as plain
     string equalities so the proof can `decide` the inequalities
     needed for `rsSetTower_other`. -/
-private def names : List String :=
+def names : List String :=
   ["xyzt", "out", "x_slot", "y_slot", "z_slot", "z_inv", "y_aff", "x_aff"]
 
 /-- **Denote-level emit correctness (main theorem).**

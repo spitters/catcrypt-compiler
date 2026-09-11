@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalCompileHigh
-import CatCrypt.Crypto.SecureCompilation.VIR.PolyDialect
-import CatCrypt.Crypto.Optimizer.Lattice.NTTButterflyPass
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.RelationalCompileHigh
+public import CatCrypt.Crypto.SecureCompilation.RelationalCompileHigh
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.PolyDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.PolyDialect
+public meta import CatCrypt.Crypto.Optimizer.Lattice.NTTButterflyPass
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTButterflyPass
 
 /-!
 # A relational-compilation layer over the POLY dialect (`polyDialect`)
@@ -77,6 +82,8 @@ This split is the honest architecture: the Poly engine refines whole-NTT
 authored at the field level. The two engines share the same dialect-polymorphic
 substrate.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

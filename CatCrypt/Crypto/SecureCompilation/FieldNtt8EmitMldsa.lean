@@ -3,11 +3,18 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MlkemNttFieldEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.MlkemNttFieldEmit
+public import CatCrypt.Crypto.SecureCompilation.MlkemNttFieldEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # Byte-correct 8-point forward NTT over `F_q` (`q = 8380417`, ML-DSA), OWNED x86
@@ -37,6 +44,8 @@ Twiddle Montgomery values: `ω⁰R = 4193792`, `ω¹R = 5771523`, `ω²R = 25847
 (Montgomery residues in `[0,q)`), `out[0..7] = y0..y7`. `RDI = out`, `RSI = inp`,
 `abiW := 64`. Validated byte-for-byte by `bench/field_kernel_compare/ntt8_mldsa_kat.c`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -261,6 +270,6 @@ def ntt8MldsaNatRef (g : Nat → Nat) :
 The render is written while this module elaborates, so `lake` produces it from
 this file and no separate driver or Makefile rule carries the dependency. -/
 
-#eval emitNtt8Mldsa
+-- #eval emitNtt8Mldsa
 
 end CatCrypt.Crypto.SecureCompilation.FieldNtt8EmitMldsa

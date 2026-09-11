@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRobust
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRobust
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRobust
 
 /-!
 # `elimReloads`: verified redundant-reload elimination on the post-RA linear `Lprog` body (#555)
@@ -84,6 +87,8 @@ control edge the model does not see, along which the held environment need not
 hold.  `elimReloads_isStraightBody` records that the pass maps a straight-line
 body to a straight-line body.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

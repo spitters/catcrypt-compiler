@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElf
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElf
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElf
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
 
 /-!
 # The D4-collapse precondition: `encodeLprog ≡ encodeJBlock` on the covered fragment
@@ -110,6 +114,8 @@ This is the precise statement: **`encodeLprog ≡ encodeJBlock` on the
 tag**; the residual (ELF/frame wrapping, U32 width, spill/indexed coverage) is what
 maturing the JInstr encoder must add before the Lprog owned path can be retired.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

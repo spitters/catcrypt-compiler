@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ThirToComFront
-import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ThirToComFront
+public import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
 
 /-!
 # SHA-512 `Ch` and `Maj` (width 64) as `Com thirDialect` leaves
@@ -41,9 +43,11 @@ The single output is `Ch(e,f,g)` resp. `Maj(a,b,c)`.
 * `sha512ChThir_denote` / `sha512MajThir_denote`: each leaf denotes exactly the
   FIPS reference (`sha512ChSpec` / `sha512MajSpec`) on any input valuation — by
   `rfl` (small leaves: a handful of bindings).
-* `ch_via_thirDialect` / `maj_via_thirDialect`: the lowered (two-stage)
+* `ch64_via_thirDialect` / `maj64_via_thirDialect`: the lowered (two-stage)
   `Com jasminDialect` denotes the same `BitVec 64`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -136,7 +140,7 @@ theorem sha512MajThir_denote (a b c : BitVec 64) :
 /-- **`Ch` re-derived through the dialect spine.** The lowered (two-stage)
     `Com jasminDialect` for `Ch` denotes the same `BitVec 64` as the FIPS
     `Ch` reference. -/
-theorem ch_via_thirDialect (e f g : BitVec 64) :
+theorem ch64_via_thirDialect (e f g : BitVec 64) :
     (lowerThir sha512ChThir).denote (.cons e (.cons f (.cons g .nil)))
       = sha512ChSpec e f g := by
   rw [lowerThir_denote sha512ChThir (.cons e (.cons f (.cons g .nil))),
@@ -145,7 +149,7 @@ theorem ch_via_thirDialect (e f g : BitVec 64) :
 /-- **`Maj` re-derived through the dialect spine.** The lowered (two-stage)
     `Com jasminDialect` for `Maj` denotes the same `BitVec 64` as the FIPS
     `Maj` reference. -/
-theorem maj_via_thirDialect (a b c : BitVec 64) :
+theorem maj64_via_thirDialect (a b c : BitVec 64) :
     (lowerThir sha512MajThir).denote (.cons a (.cons b (.cons c .nil)))
       = sha512MajSpec a b c := by
   rw [lowerThir_denote sha512MajThir (.cons a (.cons b (.cons c .nil))),

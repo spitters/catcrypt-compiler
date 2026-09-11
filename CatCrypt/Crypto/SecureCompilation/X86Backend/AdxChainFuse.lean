@@ -3,11 +3,20 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
-import Std.Tactic.BVDecide
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+public import Std.Tactic.BVDecide
+
+@[expose] public section
 
 set_option autoImplicit false
 

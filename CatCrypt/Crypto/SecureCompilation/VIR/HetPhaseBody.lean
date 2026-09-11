@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.MultiPhaseBody
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.MultiPhaseBody
 
 /-!
 # Heterogeneous multi-phase whole-protocol body: a TYPED sequence of phases whose
@@ -92,6 +94,8 @@ phases, so the chain is dependent rather than a homogeneous `List`.
 0 sorries; the only carried hypotheses are `LeafAgrees` and the per-phase
 `StraightLine` witnesses, the same edges carried throughout the emit theory.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

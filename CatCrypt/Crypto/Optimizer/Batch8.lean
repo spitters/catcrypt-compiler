@@ -3,11 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialectBlockDescent
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
-import CatCrypt.Crypto.Optimizer.PackedArith256
-import CatCrypt.Crypto.Optimizer.PackedRotate256
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialectBlockDescent
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+public import CatCrypt.Crypto.Optimizer.PackedArith256
+public import CatCrypt.Crypto.Optimizer.PackedRotate256
 
 /-!
 # The SLH-DSA `batch8` widening pass: eight scalar `u32` SHA lanes to one YMM register
@@ -63,6 +66,8 @@ read the same message position).
 * `batch8_denote`: for a covered program returning `reg 32`, dword lane `k` of the
   widened program's denotation equals the scalar program's denotation on lane `k`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

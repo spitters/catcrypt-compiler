@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvAsmPrinter
-import CatCrypt.Crypto.Optimizer.GenericRegAlloc
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvAsmPrinter
+public meta import CatCrypt.Crypto.Optimizer.GenericRegAlloc
+public import CatCrypt.Crypto.Optimizer.GenericRegAlloc
 
 /-!
 # A fresh RV64 register allocator as a `MachineModel` instance of the generic pass (#552)
@@ -42,6 +47,8 @@ The A64 twin (`ArmRegAlloc`, #551) closed the analogous SHA-256 5.42× → 2.00�
 No `sorry`; the generic keystones carry no custom axioms (RV64 `instVal_rename` is by
 `cases`, the spill laws by the `RMemState` projections).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

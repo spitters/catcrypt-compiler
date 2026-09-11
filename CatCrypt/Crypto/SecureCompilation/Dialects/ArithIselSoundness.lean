@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithEmulations
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithEmulations
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
 # D1/D3 — native instruction-selection soundness
@@ -47,6 +49,8 @@ carry-out is genuine extra information, not a re-spelling. We state the data-wor
 identity (`addCarryLo_eq_addCarryWord`) and note the carry-out gap rather than
 fabricate a neutral emulation for it.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.ArithIselSoundness
 

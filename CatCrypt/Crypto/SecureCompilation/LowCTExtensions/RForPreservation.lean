@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectRustSim
-import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectRustSim
+public import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
 
 /-!
 # Stage EE1 — `RFor` constructor extension lemmas
@@ -53,6 +55,8 @@ The composition into the meta-theorem chain is in `CombinedExtended.lean`.
 * `rustExecSimulatesDialect` (#95-side carrier, foundation).
 * `cmdCT_sound` (#146-side carrier, foundation).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

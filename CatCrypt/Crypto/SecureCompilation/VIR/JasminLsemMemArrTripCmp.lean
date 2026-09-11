@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpLsemTie
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpArrMemN
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTrip
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieArrUncond
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpLsemTie
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpArrMemN
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTrip
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieArrUncond
 
 /-!
 # The emitted `mpn_cmp` loop is an array-carrier fragment member, unconditionally
@@ -33,6 +35,8 @@ instantiates the unconditional export theorem at it, closing
   sign `cmpSign` of the two operands' `bignumVal`, with no per-trip simulation
   hypothesis.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

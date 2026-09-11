@@ -3,17 +3,23 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Quantum.QCircuit
-import CatCrypt.Quantum.UnitaryChannel
+module
 
+public import CatCrypt.Quantum.QCircuit
+public import CatCrypt.Quantum.UnitaryChannel
+public import CatCrypt.Crypto.UCMonad.QuantumUC
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!
 # Gate Unitarity and Nontrivial Circuit Denotation
 
 Proves that every gate in the Clifford+T gate set is unitary, and that
-`embedGate1`/`embedGate2` preserve unitarity. This enables a nontrivial
-`denoteGate` via `unitaryChannel ∘ gateEmbedding`.
+`embedGate1`/`embedGate2` preserve unitarity. Unitarity supports the gate
+denotation `denoteGateU := unitaryChannel ∘ gateEmbedding` and the circuit
+denotation `unitaryDenote` built on it.
 
 ## Strategy (Approach A — Algebraic)
 
@@ -674,6 +680,8 @@ theorem gateEmbedding_mul_conjTranspose (g : Gate n) :
   | .Tdg i => exact embedGate1_unitary n i _ tDaggerGate_unitary
   | .Rz i θ =>
     exact embedGate1_unitary n i _ (rzGate_unitary θ)
+  | .RzQ i a =>
+    exact embedGate1_unitary n i _ (rzGate_unitary (QasmAngle.toReal a))
   | .CNOT i j =>
     show (if h : i = j then 1 else embedGate2 n i j Programs.Qubit.cnot h) *
          (if h : i = j then 1 else embedGate2 n i j Programs.Qubit.cnot h)ᴴ = 1
@@ -702,16 +710,14 @@ def gateEmbedding_unitaryGroup (g : Gate n) : Matrix.unitaryGroup (Fin (2 ^ n)) 
     rw [Matrix.mem_unitaryGroup_iff', star_eq_conjTranspose]
     exact gateEmbedding_conjTranspose_mul g⟩
 
-/-! ## Nontrivial Denotation -/
+/-! ## Unitary-Channel Denotation -/
 
-/-- Nontrivial gate denotation: each gate maps to its unitary channel.
-
-    Unlike the trivial `QComp.qpure ()`, this captures the actual
-    matrix semantics of each gate as `ρ ↦ U ρ U†`. -/
+/-- Gate denotation: each gate maps to the unitary channel `ρ ↦ U ρ U†` of its
+    embedding `U = gateEmbedding g`. -/
 def denoteGateU (g : Gate n) : QComp (2 ^ n) Unit :=
   unitaryChannel (gateEmbedding_unitaryGroup g)
 
-/-- Nontrivial circuit denotation using `denoteGateU`. -/
+/-- Circuit denotation built from `denoteGateU`. -/
 def unitaryDenote : Circuit n → QComp (2 ^ n) Unit
   | .empty      => QComp.qpure ()
   | .gate g c   => QComp.qbind (denoteGateU g) (fun _ => unitaryDenote c)
@@ -740,11 +746,36 @@ def unitaryEquiv (c₁ c₂ : Circuit n) : Prop :=
 def UnitaryCorrectQ (pass : Circuit n → Circuit n) : Prop :=
   ∀ c, unitaryEquiv c (pass c)
 
+/-- The identity pass preserves unitary denotation. -/
+theorem unitaryCorrectQ_id : UnitaryCorrectQ (id : Circuit n → Circuit n) :=
+  fun _ => rfl
+
+/-- Composing two unitary-correct passes yields a unitary-correct pass. -/
+theorem unitaryCorrectQ_comp {pass₁ pass₂ : Circuit n → Circuit n}
+    (h₁ : UnitaryCorrectQ pass₁) (h₂ : UnitaryCorrectQ pass₂) :
+    UnitaryCorrectQ (pass₂ ∘ pass₁) :=
+  fun c => (h₁ c).trans (h₂ (pass₁ c))
+
+/-- A unitary-correct pass preserves quantum UC security bounds: if the source
+    circuit is `ε`-close in `qdist` to an ideal functionality, so is its image
+    under the pass. -/
+theorem unitaryCorrect_preserves_quc {n : ℕ} {ε : ℝ≥0∞}
+    (pass : Circuit n → Circuit n)
+    (hpass : UnitaryCorrectQ pass)
+    (F_ideal : QComp (2 ^ n) Unit)
+    (c : Circuit n)
+    (hsec : UCMonad.QuantumUC.qdist
+              (fun () => unitaryDenote c) (fun () => F_ideal) ≤ ε) :
+    UCMonad.QuantumUC.qdist
+      (fun () => unitaryDenote (pass c)) (fun () => F_ideal) ≤ ε := by
+  have heq : unitaryDenote (pass c) = unitaryDenote c := (hpass c).symm
+  simp only [heq]
+  exact hsec
+
 /-! ## Template Correctness Under Unitary Denotation
 
-Under the trivial `denoteGate = qpure ()`, all template correctness proofs
-are vacuous (every circuit denotes to `qpure ()`). Under `unitaryDenote`,
-they become real matrix equations.
+A template correctness statement over `unitaryDenote` is a matrix equation
+between the channels of the pattern and the replacement.
 
 The key tool is `denoteGateU_compose`: sequential composition of gates
 corresponds to multiplication of their unitary matrices.
@@ -771,6 +802,19 @@ theorem unitaryDenote_single (g : Gate n) :
 theorem unitaryDenote_seq (c₁ c₂ : Circuit n) :
     unitaryDenote (Circuit.seq c₁ c₂) =
       QComp.qbind (unitaryDenote c₁) (fun _ => unitaryDenote c₂) := rfl
+
+/-- Sequencing with `empty` on the left preserves `unitaryDenote`. -/
+theorem unitaryDenote_seq_empty_left (c : Circuit n) :
+    unitaryDenote (Circuit.seq .empty c) = unitaryDenote c := by
+  rw [unitaryDenote_seq, unitaryDenote_empty, QComp.qpure_qbind]
+
+/-- Sequencing with `empty` on the right preserves `unitaryDenote`. -/
+theorem unitaryDenote_seq_empty_right (c : Circuit n) :
+    unitaryDenote (Circuit.seq c .empty) = unitaryDenote c := by
+  rw [unitaryDenote_seq]
+  have : (fun (_ : Unit) => unitaryDenote (Circuit.empty : Circuit n)) =
+      QComp.qpure := funext (fun () => rfl)
+  rw [this, QComp.qbind_qpure]
 
 /-- The gate embedding matrix for H squares to 1. -/
 private theorem gateEmbedding_H_mul_self (q : Fin n) :

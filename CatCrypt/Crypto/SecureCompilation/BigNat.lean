@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
+module
+
+public import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
 
 /-!
 # BigNat: a canonical variable-width natural-number carrier over limb lists
@@ -26,6 +28,8 @@ carrier-level `Nat`-operation equations.
   (`bignumVal (satSub a b) = bignumVal a - bignumVal b`, saturating, for
   equal-length operands).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

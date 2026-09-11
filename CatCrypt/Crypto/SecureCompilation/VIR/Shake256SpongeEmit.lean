@@ -3,10 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.VIR.Shake256SpongeFront
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Shake256SpongeFront
+public import CatCrypt.Crypto.SecureCompilation.VIR.Shake256SpongeFront
 
 /-!
 # Owned variable-length SHAKE256 sponge over the owned Keccak-f[1600] permutation
@@ -61,6 +67,8 @@ single parameter.
 
 Invoke:  lake env lean --run bench/keccak_compare/shake256_sponge_owned_emit.lean
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTDSL
+module
+
+public import CatCrypt.Crypto.Jasmin.LowCTDSL
 
 /-!
 # X25519 Montgomery ladder in the LowCT DSL
@@ -54,6 +56,8 @@ args — is asserted by the constructor's intent but not yet
 formally proved as a `Decidable` predicate.  Tracked as a
 follow-up in NEXT.md.)
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.Examples.X25519LadderDSL
 

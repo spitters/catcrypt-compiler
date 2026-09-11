@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel
 
 /-!
 # Ed25519 fixed-base comb-window **constant-time select**, owned x86 backend (#387)
@@ -91,6 +96,8 @@ is `Com (x86Dialect 64) → runBlock → evalInstr`, the transcription of Jasmin
 Rocq x86 semantics; `AsmPrinter` + `gas` is the syntactic boundary, and the
 System-V leaf prologue/epilogue is trusted ABI scaffolding. No `sorry`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

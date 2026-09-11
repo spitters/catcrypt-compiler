@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
 
 /-!
 # `toLprogPhysAbi` faithfulness — the two-address-lowering fragment (probe)
@@ -48,6 +50,8 @@ So this is **not** a `toLprogPhysAbi` faithfulness theorem; it is the proof of
 the single new ingredient pass (2) needs, isolated and verified against the
 real `lsemStraight` semantics.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GenericEcEmitValue
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GenericEcEmitValue
 
 /-!
 # Discharging `EcEmitRealizes` from the generic EC group-law realization
@@ -102,6 +104,8 @@ the residual narrowed to the Jacobian kernel.
   `ec_jacAdd_realizes_affineAdd`); vertical-line / point-at-infinity exceptional
   cases are out of scope, exactly as for `ec_jacAdd_realizes_affineAdd`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

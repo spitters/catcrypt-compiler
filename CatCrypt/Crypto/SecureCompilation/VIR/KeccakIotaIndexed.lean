@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgIndexed
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JForProgIndexed
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgIndexed
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
 
 /-!
 # Keccak ι as a bit-exact index-parameterized loop (the per-round-constant exemplar)
@@ -71,6 +75,8 @@ importers; referenced by docstrings in `KeccakBitexact` / `KeccakDiffuseExact`
 as the template the rest of the chain extends). Closes the isolated-ι
 per-round-constant primitive bit-exactly.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -174,7 +180,7 @@ def keccakIotaRef (init : BitVec 64) : BitVec 64 :=
 /-- Fold congruence under a per-element side condition: two index-threading step
     functions that agree on every `(acc, i)` with `i ∈ l` give the same
     left-fold over `l`. -/
-private theorem foldl_congr_mem (f g : BitVec 64 → Nat → BitVec 64) :
+theorem foldl_congr_mem (f g : BitVec 64 → Nat → BitVec 64) :
     ∀ (l : List Nat), (∀ i ∈ l, ∀ acc, f acc i = g acc i) →
       ∀ init, l.foldl f init = l.foldl g init
   | [], _, _ => rfl

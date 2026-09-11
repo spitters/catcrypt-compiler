@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast
 
 /-!
 # Faithful `lsem` for the stack-memory fragment
@@ -44,7 +47,7 @@ operand `.arrIdx base idx scale` carries the address *structure* (the array base
 name, the index-register name, the byte stride `w/8`) — never the array length
 `n`, never the loaded/stored value.
 
-The array length `n` is genuinely absent from that wire (`.arrIdx` carries only
+The array length `n` is absent from that wire (`.arrIdx` carries only
 `scale = w/8`). Jasmin's own `eval_instr` reads the slot count from the *array
 descriptor* — the typed `Lvar`/`Laset` whose `sarr len` the linear program
 retains — **not** from the operand syntax. We mirror that exactly: the
@@ -75,16 +78,16 @@ leak, values don't*. The loaded/stored **value never enters the leak**, and the
 array length `n` (the typed `.snd` descriptor) never enters the wire.
 
 This makes the leak trace state-independent **unconditionally** (the per-
-instruction leak is syntactic), as for `castW`. The genuine constant-time
+instruction leak is syntactic), as for `castW`. The constant-time
 *discipline* the model encodes is the **public-index** requirement: the index
 register names a `BitVec 64` whose value is data-independent and in range
 (`idx.toNat < n`). A **secret-dependent** index would make the leaked address
 `(base, idx, scale)` depend on a secret through `idx`'s *runtime value* — but
 note the leak here is over the index *register name* (syntactic), not its value,
 so the wire-level state-independence holds regardless; the public-index
-hypothesis is stated honestly on the functional side (it is what makes the cell
+hypothesis is stated on the functional side (it is what makes the cell
 addressed by `stackGet`/`stackSet` the intended one). Secret-indexed loads are
-genuinely *not* constant-time on real silicon (cache/timing) — that residual is
+*not* constant-time on real silicon (cache/timing) — that residual is
 out of scope of this syntactic leak model and is flagged, not hidden.
 
 ## Op set now covered
@@ -117,6 +120,8 @@ of which touch `lmem` — is unchanged.
 `jasminc_preserves_ct`.** The `lsem→bytes` encoder and Sail tables remain the
 declared trusted base, as for every verified compiler.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -1503,10 +1508,10 @@ theorem encodeArrAuxM_reg {Γ : Ctxt jasminDialect} (V : Ctxt.Valuation Γ)
   | cons hd tl ih =>
       rename_i τ rest
       cases τ with
-      | reg w' => simpa [encodeArrAuxM] using ih
-      | stackArr w' n' => simpa [encodeArrAuxM, LstateM.setArr] using ih
-      | inlineInt => simpa [encodeArrAuxM] using ih
-      | bool => simpa [encodeArrAuxM] using ih
+      | reg w' => simpa [encodeArrAuxM] using! ih
+      | stackArr w' n' => simpa [encodeArrAuxM, LstateM.setArr] using! ih
+      | inlineInt => simpa [encodeArrAuxM] using! ih
+      | bool => simpa [encodeArrAuxM] using! ih
 
 /-- The array encoder reads back each array variable at its `argName` slot, at its
     own shape: the value at de Bruijn index `varIndex v` (type `.stackArr w' n'`)
@@ -1760,10 +1765,10 @@ theorem lsemLeakMem_straightOps_state_independent {Γ : Ctxt jasminDialect}
     *syntactic* CT model: the wire's `.arrIdx base idx scale` leaks the **address
     structure** (base name, index-register *name*, stride) via `idxShape`, never
     the value — *addresses leak, values don't*. So the leak trace is
-    state-independent unconditionally. The genuine CT discipline the model encodes
+    state-independent unconditionally. The CT discipline the model encodes
     is that the index register's *value* be **public** (data-independent, in
     range): a SECRET-dependent index would, on real silicon, leak the addressed
-    cell through cache/timing — secret-indexed loads are genuinely **not**
+    cell through cache/timing — secret-indexed loads are **not**
     constant-time. That residual is outside this syntactic leak model and is
     flagged here, not hidden; the in-range/total addressing (`stackGet`/`stackSet`
     reduce `% n`) makes the functional placement sound for any index. The
@@ -1917,7 +1922,7 @@ theorem StoreAgreesM.of_frame {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
 
 /-- Depth bookkeeping for the strengthened induction: one binding shifts the
     final depth by one, `(a + 1) + b = a + (b + 1)`. -/
-private theorem storeAgrees_shift_depth {nArgs a b : Nat} {Γ' : Ctxt jasminDialect}
+theorem storeAgrees_shift_depth {nArgs a b : Nat} {Γ' : Ctxt jasminDialect}
     {st : LstateM} {V : Ctxt.Valuation Γ'}
     (h : StoreAgreesM nArgs ((a + 1) + b) st V) :
     StoreAgreesM nArgs (a + (b + 1)) st V := by

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMersenne31Tie
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
+module
+
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMersenne31Tie
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
 
 /-!
 # #607 security tie: the compile-from-hax Mersenne-31 multiply leaf realizes the
@@ -49,6 +51,8 @@ is the scope of #607.
 on which `m31MulFold_eq_field` is stated and the domain a base-field element of
 the trace / constraint polynomials inhabits.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

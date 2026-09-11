@@ -3,11 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Ed25519Iface
-import CatCrypt.Crypto.Util.P25519PrimeCert
-import CatCrypt.Crypto.Util.Ed25519LPrimeCert
-import Mathlib.Data.ZMod.Basic
-import Mathlib.FieldTheory.Finite.Basic
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Jasmin.Ed25519Iface
+public import CatCrypt.Crypto.Util.P25519PrimeCert
+public import CatCrypt.Crypto.Util.Ed25519LPrimeCert
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.FieldTheory.Finite.Basic
 
 /-!
 # Ed25519 spec alignment — the proved correctness slice
@@ -64,6 +67,8 @@ that connects sign and verify holds.
     matches `low + high · R mod L`.
 15. `scalar_reduce_64_zero` — reducing all-zero bytes gives `0`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.Ed25519Spec
 

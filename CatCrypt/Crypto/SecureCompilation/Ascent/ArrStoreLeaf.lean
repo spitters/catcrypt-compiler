@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
-import Mathlib.Tactic.Ring
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
+public import Mathlib.Tactic.Ring
 
 /-!
 # The array-store value leaf for the ascent calculus
@@ -40,6 +43,8 @@ related by `SRarr` to an abstract `AArr`, running the store under the real
 `semScalar` lands in a state related to the abstract array-update. This is the
 array analogue of `corres_setScalar`/`corres_setExpr`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

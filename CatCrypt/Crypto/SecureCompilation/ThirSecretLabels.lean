@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ThirCTByConstruction
-import CatCrypt.Crypto.Optimizer.SecretType
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ThirCTByConstruction
+public import CatCrypt.Crypto.Optimizer.SecretType
 
 /-!
 # Information-flow (secret-level) labelling over the `thirDialect` front IR
@@ -50,6 +52,8 @@ and the mid-IR taint pass speak one vocabulary.
 
 All goals closed.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

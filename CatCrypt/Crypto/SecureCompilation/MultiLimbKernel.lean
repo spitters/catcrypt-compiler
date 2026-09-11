@@ -3,10 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.FieldReduceIdioms
-import CatCrypt.Crypto.SecureCompilation.ScalarLinNeutral
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RegToRiscv
+module
+public import Mathlib.Tactic.Ring
+public import Mathlib.Tactic.Linarith
+
+import all Init.Data.Repr
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.FieldReduceIdioms
+public import CatCrypt.Crypto.SecureCompilation.ScalarLinNeutral
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RegToRiscv
 
 /-!
 # Multi-limb bignum: 128-bit addition with a verified carry chain
@@ -17,6 +23,8 @@ The scale-up from single-limb field ops to multi-limb bignums. A two-limb
 limb-to-limb propagation every wider bignum add chains; this is the 2-limb base
 case, compiled to both backends.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
 

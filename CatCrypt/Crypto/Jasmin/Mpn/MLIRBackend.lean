@@ -3,8 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
+module
 
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCT
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!
@@ -164,12 +170,12 @@ would consume; today's `LowCTToMLIR.emitCmd` emits `// <RFor: not
 emitted>` for it. -/
 
 /-- A `u64`-typed scalar slot. -/
-private def u64 (s : String) : Located := { locVar := s, locSrc := .TU64 }
+def u64 (s : String) : Located := { locVar := s, locSrc := .TU64 }
 
 /-- A dynamic limb-array slot `memref<?xi64>`, modelled at the AST level as
     `TArr n .TU64` for a symbolic length `n` (the AST carries a `Nat`; the
     runtime-`?` nature shows up only at MLIR-emit time as `memref<?xi64>`). -/
-private def arr (s : String) (n : Nat) : Located := { locVar := s, locSrc := .TArr n .TU64 }
+def arr (s : String) (n : Nat) : Located := { locVar := s, locSrc := .TArr n .TU64 }
 
 /-- One iteration body of `mpn_add_n`, indexed by the `RFor` loop variable
     `i`:  `a := ap[i]; b := bp[i]; (cf, sum) := adc(a, b, cf); op[i] := sum`.

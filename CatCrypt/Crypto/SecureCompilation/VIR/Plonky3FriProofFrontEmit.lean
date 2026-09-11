@@ -3,11 +3,20 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectPhaseCompose
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
+public import CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectPhaseCompose
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectPhaseCompose
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+
+@[expose] public section
 
 set_option autoImplicit false
 

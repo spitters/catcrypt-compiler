@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
 # The index-free fragment of `Com jasminDialect` is constant-time by construction
@@ -38,6 +40,8 @@ from "preserve arbitrary CT" to **"keep every `stackLoad` / `stackStore` index
 public"** — for the index-free kernel fragment it is discharged structurally,
 here.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

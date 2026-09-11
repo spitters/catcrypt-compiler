@@ -3,7 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # C4 fan-out: the verified compiler emits the ML-DSA-65 `power2round` rounding body
@@ -75,6 +80,8 @@ domain `a < q` — the rounding-correctness fact (the SDitH-lesson pure-BitVec
 ARX `rfl`. The spec forms match `Power2RoundEmit.refA1`/`refA0Bits`.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.CompileFromHaxMldsaDecompose
@@ -140,9 +147,7 @@ theorem power2roundA1_compiles :
   intro a
   have hspec : ImpExpr.denoteScalar ["a"] ![a]
       power2roundA1Src (fun _ => none) = some (power2roundA1Spec a) := by
-    have h := power2roundA1Src_denoteScalar (nIn := 1) ![a]
-    simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_fin_one,
-      Matrix.cons_val] using h
+    exact power2roundA1Src_denoteScalar (nIn := 1) ![a]
   exact compileFromHax_meets_spec (w := 64) (nIn := 1) ["a"]
     ![a] power2roundA1Src _ hc hspec
 
@@ -203,9 +208,7 @@ theorem power2roundA0_compiles :
   intro a
   have hspec : ImpExpr.denoteScalar ["a"] ![a]
       power2roundA0Src (fun _ => none) = some (power2roundA0Spec a) := by
-    have h := power2roundA0Src_denoteScalar (nIn := 1) ![a]
-    simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_fin_one,
-      Matrix.cons_val] using h
+    exact power2roundA0Src_denoteScalar (nIn := 1) ![a]
   exact compileFromHax_meets_spec (w := 64) (nIn := 1) ["a"]
     ![a] power2roundA0Src _ hc hspec
 

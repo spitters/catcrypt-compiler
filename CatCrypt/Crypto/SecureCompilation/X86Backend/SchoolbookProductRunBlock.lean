@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookRunBlock
+module
+public import Mathlib.Data.List.GetD
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookRunBlock
 
 /-!
 # The full 256×256 schoolbook product over a single `runBlock`
@@ -60,6 +63,8 @@ one `ADCX`/`ADOX imm0` pair per column). The persistent-flag / full-ILP ADX
 schedule (no per-column reset, marginally faster) is a separate
 *perf-equivalence* increment; it does not change the value spec proven here.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxHeartbeats 1000000

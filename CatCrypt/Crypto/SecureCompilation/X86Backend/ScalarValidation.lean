@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Add2Kernel
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Add2Kernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Add2Kernel
 
 /-!
 # Differential validation of the scalar `JInstr` byte encoder against `gas`
@@ -28,6 +33,8 @@ land, to nothing (a `decode (encode i) ≡ i` round-trip).
 low-8 (`%rsi`/`%rcx`/`%rdi`) and high-8 (`%r8`, requiring the REX/VEX `B` extension
 bit) encodings: `d ↦ %rsi`, `a ↦ %rcx`, `b ↦ %r8`, `p ↦ %rdi` (the pointer base for
 the `loadMem`/`storeMem`/`mulxMem` arms). -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -159,6 +166,47 @@ The gas bytes are quoted (in the comment) in the disassembly form `objdump` prin
 #guard encodeJInstr aDiff (.storeMem "p" 0 (.reg "d"))
     == [0x48, 0x89, 0x37].map (BitVec.ofNat 8)
 
+-- The **store-immediate** form (`C7 /0 id` with a memory ModRM), the shape
+-- `MpnLoopEmit.zeroLoopBody` emits (`storeMem "r" 0 (.imm 0)`). AT&T
+-- `movq $0, (%rdi)` — NOT the `89 /r` register store this arm used to reuse.
+-- gas: `movq $0,(%rdi)`  →  48 c7 07 00 00 00 00
+#guard encodeJInstr aDiff (.storeMem "p" 0 (.imm 0))
+    == [0x48, 0xc7, 0x07, 0x00, 0x00, 0x00, 0x00].map (BitVec.ofNat 8)
+
+-- gas: `movq $7,24(%rdi)`  →  48 c7 47 18 07 00 00 00   (store-imm, disp8)
+#guard encodeJInstr aDiff (.storeMem "p" 24 (.imm 7))
+    == [0x48, 0xc7, 0x47, 0x18, 0x07, 0x00, 0x00, 0x00].map (BitVec.ofNat 8)
+
+-- The register-indexed (SIB) store pair: register source, then the `C7 /0`
+-- immediate source. `base = p ↦ %rdi`, `index = a ↦ %rcx`, `scale = 8`.
+-- gas: `movq %rsi,(%rdi,%rcx,8)`  →  48 89 34 cf
+#guard encodeJInstr aDiff (.storeMemIdx "p" "a" 8 (.reg "d"))
+    == [0x48, 0x89, 0x34, 0xcf].map (BitVec.ofNat 8)
+
+-- gas: `movq $0,(%rdi,%rcx,8)`  →  48 c7 04 cf 00 00 00 00
+#guard encodeJInstr aDiff (.storeMemIdx "p" "a" 8 (.imm 0))
+    == [0x48, 0xc7, 0x04, 0xcf, 0x00, 0x00, 0x00, 0x00].map (BitVec.ofNat 8)
+
+/-! ### 1b. `SETcc` + `MOVZBQ`: the three REX bands
+
+The `setc` arm emits the `setb %d8 ; movzbq %d8, %d64` pair, whose `SETcc` half
+needs a `REX` prefix in two disjoint bands of the register number — pinned here
+one example per band, because the middle band is the one an encoder gets wrong:
+
+* `d < 4` (`%cl` = 1) — no prefix;
+* `4 ≤ d < 8` (`%sil` = 6) — the **bare** `REX` `0x40`; without it the ModRM
+  `rm` field names the legacy high byte `DH`, not `SIL`, while the `REX.W`
+  `MOVZBQ` reads `SIL` — a mismatched register pair;
+* `d ≥ 8` (`%r15b` = 15) — `REX.B` `0x41`. -/
+
+-- gas: `setb %cl ; movzbq %cl,%rcx`  →  0f 92 c1  48 0f b6 c9   (no REX on the setb)
+#guard encodeJInstr aDiff (.setc "a")
+    == [0x0f, 0x92, 0xc1, 0x48, 0x0f, 0xb6, 0xc9].map (BitVec.ofNat 8)
+
+-- gas: `setb %sil ; movzbq %sil,%rsi`  →  40 0f 92 c6  48 0f b6 f6   (BARE REX 0x40)
+#guard encodeJInstr aDiff (.setc "d")
+    == [0x40, 0x0f, 0x92, 0xc6, 0x48, 0x0f, 0xb6, 0xf6].map (BitVec.ofNat 8)
+
 /-! ## 2. High-register extension-bit coverage
 
 A second allocation exercises the high-8 GP registers as *both* operands, pinning
@@ -176,6 +224,12 @@ def aHigh : GpAlloc := [("d", "%r15"), ("a", "%r14"), ("b", "%r13"), ("p", "%r12
 #guard encodeJInstr aHigh (.mulx "a" "d" (.reg "p") (.reg "b"))
     == [0xc4, 0x42, 0x83, 0xf6, 0xf5].map (BitVec.ofNat 8)
 
+-- The `d ≥ 8` `SETcc` band (`%r15b`): `REX.B` = 0x41 on the setb, `REX.W|R|B` =
+-- 0x4d on the movzbq.
+-- gas: `setb %r15b ; movzbq %r15b,%r15`  →  41 0f 92 c7  4d 0f b6 ff
+#guard encodeJInstr aHigh (.setc "d")
+    == [0x41, 0x0f, 0x92, 0xc7, 0x4d, 0x0f, 0xb6, 0xff].map (BitVec.ofNat 8)
+
 /-! ## 3. Block-level integration witness
 
 The whole `add2Block` kernel (`add a0,b0; adc a1,b1`) encodes to the concatenation
@@ -188,7 +242,8 @@ gas for `addq %rcx,%rsi`  →  48 01 ce
 gas for `adcq %r8,%rdx`   →  4c 11 c2   (REX.R for the %r8 source operand)
 ```
 
-and confirm the length (`encode_length`-style structural fact at the block level). -/
+and confirm the length (the block-level analogue of the per-shape `§6`
+`encAluRR_length`/`enc0FRR_length`/… structural facts). -/
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Add2Kernel
 

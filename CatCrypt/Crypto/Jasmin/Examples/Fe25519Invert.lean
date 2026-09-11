@@ -29,9 +29,13 @@ this by using a scratch `tmp` slot for the "repeated squaring"
 inner loop and copying back to the named accumulator each iteration.
 
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
-import CatCrypt.Crypto.Jasmin.RustEmit
+module
 
+public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.RustEmit
+
+
+@[expose] public section
 namespace CatCrypt.Crypto.Jasmin.Examples.Fe25519Invert
 
 open CatCrypt.Crypto.Jasmin.LowCT
@@ -39,15 +43,15 @@ open CatCrypt.Crypto.Jasmin.LowCT
 /-! ## §1.  Helpers -/
 
 /-- A `TFp25519` slot. -/
-private def fp (v : String) : Located :=
+def fp (v : String) : Located :=
   { locVar := v, locSrc := TowerType.TFp25519 }
 
 /-- `RCall "fe25519_sqr" (fp dst) [fp src]`: `dst := src^2`. -/
-private def sqr (dst src : String) : LowCT :=
+def sqr (dst src : String) : LowCT :=
   LowCT.RCall "fe25519_sqr" (fp dst) [fp src]
 
 /-- `RCall "fe25519_mul" (fp dst) [fp a, fp b]`: `dst := a · b`. -/
-private def mul (dst a b : String) : LowCT :=
+def mul (dst a b : String) : LowCT :=
   LowCT.RCall "fe25519_mul" (fp dst) [fp a, fp b]
 
 /-- `n` squarings of `acc` (in place), via the bounded for-loop.
@@ -58,17 +62,17 @@ private def mul (dst a b : String) : LowCT :=
         scratch := acc^2
         acc     := scratch          (verified copy leaf)
     After `n` iterations, `acc` holds the n-th iterated square. -/
-private def sqrN (n : Nat) (acc scratch : String) : LowCT :=
+def sqrN (n : Nat) (acc scratch : String) : LowCT :=
   LowCT.RFor "_i" n
     (LowCT.RSeq
       (sqr scratch acc)
       (LowCT.RCall "fe25519_copy" (fp acc) [fp scratch]))
 
 /-- Sequence two commands. -/
-private def seq2 (c1 c2 : LowCT) : LowCT := LowCT.RSeq c1 c2
+def seq2 (c1 c2 : LowCT) : LowCT := LowCT.RSeq c1 c2
 
 /-- Sequence a list of commands left-to-right.  Empty list → `RSkip`. -/
-private def seqN : List LowCT → LowCT
+def seqN : List LowCT → LowCT
   | []      => LowCT.RSkip
   | [c]     => c
   | c :: cs => LowCT.RSeq c (seqN cs)
@@ -176,9 +180,9 @@ def fe25519InvertBody : LowCT :=
 /-! ## §3.  Function envelope + emitter -/
 
 /-- Input parameter: `a : &[u8; 40]` (the 40-byte canonical TFp25519 slot). -/
-private def params : List Located := [ fp "a" ]
+def params : List Located := [ fp "a" ]
 /-- Output parameter: `out : &mut [u8; 40]`. -/
-private def results : List Located := [ fp "out" ]
+def results : List Located := [ fp "out" ]
 
 /-- The Rust source string for `fe25519_invert`. -/
 def emitFe25519Invert : String :=

@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvEncoder
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvAsmPrinter64
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvEncoder
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvEncoder
+public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvAsmPrinter64
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvAsmPrinter64
 
 /-!
 # A verified machine-code byte encoder for the 64-bit bignum `RInst64` (#549)
@@ -37,12 +41,16 @@ ITYPE(0,rs1,rd,ADDI)   <-> 0...0 @ rs1 @ 0b000 @ rd @ 0b0010011        (MV)
 constant (1–8 instructions for a 64-bit value). It is therefore *not*
 byte-encoded here; it is the RV64 analogue of the trusted prologue scaffolding
 (the bignum kernel materialises the three `p_256` constant limbs with `li`). The
-byte-diff (`bench/riscv_compare`, `addp256-bytes-diff`) is run on the **register-
-to-register body** (the carry chain + trial subtraction + mask-select reduce,
-with the `li`s factored out), exactly the verified-encoded subset; the `li`
-constant loads are assembled by `as` as trusted scaffolding. `encodeWord64` returns
-`none` for `li` to make that boundary explicit and machine-checked.
+byte-diff (`addp256-bytes-diff`, checked by hand against `as`/`objdump`; the
+comparison harness itself is not vendored in this tree) is run on the
+**register-to-register body** (the carry chain + trial subtraction +
+mask-select reduce, with the `li`s factored out), exactly the verified-encoded
+subset; the `li` constant loads are assembled by `as` as trusted scaffolding.
+`encodeWord64` returns `none` for `li` to make that boundary explicit and
+machine-checked.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -57,7 +65,18 @@ Reuses `RiscvEncoder.encR`/`encI`/`reg5` (the sail `@` field-concatenation
 builders) and the `regNum` table. `MUL` funct7 is `0b0000001 = 0x01`. -/
 
 /-- Encode one `RInst64` to its 32-bit RV64 instruction word, or `none` for the
-    `LI` pseudo-op (which `as` expands to a variable-length sequence). -/
+    `LI` pseudo-op (which `as` expands to a variable-length sequence).
+
+    **Precondition:** `.srli`/`.slli`'s shift amount `sh` is packed directly into
+    the 12-bit `ITYPE` immediate with `BitVec.ofNat 12 sh`, with **no range
+    check**. `SailRiscvDecoder64.roundtrip_RInst64` is stated only for `sh < 64`
+    (the RV64 6-bit `shamt`); outside that range the encoding is not just
+    "wrong", it can silently name a *different instruction*: on RV64,
+    `imm[11:6]` doubles as the `SRLI`/`SRAI` selector (`0b000000` vs
+    `0b010000`), so e.g. `sh = 1024` (`0b010000000000`) packs `shamt = 0` with
+    the `SRAI` selector bits set — `encodeWord64 (.srli d a 1024)` assembles to
+    `srai d, a, 0`, not `srli`. The backend must only ever call this with
+    `sh < 64`. -/
 def encodeWord64 : RInst64 → Option (BitVec 32)
   | .add  d a b => some (encR 0x00 (reg5 b) (reg5 a) 0b000 (reg5 d) 0x33)
   | .sub  d a b => some (encR 0x20 (reg5 b) (reg5 a) 0b000 (reg5 d) 0x33)
@@ -93,7 +112,11 @@ def encodeRBlock64 (block : List RInst64) : List (BitVec 8) :=
 /-! ## 2. Differential-validation pins against `riscv64-linux-gnu-as`
 
 The encoder's words pinned to the exact 32-bit words `riscv64-linux-gnu-as`
-produces for the same mnemonic (the `objdump -d` value, the bench oracle). -/
+produces for the same mnemonic (the `objdump -d` value, checked by hand against
+`as`). These pins cover `add`/`sub`/`sltu`/`mul`/`mulhu`/`and`/`or`/`xor`/`mv`/
+`li`; **`srli`/`slli` have no differential pin below** — their only
+machine-checked coverage is the sail-riscv round-trip in
+`SailRiscvDecoder64.roundtrip_RInst64`, not a gas-pinned example here. -/
 
 -- `add a0, a0, a1` → `0x00b50533`
 #guard encodeWord64 (.add "a0" "a0" "a1") == some 0x00b50533

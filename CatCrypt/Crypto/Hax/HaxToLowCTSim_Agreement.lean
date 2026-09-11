@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
+module
+
+public import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
 
 /-!
 # H3.bis-final: agreement-extension + letBind lit simulation
@@ -12,6 +14,8 @@ Extends the H3 simulation theorem with the agreement-extension lemma
 `envAgreesRust_extend_scalar` and the productive letBind-lit simulation
 instance `haxToLowCT_simulates_letBind_lit`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

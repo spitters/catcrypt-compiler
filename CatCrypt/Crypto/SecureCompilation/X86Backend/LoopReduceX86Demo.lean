@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopReduceDemo
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopReduceDemo
 
 /-!
 # Array-reduction loop x86 emit — `v := v + a[i]` to `.s` (task #538, wall #2)
@@ -112,6 +114,8 @@ loop-carried values in one binding and so was never aliased — which is why the
 linear scan is untouched, so the SIB-using kernels (Keccak/Poseidon2) are
 unaffected.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

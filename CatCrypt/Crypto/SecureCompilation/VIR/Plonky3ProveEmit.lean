@@ -3,12 +3,21 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3MerkleEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3LdeEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FriEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3AirEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3MerkleEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3MerkleEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3LdeEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3LdeEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FriEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FriEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3AirEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3AirEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 
 /-!
 # Plonky3 end-to-end prover orchestration emitted through the verified front
@@ -85,6 +94,8 @@ determinism), and the byte-identity cross-check is delegated to the bench
 harness which runs the Rust reference directly (`bench/plonky3_compare/`,
 shared with the full FRI-proof object byte-identity).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

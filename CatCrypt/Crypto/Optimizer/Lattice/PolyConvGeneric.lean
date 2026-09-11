@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Algebra.Polynomial.Eval.Defs
-import Mathlib.Algebra.Polynomial.Degree.Lemmas
-import Mathlib.Algebra.BigOperators.Fin
+module
+
+import all Init.Data.Repr
+public import Mathlib.Algebra.Polynomial.Eval.Defs
+public import Mathlib.Algebra.Polynomial.Degree.Lemmas
+public import Mathlib.Algebra.BigOperators.Fin
 
 /-!
 # Polynomial multiplication as a convolution (generic `CommRing`)
@@ -37,6 +40,8 @@ that it agrees with `Polynomial.eval`. The keystone then falls out of
 * `conv a b`   — convolution: `(conv a b)[k] = ∑_{i+j=k} a[i] * b[j]`, defined
                  as the coefficient list of `toPoly a * toPoly b`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

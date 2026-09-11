@@ -3,7 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.ZMod.Basic
+module
+
+import all Init.Data.Repr
+public meta import Std.Tactic.BVDecide.Reflect
+public import Mathlib.Data.ZMod.Basic
+public import Std.Tactic.BVDecide
 
 /-!
 # The OWNED `csub` lane reduction from `BitVec 64` lanes to `ZMod P` (model-free)
@@ -54,6 +59,8 @@ enormous margin.
 These facts are pure `BitVec`/`Nat`/`ZMod` number theory — no machine model,
 no jasminc, no `jasminc_preserves_ct`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

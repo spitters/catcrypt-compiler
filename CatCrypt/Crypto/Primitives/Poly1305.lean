@@ -4,6 +4,8 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 
+module
+
 /-!
 # Poly1305 MAC (RFC 8439)
 
@@ -25,6 +27,8 @@ All definitions are sealed with `@[irreducible]`.
 * RFC 8439, Section 2.5 — The Poly1305 Algorithm
 * Bernstein — *The Poly1305-AES Message-Authentication Code*, FSE 2005
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

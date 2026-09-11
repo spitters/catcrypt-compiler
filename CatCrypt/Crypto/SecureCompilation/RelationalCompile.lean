@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Sha2EmitterReduction
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterReduction
-import Lean
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.Sha2EmitterReduction
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterReduction
+public import Lean
 
 /-!
 # A denotational relational-compilation layer (Rupicola-style core)
@@ -61,6 +64,8 @@ the `rupicola` driver apply them by structural decomposition (§6).
 result (the fact #128's `EmitRoundDenotesClosedFormFaithful_holds`
 establishes) through this framework, and measures the proof-size delta.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

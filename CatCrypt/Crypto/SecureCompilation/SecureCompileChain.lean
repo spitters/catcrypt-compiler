@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ImpCTGate
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompilableCT
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ImpCTGate
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompilableCT
 
 /-!
 # The secure-compilation capstone
@@ -35,6 +37,8 @@ guarantees constant-time output *even if the lowering is untrusted* (defense in
 depth: the front gate rejects bad sources early with a clear reason, and the
 machine re-check is the backstop that the emitted block actually is CT).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

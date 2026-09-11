@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Chacha20DwordCom
-import CatCrypt.Crypto.SecureCompilation.VIR.ZmmDwordLane
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Chacha20DwordCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.Chacha20DwordCom
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ZmmDwordLane
+public import CatCrypt.Crypto.SecureCompilation.VIR.ZmmDwordLane
 
 /-!
 # ChaCha20 whole-block (16×u32 dword ZMM) on the verified Jasmin VIR dialect
@@ -58,6 +63,8 @@ spec connected to it lane-wise through `qrSpecZ` and hence `qrCom`.
 
 Invoke: `lake build CatCrypt.Crypto.SecureCompilation.VIR.Chacha20DwordBlockCom`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

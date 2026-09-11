@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.BigInt
-import CatCrypt.Crypto.SecureCompilation.BigNatShift
-import CatCrypt.Crypto.SecureCompilation.ToomInterpolation
+module
+
+public import CatCrypt.Crypto.SecureCompilation.BigInt
+public import CatCrypt.Crypto.SecureCompilation.BigNatShift
+public import CatCrypt.Crypto.SecureCompilation.ToomInterpolation
 
 /-!
 # Recursive integer Toom-Cook-3 multiplication on the `BigNat` carrier
@@ -35,6 +37,8 @@ recombination reuses `toom3_schoolbook_split` from
 * `toom3` / `toom3_val` — the recursive multiply and its value correctness
   `bignumVal (toom3 a b) = bignumVal a * bignumVal b`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

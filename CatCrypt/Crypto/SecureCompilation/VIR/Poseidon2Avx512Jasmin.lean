@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Poseidon2LaneVec
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect
+public meta import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Poseidon2LaneVec
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Poseidon2LaneVec
 
 /-!
 # Poseidon2 BabyBear — AVX-512 MDS add through the **verified jasmin chain** (task #286)
@@ -48,6 +53,8 @@ linear-layer add (`#VPADD_8u64`) — end-to-end through the verified jasmin chai
 
 Invoke: `lake build CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Avx512Jasmin`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

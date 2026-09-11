@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpJasminValue
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpJasminValue
 
 /-!
 # Emitting the front-generated secp256k1 point ops, gated on the proof
@@ -60,6 +62,8 @@ still empty.
   rather than by a runtime check. Producing the artifact additionally needs the
   render cost above brought down.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrontEmit
 

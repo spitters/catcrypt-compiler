@@ -3,11 +3,19 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemSimd
-import CatCrypt.Crypto.SecureCompilation.VIR.CrossLaneReadback
-import CatCrypt.Crypto.SecureCompilation.VIR.ChaChaEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.HawkMul4WayEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CryptoExtEncoder
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemSimd
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemSimd
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.CrossLaneReadback
+public import CatCrypt.Crypto.SecureCompilation.VIR.CrossLaneReadback
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ChaChaEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.ChaChaEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.HawkMul4WayEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.HawkMul4WayEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CryptoExtEncoder
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CryptoExtEncoder
 
 /-!
 # OWNED cross-lane-SIMD emit: cross-lane permute as an `extCall` LEAF (Tier-3)
@@ -70,6 +78,8 @@ leaf; everything else is the per-lane ARX of the existing 4-way emit.
 is KAT-gated (Tier-B), validated by `bench/chachapoly_compare/` against RFC 8439
 §2.3.2 — there are no fabricated test vectors.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

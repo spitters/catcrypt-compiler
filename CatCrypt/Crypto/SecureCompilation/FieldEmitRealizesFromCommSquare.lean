@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GenericFieldEmitValue
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Add
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontCurveRegistry
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GenericFieldEmitValue
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Add
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontCurveRegistry
 
 /-!
 # Discharging `FieldEmitRealizes` from the relational commuting square
@@ -85,6 +87,8 @@ threads it through to a full `FieldEmitRealizes` witness, confirming the bridge
 delivers an inhabitant of the `GenericFieldEmitValue` hypothesis from the
 relational law.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

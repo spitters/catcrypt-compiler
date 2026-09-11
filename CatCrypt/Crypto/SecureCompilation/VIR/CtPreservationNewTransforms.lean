@@ -3,11 +3,18 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgUnroll
-import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
-import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
-import CatCrypt.Crypto.SecureCompilation.VIR.CrossBlockResidencyUnroll
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JForProgUnroll
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgUnroll
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+public import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
+public import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.CrossBlockResidencyUnroll
+public import CatCrypt.Crypto.SecureCompilation.VIR.CrossBlockResidencyUnroll
 
 /-!
 # CT preservation across the new `JForProg` Com→Com transforms
@@ -113,6 +120,8 @@ emit-level CT keystone (`RobustCompilationPipeline`) gives the end-to-end
 "verified-asm is CT" statement post-#139/#141/#143 — formally, not just
 implicitly.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

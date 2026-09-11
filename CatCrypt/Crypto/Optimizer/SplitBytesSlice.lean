@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCT
 
 /-!
 # `splitBytesSlice`: per-source-size monomorphisation of `bytes_slice`
@@ -57,9 +61,13 @@ proofs in `MlkemLowCT.lean` / `MldsaLowCT.lean` are unchanged
 ## Use
 
 ```lean
-import CatCrypt.Crypto.MLKEM.MlkemLowCT
-import CatCrypt.Crypto.Optimizer.SplitBytesSlice
+public meta import CatCrypt.Crypto.MLKEM.MlkemLowCT
+public import CatCrypt.Crypto.MLKEM.MlkemLowCT
+public meta import CatCrypt.Crypto.Optimizer.SplitBytesSlice
+public import CatCrypt.Crypto.Optimizer.SplitBytesSlice
 
+
+@[expose] public section
 #eval (let env := initialEnv [("d", .TBytes 33), ("z", .TBytes 32),
                               ("ek", .TBytes 1184), ("dk", .TBytes 2400)]
        let c' := splitBytesSlice env mlkem_keygen_kernel
@@ -70,6 +78,8 @@ The `initialEnv` argument seeds the typing environment with the
 caller-supplied (parameter) slots — these aren't visible to the
 pass via `RLetZero`, so they have to be passed in.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ProtocolEmitRealizes
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ProtocolEmitRealizes
 
 /-!
 # Post-quantum (non-hash) signatures and MPC as `ProtocolKernels` instances
@@ -73,6 +75,8 @@ honest hypotheses (each is the kernel's leaf-bytes KAT); the contribution is
 that the protocol-level composition assembles for free from them.  No fabricated
 `leafSpec`; the abstract step specs are honest opaque parameters.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

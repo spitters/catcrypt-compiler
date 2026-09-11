@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.VIR.ChaChaEmit
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ChaChaEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.ChaChaEmit
 
 /-!
 # Physical-register export of the ChaCha20 block: concrete no-collision check
@@ -22,6 +26,8 @@ The check is closed by `native_decide` over the precomputed per-live-slot
 summary (axioms `[propext, Classical.choice, Quot.sound]` — the standard
 `Decidable`-instance reflection footprint).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

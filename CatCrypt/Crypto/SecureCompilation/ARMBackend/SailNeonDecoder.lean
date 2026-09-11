@@ -3,36 +3,45 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonEncoder
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArmDecoder
-import Mathlib.Tactic.IntervalCases
-import Mathlib.Tactic.FinCases
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonEncoder
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonEncoder
+public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArmDecoder
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArmDecoder
+public import Mathlib.Tactic.IntervalCases
+public import Mathlib.Tactic.FinCases
 
 /-!
 # Sail-arm NEON decoder round-trip: `decode (encode i) = i` (#548)
 
 `NeonEncoder.lean` is the owned `NInst → machine-byte` encoder. Its bench trust
 edge is *differential*: each emitted 32-bit word is pinned to what
-`aarch64-linux-gnu-as` produces (`bench/arm_compare`, the qemu KAT). That makes
-`as`'s unverified encoder part of the trusted base.
+`aarch64-linux-gnu-as` produces (an untracked local comparison checkout, not
+vendored in this repo, plus the qemu KAT). That makes `as`'s unverified encoder
+part of the trusted base.
 
-This module replaces the differential edge with a **round-trip** against the
-AArch64 ASIMD *decoder* discipline: a Lean decoder `decodeNeon` that recovers the
-instruction-class fields `(opcode-class, Rd, Rn, Rm/sh)` from a 32-bit
-instruction word, following the official
+This module replaces the differential edge, for the instruction classes in
+scope below, with a **round-trip** against an AArch64 ASIMD *decoder*
+discipline: a Lean decoder `decodeNeon` that recovers the instruction-class
+fields `(opcode-class, Rd, Rn, Rm/sh)` from a 32-bit instruction word,
+following the field-split structure of the
 [`rems-project/sail-arm`](https://github.com/rems-project/sail-arm) `decode64`
-ASIMD clauses in
-`bench/reference_install/sail-arm/arm-v8.5-a/model/aarch_decode.sail`
-(`vector_arithmetic_binary_uniform_add_*`, `…_logical_andorr_*`,
-`…_logical_bsleor_*`, `vector_shift_left_simd_*`, `vector_shift_right_simd_*`),
-and a proof that `decodeNeon (encode i) = some ⟨class, Rd, Rn, …⟩` for every
-instruction in the emitted ASIMD subset.
+ASIMD clauses (`vector_arithmetic_binary_uniform_add_*`, `…_logical_andorr_*`,
+`…_logical_bsleor_*`, `vector_shift_left_simd_*`, `vector_shift_right_simd_*`)
+as transcribed by hand from the public sail-arm sources — this repo does not
+vendor a sail-arm checkout, so the clause structure below is the authors'
+transcription and is not machine-checked against the upstream model — and a
+proof that `decodeNeon (encode i) = some ⟨class, Rd, Rn, …⟩` for every
+instruction in the proved subset (§6 below).
 
-Because the decoder applies the Arm ARM C7 fixed-width field splits exactly as
-sail-arm's `decode64` reads them (`op_code[hi..lo]`), `decode (encode i)`
-recovering exactly the operands `i` named means the encoder produces words the
-authoritative decoder maps back to the same instruction — the encoder's bytes are
-*proved* to be the right encoding, not merely matched to `as`.
+Because the decoder applies the Arm ARM C7 fixed-width field splits the way
+sail-arm's `decode64` is believed to read them (`op_code[hi..lo]`, per the
+transcription above), `decode (encode i)` recovering exactly the operands `i`
+named means the encoder produces words a decoder built to that discipline maps
+back to the same instruction — the encoder's bytes are *proved* to round-trip
+under that discipline, and not only matched to `as`.
 
 ## The decode discriminants (from `aarch_decode.sail`, ASIMD `decode64`)
 
@@ -46,14 +55,26 @@ scalar GP forms, so we reuse `SailArmDecoder.{fldRd,fldRn,fldRm,leWord_wordLE}`.
 
 ## Scope of the round-trip (which `NInst` forms are decode-proved)
 
-`decode (encode i) = i` is proved (`roundtrip_ninst_*` below) for the **full
-emitted ASIMD subset**: `ADD`/`SUB`/`MUL` (`.4S`), `AND`/`ORR`/`EOR` (`.16B`,
-including `MOV` as the `ORR Vd,Vn,Vn` alias), and `SHL`/`USHR` (`.4S`, by
-immediate). sail-arm models the whole NEON/ASIMD ISA (`aarch64_vector.sail`), so
-— exactly as for the scalar GP and bignum subsets — there is **no Sail-coverage
-ceiling**: the whole emitted ASIMD alphabet is decode-round-trip-proved,
-axiom-clean.
+`decode (encode i) = i` is proved (`roundtrip_ninst_*` below) for exactly:
+`ADD`/`SUB`/`MUL` (`.4S`), `AND`/`ORR`/`EOR` (`.16B`, including `MOV` as the
+`ORR Vd,Vn,Vn` alias), and `SHL`/`USHR` (`.4S`, by immediate) — the forms
+`NeonEncoder.encodeNInst` emits. Two other NEON emitters are **not** covered by
+`decodeNeon`: `encodeNInst8x16`'s `SQDMULH.8H` (the ML-KEM NTT high-mul,
+`.mulhs`) and `encLdrQ`/`encStrQ`'s `LDR Q`/`STR Q` 128-bit loads and stores —
+`decodeWord` has no dispatch case for either group, so those words stay on the
+gas-differential/qemu-KAT trust edge (§6 below) rather than this round-trip.
+
+`decodeWord` also never reads `Q[30]` (nor bit[21] or bit[10] of the ASIMD
+`opcode` field): the three-same and shift-by-immediate group dispatch uses only
+`grp[28:24]`, `U[29]`, `size[23:22]`/`opcode[15:11]` (and `immh:immb` for the
+shift amount), so a 64-bit-arrangement word and its 128-bit counterpart that
+agree on those bits decode identically — e.g. `0x0ea08400` and `0x4ea08400`
+(which differ only in `Q[30]`) both decode as ADD. The round-trip therefore
+does not itself certify the `Q=1`/128-bit arrangement of the decoded word, only
+that `encodeNInst` happens to always set it.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxRecDepth 8000
@@ -490,13 +511,16 @@ theorem roundtrip_ninst_ushr (alloc : VAlloc) (d a : String) (imm : Nat)
 
 /-! ## 6. The owned NEON byte-level trust edge
 
-The **entire** emitted ASIMD alphabet — `ADD`/`SUB`/`MUL` (`.4S`),
-`AND`/`ORR`/`EOR` (`.16B`, with `MOV` as the `ORR Vd,Vn,Vn` alias), and
-`SHL`/`USHR` (`.4S`, by immediate) — is decode-round-trip-proved against the
-sail-arm ASIMD `decode64` field-split discipline, so `aarch64-linux-gnu-as` is
-out of the trusted path. As with the scalar GP and bignum subsets, there is **no
-Sail-coverage ceiling**: sail-arm models the whole NEON/ASIMD ISA. The bench
-differential (`bench/arm_compare`, `qr-neon-bytes-diff`) additionally pins the
+The proved subset — `ADD`/`SUB`/`MUL` (`.4S`), `AND`/`ORR`/`EOR` (`.16B`, with
+`MOV` as the `ORR Vd,Vn,Vn` alias), and `SHL`/`USHR` (`.4S`, by immediate) — is
+decode-round-trip-proved against the (hand-transcribed) sail-arm ASIMD
+`decode64` field-split discipline, so `aarch64-linux-gnu-as` is out of the
+trusted path for exactly those instructions. `SQDMULH.8H` (`encodeNInst8x16`)
+and `LDR Q`/`STR Q` (`encLdrQ`/`encStrQ`) are **not** decode-round-trip-proved —
+`decodeWord` has no case for either — so they remain on the differential/KAT
+trust edge below, same as `as`'s output for the round-trip-proved forms would
+be absent this module. The bench differential (an untracked local checkout,
+`qr-neon-bytes-diff`, not vendored in this repo) additionally pins the
 verified-encoder words byte-identical to `as` on the ChaCha 4-way quarter-round,
 and the qemu KAT (`qr-neon-kat`) runs the assembled object on real AArch64. -/
 

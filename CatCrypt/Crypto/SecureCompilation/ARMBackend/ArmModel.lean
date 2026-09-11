@@ -4,6 +4,8 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 
+module
+
 /-!
 # A Lean AArch64 (ARM64) machine model for the scalar GP-ALU subset (#533)
 
@@ -33,8 +35,10 @@ mnemonic computes (Arm ARM `ADD`/`EOR`/`ROR`/… on 32-bit `W` registers,
 auditable by eye), and is differentially validated against the RFC 8439 KAT.
 
 **Landed in sub-2**: the machine-code byte `Encoder` (`ArmEncoder.lean`) +
-`decode(encode i) = i` against the official `rems-project/sail-arm` `decode64`
-tables (`SailArmDecoder.lean`, the A64 analogue of `SailX86Decoder`), axiom-clean
+`decode(encode i) = i` against the hand-transcribed `rems-project/sail-arm`
+`decode64` tables (`SailArmDecoder.lean` — upstream is not vendored in this repo
+and the transcription is not machine-checked; the A64 analogue of
+`SailX86Decoder`), axiom-clean
 and gas-differential-pinned. **Deferred to sub-3**: NEON/SVE SIMD (the A64
 `Vec128` analogue) and the `FEAT_SHA3` Keccak extension. This module deliberately
 covers only the scalar 32-bit-`W` GP-ALU subset.
@@ -62,6 +66,8 @@ write the result) are modeled as identity register moves at this scalar level
 straight-line body is register-to-register; memory traffic is trusted scaffolding,
 exactly the x86 `renderLeafFn` posture.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

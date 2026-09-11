@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # C4 fan-out: the verified compiler emits a BLAKE2s G step from extracted source
@@ -60,6 +63,8 @@ source*, proven equal to the RFC 7693 G output word — the compiler authored th
 leaf, with no front change beyond the SHA-256/Keccak leaves. This is the first
 ARX (Add/Rotate/Xor) family fan-out.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -160,7 +165,7 @@ theorem blake2G_compiles :
       blake2GSrc (fun _ => none) = some (blake2GSpec a b c d x y) := by
     have h := blake2GSrc_denoteScalar (nIn := 6) ![a, b, c, d, x, y]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 32) (nIn := 6) ["a", "b", "c", "d", "x", "y"]
     ![a, b, c, d, x, y] blake2GSrc _ hc hspec
 

@@ -3,9 +3,36 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecKernelAdeq
-import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecRoundAdeq
-import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecARXAdeq
+module
+
+-- The closed-kernel route reduces the front (`translateDialectControl`,
+-- `semScalar`, `cryptoDialectToJasminCom`) by `rfl`/`decide`; under the module
+-- system that reduction needs the front closure imported with `all`, and
+-- `Nat.repr` (the front's slot names) exposed through `Init.Data.Repr`.
+import all Init.Data.Repr
+import all CatCrypt.Core.Code
+import all CatCrypt.Crypto.CryptoWord
+import all CatCrypt.Crypto.Jasmin.JasminAST
+import all CatCrypt.Crypto.Jasmin.JasminTypes
+import all CatCrypt.Crypto.Jasmin.LowCT
+import all CatCrypt.Crypto.SDist
+import all CatCrypt.Crypto.SecureCompilation.CryptoSSA
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+import all CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
+import all CatCrypt.Crypto.SecureCompilation.Dialects.RustExecKernelAdeq
+import all CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
+import all CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.Core
+import all CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+import all CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
+public import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecKernelAdeq
+public import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecRoundAdeq
+public import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecARXAdeq
 
 /-!
 # Keccak-f[1600] round steps through the closed-kernel `emitted = RustExec` route
@@ -76,6 +103,8 @@ open-kernel jasmin leg still hits `RustExecKernelAdeq.entry_trio_unsat_empty`
 (the `EnvRel`/`ConsistentS`/`NoAliasVM` clash at any finite entry), the standing
 `P3`-composition residual, orthogonal to the per-lane coverage settled here.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -169,16 +198,32 @@ theorem chiHSem : semScalar chiC (fun _ => none) = some chiEnv :=
 
 theorem chiNameSome : (chiO.vm.lookup "chi").isSome := by rfl
 
-noncomputable def chiW : CVar chiO.Γ' (.sword 64) :=
-  ((chiO.vm.lookup "chi").get chiNameSome).2
+/-- The tracked slot's type is the 64-bit word: decided, since the slot name
+    goes through `Nat.repr`, which the elaborator's definitional check does not
+    reduce. -/
+theorem chiNameTy : ((chiO.vm.lookup "chi").get chiNameSome).1 = .sword 64 := by
+  decide
 
-theorem chiHName : chiO.vm.lookup "chi" = some ⟨.sword 64, chiW⟩ := by rfl
+/-- The tracked output slot for `chi`. -/
+noncomputable def chiW : CVar chiO.Γ' (.sword 64) :=
+  cast (congrArg (CVar chiO.Γ') chiNameTy) ((chiO.vm.lookup "chi").get chiNameSome).2
+
+theorem chiHName : chiO.vm.lookup "chi" = some ⟨.sword 64, chiW⟩ := by decide
 
 theorem chiValSome : (chiEnv "chi").isSome := by rfl
 
-noncomputable def chiVal : BitVec 64 := ((chiEnv "chi").get chiValSome).2
+theorem chiValTy : ((chiEnv "chi").get chiValSome).1 = .sword 64 := by decide
 
-theorem chiHVal : chiEnv "chi" = some ⟨.sword 64, chiVal⟩ := by rfl
+/-- The word `semScalar` leaves in `chi`. -/
+noncomputable def chiVal : BitVec 64 :=
+  cast (congrArg CryptoTy.denote chiValTy) ((chiEnv "chi").get chiValSome).2
+
+theorem chiHVal : chiEnv "chi" = some ⟨.sword 64, chiVal⟩ := by
+  rw [← Option.some_get chiValSome]
+  exact congrArg some (Sigma.ext chiValTy
+    (by unfold chiVal
+        exact (cast_heq (congrArg CryptoTy.denote chiValTy)
+          ((chiEnv "chi").get chiValSome).2).symm))
 
 theorem chiRetSome : (chiO.cont (Com.ret (toVIRVar chiW))).isSome := by rfl
 
@@ -321,16 +366,32 @@ theorem thHSem : semScalar thetaC (fun _ => none) = some thEnv :=
 
 theorem thNameSome : (thO.vm.lookup "D").isSome := by rfl
 
-noncomputable def thW : CVar thO.Γ' (.sword 64) :=
-  ((thO.vm.lookup "D").get thNameSome).2
+/-- The tracked slot's type is the 64-bit word: decided, since the slot name
+    goes through `Nat.repr`, which the elaborator's definitional check does not
+    reduce. -/
+theorem thNameTy : ((thO.vm.lookup "D").get thNameSome).1 = .sword 64 := by
+  decide
 
-theorem thHName : thO.vm.lookup "D" = some ⟨.sword 64, thW⟩ := by rfl
+/-- The tracked output slot for `D`. -/
+noncomputable def thW : CVar thO.Γ' (.sword 64) :=
+  cast (congrArg (CVar thO.Γ') thNameTy) ((thO.vm.lookup "D").get thNameSome).2
+
+theorem thHName : thO.vm.lookup "D" = some ⟨.sword 64, thW⟩ := by decide
 
 theorem thValSome : (thEnv "D").isSome := by rfl
 
-noncomputable def thVal : BitVec 64 := ((thEnv "D").get thValSome).2
+theorem thValTy : ((thEnv "D").get thValSome).1 = .sword 64 := by decide
 
-theorem thHVal : thEnv "D" = some ⟨.sword 64, thVal⟩ := by rfl
+/-- The word `semScalar` leaves in `D`. -/
+noncomputable def thVal : BitVec 64 :=
+  cast (congrArg CryptoTy.denote thValTy) ((thEnv "D").get thValSome).2
+
+theorem thHVal : thEnv "D" = some ⟨.sword 64, thVal⟩ := by
+  rw [← Option.some_get thValSome]
+  exact congrArg some (Sigma.ext thValTy
+    (by unfold thVal
+        exact (cast_heq (congrArg CryptoTy.denote thValTy)
+          ((thEnv "D").get thValSome).2).symm))
 
 theorem thRetSome : (thO.cont (Com.ret (toVIRVar thW))).isSome := by rfl
 
@@ -428,16 +489,32 @@ theorem ioHSem : semScalar iotaC (fun _ => none) = some ioEnv :=
 
 theorem ioNameSome : (ioO.vm.lookup "A").isSome := by rfl
 
-noncomputable def ioW : CVar ioO.Γ' (.sword 64) :=
-  ((ioO.vm.lookup "A").get ioNameSome).2
+/-- The tracked slot's type is the 64-bit word: decided, since the slot name
+    goes through `Nat.repr`, which the elaborator's definitional check does not
+    reduce. -/
+theorem ioNameTy : ((ioO.vm.lookup "A").get ioNameSome).1 = .sword 64 := by
+  decide
 
-theorem ioHName : ioO.vm.lookup "A" = some ⟨.sword 64, ioW⟩ := by rfl
+/-- The tracked output slot for `A`. -/
+noncomputable def ioW : CVar ioO.Γ' (.sword 64) :=
+  cast (congrArg (CVar ioO.Γ') ioNameTy) ((ioO.vm.lookup "A").get ioNameSome).2
+
+theorem ioHName : ioO.vm.lookup "A" = some ⟨.sword 64, ioW⟩ := by decide
 
 theorem ioValSome : (ioEnv "A").isSome := by rfl
 
-noncomputable def ioVal : BitVec 64 := ((ioEnv "A").get ioValSome).2
+theorem ioValTy : ((ioEnv "A").get ioValSome).1 = .sword 64 := by decide
 
-theorem ioHVal : ioEnv "A" = some ⟨.sword 64, ioVal⟩ := by rfl
+/-- The word `semScalar` leaves in `A`. -/
+noncomputable def ioVal : BitVec 64 :=
+  cast (congrArg CryptoTy.denote ioValTy) ((ioEnv "A").get ioValSome).2
+
+theorem ioHVal : ioEnv "A" = some ⟨.sword 64, ioVal⟩ := by
+  rw [← Option.some_get ioValSome]
+  exact congrArg some (Sigma.ext ioValTy
+    (by unfold ioVal
+        exact (cast_heq (congrArg CryptoTy.denote ioValTy)
+          ((ioEnv "A").get ioValSome).2).symm))
 
 theorem ioRetSome : (ioO.cont (Com.ret (toVIRVar ioW))).isSome := by rfl
 

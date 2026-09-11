@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenoteSeqExt
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenoteSeqExt
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenoteSeqExt
 
 /-!
 # MAYO-1 GF(16) linear solve whole-program denote through the covered `RSeq`-of-control fragment
@@ -78,6 +82,8 @@ the leaves for this control-level descent.
   `mayoSolve_front_eq` bridge (`transCtlSeq = translateDialectControl` on this
   `RSeq`-of-leaves term, via the nested `transCtlSeq_rseq_congr`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

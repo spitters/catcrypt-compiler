@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.RandomizedScheduleSearch
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381MontMulKernel
+module
+
+public meta import CatCrypt.Crypto.Optimizer.RandomizedScheduleSearch
+public import CatCrypt.Crypto.Optimizer.RandomizedScheduleSearch
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381MontMulKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381MontMulKernel
 
 /-!
 # Verified-CryptOpt schedule search applied to the modularity-floor kernels (#385 continuation)
@@ -85,6 +89,8 @@ The scope is the parent module's: the **search** ranges over the
 disjoint-footprint neighbourhood; the **winner TV** is the gate that here
 *rejects* the BLS winner and finds nothing to gain on the NTT.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

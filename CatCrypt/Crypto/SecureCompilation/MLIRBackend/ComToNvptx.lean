@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
 # `Com → Tile → NVVM/PTX`: a GPU emit path (first increment / PoC)
@@ -44,6 +48,8 @@ x86/ARM backends emit (`LaneMap.laneMap`), but expressed at the thread level.
 The point of this increment is to prove the *emission path* end-to-end and to
 size the verification obligation, not to be a verified GPU prover.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.MLIRBackend.ComToNvptx
 
@@ -224,6 +230,6 @@ def main : IO Unit := do
   IO.println "wrote bench/gpu_compare/gen/bb_mul_tile.ll (BabyBear bbMul NVPTX tile kernel)"
   IO.println s!"  {bbMulTile.length} tile ops -> NVPTX LLVM IR (one thread per lane)"
 
-#eval main
+-- #eval main
 
 end CatCrypt.Crypto.SecureCompilation.MLIRBackend.ComToNvptx

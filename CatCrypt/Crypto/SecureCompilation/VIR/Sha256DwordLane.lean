@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Primitives.SHA256
-import Mathlib.Data.BitVec
+module
+
+public import CatCrypt.Crypto.Primitives.SHA256
+public import Mathlib.Data.BitVec
 
 /-!
 # SHA-256 dword (16×u32) lane functions — model-free, FIPS-180-4 bit-exact
@@ -36,6 +38,8 @@ SHA-256 `rotr` — unlike the 64-bit-lane analogue.
 
 Invoke: `lake build CatCrypt.Crypto.SecureCompilation.VIR.Sha256DwordLane`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -144,7 +148,7 @@ right shift is the immediate logical `>>>` (`vpsrld`). -/
 
 /-- `rotr` tie for the schedule amounts `7,18,17,19` (each `< 32`, lane wraps mod
     32 — bit-exact). -/
-private theorem rotr_sched_toBitVec (x : UInt32) :
+theorem rotr_sched_toBitVec (x : UInt32) :
     ((rotr x 7).toBitVec  = rorD x.toBitVec 7)  ∧
     ((rotr x 18).toBitVec = rorD x.toBitVec 18) ∧
     ((rotr x 17).toBitVec = rorD x.toBitVec 17) ∧

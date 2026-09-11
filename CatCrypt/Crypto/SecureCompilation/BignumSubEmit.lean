@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.FieldSubRunBlock
-import CatCrypt.Crypto.SecureCompilation.MultiLimbEmitBridge
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.FieldSubRunBlock
+public import CatCrypt.Crypto.SecureCompilation.MultiLimbEmitBridge
 
 /-!
 # An emitted multi-limb subtract proven against the multi-limb proof stack
@@ -29,6 +31,8 @@ sbb a1, b1    -- a1 := a1 - b1 - CF,  CF := borrow
 the add (`BignumAddEmit`) and now the subtract emitted-and-bridged, the additive Barrett
 steps (`x − q·p`) connect the emitted x86 machine to the List-bignum stack.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.BignumSubEmit
 

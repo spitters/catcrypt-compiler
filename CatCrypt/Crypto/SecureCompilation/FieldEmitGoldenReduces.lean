@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ComBuilder
-import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
-import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfFull
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ComBuilder
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfFull
 
 /-!
 # Two more all-ALU golden field reductions, via the Com-generator
@@ -45,6 +47,8 @@ expression.
 `a ≥ 3329 ? a - 3329 : a` — the Barrett-reduce tail, structurally identical to
 `fieldCondSub251Com` with the constant `251` replaced by `3329`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

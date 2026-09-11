@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Secp256k1FeAddSubBrick
-import CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbMul
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.Secp256k1FeAddSubBrick
+public import CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbMul
 
 /-!
 # The operand-scanning product of `genMul`
@@ -48,6 +51,8 @@ are single digits. The results therefore carry `aN.length ≤ 10` and
 * `genMul_prod` — the operand-scanning multiply's accumulator names hold the
   product of the two operands' limb readouts at radix `2 ^ 32`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Secp256k1FeMulBrickProduct
 
@@ -514,9 +519,7 @@ theorem mCmdsIn_sem (zero : String) (aN bN : List String) (pfx : String) (na nb 
         have hupd := accN_upd (fun pos => (envReader envJ ((mAccIn pfx a0 i j)[pos]!)).toNat)
           (fun pos => (envReader env' ((mAccIn pfx a0 i (j + 1))[pos]!)).toNat) (i + j)
           (na + nb) hq (fun k hk hkq => by
-            simp only []
             rw [hvalNew k hk, if_neg hkq])
-        simp only [] at hupd
         rw [hvalNew (i + j) hq, if_pos rfl] at hupd
         rw [pow32_add i (j + 1), pow32_add j 1, pow32_add i j] at *
         rw [accN_succ]
@@ -578,7 +581,7 @@ theorem mCmdsO_sem (zero : String) (aN bN : List String) (pfx : String)
         rw [mAccO, getElem!_pos _ pos (by simpa using hpos), Array.getElem_replicate]
       refine ⟨fun _ _ => rfl, fun pos hpos => by rw [hall pos hpos, hz]; norm_num, ?_⟩
       rw [accN_congr (w := fun _ => 0) (na + nb)
-        (fun k hk => by simp only []; rw [hall k hk, hz]), accN_zero_fun]
+        (fun k hk => by rw [hall k hk, hz]), accN_zero_fun]
       simp [accN]
   | succ i ih =>
       intro hin envI hsem
@@ -620,8 +623,7 @@ theorem mCmdsO_sem (zero : String) (aN bN : List String) (pfx : String)
       have hupd := accN_upd
         (fun pos => (envReader envI ((mAccIn pfx (mAccO zero pfx na nb i) i nb)[pos]!)).toNat)
         (fun pos => (envReader envI ((mAccO zero pfx na nb (i + 1))[pos]!)).toNat)
-        (i + nb) (na + nb) hq (fun k hk hkq => by simp only []; rw [hnewOff k hkq])
-      simp only [] at hupd
+        (i + nb) (na + nb) hq (fun k hk hkq => by rw [hnewOff k hkq])
       rw [holdZero, hzeroE, hnewAt] at hupd
       rw [accN_succ]
       set p2 := (2 : Nat) ^ (32 * i) with hp2d

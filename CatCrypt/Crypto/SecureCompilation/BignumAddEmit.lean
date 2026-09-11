@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumCarryDecomp
-import CatCrypt.Crypto.SecureCompilation.MultiLimbEmitBridge
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumCarryDecomp
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumCarryDecomp
+public meta import CatCrypt.Crypto.SecureCompilation.MultiLimbEmitBridge
+public import CatCrypt.Crypto.SecureCompilation.MultiLimbEmitBridge
 
 /-!
 # An emitted multi-limb add proven against the multi-limb proof stack
@@ -29,6 +33,8 @@ block computes exactly the verified multi-limb add. This is the `valLimbs(runBlo
 bignumVal(kernel)` bridge a Barrett-reduce emission needs, exhibited on the add step.
 -/
 
+@[expose] public section
+
 namespace CatCrypt.Crypto.SecureCompilation.BignumAddEmit
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
@@ -42,7 +48,7 @@ def add2adcxBlock : List (JInstr 64) :=
 
 /-- The pure-arithmetic reassembly of a two-limb carry chain (small symbolic powers,
     so `omega` handles it cleanly without the machine-state numerals). -/
-private theorem reassemble (u0 u1 a0 b0 a1 b1 : Nat) (k0 k1 : Bool)
+theorem reassemble (u0 u1 a0 b0 a1 b1 : Nat) (k0 k1 : Bool)
     (hd0 : u0 + 2 ^ 64 * (if k0 = true then 1 else 0)
       = a0 + b0 + (if (false = true) then 1 else 0))
     (hd1 : u1 + 2 ^ 64 * (if k1 = true then 1 else 0) = a1 + b1 + (if k0 = true then 1 else 0)) :

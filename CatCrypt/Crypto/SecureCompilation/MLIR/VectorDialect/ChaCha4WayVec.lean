@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
-import CatCrypt.Crypto.SecureCompilation.VIR.ChaChaEmit
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ChaChaEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.ChaChaEmit
 
 /-!
 # ChaCha20 4-way emitted through the structured VectorDialect (task #183, Step 2)
@@ -43,6 +47,8 @@ expansions with proven denotation preservation (`lower_add_correct`,
 abstract → per-lane-scalar leg of the pipeline is covered for every op this
 consumer uses.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

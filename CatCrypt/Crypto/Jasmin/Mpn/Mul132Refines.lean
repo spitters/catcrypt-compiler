@@ -3,10 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.Mul132Emit
-import CatCrypt.Crypto.Jasmin.Mpn.Add32Refines
-import CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
-import CatCrypt.Crypto.Jasmin.BignumExec
+module
+
+import all Init.Data.Repr
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.Mpn.Mul132Emit
+public import CatCrypt.Crypto.Jasmin.Mpn.Add32Refines
+public import CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+public import CatCrypt.Crypto.Jasmin.BignumExec
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -74,10 +80,10 @@ so we declare local copies (same shape, same proofs).  Keeping them
 `private` to this file preserves the same scope hygiene. -/
 
 /-- Promote a `BitVec 32` value `w` to a `BitVec 64` (zero-extend). -/
-private def w64 (w : BitVec 32) : BitVec 64 := BitVec.ofNat 64 w.toNat
+def w64 (w : BitVec 32) : BitVec 64 := BitVec.ofNat 64 w.toNat
 
 /-- A `w64`-encoded `BitVec 32` value masked to the low 32 bits is itself. -/
-private theorem w64_mask (w : BitVec 32) : w64 w &&& mask32 = w64 w := by
+theorem w64_mask (w : BitVec 32) : w64 w &&& mask32 = w64 w := by
   unfold w64 mask32
   have hzx : (BitVec.ofNat 64 w.toNat) = BitVec.setWidth 64 w := by
     apply BitVec.eq_of_toNat_eq
@@ -90,7 +96,7 @@ private theorem w64_mask (w : BitVec 32) : w64 w &&& mask32 = w64 w := by
 
 /-- Loading a `BitVec 32` limb from memory and decoding through
     `BitVec.ofNat 64 _.toNat` recovers `w64 w`. -/
-private theorem u32_load_roundtrip (w : BitVec 32) :
+theorem u32_load_roundtrip (w : BitVec 32) :
     BitVec.ofNat 64 (UInt64.ofNat w.toNat).toNat = w64 w := by
   have hw : w.toNat < 2 ^ 32 := w.isLt
   apply BitVec.eq_of_toNat_eq
@@ -344,7 +350,7 @@ representation).  Stated on `BitVec 64` shapes (the runtime form). -/
 
 /-- `w64`-encoded `BitVec 32` value's `BitVec.toNat` equals its u32
     `.toNat`. -/
-private theorem w64_toNat (w : BitVec 32) : (w64 w).toNat = w.toNat := by
+theorem w64_toNat (w : BitVec 32) : (w64 w).toNat = w.toNat := by
   unfold w64
   have hw : w.toNat < 2 ^ 32 := w.isLt
   simp only [BitVec.toNat_ofNat]
@@ -354,7 +360,7 @@ private theorem w64_toNat (w : BitVec 32) : (w64 w).toNat = w.toNat := by
     `out.toNat + 2^32 · cy_new.toNat = a.toNat · b.toNat + cy.toNat`
     where `out`, `cy_new` are the runtime `BitVec 64` outputs (high half
     zero) of the chain, and the registers `a`, `b`, `cy` are u32-encoded. -/
-private theorem mul1Body32_natIdentity (a b cy : BitVec 32) :
+theorem mul1Body32_natIdentity (a b cy : BitVec 32) :
     (addCarry32 (mulx32 (w64 b) (w64 a)).2 (w64 cy)).2.toNat
       + 2 ^ 32 * ((mulx32 (w64 b) (w64 a)).1
                   + (addCarry32 (mulx32 (w64 b) (w64 a)).2 (w64 cy)).1).toNat
@@ -402,7 +408,7 @@ private theorem mul1Body32_natIdentity (a b cy : BitVec 32) :
   omega
 
 /-- The composed body's outputs equal the u32-encoded `mul1Step32`. -/
-private theorem mul1Body32_eq_step (a b cy : BitVec 32) :
+theorem mul1Body32_eq_step (a b cy : BitVec 32) :
     (addCarry32 (mulx32 (w64 b) (w64 a)).2 (w64 cy)).2 = w64 (mul1Step32 a b cy).1 ∧
     (mulx32 (w64 b) (w64 a)).1 + (addCarry32 (mulx32 (w64 b) (w64 a)).2 (w64 cy)).1
       = w64 (mul1Step32 a b cy).2 := by

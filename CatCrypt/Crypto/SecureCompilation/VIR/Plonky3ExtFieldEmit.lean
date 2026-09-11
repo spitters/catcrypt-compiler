@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FriFoldEmit
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FriFoldEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FriFoldEmit
 
 /-!
 # Plonky3 degree-4 extension-field kernels FRONT-COMPILED as `Com jasminDialect`
@@ -75,6 +78,8 @@ row flatten (16×2-ext → 16×8 base lane interleave) and Merkle commit are
 structural marshalling over these leaves plus the existing base-field
 `Plonky3CompressEmit`/`Plonky3HashLeafEmit` leaves, and carry no field op.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ExtFieldEmit
 

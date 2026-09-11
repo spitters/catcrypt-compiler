@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSnovaGf16
-import CatCrypt.Crypto.Util.Gf16
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSnovaGf16
+public import CatCrypt.Crypto.Util.Gf16
 
 /-!
 # #607 fan-out: the emitted SNOVA GF(16) multiply leaf EQUALS the abstract field op
@@ -32,6 +35,8 @@ this tie corroborates the MAYO tie on the SNOVA-named leaf. The core tie ranges
 over `16 × 16 = 256` nibble pairs (`decide`); the `BitVec 32 → BitVec 4`
 truncation is a pure `bv_decide`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

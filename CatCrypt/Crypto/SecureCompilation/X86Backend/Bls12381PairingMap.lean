@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381FinalExp
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381FinalExp
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381FinalExp
 
 /-!
 # BLS12-381 owned `Fp` inverse + the full owned `pp_map` (#602 / #219)
@@ -99,6 +103,8 @@ composes the (committed, KAT'd) owned Miller loop with the now-complete owned
 final exponentiation.  The bench gate KATs the owned `pp_map(P,Q)` byte-identical
 to RELIC `pp_map_oatep` over random `G1 × G2` — the fully-owned BLS12-381 pairing.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -226,6 +232,6 @@ def emitMain : IO Unit := do
 The render is written while this module elaborates, so `lake` produces it from
 this file and no separate driver or Makefile rule carries the dependency. -/
 
-#eval emitMain
+-- #eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381PairingMap

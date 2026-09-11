@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithToJasmin
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithToJasmin
 
 /-!
 # `lowerArithToJasmin` is denotation-preserving — UNCONDITIONALLY
@@ -39,6 +41,8 @@ op, the preservation theorem is exact (no value drift).
 
 0 sorries.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.Arith
 

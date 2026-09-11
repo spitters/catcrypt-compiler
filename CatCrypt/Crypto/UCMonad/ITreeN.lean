@@ -3,7 +3,9 @@ Copyright (c) 2024 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.UCMonad.RoundM
+module
+
+public import CatCrypt.Crypto.UCMonad.RoundM
 
 /-!
 # Bounded ITree with Visible Events (Level 2 UC)
@@ -33,6 +35,8 @@ by this handler. For `emptyEvSig` (no events), the handler is trivial.
 
 **0 axioms**, **0 sorries**. All monad laws proved by induction on `n`.
 -/
+
+@[expose] public section
 
 namespace UCMonad.ITreeNUC
 

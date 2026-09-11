@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-!
 # Verified register allocation — Phase 1 (minimal interference-aware win)
@@ -50,6 +53,8 @@ obligation from `interferenceOkB = true` (the §4 bridge) by `native_decide`.
 `set_option autoImplicit false` is intentionally *not* set here (SecureCompilation
 convention; see root `CLAUDE.md`).
 -/
+
+@[expose] public section
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
@@ -219,7 +224,7 @@ theorem runKernel_allocKernel {w : Nat} (ρ : Nat → Nat)
     (hstart : ∀ s, st' (ρ s) = st s) :
     ∀ s, (runKernel st' (allocKernel ρ k)) (ρ s) = (runKernel st k) s := by
   induction k generalizing st' st with
-  | nil => intro s; simpa using hstart s
+  | nil => intro s; simpa using! hstart s
   | cons b rest ih =>
       intro s
       -- step both stores

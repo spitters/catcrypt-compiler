@@ -3,8 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTToMLIR
-import CatCrypt.Crypto.Jasmin.LowCTDSL
+module
+
+public meta import CatCrypt.Crypto.Jasmin.LowCTToMLIR
+public import CatCrypt.Crypto.Jasmin.LowCTToMLIR
+public meta import CatCrypt.Crypto.Jasmin.LowCTDSL
+public import CatCrypt.Crypto.Jasmin.LowCTDSL
+public meta import CatCrypt.Crypto.Jasmin.Examples.BenchOut
+public import CatCrypt.Crypto.Jasmin.Examples.BenchOut
 
 /-!
 # X25519 half-step + fullstep emitted via the DSL
@@ -21,11 +27,12 @@ apples-to-apples comparison.
 ## Usage
 
 ```
-#eval IO.FS.writeFile
-  "/home/au528660/Claude/BLS/catcrypt-bench/src/x25519_halfstep_dsl.mlir"
-  halfstepMLIR
+-- #eval BenchOut.writeBench "x25519_halfstep_dsl.mlir" halfstepMLIR
 ```
+
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.Examples.X25519BenchEmit
 
@@ -144,18 +151,10 @@ def writeHalfstepMLIR (path : String) : IO Unit :=
 def writeFullstepMLIR (path : String) : IO Unit :=
   IO.FS.writeFile path fullstepMLIR
 
--- Emit at elaboration time, but skip silently if the catcrypt-bench
--- source tree is not present (e.g. CI environments without the sibling repo).
-private def maybeWrite (path : String) (write : String → IO Unit) : IO Unit := do
-  let p : System.FilePath := path
-  if ← System.FilePath.pathExists p.parent.get! then
-    write path
-
-#eval maybeWrite
-  "/home/au528660/Claude/BLS/catcrypt-bench/src/x25519_halfstep_dsl.mlir"
-  writeHalfstepMLIR
-#eval maybeWrite
-  "/home/au528660/Claude/BLS/catcrypt-bench/src/x25519_fullstep_dsl.mlir"
-  writeFullstepMLIR
+-- Emit at elaboration time. `writeBenchWith` resolves the destination from
+-- `$CATCRYPT_BENCH_SRC` (default `../BLS/catcrypt-bench/src`) and writes
+-- nothing when that directory is absent.
+-- #eval BenchOut.writeBenchWith "x25519_halfstep_dsl.mlir" writeHalfstepMLIR
+-- #eval BenchOut.writeBenchWith "x25519_fullstep_dsl.mlir" writeFullstepMLIR
 
 end CatCrypt.Crypto.Jasmin.Examples.X25519BenchEmit

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmX25519FieldKernel
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmX25519FieldKernel
 
 /-!
 # Composing the bounded loop with the scalar waist (`Com → AArch64`)
@@ -29,6 +31,8 @@ iteration of the **source** program's denotation `armTarget.denote p`. That is t
 whole-kernel (loop ∘ waist) correctness statement: machine-level looping over the
 compiled+lowered block agrees with iterating the source block semantics.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxNtruMulTie
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
+module
+
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxNtruMulTie
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
 
 /-!
 # #607 security tie: the compile-from-hax NTRU-HRSS MAC leaf realizes the
@@ -41,6 +43,8 @@ quantifies over; the realization equality `toMacDeps = macDepsSpec` is genuine a
 remain the hypotheses of `NTRU/Security.lean`; this ties the *emitted arithmetic*
 to the *abstract arithmetic* the proof uses, which is the scope of #607.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

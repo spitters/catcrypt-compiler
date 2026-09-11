@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasmin
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasmin
 
 /-!
 # `lowerLatticeToJasmin` is denotation-preserving — UNDER leaf agreement
@@ -62,6 +64,8 @@ mirroring `mapVarHV`. We prove `mapVal` commutes with variable lookup
 16-bit stack-array leaves their real (data-oblivious) semantics, so
 `lowerLatticeToJasmin_denote_eq_uncond` holds with no hypothesis.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasminDenote
 

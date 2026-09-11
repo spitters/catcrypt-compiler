@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
+module
+
+public meta import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCT
 
 /-!
 # LowCT surface DSL
@@ -43,6 +46,8 @@ the point is ergonomics + discoverability, not a novel grammar. Using
 `do` lets users chain helpers, bind fresh names, and still benefit from
 Lean's goto-definition on each helper.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.LowCTDSL
 

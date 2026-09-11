@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
-import CatCrypt.Crypto.Hax.HaxToLowCTSim_Call
-import CatCrypt.Crypto.Hax.HaxToLowCTSim_Main
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Call
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Main
 
 /-!
 # H3.quarta: Tower-typed agreement framework
@@ -61,6 +64,8 @@ The other two `Hyp_*` (Hyp_match, Hyp_whileLoop) need separate work
 `AnfShaped` syntactic lemma for whileLoop).  Out of scope for this
 file.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

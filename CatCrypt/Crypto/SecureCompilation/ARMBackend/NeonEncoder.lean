@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmEncoder
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmEncoder
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmEncoder
 
 /-!
 # A verified machine-code byte encoder for the NEON/ASIMD `NInst` instructions (#548)
@@ -14,9 +19,10 @@ handed to `as`/`clang` to be encoded — that last step trusts the assembler's
 encoder. This module is the **NEON/ASIMD analogue of `ArmEncoder.lean`** (the
 scalar GP-ALU byte encoder): it encodes each `NInst` directly to its AArch64
 fixed-width 32-bit machine-code word in Lean, so the kernel body is emitted as
-bytes by a function whose output we audit against the Arm ARM and round-trip
-against the official `rems-project/sail-arm` ASIMD `decode64` tables
-(`SailNeonDecoder.lean`).
+bytes by a function whose output we audit against the Arm ARM and, for most of
+the emitted forms, round-trip against a hand-transcribed rendering of the
+`rems-project/sail-arm` ASIMD `decode64` field splits (`SailNeonDecoder.lean`
+— see that file for the exact proved subset and its provenance caveat).
 
 A64 is a **fixed-width** ISA: every NEON instruction is exactly one little-endian
 32-bit word (4 bytes), the same shape as the scalar subset — there are no
@@ -33,9 +39,12 @@ function whose every output word is determined by the fixed ASIMD field
 construction below — auditable field by field against the Arm ARM C7 (Advanced
 SIMD) tables. The remaining trusted edge shrinks to *this encoder matches the
 ARM*, discharged structurally (`encodeNInst_length`: always a well-formed 4-byte
-word) and by the `SailNeonDecoder.lean` round-trip `decode (encode i) = i`. The
-bench differential (`bench/arm_compare`, `qr-neon-bytes-diff`) cross-checks the
-emitted words against `aarch64-linux-gnu-as` output and runs the qemu KAT.
+word) and, for the `encodeNInst` forms, by the `SailNeonDecoder.lean` round-trip
+`decode (encode i) = i` (see that file for the exact proved subset — it does
+not cover `encodeNInst8x16`'s `SQDMULH` or the `LDR Q`/`STR Q` load/store
+encoders below). The bench differential (an untracked local checkout,
+`qr-neon-bytes-diff`, not vendored in this repo) cross-checks the emitted words
+against `aarch64-linux-gnu-as` output and runs the qemu KAT.
 
 ## Encoding layout (the C7 ASIMD forms this transcribes, 128-bit `Q=1`)
 
@@ -52,6 +61,8 @@ ASIMD clauses read (`op_code[hi..lo]`).
   (the `immh:immb` field is `64-sh` for `4S`).
 * **MOV (vector)** — the alias `ORR Vd.16B, Vn.16B, Vn.16B` (`Rm=Rn`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -111,9 +122,14 @@ def baseAnd : Nat := 0x4e201c00
 def baseOrr : Nat := 0x4ea01c00
 /-- The EOR.16B base word (`0x6e201c00`). -/
 def baseEor : Nat := 0x6e201c00
-/-- The SQDMULH.8H base word (`0x4e60b400`) — signed saturating doubling multiply
-    returning the high half, 8 × i16 (the ML-KEM NTT high-mul mnemonic, #4):
-    `0 Q=1 U=0 01110 size=01 1 Rm 101101 Rn Rd`. -/
+/-- The SQDMULH.8H base word (`0x4e60b400`) — signed saturating **doubling**
+    multiply returning the high half, 8 × i16 (the ML-KEM NTT high-mul
+    mnemonic, #4): `0 Q=1 U=0 01110 size=01 1 Rm 101101 Rn Rd`. **Not the same
+    operation** as the model op `laneMulHiS16`/`mulhs` this encodes: SQDMULH's
+    architectural doubling and saturation differ from the plain signed
+    high-half `laneMulHiS16` computes (see `NeonModel.lean §5` — that gap is
+    not decode-round-trip-proved or otherwise discharged here; it is a
+    documented, unproved approximation). -/
 def baseSqdmulh : Nat := 0x4e60b400
 
 /-- Encode one NEON `NInst` to its AArch64 machine bytes (a single 4-byte word),
@@ -132,8 +148,13 @@ def encodeNInst (alloc : VAlloc) : NInst → List (BitVec 8)
 
 /-- Encode one 8 × i16 NEON instruction (`NInst8x16`, the ML-KEM NTT op) to its
     AArch64 machine bytes. `MULHS` is emitted as the `SQDMULH Vd.8H, Vn.8H, Vm.8H`
-    mnemonic (the architectural high-mul; see `NeonModel §5` for the exact-Montgomery
-    `SMULL/SMULL2/UZP2` realization note). -/
+    mnemonic — **not** an exact match for the model's `laneMulHiS16`: SQDMULH
+    computes the architectural *doubling* saturating high-mul, while
+    `laneMulHiS16` is the plain signed high-half (the exact match is the
+    `SMULL/SMULL2/UZP2` widening sequence; see `NeonModel §5` for the
+    realization note). This encoder emits `SQDMULH` anyway (the
+    single-instruction form); the discrepancy is not covered by
+    `SailNeonDecoder`'s round-trip and is not otherwise proved equal here. -/
 def encodeNInst8x16 (alloc : VAlloc) : NInst8x16 → List (BitVec 8)
   | .mulhs d a b =>
       encVecRRR baseSqdmulh (vNum (vOf alloc d)) (vNum (vOf alloc a)) (vNum (vOf alloc b))

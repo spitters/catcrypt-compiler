@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Pairing
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Pairing
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Pairing
 
 /-!
 # BLS12-381 final exponentiation, owned x86 (#602)
@@ -83,6 +86,8 @@ owned **hard part** byte-identically by feeding it RELIC's `conv_cyc` output
 This + the Miller loop are the two `pp_map` layers; `pp_map` is **not** owned
 until both compose byte-identically to RELIC `pp_map`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

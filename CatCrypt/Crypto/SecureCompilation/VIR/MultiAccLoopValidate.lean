@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-!
 # Validate: the multi-accumulator block loop (`ComL.forLoopMultiAcc`, task #20)
@@ -41,6 +44,8 @@ as a `forLoopMultiAcc` over `stackArr 64 3`, and shows:
   value registers included) is a real x86 GP register, the body ends `Lret`, and
   there is exactly one back-edge.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

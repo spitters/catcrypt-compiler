@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.X25519Program
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.X25519Program
 
 /-!
 # Addition-chain field exponentiation
@@ -33,6 +35,8 @@ Reference: D. J. Bernstein, "Curve25519: new Diffie-Hellman speed
 records" (2006), §6 (table 1). The same chain is in
 `curve25519-dalek::field::FieldElement::invert`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.FieldExpChain
 

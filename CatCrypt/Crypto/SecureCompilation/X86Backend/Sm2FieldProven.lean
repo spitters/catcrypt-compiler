@@ -3,9 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-import CatCrypt.Crypto.Optimizer.ModReduceSelect
+module
+
+public import Mathlib.Tactic.NormNum
+public import Mathlib.Tactic.Positivity
+public import Mathlib.Tactic.Ring
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public meta import CatCrypt.Crypto.Optimizer.ModReduceSelect
+public import CatCrypt.Crypto.Optimizer.ModReduceSelect
 
 /-!
 # Solinas field-multiply with an END-TO-END PROVEN reduce (Goldilocks)
@@ -68,6 +74,8 @@ this file supplies the proof that block was missing.
   The improvement here is at the **reduce** layer: the *value the
   computation produces* is now a theorem, where before it was a docstring claim.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxRecDepth 4000

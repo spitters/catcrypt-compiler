@@ -3,10 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Algebra.Ring.Defs
-import Mathlib.Algebra.Field.Defs
-import Mathlib.Tactic.Ring
-import Mathlib.Tactic.FieldSimp
+module
+
+import all Init.Data.Repr
+public import Mathlib.Algebra.Ring.Defs
+public import Mathlib.Algebra.Field.Defs
+public import Mathlib.Tactic.Ring
+public import Mathlib.Tactic.FieldSimp
 
 /-!
 # Generic single-level Toom-3 (3-way) multiplication identity
@@ -67,6 +70,8 @@ field where those are invertible. We provide **two** verified forms:
 Being parametric over the coefficient ring and the base `B`, both identities are
 proved once here, exactly as the generic Karatsuba identity is.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Quantum.QCircuit
+module
+
+public import CatCrypt.Quantum.QCircuit
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -61,6 +65,7 @@ def Gate.toQASM : Gate n → String
   | .CNOT c t => s!"cx q[{c.val}], q[{t.val}];"
   | .CZ c t   => s!"cz q[{c.val}], q[{t.val}];"
   | .Rz i _θ  => s!"rz(theta) q[{i.val}];"  -- θ : ℝ has no ToString
+  | .RzQ i a  => s!"rz({a.num}*pi/{a.den}) q[{i.val}];"
   | .Meas i    => s!"measure q[{i.val}];"
 
 /-! ## Circuit to Gate List -/

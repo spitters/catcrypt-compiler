@@ -47,15 +47,20 @@ The fiat-crypto tight representation uses radix-2^51 with all limbs
 < 2^51, so the literal `(1, 0, 0, 0, 0)` is a valid tight value
 representing the integer 1.
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
-import CatCrypt.Crypto.Jasmin.RustEmit
+module
 
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.RustEmit
+
+
+@[expose] public section
 namespace CatCrypt.Crypto.Jasmin.Examples.MontUToEdwards
 
 open CatCrypt.Crypto.Jasmin.LowCT
 
 /-- A `TFp25519` slot at the given variable name. -/
-private def fp (v : String) : Located :=
+def fp (v : String) : Located :=
   { locVar := v, locSrc := TowerType.TFp25519 }
 
 /-! ## §1.  Body -/
@@ -113,9 +118,9 @@ def montUToEdwardsBody : LowCT :=
 /-! ## §2.  Function envelope + emitter -/
 
 /-- Input: `u : &Fp25519`. -/
-private def params : List Located := [ fp "u" ]
+def params : List Located := [ fp "u" ]
 /-- Outputs: `y_out : &mut Fp25519`, `den_out : &mut Fp25519`. -/
-private def results : List Located := [ fp "y_out", fp "den_out" ]
+def results : List Located := [ fp "y_out", fp "den_out" ]
 
 /-- The Rust source string for `mont_u_to_edwards_field`. -/
 def emitMontUToEdwards : String :=

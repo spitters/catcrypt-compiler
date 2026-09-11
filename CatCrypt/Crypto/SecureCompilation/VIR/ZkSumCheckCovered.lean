@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenoteSeqExt
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenoteSeqExt
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenoteSeqExt
 
 /-!
 # Spartan / Jolt BabyBear sum-check whole-prover through the covered `RSeq`-of-control fragment
@@ -87,6 +91,8 @@ as `ZkSumCheckWholeProverEmit` documents; it is a *byte-emit* residual (the
 curve backend), not a *control-coverage* residual, so it does not obstruct the
 whole-program control descent banked here.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

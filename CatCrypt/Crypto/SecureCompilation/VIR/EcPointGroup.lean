@@ -3,10 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveDialect
-import Mathlib.AlgebraicGeometry.EllipticCurve.Affine.Point
-import Mathlib.Algebra.Group.TransferInstance
-import Mathlib.Algebra.Field.ZMod
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveDialect
+public import Mathlib.AlgebraicGeometry.EllipticCurve.Affine.Point
+public import Mathlib.Algebra.Group.TransferInstance
+public import Mathlib.Algebra.Field.ZMod
 
 /-!
 # A genuine `AddCommGroup` for EllipticCurve-dialect points (bridge to Mathlib)
@@ -52,6 +55,8 @@ argument); we transport it across an injection into the dialect carrier.
 `WeierstrassCurve.Affine.slope_of_Y_ne`, `WeierstrassCurve.Affine.equation_iff`,
 `Equiv.addCommGroup`, `Equiv.ofInjective`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

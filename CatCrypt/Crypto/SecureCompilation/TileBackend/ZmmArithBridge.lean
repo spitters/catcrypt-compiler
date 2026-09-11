@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.TileBackend.VectorBackendBridge
+module
+
+public import CatCrypt.Crypto.SecureCompilation.TileBackend.VectorBackendBridge
 
 /-!
 # The AVX-512 ZMM packed core is an instance of the shape-generic tile lowering
@@ -38,6 +40,8 @@ cross-lane-permute op constructor + emit is a deferred follow-up (no current
 kernel consumer), so only the cross-ISA faithfulness against the shape-generic
 tile `permxv` is ported here.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.TileBackend.ZmmArithBridge
 

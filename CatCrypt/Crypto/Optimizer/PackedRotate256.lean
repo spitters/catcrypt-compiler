@@ -3,11 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.YmmDialectOps
-import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
-import Mathlib.Data.Fintype.Pi
-import Mathlib.Tactic.FinCases
-import Std.Tactic.BVDecide
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.YmmDialectOps
+public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+public import Mathlib.Data.Fintype.Pi
+public import Mathlib.Tactic.FinCases
+public import Std.Tactic.BVDecide
 
 /-!
 # Packed lane rotate for the 256-bit YMM op set (AVX2 8-lane, SLH-DSA batch8)
@@ -47,6 +50,8 @@ packed rotate is a derived op whose denotation is proved from the existing ops.
 * `v256PackRolW_is_scalar_laneMap` — the packed rotate is the `LaneMap.scalarMap`
   of the scalar rotate over the eight unpacked lanes.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

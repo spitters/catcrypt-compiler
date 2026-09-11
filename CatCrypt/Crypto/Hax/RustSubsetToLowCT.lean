@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCT
 
 /-!
 # POC: a non-optimizing verified lowering of a Rust subset to LowCT (`LowCT`)
@@ -70,6 +74,8 @@ Fixed-size arrays and `u32`/`u64` width tracking are present in `LowCT`
 report; the POC's representative program exercises the scalar core, which is
 where the correctness *method* is established.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

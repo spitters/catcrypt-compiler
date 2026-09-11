@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockCorres
-import Mathlib.Tactic.Ring
-import Mathlib.Tactic.LinearCombination
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockCorres
+public import Mathlib.Tactic.Ring
+public import Mathlib.Tactic.LinearCombination
 
 /-!
 # The multi-limb EC subtract capstone over the ascent `CorresJ` runBlock layer
@@ -34,6 +36,8 @@ It supplies the missing arithmetic backbone the EC field-sub kernels need:
   recomposes to an abstract multi-precision value, the four-limb `sbbLimbs`
   computes exactly that value minus the subtrahend.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

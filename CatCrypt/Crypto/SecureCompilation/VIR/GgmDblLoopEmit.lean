@@ -3,10 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Std.Tactic.BVDecide
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import Std.Tactic.BVDecide
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # Owned ROLLED counted-loop kernel emit: GGM doubling accumulator (`ComL.forLoop`)
@@ -75,6 +81,8 @@ loop body** carrying `(arr, i)` state with an index-advance step (the
 `stackLoad`/write `stackStore` at the per-iteration index. That extension is the
 prerequisite for rolling `mayo_encode` and the `*_sign_rwhile` kernels.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

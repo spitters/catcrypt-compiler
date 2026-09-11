@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN
-import Transfer.Base.Related
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN
+public import Transfer.Base.Related
 
 /-!
 # Faithful `lsem` for the immediate-shift fragment via the structured wire form
@@ -83,6 +86,8 @@ increment 5's machinery directly, as noted at each use.
 declared trusted base.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemShift
@@ -143,17 +148,17 @@ theorem structSar_eq {w n : Nat} (h : n < 2 ^ w) (a : BitVec w) :
     change (identity encoding on `BitVec w`): the emitted structured value
     `structShr w n a` realizes the abstract shift `a >>> n`. The increment's
     analogue of `CompilerRegistry.relatedX86Shr`; its `.rel` is `structShr_eq`. -/
-instance relatedStructShr {w n : Nat} (h : n < 2 ^ w) (a : BitVec w) :
+def relatedStructShr {w n : Nat} (h : n < 2 ^ w) (a : BitVec w) :
     Related (id : BitVec w → BitVec w) (a >>> n) (structShr w n a) where
   rel := by simpa using (structShr_eq h a).symm
 
 /-- The structured SHL realizer as a `Trocq.Related` square. -/
-instance relatedStructShl {w n : Nat} (h : n < 2 ^ w) (a : BitVec w) :
+def relatedStructShl {w n : Nat} (h : n < 2 ^ w) (a : BitVec w) :
     Related (id : BitVec w → BitVec w) (a <<< n) (structShl w n a) where
   rel := by simpa using (structShl_eq h a).symm
 
 /-- The structured SAR realizer as a `Trocq.Related` square. -/
-instance relatedStructSar {w n : Nat} (h : n < 2 ^ w) (a : BitVec w) :
+def relatedStructSar {w n : Nat} (h : n < 2 ^ w) (a : BitVec w) :
     Related (id : BitVec w → BitVec w) (BitVec.sshiftRight a n) (structSar w n a) where
   rel := by simpa using (structSar_eq h a).symm
 

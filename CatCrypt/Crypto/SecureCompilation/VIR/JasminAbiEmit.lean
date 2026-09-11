@@ -3,10 +3,18 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasmin
-import CatCrypt.Crypto.SecureCompilation.VIR.VectorReduce
-import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
-import CatCrypt.Crypto.Primitives.AES128
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasmin
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasmin
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.VectorReduce
+public import CatCrypt.Crypto.SecureCompilation.VIR.VectorReduce
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+public meta import CatCrypt.Crypto.Primitives.AES128
+public import CatCrypt.Crypto.Primitives.AES128
 
 /-!
 # ABI-faithful `.jazz` emission for the lattice→jasmin orchestration
@@ -35,6 +43,8 @@ step for a full bench. This closes the "verified pipeline's own text compiles
 through jasminc" gap for the NTT-multiply route; the general printer upgrade
 (folding this ABI into `ppJasminProg` + SSA liveness) is the follow-up.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
 
@@ -529,7 +539,7 @@ def jasminInfix : JasminBinOp → String
     allocator always fits. `b` is treated as an immediate iff its first character
     is a digit (shift amounts); otherwise it is loaded. -/
 def renderRegArith (bop : JasminBinOp) (dst a b : String) : List String :=
-  let bIsImm := (b.get? 0).map Char.isDigit |>.getD false
+  let bIsImm := (String.Pos.Raw.get? b 0).map Char.isDigit |>.getD false
   match bop with
   | .andn =>
       -- BMI1 `andn`: `dst := (¬a) ∧ b`. Render the complement explicitly with
@@ -1286,7 +1296,7 @@ store-based path. -/
 def renderRegAccArith (bop : JasminBinOp) (dst a b : String)
     (pinDst pinProd : Bool) (accName prodName : Option String) :
     (List String × Option String × Option String) :=
-  let bIsImm := (b.get? 0).map Char.isDigit |>.getD false
+  let bIsImm := (String.Pos.Raw.get? b 0).map Char.isDigit |>.getD false
   -- resolve an operand string: pinned accumulator → `wacc`, pinned product →
   -- `wprod`, else the slot string itself.
   let res := fun (x : String) =>

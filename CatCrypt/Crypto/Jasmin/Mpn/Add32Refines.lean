@@ -3,10 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.Add32Emit
-import CatCrypt.Crypto.Jasmin.Mpn.AddOpenCarryPrototype
-import CatCrypt.Crypto.Jasmin.Mpn.GenericWidth
-import CatCrypt.Crypto.Jasmin.Mpn.WidthInstances
+module
+
+import all Init.Data.Repr
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.Mpn.Add32Emit
+public import CatCrypt.Crypto.Jasmin.Mpn.AddOpenCarryPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.GenericWidth
+public import CatCrypt.Crypto.Jasmin.Mpn.WidthInstances
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -332,13 +338,13 @@ open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
 /-- Promote a `BitVec 32` value `w` to a `BitVec 64` by `BitVec.ofNat 64
     w.toNat`.  This is the memory encoding used by `memHoldsLimbs32`
     (via `UInt64.ofNat w.toNat`) lifted into `BitVec 64`. -/
-private def w64 (w : BitVec 32) : BitVec 64 := BitVec.ofNat 64 w.toNat
+def w64 (w : BitVec 32) : BitVec 64 := BitVec.ofNat 64 w.toNat
 
 /-- A `w64`-encoded `BitVec 32` value masked to the low 32 bits is
     itself.  Pure `BitVec`, closed by `bv_decide` (the bit-blaster sees
     the `BitVec 32 → BitVec 64` zero-extension as identity on the low
     half). -/
-private theorem w64_mask (w : BitVec 32) : w64 w &&& mask32 = w64 w := by
+theorem w64_mask (w : BitVec 32) : w64 w &&& mask32 = w64 w := by
   unfold w64 mask32
   -- Express `w64 w` as the zero-extension of `w` so `bv_decide` sees
   -- both sides as concrete `BitVec`-shape terms over `w : BitVec 32`.
@@ -354,7 +360,7 @@ private theorem w64_mask (w : BitVec 32) : w64 w &&& mask32 = w64 w := by
 /-- `(w64 a + w64 b + (cin & 1)).toNat = a.toNat + b.toNat + (cin01)`
     when `cin01 ≤ 1` — the full unwrapped sum on a 64-bit register
     accommodates the U32 ADC without overflow. -/
-private theorem w64_add_sum (a b : BitVec 32) (cin01 : Nat) (hc : cin01 ≤ 1) :
+theorem w64_add_sum (a b : BitVec 32) (cin01 : Nat) (hc : cin01 ≤ 1) :
     ((w64 a) + (w64 b) + (BitVec.ofNat 64 cin01)).toNat
       = a.toNat + b.toNat + cin01 := by
   unfold w64
@@ -670,7 +676,7 @@ theorem mpnAddN32_openLoop :
           (by simp only [pv64, vr64, evalPExpr]; rw [hn0])
       exact bignumExecFuel_loop_exit_generic emptyRegistry extra _ loopBody32 s hcond
     · simp [Mpn.GenericWidth.mpnAddNW, memHoldsLimbs32]
-    · simpa [Mpn.GenericWidth.mpnAddNW, Mpn.GenericWidth.carryNat] using hcf
+    · simpa [Mpn.GenericWidth.mpnAddNW, Mpn.GenericWidth.carryNat] using! hcf
     · intro b _; rfl
   | cons a as ih =>
     intro bs s cin extra hlen hcf hn hap hbp hdoa hdob

@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Bridges.ReprTransferBinaryDom
-import CatCrypt.Crypto.Bridges.ReprTransferUnary
-import CatCrypt.Crypto.SecureCompilation.MulModKernel
+module
+
+public import CatCrypt.Crypto.Bridges.ReprTransferBinaryDom
+public import CatCrypt.Crypto.Bridges.ReprTransferUnary
+public import CatCrypt.Crypto.SecureCompilation.MulModKernel
 
 /-!
 # The mod-add and mod-mul scalar field kernels, engine-generated: combine ⊕ reduce
@@ -52,6 +54,8 @@ files already carry — there is no free lunch; the combine square is the `toNat
 bound.  Both kernel hand theorems are recovered (`*_via_composed_transport` ties
 to `addmodProg_toNat` / `mulmodProg_toNat`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

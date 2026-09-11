@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFront
-import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
-import Mathlib.Data.ZMod.Basic
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.RelationalFront
+public import CatCrypt.Crypto.SecureCompilation.RelationalFront
+public meta import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
+public import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
+public import Mathlib.Data.ZMod.Basic
 
 /-!
 # The `bls12_377` base-field ADD, realized relationally over a 6×64-bit carrier
@@ -65,6 +70,8 @@ reduce), `bignumVal_dropLast` (drop the zero carry limb). Only the *encoding* an
   `k = 6` is the larger remaining piece for the full `bls12_377` EC. The **ADD** — the
   simplest op, the user's target — is realized here in full.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

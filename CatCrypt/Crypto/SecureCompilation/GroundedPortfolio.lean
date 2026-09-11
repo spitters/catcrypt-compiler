@@ -3,16 +3,18 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GroundedFieldProtocol
-import CatCrypt.Crypto.SecureCompilation.GroundedMultiKernelProtocol
-import CatCrypt.Crypto.SecureCompilation.GroundedAesFieldProtocols
-import CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
-import CatCrypt.Crypto.SecureCompilation.GroundedRealProtocol
-import CatCrypt.Crypto.SecureCompilation.GroundedChaChaPoly
-import CatCrypt.Crypto.SecureCompilation.GroundedAesGcm
-import CatCrypt.Crypto.SecureCompilation.GroundedMlkemNtt
-import CatCrypt.Crypto.SecureCompilation.GroundedZkProtocol
-import CatCrypt.Crypto.SecureCompilation.GroundedSignatureCore
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GroundedFieldProtocol
+public import CatCrypt.Crypto.SecureCompilation.GroundedMultiKernelProtocol
+public import CatCrypt.Crypto.SecureCompilation.GroundedAesFieldProtocols
+public import CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
+public import CatCrypt.Crypto.SecureCompilation.GroundedRealProtocol
+public import CatCrypt.Crypto.SecureCompilation.GroundedChaChaPoly
+public import CatCrypt.Crypto.SecureCompilation.GroundedAesGcm
+public import CatCrypt.Crypto.SecureCompilation.GroundedMlkemNtt
+public import CatCrypt.Crypto.SecureCompilation.GroundedZkProtocol
+public import CatCrypt.Crypto.SecureCompilation.GroundedSignatureCore
 
 /-!
 # Grounded portfolio — a single checkable index of the zero-assumed-kernel-hypothesis
@@ -106,6 +108,8 @@ grounded on proved concrete realizers, with no assumed per-kernel realization;
 the only shared remaining obligation is the owned machine-code equality, plus the
 two noted caveats (Poly1305 range, Schnorr EC point ops un-realized).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

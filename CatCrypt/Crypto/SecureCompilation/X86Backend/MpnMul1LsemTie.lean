@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontDenote
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieUncond
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontDenote
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieUncond
 
 /-!
 # The machine-execution → integer-spec tie for the emitted `mpn_mul_1` loop
@@ -40,6 +42,8 @@ scalar `comToLprog_lsemMem`, which decodes only at a register).
   conclusion at `mul1Update` composed with `mul1RtProg_val`, giving output
   cells that `bignumVal`-recombine to `up[0..n) * v`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

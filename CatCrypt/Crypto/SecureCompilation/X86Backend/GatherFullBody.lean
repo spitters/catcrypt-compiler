@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherInPlace
-import CatCrypt.Crypto.SecureCompilation.X86Backend.FramingReconcile
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherInPlace
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherInPlace
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.FramingReconcile
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.FramingReconcile
 
 /-!
 # `GatherFullBody` — the whole-physical-body gather: framing + ALU + shift
@@ -102,6 +106,8 @@ kernel.
 No `sorry`, no axiom, no `native_decide` (the lemma proofs; the `#eval` byte
 witnesses in §4 are interpreter evaluation, not part of any proof term).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

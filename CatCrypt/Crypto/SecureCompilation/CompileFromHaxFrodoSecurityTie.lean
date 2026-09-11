@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxFrodoMacTie
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
+module
+
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxFrodoMacTie
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
 
 /-!
 # #607 security tie: the compile-from-hax FrodoKEM MAC leaf realizes the
@@ -42,6 +44,8 @@ or instantiate the matrix dimension — those remain the parametric hypotheses o
 `Frodo/Security.lean`; this ties the *emitted arithmetic* to the *abstract
 arithmetic* the proof uses, which is the scope of #607.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectTotality
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieArrUncond
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectTotality
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieArrUncond
 
 /-!
 # The rolled-loop body front lands in `ArrMemN` structurally
@@ -50,6 +52,8 @@ The walk that discharges `ContArrMemN o.cont` for a specific front output mirror
 (`arrLoadCont` / `arrStoreCont` decline to an opaque `extCall` outside the
 word-cell shape, and the `extCall` head is not `ScalarMemN`).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.FrontLoopBodyArrMemN
 

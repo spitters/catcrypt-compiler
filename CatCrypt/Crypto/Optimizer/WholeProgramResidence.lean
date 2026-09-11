@@ -3,11 +3,18 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ComInline
-import CatCrypt.Crypto.Optimizer.Mem2Reg
-import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
-import CatCrypt.Crypto.Optimizer.GraphColoringCoalesce
-import CatCrypt.Crypto.Optimizer.SpillSlotReuse
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ComInline
+public import CatCrypt.Crypto.SecureCompilation.VIR.ComInline
+public meta import CatCrypt.Crypto.Optimizer.Mem2Reg
+public import CatCrypt.Crypto.Optimizer.Mem2Reg
+public meta import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
+public import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
+public meta import CatCrypt.Crypto.Optimizer.GraphColoringCoalesce
+public import CatCrypt.Crypto.Optimizer.GraphColoringCoalesce
+public meta import CatCrypt.Crypto.Optimizer.SpillSlotReuse
+public import CatCrypt.Crypto.Optimizer.SpillSlotReuse
 
 /-!
 # `wholeProgramResidence`: the residence lever as ONE automatic verified pass (#555)
@@ -87,6 +94,8 @@ This module **composes** the four existing passes; it changes none of their
 algorithms (per the task constraint). Every lemma here is a `.trans`/instantiation of
 an already-proved component lemma. No `sorry`, no new axiom.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

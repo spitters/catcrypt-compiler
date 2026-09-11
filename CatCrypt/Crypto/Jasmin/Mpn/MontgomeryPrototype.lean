@@ -3,10 +3,20 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.Addmul1Prototype
-import CatCrypt.Crypto.Jasmin.Mpn.MulPrototype
-import CatCrypt.Crypto.Jasmin.Mpn.SubPrototype
-import CatCrypt.Crypto.Number.MontgomeryReduction
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.Mpn.Addmul1Prototype
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.Mpn.Addmul1Prototype
+public meta import CatCrypt.Crypto.Jasmin.Mpn.MulPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.MulPrototype
+public meta import CatCrypt.Crypto.Jasmin.Mpn.SubPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.SubPrototype
+public meta import CatCrypt.Crypto.Number.MontgomeryReduction
+public import CatCrypt.Crypto.Number.MontgomeryReduction
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -494,10 +504,10 @@ example :
   native_decide
 
 -- A nontrivial odd modulus (4 limbs, P-256-ish — top limb set).
-private def testN4 : List (BitVec 64) :=
+def testN4 : List (BitVec 64) :=
   [0xFFFFFFFFFFFFFFFF, 0xFFFFFFFF, 0, 0xFFFFFFFF00000001]
 
-private def testN0Prime4 : BitVec 64 := montN0Prime testN4
+def testN0Prime4 : BitVec 64 := montN0Prime testN4
 
 -- Sanity check the n0' computation: testN4[0] * testN0Prime4 = -1 mod 2^64.
 example : testN4.headD 0 * testN0Prime4 = (-1 : BitVec 64) := by native_decide
@@ -523,19 +533,19 @@ example :
 
     `R mod N = 2^256 mod testN4` we compute by `Nat`-arithmetic and then
     represent as 4-limb. -/
-private def R4 : Nat := 2 ^ 256
-private def R4mod : Nat :=
+def R4 : Nat := 2 ^ 256
+def R4mod : Nat :=
   let N := toNat testN4
   R4 % N
 
 /-- Encode a `Nat` (< 2^256) as a 4-limb `BitVec 64` list. -/
-private def toLimbs4 (x : Nat) : List (BitVec 64) :=
+def toLimbs4 (x : Nat) : List (BitVec 64) :=
   [BitVec.ofNat 64 x,
    BitVec.ofNat 64 (x >>> 64),
    BitVec.ofNat 64 (x >>> 128),
    BitVec.ofNat 64 (x >>> 192)]
 
-private def testR4limbs : List (BitVec 64) := toLimbs4 R4mod
+def testR4limbs : List (BitVec 64) := toLimbs4 R4mod
 
 /-- `R mod N` is a 4-limb representation of the value `R mod N`. -/
 example : toNat testR4limbs = R4mod := by native_decide
@@ -552,9 +562,9 @@ example :
 
 /-- **CIOS at k=4, second nontrivial check**: `MontMul(x, 1) ≡ x · R⁻¹ (mod N)`.
     Taking `x = R^2 mod N` makes the LHS `≡ R mod N`. -/
-private def R4sqModN : Nat := (R4 * R4) % toNat testN4
+def R4sqModN : Nat := (R4 * R4) % toNat testN4
 
-private def testR4sqLimbs : List (BitVec 64) := toLimbs4 R4sqModN
+def testR4sqLimbs : List (BitVec 64) := toLimbs4 R4sqModN
 
 /-- `MontMul(R², 1, N, n0') ≡ R (mod N)`. -/
 example :
@@ -563,11 +573,11 @@ example :
       = R4mod := by native_decide
 
 -- k=8 modulus: pseudo-Mersenne, 512-bit (top-limb-set + odd).
-private def testN8 : List (BitVec 64) :=
+def testN8 : List (BitVec 64) :=
   [0xFFFFFFFFFFFFFFC5, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF,
    0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF]
 
-private def testN0Prime8 : BitVec 64 := montN0Prime testN8
+def testN0Prime8 : BitVec 64 := montN0Prime testN8
 
 /-- Sanity check: `testN8[0] * testN0Prime8 = -1 mod 2^64`. -/
 example : testN8.headD 0 * testN0Prime8 = (-1 : BitVec 64) := by native_decide
@@ -581,7 +591,7 @@ example : mpnMontMul (List.replicate 8 0) (List.replicate 8 1) testN8 testN0Prim
     = List.replicate 8 0 := by native_decide
 
 /-- Encode `Nat < 2^512` as 8-limb. -/
-private def toLimbs8 (x : Nat) : List (BitVec 64) :=
+def toLimbs8 (x : Nat) : List (BitVec 64) :=
   [BitVec.ofNat 64 x,
    BitVec.ofNat 64 (x >>> 64),
    BitVec.ofNat 64 (x >>> 128),
@@ -591,9 +601,9 @@ private def toLimbs8 (x : Nat) : List (BitVec 64) :=
    BitVec.ofNat 64 (x >>> 384),
    BitVec.ofNat 64 (x >>> 448)]
 
-private def R8 : Nat := 2 ^ 512
-private def R8mod : Nat := R8 % toNat testN8
-private def testR8limbs : List (BitVec 64) := toLimbs8 R8mod
+def R8 : Nat := 2 ^ 512
+def R8mod : Nat := R8 % toNat testN8
+def testR8limbs : List (BitVec 64) := toLimbs8 R8mod
 
 example : toNat testR8limbs = R8mod := by native_decide
 
@@ -602,8 +612,8 @@ example :
     toNat (mpnMontMul testR8limbs testR8limbs testN8 testN0Prime8) % toNat testN8
       = R8mod := by native_decide
 
-private def R8sqModN : Nat := (R8 * R8) % toNat testN8
-private def testR8sqLimbs : List (BitVec 64) := toLimbs8 R8sqModN
+def R8sqModN : Nat := (R8 * R8) % toNat testN8
+def testR8sqLimbs : List (BitVec 64) := toLimbs8 R8sqModN
 
 /-- `MontMul(R², 1, N, n0') ≡ R (mod N)` at k=8. -/
 example :

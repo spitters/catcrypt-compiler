@@ -3,8 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.MontgomeryPrototype
-import CatCrypt.Crypto.Jasmin.Mpn.PowPrototype
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.Mpn.MontgomeryPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.MontgomeryPrototype
+public meta import CatCrypt.Crypto.Jasmin.Mpn.PowPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.PowPrototype
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -246,17 +253,17 @@ elides — that elision is a known *Lean spec residual* on the
 -/
 
 -- The k=4 modulus (P-256-like).
-private def kemN4 : List (BitVec 64) :=
+def kemN4 : List (BitVec 64) :=
   [0xFFFFFFFFFFFFFFFF, 0xFFFFFFFF, 0, 0xFFFFFFFF00000001]
 
-private def kemG4 : List (BitVec 64) := [3, 0, 0, 0]  -- g = 3 mod N
+def kemG4 : List (BitVec 64) := [3, 0, 0, 0]  -- g = 3 mod N
 
 -- k=8 modulus (pseudo-Mersenne, 512-bit).
-private def kemN8 : List (BitVec 64) :=
+def kemN8 : List (BitVec 64) :=
   [0xFFFFFFFFFFFFFFC5, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF,
    0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF]
 
-private def kemG8 : List (BitVec 64) := [5, 0, 0, 0, 0, 0, 0, 0]
+def kemG8 : List (BitVec 64) := [5, 0, 0, 0, 0, 0, 0, 0]
 
 /-- `mpzPowm g 0 N ≡ 1 (mod N)` at k=4: trivial — empty bit-loop, then
     `fromMont(R mod N) = R · R⁻¹ ≡ 1 (mod N)`. -/
@@ -351,8 +358,8 @@ theorem mpzPowm_eq_pow_mod
 
 /-- Local short alias to fix ambiguity (`vr`/`pv` are defined in several
     sibling prototype files; we pick the Montgomery one's). -/
-private abbrev MV (s : String) : Var := Mpn.MontgomeryPrototype.vr s
-private abbrev MP (s : String) : PExpr := Mpn.MontgomeryPrototype.pv s
+abbrev MV (s : String) : Var := Mpn.MontgomeryPrototype.vr s
+abbrev MP (s : String) : PExpr := Mpn.MontgomeryPrototype.pv s
 
 /-- One `Ccall mpn_mont_mul(op, ap, bp, Np, n, n0p, tp)`. -/
 def powmMontMulCcall : List InstrR :=

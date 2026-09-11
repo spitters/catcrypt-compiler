@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.ModArithMontInverse
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.ModArithMontInverse
 
 /-!
 # Montgomery-domain inverse on the HIGH FIELD DIALECT
@@ -57,6 +59,8 @@ flows through the existing Fermat / divstep emit kernels).
 
 **0 sorries.**
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -136,6 +140,6 @@ Over `ZMod 7` with `rInv = 1` (Montgomery radix `R = 1`, the plain field-inverse
 specialisation): on `x = 3` (`3⁻¹ = 5`, since `3·5 = 15 = 1 mod 7`) the schedule
 returns `5 · 1⁻¹ · 1⁻¹ = 5`. -/
 
-example : (montInverseProg (p := 7)).denote (eval 3 1) = (5 : ZMod 7) := rfl
+example : (montInverseProg (p := 7)).denote (eval 3 1) = (5 : ZMod 7) := by with_unfolding_all rfl
 
 end CatCrypt.Crypto.SecureCompilation.VIR.ModArithMontInverseFieldEmit

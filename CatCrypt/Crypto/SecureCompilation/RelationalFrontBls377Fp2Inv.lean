@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Fp2Conj
-import Mathlib.Data.ZMod.Basic
+module
+
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Fp2Conj
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.Algebra.Field.ZMod
 
 /-!
 # The `bls12_377` `Fp2` inversion — `Fp2_377` is operationally a field
@@ -59,6 +62,8 @@ not attempted here to keep the pass focused and sorry-free). The conjugate-over-
 norm inverse and its cancellation law are the deliverables.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.RelationalFront
@@ -71,7 +76,7 @@ We invert via the classical formula `x⁻¹ = conj x / norm x`: scale the conjug
 `conj x` by the base-field inverse of the norm, injected into `Fp2_377` on the
 `c0` component (the embedding `n ↦ ⟨n, 0⟩` of the base field into the extension).
 We work under `[Fact (Nat.Prime bls377Q)]` so that `FpBLS377 = ZMod bls377Q` is a
-`Field` and `(norm ξ x)⁻¹` is a genuine base-field inverse. -/
+`Field` and `(norm ξ x)⁻¹` is a base-field inverse. -/
 
 /-- The **base-field embedding** `FpBLS377 → Fp2_377`, `n ↦ n + 0·u`. The norm
     (a base-field element) is injected back into the extension this way. -/

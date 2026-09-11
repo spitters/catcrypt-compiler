@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Batch8
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+module
+
+public import CatCrypt.Crypto.Optimizer.Batch8
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-!
 # Fused batch8 lowering: scalar `Com` → flat two-address `Lfundef`, in one pass
@@ -30,6 +32,8 @@ linear in the binding count.
 * `batch8Virt`: the virtual `Lfundef` `comToLfundef (batch8 c)` would produce,
   built without the quadratic intermediate.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

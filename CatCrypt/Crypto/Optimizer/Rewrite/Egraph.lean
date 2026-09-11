@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
 # Verified bounded equality-saturation rewrite engine for `Com` (#274, Pass 1)
@@ -67,6 +69,8 @@ no-ops a Montgomery restructuring leaves behind.
 
 All goals closed. Axiom set: `propext`, `Quot.sound`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GenericKernelRealization
-import CatCrypt.Crypto.SecureCompilation.ConcreteNttRealizer
-import CatCrypt.Crypto.SecureCompilation.ConcreteNegacyclicRealizer
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GenericKernelRealization
+public import CatCrypt.Crypto.SecureCompilation.ConcreteNttRealizer
+public import CatCrypt.Crypto.SecureCompilation.ConcreteNegacyclicRealizer
 
 /-!
 # Kernel realization as a typeclass-resolved registry — the Trocq `Related` engine, for emit
@@ -80,6 +82,8 @@ the genuinely large `.TPolyMod q n` carrier (`NttEmitRealizesP` /
 * `CatCrypt/Crypto/Bridges/Transfer/Related.lean` — the template engine.
 * NIST FIPS 203 (ML-KEM), FIPS 204 (ML-DSA).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

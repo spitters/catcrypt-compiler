@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # C4 fan-out: the verified compiler emits the ChaCha20 quarter-round from extracted source
@@ -53,6 +56,8 @@ Inputs `(a, b, c, d)` are parameters `["a","b","c","d"]` (`nIn = 4`), at `w = 32
 
 All four components are derived (`qrA_compiles` … `qrD_compiles`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -178,9 +183,7 @@ theorem qrA_compiles :
   intro a b c d
   have hspec : ImpExpr.denoteScalar ["a", "b", "c", "d"] ![a, b, c, d]
       qrASrc (fun _ => none) = some (chachaQRSpec a b c d).1 := by
-    have h := qrASrc_denoteScalar (nIn := 4) ![a, b, c, d]
-    simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+    exact qrASrc_denoteScalar (nIn := 4) ![a, b, c, d]
   exact compileFromHax_meets_spec (w := 32) (nIn := 4) ["a", "b", "c", "d"]
     ![a, b, c, d] qrASrc _ hc hspec
 
@@ -200,9 +203,7 @@ theorem qrB_compiles :
   intro a b c d
   have hspec : ImpExpr.denoteScalar ["a", "b", "c", "d"] ![a, b, c, d]
       qrBSrc (fun _ => none) = some (chachaQRSpec a b c d).2.1 := by
-    have h := qrBSrc_denoteScalar (nIn := 4) ![a, b, c, d]
-    simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+    exact qrBSrc_denoteScalar (nIn := 4) ![a, b, c, d]
   exact compileFromHax_meets_spec (w := 32) (nIn := 4) ["a", "b", "c", "d"]
     ![a, b, c, d] qrBSrc _ hc hspec
 
@@ -222,9 +223,7 @@ theorem qrC_compiles :
   intro a b c d
   have hspec : ImpExpr.denoteScalar ["a", "b", "c", "d"] ![a, b, c, d]
       qrCSrc (fun _ => none) = some (chachaQRSpec a b c d).2.2.1 := by
-    have h := qrCSrc_denoteScalar (nIn := 4) ![a, b, c, d]
-    simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+    exact qrCSrc_denoteScalar (nIn := 4) ![a, b, c, d]
   exact compileFromHax_meets_spec (w := 32) (nIn := 4) ["a", "b", "c", "d"]
     ![a, b, c, d] qrCSrc _ hc hspec
 
@@ -244,9 +243,7 @@ theorem qrD_compiles :
   intro a b c d
   have hspec : ImpExpr.denoteScalar ["a", "b", "c", "d"] ![a, b, c, d]
       qrDSrc (fun _ => none) = some (chachaQRSpec a b c d).2.2.2 := by
-    have h := qrDSrc_denoteScalar (nIn := 4) ![a, b, c, d]
-    simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+    exact qrDSrc_denoteScalar (nIn := 4) ![a, b, c, d]
   exact compileFromHax_meets_spec (w := 32) (nIn := 4) ["a", "b", "c", "d"]
     ![a, b, c, d] qrDSrc _ hc hspec
 

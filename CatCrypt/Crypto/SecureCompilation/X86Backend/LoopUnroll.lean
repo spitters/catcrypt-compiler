@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 
 /-!
 # Bounded-loop lowering by unrolling (#281 increment)
@@ -57,6 +60,8 @@ bounded-loop lowering theorem is their composition with `lowerBlock_denote`.
 Forward conditionals, general CFG/labels, and calls are out of scope (later
 increments).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # C4: width-64 SHA-512 round leaves emitted from extracted source
@@ -46,6 +49,8 @@ The point: the same front recognizes the same idioms at 64 bits, so the
 SHA-512 round components join the C4 leaf set on the strength of the existing
 width-generic translator.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -115,7 +120,7 @@ theorem maj512_compiles :
       = some ((x &&& y) ^^^ (x &&& z) ^^^ (y &&& z)) := by
     have h := majSrc64_denoteScalar (nIn := 3) ![x, y, z]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 64) (nIn := 3) ["x", "y", "z"] ![x, y, z]
     majSrc64 _ hc hspec
 
@@ -190,7 +195,7 @@ theorem ch512_compiles :
       = some ((x &&& y) ^^^ ((~~~x) &&& z)) := by
     have h := chSrc64_denoteScalar (nIn := 3) ![x, y, z]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 64) (nIn := 3) ["x", "y", "z"] ![x, y, z]
     chSrc64 _ hc hspec
 

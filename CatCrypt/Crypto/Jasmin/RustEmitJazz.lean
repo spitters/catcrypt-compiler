@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
+module
+
+import all Init.Data.Repr
+public import Mathlib.Data.String.Defs
+public import CatCrypt.Crypto.Jasmin.LowCT
 
 /-!
 # `LowCT → Jasmin` direct emit (Phase L follow-up, 2026-05-22)
@@ -58,6 +62,8 @@ caller is expected to `include` the appropriate `.jinc` files
 that provide the leaf bodies.  A from-scratch compile of the emitted
 `.jazz` against a stub `.jinc` is the natural next step.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -383,7 +389,7 @@ body is pretty-printed without re-emitting `RLetZero` / `RLetU64Zero`
 lines (Jasmin doesn't allow inline declarations).  Other constructs
 emit as Jasmin pseudo-source. -/
 
-private def jasIndent (n : Nat) (s : String) : String :=
+def jasIndent (n : Nat) (s : String) : String :=
   String.replicate n ' ' ++ s
 
 /-- Jasmin infix operator for an arithmetic / bitwise leaf-call name.

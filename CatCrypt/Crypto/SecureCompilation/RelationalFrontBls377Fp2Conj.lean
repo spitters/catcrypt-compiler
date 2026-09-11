@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Fp2
-import Mathlib.Data.ZMod.Basic
+module
+
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Fp2
+public import Mathlib.Data.ZMod.Basic
 
 /-!
 # The `bls12_377` `Fp2` Galois conjugation and field norm
@@ -53,6 +55,8 @@ non-square — a number-theoretic fact about the concrete twist nonresidue, not
 proved here). The conjugation ring-hom facts and the norm's base-field landing
 are the deliverables.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

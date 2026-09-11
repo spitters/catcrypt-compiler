@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxCompress
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxCompress
 
 /-!
 # Scalable loop artifact: `RFor` realizes a fold (no unrolling)
@@ -29,6 +32,8 @@ the simplest non-trivial fold.  The SHA-256 compression body (σ/Ch/Maj over the
 scalability argument — proof term size constant in `N` — is exactly the one
 established below.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -198,7 +203,7 @@ theorem rforFold_realizes_compFold (K W : Nat → BitVec 32) (rs0 : RustState)
     decodeSt (rforFold (roundStepBV K W) (encodeSt rs0 init) n)
       = compFold init K W n := by
   induction n with
-  | zero => simpa using decode_encode rs0 init
+  | zero => simpa using! decode_encode rs0 init
   | succ n ih =>
       simp only [rforFold, roundStepBV, compFold]
       rw [decode_encode, ih]
@@ -414,7 +419,7 @@ theorem rforFold_roundStepC_realizes_compFold (K W : Nat → BitVec 32)
     (rs0 : RustState) (init : St) (n : Nat) :
     decodeSt (rforFold (roundStepC K W) (encodeSt rs0 init) n) = compFold init K W n := by
   induction n with
-  | zero => simpa using decode_encode rs0 init
+  | zero => simpa using! decode_encode rs0 init
   | succ n ih =>
       simp only [rforFold, compFold]
       rw [roundStepC_decode, ih]

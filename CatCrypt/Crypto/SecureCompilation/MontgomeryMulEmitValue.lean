@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GenericNttEmitValue
-import CatCrypt.Crypto.Optimizer.Rewrite.MontgomeryMulGeneric
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GenericNttEmitValue
+public import CatCrypt.Crypto.Optimizer.Rewrite.MontgomeryMulGeneric
 
 /-!
 # The Montgomery-multiply emit → field-VALUE bridge
@@ -60,6 +62,8 @@ hypotheses are satisfiable, not an unsatisfiable over-constraint.  The genuine
 cross-prover content is the gap between this canonical realizer and the emitted
 Montgomery-multiply kernel's real byte semantics, which lives outside Lean.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

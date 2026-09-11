@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3OrchLoopsEmit
-import CatCrypt.Crypto.SecureCompilation.Dialects.OrchFront
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3OrchLoopsEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3OrchLoopsEmit
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.OrchFront
+public import CatCrypt.Crypto.SecureCompilation.Dialects.OrchFront
 
 /-!
 # The whole-prover `prove()` driver as a single owned `.s` entry
@@ -32,6 +36,8 @@ buffers to match p3's layout), which is what makes the composite proof
 byte-identical to upstream p3. That marshalling is the remaining Gap-2 residual; the
 phase bodies (every leaf + every loop) and now their composition order are owned.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ProveDriverEmit
 

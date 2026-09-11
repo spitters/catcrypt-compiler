@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
-import CatCrypt.Crypto.Optimizer.RandomizedRegAlloc
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+public import CatCrypt.Crypto.Optimizer.RandomizedRegAlloc
 
 /-!
 # The single-op `Com jasminDialect` ↔ `runBlock` tie (register-allocation core)
@@ -48,6 +50,8 @@ The value spine here is `BitVec 64` on both sides. `JStateInterp` relates
 `Ctxt.Valuation Γ` (BitVec) ↔ `JState 64` (BitVec) directly, so the tie is on
 real machine words, not the saturating `RustState`/`Nat` model.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

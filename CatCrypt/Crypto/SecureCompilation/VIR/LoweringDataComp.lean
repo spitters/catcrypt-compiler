@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ComParametricityTransport
-import CatCrypt.Crypto.SecureCompilation.VIR.CompilerGeneric
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.ComParametricityTransport
+public import CatCrypt.Crypto.SecureCompilation.VIR.CompilerGeneric
 
 /-!
 # Composition of structural dialect lowerings
@@ -44,6 +46,8 @@ The composite transports `⟦t⟧ → ⟦L2.mapTy (L1.mapTy t)⟧` via
 **0 goals open**; target axiom set `{propext, Classical.choice, Quot.sound}`,
 no custom axioms.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

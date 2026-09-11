@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
-import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+public import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
 
 /-!
 # Verified instruction scheduling for `Com` — analysis-as-decision pass
@@ -158,6 +162,8 @@ identity, so both preservation theorems reduce to `rfl`.
   just supplies a different `preserves` witness, mirroring the
   `RegisterAllocation`/`DeadCodeElim` extension story.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -496,12 +502,12 @@ example {accTy : JasminTy} (v : Ctxt.Var (d := jasminDialect) [accTy] accTy) :
 /-- A `regArith` binary `Expr` over `reg 64`, local helper for the sanity
     tests below. (Mirrors helpers in `DeadCodeElim.lean`,
     `CommonSubexprElim.lean`.) -/
-private def binExprR64 {Γ : Ctxt jasminDialect} (op : JasminBinOp)
+def binExprR64IS {Γ : Ctxt jasminDialect} (op : JasminBinOp)
     (a b : Ctxt.Var Γ (.reg 64)) : Expr jasminDialect Γ (.reg 64) :=
   { op := .regArith op 64, retTy_eq := rfl, args := .cons a (.cons b .nil) }
 
 /-- A `regConst` nullary `Expr` over `reg 64`, local helper. -/
-private def constExprR64 {Γ : Ctxt jasminDialect} (k : Nat) :
+def constExprR64 {Γ : Ctxt jasminDialect} (k : Nat) :
     Expr jasminDialect Γ (.reg 64) :=
   { op := .regConst 64 k, retTy_eq := rfl, args := .nil }
 
@@ -513,12 +519,12 @@ private def constExprR64 {Γ : Ctxt jasminDialect} (k : Nat) :
     ```
 
     The schedule is `[0]` (the only binder). -/
-private def singleBinderBody :
+def singleBinderBody :
     Com jasminDialect [JasminTy.reg 64] (JasminTy.reg 64) :=
-  .var (binExprR64 .add .here .here)
+  .var (binExprR64IS .add .here .here)
     (.ret .here)
 
-private def singleBinderProg : JForProg (JasminTy.reg 64) :=
+def singleBinderProg : JForProg (JasminTy.reg 64) :=
   { n := 1, update := singleBinderBody }
 
 example : computeDependences singleBinderProg =
@@ -548,20 +554,20 @@ example : (analyzeSchedule singleBinderProg).order = [0] := rfl
     this is the correct safe fallback. A latency-aware variant would
     prefer `[0, 1, 2, 3]` vs `[0, 2, 1, 3]` to maximise dual-issue;
     the framework theorems are unaffected. -/
-private def ilpExposingBody :
+def ilpExposingBody :
     Com jasminDialect [JasminTy.reg 64] (JasminTy.reg 64) :=
   -- Position 0: v0 = acc + acc. acc is .here.
-  .var (binExprR64 .add .here .here)
+  .var (binExprR64IS .add .here .here)
     -- Position 1: v1 = acc + acc. After v0 is bound, acc is .there .here.
-    (.var (binExprR64 .add (.there .here) (.there .here))
+    (.var (binExprR64IS .add (.there .here) (.there .here))
       -- Position 2: v2 = v0 + v0. v0 is .there .here (after v1's bind).
-      (.var (binExprR64 .add (.there .here) (.there .here))
+      (.var (binExprR64IS .add (.there .here) (.there .here))
         -- Position 3: v3 = v1 + v1. v1 is .there .here (after v2's bind).
-        (.var (binExprR64 .add (.there .here) (.there .here))
+        (.var (binExprR64IS .add (.there .here) (.there .here))
           -- ret v3 = .here.
           (.ret .here))))
 
-private def ilpExposingProg : JForProg (JasminTy.reg 64) :=
+def ilpExposingProg : JForProg (JasminTy.reg 64) :=
   { n := 1, update := ilpExposingBody }
 
 /-- `ilpExposingBody` has four binders. -/

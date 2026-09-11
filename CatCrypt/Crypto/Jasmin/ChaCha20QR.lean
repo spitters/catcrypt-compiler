@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminToSSA
-import CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialect
-import CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialectNative
+module
+
+public import CatCrypt.Crypto.Jasmin.JasminToSSA
+public import CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialect
+public import CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialectNative
 
 /-!
 # ChaCha20 Quarter-Round Case Study
@@ -29,6 +31,8 @@ quarterRound (pure spec)
 - 20 SSA instructions (4 rounds × 5 ops: add, xor, shl, shr, or)
 - End-to-end correctness from Jasmin SSA to the `catCryptDialect` denotation
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.ChaCha20QR
 
@@ -72,29 +76,29 @@ def quarterRound (a b c d : BitVec 32) :
 /-! ## Section 2: Jasmin Variable Setup -/
 
 /-- Helper to create a Jasmin `Var` with 32-bit word type. -/
-private def mkVar32 (name : String) : Var :=
+def mkVar32 (name : String) : Var :=
   { vname := name, vtype := .sword .U32 }
 
 /-- Helper to create a `VarI` (variable with info). -/
-private def mkVarI (name : String) : VarI :=
+def mkVarI (name : String) : VarI :=
   { var := mkVar32 name }
 
 /-- Helper to create a `GVar` reference. -/
-private def mkGVar (name : String) : GVar :=
+def mkGVar (name : String) : GVar :=
   { gv := mkVarI name, gs := false }
 
 /-- Helper to create a `PExpr.Pvar`. -/
-private def pvar (name : String) : PExpr := .Pvar (mkGVar name)
+def pvar (name : String) : PExpr := .Pvar (mkGVar name)
 
 /-- Helper to create an assignment instruction. -/
-private def assign (dst : String) (e : PExpr) : InstrR :=
+def assign (dst : String) (e : PExpr) : InstrR :=
   .Cassgn (.Lvar (mkVarI dst)) .AT_none (.sword .U32) e
 
 -- Input/output variable names
-private def va := mkVar32 "a"
-private def vb := mkVar32 "b"
-private def vc := mkVar32 "c"
-private def vd := mkVar32 "d"
+def va := mkVar32 "a"
+def vb := mkVar32 "b"
+def vc := mkVar32 "c"
+def vd := mkVar32 "d"
 
 /-! ## Section 3: Jasmin SSA Commands
 
@@ -133,10 +137,10 @@ def qrCmd : List InstrR :=
     assign "b4" (.Papp2 (.Olor .U32) (pvar "t4") (pvar "u4")) ]
 
 /-- Return variable for the output tuple (encoded as final variable names). -/
-private def retA := mkVar32 "a2"
-private def retB := mkVar32 "b4"
-private def retC := mkVar32 "c2"
-private def retD := mkVar32 "d4"
+def retA := mkVar32 "a2"
+def retB := mkVar32 "b4"
+def retC := mkVar32 "c2"
+def retD := mkVar32 "d4"
 
 /-! ## Section 4: Environment Setup -/
 
@@ -174,12 +178,12 @@ theorem quarterRound_d_correct (a b c d : BitVec 32) :
 /-! ## Section 6: CryptoSSA Translation -/
 
 /-- The input variable names are all distinct. -/
-private theorem va_ne_vb : va ≠ vb := by decide
-private theorem va_ne_vc : va ≠ vc := by decide
-private theorem va_ne_vd : va ≠ vd := by decide
-private theorem vb_ne_vc : vb ≠ vc := by decide
-private theorem vb_ne_vd : vb ≠ vd := by decide
-private theorem vc_ne_vd : vc ≠ vd := by decide
+theorem va_ne_vb : va ≠ vb := by decide
+theorem va_ne_vc : va ≠ vc := by decide
+theorem va_ne_vd : va ≠ vd := by decide
+theorem vb_ne_vc : vb ≠ vc := by decide
+theorem vb_ne_vd : vb ≠ vd := by decide
+theorem vc_ne_vd : vc ≠ vd := by decide
 
 /-- The four-input variable map, identical to the one `translateMonoCmdD`
     consumes for the quarter-round: `a ↦ .here`, `b ↦ .there .here`, … -/

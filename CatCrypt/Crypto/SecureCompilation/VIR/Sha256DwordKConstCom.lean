@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-import CatCrypt.Crypto.Primitives.SHA256
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public meta import CatCrypt.Crypto.Primitives.SHA256
+public import CatCrypt.Crypto.Primitives.SHA256
 
 /-!
 # The SHA-256 round-constant tie, model-free (`Com`/`JasminDialect` successor)
@@ -39,6 +44,8 @@ so `native_decide` over the 64 concrete indices is the canonical witness.
 ## References
 * FIPS 180-4 — Secure Hash Standard (§4.2.2 — the round constants `K`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

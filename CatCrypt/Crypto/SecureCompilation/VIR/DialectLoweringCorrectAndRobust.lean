@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ModArithLowering
-import CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveLowering
-import CatCrypt.Crypto.SecureCompilation.VIR.ParamDialectTransport
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.ModArithLowering
+public import CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveLowering
+public import CatCrypt.Crypto.SecureCompilation.VIR.ParamDialectTransport
 
 /-!
 # Algebraic dialect lowerings: functionally correct **and** constant-time, together
@@ -59,6 +61,8 @@ analogue of the owned-scalar triple, ready to compose onto that anchor.
 All goals closed; target axiom set `{propext, Classical.choice, Quot.sound}`. No use
 of `jasminc_preserves_ct` (the algebraic lowerings are value-level / bytes-level).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

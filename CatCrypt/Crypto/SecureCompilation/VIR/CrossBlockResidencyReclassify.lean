@@ -4,6 +4,8 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 
+module
+
 /-!
 # Cross-block residency unroll: reclassification (audit Class A)
 
@@ -103,3 +105,5 @@ trivial `rfl`s over `CrossBlockResidencyUnroll`'s own defs; the load-bearing
 fact is the Phase-1 physical theorem `physBody_lsem_result_uniform` plus the
 boundary move-cancellation lemma at the `toLprogPhysAbi` layer.)
 -/
+
+@[expose] public section

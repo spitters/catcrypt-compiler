@@ -3,8 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LeafBytes
+module
+import all CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+import all CatCrypt.Crypto.SecureCompilation.X86Backend.LeafBytes
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LeafBytes
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LeafBytes
 
 /-!
 # A verified `Lprog → bytes` encoder for the LOOPED owned backend (task #658)
@@ -98,6 +105,8 @@ arms get their own decode round-trips here (`roundtrip_jmp32`/`roundtrip_jcc32`/
 the ACL2 model — the existing `LeafBytes` tier), marked gas-pinned in the
 `trust_edge_cf` tally.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -204,9 +213,30 @@ def encJmp32 (d : Int) : List (BitVec 8) :=
 /-- The second opcode byte of a `jcc rel32` (`0F 8x`) for an x86 condition-code
     name — the byte-level analogue of `LprogAsmPrinter.attCC`'s Jcc map. The
     `0F 8x` tower: `JO 80 JNO 81 JB 82 JAE 83 JE 84 JNE 85 JBE 86 JA 87 JS 88
-    JNS 89 … JL 8C JGE 8D JLE 8E JG 8F`. Mirrors the same condition synonyms
-    `attCC` accepts (`Z→E`, `NZ→NE`, `C→B`, `NC→AE`). Unknown ⇒ `0x85` (`JNE`),
-    the safe never-silently-wrong fallback (a bad cc would also fail the diff KAT). -/
+    JNS 89 … JL 8C JGE 8D JLE 8E JG 8F`, including the same condition synonyms
+    `attCC` accepts (`Z→E`, `NZ→NE`, `C→B`, `NC→AE`).
+
+    **Accepted alphabet, and what the fallback really does.** The 18 names above
+    are EXACTLY the names `attCC` renders, so the two paths cover the same
+    conditions. Outside that alphabet they diverge, and NOT symmetrically: `attCC`
+    renders `j<UNKNOWN-CC:…>`, which gas rejects (a loud build failure), whereas
+    this map silently returns `0x85` and emits a `JNE`. So the fallback is *not*
+    "never silently wrong" on the byte path — it is a silent substitution, caught
+    only if a byte-diff KAT covers that branch.
+
+    It is nonetheless **unreachable** from the compiler: an `Lcond` condition is a
+    bare `String` in an `LOperand.reg`, and the only two strings any emitter
+    constructs are `"NZ"` and `"Z"` (`LprogControlFlow.loopLcmd`/`nestLoopLcmd`/
+    `whileLcmd` back-edges, and the `JasminLsemMemFlagNestJoin` zero-trip guard) —
+    both in the table.
+
+    **Parity is absent from both maps, by construction, not by oversight.** There
+    is no `JP` (`0F 8A`) / `JNP` (`0F 8B`) arm here and no `jp`/`jnp` arm in
+    `attCC`. No producer type carries a parity condition: `Model.Cond` is exactly
+    `e | ne | b`, and nothing lowers `PF`. Adding the two arms here alone would
+    make this map STRICTLY larger than `attCC` and manufacture a real text/byte
+    divergence (bytes `0F 8A`, text a gas error) for a condition the pipeline
+    cannot produce; both maps must grow together if parity is ever lowered. -/
 def jccOpcode : String → Nat
   | "O"  => 0x80 | "NO" => 0x81
   | "B"  => 0x82 | "C"  => 0x82 | "AE" => 0x83 | "NC" => 0x83
@@ -244,17 +274,17 @@ spill width are threaded through `encodeLcmd`), and the bare reg becomes its `gp
 An uncovered form (mem-mem, or an immediate written directly to a spill) is
 left as a visible empty byte list flagged in the residual rather than mis-encoded. -/
 
+
 /-- Parse a `mem.<base>.<off>` operand name to `(baseRegNum, offset)`. `none` if the
     name is not a memory operand. Bare physical registers are encoded directly off
     `gpNumU`, bypassing the string-allocation `regOf`/`gpNum` the `JInstr` encoder
     threads. -/
 def parseMemName (n : String) : Option (Nat × Int) :=
-  if "mem.".isPrefixOf n then
-    let rest := (n.drop 4).toString
-    match rest.splitOn "." with
-    | [base, off] =>
-        match String.toNat? off with
-        | some o => some (gpNumU base, Int.ofNat o)
+  if hasPrefix n "mem." then
+    match (n.toList.drop 4).span (· != '.') with
+    | (base, '.' :: off) =>
+        match natOfDigits? off with
+        | some o => some (gpNumU (String.ofList base), Int.ofNat o)
         | none => none
     | _ => none
   else none
@@ -287,7 +317,7 @@ def parseMemNameGp (n : String) : Option (Nat × Int) :=
     recognised spill/qsave NOR a `mem.*` NOR a bare GP register is still NOT covered;
     `encTwoAddr` keeps the visible-empty guard for those residual forms only. -/
 def isSpillOrQsave (n : String) : Bool :=
-  "k.".isPrefixOf n || "qsave.".isPrefixOf n
+  hasPrefix n "k." || hasPrefix n "qsave."
 
 /-- The `%rsp`-relative frame offset of a spill (`k.N`) or ABI-save (`qsave.X`)
     operand name, **matching `LprogAsmPrinter.resolveName` exactly**: a spill `k.idx`
@@ -296,12 +326,12 @@ def isSpillOrQsave (n : String) : Bool :=
     caller surfaces it rather than mis-resolving). The base register is always `%rsp`
     (SDM number 4). -/
 def spillQsaveOff (frame spillW : Nat) (n : String) : Option Int :=
-  if "k.".isPrefixOf n then
-    match String.toNat? (n.drop 2).toString with
+  if hasPrefix n "k." then
+    match natOfDigits? (n.toList.drop 2) with
     | some idx => some (spillFrameOff frame spillW idx)
     | none => none
-  else if "qsave.".isPrefixOf n then
-    qsaveFrameOff frame ((n.drop 6).toString)
+  else if hasPrefix n "qsave." then
+    qsaveFrameOff frame (String.ofList (n.toList.drop 6))
   else none
 
 /-- A `MOV` between a register and `[%rsp + off]`. `%rsp` (SDM number 4) has
@@ -551,8 +581,9 @@ def carryOutSetccOp (base : String) : Nat :=
     `d ∈ {4..7}` (`%spl/%bpl/%sil/%dil` — without REX the ModRM would select
     `AH/CH/DH/BH`); low regs `d < 4` need none. The `MOVZBQ` always carries `REX.W`,
     so its byte source is the REX-selected low byte for all 16 GPs.
-    `encSetccMovzx 0x92 d = ScalarEncoder.encSetcMovzx d` off the `{4..7}` band
-    (`encSetccMovzx_setc_agree`). -/
+    `encSetccMovzx 0x92 d = ScalarEncoder.encSetcMovzx d` for EVERY `d`
+    (`encSetccMovzx_setc_agree`) — the straight-line encoder emits the same bare
+    `0x40` on the `{4..7}` band, so the two paths agree everywhere. -/
 def encSetccMovzx (op d : Nat) : List (BitVec 8) :=
   let setcc : List Nat :=
     (if bit d 3 = 1 then [rex 0 0 0 1] else if 4 ≤ d ∧ d < 8 then [rex 0 0 0 0] else [])
@@ -1798,14 +1829,15 @@ theorem encSetccMovzx_length (op d : Nat) :
   by_cases h1 : d >>> 3 % 2 = 1 <;> by_cases h2 : 4 ≤ d ∧ d < 8 <;>
     simp [bit, h1, h2]
 
-/-- Off the bare-REX band (`d < 4` or `d ≥ 8`), the generalised pair at the
-    `SETC` opcode `0x92` is byte-identical to `ScalarEncoder.encSetcMovzx` —
-    the `JInstr .setc` byte image, so the two paths' `setc` materialisations
-    coincide. (On `4 ≤ d < 8` this encoder adds the bare `0x40` REX gas emits
-    for `%spl/%bpl/%sil/%dil`.) -/
-theorem encSetccMovzx_setc_agree (d : Nat) (hd : d < 16) (hband : d < 4 ∨ 8 ≤ d) :
-    encSetccMovzx 0x92 d = encSetcMovzx d := by
-  interval_cases d <;> first | rfl | omega
+/-- The generalised pair at the `SETC` opcode `0x92` is byte-identical to
+    `ScalarEncoder.encSetcMovzx` — the `JInstr .setc` byte image — for **every**
+    `d`, so the looped and straight-line paths' `setc` materialisations coincide
+    everywhere. The theorem used to exclude the bare-REX band `4 ≤ d < 8`
+    (`%spl/%bpl/%sil/%dil`), because `encSetcMovzx` emitted no `REX` there and so
+    encoded `SETB AH/CH/DH/BH` against a `MOVZBQ` reading `SPL/BPL/SIL/DIL`;
+    `ScalarEncoder` now emits the same bare `0x40` this encoder does, and the two
+    definitions coincide syntactically. -/
+theorem encSetccMovzx_setc_agree (d : Nat) : encSetccMovzx 0x92 d = encSetcMovzx d := rfl
 
 /-! ### Gas pins for the new arms (reference: `as` + `objdump -d`)
 

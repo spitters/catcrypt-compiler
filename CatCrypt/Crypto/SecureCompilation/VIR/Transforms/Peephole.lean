@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Core
-import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.Grind
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.Grind
 
 /-!
 # Verified peephole rewrites on `Com catCryptDialect`
@@ -64,6 +66,8 @@ pass.
   variable's `.here` reference throughout `body` (i.e. an actual
   De-Bruijn substitution). The current pass is binding-preserving.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR
 

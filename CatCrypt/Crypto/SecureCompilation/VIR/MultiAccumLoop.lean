@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.MultiBinderLoopBody
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.MultiBinderLoopBody
 
 /-!
 # Counted loop over a **multi-accumulator** (product) state: `loopNAccum`
@@ -77,6 +79,8 @@ cells are uniform-width registers, so the packed `reg (k*w)` model is faithful
 inherited verbatim from `loopNMulti`.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.MultiAccumLoop
@@ -120,13 +124,13 @@ def packLanes {k w : Nat} (f : Fin k → BitVec w) : BitVec (k * w) :=
 
 /-- `extractLsb'` commutes with a width `cast`: casting the underlying bitvector
     does not move any bit, so it leaves the extracted window unchanged. -/
-private theorem extractLsb'_cast {n m : Nat} (h : n = m) (x : BitVec n)
+theorem extractLsb'_cast {n m : Nat} (h : n = m) (x : BitVec n)
     (s len : Nat) :
     BitVec.extractLsb' s len (x.cast h) = BitVec.extractLsb' s len x := by
   subst h; rfl
 
 /-- `extractLsb' 0 w` of a `w`-bit vector is the identity (the whole vector). -/
-private theorem extractLsb'_zero_self {w : Nat} (x : BitVec w) :
+theorem extractLsb'_zero_self {w : Nat} (x : BitVec w) :
     BitVec.extractLsb' 0 w x = x := by
   ext j; simp
 
@@ -285,7 +289,7 @@ theorem fibBody_loop_iterate {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
     loopRun (loopNAccum 5 fibBody) (bodyStepRun leafSem (loopNAccum 5 fibBody)) init
       = fibStep^[5] init := by
   have h := loopNAccum_lower_denote_iterate hLeaf 5 fibBody fibBody_straightLine init
-  simpa using h
+  simpa using! h
 
 /-- The packed seed `(a, b) = (1, 1)`: `a` in low 64, `b` in high 64. -/
 def fibSeed : BitVec 128 := packLanes (k := 2) (w := 64) (fun i => if i = 0 then 1 else 1)

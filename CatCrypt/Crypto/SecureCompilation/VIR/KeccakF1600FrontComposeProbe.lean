@@ -4,17 +4,25 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakF1600FrontComposeShape
+module
+
+import all Init.Data.Repr
+import all CatCrypt.Crypto.SecureCompilation.VIR.KeccakRoundFrontEmit
+import all CatCrypt.Crypto.SecureCompilation.VIR.KeccakF1600FrontComposeShape
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.KeccakF1600FrontComposeShape
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakF1600FrontComposeShape
 
 /-!
 # PROBE: N-round front-composed Keccak-p[1600] — 24-round closure
 
-The shape-interpreter engine + scalar-lowering simulation keystones live in the
+The shape-interpreter engine + scalar-lowering simulation main theorems live in the
 sibling `KeccakF1600FrontComposeShape` (split out to halve peak elaboration
 memory). This module keeps the Keccak-specific round recomposition
 (`WSBlock`/`blockOK`, the per-generator well-scopedness lemmas, `round_wellscoped`)
 and the 24-round closure (`shapeRun24_ok` / `front24_isSome` / `lowered24_isSome`).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.KeccakF1600FrontComposeProbe
 

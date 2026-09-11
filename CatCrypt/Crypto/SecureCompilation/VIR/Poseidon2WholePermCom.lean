@@ -3,11 +3,19 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
-import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2DiffuseExact
-import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2BbMulFieldExact
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2DiffuseExact
+public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2DiffuseExact
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2BbMulFieldExact
+public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2BbMulFieldExact
 
 /-!
 # Poseidon2-BabyBear whole permutation as a flat `Com jasminDialect` (#479)
@@ -76,10 +84,12 @@ nullary `regConst` op (denoting `BitVec.ofNat 64 n`) — no immediate-operand ha
 
 ## Consumability by the owned-RA producer (#476)
 
-`poseidon2PermCom` is a `Com jasminDialect permCtxt r64`, so it is directly
+`(poseidon2PermCom ())` is a `Com jasminDialect permCtxt r64`, so it is directly
 consumable by `Com.toLprogPhysAbi`; `poseidon2PermLprog` is the witness
 application. This is the missing #476 prerequisite.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -832,7 +842,7 @@ def initBState : BState inCtxt where
     external/internal MDS layers, and the genuine round-constant schedule, over
     the full 21-round (pre-mix + 4 + 13 + 4) Poseidon2 schedule. Consumable by
     `JasminLprogExport.Com.toLprogPhysAbi` (the #476 owned-RA producer). -/
-def poseidon2PermCom : Com jasminDialect inCtxt r64 :=
+def poseidon2PermCom (_ : Unit) : Com jasminDialect inCtxt r64 :=
   emitPermBody initBState (fun {_} s => .ret (s.cur (laneSlot 0)))
 
 /-- Output staging: rebind the 16 lane slots `0..15` as the **last 16
@@ -848,11 +858,11 @@ def emitOutStage16 {Γ : Ctxt jasminDialect} {t : JasminTy}
 
 /-- **The whole Poseidon2-BabyBear permutation as a flat `Com jasminDialect`,
     with the 16-lane output staging appended.** Identical body to
-    `poseidon2PermCom`, but the last 16 bindings are the 16 output lanes in
+    `(poseidon2PermCom ())`, but the last 16 bindings are the 16 output lanes in
     order — the shape the owned-RA producer's `outStoreMap` reads off (the
     `KeccakEmit.keccakF1600Com` convention). This is the value the bench
     harness exports. -/
-def poseidon2PermComOut : Com jasminDialect inCtxt r64 :=
+def poseidon2PermComOut (_ : Unit) : Com jasminDialect inCtxt r64 :=
   emitPermBody initBState fun {_} s =>
   emitOutStage16 s (fun {_} s' => .ret (s'.cur (laneSlot 15)))
 
@@ -1107,7 +1117,7 @@ theorem emitPermBody_pure {Γ : Ctxt jasminDialect} {t : JasminTy}
     (fun _ _ => emitExternalRound_pure _ _ (fun _ _ => emitExternalRound_pure _ _
     (fun _ _ => emitExternalRound_pure _ _ hk)))))))))))))))))))))
 
-/-- **`poseidon2PermCom` is pure field arithmetic** — every binding is a
+/-- **`(poseidon2PermCom ())` is pure field arithmetic** — every binding is a
     `regArith` / `regConst` op, so its denotation is the BitVec word arithmetic
     and the owned-RA producer renders it with no opaque-leaf call.
 
@@ -1116,7 +1126,7 @@ theorem emitPermBody_pure {Γ : Ctxt jasminDialect} {t : JasminTy}
     `emitBin`/`emitConst`/`emitCopy` — is pure-arith down to the `.ret` leaf.
     (We avoid `native_decide` on the full `Com`: it blows the interpreter
     recursion stack, the materialization issue `Sha256LinearMain` documents.) -/
-theorem poseidon2PermCom_pureArith : allPureArith poseidon2PermCom = true :=
+theorem poseidon2PermCom_pureArith : allPureArith (poseidon2PermCom ()) = true :=
   emitPermBody_pure initBState (fun _ s => ret_pure (s.cur (laneSlot 0)))
 
 /-- `emitOutStage16` preserves pure-arith. -/
@@ -1127,9 +1137,9 @@ theorem emitOutStage16_pure {Γ : Ctxt jasminDialect} {t : JasminTy}
   exact foldr_pure _ _ (fun _ _ hkk => fun _ _ =>
     emitCopy_pure _ _ _ hkk) hk _ st
 
-/-- **`poseidon2PermComOut` is pure field arithmetic** — body + 16-lane output
+/-- **`(poseidon2PermComOut ())` is pure field arithmetic** — body + 16-lane output
     staging, all `regArith` / `regConst` bindings (no opaque leaf). -/
-theorem poseidon2PermComOut_pureArith : allPureArith poseidon2PermComOut = true :=
+theorem poseidon2PermComOut_pureArith : allPureArith (poseidon2PermComOut ()) = true :=
   emitPermBody_pure initBState (fun _ s =>
     emitOutStage16_pure s (fun _ s' => ret_pure (s'.cur (laneSlot 15))))
 
@@ -1142,7 +1152,7 @@ def comBindings : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
 /-! ## 14b. Logical-slot trace for register-residence (#476 RA recovery)
 
 The owned-RA producer (`JasminLprogExport.Com.toLprogPhysAbi`) names each binding
-of `poseidon2PermComOut` with a **fresh** SSA register `r{depth}` and runs a
+of `(poseidon2PermComOut ())` with a **fresh** SSA register `r{depth}` and runs a
 linear-scan register allocator over those names. Because every one of the
 ≈107 000 bindings is a distinct virtual register, the linear scan sees ≈107 000
 live ranges spanning the whole permutation and exhausts the 15 GP registers — so
@@ -1159,10 +1169,10 @@ simultaneously live, so the working state stays register-**resident** across the
 13 partial rounds and the 8 external rounds — exactly the X25519 monolithic
 register-residence move (#411/#412), at the 17× headroom Poseidon2 offers.
 
-`slotTrace` records, in program order, the logical `Fin 25` slot each binding
+`(slotTrace ())` records, in program order, the logical `Fin 25` slot each binding
 writes. It mirrors the emit structure of `emitPermBody`/`emitOutStage16`
 binding-for-binding (a difference-list recorder over the same `dst` arguments),
-so `slotTrace.length = comBindings poseidon2PermComOut` and the `n`-th entry is
+so `(slotTrace ()).length = comBindings (poseidon2PermComOut ())` and the `n`-th entry is
 the logical slot of the `n`-th body binding. The owned-RA producer consumes it
 as the residence-coalescing map (binding depth → residence class). -/
 
@@ -1277,18 +1287,18 @@ def recPermBody : SlotRecT :=
   recInternalRound ∘
   recExternalRound ∘ recExternalRound ∘ recExternalRound ∘ recExternalRound
 
-/-- **The logical-slot trace of `poseidon2PermComOut`**: in program order, the
+/-- **The logical-slot trace of `(poseidon2PermComOut ())`**: in program order, the
     `Fin 25` residence slot (as a `Nat`) written by each body binding. Mirrors
     `emitPermBody` then `emitOutStage16` binding-for-binding. The owned-RA
     producer consumes it as the residence-coalescing map: binding number `n` is
-    coalesced onto residence class `slotTrace[n]`, collapsing the ≈107 000-name
+    coalesced onto residence class `(slotTrace ())[n]`, collapsing the ≈107 000-name
     SSA universe onto the 25 logical slots so the linear scan keeps the working
     state register-resident. -/
-def slotTrace : List Nat := (recPermBody ∘ recOutStage16) id []
+def slotTrace (_ : Unit) : List Nat := (recPermBody ∘ recOutStage16) id []
 
 /-- The residence-coalescing map as an `Array Nat` for `O(1)` per-binding lookup
     by the owned-RA producer (`JasminLprogExport.residenceArraySlotOf`). -/
-def slotTraceArr : Array Nat := slotTrace.toArray
+def slotTraceArr (_ : Unit) : Array Nat := (slotTrace ()).toArray
 
 /-- The residence universe has exactly 25 logical slots. -/
 def residenceSlots : Nat := 25
@@ -1334,7 +1344,7 @@ def rcIntVal (r : Fin 13) : BitVec 64 := BitVec.ofNat 64 (rcIntNat r)
     `BitVec 64` lanes: external MDS pre-mix, 4 initial external rounds, 13
     internal rounds (`Poseidon2DiffuseExact.pos2InternalRoundClosed`), 4 final
     external rounds. Mirrors `BabyBear.poseidon2BabyBearPermute`. This is the
-    value `poseidon2PermCom` computes; the `Com.denote` equality is the named
+    value `(poseidon2PermCom ())` computes; the `Com.denote` equality is the named
     residual `poseidon2_perm_com_denote_residual`. -/
 def poseidon2BBPermClosed (s : BBState) : BBState :=
   let s0  := externalMDSClosed s
@@ -1362,7 +1372,7 @@ def poseidon2BBPermClosed (s : BBState) : BBState :=
 
 /-! ## 16. The whole-perm `Com` denotation — named residual
 
-The `Com.denote` of `poseidon2PermCom` equals `poseidon2BBPermClosed` read off
+The `Com.denote` of `(poseidon2PermCom ())` equals `poseidon2BBPermClosed` read off
 the 16 lane slots. Each individual emitter's denotation IS the matching `bbX`
 (the per-emitter denotation lemmas `emitBin_denote`/`emitConst_denote` give the
 atomic case; `bbAdd`/`bbMul`/`bbReduce`/`bbCsub` are the closed forms the
@@ -1390,7 +1400,7 @@ def readLanes {Γ : Ctxt jasminDialect} (st : BState Γ)
     `Com.denote` reductions (one round's binding block at a time). -/
 def poseidon2_perm_com_denote_residual : Prop :=
   ∀ (V : Ctxt.Valuation inCtxt),
-    poseidon2PermCom.denote V
+    (poseidon2PermCom ()).denote V
       = poseidon2BBPermClosed (readLanes initBState V) ⟨0, by omega⟩
 
 /-! ### Per-round denotation steps: the structural residual, decomposed
@@ -1555,7 +1565,7 @@ def poseidon2BBPermClosed_eq_spec_residual : Prop :=
 
 /-! ## 18. Consumability by the owned-RA producer (#476)
 
-`poseidon2PermCom` is a `Com jasminDialect inCtxt r64`. The owned-RA producer
+`(poseidon2PermCom ())` is a `Com jasminDialect inCtxt r64`. The owned-RA producer
 `JasminLprogExport.Com.toLprogPhysAbi` consumes exactly such a value (as
 `Sha256LinearMain` / `KeccakLinearMain` do for SHA-256 / Keccak). Below is the
 witness application — proof that the whole-perm `Com` is now consumable, the
@@ -1565,13 +1575,13 @@ takes one input/output buffer pointer; the 16 lanes are loaded/stored by the
 two-pointer ABI; the bench harness supplies the concrete load/store maps.) -/
 
 /-- **The owned-RA `Lprog` for the whole Poseidon2 permutation.** This is the
-    witness that `poseidon2PermCom` is consumable by the #476 owned-RA producer
+    witness that `(poseidon2PermCom ())` is consumable by the #476 owned-RA producer
     `Com.toLprogPhysAbi`: it elaborates iff the whole-perm `Com` has the right
     `Com jasminDialect inCtxt r64` shape the producer expects. -/
 noncomputable def poseidon2PermLprog :
     CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.Lprog :=
   CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.Com.toLprogPhysAbi
-    poseidon2PermCom "poseidon2_bb_permute"
+    (poseidon2PermCom ()) "poseidon2_bb_permute"
 
 /-- **Consumability witness**: the owned-RA producer emits exactly one function
     named `poseidon2_bb_permute` from the whole-perm `Com`. This certifies the

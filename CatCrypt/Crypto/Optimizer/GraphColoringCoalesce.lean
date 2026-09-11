@@ -3,10 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
-import CatCrypt.Crypto.Optimizer.RandomizedRegAlloc
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarCompileCorrect
+module
+
+public meta import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
+public import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
+public meta import CatCrypt.Crypto.Optimizer.RandomizedRegAlloc
+public import CatCrypt.Crypto.Optimizer.RandomizedRegAlloc
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarCompileCorrect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarCompileCorrect
 
 /-!
 # Verified MOVE COALESCING (P4): the one register-allocator perf pass jasminc has
@@ -87,6 +93,8 @@ post-pass is independently translation-validated and the allocator core is left
 untouched. (The exact call site is the lowering entry in the owned pipeline; it is
 NOT edited here — this module is built strictly on top by importing.)
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

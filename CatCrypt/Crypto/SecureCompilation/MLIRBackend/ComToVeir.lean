@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminAST
-import CatCrypt.Crypto.SecureCompilation.VIR.MlirArithDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.MlirScfDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.MlirArithScfSum
+module
+
+public import CatCrypt.Crypto.Jasmin.JasminAST
+public import CatCrypt.Crypto.SecureCompilation.VIR.MlirArithDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.MlirScfDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.MlirArithScfSum
 
 /-!
 # MLIR backend — Phase 6′ AST-direct translation (task #183)
@@ -120,6 +122,8 @@ For the out-of-scope arms, the existing text-emit path (with its
 `MlirBackendSemanticsAgrees` external hypothesis) remains the bridge.
 This is documented in `Denote.lean` after Phase 6′ closure.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

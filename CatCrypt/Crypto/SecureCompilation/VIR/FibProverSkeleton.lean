@@ -3,10 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.StructuredControlFlow
-import CatCrypt.Crypto.SecureCompilation.VIR.DataDependentControlFlow
-import CatCrypt.Crypto.SecureCompilation.VIR.ProverComposition
-import CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.StructuredControlFlow
+public import CatCrypt.Crypto.SecureCompilation.VIR.StructuredControlFlow
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DataDependentControlFlow
+public import CatCrypt.Crypto.SecureCompilation.VIR.DataDependentControlFlow
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ProverComposition
+public import CatCrypt.Crypto.SecureCompilation.VIR.ProverComposition
+public meta import CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel
+public import CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel
 
 /-!
 # The fixed Fibonacci STARK prover — orchestration skeleton
@@ -28,6 +34,8 @@ in the emitted leaf bodies yields a prover whose orchestration is correct by
 construction (`fibProver_denote`), and a looped phase is provably the iterate of its
 emitted body (via `LoopEmitBridge.loopEmit_denote_iterate`, on the machine side).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.FibProverSkeleton
 

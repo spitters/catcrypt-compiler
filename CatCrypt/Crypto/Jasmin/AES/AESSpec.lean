@@ -3,8 +3,10 @@ Copyright (c) 2024 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminOps
-import CatCrypt.Deep.RawCode
+module
+
+public import CatCrypt.Crypto.Jasmin.JasminOps
+public import CatCrypt.Deep.RawCode
 
 /-!
 # AES-128 Functional Specification
@@ -26,6 +28,8 @@ equivalent. Follows `aes_spec.v` from the CatCrypt jasmin branch.
 - FIPS 197: Advanced Encryption Standard (AES)
 - `aes_spec.v` from CatCrypt jasmin branch
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.AES
 

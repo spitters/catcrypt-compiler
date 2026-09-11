@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.RorImmSelect
-import CatCrypt.Crypto.SecureCompilation.Dialects.AndnSelect
-import CatCrypt.Crypto.SecureCompilation.Dialects.IselPipeline
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.RorImmSelect
+public import CatCrypt.Crypto.SecureCompilation.Dialects.AndnSelect
+public import CatCrypt.Crypto.SecureCompilation.Dialects.IselPipeline
 
 /-!
 # D3 — ISel operand-soundness: the former miscompiles are closed (a regression record)
@@ -48,6 +50,8 @@ any operand canonicity at the fire site, because the matcher is operand-sound. C
 **no miscompile counterexample survives** (§1–§2): the conditioning is on the descent,
 not on correctness of a fired site.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

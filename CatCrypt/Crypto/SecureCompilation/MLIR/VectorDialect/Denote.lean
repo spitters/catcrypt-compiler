@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Ops
+module
+
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Ops
 
 /-!
 # MLIR `vector` dialect — Denotation
@@ -23,6 +25,8 @@ equation `denoteVectorOp op = lowerSpec op` where `lowerSpec` is the *pointwise
 expansion* into the per-lane scalar `α`-operations — exactly the shape a
 progressive `vector → x86vector` lowering needs.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

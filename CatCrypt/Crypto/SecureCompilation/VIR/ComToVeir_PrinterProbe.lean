@@ -3,6 +3,8 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
+module
+
 /-!
 # Path (b) Tier 1.2 (probe-only): Veir printer status
 
@@ -94,6 +96,8 @@ If a `StateM` variant is undesirable, an even cheaper option is a
 `withStdout` trick); this trades purity for one extra `IO` and reuses
 `Printer.printModule` verbatim. Estimated 25–40 LoC.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ModArithDialect
-import Mathlib.Data.ZMod.Basic
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.ModArithDialect
+public import Mathlib.Data.ZMod.Basic
 
 /-!
 # Field VIR dialect (#482-2 — the L3 algebraic layer, over ModArith)
@@ -67,6 +69,8 @@ field arithmetic is a fixed schedule of base-field ops, index-independent — so
 `ctSafe` is `true` for all ops.  This is the L3 instance of the VIR `ctSafe`
 story (`CTPredicate.lean`): the field layer is CT by construction.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

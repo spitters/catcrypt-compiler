@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTDSL
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.LowCTDSL
+public import CatCrypt.Crypto.Jasmin.LowCTDSL
 
 /-!
 # SHA-512 compression function in the LowCT DSL (structural demo)
@@ -41,6 +45,8 @@ Jasmin proof). This file demonstrates the *alternative* — author
 SHA-512 at the LowCT level — in case you want the whole thing
 through the CryptoSSA→VIR→MLIR pipeline.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.Examples.SHA512CompressDSL
 

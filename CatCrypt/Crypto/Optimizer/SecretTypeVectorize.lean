@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.SLPVectorize
-import CatCrypt.Crypto.Optimizer.SecretType
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Optimizer.SLPVectorize
+public import CatCrypt.Crypto.Optimizer.SecretType
 
 /-!
 # A fifth pass for the compositional-CT taint story: the SLP auto-vectorizer (#594)
@@ -79,6 +82,8 @@ join is well-defined on a fired group precisely because of it.
 
 All goals closed.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

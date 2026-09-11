@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
-import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockCorres
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
+public import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockCorres
 
 /-!
 # The dialect-generic correspondence `CorresM`
@@ -25,6 +27,8 @@ instances.
 This is the "machine-generic `Corres`" the `Com`/dialect framing points at: the
 step is the dialect denotation, and one relation covers every machine layer.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

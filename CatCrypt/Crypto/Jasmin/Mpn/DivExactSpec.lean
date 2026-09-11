@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.DivRemSpec
-import Mathlib.Tactic
+module
+
+public meta import CatCrypt.Crypto.Jasmin.Mpn.DivRemSpec
+public import CatCrypt.Crypto.Jasmin.Mpn.DivRemSpec
+
+@[expose] public section
 
 set_option autoImplicit false
 

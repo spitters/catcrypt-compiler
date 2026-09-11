@@ -3,9 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Util.PrattCertificate
-import CatCrypt.Crypto.Util.P25519.NodeB
-import CatCrypt.Crypto.Util.P25519.NodeC
+module
+
+public meta import CatCrypt.Crypto.Util.PrattCertificate
+public import Mathlib.Tactic.NormNum.Prime
+public import CatCrypt.Crypto.Util.PrattCertificate
+public meta import CatCrypt.Crypto.Util.P25519.NodeB
+public import CatCrypt.Crypto.Util.P25519.NodeB
+public meta import CatCrypt.Crypto.Util.P25519.NodeC
+public import CatCrypt.Crypto.Util.P25519.NodeC
 
 /-!
 # P25519 primality certificate — nested factor node `pfE`
@@ -15,6 +21,8 @@ Lucas certificate for the nested prime factor
 the sub-certificates `pfB` from `NodeB` and `pfC` from `NodeC`. The product
 check reduces by `decide` and the Fermat and witness checks by `native_decide`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxRecDepth 50000

@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasminDenote
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasminDenote
 
 /-!
 # `lowerLatticeToJasmin` is denotation-preserving — UNCONDITIONALLY
@@ -11,26 +14,28 @@ import CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasminDenote
 `LatticeToJasminDenote.lean` proves the dialect lowering
 `lowerLatticeToJasmin : Com latticeDialect → Com jasminDialect` preserves
 `Com.denote` *under* a leaf-agreement hypothesis `LeafAgrees`, which it leaves
-open because the Jasmin `extCall` used to denote to an opaque stub.
+open as a parameter.
 
-`JasminDialect.jasminExtSem` now gives the 16-bit stack-array leaves their real,
-data-oblivious semantics: the unary leaves (`ntt_*`, `ntt_invntt_*`) are the
-identity, and the binary leaves are pointwise product (`ntt_basemul_*`,
-`"poly_mul"`) or pointwise sum (`"poly_add"`). Those are exactly the lattice op
-denotations transported across `tau` (both polynomial forms denote to
-`Fin n → BitVec 16`). This file **discharges** `LeafAgrees` against that
-semantics and feeds it to the parametric theorem, yielding the unconditional
-preservation result and its `srcCom`/`tgtCom` corollaries.
+`JasminDialect.jasminExtSem` gives the 16-bit stack-array leaves data-oblivious
+semantics: the unary leaves (`ntt_*`, `ntt_invntt_*`) are the identity, and the
+binary leaves are pointwise product (`ntt_basemul_*`, `"poly_mul"`) or pointwise
+sum (`"poly_add"`). Those are the lattice op denotations transported across `tau`
+(both polynomial forms denote to `Fin n → BitVec 16`). This file **discharges**
+`LeafAgrees` against that semantics and feeds it to the parametric theorem,
+yielding the unconditional preservation result and its `srcCom`/`tgtCom`
+corollaries.
 
-The `if name = "poly_add"` discriminator in `jasminExtSem` reduces by `decide`
-for each lattice leaf: the leaf names differ from `"poly_add"` already at a
-concrete leading character (`ntt_basemul_*` at index 0, `"poly_mul"` at index 5),
-so no reasoning about the embedded `toString q`/`toString n` is needed.
+The `if name = "poly_add"` discriminator in `jasminExtSem` is resolved per leaf
+without deciding the embedded `toString q`/`toString n`: the two literal-named
+leaves settle it by `decide`, and `ntt_basemul_*` by the length argument of
+`leafName_basemul_ne_polyAdd`.
 
-0 sorries. The only remaining parametric edge on the jasmin path is
-`CryptoToJasminComCorrect.JasminLeafAgrees` for *genuine* external leaves
+0 sorries. The remaining parametric edge on the jasmin path is
+`CryptoToJasminComCorrect.JasminLeafAgrees` for external leaves
 (e.g. CryptoSSA `fp_*` intrinsics), which keep the opaque default by design.
 -/
+
+@[expose] public section
 
 set_option autoImplicit true -- SSA IR: context/type variables
 
@@ -56,7 +61,7 @@ indices (`stackGet_id`). -/
     `"poly_add"` is 8. Lets the binary `jasminExtSem` discriminator (`sum` only
     for `"poly_add"`) resolve `basemul` to `product` without deciding the
     embedded `toString q`/`toString n`. -/
-private theorem leafName_basemul_ne_polyAdd (q n : Nat) :
+theorem leafName_basemul_ne_polyAdd (q n : Nat) :
     ("ntt_basemul_" ++ toString q ++ "_" ++ toString n) ≠ "poly_add" := by
   intro h
   have hlen := congrArg String.length h
@@ -107,11 +112,11 @@ theorem latticeLeafAgrees : LatticeToJasminDenote.LeafAgrees := by
         | cons vb args'' => cases args'' with
           | nil =>
               funext j
-              dsimp only [lowerExpr, jasminOpOf, leafName, tau, Expr.denote,
+              dsimp only [lowerExpr, jasminOpOf, leafName, Expr.denote,
                 Expr.lookupArgs, mapVarHV, HVector.head, HVector.tail,
                 DialectSignature.sig, DialectSignature.ret, DialectDenote.denote,
-                jasminDenote, jasminExtSem, latticeDenote, basemulF, transTy,
-                List.map_cons, List.map_nil]
+                jasminDenote, jasminExtSem, latticeDenote, basemulF, transTy]
+              simp only [List.map_cons, List.map_nil, tau]
               rw [if_neg (leafName_basemul_ne_polyAdd q n)]
               simp only [stackGet_id]
               show ((mapVar va).lookup (mapVal V)) j * ((mapVar vb).lookup (mapVal V)) j
@@ -124,12 +129,12 @@ theorem latticeLeafAgrees : LatticeToJasminDenote.LeafAgrees := by
         | cons vb args'' => cases args'' with
           | nil =>
               funext j
-              dsimp only [lowerExpr, jasminOpOf, leafName, tau, Expr.denote,
+              dsimp only [lowerExpr, jasminOpOf, leafName, Expr.denote,
                 Expr.lookupArgs, mapVarHV, HVector.head, HVector.tail,
                 DialectSignature.sig, DialectSignature.ret, DialectDenote.denote,
-                jasminDenote, jasminExtSem, latticeDenote, polyAddNF, transTy,
-                List.map_cons, List.map_nil]
-              rw [if_pos rfl]
+                jasminDenote, jasminExtSem, latticeDenote, polyAddNF, transTy]
+              simp only [List.map_cons, List.map_nil, tau]
+              rw [if_true]
               simp only [stackGet_id]
               show ((mapVar va).lookup (mapVal V)) j + ((mapVar vb).lookup (mapVal V)) j
                 = (va.lookup V) j + (vb.lookup V) j
@@ -141,11 +146,12 @@ theorem latticeLeafAgrees : LatticeToJasminDenote.LeafAgrees := by
         | cons vb args'' => cases args'' with
           | nil =>
               funext j
-              dsimp only [lowerExpr, jasminOpOf, leafName, tau, Expr.denote,
+              dsimp only [lowerExpr, jasminOpOf, leafName, Expr.denote,
                 Expr.lookupArgs, mapVarHV, HVector.head, HVector.tail,
                 DialectSignature.sig, DialectSignature.ret, DialectDenote.denote,
                 jasminDenote, jasminExtSem, latticeDenote, polyMulCF, invnttF,
-                basemulF, nttF, transTy, List.map_cons, List.map_nil]
+                basemulF, nttF, transTy]
+              simp only [List.map_cons, List.map_nil, tau]
               rw [if_neg (by decide)]
               simp only [stackGet_id]
               show ((mapVar va).lookup (mapVal V)) j * ((mapVar vb).lookup (mapVal V)) j

@@ -3,9 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3BarrettLaw
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3BarrettLaw
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3BarrettLaw
 
 /-!
 # The Plonky3 BabyBear NTT butterfly, lowered through the in-Lean x86 backend (#281)
@@ -57,6 +64,8 @@ Jasmin's Rocq x86 semantics; `AsmPrinter` + `gas` is the thin syntactic trust
 boundary. No `sorry`; axioms are `[propext, Quot.sound]` (+ `Lean.ofReduceBool`
 for the `native_decide` numeric pins), matching the rest of the backend.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -336,7 +345,7 @@ def butterflyAsm : String :=
     butterflyAsmBody
     ["\tpopq %r13", "\tpopq %r12", "\tpopq %rbx", "\tret"]
 
-#eval IO.println butterflyAsm
+-- #eval IO.println butterflyAsm
 
 /-- The emitted asm has one body line per instruction. -/
 theorem butterflyAsmBody_length : butterflyAsmBody.length = 36 := by native_decide
@@ -344,7 +353,7 @@ theorem butterflyAsmBody_length : butterflyAsmBody.length = 36 := by native_deci
 /-- Local substring test (`needle` occurs in `hay`), for the shape checks. -/
 def hasSub (hay needle : String) : Bool :=
   (List.range (hay.length + 1)).any (fun i =>
-    needle == (hay.toList.drop i |>.take needle.length).asString)
+    needle == String.ofList (hay.toList.drop i |>.take needle.length))
 
 /- The Barrett constant and prime appear as immediates; the memory loads/stores
     print in AT&T `off(%base)` form; `negq` and `mulx`-free scalar body. -/

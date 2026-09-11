@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminCoqSemMirror
+module
+
+public meta import CatCrypt.Crypto.Jasmin.JasminCoqSemMirror
+public import CatCrypt.Crypto.Jasmin.JasminCoqSemMirror
 
 /-!
 # Operational CALL run-correctness: emitted `Ccall` run = running the callee
@@ -90,6 +93,8 @@ its functional fuel-bounded run = (evaluate args → run the callee `fn`'s body
 All goals are closed; no opaque-leaf hypothesis is needed (the executor and the
 composition target are both concrete functional definitions).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

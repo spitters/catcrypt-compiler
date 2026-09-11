@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint
 
 /-!
 # Owned `.s` emit for lane-sliced Keccak-f[1600] migrated onto the unified `Com jasminDialect` (512-bit ZMM)
@@ -94,6 +98,8 @@ Invoke:
 or `lake env lean --run
   CatCrypt/Crypto/SecureCompilation/X86Backend/Keccak4WayVpackZmmEmit.lean`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -437,7 +443,7 @@ def keccak_round_vpackzmm_asm : String :=
   ++ iotaExportAsm 0 ++ "\n"
 
 -- Print the emitted owned `.s` for visual inspection.
-#eval IO.println keccak_round_vpackzmm_asm
+-- #eval IO.println keccak_round_vpackzmm_asm
 
 /-! ## 7. Structural smoke pins on the emitted `.s` text
 

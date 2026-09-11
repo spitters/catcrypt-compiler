@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta
+module
+
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta
 
 /-!
 # H3.quarta-LeafAgrees: per-leaf agreement scaffolding
@@ -12,6 +14,8 @@ Provides reusable constructors for `LeafCallAgreesTower` instances.
 Concrete per-leaf instances (e.g., for `fp25519_add`, `scalar25519_mul`)
 are populated by per-protocol wiring; this file gives the shape.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

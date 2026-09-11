@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
-import Mathlib.Tactic.Ring
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
+public import Mathlib.Tactic.Ring
 
 /-!
 # The array-load value leaf for the ascent calculus
@@ -39,6 +41,8 @@ read dual of `wEnc_memSetDyn`.
 under the real `semScalar` lands in a state whose destination holds the abstract
 array index `arr[idx]`. This is the read analogue of `corres_arrStore`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,15 +3,26 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3CompressEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3HashLeafEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3NttLayerEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FriFoldEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ScfDialect
-import CatCrypt.Crypto.SecureCompilation.Dialects.OrchFront
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3CompressEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3CompressEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3HashLeafEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3HashLeafEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3NttLayerEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3NttLayerEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FriFoldEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FriFoldEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ScfDialect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ScfDialect
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.OrchFront
+public import CatCrypt.Crypto.SecureCompilation.Dialects.OrchFront
 
 /-!
 # Plonky3 whole-prover ORCHESTRATION LOOPS as owned control flow (FULL_PROVER_VS_P3 Gap 2 items 1–2)
@@ -71,6 +82,8 @@ inner-loop call. The FRI fold chain is the analogous halving loop.
   counter semantics `LoopUnroll`/`ScfDialect` prove), so the looped emission and a
   C `for` over the same body agree by construction.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

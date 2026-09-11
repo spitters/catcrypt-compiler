@@ -3,9 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminToSSA
-import CatCrypt.Crypto.Jasmin.JasminCT
-import CatCrypt.Crypto.Jasmin.S2NBignumRefSem
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.JasminToSSA
+public import CatCrypt.Crypto.Jasmin.JasminToSSA
+public meta import CatCrypt.Crypto.Jasmin.JasminCT
+public import CatCrypt.Crypto.Jasmin.JasminCT
+public meta import CatCrypt.Crypto.Jasmin.S2NBignumRefSem
+public import CatCrypt.Crypto.Jasmin.S2NBignumRefSem
 
 /-!
 # s2n-bignum ports through the real CatCrypt pipeline
@@ -55,6 +61,8 @@ Consequences for ARM-style code:
 * `word_negmodinv.S` through `translateMonoFun` — 1 input, 1 output.
 -/
 
+@[expose] public section
+
 namespace CatCrypt.Crypto.Jasmin.S2NBignumSSA
 
 open CatCrypt.Crypto.Jasmin
@@ -69,14 +77,8 @@ set_option autoImplicit false
 The `CProg`-free SSA builder helpers (`v`, `assignConst`, `assignBin`,
 `assignShL`, `assignShR`) live in `S2NBignumRefSem.lean` (same namespace,
 imported above) so the dialect layer can reuse them without the `CProg`
-material below. The low-level `private` constructors (`pvar`, `plval`,
-`cassgn`) used by a few later ports (`WordBitsize`) are re-declared here
-since `private` definitions are module-scoped. -/
-
-private def pvar (s : String) : PExpr := .Pvar { gv := { var := v s }, gs := false }
-private def plval (s : String) : LVal := .Lvar { var := v s }
-private def cassgn (s : String) (e : PExpr) : InstrR :=
-  .Cassgn (plval s) .AT_none (.sword .U64) e
+material below. The low-level constructors (`pvar`, `plval`, `cassgn`) used by
+a few later ports (`WordBitsize`) come from that module too. -/
 
 /-! ## Port 1: `simple.s`
 
@@ -549,10 +551,10 @@ These bodies use `Copn lvs _ (Oasm {name}) [Pvar y]` with 5 `Lnone`
 flag-discard lvals followed by one real `Lvar`. Our emitter produces
 `_, _, _, _, _, x = #OP(y);` — Jasmin's required form. -/
 
-private def flagDiscards : List LVal :=
+def flagDiscards : List LVal :=
   List.replicate 5 (.Lnone {} (.sword .U64))
 
-private def intrinsic1 (op : String) (dst src : String) : InstrR :=
+def intrinsic1 (op : String) (dst src : String) : InstrR :=
   .Copn (flagDiscards ++ [ .Lvar { var := v dst } ]) .AT_none
     (.Oasm { name := op })
     [ .Pvar { gv := { var := v src }, gs := false } ]
@@ -781,11 +783,11 @@ Demonstrates multi-output `Copn` through the full pipeline:
 
 namespace BignumAdd2
 
-private def adc_flag_pre  : List LVal := [.Lnone {} (.sword .U64)]
-private def adc_flag_post : List LVal := List.replicate 3 (.Lnone {} (.sword .U64))
+def adc_flag_pre  : List LVal := [.Lnone {} (.sword .U64)]
+def adc_flag_post : List LVal := List.replicate 3 (.Lnone {} (.sword .U64))
 
 /-- Build `Copn [_, cf, _, _, _, r] := #ADD_64(a, b)`. -/
-private def addCopn (cfName rName aName bName : String) : InstrR :=
+def addCopn (cfName rName aName bName : String) : InstrR :=
   .Copn (adc_flag_pre ++ [.Lvar { var := v cfName }] ++ adc_flag_post
           ++ [.Lvar { var := v rName }])
         .AT_none (.Oasm ⟨"ADD_64"⟩)
@@ -793,7 +795,7 @@ private def addCopn (cfName rName aName bName : String) : InstrR :=
          .Pvar { gv := { var := v bName }, gs := false }]
 
 /-- Build `Copn [_, cf, _, _, _, r] := #ADC_64(a, b, cin)`. -/
-private def adcCopn (cfName rName aName bName cinName : String) : InstrR :=
+def adcCopn (cfName rName aName bName cinName : String) : InstrR :=
   .Copn (adc_flag_pre ++ [.Lvar { var := v cfName }] ++ adc_flag_post
           ++ [.Lvar { var := v rName }])
         .AT_none (.Oasm ⟨"ADC_64"⟩)
@@ -837,26 +839,26 @@ runs one ADD_64 + three ADC_64, stores 4 u64s back to `op + {0, 8, 16, 24}`. -/
 namespace BignumAdd4
 
 /-- Memory load `x := [:u64 base + k]` as a single `Cassgn`. -/
-private def load64 (x base : String) (k : Int) : InstrR :=
+def load64 (x base : String) (k : Int) : InstrR :=
   .Cassgn (.Lvar { var := v x }) .AT_none (.sword .U64)
     (.Pload .U64 { var := v base } (.Pconst k))
 
 /-- Memory store `[:u64 base + k] := x`. -/
-private def store64 (base : String) (k : Int) (src : String) : InstrR :=
+def store64 (base : String) (k : Int) (src : String) : InstrR :=
   .Cassgn (.Lmem .U64 { var := v base } (.Pconst k)) .AT_none (.sword .U64)
     (.Pvar { gv := { var := v src }, gs := false })
 
-private def adc_flag_pre : List LVal := [.Lnone {} (.sword .U64)]
-private def adc_flag_post : List LVal := List.replicate 3 (.Lnone {} (.sword .U64))
+def adc_flag_pre : List LVal := [.Lnone {} (.sword .U64)]
+def adc_flag_post : List LVal := List.replicate 3 (.Lnone {} (.sword .U64))
 
-private def addCopn (cfName rName aName bName : String) : InstrR :=
+def addCopn (cfName rName aName bName : String) : InstrR :=
   .Copn (adc_flag_pre ++ [.Lvar { var := v cfName }] ++ adc_flag_post
           ++ [.Lvar { var := v rName }])
         .AT_none (.Oasm ⟨"ADD_64"⟩)
         [.Pvar { gv := { var := v aName }, gs := false },
          .Pvar { gv := { var := v bName }, gs := false }]
 
-private def adcCopn (cfName rName aName bName cinName : String) : InstrR :=
+def adcCopn (cfName rName aName bName cinName : String) : InstrR :=
   .Copn (adc_flag_pre ++ [.Lvar { var := v cfName }] ++ adc_flag_post
           ++ [.Lvar { var := v rName }])
         .AT_none (.Oasm ⟨"ADC_64"⟩)
@@ -924,55 +926,55 @@ existing Pvar/Pconst paths are untouched. -/
 namespace BignumMul4
 
 /-- Memory load `x := [:u64 base + k]`. -/
-private def load64 (x base : String) (k : Int) : InstrR :=
+def load64 (x base : String) (k : Int) : InstrR :=
   .Cassgn (.Lvar { var := v x }) .AT_none (.sword .U64)
     (.Pload .U64 { var := v base } (.Pconst k))
 
 /-- Memory store `[:u64 base + k] := x`. -/
-private def store64 (base : String) (k : Int) (src : String) : InstrR :=
+def store64 (base : String) (k : Int) (src : String) : InstrR :=
   .Cassgn (.Lmem .U64 { var := v base } (.Pconst k)) .AT_none (.sword .U64)
     (.Pvar { gv := { var := v src }, gs := false })
 
-private def pv (s : String) : PExpr :=
+def pv (s : String) : PExpr :=
   .Pvar { gv := { var := v s }, gs := false }
 
 /-- Memory-load `PExpr` for use as an intrinsic argument, e.g.
     `#MULX(rdx, [:u64 bp + k])`. -/
-private def pload (base : String) (k : Int) : PExpr :=
+def pload (base : String) (k : Int) : PExpr :=
   .Pload .U64 { var := v base } (.Pconst k)
 
-private def lvR (s : String) : LVal := .Lvar { var := v s }
+def lvR (s : String) : LVal := .Lvar { var := v s }
 
 /-- Flag layout for `#ADD_64` / `#ADC_64`: the opaque 6-output form is
     `[of, cf, sf, pf, zf, dst]`.  All flags except `cf` are discarded. -/
-private def flagPre  : List LVal := [.Lnone {} (.sword .U64)]
-private def flagPost : List LVal := List.replicate 3 (.Lnone {} (.sword .U64))
+def flagPre  : List LVal := [.Lnone {} (.sword .U64)]
+def flagPost : List LVal := List.replicate 3 (.Lnone {} (.sword .U64))
 
-private def addCopn (cfOut r aName bName : String) : InstrR :=
+def addCopn (cfOut r aName bName : String) : InstrR :=
   .Copn (flagPre ++ [lvR cfOut] ++ flagPost ++ [lvR r]) .AT_none
         (.Oasm ⟨"ADD_64"⟩) [pv aName, pv bName]
 
-private def adcCopn (cfOut r aName bName cinName : String) : InstrR :=
+def adcCopn (cfOut r aName bName cinName : String) : InstrR :=
   .Copn (flagPre ++ [lvR cfOut] ++ flagPost ++ [lvR r]) .AT_none
         (.Oasm ⟨"ADC_64"⟩) [pv aName, pv bName, pv cinName]
 
 /-- ADC with an immediate RHS (used to propagate the final carry into
     the top partial-product limb: `_, cf, _, _, _, r = #ADC_64(h, 0, cf);`). -/
-private def adcCopnImm (cfOut r aName : String) (k : Int) (cinName : String) : InstrR :=
+def adcCopnImm (cfOut r aName : String) (k : Int) (cinName : String) : InstrR :=
   .Copn (flagPre ++ [lvR cfOut] ++ flagPost ++ [lvR r]) .AT_none
         (.Oasm ⟨"ADC_64"⟩) [pv aName, .Pconst k, pv cinName]
 
 /-- `(hi, lo) = #MULX(rdx, [:u64 base + k])` — second operand is a
     memory load, saving a register compared to pre-loading `b[k/8]`.
     x86 MULX natively supports a memory source for its second operand. -/
-private def mulxCopnMem (hi lo : String) (rdxName base : String) (k : Int) : InstrR :=
+def mulxCopnMem (hi lo : String) (rdxName base : String) (k : Int) : InstrR :=
   .Copn [lvR hi, lvR lo] .AT_none (.Oasm ⟨"MULX"⟩)
         [pv rdxName, pload base k]
 
 /-- Load `[:u64 base + k]` directly into the `rdx` alias: this is the
     canonical pattern for cycling multipliers through rdx without
     forcing Jasmin's RA to spill a live GPR. -/
-private def loadRdx (base : String) (k : Int) : InstrR :=
+def loadRdx (base : String) (k : Int) : InstrR :=
   .Cassgn (lvR "rdx") .AT_none (.sword .U64) (pload base k)
 
 def body : List InstrR :=
@@ -1077,19 +1079,19 @@ against the workspace's existing BMI2 jazz code
 
 namespace BignumMul4Adcx
 
-private def lvR (s : String) : LVal := .Lvar { var := v s }
-private def pv (s : String) : PExpr := .Pvar { gv := { var := v s }, gs := false }
+def lvR (s : String) : LVal := .Lvar { var := v s }
+def pv (s : String) : PExpr := .Pvar { gv := { var := v s }, gs := false }
 
 /-- `cf_out, r = #ADCX(a, b, cf_in)` — adds via the CF chain only. CF
     must be initialized (typically via `xorlCopn` resetting both CF and
     OF before a chain). -/
-private def adcxCopn (cfOut r aName bName cinName : String) : InstrR :=
+def adcxCopn (cfOut r aName bName cinName : String) : InstrR :=
   .Copn [lvR cfOut, lvR r] .AT_none (.Oasm ⟨"ADCX"⟩)
         [pv aName, pv bName, pv cinName]
 
 /-- `of_out, r = #ADOX(a, b, of_in)` — adds via the OF chain only. OF
     must be initialized (see `xorlCopn`). -/
-private def adoxCopn (ofOut r aName bName oinName : String) : InstrR :=
+def adoxCopn (ofOut r aName bName oinName : String) : InstrR :=
   .Copn [lvR ofOut, lvR r] .AT_none (.Oasm ⟨"ADOX"⟩)
         [pv aName, pv bName, pv oinName]
 
@@ -1098,7 +1100,7 @@ private def adoxCopn (ofOut r aName bName oinName : String) : InstrR :=
     `cf, of, _, _, _, r = #XOR_64(r, r)` keeping cf and of as register
     flags. Variant for u32 (`xorl`) is canonical for s2n-bignum's
     "zero a 32-bit register" pattern. -/
-private def xorlCopn (cfOut ofOut rName : String) : InstrR :=
+def xorlCopn (cfOut ofOut rName : String) : InstrR :=
   -- XOR_64 has 6 outputs: of, cf, sf, pf, zf, dst. Capture cf and of;
   -- discard the rest.
   .Copn [lvR ofOut, lvR cfOut,
@@ -1117,16 +1119,16 @@ private def xorlCopn (cfOut ofOut rName : String) : InstrR :=
     word (each accumulation step increments K). Plus `lo`/`hi` for the
     fresh outputs of MULX before they enter an accumulation chain. -/
 
-private def pload (base : String) (k : Int) : PExpr :=
+def pload (base : String) (k : Int) : PExpr :=
   .Pload .U64 { var := v base } (.Pconst k)
-private def storeOp (k : Int) (s : String) : InstrR :=
+def storeOp (k : Int) (s : String) : InstrR :=
   .Cassgn (.Lmem .U64 { var := v "op" } (.Pconst k)) .AT_none (.sword .U64) (pv s)
-private def loadRdxFrom (base : String) (k : Int) : InstrR :=
+def loadRdxFrom (base : String) (k : Int) : InstrR :=
   .Cassgn (lvR "rdx") .AT_none (.sword .U64) (pload base k)
-private def mulxMem (hi lo base : String) (k : Int) : InstrR :=
+def mulxMem (hi lo base : String) (k : Int) : InstrR :=
   .Copn [lvR hi, lvR lo] .AT_none (.Oasm ⟨"MULX"⟩) [pv "rdx", pload base k]
 /-- `cf, of, _, _, _, x = #XOR_64(x, x)` — clears x and sets CF=OF=0. -/
-private def xorClear (cfOut ofOut x : String) : InstrR :=
+def xorClear (cfOut ofOut x : String) : InstrR :=
   .Copn [lvR ofOut, lvR cfOut,
          .Lnone {} (.sword .U64),
          .Lnone {} (.sword .U64),
@@ -1135,7 +1137,7 @@ private def xorClear (cfOut ofOut x : String) : InstrR :=
 /-- Initialize a register to 0 via xor with itself (also clears CF/OF
     if used at the start of a chain — but we use the dedicated
     `xorClear` for the chain reset and this for var init). -/
-private def setZero (cfOut ofOut x : String) : InstrR := xorClear cfOut ofOut x
+def setZero (cfOut ofOut x : String) : InstrR := xorClear cfOut ofOut x
 
 def body : List InstrR :=
   let initialPart := [
@@ -1807,51 +1809,51 @@ TODO at the bottom of this namespace.
 The body uses only `Cassgn` + `Copn(MULX/ADD/ADC/SUB/SBB/AND/OR/XOR)`,
 all of which `JasminEmit.emitInstr` supports. -/
 
-private def lvR (s : String) : LVal := .Lvar { var := v s }
-private def pv (s : String) : PExpr := .Pvar { gv := { var := v s }, gs := false }
-private def pload (base : String) (k : Int) : PExpr :=
+def lvR (s : String) : LVal := .Lvar { var := v s }
+def pv (s : String) : PExpr := .Pvar { gv := { var := v s }, gs := false }
+def pload (base : String) (k : Int) : PExpr :=
   .Pload .U64 { var := v base } (.Pconst k)
 
-private def store64 (base : String) (k : Int) (src : String) : InstrR :=
+def store64 (base : String) (k : Int) (src : String) : InstrR :=
   .Cassgn (.Lmem .U64 { var := v base } (.Pconst k)) .AT_none (.sword .U64) (pv src)
 
-private def flagPre  : List LVal := [.Lnone {} (.sword .U64)]
-private def flagPost : List LVal := List.replicate 3 (.Lnone {} (.sword .U64))
+def flagPre  : List LVal := [.Lnone {} (.sword .U64)]
+def flagPost : List LVal := List.replicate 3 (.Lnone {} (.sword .U64))
 
-private def addCopn (cfOut r aName bName : String) : InstrR :=
+def addCopn (cfOut r aName bName : String) : InstrR :=
   .Copn (flagPre ++ [lvR cfOut] ++ flagPost ++ [lvR r]) .AT_none
         (.Oasm ⟨"ADD_64"⟩) [pv aName, pv bName]
 
-private def adcCopn (cfOut r aName bName cinName : String) : InstrR :=
+def adcCopn (cfOut r aName bName cinName : String) : InstrR :=
   .Copn (flagPre ++ [lvR cfOut] ++ flagPost ++ [lvR r]) .AT_none
         (.Oasm ⟨"ADC_64"⟩) [pv aName, pv bName, pv cinName]
 
-private def adcCopnImm (cfOut r aName : String) (k : Int) (cinName : String) : InstrR :=
+def adcCopnImm (cfOut r aName : String) (k : Int) (cinName : String) : InstrR :=
   .Copn (flagPre ++ [lvR cfOut] ++ flagPost ++ [lvR r]) .AT_none
         (.Oasm ⟨"ADC_64"⟩) [pv aName, .Pconst k, pv cinName]
 
-private def subCopn (cfOut r aName bName : String) : InstrR :=
+def subCopn (cfOut r aName bName : String) : InstrR :=
   .Copn (flagPre ++ [lvR cfOut] ++ flagPost ++ [lvR r]) .AT_none
         (.Oasm ⟨"SUB_64"⟩) [pv aName, pv bName]
 
-private def sbbCopn (cfOut r aName bName cinName : String) : InstrR :=
+def sbbCopn (cfOut r aName bName cinName : String) : InstrR :=
   .Copn (flagPre ++ [lvR cfOut] ++ flagPost ++ [lvR r]) .AT_none
         (.Oasm ⟨"SBB_64"⟩) [pv aName, pv bName, pv cinName]
 
 /-- Memory-load second-operand MULX: `(hi, lo) = #MULX(rdx, [:u64 base + k])`. -/
-private def mulxCopnMem (hi lo : String) (rdxName base : String) (k : Int) : InstrR :=
+def mulxCopnMem (hi lo : String) (rdxName base : String) (k : Int) : InstrR :=
   .Copn [lvR hi, lvR lo] .AT_none (.Oasm ⟨"MULX"⟩)
         [pv rdxName, pload base k]
 
 /-- Register second-operand MULX: `(hi, lo) = #MULX(rdx, b)`. -/
-private def mulxCopnReg (hi lo : String) (rdxName b : String) : InstrR :=
+def mulxCopnReg (hi lo : String) (rdxName b : String) : InstrR :=
   .Copn [lvR hi, lvR lo] .AT_none (.Oasm ⟨"MULX"⟩)
         [pv rdxName, pv b]
 
-private def loadRdxMem (base : String) (k : Int) : InstrR :=
+def loadRdxMem (base : String) (k : Int) : InstrR :=
   .Cassgn (lvR "rdx") .AT_none (.sword .U64) (pload base k)
 
-private def loadRdxConst (k : Int) : InstrR :=
+def loadRdxConst (k : Int) : InstrR :=
   .Cassgn (lvR "rdx") .AT_none (.sword .U64) (.Pconst k)
 
 def body : List InstrR :=
@@ -2106,11 +2108,11 @@ matches the chain's specification by Fermat's little theorem. -/
 -- can unfold them.  Other helpers stay private.
 def lvR (s : String) : LVal := .Lvar { var := v s }
 def pv (s : String) : PExpr := .Pvar { gv := { var := v s }, gs := false }
-private def pload (base : String) (k : Int) : PExpr :=
+def pload (base : String) (k : Int) : PExpr :=
   .Pload .U64 { var := v base } (.Pconst k)
-private def load64 (x base : String) (k : Int) : InstrR :=
+def load64 (x base : String) (k : Int) : InstrR :=
   .Cassgn (lvR x) .AT_none (.sword .U64) (pload base k)
-private def store64 (base : String) (k : Int) (src : String) : InstrR :=
+def store64 (base : String) (k : Int) (src : String) : InstrR :=
   .Cassgn (.Lmem .U64 { var := v base } (.Pconst k)) .AT_none (.sword .U64) (pv src)
 
 /-! #### Builder helpers for Ccall-based addition chains
@@ -2457,8 +2459,8 @@ infrastructure debt that affects all memory-output ports in this file
 on top of the existing `pureEvalMonoCmd`-style scalar evaluator. -/
 
 namespace BignumSubP25519
-private abbrev p : Nat := 2 ^ 255 - 19
-private abbrev B : Nat := 2 ^ 256
+abbrev p : Nat := 2 ^ 255 - 19
+abbrev B : Nat := 2 ^ 256
 
 /-- Algorithm-level transcription of the SSA body.
 
@@ -2476,7 +2478,7 @@ def algoNat (a b : Nat) : Nat :=
 def specNat (a b : Nat) : Nat :=
   if a ≥ b then a - b else a + p - b
 
-private theorem two_p_lt_B : 2 * p < B := by decide
+theorem two_p_lt_B : 2 * p < B := by decide
 
 /-- Algorithm correctness: under the precondition that both inputs are
     canonical (`< p`), the SSA body's algorithm computes the abstract
@@ -2512,8 +2514,8 @@ example : algoNat 30 100 = 30 + p - 100 := by
 end BignumSubP25519
 
 namespace BignumDoubleP25519
-private abbrev p : Nat := 2 ^ 255 - 19
-private abbrev B : Nat := 2 ^ 256
+abbrev p : Nat := 2 ^ 255 - 19
+abbrev B : Nat := 2 ^ 256
 
 /-- Algorithm-level transcription. The SSA body computes `r = a + a`
     via ADC chain (mod B), then `t = r - p` via SBB chain. The final
@@ -2528,7 +2530,7 @@ def algoNat (a : Nat) : Nat :=
 def specNat (a : Nat) : Nat :=
   if 2 * a ≥ p then 2 * a - p else 2 * a
 
-private theorem two_p_lt_B : 2 * p < B := by decide
+theorem two_p_lt_B : 2 * p < B := by decide
 
 theorem algoNat_eq_specNat (a : Nat) (h_a : a < p) :
     algoNat a = specNat a := by
@@ -2548,7 +2550,7 @@ example : algoNat (p - 1) = p - 2 := by
 end BignumDoubleP25519
 
 namespace BignumModP25519_4
-private abbrev p : Nat := 2 ^ 255 - 19
+abbrev p : Nat := 2 ^ 255 - 19
 
 /-- Algorithm-level transcription: subtract p from `a` and use the
     final borrow to cmov-select between original `a` (kept when `a < p`)
@@ -2666,10 +2668,10 @@ with statically known bounds, no array indexing. -/
 
 namespace MixLoop4
 
-private def pvarI (s : String) : PExpr := .Pvar { gv := { var := v s }, gs := false }
+def pvarI (s : String) : PExpr := .Pvar { gv := { var := v s }, gs := false }
 
 /-- Build a `Cfor i = 0 to 4` whose body is two scalar assignments. -/
-private def loopBody : List InstrR :=
+def loopBody : List InstrR :=
   [ assignBin "acc" (.Omul .U64) "acc" "m"
   , assignBin "acc" (.Oadd .U64) "acc" "x" ]
 

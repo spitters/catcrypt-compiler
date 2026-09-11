@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Fp2MulKernel
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Fp2MulKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Fp2MulKernel
 
 /-!
 # BLS12-381 G2 (E'/Fp2) projective group law, owned x86 backend (Miller prerequisite)
@@ -109,6 +113,8 @@ the **line-function evaluation** (sparse `Fp12`), the **`x`-NAF driver**, and
 the **final exponentiation** (`Fp12` cyclotomic). This module delivers only the
 `G2` doubling + addition that the Miller loop iterates.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -370,6 +376,6 @@ def emitMain : IO Unit := do
 The renders are written while this module elaborates, so `lake` produces them
 from this file and no separate driver or Makefile rule carries the dependency. -/
 
-#eval emitMain
+-- #eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381G2

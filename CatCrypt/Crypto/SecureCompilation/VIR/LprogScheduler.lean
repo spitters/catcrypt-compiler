@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN
 
 /-!
 # `scheduleBody`: verified intra-block instruction scheduling on the linear `Lprog` body
@@ -60,6 +65,8 @@ The non-`Lopn` linstrs (`Lret`, `Llabel`, `Lgoto`, …) are control flow and are
 **never moved**: they pin block boundaries. The scheduler reorders only inside
 maximal runs of `Lopn`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

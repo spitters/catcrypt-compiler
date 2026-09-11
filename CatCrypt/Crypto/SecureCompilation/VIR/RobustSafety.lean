@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminCTPredicate
-import CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasminDenoteUncond
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminCTPredicate
+public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasminDenoteUncond
 
 /-!
 # Robust safety preservation for the lattice → Jasmin lowering (RSP/RHP)
@@ -87,6 +89,8 @@ fragments to source ones. That is deliberately out of scope for this first
 artifact; the present statements are honest about quantifying over the
 secrecy-labelling context only.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

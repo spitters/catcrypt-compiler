@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
-import CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Lean
-import Mathlib.Tactic.IntervalCases
-import Mathlib.Tactic.FinCases
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Lean
+public import Mathlib.Tactic.IntervalCases
+public import Mathlib.Tactic.FinCases
 
 /-!
 # Sail-x86 decoder round-trip: `decode (encode i) ≡ i` (#444, upgrades #438)
@@ -17,40 +19,56 @@ the GNU assembler produces for the same mnemonic (`ScalarValidation.lean`). That
 makes `gas`'s unverified encoder part of the trusted base.
 
 This module replaces the differential edge for the decodable subset with a
-**round-trip** against the x86 *decoder* discipline: a Lean decoder
+**round-trip** against the x86 ModRM/REX field-split discipline: a Lean decoder
 `decodeReg` that recovers `(opcode, reg-field, rm-field, displacement)` from a
-machine-byte stream, transcribed faithfully from the Sail-x86 decode tables in
-[`rems-project/sail-x86-from-acl2`](https://github.com/rems-project/sail-x86-from-acl2)
-`model/prefix_modrm_sib_decoding.sail`, and a proof that
+fixed-shape machine-byte stream, and a proof that
 
 ```
 decodeReg (encAluRR op d s) = some ⟨op, s, d, …⟩      -- the encoded fields
 ```
 
-for every opcode and register pair. Because the decoder is the Sail-x86 ModRM /
-REX parsing rules (the `one_byte_opcode_modr_m_p` presence tables, the ModRM
-`mod/reg/rm` field split, the REX.W/R/X/B prefix layout), `decode (encode i)`
-recovering exactly the operands `i` named means the encoder produces bytes the
-authoritative decoder maps back to the same instruction — the encoder's bytes
-are *proved* to be the right encoding, not merely matched to `gas`.
+for every opcode and register pair. `decodeReg` is a **field-level parser**: it
+assumes the byte list already has the shape one of the encoder's `enc*`
+functions produces (`[REX, op, ModRM]`, `[REX, 0x0F, op, ModRM]`, …) and pulls
+the REX/ModRM sub-fields out of it per the SDM's bit layout. It does **not**
+implement the opcode-dispatch logic that *decides*, from the opcode byte alone,
+whether a ModRM byte follows at all — that per-opcode presence table is not
+transcribed anywhere in this repo (see below), and `decodeReg` accepts any
+`op : Nat < 256` in the ModRM slot, including opcodes that in the real ISA take
+no ModRM at all (e.g. `decodeReg [0x40, 0xE9, 0xC3]` succeeds even though
+`0xE9` is `JMP rel32`, which has no ModRM byte). The round-trip therefore
+certifies **field placement** — the bytes the encoder wrote land back in the
+same `reg`/`rm`/`imm` positions for the fixed shapes the encoders in fact
+emit — not opcode legality; see "What the Sail-x86 decoder is (scope)"
+below.
 
-## What the Sail-x86 decoder is (honest scope)
+## What the Sail-x86 decoder is
 
-The Sail decoder (`prefix_modrm_sib_decoding.sail`) is a byte-stream **structure
-parser**: given the opcode byte it decides whether a ModRM byte follows
-(`one_byte_opcode_modr_m_p` / `two_byte_opcode_modr_m_p`, the 256-entry boolean
-vectors), whether a SIB byte follows (`x86_decode_sib_p`: `mod ≠ 0b11 ∧
-r/m = 0b100`), and the prefix interpretation; the ModRM byte itself splits into
-`mod[7:6] / reg[5:3] / r/m[2:0]`. We transcribe those rules and the REX-prefix
-layout (`REX = 0x40 | W<<3 | R<<2 | X<<1 | B`, Intel SDM Vol. 2 §2.2.1) into the
-`decodeReg` / `decodeMem` functions below. The Sail model dispatches the parsed
-opcode into the 33k-line per-opcode handler tables to *execute*; for the
-round-trip we only need the *parse* (which bytes are operands, and what they
-mean), and that parse is exactly the part `prefix_modrm_sib_decoding.sail`
-defines. The semantic side (the executed effect of each decoded opcode) is the
-`SailX86Lean.lean` spec-equality (`evalInstr = sailAdd …`), so the two modules
-together close both halves: the bytes decode to the right operands (here) and
-the instruction's effect equals the Sail spec (#441).
+The upstream Sail model's `prefix_modrm_sib_decoding.sail` (in
+[`rems-project/sail-x86-from-acl2`](https://github.com/rems-project/sail-x86-from-acl2),
+**not vendored in this repo** — cited here as the provenance for the SDM field
+layout below, not as a file we import, run, or transcribe wholesale) is a
+byte-stream **structure parser**: given the opcode byte it decides whether a
+ModRM byte follows (`one_byte_opcode_modr_m_p` / `two_byte_opcode_modr_m_p`,
+256-entry boolean vectors), whether a SIB byte follows (`x86_decode_sib_p`:
+`mod ≠ 0b11 ∧ r/m = 0b100`), and the prefix interpretation; the ModRM byte
+itself splits into `mod[7:6] / reg[5:3] / r/m[2:0]`. **We do not transcribe the
+opcode-presence tables** — `decodeReg`/`decode0F`/`decodeImm`/`decodeShift`
+below take "does a ModRM byte follow" as given by the fixed shape of the byte
+list they pattern-match on, which is correct only because we control both
+encoder and decoder and know, by construction, which shape each `enc*`
+function emits; a `decodeReg` call is never checked against a presence table
+the way the Sail model's dispatcher would check it. What we *do* transcribe by
+hand from the cited upstream (its SDM-derived field layout, not its Sail
+source text) is the ModRM `mod/reg/rm` bit split and the REX-prefix layout
+(`REX = 0x40 | W<<3 | R<<2 | X<<1 | B`, Intel SDM Vol. 2 §2.2.1) —
+`rexR`/`rexB`/`rexX` are read by the decoders below; `rexW` is defined for
+completeness but is **not** read by any decoder, so REX.W (operand-size = 64)
+is neither pinned nor checked by any round-trip proof here. The semantic side
+(the executed effect of each decoded opcode) is the `SailX86Lean.lean`
+spec-equality (`evalInstr = sailAdd …`); that module's own docstring records
+that its Sail citations are likewise external provenance pointers, not files
+vendored or run from this repo.
 
 ## Scope of the round-trip (which `JInstr` forms are now decode-proved)
 
@@ -70,8 +88,11 @@ memory forms decode their **structure** (`decodeMem` recovers the ModRM `mod`,
 the base, and the displacement; `roundtrip_mem_*`) but those mnemonics have **no
 Sail-x86 counterpart** (ACL2 `x86isa` lacks ADX/BMI2 — see `SailX86Validation`),
 so they keep their `gas` differential pin. The honest tally is in the module-
-final `trust_edge` docstring.
+final §7 doc comment below (`trust_edge_pilot` anchors one instance of it as a
+real theorem).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -475,7 +496,7 @@ theorem roundtrip_jinstr_all (alloc : GpAlloc) (d s : String)
 /-! ## 6. A real ELF64 relocatable object header (vs the `gas` `.byte` emitter)
 
 `ScalarEncoder.encodeJBlock` produces a flat `.text` byte stream; the #438 demo
-fed it to a `gas` `.byte` data-emitter. Here we emit a genuine **ELF64
+fed it to a `gas` `.byte` data-emitter. Here we emit an **ELF64
 relocatable object header** (`ELFCLASS64`, `ET_REL`, `EM_X86_64`), so the owned
 backend produces a real `.o` directly — no assembler in the object-build path.
 The layout is the standard 64-byte `Elf64_Ehdr` (Intel/System V ABI):
@@ -520,9 +541,12 @@ theorem elf64Header_magic (shoff shnum shstrndx : Nat) :
 
 /-! ## 7. The owned-backend byte-level trust edge after #444
 
-`trust_edge` (a doc-only theorem) records the honest tally:
+The tally below (no single theorem carries the name `trust_edge`;
+`trust_edge_pilot` at the end of this file anchors one instance of it as a
+real, checked statement) records the honest tally:
 
-* **decode-round-trip-proved** (`gas` differential pin no longer load-bearing):
+* **decode-round-trip-proved** (`gas` differential pin not essential
+  for field placement):
   the register-direct GP forms — `ADD ADC SUB SBB AND OR XOR MOV` reg-reg
   (`roundtrip_jinstr_all`), `IMUL`/`CMOVcc` reg-reg (`roundtrip_0FRR`),
   `MOV`/`IMUL` `$imm32` (`roundtrip_MovImm`/`roundtrip_ImulImm`), the
@@ -530,8 +554,15 @@ theorem elf64Header_magic (shoff shnum shstrndx : Nat) :
   `roundtrip_AluImm`), `SHL`/`SHR`/`SAR` `$imm8` (`roundtrip_ShiftImm`),
   `NEG` (`roundtrip_NegF7`).
   For these the encoder's bytes are *proved* to decode back to the same
-  operands under the Sail-x86 decode discipline (ModRM/REX field split,
-  `one_byte_opcode_modr_m_p` presence), so `gas` is out of the trusted path.
+  register/immediate **fields** under the ModRM/REX field-split discipline.
+  Each round-trip is universally quantified over the opcode byte `op`, so it
+  certifies field *placement*, not opcode *legality*: it does not check that
+  `op` is the SDM-correct byte for the mnemonic `encodeJInstr` selected — that
+  assignment is `encodeJInstr`'s own hard-coded opcode table, not re-derived
+  here. `gas` is out of the trusted path for field placement; which opcode
+  byte means which mnemonic is unchecked by this module and rests on that
+  hard-coded table (historically cross-checked against `gas` in
+  `ScalarValidation.lean`).
 * **still gas-pinned-only:** `MULX` (VEX), `ADCX`/`ADOX` (legacy-VEX), and the
   `loadMem`/`storeMem`/`mulxMem` memory forms' *operand-value* decode — `ADX`/`BMI2`
   have no Sail-x86 counterpart (ACL2 `x86isa` omits them, see `SailX86Validation`),
@@ -560,7 +591,7 @@ plain `modRMMem` mis-encodes — `%rsp`/`%r12` (low-3 = 4, the SIB escape) and
 `%rbp`/`%r13` (low-3 = 5, the `mod=00` RIP escape) — `memTail` emits the SIB byte
 `0x24` resp. forces a `disp8=0`. We decode the emitted base register low-3 bits per
 the Sail `x86_decode_sib_p` discipline and prove it recovers the *intended* base for
-all four, so the SIB-base encoding is decode-proved (not merely gas-pinned): the
+all four, so the SIB-base encoding is decode-proved (not only gas-pinned): the
 `%rbp` form decodes to base = `%rbp`, NOT RIP-relative; the `%rsp` form to base =
 `%rsp` via the SIB.base, NOT a missing-SIB mis-parse.
 

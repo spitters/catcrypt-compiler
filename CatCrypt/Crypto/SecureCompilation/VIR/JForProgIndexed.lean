@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgMultiOp
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgMultiOp
 
 /-!
 # Index-parameterized bounded loops (`JForProgIdx`) — per-round constants as a theorem
@@ -53,6 +56,8 @@ loop counter `i`:
 The only carried hypothesis is the opaque-leaf edge `LeafAgrees`, exactly as the
 uniform multi-op keystone — no `sorry`, axiom-clean.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -177,7 +182,7 @@ loop denotes the index-dependent semantics. -/
 /-- A `foldl` of two index-threading functions that agree everywhere over the
     same list and seed coincide. (Index-threading mirror of
     `JForProgMultiOp.foldl_congr_fun`, which threads no index.) -/
-private theorem foldl_congr_idx {accTy : JasminTy}
+theorem foldl_congr_idx {accTy : JasminTy}
     (f g : ⟦accTy⟧ → Nat → ⟦accTy⟧)
     (hfg : ∀ acc i, f acc i = g acc i) :
     ∀ (l : List Nat) (init : ⟦accTy⟧), l.foldl f init = l.foldl g init

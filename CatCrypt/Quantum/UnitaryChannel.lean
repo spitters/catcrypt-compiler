@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Quantum.Instrument
-import Mathlib.LinearAlgebra.Matrix.Trace
-import Mathlib.LinearAlgebra.UnitaryGroup
+module
+
+public import CatCrypt.Quantum.Instrument
+public import Mathlib.LinearAlgebra.Matrix.Trace
+public import Mathlib.LinearAlgebra.UnitaryGroup
 
 /-!
 # Unitary Channels for QComp
@@ -29,6 +31,8 @@ A unitary channel `Φ_U(ρ) = U ρ U†` is:
 
 * Watrous — The Theory of Quantum Information, §2.2
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

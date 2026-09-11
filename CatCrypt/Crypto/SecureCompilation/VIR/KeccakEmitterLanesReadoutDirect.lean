@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterLanesReadout
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterLanesReadout
 
 /-!
 # Keccak emitter lanes-readout — direct per-lane discharge via the substrate (task #136)
@@ -83,6 +86,8 @@ the direct per-lane discharge via the #116 substrate. HONEST PARTIAL: the
 per-lane discharge framework is laid down here; the 25-way simp blast through
 the substrate is the documented residual.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxHeartbeats 4000000

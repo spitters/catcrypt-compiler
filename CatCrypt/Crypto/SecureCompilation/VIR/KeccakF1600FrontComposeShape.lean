@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakRoundFrontEmit
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.KeccakRoundFrontEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakRoundFrontEmit
 
 /-!
 # N-round front-composed Keccak-p[1600] — shape-interpreter engine (part 1/2)
@@ -22,6 +25,8 @@ the `VarMap`, the pure-arith backend-totality lemma
 simulation keystones (`lowerSExpr_sim` / `shapeTranslate_sim`) plus the per-`SExpr`
 shape-success lemma `shapeLowerSExpr_ok`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.KeccakF1600FrontComposeProbe
 
@@ -335,7 +340,7 @@ theorem agrees_bindAll : (names : List String) →
   | n :: ns => by
       have ih := agrees_bindAll ns
       have hb := ih.bind n (CryptoTy.sword 64)
-      simpa [bindAll, List.map, shapeBind] using hb
+      simpa [bindAll, List.map, shapeBind] using! hb
 
 /-- `srcVM` and `srcShape` agree. -/
 theorem agrees_srcVM : Agrees srcVM srcShape := by

@@ -3,16 +3,18 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
-import CatCrypt.Crypto.Hax.HaxToLowCTSim_Agreement
-import CatCrypt.Crypto.Hax.HaxToLowCTSim_AssignMatch
-import CatCrypt.Crypto.Hax.HaxToLowCTSim_Call
-import CatCrypt.Crypto.Hax.HaxToLowCTSim_If
-import CatCrypt.Crypto.Hax.HaxToLowCTSim_While
-import CatCrypt.Crypto.Hax.HaxToLowCTSim_Main
-import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta
-import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta_Discharge
-import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta_LeafAgrees
+module
+
+public import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Agreement
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_AssignMatch
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Call
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_If
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_While
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Main
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta_Discharge
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta_LeafAgrees
 
 /-!
 # H3.quarta-final: Main_Full assembly
@@ -53,7 +55,7 @@ shapes where introduced names don't collide with tower slots).
 | `seq a b` | `simulates_seq_full` | this file |
 | `letBind _ (lit _) _` | `simulates_letBind_lit_full` (with freshness) | this file |
 | `letBind _ (app _ _) _` | `haxToLowCT_simulates_letBind_app_full` | Quarta_Discharge |
-| `letBind _ (proj (var _) _) _` | `Hyp_letBindProj_full` (genuine discharge: `haxToLowCT_simulates_letBind_proj_full`) | this file |
+| `letBind _ (proj (var _) _) _` | `Hyp_letBindProj_full` (discharged by `haxToLowCT_simulates_letBind_proj_full`) | this file |
 | `letBind _ _ _` (other) | contradiction | inline |
 | `assign _ (lit _)` | `simulates_assign_lit_full` / `_bool_full` (with freshness) | this file |
 | `assign _ (app _ _)` | `haxToLowCT_simulates_assign_app_full` | Quarta_Discharge |
@@ -66,6 +68,8 @@ shapes where introduced names don't collide with tower slots).
 | `whileLoop _ _` (other) | contradiction | inline |
 | All other rejected arms | scalar `_simulates_*` lifted to `False` | inline |
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -181,7 +185,7 @@ infrastructure). -/
     `letBind name (.app f args) body` is `none`, contradicting any
     `evalImp ... = some _` hypothesis.  This makes the simulation
     arm vacuously true. -/
-private theorem evalImp_letBind_app_vacuous
+theorem evalImp_letBind_app_vacuous
     (bi : Builtins) (fuel : Nat) (name f : String)
     (args : List ImpExpr) (body : ImpExpr) (env : Env) (v : Value) (env' : Env)
     (hVac : ∀ vals, bi f vals = none)
@@ -196,7 +200,9 @@ private theorem evalImp_letBind_app_vacuous
   | mk oDA emDA =>
     rw [hDA] at h
     cases oDA with
-    | none => simp [StateT.pure] at h
+    | none =>
+      simp only [StateT.pure] at h
+      cases h
     | some vals =>
       simp only [hVac vals, StateT.pure] at h
       cases h
@@ -227,13 +233,13 @@ theorem Hyp_index_full_of_vacuity
 
 `let name = tup.i; body` (the K-PKE keygen `(ek, dk)` destructuring)
 lowers to `RLetZero name .TFp (RSeq (RTupleLoad dst src i) bodyC)`.
-The genuine simulation relates `Value.projIdx` on the source side to
+The simulation relates `Value.projIdx` on the source side to
 the `leafSpec.tupleLoad` oracle on the target side, in the same way
 the letBind-app case relates `Builtins` calls to `leafSpec.call` via
 `LeafCallAgreesTower`. -/
 
 /-- Hypothesis: `letBind name ((.var t).i) body` simulates under the
-    Full predicate.  Genuinely dischargeable per instance via
+    Full predicate.  Dischargeable per instance via
     `haxToLowCT_simulates_letBind_proj_full` below (tuple slot bound in
     `rs`, `leafSpec.tupleLoad` bridge-aligned with `Value.projIdx`). -/
 abbrev Hyp_letBindProj_full
@@ -281,7 +287,7 @@ theorem locatedLookup_some_rsTower
       rfl
     · simp [hty] at h
 
-/-- **Genuine letBind-proj simulation (Full predicate).**
+/-- **letBind-proj simulation (Full predicate).**
 
 Source side (`evalImp_letBind_proj_inv`): `env t` holds a tuple value
 `vTup` with component `i` = `vi`; the env extends `name ↦ vi` and
@@ -848,7 +854,7 @@ theorem haxToLowCT_simulates_full
           exact hAlias name _src body c env env' rs v ihBody
       | proj pe i =>
           -- Tuple-component read: productive only for a `var` base
-          -- (delegated to `hProj`; genuine per-instance closure via
+          -- (delegated to `hProj`; per-instance closure via
           -- `haxToLowCT_simulates_letBind_proj_full`).  Non-`var`
           -- bases stay untranslated.
           cases pe with

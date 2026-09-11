@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Util.PrattCertificate
-import CatCrypt.Crypto.Util.Ed25519L.Node1
+module
+
+public import Mathlib.Tactic.NormNum.Prime
+public import CatCrypt.Crypto.Util.PrattCertificate
+public import CatCrypt.Crypto.Util.Ed25519L.Node1
 
 /-!
 # Lucas node `H = 4434155615661930479`
@@ -12,6 +15,8 @@ import CatCrypt.Crypto.Util.Ed25519L.Node1
 Primality of the factor `H` of `G - 1`, via `H - 1 = 2 · 41 · 43 · I` with witness
 `17`, using the child node `I`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxRecDepth 50000

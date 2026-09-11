@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
 # The ZMM packed-arithmetic bridge on the UNIFIED `Com jasminDialect`
@@ -59,6 +61,8 @@ program unfolds definitionally through the `vpackZMM` denote arm to the
 
 Invoke: `lake build CatCrypt.Crypto.SecureCompilation.TileBackend.ZmmArithBridgeCom`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

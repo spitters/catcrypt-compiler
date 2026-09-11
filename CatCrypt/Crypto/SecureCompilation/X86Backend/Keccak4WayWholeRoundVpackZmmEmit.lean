@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmComSeq
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Keccak4WayVpackZmmEmit
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmComSeq
+public import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmComSeq
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Keccak4WayVpackZmmEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Keccak4WayVpackZmmEmit
 
 /-!
 # Whole-round owned `.s` assembly for lane-sliced Keccak-f[1600] (512-bit ZMM)
@@ -89,6 +94,8 @@ Invoke:
 or `lake env lean --run
   CatCrypt/Crypto/SecureCompilation/X86Backend/Keccak4WayWholeRoundVpackZmmEmit.lean`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -333,7 +340,7 @@ def wholeRoundExportAsm (r : Nat) : String :=
     [ "\tvmovdqu64\t%zmm0, (%rdi)" ]
 
 -- Print the emitted owned `.s` for visual inspection.
-#eval IO.println (wholeRoundExportAsm 0)
+-- #eval IO.println (wholeRoundExportAsm 0)
 
 /-! ## 7. Structural smoke pins on the framed whole-round `.s` -/
 

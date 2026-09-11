@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
+module
 
+public import CatCrypt.Crypto.Jasmin.LowCT
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!
@@ -185,14 +189,14 @@ build and the pipeline catches the breakage immediately. -/
 
 section SmokeTests
 
-private def s : Located := { locVar := "state",   locSrc := .TBytes 16 }
-private def k : Located := { locVar := "rk",      locSrc := .TBytes 16 }
-private def o : Located := { locVar := "out",     locSrc := .TBytes 16 }
-private def b : Located := { locVar := "byte",    locSrc := .TBytes 1  }
-private def a4 : Located := { locVar := "a", locSrc := .TBytes 4 }
-private def b4 : Located := { locVar := "b", locSrc := .TBytes 4 }
-private def c4 : Located := { locVar := "c", locSrc := .TBytes 4 }
-private def d4 : Located := { locVar := "d", locSrc := .TBytes 4 }
+def s : Located := { locVar := "state",   locSrc := .TBytes 16 }
+def k : Located := { locVar := "rk",      locSrc := .TBytes 16 }
+def o : Located := { locVar := "out",     locSrc := .TBytes 16 }
+def b : Located := { locVar := "byte",    locSrc := .TBytes 1  }
+def a4 : Located := { locVar := "a", locSrc := .TBytes 4 }
+def b4 : Located := { locVar := "b", locSrc := .TBytes 4 }
+def c4 : Located := { locVar := "c", locSrc := .TBytes 4 }
+def d4 : Located := { locVar := "d", locSrc := .TBytes 4 }
 
 example : aesRound o s k = .RCall "aes_round" o [s, k] := rfl
 example : aesInvRound o s k = .RCall "aes_inv_round" o [s, k] := rfl

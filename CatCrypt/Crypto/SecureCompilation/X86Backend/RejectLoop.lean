@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Cond
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Cond
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Cond
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
 
 /-!
 # The terminating guarded (rejection / hedged) loop lowering — RWhile lift (#523)
@@ -89,6 +94,8 @@ so the guarded-loop lowering inherits exactly the baseline axiom set. The emitte
 back-edge `jne .L` testing the *public* guard result, so it does not grow with
 the runtime trip count.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

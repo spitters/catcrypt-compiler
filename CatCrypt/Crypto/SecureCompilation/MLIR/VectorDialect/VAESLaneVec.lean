@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
-import CatCrypt.Crypto.SecureCompilation.VIR.VAESEmit
+module
+
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
+public import CatCrypt.Crypto.SecureCompilation.VIR.VAESEmit
 
 /-!
 # VAES round-lane map through the structured VectorDialect (task #275)
@@ -30,6 +32,8 @@ Because the dialect-rendered lines are *identical* to `renderVAESLine` and the
 dialect denotation is *equal* to the lane-wise `denoteVAES`, the bench KAT
 validating the direct VAES emit validates this path with no new bytes.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

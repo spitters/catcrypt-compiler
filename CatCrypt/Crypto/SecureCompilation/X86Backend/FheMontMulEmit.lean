@@ -3,13 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ThirToComFront
-import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.FheMontMulLaw
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
-import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.ThirToComFront
+public import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.FheMontMulLaw
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
 
 /-!
 # Single-word 60-bit FHE Montgomery modmul through the OWNED x86 backend (no jasminc)
@@ -81,6 +84,8 @@ host-side step. This mirrors the §13 BabyBear lazy-leaf discipline.
   emit-module pass).
 * **Trusted (thin)**: `renderLfundef` / `as`/`cc` / the SysV leaf ABI frame.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -428,20 +433,13 @@ def fuseMulHiAux (saveRdx : Bool) :
                 else []
               let movRdx : Linstr := ⟨i.li_ii, .Lopn [.reg "RDX"] "MOV:64" [.reg s1]⟩
               if d == "RDX" then
-                -- The high word's allocated home is %rdx itself; relocate it to a
-                -- caller-saved scratch and rename later RDX reads so the next
-                -- site's `MOV RDX, …` cannot clobber this live high word. (`RDX`
-                -- is redefined here, so `saveRdx` emits no restore.)
-                let mulx : Linstr :=
-                  ⟨i.li_ii, .Lopn [.reg loDst, .reg fuseScratch] "MULX" [.reg s2r]⟩
-                -- A fused site writes both reserved scratches on some paths, so
-                -- neither carries a known reload past it.
-                let envF :=
-                  [reloadScratch, reloadScratch2, loDst, fuseScratch].foldl
-                    scratchKill env'
-                save ++ movRdx :: (srcReload ++ mulx ::
-                  fuseMulHiAux saveRdx envF pend'
-                    (rest.map (renameInstr "RDX" fuseScratch)))
+                -- `bodyReservedGP` keeps `%rdx` out of the allocatable pool for
+                -- any body holding a `MULXHI`, so an allocated high destination
+                -- is never `%rdx`. Evacuating one would need a scratch outside
+                -- the pool, and both reload scratches are already live here, so
+                -- the pair is left unfused (the printer's sentinel) rather than
+                -- rewritten through an allocatable register.
+                i :: fuseMulHiAux saveRdx env' pend rest
               else
                 let hiReg :=
                   if (LOperand.reg d).isSpill then

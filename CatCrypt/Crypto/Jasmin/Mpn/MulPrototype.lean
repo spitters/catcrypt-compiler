@@ -3,7 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.Addmul1Prototype
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.Mpn.Addmul1Prototype
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.Mpn.Addmul1Prototype
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -75,7 +82,7 @@ open CatCrypt.Crypto.Jasmin
 open CatCrypt.Crypto.Jasmin.BignumExec
 open CatCrypt.Crypto.Jasmin.Emit
 open CatCrypt.Crypto.Jasmin.MemoryModel
-open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype hiding vr pv loadAt0 storeAt0 binImm
 open CatCrypt.Crypto.Jasmin.Mpn.Mul1Prototype
 open CatCrypt.Crypto.Jasmin.Mpn.Addmul1Prototype
 
@@ -408,7 +415,7 @@ def mulAcc (a : List (BitVec 64)) : List (BitVec 64) → List (BitVec 64) → Li
 theorem mulAcc_length (a bs acc : List (BitVec 64)) (hacc : acc.length = a.length + bs.length) :
     (mulAcc a bs acc).length = a.length + bs.length := by
   induction bs generalizing acc with
-  | nil => simpa using hacc
+  | nil => simpa using! hacc
   | cons b0 bs ih =>
     -- the window has length |a|+1; its tail length |a|; the drop length |bs|.
     have htake : (acc.take a.length).length = a.length := by
@@ -831,16 +838,16 @@ match the pure `mpnMul`.  We lay out `a` at byte address `0x1000`, `b` at
 `mulBody |b|` under `mulRegistry`, and read back `|a|+|b|` result limbs. -/
 
 /-- Concrete operands for the execution test (`a = [7, 0]`, `b = [3, 5]`). -/
-private def testA : List (BitVec 64) := [7, 0]
-private def testB : List (BitVec 64) := [3, 5]
+def testA : List (BitVec 64) := [7, 0]
+def testB : List (BitVec 64) := [3, 5]
 
 /-- Lay out a limb list little-endian at byte `base` into memory `m`. -/
-private def storeLimbs (m : Mem) (base : UInt64) : List (BitVec 64) → Mem
+def storeLimbs (m : Mem) (base : UInt64) : List (BitVec 64) → Mem
   | []      => m
   | w :: ws => storeLimbs (m.store64 base (UInt64.ofNat w.toNat)) (base + 8) ws
 
 /-- Read `k` limbs little-endian from byte `base`. -/
-private def readLimbs (m : Mem) (base : UInt64) : Nat → List (BitVec 64)
+def readLimbs (m : Mem) (base : UInt64) : Nat → List (BitVec 64)
   | 0     => []
   | k + 1 =>
       (BitVec.ofNat 64 ((m.load64 base).getD 0).toNat)
@@ -848,7 +855,7 @@ private def readLimbs (m : Mem) (base : UInt64) : Nat → List (BitVec 64)
 
 /-- Initial state: `a` at `0x1000`, `b` at `0x4000`, result region zeroed at
     `0x8000`; pointers and `n` set in registers. -/
-private def testInit : BignumState :=
+def testInit : BignumState :=
   let m0 : Mem := Mem.empty
   let m1 := storeLimbs m0 0x1000 testA
   let m2 := storeLimbs m1 0x4000 testB
@@ -1267,7 +1274,7 @@ theorem addmul_loop_op :
 
 /-! ### §5.2  The single `mpn_addmul_1`-`Ccall` discharge (nested-loop core)
 
-The genuine new ingredient for the nested loop: one outer-iteration `Ccall` to
+The new ingredient for the nested loop: one outer-iteration `Ccall` to
 `mpn_addmul_1(op, ap, [bp+0], n)` runs the verified inner kernel through
 `bignumExecFuel`'s `Ccall` case and inherits its memory.  We reduce it to
 `MpnAddmul1JasminRefines` (stated over `emptyRegistry`) using
@@ -2556,7 +2563,7 @@ theorem mulOuter_rows :
     subst hvs0
     refine ⟨s, ?_, ?_, ?_, ?_, rfl, rfl, ?_⟩
     · simp only [mulOuterRows, List.nil_append]
-    · simpa [mulAcc] using hacc
+    · simpa [mulAcc] using! hacc
     · simp
     · simp
     · intro bb _; rfl

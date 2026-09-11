@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMem
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMem
 
 /-!
 # The full cell-by-cell store correspondence (Route B, memory axis)
@@ -42,6 +44,8 @@ The written cell reuses `mem_store_middle_tie_at_cell` (both sides
 `st.regs m.src`); every other cell is preserved to `st.mem m.arr (m.scale · j)`,
 a genuine machine memory read, on both sides.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

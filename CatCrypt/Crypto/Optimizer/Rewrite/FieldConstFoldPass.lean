@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Algebra.Ring.Defs
-import Mathlib.Data.ZMod.Basic
+module
+
+import all Init.Data.Repr
+public import Mathlib.Algebra.Ring.Defs
+public import Mathlib.Data.ZMod.Basic
 
 /-!
 # Algebraic constant-folding pass for the field/ModArith dialect
@@ -29,6 +32,8 @@ changed, only its representation is shrunk. The proof is by structural induction
 each fold case is discharged by the ring axioms (`add_zero`, `mul_one`,
 `mul_zero`, …) via `simp`/`ring`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

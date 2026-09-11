@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CounterLoopDemo
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CounterLoopDemo
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CounterLoopDemo
 
 /-!
 # Loop-carried-value emit — additive accumulator (task #538, wall #2)
@@ -57,6 +60,8 @@ x86 `cforIdxToLprogAbiBody` register-pin splice — that wiring is the named
 residual, not claimed here. This module pins the additive loop-carried value
 through the counter-reading path; the array-indexed memref body is the next wall.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

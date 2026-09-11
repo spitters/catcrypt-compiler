@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.TileDialect
-import CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.TileDialect
+public import CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel
 
 /-!
 # Tying the tile `Com` dialect to the operational `TileModel`
@@ -36,6 +38,8 @@ operational model's per-lane semantics. Concretely:
 There is no `sorry` and no new axiom; the ties reduce to `rfl`/`funext`+`cases`
 because both sides ultimately compute the bare `BitVec w` lane op.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.TileDialectModelTie
 

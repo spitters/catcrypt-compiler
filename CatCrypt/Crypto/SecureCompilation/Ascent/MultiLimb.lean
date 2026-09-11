@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.StoreRefinement
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.StoreRefinement
 
 /-!
 # Multi-limb value abstraction (re-export shim)
@@ -15,6 +17,8 @@ multi-limb names into `CatCrypt.Crypto.SecureCompilation.Ascent` so existing
 consumers resolve them unqualified exactly as before. It imports the single-limb
 shim (`StoreRefinement`) to preserve the original import chain.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Ascent
 

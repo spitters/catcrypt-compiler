@@ -3,9 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontPallas
-import Mathlib.Data.ZMod.Basic
-import Mathlib.Tactic
+module
+
+import all Init.Data.Repr
+public import Mathlib.Tactic.NormNum.Prime
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontPallas
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.Algebra.Field.ZMod
+public import Mathlib.Tactic.FieldSimp
+public import Mathlib.Tactic.Group
+public import Mathlib.Tactic.NormNum
+public import Mathlib.Tactic.Ring
 
 /-!
 # Pallas `G1` PROJECTIVE (Jacobian) point-add / point-double over the abstract base field
@@ -24,7 +32,7 @@ so the realization ties below are `b`-agnostic — identical algebra to the BLS1
 
 ## The abstract field
 
-The Pallas base field is `ZMod pallasQ` for the genuine 255-bit prime `pallasQ`
+The Pallas base field is `ZMod pallasQ` for the 255-bit prime `pallasQ`
 (defined in `RelationalFrontPallas.lean`).  The repo carries `pallasQ` as a `Nat` modulus
 (the canonical Pasta Pallas base prime).  We parameterize the realization ties by a
 **hypothesis** `[Fact (Nat.Prime pallasQ)]` (a section variable — *not* an asserted axiom,
@@ -71,6 +79,8 @@ generic-chart scope of the BLS12-377 version.
 0 sorries; no new custom axioms (primality is a section hypothesis, not an asserted axiom);
 the field-algebra ties are unconditional given the field structure.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
 # The `func` dialect (D0 fan-out — CatCrypt-side, not in `VIR/`)
@@ -54,6 +57,8 @@ return types map to scalar jasmin `reg w` (never the 16-bit `stackArr` the latti
 leaves use), the `extCall` denotation always lands in `jasminExtSem`'s opaque
 catch-all, so the agreement is exact and hypothesis-free.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.Func
 

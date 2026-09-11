@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad
+public import CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
 
 /-!
 # `loadCSE`: cross-register redundant-load elimination on the post-RA `Lprog` body
@@ -73,6 +77,8 @@ mnemonic-to-width assignment.
 constrains the value the rewrite computes but not the width at which the printer
 renders it; the width statement is item 2.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

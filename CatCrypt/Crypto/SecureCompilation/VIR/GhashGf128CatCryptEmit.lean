@@ -3,10 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
-import CatCrypt.Crypto.Primitives.GF128
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public meta import CatCrypt.Crypto.Primitives.GF128
+public import CatCrypt.Crypto.Primitives.GF128
 
 /-!
 # GHASH GF(2¹²⁸) multiply on the high `catCryptDialect`
@@ -65,6 +72,8 @@ straight-line composition (`Fin.foldl`) of these per-bit kernels.
 
 0 sorries.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

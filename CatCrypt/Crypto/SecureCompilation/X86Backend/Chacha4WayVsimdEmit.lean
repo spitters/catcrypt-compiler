@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.VsimdChachaByteEncoder
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ElfObject
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.VsimdChachaByteEncoder
+public import CatCrypt.Crypto.SecureCompilation.VIR.VsimdChachaByteEncoder
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ElfObject
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ElfObject
 
 /-!
 # The whole ChaCha20 4-way block, owned-emitted on the unified stack (Vec128 teardown)
@@ -53,6 +58,8 @@ VEX SIMD opcodes have no ACL2 x86isa decode tables, so this stays at the
 gas-pinned validation tier — the same residual as the rest of the SIMD
 byte path.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

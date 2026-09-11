@@ -4,6 +4,8 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 
+module
+
 /-!
 # `ScalarLin`: the target-neutral scalar straight-line waist (Waist 1)
 
@@ -20,6 +22,8 @@ flattening (the de-Bruijn front, proved once) feeds this IR; each target only
 proves the trivial straight-line selection. Lowering `Com` directly per target
 would instead redo the flattening proof four times.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

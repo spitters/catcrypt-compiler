@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtendedCoverage
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtendedCoverage
 
 /-!
 # `Linstr → JInstr` coverage superset: immediate arithmetic right-shift and select
@@ -88,6 +91,8 @@ leak trace is state-independent.
 * `ROR:<n>` / `ZEROEXT` / `TRUNC` / `CALL:` / `CALLN:` / `VPACK8u64:` and every
   non-`Lopn` `LinstrR`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

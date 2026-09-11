@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Rewrite.Peephole
-import CatCrypt.Crypto.Optimizer.CopyProp
-import CatCrypt.Crypto.Optimizer.ComDCE
+module
+
+public import CatCrypt.Crypto.Optimizer.Rewrite.Peephole
+public import CatCrypt.Crypto.Optimizer.CopyProp
+public import CatCrypt.Crypto.Optimizer.ComDCE
 
 /-!
 # The `Com → Com` optimizer pipeline (#555/#566 integration)
@@ -52,6 +54,8 @@ constant-time safety (the dialect is branch-free; via the components'
 
 All goals closed. No `sorry`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

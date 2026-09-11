@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # C4 fan-out: the verified compiler emits the Ascon permutation round from extracted source
@@ -52,6 +55,8 @@ closes by `rfl`; `*_isSome` by `native_decide`; `*_compiles` routes the
 source-spec through `compileFromHax_meets_spec`. The five-input valuation is
 `![x0, x1, x2, x3, x4]`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -108,7 +113,7 @@ def sboxC (x0 x1 x2 x3 x4 : BitVec 64) : BitVec 64 × BitVec 64 × BitVec 64 × 
   (c0, c1, c2, c3, c4)
 
 /-- The bit-complement equation `x ^^^ ONES = ~~~x` at width 64, making the
-    `· ^^^ ONES` form in `sboxC` the genuine bitwise NOT of the canonical S-box. -/
+    `· ^^^ ONES` form in `sboxC` the bitwise NOT of the canonical S-box. -/
 theorem xor_ONES (x : BitVec 64) : x ^^^ ONES = ~~~x := by
   rw [show ONES = BitVec.allOnes 64 from by native_decide, BitVec.xor_allOnes]
 
@@ -281,9 +286,7 @@ theorem asconLane0_compiles :
   intro x0 x1 x2 x3 x4
   have hspec : ImpExpr.denoteScalar asconParams ![x0, x1, x2, x3, x4]
       asconLane0Src (fun _ => none) = some (asconLane0Spec x0 x1 x2 x3 x4) := by
-    have h := asconLane0Src_denoteScalar (nIn := 5) ![x0, x1, x2, x3, x4]
-    simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+    exact asconLane0Src_denoteScalar (nIn := 5) ![x0, x1, x2, x3, x4]
   exact compileFromHax_meets_spec (w := 64) (nIn := 5) asconParams
     ![x0, x1, x2, x3, x4] asconLane0Src _ hc hspec
 
@@ -302,9 +305,7 @@ theorem asconLane1_compiles :
   intro x0 x1 x2 x3 x4
   have hspec : ImpExpr.denoteScalar asconParams ![x0, x1, x2, x3, x4]
       asconLane1Src (fun _ => none) = some (asconLane1Spec x0 x1 x2 x3 x4) := by
-    have h := asconLane1Src_denoteScalar (nIn := 5) ![x0, x1, x2, x3, x4]
-    simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+    exact asconLane1Src_denoteScalar (nIn := 5) ![x0, x1, x2, x3, x4]
   exact compileFromHax_meets_spec (w := 64) (nIn := 5) asconParams
     ![x0, x1, x2, x3, x4] asconLane1Src _ hc hspec
 
@@ -323,9 +324,7 @@ theorem asconLane2_compiles :
   intro x0 x1 x2 x3 x4
   have hspec : ImpExpr.denoteScalar asconParams ![x0, x1, x2, x3, x4]
       asconLane2Src (fun _ => none) = some (asconLane2Spec x0 x1 x2 x3 x4) := by
-    have h := asconLane2Src_denoteScalar (nIn := 5) ![x0, x1, x2, x3, x4]
-    simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+    exact asconLane2Src_denoteScalar (nIn := 5) ![x0, x1, x2, x3, x4]
   exact compileFromHax_meets_spec (w := 64) (nIn := 5) asconParams
     ![x0, x1, x2, x3, x4] asconLane2Src _ hc hspec
 
@@ -344,9 +343,7 @@ theorem asconLane3_compiles :
   intro x0 x1 x2 x3 x4
   have hspec : ImpExpr.denoteScalar asconParams ![x0, x1, x2, x3, x4]
       asconLane3Src (fun _ => none) = some (asconLane3Spec x0 x1 x2 x3 x4) := by
-    have h := asconLane3Src_denoteScalar (nIn := 5) ![x0, x1, x2, x3, x4]
-    simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+    exact asconLane3Src_denoteScalar (nIn := 5) ![x0, x1, x2, x3, x4]
   exact compileFromHax_meets_spec (w := 64) (nIn := 5) asconParams
     ![x0, x1, x2, x3, x4] asconLane3Src _ hc hspec
 
@@ -365,9 +362,7 @@ theorem asconLane4_compiles :
   intro x0 x1 x2 x3 x4
   have hspec : ImpExpr.denoteScalar asconParams ![x0, x1, x2, x3, x4]
       asconLane4Src (fun _ => none) = some (asconLane4Spec x0 x1 x2 x3 x4) := by
-    have h := asconLane4Src_denoteScalar (nIn := 5) ![x0, x1, x2, x3, x4]
-    simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+    exact asconLane4Src_denoteScalar (nIn := 5) ![x0, x1, x2, x3, x4]
   exact compileFromHax_meets_spec (w := 64) (nIn := 5) asconParams
     ![x0, x1, x2, x3, x4] asconLane4Src _ hc hspec
 

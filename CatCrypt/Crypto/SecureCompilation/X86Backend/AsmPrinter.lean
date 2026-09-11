@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 
 /-!
 # AT&T asm printer for the scalar `JInstr` machine instructions (the trust boundary)
@@ -47,6 +50,8 @@ name a fixed `%rN` (in first-seen order over a fixed GP pool that excludes
 `%rsp`). Small straight-line kernels use far fewer than the pool size, so the
 trivial first-fit allocation never spills. (Spilling is out of scope.)
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

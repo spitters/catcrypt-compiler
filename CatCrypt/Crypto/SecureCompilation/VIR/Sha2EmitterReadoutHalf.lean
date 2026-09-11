@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Sha2EmitterInitEnv
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Sha2EmitterInitEnv
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.Sha2EmitterInitEnv
 
 /-!
 # SHA-2 emitter readout half — closing `EmitRoundDenotesClosedFormFaithful`
@@ -43,6 +47,8 @@ six `bv_decide` LRAT certs from #110's `crotr_eq_rotr_sha{256,512}`.
 certs from `Sha2DiffuseExact.crotr_eq_rotr_sha{256,512}` (inherited via
 `closed_form_eq_fips_sha*`). No new custom axioms.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxHeartbeats 16000000

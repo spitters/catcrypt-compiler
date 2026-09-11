@@ -3,10 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.VIR.QuerySampleBranchFront
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.QuerySampleBranchFront
+public import CatCrypt.Crypto.SecureCompilation.VIR.QuerySampleBranchFront
 
 /-!
 # Plonky3 FRI query-index sampler (`sample_bits(5)`) as owned control flow (FULL_PROVER_VS_P3 Gap 2 item 2)
@@ -87,6 +93,8 @@ same permute.
   op), deliberately excluded from this index/counter/mask leaf and left to the
   value producer. The KAT feeds already-reduced values so the store is exact.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

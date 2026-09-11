@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.VIR.Ntruhrss701MulEmit
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.Ntruhrss701MulEmit
 
 /-!
 # ABI maps for the owned-AsmPrinter linear export of the ntruhrss701 poly-mul kernel
@@ -48,6 +50,8 @@ body constant (no `.imm` arg slot, no memory load); `inp[32]` is never read
 (the KAT harness writes `inp[32] = 0`); `a`/`b` are loaded from `inp`
 (`ntruInLoadMap`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

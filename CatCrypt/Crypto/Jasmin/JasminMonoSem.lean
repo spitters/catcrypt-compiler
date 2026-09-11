@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CryptoSSA
-import CatCrypt.Crypto.Jasmin.JasminAST
+module
+
+public import CatCrypt.Crypto.SecureCompilation.CryptoSSA
+public import CatCrypt.Crypto.Jasmin.JasminAST
 
 /-!
 # `CProg`-free reference semantics for the monomorphic Jasmin fragment
@@ -28,6 +30,8 @@ unchanged). Extracting them here de-couples the dialect-translator correctness
 layer from `CProg`, a prerequisite for retiring the `CExpr` / `CProg`
 inductives.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.ToSSA
 

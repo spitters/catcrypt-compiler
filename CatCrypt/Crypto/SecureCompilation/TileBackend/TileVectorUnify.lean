@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Types
+module
+
+public import CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Types
 
 /-!
 # Step 4: the data-parallel lane carrier and the vector carrier coincide
@@ -17,6 +19,8 @@ SIMD lane model used by NEON / AVX-512 / RVV) are the *same* carrier
 "vectorize", "pack into a SIMD register", and "fan out over GPU threads" are
 three lowerings of one IR, not three carriers.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

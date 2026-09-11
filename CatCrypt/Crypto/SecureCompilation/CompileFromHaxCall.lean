@@ -3,8 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
-import CatCrypt.Crypto.SHA256.Extraction.Sha256_haxpipe
+module
+
+import all Init.Data.Repr
+import all CatCrypt.Crypto.SecureCompilation.ImpExprToThir
+import all CatCrypt.Crypto.SecureCompilation.ThirToComFront
+import all CatCrypt.Crypto.SecureCompilation.CompileFromHax
+import all CatCrypt.Crypto.SHA256.Extraction.Sha256_haxpipe
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public meta import CatCrypt.Crypto.SHA256.Extraction.Sha256_haxpipe
+public import CatCrypt.Crypto.SHA256.Extraction.Sha256_haxpipe
 
 /-!
 # Compiling a body that CALLS a helper (SHA-256 σ₀ via inlining)
@@ -52,6 +61,8 @@ FIPS σ₀ value. Routed through `compileFromHax_meets_spec`, this yields
 inlining the callee's verbatim extracted body.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.CompileFromHaxCall
@@ -97,7 +108,7 @@ def callerXNorm : ImpExpr :=
     explicit `callerXNorm`. Closed-term computation: `rfl`. This is the demo's
     rfl-probe pin — `callInline` inlines the verbatim σ₀ body and `anfLift`
     normalizes it. -/
-theorem callerNorm_eq : anfLift (callInline shaReg 100 callerSrc) = callerXNorm := rfl
+private theorem callerNorm_eq : anfLift (callInline shaReg 100 callerSrc) = callerXNorm := rfl
 
 /-- **The inlined-call body is value-preserving.** Its `denoteScalar` (the §2
     source semantics, parameter `"x"`, single input `I 0 = x`) is exactly the FIPS

@@ -3,7 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestWhile
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestWhile
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestWhile
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -373,8 +378,13 @@ theorem nestSegDN (env : LeafEnvM) (P : LprogM) : ∀ (d : Nat), SegLemmaDN env 
             have hcost1 : (match i.fst with
                 | .Lcall _ (sym, _) => fuelCostDN env d' ((env sym).getD []).dropLast + 2
                 | _ => 1) = 1 := by obtain ⟨dd, o, src, hd⟩ := hlopn; rw [hd]
-            rw [hcost1,
-              show 1 + fuelCostDN env (d' + 1) is + f = (fuelCostDN env (d' + 1) is + f) + 1 from by omega,
+            -- `hcost1` applies by unification, not by `rw`: `simp`/`rw` key on the
+            -- matcher constant, which the restated `match` does not share.
+            refine Eq.mpr (congrArg (fun n =>
+              lsemFuelMemLC env P (n + fuelCostDN env (d' + 1) is + f) s =
+                (lsemStraightMemDN env (d' + 1) (i :: is) s.base).bind fun b =>
+                  lsemFuelMemLC env P f { base := b, lfn := s.lfn, rstack := s.rstack }) hcost1) ?_
+            rw [show 1 + fuelCostDN env (d' + 1) is + f = (fuelCostDN env (d' + 1) is + f) + 1 from by omega,
               lsemFuelMemLC, hfetch]
             simp only []
             rw [evalInstrPMemLC_lopn env P i s hlopn, lsemStraightMemDN_succ_cons',
@@ -393,8 +403,11 @@ theorem nestSegDN (env : LeafEnvM) (P : LprogM) : ∀ (d : Nat), SegLemmaDN env 
                 | _ => 1) = fuelCostDN env d' calleeBody + 2 := by
               rw [hcall]; simp only []; rw [hsym]
               simp only [Option.getD_some, List.dropLast_concat]
-            rw [hcostcall,
-              show fuelCostDN env d' calleeBody + 2 + fuelCostDN env (d' + 1) is + f
+            refine Eq.mpr (congrArg (fun n =>
+              lsemFuelMemLC env P (n + fuelCostDN env (d' + 1) is + f) s =
+                (lsemStraightMemDN env (d' + 1) (i :: is) s.base).bind fun b =>
+                  lsemFuelMemLC env P f { base := b, lfn := s.lfn, rstack := s.rstack }) hcostcall) ?_
+            rw [show fuelCostDN env d' calleeBody + 2 + fuelCostDN env (d' + 1) is + f
                 = (fuelCostDN env d' calleeBody + 1 + (fuelCostDN env (d' + 1) is + f)) + 1 from by omega,
               lsemFuelMemLC, hfetch]
             simp only []

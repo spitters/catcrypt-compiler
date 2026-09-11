@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminUprogExport
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminUprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminUprogExport
 
 /-!
 # Named hypothesis: the exported `Uprog` is jasmin-`compile_prog_to_asm` well-formed
@@ -77,6 +80,8 @@ fields of `Ufundef.jasminWellFormed`. Per-clause discharge status against
 | Per-mnemonic `check_sopn` (`True`)      | OVER-APPROXIMATED           |
 | Per-call resolution (`True`)            | OVER-APPROXIMATED           |
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

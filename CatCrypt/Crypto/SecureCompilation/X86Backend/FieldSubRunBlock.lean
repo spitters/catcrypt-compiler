@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.FieldAddSubTierA
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.FieldAddSubTierA
 
 /-!
 # Tier-A modular field SUBTRACT: the emitted SBB borrow chain over `runBlock`
@@ -60,6 +62,8 @@ recombined-value layer is the same `valLimbs` codec the add side and
 `Cios4LimbProven` use. The emit tie (`Com → Lprog → .s`) remains the repo-wide
 `LprogExportFaithful` trust boundary, unchanged.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxHeartbeats 1000000

@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
-import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 
 /-!
 # The BATCHED (N=4) SHA-256 / SHA-512 block compression, emitted through the
@@ -73,6 +78,8 @@ passed as a `Sha2Params` record so the same emit core serves both:
 
 Invoke:  `lake build CatCrypt.Crypto.SecureCompilation.X86Backend.Sha2BatchedEmit`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

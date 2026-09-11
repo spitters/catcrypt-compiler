@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
-import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumCarryDecomp
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Cios4LimbProven
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumCarryDecomp
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Cios4LimbProven
 
 /-!
 # Verified MULX/ADCX/ADOX instruction selection for multiply-accumulate
@@ -44,6 +46,8 @@ bedrock2 spec, threaded through `FieldLeafBridge.lean`) keeps the result
   the selected `hi` register to the next column. A wrong spec would make the
   theorem vacuous, so it is pinned to the pre-existing reconstruction layer.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,10 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
-import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
-import CatCrypt.Crypto.Optimizer.Mem2Reg
-import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+public meta import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+public meta import CatCrypt.Crypto.Optimizer.Mem2Reg
+public import CatCrypt.Crypto.Optimizer.Mem2Reg
+public meta import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
+public import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
 
 /-!
 # SHA-256 round body in the `JInstr 64` backend IR, routed through the verified optimizer (#555)
@@ -68,6 +75,8 @@ base `fp`, which the driver must override (`spilledMaterialised`) — reloading 
 base would clobber it — so the rendered body is 95 lines, not the bare
 `spillReloadBlock` traffic count of 113.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -1172,10 +1181,10 @@ produces them from this file and no separate driver or Makefile rule carries the
 dependency. The output directory is gitignored: the renders are build outputs,
 obtained by building this module. -/
 
-#eval emitMain
-#eval emitGcMain
-#eval emitMain512
-#eval emitGcMain512
-#eval emitCompressMain
+-- #eval emitMain
+-- #eval emitGcMain
+-- #eval emitMain512
+-- #eval emitGcMain512
+-- #eval emitCompressMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.Sha256RoundRegAlloc

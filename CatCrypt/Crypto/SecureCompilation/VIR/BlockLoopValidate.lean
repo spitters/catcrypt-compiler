@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-!
 # Validate: the block-body runtime loop (`ComL.forLoopBlock`)
@@ -29,6 +32,8 @@ This is the node that retires MAYO/SolveGf16's G1 (multi-phase loop body) and G2
 (3-deep nesting) front gaps: their inner `RWhileNz` body is itself a loop over a
 sub-phase, which `forLoopNRt`'s `Com`-shaped `update` cannot carry.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

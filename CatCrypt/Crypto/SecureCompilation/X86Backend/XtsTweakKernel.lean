@@ -3,9 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
-import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
 # The AES-XTS tweak GF(2^128) doubling kernel through the owned x86 backend
@@ -41,6 +47,8 @@ machine-leakage trace independent of the (secret) tweak value.
 `void aes_xts_double(uint8_t *t)` — in-place doubling of the 16-byte
 little-endian tweak `t[0..16)`. `lo = t[0..8)`, `hi = t[8..16)`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -207,6 +215,6 @@ def emitMain : IO Unit := do
 The `.s` is written while this module elaborates, so `lake` owns the dependency
 between the kernel source and the bench artifact. -/
 
-#eval emitMain
+-- #eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.XtsTweakKernel

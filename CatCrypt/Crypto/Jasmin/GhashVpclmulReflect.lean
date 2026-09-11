@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
+module
+
+public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
 # GHASH-VPCLMUL reflect surface — carry-less multiply leaf through the verified front
@@ -75,6 +78,8 @@ Sail-x86 `clmul64_spec` on GHASH-style known-answer vectors
 * `CatCrypt/Crypto/Jasmin/UovReflect.lean` — sibling SIMD-leaf reference
 -/
 
+@[expose] public section
+
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 
 open CatCrypt.Crypto.Jasmin.LowCT
@@ -117,7 +122,7 @@ def ghashVpclmulMul128Pattern : LowCTPattern where
 /-- Tower type of a 128-bit GHASH block (`memref 2`). -/
 def ghashBlockTowerType : TowerType := .TBytes 16
 
-private def loc (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
+def locGhashVpclmul (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
 
 /-! ## 5. Pure-Lean GHASH inner kernel — the spec
 
@@ -136,9 +141,9 @@ noncomputable def ghashKernelLean (y h : GhashBlock) : GhashBlock :=
 /-- The `LowCT` body the reifier *would* produce for `ghashKernelLean`.
     Shape: `RSeq RSkip (RCall "ghash_vpclmul_mul128" __result [y, h])`. -/
 def ghashKernelBody : LowCT :=
-  let y_l      := loc "y"        ghashBlockTowerType
-  let h_l      := loc "h"        ghashBlockTowerType
-  let result_l := loc "__result" ghashBlockTowerType
+  let y_l      := locGhashVpclmul "y"        ghashBlockTowerType
+  let h_l      := locGhashVpclmul "h"        ghashBlockTowerType
+  let result_l := locGhashVpclmul "__result" ghashBlockTowerType
   .RSeq .RSkip
     (.RCall "ghash_vpclmul_mul128" result_l [y_l, h_l])
 

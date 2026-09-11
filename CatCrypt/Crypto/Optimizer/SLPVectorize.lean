@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.TileBackend.VectorBackendBridge
-import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+module
+
+import all Init.Data.Repr
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.TileBackend.VectorBackendBridge
+public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
 
 /-!
 # `slpVectorize`: verified superword-level (SLP) straight-line auto-vectorization
@@ -61,6 +65,8 @@ realizability hook (`slpLayout_localCut_realizes`).  The local cut is the
 `identity`-layout instance of that functional; the global solver (assign layouts
 to minimize total conversion cost) is future work and documented at the functional.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,17 +3,20 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportSha2
-import CatCrypt.Crypto.SecureCompilation.VIR.Sha2Emit
-import CatCrypt.Crypto.SecureCompilation.VIR.Sha2RotateSelect
-import CatCrypt.Crypto.SecureCompilation.VIR.AesBitsliceEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElf
-import CatCrypt.Crypto.Optimizer.Batch8
-import CatCrypt.Crypto.Optimizer.Batch8Emit
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportSha2
+public import CatCrypt.Crypto.SecureCompilation.VIR.Sha2Emit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Sha2RotateSelect
+public import CatCrypt.Crypto.SecureCompilation.VIR.AesBitsliceEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElf
+public import CatCrypt.Crypto.Optimizer.Batch8
+public import CatCrypt.Crypto.Optimizer.Batch8Emit
 
 /-!
 # Compiled SHA-2 linear-jasmin owned-RA producer (task #469 / #462 / #475)
@@ -39,6 +42,8 @@ and the wider sigma-rotate immediate window — all handled by the
 pressure than SHA-256, so it spills more; `read_linear`'s #470 reserved
 stack frame sizes itself from the emitted spill count (8-byte cells).
 -/
+
+@[expose] public section
 
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect (jasminDialect)
@@ -137,7 +142,7 @@ def emitOne {w : Nat} (com : Com jasminDialect (inCtxt w) (Rw w))
   -- `LprogAsmPrinter.renderLprogAtt`, removing the patched-jasmin encoder.
   -- Written as `<base>_x86_from_lean.s` next to the `.lprogbin`, assembled by
   -- `gas` exactly like the hand-authored `*_x86_from_lean.s` kernels.
-  let base := outPath.toString.dropRight 9   -- strip ".lprogbin"
+  let base := (outPath.toString.dropEnd 9).toString   -- strip ".lprogbin"
   let ownedPath : System.FilePath := base ++ "_x86_from_lean.s"
   let asm := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned lp
   let t0 ← IO.monoNanosNow
@@ -243,7 +248,7 @@ def emitOneBatch8 {w : Nat} (com : Com jasminDialect (inCtxt w) (Rw w))
       sha256ImmSlots256 sha256InLoad256 sha256OutStore256 (abiW := 256)
   IO.println s!"  [stage] Lprog lowered: {lp.lp_funcs.length} func(s); rendering..."
   let asm := CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwnedReserveVecScratch lp
-  let base := outPath.toString.dropRight 9   -- strip ".lprogbin"
+  let base := (outPath.toString.dropEnd 9).toString   -- strip ".lprogbin"
   let ownedPath : System.FilePath := base ++ "_x8_x86_from_lean.s"
   IO.FS.writeFile ownedPath (asm ++ "\n")
   IO.println s!"OWNED batch8 emit OK : {ownedPath} ({asm.toUTF8.size} bytes, symbol {fnName}_x8, {cellBytes}B x8 lanes)"

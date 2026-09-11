@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.BigNat
+module
+
+public import CatCrypt.Crypto.SecureCompilation.BigNat
 
 /-!
 # Bitwise operations on the `BigNat` limb carrier
@@ -30,6 +32,8 @@ operand with zero limbs to a common length, matching the zero-extension in the
   (bignumVal a) (bignumVal b)` and the `lor` / `xor` analogues, for arbitrary
   limb lengths.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,10 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxLeaves
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxKeccak
-import CatCrypt.Crypto.Util.Sha256Verified
-import CatCrypt.Crypto.Primitives.Keccak
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxLeaves
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxKeccak
+public import CatCrypt.Crypto.Util.Sha256Verified
+public import CatCrypt.Crypto.Primitives.Keccak
 
 /-!
 # #607 Phase 3b: DIRECT functional ties — SHA-2 & Keccak compile-from-hax leaves = FIPS spec fns
@@ -70,6 +73,8 @@ We do **not** claim the width-32 leaf equals the width-64 `Keccak.chi` (it canno
 we tie the leaf to the FIPS χ-lane formula and separately record that `Keccak.chi` is that
 formula at width 64.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

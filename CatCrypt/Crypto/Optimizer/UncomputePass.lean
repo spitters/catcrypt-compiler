@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Rewrite.Egraph
+module
+
+public meta import CatCrypt.Crypto.Optimizer.Rewrite.Egraph
+public import CatCrypt.Crypto.Optimizer.Rewrite.Egraph
 
 /-!
 # IR-level uncompute-after-last-use (dead-store elimination) for `Com`
@@ -67,6 +70,8 @@ free reclamation of the slot.
 
 All goals closed. No `sorry`. `uncompute_denote` checks against only `propext`
 and `Quot.sound`. -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -414,7 +419,7 @@ and the return past the freed slot. The demo checks denotation preservation via
 the general theorem and a concrete value. -/
 
 /-- A `reg 32` binary `regArith` helper for the demo. -/
-private def binR32 {Γ : Ctxt jasminDialect} (op : JasminBinOp)
+def binR32 {Γ : Ctxt jasminDialect} (op : JasminBinOp)
     (a b : Ctxt.Var Γ (.reg 32)) : Expr jasminDialect Γ (.reg 32) :=
   { op := .regArith op 32, retTy_eq := rfl, args := .cons a (.cons b .nil) }
 

@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
-import Mathlib.Tactic.Ring
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
+public import Mathlib.Tactic.Ring
 
 /-!
 # The width-32 word value layer for the ascent calculus (ChaCha / SHA-256 / BLAKE3)
@@ -53,6 +56,8 @@ purely in ParamTransfer and has no width baked in:
   fragment `IsArithClean32`, the exact 32-bit analogue of `ExprLeaf`'s
   `wEnc_evalBV_evalZMod`, over a self-contained width-32 word evaluator `evalBV32`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSdithGf251
-import CatCrypt.Crypto.Util.ZMod251
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSdithGf251
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSdithGf251
+public meta import CatCrypt.Crypto.Util.ZMod251
+public import CatCrypt.Crypto.Util.ZMod251
 
 /-!
 # #607 fan-out: the emitted SDitH GF(251) multiply leaf EQUALS the abstract field op
@@ -28,6 +32,8 @@ the integer multiply, and `(a·b) % 251` projected to `ZMod 251` is the field
 product `↑a · ↑b`. No `decide`/`native_decide` here — it is the genuine prime-field
 reduce identity, lifted to the Mathlib field through `ZMod.natCast_*`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

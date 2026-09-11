@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.FrontLoopBodyArrMemNWalk
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpFrontDenote
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpFrontTotal
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.FrontLoopBodyArrMemNWalk
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpFrontDenote
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpFrontTotal
 
 /-!
 # The front-compiled `mpn_cmp` limb body is an `ArrMemN` member
@@ -29,6 +31,8 @@ body command list.
 * `cmpUpdate_arrMemN` — the front-compiled `mpn_cmp` limb body is a member of the
   array-returning stack-memory fragment `ArrMemN`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -265,7 +269,7 @@ theorem transFromArr_ltuCmds {B W : String → Prop} {l : List LowCT} {dst : Str
 /-! ## 3. The memref-typed derivation of the `mpn_cmp` limb body -/
 
 /-- A pinned scalar read from a bound name. -/
-private def rdVar {R : String → Prop} (nm : String) {c : Char} {t : List Char}
+def rdVar {R : String → Prop} (nm : String) {c : Char} {t : List Char}
     (hh : nm.toList = c :: t) (hc : c ≠ '_') (hm : R nm) : ReadsFrom R (sv nm) :=
   readsFrom_var (x := nm) (notTmp_of_headNe hh hc) hm
 

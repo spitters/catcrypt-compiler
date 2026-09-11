@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.EcRealizationGeneric
-import CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveDialect
+module
+public import Mathlib.Algebra.Field.ZMod
+
+public import Mathlib.Tactic.NormNum.Prime
+public import CatCrypt.Crypto.SecureCompilation.EcRealizationGeneric
+public import CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveDialect
 
 /-!
 # Generic relational-EC → EllipticCurve-dialect connection (`a = 0`, proved once)
@@ -72,6 +76,8 @@ attempted here — they are the deep EC group theorem the generic MSM carries.
 `[Fact (Nat.Prime p)]`, and `ha : params.a = 0` is a hypothesis on `params`, not an
 asserted axiom).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

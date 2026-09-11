@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.ArrStoreLeaf
-import CatCrypt.Crypto.SecureCompilation.Ascent.EmitBridge
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.ArrStoreLeaf
+public import CatCrypt.Crypto.SecureCompilation.Ascent.EmitBridge
 
 /-!
 # The emit keystone for the array-store leaf
@@ -53,6 +55,8 @@ closed store `RArrStore`, so the array keystone's abstraction inputs are jointly
 satisfiable (the bridge is not vacuous); the emit-side data is the standard
 covered-kernel input to the end-to-end theorem.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

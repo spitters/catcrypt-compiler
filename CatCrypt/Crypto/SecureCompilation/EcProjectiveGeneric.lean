@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.EcRealizationGeneric
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.EcRealizationGeneric
 
 /-!
 # Generic short-Weierstrass (`a = 0`) Jacobian point-double for general `Z`
@@ -41,6 +44,8 @@ This is the **canonical parametric form** (`@canonical_parametric` — genuinely
 the base field).  0 sorries; no custom axioms; the field-algebra tie is unconditional given the
 field structure plus the four numeral-nonvanishing hypotheses and `Z ≠ 0`, `Y ≠ 0`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

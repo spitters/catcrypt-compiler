@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.RingTheory.AdjoinRoot
-import Mathlib.RingTheory.Ideal.Quotient.Operations
-import Mathlib.Algebra.Polynomial.Div
+module
+
+public import Mathlib.RingTheory.AdjoinRoot
+public import Mathlib.RingTheory.Ideal.Quotient.Operations
+public import Mathlib.Algebra.Polynomial.Div
 
 /-!
 # Negacyclic / Incomplete NTT Convolution
@@ -77,6 +79,8 @@ underlying `incompleteNTT` is Mathlib's `Ideal.quotientInfRingEquivPiQuotient`.
 * [National Institute of Standards and Technology, *Module-Lattice-Based
   Key-Encapsulation Mechanism Standard*, FIPS 203, 2024][fips203]
 -/
+
+@[expose] public section
 
 open Polynomial
 
@@ -205,32 +209,32 @@ theorem negaPoly_monic {n : ℕ} (hn : 0 < n) : (negaPoly (R := R) n).Monic := b
   exact_mod_cast hn
 
 /-- Low-degree part `∑_{k<n} (coeff k) X^k`. -/
-private noncomputable def loPart (p : R[X]) (n : ℕ) : R[X] :=
+noncomputable def loPart (p : R[X]) (n : ℕ) : R[X] :=
   ∑ k ∈ Finset.range n, C (p.coeff k) * X ^ k
 
 /-- High-degree part shifted down: `∑_{k<n} (coeff (k+n)) X^k`. -/
-private noncomputable def hiPart (p : R[X]) (n : ℕ) : R[X] :=
+noncomputable def hiPart (p : R[X]) (n : ℕ) : R[X] :=
   ∑ k ∈ Finset.range n, C (p.coeff (k + n)) * X ^ k
 
-private theorem coeff_loPart (p : R[X]) (n d : ℕ) :
+theorem coeff_loPart (p : R[X]) (n d : ℕ) :
     (loPart p n).coeff d = if d < n then p.coeff d else 0 := by
   unfold loPart
   rw [finsetSum_coeff]
   simp only [coeff_C_mul, coeff_X_pow, mul_ite, mul_one, mul_zero, Finset.sum_ite_eq,
     Finset.mem_range]
 
-private theorem coeff_hiPart (p : R[X]) (n d : ℕ) :
+theorem coeff_hiPart (p : R[X]) (n d : ℕ) :
     (hiPart p n).coeff d = if d < n then p.coeff (d + n) else 0 := by
   unfold hiPart
   rw [finsetSum_coeff]
   simp only [coeff_C_mul, coeff_X_pow, mul_ite, mul_one, mul_zero, Finset.sum_ite_eq,
     Finset.mem_range]
 
-private theorem bot_lt_n (n : ℕ) : (⊥ : WithBot ℕ) < (n : ℕ) := by
+theorem bot_lt_n (n : ℕ) : (⊥ : WithBot ℕ) < (n : ℕ) := by
   rw [Nat.cast_withBot]
   exact WithBot.bot_lt_coe n
 
-private theorem degree_loPart_lt (p : R[X]) (n : ℕ) :
+theorem degree_loPart_lt (p : R[X]) (n : ℕ) :
     (loPart p n).degree < (n : ℕ) := by
   unfold loPart
   refine lt_of_le_of_lt (degree_sum_le _ _) ?_
@@ -240,7 +244,7 @@ private theorem degree_loPart_lt (p : R[X]) (n : ℕ) :
   refine lt_of_le_of_lt (degree_C_mul_X_pow_le k _) ?_
   exact_mod_cast hk
 
-private theorem degree_hiPart_lt (p : R[X]) (n : ℕ) :
+theorem degree_hiPart_lt (p : R[X]) (n : ℕ) :
     (hiPart p n).degree < (n : ℕ) := by
   unfold hiPart
   refine lt_of_le_of_lt (degree_sum_le _ _) ?_
@@ -251,7 +255,7 @@ private theorem degree_hiPart_lt (p : R[X]) (n : ℕ) :
   exact_mod_cast hk
 
 /-- If `p` has degree `< 2n` then `p = loPart + hiPart * X^n` (the high/low split). -/
-private theorem split_eq (p : R[X]) {n : ℕ}
+theorem split_eq (p : R[X]) {n : ℕ}
     (hp : p.degree < (2 * n : ℕ)) :
     p = loPart p n + hiPart p n * X ^ n := by
   ext d
@@ -430,7 +434,7 @@ theorem incompleteNTT_two_map_mul (f₀ f₁ : R[X])
 
 /-- Reducing modulo a polynomial `F` is invisible to the quotient map `R[X] → R[X] ⧸ (F)`:
 `AdjoinRoot.mk F` (which *is* `Ideal.Quotient.mk (span {F})`) identifies `p` with `p %ₘ F`. -/
-private theorem mk_modByMonic (F p : R[X]) :
+theorem mk_modByMonic (F p : R[X]) :
     AdjoinRoot.mk F (p %ₘ F) = AdjoinRoot.mk F p := by
   rw [AdjoinRoot.mk_eq_mk, modByMonic_eq_sub_mul_div p F]
   exact ⟨-(p /ₘ F), by ring⟩

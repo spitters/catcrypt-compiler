@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.NTTFullInversionGeneric
+module
+
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTFullInversionGeneric
 
 /-!
 # DFT bijection: the synthesis half `dft ∘ idft = id`
@@ -31,6 +33,8 @@ bound variable `l` sits on the right of `k = l`) kills the outer `l`-sum, leavin
 `dftEquiv` packages `dft` and `idft` into an `Equiv (Fin n → R) (Fin n → R)`
 whose `left_inv`/`right_inv` are `idft_dft` and `dft_idft`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
-import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
-import CatCrypt.Crypto.Optimizer.StoreToLoadForward
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public import CatCrypt.Crypto.Optimizer.StoreToLoadForward
 
 /-!
 # Verified mem2reg / scalar-replacement: promote frame-slot scratch to registers (#415)
@@ -57,6 +60,8 @@ final-state agreement on registers + protected cells. The applied X25519 body's 
 identity is the runtime KAT vs RFC 7748 + s2n (the leaf discipline), and the
 per-slot scratch promotion count is reported by `mem2reg` on the fused body.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

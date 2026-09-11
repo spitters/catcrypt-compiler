@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.BignumCondSubEmit
-import CatCrypt.Crypto.SecureCompilation.BignumSubEmit
+module
+
+public import CatCrypt.Crypto.SecureCompilation.BignumCondSubEmit
+public import CatCrypt.Crypto.SecureCompilation.BignumSubEmit
 
 /-!
 # Composing the emitted 2-limb blocks into a value-level Barrett reduction step
@@ -39,6 +41,8 @@ products (`mulBignum`) are the `emitProductBlock4` / schoolbook kernels and the 
 is `bignumVal_drop` (a reindexing). The arithmetic is kept symbolic in `2^128` and the
 Nat-only obligations are discharged by `omega`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.BarrettReduceEmit
 

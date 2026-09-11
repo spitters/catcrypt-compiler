@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.EgraphOracle
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Optimizer.EgraphOracle
 
 /-!
 # E-graph instruction-SELECTION demonstrator: GF(16) multiply (Zen4 vs no-GFNI)
@@ -72,6 +75,8 @@ picks the hand-picked one; it says nothing about RA.
 All goals closed. Axiom set inherited from `EgraphOracle` (`propext`,
 `Quot.sound`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
-import CatCrypt.Crypto.SecureCompilation.VIR.LatticeNttEmit
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
+public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeNttEmit
 
 /-!
 # ML-DSA-65 / ML-KEM-768 4-way NTT through the structured VectorDialect (task #275)
@@ -35,6 +38,8 @@ KAT (`bench/mldsa_compare/`, `bench/mlkem_compare/` against PQClean /
 `Mathlib.Polynomial`-mod-q) that validates the direct emit validates this path
 verbatim — no new bytes, no fabricated KAT.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

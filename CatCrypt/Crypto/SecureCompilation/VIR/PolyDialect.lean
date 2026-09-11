@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.LatticeNTTSemantic
-import CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeNTTSemantic
+public import CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic
 
 /-!
 # Poly VIR dialect (#482-4 — the L4′ polynomial-ring layer, over Field/ModArith)
@@ -86,6 +89,8 @@ schedules (the whole point of a constant-time NTT is that the twiddle access
 pattern is data-independent) — so `ctSafe` is `true` for all ops.  This is the
 L4′ instance of the VIR `ctSafe` story (`CTPredicate.lean`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.Submul1Prototype
-import CatCrypt.Crypto.Jasmin.Mpn.AddMul1AdxPrototype
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.Mpn.Submul1Prototype
+public import CatCrypt.Crypto.Jasmin.Mpn.Submul1Prototype
+public meta import CatCrypt.Crypto.Jasmin.Mpn.AddMul1AdxPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.AddMul1AdxPrototype
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -52,7 +59,7 @@ The complement-and-ADCX approach moves the borrow into the CF chain
    borrow polarity, three extra lemma layers vs the SBB-chain.
 
 So this prototype ships the **plain-SBB-chain interleaved with MULX** schedule:
-the MULX gives the genuine parallel-issue win (no flag side effects, so the
+the MULX gives the parallel-issue win (no flag side effects, so the
 OOO engine dispatches the multiply ahead of the borrow chain), and the
 ADD/SUB carry+borrow chains threading through the same per-limb step preserve
 the spec definitionally.  Honest performance assessment: this captures the
@@ -128,7 +135,7 @@ open CatCrypt.Crypto.Jasmin
 open CatCrypt.Crypto.Jasmin.BignumExec
 open CatCrypt.Crypto.Jasmin.Emit
 open CatCrypt.Crypto.Jasmin.MemoryModel
-open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype hiding vr pv loadAt0 storeAt0 binImm
 open CatCrypt.Crypto.Jasmin.Mpn.Mul1Prototype
 open CatCrypt.Crypto.Jasmin.Mpn.Addmul1Prototype
 open CatCrypt.Crypto.Jasmin.Mpn.Submul1Prototype

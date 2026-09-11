@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering
 
 /-!
 # GAS RV64 asm printer for the scalar RISC-V machine instructions (#535)
@@ -37,6 +41,8 @@ rotate scratch, well under the temp pool, so it never spills. `reserved` names
 (args/outputs) are pinned to the argument registers `a0..` for the whole
 function (matching the RV64 calling convention `a0–a7`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

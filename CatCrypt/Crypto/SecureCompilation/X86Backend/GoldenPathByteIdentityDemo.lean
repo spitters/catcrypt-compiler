@@ -3,18 +3,32 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
-import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherImmForms
-import CatCrypt.Crypto.SecureCompilation.AsconLinearGoldenPath
-import CatCrypt.Crypto.SecureCompilation.AsconSboxGoldenPath
-import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
-import CatCrypt.Crypto.SecureCompilation.FieldModOpsGoldenPath
-import CatCrypt.Crypto.SecureCompilation.FieldSubBorrowGoldenPath
-import CatCrypt.Crypto.SecureCompilation.Sha512BitFuncsGoldenPath
-import CatCrypt.Crypto.SecureCompilation.KeccakBitGoldenPath
-import CatCrypt.Crypto.SecureCompilation.BranchlessSarGoldenPath
-import CatCrypt.Crypto.SecureCompilation.BranchlessSelectGoldenPath
-import CatCrypt.Crypto.SecureCompilation.VarShiftEmitGoldenPath
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherImmForms
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherImmForms
+public meta import CatCrypt.Crypto.SecureCompilation.AsconLinearGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.AsconLinearGoldenPath
+public meta import CatCrypt.Crypto.SecureCompilation.AsconSboxGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.AsconSboxGoldenPath
+public meta import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+public meta import CatCrypt.Crypto.SecureCompilation.FieldModOpsGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.FieldModOpsGoldenPath
+public meta import CatCrypt.Crypto.SecureCompilation.FieldSubBorrowGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.FieldSubBorrowGoldenPath
+public meta import CatCrypt.Crypto.SecureCompilation.Sha512BitFuncsGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.Sha512BitFuncsGoldenPath
+public meta import CatCrypt.Crypto.SecureCompilation.KeccakBitGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.KeccakBitGoldenPath
+public meta import CatCrypt.Crypto.SecureCompilation.BranchlessSarGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.BranchlessSarGoldenPath
+public meta import CatCrypt.Crypto.SecureCompilation.BranchlessSelectGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.BranchlessSelectGoldenPath
+public meta import CatCrypt.Crypto.SecureCompilation.VarShiftEmitGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.VarShiftEmitGoldenPath
 
 /-!
 # `GoldenPathByteIdentityDemo` — re-homed `#eval` byte-identity certificates
@@ -37,6 +51,8 @@ evidence on the real kernels, not part of any proof term.
 
 No `sorry`, no axiom, no `native_decide`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminCTPredicate
-import CatCrypt.Crypto.SecureCompilation.VIR.RobustSafety
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminCTPredicate
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminCTPredicate
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.RobustSafety
+public import CatCrypt.Crypto.SecureCompilation.VIR.RobustSafety
 
 /-!
 # Constant-time / robust-safety theory for bounded for-loops (`JForProg`)
@@ -88,6 +93,8 @@ data-independence above.
 
 All goals closed; the leaf / step edges are explicit hypotheses, never `sorry`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -413,7 +420,7 @@ theorem loopRun_eq_foldl {accTy : JasminTy} (p : JForProg accTy)
 
 /-- A `foldl` of two functions that agree everywhere over the same list and
     seed coincide. -/
-private theorem foldl_congr_fun {accTy : JasminTy} {β : Type}
+theorem foldl_congr_fun {accTy : JasminTy} {β : Type}
     (f g : ⟦accTy⟧ → β → ⟦accTy⟧)
     (hfg : ∀ acc u, f acc u = g acc u) :
     ∀ (l : List β) (init : ⟦accTy⟧), l.foldl f init = l.foldl g init

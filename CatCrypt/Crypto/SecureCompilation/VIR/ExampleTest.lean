@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Core
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
 
 /-!
 # VIR example: a tiny arithmetic dialect
@@ -14,6 +16,8 @@ Smoke-tests the VIR framework with a single-type, three-op dialect:
 `add`, `mul`, `const`. Shows that `Dialect` / `DialectSignature` /
 `DialectDenote` / `Expr` / `Com` work end-to-end.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.ExampleTest
 

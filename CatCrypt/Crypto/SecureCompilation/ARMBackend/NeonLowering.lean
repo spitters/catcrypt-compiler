@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonModel
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonModel
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonModel
 
 /-!
 # Wiring a register-named packed-u32 op alphabet to the NEON machine model (#548)
@@ -30,6 +34,8 @@ verified down to the model; the model's lane semantics is differential-validated
 (the RFC 8439 KAT below + the qemu-aarch64 emitted-kernel KAT in
 `bench/arm_compare/`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

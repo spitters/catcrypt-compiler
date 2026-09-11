@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtended
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtended
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtended
 
 /-!
 # Additive `Linstr → JInstr` coverage superset: MULX/ADX + register-indexed memory
@@ -97,6 +100,8 @@ it for the ADX blocks.
   `VPACK8u64:`, and every non-`Lopn` `LinstrR` (`Lsyscall`/…/`Lcond`) — out of
   scope here (each is a separate follow-up).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Denote
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Denote
 
 /-!
 # MLIR `vector` dialect — AVX-512 lowering pass (task #276)
@@ -70,6 +73,8 @@ holds (the per-lane semantics is unchanged by width), so they are *correct
 when the extension is present* — the gap is an ISA-availability concern, not a
 semantic one, and is surfaced explicitly.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

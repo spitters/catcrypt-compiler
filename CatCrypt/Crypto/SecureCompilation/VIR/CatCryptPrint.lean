@@ -3,9 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Print
-import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.CryptoToVIR
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Print
+public import CatCrypt.Crypto.SecureCompilation.VIR.Print
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.CryptoToVIR
+public import CatCrypt.Crypto.SecureCompilation.VIR.CryptoToVIR
 
 /-!
 # DialectPrint instance for catCryptDialect
@@ -38,6 +44,8 @@ Pair/sum/mkPair/inl/inr emit `llvm.struct`/`llvm.insertvalue` ops from
 the LLVM dialect (not covered here in detail — see upstream's
 `Dialects/LLVM/Syntax/Pretty/*.lean` for exact grammar).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.CatCryptPrint
 

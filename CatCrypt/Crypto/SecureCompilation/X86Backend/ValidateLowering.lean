@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.WellFormedX86
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulWholeFn
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.WellFormedX86
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.WellFormedX86
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulWholeFn
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulWholeFn
 
 /-!
 # `ValidateLowering`: a decidable translation-validation gate for the owned lowering
@@ -85,6 +90,8 @@ The KEY deliverable: `validateLowering p = true` discharges
 `wfLprog` (clause a) — the three preconditions whose decidable→semantic bridge is
 fully closable here.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

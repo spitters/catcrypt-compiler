@@ -3,14 +3,25 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookProductRunBlock
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MontReduceRunBlock
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Cios4LimbProven
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4LimbTierA
-import CatCrypt.Crypto.SecureCompilation.X86Backend.PastaBignumTierA
-import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
-import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookProductRunBlock
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookProductRunBlock
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.MontReduceRunBlock
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MontReduceRunBlock
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Cios4LimbProven
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Cios4LimbProven
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4LimbTierA
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4LimbTierA
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.PastaBignumTierA
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.PastaBignumTierA
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
+public meta import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 
 /-!
 # 4-limb curve Montgomery multiply emitted from PROVEN blocks (generalized SM2)
@@ -64,6 +75,8 @@ primes: each `<curve>Limbs_value` (vendored in `Cios4LimbProven` /
 `Curve4LimbTierA` / `PastaBignumTierA`) and each `<curve>NPrime_pin`
 (`(p₀ · n') % 2^64 = 2^64 − 1`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

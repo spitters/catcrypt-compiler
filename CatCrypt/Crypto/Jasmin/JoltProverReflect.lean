@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
+module
+
+public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
 # Jolt prover reflect surface — Tier 1 full-emit (ZK honesty roadmap)
@@ -73,6 +76,8 @@ sum-check rounds with a `|M| = 8`-element Lasso grand product.
   grand-product realizations the emitted leaves inherit).
 * Sibling: `CatCrypt/Crypto/Jasmin/SpartanSumCheckReflect.lean`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 
@@ -209,28 +214,28 @@ def joltDigestTowerType : TowerType := .TBytes 32
 def joltFeltTowerType : TowerType := .TBytes 8
 def joltWitnessTowerType : TowerType := .TBytes 32
 
-private def loc (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
+def locJoltProver (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
 
 /-- Body for `n = 3` sum-check rounds + an `|M| = 8` Lasso grand product. -/
 def joltProverBody3 : LowCT :=
-  let w_l   := loc "w"        joltWitnessTowerType
-  let lk_l  := loc "lk"       (joltLookupsTowerType 8)
-  let c0_l  := loc "c0"       joltDigestTowerType
-  let r0_l  := loc "r0"       (joltRoundPolyTowerType 3)
-  let cm0_l := loc "cm0"      joltDigestTowerType
-  let a0_l  := loc "a0"       joltFeltTowerType
-  let v0_l  := loc "v0"       joltFeltTowerType
-  let r1_l  := loc "r1"       (joltRoundPolyTowerType 3)
-  let cm1_l := loc "cm1"      joltDigestTowerType
-  let a1_l  := loc "a1"       joltFeltTowerType
-  let v1_l  := loc "v1"       joltFeltTowerType
-  let r2_l  := loc "r2"       (joltRoundPolyTowerType 3)
-  let cm2_l := loc "cm2"      joltDigestTowerType
-  let a2_l  := loc "a2"       joltFeltTowerType
-  let v2_l  := loc "v2"       joltFeltTowerType
-  let gp_l  := loc "gp"       joltFeltTowerType
-  let open_l := loc "open"    joltDigestTowerType
-  let res_l := loc "__result" joltDigestTowerType
+  let w_l   := locJoltProver "w"        joltWitnessTowerType
+  let lk_l  := locJoltProver "lk"       (joltLookupsTowerType 8)
+  let c0_l  := locJoltProver "c0"       joltDigestTowerType
+  let r0_l  := locJoltProver "r0"       (joltRoundPolyTowerType 3)
+  let cm0_l := locJoltProver "cm0"      joltDigestTowerType
+  let a0_l  := locJoltProver "a0"       joltFeltTowerType
+  let v0_l  := locJoltProver "v0"       joltFeltTowerType
+  let r1_l  := locJoltProver "r1"       (joltRoundPolyTowerType 3)
+  let cm1_l := locJoltProver "cm1"      joltDigestTowerType
+  let a1_l  := locJoltProver "a1"       joltFeltTowerType
+  let v1_l  := locJoltProver "v1"       joltFeltTowerType
+  let r2_l  := locJoltProver "r2"       (joltRoundPolyTowerType 3)
+  let cm2_l := locJoltProver "cm2"      joltDigestTowerType
+  let a2_l  := locJoltProver "a2"       joltFeltTowerType
+  let v2_l  := locJoltProver "v2"       joltFeltTowerType
+  let gp_l  := locJoltProver "gp"       joltFeltTowerType
+  let open_l := locJoltProver "open"    joltDigestTowerType
+  let res_l := locJoltProver "__result" joltDigestTowerType
   .RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq
   (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq .RSkip
     (.RCall "jolt_commit_witness"        c0_l  [w_l]))

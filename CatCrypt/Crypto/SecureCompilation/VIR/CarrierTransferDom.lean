@@ -3,10 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.TransferDwordTransport
-import CatCrypt.Crypto.SecureCompilation.VIR.Sha256DwordLane
-import Transfer.Statements.ParamTransferTac
-import Transfer.Integrations.ParamNormCast
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.TransferDwordTransport
+public import CatCrypt.Crypto.SecureCompilation.VIR.Sha256DwordLane
+public import Transfer.Statements.ParamTransferTac
+public import Transfer.Integrations.ParamNormCast
 
 /-!
 # A NON-DIAGONAL `TransferDom` for a compiler carrier change (`lo32`)
@@ -81,6 +84,8 @@ built only from the public `Param`/`TransferDom` constructors and the
 `ParamNormCast` `RArrow`/`paramWitOfCastHom` shape. The trust is the `BitVec`
 lane-arithmetic the dword model already carries; no new primitive is introduced.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

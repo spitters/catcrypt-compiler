@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminCom
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminCom
 
 /-!
 # CProg-free value/type transports for the Jasmin lowering
@@ -36,6 +38,8 @@ many consumers that `open … CryptoToJasminComCorrect (ctTransTy …)` resolve
 unchanged; `CryptoToJasminComCorrect.lean` and `DialectToJasminComCorrect.lean`
 both source them from here.
 -/
+
+@[expose] public section
 
 set_option autoImplicit true -- SSA IR front: many context/type variables
 

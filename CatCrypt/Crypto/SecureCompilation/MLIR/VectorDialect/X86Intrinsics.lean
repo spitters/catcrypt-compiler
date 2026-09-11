@@ -3,10 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.BitVec
-import Mathlib.Algebra.Group.Defs
-import Mathlib.Tactic
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Types
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import Mathlib.Data.BitVec
+public import Mathlib.Algebra.Group.Defs
+public meta import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Types
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Types
+public import Std.Tactic.BVDecide
 
 /-!
 # MLIR `vector` dialect — x86 SIMD intrinsic semantics
@@ -53,6 +57,8 @@ hand-evaluated Intel SDM example, closed by `native_decide`.
 For each, a `#guard` (or `theorem … := by native_decide`) sanity-checks a
 canonical input → expected output.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

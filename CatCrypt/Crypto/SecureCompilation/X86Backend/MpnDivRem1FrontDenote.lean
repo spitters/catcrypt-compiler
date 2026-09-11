@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1FrontEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1FrontTotal
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontDenote
+module
+
+import all Init.Data.Repr
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1FrontEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1FrontTotal
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontDenote
 
 /-!
 # The `mpn_divrem_1` loop body against its source semantics
@@ -46,6 +50,8 @@ carries the fold to the reciprocal step and stops there.
 * `divRtProg_fold` — the runtime-trip program's denotation is the `preinvFold`
   memref-carrier fold of the reciprocal step, with no remaining hypothesis.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -88,37 +94,37 @@ Each source variable's not-a-temporary fact is proved once — the `by decide` o
 the below-`4` name length is paid a single time per name — and referenced at the
 freshness sites below, instead of re-deciding the string length at each site. -/
 
-private theorem nt_c0 : ¬ isTmpName "c0" := notTmp_of_short _ (by decide)
-private theorem nt_c0q : ¬ isTmpName "c0q" := notTmp_of_short _ (by decide)
-private theorem nt_c0r : ¬ isTmpName "c0r" := notTmp_of_short _ (by decide)
-private theorem nt_c1 : ¬ isTmpName "c1" := notTmp_of_short _ (by decide)
-private theorem nt_c1q : ¬ isTmpName "c1q" := notTmp_of_short _ (by decide)
-private theorem nt_c1r : ¬ isTmpName "c1r" := notTmp_of_short _ (by decide)
-private theorem nt_c2 : ¬ isTmpName "c2" := notTmp_of_short _ (by decide)
-private theorem nt_c2q : ¬ isTmpName "c2q" := notTmp_of_short _ (by decide)
-private theorem nt_c2r : ¬ isTmpName "c2r" := notTmp_of_short _ (by decide)
-private theorem nt_c3 : ¬ isTmpName "c3" := notTmp_of_short _ (by decide)
-private theorem nt_d : ¬ isTmpName "d" := notTmp_of_short _ (by decide)
-private theorem nt_idx : ¬ isTmpName "idx" := notTmp_of_short _ (by decide)
-private theorem nt_j : ¬ isTmpName "j" := notTmp_of_short _ (by decide)
-private theorem nt_m1 : ¬ isTmpName "m1" := notTmp_of_short _ (by decide)
-private theorem nt_m3 : ¬ isTmpName "m3" := notTmp_of_short _ (by decide)
-private theorem nt_n : ¬ isTmpName "n" := notTmp_of_short _ (by decide)
-private theorem nt_p : ¬ isTmpName "p" := notTmp_of_short _ (by decide)
-private theorem nt_qh : ¬ isTmpName "qh" := notTmp_of_short _ (by decide)
-private theorem nt_qhb : ¬ isTmpName "qhb" := notTmp_of_short _ (by decide)
-private theorem nt_qhc : ¬ isTmpName "qhc" := notTmp_of_short _ (by decide)
-private theorem nt_ql : ¬ isTmpName "ql" := notTmp_of_short _ (by decide)
-private theorem nt_qla : ¬ isTmpName "qla" := notTmp_of_short _ (by decide)
-private theorem nt_qp : ¬ isTmpName "qp" := notTmp_of_short _ (by decide)
-private theorem nt_r : ¬ isTmpName "r" := notTmp_of_short _ (by decide)
-private theorem nt_ra : ¬ isTmpName "ra" := notTmp_of_short _ (by decide)
-private theorem nt_rs : ¬ isTmpName "rs" := notTmp_of_short _ (by decide)
-private theorem nt_top : ¬ isTmpName "top" := notTmp_of_short _ (by decide)
-private theorem nt_u0 : ¬ isTmpName "u0" := notTmp_of_short _ (by decide)
-private theorem nt_u1 : ¬ isTmpName "u1" := notTmp_of_short _ (by decide)
-private theorem nt_u1p : ¬ isTmpName "u1p" := notTmp_of_short _ (by decide)
-private theorem nt_up : ¬ isTmpName "up" := notTmp_of_short _ (by decide)
+theorem nt_c0 : ¬ isTmpName "c0" := notTmp_of_short _ (by decide)
+theorem nt_c0q : ¬ isTmpName "c0q" := notTmp_of_short _ (by decide)
+theorem nt_c0r : ¬ isTmpName "c0r" := notTmp_of_short _ (by decide)
+theorem nt_c1 : ¬ isTmpName "c1" := notTmp_of_short _ (by decide)
+theorem nt_c1q : ¬ isTmpName "c1q" := notTmp_of_short _ (by decide)
+theorem nt_c1r : ¬ isTmpName "c1r" := notTmp_of_short _ (by decide)
+theorem nt_c2 : ¬ isTmpName "c2" := notTmp_of_short _ (by decide)
+theorem nt_c2q : ¬ isTmpName "c2q" := notTmp_of_short _ (by decide)
+theorem nt_c2r : ¬ isTmpName "c2r" := notTmp_of_short _ (by decide)
+theorem nt_c3 : ¬ isTmpName "c3" := notTmp_of_short _ (by decide)
+theorem nt_d : ¬ isTmpName "d" := notTmp_of_short _ (by decide)
+theorem nt_idx : ¬ isTmpName "idx" := notTmp_of_short _ (by decide)
+theorem nt_j : ¬ isTmpName "j" := notTmp_of_short _ (by decide)
+theorem nt_m1 : ¬ isTmpName "m1" := notTmp_of_short _ (by decide)
+theorem nt_m3 : ¬ isTmpName "m3" := notTmp_of_short _ (by decide)
+theorem nt_n : ¬ isTmpName "n" := notTmp_of_short _ (by decide)
+theorem nt_p : ¬ isTmpName "p" := notTmp_of_short _ (by decide)
+theorem nt_qh : ¬ isTmpName "qh" := notTmp_of_short _ (by decide)
+theorem nt_qhb : ¬ isTmpName "qhb" := notTmp_of_short _ (by decide)
+theorem nt_qhc : ¬ isTmpName "qhc" := notTmp_of_short _ (by decide)
+theorem nt_ql : ¬ isTmpName "ql" := notTmp_of_short _ (by decide)
+theorem nt_qla : ¬ isTmpName "qla" := notTmp_of_short _ (by decide)
+theorem nt_qp : ¬ isTmpName "qp" := notTmp_of_short _ (by decide)
+theorem nt_r : ¬ isTmpName "r" := notTmp_of_short _ (by decide)
+theorem nt_ra : ¬ isTmpName "ra" := notTmp_of_short _ (by decide)
+theorem nt_rs : ¬ isTmpName "rs" := notTmp_of_short _ (by decide)
+theorem nt_top : ¬ isTmpName "top" := notTmp_of_short _ (by decide)
+theorem nt_u0 : ¬ isTmpName "u0" := notTmp_of_short _ (by decide)
+theorem nt_u1 : ¬ isTmpName "u1" := notTmp_of_short _ (by decide)
+theorem nt_u1p : ¬ isTmpName "u1p" := notTmp_of_short _ (by decide)
+theorem nt_up : ¬ isTmpName "up" := notTmp_of_short _ (by decide)
 
 /-! ## 1. New `SExpr`-lowering progress lemmas -/
 

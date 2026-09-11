@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ThirCTSafe
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.ThirCTSafe
 
 /-!
 # D5: the reusable constant-time-by-construction trait
@@ -43,6 +45,8 @@ mechanism, not a vacuous shell. Other layers (`arith` / `memref` / the machine
 backend) can opt in by giving their own `ConstantTimeTrait` instance; the
 derived lemma `ctSafe_leakage_public` below then applies to them generically.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

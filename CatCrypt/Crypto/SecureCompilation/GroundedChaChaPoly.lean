@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ConcreteSymmetric2Realizer
-import CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ConcreteSymmetric2Realizer
+public import CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
 
 /-!
 # A fully-grounded ChaCha20-Poly1305 AEAD — both phases' kernel realizations are
@@ -67,6 +69,8 @@ round-trips), not hypotheses.
 ## References
 * RFC 8439 (ChaCha20-Poly1305), NIST SP 800-38D
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

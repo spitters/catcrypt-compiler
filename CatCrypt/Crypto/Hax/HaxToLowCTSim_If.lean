@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
+module
+
+public import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
 
 /-!
 # H3.sexta: ifThenElse simulation case
@@ -13,6 +15,8 @@ produces `RIfNz cond tC eC` on the LowCT side.  The agreement
 predicate aligns Hax's `.bool` condition with LowCT's scalar
 nonzero-test.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -65,7 +69,8 @@ theorem evalImp_ifThenElse_var_inv (bi : Builtins) (fuel : Nat)
   | none =>
     rw [hen] at h
     -- The lookup returns `Outcome.err`, propagated to outer; contradiction.
-    simp [StateT.pure] at h
+    simp only [StateT.pure] at h
+    cases h
   | some w =>
     rw [hen] at h
     -- Now case-split on the value: only `.bool true` / `.bool false` succeed.
@@ -78,12 +83,12 @@ theorem evalImp_ifThenElse_var_inv (bi : Builtins) (fuel : Nat)
       | false =>
         right
         exact ⟨rfl, h⟩
-    | int _ => simp [StateT.pure] at h
-    | unit => simp [StateT.pure] at h
-    | tuple _ => simp [StateT.pure] at h
-    | option _ => simp [StateT.pure] at h
-    | result _ _ => simp [StateT.pure] at h
-    | controlFlow _ _ => simp [StateT.pure] at h
+    | int _ => simp only [StateT.pure] at h; cases h
+    | unit => simp only [StateT.pure] at h; cases h
+    | tuple _ => simp only [StateT.pure] at h; cases h
+    | option _ => simp only [StateT.pure] at h; cases h
+    | result _ _ => simp only [StateT.pure] at h; cases h
+    | controlFlow _ _ => simp only [StateT.pure] at h; cases h
 
 /-! ## §3  Full `ifThenElse (.var cond) t e` simulation
 

@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Hax.AST
-import CatCrypt.Crypto.SecureCompilation.ThirToComFront
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Hax.AST
+public import CatCrypt.Hax.AST
+public meta import CatCrypt.Crypto.SecureCompilation.ThirToComFront
+public import CatCrypt.Crypto.SecureCompilation.ThirToComFront
 
 /-!
 # C2: hax `ImpExpr` extraction AST → verified `Thir` front IR
@@ -86,6 +91,8 @@ narrow; correctness is total.
   the right, threading `impExprToThir_denoteScalar` then the front's
   `thirToJasmin_denote`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

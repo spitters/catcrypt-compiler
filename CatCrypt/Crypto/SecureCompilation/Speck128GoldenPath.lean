@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
-import CatCrypt.Crypto.SecureCompilation.RotateSynth
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
+public import CatCrypt.Crypto.SecureCompilation.RotateSynth
 
 /-!
 # Golden path: the SPECK128 round function as `Com jasminDialect`, emitted by the verified compiler
@@ -36,6 +39,8 @@ The round has two outputs over three inputs `[x, y, k]`, so each gives one singl
 inline, since single-output `Com`s cannot share intermediate values). Both lower through
 the *same* `comToReg_faithful` as the field/Threefish ops — so the SPECK ARX words emit to
 both backends with no new machinery, only a new kernel body. -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

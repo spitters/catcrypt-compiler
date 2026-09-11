@@ -3,12 +3,21 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519OpsKernel
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X25519MonoLadderKernel
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519UnifyingFront
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519OpsKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519OpsKernel
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.X25519MonoLadderKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X25519MonoLadderKernel
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519UnifyingFront
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519UnifyingFront
 
 /-!
 # The fe25519-leaf → owned-RA `Lfundef`/`.s`-symbol bridge (task #656, half b)
@@ -65,6 +74,8 @@ The ladder loop Lprog's field-op calls render to `call <leaf>` through the
 `ladderCallSite name` builds that `Lcall`. The bridge therefore turns the
 ladder's opaque field-op `extCall` into a real call to a sibling owned leaf.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
-import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.TranslationValidation
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Add2Kernel
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.TranslationValidation
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Add2Kernel
 
 /-!
 # The FFI leaf edge SPLITS: owned-backend leaves get a Lean machine model (#372)
@@ -89,6 +91,8 @@ We do NOT import the front (`CryptoToJasminComCorrect`, `LeafAxiomConsolidation`
 the LowCT / LowCT lowering): this split lives entirely at the X86Backend / `Com`
 level, against the owned operational model.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

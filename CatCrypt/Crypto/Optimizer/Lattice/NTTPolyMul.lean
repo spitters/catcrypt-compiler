@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
-import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
 
 /-!
 # Pass 3.1 — NTT-backed Polynomial Multiplication
@@ -47,6 +50,8 @@ The generated leaf name encodes both modulus and degree
 multiple NTT specialisations (e.g. ML-KEM and ML-DSA share
 `n = 256` but differ in `q`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -392,7 +397,7 @@ invert the `RustExec` derivation on the rewritten side. -/
     than `forZero`/`forSucc` are at commands whose head constructor is not
     `RFor`, so the defining equation refutes them, and listing them makes a
     change to the rule set a build error. -/
-private theorem rfor_spine_reverse {N : Nat} {leafSpec : LeafSpec}
+theorem rfor_spine_reverse {N : Nat} {leafSpec : LeafSpec}
     {x : String} {body body' : LowCT}
     (ih : ∀ (rs rs' : RustState),
       RustExec N leafSpec body' rs rs' → RustExec N leafSpec body rs rs') :

@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Rewrite.Egraph
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Optimizer.Rewrite.Egraph
 
 /-!
 # General proof-carrying extraction: witness, transitivity-fold validator, identity fallback
@@ -66,6 +69,8 @@ no new proof content.
 All goals are closed. Axiom set: `propext`, `Quot.sound` (inherited from
 `Egraph.lean`; no new axioms, no `sorry`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveDialect
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveDialect
 
 /-!
 # Field/EC comparison & zero-test ops — first-class `cmp`/`is_zero`
@@ -98,6 +101,8 @@ the EC dialect's `psmul`-style explicit-obligation discipline, applied to the
 comparison hazard.  This is the honest CT story: *these ops are not CT in
 general; only their public-data uses are.*
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

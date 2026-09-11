@@ -35,12 +35,16 @@ Every RCall constructor requires:
 
 Under these two preconditions, the `RustExec` derivation always exists
 (the leaf-spec value is total).  Captured by lemma below. -/
-import CatCrypt.Crypto.Jasmin.Examples.Fe25519Invert
-import CatCrypt.Crypto.Jasmin.Examples.Scalar25519Ops
-import CatCrypt.Crypto.Jasmin.Examples.MontUToEdwards
-import CatCrypt.Crypto.Jasmin.Examples.CombTableInitArrV2
-import Mathlib.Data.ZMod.Basic
+module
 
+public import CatCrypt.Crypto.Jasmin.Examples.Fe25519Invert
+public import CatCrypt.Crypto.Jasmin.Examples.Scalar25519Ops
+public import CatCrypt.Crypto.Jasmin.Examples.MontUToEdwards
+public import CatCrypt.Crypto.Jasmin.Examples.CombTableInitArrV2
+public import Mathlib.Data.ZMod.Basic
+
+
+@[expose] public section
 namespace CatCrypt.Crypto.Jasmin.Examples.EmittedASTCorrectness
 
 open CatCrypt.Crypto.Jasmin.LowCT
@@ -283,7 +287,7 @@ def hasBindOf (x : String) : LowCT → Bool
 /-- A single `locatedUpdate` at a slot bound at its own declared tower type
     preserves every slot's tower type: an unrelated slot is untouched, and the
     written slot receives a value at the type it already held. -/
-private lemma locatedUpdate_preserves_slot_type
+lemma locatedUpdate_preserves_slot_type
     (rs : RustState) (d : Located) (w : RustVal d.locDst)
     (hd : ∃ v, rs.rsTower d.locVar = some ⟨d.locDst, v⟩)
     (x : String) (t : TowerType) (hx : ∃ v, rs.rsTower x = some ⟨t, v⟩) :
@@ -303,7 +307,7 @@ private lemma locatedUpdate_preserves_slot_type
 
 /-- The destination fold of an N-output call preserves every slot's tower type,
     given that each destination is bound at its declared type in the pre-state. -/
-private lemma callNUpdate_preserves_slot_type
+lemma callNUpdate_preserves_slot_type
     (leafSpec : LeafSpec) (f : String) (argTs : List TowerType)
     (argList : List (Σ t : TowerType, RustVal t)) :
     ∀ (dests : List Located) (i : Nat) (rs : RustState)
@@ -934,7 +938,7 @@ lemma rcall_AllFp25519
   · rw [hPres x hxd]; exact hP x hx
 
 /-- The list of all TFp25519-typed slots used by fe25519InvertBody. -/
-private def fe25519InvertSlots : List String :=
+def fe25519InvertSlots : List String :=
   ["a", "out", "tmp", "scratch", "z2", "z9", "z11", "z2_5_0",
    "z2_10_0", "z2_20_0", "z2_40_0", "z2_50_0", "z2_100_0", "t2", "t3"]
 
@@ -1601,7 +1605,7 @@ def MontUToEdwardsInputsWellFormed (rs : RustState) : Prop :=
     is built as a chain of `rsSetTower` / `locatedUpdate` operations.
 
     Returns an existence wrapped with `rcall_panic_free`. -/
-private lemma rcall_panic_free_named
+lemma rcall_panic_free_named
     (N : Nat) (leafSpec : LeafSpec)
     (f : String) (dest : Located) (args : List Located)
     (rs : RustState)

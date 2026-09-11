@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.KernelSyntax
-import CatCrypt.Crypto.SecureCompilation.Fe25519OrchestrationSyntax
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.KernelSyntax
+public import CatCrypt.Crypto.SecureCompilation.Fe25519OrchestrationSyntax
 
 /-!
 # The two-language authoring front, end state: a program written DIRECTLY in the surfaces
@@ -50,6 +52,8 @@ No `= raw-AST` theorem appears below. The definitions type-check against the
 authoring guarantee, and the elaborator regression suites (imported above)
 supply the trust that the elaboration is faithful.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

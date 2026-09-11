@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminStoreMemoryModel
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminStoreMemoryModel
 
 /-!
 # Dead-buffer reuse for the Jasmin dialect
@@ -57,6 +59,8 @@ It contributes four pieces:
 All lemmas have all goals closed; the only axioms are the standard
 `propext` / `Classical.choice` / `Quot.sound`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
 # Plonky3 FRI reflect surface — Tier A migration of the FRI layer
@@ -78,6 +82,8 @@ an in-chain emit. The legacy emit is kept as an out-of-chain reference
 * Wave 1 sibling: `CatCrypt/Crypto/Jasmin/Plonky3Reflect.lean`
 * Driver template: `bench/plonky3_compare/merkle_from_rustcmd.lean`
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 
@@ -267,7 +273,7 @@ def plonky3FriDigestTowerType : TowerType := .TBytes 32
 /-- TowerType for an FRI Fiat-Shamir challenge (1 BabyBear element). -/
 def plonky3FriChallengeTowerType : TowerType := .TBytes 8
 
-private def loc (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
+def locPlonky3Fri (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
 
 /-- Per-layer fold leaf name: e.g. `plonky3_fri_fold_layer_256`. -/
 def plonky3FriFoldLeafName (N : Nat) : String :=
@@ -283,12 +289,12 @@ def plonky3FriQueryLeafName (N : Nat) : String :=
 
 /-- Body for `N = 2`: one initial commit, one (squeeze, fold, commit), one query. -/
 def friProverBody2 : LowCT :=
-  let evals_l  := loc "evals"     (plonky3FriEvalsTowerType 2)
-  let c0_l     := loc "c0"        plonky3FriDigestTowerType
-  let alpha0_l := loc "alpha0"    plonky3FriChallengeTowerType
-  let e1_l     := loc "e1"        (plonky3FriEvalsTowerType 1)
-  let c1_l     := loc "c1"        plonky3FriDigestTowerType
-  let result_l := loc "__result"  plonky3FriDigestTowerType
+  let evals_l  := locPlonky3Fri "evals"     (plonky3FriEvalsTowerType 2)
+  let c0_l     := locPlonky3Fri "c0"        plonky3FriDigestTowerType
+  let alpha0_l := locPlonky3Fri "alpha0"    plonky3FriChallengeTowerType
+  let e1_l     := locPlonky3Fri "e1"        (plonky3FriEvalsTowerType 1)
+  let c1_l     := locPlonky3Fri "c1"        plonky3FriDigestTowerType
+  let result_l := locPlonky3Fri "__result"  plonky3FriDigestTowerType
   .RSeq (.RSeq (.RSeq (.RSeq (.RSeq .RSkip
     (.RCall (plonky3FriCommitLeafName 2)        c0_l     [evals_l]))
     (.RCall "plonky3_fri_challenger_squeeze"    alpha0_l [c0_l]))
@@ -298,15 +304,15 @@ def friProverBody2 : LowCT :=
 
 /-- Body for `N = 4`: layer-0 commit + 2 fold rounds + query. -/
 def friProverBody4 : LowCT :=
-  let evals_l  := loc "evals"     (plonky3FriEvalsTowerType 4)
-  let c0_l     := loc "c0"        plonky3FriDigestTowerType
-  let alpha0_l := loc "alpha0"    plonky3FriChallengeTowerType
-  let e1_l     := loc "e1"        (plonky3FriEvalsTowerType 2)
-  let c1_l     := loc "c1"        plonky3FriDigestTowerType
-  let alpha1_l := loc "alpha1"    plonky3FriChallengeTowerType
-  let e2_l     := loc "e2"        (plonky3FriEvalsTowerType 1)
-  let c2_l     := loc "c2"        plonky3FriDigestTowerType
-  let result_l := loc "__result"  plonky3FriDigestTowerType
+  let evals_l  := locPlonky3Fri "evals"     (plonky3FriEvalsTowerType 4)
+  let c0_l     := locPlonky3Fri "c0"        plonky3FriDigestTowerType
+  let alpha0_l := locPlonky3Fri "alpha0"    plonky3FriChallengeTowerType
+  let e1_l     := locPlonky3Fri "e1"        (plonky3FriEvalsTowerType 2)
+  let c1_l     := locPlonky3Fri "c1"        plonky3FriDigestTowerType
+  let alpha1_l := locPlonky3Fri "alpha1"    plonky3FriChallengeTowerType
+  let e2_l     := locPlonky3Fri "e2"        (plonky3FriEvalsTowerType 1)
+  let c2_l     := locPlonky3Fri "c2"        plonky3FriDigestTowerType
+  let result_l := locPlonky3Fri "__result"  plonky3FriDigestTowerType
   .RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq .RSkip
     (.RCall (plonky3FriCommitLeafName 4)        c0_l     [evals_l]))
     (.RCall "plonky3_fri_challenger_squeeze"    alpha0_l [c0_l]))
@@ -319,39 +325,39 @@ def friProverBody4 : LowCT :=
 
 /-- Body for `N = 1024`: layer-0 commit + 10 fold rounds + query. -/
 def friProverBody1024 : LowCT :=
-  let evals_l  := loc "evals"     (plonky3FriEvalsTowerType 1024)
-  let c0_l     := loc "c0"        plonky3FriDigestTowerType
-  let alpha0_l := loc "alpha0"    plonky3FriChallengeTowerType
-  let e1_l     := loc "e1"        (plonky3FriEvalsTowerType 512)
-  let c1_l     := loc "c1"        plonky3FriDigestTowerType
-  let alpha1_l := loc "alpha1"    plonky3FriChallengeTowerType
-  let e2_l     := loc "e2"        (plonky3FriEvalsTowerType 256)
-  let c2_l     := loc "c2"        plonky3FriDigestTowerType
-  let alpha2_l := loc "alpha2"    plonky3FriChallengeTowerType
-  let e3_l     := loc "e3"        (plonky3FriEvalsTowerType 128)
-  let c3_l     := loc "c3"        plonky3FriDigestTowerType
-  let alpha3_l := loc "alpha3"    plonky3FriChallengeTowerType
-  let e4_l     := loc "e4"        (plonky3FriEvalsTowerType 64)
-  let c4_l     := loc "c4"        plonky3FriDigestTowerType
-  let alpha4_l := loc "alpha4"    plonky3FriChallengeTowerType
-  let e5_l     := loc "e5"        (plonky3FriEvalsTowerType 32)
-  let c5_l     := loc "c5"        plonky3FriDigestTowerType
-  let alpha5_l := loc "alpha5"    plonky3FriChallengeTowerType
-  let e6_l     := loc "e6"        (plonky3FriEvalsTowerType 16)
-  let c6_l     := loc "c6"        plonky3FriDigestTowerType
-  let alpha6_l := loc "alpha6"    plonky3FriChallengeTowerType
-  let e7_l     := loc "e7"        (plonky3FriEvalsTowerType 8)
-  let c7_l     := loc "c7"        plonky3FriDigestTowerType
-  let alpha7_l := loc "alpha7"    plonky3FriChallengeTowerType
-  let e8_l     := loc "e8"        (plonky3FriEvalsTowerType 4)
-  let c8_l     := loc "c8"        plonky3FriDigestTowerType
-  let alpha8_l := loc "alpha8"    plonky3FriChallengeTowerType
-  let e9_l     := loc "e9"        (plonky3FriEvalsTowerType 2)
-  let c9_l     := loc "c9"        plonky3FriDigestTowerType
-  let alpha9_l := loc "alpha9"    plonky3FriChallengeTowerType
-  let e10_l    := loc "e10"       (plonky3FriEvalsTowerType 1)
-  let c10_l    := loc "c10"       plonky3FriDigestTowerType
-  let result_l := loc "__result"  plonky3FriDigestTowerType
+  let evals_l  := locPlonky3Fri "evals"     (plonky3FriEvalsTowerType 1024)
+  let c0_l     := locPlonky3Fri "c0"        plonky3FriDigestTowerType
+  let alpha0_l := locPlonky3Fri "alpha0"    plonky3FriChallengeTowerType
+  let e1_l     := locPlonky3Fri "e1"        (plonky3FriEvalsTowerType 512)
+  let c1_l     := locPlonky3Fri "c1"        plonky3FriDigestTowerType
+  let alpha1_l := locPlonky3Fri "alpha1"    plonky3FriChallengeTowerType
+  let e2_l     := locPlonky3Fri "e2"        (plonky3FriEvalsTowerType 256)
+  let c2_l     := locPlonky3Fri "c2"        plonky3FriDigestTowerType
+  let alpha2_l := locPlonky3Fri "alpha2"    plonky3FriChallengeTowerType
+  let e3_l     := locPlonky3Fri "e3"        (plonky3FriEvalsTowerType 128)
+  let c3_l     := locPlonky3Fri "c3"        plonky3FriDigestTowerType
+  let alpha3_l := locPlonky3Fri "alpha3"    plonky3FriChallengeTowerType
+  let e4_l     := locPlonky3Fri "e4"        (plonky3FriEvalsTowerType 64)
+  let c4_l     := locPlonky3Fri "c4"        plonky3FriDigestTowerType
+  let alpha4_l := locPlonky3Fri "alpha4"    plonky3FriChallengeTowerType
+  let e5_l     := locPlonky3Fri "e5"        (plonky3FriEvalsTowerType 32)
+  let c5_l     := locPlonky3Fri "c5"        plonky3FriDigestTowerType
+  let alpha5_l := locPlonky3Fri "alpha5"    plonky3FriChallengeTowerType
+  let e6_l     := locPlonky3Fri "e6"        (plonky3FriEvalsTowerType 16)
+  let c6_l     := locPlonky3Fri "c6"        plonky3FriDigestTowerType
+  let alpha6_l := locPlonky3Fri "alpha6"    plonky3FriChallengeTowerType
+  let e7_l     := locPlonky3Fri "e7"        (plonky3FriEvalsTowerType 8)
+  let c7_l     := locPlonky3Fri "c7"        plonky3FriDigestTowerType
+  let alpha7_l := locPlonky3Fri "alpha7"    plonky3FriChallengeTowerType
+  let e8_l     := locPlonky3Fri "e8"        (plonky3FriEvalsTowerType 4)
+  let c8_l     := locPlonky3Fri "c8"        plonky3FriDigestTowerType
+  let alpha8_l := locPlonky3Fri "alpha8"    plonky3FriChallengeTowerType
+  let e9_l     := locPlonky3Fri "e9"        (plonky3FriEvalsTowerType 2)
+  let c9_l     := locPlonky3Fri "c9"        plonky3FriDigestTowerType
+  let alpha9_l := locPlonky3Fri "alpha9"    plonky3FriChallengeTowerType
+  let e10_l    := locPlonky3Fri "e10"       (plonky3FriEvalsTowerType 1)
+  let c10_l    := locPlonky3Fri "c10"       plonky3FriDigestTowerType
+  let result_l := locPlonky3Fri "__result"  plonky3FriDigestTowerType
   .RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq
   (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq
   (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq .RSkip

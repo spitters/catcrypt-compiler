@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Advantage
-import CatCrypt.Crypto.UCDSL
+module
+
+public import CatCrypt.Crypto.Advantage
+public import CatCrypt.Crypto.UCDSL
 
 /-!
 # Non-Interference for MPC Protocols
@@ -32,6 +34,8 @@ free of any protocol security proof.
 
 **0 axioms**.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.NonInterference
 

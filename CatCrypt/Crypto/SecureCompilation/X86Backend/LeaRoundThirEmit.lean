@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ChaChaQRThirEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ChaChaQRThirEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ChaChaQRThirEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # LEA block-cipher encryption round through the OWNED x86 backend (no jasminc)
@@ -43,6 +47,8 @@ in `bench/lea_lsh_compare/` (driver runs all 24 rounds + key schedule in C and
 checks the published LEA-128 vector).
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.LeaRoundThirEmit
@@ -74,7 +80,7 @@ leaf builds the minimal SSA for its output and ends with an identity copy
 (`thRor 32 0`) of that word so the register-arith emit reads it back as the
 result (same convention as `qrBody`). -/
 
-private abbrev LeaCtx : Ctxt thirDialect :=
+abbrev LeaCtx : Ctxt thirDialect :=
   [.reg 32, .reg 32, .reg 32, .reg 32, .reg 32,
    .reg 32, .reg 32, .reg 32, .reg 32, .reg 32]
 
@@ -145,7 +151,7 @@ def leaX3Thir : Com thirDialect LeaCtx (.reg 32) :=
 /-! ## 3. Value-correctness: each leaf denotes its `leaRoundSpec` component -/
 
 /-- Denotation input HVector packing the 10 LEA-round words. -/
-private def leaInp (x0 x1 x2 x3 rk0 rk1 rk2 rk3 rk4 rk5 : BitVec 32) :
+def leaInp (x0 x1 x2 x3 rk0 rk1 rk2 rk3 rk4 rk5 : BitVec 32) :
     HVector (fun t => ⟦t⟧) LeaCtx :=
   .cons x0 (.cons x1 (.cons x2 (.cons x3 (.cons rk0
     (.cons rk1 (.cons rk2 (.cons rk3 (.cons rk4 (.cons rk5 .nil)))))))))
@@ -277,6 +283,6 @@ def emitMain : IO Unit := do
 The render is written while this module elaborates, so `lake` produces it from
 this file and no separate driver or Makefile rule carries the dependency. -/
 
-#eval emitMain
+-- #eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.LeaRoundThirEmit

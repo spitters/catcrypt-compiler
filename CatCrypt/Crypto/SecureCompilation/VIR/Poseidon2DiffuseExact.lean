@@ -3,8 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
-import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Bitexact
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Bitexact
+public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Bitexact
 
 /-!
 # The Poseidon2-BabyBear S-box and internal MDS are bit-exactly the Plonky3 spec
@@ -76,6 +82,8 @@ This file's headline theorems carry only the standard kernel axioms
 per-step `bv_decide` invocations transitively used through `bbAdd_correct` /
 `bbCsub_correct` (#100). No `sorry`, no `native_decide`, no new custom axioms.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

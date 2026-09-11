@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-!
 # 128-bit (SSE-class) leaf-call marshalling: front-derived validate
@@ -39,6 +43,8 @@ result. Its `.s` is emitted by a self-contained AT&T renderer for the SSE
 marshalling (`render128Lcmd`) below — the production printer's xmm arm lives in
 the vsimd render module and is out of this file's scope.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

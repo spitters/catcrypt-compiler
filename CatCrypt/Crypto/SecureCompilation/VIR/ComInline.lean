@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.MergeCom
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminCTPredicate
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.MergeCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.MergeCom
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminCTPredicate
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminCTPredicate
 
 /-!
 # Verified `extCall` inlining as a `Com → Com` pass
@@ -74,6 +79,8 @@ multi-binding bodies is the next deliverable.
 All proofs are structural over `Expr`/`HVector`. No `sorry`, no
 `native_decide`, no new axioms.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

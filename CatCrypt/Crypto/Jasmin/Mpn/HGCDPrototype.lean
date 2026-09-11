@@ -3,9 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.GcdSpec
-import CatCrypt.Crypto.Jasmin.Mpn.KaratsubaPrototype
-import CatCrypt.Crypto.Jasmin.Mpn.BurnikelZieglerPrototype
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.Mpn.GcdSpec
+public import CatCrypt.Crypto.Jasmin.Mpn.GcdSpec
+public meta import CatCrypt.Crypto.Jasmin.Mpn.KaratsubaPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.KaratsubaPrototype
+public meta import CatCrypt.Crypto.Jasmin.Mpn.BurnikelZieglerPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.BurnikelZieglerPrototype
+
+@[expose] public section
 
 set_option autoImplicit false
 

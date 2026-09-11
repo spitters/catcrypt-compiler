@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Quantum.QuantumSSA
-import CatCrypt.Quantum.QCircuit
+module
+
+public import CatCrypt.Quantum.QuantumSSA
+public import CatCrypt.Quantum.QCircuit
+public import CatCrypt.Quantum.GateUnitarity
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -41,6 +46,16 @@ is processed:
 The register allocator must map the new variable 0 to the same physical
 qubit that `q` occupied (for in-place single-qubit gates) or to a fresh
 qubit (for init operations).
+
+## Main results
+
+* `lowerProg` / `lowerToCircuit` — the lowering.
+* `lowerProg_unitaryDenote`, `lowerToCircuit_unitaryDenote` — the lowering
+  denotes the channel `QSProg.unitaryDenote` assigns to the source program
+  under the same register allocation.
+* `lowerToCircuit_gateCount_le` — the lowering emits no more gates than the
+  source program counts.
+* `lowerToCircuit_noMeas` — the lowered circuit contains no `Meas` gate.
 -/
 
 open CatCrypt.Quantum CatCrypt.Quantum.QCircuit CatCrypt.Quantum.QuantumSSA
@@ -51,69 +66,37 @@ namespace CatCrypt.Quantum.QSSAToCircuit
 
 variable {n : ℕ}
 
-/-! ## Section 1: Register Allocation -/
+/-! ## Section 1: Register Allocation and Gate Translation
 
-/-- Register allocation: maps each variable position in a context to a
-    physical qubit index (`Fin numQ`).
+The register allocation `RegAlloc`, the De Bruijn index extractor
+`qvarIndex` and the two op-to-gate translations are declared in
+`CatCrypt.Quantum.QuantumSSA`, alongside the channel semantics
+`QSProg.unitaryDenote` that uses them, and are re-exported here. -/
 
-    This is a function from natural numbers (De Bruijn indices) to `Fin numQ`.
-    Only indices within the context length are meaningful. -/
-structure RegAlloc (numQ : ℕ) where
-  /-- Map De Bruijn index to physical qubit. -/
-  lookup : ℕ → Fin numQ
+export CatCrypt.Quantum.QuantumSSA
+  (RegAlloc qvarIndex qopToGate1 qopToGate2)
 
-/-- The identity register allocation for the initial `replicate numQ .qubit`
-    context: variable `i` maps to physical qubit `i`.
-    Requires `numQ > 0`. -/
-def RegAlloc.identity (numQ : ℕ) (hpos : 0 < numQ) : RegAlloc numQ where
-  lookup i := if h : i < numQ then ⟨i, h⟩ else ⟨0, hpos⟩
+namespace RegAlloc
 
-/-- Extend a register allocation when a new binding is introduced.
-    Variable 0 maps to the given physical qubit `q`; all others shift. -/
-def RegAlloc.extend {numQ : ℕ} (ra : RegAlloc numQ) (q : Fin numQ) :
-    RegAlloc numQ where
-  lookup i := if i = 0 then q else ra.lookup (i - 1)
+export CatCrypt.Quantum.QuantumSSA.RegAlloc
+  (identity identityFrom extend freshQubit allocFresh)
 
-/-! ## Section 2: Variable Index Extraction -/
+end RegAlloc
 
-/-- Extract the De Bruijn index from a QVar. -/
-def qvarIndex {Γ : QCtx} {t : QTy} : QVar Γ t → ℕ
-  | .here => 0
-  | .there v => 1 + qvarIndex v
+/-! ## Section 2: Lowering Measurement-Free Programs -/
 
-/-! ## Section 3: QOp to Gate Translation -/
-
-/-- Translate a single-qubit QOp to a Gate acting on physical qubit `i`. -/
-def qopToGate1 {numQ : ℕ} (op : QOp QTy.qubit) (i : Fin numQ) :
-    Option (Gate numQ) :=
-  match op with
-  | .hadamard => some (.H i)
-  | .pauliX   => some (.X i)
-  | .pauliY   => some (.Y i)
-  | .pauliZ   => some (.Z i)
-  | .sGate    => some (.S i)
-  | .tGate    => some (.T i)
-  | .rz θ     => some (.Rz i θ)
-  | .init0    => none  -- init is not a gate in Circuit
-  | .init1    => none
-
-/-- Translate a two-qubit QOp to a Gate acting on physical qubits `i`, `j`. -/
-def qopToGate2 {numQ : ℕ} (op : QOp (QTy.pair .qubit .qubit))
-    (i j : Fin numQ) : Option (Gate numQ) :=
-  match op with
-  | .cnot => some (.CNOT i j)
-  | .cz   => some (.CZ i j)
-
-/-! ## Section 4: Lowering Measurement-Free Programs -/
-
-/-- Lower a measurement-free QSProg to a Circuit, using register allocation
-    to map De Bruijn variables to physical qubit indices.
+/-- Lower a program of the fragment cut out by `QSProg.isMeasFree` to a
+    Circuit, using register allocation to map De Bruijn variables to physical
+    qubit indices.
 
     * `ret` produces the empty circuit
-    * `letQ op q body` produces gate(op, ra(q)) followed by lowering `body`
-    * `letQ2 op q1 q2 body` produces gate(op, ra(q1), ra(q2)) followed by body
-    * `letInit` produces no gate (qubit initialization is implicit in Circuit)
-    * `ifBit` produces the circuit for the true branch (conservative) -/
+    * `letQ op q body` produces gate(op, ra(q)) followed by lowering `body`,
+      with the bound variable on the same physical qubit
+    * `letQ2 op q1 q2 body` produces gate(op, ra(q1), ra(q2)) followed by
+      body, with the bound pair on `ra(q1)`
+    * `letInit` produces no gate and binds the new wire to a freshly
+      allocated physical qubit
+    * `letMeas` and `ifBit` are excluded by `QSProg.isMeasFree` -/
 def lowerProg {Γ : QCtx} {β : QTy} (numQ : ℕ) (hpos : 0 < numQ)
     (ra : RegAlloc numQ) :
     (p : QSProg Γ β) → p.isMeasFree → Circuit numQ
@@ -142,24 +125,24 @@ def lowerProg {Γ : QCtx} {β : QTy} (numQ : ℕ) (hpos : 0 < numQ)
     | some g => .gate g bodyCircuit
     | none   => bodyCircuit
   | .letInit _op body, hmf =>
-    -- Init doesn't produce a gate; bind to qubit 0 as placeholder
-    let ra' := ra.extend ⟨0, hpos⟩
+    -- Init produces no gate and claims a fresh physical qubit for the
+    -- variable it binds.
+    let ra' := ra.allocFresh hpos
     lowerProg numQ hpos ra' body hmf
   | .letMeas _ _, hmf => absurd hmf (by simp [QSProg.isMeasFree])
-  | .ifBit _ kt _kf, hmf =>
-    -- For measurement-free branching, lower the true branch (conservative)
-    lowerProg numQ hpos ra kt hmf.1
+  | .ifBit _ _ _, hmf => absurd hmf (by simp [QSProg.isMeasFree])
 
-/-! ## Section 5: Top-Level Lowering -/
+/-! ## Section 3: Top-Level Lowering -/
 
-/-- Lower a measurement-free QSProg over `numQ` qubits to a Circuit.
+/-- Lower a `QSProg` of the fragment cut out by `QSProg.isMeasFree` over
+    `numQ` qubits to a Circuit.
 
     Uses the identity register allocation as starting point. -/
 def lowerToCircuit {Γ : QCtx} {β : QTy} (numQ : ℕ) (hpos : 0 < numQ)
     (p : QSProg Γ β) (hmf : p.isMeasFree) : Circuit numQ :=
   lowerProg numQ hpos (.identity numQ hpos) p hmf
 
-/-! ## Section 6: Auxiliary Definitions -/
+/-! ## Section 4: Auxiliary Definitions -/
 
 /-- Collect all gates in a circuit into a list. -/
 def circuitGates {numQ : ℕ} : Circuit numQ → List (Gate numQ)
@@ -167,7 +150,7 @@ def circuitGates {numQ : ℕ} : Circuit numQ → List (Gate numQ)
   | .gate g c => g :: circuitGates c
   | .seq c₁ c₂ => circuitGates c₁ ++ circuitGates c₂
 
-/-! ## Section 7: Properties -/
+/-! ## Section 5: Properties -/
 
 /-- Gate count: the lowered circuit has at most as many gates as the
     original QSProg. -/
@@ -188,22 +171,59 @@ private theorem lowerProg_gateCount_le {Γ : QCtx} {β : QTy}
     | none => exact le_trans (lowerProg_gateCount_le numQ hpos _ body hmf) (by omega)
   | .letInit _op body, hmf => lowerProg_gateCount_le numQ hpos _ body hmf
   | .letMeas _ _, hmf => absurd hmf (by simp [QSProg.isMeasFree])
-  | .ifBit _ kt _kf, hmf => by
-    simp only [lowerProg, QSProg.gateCount]
-    exact le_trans (lowerProg_gateCount_le numQ hpos ra kt hmf.1) (le_max_left _ _)
+  | .ifBit _ _ _, hmf => absurd hmf (by simp [QSProg.isMeasFree])
 
 theorem lowerToCircuit_gateCount_le {Γ : QCtx} {β : QTy}
     (numQ : ℕ) (hpos : 0 < numQ) (p : QSProg Γ β) (hmf : p.isMeasFree) :
     (lowerToCircuit numQ hpos p hmf).gateCount ≤ p.gateCount := by
   exact lowerProg_gateCount_le numQ hpos _ p hmf
 
-/-- Correctness: the lowered circuit preserves denotational semantics.
-    (Requires full denote functions on both QSProg and Circuit sides.) -/
-theorem lowerToCircuit_correct {Γ : QCtx} {β : QTy}
+/-- The lowering preserves the unitary-channel semantics: the circuit
+    `lowerProg numQ hpos ra p hmf` denotes the channel that
+    `QSProg.unitaryDenote` assigns to `p` under the same allocation. -/
+theorem lowerProg_unitaryDenote {Γ : QCtx} {β : QTy}
+    (numQ : ℕ) (hpos : 0 < numQ) (ra : RegAlloc numQ) :
+    (p : QSProg Γ β) → (hmf : p.isMeasFree) →
+    GateUnitarity.unitaryDenote (lowerProg numQ hpos ra p hmf) =
+      p.unitaryDenote numQ hpos ra hmf
+  | .ret _, _ => rfl
+  | .letQ op q body, hmf => by
+    have ih := lowerProg_unitaryDenote numQ hpos
+      (ra.extend (ra.lookup (qvarIndex q))) body hmf
+    show GateUnitarity.unitaryDenote
+        (match qopToGate1 op (ra.lookup (qvarIndex q)) with
+          | some g => .gate g _
+          | none => _) = _
+    cases hg : qopToGate1 op (ra.lookup (qvarIndex q)) with
+    | none => simpa [QSProg.unitaryDenote, hg] using ih
+    | some g =>
+      simp only [QSProg.unitaryDenote, hg, GateUnitarity.unitaryDenote]
+      exact congrArg _ (funext fun _ => ih)
+  | .letQ2 op q₁ q₂ body, hmf => by
+    have ih := lowerProg_unitaryDenote numQ hpos
+      (ra.extend (ra.lookup (qvarIndex q₁))) body hmf
+    show GateUnitarity.unitaryDenote
+        (match qopToGate2 op (ra.lookup (qvarIndex q₁))
+            (ra.lookup (qvarIndex q₂)) with
+          | some g => .gate g _
+          | none => _) = _
+    cases hg : qopToGate2 op (ra.lookup (qvarIndex q₁))
+        (ra.lookup (qvarIndex q₂)) with
+    | none => simpa [QSProg.unitaryDenote, hg] using ih
+    | some g =>
+      simp only [QSProg.unitaryDenote, hg, GateUnitarity.unitaryDenote]
+      exact congrArg _ (funext fun _ => ih)
+  | .letInit _op body, hmf =>
+    lowerProg_unitaryDenote numQ hpos (ra.allocFresh hpos) body hmf
+  | .letMeas _ _, hmf => absurd hmf (by simp [QSProg.isMeasFree])
+  | .ifBit _ _ _, hmf => absurd hmf (by simp [QSProg.isMeasFree])
+
+/-- The top-level lowering preserves the unitary-channel semantics. -/
+theorem lowerToCircuit_unitaryDenote {Γ : QCtx} {β : QTy}
     (numQ : ℕ) (hpos : 0 < numQ) (p : QSProg Γ β) (hmf : p.isMeasFree) :
-    -- p.denote = (lowerToCircuit numQ hpos p hmf).denote
-    -- placeholder: needs full denote on QuantumSSA
-    True := trivial
+    GateUnitarity.unitaryDenote (lowerToCircuit numQ hpos p hmf) =
+      p.unitaryDenote numQ hpos (.identity numQ hpos) hmf :=
+  lowerProg_unitaryDenote numQ hpos _ p hmf
 
 /-- The lowered circuit is measurement-free (contains no Meas gates). -/
 private theorem lowerProg_noMeas {Γ : QCtx} {β : QTy}
@@ -240,8 +260,7 @@ private theorem lowerProg_noMeas {Γ : QCtx} {β : QTy}
   | .letInit _op body, hmf, g, hg, hex =>
     lowerProg_noMeas numQ hpos _ body hmf g hg hex
   | .letMeas _ _, hmf, _, _, _ => absurd hmf (by simp [QSProg.isMeasFree])
-  | .ifBit _ kt _kf, hmf, g, hg, hex =>
-    lowerProg_noMeas numQ hpos ra kt hmf.1 g hg hex
+  | .ifBit _ _ _, hmf, _, _, _ => absurd hmf (by simp [QSProg.isMeasFree])
 
 theorem lowerToCircuit_noMeas {Γ : QCtx} {β : QTy}
     (numQ : ℕ) (hpos : 0 < numQ) (p : QSProg Γ β) (hmf : p.isMeasFree) :
@@ -250,22 +269,7 @@ theorem lowerToCircuit_noMeas {Γ : QCtx} {β : QTy}
       ¬ ∃ (i : Fin numQ), g = .Meas i :=
   lowerProg_noMeas numQ hpos _ p hmf
 
-/-! ## Section 8: Full Pipeline -/
-
-/-- The full compilation pipeline: QPL to Circuit via QuantumSSA.
-
-    ```
-    QPL n Unit ──lowerQPL──▶ QSProg (initCtx n) .qubit ──lowerToCircuit──▶ Circuit n
-    ```
-
-    This composes with the QPLToQSSA pass to give an end-to-end compiler. -/
-theorem pipeline_type_correct :
-    -- The pipeline QPL → QSProg → Circuit is well-typed:
-    -- for any n > 0 and measurement-free QPL program,
-    -- lowerToCircuit (lowerQPL p) produces a Circuit n.
-    True := trivial  -- type-level: ensured by Lean's type system
-
-/-! ## Section 9: Examples -/
+/-! ## Section 6: Examples -/
 
 /-- Example: lowering a single Hadamard in a 2-qubit context. -/
 def exHadamard : QSProg [.qubit, .qubit] .qubit :=
@@ -292,5 +296,44 @@ theorem exCNOT_circuit_gateCount :
     (lowerToCircuit 2 (by omega) exCNOT exCNOT_isMeasFree).gateCount = 1 := by
   unfold lowerToCircuit exCNOT
   simp [lowerProg, RegAlloc.identity, qopToGate2, qvarIndex, Circuit.gateCount]
+
+/-- Example: two freshly initialised qubits joined by a CNOT, in the empty
+    context. -/
+def exInitInitCNOT : QSProg [] (.pair .qubit .qubit) :=
+  .letInit .init0 <|
+  .letInit .init0 <|
+  .letQ2 .cnot (.there .here) .here <|
+  .ret .here
+
+theorem exInitInitCNOT_isMeasFree : exInitInitCNOT.isMeasFree := by
+  simp [exInitInitCNOT, QSProg.isMeasFree]
+
+/-- The two `letInit` bindings receive distinct physical qubits, so the CNOT
+    joins wire 0 to wire 1. -/
+theorem exInitInitCNOT_circuit :
+    lowerToCircuit 2 (by omega) exInitInitCNOT exInitInitCNOT_isMeasFree =
+      .gate (.CNOT 0 1) .empty := rfl
+
+/-- `qbind` against the constant-`qpure` continuation on `2 ^ numQ`. -/
+private theorem qbind_const_qpure {numQ : ℕ} (c : QComp (2 ^ numQ) Unit) :
+    QComp.qbind c (fun _ => QComp.qpure ()) = c := by
+  have hf : (fun (_ : Unit) => QComp.qpure (d := 2 ^ numQ) ()) = QComp.qpure :=
+    funext fun () => rfl
+  rw [hf, QComp.qbind_qpure]
+
+/-- The Hadamard example denotes the unitary channel of `H` on wire 0. -/
+theorem exHadamard_unitaryDenote :
+    exHadamard.unitaryDenote 2 (by omega) (.identity 2 (by omega))
+        exHadamard_isMeasFree =
+      GateUnitarity.denoteGateU (Gate.H 0) :=
+  qbind_const_qpure _
+
+/-- The two-`letInit` example denotes the unitary channel of `CNOT` between
+    wires 0 and 1. -/
+theorem exInitInitCNOT_unitaryDenote :
+    exInitInitCNOT.unitaryDenote 2 (by omega) (.identity 2 (by omega))
+        exInitInitCNOT_isMeasFree =
+      GateUnitarity.denoteGateU (Gate.CNOT 0 1) :=
+  qbind_const_qpure _
 
 end CatCrypt.Quantum.QSSAToCircuit

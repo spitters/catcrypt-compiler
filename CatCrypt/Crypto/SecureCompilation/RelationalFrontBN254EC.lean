@@ -3,9 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBN254
-import Mathlib.Data.ZMod.Basic
-import Mathlib.Tactic
+module
+
+import all Init.Data.Repr
+public import Mathlib.Tactic.NormNum.Prime
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBN254
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.Algebra.Field.ZMod
+public import Mathlib.Tactic.FieldSimp
+public import Mathlib.Tactic.Group
+public import Mathlib.Tactic.NormNum
+public import Mathlib.Tactic.Ring
 
 /-!
 # BN254 `G1` PROJECTIVE (Jacobian) point-add / point-double over the abstract base field
@@ -24,7 +32,7 @@ so the realization ties below are `b`-agnostic — identical algebra to the Pall
 
 ## The abstract field
 
-The BN254 base field is `ZMod bn254Q` for the genuine 254-bit prime `bn254Q`
+The BN254 base field is `ZMod bn254Q` for the 254-bit prime `bn254Q`
 (defined in `RelationalFrontBN254.lean`).  The repo carries `bn254Q` as a `Nat` modulus
 (the canonical alt_bn128 / Barreto–Naehrig base prime).  We parameterize the realization ties
 by a **hypothesis** `[Fact (Nat.Prime bn254Q)]` (a section variable — *not* an asserted axiom,
@@ -71,6 +79,8 @@ generic-chart scope of the Pallas version.
 0 sorries; no new custom axioms (primality is a section hypothesis, not an asserted axiom);
 the field-algebra ties are unconditional given the field structure.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

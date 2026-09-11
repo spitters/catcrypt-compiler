@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.Nat.ModEq
-import Mathlib.Data.ZMod.Basic
+module
+
+import all Init.Data.Repr
+public import Mathlib.Data.Nat.ModEq
+public import Mathlib.Data.ZMod.Basic
 
 /-!
 # Generic two-modulus Chinese Remainder Theorem reconstruction
@@ -27,6 +30,8 @@ We do not hand-roll the reconstruction: Mathlib already provides it directly.
 The definitions and lemmas below are thin wrappers exposing these in the shape an
 RNS reconstruction caller wants, plus a worked example.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Optimizer.Rewrite.CrtGeneric
 
@@ -100,7 +105,7 @@ is the unique such value in `[0, 15)`. -/
 expects. -/
 theorem coprime_5_3 : Nat.Coprime 5 3 := by decide
 
-example : crt coprime_5_3 2 1 = 7 := by decide
+example : crt coprime_5_3 2 1 = 7 := by decide +kernel
 
 example : crt coprime_5_3 2 1 ≡ 2 [MOD 5] := crt_modEq_left coprime_5_3 2 1
 

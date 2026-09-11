@@ -32,9 +32,13 @@ All slots are `TFp25519`.  No `RLetZero` / `RFor` / arrays — each body
 is a pure `RSeq` chain of `RCall`s, so memory safety reduces to a
 sequence of `rcall_AllSlots` applications on a flat slot list.
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
-import CatCrypt.Crypto.Jasmin.Examples.EmittedASTCorrectness
+module
 
+public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.Examples.EmittedASTCorrectness
+
+
+@[expose] public section
 namespace CatCrypt.Crypto.Jasmin.Examples.X25519StepBodiesSafety
 
 open CatCrypt.Crypto.Jasmin.LowCT
@@ -43,7 +47,7 @@ open CatCrypt.Crypto.Jasmin.Examples.EmittedASTCorrectness
 /-! ## §1.  Slot helper -/
 
 /-- A `TFp25519` slot at the given variable name. -/
-private def fp (v : String) : Located :=
+def fp (v : String) : Located :=
   { locVar := v, locSrc := TowerType.TFp25519 }
 
 /-! ## §2.  Half-step body

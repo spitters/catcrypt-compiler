@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.XMSSEmit
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.XMSSEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.XMSSEmit
 
 /-!
 # SLH-DSA / SPHINCS+ (FIPS 205) core emitted through the verified front: the
@@ -98,6 +101,8 @@ level sequence the keystones reason about.
 No `sorry`, axiom-clean (`[propext, Quot.sound]`, the same closure as the two
 keystones and `XMSSEmit`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,12 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMldsaReduce32
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMldsaPoly
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMldsaMontgomeryTie
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMldsaDecompose
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMldsaDecomposeFull
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMldsaReduce32
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMldsaPoly
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMldsaMontgomeryTie
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMldsaDecompose
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMldsaDecomposeFull
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
 
 /-!
 # #607 Phase 3c (repr-bridge): the verified compiler emits ML-DSA's per-coefficient
@@ -87,6 +90,8 @@ computes the FIPS reduce/caddq/montgomery/power2round/decompose function — and
 that meaning is independent of whether the downstream UC conclusion is vacuous.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.CompileFromHaxMldsaDepsTie
@@ -152,7 +157,7 @@ name the compiled `Com` and carry its value-agreement clause. -/
 
 /-- The compiled `reduce32` `Com` together with its emit-form value-agreement. -/
 noncomputable def reduce32Compiled := mldsaReduce32_compiles.choose
-private theorem reduce32Compiled_spec :
+theorem reduce32Compiled_spec :
     compileFromHax (w := 64) (nIn := 1) ["a"] mldsaReduce32Src = some reduce32Compiled ∧
     ∀ (a : BitVec 64),
       reduce32Compiled.denote (inputValuation 64 1 ![a]) = mldsaReduce32Form a :=
@@ -160,7 +165,7 @@ private theorem reduce32Compiled_spec :
 
 /-- The compiled `caddq` `Com` together with its mask-blend value-agreement. -/
 noncomputable def caddqCompiled := mldsaCaddq_compiles.choose
-private theorem caddqCompiled_spec :
+theorem caddqCompiled_spec :
     compileFromHax (w := 64) (nIn := 1) ["a"] mldsaCaddqSrc = some caddqCompiled ∧
     ∀ (a : BitVec 64),
       caddqCompiled.denote (inputValuation 64 1 ![a]) = mldsaCaddqFold a :=
@@ -168,7 +173,7 @@ private theorem caddqCompiled_spec :
 
 /-- The compiled signed-Montgomery `Com` together with its emit-form value-agreement. -/
 noncomputable def montgomeryCompiled := mldsaMontgomery_compiles.choose
-private theorem montgomeryCompiled_spec :
+theorem montgomeryCompiled_spec :
     compileFromHax (w := 64) (nIn := 1) ["a"] mldsaMontgomerySrc = some montgomeryCompiled ∧
     ∀ (a : BitVec 64),
       montgomeryCompiled.denote (inputValuation 64 1 ![a]) = mldsaMontgomeryForm a :=
@@ -176,7 +181,7 @@ private theorem montgomeryCompiled_spec :
 
 /-- The compiled `power2round` high-part `Com` together with its value-agreement. -/
 noncomputable def power2roundA1Compiled := power2roundA1_compiles.choose
-private theorem power2roundA1Compiled_spec :
+theorem power2roundA1Compiled_spec :
     compileFromHax (w := 64) (nIn := 1) ["a"] power2roundA1Src = some power2roundA1Compiled ∧
     ∀ (a : BitVec 64),
       power2roundA1Compiled.denote (inputValuation 64 1 ![a]) = power2roundA1Spec a :=
@@ -184,7 +189,7 @@ private theorem power2roundA1Compiled_spec :
 
 /-- The compiled `power2round` low-part `Com` together with its value-agreement. -/
 noncomputable def power2roundA0Compiled := power2roundA0_compiles.choose
-private theorem power2roundA0Compiled_spec :
+theorem power2roundA0Compiled_spec :
     compileFromHax (w := 64) (nIn := 1) ["a"] power2roundA0Src = some power2roundA0Compiled ∧
     ∀ (a : BitVec 64),
       power2roundA0Compiled.denote (inputValuation 64 1 ![a]) = power2roundA0Spec a :=
@@ -192,7 +197,7 @@ private theorem power2roundA0Compiled_spec :
 
 /-- The compiled `decompose` low-part `Com` together with its value-agreement. -/
 noncomputable def decomposeA0Compiled := mldsaDecomposeA0_compiles.choose
-private theorem decomposeA0Compiled_spec :
+theorem decomposeA0Compiled_spec :
     compileFromHax (w := 64) (nIn := 1) ["a"] mldsaDecomposeA0Src = some decomposeA0Compiled ∧
     ∀ (a : BitVec 64),
       decomposeA0Compiled.denote (inputValuation 64 1 ![a]) = mldsaDecomposeA0Form a :=

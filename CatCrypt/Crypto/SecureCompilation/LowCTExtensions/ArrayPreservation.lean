@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectRustSim
-import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectRustSim
+public import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
 
 /-!
 # Stage EE2 — `RArrLoad` / `RArrStore` constructor extension lemmas
@@ -58,6 +60,8 @@ intentionally avoid such a lemma. The closest we can state is the
   (lines 221-231); `cmdCT_sound` discharges the public-index case
   (lines 1323-1350).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAdd6RunBlock
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve6LimbTierA
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAdd6RunBlock
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve6LimbTierA
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxHeartbeats 1000000

@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ZmmDwordLane
-import CatCrypt.Crypto.SecureCompilation.VIR.Sha256DwordLane
-import Mathlib.Data.List.Induction
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ZmmDwordLane
+public import CatCrypt.Crypto.SecureCompilation.VIR.ZmmDwordLane
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Sha256DwordLane
+public import CatCrypt.Crypto.SecureCompilation.VIR.Sha256DwordLane
+public import Mathlib.Data.List.Induction
 
 /-!
 # SHA-256 message-schedule expansion on the UNIFIED packed dword spec, BIT-EXACT
@@ -59,6 +64,8 @@ concrete state. The σ rotate/shift are the 32-bit dword ops (wrap mod
 
 Invoke: `lake build CatCrypt.Crypto.SecureCompilation.VIR.Sha256DwordScheduleCom`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

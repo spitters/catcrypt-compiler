@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumConstantTime
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumConstantTime
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumConstantTime
 
 /-!
 # Completing the JInstr-level constant-time coverage: a by-construction sweep
@@ -72,6 +75,8 @@ covered here.
 **0 axioms beyond the `native_decide` KAT pins** (`propext`, `Quot.sound`,
 `Lean.ofReduceBool`), **0 sorries**.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

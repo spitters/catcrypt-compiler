@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.AutoVectorize.Patterns
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Denote
+module
+
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.AutoVectorize.Patterns
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Denote
 
 /-!
 # Auto-Vectorize — Pattern → VectorOp transformation (task #108)
@@ -47,6 +49,8 @@ proven statement).
 See also: `LoweringChoice.lean`'s pairwise-equivalence Phase-2 hole, which
 uses the same modelling-invariant pattern.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.GenericRegAlloc
-import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
-import CatCrypt.Crypto.SecureCompilation.X86Backend.RegAllocSpillCT
+module
+
+public meta import CatCrypt.Crypto.Optimizer.GenericRegAlloc
+public import CatCrypt.Crypto.Optimizer.GenericRegAlloc
+public meta import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
+public import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.RegAllocSpillCT
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.RegAllocSpillCT
 
 /-!
 # Spill-slot **reuse**: pack non-overlapping spilled names onto shared frame cells (P6)
@@ -78,6 +83,8 @@ block's `liveRanges` then certifies the remap sound. That edit lands in
 the integration point is the `nextSpill + stride` advance in
 `SpillingRegAlloc.linearScanGo`'s spill arms.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

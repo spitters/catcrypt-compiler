@@ -3,11 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAddMontMul
-import CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAddModAdd
-import CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAddRunBlock
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4MontMulProvenEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.FieldSubRunBlock
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAddMontMul
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAddModAdd
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAddRunBlock
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4MontMulProvenEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.FieldSubRunBlock
+
+@[expose] public section
 
 set_option autoImplicit false
 

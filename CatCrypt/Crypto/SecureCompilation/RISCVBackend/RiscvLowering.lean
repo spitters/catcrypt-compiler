@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvModel
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvModel
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvModel
 
 /-!
 # Wiring a register-named scalar op alphabet to the RV64 machine model (#535)
@@ -35,6 +39,8 @@ backend (where `ROR` is one instruction). The lowering is still verified down to
 the model: `riscvBlock_lowering_denote` is by induction over the source block,
 and the rotate macro's denotation is proved to equal `opRol`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

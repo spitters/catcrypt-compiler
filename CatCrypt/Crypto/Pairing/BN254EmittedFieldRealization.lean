@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Util.BN254Verified
+module
+
+public import CatCrypt.Crypto.Util.BN254Verified
 
 /-!
 # The emitted BN254 base-field kernels realize the field of the BN254 `G1` group
@@ -48,6 +50,8 @@ The full pairing tower (`Fp2`/`Fp6`/`Fp12` + Miller loop + final
 exponentiation) is **not** lifted here — it remains the documented
 opaque-leaf edge of `Pairing/Bn254Emit.lean`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

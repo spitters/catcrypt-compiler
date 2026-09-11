@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
-import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 
 /-!
 # Register-indexed (`base + idx·scale`) memory addressing through the owned backend (#581)
@@ -29,6 +34,8 @@ computation with a small KAT on a tiny matrix.
 This is the single shared addressing seam the four multivariate families share;
 `MAYO.SolveEmit` wires its cross-iteration cell access onto it.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.BignumExec
+module
+
+public meta import CatCrypt.Crypto.Jasmin.BignumExec
+public import CatCrypt.Crypto.Jasmin.BignumExec
 
 /-!
 # Reflective evaluator for LowCT chains
@@ -92,6 +95,8 @@ the corresponding `bignumExecFuel` walk via the chain-step
 axioms — pure plumbing, ~200 LoC of mvcgen-driven case analysis
 once mvcgen' lands.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookProductRunBlock
-import CatCrypt.Crypto.SecureCompilation.MultiLimbEmitBridge
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookProductRunBlock
+public import CatCrypt.Crypto.SecureCompilation.MultiLimbEmitBridge
 
 /-!
 # Curve-width (4-limb) Barrett pipeline: bridging the emitted product to the stack
@@ -17,6 +19,8 @@ y`). This file ties that emitted product to the multi-limb proof stack's `bignum
 (mulBignum …)`, the first step of routing the full curve-width Barrett pipeline through
 the emitted x86 machine.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Bignum4BarrettEmit
 

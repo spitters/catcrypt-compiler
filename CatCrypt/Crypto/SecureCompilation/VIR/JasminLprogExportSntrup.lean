@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.VIR.Sntrup761MulEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.R3MulEmit
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.Sntrup761MulEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.R3MulEmit
 
 /-!
 # ABI maps for the owned-AsmPrinter linear export of the sntrup761 poly-mul kernels
@@ -54,6 +56,8 @@ register reads, like `inp[32]`/`inp[33]` in the `.jazz` path) are rendered as
 `m` and `q` (slots 3 and 2) ARE loaded from `inp` (the C harness writes the
 Barrett multiplier and modulus into `inp[32]`/`inp[33]`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

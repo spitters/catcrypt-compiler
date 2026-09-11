@@ -3,8 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+module
 
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.LowCT
+public meta import CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!

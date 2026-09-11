@@ -3,10 +3,12 @@ Copyright (c) 2024 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.LinearAlgebra.Matrix.PosDef
-import Mathlib.LinearAlgebra.Matrix.Trace
-import Mathlib.Analysis.Matrix.PosDef
-import CatCrypt.Quantum.TraceNorm
+module
+
+public import Mathlib.LinearAlgebra.Matrix.PosDef
+public import Mathlib.LinearAlgebra.Matrix.Trace
+public import Mathlib.Analysis.Matrix.PosDef
+public import CatCrypt.Quantum.TraceNorm
 
 /-!
 # Completely Positive Maps and Duality
@@ -36,6 +38,8 @@ maps on complex matrices, along with the dual (adjoint) map construction.
 * Wilde, *Quantum Information Theory* (Cambridge, 2017)
 * Watrous, *The Theory of Quantum Information* (Cambridge, 2018)
 -/
+
+@[expose] public section
 
 open scoped Matrix ComplexOrder
 open Matrix
@@ -233,6 +237,7 @@ theorem trace_psd_mul_psd_nonneg
   have hA_spec : A = U * D * star U := by
     have hs := hA.isHermitian.spectral_theorem
     simp only [Unitary.conjStarAlgAut_apply] at hs; convert hs using 1
+    rfl
   rw [hA_spec]
   have htrace : (U * D * star U * B).trace = (D * (Uᴴ * B * U)).trace := by
     calc (U * D * star U * B).trace
@@ -287,7 +292,7 @@ private theorem matUnit_decomp₁ (i j : ι) :
       - (Complex.I/4) • vecMulVec (star (basisVec i + Complex.I • basisVec j)) (basisVec i + Complex.I • basisVec j)
       + (Complex.I/4) • vecMulVec (star (basisVec i - Complex.I • basisVec j)) (basisVec i - Complex.I • basisVec j) := by
   ext k l
-  simp only [matUnit_apply, sub_apply, add_apply, smul_apply, smul_eq_mul,
+  simp only [matUnit_apply, Matrix.sub_apply, Matrix.add_apply, Matrix.smul_apply, smul_eq_mul,
     vecMulVec_apply, Pi.star_apply, Pi.add_apply, Pi.sub_apply, Pi.smul_apply,
     basisVec, star_add, star_sub, star_smul, Complex.star_def, Complex.conj_I]
   by_cases hki : k = i <;> by_cases hlj : l = j <;>
@@ -303,7 +308,7 @@ private theorem matUnit_decomp₂ (i j : ι) :
       + (Complex.I/4) • vecMulVec (star (basisVec i + Complex.I • basisVec j)) (basisVec i + Complex.I • basisVec j)
       - (Complex.I/4) • vecMulVec (star (basisVec i - Complex.I • basisVec j)) (basisVec i - Complex.I • basisVec j) := by
   ext k l
-  simp only [matUnit_apply, sub_apply, add_apply, smul_apply, smul_eq_mul,
+  simp only [matUnit_apply, Matrix.sub_apply, Matrix.add_apply, Matrix.smul_apply, smul_eq_mul,
     vecMulVec_apply, Pi.star_apply, Pi.add_apply, Pi.sub_apply, Pi.smul_apply,
     basisVec, star_add, star_sub, star_smul, Complex.star_def, Complex.conj_I]
   by_cases hki : k = i <;> by_cases hlj : l = j <;>

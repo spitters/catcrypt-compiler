@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Tactic.Ring
+module
+
+public import Mathlib.Tactic.Ring
 
 /-!
 # Pure-integer Toom-Cook evaluation and interpolation algebra
@@ -29,6 +31,8 @@ machine kernel.
   identities, each stating that the interpolated `720`-scaled coefficient
   equals `720 ×` the corresponding schoolbook convolution.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

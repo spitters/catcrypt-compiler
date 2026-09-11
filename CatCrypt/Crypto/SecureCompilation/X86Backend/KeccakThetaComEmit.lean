@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint
-import CatCrypt.Crypto.SecureCompilation.X86Backend.KeccakThetaPiCom
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.KeccakThetaPiCom
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.KeccakThetaPiCom
 
 /-!
 # Owned AT&T `.s` emit for the migrated Keccak θ `vpackZMM` kernels
@@ -47,6 +51,8 @@ anywhere in this lowering/printing path.
 
 Invoke: `lake build CatCrypt.Crypto.SecureCompilation.X86Backend.KeccakThetaComEmit`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

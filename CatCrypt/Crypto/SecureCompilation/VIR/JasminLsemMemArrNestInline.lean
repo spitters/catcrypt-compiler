@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestInline
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieArrUncond
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestInline
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieArrUncond
 
 /-!
 # The inline two-level nest export, for an array-carrier accumulator
@@ -26,6 +28,8 @@ over the accumulator `JasminTy`; only the decoder changes.
   the array slot: the machine run halts at a state whose accumulator array decodes
   to `nestedDenote`, with the per-outer-pass simulation as a hypothesis.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

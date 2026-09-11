@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # C4 fan-out: the verified compiler emits the Poseidon2 round-loop body from extracted source
@@ -50,6 +53,8 @@ source*, proven equal to the `4·acc` value that `Poseidon2Emit.roundLoopBody`'s
 two-binder `regArith add` chain computes — with no front change beyond the
 existing `wrapping_add` recognizer.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

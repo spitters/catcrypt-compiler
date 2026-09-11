@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
+module
+
+public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
 # BLS12-381 reflect surface — G1 MSM + pairing-product kernels through the verified front
@@ -83,6 +86,8 @@ hand-typed string text.
   here (the AUCurves field/pairing leaves are the verified production
   witness; the hax bridge would tie the Rust spec to the same leaves).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 
@@ -186,7 +191,7 @@ def blsG2PointTowerType : TowerType := .TBytes 192
 /-- TowerType of a BLS12-381 `Fp12` element. -/
 def blsFp12TowerType : TowerType := .TBytes 576
 
-private def loc (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
+def locBls12381 (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
 
 /-! ## 5. Pure-Lean BLS12-381 kernel functions — the specs
 
@@ -234,11 +239,11 @@ Each is one or more `RSeq RSkip (RCall leaf result [args])` — the same shape
 /-- The `LowCT` body the reifier *would* produce for `blsG1MsmStepLean`.
     Two-call chain: first scalar-mul into `__term`, then G1-add into `__result`. -/
 def blsG1MsmStepBody : LowCT :=
-  let acc_l    := loc "acc"      blsG1PointTowerType
-  let k_l      := loc "k"        blsScalarTowerType
-  let p_l      := loc "p"        blsG1PointTowerType
-  let term_l   := loc "__term"   blsG1PointTowerType
-  let result_l := loc "__result" blsG1PointTowerType
+  let acc_l    := locBls12381 "acc"      blsG1PointTowerType
+  let k_l      := locBls12381 "k"        blsScalarTowerType
+  let p_l      := locBls12381 "p"        blsG1PointTowerType
+  let term_l   := locBls12381 "__term"   blsG1PointTowerType
+  let result_l := locBls12381 "__result" blsG1PointTowerType
   .RSeq
     (.RSeq .RSkip
       (.RCall "bls_g1_scalar_mul" term_l [k_l, p_l]))
@@ -256,17 +261,17 @@ def blsG1MsmStepReified : ReifiedFunc :=
     3 pairings into `__e1`/`__e2`/`__e3`, then `__t = __e1 · __e2`, then
     `__result = __t · __e3`. -/
 def groth16VerifierBody : LowCT :=
-  let aG1_l    := loc "aG1"      blsG1PointTowerType
-  let bG2_l    := loc "bG2"      blsG2PointTowerType
-  let lG1_l    := loc "lG1"      blsG1PointTowerType
-  let gG2_l    := loc "gG2"      blsG2PointTowerType
-  let cG1_l    := loc "cG1"      blsG1PointTowerType
-  let dG2_l    := loc "dG2"      blsG2PointTowerType
-  let e1_l     := loc "__e1"     blsFp12TowerType
-  let e2_l     := loc "__e2"     blsFp12TowerType
-  let e3_l     := loc "__e3"     blsFp12TowerType
-  let t_l      := loc "__t"      blsFp12TowerType
-  let result_l := loc "__result" blsFp12TowerType
+  let aG1_l    := locBls12381 "aG1"      blsG1PointTowerType
+  let bG2_l    := locBls12381 "bG2"      blsG2PointTowerType
+  let lG1_l    := locBls12381 "lG1"      blsG1PointTowerType
+  let gG2_l    := locBls12381 "gG2"      blsG2PointTowerType
+  let cG1_l    := locBls12381 "cG1"      blsG1PointTowerType
+  let dG2_l    := locBls12381 "dG2"      blsG2PointTowerType
+  let e1_l     := locBls12381 "__e1"     blsFp12TowerType
+  let e2_l     := locBls12381 "__e2"     blsFp12TowerType
+  let e3_l     := locBls12381 "__e3"     blsFp12TowerType
+  let t_l      := locBls12381 "__t"      blsFp12TowerType
+  let result_l := locBls12381 "__result" blsFp12TowerType
   .RSeq
     (.RSeq
       (.RSeq
@@ -288,9 +293,9 @@ def groth16VerifierReified : ReifiedFunc :=
 
 /-- The `LowCT` body for `kzgOpeningVerifierLean`. Single pairing call. -/
 def kzgOpeningVerifierBody : LowCT :=
-  let p_l      := loc "p"        blsG1PointTowerType
-  let q_l      := loc "q"        blsG2PointTowerType
-  let result_l := loc "__result" blsFp12TowerType
+  let p_l      := locBls12381 "p"        blsG1PointTowerType
+  let q_l      := locBls12381 "q"        blsG2PointTowerType
+  let result_l := locBls12381 "__result" blsFp12TowerType
   .RSeq .RSkip
     (.RCall "bls12_pairing" result_l [p_l, q_l])
 

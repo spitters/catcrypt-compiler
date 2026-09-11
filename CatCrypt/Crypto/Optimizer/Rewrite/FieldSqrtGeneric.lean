@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.ZMod.Basic
-import Mathlib.FieldTheory.Finite.Basic
-import Mathlib.Tactic
+module
+
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.FieldTheory.Finite.Basic
+public import Mathlib.NumberTheory.LegendreSymbol.Basic
+public import Mathlib.Tactic.IntervalCases
 
 /-!
 # Modular square roots over a finite field (generic)
@@ -42,6 +45,8 @@ If `a` is a (nonzero) square, Euler's criterion gives `a ^ ((p - 1) / 2) = 1`,
 so `(a ^ e) ^ 2 = a`.  The zero case is immediate (`0 ^ e = 0`).
 -/
 
+@[expose] public section
+
 namespace CatCrypt.Crypto.Optimizer.Rewrite.FieldSqrtGeneric
 
 open scoped Classical
@@ -51,7 +56,7 @@ variable (p : ℕ) [Fact (Nat.Prime p)]
 /-! ### Euler's criterion (quadratic-residue test) -/
 
 /-- For an odd natural number `p`, `p / 2 = (p - 1) / 2` (`Nat` division). -/
-private theorem odd_div_two_eq (n : ℕ) (hodd : n % 2 = 1) : n / 2 = (n - 1) / 2 := by
+theorem odd_div_two_eq (n : ℕ) (hodd : n % 2 = 1) : n / 2 = (n - 1) / 2 := by
   omega
 
 /-- **Euler's criterion**, re-exported in the `(p - 1) / 2` exponent form: a

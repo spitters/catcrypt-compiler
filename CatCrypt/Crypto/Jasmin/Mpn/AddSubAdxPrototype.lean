@@ -3,9 +3,18 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.AddNAdcSpillPrototype
-import CatCrypt.Crypto.Jasmin.Mpn.SubNSbbSpillPrototype
-import CatCrypt.Crypto.Jasmin.Mpn.AddMul1AdxPrototype
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.Mpn.AddNAdcSpillPrototype
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.Mpn.AddNAdcSpillPrototype
+public meta import CatCrypt.Crypto.Jasmin.Mpn.SubNSbbSpillPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.SubNSbbSpillPrototype
+public meta import CatCrypt.Crypto.Jasmin.Mpn.AddMul1AdxPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.AddMul1AdxPrototype
+
+@[expose] public section
 
 set_option autoImplicit false
 

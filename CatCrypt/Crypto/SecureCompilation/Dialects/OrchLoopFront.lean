@@ -3,10 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.OrchFront
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3OrchLoopsEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.ZkSumCheckWholeProverEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ProveDriverEmit
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.OrchFront
+public import CatCrypt.Crypto.SecureCompilation.Dialects.OrchFront
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3OrchLoopsEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3OrchLoopsEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ZkSumCheckWholeProverEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.ZkSumCheckWholeProverEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ProveDriverEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ProveDriverEmit
 
 /-!
 # Loop-over-call orchestration front: validation against the deployed drivers
@@ -38,6 +45,8 @@ The FiatShamir word-move duplex is the residual: its loops are memref word
 copies, not leaf calls, and its driver is a multi-loop function — out of the
 loop-over-call band.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

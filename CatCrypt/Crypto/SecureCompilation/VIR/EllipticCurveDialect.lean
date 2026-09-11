@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
-import Mathlib.Data.ZMod.Basic
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
+public import Mathlib.Data.ZMod.Basic
 
 /-!
 # EllipticCurve VIR dialect (#482-3 — the L4 algebraic layer, over Field)
@@ -82,6 +85,8 @@ are CT **only** when realised by a constant-time ladder / fixed-window schedule
 per-op `ctSafe` flag so a variable-time double-and-add realisation is *flagged*,
 not silently accepted.  This is the L4 instance of the VIR `ctSafe` story.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

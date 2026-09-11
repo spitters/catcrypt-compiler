@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvModel64
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvModel64
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvModel64
 
 /-!
 # Wiring a 64-bit bignum op alphabet to the RV64 model, with SLTU carry macros (#549)
@@ -41,6 +44,8 @@ block keystone `riscvBlock64_lowering_denote` is a clean induction, and each mac
 denotation is pinned by `native_decide` KATs (the carry/borrow bits are the
 `SLTU` outputs).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

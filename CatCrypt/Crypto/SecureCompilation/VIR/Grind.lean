@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Core
-import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
 
 /-!
 # `@[grind =]` database for VIR
@@ -17,6 +19,8 @@ Mirrors VEIR's `Veir/IR/Grind.lean` (which uses `@[grind =_]` for iff
 biconditionals around `Option.maybe`-lifted predicates); ours uses `@[grind =]`
 because VIR's lemmas are direct equalities, not iffs.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR
 

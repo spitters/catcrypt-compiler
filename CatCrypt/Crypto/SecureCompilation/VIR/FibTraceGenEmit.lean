@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
-import CatCrypt.Crypto.SecureCompilation.VIR.LoopEmitBridge
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.LoopEmitBridge
+public import CatCrypt.Crypto.SecureCompilation.VIR.LoopEmitBridge
 
 /-!
 # The Fibonacci trace-gen phase emitted as an owned machine loop
@@ -22,6 +26,8 @@ state level) is now an emitted machine loop whose denotation is proved — via t
 loop-emit bridge (`LoopEmitBridge`) and `loopLcmd_denote` — to be the n-fold iterate
 of the emitted body, and that iterate carries the Fibonacci public output.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.FibTraceGenEmit
 

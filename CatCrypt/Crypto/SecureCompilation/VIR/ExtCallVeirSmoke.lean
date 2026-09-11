@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
-import CatCrypt.Crypto.SecureCompilation.VIR.ComToVeir_CatCryptDialect
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ComToVeir_CatCryptDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.ComToVeir_CatCryptDialect
 
 /-!
 # End-to-end `extCall` smoke test: `LowCT → Com[catCryptDialect] → Veir`
@@ -31,6 +35,8 @@ So the `LowCTToMLIR` text-formatter shortcut can be retired/demoted: the
 verified, `CProg`-free chain now covers its motivating case.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.ExtCallVeirSmoke
@@ -46,7 +52,7 @@ open CatCrypt.Crypto.Jasmin.LowCT
 
 `a = fp_zero(); b = fp_zero(); c = fp_add(a, b)` over Curve25519 field
 elements. The operands `a` and `b` are bound as the destinations of two
-`fp_zero` leaf calls (so they are genuine `TFp25519` storage — `memref 5`),
+`fp_zero` leaf calls (so they are `TFp25519` storage — `memref 5`),
 keeping the whole program closed and type-coherent with `fp_add`. The
 `CProg`-free front covers `RSeq`/`RCall` (`TranslateDialectDirectArms`'s
 leaf-call arms), so every leaf call threads through directly. -/

@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Lean
-import CatCrypt.Crypto.SecureCompilation.VIR.ShaNiEmit
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Lean
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Lean
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ShaNiEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.ShaNiEmit
 
 /-!
 # The factored hardware-ISA trust boundary for the emit pipeline (#483)
@@ -86,6 +90,8 @@ The three tiers are a **strict ordering of validation strength**, not cosmetic:
 Each family below names its discharge witness theorem(s); a reader auditing the
 emit pipeline's hardware-trust footprint can read this file top to bottom.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

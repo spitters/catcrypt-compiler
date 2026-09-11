@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Util.PrattCertificate
+module
+
+public import Mathlib.Tactic.NormNum.Prime
+public import CatCrypt.Crypto.Util.PrattCertificate
 
 /-!
 # Lucas node `E = 3044861653679985063343`
@@ -12,6 +15,8 @@ Primality of the factor `E` of `A - 1`, via
 `E - 1 = 2 · 3 · 11 · 30703 · 82163 · 132667 · 137849` with witness `5`. All
 factors of `E - 1` are below `2^32`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxRecDepth 50000

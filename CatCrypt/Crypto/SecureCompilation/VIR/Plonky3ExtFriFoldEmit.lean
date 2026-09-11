@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3EmitMain
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3EmitMain
 
 /-!
 # Plonky3 extension-FRI fold: ExtensionMmcs fold + barycentric OOD/DEEP, owned
@@ -70,6 +72,8 @@ node (the flatten loop), which carries no field op — and that loop is itself
 emittable through `Plonky3OrchLoopsEmit`'s owned `loopLcmd` orchestration
 (the same Merkle-commit tree-level loop).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

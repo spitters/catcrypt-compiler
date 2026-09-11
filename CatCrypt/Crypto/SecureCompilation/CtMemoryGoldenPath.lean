@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-import CatCrypt.Crypto.SecureCompilation.ArrayLoopCT
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public import CatCrypt.Crypto.SecureCompilation.ArrayLoopCT
 
 /-!
 # Golden path: public-indexed array access (the NTT / coefficient pattern)
@@ -42,6 +44,8 @@ this pattern stops at the dialect + CT-analysis level — a constant-time
 *gather/scatter* lowering (load/store with a register index, address computed
 obliviously) would close it. The gap is the lowering, not the specification.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,11 +3,18 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3HashLeafEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3CompressEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3HashLeafEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3HashLeafEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3CompressEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3CompressEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # Plonky3 FRI surrogate-hash leaves through the OWNED x86 backend (no jasminc)
@@ -76,6 +83,8 @@ The byte identity owned-`.s` == reference is the external `cc` KAT
 (`bench/plonky3_compare/merkle_leaves_owned_kat.c`, an independent C reference
 of the mixer), relinked against the owned `.s` (no jasminc).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

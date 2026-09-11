@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.GenericRegAlloc
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAsmPrinter
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Optimizer.GenericRegAlloc
+public import CatCrypt.Crypto.Optimizer.GenericRegAlloc
+public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAsmPrinter
 
 /-!
 # A verified linear-scan spilling register allocator for the A64 `AInst` block (#551)
@@ -55,6 +60,8 @@ that removes the stack traffic.
 No `sorry`, no new custom axioms; the value identity of the applied SHA-256 body is
 its runtime KAT vs the FIPS 180-4 digest (`bench/arm_compare`, qemu-aarch64).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

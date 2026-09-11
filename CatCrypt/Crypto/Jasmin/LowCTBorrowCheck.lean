@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
+module
+
+public import CatCrypt.Crypto.Jasmin.LowCT
 
 /-!
 # Borrow Checker and Frame Theorems for LowCT
@@ -27,6 +29,8 @@ making the three-step chain `RemoveTower → inner ih → SetTower` trivial.
 
 **0 admits, 0 sorry.**
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.LowCT
 

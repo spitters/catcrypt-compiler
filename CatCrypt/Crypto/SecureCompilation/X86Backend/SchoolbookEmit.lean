@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MulxSelect
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Cios4LimbProven
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MulxSelect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Cios4LimbProven
 
 /-!
 # Schoolbook multiply: per-column `runBlock` ties + the `Nat`-level product
@@ -74,6 +76,8 @@ accumulation schemes *mid-row* — a symbolic induction over the nested
 distinctness — is the remaining increment. It does not affect the product spec
 (`emitSchoolbook_value`), which is pinned to the proven `mulLimbs`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

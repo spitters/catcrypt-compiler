@@ -3,10 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.VIR.QuerySampleBranchFront
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.QuerySampleBranchFront
+public import CatCrypt.Crypto.SecureCompilation.VIR.QuerySampleBranchFront
 
 /-!
 # Front schedule language for the variable-length SHAKE256 sponge
@@ -65,6 +71,8 @@ NOT a compile-time constant: it is the ABI argument `outlen`, threaded by the
 squeeze loop's `R12` counter (`R12 -= min(R12, rate)` per block), so the
 runtime-output residual the query sampler flagged is discharged here.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

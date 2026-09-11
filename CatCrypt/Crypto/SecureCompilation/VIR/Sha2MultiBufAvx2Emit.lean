@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.BitVec
-import Mathlib.Tactic.Ring
+module
+
+import all Init.Data.Repr
+public import Mathlib.Data.BitVec
+public import Mathlib.Tactic.Ring
 
 /-!
 # Owned-backend emit of the AVX2 multi-buffer SHA-256 8-way / SHA-512 4-way block compression
@@ -68,6 +71,8 @@ cache, where a per-conjunct `simp` repeats the whole walk. A compositional form 
 per-sub-block read-through lemmas for `rotBlk`, composed across the `++` seams — would
 make the walk linear in block length rather than quadratic, at the cost of register
 non-aliasing side conditions at every seam. -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

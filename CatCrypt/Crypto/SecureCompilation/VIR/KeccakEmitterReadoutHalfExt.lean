@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterReadoutHalf
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterReadoutHalf
 
 /-!
 # Keccak emitter readout half — extension: the remaining 3 sub-block readouts
@@ -57,6 +60,8 @@ sub-block readouts following the same template:
 See `KeccakEmit.lean` for the full 12-file Keccak VIR canonical map. This
 file is step #132 in that chain: remaining 3/5 sub-block readouts.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxHeartbeats 16000000

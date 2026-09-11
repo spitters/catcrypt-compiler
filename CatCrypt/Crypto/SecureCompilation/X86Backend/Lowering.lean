@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Model
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Model
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-!
 # Lowering the scalar `lprog` `Lopn` fragment to the x86 model (#148 POC)
@@ -31,6 +34,8 @@ source 0) maps to the matching `Instr` arm; an `Lopn [reg dst] "MOV"/"LOAD"
 directly. `LOperand.arr` (memory) and the control-flow `LinstrR` constructors
 are out of scope (returned as `none`) — see `README.md`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

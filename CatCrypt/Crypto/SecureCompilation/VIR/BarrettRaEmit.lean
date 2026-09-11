@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
-import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+public import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
+public import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
 
 /-!
 # Barrett-reduction inner kernel — register allocation
@@ -109,6 +113,8 @@ well-formedness with `rfl`. The CT-preservation theorem
 `applyRA_unrolledSlotRAofItersCoalesce_preserves_CT` (in
 `CtPreservationNewTransforms.lean`) applies unchanged.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

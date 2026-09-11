@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LeafBytes
-import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElf
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LeafBytes
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LeafBytes
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElf
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElf
 
 /-!
 # An ADDITIVE framing / multi-symbol / relocation emit path for the `JInstr` backend
@@ -77,6 +81,8 @@ no `native_decide`.
   threading is the one remaining piece for a fully hands-free JInstr reloc emit and
   is called out at the end of this file.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+module
 
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!
@@ -1072,7 +1077,7 @@ theorem lowerSExpr_denote (e : SExpr) :
       intro t tail
       obtain ⟨com, hcom, hden⟩ := hcont tail
       exact ⟨com, by simpa [TranslateDialectDirectArms.pushVarBind, ComCont.comp,
-        ComCont.id] using hcom, hden⟩
+        ComCont.id] using! hcom, hden⟩
   | SAdd a b iha ihb =>
       intro Γ vm V env cnt o nm cnt' hc hclean hlow
       obtain ⟨sa, sb⟩ := hclean

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.FieldDerivedOps
-import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialectBlockDescent
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.FieldDerivedOps
+public import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialectBlockDescent
 
 /-!
 # `derivedDialect → fieldDialect`
@@ -40,6 +42,8 @@ Whole-program denotation preservation follows from three leaf obligations via
 * `lowerDerivedToField_denote`: the lowering preserves denotation for every
   program.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.DerivedToField
 

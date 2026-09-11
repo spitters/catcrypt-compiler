@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridge
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridge
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
 
 /-!
 # The value-level middle tie for the scalar-arith fragment (Route B)
@@ -51,6 +53,8 @@ operation (`+`/`&&&`/`^^^`/`*`) applied to `st.regs p.a` and `st.regs p.b`:
 **every** name at `.sword 64`, so `semLowerSExpr`'s per-leaf `envReadU64` lookup
 never fails — the success is proved by computation, not assumed.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

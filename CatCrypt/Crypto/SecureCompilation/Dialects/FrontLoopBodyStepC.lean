@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.FrontLoopBodyDenote
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.FrontLoopBodyDenote
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-!
 # The front-compiled loop body as a `JLoopBodyN` step and fold
@@ -44,6 +46,8 @@ reads on the compiled program's denotation.
 * `frontLoopBodyJ_denote_foldl` — the composite: per-trip source runs of the
   body give the compiled loop body's fold as the model fold.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

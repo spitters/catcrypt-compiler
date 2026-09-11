@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
 
 /-!
 # The ascent refinement calculus over `runBlock` — the flag-carrying `CorresJ`
@@ -49,6 +51,8 @@ word squares in `Ascent/Corres.lean`) plugs into an `SR` here unchanged; this fi
 keeps its dependencies to `JasminModel` and states the flag leaf with the concrete
 `BitVec`/`Int` borrow arithmetic to stay self-contained and non-vacuous.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

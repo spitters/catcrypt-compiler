@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxGf131071
-import Mathlib.Data.ZMod.Basic
-import Mathlib.FieldTheory.Finite.Basic
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxGf131071
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxGf131071
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.FieldTheory.Finite.Basic
 
 /-!
 # #606 fan-out: the emitted GF(131071) multiply leaf EQUALS the abstract field op
@@ -23,6 +26,8 @@ wraps, so the `BitVec` multiply is the integer multiply, and `(a·b) % 131071`
 projected to `ZMod 131071` is the field product `↑a · ↑b`. The genuine
 prime-field reduce identity, lifted to the Mathlib field through `ZMod.natCast_*`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

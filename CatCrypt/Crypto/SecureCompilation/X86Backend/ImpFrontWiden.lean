@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.SecureCompileChain
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTUnified
+module
+
+public import CatCrypt.Crypto.SecureCompilation.SecureCompileChain
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTUnified
 
 /-!
 # w6 — widening the source front from straight-line arith to {arith + loop + select}
@@ -63,6 +65,8 @@ The lower bound is required to be the literal `0` (the unified `forU x n` iterat
 the body, outside this on-ramp.  Memory operands stay outside the unified type
 (the w7-mem follow-on), so the front returns `none` on them.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

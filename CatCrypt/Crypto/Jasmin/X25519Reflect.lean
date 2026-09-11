@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
+module
+
+public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
 # X25519 reflect surface — Montgomery-ladder iteration via the verified front
@@ -70,6 +73,8 @@ reifier *would* produce.
   `x25519Ladder.toCfor` / `x25519Ladder_loop_denote_eq` keystone
 -/
 
+@[expose] public section
+
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 
 open CatCrypt.Crypto.Jasmin.LowCT
@@ -116,7 +121,7 @@ def x25519LadderIterPattern : LowCTPattern where
 /-- Tower type of the 24-u64-word ladder bundle. -/
 def x25519LadderStateTowerType : TowerType := .TBytes 192
 
-private def loc (n : String) (t : TowerType) : Located :=
+def locX25519 (n : String) (t : TowerType) : Located :=
   { locVar := n, locSrc := t }
 
 /-! ## 5. Pure-Lean X25519 kernel function — the spec -/
@@ -143,8 +148,8 @@ Shape: one `RSeq RSkip (RCall …)`. -/
 
     A single `RCall` ending the chain. -/
 def x25519LadderStepBody : LowCT :=
-  let acc_l    := loc "acc"      x25519LadderStateTowerType
-  let result_l := loc "__result" x25519LadderStateTowerType
+  let acc_l    := locX25519 "acc"      x25519LadderStateTowerType
+  let result_l := locX25519 "__result" x25519LadderStateTowerType
   .RSeq .RSkip
     (.RCall "x25519_ladder_iter" result_l [acc_l])
 

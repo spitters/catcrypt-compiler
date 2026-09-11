@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
+module
+
+public import CatCrypt.Crypto.Jasmin.LowCT
 
 /-!
 # Explicit variable-time-operation detector
@@ -55,6 +57,8 @@ variable-time op is added to either IR, route its classification through
 `VOp.varTime` and discharge its CT obligation via `varTimeOp_secret_not_ct` /
 `varTimeOp_public_accepted`. Dialect wiring is the follow-up.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VarTimeOpDetector
 

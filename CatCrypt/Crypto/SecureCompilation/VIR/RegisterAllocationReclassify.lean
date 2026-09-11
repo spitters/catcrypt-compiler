@@ -4,6 +4,8 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 
+module
+
 /-!
 # Register allocation: reclassification (audit Class A)
 
@@ -48,3 +50,5 @@ correctness living in (and partly proved within) Phase 1.
 `linearScanRA.slotOf = id` are trivial `rfl`s over `RegisterAllocation`'s own defs; the
 load-bearing fact is the Phase-1 physical theorem `physBody_lsem_result_uniform`.)
 -/
+
+@[expose] public section

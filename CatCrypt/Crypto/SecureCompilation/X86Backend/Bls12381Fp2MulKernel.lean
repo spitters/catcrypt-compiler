@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381MontMulKernel
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381MontMulKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381MontMulKernel
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
 # BLS12-381 `Fp2` (quadratic extension) multiply + square, owned x86 leaf (#602/#219)
@@ -99,6 +104,8 @@ Identical to `Bls12381MontMulKernel`: the verified artifact is
 `gas` is the syntactic trust boundary; the driver's SysV call frame is trusted
 scaffolding outside the verified field bodies.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

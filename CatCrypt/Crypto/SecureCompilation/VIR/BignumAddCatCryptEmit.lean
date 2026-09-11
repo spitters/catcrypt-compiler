@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
 
 /-!
 # 4-limb (256-bit) bignum ADD on the HIGH `catCryptDialect`, with denote = spec
@@ -55,6 +60,8 @@ the `bvAddCarryLo`/`bvAddCarryHi` split).
 
 **0 sorries.**
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

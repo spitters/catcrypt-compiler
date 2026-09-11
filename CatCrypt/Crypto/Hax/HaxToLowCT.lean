@@ -3,8 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Hax.LowCTSubset
-import CatCrypt.Crypto.Jasmin.LowCT
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Hax.LowCTSubset
+public meta import CatCrypt.Crypto.Jasmin.LowCT
+public meta import CatCrypt.Hax.AST
+public import CatCrypt.Crypto.Hax.LowCTSubset
+public import CatCrypt.Crypto.Jasmin.LowCT
 
 /-!
 # H2: Translation `ImpExpr → Option LowCT`
@@ -50,6 +56,8 @@ nesting requires the H2.1 follow-up.
 name prefix; a future pass should derive it from the missing `ImpType`
 annotation on let-bindings.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

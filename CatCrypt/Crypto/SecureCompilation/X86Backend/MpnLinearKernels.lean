@@ -3,10 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
-import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
 # `mpn_add_n` / `mpn_sub_n` / `mpn_submul_1` at n ≥ 16 through the owned x86 backend (#351)
@@ -58,6 +65,8 @@ established at runtime by the byte-exact KAT vs GMP in
 standard gate for these word kernels (mirroring `BignumMontMulKernel`'s
 `mul48_eval` per-input pins + KAT).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

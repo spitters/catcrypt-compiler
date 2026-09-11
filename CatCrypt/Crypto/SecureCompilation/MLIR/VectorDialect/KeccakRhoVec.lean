@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
-import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+module
+
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
+public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
 
 /-!
 # Keccak `ρ` step through the structured VectorDialect (task #275, pure reuse)
@@ -31,6 +33,8 @@ rendering, so the natural reuse demonstrated here is at the DENOTATION level
 realizes), not a byte-identity render proof. The Keccak emit module is left
 **untouched**.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

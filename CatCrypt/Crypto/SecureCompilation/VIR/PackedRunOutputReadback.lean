@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.RunOutputReadback
-import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Types
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.RunOutputReadback
+public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Types
 
 /-!
 # The PACKED run-output read-back: splicing the dialect chain into the SIMD lane domain
@@ -79,6 +82,8 @@ The coverage is **per-lane**, and the boundary is stated honestly:
 
 All goals closed.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

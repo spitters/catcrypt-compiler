@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Sha2Emit
-import CatCrypt.Crypto.SecureCompilation.VIR.Sha2DiffuseExact
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Sha2Emit
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.Sha2Emit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Sha2DiffuseExact
+public import CatCrypt.Crypto.SecureCompilation.VIR.Sha2DiffuseExact
 
 /-!
 # Substrate for `Sha2Emit.emitRound`'s `Com.denote` reduction
@@ -67,6 +72,8 @@ Verified by `lean_verify`:
   `crotr_eq_rotr_sha256` (or 6 from `_sha512`). No `sorry`, no
   `native_decide`, no new custom axioms.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

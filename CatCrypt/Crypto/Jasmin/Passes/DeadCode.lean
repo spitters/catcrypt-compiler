@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.PassFramework
+module
+
+public import CatCrypt.Crypto.Jasmin.PassFramework
 
 /-!
 # Dead Code Elimination Pass
@@ -28,6 +30,8 @@ The correctness proof requires a "heap frame" property: writing to a location
 that is never subsequently read does not affect the result. This property
 requires location tracking through the SPComp monad, which we axiomatize.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin
 

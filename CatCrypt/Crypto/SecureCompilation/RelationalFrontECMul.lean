@@ -3,11 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFront
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontInstances
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontEC
-import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenMul
-import Std.Tactic.BVDecide
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.RelationalFront
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontInstances
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontEC
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenMul
+public import Std.Tactic.BVDecide
 
 /-!
 # The GF(251) MULTIPLY's `ZMod`-level commuting square — unblocking Jacobian doubling
@@ -64,6 +67,8 @@ new infrastructure. `ECParams.add` over `ECPoint = Option (ZMod p × ZMod p)`
 (6×64-bit limbs ⇒ a CIOS/Karatsuba per-op kernel) remain the larger,
 carrier-swap efforts the `RelationalFrontEC` docstring documents.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

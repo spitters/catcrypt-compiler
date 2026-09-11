@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 
 /-!
 # A verified machine-code byte encoder for the scalar `JInstr` instructions
@@ -31,11 +33,15 @@ auditable field by field against the Intel SDM (Vol. 2, the per-instruction
 "Instruction Operand Encoding" / opcode tables). The remaining trusted edge shrinks
 to *this encoder matches the SDM encoding*, discharged two ways:
 
-* **structurally** — `encodeJInstr` always emits a well-formed instruction with the
-  correct byte length (`encode_length` below) and, for the legacy GP forms, the
-  `REX.W` prefix that selects the 64-bit operand size (`encode_rexW` below); proved
-  unconditionally for all inputs (the `LprogJasminWellFormed`
-  analogue);
+* **structurally** — every shape encoder emits exactly the byte length its SDM form
+  dictates, proved unconditionally for all inputs by the §6 family (`encAluRR_length`
+  3, `enc0FRR_length` 4, `encShiftImm_length` 4, `encAluImm_length` 7,
+  `encMovImm64_length` 10, `encMulxRR_length` 5, `encAdxCarry_length` 6) — the
+  `LprogJasminWellFormed` analogue. There is **no** aggregate `encodeJInstr`-level
+  length lemma (the memory arms' length depends on the displacement form `memTail`
+  selects), and **no** `REX.W` lemma: the `REX.W` prefix that selects the 64-bit
+  operand size is carried *by construction* — every legacy GP shape encoder below
+  literally builds `rex 1 …`, readable off the definition;
 * **differentially** — each `encodeJInstr` output is pinned (`ScalarValidation.lean`)
   to the exact byte string `gas` produces for the same mnemonic, the posture
   `Avx512Validation.lean` takes for the EVEX encoder and
@@ -75,6 +81,8 @@ The register-extension bit (bit 3 of a GP number) routes to `REX.R`/`REX.B` (or,
 VEX, the inverted `R̄`/`B̄`), so all 16 GP registers are addressable. This module
 computes those bits arithmetically from the `%rN` names `AsmPrinter.allocGp` assigns.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -275,7 +283,33 @@ def encImulImm (d v : Nat) : List (BitVec 8) :=
     `reg` field carries no register, so `REX.R=0` and only `REX.B` (bit 3 of
     `dst`) is set, addressing `r8`–`r15`. The uniform 32-bit-immediate form is
     used for all digits (no `0x83 ib` sign-extended short form) — the fe25519
-    immediates (`19`/`38`/…) fit in `imm32`. -/
+    immediates (`19`/`38`/…) fit in `imm32`.
+
+    **PRECONDITION on `v` (unchecked — this is a total function that TRUNCATES).**
+    x86-64 has no 64-bit-immediate ALU form: `81 /digit id` carries 32 immediate
+    bits which the CPU **sign-extends** to the 64-bit operand. So the encoding is
+    faithful exactly on the values whose 64-bit two's-complement image fits a
+    signed 32-bit immediate:
+
+    `v < 2^31  ∨  2^64 - 2^31 ≤ v`   (`LprogBytes.fitsImm32S`, `GatherImmForms.fitsImm32S`)
+
+    Outside that set the emitted instruction computes with a DIFFERENT value than
+    the model's `.imm v`, and nothing here reports it: `v ∈ [2^31, 2^32)` is
+    sign-extended to `v - 2^64 + 2^32` (negative), and `v ≥ 2^32` additionally
+    loses its high bits to `imm32LE`'s `mod 2^32` truncation. The `MOV $imm` arm of
+    `encodeJInstr` escapes this by falling back to the 10-byte `REX.W B8+r io`
+    `movabs` form (`encMovImm64`) — there is no such escape for an ALU op, whose
+    only wide-immediate lowering is "materialise into a scratch GPR first", a
+    register-allocation decision this encoder cannot make.
+
+    No caller is guarded: every `encodeJInstr` ALU-with-`.imm` arm (`add`/`sub`/
+    `adc`/`sbb`/`and_`/`or_`/`xor_`) calls straight through. The in-repo emitters
+    only produce small immediates (fe25519 `19`/`38`, mpn strides `1`/`8`, shift
+    counts), so the precondition holds in practice but is NOT enforced. No theorem
+    in this file constrains `v`: `encAluImm_length` is `v`-independent (always 7
+    bytes), and the `ScalarValidation` gas pins are per-value. The decode
+    round-trips in `SailX86Decoder` (`roundtrip_AluImm`) recover the `imm32`
+    FIELD, not the 64-bit value it denotes, so they carry the same caveat. -/
 def encAluImm (digit d v : Nat) : List (BitVec 8) :=
   ([ rex 1 0 0 (bit d 3), 0x81, modRMReg digit d ].map (BitVec.ofNat 8)) ++ imm32LE v
 
@@ -303,16 +337,30 @@ def encUnaryF7 (ext d : Nat) : List (BitVec 8) :=
     `MOVZBQ %dl, %rdx` (`REX.W 0F B6 /r`, zero-extend the byte into the full
     64-bit register). The `SETcc` opcode extension `reg` field is `/0` (the SDM
     `SETcc r/m8` ignores `reg`); for `MOVZBQ` `reg`=dst, `rm`=src (both the same
-    register `d`). A `REX` prefix is emitted for the `SETB` when `d ≥ 8` (or when
-    `d` is one of `%spl/%bpl/%sil/%dil`, byte forms that require REX) so all 16
-    GP byte registers are addressable; for the loop's carry GPR (a `%r8`-class
-    callee register) the `REX.B` is set. The pair zero-extends `CF` into `d`,
-    realising the model's `setc` arm (`d := if CF then 1 else 0`). -/
+    register `d`). The `SETB` byte destination needs a `REX` prefix in **two**
+    disjoint bands, and the encoder emits one in each:
+
+    * `d ≥ 8` (`%r8b`–`%r15b`) — `REX.B` routes bit 3 of the register number, so
+      the prefix is `0x41` (gas: `setb %r8b` = `41 0f 92 c0`);
+    * `4 ≤ d < 8` (`%spl/%bpl/%sil/%dil`) — WITHOUT a `REX` prefix the ModRM `rm`
+      values `100..111` name the legacy high-byte registers `AH/CH/DH/BH`, so a
+      **bare** `REX` (`0x40`, all of `W R X B` clear) is required to reinterpret
+      them as the low bytes of `%rsp/%rbp/%rsi/%rdi` (gas: `setb %spl` =
+      `40 0f 92 c4`). Dropping it writes `AH`-class bits while the `REX.W` `MOVZBQ`
+      below reads `SPL` — a silently wrong register pair.
+
+    `d < 4` (`%al/%cl/%dl/%bl`) needs no prefix. The `MOVZBQ` always carries
+    `REX.W`, so its byte source is the REX-selected low byte for all 16 GPs. The
+    pair zero-extends `CF` into `d`, realising the model's `setc` arm
+    (`d := if CF then 1 else 0`), and is byte-identical to the looped path's
+    `LprogBytes.encSetccMovzx 0x92` for every `d`
+    (`LprogBytes.encSetccMovzx_setc_agree`). -/
 def encSetcMovzx (d : Nat) : List (BitVec 8) :=
-  -- SETB r/m8 = [REX?] 0F 92 ModRM(11, /0, d).  REX present iff d ≥ 8 (REX.B);
-  -- emit REX.B = 0x41 only then (the low-8 GP byte regs %al..%bl need no REX).
+  -- SETB r/m8 = [REX?] 0F 92 ModRM(11, /0, d).  REX.B = 0x41 for d ≥ 8; the BARE
+  -- REX 0x40 for d ∈ {4..7} (%spl/%bpl/%sil/%dil — else the ModRM names AH/CH/DH/BH);
+  -- none for d < 4 (the low-8 GP byte regs %al..%bl need no REX).
   let setb : List Nat :=
-    (if bit d 3 = 1 then [rex 0 0 0 1] else [])
+    (if bit d 3 = 1 then [rex 0 0 0 1] else if 4 ≤ d ∧ d < 8 then [rex 0 0 0 0] else [])
       ++ [0x0f, 0x92, modRMReg 0 d]
   -- MOVZBQ r/m8 → r64 = REX.W 0F B6 ModRM(11, d, d).
   let movzx : List Nat := [ rex 1 (bit d 3) 0 (bit d 3), 0x0f, 0xb6, modRMReg d d ]
@@ -360,6 +408,25 @@ def encMemMov (op r base : Nat) (off : Int) : List (BitVec 8) :=
   let pfx := [ rex 1 (bit r 3) 0 (bit base 3), op ].map (BitVec.ofNat 8)
   pfx ++ memTail r base off
 
+/-- `MOV $imm32, off(%base)` (`REX.W C7 /0 id` with a **memory** ModRM): the
+    store-immediate form. This is `encMemMov` at opcode `0xC7` with the ModRM `reg`
+    field holding the opcode-extension digit `/0` instead of a register (so
+    `REX.R = 0`), followed by the little-endian `imm32`. The ModRM/SIB/displacement
+    tail is therefore the same shared base-aware `memTail`, correct for all 16 GP
+    bases. gas: `movq $0, (%rdi)` = `48 c7 07 00 00 00 00`,
+    `movq $2, 24(%rsp)` = `48 c7 44 24 18 02 00 00 00` (the SIB-escape base).
+
+    **PRECONDITION on `v`: `v < 2^31 ∨ 2^64 - 2^31 ≤ v`** — the same
+    sign-extended-`imm32` constraint `encAluImm` documents at length (the CPU
+    sign-extends the 32-bit field to the 64-bit memory operand, and `imm32LE`
+    truncates `mod 2^32`). Unlike the register-destination `MOV`, there is no
+    `movabs`-to-memory escape: a wide store-immediate must go through a scratch
+    GPR. The one in-repo emitter of a store-immediate is
+    `MpnLoopEmit`/`MpnLoopOwnedEmit.zeroLoopBody` (`storeMem "r" 0 (.imm 0)`), well
+    inside the range. -/
+def encMemMovImm (base : Nat) (off : Int) (v : Nat) : List (BitVec 8) :=
+  encMemMov 0xc7 0 base off ++ imm32LE v
+
 /-- The `scale` (2-bit `ss`) field of a SIB byte from a byte stride: `1→0`,
     `2→1`, `4→2`, `8→3` (`log2`), any other value clamps to `0` (stride 1). -/
 def sibScale (scale : Nat) : Nat :=
@@ -375,7 +442,27 @@ def sibByte (scale index base : Nat) : Nat :=
     `100` (the SIB escape); the `SIB` byte selects `base`/`index`/`scale`. When
     `base` low-3 = 5 (`%rbp`/`%r13`) a `mod=00` SIB form has no base, so we force
     `mod=01` with a zero `disp8` to keep `base` present. `REX.X` carries
-    `bit(index,3)`, `REX.B` carries `bit(base,3)`. -/
+    `bit(index,3)`, `REX.B` carries `bit(base,3)`.
+
+    **PRECONDITION: `index ≠ 4`** (the index register must not be `%rsp`).
+    `SIB.index = 100` with `REX.X = 0` is the SDM's "**no index**" encoding — the
+    address degrades to `[base]` and the index register is silently dropped, with
+    no diagnostic. `index = 4` is the ONLY bad value: `index = 12` (`%r12`) sets
+    `REX.X = 1`, which lifts `100` out of the escape and names `%r12` normally, and
+    every other low-3 is a plain index.
+
+    The precondition holds for every caller, because an index register only ever
+    arrives here through `gpNum (regOf alloc idx)`:
+    * `AsmPrinter.gpPool` — the pool `allocGp` draws from — **excludes `%rsp`**
+      (and `%rbp`) by construction, so an allocator-assigned index is never `4`;
+    * an *overflowed* name resolves to the `<UNALLOCATED:_>` sentinel, which
+      `gpNum` maps to `0` (`%rax`), not `4`;
+    * the one emitter that pins a name to `"%rsp"` (`FheNttLoopOwnedEmit`'s
+      red-zone spill base `("rsp", "%rsp")`) uses it only as a `loadMem`/`storeMem`
+      **base**, never as a `loadMemIdx`/`storeMemIdx` index.
+
+    Nothing enforces this, so a future pinned allocation putting an index name on
+    `%rsp` would miscompile silently; the guard is the pool, not a check. -/
 def encMemMovSib (op r base index scale : Nat) : List (BitVec 8) :=
   let needDisp := (base &&& 7) = 5
   let md := if needDisp then 1 else 0
@@ -421,6 +508,18 @@ def encLeaSib (dst base index scale : Nat) (off : Int) : List (BitVec 8) :=
   else if short then pfx ++ [disp8 off]
   else pfx ++ disp32LE off
 
+/-- `MOV $imm32, (%base, %index, scale)` (`REX.W C7 /0 id` with a **SIB** ModRM):
+    the register-indexed store-immediate. `encMemMovSib` at opcode `0xC7` with the
+    ModRM `reg` field holding the extension digit `/0` (so `REX.R = 0`), then the
+    little-endian `imm32`; the `mod=01`/`disp8=0` forcing for a `%rbp`/`%r13` base
+    is inherited, and the `imm32` follows the displacement. gas:
+    `movq $0, (%rdi,%rsi,8)` = `48 c7 04 f7 00 00 00 00`.
+
+    Carries BOTH preconditions of the forms it composes: `index ≠ 4`
+    (`encMemMovSib`) and `v < 2^31 ∨ 2^64 - 2^31 ≤ v` (`encMemMovImm`). -/
+def encMemMovSibImm (base index scale v : Nat) : List (BitVec 8) :=
+  encMemMovSib 0xc7 0 base index scale ++ imm32LE v
+
 /-! ## 4. The per-`JInstr` encoder
 
 Each arm resolves its register names through the allocation `alloc`, then dispatches
@@ -429,14 +528,37 @@ one-byte ALU codes (`ADD 01`, `OR 09`, `AND 21`, `SUB 29`, `XOR 31`, `ADC 11`,
 `SBB 19`, `MOV r/m←r 89`), the `0F`-map codes (`IMUL 0F AF`, `CMOVE 0F 44`,
 `CMOVNE 0F 45`, `CMOVB 0F 42`), the shift/unary extensions, and the BMI2/ADX VEX
 forms above. An immediate `src` selects the imm-operand opcode for the arms that
-have one: `MOV $imm32` (`C7 /0`), `IMUL $imm32` (`69 /r`), and the group-1 ALU
+have one: `MOV $imm32` (`C7 /0`), `IMUL $imm32` (`69 /r`), the group-1 ALU
 ops `ADD/OR/ADC/SBB/AND/SUB/XOR $imm32` via the `81 /digit id` form (`encAluImm`,
-with the per-op SDM extension digit). -/
+with the per-op SDM extension digit), and the two store-immediate forms
+`MOV $imm32, mem` (`C7 /0` with a memory / SIB ModRM — `encMemMovImm`,
+`encMemMovSibImm`). -/
 
 /-- Encode one scalar `JInstr 64` to its x86-64 machine bytes, resolving register
-    names through `alloc`. For an `imm` source on a non-MOV/IMUL ALU arm (which the
-    emitted kernels never produce) we materialise the immediate into the SDM
-    `imm32`-source opcode where one exists, else treat it as `0` (documented above). -/
+    names through `alloc`.
+
+    **Immediate sources.** Where the SDM has an imm-operand form the arm uses it:
+    `MOV $imm32` (`C7 /0`) with the `movabs` fallback, `IMUL $imm32` (`69 /r`), the
+    group-1 ALU `81 /digit id` (`encAluImm` — read its precondition), and the two
+    store-immediate forms `C7 /0` to memory (`encMemMovImm`/`encMemMovSibImm`).
+
+    **The four `.imm`-source arms x86 has NO encoding for.** `CMOVcc`, `ADCX`,
+    `ADOX` and `MULX` take no immediate operand at all, so their `.imm` arms cannot
+    be encoded faithfully; they fall back to register `0` (`%rax`) as the source.
+    The `AsmPrinter` TEXT path does not agree: it renders `cmoveq $v, %d` /
+    `adcx $v, %d` / `mulx $v, …`, which `gas` **rejects** (no such operand form), so
+    the text path fails loudly where the byte path silently emits a well-formed but
+    different instruction. The same holds for the register-source `SHL`/`SHR`/`SAR`
+    arms (x86's variable shift reads `%cl` only): text prints `shlq %rN, %d` (a gas
+    error unless `%rN` is `%rcx`), bytes emit `shlq $0, %d`, a no-op shift.
+
+    That divergence is unreachable from the compiler: no lowering constructs any of
+    these shapes. `LoweringExtended.lowerJOperand` only puts an `.imm` where the
+    mnemonic has an imm form, the gather lowers count-in-tag shifts to `.imm`
+    counts (`lowerShiftImmJ`), and a repo-wide search finds `.adcx _ (.imm _)` /
+    `.adox _ (.imm _)` only inside `evalInstr` semantics tests, never on a byte
+    path. Both sites are commented; if a lowering ever starts producing one, the
+    text path's gas error is the detector, not this encoder. -/
 def encodeJInstr (alloc : GpAlloc) : JInstr 64 → List (BitVec 8)
   | .mov d s =>
       match s with
@@ -551,6 +673,11 @@ def encodeJInstr (alloc : GpAlloc) : JInstr 64 → List (BitVec 8)
   | .shl d s =>
       match s with
       | .imm v => encShiftImm 4 (gpNum (regOf alloc d)) v
+      -- x86's variable shift (`D3 /ext`) reads the count from `%cl` only, so a
+      -- register-source shift has no faithful encoding here: we emit a count-0
+      -- (no-op) shift, while `AsmPrinter` prints `shlq %rN, %d` — invalid AT&T
+      -- that gas rejects. Unreachable: the gather lowers count-in-tag shifts to
+      -- an `.imm` count (`LoweringExtended.lowerShiftImmJ`); see `encodeJInstr`.
       | .reg _ => encShiftImm 4 (gpNum (regOf alloc d)) 0  -- variable shift not emitted
   | .shr d s =>
       match s with
@@ -560,6 +687,11 @@ def encodeJInstr (alloc : GpAlloc) : JInstr 64 → List (BitVec 8)
       match s with
       | .imm v => encShiftImm 7 (gpNum (regOf alloc d)) v
       | .reg _ => encShiftImm 7 (gpNum (regOf alloc d)) 0
+  -- The `.imm` arms of `CMOVcc`/`ADCX`/`ADOX`/`MULX` below fall back to source
+  -- register `0` (`%rax`): x86 gives these opcodes NO immediate operand form, so
+  -- there is nothing faithful to emit. `AsmPrinter` diverges here — it prints
+  -- `cmoveq $v, %d` / `adcx $v, %d` / `mulx $v, …`, which gas rejects. Unreachable
+  -- from any lowering; see the `encodeJInstr` docstring.
   | .cmove d s =>
       match s with
       | .reg r => enc0FRR 0x44 (gpNum (regOf alloc d)) (gpNum (regOf alloc r))
@@ -590,7 +722,13 @@ def encodeJInstr (alloc : GpAlloc) : JInstr 64 → List (BitVec 8)
   | .storeMem base off s =>
       match s with
       | .reg r => encMemMov 0x89 (gpNum (regOf alloc r)) (gpNum (regOf alloc base)) off
-      | .imm _ => encMemMov 0x89 0 (gpNum (regOf alloc base)) off  -- store-imm not emitted
+      -- Store-immediate: the SDM `C7 /0 id` imm-to-memory form, matching what
+      -- `AsmPrinter` prints (`movq $v, off(%base)`) and gas encodes. (This arm used
+      -- to reuse `89 /r` with source register 0, i.e. `movq %rax, off(%base)` —
+      -- storing whatever happened to be in `%rax` instead of `v`, and diverging
+      -- from the text path. `MpnLoopEmit`/`MpnLoopOwnedEmit.zeroLoopBody` emits
+      -- exactly this shape: `storeMem "r" 0 (.imm 0)`.)
+      | .imm v => encMemMovImm (gpNum (regOf alloc base)) off v
   | .loadMemIdx d base idx scale =>
       encMemMovSib 0x8b (gpNum (regOf alloc d)) (gpNum (regOf alloc base))
         (gpNum (regOf alloc idx)) scale
@@ -598,8 +736,12 @@ def encodeJInstr (alloc : GpAlloc) : JInstr 64 → List (BitVec 8)
       match s with
       | .reg r => encMemMovSib 0x89 (gpNum (regOf alloc r)) (gpNum (regOf alloc base))
                     (gpNum (regOf alloc idx)) scale
-      | .imm _ => encMemMovSib 0x89 0 (gpNum (regOf alloc base))
-                    (gpNum (regOf alloc idx)) scale  -- store-imm not emitted
+      -- Store-immediate to a SIB address: the `C7 /0 id` form (same fix as the
+      -- constant-offset `storeMem` arm above; `GatherInPlace.lowerLinstrExtCov3`'s
+      -- `STOREIDX` arm passes `lowerJOperand val` through, so an `.imm` value
+      -- reaches here whenever the IR scatters a constant).
+      | .imm v => encMemMovSibImm (gpNum (regOf alloc base))
+                    (gpNum (regOf alloc idx)) scale v
   -- `loadSym dst sym` (`leaq sym(%rip), %dst`) is UNSUPPORTED on the byte path:
   -- a `.rodata`-symbol `leaq` needs an assembler/linker **relocation** (a
   -- R_X86_64_PC32/REX.W lea against `sym`), not the fixed `disp32` this encoder
@@ -768,5 +910,72 @@ theorem encMulxRR_length (dh dl s : Nat) : (encMulxRR dh dl s).length = 5 := by
 /-- `ADCX`/`ADOX` encode to 6 bytes (prefix + REX + 0F 38 F6 + ModRM). -/
 theorem encAdxCarry_length (pfx d s : Nat) : (encAdxCarry pfx d s).length = 6 := by
   simp [encAdxCarry]
+
+/-! ## §7. The encodable fragment
+
+`encodeJInstr` is total: where x86-64 has no encoding for an operand shape it
+emits bytes anyway, and those bytes denote something other than the instruction.
+Two shapes are affected, both described in the docstrings above.
+
+* The group-1 ALU forms `ADD/OR/ADC/SBB/AND/SUB/XOR/CMP $imm`. Their
+  `81 /digit id` field is a signed 32-bit immediate that the CPU sign-extends to
+  the 64-bit operand, so the encoding denotes `v` exactly on `fitsImm32S`.
+  Outside it, `v ∈ [2^31, 2^32)` is sign-extended to a negative value and
+  `v ≥ 2^32` additionally loses its high bits to `imm32LE`'s truncation.
+* `CMOVcc`, `ADCX`, `ADOX` and `MULX`, which take no immediate operand at all
+  and whose `.imm` arms fall back to register `0` (`%rax`).
+
+`encodableJInstr` decides membership of the faithful fragment and
+`encodeJInstr?` refuses outside it, so an emitter reaching an unencodable
+immediate gets `none` rather than wrong bytes. The wide-immediate ALU case has
+no local repair — x86-64's only lowering is to materialise the value into a
+scratch register first, which is a register-allocation decision this encoder
+cannot make — so refusal is the correct behaviour here. -/
+
+/-- Does `v`'s 64-bit two's-complement image fit the signed 32-bit immediate
+    field that `81 /digit id` carries and the CPU sign-extends? -/
+def fitsImm32S (v : Nat) : Bool := v < 2 ^ 31 || 2 ^ 64 - 2 ^ 31 ≤ v
+
+/-- The immediate operand shapes `encodeJInstr` encodes faithfully. -/
+def encodableJInstr : JInstr 64 → Bool
+  | .add _ (.imm v) | .sub _ (.imm v) | .adc _ (.imm v) | .sbb _ (.imm v)
+  | .and_ _ (.imm v) | .or_ _ (.imm v) | .xor_ _ (.imm v) | .cmp _ (.imm v) =>
+      fitsImm32S v
+  | .cmove _ (.imm _) | .adcx _ (.imm _) | .adox _ (.imm _) => false
+  | .mulx _ _ (.imm _) _ | .mulx _ _ _ (.imm _) => false
+  | _ => true
+
+/-- `encodeJInstr` restricted to the fragment it encodes faithfully. -/
+def encodeJInstr? (alloc : GpAlloc) (i : JInstr 64) : Option (List (BitVec 8)) :=
+  if encodableJInstr i then some (encodeJInstr alloc i) else none
+
+/-- Every block instruction encodable, or the first one that is not. -/
+def firstUnencodable : List (JInstr 64) → Option (JInstr 64)
+  | [] => none
+  | i :: rest => if encodableJInstr i then firstUnencodable rest else some i
+
+theorem encodeJInstr?_isSome (alloc : GpAlloc) (i : JInstr 64) :
+    (encodeJInstr? alloc i).isSome = encodableJInstr i := by
+  unfold encodeJInstr?
+  cases h : encodableJInstr i <;> simp [h]
+
+theorem encodeJInstr?_eq_some (alloc : GpAlloc) (i : JInstr 64)
+    (h : encodableJInstr i = true) :
+    encodeJInstr? alloc i = some (encodeJInstr alloc i) := by
+  unfold encodeJInstr?; simp [h]
+
+theorem encodeJInstr?_eq_none (alloc : GpAlloc) (i : JInstr 64)
+    (h : encodableJInstr i = false) : encodeJInstr? alloc i = none := by
+  unfold encodeJInstr?; simp [h]
+
+/-- A wide ALU immediate is refused rather than truncated. -/
+theorem encodeJInstr?_add_imm_wide (alloc : GpAlloc) (d : String) (v : Nat)
+    (h : fitsImm32S v = false) : encodeJInstr? alloc (.add d (.imm v)) = none :=
+  encodeJInstr?_eq_none alloc _ (by simp [encodableJInstr, h])
+
+/-- `CMOVcc $imm` has no x86 encoding and is refused. -/
+theorem encodeJInstr?_cmove_imm (alloc : GpAlloc) (d : String) (v : Nat) :
+    encodeJInstr? alloc (.cmove d (.imm v)) = none :=
+  encodeJInstr?_eq_none alloc _ rfl
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder

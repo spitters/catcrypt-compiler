@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
 
 /-!
 # SIMD ext-op FRONT: inlined `vsimd` op validate (Route B — now reachable)
@@ -31,6 +34,8 @@ fragment), so the Com is authored in the FRONT dialect and lowered by the
 verified map — no hand-authored `Com jasminDialect`.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.SimdFrontPilot
@@ -45,8 +50,8 @@ open CatCrypt.Crypto.SecureCompilation.CryptoSSA
 /-- Context `[a, b]`, each a 128-bit vector carried as `.sword 128`. -/
 abbrev gfCtx : Ctx := [.sword 128, .sword 128]
 
-private def vA : Ctxt.Var (d := catCryptDialect) gfCtx (.sword 128) := .here
-private def vB : Ctxt.Var (d := catCryptDialect) gfCtx (.sword 128) := .there .here
+def vA : Ctxt.Var (d := catCryptDialect) gfCtx (.sword 128) := .here
+def vB : Ctxt.Var (d := catCryptDialect) gfCtx (.sword 128) := .there .here
 
 /-- The GFNI 16-lane GF(256) multiply expressed as a real FRONT-dialect
     `.vsimd .gf2p8mulb` op (the OWNED inlined route, not an `extCall` leaf). -/

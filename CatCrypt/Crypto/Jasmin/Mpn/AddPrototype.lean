@@ -3,8 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.S2NBignumSSA
-import CatCrypt.Crypto.Jasmin.BignumExec
+module
+
+public meta import CatCrypt.Crypto.Jasmin.S2NBignumSSA
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.S2NBignumSSA
+public meta import CatCrypt.Crypto.Jasmin.BignumExec
+public import CatCrypt.Crypto.Jasmin.BignumExec
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -82,35 +89,35 @@ open CatCrypt.Crypto.Jasmin.Emit
 /-! ## §1  The Jasmin `mpn_add_n` body — runtime `Cwhile` loop -/
 
 /-- `reg u64` variable. -/
-private def vr (s : String) : Var := { vname := s, vtype := .sword .U64 }
+def vr (s : String) : Var := { vname := s, vtype := .sword .U64 }
 
 /-- A `Pvar` reading register `s`. -/
-private def pv (s : String) : PExpr := .Pvar { gv := { var := vr s }, gs := false }
+def pv (s : String) : PExpr := .Pvar { gv := { var := vr s }, gs := false }
 
 /-- Memory load `x := [:u64 base + 0]` (offset 0 — the only emitter-
     supported runtime-pointer form; we advance the pointer instead of
     indexing). -/
-private def loadAt0 (x base : String) : InstrR :=
+def loadAt0 (x base : String) : InstrR :=
   .Cassgn (.Lvar { var := vr x }) .AT_none (.sword .U64)
     (.Pload .U64 { var := vr base } (.Pconst 0))
 
 /-- Memory store `[:u64 base + 0] := src`. -/
-private def storeAt0 (base src : String) : InstrR :=
+def storeAt0 (base src : String) : InstrR :=
   .Cassgn (.Lmem .U64 { var := vr base } (.Pconst 0)) .AT_none (.sword .U64)
     (.Pvar { gv := { var := vr src }, gs := false })
 
 /-- `r += k` / `r -= k` style scalar update (`Cassgn (Papp2 op (Pvar r) (Pconst k))`). -/
-private def binImm (r : String) (op : SOp2) (k : Int) : InstrR :=
+def binImm (r : String) (op : SOp2) (k : Int) : InstrR :=
   .Cassgn (.Lvar { var := vr r }) .AT_none (.sword .U64)
     (.Papp2 op (pv r) (.Pconst k))
 
-private def adc_flag_pre  : List LVal := [.Lnone {} (.sword .U64)]
-private def adc_flag_post : List LVal := List.replicate 3 (.Lnone {} (.sword .U64))
+def adc_flag_pre  : List LVal := [.Lnone {} (.sword .U64)]
+def adc_flag_post : List LVal := List.replicate 3 (.Lnone {} (.sword .U64))
 
 /-- `_, cf, _, _, _, r = #ADC_64(a, b, cin);` — the carry register `cin`
     is also the carry-out register `cf`, threading the carry across loop
     iterations. -/
-private def adcCopn (cfName rName aName bName cinName : String) : InstrR :=
+def adcCopn (cfName rName aName bName cinName : String) : InstrR :=
   .Copn (adc_flag_pre ++ [.Lvar { var := vr cfName }] ++ adc_flag_post
           ++ [.Lvar { var := vr rName }])
         .AT_none (.Oasm ⟨"ADC_64"⟩)
@@ -1006,7 +1013,7 @@ theorem mpnAddN_loop :
       exact bignumExecFuel_loop_exit emptyRegistry extra _ loopBody s
         (evalPExpr_loopCond_false s hn0)
     · simp [mpnAddN, memHoldsLimbs]
-    · simpa [mpnAddN, carryNat] using hcf
+    · simpa [mpnAddN, carryNat] using! hcf
     · intro b _; rfl
   | cons a as ih =>
     intro bs s cin extra hlen hcf hn hap hbp hdoa hdob

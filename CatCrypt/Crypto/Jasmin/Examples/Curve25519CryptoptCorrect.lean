@@ -3,10 +3,18 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Examples.Curve25519CryptoptPort
-import CatCrypt.Crypto.Jasmin.Examples.Curve25519CryptoptOps
-import CatCrypt.Crypto.Jasmin.Examples.BignumStep
+module
 
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.Examples.Curve25519CryptoptPort
+public import CatCrypt.Crypto.Jasmin.Examples.Curve25519CryptoptPort
+public meta import CatCrypt.Crypto.Jasmin.Examples.Curve25519CryptoptOps
+public import CatCrypt.Crypto.Jasmin.Examples.Curve25519CryptoptOps
+public meta import CatCrypt.Crypto.Jasmin.Examples.BignumStep
+public import CatCrypt.Crypto.Jasmin.Examples.BignumStep
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!
@@ -162,14 +170,14 @@ We compute on `Nat` for clarity (BitVec arithmetic on mul is awkward).
 The output limbs are then truncated to `BitVec 64` since each fits in
 `2^52 < 2^64`. -/
 
-private def limbsToNat (a : Fin 5 → BitVec 64) : Nat :=
+def limbsToNat (a : Fin 5 → BitVec 64) : Nat :=
   (a 0).toNat
     + (a 1).toNat * (2^51)
     + (a 2).toNat * (2^(51*2))
     + (a 3).toNat * (2^(51*3))
     + (a 4).toNat * (2^(51*4))
 
-private def natToLimbs (n : Nat) : Fin 5 → BitVec 64 :=
+def natToLimbs (n : Nat) : Fin 5 → BitVec 64 :=
   let mask : Nat := 2^51 - 1
   let l0 := n &&& mask
   let n' := n >>> 51
@@ -333,10 +341,10 @@ on a tractable scope. Discharging the full `MulBodyCorrect` goal
 would compose this lemma with analogous SHRD/MULX/ADCX lemmas through
 the prior 142 instructions. -/
 
-private def vU' (s : String) : Var := { vname := s, vtype := .sword .U64 }
-private def pv' (s : String) : PExpr :=
+def vU' (s : String) : Var := { vname := s, vtype := .sword .U64 }
+def pv' (s : String) : PExpr :=
   .Pvar { gv := { var := vU' s }, gs := false }
-private def lvR' (s : String) : LVal := .Lvar { var := vU' s }
+def lvR' (s : String) : LVal := .Lvar { var := vU' s }
 
 /-- A standalone single-instruction BZHI body. Same shape as the
     `bzhiRR "r14" "r13" "rdi"` calls in `mulBody`. -/

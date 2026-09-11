@@ -3,12 +3,22 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
-import CatCrypt.Crypto.Jasmin.LowCTBorrowCheck
-import CatCrypt.Crypto.Jasmin.JasminTranslate
-import CatCrypt.Crypto.Jasmin.LowCTReflect
-import CatCrypt.Deep.Eval
-import CatCrypt.Core.Heap
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
+public meta import CatCrypt.Crypto.Jasmin.LowCT
+public import Mathlib.Data.String.Defs
+public import CatCrypt.Crypto.Jasmin.LowCT
+public meta import CatCrypt.Crypto.Jasmin.LowCTBorrowCheck
+public import CatCrypt.Crypto.Jasmin.LowCTBorrowCheck
+public meta import CatCrypt.Crypto.Jasmin.JasminTranslate
+public import CatCrypt.Crypto.Jasmin.JasminTranslate
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
+public meta import CatCrypt.Deep.Eval
+public import CatCrypt.Deep.Eval
+public meta import CatCrypt.Core.Heap
+public import CatCrypt.Core.Heap
 
 /-!
 # LowCT → Jasmin AST Translation
@@ -30,19 +40,21 @@ Both the `LowCT` and Jasmin ASTs can be emitted to disk from Lean:
 
 ```lean
 -- Print LowCT AST
-#eval IO.println (repr g1Add)
+-- #eval IO.println (repr g1Add)
 
 -- Print translated Jasmin Cmd
-#eval IO.println (repr (toJasminCmd g1Add))
+-- #eval IO.println (repr (toJasminCmd g1Add))
 
 -- Write Jasmin source to file
-#eval writeJasminProg "g1_add.jazz" "g1_add" g1Add
+-- #eval writeJasminProg "g1_add.jazz" "g1_add" g1Add
 ```
 
 `repr` uses the auto-derived `Repr` instances (all constructors have
 `deriving Repr`). `writeJasminProg` calls `ppFunDecl` which emits
 human-readable Jasmin syntax.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.LowCT
 
@@ -1265,7 +1277,7 @@ end HeapBridge
 /-- `RustExec (RFor x n body) rs rs'` implies `RustExec (forBodyN x n body) rs rs'`.
     Lets the simulation theorem reduce the `forZero` / `forSucc` cases to
     the existing `skip` / `seq + scalarSet + body` chains. -/
-private theorem rustExec_forBodyN_of_RFor
+theorem rustExec_forBodyN_of_RFor
     {N : Nat} {leafSpec : LeafSpec} {x : String} {body : LowCT}
     {rs rs' : RustState} :
     ∀ n, RustExec N leafSpec (.RFor x n body) rs rs' →
@@ -1288,7 +1300,7 @@ private theorem rustExec_forBodyN_of_RFor
 
 /-! ### `forBodyN` propagates the static gates -/
 
-private lemma whileFree_forBodyN (x : String) (body : LowCT)
+lemma whileFree_forBodyN (x : String) (body : LowCT)
     (h : whileFree body = true) :
     ∀ n, whileFree (forBodyN x n body) = true := by
   intro n
@@ -1296,7 +1308,7 @@ private lemma whileFree_forBodyN (x : String) (body : LowCT)
   | zero => rfl
   | succ k ih => simp [forBodyN, whileFree, ih, h]
 
-private lemma callFree_forBodyN (x : String) (body : LowCT)
+lemma callFree_forBodyN (x : String) (body : LowCT)
     (h : callFree body = true) :
     ∀ n, callFree (forBodyN x n body) = true := by
   intro n
@@ -1304,7 +1316,7 @@ private lemma callFree_forBodyN (x : String) (body : LowCT)
   | zero => rfl
   | succ k ih => simp [forBodyN, callFree, ih, h]
 
-private lemma scalarSetsSmall_forBodyN (x : String) (body : LowCT)
+lemma scalarSetsSmall_forBodyN (x : String) (body : LowCT)
     (h : scalarSetsSmall body = true) :
     ∀ n, n < 2^64 → ∀ k ≤ n, scalarSetsSmall (forBodyN x k body) = true := by
   intro n hn k hk
@@ -1361,7 +1373,7 @@ def LeafImplOk (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat) : Prop :=
     `encodeSType (.sword .U64)` is odd while `encodeSType (.sarr n)` is even.
     Thanks to the parity-based encoding, this lemma works for any TowerType
     byteSize (including the Phase D/E/I/K constructors with free `Nat`s). -/
-private lemma wordLoc_id_ne_towerLoc_id (sid : ScopeId) (x y : String) (t : TowerType) :
+lemma wordLoc_id_ne_towerLoc_id (sid : ScopeId) (x y : String) (t : TowerType) :
     varLocId sid { vname := x, vtype := .sword .U64 } ≠
     varLocId sid { vname := y, vtype := .sarr t.storageBytes } := by
   simp only [varLocId]
@@ -1372,7 +1384,7 @@ private lemma wordLoc_id_ne_towerLoc_id (sid : ScopeId) (x y : String) (t : Towe
   omega
 
 /-- Tower locations with different variable names have different IDs. -/
-private lemma towerLoc_id_ne_of_ne_name (sid : ScopeId) (x y : String) (t : TowerType)
+lemma towerLoc_id_ne_of_ne_name (sid : ScopeId) (x y : String) (t : TowerType)
     (hne : x ≠ y) :
     varLocId sid { vname := x, vtype := .sarr t.storageBytes } ≠
     varLocId sid { vname := y, vtype := .sarr t.storageBytes } := by
@@ -1381,7 +1393,7 @@ private lemma towerLoc_id_ne_of_ne_name (sid : ScopeId) (x y : String) (t : Towe
   exact hne (encodeVarName_injective (Nat.pair_eq_pair.mp h).2)
 
 /-- Scalar (word) locations with different variable names have different IDs. -/
-private lemma wordLoc_id_ne_of_ne_name (sid : ScopeId) (x y : String)
+lemma wordLoc_id_ne_of_ne_name (sid : ScopeId) (x y : String)
     (hne : x ≠ y) :
     varLocId sid { vname := x, vtype := .sword .U64 } ≠
     varLocId sid { vname := y, vtype := .sword .U64 } := by
@@ -1391,11 +1403,11 @@ private lemma wordLoc_id_ne_of_ne_name (sid : ScopeId) (x y : String)
 
 /-! ### jasminFuel bounds -/
 
-private lemma jasminFuel_pos : ∀ (c : LowCT), 1 ≤ jasminFuel c := by
+lemma jasminFuel_pos : ∀ (c : LowCT), 1 ≤ jasminFuel c := by
   intro c; induction c <;> simp [jasminFuel] <;> omega
 
 /-- `(unrollForJ x bodyJ n).length = n * (1 + bodyJ.length)`. -/
-private lemma length_unrollForJ (x : String) (bodyJ : Cmd) :
+lemma length_unrollForJ (x : String) (bodyJ : Cmd) :
     ∀ n, (unrollForJ x bodyJ n).length = n * (1 + bodyJ.length) := by
   intro n
   induction n with
@@ -1407,7 +1419,7 @@ private lemma length_unrollForJ (x : String) (bodyJ : Cmd) :
 /-- `jasminFuel (forBodyN x n body) ≤ jasminFuel (RFor x n body)`.
     Lets the simulation theorem hand off the fuel accounting to the
     existing seq/scalarSet/body cases under the `RFor x n body` budget. -/
-private lemma jasminFuel_forBodyN_le_RFor (x : String) (body : LowCT) :
+lemma jasminFuel_forBodyN_le_RFor (x : String) (body : LowCT) :
     ∀ n, jasminFuel (forBodyN x n body) ≤ jasminFuel (.RFor x n body) := by
   intro n
   induction n with
@@ -1424,7 +1436,7 @@ private lemma jasminFuel_forBodyN_le_RFor (x : String) (body : LowCT) :
       nlinarith [ih']
 
 /-- The length of `toJasminCmd c` is strictly less than `jasminFuel c`. -/
-private lemma jasminFuel_gt_length : ∀ (c : LowCT), (toJasminCmd c).length < jasminFuel c := by
+lemma jasminFuel_gt_length : ∀ (c : LowCT), (toJasminCmd c).length < jasminFuel c := by
   intro c
   induction c with
   | RSkip => simp [toJasminCmd_RSkip, jasminFuel]
@@ -1487,33 +1499,33 @@ private lemma jasminFuel_gt_length : ∀ (c : LowCT), (toJasminCmd c).length < j
 /-! ### Scalar assignment eval helpers -/
 
 /-- `coerceValue` from `sint` to `sword U64` always returns 0 (type mismatch). -/
-private lemma coerceValue_sint_u64 (v : Int) :
+lemma coerceValue_sint_u64 (v : Int) :
     coerceValue .sint (.sword .U64) v = (0 : BitVec 64) := rfl
 
 /-- `coerceValue` is identity for matching `sword U64` types. -/
-private lemma coerceValue_u64_u64 (v : BitVec 64) :
+lemma coerceValue_u64_u64 (v : BitVec 64) :
     coerceValue (.sword .U64) (.sword .U64) v = v := rfl
 
 /-- `truncateWord .U64 .U64` is identity. -/
-private lemma truncateWord_u64_u64 (v : BitVec 64) : truncateWord .U64 .U64 v = v := rfl
+lemma truncateWord_u64_u64 (v : BitVec 64) : truncateWord .U64 .U64 v = v := rfl
 
 /-- `intToWord .U64` for a non-negative integer equals `BitVec.ofNat`. -/
-private lemma intToWord_U64_ofNat (v : Nat) :
+lemma intToWord_U64_ofNat (v : Nat) :
     intToWord .U64 (v : Int) = BitVec.ofNat 64 v := by
   simp [intToWord, BitVec.ofInt_natCast, WSize.bits]
 
 /-- `writeVar` at `sword U64` with value `0` equals `put` at the public `translateVar` location. -/
-private lemma writeVar_u64_zero (sid : ScopeId) (x : String) :
+lemma writeVar_u64_zero (sid : ScopeId) (x : String) :
     writeVar sid { vname := x, vtype := .sword .U64 } ⟨.sword .U64, (0 : BitVec 64)⟩ =
     RawCode.put (translateVar sid { vname := x, vtype := .sword .U64 }) (0 : BitVec 64) := rfl
 
 /-- `writeVar` at `sword U64` with value `v` equals `put` at `translateVar`. -/
-private lemma writeVar_u64_val (sid : ScopeId) (x : String) (v : BitVec 64) :
+lemma writeVar_u64_val (sid : ScopeId) (x : String) (v : BitVec 64) :
     writeVar sid { vname := x, vtype := .sword .U64 } ⟨.sword .U64, v⟩ =
     RawCode.put (translateVar sid { vname := x, vtype := .sword .U64 }) v := rfl
 
 /-- `HeapInv` is preserved by setting a U64 scalar location (disjoint from tower locs). -/
-private lemma heapInv_set_u64 (rs : RustState) (heap : Heap) (sid : ScopeId)
+lemma heapInv_set_u64 (rs : RustState) (heap : Heap) (sid : ScopeId)
     (x : String) (v : BitVec 64) (hInv : HeapInv rs heap sid) :
     HeapInv rs (heap.set (translateVar sid { vname := x, vtype := .sword .U64 }) v) sid := by
   intro y t w hy
@@ -1521,7 +1533,7 @@ private lemma heapInv_set_u64 (rs : RustState) (heap : Heap) (sid : ScopeId)
   exact hInv y t w hy
 
 /-- `rsSetScalar` only changes `rsScalar`, preserving `HeapInv`. -/
-private lemma heapInv_rsSetScalar (rs : RustState) (heap : Heap) (sid : ScopeId)
+lemma heapInv_rsSetScalar (rs : RustState) (heap : Heap) (sid : ScopeId)
     (x : String) (v : Nat) (hInv : HeapInv rs heap sid) :
     HeapInv (rsSetScalar rs x v) heap sid := by
   intro y t w hy; exact hInv y t w hy
@@ -1529,7 +1541,7 @@ private lemma heapInv_rsSetScalar (rs : RustState) (heap : Heap) (sid : ScopeId)
 /-! ### Tower init (RLetZero) helper -/
 
 /-- Writing `default` to `towerLoc sid x t` and setting `rsSetTower` preserves `HeapInv`. -/
-private lemma heapInv_rsSetTower_init (rs : RustState) (heap : Heap) (sid : ScopeId)
+lemma heapInv_rsSetTower_init (rs : RustState) (heap : Heap) (sid : ScopeId)
     (x : String) (t : TowerType) (hInv : HeapInv rs heap sid) :
     HeapInv (rsSetTower rs x ⟨t, default⟩) (heap.set (towerLoc sid x t) default) sid := by
   intro y t' v hy
@@ -1557,13 +1569,13 @@ private lemma heapInv_rsSetTower_init (rs : RustState) (heap : Heap) (sid : Scop
 /-! ### ScalarInv helpers -/
 
 /-- `rsSetTower` doesn't change `rsScalar`, so `ScalarInv` is preserved. -/
-private lemma scalarInv_rsSetTower (rs : RustState) (heap : Heap) (sid : ScopeId)
+lemma scalarInv_rsSetTower (rs : RustState) (heap : Heap) (sid : ScopeId)
     (x : String) (tv : Σ t, RustVal t) (hSInv : ScalarInv rs heap sid) :
     ScalarInv (rsSetTower rs x tv) heap sid := by
   intro y; exact hSInv y
 
 /-- Tower-loc set preserves `ScalarInv` (disjoint ids). -/
-private lemma scalarInv_set_tower (rs : RustState) (heap : Heap) (sid : ScopeId)
+lemma scalarInv_set_tower (rs : RustState) (heap : Heap) (sid : ScopeId)
     (x : String) (t : TowerType) (v : RustVal t) (hSInv : ScalarInv rs heap sid) :
     ScalarInv rs (heap.set (towerLoc sid x t) v) sid := by
   intro y
@@ -1571,7 +1583,7 @@ private lemma scalarInv_set_tower (rs : RustState) (heap : Heap) (sid : ScopeId)
   exact hSInv y
 
 /-- Writing the correct value at a scalar loc establishes the scalar inv entry. -/
-private lemma scalarInv_set_scalar_eq (heap : Heap) (sid : ScopeId)
+lemma scalarInv_set_scalar_eq (heap : Heap) (sid : ScopeId)
     (x y : String) (v w : Nat) (hSInv_y : heap.get (translateVar sid { vname := y, vtype := .sword .U64 }) = BitVec.ofNat 64 w)
     (hne : x ≠ y) :
     (heap.set (translateVar sid { vname := x, vtype := .sword .U64 }) (BitVec.ofNat 64 v)).get
@@ -1580,7 +1592,7 @@ private lemma scalarInv_set_scalar_eq (heap : Heap) (sid : ScopeId)
   exact hSInv_y
 
 /-- After writing `BitVec.ofNat 64 v` to scalar `x`'s location, `ScalarInv` holds for `rsSetScalar`. -/
-private lemma scalarInv_after_scalar_set (rs : RustState) (heap : Heap) (sid : ScopeId)
+lemma scalarInv_after_scalar_set (rs : RustState) (heap : Heap) (sid : ScopeId)
     (x : String) (v : Nat) (hSInv : ScalarInv rs heap sid) :
     ScalarInv (rsSetScalar rs x v)
       (heap.set (translateVar sid { vname := x, vtype := .sword .U64 }) (BitVec.ofNat 64 v)) sid := by
@@ -1593,7 +1605,7 @@ private lemma scalarInv_after_scalar_set (rs : RustState) (heap : Heap) (sid : S
     exact hSInv y
 
 /-- `rsSetScalar` preserves `ScalarInv` when the heap val is already correct. -/
-private lemma scalarInv_rsSetScalar_other (rs : RustState) (heap : Heap) (sid : ScopeId)
+lemma scalarInv_rsSetScalar_other (rs : RustState) (heap : Heap) (sid : ScopeId)
     (x : String) (v : Nat)
     (hSInv : ScalarInv rs heap sid)
     (hheap : heap.get (translateVar sid { vname := x, vtype := .sword .U64 }) = BitVec.ofNat 64 v) :
@@ -1608,20 +1620,20 @@ private lemma scalarInv_rsSetScalar_other (rs : RustState) (heap : Heap) (sid : 
 
 /-! ### ScalarsBounded helpers -/
 
-private lemma scalarsBounded_zero : (0 : Nat) < 2^64 := by norm_num
+lemma scalarsBounded_zero : (0 : Nat) < 2^64 := by norm_num
 
-private lemma scalarsBounded_rsSetScalar_zero (rs : RustState) (x : String) (hB : ScalarsBounded rs) :
+lemma scalarsBounded_rsSetScalar_zero (rs : RustState) (x : String) (hB : ScalarsBounded rs) :
     ScalarsBounded (rsSetScalar rs x 0) := by
   intro y; simp only [rsSetScalar]
   split_ifs with hxy
   · exact scalarsBounded_zero
   · exact hB y
 
-private lemma scalarsBounded_rsSetTower (rs : RustState) (x : String) (tv : Σ t, RustVal t)
+lemma scalarsBounded_rsSetTower (rs : RustState) (x : String) (tv : Σ t, RustVal t)
     (hB : ScalarsBounded rs) : ScalarsBounded (rsSetTower rs x tv) := by
   intro y; exact hB y
 
-private lemma scalarsBounded_rsSetScalar (rs : RustState) (x : String) (v : Nat)
+lemma scalarsBounded_rsSetScalar (rs : RustState) (x : String) (v : Nat)
     (hv : v < 2^64) (hB : ScalarsBounded rs) : ScalarsBounded (rsSetScalar rs x v) := by
   intro y
   simp only [rsSetScalar]
@@ -1629,14 +1641,14 @@ private lemma scalarsBounded_rsSetScalar (rs : RustState) (x : String) (v : Nat)
   · exact hv
   · exact hB y
 
-private lemma scalarSetsSmall_val (c : LowCT) (x : String) (v : Nat)
+lemma scalarSetsSmall_val (c : LowCT) (x : String) (v : Nat)
     (h : scalarSetsSmall c = true) (heq : c = .RScalarSet x v) : v < 2^64 := by
   subst heq; simp [scalarSetsSmall] at h; exact h
 
 /-! ### translateCmd append decomposition -/
 
 /-- `newSid` of appended command list equals `newSid` of the second list run after the first. -/
-private lemma translateCmd_append_newSid
+lemma translateCmd_append_newSid
     (env : TransEnv) (l1 l2 : Cmd) (sid : ScopeId) (fuel : Nat) :
     (translateCmd env (l1 ++ l2) sid fuel).newSid =
       (translateCmd env l2
@@ -1657,7 +1669,7 @@ private lemma translateCmd_append_newSid
       simp only [translateCmd, Nat.succ_sub_succ_eq_sub]
 
 /-- Evaluation of appended command list equals sequential composition. -/
-private lemma translateCmd_append_eval
+lemma translateCmd_append_eval
     (env : TransEnv) (l1 l2 : Cmd) (sid : ScopeId) (fuel : Nat) (heap : Heap) :
     (translateCmd env (l1 ++ l2) sid fuel).code.eval heap =
       ((translateCmd env l1 sid fuel).code.eval heap).bind (fun x =>
@@ -1683,7 +1695,7 @@ private lemma translateCmd_append_eval
 /-! ### callFree → newSid = sid -/
 
 /-- Call-free programs leave `newSid` unchanged. -/
-private lemma callFree_toJasmin_newSid
+lemma callFree_toJasmin_newSid
     (c : LowCT) (hCF : callFree c = true)
     (env : TransEnv) (sid : ScopeId) (fuel : Nat) :
     (translateCmd env (toJasminCmd c) sid fuel).newSid = sid := by
@@ -1811,7 +1823,7 @@ private lemma callFree_toJasmin_newSid
 
     Companion to `callFree_toJasmin_newSid`: the latter is gated by `callFree`
     (which rejects `RLimbStore`); this version is `RLimbStore`-specific. -/
-private lemma limbStore_toJasmin_newSid
+lemma limbStore_toJasmin_newSid
     (loc : Located) (idx : Nat) (v : BitVec 64)
     (env : TransEnv) (sid : ScopeId) (fuel : Nat) :
     (translateCmd env (toJasminCmd (.RLimbStore loc idx v)) sid fuel).newSid = sid := by
@@ -1823,7 +1835,7 @@ private lemma limbStore_toJasmin_newSid
     | succ m => simp [toJasminCmd_RLimbStore, translateCmd, translateInstrR]
 
 /-- Eval of `translateCmd` for a single U64 const-assign writes `0` to the U64 location. -/
-private lemma translateCmd_cassgn_u64_eval
+lemma translateCmd_cassgn_u64_eval
     (env : TransEnv) (sid : ScopeId) (x : String) (v : Int) (n : Nat) (heap : Heap) :
     (translateCmd env
         [.Cassgn (.Lvar { var := { vname := x, vtype := .sword .U64 }, info := {} })
@@ -1837,7 +1849,7 @@ private lemma translateCmd_cassgn_u64_eval
              SDistr.pure_bind]
 
 /-- `newSid` for a single U64 const-assign equals `sid`. -/
-private lemma translateCmd_cassgn_u64_newSid
+lemma translateCmd_cassgn_u64_newSid
     (env : TransEnv) (sid : ScopeId) (x : String) (v : Int) (n : Nat) :
     (translateCmd env
         [.Cassgn (.Lvar { var := { vname := x, vtype := .sword .U64 }, info := {} })
@@ -1846,7 +1858,7 @@ private lemma translateCmd_cassgn_u64_newSid
   simp [translateCmd, translateInstrR]
 
 /-- One-step eval: U64 const-assign followed by `rest`; advances heap then runs `rest`. -/
-private lemma translateCmd_cons_cassgn_u64_eval
+lemma translateCmd_cons_cassgn_u64_eval
     (env : TransEnv) (sid : ScopeId) (x : String) (v : Int)
     (rest : Cmd) (n : Nat) (heap : Heap) :
     (translateCmd env
@@ -1861,7 +1873,7 @@ private lemma translateCmd_cons_cassgn_u64_eval
              SDistr.pure_bind]
 
 /-- One-step `newSid`: U64 const-assign followed by `rest`. -/
-private lemma translateCmd_cons_cassgn_u64_newSid
+lemma translateCmd_cons_cassgn_u64_newSid
     (env : TransEnv) (sid : ScopeId) (x : String) (v : Int)
     (rest : Cmd) (n : Nat) :
     (translateCmd env
@@ -1874,14 +1886,14 @@ private lemma translateCmd_cons_cassgn_u64_newSid
 /-! ### RScalarSet eval (with corrected Papp1 encoding) -/
 
 /-- `translatePExpr` for `Papp1 (Oword_of_int U64) (Pconst v)` evaluates to `BitVec.ofNat 64 v`. -/
-private lemma translatePExpr_word_of_int_eval (sid : ScopeId) (v : Nat) (heap : Heap) :
+lemma translatePExpr_word_of_int_eval (sid : ScopeId) (v : Nat) (heap : Heap) :
     (translatePExpr sid (.Papp1 (.Oword_of_int .U64) (.Pconst (v : Int)))).eval heap =
     SDistr.pure (⟨.sword .U64, BitVec.ofNat 64 v⟩, heap) := by
   simp [translatePExpr, evalSop1, intToWord_U64_ofNat,
         CatCrypt.Deep.eval_ret, CatCrypt.Deep.eval_bind, SPComp.pure_def, SDistr.pure_bind]
 
 /-- Eval of a `Cassgn` with `Papp1 (Oword_of_int U64) (Pconst v)` writes `BitVec.ofNat 64 v`. -/
-private lemma translateCmd_cassgn_u64_val_eval
+lemma translateCmd_cassgn_u64_val_eval
     (env : TransEnv) (sid : ScopeId) (x : String) (v : Nat) (n : Nat) (heap : Heap) :
     (translateCmd env
         [.Cassgn (.Lvar { var := { vname := x, vtype := .sword .U64 }, info := {} })
@@ -1895,7 +1907,7 @@ private lemma translateCmd_cassgn_u64_val_eval
              SPComp.bind_def, SPComp.set_def, SPComp.pure_def, SDistr.pure_bind]
 
 /-- `newSid` for the single-instruction `Cassgn Papp1` case. -/
-private lemma translateCmd_cassgn_u64_val_newSid
+lemma translateCmd_cassgn_u64_val_newSid
     (env : TransEnv) (sid : ScopeId) (x : String) (v : Nat) (n : Nat) :
     (translateCmd env
         [.Cassgn (.Lvar { var := { vname := x, vtype := .sword .U64 }, info := {} })
@@ -1906,18 +1918,18 @@ private lemma translateCmd_cassgn_u64_val_newSid
 /-! ### RLetZero eval (Parr_init / sarr init) -/
 
 /-- `writeVar` at `sarr t.byteSize` with default value equals `put` at `towerLoc`. -/
-private lemma writeVar_sarr_default (sid : ScopeId) (x : String) (t : TowerType) :
+lemma writeVar_sarr_default (sid : ScopeId) (x : String) (t : TowerType) :
     writeVar sid { vname := x, vtype := .sarr t.storageBytes }
       ⟨.sarr t.storageBytes, (fun _ => 0 : JArray t.storageBytes)⟩ =
     RawCode.put (towerLoc sid x t) (fun _ => 0 : JArray t.storageBytes) := by
   rw [writeVar_sarr_eq]; rfl
 
 /-- `default : JArray n = fun _ => 0`. -/
-private lemma jarray_default_eq (n : Nat) : (default : JArray n) = fun _ => 0 := rfl
+lemma jarray_default_eq (n : Nat) : (default : JArray n) = fun _ => 0 := rfl
 
 /-- One-step cons eval: `Cassgn (Parr_init t.byteSize)` writes `default` to `towerLoc`,
     then runs `rest`. -/
-private lemma translateCmd_cons_cassgn_sarr_init_eval
+lemma translateCmd_cons_cassgn_sarr_init_eval
     (env : TransEnv) (sid : ScopeId) (x : String) (t : TowerType)
     (rest : Cmd) (n : Nat) (heap : Heap) :
     (translateCmd env
@@ -1933,7 +1945,7 @@ private lemma translateCmd_cons_cassgn_sarr_init_eval
              SPComp.bind_def, SPComp.set_def, SPComp.pure_def, SDistr.pure_bind]
 
 /-- `newSid` for cons Cassgn sarr init. -/
-private lemma translateCmd_cons_cassgn_sarr_init_newSid
+lemma translateCmd_cons_cassgn_sarr_init_newSid
     (env : TransEnv) (sid : ScopeId) (x : String) (t : TowerType)
     (rest : Cmd) (n : Nat) :
     (translateCmd env
@@ -1947,7 +1959,7 @@ private lemma translateCmd_cons_cassgn_sarr_init_newSid
 /-! ### Cif eval helpers -/
 
 /-- Reading a `sword U64` variable from the heap. -/
-private lemma translatePExpr_pvar_u64_eval (sid : ScopeId) (e : String) (heap : Heap) :
+lemma translatePExpr_pvar_u64_eval (sid : ScopeId) (e : String) (heap : Heap) :
     (translatePExpr sid
       (.Pvar { gv := { var := { vname := e, vtype := .sword .U64 }, info := {} }, gs := false })).eval heap =
     SDistr.pure (⟨.sword .U64, heap.get (translateVar sid { vname := e, vtype := .sword .U64 })⟩, heap) := by
@@ -1956,7 +1968,7 @@ private lemma translatePExpr_pvar_u64_eval (sid : ScopeId) (e : String) (heap : 
              SPComp.bind_def, SPComp.get_def, SPComp.pure_def, SDistr.pure_bind]
 
 /-- Evaluating the `RIfNz` condition expression. -/
-private lemma cif_cond_eval (sid : ScopeId) (e : String) (heap : Heap) :
+lemma cif_cond_eval (sid : ScopeId) (e : String) (heap : Heap) :
     let zero64 : PExpr := .Papp1 (.Oword_of_int .U64) (.Pconst 0)
     let condExpr : PExpr :=
       .Papp2 (.Oneq .U64)
@@ -1971,7 +1983,7 @@ private lemma cif_cond_eval (sid : ScopeId) (e : String) (heap : Heap) :
   rfl
 
 /-- `BitVec.ofNat 64 v ≠ 0` when `v ≠ 0` and `v < 2^64`. -/
-private lemma bitVec_ofNat_ne_zero (v : Nat) (hv : v ≠ 0) (hlt : v < 2^64) :
+lemma bitVec_ofNat_ne_zero (v : Nat) (hv : v ≠ 0) (hlt : v < 2^64) :
     (BitVec.ofNat 64 v) ≠ (0 : BitVec 64) := by
   intro h
   apply hv
@@ -1980,7 +1992,7 @@ private lemma bitVec_ofNat_ne_zero (v : Nat) (hv : v ≠ 0) (hlt : v < 2^64) :
   exact h1
 
 /-- Single-instruction `Cif` eval when condition is true. -/
-private lemma translateCmd_cif_eval_true
+lemma translateCmd_cif_eval_true
     (env : TransEnv) (sid : ScopeId) (cond : PExpr) (ct cf : Cmd)
     (fuel : Nat) (heap heap' : Heap)
     (hcond : (translatePExpr sid cond).eval heap = SDistr.pure (⟨.sbool, true⟩, heap')) :
@@ -1998,7 +2010,7 @@ private lemma translateCmd_cif_eval_true
     rw [hunit, SDistr.bind_pure]
 
 /-- Single-instruction `Cif` eval when condition is false. -/
-private lemma translateCmd_cif_eval_false
+lemma translateCmd_cif_eval_false
     (env : TransEnv) (sid : ScopeId) (cond : PExpr) (ct cf : Cmd)
     (fuel : Nat) (heap heap' : Heap)
     (hcond : (translatePExpr sid cond).eval heap = SDistr.pure (⟨.sbool, false⟩, heap')) :
@@ -2016,7 +2028,7 @@ private lemma translateCmd_cif_eval_false
     rw [hunit, SDistr.bind_pure]
 
 /-- `newSid` for `[Cif cond ct cf]` (when ct and cf are call-free). -/
-private lemma translateCmd_cif_newSid
+lemma translateCmd_cif_newSid
     (env : TransEnv) (sid : ScopeId) (cond : PExpr) (ct cf : Cmd) (fuel : Nat) :
     (translateCmd env [.Cif cond ct cf] sid (fuel + 1)).newSid =
     (translateCmd env cf (translateCmd env ct sid fuel).newSid fuel).newSid := by
@@ -2343,7 +2355,8 @@ theorem rustExecSimulates
     -- the body fuel matches heval3 by single-list-length.
     rw [hNewSid_scalarSet]
     -- Length of single-element list is 1, so fuel = fuel_after_inner - 1 matches heval3.
-    convert heval3 using 2
+    simp only [List.length_singleton, ← hfai]
+    exact heval3
 
   | forRuntime _ _ _ _ _ _ _ => simp [whileFree] at hWf
 
@@ -3237,7 +3250,7 @@ the obligation. -/
     `Copn` for the clone preserves `newSid`).  Mirrors
     `limbStore_toJasmin_newSid` for the Copn-step and propagates the
     Ccall's `newSid` advance through `translateCmd_append_newSid`. -/
-private lemma cloneCall_toJasmin_newSid
+lemma cloneCall_toJasmin_newSid
     (cloneVar : String) (cloneTy : TowerType) (oldDest : Located)
     (innerF : String) (dest : Located) (args : List Located)
     (env : TransEnv) (sid : ScopeId) (fuel : Nat) :
@@ -4288,14 +4301,14 @@ end Printer
 Uncomment to generate `g1_add.jazz` and `g1_add_rustcmd.txt`:
 
 ```lean
-#eval writeJasminProg "/tmp/g1_add.jazz" "g1_add"
+-- #eval writeJasminProg "/tmp/g1_add.jazz" "g1_add"
         [g1X1, g1Y1, g1Z1, g1X2, g1Y2, g1Z2]
         [g1X3, g1Y3]
         g1Add
 
-#eval writeLowCTRepr "/tmp/g1_add_rustcmd.txt" g1Add
+-- #eval writeLowCTRepr "/tmp/g1_add_rustcmd.txt" g1Add
 
-#eval IO.println (ppJasminProg (toJasminProg "g1_add"
+-- #eval IO.println (ppJasminProg (toJasminProg "g1_add"
         [g1X1, g1Y1, g1Z1, g1X2, g1Y2, g1Z2] [g1X3, g1Y3] g1Add))
 ```
 -/

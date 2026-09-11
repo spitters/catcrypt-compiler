@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint
 
 /-!
 # SHA-512 8-way σ/Σ lane kernel migrated onto the unified `Com jasminDialect` (512-bit ZMM)
@@ -88,6 +92,8 @@ Invoke:
 or `lake env lean --run
   CatCrypt/Crypto/SecureCompilation/X86Backend/Sha512X8VpackZmmEmit.lean`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -295,7 +301,7 @@ def sha512_x8_sigma0_vpackzmm_asm : String :=
   emitSigma0Body sigma0Alloc ++ "\n" ++ rodataShiftCounts
 
 -- Print the emitted owned `.s` for visual inspection.
-#eval IO.println sha512_x8_sigma0_vpackzmm_asm
+-- #eval IO.println sha512_x8_sigma0_vpackzmm_asm
 
 /-! ## 6. `native_decide` pin on the rendered body lines
 

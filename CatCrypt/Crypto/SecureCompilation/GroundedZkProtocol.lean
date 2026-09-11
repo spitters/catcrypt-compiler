@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
-import CatCrypt.Crypto.SecureCompilation.ConcretePoseidon2Realizer
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
+public import CatCrypt.Crypto.SecureCompilation.ConcretePoseidon2Realizer
 
 /-!
 # A fully-grounded ZK Fiat-Shamir / Poseidon2-transcript pipeline — whole-pipeline
@@ -51,6 +53,8 @@ transcript is a chain of Poseidon2 permutation calls.
 * Ben-Sasson et al., *Fast Reed–Solomon IOPP* (FRI); Plonky3 `p3-fri`.
 * Plonky3 — `p3-baby-bear` / `p3-poseidon2` crates, v0.5.2.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

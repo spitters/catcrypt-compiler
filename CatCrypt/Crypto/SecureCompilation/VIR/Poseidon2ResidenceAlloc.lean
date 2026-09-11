@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-!
 # Interference-aware register-residence allocator
@@ -39,6 +41,8 @@ physical-slot index per body binding in program order (length `numBindings body`
   non-overlapping — interference-freedom, proved over an abstract range list so
   its cost is independent of the body size.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 

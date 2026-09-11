@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+module
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-!
 # Shift- and rotate-immediate legalisation for the owned x86 backend
@@ -40,6 +44,8 @@ variant rather than once, because the per-instruction rewrite is a parameter:
   register copy.
 -/
 
+@[expose] public section
+
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.LegalizeShiftImm
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
@@ -50,7 +56,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
     width-tagged `":64"`) into `(baseMnem, count)`. Returns `none` for any other
     mnemonic, so every non-shift-immediate `Lopn` is left untouched. -/
 def parseShiftImm (opn : String) : Option (String × Nat) :=
-  let isU64 := opn.endsWith ":64"
+  let isU64 := hasSuffix opn ":64"
   let core := if isU64 then String.ofList (opn.toList.dropLast.dropLast.dropLast) else opn
   match core.splitOn ":" with
   | [base, cnt] =>
@@ -66,7 +72,7 @@ def parseShiftImm (opn : String) : Option (String × Nat) :=
     `"ROR"` or `"ROL"` and `width` is `64` for a `:64`-tagged op else `32`.
     Returns `none` for any other mnemonic. -/
 def parseRotImm (opn : String) : Option (String × Nat × Nat) :=
-  let isU64 := opn.endsWith ":64"
+  let isU64 := hasSuffix opn ":64"
   let core := if isU64 then String.ofList (opn.toList.dropLast.dropLast.dropLast) else opn
   match core.splitOn ":" with
   | [base, cnt] =>
@@ -84,7 +90,7 @@ def wTag (w : Nat) : String := if w = 64 then ":64" else ""
 /-- The `MOV` mnemonic prefixing a rewrite whose destination differs from its
     source, at the width carried by the legalised shift mnemonic `baseMnem`. -/
 def movForShiftMnem (baseMnem : String) : String :=
-  if baseMnem.endsWith ":64" then "MOV:64" else "MOV"
+  if hasSuffix baseMnem ":64" then "MOV:64" else "MOV"
 
 /-! ## 2. Rotate expansion -/
 
@@ -149,7 +155,7 @@ theorem parseShiftImm_base {opn b : String} {n : Nat}
     mnemonic it parsed. -/
 theorem parseShiftImm_widthTag {opn b : String} {n : Nat}
     (h : parseShiftImm opn = some (b, n)) :
-    b.endsWith ":64" = opn.endsWith ":64" := by
+    hasSuffix b ":64" = hasSuffix opn ":64" := by
   simp only [parseShiftImm] at h
   split at h
   · split at h
@@ -159,7 +165,7 @@ theorem parseShiftImm_widthTag {opn b : String} {n : Nat}
         obtain ⟨hb, -⟩ := h
         simp only [Bool.or_eq_true, decide_eq_true_eq] at hbase
         rcases hbase with hbase | hbase <;> subst hbase <;> subst hb <;>
-          cases opn.endsWith ":64" <;> simp [String.endsWith] <;> decide
+          cases hasSuffix opn ":64" <;> decide +kernel
       · exact absurd h (by simp)
     · exact absurd h (by simp)
   · exact absurd h (by simp)
@@ -167,15 +173,15 @@ theorem parseShiftImm_widthTag {opn b : String} {n : Nat}
 /-- The `MOV` prefixing a legalised shift carries the shift mnemonic's width
     tag. -/
 theorem movForShiftMnem_widthTag (b : String) :
-    (movForShiftMnem b).endsWith ":64" = b.endsWith ":64" := by
+    hasSuffix (movForShiftMnem b) ":64" = hasSuffix b ":64" := by
   unfold movForShiftMnem
-  cases b.endsWith ":64" <;> simp [String.endsWith] <;> decide
+  cases hasSuffix b ":64" <;> decide +kernel
 
 /-- The `MOV` prefixing a legalised shift carries the width tag of the mnemonic
     that `parseShiftImm` accepted. -/
 theorem movForShiftMnem_widthTag_of_parse {opn b : String} {n : Nat}
     (h : parseShiftImm opn = some (b, n)) :
-    (movForShiftMnem b).endsWith ":64" = opn.endsWith ":64" := by
+    hasSuffix (movForShiftMnem b) ":64" = hasSuffix opn ":64" := by
   rw [movForShiftMnem_widthTag, parseShiftImm_widthTag h]
 
 /-- The mnemonics `expandRotInPlace` emits, in order. -/
@@ -189,14 +195,14 @@ theorem expandRotInPlace_mnemonics (ii : Nat) (d : LOperand) (dir : String)
     the width tag of the rotate width it was given. -/
 theorem expandRotInPlace_widthTag (ii : Nat) (d : LOperand) (dir : String)
     (n w : Nat) {m : String} (hm : m ∈ opnMnemonics (expandRotInPlace ii d dir n w)) :
-    m.endsWith ":64" = decide (w = 64) := by
+    hasSuffix m ":64" = decide (w = 64) := by
   rw [expandRotInPlace_mnemonics] at hm
   by_cases hw : w = 64
   · subst hw
     simp [wTag] at hm
-    rcases hm with hm | hm | hm | hm <;> subst hm <;> simp [String.endsWith] <;> decide
+    rcases hm with hm | hm | hm | hm <;> subst hm <;> decide +kernel
   · simp [wTag, hw] at hm
-    rcases hm with hm | hm | hm | hm <;> subst hm <;> simp [hw, String.endsWith] <;> decide
+    rcases hm with hm | hm | hm | hm <;> subst hm <;> simp only [hw] <;> decide +kernel
 
 /-! ## 5. Traversal results -/
 

@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxUovGf256
-import CatCrypt.Crypto.Util.Gf256
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxUovGf256
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxUovGf256
+public meta import CatCrypt.Crypto.Util.Gf256
+public import CatCrypt.Crypto.Util.Gf256
 
 /-!
 # #606 fan-out: the emitted GF(2⁸) carryless multiply leaf EQUALS the abstract field op
@@ -32,6 +36,8 @@ with the byte confined to the low 8 bits (`sh0 = a &&& 0xff`, every `xtime` mask
 low bytes. Closed by `native_decide` over the `2¹⁶` byte pairs — the binary-field
 sibling of `gf251MulFold_eq_field`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

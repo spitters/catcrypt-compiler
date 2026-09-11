@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresScalar
-import CatCrypt.Crypto.MAYO.KernelEmitDenote
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresScalar
+public import CatCrypt.Crypto.MAYO.KernelEmitDenote
 
 /-!
 # `corres_solve_scalar` re-derives the MAYO GF(16) multiply `Corres`
@@ -20,6 +22,8 @@ statement `gfMul16_corres_via_tactic` is the same correspondence — the abstrac
 step is the synthesized fold, reconciled with `MAYO`'s `gfMulSem16` by definitional
 equality — proved without the `gfMul16List_leaf` scaffold.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxRecDepth 4000

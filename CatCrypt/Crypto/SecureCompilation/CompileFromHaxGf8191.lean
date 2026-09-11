@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
-import CatCrypt.Crypto.SecureCompilation.BitVecNatBridge
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public meta import CatCrypt.Crypto.SecureCompilation.BitVecNatBridge
+public import CatCrypt.Crypto.SecureCompilation.BitVecNatBridge
 
 /-!
 # #606 fan-out: the verified compiler emits a GF(8191) Mersenne-fold multiply
@@ -46,6 +50,8 @@ is *computed by the verified compiler* and proven equal to the Mersenne-fold
 form. The abstract `(a*b) % 8191` tie is stated and proved separately
 (`gf8191MulFold_eq_mod`) over the constrained domain `a, b < 8191`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -131,7 +137,7 @@ theorem gf8191Mul_compiles :
       gf8191MulSrc (fun _ => none) = some (gf8191MulFold a b) := by
     have h := gf8191MulSrc_denoteScalar (nIn := 2) ![a, b]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 64) (nIn := 2) ["a", "b"]
     ![a, b] gf8191MulSrc _ hc hspec
 

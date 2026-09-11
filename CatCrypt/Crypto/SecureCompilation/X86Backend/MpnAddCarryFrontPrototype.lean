@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRuntimeLoop
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRuntimeLoop
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRuntimeLoop
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-!
 # Width-`N` `mpn_add_n` with-carry FRONT feasibility prototype (task #20)
@@ -51,6 +55,8 @@ or via `SLt`).
   trailing `cy0` register (the C KAT harness would pass `0`). A production flip
   can instead seed the accumulator from a `MOV acc, #0` prologue variant.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectWhileDenote
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectWhileDenote
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectWhileDenote
 
 /-!
 # ML-KEM `rej_uniform` rejection sampler as a data-dependent `RWhileNz` whole-program denote
@@ -59,6 +62,8 @@ discipline (#460). A *secret*-dependent loop guard or accept branch would be a C
 violation (rejected by the `LowCT` `isCT` check); `rej_uniform`'s is admitted.
 The buffer index is a public counter, not a secret address.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

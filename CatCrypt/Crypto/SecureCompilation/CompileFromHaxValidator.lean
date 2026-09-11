@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxLeaves
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxKeccak
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxBlake2
+module
+
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxLeaves
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxKeccak
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxBlake2
 
 /-!
 # C5: the ONE generic emit-validator that subsumes the per-leaf C KAT
@@ -63,6 +65,8 @@ the `Com` *denotation* against the spec, but the trusted pretty-printer that
 emits the final assembly/C text from that `Com` is outside this denotational
 statement. That printer-output cross-check stays a distinct artifact.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

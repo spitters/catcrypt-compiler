@@ -4,6 +4,8 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 
+module
+
 /-!
 # `.jinc` straight-line leaf parser (front: text → untyped AST)
 
@@ -20,6 +22,8 @@ Targets the straight-line `ec_leaves.jinc` leaves (`ec_dlog`, `ec_pow_store`).
 Data-dependent `if`/`else`, runtime `while`, and inter-leaf calls are not in the
 fragment.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Transforms.Peephole
-import CatCrypt.Crypto.SecureCompilation.VIR.Transforms.IfToCmov
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.Transforms.Peephole
+public import CatCrypt.Crypto.SecureCompilation.VIR.Transforms.IfToCmov
 
 /-!
 # `Optimizer` — composed optimization driver for VIR
@@ -53,6 +55,8 @@ representation. Once it does, an `optimizedCompressVIR := optimize
 compressVIR` definition with a `_denote_eq` corollary is a two-line
 addition.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR
 

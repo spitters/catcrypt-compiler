@@ -3,10 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.Dialects.OrchFront
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.OrchFront
+public import CatCrypt.Crypto.SecureCompilation.Dialects.OrchFront
 
 /-!
 # Branch / runtime-loop front for the DuplexChallenger query sampler (combinator core)
@@ -67,6 +74,8 @@ generation gate (`wellFormed`), and the byte-identical re-source (the deployed
 kernel IS this front's output, so its rendered `.s` is unchanged and its
 gas-assembled bench KAT carries over verbatim).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

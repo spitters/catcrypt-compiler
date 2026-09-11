@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.HetArrayFront
+module
+
+public import CatCrypt.Crypto.SecureCompilation.HetArrayFront
 
 /-!
 # Heterogeneous array-input front: runtime `arr[i] = v` WRITES (the §9 dual)
@@ -39,6 +41,8 @@ As for the read (and §9), the dialect's `JasminCTPredicate` admits the emitted
 cache-timing leak and must use a constant-time `select`-scatter. This front lowers the
 scatter faithfully and leaves the public-index obligation to that predicate.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.UCMonad.ITreeNCompose
-import CatCrypt.Crypto.UCMonad.ITreeNMetric
-import CatCrypt.Crypto.UCMonad.StateTInstance
+module
+
+public import CatCrypt.Crypto.UCMonad.ITreeNCompose
+public import CatCrypt.Crypto.UCMonad.ITreeNMetric
+public import CatCrypt.Crypto.UCMonad.StateTInstance
 
 /-!
 # StateT S (ITreeN n E) Bridge
@@ -28,6 +30,8 @@ The embedding `embedSPComp` wraps `SPComp α` into `ITreeN n E α`:
 
 The key property: `flattenAll ∘ embedSPComp = id`, so sdist is preserved.
 -/
+
+@[expose] public section
 
 namespace UCMonad.StateTITreeN
 
@@ -54,7 +58,7 @@ noncomputable def embedSPComp {α : Type} {E : EventSig} :
       (SPComp.pure (Sum.inl a) : SPComp (ITreeNStep _ E α)))
 
 /-- Flatten of embedSPComp reduces the depth by 1. -/
-private theorem flatten_embedSPComp {α : Type} {E : EventSig}
+theorem flatten_embedSPComp {α : Type} {E : EventSig}
     (handler : ∀ e : E.Event, SPComp (E.Resp e))
     (n : Nat) (c : SPComp α) :
     ITreeN.flatten handler n (embedSPComp (E := E) (n + 1) c) = embedSPComp n c := by
@@ -235,7 +239,7 @@ theorem UCEmulatesConcurrent_of_sdistITreeN {E : EventSig}
 /-! ## Section 7: Instances -/
 
 /-- UCMonadMetric for `StatefulITreeN` via generic StateT lifting. -/
-noncomputable instance instUCMonadMetricStatefulITreeN
+@[reducible] noncomputable def instUCMonadMetricStatefulITreeN
     (S : Type) (n : Nat) (E : EventSig)
     (handler : ∀ e : E.Event, SPComp (E.Resp e)) :
     UCMonadMetric (StatefulITreeN S n E) := by
@@ -243,7 +247,7 @@ noncomputable instance instUCMonadMetricStatefulITreeN
   exact stateT_UCMonadMetric
 
 /-- Monad instance for `StatefulITreeN`. -/
-noncomputable instance instMonadStatefulITreeN
+@[reducible] noncomputable def instMonadStatefulITreeN
     (S : Type) (n : Nat) (E : EventSig)
     (handler : ∀ e : E.Event, SPComp (E.Resp e)) :
     Monad (StatefulITreeN S n E) := by

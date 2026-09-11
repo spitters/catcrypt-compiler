@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Hax.AST
-import CatCrypt.Crypto.Optimizer.SecretType
+module
+
+public import CatCrypt.Hax.AST
+public import CatCrypt.Crypto.Optimizer.SecretType
 
 /-!
 # Source-level constant-time gate over the `ImpExpr` extraction AST
@@ -70,6 +72,8 @@ approximation is — a stricter analysis would only *accept more* programs, neve
 
 All goals closed.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

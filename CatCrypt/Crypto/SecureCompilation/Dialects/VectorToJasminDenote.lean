@@ -3,7 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.VectorToJasmin
+module
+
+import all CatCrypt.Crypto.SecureCompilation.VIR.Core
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+import all CatCrypt.Crypto.SecureCompilation.Dialects.Vector
+import all CatCrypt.Crypto.SecureCompilation.Dialects.VectorToJasmin
+public import CatCrypt.Crypto.SecureCompilation.Dialects.VectorToJasmin
 
 /-!
 # `lowerVectorToJasmin` is denotation-preserving — UNCONDITIONALLY
@@ -33,6 +39,8 @@ Since `vectorDenote` was *defined* equal to `jasminDenote (op.toJasmin)` on `pac
 (both `zmmPackQ bop`, reused from `JasminDialect`), the preservation theorem is exact
 (no value drift).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.Vector
 
@@ -82,7 +90,7 @@ For one `vector` expression `e`, the jasmin lowering `lowerExpr e` denotes (unde
 transported valuation) to `transTy` of `e`'s denotation. Proved by casing on `e.op`
 and destructuring its argument `HVector`.
 
-`pack` is a single binary op, so it is the `addi`-shaped case of the keystone arith
+`pack` is a single binary op, so it is the `addi`-shaped case of the main arith
 tactic: `cases op` reduces the propositional `toJasmin_sig`/`toJasmin_ret` casts to
 `rfl` (the `▸`s vanish); `simp only [..., DialectDenote.denote, vectorDenote,
 jasminDenote, VectorOp.toJasmin, transTy]` unfolds the class-projection denote on both
@@ -110,7 +118,11 @@ theorem lowerExpr_denote {Γ : Ctxt vectorDialect} {t : VectorTy}
     cases op' <;>
       (rcases args with _ | ⟨a, _ | ⟨b, _⟩⟩
        simp only [lowerExpr, Expr.denote, DialectDenote.denote, VectorOp.toJasmin, transTy]
-       refine congr (congrArg _ ?_) ?_ <;> exact mapVal_lookup_transTy _ _)
+       first
+         | exact congrArg₂ (SimdOp.denote _)
+             (mapVal_lookup_transTy a V) (mapVal_lookup_transTy b V)
+         | exact congrArg₂ (SimdOp.denote _)
+             (mapVal_lookup_transTy a V) (mapVal_lookup_transTy a V))
 
 /-! ## 5. The `Com` induction -/
 

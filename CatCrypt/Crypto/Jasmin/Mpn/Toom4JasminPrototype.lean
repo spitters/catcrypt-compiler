@@ -3,8 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.Toom4Prototype
-import CatCrypt.Crypto.Jasmin.Mpn.Toom3JasminPrototype
+module
+
+public meta import CatCrypt.Crypto.Jasmin.Mpn.Toom4Prototype
+public import CatCrypt.Crypto.Jasmin.Mpn.Toom4Prototype
+public meta import CatCrypt.Crypto.Jasmin.Mpn.Toom3JasminPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.Toom3JasminPrototype
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -75,7 +81,7 @@ registry-agreement bridge, this discharges to `mpnToom3 a b`, whose
 `toNat` is `toNat a · toNat b` by `mpnToom3_toNat` — which by definition
 equals `mpnMul a b`, hence `mpnToom4 a b` by `mpnToom4 = mpnMul`.
 
-The genuine recursive emit (with 7 sub-product `Ccall`s + 720-scaled
+The recursive emit (with 7 sub-product `Ccall`s + 720-scaled
 recombination) requires per-stage scratch-frame plumbing analogous to the
 growing-width residual in `MpnPowJasminRefines`.  It is recorded here as a
 sorry-free `Prop` — the *recursion-depth invariant*, the only piece beyond
@@ -97,7 +103,7 @@ open CatCrypt.Crypto.Jasmin
 open CatCrypt.Crypto.Jasmin.BignumExec
 open CatCrypt.Crypto.Jasmin.Emit
 open CatCrypt.Crypto.Jasmin.MemoryModel
-open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype hiding vr pv loadAt0 storeAt0 binImm
 open CatCrypt.Crypto.Jasmin.Mpn.Mul1Prototype
 open CatCrypt.Crypto.Jasmin.Mpn.MulPrototype
 open CatCrypt.Crypto.Jasmin.Mpn.PowPrototype
@@ -109,12 +115,12 @@ open CatCrypt.Crypto.Jasmin.Mpn.Toom4Prototype
 /-! ## §1  Emitted body shapes
 
 We expose three named instruction lists, in increasing order of structural
-fidelity to the genuine Toom-4 algorithm:
+fidelity to the Toom-4 algorithm:
 
   * `toom4LeafStep` — single `Ccall mpn_toom3` (the base case).
   * `toom4RecStep`  — single `Ccall mpn_toom4` (the recursive sub-product).
   * `toom4Body`     — the actual emitted body; for first-pass emission this
-    is `toom4LeafStep` (one base-case Ccall).  The genuine 7-sub-product
+    is `toom4LeafStep` (one base-case Ccall).  The 7-sub-product
     form would be `[ ...evaluations..., 7×toom4RecStep, ...recombination... ]`.
 
 The `toNat` denotation of all three forms agrees (by the algebraic
@@ -131,7 +137,7 @@ def toom4LeafStep : List InstrR :=
       [ pv "op", pv "ap", pv "bp", pv "n" ] ]
 
 /-- The Toom-4 recursion-step body: a `Ccall` to `mpn_toom4` (itself, with
-    a sub-problem of size `n/4`).  Used in the genuine 7-sub-product form;
+    a sub-problem of size `n/4`).  Used in the 7-sub-product form;
     not exercised in the leaf-only emit. -/
 def toom4RecStep : List InstrR :=
   [ .Ccall .DoNotInline []
@@ -139,7 +145,7 @@ def toom4RecStep : List InstrR :=
       [ pv "op", pv "ap", pv "bp", pv "n" ] ]
 
 /-- The full emitted Toom-4 body.  First-pass form: a single `Ccall` to
-    `mpn_toom3` (the verified base case).  The genuine 7-sub-product
+    `mpn_toom3` (the verified base case).  The 7-sub-product
     form is structurally `[evals; 7 × toom4RecStep; recombination]`; both
     have the same `toNat` denotation by the 720-scaled identity. -/
 def toom4Body : List InstrR :=
@@ -418,7 +424,7 @@ theorem toom4Body_no_value_branches :
 
 /-- The `NoCcallBody`-negation matches `toom3Body_isCT_Cmd`'s shape:
     `toom4Body` contains a `Ccall`, so the strict `NoCcallBody` predicate
-    fails.  The genuine CT property is `toom4Body_no_value_branches` above. -/
+    fails.  The CT property is `toom4Body_no_value_branches` above. -/
 theorem toom4Body_isCT_Cmd : NoCcallBody toom4Body → False := by
   intro h
   have := h (toom4Body.head (by simp [toom4Body, toom4LeafStep]))
@@ -544,7 +550,7 @@ theorem MpnToom4JasminRefines_holds : MpnToom4JasminRefines := by
 
 The `mpnToom4_outer_recursion_obligation` above runs the *multiply* callee body
 `mulBody b.length` under `powRegistry b.length` — the same shape as if the
-parent were Ccalling `mpn_mul` directly.  The genuinely recursive form runs
+parent were Ccalling `mpn_mul` directly.  The recursive form runs
 the *Toom-4* callee body `toom4Body` under `toom4Registry b.length` — the body
 and registry that an actual `Ccall mpn_toom4` invocation would dispatch to.
 
@@ -578,7 +584,7 @@ content (`mul_ccall_step`, the registry-agreement bridges
 /-- **The tighter, fully-recursive Toom-4 Jasmin refinement obligation.**
 
     Same precondition shape as `mpnToom4_outer_recursion_obligation`, but runs
-    the genuine Toom-4 callee body `toom4Body` (the body of `mpnToom4Fd`)
+    the Toom-4 callee body `toom4Body` (the body of `mpnToom4Fd`)
     under the recursive registry `toom4Registry b.length` (which contains the
     `mpn_toom4` self-entry), starting from the `Ccall`-built callee init
     state for `mpnToom4Fd`.

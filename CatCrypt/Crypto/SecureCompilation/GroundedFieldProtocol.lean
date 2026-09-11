@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ConcreteSymFieldRealizer
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ConcreteSymFieldRealizer
 
 /-!
 # A fully-grounded field protocol — whole-pipeline emit-realization with ZERO
@@ -56,6 +58,8 @@ kernels.
   chaining `fieldMul_realizes_concrete` and `fieldAdd_realizes_concrete` (each a
   theorem) — again no per-kernel hypotheses.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

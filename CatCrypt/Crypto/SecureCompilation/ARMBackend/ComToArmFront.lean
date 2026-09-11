@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
 # `Com → AArch64`, step 1 (front): dialect faithfulness + a field-leaf compile
@@ -23,6 +26,8 @@ Two things on top of the proved `ComToArm` core:
    "compiled == hand-written" is proved, not byte-diffed — and via the keystone
    the compiled bytes provably compute `bbMulReg.denote`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

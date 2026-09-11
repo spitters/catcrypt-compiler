@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
-import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockCorres
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
+public import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockCorres
 
 /-!
 # Bridging `Corres` and `CorresJ` — the AutoCorres phase division, made explicit
@@ -62,6 +64,8 @@ they all strengthen to).
 * **TS (type strengthening).** The total, failure-free `asemW`/`ascend_sound` over
   `IsAscendable` (`Ascend.lean`) — collapsing the `Option` monad to a pure spec.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

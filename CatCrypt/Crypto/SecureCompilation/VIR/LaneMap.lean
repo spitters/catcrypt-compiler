@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Algebra.BigOperators.Fin
-import Mathlib.Data.BitVec
+module
+
+public import Mathlib.Algebra.BigOperators.Fin
+public import Mathlib.Data.BitVec
 
 /-!
 # Verified vectorization core: lane-parallel MAP = sequential scalar map
@@ -43,6 +45,8 @@ primitives. New emit modes that use lane-map (`emitChachaVecJazz`) reference
 reference `scalarFold_eq_hsum`. The eventual full vectorizer composes the two
 (per-lane MAP + horizontal REDUCE).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

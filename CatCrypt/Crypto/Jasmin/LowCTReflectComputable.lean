@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
+module
+
+public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
 # `@[rust_cmd_pattern_computable]` — worked example
@@ -42,6 +46,8 @@ This file targets the OTHER use case: protocols whose "leaf" is a
 Lean-level abstraction that has a real verified body the security proof
 needs to see through.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -96,13 +102,13 @@ theorem gf16ToyAdd_idempotent (a : Gf16Toy) :
 
 /-! ## 3. Verification that the registry is populated
 
-`#eval` the registry's tagged-decls list at elaboration time to confirm
-`gf16ToyAddPattern`'s name is recorded.  This is the same shape of
-inspection the `UovReflect.lean` and `MayoReflect.lean` files use to
-verify their own registrations. -/
+Read the registry's tagged-decls list at elaboration time (`run_meta`, so
+the `meta` registry is accessible) to confirm `gf16ToyAddPattern`'s name
+is recorded.  This is the same shape of inspection the `UovReflect.lean`
+and `MayoReflect.lean` files use to verify their own registrations. -/
 
 open Lean in
-example : Lean.MetaM Unit := do
+run_meta do
   let names ← LowCTPattern.computableDecls
   unless names.any (· == ``gf16ToyAddPattern) do
     throwError "gf16ToyAddPattern not found in computableDecls registry"

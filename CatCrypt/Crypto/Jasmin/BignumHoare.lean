@@ -3,12 +3,23 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.BignumExec
-import CatCrypt.Crypto.Jasmin.BignumExecDiffTest
-import CatCrypt.Crypto.Jasmin.Hoare
-import CatCrypt.Crypto.Jasmin.S2NBignumSSA
-import CatCrypt.Crypto.Jasmin.BignumHoare.Sqr4Algebra
-import CatCrypt.Tactics.PreservationCombinator
+module
+
+public meta import CatCrypt.Crypto.Jasmin.BignumExec
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.BignumExec
+public meta import CatCrypt.Crypto.Jasmin.BignumExecDiffTest
+public import CatCrypt.Crypto.Jasmin.BignumExecDiffTest
+public meta import CatCrypt.Crypto.Jasmin.Hoare
+public import CatCrypt.Crypto.Jasmin.Hoare
+public meta import CatCrypt.Crypto.Jasmin.S2NBignumSSA
+public import CatCrypt.Crypto.Jasmin.S2NBignumSSA
+public meta import CatCrypt.Crypto.Jasmin.BignumHoare.Sqr4Algebra
+public import CatCrypt.Crypto.Jasmin.BignumHoare.Sqr4Algebra
+public meta import CatCrypt.Tactics.PreservationCombinator
+public import CatCrypt.Tactics.PreservationCombinator
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -28,27 +39,25 @@ logic for the bignum SSA fragment.
 - `bignumTriple` notation: the specialized Hoare triple
   `{P} body {Q}` over `BignumState` directly (skips the
   `JasminMemState` indirection for ergonomics).
-- A worked port theorem **shape** for `bignum_mod_p25519_4`:
-  precondition + postcondition stated, decomposition strategy
-  documented. Closing it requires per-instruction VC discharge
-  which is straightforward but volumetric — the framework here
-  reduces it to algebra over `BignumModP25519_4.algoNat_eq_specNat`
-  (commit `5aef5df3`).
-
-## What's deferred
-
-- Full instruction-by-instruction VC discharge for the
-  `bignum_mod_p25519_4` body. The structural framing
+- The port theorem for `bignum_mod_p25519_4`: precondition +
+  postcondition stated, with the framework reducing the body to algebra
+  over `BignumModP25519_4.algoNat_eq_specNat`. The instruction-by-instruction
+  VC discharge is carried out in `BignumHoare/ModP25519Final.lean`
+  (`bodyComputesAlgoNat`) over the structural framing
   (`bignumExec_append`-based chunk decomposition, `body_no_lmem_mem_frame`
   for the register-only chunk, `execInstr_storeOp_const` for the 4 stores)
   and the byte-memory bridging (the 4-read chain via
-  `load64Mem_store64_self` + `load64Mem_store64_offset_const`) are fully
-  Qed-closed in `bodyComputesAlgoNat` below. The remaining `sorry` is just
-  the algorithmic kernel (BitVec arithmetic over the 31-instruction register
-  computation, ~200 LoC of `simp [execInstr, ...]`).
-- mvcgen attachment: the structural rules in `Hoare.lean` are
-  the right shape; the tactic plugin is one more file (~1 week per
-  estimate in `mvcgen-loom-evaluation.md`).
+  `load64Mem_store64_self` + `load64Mem_store64_offset_const`); the
+  algorithmic kernel over the 31-instruction register computation is
+  `BignumHoare/ModWrap.lean`'s `pre_oi_values`.
+
+## mvcgen attachment
+
+`BignumHoare/MVCGenPrimeSmoke.lean` carries it: a `WPMonad BignumM` instance
+over `.arg BignumState (.except PUnit .pure)`, a `@[spec]` set of
+step-transformer theorems (`stepInstrM_*_spec`) covering `assignConst`,
+`copy64`, the `assignBin` logical forms, `subCopn`, `sbbCopn`, `load64` and
+`store64`, and `mvcgen'` proofs built from them.
 -/
 
 namespace CatCrypt.Crypto.Jasmin.BignumHoare
@@ -257,42 +266,42 @@ non-`Lmem` instruction preserves `mem`. -/
     wrappers used to live here; they were structurally identical to the
     public versions, so they're now thin delegating proxies. -/
 
-private theorem writeSubBundle_mem
+theorem writeSubBundle_mem
     (s s' : BignumState) (lvs : List LVal) (cf r : BitVec 64)
     (h : BignumExec.writeSubBundle s lvs cf r = some s') :
     s'.mem = s.mem :=
   CatCrypt.Tactics.PreservationCombinator.writeSubBundle_preserves_mem
     s s' lvs cf r h
 
-private theorem writeMulxBundle_mem
+theorem writeMulxBundle_mem
     (s s' : BignumState) (lvs : List LVal) (hi lo : BitVec 64)
     (h : BignumExec.writeMulxBundle s lvs hi lo = some s') :
     s'.mem = s.mem :=
   CatCrypt.Tactics.PreservationCombinator.writeMulxBundle_preserves_mem
     s s' lvs hi lo h
 
-private theorem writeAdxBundle_mem
+theorem writeAdxBundle_mem
     (s s' : BignumState) (lvs : List LVal) (flag r : BitVec 64)
     (h : BignumExec.writeAdxBundle s lvs flag r = some s') :
     s'.mem = s.mem :=
   CatCrypt.Tactics.PreservationCombinator.writeAdxBundle_preserves_mem
     s s' lvs flag r h
 
-private theorem writeXorBundle_mem
+theorem writeXorBundle_mem
     (s s' : BignumState) (lvs : List LVal) (of cf r : BitVec 64)
     (h : BignumExec.writeXorBundle s lvs of cf r = some s') :
     s'.mem = s.mem :=
   CatCrypt.Tactics.PreservationCombinator.writeXorBundle_preserves_mem
     s s' lvs of cf r h
 
-private theorem writeDivBundle_mem
+theorem writeDivBundle_mem
     (s s' : BignumState) (lvs : List LVal) (q r : BitVec 64)
     (h : BignumExec.writeDivBundle s lvs q r = some s') :
     s'.mem = s.mem :=
   CatCrypt.Tactics.PreservationCombinator.writeDivBundle_preserves_mem
     s s' lvs q r h
 
-private theorem writeShiftBundle_mem
+theorem writeShiftBundle_mem
     (s s' : BignumState) (lvs : List LVal) (r : BitVec 64)
     (h : BignumExec.writeShiftBundle s lvs r = some s') :
     s'.mem = s.mem :=
@@ -301,7 +310,7 @@ private theorem writeShiftBundle_mem
 
 /-- An `execInstr` step preserves `mem` unless the instruction is a
     memory-store `Cassgn (Lmem ws base off) ...`. -/
-private theorem execInstr_mem_preserve
+theorem execInstr_mem_preserve
     (s s' : BignumState) (i : InstrR)
     (hi : BignumExec.execInstr s i = some s')
     (hno : ∀ ws base off al sty rhs,
@@ -526,7 +535,7 @@ private theorem execInstr_mem_preserve
 /-- After a memory-store `Cassgn (Lmem .U64 base off) _ _ rhs`, the
     new memory differs from the old only in the 8 bytes
     `[addr, addr + 8)` where `addr` is the resolved store address. -/
-private theorem execInstr_storeMem
+theorem execInstr_storeMem
     (s s' : BignumState) (base : VarI) (off : PExpr)
     (al : AssgnTag) (sty : SType) (rhs : PExpr)
     (hi : BignumExec.execInstr s
@@ -561,7 +570,7 @@ private theorem execInstr_storeMem
 /-- The `store64` helper from S2NBignumSSA's `BignumModP25519_4` namespace
     expands to `Cassgn (Lmem .U64 ...) ...`. The four stores in the body
     use offsets 0, 8, 16, 24 from `op`. -/
-private theorem resolveAddr_op_offset
+theorem resolveAddr_op_offset
     (s : BignumState) (base_op : UInt64) (k : Int)
     (h_op : s.regs "op" = BitVec.ofNat 64 base_op.toNat) :
     BignumExec.resolveAddr s
@@ -581,7 +590,7 @@ If the instruction's `lvs` are all `Lvar` with names different from
 /-- Bridge between BignumHoare's ∀-on-membership form and
     PreservationCombinator's filterMap form for the `lvs` no-write
     predicate. -/
-private theorem hno_to_filterMap (x : String) (lvs : List LVal)
+theorem hno_to_filterMap (x : String) (lvs : List LVal)
     (h_no_x : ∀ v, .Lvar v ∈ lvs → v.var.vname ≠ x) :
     x ∉ lvs.filterMap (fun lv => match lv with
               | .Lvar v => some v.var.vname | _ => none) := by
@@ -597,7 +606,7 @@ private theorem hno_to_filterMap (x : String) (lvs : List LVal)
     lemmas (§1 of that file). The hypothesis-shape conversion is via
     `hno_to_filterMap` above. -/
 
-private theorem writeSubBundle_regs
+theorem writeSubBundle_regs
     (s s' : BignumState) (lvs : List LVal) (cf r : BitVec 64) (x : String)
     (h : BignumExec.writeSubBundle s lvs cf r = some s')
     (h_no_x : ∀ v, .Lvar v ∈ lvs → v.var.vname ≠ x) :
@@ -605,7 +614,7 @@ private theorem writeSubBundle_regs
   CatCrypt.Tactics.PreservationCombinator.writeSubBundle_preserves
     s s' lvs cf r x h (hno_to_filterMap x lvs h_no_x)
 
-private theorem writeMulxBundle_regs
+theorem writeMulxBundle_regs
     (s s' : BignumState) (lvs : List LVal) (hi lo : BitVec 64) (x : String)
     (h : BignumExec.writeMulxBundle s lvs hi lo = some s')
     (h_no_x : ∀ v, .Lvar v ∈ lvs → v.var.vname ≠ x) :
@@ -613,7 +622,7 @@ private theorem writeMulxBundle_regs
   CatCrypt.Tactics.PreservationCombinator.writeMulxBundle_preserves
     s s' lvs hi lo x h (hno_to_filterMap x lvs h_no_x)
 
-private theorem writeAdxBundle_regs
+theorem writeAdxBundle_regs
     (s s' : BignumState) (lvs : List LVal) (flag r : BitVec 64) (x : String)
     (h : BignumExec.writeAdxBundle s lvs flag r = some s')
     (h_no_x : ∀ v, .Lvar v ∈ lvs → v.var.vname ≠ x) :
@@ -621,7 +630,7 @@ private theorem writeAdxBundle_regs
   CatCrypt.Tactics.PreservationCombinator.writeAdxBundle_preserves
     s s' lvs flag r x h (hno_to_filterMap x lvs h_no_x)
 
-private theorem writeXorBundle_regs
+theorem writeXorBundle_regs
     (s s' : BignumState) (lvs : List LVal) (of cf r : BitVec 64) (x : String)
     (h : BignumExec.writeXorBundle s lvs of cf r = some s')
     (h_no_x : ∀ v, .Lvar v ∈ lvs → v.var.vname ≠ x) :
@@ -629,7 +638,7 @@ private theorem writeXorBundle_regs
   CatCrypt.Tactics.PreservationCombinator.writeXorBundle_preserves
     s s' lvs of cf r x h (hno_to_filterMap x lvs h_no_x)
 
-private theorem writeDivBundle_regs
+theorem writeDivBundle_regs
     (s s' : BignumState) (lvs : List LVal) (q r : BitVec 64) (x : String)
     (h : BignumExec.writeDivBundle s lvs q r = some s')
     (h_no_x : ∀ v, .Lvar v ∈ lvs → v.var.vname ≠ x) :
@@ -637,7 +646,7 @@ private theorem writeDivBundle_regs
   CatCrypt.Tactics.PreservationCombinator.writeDivBundle_preserves
     s s' lvs q r x h (hno_to_filterMap x lvs h_no_x)
 
-private theorem writeShiftBundle_regs
+theorem writeShiftBundle_regs
     (s s' : BignumState) (lvs : List LVal) (r : BitVec 64) (x : String)
     (h : BignumExec.writeShiftBundle s lvs r = some s')
     (h_no_x : ∀ v, .Lvar v ∈ lvs → v.var.vname ≠ x) :
@@ -647,16 +656,16 @@ private theorem writeShiftBundle_regs
 
 /-- Decidable predicate on a `List LVal` saying that no element writes
     to register `x`. -/
-private def lvsNoWriteB (x : String) : List LVal → Bool
+def lvsNoWriteB (x : String) : List LVal → Bool
   | [] => true
   | (.Lvar v) :: rest => decide (v.var.vname ≠ x) && lvsNoWriteB x rest
   | _ :: rest => lvsNoWriteB x rest
 
 /-- A `List LVal` predicate: no element writes to `x`. -/
-private def lvsNoWrite (x : String) (lvs : List LVal) : Prop :=
+def lvsNoWrite (x : String) (lvs : List LVal) : Prop :=
   ∀ v, LVal.Lvar v ∈ lvs → v.var.vname ≠ x
 
-private theorem lvsNoWrite_of_B (x : String) (lvs : List LVal) :
+theorem lvsNoWrite_of_B (x : String) (lvs : List LVal) :
     lvsNoWriteB x lvs = true → lvsNoWrite x lvs := by
   intro h
   induction lvs with
@@ -718,7 +727,7 @@ theorem instrNoWrite_of_B (x : String) (i : InstrR) :
 
 /-- Single-instruction register frame: if the instruction does not
     write to `x`, then `regs x` is preserved. -/
-private theorem execInstr_regs_frame
+theorem execInstr_regs_frame
     (s s' : BignumState) (i : InstrR) (x : String)
     (hi : BignumExec.execInstr s i = some s')
     (hno : instrNoWrite x i) :
@@ -1043,7 +1052,7 @@ condition as a hypothesis on each store. -/
     in `range base_op 32` (under any reachable intermediate state),
     then for any byte address `a` not in `range base_op 32`, the byte
     at `a` is unchanged. -/
-private theorem bignumExec_loadByte_outside
+theorem bignumExec_loadByte_outside
     (base_op : UInt64) :
     ∀ (body : List InstrR) (s s' : BignumState),
     BignumExec.bignumExec body s = some s' →
@@ -1186,13 +1195,13 @@ mem-frame for chunk 1 holds via `body_no_lmem_mem_frame`, register frame
 for `op` holds via `bignumExec_regs_frame`, the 4 stores chain via
 `execInstr_storeOp_const`) is fully Qed-closed below.
 
-The remaining conjecture is the **algorithmic kernel**: after chunk 1, the
-four `oi` registers hold specific BitVec 64 values whose Nat decomposition
-equals `algoNat a_val`. This is the genuinely-volumetric content of the
-proof — symbolic execution through 29 instructions to track the BitVec 64
-computation, plus the BitVec arithmetic showing the SUB/SBB chain
-followed by mask-cmov produces the right limbs of `if a ≥ p then a - p
-else a`. -/
+The **algorithmic kernel** — that after chunk 1 the four `oi` registers hold
+BitVec 64 values whose Nat decomposition equals `algoNat a_val` — is
+`BignumHoare.ModWrap.pre_oi_values`, proved there by `pre_oi_values_triple`.
+It carries the bulk of the proof: symbolic execution through 29 instructions
+tracking the BitVec 64 computation, plus the BitVec arithmetic showing that
+the SUB/SBB chain followed by mask-cmov produces the limbs of
+`if a ≥ p then a - p else a`. -/
 
 /-! #### Helpers moved up here so `bodyComputesAlgoNat` can use them.
 
@@ -1256,32 +1265,32 @@ theorem store64_loadByte_outside_op
     apply hOut
     refine ⟨k + j', by omega, ?_⟩
     rw [← h_eq]
-    ext
+    apply UInt64.toNat_inj.1
     simp [UInt64.toNat_add, Nat.add_assoc]
   have h0 : base_op + UInt64.ofNat k ≠ a := by
     have := h_ne_at 0 (by omega); simpa using this
   have h_lit : ∀ j : Nat, j < 8 →
                 base_op + UInt64.ofNat k + UInt64.ofNat j =
                 base_op + UInt64.ofNat (k + j) := by
-    intro j _; ext; simp [UInt64.toNat_add, Nat.add_assoc]
+    intro j _; apply UInt64.toNat_inj.1; simp [UInt64.toNat_add, Nat.add_assoc]
   have h_eq_at : ∀ j : Nat, j < 8 → base_op + UInt64.ofNat (k + j) ≠ a := by
     intro j hj
     rw [← h_lit j hj]
     exact h_ne_at j hj
   have e1 : base_op + UInt64.ofNat k + 1 = base_op + UInt64.ofNat (k + 1) := by
-    ext; simp [UInt64.toNat_add, Nat.add_assoc]
+    apply UInt64.toNat_inj.1; simp [UInt64.toNat_add, Nat.add_assoc]
   have e2 : base_op + UInt64.ofNat k + 2 = base_op + UInt64.ofNat (k + 2) := by
-    ext; simp [UInt64.toNat_add, Nat.add_assoc]
+    apply UInt64.toNat_inj.1; simp [UInt64.toNat_add, Nat.add_assoc]
   have e3 : base_op + UInt64.ofNat k + 3 = base_op + UInt64.ofNat (k + 3) := by
-    ext; simp [UInt64.toNat_add, Nat.add_assoc]
+    apply UInt64.toNat_inj.1; simp [UInt64.toNat_add, Nat.add_assoc]
   have e4 : base_op + UInt64.ofNat k + 4 = base_op + UInt64.ofNat (k + 4) := by
-    ext; simp [UInt64.toNat_add, Nat.add_assoc]
+    apply UInt64.toNat_inj.1; simp [UInt64.toNat_add, Nat.add_assoc]
   have e5 : base_op + UInt64.ofNat k + 5 = base_op + UInt64.ofNat (k + 5) := by
-    ext; simp [UInt64.toNat_add, Nat.add_assoc]
+    apply UInt64.toNat_inj.1; simp [UInt64.toNat_add, Nat.add_assoc]
   have e6 : base_op + UInt64.ofNat k + 6 = base_op + UInt64.ofNat (k + 6) := by
-    ext; simp [UInt64.toNat_add, Nat.add_assoc]
+    apply UInt64.toNat_inj.1; simp [UInt64.toNat_add, Nat.add_assoc]
   have e7 : base_op + UInt64.ofNat k + 7 = base_op + UInt64.ofNat (k + 7) := by
-    ext; simp [UInt64.toNat_add, Nat.add_assoc]
+    apply UInt64.toNat_inj.1; simp [UInt64.toNat_add, Nat.add_assoc]
   rw [e1, e2, e3, e4, e5, e6, e7]
   rw [MemoryModel.Mem.loadByte_storeByte_other _ _ _ _ (Ne.symm (h_eq_at 7 (by omega)))]
   rw [MemoryModel.Mem.loadByte_storeByte_other _ _ _ _ (Ne.symm (h_eq_at 6 (by omega)))]
@@ -1462,7 +1471,7 @@ theorem execInstr_storeOp_const
                         + BitVec.ofInt 64 k).toNat) =
           base_op + UInt64.ofNat ((BitVec.ofNat 64 0
                                     + BitVec.ofInt 64 k).toNat) := by
-      ext
+      apply UInt64.toNat_inj.1
       simp [UInt64.toNat_add]
     rw [h_arith, h_kn]
   rw [h_addr_eq] at h_step
@@ -1471,20 +1480,19 @@ theorem execInstr_storeOp_const
   · cases h_step; rfl
 
 
-/-! #### What's deferred
+/-! #### Where `bodyComputesAlgoNat` is discharged
 
-The remaining `sorry` in `bodyComputesAlgoNat` is the algorithmic kernel:
-after running the first 31 instructions of the body from a state satisfying
-the precondition, the four registers `o0, o1, o2, o3` hold BitVec 64 values
-whose Nat-decomposition equals `algoNat a_val`.
+The algorithmic kernel of `bodyComputesAlgoNat` is `pre_oi_values` in
+`BignumHoare/ModWrap.lean`: after running the first 31 instructions of the
+body from a state satisfying the precondition, the four registers
+`o0, o1, o2, o3` hold BitVec 64 values whose Nat-decomposition equals
+`algoNat a_val`.
 
-Discharge: ~200 LoC of `simp [execInstr, ...]` rewrites tracking the
-register state through 31 instructions (4 loads + 3 const + 4 copies +
-SUB chain + mask-SBB + all_ones + nmask + 12 mask-AND/OR), then an
-`omega`/`bv_decide` over the BitVec arithmetic showing the SUB/SBB chain
-followed by `if cf then a else (a-p)` (encoded via mask-cmov) gives the
-right limbs of `algoNat a`. The mvcgen Watch List item #4 would
-automate this.
+That proof tracks the register state through 31 instructions (4 loads +
+3 const + 4 copies + SUB chain + mask-SBB + all_ones + nmask + 12
+mask-AND/OR), then discharges the BitVec arithmetic showing the SUB/SBB
+chain followed by `if cf then a else (a-p)` (encoded via mask-cmov) gives
+the right limbs of `algoNat a`.
 
 The byte-memory bridging is fully proved via the helpers
 `load64Mem_store64_self` and `load64Mem_store64_offset_const` (for
@@ -1497,7 +1505,7 @@ frame for chunk 1, register frame for `op`, the 4 stores chain via
     indices differ. The hypothesis `h_disj` directly states this.
 
     This is the byte-disjointness fact powering `load64Mem_store64_offset_const`. -/
-private theorem byte_addr_ne
+theorem byte_addr_ne
     (base : UInt64) (k1 k2 i j : Nat)
     (h1 : k1 < 256) (h2 : k2 < 256) (hi : i < 8) (hj : j < 8)
     (h_disj : k1 + i ≠ k2 + j) :
@@ -1520,7 +1528,7 @@ private theorem byte_addr_ne
 /-- Companion lemma: `base + UInt64.ofNat k1 + i ≠ base + UInt64.ofNat k2`,
     handling the byte-0 case where `loadByte_store64_other` expects `a ≠ a'`
     (without a `+ 0`). -/
-private theorem byte_addr_ne_zero
+theorem byte_addr_ne_zero
     (base : UInt64) (k1 k2 i : Nat)
     (h1 : k1 < 256) (h2 : k2 < 256) (hi : i < 8)
     (h_disj : k1 + i ≠ k2) :
@@ -1664,10 +1672,9 @@ theorem load64Mem_store64_offset_const
       (h_byte_ne 7 6 (by omega) (by omega))
       (h_byte_ne 7 7 (by omega) (by omega))
 
--- Note: the original `pre_oi_values` lemma (kept for the existing
--- `bodyComputesAlgoNat` proof) currently has a `sorry` derived from
--- `pre_oi_values_triple`'s sorry. Once the triple closes, this one
--- closes automatically via the bridge lemma path.
+-- `pre_oi_values` (the form `bodyComputesAlgoNat` consumes) is derived from
+-- `pre_oi_values_triple` via the bridge lemma path; both live in
+-- `BignumHoare/ModWrap.lean`.
 
 /-- Decomposition of `memNat4 base m = some n` into 4 individual
     `load64Mem` results. Phase 3 sub-task A: lets `pre_oi_values`
@@ -1711,7 +1718,7 @@ Id.run`), the goal is a chain of `match (do let w ← some C; some
 {regs := ..., mem := ...}) with | some s' => some ((), s') | none =>
 none`. Each step's reduction is rfl-true. -/
 
-private theorem match_assignConst (C : BitVec 64) (s : BignumState)
+theorem match_assignConst (C : BitVec 64) (s : BignumState)
     (vname : String) :
     (match ((some C : Option (BitVec 64)).bind
               (fun w => some
@@ -1731,19 +1738,19 @@ These `rfl`-closed lemmas perform the reduction explicitly, one
 Option-bind at a time. -/
 
 /-- One bind. -/
-private theorem opt_match_bind1 {α β γ : Type}
+theorem opt_match_bind1 {α β γ : Type}
     (C : α) (f : α → β) (g : β → γ) (h : γ) :
     (match (do let w ← some C; some (f w)) with
      | some s' => g s' | none => h) = g (f C) := rfl
 
 /-- Two binds. -/
-private theorem opt_match_bind2 {α β δ γ : Type}
+theorem opt_match_bind2 {α β δ γ : Type}
     (C₁ : α) (C₂ : β) (f : α → β → δ) (g : δ → γ) (h : γ) :
     (match (do let a ← some C₁; let b ← some C₂; some (f a b)) with
      | some s' => g s' | none => h) = g (f C₁ C₂) := rfl
 
 /-- Three binds. -/
-private theorem opt_match_bind3 {α β δ ε γ : Type}
+theorem opt_match_bind3 {α β δ ε γ : Type}
     (C₁ : α) (C₂ : β) (C₃ : δ) (f : α → β → δ → ε) (g : ε → γ) (h : γ) :
     (match (do let a ← some C₁; let b ← some C₂; let c ← some C₃;
                 some (f a b c)) with
@@ -1755,33 +1762,33 @@ private theorem opt_match_bind3 {α β δ ε γ : Type}
 sub-task B simp call needs to walk through these to unfold the body
 literal. Equation lemmas via `rfl` re-expose the structural definitions. -/
 
-private theorem assignConst_eq (s : String) (k : Int) :
+theorem assignConst_eq (s : String) (k : Int) :
     S2NBignumSSA.assignConst s k =
       .Cassgn (.Lvar { var := S2NBignumSSA.v s }) .AT_none (.sword .U64) (.Pconst k) := rfl
 
-private theorem assignBin_eq (s : String) (op : SOp2) (a b : String) :
+theorem assignBin_eq (s : String) (op : SOp2) (a b : String) :
     S2NBignumSSA.assignBin s op a b =
       .Cassgn (.Lvar { var := S2NBignumSSA.v s }) .AT_none (.sword .U64)
         (.Papp2 op (.Pvar { gv := { var := S2NBignumSSA.v a }, gs := false })
                    (.Pvar { gv := { var := S2NBignumSSA.v b }, gs := false })) := rfl
 
-private theorem load64_eq (x base : String) (k : Int) :
+theorem load64_eq (x base : String) (k : Int) :
     S2NBignumSSA.BignumModP25519_4.load64 x base k =
       .Cassgn (.Lvar { var := S2NBignumSSA.v x }) .AT_none (.sword .U64)
         (.Pload .U64 { var := S2NBignumSSA.v base } (.Pconst k)) := rfl
 
-private theorem store64_eq (base : String) (k : Int) (src : String) :
+theorem store64_eq (base : String) (k : Int) (src : String) :
     S2NBignumSSA.BignumModP25519_4.store64 base k src =
       .Cassgn (.Lmem .U64 { var := S2NBignumSSA.v base } (.Pconst k))
         .AT_none (.sword .U64)
         (.Pvar { gv := { var := S2NBignumSSA.v src }, gs := false }) := rfl
 
-private theorem copy64_eq (dst src : String) :
+theorem copy64_eq (dst src : String) :
     S2NBignumSSA.BignumModP25519_4.copy64 dst src =
       .Cassgn (.Lvar { var := S2NBignumSSA.v dst }) .AT_none (.sword .U64)
         (.Pvar { gv := { var := S2NBignumSSA.v src }, gs := false }) := rfl
 
-private theorem subCopn_eq (cfOut r aName bName : String) :
+theorem subCopn_eq (cfOut r aName bName : String) :
     S2NBignumSSA.BignumModP25519_4.subCopn cfOut r aName bName =
       .Copn ([.Lnone {} (.sword .U64),
               .Lvar { var := S2NBignumSSA.v cfOut }] ++
@@ -1791,7 +1798,7 @@ private theorem subCopn_eq (cfOut r aName bName : String) :
             [.Pvar { gv := { var := S2NBignumSSA.v aName }, gs := false },
              .Pvar { gv := { var := S2NBignumSSA.v bName }, gs := false }] := rfl
 
-private theorem sbbCopn_eq (cfOut r aName bName cinName : String) :
+theorem sbbCopn_eq (cfOut r aName bName cinName : String) :
     S2NBignumSSA.BignumModP25519_4.sbbCopn cfOut r aName bName cinName =
       .Copn ([.Lnone {} (.sword .U64),
               .Lvar { var := S2NBignumSSA.v cfOut }] ++
@@ -1804,7 +1811,7 @@ private theorem sbbCopn_eq (cfOut r aName bName cinName : String) :
 
 /-! ### Phase 4 — equation lemmas for BignumDoubleP25519 -/
 
-private theorem double_subCopn_eq (cfOut r aName bName : String) :
+theorem double_subCopn_eq (cfOut r aName bName : String) :
     S2NBignumSSA.BignumDoubleP25519.subCopn cfOut r aName bName =
       .Copn ([.Lnone {} (.sword .U64),
               .Lvar { var := S2NBignumSSA.v cfOut }] ++
@@ -1814,7 +1821,7 @@ private theorem double_subCopn_eq (cfOut r aName bName : String) :
             [.Pvar { gv := { var := S2NBignumSSA.v aName }, gs := false },
              .Pvar { gv := { var := S2NBignumSSA.v bName }, gs := false }] := rfl
 
-private theorem double_sbbCopn_eq (cfOut r aName bName cinName : String) :
+theorem double_sbbCopn_eq (cfOut r aName bName cinName : String) :
     S2NBignumSSA.BignumDoubleP25519.sbbCopn cfOut r aName bName cinName =
       .Copn ([.Lnone {} (.sword .U64),
               .Lvar { var := S2NBignumSSA.v cfOut }] ++
@@ -1825,7 +1832,7 @@ private theorem double_sbbCopn_eq (cfOut r aName bName cinName : String) :
              .Pvar { gv := { var := S2NBignumSSA.v bName }, gs := false },
              .Pvar { gv := { var := S2NBignumSSA.v cinName }, gs := false }] := rfl
 
-private theorem double_addCopn_eq (cfOut r aName bName : String) :
+theorem double_addCopn_eq (cfOut r aName bName : String) :
     S2NBignumSSA.BignumDoubleP25519.addCopn cfOut r aName bName =
       .Copn ([.Lnone {} (.sword .U64),
               .Lvar { var := S2NBignumSSA.v cfOut }] ++
@@ -1835,7 +1842,7 @@ private theorem double_addCopn_eq (cfOut r aName bName : String) :
             [.Pvar { gv := { var := S2NBignumSSA.v aName }, gs := false },
              .Pvar { gv := { var := S2NBignumSSA.v bName }, gs := false }] := rfl
 
-private theorem double_adcCopn_eq (cfOut r aName bName cinName : String) :
+theorem double_adcCopn_eq (cfOut r aName bName cinName : String) :
     S2NBignumSSA.BignumDoubleP25519.adcCopn cfOut r aName bName cinName =
       .Copn ([.Lnone {} (.sword .U64),
               .Lvar { var := S2NBignumSSA.v cfOut }] ++
@@ -1846,18 +1853,18 @@ private theorem double_adcCopn_eq (cfOut r aName bName cinName : String) :
              .Pvar { gv := { var := S2NBignumSSA.v bName }, gs := false },
              .Pvar { gv := { var := S2NBignumSSA.v cinName }, gs := false }] := rfl
 
-private theorem double_load64_eq (x base : String) (k : Int) :
+theorem double_load64_eq (x base : String) (k : Int) :
     S2NBignumSSA.BignumDoubleP25519.load64 x base k =
       .Cassgn (.Lvar { var := S2NBignumSSA.v x }) .AT_none (.sword .U64)
         (.Pload .U64 { var := S2NBignumSSA.v base } (.Pconst k)) := rfl
 
-private theorem double_store64_eq (base : String) (k : Int) (src : String) :
+theorem double_store64_eq (base : String) (k : Int) (src : String) :
     S2NBignumSSA.BignumDoubleP25519.store64 base k src =
       .Cassgn (.Lmem .U64 { var := S2NBignumSSA.v base } (.Pconst k))
         .AT_none (.sword .U64)
         (.Pvar { gv := { var := S2NBignumSSA.v src }, gs := false }) := rfl
 
-private theorem double_copy64'_eq (dst src : String) :
+theorem double_copy64'_eq (dst src : String) :
     S2NBignumSSA.BignumDoubleP25519.copy64' dst src =
       .Cassgn (.Lvar { var := S2NBignumSSA.v dst }) .AT_none (.sword .U64)
         (.Pvar { gv := { var := S2NBignumSSA.v src }, gs := false }) := rfl

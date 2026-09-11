@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect
 
 /-!
 # Aligning our Lean jasmin semantics with jasmin's Coq `psem` (TCB narrowing)
@@ -48,6 +51,8 @@ short lines each — plus the external `extCall` leaf (`ExtCallAgrees`,
 the carried leaf edge). The byte-addressed refinement of the element-layer
 `stackLoad`/`stackStore` rows is the downstream `JasmincWArrayAlignment.lean`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.JasmincSemAlignment
 

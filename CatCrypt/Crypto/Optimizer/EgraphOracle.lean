@@ -3,10 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Rewrite.ComPipeline
-import Mathlib.Data.Fintype.Pi
-import Mathlib.Data.Fintype.Prod
-import Mathlib.Data.BitVec
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Optimizer.Rewrite.ComPipeline
+public import Mathlib.Data.Fintype.Pi
+public import Mathlib.Data.Fintype.Prod
+public import Mathlib.Data.BitVec
 
 /-!
 # Untrusted rewrite oracle with a verified denotation-equivalence gate (#541)
@@ -64,6 +67,8 @@ has `DecidableEq`; hence equality of the two denoted functions is decidable
 All goals closed. Axiom set: `propext`, `Quot.sound` (inherited from the
 denotation machinery and `Fintype`-based decidability).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

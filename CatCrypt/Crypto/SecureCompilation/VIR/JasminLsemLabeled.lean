@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
 
 /-!
 # Labeled, program-indexed, fuel-bounded jasmin linear semantics — increments 4a/4b
@@ -121,6 +123,8 @@ increment 1's `lsemStraight`. This is the lemma that makes 4a/4b a *conservative
 extension: every existing straight-line simulation over `lsemStraight` lifts to
 the program-level `lsem`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -579,7 +583,8 @@ theorem lsemFuel_straightline_suffix (fn : String) {w : Nat}
       have hhalt : findInstr (singletonProg fn (pre ++ [])) s = none := by
         apply findInstr_singleton_halt fn (pre ++ []) s hfn
         simp [hpc]
-      rw [hhalt]
+      simp only [List.append_nil] at hhalt
+      simp [hhalt, lsemFuel]
   | cons i is ih =>
       intro s hfn hpc
       have hi : IsStraightLine i := hsl i (by simp)

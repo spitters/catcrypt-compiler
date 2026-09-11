@@ -3,10 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.BarrettButterflyKernel
-import CatCrypt.Crypto.SecureCompilation.VIR.ComInline
-import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLeafFusion
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.BarrettButterflyKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.BarrettButterflyKernel
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ComInline
+public import CatCrypt.Crypto.SecureCompilation.VIR.ComInline
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+public import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLeafFusion
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLeafFusion
 
 /-!
 # Inlining + register allocation closes the per-leaf ABI tax (#304, W4)
@@ -61,6 +68,8 @@ Two complementary levels:
 Axioms match the rest of the backend: `[propext, Quot.sound]` (+
 `Lean.ofReduceBool` for the `native_decide` numeric pins).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

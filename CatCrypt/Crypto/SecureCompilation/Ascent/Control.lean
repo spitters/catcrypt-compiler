@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
 
 /-!
 # The ascent refinement calculus over LowCT — control phase
@@ -34,6 +36,8 @@ non-vacuously.  The real do-while denotation is the separate transformer
 rule belongs against THAT transformer, not `Corres`-over-`semScalar`, and is left
 to the while-denote layer.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvAsmPrinter
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvAsmPrinter
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvAsmPrinter
 
 /-!
 # A verified machine-code byte encoder for the scalar RV64 `RInst` (#535 sub-2)
@@ -13,8 +17,9 @@ is then handed to `riscv64-linux-gnu-as` to be encoded into machine bytes — th
 last step trusts the assembler's instruction encoder. This module is the
 **RISC-V RV64 analogue of `X86Backend/ScalarEncoder.lean`**: it encodes each
 `RInst` directly to its 32-bit RV64 machine-code word in Lean, so the kernel body
-is emitted as bytes by a function whose output we audit against the official
-`riscv/sail-riscv` model and differentially validate against `as`.
+is emitted as bytes by a function whose output we audit against the transcribed
+`riscv/sail-riscv` `encdec` clauses (`SailRiscvDecoder.lean`; upstream is not
+vendored in this tree) and differentially validate against `as`.
 
 `ScalarEncoder` did this for the x86-64 scalar GP-register subset jasminc emits;
 this module does it for the **RV64I scalar 32-bit-word GP-ALU subset the owned
@@ -26,8 +31,8 @@ RISC-V backend emits** — the `RInst` set of `RiscvModel.lean` (`ADDW`/`SUBW`/
 
 RV64I base instructions are **fixed 32-bit** (no legacy/REX/VEX prefixes, no
 ModRM/SIB, no displacement variants). Each instruction word is a *fixed bitfield
-concatenation* of the official sail-riscv `encdec` mapping clause
-(`base_insts.sail`):
+concatenation* following the hand-transcribed sail-riscv `encdec` mapping clause
+(`base_insts.sail`; upstream not vendored):
 
 ```
 RTYPEW(rs2,rs1,rd,ADDW) <-> 0b0000000 @ rs2 @ rs1 @ 0b000 @ rd @ 0b0111011  (xlen==64)
@@ -57,6 +62,8 @@ section. `encodeRInst` returns the 4 LE bytes (low byte first), matching what
 `BitVec 32` word (the value objdump prints).
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvEncoder
@@ -71,7 +78,14 @@ t0..t2=5..7, s0/fp=8, s1=9, a0..a7=10..17, s2..s11=18..27, t3..t6=28..31`). The
 printer only ever emits `zero`, `a0..a7`, `t0..t6`, so those are the live rows;
 an unknown name maps to `0` (the `zero` register), never produced for a fitting
 block (`allocGp` yields the explicit `<UNALLOCATED:_>` sentinel, which `as`
-rejects). -/
+rejects).
+
+**Precondition:** the `| _ => 0` fallthrough is silent — a caller that hands
+`regNum` a name outside this table (a typo, or the `<UNALLOCATED:_>` sentinel
+itself) gets back register `x0`, not an error, so `encodeWord` on a malformed
+`RInst` would silently emit a *valid-looking* word encoding the wrong register
+rather than fail. The round-trip theorems' `emittedRegs` hypothesis is exactly
+what rules this out for the instructions actually proved. -/
 def regNum (r : String) : Nat :=
   match r with
   | "zero" | "x0" => 0
@@ -153,7 +167,14 @@ def reg5 (r : String) : BitVec 5 := BitVec.ofNat 5 (regNum r)
 
 /-- Encode one B-type `RBranch.bcc` to its 32-bit RV64 instruction word, given the
     resolved signed *byte* offset `(target − here)` as a `BitVec 13`. B-type
-    opcode is `0b1100011 = 0x63`; the comparison `funct3` is `BCmp.funct3`. -/
+    opcode is `0b1100011 = 0x63`; the comparison `funct3` is `BCmp.funct3`.
+
+    **Precondition:** `off` must already be the true offset reduced into
+    `BitVec 13` — this function does not check that the branch target is within
+    the RV64 `±4KiB` B-type range. If the caller narrows a wider offset (e.g. an
+    `Int`) to `BitVec 13` *before* calling this, an out-of-range target wraps
+    silently to a nearby in-range offset with no error; only offsets that
+    genuinely fit `BitVec 13` (`roundtrip_bcc`'s domain) are round-trip-safe. -/
 def encodeBccWord (c : BCmp) (rs1 rs2 : String) (off : BitVec 13) : BitVec 32 :=
   encB off (reg5 rs2) (reg5 rs1) (BitVec.ofNat 3 c.funct3) 0x63
 
@@ -167,7 +188,15 @@ The `funct7`/`funct3`/`opcode` constants are exactly the sail clauses:
 `ADDI` (the `MV rd,rs` pseudo = `addi rd,rs,0`) funct3 `0b000`. -/
 
 /-- Encode one `RInst` to its 32-bit RV64 instruction word (the value objdump
-    prints). `MV rd, rs` is the canonical pseudo-op `ADDI rd, rs, 0`. -/
+    prints). `MV rd, rs` is the canonical pseudo-op `ADDI rd, rs, 0`.
+
+    **Precondition:** the `.slliw`/`.srliw`/`.roriw` shift-amount `m` is packed
+    with `BitVec.ofNat 5 m`, which reduces `m` mod 32 with **no range check**.
+    The round-trip theorems (`SailRiscvDecoder.roundtrip_RInst`) are stated only
+    for `m < 32` (the 5-bit `shamt` field); calling `encodeWord` with `m ≥ 32`
+    still returns a word — silently the encoding of `m % 32`, a different
+    instruction — rather than failing. The backend only ever emits shift counts
+    `{7, 8, 12, 16, 20, 24, 25}`, all `< 32`. -/
 def encodeWord : RInst → BitVec 32
   | .addw d a b  => encR 0x00 (reg5 b) (reg5 a) 0b000 (reg5 d) 0x3b
   | .subw d a b  => encR 0x20 (reg5 b) (reg5 a) 0b000 (reg5 d) 0x3b
@@ -204,7 +233,15 @@ def encodeRBlock (block : List RInst) : List (BitVec 8) :=
     encoded here (the J-immediate scramble differs; the loop never needs `j`, only
     the `bne` back-edge). The `resolve` argument is supplied by the byte-diff
     harness with the same offsets `as` computes. The J-type is rendered as text
-    only. -/
+    only.
+
+    **Precondition:** `.j` returns `[]` — the *same* empty byte list `.label`
+    returns — rather than an error or the real 4-byte `JAL` word. This is safe
+    only because the counter loop never emits `RBranch.j` (checked by the caller,
+    not by this function); a caller that byte-diffs a block containing a real
+    `.j` would silently compare it as zero bytes instead of getting a type
+    error, so this function must not be called on `.j`-containing blocks
+    without first accounting for the missing bytes. -/
 def encodeRBranch (resolve : RLabel → BitVec 13) : RBranch → List (BitVec 8)
   | .label _       => []
   | .bcc c r1 r2 l => wordLE (encodeBccWord c r1 r2 (resolve l))
@@ -239,10 +276,11 @@ theorem encodeRBlock_length (block : List RInst) :
 
 The encoder's instruction words pinned to the exact 32-bit words
 `riscv64-linux-gnu-as` produces for the same mnemonic — the differential anchor
-(the `objdump -d` value, the bench `riscv_compare` oracle). These are the same
+(the `objdump -d` value, checked by hand against `as`; the comparison harness
+itself is not vendored in this tree). These are the same
 `addw`/`xor`/`slliw`/`srliw`/`or` lines the QR asm emits; the `decode(encode)=i`
 round-trip in `SailRiscvDecoder.lean` upgrades this gas pin to a proof against
-the official sail-riscv model. -/
+the transcribed sail-riscv `encdec` field split (`SailRiscvDecoder.lean`). -/
 
 -- `addw a0, a0, a1` → `as`/objdump word `0x00b5053b`.
 #guard encodeWord (.addw "a0" "a0" "a1") == 0x00b5053b

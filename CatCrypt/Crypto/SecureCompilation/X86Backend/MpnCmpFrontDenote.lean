@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpFrontEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpFrontTotal
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontDenote
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpFrontEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpFrontTotal
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontDenote
 
 /-!
 # The `mpn_cmp` loop body against its source semantics
@@ -40,6 +43,8 @@ emitted xor/and carry idiom is `bSltu`), from `MpnMul1FrontDenote`.
 * `cmpRtProg_val` — the machine-level value theorem: the compiled program's
   result cell holds `cmpSign` of the two operands' `bignumVal`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -81,26 +86,26 @@ Each source variable's not-a-temporary fact is proved once — the `by decide` o
 the below-`4` name length is paid a single time per name — and referenced at the
 freshness sites below, instead of re-deciding the string length at each site. -/
 
-private theorem nt_ap : ¬ isTmpName "ap" := notTmp_of_short _ (by decide)
-private theorem nt_bp : ¬ isTmpName "bp" := notTmp_of_short _ (by decide)
-private theorem nt_dif : ¬ isTmpName "dif" := notTmp_of_short _ (by decide)
-private theorem nt_gt : ¬ isTmpName "gt" := notTmp_of_short _ (by decide)
-private theorem nt_gtq : ¬ isTmpName "gtq" := notTmp_of_short _ (by decide)
-private theorem nt_gtr : ¬ isTmpName "gtr" := notTmp_of_short _ (by decide)
-private theorem nt_idx : ¬ isTmpName "idx" := notTmp_of_short _ (by decide)
-private theorem nt_j : ¬ isTmpName "j" := notTmp_of_short _ (by decide)
-private theorem nt_lt : ¬ isTmpName "lt" := notTmp_of_short _ (by decide)
-private theorem nt_ltq : ¬ isTmpName "ltq" := notTmp_of_short _ (by decide)
-private theorem nt_ltr : ¬ isTmpName "ltr" := notTmp_of_short _ (by decide)
-private theorem nt_n : ¬ isTmpName "n" := notTmp_of_short _ (by decide)
-private theorem nt_nz : ¬ isTmpName "nz" := notTmp_of_short _ (by decide)
-private theorem nt_nzq : ¬ isTmpName "nzq" := notTmp_of_short _ (by decide)
-private theorem nt_nzr : ¬ isTmpName "nzr" := notTmp_of_short _ (by decide)
-private theorem nt_rp : ¬ isTmpName "rp" := notTmp_of_short _ (by decide)
-private theorem nt_top : ¬ isTmpName "top" := notTmp_of_short _ (by decide)
-private theorem nt_x : ¬ isTmpName "x" := notTmp_of_short _ (by decide)
-private theorem nt_y : ¬ isTmpName "y" := notTmp_of_short _ (by decide)
-private theorem nt_z : ¬ isTmpName "z" := notTmp_of_short _ (by decide)
+theorem nt_ap : ¬ isTmpName "ap" := notTmp_of_short _ (by decide)
+theorem nt_bp : ¬ isTmpName "bp" := notTmp_of_short _ (by decide)
+theorem nt_dif : ¬ isTmpName "dif" := notTmp_of_short _ (by decide)
+theorem nt_gt : ¬ isTmpName "gt" := notTmp_of_short _ (by decide)
+theorem nt_gtq : ¬ isTmpName "gtq" := notTmp_of_short _ (by decide)
+theorem nt_gtr : ¬ isTmpName "gtr" := notTmp_of_short _ (by decide)
+theorem nt_idx : ¬ isTmpName "idx" := notTmp_of_short _ (by decide)
+theorem nt_j : ¬ isTmpName "j" := notTmp_of_short _ (by decide)
+theorem nt_lt : ¬ isTmpName "lt" := notTmp_of_short _ (by decide)
+theorem nt_ltq : ¬ isTmpName "ltq" := notTmp_of_short _ (by decide)
+theorem nt_ltr : ¬ isTmpName "ltr" := notTmp_of_short _ (by decide)
+theorem nt_n : ¬ isTmpName "n" := notTmp_of_short _ (by decide)
+theorem nt_nz : ¬ isTmpName "nz" := notTmp_of_short _ (by decide)
+theorem nt_nzq : ¬ isTmpName "nzq" := notTmp_of_short _ (by decide)
+theorem nt_nzr : ¬ isTmpName "nzr" := notTmp_of_short _ (by decide)
+theorem nt_rp : ¬ isTmpName "rp" := notTmp_of_short _ (by decide)
+theorem nt_top : ¬ isTmpName "top" := notTmp_of_short _ (by decide)
+theorem nt_x : ¬ isTmpName "x" := notTmp_of_short _ (by decide)
+theorem nt_y : ¬ isTmpName "y" := notTmp_of_short _ (by decide)
+theorem nt_z : ¬ isTmpName "z" := notTmp_of_short _ (by decide)
 
 /-! ## 1. New `SExpr`-lowering progress lemmas -/
 

@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
-import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2BbMulFieldExact
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2BbMulFieldExact
+public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2BbMulFieldExact
 
 /-!
 # Poseidon2 BabyBear: SIMD-vectorized **field-reduce** (SIXTEENTH ABI mode)
@@ -99,6 +104,8 @@ parallelism on the reduce chain is the dominant lever.
 * Lane-map structural law: `LaneMap.vmap₂_eq_scalar` (proven, #107).
 * S-box lane-map: `LaneMap.poseidon2_sbox_lane_map` (proven, #107).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

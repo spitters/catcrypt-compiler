@@ -3,10 +3,45 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+module
+import all CatCrypt.Core.Heap
+import all CatCrypt.Core.Location
+import all CatCrypt.Crypto.Jasmin.JasminOps
+import all CatCrypt.Crypto.Jasmin.JasminTranslate
+import all CatCrypt.Crypto.Jasmin.JasminVar
+import all CatCrypt.Crypto.Jasmin.LowCTBorrowCheck
+import all CatCrypt.Crypto.Jasmin.LowCTReflect
+import all CatCrypt.Crypto.Jasmin.LowCTToJasmin
+import all CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminCom
+import all CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+import all CatCrypt.Deep.Eval
+import all CatCrypt.Deep.RawCode
+import all CatCrypt.Core.Code
+import all CatCrypt.Crypto.CryptoWord
+import all CatCrypt.Crypto.Jasmin.JasminAST
+import all CatCrypt.Crypto.Jasmin.JasminTypes
+import all CatCrypt.Crypto.Jasmin.LowCT
+import all CatCrypt.Crypto.SDist
+import all CatCrypt.Crypto.SecureCompilation.CryptoSSA
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+import all CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
+import all CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.Core
+import all CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
 
 /-!
 # Constant-time conditional-move / select primitive for the owned backend (#581)
@@ -48,6 +83,8 @@ vectors through the full `evalInstr`/`x86_*` chain (`cmovSwap_value` /
 This is the **backend primitive** that unblocks the MAYO/UOV/SNOVA GE-solve sign
 emit; wiring it into the per-protocol GE-solve loop is the follow-on (#581/#582).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -191,7 +228,7 @@ def test64L (d : String) (s : LOperand) : Linstr :=
   ⟨0, .Lopn [.reg d] (withWidthTag 64 "TEST") [.reg d, s]⟩
 
 /-- Memory cell `[base + 0]`. -/
-private def cell (base : String) : LOperand := memCell base
+def cell (base : String) : LOperand := memCell base
 
 /-- The owned-RA CMOV conditional-swap body: load `[x_ptr]`→`R8`, `[y_ptr]`→`R9`,
     set `ZF` from `cond` (`RDX`), branchlessly swap `R8`/`R9` iff `cond ≠ 0` via
@@ -276,7 +313,7 @@ def maskLoweredOpt :=
   (maskFrontComAt "ysw").bind DialectToJasminCom.cryptoDialectToJasminCom
 
 /-- The front translates and lowers end-to-end (definitional). -/
-theorem maskLowered_isSome : maskLoweredOpt.isSome := rfl
+private theorem maskLowered_isSome : maskLoweredOpt.isSome := rfl
 
 /-- The `reg 64` dialect type. -/
 abbrev r64 : JasminTy := .reg 64
@@ -285,7 +322,7 @@ abbrev maskInCtxt : Ctxt jasminDialect := List.replicate 3 r64
 
 /-- The deployed mask conditional-swap `Com jasminDialect` — FRONT-GENERATED
     (`translateDialectControl` + `cryptoDialectToJasminCom`), not hand-built. -/
-def maskSwapCom : Com jasminDialect maskInCtxt r64 :=
+@[no_expose] def maskSwapCom : Com jasminDialect maskInCtxt r64 :=
   maskLoweredOpt.get maskLowered_isSome
 
 /-- **Provenance**: the front pipeline, applied end to end, is DEFINITIONALLY

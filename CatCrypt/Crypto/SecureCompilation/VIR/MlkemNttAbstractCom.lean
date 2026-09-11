@@ -3,10 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ButterflyBlockCom
-import Mathlib.Data.ZMod.Basic
-import Mathlib.Tactic.FinCases
-import Mathlib.Tactic.NormNum
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ButterflyBlockCom
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.Tactic.FinCases
+public import Mathlib.Tactic.NormNum
 
 /-!
 # Abstract FIPS-203 ZMod-q NTT-butterfly tie for the unified-`Com` butterfly (model-free)
@@ -75,6 +78,8 @@ proved over the unified denotation, off the bespoke machine.
 
 Invoke: `lake build CatCrypt.Crypto.SecureCompilation.VIR.MlkemNttAbstractCom`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

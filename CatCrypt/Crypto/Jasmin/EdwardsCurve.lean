@@ -3,10 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.ZMod.Basic
-import Mathlib.FieldTheory.Finite.Basic
-import Mathlib.Algebra.Group.Defs
-import CatCrypt.Tactic.FieldClear
+module
+
+import all Init.Data.Repr
+public import Mathlib.Tactic.NormNum.Prime
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.FieldTheory.Finite.Basic
+public import Mathlib.Algebra.Group.Defs
+public import CatCrypt.Tactic.FieldClear
 
 /-!
 # Abstract Edwards curve over `ZMod p`
@@ -68,6 +72,8 @@ carried by `EdwardsParams F`.
   `add_denom_pos`, `add_denom_neg` and the projective
   `EdwardsPointExt.m1add_ZneZero` are theorems over it.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.EdwardsCurve
 
@@ -421,7 +427,7 @@ theorem add_assoc_y_polynomial {F : Type*} [Field F] {E : EdwardsParams F}
 
 /-- The x-coordinate denominator of `add_xy` at a ratio-valued left operand,
     cleared of `D₁` and `D₂`. -/
-private lemma denom_pos_clear {F : Type*} [Field F] {E : EdwardsParams F}
+lemma denom_pos_clear {F : Type*} [Field F] {E : EdwardsParams F}
     (N₁ D₁ N₂ D₂ Rx Ry : F) (hD₁ : D₁ ≠ 0) (hD₂ : D₂ ≠ 0)
     (h : (1 : F) + E.d * (N₁ / D₁) * Rx * (N₂ / D₂) * Ry ≠ 0) :
     D₁ * D₂ + E.d * N₁ * Rx * N₂ * Ry ≠ 0 := by
@@ -432,7 +438,7 @@ private lemma denom_pos_clear {F : Type*} [Field F] {E : EdwardsParams F}
 
 /-- The y-coordinate denominator of `add_xy` at a ratio-valued left operand,
     cleared of `D₁` and `D₂`. -/
-private lemma denom_neg_clear {F : Type*} [Field F] {E : EdwardsParams F}
+lemma denom_neg_clear {F : Type*} [Field F] {E : EdwardsParams F}
     (N₁ D₁ N₂ D₂ Rx Ry : F) (hD₁ : D₁ ≠ 0) (hD₂ : D₂ ≠ 0)
     (h : (1 : F) - E.d * (N₁ / D₁) * Rx * (N₂ / D₂) * Ry ≠ 0) :
     D₁ * D₂ - E.d * N₁ * Rx * N₂ * Ry ≠ 0 := by
@@ -442,7 +448,7 @@ private lemma denom_neg_clear {F : Type*} [Field F] {E : EdwardsParams F}
   linear_combination hc
 
 /-- `add_xy` x-coordinate at a ratio-valued left operand, over `D₁·D₂`. -/
-private lemma add_xy_clear_fst {F : Type*} [Field F] {E : EdwardsParams F}
+lemma add_xy_clear_fst {F : Type*} [Field F] {E : EdwardsParams F}
     (N₁ D₁ N₂ D₂ Rx Ry : F) (hD₁ : D₁ ≠ 0) (hD₂ : D₂ ≠ 0)
     (h : (1 : F) + E.d * (N₁ / D₁) * Rx * (N₂ / D₂) * Ry ≠ 0) :
     (add_xy E (N₁ / D₁) (N₂ / D₂) Rx Ry).1 =
@@ -454,7 +460,7 @@ private lemma add_xy_clear_fst {F : Type*} [Field F] {E : EdwardsParams F}
   field_simp
 
 /-- `add_xy` y-coordinate at a ratio-valued left operand, over `D₁·D₂`. -/
-private lemma add_xy_clear_snd {F : Type*} [Field F] {E : EdwardsParams F}
+lemma add_xy_clear_snd {F : Type*} [Field F] {E : EdwardsParams F}
     (N₁ D₁ N₂ D₂ Rx Ry : F) (hD₁ : D₁ ≠ 0) (hD₂ : D₂ ≠ 0)
     (h : (1 : F) - E.d * (N₁ / D₁) * Rx * (N₂ / D₂) * Ry ≠ 0) :
     (add_xy E (N₁ / D₁) (N₂ / D₂) Rx Ry).2 =
@@ -603,7 +609,7 @@ theorem m1add_ZneZero (h_a_neg_one : E.a = -1) (P Q : EdwardsPointExt E) :
 
 /-- Polynomial-form x-coord identity for `to_affine_m1add` (a = -1).
     Cleared denominators; uses only TZ_eq_XY constraints, no on-curve. -/
-private theorem to_affine_m1add_x_polynomial
+theorem to_affine_m1add_x_polynomial
     (h_a_neg_one : E.a = -1) (P Q : EdwardsPointExt E) :
     let d := E.d
     ((P.Y + P.X) * (Q.Y + Q.X) - (P.Y - P.X) * (Q.Y - Q.X)) *
@@ -623,7 +629,7 @@ private theorem to_affine_m1add_x_polynomial
   grobner
 
 /-- Polynomial-form y-coord identity for `to_affine_m1add` (a = -1). -/
-private theorem to_affine_m1add_y_polynomial
+theorem to_affine_m1add_y_polynomial
     (h_a_neg_one : E.a = -1) (P Q : EdwardsPointExt E) :
     let d := E.d
     (2 * P.Z * Q.Z + P.T * 2 * d * Q.T) *
@@ -644,7 +650,7 @@ private theorem to_affine_m1add_y_polynomial
 
 /-- The m1add x-coordinate, as a ratio of the extended coordinates, is the
     x-coordinate of `add_xy` on the affine projections. -/
-private theorem m1add_coord_x_eq (h_a_neg_one : E.a = -1) (P Q : EdwardsPointExt E)
+theorem m1add_coord_x_eq (h_a_neg_one : E.a = -1) (P Q : EdwardsPointExt E)
     (hZ3 : (2 * P.Z * Q.Z - P.T * 2 * E.d * Q.T) *
       (2 * P.Z * Q.Z + P.T * 2 * E.d * Q.T) ≠ 0) :
     ((P.Y + P.X) * (Q.Y + Q.X) - (P.Y - P.X) * (Q.Y - Q.X)) *
@@ -665,7 +671,7 @@ private theorem m1add_coord_x_eq (h_a_neg_one : E.a = -1) (P Q : EdwardsPointExt
 
 /-- The m1add y-coordinate, as a ratio of the extended coordinates, is the
     y-coordinate of `add_xy` on the affine projections. -/
-private theorem m1add_coord_y_eq (h_a_neg_one : E.a = -1) (P Q : EdwardsPointExt E)
+theorem m1add_coord_y_eq (h_a_neg_one : E.a = -1) (P Q : EdwardsPointExt E)
     (hZ3 : (2 * P.Z * Q.Z - P.T * 2 * E.d * Q.T) *
       (2 * P.Z * Q.Z + P.T * 2 * E.d * Q.T) ≠ 0) :
     ((2 * P.Z * Q.Z + P.T * 2 * E.d * Q.T) *

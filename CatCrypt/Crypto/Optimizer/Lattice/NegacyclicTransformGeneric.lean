@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.CyclicConvolutionGeneric
+module
+
+public import CatCrypt.Crypto.Optimizer.Lattice.CyclicConvolutionGeneric
 
 /-!
 # The twisted DFT diagonalizes negacyclic convolution
@@ -33,6 +35,8 @@ Identifying `negaConv` with the explicit *signed* convolution
 `Fin n` subtraction) is a separate lemma, deliberately **not** done here — the
 twist-definition is the clean diagonalizable object.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

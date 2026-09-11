@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # C4 fan-out: the verified compiler emits a MAYO GF(16) multiply from extracted source
@@ -64,6 +68,8 @@ the leaf, with no front change beyond the SHA-256/Keccak/BLAKE2 leaves. This is
 the first finite-field (GF(2⁴)) family fan-out, and the harder tier:
 the field-reduce makes the spec non-trivial.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -212,7 +218,7 @@ theorem gf16Mul_compiles :
       = some (gf16MulSpec a b) := by
     have h := gf16MulSrc_denoteScalar (nIn := 2) ![a, b]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 32) (nIn := 2) ["a", "b"]
     ![a, b] gf16MulSrc _ hc hspec
 

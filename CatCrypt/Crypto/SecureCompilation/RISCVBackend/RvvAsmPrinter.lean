@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvvLowering
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvvLowering
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvvLowering
 
 /-!
 # GAS RV64 RVV printer for the packed-u32 RVV machine instructions (#549 RVV residual)
@@ -44,6 +48,8 @@ The ChaCha quarter-round's live set is 4 + a couple of temps, well under the 32
 RVV registers, so it never spills. `reserved` names (args/outputs) are pinned to
 the low registers `v0..` for the whole function.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

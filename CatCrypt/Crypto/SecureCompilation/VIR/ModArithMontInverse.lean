@@ -3,11 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ModArithDialect
-import Mathlib.Data.ZMod.Basic
-import Mathlib.FieldTheory.Finite.Basic
-import Mathlib.Tactic.FieldSimp
-import Mathlib.Tactic.Ring
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.ModArithDialect
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.FieldTheory.Finite.Basic
+public import Mathlib.Tactic.FieldSimp
+public import Mathlib.Tactic.Ring
 
 /-!
 # ModArith Montgomery-domain inverse — the `mont_inverse` leaf
@@ -70,6 +72,8 @@ exponent and step count are public, so the leaf is a total pure function and the
 folded op is constant-time on the `ModArithDialect.byInverse` story.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.ModArithMontInverse
@@ -99,7 +103,7 @@ unit witness is built from Fermat's little theorem rather than the field's
 
 /-- A nonzero residue at a prime modulus is a unit, witnessed by `x · x^(p-2) = 1`
     (Fermat).  Phrased over `ZMod`'s monoid so it feeds `ZMod.mul_inv_of_unit`. -/
-private theorem isUnit_of_ne_zero {p : Nat} [Fact (Nat.Prime p)] {a : ZMod p}
+theorem isUnit_of_ne_zero {p : Nat} [Fact (Nat.Prime p)] {a : ZMod p}
     (ha : a ≠ 0) : IsUnit a :=
   IsUnit.of_mul_eq_one (a ^ (p - 2)) <| by
     rw [← pow_succ', show (p - 2) + 1 = p - 1 from by

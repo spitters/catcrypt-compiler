@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeArithComplete
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeArithComplete
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
 
 /-!
 # The control-fragment middle tie for a bounded for-loop (`semScalar` ↔ `runBlock`)
@@ -60,6 +62,8 @@ No new axioms beyond the arithmetic tie and the unroll bridge
 trip per step; `for_middle_tie_arith` is its instantiation via
 `arith_seq_tie_gen`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

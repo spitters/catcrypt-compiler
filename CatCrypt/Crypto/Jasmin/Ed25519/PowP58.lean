@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Ed25519Spec
-import CatCrypt.Crypto.Jasmin.LowCTReflect
+module
+
+public import CatCrypt.Crypto.Jasmin.Ed25519Spec
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
 # `fp_pow_p58`: the `x^((p-5)/8)` exponentiation for Curve25519
@@ -61,6 +63,8 @@ in the QR case; in the QR-only setting (which is what
 `interp_fp_sqrt_ratio_i` axiomatises), the canonicalisation is a
 no-op modulo sign.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

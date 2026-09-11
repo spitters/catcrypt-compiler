@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherImmForms
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherImmForms
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.GatherImmForms
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull
 
 /-!
 # `compileComToElfJInstrFull6` — the byte-safe re-point entry for ALL GoldenPath kernels
@@ -33,6 +37,8 @@ agreement. So a GoldenPath `_x86_elf` def re-pointed to `compileComToElfJInstrFu
 emits identical bytes — KAT-preserving — the precondition for retiring `encodeLprog`
 from the GoldenPath emit path.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

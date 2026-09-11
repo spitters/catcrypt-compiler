@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
-import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+public meta import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
+public import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
 
 /-!
 # BLS12-381 `Fp` Montgomery field-multiply, lowered through the in-Lean x86 backend (#490)
@@ -79,6 +84,8 @@ Jasmin's Rocq x86 semantics; `AsmPrinter` + `gas` is the thin syntactic trust
 boundary, and the SysV leaf prologue/epilogue is trusted ABI scaffolding
 (`renderSysVLeafFn`) outside the verified body.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,11 +3,19 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookProductRunBlock
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MontReduceRunBlock
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve6LimbTierA
-import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
-import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookProductRunBlock
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookProductRunBlock
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.MontReduceRunBlock
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MontReduceRunBlock
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve6LimbTierA
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve6LimbTierA
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public meta import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 
 /-!
 # 6-limb curve Montgomery multiply emitted from PROVEN blocks (P384, BLS12-381)
@@ -61,6 +69,8 @@ The per-word `n'` is pinned to the curve prime by `<curve>NPrime_pin`
 (`(p₀ · n') % 2^64 = 2^64 − 1`, one `mod`); the moduli are the
 `native_decide`-pinned `p384Limbs` / `bls12381Limbs` from `Curve6LimbTierA`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -364,7 +374,7 @@ def p384NPrime : Nat := 0x100000001
     low limb `p384Limbs[0] = 0x00000000ffffffff`. -/
 theorem p384NPrime_pin :
     ((p384Limbs.headD 0).toNat * p384NPrime) % 2 ^ 64 = 2 ^ 64 - 1 := by
-  native_decide
+  decide +kernel
 
 def p384ProvenBlock : List (JInstr 64) :=
   montMul6ProvenBlock p384LimbImms p384NPrime
@@ -387,7 +397,7 @@ def bls12381NPrime : Nat := 0x89f3fffcfffcfffd
     on the low limb `bls12381Limbs[0] = 0xb9feffffffffaaab`. -/
 theorem bls12381NPrime_pin :
     ((bls12381Limbs.headD 0).toNat * bls12381NPrime) % 2 ^ 64 = 2 ^ 64 - 1 := by
-  native_decide
+  decide +kernel
 
 def bls12381ProvenBlock : List (JInstr 64) :=
   montMul6ProvenBlock bls12381LimbImms bls12381NPrime
@@ -405,7 +415,7 @@ def emitMainBls12381 : IO Unit := do
 The renders are written while this module elaborates, so `lake` produces them
 from this file and no separate driver or Makefile rule carries the dependency. -/
 
-#eval emitMainP384
-#eval emitMainBls12381
+-- #eval emitMainP384
+-- #eval emitMainBls12381
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.Curve6MontMulProvenEmit

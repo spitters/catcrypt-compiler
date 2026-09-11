@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRolledLoop
-import CatCrypt.Crypto.SecureCompilation.VIR.CompilerCorrectnessExtracted
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRolledLoop
+public import CatCrypt.Crypto.SecureCompilation.VIR.CompilerCorrectnessExtracted
 
 /-!
 # Source adequacy of the rolled-loop body front
@@ -58,6 +60,8 @@ along with the adequacy.
 
 `X86Backend.MpnLogicalFrontDenote` applies these to the `mpn_and_n` loop body.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.FrontLoopBodyDenote
 

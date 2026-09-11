@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxFrodoMac
-import CatCrypt.Crypto.SecureCompilation.VIR.KernelDelab
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxFrodoMac
+public import CatCrypt.Crypto.SecureCompilation.VIR.KernelDelab
 
 /-!
 # A hax extraction displayed as the `kernel%` surface
@@ -38,6 +41,8 @@ List.replicate n (rW w)`). The delaborator recovers positional formal names from
 to the compiler output (typed at `frontCtxt 64 3 []`) holds by `rfl` since the two
 contexts are defeq.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -111,10 +116,20 @@ theorem frodoMacKernel_eq_surface_denote (acc a b : BitVec 64) :
 /-! ## 3. Display pin — the delaborator renders the extraction as `kernel%` -/
 
 /--
-info: def CatCrypt.Crypto.SecureCompilation.HaxExtractionSurfaceDemo.frodoMacSurface : Com jasminDialect [rW 64, rW 64, rW 64]
-  (rW 64) :=
+info: @[expose] def CatCrypt.Crypto.SecureCompilation.HaxExtractionSurfaceDemo.frodoMacSurface : Com jasminDialect
+[rW 64, rW 64, rW 64] (rW 64) :=
 kernel%
-  (v0 : rW 64)(v1 : rW 64)(v2 : rW 64){x0 := (JasminOp.regConst 64 65535)[];x1 := (JasminOp.regArith JasminBinOp.mul 64)[v1, v2];x2 := (JasminOp.regArith JasminBinOp.add 64)[v0, x1];x3 := (JasminOp.regArith JasminBinOp.and 64)[x2, x0];x4 := (JasminOp.regArith JasminBinOp.or 64)[x3, x3];ret x4}
+(v0 :
+  rW
+    64)(v1 :
+  rW
+    64)(v2 :
+  rW
+    64){x0 :=
+  (JasminOp.regConst 64
+    65535)[];x1 := (JasminOp.regArith JasminBinOp.mul 64)[v1,
+  v2];x2 := (JasminOp.regArith JasminBinOp.add 64)[v0,
+  x1];x3 := (JasminOp.regArith JasminBinOp.and 64)[x2, x0];x4 := (JasminOp.regArith JasminBinOp.or 64)[x3, x3];ret x4}
 -/
 #guard_msgs (whitespace := lax) in
 #print frodoMacSurface

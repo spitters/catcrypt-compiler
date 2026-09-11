@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
 
 /-!
 # Grounded TRANSPORT-HANDSHAKE key-schedule backbones — whole-pipeline
@@ -109,6 +111,8 @@ discharged by the proved realizer.
   (§5.4 handshake KDF chain, Noise_IKpsk2); Signal double-ratchet (`KDF_CK`).
 * NIST SP 800-56C Rev. 2 (SHA-3/KMAC as HKDF PRF); FIPS 202 (Keccak / SHA-3 / SHAKE).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

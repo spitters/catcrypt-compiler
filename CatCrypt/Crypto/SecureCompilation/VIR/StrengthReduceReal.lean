@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Core
-import Std.Tactic.BVDecide
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public import Std.Tactic.BVDecide
 
 /-!
 # A rewriting strength-reduction pass for `Com` (real transform)
@@ -65,6 +69,8 @@ op-equivalence lemma, applied at every binding.
   exhibits the real `mul2 x ↝ add x x` rewrite whose soundness
   (`mul2_to_add_sound`) is the non-`rfl` arithmetic identity `2 * a = a + a`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 -- Equation/lookup lemmas legitimately do not use every ambient typeclass

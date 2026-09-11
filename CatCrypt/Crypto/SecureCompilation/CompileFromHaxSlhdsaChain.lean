@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # C4 hash-composition fan-out: the SLH-DSA WOTS+ chain-step SHA-256 inner-round combiner
@@ -68,6 +71,8 @@ recognizer set — so **no front change is required**. We emit the state-driven
 two extra leaf inputs (`kt`, `wt`) and is recorded as the natural extension
 (`t1Src`/`t1_compiles`) below.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -160,7 +165,7 @@ theorem t2_compiles :
       = some (t2Form a b c) := by
     have h := t2Src_denoteScalar (nIn := 3) ![a, b, c]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 32) (nIn := 3) ["a", "b", "c"]
     ![a, b, c] t2Src _ hc hspec
 
@@ -246,7 +251,7 @@ theorem t1_compiles :
     have hh := t1Src_denoteScalar (nIn := 6) ![e, f, g, h, kt, wt]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
       Matrix.cons_val_fin_one, Matrix.cons_val, Matrix.cons_val_two, Matrix.cons_val_three,
-      Matrix.cons_val_four] using hh
+      Matrix.cons_val_four] using! hh
   exact compileFromHax_meets_spec (w := 32) (nIn := 6) ["e", "f", "g", "h", "kt", "wt"]
     ![e, f, g, h, kt, wt] t1Src _ hc hspec
 

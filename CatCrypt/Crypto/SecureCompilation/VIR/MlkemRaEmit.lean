@@ -3,9 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.LatticeNttEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
-import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.LatticeNttEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeNttEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+public import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
+public import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
 
 /-!
 # ML-KEM-768 4-way batched NTT with live-range-aware register allocation
@@ -95,6 +101,8 @@ exactly as `LatticeNttEmit.mlkem_ntt_4way_denotation_preserves` does for
 the baseline emit. The slot-remap is a string-level relabeling and does
 not enter any theorem statement.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

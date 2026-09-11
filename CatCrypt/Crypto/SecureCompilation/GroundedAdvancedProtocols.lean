@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
-import CatCrypt.Crypto.SecureCompilation.GroundedMultiKernelProtocol
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
+public import CatCrypt.Crypto.SecureCompilation.GroundedMultiKernelProtocol
 
 /-!
 # Grounded ADVANCED-PROTOCOL backbones — whole-pipeline emit-realization with
@@ -108,6 +110,8 @@ conditions, honestly flagged).  It reuses only realizers already proved in-repo:
   threshold/blind BLS (PKC 2003).
 * NIST FIPS 202 (SHA-3 / SHAKE / Keccak sponge).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

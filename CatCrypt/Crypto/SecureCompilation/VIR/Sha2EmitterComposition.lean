@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Sha2EmitterReduction
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Sha2EmitterReduction
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.Sha2EmitterReduction
 
 /-!
 # Composition of the substrate through `Sha2Emit.emitRound`
@@ -51,6 +55,8 @@ words of `roundClosedForm`.
 
 No `sorry`, no `native_decide`, no new custom axioms in any final theorem.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

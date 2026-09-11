@@ -3,7 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.AddSubAdxPrototype
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.Mpn.AddSubAdxPrototype
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.Mpn.AddSubAdxPrototype
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -588,7 +595,7 @@ theorem MpnAddNAdxBlockedJasminRefines_zero :
   · rw [bodyAddNAdx_blocked_zero]
     simp only [bignumExecFuel, execInstr, evalPExpr, assignConst, xorClearFlags,
                vr, pv, unrollFor, bind, Option.bind, writeXorBundle,
-               List.flatMap, List.range, List.range.loop, List.append_nil,
+               List.flatMap, Nat.sub_self, List.range, List.range.loop, List.append_nil,
                List.map_nil, List.flatten_nil,
                show BitVec.ofInt 64 0 = (0 : BitVec 64) from rfl,
                show ((setReg s "cy" 0).regs "zero" ^^^
@@ -618,7 +625,7 @@ theorem MpnSubNAdxBlockedJasminRefines_zero :
   · rw [bodySubNAdx_blocked_zero]
     simp only [bignumExecFuel, execInstr, evalPExpr, assignConst, xorClearFlags,
                vr, pv, unrollFor, bind, Option.bind, writeXorBundle,
-               List.flatMap, List.range, List.range.loop, List.append_nil,
+               List.flatMap, Nat.sub_self, List.range, List.range.loop, List.append_nil,
                List.map_nil, List.flatten_nil,
                show BitVec.ofInt 64 0 = (0 : BitVec 64) from rfl,
                show ((setReg s "cy" 0).regs "zero" ^^^

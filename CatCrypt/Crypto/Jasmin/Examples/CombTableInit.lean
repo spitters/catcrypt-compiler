@@ -27,9 +27,13 @@ The AST is large (~5000 nodes) but flat — pure sequencing of:
 Inputs:  `B_xyzt`, `ID_xyzt`   (both `&[u8; 200]`)
 Outputs: `cell_0_0` ... `cell_63_15`  (1024 × `&mut [u8; 200]`)
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
-import CatCrypt.Crypto.Jasmin.RustEmit
+module
 
+public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.RustEmit
+
+
+@[expose] public section
 namespace CatCrypt.Crypto.Jasmin.Examples.CombTableInit
 
 open CatCrypt.Crypto.Jasmin.LowCT
@@ -37,28 +41,28 @@ open CatCrypt.Crypto.Jasmin.LowCT
 /-! ## §1.  Slot helpers -/
 
 /-- A 200-byte XYZT-point slot. -/
-private def xyzt (v : String) : Located :=
+def xyzt (v : String) : Located :=
   { locVar := v, locSrc := TowerType.TBytes 200 }
 
-private def cellName (i d : Nat) : String :=
+def cellName (i d : Nat) : String :=
   s!"cell_{i}_{d}"
 
-private def cell (i d : Nat) : Located := xyzt (cellName i d)
+def cell (i d : Nat) : Located := xyzt (cellName i d)
 
 /-- `RCall "xyzt_add_decomposed" dst [a, b]`: `dst := a + b`. -/
-private def xyztAdd (dst a b : String) : LowCT :=
+def xyztAdd (dst a b : String) : LowCT :=
   LowCT.RCall "xyzt_add_decomposed" (xyzt dst) [xyzt a, xyzt b]
 
 /-- `RCall "xyzt_double_decomposed" dst [a]`: `dst := 2 · a`. -/
-private def xyztDouble (dst a : String) : LowCT :=
+def xyztDouble (dst a : String) : LowCT :=
   LowCT.RCall "xyzt_double_decomposed" (xyzt dst) [xyzt a]
 
 /-- `RCall "xyzt_copy" dst [a]`: `dst := a` (200-byte memcpy). -/
-private def xyztCopy (dst a : String) : LowCT :=
+def xyztCopy (dst a : String) : LowCT :=
   LowCT.RCall "xyzt_copy" (xyzt dst) [xyzt a]
 
 /-- Left-fold a list of commands into a `RSeq` chain. -/
-private def seqN : List LowCT → LowCT
+def seqN : List LowCT → LowCT
   | []      => LowCT.RSkip
   | [c]     => c
   | c :: cs => LowCT.RSeq c (seqN cs)
@@ -67,11 +71,11 @@ private def seqN : List LowCT → LowCT
 
 /-- Declare a single 200-byte XYZT scratch (`scratch_a`/`scratch_b`)
     or named cell, wrapping a continuation. -/
-private def letCell (name : String) (cont : LowCT) : LowCT :=
+def letCell (name : String) (cont : LowCT) : LowCT :=
   LowCT.RLetZero name (TowerType.TBytes 200) cont
 
 /-- Wrap a body with all 1024 cell declarations + 2 doubling scratches. -/
-private def declareAllSlots (body : LowCT) : LowCT :=
+def declareAllSlots (body : LowCT) : LowCT :=
   letCell "scratch_a" $
   letCell "scratch_b" $
   -- Outer fold over (i, d): wrap one RLetZero per cell.
@@ -82,7 +86,7 @@ private def declareAllSlots (body : LowCT) : LowCT :=
 /-! ## §3.  Body construction -/
 
 /-- Row 0: `cell_0_0 = ID`, `cell_0_1 = B`, `cell_0_d = cell_0_(d-1) + B` for d ≥ 2. -/
-private def buildRow0 : LowCT :=
+def buildRow0 : LowCT :=
   seqN $
     [ xyztCopy (cellName 0 0) "ID_xyzt"   -- 0 · B = identity
     , xyztCopy (cellName 0 1) "B_xyzt" ]  -- 1 · B = B
@@ -98,7 +102,7 @@ private def buildRow0 : LowCT :=
       scratch_a := double scratch_b
       cell_i_d  := double scratch_a
     Four `xyzt_double_decomposed` RCalls, no copies. -/
-private def buildCell (i d : Nat) : LowCT :=
+def buildCell (i d : Nat) : LowCT :=
   let src := cellName (i - 1) d
   let dst := cellName i d
   seqN
@@ -108,7 +112,7 @@ private def buildCell (i d : Nat) : LowCT :=
     , xyztDouble dst "scratch_a" ]
 
 /-- Row i for i ≥ 1: 16 cells × 4 doublings = 64 RCalls. -/
-private def buildRow (i : Nat) : LowCT :=
+def buildRow (i : Nat) : LowCT :=
   seqN ((List.range 16).map (fun d => buildCell i d))
 
 /-- Full body: row 0 then rows 1..63.  All cells written. -/
@@ -126,7 +130,7 @@ def combTableInitBody : LowCT :=
     a hand-written shim (in the crate) copies them into the
     `OnceLock<CombTable>` at the bottom of the function.  This keeps
     the AST closed-form (one function, fixed signature). -/
-private def params : List Located := [ xyzt "B_xyzt", xyzt "ID_xyzt" ]
+def params : List Located := [ xyzt "B_xyzt", xyzt "ID_xyzt" ]
 
 /-- Outputs: a single 200×1024 = 204800-byte sink slot that the
     emitted code never directly writes — used here only to give the
@@ -134,7 +138,7 @@ private def params : List Located := [ xyzt "B_xyzt", xyzt "ID_xyzt" ]
     captured by the 1024 local `cell_*` slots; the shim reads those
     out via Rust scope leakage (the shim text wraps the emitted body
     in a closure that returns a `[[u8; 200]; 1024]` literal). -/
-private def results : List Located := []
+def results : List Located := []
 
 /-- The Rust source string for `build_comb_table`. -/
 def emitCombTableInit : String :=

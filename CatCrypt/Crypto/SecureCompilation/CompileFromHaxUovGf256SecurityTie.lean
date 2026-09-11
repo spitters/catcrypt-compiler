@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxUovGf256Tie
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxUovGf256Tie
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxUovGf256Tie
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
 
 /-!
 # #607 security tie: the compile-from-hax UOV GF(2⁸) multiply leaf realizes the
@@ -49,6 +53,8 @@ property onto the compiled artifact. It does **not** discharge the UOV (oil–vi
 *emitted arithmetic* to the *abstract arithmetic* the proof uses, which is the
 scope of #607.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

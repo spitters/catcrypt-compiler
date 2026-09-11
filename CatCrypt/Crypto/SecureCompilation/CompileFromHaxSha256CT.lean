@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSchedule
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxCompress
-import CatCrypt.Crypto.SecureCompilation.JasminCTByConstruction
+module
+
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSchedule
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxCompress
+public import CatCrypt.Crypto.SecureCompilation.JasminCTByConstruction
 
 /-!
 # The compiled SHA-256 schedule and compression are constant-time by construction
@@ -27,6 +29,8 @@ guarantee then follows once the `Com jasminDialect → machine` lowering's
 CT-preservation — the register-allocator workstream — discharges
 `SecureCompileChain.LoweringCTPreserving`.)
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

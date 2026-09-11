@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Rewrite.Egraph
-import CatCrypt.Crypto.Optimizer.Rewrite.AbsentRewrites
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Optimizer.Rewrite.Egraph
+public import CatCrypt.Crypto.Optimizer.Rewrite.AbsentRewrites
 
 /-!
 # Verified double-negation elimination pass for `Com` (`neg(neg x) ↦ x`)
@@ -67,6 +70,8 @@ discipline of `Egraph.rewriteBin`).
 
 All goals closed.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

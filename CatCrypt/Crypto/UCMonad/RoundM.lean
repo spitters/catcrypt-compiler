@@ -3,9 +3,11 @@ Copyright (c) 2024 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.UCMonad
-import CatCrypt.Crypto.UCMonad.SPCompInstance
-import CatCrypt.Crypto.SDist
+module
+
+public import CatCrypt.Crypto.UCMonad
+public import CatCrypt.Crypto.UCMonad.SPCompInstance
+public import CatCrypt.Crypto.SDist
 
 /-!
 # Round-Indexed Monad for Multi-Round UC Protocols
@@ -29,6 +31,8 @@ Key technical ingredients:
 - `flattenAll_bind` — full flattening is a monad morphism (used for PPL proofs)
 - `sdistRoundM` defined via `flattenAll`, reducing all PPL proofs to `SPComp` level
 -/
+
+@[expose] public section
 
 namespace UCMonad.RoundMUC
 
@@ -96,7 +100,7 @@ noncomputable def RoundM.bind' {α β : Type} :
 /-! ## Section 4c: Flatten-Bind Commutativity -/
 
 set_option maxHeartbeats 800000 in
-private theorem flatten_bind' {α β : Type} (n : Nat)
+theorem flatten_bind' {α β : Type} (n : Nat)
     (c : RoundM (n + 1) α) (g : α → RoundM (n + 1) β) :
     RoundM.flatten n (RoundM.bind' (n + 1) c g) =
     RoundM.bind' n (RoundM.flatten n c) (fun a => RoundM.flatten n (g a)) := by
@@ -140,7 +144,7 @@ theorem flattenAll_bind {α β : Type} (n : Nat)
 /-! ## Section 5: Monad Instance + Laws -/
 
 /-- The continuation function used by `bind'` at level `n+1`. -/
-private noncomputable def RoundM.bindCont {α β : Type} (n : Nat) (f : α → RoundM (n + 1) β) :
+noncomputable def RoundM.bindCont {α β : Type} (n : Nat) (f : α → RoundM (n + 1) β) :
     (α ⊕ RoundM n α) → SPComp (β ⊕ RoundM n β) :=
   fun
     | .inl a => f a
@@ -151,12 +155,12 @@ noncomputable instance (n : Nat) : Monad (RoundM n) where
   bind := RoundM.bind' n
 
 /-- Unfolding lemma: `>>=` at `RoundM (n+1)` reduces to `SPComp.bind`. -/
-private theorem RoundM.hbind_succ {α β : Type} (n : Nat) (c : RoundM (n + 1) α)
+theorem RoundM.hbind_succ {α β : Type} (n : Nat) (c : RoundM (n + 1) α)
     (f : α → RoundM (n + 1) β) :
     (c >>= f : RoundM (n + 1) β) = SPComp.bind c (RoundM.bindCont n f) := rfl
 
 -- pure_bind: bind' n (done n a) f = f a
-private theorem roundM_pure_bind {α β : Type} (n : Nat) (a : α) (f : α → RoundM n β) :
+theorem roundM_pure_bind {α β : Type} (n : Nat) (a : α) (f : α → RoundM n β) :
     RoundM.bind' n (RoundM.done n a) f = f a := by
   cases n with
   | zero => exact SPComp.pure_bind a f
@@ -165,7 +169,7 @@ private theorem roundM_pure_bind {α β : Type} (n : Nat) (a : α) (f : α → R
     exact SPComp.pure_bind (Sum.inl a) _
 
 -- bind_done: bind' n m (done n) = m
-private theorem roundM_bind_done {α : Type} (n : Nat) (m : RoundM n α) :
+theorem roundM_bind_done {α : Type} (n : Nat) (m : RoundM n α) :
     RoundM.bind' n m (RoundM.done n) = m := by
   induction n with
   | zero => exact SPComp.bind_pure m
@@ -190,7 +194,7 @@ private theorem roundM_bind_done {α : Type} (n : Nat) (m : RoundM n α) :
       exact congrArg SPComp.pure (congrArg Sum.inr (ih k))
 
 -- bind_assoc: standard but requires flatten-bind commutativity
-private theorem roundM_bind_assoc {α β γ : Type} (n : Nat)
+theorem roundM_bind_assoc {α β γ : Type} (n : Nat)
     (m : RoundM n α) (f : α → RoundM n β) (g : β → RoundM n γ) :
     RoundM.bind' n (RoundM.bind' n m f) g =
     RoundM.bind' n m (fun a => RoundM.bind' n (f a) g) := by

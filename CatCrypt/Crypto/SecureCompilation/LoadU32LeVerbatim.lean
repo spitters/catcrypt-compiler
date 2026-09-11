@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.HetArrayFront
-import CatCrypt.Crypto.SecureCompilation.LoadU32LeCompiles
+module
+
+public import CatCrypt.Crypto.SecureCompilation.HetArrayFront
+public import CatCrypt.Crypto.SecureCompilation.LoadU32LeCompiles
 
 /-!
 # `load_u32_le` value-correct through the verified front, by composition
@@ -32,6 +34,8 @@ sidesteps the giant valuation entirely (each half reduces in isolation), and sta
 the honest fact directly: the real function is *verified array reads* followed by the
 *verified arithmetic combine*.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 -- Hard fail-fast bound: the composition proof is small (one `rw` + a 4-term `simp`);

@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.Logical32Emit
-import CatCrypt.Crypto.Jasmin.Mpn.LogicalPrototype
-import CatCrypt.Crypto.Jasmin.Mpn.Add32Refines
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.Mpn.Logical32Emit
+public import CatCrypt.Crypto.Jasmin.Mpn.LogicalPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.Add32Refines
+
+@[expose] public section
 
 set_option autoImplicit false
 

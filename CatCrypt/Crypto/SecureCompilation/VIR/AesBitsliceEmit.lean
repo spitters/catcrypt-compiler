@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Sha2Emit
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Sha2Emit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Sha2Emit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-!
 # Bit-sliced AES round emitted as a `Com jasminDialect`, routed through the
@@ -87,6 +92,8 @@ mask is rendered as a `#imm` (`aesSboxImmSlots`), so it needs no memory load.
   `native_decide`) — the Lean correctness anchor.
 * `Sha2Emit` / `JasminLprogExportSha2` — the sibling owned-RA producer.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.AesBitsliceEmit
 

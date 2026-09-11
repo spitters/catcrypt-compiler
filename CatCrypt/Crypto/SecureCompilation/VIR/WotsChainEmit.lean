@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.SLHDSAEmit
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.SLHDSAEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.SLHDSAEmit
 
 /-!
 # WOTS+ data-dependent chains for SLH-DSA / SPHINCS+ (FIPS 205) signing, emitted
@@ -96,6 +99,8 @@ All goals closed; the only carried edges are the opaque-leaf agreements (`LeafAg
 for the chain leaf — vacuous for the fast `regArith` KAT leaf — and the digest
 leaf interface), the same closure as the two keystones (`[propext, Quot.sound]`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -256,7 +261,7 @@ Fin len → Nat`. -/
 /-- A `foldl` of two index-stepped functions that agree on every accumulator over
     the same list and seed coincide. (Local mirror of `JForProgCT.foldl_congr_fun`,
     which is `private`; the step here is indexed by a list element `i`.) -/
-private theorem foldl_congr_fun {α β : Type}
+theorem foldl_congr_fun {α β : Type}
     (f g : α → β → α) (hfg : ∀ a u, f a u = g a u) :
     ∀ (l : List β) (init : α), l.foldl f init = l.foldl g init
   | [], _ => rfl

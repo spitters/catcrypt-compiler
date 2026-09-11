@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.LinearAlgebra.Matrix.PosDef
-import Mathlib.LinearAlgebra.Matrix.Trace
-import Mathlib.Data.Fin.VecNotation
-import Mathlib.Data.Complex.Basic
+module
+
+public import Mathlib.LinearAlgebra.Matrix.PosDef
+public import Mathlib.LinearAlgebra.Matrix.Trace
+public import Mathlib.Data.Fin.VecNotation
+public import Mathlib.Data.Complex.Basic
 
 /-!
 # Matrix Decision Tactics
@@ -35,6 +37,8 @@ For dimensions > 4, the key is `Fin.sum_univ_succ` + `Fin.sum_univ_zero` to
 iteratively unfold finite sums. The named lemmas `Fin.sum_univ_two`,
 `Fin.sum_univ_three`, `Fin.sum_univ_four` only handle those specific sizes.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -257,21 +261,21 @@ macro "hermitian_decide" : tactic => `(tactic|
 section MatrixDecideTests
 
 -- 2x2: Pauli X squared via matrix_decide
-private def _root_.MatrixDecideTests.pauliX : Matrix (Fin 2) (Fin 2) Complex :=
+def _root_.MatrixDecideTests.pauliX : Matrix (Fin 2) (Fin 2) Complex :=
   Matrix.of ![![0, 1], ![1, 0]]
 
 example : MatrixDecideTests.pauliX * MatrixDecideTests.pauliX = 1 := by
   unfold MatrixDecideTests.pauliX; matrix_decide
 
 -- 2x2: Pauli Z squared via matrix_decide
-private def _root_.MatrixDecideTests.pauliZ : Matrix (Fin 2) (Fin 2) Complex :=
+def _root_.MatrixDecideTests.pauliZ : Matrix (Fin 2) (Fin 2) Complex :=
   Matrix.of ![![1, 0], ![0, -1]]
 
 example : MatrixDecideTests.pauliZ * MatrixDecideTests.pauliZ = 1 := by
   unfold MatrixDecideTests.pauliZ; matrix_decide
 
 -- 8x8: XOR permutation matrix via matrix_native
-private def _root_.MatrixDecideTests.perm8 : Matrix (Fin 8) (Fin 8) Complex :=
+def _root_.MatrixDecideTests.perm8 : Matrix (Fin 8) (Fin 8) Complex :=
   Matrix.of fun (i j : Fin 8) =>
     if i.val ^^^ 4 = j.val then (1 : Complex) else 0
 

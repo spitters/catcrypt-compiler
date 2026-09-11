@@ -3,11 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminAST
-import CatCrypt.Crypto.Jasmin.JasminVar
-import CatCrypt.Crypto.Jasmin.LowCT
-import CatCrypt.Crypto.Jasmin.LowCTToJasmin
-import CatCrypt.Core.Heap
+module
+
+public import CatCrypt.Crypto.Jasmin.JasminAST
+public import CatCrypt.Crypto.Jasmin.JasminVar
+public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.LowCTToJasmin
+public import CatCrypt.Core.Heap
 
 /-!
 # Jasmin Operational Semantics Bridge (Item 1)
@@ -50,6 +52,8 @@ The `translateVar`-indexed encoding already relates Lean `Heap` to
 `RustState` (via `HeapInv`/`ScalarInv`), so building a separate
 intermediate state buys nothing.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.SemBridge
 

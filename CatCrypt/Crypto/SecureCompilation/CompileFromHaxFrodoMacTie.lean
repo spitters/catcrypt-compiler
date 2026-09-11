@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxFrodoMac
-import CatCrypt.Crypto.Util.ZMod65536
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxFrodoMac
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxFrodoMac
+public meta import CatCrypt.Crypto.Util.ZMod65536
+public import CatCrypt.Crypto.Util.ZMod65536
 
 /-!
 # C4 fan-out: the emitted Frodo MAC leaf EQUALS the abstract `Zq65536` ring op
@@ -29,6 +33,8 @@ it is the genuine power-of-two reduce identity, lifted to the Mathlib ring
 through `ZMod.natCast_*`. Unlike the prime-field GF(127) tie there is **no domain
 restriction**: the mask handles full `u16` wraparound for any 64-bit inputs.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

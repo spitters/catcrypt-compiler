@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
-import CatCrypt.Crypto.Optimizer.SpillReloadBlockSound
-import CatCrypt.Crypto.Optimizer.FootprintValidatedPass
+module
+
+public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+public import CatCrypt.Crypto.Optimizer.SpillReloadBlockSound
+public import CatCrypt.Crypto.Optimizer.FootprintValidatedPass
 
 /-!
 # Footprint-relative soundness of the whole-block spill/reload materialization
@@ -43,6 +45,8 @@ for the others), and consumed at each reload.
   spill cell through a memory base (covers a `loadSym` whose symbol equals the spill
   base, which the register-name disjointness of `SpillWellFormed` does not).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

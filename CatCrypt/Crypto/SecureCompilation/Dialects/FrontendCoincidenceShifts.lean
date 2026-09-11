@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidence
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidence
 
 /-!
 # DF keystone (immediate-shift extension): the two frontend denotations
@@ -82,6 +84,8 @@ These agree iff `n % 2 ^ 64 = n`, i.e. **`n < 2 ^ 64`** (lemma
 Each lemma below is genuinely about **both** `denoteScalar`/`ShiftKind.apply`
 (Path A) **and** `SExpr.evalBV` (Path B); none is a restatement of one side.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

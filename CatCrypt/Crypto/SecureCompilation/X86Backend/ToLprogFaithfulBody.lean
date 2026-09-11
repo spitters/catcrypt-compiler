@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulWriteSide
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulWriteSide
 
 /-!
 # `physBody` faithfulness — threading `StoreRel` across the whole body
@@ -92,6 +94,8 @@ PROVED (against the real `lsemStraight`):
   `lsemStraight`'s straight-line register scope), exactly as in the write-side
   module.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

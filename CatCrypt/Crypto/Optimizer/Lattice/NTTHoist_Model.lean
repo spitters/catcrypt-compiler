@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.NTTHoist
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTHoist
 
 /-!
 # A concrete model `LeafSpec` discharging the hoist's assumptions
@@ -34,6 +37,8 @@ are jointly satisfiable (non-vacuous).  Bottoming the chain out in
 formosa/libcrux's *actual* primitives remains the separately-deferred
 byte-layout `LeafSpec`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -109,8 +114,8 @@ theorem model_nttAgrees (q n : Nat) :
 We fix `(q, n) = (3329, 256)` so the leaf names are concrete strings and
 the dispatch conditions decide. -/
 
-private def Q : Nat := 3329
-private def Nn : Nat := 256
+def Q : Nat := 3329
+def Nn : Nat := 256
 
 theorem model_hAdd {T : TowerType} (o x y : RustVal T) :
     (modelLeafSpec Q Nn).call "poly_add" T [T, T] o [⟨T, x⟩, ⟨T, y⟩] = gAdd x y := by

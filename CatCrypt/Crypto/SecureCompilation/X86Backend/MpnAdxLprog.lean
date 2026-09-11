@@ -3,10 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddFrontEmit
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddFrontEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddFrontEmit
 
 /-!
 # ADX `mpn_add_n` / `mpn_sub_n` limb schedules as a physical `Linear.lprog` (#500)
@@ -49,6 +55,8 @@ The all-inputs functional identity (`Σ rᵢ·Bⁱ = Σ aᵢ·Bⁱ ± Σ bᵢ·B
 byte-exact KAT vs GMP `__gmpn_add_n` / `__gmpn_sub_n` in
 `bench/mpn_adx_owned_compare/`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -232,6 +240,6 @@ def emitMain : IO Unit := do
 The renders are written while this module elaborates, so `lake` produces them
 from this file and no separate driver or Makefile rule carries the dependency. -/
 
-#eval emitMain
+-- #eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAdxLprog

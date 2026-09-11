@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTToJasmin
+module
+
+public import CatCrypt.Crypto.Jasmin.LowCTToJasmin
 
 /-!
 # P-256 base-field ops, routed through the owned compiler front
@@ -40,6 +42,8 @@ what the relational-front Add/Mul results (`p256_add_commutes` /
 `p256_mul_commutes`, above) carry. As with `g1AddBody`, this file exhibits only
 that those same ops lower through the front to the `fp_add` / `fp_mul` leaves.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

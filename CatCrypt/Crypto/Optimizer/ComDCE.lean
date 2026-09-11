@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Rewrite.Egraph
+module
+
+public import CatCrypt.Crypto.Optimizer.Rewrite.Egraph
 
 /-!
 # Verified dead-let elimination for `Com` — a denotation-preserving rewrite
@@ -61,6 +63,8 @@ drops an observable effect: denotation is preserved exactly.
 All goals closed. No `sorry`. Axiom set: `propext`, `Quot.sound`,
 `Classical.choice` (the standard Lean/Mathlib trio inherited via `Egraph`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -200,7 +204,7 @@ check that (a) the pass actually shrinks the program (one binder removed),
 preserved. -/
 
 /-- A `reg 32` binary `regArith` helper for the demo. -/
-private def binR32 {Γ : Ctxt jasminDialect} (op : JasminBinOp)
+def binR32 {Γ : Ctxt jasminDialect} (op : JasminBinOp)
     (a b : Ctxt.Var Γ (.reg 32)) : Expr jasminDialect Γ (.reg 32) :=
   { op := .regArith op 32, retTy_eq := rfl, args := .cons a (.cons b .nil) }
 

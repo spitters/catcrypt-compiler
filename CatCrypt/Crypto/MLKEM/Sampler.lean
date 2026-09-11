@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Util.ZMod3329
+module
+
+public import CatCrypt.Crypto.Util.ZMod3329
 
 /-!
 # FIPS 203 ML-KEM samplers over the owned sponge
@@ -33,6 +35,8 @@ computable and axiom-free — the caller supplies the squeezed prefix.
 * `sampleCBD_eta` — Algorithm 8 packaged as `Fin 256 → Zq3329`.
 * `cbdCoeff_bound` — the range property `-eta ≤ coeff ≤ eta`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ScalarLinNeutralDemo
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.ComToRiscvLsem
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArmDecoder
-import CatCrypt.Crypto.SecureCompilation.VIR.Compiler
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ScalarLinNeutralDemo
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.ComToRiscvLsem
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArmDecoder
+public import CatCrypt.Crypto.SecureCompilation.VIR.Compiler
 
 /-!
 # `Com → AArch64`: a block-execution `MachineModel` + value-preservation keystone
@@ -35,9 +37,14 @@ field — the whole-`Com → AArch64` value-preservation keystone for the base-A
   `RegBaseAlu`, `comToRegProg_RegBaseAlu` are **front-only** (over `RegStmt` /
   `opToStmts` / `Com`, not RISC-V lowering), so they are imported verbatim from
   `RISCVBackend.ComToRiscvLsem` and reused for the ARM coverage proof.
-* **The decode round-trip** — `SailArmDecoder.roundtrip_binst_{add,sub,and,orr,
-  eor,…}` and the GP-ALU `roundtrip_ainst_*`: `decode (encode i) = i` against the
-  transcribed `rems-project/sail-arm` `aarch_decode.sail` field splits.
+* **The decode round-trip** — `SailArmDecoder.roundtrip_binst_add`, `_sub`,
+  `_and`, `_orr`, `_eor` (the five GP-ALU ops this module's fragment executes),
+  alongside the rest of the `roundtrip_binst_*` family and the 32-bit
+  `roundtrip_ainst_*`: `decode (encode i) = i` against field splits **hand
+  transcribed** from the public `rems-project/sail-arm` `aarch_decode.sail`
+  (no sail-arm checkout is vendored in this repo, so that transcription is a
+  trusted step). `roundtrip_binst_orr` carries the `Rn ≠ XZR` side condition
+  that separates a real `ORR` from the `MOV` alias.
 
 ## What this module adds (the missing completion)
 
@@ -55,24 +62,36 @@ field — the whole-`Com → AArch64` value-preservation keystone for the base-A
 
 **This is the residual that separates ARM from RISC-V.** The RISC-V model's
 `validated` (`RiscvBaseAluGrounded`) is a *value-level Sail-execute refinement*:
-each base-ALU step of `runRBlock64` is proved equal to the value the vendored
-sail-riscv `execute_RTYPE` clause writes (`SailRiscv64Refinement`). **ARM has no
-such in-tree Sail execute-semantics model.** What grounds the ARM model is:
+each base-ALU step of `runRBlock64` is proved equal to the value the sail-riscv
+`execute_RTYPE` clause writes, where that clause is an in-file excerpt of the
+sail-riscv-lean generated output (commit `9eba3f07`; upstream not vendored)
+(`SailRiscv64Refinement`). ARM has an
+in-tree *hand-transcribed* execute-clause file — `SailArm64Refinement.lean`,
+which renders two Arm ARM pseudocode clauses and proves their per-op value
+matches `ArmModel`'s `opAnd64`/`opOrr64`/`opEor64` (and raw `BitVec` `+`/`-`) —
+but **no theorem links it to `runBBlock`**: nothing in it mentions `evalBInst`,
+`BState`, or `runBBlock`, nothing in the package imports it, and its clauses were
+not read from a checkout vendored in this repo; the transcription's provenance is
+not recorded. So it does not ground this model. What grounds the ARM model is:
 
 * the **`SailArmDecoder` decode round-trip** — `decode (encode i) = i` against the
   transcribed `sail-arm` `aarch_decode.sail` *parse* clauses (which operand bits
   each instruction names), for the full emitted GP-ALU subset;
 * **differential testing** against the GNU assembler / objdump / LLVM and a qemu
-  execute KAT (`bench/arm_compare`: 704/704 encode-decode, 237/237 execute);
+  execute KAT — 704/704 encode-decode, 237/237 execute, a tally from an untracked
+  local harness, not vendored in this repo and not reproducible from this tree;
 * the **hand-written `ArmModel` semantics**, auditable against the Arm ARM by eye.
 
 There is **no machine-checked equality between `runBBlock`'s per-op effect and an
 authoritative `sail-arm` *execute* clause** — only between the encoder bytes and
-the `sail-arm` *decode* parse. Bringing ARM to RISC-V's depth needs a port of a
-`sail-arm` execute-semantics model and a `SailArm64Refinement` analogue of
-`SailRiscv64Refinement`; that is the explicit residual, called out here so the
-`validated` field is not read as a Sail-execute grounding it is not.
+the transcribed *decode* parse. Bringing ARM to RISC-V's depth needs a vendored
+`sail-arm` execute-semantics model and a theorem carrying `SailArm64Refinement`'s
+value-level lemmas across to `evalBInst`/`runBBlock`; that is the explicit
+residual, called out here so the `validated` field is not read as a Sail-execute
+grounding it is not.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -253,8 +272,9 @@ theorem runBBlock_regToBOp_base_pure (p : RegProg)
     functional semantics — the AArch64 mirror of `comToRiscvLsem_correct`.
 
     **Trust scope (the residual vs RISC-V):** conjunct (2) is a *decode* round-trip
-    + differential/qemu grounding, **not** a Sail-execute refinement; ARM has no
-    in-tree `sail-arm` execute model (unlike RISC-V's `SailRiscv64Refinement`). -/
+    + differential/qemu grounding, **not** a Sail-execute refinement. The in-tree
+    `SailArm64Refinement` hand-transcribes execute clauses but no theorem links it
+    to `runBBlock`, so it is not a `SailRiscv64Refinement` analogue. -/
 theorem comToArmLsem_correct {Γ : Ctxt jasminDialect}
     {com : Com jasminDialect Γ (.reg 64)} (hba : ComBaseAlu com) (hΓ : AllReg64 Γ)
     (V : Ctxt.Valuation Γ) (s : BState) (hs : s.regs = envOf Γ.length V) :
@@ -276,11 +296,16 @@ theorem comToArmLsem_correct {Γ : Ctxt jasminDialect}
     only GP-ALU instructions.
 
     **It is NOT a Sail-execute refinement.** Unlike `RiscvBaseAluGrounded` (which
-    equates each model step with the vendored `execute_RTYPE` Sail clause), this
-    carries no in-tree `sail-arm` execute model — the GP-ALU coverage is grounded
-    by the `SailArmDecoder` decode round-trip + differential/qemu testing + the
-    hand-written `ArmModel`. The residual to RISC-V depth is a `sail-arm` execute
-    port. -/
+    equates each model step with the `execute_RTYPE` Sail clause held as an
+    in-file excerpt of the sail-riscv-lean generated output — commit `9eba3f07`;
+    upstream not vendored), no
+    theorem here connects `runBBlock` to an execute-clause model. The in-tree
+    `SailArm64Refinement.lean` hand-transcribes two Arm ARM execute clauses, but
+    it is import-orphaned and never mentions `evalBInst`/`runBBlock`, so it does
+    not close that gap. The GP-ALU coverage is grounded by the `SailArmDecoder`
+    decode round-trip + differential/qemu testing + the hand-written `ArmModel`.
+    The residual to RISC-V depth is a vendored `sail-arm` execute port plus a
+    theorem bridging it to `runBBlock`. -/
 def ArmBaseAluGrounded : Prop :=
   ∀ {Γ : Ctxt jasminDialect} {com : Com jasminDialect Γ (.reg 64)},
     ComBaseAlu com → AllReg64 Γ → ∀ (V : Ctxt.Valuation Γ) (s : BState),
@@ -304,7 +329,9 @@ theorem armBaseAluGrounded_proof : ArmBaseAluGrounded :=
     path was missing for the base-ALU fragment — the mirror of `riscvBaseAluModel`.
 
     **Honest depth:** `validated` is value-preservation + GP-ALU decode-round-trip
-    grounding, NOT a Sail-execute refinement (which RISC-V has and ARM lacks). -/
+    grounding, NOT a Sail-execute refinement — RISC-V has one against an in-file
+    excerpt of the sail-riscv-lean generated output; ARM's `SailArm64Refinement`
+    is a hand transcription with no theorem reaching `runBBlock`. -/
 def armBaseAluModel : MachineModel where
   Code := List BInst
   State := BState

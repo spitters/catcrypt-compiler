@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
-import CatCrypt.Crypto.SecureCompilation.JasminCTByConstruction
+module
+
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public import CatCrypt.Crypto.SecureCompilation.JasminCTByConstruction
 
 /-!
 # A syntactic scope condition under which `compileFromHax` succeeds
@@ -30,6 +32,8 @@ the unroll depth, with `compileFromHax_isSome_of_compiles` as the entry point.
 so every `Com` the front emits lies in the index-free fragment
 (`compileFromHax_ct`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

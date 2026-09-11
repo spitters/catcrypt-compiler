@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgIndexed
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
-import CatCrypt.Crypto.Hash.Keccak
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JForProgIndexed
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgIndexed
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
+public meta import CatCrypt.Crypto.Hash.Keccak
+public import CatCrypt.Crypto.Hash.Keccak
 
 /-!
 # The full Keccak-p[1600,24] round loop is bit-exact in its per-round constants
@@ -66,6 +71,8 @@ axioms, no `native_decide` for the bit-exactness.
 See `KeccakEmit.lean` for the full 12-file Keccak VIR canonical map. This
 file is step #109 in that chain: the 24-round loop bit-exact in `RC[i]`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -265,7 +272,7 @@ theorem keccak_rounds_eq_foldl :
 
 /-- Fold congruence under a per-element side condition (mirrors the exemplar's
     `foldl_congr_mem`). -/
-private theorem foldl_congr_mem (f g : KeccakState → Nat → KeccakState) :
+theorem foldl_congr_mem (f g : KeccakState → Nat → KeccakState) :
     ∀ (l : List Nat), (∀ i ∈ l, ∀ acc, f acc i = g acc i) →
       ∀ init, l.foldl f init = l.foldl g init
   | [], _, _ => rfl

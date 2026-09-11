@@ -3,8 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminCoqSemMirror
-import CatCrypt.Crypto.Util.Gf256
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.JasminCoqSemMirror
+public import CatCrypt.Crypto.Jasmin.JasminCoqSemMirror
+public meta import CatCrypt.Crypto.Util.Gf256
+public import CatCrypt.Crypto.Util.Gf256
+
+@[expose] public section
 
 set_option autoImplicit false
 

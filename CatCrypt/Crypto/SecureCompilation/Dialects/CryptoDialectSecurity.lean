@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectSecurityNative
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectSecurityNative
 
 /-!
 # DR-collapse — the security layer over the unified crypto dialect
@@ -31,6 +33,8 @@ the equal-strength successors of `CryptoSSA.progEquiv` / `CryptoSSA.progSdist`
 triangle-inequality structure of a pseudometric, mirroring the `CProg` proofs
 but over the MLIR-aligned dialect's own `SPComp` interpretation.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.X25519EmitMLIR
-import CatCrypt.Crypto.SecureCompilation.VIR.ComToVeir_CatCryptDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.X25519EmitMLIR
+public import CatCrypt.Crypto.SecureCompilation.VIR.ComToVeir_CatCryptDialect
 
 /-!
 # Path (b): X25519 ladder-step emission through Veir
@@ -29,6 +31,8 @@ declarations for each callee — see Stage H smoke-test in
 *not* yet generate those extern declarations automatically;
 follow-up work.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -94,9 +98,9 @@ def writeFullStepVeir (path : System.FilePath) : IO Unit := do
   let z3 ← emitFullStepZ3pVeir
   IO.FS.writeFile path (x2 ++ nl ++ z2 ++ nl ++ x3 ++ nl ++ z3)
 
-#eval do
-  let some d ← benchDir | return ()
-  writeHalfStepVeir (d / "x25519_halfstep.veir.mlir")
-  writeFullStepVeir (d / "x25519_fullstep.veir.mlir")
+-- #eval do
+--   let some d ← benchDir | return ()
+--   writeHalfStepVeir (d / "x25519_halfstep.veir.mlir")
+--   writeFullStepVeir (d / "x25519_fullstep.veir.mlir")
 
 end CatCrypt.Crypto.SecureCompilation.VIR.X25519EmitVeir

@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ComInline
-import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialectBlockDescent
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ComInline
+public import CatCrypt.Crypto.SecureCompilation.VIR.ComInline
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialectBlockDescent
+public import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialectBlockDescent
 
 /-!
 # `func.call` / `.Lcall` inlining for the A-normal `Com` export path
@@ -58,6 +62,8 @@ already-proved dialect-generic block-splice primitive
 
 All proofs are structural. No `sorry`, no `native_decide`, no new axioms.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.SpeculativeCTFence
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.SpeculativeCTFence
+public import CatCrypt.Crypto.SecureCompilation.SpeculativeCTFence
 
 /-!
 # Verified address-masking (Speculative-Load-Hardening): speculative CT against
@@ -106,6 +109,8 @@ transiently-issued address is masked to a constant.
   Stefan, "Automatically Eliminating Speculative Leaks with Blade", POPL 2021
   (masking vs fencing, the ~1.7% vs ~5.0% overhead figures).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.SpeculativeCT
 

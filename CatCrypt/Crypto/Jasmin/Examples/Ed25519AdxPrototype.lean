@@ -3,8 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Examples.Curve25519AdxPrototype
-import CatCrypt.Crypto.Util.Sha512Verified
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.Examples.Curve25519AdxPrototype
+public import CatCrypt.Crypto.Jasmin.Examples.Curve25519AdxPrototype
+public meta import CatCrypt.Crypto.Util.Sha512Verified
+public import CatCrypt.Crypto.Util.Sha512Verified
+
+@[expose] public section
 
 set_option autoImplicit false
 

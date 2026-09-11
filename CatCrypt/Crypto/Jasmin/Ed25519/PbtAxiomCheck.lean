@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.ZMod.Basic
-import Mathlib.Tactic.NormNum
+module
 
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.Tactic.NormNum
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!

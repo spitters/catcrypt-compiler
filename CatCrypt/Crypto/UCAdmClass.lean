@@ -3,7 +3,9 @@ Copyright (c) 2024 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.UCMonad
+module
+
+public import CatCrypt.Crypto.UCMonad
 
 /-!
 # Admissibility Classes and Computational Distance
@@ -51,6 +53,8 @@ Computational Complexity (ICC): Bellantoni-Cook, BLL, Soft Affine Logic, etc.
 * Katsumata, "Double-category analysis of graded linear exponential comonads", 2018
 * Atkey, "Polynomial Time and Dependent Types", POPL 2024
 -/
+
+@[expose] public section
 
 open scoped ENNReal
 

@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ProtocolEmitRealizes
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ProtocolEmitRealizes
 
 /-!
 # HKDF (RFC 5869) as an axis-6 `ProtocolKernels` instantiation
@@ -53,6 +55,8 @@ per-kernel realizations are honest hypotheses (each is the kernel's leaf-bytes
 KAT); the contribution is that the protocol-level composition assembles for free
 from them.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

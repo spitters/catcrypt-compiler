@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.BignumHoare
-import CatCrypt.Crypto.Jasmin.BignumHoare.ChainAlgebra
+module
+
+public import CatCrypt.Crypto.Jasmin.BignumHoare
+public import CatCrypt.Crypto.Jasmin.BignumHoare.ChainAlgebra
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -38,11 +42,11 @@ open CatCrypt.Crypto.Jasmin.MemoryModel
 
 /-! ### Equation lemmas — `BignumSubP25519`-specific wrappers (re-exposed for mvcgen) -/
 
-private theorem sub_assignConst_eq (s : String) (k : Int) :
+theorem sub_assignConst_eq (s : String) (k : Int) :
     S2NBignumSSA.assignConst s k =
       .Cassgn (.Lvar { var := S2NBignumSSA.v s }) .AT_none (.sword .U64) (.Pconst k) := rfl
 
-private theorem sub_assignBin_eq (s : String) (op : SOp2) (a b : String) :
+theorem sub_assignBin_eq (s : String) (op : SOp2) (a b : String) :
     S2NBignumSSA.assignBin s op a b =
       .Cassgn (.Lvar { var := S2NBignumSSA.v s }) .AT_none (.sword .U64)
         (.Papp2 op (.Pvar { gv := { var := S2NBignumSSA.v a }, gs := false })
@@ -105,7 +109,7 @@ private theorem sub_store64_eq (base : String) (k : Int) (src : String) :
 -- (zero, 4 a-loads, 4 b-loads, SBB chain). Postcondition pins
 -- regs r0..r3 = SBB chain output (subBorrow/subBorrowIn `.2`s).
 open Std.Do in
-private theorem sub_p25519_phaseA_triple
+theorem sub_p25519_phaseA_triple
     (base_a base_b : UInt64) (a0 a1 a2 a3 b0 b1 b2 b3 : UInt64) :
     Triple (BignumExec.bignumExecM BignumExec.emptyRegistry
               (S2NBignumSSA.BignumSubP25519.body.take 13))
@@ -176,7 +180,7 @@ private theorem sub_p25519_phaseA_triple
 -- Phase B for `bignum_sub_p25519`: instructions 14-22
 -- (mask SBB + p constants + masks + ADC chain). Closes algoNat equation.
 open Std.Do in
-private theorem sub_p25519_phaseB_triple
+theorem sub_p25519_phaseB_triple
     (a0 a1 a2 a3 b0 b1 b2 b3 : UInt64) :
     Triple (BignumExec.bignumExecM BignumExec.emptyRegistry
               ((S2NBignumSSA.BignumSubP25519.body.drop 13).take 9))
@@ -258,7 +262,7 @@ private theorem sub_p25519_phaseB_triple
 -- bignumExecM` (line 10) blocks Lean from whnf-unfolding the 22-element
 -- body literal during the bind unification.
 open Std.Do in
-private theorem sub_p25519_triple
+theorem sub_p25519_triple
     (base_a base_b : UInt64) (a0 a1 a2 a3 b0 b1 b2 b3 : UInt64) :
     Triple (BignumExec.bignumExecM BignumExec.emptyRegistry
               (S2NBignumSSA.BignumSubP25519.body.take 22))

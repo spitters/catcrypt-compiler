@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Core
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
 
 /-!
 # An eliminating common-subexpression-elimination pass for `Com` (real transform)
@@ -85,6 +88,8 @@ merged slots hold the same value `w`.
   equal-expression hypothesis, and returns the smaller `.var e
   (cseHead e' body …)` with the preservation theorem `cseAdjacent_denote`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 -- Several equation/lookup lemmas legitimately do not use every ambient

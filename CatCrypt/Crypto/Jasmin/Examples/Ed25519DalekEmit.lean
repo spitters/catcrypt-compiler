@@ -3,9 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
-import CatCrypt.Crypto.Jasmin.LowCTToMLIR
-import CatCrypt.Crypto.Jasmin.Examples.Ed25519AddChainsDSL
+module
+
+public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
+public meta import CatCrypt.Crypto.Jasmin.LowCTToMLIR
+public import CatCrypt.Crypto.Jasmin.LowCTToMLIR
+public meta import CatCrypt.Crypto.Jasmin.Examples.Ed25519AddChainsDSL
+public import CatCrypt.Crypto.Jasmin.Examples.Ed25519AddChainsDSL
+public meta import CatCrypt.Crypto.Jasmin.Examples.BenchOut
+public import CatCrypt.Crypto.Jasmin.Examples.BenchOut
 
 /-!
 # Ed25519 dalek primitives: mixed-add, compress, decompress — MLIR emit
@@ -25,17 +32,12 @@ Output target is `$CATCRYPT_BENCH/src/ed25519_{madd,compress,decompress}.mlir`,
 with the benchmark / cross-check C wrappers in `bench_ed25519_*.c`.
 -/
 
+@[expose] public section
+
 namespace CatCrypt.Crypto.Jasmin.Examples.Ed25519DalekEmit
 
 open CatCrypt.Crypto.Jasmin.LowCT
 
-/-- Helper: write a string to `path`, but skip silently if the parent
-directory is missing (e.g. CI environments without the sibling
-`catcrypt-bench` source tree). -/
-private def maybeWrite (path : String) (content : String) : IO Unit := do
-  let p : System.FilePath := path
-  if ← System.FilePath.pathExists p.parent.get! then
-    IO.FS.writeFile path content
 open CatCrypt.Crypto.Jasmin.LowCTReflect
 open CatCrypt.Crypto.Jasmin.LowCTToMLIR
 open CatCrypt.Crypto.Jasmin.Examples.Ed25519AddChainsDSL
@@ -64,10 +66,10 @@ def ed25519ExternsFull : List (String × Nat × TowerType × TowerType) :=
   , ("scalar_neg",      1, .TFpL25519, .TFpL25519)
   , ("scalar_inv",      1, .TFpL25519, .TFpL25519) ]
 
-private def emitReifiedFp (name : String) (rf : ReifiedFunc) : String :=
+def emitReifiedFp (name : String) (rf : ReifiedFunc) : String :=
   emitFunc name rf.args rf.retName .TFp25519 rf.body
 
-private def emitReifiedFpL (name : String) (rf : ReifiedFunc) : String :=
+def emitReifiedFpL (name : String) (rf : ReifiedFunc) : String :=
   emitFunc name rf.args rf.retName .TFpL25519 rf.body
 
 /-! ## 2. Mixed-add module (projective + affine Niels) -/
@@ -79,8 +81,8 @@ def ed25519MaddMLIR : String :=
   emitReifiedFp "ed25519_madd_t3" edwardsMaddT3Reified ++ "\n\n" ++
   emitReifiedFp "ed25519_madd_z3" edwardsMaddZ3Reified
 
-#eval maybeWrite
-  "/home/au528660/Claude/BLS/catcrypt-bench/src/ed25519_madd.mlir"
+#eval BenchOut.writeBench
+  "ed25519_madd.mlir"
   ed25519MaddMLIR
 
 /-! ## 3. Compress / decompress -/
@@ -95,12 +97,12 @@ def ed25519DecompressMLIR : String :=
   emitReifiedFp "ed25519_decompress_x" edwardsDecompressXReified ++ "\n\n" ++
   emitReifiedFp "ed25519_decompress_t" edwardsDecompressTReified
 
-#eval maybeWrite
-  "/home/au528660/Claude/BLS/catcrypt-bench/src/ed25519_compress.mlir"
+#eval BenchOut.writeBench
+  "ed25519_compress.mlir"
   ed25519CompressMLIR
 
-#eval maybeWrite
-  "/home/au528660/Claude/BLS/catcrypt-bench/src/ed25519_decompress.mlir"
+#eval BenchOut.writeBench
+  "ed25519_decompress.mlir"
   ed25519DecompressMLIR
 
 /-! ## 4. Scalar arithmetic (sign-step `s = r + h·a mod L`) -/
@@ -109,8 +111,8 @@ def ed25519ScalarMLIR : String :=
   emitExterns ed25519ExternsFull ++ "\n" ++
   emitReifiedFpL "ed25519_scalar_s" ed25519ScalarSReified
 
-#eval maybeWrite
-  "/home/au528660/Claude/BLS/catcrypt-bench/src/ed25519_scalar.mlir"
+#eval BenchOut.writeBench
+  "ed25519_scalar.mlir"
   ed25519ScalarMLIR
 
 /-! ## 4b. Curve25519 base-field addition chains (Track F2 reification)
@@ -140,8 +142,8 @@ def ed25519AddChainsMLIR : String :=
   emitFunc "fp_inv"     [("z", .TFp25519)] "out" .TFp25519 fpInvChain ++ "\n\n" ++
   emitFunc "fp_invsqrt" [("z", .TFp25519)] "out" .TFp25519 fpPowP58Chain
 
-#eval maybeWrite
-  "/home/au528660/Claude/BLS/catcrypt-bench/src/ed25519_addchains.mlir"
+#eval BenchOut.writeBench
+  "ed25519_addchains.mlir"
   ed25519AddChainsMLIR
 
 /-! ## 5. Ristretto255 compress / decompress -/
@@ -153,8 +155,8 @@ def ristrettoMLIR : String :=
   emitReifiedFp "ristretto_decompress_y" ristrettoDecompressYReified ++ "\n\n" ++
   emitReifiedFp "ristretto_decompress_t" ristrettoDecompressTReified
 
-#eval maybeWrite
-  "/home/au528660/Claude/BLS/catcrypt-bench/src/ristretto255.mlir"
+#eval BenchOut.writeBench
+  "ristretto255.mlir"
   ristrettoMLIR
 
 end CatCrypt.Crypto.Jasmin.Examples.Ed25519DalekEmit

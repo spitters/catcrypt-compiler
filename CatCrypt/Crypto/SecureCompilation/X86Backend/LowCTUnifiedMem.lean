@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTUnified
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMemDenote
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTUnified
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTUnified
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMemDenote
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMemDenote
 
 /-!
 # w7-mem: the FULL supported fragment in one program type — scalar + mulx + loop + select + memory
@@ -97,6 +101,8 @@ KAT through the FULL unified pipeline.
   discipline, not the unconditional `allDirect` shape — that is the correct
   (and necessary) CT shape for value-indexed memory.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

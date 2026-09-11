@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgMultiOp
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JForProgMultiOp
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgMultiOp
 
 /-!
 # Verified loop unrolling for `JForProg`
@@ -62,6 +65,8 @@ structural induction on the iteration count and standard `Nat`-arithmetic
 identities (`omega`, `Nat.div_mul_cancel`, `List.foldl_append`,
 `List.range_add`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -146,7 +151,7 @@ def stepN {accTy : JasminTy} (p : JForProg accTy) (N : Nat)
 /-- **Folding `f` over `range (a + b)` from `init` equals folding `f` over
     `range b` from `(range a).foldl f init`.** A list-flavoured restatement of
     `List.range_add` + `List.foldl_append`. -/
-private theorem foldl_range_add {α : Type _}
+theorem foldl_range_add {α : Type _}
     (f : α → Nat → α) (a b : Nat) (init : α) :
     (List.range (a + b)).foldl f init
       = (List.range b).foldl
@@ -157,7 +162,7 @@ private theorem foldl_range_add {α : Type _}
 /-- A `foldl` over a `List.range` whose function ignores the index. The body
     function is essentially a unary step. (Used to discard the index-rewrite
     introduced by `foldl_range_add`.) -/
-private theorem foldl_range_const {accTy : JasminTy}
+theorem foldl_range_const {accTy : JasminTy}
     (step : ⟦accTy⟧ → ⟦accTy⟧) (n : Nat) (init : ⟦accTy⟧) :
     (List.range n).foldl (fun acc _ => step acc) init
       = iterFn step n init := by
@@ -170,7 +175,7 @@ private theorem foldl_range_const {accTy : JasminTy}
 /-- A re-indexed `foldl_range_const`: folding `step` over `range b` from any
     seed equals `iterFn step b` of the seed, *regardless* of how the indices
     are re-mapped (since the function ignores them). -/
-private theorem foldl_range_reindexed_const {accTy : JasminTy}
+theorem foldl_range_reindexed_const {accTy : JasminTy}
     (step : ⟦accTy⟧ → ⟦accTy⟧) (g : Nat → Nat) (n : Nat) (init : ⟦accTy⟧) :
     (List.range n).foldl (fun acc i => (fun acc' _ => step acc') acc (g i)) init
       = iterFn step n init := by
@@ -277,7 +282,7 @@ structure UnrolledBy {accTy : JasminTy} (p : JForProg accTy) (N : Nat)
 
 /-- A `foldl`-congruence lemma: two folds over `range n` whose bodies agree
     pointwise (regardless of index) coincide on every initial value. -/
-private theorem foldl_step_congr {accTy : JasminTy}
+theorem foldl_step_congr {accTy : JasminTy}
     {f g : ⟦accTy⟧ → ⟦accTy⟧} (hfg : ∀ acc, f acc = g acc) (n : Nat) :
     ∀ (init : ⟦accTy⟧),
       (List.range n).foldl (fun acc _ => f acc) init

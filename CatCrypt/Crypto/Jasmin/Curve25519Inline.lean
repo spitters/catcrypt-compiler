@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTToJasmin
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Jasmin.LowCTToJasmin
 
 /-!
 # Curve25519 inline implementations (D4.1)
@@ -55,6 +58,8 @@ tree (D4.1 step 2 of the plan).
   (8-byte temporaries `t[1..6]`) + __reduce4. ≈110 InstrR.
 -/
 
+@[expose] public section
+
 namespace CatCrypt.Crypto.Jasmin.Curve25519Inline
 
 open CatCrypt.Crypto.Jasmin
@@ -63,63 +68,63 @@ open CatCrypt.Crypto.Jasmin.LowCT
 /-! ## §1 Helpers -/
 
 /-- Build a u64 register `Var` with the given name. -/
-private def u64Var (n : String) : Var :=
+def u64Var (n : String) : Var :=
   { vname := n, vtype := .sword .U64 }
 
 /-- Build a u64 LVal (write-target) by name. -/
-private def u64LVal (n : String) : LVal :=
+def u64LVal (n : String) : LVal :=
   .Lvar { var := u64Var n, info := {} }
 
 /-- Build a u64 PExpr (read) by name. -/
-private def u64PVar (n : String) : PExpr :=
+def u64PVar (n : String) : PExpr :=
   .Pvar { gv := { var := u64Var n, info := {} }, gs := false }
 
 /-- Discard slot in flag-bundle Copn output (`_`). -/
-private def lnoneU64 : LVal := .Lnone {} (.sword .U64)
+def lnoneU64 : LVal := .Lnone {} (.sword .U64)
 
 /-- Generate a fresh local register name unique to this inline expansion site.
 Each inline body uses names of the form `__<leaf>_<who>_<slot>`, where `<who>`
 is the `dest.locVar` (so multiple inlines in the same function don't collide
 on register names). -/
-private def freshReg (leaf who : String) (slot : String) : String :=
+def freshReg (leaf who : String) (slot : String) : String :=
   "__" ++ leaf ++ "_" ++ who ++ "_" ++ slot
 
 /-- `Pget` of `arr[i]` at u64 width on a tower-typed `Located`. -/
-private def limbPget (loc : Located) (i : Nat) : PExpr :=
+def limbPget (loc : Located) (i : Nat) : PExpr :=
   .Pget .AAscale .U64
     { gv := { var := locToVar loc, info := {} }, gs := false }
     (.Pconst i)
 
 /-- `Laset` of `arr[i] := …` at u64 width on a tower-typed `Located`. -/
-private def limbLaset (loc : Located) (i : Nat) : LVal :=
+def limbLaset (loc : Located) (i : Nat) : LVal :=
   .Laset .AAscale .U64 { var := locToVar loc, info := {} } (.Pconst i)
 
 /-- Load tower-typed `Located` at limb index `i` into u64 register `r`:
 emits `r = src[i]` as a `Cassgn` of `Pget`. -/
-private def loadLimb (r : String) (src : Located) (i : Nat) : InstrR :=
+def loadLimb (r : String) (src : Located) (i : Nat) : InstrR :=
   .Cassgn (u64LVal r) .AT_none (.sword .U64) (limbPget src i)
 
 /-- Store u64 register `r` into tower-typed `Located` at limb index `i`:
 emits `dst[i] = r` as a `Cassgn` to a `Laset`. -/
-private def storeLimb (dst : Located) (i : Nat) (r : String) : InstrR :=
+def storeLimb (dst : Located) (i : Nat) (r : String) : InstrR :=
   .Cassgn (limbLaset dst i) .AT_none (.sword .U64) (u64PVar r)
 
 /-! ## §2 ADD inline (formosa `__add4_rrs`) -/
 
 /-- Emit `cf, dst += src` (ADD_64 with carry-out). -/
-private def addReg (cf dst src : String) : InstrR :=
+def addReg (cf dst src : String) : InstrR :=
   .Copn [lnoneU64, u64LVal cf, lnoneU64, lnoneU64, lnoneU64, u64LVal dst]
     .AT_none (.Oasm { name := "ADD_64" })
     [u64PVar dst, u64PVar src]
 
 /-- Emit `cf, dst += src + cf` (ADC_64). -/
-private def adcReg (cf dst src : String) : InstrR :=
+def adcReg (cf dst src : String) : InstrR :=
   .Copn [lnoneU64, u64LVal cf, lnoneU64, lnoneU64, lnoneU64, u64LVal dst]
     .AT_none (.Oasm { name := "ADC_64" })
     [u64PVar dst, u64PVar src, u64PVar cf]
 
 /-- Emit `cf, dst += imm + cf` (ADC_64 with imm). -/
-private def adcImm (cf dst : String) (imm : Int) : InstrR :=
+def adcImm (cf dst : String) (imm : Int) : InstrR :=
   .Copn [lnoneU64, u64LVal cf, lnoneU64, lnoneU64, lnoneU64, u64LVal dst]
     .AT_none (.Oasm { name := "ADC_64" })
     [u64PVar dst, .Pconst imm, u64PVar cf]
@@ -189,19 +194,19 @@ def fp_add_inline : JasminInlineImpl := fun dest args =>
 /-! ## §3 SUB inline (formosa `__sub4_rrs`) -/
 
 /-- Emit `cf, dst -= src` (SUB_64 with borrow-out). -/
-private def subReg (cf dst src : String) : InstrR :=
+def subReg (cf dst src : String) : InstrR :=
   .Copn [lnoneU64, u64LVal cf, lnoneU64, lnoneU64, lnoneU64, u64LVal dst]
     .AT_none (.Oasm { name := "SUB_64" })
     [u64PVar dst, u64PVar src]
 
 /-- Emit `cf, dst -= src + cf` (SBB_64). -/
-private def sbbReg (cf dst src : String) : InstrR :=
+def sbbReg (cf dst src : String) : InstrR :=
   .Copn [lnoneU64, u64LVal cf, lnoneU64, lnoneU64, lnoneU64, u64LVal dst]
     .AT_none (.Oasm { name := "SBB_64" })
     [u64PVar dst, u64PVar src, u64PVar cf]
 
 /-- Emit `cf, dst -= imm + cf` (SBB_64 with imm). -/
-private def sbbImm (cf dst : String) (imm : Int) : InstrR :=
+def sbbImm (cf dst : String) (imm : Int) : InstrR :=
   .Copn [lnoneU64, u64LVal cf, lnoneU64, lnoneU64, lnoneU64, u64LVal dst]
     .AT_none (.Oasm { name := "SBB_64" })
     [u64PVar dst, .Pconst imm, u64PVar cf]
@@ -267,12 +272,12 @@ def fp_sub_inline : JasminInlineImpl := fun dest args =>
 /-! ## §4 MUL_A24 inline (formosa `__mul4_a24_rs`) -/
 
 /-- Emit `(rhi, rlo) = MULX(rmul, rsrc)`. -/
-private def mulxReg (rhi rlo rmul rsrc : String) : InstrR :=
+def mulxReg (rhi rlo rmul rsrc : String) : InstrR :=
   .Copn [u64LVal rhi, u64LVal rlo] .AT_none (.Oasm { name := "MULX" })
     [u64PVar rmul, u64PVar rsrc]
 
 /-- Emit `(rhi, rlo) = MULX(rmul, src.locArr[i])` (load via Pget). -/
-private def mulxFromLimb (rhi rlo rmul : String) (src : Located) (i : Nat) :
+def mulxFromLimb (rhi rlo rmul : String) (src : Located) (i : Nat) :
     InstrR :=
   -- We can't put a Pget directly as a MULX arg because MULX expects a Pvar
   -- in many simp models. Instead emit a `Cassgn rmul := src[i]` + a
@@ -353,13 +358,13 @@ MULX/ADCX/ADOX/ADD chains over a u64[4]×u64[4] schoolbook) then
 `__reduce4` (~25 InstrR for the × 38 carry fold). Total ≈140 InstrR. -/
 
 /-- Emit `cf, dst = ADCX(dst, src, cf)`. -/
-private def adcxReg (cf dst src : String) : InstrR :=
+def adcxReg (cf dst src : String) : InstrR :=
   .Copn [lnoneU64, u64LVal cf, lnoneU64, lnoneU64, lnoneU64, u64LVal dst]
     .AT_none (.Oasm { name := "ADCX" })
     [u64PVar dst, u64PVar src, u64PVar cf]
 
 /-- Emit `of, dst = ADOX(dst, src, of)`. -/
-private def adoxReg (cof dst src : String) : InstrR :=
+def adoxReg (cof dst src : String) : InstrR :=
   .Copn [lnoneU64, u64LVal cof, lnoneU64, lnoneU64, lnoneU64, u64LVal dst]
     .AT_none (.Oasm { name := "ADOX" })
     [u64PVar dst, u64PVar src, u64PVar cof]

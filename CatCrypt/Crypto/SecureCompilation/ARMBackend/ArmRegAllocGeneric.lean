@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmRegAlloc
-import CatCrypt.Crypto.Optimizer.GenericRegAlloc
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmRegAlloc
+public import CatCrypt.Crypto.Optimizer.GenericRegAlloc
 
 /-!
 # The A64 `AInst`/`AState` allocator fits the generic `MachineModel` (#552, validation)
@@ -30,6 +32,8 @@ shape; the monomorphic x86 soundness already stands in `SpillingRegAlloc`.)
 No `sorry`; the per-read-name `instVal_rename` is by `cases` over `AInst`, the rest is the
 existing ArmRegAlloc/ArmModel laws.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

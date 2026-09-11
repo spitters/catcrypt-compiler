@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1FrontDenoteVal
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieUncond
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1FrontDenoteVal
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieUncond
 
 /-!
 # The machine-execution → integer-spec tie for the emitted `mpn_divrem_1` loop
@@ -38,6 +40,8 @@ this body is completed in `JasminLsemMemArrTripDivRem`.
   giving an output array that holds the exact Euclidean fold `divFold` of the
   argument registers, under the normalisation preconditions.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

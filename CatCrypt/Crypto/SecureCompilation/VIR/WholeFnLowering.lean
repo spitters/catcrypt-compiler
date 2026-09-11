@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect
-import CatCrypt.Crypto.SecureCompilation.VIR.FreshNameInjective
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect
+public import CatCrypt.Crypto.SecureCompilation.VIR.FreshNameInjective
 
 /-!
 # Whole-function lowering of a multi-binder straight-line `Com`, with **both**
@@ -78,6 +81,8 @@ fragments with the counted loops of `LoopLowering` and the nested loops of
 0 sorries; the only remaining hypothesis on the worked example is the opaque-leaf
 edge `LeafAgrees`, the same edge carried throughout the emit-correctness theory.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

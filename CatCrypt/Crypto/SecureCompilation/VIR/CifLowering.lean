@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminCoqSemMirror
+module
+
+public meta import CatCrypt.Crypto.Jasmin.JasminCoqSemMirror
+public import CatCrypt.Crypto.Jasmin.JasminCoqSemMirror
 
 /-!
 # A fused two-way branch lowering: emitted `Cif` run = `ite` of the two arms' runs
@@ -100,6 +103,8 @@ satisfy. This is noted in the deliverable, not papered over.
 All goals are closed; no opaque-leaf hypothesis is needed (the executor, `ifExec`
 and `execCmd` are concrete functional definitions).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

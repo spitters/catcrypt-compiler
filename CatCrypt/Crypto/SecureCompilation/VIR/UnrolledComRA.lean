@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Sha2Emit
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Sha2Emit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Sha2Emit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+public import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
 
 /-!
 # Unrolled-Com-domain register allocation — the winning RA consumer
@@ -29,7 +34,7 @@ and its naive use breaks the KAT (collisions across unrolled iterations).
 This module supplies the missing consumer: a `RegisterAllocation` whose `seqOf`
 operates on the **slot-index domain of the unrolled Com**. It
 
-1. reads a per-binding **read/write slot trace** (`slotTrace`) mirroring the
+1. reads a per-binding **read/write slot trace** (`(slotTrace ())`) mirroring the
    unrolled body's op sequence one-to-one (the same lock-step mirror as the
    destination list `Sha2Emit.slotSeq` / `KeccakEmit.keccakSlots`, extended with
    each binding's source slots);
@@ -60,7 +65,7 @@ does this — the property whose violation broke #153.
 
 ## Contents
 
-* `slotTrace*` — the per-binding read/write slot trace for the unrolled SHA-2 /
+* `(slotTrace ())*` — the per-binding read/write slot trace for the unrolled SHA-2 /
   Keccak body (lock-step mirror of the typed builders).
 * `slotLiveRanges` — first-write / last-use interval per logical slot.
 * `scanAssign` / `physMap` — linear-scan lowest-free-slot physical assignment.
@@ -78,6 +83,8 @@ no-collision theorem is a finite check (`decide`/`native_decide`) over the
 concrete trace. The trace mirrors and live-range / assignment functions are
 plain computations that do not enter the theorem statements.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

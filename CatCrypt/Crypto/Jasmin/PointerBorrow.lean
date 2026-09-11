@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminAST
+module
 
+public import CatCrypt.Crypto.Jasmin.JasminAST
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!
@@ -424,7 +428,7 @@ theorem isPointerSafe_implies_MemBasesIn (fd : FunDecl)
 /-- Helper: `xs.eraseDups` is a sublist of `xs`, so any element of the
     deduplicated list was already in the original. The other direction
     is not needed for our soundness. -/
-private theorem mem_of_mem_eraseDups.{u} {α : Type u} [BEq α] [LawfulBEq α] :
+theorem mem_of_mem_eraseDups.{u} {α : Type u} [BEq α] [LawfulBEq α] :
     ∀ (xs : List α) {a : α}, a ∈ xs.eraseDups → a ∈ xs
   | [], _, h => by simp [List.eraseDups_nil] at h
   | hd :: tl, a, h => by
@@ -442,7 +446,7 @@ decreasing_by
 /-- Characterization of `pointerParamsWritten`: a name is in this list
     iff some param of `fd` carries that name and the name appears in the
     write set of the body. -/
-private theorem mem_pointerParamsWritten {fd : FunDecl} {w : String}
+theorem mem_pointerParamsWritten {fd : FunDecl} {w : String}
     (hw : w ∈ pointerParamsWritten fd) :
     ∃ p ∈ fd.params, p.var.var.vname = w ∧
         (bodyReadWriteBases fd.body).2.contains w = true := by
@@ -460,7 +464,7 @@ private theorem mem_pointerParamsWritten {fd : FunDecl} {w : String}
 /-- Characterization of `pointerParamsReadOnly`: a name is in this list
     iff some param of `fd` carries it, the name appears in the read set,
     and does NOT appear in the write set. -/
-private theorem mem_pointerParamsReadOnly {fd : FunDecl} {r : String}
+theorem mem_pointerParamsReadOnly {fd : FunDecl} {r : String}
     (hr : r ∈ pointerParamsReadOnly fd) :
     ∃ p ∈ fd.params, p.var.var.vname = r ∧
         (bodyReadWriteBases fd.body).1.contains r = true ∧

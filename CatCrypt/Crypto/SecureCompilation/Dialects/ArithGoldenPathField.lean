@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithToJasminComOK
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithToJasminDenote
-import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithToJasminComOK
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithToJasminDenote
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+
+@[expose] public section
 
 set_option autoImplicit false
 

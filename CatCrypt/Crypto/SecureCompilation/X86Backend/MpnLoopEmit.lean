@@ -3,13 +3,22 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.RejectLoop
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLinearKernels
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.MpnCmpEarlyExitFront
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.RejectLoop
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.RejectLoop
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLinearKernels
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLinearKernels
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.MpnCmpEarlyExitFront
+public import CatCrypt.Crypto.SecureCompilation.VIR.MpnCmpEarlyExitFront
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # Runtime-N `mpn_*` loop kernels through the OWNED guarded-loop backend (#500)
@@ -110,6 +119,8 @@ All kernels are void leaves over the GMP `mpn_*` C ABI with the limb count `n`
 in the 4th argument register `%rcx` (`r`→`%rdi`, `a`→`%rsi`, `b`→`%rdx`,
 `n`→`%rcx`); the looped body decrements `%rcx` and the back-edge tests it.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

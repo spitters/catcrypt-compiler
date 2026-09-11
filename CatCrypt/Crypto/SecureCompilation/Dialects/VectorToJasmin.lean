@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.Vector
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.Vector
 
 /-!
 # `Com vector → Com jasmin` — the D0 verified-lowering (vector fan-out)
@@ -22,6 +24,8 @@ Since `vectorDenote` was defined to equal the jasmin image's denotation
 (`zmmPackQ bop`, reused from `JasminDialect`) on `pack`, the preservation theorem is
 exact (no value drift).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.Vector
 

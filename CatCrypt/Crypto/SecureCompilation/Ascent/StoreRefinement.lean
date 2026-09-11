@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Transfer.Examples.MachineLimbField
+module
+
+public import Transfer.Examples.MachineLimbField
 
 /-!
 # Single-limb value abstraction (re-export shim)
@@ -14,6 +16,8 @@ release library as `Transfer.Examples.MachineLimbField`. This module re-exports 
 single-limb names into `CatCrypt.Crypto.SecureCompilation.Ascent` so existing
 consumers resolve them unqualified exactly as before.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Ascent
 

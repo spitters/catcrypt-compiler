@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMldsaMontgomery
-import Mathlib
-import Std.Tactic.BVDecide
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxMldsaMontgomery
+public import Mathlib.Tactic.Linarith
+public import Mathlib.Tactic.NormNum
+public import Mathlib.Tactic.Ring
+public import Std.Tactic.BVDecide
 
 /-!
 # The abstract ML-DSA signed-Montgomery congruence (`ZMod`/`Int`, not SAT)
@@ -49,6 +54,8 @@ The headline theorem is `mldsaMontgomery_montgomery_congruence`. No `bv_decide`
 is run on a 64×64 product; the only `bv_decide` calls are pure shift/truncation
 lemmas and a `BitVec 32` constant.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

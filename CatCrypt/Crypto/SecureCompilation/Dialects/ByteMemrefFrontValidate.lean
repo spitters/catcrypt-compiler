@@ -3,8 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.MemrefToJasminDenote
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.MemrefToJasminDenote
+public import CatCrypt.Crypto.SecureCompilation.Dialects.MemrefToJasminDenote
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+
+@[expose] public section
 
 set_option autoImplicit false
 

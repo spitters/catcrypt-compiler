@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
+module
+
+public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
 # Plonky3 end-to-end prover orchestrator — Tier A migration
@@ -85,6 +88,8 @@ is unmodified.
 * Driver template: `bench/plonky3_compare/merkle_from_rustcmd.lean`
 * Legacy Tier C: `CatCrypt/Crypto/SecureCompilation/VIR/Plonky3ProveEmit.lean`
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 
@@ -306,17 +311,17 @@ def plonky3OodDeepTowerType : TowerType := .TBytes 512
 /-- TowerType for the final proof root. -/
 def plonky3ProofTowerType : TowerType := .TBytes 32
 
-private def loc (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
+def locPlonky3Prove (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
 
 /-- Body for width=3, height=8: the canonical six-step orchestrator. -/
 def proveOrchestratorBody3x8 : LowCT :=
-  let trace_l  := loc "trace"  (plonky3ProveTraceTowerType 3 8)
-  let lde_l    := loc "lde"    plonky3LdeTraceTowerType
-  let commit_l := loc "commit" plonky3CommitTowerType
-  let alpha_l  := loc "alpha"  plonky3AlphaTowerType
-  let quot_l   := loc "quot"   plonky3QuotientTowerType
-  let ood_l    := loc "ood"    plonky3OodDeepTowerType
-  let result_l := loc "__result" plonky3ProofTowerType
+  let trace_l  := locPlonky3Prove "trace"  (plonky3ProveTraceTowerType 3 8)
+  let lde_l    := locPlonky3Prove "lde"    plonky3LdeTraceTowerType
+  let commit_l := locPlonky3Prove "commit" plonky3CommitTowerType
+  let alpha_l  := locPlonky3Prove "alpha"  plonky3AlphaTowerType
+  let quot_l   := locPlonky3Prove "quot"   plonky3QuotientTowerType
+  let ood_l    := locPlonky3Prove "ood"    plonky3OodDeepTowerType
+  let result_l := locPlonky3Prove "__result" plonky3ProofTowerType
   .RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq .RSkip
     (.RCall "plonky3_trace_lde_3_8"             lde_l    [trace_l]))
     (.RCall "plonky3_merkle_commit_orch_8"      commit_l [lde_l]))

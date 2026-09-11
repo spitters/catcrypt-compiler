@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib
-import CatCrypt.Crypto.SecureCompilation.VIR.FieldExpChain
-import CatCrypt.Crypto.Jasmin.Ed25519.InvP25519Algo
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.FieldExpChain
+public import CatCrypt.Crypto.SecureCompilation.VIR.FieldExpChain
+public meta import CatCrypt.Crypto.Jasmin.Ed25519.InvP25519Algo
+public import CatCrypt.Crypto.Jasmin.Ed25519.InvP25519Algo
 
 /-!
 # Algebraic semantics of `bernsteinInvChain`
@@ -39,6 +42,8 @@ recursion.
 
 This is the load-bearing piece for `CompressEmitCorrect.lean`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -105,7 +110,7 @@ algebraic chain output equals `z^(chainExponent blocks)`. -/
     `z` raised to the corresponding exponent.  The stash invariant is
     stated **only at in-bounds indices** (using a fixed default of `1`
     on both sides), so it survives any change to the accumulator. -/
-private def compat [CommMonoid α] (z : α) : (α × List α) → (Nat × List Nat) → Prop
+def compat [CommMonoid α] (z : α) : (α × List α) → (Nat × List Nat) → Prop
   | (acc, st), (e, est) =>
     acc = z^e ∧ st.length = est.length ∧
     ∀ i, i < st.length →
@@ -113,19 +118,19 @@ private def compat [CommMonoid α] (z : α) : (α × List α) → (Nat × List N
 
 /-- Helper: `listIdx` on a singleton-appended list at a smaller index
     is just `listIdx` on the original list. -/
-private lemma listIdx_append_lt {α : Type*} (xs : List α) (x default : α)
+lemma listIdx_append_lt {α : Type*} (xs : List α) (x default : α)
     {i : Nat} (h : i < xs.length) :
     listIdx (xs ++ [x]) i default = listIdx xs i default := by
   simp only [listIdx, List.getElem?_append_left h]
 
 /-- Helper: `listIdx` on a singleton-appended list at the new slot
     returns the appended element. -/
-private lemma listIdx_append_eq {α : Type*} (xs : List α) (x default : α) :
+lemma listIdx_append_eq {α : Type*} (xs : List α) (x default : α) :
     listIdx (xs ++ [x]) xs.length default = x := by
   simp [listIdx]
 
 /-- Helper: `listIdx` out of range returns the default. -/
-private lemma listIdx_oob {α : Type*} (xs : List α) (default : α) {i : Nat}
+lemma listIdx_oob {α : Type*} (xs : List α) (default : α) {i : Nat}
     (h : xs.length ≤ i) :
     listIdx xs i default = default := by
   simp only [listIdx]
@@ -133,7 +138,7 @@ private lemma listIdx_oob {α : Type*} (xs : List α) (default : α) {i : Nat}
   rfl
 
 /-- One step preserves the compat relation. -/
-private lemma compat_step [CommMonoid α] (z : α) (b : Block)
+lemma compat_step [CommMonoid α] (z : α) (b : Block)
     (s : α × List α) (es : Nat × List Nat) (h : compat z s es) :
     compat z (Block.step b s) (Block.expStep b es) := by
   rcases s with ⟨acc, st⟩
@@ -176,7 +181,7 @@ private lemma compat_step [CommMonoid α] (z : α) (b : Block)
       exact h_acc
 
 /-- `foldl` preserves compatibility for the whole chain. -/
-private lemma compat_foldl [CommMonoid α] (z : α) :
+lemma compat_foldl [CommMonoid α] (z : α) :
     ∀ (blocks : List Block) (s : α × List α) (es : Nat × List Nat),
     compat z s es →
     compat z (blocks.foldl (fun s b => Block.step b s) s)

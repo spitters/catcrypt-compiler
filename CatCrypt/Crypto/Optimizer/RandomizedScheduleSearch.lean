@@ -3,10 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
-import CatCrypt.Crypto.Optimizer.X86CostModel
-import CatCrypt.Crypto.Optimizer.JointScheduleRegAlloc
-import CatCrypt.Crypto.SecureCompilation.X86Backend.RescheduleEquivalence
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+public meta import CatCrypt.Crypto.Optimizer.X86CostModel
+public import CatCrypt.Crypto.Optimizer.X86CostModel
+public meta import CatCrypt.Crypto.Optimizer.JointScheduleRegAlloc
+public import CatCrypt.Crypto.Optimizer.JointScheduleRegAlloc
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.RescheduleEquivalence
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.RescheduleEquivalence
 
 /-!
 # Verified CryptOpt: randomized schedule search with in-Lean translation validation (#376)
@@ -49,6 +55,8 @@ neighborhood (sound for any straight-line block); the *winner TV* is an
 all-states theorem; the *result* for this block is reported in
 `bench/cryptopt_safegcd/`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

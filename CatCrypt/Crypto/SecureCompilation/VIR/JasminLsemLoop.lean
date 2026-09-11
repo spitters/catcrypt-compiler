@@ -3,11 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeled
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRobust
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemSimulation
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeled
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRobust
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemSimulation
 
 /-!
 # The first COUNTED-LOOP program-level `lsem` simulation — increment 4c
@@ -101,6 +104,8 @@ source-level CT fact that the back-edge tests a public counter.
 **0 sorries; axioms ⊆ {propext, Classical.choice, Quot.sound}; no
 `jasminc_preserves_ct`, no `JasminIRToX86` edge.**
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

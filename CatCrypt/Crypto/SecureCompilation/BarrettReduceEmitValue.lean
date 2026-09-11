@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GenericNttEmitValue
-import CatCrypt.Crypto.Optimizer.Rewrite.BarrettReduceGeneric
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GenericNttEmitValue
+public import CatCrypt.Crypto.Optimizer.Rewrite.BarrettReduceGeneric
 
 /-!
 # The Barrett-reduce emit → modular-VALUE bridge
@@ -54,6 +56,8 @@ unsatisfiable over-constraint.  The genuine cross-prover content is the gap
 between this canonical realizer and the emitted Barrett kernel's real byte
 semantics, which lives outside Lean.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

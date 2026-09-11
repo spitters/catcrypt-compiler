@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectSecurityNative
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectSecurityNative
 
 /-!
 # More peephole-security results, native on `Com catCryptDialect`
@@ -42,6 +44,8 @@ none routes through the valuation-free `Com.all_com_ct` shadow.
 **0 sorries**.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.MoreDialectSecurity
@@ -66,7 +70,7 @@ def bvXorBij {n : Nat} (m : BitVec n) : BitVec n ≃ BitVec n where
 
 /-- A uniform sample bound to an unused variable is `pure`-absorbed:
     `sample α >>= (fun _ => pure v) = pure v`. -/
-private theorem sample_bind_const {α : Type} [Fintype α] [Nonempty α] {β : Type} (v : β) :
+theorem sample_bind_const {α : Type} [Fintype α] [Nonempty α] {β : Type} (v : β) :
     SPComp.bind (SPComp.sample α) (fun _ => SPComp.pure v) = SPComp.pure v := by
   funext h
   simp only [SPComp.bind_def, SPComp.sample, SPComp.pure]

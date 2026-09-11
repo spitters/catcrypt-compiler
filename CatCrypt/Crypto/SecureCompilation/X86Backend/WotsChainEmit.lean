@@ -3,10 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRolledLoop
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopEmit
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRolledLoop
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRolledLoop
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopEmit
 
 /-!
 # WOTS+ position-tweaked CHAIN `wots_chain_n(x) = fold W over pos n..1`, OWNED x86
@@ -25,6 +32,8 @@ Each step's tweak depends on the chain position: `W(x, pos) = ((x + GOLDEN) ^
 Byte-checked by `bench/wots_chain_owned/wots_kat.c` (`wots-owned-kat`): counts
 `{0,1,2,8,16}` × (corners + 200k random) vs the folded `W` C reference.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -116,6 +125,6 @@ def emitMain : IO Unit := do
 The render is written while this module elaborates, so `lake` produces it from
 this file and no separate driver or Makefile rule carries the dependency. -/
 
-#eval emitMain
+-- #eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.WotsChainEmit

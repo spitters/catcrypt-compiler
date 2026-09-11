@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidence
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidence
+public import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidence
 
 /-!
 # DF keystone (`.letBind` increment): the let-extension inductive engine
@@ -117,6 +120,8 @@ hidden `native_decide`/`sorry` — is the honest outcome of this increment.
 * No `sorry`, no new axioms, no `native_decide`. The `RustExec`-materialisation
   gap is stated, not papered over.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.ZMod.Basic
-import Mathlib.FieldTheory.Finite.Basic
-import Mathlib.Tactic
+module
+
+public meta import Mathlib.Data.Nat.Prime.Defs
+public import Mathlib.Algebra.Field.ZMod
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.FieldTheory.Finite.Basic
+public import Mathlib.Tactic.Ring
 
 /-!
 # Verified `ZMod 127` — the QR-UOV-Is Mersenne base prime field
@@ -32,6 +36,8 @@ structure once `Fact (Nat.Prime 127)` is in scope.
 This file is the prime-field analogue of `Util/ZMod251.lean` for MQOM /
 SDitH at QR-UOV's Mersenne modulus.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

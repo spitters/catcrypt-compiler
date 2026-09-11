@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakSimdSingleEmit
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.KeccakSimdSingleEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakSimdSingleEmit
 /-!
 # Owned-backend (no-jasminc) B-LANE-REUSE (row-resident) χ resident Keccak-p[1600,24]
 
@@ -57,6 +61,8 @@ Invoke (emit the owned-backend `.s`):
   lake env lean --run bench/keccak_compare/keccak_resident_chirow_owned_emit.lean
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.KeccakResidentChiRowEmit
@@ -79,14 +85,14 @@ def emittedResult (s : Lanes) : List UInt64 :=
   lanesOf (keccakPerm (seedFromLanes s))
 
 /-- Full-permutation all-lane agreement (emitted kernel vs scalar FIPS-202). -/
-def permAgrees : Bool :=
+def permAgrees (_ : Unit) : Bool :=
   emittedResult sha3EmptyInit == scalarLanes (keccakF1600Scalar sha3EmptyInit)
 
 /-- SHA3-256("") first output lane = `0x66d71ebf f8c6ffa7` (= NIST `a7ffc6f8…`). -/
-def digestAgrees : Bool := (keccakF1600Scalar sha3EmptyInit) 0 == 0x66d71ebff8c6ffa7
+def digestAgrees (_ : Unit) : Bool := (keccakF1600Scalar sha3EmptyInit) 0 == 0x66d71ebff8c6ffa7
 
 /-- All FIPS-202 self-checks pass. -/
-def selfCheckPasses : Bool := permAgrees && digestAgrees
+def selfCheckPasses (_ : Unit) : Bool := permAgrees () && digestAgrees ()
 
 /-! ## 1. AT&T renderer — scalar `k[57]` frame, B-lane-reuse (row-resident) χ
 
@@ -146,14 +152,14 @@ def keccakResidentChiRowAsm : String :=
 
 /-! ## 2. Structural emit-text pins -/
 
-private def asmHas (sub : String) : Bool := (keccakResidentChiRowAsm.splitOn sub).length ≥ 2
+def asmHas (sub : String) : Bool := (keccakResidentChiRowAsm.splitOn sub).length ≥ 2
 
 /-- The emitted `.s` has the expected ABI / op-alphabet shape: the
     resident-chirow symbol, loads from `inp=%rsi` and stores to `out=%rdi` at the
     24-lane byte offset `192`, returns `out` in `%rax`, 32-byte-aligns the frame,
     uses scalar `xorq`/`notq`/`andq` GP lanes with the `%r9` χ scratch, and the
     round body is exactly 24 rounds. -/
-def structuralChecksPass : Bool :=
+def structuralChecksPass (_ : Unit) : Bool :=
   asmHas "keccak_f1600_resident_chirow" && asmHas "192(%rsi)" && asmHas "192(%rdi)"
     && asmHas "movq\t%rdi, %rax" && asmHas "andq\t$-32, %rsp"
     && asmHas "notq\t%r9" && asmHas "andq\t" && asmHas "movabsq"
@@ -164,10 +170,10 @@ def structuralChecksPass : Bool :=
 /-- The FIPS-202 + structural self-checks. The authoritative gate is the
     orchestrator's byte-KAT (`keccak_kat_resident.c`, FIPS 202). -/
 def runSelfCheck : IO Unit := do
-  IO.println s!"[selfcheck] full 24-round model == scalar FIPS-202 : {permAgrees}"
-  IO.println s!"[selfcheck] SHA3-256(\"\") first lane == NIST       : {digestAgrees}"
-  IO.println s!"[selfcheck] emit-text ABI/op structure             : {structuralChecksPass}"
-  if ! (selfCheckPasses && structuralChecksPass) then
+  IO.println s!"[selfcheck] full 24-round model == scalar FIPS-202 : {permAgrees ()}"
+  IO.println s!"[selfcheck] SHA3-256(\"\") first lane == NIST       : {digestAgrees ()}"
+  IO.println s!"[selfcheck] emit-text ABI/op structure             : {structuralChecksPass ()}"
+  if ! (selfCheckPasses () && structuralChecksPass ()) then
     throw (IO.userError "KeccakResidentChiRowEmit self-check FAILED")
   IO.println "SELF-CHECK PASS: owned row-resident χ Keccak denotes FIPS-202."
 
@@ -194,7 +200,7 @@ def emitWrite : IO Unit := do
 The render is written while this module elaborates, so `lake` produces it from
 this file and no separate driver or Makefile rule carries the dependency. -/
 
-#eval emitWrite
+-- #eval emitWrite
 
 end CatCrypt.Crypto.SecureCompilation.VIR.KeccakResidentChiRowEmit
 

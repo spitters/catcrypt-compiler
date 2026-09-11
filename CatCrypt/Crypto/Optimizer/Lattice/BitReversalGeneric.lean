@@ -3,14 +3,19 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib
+module
+
+public import Mathlib.Data.Nat.Notation
+public import Mathlib.Algebra.Group.Nat.Defs
+public import Mathlib.Logic.Function.Basic
+public import Mathlib.Logic.Equiv.Basic
 
 /-!
 # The bit-reversal permutation on indices `0 .. 2^w - 1`
 
 The NTT bit-reversal stage permutes the indices of a length-`2^w` vector by
-**reversing the `w`-bit binary representation** of each index. This file gives
-that index permutation abstractly — the index-level counterpart of the
+**reversing the `w`-bit binary representation** of each index. The definitions
+below give that index permutation abstractly — the index-level counterpart of the
 `BitVec.reverse`-based stage eliminated by `BitrevElimPass` — and proves it is
 an involution, hence a permutation (bijection) of `Fin (2^w)`.
 
@@ -39,6 +44,8 @@ round-trips. From `Function.Involutive` we get `Function.Bijective` and an
 Worked example (`w = 3`): `bitrev 3 1 = 4` (`001 ↦ 100`), and
 `bitrev 3 (bitrev 3 1) = 1`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -111,7 +118,7 @@ theorem bitrev_lt {w i : ℕ} (_h : i < 2 ^ w) : bitrev w i < 2 ^ w := by
   have := fromBits_lt (toBits w i).reverse
   simpa [bitrev, toBits_length] using this
 
-/-- **Keystone — involution.** Reversing the `w`-bit representation twice is the
+/-- **Involution.** Reversing the `w`-bit representation twice is the
 identity on `[0, 2^w)`: `i < 2^w → bitrev w (bitrev w i) = i`. The middle step
 is `List.reverse_reverse`. -/
 theorem bitrev_bitrev {w i : ℕ} (h : i < 2 ^ w) : bitrev w (bitrev w i) = i := by

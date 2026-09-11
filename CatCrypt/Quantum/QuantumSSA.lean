@@ -3,10 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Quantum.Instrument
-import CatCrypt.Quantum.UnitaryChannel
-import CatCrypt.Quantum.QCircuit
-import CatCrypt.Quantum.Programs.Qubit
+module
+
+public import CatCrypt.Quantum.Instrument
+public import CatCrypt.Quantum.UnitaryChannel
+public import CatCrypt.Quantum.QCircuit
+public import CatCrypt.Quantum.GateUnitarity
+public import CatCrypt.Quantum.Programs.Qubit
+
+@[expose] public section
 
 set_option autoImplicit true
 
@@ -25,7 +30,9 @@ for quantum programs, extending the CryptoSSA design pattern to quantum computin
    decides it, following QSSA [Peduri-Bhat 2021]
 2. **A-normal form**: all intermediate results are let-bound
 3. **Mixed quantum-classical**: both qubit and classical bit types
-4. **Denotational semantics**: `QSProg.denote` maps programs to `QComp`
+4. **Denotational semantics**: `QSProg.unitaryDenote` maps a program of the
+   measurement- and branch-free fragment, together with a `RegAlloc`, to a
+   `QComp (2 ^ numQ) Unit`
 5. **Structurally compatible with lean-mlir** (`Dialect { Op, Ty, m }` pattern)
 
 ## Architecture
@@ -58,8 +65,6 @@ QuantumSSA sits between QPL (high-level, measurement + control) and Circuit
 * CryptoSSA (this project) — classical SSA IR template
 * lean-mlir / opencompl — MLIR framework for Lean 4
 * McCaskey, Nguyen — *A MLIR Dialect for Quantum Assembly Languages*, 2021
-
-**0 axioms**.
 -/
 
 open CatCrypt.Quantum CatCrypt.Quantum.Programs.Qubit
@@ -206,14 +211,18 @@ def QSProg.measCount : QSProg Γ β → ℕ
   | .letMeas _ body => 1 + body.measCount
   | .ifBit _ kt kf => kt.measCount + kf.measCount
 
-/-- A program is measurement-free (purely unitary). -/
+/-- The purely unitary fragment: a program built from `ret`, `letQ`, `letQ2`
+    and `letInit` alone. Both `letMeas` and `ifBit` are excluded — `letMeas`
+    because measurement is not a unitary channel, `ifBit` because classical
+    control has no interpretation in `QComp (2 ^ numQ) Unit`. On this fragment
+    the lowering `QSSAToCircuit.lowerProg` is total and discards no branch. -/
 def QSProg.isMeasFree : QSProg Γ β → Prop
   | .ret _ => True
   | .letQ _ _ body => body.isMeasFree
   | .letQ2 _ _ _ body => body.isMeasFree
   | .letInit _ body => body.isMeasFree
   | .letMeas _ _ => False
-  | .ifBit _ kt kf => kt.isMeasFree ∧ kf.isMeasFree
+  | .ifBit _ _ _ => False
 
 /-! ## Section 6: Linearity Checking
 
@@ -245,7 +254,183 @@ def QOp.toGate2 : QOp (.pair .qubit .qubit) → Option (Gate 2)
   | .cnot => some (.CNOT 0 1)
   | .cz => some (.CZ 0 1)
 
-/-! ## Section 8: Example Programs -/
+/-! ## Section 8: Register Allocation
+
+A `QSProg` names its wires by De Bruijn index in a context; a `Circuit numQ`
+and the channel semantics name them by physical index `Fin numQ`. A
+`RegAlloc numQ` is the translation between the two, carried through the
+program by the lowering and by the denotation. -/
+
+/-- Register allocation: a physical qubit for each De Bruijn index, together
+    with the number of physical qubits already handed out to `letInit`
+    bindings.
+
+    `lookup` is total; only indices below the length of the context it was
+    built for are meaningful. -/
+structure RegAlloc (numQ : ℕ) where
+  /-- Map De Bruijn index to physical qubit. -/
+  lookup : ℕ → Fin numQ
+  /-- Number of physical qubits already claimed by fresh allocation. The next
+      fresh qubit is `next`, reduced mod `numQ`. -/
+  next : ℕ
+
+/-- The allocation for the context `replicate k .qubit`, in which variable `i`
+    occupies physical qubit `i` and fresh allocation resumes at `nextFree`.
+    Indices at or above `numQ` are outside the intended context and take the
+    default physical qubit `0`. -/
+def RegAlloc.identityFrom (numQ : ℕ) (hpos : 0 < numQ) (nextFree : ℕ) :
+    RegAlloc numQ where
+  lookup i := if h : i < numQ then ⟨i, h⟩ else ⟨0, hpos⟩
+  next := nextFree
+
+/-- The identity register allocation: variable `i` maps to physical qubit `i`,
+    and fresh allocation starts at physical qubit `0`. -/
+def RegAlloc.identity (numQ : ℕ) (hpos : 0 < numQ) : RegAlloc numQ :=
+  RegAlloc.identityFrom numQ hpos 0
+
+/-- Extend a register allocation when a new binding is introduced.
+    Variable 0 maps to the given physical qubit `q`; all others shift.
+    The fresh-allocation pointer is unchanged: `q` is a qubit that the
+    allocation already holds. -/
+def RegAlloc.extend {numQ : ℕ} (ra : RegAlloc numQ) (q : Fin numQ) :
+    RegAlloc numQ where
+  lookup i := if i = 0 then q else ra.lookup (i - 1)
+  next := ra.next
+
+/-- The physical qubit a fresh allocation hands out next. -/
+def RegAlloc.freshQubit {numQ : ℕ} (ra : RegAlloc numQ) (hpos : 0 < numQ) :
+    Fin numQ :=
+  ⟨ra.next % numQ, Nat.mod_lt _ hpos⟩
+
+/-- Extend a register allocation with a freshly allocated physical qubit:
+    variable 0 maps to `ra.freshQubit hpos`, all others shift, and the
+    fresh-allocation pointer advances. -/
+def RegAlloc.allocFresh {numQ : ℕ} (ra : RegAlloc numQ) (hpos : 0 < numQ) :
+    RegAlloc numQ where
+  lookup i := if i = 0 then ra.freshQubit hpos else ra.lookup (i - 1)
+  next := ra.next + 1
+
+@[simp]
+theorem RegAlloc.identity_lookup {numQ i : ℕ} (hpos : 0 < numQ) (h : i < numQ) :
+    (RegAlloc.identity numQ hpos).lookup i = ⟨i, h⟩ :=
+  dif_pos h
+
+/-- Distinct variables of the initial context occupy distinct physical
+    qubits. -/
+theorem RegAlloc.identity_lookup_inj {numQ i j : ℕ} (hpos : 0 < numQ)
+    (hi : i < numQ) (hj : j < numQ)
+    (h : (RegAlloc.identity numQ hpos).lookup i =
+      (RegAlloc.identity numQ hpos).lookup j) : i = j := by
+  rw [RegAlloc.identity_lookup hpos hi, RegAlloc.identity_lookup hpos hj] at h
+  simpa using congrArg Fin.val h
+
+@[simp]
+theorem RegAlloc.allocFresh_next {numQ : ℕ} (ra : RegAlloc numQ)
+    (hpos : 0 < numQ) : (ra.allocFresh hpos).next = ra.next + 1 :=
+  rfl
+
+@[simp]
+theorem RegAlloc.allocFresh_lookup_zero {numQ : ℕ} (ra : RegAlloc numQ)
+    (hpos : 0 < numQ) :
+    (ra.allocFresh hpos).lookup 0 = ra.freshQubit hpos :=
+  rfl
+
+@[simp]
+theorem RegAlloc.allocFresh_lookup_succ {numQ : ℕ} (ra : RegAlloc numQ)
+    (hpos : 0 < numQ) (i : ℕ) :
+    (ra.allocFresh hpos).lookup (i + 1) = ra.lookup i := by
+  show (if i + 1 = 0 then ra.freshQubit hpos else ra.lookup (i + 1 - 1)) =
+    ra.lookup i
+  simp
+
+/-- Two fresh allocations in a row occupy distinct physical qubits, as long as
+    the fresh-allocation pointer has not run past `numQ`. In the context they
+    build, the second allocation is variable 0 and the first is variable 1. -/
+theorem RegAlloc.allocFresh_lookup_zero_ne_one {numQ : ℕ} (ra : RegAlloc numQ)
+    (hpos : 0 < numQ) (h : ra.next + 1 < numQ) :
+    ((ra.allocFresh hpos).allocFresh hpos).lookup 0 ≠
+      ((ra.allocFresh hpos).allocFresh hpos).lookup 1 := by
+  have h0 : ra.next < numQ := by omega
+  intro hEq
+  have hval := congrArg Fin.val hEq
+  simp only [RegAlloc.allocFresh_lookup_zero, RegAlloc.freshQubit,
+    RegAlloc.allocFresh_next, RegAlloc.allocFresh_lookup_succ (i := 0)] at hval
+  rw [Nat.mod_eq_of_lt h, Nat.mod_eq_of_lt h0] at hval
+  omega
+
+/-! ## Section 9: Variable Indices and Gate Translation -/
+
+/-- Extract the De Bruijn index from a `QVar`. -/
+def qvarIndex {Γ : QCtx} {t : QTy} : QVar Γ t → ℕ
+  | .here => 0
+  | .there v => 1 + qvarIndex v
+
+/-- Translate a single-qubit `QOp` to a `Gate` acting on physical qubit `i`.
+    The two initialization operations produce no gate. -/
+def qopToGate1 {numQ : ℕ} (op : QOp QTy.qubit) (i : Fin numQ) :
+    Option (Gate numQ) :=
+  match op with
+  | .hadamard => some (.H i)
+  | .pauliX   => some (.X i)
+  | .pauliY   => some (.Y i)
+  | .pauliZ   => some (.Z i)
+  | .sGate    => some (.S i)
+  | .tGate    => some (.T i)
+  | .rz θ     => some (.Rz i θ)
+  | .init0    => none
+  | .init1    => none
+
+/-- Translate a two-qubit `QOp` to a `Gate` acting on physical qubits
+    `i`, `j`. -/
+def qopToGate2 {numQ : ℕ} (op : QOp (QTy.pair .qubit .qubit))
+    (i j : Fin numQ) : Option (Gate numQ) :=
+  match op with
+  | .cnot => some (.CNOT i j)
+  | .cz   => some (.CZ i j)
+
+/-! ## Section 10: Unitary-Channel Semantics
+
+The semantics of the fragment cut out by `QSProg.isMeasFree`, on `numQ`
+physical qubits under a register allocation. A gate operation contributes
+`GateUnitarity.denoteGateU g`, the channel `ρ ↦ U ρ U†` for `U` the gate's
+embedding; `letInit` contributes no channel and advances the allocation. -/
+
+/-- Unitary-channel semantics of a program in the fragment cut out by
+    `QSProg.isMeasFree`, relative to a register allocation.
+
+    * `ret` denotes `QComp.qpure ()`.
+    * `letQ op q body` denotes the channel of the gate `qopToGate1 op (ra q)`
+      bound to the denotation of `body` under the allocation that rebinds
+      variable 0 to the same physical qubit.
+    * `letQ2 op q₁ q₂ body` likewise, with the gate
+      `qopToGate2 op (ra q₁) (ra q₂)` and variable 0 rebound to `ra q₁`.
+    * `letInit op body` denotes `body` under a freshly allocated qubit.
+
+    An operation that translates to no gate (`init0`, `init1` used in `letQ`)
+    contributes no channel. -/
+def QSProg.unitaryDenote {Γ : QCtx} {β : QTy} (numQ : ℕ) (hpos : 0 < numQ)
+    (ra : RegAlloc numQ) :
+    (p : QSProg Γ β) → p.isMeasFree → QComp (2 ^ numQ) Unit
+  | .ret _, _ => QComp.qpure ()
+  | .letQ op q body, hmf =>
+    let physQ := ra.lookup (qvarIndex q)
+    let rest := QSProg.unitaryDenote numQ hpos (ra.extend physQ) body hmf
+    match qopToGate1 op physQ with
+    | some g => QComp.qbind (GateUnitarity.denoteGateU g) (fun _ => rest)
+    | none   => rest
+  | .letQ2 op q₁ q₂ body, hmf =>
+    let physQ1 := ra.lookup (qvarIndex q₁)
+    let physQ2 := ra.lookup (qvarIndex q₂)
+    let rest := QSProg.unitaryDenote numQ hpos (ra.extend physQ1) body hmf
+    match qopToGate2 op physQ1 physQ2 with
+    | some g => QComp.qbind (GateUnitarity.denoteGateU g) (fun _ => rest)
+    | none   => rest
+  | .letInit _op body, hmf =>
+    QSProg.unitaryDenote numQ hpos (ra.allocFresh hpos) body hmf
+  | .letMeas _ _, hmf => absurd hmf (by simp [QSProg.isMeasFree])
+  | .ifBit _ _ _, hmf => absurd hmf (by simp [QSProg.isMeasFree])
+
+/-! ## Section 11: Example Programs -/
 
 /-- Example: create a Bell pair from two |0⟩ qubits.
     ```
@@ -285,14 +470,35 @@ theorem measureHadamard_gateCount : measureHadamard.gateCount = 2 := rfl
 
 theorem measureHadamard_measCount : measureHadamard.measCount = 1 := rfl
 
-/-! ## Section 9: Semantic Equivalence -/
+/-! ## Section 12: Semantic Equivalence -/
 
-/-- Two QuantumSSA programs are semantically equivalent if they denote
-    the same QComp. (Placeholder: needs full denote function.) -/
+/-- Two QuantumSSA programs are semantically equivalent when they denote the
+    same channel on the fragment `QSProg.isMeasFree` cuts out, for every qubit
+    count and every register allocation.
+
+    Outside that fragment the condition is empty: `QSProg.unitaryDenote`
+    interprets no program containing `letMeas` or `ifBit`, so a pair in which
+    either side measures or branches carries no constraint. -/
 def QSProg.equiv (p₁ p₂ : QSProg Γ β) : Prop :=
-  True  -- placeholder: p₁.denote = p₂.denote
+  ∀ (numQ : ℕ) (hpos : 0 < numQ) (ra : RegAlloc numQ)
+    (h₁ : p₁.isMeasFree) (h₂ : p₂.isMeasFree),
+    p₁.unitaryDenote numQ hpos ra h₁ = p₂.unitaryDenote numQ hpos ra h₂
 
-/-! ## Section 10: Peephole Optimization Framework -/
+/-- Every program is equivalent to every other as soon as one of them leaves
+    the measurement-free fragment, because the hypothesis `QSProg.equiv`
+    quantifies over is then uninhabited. This bounds what a
+    `PeepholeRule.correct` field can be read as claiming: on a program
+    containing `letMeas` or `ifBit` it constrains the rewrite not at all. -/
+theorem QSProg.equiv_of_not_isMeasFree_left {Γ : QCtx} {β : QTy}
+    (p₁ p₂ : QSProg Γ β) (h : ¬ p₁.isMeasFree) : p₁.equiv p₂ :=
+  fun _ _ _ h₁ _ => absurd h₁ h
+
+/-- The same on the right. -/
+theorem QSProg.equiv_of_not_isMeasFree_right {Γ : QCtx} {β : QTy}
+    (p₁ p₂ : QSProg Γ β) (h : ¬ p₂.isMeasFree) : p₁.equiv p₂ :=
+  fun _ _ _ _ h₂ => absurd h₂ h
+
+/-! ## Section 13: Peephole Optimization Framework -/
 
 /-- A peephole rewrite rule: a local transformation on QSProg.
     Mirrors CryptoSSA's SSAPeephole design. -/
@@ -301,7 +507,10 @@ structure PeepholeRule where
   name : String
   /-- The rewriting function. -/
   rewrite : ∀ {Γ β}, QSProg Γ β → QSProg Γ β
-  /-- Correctness: the rewrite preserves semantics. -/
+  /-- The rewrite preserves the unitary denotation on the measurement-free
+      fragment. It says nothing about a program containing `letMeas` or
+      `ifBit`: `QSProg.equiv_of_not_isMeasFree_left` holds for any pair as soon
+      as one side leaves that fragment. -/
   correct : ∀ {Γ β} (p : QSProg Γ β), (rewrite p).equiv p
 
 /-- Gate cancellation: H·H = I, X·X = I, Z·Z = I.
@@ -314,16 +523,5 @@ def cancelInverses : ∀ {Γ β}, QSProg Γ β → QSProg Γ β
     Same context surgery issue as cancelInverses. -/
 def fuseRotations : ∀ {Γ β}, QSProg Γ β → QSProg Γ β
   | _, _, p => p  -- identity; `QSSAPeephole.rewriteRzFusion` performs the fusion
-
-/-! ## Section 11: Connection to Compilation Pipeline -/
-
-/-- QuantumSSA programs compile to the same QComp as QPL programs
-    (when translated correctly). This ensures the full pipeline
-    QPL → QuantumSSA → Circuit → ZX → optimized Circuit
-    preserves QUC security via `quantum_robust_compilation`. -/
-theorem pipeline_preserves_quc :
-    -- For any QuantumSSA program p and its Circuit translation c:
-    -- CompilerCorrectQ p c → qdist is preserved
-    True := trivial  -- placeholder: wired when denote is complete
 
 end CatCrypt.Quantum.QuantumSSA

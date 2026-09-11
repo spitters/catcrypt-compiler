@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.NTTRecursiveFull
+module
+
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTRecursiveFull
 
 /-!
 # The single-layer even/odd deinterleave permutation of the OWNED ML-KEM NTT
@@ -58,6 +60,8 @@ No `jasminc_preserves_ct` appears in any theorem here.
 ## References
 * NIST FIPS 203 (ML-KEM); Cooley & Tukey 1965 (radix-2 FFT, bit-reversal).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

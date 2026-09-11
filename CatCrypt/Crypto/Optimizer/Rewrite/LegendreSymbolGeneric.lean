@@ -3,9 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.NumberTheory.LegendreSymbol.Basic
-import Mathlib.NumberTheory.LegendreSymbol.QuadraticChar.Basic
-import Mathlib.Tactic
+module
+
+import all Init.Data.Repr
+public import Mathlib.Tactic.NormNum.Prime
+public import Mathlib.NumberTheory.LegendreSymbol.Basic
+public import Mathlib.NumberTheory.LegendreSymbol.QuadraticChar.Basic
+public import Mathlib.Tactic.NormNum
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -47,8 +53,6 @@ QR mod `7`) and `legendreSym 7 3 = -1` (`3` is a non-residue mod `7`).
 -/
 
 namespace CatCrypt.Crypto.Optimizer.Rewrite.LegendreSymbolGeneric
-
-open scoped NumberTheorySymbols
 
 variable (p : ℕ) [Fact p.Prime]
 

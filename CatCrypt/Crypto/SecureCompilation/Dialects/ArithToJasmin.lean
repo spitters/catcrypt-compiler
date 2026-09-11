@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.Arith
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.Arith
 
 /-!
 # `Com arith → Com jasmin` — the D0 verified-lowering template
@@ -21,6 +23,8 @@ Since `arithDenote` was defined to equal the jasmin image's denotation on every 
 the preservation theorem is exact (no value drift). This is the template the
 `memref`/`func`/`vector`/`cf`/`scf` fan-out mirrors.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.Arith
 

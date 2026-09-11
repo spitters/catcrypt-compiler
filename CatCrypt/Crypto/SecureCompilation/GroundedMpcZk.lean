@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GroundedZkProtocol
-import CatCrypt.Crypto.SecureCompilation.GroundedMultiKernelProtocol
-import CatCrypt.Crypto.SecureCompilation.GroundedKdfKem
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GroundedZkProtocol
+public import CatCrypt.Crypto.SecureCompilation.GroundedMultiKernelProtocol
+public import CatCrypt.Crypto.SecureCompilation.GroundedKdfKem
 
 /-!
 # Grounded MPC / ZK / commitment backbones — whole-pipeline emit-realization with
@@ -96,6 +98,8 @@ realizers already in-repo:
 * Damgård et al., *SPDZ* (CRYPTO 2012); Shamir, *How to Share a Secret* (1979).
 * NIST FIPS 202 (SHA-3 / SHAKE / sponge); Halevi–Micali hash commitments.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

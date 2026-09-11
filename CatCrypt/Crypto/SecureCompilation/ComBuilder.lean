@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ScalarLinFront
-import CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.ScalarLinFront
+public import CatCrypt.Crypto.SecureCompilation.ScalarLinFront
+public meta import CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
+public import CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
 # Named-SSA → `Com jasminDialect` builder
@@ -51,6 +56,8 @@ hand-written one (`ComOK`, `Com.denote`, `com_arm_e2e`/`com_riscv_e2e`). The wor
 re-derivation of `fieldCondSub251Com` at the end proves the generated `Com`'s
 `Com.denote` is *definitionally equal* (`rfl`) to the hand-authored one.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ComInline
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.ComInline
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
 
 /-!
 # THIR VIR dialect and the verified `Com[thir] → Com[jasmin]` lowering (#616)
@@ -46,6 +49,8 @@ weakened through the inserted `regConst` binding. The weakening is `Com.rename`
 transparency is the standard de Bruijn substitution law (`Com.denote_rename`,
 proved here from `ComInline`'s `Expr.denote_rename` and `Var.lookup_rename`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -634,7 +639,7 @@ theorem toJForProg_step {accTy : JasminTy} (p : ThirForProg accTy)
 /-- A `foldl` whose per-element function only depends on the accumulator, with two
     functions agreeing on every accumulator, coincides over any list and seed. The
     bridge from the lowered loop's fold to the THIR loop's fold. -/
-private theorem foldl_step_congr {accTy : JasminTy} {β : Type}
+theorem foldl_step_congr {accTy : JasminTy} {β : Type}
     (f g : ⟦accTy⟧ → ⟦accTy⟧) (hfg : ∀ acc, f acc = g acc) :
     ∀ (l : List β) (init : ⟦accTy⟧),
       l.foldl (fun acc _ => f acc) init = l.foldl (fun acc _ => g acc) init

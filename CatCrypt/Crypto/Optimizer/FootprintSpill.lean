@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.GenericRegAlloc
+module
+
+public meta import CatCrypt.Crypto.Optimizer.GenericRegAlloc
+public import CatCrypt.Crypto.Optimizer.GenericRegAlloc
 
 /-!
 # Peak-pressure-minimizing ("reversible pebbling" / footprint) allocation (#xxx)
@@ -62,6 +65,8 @@ register-allocation side of the peak-qubit-width reduction.
   (`defIdx ≤ lastUse`) and is contained in the original range — the structural
   non-overlap-preservation a placement on top of it relies on.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

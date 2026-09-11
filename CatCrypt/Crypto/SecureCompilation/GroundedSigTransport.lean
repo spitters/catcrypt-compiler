@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
-import CatCrypt.Crypto.SecureCompilation.ConcreteEcScalarRealizer
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
+public import CatCrypt.Crypto.SecureCompilation.ConcreteEcScalarRealizer
 
 /-!
 # Grounded SIGNATURE / TRANSPORT backbones — whole-pipeline emit-realization with
@@ -92,6 +94,8 @@ proved in-repo:
 * RFC 7748 §5 (X25519 Montgomery ladder); D. J. Bernstein, "Curve25519", PKC 2006
   (`a24 = (A−2)/4 = 121665`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

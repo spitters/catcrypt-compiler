@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmLowering
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmLowering
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmLowering
 
 /-!
 # The whole SHA-256 block compression, lowered through the owned AArch64 backend (#550)
@@ -57,6 +61,8 @@ the schedule window register-resident and loads `K[t]`/`M[t]` from the argument
 buffers; its qemu-aarch64 KAT against the same FIPS digest is in
 `bench/arm_compare/` (`sha256-a64-kat`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

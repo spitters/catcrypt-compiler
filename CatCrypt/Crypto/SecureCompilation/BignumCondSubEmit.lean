@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.FieldSubRunBlock
-import CatCrypt.Crypto.SecureCompilation.MultiLimbEmitBridge
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.FieldSubRunBlock
+public import CatCrypt.Crypto.SecureCompilation.MultiLimbEmitBridge
 
 /-!
 # An emitted multi-limb conditional subtract proven against the multi-limb stack
@@ -31,6 +33,8 @@ the add, subtract, and now conditional subtract emitted-and-bridged (the multipl
 `emitProductBlock4`, the limb-drop a reindexing via `bignumVal_drop`), every arithmetic
 step of the Barrett reduce connects the emitted x86 machine to the proven stack.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.BignumCondSubEmit
 

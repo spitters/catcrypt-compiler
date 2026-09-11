@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 
 /-!
 # Owned AT&T `.s` printer for the `vsimd` fragment of `Com jasminDialect` (no jasminc, no `VCryptOp`)
@@ -69,6 +73,8 @@ proven `renderVCryptInst` emits byte-for-byte:
 | `.packed .sub 32`    | `vpsubd`          | `vpsubd %xmmB, %xmmA, %xmmD`                  |
 | `.packed .sub 64`    | `vpsubq`          | `vpsubq %xmmB, %xmmA, %xmmD`                  |
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

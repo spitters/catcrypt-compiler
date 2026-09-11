@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ComToVeir
+module
+
+import all Veir.IR.Basic
+public import CatCrypt.Crypto.SecureCompilation.VIR.ComToVeir
 
 /-!
 # Structural correctness of `Com → Veir.IRContext` lowering
@@ -26,6 +29,8 @@ Out of scope (future files):
   `IRContext` that agrees with `Com.denote` under `ToVeirOp`'s op
   semantics.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -53,7 +58,7 @@ def Com.size {Γ : Ctxt d} {t : d.Ty} : Com d Γ t → Nat
 /-! ## 2. `lowerCom` op-list length
 
 The list of `OperationPtr`s returned by `lowerCom` has length equal
-to `Com.size`. This is the load-bearing structural fact relied on by
+to `Com.size`. This is the structural fact used by
 `lowerComToBlockRegion`'s chain-wiring (one op per emitted binder). -/
 
 section Lowering
@@ -215,7 +220,7 @@ variable [ToVeirOp d]
 
 /-- `OperationPtr.get!` after `setNextOp!` on the SAME pointer
     yields the updated operation. Direct unfolding + HashMap. -/
-private theorem get!_setNextOp!_self
+theorem get!_setNextOp!_self
     (op : Veir.OperationPtr)
     (ctx : Veir.IRContext (ToVeirOp.Op (d := d)))
     (new : Option Veir.OperationPtr) :
@@ -226,7 +231,7 @@ private theorem get!_setNextOp!_self
 
 /-- `OperationPtr.get!` after `setNextOp!` on a DIFFERENT pointer
     is unchanged. -/
-private theorem get!_setNextOp!_other
+theorem get!_setNextOp!_other
     (op op' : Veir.OperationPtr)
     (ctx : Veir.IRContext (ToVeirOp.Op (d := d)))
     (new : Option Veir.OperationPtr) (h : op ≠ op') :
@@ -237,7 +242,7 @@ private theorem get!_setNextOp!_other
         show ¬ (op' = op) from fun he => h he.symm]
 
 /-- Same for `setPrevOp!` on a different pointer. -/
-private theorem get!_setPrevOp!_other
+theorem get!_setPrevOp!_other
     (op op' : Veir.OperationPtr)
     (ctx : Veir.IRContext (ToVeirOp.Op (d := d)))
     (new : Option Veir.OperationPtr) (h : op ≠ op') :
@@ -248,7 +253,7 @@ private theorem get!_setPrevOp!_other
         show ¬ (op' = op) from fun he => h he.symm]
 
 /-- `setParent!` on the same pointer preserves `next`. -/
-private theorem next_get!_setParent!_self
+theorem next_get!_setParent!_self
     (op : Veir.OperationPtr)
     (ctx : Veir.IRContext (ToVeirOp.Op (d := d)))
     (new : Option Veir.BlockPtr) :
@@ -257,7 +262,7 @@ private theorem next_get!_setParent!_self
         Veir.OperationPtr.get!]
 
 /-- `setParent!` on a different pointer is fully transparent. -/
-private theorem get!_setParent!_other
+theorem get!_setParent!_other
     (op op' : Veir.OperationPtr)
     (ctx : Veir.IRContext (ToVeirOp.Op (d := d)))
     (new : Option Veir.BlockPtr) (h : op ≠ op') :

@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.BignumHoare
-import CatCrypt.Crypto.Jasmin.BignumHoare.ChainAlgebra
+module
+
+public import CatCrypt.Crypto.Jasmin.BignumHoare
+public import CatCrypt.Crypto.Jasmin.BignumHoare.ChainAlgebra
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -38,17 +42,17 @@ open CatCrypt.Crypto.Jasmin.MemoryModel
 
 /-! ### Equation lemmas — `BignumDoubleP25519`-specific wrappers (re-exposed for mvcgen) -/
 
-private theorem dbl_assignConst_eq (s : String) (k : Int) :
+theorem dbl_assignConst_eq (s : String) (k : Int) :
     S2NBignumSSA.assignConst s k =
       .Cassgn (.Lvar { var := S2NBignumSSA.v s }) .AT_none (.sword .U64) (.Pconst k) := rfl
 
-private theorem dbl_assignBin_eq (s : String) (op : SOp2) (a b : String) :
+theorem dbl_assignBin_eq (s : String) (op : SOp2) (a b : String) :
     S2NBignumSSA.assignBin s op a b =
       .Cassgn (.Lvar { var := S2NBignumSSA.v s }) .AT_none (.sword .U64)
         (.Papp2 op (.Pvar { gv := { var := S2NBignumSSA.v a }, gs := false })
                    (.Pvar { gv := { var := S2NBignumSSA.v b }, gs := false })) := rfl
 
-private theorem dbl_subCopn_eq (cfOut r aName bName : String) :
+theorem dbl_subCopn_eq (cfOut r aName bName : String) :
     S2NBignumSSA.BignumDoubleP25519.subCopn cfOut r aName bName =
       .Copn ([.Lnone {} (.sword .U64),
               .Lvar { var := S2NBignumSSA.v cfOut }] ++
@@ -58,7 +62,7 @@ private theorem dbl_subCopn_eq (cfOut r aName bName : String) :
             [.Pvar { gv := { var := S2NBignumSSA.v aName }, gs := false },
              .Pvar { gv := { var := S2NBignumSSA.v bName }, gs := false }] := rfl
 
-private theorem dbl_sbbCopn_eq (cfOut r aName bName cinName : String) :
+theorem dbl_sbbCopn_eq (cfOut r aName bName cinName : String) :
     S2NBignumSSA.BignumDoubleP25519.sbbCopn cfOut r aName bName cinName =
       .Copn ([.Lnone {} (.sword .U64),
               .Lvar { var := S2NBignumSSA.v cfOut }] ++
@@ -69,7 +73,7 @@ private theorem dbl_sbbCopn_eq (cfOut r aName bName cinName : String) :
              .Pvar { gv := { var := S2NBignumSSA.v bName }, gs := false },
              .Pvar { gv := { var := S2NBignumSSA.v cinName }, gs := false }] := rfl
 
-private theorem dbl_addCopn_eq (cfOut r aName bName : String) :
+theorem dbl_addCopn_eq (cfOut r aName bName : String) :
     S2NBignumSSA.BignumDoubleP25519.addCopn cfOut r aName bName =
       .Copn ([.Lnone {} (.sword .U64),
               .Lvar { var := S2NBignumSSA.v cfOut }] ++
@@ -79,7 +83,7 @@ private theorem dbl_addCopn_eq (cfOut r aName bName : String) :
             [.Pvar { gv := { var := S2NBignumSSA.v aName }, gs := false },
              .Pvar { gv := { var := S2NBignumSSA.v bName }, gs := false }] := rfl
 
-private theorem dbl_adcCopn_eq (cfOut r aName bName cinName : String) :
+theorem dbl_adcCopn_eq (cfOut r aName bName cinName : String) :
     S2NBignumSSA.BignumDoubleP25519.adcCopn cfOut r aName bName cinName =
       .Copn ([.Lnone {} (.sword .U64),
               .Lvar { var := S2NBignumSSA.v cfOut }] ++
@@ -90,18 +94,18 @@ private theorem dbl_adcCopn_eq (cfOut r aName bName cinName : String) :
              .Pvar { gv := { var := S2NBignumSSA.v bName }, gs := false },
              .Pvar { gv := { var := S2NBignumSSA.v cinName }, gs := false }] := rfl
 
-private theorem dbl_load64_eq (x base : String) (k : Int) :
+theorem dbl_load64_eq (x base : String) (k : Int) :
     S2NBignumSSA.BignumDoubleP25519.load64 x base k =
       .Cassgn (.Lvar { var := S2NBignumSSA.v x }) .AT_none (.sword .U64)
         (.Pload .U64 { var := S2NBignumSSA.v base } (.Pconst k)) := rfl
 
-private theorem dbl_store64_eq (base : String) (k : Int) (src : String) :
+theorem dbl_store64_eq (base : String) (k : Int) (src : String) :
     S2NBignumSSA.BignumDoubleP25519.store64 base k src =
       .Cassgn (.Lmem .U64 { var := S2NBignumSSA.v base } (.Pconst k))
         .AT_none (.sword .U64)
         (.Pvar { gv := { var := S2NBignumSSA.v src }, gs := false }) := rfl
 
-private theorem dbl_copy64'_eq (dst src : String) :
+theorem dbl_copy64'_eq (dst src : String) :
     S2NBignumSSA.BignumDoubleP25519.copy64' dst src =
       .Cassgn (.Lvar { var := S2NBignumSSA.v dst }) .AT_none (.sword .U64)
         (.Pvar { gv := { var := S2NBignumSSA.v src }, gs := false }) := rfl
@@ -111,7 +115,7 @@ private theorem dbl_copy64'_eq (dst src : String) :
 -- the regs r0..r3 reached by the ADC chain in addCarry/addCarryIn
 -- semantics, ready for Phase B.
 open Std.Do in
-private theorem double_p25519_phaseA_triple
+theorem double_p25519_phaseA_triple
     (base_a : UInt64) (a0 a1 a2 a3 : UInt64) :
     Triple (BignumExec.bignumExecM BignumExec.emptyRegistry
               (S2NBignumSSA.BignumDoubleP25519.body.take 13))
@@ -168,7 +172,7 @@ private theorem double_p25519_phaseA_triple
 -- Precondition: state matches Phase A's postcondition (r0..r3 = ADC
 -- chain output, zero = 0). Postcondition: algoNat equation.
 open Std.Do in
-private theorem double_p25519_phaseB_triple
+theorem double_p25519_phaseB_triple
     (a0 a1 a2 a3 : UInt64)
     (h_bound : a0.toNat + a1.toNat * 2^64 + a2.toNat * 2^128 +
                   a3.toNat * 2^192 < 2^255 - 19) :
@@ -240,7 +244,7 @@ Note: this requires the input bound `a < p` (h_bound) to ensure
 -- irreducible] bignumExecM` (line 11) blocks Lean from
 -- whnf-unfolding the long body literal during the bind unification.
 open Std.Do in
-private theorem double_p25519_triple
+theorem double_p25519_triple
     (base_a : UInt64) (a0 a1 a2 a3 : UInt64)
     (h_bound : a0.toNat + a1.toNat * 2^64 + a2.toNat * 2^128 +
                   a3.toNat * 2^192 < 2^255 - 19) :

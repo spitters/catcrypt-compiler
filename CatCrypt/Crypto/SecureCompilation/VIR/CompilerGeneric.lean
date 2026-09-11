@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ComParametricityTransport
-import CatCrypt.Crypto.SecureCompilation.VIR.WholeFnLowering
-import CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasminDenote
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.ComParametricityTransport
+public import CatCrypt.Crypto.SecureCompilation.VIR.WholeFnLowering
+public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasminDenote
 
 /-!
 # De-specialized compiler keystone: generic dialect-lowering correctness
@@ -73,6 +75,8 @@ show its `lowerCom` agrees with `lowerLatticeToJasmin`, so `compileVia` at
 `latticeLoweringData` *is* the lattice compile — making the lattice keystone a
 literal instance of `compileVia_correct`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

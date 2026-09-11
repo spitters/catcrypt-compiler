@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
 # Plonky3 AIR reflect surface — Tier A migration of the AIR layer
@@ -66,6 +70,8 @@ verified.
 * Mirror pattern: `CatCrypt/Crypto/Jasmin/Plonky3Reflect.lean` (Wave 1 Merkle)
 * Driver template: `bench/plonky3_compare/merkle_from_rustcmd.lean`
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 
@@ -145,7 +151,7 @@ def plonky3TraceTowerType (W H : Nat) : TowerType := .TBytes (8 * W * H)
 /-- TowerType for the OK flag bundle (u64 wrapper). -/
 def plonky3AirOkTowerType : TowerType := .TBytes 8
 
-private def loc (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
+def locPlonky3Air (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
 
 /-- Per-(W,H) AIR transition leaf name: `plonky3_air_transition_W_H`. -/
 def plonky3AirTransitionLeafName (W H : Nat) : String :=
@@ -153,16 +159,16 @@ def plonky3AirTransitionLeafName (W H : Nat) : String :=
 
 /-- Body for width=3, height=8: one transition call. -/
 def airTransitionBody3x8 : LowCT :=
-  let trace_l  := loc "trace" (plonky3TraceTowerType 3 8)
-  let result_l := loc "__result" plonky3AirOkTowerType
+  let trace_l  := locPlonky3Air "trace" (plonky3TraceTowerType 3 8)
+  let result_l := locPlonky3Air "__result" plonky3AirOkTowerType
   .RSeq .RSkip
     (.RCall (plonky3AirTransitionLeafName 3 8) result_l [trace_l])
 
 /-- Body for width=3, height=16: one transition call (different leaf
     instantiation). -/
 def airTransitionBody3x16 : LowCT :=
-  let trace_l  := loc "trace" (plonky3TraceTowerType 3 16)
-  let result_l := loc "__result" plonky3AirOkTowerType
+  let trace_l  := locPlonky3Air "trace" (plonky3TraceTowerType 3 16)
+  let result_l := locPlonky3Air "__result" plonky3AirOkTowerType
   .RSeq .RSkip
     (.RCall (plonky3AirTransitionLeafName 3 16) result_l [trace_l])
 

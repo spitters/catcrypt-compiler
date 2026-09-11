@@ -3,14 +3,24 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ThirToComFront
-import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Sha256Sigma1ThirEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Sha512BigSigmaThirEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Sha512ChMajThirEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.ThirToComFront
+public import CatCrypt.Crypto.SecureCompilation.ThirToComFront
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Sha256Sigma1ThirEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Sha256Sigma1ThirEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Sha512BigSigmaThirEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Sha512BigSigmaThirEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Sha512ChMajThirEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Sha512ChMajThirEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # SHA-512 round value `T₁` (width 64) through the OWNED x86 backend (no jasminc)
@@ -32,6 +42,8 @@ This completes the SHA-512 round-component set (σ₀/σ₁/Σ₀/Σ₁/Ch/Maj/m
 landed; T₁/T₂ were the missing pieces). The byte-identity `sha512_t1(...) == T₁`
 is the external `as`/`cc` KAT in `bench/thir_front_sha512_t1_owned/` (no jasminc).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -177,6 +189,6 @@ def emitMain : IO Unit := do
 The render is written while this module elaborates, so `lake` produces it from
 this file and no separate driver or Makefile rule carries the dependency. -/
 
-#eval emitMain
+-- #eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.Sha512RoundT1ThirEmit

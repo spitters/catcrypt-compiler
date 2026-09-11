@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ThirToComFront
-import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.ThirToComFront
+public import CatCrypt.Crypto.SecureCompilation.ThirToComFront
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
 
 /-!
 # C6 dialect-routing: compile the THIR front *through* `thirDialect` (#616)
@@ -48,6 +52,8 @@ don't mention the dialect's op set, so transport is structural: `vTinv` is the
 jasmin→thir inverse of `ThirDialect.vT`, and `vTinv_lookup` preserves lookup
 (the `Valuation` type is dialect-free).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

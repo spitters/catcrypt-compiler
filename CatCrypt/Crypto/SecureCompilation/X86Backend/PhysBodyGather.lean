@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrGatherExtended
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrGatherExtended
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrGatherExtended
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
 
 /-!
 # `PhysBodyGather` — does gathering the PHYSICAL body byte-match the Lprog encoder?
@@ -81,6 +86,8 @@ physical body.
 
 No `sorry`, no axiom, no `native_decide`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

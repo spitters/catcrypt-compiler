@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.WholeFnLowering
-import CatCrypt.Crypto.SecureCompilation.VIR.ExecAdequacy
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.WholeFnLowering
+public import CatCrypt.Crypto.SecureCompilation.VIR.ExecAdequacy
 
 /-!
 # The keystone semantic bridge: the compiler's `Com` denotation and the
@@ -33,6 +36,7 @@ the same executor:
 (`= JasminAST.InstrR`); the `SemIr` / `execCmd` adequacy uses
 `CatCrypt.Crypto.Jasmin.CoqSemMirror.InstrR`. `JasminCoqSemMirror.lean` does not
 import `JasminAST` at all. The structural differences are catalogued in
+
 `InstrRReflect.lean` §9 (asm-op carrier `AsmOp` vs `String`, `Var.vtype`
 `SType` vs `Atype`, `GVar.gs` `Bool` vs `VScope`, …). A translation between them
 exists **only as an unverified `MetaM` reifier** (`reifyInstrRMirror%`), with no
@@ -94,6 +98,8 @@ correspondence that any encoding bijection would lift.
 
 0 sorries.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

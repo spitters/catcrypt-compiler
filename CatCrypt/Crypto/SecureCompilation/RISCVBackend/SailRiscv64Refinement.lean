@@ -3,33 +3,41 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvModel64
-import Mathlib.Tactic.NormNum
-import Mathlib.Data.BitVec
-import Mathlib.Algebra.Group.Basic
+module
+
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvModel64
+public import Mathlib.Tactic.NormNum
+public import Mathlib.Data.BitVec
+public import Mathlib.Algebra.Group.Basic
 
 /-!
 # Sail refinement for the 64-bit RV64 model (`RiscvModel64`)
 
 This connects our **trusted hand-written effect semantics** `evalRInst64` (the
-RV64 64-bit bignum/field ALU + carry-synthesis model) to the model generated
-from the official `riscv/sail-riscv` Sail spec, by the
-[Sail `-lean` backend](https://github.com/opencompl/sail-riscv-lean).
+RV64 64-bit bignum/field ALU + carry-synthesis model) to an in-file excerpt of
+the model generated from the `riscv/sail-riscv` Sail spec by the
+[Sail `-lean` backend](https://github.com/opencompl/sail-riscv-lean) (commit
+`9eba3f07`; upstream not vendored — see the provenance section below).
 
 Unlike `RiscvModel.lean` (the 32-bit `*W`-word view, which needs a low-32
 simulation relation to bridge to Sail's sign-extending 64-bit registers),
 `RiscvModel64`'s `X64R = BitVec 64` registers line up with Sail's `xlenbits`
 directly — so the connection is width-clean.
 
-## What is golden vs. vendored vs. simplified
+## What is real vs. transcribed vs. simplified
 
-* **Golden / tested:** `opAdd64`, `opSub64`, `opSltu`, `opAnd64`, `opOr64`,
+* **Real / tested:** `opAdd64`, `opSub64`, `opSltu`, `opAnd64`, `opOr64`,
   `opXor64` are the *real* `RiscvModel64` ops (imported above), unchanged.
-* **Vendored (verbatim):** `execute_RTYPE` is copied verbatim from the generated
-  `opencompl/sail-riscv-lean` `LeanRV64D/InstsEnd.lean` (commit `9eba3f07`); the
-  BitVec primitives are the one-line wrappers from `rems-project/lean-sail`. Per
-  project decision, vendoring the generated text (rather than `require`-ing the
-  170k-line monolith) is the accepted integration shape.
+* **Transcribed (in-file excerpt):** `execute_RTYPE` is a hand-pasted excerpt of
+  the generated `opencompl/sail-riscv-lean` `LeanRV64D/InstsEnd.lean` (commit
+  `9eba3f07`); the BitVec primitives are the one-line wrappers from
+  `rems-project/lean-sail`. Per project decision, pasting the generated text
+  in-file (rather than `require`-ing the 170k-line monolith) is the accepted
+  integration shape — so **upstream is not vendored**: the
+  `sail-riscv-lean`/`lean-sail` sources are neither vendored nor `require`d in
+  this repo, only the individual clauses below are in-tree, and the
+  transcription's fidelity to the generated file is not machine-checked in-tree;
+  it rests on the manual copy having been done correctly at the time.
 * **Simplified (accepted, low-risk):** `SailM` is a thin `StateM` over a flat
   `BitVec 5 → BitVec 64` register file rather than lean-sail's
   `PreSailM`/`SequentialState`; the `xreg_write_callback` (`:= ()`, register
@@ -38,14 +46,17 @@ directly — so the connection is width-clean.
 
 ## Result
 
-For each core RV64 ALU / carry-synthesis op, the value the verbatim Sail
+For each core RV64 ALU / carry-synthesis op, the value the transcribed Sail
 `execute_RTYPE` clause writes to `rd` equals our `RiscvModel64` op applied to the
-operands — i.e. our hand-written effect semantics matches the golden Sail spec.
+operands — i.e. our hand-written effect semantics matches the in-file excerpt of
+the sail-riscv-lean generated output (commit `9eba3f07`; upstream not vendored).
 
 `MUL`/`MULHU` route through Sail's `mult_to_bits_half` / `to_bits_truncate`
 helper chain (a genuine 128-bit-product BitVec lemma) and are the next target,
 not included here.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -67,7 +78,7 @@ def zopz0zI_s {n : Nat} (x y : BitVec n) : Bool := x.slt y
 def zopz0zI_u {n : Nat} (x y : BitVec n) : Bool := x.ult y
 abbrev log2_xlen : Nat := 6
 
-/-! ## Vendored types (from generated `LeanRV64D/Defs.lean`) -/
+/-! ## Transcribed types (in-file excerpts from generated `LeanRV64D/Defs.lean`) -/
 
 inductive regidx where | Regidx (_ : BitVec 5)
 inductive rop where | ADD | SLT | SLTU | AND | OR | XOR | SLL | SRL | SUB | SRA
@@ -119,7 +130,7 @@ def execute_RTYPE (rs2 : regidx) (rs1 : regidx) (rd : regidx) (op : rop) : SailM
             (Sail.BitVec.extractLsb (← (rX_bits rs2)) (log2_xlen - 1) 0)))))
   (pure RETIRE_SUCCESS)
 
-/-! ## Vendored M-extension + shift + ITYPE machinery (verbatim from generated `LeanRV64D`) -/
+/-! ## Transcribed M-extension + shift + ITYPE machinery (in-file excerpts from generated `LeanRV64D`) -/
 
 def BitVec.toNatInt {w : Nat} (x : BitVec w) : Int := (x.toNat : Int)
 def sign_extend {m k_n : Nat} (v : BitVec k_n) : BitVec m := v.signExtend m
@@ -296,7 +307,7 @@ theorem itype_mv (s : RegFile) (rs1 rd : BitVec 5) (hrd : rd.toNat ≠ 0) :
 
 /-- L5 shift bridge: the `BitVec 6` shift amount of value `sh < 64` has `toNat = sh`
     (added to the SLLI/SRLI `simp` sets, which normalize a BitVec-shift to a `.toNat` shift). -/
-private theorem shamt6_toNat (sh : Nat) (hsh : sh < 64) :
+theorem shamt6_toNat (sh : Nat) (hsh : sh < 64) :
     (Sail.BitVec.extractLsb (BitVec.ofNat 6 sh) 5 0).toNat = sh := by
   simp only [Sail.BitVec.extractLsb, BitVec.extractLsb, BitVec.extractLsb'_toNat,
     BitVec.toNat_ofNat]

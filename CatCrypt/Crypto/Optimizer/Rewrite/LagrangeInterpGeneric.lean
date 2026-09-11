@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.LinearAlgebra.Lagrange
+module
+
+public import Mathlib.LinearAlgebra.Lagrange
 
 /-!
 # Lagrange interpolation over a generic field
@@ -31,6 +33,8 @@ These are thin re-statements of `Lagrange.eval_interpolate_at_node`,
 A worked `Fin 3` example (interpolation through three points is a polynomial of
 degree `< 3`, i.e. at most a quadratic) closes the file.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -100,7 +104,7 @@ section Quadratic
 variable [DecidableEq F] {a b c : F}
 
 /-- The three-node finset `{a, b, c}` used by the example. -/
-private def threeNodes (a b c : F) : Finset F := {a, b, c}
+def threeNodes (a b c : F) : Finset F := {a, b, c}
 
 /-- A polynomial interpolated through three distinct points has `degree < 3`:
 it is recovered by, and agrees with, any quadratic-or-lower polynomial taking

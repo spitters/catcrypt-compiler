@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
 # A native-Lean x86-64 target model for the emitted scalar subset (task #148/#281)
@@ -144,6 +147,8 @@ backend and the #260 cross-object-call story.
   Jasmin → `16`, our model → `0`). This precondition is recorded in
   `TranslationValidation.lean` rather than papered over.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

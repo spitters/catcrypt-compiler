@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.FieldToModArithLowering
-import Transfer.Congruence.RCongr
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.FieldToModArithLowering
+public import Transfer.Congruence.RCongr
 
 /-!
 # Automating the dialect-lowering per-op leaf squares with `rcongr` / `transfer`
@@ -74,6 +76,8 @@ two per-argument relatedness leaves, each the variable coherence
 `{propext, Classical.choice, Quot.sound}` — see `lean_verify` report in the
 final summary.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

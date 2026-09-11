@@ -3,8 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.SignedSpec
-import CatCrypt.Crypto.Jasmin.Mpn.PowPrototype
+module
+
+public meta import CatCrypt.Crypto.Jasmin.Mpn.SignedSpec
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.Mpn.SignedSpec
+public meta import CatCrypt.Crypto.Jasmin.Mpn.PowPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.PowPrototype
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -2877,7 +2884,7 @@ theorem MpzSubJasminRefines_of_add (hAdd : MpzAddJasminRefines) :
     rw [hci_sa_eq]
   have hsb_dec : (decide (ci.regs "s_b" = 1) : Bool) = !(decide (s.regs "s_b" = 1)) := by
     rw [hci_sb_eq]
-    rcases hsb with h | h <;> rw [h] <;> decide
+    rcases hsb with h | h <;> rw [h] <;> decide +kernel
   refine ⟨sFinal, 2 + (fuel0 + 1), ?_, k, ?_, ?_, ?_⟩
   · -- Full bignumExecFuel run for signedSubBody = [binImm s_b ^= 1; Ccall mpz_add].
     show bignumExecFuel (signedRegistry a.length) (2 + (fuel0 + 1)) signedSubBody s = some sFinal
@@ -2945,6 +2952,7 @@ theorem MpzSubJasminRefines_of_add (hAdd : MpzAddJasminRefines) :
     have hfuel_eq : 1 + (fuel0 + 1 + 1) = 2 + (fuel0 + 1) := by omega
     rw [← hfuel_eq]
     convert hseq using 2
+    rfl
   · -- hpadlen-equiv with signedSub.
     -- (signedAdd (saBool, a) (sbBool', b)).2.length = (signedSub (saBool, a) (sbBool, b)).2.length.
     have : (signedSub (decide (s.regs "s_a" = 1), a) (decide (s.regs "s_b" = 1), b)).2

@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookProductRunBlock
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookProductRunBlock
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.SchoolbookProductRunBlock
 
 /-!
 # Tier-A Montgomery multiply over `runBlock` for the 4-limb curves
@@ -53,6 +57,8 @@ canonical prime. Only the modulus + reduced-input bounds are curve-specific, so
 the same proof skeleton closes all three. The only `native_decide` step per
 curve is the constant pin `<curve>Limbs_value` against its genuine prime.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxHeartbeats 1000000

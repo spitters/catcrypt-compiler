@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.MlkemNttAbstractCom
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ReduceZModTie
-import CatCrypt.Crypto.Number.MontgomeryReduction
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.MlkemNttAbstractCom
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ReduceZModTie
+public import CatCrypt.Crypto.Number.MontgomeryReduction
 
 /-!
 # Abstract ML-KEM 3329 Montgomery REDC chain on the unified `Com jasminDialect` (model-free)
@@ -89,6 +92,8 @@ abstract `ZMod N` / `montgomeryReduce` Montgomery property.
 
 Invoke: `lake build CatCrypt.Crypto.SecureCompilation.VIR.MlkemMontRedcAbstractCom`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

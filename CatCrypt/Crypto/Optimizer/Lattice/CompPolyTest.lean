@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CompPoly.Univariate.NTT.FastMul
+module
+
+public import CompPoly.Univariate.NTT.FastMul
 
 /-!
 # CompPoly smoke import
@@ -13,6 +15,8 @@ Verifies that the upstream CompPoly NTT theory (`fastMulImpl_eq_mul`,
 CatCrypt source tree.  Once this builds clean, the lake dep is wired
 correctly and downstream `Optimizer/Lattice/*` files can rely on it.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

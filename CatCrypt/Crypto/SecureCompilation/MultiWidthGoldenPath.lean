@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
-import Std.Tactic.BVDecide
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
+public import Std.Tactic.BVDecide
 
 /-!
 # Multi-width golden path: width-32 `Com jasminDialect` at the dialect level
@@ -75,6 +78,8 @@ backend (`w` form of ARM/RISC-V/x86 add). `add32_zext_eq_mask` is the exact
 obligation that generalisation must discharge per op. Until then, width-32 lives
 at the dialect/`Com.denote` layer (proven below) and the backend emit is 64-bit.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

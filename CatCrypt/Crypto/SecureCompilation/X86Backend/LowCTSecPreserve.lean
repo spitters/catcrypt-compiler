@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTITreePRHL
-import CatCrypt.Crypto.SDist
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTITreePRHL
+public import CatCrypt.Crypto.SDist
 
 /-!
 # P4.3: cryptographic-security preservation by composition (not a fresh proof)
@@ -70,6 +72,8 @@ Imports only `LowCTITreePRHL` (the iris-free P4.1/P4.3 ITree+pRHL layer) and
 `CatCrypt.Crypto.SDist` (the `sdist` API).  Nothing under `Bridges/` or
 `IrisBridge/`: no guarded ITrees, no step-indexing, no separation logic.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

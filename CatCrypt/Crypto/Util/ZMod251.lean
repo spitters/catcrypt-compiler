@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.ZMod.Basic
-import Mathlib.FieldTheory.Finite.Basic
-import Mathlib.Tactic
+module
+
+public import Mathlib.Tactic.NormNum.Prime
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.FieldTheory.Finite.Basic
+public import Mathlib.Tactic.NormNum
+public import Mathlib.Tactic.Ring
 
 /-!
 # Verified `ZMod 251` — the MQOM / SDitH base prime field
@@ -33,6 +37,8 @@ ring/field structure automatically once `Fact (Nat.Prime 251)` is in scope.
 This file is the prime-field analogue of `Util/ZMod3329.lean` for ML-KEM
 and `Util/ZMod8380417.lean` for ML-DSA.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

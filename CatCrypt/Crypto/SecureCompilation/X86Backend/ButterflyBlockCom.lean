@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
 # NTT radix-2 butterfly on the UNIFIED `Com jasminDialect` (AVX-512 ZMM)
@@ -65,6 +67,8 @@ program unfolds definitionally through the `vpackZMM` denote arm to the two
 
 Invoke: `lake build CatCrypt.Crypto.SecureCompilation.X86Backend.ButterflyBlockCom`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

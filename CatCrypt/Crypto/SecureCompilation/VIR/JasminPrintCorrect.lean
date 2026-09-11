@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 
 /-!
 # Structural correctness of the `Com jasminDialect → JasminProg` lowering
@@ -66,6 +69,8 @@ The v0 properties rule out trivial lowering bugs (an op dropped, a binding
 losing its instruction, a wrong parameter count) without committing to a
 Jasmin semantics.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR
 

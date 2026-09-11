@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.VsimdAsmPrint
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CryptoExtEncoder
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.VsimdAsmPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.VsimdAsmPrint
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CryptoExtEncoder
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CryptoExtEncoder
 
 /-!
 # Standalone machine-byte encoder for the unified `vsimd` op set (Vec128 teardown)
@@ -51,6 +56,8 @@ string is gas-pinned (`as --64` + `objdump -d`). The decode round-trip
 gas-pinned tier (the ACL2 x86isa / sail-x86 model has no VEX SIMD decode tables);
 this is the honest residual, the same ceiling `SimdBytes` records.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

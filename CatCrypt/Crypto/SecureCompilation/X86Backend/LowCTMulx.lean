@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
 
 /-!
 # Widening multiply (two-output `MULX`): source→machine lowering with both outputs
@@ -52,6 +55,8 @@ type — a single source command type ranging over both single- and two-output
 statements, lowered by one `lowerSeq` — is the cross-construct unification (w7),
 out of scope here.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

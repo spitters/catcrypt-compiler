@@ -3,10 +3,18 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.DivRemPrototype
-import CatCrypt.Crypto.Jasmin.Mpn.SubPrototype
-import CatCrypt.Crypto.Jasmin.Mpn.ShiftPrototype
-import Mathlib.Data.Nat.GCD.Basic
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.Mpn.DivRemPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.DivRemPrototype
+public meta import CatCrypt.Crypto.Jasmin.Mpn.SubPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.SubPrototype
+public meta import CatCrypt.Crypto.Jasmin.Mpn.ShiftPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.ShiftPrototype
+public import Mathlib.Data.Nat.GCD.Basic
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -139,9 +147,9 @@ is what the bench measures.  The Lean spec here pins the headline
 correctness: `(a · mpnInvert a m) ≡ 1 (mod m)`. -/
 
 /-- The limb base. -/
-private def B : Nat := 2 ^ 64
+def B : Nat := 2 ^ 64
 
-private theorem B_eq : B = 2 ^ 64 := rfl
+theorem B_eq : B = 2 ^ 64 := rfl
 
 /-- **Reference modular inverse** of `a` modulo `m` over `Nat`.
 
@@ -149,7 +157,7 @@ private theorem B_eq : B = 2 ^ 64 := rfl
     returns a representative of `a^{-1}` in `[0, m)`.
 
     Pulled out as a private helper so the limb-list wrapper can reuse it. -/
-private def natModInverse (a m : Nat) : Nat :=
+def natModInverse (a m : Nat) : Nat :=
   -- Nat.gcdA returns the Bezout coefficient as an Int (may be negative).
   -- We reduce mod m into the canonical range [0, m).
   if m = 0 then 0
@@ -280,7 +288,7 @@ theorem natModInverse_spec (a m : Nat) (hm : 0 < m) (hcop : Nat.Coprime a m) :
 
 /-- Bound: any limb-list denotes a Nat strictly less than `(2^64)^|list|`.  This
     is a standard property of the little-endian limb encoding. -/
-private theorem toNat_lt_basePow (xs : List (BitVec 64)) :
+theorem toNat_lt_basePow (xs : List (BitVec 64)) :
     Mpn.AddPrototype.toNat xs < (2 ^ 64) ^ xs.length := by
   induction xs with
   | nil => simp [Mpn.AddPrototype.toNat]

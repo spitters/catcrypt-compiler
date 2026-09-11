@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Bridges.ReprTransfer
-import CatCrypt.Crypto.SecureCompilation.GenericKernelRealization
-import CatCrypt.Crypto.SecureCompilation.ConcreteBarrettRealizer
+module
+
+public import CatCrypt.Crypto.Bridges.ReprTransfer
+public import CatCrypt.Crypto.SecureCompilation.GenericKernelRealization
+public import CatCrypt.Crypto.SecureCompilation.ConcreteBarrettRealizer
 
 /-!
 # Unary representation-transfer: the map-level homomorphism for NON-homomorphic kernels
@@ -73,6 +75,8 @@ butterfly, with no `LeafSpec.call`-shaped hand `simp` per kernel. The only trust
 inherited here is whatever the cited square consumes (for Barrett: the proved
 `decodeB_encodeB` byte codec — no KAT, no `jasminc_preserves_ct`, no univalence).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

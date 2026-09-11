@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
 
 /-!
 # Per-op property structures for `CatCryptOp`
@@ -30,6 +32,8 @@ for the upstream pattern. VEIR-DIFF: their attrs are parsed from MLIR
 `DictionaryAttr`; we author flags structurally since CatCrypt programs
 originate in Lean.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.CatCryptOpProperties
 

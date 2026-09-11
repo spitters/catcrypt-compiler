@@ -3,10 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.BignumExec
-import CatCrypt.Crypto.Jasmin.BignumExecDiffTest
-import CatCrypt.Crypto.Jasmin.Hoare
-import CatCrypt.Crypto.Jasmin.S2NBignumSSA
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.BignumExec
+public import CatCrypt.Crypto.Jasmin.BignumExecDiffTest
+public import CatCrypt.Crypto.Jasmin.Hoare
+public import CatCrypt.Crypto.Jasmin.S2NBignumSSA
+
+@[expose] public section
 
 set_option autoImplicit false
 -- The sqr_4 keystones operate at BitVec 512 / Nat 2^448 scale. Mathlib

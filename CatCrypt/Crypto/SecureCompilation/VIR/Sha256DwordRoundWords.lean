@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Primitives.SHA256
+module
+
+public meta import CatCrypt.Crypto.Primitives.SHA256
+public import CatCrypt.Crypto.Primitives.SHA256
 
 /-!
 # SHA-256 abstract round words (model-free)
@@ -16,6 +19,8 @@ abstract round tie (`Sha256DwordRoundAbstractCom`) can reuse them without a
 machine-model dependency. These are pure `UInt32`/`Primitives.SHA256`
 declarations — they never referenced `ZState32` or the dword lane model.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -36,7 +41,7 @@ def ePrimeWord (d e f g h kt wt : UInt32) : UInt32 :=
   d + t1Word e f g h kt wt
 
 /-- The FIPS-180-4 initial state `H₀`, as a concrete `State256` for the anchor. -/
-private def h0State : State256 := fun (i : Fin 8) =>
+def h0State : State256 := fun (i : Fin 8) =>
   #[0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
     0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19].getD i.val 0
 

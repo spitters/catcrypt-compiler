@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.RingTheory.RootsOfUnity.PrimitiveRoots
-import Mathlib.Data.ZMod.Basic
-import Mathlib.Tactic
+module
+
+public meta import Mathlib.Data.ZMod.Defs
+public import Mathlib.Tactic.NormNum.Prime
+public import Mathlib.RingTheory.RootsOfUnity.PrimitiveRoots
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.Tactic.NormNum
 
 /-!
 # Concrete NTT Roots of Unity for ML-KEM and ML-DSA
@@ -24,6 +28,8 @@ at the real crypto parameters.
 ## References
 * NIST FIPS 203 (ML-KEM), FIPS 204 (ML-DSA)
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

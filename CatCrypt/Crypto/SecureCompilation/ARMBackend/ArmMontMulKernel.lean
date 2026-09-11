@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmLowering
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmLowering
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmLowering
 
 /-!
 # A 4×4→8 schoolbook 256-bit multiply, lowered through the owned AArch64 backend (#549)
@@ -56,6 +60,8 @@ multiply identity gated by the GMP/s2n cross-check KAT, the same REV-12 posture 
 the x86 multiply kernels. Here we pin worked vectors (incl. the maximal
 `(2⁶⁴-1)`-limbed inputs that exercise every carry) under `native_decide`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

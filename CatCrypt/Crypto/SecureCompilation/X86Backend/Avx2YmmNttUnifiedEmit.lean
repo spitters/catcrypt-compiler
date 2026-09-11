@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.YmmAsmPrint
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.YmmAsmPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.YmmAsmPrint
 
 /-!
 # The owned signed ML-DSA-65 forward NTT kernel over the unified `YmmInstr` (`dsa_ntt_proto`)
@@ -57,6 +61,8 @@ standard-order/standard-domain contract. This module reproduces the
 bench-validated instruction sequence of that transform op-for-op; the §6
 `YmmOp.denote` fragment pin checks the Montgomery-mul core denotes as specified.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

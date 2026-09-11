@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.MsmReflect
-import CatCrypt.Crypto.SecureCompilation.LowCTCT
+module
+
+public meta import CatCrypt.Crypto.Jasmin.MsmReflect
+public import CatCrypt.Crypto.Jasmin.MsmReflect
+public meta import CatCrypt.Crypto.SecureCompilation.LowCTCT
+public import CatCrypt.Crypto.SecureCompilation.LowCTCT
 
 /-!
 # Windowed (Straus) MSM reflect surface — the bucketed MSM that replaces the
@@ -63,6 +67,8 @@ content `MsmReduce.msm_eq_scalarFold` carries; the bench KATs the C
 realisation against the per-term ladder MSM (the #377/#370 oracle).
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Jasmin.StrausMsmReflect
@@ -114,7 +120,7 @@ def strausLeaves : CTLeaves := fun
   | "ed_point_add"    => true
   | _                 => false
 
-private def loc (n : String) (t : TowerType) : Located :=
+def locStrausMsm (n : String) (t : TowerType) : Located :=
   { locVar := n, locSrc := t }
 
 /-! ## 4. CT windowed-digit extraction
@@ -239,7 +245,7 @@ theorem strausScalarMulBody_isCT' (windows : Nat) (scalarVar : String)
 
 /-! ## 9. Structural smoke check -/
 
-private def Tnames (i : Nat) : Located := loc s!"T{i}" edPointTowerType
+def Tnames (i : Nat) : Located := locStrausMsm s!"T{i}" edPointTowerType
 
 /-- The body uses the shared point-double leaf: if `ed_point_double`
     is NOT on the CT whitelist (only `ed_point_add` is), the body is rejected —
@@ -247,7 +253,7 @@ private def Tnames (i : Nat) : Located := loc s!"T{i}" edPointTowerType
     Straus from the per-term ladder) is actually present, not optimised away. -/
 theorem strausIter_uses_double :
     isCT_LowCT (fun n => decide (n = "ed_point_add"))
-        (strausIter 64 "s" (loc "Q" edPointTowerType) (loc "sel" edPointTowerType)
+        (strausIter 64 "s" (locStrausMsm "Q" edPointTowerType) (locStrausMsm "sel" edPointTowerType)
           Tnames) = false := by native_decide
 
 end CatCrypt.Crypto.Jasmin.StrausMsmReflect

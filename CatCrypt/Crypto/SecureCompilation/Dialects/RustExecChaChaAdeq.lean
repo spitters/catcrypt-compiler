@@ -3,9 +3,36 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecKernelAdeq
-import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecRoundAdeq
-import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecARXAdeq
+module
+
+-- The closed-kernel route reduces the front (`translateDialectControl`,
+-- `semScalar`, `cryptoDialectToJasminCom`) by `rfl`/`decide`; under the module
+-- system that reduction needs the front closure imported with `all`, and
+-- `Nat.repr` (the front's slot names) exposed through `Init.Data.Repr`.
+import all Init.Data.Repr
+import all CatCrypt.Core.Code
+import all CatCrypt.Crypto.CryptoWord
+import all CatCrypt.Crypto.Jasmin.JasminAST
+import all CatCrypt.Crypto.Jasmin.JasminTypes
+import all CatCrypt.Crypto.Jasmin.LowCT
+import all CatCrypt.Crypto.SDist
+import all CatCrypt.Crypto.SecureCompilation.CryptoSSA
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+import all CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
+import all CatCrypt.Crypto.SecureCompilation.Dialects.RustExecKernelAdeq
+import all CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
+import all CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.Core
+import all CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+import all CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
+public import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecKernelAdeq
+public import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecRoundAdeq
+public import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecARXAdeq
 
 /-!
 # A real ChaCha20 quarter-round through the closed-kernel `emitted = RustExec` route
@@ -75,6 +102,8 @@ jasmin leg still hits `RustExecKernelAdeq.entry_trio_unsat_empty`, the standing
 the `semScalar` value with the `RustExec` value for ChaCha's add/rotate; fusing that
 with the jasmin denotation leg for an OPEN quarter-round is the same `P3` residual.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 -- The full twelve-step quarter-round is a 16-statement closed kernel; the
@@ -205,16 +234,32 @@ theorem xHSem : semScalar qrXorC (fun _ => none) = some xEnv :=
 
 theorem xNameSome : (xO.vm.lookup "bx").isSome := by rfl
 
-noncomputable def xW : CVar xO.Γ' (.sword 64) :=
-  ((xO.vm.lookup "bx").get xNameSome).2
+/-- The tracked slot's type is the 64-bit word: decided, since the slot name
+    goes through `Nat.repr`, which the elaborator's definitional check does not
+    reduce. -/
+theorem xNameTy : ((xO.vm.lookup "bx").get xNameSome).1 = .sword 64 := by
+  decide
 
-theorem xHName : xO.vm.lookup "bx" = some ⟨.sword 64, xW⟩ := by rfl
+/-- The tracked output slot for `bx`. -/
+noncomputable def xW : CVar xO.Γ' (.sword 64) :=
+  cast (congrArg (CVar xO.Γ') xNameTy) ((xO.vm.lookup "bx").get xNameSome).2
+
+theorem xHName : xO.vm.lookup "bx" = some ⟨.sword 64, xW⟩ := by decide
 
 theorem xValSome : (xEnv "bx").isSome := by rfl
 
-noncomputable def xVal : BitVec 64 := ((xEnv "bx").get xValSome).2
+theorem xValTy : ((xEnv "bx").get xValSome).1 = .sword 64 := by decide
 
-theorem xHVal : xEnv "bx" = some ⟨.sword 64, xVal⟩ := by rfl
+/-- The word `semScalar` leaves in `bx`. -/
+noncomputable def xVal : BitVec 64 :=
+  cast (congrArg CryptoTy.denote xValTy) ((xEnv "bx").get xValSome).2
+
+theorem xHVal : xEnv "bx" = some ⟨.sword 64, xVal⟩ := by
+  rw [← Option.some_get xValSome]
+  exact congrArg some (Sigma.ext xValTy
+    (by unfold xVal
+        exact (cast_heq (congrArg CryptoTy.denote xValTy)
+          ((xEnv "bx").get xValSome).2).symm))
 
 theorem xRetSome : (xO.cont (Com.ret (toVIRVar xW))).isSome := by rfl
 
@@ -417,16 +462,32 @@ theorem qHSem : semScalar qrC (fun _ => none) = some qEnv :=
 
 theorem qNameSome : (qO.vm.lookup "b4").isSome := by rfl
 
-noncomputable def qW : CVar qO.Γ' (.sword 64) :=
-  ((qO.vm.lookup "b4").get qNameSome).2
+/-- The tracked slot's type is the 64-bit word: decided, since the slot name
+    goes through `Nat.repr`, which the elaborator's definitional check does not
+    reduce. -/
+theorem qNameTy : ((qO.vm.lookup "b4").get qNameSome).1 = .sword 64 := by
+  decide
 
-theorem qHName : qO.vm.lookup "b4" = some ⟨.sword 64, qW⟩ := by rfl
+/-- The tracked output slot for `b4`. -/
+noncomputable def qW : CVar qO.Γ' (.sword 64) :=
+  cast (congrArg (CVar qO.Γ') qNameTy) ((qO.vm.lookup "b4").get qNameSome).2
+
+theorem qHName : qO.vm.lookup "b4" = some ⟨.sword 64, qW⟩ := by decide
 
 theorem qValSome : (qEnv "b4").isSome := by rfl
 
-noncomputable def qVal : BitVec 64 := ((qEnv "b4").get qValSome).2
+theorem qValTy : ((qEnv "b4").get qValSome).1 = .sword 64 := by decide
 
-theorem qHVal : qEnv "b4" = some ⟨.sword 64, qVal⟩ := by rfl
+/-- The word `semScalar` leaves in `b4`. -/
+noncomputable def qVal : BitVec 64 :=
+  cast (congrArg CryptoTy.denote qValTy) ((qEnv "b4").get qValSome).2
+
+theorem qHVal : qEnv "b4" = some ⟨.sword 64, qVal⟩ := by
+  rw [← Option.some_get qValSome]
+  exact congrArg some (Sigma.ext qValTy
+    (by unfold qVal
+        exact (cast_heq (congrArg CryptoTy.denote qValTy)
+          ((qEnv "b4").get qValSome).2).symm))
 
 theorem qRetSome : (qO.cont (Com.ret (toVIRVar qW))).isSome := by rfl
 

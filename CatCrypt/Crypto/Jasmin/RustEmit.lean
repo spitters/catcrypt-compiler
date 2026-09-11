@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
+module
+
+import all Init.Data.Repr
+public import Mathlib.Data.String.Defs
+public import CatCrypt.Crypto.Jasmin.LowCT
 
 /-!
 # Rust Source Emission from `LowCT`
@@ -23,6 +27,8 @@ becomes an explicit `.clone()` on the source value.
 This is the SHIP form — what actually gets fed into the `cryptoptbls12-rs`
 crate for testing. Verified-correct by simulation against the same AST.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.LowCT
 
@@ -74,7 +80,7 @@ def rustLocRefMut (resultNames : List String) (loc : Located) : String :=
   if resultNames.contains loc.locVar then rustLocName loc
   else "&mut " ++ rustLocName loc
 
-private def rustIndent (n : Nat) (s : String) : String :=
+def rustIndent (n : Nat) (s : String) : String :=
   String.replicate n ' ' ++ s
 
 /-- Emit a `LowCT` as Rust source with given indent level.

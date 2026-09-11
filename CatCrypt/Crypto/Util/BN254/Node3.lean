@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Util.PrattCertificate
-import CatCrypt.Crypto.Util.BN254.Node2
+module
+
+public meta import CatCrypt.Crypto.Util.PrattCertificate
+public import Mathlib.Tactic.NormNum.Prime
+public import CatCrypt.Crypto.Util.PrattCertificate
+public meta import CatCrypt.Crypto.Util.BN254.Node2
+public import CatCrypt.Crypto.Util.BN254.Node2
 
 /-!
 # BN254 primality certificate — nested factor node `pf3`
@@ -15,6 +20,8 @@ chain, using the sub-certificate `pf2` from `Node2`. The modulus exceeds
 `2^64`, so the Fermat and witness checks stay on `native_decide`; the product
 check reduces by `decide`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxRecDepth 50000

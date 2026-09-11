@@ -3,13 +3,23 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Hax.HaxToLowCTSim_Main_Full
-import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta
-import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta_LeafAgrees
-import CatCrypt.Crypto.Hax.HaxToLowCTSim_AppSideCond
-import CatCrypt.Crypto.MLKEM.NttPolyVerified
-import CatCrypt.Crypto.Jasmin.TowerLimbStore
-import CatCrypt.Crypto.Jasmin.TowerTupleLoad
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Hax.HaxToLowCTSim_Main_Full
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Main_Full
+public meta import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta
+public meta import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta_LeafAgrees
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta_LeafAgrees
+public meta import CatCrypt.Crypto.Hax.HaxToLowCTSim_AppSideCond
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_AppSideCond
+public meta import CatCrypt.Crypto.MLKEM.NttPolyVerified
+public import CatCrypt.Crypto.MLKEM.NttPolyVerified
+public meta import CatCrypt.Crypto.Jasmin.TowerLimbStore
+public import CatCrypt.Crypto.Jasmin.TowerLimbStore
+public meta import CatCrypt.Crypto.Jasmin.TowerTupleLoad
+public import CatCrypt.Crypto.Jasmin.TowerTupleLoad
 
 /-!
 # ML-KEM simulation bridge (fourth protocol; first PQC)
@@ -86,6 +96,8 @@ is the documented framework gap and the Jasmin side-by-side, not a
 content-bearing bridge.
 
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -722,7 +734,7 @@ def mlkemLeafSpec : LeafSpec where
 
 /-! ### §12.1  Bridge-trivial key lemma -/
 
-private theorem mlkemBridge_any (dt : TowerType) (v : Value)
+theorem mlkemBridge_any (dt : TowerType) (v : Value)
     (val : RustVal dt) : mlkemBridge dt v val := by
   unfold mlkemBridge
   trivial
@@ -732,7 +744,7 @@ private theorem mlkemBridge_any (dt : TowerType) (v : Value)
 Because `mlkemBridge` is `True` on every shape, every per-leaf
 proof has the same one-liner body. -/
 
-private theorem leafAgrees_at_TFp (name : String)
+theorem leafAgrees_at_TFp (name : String)
     (hBi : ∀ vals, mlkemBuiltins name vals = some zeroBytes) :
     LeafCallAgreesTower mlkemBuiltins mlkemLeafSpec name .TFp mlkemBridge := by
   intro rs dest args vals vRes hb _hArgs

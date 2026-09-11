@@ -3,11 +3,18 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFront
-import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Add
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Mul
-import Mathlib.Data.ZMod.Basic
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.RelationalFront
+public import CatCrypt.Crypto.SecureCompilation.RelationalFront
+public meta import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
+public import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
+public meta import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Add
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Add
+public meta import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Mul
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Mul
+public import Mathlib.Data.ZMod.Basic
 
 /-!
 # The Vesta base field ADD and MUL, realized relationally over a 4×64-bit carrier
@@ -55,6 +62,8 @@ With ADD + MUL realized over the 4-limb carrier for both Pallas and Vesta, the P
 add/double are straight-line `+`/`·`; field inversion is the separate AUCurves safegcd
 leaf in `Vale/Vesta.lean`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

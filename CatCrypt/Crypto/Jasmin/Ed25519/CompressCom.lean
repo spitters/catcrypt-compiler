@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Transforms.Optimizer
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.Transforms.Optimizer
 
 /-!
 # `ed25519_compress` as a `Com catCryptDialect` program
@@ -44,6 +46,8 @@ the result type — see `CatCryptDialect.lean`'s `catCryptDenote`).
 The widths are also consistent with the existing `X25519Program.lean`
 convention (`Fp25519 := CryptoTy.memref 5`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

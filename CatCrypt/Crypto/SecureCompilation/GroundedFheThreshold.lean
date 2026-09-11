@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GroundedMlkemNtt
-import CatCrypt.Crypto.SecureCompilation.ConcreteBarrettRealizer
-import CatCrypt.Crypto.SecureCompilation.ConcreteMontMulRealizer
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GroundedMlkemNtt
+public import CatCrypt.Crypto.SecureCompilation.ConcreteBarrettRealizer
+public import CatCrypt.Crypto.SecureCompilation.ConcreteMontMulRealizer
 
 /-!
 # Grounded FHE / threshold lattice-arithmetic backbones — whole-pipeline
@@ -139,6 +141,8 @@ only); the `native_decide`-carrying NTT chains are kept out of it.
 * P. Barrett, CRYPTO 1986 (Barrett reduction).  NIST FIPS 203 (ML-KEM, the NTT
   parameters `q = 3329`, `n = 256`, `ω = 17`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

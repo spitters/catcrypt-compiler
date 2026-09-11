@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Algebra.Ring.Basic
-import Mathlib.Tactic.Ring
-import Mathlib.Data.List.Basic
+module
+
+public import Mathlib.Algebra.Ring.Basic
+public import Mathlib.Tactic.Ring
+public import Mathlib.Data.List.Basic
 
 /-!
 # Verified radix-2 NTT butterfly (Cooley–Tukey / Gentleman–Sande)
@@ -39,6 +41,8 @@ The pass-relevant facts are:
 These are the correctness obligations a butterfly/twiddle rewrite discharges;
 everything is closed by `ring`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

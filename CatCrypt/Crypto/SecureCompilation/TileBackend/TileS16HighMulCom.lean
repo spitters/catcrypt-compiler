@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
 # ML-KEM 16-bit signed high-multiply (`VPMULHW`) on the UNIFIED `Com jasminDialect`
@@ -54,6 +56,8 @@ vpmulhw16W a b
 denote lemma elaborates by `rfl` (the `Com.denote` of a one-binding straight-line
 program unfolds definitionally to the `SimdOp.denote .mulhi16` waist call).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

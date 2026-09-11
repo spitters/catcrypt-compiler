@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.ModReduceSelect
-import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+module
+
+public meta import CatCrypt.Crypto.Optimizer.ModReduceSelect
+public import CatCrypt.Crypto.Optimizer.ModReduceSelect
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
 # P-384 field-multiply kernel, lowered through the in-Lean x86 backend (#409)
@@ -66,6 +71,8 @@ class).
   is the external KAT (`bench/p384_fieldmul_compare`, vs GMP `mod p384`):
   6×6 corner pairs + 50000 random vectors.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.P384FieldKernel
 
@@ -444,6 +451,6 @@ def emitP384 : IO Unit := do
 The render is written while this module elaborates, so `lake` produces it from
 this file and no separate driver or Makefile rule carries the dependency. -/
 
-#eval emitP384
+-- #eval emitP384
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.P384FieldKernel

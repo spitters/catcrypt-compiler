@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.PolyLowering
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.PolyLowering
 
 /-!
 # Poly-dialect optimization rewrites (#482-4)
@@ -42,6 +44,8 @@ fusion / Montgomery / 4-way schedules realise — mirroring
   statements: any schedule equal to the butterfly / pointwise form denotes to the
   abstract value the dialect op carries.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

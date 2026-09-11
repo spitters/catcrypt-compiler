@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast
+module
+
+import all Init.Data.Repr
+import all Init.Data.String.Defs
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast
 
 /-!
 # Faithful `lsem` for the opaque external-leaf fragment
@@ -16,7 +20,7 @@ Each named `extCall`, `vpackZMM` and `callN` on its deferral list as the
 remaining "SIMD / opaque-leaf axes".
 
 This module **adds the `extCall` arm** — the *opaque external-leaf* op — to the
-simulation. `extCall` is a genuinely external primitive: its meaning is a
+simulation. `extCall` is an external primitive: its meaning is a
 **carried leaf** (an external function keyed by `name`), exactly like the
 existing opaque-leaf edge `JasminPrintSemCorrect.LeafAgrees` /
 `CryptoToJasminComCorrect.JasminLeafAgrees`. Its correctness is the leaf's own
@@ -88,7 +92,7 @@ increment 8's `ScalarCastN` (`ScalarLeafN.of_scalarCastN`). The `extCall` arm
 is the first **opaque** binding: its value is not computed from the dialect
 denotation but supplied by the carried leaf and tied back by `LeafAgreesN`.
 
-### `vpackZMM` / `callN`: assessed, deferred (honestly)
+### `vpackZMM` / `callN`: assessed, deferred
 
 * **`vpackZMM`** (`bop : JasminBinOp`, `[.reg 512, .reg 512] → .reg 512`) — needs
   the **SIMD lane model**: its denotation `zmmPackQ bop a b` is the per-64-bit-
@@ -104,7 +108,7 @@ denotation but supplied by the carried leaf and tied back by `LeafAgreesN`.
   destination registers**. At the single-output `LinstrR` layer `opToLinstrR`
   emits only the head slot (`"CALLN:" ++ name`, one `.reg dst`), and the dialect
   `Expr` denotation is the opaque default of the *head* result type
-  (`JasminTy.default (callNRet retTys)`); the genuine `k`-output tuple
+  (`JasminTy.default (callNRet retTys)`); the `k`-output tuple
   (`callNDefaults`) is consumed only by the `func.call` lowering, which writes
   `k` destinations. A faithful lsem step would have to write all `k` result
   registers and a multi-slot store-agreement, which `straightOps*`/`StoreAgreesN`
@@ -116,6 +120,8 @@ denotation but supplied by the carried leaf and tied back by `LeafAgreesN`.
 `jasminc_preserves_ct`.** The `lsem→bytes` encoder and Sail tables remain the
 declared trusted base, as for every verified compiler.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -1209,7 +1215,7 @@ theorem lsemLeakLeaf_straightOps_state_independent {leaf : LeafEnvN}
     This is **unconditional in the runtime inputs**: no IR→x86 faithfulness
     hypothesis, no `jasminc_preserves_ct`. The **only** carried hypothesis is
     `LeafAgreesN leaf` — the external primitive's own KAT, which is *honest*: an
-    `extCall` is a genuinely external leaf, exactly like `JasminLeafAgrees`. Both
+    `extCall` is an external leaf, exactly like `JasminLeafAgrees`. Both
     conjuncts concern one and the same object — the opaque-leaf linearizer-emitted
     straight-line body run by `lsemStraightLeaf` (functional) and observed by
     `lsemLeakLeaf` (CT). The external call is read over the REAL `"CALL:name"` /

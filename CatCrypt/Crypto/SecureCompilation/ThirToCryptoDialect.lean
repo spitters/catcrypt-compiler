@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
 
 /-!
 # The front-to-high-dialect edge: a verified `Com[thir] → Com[catCrypt]` lowering
@@ -99,6 +102,8 @@ The lowering returns `none` whenever any binding uses a residual op; the
 soundness theorem `lowerThirToCrypto_denote` is for the `some` case (a program
 all of whose bindings are covered). **0 sorries.**
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

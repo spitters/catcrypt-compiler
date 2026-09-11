@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
-import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+public import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
 
 /-!
 # Verified dead-code elimination (DCE) for `Com` — analysis-as-decision pass
@@ -84,6 +88,8 @@ position-based formulation we ship here is the *operational* version
 used by the emit pass; the intrinsic version is the documented
 extension point.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -310,7 +316,7 @@ example {accTy : JasminTy} (v : Ctxt.Var (d := jasminDialect) [accTy] accTy) :
 
 /-- A `regArith` binary `Expr` over `reg 64`, local helper for the sanity
     tests below. (Mirrors the Poseidon2Emit local helper.) -/
-private def binExprR64 {Γ : Ctxt jasminDialect} (op : JasminBinOp)
+def binExprR64DCE {Γ : Ctxt jasminDialect} (op : JasminBinOp)
     (a b : Ctxt.Var Γ (.reg 64)) : Expr jasminDialect Γ (.reg 64) :=
   { op := .regArith op 64, retTy_eq := rfl, args := .cons a (.cons b .nil) }
 
@@ -342,13 +348,13 @@ private def binExprR64 {Γ : Ctxt jasminDialect} (op : JasminBinOp)
     Tightening `computeLastUse` to a precise per-argument scan would
     flag `v0` correctly. That precision improvement is the documented
     residual; the framework theorems hold uniformly. -/
-private def deadFirstBody :
+def deadFirstBody :
     Com jasminDialect [JasminTy.reg 64] (JasminTy.reg 64) :=
   -- Position 0: v0 = acc + acc. After this binder, context is
   --   [reg64 (=v0), reg64 (=acc)], so `acc` is `.there .here`.
-  .var (binExprR64 .add .here .here)
+  .var (binExprR64DCE .add .here .here)
     -- Position 1: v1 = acc + acc. Uses `acc` = `.there .here`, NOT v0.
-    (.var (binExprR64 .add (.there .here) (.there .here))
+    (.var (binExprR64DCE .add (.there .here) (.there .here))
       -- ret v1: `.here` is v1.
       (.ret .here))
 
@@ -373,9 +379,9 @@ example : Com.numBinders deadFirstBody = 2 := rfl
     A single live binder; `analyzeDce` flags nothing. This confirms the
     analysis does not produce false positives on the simplest one-binder
     body shape. -/
-private def singleLiveBinderBody :
+def singleLiveBinderBody :
     Com jasminDialect [JasminTy.reg 64] (JasminTy.reg 64) :=
-  .var (binExprR64 .add .here .here)
+  .var (binExprR64DCE .add .here .here)
     (.ret .here)
 
 /-- `singleLiveBinderBody` has one binder. -/

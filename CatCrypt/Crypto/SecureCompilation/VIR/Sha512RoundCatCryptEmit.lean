@@ -3,10 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha512Tie
-import CatCrypt.Crypto.Util.Sha512Verified
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha512Tie
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha512Tie
+public meta import CatCrypt.Crypto.Util.Sha512Verified
+public import CatCrypt.Crypto.Util.Sha512Verified
 
 /-!
 # SHA-512 compression-round components as a genuine `catCryptDialect → jasmin → x86` path
@@ -67,6 +73,8 @@ non-trivial word-mixing pieces; the surrounding additions are dialect `bvAdd`.
 
 0 sorries.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

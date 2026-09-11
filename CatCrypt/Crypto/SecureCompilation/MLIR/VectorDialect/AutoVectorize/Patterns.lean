@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Ops
+module
+
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Ops
 
 /-!
 # Auto-Vectorize — Vectorizable pattern alphabet (task #108)
@@ -63,6 +65,8 @@ The keystone in `Vectorize.lean` is `lanewiseAdd_vectorize_denotation_preserves`
 which composes `laneMap_eq_scalarMap` (`VIR/LaneMap.lean` from #150) with the
 abstract denotation `denote_add` (`Denote.lean` from #183).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

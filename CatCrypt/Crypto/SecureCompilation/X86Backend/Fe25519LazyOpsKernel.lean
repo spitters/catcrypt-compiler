@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519OpsKernel
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519OpsKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519OpsKernel
 
 /-!
 # Lazy-reduction Curve25519 field-OP leaves `feAddLazy`/`feSubLazy`/`feCmadd121666Lazy` (#410)
@@ -74,6 +79,8 @@ straight-line lowering is denotation-preserving (reusing `lowerBlock_denote_clos
 exactly as the canonical leaves), plus body-length and mnemonic-shape checks and
 no register-allocation overflow. No `sorry`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

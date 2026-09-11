@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Bridges.ReprTransfer
-import CatCrypt.Crypto.Bridges.ReprTransferExpr
-import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Bridges.ReprTransfer
+public import CatCrypt.Crypto.Bridges.ReprTransferExpr
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
 
 /-!
 # The relational-compilation front-end (entry point / contract)
@@ -86,6 +89,8 @@ golden path: `com_denotes_bop := FieldEmitGoldenPath.fieldAddCom_denote` and
 `com_ok := FieldEmitGoldenPath.fieldAddCom_ok`. The instance is fully proved,
 so the relational front is wired end-to-end through the verified backend.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

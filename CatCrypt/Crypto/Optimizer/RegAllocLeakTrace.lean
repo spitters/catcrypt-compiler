@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.GenericRegAlloc
+module
+
+public import CatCrypt.Crypto.Optimizer.GenericRegAlloc
 
 /-!
 # Leakage-trace preservation for the register-allocation / spill rewrite
@@ -101,6 +103,8 @@ would require a byte-level leakage semantics for the emitted asm, which the
 pipeline does not currently provide; that is the documented frontier, the same
 one `JasminSem.Cmd.leakTrace` sits at.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

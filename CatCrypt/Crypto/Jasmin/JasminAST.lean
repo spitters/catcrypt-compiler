@@ -4,6 +4,8 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 
+module
+
 /-!
 # Jasmin Program AST
 
@@ -20,6 +22,8 @@ defined in `JasminTranslate.lean`.
 * jasmin-lang/jasmin compiler
 * CatCrypt jasmin branch: `theories/Jasmin/jasmin_translate.v`
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin
 

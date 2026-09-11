@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+module
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-!
 # A faithful Lean model of jasmin's linear semantics `lsem` — increment 1
@@ -78,6 +81,8 @@ proved in increment 1). `lsemStep` for `Lopn` is faithful to `eval_instr`'s
 `Lopn` arm on the modeled opcodes: the destination is written with
 `applyOpn opn (srcs.map eval)` and the pc is advanced by one (`lnext_pc`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -274,8 +279,7 @@ theorem applyOpn_binOpName {w : Nat} (bop : JasminBinOp) (a b : BitVec w) :
 
 /-- `MOVQ` carries no `":64"` width tag, so `stripWidthTag` leaves it unchanged —
     the body mnemonic the `lsemStep` `Lopn` arm recovers it as. -/
-@[simp] theorem stripWidthTag_MOVQ : stripWidthTag "MOVQ" = "MOVQ" := by
-  decide +kernel
+@[simp] theorem stripWidthTag_MOVQ : stripWidthTag "MOVQ" = "MOVQ" := by decide +kernel
 
 /-- `MOVQ` and `MOV` denote the same word op (a pure copy). -/
 theorem applyOpn_MOVQ_eq_MOV {w : Nat} (a : BitVec w) :

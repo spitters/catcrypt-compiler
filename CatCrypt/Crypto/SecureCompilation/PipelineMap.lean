@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
-import CatCrypt.Crypto.Hax.HaxToLowCT
-import CatCrypt.Crypto.Hax.HaxToLowCT_ConstFold
-import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
+module
+
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public import CatCrypt.Crypto.Hax.HaxToLowCT
+public import CatCrypt.Crypto.Hax.HaxToLowCT_ConstFold
+public import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
 
 /-!
 # Compiler / IR pipeline map  (START HERE before building front-end work)
@@ -137,6 +139,8 @@ on: (1) a `forFold` body that *returns an array* (only statement-form
 `array_update(a, i, array_update(index(a,i), j, …))`.  These are narrow
 translator-pattern extensions in `HaxToLowCT.lean`, not architecture.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.PipelineMap
 

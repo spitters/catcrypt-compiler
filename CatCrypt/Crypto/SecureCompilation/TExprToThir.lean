@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import HaxLean.TExpr
-import CatCrypt.Crypto.SecureCompilation.ThirToComFront
+module
+
+public meta import HaxLean.TExpr
+public import HaxLean.TExpr
+public meta import CatCrypt.Crypto.SecureCompilation.ThirToComFront
+public import CatCrypt.Crypto.SecureCompilation.ThirToComFront
 
 /-!
 # TYPED FRONT: hax-lean `Hax.TExpr` (typed AST) → verified `Thir` front IR
@@ -82,6 +86,8 @@ markers, `ann`/`namedProj`) are outside this subset and translate to `none`. The
 new thing is that **op width comes from `ty`, not from the head string**, so no
 string-tag pre-pass is needed.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -900,7 +906,7 @@ theorem maj_texpr_compiles :
       = some ((x &&& y) ^^^ (x &&& z) ^^^ (y &&& z)) := by
     have h := majTexpr_denoteScalarT (nIn := 3) ![x, y, z]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   have hchain : some ((x &&& y) ^^^ (x &&& z) ^^^ (y &&& z))
       = some (c.denote (inputValuation 32 3 ![x, y, z])) := by
     rw [← hspec, hsrc]; exact hfront
@@ -935,7 +941,7 @@ theorem ch_texpr_compiles :
       = some ((x &&& y) ^^^ ((~~~x) &&& z)) := by
     have h := chTexpr_denoteScalarT (nIn := 3) ![x, y, z]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   have hchain : some ((x &&& y) ^^^ ((~~~x) &&& z))
       = some (c.denote (inputValuation 32 3 ![x, y, z])) := by
     rw [← hspec, hsrc]; exact hfront

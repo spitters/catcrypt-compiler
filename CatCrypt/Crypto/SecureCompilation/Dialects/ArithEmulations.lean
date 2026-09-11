@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.Arith
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.Dialects.Arith
 
 /-!
 # D1 — neutral-arith emulation library (the legalization baseline / conformance suite)
@@ -33,6 +36,8 @@ This file is that conformance suite: for each idiom we
 
 All three correctness proofs hold at fully symbolic width `w`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.ArithEmulations
 

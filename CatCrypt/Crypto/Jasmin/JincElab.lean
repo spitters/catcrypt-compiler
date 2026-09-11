@@ -3,10 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JincToCom
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.JincToCom
+public import CatCrypt.Crypto.Jasmin.JincToCom
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # `.jinc` elaborator: untyped `JFun` → `Com jasminDialect` → owned x86
@@ -30,6 +37,8 @@ The `Com → .s` step is the owned backend (`Com.toLprogPhysAbi` /
 `renderLprogAtt`), rendered by `emitJincAsm`. Source parameter `j` lands in
 SysV register `j` (natural C order: parameter 0 → `RDI`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # C4 fan-out: the verified compiler emits the BLAKE2b G step from extracted source
@@ -57,6 +60,8 @@ source*, proven equal to the RFC 7693 G component — the compiler authored the
 leaf, with no front change beyond the SHA-256 / Keccak / BLAKE2s leaves. This is
 the width-64 ARX fan-out data point.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -235,7 +240,7 @@ theorem blake2bGA_compiles :
       blake2bGASrc (fun _ => none) = some (blake2bGaSpec a b c d x y) := by
     have h := blake2bGASrc_denoteScalar (nIn := 6) ![a, b, c, d, x, y]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 64) (nIn := 6) ["a", "b", "c", "d", "x", "y"]
     ![a, b, c, d, x, y] blake2bGASrc _ hc hspec
 
@@ -256,7 +261,7 @@ theorem blake2bGB_compiles :
       blake2bGBSrc (fun _ => none) = some (blake2bGbSpec a b c d x y) := by
     have h := blake2bGBSrc_denoteScalar (nIn := 6) ![a, b, c, d, x, y]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 64) (nIn := 6) ["a", "b", "c", "d", "x", "y"]
     ![a, b, c, d, x, y] blake2bGBSrc _ hc hspec
 
@@ -277,7 +282,7 @@ theorem blake2bGC_compiles :
       blake2bGCSrc (fun _ => none) = some (blake2bGcSpec a b c d x y) := by
     have h := blake2bGCSrc_denoteScalar (nIn := 6) ![a, b, c, d, x, y]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 64) (nIn := 6) ["a", "b", "c", "d", "x", "y"]
     ![a, b, c, d, x, y] blake2bGCSrc _ hc hspec
 
@@ -298,7 +303,7 @@ theorem blake2bGD_compiles :
       blake2bGDSrc (fun _ => none) = some (blake2bGdSpec a b c d x y) := by
     have h := blake2bGDSrc_denoteScalar (nIn := 6) ![a, b, c, d, x, y]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 64) (nIn := 6) ["a", "b", "c", "d", "x", "y"]
     ![a, b, c, d, x, y] blake2bGDSrc _ hc hspec
 

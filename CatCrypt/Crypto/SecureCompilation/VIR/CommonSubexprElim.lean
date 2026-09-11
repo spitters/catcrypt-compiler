@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
-import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
+public import CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocation
 
 /-!
 # Verified common-subexpression elimination (CSE) for `Com` — analysis-as-decision pass
@@ -102,6 +106,8 @@ The framework theorems `applyCse_denote_preserves` and
 `applyCse_preserves_CT` are CSE-decision-independent and hold across all
 of these extensions.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -424,7 +430,7 @@ example {accTy : JasminTy} (v : Ctxt.Var (d := jasminDialect) [accTy] accTy) :
 /-- A `regArith` binary `Expr` over `reg 64`, local helper for the sanity
     tests below. (Mirrors the helpers in `DeadCodeElim.lean` and
     `Poseidon2Emit.lean`.) -/
-private def binExprR64 {Γ : Ctxt jasminDialect} (op : JasminBinOp)
+def binExprR64 {Γ : Ctxt jasminDialect} (op : JasminBinOp)
     (a b : Ctxt.Var Γ (.reg 64)) : Expr jasminDialect Γ (.reg 64) :=
   { op := .regArith op 64, retTy_eq := rfl, args := .cons a (.cons b .nil) }
 
@@ -447,7 +453,7 @@ private def binExprR64 {Γ : Ctxt jasminDialect} (op : JasminBinOp)
     they both reference the same originating slot (the input
     accumulator). The CSE analysis fires: position 1's binder is
     flagged redundant via canonical position 0. -/
-private def headlineCseBody :
+def headlineCseBody :
     Com jasminDialect [JasminTy.reg 64] (JasminTy.reg 64) :=
   .var (binExprR64 .add .here .here)
     (.var (binExprR64 .add (.there .here) (.there .here))
@@ -483,7 +489,7 @@ example : (analyzeCse
     whereas `acc`'s source-id at position 0 is `-1` (the input slot).
     The hashes differ, the analysis returns `[]`. This is the *Poseidon2
     roundLoopBody* shape — it must not be falsely flagged. -/
-private def soundnessBody :
+def soundnessBody :
     Com jasminDialect [JasminTy.reg 64] (JasminTy.reg 64) :=
   .var (binExprR64 .add .here .here)            -- v0 = acc + acc
     (.var (binExprR64 .add .here .here)         -- v1 = v0 + v0
@@ -514,7 +520,7 @@ example : (analyzeCse
     redundant via canonical position 0.
 
     This is the smallest analysis-fires CSE smoke. -/
-private def constCseBody :
+def constCseBody :
     Com jasminDialect [JasminTy.reg 64] (JasminTy.reg 64) :=
   .var ({ op := .regConst 64 7, retTy_eq := rfl, args := .nil })
     (.var ({ op := .regConst 64 7, retTy_eq := rfl, args := .nil })
@@ -545,7 +551,7 @@ example : (analyzeCse
     `3`. The analysis flags positions 1 and 2 as redundant via the
     canonical position 0 (the earliest binder is preserved as the
     canonical defining position; both later binders point to it). -/
-private def tripleConstCseBody :
+def tripleConstCseBody :
     Com jasminDialect [JasminTy.reg 64] (JasminTy.reg 64) :=
   .var ({ op := .regConst 64 3, retTy_eq := rfl, args := .nil })
     (.var ({ op := .regConst 64 3, retTy_eq := rfl, args := .nil })
@@ -569,7 +575,7 @@ example : (analyzeCse
     ```
 
     Position 2 is flagged redundant via canonical position 0. -/
-private def mixedConstsBody :
+def mixedConstsBody :
     Com jasminDialect [JasminTy.reg 64] (JasminTy.reg 64) :=
   .var ({ op := .regConst 64 5, retTy_eq := rfl, args := .nil })
     (.var ({ op := .regConst 64 7, retTy_eq := rfl, args := .nil })

@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.Nat.GCD.Basic
-import Mathlib.Data.Nat.ModEq
-import Mathlib.Tactic
+module
+
+public import Mathlib.Data.Nat.GCD.Basic
+public import Mathlib.Data.Nat.ModEq
+public import Mathlib.Tactic.Convert
+public import Mathlib.Tactic.NormNum
+public import Mathlib.Tactic.Ring
 
 /-!
 # Montgomery REDC law for a 60-bit FHE NTT modmul
@@ -27,6 +31,8 @@ All reasoning is over `Nat` (the cleanest layer). The headline result is
 `normalMul_correct : normalMul a b = (a * b) % q` for `a, b < q`, the function a
 GMP KAT checks.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -229,7 +235,7 @@ theorem normalMul_correct (a b : Nat) (ha : a < fheQ) (hb : b < fheQ) :
       _ = (y * fheR) * fheR := by ring
       _ ≡ (a * b) * fheR [MOD fheQ] := Nat.ModEq.mul_right fheR hmm
   -- strip the common factor R (coprime to q): `x·R ≡ y·R (mod q) ⇒ x ≡ y (mod q)`.
-  have hcop : fheQ.gcd fheR = 1 := by norm_num [fheQ, fheR, Nat.Coprime]
+  have hcop : fheQ.gcd fheR = 1 := by decide +kernel
   -- `chain : (normalMul·R) % q = ((a·b)·R) % q` is exactly the cancellable hypothesis.
   have hmodeq : normalMul a b % fheQ = (a * b) % fheQ :=
     Nat.ModEq.cancel_right_of_coprime hcop chain

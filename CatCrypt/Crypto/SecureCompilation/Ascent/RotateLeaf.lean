@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf
 
 /-!
 # The `corres_rotl` value leaf — a fixed-count rotate as derived shifts + xor
@@ -43,6 +45,8 @@ AutoCorres-in-Lean port; this module adds a rotate value leaf to that calculus.
 Width is **64** (Keccak / SHA-512); a 32-bit variant (ChaCha / SHA-256) is the
 same documented re-indexing the `ExprLeaf` bitwise leaf notes.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

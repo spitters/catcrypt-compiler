@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
 # Orchestration front: a phase-schedule → `Com` combinator for the call band
@@ -62,6 +64,8 @@ produces.
 does not match the declared operand type, or a returned slot of the wrong type),
 so a well-typed orchestration is exactly a `some`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

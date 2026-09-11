@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.AutoVectorize.Vectorize
+module
+
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.AutoVectorize.Vectorize
 
 /-!
 # Auto-Vectorize — Worked demo on the HMAC `K ⊕ pad` step (task #108)
@@ -46,6 +48,8 @@ files are reserved to the #179 agent).
 * No parallel-agent overlap: `HmacHkdfEmit.lean` is not in the
   do-not-touch list and this demo doesn't modify it anyway.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

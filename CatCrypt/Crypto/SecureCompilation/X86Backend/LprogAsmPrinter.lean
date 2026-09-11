@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-!
 # Owned AT&T printer for the linear-jasmin owned-RA `Lcmd` (task #537)
@@ -69,6 +73,8 @@ is the more-correct of the two for the U64 path; this divergence is reported as 
 finding (the upstream `spill_addr` should take the operand width), not silently
 matched.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -351,9 +357,9 @@ selected) — the GE-solve pivot-swap primitive for MAYO/UOV/SNOVA sign. -/
     (`u16`/`u8`) buffer (the Frodo `uint16_t` ABI seam, #656); the body
     *arithmetic* stays at its natural register width (low bits exact). -/
 def mnemWidth (opn : String) : Nat :=
-  if opn.endsWith ":64" || opn = "MOVQ" then 64
-  else if opn.endsWith ":16" then 16
-  else if opn.endsWith ":8" then 8
+  if hasSuffix opn ":64" || opn = "MOVQ" then 64
+  else if hasSuffix opn ":16" then 16
+  else if hasSuffix opn ":8" then 8
   else 32
 
 /-- Strip the width tag (`:64`, `:16`, `:8`) from a body mnemonic to recover the
@@ -363,10 +369,8 @@ def mnemWidth (opn : String) : Nat :=
     this printer-local stripper handles all three widths without disturbing the
     legalizer's tag alphabet. -/
 def stripAbiTag (opn : String) : String :=
-  if opn.endsWith ":16" || opn.endsWith ":8" then
-    match opn.splitOn ":" with
-    | base :: _ => base
-    | [] => opn
+  if hasSuffix opn ":16" || hasSuffix opn ":8" then
+    String.ofList (opn.toList.takeWhile (· != ':'))
   else stripWidthTag opn
 
 /-- The AT&T size suffix for an op width (`q` for U64, `w` for U16, `b` for U8,
@@ -1329,7 +1333,7 @@ def vecSpillBytes (body : VIR.JasminLprogExport.Lcmd) : Nat :=
 def bodyIsU64 (body : VIR.JasminLprogExport.Lcmd) : Bool :=
   body.any (fun i =>
     match i.li_i with
-    | .Lopn _ opn _ => opn.endsWith ":64"
+    | .Lopn _ opn _ => hasSuffix opn ":64"
     | _ => false)
 
 /-- An explicit frame-size directive `Lopn [] "FRAME" [.imm F]` (#656 array-ABI

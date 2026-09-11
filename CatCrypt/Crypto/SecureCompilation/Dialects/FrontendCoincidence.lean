@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ImpExprToThir
-import CatCrypt.Crypto.Jasmin.LowCT
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ImpExprToThir
+public import CatCrypt.Crypto.Jasmin.LowCT
 
 /-!
 # DF frontend coincidence (base cases): the two frontend denotations COINCIDE on the
@@ -114,6 +116,8 @@ no proof obligations open.
 * Each lemma below is about **both** `denoteScalar`/`denoteAtomExpr`
   (Path A) **and** `SExpr.evalBV` (Path B); none is a restatement of one side.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

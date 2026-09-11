@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
-import Lean
+module
+
+public meta import CatCrypt.Crypto.Jasmin.LowCT
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Jasmin.LowCT
+public import Lean
 
 /-!
 # Reflect Lean value-level programs to `LowCT`
@@ -41,16 +45,20 @@ a `fp_*` call or an already-bound variable.
 Unknown heads produce a descriptive elaboration error.
 -/
 
+@[expose] public section
+
 namespace CatCrypt.Crypto.Jasmin.LowCT
 
 deriving instance Lean.ToExpr for SecretLevel
+
+meta section
 
 /-- Manual `ToExpr TowerType`. The auto-derived `deriving instance Lean.ToExpr`
     miscompiles this enum: it shifts every nullary constructor by +2 in the def
     order (`TU8 ↦ TFp25519`, `TFp25519 ↦ TFpL25519`, …), so a reified field type
     serialized back to a term came out wrong — making the whole `reifyLowCT%`
     lift emit the wrong field width. This explicit instance round-trips faithfully. -/
-private def towerTypeToExpr : TowerType → Lean.Expr
+def towerTypeToExpr : TowerType → Lean.Expr
   | .TFp            => .const ``TowerType.TFp []
   | .TFp2           => .const ``TowerType.TFp2 []
   | .TFp6           => .const ``TowerType.TFp6 []
@@ -82,14 +90,18 @@ private def towerTypeToExpr : TowerType → Lean.Expr
       Lean.mkApp4 (.const ``TowerType.TPolyMat [])
         (Lean.toExpr q) (Lean.toExpr n) (Lean.toExpr k) (Lean.toExpr m)
 
+
 instance : Lean.ToExpr TowerType where
   toExpr := towerTypeToExpr
   toTypeExpr := .const ``TowerType []
+
 
 deriving instance Lean.ToExpr for Located
 deriving instance Lean.ToExpr for SExpr
 -- #267: derive on the canonical inductive `LowCT` (`LowCT` is now an abbrev).
 deriving instance Lean.ToExpr for LowCT
+
+end            -- meta section
 
 end CatCrypt.Crypto.Jasmin.LowCT
 
@@ -265,6 +277,29 @@ structure LowCTPattern where
   towerType : TowerType
   deriving Inhabited
 
+
+/-! ## 3. Reified output
+
+`ReifiedFunc` bundles what `LowCTToMLIR.emitFunc` needs: ordered arg
+list with types, return variable name, and the body `LowCT`. -/
+
+structure ReifiedFunc where
+  args    : List (String × TowerType)
+  body    : LowCT
+  retName : String
+  /-- Ordered list of output slot names for a **multi-result** kernel,
+      i.e. one whose pure-Lean reference returns a tuple `(o₀, o₁, …)`.
+      Each entry is the in-scope variable the body writes its output to,
+      matching the `&mut` slot ABI the emit consumers (`ppRustFunction`,
+      `emitFunc`) expect.  For a single-output kernel this is `[retName]`;
+      defaulted to `[]` so the existing hand-built `{ args, body, retName }`
+      `ReifiedFunc` literals (the Vale leaves) keep elaborating unchanged. -/
+  outNames : List String := []
+  deriving Inhabited
+
+meta section
+
+
 /-- The registry is an `IO.Ref` to a list, populated at attribute-init
     time.  `MetaM` consults it via `LowCTPatternRegistry.lookup`. -/
 initialize rustCmdPatternRegistry : IO.Ref (List LowCTPattern) ←
@@ -308,6 +343,7 @@ referenced declaration to a `LowCTPattern`, and inserts it into
 the global registry.  The reifier consults the registry as a
 fallback after the in-file `knownOps` table — so in-file entries
 take precedence over registered instances. -/
+
 /-- Persistent declaration extension storing the names of all
     `@[rust_cmd_pattern]`-tagged declarations.  We store *names*, not
     pre-evaluated values, because evaluating arbitrary user
@@ -321,6 +357,7 @@ initialize rustCmdPatternExt :
     addEntryFn    := fun arr n => arr.push n
     addImportedFn := fun arrs => arrs.foldl (fun acc a => acc ++ a) #[]
   }
+
 
 initialize Lean.registerBuiltinAttribute {
   name  := `rust_cmd_pattern
@@ -438,6 +475,7 @@ When the leaf is a computable `def`, the cross-side axiom in
 leaf-to-spec correspondence. The structural bijection axioms remain (they
 are one-sided byte-ABI claims, not leaf semantics). -/
 
+
 /-- Persistent extension recording computable-bodied pattern decls.
     Stored as a list of names like `rustCmdPatternExt` but used for the
     "bypass `whnf`" check.  Decoupled so we can extend later without
@@ -448,6 +486,7 @@ are one-sided byte-ABI claims, not leaf semantics). -/
     `rustCmdPatternExt` uses — no second `IO.Ref` `initialize` block
     (Lean rejects multi-`IO.Ref`-init blocks in the same module with
     `cannot evaluate [init] declaration ... in the same module`). -/
+
 initialize rustCmdPatternComputableExt :
     Lean.SimplePersistentEnvExtension Lean.Name (Array Lean.Name) ←
   Lean.registerSimplePersistentEnvExtension {
@@ -491,12 +530,31 @@ initialize Lean.registerBuiltinAttribute {
     below) don't force same-module `[init]` evaluation of the
     underlying `SimplePersistentEnvExtension`.  This mirrors the
     `matchPattern? / matchPatternUnsafe` pattern just below. -/
-private unsafe def computableDeclsUnsafe : Lean.MetaM (Array Lean.Name) := do
+unsafe def computableDeclsUnsafe : Lean.MetaM (Array Lean.Name) := do
   let env ← Lean.getEnv
   pure (rustCmdPatternComputableExt.getState env)
 
 @[implemented_by computableDeclsUnsafe]
 opaque LowCTPattern.computableDecls : Lean.MetaM (Array Lean.Name)
+
+/-- Is the head of `e` registered as a `@[rust_cmd_pattern_computable]`
+    leaf?  Used by the reifier to decide whether to bypass `whnf` (so
+    that the head — a `def` rather than an `axiom` — is not unfolded
+    before pattern matching).
+
+    Wrapped as `unsafe` + `@[implemented_by]` opaque (same trick as
+    `matchPattern?`) to avoid forcing same-module `[init]` evaluation of
+    `rustCmdPatternComputableExt` when reachable from the file's own
+    `#eval` smoke tests. -/
+unsafe def isComputablePatternHeadUnsafe (e : Expr) : MetaM Bool := do
+  let (cn, _) := e.getAppFnArgs
+  let env ← Lean.getEnv
+  let names := rustCmdPatternComputableExt.getState env
+  pure (names.any (· == cn))
+
+@[implemented_by isComputablePatternHeadUnsafe]
+opaque isComputablePatternHead? (e : Expr) : MetaM Bool
+
 
 /-! ## 2. Registry of known field-op heads
 
@@ -931,7 +989,7 @@ axiom mld_sign_accept : UInt64 → UInt64 → UInt64 → UInt64
 axiom mld_verify_compare : MldBytes 64 → MldBytes 48 → UInt64 → UInt64
 
 /-- Known field-op symbols recognized by the reifier. -/
-def knownOps : List (Name × String × Nat × TowerType) :=
+meta def knownOps : List (Name × String × Nat × TowerType) :=
   [ (``fp_add,          "fp_add",          2, .TFp25519)
   , (``fp_sub,          "fp_sub",          2, .TFp25519)
   , (``fp_mul,          "fp_mul",          2, .TFp25519)
@@ -1115,7 +1173,7 @@ def knownOps : List (Name × String × Nat × TowerType) :=
 
 /-- Match a fully-applied known op against the in-file `knownOps`
     table.  Returns `(leafName, argFVars, towerType)`. -/
-private def matchOp? (e : Expr) : Option (String × Array Expr × TowerType) :=
+meta def matchOp? (e : Expr) : Option (String × Array Expr × TowerType) :=
   match e.getAppFnArgs with
   | (cn, args) =>
     match knownOps.find? (fun p => p.1 == cn) with
@@ -1144,7 +1202,7 @@ private def matchOp? (e : Expr) : Option (String × Array Expr × TowerType) :=
        requires `Lean.Meta.evalExpr`, which is `unsafe`; this
        function is therefore `unsafe` and exposed via
        `@[implemented_by]` for safe consumption. -/
-private unsafe def matchPatternUnsafe (e : Expr) :
+unsafe def matchPatternUnsafe (e : Expr) :
     MetaM (Option (String × Array Expr × TowerType)) := do
   match e.getAppFnArgs with
   | (cn, args) =>
@@ -1168,55 +1226,21 @@ private unsafe def matchPatternUnsafe (e : Expr) :
             catch _ => continue
         pure none
 
+
+
 /-- Safe wrapper over `matchPatternUnsafe`.  The `IO.Ref`-only path
     is sufficient if you don't use `@[rust_cmd_pattern]` and only
     register patterns via direct `LowCTPattern.register` calls. -/
 @[implemented_by matchPatternUnsafe]
-private opaque matchPattern? (e : Expr) :
+opaque matchPattern? (e : Expr) :
     MetaM (Option (String × Array Expr × TowerType))
 
-/-- Is the head of `e` registered as a `@[rust_cmd_pattern_computable]`
-    leaf?  Used by the reifier to decide whether to bypass `whnf` (so
-    that the head — a `def` rather than an `axiom` — is not unfolded
-    before pattern matching).
-
-    Wrapped as `unsafe` + `@[implemented_by]` opaque (same trick as
-    `matchPattern?`) to avoid forcing same-module `[init]` evaluation of
-    `rustCmdPatternComputableExt` when reachable from the file's own
-    `#eval` smoke tests. -/
-private unsafe def isComputablePatternHeadUnsafe (e : Expr) : MetaM Bool := do
-  let (cn, _) := e.getAppFnArgs
-  let env ← Lean.getEnv
-  let names := rustCmdPatternComputableExt.getState env
-  pure (names.any (· == cn))
-
-@[implemented_by isComputablePatternHeadUnsafe]
-private opaque isComputablePatternHead? (e : Expr) : MetaM Bool
-
-/-! ## 3. Reified output
-
-`ReifiedFunc` bundles what `LowCTToMLIR.emitFunc` needs: ordered arg
-list with types, return variable name, and the body `LowCT`. -/
-
-structure ReifiedFunc where
-  args    : List (String × TowerType)
-  body    : LowCT
-  retName : String
-  /-- Ordered list of output slot names for a **multi-result** kernel,
-      i.e. one whose pure-Lean reference returns a tuple `(o₀, o₁, …)`.
-      Each entry is the in-scope variable the body writes its output to,
-      matching the `&mut` slot ABI the emit consumers (`ppRustFunction`,
-      `emitFunc`) expect.  For a single-output kernel this is `[retName]`;
-      defaulted to `[]` so the existing hand-built `{ args, body, retName }`
-      `ReifiedFunc` literals (the Vale leaves) keep elaborating unchanged. -/
-  outNames : List String := []
-  deriving Inhabited
 
 /-! ## 4. Reifier -/
 
 /-- Extract the "user-chosen" binder name for a free variable, falling
     back to a generated name if the binder was anonymous. -/
-private def fvarDisplayName (fvarId : FVarId) : MetaM String := do
+def fvarDisplayName (fvarId : FVarId) : MetaM String := do
   let decl ← fvarId.getDecl
   pure decl.userName.toString
 
@@ -1228,7 +1252,7 @@ private def fvarDisplayName (fvarId : FVarId) : MetaM String := do
     / `TArr` forms.  The single-curve `Fp` / `Fp2` surfaces (BLS-style
     field) map to `TFp` / `TFp2`.  Anything else defaults to `TFp25519`
     (legacy X25519 surface). -/
-private def leanTypeToTowerType (t : Expr) : MetaM TowerType := do
+def leanTypeToTowerType (t : Expr) : MetaM TowerType := do
   -- Size-indexed ML-DSA byte buffer `MldBytes n ↦ .TBytes n`: the size
   -- `n` travels in the Lean type, so the reified result tower type of a
   -- size-additive op (concat) is recovered from its result binder's type.
@@ -1272,7 +1296,7 @@ private def leanTypeToTowerType (t : Expr) : MetaM TowerType := do
     fall back to the supplied default `tt` (the op's result type).  Used
     by the reifier to give each call argument its *own* surface tower
     type rather than the op's single registered result type. -/
-private def argTowerType (a : Expr) (default : TowerType) : MetaM TowerType := do
+def argTowerType (a : Expr) (default : TowerType) : MetaM TowerType := do
   if a.isFVar then
     let decl ← a.fvarId!.getDecl
     leanTypeToTowerType decl.type
@@ -1290,7 +1314,7 @@ private def argTowerType (a : Expr) (default : TowerType) : MetaM TowerType := d
 
     Returns the erased type when `(leafName, argIdx)` is one of those
     positions, else `none` (the per-argument binder type is used). -/
-private def erasedArgType? (leafName : String) (argIdx : Nat) : Option TowerType :=
+def erasedArgType? (leafName : String) (argIdx : Nat) : Option TowerType :=
   if leafName == "bytes_slice" ∧ argIdx == 0 then some (.TBytes 0)
   else if leafName == "verify_compare" ∧ (argIdx == 0 ∨ argIdx == 1) then some (.TBytes 0)
   else none
@@ -1300,7 +1324,7 @@ private def erasedArgType? (leafName : String) (argIdx : Nat) : Option TowerType
     and `{ toBitVec := n#64 }`.  Used by the reifier to emit
     `RLetU64Zero` + `RScalarSet` for `let off : u64 := n` scalar-constant
     bindings (the `bytes_slice` offset idiom in the byte-side kernels). -/
-private def scalarLitValue? (v : Expr) : MetaM (Option Nat) := do
+def scalarLitValue? (v : Expr) : MetaM (Option Nat) := do
   -- Only treat `v` as a scalar literal if its type is `Nat` or `UInt64`
   -- (so we never mis-read an opaque field element).
   let ty ← whnf (← inferType v)
@@ -1320,7 +1344,7 @@ private def scalarLitValue? (v : Expr) : MetaM (Option Nat) := do
     handles the final return expression (single var/op, or a tuple of
     output slots).  Shared by `reifyChain` (single output) and
     `reifyChainMulti` (tuple output). -/
-private partial def reifyBindings (bindings : Array Expr) (outNames : List String) :
+partial def reifyBindings (bindings : Array Expr) (outNames : List String) :
     MetaM LowCT := do
   -- Each `x ∈ bindings` is an fvar; for let-binders we can recover its
   -- value via `FVarId.getValue?`. For lambda-binders we just track the
@@ -1418,7 +1442,7 @@ private partial def reifyBindings (bindings : Array Expr) (outNames : List Strin
 /-- Walk the telescope-extracted body of a let-chain + return expression,
     emitting an `RCall` for each known `fp_*` `let`-binder and returning
     the final result variable's name (single-output). -/
-private partial def reifyChain (bindings : Array Expr) (finalExpr : Expr) :
+partial def reifyChain (bindings : Array Expr) (finalExpr : Expr) :
     MetaM (LowCT × String) := do
   -- Determine the output slot name first (the final fvar, if any) so the
   -- binding that writes it is not redeclared with an `RLetZero`.
@@ -1472,7 +1496,7 @@ private partial def reifyChain (bindings : Array Expr) (finalExpr : Expr) :
     expression into its component leaf expressions.  `(a, b, c)` parses as
     `Prod.mk a (Prod.mk b c)`, so the right component is recursively
     flattened.  A non-`Prod.mk` expression is a singleton leaf. -/
-private partial def flattenTuple (e : Expr) : Array Expr :=
+partial def flattenTuple (e : Expr) : Array Expr :=
   if e.isAppOfArity ``Prod.mk 4 then
     let a := e.appFn!.appArg!
     let b := e.appArg!
@@ -1490,7 +1514,7 @@ private partial def flattenTuple (e : Expr) : Array Expr :=
     ops) keeps the output ABI explicit: every output is a named slot the
     body assigns, exactly the `&mut`-slot convention the emit consumers
     (`ppRustFunction` / `emitFunc`) read. -/
-private partial def reifyChainMulti (bindings : Array Expr) (finalExpr : Expr) :
+partial def reifyChainMulti (bindings : Array Expr) (finalExpr : Expr) :
     MetaM (LowCT × List String) := do
   let finalReduced ← whnf finalExpr
   let comps := flattenTuple finalReduced
@@ -1564,7 +1588,7 @@ partial def reifyFuncMulti (e : Expr) : MetaM ReifiedFunc := do
 /-- Build a Lean term of type `ReifiedFunc` from a reified bundle.  All
     `ReifiedFunc` fields are simple data (`String` / `List` / `LowCT`), so
     each component round-trips through `toExpr`. -/
-private def reifiedFuncToExpr (rf : ReifiedFunc) : MetaM Expr := do
+def reifiedFuncToExpr (rf : ReifiedFunc) : MetaM Expr := do
   let argsTerm : Expr ← mkListLit
     (← mkAppM ``Prod #[mkConst ``String, mkConst ``TowerType])
     (rf.args.map (fun (n, t) =>
@@ -1594,6 +1618,9 @@ elab "reifyLowCTMulti% " e:term : term => do
   let e' ← instantiateMVars e'
   let rf ← reifyFuncMulti e'
   reifiedFuncToExpr rf
+
+
+end            -- meta section
 
 /-! ## 6. Smoke tests: X25519 halfstep authored in natural Lean -/
 

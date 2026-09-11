@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect
 
 /-!
 # The emitted bounded loop denotes the `n`-fold semantics (`JForProg` keystone)
@@ -60,6 +63,8 @@ every other emit-correctness theorem in this development carries).
 0 sorries; the only hypothesis is the opaque-leaf edge `LeafAgrees`, the same
 edge carried throughout the emit-correctness theory.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

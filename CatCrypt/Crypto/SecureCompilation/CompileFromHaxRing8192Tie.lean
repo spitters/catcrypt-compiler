@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxRing8192
-import CatCrypt.Crypto.Util.ZMod8192
+module
+
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxRing8192
+public import CatCrypt.Crypto.Util.ZMod8192
 
 /-!
 # #606 fan-out: the emitted Z/8192Z multiply leaf EQUALS the abstract ring op
@@ -27,6 +29,8 @@ the ring product `↑a · ↑b`. The genuine power-of-two reduce identity, lifte
 the Mathlib ring through `ZMod.natCast_*`. Unlike the prime-field ties this is a
 **ring** (`8192 = 2¹³` is composite), reusing the committed `Util/ZMod8192.lean`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

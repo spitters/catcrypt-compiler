@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X86OptPipelineComposed
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86OptPipelineComposed
 
 /-!
 # Redundant spill-reload elimination on an owned-emit block
@@ -20,6 +22,8 @@ transcribed from the owned emit
 `bench/poly1305_compare/gen_com/poly1305_mac_hacl.s`, and records what each
 pipeline does to it.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

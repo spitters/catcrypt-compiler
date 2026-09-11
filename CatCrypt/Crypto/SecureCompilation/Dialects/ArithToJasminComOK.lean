@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithToJasmin
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithLegality
+module
 
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithToJasmin
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithLegality
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!

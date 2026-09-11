@@ -63,13 +63,13 @@ CatCrypt/Crypto/SecureCompilation/VIR/MLKem768MatvecLoop.lean  # R1 multi-op nes
 CatCrypt/Crypto/SecureCompilation/VIR/MaskingPredicate.lean  # masking-preservation predicate (analysis infra, Track 3c)
 CatCrypt/Crypto/SecureCompilation/VIR/MergeCom.lean  # Com merge translator (D2.1 CSE-trap infra)
 CatCrypt/Crypto/SecureCompilation/VIR/MontMulFragmentDemo.lean  # #477 dialect-capability demo (mulhi/addCarry ops), consumed by FieldEmitGoldenPath infra, not an emit kernel
-CatCrypt/Crypto/SecureCompilation/VIR/MultiComQuantum.lean  # quantum ComMulti lowering infrastructure (PairDialect + allocator), not an emit kernel
+CatCrypt/Crypto/Quantum/VIR/MultiComQuantum.lean  # quantum ComMulti lowering infrastructure (PairDialect + allocator), not an emit kernel
 CatCrypt/Crypto/SecureCompilation/VIR/Poseidon2LinearMain.lean  # compiled producer driver (lake exe poseidon2linear), authors no Com
 CatCrypt/Crypto/SecureCompilation/VIR/Poseidon2WholePermCom.lean  # front-infrastructure word-block emitter library (emitAdd/emitCsub/emitFold regArith/regConst CPS block builders) that FieldDescentBB.translBB descends THROUGH, plus the *_denote_ret block-correctness PROOF SUBJECTS; the layer beneath the front, same category as the exempt JasminLsem*/loop-node emitters. The hand poseidon2PermComOut whole-Com is superseded as the deployed producer by FieldPipelineEmitBB's translBB front descent
-CatCrypt/Crypto/SecureCompilation/VIR/Programs/DeutschJozsaVIR.lean  # quantum dialect demo program, no emit artifact
-CatCrypt/Crypto/SecureCompilation/VIR/Programs/GroverVIR.lean  # quantum dialect demo program, no emit artifact
-CatCrypt/Crypto/SecureCompilation/VIR/Programs/QFTVIR.lean  # quantum dialect scale-test demo, no emit artifact
-CatCrypt/Crypto/SecureCompilation/VIR/QSSAToVIR.lean  # quantum frontend translation infrastructure
+CatCrypt/Crypto/Quantum/VIR/Programs/DeutschJozsaVIR.lean  # quantum dialect demo program, no emit artifact
+CatCrypt/Crypto/Quantum/VIR/Programs/GroverVIR.lean  # quantum dialect demo program, no emit artifact
+CatCrypt/Crypto/Quantum/VIR/Programs/QFTVIR.lean  # quantum dialect scale-test demo, no emit artifact
+CatCrypt/Crypto/Quantum/VIR/QSSAToVIR.lean  # quantum frontend translation infrastructure
 CatCrypt/Crypto/SecureCompilation/VIR/QuantumDialect.lean  # VIR quantum dialect definition (Op/Ty/signature), core IR infra
 CatCrypt/Crypto/SecureCompilation/VIR/Sha256LinearMain.lean  # compiled producer driver (lake exe sha256linear), authors no Com
 CatCrypt/Crypto/SecureCompilation/VIR/Sha2RotateSelect.lean  # verified rotate instruction-selection pass (compiler transform), not an emit kernel

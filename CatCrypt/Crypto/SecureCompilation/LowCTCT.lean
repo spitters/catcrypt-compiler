@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
-import CatCrypt.Crypto.Jasmin.JasminCT
+module
+
+public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.JasminCT
 
 /-!
 # Syntactic constant-time predicate on `LowCT`
@@ -64,6 +66,8 @@ instances and `decide`-style smoke tests close. No separate
 `DecidablePred` instance is needed (Lean infers it from the `Bool`
 shape).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.LowCTCT
 

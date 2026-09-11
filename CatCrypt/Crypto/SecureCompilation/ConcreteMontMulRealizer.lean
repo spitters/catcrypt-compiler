@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GenericKernelRealization
-import CatCrypt.Crypto.SecureCompilation.MontgomeryMulEmitValue
-import CatCrypt.Crypto.SecureCompilation.ConcreteBarrettRealizer
-import CatCrypt.Crypto.Optimizer.Rewrite.MontgomeryMulGeneric
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GenericKernelRealization
+public import CatCrypt.Crypto.SecureCompilation.MontgomeryMulEmitValue
+public import CatCrypt.Crypto.SecureCompilation.ConcreteBarrettRealizer
+public import CatCrypt.Crypto.Optimizer.Rewrite.MontgomeryMulGeneric
 
 /-!
 # Concrete realizer for the Montgomery-multiply kernel — KAT-free
@@ -92,6 +94,8 @@ on the realizer/kernel:
 * P. L. Montgomery, "Modular multiplication without trial division",
   Math. Comp. 44 (1985), 519–521.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

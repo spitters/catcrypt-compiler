@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmEncoder
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmEncoder
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmEncoder
 
 /-!
 # Reserved-register byte-differential audit for the A64 encoder
@@ -15,6 +18,8 @@ for the **reserved-register stress alphabet** — every operand slot exercised
 with `wzr`/`xzr` (register 31), the A64 analogue of x86's RBP/R13 SIB footgun.
 The reference words are taken from `objdump -d` on the assembled stress file.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

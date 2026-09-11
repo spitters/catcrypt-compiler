@@ -3,10 +3,19 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Examples.MpzPowmCompositionPrototype
-import CatCrypt.Crypto.Jasmin.Mpn.MulCascadeAdxPrototype
-import CatCrypt.Crypto.Jasmin.Mpn.AddMul1AdxBlockedPrototype
-import CatCrypt.Crypto.Jasmin.Mpn.AddSubAdxBlockedPrototype
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.Examples.MpzPowmCompositionPrototype
+public import CatCrypt.Crypto.Jasmin.Examples.MpzPowmCompositionPrototype
+public meta import CatCrypt.Crypto.Jasmin.Mpn.MulCascadeAdxPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.MulCascadeAdxPrototype
+public meta import CatCrypt.Crypto.Jasmin.Mpn.AddMul1AdxBlockedPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.AddMul1AdxBlockedPrototype
+public meta import CatCrypt.Crypto.Jasmin.Mpn.AddSubAdxBlockedPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.AddSubAdxBlockedPrototype
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -195,8 +204,8 @@ the row-0 case still uses `mpn_mul_1`, see §3 of that file).
 
 /-- Short alias to fix the `vr`/`pv` ambiguity (multiple sibling
     prototypes define these). -/
-private abbrev MV (s : String) : Var := Mpn.MontgomeryPrototype.vr s
-private abbrev MP (s : String) : PExpr := Mpn.MontgomeryPrototype.pv s
+abbrev MV (s : String) : Var := Mpn.MontgomeryPrototype.vr s
+abbrev MP (s : String) : PExpr := Mpn.MontgomeryPrototype.pv s
 
 /-- The cascade Montgomery-multiply symbol name at width `n`.  Matches
     a hypothetical `mpn_mont_mul_cascade_adx_<n>` `FunDecl` whose

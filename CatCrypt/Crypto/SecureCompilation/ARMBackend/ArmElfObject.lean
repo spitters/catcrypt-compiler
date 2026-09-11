@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAbiEncoder
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAbiEncoder
 
 /-!
 # A verified AArch64 ELF64 relocatable-object stitcher (the ARM `gas -o foo.o` analogue)
@@ -38,6 +40,8 @@ GP-ALU / bignum subset); this module proves the *container* well-formedness — 
 unconditional half of the trust story — exactly mirroring the x86 stitcher's
 `symValue_*` / `textBytes_length` / `symCount_eq` / header lemmas.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

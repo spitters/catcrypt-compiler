@@ -4,6 +4,8 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 
+module
+
 /-!
 # GF(2^128) Arithmetic for GHASH
 
@@ -22,6 +24,8 @@ checking.
 * NIST SP 800-38D, Section 6.3 — Multiplication Operation on Blocks
 * McGrew, Viega — *The Galois/Counter Mode of Operation (GCM)*, 2004
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

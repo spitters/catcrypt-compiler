@@ -3,8 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JincParser
+module
 
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.JincParser
+public import CatCrypt.Crypto.Jasmin.JincParser
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!
@@ -51,20 +57,20 @@ the same `mkLvar` / `aword .U8` / `AT_none` convention, so syntactic
 equality is meaningful. -/
 
 /-- A `reg u8` variable. -/
-private def vU8 (s : String) : VarI :=
+def vU8 (s : String) : VarI :=
   { v_var := { vtype := .aword .U8, vname := s } }
 
-private def vSh   : VarI := vU8 "sh"
-private def vBb   : VarI := vU8 "bb"
-private def vR    : VarI := vU8 "r"
-private def vBitV : VarI := vU8 "bit_v"
-private def vHi   : VarI := vU8 "hi"
-private def vMask : VarI := vU8 "mask"
-private def vProd : VarI := vU8 "prod"
+def vSh   : VarI := vU8 "sh"
+def vBb   : VarI := vU8 "bb"
+def vR    : VarI := vU8 "r"
+def vBitV : VarI := vU8 "bit_v"
+def vHi   : VarI := vU8 "hi"
+def vMask : VarI := vU8 "mask"
+def vProd : VarI := vU8 "prod"
 
-private def rdU8 (v : VarI) : Pexpr := .Pvar (mkLvar v)
-private def wrU8 (v : VarI) : Lval := .Lvar v
-private def cU8 (n : Nat) : Pexpr :=
+def rdU8 (v : VarI) : Pexpr := .Pvar (mkLvar v)
+def wrU8 (v : VarI) : Lval := .Lvar v
+def cU8 (n : Nat) : Pexpr :=
   .Papp1 (.Oword_of_int .U8) (.Pconst (Int.ofNat n))
 
 /-- One round of `gf16_mul_scalar`'s body, hand-authored (mirror of

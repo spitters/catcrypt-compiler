@@ -3,12 +3,19 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonEncoder
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArmDecoder
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.SailNeonDecoder
-import CatCrypt.Crypto.Jasmin.JasminOps
-import Mathlib.Tactic.IntervalCases
-import Mathlib.Tactic.FinCases
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonEncoder
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonEncoder
+public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArmDecoder
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArmDecoder
+public meta import CatCrypt.Crypto.SecureCompilation.ARMBackend.SailNeonDecoder
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.SailNeonDecoder
+public meta import CatCrypt.Crypto.Jasmin.JasminOps
+public import CatCrypt.Crypto.Jasmin.JasminOps
+public import Mathlib.Tactic.IntervalCases
+public import Mathlib.Tactic.FinCases
 
 /-!
 # The ARMv8 crypto-extension NEON instructions: model, lowering, encoder, decoder (#550)
@@ -20,9 +27,9 @@ of the x86 `Vec128*` packed path. This module is the **ARMv8 crypto-extension**
 analogue of the x86 `Vec128Model`'s `VCryptInst` section (#534a:
 VAES/PCLMUL/SHA-NI): the AArch64 AES round / GF(2^128) carry-less multiply
 instructions, in the **128-bit-value** V-register view, with the lowering
-denotation theorem, the verified byte encoder, and the
-`decode(encode i) = i` round-trip against the official `rems-project/sail-arm`
-crypto `decode64` clauses.
+denotation theorem, the verified byte encoder, and a
+`decode(encode i) = i` round-trip (§8 below — see that section for exactly what
+the "decoder" checks).
 
 ## The AESE/AESMC semantics split (vs the x86 AES-NI op split)
 
@@ -54,7 +61,8 @@ and `PMULL`/`PMULL2` reuse the schoolbook `clmul64` carry-less product (the exac
 `VPClmulEmit.polyMul64`). So the crypto-register semantics inherits the existing
 Sail/FIPS anchor rather than introducing a fresh differential-validation surface;
 the integration witness is the FIPS-197 AES-round KAT (run under qemu-aarch64,
-`-cpu max`, in `bench/arm_compare/`).
+`-cpu max`, in an untracked local comparison checkout not vendored in this
+repo).
 
 ## The crypto-ext byte encodings (the C7.2 crypto-AES / -3reg forms, `Q=1`)
 
@@ -73,6 +81,8 @@ The sail-arm `decode64` clauses (`aarch_decode.sail`) match these as
 `0b0100111000101000011010`, `D[12]` picks MC vs IMC), with `Rd[4:0] Rn[9:5]` at
 the same positions the scalar/ASIMD forms use.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxRecDepth 8000
@@ -455,18 +465,30 @@ example : encodeNCryptInst [("d","v0"),("a","v1"),("b","v2")] (.pmull "d" "a" "b
 example : encodeNCryptInst [("d","v0"),("a","v1"),("b","v2")] (.pmull2 "d" "a" "b")
     = [0x20, 0xe0, 0xe2, 0x4e].map (BitVec.ofNat 8) := by native_decide
 
-/-! ## 8. The sail-arm crypto `decode64` round-trip: `decode (encode i) = i`
+/-! ## 8. A crypto-extension round-trip: `decode (encode i) = i`
 
 The crypto analogue of `SailNeonDecoder`: a Lean decoder `decodeCryptoWord`
-following the official `rems-project/sail-arm` crypto `decode64` clauses
-(`aarch_decode.sail`, `vector_crypto_aes_round` / `vector_crypto_aes_mix`), and
-`decode (encode i) = i` for every emitted crypto-ext form.
+that recovers each AES/PMULL instruction's class and operand fields, with
+`decode (encode i) = i` proved for every emitted crypto-ext form. Unlike
+`SailNeonDecoder`'s discriminant fields (bit slices at the positions the
+sail-arm `decode64` ASIMD clauses read), `fldAesId`/`fldPmullId` below
+discriminate by *subtracting the known register-field contribution back out of
+the word* — i.e. they invert the encoder's own base-word arithmetic, not an
+independent transcription of the sail-arm crypto `decode64` clauses
+(`vector_crypto_aes_round`/`…_mix`, the PMULL three-register form). The
+round-trip is real (`decode (encode i) = i` does hold), but the "decoder" here
+is definitionally the encoder's base-word construction run in reverse.
 
-The AES round/mix clauses share `Rd[4:0] Rn[9:5]` with the scalar/ASIMD forms;
-they are discriminated by the AES-constant prefix `op_code[31:14]`, the
-round/mix bit `op_code[13]`, and the `D` bit `op_code[12]` (E vs D, MC vs IMC).
-PMULL is discriminated by its three-register prefix `op_code[31:21]` (with the
-`Q` bit `op_code[30]` picking PMULL vs PMULL2) and reads `Rm[20:16]` too. -/
+For context: the Arm ARM places the AES class discriminants at
+`op_code[31:14]` (the AES-constant prefix), `op_code[13]` (round vs mix), and
+`op_code[12]` (`D`: E/D or MC/IMC), and the PMULL discriminant at
+`op_code[31:21]` with `op_code[30]` picking PMULL vs PMULL2 — `fldAesId`/
+`fldPmullId` land on the same class-equivalence by construction (register
+fields stripped from the whole word), without slicing those named ranges
+directly. The AES round/mix clauses share `Rd[4:0] Rn[9:5]` with the
+scalar/ASIMD forms; the six class constants (`baseAese/0x400`, …, `basePmull`,
+`basePmull2`) are pairwise distinct, which is what makes `fldAesId`/
+`fldPmullId` discriminate the six forms exactly. -/
 
 open CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArmDecoder
   (leWord leWord_wordLE fldRd fldRn fldRm)
@@ -604,7 +626,7 @@ theorem roundtrip_aesimc (d n : Nat) (hd : d < 32) (hn : n < 32) :
 /-- The AES class constants are all distinct from the PMULL `fldAesId` of a PMULL
     word (the PMULL base + `Rm` term lands `fldAesId` far above the AES ids), so the
     AES branches are skipped on a PMULL word. -/
-private theorem pmull_not_aes (base m n d : Nat) (hbase : base = basePmull ∨ base = basePmull2)
+theorem pmull_not_aes (base m n d : Nat) (hbase : base = basePmull ∨ base = basePmull2)
     (_hm : m < 32) (hn : n < 32) (hd : d < 32) :
     let W := base + m * 0x10000 + n * 0x20 + d
     fldAesId W ≠ baseAese / 0x400 ∧ fldAesId W ≠ baseAesd / 0x400 ∧

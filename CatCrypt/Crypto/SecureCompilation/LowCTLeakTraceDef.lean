@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Jasmin.LowCT
 
 /-!
 # CProg-free `LowCT.leakTrace` definition
@@ -30,6 +33,8 @@ proves the agreement theorems against the CryptoSSA front.
 
 **0 sorries**, standard axioms only.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.CryptoSSA
 

@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectSecurityNative
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectSecurityNative
 
 /-!
 # More peephole-security results, native on `Com catCryptDialect`
@@ -38,6 +40,8 @@ rewrite binds an extra algebraic/sample op the `rhs` lacks), so none is
 **0 axioms** beyond the standard `propext`/`Classical.choice`/`Quot.sound`,
 **0 sorries**.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -80,7 +84,7 @@ noncomputable def cbvOr {Γ : Ctxt catCryptDialect} {s : CryptoTy} {n : Nat}
 
 /-- A uniform sample bound to an unused variable is `pure`-absorbed:
     `sample α >>= (fun _ => pure v) = pure v`. -/
-private theorem sample_bind_const {α : Type} [Fintype α] [Nonempty α] {β : Type} (v : β) :
+theorem sample_bind_const {α : Type} [Fintype α] [Nonempty α] {β : Type} (v : β) :
     SPComp.bind (SPComp.sample α) (fun _ => SPComp.pure v) = SPComp.pure v := by
   funext h
   simp only [SPComp.bind_def, SPComp.sample, SPComp.pure]

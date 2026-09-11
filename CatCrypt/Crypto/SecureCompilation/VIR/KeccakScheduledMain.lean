@@ -3,13 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportKeccak
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.LprogScheduler
-import CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportKeccak
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.LprogScheduler
+public import CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # ILP-scheduled Keccak-p[1600,24] owned producer (#590 / #555)
@@ -35,6 +37,8 @@ byte-identical against XKCP / the FAEST official vector in `bench/keccak_compare
 on it, so this is a compiled `lake exe keccakscheduled` (the `@[implemented_by]`
 fast paths in `JasminLprogExport` fire under native code).
 -/
+
+@[expose] public section
 
 open CatCrypt.Crypto.SecureCompilation.VIR.LprogScheduler (Com.toLprogPhysAbiScheduled)
 open CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad

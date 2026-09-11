@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
 
 /-!
 # Source→machine constant-time bridge, Phase 2: the MEMORY/ARRAY fragment
@@ -92,6 +94,8 @@ with `dstRegs (.storeMemIdx ..) = []`, `dstRegs (.loadMemIdx d ..) = [d]`,
   deliver the CT half only (the genuine "source public-index analysis ⇒ machine
   CT" content, which the memory-free fragment did not need).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

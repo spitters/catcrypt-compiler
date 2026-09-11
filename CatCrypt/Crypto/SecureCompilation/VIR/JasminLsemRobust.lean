@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemSimulation
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemSimulation
 
 /-!
 # Constant-time leakage over `lsem`, and the unconditional `correct ∧ robust`
@@ -74,6 +76,8 @@ encode/decode tables remain the declared trusted base, as for every verified
 compiler. **0 sorries, axioms ⊆ {propext, Classical.choice, Quot.sound}**, no
 `jasminc_preserves_ct`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

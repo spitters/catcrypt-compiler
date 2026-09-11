@@ -3,11 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
-import CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAddRunBlock
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAddRunBlock
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop
 
 /-!
 # `runBlock` ↔ `lsemStraightMem` agreement (the machine-model bridge)
@@ -98,6 +101,8 @@ agreement for the ALU core **and** the compile-time-offset memory ops (§8); ite
 itself remains open only for the flag/carry and two-write `mulx` opcodes (§ honesty
 gate, phases 2–3).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgree
 
@@ -1082,12 +1087,12 @@ theorem mulx_caseF (s : JState 64) (ls : LstateM) (flg : String → Prop) (cfN o
       simp only [hls2, hls1, LstateN.getW_nextPc,
         LstateN.getW_setReg_other _ _ _ _ _ (Ne.symm hHi_ne_cf),
         LstateN.getW_setReg_other _ _ _ _ _ (Ne.symm hLo_ne_cf)]
-      simpa only [JState.flagB] using hcorr.cfAgree
+      simpa only [JState.flagB] using! hcorr.cfAgree
     · -- ofAgree unchanged
       simp only [hls2, hls1, LstateN.getW_nextPc,
         LstateN.getW_setReg_other _ _ _ _ _ (Ne.symm hHi_ne_of),
         LstateN.getW_setReg_other _ _ _ _ _ (Ne.symm hLo_ne_of)]
-      simpa only [JState.flagB] using hcorr.ofAgree
+      simpa only [JState.flagB] using! hcorr.ofAgree
 
 /-- **The dual-carry MAC column bridges on all axes.** For the register-source
     column `[mulx hi lo a b; adcx acc lo; adox acc cy]`, with fresh CF/OF slots

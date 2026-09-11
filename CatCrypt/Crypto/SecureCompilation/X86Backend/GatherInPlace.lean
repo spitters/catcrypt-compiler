@@ -3,9 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.BlockBytesAgreeExtended
-import CatCrypt.Crypto.SecureCompilation.X86Backend.PhysBodyGather
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringCoverageCmovSar
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.BlockBytesAgreeExtended
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.BlockBytesAgreeExtended
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.PhysBodyGather
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.PhysBodyGather
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringCoverageCmovSar
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringCoverageCmovSar
 
 /-!
 # `GatherInPlace` — the in-place (skip-mov) gather that byte-matches the Lprog encoder on the ALU core
@@ -87,6 +93,8 @@ agrees per-op; the only whole-core residual is the gather's per-shift materialis
 No `sorry`, no axiom, no `native_decide` (the lemma proofs; the `#eval`/byte-length
 witnesses in §4 are interpreter evaluation, not part of any proof term).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

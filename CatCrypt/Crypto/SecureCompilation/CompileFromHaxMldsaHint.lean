@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # C4 fan-out: the verified compiler emits the ML-DSA `make_hint` hint bit
@@ -71,6 +75,8 @@ sign-extended `int32` operands, so it closes by pure-BitVec `bv_decide`
 value-correctness against PQClean over the whole buffer is KAT-pinned in
 `HintEmit` (`make_hint_*`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -184,7 +190,7 @@ theorem mldsaMakeHint_compiles :
       mldsaMakeHintSrc (fun _ => none) = some (mldsaMakeHintForm a0 a1) := by
     have h := mldsaMakeHintSrc_denoteScalar (nIn := 2) ![a0, a1]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 64) (nIn := 2) ["a0", "a1"]
     ![a0, a1] mldsaMakeHintSrc _ hc hspec
 

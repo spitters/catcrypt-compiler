@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxLink
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxLink
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxLink
 
 /-!
 # C8 field-leaf: compiling an ML-KEM field op through the two-front combiner
@@ -83,6 +87,8 @@ opaque-leaf obligation this file discharges via the registry.
   the hypothesis of `mlkem_field_add_via_leaf`, exactly as
   `CompileFromHaxLink.linked_example` threads its `hagree`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

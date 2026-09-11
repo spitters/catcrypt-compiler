@@ -4,6 +4,8 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 
+module
+
 /-!
 # A Lean RV64 64-bit bignum/field machine model (#549)
 
@@ -59,6 +61,8 @@ constant); modelled as a direct register write. Loads/stores at the function
 boundary are trusted ABI scaffolding rendered by the printer, exactly the
 ChaCha-model posture.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

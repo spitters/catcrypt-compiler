@@ -3,11 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.YmmDialectOps
-import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
-import CatCrypt.Crypto.Optimizer.PackedRotate256
-import Mathlib.Tactic.FinCases
-import Std.Tactic.BVDecide
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.YmmDialectOps
+public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+public import CatCrypt.Crypto.Optimizer.PackedRotate256
+public import Mathlib.Tactic.FinCases
+public import Std.Tactic.BVDecide
 
 /-!
 # Packed lane arithmetic and bitwise ops for the 256-bit YMM op set (AVX2 8-lane, SLH-DSA batch8)
@@ -35,6 +38,8 @@ lemma is the packing round-trip proved lane-by-lane. The bitwise ops are the
 whole-register operations `a ^^^ b` / `a ||| b` / `a &&& b`, so their lane
 lemmas are the `BitVec.extractLsb'` distribution over the bitwise operation.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

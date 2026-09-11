@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminEmit
-import CatCrypt.Crypto.Jasmin.S2NBignumSSA
+module
+
+public import CatCrypt.Crypto.Jasmin.JasminEmit
+public import CatCrypt.Crypto.Jasmin.S2NBignumSSA
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -62,9 +66,9 @@ compilation unit as the caller. -/
 
 namespace CcallDemo
 
-private def v' (s : String) : Var := { vname := s, vtype := .sword .U64 }
-private def lvR (s : String) : LVal := .Lvar { var := v' s }
-private def pv (s : String) : PExpr := .Pvar { gv := { var := v' s }, gs := false }
+def v' (s : String) : Var := { vname := s, vtype := .sword .U64 }
+def lvR (s : String) : LVal := .Lvar { var := v' s }
+def pv (s : String) : PExpr := .Pvar { gv := { var := v' s }, gs := false }
 
 /-- Helper: `r = a + b` (non-export, callable). Body uses the
     standard `r = a; r += b;` 2-operand pattern. -/

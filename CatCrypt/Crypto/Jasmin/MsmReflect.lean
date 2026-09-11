@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
 # Toy-EC MSM reflect surface — pairing-ZK shared MSM kernel via the verified front
@@ -63,6 +67,8 @@ register the leaves via `@[rust_cmd_pattern]` and hand-build the
   the verified front
 -/
 
+@[expose] public section
+
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 
 open CatCrypt.Crypto.Jasmin.LowCT
@@ -121,7 +127,7 @@ def msmEcScalarTowerType : TowerType := .TBytes 1
 /-- Tower type of a toy-EC point. -/
 def msmEcPointTowerType : TowerType := .TBytes 2
 
-private def loc (n : String) (t : TowerType) : Located :=
+def locMsm (n : String) (t : TowerType) : Located :=
   { locVar := n, locSrc := t }
 
 /-! ## 5. Pure-Lean toy-EC kernel function -/
@@ -134,9 +140,9 @@ noncomputable def msmEcTermLean (k : MsmEcScalar) (P : MsmEcPoint) : MsmEcPoint 
 
 /-- The `LowCT` body for the per-term MSM. -/
 def msmEcTermBody : LowCT :=
-  let k_l      := loc "k"        msmEcScalarTowerType
-  let P_l      := loc "P"        msmEcPointTowerType
-  let result_l := loc "__result" msmEcPointTowerType
+  let k_l      := locMsm "k"        msmEcScalarTowerType
+  let P_l      := locMsm "P"        msmEcPointTowerType
+  let result_l := locMsm "__result" msmEcPointTowerType
   .RSeq .RSkip
     (.RCall "ec_scalar_mul" result_l [k_l, P_l])
 

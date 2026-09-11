@@ -3,10 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontEC
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontECMul
-import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
-import Std.Tactic.BVDecide
+module
+
+import all Init.Data.Repr
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontEC
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontECMul
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+public import Std.Tactic.BVDecide
 
 /-!
 # The FULL Jacobian point-doubling `dbl-2009-l` over GF(251) — the EC group-law goal
@@ -84,6 +88,8 @@ infrastructure: both reuse `csub251` (`RelationalFrontInstances`).
   composed `BitVec` formula) ports verbatim; only the carrier (one word → six
   limbs) and the per-op kernel change.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

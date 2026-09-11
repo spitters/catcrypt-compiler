@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialect
-import CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialectNative
-import CatCrypt.Crypto.Jasmin.S2NBignumRefSem
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialect
+public import CatCrypt.Crypto.SecureCompilation.Jasmin.JasminToSSADialectNative
+public import CatCrypt.Crypto.Jasmin.S2NBignumRefSem
 
 /-!
 # s2n-bignum SSA reference results transported onto `catCryptDialect`
@@ -83,6 +85,8 @@ ByteReverse, WordAvg, …) follow this exact pattern: instantiate
 `translateMonoCmdD_denoteSP_native` at their body with their input-arity
 `monoAgrees` witness.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.S2NBignumSSADialect
 

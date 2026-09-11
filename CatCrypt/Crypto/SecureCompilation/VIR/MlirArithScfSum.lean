@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.MlirArithDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.MlirScfDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.MlirArithDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.MlirScfDialect
 
 /-!
 # Sum of MLIR `arith` and `scf` dialects — Phase 6d Cif closure
@@ -71,6 +73,8 @@ component dialects. The union is *required* for the `Cif` lowering — the
 from two `Ty`-compatible dialects in one `Com`, reuse this tagged-union shape
 rather than introducing a new combined dialect.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

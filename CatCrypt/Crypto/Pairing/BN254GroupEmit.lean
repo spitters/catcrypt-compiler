@@ -3,10 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-import CatCrypt.Crypto.Pairing.BN254EmittedFieldRealization
-import CatCrypt.Crypto.Pairing.BatchInverse
-import CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFront
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public import CatCrypt.Crypto.Pairing.BN254EmittedFieldRealization
+public import CatCrypt.Crypto.Pairing.BatchInverse
+public import CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFront
 
 /-!
 # Production BN254 `G1` group law emitted as a COMPOSITION over verified field leaves
@@ -59,6 +62,8 @@ it remains the documented opaque-leaf edge of `Pairing/Bn254Emit.lean`
 The KAT (`bench/bn254_group_compare/`) checks the re-emitted point-add is
 byte-identical to the production `G1` add on the EIP-196 generator chain.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

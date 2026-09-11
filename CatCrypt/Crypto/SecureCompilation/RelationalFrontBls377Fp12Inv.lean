@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Fp12Conj
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Fp6Inv
+module
+
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Fp12Conj
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Fp6Inv
 
 /-!
 # The `bls12_377` dodecic-extension `Fp12` inversion — the top of the pairing tower is a field
@@ -65,6 +67,8 @@ nonresidues `ξ₂, ξ₆` stay parametric, and every `Fp6_377` multiply is kept
 opaque (`mul₆ … = (· * ·)` into the `Fp6_377` `CommRing`). We do not wire
 inversion to emitted base kernels.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

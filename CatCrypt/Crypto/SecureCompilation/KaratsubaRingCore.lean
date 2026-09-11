@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Algebra.Polynomial.Basic
-import Mathlib.Data.ZMod.Basic
+module
+
+public import Mathlib.Algebra.Polynomial.Basic
+public import Mathlib.Data.ZMod.Basic
+public meta import Mathlib.Tactic.Ring
 
 /-!
 # Ring-generic Karatsuba / Toom-2 recombination
@@ -41,6 +44,8 @@ identity rather than three.
 * `karatsubaStep`, `karatsubaStep_eval` — the degree-1 recombination core as a
   function on coefficients together with its evaluation-at-a-point correctness.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

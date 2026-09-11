@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.ZMod.Basic
-import Mathlib.Tactic
+module
+
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.Tactic.Linarith
+public import Mathlib.Tactic.NormNum
+public import Mathlib.Tactic.Positivity
+public import Mathlib.Tactic.Ring
 
 /-!
 # FIPS 203 §4.2.1 Compress / Decompress for ML-KEM
@@ -33,6 +38,8 @@ with `d ≥ 1`.
 
 * NIST FIPS 203 §4.2.1
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

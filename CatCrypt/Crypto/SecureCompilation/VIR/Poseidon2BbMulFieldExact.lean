@@ -3,9 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
-import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2DiffuseExact
-import Mathlib.Tactic
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2DiffuseExact
+public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2DiffuseExact
+public import Mathlib.Tactic.Convert
+public import Mathlib.Tactic.Linarith
+public import Mathlib.Tactic.NormNum
 
 /-!
 # `bbMul` is field multiplication on canonical Baby Bear reps
@@ -81,6 +89,8 @@ Plonky3 spec specifies, not just a syntactically identical BitVec computation.
 The KAT for Poseidon2-BabyBear is then a corollary of a structurally proven
 field identity, matching the Keccak / SHA-2 emitter pipelines' strength.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasmin
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasmin
+public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasmin
 
 /-!
 # Constant-time predicate for the Jasmin VIR dialect
@@ -48,6 +52,8 @@ induction on the source `Com latticeDialect`, plus concrete-program corollaries
 for the smoke programs the lattice path actually emits
 (`ntt_3329_256` / `ntt_basemul_3329_256` / `ntt_invntt_3329_256`).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.JasminCTPredicate
 

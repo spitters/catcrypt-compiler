@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ConcreteNttRealizer
-import CatCrypt.Crypto.SecureCompilation.NegacyclicEmitRealization
-import CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttInstances
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ConcreteNttRealizer
+public import CatCrypt.Crypto.SecureCompilation.NegacyclicEmitRealization
+public import CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttInstances
 
 /-!
 # A CONCRETE NEGACYCLIC NTT-multiply realizer: round-trip-verified encoding, KAT-free
@@ -54,6 +56,8 @@ three bytes and `omega`.
 ## References
 * NIST FIPS 204 (ML-DSA)
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
 # Spartan sum-check prover reflect surface — Tier 1 full-emit (ZK honesty roadmap)
@@ -64,6 +68,8 @@ representative 256-constraint instance) rounds.
   realization the emitted leaf inherits).
 * Sibling: `CatCrypt/Crypto/Jasmin/Plonky3FriReflect.lean`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 
@@ -210,25 +216,25 @@ def spartanFeltTowerType : TowerType := .TBytes 8
 /-- TowerType for the witness (modelled as a 32-byte handle). -/
 def spartanWitnessTowerType : TowerType := .TBytes 32
 
-private def loc (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
+def locSpartanSumCheck (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
 
 /-- Body for `n = 3` sum-check rounds. -/
 def spartanProverBody3 : LowCT :=
-  let w_l   := loc "w"        spartanWitnessTowerType
-  let c0_l  := loc "c0"       spartanDigestTowerType
-  let r0_l  := loc "r0"       (spartanRoundPolyTowerType 3)
-  let cm0_l := loc "cm0"      spartanDigestTowerType
-  let a0_l  := loc "a0"       spartanFeltTowerType
-  let v0_l  := loc "v0"       spartanFeltTowerType
-  let r1_l  := loc "r1"       (spartanRoundPolyTowerType 3)
-  let cm1_l := loc "cm1"      spartanDigestTowerType
-  let a1_l  := loc "a1"       spartanFeltTowerType
-  let v1_l  := loc "v1"       spartanFeltTowerType
-  let r2_l  := loc "r2"       (spartanRoundPolyTowerType 3)
-  let cm2_l := loc "cm2"      spartanDigestTowerType
-  let a2_l  := loc "a2"       spartanFeltTowerType
-  let v2_l  := loc "v2"       spartanFeltTowerType
-  let res_l := loc "__result" spartanDigestTowerType
+  let w_l   := locSpartanSumCheck "w"        spartanWitnessTowerType
+  let c0_l  := locSpartanSumCheck "c0"       spartanDigestTowerType
+  let r0_l  := locSpartanSumCheck "r0"       (spartanRoundPolyTowerType 3)
+  let cm0_l := locSpartanSumCheck "cm0"      spartanDigestTowerType
+  let a0_l  := locSpartanSumCheck "a0"       spartanFeltTowerType
+  let v0_l  := locSpartanSumCheck "v0"       spartanFeltTowerType
+  let r1_l  := locSpartanSumCheck "r1"       (spartanRoundPolyTowerType 3)
+  let cm1_l := locSpartanSumCheck "cm1"      spartanDigestTowerType
+  let a1_l  := locSpartanSumCheck "a1"       spartanFeltTowerType
+  let v1_l  := locSpartanSumCheck "v1"       spartanFeltTowerType
+  let r2_l  := locSpartanSumCheck "r2"       (spartanRoundPolyTowerType 3)
+  let cm2_l := locSpartanSumCheck "cm2"      spartanDigestTowerType
+  let a2_l  := locSpartanSumCheck "a2"       spartanFeltTowerType
+  let v2_l  := locSpartanSumCheck "v2"       spartanFeltTowerType
+  let res_l := locSpartanSumCheck "__result" spartanDigestTowerType
   .RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq
   (.RSeq (.RSeq (.RSeq .RSkip
     (.RCall "spartan_commit_witness"        c0_l  [w_l]))

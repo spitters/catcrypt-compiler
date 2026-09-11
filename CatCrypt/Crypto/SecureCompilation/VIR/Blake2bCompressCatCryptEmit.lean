@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Blake2bGCatCryptEmit
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Blake2bGCatCryptEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Blake2bGCatCryptEmit
 
 /-!
 # The whole BLAKE2b compression routed through `catCryptDialect`
@@ -67,6 +70,8 @@ words SIGMA chose. The fold is `round`-uniform; SIGMA is carried as a parameter.
 
 0 sorries.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

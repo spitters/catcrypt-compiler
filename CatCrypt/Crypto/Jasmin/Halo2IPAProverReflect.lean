@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.MsmReflect
+module
+
+public meta import CatCrypt.Crypto.Jasmin.MsmReflect
+public import CatCrypt.Crypto.Jasmin.MsmReflect
 
 /-!
 # Halo2 IPA prover reflect surface — Tier 3 full-emit (ZK honesty roadmap)
@@ -61,6 +64,8 @@ Halo2 size.
   realization the emitted commitment / cross-commitment leaves inherit).
 * Sibling: `CatCrypt/Crypto/Jasmin/BulletproofsIPAReflect.lean`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 
@@ -186,32 +191,32 @@ def halo2GenTowerType (N : Nat) : TowerType := .TBytes (2 * N)
 def halo2PointTowerType : TowerType := .TBytes 2
 def halo2ScalarTowerType : TowerType := .TBytes 1
 
-private def loc (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
+def locHalo2IPAProver (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
 
 /-- Body for the `n = 8` (3-round) Halo2 IPA opening. The fold leaves are
     called at the registered width-4 leaf name; the wires carry the 4-byte /
     8-byte output buffers the registry typed them at. -/
 def halo2IPAProverBody8 : LowCT :=
-  let c_l   := loc "coeffs"   (halo2CoeffTowerType 8)
-  let G_l   := loc "G"        (halo2GenTowerType 8)
-  let cmt_l := loc "cmt"      halo2PointTowerType
-  let cg_l  := loc "cg"       halo2ScalarTowerType
-  let L0_l  := loc "L0"       halo2PointTowerType
-  let R0_l  := loc "R0"       halo2PointTowerType
-  let u0_l  := loc "u0"       halo2ScalarTowerType
-  let c1_l  := loc "c1"       (halo2CoeffTowerType 4)
-  let G1_l  := loc "G1"       (halo2GenTowerType 4)
-  let L1_l  := loc "L1"       halo2PointTowerType
-  let R1_l  := loc "R1"       halo2PointTowerType
-  let u1_l  := loc "u1"       halo2ScalarTowerType
-  let c2_l  := loc "c2"       (halo2CoeffTowerType 4)
-  let G2_l  := loc "G2"       (halo2GenTowerType 4)
-  let L2_l  := loc "L2"       halo2PointTowerType
-  let R2_l  := loc "R2"       halo2PointTowerType
-  let u2_l  := loc "u2"       halo2ScalarTowerType
-  let c3_l  := loc "c3"       (halo2CoeffTowerType 4)
-  let G3_l  := loc "G3"       (halo2GenTowerType 4)
-  let res_l := loc "__result" halo2ScalarTowerType
+  let c_l   := locHalo2IPAProver "coeffs"   (halo2CoeffTowerType 8)
+  let G_l   := locHalo2IPAProver "G"        (halo2GenTowerType 8)
+  let cmt_l := locHalo2IPAProver "cmt"      halo2PointTowerType
+  let cg_l  := locHalo2IPAProver "cg"       halo2ScalarTowerType
+  let L0_l  := locHalo2IPAProver "L0"       halo2PointTowerType
+  let R0_l  := locHalo2IPAProver "R0"       halo2PointTowerType
+  let u0_l  := locHalo2IPAProver "u0"       halo2ScalarTowerType
+  let c1_l  := locHalo2IPAProver "c1"       (halo2CoeffTowerType 4)
+  let G1_l  := locHalo2IPAProver "G1"       (halo2GenTowerType 4)
+  let L1_l  := locHalo2IPAProver "L1"       halo2PointTowerType
+  let R1_l  := locHalo2IPAProver "R1"       halo2PointTowerType
+  let u1_l  := locHalo2IPAProver "u1"       halo2ScalarTowerType
+  let c2_l  := locHalo2IPAProver "c2"       (halo2CoeffTowerType 4)
+  let G2_l  := locHalo2IPAProver "G2"       (halo2GenTowerType 4)
+  let L2_l  := locHalo2IPAProver "L2"       halo2PointTowerType
+  let R2_l  := locHalo2IPAProver "R2"       halo2PointTowerType
+  let u2_l  := locHalo2IPAProver "u2"       halo2ScalarTowerType
+  let c3_l  := locHalo2IPAProver "c3"       (halo2CoeffTowerType 4)
+  let G3_l  := locHalo2IPAProver "G3"       (halo2GenTowerType 4)
+  let res_l := locHalo2IPAProver "__result" halo2ScalarTowerType
   .RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq
   (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq .RSkip
     (.RCall "halo2_commit_8"      cmt_l [c_l, G_l]))

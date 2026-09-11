@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Jasmin.LowCT
 
 /-!
 # Direct `LowCT → MLIR text` emitter (DEBUG-ONLY shortcut)
@@ -47,6 +50,8 @@ Does NOT support:
   unrolled ladder).
 - `RLimbStore`, `RCloneCall`, `RScalarSet` (not used in X25519 step).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.LowCTToMLIR
 

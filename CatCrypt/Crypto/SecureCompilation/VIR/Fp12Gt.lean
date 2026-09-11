@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
 
 /-!
 # GT (`Fp12`) identity, decidable equality, and the `is_one` test
@@ -27,6 +29,8 @@ These are the missing ingredients for a first-class `pairing_check` op
 (`EcPairingCheckOps.lean`): the multi-pairing product is `Fp12Val.mul ξ₀` folded
 from the GT identity `1`, and the check is `gtIsOneF` of that product.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

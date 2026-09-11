@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4MontMulProvenEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.FieldAddSubTierA
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4MontMulProvenEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4MontMulProvenEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.FieldAddSubTierA
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.FieldAddSubTierA
 
 /-!
 # A multi-limb curve-field COMPOSITION `a·b + c·d` emitted from PROVEN blocks
@@ -89,6 +93,8 @@ The verified content is the two proven leaves and the proven canonical add.
 **0 sorries** here (this is an emit driver — `IO`/`String` rendering); the proven
 content is in `Curve4MontMulProvenEmit` / `FieldAddSubTierA` / `FieldDescentMultiLimb`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

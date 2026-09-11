@@ -3,7 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # C4 fan-out: the verified compiler emits the ML-DSA `polyw1_pack` bit-pack byte
@@ -51,6 +56,8 @@ The abstract FIPS-204 `polyw1_pack` encoding tie is stated and proved
 disjoint, the `0xff` mask is exact (no loss, no overlap), and the packed byte is
 exactly `a0 ||| (a1 <<< 4)`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -133,7 +140,7 @@ theorem mldsaW1Pack_compiles :
         = some (mldsaW1PackFold a0 a1) := by
     have h := mldsaW1PackSrc_denoteScalar (nIn := 2) ![a0, a1]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 64) (nIn := 2) ["a0", "a1"]
     ![a0, a1] mldsaW1PackSrc _ hc hspec
 

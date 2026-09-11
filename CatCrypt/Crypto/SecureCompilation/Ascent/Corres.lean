@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Transfer
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+module
+
+import all Init.Data.Repr
+public import Transfer
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
 
 /-!
 # The ascent refinement calculus over LowCT — structural core
@@ -35,6 +38,8 @@ This module is the structural core plus the Phase-1 word representation instance
 The value leaves (`corres_setExpr`, wiring `Related` into the state relation) and
 the control/store phases build on top.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

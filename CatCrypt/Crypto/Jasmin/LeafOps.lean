@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
+module
 
+public import CatCrypt.Crypto.Jasmin.LowCT
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!
@@ -124,9 +128,9 @@ section SmokeTests
 /-- Sample destination and source `Located`s used by the smoke tests
     below.  The `TowerType` chosen here is irrelevant — the smoke test
     only exercises the leaf-name dispatch. -/
-private def smokeOut : Located := { locVar := "out", locSrc := .TFp }
-private def smokeA   : Located := { locVar := "a",   locSrc := .TFp }
-private def smokeB   : Located := { locVar := "b",   locSrc := .TFp }
+def smokeOut : Located := { locVar := "out", locSrc := .TFp }
+def smokeA   : Located := { locVar := "a",   locSrc := .TFp }
+def smokeB   : Located := { locVar := "b",   locSrc := .TFp }
 
 /-- Curve25519 dispatch sanity check: `LeafOps.add` on Curve25519
     produces an `RCall` to `fp25519_add` with `out` as destination

@@ -3,11 +3,19 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFront
-import CatCrypt.Crypto.SecureCompilation.VIR.ArrAbiOrch
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
-import CatCrypt.Crypto.Pairing.Bls12_377Emit
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFront
+public import CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFront
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ArrAbiOrch
+public import CatCrypt.Crypto.SecureCompilation.VIR.ArrAbiOrch
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public meta import CatCrypt.Crypto.Pairing.Bls12_377Emit
+public import CatCrypt.Crypto.Pairing.Bls12_377Emit
 
 /-!
 # Validate: the orchestration front reproduces the BLS12-377 pairing-product
@@ -36,6 +44,8 @@ every downstream fact of the hand-authored one:
   byte-identical correctness KAT is the existing Rust check against the AUCurves
   reference; this is the in-Lean shape gate on the emitted text.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

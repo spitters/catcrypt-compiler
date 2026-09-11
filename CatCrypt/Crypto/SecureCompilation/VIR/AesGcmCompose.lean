@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.VAESEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.VPClmulEmit
-import CatCrypt.Crypto.Primitives.AES128
-import CatCrypt.Crypto.Primitives.GF128
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.VAESEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.VPClmulEmit
+public import CatCrypt.Crypto.Primitives.AES128
+public import CatCrypt.Crypto.Primitives.GF128
 
 /-!
 # AES-GCM end-to-end composition (VAES + VPCLMULQDQ + CTR + GHASH)
@@ -66,6 +68,8 @@ VPCLMULQDQ-emitted implementation:
 
 Invoke:  `lake build CatCrypt.Crypto.SecureCompilation.VIR.AesGcmCompose`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

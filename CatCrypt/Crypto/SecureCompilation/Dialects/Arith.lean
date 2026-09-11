@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
 # The `arith` dialect (D0 gate — CatCrypt-side, not in `VIR/`)
@@ -38,6 +40,8 @@ In the D1 reading these neutral ops are the **legalization baseline**: `addi`
 chains, `mului_extended`, immediate shifts are the always-valid forms; native
 selections (ADCX/MULX/…) are perf-only ISel below the `llvm` waist.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.Arith
 

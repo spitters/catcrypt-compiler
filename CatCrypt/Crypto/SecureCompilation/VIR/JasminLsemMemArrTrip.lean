@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1LsemTie
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1LsemTie
 
 /-!
 # Per-trip array simulation for the emitted `mpn_mul_1` loop body
@@ -22,6 +24,8 @@ step `mul1FoldStep`.
   `mul1FoldStep up v arr t`. The `hsim`-shaped right-hand side, discharged from
   `MpnMul1FrontDenote.limbBody_run` through `frontLoopBodyJ_stepC`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

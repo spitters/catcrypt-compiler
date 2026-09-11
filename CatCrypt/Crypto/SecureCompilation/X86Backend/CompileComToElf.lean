@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
 
 /-!
 # Generic `Com → owned-x86 → ELF` driver
@@ -24,6 +26,8 @@ the front emits). SIMD / vector kernels that hand-build a `List VInst` go throug
 the `{Vec128,Avx512}Encoder` + `ElfObject.buildElfObject` directly and are not on
 this path; unifying them would require lowering vector `Lopn`s through `Lprog`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElf
 

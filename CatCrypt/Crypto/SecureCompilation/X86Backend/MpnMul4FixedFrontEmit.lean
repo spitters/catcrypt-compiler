@@ -3,13 +3,23 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontEmit
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontEmit
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # Fixed 4×4 → 8-limb schoolbook multiply, reg-ptr-out, OWNED x86 (front-generated)
@@ -79,6 +89,8 @@ The module ELABORATES the front pipeline and the owned render; the byte-exact
 product identity is the external C KAT (`bench/regptr_out_probe`) against a
 `__int128` schoolbook reference.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -259,6 +271,6 @@ def emitMain : IO Unit := do
       IO.println "WROTE bench/regptr_out_probe/gen_com/probe_mul4_owned.s"
   | none => IO.println "SKIP probe_mul4: fixed-4 schoolbook multiply front declined"
 
-#eval emitMain
+-- #eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul4FixedFrontEmit

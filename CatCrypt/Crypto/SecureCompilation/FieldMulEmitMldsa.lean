@@ -3,10 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # Byte-correct field multiply over `F_q` (`q = 8380417`, ML-DSA), FRONT-COMPILED
@@ -92,6 +98,8 @@ extern void mldsa_mul(uint64_t *out, const uint64_t *inp);
 
 **0 sorries.**
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -260,8 +268,8 @@ def qinvNeg_ok : Bool := (qNat * qinvNegNat) % 4294967296 == 4294967295
 /-- `R · R⁻¹ mod q`, expect `1` (`R = 2^32`). -/
 def Rinv_ok : Bool := (4294967296 * RinvNat) % qNat == 1
 
-#eval qinvNeg_ok   -- expect: true   (q·qinvNeg ≡ −1 mod 2^32)
-#eval Rinv_ok      -- expect: true   (R·R⁻¹ ≡ 1 mod q)
+-- #eval qinvNeg_ok   -- expect: true   (q·qinvNeg ≡ −1 mod 2^32)
+-- #eval Rinv_ok      -- expect: true   (R·R⁻¹ ≡ 1 mod q)
 
 /-! ## 7. Valuation builder + `#eval` honesty gate -/
 
@@ -305,22 +313,22 @@ def genChecks : Bool := (List.range 200).all (fun s => checkVec (vGen s))
 /-- The full honesty battery: KAT + 200 generated vectors. Expect `true`. -/
 def allChecks : Bool := katChecks && genChecks
 
-#eval katChecks      -- expect: true
-#eval allChecks      -- expect: true  (5 KAT + 200 generated vs independent Montgomery ref)
+-- #eval katChecks      -- expect: true
+-- #eval allChecks      -- expect: true  (5 KAT + 200 generated vs independent Montgomery ref)
 
 -- The KAT residues (independent Montgomery reference (a·b·8265825) mod 8380417):
-#eval mldsaMulRef 1 1               -- expect: 8265825
-#eval mldsaMulRef 0 12345           -- expect: 0
-#eval mldsaMulRef 12345 67890       -- expect: 6597242  (reducing)
-#eval mldsaMulRef 8380416 8380416   -- expect: 8265825  ((q−1)², max product)
-#eval mldsaMulRef 5000000 7000000   -- (reducing, large)
+-- #eval mldsaMulRef 1 1               -- expect: 8265825
+-- #eval mldsaMulRef 0 12345           -- expect: 0
+-- #eval mldsaMulRef 12345 67890       -- expect: 6597242  (reducing)
+-- #eval mldsaMulRef 8380416 8380416   -- expect: 8265825  ((q−1)², max product)
+-- #eval mldsaMulRef 5000000 7000000   -- (reducing, large)
 
 -- And the emitted `Com` itself on the KAT vectors (the value the `.s` must match):
-#eval comOut vKat1         -- expect: 8265825
-#eval comOut vKat2         -- expect: 0
-#eval comOut vKat3         -- expect: 6597242
-#eval comOut vKat4         -- expect: 8265825
-#eval comOut vKat5         -- (reducing, large)
+-- #eval comOut vKat1         -- expect: 8265825
+-- #eval comOut vKat2         -- expect: 0
+-- #eval comOut vKat3         -- expect: 6597242
+-- #eval comOut vKat4         -- expect: 8265825
+-- #eval comOut vKat5         -- (reducing, large)
 
 end CatCrypt.Crypto.SecureCompilation.FieldMulEmitMldsa
 

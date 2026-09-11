@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgree
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgree
 
 /-!
 # `runBlock` ↔ `lsemStraightMem` agreement for the flag-seeding `add` / `sub`
@@ -53,6 +55,8 @@ register, never an immediate.
   with the carry-out in `fr`, given a width-1 zero-carry register `zc`.
 * `subSeed_case`: the `.sub` borrow analogue via `SBBHI` / `SBB`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgreeAddSeed
 

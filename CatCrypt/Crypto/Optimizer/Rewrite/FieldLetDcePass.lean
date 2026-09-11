@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Algebra.Ring.Defs
-import Mathlib.Data.ZMod.Basic
+module
+
+public import Mathlib.Algebra.Ring.Defs
+public import Mathlib.Data.ZMod.Basic
 
 /-!
 # Verified dead-let-elimination (DCE) for a let-binding field IR
@@ -50,6 +52,8 @@ value `v` leaves the body's denotation unchanged — the dropped binding's value
 cannot be observed. It is proved by structural induction, threading the
 `freeIn x _ = false` hypothesis through each subterm.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

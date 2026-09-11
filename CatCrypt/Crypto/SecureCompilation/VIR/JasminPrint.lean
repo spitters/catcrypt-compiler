@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-import CatCrypt.Crypto.Jasmin.LowCTToJasmin
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public meta import CatCrypt.Crypto.Jasmin.LowCTToJasmin
+public import CatCrypt.Crypto.Jasmin.LowCTToJasmin
 
 /-!
 # `Com jasminDialect → JasminProg` lowering (phase (a) of the convergence plan)
@@ -66,6 +71,8 @@ a single named accumulator, the standard Jasmin idiom) is documented at
 Printer + smoke (`.jazz` text emitted, structural facts `decide`/`rfl`-checked)
 + bounded-for loop. All goals closed; standard axioms only.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 

@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Model
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Model
 
 /-!
 # A faithful Lean transcription of Jasmin's Rocq x86 semantics (#281)
@@ -81,6 +84,8 @@ byte`, `CF = unsigned wrap`, `OF = signed overflow` for the ALU ops;
 (shift by 0) / `rflags_OF` (shift by ≥1) cases for the shifts; and the
 two-independent-carry-chain `ADCX → CF only` / `ADOX → OF only` routing.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

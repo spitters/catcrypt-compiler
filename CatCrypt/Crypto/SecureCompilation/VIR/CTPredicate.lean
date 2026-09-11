@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptOpInfo
-import CatCrypt.Crypto.SecureCompilation.VIR.Grind
-import CatCrypt.Crypto.SecureCompilation.VIR.Regions
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptOpInfo
+public import CatCrypt.Crypto.SecureCompilation.VIR.Grind
+public import CatCrypt.Crypto.SecureCompilation.VIR.Regions
 
 /-!
 # VIR-level constant-time predicate
@@ -48,6 +50,8 @@ exactly the Track 3b benchmark target.
 A more refined predicate that flags `ite` as CT-safe when its condition
 is annotated `@public` is a Track-3a-v2 follow-up.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR
 

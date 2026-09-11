@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockCorres
-import Mathlib.Tactic.Ring
-import Mathlib.Tactic.LinearCombination
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockCorres
+public import Mathlib.Tactic.Ring
+public import Mathlib.Tactic.LinearCombination
 
 /-!
 # The multi-limb EC multiply leaf over the ascent `CorresJ` runBlock layer
@@ -35,6 +37,8 @@ EC field-multiply kernels need:
   abstract `mulxStep` transition through `SRcarry`. `mulxStep_recompose` recovers
   the full 128-bit product `dstHi:dstLo = a · b` across the two output registers.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

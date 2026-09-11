@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4DotProvenEmit
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4DotProvenEmit
 
 /-!
 Compiled producer entry point for the secp256k1 base-field COMPOSITION
@@ -15,6 +17,8 @@ renders too slowly through the `lean --run` interpreter, so the emit is run as
 native code, exactly as the Poseidon2 field-pipeline keystone
 (`poseidon2fieldpipeline`).
 -/
+
+@[expose] public section
 
 def main : IO Unit :=
   CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4DotProvenEmit.emitMainSecp256k1Dot

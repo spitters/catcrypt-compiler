@@ -3,8 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.ToStringPrototype
-import CatCrypt.Crypto.Jasmin.Mpn.DivRemPrototype
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.Mpn.ToStringPrototype
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.Mpn.ToStringPrototype
+public meta import CatCrypt.Crypto.Jasmin.Mpn.DivRemPrototype
+public import CatCrypt.Crypto.Jasmin.Mpn.DivRemPrototype
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -355,7 +363,7 @@ def emitted : Option String := emitFunDecl mpnToStringMultiFd
 example : (emitFunDecl mpnToStringMultiFd).isSome := by native_decide
 
 -- The real `.jazz` source, for offline `jasminc` testing.
-#eval match emitted with | some s => s | none => "EMIT FAILED"
+-- #eval match emitted with | some s => s | none => "EMIT FAILED"
 
 /-! ## §4  CT honesty — NOT constant-time
 
@@ -676,32 +684,32 @@ all transitively-required kernels.  The bundle is written to
 (the standard register-allocation + arity checks all pass; see the
 single-limb file `Mpn.ToStringPrototype.§5` for analogous validation). -/
 
-#eval match Emit.emitFunDecl mpnToStringMultiFd with
-  | some s => IO.println s
-  | none => IO.println "// emission failed"
+-- #eval match Emit.emitFunDecl mpnToStringMultiFd with
+--   | some s => IO.println s
+--   | none => IO.println "// emission failed"
 
 /-! Bundle all callee kernels into a single `.jazz` for offline `jasminc`
     validation.  Writes to `/tmp/mpn_to_string_multi.jazz` if all emissions
     succeed; prints a FAIL diagnostic otherwise. -/
-#eval do
-  let mp1   := Emit.emitFunDecl
-    CatCrypt.Crypto.Jasmin.Mpn.Mul1Prototype.mpnMul1Fd
-  let addn  := Emit.emitFunDecl
-    CatCrypt.Crypto.Jasmin.Mpn.AddPrototype.mpnAddNFd
-  let sub   := Emit.emitFunDecl
-    CatCrypt.Crypto.Jasmin.Mpn.Submul1Prototype.mpnSubmul1Fd
-  let dr    := Emit.emitFunDecl
-    CatCrypt.Crypto.Jasmin.Mpn.DivRemPrototype.mpnDivRemFd
-  let ts    := Emit.emitFunDecl
-    CatCrypt.Crypto.Jasmin.Mpn.ToStringPrototype.mpnToStringFd
-  let tsm   := Emit.emitFunDecl mpnToStringMultiFd
-  match mp1, addn, sub, dr, ts, tsm with
-  | some m, some a, some s, some d, some t, some tm =>
-      IO.FS.writeFile "/tmp/mpn_to_string_multi.jazz"
-        (m ++ "\n\n" ++ a ++ "\n\n" ++ s ++ "\n\n" ++ d ++ "\n\n"
-          ++ t ++ "\n\n" ++ tm ++ "\n")
-      IO.println "OK: wrote /tmp/mpn_to_string_multi.jazz"
-  | _, _, _, _, _, _ =>
-      IO.println "FAIL: some kernel did not emit"
+-- #eval do
+--  let mp1   := Emit.emitFunDecl
+--    CatCrypt.Crypto.Jasmin.Mpn.Mul1Prototype.mpnMul1Fd
+--  let addn  := Emit.emitFunDecl
+--    CatCrypt.Crypto.Jasmin.Mpn.AddPrototype.mpnAddNFd
+--  let sub   := Emit.emitFunDecl
+--    CatCrypt.Crypto.Jasmin.Mpn.Submul1Prototype.mpnSubmul1Fd
+--  let dr    := Emit.emitFunDecl
+--    CatCrypt.Crypto.Jasmin.Mpn.DivRemPrototype.mpnDivRemFd
+--  let ts    := Emit.emitFunDecl
+--    CatCrypt.Crypto.Jasmin.Mpn.ToStringPrototype.mpnToStringFd
+--  let tsm   := Emit.emitFunDecl mpnToStringMultiFd
+--  match mp1, addn, sub, dr, ts, tsm with
+--  | some m, some a, some s, some d, some t, some tm =>
+--      IO.FS.writeFile "/tmp/mpn_to_string_multi.jazz"
+--        (m ++ "\n\n" ++ a ++ "\n\n" ++ s ++ "\n\n" ++ d ++ "\n\n"
+--          ++ t ++ "\n\n" ++ tm ++ "\n")
+--      IO.println "OK: wrote /tmp/mpn_to_string_multi.jazz"
+--  | _, _, _, _, _, _ =>
+--      IO.println "FAIL: some kernel did not emit"
 
 end CatCrypt.Crypto.Jasmin.Mpn.ToStringMultiLimbPrototype

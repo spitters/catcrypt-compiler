@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxBlake3
-import CatCrypt.Crypto.BLAKE3.CompressEmit
+module
+
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxBlake3
+public import CatCrypt.Crypto.BLAKE3.CompressEmit
 
 /-!
 # #607 fan-out: functional tie — verified-compiler BLAKE3 G words = the reference `gSpec`
@@ -44,6 +46,8 @@ Each `blake3G{A,B,C,D}_emitted_eq_g` says: the verified compiler emits a program
 whose `BitVec 32` denotation is exactly the corresponding updated slot of
 `gSpec (inSt a b c d) 0 1 2 3 m0 m1`. Functional-equality tie — NOT a security claim.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

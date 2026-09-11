@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.EcConvertOps
-import Mathlib.Tactic.Ring
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.EcConvertOps
+public import Mathlib.Tactic.Ring
 
 /-!
 # Jacobian → affine point conversion on the HIGH FIELD DIALECT
@@ -65,6 +67,8 @@ conversion still flows through the existing `affToPoint` / MSM-normalise
 
 **0 sorries.**
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -190,6 +194,6 @@ Over `ZMod 7`, on the Jacobian point `(X, Y, Z) = (2, 3, 1)` (already normalised
 example :
     ((jacToAffXProg (p := 7)).denote (eval 2 3 1),
      (jacToAffYProg (p := 7)).denote (eval 2 3 1))
-      = ((2, 3) : ZMod 7 × ZMod 7) := rfl
+      = ((2, 3) : ZMod 7 × ZMod 7) := by with_unfolding_all rfl
 
 end CatCrypt.Crypto.SecureCompilation.VIR.EcConvertFieldEmit

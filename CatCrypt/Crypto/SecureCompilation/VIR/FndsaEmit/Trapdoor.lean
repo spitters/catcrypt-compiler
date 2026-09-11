@@ -3,10 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
-import CatCrypt.Crypto.SecureCompilation.VIR.FndsaEmit.Sampler
-import Mathlib.Data.ZMod.Basic
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.FndsaEmit.Sampler
+public import CatCrypt.Crypto.SecureCompilation.VIR.FndsaEmit.Sampler
+public import Mathlib.Data.ZMod.Basic
 
 /-!
 # FN-DSA NTRU-tree fast-Fourier-sampling trapdoor at fixed-point precision
@@ -87,6 +93,8 @@ tail bound, is a separate analytic formalization).
 * Ducas, Prest — Fast Fourier Orthogonalization, ISSAC 2016
 * Gentry, Peikert, Vaikuntanathan — Trapdoors for Hard Lattices, STOC 2008
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

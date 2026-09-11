@@ -3,9 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAddBlock
-import CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAddMontReduceBridge
-import CatCrypt.Crypto.SecureCompilation.EcProjectiveAddGeneric
+module
+public import Mathlib.Algebra.Field.ZMod
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAddBlock
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAddMontReduceBridge
+public import CatCrypt.Crypto.SecureCompilation.EcProjectiveAddGeneric
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxHeartbeats 1000000
@@ -90,7 +96,7 @@ def slotFieldVal (N : Nat) (s : JState 64) (base : String) (slot : Nat) : ZMod N
 frame-wrapped block `emitCall c` from `s` to `s'`: the output slot's de-Montgomery
 field value becomes the matching `ZMod N` op of the input slots' field values
 (read in `s`, before the op), and every *other* slot's field value is unchanged
-(non-interference — earlier results survive). This is the genuine carried
+(non-interference — earlier results survive). This is the carried
 predicate: a multiply realizer is supplied by `feMulFrameAtReduced` +
 `AUCurvesMontReduceFaithful`, an add/sub realizer by the add/sub bridge below. -/
 
@@ -357,51 +363,51 @@ theorem jacAddBlock_realizes_jacAddGen
   -- `decide`-discharged: distinct slot numerals), reducing each to the numeric
   -- step `V <out> = (field op) (V <in0>) (V <in1>)`.
   have c0 : V 10 = V 2 * V 2 := by
-    simpa [callOut, callIn0, callIn1, callOp] using callV 0 (by decide) (by decide) (by decide) (by decide)
+    exact callV 0 (by decide) (by decide) (by decide) (by decide)
   have c1 : V 12 = V 5 * V 5 := by
-    simpa [callOut, callIn0, callIn1, callOp] using callV 1 (by decide) (by decide) (by decide) (by decide)
+    exact callV 1 (by decide) (by decide) (by decide) (by decide)
   have c2 : V 14 = V 10 * V 2 := by
-    simpa [callOut, callIn0, callIn1, callOp] using callV 2 (by decide) (by decide) (by decide) (by decide)
+    exact callV 2 (by decide) (by decide) (by decide) (by decide)
   have c3 : V 16 = V 12 * V 5 := by
-    simpa [callOut, callIn0, callIn1, callOp] using callV 3 (by decide) (by decide) (by decide) (by decide)
+    exact callV 3 (by decide) (by decide) (by decide) (by decide)
   have c4 : V 18 = V 0 * V 12 := by
-    simpa [callOut, callIn0, callIn1, callOp] using callV 4 (by decide) (by decide) (by decide) (by decide)
+    exact callV 4 (by decide) (by decide) (by decide) (by decide)
   have c5 : V 20 = V 3 * V 10 := by
-    simpa [callOut, callIn0, callIn1, callOp] using callV 5 (by decide) (by decide) (by decide) (by decide)
+    exact callV 5 (by decide) (by decide) (by decide) (by decide)
   have c6 : V 22 = V 1 * V 16 := by
-    simpa [callOut, callIn0, callIn1, callOp] using callV 6 (by decide) (by decide) (by decide) (by decide)
+    exact callV 6 (by decide) (by decide) (by decide) (by decide)
   have c7 : V 24 = V 4 * V 14 := by
-    simpa [callOut, callIn0, callIn1, callOp] using callV 7 (by decide) (by decide) (by decide) (by decide)
+    exact callV 7 (by decide) (by decide) (by decide) (by decide)
   have c8 : V 26 = V 20 - V 18 := by
-    simpa [callOut, callIn0, callIn1, callOp] using callV 8 (by decide) (by decide) (by decide) (by decide)
+    exact callV 8 (by decide) (by decide) (by decide) (by decide)
   have c9 : V 27 = V 24 - V 22 := by
-    simpa [callOut, callIn0, callIn1, callOp] using callV 9 (by decide) (by decide) (by decide) (by decide)
+    exact callV 9 (by decide) (by decide) (by decide) (by decide)
   have c10 : V 28 = V 26 * V 26 := by
-    simpa [callOut, callIn0, callIn1, callOp] using callV 10 (by decide) (by decide) (by decide) (by decide)
+    exact callV 10 (by decide) (by decide) (by decide) (by decide)
   have c11 : V 30 = V 28 * V 26 := by
-    simpa [callOut, callIn0, callIn1, callOp] using callV 11 (by decide) (by decide) (by decide) (by decide)
+    exact callV 11 (by decide) (by decide) (by decide) (by decide)
   have c12 : V 32 = V 18 * V 28 := by
-    simpa [callOut, callIn0, callIn1, callOp] using callV 12 (by decide) (by decide) (by decide) (by decide)
+    exact callV 12 (by decide) (by decide) (by decide) (by decide)
   have c13 : V 34 = V 27 * V 27 := by
-    simpa [callOut, callIn0, callIn1, callOp] using callV 13 (by decide) (by decide) (by decide) (by decide)
+    exact callV 13 (by decide) (by decide) (by decide) (by decide)
   have c14 : V 36 = V 34 - V 30 := by
-    simpa [callOut, callIn0, callIn1, callOp] using callV 14 (by decide) (by decide) (by decide) (by decide)
+    exact callV 14 (by decide) (by decide) (by decide) (by decide)
   have c15 : V 37 = V 32 + V 32 := by
-    simpa [callOut, callIn0, callIn1, callOp] using callV 15 (by decide) (by decide) (by decide) (by decide)
+    exact callV 15 (by decide) (by decide) (by decide) (by decide)
   have c16 : V 6 = V 36 - V 37 := by
-    simpa [callOut, callIn0, callIn1, callOp] using callV 16 (by decide) (by decide) (by decide) (by decide)
+    exact callV 16 (by decide) (by decide) (by decide) (by decide)
   have c17 : V 38 = V 32 - V 6 := by
-    simpa [callOut, callIn0, callIn1, callOp] using callV 17 (by decide) (by decide) (by decide) (by decide)
+    exact callV 17 (by decide) (by decide) (by decide) (by decide)
   have c18 : V 40 = V 27 * V 38 := by
-    simpa [callOut, callIn0, callIn1, callOp] using callV 18 (by decide) (by decide) (by decide) (by decide)
+    exact callV 18 (by decide) (by decide) (by decide) (by decide)
   have c19 : V 42 = V 22 * V 30 := by
-    simpa [callOut, callIn0, callIn1, callOp] using callV 19 (by decide) (by decide) (by decide) (by decide)
+    exact callV 19 (by decide) (by decide) (by decide) (by decide)
   have c20 : V 7 = V 40 - V 42 := by
-    simpa [callOut, callIn0, callIn1, callOp] using callV 20 (by decide) (by decide) (by decide) (by decide)
+    exact callV 20 (by decide) (by decide) (by decide) (by decide)
   have c21 : V 44 = V 2 * V 5 := by
-    simpa [callOut, callIn0, callIn1, callOp] using callV 21 (by decide) (by decide) (by decide) (by decide)
+    exact callV 21 (by decide) (by decide) (by decide) (by decide)
   have c22 : V 8 = V 44 * V 26 := by
-    simpa [callOut, callIn0, callIn1, callOp] using callV 22 (by decide) (by decide) (by decide) (by decide)
+    exact callV 22 (by decide) (by decide) (by decide) (by decide)
   clear callV
   -- unfold the goal's spec: jacAddGen of the six input coordinates, and read the
   -- three output slots' final values off `V`.
@@ -524,8 +530,8 @@ def AUCurvesFieldAddSubFaithful (N : Nat) (addSubLeaf : Nat → Nat) : Prop :=
 
 /-- **Non-vacuous witness** for the add/sub bridge: `canonReduce N` itself adopts
     the leaf by reflexivity (mirror of
-    `EcJacAddMontReduceBridge.aucurvesMontReduceLeaf_canonical`). The genuine
-    cross-prover content is the gap between this realiser and the value the emitted
+    `EcJacAddMontReduceBridge.aucurvesMontReduceLeaf_canonical`). The cross-prover
+    content is the gap between this realiser and the value the emitted
     conditional add-back / subtract computes, validated against AUCurves' Rocq
     output outside Lean. -/
 theorem aucurvesFieldAddSub_canonical (N : Nat) :

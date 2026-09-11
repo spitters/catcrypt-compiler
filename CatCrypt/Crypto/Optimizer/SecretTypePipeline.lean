@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.SecretType
-import CatCrypt.Crypto.Optimizer.Rewrite.ComPipeline
+module
+
+public import CatCrypt.Crypto.Optimizer.SecretType
+public import CatCrypt.Crypto.Optimizer.Rewrite.ComPipeline
 
 /-!
 # Compositional CT across the whole canonicalize pipeline (#594 capstone)
@@ -52,6 +54,8 @@ shows), composed by transitivity of the lattice order.
 
 All goals closed.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

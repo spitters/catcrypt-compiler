@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptPrint
-import CatCrypt.Crypto.SecureCompilation.VIR.MultiReturnCom
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptPrint
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.MultiReturnCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.MultiReturnCom
 
 /-!
 # Direct-VIR emission of an X25519 ladder step
@@ -20,6 +24,8 @@ benchmark and a target to diff against.
 The emitted MLIR is linked against externally-supplied `fp_add`/`fp_sub`/
 `fp_mul`/`fp_sqr` funcs.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.X25519EmitMLIR
 
@@ -91,7 +97,7 @@ def externs : List String :=
 def halfStepMLIR : String :=
   Com.printModuleWithExterns halfStep "x25519_halfstep" externs
 
-#eval halfStepMLIR
+-- #eval halfStepMLIR
 
 /-! ## Full Montgomery ladder step (dbl + dadd)
 
@@ -124,7 +130,7 @@ abbrev FullCtx : Ctxt catCryptDialect :=
 
 -- A small syntactic helper: lift a Var across a cons.
 -- (there = weakening by one binding)
-private def lift1 {d : Dialect} {Γ : Ctxt d} {t s : d.Ty}
+def lift1 {d : Dialect} {Γ : Ctxt d} {t s : d.Ty}
     (v : Ctxt.Var Γ t) : Ctxt.Var (s :: Γ) t := .there v
 
 /-! ## Four separate entry points for the four outputs
@@ -228,7 +234,7 @@ AA, BB, DA, CB. Eliminates the writeup §5.5 CSE-trap that the four
 single-return funcs above hit. -/
 
 /-- Helper: lift a Var across `k` cons-extensions on the left. -/
-private def liftN {d : Dialect} {Γ : Ctxt d} {t : d.Ty} :
+def liftN {d : Dialect} {Γ : Ctxt d} {t : d.Ty} :
     (k : Nat) → (Δ : List d.Ty) → Δ.length = k → Ctxt.Var Γ t →
     Ctxt.Var (Δ ++ Γ) t
   | 0, [], _, v => v
@@ -344,11 +350,11 @@ def writeHalfStepMLIR (path : System.FilePath) : IO Unit :=
 -- Emit all three when this file is evaluated.  Path resolution is via the
 -- `CATCRYPT_BENCH_DIR` env var (default: skip).  The previous hard-coded
 -- absolute paths were author-specific and broke CI on other machines.
-private def benchDir : IO (Option System.FilePath) := do
+def benchDir : IO (Option System.FilePath) := do
   let some d ← IO.getEnv "CATCRYPT_BENCH_DIR" | return none
   return some d
 
-#eval do
+-- #eval do
   let some d ← benchDir | return ()
   writeHalfStepMLIR (d / "x25519_halfstep.mlir")
   writeFullStepMLIR (d / "x25519_fullstep.mlir")

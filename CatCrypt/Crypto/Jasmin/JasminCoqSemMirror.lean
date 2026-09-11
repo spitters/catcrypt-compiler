@@ -3,11 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.Int.Basic
-import Mathlib.Data.List.Defs
-import Mathlib.Data.Fin.Basic
-import Init.Data.BitVec.Basic
+module
 
+import all Init.Data.Repr
+public import Mathlib.Data.Int.Basic
+public import Mathlib.Data.List.Defs
+public import Mathlib.Data.Fin.Basic
+public import Init.Data.BitVec.Basic
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!

@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.RobustSafetyBackTranslate
-import CatCrypt.Crypto.SecureCompilation.VIR.JasmincSemAlignment
-import CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasminDenoteUncond
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.RobustSafetyBackTranslate
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasmincSemAlignment
+public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasminDenoteUncond
 
 /-!
 # Robust compilation source → x86: composing the verified pipeline (capstone)
@@ -93,6 +95,8 @@ minimal residual *alone* yields the full source → x86 conclusion.
   down to jasmin IR, and the single residual is jasmin's own verified-compiler
   theorem for jasmin IR → x86.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

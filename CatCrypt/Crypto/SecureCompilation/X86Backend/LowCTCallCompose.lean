@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTSecPreserve
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTSecPreserve
 
 /-!
 # P4.4: whole-function call composition (programs *with* calls)
@@ -87,6 +89,8 @@ Imports only `LowCTSecPreserve` (which transitively pulls `LowCTITree`,
 `CatCrypt.Crypto.SDist`).  Nothing under `Bridges/` or `IrisBridge/`: no guarded
 ITrees, no step-indexing, no separation logic.  Bounded (terminating) fragment.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.AddMul1AdxPrototype
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.Mpn.AddMul1AdxPrototype
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.Mpn.AddMul1AdxPrototype
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -98,7 +105,7 @@ open CatCrypt.Crypto.Jasmin
 open CatCrypt.Crypto.Jasmin.BignumExec
 open CatCrypt.Crypto.Jasmin.Emit
 open CatCrypt.Crypto.Jasmin.MemoryModel
-open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype hiding vr pv loadAt0 storeAt0 binImm
 open CatCrypt.Crypto.Jasmin.Mpn.Mul1Prototype
 open CatCrypt.Crypto.Jasmin.Mpn.Addmul1Prototype
 open CatCrypt.Crypto.Jasmin.Mpn.AddMul1AdxPrototype
@@ -465,7 +472,7 @@ theorem MpnAddMul1AdxBlockedJasminRefines_zero :
     -- so the body collapses to the two prologue instructions.
     simp only [bignumExecFuel, execInstr, evalPExpr, assignConst, xorClearFlags,
                vr, pv, unrollFor, bind, Option.bind, writeXorBundle,
-               List.flatMap, List.range, List.range.loop, List.append_nil,
+               List.flatMap, Nat.sub_self, List.range, List.range.loop, List.append_nil,
                List.map_nil, List.flatten_nil,
                show BitVec.ofInt 64 0 = (0 : BitVec 64) from rfl,
                show ((setReg s "cy" 0).regs "zero" ^^^

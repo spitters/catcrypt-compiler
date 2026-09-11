@@ -3,10 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Secp256k1FeAddSubBrick
-import CatCrypt.Crypto.SecureCompilation.Secp256k1FeMulBrickFrame
-import CatCrypt.Crypto.SecureCompilation.Secp256k1FeMulBrickProduct
-import CatCrypt.Crypto.Optimizer.SolinasFoldChain
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.Secp256k1FeAddSubBrick
+public import CatCrypt.Crypto.SecureCompilation.Secp256k1FeMulBrickFrame
+public import CatCrypt.Crypto.SecureCompilation.Secp256k1FeMulBrickProduct
+public import CatCrypt.Crypto.Optimizer.SolinasFoldChain
 
 /-!
 # The Solinas reduction half of the secp256k1 field-multiply brick
@@ -52,6 +55,8 @@ four folds and the closing select are in `Optimizer.SolinasFoldChain`.
 * `mulBrickValue_holds` — `Secp256k1FeMulBrickFrame.MulBrickValue` itself, the
   head conditions discharged from the schedule-name conditions it carries.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Secp256k1FeMulBrickReduce
 
@@ -553,7 +558,7 @@ theorem genFold_sem (hM : GenMulSpec) (pfx : String) (full : List String) (n : N
   have hchiV : accN (fun k => (envReader E1 ((foldChi full pfx)[k]!)).toNat) (2 + (n - 8))
       = solinasParamsSecp256k1.c
         * accN (fun k => (envReader env ((full.drop 8)[k]!)).toNat) (n - 8) := by
-    simpa only [hccLen, hhi, hcVal] using chiAcc
+    simpa only [hccLen, hhi, hcVal] using! chiAcc
   -- the input value splits at limb 8
   have hVsplit : accN (fun k => (envReader env (full[k]!)).toNat) n
       = accN (fun k => (envReader env (full[k]!)).toNat) 8

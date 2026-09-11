@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrontValue
-import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpTotal
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrontValue
+public import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpTotal
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
 
 /-!
 # The point-op spec at the jasmin dialect
@@ -29,6 +31,8 @@ dialect.
 * `jacDblJasminCom_denote_cells`, `jacAddJasminCom_denote_cells` — the same, one
   dialect down, at the `Com jasminDialect` the backend lowers to `Lprog`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpJasminValue
 

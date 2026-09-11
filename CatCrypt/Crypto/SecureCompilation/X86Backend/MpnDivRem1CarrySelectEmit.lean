@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1FrontEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
-import CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1FrontEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1FrontEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
+public import CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
 
 /-!
 # `mpn_divrem_1` as a carry-selected runtime-trip loop
@@ -41,6 +46,8 @@ quotient/remainder invariant over the memref carrier.
   text.
 * `#guard`s pinning that the physical body carries a real back-edge.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

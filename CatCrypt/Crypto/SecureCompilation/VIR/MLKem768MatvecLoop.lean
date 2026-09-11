@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgMultiOp
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgMultiOp
 
 /-!
 # ML-KEM-768 matrix-vector product as a verified nested bounded loop (R3)
@@ -45,6 +47,8 @@ keystone could not cover and the R1 multi-op keystone does:
 This is the full-parameter (`k = 3` = ML-KEM-768) loop keystone for the lattice
 matrix-vector product, routed through R1's multi-op nested-loop lemma.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

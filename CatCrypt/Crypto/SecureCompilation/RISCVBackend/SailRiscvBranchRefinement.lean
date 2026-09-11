@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvModel
-import Mathlib.Data.BitVec
-import Mathlib.Tactic.NormNum
+module
+
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvModel
+public import Mathlib.Data.BitVec
+public import Mathlib.Tactic.NormNum
 
 /-!
 # Sail refinement for RV64 branch comparisons (`BCmp` vs Sail `BTYPE`)
@@ -14,12 +16,23 @@ The RV64 backend emits branches only as **structural, public-trip-count loops**
 (`runBoundedLoopR`; the one emitted branch is the `BNE ctr, x0` back-edge), so there is no
 data-dependent branch-condition *value* in the operational model — `BCmp`'s meaning lived only
 in its `funct3` docstrings (`RiscvModel.BCmp`). This file makes that meaning precise and proves
-it equals the `taken` computation of the official Sail `execute_BTYPE` clause.
+it equals the `taken` computation of the Sail `execute_BTYPE` clause, as held in-file.
 
-We vendor only the **`taken` computation** of `execute_BTYPE` (`LeanRV64D/InstsEnd.lean:71722`)
+We paste only the **`taken` computation** of `execute_BTYPE` (`LeanRV64D/InstsEnd.lean:71722`)
 as the pure `btypeTaken`; the PC/`jump_to` control-flow tail is not part of the comparison
-semantics. Provenance/discipline as in the sibling refinement files.
+semantics. That paste is an in-file excerpt of the sail-riscv-lean generated output
+(commit `9eba3f07`; upstream not vendored, and the transcription is not machine-checked) —
+provenance/discipline as in the sibling refinement files.
+
+## Status
+
+Standalone: nothing in this repo imports this file or consumes `bcmp_taken_eq` —
+it is not wired into `SailRiscvDecoder.lean`'s `roundtrip_bcc`/`riscvDecodeB` or
+into any executable-semantics proof. It fixes `BCmp`'s meaning against the
+transcribed Sail `BTYPE` clause on its own, ahead of being consumed elsewhere.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

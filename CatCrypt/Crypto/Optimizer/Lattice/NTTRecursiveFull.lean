@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.NTTRecursionPass
+module
+
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTRecursionPass
 
 /-!
 # Full recursive radix-2 NTT, proved equal to the DFT
@@ -48,6 +50,8 @@ length-`2^(e+1)` input to length-`2 * 2^e`, plus a single `Fin.val`-level case
 split (`k.val < 2^e` vs `≥ 2^e`) to route a lower- or upper-half output to the
 matching split lemma.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

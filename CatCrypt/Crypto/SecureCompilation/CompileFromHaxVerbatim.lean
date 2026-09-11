@@ -3,8 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
-import CatCrypt.Crypto.SHA256.Extraction.Sha256_haxpipe
+module
+
+import all Init.Data.Repr
+import all CatCrypt.Crypto.SecureCompilation.ImpExprToThir
+import all CatCrypt.Crypto.SecureCompilation.ThirToComFront
+import all CatCrypt.Crypto.SecureCompilation.CompileFromHax
+import all CatCrypt.Crypto.SHA256.Extraction.Sha256_haxpipe
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public meta import CatCrypt.Crypto.SHA256.Extraction.Sha256_haxpipe
+public import CatCrypt.Crypto.SHA256.Extraction.Sha256_haxpipe
 
 /-!
 # Compiling a verbatim hax extraction (SHA-256 σ₀)
@@ -44,6 +53,8 @@ FIPS σ₀ value. Routed through `compileFromHax_meets_spec`, this yields
 end to end.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.CompileFromHaxVerbatim
@@ -72,7 +83,7 @@ def sigma0Norm : ImpExpr :=
 
 /-- `anfLift` of the verbatim extraction literal reduces (definitionally) to the
     explicit let-normalized `sigma0Norm`. Closed-term computation: `rfl`. -/
-theorem anfLift_small_sigma0_eq :
+private theorem anfLift_small_sigma0_eq :
     anfLift Sha256.small_sigma0_impExpr = sigma0Norm := rfl
 
 /-- **The ANF-lifted verbatim σ₀ body is value-preserving.** Its `denoteScalar`
@@ -146,7 +157,7 @@ def sigma1Norm : ImpExpr :=
        (.app "BitXor" [.var "_anf3", .var "_anf0"])))))
 
 /-- `anfLift` of the verbatim σ₁ literal reduces (definitionally) to `sigma1Norm`. -/
-theorem anfLift_small_sigma1_eq :
+private theorem anfLift_small_sigma1_eq :
     anfLift Sha256.small_sigma1_impExpr = sigma1Norm := rfl
 
 /-- The ANF-lifted verbatim σ₁ body denotes to the FIPS 180-4 σ₁ value
@@ -201,7 +212,7 @@ def bigSigma0Norm : ImpExpr :=
        (.app "BitXor" [.var "_anf3", .var "_anf0"])))))
 
 /-- `anfLift` of the verbatim Σ₀ literal reduces (definitionally) to `bigSigma0Norm`. -/
-theorem anfLift_big_sigma0_eq :
+private theorem anfLift_big_sigma0_eq :
     anfLift Sha256.big_sigma0_impExpr = bigSigma0Norm := rfl
 
 /-- The ANF-lifted verbatim Σ₀ body denotes to the FIPS 180-4 Σ₀ value
@@ -255,7 +266,7 @@ def bigSigma1Norm : ImpExpr :=
        (.app "BitXor" [.var "_anf3", .var "_anf0"])))))
 
 /-- `anfLift` of the verbatim Σ₁ literal reduces (definitionally) to `bigSigma1Norm`. -/
-theorem anfLift_big_sigma1_eq :
+private theorem anfLift_big_sigma1_eq :
     anfLift Sha256.big_sigma1_impExpr = bigSigma1Norm := rfl
 
 /-- The ANF-lifted verbatim Σ₁ body denotes to the FIPS 180-4 Σ₁ value
@@ -313,7 +324,7 @@ def majNorm : ImpExpr :=
          (.app "BitXor" [.var "_anf3", .var "_anf0"])))))))
 
 /-- `anfLift` of the verbatim Maj literal reduces (definitionally) to `majNorm`. -/
-theorem anfLift_maj_eq :
+private theorem anfLift_maj_eq :
     anfLift Sha256.maj_impExpr = majNorm := rfl
 
 /-- The ANF-lifted verbatim Maj body denotes (parameters `["a","b","c"]`,
@@ -361,7 +372,7 @@ theorem maj_verbatim_compiles :
       = some ((a &&& b) ^^^ (a &&& c') ^^^ (b &&& c')) := by
     have h := anfLift_maj_denoteScalar (nIn := 3) ![a, b, c']
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 32) (nIn := 3) ["a", "b", "c"] ![a, b, c']
     (anfLift Sha256.maj_impExpr) _ hc hspec
 

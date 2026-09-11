@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
+module
+
+public import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
 
 /-!
 # H3.sexta: whileLoop simulation case (the hard one)
@@ -19,6 +21,8 @@ The recursion correspondence: Hax `fuel` decrements per loop iteration;
 LowCT `N` is a fuel parameter on the relation (interpreted as max
 iterations).  The simulation must align these.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -156,7 +160,7 @@ absence-of-break lemma (TODO §7). -/
     (cond false) or we ran one iteration (body returned a value) and
     recursed at decremented fuel.  Excludes `.continued` / `.broke v`
     body outcomes — see comment above. -/
-private theorem evalImp_whileLoop_var_step_inv_valArm
+theorem evalImp_whileLoop_var_step_inv_valArm
     (bi : Builtins) (n : Nat) (cond : String) (body : ImpExpr)
     (env : Env) (v : Value) (env' : Env)
     (h : evalImp bi (n+1) (.whileLoop (.var cond) body) env

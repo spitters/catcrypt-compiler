@@ -3,8 +3,35 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecKernelAdeq
-import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecRoundAdeq
+module
+
+-- The closed-kernel route reduces the front (`translateDialectControl`,
+-- `semScalar`, `cryptoDialectToJasminCom`) by `rfl`/`decide`; under the module
+-- system that reduction needs the front closure imported with `all`, and
+-- `Nat.repr` (the front's slot names) exposed through `Init.Data.Repr`.
+import all Init.Data.Repr
+import all CatCrypt.Core.Code
+import all CatCrypt.Crypto.CryptoWord
+import all CatCrypt.Crypto.Jasmin.JasminAST
+import all CatCrypt.Crypto.Jasmin.JasminTypes
+import all CatCrypt.Crypto.Jasmin.LowCT
+import all CatCrypt.Crypto.SDist
+import all CatCrypt.Crypto.SecureCompilation.CryptoSSA
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+import all CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
+import all CatCrypt.Crypto.SecureCompilation.Dialects.RustExecKernelAdeq
+import all CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
+import all CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.Core
+import all CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+import all CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
+public import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecKernelAdeq
+public import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecRoundAdeq
 
 /-!
 # A real ARX round through the closed-kernel `emitted = RustExec` route
@@ -85,6 +112,8 @@ still hits `RustExecKernelAdeq`'s `entry_trio_unsat_empty` (the `EnvRel` /
 argument, exactly as here. Closing the open-kernel jasmin leg is the standing
 `P3`-composition residual, orthogonal to the ARX `inRange` work done here.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -225,16 +254,32 @@ theorem arxHSem : semScalar arxC (fun _ => none) = some arxEnv :=
 
 theorem arxNameSome : (arxO.vm.lookup "s").isSome := by rfl
 
-noncomputable def arxW : CVar arxO.Γ' (.sword 64) :=
-  ((arxO.vm.lookup "s").get arxNameSome).2
+/-- The tracked slot's type is the 64-bit word: decided, since the slot name
+    goes through `Nat.repr`, which the elaborator's definitional check does not
+    reduce. -/
+theorem arxNameTy : ((arxO.vm.lookup "s").get arxNameSome).1 = .sword 64 := by
+  decide
 
-theorem arxHName : arxO.vm.lookup "s" = some ⟨.sword 64, arxW⟩ := by rfl
+/-- The tracked output slot for `s`. -/
+noncomputable def arxW : CVar arxO.Γ' (.sword 64) :=
+  cast (congrArg (CVar arxO.Γ') arxNameTy) ((arxO.vm.lookup "s").get arxNameSome).2
+
+theorem arxHName : arxO.vm.lookup "s" = some ⟨.sword 64, arxW⟩ := by decide
 
 theorem arxValSome : (arxEnv "s").isSome := by rfl
 
-noncomputable def arxVal : BitVec 64 := ((arxEnv "s").get arxValSome).2
+theorem arxValTy : ((arxEnv "s").get arxValSome).1 = .sword 64 := by decide
 
-theorem arxHVal : arxEnv "s" = some ⟨.sword 64, arxVal⟩ := by rfl
+/-- The word `semScalar` leaves in `s`. -/
+noncomputable def arxVal : BitVec 64 :=
+  cast (congrArg CryptoTy.denote arxValTy) ((arxEnv "s").get arxValSome).2
+
+theorem arxHVal : arxEnv "s" = some ⟨.sword 64, arxVal⟩ := by
+  rw [← Option.some_get arxValSome]
+  exact congrArg some (Sigma.ext arxValTy
+    (by unfold arxVal
+        exact (cast_heq (congrArg CryptoTy.denote arxValTy)
+          ((arxEnv "s").get arxValSome).2).symm))
 
 theorem arxRetSome : (arxO.cont (Com.ret (toVIRVar arxW))).isSome := by rfl
 

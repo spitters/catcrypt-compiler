@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenoteSeqExt
-import CatCrypt.Crypto.Jasmin.X25519Reflect
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenoteSeqExt
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenoteSeqExt
+public meta import CatCrypt.Crypto.Jasmin.X25519Reflect
+public import CatCrypt.Crypto.Jasmin.X25519Reflect
 
 /-!
 # X25519 counted-loop whole-program denote through the covered fragment
@@ -43,6 +48,8 @@ on this `RSeq`-of-leaves term). The inversion chain `z^(p−2)` is itself a
 sequence of squaring-runs (`RFor`) interleaved with `RCall fe25519_mul`, the
 same `RSeq`-of-control shape, now equally coverable.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontEmit
-import CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontEmit
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
+public import CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # `mpn_mul_basecase` as a front-generated nested runtime-trip loop
@@ -93,6 +98,8 @@ is the separate source-preservation step (`translateDialectControl_denote_ctl`
 composed with `cryptoDialectToJasminCom`), not established here: the arithmetic
 of §1–§3 is about the word-level model, not about the emitted body.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -759,6 +766,6 @@ def emitMain : IO Unit := do
       IO.println "WROTE bench/mpn_mulbase_front_compare/gen_com/mpn_mul_basecase_rt_owned.s"
   | none => throw (IO.userError "the nested runtime-loop front declined mpn_mul_basecase")
 
-#eval emitMain
+-- #eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMulBasecaseFrontEmit

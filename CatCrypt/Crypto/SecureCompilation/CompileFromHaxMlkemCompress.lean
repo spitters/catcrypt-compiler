@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # C4 fan-out: the verified compiler emits the ML-KEM `decompress_d` per-coefficient body
@@ -46,6 +50,8 @@ verified compiler* and proven equal to the form. An abstract `round(y·q / 2^d)`
 tie over the `t < 2^10` input domain is `mlkemDecompress10Form_eq_round`
 (pure-`BitVec` `bv_decide`, no wrap on the bounded domain).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -130,9 +136,7 @@ theorem mlkemDecompress10_compiles :
   intro t
   have hspec : ImpExpr.denoteScalar ["t"] ![t]
       mlkemDecompress10Src (fun _ => none) = some (mlkemDecompress10Form t) := by
-    have h := mlkemDecompress10Src_denoteScalar (nIn := 1) ![t]
-    simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_fin_one,
-      Matrix.cons_val] using h
+    exact mlkemDecompress10Src_denoteScalar (nIn := 1) ![t]
   exact compileFromHax_meets_spec (w := 64) (nIn := 1) ["t"]
     ![t] mlkemDecompress10Src _ hc hspec
 

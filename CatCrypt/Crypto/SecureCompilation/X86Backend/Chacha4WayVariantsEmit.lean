@@ -3,10 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Chacha4WayVsimdEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ElfObject
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LeafBytes
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Chacha4WayVsimdEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Chacha4WayVsimdEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ElfObject
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ElfObject
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LeafBytes
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LeafBytes
 
 /-!
 # ChaCha20 4-way block — the XMM / RA / PSHUFB layout-and-schedule variants,
@@ -72,6 +78,8 @@ denotational self-check (Phase A ∘ rounds ∘ Phase C over the model `%rdi`/`%
 RFC reference, the same witness `Chacha4WayVsimdEmit.DenoteCheck.denoteKernel`
 carries for the shift-or kernel.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

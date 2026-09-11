@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectWhileDenote
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectWhileDenote
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectWhileDenote
 
 /-!
 # ML-DSA `ExpandA` (`rej_uniform`) rejection sampler as a data-dependent `RWhileNz` whole-program denote
@@ -63,6 +66,8 @@ admitted (it is the fully-public sampler — unlike `ExpandS`'s `rej_eta`, which
 expands the secret vectors and only leaks the public rejection *count*). The
 buffer index is a public counter, not a secret address.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
+public import Mathlib.Data.Nat.ModEq
 
 /-!
 # CIOS Montgomery multiplication: the integer word model
@@ -50,6 +54,8 @@ conditional subtract is omitted; the model is the pre-subtract accumulator.
 * `ciosFold_congr`: the Montgomery congruence
   `bignumVal t_n · (2^64)^n ≡ bignumVal a · bignumVal b  (mod bignumVal N)`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMontMulCiosWordModel
 

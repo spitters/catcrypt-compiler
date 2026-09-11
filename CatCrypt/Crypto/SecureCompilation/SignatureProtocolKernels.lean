@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ProtocolEmitRealizes
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ProtocolEmitRealizes
 
 /-!
 # A batch of classical signature / MAC protocols as axis-6 `ProtocolKernels` instances
@@ -82,6 +84,8 @@ realizations are honest hypotheses (each is the kernel's leaf-bytes KAT); the
 contribution is that the protocol-level composition assembles for free from them,
 with no per-protocol proof skeleton.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

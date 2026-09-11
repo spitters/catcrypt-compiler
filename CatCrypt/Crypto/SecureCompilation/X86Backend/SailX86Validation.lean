@@ -3,33 +3,52 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.TranslationValidation
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.TranslationValidation
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.TranslationValidation
 
 /-!
-# Cross-validation against a SECOND authoritative x86 semantics: Sail-x86 (#281/#437)
+# Self-consistency against recorded Sail-x86 (ACL2) interpreter outputs (#281/#437)
 
 `TranslationValidation.lean` differentially validates the owned Lean x86 model
 (`Model.lean`'s `step`, `JasminModel.lean`'s `evalInstr`) against **Jasmin's
 Rocq x86 model** (`x86_instr_decl.v`). That is the *like-for-like* anchor: the
 verified pipeline hands `lprog` to jasminc, whose CT theorem is stated over that
-exact Rocq model.
+exact Rocq model, and both sides of the comparison are machine-checked Lean/Rocq
+definitions this repository can and does elaborate.
 
-This module adds an **independent second anchor**: the
-[`rems-project/sail-x86-from-acl2`](https://github.com/rems-project/sail-x86-from-acl2)
-Sail x86 ISA model — the [ACL2 `x86isa`](https://www.cs.utexas.edu/~moore/acl2/)
-model (Goel, Hunt, Kaufmann) mechanically translated to
-[Sail](https://www.cl.cam.ac.uk/~pes20/sail/) (Taylor, Bauereiss, Armstrong,
-Sewell). ACL2-`x86isa` is a long-standing, heavily-validated executable x86
-reference (it boots real binaries), and is *independent* of Jasmin's hand-
-written Rocq model — so agreement with it is genuine cross-validation, not a
-restatement of the same source.
+This module is weaker than that framing suggests at a glance: it does
+**not** contain, import, or elaborate a second formal x86 semantics. What it
+checks is that the owned `evalInstr`/`step` reproduce a set of **literal
+numeric constants** — data words and flag bits — quoted verbatim from a run of
+the [`rems-project/sail-x86-from-acl2`](https://github.com/rems-project/sail-x86-from-acl2)
+Sail interpreter (itself derived from the [ACL2 `x86isa`](https://www.cs.utexas.edu/~moore/acl2/)
+model by Goel, Hunt, and Kaufmann, mechanically translated to
+[Sail](https://www.cl.cam.ac.uk/~pes20/sail/) by Taylor, Bauereiss, Armstrong,
+and Sewell). That run happened once, outside this repository and outside this
+proof, and its outputs are trusted at face value here — this file is a
+**self-consistency pin against recorded external-run constants**, not a
+cross-check against a second machine-checked semantics living in this repo.
+(`SailX86Lean.lean` goes further for a subset of instructions: it transcribes
+the Sail-exported *Lean definitions* themselves and proves `evalInstr` equal to
+those definitions — a genuine second-semantics equality. This file predates
+that and, for the instructions it covers that `SailX86Lean.lean` does not
+reprove, still rests on the quoted-literal method described below.)
+ACL2-`x86isa` is a long-standing, heavily-validated executable x86 reference
+(it boots real binaries) and is *independent* of Jasmin's hand-written Rocq
+model, so agreement with its recorded outputs is still meaningful evidence —
+just not formal cross-validation in the sense the `TranslationValidation.lean`
+anchor is.
 
 ## How the Sail-x86 outputs were obtained (no fabrication)
 
-The Sail model snapshot (`model/*.sail`) was loaded into the Sail `0.20.1`
-interpreter (OCaml backend; no decoder / no machine-code path needed), and the
-per-instruction **spec functions** were called directly on concrete 64-bit
-inputs:
+The Sail model snapshot (`model/*.sail`, in the authors' external
+`sail-x86-from-acl2` checkout — **not vendored in this repository**) was loaded
+into the Sail `0.20.1` interpreter (OCaml backend; no decoder / no machine-code
+path needed), and the per-instruction **spec functions** were called directly
+on concrete 64-bit inputs:
 
 ```
 sail -i --is <script> x86_diff_harness.sail        (script = "main()\n:r\n:quit\n")
@@ -40,9 +59,11 @@ the `*_spec.sail` files, and `main` calls `gpr_add_spec_8`, `gpr_sub_spec_8`,
 `gpr_adc_spec_8`, `gpr_sbb_spec_8`, `gpr_and_spec_8`, `gpr_or_spec_8`,
 `gpr_xor_spec_8`, `imul_spec_64`, `mul_spec_64`, `sal_shl_spec_64`,
 `shr_spec_64`, `sar_spec_64`, printing each result's data word and the
-`rflagsbits` `cf/of/sf/zf/pf` bits. The raw outputs are recorded in
-`bench_refs/sail-x86-from-acl2/x86_diff_RESULTS.txt` and quoted as the RHS of
-each `example` below; the harness is `model/x86_diff_harness.sail` in that repo.
+`rflagsbits` `cf/of/sf/zf/pf` bits. The raw outputs are recorded, in that
+external checkout, at `x86_diff_RESULTS.txt` (harness: `model/x86_diff_harness.sail`)
+and quoted verbatim as the RHS of each `example` below — the path is a
+provenance pointer for reproducing the run, not a file this repository reads
+or re-executes.
 
 `JFlag = Option Bool`: a Sail `bits(1)` flag value `0`/`1` corresponds to
 `some false`/`some true` in the faithful `evalInstr` five-flag state.
@@ -65,14 +86,15 @@ function mul_spec_64  (dst, src) = unsigned widening; (product_high, product_low
 function sal_shl_spec_64 / shr_spec_64 / sar_spec_64       // shifts_spec.sail
 ```
 
-## Result of the cross-validation (this file)
+## Result of the self-consistency check (this file)
 
 On the emitted-kernel scalar/logical/shift/multiply subset, the owned model's
-`evalInstr` (and the data result of `step`) **agree with Sail-x86 on the data
-word AND all flags Sail computes** — for every one of the points below, which
-are the *same* concrete inputs already pinned against Jasmin in
-`TranslationValidation.lean`. The owned model therefore agrees with **two
-independent authoritative semantics** (Jasmin Rocq + Sail/ACL2) on:
+`evalInstr` (and the data result of `step`) **agree with the recorded Sail-x86
+run's data word AND all flags Sail computes** — for every one of the points
+below, which are the *same* concrete inputs already pinned against Jasmin in
+`TranslationValidation.lean`. The owned model therefore agrees with **an
+independent, machine-checked Rocq semantics (Jasmin) and a set of literal
+outputs quoted from a second, independent x86 reference (Sail/ACL2)** on:
 
   `MOV`-class moves, `ADD`, `SUB`, `ADC`, `SBB`, `AND`, `OR`, `XOR`, `IMUL`
   (low word), `MUL`/`MULX` (full `hi`/`lo` product), `SHL`, `SHR`, `SAR`
@@ -80,7 +102,11 @@ independent authoritative semantics** (Jasmin Rocq + Sail/ACL2) on:
 with data + the five flags (`cf/of/sf/zf/pf`) checked where Sail defines them.
 No discrepancy was found.
 
-## Honest scope — what Sail-x86 does NOT cover
+## Scope: what Sail-x86 does not cover
+
+(The `model/*.sail` and `x86_diff_RESULTS.txt` citations below are, like the
+ones above, paths in the authors' external `sail-x86-from-acl2` checkout — not
+vendored here.)
 
 * **`ADCX`/`ADOX`/`MULX` (ADX + BMI2):** the upstream ACL2 `x86isa` model
   predates the ADX/BMI2 extensions, so these instructions were absent from the
@@ -129,6 +155,8 @@ remain unwired", and sets up #438 (the verified `JInstr → bytes` encoder will
 be validated against Sail-x86's byte-level decoder).
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend
@@ -144,19 +172,19 @@ The `jst`/`jstCF`/`st`/`stMulx` helpers in `TranslationValidation.lean` are
 self-contained. -/
 
 /-- Faithful (`JState`) state with register `"a" := v`, no preset flags. -/
-private def jst (v : BitVec 64) : JState 64 :=
+def jst (v : BitVec 64) : JState 64 :=
   { regs := fun r => if r = "a" then v else 0 }
 
 /-- Faithful state with `"a" := v` and `CF := some c`. -/
-private def jstCF (v : BitVec 64) (c : Bool) : JState 64 :=
+def jstCF (v : BitVec 64) (c : Bool) : JState 64 :=
   { regs := fun r => if r = "a" then v else 0, flags := { cf := some c } }
 
 /-- Hand-authored (`State`) state with `"a" := v`. -/
-private def st (v : BitVec 64) : State 64 :=
+def st (v : BitVec 64) : State 64 :=
   { regs := fun r => if r = "a" then v else 0 }
 
 /-- Hand-authored state with named factor registers `"a" := x`, `"b" := y`. -/
-private def stMulx (x y : BitVec 64) : State 64 :=
+def stMulx (x y : BitVec 64) : State 64 :=
   { regs := fun r => if r = "a" then x else if r = "b" then y else 0 }
 
 /-! ## Faithful five-flag state pins against Sail-x86
@@ -288,7 +316,8 @@ theorem sail_mulx_via_mul_nontrivial :
 
 For a representative point we exhibit that the owned `step` data result, the
 owned faithful `evalInstr` data result, and the Sail-x86 number all coincide —
-the owned model sits at the intersection of the two authoritative semantics.
+the owned model sits at the intersection of the machine-checked Jasmin anchor
+and the recorded Sail-x86 constant.
 (The `evalInstr`/`step` agreement is the `Jasmin` reconciliation; the Sail
 number is the quoted RHS.) -/
 

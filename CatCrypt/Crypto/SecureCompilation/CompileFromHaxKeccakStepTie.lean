@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxKeccak
-import CatCrypt.Crypto.Primitives.Keccak
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxKeccak
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxKeccak
+public meta import CatCrypt.Crypto.Primitives.Keccak
+public import CatCrypt.Crypto.Primitives.Keccak
 
 /-!
 # #607 Phase 3b: DIRECT functional ties — Keccak ι and ρ compile-from-hax leaves = FIPS-202 steps
@@ -59,6 +64,8 @@ whole-step functional tie is claimed — the modeled lanes scale by replication 
 * `rotOffset 0 1 = 36` (FIPS-202 ρ offset table); on width 64 left-rotate by 36 equals
   right-rotate by `64 − 36 = 28` (`rotateLeft_36_eq_rotateRight_28`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

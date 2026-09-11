@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ProtocolEmitRealizes
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ProtocolEmitRealizes
 
 /-!
 # A Merkle authentication path as a `ProtocolKernels` instantiation (axis-6)
@@ -64,6 +66,8 @@ realization (its leaf-bytes KAT), and apply the template.  The whole-path
 emit-realization — "the emitted per-level kernels recompute the abstract folded
 root" — falls out of `runRealizes` with no new per-protocol proof skeleton.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

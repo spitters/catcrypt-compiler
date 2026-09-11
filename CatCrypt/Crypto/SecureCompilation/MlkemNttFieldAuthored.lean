@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RupicolaField
-import CatCrypt.Crypto.Optimizer.Lattice.NTTButterflyPass
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.RupicolaField
+public import CatCrypt.Crypto.SecureCompilation.RupicolaField
+public meta import CatCrypt.Crypto.Optimizer.Lattice.NTTButterflyPass
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTButterflyPass
 
 /-!
 # The ML-KEM forward NTT, authored through the general field pipeline
@@ -65,6 +70,8 @@ would risk the shared LSP — REV-12); the small `#eval` checks are single
 ML-KEM NTT vector are produced by the companion emit driver (a compiled `lake
 exe`, like `FieldPipelineEmitBB`'s), reported in this file's module note.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Rewrite.Peephole
+module
+
+public import CatCrypt.Crypto.Optimizer.Rewrite.Peephole
 
 /-!
 # Secret/public taint qualifier for the `Com`/VIR substrate (#594)
@@ -71,6 +73,8 @@ monotonicity, not a bare `WellTainted` lift.
 
 All goals closed.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

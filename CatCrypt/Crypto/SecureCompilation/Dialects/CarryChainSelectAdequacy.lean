@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.CarryChainSelect
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.CarryChainSelect
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CarryChainSelect
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
 
 /-!
 # Source semantics of the carry-chain-selected windows
@@ -45,6 +49,8 @@ slot is bound as a word only when some other step reads it as one.
   body whose carry-out is read nowhere downstream, and whether the accumulator
   cap accepts each, are pinned with `#guard`, which declares no name.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

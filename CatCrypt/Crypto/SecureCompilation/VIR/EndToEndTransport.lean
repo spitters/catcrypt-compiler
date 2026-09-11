@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.CompilerLoweringRegistry
-import CatCrypt.Crypto.Bridges.Transfer.CompilerRegistry
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.CompilerLoweringRegistry
+public import CatCrypt.Crypto.Bridges.Transfer.CompilerRegistry
 
 /-!
 # End-to-end value-preservation: dialect lowering chain ∘ x86 instruction step
@@ -64,6 +67,8 @@ fabricated here.
 
 All goals closed.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

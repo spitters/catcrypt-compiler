@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakThetaPiAbstractCom
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Poseidon2LaneVec
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakThetaPiAbstractCom
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Poseidon2LaneVec
 
 /-!
 # Abstract Poseidon2-round ties for the unified-`Com` AVX-512 realization (model-free)
@@ -77,6 +80,8 @@ kernels (`MlkemMontRedcAbstractCom` etc.); this file re-anchors the round's
 
 Invoke: `lake build CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2AbstractCom`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

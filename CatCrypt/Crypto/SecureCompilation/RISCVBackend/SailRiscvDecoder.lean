@@ -3,24 +3,30 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvEncoder
-import Mathlib.Tactic.IntervalCases
-import Mathlib.Tactic.FinCases
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import Std.Tactic.BVDecide
+public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvEncoder
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvEncoder
+public import Mathlib.Tactic.IntervalCases
+public import Mathlib.Tactic.FinCases
 
 /-!
 # sail-riscv decoder round-trip: `decode (encode i) ≡ i` (#535 sub-2)
 
 `RiscvEncoder.lean` is the owned `RInst → machine-byte` encoder. Its trust edge
-is *differential*: each output word is pinned (`as` + `objdump`) to what the GNU
-RISC-V assembler produces for the same mnemonic (`bench/riscv_compare/`). That
-makes `as`'s unverified encoder part of the trusted base.
+is *differential*: each output word is pinned (`native_decide`) to what the GNU
+RISC-V assembler produces for the same mnemonic, checked by hand against
+`riscv64-linux-gnu-as`/`objdump` (the comparison harness itself is not vendored
+in this tree). That makes `as`'s unverified encoder part of the trusted base.
 
 This module replaces the differential edge for the emitted RV64I subset with a
 **round-trip** against the RISC-V *decoder* discipline: a Lean decoder
 `riscvDecode` that recovers the `(funct7, rs2/shamt, rs1, funct3, rd, opcode)`
 fields from a 32-bit instruction word and reconstructs the `RInst`, transcribed
-faithfully from the official
-[`rems-project/sail-riscv`](https://github.com/rems-project/sail-riscv)
+from the
+[`riscv/sail-riscv`](https://github.com/riscv/sail-riscv)
 `encdec` mapping clauses (`model/extensions/I/base_insts.sail` for
 `RTYPE`/`RTYPEW`/`SHIFTIWOP`/`ITYPE`, `model/core/regs.sail` for `encdec_reg`),
 and a proof that
@@ -29,26 +35,42 @@ and a proof that
 riscvDecode (encodeWord i) = some i      -- for every RInst the backend emits
 ```
 
-Because the decoder is the sail-riscv field split (each base instruction is a
-fixed bit-concatenation `funct7 @ rs2 @ rs1 @ funct3 @ rd @ opcode`, the sail
-`@`-mapping read backwards), `decode (encode i)` recovering exactly the `RInst`
-`i` means the encoder produces a word the authoritative decoder maps back to the
-same instruction — the encoder's bytes are *proved* to be the right encoding,
-not merely matched to `as`.
+Because the decoder applies the sail-riscv field split the way the `encdec`
+mapping is believed to read it (each base instruction is a fixed
+bit-concatenation `funct7 @ rs2 @ rs1 @ funct3 @ rd @ opcode`, the sail
+`@`-mapping read backwards, per the transcription below), `decode (encode i)`
+recovering exactly the `RInst` `i` means the encoder produces a word a decoder
+built to that transcribed discipline maps back to the same instruction — the
+encoder's bytes round-trip under that discipline by proof, rather than by
+matching `as`.
 
-## Honest scope — what is and is not round-trip-proved
+## Provenance of the transcribed clauses (read this before trusting the edge)
+
+The field splits below are the authors' **hand transcription** of the
+`riscv/sail-riscv` `encdec` clauses cited above. **This repo vendors no
+sail-riscv checkout**: `bench/` is untracked, so any local comparison harness is
+outside the package and outside CI. Nothing here is machine-checked against
+upstream sail-riscv — the transcription is itself a trusted step, auditable by
+eye against the public model and the RISC-V ISA manual.
+
+## Scope — what is and is not round-trip-proved
 
 RV64 base is a **clean ISA**: fixed 32-bit instructions, no prefixes / ModRM /
 SIB / displacement variants (contrast the x86 `SailX86Decoder`, where only the
 register-direct GP forms round-trip and the VEX/ADX/memory forms stay
-gas-pinned). So **every** instruction the owned RISC-V backend emits is
-round-trip-proved here:
+gas-pinned). Within the `RiscvModel.RInst` set this module's `riscvDecode`
+targets — the ChaCha quarter-round mix `RInst` covers — **every** arm is
+round-trip-proved by the capstone `roundtrip_RInst`:
 
 * R-type ALU: `ADDW`/`SUBW` (`RTYPEW`, opcode `0x3b`), `AND`/`OR`/`XOR`
-  (`RTYPE`, opcode `0x33`) — `roundtrip_addw`/… ;
+  (`RTYPE`, opcode `0x33`) — pilot `roundtrip_addw`, the rest as `RInst.subw`/
+  `.and`/`.or`/`.xor` cases of `roundtrip_RInst`;
 * `*IW` shifts: `SLLIW`/`SRLIW` (`SHIFTIWOP`, opcode `0x1b`, 5-bit shamt) —
-  `roundtrip_slliw`/`roundtrip_srliw` ;
-* `MV` = `ADDI rd, rs, 0` (`ITYPE`, opcode `0x13`) — `roundtrip_mv`.
+  the `.slliw`/`.srliw` cases of `roundtrip_RInst`;
+* `MV` = `ADDI rd, rs, 0` (`ITYPE`, opcode `0x13`) — the `.mv` case of
+  `roundtrip_RInst`;
+* the single-instruction `Zbb RORIW` rotate — `roundtrip_roriw` (and the
+  `.roriw` case of `roundtrip_RInst`).
 
 The capstone `roundtrip_RInst` quantifies over **all** `RInst` (with the
 register-name well-formedness side-condition the backend's register pool
@@ -57,13 +79,20 @@ satisfies). The only ceiling vs the x86 line is honest and structural: the
 `< 32` (`as` rejects `slliw rd,rs,32` likewise); the ChaCha rotate emits only
 counts in `{7, 8, 12, 16, 20, 24, 25}`, all `< 32`.
 
-**No instruction the RISC-V backend emits lacks a sail-riscv `encdec` clause** —
-the base subset is in the official RV64I base model, and the single-instruction
-`Zbb RORIW` (opcode `0x1b`, funct3 `5`, funct7 `0x30`) — emitted by the Zbb
-SHA-256 lowering to drop each rotate from three instructions to one — is
-round-trip-proved here too (`roundtrip_roriw`, distinguished from base `SRLIW` by
-funct7 `0x30` vs `0x00`).
+**This is a proper subset of what the owned RISC-V backend emits, not "every
+instruction the backend emits."** `RiscvElfObject.lean` — the ELF-object
+lowering wrapped around this scalar core — also emits `encS`/`encU`/`encJ`
+(store/`LUI`/`JAL` field shapes) and their instances `encLd`/`encSd`/`encSw`/
+`encLwu`/`encLw`/`encAddi`/`encAddiw`/`encLui`/`encJalr`/`encJal`/`encEcall`/
+`encSlli`; none of these have a `riscvDecode` arm, so none of them are
+round-trip-proved here — they stay on the `native_decide` gas-pinned trust edge
+(the differential pins in `RiscvElfObject.lean`), exactly like the
+still-gas-pinned x86 forms. Every arm `riscvDecode` *does* dispatch on has a
+sail-riscv `encdec` clause and is round-trip-proved; the remainder above is
+named, not silently absent.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -224,8 +253,10 @@ Each emitted `RInst` arm decodes back to itself: the opcode/funct slices recover
 the sail dispatch constants (so `riscvDecode` takes the right branch), and the
 register slices recover the names through `regName_reg5`. The capstone
 `roundtrip_RInst` is the RV64 analogue of `SailX86Decoder.roundtrip_jinstr_all`,
-but — RISC-V being a clean fixed-32-bit ISA — it covers the **entire** emitted
-instruction set with no gas-pinned remainder. -/
+but — RISC-V being a clean fixed-32-bit ISA — it covers the **entire** `RInst`
+type with no gas-pinned remainder (the ELF-object lowering's `S`/`U`/`J`-type
+words are a separate, still gas-pinned, remainder — see §"Scope"
+above). -/
 
 /-- **Round-trip for `ADDW`.** Pilot of the capstone. -/
 theorem roundtrip_addw (d a b : String)
@@ -240,9 +271,9 @@ theorem roundtrip_addw (d a b : String)
 /-- **The capstone round-trip `decode (encode i) = i` for the full emitted RV64I
     subset.** For every `RInst` whose register names are in the backend's emitted
     pool (and, for the shift arms, a shift count `< 32`), decoding its encoder
-    word recovers the original instruction — proved against the sail-riscv
-    `encdec` discipline (`encR_slices`/`encI_slices` are the sail `@`⁻¹), with no
-    instruction outside the official RV64I base model. -/
+    word recovers the original instruction — proved against the transcribed
+    sail-riscv `encdec` discipline (`encR_slices`/`encI_slices` are the sail
+    `@`⁻¹), with no instruction outside the ratified RV64I base ISA. -/
 theorem roundtrip_RInst (i : RInst)
     (hregs : (rinstDstSrcs i).1 ∈ emittedRegs ∧
              ∀ r ∈ (rinstDstSrcs i).2, r ∈ emittedRegs)
@@ -434,8 +465,9 @@ theorem roundtrip_bne_backedge :
 
 Unlike x86 (`SailX86Decoder.trust_edge`, where only the register-direct GP forms
 round-trip and the VEX/ADX/memory forms stay gas-pinned), RV64 base is a clean
-fixed-32-bit ISA, so **every** instruction the owned RISC-V backend emits is
-round-trip-proved here (`roundtrip_RInst`):
+fixed-32-bit ISA, so **every arm `riscvDecode` targets** — the scalar
+`RiscvModel.RInst` ChaCha quarter-round mix — is round-trip-proved here
+(`roundtrip_RInst`):
 
 * R-type ALU `ADDW`/`SUBW`/`AND`/`OR`/`XOR` and `*IW` shifts `SLLIW`/`SRLIW`
   (`encR_slices` = the sail `@`⁻¹ for `RTYPEW`/`RTYPE`/`SHIFTIWOP`),
@@ -444,14 +476,20 @@ round-trip-proved here (`roundtrip_RInst`):
 For these the encoder's word is *proved* to decode back to the same instruction
 under the sail-riscv `encdec` discipline, so `as` is out of the trusted path. The
 ChaCha rotate emits only counts `{7,8,12,16,20,24,25} < 32`, within the 5-bit
-`shamt` the `*IW` shift round-trip is stated for. **No instruction the backend
-emits lacks a sail-riscv `encdec` clause** — there is no gas-pinned remainder.
-The single-instruction `Zbb RORIW` rotate (opcode `0x1b`, funct3 `5`, funct7
-`0x30`) — emitted by the Zbb SHA-256 lowering to kill the no-rotate
-instruction-count tax — is *also* round-trip-proved (`roundtrip_roriw`,
-distinguished from base `SRLIW` by funct7), so both the base
-`slliw`+`srliw`+`or` synthesis and the Zbb single-instruction rotate are covered
-against the sail-riscv model. -/
+`shamt` the `*IW` shift round-trip is stated for. **No arm `riscvDecode`
+dispatches on lacks a sail-riscv `encdec` clause.** The single-instruction
+`Zbb RORIW` rotate (opcode `0x1b`, funct3 `5`, funct7 `0x30`) — emitted by the
+Zbb SHA-256 lowering to kill the no-rotate instruction-count tax — is *also*
+round-trip-proved (`roundtrip_roriw`, distinguished from base `SRLIW` by
+funct7), so both the base `slliw`+`srliw`+`or` synthesis and the Zbb
+single-instruction rotate are covered against the sail-riscv model.
+
+This is the scalar-core trust edge, not the whole owned RISC-V backend's: the
+ELF-object lowering (`RiscvElfObject.lean`) also emits `S`/`U`/`J`-type words
+(`encLd`/`encSd`/`encSw`/`encLwu`/`encLw`/`encAddi`/`encAddiw`/`encLui`/
+`encJalr`/`encJal`/`encEcall`/`encSlli`) that `riscvDecode` has no arm for and
+that stay on the `native_decide` gas-pinned edge — see `RiscvElfObject.lean`
+for that remainder. -/
 
 /-- Doc-anchor: the round-trip-proved set covers the whole ChaCha-QR mix, here the
     `ADDW` pilot, referenced by the trust-edge tally. -/

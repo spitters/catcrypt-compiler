@@ -3,7 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+module
+
+import all Init.Data.Repr
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+import all CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
 
 /-!
 # B3 physical-path acceptance witness: data-dependent `while` export (`ComL.whileNz`)
@@ -34,6 +39,8 @@ two-address export produces a single function. The raw per-node emission's
 control skeleton (`Llabel top … CMP Lctr,0 ; Lcond NZ top`) is exactly the tail
 `X86Backend.LprogControlFlow.whileLcmd` appends.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.WhileExportValidate
 
@@ -66,7 +73,7 @@ theorem loopSmokeNzProg_denote :
       = (81 : BitVec 64) := by rfl
 
 /-- **Denote = spec (different countdown):** seed `2`, countdown `3` →
-    `2 → 4 → 16 → 256`. The trip count is genuinely read from the valuation. -/
+    `2 → 4 → 16 → 256`. The trip count is read from the valuation. -/
 theorem loopSmokeNzProg_denote_count3 :
     ComL.denote loopSmokeNzProg (.cons (2 : BitVec 64) (.cons (3 : BitVec 64) .nil))
       = (256 : BitVec 64) := by rfl
@@ -80,7 +87,7 @@ theorem loopSmokeNzBody_has_backedge :
     loopSmokeNzBody.any (fun i => match i.li_i with | .Lcond _ _ => true | _ => false)
       = true := by decide
 
-/-- **Genuine do-while — no zero-trip top guard.** Exactly ONE conditional jump
+/-- **Do-while, no zero-trip top guard.** Exactly ONE conditional jump
     (the `Lcond NZ` bottom-test back-edge). A runtime *counted* loop
     (`forLoopNRt`) instead emits TWO (`Lcond Z` skip + `Lcond NZ` back-edge); the
     single `Lcond` here is the `whileNz` do-while signature. -/

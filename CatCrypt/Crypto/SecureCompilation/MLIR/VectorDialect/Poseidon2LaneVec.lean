@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
-import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+module
+
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Lowering
+public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
 
 /-!
 # Poseidon2 lane bundles through the structured VectorDialect (task #275, pure reuse)
@@ -30,6 +32,8 @@ The existing Poseidon2 emit (`VIR/Poseidon2Emit` / `Poseidon2SimdReduce`) is
 left **untouched**; the reuse demonstrated here is at the DENOTATION level (the
 dialect ops denote the same per-lane operations the direct emit realizes).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

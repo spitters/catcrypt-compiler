@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
+module
+
+public import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
 
 /-!
 # Runtime-indexed array loops are constant-time on a public index
@@ -28,6 +30,8 @@ The value-correctness companion lives on the machine side
 `X86Backend/LowCTMemDenote.lean`); here the concern is the leakage / robust-CT
 axis.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.VsimdAsmPrint
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.VsimdAsmPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.VsimdAsmPrint
 
 /-!
 # OWNED AES-128-CTR whole `.s` emit on the UNIFIED `Com jasminDialect`
@@ -71,6 +75,8 @@ Invoke:  lake env lean --run
          CatCrypt/Crypto/SecureCompilation/X86Backend/Aes128CtrVsimdEmit.lean
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.Aes128CtrVsimdEmit
@@ -85,37 +91,37 @@ open CatCrypt.Crypto.SecureCompilation.VIR.VsimdAsmPrint
 abbrev r128 : JasminTy := .reg 128
 
 /-- `vaesenc(state, rk)` Expr at two source vars. -/
-private def eAesenc {Γ : Ctxt jasminDialect} (vs vk : Ctxt.Var Γ r128) :
+def eAesenc {Γ : Ctxt jasminDialect} (vs vk : Ctxt.Var Γ r128) :
     Expr jasminDialect Γ r128 :=
   .mk (.vsimd .vaesenc) rfl (.cons vs (.cons vk .nil))
 
 /-- `vaesenclast(state, rk)` Expr at two source vars. -/
-private def eAesenclast {Γ : Ctxt jasminDialect} (vs vk : Ctxt.Var Γ r128) :
+def eAesenclast {Γ : Ctxt jasminDialect} (vs vk : Ctxt.Var Γ r128) :
     Expr jasminDialect Γ r128 :=
   .mk (.vsimd .vaesenclast) rfl (.cons vs (.cons vk .nil))
 
 /-- `vaeskeygenassist(src, rcon)` Expr at one source var (UNARY; `rcon` baked). -/
-private def eAeskeygen {Γ : Ctxt jasminDialect} (rcon : BitVec 8)
+def eAeskeygen {Γ : Ctxt jasminDialect} (rcon : BitVec 8)
     (vsrc : Ctxt.Var Γ r128) : Expr jasminDialect Γ r128 :=
   .mk (.vsimd (.vaeskeygen rcon)) rfl (.cons vsrc .nil)
 
 /-- `vpshufd(src, imm)` Expr at one source var (UNARY; `imm` baked). -/
-private def eShufd {Γ : Ctxt jasminDialect} (imm : Nat) (vsrc : Ctxt.Var Γ r128) :
+def eShufd {Γ : Ctxt jasminDialect} (imm : Nat) (vsrc : Ctxt.Var Γ r128) :
     Expr jasminDialect Γ r128 :=
   .mk (.vsimd (.vpshufd imm)) rfl (.cons vsrc .nil)
 
 /-- `xorq` (whole-128 bitwise xor) Expr at two source vars. -/
-private def eXor {Γ : Ctxt jasminDialect} (va vb : Ctxt.Var Γ r128) :
+def eXor {Γ : Ctxt jasminDialect} (va vb : Ctxt.Var Γ r128) :
     Expr jasminDialect Γ r128 :=
   .mk (.vsimd (.bitwise .xor)) rfl (.cons va (.cons vb .nil))
 
 /-- `slldq n` (128-bit byte left-shift) Expr at one source var. -/
-private def eSll {Γ : Ctxt jasminDialect} (n : Nat) (va : Ctxt.Var Γ r128) :
+def eSll {Γ : Ctxt jasminDialect} (n : Nat) (va : Ctxt.Var Γ r128) :
     Expr jasminDialect Γ r128 :=
   .mk (.vpslldq n) rfl (.cons va .nil)
 
 /-- De Bruijn shift-by-one (weaken under one fresh binding). -/
-private abbrev shift1 {Γ : Ctxt jasminDialect} {t s : JasminTy}
+abbrev shift1 {Γ : Ctxt jasminDialect} {t s : JasminTy}
     (v : Ctxt.Var Γ t) : Ctxt.Var (s :: Γ) t := .there v
 
 /-! ## 2. The AES round constants (FIPS-197) -/
@@ -475,7 +481,7 @@ def aesCtrExportAsm : String :=
   "\tret\n"
 
 -- Print the emitted owned `.s` for visual inspection.
-#eval IO.println aesCtrExportAsm
+-- #eval IO.println aesCtrExportAsm
 
 /-! ## 10. Structural smoke pins (matching the bespoke driver) -/
 

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.GenericRegAllocSim
-import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrRegMachine
+module
+
+public import CatCrypt.Crypto.Optimizer.GenericRegAllocSim
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrRegMachine
 
 /-!
 # The full `RegMachineSim (JInstr 64) (JState 64)` instance (the x86 flags+memory sim)
@@ -50,6 +52,8 @@ elaborates and the generic theorem `renameBlock_runBlock_sim_reindexed` applies 
   and `auxJ.2`.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrRegMachineSim
@@ -73,7 +77,7 @@ def auxJ (ρ : String → String) (s t : JState 64) : Prop :=
 
 /-- The register read-agreement form used throughout: reading register `a` in `t` at
     `ρ a` equals reading it in `s` at `a`, for every read-name `a` of `i`. -/
-private abbrev ReadAgree (ρ : String → String) (s t : JState 64) (i : JInstr 64) : Prop :=
+abbrev ReadAgree (ρ : String → String) (s t : JState 64) (i : JInstr 64) : Prop :=
   ∀ a ∈ MachineModel.readNames i, t.get (ρ a) = s.get a
 
 /-- **`auxJ` is preserved by a renamed step.** Given `ρ` injective, register

@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpBrickScope
-import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrameRoundTrip
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpBrickScope
+public import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrameRoundTrip
 
 /-!
 # The prologue of the front-compiled secp256k1 doubling kernel
@@ -51,6 +54,8 @@ field-element slot is bound when the body starts.
 * `jacDblBody_eq_prologue_append` — `jacDblBody` is the prologue followed by the
   schedule and the three coordinate stores.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpPrologue
 

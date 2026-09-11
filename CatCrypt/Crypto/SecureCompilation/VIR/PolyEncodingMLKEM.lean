@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.LatticeNTTSound
-import Mathlib.Data.ZMod.Basic
-import Mathlib.Algebra.Field.ZMod
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.LatticeNTTSound
+public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeNTTSound
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.Algebra.Field.ZMod
 
 /-!
 # Concrete `PolyEncoding 3329 256` for ML-KEM-768 (Stage F instance)
@@ -74,6 +77,8 @@ This obstruction is a property of the parameters, not a defect of either side;
 it is the standard reason ML-KEM's reference NTT is the negacyclic incomplete
 transform rather than a power-of-two cyclic one.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR
 

@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Util.PrattCertificate
-import CatCrypt.Crypto.Util.Ed25519L.Node7
-import CatCrypt.Crypto.Util.Ed25519L.Node8
+module
+
+public import Mathlib.Tactic.NormNum.Prime
+public import CatCrypt.Crypto.Util.PrattCertificate
+public import CatCrypt.Crypto.Util.Ed25519L.Node7
+public import CatCrypt.Crypto.Util.Ed25519L.Node8
 
 /-!
 # Machine-checked primality of the Ed25519 group order `ℓ`
@@ -31,6 +34,8 @@ and directly checkable. The nested nodes live in the `Ed25519L` sub-directory:
 Each certificate obligation is a separate lemma so the checks compile
 independently.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxRecDepth 50000

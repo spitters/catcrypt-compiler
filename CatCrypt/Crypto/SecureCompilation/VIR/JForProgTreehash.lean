@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgNested
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminSymmetricLeaves
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JForProgNested
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgNested
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminSymmetricLeaves
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminSymmetricLeaves
 
 /-!
 # Level-indexed loop composition: the emitted level-`for`-sequence denotes the
@@ -87,6 +92,8 @@ composition end-to-end: `h = 3` levels of a fixed 2→1 combiner `acc := acc + a
 this composes `4 + 2 + 1 = 7` doublings, KAT'd byte-identical in
 `bench/treehash/`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -240,7 +247,7 @@ exactly `loop_denote_eq` composed `h` times. -/
 /-- A `foldl` of two functions that agree everywhere over the same list and seed
     coincide. (Local mirror of `JForProgCT.foldl_congr_fun`, which is `private`,
     generalised to a per-element-typed step list.) -/
-private theorem foldl_congr_fun {accTy : JasminTy} {β : Type}
+theorem foldl_congr_fun {accTy : JasminTy} {β : Type}
     (f g : ⟦accTy⟧ → β → ⟦accTy⟧)
     (hfg : ∀ acc u, f acc u = g acc u) :
     ∀ (l : List β) (init : ⟦accTy⟧), l.foldl f init = l.foldl g init

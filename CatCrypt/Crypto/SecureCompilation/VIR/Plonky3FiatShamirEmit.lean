@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # Plonky3 Fiat-Shamir `DuplexChallenger<16,8>` duplexing as an owned `ComL` (no jasminc)
@@ -92,6 +94,8 @@ The byte-identity gate is the external `cc` KAT (`fiat_shamir_from_rustcmd_kat.c
 the `(st, outbuf)` the owned duplex produces must equal the plain-C reference
 `ch_duplex` driving the SAME permute.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Core
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Model
-import Mathlib.Data.ZMod.Basic
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Model
+public import Mathlib.Data.ZMod.Basic
 
 /-!
 # ModArith VIR dialect (#482-1 — the L2 algebraic layer)
@@ -78,6 +81,8 @@ schedule is fixed and index-independent — so `ctSafe` is `true` for all ops
 data-dependent constructs (variable-time `div`/table lookups) are *not* in the
 op alphabet.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

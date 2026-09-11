@@ -3,9 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
-import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2BbMulFieldExact
-import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2SimdReduce
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2Emit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2BbMulFieldExact
+public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2BbMulFieldExact
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2SimdReduce
+public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2SimdReduce
 
 /-!
 # Poseidon2 BabyBear: Montgomery + `VPMULUDQ` packed 32x32 -> 64 (SEVENTEENTH ABI)
@@ -138,6 +145,8 @@ The `.jazz` it writes is `poseidon2_bb_montgomery.jazz`, a new file.
   (#147; parametric over the scalar reduce).
 * Plonky3 AVX2 Montgomery: `plonky3/monty-31/src/x86_64_avx2/packing.rs`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -367,7 +376,7 @@ theorem R_mul_Rinv : R * Rinv = 1 := by
     decide
   have h2 := (ZMod.natCast_eq_natCast_iff _ _ _).mpr h
   push_cast at h2
-  simpa [R, Rinv] using h2
+  simpa [R, Rinv] using! h2
 
 /-- `R⁻¹ · R = 1` (commuted form). -/
 theorem Rinv_mul_R : Rinv * R = 1 := by rw [mul_comm]; exact R_mul_Rinv
@@ -482,13 +491,13 @@ theorem internalMDS_smul (k : F) (s : Fin width → F) :
     `k = R` (the diagonal/round constants are never touched here). -/
 theorem montExternalMDS_eq (s : Fin width → F) :
     externalMDS (vForm s) = vForm (externalMDS s) := by
-  simpa only [vForm, bbMontForm] using externalMDS_smul R s
+  simpa only [vForm, bbMontForm] using! externalMDS_smul R s
 
 /-- **Internal MDS lifts through `φ`**, directly from `F`-linearity at
     `k = R`. The canonical `diagV` table is reused **unchanged**. -/
 theorem montInternalMDS_eq (s : Fin width → F) :
     internalMDS (vForm s) = vForm (internalMDS s) := by
-  simpa only [vForm, bbMontForm] using internalMDS_smul R s
+  simpa only [vForm, bbMontForm] using! internalMDS_smul R s
 
 /-- **Vectorized internal MDS** (the lever for #165): the diagonal multiply
     realised by `montMul` against the **Montgomery-form** diagonal

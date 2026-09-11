@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
 
 /-!
 # Source→machine compiler, Phase 3: the literal-bound `RFor` loop by unrolling
@@ -61,6 +63,8 @@ what `RFor` models and what constant-time code is restricted to.
   `RustExec.RFor` operational semantics: `forDenote` *is* the post-state the
   real `RForᵢ` arms reach, so the machine run tracks the real source loop.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

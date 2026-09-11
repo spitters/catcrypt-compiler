@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4LimbTierA
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4LimbTierA
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4LimbTierA
 
 /-!
 # Tier-A: the Pasta curves' Montgomery multiply + the bare `bignum_mul_4_8` product
@@ -58,6 +61,8 @@ is threaded as a parameter with the hypothesis `(p · Nprime256) % 2^256 = 2^256
 (exactly as in the SM2/secp256k1 headlines). The only `native_decide` step per
 curve is the constant pin `<curve>Limbs_value` against its genuine prime.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxHeartbeats 1000000

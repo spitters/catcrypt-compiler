@@ -44,10 +44,14 @@ single `i` counter that ranges over `0..64`, and inside the body fan out
 the 16-d work explicitly per row.  Row 0 is special-cased (different
 initialisation pattern).
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
-import CatCrypt.Crypto.Jasmin.RustEmit
-import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
+module
 
+public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Jasmin.RustEmit
+public import CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
+
+
+@[expose] public section
 namespace CatCrypt.Crypto.Jasmin.Examples.CombTableInitArr
 
 open CatCrypt.Crypto.Jasmin.LowCT
@@ -55,27 +59,27 @@ open CatCrypt.Crypto.Jasmin.LowCT
 /-! ## §1.  Slot helpers -/
 
 /-- Array of 1024 200-byte XYZT cells. -/
-private def cellsLoc : Located :=
+def cellsLoc : Located :=
   { locVar := "cells", locSrc := TowerType.TArr 1024 (TowerType.TBytes 200) }
 
 /-- 200-byte cell scratch. -/
-private def cellLoc (name : String) : Located :=
+def cellLoc (name : String) : Located :=
   { locVar := name, locSrc := TowerType.TBytes 200 }
 
 /-- `RCall "xyzt_add_decomposed" dst [a, b]`. -/
-private def xyztAdd (dst a b : String) : LowCT :=
+def xyztAdd (dst a b : String) : LowCT :=
   LowCT.RCall "xyzt_add_decomposed" (cellLoc dst) [cellLoc a, cellLoc b]
 
 /-- `RCall "xyzt_double_decomposed" dst [a]`. -/
-private def xyztDouble (dst a : String) : LowCT :=
+def xyztDouble (dst a : String) : LowCT :=
   LowCT.RCall "xyzt_double_decomposed" (cellLoc dst) [cellLoc a]
 
 /-- `RCall "xyzt_copy" dst [a]`. -/
-private def xyztCopy (dst a : String) : LowCT :=
+def xyztCopy (dst a : String) : LowCT :=
   LowCT.RCall "xyzt_copy" (cellLoc dst) [cellLoc a]
 
 /-- Sequence list of commands. -/
-private def seqN : List LowCT → LowCT
+def seqN : List LowCT → LowCT
   | []      => LowCT.RSkip
   | [c]     => c
   | c :: cs => LowCT.RSeq c (seqN cs)
@@ -94,11 +98,11 @@ vars).  For simplicity here we LIFT row 0 out of the loop.
 -/
 
 /-- Helper: store `src` into `cells[idxVar]`.  `idxVar` names a scalar var. -/
-private def arrStore (idxVar src : String) : LowCT :=
+def arrStore (idxVar src : String) : LowCT :=
   LowCT.RArrStore cellsLoc idxVar (cellLoc src)
 
 /-- Helper: load `cells[idxVar]` into scratch slot `dst`. -/
-private def arrLoad (dst idxVar : String) : LowCT :=
+def arrLoad (dst idxVar : String) : LowCT :=
   LowCT.RArrLoad (cellLoc dst) cellsLoc idxVar
 
 /-- Row 0: cells[0..16] init pattern.  Uses RFor over d=2..15 for the
@@ -108,7 +112,7 @@ private def arrLoad (dst idxVar : String) : LowCT :=
     NOTE: the `cells[d-1] + B` requires reading `cells[d-1]` into a
     scratch, then `xyzt_add scratch_dst scratch B`, then storing back.
     This is 3 IR ops per d, run 14 times in a `RFor`. -/
-private def buildRow0 : LowCT :=
+def buildRow0 : LowCT :=
   -- cells[0] = ID via scratch (we use scratch_id as the named slot for ID)
   LowCT.RScalarSet "k" 0 |>.RSeq $
   arrStore "k" "ID_xyzt" |>.RSeq $
@@ -143,7 +147,7 @@ private def buildRow0 : LowCT :=
     we emit (statically) the load/double-chain/store sequence with
     `k = i*16 + d`.  But `i` is a runtime var and `i*16+d` isn't an
     expression Lean LowCT can build... -/
-private def buildLaterRowAtFixedI (i : Nat) : LowCT :=
+def buildLaterRowAtFixedI (i : Nat) : LowCT :=
   -- Outer index `i` is a STATIC Nat here (we unroll the outer loop
   -- when treating it as a Nat parameter).  Inner d is also static.
   seqN ((List.range 16).map (fun d =>
@@ -235,8 +239,8 @@ theorem combTableInitArrCompact_isCT :
 
 /-! ## §3.  Emit -/
 
-private def params : List Located := [ cellLoc "B_xyzt", cellLoc "ID_xyzt" ]
-private def results : List Located := []
+def params : List Located := [ cellLoc "B_xyzt", cellLoc "ID_xyzt" ]
+def results : List Located := []
 
 def emitCombTableInitArr : String :=
   ppRustFunction "build_comb_table_arr" params results combTableInitArrBody

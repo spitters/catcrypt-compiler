@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.SpillSlotEncode
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.SpillSlotEncode
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.SpillSlotEncode
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull
 
 /-!
 # `GatherImmForms` — the three immediate-form peepholes, closing the last byte gaps
@@ -80,6 +84,8 @@ prior modules' whole-body `#eval`s do (the `parseShiftMnem` `String.startsWith`
 dispatch blocks kernel reduction of the assembled gather; the `#eval` evaluator
 runs it). No `sorry`, no axiom, no `native_decide`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -226,7 +232,7 @@ theorem encJMovImm251_eq_lopn :
     `String.toNat?`-bearing count is `#eval`-evaluated, not kernel-reducible, so
     it is a hypothesis exactly as `GatherFullBody`'s shift lemmas thread theirs).
     The dispatch mirrors `BlockBytesAgreeExtended.encodeLopn_shr19_emits`. -/
-private theorem encodeLopn_shr1_emits (frame spillW : Nat) (dn sn : String)
+theorem encodeLopn_shr1_emits (frame spillW : Nat) (dn sn : String)
     (hn : tagShiftCount "SHR:1" = 1)
     (hgp : (isGpName dn && isGpName sn) = true) (hds : (dn == sn) = true) :
     encodeLopn frame spillW (.Lopn [.reg dn] "SHR:1:64" [.reg sn])
@@ -245,7 +251,7 @@ private theorem encodeLopn_shr1_emits (frame spillW : Nat) (dn sn : String)
 
 /-- The Lprog `encodeLopn` of a count-1 left shift `SHL:1:64` reduces to the
     3-byte `D1 /4` short form `encShift1 1 4 (gpNumU dn)`, given `hn`. -/
-private theorem encodeLopn_shl1_emits (frame spillW : Nat) (dn sn : String)
+theorem encodeLopn_shl1_emits (frame spillW : Nat) (dn sn : String)
     (hn : tagShiftCount "SHL:1" = 1)
     (hgp : (isGpName dn && isGpName sn) = true) (hds : (dn == sn) = true) :
     encodeLopn frame spillW (.Lopn [.reg dn] "SHL:1:64" [.reg sn])
@@ -264,11 +270,11 @@ private theorem encodeLopn_shl1_emits (frame spillW : Nat) (dn sn : String)
 
 /-- The `encodeJInstr6` count-1 right shift reduces to the same `encShift1 1 5`
     short form (closed `decide +kernel` on `RAX` under `physAlloc`). -/
-private theorem encJ_shr1 :
+theorem encJ_shr1 :
     encodeJInstr6 physAlloc (.shr "RAX" (.imm 1)) = encShift1 1 5 (gpNumU "RAX") := by
   decide +kernel
 
-private theorem encJ_shl1 :
+theorem encJ_shl1 :
     encodeJInstr6 physAlloc (.shl "RAX" (.imm 1)) = encShift1 1 4 (gpNumU "RAX") := by
   decide +kernel
 

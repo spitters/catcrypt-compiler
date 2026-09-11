@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd
-import CatCrypt.Crypto.Hax.RustSubsetToLowCT
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd
+public import CatCrypt.Crypto.Hax.RustSubsetToLowCT
 
 /-!
 # `feSub` source tower: discharging `hSourceWord` for `r := a - b`
@@ -44,6 +46,8 @@ reads the *source*-derived word to the emitted bytes with no free hypothesis.
 
 Part of the AutoCorres-in-Lean ascent begun by Sebastian Graf (sgraf812/ascent).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxRecDepth 10000

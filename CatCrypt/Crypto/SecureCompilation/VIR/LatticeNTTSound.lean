@@ -3,10 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul_CompPolyConcrete
-import CompPoly.Univariate.NTT.FastMul
-import CompPoly.Univariate.NTT.Forward
-import CompPoly.Univariate.NTT.Inverse
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul_CompPolyConcrete
+public import CompPoly.Univariate.NTT.FastMul
+public import CompPoly.Univariate.NTT.Forward
+public import CompPoly.Univariate.NTT.Inverse
 
 /-!
 # Lattice dialect NTT-mul: real-convolution soundness (Phase 4)
@@ -81,6 +84,8 @@ the lattice rewrite's soundness obligation, read against real NTT operations,
 *reduces to the genuine convolution theorem* rather than to a definitional
 collapse. The concrete byte-layout instance is the one remaining step.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR
 

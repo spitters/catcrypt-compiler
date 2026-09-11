@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GenericFieldEmitValue
-import CatCrypt.Crypto.Optimizer.Lattice.NTTMultiplyCorrectGeneric
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GenericFieldEmitValue
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTMultiplyCorrectGeneric
 
 /-!
 # The generic NTT-multiply emit → poly-VALUE bridge
@@ -63,6 +65,8 @@ unsatisfiable over-constraint.  The genuine cross-prover content is the gap
 between this canonical realizer and the emitted NTT kernel's real byte
 semantics, which lives outside Lean.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

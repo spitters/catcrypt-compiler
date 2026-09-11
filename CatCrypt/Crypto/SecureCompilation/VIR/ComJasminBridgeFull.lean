@@ -3,10 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.InstrRTranslate
-import CatCrypt.Crypto.SecureCompilation.VIR.StateBijection
-import CatCrypt.Crypto.SecureCompilation.VIR.ExecAdequacy
-import CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridge
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.InstrRTranslate
+public import CatCrypt.Crypto.SecureCompilation.VIR.StateBijection
+public import CatCrypt.Crypto.SecureCompilation.VIR.ExecAdequacy
+public import CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridge
 
 /-!
 # The composed `Com ↔ Jasmin` semantic bridge over the `Cassgn`/`regArith` fragment
@@ -82,6 +85,8 @@ none is introduced as a `sorry` here.
 
 0 sorries.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

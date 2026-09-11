@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Shake256SpongeEmit
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Shake256SpongeEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Shake256SpongeEmit
 
 /-!
 # Fiat–Shamir transcript hash: stable byte-interface symbol
@@ -49,6 +52,8 @@ transcript-shaped input/challenge lengths, driving the stable symbol.
 
 Invoke:  lake env lean --run bench/keccak_compare/fs_transcript_hash_owned_emit.lean
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.YmmAsmPrint
-import CatCrypt.Crypto.SecureCompilation.VIR.VPCmpEmit
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.YmmAsmPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.YmmAsmPrint
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.VPCmpEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.VPCmpEmit
 
 /-!
 # The SIMD→GP extract gap: owned `vpcmpeqq` + `vpmovmskb gpr, ymm` (model-free)
@@ -77,6 +81,8 @@ encoder is NOT on the artifact path — the bench `cp`s the printer text — so 
 dropped here; the C-side KAT (`bench/mpn_compare_simd_compare/conform.c`, 50000
 vectors, 5-way agreement) is the integration witness for the emitted `.s`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

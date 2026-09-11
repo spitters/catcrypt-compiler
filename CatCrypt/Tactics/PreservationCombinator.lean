@@ -3,10 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.BignumExec
-import CatCrypt.Crypto.Jasmin.Examples.BignumStep
-import CatCrypt.Crypto.Jasmin.Examples.Curve25519CryptoptPort
+module
 
+public import CatCrypt.Crypto.Jasmin.BignumExec
+public import CatCrypt.Crypto.Jasmin.Examples.BignumStep
+public import CatCrypt.Crypto.Jasmin.Examples.Curve25519CryptoptPort
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!
@@ -285,7 +289,7 @@ theorem writeShiftBundle_preserves
     simp [setReg, h_no]
   next => simp at h
 
-private theorem writeSingleVar_preserves
+theorem writeSingleVar_preserves
     (s s' : BignumState) (lvs : List LVal) (rv : BitVec 64) (r : String)
     (h : writeSingleVar s lvs rv = some s')
     (h_no : r ∉ lvs.filterMap (fun lv => match lv with
@@ -299,7 +303,7 @@ private theorem writeSingleVar_preserves
     simp [setReg', setReg, h_no]
   next => simp at h
 
-private theorem writeTestBundle_preserves
+theorem writeTestBundle_preserves
     (s s' : BignumState) (lvs : List LVal) (of cf : BitVec 64) (r : String)
     (h : writeTestBundle s lvs of cf = some s')
     (h_no : r ∉ lvs.filterMap (fun lv => match lv with
@@ -319,7 +323,7 @@ private theorem writeTestBundle_preserves
 For ALL PExpr shapes, when `execInstr s (.Cassgn (.Lvar v) tag ty e) = some s'`,
 we have `s' = setReg s v.var.vname w` for some `w`. -/
 
-private theorem execInstr_Cassgn_Lvar_form
+theorem execInstr_Cassgn_Lvar_form
     (s s' : BignumState) (v : VarI) (tag : AssgnTag) (ty : SType) (e : PExpr)
     (h : execInstr s (.Cassgn (.Lvar v) tag ty e) = some s') :
     ∃ w, s' = setReg s v.var.vname w := by
@@ -334,7 +338,7 @@ private theorem execInstr_Cassgn_Lvar_form
 
 /-! ### Helper: `execInstr` on `Cassgn (Lmem .U64 base off) _ _ e` preserves regs -/
 
-private theorem execInstr_Cassgn_Lmem_U64_preserves_regs
+theorem execInstr_Cassgn_Lmem_U64_preserves_regs
     (s s' : BignumState) (base : VarI) (off : PExpr)
     (tag : AssgnTag) (ty : SType) (e : PExpr) (r : String)
     (h : execInstr s (.Cassgn (.Lmem .U64 base off) tag ty e) = some s') :
@@ -357,82 +361,82 @@ private theorem execInstr_Cassgn_Lmem_U64_preserves_regs
 
 /-! ### Helper: `execInstr` returns none for non-handled InstrR shapes. -/
 
-private theorem execInstr_Cif_eq_none (s : BignumState)
+theorem execInstr_Cif_eq_none (s : BignumState)
     (cond : PExpr) (cthen celse : List InstrR) :
     execInstr s (.Cif cond cthen celse) = none := rfl
 
-private theorem execInstr_Cfor_eq_none (s : BignumState)
+theorem execInstr_Cfor_eq_none (s : BignumState)
     (vi : VarI) (range : Range) (body : List InstrR) :
     execInstr s (.Cfor vi range body) = none := rfl
 
-private theorem execInstr_Cwhile_eq_none (s : BignumState)
+theorem execInstr_Cwhile_eq_none (s : BignumState)
     (cb : List InstrR) (cond : PExpr) (ca : List InstrR) :
     execInstr s (.Cwhile cb cond ca) = none := rfl
 
-private theorem execInstr_Ccall_eq_none (s : BignumState)
+theorem execInstr_Ccall_eq_none (s : BignumState)
     (ii : InlineInfo) (lvs : List LVal) (fn : FunName) (args : List PExpr) :
     execInstr s (.Ccall ii lvs fn args) = none := rfl
 
-private theorem execInstr_Cassgn_Lnone_eq_none (s : BignumState)
+theorem execInstr_Cassgn_Lnone_eq_none (s : BignumState)
     (info : VarInfo) (lty : SType) (tag : AssgnTag) (ty : SType) (e : PExpr) :
     execInstr s (.Cassgn (.Lnone info lty) tag ty e) = none := rfl
 
-private theorem execInstr_Cassgn_Laset_eq_none (s : BignumState)
+theorem execInstr_Cassgn_Laset_eq_none (s : BignumState)
     (aa : ArrAccess) (ws : WSize) (x : VarI) (idx : PExpr)
     (tag : AssgnTag) (ty : SType) (e : PExpr) :
     execInstr s (.Cassgn (.Laset aa ws x idx) tag ty e) = none := rfl
 
-private theorem execInstr_Cassgn_Lasub_eq_none (s : BignumState)
+theorem execInstr_Cassgn_Lasub_eq_none (s : BignumState)
     (aa : ArrAccess) (ws : WSize) (len : Nat) (x : VarI) (idx : PExpr)
     (tag : AssgnTag) (ty : SType) (e : PExpr) :
     execInstr s (.Cassgn (.Lasub aa ws len x idx) tag ty e) = none := rfl
 
 /-! ### `execInstrPlus` reduces to `execInstr` outside the special arms. -/
 
-private theorem execInstrPlus_Cif_eq (s : BignumState)
+theorem execInstrPlus_Cif_eq (s : BignumState)
     (cond : PExpr) (cthen celse : List InstrR) :
     execInstrPlus s (.Cif cond cthen celse) =
     execInstr s (.Cif cond cthen celse) := rfl
 
-private theorem execInstrPlus_Cfor_eq (s : BignumState)
+theorem execInstrPlus_Cfor_eq (s : BignumState)
     (vi : VarI) (range : Range) (body : List InstrR) :
     execInstrPlus s (.Cfor vi range body) =
     execInstr s (.Cfor vi range body) := rfl
 
-private theorem execInstrPlus_Cwhile_eq (s : BignumState)
+theorem execInstrPlus_Cwhile_eq (s : BignumState)
     (cb : List InstrR) (cond : PExpr) (ca : List InstrR) :
     execInstrPlus s (.Cwhile cb cond ca) =
     execInstr s (.Cwhile cb cond ca) := rfl
 
-private theorem execInstrPlus_Ccall_eq (s : BignumState)
+theorem execInstrPlus_Ccall_eq (s : BignumState)
     (ii : InlineInfo) (lvs : List LVal) (fn : FunName) (args : List PExpr) :
     execInstrPlus s (.Ccall ii lvs fn args) =
     execInstr s (.Ccall ii lvs fn args) := rfl
 
-private theorem execInstrPlus_Cassgn_Lnone_eq (s : BignumState)
+theorem execInstrPlus_Cassgn_Lnone_eq (s : BignumState)
     (info : VarInfo) (lty : SType) (tag : AssgnTag) (ty : SType) (e : PExpr) :
     execInstrPlus s (.Cassgn (.Lnone info lty) tag ty e) =
     execInstr s (.Cassgn (.Lnone info lty) tag ty e) := rfl
 
-private theorem execInstrPlus_Cassgn_Laset_eq (s : BignumState)
+theorem execInstrPlus_Cassgn_Laset_eq (s : BignumState)
     (aa : ArrAccess) (ws : WSize) (x : VarI) (idx : PExpr)
     (tag : AssgnTag) (ty : SType) (e : PExpr) :
     execInstrPlus s (.Cassgn (.Laset aa ws x idx) tag ty e) =
     execInstr s (.Cassgn (.Laset aa ws x idx) tag ty e) := rfl
 
-private theorem execInstrPlus_Cassgn_Lasub_eq (s : BignumState)
+theorem execInstrPlus_Cassgn_Lasub_eq (s : BignumState)
     (aa : ArrAccess) (ws : WSize) (len : Nat) (x : VarI) (idx : PExpr)
     (tag : AssgnTag) (ty : SType) (e : PExpr) :
     execInstrPlus s (.Cassgn (.Lasub aa ws len x idx) tag ty e) =
     execInstr s (.Cassgn (.Lasub aa ws len x idx) tag ty e) := rfl
 
-private theorem execInstrPlus_Cassgn_Lmem_eq (s : BignumState)
+theorem execInstrPlus_Cassgn_Lmem_eq (s : BignumState)
     (ws : WSize) (base : VarI) (off : PExpr)
     (tag : AssgnTag) (ty : SType) (e : PExpr) :
     execInstrPlus s (.Cassgn (.Lmem ws base off) tag ty e) =
     execInstr s (.Cassgn (.Lmem ws base off) tag ty e) := rfl
 
-private theorem execInstr_Cassgn_Lmem_nonU64_eq_none (s : BignumState)
+theorem execInstr_Cassgn_Lmem_nonU64_eq_none (s : BignumState)
     (ws : WSize) (base : VarI) (off : PExpr)
     (tag : AssgnTag) (ty : SType) (e : PExpr)
     (h : ws ≠ .U64) (h32 : ws ≠ .U32) (h8 : ws ≠ .U8) :
@@ -450,7 +454,7 @@ private theorem execInstr_Cassgn_Lmem_nonU64_eq_none (s : BignumState)
     registers — it touches only `s.mem` (via `storeMem32`).  Mirror of
     `execInstr_Cassgn_Lmem_U64_preserves_regs` for the new U32 store arm
     of `execInstr` (added to `BignumExec` alongside U32 interpretation). -/
-private theorem execInstr_Cassgn_Lmem_U32_preserves_regs
+theorem execInstr_Cassgn_Lmem_U32_preserves_regs
     (s s' : BignumState) (base : VarI) (off : PExpr)
     (tag : AssgnTag) (ty : SType) (e : PExpr) (r : String)
     (h : execInstr s (.Cassgn (.Lmem .U32 base off) tag ty e) = some s') :
@@ -475,7 +479,7 @@ private theorem execInstr_Cassgn_Lmem_U32_preserves_regs
     registers — it touches only `s.mem` (via `storeMem8`).  Mirror of
     `execInstr_Cassgn_Lmem_U32_preserves_regs` for the byte-store arm
     of `execInstr`. -/
-private theorem execInstr_Cassgn_Lmem_U8_preserves_regs
+theorem execInstr_Cassgn_Lmem_U8_preserves_regs
     (s s' : BignumState) (base : VarI) (off : PExpr)
     (tag : AssgnTag) (ty : SType) (e : PExpr) (r : String)
     (h : execInstr s (.Cassgn (.Lmem .U8 base off) tag ty e) = some s') :
@@ -499,7 +503,7 @@ private theorem execInstr_Cassgn_Lmem_U8_preserves_regs
 /-! ### Reduction lemma: `execInstrPlus` on `Copn _ _ (Oasm o) _` reduces to
     its inner match. -/
 
-private theorem execInstrPlus_Copn_Oasm_reduce (s : BignumState)
+theorem execInstrPlus_Copn_Oasm_reduce (s : BignumState)
     (lvs : List LVal) (tag : AssgnTag) (o : AsmOp) (args : List PExpr) :
     execInstrPlus s (.Copn lvs tag (.Oasm o) args) =
     (match o.name, args with
@@ -538,7 +542,7 @@ private theorem execInstrPlus_Copn_Oasm_reduce (s : BignumState)
      | _, _ =>
          execInstr s (.Copn lvs .AT_none (.Oasm o) args)) := rfl
 
-private theorem execInstr_Copn_Oasm_reduce (s : BignumState)
+theorem execInstr_Copn_Oasm_reduce (s : BignumState)
     (lvs : List LVal) (tag : AssgnTag) (o : AsmOp) (args : List PExpr) :
     execInstr s (.Copn lvs tag (.Oasm o) args) =
     (match o.name, args with
@@ -644,7 +648,7 @@ private theorem execInstr_Copn_Oasm_reduce (s : BignumState)
 For all `e`, when `execInstrPlus` succeeds, the result has the form
 `setReg s v.var.vname w` for some `w`. -/
 
-private theorem execInstrPlus_Cassgn_Lvar_form
+theorem execInstrPlus_Cassgn_Lvar_form
     (s s' : BignumState) (v : VarI) (tag : AssgnTag) (ty : SType) (e : PExpr)
     (h : execInstrPlus s (.Cassgn (.Lvar v) tag ty e) = some s') :
     ∃ w, s' = setReg s v.var.vname w := by
@@ -1162,7 +1166,7 @@ theorem writeShiftBundle_preserves_mem
     simp [setReg]
   next => simp at h
 
-private theorem writeSingleVar_preserves_mem
+theorem writeSingleVar_preserves_mem
     (s s' : BignumState) (lvs : List LVal) (rv : BitVec 64)
     (h : writeSingleVar s lvs rv = some s') :
     s'.mem = s.mem := by
@@ -1173,7 +1177,7 @@ private theorem writeSingleVar_preserves_mem
     simp [setReg', setReg]
   next => simp at h
 
-private theorem writeTestBundle_preserves_mem
+theorem writeTestBundle_preserves_mem
     (s s' : BignumState) (lvs : List LVal) (of cf : BitVec 64)
     (h : writeTestBundle s lvs of cf = some s') :
     s'.mem = s.mem := by
@@ -1798,7 +1802,7 @@ theorem execInstr_preserves_reg (i : InstrR) (s s' : BignumState) (r : String)
 `i` is not a CFG-shape, which is the case at the fall-through arm of
 `bignumExecFuel`. -/
 
-private theorem InstrR.preservesReg_of_preservesRegRec (i : InstrR) (r : String)
+theorem InstrR.preservesReg_of_preservesRegRec (i : InstrR) (r : String)
     (h : i.preservesRegRec r) : i.preservesReg r := by
   unfold InstrR.preservesRegRec at h
   unfold InstrR.preservesReg
@@ -1836,7 +1840,7 @@ recursively. The unroll produces only `mkSetVarConst v _` (a Cassgn into
 `v`, write list `[v.var.vname]` — distinct from `r`) and instructions
 copied from `body`. -/
 
-private theorem unrollFor_preservesRegRec
+theorem unrollFor_preservesRegRec
     (v : VarI) (range : Range) (body : List InstrR) (r : String)
     (h_neq : r ≠ v.var.vname)
     (h_body : ∀ j ∈ body, j.preservesRegRec r) :
@@ -1872,13 +1876,13 @@ private theorem unrollFor_preservesRegRec
 
 /-! ### §4c.4 Predicate splitting helpers. -/
 
-private theorem InstrR.regWritesRec_cons_iff (r : String) (i : InstrR)
+theorem InstrR.regWritesRec_cons_iff (r : String) (i : InstrR)
     (is : List InstrR) :
     r ∉ InstrR.regWritesRec.listRegWrites (i :: is) ↔
       r ∉ i.regWritesRec ∧ r ∉ InstrR.regWritesRec.listRegWrites is := by
   simp only [InstrR.regWritesRec.listRegWrites, List.mem_append, not_or]
 
-private theorem InstrR.listRegWrites_eq_listMem (r : String) (is : List InstrR) :
+theorem InstrR.listRegWrites_eq_listMem (r : String) (is : List InstrR) :
     r ∉ InstrR.regWritesRec.listRegWrites is ↔
       ∀ i ∈ is, r ∉ i.regWritesRec := by
   induction is with
@@ -1905,7 +1909,7 @@ private theorem InstrR.listRegWrites_eq_listMem (r : String) (is : List InstrR) 
 So if `r` is not among the `Lvar` names of `lvs`, threading `bindResults`
 leaves `r` unchanged. -/
 
-private theorem bindResults_preserves_reg
+theorem bindResults_preserves_reg
     (sCallee : BignumState) (lvs : List LVal) (rs : List VarI)
     (sCaller s' : BignumState) (r : String)
     (h : bindResults sCaller sCallee lvs rs = some s')
@@ -1962,7 +1966,7 @@ which is more convenient for the recursive structure than a
 `∀ i ∈ is, ...` quantifier. The wrapper at the bottom restores
 the public `∀`-form expected by callers. -/
 
-private theorem bignumExecFuel_preserves_reg_aux
+theorem bignumExecFuel_preserves_reg_aux
     (registry : BignumRegistry) (fuel : Nat) (is : List InstrR) (r : String)
     (h_pres : r ∉ InstrR.regWritesRec.listRegWrites is)
     (s s' : BignumState)
@@ -2436,7 +2440,7 @@ CFG). `hasMemWriteRec` matches it on `Cassgn`/`Copn` and recurses on
 `Cif`/`Cfor`/`Cwhile`/`Ccall`. So `preservesMemRec → preservesMem` when
 `i` is not a CFG-shape. -/
 
-private theorem InstrR.preservesMem_of_preservesMemRec (i : InstrR)
+theorem InstrR.preservesMem_of_preservesMemRec (i : InstrR)
     (h : i.preservesMemRec) : i.preservesMem := by
   unfold InstrR.preservesMemRec at h
   unfold InstrR.preservesMem
@@ -2460,7 +2464,7 @@ instruction in `unrollFor v range body` does as well. The unroll produces
 only `mkSetVarConst v _` (a `Cassgn (Lvar v) ...` — `writesToMem = false`,
 so `hasMemWriteRec = false`) and instructions copied from `body`. -/
 
-private theorem unrollFor_preservesMemRec
+theorem unrollFor_preservesMemRec
     (v : VarI) (range : Range) (body : List InstrR)
     (h_body : ∀ j ∈ body, j.preservesMemRec) :
     ∀ i ∈ unrollFor v range body, i.preservesMemRec := by
@@ -2491,14 +2495,14 @@ private theorem unrollFor_preservesMemRec
 
 /-! ### §6.4 Predicate splitting helpers. -/
 
-private theorem InstrR.listHasMemWrite_cons_iff (i : InstrR)
+theorem InstrR.listHasMemWrite_cons_iff (i : InstrR)
     (is : List InstrR) :
     InstrR.hasMemWriteRec.listHasMemWrite (i :: is) = false ↔
       i.hasMemWriteRec = false ∧
         InstrR.hasMemWriteRec.listHasMemWrite is = false := by
   simp only [InstrR.hasMemWriteRec.listHasMemWrite, Bool.or_eq_false_iff]
 
-private theorem InstrR.listHasMemWrite_eq_listMem (is : List InstrR) :
+theorem InstrR.listHasMemWrite_eq_listMem (is : List InstrR) :
     InstrR.hasMemWriteRec.listHasMemWrite is = false ↔
       ∀ i ∈ is, i.preservesMemRec := by
   induction is with
@@ -2525,7 +2529,7 @@ case is the inverse of the register version: there, Ccall trivially
 preserves caller regs; here, Ccall is excluded by `h_pres` because
 `hasMemWriteRec (Ccall ..) = true`, so it's a contradiction. -/
 
-private theorem bignumExecFuel_preserves_mem_aux
+theorem bignumExecFuel_preserves_mem_aux
     (registry : BignumRegistry) (fuel : Nat) (is : List InstrR)
     (h_pres : InstrR.hasMemWriteRec.listHasMemWrite is = false)
     (s s' : BignumState)

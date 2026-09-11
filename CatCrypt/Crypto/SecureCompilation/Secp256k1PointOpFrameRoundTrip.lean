@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrontDenote
-import CatCrypt.Crypto.SecureCompilation.Dialects.CarryChainSelectAdequacy
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrontDenote
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CarryChainSelectAdequacy
 
 /-!
 # The 12-cell frame round trip of the secp256k1 point-op front
@@ -36,6 +39,8 @@ command list is reduced to a literal.
   `feVal` of a loaded field element is the little-endian value of the four
   frame cells.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrameRoundTrip
 

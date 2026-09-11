@@ -3,9 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontSecp256k1
-import Mathlib.Data.ZMod.Basic
-import Mathlib.Tactic
+module
+
+import all Init.Data.Repr
+public import Mathlib.Tactic.NormNum.Prime
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontSecp256k1
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.Algebra.Field.ZMod
+public import Mathlib.Tactic.FieldSimp
+public import Mathlib.Tactic.Group
+public import Mathlib.Tactic.NormNum
+public import Mathlib.Tactic.Ring
 
 /-!
 # secp256k1 `G1` PROJECTIVE (Jacobian) point-add / point-double over the abstract base field
@@ -24,7 +32,7 @@ so the realization ties below are `b`-agnostic — identical algebra to the Pall
 
 ## The abstract field
 
-The secp256k1 base field is `ZMod secpQ` for the genuine 256-bit prime `secpQ`
+The secp256k1 base field is `ZMod secpQ` for the 256-bit prime `secpQ`
 (defined in `RelationalFrontSecp256k1.lean`).  The repo carries `secpQ` as a `Nat` modulus
 (`2^256 − 2^32 − 977`, the Bitcoin/Ethereum ECDSA & Schnorr base prime).  We parameterize the
 realization ties by a **hypothesis** `[Fact (Nat.Prime secpQ)]` (a section variable — *not* an
@@ -71,6 +79,8 @@ generic-chart scope of the Pallas version.
 0 sorries; no new custom axioms (primality is a section hypothesis, not an asserted axiom);
 the field-algebra ties are unconditional given the field structure.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

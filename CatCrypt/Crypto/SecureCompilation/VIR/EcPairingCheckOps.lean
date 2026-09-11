@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Fp12Gt
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.Fp12Gt
 
 /-!
 # Elliptic-curve `pairing_check` — first-class multi-pairing GT-equality op
@@ -70,6 +72,8 @@ and lowers its product onto proven field ops; it does **not** claim a proof that
 the schedule equals the mathematical Tate/Weil pairing (no Mathlib `WeilPairing`
 to tie to).  Do not overclaim.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

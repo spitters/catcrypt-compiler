@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeCmd
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeCmd
 
 /-!
 # The last hypothesis of the `Com ↔ Jasmin` bridge: the operand-read correspondence
@@ -77,6 +79,8 @@ These are the same residuals the bridge files catalogue; none is a `sorry` here.
 
 0 sorries.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

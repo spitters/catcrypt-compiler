@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.Fin.VecNotation
+module
+
+import all Init.Data.Repr
+public import Mathlib.Data.Fin.VecNotation
 
 /-!
 # The 256-bit YMM op family core (`YmmOp`), `JasminTy`-free
@@ -62,6 +65,8 @@ and the integration witness is the ML-DSA NTT KAT byte-identity
 where signedness is required (Montgomery reduction); its body sign-extends
 the even dwords.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.YmmDialect
 

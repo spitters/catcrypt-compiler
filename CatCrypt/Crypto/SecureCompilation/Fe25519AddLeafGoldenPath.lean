@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CtMemoryGoldenPath
-import CatCrypt.Crypto.SecureCompilation.VIR.ComInlineCall
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.CtMemoryGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.CtMemoryGoldenPath
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ComInlineCall
+public import CatCrypt.Crypto.SecureCompilation.VIR.ComInlineCall
 
 /-!
 # Golden path: the fe25519 field-add leaf as a word-level `Com jasminDialect`
@@ -50,6 +55,8 @@ arithmetic — reusable by every EC curve that carries a reduced-radix field ele
 
 No `sorry`, no `native_decide`, no new axioms.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

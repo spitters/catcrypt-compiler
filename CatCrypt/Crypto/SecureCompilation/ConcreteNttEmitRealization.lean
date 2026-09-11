@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GenericNttEmitValue
-import CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots
-import CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttInstances
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GenericNttEmitValue
+public import CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots
+public import CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttInstances
 
 /-!
 # Concrete emit → realization for the ML-KEM NTT-multiply kernel
@@ -70,6 +72,8 @@ The honest end-to-end deliverable of this file is therefore the ML-KEM theorem
 ## References
 * NIST FIPS 203 (ML-KEM), FIPS 204 (ML-DSA)
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

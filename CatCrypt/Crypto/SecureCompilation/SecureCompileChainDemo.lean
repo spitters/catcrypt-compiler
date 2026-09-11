@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.SecureCompileChain
+module
+
+public import CatCrypt.Crypto.SecureCompilation.SecureCompileChain
 
 /-!
 # The secure-compilation capstone, exhibited (non-vacuity)
@@ -22,6 +24,8 @@ refuses." The lowering used here is a trivial straight-line stand-in; the real
 `ImpExpr → machine block` lowering (the regalloc/loop/conditional workstream)
 plugs into the same `secureCompile` entry.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

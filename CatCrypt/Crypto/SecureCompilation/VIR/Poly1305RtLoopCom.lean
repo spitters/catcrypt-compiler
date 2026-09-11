@@ -3,11 +3,19 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Poly1305Com
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRuntimeLoop
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Poly1305Com
+public import CatCrypt.Crypto.SecureCompilation.VIR.Poly1305Com
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRuntimeLoop
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRuntimeLoop
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # Poly1305 MAC — FRONT-COMPILED owned runtime-block-loop x86-64 emit
@@ -63,6 +71,8 @@ reduced mod `2¹³⁰−5`) on the RFC 8439 §2.5.2 vector and pseudo-random cas
 external `bench/chachapoly_compare` `aead-vs` KAT byte-checks the owned `.s`
 against HACL* under the `poly1305_mac_hacl` symbol.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

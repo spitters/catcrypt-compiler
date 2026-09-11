@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Rewrite.ComPipeline
-import CatCrypt.Crypto.Optimizer.ComCleanupPipeline
+module
+
+public import CatCrypt.Crypto.Optimizer.Rewrite.ComPipeline
+public import CatCrypt.Crypto.Optimizer.ComCleanupPipeline
 
 /-!
 # The canonical `Com → Com` compiler optimizer (general pass)
@@ -34,6 +36,8 @@ is the general-purpose optimizer `comCanonical`, wired into the MLIR emit entry
   trivially CT-safe and the optimizer cannot introduce a secret-dependent
   branch).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

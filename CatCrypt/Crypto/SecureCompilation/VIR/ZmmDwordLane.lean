@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-import Mathlib.Tactic.FinCases
-import Mathlib.Tactic.NormNum
-import Mathlib.Data.BitVec
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public import Mathlib.Tactic.FinCases
+public import Mathlib.Tactic.NormNum
+public import Mathlib.Data.BitVec
 
 /-!
 # ZMM dword (16×u32) lane round-trip for the verified Jasmin VIR dialect
@@ -27,6 +29,8 @@ lane view (`zmmLane32`, the `extractLsb'` reader), its inverse assembler
 
 Invoke: `lake build CatCrypt.Crypto.SecureCompilation.VIR.ZmmDwordLane`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxHeartbeats 1000000

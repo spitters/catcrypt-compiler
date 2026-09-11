@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
-import Std.Tactic.BVDecide
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
+public import Std.Tactic.BVDecide
 
 /-!
 # Golden path: modular negate / double / conditional-negate over GF(251)
@@ -37,6 +40,8 @@ Three ops, single-input or single-output, width-64:
 All lower through the *same* `comToReg_faithful`, exactly as the add/sub/reduce
 primitives do; only the kernel body changes.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

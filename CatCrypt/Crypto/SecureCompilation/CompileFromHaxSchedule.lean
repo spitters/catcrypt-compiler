@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # The SHA-256 message schedule compiles end to end (value-correct)
@@ -30,6 +33,8 @@ jasminDialect` denotes to `schedFold` — value-correct against FIPS 180-4.
   unconditionally (compilation success discharged by `native_decide`). The whole
   message-schedule function, from a high-level (hax-shaped) source, end to end.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

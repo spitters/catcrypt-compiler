@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf
 
 /-!
 # Bitwise OR and NOT value leaves — derived over the `SXor`/`SAnd` fragment
@@ -28,6 +30,8 @@ vs. bitwise split of `ExprLeaf.lean`.
 
 The Ascend port to Lean was begun by Sebastian Graf (`sgraf812/ascent`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

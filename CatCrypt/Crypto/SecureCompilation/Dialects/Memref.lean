@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
 # The `memref` dialect (D0 fan-out — CatCrypt-side, not in `VIR/`)
@@ -34,6 +36,8 @@ denotation is defined to equal the `jasminDialect` image's denotation on every o
 (`MemrefToJasmin.lean`) preserves denotation by construction. `MemrefOp.toJasmin`
 is the verified-lowering image map into the existing `jasminDialect`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.Memref
 

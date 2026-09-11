@@ -3,14 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockCorres
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MontRedc4RunBlockProven
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MontRedcCarryFold
-import CatCrypt.Crypto.Number.MontgomeryReduction
-import Mathlib.Data.ZMod.Basic
-import Mathlib.Tactic.Ring
-import Mathlib.Tactic.Linarith
-import Mathlib.Tactic.LinearCombination
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockCorres
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MontRedc4RunBlockProven
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MontRedcCarryFold
+public import CatCrypt.Crypto.Number.MontgomeryReduction
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.Tactic.Ring
+public import Mathlib.Tactic.Linarith
+public import Mathlib.Tactic.LinearCombination
 
 /-!
 # The modular-reduction value leaf for the ascent field vertical
@@ -73,6 +76,8 @@ The multi-word fusion — four word-steps as a single `runBlock` trace with the 
 routing — is the residual recorded in `X86Backend.MontRedc4RunBlockProven.montRedc4RunBlock_gap`;
 the two-phase state here refines one word-step and does not compose with itself across that routing.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

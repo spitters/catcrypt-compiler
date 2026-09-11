@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.MemrefToJasmin
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.MemrefToJasmin
 
 /-!
 # `lowerMemrefToJasmin` is denotation-preserving — UNCONDITIONALLY
@@ -36,6 +38,8 @@ the leaf agreement is exact.
 
 0 sorries.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.Memref
 

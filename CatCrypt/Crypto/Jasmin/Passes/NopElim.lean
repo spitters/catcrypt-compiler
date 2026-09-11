@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.PassFramework
+module
+
+public import CatCrypt.Crypto.Jasmin.PassFramework
 
 /-!
 # No-Op Elimination Pass
@@ -24,6 +26,8 @@ The key insight: `translateWriteLVal sid (.Lnone _ _) _ = .ret ⟨()⟩` for ANY
 Combined with a pure expression (Pconst/Pbool/Parr_init), the entire instruction
 evaluates to `SPComp.pure ⟨()⟩`, which is the identity under `SPComp.bind`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin
 
@@ -118,11 +122,11 @@ The full proof uses:
 4. Induction on the command list -/
 
 /-- Nop elimination on a cons: drop nop, keep non-nop. -/
-private theorem nopElimCmd_cons_nop (i : InstrR) (is : Cmd) (h : isNopInstr i = true) :
+theorem nopElimCmd_cons_nop (i : InstrR) (is : Cmd) (h : isNopInstr i = true) :
     nopElimCmd (i :: is) = nopElimCmd is := by
   simp [nopElimCmd, List.filter, h]
 
-private theorem nopElimCmd_cons_keep (i : InstrR) (is : Cmd) (h : isNopInstr i = false) :
+theorem nopElimCmd_cons_keep (i : InstrR) (is : Cmd) (h : isNopInstr i = false) :
     nopElimCmd (i :: is) = i :: nopElimCmd is := by
   simp [nopElimCmd, List.filter, h]
 

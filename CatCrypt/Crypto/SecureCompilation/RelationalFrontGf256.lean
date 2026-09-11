@@ -3,9 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFront
-import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenGf256
-import Std.Tactic.BVDecide
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.RelationalFront
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.RelationalFront
+public meta import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenGf256
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenGf256
+public import Std.Tactic.BVDecide
 
 /-!
 # The relational front over a BINARY field: GF(2⁸) multiply, relationally emitted
@@ -76,6 +82,8 @@ end, the char-2 sibling of the `ZMod 251` prime-field instance.
   here is the symbolic `rfl` identifying the kernel's denotation with the
   reference on **every** input, which is what the `RealizedKernel` contract needs.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.SecretTypePipeline
-import CatCrypt.Crypto.Optimizer.SecretTypeScheduler
-import CatCrypt.Crypto.Optimizer.SecretTypeX86
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Optimizer.SecretTypePipeline
+public import CatCrypt.Crypto.Optimizer.SecretTypeScheduler
+public import CatCrypt.Crypto.Optimizer.SecretTypeX86
 
 /-!
 # Compositional CT, consolidated: every committed pass is declassify-monotone (#594 capstone)
@@ -45,6 +48,8 @@ combinations.
 
 All goals closed.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

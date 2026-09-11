@@ -4,6 +4,8 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 
+module
+
 /-!
 # A generic `MachineModel`-parameterized validated register allocator (#552)
 
@@ -66,6 +68,8 @@ sanity demonstrator. The fresh RISC-V instantiation is `RISCVBackend.RiscvRegAll
 This file uses `set_option autoImplicit false` (the `Optimizer/` convention); the
 abstract interfaces are bundled typeclasses, so no auto-implicits are needed.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

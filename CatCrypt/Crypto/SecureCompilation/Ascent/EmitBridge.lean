@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
-import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
+public import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
 
 /-!
 # The keystone: the ascent abstraction leg discharges the emit leg
@@ -50,6 +52,8 @@ to the emitted bytes' clean spec. The hax-lean leg `pipeline_correct`
 (cross-repo, `../hax-lean`) attaches one level above, rewriting the source
 `ImpExpr` that `evalImp` consumes.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

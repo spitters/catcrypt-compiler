@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377MillerLine
-import CatCrypt.Crypto.Bridges.AUCurvesPort.PairingAxioms
+module
+
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377MillerLine
+public import CatCrypt.Crypto.Bridges.AUCurvesPort.PairingAxioms
 
 /-!
 # Plumbing the `bls12_377` pairing COMPUTATION pieces into the abstract pairing interface
@@ -97,6 +99,8 @@ The deliverable is the interface **connection** (`Gₜ = Fp12_377` plumbed into
   `PairingAxioms` typeclass and `PairingAxioms.toTarget` /
   `hasPairing_of_pairingAxioms` plumbing this specializes to `Fp12_377`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

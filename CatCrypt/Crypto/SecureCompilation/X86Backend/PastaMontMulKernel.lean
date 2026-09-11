@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
-import CatCrypt.Crypto.SecureCompilation.X86Backend.PastaFieldAddSubKernel
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.PastaFieldAddSubKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.PastaFieldAddSubKernel
 
 /-!
 # Pasta (Pallas/Vesta) `Fp` Montgomery field-multiply, owned x86 backend
@@ -53,6 +57,8 @@ Identical to the BN254/BLS kernels: the verified artifact is
 `Com (x86Dialect 64) → runBlock → evalInstr`; `AsmPrinter` + `gas` is the thin
 syntactic boundary; the SysV leaf prologue/epilogue is trusted ABI scaffolding.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -290,6 +296,6 @@ def emitMain : IO Unit := do
 The renders are written while this module elaborates, so `lake` produces them
 from this file and no separate driver or Makefile rule carries the dependency. -/
 
-#eval emitMain
+-- #eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.PastaMontMulKernel

@@ -3,7 +3,12 @@ Copyright (c) 2024 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminTypes
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public meta import CatCrypt.Crypto.Jasmin.JasminTypes
+public import CatCrypt.Crypto.Jasmin.JasminTypes
+public import Std.Tactic.BVDecide
 
 /-!
 # Jasmin x86 Operation Semantics
@@ -32,6 +37,8 @@ involution properties proved by `native_decide` over all 256 inputs.
 - `aes_spec.v`: AES instruction wrappers
 -/
 
+@[expose] public section
+
 namespace CatCrypt.Crypto.Jasmin
 
 noncomputable section
@@ -39,7 +46,7 @@ noncomputable section
 /-! ## AES S-Box (FIPS 197 lookup tables) -/
 
 /-- AES S-Box forward table (FIPS 197, Table 4). -/
-private def sboxArray : Array (BitVec 8) := #[
+def sboxArray : Array (BitVec 8) := #[
   0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5, 0x30, 0x01, 0x67, 0x2B, 0xFE, 0xD7, 0xAB, 0x76,
   0xCA, 0x82, 0xC9, 0x7D, 0xFA, 0x59, 0x47, 0xF0, 0xAD, 0xD4, 0xA2, 0xAF, 0x9C, 0xA4, 0x72, 0xC0,
   0xB7, 0xFD, 0x93, 0x26, 0x36, 0x3F, 0xF7, 0xCC, 0x34, 0xA5, 0xE5, 0xF1, 0x71, 0xD8, 0x31, 0x15,
@@ -59,7 +66,7 @@ private def sboxArray : Array (BitVec 8) := #[
 ]
 
 /-- AES inverse S-Box table (FIPS 197, Table 5). -/
-private def invSboxArray : Array (BitVec 8) := #[
+def invSboxArray : Array (BitVec 8) := #[
   0x52, 0x09, 0x6A, 0xD5, 0x30, 0x36, 0xA5, 0x38, 0xBF, 0x40, 0xA3, 0x9E, 0x81, 0xF3, 0xD7, 0xFB,
   0x7C, 0xE3, 0x39, 0x82, 0x9B, 0x2F, 0xFF, 0x87, 0x34, 0x8E, 0x43, 0x44, 0xC4, 0xDE, 0xE9, 0xCB,
   0x54, 0x7B, 0x94, 0x32, 0xA6, 0xC2, 0x23, 0x3D, 0xEE, 0x4C, 0x95, 0x0B, 0x42, 0xFA, 0xC3, 0x4E,
@@ -78,8 +85,8 @@ private def invSboxArray : Array (BitVec 8) := #[
   0x17, 0x2B, 0x04, 0x7E, 0xBA, 0x77, 0xD6, 0x26, 0xE1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0C, 0x7D
 ]
 
-@[simp] private theorem sboxArray_size : sboxArray.size = 256 := by native_decide
-@[simp] private theorem invSboxArray_size : invSboxArray.size = 256 := by native_decide
+@[simp] theorem sboxArray_size : sboxArray.size = 256 := by native_decide
+@[simp] theorem invSboxArray_size : invSboxArray.size = 256 := by native_decide
 
 /-- AES S-Box: SubBytes transformation on a single byte.
     Concrete FIPS 197 lookup table (GF(2^8) inversion + affine map). -/
@@ -356,13 +363,13 @@ Proofs use three techniques:
 - **native_decide**: Exhaustive evaluation over all 256 byte values
 - **GF(2)-linearity**: Decomposition into single-byte inputs via distributivity of gf256Mul -/
 
-private theorem range_16' : List.range 16 = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15] := by
+theorem range_16' : List.range 16 = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15] := by
   native_decide
-private theorem range_4' : List.range 4 = [0,1,2,3] := by native_decide
+theorem range_4' : List.range 4 = [0,1,2,3] := by native_decide
 
 -- Byte extraction through SubBytes
 set_option maxHeartbeats 4000000 in
-private theorem getByte128_aesSubBytes (state : BitVec 128) (j : Nat) (hj : j < 16) :
+theorem getByte128_aesSubBytes (state : BitVec 128) (j : Nat) (hj : j < 16) :
     getByte128 (aesSubBytes state) j = aesSBox (getByte128 state j) := by
   unfold aesSubBytes; rw [range_16']
   simp only [List.foldl_cons, List.foldl_nil]
@@ -370,7 +377,7 @@ private theorem getByte128_aesSubBytes (state : BitVec 128) (j : Nat) (hj : j < 
 
 -- Byte extraction through InvSubBytes
 set_option maxHeartbeats 4000000 in
-private theorem getByte128_aesInvSubBytes (state : BitVec 128) (j : Nat) (hj : j < 16) :
+theorem getByte128_aesInvSubBytes (state : BitVec 128) (j : Nat) (hj : j < 16) :
     getByte128 (aesInvSubBytes state) j = aesInvSBox (getByte128 state j) := by
   unfold aesInvSubBytes; rw [range_16']
   simp only [List.foldl_cons, List.foldl_nil]
@@ -378,12 +385,12 @@ private theorem getByte128_aesInvSubBytes (state : BitVec 128) (j : Nat) (hj : j
 
 -- State reconstruction from bytes
 set_option maxHeartbeats 4000000 in
-private theorem state_from_bytes (s : BitVec 128) :
+theorem state_from_bytes (s : BitVec 128) :
     (List.range 16).foldl (fun acc i => setByte128 acc i (getByte128 s i)) 0 = s := by
   rw [range_16']; simp only [List.foldl_cons, List.foldl_nil, getByte128, setByte128]; bv_decide
 
 -- Foldl congr for setByte128
-private theorem foldl_setByte_congr (f g : Nat → BitVec 8) (l : List Nat) (init : BitVec 128)
+theorem foldl_setByte_congr (f g : Nat → BitVec 8) (l : List Nat) (init : BitVec 128)
     (h : ∀ i ∈ l, f i = g i) :
     l.foldl (fun s i => setByte128 s i (f i)) init =
     l.foldl (fun s i => setByte128 s i (g i)) init := by
@@ -422,7 +429,7 @@ We verify the identity on all 256 values of each byte position via `native_decid
 then use linearity to extend to arbitrary 4-byte inputs. -/
 
 -- Per-column MixColumns forward transform
-private def mixColRow (b0 b1 b2 b3 : BitVec 8) (k : Fin 4) : BitVec 8 :=
+def mixColRow (b0 b1 b2 b3 : BitVec 8) (k : Fin 4) : BitVec 8 :=
   match k with
   | 0 => gf256Mul b0 2 ^^^ gf256Mul b1 3 ^^^ b2 ^^^ b3
   | 1 => b0 ^^^ gf256Mul b1 2 ^^^ gf256Mul b2 3 ^^^ b3
@@ -430,7 +437,7 @@ private def mixColRow (b0 b1 b2 b3 : BitVec 8) (k : Fin 4) : BitVec 8 :=
   | 3 => gf256Mul b0 3 ^^^ b1 ^^^ b2 ^^^ gf256Mul b3 2
 
 -- Per-column InvMixColumns transform
-private def invMixColRow (r0 r1 r2 r3 : BitVec 8) (k : Fin 4) : BitVec 8 :=
+def invMixColRow (r0 r1 r2 r3 : BitVec 8) (k : Fin 4) : BitVec 8 :=
   match k with
   | 0 => gf256Mul r0 14 ^^^ gf256Mul r1 11 ^^^ gf256Mul r2 13 ^^^ gf256Mul r3 9
   | 1 => gf256Mul r0 9  ^^^ gf256Mul r1 14 ^^^ gf256Mul r2 11 ^^^ gf256Mul r3 13
@@ -438,24 +445,24 @@ private def invMixColRow (r0 r1 r2 r3 : BitVec 8) (k : Fin 4) : BitVec 8 :=
   | 3 => gf256Mul r0 11 ^^^ gf256Mul r1 13 ^^^ gf256Mul r2 9  ^^^ gf256Mul r3 14
 
 -- Per-column composition: byte k of InvMixCol(MixCol(b0,b1,b2,b3))
-private def invMixMix_byte (b0 b1 b2 b3 : BitVec 8) (k : Fin 4) : BitVec 8 :=
+def invMixMix_byte (b0 b1 b2 b3 : BitVec 8) (k : Fin 4) : BitVec 8 :=
   invMixColRow (mixColRow b0 b1 b2 b3 0) (mixColRow b0 b1 b2 b3 1)
                (mixColRow b0 b1 b2 b3 2) (mixColRow b0 b1 b2 b3 3) k
 
 -- XOR left commutativity (not in Lean 4.28.0 stdlib)
-private theorem BitVec.xor_left_comm' {w : Nat} (a b c : BitVec w) :
+theorem BitVec.xor_left_comm' {w : Nat} (a b c : BitVec w) :
     a ^^^ (b ^^^ c) = b ^^^ (a ^^^ c) := by
   rw [← BitVec.xor_assoc, BitVec.xor_comm a b, BitVec.xor_assoc]
 
 -- GF(2)-linearity of gf256Mul
 set_option maxHeartbeats 8000000 in
-private theorem gf256Mul_xor_left' (a b c : BitVec 8) :
+theorem gf256Mul_xor_left' (a b c : BitVec 8) :
     gf256Mul (a ^^^ b) c = gf256Mul a c ^^^ gf256Mul b c := by
   unfold gf256Mul gf256Xtime; bv_decide
 
 -- Inner linearity (MixColumns)
 set_option maxHeartbeats 8000000 in
-private theorem mixColRow_xor (a0 a1 a2 a3 b0 b1 b2 b3 : BitVec 8) (k : Fin 4) :
+theorem mixColRow_xor (a0 a1 a2 a3 b0 b1 b2 b3 : BitVec 8) (k : Fin 4) :
     mixColRow (a0 ^^^ b0) (a1 ^^^ b1) (a2 ^^^ b2) (a3 ^^^ b3) k =
     mixColRow a0 a1 a2 a3 k ^^^ mixColRow b0 b1 b2 b3 k := by
   simp only [mixColRow, gf256Mul_xor_left']
@@ -463,7 +470,7 @@ private theorem mixColRow_xor (a0 a1 a2 a3 b0 b1 b2 b3 : BitVec 8) (k : Fin 4) :
 
 -- Outer linearity (InvMixColumns)
 set_option maxHeartbeats 8000000 in
-private theorem invMixColRow_xor (a0 a1 a2 a3 b0 b1 b2 b3 : BitVec 8) (k : Fin 4) :
+theorem invMixColRow_xor (a0 a1 a2 a3 b0 b1 b2 b3 : BitVec 8) (k : Fin 4) :
     invMixColRow (a0 ^^^ b0) (a1 ^^^ b1) (a2 ^^^ b2) (a3 ^^^ b3) k =
     invMixColRow a0 a1 a2 a3 k ^^^ invMixColRow b0 b1 b2 b3 k := by
   simp only [invMixColRow, gf256Mul_xor_left']
@@ -471,37 +478,37 @@ private theorem invMixColRow_xor (a0 a1 a2 a3 b0 b1 b2 b3 : BitVec 8) (k : Fin 4
 
 -- Composed linearity
 set_option maxHeartbeats 8000000 in
-private theorem invMixMix_byte_xor (a0 a1 a2 a3 b0 b1 b2 b3 : BitVec 8) (k : Fin 4) :
+theorem invMixMix_byte_xor (a0 a1 a2 a3 b0 b1 b2 b3 : BitVec 8) (k : Fin 4) :
     invMixMix_byte (a0 ^^^ b0) (a1 ^^^ b1) (a2 ^^^ b2) (a3 ^^^ b3) k =
     invMixMix_byte a0 a1 a2 a3 k ^^^ invMixMix_byte b0 b1 b2 b3 k := by
   simp only [invMixMix_byte, mixColRow_xor, invMixColRow_xor]
 
 -- Basis checks: invMixMix is identity when only one byte is nonzero
-private theorem invMixMix_b0_k0 : ∀ v : BitVec 8, invMixMix_byte v 0 0 0 0 = v := by native_decide
-private theorem invMixMix_b0_k1 : ∀ v : BitVec 8, invMixMix_byte v 0 0 0 1 = 0 := by native_decide
-private theorem invMixMix_b0_k2 : ∀ v : BitVec 8, invMixMix_byte v 0 0 0 2 = 0 := by native_decide
-private theorem invMixMix_b0_k3 : ∀ v : BitVec 8, invMixMix_byte v 0 0 0 3 = 0 := by native_decide
-private theorem invMixMix_b1_k0 : ∀ v : BitVec 8, invMixMix_byte 0 v 0 0 0 = 0 := by native_decide
-private theorem invMixMix_b1_k1 : ∀ v : BitVec 8, invMixMix_byte 0 v 0 0 1 = v := by native_decide
-private theorem invMixMix_b1_k2 : ∀ v : BitVec 8, invMixMix_byte 0 v 0 0 2 = 0 := by native_decide
-private theorem invMixMix_b1_k3 : ∀ v : BitVec 8, invMixMix_byte 0 v 0 0 3 = 0 := by native_decide
-private theorem invMixMix_b2_k0 : ∀ v : BitVec 8, invMixMix_byte 0 0 v 0 0 = 0 := by native_decide
-private theorem invMixMix_b2_k1 : ∀ v : BitVec 8, invMixMix_byte 0 0 v 0 1 = 0 := by native_decide
-private theorem invMixMix_b2_k2 : ∀ v : BitVec 8, invMixMix_byte 0 0 v 0 2 = v := by native_decide
-private theorem invMixMix_b2_k3 : ∀ v : BitVec 8, invMixMix_byte 0 0 v 0 3 = 0 := by native_decide
-private theorem invMixMix_b3_k0 : ∀ v : BitVec 8, invMixMix_byte 0 0 0 v 0 = 0 := by native_decide
-private theorem invMixMix_b3_k1 : ∀ v : BitVec 8, invMixMix_byte 0 0 0 v 1 = 0 := by native_decide
-private theorem invMixMix_b3_k2 : ∀ v : BitVec 8, invMixMix_byte 0 0 0 v 2 = 0 := by native_decide
-private theorem invMixMix_b3_k3 : ∀ v : BitVec 8, invMixMix_byte 0 0 0 v 3 = v := by native_decide
+theorem invMixMix_b0_k0 : ∀ v : BitVec 8, invMixMix_byte v 0 0 0 0 = v := by native_decide
+theorem invMixMix_b0_k1 : ∀ v : BitVec 8, invMixMix_byte v 0 0 0 1 = 0 := by native_decide
+theorem invMixMix_b0_k2 : ∀ v : BitVec 8, invMixMix_byte v 0 0 0 2 = 0 := by native_decide
+theorem invMixMix_b0_k3 : ∀ v : BitVec 8, invMixMix_byte v 0 0 0 3 = 0 := by native_decide
+theorem invMixMix_b1_k0 : ∀ v : BitVec 8, invMixMix_byte 0 v 0 0 0 = 0 := by native_decide
+theorem invMixMix_b1_k1 : ∀ v : BitVec 8, invMixMix_byte 0 v 0 0 1 = v := by native_decide
+theorem invMixMix_b1_k2 : ∀ v : BitVec 8, invMixMix_byte 0 v 0 0 2 = 0 := by native_decide
+theorem invMixMix_b1_k3 : ∀ v : BitVec 8, invMixMix_byte 0 v 0 0 3 = 0 := by native_decide
+theorem invMixMix_b2_k0 : ∀ v : BitVec 8, invMixMix_byte 0 0 v 0 0 = 0 := by native_decide
+theorem invMixMix_b2_k1 : ∀ v : BitVec 8, invMixMix_byte 0 0 v 0 1 = 0 := by native_decide
+theorem invMixMix_b2_k2 : ∀ v : BitVec 8, invMixMix_byte 0 0 v 0 2 = v := by native_decide
+theorem invMixMix_b2_k3 : ∀ v : BitVec 8, invMixMix_byte 0 0 v 0 3 = 0 := by native_decide
+theorem invMixMix_b3_k0 : ∀ v : BitVec 8, invMixMix_byte 0 0 0 v 0 = 0 := by native_decide
+theorem invMixMix_b3_k1 : ∀ v : BitVec 8, invMixMix_byte 0 0 0 v 1 = 0 := by native_decide
+theorem invMixMix_b3_k2 : ∀ v : BitVec 8, invMixMix_byte 0 0 0 v 2 = 0 := by native_decide
+theorem invMixMix_b3_k3 : ∀ v : BitVec 8, invMixMix_byte 0 0 0 v 3 = v := by native_decide
 
 -- XOR with zero helpers (OfNat form, avoids ofNat_eq_ofNat leaking into rw targets)
-private theorem bv8_xor_zero (a : BitVec 8) : a ^^^ (0 : BitVec 8) = a := by
+theorem bv8_xor_zero (a : BitVec 8) : a ^^^ (0 : BitVec 8) = a := by
   simp [BitVec.ofNat_eq_ofNat, BitVec.xor_zero]
-private theorem bv8_zero_xor (a : BitVec 8) : (0 : BitVec 8) ^^^ a = a := by
+theorem bv8_zero_xor (a : BitVec 8) : (0 : BitVec 8) ^^^ a = a := by
   simp [BitVec.ofNat_eq_ofNat, BitVec.zero_xor]
 
 -- Decompose any 4-byte input using linearity
-private theorem invMixMix_byte_decompose (b0 b1 b2 b3 : BitVec 8) (k : Fin 4) :
+theorem invMixMix_byte_decompose (b0 b1 b2 b3 : BitVec 8) (k : Fin 4) :
     invMixMix_byte b0 b1 b2 b3 k =
     invMixMix_byte b0 0 0 0 k ^^^ invMixMix_byte 0 b1 0 0 k ^^^
     invMixMix_byte 0 0 b2 0 k ^^^ invMixMix_byte 0 0 0 b3 k := by
@@ -520,31 +527,31 @@ private theorem invMixMix_byte_decompose (b0 b1 b2 b3 : BitVec 8) (k : Fin 4) :
   rw [h1, h2, h3]; simp only [BitVec.xor_assoc]
 
 -- Per-k identity lemmas (k fixed at statement level avoids Fin matching issues)
-private theorem invMixMix_byte_id_0 (b0 b1 b2 b3 : BitVec 8) :
+theorem invMixMix_byte_id_0 (b0 b1 b2 b3 : BitVec 8) :
     invMixMix_byte b0 b1 b2 b3 0 = b0 := by
   rw [invMixMix_byte_decompose]
   simp only [invMixMix_b0_k0, invMixMix_b1_k0, invMixMix_b2_k0, invMixMix_b3_k0, bv8_xor_zero]
 
-private theorem invMixMix_byte_id_1 (b0 b1 b2 b3 : BitVec 8) :
+theorem invMixMix_byte_id_1 (b0 b1 b2 b3 : BitVec 8) :
     invMixMix_byte b0 b1 b2 b3 1 = b1 := by
   rw [invMixMix_byte_decompose]
   simp only [invMixMix_b0_k1, invMixMix_b1_k1, invMixMix_b2_k1, invMixMix_b3_k1,
              bv8_xor_zero, bv8_zero_xor]
 
-private theorem invMixMix_byte_id_2 (b0 b1 b2 b3 : BitVec 8) :
+theorem invMixMix_byte_id_2 (b0 b1 b2 b3 : BitVec 8) :
     invMixMix_byte b0 b1 b2 b3 2 = b2 := by
   rw [invMixMix_byte_decompose]
   simp only [invMixMix_b0_k2, invMixMix_b1_k2, invMixMix_b2_k2, invMixMix_b3_k2,
              bv8_xor_zero, bv8_zero_xor]
 
-private theorem invMixMix_byte_id_3 (b0 b1 b2 b3 : BitVec 8) :
+theorem invMixMix_byte_id_3 (b0 b1 b2 b3 : BitVec 8) :
     invMixMix_byte b0 b1 b2 b3 3 = b3 := by
   rw [invMixMix_byte_decompose]
   simp only [invMixMix_b0_k3, invMixMix_b1_k3, invMixMix_b2_k3, invMixMix_b3_k3,
              bv8_xor_zero, bv8_zero_xor]
 
 -- Combined per-column identity
-private theorem invMixMix_byte_id (b0 b1 b2 b3 : BitVec 8) (k : Fin 4) :
+theorem invMixMix_byte_id (b0 b1 b2 b3 : BitVec 8) (k : Fin 4) :
     invMixMix_byte b0 b1 b2 b3 k =
     match k with | 0 => b0 | 1 => b1 | 2 => b2 | 3 => b3 :=
   match k with
@@ -555,7 +562,7 @@ private theorem invMixMix_byte_id (b0 b1 b2 b3 : BitVec 8) (k : Fin 4) :
 
 -- Byte extraction through MixColumns (Nat-indexed, explicit +0 for rw matching)
 set_option maxHeartbeats 8000000 in
-private theorem getByte128_aesMixColumns (state : BitVec 128)
+theorem getByte128_aesMixColumns (state : BitVec 128)
     (col row : Nat) (hcol : col < 4) (hrow : row < 4) :
     getByte128 (aesMixColumns state) (col * 4 + row) =
     mixColRow (getByte128 state (col * 4 + 0)) (getByte128 state (col * 4 + 1))
@@ -567,7 +574,7 @@ private theorem getByte128_aesMixColumns (state : BitVec 128)
 
 -- Byte extraction through InvMixColumns (Nat-indexed, explicit +0)
 set_option maxHeartbeats 8000000 in
-private theorem getByte128_aesInvMixColumns (state : BitVec 128)
+theorem getByte128_aesInvMixColumns (state : BitVec 128)
     (col row : Nat) (hcol : col < 4) (hrow : row < 4) :
     getByte128 (aesInvMixColumns state) (col * 4 + row) =
     invMixColRow (getByte128 state (col * 4 + 0)) (getByte128 state (col * 4 + 1))
@@ -578,7 +585,7 @@ private theorem getByte128_aesInvMixColumns (state : BitVec 128)
     simp only [getByte128, setByte128, invMixColRow, gf256Mul] <;> bv_decide
 
 -- Bridge: compose extraction lemmas to get invMixMix_byte
-private theorem getByte128_composed (state : BitVec 128)
+theorem getByte128_composed (state : BitVec 128)
     (col row : Nat) (hcol : col < 4) (hrow : row < 4) :
     getByte128 (aesInvMixColumns (aesMixColumns state)) (col * 4 + row) =
     invMixMix_byte (getByte128 state (col * 4 + 0)) (getByte128 state (col * 4 + 1))
@@ -592,7 +599,7 @@ private theorem getByte128_composed (state : BitVec 128)
   rfl
 
 -- Per-byte identity via composition + linearity
-private theorem key_byte (state : BitVec 128) (i : Nat) (hi : i < 16) :
+theorem key_byte (state : BitVec 128) (i : Nat) (hi : i < 16) :
     getByte128 (aesInvMixColumns (aesMixColumns state)) i = getByte128 state i := by
   have hcol : i / 4 < 4 := by omega
   have hrow : i % 4 < 4 := Nat.mod_lt i (by omega)
@@ -622,18 +629,18 @@ theorem aesInvMixColumns_aesMixColumns (state : BitVec 128) :
 /-! ### InvSubBytes and ShiftRows commute -/
 
 -- ShiftRows permutation: output byte j comes from input byte (shiftRowsPerm j)
-private def shiftRowsPerm : Nat → Nat
+def shiftRowsPerm : Nat → Nat
   | 0 => 0 | 1 => 5 | 2 => 10 | 3 => 15
   | 4 => 4 | 5 => 9 | 6 => 14 | 7 => 3
   | 8 => 8 | 9 => 13 | 10 => 2 | 11 => 7
   | 12 => 12 | 13 => 1 | 14 => 6 | 15 => 11
   | _ => 0
 
-private theorem shiftRowsPerm_lt (j : Nat) (hj : j < 16) : shiftRowsPerm j < 16 := by
+theorem shiftRowsPerm_lt (j : Nat) (hj : j < 16) : shiftRowsPerm j < 16 := by
   interval_cases j <;> simp [shiftRowsPerm]
 
 set_option maxHeartbeats 8000000 in
-private theorem getByte128_aesShiftRows_perm (state : BitVec 128) (j : Nat) (hj : j < 16) :
+theorem getByte128_aesShiftRows_perm (state : BitVec 128) (j : Nat) (hj : j < 16) :
     getByte128 (aesShiftRows state) j = getByte128 state (shiftRowsPerm j) := by
   unfold aesShiftRows; rw [range_4']
   simp only [List.foldl_cons, List.foldl_nil]

@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFront
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFront
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
 
 /-!
 # The secp256k1 `jacDbl` front body lies in the scalar covered fragment
@@ -40,7 +43,16 @@ followed by decimal indices, so its first character decides the question
 * `jacDblBody_coveredS`, `jacDblBody_coveredSCtl` — the whole `jacDbl` front body.
 -/
 
+@[expose] public section
+
 namespace CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrontCovered
+
+-- The operand-scanning state types and their `forIn` step/run functions live in
+-- `Secp256k1FeMulFront`, where `genMul`/`genAdd`/`genSub` are projections of
+-- them. Re-exported here so consumers opening this namespace resolve them.
+export CatCrypt.Crypto.SecureCompilation.Secp256k1FeMulFront
+  (MulI MulO AddS SubS genMulInnerStep genMulOuterStep genMulRun
+   genAddStep genAddRun genSubStep genSubRun)
 
 open CatCrypt.Crypto.Jasmin.LowCT (LowCT SExpr)
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
@@ -200,38 +212,6 @@ theorem cmdsClean_snoc {l : List LowCT} {c : LowCT} (hl : CmdsClean l)
 
 theorem mask32_lt : mask32 < 2 ^ 64 := by norm_num [mask32]
 
-abbrev MulI : Type := MProd (Array String) (MProd String (List LowCT))
-abbrev MulO : Type := MProd (Array String) (List LowCT)
-
-/-- The inner column step of `genMul`: one partial product accumulated into the
-    column, split into a 32-bit digit and a carry. -/
-def genMulInnerStep (_zero : String) (aN bN : List String) (pfx : String) (i : Nat) :
-    Nat → MulI → Id (ForInStep MulI) :=
-  fun j r =>
-    let acc := r.fst
-    let carry := r.snd.fst
-    let cmds := r.snd.snd
-    let pos := i + j
-    let tn := s!"{pfx}t{i}_{j}"
-    let cmds := cmds ++ [(LowCT.RScalarSetExpr tn
-      (.SAdd (.SAdd (.SMul (sv (aN[i]!)) (sv (bN[j]!))) (sv (acc[pos]!))) (sv carry)))]
-    let pn := s!"{pfx}p{i}_{j}"
-    let cmds := cmds ++ [(LowCT.RScalarSetExpr pn (.SAnd (sv tn) (.SLit mask32)))]
-    let kn := s!"{pfx}k{i}_{j}"
-    let cmds := cmds ++ [(LowCT.RScalarSetExpr kn (.SShr (sv tn) (.SLit 32)))]
-    ForInStep.yield ⟨acc.set! pos pn, kn, cmds⟩
-
-def genMulOuterStep (zero : String) (aN bN : List String) (pfx : String) :
-    Nat → MulO → Id (ForInStep MulO) :=
-  fun i r =>
-    let res : MulI :=
-      (forIn [:bN.length] (⟨r.fst, zero, r.snd⟩) (genMulInnerStep zero aN bN pfx i) : Id _)
-    ForInStep.yield ⟨res.fst.set! (i + bN.length) res.snd.fst, res.snd.snd⟩
-
-def genMulRun (zero : String) (aN bN : List String) (pfx : String) : MulO :=
-  (forIn [:aN.length] (⟨Array.replicate (aN.length + bN.length) zero, ([] : List LowCT)⟩)
-    (genMulOuterStep zero aN bN pfx) : Id _)
-
 theorem genMul_eq (zero : String) (aN bN : List String) (pfx : String) :
     genMul zero aN bN pfx =
       ((genMulRun zero aN bN pfx).snd, (genMulRun zero aN bN pfx).fst.toList) := rfl
@@ -304,29 +284,6 @@ theorem genMul_clean (zero : String) (aN bN : List String) (pfx : String)
 
 /-! ## 5. The operand-scanning add -/
 
-abbrev AddS : Type := MProd String (MProd (List LowCT) (Array String))
-
-def genAddStep (zero : String) (aN bN : List String) (pfx : String) :
-    Nat → AddS → Id (ForInStep AddS) :=
-  fun i r =>
-    let carry := r.fst
-    let cmds := r.snd.fst
-    let res := r.snd.snd
-    let ai := aN.getD i zero
-    let bi := bN.getD i zero
-    let tn := s!"{pfx}t{i}"
-    let cmds := cmds ++ [(LowCT.RScalarSetExpr tn (.SAdd (.SAdd (sv ai) (sv bi)) (sv carry)))]
-    let sn := s!"{pfx}s{i}"
-    let cmds := cmds ++ [(LowCT.RScalarSetExpr sn (.SAnd (sv tn) (.SLit mask32)))]
-    let kn := s!"{pfx}k{i}"
-    let cmds := cmds ++ [(LowCT.RScalarSetExpr kn (.SShr (sv tn) (.SLit 32)))]
-    ForInStep.yield ⟨kn, cmds, res.set! i sn⟩
-
-def genAddRun (zero : String) (aN bN : List String) (pfx : String) : AddS :=
-  (forIn [:max aN.length bN.length]
-    (⟨zero, ([] : List LowCT), Array.replicate (max aN.length bN.length + 1) zero⟩)
-    (genAddStep zero aN bN pfx) : Id _)
-
 theorem genAdd_eq (zero : String) (aN bN : List String) (pfx : String) :
     genAdd zero aN bN pfx =
       ((genAddRun zero aN bN pfx).snd.fst,
@@ -376,30 +333,6 @@ theorem genAdd_clean (zero : String) (aN bN : List String) (pfx : String)
     exact arraySet_inv _ _ k _ (fun t => ¬ isTmpName t) key.2.2 key.1⟩
 
 /-! ## 6. The ripple subtract -/
-
-abbrev SubS : Type := MProd String (MProd (List LowCT) (Array String))
-
-def genSubStep (zero : String) (aN pN : List String) (pfx : String) :
-    Nat → SubS → Id (ForInStep SubS) :=
-  fun i r =>
-    let borrow := r.fst
-    let cmds := r.snd.fst
-    let res := r.snd.snd
-    let tn := s!"{pfx}t{i}"
-    let cmds := cmds ++ [(LowCT.RScalarSetExpr tn
-      (.SSub (.SSub (.SAdd (sv (aN[i]!)) (.SLit 4294967296)) (sv (pN.getD i zero)))
-        (sv borrow)))]
-    let dn := s!"{pfx}d{i}"
-    let cmds := cmds ++ [(LowCT.RScalarSetExpr dn (.SAnd (sv tn) (.SLit mask32)))]
-    let hn := s!"{pfx}h{i}"
-    let cmds := cmds ++ [(LowCT.RScalarSetExpr hn (.SShr (sv tn) (.SLit 32)))]
-    let bn := s!"{pfx}b{i}"
-    let cmds := cmds ++ [(LowCT.RScalarSetExpr bn (.SSub (.SLit 1) (sv hn)))]
-    ForInStep.yield ⟨bn, cmds, res.set! i dn⟩
-
-def genSubRun (zero : String) (aN pN : List String) (pfx : String) : SubS :=
-  (forIn [:aN.length] (⟨zero, ([] : List LowCT), Array.replicate aN.length zero⟩)
-    (genSubStep zero aN pN pfx) : Id _)
 
 theorem genSub_eq (zero : String) (aN pN : List String) (pfx : String) :
     genSub zero aN pN pfx =

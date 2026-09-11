@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X25519MonoLadderKernel
-import CatCrypt.Crypto.Optimizer.Mem2Reg
-import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.X25519MonoLadderKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X25519MonoLadderKernel
+public meta import CatCrypt.Crypto.Optimizer.Mem2Reg
+public import CatCrypt.Crypto.Optimizer.Mem2Reg
+public meta import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 
 /-!
 # The full `inline → forward → mem2reg → spillRA` X25519 ladder-step pipeline (#415, #555)
@@ -46,6 +51,8 @@ proved in `Optimizer.Mem2Reg` (`promoteStore_correspondence`, `promoteLoad_corre
 the applied body's value identity is the runtime KAT vs RFC 7748 + s2n in
 `bench/x25519_ladder_compare/`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

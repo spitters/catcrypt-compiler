@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.BigNat
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpFrontEmit
+module
+
+public import CatCrypt.Crypto.SecureCompilation.BigNat
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpFrontEmit
 
 /-!
 # Comparison on the `BigNat` carrier, and the `cells ↔ bignumVal` adapter
@@ -37,6 +39,8 @@ result cell as those carrier operations.
   loop's result cell, read through the adapter as `cmpSign` / `beq` / `ble` of
   the carrier lists.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

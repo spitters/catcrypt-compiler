@@ -3,12 +3,20 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminAST
-import CatCrypt.Crypto.Jasmin.MemoryModel
-import Std.Do.Triple
-import Std.Tactic.Do
-import Std.Tactic.BVDecide
+module
 
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.JasminAST
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.JasminAST
+public meta import CatCrypt.Crypto.Jasmin.MemoryModel
+public import CatCrypt.Crypto.Jasmin.MemoryModel
+public import Std.Do.Triple
+public import Std.Tactic.Do
+public import Std.Tactic.BVDecide
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!
@@ -1236,11 +1244,11 @@ theorem bignumExecCF_eq_bignumExec_of_straightLine
 
 namespace ControlFlowWrapperSmoke
 
-private def vU (s : String) : Var := { vname := s, vtype := .sword .U64 }
-private def lvR (s : String) : LVal := .Lvar { var := vU s }
-private def pv (s : String) : PExpr :=
+def vU (s : String) : Var := { vname := s, vtype := .sword .U64 }
+def lvR (s : String) : LVal := .Lvar { var := vU s }
+def pv (s : String) : PExpr :=
   .Pvar { gv := { var := vU s }, gs := false }
-private def varI (s : String) : VarI := { var := vU s }
+def varI (s : String) : VarI := { var := vU s }
 
 def initState : BignumState :=
   { regs := fun x => match x with
@@ -1269,7 +1277,7 @@ end ControlFlowWrapperSmoke
 
 namespace LslLsrSmoke
 
-private def s0 : BignumState :=
+def s0 : BignumState :=
   { regs := fun _ => 0, mem := Mem.empty }
 
 /-- `1 <<< 3 = 8`. -/
@@ -1340,7 +1348,7 @@ definition of `bignumExecFuel` reduces back to the unrolled run. -/
 
 /-- Strengthened form: the witness fuel for `body1` equals the outer
 fuel exactly, so the only existential is `s_mid` and `fuel2`. -/
-private theorem bignumExecFuel_append_split_aux
+theorem bignumExecFuel_append_split_aux
     (registry : BignumRegistry) (fuel : Nat) (body1 body2 : List InstrR)
     (s s' : BignumState)
     (h : bignumExecFuel registry fuel (body1 ++ body2) s = some s') :
@@ -1927,7 +1935,7 @@ fuel decrement. -/
 
 namespace CcallSmoke
 
-private def vU (s : String) : Var := { vname := s, vtype := .sword .U64 }
+def vU (s : String) : Var := { vname := s, vtype := .sword .U64 }
 
 /-- Callee: writes 0x42 at `*(p + 0)`. -/
 def calleeFd : FunDecl where
@@ -1989,7 +1997,7 @@ This exercises every leg of the new path:
 
 namespace CcallResultBindSmoke
 
-private def vU (s : String) : Var := { vname := s, vtype := .sword .U64 }
+def vU (s : String) : Var := { vname := s, vtype := .sword .U64 }
 
 /-- Callee `double(x)`: returns `x * 2` via `r := x; r := r + r`. -/
 def doubleFd : FunDecl where
@@ -2046,20 +2054,20 @@ intrinsic and checks the resulting register/memory state via
 
 namespace IntrinsicSmoke
 
-private def vU (s : String) : Var := { vname := s, vtype := .sword .U64 }
-private def lvR (s : String) : LVal := .Lvar { var := vU s }
-private def pv (s : String) : PExpr :=
+def vU (s : String) : Var := { vname := s, vtype := .sword .U64 }
+def lvR (s : String) : LVal := .Lvar { var := vU s }
+def pv (s : String) : PExpr :=
   .Pvar { gv := { var := vU s }, gs := false }
 
 /-- 6-LVal flag bundle layout for ADD/ADC/SUB/SBB. -/
-private def flagBundle (cf r : String) : List LVal :=
+def flagBundle (cf r : String) : List LVal :=
   [.Lnone {} (.sword .U64), lvR cf,
    .Lnone {} (.sword .U64), .Lnone {} (.sword .U64), .Lnone {} (.sword .U64),
    lvR r]
 
 /-- Initial state with `a := 0xFFFFFFFFFFFFFFFE`, `b := 3`. So
     `a + b = 1` (with carry), `a * b = 0x2_FFFFFFFFFFFFFFFA`. -/
-private def initState : BignumState :=
+def initState : BignumState :=
   let regs : String → BitVec 64 := fun x =>
     if x = "a" then 0xFFFFFFFFFFFFFFFE
     else if x = "b" then 3
@@ -2131,12 +2139,12 @@ Three back-to-back tests on a tiny synthetic body, all `native_decide`. -/
 
 namespace ShiftSmoke
 
-private def vU (s : String) : Var := { vname := s, vtype := .sword .U64 }
-private def lvR (s : String) : LVal := .Lvar { var := vU s }
-private def pv (s : String) : PExpr := .Pvar { gv := { var := vU s }, gs := false }
+def vU (s : String) : Var := { vname := s, vtype := .sword .U64 }
+def lvR (s : String) : LVal := .Lvar { var := vU s }
+def pv (s : String) : PExpr := .Pvar { gv := { var := vU s }, gs := false }
 
 /-- Initial state: `a := 0xF0`, `b := 0x80`, `k := 4`, others 0. -/
-private def initState : BignumState :=
+def initState : BignumState :=
   let regs : String → BitVec 64 := fun x =>
     if x = "a" then 0xF0
     else if x = "b" then 0x80
@@ -2147,7 +2155,7 @@ private def initState : BignumState :=
 /-- 6-LVal flag bundle `[of, cf, sf, pf, zf, dst]` (only dst captured) —
     the shape `jasminc` expects for `#SHL_64`/`#SHR_64`/`#SHLD_64`/
     `#SHRD_64`. -/
-private def flagBundle (r : String) : List LVal :=
+def flagBundle (r : String) : List LVal :=
   [.Lnone {} (.sword .U64), .Lnone {} (.sword .U64),
    .Lnone {} (.sword .U64), .Lnone {} (.sword .U64), .Lnone {} (.sword .U64),
    lvR r]
@@ -2220,26 +2228,26 @@ So the result is `[0, 13]` with no final carry. -/
 
 namespace U32AddSmoke
 
-private def vU (s : String) : Var := { vname := s, vtype := .sword .U32 }
-private def lvR (s : String) : LVal := .Lvar { var := vU s }
-private def pv (s : String) : PExpr := .Pvar { gv := { var := vU s }, gs := false }
-private def varI (s : String) : VarI := { var := vU s }
+def vU (s : String) : Var := { vname := s, vtype := .sword .U32 }
+def lvR (s : String) : LVal := .Lvar { var := vU s }
+def pv (s : String) : PExpr := .Pvar { gv := { var := vU s }, gs := false }
+def varI (s : String) : VarI := { var := vU s }
 
 /-- 6-LVal flag bundle `[of, cf, sf, pf, zf, dst]` (only cf + dst captured). -/
-private def fb (cf r : String) : List LVal :=
+def fb (cf r : String) : List LVal :=
   [.Lnone {} (.sword .U32), lvR cf,
    .Lnone {} (.sword .U32), .Lnone {} (.sword .U32), .Lnone {} (.sword .U32),
    lvR r]
 
-private def loadU32 (x base : String) : InstrR :=
+def loadU32 (x base : String) : InstrR :=
   .Cassgn (lvR x) .AT_none (.sword .U32) (.Pload .U32 (varI base) (.Pconst 0))
 
-private def storeU32 (base src : String) : InstrR :=
+def storeU32 (base src : String) : InstrR :=
   .Cassgn (.Lmem .U32 (varI base) (.Pconst 0)) .AT_none (.sword .U32) (pv src)
 
 /-- Pointer advance: 64-bit add (pointers are `reg u64`, even in a u32
     kernel — only the limb data is 32-bit). -/
-private def advance (x : String) (k : Int) : InstrR :=
+def advance (x : String) (k : Int) : InstrR :=
   .Cassgn (.Lvar { var := { vname := x, vtype := .sword .U64 } }) .AT_none
     (.sword .U64)
     (.Papp2 (.Oadd .U64) (.Pvar { gv := { var := { vname := x, vtype := .sword .U64 } }, gs := false }) (.Pconst k))
@@ -2292,16 +2300,16 @@ outer-loop digit-write step:
 
 namespace U8NarrowAndStoreSmoke
 
-private def v64 (s : String) : Var := { vname := s, vtype := .sword .U64 }
-private def v8  (s : String) : Var := { vname := s, vtype := .sword .U8 }
-private def lvR64 (s : String) : LVal := .Lvar { var := v64 s }
-private def lvR8  (s : String) : LVal := .Lvar { var := v8 s }
-private def pv64 (s : String) : PExpr := .Pvar { gv := { var := v64 s }, gs := false }
-private def pv8  (s : String) : PExpr := .Pvar { gv := { var := v8  s }, gs := false }
+def v64 (s : String) : Var := { vname := s, vtype := .sword .U64 }
+def v8  (s : String) : Var := { vname := s, vtype := .sword .U8 }
+def lvR64 (s : String) : LVal := .Lvar { var := v64 s }
+def lvR8  (s : String) : LVal := .Lvar { var := v8 s }
+def pv64 (s : String) : PExpr := .Pvar { gv := { var := v64 s }, gs := false }
+def pv8  (s : String) : PExpr := .Pvar { gv := { var := v8  s }, gs := false }
 
 /-- Initial state: `c64 = 0x12FF`, `buf = 1000`.  All other registers 0,
     memory empty. -/
-private def initState : BignumState :=
+def initState : BignumState :=
   let regs : String → BitVec 64 := fun x =>
     if x = "c64" then 0x12FF
     else if x = "buf" then 1000
@@ -2363,11 +2371,11 @@ with the high half zero (the u32-in-`BitVec 64` convention).
 
 namespace U32MulxSmoke
 
-private def vU (s : String) : Var := { vname := s, vtype := .sword .U32 }
-private def lvR (s : String) : LVal := .Lvar { var := vU s }
-private def pv (s : String) : PExpr := .Pvar { gv := { var := vU s }, gs := false }
+def vU (s : String) : Var := { vname := s, vtype := .sword .U32 }
+def lvR (s : String) : LVal := .Lvar { var := vU s }
+def pv (s : String) : PExpr := .Pvar { gv := { var := vU s }, gs := false }
 
-private def initState : BignumState :=
+def initState : BignumState :=
   let regs : String → BitVec 64 := fun x =>
     if x = "a" then 0xFFFFFFFE
     else if x = "b" then 3
@@ -2397,11 +2405,11 @@ Validates the U32 SBB-with-borrow-in helper and its `execInstr` dispatch.
 
 namespace U32SbbSmoke
 
-private def vU (s : String) : Var := { vname := s, vtype := .sword .U32 }
-private def lvR (s : String) : LVal := .Lvar { var := vU s }
-private def pv (s : String) : PExpr := .Pvar { gv := { var := vU s }, gs := false }
+def vU (s : String) : Var := { vname := s, vtype := .sword .U32 }
+def lvR (s : String) : LVal := .Lvar { var := vU s }
+def pv (s : String) : PExpr := .Pvar { gv := { var := vU s }, gs := false }
 
-private def initState : BignumState :=
+def initState : BignumState :=
   let regs : String → BitVec 64 := fun x =>
     if x = "a" then 0
     else if x = "b" then 1
@@ -2413,7 +2421,7 @@ private def initState : BignumState :=
 example : subBorrowIn32 0 1 0 = (1, 0xFFFFFFFF) := by native_decide
 
 /-- 6-LVal flag bundle `[of, cf, sf, pf, zf, dst]` (only cf + dst captured). -/
-private def fb (cf r : String) : List LVal :=
+def fb (cf r : String) : List LVal :=
   [.Lnone {} (.sword .U32), lvR cf,
    .Lnone {} (.sword .U32), .Lnone {} (.sword .U32), .Lnone {} (.sword .U32),
    lvR r]
@@ -2435,11 +2443,11 @@ synthetic body and checks the final state via `native_decide`. -/
 
 namespace ControlFlowSmoke
 
-private def vU (s : String) : Var := { vname := s, vtype := .sword .U64 }
-private def lvR (s : String) : LVal := .Lvar { var := vU s }
-private def pv (s : String) : PExpr :=
+def vU (s : String) : Var := { vname := s, vtype := .sword .U64 }
+def lvR (s : String) : LVal := .Lvar { var := vU s }
+def pv (s : String) : PExpr :=
   .Pvar { gv := { var := vU s }, gs := false }
-private def varI (s : String) : VarI := { var := vU s }
+def varI (s : String) : VarI := { var := vU s }
 
 /-- Initial state: `a := 1`, `b := 0`, `r := 0`. -/
 def initState : BignumState :=
@@ -2705,7 +2713,7 @@ this iff. -/
 /-- Single-step semantic equality: `stepInstrM emptyRegistry i s` reduces
     to wrapping `execInstr s i` in the monad. (Note: in `BignumM = StateT
     BignumState Option`, `.run s` is just function application.) -/
-private theorem stepInstrM_apply (i : InstrR) (s : BignumState) :
+theorem stepInstrM_apply (i : InstrR) (s : BignumState) :
     stepInstrM emptyRegistry i s =
       (execInstr s i).map (fun s' => ((), s')) := by
   simp only [stepInstrM]
@@ -2756,8 +2764,8 @@ This is the real-shape analog of `MVCGenSmoke.runToyDo`. -/
 
 namespace MVCGenSmoke
 
-private def vU (s : String) : Var := { vname := s, vtype := .sword .U64 }
-private def lvR (s : String) : LVal := .Lvar { var := vU s }
+def vU (s : String) : Var := { vname := s, vtype := .sword .U64 }
+def lvR (s : String) : LVal := .Lvar { var := vU s }
 
 /-- Initial state: `r = 41`, all other registers 0. -/
 def initState : BignumState :=
@@ -2810,8 +2818,8 @@ Verifies that the same `mvcgen + simp` recipe handles the `Copn`
 shape that bignum bodies use heavily (SUB / SBB / ADD / ADC / MULX /
 ADCX / ADOX / XOR). The body computes `r := 100 - 42 = 58`. -/
 
-private def lvN : LVal := .Lnone {} (.sword .U64)
-private def lvCf : LVal := .Lvar { var := vU "cf" }
+def lvN : LVal := .Lnone {} (.sword .U64)
+def lvCf : LVal := .Lvar { var := vU "cf" }
 
 /-- Layout: `.Copn [Lnone, cfOut, Lnone, Lnone, Lnone, rOut] AT_none
               (.Oasm ⟨"SUB_64"⟩) [a, b]` — see `subCopn` in S2NBignumSSA. -/

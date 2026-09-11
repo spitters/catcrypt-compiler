@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgSemCorrect
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JForProgSemCorrect
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgSemCorrect
 
 /-!
 # Nested bounded loops: the emitted outer-`for`-over-inner-`for` denotes the
@@ -73,6 +77,8 @@ single-level keystone — no `sorry`, axiom-clean
 For `outerN = 3`, `inner.n = 2` from `1` this computes `1 → 2^6 = 64`, KAT'd
 byte-identical in `bench/nested_loop/`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -223,7 +229,7 @@ every accumulator by `outerBodyRun_eq`. -/
 
 /-- A `foldl` of two functions that agree everywhere over the same list and seed
     coincide. (Local mirror of `JForProgCT.foldl_congr_fun`, which is `private`.) -/
-private theorem foldl_congr_fun {accTy : JasminTy} {β : Type}
+theorem foldl_congr_fun {accTy : JasminTy} {β : Type}
     (f g : ⟦accTy⟧ → β → ⟦accTy⟧)
     (hfg : ∀ acc u, f acc u = g acc u) :
     ∀ (l : List β) (init : ⟦accTy⟧), l.foldl f init = l.foldl g init

@@ -3,9 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvMontMulKernel
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvBignumKernel
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvControlFlow
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvMontMulKernel
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvMontMulKernel
+public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvBignumKernel
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvBignumKernel
+public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvControlFlow
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvControlFlow
 
 /-!
 # Curve25519 field operations + the Montgomery ladder, lowered through the owned RV64 backend (#553)
@@ -82,6 +88,8 @@ ops against the hand-computed modular results, and the WHOLE X25519 against the
 RFC 7748 §5.2 `(k, u) → out` vectors, run under qemu-riscv64 — the load-bearing
 gate (this is a **correctness** result, not a cyc/op claim: no real silicon).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

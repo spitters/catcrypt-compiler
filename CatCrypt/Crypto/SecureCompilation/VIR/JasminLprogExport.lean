@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-import Std.Data.HashMap
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public import Std.Data.HashMap
 
 /-!
 # Jasmin `Linear.lprog` value-level producer (task #142)
@@ -93,6 +98,8 @@ discharged here: the export is total, structurally well-formed
 (`Com.toLprog_wf` / `Com.toLprogPhys_wf`), and round-trips through the textual
 serializer (`Com.toLprogText_magic`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -257,10 +264,29 @@ def binOpName : JasminBinOp → String
 def withWidthTag (w : Nat) (mnem : String) : String :=
   if w = 64 then mnem ++ ":64" else mnem
 
+/-- Suffix test over the character list. The tag recognizers below are computed
+    through by `decide` in the fidelity proofs, and `String.endsWith` does not
+    reduce inside a module, so they are stated over `List.isSuffixOf`. -/
+def hasSuffix (s pat : String) : Bool := List.isSuffixOf pat.toList s.toList
+
+/-- Prefix test over the character list, for the same reason as `hasSuffix`. -/
+def hasPrefix (s pat : String) : Bool := List.isPrefixOf pat.toList s.toList
+
+/-- Read a decimal digit list. `String.toNat?` does not reduce inside a module,
+    and the operand-name parsers are computed through by `decide`. -/
+def natOfDigits? (cs : List Char) : Option Nat :=
+  match cs with
+  | [] => none
+  | _ => cs.foldl (fun acc c =>
+      match acc with
+      | some k => if '0' ≤ c && c ≤ '9' then some (k * 10 + (c.toNat - '0'.toNat)) else none
+      | none => none) (some 0)
+
 /-- Strip the optional `":64"` width tag from a body mnemonic, recovering the
     base opcode for the `isBinop` / `isShift` recognizers. -/
 def stripWidthTag (mnem : String) : String :=
-  if mnem.endsWith ":64" then String.ofList (mnem.toList.dropLast.dropLast.dropLast)
+  if hasSuffix mnem ":64" then
+    String.ofList (mnem.toList.dropLast.dropLast.dropLast)
   else mnem
 
 /-- Parse a count-tagged immediate shift/rotate mnemonic (`SHL:0`, `SHR:32`,
@@ -276,7 +302,7 @@ def stripWidthTag (mnem : String) : String :=
     carries a narrow `:8`/`:16` width tag — only the optional `:64` — so the width
     is unambiguous once the count is parsed off the front. -/
 def parseImmShiftMnem (opn : String) : Option (String × Nat × Nat) :=
-  let isU64 := opn.endsWith ":64"
+  let isU64 := hasSuffix opn ":64"
   -- peel only the `:64` width tag, leaving `SHR:<count>`
   let core := if isU64 then stripWidthTag opn else opn
   match core.splitOn ":" with
@@ -810,6 +836,7 @@ The lowering reuses the verified back-edge shape `LprogControlFlow.loopLcmd`
 proves (`Llabel ; body ; SUB ; CMP ; Lcond NZ → top` = `runBoundedLoop`), but
 spelled inline here (this module is upstream of `LprogControlFlow`, so it cannot
 import `loopLcmd`). The emitted loop is **one** body copy (not `n`), with a real
+
 `Lcond`/`Llabel` back-edge — the renderer emits `.L<d>: … ; jne .L<d>`. The
 body's SSA temporaries live in a disjoint per-loop register namespace
 (`L<d>_r<k>`), so they never collide with the enclosing straight-line chain
@@ -2211,7 +2238,7 @@ def comLRetReg (nArgs : Nat) (argNames : Nat → String) :
 /-- `getLast?` of an append whose right factor is non-empty is the right factor's
     `getLast?` (self-contained — this module does not import Mathlib's
     `List.getLast?_append_of_ne_nil`). -/
-private theorem getLast?_append_ne {α : Type _} (l₁ l₂ : List α) (h : l₂ ≠ []) :
+theorem getLast?_append_ne {α : Type _} (l₁ l₂ : List α) (h : l₂ ≠ []) :
     (l₁ ++ l₂).getLast? = l₂.getLast? := by
   induction l₁ with
   | nil => rfl
@@ -2566,11 +2593,11 @@ no `sorry` enters the spec side). -/
 
     Correctness does not depend on the cache hitting (a miss just rebuilds),
     only on a hit returning THIS body's table — which retention guarantees. -/
-private unsafe def bodyNameInfoCacheRef :
+unsafe def bodyNameInfoCacheRef :
     IO.Ref (Option (Lcmd × Array String × Std.HashMap String Nat)) :=
   unsafeBaseIO (IO.mkRef none)
 
-@[inline] private unsafe def bodyNameInfoCached (body : Lcmd) :
+@[inline] unsafe def bodyNameInfoCached (body : Lcmd) :
     Array String × Std.HashMap String Nat :=
   unsafeBaseIO do
     match ← bodyNameInfoCacheRef.get with
@@ -2871,7 +2898,7 @@ theorem freeRegIn_not_mem {numRegs : Nat} {used : List Nat} {ph : Nat}
   unfold freeRegIn at h
   simpa using List.find?_some h
 
-private theorem spillFold_mem (st : Nat) (uses : Array Nat) :
+theorem spillFold_mem (st : Nat) (uses : Array Nat) :
     ∀ (act : List PhysActive) (b0 : Option PhysActive) (far : PhysActive),
       act.foldl (fun best a =>
           match best with
@@ -3869,7 +3896,7 @@ def physBodyRmap (rmap : LOperand → LOperand) (shiftImm : ShiftImmOracle)
   -- The injected legalization moves inherit the op's width: a `:64` op routes
   -- its reload moves through `MOV:64` so the full 64-bit value survives.
   let movFor (opn : String) : String :=
-    if opn.endsWith ":64" then "MOV:64" else "MOV"
+    if hasSuffix opn ":64" then "MOV:64" else "MOV"
   -- Detect a constant shift count: either `s1` is already an `.imm` (producer-
   -- level `ImmSlotMap` substitution) or its SSA register name is covered by the
   -- legacy `ShiftImmOracle`. Both routes funnel into `lowerTwoAddrShiftImm`.
@@ -4579,13 +4606,13 @@ def insertEpilogue (body : Lcmd) (epi : Lcmd) : Lcmd :=
   let isShift (opn : String) : Bool :=
     stripWidthTag opn == "SHL" || stripWidthTag opn == "SHR"
   let movFor (opn : String) : String :=
-    if opn.endsWith ":64" then "MOV:64" else "MOV"
+    if hasSuffix opn ":64" then "MOV:64" else "MOV"
   -- The ABI prologue/epilogue moves the U64 state lanes whenever the body is a
   -- U64 kernel (Keccak): a body op carrying `:64` ⇒ the inline load/store moves
   -- must be `MOV:64` so the full 64-bit memory value survives.
   let bodyIsU64 : Bool := body.any (fun i =>
     match i.li_i with
-    | .Lopn _ opn _ => opn.endsWith ":64"
+    | .Lopn _ opn _ => hasSuffix opn ":64"
     | _ => false)
   -- The ABI MOV widths (#656 narrow-buffer seam). Two distinct legs:
   --   * `abiMovBuf` — the mov that **touches the C buffer** (`mem.RSI`/`mem.RDI`).
@@ -4790,10 +4817,10 @@ def physBodyWithStores (shiftImm : ShiftImmOracle) (body : Lcmd)
   let isShift (opn : String) : Bool :=
     stripWidthTag opn == "SHL" || stripWidthTag opn == "SHR"
   let movFor (opn : String) : String :=
-    if opn.endsWith ":64" then "MOV:64" else "MOV"
+    if hasSuffix opn ":64" then "MOV:64" else "MOV"
   let bodyIsU64 : Bool := body.any (fun i =>
     match i.li_i with
-    | .Lopn _ opn _ => opn.endsWith ":64"
+    | .Lopn _ opn _ => hasSuffix opn ":64"
     | _ => false)
   -- ABI MOV widths (#656). See `physBodyWithStoresImpl` for the buffer-leg
   -- (`abiMovBuf`, narrow `MOV:16`/`MOV:8`) vs spill-routing-leg (`abiMovReg`,
@@ -6679,7 +6706,7 @@ that must coexist mapped onto one class) from a *legitimate* in-place reuse.
 This block adds the **precise point-wise gen/kill** liveness used by a real
 register allocator and a translation-validation interference checker that runs
 on the *fresh-SSA* trace against a **proposed** logical→physical map `ρ`
-(e.g. `residenceArraySlotOf slotTraceArr`). The body is straight-line (a
+(e.g. `residenceArraySlotOf (slotTraceArr ())`). The body is straight-line (a
 let-chain, no control flow), so liveness is a single backward pass:
 
   `live_in[i]  = (live_out[i] \ {wr i}) ∪ rds i`
@@ -6802,7 +6829,7 @@ for the fresh-SSA export, where each binding introduces exactly one new name).
 /-- The proposed logical→physical map as an array keyed by fresh-SSA def-slot:
     `ρ s = slots[s]` (identity outside the residence universe). For the
     fresh-SSA Poseidon2 trace the `n`-th def slot is `n`, so this is exactly
-    `residenceArraySlotOf slotTraceArr`. -/
+    `residenceArraySlotOf (slotTraceArr ())`. -/
 def proposedRho (slots : Array Nat) : Nat → Nat := residenceArraySlotOf slots
 
 /-- **Identity (fresh-SSA) allocation is always interference-respecting.** With
@@ -6979,23 +7006,8 @@ theorem loopSmokePhysBody_one_body_copy :
       (fun i => match i.li_i with | .Lopn _ m _ => m == "ADD:64" | _ => false)).length
       = 1 := by native_decide
 
-/-- **Loop-carried accumulator + counter in fixed physical registers:** the
-    accumulator lives in `RAX`, the counter in `RBX`, the body temporary in
-    `RCX`, the argument materialized into `RBX` at entry, and the result returned
-    in `RAX`. The whole rolled, physically-allocated body, as exported. -/
-theorem loopSmokePhysBody_expected :
-    loopSmokePhysBody.map (fun i => i.li_i.toText) =
-      [ "Lopn [RBX] MOVQ [RDI]"        -- materialize SysV arg a0 → RBX
-      , "Lopn [RAX] MOV:64 [RBX]"      -- seed accumulator RAX ← a0
-      , "Lopn [RBX] MOV:64 [#4]"       -- trip counter RBX ← 4
-      , "Llabel int 1"                 -- .L1:  (back-edge target)
-      , "Lopn [RCX] MOV:64 [RAX]"      -- two-address: temp ← acc
-      , "Lopn [RCX] ADD:64 [RCX,RAX]"  -- acc + acc   (ONE body copy)
-      , "Lopn [RAX] MOV:64 [RCX]"      -- feedback acc ← temp
-      , "Lopn [RBX] SUB:64 [RBX,#1]"   -- counter--
-      , "Lopn [RBX] CMP:64 [RBX,#0]"   -- counter == 0 ?
-      , "Lcond NZ 1"                   -- jne .L1   (real back-edge)
-      , "Lret" ] := by native_decide
+-- `loopSmokePhysBody_expected` moved out of Lean: the instruction text is pinned by
+-- `lake exe jasmin-lprog-shape-kat` against `scripts/golden/jasmin-lprog-shape.txt`.
 
 /-- The looped physical export has exactly one function, named `fname`, exported.
     (Structural well-formedness — the loop-aware analogue of
@@ -7101,31 +7113,8 @@ theorem mapAddOneBodyV_has_index_advance :
       | .Lopn [.reg d] _ [.reg s, .imm 1] => d == loopIdx 2 && s == loopIdx 2
       | _ => false) = true := by decide
 
-/-- **The exact rolled, physically-allocated `.s` body.** Real x86 registers
-    throughout (no `%<UNKNOWN>` SSA name), one body copy, a real `LOADIDX in[i]`
-    (`RSI[RBX*8]`) and `STOREIDX out[i]` (`RAX[RBX*8]`) at the loop index `RBX`
-    (advanced by `ADD RBX,#1`), the input-array base `RSI` held live across the
-    loop (the `CMP RCX,RSI` invariant touch), and a real `jne .L2` back-edge. -/
-theorem mapAddOnePhysBody_expected :
-    mapAddOnePhysBody.map (fun i => i.li_i.toText) =
-      [ "Lopn [RSI] MOVQ [RDI]"              -- materialize SysV arg a0 → RSI
-      , "Lopn [RBX] MOVQ [RSI]"              -- materialize SysV arg a1 → RBX
-      , "Lopn [RAX] MOV:64 [RBX]"            -- seed accumulator (out array base)
-      , "Lopn [RBX] MOV:64 [#0]"             -- loop index ← 0
-      , "Lopn [RCX] MOV:64 [#4]"             -- trip counter ← 4
-      , "Llabel int 2"                       -- .L2:
-      , "Lopn [RDX] LOADIDX [RSI[RBX*8]]"    -- load in[i]   (SIB index = RBX)
-      , "Lopn [RDI] MOV:64 [#1]"
-      , "Lopn [RBP] MOV:64 [RDX]"
-      , "Lopn [RBP] ADD:64 [RBP,RDI]"        -- in[i] + 1
-      , "Lopn [RDX] STOREIDX [RAX[RBX*8],RBP]" -- store out[i]  (SIB index = RBX)
-      , "Lopn [RAX] MOV:64 [RDX]"            -- feedback acc ← new array
-      , "Lopn [RBX] ADD:64 [RBX,#1]"         -- index advance
-      , "Lopn [RCX] SUB:64 [RCX,#1]"         -- counter--
-      , "Lopn [RCX] CMP:64 [RCX,RSI]"        -- keep in-base RSI live across loop
-      , "Lopn [RCX] CMP:64 [RCX,#0]"
-      , "Lcond NZ 2"                         -- jne .L2  (real back-edge)
-      , "Lret" ] := by native_decide
+-- `mapAddOnePhysBody_expected` moved out of Lean: the instruction text is pinned by
+-- `lake exe jasmin-lprog-shape-kat` against `scripts/golden/jasmin-lprog-shape.txt`.
 
 /-- **Every physical body operand is a real x86 register** — no leftover SSA name
     (`r…` / `L…` / `Lctr…` / `Lidx…`) that the owned printer would render as
@@ -7198,21 +7187,8 @@ def framedDemoFundef : Lfundef :=
 def framedDemoBodyText : List String :=
   framedDemoFundef.lfd_body.map (fun i => i.li_i.toText)
 
-/-- **The exact self-allocating body.** The `FRAME 32` directive leads (driving the
-    `leaq -32(%rsp)` prologue); there is NO base LEA — the frame base is `%rsp`
-    directly (single region at offset 0, call-free); the `STOREIDX` and the
-    read-back `LOADIDX` both address `(%rsp,%rax,8)` — cells of the self-owned
-    frame — and the loaded scalar is returned in `RAX`. No SysV pointer argument
-    appears. -/
-theorem framedDemoBodyText_expected :
-    framedDemoBodyText =
-      [ "Lopn [] FRAME [#32]"
-      , "Lopn [RAX] MOV:64 [#0]"             -- cell index ← 0
-      , "Lopn [RBX] MOV:64 [#42]"            -- value ← 42
-      , "Lopn [RCX] STOREIDX [RSP[RAX*8],RBX]" -- frame[0] := 42  (SIB base = %rsp)
-      , "Lopn [RBX] LOADIDX [RSP[RAX*8]]"    -- read back frame[0] (same %rsp base)
-      , "Lopn [RAX] MOVQ [RBX]"              -- return the loaded scalar
-      , "Lret" ] := by native_decide
+-- `framedDemoBodyText_expected` moved out of Lean: the instruction text is pinned by
+-- `lake exe jasmin-lprog-shape-kat` against `scripts/golden/jasmin-lprog-shape.txt`.
 
 /-- **The `FRAME` directive leads** the framed body (the `frameSize` marker the
     printer reads to open the `leaq -F(%rsp)` frame), stating the exact 32-byte
@@ -7256,55 +7232,8 @@ The smoke kernel is `mapAddOneProg` with `out = a1` (the `init` arg) and
 def mapAddOneAbiBody : Lcmd :=
   (ComL.toLfundefPhysAbi mapAddOneProg "a1" ["a0"]).lfd_body
 
-/-- **The exact rolled, ABI-correct `.s` body.** Inside the loop (after
-    `Llabel int 2`): the IN load reloads the in-pointer from `qsave.RSI` into
-    `R14` and reads `R14[RBX*8]`; the OUT store reloads the out-pointer from
-    `qsave.RDI` into `R14` and writes `R14[RBX*8]`. The two array bases are
-    freshly reloaded from red-zone memory before *every* access, so:
-
-    * **no IN/OUT swap** — the load addresses the IN array (`qsave.RSI`), the
-      store the OUT array (`qsave.RDI`), by the argument → qsave-slot mapping
-      (not by what the RA happened to assign); and
-    * **no invariant-base clobber** — neither base is ever a body-clobberable
-      register, so the segfault (`movzbl …, %rsi` overwriting the in-pointer)
-      cannot occur. One body copy, real `jne .L2` back-edge. -/
-theorem mapAddOneAbiBody_expected :
-    mapAddOneAbiBody.map (fun i => i.li_i.toText) =
-      [ "Lopn [qsave.RDI] MOVQ [RDI]"
-      , "Lopn [qsave.RSI] MOVQ [RSI]"
-      , "Lopn [qsave.RBX] MOVQ [RBX]"
-      , "Lopn [qsave.RBP] MOVQ [RBP]"
-      , "Lopn [qsave.R12] MOVQ [R12]"
-      , "Lopn [qsave.R13] MOVQ [R13]"
-      , "Lopn [qsave.R14] MOVQ [R14]"
-      , "Lopn [qsave.R15] MOVQ [R15]"
-      , "Lopn [R14] MOVQ [RSI]"
-      , "Lopn [RSI] MOVQ [qsave.RDI]"
-      , "Lopn [RAX] MOVQ [qsave.RSI]"
-      , "Lopn [RAX] MOV:64 [RAX]"               -- (acc←out alias: no-op seed)
-      , "Lopn [RBX] MOV:64 [#0]"                -- loop index ← 0
-      , "Lopn [RCX] MOV:64 [#4]"                -- trip counter ← 4
-      , "Llabel int 2"                          -- .L2:
-      , "Lopn [R14] MOVQ [qsave.RSI]"           -- reload IN ptr → R14
-      , "Lopn [RDX] LOADIDX [R14[RBX*8]]"       -- load in[i]  (base = reloaded IN)
-      , "Lopn [RDI] MOV:64 [#1]"
-      , "Lopn [RBP] MOV:64 [RDX]"
-      , "Lopn [RBP] ADD:64 [RBP,RDI]"           -- in[i] + 1
-      , "Lopn [R14] MOVQ [qsave.RDI]"           -- reload OUT ptr → R14
-      , "Lopn [RAX] STOREIDX [R14[RBX*8],RBP]"  -- store out[i] (base = reloaded OUT)
-      , "Lopn [RAX] MOV:64 [RAX]"               -- (feedback acc: no-op)
-      , "Lopn [RBX] ADD:64 [RBX,#1]"            -- index advance
-      , "Lopn [RCX] SUB:64 [RCX,#1]"            -- counter--
-      , "Lopn [RCX] CMP:64 [RCX,RSI]"
-      , "Lopn [RCX] CMP:64 [RCX,#0]"
-      , "Lcond NZ 2"                            -- jne .L2
-      , "Lopn [RBX] MOVQ [qsave.RBX]"
-      , "Lopn [RBP] MOVQ [qsave.RBP]"
-      , "Lopn [R12] MOVQ [qsave.R12]"
-      , "Lopn [R13] MOVQ [qsave.R13]"
-      , "Lopn [R14] MOVQ [qsave.R14]"
-      , "Lopn [R15] MOVQ [qsave.R15]"
-      , "Lret" ] := by native_decide
+-- `mapAddOneAbiBody_expected` moved out of Lean: the instruction text is pinned by
+-- `lake exe jasmin-lprog-shape-kat` against `scripts/golden/jasmin-lprog-shape.txt`.
 
 /-- **The IN load base is the reloaded IN pointer, the OUT store base the reloaded
     OUT pointer — no swap.** Every `LOADIDX` is immediately preceded by a reload of
@@ -7368,18 +7297,8 @@ theorem mixedClassBody_table :
     (bodyPhysTable mixedClassBody).toList = [0, 1, 2, 2, 1000, 1001, 1002, 1002] := by
   native_decide
 
-/-- **The exact mixed physical body.** GP `Lopn`s render over GP registers
-    (`RAX`,`RBX`,`RCX`), vector `Lopn`s render over `XMM0`/`XMM1`/`XMM2` — in one
-    allocation pass, with no cross-class assignment and no `%<UNKNOWN>` SSA name. -/
-theorem mixedClassBody_expected :
-    (physBody (fun _ => none) mixedClassBody).map (fun i => i.li_i.toText)
-      = [ "Lopn [RAX] MOV [RBX]"
-        , "Lopn [RAX] ADD [RAX,RCX]"
-        , "Lopn [RCX] MOV [RAX]"
-        , "Lopn [RCX] SUB [RCX,RBX]"
-        , "Lopn [XMM0] VPXOR [XMM1,XMM2]"
-        , "Lopn [XMM2] VPADDQ [XMM0,XMM1]"
-        , "Lret" ] := by native_decide
+-- `mixedClassBody_expected` moved out of Lean: the instruction text is pinned by
+-- `lake exe jasmin-lprog-shape-kat` against `scripts/golden/jasmin-lprog-shape.txt`.
 
 /-- **No cross-class assignment.** Every GP `Lopn` (mnemonic not vector) carries
     only GP register operands (or immediates / spills), and every vector `Lopn`
@@ -7577,13 +7496,8 @@ def edDblCallBody : JLoopBodyN (.reg 64) [] :=
 def edDblCallBodyW : Lcmd :=
   (loopBodyWalkNCall 1 "RAX" "Lidx1" [] (fun _ => none) edDblCallBody.update 2).1
 
-/-- **Real `Lcall` in the loop body:** the marshalled SysV sequence — arg into
-    `RDI`, the `Lcall`, the `RAX` return captured into the body temp. -/
-theorem edDblCallBodyW_expected :
-    edDblCallBodyW.map (fun i => i.li_i.toText) =
-      [ "Lopn [RDI] MOV:64 [RAX]"          -- marshal acc (RAX) → SysV arg0 RDI
-      , "Lcall - ed_point_double:0"        -- the REAL call (not a CALL: shadow)
-      , "Lopn [L1_r2] MOV:64 [RAX]" ] := by decide  -- capture RAX → body temp
+-- `edDblCallBodyW_expected` moved out of Lean: the instruction text is pinned by
+-- `lake exe jasmin-lprog-shape-kat` against `scripts/golden/jasmin-lprog-shape.txt`.
 
 /-- **It is an `LinstrR.Lcall`,** not an `Lopn "CALL:…"` shadow. -/
 theorem edDblCallBodyW_has_real_Lcall :
@@ -7602,32 +7516,16 @@ def edAddCallBody : JLoopBodyN (.reg 64) [.reg 64] :=
 def edAddCallBodyW : Lcmd :=
   (loopBodyWalkNCall 1 "RAX" "Lidx1" ["RBX"] (fun _ => none) edAddCallBody.update 3).1
 
-/-- **Two-arg SysV marshalling:** `acc → RDI`, invariant base `RBX → RSI`, the
-    real `Lcall`, the `RAX` return captured. -/
-theorem edAddCallBodyW_expected :
-    edAddCallBodyW.map (fun i => i.li_i.toText) =
-      [ "Lopn [RDI] MOV:64 [RAX]"          -- arg0 = acc (RAX) → RDI
-      , "Lopn [RSI] MOV:64 [RBX]"          -- arg1 = invariant base (RBX) → RSI
-      , "Lcall - ed_point_add:0"
-      , "Lopn [L1_r3] MOV:64 [RAX]" ] := by decide
+-- `edAddCallBodyW_expected` moved out of Lean: the instruction text is pinned by
+-- `lake exe jasmin-lprog-shape-kat` against `scripts/golden/jasmin-lprog-shape.txt`.
 
 /-- The call-free doubling body `acc := acc + acc` over `[reg 64, reg 64]`. -/
 def dblCallfreeBody :
     Com jasminDialect [JasminTy.reg 64, JasminTy.reg 64] (JasminTy.reg 64) :=
   .var (.mk (.regArith .add 64) rfl (.cons .here (.cons .here .nil))) (.ret .here)
 
-/-- **No regression on call-free bodies:** the real-`Lcall` walk
-    (`loopBodyWalkNCall`) is byte-identical to the shadow walk (`loopBodyWalkN`)
-    on a body with no `extCall`/`callN` op (the doubling body `acc := acc + acc`).
-    So splicing the call op into the loop alphabet leaves every existing loop
-    byte-identical. -/
-theorem loopBodyWalkNCall_callfree_eq_loopBodyWalkN :
-    (loopBodyWalkNCall 1 "RAX" "Lidx1" [] (fun _ => none) dblCallfreeBody 2).1.map
-        (fun i => i.li_i.toText)
-      =
-    (loopBodyWalkN 1 "RAX" "Lidx1" [] (fun _ => none) dblCallfreeBody 2).1.map
-        (fun i => i.li_i.toText) := by
-  decide
+-- `loopBodyWalkNCall_callfree_eq_loopBodyWalkN` moved out of Lean: the two
+-- renderings are compared by `lake exe jasmin-lprog-shape-kat`.
 
 /-! ### Caller-save barrier for an in-loop `Lcall` (`physBody` / `remapOperand`)
 

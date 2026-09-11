@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Util.PrattCertificate
-import CatCrypt.Crypto.Util.BN254.Node1
+module
+
+public meta import CatCrypt.Crypto.Util.PrattCertificate
+public import Mathlib.Tactic.NormNum.Prime
+public import CatCrypt.Crypto.Util.PrattCertificate
+public meta import CatCrypt.Crypto.Util.BN254.Node1
+public import CatCrypt.Crypto.Util.BN254.Node1
 
 /-!
 # BN254 primality certificate — nested factor node `pf2`
@@ -14,6 +19,8 @@ base-field prime chain, using the sub-certificate `pf1` from `Node1`. The
 modulus is below `2^64`, so the Fermat, witness, and product checks reduce by
 `decide` and only the small-factor primality uses `native_decide`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxRecDepth 50000

@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.CatCryptDialectSP
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CatCryptDialectSP
 
 /-!
 # Relational compilation for the probabilistic `catCryptDialect`
@@ -26,6 +28,8 @@ contributes an `SPComp.sample (BitVec n)` bind; every pure op contributes a
 `SPComp.pure` that `SPComp.pure_bind` collapses into the continuation's spec at
 the op's value.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

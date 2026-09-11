@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /-!
 # Keccak θ column-parity / diffusion and π rename on the UNIFIED `Com jasminDialect`
@@ -75,6 +77,8 @@ nested `zmmPackQ` calls, the carry-free packed semantics shared with the bespoke
 
 Invoke: `lake build CatCrypt.Crypto.SecureCompilation.X86Backend.KeccakThetaPiCom`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

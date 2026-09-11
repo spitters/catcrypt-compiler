@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Rewrite.Egraph
+module
+
+public import CatCrypt.Crypto.Optimizer.Rewrite.Egraph
 
 /-!
 # Verified local peephole rewrite pass for `Com` (#274, Pass 2)
@@ -48,6 +50,8 @@ disturbing De Bruijn indices (the rewrite reuses the same argument variable `a`)
 
 All goals closed. Axiom set: `propext`, `Quot.sound`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

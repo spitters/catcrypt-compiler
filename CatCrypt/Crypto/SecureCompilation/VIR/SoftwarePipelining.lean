@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.InstructionSchedule
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.InstructionSchedule
+public import CatCrypt.Crypto.SecureCompilation.VIR.InstructionSchedule
 
 /-!
 # Verified software pipelining for `JForProg` — analysis-as-decision pass
@@ -193,6 +196,8 @@ identity, so both preservation theorems reduce to `rfl`.
   `RegisterAllocation`/`DeadCodeElim`/`InstructionSchedule` extension
   story.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -523,16 +528,12 @@ example {accTy : JasminTy} (v : Ctxt.Var (d := jasminDialect) [accTy] accTy) :
 /-- A `regArith` binary `Expr` over `reg 64`, local helper for the
     sanity tests below. (Mirrors helpers in `DeadCodeElim.lean`,
     `CommonSubexprElim.lean`, `InstructionSchedule.lean`.) -/
-private def binExprR64 {Γ : Ctxt jasminDialect} (op : JasminBinOp)
+def binExprR64 {Γ : Ctxt jasminDialect} (op : JasminBinOp)
     (a b : Ctxt.Var Γ (.reg 64)) : Expr jasminDialect Γ (.reg 64) :=
   { op := .regArith op 64, retTy_eq := rfl, args := .cons a (.cons b .nil) }
 
-/-- A `regConst` nullary `Expr` over `reg 64`, local helper. -/
-private def constExprR64 {Γ : Ctxt jasminDialect} (k : Nat) :
-    Expr jasminDialect Γ (.reg 64) :=
-  { op := .regConst 64 k, retTy_eq := rfl, args := .nil }
-
-/-- **Single-binder body**: one independent computation.
+/-! **Single-binder body** (`singleBinderBody` / `singleBinderProg`, shared with
+    `InstructionSchedule.lean`): one independent computation.
 
     ```
     v0 = acc + acc          -- position 0, deps = {} (only reads acc)
@@ -541,13 +542,6 @@ private def constExprR64 {Γ : Ctxt jasminDialect} (k : Nat) :
 
     The pipeline schedule is `[0]`; stages are `[(0, 0)]`; II = 1
     (one cycle per iter). -/
-private def singleBinderBody :
-    Com jasminDialect [JasminTy.reg 64] (JasminTy.reg 64) :=
-  .var (binExprR64 .add .here .here)
-    (.ret .here)
-
-private def singleBinderProg : JForProg (JasminTy.reg 64) :=
-  { n := 1, update := singleBinderBody }
 
 example : (analyzeSwp singleBinderProg).order = [0] := rfl
 example : (analyzeSwp singleBinderProg).stages.entries = [(0, 0)] := rfl
@@ -576,7 +570,7 @@ example : (analyzeSwp singleBinderProg).numStages = 2 := rfl
 
     With 2 iterations in flight, the pipelined cost per steady-state
     cycle is II = 2 vs the un-pipelined 3, a 1.5× speedup ceiling. -/
-private def chain3Body :
+def chain3Body :
     Com jasminDialect [JasminTy.reg 64] (JasminTy.reg 64) :=
   -- pos 0: b = a + 5  (a is acc = .here; "5" simulated by acc+acc here,
   -- since we don't have const+var binexprs in this minimal setup).
@@ -587,7 +581,7 @@ private def chain3Body :
       (.var (binExprR64 .add .here .here)
         (.ret .here)))
 
-private def chain3Prog : JForProg (JasminTy.reg 64) :=
+def chain3Prog : JForProg (JasminTy.reg 64) :=
   { n := 4, update := chain3Body }
 
 /-- The 3-element dep-chain produces a 3-element schedule, bisects to
@@ -639,7 +633,7 @@ example (h : RobustlyCTSafeJForProg chain3Prog) :
     II = `max 2 2 = 2`. This is a balanced 2-stage pipeline — the
     expected speedup is `4 / 2 = 2×` (every kernel cycle issues 2
     binders concurrently from different iterations). -/
-private def ilpBody :
+def ilpBody :
     Com jasminDialect [JasminTy.reg 64] (JasminTy.reg 64) :=
   -- pos 0: v0 = acc + acc.
   .var (binExprR64 .add .here .here)
@@ -651,7 +645,7 @@ private def ilpBody :
         (.var (binExprR64 .add (.there .here) (.there .here))
           (.ret .here))))
 
-private def ilpProg : JForProg (JasminTy.reg 64) :=
+def ilpProg : JForProg (JasminTy.reg 64) :=
   { n := 1, update := ilpBody }
 
 example : (analyzeSwp ilpProg).order = [0, 1, 2, 3] := rfl

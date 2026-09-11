@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.LatticeDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.LatticeDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeDialect
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 
 /-!
 # `Com latticeDialect → Com jasminDialect → .jazz` (Phase 4: backend unification)
@@ -70,6 +75,8 @@ path (`Com[lattice] → Com[jasmin] → .jazz`) plus a smoke test that the emitt
 `LatticeToJasminDenote.lean` (parametric) and `LatticeToJasminDenoteUncond.lean`
 (discharged).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasmin
 

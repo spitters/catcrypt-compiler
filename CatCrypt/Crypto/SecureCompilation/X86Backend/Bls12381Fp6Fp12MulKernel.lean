@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Fp2MulKernel
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Fp2MulKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Fp2MulKernel
 
 /-!
 # BLS12-381 `Fp6` + `Fp12` (GT-field) multiply, owned x86 (#602/#219)
@@ -88,6 +92,8 @@ This is the **GT-field arithmetic** (`Fp6`/`Fp12` mul) of the pairing tower —
 the BLS `x`-NAF) and the final exponentiation remain the documented follow-on
 layers to a fully-owned pairing.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

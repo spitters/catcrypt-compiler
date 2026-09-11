@@ -3,12 +3,20 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ThirToCom_Sha512ChMaj
-import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Sha512SigmaThirEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.ThirToCom_Sha512ChMaj
+public import CatCrypt.Crypto.SecureCompilation.ThirToCom_Sha512ChMaj
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Sha512SigmaThirEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Sha512SigmaThirEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # SHA-512 `Ch` and `Maj` (width 64) through the OWNED x86 backend (no jasminc)
@@ -58,7 +66,7 @@ slot `1` = second arg (`f`/`b`) = `inp[1]`, slot `0` = third arg (`g`/`c`) =
 
 * **Verified (value)**: `sha512ChThir_denote` / `sha512MajThir_denote`
   (the leaves denote `Ch`/`Maj` = `sha512ChSpec`/`sha512MajSpec`) and
-  `ch_via_thirDialect` / `maj_via_thirDialect` (the lowered `Com jasminDialect`
+  `ch64_via_thirDialect` / `maj64_via_thirDialect` (the lowered `Com jasminDialect`
   denotes the same).
 * **Trusted (thin)**: `renderLfundef` / `gas` / the SysV leaf ABI frame.
 
@@ -66,6 +74,8 @@ The byte-identity `sha512_ch(e,f,g) == Ch(e,f,g)` and
 `sha512_maj(a,b,c) == Maj(a,b,c)` is the external `as`/`cc` KAT in
 `bench/thir_front_sha512_chmaj_owned/` (no jasminc).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -153,6 +163,6 @@ def emitMain : IO Unit := do
 The render is written while this module elaborates, so `lake` produces it from
 this file and no separate driver or Makefile rule carries the dependency. -/
 
-#eval emitMain
+-- #eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.Sha512ChMajThirEmit

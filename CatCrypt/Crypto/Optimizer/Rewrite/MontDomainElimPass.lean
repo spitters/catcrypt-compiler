@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Rewrite.AbsentRewrites
+module
+
+public import CatCrypt.Crypto.Optimizer.Rewrite.AbsentRewrites
 
 /-!
 # Montgomery-domain canonicalization pass
@@ -20,6 +22,8 @@ The whole development is PARAMETRIC in the Montgomery factor `R` — only
 materialized (the Trocq/relational-transport discipline: prove on the cheap
 abstract structure, never `cbv` over the concrete Montgomery constant).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

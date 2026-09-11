@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithIselSoundness
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithIselSoundness
 
 /-!
 # D3 — a denotation-preserving instruction-selection rewrite over `Com jasminDialect`
@@ -61,6 +64,8 @@ natural next deliverable; the value-level soundness for each is already discharg
 *framework* (the structural `Com` recursion + the `Expr.denote` lift) on the cleanest
 same-shape case, so the multi-op extensions reuse the same preservation skeleton.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.ArithIselPass
 

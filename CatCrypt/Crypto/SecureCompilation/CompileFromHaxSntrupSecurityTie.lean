@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSntrupMulTie
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSntrupMulTie
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
 
 /-!
 # #607 security tie: the compile-from-hax sntrup761 MAC leaf realizes the
@@ -48,6 +51,8 @@ unconditional form here is the right one for the security-consumed reference. Th
 tie does **not** discharge the NTRU-Prime one-wayness / SXY assumption — that
 remains the hypothesis of `NTRU/Security.lean`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

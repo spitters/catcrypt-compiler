@@ -3,10 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgSemCorrect
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgNested
-import CatCrypt.Crypto.SecureCompilation.VIR.JForProgTreehash
-import CatCrypt.Crypto.SecureCompilation.VIR.FreshNameInjective
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgSemCorrect
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgNested
+public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgTreehash
+public import CatCrypt.Crypto.SecureCompilation.VIR.FreshNameInjective
 
 /-!
 # The bounded-loop keystone for arbitrary multi-op straight-line bodies
@@ -43,6 +46,8 @@ keystone to **arbitrary straight-line multi-op `Com` bodies**:
 The only carried hypothesis is the opaque-leaf edge `LeafAgrees`, exactly as the
 single-var keystone — no `sorry`, axiom-clean.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -164,7 +169,7 @@ outer level closes by the same `foldl` congruence the single-var version uses. -
 
 /-- A `foldl` of two functions that agree everywhere over the same list and seed
     coincide. (Local mirror of `JForProgCT.foldl_congr_fun`, which is `private`.) -/
-private theorem foldl_congr_fun {accTy : JasminTy} {β : Type}
+theorem foldl_congr_fun {accTy : JasminTy} {β : Type}
     (f g : ⟦accTy⟧ → β → ⟦accTy⟧)
     (hfg : ∀ acc u, f acc u = g acc u) :
     ∀ (l : List β) (init : ⟦accTy⟧), l.foldl f init = l.foldl g init

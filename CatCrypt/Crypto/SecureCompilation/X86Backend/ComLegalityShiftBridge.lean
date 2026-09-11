@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ComLegalityToGatherFull
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ShiftMnemSymbolic
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ComLegalityToGatherFull
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ShiftMnemSymbolic
 
 /-!
 # D4 shift-family bridge: the immediate shifts lower under `lowerLinstrExt2`
@@ -20,7 +23,7 @@ prefix-or-suffix-over-append characterisation lemma, so neither the matcher's
 string discrimination nor `parseShiftMnem`'s `startsWith` gate reduces — by the
 kernel **or** by elaborator def-eq — over `_ ++ toString n` for a *symbolic* `n`.
 (Probed directly: `simp` / `exact?` / `decide` all fail on
-`(("SHR:" ++ t) ++ ":64").toSlice.endsWith ":64"` for a free `t`. There is no
+`(("SHR:" ++ t) ++ ":64").hasSuffix toSlice ":64"` for a free `t`. There is no
 `String.startsWith_append` / `String.endsWith_append` in the toolchain.)
 
 This file closes the bridge for the immediate shifts. For a *closed* `n` the
@@ -58,6 +61,8 @@ the **whole** reduction-tractable supported-op set — with the immediate shifts
 at any count — so every legal op the front exports lowers under
 `lowerLinstrExt2`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

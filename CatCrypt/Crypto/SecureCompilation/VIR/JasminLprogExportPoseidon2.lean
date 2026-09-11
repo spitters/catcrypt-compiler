@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2WholePermCom
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2WholePermCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.Poseidon2WholePermCom
 
 /-!
 # ABI maps for the owned-RA linear export of the Poseidon2-BabyBear permutation
@@ -52,6 +56,8 @@ so `RSI = inp` and `RDI = out`. All operands are U64, so the ABI loads of the
 spill/save cells at 8 bytes uniformly, covering Poseidon2's U64 spills.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
@@ -84,7 +90,7 @@ def poseidon2OutStoreMap : OutStoreMap :=
 /-! ## Phase-0 register-allocator translation-validation entry points (#476 RA)
 
 The owned-RA producer proposes the residence map
-`Poseidon2WholePermCom.slotTraceArr` (binding ordinal → `Fin 25` residence
+`(Poseidon2WholePermCom.slotTraceArr ())` (binding ordinal → `Fin 25` residence
 class) to coalesce the ≈107 000 fresh-SSA names onto 25 logical slots. The
 Phase-0 interference checker (`JasminLprogExport.interferenceOkB`,
 `interferenceOk_of_boolB`) runs the precise point-wise liveness over the
@@ -105,13 +111,13 @@ would be a multi-minute in-kernel evaluation); it is a compiled `#eval`/run. -/
     coalescing. This is the trace the Phase-0 interference checker scans. -/
 def poseidon2FreshTrace : List PhysEvent :=
   bodyTrace
-    (comToLfundef Poseidon2WholePermCom.poseidon2PermComOut poseidon2ImmSlots).lfd_body
+    (comToLfundef (Poseidon2WholePermCom.poseidon2PermComOut ()) poseidon2ImmSlots).lfd_body
 
 /-- The proposed logical→physical (residence) map for the owned-RA coalescing:
     fresh-SSA def-slot → `Fin 25` residence class, read off
-    `Poseidon2WholePermCom.slotTraceArr`. -/
+    `(Poseidon2WholePermCom.slotTraceArr ())`. -/
 def poseidon2ResidenceRho : Nat → Nat :=
-  proposedRho Poseidon2WholePermCom.slotTraceArr
+  proposedRho (Poseidon2WholePermCom.slotTraceArr ())
 
 /-- **Phase-0 checker verdict on the 107k Poseidon2 body** (orchestrator-run via
     the compiled exe): `interferenceOkB poseidon2FreshTrace poseidon2ResidenceRho`.

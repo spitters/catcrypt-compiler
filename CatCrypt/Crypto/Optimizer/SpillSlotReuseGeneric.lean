@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.GenericRegAlloc
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvRegAlloc
+module
+
+public meta import CatCrypt.Crypto.Optimizer.GenericRegAlloc
+public import CatCrypt.Crypto.Optimizer.GenericRegAlloc
+public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvRegAlloc
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvRegAlloc
 
 /-!
 # Spill-slot **reuse**, generic over `MachineModel` (P6, D3 phase)
@@ -54,6 +58,8 @@ proof inspects machine state — generalizes; the block-threading wrapper stays 
 (it is one line on top of the atom in each backend's own file). §4 instantiates the
 generic atom at RV64 `RMemState` to demonstrate the pass fires.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

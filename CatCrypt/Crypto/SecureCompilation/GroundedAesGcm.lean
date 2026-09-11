@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GroundedRealProtocol
-import CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
-import CatCrypt.Crypto.SecureCompilation.ConcreteSymmetric2Realizer
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GroundedRealProtocol
+public import CatCrypt.Crypto.SecureCompilation.GroundedHashProtocol
+public import CatCrypt.Crypto.SecureCompilation.ConcreteSymmetric2Realizer
 
 /-!
 # AES-GCM grounded UNCONDITIONALLY — both phases' kernels are now THEOREMS
@@ -67,6 +69,8 @@ This module grounds **both** phases of AES-GCM as Lean theorems carrying **zero
 ## References
 * NIST SP 800-38D (GCM / GHASH, `GF(2^128)`); FIPS 197 (AES-128).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

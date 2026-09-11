@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.GenericRegAlloc
-import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+module
+
+public import CatCrypt.Crypto.Optimizer.GenericRegAlloc
+public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 
 /-!
 # Whole-block spill/reload well-formedness and the memory footprint of `spillReloadBlock`
@@ -33,6 +35,8 @@ block.
 > **`@bench-only`.** The `wfBlock` `List (JInstr 64)` is a well-formedness proof
 > fixture; the module emits no deployed `.s` artifact.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

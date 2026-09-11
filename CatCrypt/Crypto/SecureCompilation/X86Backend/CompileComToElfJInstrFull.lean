@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.SpillSlotEncode
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElf
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.SpillSlotEncode
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.SpillSlotEncode
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElf
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElf
 
 /-!
 # `compileComToElfJInstrFull` — the full-body JInstr ELF entry, byte-identical to `compileComToElf`
@@ -87,6 +91,8 @@ real kernel.
 `encodeLprog` is deletable from the GoldenPath emit path. No `sorry`, no axiom, no
 `native_decide`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

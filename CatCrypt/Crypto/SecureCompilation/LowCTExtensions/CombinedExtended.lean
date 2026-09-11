@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.LowCTExtensions.RForPreservation
-import CatCrypt.Crypto.SecureCompilation.LowCTExtensions.ArrayPreservation
+module
+
+public import CatCrypt.Crypto.SecureCompilation.LowCTExtensions.RForPreservation
+public import CatCrypt.Crypto.SecureCompilation.LowCTExtensions.ArrayPreservation
 
 /-!
 # Stage EE3 — Combined meta-theorem extensions
@@ -52,6 +54,8 @@ they range over `Com latticeDialect` programs, regardless of which
 front-end constructors emitted them. The capstone is automatically
 covered for any LowCT AST that the dialect front translates.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

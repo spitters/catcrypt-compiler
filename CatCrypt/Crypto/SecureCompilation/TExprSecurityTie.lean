@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
-import CatCrypt.Crypto.SecureCompilation.TExprToThir
+module
+
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
+public import CatCrypt.Crypto.SecureCompilation.TExprToThir
 
 /-!
 # Typed-front security tie: TYPED-compiled round leaves realize the FIPS structure
@@ -55,6 +57,8 @@ consumes, and value-agreement composes with the abstract proof by plain
 equality. The per-real-protocol fan-out (wiring these into a concrete
 SHA-256/HMAC `Dependencies` and its full UC theorem) is not re-proved here.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

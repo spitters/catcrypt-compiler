@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Denote
-import Mathlib.Data.List.FinRange
+module
+
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Denote
+public import Mathlib.Data.List.FinRange
 
 /-!
 # MLIR `vector` dialect — Progressive lowering (Phase 1)
@@ -52,6 +54,8 @@ direct rule, so the proven `denoteVectorOp_eq_lower_*` equivalences below
 transport through unchanged. See the README for the design-choice rationale
 (DialEgg vs eqsat papers).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -182,7 +186,7 @@ correct lowering needs. -/
 
 /-- Folding a sequence of stores whose lanes don't include `i` is a no-op at
     lane `i`. -/
-private theorem foldl_insert_notMem
+theorem foldl_insert_notMem
     {α : Type} {n : Nat} (i : Fin n) (f : Fin n → α) :
     ∀ (L : List (Fin n)) (w : VectorTy α n), i ∉ L →
       (L.map (fun j => ({ lane := j, value := f j } : LaneStore α n))).foldl
@@ -200,7 +204,7 @@ private theorem foldl_insert_notMem
 
 /-- The keystone bridge: folding lane-by-lane stores produced from
     `List.finRange n` writes `f i` to lane `i`. -/
-private theorem runLaneStores_finRange_map
+theorem runLaneStores_finRange_map
     {α : Type} {n : Nat} (init : VectorTy α n) (f : Fin n → α) :
     runLaneStores init ((List.finRange n).map fun i => ⟨i, f i⟩)
       = fun i => f i := by

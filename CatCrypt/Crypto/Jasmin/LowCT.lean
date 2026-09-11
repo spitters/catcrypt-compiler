@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminTypes
-import Mathlib.Data.List.Basic
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Jasmin.JasminTypes
+public import Mathlib.Data.List.Basic
 
 /-!
 # `LowCT`: Typed Tower-Field Low-level Constant-Time Command Language
@@ -30,6 +33,8 @@ overridden by downstream files for other curves.
 * AUCurves `SafeRustSimulation.v` — original Rocq DSL
 * AUCurves `SafeRustBorrowCheck.v` — borrow checker and frame theorems
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.LowCT
 
@@ -467,8 +472,7 @@ def sexprMulHiS (a b : Nat) : Nat :=
     a value oracle.  **For VALUE-level (emit-correctness) reasoning use
     `SExpr.evalBV` (wrapping-`u64`-faithful); the two agree only under the
     explicit `SExpr.inRange` side condition (`SExpr.evalBV_eq_ofNat_eval`, the
-    #250 reconciliation).**  See `../catcrypt-private/docs/aucurves-rustexec-
-    saturating-nat-wart.md` (upstream fidelity note). -/
+    #250 reconciliation).** -/
 def SExpr.eval (σ : String → Nat) : SExpr → Nat
   | .SVar x   => σ x
   | .SLit n   => n
@@ -1583,10 +1587,9 @@ theorem SExpr.toNat_evalStateBV_of_inRangeState (rs : RustState) :
 
 /-- **Tower-aware wrapping ⇔ Nat-model bridge (#250 runtime layer, `BitVec`
     form).**  On `inRangeState` inputs the intermediate-wrapping evaluator *is*
-    the truncation of the tower-aware Nat model.  This is the value the
-    `RustExec.limbStoreExpr` runtime store records — see
-    `RustExec_limbStoreExpr_eq_evalStateBV` below — so it states that the
-    runtime relation agrees with the hardware exactly on `inRangeState`. -/
+    the truncation of the tower-aware Nat model.  `RustExec.limbStoreExpr`
+    records `BitVec.ofNat 64 (e.evalState rs)`, so on `inRangeState` the runtime
+    relation agrees with the hardware exactly. -/
 theorem SExpr.evalStateBV_eq_ofNat_evalState (rs : RustState) (e : SExpr)
     (h : e.inRangeState rs) :
     e.evalStateBV rs = BitVec.ofNat 64 (e.evalState rs) := by

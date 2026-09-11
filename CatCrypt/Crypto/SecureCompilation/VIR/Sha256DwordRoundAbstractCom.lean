@@ -3,10 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Sha256DwordRoundCom
-import CatCrypt.Crypto.SecureCompilation.VIR.ZmmDwordLane
-import CatCrypt.Crypto.SecureCompilation.VIR.Sha256DwordLane
-import CatCrypt.Crypto.SecureCompilation.VIR.Sha256DwordRoundWords
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Sha256DwordRoundCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.Sha256DwordRoundCom
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ZmmDwordLane
+public import CatCrypt.Crypto.SecureCompilation.VIR.ZmmDwordLane
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Sha256DwordLane
+public import CatCrypt.Crypto.SecureCompilation.VIR.Sha256DwordLane
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Sha256DwordRoundWords
+public import CatCrypt.Crypto.SecureCompilation.VIR.Sha256DwordRoundWords
 
 /-!
 # SHA-256 dword round on the unified packed Com is the abstract FIPS-180-4 round
@@ -49,6 +56,8 @@ last abstract gap before `Avx512DwordModel` can be deleted.
 ## References
 * FIPS 180-4 — Secure Hash Standard (§6.2.2 — the compression round).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

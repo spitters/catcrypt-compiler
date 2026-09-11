@@ -3,7 +3,9 @@ Copyright (c) 2024 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminTranslate
+module
+
+public import CatCrypt.Crypto.Jasmin.JasminTranslate
 
 /-!
 # AES Jasmin Program (AST Representation)
@@ -21,6 +23,8 @@ The program consists of three functions:
 - `aes_jazz.v` from CatCrypt jasmin branch
 - Jasmin AES-NI implementation
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.AES
 
@@ -47,10 +51,10 @@ def vI : Var := { vname := "i", vtype := .sint }
 
 /-! ## Helper: VarI and GVar construction -/
 
-private def mkVarI (v : Var) : VarI := { var := v }
-private def mkGVar (v : Var) : GVar := { gv := mkVarI v, gs := false }
-private def mkLVar (v : Var) : LVal := .Lvar (mkVarI v)
-private def mkPVar (v : Var) : PExpr := .Pvar (mkGVar v)
+def mkVarI (v : Var) : VarI := { var := v }
+def mkGVar (v : Var) : GVar := { gv := mkVarI v, gs := false }
+def mkLVar (v : Var) : LVal := .Lvar (mkVarI v)
+def mkPVar (v : Var) : PExpr := .Pvar (mkGVar v)
 
 /-! ## AES Key Expansion
 

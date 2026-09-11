@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.ComToRiscvLsem
+module
+
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.ComToRiscvLsem
 
 /-!
 # `Com → RISC-V`: extending the Sail-grounded keystone with `MUL`/`MULHU`
@@ -71,6 +73,8 @@ high-word primitive). Signed high-multiply variants (`MULH`/`MULHSU`),
 `SLTU` (carry synthesis), the shifts, and `LI`/`MV` remain outside this
 statement.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -180,19 +184,19 @@ theorem riscvStepArithMul_sail_grounded
     fun j hj hdj hrj => riscvStep64_sail_grounded s rf nm j hj hdj halign hrj
   cases i with
   | add d a b =>
-      have e := base (.add d a b) trivial (by simpa [amD] using hdst) (by simpa [amD] using hrd)
+      have e := base (.add d a b) trivial (by simpa [amD] using! hdst) (by simpa [amD] using! hrd)
       simpa [amD, amA, amB, sailClause, rinstD, rinstA, rinstB, rinstRop] using e
   | sub d a b =>
-      have e := base (.sub d a b) trivial (by simpa [amD] using hdst) (by simpa [amD] using hrd)
+      have e := base (.sub d a b) trivial (by simpa [amD] using! hdst) (by simpa [amD] using! hrd)
       simpa [amD, amA, amB, sailClause, rinstD, rinstA, rinstB, rinstRop] using e
   | and d a b =>
-      have e := base (.and d a b) trivial (by simpa [amD] using hdst) (by simpa [amD] using hrd)
+      have e := base (.and d a b) trivial (by simpa [amD] using! hdst) (by simpa [amD] using! hrd)
       simpa [amD, amA, amB, sailClause, rinstD, rinstA, rinstB, rinstRop] using e
   | or d a b =>
-      have e := base (.or d a b) trivial (by simpa [amD] using hdst) (by simpa [amD] using hrd)
+      have e := base (.or d a b) trivial (by simpa [amD] using! hdst) (by simpa [amD] using! hrd)
       simpa [amD, amA, amB, sailClause, rinstD, rinstA, rinstB, rinstRop] using e
   | xor d a b =>
-      have e := base (.xor d a b) trivial (by simpa [amD] using hdst) (by simpa [amD] using hrd)
+      have e := base (.xor d a b) trivial (by simpa [amD] using! hdst) (by simpa [amD] using! hrd)
       simpa [amD, amA, amB, sailClause, rinstD, rinstA, rinstB, rinstRop] using e
   | mul d a b =>
       have hrd' : (nm d).toNat ≠ 0 := by simpa [amD] using hrd

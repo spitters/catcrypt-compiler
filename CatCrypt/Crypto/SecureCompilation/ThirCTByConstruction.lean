@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
 
 /-!
 # The `thirDialect` front IR is constant-time by construction
@@ -53,6 +55,8 @@ The bottom rung (`CompilableCT`, machine `blockLeak` state-independence) is
 middle rung (preservation through `lowerThir` and the jasmin→machine lowering) is
 the obligation the front/back lowerings + the compiler-correctness work discharge.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

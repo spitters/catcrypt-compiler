@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
-import CatCrypt.Crypto.SecureCompilation.CryptoSSA
-import CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
+module
+
+public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.SecureCompilation.CryptoSSA
+public import CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
 
 /-!
 # Rust-state interpretation substrate (CProg-free)
@@ -23,6 +25,8 @@ downstream RHP / borrow-safety / compiler-correctness consumers. Keeping it
 separate from `LowCTToCryptoSSACorrect` lets the CProg front be retired
 without disturbing the survivors.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
 
@@ -426,7 +430,7 @@ lemma bindingOK_sword_ne {n : Nat} (h : n ≠ 64) {Γ : Ctx}
 /-- An existing binding `bindingOK rs V name cv'` is preserved when we
     cons a fresh `.sword 64` onto both sides and `rsSetScalar` the
     rust state with a value at a *different* name. -/
-private lemma bindingOK_there_scalarSet
+lemma bindingOK_there_scalarSet
     {Γ : Ctx} {rs : RustState} {V : HVec Γ}
     {name x : String} {t' : CryptoTy} (cv' : CVar Γ t') (w : BitVec 64) (v : Nat)
     (hN : name ≠ x)
@@ -1018,7 +1022,7 @@ lemma bindingOK_there_consonly
 side with `HVec.cons w V` preserves `RustStateInterp` against an
 unchanged rust state, provided the new binding's `bindingOK` is
 discharged. -/
-private lemma interp_cons_unchanged
+lemma interp_cons_unchanged
     {Γ : Ctx} {vm : VarMap Γ} {rs : RustState} {V : HVec Γ}
     (hInv : RustStateInterp vm rs V) (x : String) {s : CryptoTy} (w : s.denote)
     (hPick : bindingOK rs (HVec.cons w V) x (CVar.here : CVar (s :: Γ) s)) :

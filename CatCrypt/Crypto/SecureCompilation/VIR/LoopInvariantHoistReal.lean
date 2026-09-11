@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Core
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
 
 /-!
 # A hoisting loop-invariant code motion (LICM) pass for `Com` (real transform)
@@ -83,6 +86,8 @@ recomputed value to the hoisted constant.
   (`strengthen*` in `DeadCodeElimReal.lean`); the nullary head case needs
   none, which is why it carries the non-`rfl` proof cleanly.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 -- Equation/lookup lemmas legitimately do not use every ambient typeclass

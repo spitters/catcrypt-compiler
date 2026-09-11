@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.ArithToJasminDenote
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.ArithToJasminDenote
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ArithToJasminDenote
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-!
 # `Com(arith) → Lprog(jasmin)` — the D6 jasmin sibling backend
@@ -75,6 +79,8 @@ guarantees that compose through.
 `ComLsemExportFaithful[MC/Leaf]` predicate over `lsem` for its modeled
 fragments, not an axiom.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.Arith
 

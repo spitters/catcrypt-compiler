@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf
-import CatCrypt.Crypto.Util.ZMod3329
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf
+public import CatCrypt.Crypto.Util.ZMod3329
 
 /-!
 # A `ZMod 3329` coefficient value leaf for the ascent — the ML-KEM field spike
@@ -52,6 +55,8 @@ leaf as `CorresH SRfqCanon SRfqVal`. This asymmetry is the essential difference
 from the word layer, where every 64-bit word is a valid `ZMod 2^64` element and no
 range invariant exists to break.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

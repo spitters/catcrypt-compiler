@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Std.Tactic.BVDecide
+module
+
+import all Init.Data.Repr
+public meta import Std.Tactic.BVDecide.Reflect
+public import Std.Tactic.BVDecide
 
 /-!
 # Branchless field-reduction idioms over the scalar `regArith` alphabet
@@ -24,6 +28,8 @@ needs no extension, and both backends (ARM, RISC-V) already lower every op.
 These are the verified building blocks; a kernel author composes them as `Com`
 bindings (each `bSltu`/`bCondSub` line is the obvious sequence of `regArith` ops).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.FieldReduceIdioms
 

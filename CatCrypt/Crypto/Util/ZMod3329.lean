@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.ZMod.Basic
-import Mathlib.FieldTheory.Finite.Basic
-import Mathlib.Tactic
+module
+
+public meta import Mathlib.Data.Nat.Prime.Defs
+public import Mathlib.Algebra.Field.ZMod
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.FieldTheory.Finite.Basic
+public import Mathlib.Tactic.Ring
 
 /-!
 # Verified `ZMod 3329` — the ML-KEM prime field
@@ -30,6 +34,8 @@ is in scope.
 This file replaces no infrastructure; it adds a verified-field layer
 underneath the existing ML-KEM bridge's structural bijection axioms.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

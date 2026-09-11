@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Types
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Types
+public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Types
 
 /-!
 # A Lean RISC-V RVV (vector extension) machine model — fixed VLEN=128, SEW=32, 4 × u32 lanes (#549 RVV residual)
@@ -59,6 +62,8 @@ portable shift+or idiom, register-for-register the same shape as the NEON
 `SHL;USHR;ORR` and x86 `VPSLLD;VPSRLD;VPOR`). We model the three primitives
 directly.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

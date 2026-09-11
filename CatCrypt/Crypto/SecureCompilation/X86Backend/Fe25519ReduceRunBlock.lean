@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519TierA
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Cios4LimbProven
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MulxSelect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519TierA
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Cios4LimbProven
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MulxSelect
 
 /-!
 # The Curve25519 Solinas `·19` reduce over the proven carry-chain primitives
@@ -73,6 +75,8 @@ verbatim is the **non-word-aligned bit-255 split bookkeeping**: mapping the
 below as `splitBookkeepingGap`. The fold arithmetic and the reduce are now
 theorems (no axiom); the bit-255 split mask is the remainder.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxHeartbeats 1000000

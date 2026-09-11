@@ -3,8 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.ShiftSpec
-import CatCrypt.Crypto.Jasmin.JasminEmit
+module
+
+public meta import CatCrypt.Crypto.Jasmin.Mpn.ShiftSpec
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.Mpn.ShiftSpec
+public meta import CatCrypt.Crypto.Jasmin.JasminEmit
+public import CatCrypt.Crypto.Jasmin.JasminEmit
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -97,23 +104,23 @@ open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype (toNat)
 /-! ## §1  Surface boilerplate -/
 
 /-- `reg u64` variable. -/
-private def vr (s : String) : Var := { vname := s, vtype := .sword .U64 }
+def vr (s : String) : Var := { vname := s, vtype := .sword .U64 }
 
 /-- A `Pvar` reading register `s`. -/
-private def pv (s : String) : PExpr := .Pvar { gv := { var := vr s }, gs := false }
+def pv (s : String) : PExpr := .Pvar { gv := { var := vr s }, gs := false }
 
 /-- Memory load `x := [:u64 base + 0]`. -/
-private def loadAt0 (x base : String) : InstrR :=
+def loadAt0 (x base : String) : InstrR :=
   .Cassgn (.Lvar { var := vr x }) .AT_none (.sword .U64)
     (.Pload .U64 { var := vr base } (.Pconst 0))
 
 /-- Memory store `[:u64 base + 0] := src`. -/
-private def storeAt0 (base src : String) : InstrR :=
+def storeAt0 (base src : String) : InstrR :=
   .Cassgn (.Lmem .U64 { var := vr base } (.Pconst 0)) .AT_none (.sword .U64)
     (.Pvar { gv := { var := vr src }, gs := false })
 
 /-- `r += k` / `r -= k` scalar update. -/
-private def binImm (r : String) (op : SOp2) (k : Int) : InstrR :=
+def binImm (r : String) (op : SOp2) (k : Int) : InstrR :=
   .Cassgn (.Lvar { var := vr r }) .AT_none (.sword .U64)
     (.Papp2 op (pv r) (.Pconst k))
 
@@ -121,7 +128,7 @@ private def binImm (r : String) (op : SOp2) (k : Int) : InstrR :=
     the shape `jasminc` requires for `#SHL_64`/`#SHR_64`/`#SHLD_64`/
     `#SHRD_64` (verified by directly compiling
     `_, _, _, _, _, r = #SHLD_64(a, b, 4);` with `jasminc`). -/
-private def shiftBundle (dst : String) : List LVal :=
+def shiftBundle (dst : String) : List LVal :=
   [.Lnone {} (.sword .U64), .Lnone {} (.sword .U64),
    .Lnone {} (.sword .U64), .Lnone {} (.sword .U64), .Lnone {} (.sword .U64),
    .Lvar { var := vr dst }]
@@ -129,24 +136,24 @@ private def shiftBundle (dst : String) : List LVal :=
 /-- `_, _, _, _, _, r = #SHLD_64(cur, prev, k);` —
     `r := (cur << k) | (prev >> (64 - k))`, the cross-limb left-merge
     matching `bitShiftLeftAux r prev'` where `prev' = prev >>> (64 - k)`. -/
-private def shldCopn (dstName curName prevName kName : String) : InstrR :=
+def shldCopn (dstName curName prevName kName : String) : InstrR :=
   .Copn (shiftBundle dstName) .AT_none (.Oasm ⟨"SHLD_64"⟩)
     [pv curName, pv prevName, pv kName]
 
 /-- `_, _, _, _, _, r = #SHRD_64(cur, nextlow, k);` —
     `r := (cur >> k) | (nextlow << (64 - k))`, the cross-limb right-merge
     matching `bitShiftRight r (cur :: nextlow :: …)`. -/
-private def shrdCopn (dstName curName nextlowName kName : String) : InstrR :=
+def shrdCopn (dstName curName nextlowName kName : String) : InstrR :=
   .Copn (shiftBundle dstName) .AT_none (.Oasm ⟨"SHRD_64"⟩)
     [pv curName, pv nextlowName, pv kName]
 
 /-- `_, _, _, _, _, r = #SHL_64(a, k);` — single-precision left shift. -/
-private def shlCopn (dstName aName kName : String) : InstrR :=
+def shlCopn (dstName aName kName : String) : InstrR :=
   .Copn (shiftBundle dstName) .AT_none (.Oasm ⟨"SHL_64"⟩)
     [pv aName, pv kName]
 
 /-- `_, _, _, _, _, r = #SHR_64(a, k);` — single-precision right shift. -/
-private def shrCopn (dstName aName kName : String) : InstrR :=
+def shrCopn (dstName aName kName : String) : InstrR :=
   .Copn (shiftBundle dstName) .AT_none (.Oasm ⟨"SHR_64"⟩)
     [pv aName, pv kName]
 
@@ -1324,25 +1331,25 @@ theorem shr64_kbar (prev : BitVec 64) (k : Nat) (hkpos : 0 < k) (hk : k < 64) :
 
 /-! #### Helper: emit the spill-tail instructions one step at a time -/
 
-private theorem execInstr_kbar_assign64 (s : BignumState) :
+theorem execInstr_kbar_assign64 (s : BignumState) :
     execInstr s (.Cassgn (.Lvar { var := vr "kbar" }) .AT_none (.sword .U64)
                   (.Pconst 64)) = some (setReg s "kbar" (BitVec.ofInt 64 64)) := by
   rw [execInstr_constAssign]
 
-private theorem execInstr_kbar_sub (s : BignumState) :
+theorem execInstr_kbar_sub (s : BignumState) :
     execInstr s (.Cassgn (.Lvar { var := vr "kbar" }) .AT_none (.sword .U64)
                   (.Papp2 (.Osub .U64) (pv "kbar") (pv "k"))) =
         some (setReg s "kbar" (s.regs "kbar" - s.regs "k")) := by
   simp only [execInstr, evalPExpr, pv, vr,
              Option.bind_some, bind, Option.bind]
 
-private theorem execInstr_k_from_kbar (s : BignumState) :
+theorem execInstr_k_from_kbar (s : BignumState) :
     execInstr s (.Cassgn (.Lvar { var := vr "k" }) .AT_none (.sword .U64)
                   (pv "kbar")) = some (setReg s "k" (s.regs "kbar")) :=
   execInstr_regCopy s "k" "kbar"
 
 /-- The post-loop spill tail of `lshiftBody` (5 instructions). -/
-private def lshiftSpillTail : List InstrR :=
+def lshiftSpillTail : List InstrR :=
   [ .Cassgn (.Lvar { var := vr "kbar" }) .AT_none (.sword .U64) (.Pconst 64)
   , .Cassgn (.Lvar { var := vr "kbar" }) .AT_none (.sword .U64)
       (.Papp2 (.Osub .U64) (pv "kbar") (pv "k"))
@@ -1350,13 +1357,13 @@ private def lshiftSpillTail : List InstrR :=
   , shrCopn "spill" "prev" "k"
   , storeAt0 "rp" "spill" ]
 
-private theorem lshiftSpillTail_straightLine :
+theorem lshiftSpillTail_straightLine :
     InstrR.bodyIsStraightLine lshiftSpillTail := by
   simp only [lshiftSpillTail, shrCopn, storeAt0,
              InstrR.bodyIsStraightLine, InstrR.isStraightLine, and_self]
 
 /-- Body decomposes as prelude ++ [Cwhile] ++ spill tail. -/
-private theorem lshiftBody_decompose :
+theorem lshiftBody_decompose :
     lshiftBody =
       [.Cassgn (.Lvar { var := vr "prev" }) .AT_none (.sword .U64) (.Pconst 0)]
       ++ [.Cwhile [] (.Papp2 (.Oneq .U64) (pv "n") (.Pconst 0)) lshiftLoopBody]
@@ -1450,6 +1457,7 @@ theorem lshiftSpillTail_step (s : BignumState) (p : BitVec 64) (k : Nat)
   · show bignumExec lshiftSpillTail s = some s5
     show bignumExec [_,_,_,_,_] s = some s5
     convert e12345 using 1
+    rfl
   · show s5.mem = s.mem.store64 (regAddr s "rp")
         (UInt64.ofNat (p >>> (64 - k)).toNat)
     simp only [hs5, storeMem_mem, hs4_mem, hs4_rp, hs4_spill]
@@ -1558,7 +1566,7 @@ non-wrap bound comes from `disjoint_range_lt` applied to `hdo`). -/
     at `base + ofNat (8·L)` is disjoint from the preceding `8·L` bytes at
     `base`, provided `8·(L+1) ≤ 2^64` (no wraparound).  Symmetric variant
     of `Mpn.AddPrototype.range_op_head_tail_disjoint`. -/
-private theorem range_tail_head_disjoint (base : UInt64) (L : Nat)
+theorem range_tail_head_disjoint (base : UInt64) (L : Nat)
     (hbound : 8 * (L + 1) ≤ 2 ^ 64) :
     MemoryModel.Disjoint
       (range (base + UInt64.ofNat (8 * L)) 8) (range base (8 * L)) := by
@@ -2330,7 +2338,7 @@ def rshiftTrailLimb (k : Nat) (as : List (BitVec 64)) : BitVec 64 :=
 
 /-- Specialization: `(rest.foldl (fun _ w => w) a)` for `rest = w :: rest'`
     equals `rest'.foldl (fun _ w => w) w`. -/
-private theorem foldl_last_cons (a w : BitVec 64) (rest' : List (BitVec 64)) :
+theorem foldl_last_cons (a w : BitVec 64) (rest' : List (BitVec 64)) :
     (w :: rest').foldl (fun _ x => x) a = rest'.foldl (fun _ x => x) w := by
   simp [List.foldl]
 
@@ -2493,18 +2501,18 @@ theorem memHoldsLimbs_top (m : MemoryModel.Mem) (sp : UInt64)
 /-! #### Helpers for the rshift spill tail (3 instructions). -/
 
 /-- The post-loop spill tail of `rshiftBody` (3 instructions). -/
-private def rshiftSpillTail : List InstrR :=
+def rshiftSpillTail : List InstrR :=
   [ loadAt0 "top" "sp"
   , shrCopn "spill" "top" "k"
   , storeAt0 "rp" "spill" ]
 
-private theorem rshiftSpillTail_straightLine :
+theorem rshiftSpillTail_straightLine :
     InstrR.bodyIsStraightLine rshiftSpillTail := by
   simp only [rshiftSpillTail, loadAt0, shrCopn, storeAt0,
              InstrR.bodyIsStraightLine, InstrR.isStraightLine, and_self]
 
 /-- Body decomposes as `[Cwhile]` ++ spill tail. -/
-private theorem rshiftBody_decompose :
+theorem rshiftBody_decompose :
     rshiftBody = [.Cwhile [] (.Papp2 (.Oneq .U64) (pv "n") (.Pconst 0)) rshiftLoopBody]
       ++ rshiftSpillTail := by
   rfl
@@ -2562,6 +2570,7 @@ theorem rshiftSpillTail_step (s : BignumState) (top : BitVec 64) (k : Nat)
   · show bignumExec rshiftSpillTail s = some s3
     show bignumExec [_, _, _] s = some s3
     convert e123 using 1
+    rfl
   · show s3.mem = s.mem.store64 (regAddr s "rp")
         (UInt64.ofNat (top >>> k).toNat)
     simp only [hs3, storeMem_mem, hs2_mem, hs2_rp, hs2_spill]

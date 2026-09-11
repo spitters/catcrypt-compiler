@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf
 
 /-!
 # The constant-time mask-select (branchless cmov) value leaf
@@ -32,6 +35,8 @@ intended `if m = 0 then y else x`. The leaf `corres_ctSelect` runs the two-step
 xor/and LowCT chain (`d := x ^^^ y`; `r := y ^^^ (d &&& m)`) through `corres_seq`
 over the bitwise leaf, concluding the written slot `r` holds `ctSelect m x y`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalCompileHigh
-import CatCrypt.Crypto.SecureCompilation.MultiLimbEmitBridge
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.RelationalCompileHigh
+public import CatCrypt.Crypto.SecureCompilation.RelationalCompileHigh
+public meta import CatCrypt.Crypto.SecureCompilation.MultiLimbEmitBridge
+public import CatCrypt.Crypto.SecureCompilation.MultiLimbEmitBridge
 
 /-!
 # The curve-field Stage-2 leaves, discharged CONCRETELY for a MULTI-LIMB prime
@@ -68,6 +73,8 @@ squares are pure `ZMod p` algebra.
 the `native_decide` LRAT certificates the secp256k1 prime/constant pins cite
 (`secp256k1Limbs_value`, `secp256k1_nprime`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.ZMod.Basic
-import Mathlib.Data.Fin.VecNotation
-import Mathlib.Algebra.Field.Basic
+module
+
+public meta import Mathlib.Data.Nat.Prime.Defs
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.Data.Fin.VecNotation
+public import Mathlib.Algebra.Field.Basic
 
 /-!
 # Poseidon2 over Baby Bear (width 16)
@@ -54,6 +57,8 @@ plus the width-16 Baby Bear parameters from the Plonky3 paper.
 * Plonky3 — `p3-baby-bear` crate, version 0.5.2 (constants source).
 * Plonky3 — `p3-poseidon2` crate, version 0.5.2 (external/internal layer math).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

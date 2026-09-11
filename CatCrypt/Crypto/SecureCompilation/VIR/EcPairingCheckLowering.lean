@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.EcPairingCheckOps
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.EcPairingCheckOps
 
 /-!
 # Lowering the `pairing_check` GT product onto the `ext12Mul` field schedule
@@ -30,6 +32,8 @@ field-op schedules.
 This is the lowering edge `pairingCheckDialect → fieldDialect` (for the product);
 no claim is made that the schedule equals the mathematical Tate/Weil pairing.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,9 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectRustSim
-import CatCrypt.Crypto.Jasmin.LowCTBorrowCheck
+module
 
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectRustSim
+public import CatCrypt.Crypto.Jasmin.LowCTBorrowCheck
+
+
+@[expose] public section
 set_option autoImplicit false
 
 /-!

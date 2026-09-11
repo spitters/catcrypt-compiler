@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # C4 fan-out: the verified compiler emits the NTRU-HRSS ring-multiply MAC step
@@ -61,6 +65,8 @@ The abstract `Zq8192` ring tie (`ntruMacForm_eq_ring`, in the companion
 toNat`, computes exactly the `ZMod 8192` MAC `accZ + aZ · bZ` that
 `NtruhrssRingMulVerified.ringMulCoeff` sums.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -145,7 +151,7 @@ theorem ntruMac_compiles :
       ntruMacSrc (fun _ => none) = some (ntruMacForm acc a b) := by
     have h := ntruMacSrc_denoteScalar (nIn := 3) ![acc, a, b]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 64) (nIn := 3) ["acc", "a", "b"]
     ![acc, a, b] ntruMacSrc _ hc hspec
 

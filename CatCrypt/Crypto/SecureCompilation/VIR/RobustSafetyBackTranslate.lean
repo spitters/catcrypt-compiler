@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.RobustSafetyContext
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.RobustSafetyContext
 
 /-!
 # Back-translation for the image class: discharging `backTranslates` (full RSP)
@@ -59,6 +61,8 @@ result is the meaningful robust-compilation guarantee.
   robust CT ⟹ target robust CT, unconditionally, for contexts arising from
   source contexts.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

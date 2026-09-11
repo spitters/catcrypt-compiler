@@ -3,9 +3,12 @@ Copyright (c) 2025 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.UCAdmClass
-import CatCrypt.Core.SPTree
-import CatCrypt.Crypto.MonadCostModel
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.UCAdmClass
+public import CatCrypt.Core.SPTree
+public import CatCrypt.Crypto.MonadCostModel
 
 /-!
 # Constant-Time as UCAdmClass
@@ -37,6 +40,8 @@ while query-bounded only preserves the *count*. Both form valid `UCAdmClass`es.
 * Barthe et al., "Formally Verified Speculation and Buffer Overflow
   Countermeasures", POPL 2020
 -/
+
+@[expose] public section
 
 open scoped ENNReal
 

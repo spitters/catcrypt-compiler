@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
+module
+
+public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
 # Falcon-512 (FN-DSA) reflect surface — verify pipeline through the verified front
@@ -57,6 +60,8 @@ the unmodified verified front.
 * `bench/mlkem_compare/jhash_mem_from_rustcmd.lean` — sibling pattern for the
   hand-built body around `@[rust_cmd_pattern]` registration
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 
@@ -241,7 +246,7 @@ def falconPolyTowerType : TowerType := .TPolyMod 12289 512
 /-- 8-byte accept-flag word (the verify boolean). -/
 def falconAcceptTowerType : TowerType := .TBytes 8
 
-private def loc (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
+def locFalcon (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
 
 /-- The `LowCT` body the reifier *would* produce for `falconVerifyLean`.
 
@@ -258,16 +263,16 @@ private def loc (n : String) (t : TowerType) : Located := { locVar := n, locSrc 
     Each step is one `RCall leafName dest args`; the final result name
     `__result` matches `reifyLowCT%`'s end-of-chain convention. -/
 def falconVerifyBody : LowCT :=
-  let pk_l     := loc "pk"     falconPkTowerType
-  let sig_l    := loc "sig"    falconSigTowerType
-  let msg_l    := loc "msg"    falconMsgTowerType
-  let h_l      := loc "h"      falconPolyTowerType
-  let s2_l     := loc "s2"     falconPolyTowerType
-  let bnd_l    := loc "_bnd"   falconMsgTowerType
-  let c_l      := loc "c"      falconPolyTowerType
-  let t_l      := loc "t"      falconPolyTowerType
-  let s1_l     := loc "s1"     falconPolyTowerType
-  let result_l := loc "__result" falconAcceptTowerType
+  let pk_l     := locFalcon "pk"     falconPkTowerType
+  let sig_l    := locFalcon "sig"    falconSigTowerType
+  let msg_l    := locFalcon "msg"    falconMsgTowerType
+  let h_l      := locFalcon "h"      falconPolyTowerType
+  let s2_l     := locFalcon "s2"     falconPolyTowerType
+  let bnd_l    := locFalcon "_bnd"   falconMsgTowerType
+  let c_l      := locFalcon "c"      falconPolyTowerType
+  let t_l      := locFalcon "t"      falconPolyTowerType
+  let s1_l     := locFalcon "s1"     falconPolyTowerType
+  let result_l := locFalcon "__result" falconAcceptTowerType
   .RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq .RSkip
     (.RCall "falcon_decode_pk_12289_512"        h_l   [pk_l]))
     (.RCall "falcon_decode_sig_12289_512"       s2_l  [sig_l]))
@@ -307,9 +312,9 @@ noncomputable def falconSubModqLean (c t : FalconPoly) : FalconPoly :=
 
 /-- Hand-built body matching `falconSubModqLean`. -/
 def falconSubModqBody : LowCT :=
-  let c_l      := loc "c"        falconPolyTowerType
-  let t_l      := loc "t"        falconPolyTowerType
-  let result_l := loc "__result" falconPolyTowerType
+  let c_l      := locFalcon "c"        falconPolyTowerType
+  let t_l      := locFalcon "t"        falconPolyTowerType
+  let result_l := locFalcon "__result" falconPolyTowerType
   .RSeq .RSkip
     (.RCall "falcon_poly_sub_12289_512" result_l [c_l, t_l])
 
@@ -491,15 +496,15 @@ noncomputable def falconSignLean (sk : FalconSecKey) (msg : FalconMsgPlusNonce) 
     that every `RCall` has at least one arg; in Rust this would be a unit-
     typed parameter or no parameter, here it's a fresh empty buffer. -/
 def falconSignBody : LowCT :=
-  let sk_l     := loc "sk"     falconSkTowerType
-  let msg_l    := loc "msg"    falconMsgTowerType
-  let unit_l   := loc "_unit"  falconUnitTowerType
-  let nonce_l  := loc "nonce"  falconNonceTowerType
-  let bundle_l := loc "bundle" falconMsgTowerType
-  let c_l      := loc "c"      falconPolyTowerType
-  let pair_l   := loc "pair"   falconPairTowerType
-  let s2_l     := loc "s2"     falconPolyTowerType
-  let result_l := loc "__result" falconSigTowerType
+  let sk_l     := locFalcon "sk"     falconSkTowerType
+  let msg_l    := locFalcon "msg"    falconMsgTowerType
+  let unit_l   := locFalcon "_unit"  falconUnitTowerType
+  let nonce_l  := locFalcon "nonce"  falconNonceTowerType
+  let bundle_l := locFalcon "bundle" falconMsgTowerType
+  let c_l      := locFalcon "c"      falconPolyTowerType
+  let pair_l   := locFalcon "pair"   falconPairTowerType
+  let s2_l     := locFalcon "s2"     falconPolyTowerType
+  let result_l := locFalcon "__result" falconSigTowerType
   .RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq .RSkip
     (.RCall "falcon_draw_nonce_512"            nonce_l  [unit_l]))
     (.RCall "falcon_bundle_nonce_msg_512"      bundle_l [nonce_l, msg_l]))
@@ -678,13 +683,13 @@ noncomputable def falconKeygenLean (_unit : Unit) : FalconSecKey :=
     ```
 -/
 def falconKeygenBody : LowCT :=
-  let unit_l   := loc "_unit" falconUnitTowerType
-  let fg_l     := loc "fg"    falconBasisTowerType
-  let full_l   := loc "full"  falconFullBasisTowerType
-  let h_inv_l  := loc "h_inv" falconPolyTowerType
-  let h_l      := loc "h"     falconPolyTowerType
-  let pk_l     := loc "pk"    falconPkTowerType
-  let result_l := loc "__result" falconSkTowerType
+  let unit_l   := locFalcon "_unit" falconUnitTowerType
+  let fg_l     := locFalcon "fg"    falconBasisTowerType
+  let full_l   := locFalcon "full"  falconFullBasisTowerType
+  let h_inv_l  := locFalcon "h_inv" falconPolyTowerType
+  let h_l      := locFalcon "h"     falconPolyTowerType
+  let pk_l     := locFalcon "pk"    falconPkTowerType
+  let result_l := locFalcon "__result" falconSkTowerType
   .RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq .RSkip
     (.RCall "falcon_ntru_gen_512"          fg_l    [unit_l]))
     (.RCall "falcon_ntru_solve_512"        full_l  [fg_l]))

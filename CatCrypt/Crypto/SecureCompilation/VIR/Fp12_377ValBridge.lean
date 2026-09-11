@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Fp6
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Fp6
 
 /-!
 # Carrier bridge: the dialect GT value `Fp12Val bls377Q` ↔ the relational-front `Fp12_377`
@@ -88,6 +90,8 @@ with no `ξ₂ = −1` caveat. The default `Mul (Fp2Val p)` (and `Fp6Val.mul` /
 BLS12-381/BN254; `Fp{2,6,12}Val.mulBeta_neg_one` certify that the parametric
 multiplies specialise back to those at `β = −1`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

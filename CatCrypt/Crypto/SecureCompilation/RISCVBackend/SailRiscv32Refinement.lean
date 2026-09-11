@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvModel
-import Mathlib.Tactic.NormNum
-import Mathlib.Data.BitVec
-import Mathlib.Algebra.Group.Basic
+module
+
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvModel
+public import Mathlib.Tactic.NormNum
+public import Mathlib.Data.BitVec
+public import Mathlib.Algebra.Group.Basic
 
 /-!
 # Sail refinement for the 32-bit `*W`-word RV64 model (`RiscvModel`)
@@ -16,11 +18,11 @@ because its widths match Sail's `xlenbits`. `RiscvModel` is the **32-bit `*W`-wo
 (ChaCha20 / SHA-256): its registers are `R32 = BitVec 32`, while the RV64 Sail model holds
 64-bit registers and the `*W` instructions sign-extend their 32-bit result.
 
-We connect it the **same way** (vendoring the verbatim Sail clauses), with the equivalence
-stated at the **low 32 bits**: the low 32 bits of what the Sail clause writes equal our
-`R32` op applied to the low 32 bits of the operands. This is exactly the soundness of the
-32-bit-word abstraction `RiscvModel` currently *trusts* (the docstring's "auditable by eye"):
-here it is *proven* against the golden 64-bit Sail model.
+We connect it the **same way** (pasting the verbatim Sail clauses in-file), with the
+equivalence stated at the **low 32 bits**: the low 32 bits of what the Sail clause writes
+equal our `R32` op applied to the low 32 bits of the operands. This is exactly the soundness
+of the 32-bit-word abstraction `RiscvModel` currently *trusts* (the docstring's "auditable by
+eye"): here it is *proven* against the transcribed 64-bit Sail clauses below.
 
 Genuine lemmas (vs plumbing): `lo32_signExtend` (truncation undoes `*W` sign-extension),
 `lo32_eq_setWidth` + `BitVec.setWidth_{and,or,xor}` (low-32 distributes over the 64-bit logical
@@ -29,11 +31,13 @@ behind `RORIW`). Provenance/simplifications as in the 64-bit file (verbatim clau
 `opencompl/sail-riscv-lean` commit `9eba3f07`; thin `StateM`; `xreg_write_callback` dropped).
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscv32Ref
 
-/-! ## Sail runtime primitives + vendored types -/
+/-! ## Sail runtime primitives + transcribed types -/
 
 namespace Sail.BitVec
 def extractLsb {w : Nat} (x : BitVec w) (hi lo : Nat) : BitVec (hi - lo + 1) := x.extractLsb hi lo
@@ -45,6 +49,11 @@ def shift_bits_left {n m : Nat} (bv : BitVec n) (sh : BitVec m) : BitVec n := bv
 def shift_bits_right {n m : Nat} (bv : BitVec n) (sh : BitVec m) : BitVec n := bv >>> sh
 def shift_bits_right_arith {n m : Nat} (bv : BitVec n) (sh : BitVec m) : BitVec n :=
   BitVec.sshiftRight bv sh.toNat
+def zero_extend {m k_n : Nat} (v : BitVec k_n) : BitVec m := v.zeroExtend m
+def bool_to_bit (b : Bool) : BitVec 1 := if b then 1 else 0
+def zopz0zI_s {n : Nat} (x y : BitVec n) : Bool := x.slt y
+def zopz0zI_u {n : Nat} (x y : BitVec n) : Bool := x.ult y
+abbrev log2_xlen : Nat := 6
 def rotater {n : Nat} (v : BitVec n) (k : Int) : BitVec n := v.rotateRight k.toNat
 def rotate_bits_right {km kn : Nat} (value : BitVec km) (shift : BitVec kn) : BitVec km :=
   rotater value (BitVec.toNatInt shift)
@@ -71,7 +80,12 @@ def wX_bits (i : regidx) (data : BitVec 64) : SailM Unit := do
 def rget (s : RegFile) (i : BitVec 5) : BitVec 64 := if i.toNat = 0 then 0 else s i
 def runRd (m : SailM ExecutionResult) (s : RegFile) (rd : BitVec 5) : BitVec 64 := (m.run s).2 rd
 
-/-! ## Generated execute clauses — VERBATIM from `LeanRV64D/InstsEnd.lean` -/
+/-! ## Generated execute clauses — VERBATIM from `LeanRV64D/InstsEnd.lean`
+
+The `:NNNNN` citations below are line references into the *upstream* generated
+`opencompl/sail-riscv-lean` `LeanRV64D/InstsEnd.lean` at commit `9eba3f07`. That generated file
+is **not vendored in this repository** (only the individual clauses below are), so the citation
+is an external reference: it cannot be checked against a file in this tree. -/
 
 /-- `:67723`. -/
 def execute_RTYPEW (rs2 rs1 rd : regidx) (op : ropw) : SailM ExecutionResult := do
@@ -87,15 +101,33 @@ def execute_RTYPEW (rs2 rs1 rd : regidx) (op : ropw) : SailM ExecutionResult := 
   (wX_bits rd (sign_extend (m := 64) result))
   (pure RETIRE_SUCCESS)
 
-/-- `:67736` (logical ops have no `*W` form; emitted as the 64-bit `RTYPE`). -/
+/-- `:67736` (logical ops have no `*W` form; emitted as the 64-bit `RTYPE`). All ten `rop` arms
+are given, as upstream: the lowering only reaches `AND`/`OR`/`XOR` here, but a catch-all would
+make the other seven silently compute `ADD`. -/
 def execute_RTYPE (rs2 rs1 rd : regidx) (op : rop) : SailM ExecutionResult := do
   (wX_bits rd
     (← do
       match op with
+      | .ADD => (pure ((← (rX_bits rs1)) + (← (rX_bits rs2))))
+      | .SLT =>
+        (pure (zero_extend (m := 64)
+            (bool_to_bit (zopz0zI_s (← (rX_bits rs1)) (← (rX_bits rs2))))))
+      | .SLTU =>
+        (pure (zero_extend (m := 64)
+            (bool_to_bit (zopz0zI_u (← (rX_bits rs1)) (← (rX_bits rs2))))))
       | .AND => (pure ((← (rX_bits rs1)) &&& (← (rX_bits rs2))))
       | .OR => (pure ((← (rX_bits rs1)) ||| (← (rX_bits rs2))))
       | .XOR => (pure ((← (rX_bits rs1)) ^^^ (← (rX_bits rs2))))
-      | _ => (pure ((← (rX_bits rs1)) + (← (rX_bits rs2))))))
+      | .SLL =>
+        (pure (shift_bits_left (← (rX_bits rs1))
+            (Sail.BitVec.extractLsb (← (rX_bits rs2)) (log2_xlen - 1) 0)))
+      | .SRL =>
+        (pure (shift_bits_right (← (rX_bits rs1))
+            (Sail.BitVec.extractLsb (← (rX_bits rs2)) (log2_xlen - 1) 0)))
+      | .SUB => (pure ((← (rX_bits rs1)) - (← (rX_bits rs2))))
+      | .SRA =>
+        (pure (shift_bits_right_arith (← (rX_bits rs1))
+            (Sail.BitVec.extractLsb (← (rX_bits rs2)) (log2_xlen - 1) 0)))))
   (pure RETIRE_SUCCESS)
 
 /-- `:67564`. -/
@@ -227,11 +259,8 @@ theorem roriw_lo32 (s : RegFile) (rs1 rd : BitVec 5) (m : Nat) (hm : m < 32) (hr
       MonadStateOf.modifyGet, StateT.get, StateT.modifyGet] <;>
     rw [lo32_signExtend]
 
-/-- Sail `ADDI rd, rs, 0` (the `MV` pseudo-op): low 32 bits = our `mv` value `rget s rs1 [31:0]`. -/
-def zero_extend {m k_n : Nat} (v : BitVec k_n) : BitVec m := v.zeroExtend m
-def bool_to_bit (b : Bool) : BitVec 1 := if b then 1 else 0
-def zopz0zI_s {n : Nat} (x y : BitVec n) : Bool := x.slt y
-def zopz0zI_u {n : Nat} (x y : BitVec n) : Bool := x.ult y
+/-! ## Pasted-excerpt `ITYPE` machinery + the `MV` pseudo-op -/
+
 inductive iop where | ADDI | SLTI | SLTIU | XORI | ORI | ANDI
 
 /-- generated `InstsEnd.lean:69227`. -/
@@ -248,6 +277,7 @@ def execute_ITYPE (imm : BitVec 12) (rs1 rd : regidx) (op : iop) : SailM Executi
       | .SLTIU => (pure (zero_extend (m := 64) (bool_to_bit (zopz0zI_u (← (rX_bits rs1)) immext))))))
   (pure RETIRE_SUCCESS)
 
+/-- Sail `ADDI rd, rs, 0` (the `MV` pseudo-op): low 32 bits = our `mv` value `rget s rs1 [31:0]`. -/
 theorem mv_lo32 (s : RegFile) (rs1 rd : BitVec 5) (hrd : rd.toNat ≠ 0) :
     (runRd (execute_ITYPE 0 ⟨rs1⟩ ⟨rd⟩ .ADDI) s rd).extractLsb 31 0 = (rget s rs1).extractLsb 31 0 := by
   by_cases h1 : rs1.toNat = 0 <;>

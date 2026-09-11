@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.JInstrRegAllocValidated
+module
+
+public import CatCrypt.Crypto.Optimizer.JInstrRegAllocValidated
 
 /-!
 # Name-scoped register-allocation simulation for the x86 (`JInstr`) backend (#386, x86 X2)
@@ -39,6 +41,8 @@ The block driver threads it via `bNamesXsym`, the block names *augmented with ea
 `noAliasX` is strengthened to that set by `noAliasXsym`. Blocks without `loadSym`
 have `blockNamesXsym = blockNamesX`, so nothing changes for them.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

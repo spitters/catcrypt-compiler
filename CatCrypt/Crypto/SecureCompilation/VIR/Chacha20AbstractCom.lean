@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Chacha20DwordCom
-import CatCrypt.Crypto.SecureCompilation.VIR.ZmmDwordLane
-import CatCrypt.Crypto.Jasmin.ChaCha20QR
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.Chacha20DwordCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.ZmmDwordLane
+public import CatCrypt.Crypto.Jasmin.ChaCha20QR
 
 /-!
 # Abstract RFC-8439 §2.1 ChaCha20 quarter-round tie for the unified-`Com` dword kernel
@@ -62,6 +64,8 @@ Composing these, `qrSpecZ_lane` characterizes lane `k` of `qrSpecZ` as
 
 Invoke: `lake build CatCrypt.Crypto.SecureCompilation.VIR.Chacha20AbstractCom`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

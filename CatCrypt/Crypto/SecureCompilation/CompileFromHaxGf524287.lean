@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHax
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
 /-!
 # #606 fan-out: the verified compiler emits a GF(524287) Mersenne-fold multiply
@@ -45,6 +49,8 @@ SAT-times-out under `bv_decide`, so the residue is established structurally
 (Euclidean fold split + one branch-free csub case-split) — the same route the
 Mersenne-31 seam takes.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -126,7 +132,7 @@ theorem gf524287Mul_compiles :
       gf524287MulSrc (fun _ => none) = some (gf524287MulFold a b) := by
     have h := gf524287MulSrc_denoteScalar (nIn := 2) ![a, b]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   exact compileFromHax_meets_spec (w := 64) (nIn := 2) ["a", "b"]
     ![a, b] gf524287MulSrc _ hc hspec
 

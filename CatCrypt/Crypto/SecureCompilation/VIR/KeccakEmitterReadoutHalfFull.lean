@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterReadoutHalfExt
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterReadoutHalfExt
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmitterReadoutHalfExt
 
 /-!
 # Keccak emitter readout half — full-chain composition (task #134)
@@ -102,6 +106,8 @@ No `sorry`, no `native_decide`.
 See `KeccakEmit.lean` for the full 12-file Keccak VIR canonical map. This
 file is step #134 in that chain: full-chain residual reduced to one named Prop.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 set_option maxHeartbeats 64000000

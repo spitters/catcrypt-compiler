@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.CatCryptDialectSP
-import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectRelCompile
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CatCryptDialectSP
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectRelCompile
 
 /-!
 # DR-collapse — native dialect security
@@ -26,6 +28,8 @@ The security view therefore lives on `catCryptDialect` alone.
 
 **0 axioms**, **0 sorries**.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

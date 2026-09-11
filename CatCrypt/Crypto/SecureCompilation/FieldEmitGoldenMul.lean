@@ -3,13 +3,23 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ComBuilder
-import CatCrypt.Crypto.SecureCompilation.VIR.MulDenoteErgonomics
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
-import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfFull
-import CatCrypt.Crypto.SecureCompilation.VIR.Grind
-import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
-import CatCrypt.Crypto.SecureCompilation.ScalarLinX86Demo
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.ComBuilder
+public import CatCrypt.Crypto.SecureCompilation.ComBuilder
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.MulDenoteErgonomics
+public import CatCrypt.Crypto.SecureCompilation.VIR.MulDenoteErgonomics
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfFull
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfFull
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Grind
+public import CatCrypt.Crypto.SecureCompilation.VIR.Grind
+public meta import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
+public meta import CatCrypt.Crypto.SecureCompilation.ScalarLinX86Demo
+public import CatCrypt.Crypto.SecureCompilation.ScalarLinX86Demo
 
 /-!
 # Golden path, capstone: the GF(251) full multiply `(a * b) mod 251`
@@ -41,6 +51,8 @@ canonical residue. The kernel computes this *over `BitVec 64`*; correctness of
 the modular value (for `a, b` in range) is the Solinas/condsub algebra, here we
 golden the **emit**: one source, `ComOK`, `Com.denote = spec`, both backends.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

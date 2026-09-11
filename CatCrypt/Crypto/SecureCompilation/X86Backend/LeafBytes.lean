@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ElfObject
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ElfObject
 
 /-!
 # `emitLeafBytes` — one library entry point for a bytes-direct ABI-wrapped leaf
@@ -44,6 +46,8 @@ The `pushq`/`popq`/`ret` framing bytes are the standard trusted leaf scaffold
 (no encoder arm), the same trust tier the demos already carry. No `sorry`, no
 custom axiom is introduced here.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

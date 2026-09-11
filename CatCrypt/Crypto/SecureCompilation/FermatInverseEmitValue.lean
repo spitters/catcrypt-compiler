@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.BarrettReduceEmitValue
-import CatCrypt.Crypto.Optimizer.Rewrite.FermatInverseGeneric
+module
+
+public import CatCrypt.Crypto.SecureCompilation.BarrettReduceEmitValue
+public import CatCrypt.Crypto.Optimizer.Rewrite.FermatInverseGeneric
 
 /-!
 # The Fermat constant-time modular-inverse emit → VALUE bridge
@@ -55,6 +57,8 @@ unsatisfiable over-constraint.  The genuine cross-prover content is the gap
 between this canonical realizer and the emitted CT-inverse kernel's real byte
 semantics, which lives outside Lean.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

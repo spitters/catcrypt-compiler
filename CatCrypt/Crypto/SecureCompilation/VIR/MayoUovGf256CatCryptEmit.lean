@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.AesRoundCatCryptEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.AesRoundCatCryptEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.AesRoundCatCryptEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 
 /-!
 # The MAYO / UOV GF(2⁸) MAC kernel on the high `catCryptDialect`
@@ -59,6 +64,8 @@ the conditional add is the `bvAnd`/`bvSub`/`bvXor` mask idiom; every op is one o
 
 0 sorries.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -296,6 +303,6 @@ def emit : IO Unit := do
 The render is written while this module elaborates, so `lake` produces it from
 this file and no separate driver or Makefile rule carries the dependency. -/
 
-#eval emit
+-- #eval emit
 
 end CatCrypt.Crypto.SecureCompilation.VIR.MayoUovGf256CatCryptEmit

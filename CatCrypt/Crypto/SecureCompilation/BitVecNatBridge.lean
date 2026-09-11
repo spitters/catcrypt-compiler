@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Init.Data.BitVec.Lemmas
+module
+
+public import Init.Data.BitVec.Lemmas
 
 /-!
 # `BitVecNatBridge`: bounded `Nat` ↔ `BitVec w` emit-correctness transfer
@@ -21,6 +23,8 @@ plumbing is done ONCE here; each tie supplies only the two `toNat` pushes and th
 `Nat` fact. `bitvec_eq_of_nat_bridge` is the unary form; `bitvec_binop_eq_of_nat_bridge`
 is the binary (two-operand) form used by the `*MulFold_eq_mod` fold ties.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

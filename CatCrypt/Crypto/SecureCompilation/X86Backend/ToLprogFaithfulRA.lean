@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulNary
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulNary
 
 /-!
 # Allocation facts for `CoverData`: the bounded linear scan assigns distinct locations
@@ -125,6 +128,8 @@ maintenance step over `Lstate` for the non-uniform `physBody` emission, which is
 why `ToLprogFaithfulWriteSide` carries `hinj` as a per-block liveness hypothesis.
 This module supplies the RA-side fact such a re-proof consumes.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

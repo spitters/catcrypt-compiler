@@ -3,14 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ComToVeir
-import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.LatticeDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.VeirPrinterShim
-import Veir.OpCode
-import Veir.IR.OpInfo
-import Veir.IR.Attribute
-import Veir.Properties
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.ComToVeir
+public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.VeirPrinterShim
+public import Veir.OpCode
+public import Veir.IR.OpInfo
+public import Veir.IR.Attribute
+import all Veir.IR.Attribute
+public import Veir.Properties
 
 /-!
 # Path (b) Tier 1.1: `CatCryptDialect` → Veir op/type wiring
@@ -103,10 +106,12 @@ op-code is a constructor of the form `<dialect>_<op>`, e.g.
   canonical "I'm an op from a dialect Veir does not know about" tag.
   Its `propertiesOf` is `Unit`.
 * **No per-user extension**: there is no `registerOpCode` mechanism;
-  the enum is fixed at Veir build-time. Adding genuine CatCrypt-native
+  the enum is fixed at Veir build-time. Adding CatCrypt-native
   op-codes requires extending `Veir/OpCode.lean` with a
   `@[opcodes] inductive CatCrypt` block and re-generating.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -291,7 +296,7 @@ instance : ToVeirOp catCryptDialect where
 /-- Build an `UnregisteredAttr` carrying MLIR-textual type syntax for
     structural types that have no native Veir `TypeAttr` (memref,
     pair, sum). The string is emitted verbatim by Veir's printer. -/
-private def mkTextType (s : String) : Veir.TypeAttr :=
+def mkTextType (s : String) : Veir.TypeAttr :=
   ⟨.unregisteredAttr ⟨s, true⟩, by simp [Veir.Attribute.isType]⟩
 
 /-- Map each `CryptoTy` to a Veir `TypeAttr`.

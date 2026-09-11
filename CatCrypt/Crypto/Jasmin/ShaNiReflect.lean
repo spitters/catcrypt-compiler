@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
+module
+
+public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
 # Intel SHA-NI reflect surface — SHA-256 round/msg leaves through the verified front
@@ -73,6 +76,8 @@ register each leaf via `@[rust_cmd_pattern]`, then **hand-build the
 * `CatCrypt/Crypto/Jasmin/UovReflect.lean` — sibling SIMD-leaf reference
 -/
 
+@[expose] public section
+
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 
 open CatCrypt.Crypto.Jasmin.LowCT
@@ -134,7 +139,7 @@ def shaNiSha256Msg2Pattern : LowCTPattern where
 /-- Tower type of a 128-bit SHA-NI XMM operand (`memref 2`). -/
 def shaNiBlockTowerType : TowerType := .TBytes 16
 
-private def loc (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
+def locShaNi (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
 
 /-! ## 5. Pure-Lean SHA-NI kernels — the specs -/
 
@@ -155,10 +160,10 @@ noncomputable def shaNiMsg2Lean (a b : ShaNiBlock) : ShaNiBlock :=
 /-- The `LowCT` body for `shaNiRnds2Lean`. Shape:
     `RSeq RSkip (RCall "shani_sha256_rnds2" __result [prev, cur, wk])`. -/
 def shaNiRnds2Body : LowCT :=
-  let prev_l   := loc "prev"     shaNiBlockTowerType
-  let cur_l    := loc "cur"      shaNiBlockTowerType
-  let wk_l     := loc "wk"       shaNiBlockTowerType
-  let result_l := loc "__result" shaNiBlockTowerType
+  let prev_l   := locShaNi "prev"     shaNiBlockTowerType
+  let cur_l    := locShaNi "cur"      shaNiBlockTowerType
+  let wk_l     := locShaNi "wk"       shaNiBlockTowerType
+  let result_l := locShaNi "__result" shaNiBlockTowerType
   .RSeq .RSkip
     (.RCall "shani_sha256_rnds2" result_l [prev_l, cur_l, wk_l])
 
@@ -171,9 +176,9 @@ def shaNiRnds2Reified : ReifiedFunc :=
 
 /-- The `LowCT` body for `shaNiMsg1Lean`. -/
 def shaNiMsg1Body : LowCT :=
-  let a_l      := loc "a"        shaNiBlockTowerType
-  let b_l      := loc "b"        shaNiBlockTowerType
-  let result_l := loc "__result" shaNiBlockTowerType
+  let a_l      := locShaNi "a"        shaNiBlockTowerType
+  let b_l      := locShaNi "b"        shaNiBlockTowerType
+  let result_l := locShaNi "__result" shaNiBlockTowerType
   .RSeq .RSkip
     (.RCall "shani_sha256_msg1" result_l [a_l, b_l])
 
@@ -184,9 +189,9 @@ def shaNiMsg1Reified : ReifiedFunc :=
 
 /-- The `LowCT` body for `shaNiMsg2Lean`. -/
 def shaNiMsg2Body : LowCT :=
-  let a_l      := loc "a"        shaNiBlockTowerType
-  let b_l      := loc "b"        shaNiBlockTowerType
-  let result_l := loc "__result" shaNiBlockTowerType
+  let a_l      := locShaNi "a"        shaNiBlockTowerType
+  let b_l      := locShaNi "b"        shaNiBlockTowerType
+  let result_l := locShaNi "__result" shaNiBlockTowerType
   .RSeq .RSkip
     (.RCall "shani_sha256_msg2" result_l [a_l, b_l])
 

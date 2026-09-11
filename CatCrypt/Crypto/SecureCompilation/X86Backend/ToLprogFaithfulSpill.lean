@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulProbe
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulProbe
 
 /-!
 # `toLprogPhysAbi` faithfulness — the spill-reload fragment of `legalizeBinop`
@@ -83,6 +85,8 @@ covers every branch of `legalizeBinop` ∘ `lowerTwoAddr`'s binop emission. The
 `physMap` renaming refinement and the ABI/`Lret` control flow remain explicit
 residual.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

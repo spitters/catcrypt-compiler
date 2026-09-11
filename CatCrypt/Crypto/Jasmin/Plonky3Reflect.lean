@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCTReflect
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
+public import CatCrypt.Crypto.Jasmin.LowCTReflect
 
 /-!
 # Plonky3 Merkle reflect surface — Tier A migration of the Merkle layer
@@ -65,6 +69,8 @@ compiler. The legacy emit is kept as an out-of-chain reference until the
 * Mirror pattern: `CatCrypt/Crypto/Jasmin/FalconReflect.lean` (#191)
 * Driver template: `bench/fndsa_compare/verify_from_rustcmd.lean`
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 
@@ -200,7 +206,7 @@ def plonky3DigestArrTowerType (M : Nat) : TowerType := .TBytes (32 * M)
 /-- TowerType for the final 32-byte root digest. -/
 def plonky3RootTowerType : TowerType := .TBytes 32
 
-private def loc (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
+def locPlonky3 (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
 
 /-- Per-level leaf names use the array width as suffix: e.g. `plonky3_merkle_level_2`. -/
 def plonky3LevelLeafName (M : Nat) : String :=
@@ -212,10 +218,10 @@ def plonky3HashLeavesLeafName (N : Nat) : String :=
 
 /-- Body for `N = 2`: one hash-leaves, one level call, one extract. -/
 def merkleBuildRootBody2 : LowCT :=
-  let leaves_l := loc "leaves" (plonky3LeavesTowerType 2)
-  let d0_l     := loc "d0"     (plonky3DigestArrTowerType 2)
-  let d1_l     := loc "d1"     (plonky3DigestArrTowerType 1)
-  let result_l := loc "__result" plonky3RootTowerType
+  let leaves_l := locPlonky3 "leaves" (plonky3LeavesTowerType 2)
+  let d0_l     := locPlonky3 "d0"     (plonky3DigestArrTowerType 2)
+  let d1_l     := locPlonky3 "d1"     (plonky3DigestArrTowerType 1)
+  let result_l := locPlonky3 "__result" plonky3RootTowerType
   .RSeq (.RSeq (.RSeq .RSkip
     (.RCall (plonky3HashLeavesLeafName 2) d0_l [leaves_l]))
     (.RCall (plonky3LevelLeafName 1)     d1_l [d0_l]))
@@ -223,11 +229,11 @@ def merkleBuildRootBody2 : LowCT :=
 
 /-- Body for `N = 4`: one hash-leaves, 2 level calls, one extract. -/
 def merkleBuildRootBody4 : LowCT :=
-  let leaves_l := loc "leaves" (plonky3LeavesTowerType 4)
-  let d0_l     := loc "d0"     (plonky3DigestArrTowerType 4)
-  let d1_l     := loc "d1"     (plonky3DigestArrTowerType 2)
-  let d2_l     := loc "d2"     (plonky3DigestArrTowerType 1)
-  let result_l := loc "__result" plonky3RootTowerType
+  let leaves_l := locPlonky3 "leaves" (plonky3LeavesTowerType 4)
+  let d0_l     := locPlonky3 "d0"     (plonky3DigestArrTowerType 4)
+  let d1_l     := locPlonky3 "d1"     (plonky3DigestArrTowerType 2)
+  let d2_l     := locPlonky3 "d2"     (plonky3DigestArrTowerType 1)
+  let result_l := locPlonky3 "__result" plonky3RootTowerType
   .RSeq (.RSeq (.RSeq (.RSeq .RSkip
     (.RCall (plonky3HashLeavesLeafName 4) d0_l [leaves_l]))
     (.RCall (plonky3LevelLeafName 2)     d1_l [d0_l]))
@@ -236,19 +242,19 @@ def merkleBuildRootBody4 : LowCT :=
 
 /-- Body for `N = 1024`: one hash-leaves, 10 level calls, one extract. -/
 def merkleBuildRootBody1024 : LowCT :=
-  let leaves_l := loc "leaves" (plonky3LeavesTowerType 1024)
-  let d0_l     := loc "d0"     (plonky3DigestArrTowerType 1024)
-  let d1_l     := loc "d1"     (plonky3DigestArrTowerType 512)
-  let d2_l     := loc "d2"     (plonky3DigestArrTowerType 256)
-  let d3_l     := loc "d3"     (plonky3DigestArrTowerType 128)
-  let d4_l     := loc "d4"     (plonky3DigestArrTowerType 64)
-  let d5_l     := loc "d5"     (plonky3DigestArrTowerType 32)
-  let d6_l     := loc "d6"     (plonky3DigestArrTowerType 16)
-  let d7_l     := loc "d7"     (plonky3DigestArrTowerType 8)
-  let d8_l     := loc "d8"     (plonky3DigestArrTowerType 4)
-  let d9_l     := loc "d9"     (plonky3DigestArrTowerType 2)
-  let d10_l    := loc "d10"    (plonky3DigestArrTowerType 1)
-  let result_l := loc "__result" plonky3RootTowerType
+  let leaves_l := locPlonky3 "leaves" (plonky3LeavesTowerType 1024)
+  let d0_l     := locPlonky3 "d0"     (plonky3DigestArrTowerType 1024)
+  let d1_l     := locPlonky3 "d1"     (plonky3DigestArrTowerType 512)
+  let d2_l     := locPlonky3 "d2"     (plonky3DigestArrTowerType 256)
+  let d3_l     := locPlonky3 "d3"     (plonky3DigestArrTowerType 128)
+  let d4_l     := locPlonky3 "d4"     (plonky3DigestArrTowerType 64)
+  let d5_l     := locPlonky3 "d5"     (plonky3DigestArrTowerType 32)
+  let d6_l     := locPlonky3 "d6"     (plonky3DigestArrTowerType 16)
+  let d7_l     := locPlonky3 "d7"     (plonky3DigestArrTowerType 8)
+  let d8_l     := locPlonky3 "d8"     (plonky3DigestArrTowerType 4)
+  let d9_l     := locPlonky3 "d9"     (plonky3DigestArrTowerType 2)
+  let d10_l    := locPlonky3 "d10"    (plonky3DigestArrTowerType 1)
+  let result_l := locPlonky3 "__result" plonky3RootTowerType
   .RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq
     .RSkip
     (.RCall (plonky3HashLeavesLeafName 1024) d0_l  [leaves_l]))
@@ -297,9 +303,9 @@ noncomputable def merkleBuildRootLean1 (leaves : Plonky3Leaves 1) : Plonky3Diges
 
 /-- Body for `N = 1`. -/
 def merkleBuildRootBody1 : LowCT :=
-  let leaves_l := loc "leaves" (plonky3LeavesTowerType 1)
-  let d0_l     := loc "d0"     (plonky3DigestArrTowerType 1)
-  let result_l := loc "__result" plonky3RootTowerType
+  let leaves_l := locPlonky3 "leaves" (plonky3LeavesTowerType 1)
+  let d0_l     := locPlonky3 "d0"     (plonky3DigestArrTowerType 1)
+  let result_l := locPlonky3 "__result" plonky3RootTowerType
   .RSeq (.RSeq .RSkip
     (.RCall (plonky3HashLeavesLeafName 1) d0_l [leaves_l]))
     (.RCall "plonky3_merkle_extract_root" result_l [d0_l])

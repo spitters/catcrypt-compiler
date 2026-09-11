@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.MergeCom
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.MergeCom
 
 /-!
 # Verified peephole rewriting for `Com`
@@ -55,6 +57,8 @@ unchanged.
   `Zipper` / `Mapping` / `matchVar` / `PeepholeRewrite` design.
 * *Verifying Peephole Rewriting In SSA Compiler IRs*, arXiv:2407.03685.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR
 

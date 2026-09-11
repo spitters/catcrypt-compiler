@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenoteSeqExt
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenoteSeqExt
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenoteSeqExt
 
 /-!
 # SHAKE256 sponge whole-program denote through the covered `RSeq`-of-control fragment
@@ -53,6 +57,8 @@ squeeze block count (`⌈outlen / rate⌉`) are **static**, so `RFor` suffices �
 `outlen`) would need `RWhileNz`, the data-dependent-count arm; that is the hand
 `Shake256SpongeFront`'s runtime-`N` capability and is a separate obligation.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

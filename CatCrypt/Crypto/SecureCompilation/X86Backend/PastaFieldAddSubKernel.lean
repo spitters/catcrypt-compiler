@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
 # Pasta (Pallas/Vesta) field add/sub, lowered through the in-Lean x86 backend
@@ -81,6 +85,8 @@ Identical to the BN254/BLS kernels: the verified artifact is
 Jasmin's Rocq x86 semantics; `AsmPrinter` + `gas` is the thin syntactic trust
 boundary, and the SysV leaf prologue/epilogue is trusted ABI scaffolding.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

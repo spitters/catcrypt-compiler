@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenoteSeqExt
-import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectWhileDenote
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenoteSeqExt
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenoteSeqExt
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectWhileDenote
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectWhileDenote
 
 /-!
 # Plonky3 whole-prover orchestration loops through the covered `RSeq`-of-control fragment
@@ -82,6 +87,8 @@ covered opaque hash-step body.
 * `powGrindCovered_denote` — the fueled whole-program denote of the PoW grind
   `RWhileNz`, via `rWhileNz_whole_denote`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

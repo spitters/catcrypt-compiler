@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.GenericRegAlloc
+module
+
+public import CatCrypt.Crypto.Optimizer.GenericRegAlloc
 
 /-!
 # Validated renaming + no-alias checker, generically over `RegMachine`
@@ -32,6 +34,8 @@ CompCert/Jasmin, realised generically:
 The `RegMachine.instVal_rename` law is already stated with a *per-read-name*
 hypothesis, so the class is set up for exactly this scoping.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

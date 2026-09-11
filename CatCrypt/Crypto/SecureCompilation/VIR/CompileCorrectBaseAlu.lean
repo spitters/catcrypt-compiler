@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.ComToRiscvLsem
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArmLsem
-import CatCrypt.Crypto.SecureCompilation.VIR.Compiler
+module
+
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.ComToRiscvLsem
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArmLsem
+public import CatCrypt.Crypto.SecureCompilation.VIR.Compiler
 
 /-!
 # `compile_correct_baseAlu`: compiler correctness over a *genuine* non-`id` `exec`
@@ -59,6 +61,8 @@ in-tree `sail-arm` execute model) — the residual called out in
 `ComToArmLsem.lean`. This module does not change those depths; it only exposes
 the keystones in the CompCert `decode∘exec∘encode` shape over the genuine `exec`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

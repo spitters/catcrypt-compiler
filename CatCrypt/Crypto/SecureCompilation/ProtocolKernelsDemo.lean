@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ProtocolEmitRealizes
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ProtocolEmitRealizes
 
 /-!
 # The axis-6 per-protocol template, worked end-to-end
@@ -42,6 +44,8 @@ kernel's discharged realization (its leaf-bytes KAT).  The list grows; the
 purely from the per-kernel realizations and the generic composition law — no new
 per-protocol proof skeleton.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

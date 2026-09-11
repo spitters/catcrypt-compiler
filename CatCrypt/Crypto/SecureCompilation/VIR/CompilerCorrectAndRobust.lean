@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.RobustCompilationPipeline
-import CatCrypt.Crypto.SecureCompilation.VIR.WholeFnLowering
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.RobustCompilationPipeline
+public import CatCrypt.Crypto.SecureCompilation.VIR.WholeFnLowering
 
 /-!
 # The compiler is functionally correct and robust — the general waist statement
@@ -50,6 +52,8 @@ the algebraic arms (`VIR/DialectLoweringCorrectAndRobust`) supply the Field/ModA
 source programs and their CT. The remaining residuals are the per-route
 `RobustlyCTSafe` discharge and the cross-arch (`ARM`/`RISC-V`) value edges.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

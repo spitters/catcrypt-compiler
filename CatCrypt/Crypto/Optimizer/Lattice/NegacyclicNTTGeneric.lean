@@ -3,10 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Algebra.Polynomial.Div
-import Mathlib.Algebra.Polynomial.Eval.Defs
-import Mathlib.RingTheory.AdjoinRoot
-import CatCrypt.Crypto.Optimizer.Lattice.PolyConvGeneric
+module
+
+import all Init.Data.Repr
+public import Mathlib.Algebra.Polynomial.Div
+public import Mathlib.Algebra.Polynomial.Eval.Defs
+public import Mathlib.RingTheory.AdjoinRoot
+public import CatCrypt.Crypto.Optimizer.Lattice.PolyConvGeneric
 
 /-!
 # Negacyclic convolution / NTT for `R[X]/(Xⁿ+1)` (generic `CommRing`)
@@ -47,6 +50,8 @@ The explicit sign-flip interpretation is recorded as the worked example `n = 2`:
 `(1 + X)² = 2X` in `R[X]/(X²+1)` (since `X² = -1`, the `X²` term flips to `-1`
 and cancels the constant `1`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Shake256SpongeFront
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Shake256SpongeFront
+public import CatCrypt.Crypto.SecureCompilation.VIR.Shake256SpongeFront
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 
 /-!
 # Front schedule for the MSB-first early-exit `mpn_cmp`
@@ -60,6 +64,8 @@ consumes, the generation gate (`wellFormedCmp`), and the value-correct
 `{-1,0,+1}` MSB-first scan. Byte-level conformance is the external libgmp
 `__gmpn_cmp` KAT.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

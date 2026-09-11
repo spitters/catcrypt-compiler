@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
-import Mathlib.Data.BitVec
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public import Mathlib.Data.BitVec
 
 /-!
 # FN-DSA signature compression (the Falcon "c2" Golomb–Huffman encoding)
@@ -55,6 +59,8 @@ residual (it is a property of the byte accumulator, not the emit pass).
 * FIPS 206 draft, signature encoding
 * PQClean `crypto_sign/falcon-512/clean/codec.c` `comp_encode`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

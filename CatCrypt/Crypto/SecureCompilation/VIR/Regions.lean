@@ -3,11 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Core
-import CatCrypt.Crypto.SecureCompilation.VIR.CoreM
-import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.QuantumDialect
-import CatCrypt.Crypto.Jasmin.LowCT
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
+public import CatCrypt.Crypto.SecureCompilation.VIR.CoreM
+public import CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.QuantumDialect
+public import CatCrypt.Crypto.Jasmin.LowCT
 
 /-!
 # Region-extended VIR programs
@@ -60,6 +62,8 @@ to decide whether the branch is constant-time-safe.
 * Not a Phase-J information-flow type system. We accept the `SecretLevel`
   tag as caller-asserted; propagating it through ops is a separate task.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR
 

@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Jasmin.LowCT
 
 /-!
 # `orch%` DELABORATOR — the inverse of the orchestration-surface elaborator
@@ -35,6 +38,8 @@ other constructor renders inside a `{| … |}` block: `RSeq` (flattened to the
 its `SExpr` sub-tree), `RIfNz`, `RForRuntime` (over `SVar`), `RSkip`. A
 `Located ⟨name, _⟩` renders as its bare `"name"`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -155,31 +160,33 @@ macro_rules
 
 open Lean.PrettyPrinter Lean.PrettyPrinter.Delaborator Lean.PrettyPrinter.Delaborator.SubExpr
 
+meta section
+
 /-- A string-literal Expr's value. -/
-private def strLit? (e : Lean.Expr) : Option String :=
+def strLit? (e : Lean.Expr) : Option String :=
   match e with
   | .lit (.strVal s) => some s
   | _ => none
 
 /-- A `Located.mk name ty` Expr's bare name. -/
-private def locName? (e : Lean.Expr) : Option String :=
+def locName? (e : Lean.Expr) : Option String :=
   if e.getAppFn.constName? == some ``Located.mk then strLit? e.getAppArgs[0]! else none
 
 /-- Flatten a `List.cons … List.nil` Expr into element Exprs. -/
-private partial def listArgs (e : Lean.Expr) : List Lean.Expr :=
+partial def listArgs (e : Lean.Expr) : List Lean.Expr :=
   match e.getAppFn.constName? with
   | some ``List.cons => let a := e.getAppArgs; a[1]! :: listArgs a[2]!
   | _ => []
 
 /-- The `str` literals for a `List Located` Expr. -/
-private def locNames (e : Lean.Expr) : Option (List String) :=
+def locNames (e : Lean.Expr) : Option (List String) :=
   (listArgs e).mapM locName?
 
 /-- Make a `str` syntax literal. -/
-private def mkStr (s : String) : TSyntax `str := Syntax.mkStrLit s
+def mkStr (s : String) : TSyntax `str := Syntax.mkStrLit s
 
 /-- Delaborate a `SExpr` Expr into the `orchSExpr` grammar. -/
-private partial def delabSExpr (e : Lean.Expr) : DelabM (TSyntax `orchSExpr) := do
+partial def delabSExpr (e : Lean.Expr) : DelabM (TSyntax `orchSExpr) := do
   let args := e.getAppArgs
   match e.getAppFn.constName? with
   | some ``SExpr.SVar => do
@@ -201,7 +208,7 @@ private partial def delabSExpr (e : Lean.Expr) : DelabM (TSyntax `orchSExpr) := 
 mutual
 
 /-- Delaborate a `LowCT` Expr into one-or-more `ostmt`s (flattening `RSeq`). -/
-private partial def delabOStmts (e : Lean.Expr) : DelabM (Array (TSyntax `ostmt)) := do
+partial def delabOStmts (e : Lean.Expr) : DelabM (Array (TSyntax `ostmt)) := do
   let args := e.getAppArgs
   match e.getAppFn.constName? with
   | some ``LowCT.RSeq => do
@@ -260,14 +267,14 @@ private partial def delabOStmts (e : Lean.Expr) : DelabM (Array (TSyntax `ostmt)
   | _ => failure
 
 /-- Delaborate a `LowCT` Expr into a `{| … |}` block term. -/
-private partial def delabBlock (e : Lean.Expr) : DelabM Term := do
+partial def delabBlock (e : Lean.Expr) : DelabM Term := do
   let stmts ← delabOStmts e
   `({| $[$stmts];* |})
 
 end
 
 /-- Delaborate `RCallN`/`RCall` into an `orchStmt` (for the `orch%` loop body). -/
-private def delabOrchStmt (e : Lean.Expr) : DelabM (TSyntax `orchStmt) := do
+def delabOrchStmt (e : Lean.Expr) : DelabM (TSyntax `orchStmt) := do
   let args := e.getAppArgs
   match e.getAppFn.constName? with
   | some ``LowCT.RCallN => do
@@ -288,7 +295,7 @@ private def delabOrchStmt (e : Lean.Expr) : DelabM (TSyntax `orchStmt) := do
   | _ => failure
 
 /-- Flatten an `RSeq`/leaf body into `orchStmt`s (for the `orch%` loop body). -/
-private partial def delabOrchStmts (e : Lean.Expr) : DelabM (Array (TSyntax `orchStmt)) := do
+partial def delabOrchStmts (e : Lean.Expr) : DelabM (Array (TSyntax `orchStmt)) := do
   match e.getAppFn.constName? with
   | some ``LowCT.RSeq =>
       let a := e.getAppArgs
@@ -297,7 +304,7 @@ private partial def delabOrchStmts (e : Lean.Expr) : DelabM (Array (TSyntax `orc
 
 /-- Top-level: an `RFor` renders as the `orch%` loop; its `Nat` bound is
     delaborated as a `term` (so a variable bound like `n` is admissible). -/
-private def delabForTop : Delab := do
+def delabForTop : Delab := do
   let e ← getExpr
   unless e.getAppFn.constName? == some ``LowCT.RFor do failure
   let args := e.getAppArgs
@@ -308,7 +315,7 @@ private def delabForTop : Delab := do
 
 /-- Top-level: any non-`RFor` orchestration constructor renders as a `{| … |}`
     block. -/
-private def delabBlockTop : Delab := do
+def delabBlockTop : Delab := do
   let e ← getExpr
   delabBlock e
 
@@ -322,6 +329,8 @@ attribute [delab app.CatCrypt.Crypto.Jasmin.LowCT.LowCT.RScalarSetExpr] delabBlo
 attribute [delab app.CatCrypt.Crypto.Jasmin.LowCT.LowCT.RIfNz] delabBlockTop
 attribute [delab app.CatCrypt.Crypto.Jasmin.LowCT.LowCT.RForRuntime] delabBlockTop
 attribute [delab app.CatCrypt.Crypto.Jasmin.LowCT.LowCT.RSkip] delabBlockTop
+
+end            -- meta section
 
 /-! ## 3. The fixed samples (copied ASTs; canonical defs live in the rot-blocked
 `Example`/`Surface` modules) + round-trips -/
@@ -373,14 +382,14 @@ theorem ladderStep_roundtrip :
 
 set_option pp.unicode.fun true in
 /--
-info: def CatCrypt.Crypto.SecureCompilation.Fe25519SurfaceDelab.macAccumulate : ℕ → LowCT :=
+info: @[expose] def CatCrypt.Crypto.SecureCompilation.Fe25519SurfaceDelab.macAccumulate : ℕ → LowCT :=
 fun n ↦ orch% for "i" in 0..n {|"p":=callN fe25519_mul("a_i", "b_i");"acc":=call fe25519_add("p")|}
 -/
 #guard_msgs (whitespace := lax) in
 #print macAccumulate
 
 /--
-info: def CatCrypt.Crypto.SecureCompilation.Fe25519SurfaceDelab.ladderStep : LowCT :=
+info: @[expose] def CatCrypt.Crypto.SecureCompilation.Fe25519SurfaceDelab.ladderStep : LowCT :=
 {|if"swap"!=0{|cswap fe25519_cswap"x2""x3"("swap");cswap fe25519_cswap"z2""z3"("swap")|} else
     {|skip|};"a":=callN fe25519_add("x2", "z2");"b":=callN fe25519_sub("x2", "z2");"pos":=scalar"i" + 1|}
 -/

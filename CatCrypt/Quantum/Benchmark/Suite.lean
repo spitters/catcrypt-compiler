@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Quantum.QCircuit
-import CatCrypt.Quantum.OpenQASM
+module
+
+public import CatCrypt.Quantum.QCircuit
+public import CatCrypt.Quantum.OpenQASM
 
 /-!
 # Quantum Circuit Benchmark Suite
@@ -25,6 +27,8 @@ optimizers and QASM export.  Each circuit is defined concretely and fully proved
 * Cross et al. -- OpenQASM 3: A Broader and Deeper Quantum Assembly Language
 * Nielsen & Chuang -- Quantum Computation and Quantum Information
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

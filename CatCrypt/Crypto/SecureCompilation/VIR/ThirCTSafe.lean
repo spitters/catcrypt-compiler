@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminCTPredicate
-import CatCrypt.Crypto.SecureCompilation.VIR.RobustSafetyContext
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminCTPredicate
+public import CatCrypt.Crypto.SecureCompilation.VIR.RobustSafetyContext
 
 /-!
 # The THIR front lowering is robustly constant-time
@@ -32,6 +34,8 @@ the robust-compilation result": yes — by one CT-safety induction plus the
 3-line composition that the lattice front already uses, with no new
 context/linking/back-translation machinery.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

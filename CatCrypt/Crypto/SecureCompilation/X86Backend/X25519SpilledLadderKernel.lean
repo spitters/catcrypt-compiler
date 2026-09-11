@@ -3,10 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X25519MonoLadderKernel
-import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
-import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
-import CatCrypt.Crypto.SecureCompilation.X86Backend.SpillingRAFiring
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.X25519MonoLadderKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X25519MonoLadderKernel
+public meta import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+public meta import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
+public import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.SpillingRAFiring
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.SpillingRAFiring
 
 /-!
 # Applying the verified spilling register allocator to the X25519 ladder body (#413)
@@ -69,6 +76,8 @@ does not yet have.
 The numbers above are reproducible by the `#eval`s in `scripts`-style probes; the
 lightweight structural facts below are checked in-kernel. No `sorry`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

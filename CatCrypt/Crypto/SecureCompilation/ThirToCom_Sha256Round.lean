@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ThirToComFront
-import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ThirToComFront
+public import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
 
 /-!
 # SHA-256 compression-ROUND `e'` word as a `Com thirDialect` leaf
@@ -51,6 +53,8 @@ arguments; `kt = K_t`, `wt = W_t`). The single output is `e'`.
 The companion `Maj(a,b,c)` leaf (`sha256MajComThir`) is also provided — a second
 SHA-256 round component (`T₂`'s `Maj` term).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

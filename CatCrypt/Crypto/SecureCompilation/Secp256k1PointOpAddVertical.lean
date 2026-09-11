@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpWholeBody
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpWholeBody
 
 /-!
 # The front-compiled secp256k1 `jacAdd` kernel, from `Com.denote` to the spec
@@ -52,6 +55,8 @@ canonicality bound is `Secp256k1PointOpPrologue.brickScope_ofLt`, which
   `out` holding `pointCells (jacAddSpec X1 Y1 Z1 X2 Y2 Z2)`.
 * `jacAddFrontCom_denote_cells` — the descended addition `Com` denotes those cells.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpAddVertical
 

@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.ChaCha20Block
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.ChaCha20Block
+public import CatCrypt.Crypto.Jasmin.ChaCha20Block
 /-!
 # Owned-backend (no-jasminc) STATE-RESIDENT ChaCha20 block (RFC 8439 §2.3)
 
@@ -72,6 +76,8 @@ orchestrator's RFC-8439 byte-KAT.
 Invoke (emit the owned-backend `.s`):
   lake env lean --run bench/chacha_compare/chacha_resident_owned_emit.lean
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -221,17 +227,17 @@ def testExpected : Array UInt32 :=
 /-! ## 4. Self-checks (executable, fast) -/
 
 /-- The emitted-dataflow model agrees with the fast `UInt32` reference. -/
-def modelAgrees : Bool := emittedResult testInit == refResult testInit
+def modelAgrees (_ : Unit) : Bool := emittedResult testInit == refResult testInit
 
 /-- The emitted-dataflow model matches the RFC 8439 §2.3.2 expected block. -/
-def katAgrees : Bool := emittedResult testInit == testExpected
+def katAgrees (_ : Unit) : Bool := emittedResult testInit == testExpected
 
 /-- The reference matches the RFC 8439 §2.3.2 expected block (independent check
     that the reference itself is faithful). -/
-def refKatAgrees : Bool := refResult testInit == testExpected
+def refKatAgrees (_ : Unit) : Bool := refResult testInit == testExpected
 
 /-- All executable self-checks pass. -/
-def selfCheckPasses : Bool := modelAgrees && katAgrees && refKatAgrees
+def selfCheckPasses (_ : Unit) : Bool := modelAgrees () && katAgrees () && refKatAgrees ()
 
 /-! ## 5. AT&T renderer — flat `u32` resident frame, `%eax/%ecx/%edx` scratch
 
@@ -338,14 +344,14 @@ def chachaResidentAsm : String :=
 
 /-! ## 6. Structural emit-text pins -/
 
-private def asmHas (sub : String) : Bool := (chachaResidentAsm.splitOn sub).length ≥ 2
+def asmHas (sub : String) : Bool := (chachaResidentAsm.splitOn sub).length ≥ 2
 
 /-- The emitted `.s` has the expected ABI / op-alphabet shape: the resident symbol,
     loads from `in=%rsi` and stores to `out=%rdi` at word offset `60` (= `4·15`),
     returns `out` in `%rax`, 32-byte-aligns the frame, uses scalar 32-bit
     `addl`/`xorl`/`shll`/`shrl`/`orl` ops, and the round body is exactly ten
     double-rounds. -/
-def structuralChecksPass : Bool :=
+def structuralChecksPass (_ : Unit) : Bool :=
   asmHas "chacha20_block_resident" && asmHas "60(%rsi)" && asmHas "60(%rdi)"
     && asmHas "movq\t%rdi, %rax" && asmHas "andq\t$-32, %rsp"
     && asmHas "addl\t" && asmHas "xorl\t" && asmHas "shll\t" && asmHas "shrl\t"
@@ -357,11 +363,11 @@ def structuralChecksPass : Bool :=
 /-- The executable + structural self-checks. The authoritative gate is the
     orchestrator's byte-KAT (RFC 8439 §2.3.2). -/
 def runSelfCheck : IO Unit := do
-  IO.println s!"[selfcheck] emitted-dataflow model == UInt32 reference : {modelAgrees}"
-  IO.println s!"[selfcheck] emitted-dataflow model == RFC 8439 §2.3.2  : {katAgrees}"
-  IO.println s!"[selfcheck] UInt32 reference        == RFC 8439 §2.3.2  : {refKatAgrees}"
-  IO.println s!"[selfcheck] emit-text ABI/op structure                 : {structuralChecksPass}"
-  if ! (selfCheckPasses && structuralChecksPass) then
+  IO.println s!"[selfcheck] emitted-dataflow model == UInt32 reference : {modelAgrees ()}"
+  IO.println s!"[selfcheck] emitted-dataflow model == RFC 8439 §2.3.2  : {katAgrees ()}"
+  IO.println s!"[selfcheck] UInt32 reference        == RFC 8439 §2.3.2  : {refKatAgrees ()}"
+  IO.println s!"[selfcheck] emit-text ABI/op structure                 : {structuralChecksPass ()}"
+  if ! (selfCheckPasses () && structuralChecksPass ()) then
     throw (IO.userError "Chacha20BlockResidentEmit self-check FAILED")
   IO.println "SELF-CHECK PASS: owned state-resident ChaCha20 block denotes RFC 8439 §2.3."
 
@@ -382,7 +388,7 @@ def emit : IO Unit := do
 The render is written while this module elaborates, so `lake` produces it from
 this file and no separate driver or Makefile rule carries the dependency. -/
 
-#eval emit
+-- #eval emit
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockResidentEmit
 

@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.RorImmSelect
-import CatCrypt.Crypto.SecureCompilation.Dialects.AndnSelect
-import CatCrypt.Crypto.SecureCompilation.Dialects.CmovSelect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.RorImmSelect
+public import CatCrypt.Crypto.SecureCompilation.Dialects.AndnSelect
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CmovSelect
 
 /-!
 # D3 — the ISel pipeline capstone: composing the native-op selection passes
@@ -58,6 +60,8 @@ matched fragments; §3 wires them on a worked program carrying **both** a rotate
 an and-not subtree, where the pipeline selects **both** native ops and the
 denotation equality holds, sorry-free.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

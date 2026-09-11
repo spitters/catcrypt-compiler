@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.MsmReflect
+module
+
+public meta import CatCrypt.Crypto.Jasmin.MsmReflect
+public import CatCrypt.Crypto.Jasmin.MsmReflect
 
 /-!
 # Bulletproofs inner-product-argument prover reflect surface — Tier 2 full-emit
@@ -51,6 +54,8 @@ initial commitment reuse the MSM EC leaves under the hood (the runtime wires
 * `CatCrypt/Crypto/Jasmin/MsmReflect.lean` (the MSM EC leaves reused here).
 * Sibling: `CatCrypt/Crypto/Jasmin/Plonky3FriReflect.lean`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin.LowCTReflect
 
@@ -166,31 +171,31 @@ def ipaGenTowerType (N : Nat) : TowerType := .TBytes (2 * N)
 def ipaPointTowerType : TowerType := .TBytes 2
 def ipaScalarTowerType : TowerType := .TBytes 1
 
-private def loc (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
+def locBulletproofsIPA (n : String) (t : TowerType) : Located := { locVar := n, locSrc := t }
 
 /-- Body for the `n = 8` (3-round) IPA reduction. The fold leaves are called at
     the registered width-4 leaf name; the wires carry the 4-byte / 8-byte
     output buffers the registry typed them at. -/
 def ipaProverBody8 : LowCT :=
-  let a_l   := loc "a"        (ipaWitnessTowerType 8)
-  let G_l   := loc "G"        (ipaGenTowerType 8)
-  let P_l   := loc "P"        ipaPointTowerType
-  let L0_l  := loc "L0"       ipaPointTowerType
-  let R0_l  := loc "R0"       ipaPointTowerType
-  let u0_l  := loc "u0"       ipaScalarTowerType
-  let a1_l  := loc "a1"       (ipaWitnessTowerType 4)
-  let G1_l  := loc "G1"       (ipaGenTowerType 4)
-  let L1_l  := loc "L1"       ipaPointTowerType
-  let R1_l  := loc "R1"       ipaPointTowerType
-  let u1_l  := loc "u1"       ipaScalarTowerType
-  let a2_l  := loc "a2"       (ipaWitnessTowerType 4)
-  let G2_l  := loc "G2"       (ipaGenTowerType 4)
-  let L2_l  := loc "L2"       ipaPointTowerType
-  let R2_l  := loc "R2"       ipaPointTowerType
-  let u2_l  := loc "u2"       ipaScalarTowerType
-  let a3_l  := loc "a3"       (ipaWitnessTowerType 4)
-  let G3_l  := loc "G3"       (ipaGenTowerType 4)
-  let res_l := loc "__result" ipaScalarTowerType
+  let a_l   := locBulletproofsIPA "a"        (ipaWitnessTowerType 8)
+  let G_l   := locBulletproofsIPA "G"        (ipaGenTowerType 8)
+  let P_l   := locBulletproofsIPA "P"        ipaPointTowerType
+  let L0_l  := locBulletproofsIPA "L0"       ipaPointTowerType
+  let R0_l  := locBulletproofsIPA "R0"       ipaPointTowerType
+  let u0_l  := locBulletproofsIPA "u0"       ipaScalarTowerType
+  let a1_l  := locBulletproofsIPA "a1"       (ipaWitnessTowerType 4)
+  let G1_l  := locBulletproofsIPA "G1"       (ipaGenTowerType 4)
+  let L1_l  := locBulletproofsIPA "L1"       ipaPointTowerType
+  let R1_l  := locBulletproofsIPA "R1"       ipaPointTowerType
+  let u1_l  := locBulletproofsIPA "u1"       ipaScalarTowerType
+  let a2_l  := locBulletproofsIPA "a2"       (ipaWitnessTowerType 4)
+  let G2_l  := locBulletproofsIPA "G2"       (ipaGenTowerType 4)
+  let L2_l  := locBulletproofsIPA "L2"       ipaPointTowerType
+  let R2_l  := locBulletproofsIPA "R2"       ipaPointTowerType
+  let u2_l  := locBulletproofsIPA "u2"       ipaScalarTowerType
+  let a3_l  := locBulletproofsIPA "a3"       (ipaWitnessTowerType 4)
+  let G3_l  := locBulletproofsIPA "G3"       (ipaGenTowerType 4)
+  let res_l := locBulletproofsIPA "__result" ipaScalarTowerType
   .RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq
   (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq (.RSeq .RSkip
     (.RCall "ipa_commit_8"   P_l   [a_l, G_l]))

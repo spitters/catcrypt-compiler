@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.CompilerCorrectness
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.CompilerCorrectness
 
 /-!
 # Dialect lowering as a Trocq map₁ transport — the wrapper + the two-pass pilot
@@ -73,6 +76,8 @@ inherited kernel TCB is unchanged.  The pilot is a faithful re-derivation of an
 
 All goals closed.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

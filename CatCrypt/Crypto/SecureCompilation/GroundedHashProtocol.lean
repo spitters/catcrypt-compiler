@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ConcreteHashRealizer
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ConcreteHashRealizer
 
 /-!
 # A fully-grounded HASH-sponge protocol — whole-pipeline emit-realization with
@@ -53,6 +55,8 @@ This module does two things:
 ## References
 * NIST FIPS 202 (Keccak / SHA-3 sponge), FIPS 180-4 (SHA-256)
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

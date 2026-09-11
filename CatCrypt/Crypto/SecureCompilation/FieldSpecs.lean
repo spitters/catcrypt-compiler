@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
-import Mathlib
+module
+
+public import CatCrypt.Crypto.SecureCompilation.MultiLimbKernel
+public import Mathlib.Tactic.Ring
+public import Mathlib.Data.ZMod.Basic
 
 /-!
 # High-level field specifications (P256, P384, Poly1305, BabyBear)
@@ -16,6 +19,8 @@ mathematical field each kernel reduces into. A field operation is correct when i
 output limb-value equals the `ZMod p` field result (the `*_zmod` lemmas already do
 this for BabyBear; the larger primes reduce the multi-limb product mod `p`).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.FieldSpecs
 

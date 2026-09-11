@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineTie
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeCtrl
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMem
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineTie
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeCtrl
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMem
 
 /-!
 # The control and memory middle ties as `SimTie` instances
@@ -42,6 +44,8 @@ memref-region agreement and the register agreement both survive).  `simTie_memLo
 is then the `SimTie` at the memory relation `memLoadR` (regMemEnv-style agreement
 plus the in-range index invariant a load preserves).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

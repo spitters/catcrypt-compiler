@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.BignumHoare.LowCTReflectiveEval
-import CatCrypt.Crypto.Jasmin.BignumHoare.EvalChainGeneric
+module
+
+public meta import CatCrypt.Crypto.Jasmin.BignumHoare.LowCTReflectiveEval
+public import CatCrypt.Crypto.Jasmin.BignumHoare.LowCTReflectiveEval
+public meta import CatCrypt.Crypto.Jasmin.BignumHoare.EvalChainGeneric
+public import CatCrypt.Crypto.Jasmin.BignumHoare.EvalChainGeneric
 
 /-!
 # Reflective curve properties — what `decide` can do
@@ -42,6 +46,8 @@ This file adds **0 new axioms**.  All claims are either:
 * Pure computational closures (`rfl` / `decide` / `native_decide`).
 * Compositions of soundness axioms already in tree.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

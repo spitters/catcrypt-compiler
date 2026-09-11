@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstr
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtendedCoverage
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtendedCoverage
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtendedCoverage
 
 /-!
 # `gatherJBlock2` — the extended `JInstr` gather that covers real GoldenPath kernel bodies
@@ -75,6 +79,8 @@ the gather now succeeds.
 
 No `sorry`, no axiom, no `native_decide`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

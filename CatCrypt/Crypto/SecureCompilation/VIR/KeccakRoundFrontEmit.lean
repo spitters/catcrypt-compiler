@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
 
 /-!
 # PROTOTYPE: one Keccak-p[1600] round, FRONT-COMPILED (bucket E investigation)
@@ -34,6 +39,8 @@ The round constants `RC` and rotate offsets `r` are reused from `KeccakEmit`
 load-bearing `KeccakEmit.keccakF1600Com`; it is an isolated feasibility check for
 re-sourcing that Com through the front.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.KeccakRoundFrontEmit
 

@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvEncoder64
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvEncoder64
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvEncoder64
 
 /-!
 # A verified RV64 ELF64 relocatable-object stitcher + ABI scaffolding encoder
@@ -50,6 +53,8 @@ clauses, so the *whole object* is byte-produced by Lean — `as`/gas touches
 nothing on the artifact path. Each builder is pinned to the exact
 `riscv64-linux-gnu-as`/objdump word (§2 differential pins).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

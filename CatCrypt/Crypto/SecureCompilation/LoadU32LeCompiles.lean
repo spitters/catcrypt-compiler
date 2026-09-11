@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.TExprToThir
-import CatCrypt.Crypto.SecureCompilation.Generated.LoadU32LeTExpr
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.TExprToThir
+public import CatCrypt.Crypto.SecureCompilation.TExprToThir
+public meta import CatCrypt.Crypto.SecureCompilation.Generated.LoadU32LeTExpr
+public import CatCrypt.Crypto.SecureCompilation.Generated.LoadU32LeTExpr
 
 /-!
 # Path-(b) piece D: the first REAL-extraction-rooted typed compile (`load_u32_le`)
@@ -63,6 +67,8 @@ So path-(b) piece D lands the two recogniser features (suffix-tolerance, `cast`)
 end-to-end on the real extraction heads, and pins the precise remaining gap (the
 heterogeneous stack-array input) as the next front extension.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 -- The LE-combine denote reduces through the suffix-tolerant recognisers (each op
@@ -213,7 +219,7 @@ theorem loadU32LeModel_compiles :
                 (BitVec.setWidth 32 b3 <<< (24 : Nat))) := by
     have h := loadU32LeModel_denote ![b0, b1, b2, b3]
     simpa only [inpGet, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.head_cons,
-      Matrix.cons_val_fin_one, Matrix.cons_val] using h
+      Matrix.cons_val_fin_one, Matrix.cons_val] using! h
   have hchain :
       some (BitVec.setWidth 32 b0 ||| (BitVec.setWidth 32 b1 <<< (8 : Nat)) |||
             (BitVec.setWidth 32 b2 <<< (16 : Nat)) |||

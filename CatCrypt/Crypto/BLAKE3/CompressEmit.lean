@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
-import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 
 /-!
 # BLAKE3 compression function emitted through the OWNED x86 scalar backend (#573)
@@ -65,6 +70,8 @@ backend's existing op set (no new opcode) — model-faithful and value-correct.
   and the System V `blake3_compress(out, inp)` ABI glue — the same trusted-scaffold
   status as `AsmPrinter.renderSysVLeafFn`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

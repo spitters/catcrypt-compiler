@@ -3,13 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
-import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrFlagLiveness
-import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
-import CatCrypt.Crypto.Optimizer.Mem2Reg
-import CatCrypt.Crypto.Optimizer.RedundantReloadElim
-import CatCrypt.Crypto.Optimizer.SpillSlotReuse
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrFlagLiveness
+public import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
+public import CatCrypt.Crypto.Optimizer.Mem2Reg
+public import CatCrypt.Crypto.Optimizer.RedundantReloadElim
+public import CatCrypt.Crypto.Optimizer.SpillSlotReuse
 
 /-!
 # A translation-validated composed owned-x86 optimizer pipeline (P1)
@@ -99,6 +102,8 @@ spill-slot reuse passes run by default, each gated by its certificate — semant
 preserved unconditionally by `composeValidated_sound` /
 `composeValidated_allDirect`.  No proof obligation is pushed to the driver.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

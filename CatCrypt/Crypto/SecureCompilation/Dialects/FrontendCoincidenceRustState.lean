@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidenceLet
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidenceLet
+public import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidenceLet
 
 /-!
 # DF `.letBind` completed at the **`RustState`** level
@@ -76,6 +79,8 @@ a body `RustExec` recursion with a hidden `sorry` — is the honest outcome.
 
 No `sorry`, no new axioms, no `native_decide`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

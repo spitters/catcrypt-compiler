@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Data.ZMod.Basic
-import Mathlib.Tactic
+module
+
+import all Init.Data.Repr
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.Tactic.Group
+public import Mathlib.Tactic.Ring
 
 /-!
 # Generic Montgomery-curve x-only doubling and differential addition
@@ -69,6 +73,8 @@ constant-time emitter and its leakage proofs consume.
 
 0 sorries; no custom axioms; the identities are unconditional given the field structure.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

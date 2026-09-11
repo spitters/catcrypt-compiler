@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ChaChaQRThirEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ChaChaQRThirEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ChaChaQRThirEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
 # LSH-512 wide-pipe Mix step through the OWNED x86 backend (no jasminc)
@@ -49,6 +54,8 @@ compression and checks the published vector; the emitted Mix leaf is exercised
 inside that driver).
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.LshMixThirEmit
@@ -82,9 +89,9 @@ Input context `[e, o, sc]` (`e=dB0, o=dB1, sc=dB2`). Each leaf builds the shared
 `[y3, x4, y2, y1, x3, x2, x1, e, o, sc]`, so `X' = x4` (de Bruijn 1) and
 `Y' = y3` (de Bruijn 0). The rotation amounts are compile-time params. -/
 
-private abbrev MixCtx : Ctxt thirDialect := [.reg 64, .reg 64, .reg 64]
+abbrev MixCtx : Ctxt thirDialect := [.reg 64, .reg 64, .reg 64]
 
-private abbrev MixBodyCtx : Ctxt thirDialect :=
+abbrev MixBodyCtx : Ctxt thirDialect :=
   [.reg 64, .reg 64, .reg 64, .reg 64, .reg 64, .reg 64, .reg 64,
    .reg 64, .reg 64, .reg 64]
 
@@ -124,7 +131,7 @@ def lshMixYThir (a b g : Nat) : Com thirDialect MixCtx (.reg 64) :=
 
 /-! ## 3. Value-correctness: each leaf denotes its `lshMixSpec` component -/
 
-private def lshInp (e o sc : BitVec 64) : HVector (fun t => ⟦t⟧) MixCtx :=
+def lshInp (e o sc : BitVec 64) : HVector (fun t => ⟦t⟧) MixCtx :=
   .cons e (.cons o (.cons sc .nil))
 
 -- The `Com thirDialect` denotation reduces structurally to the spec word under a
@@ -215,6 +222,6 @@ def emitMain : IO Unit := do
 The render is written while this module elaborates, so `lake` produces it from
 this file and no separate driver or Makefile rule carries the dependency. -/
 
-#eval emitMain
+-- #eval emitMain
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.LshMixThirEmit

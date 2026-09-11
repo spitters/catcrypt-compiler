@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ConcreteSymFieldRealizer
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ConcreteSymFieldRealizer
 
 /-!
 # Concrete realizer for the Curve25519 base-field arithmetic step — KAT-free
@@ -72,6 +74,8 @@ unconditional.
 * D. J. Bernstein, "Curve25519: new Diffie–Hellman speed records", PKC 2006
   (the `a24 = (A − 2)/4 = 121665` doubling constant).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ButterflyBlockCom
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ButterflyBlockCom
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ButterflyBlockCom
 
 /-!
 # Public owned `.s` emit for the migrated NTT radix-2 butterfly (`Com jasminDialect`, 512-bit ZMM)
@@ -48,6 +52,8 @@ time.
 Invoke:
 `lake build CatCrypt.Crypto.SecureCompilation.X86Backend.ButterflyBlockComEmit`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

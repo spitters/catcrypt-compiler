@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresHoare
-import Mathlib.Data.Finset.Basic
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresHoare
+public import Mathlib.Data.Finset.Basic
 
 /-!
 # A first-order affine separation logic over `JState`, with a derived frame rule
@@ -50,6 +52,8 @@ bunched-implication (`BI`) structure. Embedding this affine SL into iris-lean's
 `JState ↔ Nat`-heap encoding — the register file as an Iris resource algebra /
 heap camera — which is the further step; it is not attempted here.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,10 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ModArithDialect
-import Mathlib.Tactic.NormNum
-import Mathlib.Tactic.Linarith
-import Mathlib.Tactic.Ring
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ModArithDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.ModArithDialect
+public import Mathlib.Tactic.NormNum
+public import Mathlib.Tactic.Linarith
+public import Mathlib.Tactic.Ring
 
 /-!
 # The ML-KEM `q = 3329` Stage-2 word realization, discharged CONCRETELY
@@ -48,6 +52,8 @@ Each is a commuting square `enc (op_q a b) = wordOp (enc a) (enc b)` under the
 canonical encoding, discharged with kernel-safe `Nat`/`BitVec.toNat` reasoning —
 **never assumed**. Target axioms: `{propext, Classical.choice, Quot.sound}`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

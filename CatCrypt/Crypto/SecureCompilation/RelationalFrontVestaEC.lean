@@ -3,9 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontVesta
-import Mathlib.Data.ZMod.Basic
-import Mathlib.Tactic
+module
+
+import all Init.Data.Repr
+public import Mathlib.Tactic.NormNum.Prime
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontVesta
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.Algebra.Field.ZMod
+public import Mathlib.Tactic.FieldSimp
+public import Mathlib.Tactic.Group
+public import Mathlib.Tactic.NormNum
+public import Mathlib.Tactic.Ring
 
 /-!
 # Vesta `G1` PROJECTIVE (Jacobian) point-add / point-double over the abstract base field
@@ -25,7 +33,7 @@ to the Pallas case.
 
 ## The abstract field
 
-The Vesta base field is `ZMod vestaQ` for the genuine 255-bit prime `vestaQ`
+The Vesta base field is `ZMod vestaQ` for the 255-bit prime `vestaQ`
 (defined in `RelationalFrontVesta.lean`).  The repo carries `vestaQ` as a `Nat` modulus
 (the canonical Pasta Vesta base prime).  We parameterize the realization ties by a
 **hypothesis** `[Fact (Nat.Prime vestaQ)]` (a section variable — *not* an asserted axiom,
@@ -72,6 +80,8 @@ generic-chart scope of the Pallas version.
 0 sorries; no new custom axioms (primality is a section hypothesis, not an asserted axiom);
 the field-algebra ties are unconditional given the field structure.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

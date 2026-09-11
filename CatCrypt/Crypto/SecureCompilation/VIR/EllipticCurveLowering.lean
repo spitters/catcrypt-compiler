@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.FieldLowering
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.FieldLowering
 
 /-!
 # EllipticCurve lowering (#482-3) — the L4 → L3 (EllipticCurve → Field) step
@@ -48,6 +51,8 @@ The lowering is phrased at **op** granularity (one EC op → its Field schedule)
 the op-level statement lifts to whole programs by the `Com` recursion, exactly as
 in `FieldLowering`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

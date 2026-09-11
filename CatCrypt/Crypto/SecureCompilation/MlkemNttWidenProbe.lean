@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-!
 # ML-KEM forward-NTT slot widening: the spilling-RA probe (N = 8 → wider)
@@ -55,6 +58,8 @@ NTT-16; it demonstrates that the existing lowering RA accepts and spills a
 byte-correct widening would author the butterfly chain over the same constructors
 with the proven `mkMulW`/`mkAddW`/`mkSubW` word blocks (see "Next steps").
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.Sub32Emit
-import CatCrypt.Crypto.Jasmin.Mpn.Add32Refines
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.Mpn.Sub32Emit
+public import CatCrypt.Crypto.Jasmin.Mpn.Add32Refines
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -60,11 +65,11 @@ open CatCrypt.Crypto.Jasmin.Mpn.Add32Refines
 them here.  Same bodies. -/
 
 /-- Promote a `BitVec 32` value `w` to a `BitVec 64` by `BitVec.ofNat 64 w.toNat`. -/
-private def w64 (w : BitVec 32) : BitVec 64 := BitVec.ofNat 64 w.toNat
+def w64 (w : BitVec 32) : BitVec 64 := BitVec.ofNat 64 w.toNat
 
 set_option linter.unusedSimpArgs false in
 /-- A `w64`-encoded `BitVec 32` value masked to the low 32 bits is itself. -/
-private theorem w64_mask (w : BitVec 32) : w64 w &&& mask32 = w64 w := by
+theorem w64_mask (w : BitVec 32) : w64 w &&& mask32 = w64 w := by
   unfold w64 mask32
   have hzx : (BitVec.ofNat 64 w.toNat) = BitVec.setWidth 64 w := by
     apply BitVec.eq_of_toNat_eq
@@ -77,7 +82,7 @@ private theorem w64_mask (w : BitVec 32) : w64 w &&& mask32 = w64 w := by
 
 /-- Loading a `BitVec 32` limb from memory and decoding through
     `BitVec.ofNat 64 _.toNat` recovers `w64 w`. -/
-private theorem u32_load_roundtrip (w : BitVec 32) :
+theorem u32_load_roundtrip (w : BitVec 32) :
     BitVec.ofNat 64 (UInt64.ofNat w.toNat).toNat = w64 w := by
   have hw : w.toNat < 2 ^ 32 := w.isLt
   apply BitVec.eq_of_toNat_eq
@@ -455,7 +460,7 @@ theorem mpnSubN32_openLoop :
           (by simp only [pv64, vr64, evalPExpr]; rw [hn0])
       exact bignumExecFuel_loop_exit_generic emptyRegistry extra _ loopBody32 s hcond
     · simp [mpnSubN32]
-    · simpa [mpnSubN32, borrowNat] using hcf
+    · simpa [mpnSubN32, borrowNat] using! hcf
     · intro b _; rfl
   | cons a as ih =>
     intro bs s bin extra hlen hcf hn hap hbp hdoa hdob

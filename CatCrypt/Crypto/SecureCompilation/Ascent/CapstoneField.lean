@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf
-import CatCrypt.Crypto.SecureCompilation.Ascent.StoreRefinement
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf
+public import CatCrypt.Crypto.SecureCompilation.Ascent.StoreRefinement
 
 /-!
 # Field capstone: a real `feSub`-shape kernel ascends to its field spec
@@ -20,6 +22,8 @@ projected to `ZMod p`. Matching *true field* subtraction `(a : ZMod p) - (b : ZM
 needs the no-borrow / canonical-range condition (`a ≥ b`, or a conditional add-p) — the
 `Corres` precondition of "Way 1". The word ascent itself is unconditional.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

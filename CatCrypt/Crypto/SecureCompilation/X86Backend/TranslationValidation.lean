@@ -3,9 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Preservation
-import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
-import Std.Tactic.BVDecide
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Preservation
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Preservation
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+public import Std.Tactic.BVDecide
 
 /-!
 # Translation validation against Jasmin's Rocq x86 model (#281)
@@ -161,6 +167,8 @@ else) is the **only** flag each touches — the two-independent-carry-chain
 property our `setCF`/`setOF` reproduce.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend
@@ -174,11 +182,11 @@ A fresh 64-bit state with two named registers, mirroring the `rocq-mcp`
 the numeric value Jasmin's `x86_*` produced (quoted in the table above). -/
 
 /-- `dst := v` register state at width 64. -/
-private def st (v : BitVec 64) : State 64 :=
+def st (v : BitVec 64) : State 64 :=
   { regs := fun r => if r = "a" then v else 0 }
 
 /-- `dst := v` with the carry flag preset (for ADC/SBB). -/
-private def stCF (v : BitVec 64) (c : Bool) : State 64 :=
+def stCF (v : BitVec 64) (c : Bool) : State 64 :=
   { regs := fun r => if r = "a" then v else 0, flags := { cf := c } }
 
 -- MOV: Jasmin `x86_MOV 4242 = 4242`.
@@ -297,7 +305,7 @@ The MULX state has two distinct destination registers (`"lo"`, `"hi"`) plus the
 two factor registers (`"a"`, `"b"`); we read both result words back. -/
 
 /-- A width-64 state with named factor registers, no preset flags. -/
-private def stMulx (x y : BitVec 64) : State 64 :=
+def stMulx (x y : BitVec 64) : State 64 :=
   { regs := fun r => if r = "a" then x else if r = "b" then y else 0 }
 
 -- MULX, full-product split. Jasmin
@@ -569,14 +577,14 @@ theorem signed_hi_correction_w8 (a b : BitVec 8) :
     the backend's `Nat`-eval-then-truncate form (`#MULX` hi, masks via `>>s 63`,
     two's-complement add for each subtraction).  `corrected64 a b` = the emitted
     `phi`; `mulHiS64 a b` = the faithful signed high word. -/
-private def toI64 (n : Nat) : Int := (BitVec.ofNat 64 n).toInt
-private def ofI64 (z : Int) : Nat := (BitVec.ofInt 64 z).toNat
-private def mulHiU64 (a b : Nat) : Nat :=
+def toI64 (n : Nat) : Int := (BitVec.ofNat 64 n).toInt
+def ofI64 (z : Int) : Nat := (BitVec.ofInt 64 z).toNat
+def mulHiU64 (a b : Nat) : Nat :=
   (BitVec.ofNat 64 ((BitVec.ofNat 64 a).toNat * (BitVec.ofNat 64 b).toNat / 2 ^ 64)).toNat
-private def mulHiS64 (a b : Nat) : Nat := ofI64 ((toI64 a * toI64 b) >>> 64)
-private def asr63 (a : Nat) : Nat := ofI64 (toI64 a >>> 63)
-private def t64 (n : Nat) : Nat := (BitVec.ofNat 64 n).toNat
-private def corrected64 (a b : Nat) : Nat :=
+def mulHiS64 (a b : Nat) : Nat := ofI64 ((toI64 a * toI64 b) >>> 64)
+def asr63 (a : Nat) : Nat := ofI64 (toI64 a >>> 63)
+def t64 (n : Nat) : Nat := (BitVec.ofNat 64 n).toNat
+def corrected64 (a b : Nat) : Nat :=
   let dst0 := mulHiU64 a b
   let c1 := t64 (asr63 a &&& b)
   let dst1 := t64 (dst0 + t64 (c1 ^^^ 18446744073709551615))
@@ -644,11 +652,11 @@ the transcription's *full* flag behaviour for the emitted subset.
 namespace Jasmin
 
 /-- A width-64 state with register `"a" := v`, no preset flags. -/
-private def jst (v : BitVec 64) : JState 64 :=
+def jst (v : BitVec 64) : JState 64 :=
   { regs := fun r => if r = "a" then v else 0 }
 
 /-- A width-64 state with `"a" := v` and `CF := some c`. -/
-private def jstCF (v : BitVec 64) (c : Bool) : JState 64 :=
+def jstCF (v : BitVec 64) (c : Bool) : JState 64 :=
   { regs := fun r => if r = "a" then v else 0, flags := { cf := some c } }
 
 -- ADD, full tuple. Jasmin `x86_ADD 123456789 987654321`:
@@ -868,7 +876,7 @@ composed with `mem_read`/`mem_write` on the word-addressed memory — exactly ho
 `Reg`. -/
 
 /-- A width-64 state with `"a" := v` and a memory word `[base + off] := m`. -/
-private def jstMem (v : BitVec 64) (base : String) (off : Int) (m : BitVec 64) :
+def jstMem (v : BitVec 64) (base : String) (off : Int) (m : BitVec 64) :
     JState 64 :=
   { regs := fun r => if r = "a" then v else 0
     mem := fun b o => if b = base ∧ o = off then m else 0 }

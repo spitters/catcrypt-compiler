@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
-import CatCrypt.Crypto.Hax.HaxToLowCTSim_Call
-import CatCrypt.Crypto.Hax.HaxToLowCTSim_Main
-import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta
+module
+
+public import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Call
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Main
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta
 
 /-!
 # H3.quarta-Discharge: discharge Hyp_letBindApp / Hyp_assignApp
@@ -26,6 +28,8 @@ recovers the original predicate.
 
 This avoids invasively refactoring the main predicate.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -155,7 +159,8 @@ theorem evalImp_letBind_app_vars_inv
   cases hbi : bi f vals with
   | none =>
     rw [hbi] at h
-    simp [StateT.pure] at h
+    simp only [StateT.pure] at h
+    cases h
   | some vRes =>
     rw [hbi] at h
     simp [StateT.pure] at h
@@ -432,10 +437,11 @@ theorem evalImp_assign_app_vars_inv
   cases hbi : bi f vals with
   | none =>
     rw [hbi] at h
-    simp [StateT.pure] at h
+    simp only [StateT.pure] at h
+    cases h
   | some vRes =>
     rw [hbi] at h
-    simp [StateT.pure, StateT.bind, StateT.modifyGet, bind, Bind.bind] at h
+    simp [StateT.pure, StateT.bind, StateT.modifyGet, bind, Bind.bind, pure, Pure.pure] at h
     -- After full simp, h = ⟨v = .unit, env' = env.extend name vRes⟩.
     refine ⟨vals, vRes, hAV, hbi, h.2.symm, h.1.symm⟩
 

@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakThetaPiAbstractCom
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakThetaPiAbstractCom
 
 /-!
 # Abstract FIPS-202 ρ/χ/ι ties for the unified-`Com` Keccak round (model-free)
@@ -68,6 +71,8 @@ in any theorem's `#print axioms`: the tie is between the verified
 
 Invoke: `lake build CatCrypt.Crypto.SecureCompilation.VIR.KeccakRhoChiIotaAbstractCom`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

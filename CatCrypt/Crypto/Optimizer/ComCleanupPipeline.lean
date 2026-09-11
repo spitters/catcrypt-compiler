@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.ConstFold
-import CatCrypt.Crypto.Optimizer.ComCSE
-import CatCrypt.Crypto.Optimizer.UncomputePass
-import CatCrypt.Crypto.Optimizer.ComDCE
+module
+
+public import CatCrypt.Crypto.Optimizer.ConstFold
+public import CatCrypt.Crypto.Optimizer.ComCSE
+public import CatCrypt.Crypto.Optimizer.UncomputePass
+public import CatCrypt.Crypto.Optimizer.ComDCE
 
 /-!
 # Composed `Com → Com` clean-up pipeline (constant-fold · CSE · uncompute · DCE)
@@ -49,6 +51,8 @@ of the components.
 This complements `ComFullOpt.lean` (algebraic-saturation · copy-prop · DCE) with
 the fold/CSE/uncompute/DCE clean-up stack.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

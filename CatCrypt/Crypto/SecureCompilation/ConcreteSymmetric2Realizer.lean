@@ -3,10 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ConcreteHashRealizer
-import CatCrypt.Crypto.Primitives.GF128
-import CatCrypt.Crypto.Jasmin.ChaCha20Block
-import CatCrypt.Crypto.Primitives.Poly1305
+module
+
+public import CatCrypt.Crypto.SecureCompilation.ConcreteHashRealizer
+public import CatCrypt.Crypto.Primitives.GF128
+public import CatCrypt.Crypto.Jasmin.ChaCha20Block
+public import CatCrypt.Crypto.Primitives.Poly1305
 
 /-!
 # CONCRETE realizers for GF(2^128) multiply, ChaCha20 block, and Poly1305 — KAT-free
@@ -55,6 +57,8 @@ We exhibit, for each primitive:
 ## References
 * NIST SP 800-38D (GHASH / GF(2^128)), RFC 8439 (ChaCha20-Poly1305)
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

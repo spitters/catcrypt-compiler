@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrFramedEmit
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrBytesAgree
-import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElf
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrFramedEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrFramedEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrBytesAgree
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrBytesAgree
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElf
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElf
 
 /-!
 # `comToFramedJInstr` — the END-TO-END framed `JInstr` compile path (the D4 drop-in)
@@ -83,6 +88,8 @@ collapse must preserve. The remaining residuals (U32 width tag, spill / frame
 coverage) are exactly those `LprogJInstrBytesAgree`'s §3 records — maturing the
 JInstr encoder to those shapes is the rest of the collapse.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Lattice.NTTRecursiveFull
-import CatCrypt.Crypto.Optimizer.Lattice.BitReversalGeneric
-import CatCrypt.Crypto.Optimizer.Lattice.ConcreteRecursiveNtt
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTRecursiveFull
+public import CatCrypt.Crypto.Optimizer.Lattice.BitReversalGeneric
+public import CatCrypt.Crypto.Optimizer.Lattice.ConcreteRecursiveNtt
 
 /-!
 # Iterative radix-2 Cooley–Tukey NTT, proved equal to the recursive `nttRec`
@@ -31,7 +34,7 @@ the two index orders.
   even/odd de-interleave — is exactly the layer-fold an in-place iterative kernel
   performs once its input has been bit-reversed.
 
-## Keystone
+## Main theorem
 
 `nttIter_comp_bitrev (e) (ω) (x) (k) :`
 `    nttIter e ω (fun j => x ((bitrevPerm e) j)) k = nttRec e ω x k`
@@ -61,6 +64,8 @@ remains KAT-gated. This file is the *semantic specification* that the
 emit-denotation step will later target (replacing the current `:= id` placeholder
 spec).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -118,7 +123,7 @@ def nttIter : (e : ℕ) → R → (Fin (2 ^ e) → R) → (Fin (2 ^ e) → R)
 
 /-! ## Bit-reversal structural facts: how `bitrev` at width `e+1` relates to
 de-interleaving and `bitrev` at width `e`. These are the single algebraic
-ingredients of the keystone induction: reversing one extra (top) bit turns the
+ingredients of the main induction: reversing one extra (top) bit turns the
 contiguous-half split (`lowerHalf`/`upperHalf`) into the even/odd de-interleave
 (`evenPart`/`oddPart`). -/
 
@@ -139,7 +144,7 @@ of `i` doubles the `e`-bit reversal: `bitrev (e+1) i = 2 · bitrev e i`. (The ne
 top bit is `0`, becoming the new least-significant bit after reversal.) -/
 theorem bitrev_succ_lower (e i : ℕ) (h : i < 2 ^ e) :
     bitrev (e + 1) i = 2 * bitrev e i := by
-  have hbit : i.testBit e = false := Nat.testBit_eq_false_of_lt (by simpa using h)
+  have hbit : i.testBit e = false := Nat.testBit_lt_two_pow (by simpa using h)
   unfold bitrev
   rw [toBits_snoc, hbit]
   simp [List.reverse_append, fromBits]
@@ -184,7 +189,7 @@ bit, after reversal, becomes the new least-significant `1`. -/
   apply Fin.ext
   simp [bitrev_succ_upper e i.val i.isLt]
 
-/-! ## Keystone: iterative-on-bit-reversed = recursive -/
+/-! ## Main theorem: iterative-on-bit-reversed = recursive -/
 
 /-- **Iterative = recursive, with bit-reversal.** Running the iterative DIT
 transform on the **bit-reversed** input reproduces the recursive DIT transform on
@@ -213,7 +218,7 @@ theorem nttIter_comp_bitrev :
     intro ω x k
     simp only [nttIter, lowerHalf_bitrev, upperHalf_bitrev, nttRec, ih]
 
-/-- The keystone re-arranged: the iterative transform on the **natural-order**
+/-- The main theorem re-arranged: the iterative transform on the **natural-order**
 input equals the recursive transform on the **bit-reversed** input. (Follows from
 `nttIter_comp_bitrev` by substituting the bit-reversed input and cancelling the
 involution `bitrevPerm`.) -/

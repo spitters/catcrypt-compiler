@@ -3,12 +3,15 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4LimbTierA
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve6LimbTierA
-import CatCrypt.Crypto.SecureCompilation.X86Backend.PastaBignumTierA
-import CatCrypt.Crypto.SecureCompilation.AUCurvesImport.FieldLeafBridge
-import Mathlib.Data.ZMod.Basic
-import Mathlib.Tactic
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4LimbTierA
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve6LimbTierA
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.PastaBignumTierA
+public import CatCrypt.Crypto.SecureCompilation.AUCurvesImport.FieldLeafBridge
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.Tactic.LinearCombination
+public import Mathlib.Tactic.Ring
 
 /-!
 # Curve field-multiply refinement: Mathlib `ZMod p` anchor (+ optional AUCurves corroboration)
@@ -83,6 +86,9 @@ All `feval`/R-cancellation is uniform: the radix is `2^256` for the 4-limb curve
 (SM2, secp256k1, P256, BN254, Pallas, Vesta) and `2^384` for the 6-limb curves
 (P384, BLS12-381), each a unit because the prime is odd.
 -/
+
+@[expose] public section
+
 
 set_option autoImplicit false
 -- The Montgomery radices `2^256` / `2^384` appear as literals in the `ZMod p`

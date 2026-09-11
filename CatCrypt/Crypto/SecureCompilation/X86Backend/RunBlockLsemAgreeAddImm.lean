@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgree
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgree
 
 /-!
 # `runBlock` ↔ `lsemStraightMem` agreement for the immediate-source `adc`
@@ -48,6 +50,8 @@ invisible to `JLstateCorrCF.regAgree` (asserted off `flg`).
 * `addCarryWord_x86ADC_eq`, `carryOutBit_x86ADC_eq`: transfer the proven
   `adcx_data_eq` / `adcx_carry_eq` to `.adc`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgreeAddImm
 

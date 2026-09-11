@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
-import CatCrypt.Crypto.Primitives.AES128
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+public import CatCrypt.Crypto.Primitives.AES128
 
 /-!
 # VAES dialect ops (Vector AES-NI) — denotation + alignment
@@ -54,6 +57,8 @@ parallel, no cross-lane mixing). The lane-map keystone
 
 Invoke:  `lake build CatCrypt.Crypto.SecureCompilation.VIR.VAESEmit`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

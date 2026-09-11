@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.Core
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.Core
 
 /-!
 # `Com`-parametricity fundamental lemma: per-op leaf transport lifts to whole-program transport
@@ -54,6 +57,8 @@ Phase 1.
 **0 sorries**; target axiom set `{propext, Classical.choice, Quot.sound}` (the
 ambient Mathlib/Core set), with **no** `jasminc_preserves_ct`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

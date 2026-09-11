@@ -3,13 +3,16 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ComToVeir
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-import CatCrypt.Crypto.SecureCompilation.VIR.VeirPrinterShim
-import Veir.OpCode
-import Veir.IR.OpInfo
-import Veir.IR.Attribute
-import Veir.Properties
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.ComToVeir
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+public import CatCrypt.Crypto.SecureCompilation.VIR.VeirPrinterShim
+public import Veir.OpCode
+public import Veir.IR.OpInfo
+public import Veir.IR.Attribute
+import all Veir.IR.Attribute
+public import Veir.Properties
 
 /-!
 # Path (b) Tier 1.3: `jasminDialect` → Veir op/type wiring
@@ -92,6 +95,8 @@ dialect. The only escape hatches are:
   `"poly_mul"` would map to `polynomial.mul` once `LatticeDialect` is
   wired through; jasmin keeps it as `func.call` to a private symbol).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -232,7 +237,7 @@ instance : ToVeirOp jasminDialect where
 
 /-- Build an `UnregisteredAttr` carrying MLIR-textual type syntax for
     structural types (memref, index). Emitted verbatim by Veir's printer. -/
-private def mkTextType (s : String) : Veir.TypeAttr :=
+def mkTextType (s : String) : Veir.TypeAttr :=
   ⟨.unregisteredAttr ⟨s, true⟩, by simp [Veir.Attribute.isType]⟩
 
 /-- Map each `JasminTy` to a Veir `TypeAttr`.

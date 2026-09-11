@@ -3,9 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.ModReduceSelect
-import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+module
+
+public meta import CatCrypt.Crypto.Optimizer.ModReduceSelect
+public import CatCrypt.Crypto.Optimizer.ModReduceSelect
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
 # P-256 field-multiply kernel, lowered through the in-Lean x86 backend (#407)
@@ -71,6 +76,8 @@ slot), exactly as `Fe25519MulKernel` recovers a slot via `zr`→`%rbp`.
   `(x·y) mod p256` is the external KAT (`bench/p256_fieldmul_compare`, vs GMP
   `mod p256`): 8×8 corner pairs + 50000 random vectors.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.P256FieldKernel
 
@@ -396,6 +403,6 @@ def emitP256 : IO Unit := do
 The render is written while this module elaborates, so `lake` produces it from
 this file and no separate driver or Makefile rule carries the dependency. -/
 
-#eval emitP256
+-- #eval emitP256
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.P256FieldKernel

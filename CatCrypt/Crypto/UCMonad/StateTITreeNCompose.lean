@@ -3,10 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.UCMonad.StateTITreeN
-import CatCrypt.Crypto.UCMonad.ITreeNCompose
-import CatCrypt.Crypto.UCMonad.ITreeNMultiSession
-import CatCrypt.Crypto.UCMonad.ITreeNKCompose
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.UCMonad.StateTITreeN
+public import CatCrypt.Crypto.UCMonad.ITreeNCompose
+public import CatCrypt.Crypto.UCMonad.ITreeNMultiSession
+public import CatCrypt.Crypto.UCMonad.ITreeNKCompose
 
 /-!
 # UCEmulatesConcurrentStateful: UC Emulation for Stateful Protocols
@@ -46,6 +49,8 @@ already works for stateful protocols via the uncurrying pattern from
 
 **0 axioms**, **0 sorries**. All proofs complete.
 -/
+
+@[expose] public section
 
 namespace UCMonad.StateTITreeNCompose
 

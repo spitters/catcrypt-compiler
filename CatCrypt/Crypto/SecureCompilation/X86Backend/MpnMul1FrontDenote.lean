@@ -3,10 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontEmit
-import CatCrypt.Crypto.SecureCompilation.Dialects.FrontLoopBodyStepC
-import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrameRoundTrip
-import CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf
+module
+
+import all Init.Data.Repr
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontEmit
+public import CatCrypt.Crypto.SecureCompilation.Dialects.FrontLoopBodyStepC
+public import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrameRoundTrip
+public import CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf
 
 /-!
 # The `mpn_mul_1` loop body against its source semantics
@@ -38,6 +42,8 @@ xor/and carry idiom is `bSltu`).
 * `mul1RtProg_val` — the machine-level value theorem: the compiled program's
   output cells recombine via `bignumVal` to `up[0..n) * v`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -73,18 +79,18 @@ Each source variable's not-a-temporary fact is proved once — the `by decide` o
 the below-`4` name length is paid a single time per name — and referenced at the
 freshness sites below, instead of re-deciding the string length at each site. -/
 
-private theorem nt_c : ¬ isTmpName "c" := notTmp_of_short _ (by decide)
-private theorem nt_cq : ¬ isTmpName "cq" := notTmp_of_short _ (by decide)
-private theorem nt_cr : ¬ isTmpName "cr" := notTmp_of_short _ (by decide)
-private theorem nt_cy : ¬ isTmpName "cy" := notTmp_of_short _ (by decide)
-private theorem nt_cyo : ¬ isTmpName "cyo" := notTmp_of_short _ (by decide)
-private theorem nt_hi : ¬ isTmpName "hi" := notTmp_of_short _ (by decide)
-private theorem nt_idx : ¬ isTmpName "idx" := notTmp_of_short _ (by decide)
-private theorem nt_lo : ¬ isTmpName "lo" := notTmp_of_short _ (by decide)
-private theorem nt_rp : ¬ isTmpName "rp" := notTmp_of_short _ (by decide)
-private theorem nt_s : ¬ isTmpName "s" := notTmp_of_short _ (by decide)
-private theorem nt_t : ¬ isTmpName "t" := notTmp_of_short _ (by decide)
-private theorem nt_v : ¬ isTmpName "v" := notTmp_of_short _ (by decide)
+theorem nt_c : ¬ isTmpName "c" := notTmp_of_short _ (by decide)
+theorem nt_cq : ¬ isTmpName "cq" := notTmp_of_short _ (by decide)
+theorem nt_cr : ¬ isTmpName "cr" := notTmp_of_short _ (by decide)
+theorem nt_cy : ¬ isTmpName "cy" := notTmp_of_short _ (by decide)
+theorem nt_cyo : ¬ isTmpName "cyo" := notTmp_of_short _ (by decide)
+theorem nt_hi : ¬ isTmpName "hi" := notTmp_of_short _ (by decide)
+theorem nt_idx : ¬ isTmpName "idx" := notTmp_of_short _ (by decide)
+theorem nt_lo : ¬ isTmpName "lo" := notTmp_of_short _ (by decide)
+theorem nt_rp : ¬ isTmpName "rp" := notTmp_of_short _ (by decide)
+theorem nt_s : ¬ isTmpName "s" := notTmp_of_short _ (by decide)
+theorem nt_t : ¬ isTmpName "t" := notTmp_of_short _ (by decide)
+theorem nt_v : ¬ isTmpName "v" := notTmp_of_short _ (by decide)
 
 /-! ## 1. Sequencing and name plumbing -/
 

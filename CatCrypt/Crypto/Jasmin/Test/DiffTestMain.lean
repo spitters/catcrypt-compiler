@@ -4,6 +4,8 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 
+module
+
 /-!
 # Single-binary diff-test driver (`lake exe difftest`)
 
@@ -38,6 +40,8 @@ debugging (`stage_emit_rs`, `stage_compile_port`, etc.). The
 all-cases driver is now this Lean exe.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Jasmin.Test.DiffTestMain
@@ -59,8 +63,8 @@ def Config.fromEnv : IO Config := do
     | some v => pure v
     | none => pure fallback
   pure {
-    ssprove := ← envOr "SSPROVEL" "/home/au528660/Claude/SSProve-lean"
-    jasminc := ← envOr "JASMINC" "/home/au528660/.opam/rocq-9/bin/jasminc"
+    ssprove := ← envOr "SSPROVEL" "."
+    jasminc := ← envOr "JASMINC" "jasminc"
     rustc := ← envOr "RUSTC" "rustc"
     portLibDir := ← envOr "PORT_LIB_DIR" "/tmp"
   }

@@ -4,6 +4,8 @@ Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
 
+module
+
 /-!
 # Field-parametric reflective evaluator framework
 
@@ -46,6 +48,8 @@ future files) inherit the per-instance soundness axioms.
 The generic framework is purely a refactoring of the abstract
 chain semantics; it doesn't introduce new claims.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

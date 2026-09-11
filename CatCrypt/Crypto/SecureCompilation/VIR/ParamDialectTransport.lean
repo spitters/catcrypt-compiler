@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Transfer.Congruence.ParamSolve
-import CatCrypt.Crypto.SecureCompilation.VIR.FieldToModArithLowering
+module
+
+public import Transfer.Congruence.ParamSolve
+public import CatCrypt.Crypto.SecureCompilation.VIR.FieldToModArithLowering
 
 /-!
 # Dialect lowering correctness synthesized by the Param engine (`param_solve`)
@@ -71,6 +73,8 @@ non-diagonal / op-splitting boundary, shared verbatim with the hand framework.
 
 **0 sorries**; target axiom set `{propext, Classical.choice, Quot.sound}`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

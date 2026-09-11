@@ -3,8 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
 
 /-!
 # VPCLMULQDQ dialect op (carry-less multiply, GF(2)[x] no-reduction) — denotation + alignment
@@ -77,6 +82,8 @@ op — no cross-lane mixing — so the lane-map keystone
 Invoke:  `lake build CatCrypt.Crypto.SecureCompilation.VIR.VPClmulEmit`
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.VPClmulEmit
@@ -125,7 +132,7 @@ initial". -/
 
 /-- Internal helper: if every step preserves the accumulator, the
     whole fold is the initial value. -/
-private theorem foldl_const_init {α : Sort _} (n : Nat) (f : α → Fin n → α)
+theorem foldl_const_init {α : Sort _} (n : Nat) (f : α → Fin n → α)
     (h : ∀ acc (i : Fin n), f acc i = acc) (init : α) :
     Fin.foldl n f init = init := by
   induction n generalizing init with

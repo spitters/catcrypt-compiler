@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectSecurityNative
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectSecurityNative
 
 /-!
 # Lifted algebraic-rewrite security results, native on `Com catCryptDialect`
@@ -37,6 +39,8 @@ is `0 = 0`; none routes through the valuation-free `Com.all_com_ct` shadow.
 **0 axioms** beyond the standard `propext`/`Classical.choice`/`Quot.sound`,
 **0 sorries**.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

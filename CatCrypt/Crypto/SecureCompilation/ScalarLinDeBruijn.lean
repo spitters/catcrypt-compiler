@@ -3,10 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.ScalarLinNeutral
-import CatCrypt.Crypto.SecureCompilation.ScalarLinFront
-import Mathlib.Tactic.Ring
-import Mathlib.Tactic.IntervalCases
+module
+
+import all Init.Data.Repr
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.ScalarLinNeutral
+public import CatCrypt.Crypto.SecureCompilation.ScalarLinFront
+public import Mathlib.Tactic.Ring
+public import Mathlib.Tactic.IntervalCases
 
 /-!
 # The general de-Bruijn faithfulness — lemma layer (Step 1, in progress)
@@ -16,6 +20,8 @@ lemmas. This module builds them bottom-up. Lemmas 1–2 (`envOf`, `envOf_extend`
 are the valuation→env reflection and its extension law; lemma 3 (`envOf_lookup`)
 is the `.ret` base case.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -49,12 +55,12 @@ first digit string back to its value, and `dval (toDigits 10 n) = n`, so `Nat.re
 (= `String.ofList ∘ toDigits 10`) has a left inverse and is injective. -/
 
 /-- The fold step reading one decimal digit. -/
-private def dstep (a : Nat) (c : Char) : Nat := a * 10 + (c.toNat - 48)
+def dstep (a : Nat) (c : Char) : Nat := a * 10 + (c.toNat - 48)
 
 /-- The decimal value of a most-significant-first digit-char list. -/
-private def dval (cs : List Char) : Nat := cs.foldl dstep 0
+def dval (cs : List Char) : Nat := cs.foldl dstep 0
 
-private theorem foldl_dstep_acc (cs : List Char) (a : Nat) :
+theorem foldl_dstep_acc (cs : List Char) (a : Nat) :
     cs.foldl dstep a = a * 10 ^ cs.length + cs.foldl dstep 0 := by
   induction cs generalizing a with
   | nil => simp
@@ -63,12 +69,12 @@ private theorem foldl_dstep_acc (cs : List Char) (a : Nat) :
         pow_succ, dstep, dstep]
       ring
 
-private theorem dval_cons (c : Char) (cs : List Char) :
+theorem dval_cons (c : Char) (cs : List Char) :
     dval (c :: cs) = (c.toNat - 48) * 10 ^ cs.length + dval cs := by
   rw [dval, List.foldl_cons, foldl_dstep_acc, dstep]
   simp only [dval]; ring
 
-private theorem dval_toDigitsCore (fuel : Nat) :
+theorem dval_toDigitsCore (fuel : Nat) :
     ∀ (n : Nat) (ds : List Char), n < fuel →
       dval (Nat.toDigitsCore 10 fuel n ds) = n * 10 ^ ds.length + dval ds := by
   induction fuel with

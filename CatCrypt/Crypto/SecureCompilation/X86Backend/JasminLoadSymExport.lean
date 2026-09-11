@@ -3,8 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringCoverageMulxMemSym
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+module
+
+import all Init.Data.Repr
+import all Init.Data.String.Defs
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringCoverageMulxMemSym
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringCoverageMulxMemSym
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 
 /-!
 # `loadSym` end-to-end: exporter `"LOADSYM"` arm → `JInstr.loadSym` (Option B)
@@ -48,6 +54,8 @@ So the `.rodata` twiddle-gather now reaches the `JInstr` emit path end-to-end,
 reusing the proven `JInstr.loadSym` chain — no `JasminOp` constructor, no change
 to existing kernels' emitted bytes.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

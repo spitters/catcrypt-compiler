@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.CompilerLoweringRegistry
-import CatCrypt.Crypto.Bridges.Transfer.CompilerRegistry
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.CompilerLoweringRegistry
+public import CatCrypt.Crypto.Bridges.Transfer.CompilerRegistry
 
 /-!
 # The run-output read-back: splicing the dialect chain into the x86 ALU domain
@@ -62,6 +65,8 @@ nature of the run-output, not a gap in this file:
 
 All goals closed.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

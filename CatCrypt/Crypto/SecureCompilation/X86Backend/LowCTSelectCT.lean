@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
-import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMemDenote
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMemDenote
 
 /-!
 # Source→machine bridge: the CONSTANT-TIME conditional SELECT (`RSelect` → `cmov`)
@@ -73,6 +75,8 @@ case — the branchless property the whole exercise is about.
 * `lowerSelect_denote_rustExec` — the tie to the real `RustExec` operational
   semantics (`selectFalse`/`selectTrue`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

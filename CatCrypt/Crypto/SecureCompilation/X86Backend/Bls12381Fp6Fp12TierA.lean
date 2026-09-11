@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381TowerTierA
-import Mathlib.Tactic
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381TowerTierA
+public import Mathlib.Tactic.Group
+public import Mathlib.Tactic.Ring
 
 /-!
 # BLS12-381 `Fp6` / `Fp12` multiply — in-`ZMod p` value-correctness over the
@@ -70,6 +73,8 @@ hardware carry-chain + conditional reduce realises the canonical residue; the
 the Tier-A file's honest-scope note). The genuine *algebraic* content tying the
 schedule to the extension-field product is what this file proves.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 -- The Tier-A base carries the `2^384` radix literal; never evaluated, so raise

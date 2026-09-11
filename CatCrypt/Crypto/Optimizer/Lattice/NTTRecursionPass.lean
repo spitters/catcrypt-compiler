@@ -3,10 +3,13 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import Mathlib.Algebra.BigOperators.Group.Finset.Basic
-import Mathlib.Algebra.BigOperators.Fin
-import Mathlib.Tactic.Ring
-import Mathlib.Tactic.Abel
+module
+
+import all Init.Data.Repr
+public import Mathlib.Algebra.BigOperators.Group.Finset.Basic
+public import Mathlib.Algebra.BigOperators.Fin
+public import Mathlib.Tactic.Ring
+public import Mathlib.Tactic.Abel
 
 /-!
 # Generic radix-2 Cooley–Tukey decimation-in-time recursion step
@@ -45,6 +48,8 @@ folds the upper half (`X_{k+n} = E_k − ωᵏ O_k`), as exhibited concretely in
 The even/odd separation is `sum_range_two_mul` (a self-contained induction on
 `n`), reached from the `Fin (2n)` sum via `Fin.sum_univ_eq_sum_range`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

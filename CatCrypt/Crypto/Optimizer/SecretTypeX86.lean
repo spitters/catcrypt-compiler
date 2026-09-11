@@ -3,9 +3,12 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.StoreToLoadForward
-import CatCrypt.Crypto.Optimizer.SecretType
-import CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Optimizer.StoreToLoadForward
+public import CatCrypt.Crypto.Optimizer.SecretType
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline
 
 /-!
 # A fourth pass for the compositional-CT taint story: the owned-x86 store-to-load
@@ -71,6 +74,8 @@ nature) chains the four: the driver never **raises** the block taint summary.
 
 All goals closed.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

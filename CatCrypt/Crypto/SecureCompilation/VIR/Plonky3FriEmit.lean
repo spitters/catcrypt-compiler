@@ -3,10 +3,17 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3LdeEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3MerkleEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3LdeEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3LdeEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3MerkleEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3MerkleEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 
 /-!
 # Plonky3 FRI (commit + query) emitted through the verified front
@@ -50,6 +57,8 @@ The reference is `plonky3-hax/src/fri.rs` (`fri_fold`, `fold_polynomial`,
 Field arithmetic reuses `Plonky3LdeEmit`; the fold inverse `1/2` and `1/(2x)`
 are precomputed Baby Bear inverses. No opaque leaf.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

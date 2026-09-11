@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering64
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering64
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering64
 
 /-!
 # s2n-bignum's `bignum_mul_4_8` (4×4 schoolbook), lowered through the owned RV64 backend (#550)
@@ -85,6 +89,8 @@ ADX count. The 800-vs-63 ratio is the price of the missing ADX/flag register (an
 the conservative ripple), not a backend inefficiency.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvMontMulKernel
@@ -118,14 +124,14 @@ scratch. -/
     incoming carry register (already 0/1), `cyOut` the produced carry, `t` the
     scratch. We model the propagation explicitly: `acc[k] += src` (carry `c`), then
     `acc[k+1] += c`, `acc[k+2] += (that carry)`, … up to `acc7`. -/
-private def accAt (k : Nat) : String := "acc" ++ toString k
+def accAt (k : Nat) : String := "acc" ++ toString k
 
 /-- Fold one product half `src` into the accumulator starting at column `k`,
     rippling the carry up to `acc7`. Produces the carry chain via `addcc` (head)
     then `addc` links — each adds the running carry into the next accumulator
     word. The carry registers are named `cyK`/`cyK1`/… per column so they stay
     distinct (alias-free). -/
-private def foldInto (k : Nat) (src : String) : List ROp64 :=
+def foldInto (k : Nat) (src : String) : List ROp64 :=
   -- acc[k] := acc[k] + src, carry → the running carry register. At any point in a
   -- ripple only ONE carry is live (each link consumes the previous carry and
   -- produces the next), so we alternate just two names `cra`/`crb` — the
@@ -144,7 +150,7 @@ private def foldInto (k : Nat) (src : String) : List ROp64 :=
 
 /-- The product pair `x[i]·y[j]` folded into the accumulator: `lo` at column
     `i+j`, `hi` at column `i+j+1`. -/
-private def macAt (i j : Nat) (xi yj : String) : List ROp64 :=
+def macAt (i j : Nat) (xi yj : String) : List ROp64 :=
   [ .mul "lo__" xi yj, .mulhu "hi__" xi yj ] ++
   foldInto (i + j) "lo__" ++
   foldInto (i + j + 1) "hi__"

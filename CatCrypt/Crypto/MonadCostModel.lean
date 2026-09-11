@@ -3,10 +3,12 @@ Copyright (c) 2025 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.UC
-import CatCrypt.Crypto.UCAdmClass
-import CatCrypt.Core.SPTree
-import CatCrypt.Crypto.UCMonad.SPCompInstance
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.UCAdmClass
+public import CatCrypt.Core.SPTree
+public import CatCrypt.Crypto.UCMonad.SPCompInstance
 
 /-!
 # Monad Cost Model and Query-Bounded Admissibility
@@ -44,8 +46,11 @@ trivial `UCAdmClass SPComp` instance. Use `letI := spTreeQueryAdm` locally.
 ## Main results
 
 * All proofs sorry-free (0 new axioms)
-* `spTreeQueryAdm` gives genuine computational admissibility (not trivial)
+* `spTreeQueryAdm` is an admissibility class that some Kleisli arrows fail:
+  an opaque function with no syntax-tree witness is outside it
 -/
+
+@[expose] public section
 
 open scoped ENNReal
 
@@ -165,7 +170,7 @@ open CatCrypt.Core CatCrypt.Crypto
 /-- A Kleisli arrow `f : α → SPComp β` is **query-bounded** if there exists
     a syntax tree representation with uniformly bounded operation count.
 
-    This is a genuine (non-trivial) admissibility class:
+    Membership in the class:
     - Opaque functions without syntax tree witnesses are NOT admissible
     - All programs built from standard SPComp constructors ARE admissible
     - The class is closed under bind (splicing trees) and mapSum (case analysis) -/
@@ -198,12 +203,12 @@ noncomputable def spTreeQueryAdm : UCAdmClass SPComp where
         simp only [SPTree.compile_bind, SPTree.compile_ret, hsf]
         show SPComp.bind (f a) (fun b => SPComp.pure (Sum.inl b)) =
           UCMonadBase.ucMapSum f g (.inl a)
-        simp [UCMonadBase.ucMapSum, mapSum, SPComp.map]
+        simp [UCMonadBase.ucMapSum, mapSumSP, SPComp.map]
       | inr c =>
         simp only [SPTree.compile_bind, SPTree.compile_ret, hsg]
         show SPComp.bind (g c) (fun b => SPComp.pure (Sum.inr b)) =
           UCMonadBase.ucMapSum f g (.inr c)
-        simp [UCMonadBase.ucMapSum, mapSum, SPComp.map]
+        simp [UCMonadBase.ucMapSum, mapSumSP, SPComp.map]
     · intro x; cases x with
       | inl a =>
         show ((sf a).bind (fun b => SPTree.ret (Sum.inl b))).queryCost ≤ max nf ng

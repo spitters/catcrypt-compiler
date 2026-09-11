@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.MlkemFieldLeaf
-import CatCrypt.Crypto.SecureCompilation.Ascent.EmitBridge
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Ascent.MlkemFieldLeaf
+public import CatCrypt.Crypto.SecureCompilation.Ascent.EmitBridge
 
 /-!
 # The `ZMod 3329` keystone: an ML-KEM coefficient value ascends to emitted bytes
@@ -39,6 +41,8 @@ The full `poly_add` capstone — the 256-coefficient loop composed via `corres_f
 then welded to bytes — is NOT closed here. The precise obstructions are recorded at
 the end of this file.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

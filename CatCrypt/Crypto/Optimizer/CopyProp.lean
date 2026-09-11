@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Optimizer.Rewrite.Peephole
-import CatCrypt.Crypto.SecureCompilation.VIR.MergeCom
+module
+
+public import CatCrypt.Crypto.Optimizer.Rewrite.Peephole
+public import CatCrypt.Crypto.SecureCompilation.VIR.MergeCom
 
 /-!
 # Verified copy-propagation pass for `Com` (typed VIR `jasminDialect`)
@@ -52,6 +54,8 @@ The pass is conservative: it propagates **only** through a provably
 denotation-preserving copy (a variable-to-variable alias), never through an
 arbitrary expression. All goals closed; no `sorry`.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

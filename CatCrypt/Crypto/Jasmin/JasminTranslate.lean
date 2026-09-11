@@ -3,9 +3,11 @@ Copyright (c) 2024 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminVar
-import CatCrypt.Crypto.Jasmin.JasminOps
-import CatCrypt.Deep.RawCode
+module
+
+public import CatCrypt.Crypto.Jasmin.JasminVar
+public import CatCrypt.Crypto.Jasmin.JasminOps
+public import CatCrypt.Deep.RawCode
 
 /-!
 # Jasmin → RawCode Translation
@@ -27,6 +29,8 @@ Function calls are handled by inlining (matching the Rocq approach).
 
 - `jasmin_translate.v`: lines 1712–4300
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin
 
@@ -58,18 +62,18 @@ type and construct the appropriate RawCode directly. -/
 
 /-- Locations for each Jasmin type. These are distinct from `translateVar`
     because they use concrete types that Lean can see through. -/
-private def boolLoc (sid : ScopeId) (v : Var) : CatCrypt.Core.Location :=
+def boolLoc (sid : ScopeId) (v : Var) : CatCrypt.Core.Location :=
   { id := varLocId sid v, ty := Bool }
 
-private def intLoc (sid : ScopeId) (v : Var) : CatCrypt.Core.Location :=
+def intLoc (sid : ScopeId) (v : Var) : CatCrypt.Core.Location :=
   { id := varLocId sid v, ty := BitVec 64,
     fintype := CatCrypt.Crypto.instFintypeBitVec 64 }
 
-private def arrLoc (sid : ScopeId) (v : Var) (n : Nat) : CatCrypt.Core.Location :=
+def arrLoc (sid : ScopeId) (v : Var) (n : Nat) : CatCrypt.Core.Location :=
   { id := varLocId sid v, ty := JArray n,
     fintype := JArray.instFintypeJArray n }
 
-private def wordLoc (sid : ScopeId) (v : Var) (ws : WSize) : CatCrypt.Core.Location :=
+def wordLoc (sid : ScopeId) (v : Var) (ws : WSize) : CatCrypt.Core.Location :=
   { id := varLocId sid v, ty := BitVec ws.bits,
     fintype := CatCrypt.Crypto.instFintypeBitVec ws.bits }
 

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxRing8192Tie
-import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
+module
+
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxRing8192Tie
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSecurityTie
 
 /-!
 # #607 security tie: the compile-from-hax `Z/8192Z` multiply leaf realizes the
@@ -49,6 +51,8 @@ operates over (`encZ` produces canonical residues `< 8192`), which is exactly th
 domain on which `ring8192MulMask_eq_ring` is stated and the domain a coefficient
 of the cyclic convolution inhabits.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

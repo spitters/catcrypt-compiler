@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulSpill
+module
+
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulSpill
 
 /-!
 # `toLprogPhysAbi` faithfulness — the RA store-relation WRITE side
@@ -80,6 +82,8 @@ RESIDUAL (NOT proved here):
 * the ABI prologue/epilogue and the `Lret` terminator (control flow, outside
   `lsemStraight`'s straight-line scope — `lsemStep .Lret = none`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

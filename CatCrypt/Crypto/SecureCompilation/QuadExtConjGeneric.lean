@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.QuadExtGeneric
-import Mathlib.Algebra.Field.Basic
+module
+
+public import CatCrypt.Crypto.SecureCompilation.QuadExtGeneric
+public import Mathlib.Algebra.Field.Basic
 
 /-!
 # Generic conjugation, norm, and inversion of `QuadExt K = K[u]/(u² − ξ)`
@@ -48,6 +50,8 @@ nonresidue, recorded but not proved here. It does **not** wire conjugation/norm/
 inversion down to any emitted base kernel; that lift is per-instantiation and
 deliberately out of scope here, to keep the generic core focused and sorry-free.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

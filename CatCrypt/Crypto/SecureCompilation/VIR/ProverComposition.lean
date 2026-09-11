@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.StructuredControlFlow
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.StructuredControlFlow
+public import CatCrypt.Crypto.SecureCompilation.VIR.StructuredControlFlow
 
 /-!
 # Prover phase composition — the verified sequencing scaffold
@@ -47,6 +50,8 @@ first list element runs *first* on the initial state. Consequently
 The headline `pipeline_denote` states the composite as the right-nested
 composition `fₖ (… (f₁ s))` of the phases in order.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.ProverComposition
 

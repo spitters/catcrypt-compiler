@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Bridges.ReprTransfer
+module
+
+public import CatCrypt.Crypto.Bridges.ReprTransfer
 
 /-!
 # Tier-3: compositional transfer via the abstraction theorem
@@ -34,6 +36,8 @@ target.
 * `OpExpr.denote_commutes` — the abstraction theorem.
 * `OpExpr.expr_eq_transfer` — composite equation transfer.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

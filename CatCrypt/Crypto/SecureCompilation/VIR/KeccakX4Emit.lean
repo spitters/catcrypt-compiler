@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
-import CatCrypt.Crypto.SecureCompilation.VIR.KeccakX4Transpose
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.KeccakX4Transpose
 
 /-!
 # 4-way batched Keccak-f1600 as a bounded loop over the scalar permutation (#587)
@@ -49,6 +51,8 @@ round-trip identity, and (2) the proof that the batched 4-state result equals
 four independent scalar permutations of the transposed states — the wiring the
 PQC callers (ML-DSA ExpandA/ExpandMask, SLH-DSA FORS) consume. No `sorry`, no new
 axioms. -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.KeccakX4Emit
 

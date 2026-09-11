@@ -3,7 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.SubMul1AdxPrototype
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.Mpn.SubMul1AdxPrototype
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.Mpn.SubMul1AdxPrototype
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -73,7 +80,7 @@ prototype documents.
 The literature trick for `mpn_submul_1` puts the multiply-carry on **CF**
 (via `#ADCX`) and the subtract on **OF** (via `#ADOX(w, -lo, of)` with
 the OF chain seeded to 1 for the `+1` of two's-complement).  That would
-give the genuine dual-issue win the `mpn_addmul_1_adx` prototype already
+give the dual-issue win the `mpn_addmul_1_adx` prototype already
 captures.
 
 **This file does *not* yet exploit that dual-chain advantage**: both the
@@ -154,7 +161,7 @@ open CatCrypt.Crypto.Jasmin
 open CatCrypt.Crypto.Jasmin.BignumExec
 open CatCrypt.Crypto.Jasmin.Emit
 open CatCrypt.Crypto.Jasmin.MemoryModel
-open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype hiding vr pv loadAt0 storeAt0 binImm
 open CatCrypt.Crypto.Jasmin.Mpn.Mul1Prototype
 open CatCrypt.Crypto.Jasmin.Mpn.Addmul1Prototype
 open CatCrypt.Crypto.Jasmin.Mpn.Submul1Prototype

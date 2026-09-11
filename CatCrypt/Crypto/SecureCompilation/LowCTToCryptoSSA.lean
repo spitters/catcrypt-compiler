@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
-import CatCrypt.Crypto.SecureCompilation.CryptoSSA
+module
+
+public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.SecureCompilation.CryptoSSA
 
 /-!
 # LowCT → CryptoSSA substrate
@@ -19,6 +21,8 @@ One front consumes this substrate: `translateDialectControl`
 (`Dialects/TranslateDialectDirectControl.lean`), which lowers `LowCT` directly to
 `Com catCryptDialect`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
 

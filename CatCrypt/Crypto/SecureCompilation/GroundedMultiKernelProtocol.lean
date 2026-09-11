@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.GroundedFieldProtocol
+module
+
+public import CatCrypt.Crypto.SecureCompilation.GroundedFieldProtocol
 
 /-!
 # A combined-dispatch leafSpec realizing MULTIPLE distinct kernels — the move
@@ -64,6 +66,8 @@ The dispatch is on a decidable `String` equality; each branch is a proved arm, s
 each kernel's realization is a theorem, and the mixed pipeline grounds with no
 assumed kernel facts.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

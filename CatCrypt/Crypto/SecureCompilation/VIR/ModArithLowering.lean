@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ModArithDialect
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.VIR.ModArithDialect
 
 /-!
 # ModArith lowering (#482-1) — the L2 → {Vector | LowCT} step
@@ -55,6 +58,8 @@ op-level denotation- + CT-preserving lowering lifts to the whole-program
 statement by the `Com` recursion (mirroring `LatticeDialect`'s
 `nttMul_rewrite_denote_eq` reducing to leaf agreement).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

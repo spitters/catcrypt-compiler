@@ -3,10 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.FieldReduceIdioms
-import CatCrypt.Crypto.SecureCompilation.ScalarLinNeutral
-import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
-import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RegToRiscv
+module
+
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.SecureCompilation.FieldReduceIdioms
+public import CatCrypt.Crypto.SecureCompilation.ScalarLinNeutral
+public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
+public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RegToRiscv
+public import Mathlib.Data.ZMod.Basic
 
 /-!
 # A real field kernel: modular addition `(a + b) mod p`, compiled both ways
@@ -20,12 +24,14 @@ Two results:
   result register holds `(a + b) mod p`. (No new primitive — the modular reduction is
   the verified branchless conditional subtract.)
 * `addmodProg_arm` / `addmodProg_riscv` — the kernel **compiles to both backends** via
-  the generic keystones, with the machine run realising the `RegProg` denotation.
+  the generic main theorems, with the machine run realising the `RegProg` denotation.
 
 This is the template for migrating real field kernels: author the operation as a
 straight-line `RegProg` (or, above it, a `Com`) over the alphabet, prove the value
 correctness against the `ZMod`-style spec, and inherit both backends for free.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.AddModKernel
 
@@ -80,7 +86,7 @@ theorem addmodProg_toNat (p : Nat) (env : Env) (hp : 0 < p) (hp64 : p < 2 ^ 63)
   rw [bCondSub_toNat _ _ (by rw [hpc]; omega) (by rw [hpc, hsum]; omega), hpc, hsum]
 
 /-- The kernel compiles to AArch64: the machine run of the lowered block realises the
-    `RegProg` denotation (generic keystone). -/
+    `RegProg` denotation (generic main theorem). -/
 theorem addmodProg_arm (p : Nat) (s : BState) :
     runBBlock s (lowerBBlock (regToBOp (addmodProg p))) = armTarget.denote (addmodProg p) s :=
   regToBOp_denote (addmodProg p) s

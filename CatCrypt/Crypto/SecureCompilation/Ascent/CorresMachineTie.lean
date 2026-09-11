@@ -3,8 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresGeneric
-import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeArithComplete
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresGeneric
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeArithComplete
 
 /-!
 # `SimTie` — the cross-machine simulation, and the shape of the `jasmin ↔ runBlock` leg
@@ -33,6 +36,8 @@ value), so the middle ties are its LowCT-level instances. `SimTie` gives that le
 its compositional structure; closing it for the whole jasmin dialect (every op,
 general allocation) is the descent compiler's open frontier.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

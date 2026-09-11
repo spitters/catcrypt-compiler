@@ -3,7 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.ShaNiEmit
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.ShaNiEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.ShaNiEmit
 
 /-!
 # Single-block SHA-256 compression via Intel SHA-NI, emitted through the OWNED
@@ -67,6 +71,8 @@ stages `mk` there before each pair of rounds (the `vpaddd …(%rdx), …, %xmm0`
 
 Invoke:  `lake build CatCrypt.Crypto.SecureCompilation.VIR.Sha2ShaniEmit`
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

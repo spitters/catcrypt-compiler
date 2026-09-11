@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpBrickScope
-import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrameRoundTrip
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpBrickScope
+public import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrameRoundTrip
 
 /-!
 # The secp256k1 point-op epilogue: half-limbs back into the 12-cell output frame
@@ -54,6 +56,8 @@ against `limbs4`, which needs the half-limbs below `2 ^ 32` — the bound
   the 12-cell frame
   `pointCells (feVal env "Xp", feVal env "Yp", feVal env "Zp")`.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpEpilogue
 

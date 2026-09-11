@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.SpeculativeCT
+module
+
+public meta import CatCrypt.Crypto.SecureCompilation.SpeculativeCT
+public import CatCrypt.Crypto.SecureCompilation.SpeculativeCT
 
 /-!
 # Verified fence-insertion: speculative CT against an *unconstrained* predictor
@@ -108,6 +111,8 @@ the drain removes a data dependence the architectural trace does not carry.
   "Typing High-Speed Cryptography against Spectre v1", IEEE S&P 2023
   (Jasmin's fence/SLH selective protection — the perf-optimal variant).
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.SpeculativeCT
 

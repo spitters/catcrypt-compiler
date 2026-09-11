@@ -3,7 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
+module
+
+import all Init.Data.Repr
+public import CatCrypt.Crypto.Jasmin.LowCT
 
 /-!
 # Pass 1.2 — Montgomery Reduction
@@ -54,6 +57,8 @@ Pipeline composition: this pass is `pass_montgomery` in the optimizer
 orchestrator (Tier 4.1).  Composes with `pass_barrett` via the per-pass
 equivalence theorems.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -407,7 +412,7 @@ original command, modulo the per-leaf agreement at `RCall`/`RCallSwap`/
     than `forZero`/`forSucc` are at commands whose head constructor is not
     `RFor`, so the defining equation refutes them, and listing them makes a
     change to the rule set a build error. -/
-private theorem rfor_spine_reverse {N : Nat} {leafSpec : LeafSpec}
+theorem rfor_spine_reverse {N : Nat} {leafSpec : LeafSpec}
     {x : String} {body body' : LowCT}
     (ih : ∀ (rs rs' : RustState),
       RustExec N leafSpec body' rs rs' → RustExec N leafSpec body rs rs') :

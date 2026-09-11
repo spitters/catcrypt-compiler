@@ -3,7 +3,34 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecKernelAdeq
+module
+
+-- The closed-kernel route reduces the front (`translateDialectControl`,
+-- `semScalar`, `cryptoDialectToJasminCom`) by `rfl`/`decide`; under the module
+-- system that reduction needs the front closure imported with `all`, and
+-- `Nat.repr` (the front's slot names) exposed through `Init.Data.Repr`.
+import all Init.Data.Repr
+import all CatCrypt.Core.Code
+import all CatCrypt.Crypto.CryptoWord
+import all CatCrypt.Crypto.Jasmin.JasminAST
+import all CatCrypt.Crypto.Jasmin.JasminTypes
+import all CatCrypt.Crypto.Jasmin.LowCT
+import all CatCrypt.Crypto.SDist
+import all CatCrypt.Crypto.SecureCompilation.CryptoSSA
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+import all CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
+import all CatCrypt.Crypto.SecureCompilation.Dialects.RustExecKernelAdeq
+import all CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
+import all CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.Core
+import all CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+import all CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+import all CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
+public import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecKernelAdeq
 
 /-!
 # A real covered round through the closed-kernel `emitted = RustExec` route
@@ -25,9 +52,9 @@ Maj(a,b,c) = (a ∧ b) ⊕ (a ∧ c) ⊕ (b ∧ c)
 
 as the `T2` half of its round update. It is **purely bitwise** (`∧`, `⊕`), so
 its covered-fragment `inRange` obligation holds for ALL `u64` inputs with **no**
-side condition — `SXor`/`SAnd` carry only their operand conditions. This is
-exactly why the nonlinear layer is the maximal genuinely-real SHA-2 fragment
-expressible in the covered word alphabet: see §"Residual".
+side condition — `SXor`/`SAnd` carry only their operand conditions. The
+nonlinear layer is therefore the largest SHA-2 fragment expressible in the
+covered word alphabet: see §"Residual".
 
 The kernel writes the three inputs as literals (the SHA-256 IV words `a,b,c`),
 then computes `maj`. It is closed, so `semScalar` runs it from the empty entry
@@ -73,10 +100,12 @@ per-arm coverage:
   over the round body, tracked by the loop bridge `agreeFor`; the closed-kernel
   empty-entry-env argument is unchanged because the unrolled body stays closed.
 
-The one genuine wall is the `Σ`/`σ`/`+` ARX layer (§"Residual"): closing it needs
+The remaining wall is the `Σ`/`σ`/`+` ARX layer (§"Residual"): closing it needs
 the per-kernel `SExpr.inRange` reconciliation (a concrete input bound feeding
 `SExpr.evalBV_eq_ofNat_eval`), not the input-agnostic hoisted arm used here.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -178,18 +207,32 @@ theorem roundHSem : semScalar roundC (fun _ => none) = some roundEnv :=
 
 theorem roundNameSome : (roundO.vm.lookup "maj").isSome := by rfl
 
+/-- The tracked slot's type is the 64-bit word: decided, since the slot name
+    goes through `Nat.repr`, which the elaborator's definitional check does not
+    reduce. -/
+theorem roundNameTy : ((roundO.vm.lookup "maj").get roundNameSome).1 = .sword 64 := by
+  decide
+
 /-- The tracked output slot for `maj`. -/
 noncomputable def roundW : CVar roundO.Γ' (.sword 64) :=
-  ((roundO.vm.lookup "maj").get roundNameSome).2
+  cast (congrArg (CVar roundO.Γ') roundNameTy) ((roundO.vm.lookup "maj").get roundNameSome).2
 
-theorem roundHName : roundO.vm.lookup "maj" = some ⟨.sword 64, roundW⟩ := by rfl
+theorem roundHName : roundO.vm.lookup "maj" = some ⟨.sword 64, roundW⟩ := by decide
 
 theorem roundValSome : (roundEnv "maj").isSome := by rfl
 
-/-- The word `semScalar` leaves in `maj`. -/
-noncomputable def roundVal : BitVec 64 := ((roundEnv "maj").get roundValSome).2
+theorem roundValTy : ((roundEnv "maj").get roundValSome).1 = .sword 64 := by decide
 
-theorem roundHVal : roundEnv "maj" = some ⟨.sword 64, roundVal⟩ := by rfl
+/-- The word `semScalar` leaves in `maj`. -/
+noncomputable def roundVal : BitVec 64 :=
+  cast (congrArg CryptoTy.denote roundValTy) ((roundEnv "maj").get roundValSome).2
+
+theorem roundHVal : roundEnv "maj" = some ⟨.sword 64, roundVal⟩ := by
+  rw [← Option.some_get roundValSome]
+  exact congrArg some (Sigma.ext roundValTy
+    (by unfold roundVal
+        exact (cast_heq (congrArg CryptoTy.denote roundValTy)
+          ((roundEnv "maj").get roundValSome).2).symm))
 
 theorem roundRetSome : (roundO.cont (Com.ret (toVIRVar roundW))).isSome := by rfl
 

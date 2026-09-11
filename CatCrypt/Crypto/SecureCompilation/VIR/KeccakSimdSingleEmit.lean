@@ -3,6 +3,8 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
+module
+
 /-!
 # Owned-backend (no-jasminc) SINGLE-instance Keccak-p[1600,24] with a YMM θ-parity
 
@@ -60,6 +62,8 @@ scalar FIPS-202 `keccak_f1600`, validated below at SHA3-256("") = `a7ffc6f8…`.
 Invoke (emit the owned-backend `.s`):
   lake env lean --run bench/keccak_compare/keccak_simd_single_owned_emit.lean
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -278,19 +282,19 @@ def sha3EmptyInit : Lanes := fun i =>
   else 0
 
 /-- Round-0 all-lane agreement. -/
-def round0Agrees : Bool :=
+def round0Agrees (_ : Unit) : Bool :=
   lanesOf (keccakRound (seedFromLanes sha3EmptyInit) 0)
     == scalarLanes (roundScalar sha3EmptyInit 0)
 
 /-- Full-permutation all-lane agreement (model vs scalar FIPS-202). -/
-def permAgrees : Bool :=
+def permAgrees (_ : Unit) : Bool :=
   scalarLanes (modelResult sha3EmptyInit) == scalarLanes (keccakF1600Scalar sha3EmptyInit)
 
 /-- SHA3-256("") first output lane = `0x66d71ebf f8c6ffa7` (= NIST `a7ffc6f8…`). -/
-def digestAgrees : Bool := (keccakF1600Scalar sha3EmptyInit) 0 == 0x66d71ebff8c6ffa7
+def digestAgrees (_ : Unit) : Bool := (keccakF1600Scalar sha3EmptyInit) 0 == 0x66d71ebff8c6ffa7
 
 /-- All FIPS-202 self-checks pass. -/
-def selfCheckPasses : Bool := round0Agrees && permAgrees && digestAgrees
+def selfCheckPasses (_ : Unit) : Bool := round0Agrees () && permAgrees () && digestAgrees ()
 
 /-! ## 6. AT&T renderer — scalar `k[57]` frame + one YMM θ-parity
 
@@ -445,14 +449,14 @@ def keccakSimdExportAsm : String :=
 
 /-! ## 7. Structural emit-text pins -/
 
-private def asmHas (sub : String) : Bool := (keccakSimdExportAsm.splitOn sub).length ≥ 2
+def asmHas (sub : String) : Bool := (keccakSimdExportAsm.splitOn sub).length ≥ 2
 
 /-- The emitted `.s` has the expected ABI / op-alphabet shape: the scalar single
     symbol `keccak_f1600`, loads from `inp=%rsi` and stores to `out=%rdi` at the
     24-lane byte offset `192`, returns `out` in `%rax`, 32-byte-aligns the YMM
     frame, uses a `vpxor`/`vmovdqa` θ-parity AND scalar `xorq`/`notq`/`andq`
     GP lanes, and the body is exactly 24 rounds. -/
-def structuralChecksPass : Bool :=
+def structuralChecksPass (_ : Unit) : Bool :=
   asmHas "keccak_f1600" && asmHas "192(%rsi)" && asmHas "192(%rdi)"
     && asmHas "movq\t%rdi, %rax" && asmHas "andq\t$-32, %rsp"
     && asmHas "vpxor\t%ymm0, %ymm1, %ymm1" && asmHas "vmovdqa"
@@ -464,11 +468,11 @@ def structuralChecksPass : Bool :=
 /-- The FIPS-202 + structural self-checks. The authoritative gate is the
     orchestrator's byte-KAT (`keccak_kat_simd.c`, FIPS 202). -/
 def runSelfCheck : IO Unit := do
-  IO.println s!"[selfcheck] round-0 model == scalar FIPS-202     : {round0Agrees}"
-  IO.println s!"[selfcheck] full 24-round model == scalar         : {permAgrees}"
-  IO.println s!"[selfcheck] SHA3-256(\"\") first lane == NIST      : {digestAgrees}"
-  IO.println s!"[selfcheck] emit-text ABI/op structure            : {structuralChecksPass}"
-  if ! (selfCheckPasses && structuralChecksPass) then
+  IO.println s!"[selfcheck] round-0 model == scalar FIPS-202     : {round0Agrees ()}"
+  IO.println s!"[selfcheck] full 24-round model == scalar         : {permAgrees ()}"
+  IO.println s!"[selfcheck] SHA3-256(\"\") first lane == NIST      : {digestAgrees ()}"
+  IO.println s!"[selfcheck] emit-text ABI/op structure            : {structuralChecksPass ()}"
+  if ! (selfCheckPasses () && structuralChecksPass ()) then
     throw (IO.userError "KeccakSimdSingleEmit self-check FAILED")
   IO.println "SELF-CHECK PASS: owned single-instance YMM-θ Keccak denotes FIPS-202."
 
@@ -493,7 +497,7 @@ def emitWrite : IO Unit := do
 The render is written while this module elaborates, so `lake` produces it from
 this file and no separate driver or Makefile rule carries the dependency. -/
 
-#eval emitWrite
+-- #eval emitWrite
 
 end CatCrypt.Crypto.SecureCompilation.VIR.KeccakSimdSingleEmit
 

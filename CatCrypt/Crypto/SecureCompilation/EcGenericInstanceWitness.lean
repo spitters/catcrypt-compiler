@@ -3,9 +3,11 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.EcRealizationGeneric
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377EC
-import CatCrypt.Crypto.SecureCompilation.RelationalFrontPallasEC
+module
+
+public import CatCrypt.Crypto.SecureCompilation.EcRealizationGeneric
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377EC
+public import CatCrypt.Crypto.SecureCompilation.RelationalFrontPallasEC
 
 /-!
 # Consolidation witness: the per-curve EC realizations are instances of the generic one
@@ -48,6 +50,8 @@ records the redundancy.
 files (`bls377_two_ne_zero`, …), which are themselves consequences of the section hypothesis
 `[Fact (Nat.Prime ·Q)]` — not asserted axioms.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

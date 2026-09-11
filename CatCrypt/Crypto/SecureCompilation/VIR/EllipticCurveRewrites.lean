@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveDialect
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveDialect
 
 /-!
 # EllipticCurve-dialect optimization rewrites (#482-3)
@@ -37,6 +39,8 @@ canonical forms (as `bn254_padd_realized` does for `padd`).
   any schedule equal to the bucketed/double-and-add form denotes to the dialect's
   `pmsm`/`psmul` op.
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

@@ -3,8 +3,10 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.LowCT
-import CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul
+module
+
+public import CatCrypt.Crypto.Jasmin.LowCT
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul
 
 /-!
 # Pass 3.2 — Hoist `invntt` out of an NTT multiply-accumulate loop
@@ -48,6 +50,8 @@ bound via `RustExec.forZero` / `forSucc`), under explicit leaf-agreement
 hypotheses (`add` is the accumulator op, the source mul = `invntt` of the
 target mul, `invntt` additive, `invntt 0 = 0`).
 -/
+
+@[expose] public section
 
 set_option autoImplicit false
 

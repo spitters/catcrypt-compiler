@@ -3,7 +3,9 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.SecureCompilation.VIR.KernelSyntax
+module
+
+public import CatCrypt.Crypto.SecureCompilation.VIR.KernelSyntax
 
 /-!
 # `kernel%` DELABORATOR — the inverse of the typed symbol-table elaborator
@@ -37,6 +39,8 @@ Walking the `Com`:
   `scope[index]` — the exact reverse of `resolveVar`.
 -/
 
+@[expose] public section
+
 set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.KernelDelab
@@ -47,16 +51,18 @@ open CatCrypt.Crypto.SecureCompilation.VIR.KernelSyntax
 
 /-! ## 1. The delaborator -/
 
+meta section
+
 /-- De-Bruijn index of a `Ctxt.Var` Expr: count the `.there` wrappers around the
     innermost `.here`. `none` if the Expr is not a `Ctxt.Var` literal. -/
-private partial def varIndex? (e : Lean.Expr) : Option Nat :=
+partial def varIndex? (e : Lean.Expr) : Option Nat :=
   match e.getAppFn.constName? with
   | some ``Ctxt.Var.here  => some 0
   | some ``Ctxt.Var.there => (varIndex? e.appArg!).map (· + 1)
   | _                     => none
 
 /-- Flatten an `HVector.cons … .nil` Expr spine into its head Exprs (in order). -/
-private partial def hvArgs (e : Lean.Expr) : List Lean.Expr :=
+partial def hvArgs (e : Lean.Expr) : List Lean.Expr :=
   match e.getAppFn.constName? with
   | some ``HVector.cons =>
       -- @HVector.cons α f t ts head tail
@@ -65,7 +71,7 @@ private partial def hvArgs (e : Lean.Expr) : List Lean.Expr :=
   | _ => []
 
 /-- Flatten a `List.cons … List.nil` Expr spine into its element Exprs (in order). -/
-private partial def listArgs (e : Lean.Expr) : List Lean.Expr :=
+partial def listArgs (e : Lean.Expr) : List Lean.Expr :=
   match e.getAppFn.constName? with
   | some ``List.cons =>
       -- @List.cons α head tail
@@ -75,7 +81,7 @@ private partial def listArgs (e : Lean.Expr) : List Lean.Expr :=
 
 /-- Fold the `Com.var … (Com.ret …)` chain into a `kstmt` list, threading the
     positional scope (`scope[i]` = the ident currently at de-Bruijn index `i`). -/
-private partial def buildStmts (scope : Array Ident) (depth : Nat) (e : Lean.Expr) :
+partial def buildStmts (scope : Array Ident) (depth : Nat) (e : Lean.Expr) :
     DelabM (Array (TSyntax `kstmt)) := do
   match e.getAppFn.constName? with
   | some ``Com.ret =>
@@ -109,7 +115,7 @@ private partial def buildStmts (scope : Array Ident) (depth : Nat) (e : Lean.Exp
 /-- Render a `Com d Γ t` Expr as `kernel%` surface. Registered for both entry
     constructors so any top-level `Com` fires it; inner nodes are consumed by
     the manual walk, not re-dispatched. -/
-private def delabKernelCom : Delab := do
+def delabKernelCom : Delab := do
   let e ← getExpr
   let cn := e.getAppFn.constName?
   unless cn == some ``Com.var || cn == some ``Com.ret do failure
@@ -127,6 +133,8 @@ private def delabKernelCom : Delab := do
 attribute [delab app.CatCrypt.Crypto.SecureCompilation.VIR.Com.var] delabKernelCom
 attribute [delab app.CatCrypt.Crypto.SecureCompilation.VIR.Com.ret] delabKernelCom
 
+end
+
 /-! ## 2. Faithfulness — render pins + `elab (delab t) = t` round-trips
 
 `macColHand` / `addLimbHand` (hand-written `Com` leaves, imported from
@@ -139,7 +147,7 @@ section Roundtrip
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 
 /--
-info: def CatCrypt.Crypto.SecureCompilation.VIR.KernelSyntax.macColHand : Com jasminDialect
+info: @[expose] def CatCrypt.Crypto.SecureCompilation.VIR.KernelSyntax.macColHand : Com jasminDialect
   [JasminTy.reg 64, JasminTy.reg 64, JasminTy.reg 64, JasminTy.reg 64] (JasminTy.reg 64) :=
 kernel%
   (v0 :

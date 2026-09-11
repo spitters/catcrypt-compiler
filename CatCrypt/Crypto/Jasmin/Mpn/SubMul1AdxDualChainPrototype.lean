@@ -3,7 +3,14 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.Mpn.SubMul1AdxComplementPrototype
+module
+
+import all Init.Data.Repr
+public meta import CatCrypt.Crypto.Jasmin.Mpn.SubMul1AdxComplementPrototype
+public meta import Std.Tactic.BVDecide.Reflect
+public import CatCrypt.Crypto.Jasmin.Mpn.SubMul1AdxComplementPrototype
+
+@[expose] public section
 
 set_option autoImplicit false
 
@@ -11,7 +18,7 @@ set_option autoImplicit false
 # True dual-chain ADCX+ADOX-of-complement variant of verified `mpn_submul_1`
 
 **EXPERIMENTAL FILE.**  Kernel-author migration of the
-`MpnSubMul1AdxComplementPrototype` from single-CF to a genuine ADCX+ADOX
+`MpnSubMul1AdxComplementPrototype` from single-CF to an ADCX+ADOX
 dual-chain, using the just-landed `JasminEmit` infrastructure (commit
 `5ee73c09`): OF=1 seeding via `ofSeedToOneCopn`, and ADCX/ADOX SETcc carry-out
 materialization (`isCarryBundleOp` now covers 2-LVal bundles).
@@ -140,7 +147,7 @@ open CatCrypt.Crypto.Jasmin
 open CatCrypt.Crypto.Jasmin.BignumExec
 open CatCrypt.Crypto.Jasmin.Emit
 open CatCrypt.Crypto.Jasmin.MemoryModel
-open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype
+open CatCrypt.Crypto.Jasmin.Mpn.AddPrototype hiding vr pv loadAt0 storeAt0 binImm
 open CatCrypt.Crypto.Jasmin.Mpn.Mul1Prototype
 open CatCrypt.Crypto.Jasmin.Mpn.Addmul1Prototype
 open CatCrypt.Crypto.Jasmin.Mpn.Submul1Prototype
@@ -379,7 +386,7 @@ def negOneName : String := "neg_one"
     On real x86 ADCX writes only CF, ADOX writes only OF, and MULX/NOT write
     no flags.  So all six instructions can issue independently — ADCX of
     iteration i and ADOX of iteration i-1 dispatch on the same cycle.  This
-    is the genuine dual-issue win the V-Cpl prototype design intended but
+    is the dual-issue win the V-Cpl prototype design intended but
     did not realise (V-Cpl ran both subtract and multiply-carry on CF). -/
 def dualChainLimbStep (i : Nat) : List InstrR :=
   [ -- t_i := [:u64 ap + 8*i]

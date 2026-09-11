@@ -3,9 +3,11 @@ Copyright (c) 2024 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-import CatCrypt.Crypto.Jasmin.JasminAST
-import CatCrypt.Crypto.CryptoWord
-import Mathlib.Data.Fintype.Pi
+module
+
+public import CatCrypt.Crypto.Jasmin.JasminAST
+public import CatCrypt.Crypto.CryptoWord
+public import Mathlib.Data.Fintype.Pi
 
 /-!
 # Jasmin Type Encoding
@@ -34,6 +36,8 @@ Following the Rocq `encode` function from `jasmin_translate.v`.
   In the translation, integer expressions are typically used as array indices
   and loop bounds, not stored in heap locations.
 -/
+
+@[expose] public section
 
 namespace CatCrypt.Crypto.Jasmin
 
