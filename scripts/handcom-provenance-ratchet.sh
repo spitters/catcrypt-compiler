@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
-# Hand-authored Com/Lcmd owned-emit provenance ratchet.
+# Hand-authored Com/Lcmd owned-emit provenance ratchet (see EMIT_PROVENANCE.md,
+# GOLDEN_PATH_PRIMITIVES.md).
 #
-# CANONICAL RULE: the deployed emitted artifact is GENERATED
+# CANONICAL RULE (EMIT_PROVENANCE.md): the deployed emitted artifact is GENERATED
 # by the verified front (compileFromHax / haxToLowCT / RelationalCompile /
 # FieldEmitGoldenPath -> Com -> cryptoDialectToJasminCom -> owned x86 backend). It
 # is NEVER hand-authored as `Com` / `Lcmd` / `Linstr` / `.s`. A hand-authored
-# `Lcmd` block plus a spec written against that same block proves nothing about
-# the compiler; if a front cannot express the kernel, FIX THE FRONT rather than
-# hand-authoring around it. The scalar reroute recipe is the *FrontEmit /
-# *FrontRolledEmit / *FrontValidate family — TranslateDialectRolledLoop.rolledForLoopN
-# / translateDialectControl / cryptoDialectToJasminCom / reifyLowCT.
+# `Lcmd` block + self-authored spec is a vacuous proof; if a front cannot express
+# the kernel, FIX THE FRONT, don't hand-author around it. The front now makes this
+# avoidable for scalar kernels (the *FrontEmit / *FrontRolledEmit / *FrontValidate
+# reroute recipe — TranslateDialectRolledLoop.rolledForLoopN /
+# translateDialectControl / cryptoDialectToJasminCom / reifyLowCT).
 #
 # This guard counts `CatCrypt/**/ *.lean` modules whose owned-emit kernel is
 # HAND-AUTHORED as Com/Lcmd rather than produced by a front. Provenance is decided
@@ -29,7 +30,8 @@
 #     rolledForLoopN | FieldEmitGoldenPath | RelationalCompile | emitDialectOwnedArr |
 #     FrontRoutePlan.{compile,compileLoop,compileNested,compileBlock} — the
 #     rolled-loop dispatcher, which selects one of the rolled-loop combinators
-#     (a site that reaches the family through it names no combinator)
+#     (a site that reaches the family through it names no combinator; see
+#     scripts/front-callsite-ratchet.sh)
 #
 # A candidate (construction or render marker present) counts unless `front_sourced`
 # clears it: a front marker in the file clears it; a construction marker in the file
@@ -91,12 +93,12 @@
 # `sumcheckLoop` are the proof subjects of `sumcheckLoopFundef_eq_buildOrchLoop`
 # while the emitted `sumcheckLoopFundef` is `buildOrchLoop (sumcheckSpec …)`.
 #
-# `bench/` IS SCANNED by detector B when the directory is present. A hand-built
-# `Lcmd` in a `bench/*.lean` driver writes a `.s` that the bench harness measures,
-# so it is a shipped artifact under the same rule. Detector A stays
-# `CatCrypt/`-only: its render-marker scan over bench drivers would be judging
-# compiler infrastructure by proxy, and every bench driver that hand-authors IR is
-# already a detector-B candidate.
+# `bench/` IS SCANNED by detector B. A hand-built `Lcmd` in a `bench/*.lean` driver
+# writes a `.s` that the bench harness measures and the scoreboard quotes, so it is
+# a shipped artifact under the same rule; leaving it out let five such drivers sit
+# outside the ratchet. Detector A stays `CatCrypt/`-only — its render-marker scan
+# over ~400 bench drivers would be judging compiler infrastructure by proxy, and
+# every bench driver that hand-authors IR is already a detector-B candidate.
 #
 # DETECTOR B GAP: it only considers modules that call `IO.FS.writeFile` themselves.
 # A kernel module whose artifact is written by a separate `*Main.lean` `lean_exe`
@@ -120,25 +122,32 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 BASELINE_FILE="scripts/handcom-provenance-baseline.txt"
 
-# Front markers. Three families count as a front:
+# Front markers: the original front API set, plus (2026-07-03 triage) the thir
+# front (`lowerThir` / `ThirToCom*` — the *ThirOwnedEmit families are
+# front-sourced Coms with an owned render tail) and references to a
+# `*CatCryptEmit.` module's Com (render-only modules whose Com is lowered from
+# the high catCryptDialect in a sibling front module).
 #
-#   * the dialect descents — `reifyLowCT` / `translateDialectControl` /
-#     `cryptoDialectToJasminCom` / `rolledForLoopN` / `FrontRoutePlan.*` /
-#     `FieldEmitGoldenPath` / `RelationalCompile` / `emitDialectOwnedArr`, plus
-#     `translBB` (`FieldDescentBB.translBB : Com fieldDialect → Com jasminDialect`,
-#     whose `translBB_denote` proves whole-program `bbEnc`-transport for
-#     GoodF-covered programs);
-#   * the thir front (`lowerThir` / `ThirToCom*`), and references to a
-#     `*CatCryptEmit.` module's Com — render-only modules whose Com is lowered
-#     from the high catCryptDialect in a sibling front module;
-#   * step-composition fronts, where a proven step-language interpreter renders a
-#     schedule written in that language rather than as raw Lcmd:
-#     `buildOrchCom` / `OrchFront`, `QuerySampleBranchFront`, `Shake256SpongeFront`,
-#     `Fe25519UnifyingFront`, `MpnCmpEarlyExitFront`, `SolveGf16FrontGen`, and the
-#     high-level-source descents `MpnAddFrontEmit`, `MpnLoopFrontEmit`, `serByteStore`.
-#
-# Step composition is weaker provenance than a high-level-source descent: the
-# schedule is still authored by hand, in a verified DSL rather than in raw IR.
+# `translBB` (2026-07-05): the block-expanding whole-program field→jasmin
+# translator (`FieldDescentBB.translBB : Com fieldDialect → Com jasminDialect`),
+# a VERIFIED Com-dialect descent — the same category as `cryptoDialectToJasminCom`
+# — with `translBB_denote` proving whole-program `bbEnc`-transport
+# (`(translBB c).denote (mapValF V) = bbEnc (c.denote V)` for GoodF-covered `c`,
+# unconditional). A module routing its kernel through `translBB` (e.g. the
+# Poseidon2-BabyBear `fieldFrontStagedCom = translBB fieldPermComAtInBodyStaged`,
+# 16-in/16-out, both ABI gaps closed) is front-sourced, not hand-authored.
+# 2026-07-06 session fronts (each a VERIFIED front producing owned `.s`, each flip
+# REFERENCE-KAT-validated): HIGH-LEVEL-SOURCE DESCENTS `MpnAddFrontEmit` (LowCT ->
+# translateDialectCarrySelect -> catCryptDialect -> RA; GMP conform), `MpnLoopFrontEmit`
+# (rolledForLoopNRt; GMP conform), `serByteStore` (memrefDialect byte store; bincode).
+# VERIFIED STEP-COMPOSITION fronts (same category as the accepted OrchFront/buildOrchCom
+# — a proven step-language interpreter renders an owned schedule authored in the front's
+# language, NOT raw hand-Lcmd): `QuerySampleBranchFront` (BStep; render KATs),
+# `Shake256SpongeFront` (SpStep; FIPS-202+PQClean), `Fe25519UnifyingFront` (UStep;
+# RFC 7748+s2n), `MpnCmpEarlyExitFront` (SpStep; GMP), `SolveGf16FrontGen` (recursive
+# forLoopBlock GF(16) nest; mayo-solve-emit-kat). CAVEAT: step-composition is weaker
+# provenance than a high-level-source descent (schedule hand-authored in a verified DSL);
+# re-sourcing from a high-level source (like Poseidon2 via translBB) is a future strengthening.
 FRONT_RE='(reifyLowCT|translateDialectControl|cryptoDialectToJasminCom|rolledForLoopN|compileLoop|compileNested|compileBlock|FrontRoutePlan|FieldEmitGoldenPath|RelationalCompile|emitDialectOwnedArr|lowerThir|ThirToCom|CatCryptEmit\.|buildOrchCom|OrchestrationFront|OrchFront|toLfundefPhysFramedAbi|translBB|MpnAddFrontEmit|MpnLoopFrontEmit|serByteStore|QuerySampleBranchFront|Shake256SpongeFront|Fe25519UnifyingFront|MpnCmpEarlyExitFront|SolveGf16FrontGen)'
 
 # The construction markers are split from the render markers. Building an IR node
@@ -240,10 +249,10 @@ front_sourced() {
 # Com to exercise a front/backend arm (loop / call / vsimd / memref), not to
 # deploy a crypto kernel — the same category as the front *FrontValidate files.
 is_infra() {
-  # File-based exemption list: compiler/proof infrastructure, fronts, optimizer
-  # passes, predicates, drivers, and backend-arm demos with no deployable emit
-  # artifact. Each line carries its justification; placeholder-leaf KERNELS are
-  # not exemptible.
+  # File-based exemption list (2026-07-03 triage of all 255 baseline modules):
+  # compiler/proof infrastructure, fronts, optimizer passes, predicates,
+  # drivers, and backend-arm demos with no deployable emit artifact. Each line
+  # carries its justification; placeholder-leaf KERNELS are not exemptible.
   if [ -f scripts/handcom-infra-exempt.txt ] &&
      grep -qxF "$1" <(sed 's/[[:space:]]*#.*$//' scripts/handcom-infra-exempt.txt | grep .); then
     return 0
@@ -261,6 +270,12 @@ is_infra() {
     # programs as PROOF SUBJECTS of export-faithfulness theorems, not as
     # deployed emit kernels.
     *SecureCompilation/VIR/JasminLsem*.lean) return 0 ;;
+    # The Lprog optimizer (`optRunBody`/`renderOwned`), its LICM pass, and the
+    # Com↔SStmt bridge hand-construct example Com/Lprog/Lcmd programs as PROOF
+    # SUBJECTS of pass store-preservation, LICM store-agreement, and
+    # denotation-agreement theorems — not as deployed emit kernels (same category
+    # as JasminLsem* / the scheduler).
+    *X86Backend/LprogOptPipeline.lean|*X86Backend/LprogLICM.lean|*Optimizer/ComSStmtBridge.lean) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -366,10 +381,7 @@ TMP="$(mktemp)"
     front_sourced "$f" "$FRONT_SOURCED_DEPTH" " " && continue
     echo "$f"
   done
-  SCAN_DIRS="CatCrypt/"
-  [ -d bench ] && SCAN_DIRS="CatCrypt/ bench/"
-  # shellcheck disable=SC2086
-  for f in $(grep -rl 'IO\.FS\.writeFile' --include='*.lean' $SCAN_DIRS); do
+  for f in $(grep -rl 'IO\.FS\.writeFile' --include='*.lean' CatCrypt/ bench/); do
     ct "$f" | grep -qE "$AUTHORED_IR_RE" || continue
     is_infra "$f" && continue
     writes_hand_authored_artifact "$f" && echo "$f"
@@ -399,11 +411,10 @@ if [ "$CURRENT" -gt "$BASELINE" ]; then
   echo ""
   echo "FAIL: the hand-Com owned-emit module count GREW ($BASELINE -> $CURRENT)."
   echo "      Emit kernels are GENERATED through a verified front, NEVER hand-authored"
-  echo "      as Com/Lcmd/.s — a spec written against a hand-authored block says"
-  echo "      nothing about the compiler that is supposed to produce it."
+  echo "      as Com/Lcmd/.s (a hand-Lcmd + self-authored spec is a vacuous proof)."
   echo "      Re-source the kernel through a front (TranslateDialectRolledLoop.rolledForLoopN"
   echo "      / translateDialectControl / cryptoDialectToJasminCom / reifyLowCT /"
-  echo "      FieldEmitGoldenPath)."
+  echo "      FieldEmitGoldenPath). See EMIT_PROVENANCE.md + GOLDEN_PATH_PRIMITIVES.md."
   echo "      NEW hand-Com module(s) (not in the baseline):"
   comm -13 <(baseline_paths) "$TMP" | sed 's/^/        /'
   exit 1
@@ -416,8 +427,8 @@ if [ "$CURRENT" -lt "$BASELINE" ]; then
     echo "$CURRENT"
     echo "# Hand-authored Com/Lcmd owned-emit modules (frozen baseline; auto-tightened"
     echo "# by scripts/handcom-provenance-ratchet.sh). First line = count; each path"
-    echo "# below carries the reason its emitted artifact is not front-generated. The"
-    echo "# goal is to re-source each through a front (-> 0)."
+    echo "# below carries the reason its emitted artifact is not front-generated. See"
+    echo "# EMIT_PROVENANCE.md — the goal is to re-source each through a front (-> 0)."
     while IFS= read -r m; do
       printf '%s  %s\n' "$m" "$(baseline_reason "$m")"
     done < "$TMP"
