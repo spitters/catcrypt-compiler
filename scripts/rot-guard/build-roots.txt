@@ -346,6 +346,7 @@ CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.GfniLaneVec
 CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.KeccakRhoVec
 CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.LoweringAVX512Demo
 CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.LoweringChoice
+CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.MayoLeafJasminFullBody
 CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.QruovLeafJasminSim
 CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.RistrettoFieldVec
 CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.UovLeafJasminSim

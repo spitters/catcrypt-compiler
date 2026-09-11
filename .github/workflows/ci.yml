@@ -122,6 +122,12 @@ jobs:
           printf '%s\n' "${{ secrets.VEIR_DEPLOY_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan github.com >> ~/.ssh/known_hosts
+          # lake-manifest.json pins Veir by its https URL, so git clones over
+          # https and asks for a username the runner cannot supply; the deploy
+          # key is reachable only over ssh, so this one URL is rewritten.
+          git config --global \
+            url."git@github.com:spitters/veir-catcrypt".insteadOf \
+            "https://github.com/spitters/veir-catcrypt"
 
       - name: Resolve dependencies
         run: lake update
