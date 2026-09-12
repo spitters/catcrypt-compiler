@@ -13,7 +13,7 @@ public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 # C4 fan-out: the verified compiler emits the NTRU-HRSS ring-multiply MAC step
 
 This module extends the **C4** step of the verified-compiler plan to the
-load-bearing inner-loop body of NTRU-HRSS-701's cyclic ring multiply
+inner-loop body of NTRU-HRSS-701's cyclic ring multiply
 (`NTRU/NtruhrssRingMulVerified.lean`). NTRU-HRSS is the power-of-two-modulus
 lattice KEM; its core arithmetic is the cyclic-convolution product
 
@@ -72,7 +72,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.CompileFromHaxNtruMul
 
-open CatCrypt.Hax
+open _root_.Hax
 open CatCrypt.Crypto.SecureCompilation.ThirToComFront
 open CatCrypt.Crypto.SecureCompilation.ImpExprToThir
 open CatCrypt.Crypto.SecureCompilation.CompileFromHax
@@ -159,7 +159,7 @@ theorem ntruMac_compiles :
 
 The emit form `ntruMacForm` equals the abstract `(acc + a*b) mod 2^13`. Because
 the modulus is a power of two dividing `2^64`, the `& 0x1FFF` mask is exactly
-`% 8192` at the `BitVec` level, so this is the genuine (and exact) NTRU-HRSS
+`% 8192` at the `BitVec` level, so this is the exact NTRU-HRSS
 reduce — phrased in pure `BitVec` so `bv_decide` bitblasts the mask. No domain
 restriction is needed: the mask reduces *any* 64-bit accumulator into
 `[0, 2^13)`, matching the coefficient-ring wraparound semantics. -/

@@ -42,6 +42,16 @@ input words from `in` and writes its sixteen output words to `out` **internally*
 the owned ABI needs no per-word `inLoadMap`/`outStoreMap` splice: the two memref
 params map directly onto the two SysV pointer arguments `RDI`/`RSI`. There is no
 6-register-arg limit on the owned pointer ABI, so the wide state passes fine.
+
+## Text checks
+
+The rendered `chachaAtt` (export label `chacha20_block_owned` present, no
+`UNHANDLED` marker) is checked by the compiled program
+`Chacha20BlockFullMemrefTextKat`, not at elaboration:
+
+```
+lake exe chacha20-block-full-memref-text-kat
+```
 -/
 
 @[expose] public section
@@ -127,13 +137,7 @@ theorem chachaCom_from_front :
       = some chacha20BlockFullMemrefJasmin :=
   (Option.some_get chacha20BlockFullMemref_jasmin_isSome).symm
 
-/-! ## 2. Printer shape lemmas: the export label is present, no unhandled op -/
-
-#guard (hasSub chachaAtt "chacha20_block_owned")
-
-#guard !(hasSub chachaAtt "UNHANDLED")
-
-/-! ## 3. Emit driver -/
+/-! ## 2. Emit driver -/
 
 /-- Emit driver: write the owned-backend whole-block ChaCha20 `.s` (rendered
     straight from the lowered `Com jasminDialect`, NO jasminc; the wide state
@@ -145,12 +149,5 @@ def emit : IO Unit := do
   IO.FS.writeFile (dir ++ "/chacha20_block_owned.s") chachaAtt
   IO.println "WROTE bench/chacha_compare/gen_com/chacha20_block_owned.s"
   IO.println "  owned x86 backend (toLprogPhysAbi -> renderLprogAtt), 2-pointer ABI, NO jasminc"
-
-/-! ## Artifact generation at elaboration
-
-The render is written while this module elaborates, so `lake` produces it from
-this file and no separate driver or Makefile rule carries the dependency. -/
-
--- #eval emit
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockFullMemrefEmit

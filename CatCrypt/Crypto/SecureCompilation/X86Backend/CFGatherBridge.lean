@@ -111,7 +111,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCTPreservation
 open CatCrypt.Crypto.SecureCompilation.X86Backend.SpeculativeCTReturn
   (CallCF CallAllDirect CallControlled RSB RSBPredictor RSBPubDriven callSpecExec
    callAddrs)
-open CatCrypt.Hax (ImpExpr)
+open _root_.Hax (ImpExpr)
 open CatCrypt.Crypto.SecureCompilation.CompileFromHax
 open CatCrypt.Crypto.SecureCompilation.CompileFromHaxScope
 open CatCrypt.Crypto.SecureCompilation.ThirToComFront

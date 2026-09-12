@@ -50,7 +50,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.FrontCTBridge
 
-open CatCrypt.Hax (ImpExpr)
+open _root_.Hax (ImpExpr)
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport

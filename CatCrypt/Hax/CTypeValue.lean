@@ -7,13 +7,13 @@ module
 
 import all Init.Data.Repr
 public import CatCrypt.Hax.CType
-public import CatCrypt.Hax.Value
+public import HaxLean.Value
 
 /-!
 # CType ↔ Value Bridge
 
 Injection and projection functions between the typed universe `CType.denote`
-and the untyped runtime `Value` used by the verified compiler pipeline.
+and the untyped runtime `Hax.Value` of the hax reference interpreter.
 
 ## Main definitions
 
@@ -21,6 +21,15 @@ and the untyped runtime `Value` used by the verified compiler pipeline.
 * `CType.project` — extract `τ.denote` from `Value` (partial)
 * `CType.project_inject` — roundtrip: `project (inject v) = some v`
 * `CType.inject_injective` — `inject` is injective for each `τ`
+
+## Integer representation
+
+A fixed-width integer is injected as the width-indexed `Value.uint w n` with
+`n` the integer's `toNat` (`u8 ↦ .w8`, …, `usize ↦ .wsize`), the value
+`Value.ofLit` produces for a `uintLit`.  Projection reads both `Value.uint w n`
+at the matching width and the width-erased `Value.int n` that `defaultBuiltins`
+arithmetic produces, in either case only when `n` lies below the width's
+modulus.
 -/
 
 @[expose] public section
@@ -29,18 +38,20 @@ set_option autoImplicit false
 
 namespace CatCrypt.Hax
 
+open _root_.Hax (Value)
+
 namespace CType
 
 /-! ## Injection: typed → untyped -/
 
 /-- Embed a typed value into the untyped `Value` representation. -/
 def inject : (τ : CType) → τ.denote → Value
-  | .u8, n => .int (n.toBitVec.toNat : Int)
-  | .u16, n => .int (n.toBitVec.toNat : Int)
-  | .u32, n => .int (n.toBitVec.toNat : Int)
-  | .u64, n => .int (n.toBitVec.toNat : Int)
-  | .u128, n => .int (n.toNat : Int)
-  | .usize, n => .int (n.toBitVec.toNat : Int)
+  | .u8, n => .uint .w8 n.toNat
+  | .u16, n => .uint .w16 n.toNat
+  | .u32, n => .uint .w32 n.toNat
+  | .u64, n => .uint .w64 n.toNat
+  | .u128, n => .uint .w128 n.toNat
+  | .usize, n => .uint .wsize n.toNat
   | .bool, b => .bool b
   | .unit, () => .unit
   | .pair a b, (x, y) => .tuple [a.inject x, b.inject y]
@@ -55,16 +66,24 @@ def inject : (τ : CType) → τ.denote → Value
 /-- Try to extract a typed value from an untyped `Value`.
     Returns `none` on type mismatch. -/
 def project : (τ : CType) → Value → Option τ.denote
+  | .u8, .uint .w8 n => if n < 256 then some (UInt8.ofNat n) else none
   | .u8, .int n =>
     if 0 ≤ n ∧ n < 256 then some (UInt8.ofNat n.toNat) else none
+  | .u16, .uint .w16 n => if n < 65536 then some (UInt16.ofNat n) else none
   | .u16, .int n =>
     if 0 ≤ n ∧ n < 65536 then some (UInt16.ofNat n.toNat) else none
+  | .u32, .uint .w32 n => if n < 4294967296 then some (UInt32.ofNat n) else none
   | .u32, .int n =>
     if 0 ≤ n ∧ n < 4294967296 then some (UInt32.ofNat n.toNat) else none
+  | .u64, .uint .w64 n =>
+    if n < 18446744073709551616 then some (UInt64.ofNat n) else none
   | .u64, .int n =>
     if 0 ≤ n ∧ n < 18446744073709551616 then some (UInt64.ofNat n.toNat) else none
+  | .u128, .uint .w128 n => if n < 2 ^ 128 then some (BitVec.ofNat 128 n) else none
   | .u128, .int n =>
     if 0 ≤ n ∧ n < 2 ^ 128 then some (BitVec.ofNat 128 n.toNat) else none
+  | .usize, .uint .wsize n =>
+    if n < 18446744073709551616 then some (UInt64.ofNat n) else none
   | .usize, .int n =>
     if 0 ≤ n ∧ n < 18446744073709551616 then some (UInt64.ofNat n.toNat) else none
   | .bool, .bool b => some b
@@ -115,40 +134,29 @@ theorem projectList_map_inject (elem : CType)
 
 /-- Roundtrip: projecting an injected value recovers the original.
 
-    Integer cases use `UIntN.ofNat ∘ toNat = id` (modular roundtrip). -/
+    Integer cases use `UIntN.ofNat ∘ toNat = id` with the `toNat` bound. -/
 theorem project_inject : (τ : CType) → (v : τ.denote) →
     τ.project (τ.inject v) = some v
   | .bool, b => by simp [inject, project]
   | .unit, () => by simp [inject, project]
   | .u8, n => by
-    unfold inject project
-    rw [if_pos ⟨Int.natCast_nonneg _, by have := n.toBitVec.isLt; omega⟩]
-    congr 1; rw [Int.toNat_natCast]
-    cases n with | ofBitVec bv => simp [UInt8.ofNat]
+    have := n.toNat_lt
+    simp [inject, project, this]
   | .u16, n => by
-    unfold inject project
-    rw [if_pos ⟨Int.natCast_nonneg _, by have := n.toBitVec.isLt; omega⟩]
-    congr 1; rw [Int.toNat_natCast]
-    cases n with | ofBitVec bv => simp [UInt16.ofNat]
+    have := n.toNat_lt
+    simp [inject, project, this]
   | .u32, n => by
-    unfold inject project
-    rw [if_pos ⟨Int.natCast_nonneg _, by have := n.toBitVec.isLt; omega⟩]
-    congr 1; rw [Int.toNat_natCast]
-    cases n with | ofBitVec bv => simp [UInt32.ofNat]
+    have := n.toNat_lt
+    simp [inject, project, this]
   | .u64, n => by
-    unfold inject project
-    rw [if_pos ⟨Int.natCast_nonneg _, by have := n.toBitVec.isLt; omega⟩]
-    congr 1; rw [Int.toNat_natCast]
-    cases n with | ofBitVec bv => simp [UInt64.ofNat]
+    have := n.toNat_lt
+    simp [inject, project, this]
   | .u128, n => by
-    unfold inject project
-    rw [if_pos ⟨Int.natCast_nonneg _, by have := n.isLt; omega⟩]
-    congr 1; rw [Int.toNat_natCast]; simp
+    have := n.isLt
+    simp [inject, project, this]
   | .usize, n => by
-    unfold inject project
-    rw [if_pos ⟨Int.natCast_nonneg _, by have := n.toBitVec.isLt; omega⟩]
-    congr 1; rw [Int.toNat_natCast]
-    cases n with | ofBitVec bv => simp [UInt64.ofNat]
+    have := n.toNat_lt
+    simp [inject, project, this]
   | .pair a b, (x, y) => by
     simp only [inject, project, project_inject a x, project_inject b y]
     rfl

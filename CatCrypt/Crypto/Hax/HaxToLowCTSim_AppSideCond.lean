@@ -54,7 +54,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Hax
 
-open CatCrypt.Hax (ImpExpr Value Env Builtins)
+open _root_.Hax (ImpExpr Value Env Builtins)
 open CatCrypt.Crypto.Jasmin.LowCT
   (TowerType LowCT RustState RustExec LeafSpec Located RustVal
    rsSetTower rsSetScalar locatedUpdate locatedLookup

@@ -6,12 +6,12 @@ Authors: CatCrypt Contributors
 module
 
 import all Init.Data.Repr
-public meta import CatCrypt.Hax.ImpType
+public meta import HaxLean.ImpType
 public meta import CatCrypt.Crypto.Jasmin.LowCT
 public import CatCrypt.Crypto.Jasmin.LowCT
-public meta import CatCrypt.Hax.AST
-public import CatCrypt.Hax.AST
-public import CatCrypt.Hax.ImpType
+public meta import HaxLean.AST
+public import HaxLean.AST
+public import HaxLean.ImpType
 
 /-!
 # H1: LowCT Subset Filter for hax `ImpExpr`
@@ -71,7 +71,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Hax
 
-open CatCrypt.Hax (ImpExpr ImpLit ImpType IntWidth)
+open _root_.Hax (ImpExpr ImpLit ImpType IntWidth)
 open CatCrypt.Crypto.Jasmin.LowCT (TowerType)
 
 /-! ## §1  Mapping `ImpType` → `TowerType`
@@ -104,7 +104,7 @@ def towerOfAdtName : String → Option TowerType
     types that are not tower-shaped (e.g. `Fp2`, `[u8; 32]`, `Option<T>`). -/
 def towerOfImpType : ImpType → Option TowerType
   | .uint .w64                      => some .TU64
-  | .adt name _ _                   => towerOfAdtName name
+  | .adt name _                     => towerOfAdtName name
   | _                               => none
 
 /-! ## §2  Whitelists -/
@@ -156,7 +156,7 @@ partial def LowCTRepresentable.Type : ImpType → Bool
   | .array elem _     => LowCTRepresentable.Type elem
   | .option _         => false  -- no `Option` in LowCT
   | .result _ _       => false  -- no `Result` in LowCT
-  | .adt name _ _     => (towerOfAdtName name).isSome
+  | .adt name _       => (towerOfAdtName name).isSome
   | .ref _ _          => false  -- references must be eliminated by Phase 1
   | .slice _          => false
   | .controlFlow _ _  => false
@@ -210,6 +210,8 @@ partial def LowCTRepresentable.Expr : ImpExpr → Bool
   | .cfBreak _             => false
   | .cfContinue _          => false
   | .cfBreakContinue _     => false
+  -- A type ascription is erased.
+  | .typeAscription e _    => LowCTRepresentable.Expr e
 
 /-- Top-level predicate.  We treat an `ImpExpr` body as a sequence of
     statements; representability of the whole body is representability of
@@ -274,6 +276,7 @@ partial def LowCTRepresentable.reasonExpr : ImpExpr → Option String
   | .cfBreak _         => some "control-flow break not in LowCT subset"
   | .cfContinue _      => some "control-flow continue not in LowCT subset"
   | .cfBreakContinue _ => some "nested break/continue not in LowCT subset"
+  | .typeAscription e _ => LowCTRepresentable.reasonExpr e
 
 /-- Top-level diagnostic predicate. -/
 def LowCTRepresentable.reason (e : ImpExpr) : Option String :=
@@ -333,7 +336,7 @@ example : LowCTRepresentable.Type (.result (.uint .w64) (.uint .w64)) = false :=
 
 /-- ### Test 5 — accept `(u64, Fp)` tuple type. -/
 example : LowCTRepresentable.Type
-            (.tuple [.uint .w64, .adt "Fp" [] []]) = true := by native_decide
+            (.tuple [.uint .w64, .adt "Fp" []]) = true := by native_decide
 
 /-- ### Test 6 — reject `Option<u64>` type. -/
 example : LowCTRepresentable.Type (.option (.uint .w64)) = false := by native_decide

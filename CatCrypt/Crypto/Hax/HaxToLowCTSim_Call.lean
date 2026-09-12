@@ -22,7 +22,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Hax
 
-open CatCrypt.Hax (ImpExpr ImpLit ImpType IntWidth Value Env Outcome Builtins
+open _root_.Hax (ImpExpr ImpLit ImpType IntWidth Value Env Outcome Builtins
                    denote defaultBuiltins)
 open CatCrypt.Crypto.Jasmin.LowCT
   (TowerType LowCT RustState RustExec LeafSpec Located
@@ -61,18 +61,18 @@ inductive AllVars (env : Env) : List ImpExpr → List Value → Prop where
 theorem denoteArgs_vars (bi : Builtins) (fuel : Nat) (env : Env) :
     ∀ {args : List ImpExpr} {vals : List Value},
       AllVars env args vals →
-      (CatCrypt.Hax.denoteArgs bi fuel args).run env = (some vals, env)
+      (Hax.denoteArgs bi fuel args).run env = (some vals, env)
   | [], [], _ => by
-      simp [CatCrypt.Hax.denoteArgs, StateT.run, pure, Pure.pure, StateT.pure]
+      simp [Hax.denoteArgs, StateT.run, pure, Pure.pure, StateT.pure]
   | _, _, .cons n v as vs hEnv hRest => by
       have ih := denoteArgs_vars bi fuel env hRest
       -- Unfold denoteArgs on (.var n :: as)
-      simp only [CatCrypt.Hax.denoteArgs, CatCrypt.Hax.denote,
+      simp only [Hax.denoteArgs, Hax.denote,
                  bind, Bind.bind, StateT.bind, StateT.run,
                  get, getThe, MonadStateOf.get, StateT.get,
                  pure, Pure.pure, StateT.pure, hEnv]
       -- Tail reduces by IH
-      show (match (CatCrypt.Hax.denoteArgs bi fuel as).run env with
+      show (match (Hax.denoteArgs bi fuel as).run env with
             | (rest, env') => (Option.map (v :: ·) rest, env')) =
            (some (v :: vs), env)
       rw [ih]

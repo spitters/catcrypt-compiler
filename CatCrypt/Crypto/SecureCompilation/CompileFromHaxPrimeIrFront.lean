@@ -7,7 +7,7 @@ module
 
 import all Init.Data.Repr
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxPrimeIrField
-public import CatCrypt.Hax.AST
+public import HaxLean.AST
 
 /-!
 # Front integration: `haxpipeT`-extracted `primeir-hax` `Field` calls → `FieldOp` leaf
@@ -70,7 +70,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.CompileFromHaxPrimeIrFront
 
-open CatCrypt.Hax (ImpExpr)
+open _root_.Hax (ImpExpr)
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
 open CatCrypt.Crypto.SecureCompilation.CompileFromHaxPrimeIrField

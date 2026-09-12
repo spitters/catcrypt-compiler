@@ -21,7 +21,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Hax
 
-open CatCrypt.Hax (ImpExpr ImpLit ImpType IntWidth Value Env Outcome Builtins
+open _root_.Hax (ImpExpr ImpLit ImpType IntWidth Value Env Outcome Builtins
                    denote defaultBuiltins)
 open CatCrypt.Crypto.Jasmin.LowCT
   (TowerType LowCT RustState RustExec LeafSpec Located
@@ -68,7 +68,7 @@ For `.letBind name (.lit l) body`, the translation produces
 decoded scalar value from the literal and `bodyC = haxToLowCT body`.
 This holds for three productive arms of `haxToLowCT`:
 
-* `l = .uintLit w n` (Nat literal), with `n = n` (direct)
+* `l = .uintLit w n` (Nat literal), with `n % w.modulus` (the wrapped literal)
 * `l = .int n` with `n ≥ 0`, with `n = n.toNat`
 * `l = .bool b`, with `n = if b then 1 else 0` (bools are 0/1 scalars)
 
@@ -115,7 +115,7 @@ theorem haxToLowCT_letBind_lit_some
     | some bodyC =>
       rw [hBody] at h
       simp at h
-      refine ⟨bodyC, n, rfl, ?_, h.symm⟩
+      refine ⟨bodyC, n % w.modulus, rfl, ?_, h.symm⟩
       simp [valueToScalar, Value.ofLit]
   | sintLit w n =>
     simp [haxToLowCT] at h

@@ -5,8 +5,8 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public meta import CatCrypt.Hax.AST
-public import CatCrypt.Hax.AST
+public meta import HaxLean.AST
+public import HaxLean.AST
 
 
 @[expose] public section
@@ -14,7 +14,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Hax
 
-open CatCrypt.Hax (ImpExpr ImpLit ImpPat)
+open _root_.Hax (ImpExpr ImpLit ImpPat)
 
 /-! # Constant-substitution pre-pass for the H2 translator
 
@@ -118,6 +118,7 @@ partial def substConsts (t : ConstTable) : ImpExpr → ImpExpr
   | .cfBreak e => .cfBreak (substConsts t e)
   | .cfContinue e => .cfContinue (substConsts t e)
   | .cfBreakContinue e => .cfBreakContinue (substConsts t e)
+  | .typeAscription e ty => .typeAscription (substConsts t e) ty
 
 /-- Convenience: substitute the ML-KEM constants. -/
 def substMlkemConsts : ImpExpr → ImpExpr := substConsts mlkemConstTable
@@ -234,6 +235,7 @@ partial def foldArith : ImpExpr → ImpExpr
   | .cfBreak e => .cfBreak (foldArith e)
   | .cfContinue e => .cfContinue (foldArith e)
   | .cfBreakContinue e => .cfBreakContinue (foldArith e)
+  | .typeAscription e ty => .typeAscription (foldArith e) ty
 
 /-- Convenience: substitute ML-KEM constants, then fold arithmetic.
 
@@ -274,6 +276,7 @@ partial def collectLitBindings : ImpExpr → ConstTable
       collectLitBindings lo ++ collectLitBindings hi ++ collectLitBindings b
   | .forFoldRev _ lo hi b =>
       collectLitBindings lo ++ collectLitBindings hi ++ collectLitBindings b
+  | .typeAscription e _ => collectLitBindings e
   | _ => []
 
 /-- Rewrite ONLY `repeat`'s length arg (`.app "repeat" [v, .var lenVar]`
@@ -321,6 +324,7 @@ partial def rewriteRepeatLen (m : ConstTable) : ImpExpr → ImpExpr
   | .cfBreak e => .cfBreak (rewriteRepeatLen m e)
   | .cfContinue e => .cfContinue (rewriteRepeatLen m e)
   | .cfBreakContinue e => .cfBreakContinue (rewriteRepeatLen m e)
+  | .typeAscription e ty => .typeAscription (rewriteRepeatLen m e) ty
   | e => e   -- .lit, .var, .unitVal, .break_, .continue_
 
 /-- Surgically re-inline `repeat`'s A-normalised length argument. -/

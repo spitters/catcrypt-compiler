@@ -44,10 +44,9 @@ example (v : Vector UInt8 16) :
 
 /-! ## 3. Types are nontrivial (have distinct elements) -/
 
--- These use native_decide to check nontriviality at compile time
-theorem u8_nontrivial : (0 : UInt8) ≠ (1 : UInt8) := by native_decide
-theorem u32_nontrivial : (0 : UInt32) ≠ (1 : UInt32) := by native_decide
-theorem u64_nontrivial : (0 : UInt64) ≠ (1 : UInt64) := by native_decide
+theorem u8_nontrivial : (0 : UInt8) ≠ (1 : UInt8) := by decide
+theorem u32_nontrivial : (0 : UInt32) ≠ (1 : UInt32) := by decide
+theorem u64_nontrivial : (0 : UInt64) ≠ (1 : UInt64) := by decide
 
 /-! ## 4. Fintype cardinalities are correct -/
 
@@ -61,13 +60,13 @@ theorem inject_u8_distinct :
     CType.inject .u8 (0 : UInt8) ≠ CType.inject .u8 (1 : UInt8) := by
   intro h
   have := CType.inject_injective .u8 h
-  exact absurd this (by native_decide)
+  exact absurd this (by decide)
 
 theorem inject_u32_distinct :
     CType.inject .u32 (0 : UInt32) ≠ CType.inject .u32 (1 : UInt32) := by
   intro h
   have := CType.inject_injective .u32 h
-  exact absurd this (by native_decide)
+  exact absurd this (by decide)
 
 /-! ## 6. Array injection preserves distinctness -/
 

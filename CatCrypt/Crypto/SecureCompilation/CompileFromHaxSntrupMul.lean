@@ -13,7 +13,7 @@ public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 # C4 fan-out: the verified compiler emits the sntrup761 schoolbook-multiply MAC step
 
 This module extends the **C4** step of the verified-compiler plan to the
-load-bearing inner-loop body of Streamlined NTRU Prime / sntrup761's schoolbook
+inner-loop body of Streamlined NTRU Prime / sntrup761's schoolbook
 polynomial multiply (`NTRU/Sntrup761MulVerified.lean`). sntrup761 is the
 **prime-modulus** lattice KEM (NTRU Prime's distinctive choice): its core
 arithmetic is the schoolbook coefficient product
@@ -50,7 +50,7 @@ fronts, so **no change to the verified front is required**. This is the
 *prime-modulus* lattice analogue of the power-of-two Frodo/NTRU MAC fan-out: the
 only structural change is that the `& mask` reduce drops out (a prime modulus
 admits no mask), and the `mod 4591` lands in the abstract ring tie rather than in
-the emitted kernel — the genuine NTRU-Prime reduction.
+the emitted kernel — the NTRU-Prime reduction.
 
 ## Method (mirrors `CompileFromHaxNtruMul.ntruMac_compiles`)
 
@@ -73,7 +73,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.CompileFromHaxSntrupMul
 
-open CatCrypt.Hax
+open _root_.Hax
 open CatCrypt.Crypto.SecureCompilation.ThirToComFront
 open CatCrypt.Crypto.SecureCompilation.ImpExprToThir
 open CatCrypt.Crypto.SecureCompilation.CompileFromHax

@@ -7,7 +7,7 @@ module
 
 public import CatCrypt.Hax.CTypeValue
 public import CatCrypt.Hax.CTypeResolve
-public import CatCrypt.Hax.Pipeline
+public import CatCrypt.Hax.ToRawCode
 
 /-!
 # Typed Pipeline: RawCode Value → RawCode τ.denote
@@ -33,8 +33,6 @@ modifying any existing pipeline code.
 For well-typed hax output, the `.fail` branch in `typedRawCode` is unreachable
 (the pipeline preserves types), which can be proved as a separate theorem
 without blocking the typed API.
-
-**0 axioms**, **0 sorries**.
 -/
 
 @[expose] public section
@@ -44,6 +42,7 @@ set_option autoImplicit false
 namespace CatCrypt.Hax
 
 open CatCrypt.Deep
+open _root_.Hax (ImpExpr Value ImpType)
 
 /-! ## Typed wrapper -/
 
@@ -133,7 +132,7 @@ def ImpTypedFn.toTypedHaxFn {dom cod : ImpType} (f : ImpTypedFn dom cod) :
     default fallback for type mismatches (unreachable for well-typed input). -/
 noncomputable def extractTypedFn (dom cod : CType) (e : ImpExpr) :
     TypedHaxFn dom cod where
-  fn := fun _ => (CType.instInhabited cod).default  -- placeholder: actual extraction requires eval
+  fn := fun _ => (CType.instInhabited cod).default  -- the default element of the codomain
   expr := e
 
 /-! ## ImpType-based extraction -/

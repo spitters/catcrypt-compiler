@@ -83,7 +83,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Hax
 
-open CatCrypt.Hax (ImpExpr ImpLit ImpType IntWidth Value Env Outcome Builtins
+open _root_.Hax (ImpExpr ImpLit ImpType IntWidth Value Env Outcome Builtins
                    denote defaultBuiltins)
 open CatCrypt.Crypto.Jasmin.LowCT
   (TowerType LowCT RustState RustExec LeafSpec Located
@@ -255,7 +255,7 @@ abbrev Hyp_whileLoop
     scrut/arms shapes. -/
 abbrev Hyp_match
     (bi : Builtins) (fuel N : Nat) (leafSpec : LeafSpec) : Prop :=
-  ∀ (scrut : ImpExpr) (arms : List (CatCrypt.Hax.ImpPat × ImpExpr))
+  ∀ (scrut : ImpExpr) (arms : List (Hax.ImpPat × ImpExpr))
     (c : LowCT) (env env' : Env) (rs : RustState) (v : Value)
     (_ihScrut : ∀ c' env_a env_b rs_a v_a,
                   HaxToLowCTSimulates bi fuel N leafSpec scrut c' env_a env_b rs_a v_a)
@@ -362,6 +362,13 @@ theorem haxToLowCT_simulates_param
   | forFoldRevReturn v_l lo hi body _ _ _ =>
       intro c env env' rs v
       exact haxToLowCT_simulates_forFoldRevReturn bi fuel N leafSpec v_l lo hi body c env env' rs v
+  | typeAscription e ty ih =>
+      intro c env env' rs v
+      unfold HaxToLowCTSimulates
+      intro hc he hagr
+      rw [haxToLowCT_typeAscription_eq] at hc
+      rw [evalImp_typeAscription] at he
+      exact ih c env env' rs v hc he hagr
   | whileFoldReturn cond body _ _ =>
       intro c env env' rs v
       exact haxToLowCT_simulates_whileFoldReturn bi fuel N leafSpec cond body c env env' rs v

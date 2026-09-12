@@ -22,7 +22,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Hax
 
-open CatCrypt.Hax (ImpExpr ImpLit ImpType IntWidth Value Env Outcome Builtins
+open _root_.Hax (ImpExpr ImpLit ImpType IntWidth Value Env Outcome Builtins
                    denote defaultBuiltins)
 open CatCrypt.Crypto.Jasmin.LowCT
   (TowerType LowCT RustState RustExec LeafSpec Located
@@ -84,6 +84,9 @@ theorem evalImp_ifThenElse_var_inv (bi : Builtins) (fuel : Nat)
         right
         exact ⟨rfl, h⟩
     | int _ => simp only [StateT.pure] at h; cases h
+    | uint _ _ => simp only [StateT.pure] at h; cases h
+    | sint _ _ => simp only [StateT.pure] at h; cases h
+    | array _ => simp only [StateT.pure] at h; cases h
     | unit => simp only [StateT.pure] at h; cases h
     | tuple _ => simp only [StateT.pure] at h; cases h
     | option _ => simp only [StateT.pure] at h; cases h

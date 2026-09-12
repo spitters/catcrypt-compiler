@@ -9,13 +9,13 @@ public meta import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidenc
 public import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidence
 
 /-!
-# DF keystone (`.letBind` increment): the let-extension inductive engine
+# Frontend coincidence (`.letBind` increment): the let-extension induction
 
-This module is the **`.letBind` increment** of the "DF keystone" frontend
+This module is the **`.letBind` increment** of the frontend
 coincidence (`FrontendCoincidence.lean`). The base file proves the two frontend
 denotations coincide on the **heap-free scalar-ALU fragment** — variable/literal
 atoms and the binary ALU `.app` heads — but its `toSExpr` returns `none` on
-`.letBind`, because `SExpr` has **no `let` node**: the genuine Path-B `let`
+`.letBind`, because `SExpr` has **no `let` node**: the Path-B `let`
 materialises the bound value as a runtime *command* (`RScalarSet` /
 `RScalarSetExpr`) whose big-step is `RustExec` over `RustState`, not an `SExpr`
 node. So the SExpr path could not reach `let` at all.
@@ -56,8 +56,7 @@ otherwise. So if a let-bound local `x` *shadowed* a parameter name, Path A's
 lookup wins), whereas Path B's `β`-update *would* change `β x` — breaking
 agreement at `x`. The side-condition `x ∉ params` (the natural well-scopedness
 condition: let-bound locals are fresh, not parameter names) rules this out and is
-exactly what makes the update commute on both sides. This is a genuine finding,
-not a vacuous restriction: it is the precise scoping discipline a `let`
+exactly what makes the update commute on both sides. This is not a vacuous restriction: it is the precise scoping discipline a `let`
 coincidence requires.
 
 ## §2 — Angle B (partial): an `evalBV`-level let-coincidence combinator
@@ -73,12 +72,12 @@ denoteScalar (.letBind x v body) ρ  =  some (bodyEval (β.update x vv))
 ```
 
 This is the inductive closure of the let case at the `BitVec 64` (`evalBV`)
-layer. It is genuinely about both paths: Path A's `let` arm (the `.bind`
+layer. It is about both paths: Path A's `let` arm (the `.bind`
 threading the local) and Path B's body evaluator under the updated total env.
 
 ## The remaining gap (precise): the `denoteScalar`-vs-`RustExec` let-coincidence
 
-A *full* `denoteScalar (.letBind …)` vs **`RustExec`** coincidence — the genuine
+A *full* `denoteScalar (.letBind …)` vs **`RustExec`** coincidence — the
 Path-B `let` as a `RScalarSet`/`RScalarSetExpr` *command* over `RustState` — is
 **not** closed here, for a concrete, stated reason:
 
@@ -111,7 +110,7 @@ hidden `native_decide`/`sorry` — is the honest outcome of this increment.
 
 ## Honesty note
 
-* §1 is a genuine two-path fact: it is about `denoteAtomExpr` (Path A, via
+* §1 is a two-path fact: it is about `denoteAtomExpr` (Path A, via
   `EnvAgree`) under the *same* update that Path B applies to `β`. It is not a
   restatement of one side.
 * §2 is parametric in a *body-coincidence* hypothesis precisely because `toSExpr`
@@ -127,7 +126,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidenceLet
 
-open CatCrypt.Hax
+open _root_.Hax
 open CatCrypt.Crypto.SecureCompilation.ImpExprToThir
 open CatCrypt.Crypto.SecureCompilation.ThirToComFront
 open CatCrypt.Crypto.Jasmin.LowCT
@@ -177,7 +176,7 @@ theorem idxOf?_eq_none_of_not_mem {y : String} {params : List String}
     (exactly `denoteScalar`'s `.letBind` update) and Path B's `updBeta β x vv`
     (the same bound value `vv`) — again satisfy `EnvAgree`.
 
-    Genuinely about both paths: the LHS reading is `denoteAtomExpr … (updRho …)`
+    About both paths: the LHS reading is `denoteAtomExpr … (updRho …)`
     (Path A), required to equal `(updBeta …) y` (Path B). -/
 theorem envAgree_update {nIn : Nat} (params : List String)
     (I : Fin nIn → BitVec 64) (ρ : String → Option (BitVec 64))
@@ -232,7 +231,7 @@ the bound-expr coincidence `hv`, this closes the `let` step at the `BitVec 64`
     equals `some bodyVal`. This is the inductive `let`-closure; with a recursive
     `denoteScalar_coincides_evalBV`-style body argument supplying `bodyVal =
     SExpr.evalBV (updBeta β x vv) s_body`, it is the full `let` coincidence at the
-    `evalBV` layer. Genuinely about both paths (Path A's `.letBind` `.bind`
+    `evalBV` layer. About both paths (Path A's `.letBind` `.bind`
     threading and the Path-B body value). -/
 theorem letBind_coincides {nIn : Nat} (params : List String)
     (I : Fin nIn → BitVec 64) (ρ : String → Option (BitVec 64))

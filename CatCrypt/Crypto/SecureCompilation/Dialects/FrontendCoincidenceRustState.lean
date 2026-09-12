@@ -86,7 +86,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidenceRustState
 
-open CatCrypt.Hax
+open _root_.Hax
 open CatCrypt.Crypto.SecureCompilation.ImpExprToThir
 open CatCrypt.Crypto.Jasmin.LowCT
 open CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidence
@@ -101,7 +101,7 @@ def derivedBeta (rs : RustState) : String → BitVec 64 :=
 
 /-- **State-agreement predicate (Step 1).** Refines `EnvAgree` along the derived
     env `derivedBeta rs`, *plus* the in-range invariant `rsScalar x < 2^64` on
-    every scalar slot. The invariant is load-bearing: it is what makes the `Nat`
+    every scalar slot. The invariant is what makes the `Nat`
     store round-trip through `BitVec 64` and re-establish itself across the let
     store (see `stateAgree_update`), and what discharges the `Nat`-wrap in the
     let coincidence (`SExpr.evalStateBV_eq_ofNat_evalState`). -/

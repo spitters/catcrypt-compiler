@@ -56,7 +56,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Hax
 
-open CatCrypt.Hax (ImpExpr ImpLit ImpType IntWidth)
+open _root_.Hax (ImpExpr ImpLit ImpType IntWidth)
 open CatCrypt.Crypto.Jasmin.LowCT
   (TowerType LowCT RustState Located rsSetTower rsSetScalar)
 

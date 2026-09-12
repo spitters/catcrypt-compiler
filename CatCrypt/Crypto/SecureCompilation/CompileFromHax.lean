@@ -58,7 +58,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.CompileFromHax
 
-open CatCrypt.Hax
+open _root_.Hax
 open CatCrypt.Crypto.SecureCompilation.ThirToComFront
 open CatCrypt.Crypto.SecureCompilation.ImpExprToThir
 open CatCrypt.Crypto.SecureCompilation.VIR (Com)

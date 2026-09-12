@@ -13,7 +13,7 @@ public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 # C4 fan-out: the verified compiler emits the HAWK ring-multiply MAC step
 
 This module extends the **C4** step of the verified-compiler plan to the
-load-bearing inner-loop body of HAWK's negacyclic ring multiply
+inner-loop body of HAWK's negacyclic ring multiply
 (`HAWK/RingMul4WayVerified.lean`). HAWK is the Falcon-family hash-and-sign
 lattice signature over the cyclotomic ring `Z/q[x]/(x^N + 1)`; its per-lane
 core arithmetic is the schoolbook negacyclic convolution
@@ -68,7 +68,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.CompileFromHaxHawkMul
 
-open CatCrypt.Hax
+open _root_.Hax
 open CatCrypt.Crypto.SecureCompilation.ThirToComFront
 open CatCrypt.Crypto.SecureCompilation.ImpExprToThir
 open CatCrypt.Crypto.SecureCompilation.CompileFromHax
@@ -155,7 +155,7 @@ theorem hawkMac_compiles :
 
 The emit form `hawkMacForm` equals the abstract `(acc + a*b) mod 2^10`. Because
 the modulus is a power of two dividing `2^64`, the `& 0x3FF` mask is exactly
-`% 1024` at the `BitVec` level, so this is the genuine (and exact) ring reduce —
+`% 1024` at the `BitVec` level, so this is the exact ring reduce —
 phrased in pure `BitVec` so `bv_decide` bitblasts the mask. No domain
 restriction is needed: the mask reduces *any* 64-bit accumulator into `[0,2^10)`,
 matching the `Z/1024` wraparound semantics. -/

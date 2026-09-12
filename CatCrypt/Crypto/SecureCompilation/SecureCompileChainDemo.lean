@@ -14,7 +14,7 @@ public import CatCrypt.Crypto.SecureCompilation.SecureCompileChain
 concrete inputs so it is demonstrably **non-vacuous**:
 
 * a constant-time source (`demoSrc`) compiled with a straight-line lowering
-  reaches `.ok` with a genuinely `CompilableCT` (direct-addressing) block, and
+  reaches `.ok` with a `CompilableCT` (direct-addressing) block, and
   `secureCompile_constant_time` then yields a real constant-time guarantee on it;
 * a secret-branching source (`secretSrc`) is **rejected** by the front gate —
   `secureCompile` returns `.error`, so the secure compiler refuses to emit it.
@@ -37,7 +37,7 @@ open CatCrypt.Crypto.Optimizer.SecretType
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
 open CatCrypt.Crypto.SecureCompilation.X86Backend.CompilableCT
-open CatCrypt.Hax
+open _root_.Hax
 
 /-! ## 1. A constant-time block + a straight-line lowering -/
 
@@ -59,7 +59,7 @@ theorem demo_ok :
   rfl
 
 /-- **The constant-time guarantee, concretely.** The emitted block's leakage
-    trace is the same from any two states — a genuine, non-vacuous instance of
+    trace is the same from any two states — a non-vacuous instance of
     `secureCompile_constant_time`. -/
 theorem demo_constant_time (s₁ s₂ : JState 64) :
     blockLeak s₁ demoBlock = blockLeak s₂ demoBlock :=

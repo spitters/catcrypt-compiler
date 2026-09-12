@@ -44,11 +44,11 @@ The golden-path `Com jasminDialect` emits, for a `regArith op` binding, exactly
 
     Cassgn (Lvar dst) tag (sword ws) (Papp2 op (Pvar a) (Pvar b))
 
-We translate this `Cassgn`-with-`Papp2`-of-two-`Pvar`s fragment field-by-field.
-Everything outside it (`Copn`, `Cif`, `Cfor`, `Cwhile`, `Ccall`, `Csyscall`;
-`Pget`/`Pload`/`Papp1`/`PappN`/`Pif`/constants; `Lmem`/`Laset`/`Lasub`/`Lnone`;
-the `U512` width; SIMD/wint `SOp2` constructors) is mapped to `none` — honest,
-not `sorry`. Extending coverage is a mechanical added case.
+We translate this `Cassgn`-with-`Papp2`-of-two-`Pvar`s fragment field-by-field,
+together with the constants `Pconst`/`Pbool` and the `Papp1` width casts
+(`translatePExpr_castW`). Everything outside it (`Copn`, `Cif`, `Cfor`, `Cwhile`,
+`Ccall`, `Csyscall`; `Pget`/`Pload`/`PappN`/`Pif`; `Lmem`/`Laset`/`Lasub`/`Lnone`;
+the `U512` width; SIMD/wint `SOp1`/`SOp2` constructors) is mapped to `none`.
 
 ## What is proved (all sorry-free)
 
@@ -275,7 +275,7 @@ def translatePExpr : APExpr → Option MPexpr
     l-value, type, and expression are all in their respective fragments
     (the `regArith`/`Papp2` golden-path shape). All other instruction
     constructors (`Copn`, `Cif`, `Cfor`, `Cwhile`, `Ccall`) are out-of-fragment
-    (`none`) — honest, mechanically extensible, never `sorry`. -/
+    (`none`). -/
 def translateInstrR : AInstrR → Option MInstrR
   | .Cassgn lv tag ty e =>
       match translateLVal lv, translateSType ty, translatePExpr e with
@@ -419,7 +419,7 @@ def goldenCastTgt : MPexpr :=
 theorem golden_translate_castW : translatePExpr goldenCastSrc = some goldenCastTgt := by
   rfl
 
-/-! ## 10. Out-of-fragment is honest `none`, not silent loss
+/-! ## 10. Out-of-fragment shapes translate to `none`
 
 These confirm the translation *rejects* (returns `none`) on the shapes outside
 the emit fragment, rather than silently mapping them to a placeholder (the

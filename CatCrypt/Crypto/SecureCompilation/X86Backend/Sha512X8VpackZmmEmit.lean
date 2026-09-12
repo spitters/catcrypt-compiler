@@ -83,11 +83,19 @@ needed, no cross-lane permute).
 The **value** correctness (each ZMM lane = scalar SHA-512 σ0) is established by
 the external C KAT harness (`bench/sha2_compare/sha512_x8_kat.c`, eight
 independent messages, each lane's digest compared against a reference SHA-512),
-NOT by an in-kernel multi-vector `native_decide` (REV-12). In-Lean we pin the
-`Com` denotation against `zmmPackQ` and one tiny worked rotate-recombination
-vector.
+NOT by an in-kernel multi-vector `native_decide` (REV-12). This module pins the
+`Com` denotation against `zmmPackQ` (`sigma0Com_denote`).
 
-Invoke:
+The rendered text of the kernel (the nine body lines, the export label, the
+packed mnemonics, the `%zmm` registers, the `.rodata` shift-count label and the
+absence of jasmin intrinsics) is checked by the compiled program
+`JasminLprogShapeKat` (`sha512Sigma0TextChecks`), not at elaboration:
+
+```
+lake exe jasmin-lprog-shape-kat
+```
+
+Invoke the emitter:
 `lake build CatCrypt.Crypto.SecureCompilation.X86Backend.Sha512X8VpackZmmEmit`
 or `lake env lean --run
   CatCrypt/Crypto/SecureCompilation/X86Backend/Sha512X8VpackZmmEmit.lean`
@@ -105,7 +113,6 @@ open CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint
   (renderVpackZmmCom)
 open CatCrypt.Crypto.SecureCompilation.VIR.VsimdAsmPrint
   (XAlloc frameAsmFunction)
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (strContains)
 
 /-! ## 1. Register types and the σ0 input context
 
@@ -303,64 +310,7 @@ def sha512_x8_sigma0_vpackzmm_asm : String :=
 -- Print the emitted owned `.s` for visual inspection.
 -- #eval IO.println sha512_x8_sigma0_vpackzmm_asm
 
-/-! ## 6. `native_decide` pin on the rendered body lines
-
-The rendered `vpackZMM` body is fixed exactly (a renderer or de-Bruijn regression
-flips this). AT&T EVEX order is `op src2, src1, dst`. The two rotates appear as
-`vpsrlvq`/`vpsllvq`/`vporq` triples (broadcast-shift idiom), the σ-mix as
-`vpxorq`. -/
-
-/-- σ0's body renders to exactly the nine owned AT&T `%zmm` lines: two
-    `vpsrlvq/vpsllvq/vporq` rotate triples, the `x>>>7` shift, and the two
-    `vpxorq` mixes. The variable shifts `vpsllvq`/`vpsrlvq` are the broadcast-shift
-    realization of the immediate σ0 rotates. -/
-theorem body_lines :
-    (renderVpackZmmCom sigma0Alloc sigma0Com).1
-      = [ "\tvpsrlvq %zmm1, %zmm0, %zmm6"    -- t1  = x >>> 1
-        , "\tvpsllvq %zmm2, %zmm0, %zmm7"    -- t63 = x <<< 63
-        , "\tvporq %zmm7, %zmm6, %zmm8"      -- r1  = rotr(x,1)
-        , "\tvpsrlvq %zmm3, %zmm0, %zmm9"    -- t8  = x >>> 8
-        , "\tvpsllvq %zmm4, %zmm0, %zmm10"   -- t56 = x <<< 56
-        , "\tvporq %zmm10, %zmm9, %zmm11"    -- r8  = rotr(x,8)
-        , "\tvpsrlvq %zmm5, %zmm0, %zmm12"   -- s7  = x >>> 7
-        , "\tvpxorq %zmm11, %zmm8, %zmm13"   -- m   = r1 ^ r8
-        , "\tvpxorq %zmm12, %zmm13, %zmm0" ] -- out = m ^ s7
-      := by native_decide
-
-/-! ## 7. Structural smoke pins on the emitted `.s` text -/
-
-/-- The emit names the export symbol. -/
-theorem asm_has_export :
-    strContains sha512_x8_sigma0_vpackzmm_asm "sha512_x8_sigma0:" = true := by
-  native_decide
-
-/- The emit carries the packed variable right shift (lowercase owned `%zmm`
-    mnemonic) — the broadcast-shift realization of the immediate σ0 shifts. -/
-#guard (strContains sha512_x8_sigma0_vpackzmm_asm "vpsrlvq")
-
-/- The emit carries the packed variable left shift (the `<<< (64-n)` half of each
-    rotate). -/
-#guard (strContains sha512_x8_sigma0_vpackzmm_asm "vpsllvq")
-
-/- The emit carries the packed OR (the rotate recombination). -/
-#guard (strContains sha512_x8_sigma0_vpackzmm_asm "vporq")
-
-/- The emit carries the packed XOR (the σ-mix). -/
-#guard (strContains sha512_x8_sigma0_vpackzmm_asm "vpxorq")
-
-/- The body uses 512-bit `%zmm` registers (not the 128-bit `%xmm` of the
-    `VsimdAsmPrint` fragment). -/
-#guard (strContains sha512_x8_sigma0_vpackzmm_asm "%zmm")
-
-/- The emit carries the broadcast shift-count `.rodata` table (the
-    immediate-shift-via-broadcast idiom). -/
-#guard (strContains sha512_x8_sigma0_vpackzmm_asm "SHL_SIG0_C1:")
-
-/- No UPPERCASE jasmin intrinsic survives — this is the owned (no-jasminc)
-    lowercase-mnemonic path. -/
-#guard !(strContains sha512_x8_sigma0_vpackzmm_asm "#VPSRL_8u64")
-
-/-! ## 8. Emit driver -/
+/-! ## 6. Emit driver -/
 
 /-- Write the owned-backend (`Com`-rendered AVX-512 ZMM) σ0 lane-kernel `.s` to
     `bench/sha2_compare/gen_com/`. -/

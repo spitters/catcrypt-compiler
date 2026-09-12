@@ -55,13 +55,12 @@ with `lowerSeq` under a fixed register map.
   with no `LoweringCTPreserving` hypothesis remaining.
 * a worked `example`: a concrete supported `ImpExpr` and its CT conclusion.
 
-## Honest scope
+## Scope
 
 `impToArith` handles only the supported scalar-arith subset; the full hax-AST
 coverage (control flow, calls, memory, nested expressions) is the
 fragment-widening work and returns `none` here. The point of this module is
-narrow and exact: the capstone's middle is **no longer an assumption** — it is
-proved for `impLower`.
+narrow and exact: the capstone's middle is proved for `impLower`.
 -/
 
 @[expose] public section
@@ -70,7 +69,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.ImpLowerCTDischarge
 
-open CatCrypt.Hax
+open _root_.Hax
 open CatCrypt.Crypto.SecureCompilation.SecureCompileChain
 open CatCrypt.Crypto.SecureCompilation.ImpCTGate
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
@@ -121,7 +120,7 @@ def impToArith : ImpExpr → Option (List ArithSrc)
 /-! ## 3. The concrete lowering `ImpExpr → Option (List (JInstr 64))` -/
 
 /-- A concrete register map: source slot names are mapped to machine register
-    names by the identity-on-strings choice (a genuine allocator would pick
+    names by the identity-on-strings choice (an allocator would pick
     distinct physical registers; the CT discharge is independent of the choice,
     since `lowerSeq` is `allDirect` for *any* `RegMap`). -/
 def impRegMap : RegMap := fun s => s

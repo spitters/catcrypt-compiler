@@ -12,7 +12,7 @@ public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
 # C4 hash-composition fan-out: the SLH-DSA WOTS+ chain-step SHA-256 inner-round combiner
 
 This module is the **hash-composition** Category-C leaf for the verified-compiler
-plan — the genuinely-new shape after the arithmetic-MAC lattice leaves
+plan — the shape after the arithmetic-MAC lattice leaves
 (`CompileFromHaxFrodoMac` / `CompileFromHaxNtruMul` / `CompileFromHaxSntrupMul`).
 Where those compose a single ring/field reduce, this leaf **composes two SHA-256
 round components** (`Σ₀` and `Maj`) through an integer add — exactly the
@@ -67,7 +67,7 @@ step's `T1` half additionally folds in the round constant `K[t]` and schedule
 word `W[t]` (two extra `wrapping_add`s of opaque inputs). Both halves use only
 `rotate_right`/`BitXor`/`BitAnd`/`wrapping_add` — all in the existing front
 recognizer set — so **no front change is required**. We emit the state-driven
-`T2` half as the load-bearing hash-composition leaf; `T1` is the same shape with
+`T2` half as the hash-composition leaf; `T1` is the same shape with
 two extra leaf inputs (`kt`, `wt`) and is recorded as the natural extension
 (`t1Src`/`t1_compiles`) below.
 -/
@@ -78,7 +78,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.CompileFromHaxSlhdsaChain
 
-open CatCrypt.Hax
+open _root_.Hax
 open CatCrypt.Crypto.SecureCompilation.ThirToComFront
 open CatCrypt.Crypto.SecureCompilation.ImpExprToThir
 open CatCrypt.Crypto.SecureCompilation.CompileFromHax

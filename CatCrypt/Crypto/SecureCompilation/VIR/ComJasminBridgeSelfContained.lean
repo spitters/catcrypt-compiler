@@ -22,7 +22,7 @@ hrhs : semPexpr true gd opS s step.e = .ok (.Vword step.sz w)
 
 i.e. the mirror RHS value `w` is *supplied*, not *computed from the corresponding
 JasminPrint `Store`*. `OperandReadCorr.lean` closes that gap for *one* step
-(`cassgn_regArith_selfContained`): for the genuine two-register `regArith .add`
+(`cassgn_regArith_selfContained`): for the two-register `regArith .add`
 shape `dst := a + b` (both operands read from registers), the RHS value `wa + wb`
 is **derived** from `StateCorrReg` + the operand reads (`papp2_word_add_corr`),
 not assumed.
@@ -38,7 +38,7 @@ that still corresponds (`StateCorrReg`) to the JasminPrint `Store.set`-sequence,
 
 ## The self-contained list-threading shape (`RegAddBlockSim`)
 
-The load-bearing change versus `RegBlockSim`: each `cons` replaces the supplied
+The difference from `RegBlockSim`: each `cons` replaces the supplied
 RHS value hypothesis by the two **operand-in-register reads** at the *running*
 mirror state:
 
@@ -80,9 +80,8 @@ writes `x = 7` (RHS `y + z = 5 + 2` derived from the Store); step 2 reads the
 `x` *that step 1 wrote* and `y`, writing `w = x + y = 7 + 5 = 12` (RHS again
 derived). Bridged end-to-end with **every RHS derived** — no value hypothesis.
 
-## What cleanly closed vs. deferred (honest)
+## Contents
 
-**Closed (sorry-free):**
 * `RegAddBlockSim` — the self-contained list-threading predicate: each step is
   `dst := a + b` over two live registers, no RHS value hypothesis;
 * `regAddBlock_selfContained` — the self-contained whole-command bridge:
@@ -92,21 +91,20 @@ derived). Bridged end-to-end with **every RHS derived** — no value hypothesis.
 * the worked all-derived example `block_selfContained_endToEnd`
   (`x := y + z ; w := x + y`), where step 2 reads step 1's write `x`.
 
-**Deferred (honest — the same residuals the per-step file documents):**
-1. **Other operand shapes / ops.** This closes the two-register word-add shape
-   `Papp2 (Oadd (Op_w sz)) (Pvar a) (Pvar b)` over `addOpSemReg`. Other emit
-   shapes (`Papp1 (Ozeroext …)` for `castW`, `Pget` for `stackLoad`, mixed
-   `Pconst`-folded immediates) need their own read-correspondences
-   (`OperandReadCorr`'s honest-scope note). Other binops than `.add` need their
-   `OpSem`'s analogue of `addOpSemReg_sem`.
-2. **Non-`Cassgn` instructions.** A list containing `Copn`/`Cif`/`Cwhile`/
-   `Cfor`/`Ccall` is out of this fragment — control-flow needs the per-step
-   simulation for those constructors first.
-3. **Arrays / memory / syscall state.** `RegAddBlockSim` tracks the register
-   frame only; `Varr`/`emem`/`escs` are out of the reg fragment, exactly as in
-   `StateBijection`'s honest-scope note.
+## Scope of the `Com ↔ Jasmin` bridge family
 
-None of these is introduced as a `sorry` here.
+This file covers the two-register word-add shape
+`Papp2 (Oadd (Op_w sz)) (Pvar a) (Pvar b)` over `addOpSemReg`; another binop
+needs its `OpSem`'s analogue of `addOpSemReg_sem`. Sibling modules cover
+`castW` (`ComJasminBridgeExt`), sign extension and truncation
+(`ComJasminBridgeExt2`), the constant-index `Pget` with the byte-array slot
+correspondence `StateCorrArr` (`ComJasminBridgeArr`), and the `rorImm` `Copn`
+with blocks mixing it with `Cassgn`s (`ComJasminBridgeCopn`).
+
+The arms of `JasminPrint.lowerExpr` not bridged to the mirror are `Cfor` (the
+`JForProg` loop), `Ccall` (leaf calls), the register-index `Pget … (Pvar idx)`
+of `stackLoad`, the `Laset` write of `stackStore`, and the memory `emem` in the
+state relation. `Cif` and `Cwhile` are not emitted by this lowering.
 
 0 sorries.
 -/
@@ -132,7 +130,7 @@ variable {SyscallState Mem : Type} [MemModel Mem]
 
 One element of a self-contained straight-line block: a destination register
 `dst`, two source registers `a`, `b`, the width `sz`, and the tag. The emitted
-instruction is the genuine two-register `regArith .add`
+instruction is the two-register `regArith .add`
 `dst := Papp2 (Oadd (Op_w sz)) (Pvar a) (Pvar b)` — both operands read from
 registers, no folded immediate. -/
 
@@ -274,7 +272,7 @@ theorem regAddBlock_selfContained
     -- peel the head of the emitted command via `execCmd_cons`.
     rw [regAddBlockCmd_cons, CmdRun.execCmd_cons]
     -- the head `execInstr (MkI ii (Cassgn …))` = `execInstrR (Cassgn …)`
-    -- = `assignExec …` (per-instruction keystone), which `hrun` pins to `.ok`.
+    -- = `assignExec …` (per-instruction run lemma), which `hrun` gives as `.ok`.
     have hhead :
         execInstr (Mem := Mem) aS (addOpSemReg step.sz) gd (fuel + 1) s0
             step.toInstr prog
@@ -326,7 +324,7 @@ theorem regAddBlock_endToEnd
 
 /-! ## §4. Worked all-derived example: `x := y + z ; w := x + y`
 
-A genuine 2-instruction self-contained block (register `u32`). Step 1's RHS
+A 2-instruction self-contained block (register `u32`). Step 1's RHS
 `y + z` is derived from the Store (`y = 5`, `z = 2`, giving `x = 7`). Step 2
 reads the `x` *written by step 1* and `y`, deriving `w = x + y = 7 + 5 = 12`.
 Both operands of both steps are live registers, and **every RHS is derived** —
@@ -398,7 +396,7 @@ theorem startState_z :
   simp [Vm.get, Vm.set]
 
 /-- After step 1 (`x = 7`), the operand `x` of step 2 is the live register `7`
-    — the genuine threading: step 2 reads the *register step 1 wrote*. -/
+    — step 2 reads the *register step 1 wrote*. -/
 theorem afterStep1_x :
     (afterStep1.evm).get xVar.v_var = .Vword .U32 (7 : BitVec 32) := by
   show ((startState.evm).set xVar.v_var (.Vword .U32 (7 : BitVec 32))).get
@@ -463,8 +461,8 @@ theorem xy_addBlockSim (st : Store) :
     * the post-state corresponds (`StateCorrReg [w, x, y, z]`) to the JasminPrint
       `Store.set`-sequence `storeAfter2 st` writing the same `7`, `12`.
 
-    Every RHS is *derived* from the running Store: step 1's `y + z` and — the
-    genuine threading — step 2's `x + y`, where `x` is the register step 1 wrote.
+    Every RHS is *derived* from the running Store: step 1's `y + z` and
+    step 2's `x + y`, where `x` is the register step 1 wrote.
     There is **no supplied RHS value hypothesis** anywhere; the whole block
     bridges to the reference Jasmin semantics fully self-contained. -/
 theorem block_selfContained_endToEnd

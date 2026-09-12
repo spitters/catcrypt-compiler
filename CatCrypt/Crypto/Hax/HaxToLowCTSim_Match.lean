@@ -43,7 +43,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Hax
 
-open CatCrypt.Hax (ImpExpr ImpLit ImpType Value Env Outcome Builtins denote)
+open _root_.Hax (ImpExpr ImpLit ImpType Value Env Outcome Builtins denote)
 open CatCrypt.Crypto.Jasmin.LowCT
   (TowerType LowCT RustState RustExec LeafSpec Located RustVal
    rsSetTower rsSetScalar locatedUpdate locatedLookup)
@@ -65,15 +65,16 @@ This is a consumer-supplied per-leaf assumption: a concrete `LeafSpec`
 implementing a 2-output primitive (e.g. `cswap`) populates it. -/
 
 /-- Per-leaf tower-swap agreement predicate.  Given a leaf `f` returning
-    a 2-tuple value, the two `RCallSwap` outputs at `dest1` and `dest2`
-    are bridge-aligned with the source-side `v1` and `v2`. -/
+    a two-component value, either `.tuple [v1, v2]` or `.array [v1, v2]`
+    (the two values a `tuplePat` of length 2 matches), the two `RCallSwap`
+    outputs at `dest1` and `dest2` are bridge-aligned with `v1` and `v2`. -/
 def LeafCallAgreesTowerSwap
     (bi : Builtins) (leafSpec : LeafSpec) (f : String) (dt : TowerType)
     (bridge : ValueTowerBridge) : Prop :=
   ∀ (rs : RustState) (dest1 dest2 : String) (args : List Located)
     (vals : List Value) (vRes : Value) (v1 v2 : Value),
     bi f vals = some vRes →
-    vRes = .tuple [v1, v2] →
+    (vRes = .tuple [v1, v2] ∨ vRes = .array [v1, v2]) →
     (∀ a ∈ args, ∃ val, rs.rsTower a.locVar = some ⟨a.locDst, val⟩) →
     ∀ rs', RustExec 0 leafSpec
              (.RCallSwap f { locVar := dest1, locSrc := dt }
@@ -122,7 +123,8 @@ When all `args` are plain `.var` lookups, the source-side evaluation
 of `match_ (.app f args) [(.tuplePat [.varPat n1, .varPat n2], body)]`
 decomposes into:
 
-* `bi f vals = some vRes` where `vRes = .tuple [v1, v2]`;
+* `bi f vals = some vRes` where `vRes = .tuple [v1, v2]` or
+  `vRes = .array [v1, v2]` (`matchPat` matches a `tuplePat` against both);
 * `body` runs in the env extended at `n1 ↦ v1` and `n2 ↦ v2`.
 -/
 
@@ -138,7 +140,7 @@ theorem evalImp_match_tuple_app_inv
     ∃ vals vRes v1 v2,
       AllVars env args vals ∧
       bi f vals = some vRes ∧
-      vRes = .tuple [v1, v2] ∧
+      (vRes = .tuple [v1, v2] ∨ vRes = .array [v1, v2]) ∧
       evalImp bi fuel body
         (Env.extend (Env.extend env n1 v1) n2 v2) = some (v, env') := by
   -- Build the AllVars witness for the args.
@@ -160,49 +162,78 @@ theorem evalImp_match_tuple_app_inv
   | some vRes =>
     rw [hbi] at h
     -- Unfold denoteMatchArms once for the single-arm list.
-    simp only [CatCrypt.Hax.denoteMatchArms, bind, Bind.bind, StateT.bind,
+    simp only [Hax.denoteMatchArms, bind, Bind.bind, StateT.bind,
                get, getThe, MonadStateOf.get, StateT.get,
                pure, Pure.pure, StateT.pure,
                set, MonadStateOf.set] at h
-    -- Case on vRes: only `.tuple [v1, v2]` matches.  Other constructors
-    -- collapse matchPat to none, leaving the err arm of denoteMatchArms.
+    -- Case on vRes: `.tuple [v1, v2]` and `.array [v1, v2]` match.  Other
+    -- constructors collapse matchPat to none, leaving the err arm of
+    -- denoteMatchArms.
     cases vRes with
     | tuple vs =>
       cases vs with
       | nil =>
-        simp only [CatCrypt.Hax.matchPat, List.length_cons, List.length_nil,
+        simp only [Hax.matchPat, List.length_cons, List.length_nil,
                    bne_iff_ne, ne_eq] at h
         rw [if_pos (by decide : ¬ (0 + 1 + 1 = 0))] at h
         simp [StateT.pure] at h
       | cons v1 vs1 =>
         cases vs1 with
         | nil =>
-          simp only [CatCrypt.Hax.matchPat, List.length_cons, List.length_nil,
+          simp only [Hax.matchPat, List.length_cons, List.length_nil,
                      bne_iff_ne, ne_eq] at h
-          -- After simp, h has shape `if ¬ 2 = 1 then ... else ...`
-          -- Use decide or `omega`-like reasoning.
           rw [if_pos (by decide : ¬ (0 + 1 + 1 = 0 + 1))] at h
           simp [StateT.pure] at h
         | cons v2 vs2 =>
           cases vs2 with
           | nil =>
             -- matchPat succeeds.
-            simp only [CatCrypt.Hax.matchPat, CatCrypt.Hax.matchPat.matchPatList,
+            simp only [Hax.matchPat, Hax.matchPat.matchPatList,
                        List.length_cons, List.length_nil, bne_iff_ne, ne_eq] at h
-            refine ⟨vals, _, v1, v2, hAV, hbi, rfl, ?_⟩
+            refine ⟨vals, _, v1, v2, hAV, hbi, Or.inl rfl, ?_⟩
             unfold evalImp
             exact h
           | cons w ws =>
-            simp only [CatCrypt.Hax.matchPat, List.length_cons, List.length_nil,
+            simp only [Hax.matchPat, List.length_cons, List.length_nil,
                        bne_iff_ne, ne_eq] at h
             rw [if_pos (by omega : ¬ (0 + 1 + 1 = ws.length + 1 + 1 + 1))] at h
             simp [StateT.pure] at h
-    | int _ => simp [CatCrypt.Hax.matchPat, StateT.pure] at h
-    | bool _ => simp [CatCrypt.Hax.matchPat, StateT.pure] at h
-    | unit => simp [CatCrypt.Hax.matchPat, StateT.pure] at h
-    | option _ => simp [CatCrypt.Hax.matchPat, StateT.pure] at h
-    | result _ _ => simp [CatCrypt.Hax.matchPat, StateT.pure] at h
-    | controlFlow _ _ => simp [CatCrypt.Hax.matchPat, StateT.pure] at h
+    | array vs =>
+      cases vs with
+      | nil =>
+        simp only [Hax.matchPat, List.length_cons, List.length_nil,
+                   bne_iff_ne, ne_eq] at h
+        rw [if_pos (by decide : ¬ (0 + 1 + 1 = 0))] at h
+        simp [StateT.pure] at h
+      | cons v1 vs1 =>
+        cases vs1 with
+        | nil =>
+          simp only [Hax.matchPat, List.length_cons, List.length_nil,
+                     bne_iff_ne, ne_eq] at h
+          rw [if_pos (by decide : ¬ (0 + 1 + 1 = 0 + 1))] at h
+          simp [StateT.pure] at h
+        | cons v2 vs2 =>
+          cases vs2 with
+          | nil =>
+            -- matchPat succeeds.
+            simp only [Hax.matchPat, Hax.matchPat.matchPatList,
+                       List.length_cons, List.length_nil, bne_iff_ne, ne_eq] at h
+            refine ⟨vals, _, v1, v2, hAV, hbi, Or.inr rfl, ?_⟩
+            unfold evalImp
+            exact h
+          | cons w ws =>
+            simp only [Hax.matchPat, List.length_cons, List.length_nil,
+                       bne_iff_ne, ne_eq] at h
+            rw [if_pos (by omega : ¬ (0 + 1 + 1 = ws.length + 1 + 1 + 1))] at h
+            simp [StateT.pure] at h
+    | int _ => simp [Hax.matchPat, StateT.pure] at h
+    | uint _ _ => simp [Hax.matchPat, StateT.pure] at h
+    | sint _ _ => simp [Hax.matchPat, StateT.pure] at h
+    | bool _ => simp [Hax.matchPat, StateT.pure] at h
+    | unit => simp [Hax.matchPat, StateT.pure] at h
+    | option _ => simp [Hax.matchPat, StateT.pure] at h
+    | result _ _ => simp [Hax.matchPat, StateT.pure] at h
+    | controlFlow _ _ => simp [Hax.matchPat, StateT.pure] at h
 
 /-! ## §4  Goal 3 (main): match-tuple-app simulation under Full predicate
 
@@ -210,7 +241,8 @@ The proof structure:
 
 1. Unpack the syntactic translation via `haxToLowCT_match_tuple_app_some`.
 2. Use `evalImp_match_tuple_app_inv` to decompose the source-side
-   evaluation into `bi f vals = some (.tuple [v1, v2])` + body eval.
+   evaluation into `bi f vals = some vRes` with `vRes` either
+   `.tuple [v1, v2]` or `.array [v1, v2]`, plus the body evaluation.
 3. Build the `RLetZero + RLetZero + RSeq (RCallSwap ..) bodyC` execution.
 4. Apply `LeafCallAgreesTowerSwap` to get tower agreement for `n1`, `n2`.
 5. Apply `envAgreesRustFull_extend_tower` twice to lift agreement
@@ -234,7 +266,8 @@ theorem haxToLowCT_simulates_match_tuple_app_full
     (hDistinct : n1 ≠ n2)
     (hCompScalar :
        ∀ vals vRes v1 v2,
-         bi f vals = some vRes → vRes = .tuple [v1, v2] →
+         bi f vals = some vRes →
+         (vRes = .tuple [v1, v2] ∨ vRes = .array [v1, v2]) →
          valueToScalar v1 = none ∧ valueToScalar v2 = none)
     (ihBody : ∀ c' env_a env_b rs_a v_a,
                 HaxToLowCTSimulatesFull bridge bi fuel 0 leafSpec

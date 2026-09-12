@@ -18,7 +18,7 @@ calls on `cargo hax into lean` output: a width-parameterized composition
 ImpExpr  --(impExprToThir params)-->  Thir  --(thirToJasmin)-->  Com jasminDialect
 ```
 
-that consumes the hax-extracted source AST (`CatCrypt.Hax.ImpExpr`) and produces
+that consumes the hax-extracted source AST (`Hax.ImpExpr`) and produces
 an emittable `Com jasminDialect`, so the CLI can run *from source IR* rather than
 from a hand-written `Com`/`Thir` driver.
 
@@ -90,7 +90,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.HaxToThirFront
 
-open CatCrypt.Hax
+open _root_.Hax
 open CatCrypt.Crypto.SecureCompilation.ThirToComFront
 open CatCrypt.Crypto.SecureCompilation.ImpExprToThir
 open CatCrypt.Crypto.SecureCompilation.VIR (Com)

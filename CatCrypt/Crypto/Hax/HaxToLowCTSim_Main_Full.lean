@@ -75,7 +75,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Hax
 
-open CatCrypt.Hax (ImpExpr ImpLit ImpType IntWidth Value Env Outcome Builtins
+open _root_.Hax (ImpExpr ImpLit ImpType IntWidth Value Env Outcome Builtins
                    denote defaultBuiltins)
 open CatCrypt.Crypto.Jasmin.LowCT
   (TowerType LowCT RustState RustExec LeafSpec Located RustVal
@@ -91,7 +91,7 @@ the stronger `HaxToLowCTSimulatesFull` predicate. -/
 abbrev Hyp_match_full
     (bridge : ValueTowerBridge)
     (bi : Builtins) (fuel N : Nat) (leafSpec : LeafSpec) : Prop :=
-  ∀ (scrut : ImpExpr) (arms : List (CatCrypt.Hax.ImpPat × ImpExpr))
+  ∀ (scrut : ImpExpr) (arms : List (Hax.ImpPat × ImpExpr))
     (c : LowCT) (env env' : Env) (rs : RustState) (v : Value)
     (_ihScrut : ∀ c' env_a env_b rs_a v_a,
                   HaxToLowCTSimulatesFull bridge bi fuel N leafSpec
@@ -196,7 +196,7 @@ theorem evalImp_letBind_app_vacuous
   simp only [denote, bind, Bind.bind, StateT.bind, StateT.run,
              pure, Pure.pure] at h
   -- Inspect `denoteArgs bi fuel args env` (as applied, not `.run`).
-  cases hDA : CatCrypt.Hax.denoteArgs bi fuel args env with
+  cases hDA : Hax.denoteArgs bi fuel args env with
   | mk oDA emDA =>
     rw [hDA] at h
     cases oDA with
@@ -527,25 +527,25 @@ theorem simulates_assign_lit_uintLit_full
       name w n c env env' rs v hHax hEval hAgree.1
   obtain ⟨rs', hExec, hScalarAgree⟩ := hScalar
   refine ⟨rs', hExec, hScalarAgree, ?_⟩
-  -- Identify rs' = rsSetScalar rs name n and env' = env.extend name (Value.int n).
-  -- We need to extract these from hHax / hExec.
+  -- Identify rs' = rsSetScalar rs name (n % w.modulus) and
+  -- env' = env.extend name (Value.uint w (n % w.modulus)).
   rw [haxToLowCT_assign_lit_uintLit_some] at hHax
-  -- hHax : some (.RScalarSet name n) = some c
+  -- hHax : some (.RScalarSet name (n % w.modulus)) = some c
   injection hHax with hC
   subst hC
-  -- hExec : RustExec N leafSpec (.RScalarSet name n) rs rs'
-  -- This determines rs' = rsSetScalar rs name n.
-  have hRs : rs' = rsSetScalar rs name n := by
+  -- hExec : RustExec N leafSpec (.RScalarSet name (n % w.modulus)) rs rs'
+  -- This determines rs' = rsSetScalar rs name (n % w.modulus).
+  have hRs : rs' = rsSetScalar rs name (n % w.modulus) := by
     cases hExec
     rfl
   subst hRs
   -- env' comes from hEval; env' = env.extend name (Value.ofLit (.uintLit w n)) and v = .unit
   obtain ⟨hv, henv⟩ := evalImp_assign_lit_inv bi fuel name (.uintLit w n) env v env' hEval
   subst henv
-  -- Value.ofLit (.uintLit w n) = Value.int n
-  -- valueToScalar (Value.ofLit (.uintLit w n)) = some n
+  -- Value.ofLit (.uintLit w n) = Value.uint w (n % w.modulus)
+  -- valueToScalar (Value.ofLit (.uintLit w n)) = some (n % w.modulus)
   apply envAgreesRustTower_extend_scalar_fresh bridge env rs name
-    (Value.ofLit (.uintLit w n)) n hFresh hAgree.2
+    (Value.ofLit (.uintLit w n)) (n % w.modulus) hFresh hAgree.2
 
 /-- Full-predicate assign-int case (n ≥ 0). -/
 theorem simulates_assign_lit_int_full
@@ -801,6 +801,11 @@ theorem haxToLowCT_simulates_full
       intro c env env' rs v hHax _ _
       rw [haxToLowCT_forFoldRevReturn_eq_none] at hHax
       contradiction
+  | typeAscription e ty ih =>
+      intro c env env' rs v hHax hEval hAgr
+      rw [haxToLowCT_typeAscription_eq] at hHax
+      rw [evalImp_typeAscription] at hEval
+      exact ih c env env' rs v hHax hEval hAgr
   | whileFoldReturn cond body _ _ =>
       intro c env env' rs v hHax _ _
       rw [haxToLowCT_whileFoldReturn_eq_none] at hHax

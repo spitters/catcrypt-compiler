@@ -7,13 +7,13 @@ module
 
 import all Init.Data.Repr
 public import Mathlib.Data.ZMod.Basic
-public meta import CatCrypt.Hax.Semantics
-public import CatCrypt.Hax.Semantics
+public meta import HaxLean.Semantics
+public import HaxLean.Semantics
 
 /-!
 # Prime-field crypto-op builtins for the hax reference interpreter
 
-`CatCrypt.Hax.Semantics` denotes an `ImpExpr` under a `Builtins` table
+`HaxLean.Semantics` denotes an `ImpExpr` under a `Builtins` table
 (`String → List Value → Option Value`). Its `defaultBuiltins` covers integer
 arithmetic and comparisons but the bare `Field` heads that `haxpipeT` emits for a
 `primeir-hax` `Field` call (`"mul"`, `"add"`, `"sub"`, `"neg"`, `"inv"` — see
@@ -44,6 +44,8 @@ default meaning.
 @[expose] public section
 
 namespace CatCrypt.Hax
+
+open _root_.Hax (ImpExpr Value Env Outcome Builtins defaultBuiltins denote)
 
 /-- Extend `defaultBuiltins` with the prime-field ops over the residue
     representation `Value.int n ↦ (n : ZMod p)`.
@@ -101,7 +103,10 @@ theorem primeirBuiltins_neg_zmod (p : Nat) (a : Int) :
     (((-a) % (p : Int) : Int) : ZMod p) = -(a : ZMod p) := by
   rw [ZMod.intCast_mod, Int.cast_neg]
 
-/-! ### Concrete evaluation checks (p = 7) -/
+/-! ### Concrete evaluation checks (p = 7)
+
+Static pins of the residue arithmetic on closed literals; each is a single
+builtin application. -/
 
 #guard primeirBuiltins 7 "mul" [.int 3, .int 5] == some (.int 1)   -- 15 % 7 = 1
 #guard primeirBuiltins 7 "add" [.int 4, .int 5] == some (.int 2)   -- 9  % 7 = 2

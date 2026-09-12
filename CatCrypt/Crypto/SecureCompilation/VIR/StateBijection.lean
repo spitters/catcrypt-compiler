@@ -38,15 +38,14 @@ so a register word *is literally a `BitVec sz.bits`*, exactly the JasminPrint
 side's `⟦JasminTy.reg w⟧ = BitVec w` (`JasminDialect.lean:84`). The
 "byte-encoding bijection" is therefore, on the register fragment, the *identity
 on the underlying `BitVec`* once the two width tags `WSize`/`Nat` are matched.
-The genuinely byte-shaped values (`Varr`, the `JArrayMirror` memory) live in the
+The byte-shaped values (`Varr`, the `JArrayMirror` memory) live in the
 *array/memory* fragment, which this file scopes out and documents below.
 
-So the round-trip on the reg fragment is near-trivial — and that is the honest
-finding the task asks for. What there *is* to prove is that the two width
+So the round-trip on the reg fragment is near-trivial. What there *is* to prove
+is that the two width
 encodings (`Nat` width on the JasminPrint side, `WSize` tag on the mirror side)
 round-trip, and that this lifts to a register-level **state correspondence**
-preserved by writes — which is the load-bearing content for the full state
-bijection.
+preserved by writes, which a full state bijection extends.
 
 ## What is proved (all sorry-free)
 
@@ -65,19 +64,22 @@ bijection.
 * `golden_state_corr` — the worked example: the `x := y + 1` post-states
   (`x = 6`) correspond on both sides, tying into `ComJasminBridge`'s witness.
 
-## Honest scope / the remaining gap to the FULL `Store ↔ Estate` bijection
+## Scope: the register fragment of the `Store ↔ Estate` bijection
 
 This is the **register-word fragment only**. The full `Store ↔ Estate` bijection
 additionally needs:
 
 * the **array fragment** (`DynVal` of `⟦stackArr w n⟧ = Fin n → BitVec w` ↔
-  `Value.Varr n (JArrayMirror n)`) — genuinely byte/element-shaped, the only part
+  `Value.Varr n (JArrayMirror n)`) — byte/element-shaped, the only part
   where a non-trivial layout bijection is required;
 * the **memory** (`Estate.emem`, a `MemModel Mem`) and the **syscall state**
   (`Estate.escs`), which the JasminPrint `Store` does not model at all;
 * lifting the value correspondence through `getVar`/`writeVar`/`semPexpr` on the
   mirror side and `Store.get`/`Store.set`/`evalPExpr` on the JasminPrint side for
   *every* op (here done for the reg write).
+
+`ComJasminBridgeArr.StateCorrArr` is the byte-array slot correspondence
+(`stackArr 8 n` ↔ `Varr n`); memory and syscall state have no correspondence.
 
 Together with gap #1 (the AST translation) and operational adequacy
 (`ExecAdequacy`), the reg-fragment correspondence here is the value-level core

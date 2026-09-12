@@ -23,8 +23,8 @@ JasminPrint `Store`*. This file **derives** that hypothesis for the `regArith`
 emit shape `Papp2 op (Pvar a) (Pvar b)` — the only RHS shape
 `InstrRTranslate`'s `regArith` fragment emits (`JasminPrintSemCorrect.lean:140`).
 Once derived, the bridge is fully self-contained on the straight-line
-`regArith`-`Cassgn` fragment: `hrhs` is no longer an assumption but a consequence
-of `StateCorrReg` + the expression.
+`regArith`-`Cassgn` fragment: `hrhs` is a consequence of `StateCorrReg` and the
+expression.
 
 ## The two reads agree (the central content)
 
@@ -51,7 +51,7 @@ read-correspondence is therefore the `Vm.get`/`Store.get` lift of `RegCorr`.
   `regArith .add` emit) the `Papp2` RHS is `.ok (.Vword sz (wa + wb))`: the
   binop of the two Store registers. This **discharges** the bridge's `hrhs`.
 * `cassgn_regArith_selfContained` — the **self-contained per-step bridge
-  corollary**: `hrhs` is no longer a hypothesis; for `dst := a + b` over a
+  corollary**: `hrhs` is derived, not a hypothesis; for `dst := a + b` over a
   word-add `OpSem`, given both `a, b` live in corresponding registers, the mirror
   run = the JasminPrint `Store.set st dst.vname (wa + wb)`, with the *same*
   `BitVec` the JasminPrint side stores.
@@ -60,7 +60,7 @@ read-correspondence is therefore the `Vm.get`/`Store.get` lift of `RegCorr`.
   `x := y + z` step's RHS value `wy + wz` is computed from the Store, and the
   paired write corresponds.
 
-## Honest scope / the residual
+## Scope
 
 * **Other expression shapes.** This closes the `regArith` RHS shape
   `Papp2 op (Pvar a) (Pvar b)` over register words. The other emit shapes
@@ -70,12 +70,14 @@ read-correspondence is therefore the `Vm.get`/`Store.get` lift of `RegCorr`.
   (`Pconst → .Vint`, the `Ozeroext` unop, the array read). The constant-folding
   `addOpSemW` examples in `ComJasminBridgeFull`/`Cmd` use `Papp2 op (Pvar y)
   (Pconst 1)`, a *mixed* operand shape; this file's `addOpSemReg` instead reads
-  *both* operands from registers (`y + z`), the genuine two-register `regArith`
+  *both* operands from registers (`y + z`), the two-register `regArith`
   shape, so the RHS is fully derived from the Store with no folded immediate.
-* **Arrays / memory / syscall state.** Out of the reg fragment, exactly as in
-  `StateBijection`'s honest-scope note.
+* **Arrays / memory / syscall state.** Out of the reg fragment, as in the scope
+  section of `StateBijection`.
 
-These are the same residuals the bridge files catalogue; none is a `sorry` here.
+`ComJasminBridgeExt`, `ComJasminBridgeExt2` and `ComJasminBridgeArr` supply the
+read correspondences for `castW`, sign extension / truncation and the
+constant-index `Pget`.
 
 0 sorries.
 -/
@@ -309,7 +311,7 @@ theorem cassgn_regArith_selfContained
 
 /-! ## §5. Worked `x := y + z` example, RHS derived
 
-We exhibit the genuine two-register `regArith` add `x := y + z` (register
+We exhibit the two-register `regArith` add `x := y + z` (register
 `u32`), with the RHS value *computed from the Store* (`y`, `z` both read from
 corresponding registers), not supplied as a constant. -/
 

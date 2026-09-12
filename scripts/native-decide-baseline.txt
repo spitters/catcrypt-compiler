@@ -452,7 +452,6 @@
 2	CatCrypt/Crypto/SecureCompilation/X86Backend/Secp256k1MontMulKernel.lean
 34	CatCrypt/Crypto/SecureCompilation/X86Backend/Sha256RoundRegAlloc.lean
 6	CatCrypt/Crypto/SecureCompilation/X86Backend/Sha2BatchedEmit.lean
-2	CatCrypt/Crypto/SecureCompilation/X86Backend/Sha512X8VpackZmmEmit.lean
 1	CatCrypt/Crypto/SecureCompilation/X86Backend/SimdBytesVsimd.lean
 4	CatCrypt/Crypto/SecureCompilation/X86Backend/Sm2FieldKernel.lean
 1	CatCrypt/Crypto/SecureCompilation/X86Backend/Sm2FieldProven.lean
@@ -479,5 +478,4 @@
 1	CatCrypt/Crypto/Util/ZMod3329.lean
 1	CatCrypt/Crypto/Util/ZMod4591.lean
 1	CatCrypt/Crypto/Util/ZMod8380417.lean
-5	CatCrypt/Hax/VacuityAudit.lean
 1	CatCrypt/Tactics/PolyZpTest.lean
