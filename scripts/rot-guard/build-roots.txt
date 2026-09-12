@@ -862,3 +862,4 @@ CatCrypt.Crypto.SecureCompilation.Ascent.HeapAbs
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.HeapAbs
 CatCrypt.Core.GenHeapRandomOracle
 CatCrypt.Tactic.ProofTermAudit
+CatCrypt.Crypto.Hax.HaxToLowCTExit
