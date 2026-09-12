@@ -866,3 +866,5 @@ CatCrypt.Crypto.SecureCompilation.EcProjectiveGenericA
 CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacDblABlock
 CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockFullMemrefTextKat
 CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeCopn
+CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeFor
+CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeCall
