@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import HaxLean.ImpType
-public import CatCrypt.Hax.AST
+public import HaxLean.AST
 public import CatCrypt.Hax.CType
 
 /-!

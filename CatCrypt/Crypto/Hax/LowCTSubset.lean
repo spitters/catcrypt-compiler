@@ -17,7 +17,7 @@ public import HaxLean.ImpType
 # H1: LowCT Subset Filter for hax `ImpExpr`
 
 This file implements **Track H1** from `BLS/NEXT.md`: a decidable predicate on
-hax's existing imperative AST (`CatCrypt.Hax.ImpExpr` / `ImpType`) that decides
+hax's existing imperative AST (`Hax.ImpExpr` / `Hax.ImpType`) that decides
 whether a given Rust function lies in the **tower-typed subset** representable
 by `CatCrypt.Crypto.Jasmin.LowCT.LowCT`.
 
@@ -36,7 +36,7 @@ fragment that the H2 translation pass will be able to lower into `LowCT`.
 
 ## Design choices
 
-* **Reuse** the existing `CatCrypt.Hax.ImpExpr` AST rather than stub a
+* **Reuse** the existing `Hax.ImpExpr` AST of hax-lean rather than stub a
   fresh one — the codebase already has a Lean-side hax integration with
   semantics and phase passes (`CatCrypt/Hax/`).  Stubbing a parallel
   `Hax.RawCode` would duplicate work and diverge from what hax actually
