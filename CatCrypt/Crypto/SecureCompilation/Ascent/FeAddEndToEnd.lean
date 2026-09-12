@@ -32,6 +32,7 @@ import all CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 import all CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
 public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresScalar
 public import CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd
+public import CatCrypt.Crypto.SecureCompilation.Ascent.LegWeld
 public import CatCrypt.Crypto.Hax.RustSubsetToLowCT
 
 /-!
@@ -95,6 +96,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminCom (mapTy mapCtx)
 open CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminComCorrect (ctTransTy)
 open CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect (ctMapValD)
 open CatCrypt.Crypto.SecureCompilation.Dialects.RustExecRoundAdeq (not_isTmp_short)
+open CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge (readsOK afterB varsBoundIn)
 open CatCrypt.Crypto.Hax.RustSubsetToLowCT (RustSrc lower lowerRefines RRefines)
 
 namespace CatCrypt.Crypto.SecureCompilation.Ascent
@@ -323,20 +325,48 @@ theorem feAddSourceWord_eq_feVal : feAddSourceWord = feAddVal := by
 
 /-! ## The end-to-end source-to-bytes theorem, `hSourceWord` discharged -/
 
+/-! ## The weld instance -/
+
+/-- The front's spelling `feAddC` is the lowering `lower feAddSrc` with its two
+    literal assignments normalised. -/
+theorem feAddC_litNorm : LitNorm (lower feAddSrc) feAddC :=
+  .seq (.lit "a0" av) (.seq (.lit "b0" bv) (.refl _))
+
+/-- The run of `feAddC` from the default state: both literals are `u64`, and the
+    addition `a0 + b0` is in range at the state it reads (`av + bv < 2^64`). -/
+theorem feAddC_run : AdeqRun feAddC fars0 farsF :=
+  .rSeq (.rScalarSet (by decide))
+    (.rSeq (.rScalarSet (by decide))
+      (.rScalarSetExpr addE_srcClean (by simp only [addE, SExpr.inRange, SExpr.eval]; decide)))
+
+/-- Every read of `feAddC` follows a write. -/
+theorem feAddC_readsOK : readsOK (fun _ => False) feAddC := by
+  simp [readsOK, afterB, varsBoundIn, feAddC, addE]
+
+/-- `r0` is written by `feAddC`. -/
+theorem feAddC_out : afterB (fun _ => False) feAddC "r0" := by
+  simp [afterB, feAddC]
+
+set_option linter.unusedVariables false in
 /-- **`feAdd_source_to_bytes_tower`.** For the closed feAdd kernel
     `r0 := a0 + b0`, the emitted jasmin program `feAddJcom` denotes to
     `ctTransTy feAddSourceWord` where `feAddSourceWord` is the *source* program's
     evaluated output word, and that word's clean `ZMod 2^64` spec is exactly
-    `(av : ZMod 2^64) + (bv : ZMod 2^64)` — the ascent field spec. The interface
-    hypothesis `hSourceWord` of `feAdd_source_to_bytes` is fully discharged: the
-    source word is delivered by the verified `RustSubset → LowCT` lowering
-    `feAddSrc_refines`, and its identification with the emitted kernel's tracked
-    word `feAddVal` is `feAddSourceWord_eq_feVal`. -/
+    `(av : ZMod 2^64) + (bv : ZMod 2^64)` — the ascent field spec.
+
+    The instance of the generic weld `legWeld_lower`: the source word is delivered
+    by the verified `RustSubset → LowCT` lowering `lowerRefines feAddSrc`,
+    transported to `feAddC` along `feAddC_litNorm`; the ascent leg is
+    `feAdd_corres`; the front artifacts are those of this module. -/
 theorem feAdd_source_to_bytes_tower (N : Nat) (leafSpec : LeafSpec) :
     feAddJcom.denote (ctMapValD (.nil : Ctxt.Valuation (d := catCryptDialect) ([] : Ctx)))
         = ctTransTy feAddSourceWord
       ∧ wEnc feAddSourceWord
-          = ((av : Nat) : ZMod (2 ^ 64)) + ((bv : Nat) : ZMod (2 ^ 64)) :=
-  feAdd_source_to_bytes N leafSpec feAddSourceWord feAddSourceWord_eq_feVal
+          = ((av : Nat) : ZMod (2 ^ 64)) + ((bv : Nat) : ZMod (2 ^ 64)) := by
+  have h := legWeld_lower feAddSrc feAddSrc_ifFree feAddC_litNorm ⟨farsF, feAddC_run⟩
+    scalarInRange_default "r0" (not_isTmp_short "r0" (by decide)) feAddC_readsOK feAddC_out
+    ⟨faO, faHTrans, faW, faHName, faCom, faHRet, feAddJcom, faHCom⟩ faAdd (fun _ => True)
+    feAdd_corres trivial
+  exact ⟨h.1, h.2.trans (faAdd_at_r0 _)⟩
 
 end CatCrypt.Crypto.SecureCompilation.Ascent

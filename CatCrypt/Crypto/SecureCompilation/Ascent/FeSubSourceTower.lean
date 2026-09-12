@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd
+public import CatCrypt.Crypto.SecureCompilation.Ascent.LegWeld
 public import CatCrypt.Crypto.Hax.RustSubsetToLowCT
 
 /-!
@@ -40,9 +41,12 @@ a proved fact, no free hypothesis: running the lowered LowCT program under
 `feSubSourceWord` is the word the source semantics leaves at `r0`, cast into the
 64-bit word type.  It coincides with the emitted kernel's tracked word `feVal`
 (`feSubSourceWord_eq_feVal`, by evaluation of the two independently-defined
-semantics — the honest cross-check that both lowerings compute the field
-subtraction).  Chaining that identification through `feSub_source_to_bytes`
-reads the *source*-derived word to the emitted bytes with no free hypothesis.
+semantics).  `feSub_source_to_bytes_tower` does not go through that evaluation:
+it is the instance of the generic weld `LegWeld.legWeld_lower`, which carries
+the source semantics to the emitted bytes for any straight-line kernel from the
+descent's refinement (`lowerRefines feSubSrc`, transported to the front's
+spelling `feSubC` along `feSubC_litNorm`), the run `feSubC_run` and the ascent
+correspondence `feSub_corres`.
 
 Part of the AutoCorres-in-Lean ascent begun by Sebastian Graf (sgraf812/ascent).
 -/
@@ -60,6 +64,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminCom (mapTy mapCtx)
 open CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminComCorrect (ctTransTy)
 open CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect (ctMapValD)
+open CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge (readsOK afterB varsBoundIn)
+open CatCrypt.Crypto.SecureCompilation.Dialects.RustExecRoundAdeq (not_isTmp_short)
 
 namespace CatCrypt.Crypto.SecureCompilation.Ascent
 
@@ -100,21 +106,48 @@ theorem feSubSourceWord_eq_feVal : feSubSourceWord = feVal := by
 
 /-! ## The end-to-end source-to-bytes theorem, `hSourceWord` discharged -/
 
+/-! ## The weld instance -/
+
+/-- The front's spelling `feSubC` is the lowering `lower feSubSrc` with its two
+    literal assignments normalised. -/
+theorem feSubC_litNorm : LitNorm (lower feSubSrc) feSubC :=
+  .seq (.lit "a0" av) (.seq (.lit "b0" bv) (.refl _))
+
+/-- The run of `feSubC` from the default state: both literals are `u64`, and the
+    subtraction `a0 - b0` is in range at the state it reads (`bv ≤ av`). -/
+theorem feSubC_run : AdeqRun feSubC frs0 frsF :=
+  .rSeq (.rScalarSet (by decide))
+    (.rSeq (.rScalarSet (by decide))
+      (.rScalarSetExpr subE_srcClean (by simp only [subE, SExpr.inRange, SExpr.eval]; decide)))
+
+/-- Every read of `feSubC` follows a write. -/
+theorem feSubC_readsOK : readsOK (fun _ => False) feSubC := by
+  simp [readsOK, afterB, varsBoundIn, feSubC, subE]
+
+/-- `r0` is written by `feSubC`. -/
+theorem feSubC_out : afterB (fun _ => False) feSubC "r0" := by
+  simp [afterB, feSubC]
+
+set_option linter.unusedVariables false in
 /-- **`feSub_source_to_bytes_tower`.**  For the closed feSub kernel
     `r0 := a0 - b0`, the emitted jasmin program `feJcom` denotes to
     `ctTransTy feSubSourceWord` where `feSubSourceWord` is the *source*
     program's evaluated output word, and that word's clean `ZMod 2^64` spec is
     exactly `(av : ZMod 2^64) - (bv : ZMod 2^64)` — the ascent field spec.
 
-    The interface hypothesis `hSourceWord` of `feSub_source_to_bytes` is fully
-    discharged here: the source word is delivered by the verified
-    `RustSubset → LowCT` lowering `feSubSrc_refines`, and its identification with
-    the emitted kernel's tracked word `feVal` is `feSubSourceWord_eq_feVal`. -/
+    The instance of the generic weld `legWeld_lower`: the source word is delivered
+    by the verified `RustSubset → LowCT` lowering `lowerRefines feSubSrc`,
+    transported to `feSubC` along `feSubC_litNorm`; the ascent leg is
+    `feSub_corres`; the front artifacts are those of `FeSubEndToEnd`. -/
 theorem feSub_source_to_bytes_tower (N : Nat) (leafSpec : LeafSpec) :
     feJcom.denote (ctMapValD (.nil : Ctxt.Valuation (d := catCryptDialect) ([] : Ctx)))
         = ctTransTy feSubSourceWord
       ∧ wEnc feSubSourceWord
-          = ((av : Nat) : ZMod (2 ^ 64)) - ((bv : Nat) : ZMod (2 ^ 64)) :=
-  feSub_source_to_bytes N leafSpec feSubSourceWord feSubSourceWord_eq_feVal
+          = ((av : Nat) : ZMod (2 ^ 64)) - ((bv : Nat) : ZMod (2 ^ 64)) := by
+  have h := legWeld_lower feSubSrc feSubSrc_ifFree feSubC_litNorm ⟨frsF, feSubC_run⟩
+    scalarInRange_default "r0" (not_isTmp_short "r0" (by decide)) feSubC_readsOK feSubC_out
+    ⟨fO, fHTrans, fW, fHName, fCom, fHRet, feJcom, fHCom⟩ faSub (fun _ => True) feSub_corres
+    trivial
+  exact ⟨h.1, h.2.trans (faSub_at_r0 _)⟩
 
 end CatCrypt.Crypto.SecureCompilation.Ascent

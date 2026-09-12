@@ -27,8 +27,12 @@ compose by transitivity.
 What is not stated here is that program identity. The descent builds its `Com`
 from the Lean source; the ascent reads a `Com` off a `LowCT` through
 `translateDialectControl`. That the two are one program is a coherence fact about
-the printer and the front, and `PipelineWeld.feSub_raw_source_to_bytes` is the
-one kernel for which the full chain is carried through.
+the printer and the front. At the `LowCT` level, `LegWeld.legWeld` states the
+identity for any straight-line word kernel: the descent's `RRefines`, the front's
+translation and the ascent's `Corres` are indexed by one term, and the two
+semantics of that term are reconciled by `LegWeld.agreeRun`.
+`PipelineWeld.feSub_raw_source_to_bytes` carries the chain one level up, to the
+raw hax `ImpExpr`, for the feSub kernel.
 
 ## Main definitions
 

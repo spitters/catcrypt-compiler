@@ -176,6 +176,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.FieldReduce
 CatCrypt.Crypto.SecureCompilation.Ascent.InvariantSchemas
 CatCrypt.Crypto.SecureCompilation.Ascent.JStateSepLogic
 CatCrypt.Crypto.SecureCompilation.Ascent.JasminComRunBlockRealloc
+CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo
 CatCrypt.Crypto.SecureCompilation.Ascent.LoopSourceLeaf
 CatCrypt.Crypto.SecureCompilation.Ascent.LoopSourceTower
 CatCrypt.Crypto.SecureCompilation.Ascent.MlkemPolyFoldCorres
