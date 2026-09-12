@@ -87,7 +87,7 @@ theorem encode_lpc {w : Nat} {Γ : Ctxt jasminDialect} (V : Ctxt.Valuation Γ) :
 
 /-- **Straight-line `Com` faithfulness, lifted into the labeled `lsem`.** A
     uniform-`regArith` straight-line `Com`, emitted to its singleton program, executes
-    under the labeled, program-indexed `lsem` (not merely the body-fold `lsemStraight`)
+    under the labeled, program-indexed `lsem` (the body-fold `lsemStraight` lifted)
     from the encoded inputs to a state whose result register decodes to `Com.denote`.
 
     This is the straight-line faithfulness tower (`comToLprog_faithful_straightline`,
