@@ -236,6 +236,18 @@ theorem corresU_while {fuel : Nat} {P : AState → Prop} {fb : AState → AState
   · exact kfold_pres hinv _ a hP
   · exact semScalarWhile_guard_false (fun e => semU fuel body e) (guardNz name) fuel env env' hrun
 
+/-- `RSeq` at the unified waist: `semU fuel (RSeq c₁ c₂)` is the bind of the two
+    phases, so two `CorresU` phases compose when the first re-establishes the
+    second's precondition. -/
+theorem corresU_seq {fuel : Nat} {P Q : AState → Prop} {fa ga : AState → AState}
+    {c₁ c₂ : LowCT}
+    (h₁ : CorresU fuel SR P fa c₁) (h₂ : CorresU fuel SR Q ga c₂) (hpre : ∀ a, P a → Q (fa a)) :
+    CorresU fuel SR P (fun a => ga (fa a)) (.RSeq c₁ c₂) := by
+  intro env a hSR hP
+  obtain ⟨env₁, hstep₁, hSR₁⟩ := h₁ env a hSR hP
+  obtain ⟨env₂, hstep₂, hSR₂⟩ := h₂ env₁ (fa a) hSR₁ (hpre a hP)
+  exact ⟨env₂, by simp only [semU, hstep₁, Option.bind_some, hstep₂], hSR₂⟩
+
 /-! ## D. Non-vacuity: the hypotheses of `corresU_while` are jointly satisfiable -/
 
 /-- On a leaf that is not one of the five combinator shapes, `semU` is `semScalar`,

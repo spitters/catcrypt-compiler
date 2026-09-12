@@ -852,3 +852,9 @@ CatCrypt.Tactics.PreservationCombinator
 -- module outside it is one no target and no import reaches.
 -- Regenerate with:
 --   ROT_GUARD_WRITE_MANIFEST=1 bash scripts/rot-guard-build.sh --check
+CatCrypt.Crypto.SecureCompilation.Ascent.AscendMeta
+CatCrypt.Crypto.SecureCompilation.Ascent.Guards
+CatCrypt.Crypto.SecureCompilation.Ascent.Exit
+CatCrypt.Crypto.SecureCompilation.Ascent.SourceBridge
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.EarlyExit
+CatCrypt.Crypto.Hax.HaxToLowCTSim_Program

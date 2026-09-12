@@ -20,6 +20,12 @@ This module decides membership: a `Bool` test per fragment, a soundness lemma
 from the test to the predicate, and a tactic that discharges membership with one
 `decide`.
 
+The `decide` in each tactic reduces the checker over the whole kernel, so the
+tactics here are for small kernels. `ascend_meta` (`Ascent/AscendMeta.lean`) is the
+membership route for large terms: it walks the kernel's syntax and applies the
+fragment's constructors directly, with `decide` only on single leaves, and closes
+the same membership and `Corres` goals.
+
 `isTmpName s` is `∃ k, s = tmpName k` and is not decidable as stated. The
 decidable sufficient condition is the head character: every `tmpName k` is
 `"__sx" ++ toString k`, so a name whose first character is not `'_'` is not a

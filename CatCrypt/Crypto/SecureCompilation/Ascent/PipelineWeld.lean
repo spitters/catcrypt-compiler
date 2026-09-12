@@ -88,6 +88,58 @@ theorem haxOutcomeWord_encodeCF3 (o : Hax.Outcome) (w : BitVec 64)
   | continued => simp [haxOutcomeWord] at h
   | err msg => simp [haxOutcomeWord] at h
 
+/-- Extract a 64-bit word from a hax outcome under the pipeline's control-flow
+    encoding: a normally terminating unsigned-integer value, or an unsigned-integer
+    value wrapped in a `controlFlow` tag (the phase-3/4 encoding of a `break` or an
+    early `return` carrying that word).  Any other outcome yields no word. -/
+def haxOutcomeWordCF : Hax.Outcome → Option (BitVec 64)
+  | .val (.uint _ n) => some (BitVec.ofNat 64 n)
+  | .val (.controlFlow _ (.uint _ n)) => some (BitVec.ofNat 64 n)
+  | _ => none
+
+/-- `haxOutcomeWordCF` extends `haxOutcomeWord`: every word the untagged reader
+    finds, the tagged reader finds. -/
+theorem haxOutcomeWordCF_of_haxOutcomeWord (o : Hax.Outcome) (w : BitVec 64)
+    (h : haxOutcomeWord o = some w) : haxOutcomeWordCF o = some w := by
+  cases o with
+  | val v => cases v <;> first | exact h | simp [haxOutcomeWord] at h
+  | _ => simp [haxOutcomeWord] at h
+
+/-- `haxOutcomeWordCF` is invariant under the phase-3 encoding `encodeCF3`: the
+    only outcomes it reads are `val`s, which `encodeCF3` leaves untouched. -/
+theorem haxOutcomeWordCF_encodeCF3 (o : Hax.Outcome) (w : BitVec 64)
+    (h : haxOutcomeWordCF o = some w) :
+    haxOutcomeWordCF (Hax.Outcome.encodeCF3 o) = some w := by
+  cases o with
+  | val v => exact h
+  | _ => simp [haxOutcomeWordCF] at h
+
+/-- `haxOutcomeWordCF` is invariant under the phase-4 encoding `encodeCF4`. -/
+theorem haxOutcomeWordCF_encodeCF4 (o : Hax.Outcome) (w : BitVec 64)
+    (h : haxOutcomeWordCF o = some w) :
+    haxOutcomeWordCF (Hax.Outcome.encodeCF4 o) = some w := by
+  cases o with
+  | val v => exact h
+  | _ => simp [haxOutcomeWordCF] at h
+
+/-- `haxOutcomeWordCF` is invariant under the combined encoding `encodeCF`. -/
+theorem haxOutcomeWordCF_encodeCF (o : Hax.Outcome) (w : BitVec 64)
+    (h : haxOutcomeWordCF o = some w) :
+    haxOutcomeWordCF (Hax.Outcome.encodeCF o) = some w := by
+  rw [← Hax.Outcome.encodeCF4_encodeCF3]
+  exact haxOutcomeWordCF_encodeCF4 _ _ (haxOutcomeWordCF_encodeCF3 _ _ h)
+
+/-- The word of an early return survives the phase-4 encoding: the tagged reader on
+    `encodeCF4 (earlyRet v)` is the untagged reader on `val v`. -/
+theorem haxOutcomeWordCF_encodeCF4_earlyRet (v : Hax.Value) :
+    haxOutcomeWordCF (Hax.Outcome.encodeCF4 (.earlyRet v)) = haxOutcomeWord (.val v) := by
+  cases v <;> rfl
+
+/-- The word of an early return survives the combined encoding `encodeCF`. -/
+theorem haxOutcomeWordCF_encodeCF_earlyRet (v : Hax.Value) :
+    haxOutcomeWordCF (Hax.Outcome.encodeCF (.earlyRet v)) = haxOutcomeWord (.val v) := by
+  cases v <;> rfl
+
 /-! ## The raw-source-to-bytes weld -/
 
 /-- **`feSub_raw_source_to_bytes`.**  The RAW, pre-optimization hax `ImpExpr e`

@@ -20,11 +20,12 @@ AutoCorres/Ascent phase pass in total form for the fragment the value leaf cover
 `IsAscendable` program lifts to its pure word spec `asemW c` over `ZMod 2^64`, with no
 manual composition.
 
-Frontier (honest, = the descent's): the loop/conditional rules `corres_for`/`corres_if`
-(`Ascent.Control`) are proved and compose on concrete kernels, but a *uniform*
-`ascend_sound` over all of `IsCoveredSU` additionally needs the `RScalarSetExpr` leaf
-(the `semLowerSExpr` success guard) and a `Corres`-over-`semScalarWhile` variant for
-`RWhileNz` — the same frontier the descent tracks.
+The fragments here are the guard-free, decidable straight-line ones. The total
+abstraction over every `LowCT` constructor, with the loop/conditional rules and the
+side conditions it cannot discharge returned as `Guard`s, is `ascendG`
+(`Ascent.Guards`); on `IsAscendable` it emits no guard and its transformer is `asemW`
+(`ascendG_isAscendable`), so the `ascend` demos below are instances of
+`ascendG_sound`.
 -/
 
 @[expose] public section
