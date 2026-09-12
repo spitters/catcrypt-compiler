@@ -10,13 +10,13 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.FieldAddSubTierA
 /-!
 # Tier-A modular field SUBTRACT: the emitted SBB borrow chain over `runBlock`
 
-`FieldAddSubTierA` proves the modular **add** is a genuine `runBlock`-of-emitted
+`FieldAddSubTierA` proves the modular **add** is a `runBlock`-of-emitted
 statement (`emitAdcChain` over `runBlock` = `addLimbs`, recombined and
 canonicalised by `condSubP`), but leaves the emitted SUB/SBB borrow chain as the
 named remainder for the 4-limb / 6-limb curves. This file discharges that
 remainder: the SBB borrow-chain analogue of `emitAdcChain_runBlock`.
 
-The arithmetic is the genuine modular subtract over `Nat`: for canonical inputs
+The arithmetic is the modular subtract over `Nat`: for canonical inputs
 `a, b ∈ [0, p)` the difference `a − b` lies in `(−p, p)`, so a single conditional
 **add-back** of `p` on the final borrow canonicalises (`condAddP`, already proven
 `= (a + p − b) % p` in `FieldAddSubTierA`).
@@ -39,7 +39,7 @@ The arithmetic is the genuine modular subtract over `Nat`: for canonical inputs
    reconstruction `valLimbs diff + valLimbs (v.take |u|) + bin =
    valLimbs u + finalBorrow · 2^{64·|u|}` — the `addLimbs_reconstruct` dual.
 
-4. **`emitSbbChain` / `emitSbbChain_runBlock`** — a genuine emitted SBB chain
+4. **`emitSbbChain` / `emitSbbChain_runBlock`** — an emitted SBB chain
    `[.sbb d₀ s₀, .sbb d₁ s₁, …]` (`List (JInstr 64)`) proven register-by-register
    over `runBlock` to equal `subLimbs` (each step the `.sbb` semantics of
    `evalInstr`, no abstraction gap), the SBB mirror of `emitAdcChain_runBlock`.
@@ -54,7 +54,7 @@ The arithmetic is the genuine modular subtract over `Nat`: for canonical inputs
 ## Scope (honest)
 
 `emitSbbChain` is a real `List (JInstr 64)` and `emitSbbChain_runBlock` proves it
-computes the abstract `subLimbs` over `runBlock`, each step the genuine `.sbb` ALU
+computes the abstract `subLimbs` over `runBlock`, each step the `.sbb` ALU
 semantics of `evalInstr`. The reconstruction `subLimbs_reconstruct` is the
 borrow-chain dual of the proven `addLimbs_reconstruct`. The conditional add-back
 of `p` is `FieldAddSubTierA.condAddP`, proven `= (a + p − b) % p`. The
@@ -186,7 +186,7 @@ theorem emit_sub_cf (s : JState 64) (dst src : String) :
   simp only [evalInstr, JState.flagB, JState.writeB5W, x86_SUB, JOperand.eval,
     wunsigned, Option.getD_some]
   -- CF = ((dst-src).toNat : ℤ) ≠ (dst.toNat - src.toNat : ℤ), the borrow.
-  rw [decide_eq_decide]
+  refine decide_eq_decide.mpr ?_
   -- via the proven no-borrow iff: src ≤ dst ↔ no wrap.
   have hnb := noborrow_sub_iff (s.get dst) (s.get src)
   constructor
@@ -230,20 +230,24 @@ theorem emit_sbb_cf (s : JState 64) (dst src : String) :
   have hd := (s.get dst).isLt; have hsrc := (s.get src).isLt
   -- Unfold the SBB step; the carry-in bit is the only flag dependence. Split on
   -- the concrete `CF` value (the `Option` cell) so every `if` collapses.
-  simp only [evalInstr, JState.flagB, JState.writeB5W, x86_SBB, sub_borrow,
-    JOperand.eval, wunsigned, Option.getD_some]
-  rw [decide_eq_decide]
-  by_cases hc : (Option.getD s.flags.cf false : Bool) = true
-  · -- carry-in 1
-    simp only [if_pos hc, Nat.cast_one, ne_eq]
-    rw [show ((s.get dst).toNat : Int) - ↑(s.get src).toNat - 1
-          = ((s.get dst).toNat : Int) - (↑(s.get src).toNat + 1) by ring,
-      ofInt_toNat_borrow _ (by push_cast; omega) (by push_cast; omega)]
-    omega
+  rcases hc : s.flagB (·.cf) with _ | _
   · -- carry-in 0
-    simp only [if_neg hc, Nat.cast_zero, sub_zero, Nat.add_zero, ne_eq]
+    simp only [evalInstr, x86_SBB, sub_borrow, JOperand.eval, hc, Bool.false_eq_true,
+      if_false]
+    simp only [JState.flagB, JState.writeB5W, wunsigned, Option.getD_some, Nat.cast_zero,
+      sub_zero, Nat.add_zero, ne_eq]
+    refine decide_eq_decide.mpr ?_
     rw [show ((s.get dst).toNat : Int) - ↑(s.get src).toNat
           = ((s.get dst).toNat : Int) - (↑(s.get src).toNat + 0) by ring,
+      ofInt_toNat_borrow _ (by push_cast; omega) (by push_cast; omega)]
+    omega
+  · -- carry-in 1
+    simp only [evalInstr, x86_SBB, sub_borrow, JOperand.eval, hc, if_true]
+    simp only [JState.flagB, JState.writeB5W, wunsigned, Option.getD_some, Nat.cast_one,
+      ne_eq]
+    refine decide_eq_decide.mpr ?_
+    rw [show ((s.get dst).toNat : Int) - ↑(s.get src).toNat - 1
+          = ((s.get dst).toNat : Int) - (↑(s.get src).toNat + 1) by ring,
       ofInt_toNat_borrow _ (by push_cast; omega) (by push_cast; omega)]
     omega
 
@@ -530,17 +534,17 @@ theorem emitSbbChain_runBlock_reconstruct (ds ss : List String) (u v : List (Bit
     difference value read off the destination registers, plus the conditional
     add-back of `p` on the final borrow (the masked `ADD`/`ADC` add-back), reduced
     `mod 2^{64·|ds|}` (the add-back's top carry is discarded). This reads the
-    genuine emitted chain output — not the operand values directly. -/
+    emitted chain output — not the operand values directly. -/
 def runBlockModSubValue (p : Nat) (ds ss : List String) (s : JState 64) : Nat :=
   (runBlockSubDiffValue ds ss s
     + (if runBlockSubBorrow ds ss s then p else 0)) % (2 ^ 64) ^ ds.length
 
-/-- **Genuine `runBlock` modular subtract = `(a − b) mod p`.** The emitted SBB
+/-- **`runBlock` modular subtract = `(a − b) mod p`.** The emitted SBB
     borrow chain (the real `List (JInstr 64)`) leaves the difference limbs in `ds`
     and the final borrow in `CF` (`emitSbbChain_runBlock_reconstruct`); the masked
     conditional add-back of `p` on that borrow (`runBlockModSubValue`) then gives,
     for reduced inputs, exactly `(valLimbs a + p − valLimbs b) % p = (a − b) mod p`.
-    The full `runBlock(emitted sub) = (a − b) mod p`, read off the genuine emitted
+    The full `runBlock(emitted sub) = (a − b) mod p`, read off the emitted
     chain output — the sub-side completion of `FieldAddSubTierA.modAdd_runBlock`. -/
 theorem modSub_runBlock (p : Nat) (ds ss : List String) (a b : List (BitVec 64))
     (s : JState 64)

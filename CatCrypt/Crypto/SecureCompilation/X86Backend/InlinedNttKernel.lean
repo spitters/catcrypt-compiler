@@ -361,12 +361,12 @@ trace fixed by the program text. -/
     at. -/
 theorem butterflyBody_allDirect (p ra rb rw oLo oHi : String) :
     allDirect (butterflyBody p ra rb rw oLo oHi) = true := by
-  simp [allDirect, butterflyBody, IsDirect]
+  simp [allDirect, butterflyBody, IsDirect]; rfl
 
 /-- The ABI-boundary chained block is in the direct-addressing class: the
     copy-out/copy-in round trip uses literal `scratch` displacements. -/
 theorem abiBoundaryBlock_allDirect : allDirect abiBoundaryBlock = true := by
-  simp [allDirect, abiBoundaryBlock, butterflyBody, IsDirect]
+  simp [allDirect, abiBoundaryBlock, butterflyBody, IsDirect]; rfl
 
 /-- **Constant time.** The ABI-boundary composition produces the same machine
     leakage trace from any two starting states. -/
@@ -376,7 +376,7 @@ theorem abiBoundaryBlock_constant_time (s₁ s₂ : JState 64) :
 
 /-- The inlined-merged block is in the direct-addressing class. -/
 theorem inlinedMergedBlock_allDirect : allDirect inlinedMergedBlock = true := by
-  simp [allDirect, inlinedMergedBlock, butterflyBody, IsDirect]
+  simp [allDirect, inlinedMergedBlock, butterflyBody, IsDirect]; rfl
 
 /-- **Constant time.** The inlined-merged composition produces the same machine
     leakage trace from any two starting states — eliminating the boundary

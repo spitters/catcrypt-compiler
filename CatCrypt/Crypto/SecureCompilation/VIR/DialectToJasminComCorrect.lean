@@ -329,7 +329,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
   cases op with
   | bvAdd w =>
       cases hop
-      simp only [toJExprD, Option.some.injEq] at he; subst he
+      simp only [toJExprD] at he; cases he
       show JasminBinOp.add.apply ((toJVarD args.head).lookup (ctMapValD V))
         ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
       rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword,
@@ -337,7 +337,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
       cases args with | cons a t => cases t with | cons b t2 => rfl
   | bvSub w =>
       cases hop
-      simp only [toJExprD, Option.some.injEq] at he; subst he
+      simp only [toJExprD] at he; cases he
       show JasminBinOp.sub.apply ((toJVarD args.head).lookup (ctMapValD V))
         ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
       rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword,
@@ -345,7 +345,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
       cases args with | cons a t => cases t with | cons b t2 => rfl
   | bvMul w =>
       cases hop
-      simp only [toJExprD, Option.some.injEq] at he; subst he
+      simp only [toJExprD] at he; cases he
       show JasminBinOp.mul.apply ((toJVarD args.head).lookup (ctMapValD V))
         ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
       rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword,
@@ -353,7 +353,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
       cases args with | cons a t => cases t with | cons b t2 => rfl
   | bvAnd w =>
       cases hop
-      simp only [toJExprD, Option.some.injEq] at he; subst he
+      simp only [toJExprD] at he; cases he
       show JasminBinOp.and.apply ((toJVarD args.head).lookup (ctMapValD V))
         ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
       rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword,
@@ -361,7 +361,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
       cases args with | cons a t => cases t with | cons b t2 => rfl
   | bvOr w =>
       cases hop
-      simp only [toJExprD, Option.some.injEq] at he; subst he
+      simp only [toJExprD] at he; cases he
       show JasminBinOp.or.apply ((toJVarD args.head).lookup (ctMapValD V))
         ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
       rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword,
@@ -369,7 +369,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
       cases args with | cons a t => cases t with | cons b t2 => rfl
   | bvXor w =>
       cases hop
-      simp only [toJExprD, Option.some.injEq] at he; subst he
+      simp only [toJExprD] at he; cases he
       show JasminBinOp.xor.apply ((toJVarD args.head).lookup (ctMapValD V))
         ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
       rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword,
@@ -377,7 +377,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
       cases args with | cons a t => cases t with | cons b t2 => rfl
   | bvConst w v =>
       cases hop
-      simp only [toJExprD, Option.some.injEq] at he; subst he
+      simp only [toJExprD] at he; cases he
       rw [ctTransTy_sword]; show BitVec.ofNat w v.toNat = v
       simp [BitVec.ofNat_toNat]
   | extCall name argTys retTy =>
@@ -385,7 +385,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
       exact leafAgrees_extCallD args V name e' he
   | andn w =>
       cases hop
-      simp only [toJExprD, Option.some.injEq] at he; subst he
+      simp only [toJExprD] at he; cases he
       show JasminBinOp.andn.apply ((toJVarD args.head).lookup (ctMapValD V))
         ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
       rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword,
@@ -393,7 +393,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
       cases args with | cons a t => cases t with | cons b t2 => rfl
   | bvShiftLV w =>
       cases hop
-      simp only [toJExprD, Option.some.injEq] at he; subst he
+      simp only [toJExprD] at he; cases he
       show JasminBinOp.shl.apply ((toJVarD args.head).lookup (ctMapValD V))
         ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
       rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword,
@@ -401,7 +401,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
       cases args with | cons a t => cases t with | cons b t2 => rfl
   | bvShiftRV w =>
       cases hop
-      simp only [toJExprD, Option.some.injEq] at he; subst he
+      simp only [toJExprD] at he; cases he
       show JasminBinOp.shr.apply ((toJVarD args.head).lookup (ctMapValD V))
         ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
       rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword,
@@ -412,7 +412,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
       -- `a.rotateRight n` is *definitionally* the dialect denotation, and
       -- `ctTransTy` is the identity on `.sword w`.
       cases hop
-      simp only [toJExprD, Option.some.injEq] at he; subst he
+      simp only [toJExprD] at he; cases he
       show ((toJVarD args.head).lookup (ctMapValD V) : BitVec w).rotateRight n = _
       rw [ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword]
       cases args with | cons a t => rfl
@@ -421,7 +421,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
       -- denotation `BitVec.sshiftRight a n` is definitionally the dialect
       -- denotation, `ctTransTy` identity on `.sword w`.
       cases hop
-      simp only [toJExprD, Option.some.injEq] at he; subst he
+      simp only [toJExprD] at he; cases he
       show BitVec.sshiftRight ((toJVarD args.head).lookup (ctMapValD V) : BitVec w) n = _
       rw [ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword]
       cases args with | cons a t => rfl
@@ -431,7 +431,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
       -- `memGetDyn arr i.toNat` (the two are defined identically), and
       -- `ctTransTy` is the identity on `.sword 64`.
       cases hop
-      simp only [toJExprD, Option.some.injEq] at he; subst he
+      simp only [toJExprD] at he; cases he
       show JasminDialect.stackGet
           ((toJVarD args.head).lookup (ctMapValD V))
           (((toJVarD args.tail.head).lookup (ctMapValD V)) : BitVec 64).toNat = _
@@ -445,7 +445,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
       -- `memSetDyn arr i.toNat v`, and `ctTransTy` is the identity on
       -- `.memref n`.
       cases hop
-      simp only [toJExprD, Option.some.injEq] at he; subst he
+      simp only [toJExprD] at he; cases he
       show JasminDialect.stackSet
           ((toJVarD args.head).lookup (ctMapValD V))
           (((toJVarD args.tail.head).lookup (ctMapValD V)) : BitVec 64).toNat
@@ -459,7 +459,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
       -- Immediate logical left shift lowers to `shlImm w k`; the jasmin
       -- denotation `a <<< k` is definitionally the dialect denotation.
       cases hop
-      simp only [toJExprD, Option.some.injEq] at he; subst he
+      simp only [toJExprD] at he; cases he
       show BitVec.shiftLeft ((toJVarD args.head).lookup (ctMapValD V) : BitVec w) k = _
       rw [ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword]
       cases args with | cons a t => rfl
@@ -468,7 +468,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
       -- denotation `a >>> k` is definitionally the dialect denotation
       -- `BitVec.ushiftRight a k`.
       cases hop
-      simp only [toJExprD, Option.some.injEq] at he; subst he
+      simp only [toJExprD] at he; cases he
       show BitVec.ushiftRight ((toJVarD args.head).lookup (ctMapValD V) : BitVec w) k = _
       rw [ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword]
       cases args with | cons a t => rfl
@@ -476,7 +476,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
       -- High-multiply word lowers to `mulhi w`; the jasmin `mulHiW` is identical
       -- to the dialect `mulHiC`, and `ctTransTy` is the identity on `.sword w`.
       cases hop
-      simp only [toJExprD, Option.some.injEq] at he; subst he
+      simp only [toJExprD] at he; cases he
       show JasminDialect.mulHiW ((toJVarD args.head).lookup (ctMapValD V))
         ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
       rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword,
@@ -487,7 +487,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
       -- Carry-chain data word lowers to `addCarryLo w`; the jasmin
       -- `addCarryWord` is identical to the dialect `addCarryWordC`.
       cases hop
-      simp only [toJExprD, Option.some.injEq] at he; subst he
+      simp only [toJExprD] at he; cases he
       show JasminDialect.addCarryWord ((toJVarD args.head).lookup (ctMapValD V))
         ((toJVarD args.tail.head).lookup (ctMapValD V))
         ((toJVarD args.tail.tail.head).lookup (ctMapValD V)) = _
@@ -500,7 +500,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
       -- identical to the dialect `carryOutBitC`, and `ctTransTy` is the identity
       -- on `.sword 1`.
       cases hop
-      simp only [toJExprD, Option.some.injEq] at he; subst he
+      simp only [toJExprD] at he; cases he
       show JasminDialect.carryOutBit ((toJVarD args.head).lookup (ctMapValD V))
         ((toJVarD args.tail.head).lookup (ctMapValD V))
         ((toJVarD args.tail.tail.head).lookup (ctMapValD V)) = _
@@ -517,7 +517,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
       cases op with
       | gf2p8mulb =>
           cases hop
-          simp only [toJExprD, Option.some.injEq] at he; subst he
+          simp only [toJExprD] at he; cases he
           show SimdOp.denote .gf2p8mulb ((toJVarD args.head).lookup (ctMapValD V))
             ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
           rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword,
@@ -525,7 +525,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
           cases args with | cons a t => cases t with | cons b t2 => rfl
       | vpshufb =>
           cases hop
-          simp only [toJExprD, Option.some.injEq] at he; subst he
+          simp only [toJExprD] at he; cases he
           show SimdOp.denote .vpshufb ((toJVarD args.head).lookup (ctMapValD V))
             ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
           rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword,
@@ -533,7 +533,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
           cases args with | cons a t => cases t with | cons b t2 => rfl
       | clmul i =>
           cases hop
-          simp only [toJExprD, Option.some.injEq] at he; subst he
+          simp only [toJExprD] at he; cases he
           show SimdOp.denote (.clmul i) ((toJVarD args.head).lookup (ctMapValD V))
             ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
           rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword,
@@ -541,7 +541,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
           cases args with | cons a t => cases t with | cons b t2 => rfl
       | affineqb i =>
           cases hop
-          simp only [toJExprD, Option.some.injEq] at he; subst he
+          simp only [toJExprD] at he; cases he
           show SimdOp.denote (.affineqb i) ((toJVarD args.head).lookup (ctMapValD V))
             ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
           rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword,
@@ -549,7 +549,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
           cases args with | cons a t => cases t with | cons b t2 => rfl
       | bitwise b =>
           cases hop
-          simp only [toJExprD, Option.some.injEq] at he; subst he
+          simp only [toJExprD] at he; cases he
           show SimdOp.denote (.bitwise b) ((toJVarD args.head).lookup (ctMapValD V))
             ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
           rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword,
@@ -557,7 +557,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
           cases args with | cons a t => cases t with | cons b t2 => rfl
       | packed b lw =>
           cases hop
-          simp only [toJExprD, Option.some.injEq] at he; subst he
+          simp only [toJExprD] at he; cases he
           show SimdOp.denote (.packed b lw) ((toJVarD args.head).lookup (ctMapValD V))
             ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
           rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword,
@@ -565,7 +565,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
           cases args with | cons a t => cases t with | cons b t2 => rfl
       | varShift b lw =>
           cases hop
-          simp only [toJExprD, Option.some.injEq] at he; subst he
+          simp only [toJExprD] at he; cases he
           show SimdOp.denote (.varShift b lw) ((toJVarD args.head).lookup (ctMapValD V))
             ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
           rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword,
@@ -573,7 +573,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
           cases args with | cons a t => cases t with | cons b t2 => rfl
       | mulhi16 =>
           cases hop
-          simp only [toJExprD, Option.some.injEq] at he; subst he
+          simp only [toJExprD] at he; cases he
           show SimdOp.denote .mulhi16 ((toJVarD args.head).lookup (ctMapValD V))
             ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
           rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword,
@@ -581,7 +581,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
           cases args with | cons a t => cases t with | cons b t2 => rfl
       | vaesenc =>
           cases hop
-          simp only [toJExprD, Option.some.injEq] at he; subst he
+          simp only [toJExprD] at he; cases he
           show SimdOp.denote .vaesenc ((toJVarD args.head).lookup (ctMapValD V))
             ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
           rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword,
@@ -589,7 +589,7 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
           cases args with | cons a t => cases t with | cons b t2 => rfl
       | vaesenclast =>
           cases hop
-          simp only [toJExprD, Option.some.injEq] at he; subst he
+          simp only [toJExprD] at he; cases he
           show SimdOp.denote .vaesenclast ((toJVarD args.head).lookup (ctMapValD V))
             ((toJVarD args.tail.head).lookup (ctMapValD V)) = _
           rw [ctMapValD_lookup, ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword,
@@ -603,35 +603,35 @@ theorem dialectJasminLeafAgrees_holds : DialectJasminLeafAgrees := by
   -- byte-shift), so agreement is definitional.
   | vpshufdC imm =>
       cases hop
-      simp only [toJExprD, Option.some.injEq] at he; subst he
+      simp only [toJExprD] at he; cases he
       show SimdOp.denote (.vpshufd imm) ((toJVarD args.head).lookup (ctMapValD V))
         ((toJVarD args.head).lookup (ctMapValD V)) = _
       rw [ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword]
       cases args with | cons a t => rfl
   | vaeskeygenC rcon =>
       cases hop
-      simp only [toJExprD, Option.some.injEq] at he; subst he
+      simp only [toJExprD] at he; cases he
       show SimdOp.denote (.vaeskeygen rcon) ((toJVarD args.head).lookup (ctMapValD V))
         ((toJVarD args.head).lookup (ctMapValD V)) = _
       rw [ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword]
       cases args with | cons a t => rfl
   | vpsrldqC n =>
       cases hop
-      simp only [toJExprD, Option.some.injEq] at he; subst he
+      simp only [toJExprD] at he; cases he
       show BitVec.ushiftRight ((toJVarD args.head).lookup (ctMapValD V) : BitVec 128)
         (n * 8) = _
       rw [ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword]
       cases args with | cons a t => rfl
   | vpslldqC n =>
       cases hop
-      simp only [toJExprD, Option.some.injEq] at he; subst he
+      simp only [toJExprD] at he; cases he
       show BitVec.shiftLeft ((toJVarD args.head).lookup (ctMapValD V) : BitVec 128)
         (n * 8) = _
       rw [ctMapValD_lookup, ctTransTy_sword, ctTransTy_sword]
       cases args with | cons a t => rfl
   | vconst128 v =>
       cases hop
-      simp only [toJExprD, Option.some.injEq] at he; subst he
+      simp only [toJExprD] at he; cases he
       rw [ctTransTy_sword]; show BitVec.ofNat 128 v.toNat = v
       simp [BitVec.ofNat_toNat]
   | _ => simp only [toJExprD, reduceCtorEq] at he

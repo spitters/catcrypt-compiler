@@ -76,7 +76,7 @@ never reaches `accNames[i+4]`. The shift brick supplies the first summand as
 the shift brick and this cascade lemma together give the register realisation of
 one `montgomeryReduce` step **on the full running value** — the content of one
 `hstep_i` of `MontReduceRunBlock.emitMontRedc4_value`. What this module does NOT
-close is stated honestly in `carryFold_composition_note`.
+close is stated in `carryFold_composition_note`.
 -/
 
 @[expose] public section
@@ -113,12 +113,14 @@ theorem emit_adc_imm0_cf (s : JState 64) (dst : String) :
     (evalInstr s (.adc dst (.imm 0))).flagB (·.cf)
       = decide (2 ^ 64 ≤ (s.get dst).toNat + 0
           + (if s.flagB (·.cf) then 1 else 0)) := by
-  simp only [evalInstr, JState.flagB, JState.writeB5W, x86_ADC, rflags_of_aluop, add_carry,
-    JOperand.eval, wunsigned, Option.getD_some, BitVec.toNat_ofNat]
   have hx := (s.get dst).isLt
   simp only [JState.get] at hx
-  refine wrap_iff _ ?_
-  split <;> omega
+  rcases h : s.flagB (·.cf) with _ | _ <;>
+    simp only [JState.flagB] at h <;>
+    simp only [evalInstr, JState.flagB, JState.writeB5W, x86_ADC, rflags_of_aluop, add_carry,
+      JOperand.eval, wunsigned, Option.getD_some, BitVec.toNat_ofNat, JState.get, h,
+      if_true, if_false, Bool.false_eq_true] <;>
+    refine wrap_iff _ ?_ <;> omega
 
 /-- One emitted `adc dst, 0` writes only `dst`: any other register is preserved. -/
 theorem emit_adc_imm0_other (s : JState 64) (dst r : String) (hr : r ≠ dst) :

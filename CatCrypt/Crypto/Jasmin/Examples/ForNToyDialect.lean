@@ -227,7 +227,7 @@ the agreement holds only **under** the in-bounds hypothesis `i < len`.  The
 theorem agree_loadDyn (len : Nat) (f : Fin len → BitVec 64) (i : Nat)
     (hi : i < len) :
     loadDyn (ofStatic len f) i = some (f ⟨i, hi⟩) := by
-  simp only [loadDyn, ofStatic, hi, dif_pos]
+  simp only [loadDyn, ofStatic, hi, ↓reduceDIte]
 
 /-- **Conditional store agreement.**  Under `i < len`, the dynamic store on
     `ofStatic len f` succeeds and yields the static functional update: the new
@@ -237,7 +237,7 @@ theorem agree_storeDyn (len : Nat) (f : Fin len → BitVec 64) (i : Nat)
     (v : BitVec 64) (hi : i < len) :
     storeDyn (ofStatic len f) i v
       = some (ofStatic len (fun j => if j.val = i then v else f j)) := by
-  simp only [storeDyn, ofStatic, hi, dif_pos]
+  simp only [storeDyn, ofStatic, hi, ↓reduceDIte]
 
 /-- Out-of-bounds load returns `none`. -/
 theorem loadDyn_oob (a : DynArr) (i : Nat) (hi : ¬ i < a.len) :

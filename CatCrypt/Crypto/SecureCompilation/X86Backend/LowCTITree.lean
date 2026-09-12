@@ -149,6 +149,7 @@ structure CallEvent where
 
 /-- The **call event signature**: events are `CallEvent`, each answered by a
     single returned word (`Nat`). -/
+@[implicit_reducible]
 def callEvents : EventSig where
   Event := CallEvent
   Resp := fun _ => Nat
@@ -235,7 +236,6 @@ theorem interp_scall (h : ∀ e : callEvents.Event, callEvents.Resp e)
     (rs : RustState) :
     interp h (itreeDenote (.scall f args dst :: ts) rs) =
       interp h (itreeDenote ts
-        (rsSetScalar rs dst (h ⟨f, args.map rs.rsScalar⟩))) := by
-  simp [itreeDenote]
+        (rsSetScalar rs dst (h ⟨f, args.map rs.rsScalar⟩))) := rfl
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTITree

@@ -211,7 +211,7 @@ theorem getWord_setWord_same {n : Nat} (a : JArray n) (off : Nat) (v : BitVec 64
     (hb : off + 8 ≤ n) :
     (a.setWord .U64 off v).getWord .U64 off = v := by
   unfold JArray.getWord JArray.setWord
-  simp only [Jasmin.WSize.bits, Jasmin.WSize.bytes]
+  dsimp only [Jasmin.WSize.bits, Jasmin.WSize.bytes]
   have h0 : off + 0 < n := by omega
   have h1 : off + 1 < n := by omega
   have h2 : off + 2 < n := by omega
@@ -229,6 +229,7 @@ theorem getWord_setWord_same {n : Nat} (a : JArray n) (off : Nat) (v : BitVec 64
   simp only [add_right_inj]
   norm_num
   simp only [show (0 : BitVec Jasmin.WSize.U64.bits) = (0 : BitVec 64) from rfl]
+  erw [Function.update_self]
   bv_decide
 
 /-- `arrElem` of `arrSetElem` at the **same** element index recovers the word

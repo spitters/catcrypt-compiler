@@ -85,7 +85,7 @@ theorem condSub4_value (s : JState 64)
   have hbo0 : (borrowOutBit (s.get "x0") (s.get "p0") (BitVec.ofNat 1 0)).toNat = c0 := by
     rw [hc0, borrowOutBit]
     simp only [show (BitVec.ofNat 1 0).toNat = 0 from rfl, Nat.add_zero, apply_ite BitVec.toNat]
-    simp
+    rfl
   have hbo1 : (borrowOutBit (s.get "x1") (s.get "p1") (BitVec.ofNat 1 c0)).toNat = c1 := by
     rw [hc1, borrowOutBit, hbinc0]; split_ifs <;> decide
   have hbo2 : (borrowOutBit (s.get "x2") (s.get "p2") (BitVec.ofNat 1 c1)).toNat = c2 := by

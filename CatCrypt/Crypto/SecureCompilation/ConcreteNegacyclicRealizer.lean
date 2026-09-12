@@ -73,7 +73,7 @@ open CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots
 
 /-! ## §1  The concrete, round-trip-verified 3-byte encoding over `.TPolyMod q n`
 
-`RustVal (.TPolyMod q n) = JArray (.TPolyMod q n).storageBytes`, a genuine byte
+`RustVal (.TPolyMod q n) = JArray (.TPolyMod q n).storageBytes`, a byte
 array.  For `q < 2^24` each coefficient fits in three bytes; we lay them out
 little-endian, three bytes per coefficient.  The decode reads the three bytes
 back as a `ZMod q`.  The round-trip is a per-coefficient `Nat`-arithmetic fact. -/
@@ -180,7 +180,7 @@ verbatim. -/
 /-- The `.TPolyMod`-carrier negacyclic kernel-realization predicate: the
     leaf-call value decodes to the length-`n` **negacyclic convolution**.
     Identical in shape to `NegacyclicEmitRealization.NttNegaKernelRealizes`, but
-    over the genuinely large `.TPolyMod q n` byte carrier. -/
+    over the `.TPolyMod q n` byte carrier. -/
 def NttNegaKernelRealizesP (q n : ℕ) [NeZero q] [NeZero n] [Fact (Nat.Prime q)] (ψ : ZMod q)
     (decode : RustVal (.TPolyMod q n) → (Fin n → ZMod q))
     (leaf : String) (leafSpec : LeafSpec) : Prop :=
@@ -250,8 +250,7 @@ theorem decodeTPoly3_encodeTPoly3 {q n : ℕ} [NeZero q] (hq : q < 16777216)
     (hwidth : (TowerType.TPolyMod q n).storageBytes = n * coeffBytes3)
     (x : Fin n → ZMod q) : decodeTPoly3 hwidth (encodeTPoly3 hwidth x) = x := by
   unfold decodeTPoly3 encodeTPoly3
-  rw [cast_cast]
-  exact decodeP3_encodeP3 hq x
+  exact (congrArg decodeP3 (cast_cast _ _ _)).trans (decodeP3_encodeP3 hq x)
 
 /-- The concrete negacyclic-convolution `CallSpec` over the `.TPolyMod q n`
     carrier, wired to the round-trip-verified `encodeTPoly3`/`decodeTPoly3`. -/

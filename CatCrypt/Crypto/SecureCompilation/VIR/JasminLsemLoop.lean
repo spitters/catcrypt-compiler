@@ -21,7 +21,7 @@ the `Lgoto`/`Lcond`/`Llabel` arms, and the conservative-extension bridge
 `lsemFuel_straightline`). This module is **increment 4c**: the first *loop*
 simulation — the program-level `lsem` trace of the **real emitted looped form**
 (`X86Backend.LprogControlFlow.loopLcmd`) equals the source loop's `n`-fold
-denotation, plus the loop's constant-time verdict.
+denotation, plus the loop's constant-time property.
 
 ## Fidelity: routing through the real `loopLcmd`
 
@@ -91,7 +91,7 @@ source-level CT fact that the back-edge tests a public counter.
 * **Covered**: the concrete `loopLcmd` shape (`loopLR`) with a *straight-line*
   body characterised by a counter-decrementing per-iteration transformer
   `bodyStep` (the representative case the task names). The `n`-fold loop
-  simulation and the CT verdict are unconditional in `n`.
+  simulation and the CT property are unconditional in `n`.
 * **Documented gaps** (§6, not faked):
   1. the literal-`CMP` back-edge needs a `CMP`/flag arm in `applyOpn` +
      `Lstate`;
@@ -350,8 +350,7 @@ theorem backedge_taken (fn : String) {w : Nat} (top : LLabel) (body : List Linst
         { base := { d with lpc := 1 + body.length }, lfn := fn }
       = lsemFuel (loopProg fn top body) restFuel { base := { d with lpc := 1 }, lfn := fn } := by
   rw [lsemFuel, findInstr_backedge fn top body d]
-  simp only [evalInstrP, evalOperand]
-  rw [if_pos hne]
+  simp only [evalInstrP, evalOperand, ne_eq, hne, not_false_eq_true, ↓reduceIte]
   have hbody := loopProg_body_li fn top body
   simp only [evalJump, loopProg, getFundef_singleton, Option.map_some,
     Option.some.injEq] at hbody ⊢
@@ -367,8 +366,7 @@ theorem backedge_fallthrough (fn : String) {w : Nat} (top : LLabel) (body : List
         { base := { d with lpc := 1 + body.length }, lfn := fn }
       = some { base := { d with lpc := 2 + body.length }, lfn := fn } := by
   rw [lsemFuel, findInstr_backedge fn top body d]
-  simp only [evalInstrP, evalOperand]
-  rw [if_neg (by simp [hz])]
+  simp only [evalInstrP, evalOperand, hz, ne_eq, not_true_eq_false, ↓reduceIte]
   have hnext : (({ base := { d with lpc := 1 + body.length }, lfn := fn } : LstateP w).nextPc)
       = { base := { d with lpc := 2 + body.length }, lfn := fn } := by
     simp only [LstateP.nextPc, Lstate.nextPc]; congr 2; omega

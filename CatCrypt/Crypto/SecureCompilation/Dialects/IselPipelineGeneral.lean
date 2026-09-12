@@ -52,7 +52,7 @@ op-match is isolated in `rorRecognize`'s `Option`), Lean **does** generate the
 equation lemmas — so the unconditional `∀ c V, (rorWalk c).denote V = c.denote V`
 goes through by well-founded recursion / structural case analysis, splitting on the
 recognizer's `Option` (a plain `Option.rec`, no dependent-match block), closing the
-fire case by the landed value keystone `RorImmSelect.mkRorOp_denote`.
+fire case by the value lemma `RorImmSelect.mkRorOp_denote`.
 
 The recognizer is operand-sound: `rorRecognize c = some site` carries
 `c = mkRotrSubtree site.w site.n site.src site.deepBody`, so a fired site is always
@@ -223,7 +223,8 @@ theorem rorWalk_fires {Γ : Ctxt jasminDialect} {s : JasminTy} (w n : Nat) (hlt 
                horig := rfl } := by
     show (if _ : w = w ∧ w = w ∧ w = w ∧ n < w ∧ w = w ∧ w = w ∧ (w - n) = w - n
           then _ else _) = _
-    rw [dif_pos ⟨rfl, rfl, rfl, hlt, rfl, rfl, rfl⟩]
+    erw [dif_pos (show w = w ∧ w = w ∧ w = w ∧ n < w ∧ w = w ∧ w = w ∧ (w - n) = w - n from
+      ⟨rfl, rfl, rfl, hlt, rfl, rfl, rfl⟩)]
     simp only [varBeq_self, Bool.and_self, dite_true]; rfl
   rw [show mkRotrSubtree w n src body
         = Com.var (Expr.mk (JasminOp.shrImm w n) rfl (.cons src .nil))
@@ -238,8 +239,8 @@ theorem rorWalk_fires {Γ : Ctxt jasminDialect} {s : JasminTy} (w n : Nat) (hlt 
 This is the deliverable the conditioned `IselPipeline.iselPipeline_denote_of` /
 `IselPipelineRec.iselPipeline_denote_conditioned` could not reach. Structural
 induction via the **generated** `rorWalk.induct` (the refactor's payoff) pushes the
-preservation through the descent; the fire case is closed by the landed value
-keystone `mkRorOp_denote` plus body-congruence; the descend case by `Com.denote`'s
+preservation through the descent; the fire case is closed by the value
+lemma `mkRorOp_denote` plus body-congruence; the descend case by `Com.denote`'s
 own structure. No fixed-point-body hypothesis, no operand side condition, no
 `sorry`. -/
 
@@ -261,7 +262,7 @@ theorem mkRotrSubtree_body_congr {Γ : Ctxt jasminDialect} {s : JasminTy} (w n :
 
     Proof: structural induction via the generated `rorWalk.induct`. The fire case
     rewrites `c = mkRotrSubtree …` (the recognizer certificate `site.horig`), collapses
-    the native `mkRorOp` to the emulation by the landed value keystone `mkRorOp_denote`,
+    the native `mkRorOp` to the emulation by the value lemma `mkRorOp_denote`,
     and discharges the walked body by the IH through `mkRotrSubtree_body_congr`. The
     descend case threads `Com.denote` through `body`'s IH. The ROR `n < w` guard never
     surfaces as a side condition because `site.hlt` carries it on every fired site. -/

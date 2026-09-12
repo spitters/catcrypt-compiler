@@ -122,8 +122,8 @@ theorem denote_fold_of_step {accCTy : CryptoTy} {invCTys : Ctx}
           = ctTransTy ((List.range n).foldl f init)
   | 0, _, _ => rfl
   | k + 1, h, init => by
-      rw [JLoopBodyN.denote_succ,
-        denote_fold_of_step invsC update f k (fun t acc ht => h t acc (by omega)) init,
+      erw [JLoopBodyN.denote_succ]
+      rw [denote_fold_of_step invsC update f k (fun t acc ht => h t acc (by omega)) init,
         List.range_succ, List.foldl_append, List.foldl_cons, List.foldl_nil]
       exact stepC_of_denote invsC k _ _ update (h k _ (Nat.lt_succ_self k))
 

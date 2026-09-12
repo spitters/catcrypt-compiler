@@ -365,8 +365,7 @@ theorem p384Schoolbook_constant_time (s₁ s₂ : JState 64) :
 /-- The signed-term Solinas reduce uses only direct base+displacement
     addressing. -/
 theorem p384Reduce_allDirect : allDirect p384Reduce = true := by
-  simp only [p384Reduce, allDirect_append]
-  decide
+  decide +kernel
 
 /-- **Constant time.** The reduce half produces the same machine leakage trace
     from any two starting states. -/

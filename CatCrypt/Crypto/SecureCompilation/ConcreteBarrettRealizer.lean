@@ -28,7 +28,7 @@ base-256 `ℕ`→bytes codec applies directly — here returning a raw `ℕ` (no
 
 We exhibit:
 
-* a genuine `RustVal .TFp` (= `JArray 48`, the `.TBytes 48` byte carrier)
+* a `RustVal .TFp` (= `JArray 48`, the `.TBytes 48` byte carrier)
   base-256 codec `encodeB`/`decodeB` — `encodeB` lays a natural number's `width`
   little-endian base-256 digits into the first `width` carrier bytes, zero in the
   tail; `decodeB` reads them back base-256.  No constructor-wrapping of a
@@ -211,7 +211,9 @@ theorem barrett_realizes_concrete (q k width : ℕ) (hw : width ≤ 48)
     -- `barrettCondsub q k (decodeB width xVal) ≤ decodeB width xVal < 256 ^ width`.
     have : barrettCondsub q k (decodeB width xVal) ≤ decodeB width xVal := by
       simp only [barrettCondsub, barrett]
-      split <;> omega
+      by_cases hq : q ≤ decodeB width xVal - barrettQuot q k (decodeB width xVal) * q
+      · simp only [hq, ↓reduceIte]; omega
+      · simp only [hq, ↓reduceIte]; omega
     omega)]
 
 /-- **Unconditional Barrett-kernel realization as a `BarrettKernelRealizes`

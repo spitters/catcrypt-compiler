@@ -18,7 +18,7 @@ public import Mathlib.Tactic.NormNum
 The AArch64 backend's instance of the shared `ScalarLin` waist
 (`CatCrypt.Crypto.SecureCompilation.ScalarLin`). It supplies the instruction
 selection `RegStmt → BOp`, the machine semantics, and the one per-statement
-correctness proof; the whole-program denotation keystone (`regToBOp_denote`) then
+correctness proof; the whole-program denotation theorem (`regToBOp_denote`) then
 comes from the generic `ScalarTarget.compile_denote` — *not* a per-backend proof.
 
 ```
@@ -184,6 +184,7 @@ identifies with the real machine run `runBBlock ∘ lowerBBlock`. The three stru
 fields are list-fold facts; `select_correct` is the per-statement lemma above. -/
 
 /-- The AArch64 backend as a `ScalarTarget`. -/
+@[implicit_reducible]
 def armTarget : ScalarTarget where
   Op := BOp
   St := BState
@@ -197,9 +198,9 @@ def armTarget : ScalarTarget where
 /-- Compile a whole program to a `BOp` block. -/
 def regToBOp (p : RegProg) : List BOp := armTarget.compile p
 
-/-! ## 3. The keystone — instantiated, not re-proved -/
+/-! ## 3. The whole-program theorem — instantiated, not re-proved -/
 
-/-- **Keystone** (the AArch64 instance of `ScalarTarget.compile_denote`). The
+/-- **Whole-program denotation** (the AArch64 instance of `ScalarTarget.compile_denote`). The
     compiled-and-lowered machine block computes the source program's denotation. -/
 theorem regToBOp_denote (p : RegProg) (s : BState) :
     runBBlock s (lowerBBlock (regToBOp p)) = armTarget.denote p s := by

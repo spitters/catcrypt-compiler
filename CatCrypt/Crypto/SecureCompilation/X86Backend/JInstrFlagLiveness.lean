@@ -164,6 +164,7 @@ theorem evalInstr_regsMem_congr {i : JInstr 64} (hnr : readsFlag i = false)
     simp_all [readsFlag, writesAllFlags, evalInstr, JState.setReg, JState.writeB2W,
       JState.store, JState.storeIdx, JState.load, JState.loadIdx, JState.get,
       JOperand.eval]
+  all_goals exact rfl
 
 /-! ## 4. Liveness discharges the flag side condition -/
 

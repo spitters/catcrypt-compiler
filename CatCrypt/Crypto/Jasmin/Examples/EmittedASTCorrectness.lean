@@ -2001,7 +2001,7 @@ theorem montUToEdwardsBody_functional_correctness
     exact hy5
   · -- den_out in the final state = mathCopy (mathAdd vU mathOne).
     show (locatedUpdate r5 doLoc _).rsTower "den_out" = _
-    rw [locatedUpdate_dest]
+    refine (locatedUpdate_dest r5 doLoc _).trans ?_
     congr 1
     exact congrArg _ hdo_r6
 

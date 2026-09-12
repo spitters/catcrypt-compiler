@@ -58,6 +58,7 @@ open CatCrypt.Crypto.SecureCompilation.CryptoSSA
 /-- Map a `CryptoTy` to a `JasminTy`. `pair`/`sum` have no register/stack
     analogue in the straight-line fragment, so they map to a placeholder
     `reg 0`; the lowering refuses any expression touching them. -/
+@[implicit_reducible]
 def mapTy : CryptoTy → JasminTy
   | .sword w => .reg w
   | .bit => .reg 1
@@ -68,6 +69,7 @@ def mapTy : CryptoTy → JasminTy
 
 /-- Lift the type map over a De Bruijn context. Definitionally `List.map mapTy`,
     so `mapCtx (s :: Γ) = mapTy s :: mapCtx Γ` holds by `rfl`. -/
+@[implicit_reducible]
 def mapCtx (Γ : Ctx) : Ctxt jasminDialect := Γ.map mapTy
 
 /-! ## 2. Variable translation

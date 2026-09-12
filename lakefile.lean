@@ -43,7 +43,7 @@ lean_lib CatCryptCompiler where
 -- The sibling packages are pinned by commit on their `lean-upgrade-4.32`
 -- branches; they carry no release label at Lean 4.32 yet.
 require catcryptCore from git
-  "https://github.com/spitters/CatCrypt-core.git" @ "b581de1fc429be83737ea2a27ca1092f9d5ee34f"
+  "https://github.com/spitters/CatCrypt-core.git" @ "9a9e3b45aedc4bac66a4bb6c9b99972cdb0fb7e8"
 
 -- IR lowering target (`Com` → Veir / MLIR). Pinned to a private staging fork:
 -- upstream Veir at Lean 4.32 plus the CatCrypt additions (the catcrypt/memref/
@@ -51,20 +51,20 @@ require catcryptCore from git
 -- `Veir.List.*` namespacing that avoids a Mathlib/Batteries name collision).
 -- Building requires read access to `spitters/veir-catcrypt`.
 require Veir from git
-  "https://github.com/spitters/veir-catcrypt" @ "v4.32.0-catcrypt.2"
+  "https://github.com/spitters/veir-catcrypt" @ "v4.33.1-catcrypt.1"
 
 -- ParamTransfer (proof-transfer bridge) + CompPoly (NTT algebraic theory).
 require paramTransfer from git
-  "https://github.com/spitters/ParamTransfer.git" @ "e36404b34001d20ac9175a35fa16929ca72c66ad"
+  "https://github.com/spitters/ParamTransfer.git" @ "177512412aefbcb6c72863a4141aee14f2a8e939"
 require CompPoly from git
-  "https://github.com/Verified-zkEVM/CompPoly" @ "v4.32.2"
+  "https://github.com/Verified-zkEVM/CompPoly" @ "v4.33.1"
 
 -- hax-lean: the typed haxpipeT front (`Hax.TExpr`).
 require «hax-lean» from git
-  "https://github.com/spitters/hax-lean.git" @ "7b407d1c296ca7fcbb336d56563b5075f9b34b6b"
+  "https://github.com/spitters/hax-lean.git" @ "7d52cff147a828d7995e7e653ae3841eea003e5b"
 
 require mathlib from git
-  "https://github.com/leanprover-community/mathlib4" @ "v4.32.0"
+  "https://github.com/leanprover-community/mathlib4" @ "v4.33.1"
 
 -- API documentation (opt-in, dev only — not in the normal build closure).
 --   lake -R -Kenv=doc build CatCryptCompiler:docs
@@ -73,4 +73,4 @@ require mathlib from git
 -- library build.
 meta if get_config? env = some "doc" then
 require «doc-gen4» from git
-  "https://github.com/leanprover/doc-gen4" @ "v4.32.0"
+  "https://github.com/leanprover/doc-gen4" @ "v4.33.1"

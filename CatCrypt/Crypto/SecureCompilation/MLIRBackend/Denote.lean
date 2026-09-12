@@ -129,7 +129,8 @@ theorem emit_empty_names :
 theorem emit_func_empty_nonempty :
     (emitFunc "f" [] [] "c").length ≥ 11 := by
   have h : (toString "func.func @" : String).length = 11 := rfl
-  simp [emitFunc, bindParams, EmitState.init, EmitState.lookup, EmitState.getLines, emitCmd]
+  unfold emitFunc
+  simp only [String.length_append]
   omega
 
 /-! ## §3. Per-arm shape statements (Phase 4 — closed)

@@ -524,7 +524,7 @@ example :
           (Com.var { op := ToyOp.const 10, retTy_eq := rfl, args := .nil }
             (Com.ret .here)) := by
   unfold ScheduleReal.scheduleSwap e1 e2 body
-  rw [ScheduleReal.swapCom.eq_def]
+  erw [ScheduleReal.swapCom.eq_def]
   rfl
 
 /-- The reorder preserves denotation: returning `v1` (= `10`) is unchanged by

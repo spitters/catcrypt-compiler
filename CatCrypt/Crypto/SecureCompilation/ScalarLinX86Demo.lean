@@ -90,6 +90,7 @@ block, so `select_correct` is definitional. The structural fields are list folds
     the machine run of the selected ops, making `select_correct` a `rfl`; the real
     faithfulness content is `hstep_x86_on` (the projected machine run computes the
     neutral `evalRegStmtPure`, under the freshness side condition). -/
+@[implicit_reducible]
 def x86Target : ScalarTarget where
   Op := XInstr
   St := XState

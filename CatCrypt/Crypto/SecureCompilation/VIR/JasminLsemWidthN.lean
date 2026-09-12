@@ -204,6 +204,7 @@ def LstateN.nextPc (s : LstateN) : LstateN := { s with lpc := s.lpc + 1 }
 @[simp] theorem LstateN.getW_nextPc (s : LstateN) (r : String) (w : Nat) :
     s.nextPc.getW r w = s.getW r w := by
   simp only [LstateN.getW, LstateN.nextPc]
+  exact rfl
 
 /-! ## 2. Width-aware operand evaluation
 
@@ -227,6 +228,7 @@ def evalOperandN (s : LstateN) (w : Nat) : LOperand → Option (BitVec w)
 @[simp] theorem evalOperandN_nextPc (s : LstateN) (w : Nat) (o : LOperand) :
     evalOperandN s.nextPc w o = evalOperandN s w o := by
   cases o <;> simp [evalOperandN, LstateN.getW, LstateN.nextPc]
+  exact rfl
 
 /-! ## 3. `lsemStepN`: the width-aware single-instruction step
 
@@ -636,7 +638,7 @@ theorem StoreAgreesN.step {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
   | here =>
       simp only [resolveVar, varIndex, evalOperandN_nextPc]
       have hslot : curDepth + 1 - 1 - 0 = curDepth := by omega
-      rw [hslot]
+      simp only [hslot]
       have hsa : ¬ curDepth < nArgs := by omega
       simp only [hsa, if_false, evalOperandN]
       -- `.here : Var (.reg w :: Γ) (.reg w')` forces `w' = w`; reads `val`.

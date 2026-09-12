@@ -209,20 +209,20 @@ theorem sbb_cf_eq (a b : BitVec 64) (c : Bool) :
 /-- The data word of `x86_SHL` is the shift by the masked count. -/
 theorem x86_SHL_word (v i : BitVec 64) : (x86_SHL v i).word = v <<< (i.toNat % 64) := by
   simp only [x86_SHL, shiftCount]
-  split <;> simp_all [rflags_None, rflags_OF, wshl,
+  by_cases h : i.toNat % 64 = 0 <;> simp_all [rflags_None, rflags_OF, wshl,
     Nat.min_eq_right (Nat.le_of_lt (Nat.mod_lt _ (by decide : 0 < 64)))]
 
 /-- The data word of `x86_SHR` is the shift by the masked count. -/
 theorem x86_SHR_word (v i : BitVec 64) : (x86_SHR v i).word = v >>> (i.toNat % 64) := by
   simp only [x86_SHR, shiftCount]
-  split <;> simp_all [rflags_None, rflags_OF, wshr,
+  by_cases h : i.toNat % 64 = 0 <;> simp_all [rflags_None, rflags_OF, wshr,
     Nat.min_eq_right (Nat.le_of_lt (Nat.mod_lt _ (by decide : 0 < 64)))]
 
 /-- The data word of `x86_SAR` is the arithmetic shift by the masked count. -/
 theorem x86_SAR_word (v i : BitVec 64) :
     (x86_SAR v i).word = BitVec.sshiftRight v (i.toNat % 64) := by
   simp only [x86_SAR, shiftCount]
-  split <;> simp_all [rflags_None, rflags_OF, wsar,
+  by_cases h : i.toNat % 64 = 0 <;> simp_all [rflags_None, rflags_OF, wsar,
     Nat.min_eq_right (Nat.le_of_lt (Nat.mod_lt _ (by decide : 0 < 64)))]
 
 /-- An immediate below the word width is its own operand value. -/

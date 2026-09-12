@@ -287,7 +287,7 @@ theorem strengthReduce_doubleProg :
       = .var { op := ArithOp.add, retTy_eq := rfl,
                args := .cons .here (.cons .here .nil) } (.ret .here) := by
   unfold strengthReduce doubleProg
-  rw [srCom_var, srCom_ret]
+  erw [srCom_var, srCom_ret]
   rfl
 
 /-- The two programs are **not** syntactically equal — strength reduction did
@@ -295,9 +295,7 @@ real work (the bound op changed `mul2 → add`). -/
 example : strengthReduce doubleProg ≠ doubleProg := by
   rw [strengthReduce_doubleProg, doubleProg]
   intro h
-  rw [Com.var.injEq] at h
-  have he := eq_of_heq h.2.1
-  exact ArithOp.noConfusion (congrArg Expr.op he)
+  cases h
 
 /-- Denotation preservation on the concrete program: both denote `2 * x` for
 any input `x` (the rewritten one as `x + x`). -/

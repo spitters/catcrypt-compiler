@@ -670,6 +670,7 @@ theorem pairingProductComShadow_denote (prims : Bls377Primitives)
   simp only [HVector.head, HVector.tail]
   rw [hM (.cons (prims.pairing p1 q1) (.cons (prims.pairing p2 q2) .nil))]
   simp only [HVector.head, HVector.tail]
+  rfl
 
 /-- **Pairing-product denotation (deployed, front-sourced).** Via
     `pairingProductCom_eq_shadow` + the shadow's denote, so `Bls12_377Emit`

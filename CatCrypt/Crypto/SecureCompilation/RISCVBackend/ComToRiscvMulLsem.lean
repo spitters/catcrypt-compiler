@@ -8,11 +8,11 @@ module
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.ComToRiscvLsem
 
 /-!
-# `Com → RISC-V`: extending the Sail-grounded keystone with `MUL`/`MULHU`
+# `Com → RISC-V`: the Sail-grounded value-preservation theorem with `MUL`/`MULHU`
 
 `ComToRiscvLsem.lean` (item 5) grounded the RV64 base-ALU fragment
 (ADD/SUB/AND/OR/XOR) in the verbatim sail-riscv `execute_RTYPE` clause and built
-a genuine non-`id` `MachineModel` (`riscvBaseAluModel`, `exec := runRBlock64`)
+a non-`id` `MachineModel` (`riscvBaseAluModel`, `exec := runRBlock64`)
 whose `validated` field is the per-op Sail grounding. It explicitly **deferred**
 `MUL`/`MULHU`: those ops route through a *different* Sail clause
 (`execute_MUL`, the M-extension `mult_to_bits_half` path), so the uniform
@@ -55,11 +55,11 @@ two M-extension refinements (`rtype_mul`, `rtype_mulhu`).
    its `sailClause` writes (`runRd …`). The base-ALU arms dispatch to
    `riscvStep64_sail_grounded`; the `MUL`/`MULHU` arms dispatch to
    `rtype_mul`/`rtype_mulhu`.
-3. **`comToRiscvLsem_correct_mul`** (the widened 5b) — the whole-`Com` keystone
+3. **`comToRiscvLsem_correct_mul`** (the widened 5b) — the whole-`Com` theorem
    over the arith+mul `Com` fragment (`ComArithMul`): the RV64 `runRBlock64`
    execution computes `Com.denote` (via `com_riscv_e2e`) **and** every executed
    instruction is `IsArithMul`, hence Sail-grounded by the widened 5a.
-4. **`riscvArithMulModel`** (the widened 5c) — the genuine non-`id`
+4. **`riscvArithMulModel`** (the widened 5c) — the non-`id`
    `MachineModel` (`exec := runRBlock64`) whose `validated` field is the widened
    grounding `RiscvArithMulGrounded`, inhabited by the proved step lemma.
 
@@ -185,19 +185,19 @@ theorem riscvStepArithMul_sail_grounded
   cases i with
   | add d a b =>
       have e := base (.add d a b) trivial (by simpa [amD] using! hdst) (by simpa [amD] using! hrd)
-      simpa [amD, amA, amB, sailClause, rinstD, rinstA, rinstB, rinstRop] using e
+      exact e
   | sub d a b =>
       have e := base (.sub d a b) trivial (by simpa [amD] using! hdst) (by simpa [amD] using! hrd)
-      simpa [amD, amA, amB, sailClause, rinstD, rinstA, rinstB, rinstRop] using e
+      exact e
   | and d a b =>
       have e := base (.and d a b) trivial (by simpa [amD] using! hdst) (by simpa [amD] using! hrd)
-      simpa [amD, amA, amB, sailClause, rinstD, rinstA, rinstB, rinstRop] using e
+      exact e
   | or d a b =>
       have e := base (.or d a b) trivial (by simpa [amD] using! hdst) (by simpa [amD] using! hrd)
-      simpa [amD, amA, amB, sailClause, rinstD, rinstA, rinstB, rinstRop] using e
+      exact e
   | xor d a b =>
       have e := base (.xor d a b) trivial (by simpa [amD] using! hdst) (by simpa [amD] using! hrd)
-      simpa [amD, amA, amB, sailClause, rinstD, rinstA, rinstB, rinstRop] using e
+      exact e
   | mul d a b =>
       have hrd' : (nm d).toNat ≠ 0 := by simpa [amD] using hrd
       have hdst' : ¬ (d = "zero" ∨ d = "x0") := by simpa [amD] using hdst
@@ -306,9 +306,9 @@ theorem riscvBlock_all_arithMul {Γ : Ctxt jasminDialect}
     ∀ i ∈ lowerRBlock64 (regToROp (comToRegProg com Γ.length)), IsArithMul i :=
   regprog_lower_arithMul (comToRegProg com Γ.length) (comToRegProg_RegArithMul ham Γ.length)
 
-/-! ## 4. (5b widened) The `Com → RISC-V` value-preservation keystone -/
+/-! ## 4. (5b widened) The `Com → RISC-V` value-preservation theorem -/
 
-/-- **5b (widened) — the Sail-grounded whole-`Com` keystone over base-ALU ∪
+/-- **5b (widened) — the Sail-grounded whole-`Com` theorem over base-ALU ∪
     {MUL, MULHU}.** For an arith+mul all-`reg 64` `Com`, executing the
     compiled-and-lowered RV64 block on the model:
 
@@ -330,7 +330,7 @@ theorem comToRiscvLsem_correct_mul {Γ : Ctxt jasminDialect}
     ∧ (∀ i ∈ lowerRBlock64 (regToROp (comToRegProg com Γ.length)), IsArithMul i) :=
   ⟨com_riscv_e2e ham.toComOK hΓ V s hs, riscvBlock_all_arithMul ham⟩
 
-/-! ## 5. (5c widened) A genuine non-`id` `exec` for the arith+mul model -/
+/-! ## 5. (5c widened) A non-`id` `exec` for the arith+mul model -/
 
 /-- The proposition recording the per-op Sail grounding (widened 5a), to inhabit
     the `MachineModel.validated` field at value depth: every arith+mul step of
@@ -348,11 +348,11 @@ theorem riscvArithMulGrounded_proof : RiscvArithMulGrounded :=
   fun s rf nm i ham hdst halign hrd =>
     riscvStepArithMul_sail_grounded s rf nm i ham hdst halign hrd
 
-/-- **5c (widened) — the RISC-V arith+mul `MachineModel`, with a genuine `exec`.**
-    Like `ComToRiscvLsem.riscvBaseAluModel`, its `exec` is the real
-    `runRBlock64` block fold (not `latticeModel`'s `fun _ s => s` shell), and its
+/-- **5c (widened) — the RISC-V arith+mul `MachineModel`, with a non-`id` `exec`.**
+    Like `ComToRiscvLsem.riscvBaseAluModel`, its `exec` is the
+    `runRBlock64` block fold (not `latticeModel`'s `fun _ s => s`), and its
     `validated` field is the widened Sail-grounding `RiscvArithMulGrounded`
-    (inhabited by `riscvArithMulGrounded_proof`), now covering the M-extension
+    (inhabited by `riscvArithMulGrounded_proof`), covering the M-extension
     ops `MUL`/`MULHU` in addition to the base ALU. -/
 def riscvArithMulModel : MachineModel where
   Code := List RInst64
@@ -363,13 +363,12 @@ def riscvArithMulModel : MachineModel where
   exec := fun code s => runRBlock64 s code
   validated := RiscvArithMulGrounded
 
-/-- The model's `exec` genuinely runs the code: it is `runRBlock64`, not the
-    `latticeModel` identity. -/
+/-- The model's `exec` is `runRBlock64`, not the `latticeModel` identity. -/
 theorem riscvArithMulModel_exec (code : List RInst64) (s : RState64) :
     riscvArithMulModel.exec code s = runRBlock64 s code := rfl
 
-/-- The model's `validated` field is the genuine widened-5a Sail-grounding,
-    discharged by `riscvArithMulGrounded_proof` (never `True`-by-fiat). -/
+/-- The model's `validated` field is the widened-5a Sail-grounding,
+    discharged by `riscvArithMulGrounded_proof`. -/
 theorem riscvArithMulModel_validated : riscvArithMulModel.validated :=
   riscvArithMulGrounded_proof
 

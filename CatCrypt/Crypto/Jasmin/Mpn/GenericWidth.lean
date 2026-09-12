@@ -145,7 +145,7 @@ theorem mpnAddNW_spec (w : Nat) :
   | nil =>
     intro b hlen cin
     cases b with
-    | nil => simp [mpnAddNW, toNatW, carryNat]
+    | nil => simp [mpnAddNW, toNatW, carryNat]; rfl
     | cons _ _ => simp at hlen
   | cons a as ih =>
     intro b hlen cin
@@ -260,7 +260,7 @@ theorem mpnSubNW_toNat (w : Nat) :
   | nil =>
     intro b hlen bin
     cases b with
-    | nil => simp [mpnSubNW, toNatW, borrowNat]
+    | nil => simp [mpnSubNW, toNatW, borrowNat]; rfl
     | cons _ _ => simp at hlen
   | cons a as ih =>
     intro b hlen bin
@@ -552,7 +552,7 @@ example : mpnAddNW 32 [(-1 : BitVec 32), 0] [1, 0] false = ([0, 1], false) := by
 
 /-! ## Part 2 — generic memory algebra by byte-count induction
 
-The load-bearing new technique. `storeBytesLE` / `loadBytesLE` are
+`storeBytesLE` / `loadBytesLE` are
 recursive over a byte list / count; read-back and frame are proved by
 **induction on the byte list**, NOT by `bv_decide` on a whole concrete
 word. Each induction step uses only single-byte `UInt64` address facts
@@ -819,7 +819,7 @@ theorem loadWLimb_storeWLimb_disjoint (w : Nat) (m : Mem) (a a' : UInt64)
   apply loadBytesLE_storeBytesLE_disjoint
   rwa [limbBytes_length]
 
-/-! ## Honest verdict (see module docstring)
+/-! ## Scope (see module docstring)
 
 * **(a)** `mpnAddNW_spec` is proved `∀ w` (axiom-clean) — the functional
   core is *free-generic*: the 64-bit proof transports to arbitrary `w` by

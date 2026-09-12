@@ -1529,8 +1529,7 @@ lemma heapInv_set_u64 (rs : RustState) (heap : Heap) (sid : ScopeId)
     (x : String) (v : BitVec 64) (hInv : HeapInv rs heap sid) :
     HeapInv rs (heap.set (translateVar sid { vname := x, vtype := .sword .U64 }) v) sid := by
   intro y t w hy
-  rw [Heap.get_set_other _ _ _ _ (wordLoc_id_ne_towerLoc_id sid x y t)]
-  exact hInv y t w hy
+  exact (Heap.get_set_other _ _ _ _ (wordLoc_id_ne_towerLoc_id sid x y t)).trans (hInv y t w hy)
 
 /-- `rsSetScalar` only changes `rsScalar`, preserving `HeapInv`. -/
 lemma heapInv_rsSetScalar (rs : RustState) (heap : Heap) (sid : ScopeId)
@@ -1579,8 +1578,8 @@ lemma scalarInv_set_tower (rs : RustState) (heap : Heap) (sid : ScopeId)
     (x : String) (t : TowerType) (v : RustVal t) (hSInv : ScalarInv rs heap sid) :
     ScalarInv rs (heap.set (towerLoc sid x t) v) sid := by
   intro y
-  rw [Heap.get_set_other _ _ _ _ (Ne.symm (wordLoc_id_ne_towerLoc_id sid y x t))]
-  exact hSInv y
+  exact (Heap.get_set_other _ _ _ _ (Ne.symm (wordLoc_id_ne_towerLoc_id sid y x t))).trans
+    (hSInv y)
 
 /-- Writing the correct value at a scalar loc establishes the scalar inv entry. -/
 lemma scalarInv_set_scalar_eq (heap : Heap) (sid : ScopeId)
@@ -1588,8 +1587,7 @@ lemma scalarInv_set_scalar_eq (heap : Heap) (sid : ScopeId)
     (hne : x ≠ y) :
     (heap.set (translateVar sid { vname := x, vtype := .sword .U64 }) (BitVec.ofNat 64 v)).get
       (translateVar sid { vname := y, vtype := .sword .U64 }) = BitVec.ofNat 64 w := by
-  rw [Heap.get_set_other _ _ _ _ (wordLoc_id_ne_of_ne_name sid x y hne)]
-  exact hSInv_y
+  exact (Heap.get_set_other _ _ _ _ (wordLoc_id_ne_of_ne_name sid x y hne)).trans hSInv_y
 
 /-- After writing `BitVec.ofNat 64 v` to scalar `x`'s location, `ScalarInv` holds for `rsSetScalar`. -/
 lemma scalarInv_after_scalar_set (rs : RustState) (heap : Heap) (sid : ScopeId)
@@ -1599,9 +1597,9 @@ lemma scalarInv_after_scalar_set (rs : RustState) (heap : Heap) (sid : ScopeId)
   intro y
   simp only [rsSetScalar]
   by_cases hxy : x = y
-  · subst hxy; simp [Heap.get_set_same]
-  · rw [Heap.get_set_other _ _ _ _ (wordLoc_id_ne_of_ne_name sid x y hxy)]
-    simp only [beq_eq_false_iff_ne.mpr (Ne.symm hxy), ite_false]
+  · subst hxy; simp only [beq_self_eq_true, ite_true]; exact Heap.get_set_same _ _ _
+  · refine (Heap.get_set_other _ _ _ _ (wordLoc_id_ne_of_ne_name sid x y hxy)).trans ?_
+    simp only [beq_eq_false_iff_ne.mpr (Ne.symm hxy), Bool.false_eq_true, ite_false]
     exact hSInv y
 
 /-- `rsSetScalar` preserves `ScalarInv` when the heap val is already correct. -/
@@ -1834,6 +1832,14 @@ lemma limbStore_toJasmin_newSid
     | zero => simp [toJasminCmd_RLimbStore, translateCmd, translateInstrR]
     | succ m => simp [toJasminCmd_RLimbStore, translateCmd, translateInstrR]
 
+/-- Evaluating `put ℓ v` at `heap` and continuing with `k` on the resulting heap is
+    `k (heap.set ℓ v)`. -/
+lemma eval_put_bind_heap {β : Type} (heap : Heap) (ℓ : CatCrypt.Core.Location) (v : ℓ.ty)
+    (k : Heap → SDistr β) :
+    (((RawCode.put ℓ v).eval heap).bind fun x => k x.2) = k (heap.set ℓ v) := by
+  simp only [CatCrypt.Deep.eval_put, SPComp.bind_def, SPComp.set_def, SPComp.pure_def,
+             SDistr.pure_bind]
+
 /-- Eval of `translateCmd` for a single U64 const-assign writes `0` to the U64 location. -/
 lemma translateCmd_cassgn_u64_eval
     (env : TransEnv) (sid : ScopeId) (x : String) (v : Int) (n : Nat) (heap : Heap) :
@@ -1845,8 +1851,8 @@ lemma translateCmd_cassgn_u64_eval
         heap.set (translateVar sid { vname := x, vtype := .sword .U64 }) (0 : BitVec 64)) := by
   simp only [translateCmd, translateInstrR, translatePExpr, translateWriteLVal,
              coerceValue_sint_u64, writeVar_u64_zero,
-             eval_bind, eval_ret, eval_put, SPComp.bind_def, SPComp.set_def, SPComp.pure_def,
-             SDistr.pure_bind]
+             eval_bind, eval_ret, SPComp.bind_def, SPComp.pure_def, SDistr.pure_bind]
+  exact eval_put_bind_heap heap _ _ (fun h => SDistr.pure ((⟨()⟩ : ULift Unit), h))
 
 /-- `newSid` for a single U64 const-assign equals `sid`. -/
 lemma translateCmd_cassgn_u64_newSid
@@ -1869,8 +1875,8 @@ lemma translateCmd_cons_cassgn_u64_eval
         (heap.set (translateVar sid { vname := x, vtype := .sword .U64 }) (0 : BitVec 64)) := by
   simp only [translateCmd, translateInstrR, translatePExpr, translateWriteLVal,
              coerceValue_sint_u64, writeVar_u64_zero,
-             eval_bind, eval_ret, eval_put, SPComp.bind_def, SPComp.set_def, SPComp.pure_def,
-             SDistr.pure_bind]
+             eval_bind, eval_ret, SPComp.bind_def, SPComp.pure_def, SDistr.pure_bind]
+  exact eval_put_bind_heap heap _ _ (translateCmd env rest sid (n + 1)).code.eval
 
 /-- One-step `newSid`: U64 const-assign followed by `rest`. -/
 lemma translateCmd_cons_cassgn_u64_newSid
@@ -1902,9 +1908,10 @@ lemma translateCmd_cassgn_u64_val_eval
     SDistr.pure (⟨()⟩,
         heap.set (translateVar sid { vname := x, vtype := .sword .U64 }) (BitVec.ofNat 64 v)) := by
   simp only [translateCmd, translateInstrR, translatePExpr, evalSop1, intToWord_U64_ofNat,
-             coerceValue_u64_u64, translateWriteLVal, writeVar_u64_val, truncateWord_u64_u64,
-             CatCrypt.Deep.eval_bind, CatCrypt.Deep.eval_ret, CatCrypt.Deep.eval_put,
-             SPComp.bind_def, SPComp.set_def, SPComp.pure_def, SDistr.pure_bind]
+             coerceValue_u64_u64, translateWriteLVal, writeVar_u64_val,
+             CatCrypt.Deep.eval_bind, CatCrypt.Deep.eval_ret,
+             SPComp.bind_def, SPComp.pure_def, SDistr.pure_bind]
+  exact eval_put_bind_heap heap _ _ (fun h => SDistr.pure ((⟨()⟩ : ULift Unit), h))
 
 /-- `newSid` for the single-instruction `Cassgn Papp1` case. -/
 lemma translateCmd_cassgn_u64_val_newSid
@@ -1922,7 +1929,7 @@ lemma writeVar_sarr_default (sid : ScopeId) (x : String) (t : TowerType) :
     writeVar sid { vname := x, vtype := .sarr t.storageBytes }
       ⟨.sarr t.storageBytes, (fun _ => 0 : JArray t.storageBytes)⟩ =
     RawCode.put (towerLoc sid x t) (fun _ => 0 : JArray t.storageBytes) := by
-  rw [writeVar_sarr_eq]; rfl
+  exact writeVar_sarr_eq sid x t.storageBytes (fun _ => 0)
 
 /-- `default : JArray n = fun _ => 0`. -/
 lemma jarray_default_eq (n : Nat) : (default : JArray n) = fun _ => 0 := rfl
@@ -1939,10 +1946,11 @@ lemma translateCmd_cons_cassgn_sarr_init_eval
       sid (n + 2)).code.eval heap =
     (translateCmd env rest sid (n + 1)).code.eval
       (heap.set (towerLoc sid x t) (default : JArray t.storageBytes)) := by
-  simp only [translateCmd, translateInstrR, translatePExpr, coerceValue, eq_self_iff_true,
+  simp only [translateCmd, translateInstrR, translatePExpr, coerceValue,
              ↓reduceDIte, translateWriteLVal, writeVar_sarr_default, jarray_default_eq,
-             CatCrypt.Deep.eval_bind, CatCrypt.Deep.eval_ret, CatCrypt.Deep.eval_put,
-             SPComp.bind_def, SPComp.set_def, SPComp.pure_def, SDistr.pure_bind]
+             CatCrypt.Deep.eval_bind, CatCrypt.Deep.eval_ret,
+             SPComp.bind_def, SPComp.pure_def, SDistr.pure_bind]
+  exact eval_put_bind_heap heap _ _ (translateCmd env rest sid (n + 1)).code.eval
 
 /-- `newSid` for cons Cassgn sarr init. -/
 lemma translateCmd_cons_cassgn_sarr_init_newSid

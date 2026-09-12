@@ -208,18 +208,33 @@ theorem ContJTotal.castCtx {Γ Δ Δ' : Ctx} (h : Δ = Δ') {f : ComCont Γ Δ}
   subst h
   exact hf
 
+set_option linter.auxLemma false in
 /-- Both branches of the `RArrLoad` prefix — the `memrefGetDyn` bind and the
-    opaque `extCall` fallback — are jasmin-lowerable. -/
+    opaque `extCall` fallback — are jasmin-lowerable. The discriminants are
+    cased so that the literal-pattern matcher reduces; the `64` literal
+    compiles to a `dite (w = 64)`, closed by `dif_neg` at `w ≠ 64`. -/
 theorem contJTotal_arrLoadCont {Γ : Ctx}
     (dty : CatCrypt.Crypto.Jasmin.LowCT.TowerType)
     (resolvedArgs : List ((t : CryptoTy) × CVar Γ t))
     (idxSig : (t : CryptoTy) × CVar Γ t)
     {argTys : List CryptoTy} (hv : CHVector (fun t => CVar Γ t) argTys) :
     ContJTotal (arrLoadCont dty resolvedArgs idxSig hv) := by
-  unfold arrLoadCont
-  split
-  · exact ContJTotal.varBind rfl
-  · exact ContJTotal.varBind rfl
+  intro t tail htail
+  cases dty <;> rcases resolvedArgs with _ | ⟨⟨st, sv⟩, _ | _⟩ <;>
+    try exact ContJTotal.varBind rfl tail htail
+  case TU64.cons.cons =>
+    rcases st with _ | _ | ⟨_, _⟩ | ⟨_, _⟩ | _ | nmem <;>
+      exact ContJTotal.varBind rfl tail htail
+  rcases idxSig with ⟨it, iv⟩
+  rcases st with _ | _ | ⟨_, _⟩ | ⟨_, _⟩ | _ | nmem <;>
+    rcases it with _ | _ | ⟨_, _⟩ | ⟨_, _⟩ | w | _ <;>
+    try exact ContJTotal.varBind rfl tail htail
+  rcases eq_or_ne w 64 with rfl | hw
+  · exact ContJTotal.varBind rfl tail htail
+  · unfold arrLoadCont
+    delta arrLoadCont.match_1
+    simp only [dif_neg hw]
+    exact ContJTotal.varBind rfl tail htail
 
 /-- All three branches of the `RArrStore` prefix — the transported
     `memrefSetDyn` bind and the two opaque `extCall` fallbacks — are

@@ -59,12 +59,12 @@ input coordinates, reaches a state whose `rx`/`ry` slots hold exactly
 affine group-sum point.
 
 This is the generic emit→value tie for EC point-add, conditioned precisely on
-the leaf-realization hypothesis.  The `RustExec` operational denotation is the
-load-bearing content: the proof drives the two `RCall`s of `emitEcAdd` through
+the leaf-realization hypothesis.  The `RustExec` operational denotation carries
+the content: the proof drives the two `RCall`s of `emitEcAdd` through
 the `RustExec.call`/`RustExec.seq` rules and discharges the produced values via
 the commuting squares.
 
-## Honest scope
+## Scope
 
 * The byte↔field commuting squares are **assumed** (`EcEmitRealizes` fields), not
   proved: they are the named trust edge at the opaque-leaf granularity the
@@ -254,13 +254,13 @@ theorem emitEcAdd_realizes_affineAdd
   set s1 := locatedUpdate s0 (fpLoc rx) (R.encP (ecAffineAdd lam P Q)) with hs1
   -- The input lookups survive in `s1` (rx distinct from inputs).
   have hx1' : s1.rsTower x1 = some ⟨.TFp, R.encC P.x⟩ := by
-    rw [hs1, locatedUpdate, rsSetTower]; simp [fpLoc, Ne.symm hrx1, hx1]
+    simp [hs1, fpLoc, locatedUpdate, rsSetTower, Ne.symm hrx1, hx1]
   have hy1' : s1.rsTower y1 = some ⟨.TFp, R.encC P.y⟩ := by
-    rw [hs1, locatedUpdate, rsSetTower]; simp [fpLoc, Ne.symm hry1, hy1]
+    simp [hs1, fpLoc, locatedUpdate, rsSetTower, Ne.symm hry1, hy1]
   have hx2' : s1.rsTower x2 = some ⟨.TFp, R.encC Q.x⟩ := by
-    rw [hs1, locatedUpdate, rsSetTower]; simp [fpLoc, Ne.symm hrx2, hx2]
+    simp [hs1, fpLoc, locatedUpdate, rsSetTower, Ne.symm hrx2, hx2]
   have hy2' : s1.rsTower y2 = some ⟨.TFp, R.encC Q.y⟩ := by
-    rw [hs1, locatedUpdate, rsSetTower]; simp [fpLoc, Ne.symm hry2, hy2]
+    simp [hs1, fpLoc, locatedUpdate, rsSetTower, Ne.symm hry2, hy2]
   have hargList' : args.filterMap (fun a => s1.rsTower a.locVar)
       = [⟨.TFp, R.encC P.x⟩, ⟨.TFp, R.encC P.y⟩,
          ⟨.TFp, R.encC Q.x⟩, ⟨.TFp, R.encC Q.y⟩] := by
@@ -275,8 +275,7 @@ theorem emitEcAdd_realizes_affineAdd
     · exact ⟨_, hy2'⟩
   -- `ry`'s old value in `s1` (ry distinct from rx and inputs).
   have hryold : locatedLookup s1 (fpLoc ry) = some (default : RustVal .TFp) := by
-    rw [hs1, locatedUpdate]
-    simp only [fpLoc]
+    simp only [hs1, fpLoc, locatedUpdate]
     rw [locatedLookup_rsSetTower_other _ _ _ _ (show rx ≠ (Located.mk ry .TFp).locVar by
       exact hrxy)]
     simp [hs0, stEcAdd, locatedLookup, rsSetTower,
@@ -306,8 +305,9 @@ theorem emitEcAdd_realizes_affineAdd
     exact RustExec.seq _ _ _ _ _ hcall1 hcall2
   · -- Read off `rx`: unchanged by the `ry` update (rx ≠ ry).
     rw [hs2]
-    rw [locatedUpdate_other _ _ _ _ (show (fpLoc ry).locVar ≠ (fpLoc rx).locVar by
-      simp only [fpLoc]; exact hrxy.symm)]
+    simp only [fpLoc]
+    rw [locatedUpdate_other _ _ _ _
+      (show (Located.mk ry .TFp).locVar ≠ (Located.mk rx .TFp).locVar from hrxy.symm)]
     rw [hs1]; exact hself _ _ _
   · -- Read off `ry`.
     rw [hs2]; exact hself _ _ _

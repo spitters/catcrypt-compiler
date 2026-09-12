@@ -45,7 +45,7 @@ instances:
 - **`mvcgen` attachment**: `BignumHoare/MVCGenPrimeSmoke.lean`, where `BignumM`
   gets its `WPMonad` instance by search over `.arg BignumState (.except PUnit
   .pure)` and nine `@[spec]` step lemmas — one per SSA builder shape — drive
-  `mvcgen'`.
+  `mvcgen`.
 - **Port closure** for `bignum_mod_p25519_4`:
   `BignumHoare.bignum_mod_p25519_4_correct_universal` in
   `BignumHoare/ModP25519Final.lean`.

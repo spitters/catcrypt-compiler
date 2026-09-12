@@ -93,7 +93,7 @@ The soundness theorem `chain_eval_sound` itself is currently
 discharge path would unfold the abstract `evalChainOp` against
 the corresponding `bignumExecFuel` walk via the chain-step
 axioms — pure plumbing, ~200 LoC of mvcgen-driven case analysis
-once mvcgen' lands.
+with `mvcgen`.
 -/
 
 @[expose] public section
@@ -107,7 +107,7 @@ abbrev p_25519 : Nat := 2^255 - 19
 /-! ## §1  Chain offsets
 
 Mirror of `BignumInvP25519`'s `OFF_*` constants, exposed at
-top-level (no longer file-private to `S2NBignumSSA.lean`).
+top-level, not file-private to `S2NBignumSSA.lean`.
 
 Each offset names a buffer position in the chain's scratch
 memory layout.  `OFF_op` and `OFF_ap` have special meaning:
@@ -256,7 +256,7 @@ inline. -/
     `bignumExec_append`'s sequencing of the SSA body, applying
     each chain-step axiom from `ChainStepAxioms.lean` at the
     appropriate position.  ~200 LoC of mvcgen-driven case
-    analysis once `mvcgen'` lands. -/
+    analysis with `mvcgen`. -/
 axiom invChain_eval_sound (a : Nat) :
     invChainResult a = a ^ (p_25519 - 2) % p_25519
 

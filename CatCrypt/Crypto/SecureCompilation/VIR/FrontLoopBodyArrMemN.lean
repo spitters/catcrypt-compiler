@@ -121,7 +121,6 @@ theorem ContArrMemN.varBind {Γ : Ctx} {w' : Nat} {e : Expr catCryptDialect Γ (
   intro n tail ⟨jt, hjt, hArr⟩
   refine ⟨Com.var e tail, Com.var e' jt, rfl, ?_, ArrMemN.reg e' hhead hArr⟩
   simp only [cryptoDialectToJasminCom, he, hjt]
-  rfl
 
 /-- A single binding of an expression whose jasmin lowering is a `stackStore`
     node extends an `ArrMemN` tail by `ArrMemN.store`. -/
@@ -137,7 +136,6 @@ theorem ContArrMemN.varBindStore {Γ : Ctx} {m : Nat}
   refine ⟨Com.var e tail, Com.var ⟨JasminOp.stackStore 64 m, heq, args⟩ jt, rfl, ?_,
     ArrMemN.store heq args hArr⟩
   simp only [cryptoDialectToJasminCom, he, hjt]
-  rfl
 
 /-! ## 3. The terminal array return -/
 

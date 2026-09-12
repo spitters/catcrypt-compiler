@@ -486,7 +486,10 @@ theorem compress_emit_denote_correct
   -- Unfold the private `L`/`ξ_*` aliases so the destination's locVar/locDst
   -- and args' locDst reduce to plain values; then `locatedUpdate_dest` applies.
   show (locatedUpdate r6
-      ({ locVar := "out", locSrc := TowerType.TBytes 32 } : Located) _).rsTower _ = _
+      ({ locVar := "out", locSrc := TowerType.TBytes 32 } : Located)
+      (leafSpec.call "fe25519_pack_sign" (TowerType.TBytes 32)
+        [TowerType.TBytes 40, TowerType.TBytes 40] oldOutV argList7)).rsTower
+        ({ locVar := "out", locSrc := TowerType.TBytes 32 } : Located).locVar = _
   rw [locatedUpdate_dest]
   -- Now goal: some ⟨TBytes 32, leafSpec.call "fe25519_pack_sign" ... ⟩
   --        = some ⟨TBytes 32, compress_byte_spec mathPkg vXYZT⟩.

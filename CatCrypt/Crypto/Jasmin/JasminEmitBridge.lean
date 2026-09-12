@@ -1079,8 +1079,7 @@ theorem opcodeAgrees_Copn_ADD_64
           .Vword .U64 (s.regs eB.gv.var.vname) ]
         = .ok [ .Vbool false, .Vword .U64 cf, .Vbool false, .Vbool false,
                 .Vbool false, .Vword .U64 r ] := by
-      unfold CoqSemMirror.execSopn realAsmSem realSopnSem
-      simp only [hCR]
+      exact (realSopnSem.eq_1 _ _).trans (by rw [hCR])
     -- Combine the two rewrites + writeLvals discharge in one block.
     show CoqSemMirror.JResult.bind
             (CoqSemMirror.semPexprs (Mem := MemoryModel.Mem) true [] realOpSem
@@ -1197,8 +1196,7 @@ theorem opcodeAgrees_Copn_SUB_64
           .Vword .U64 (s.regs eB.gv.var.vname) ]
         = .ok [ .Vbool false, .Vword .U64 cf, .Vbool false, .Vbool false,
                 .Vbool false, .Vword .U64 r ] := by
-      unfold CoqSemMirror.execSopn realAsmSem realSopnSem
-      simp only [hCR]
+      exact (realSopnSem.eq_3 _ _).trans (by rw [hCR])
     show CoqSemMirror.JResult.bind
             (CoqSemMirror.semPexprs (Mem := MemoryModel.Mem) true [] realOpSem
               (stateToEstate s)
@@ -1316,8 +1314,7 @@ theorem opcodeAgrees_Copn_ADC_64
           .Vword .U64 (s.regs eC.gv.var.vname) ]
         = .ok [ .Vbool false, .Vword .U64 cf, .Vbool false, .Vbool false,
                 .Vbool false, .Vword .U64 r ] := by
-      unfold CoqSemMirror.execSopn realAsmSem realSopnSem
-      simp only [hCR]
+      exact (realSopnSem.eq_2 _ _ _).trans (by rw [hCR])
     show CoqSemMirror.JResult.bind
             (CoqSemMirror.semPexprs (Mem := MemoryModel.Mem) true [] realOpSem
               (stateToEstate s)
@@ -1436,8 +1433,7 @@ theorem opcodeAgrees_Copn_SBB_64
           .Vword .U64 (s.regs eC.gv.var.vname) ]
         = .ok [ .Vbool false, .Vword .U64 cf, .Vbool false, .Vbool false,
                 .Vbool false, .Vword .U64 r ] := by
-      unfold CoqSemMirror.execSopn realAsmSem realSopnSem
-      simp only [hCR]
+      exact (realSopnSem.eq_4 _ _ _).trans (by rw [hCR])
     show CoqSemMirror.JResult.bind
             (CoqSemMirror.semPexprs (Mem := MemoryModel.Mem) true [] realOpSem
               (stateToEstate s)
@@ -1541,8 +1537,7 @@ theorem opcodeAgrees_Copn_MULX
         [ .Vword .U64 (s.regs eA.gv.var.vname),
           .Vword .U64 (s.regs eB.gv.var.vname) ]
         = .ok [ .Vword .U64 hi, .Vword .U64 lo ] := by
-      unfold CoqSemMirror.execSopn realAsmSem realSopnSem
-      simp only [hCR]
+      exact (realSopnSem.eq_5 _ _).trans (by rw [hCR])
     show CoqSemMirror.JResult.bind
             (CoqSemMirror.semPexprs (Mem := MemoryModel.Mem) true [] realOpSem
               (stateToEstate s)
@@ -1642,8 +1637,7 @@ theorem opcodeAgrees_Copn_ADCX
           .Vword .U64 (s.regs eB.gv.var.vname),
           .Vword .U64 (s.regs eC.gv.var.vname) ]
         = .ok [ .Vword .U64 cf, .Vword .U64 r ] := by
-      unfold CoqSemMirror.execSopn realAsmSem realSopnSem
-      simp only [hCR]
+      exact (realSopnSem.eq_6 _ _ _).trans (by rw [hCR])
     show CoqSemMirror.JResult.bind
             (CoqSemMirror.semPexprs (Mem := MemoryModel.Mem) true [] realOpSem
               (stateToEstate s)
@@ -1748,8 +1742,7 @@ theorem opcodeAgrees_Copn_ADOX
           .Vword .U64 (s.regs eB.gv.var.vname),
           .Vword .U64 (s.regs eC.gv.var.vname) ]
         = .ok [ .Vword .U64 of_, .Vword .U64 r ] := by
-      unfold CoqSemMirror.execSopn realAsmSem realSopnSem
-      simp only [hCR]
+      exact (realSopnSem.eq_7 _ _ _).trans (by rw [hCR])
     show CoqSemMirror.JResult.bind
             (CoqSemMirror.semPexprs (Mem := MemoryModel.Mem) true [] realOpSem
               (stateToEstate s)
@@ -1895,8 +1888,7 @@ theorem opcodeAgrees_Copn_XOR_64
 /-! ### §5.b. Chain-level bridge
 
 Given that every instruction in a chain satisfies `OpcodeAgrees`, the chain
-agreement follows.  This is the keystone of Phase C: per-opcode batches feed
-into this lemma. -/
+agreement follows.  Per-opcode batches feed into this lemma. -/
 
 /-- Helper variant: translate a list of `InstrR` using a structural fold.
     This bypasses `List.mapM` (which uses `mapM.loop`) and gives clean
@@ -2305,10 +2297,7 @@ structure (Path A of `bench/framework/JASMIN_SEM_COVERAGE.md`):
   case-analysis on the lookup target.
 * The 9 strict `opcodeAgrees_*` theorems in §5 will fail — they end
   with `rfl` against a structurally rebuilt Estate.  Their Equiv
-  variants in §6.a will need to be **re-proved directly** rather than
-  derived from the strict form (since the strict form will no longer
-  exist).
-
+  variants in §6.a are proved directly, not derived from the strict form.
 The Equiv chain bridge (§6.b) and the Equiv variant predicates
 (§6.a) DON'T change in shape — only the proofs change.  This is the
 key contract: any downstream proof that consumes

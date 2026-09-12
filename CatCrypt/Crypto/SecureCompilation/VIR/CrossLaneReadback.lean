@@ -28,7 +28,7 @@ The op modelled here is a lane **PERMUTATION / shuffle**:
 
     vshuffle (σ : Fin n → Fin n) (v : VectorTy α n) : VectorTy α n := fun i => v (σ i)
 
-output lane `i` is **input lane `σ i`** — a genuine cross-lane reindex (when `σ i ≠ i`,
+output lane `i` is **input lane `σ i`** — a cross-lane reindex (when `σ i ≠ i`,
 lane `i` reads a *different* lane). This is the `VPERM*`/`VPSHUFB`-with-an-immediate
 shape: the shuffle **control `σ` is a compile-time constant** (an immediate / a fixed
 control vector baked into the instruction), so the routing is fixed public data flow —
@@ -39,7 +39,7 @@ constant-time and well-defined. It is exactly `MLIR.VectorDialect.VectorTy.shuff
 
 `cross_lane_runOutput_shuffle_eq` is the cross-lane analogue of
 `PackedRunOutputReadback.vec_runOutput_vpaddw_eq`: the emitted `VPERM*` instruction
-applied to the **packed read-back** of the genuine 3-pass dialect chain
+applied to the **packed read-back** of the 3-pass dialect chain
 (`runOutputToVec out`) is, **at every output lane `i`**, the source-dialect program's
 coefficient at the **cross-lane source slot `σ i`** (via
 `RunOutputReadback.runOutputToWords_chain_eq` at slot `σ i`). Where the `vpaddw`
@@ -114,7 +114,7 @@ public, constant-time, well-defined). The model is the existing
 
 /-- **The lane-permutation SIMD op (`VPERM*`/`VPSHUFB`, constant control).** Output
     lane `i` reads input lane `σ i`, for a compile-time-constant `σ : Fin n → Fin n`.
-    A genuine cross-lane reindex (when `σ i ≠ i`, lane `i` reads a *different* lane).
+    A cross-lane reindex (when `σ i ≠ i`, lane `i` reads a *different* lane).
     Definitionally `MLIR.VectorDialect.VectorTy.shuffle σ` — the AVX `vector` dialect
     shuffle the register model already denotes. Constant-time: the control `σ` is fixed
     at compile time (an immediate), so the routing does not depend on (secret) data. -/
@@ -171,7 +171,7 @@ theorem vshuffle_rightInverse {α : Type} {n : Nat} {σ σinv : Fin n → Fin n}
 
 /-! ## 2. The cross-lane splice: dialect chain (packed read-back) ∘ `vshuffle`
 
-The genuine end-to-end **cross-lane** statement. The left factor is the real 3-pass
+The end-to-end **cross-lane** statement. The left factor is the 3-pass
 chain `registryChain_threePass'` read back **as a whole array** via `runOutputToVec`
 (and, per slot, via `RunOutputReadback.runOutputToWords_chain_eq`); the right factor
 is the `vshuffle` lane permutation. They join through the packed read-back, but now
@@ -192,7 +192,7 @@ lane `i` read source slot `i`). -/
         (vshuffle σ (runOutputToVec out)) i
           = runOutputToVec (transTy ((srcCom q n).denote V)) (σ i).
 
-    This is genuine end-to-end **cross-lane** value-preservation: output lane `i`
+    This is end-to-end **cross-lane** value-preservation: output lane `i`
     depends on input lane `σ i` (with `σ i ≠ i` whenever the control routes across
     lanes), realised by the emitted `VPERM*` instruction, equal to the abstract source
     coefficient at the routed slot `σ i`. Its left factor is the full 3-pass
@@ -224,8 +224,7 @@ theorem cross_lane_runOutput_shuffle_eq (q n : Nat)
   -- right factor: the lane permutation reduces output lane `i` to source slot `σ i`
   rw [vshuffle_apply]
   -- both packed read-backs are the per-slot scalar read-back; the chain ties slot `σ i`
-  simp only [runOutputToVec_lane]
-  rw [runOutputToWords_chain_eq q n hLeaf hInj hPinj V (σ i)]
+  exact runOutputToWords_chain_eq q n hLeaf hInj hPinj V (σ i)
 
 /-- **The whole-array form of the cross-lane splice.** Stated as a `funext`-level
     equality of the two packed lane bundles: the emitted `VPERM*`-shuffled run-output

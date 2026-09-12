@@ -45,7 +45,7 @@ public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RegToRiscv
 
 The point of the shared `ScalarLin` waist: a kernel authored once (or flattened
 once from a high-level `Com`) compiles to *every* backend, each with its proved
-denotation keystone — no per-target hand-authoring. This file demonstrates the
+denotation theorem — no per-target hand-authoring. This file demonstrates the
 mechanism end-to-end for a shift-free arithmetic kernel on both AArch64 and
 RISC-V, and shows the `Com`-front feeding the same waist.
 
@@ -101,7 +101,7 @@ def mulCom : Com jasminDialect [.reg 64, .reg 64] (.reg 64) :=
 theorem mulCom_flatten : comToRegProg mulCom 2 = [RegStmt.mul "v2" "v0" "v1"] := by
   rfl
 
-/-- And that flattened program compiles to AArch64 with its denotation keystone —
+/-- And that flattened program compiles to AArch64 with its denotation theorem —
     `Com → RegProg → AArch64`, end to end. -/
 theorem mulCom_arm (s : BState) :
     runBBlock s (lowerBBlock (regToBOp (comToRegProg mulCom 2)))
@@ -243,7 +243,7 @@ theorem com_riscv_e2e_of {Γ : Ctxt jasminDialect} {com : Com jasminDialect Γ (
   rw [regToROp_denote]
   have key : (rvTarget.denote (comToRegProg com Γ.length) s).regs
       = RegProg.denotePure (comToRegProg com Γ.length) s.regs := by
-    rw [← rvTarget.compile_denote]
+    rw [← rvTarget.compile_denote (comToRegProg com Γ.length) s]
     exact ScalarTarget.compile_denote_pure_on rvTarget (fun s => s.regs) RvFaithfulStmt
       hstep_riscv (comToRegProg com Γ.length) hf s
   rw [congrFun key, hs]

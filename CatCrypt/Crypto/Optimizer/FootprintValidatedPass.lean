@@ -175,7 +175,7 @@ theorem agreeExcept_evalInstr {D : List (String × Int)} (i : JInstr 64)
     · intro b o hbo; simpa [evalInstr, JState.writeB5W] using hm b o hbo
   | setc dst =>
     refine ⟨?_, rfl, ?_⟩
-    · simp [evalInstr, JState.setReg, JState.flagB]
+    · simp [evalInstr, JState.setReg, JState.flagB]; rfl
     · intro b o hbo; simpa [evalInstr, JState.setReg] using hm b o hbo
   | cmove dst src | cmovne dst src | cmovb dst src =>
     refine ⟨?_, rfl, ?_⟩
@@ -219,9 +219,9 @@ theorem agreeExcept_evalInstr {D : List (String × Int)} (i : JInstr 64)
     refine ⟨rfl, rfl, ?_⟩
     intro b o hbo
     simp only [evalInstr, JState.storeIdx, JState.store, JOperand.eval, JState.get, x86_MOV]
-    split
-    · rfl
-    · exact hm b o hbo
+    by_cases hc : b = base ∧ o = (scale : Int) * ((sr idx).toNat : Int)
+    · simp only [hc, and_self, if_true]
+    · simp only [hc, if_false]; exact hm b o hbo
   | loadSym dst sym =>
     have hb : ∀ o : Int, (sym, o) ∉ D := fun o =>
       pair_notin_of_base_notin o (hi sym (by simp [memReadBases]))

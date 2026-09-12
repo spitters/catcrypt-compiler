@@ -190,7 +190,7 @@ theorem simTie_memLoad (m : MemLoadSrc) (n : Nat)
   have hidx_pres : (runBlock st [lowerMemLoad idRho m]).regs m.idx = st.regs m.idx := by
     rw [runBlock_lowerMemLoad]
     simp only [idRho, id_eq, JState.setReg]
-    rw [if_neg hdst_ne_idx.symm]
+    exact if_neg hdst_ne_idx.symm
   rw [hidx_pres]
   exact hrange
 

@@ -161,7 +161,7 @@ theorem agreeOnLive_step {w : Nat} (L0 : List Nat) (ρ : Nat → Nat)
       mem_liveIn_of_mem_tail L0 b rest t ht htd
     have hbase := hagree t htlive
     simp only [stepBinop, KBinop.alloc, opStep, movStep, setReg]
-    rw [if_neg hrt, if_neg htd, if_neg hrt, if_neg htd]
+    simp only [hrt, htd, ↓reduceIte]
     exact hbase
 
 /-! ## 4. The general whole-body theorem (no injectivity) -/

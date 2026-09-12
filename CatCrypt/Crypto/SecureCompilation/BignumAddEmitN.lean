@@ -100,10 +100,15 @@ theorem adcxFold_reconstruct (u : List (BitVec 64)) :
           + (2 ^ 64) ^ u.length * (if (adcxFold u v c).2 then 1 else 0)
         = valLimbs u + valLimbs (v.take u.length) + (if c then 1 else 0) := by
   induction u with
-  | nil => intro v c; simp [adcxFold]
+  | nil => intro v c; simp [adcxFold]; rfl
   | cons u₀ us ih =>
       intro v c
-      simp only [adcxFold, List.length_cons]
+      have h1 : (adcxFold (u₀ :: us) v c).1
+          = (waddcarry u₀ (v.headD 0) c).2
+              :: (adcxFold us v.tail (waddcarry u₀ (v.headD 0) c).1).1 := rfl
+      have h2 : (adcxFold (u₀ :: us) v c).2
+          = (adcxFold us v.tail (waddcarry u₀ (v.headD 0) c).1).2 := rfl
+      rw [h1, h2, List.length_cons]
       set v₀ := v.headD 0 with hv₀
       set cout := (waddcarry u₀ v₀ c).1 with hcout
       have hword := waddcarry_decompose u₀ v₀ c

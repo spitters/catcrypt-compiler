@@ -73,12 +73,13 @@ theorem initFState_resolves (w nIn : Nat) :
 theorem StateResolves.push {w nIn : Nat} {locals : List String}
     {st : FState w nIn locals} {S : List String} (h : StateResolves st S)
     (x : String) : StateResolves (st.push x) (x :: S) := by
-  refine ⟨fun i hi => by simpa [FState.push] using h.1 i hi, fun y hy => ?_⟩
+  refine ⟨fun i hi => Option.isSome_map.trans (h.1 i hi), fun y hy => ?_⟩
   by_cases hyx : y = x
-  · simp [FState.push, hyx]
+  · simp [FState.push, hyx]; rfl
   · rcases List.mem_cons.mp hy with rfl | hy
     · exact absurd rfl hyx
-    · simpa [FState.push, hyx] using h.2 y hy
+    · simp only [FState.push, if_neg hyx]
+      exact Option.isSome_map.trans (h.2 y hy)
 
 /-- Resolving a larger name list resolves a smaller one. -/
 theorem StateResolves.mono {w nIn : Nat} {locals : List String}

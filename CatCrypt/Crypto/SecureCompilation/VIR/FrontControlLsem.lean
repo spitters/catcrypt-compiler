@@ -38,7 +38,7 @@ The front is `LowCT` over `RustState`, with big-step semantics `RustExec`:
 * `RWhileNz x body` — runs `body` while the public scalar `x ≠ 0`
   (`RustExec.whileFalse`/`whileTrue`). CT requires `lt x = .Public`
   (`cmdCT_RWhileNz`) — a secret loop guard leaks the iteration count and is
-  genuinely not CT.
+  not CT.
 * `RIfNz x ct cf` — branches on the scalar `x`: nonzero ⇒ `ct`, zero ⇒ `cf`
   (`RustExec.ifTrue`/`ifFalse`). CT requires `lt x = .Public` (`cmdCT_RIfNz`) — a
   secret-dependent branch is the canonical CT leak.
@@ -71,7 +71,7 @@ The front is `LowCT` over `RustState`, with big-step semantics `RustExec`:
   static trip count (`#460` vartime policy). Note: a secret trip count is not
   CT.
 * Branch: `lt cond = .Public` — `RIfNz`'s scrutinee must be public-classified
-  (`cmdCT_RIfNz`). Note: a secret-dependent branch is genuinely not CT, and
+  (`cmdCT_RIfNz`). A secret-dependent branch is not CT, and
   the `Lcond`'s `branch` leak would then depend on a secret.
 
 **0 sorries; axioms ⊆ {propext, Classical.choice, Quot.sound}; no
@@ -252,7 +252,7 @@ theorem front_loop_lsem_correct {N : Nat} {leafSpec : LeafSpec}
 
 /-! ### Loop CT (robust): the front loop's emitted leak is state-independent
 
-4c's `loopLR_lsemLeak_state_independent` is the loop's constant-time verdict: the
+4c's `loopLR_lsemLeak_state_independent` is the loop's constant-time statement: the
 back-edge `Lcond` tests only the public counter `"NZ"` (its leak is a constant
 `branch`), and the body leaks only syntax — so the whole `loopLR` leak is the same
 from any two states. The front `RFor`'s public counter (`cmdCT (.RFor …)` adds no
@@ -396,7 +396,7 @@ theorem ifEntry_taken (fn : String) {w : Nat} (cond : String) (lThen lEnd : LLab
           { base := { d with lpc := cf.length + 3 }, lfn := fn } := by
   rw [lsemFuel, findInstr_ifEntry fn cond lThen lEnd cf ct d]
   simp only [evalInstrP, evalOperand]
-  rw [if_pos (by simpa using hne)]
+  simp only [ne_eq, hne, not_false_eq_true, ↓reduceIte]
   have hbody := ifProg_body_li fn cond lThen lEnd cf ct
   simp only [evalJump, ifProg, getFundef_singleton, Option.map_some,
     Option.some.injEq] at hbody ⊢
@@ -416,7 +416,7 @@ theorem ifEntry_fallthrough (fn : String) {w : Nat} (cond : String) (lThen lEnd 
           { base := { d with lpc := 1 }, lfn := fn } := by
   rw [lsemFuel, findInstr_ifEntry fn cond lThen lEnd cf ct d]
   simp only [evalInstrP, evalOperand]
-  rw [if_neg (by simp [hz])]
+  simp only [ne_eq, hz, not_true_eq_false, ↓reduceIte]
   -- fall through: `s.nextPc` bumps pc 0 → 1.
   simp only [LstateP.nextPc, Lstate.nextPc]
 
@@ -426,7 +426,7 @@ The branch's leading control-flow instruction is the `Lcond (.reg cond) lThen`,
 whose leak (`linstrLeak`) is the constant `[LLeak.branch]` — it reads the
 instruction *syntax*, never `s.lvm`. So the **branch-decision leak is
 state-independent**: the conditional jump leaks nothing about the scrutinee value
-beyond the (public) fact that a branch occurs. This is the genuine CT content of a
+beyond the (public) fact that a branch occurs. This is the CT content of a
 branch and is constant-time **precisely when the scrutinee is public**
 (`cmdCT_RIfNz`'s `lt cond = .Public`): the public-vs-secret classification of
 `cond` is what makes "a branch happened here" a public, rather than secret,

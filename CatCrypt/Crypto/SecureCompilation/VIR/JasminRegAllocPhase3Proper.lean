@@ -161,10 +161,10 @@ theorem runLowered_eq_stepBinop {w : Nat} (st : RegStore w) (lb : LoweredBinop)
       · subst htd
         -- both compute op.apply (st src0) (st src1) at dst
         simp only [runLowered, stepBinop, LoweredBinop.toKBinop, opStep, movStep,
-          setReg, if_true, if_neg (Ne.symm hscd : ¬ b.dst = sc),
-          if_neg (Ne.symm hncb : ¬ b.src1 = b.dst)]
+          setReg, if_true, Ne.symm hscd, ↓reduceIte,
+          Ne.symm hncb]
       · simp only [runLowered, stepBinop, LoweredBinop.toKBinop, opStep, movStep,
-          setReg, if_neg htd, if_neg ht]
+          setReg, htd, ht, ↓reduceIte]
   | dstReload b sc =>
       obtain ⟨hscd, hsc1, hncb⟩ := hsc
       simp only [LoweredBinop.scratch, List.mem_singleton] at ht
@@ -172,10 +172,10 @@ theorem runLowered_eq_stepBinop {w : Nat} (st : RegStore w) (lb : LoweredBinop)
       · subst htd
         simp only [runLowered, LoweredBinop.toKBinop]
         rw [reloadDst_denote b.op st b.dst b.src0 b.src1 sc hsc1]
-        simp only [stepBinop, opStep, movStep, setReg, if_true,
-          if_neg (Ne.symm hncb : ¬ b.src1 = b.dst)]
+        simp only [stepBinop, opStep, movStep, setReg, if_true, ↓reduceIte,
+          Ne.symm hncb]
       · simp only [runLowered, stepBinop, LoweredBinop.toKBinop, opStep, movStep,
-          setReg, if_neg htd, if_neg ht]
+          setReg, htd, ht, ↓reduceIte]
   | bothReload b sc sc2 =>
       obtain ⟨hscd, hsc1, hsc12, hsc2d, hncb⟩ := hsc
       simp only [LoweredBinop.scratch, List.mem_cons,
@@ -185,10 +185,10 @@ theorem runLowered_eq_stepBinop {w : Nat} (st : RegStore w) (lb : LoweredBinop)
       · subst htd
         simp only [runLowered, LoweredBinop.toKBinop]
         rw [reloadBoth_denote b.op st b.dst b.src0 b.src1 sc sc2 hsc1 hsc12]
-        simp only [stepBinop, opStep, movStep, setReg, if_true,
-          if_neg (Ne.symm hncb : ¬ b.src1 = b.dst)]
+        simp only [stepBinop, opStep, movStep, setReg, if_true, ↓reduceIte,
+          Ne.symm hncb]
       · simp only [runLowered, stepBinop, LoweredBinop.toKBinop, opStep, movStep,
-          setReg, if_neg htd, if_neg htsc, if_neg htsc2]
+          setReg, htd, htsc, htsc2, ↓reduceIte]
 
 /-! ## 3. Lifting to a whole lowered body
 
@@ -222,7 +222,7 @@ def bodyScratchWF (lbs : List LoweredBinop) : Prop := ∀ lb ∈ lbs, lb.scratch
 
 /-! ### The reloads are observationally invisible on scratch-free slots
 
-The keystone: running the spilled/legalized **lowered body** `lbs` is, on every
+Running the spilled/legalized **lowered body** `lbs` is, on every
 slot disjoint from all reload scratches, *the same store* as running the plain
 two-address `loweredKernel lbs`. The reload/spill moves only shuttle values
 through the reserved scratches; they never perturb a logical slot's value. So the
@@ -466,7 +466,7 @@ through a `dstReload`, one through a `bothReload` — using reserved scratch slo
 `100,101` (disjoint from the physical homes `0..6`). The reserved-scratch set is
 `S t := 100 ≤ t`. We then show the Phase-3-proper capstone
 `runLoweredBody_checked` lands every MDS output through `mds4Rho` equal to the
-naive run, on the genuinely spilled body. -/
+naive run, on the spilled body. -/
 
 /-- The reserved scratch set for the demo: slots `≥ 100`, disjoint from the MDS
     physical homes `0..6` and outputs. -/
@@ -536,7 +536,7 @@ compiled exe:
 
 A *checker-accepted coalescing* ρ for the full body — one that collapses the
 ≈107 000 SSA names onto few classes yet the array `interferenceOkB` accepts — is
-the genuine open coalescing-allocator deliverable. What it needs (read off the
+the open coalescing-allocator deliverable. What it needs (read off the
 slice's accepting ρ and the rejected residence ρ): the residence map
 `proposedRho (slotTraceArr ())` is rejected because the `emitApplyMat4` / `emitColSums`
 staging parks values in `tmp2,tmp4,acc0,acc1,prod0,prod1` (slots `19..24`) that

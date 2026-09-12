@@ -21,7 +21,7 @@ subtract-with-borrow flag leaf `corresJ_sbb`, and the multi-limb value relation
 `SRcarryLimbs` with its recomposition bridge `srcarryLimbs_recompose`.
 
 This module assembles those pieces into a **multi-limb field-subtract capstone**.
-It supplies the missing arithmetic backbone the EC field-sub kernels need:
+It supplies the limb arithmetic the EC field-sub kernels need:
 
 * `sbbLimbs`, the little-endian limbwise subtract-with-borrow, and its clean
   integer specification `sbbLimbs_spec` — the recomposed output value minus the
@@ -110,7 +110,7 @@ theorem sbbLimbs_spec : ∀ (xs ys : List (BitVec 64)) (b : Bool), xs.length = y
   | nil =>
     intro ys b h
     cases ys with
-    | nil => simp [sbbLimbs, limbVal]
+    | nil => cases b <;> rfl
     | cons y ys' => simp at h
   | cons x xs' ih =>
     intro ys b h

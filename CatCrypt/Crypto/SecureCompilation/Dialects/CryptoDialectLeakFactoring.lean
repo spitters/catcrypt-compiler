@@ -205,6 +205,7 @@ theorem ComCont.castCtx_leakFactors {Γ Δ Δ' : Ctx} (h : Δ = Δ')
     ComCont.LeakFactors (ComCont.castCtx h f) k := by
   subst h; exact hf
 
+set_option backward.isDefEq.respectTransparency.types false in
 /-- **The `RArrLoad` prefix leak-factors at 1.** Both `arrLoadCont` branches —
     the real `memrefGetDyn` `varBind` and the opaque `extCall "arrLoadDyn"`
     `varBind` — prepend exactly one leak event. -/
@@ -671,6 +672,7 @@ theorem ComCont.castCtx_leakFactorsTrace {Γ Δ Δ' : Ctx} (h : Δ = Δ')
     ComCont.LeakFactorsTrace (ComCont.castCtx h f) pre := by
   subst h; exact hf
 
+set_option backward.isDefEq.respectTransparency.types false in
 /-- **The `RArrLoad` prefix has a fixed leak-event trace.** -/
 theorem arrLoadCont_leakFactorsTrace {Γ : Ctx} (dty : TowerType)
     (resolvedArgs : List ((t : CryptoTy) × CVar Γ t)) (idxSig : (t : CryptoTy) × CVar Γ t)

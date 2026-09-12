@@ -325,17 +325,17 @@ amounts. -/
 /-- The load prefix is in the direct-addressing class: each word is read at the
     literal displacement `stride w * i` off `inp`. -/
 theorem loadInputs_allDirect (w : Nat) : allDirect (loadInputs w) = true := by
-  simp [allDirect, loadInputs, IsDirect]
+  simp [allDirect, loadInputs]; simp [IsDirect]
 
 /-- The synthesized rotate is register ALU only. -/
 theorem rorSynth_allDirect (w : Nat) (dst tmp : String) (n : Nat) :
     allDirect (rorSynth w dst tmp n) = true := by
-  simp [allDirect, rorSynth, IsDirect]
+  simp [allDirect, rorSynth]; simp [IsDirect]
 
 /-- One `G` mixing is register ALU only. -/
 theorem emitG_allDirect (w a b c d mx my r1 r2 r3 r4 : Nat) :
     allDirect (emitG w a b c d mx my r1 r2 r3 r4) = true := by
-  simp [allDirect, emitG, rorSynth, IsDirect]
+  simp [allDirect, emitG, rorSynth]; simp [IsDirect]
 
 /-- One round — eight `G` mixings — is register ALU only. -/
 theorem emitRound_allDirect (w r r1 r2 r3 r4 : Nat) :
@@ -356,11 +356,11 @@ theorem allRounds_allDirect (w nr r1 r2 r3 r4 : Nat) :
 
 /-- The feed-forward is register `xor` only. -/
 theorem feedForward_allDirect (w : Nat) : allDirect (feedForward w) = true := by
-  simp [allDirect, feedForward, IsDirect]
+  simp [allDirect, feedForward]; simp [IsDirect]
 
 /-- The store suffix writes at literal displacements off `out`. -/
 theorem storeOutputs_allDirect (w : Nat) : allDirect (storeOutputs w) = true := by
-  simp [allDirect, storeOutputs, IsDirect]
+  simp [allDirect, storeOutputs]; simp [IsDirect]
 
 /-- The full compression body is in the direct-addressing class at every width,
     round count, and rotation schedule. -/

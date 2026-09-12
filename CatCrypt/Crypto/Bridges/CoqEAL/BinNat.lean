@@ -1,0 +1,73 @@
+/-
+Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
+Released under MIT license as described in the file LICENSE.
+Authors: CatCrypt Contributors
+-/
+module
+
+import all Init.Data.Repr
+public import Mathlib.Algebra.Group.Defs
+public import Mathlib.Tactic.Ring
+
+/-!
+# CoqEAL `binnat`, ported to Lean — `List Bool` refines the natural numbers
+
+CoqEAL's `binnat` refines MathComp `nat` to a binary representation `N`. Here we
+port the **data-refinement core** of that example: a little-endian (lsb-first)
+bit list `List Bool` refines the abstract `ℕ` via `toNat`, and the concrete
+binary increment `binSucc` refines the abstract `Nat.succ` — the CoqEAL
+`Rsucc_N` (carry-ripple) refinement square.
+
+This mirrors the companion `SeqPoly.lean` (`seqpoly` add) and `SeqMatrix.lean`
+(`seqmatrix` add): the refinement *mechanism* — a relation between an abstract
+and a concrete representation, plus transfer of operations — is the same
+`ReprTransfer` layer, and this file is one worked instance over the `binnat`
+representation. The carry ripple of `binSucc` (flip trailing `true`s to `false`,
+then set the first `false`/append) is exactly the structural recursion whose
+refinement square `toNat_binSucc` discharges.
+
+## Scope (the rest of CoqEAL)
+
+CoqEAL is a whole library. Its first-order data refinements — `binnat` succ
+(here), `binint`, `binrat`, `seqpoly` add (`SeqPoly.lean`), `seqmatrix` add
+(`SeqMatrix.lean`) — port via this same pattern. Its **algorithms** — Karatsuba
+/ Toom-Cook multiplication, Strassen matrix multiply, GCD, normal forms — are
+multi-month developments and are NOT ported here. Binary *addition* and
+*multiplication* are `foldl`-shaped refinements reachable via the same scheme;
+the fast algorithms (Karatsuba) are the genuine library tail.
+-/
+
+@[expose] public section
+
+set_option autoImplicit false
+
+namespace CatCrypt.Crypto.Bridges.CoqEAL.BinNat
+
+/-- The CoqEAL `binnat` refinement relation: a little-endian (lsb-first) bit list
+    denotes the natural number it encodes (`true`/`false` are bits `1`/`0`). -/
+def toNat : List Bool → ℕ :=
+  fun l => l.foldr (fun b acc => acc * 2 + (if b then 1 else 0)) 0
+
+/-- The concrete (computational) binary increment, with explicit carry ripple:
+    `[]` becomes `[1]`; a low `0` becomes `1`; a low `1` becomes `0` and the
+    carry propagates into the higher bits. -/
+def binSucc : List Bool → List Bool
+  | [] => [true]
+  | false :: l => true :: l
+  | true :: l => false :: binSucc l
+
+/-- **The CoqEAL `Rsucc_N` refinement square.** The concrete binary increment
+    refines the abstract `Nat.succ`: `toNat (binSucc l) = toNat l + 1`. -/
+theorem toNat_binSucc (l : List Bool) : toNat (binSucc l) = toNat l + 1 := by
+  induction l with
+  | nil => simp [toNat, binSucc]
+  | cons b l ih =>
+    cases b with
+    | false => simp [toNat, binSucc]
+    | true =>
+      simp only [binSucc, toNat, List.foldr_cons, if_true, if_false,
+        Bool.false_eq_true] at ih ⊢
+      rw [ih]
+      ring
+
+end CatCrypt.Crypto.Bridges.CoqEAL.BinNat

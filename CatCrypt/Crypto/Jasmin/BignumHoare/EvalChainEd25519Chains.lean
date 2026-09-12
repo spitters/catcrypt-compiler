@@ -52,7 +52,7 @@ Inherits the chain-step soundness axioms from
 `LowCTReflectiveEval.lean`.  Each new chain adds **one new
 soundness axiom** (per-chain final exponent claim) — discharged
 identically to `invChain_eval_sound` and `powP58Chain_eval_sound`
-once `mvcgen'` lands.
+with `mvcgen`.
 -/
 
 @[expose] public section

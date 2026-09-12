@@ -13,8 +13,8 @@ public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering64
 
 The RV64 instance of the shared `ScalarLin` waist — the SAME source IR the
 AArch64 backend consumes, with its own instruction selection `RegStmt → ROp64`.
-The whole-program keystone (`regToROp_denote`) comes from the generic
-`ScalarTarget.compile_denote`, exactly as for AArch64: *one keystone, instantiated
+The whole-program theorem (`regToROp_denote`) comes from the generic
+`ScalarTarget.compile_denote`, exactly as for AArch64: *one theorem, instantiated
 per ISA*, not copy-pasted.
 
 ## Selectable subset
@@ -83,6 +83,7 @@ theorem regStmtToROp_denote (s : RState64) (stmt : RegStmt) :
   cases stmt <;> rfl
 
 /-- The RV64 backend as a `ScalarTarget`. -/
+@[implicit_reducible]
 def rvTarget : ScalarTarget where
   Op := ROp64
   St := RState64
@@ -96,7 +97,7 @@ def rvTarget : ScalarTarget where
 /-- Compile a program to an `ROp64` block. -/
 def regToROp (p : RegProg) : List ROp64 := rvTarget.compile p
 
-/-- **RV64 keystone** (the RV64 instance of `ScalarTarget.compile_denote`). -/
+/-- **RV64 whole-program denotation** (the RV64 instance of `ScalarTarget.compile_denote`). -/
 theorem regToROp_denote (p : RegProg) (s : RState64) :
     runRBlock64 s (lowerRBlock64 (regToROp p)) = rvTarget.denote p s := by
   rw [riscvBlock64_lowering_denote]

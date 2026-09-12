@@ -251,7 +251,7 @@ theorem tripCount_counterGuard {w : Nat} (k : String) (N : Nat)
         rw [ih (runBlock s body) hle' hfuel']
         omega
       · -- guard fails: counter has reached N, trip count is 0
-        rw [if_neg (by simpa using hlt)]
+        rw [if_neg (fun h => hlt (of_decide_eq_true h))]
         omega
 
 /-! ## 2c. Structural FINAL counter of a counter-increment loop (body-opaque)
@@ -313,7 +313,7 @@ theorem runGuardedLoop_counterGuard_get {w : Nat} (k : String) (N : Nat)
             Nat.mod_eq_of_lt (by omega : (s.get k).toNat + 1 < 2 ^ w)]
         exact ih (runBlock s body) (by omega) (by omega)
       · -- guard fails: counter has reached N
-        rw [if_neg (by simpa using hlt)]
+        rw [if_neg (fun h => hlt (of_decide_eq_true h))]
         have heq : (s.get k).toNat = N := by omega
         rw [← BitVec.toNat_inj, heq, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hN]
 

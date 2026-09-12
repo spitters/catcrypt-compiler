@@ -78,7 +78,7 @@ theorem x86ADC_cf (v1 v2 : BitVec 64) (c : Bool) :
   have h1 : v1.toNat < 2 ^ 64 := v1.isLt
   have h2 : v2.toNat < 2 ^ 64 := v2.isLt
   simp only [x86_ADC, rflags_of_aluop, add_carry, waddcarry, wunsigned, Option.getD_some]
-  rw [decide_eq_decide]
+  refine decide_eq_decide.mpr ?_
   simp only [BitVec.toNat_ofNat]
   cases c <;> simp
 

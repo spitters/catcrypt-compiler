@@ -137,6 +137,7 @@ def entropyOf {n : Nat} (b : BitVec n) : Entropy where
 @[simp] theorem sampleDet_entropyOf {n : Nat} (b : BitVec n) :
     sampleDet (entropyOf b) (.bv n) = b := by
   simp
+  rfl
 
 /-- The length-`n` deterministic read `fun η => η.readBv n` is **surjective**:
     every `n`-bit word arises as the read of some entropy source.  Together with
@@ -184,7 +185,7 @@ theorem sample_apply_value (n : Nat) (h : Heap) (b : BitVec n) :
     (SPComp.sample (BitVec n) h) (some (b, h)) = ((2 ^ n : ℕ) : ℝ≥0∞)⁻¹ := by
   rw [sample_apply_card_inv, card_bitvec]
 
-/-- The uniform fibre weight is **nonzero** — every outcome is genuinely in the
+/-- The uniform fibre weight is **nonzero** — every outcome is in the
     support.  (`(2 ^ n)⁻¹ ≠ 0` since `2 ^ n` is a positive `Nat`, not `⊤`.) -/
 theorem sample_apply_ne_zero (n : Nat) (h : Heap) (b : BitVec n) :
     (SPComp.sample (BitVec n) h) (some (b, h)) ≠ 0 := by

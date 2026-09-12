@@ -37,8 +37,8 @@ high-pressure window) — and discharge the Phase-1 triple:
    structural induction over the binop list using the per-binop
    `twoAddr_denote` (`JasminLprogExport`:2170). Its side-condition
    `dst ≠ src1` is discharged at each binop by the interference obligation
-   (`ρ`-distinctness of the def and its still-live second source) — the
-   keystone bridge from the Phase-0 plan.
+   (`ρ`-distinctness of the def and its still-live second source), the
+   bridge from the Phase-0 interference check.
 
 3. **(c) Emit + KAT.** The allocated kernel is the artifact whose byte-identical
    value-equality vs the naive-SSA version is checked by an externalized C/GMP
@@ -240,7 +240,7 @@ theorem runKernel_allocKernel {w : Nat} (ρ : Nat → Nat)
           have hrt : ρ t ≠ ρ b.dst := fun h => htd (hinj h)
           simp only [stepBinop, KBinop.alloc, opStep, movStep, setReg]
           -- allocated write target is ρ b.dst; original write target is b.dst
-          rw [if_neg hrt, if_neg htd, if_neg hrt, if_neg htd]
+          simp only [hrt, htd, ↓reduceIte]
           exact hstart t
       simp only [allocKernel, List.map_cons, runKernel_cons]
       exact ih hncrest (stepBinop st' (KBinop.alloc ρ b)) (stepBinop st b) hstep s
@@ -367,7 +367,7 @@ is the whole point: a globally injective `ρ` can never reduce the slot count
 (11 distinct inputs → 11 distinct images), so the win *requires*
 non-injectivity, and its correctness *requires* the interference certificate.
 
-We prove the whole-body equality for the genuinely collapsing `mds4Rho` by a
+We prove the whole-body equality for the collapsing `mds4Rho` by a
 **live-set agreement invariant**: the allocated store and the naive store agree
 through `ρ` on the set of slots **live-in** to the remaining kernel. The step
 preserves this because (i) the def value matches (`stepBinop_alloc_agree`, whose

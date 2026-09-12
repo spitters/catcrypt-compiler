@@ -71,8 +71,8 @@ theorem mul1_forLoopNRt_denote_eq_fold (V : Ctxt.Valuation Gouter) :
           (mul1Count.lookup V).toNat (mul1Init.lookup V) := by
   have hd := mul1RtProg_denote (update := mul1Update) mul1Update_eq V
   have hf := mul1RtProg_fold V
-  rw [comL_forLoopNRt_ret_denote_acc]
-  exact Option.some.inj (hd.symm.trans hf)
+  exact (comL_forLoopNRt_ret_denote_acc mul1Update mul1Count mul1Init mul1Invs V).trans
+    (Option.some.inj (hd.symm.trans hf))
 
 /-- **The machine execution computes the product.** Given the array-accumulator
     backend-faithfulness conclusion at `mul1Update` — the emitted machine loop

@@ -211,8 +211,7 @@ theorem andnWalk_fires {Γ : Ctxt jasminDialect} {s : JasminTy} (w : Nat)
       = some { w := w, a := a, b := b, deepBody := body, horig := rfl } := by
     show (if _ : w = w ∧ w = w ∧ w = w ∧ w = w ∧ w = w ∧ (2 ^ w - 1) = 2 ^ w - 1
           then _ else _) = _
-    rw [dif_pos ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩]
-    simp only [AndnSelect.varBeq_self, Bool.and_self]; rfl
+    simp only [and_self, ↓reduceDIte, AndnSelect.varBeq_self, Bool.and_self]; rfl
   rw [show mkAndnotSubtree w a b body
         = Com.var (Expr.mk (JasminOp.regConst w (2 ^ w - 1)) rfl .nil)
             (.var (Expr.mk (JasminOp.regArith .xor w) rfl
@@ -227,10 +226,10 @@ theorem andnWalk_fires {Γ : Ctxt jasminDialect} {s : JasminTy} (w : Nat)
 This is the deliverable the conditioned `AndnSelect.andnSelect_denote` (carrying the
 `hbody : andnSelect body = body` per-pass body fixed point) could not reach.
 Structural induction via the **generated** `andnWalk.induct` (the refactor's payoff)
-pushes the preservation through the descent; the fire case is closed by the landed
-value keystone `mkAndnOp_denote` (UNCONDITIONAL — no in-range guard) plus
+pushes the preservation through the descent; the fire case is closed by the
+value lemma `mkAndnOp_denote` (UNCONDITIONAL — no in-range guard) plus
 body-congruence; the descend case by `Com.denote`'s own structure. No fixed-point
-hypothesis, no side condition, no `sorry`. -/
+hypothesis and no side condition. -/
 
 /-- **Body-congruence for `mkAndnotSubtree`.** Its denotation depends on its body only
     through the body's denotation on the three-extended valuation, so bodies that
@@ -246,11 +245,11 @@ theorem mkAndnotSubtree_body_congr {Γ : Ctxt jasminDialect} {s : JasminTy} (w :
     `V`, the refactored ANDN pass `andnWalk` preserves the denotation:
     `(andnWalk c).denote V = c.denote V`. No fixed-point-body hypothesis, no side
     condition (the recognizer is operand-sound via `AndnSite.horig`; the ANDN collapse
-    is unconditional), no `sorry`.
+    is unconditional).
 
     Proof: structural induction via the generated `andnWalk.induct`. The fire case
     rewrites `c = mkAndnotSubtree …` (the recognizer certificate `site.horig`),
-    collapses the native `mkAndnOp` to the emulation by the landed value keystone
+    collapses the native `mkAndnOp` to the emulation by the value lemma
     `mkAndnOp_denote`, and discharges the walked body by the IH through
     `mkAndnotSubtree_body_congr`. The descend case threads `Com.denote` through
     `body`'s IH. -/

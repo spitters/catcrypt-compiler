@@ -258,10 +258,10 @@ theorem emitRound_initEnv_via_faithful (sp : Sha2Spec) (rt : Nat)
 
 /-- **SHA-256 unconditional-on-`initEnv` bridge**: given a faithful runtime
     valuation, the emitted `emitRound` for `sha256Spec` denotes to the FIPS
-    180-4 round (via the closed-form intermediate). The only remaining
-    hypothesis is the substrate composition `EmitRoundDenotesClosedFormFaithful`
-    — `bench/sha2_compare/`'s KAT is no longer needed for the shift-amount or
-    mask side. -/
+    180-4 round (via the closed-form intermediate). The only
+    hypothesis is the substrate composition `EmitRoundDenotesClosedFormFaithful`;
+    the shift-amount and mask sides are discharged without the
+    `bench/sha2_compare/` KAT. -/
 theorem emitRound_initEnv_eq_fips_sha256 (rt : Nat)
     (V : Ctxt.Valuation (inCtxt sha256Spec.w))
     (msg chain Kc : Nat → BitVec sha256Spec.w)
@@ -278,7 +278,7 @@ theorem emitRound_initEnv_eq_fips_sha256 (rt : Nat)
   obtain ⟨Γ', envF, VF, hDen, hSt⟩ :=
     emitRound_initEnv_via_faithful sha256Spec rt V (faithful_sha256 V msg chain Kc hV) hProp k
   refine ⟨Γ', envF, VF, hDen, ?_⟩
-  rw [hSt, closed_form_eq_fips_sha256]
+  exact hSt.trans (closed_form_eq_fips_sha256 _ _ _)
 
 /-- **SHA-512 unconditional-on-`initEnv` bridge**: same as SHA-256, at width 64. -/
 theorem emitRound_initEnv_eq_fips_sha512 (rt : Nat)
@@ -297,7 +297,7 @@ theorem emitRound_initEnv_eq_fips_sha512 (rt : Nat)
   obtain ⟨Γ', envF, VF, hDen, hSt⟩ :=
     emitRound_initEnv_via_faithful sha512Spec rt V (faithful_sha512 V msg chain Kc hV) hProp k
   refine ⟨Γ', envF, VF, hDen, ?_⟩
-  rw [hSt, closed_form_eq_fips_sha512]
+  exact hSt.trans (closed_form_eq_fips_sha512 _ _ _)
 
 /-! ## 5. Scope note: what #124 delivers, and what stays residual
 

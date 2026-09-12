@@ -26,7 +26,7 @@ codecs and the base-256 single-element codec).
 
 We exhibit, for each primitive:
 
-* a genuine byte codec `encode`/`decode` over a `.TBytes n` carrier
+* a byte codec `encode`/`decode` over a `.TBytes n` carrier
   (`RustVal (.TBytes n) = JArray n = Fin n → BitVec 8`), big enough to be a
   faithful injection (16 bytes = 128 bits for GF128, 64 bytes = 512 bits for the
   16-lane ChaCha state, a fixed byte width for the Poly1305 accumulator), and
@@ -39,7 +39,7 @@ We exhibit, for each primitive:
   `poly1305_realizes_concrete` (unary, the `acc ↦ processBlock r acc block` step) —
   **no** KAT hypothesis and **no** abstract `decode ∘ encode = id` assumption.
 
-## HONEST scope — what this proves and what it does NOT
+## Scope — what this proves and what it does NOT
 
 * **Proved (unconditional Lean theorem):** there are *concrete*, round-trip
   -verified byte codecs and *concrete*, spec-computing realizer `LeafSpec`s under
@@ -346,6 +346,7 @@ theorem poly1305_realizes_concrete (width : ℕ) [NeZero width]
         (.TBytes width) [.TBytes width] oldDest [⟨.TBytes width, xVal⟩])
     = processBlock r (decodePbytes width xVal) block
   simp only [specCallSpecT, ite_true, dite_true]
-  rw [decodePbytes_encodePbytes width _ (hrange _)]
+  exact (congrArg (decodePbytes width) (dif_pos rfl)).trans
+    (decodePbytes_encodePbytes width _ (hrange _))
 
 end CatCrypt.Crypto.SecureCompilation.ConcreteSymmetric2Realizer

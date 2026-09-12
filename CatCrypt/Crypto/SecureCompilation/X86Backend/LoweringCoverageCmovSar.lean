@@ -379,7 +379,7 @@ theorem lowerCmovJ_denote (s : JState 64) (dst cn tn fn : String)
   -- register and sets `ZF` from `cn`; the `cmovne` then selects.
   rw [cmovne_get_dst, test_self_zf, test_self_get, test_self_get,
     mov_get_other s dst fn cn hc, mov_get_other s dst fn tn ht, mov_get_dst]
-  by_cases h : s.get cn = 0#64 <;> simp [x86_CMOVcc]
+  by_cases h : s.get cn = 0#64 <;> simp_all [x86_CMOVcc, JState.get]
 
 /-! ## 9. Worked shapes
 

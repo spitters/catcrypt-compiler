@@ -222,7 +222,7 @@ theorem resolveVar_there {curDepth nArgs : Nat} {Γ : Ctxt jasminDialect}
       resolveVar curDepth nArgs argName (fun _ => none) v := by
   simp only [resolveVar, varIndex]
   have : curDepth + 1 - 1 - (varIndex v + 1) = curDepth - 1 - varIndex v := by omega
-  rw [this]
+  simp only [this]
 
 /-- Writing the fresh register `regName curDepth` does not change how an earlier
     variable (resolved slot `< curDepth`) reads from the store: the destination
@@ -267,7 +267,7 @@ theorem StoreAgrees.step {w nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
       -- `.here` resolves to slot `curDepth`, name `regName curDepth`; reads `val`.
       simp only [resolveVar, varIndex, evalOperand_nextPc]
       have hslot : curDepth + 1 - 1 - 0 = curDepth := by omega
-      rw [hslot]
+      simp only [hslot]
       have hsa : ¬ curDepth < nArgs := by omega
       simp only [hsa, if_false, evalOperand, Lstate.setReg]
       -- RHS: `(.here).lookup (V.extend val) = val`.

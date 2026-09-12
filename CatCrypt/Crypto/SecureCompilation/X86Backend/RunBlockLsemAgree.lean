@@ -1592,7 +1592,7 @@ theorem borrowOutBit_flagBit_eq (v1 v2 : BitVec 64) (c : Bool) :
   have hcf : (x86_SBB v1 v2 c).cf.getD false
       = decide (v1.toNat < v2.toNat + (if c then 1 else 0)) := by
     simp only [x86_SBB, wunsigned, Option.getD_some]
-    rw [decide_eq_decide]
+    refine decide_eq_decide.mpr ?_
     have hR : ((sub_borrow v1 v2 (if c then 1 else 0)).toNat : Int)
         = ((v1.toNat : Int) - v2.toNat - (if c then 1 else 0)) % ((2 ^ 64 : Nat) : Int) := by
       simp only [sub_borrow, BitVec.toNat_ofInt]

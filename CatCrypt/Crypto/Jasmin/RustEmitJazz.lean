@@ -809,7 +809,7 @@ partial def widthPass (pinned : List String) (m : WMap) : LowCT → WMap
       | some w, _, _, _ =>
           -- cast#w: pin destination to width w (overwrite).  `w` is the
           -- Jasmin width string ("8u"/"16u"/"32u"/"64u"); drop the `u`.
-          m.set dst.locVar ((w.dropRight 1).toNat!)
+          m.set dst.locVar ((w.dropEnd 1).toString.toNat!)
       | _, some _, _, [a, b] =>
           -- arithmetic: dst, a, b share a width = max of the three;
           -- raise the non-pinned members to that width.

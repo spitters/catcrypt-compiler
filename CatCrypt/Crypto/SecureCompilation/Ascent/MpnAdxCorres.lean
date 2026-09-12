@@ -269,7 +269,7 @@ theorem adcLimbs_spec : ∀ (xs ys : List (BitVec 64)) (b : Bool), xs.length = y
   | nil =>
     intro ys b h
     cases ys with
-    | nil => simp [adcLimbs, carryLimbs, limbVal]
+    | nil => cases b <;> simp [adcLimbs, carryLimbs, limbVal]
     | cons y ys' => simp at h
   | cons x xs' ih =>
     intro ys b h

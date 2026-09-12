@@ -85,7 +85,8 @@ theorem x86ADD_cf (v1 v2 : BitVec 64) :
   have h2 : v2.toNat < 2 ^ 64 := v2.isLt
   simp only [x86_ADD, rflags_of_aluop, waddcarry, wunsigned, Option.getD_some,
     Bool.false_eq_true, ↓reduceIte, Nat.add_zero]
-  rw [decide_eq_decide, BitVec.toNat_add]
+  refine decide_eq_decide.mpr ?_
+  rw [BitVec.toNat_add]
   omega
 
 /-- **`add` seed data agreement.** The zero-carry lsem carry-add word equals the

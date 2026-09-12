@@ -470,9 +470,9 @@ theorem Agree.push {w nIn : Nat} {locals : List String} {I : Fin nIn → BitVec 
     intro i v hv
     simp only [FState.push] at hv
     rcases hv0 : st.inpVar i with _ | v0
-    · rw [hv0] at hv; simp at hv
+    · rw [hv0] at hv; cases hv
     · rw [hv0] at hv
-      simp only [Option.map_some, Option.some.injEq] at hv
+      injection hv with hv
       subst hv
       show (Ctxt.Var.there (s := rW w) v0).lookup (V.extend e) = inpGet I i
       rw [show (Ctxt.Var.there (s := rW w) v0).lookup (V.extend e) = v0.lookup V
@@ -491,9 +491,9 @@ theorem Agree.push {w nIn : Nat} {locals : List String} {I : Fin nIn → BitVec 
       simp only [LEnv.set]; rfl
     · rw [if_neg hxy] at hy
       rcases hv : st.localVar y with _ | v0
-      · rw [hv] at hy; simp at hy
+      · rw [hv] at hy; cases hy
       · rw [hv] at hy
-        simp only [Option.map_some, Option.some.injEq] at hy
+        injection hy with hy
         subst hy
         simp only [LEnv.set, if_neg hxy]
         have := hL y v0 hv

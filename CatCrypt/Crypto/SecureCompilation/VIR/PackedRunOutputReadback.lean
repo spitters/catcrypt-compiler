@@ -46,7 +46,7 @@ natural identity-shaped marshal — exactly how the emitted SIMD kernel packs th
 length-`n` coefficient array into vector registers (the SoA layout: lane `i` of the
 packed register holds coefficient `i`).
 
-The vector splice `vec_runOutput_vpaddw_eq` then composes the genuine 3-pass dialect
+The vector splice `vec_runOutput_vpaddw_eq` then composes the 3-pass dialect
 chain (read back **as a whole array** via `runOutputToVec`) with the per-lane
 `vpaddw` SIMD step: the packed run-output of the *source* dialect program, fed to the
 SIMD lane add against a second packed operand `b`, equals — **at every lane `i`** —
@@ -58,7 +58,7 @@ at once.
 
 ### What is per-lane-covered vs cross-lane-remaining
 
-The coverage is **per-lane**, and the boundary is stated honestly:
+The coverage is **per-lane**; the boundary is:
 
 * **Covered (per-lane SIMD).** A `vpaddw` (16-bit packed add, `laneAddW`) over the
   `n` lanes of the packed run-output: lane `i` of the result is `out i + b i`,
@@ -121,8 +121,8 @@ def runOutputToVec {n : Nat} (out : Fin n → BitVec 16) : VectorTy (BitVec 16) 
   out
 
 /-- The packed read-back recovers the scalar slot read-back at every lane: lane `i`
-    of `runOutputToVec out` is exactly `runOutputToWords out i`. So the packed pack
-    is genuinely the scalar slot read-back done at all lanes simultaneously, not a
+    of `runOutputToVec out` is exactly `runOutputToWords out i`. The packed pack
+    is the scalar slot read-back done at all lanes simultaneously, not a
     different marshal. -/
 theorem runOutputToVec_lane {n : Nat} (out : Fin n → BitVec 16) (i : Fin n) :
     (runOutputToVec out) i = runOutputToWords out i := rfl
@@ -189,7 +189,7 @@ instance of this. -/
         (vpaddw (runOutputToVec out) b) i
           = runOutputToVec (transTy ((srcCom q n).denote V)) i + b i.
 
-    This is the genuine end-to-end **vector** value-preservation: the *whole*
+    This is the end-to-end **vector** value-preservation: the *whole*
     source-dialect array result (`(srcCom q n).denote V`), packed into a SIMD lane
     bundle (`runOutputToVec`), realised by the emitted `vpaddw` instruction across
     **all `n` lanes**, equal lane-by-lane to the abstract per-lane op. Its left
@@ -220,12 +220,11 @@ theorem vec_runOutput_vpaddw_eq (q n : Nat)
       = runOutputToVec (transTy ((srcCom q n).denote V)) i + b i := by
   -- right factor: the per-lane SIMD add reduces lane `i` to `laneAddW (out i) (b i)`
   rw [vpaddw_eq_vmap₂, vmap₂_eq_scalar]
-  -- left factor: the genuine 3-pass chain, read back at lane `i`
+  -- left factor: the 3-pass chain, read back at lane `i`
   show laneAddW _ (b i) = _
   rw [laneAddW_eq]
   -- both packed read-backs are the per-lane scalar slot read-back
-  simp only [runOutputToVec_lane]
-  rw [runOutputToWords_chain_eq q n hLeaf hInj hPinj V i]
+  exact congrArg (· + b i) (runOutputToWords_chain_eq q n hLeaf hInj hPinj V i)
 
 /-- **The whole-array form of the vector splice.** Stated as a `funext`-level
     equality of the two packed lane bundles: the packed `vpaddw` of the emitted
@@ -277,8 +276,7 @@ theorem vec_runOutput_vpaddw_eq_pair (q n : Nat)
   rw [vpaddw_eq_vmap₂, vmap₂_eq_scalar]
   show laneAddW _ _ = _
   rw [laneAddW_eq]
-  simp only [runOutputToVec_lane]
-  rw [runOutputToWords_chain_eq q n hLeaf hInj hPinj V i,
-    runOutputToWords_chain_eq q n hLeaf hInj hPinj W i]
+  exact congrArg₂ (· + ·) (runOutputToWords_chain_eq q n hLeaf hInj hPinj V i)
+    (runOutputToWords_chain_eq q n hLeaf hInj hPinj W i)
 
 end CatCrypt.Crypto.SecureCompilation.VIR.PackedRunOutputReadback

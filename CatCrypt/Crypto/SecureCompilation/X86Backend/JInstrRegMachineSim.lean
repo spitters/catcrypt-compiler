@@ -179,9 +179,9 @@ theorem aux_stepJ (ρ : String → String) (s t : JState 64) (i : JInstr 64)
       · subst hbb
         by_cases ho : o = ((scale : Int) * ((s.regs idx).toNat : Int))
         · subst ho; simp
-        · rw [if_neg (fun hc => ho hc.2), if_neg (fun hc => ho hc.2)]; exact hmem b o
+        · simp only [ho, and_false, ↓reduceIte]; exact hmem b o
       · have hne : ρ b ≠ ρ base := fun he => hbb (hinj he)
-        rw [if_neg (fun hc => hne hc.1), if_neg (fun hc => hbb hc.1)]; exact hmem b o
+        simp only [hne, hbb, false_and, ↓reduceIte]; exact hmem b o
     | test a src =>
       -- `test` writes only the five flags, so both sides keep their own memory.
       simp only [renameInstr, evalInstr, JState.writeB5]

@@ -364,8 +364,9 @@ theorem roundExec_decode (rs : RustState) :
   -- Phase 2: push `ofNat 32` inward through the Nat-masked ops to `BitVec` ops.
   simp only [BitVec.ofNat_add, BitVec.ofNat_xor, BitVec.ofNat_and,
     ofNat_mask_shr, ofNat_mask_shl]
-  -- Phase 3: the residual is a `BitVec 32` identity over decoded atoms.
-  bv_decide
+  -- Phase 3: the residual is a `BitVec 32` identity over decoded atoms, one per
+  -- state field.
+  congr 1 <;> bv_decide
 
 /-- **The round-body obligation, discharged concretely.**  Packages
     `roundBody_exec` (the body's `RustExec` realises `roundExec`) with

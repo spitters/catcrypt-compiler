@@ -714,12 +714,18 @@ def arrLoadExpr {Γ : Ctx} (dty : TowerType)
         args := .cons (toVIRVar arrV) (.cons (toVIRVar idxV) .nil) }
   | dty', _, _ => extCallExpr "arrLoadDyn" (encodeTy dty') hv
 
+set_option linter.auxLemma false in
 /-- `arrLoadCont` applied to any tail agrees with `ComCont.varBind` of
     `arrLoadExpr` (phrased per-applied-tail — over the singleton resolved-arg
     list the front actually emits; the implicit `{t}` of a bare `ComCont`
     equality won't synthesize). Both combinators are the same literal-pattern
-    dependent match; casing the shape discriminants (`dty`, the slot types, the
-    `64` width) reduces both in lock-step. -/
+    dependent match; casing the shape discriminants (`dty`, the slot types)
+    reduces both by `rfl` in every case but `TU64 / memref / sword w`, where the
+    `64` literal pattern compiles to a `dite (w = 64)` inside the two matchers:
+    at `w = 64` both sides are again `rfl`, and at `w ≠ 64` unfolding the two
+    matcher constants exposes that `dite` on both sides and `dif_neg` closes
+    it. The equation lemmas of the catch-all arm are not used, since generating
+    them for the literal pattern exceeds the heartbeat budget. -/
 theorem arrLoadCont_eq {Γ : Ctx} (dty : TowerType)
     (st : CryptoTy) (sv : CVar Γ st) (it : CryptoTy) (iv : CVar Γ it)
     {argTys : List CryptoTy} (hv : CHVector (fun t => CVar Γ t) argTys)
@@ -729,12 +735,12 @@ theorem arrLoadCont_eq {Γ : Ctx} (dty : TowerType)
   cases dty <;>
     rcases st with _ | _ | ⟨_, _⟩ | ⟨_, _⟩ | _ | nmem <;>
     rcases it with _ | _ | ⟨_, _⟩ | ⟨_, _⟩ | w | _ <;>
-    first
-    | rfl
-    | (rcases eq_or_ne w 64 with rfl | hw <;>
-        first
-        | rfl
-        | simp_all [arrLoadCont, arrLoadExpr, ComCont.varBind, CryptoTy.sword.injEq])
+    try rfl
+  rcases eq_or_ne w 64 with rfl | hw
+  · rfl
+  · unfold arrLoadCont arrLoadExpr
+    delta arrLoadCont.match_1 arrLoadExpr.match_1
+    simp only [dif_neg hw]
 
 /-! ## 5c. `varBind`-factoring of the array **store** combinator
 

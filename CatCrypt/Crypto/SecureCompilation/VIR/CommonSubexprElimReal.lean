@@ -442,7 +442,7 @@ example :
 returns `.ret v0` over the smaller context `() :: []`. -/
 example : CSEReal.cseHead adjBody = Com.ret .here := by
   unfold CSEReal.cseHead adjBody
-  rw [CSEReal.cseSubst.eq_def]
+  erw [CSEReal.cseSubst.eq_def]
   rfl
 
 /-- CSE preserves `fullProg`'s denotation: dropping the redundant `v1` and

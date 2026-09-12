@@ -66,10 +66,14 @@ open CatCrypt.Crypto.Optimizer.Rewrite
 
 /-! ## 1. Dual-tag the optimizer's denotation-preserving rules for `grind`
 
-The same equations the e-graph's `algebraicRules` carry as `*_sound` lemmas, now
-also `@[grind =]` rewrite candidates. -/
+The same equations the e-graph's `algebraicRules` carry as `*_sound` lemmas, also
+tagged as `@[grind =]` rewrite candidates. `mul_one_eq` and `mul_zero_eq` carry
+no tag: `grind` normalises a candidate's left-hand side before extracting its
+E-matching pattern, and `x * 1` / `x * 0` normalise to `x` / `0` (`BitVec.mul_one`,
+`BitVec.mul_zero`), which leaves no pattern; the two identities are applied by
+that same normalisation. -/
 
-attribute [grind =] Egraph.mul_one_eq Egraph.add_zero_eq Egraph.mul_zero_eq
+attribute [grind =] Egraph.add_zero_eq
   Egraph.xor_zero_eq Egraph.or_zero_eq Egraph.and_zero_eq Egraph.mul_pow2_eq_shl
 attribute [grind =] KaratsubaGeneric.karatsubaMul_eq_schoolbook
 

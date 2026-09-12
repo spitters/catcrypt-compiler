@@ -48,6 +48,7 @@ inductive WSize where
   deriving DecidableEq, Repr, Inhabited
 
 /-- Number of bits for a word size. -/
+@[implicit_reducible]
 def WSize.bits : WSize → Nat
   | .U8   => 8
   | .U16  => 16

@@ -40,7 +40,7 @@ recursion.
 * Algebraic theorem `bernsteinInvChain_eq_pow_p_minus_2` — proved.
 * Fermat corollary `bernsteinInvChain_eq_inv` — proved.
 
-This is the load-bearing piece for `CompressEmitCorrect.lean`.
+`CompressEmitCorrect.lean` rests on these two theorems.
 -/
 
 @[expose] public section
@@ -156,7 +156,7 @@ lemma compat_step [CommMonoid α] (z : α) (b : Block)
       by_cases hi : i < st.length
       · have h_idx_i := h_idx i hi
         rw [h_idx_i, ← pow_add]
-      · push_neg at hi
+      · push Not at hi
         have hi' : est.length ≤ i := by rw [← h_len]; exact hi
         rw [listIdx_oob st (1 : α) hi, listIdx_oob est 0 hi']
         simp
@@ -173,7 +173,7 @@ lemma compat_step [CommMonoid α] (z : α) (b : Block)
       rw [listIdx_append_lt est e 0 h_lt']
       exact h_idx i h_lt
     · -- new slot: i = st.length, returns acc / e
-      push_neg at h_lt
+      push Not at h_lt
       have h_eq : i = st.length := by omega
       rw [h_eq, listIdx_append_eq st acc 1]
       -- est.length = st.length, so listIdx (est ++ [e]) st.length 0 = e

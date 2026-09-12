@@ -1112,7 +1112,7 @@ theorem StoreAgreesM.stepArr {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
     | here =>
         simp only [resolveVar, varIndex]
         have hslot : curDepth + 1 - 1 - 0 = curDepth := by omega
-        rw [hslot]
+        simp only [hslot]
         have hsa : ¬ curDepth < nArgs := by omega
         simp only [hsa, if_false, operandName, LstateM.getArr_nextPc]
         -- `.here : Var (.stackArr w n :: Γ) (.stackArr w' n')` forces `(w', n') = (w, n)`

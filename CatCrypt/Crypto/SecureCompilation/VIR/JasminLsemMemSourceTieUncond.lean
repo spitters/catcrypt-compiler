@@ -217,9 +217,9 @@ theorem resolveVar_trip_acc {accTy : JasminTy} :
     resolveVar (invTys.length + 2) (invTys.length + 2) argName (fun _ => none)
       (.here : Ctxt.Var (accTy :: JasminTy.reg 64 :: invTys) accTy)
       = .reg (accRegMN invTys) := by
-  simp only [resolveVar, varIndex]
-  rw [show invTys.length + 2 - 1 - 0 = invTys.length + 1 from by omega,
-    if_pos (by omega)]
+  have h : invTys.length + 2 - 1 - 0 = invTys.length + 1 := by omega
+  simp only [resolveVar, varIndex, h]
+  rw [if_pos (by omega)]
   rfl
 
 /-- The loop index (`.there .here`) resolves to `idxRegMN`. -/
@@ -227,9 +227,9 @@ theorem resolveVar_trip_idx {accTy : JasminTy} :
     resolveVar (invTys.length + 2) (invTys.length + 2) argName (fun _ => none)
       (.there .here : Ctxt.Var (accTy :: JasminTy.reg 64 :: invTys) (JasminTy.reg 64))
       = .reg (idxRegMN invTys) := by
-  simp only [resolveVar, varIndex]
-  rw [show invTys.length + 2 - 1 - (0 + 1) = invTys.length from by omega,
-    if_pos (by omega)]
+  have h : invTys.length + 2 - 1 - (0 + 1) = invTys.length := by omega
+  simp only [resolveVar, varIndex, h]
+  rw [if_pos (by omega)]
   rfl
 
 /-- An invariant (`.there (.there v)`) resolves to an `argName` slot strictly
@@ -241,10 +241,10 @@ theorem resolveVar_trip_inv {accTy τ : JasminTy} (v : Ctxt.Var invTys τ) :
         = .reg (argName j) := by
   have hlt : varIndex v < invTys.length := JasminLsemSimulation.varIndex_lt v
   refine ⟨invTys.length - 1 - varIndex v, by omega, ?_⟩
-  simp only [resolveVar, varIndex]
-  rw [show invTys.length + 2 - 1 - (varIndex v + 1 + 1) = invTys.length - 1 - varIndex v
-      from by omega,
-    if_pos (by omega)]
+  have h : invTys.length + 2 - 1 - (varIndex v + 1 + 1) = invTys.length - 1 - varIndex v := by
+    omega
+  simp only [resolveVar, varIndex, h]
+  rw [if_pos (by omega)]
 
 /-! ### Readers off a trip agreement -/
 

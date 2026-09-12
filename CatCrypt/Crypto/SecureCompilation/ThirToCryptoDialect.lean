@@ -30,7 +30,7 @@ lowering (which shares `Ty`), the contexts here differ as types, so variables
 are transported structurally (`vC`/`argsC`), and the per-op square is the
 identity transport on `BitVec w` (so each covered square is `rfl`/`simp`).
 
-## Exactly which `ThirOp` arms are covered (honest scope)
+## Exactly which `ThirOp` arms are covered
 
 **RANK-1 (1:1, denotations agree on `BitVec w`, square is `rfl`):**
 
@@ -122,11 +122,13 @@ open CatCrypt.Crypto.SecureCompilation.CryptoSSA (CryptoTy)
     constructors land on `.sword 0` (they are only reached by residual ops, which
     the lowering rejects). On the `.reg w` fragment the induced value transport is
     the identity (`⟦.reg w⟧ = ⟦.sword w⟧ = BitVec w`). -/
+@[implicit_reducible]
 def mapTy : JasminTy → CryptoTy
   | .reg w => .sword w
   | _ => .sword 0
 
 /-- The context map: pointwise `mapTy`. -/
+@[implicit_reducible]
 def mapCtx (Γ : Ctxt thirDialect) : Ctxt catCryptDialect := Γ.map mapTy
 
 /-- `mapCtx` of a `cons` is the `cons` of the mapped head onto the mapped tail
@@ -597,6 +599,8 @@ theorem lowerVarStepC_denote {Γ : Ctxt thirDialect} {s : JasminTy}
   case thBinLit bop w n =>
     obtain ⟨a, r, rfl⟩ : ∃ a r, args = .cons a r := by
       cases args with | cons a r => exact ⟨a, r, rfl⟩
+    obtain ⟨bodyC, rfl⟩ : ∃ bodyC' : Com catCryptDialect (CryptoTy.sword w :: mapCtx Γ) (mapTy s),
+        bodyC' = bodyC := ⟨bodyC, rfl⟩
     rcases bop with _|_|_|_|_|_|_|_|_ <;>
       first
         | (simp only [lowerVarStepC, binLitExpand, Option.some.injEq] at h; subst h
@@ -612,6 +616,8 @@ theorem lowerVarStepC_denote {Γ : Ctxt thirDialect} {s : JasminTy}
   case thRor w n =>
     obtain ⟨a, r, rfl⟩ : ∃ a r, args = .cons a r := by
       cases args with | cons a r => exact ⟨a, r, rfl⟩
+    obtain ⟨bodyC, rfl⟩ : ∃ bodyC' : Com catCryptDialect (CryptoTy.sword w :: mapCtx Γ) (mapTy s),
+        bodyC' = bodyC := ⟨bodyC, rfl⟩
     simp only [lowerVarStepC, Option.some.injEq] at h; subst h
     simp only [Com.denote, Expr.denote, DialectDenote.denote]
     rw [Generic.Com.denote_rename]

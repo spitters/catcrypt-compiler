@@ -33,7 +33,7 @@ carries the **identity** value transport on `BitVec w`. And `thBin .add w` and
 `bvAdd w` both denote to `a + b`. So the leaf square (the `OpLowerTransports`
 obligation of the `LoweringData` engine) is `rfl` for this op.
 
-## Honest scope
+## Scope
 
 This is **one op** on a **one-binding** example program — a probe, not the pass.
 The real edge (a `LoweringData thirDialect catCryptDialect` over the whole
@@ -62,6 +62,7 @@ open CatCrypt.Crypto.SecureCompilation.CryptoSSA (CryptoTy)
 /-- The type map `thirDialect.Ty → catCryptDialect.Ty` on the register-word
     fragment: a `w`-bit register becomes a `w`-bit machine word. Both denote to
     `BitVec w`, so the induced value transport is the identity. -/
+@[implicit_reducible]
 def mapTy : JasminTy → CryptoTy
   | .reg w => .sword w
   | _ => .sword 0

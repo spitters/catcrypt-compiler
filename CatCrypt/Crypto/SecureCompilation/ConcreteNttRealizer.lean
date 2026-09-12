@@ -26,7 +26,7 @@ an abstract `encode`/`decode` pair with a *hypothesised* section
 This module makes that section **concrete and proved**, so the realization holds
 **unconditionally** for a spec-computing realizer.  We exhibit:
 
-* a genuine `RustVal (.TPolyMod q n)` carrier (a real byte array,
+* a `RustVal (.TPolyMod q n)` carrier (a byte array,
   `Fin (storageBytes) → BitVec 8` — not a constructor wrapping the function and
   certainly not an `axiom`), with a concrete two-bytes-per-coefficient
   little-endian `encodeP`/`decodeP` pair, and
@@ -53,7 +53,7 @@ therefore re-state the realization predicates over `.TPolyMod q n` (a few lines)
 and re-run the same commuting-square discharge (the math content
 `nttMul_eq_cyclicConv'` is reused verbatim).
 
-## HONEST scope — what this proves and what it does NOT
+## Scope — what this proves and what it does not
 
 * **Proved (unconditional Lean theorem):** there is a *concrete* leaf realizer
   (`cyclicConvLeafSpecP`) and a *concrete*, round-trip-verified byte encoding
@@ -86,7 +86,7 @@ open CatCrypt.Crypto.Optimizer.Lattice.ConcreteNttRoots
 
 /-! ## §1  Concrete, round-trip-verified byte encoding over `.TPolyMod q n`
 
-`RustVal (.TPolyMod q n) = JArray (.TPolyMod q n).storageBytes`, a genuine byte
+`RustVal (.TPolyMod q n) = JArray (.TPolyMod q n).storageBytes`, a byte
 array.  For `q < 2^16` each coefficient fits in two bytes; we lay them out
 little-endian, two bytes per coefficient.  The decode reads the two bytes back as
 a `ZMod q`.  The round-trip is a per-coefficient `Nat`-arithmetic fact. -/
@@ -177,8 +177,8 @@ literals satisfy `hwidth` by `rfl` and `ZMod 3329` is a field, discharging the
 
 /-- The `.TPolyMod`-carrier cyclic-convolution kernel-realization predicate: the
     leaf-call value decodes to the length-`n` cyclic convolution.  Identical in
-    shape to `GenericNttEmitValue.NttKernelRealizes`, but over the genuinely
-    large `.TPolyMod q n` byte carrier. -/
+    shape to `GenericNttEmitValue.NttKernelRealizes`, but over the full-width
+    `.TPolyMod q n` byte carrier. -/
 def NttKernelRealizesP (q n : ℕ) [NeZero q] [NeZero n]
     (decode : RustVal (.TPolyMod q n) → (Fin n → ZMod q))
     (leaf : String) (leafSpec : LeafSpec) : Prop :=
@@ -247,7 +247,7 @@ theorem decodeTPoly_encodeTPoly {q n : ℕ} [NeZero q] (hq : q < 65536)
     (hwidth : (TowerType.TPolyMod q n).storageBytes = n * coeffBytes)
     (x : Fin n → ZMod q) : decodeTPoly hwidth (encodeTPoly hwidth x) = x := by
   unfold decodeTPoly encodeTPoly
-  rw [cast_cast]
+  erw [cast_cast]
   exact decodeP_encodeP hq x
 
 /-- The concrete cyclic-convolution `CallSpec` over the `.TPolyMod q n` carrier,

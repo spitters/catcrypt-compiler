@@ -606,13 +606,29 @@ def sigma0Texpr : Hax.TExpr :=
           (.mk (.letBind "r" (appU32 "BitXor" [vU32 "ab", vU32 "c"])
             (vU32 "r")) tyU32)) tyU32)) tyU32)) tyU32)) tyU32
 
+/-- `recogBinTy` does not recognise the rotate head. -/
+theorem recogBinTy_rotate_right : recogBinTy "rotate_right" = none := rfl
+
+/-- `recogBinTy` does not recognise the shift head. -/
+theorem recogBinTy_shift_right : recogBinTy "shift_right" = none := rfl
+
+/-- `recogBinTy` reads the clean xor head. -/
+theorem recogBinTy_BitXor : recogBinTy "BitXor" = some .xor := rfl
+
+/-- `recogShiftTy` reads the clean rotate head as `ror`. -/
+theorem recogShiftTy_rotate_right : recogShiftTy "rotate_right" = some .ror := rfl
+
+/-- `recogShiftTy` reads the clean shift head as `shr`. -/
+theorem recogShiftTy_shift_right : recogShiftTy "shift_right" = some .shr := rfl
+
 /-- The typed σ₀ denotes (under `denoteScalarT`) to the FIPS 180-4 formula
     `ROTR⁷(x) ⊕ ROTR¹⁸(x) ⊕ SHR³(x)`, for any single-word input. -/
 theorem sigma0Texpr_denoteScalarT (I : Fin 1 → BitVec 32) :
     TExpr.denoteScalarT ["x"] I sigma0Texpr (fun _ => none)
       = some ((I 0).rotateRight 7 ^^^ (I 0).rotateRight 18 ^^^ (I 0) >>> (3 : Nat)) := by
   simp only [sigma0Texpr, appU32, vU32, litU32, TExpr.denoteScalarT,
-    TExpr.denoteAtomT, recogBinTy, recogShiftTy, litNatT?, ShiftKind.apply,
+    TExpr.denoteAtomT, recogBinTy_rotate_right, recogBinTy_shift_right, recogBinTy_BitXor,
+    recogShiftTy_rotate_right, recogShiftTy_shift_right, litNatT?, ShiftKind.apply,
     List.idxOf?, List.findIdx?, JasminBinOp.apply, reduceIte, String.reduceEq]
   rfl
 
@@ -738,7 +754,8 @@ theorem bigSigma0Texpr_denoteScalarT (I : Fin 1 → BitVec 32) :
     TExpr.denoteScalarT ["x"] I bigSigma0Texpr (fun _ => none)
       = some ((I 0).rotateRight 2 ^^^ (I 0).rotateRight 13 ^^^ (I 0).rotateRight 22) := by
   simp only [bigSigma0Texpr, appU32, vU32, litU32, TExpr.denoteScalarT,
-    TExpr.denoteAtomT, recogBinTy, recogShiftTy, litNatT?, ShiftKind.apply,
+    TExpr.denoteAtomT, recogBinTy_rotate_right, recogBinTy_BitXor,
+    recogShiftTy_rotate_right, litNatT?, ShiftKind.apply,
     List.idxOf?, List.findIdx?, JasminBinOp.apply, reduceIte, String.reduceEq]
   rfl
 
@@ -747,7 +764,8 @@ theorem bigSigma1Texpr_denoteScalarT (I : Fin 1 → BitVec 32) :
     TExpr.denoteScalarT ["x"] I bigSigma1Texpr (fun _ => none)
       = some ((I 0).rotateRight 6 ^^^ (I 0).rotateRight 11 ^^^ (I 0).rotateRight 25) := by
   simp only [bigSigma1Texpr, appU32, vU32, litU32, TExpr.denoteScalarT,
-    TExpr.denoteAtomT, recogBinTy, recogShiftTy, litNatT?, ShiftKind.apply,
+    TExpr.denoteAtomT, recogBinTy_rotate_right, recogBinTy_BitXor,
+    recogShiftTy_rotate_right, litNatT?, ShiftKind.apply,
     List.idxOf?, List.findIdx?, JasminBinOp.apply, reduceIte, String.reduceEq]
   rfl
 
@@ -756,7 +774,8 @@ theorem smallSigma1Texpr_denoteScalarT (I : Fin 1 → BitVec 32) :
     TExpr.denoteScalarT ["x"] I smallSigma1Texpr (fun _ => none)
       = some ((I 0).rotateRight 17 ^^^ (I 0).rotateRight 19 ^^^ (I 0) >>> (10 : Nat)) := by
   simp only [smallSigma1Texpr, appU32, vU32, litU32, TExpr.denoteScalarT,
-    TExpr.denoteAtomT, recogBinTy, recogShiftTy, litNatT?, ShiftKind.apply,
+    TExpr.denoteAtomT, recogBinTy_rotate_right, recogBinTy_shift_right, recogBinTy_BitXor,
+    recogShiftTy_rotate_right, recogShiftTy_shift_right, litNatT?, ShiftKind.apply,
     List.idxOf?, List.findIdx?, JasminBinOp.apply, reduceIte, String.reduceEq]
   rfl
 

@@ -24,7 +24,7 @@ never a Lean theorem. This file supplies that value link at the **multi-limb
 carry-chain** level, the add/sub analogue of `Cios4LimbProven`'s Montgomery
 reconstruction.
 
-The arithmetic is pinned to the genuine modular spec over `Nat`:
+The arithmetic is pinned to the modular spec over `Nat`:
 
 * modular add  `(a + b) mod p`  = add the limb vectors (`Cios4LimbProven.addLimbs`,
   the proven ripple-add over the dialect carry primitives), then **conditionally
@@ -55,22 +55,22 @@ For canonical inputs `a, b ∈ [0, p)` the sum is `< 2p` and the difference is i
    / Barrett-butterfly add/sub (`p = 2^31 − 2^27 + 1` fits one word): the emitted
    butterfly's stored output words equal `(a + ω·b) mod p` and `(a + p − ω·b) mod p`,
    wrapping the already-proven `BarrettButterflyKernel.butterfly_out{0,1}_spec`
-   (a genuine `runBlock`-of-emitted tie) into the add/sub field-op shape.
+   (a `runBlock`-of-emitted tie) into the add/sub field-op shape.
 
 6. `emitAdcChain` / `emitAdcChain_runBlock` / `emitAdcChain_runBlock_value` — a
-   genuine emitted ADD/ADC ripple-add `List (JInstr 64)` proven over `runBlock`
+   emitted ADD/ADC ripple-add `List (JInstr 64)` proven over `runBlock`
    (register-by-register) to equal `Cios4LimbProven.addLimbs`, recombining to
    `valLimbs a + valLimbs b`; `modAdd_runBlock` / `<curve>_modadd_runBlock` compose
    it with `condSubP` for `runBlock(emitted add) = (a + b) mod p` at each curve.
 
 ## Scope (honest)
 
-The modular **add** is a genuine `runBlock`-of-emitted statement: `emitAdcChain` is
+The modular **add** is a `runBlock`-of-emitted statement: `emitAdcChain` is
 a real `List (JInstr 64)` and `emitAdcChain_runBlock` proves it computes the
 proven `Cios4LimbProven.addLimbs` over `runBlock` (each step the `.adc` ALU
 semantics of `evalInstr`, no abstraction gap), recombined by the proven
 `addLimbs_reconstruct` and canonicalised by `condSubP`. The single-word BabyBear
-add/sub is likewise tied to a genuine emitted `runBlock` output
+add/sub is likewise tied to an emitted `runBlock` output
 (`butterfly_out{0,1}_spec`). The modular **sub** conditional add-back of `p` is
 proven at the recombined-`Nat` level (`condAddP`, exactly the value the emitted
 masked `ADD`/`ADC` add-back computes); the emitted SUB/SBB borrow-chain over
@@ -156,7 +156,7 @@ theorem addChainVal_eq (u v : List (BitVec 64)) (hlen : v.length = u.length) :
   rw [h]
   rfl
 
-/-! ## 2b. A genuine emitted ripple-add over `runBlock` = `addLimbs`
+/-! ## 2b. An emitted ripple-add over `runBlock` = `addLimbs`
 
 The emitted ADD/ADC chain `[.add d₀ s₀, .adc d₁ s₁, …]` (first `.add` enters with
 carry-in `0`, each subsequent `.adc` reads the carry from `CF`) is the real
@@ -189,8 +189,8 @@ theorem emit_add_cf (s : JState 64) (dst src : String) :
     · rename_i h; rw [Nat.mod_eq_of_lt (by omega)]
   simp only [hmod]
   split
-  · simp_all; omega
-  · simp_all
+  · rename_i hh; rw [decide_eq_true hh]; exact decide_eq_true (by omega)
+  · rename_i hh; rw [decide_eq_false hh]; exact decide_eq_false (fun hne => hne rfl)
 
 /-- One emitted ADD step writes only `dst` (and the flags): any other register is
     preserved. -/
@@ -231,7 +231,8 @@ theorem emit_adc_cf (s : JState 64) (dst src : String) :
   have hx := (s.get dst).isLt; have hy := (s.get src).isLt
   simp only [JState.get] at hx hy
   refine wrap_iff _ ?_
-  split <;> omega
+  by_cases hc : Option.getD s.flags.cf false = true <;>
+    simp only [hc, if_true, if_false, Bool.false_eq_true] <;> omega
 
 /-- One emitted ADC step writes only `dst`: any other register is preserved. -/
 theorem emit_adc_other (s : JState 64) (dst src r : String) (hr : r ≠ dst) :
@@ -397,7 +398,7 @@ def runBlockAddValue (ds ss : List String) (s : JState 64) : Nat :=
     valLimbs v`**, for equal-length reduced limb vectors entered with `CF = 0`.
     Combines the proven `emitAdcChain_runBlock` (registers = `addLimbs`) with the
     proven `Cios4LimbProven.addLimbs_reconstruct` (recombined `addLimbs` value =
-    sum). The genuine `runBlock`-of-emitted ripple-add over a real
+    sum). The `runBlock`-of-emitted ripple-add over a real
     `List (JInstr 64)`. -/
 theorem emitAdcChain_runBlock_value (ds ss : List String) (u v : List (BitVec 64))
     (s : JState 64)
@@ -432,7 +433,7 @@ theorem emitAdcChain_runBlock_value (ds ss : List String) (u v : List (BitVec 64
 
 `modAddVal p a b` recombines the ripple-add (`addChainVal`) and conditionally
 subtracts `p` (`condSubP`); `modSubVal p a b` is the dual via `condAddP`. Each is
-proven equal to the genuine modular spec for reduced inputs. -/
+proven equal to the modular spec for reduced inputs. -/
 
 /-- The full modular-add value: ripple-add then conditional subtract of `p`. -/
 def modAddVal (p : Nat) (u v : List (BitVec 64)) : Nat :=
@@ -464,7 +465,7 @@ theorem modSubVal_eq_mod (p : Nat) (u v : List (BitVec 64))
   simp only [modSubVal]
   exact condAddP_eq_mod p (valLimbs u) (valLimbs v) hu hv
 
-/-- **Genuine `runBlock` modular add = `(a + b) mod p`.** Composing the emitted
+/-- **`runBlock` modular add = `(a + b) mod p`.** Composing the emitted
     ADC-chain `runBlock` value (`emitAdcChain_runBlock_value`, the real
     `List (JInstr 64)` ripple-add) with the conditional subtract of `p`
     (`condSubP_eq_mod`): for reduced inputs the value `condSubP p` of the emitted
@@ -575,7 +576,7 @@ theorem p384_modsub_value (a b : List (BitVec 64))
       = (valLimbs a + valLimbs p384Limbs - valLimbs b) % valLimbs p384Limbs :=
   modSubVal_eq_mod (valLimbs p384Limbs) a b ha_red hb_red
 
-/-! ## 5b. Genuine `runBlock` modular-add headlines at the curve moduli
+/-! ## 5b. `runBlock` modular-add headlines at the curve moduli
 
 These compose the emitted ADC-chain `runBlock` value (`emitAdcChain_runBlock`, a
 real `List (JInstr 64)`) with the conditional subtract of the curve prime, giving
@@ -640,7 +641,7 @@ add and subtract are single-word conditional subtract / add-back (the branch-fre
 `Poseidon2Emit.bbCsub` idiom). The emitted NTT butterfly
 (`BarrettButterflyKernel.butterflyBlock`) stores `out[0] = a + ω·b` and
 `out[1] = a − ω·b` reduced mod `p`; `butterfly_out{0,1}_spec` already prove those
-stored words against the field-op spec over the genuine `runBlock` of the emitted
+stored words against the field-op spec over the `runBlock` of the emitted
 block. Here we wrap them into the modular add/sub field-op shape `(a ± c) mod p`
 with `c = ω·b` the canonical field product. -/
 
@@ -670,7 +671,7 @@ theorem babybear_fpadd_runBlock (a b w : BitVec 64)
 /-- **BabyBear / Barrett-butterfly modular sub over `runBlock` (Tier A,
     single-word).** For canonical residues `a, b, w < p`, the emitted butterfly's
     stored high output word equals the field sub `(a + p − ω·b) mod p` — the
-    conditional add-back of `p` on borrow, tied to the genuine `runBlock` output by
+    conditional add-back of `p` on borrow, tied to the `runBlock` output by
     `butterfly_out1_spec`. -/
 theorem babybear_fpsub_runBlock (a b w : BitVec 64)
     (ha : a < bbP) (hb : b < bbP) (hw : w < bbP) :

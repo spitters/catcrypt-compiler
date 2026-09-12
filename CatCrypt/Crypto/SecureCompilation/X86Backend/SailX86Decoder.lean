@@ -307,7 +307,7 @@ theorem roundtrip_MovImm (d v : Nat) (hd : d < 16) (hv : v < 2 ^ 32) :
   simp only [encMovImm, decodeImm, imm32LE, List.map_cons, List.map_nil,
     List.cons_append, List.nil_append, isRex, modField, rexR, rexB, regField,
     rmField, rex, modRMReg, bit]
-  rw [if_pos]
+  erw [if_pos]
   · refine congrArg some ?_
     refine DecReg.mk.injEq .. ▸ ⟨rfl, ?_, ?_, ?_⟩
     · interval_cases d <;> rfl
@@ -346,7 +346,7 @@ theorem roundtrip_ImulImm (d v : Nat) (hd : d < 16) (hv : v < 2 ^ 32) :
   simp only [encImulImm, decodeImm, imm32LE, List.map_cons, List.map_nil,
     List.cons_append, List.nil_append, isRex, modField, rexR, rexB, regField,
     rmField, rex, modRMReg, bit]
-  rw [if_pos]
+  erw [if_pos]
   · refine congrArg some ?_
     refine DecReg.mk.injEq .. ▸ ⟨rfl, ?_, ?_, ?_⟩
     · interval_cases d <;> rfl
@@ -368,7 +368,7 @@ theorem roundtrip_AluImm (digit d v : Nat) (hdig : digit < 8) (hd : d < 16) (hv 
   simp only [encAluImm, decodeImm, imm32LE, List.map_cons, List.map_nil,
     List.cons_append, List.nil_append, isRex, modField, rexR, rexB, regField,
     rmField, rex, modRMReg, bit]
-  rw [if_pos]
+  erw [if_pos]
   · refine congrArg some ?_
     refine DecReg.mk.injEq .. ▸ ⟨rfl, ?_, ?_, ?_⟩
     · simp only [BitVec.toNat_ofNat]; interval_cases digit <;> interval_cases d <;> decide
@@ -390,7 +390,7 @@ theorem roundtrip_ShiftImm (ext d imm : Nat) (hext : ext < 8) (hd : d < 16) (him
     omega
   simp only [encShiftImm, decodeShift, List.map_cons, List.map_nil, isRex, modField,
     rexR, rexB, regField, rmField, rex, modRMReg, bit]
-  rw [if_pos]
+  erw [if_pos]
   · refine congrArg some ?_
     refine DecReg.mk.injEq .. ▸ ⟨rfl, ?_, ?_, ?_⟩
     · simp only [BitVec.toNat_ofNat]; interval_cases ext <;> interval_cases d <;> decide

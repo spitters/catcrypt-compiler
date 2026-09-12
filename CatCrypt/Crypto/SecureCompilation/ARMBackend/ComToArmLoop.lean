@@ -14,7 +14,7 @@ public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmX25519FieldKernel
 The straight-line scalar waist gives, for any backend, that the compiled-and-lowered
 `RegProg` block computes the source denotation:
 
-* `ScalarLin.ScalarTarget.compile_denote` — generic keystone, proved once;
+* `ScalarLin.ScalarTarget.compile_denote` — the generic statement, proved once;
 * `ComToArm.regToBOp_denote` — its AArch64 instance,
   `runBBlock s (lowerBBlock (regToBOp p)) = armTarget.denote p s`.
 
@@ -65,7 +65,7 @@ theorem loop_waist_denote (p : RegProg) (n : Nat) (s : BState) :
   induction n generalizing s with
   | zero => rfl
   | succ k ih =>
-      rw [runBoundedLoopB_succ, regToBOp_denote, ih]; rfl
+      rw [runBoundedLoopB_succ, regToBOp_denote]; erw [ih]; rfl
 
 /-- The same fact phrased through the *bytes-faithful* unrolled block: running the
     `n`-copy unrolled compiled block is the `n`-fold source iteration. Bridges the

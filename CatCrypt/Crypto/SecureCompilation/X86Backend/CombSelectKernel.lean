@@ -291,8 +291,8 @@ theorem combSelectBlock_allDirect : allDirect combSelectBlock = true := by
     induction l with
     | nil => rfl
     | cons x t ih => simp [hA, h x, ih]
-  rw [combSelectBlock, hA, hA, hF _ _ (fun _ => by simp [allDirect, IsDirect])]
-  simp [allDirect, IsDirect]
+  rw [combSelectBlock, hA, hA, hF _ _ (fun _ => by simp [allDirect]; simp [IsDirect])]
+  simp [allDirect]; simp [IsDirect]
 
 /-- **Constant time.** The 16-entry comb window select produces the same machine
     leakage trace from any two starting states, so the emitted address sequence
@@ -399,8 +399,8 @@ theorem combSelect5Block_allDirect : allDirect combSelect5Block = true := by
     induction l with
     | nil => rfl
     | cons x t ih => simp [hA, h x, ih]
-  rw [combSelect5Block, hA, hA, hF _ _ (fun _ => by simp [allDirect, IsDirect])]
-  simp [allDirect, IsDirect]
+  rw [combSelect5Block, hA, hA, hF _ _ (fun _ => by simp [allDirect]; simp [IsDirect])]
+  simp [allDirect]; simp [IsDirect]
 
 /-- **Constant time.** The 32-entry comb window select produces the same machine
     leakage trace from any two starting states. -/
@@ -493,8 +493,8 @@ theorem combSelect6Block_allDirect : allDirect combSelect6Block = true := by
     induction l with
     | nil => rfl
     | cons x t ih => simp [hA, h x, ih]
-  rw [combSelect6Block, hA, hA, hF _ _ (fun _ => by simp [allDirect, IsDirect])]
-  simp [allDirect, IsDirect]
+  rw [combSelect6Block, hA, hA, hF _ _ (fun _ => by simp [allDirect]; simp [IsDirect])]
+  simp [allDirect]; simp [IsDirect]
 
 /-- **Constant time.** The 64-entry comb window select produces the same machine
     leakage trace from any two starting states. -/

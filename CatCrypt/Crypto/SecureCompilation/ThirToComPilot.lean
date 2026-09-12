@@ -360,10 +360,9 @@ theorem Agree.extend {σ : Scope} {ρ : TEnv} {V : Ctxt.Valuation (scopeCtxt σ)
     rfl
   · rw [if_neg hxy] at hy
     rcases hv : scopeVar σ y with _ | v0
-    · rw [hv] at hy; simp at hy
+    · rw [hv] at hy; exact nomatch hy
     · rw [hv] at hy
-      simp only [Option.map_some, Option.some.injEq] at hy
-      subst hy
+      obtain rfl : v0.there = v := Option.some.inj hy
       simp only [TEnv.set, if_neg hxy]
       have := h y v0 hv
       rw [this]
@@ -554,6 +553,7 @@ def pilotMul : Thir :=
 theorem pilotMul_lowers :
     (thirToCom [] pilotMul).isSome := by
   simp [pilotMul, thirToCom, rhsExpr, lowerRhs, scopeVar]
+  rfl
 
 /-- End-to-end check: the THIR denotation of `pilotMul` equals its lowered
     `Com`'s denotation (both `6 * 7 = 42`). -/
@@ -584,6 +584,7 @@ def pilotForSum : Thir :=
 theorem pilotForSum_lowers : (thirToCom [] pilotForSum).isSome := by
   simp [pilotForSum, thirToCom, Thir.unrollFor, unrollBody, rhsExpr, lowerRhs,
     scopeVar]
+  rfl
 
 /-- End-to-end check: the THIR denotation of `pilotForSum` equals its lowered
     (unrolled) `Com`'s denotation. -/

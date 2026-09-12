@@ -50,7 +50,7 @@ theorem binOp_descent_x86 (op : JasminBinOp) (hop : SupportedOp (.regArith op 64
       (comRetName (descentCom (binFrag op) twoArgEnv 0) 2) = op.apply a b := by
   obtain ⟨m', hstep, hout⟩ := corres_of_refines_x86 FieldEmitGoldenPath.allReg64_two twoArgEnv
     (binFrag_refines op) 0 (binCom_ok op hop) (binCom_shiftOK op) s _ ⟨_, hs, rfl⟩ trivial
-  rw [xrunStep, Option.some.injEq] at hstep
+  replace hstep := Option.some.inj hstep
   subst hstep
   rw [← binStep_readout op a b]
   exact hout
