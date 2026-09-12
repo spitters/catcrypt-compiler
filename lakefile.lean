@@ -55,7 +55,7 @@ require Veir from git
 
 -- ParamTransfer (proof-transfer bridge) + CompPoly (NTT algebraic theory).
 require paramTransfer from git
-  "https://github.com/spitters/ParamTransfer.git" @ "177512412aefbcb6c72863a4141aee14f2a8e939"
+  "https://github.com/spitters/ParamTransfer.git" @ "b6d677a9c7de99eee2ff5e6cb6f835b75afba517"
 require CompPoly from git
   "https://github.com/Verified-zkEVM/CompPoly" @ "v4.33.1"
 
