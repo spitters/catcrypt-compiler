@@ -25,6 +25,12 @@ jobs:
       - name: Check Markdown file links resolve
         run: bash scripts/check-doc-links.sh
 
+      - name: The lakefile's module list is fresh
+        # The library names its modules one by one (Lake resolves imports by
+        # library glob, dependencies first, with no file check; a `CatCrypt.*`
+        # glob here would claim every module of a package that requires this one).
+        run: bash scripts/gen-module-globs.sh --check
+
       - name: Build roots cover every compiler module (rot guard)
         run: bash scripts/rot-guard-build.sh --check
 
