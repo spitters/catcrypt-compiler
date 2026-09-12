@@ -88,8 +88,11 @@ The pipeline preserves three properties from source to emitted bytes. The
   prove that the compiled block, run on the backend's block semantics, computes the
   source `Com.denote` for a straight-line program over the supported op set in an
   all-`reg 64` context; register allocation (`physScanSpill`, linear scan with
-  spills) has its own faithfulness theorem, `physBody_lsem_result_uniform`, on the
-  binop fragment (see [Limitations](#limitations)); on the base-ALU subset of that fragment,
+  spills, the allocator the export runs) has a whole-function faithfulness theorem,
+  `toLprogPhysAbi_faithful_uniform`: prologue, argument materialization, allocated
+  body and return, run under the whole-function semantics `lsemRun`, leave the
+  source result in the physical result register, for a `UniformRegArith` program
+  (see [Limitations](#limitations)); on the base-ALU subset of that fragment,
   `ComToArmLsem.comToArmLsem_correct` and `ComToRiscvLsem.comToRiscvLsem_correct` add
   that every executed instruction lies in the subset checked against the vendor Sail
   model. The whole-pipeline x86 statement `robustCompilation_source_to_x86` carries a
@@ -116,11 +119,19 @@ The pipeline preserves three properties from source to emitted bytes. The
   all-`reg 64` context. Loops are covered at the dialect level and by the
   constant-time analysis; the byte-level statement for a loop is under construction.
 - Register allocation is the linear-scan-with-spill allocator `physScanSpill`. Its
-  faithfulness theorem, `physBody_lsem_result_uniform`
-  (`X86Backend/ToLprogFaithfulNary.lean`), is stated on the binop prefix of a
-  `UniformRegArith` program, with the terminal return out of scope and the
-  two-address collapse of each binding carried as a hypothesis. The whole-function
-  statement is not closed.
+  whole-function faithfulness theorem, `toLprogPhysAbi_faithful_uniform`
+  (`X86Backend/ToLprogFaithfulAssembled.lean`, with the two-pointer ABI and
+  callee-save epilogue instances beside it), is stated for `UniformRegArith`
+  programs: binop bindings over 64-bit registers. Its hypotheses are the
+  per-binding cover data, distinct memref pointers, a frame disjoint from the
+  prologue cells, and the ABI materialization condition. Programs outside that
+  fragment (memory operands, calls, branches) have no allocation theorem.
+- Two predicates on the owned x86 path are the constant `True` by construction of
+  the model they describe: `ownedX86CTSafe` (`VIR/OwnedX86RobustInstance.lean`),
+  because the scalar `x86Target` model has no memory operands and no branches, and
+  `printableShape` (`VIR/CatCryptPrintCorrect.lean`), because the printer handles
+  every `CatCryptOp` constructor. Neither states anything about a program; the
+  constant-time content is in `X86Backend/MachineConstantTime.lean`.
 - `robustCompilation_source_to_x86` carries Jasmin's verified compiler as a
   hypothesis. `rustToJasminCom_endToEnd` carries the Rust front's adequacy edge as
   a hypothesis; only its `_unconditional` sibling discharges that edge, over the

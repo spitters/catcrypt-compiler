@@ -20,8 +20,8 @@ The per-fragment `lsem` faithfulness results (`comToLprog_faithful_leaf` and the
 straight-line subsumption tower below it) are stated over `lsemStraight` — the
 body-block fold. The control-flow increments (loops/branches/calls) are stated over
 the *labeled, program-indexed* `lsemFuel` (`JasminLsemLabeled`). The general-`Com`
-faithfulness that would retire `JasminLprogExport.LprogExportFaithful := True` lives
-in the labeled semantics, so the straight-line tower has to be lifted there first.
+faithfulness predicate `ComLsemExportFaithful` lives in the labeled semantics, so
+the straight-line tower has to be lifted there first.
 
 The lift glue is `JasminLsemLabeled.lsem_of_straightline`: a **jump-free** body's
 `lsemStraight` execution is a labeled `lsem` derivation over the singleton program.
@@ -147,13 +147,13 @@ theorem scalar_com_labeled_lsem {w : Nat} {Γ : Ctxt jasminDialect} {t : JasminT
 
 /-! ## The general-`Com` `lsem` export-faithfulness predicate
 
-The genuine content `JasminLprogExport.LprogExportFaithful := True` stands in for, as a
-first-class predicate over a `Com` and its export name: the emitted singleton program,
-run under the labeled program-indexed `lsem` from the encoded inputs, halts at a state
-whose result register decodes to `Com.denote`. `Com` being straight-line (regions-free),
-this is the whole faithfulness statement — no control-flow disjunct. -/
+The export-faithfulness predicate over a `Com` and its export name: the emitted
+singleton program, run under the labeled program-indexed `lsem` from the encoded
+inputs, halts at a state whose result register decodes to `Com.denote`. `Com` being
+straight-line (regions-free), this is the whole faithfulness statement — no
+control-flow disjunct. -/
 
-/-- **General-`Com` `lsem` export faithfulness** (the real content of the export gate).
+/-- **General-`Com` `lsem` export faithfulness** (the content of the export gate).
     For every input valuation, the emitted singleton program drives the encoded inputs,
     under the labeled `lsem`, to a state decoding to `Com.denote`. -/
 def ComLsemExportFaithful {w : Nat} {Γ : Ctxt jasminDialect} {t : JasminTy}
@@ -164,10 +164,10 @@ def ComLsemExportFaithful {w : Nat} {Γ : Ctxt jasminDialect} {t : JasminTy}
       ∧ decode st' (comRetReg Γ.length argName com Γ.length)
           = (hw ▸ com.denote V : ⟦(JasminTy.reg w)⟧)
 
-/-- **The export gate is genuinely discharged for the maximal plain-`Lstate` fragment.**
-    Any `Com` over `{regArith, regConst, select}` satisfies `ComLsemExportFaithful` — the
-    real, non-`True` content of the export-faithfulness gate, assembled from the
-    straight-line tower + the jump-freeness brick + the `lsem_of_straightline` bridge. -/
+/-- **The export gate is discharged for the maximal plain-`Lstate` fragment.**
+    Any `Com` over `{regArith, regConst, select}` satisfies `ComLsemExportFaithful`,
+    assembled from the straight-line tower, the jump-freeness brick and the
+    `lsem_of_straightline` bridge. -/
 theorem comLsemExportFaithful_of_scalar {w : Nat} {Γ : Ctxt jasminDialect} {t : JasminTy}
     {com : Com jasminDialect Γ t} (hcom : UniformScalarArith w com) (hu : UniformCtxt w Γ)
     (fn : String) : ComLsemExportFaithful com fn hcom.ret_ty :=

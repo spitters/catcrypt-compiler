@@ -22,8 +22,8 @@ not nested sub-programs), but it can't model
 
 1. CryptoSSA's `CExpr.ite` translated to *real* nested branches (today
    `CryptoToVIR` degrades it to a non-region `.ite` op), or
-2. Quantum's `QSProg.ifBit` (deferred in `QSSAToVIR.lean` because there's
-   no region construct).
+2. the quantum island's `QSProg.ifBit` (its QSSA-to-VIR lowering, outside this
+   package, defers it because there is no region construct).
 
 This file adds an additive region wrapper `ComR` that extends `Com` with a
 single nested-branch constructor `ifBit cond lvl thenBr elseBr`. The
