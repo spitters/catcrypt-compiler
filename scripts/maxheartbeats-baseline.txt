@@ -1,10 +1,9 @@
-109
+78
 # maxHeartbeats bumps > 200000 over CatCrypt/ (one line per occurrence, file path). Goal: 0.
 # Frozen baseline; auto-tightened by scripts/proof-cost-ratchet.sh.
 CatCrypt/Crypto/Hax/HaxToLowCT.lean
 CatCrypt/Crypto/Hax/HaxToLowCTSimulates.lean
 CatCrypt/Crypto/Jasmin/AES/AESEquiv.lean
-CatCrypt/Crypto/Jasmin/BignumHoare/SubWrap.lean
 CatCrypt/Crypto/Jasmin/JasminOps.lean
 CatCrypt/Crypto/Jasmin/JasminOps.lean
 CatCrypt/Crypto/Jasmin/JasminOps.lean
@@ -19,17 +18,6 @@ CatCrypt/Crypto/Jasmin/JasminOps.lean
 CatCrypt/Crypto/Jasmin/JasminOps.lean
 CatCrypt/Crypto/Jasmin/JasminOps.lean
 CatCrypt/Crypto/Jasmin/JasminOps.lean
-CatCrypt/Crypto/Jasmin/Mpn/Add32Refines.lean
-CatCrypt/Crypto/Jasmin/Mpn/Addmul132Refines.lean
-CatCrypt/Crypto/Jasmin/Mpn/AddNAdcSpillPrototype.lean
-CatCrypt/Crypto/Jasmin/Mpn/AddOpenCarryPrototype.lean
-CatCrypt/Crypto/Jasmin/Mpn/Logical32Refines.lean
-CatCrypt/Crypto/Jasmin/Mpn/Mul132Refines.lean
-CatCrypt/Crypto/Jasmin/Mpn/Sub32Refines.lean
-CatCrypt/Crypto/Jasmin/Mpn/Submul132Refines.lean
-CatCrypt/Crypto/Jasmin/Mpn/Submul132Refines.lean
-CatCrypt/Crypto/Jasmin/Mpn/SubNSbbSpillPrototype.lean
-CatCrypt/Crypto/Jasmin/Mpn/SubOpenCarryPrototype.lean
 CatCrypt/Crypto/SecureCompilation/CompileFromHaxAscon.lean
 CatCrypt/Crypto/SecureCompilation/CompileFromHaxAscon.lean
 CatCrypt/Crypto/SecureCompilation/CompileFromHaxAscon.lean
@@ -53,6 +41,9 @@ CatCrypt/Crypto/SecureCompilation/VIR/KeccakEmitterLanesReadout.lean
 CatCrypt/Crypto/SecureCompilation/VIR/KeccakEmitterReadoutHalfExt.lean
 CatCrypt/Crypto/SecureCompilation/VIR/KeccakEmitterReadoutHalfFull.lean
 CatCrypt/Crypto/SecureCompilation/VIR/KeccakEmitterReadoutHalf.lean
+CatCrypt/Crypto/SecureCompilation/VIR/KeccakFipsAscent.lean
+CatCrypt/Crypto/SecureCompilation/VIR/KeccakFipsAscent.lean
+CatCrypt/Crypto/SecureCompilation/VIR/KeccakFipsAscent.lean
 CatCrypt/Crypto/SecureCompilation/VIR/KeccakRoundCatCryptEmit.lean
 CatCrypt/Crypto/SecureCompilation/VIR/Poseidon2EmitterReadoutHalf.lean
 CatCrypt/Crypto/SecureCompilation/VIR/RecursiveForLoopBlockFront.lean
@@ -87,26 +78,4 @@ CatCrypt/Crypto/SecureCompilation/X86Backend/PastaBignumTierA.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/SchoolbookProductRunBlock.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/SchoolbookRunBlock.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/Sha512X8VpackZmmEmit.lean
-CatCrypt/Crypto/SHA256/Extraction/Sha256_haxpipe.lean
-CatCrypt/Crypto/UCMonad/ITreeN.lean
-CatCrypt/Crypto/UCMonad/ITreeN.lean
-CatCrypt/Crypto/UCMonad/ITreeN.lean
-CatCrypt/Crypto/UCMonad/ITreeN.lean
-CatCrypt/Crypto/UCMonad/ITreeN.lean
-CatCrypt/Crypto/UCMonad/ITreeN.lean
-CatCrypt/Crypto/UCMonad/ITreeN.lean
-CatCrypt/Crypto/UCMonad/ITreeNMetric.lean
-CatCrypt/Crypto/UCMonad/ITreeNMetric.lean
-CatCrypt/Crypto/UCMonad/ITreeNMetric.lean
-CatCrypt/Crypto/UCMonad/RoundM.lean
-CatCrypt/Crypto/UCMonad/RoundM.lean
-CatCrypt/Quantum/Instrument.lean
-CatCrypt/Quantum/Instrument.lean
-CatCrypt/Quantum/Instrument.lean
-CatCrypt/Quantum/Instrument.lean
-CatCrypt/Quantum/Instrument.lean
-CatCrypt/Quantum/Instrument.lean
-CatCrypt/Quantum/Instrument.lean
-CatCrypt/Quantum/Instrument.lean
-CatCrypt/Quantum/Programs/Qubit.lean
 CatCrypt/Tactic/MatrixDecide.lean
