@@ -169,16 +169,16 @@ theorem arr_read_corr
 the index `Pconst k` to `.Vint k`, converts to `k` (`Value.toInt`), and — when
 `0 ≤ k` and `k.toNat < n` — returns the cell byte `.Vword .U8 (a ⟨k.toNat, …⟩)`. -/
 
-/-- The mirror `semPexpr` of `Pget al aa ws x (Pconst k)`, when `x` reads
+/-- The mirror `semPexpr` of `Pget al aa U8 x (Pconst k)`, when `x` reads
     `Varr n a` and `k` is an in-range constant index, is
     `.ok (.Vword .U8 (a ⟨k.toNat, hkn⟩))` — the array cell byte. -/
 theorem semPexpr_pget_const
     (gd : GlobDecls) (opS : OpSem) (s : Estate SyscallState Mem)
     (x : VarI) (n : Nat) (a : JArrayMirror n)
-    (al : Aligned) (aa : ArrAccess) (ws : WSize) (k : Int)
+    (al : Aligned) (aa : ArrAccess) (k : Int)
     (hread : (s.evm).get x.v_var = .Varr n a)
     (hk0 : 0 ≤ k) (hkn : k.toNat < n) :
-    semPexpr (Mem := Mem) true gd opS s (.Pget al aa ws (mkLvar x) (.Pconst k))
+    semPexpr (Mem := Mem) true gd opS s (.Pget al aa .U8 (mkLvar x) (.Pconst k))
       = .ok (.Vword .U8 (a ⟨k.toNat, hkn⟩)) := by
   show (do
       let vr ← getGvar true gd s.evm (mkLvar x)
@@ -219,7 +219,7 @@ theorem semPexpr_pget_const
     for an array variable `x ∈ names` reading `Varr n a` and an in-range constant
     index `k`:
 
-    * the mirror `semPexpr` of `Pget al aa ws x (Pconst k)` is
+    * the mirror `semPexpr` of `Pget al aa U8 x (Pconst k)` is
       `.ok (.Vword .U8 (a ⟨k.toNat, hkn⟩))` — the cell byte; and
     * the JasminPrint `stackGet (Store.get st x.vname (.stackArr 8 n)) k.toNat` is
       the *same* byte `a ⟨k.toNat, hkn⟩`.
@@ -229,16 +229,16 @@ theorem semPexpr_pget_const
 theorem pget_read_corr
     (gd : GlobDecls) (opS : OpSem) (s : Estate SyscallState Mem) (st : Store)
     (names : List Var) (x : VarI) (n : Nat) (a : JArrayMirror n)
-    (al : Aligned) (aa : ArrAccess) (ws : WSize) (k : Int)
+    (al : Aligned) (aa : ArrAccess) (k : Int)
     (hcorr : StateCorrArr names st (s.evm))
     (hmem : x.v_var ∈ names)
     (hread : (s.evm).get x.v_var = .Varr n a)
     (hk0 : 0 ≤ k) (hkn : k.toNat < n) :
-    semPexpr (Mem := Mem) true gd opS s (.Pget al aa ws (mkLvar x) (.Pconst k))
+    semPexpr (Mem := Mem) true gd opS s (.Pget al aa .U8 (mkLvar x) (.Pconst k))
       = .ok (.Vword .U8 (a ⟨k.toNat, hkn⟩))
     ∧ stackGet (Store.get st x.v_var.vname (.stackArr 8 n)) k.toNat
         = a ⟨k.toNat, hkn⟩ := by
-  refine ⟨semPexpr_pget_const gd opS s x n a al aa ws k hread hk0 hkn, ?_⟩
+  refine ⟨semPexpr_pget_const gd opS s x n a al aa k hread hk0 hkn, ?_⟩
   obtain ⟨_, hst⟩ := arr_read_corr (SyscallState := SyscallState) gd s st names x n a hcorr hmem hread
   rw [hst]
   exact stackGet_id a ⟨k.toNat, hkn⟩
@@ -266,7 +266,7 @@ from `pget_read_corr` and feed it through: the destination is a byte register
 theorem cassgn_pget_selfContained
     (gd : GlobDecls) (opS : OpSem) (tag : AssgnTag)
     (dst arr : VarI) (n : Nat) (a : JArrayMirror n)
-    (al : Aligned) (aa : ArrAccess) (ws : WSize) (k : Int)
+    (al : Aligned) (aa : ArrAccess) (k : Int)
     (s : Estate SyscallState Mem) (st : Store) (names : List Var)
     (hdst : dst.v_var.vtype = .aword .U8)
     (hread : (s.evm).get arr.v_var = .Varr n a)
@@ -275,16 +275,16 @@ theorem cassgn_pget_selfContained
     (hdistinct : ∀ r' ∈ names, r' ≠ dst.v_var ∧ r'.vname ≠ dst.v_var.vname)
     (hcorr : StateCorrReg names st (s.evm)) :
     OpSemCoverage.assignExec (Mem := Mem) opS gd (.Lvar dst) (.aword .U8)
-        (.Pget al aa ws (mkLvar arr) (.Pconst k)) s
+        (.Pget al aa .U8 (mkLvar arr) (.Pconst k)) s
       = .ok (s.withVm ((s.evm).set dst.v_var (.Vword .U8 (a ⟨k.toNat, hkn⟩))))
     ∧ StateCorrReg (dst.v_var :: names)
         (Store.set st dst.v_var.vname (t := .reg 8) (a ⟨k.toNat, hkn⟩))
         ((s.evm).set dst.v_var (.Vword .U8 (a ⟨k.toNat, hkn⟩))) := by
   obtain ⟨hrhs, _⟩ :=
     pget_read_corr (SyscallState := SyscallState) gd opS s st [arr.v_var] arr n a
-      al aa ws k harr (by simp) hread hk0 hkn
+      al aa k harr (by simp) hread hk0 hkn
   exact cassgn_regArith_simulates (SyscallState := SyscallState) (Mem := Mem)
-    gd opS dst .U8 tag (.Pget al aa ws (mkLvar arr) (.Pconst k))
+    gd opS dst .U8 tag (.Pget al aa .U8 (mkLvar arr) (.Pconst k))
     (a ⟨k.toNat, hkn⟩) s st names hdst hrhs hdistinct hcorr
 
 /-! ## §5. The end-to-end `Pget` bridge (adequacy)
@@ -302,7 +302,7 @@ the post-state corresponds. -/
 theorem cassgn_pget_endToEnd
     (aS : AsmSem) (opS : OpSem) (gd : GlobDecls) (prog : Prog)
     (dst arr : VarI) (n : Nat) (a : JArrayMirror n)
-    (al : Aligned) (aa : ArrAccess) (ws : WSize) (k : Int) (tag : AssgnTag)
+    (al : Aligned) (aa : ArrAccess) (k : Int) (tag : AssgnTag)
     (s : Estate SyscallState Mem) (st : Store) (names : List Var) (fuel : Nat)
     (hdst : dst.v_var.vtype = .aword .U8)
     (hread : (s.evm).get arr.v_var = .Varr n a)
@@ -312,16 +312,16 @@ theorem cassgn_pget_endToEnd
     (hcorr : StateCorrReg names st (s.evm)) :
     SemIr (Mem := Mem) aS opS gd prog s
         (.Cassgn (.Lvar dst) tag (.aword .U8)
-          (.Pget al aa ws (mkLvar arr) (.Pconst k)))
+          (.Pget al aa .U8 (mkLvar arr) (.Pconst k)))
         (s.withVm ((s.evm).set dst.v_var (.Vword .U8 (a ⟨k.toNat, hkn⟩))))
     ∧ StateCorrReg (dst.v_var :: names)
         (Store.set st dst.v_var.vname (t := .reg 8) (a ⟨k.toNat, hkn⟩))
         ((s.evm).set dst.v_var (.Vword .U8 (a ⟨k.toNat, hkn⟩))) := by
   obtain ⟨hrhs, _⟩ :=
     pget_read_corr (SyscallState := SyscallState) gd opS s st [arr.v_var] arr n a
-      al aa ws k harr (by simp) hread hk0 hkn
+      al aa k harr (by simp) hread hk0 hkn
   exact cassgn_regArith_endToEnd (SyscallState := SyscallState) (Mem := Mem)
-    aS opS gd prog dst .U8 tag (.Pget al aa ws (mkLvar arr) (.Pconst k))
+    aS opS gd prog dst .U8 tag (.Pget al aa .U8 (mkLvar arr) (.Pconst k))
     (a ⟨k.toNat, hkn⟩) s st names fuel hdst hrhs hdistinct hcorr
 
 /-! ## §6. Worked example: `x := arr[2]` (byte read at a constant index)
@@ -386,7 +386,7 @@ theorem rhs_derived :
     pget_read_corr (SyscallState := Unit)
       (Mem := OpSemCoverage.AssignExample.TrivialMem)
       [] (addOpSemReg .U8) startState startStore [arrVar.v_var] arrVar 4
-      arrData .IsAligned .AAscale .U8 2 startStore_corr (by simp) startState_arr
+      arrData .IsAligned .AAscale 2 startStore_corr (by simp) startState_arr
       (by decide) (by decide)
   refine ⟨?_, ?_⟩
   · rw [heval]; rfl
@@ -416,7 +416,7 @@ theorem selfContained_getExample :
     cassgn_pget_selfContained (SyscallState := Unit)
       (Mem := OpSemCoverage.AssignExample.TrivialMem)
       [] (addOpSemReg .U8) .AT_none xVar arrVar 4 arrData
-      .IsAligned .AAscale .U8 2 startState startStore []
+      .IsAligned .AAscale 2 startState startStore []
       (by rfl) startState_arr startStore_corr (by decide) (by decide)
       (by intro r' hr'; exact absurd hr' (List.not_mem_nil))
       (stateCorrReg_nil startStore (startState.evm))
