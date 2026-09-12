@@ -65,7 +65,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.JasminCTByConstruction
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCTPreservation
 open CatCrypt.Crypto.SecureCompilation.X86Backend.FrontCTBridge
-open CatCrypt.Hax (ImpExpr)
+open _root_.Hax (ImpExpr)
 open CatCrypt.Crypto.SecureCompilation.CompileFromHax
 open CatCrypt.Crypto.SecureCompilation.CompileFromHaxScope
 open CatCrypt.Crypto.SecureCompilation.ThirToComFront

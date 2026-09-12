@@ -10,7 +10,7 @@ public meta import Std.Tactic.BVDecide.Reflect
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
 
 /-!
-# The ascent calculus as composable AutoCorres phases (design prototype)
+# The ascent calculus as composable AutoCorres phases
 
 The live `Ascent.Corres` step (`Corres SRword P fa c`) abstracts a LowCT command in
 **one** monolithic move: from the concrete `semScalar` operational semantics straight
@@ -23,7 +23,7 @@ phase is a `corres` and they compose transitively.
 The AutoCorres-to-Lean port ("AutoCorres2 in Lean") was begun by **Sebastian Graf**
 (`sgraf812/ascent`); this phase framing follows that lineage.
 
-This module is a **design prototype** exhibiting that the monolithic `Corres SRword`
+This module exhibits that the monolithic `Corres SRword`
 factors as the two crypto-relevant AutoCorres phases:
 
 * **TS (type-strengthen).** The refinement of a LowCT command to a *pure total word
@@ -49,8 +49,23 @@ The WA/bitwise distinction becomes a first-class **phase choice** (`ringWA` vs
 ring ops, `wordWA` (= identity on `BitVec 64`, AutoCorres' `IdWA`) is valid for every
 op and is where the bitwise spec lives.
 
-`0` sorries; no axioms beyond the front's existing set (plus `Classical.choice`, used
-once to extract a word witness from the existential field relation).
+The field relation is recovered from the word relation with `Classical.choice`, used
+once to extract a word witness from the existential field relation.
+
+## TS as the choice of a result monad
+
+The last section states the result-monad side of TS, generic in the concrete and
+abstract state types. An abstract program is `AbsProg ε A B`: a pure function
+`A → B`, an `Option`-valued one (`none` is guard failure), or an exception program
+`A → Option (Except ε B)` (a thrown value is an early exit). `MonadLevel` orders the
+three as `pure ≤ option ≤ except`. `RefinesP` is the forward simulation of a pure
+function under a precondition and `RefinesO` that of an `Option`-valued one; the
+exception level is `RefinesO` at `Except ε B`. `AbsProg.Refines` reads each level
+over one output relation on `Except ε B`, and the lifting lemmas
+`refinesP_iff_refinesO_guard`, `refinesO_iff_refinesO_mapOk` and
+`AbsProg.refines_iff_toExcept` state that a program strengthened to a lower level
+has the same correspondence as its image one level up. The pass that picks the
+level for a kernel is `Ascent/Strengthen.lean`.
 -/
 
 @[expose] public section
@@ -107,7 +122,7 @@ theorem ringWA_valid_mul : ringWA.valid (· * ·) (· * ·) := fun x y => wEncMu
 
 /-- **The discipline, made non-vacuous.** `ringWA` is *not* a homomorphism for the
     bitwise `^^^`: no `ZMod` addition target works, witnessed at `1 ^^^ 1 = 0` versus
-    `wEnc 1 + wEnc 1 = 2 ≠ 0`. So a bitwise op genuinely cannot be abstracted by the
+    `wEnc 1 + wEnc 1 = 2 ≠ 0`. So a bitwise op cannot be abstracted by the
     arithmetic phase — the phase framework *forces* the `wordWA` choice below, rather
     than leaving it to an ad-hoc per-leaf convention. -/
 theorem ringWA_not_valid_xor : ¬ ringWA.valid (· ^^^ ·) (· + ·) := by
@@ -119,7 +134,7 @@ theorem ringWA_not_valid_xor : ¬ ringWA.valid (· ^^^ ·) (· + ·) := by
   rw [hx] at hkey
   have e0 : wEnc (0 : BitVec 64) = (0 : ZMod (2 ^ 64)) := by simp [wEnc]
   have e1 : wEnc (BitVec.ofNat 64 1) = (1 : ZMod (2 ^ 64)) := by
-    simp [wEnc, BitVec.toNat_ofNat, ZMod.natCast_mod]
+    simp [wEnc, BitVec.toNat_ofNat]
   rw [e0, e1, one_add_one_eq_two] at hkey
   -- hkey : (0 : ZMod (2^64)) = 2
   have h2 : (2 : ZMod (2 ^ 64)) ≠ 0 := by
@@ -220,7 +235,7 @@ theorem corres_WA {Pw : AWord → Prop} {fw : AWord → AWord} {c : LowCT}
 
 The word-level (post-TS, pre-WA) counterpart of the live `corres_setScalar`: the same
 `RScalarSet` command, refined to a pure *word* transformer over the total word relation
-`SRW`. This is the honest TS phase — machine words, deterministic pure update. -/
+`SRW`. This is the TS phase at the word level — machine words, deterministic pure update. -/
 
 /-- `RScalarSet name n` at the **word level** (TS phase): the pure word transformer sets
     `name` to `BitVec.ofNat 64 n`, discharged against the real `semScalar` `RScalarSet`
@@ -313,7 +328,204 @@ So the `ExprLeaf` arith/bitwise split is precisely the `ringWA`-vs-`wordWA` **ph
 choice** made first-class here: `wordWA_valid` says the identity phase covers every
 bitwise op, and `wordWA_wenc_id` says a `wordWA` lift is the identity on states, so the
 bitwise leaf needs no WA step — its spec *is* the word computation. (Those leaves live
-in `ExprLeaf`, imported by consumers of both modules; this prototype states the phase
-algebra they instantiate without depending on that module's in-flight surface.) -/
+in `ExprLeaf`, imported by consumers of both modules; this module states the phase
+algebra they instantiate without importing that module.) -/
+
+/-! ## TS: the result monad of an abstract program
+
+A concrete semantics `sem : C → Option D` runs from an input state to an output
+state; the abstract program runs from `A` to `B` in one of three monads. The input
+relation `SRin` and the output relation `SRout` are separate, so the same definitions
+serve a command over one state space (`C = D`, `A = B`) and a whole-program reading
+from an entry environment to a result. -/
+
+section Strengthen
+
+variable {C D A B ε : Type}
+
+/-- The result monads of type strengthening: a pure function, an `Option`-valued
+    function (`none` is guard failure), an exception program over `Option` (a thrown
+    value is an early exit). -/
+inductive MonadLevel where
+  | pure
+  | option
+  | except
+  deriving DecidableEq, Repr
+
+/-- The position of a level in the order `pure ≤ option ≤ except`. -/
+def MonadLevel.rank : MonadLevel → Nat
+  | .pure => 0
+  | .option => 1
+  | .except => 2
+
+instance : LE MonadLevel := ⟨fun l m => l.rank ≤ m.rank⟩
+
+instance (l m : MonadLevel) : Decidable (l ≤ m) :=
+  inferInstanceAs (Decidable (l.rank ≤ m.rank))
+
+/-- Forward simulation of a pure abstract function under a precondition: from related
+    states with `P a`, the concrete run makes progress to a state related to `f a`. -/
+def RefinesP (sem : C → Option D) (SRin : C → A → Prop) (SRout : D → B → Prop)
+    (P : A → Prop) (f : A → B) : Prop :=
+  ∀ c a, SRin c a → P a → ∃ d, sem c = some d ∧ SRout d (f a)
+
+/-- Forward simulation of an `Option`-valued abstract function: whenever the abstract
+    program returns `some b`, the concrete run makes progress to a state related to
+    `b`. Abstract failure `none` constrains nothing. -/
+def RefinesO (sem : C → Option D) (SRin : C → A → Prop) (SRout : D → B → Prop)
+    (f : A → Option B) : Prop :=
+  ∀ c a b, SRin c a → f a = some b → ∃ d, sem c = some d ∧ SRout d b
+
+/-- The `Option` program of a pure function under a decidable guard: `f a` when the
+    guard holds, failure otherwise. -/
+def optGuard (P : A → Prop) [DecidablePred P] (f : A → B) (a : A) : Option B :=
+  if P a then some (f a) else none
+
+/-- **Pure to option, under a guard.** A pure refinement under the precondition `P`
+    is the `Option` refinement of `optGuard P f`. -/
+theorem refinesP_iff_refinesO_guard (sem : C → Option D) (SRin : C → A → Prop)
+    (SRout : D → B → Prop) (P : A → Prop) [DecidablePred P] (f : A → B) :
+    RefinesP sem SRin SRout P f ↔ RefinesO sem SRin SRout (optGuard P f) := by
+  constructor
+  · intro h c a b hSR hf
+    unfold optGuard at hf
+    by_cases hP : P a
+    · rw [if_pos hP, Option.some.injEq] at hf
+      subst hf
+      exact h c a hSR hP
+    · rw [if_neg hP] at hf
+      exact absurd hf (by simp)
+  · intro h c a hSR hP
+    exact h c a (f a) hSR (by simp [optGuard, hP])
+
+/-- **Pure to option.** A pure refinement with no precondition is the `Option`
+    refinement of `some ∘ f`. -/
+theorem refinesP_true_iff_refinesO_some (sem : C → Option D) (SRin : C → A → Prop)
+    (SRout : D → B → Prop) (f : A → B) :
+    RefinesP sem SRin SRout (fun _ => True) f ↔ RefinesO sem SRin SRout (fun a => some (f a)) := by
+  constructor
+  · intro h c a b hSR hf
+    obtain rfl := Option.some.inj hf
+    exact h c a hSR trivial
+  · intro h c a hSR _
+    exact h c a (f a) hSR rfl
+
+/-- **Option to exception.** An `Option` refinement over the normal-result reading
+    `SRout d (.ok b)` is the exception refinement of the same program with every
+    result tagged `.ok`. -/
+theorem refinesO_iff_refinesO_mapOk (sem : C → Option D) (SRin : C → A → Prop)
+    (SRout : D → Except ε B → Prop) (f : A → Option B) :
+    RefinesO sem SRin (fun d b => SRout d (.ok b)) f ↔
+      RefinesO sem SRin SRout (fun a => (f a).map Except.ok) := by
+  constructor
+  · intro h c a r hSR hf
+    dsimp only at hf
+    cases hfa : f a with
+    | none => rw [hfa] at hf; exact absurd hf (by simp)
+    | some b =>
+        rw [hfa, Option.map_some, Option.some.injEq] at hf
+        subst hf
+        exact h c a b hSR hfa
+  · intro h c a b hSR hf
+    exact h c a (.ok b) hSR (by dsimp only; rw [hf, Option.map_some])
+
+/-- The normal results of an exception program, as an `Option` program: a thrown
+    value and a failure both read as `none`. -/
+def exceptOk (f : A → Option (Except ε B)) (a : A) : Option B :=
+  match f a with
+  | some (.ok b) => some b
+  | _ => none
+
+/-- An exception program that never throws is the `.ok`-image of its normal
+    results. -/
+theorem exceptOk_mapOk_of_noThrow (f : A → Option (Except ε B))
+    (h : ∀ a e, f a ≠ some (.error e)) (a : A) :
+    (exceptOk f a).map Except.ok = f a := by
+  unfold exceptOk
+  rcases hfa : f a with _ | (e | b)
+  · rfl
+  · exact absurd hfa (h a e)
+  · rfl
+
+/-- **Exception to option.** An exception program that never throws refines exactly
+    when its normal results refine at the `Option` level. -/
+theorem refinesO_except_iff_exceptOk (sem : C → Option D) (SRin : C → A → Prop)
+    (SRout : D → Except ε B → Prop) (f : A → Option (Except ε B))
+    (h : ∀ a e, f a ≠ some (.error e)) :
+    RefinesO sem SRin SRout f ↔ RefinesO sem SRin (fun d b => SRout d (.ok b)) (exceptOk f) := by
+  rw [refinesO_iff_refinesO_mapOk]
+  have hf : (fun a => (exceptOk f a).map Except.ok) = f := funext (exceptOk_mapOk_of_noThrow f h)
+  rw [hf]
+
+/-- **Option to pure.** An `Option` program that never fails refines exactly when the
+    pure function of its results refines with no precondition. -/
+theorem refinesO_iff_refinesP_of_total (sem : C → Option D) (SRin : C → A → Prop)
+    (SRout : D → B → Prop) (fo : A → Option B) (f : A → B) (h : ∀ a, fo a = some (f a)) :
+    RefinesO sem SRin SRout fo ↔ RefinesP sem SRin SRout (fun _ => True) f := by
+  have hf : fo = fun a => some (f a) := funext h
+  rw [hf, refinesP_true_iff_refinesO_some]
+
+/-- An abstract program at one of the three levels. -/
+inductive AbsProg (ε A B : Type) where
+  | pure (f : A → B)
+  | option (f : A → Option B)
+  | except (f : A → Option (Except ε B))
+
+/-- The level of an abstract program. -/
+def AbsProg.level : AbsProg ε A B → MonadLevel
+  | .pure _ => .pure
+  | .option _ => .option
+  | .except _ => .except
+
+/-- The image of an abstract program in the exception monad. -/
+def AbsProg.toExcept : AbsProg ε A B → A → Option (Except ε B)
+  | .pure f => fun a => some (.ok (f a))
+  | .option f => fun a => (f a).map Except.ok
+  | .except f => f
+
+/-- The image of an abstract program one level up: `pure f` as the `Option` program
+    `some ∘ f`, `option f` as the exception program `.ok`-tagging its results, an
+    exception program unchanged. -/
+def AbsProg.lift : AbsProg ε A B → AbsProg ε A B
+  | .pure f => .option (fun a => some (f a))
+  | .option f => .except (fun a => (f a).map Except.ok)
+  | .except f => .except f
+
+/-- The correspondence of an abstract program at its own level, over one output
+    relation on `Except ε B`: the pure and `Option` levels read it at `.ok`. -/
+def AbsProg.Refines (sem : C → Option D) (SRin : C → A → Prop)
+    (SRout : D → Except ε B → Prop) : AbsProg ε A B → Prop
+  | .pure f => RefinesP sem SRin (fun d b => SRout d (.ok b)) (fun _ => True) f
+  | .option f => RefinesO sem SRin (fun d b => SRout d (.ok b)) f
+  | .except f => RefinesO sem SRin SRout f
+
+/-- **The lifting lemma.** A program's correspondence at its level is the
+    correspondence of its image one level up. -/
+theorem AbsProg.refines_lift_iff (sem : C → Option D) (SRin : C → A → Prop)
+    (SRout : D → Except ε B → Prop) (p : AbsProg ε A B) :
+    p.lift.Refines sem SRin SRout ↔ p.Refines sem SRin SRout := by
+  cases p with
+  | pure f => exact (refinesP_true_iff_refinesO_some sem SRin _ f).symm
+  | option f => exact (refinesO_iff_refinesO_mapOk sem SRin SRout f).symm
+  | except f => exact Iff.rfl
+
+/-- A program's correspondence at its level is the exception-level correspondence
+    of its image `toExcept`. -/
+theorem AbsProg.refines_iff_toExcept (sem : C → Option D) (SRin : C → A → Prop)
+    (SRout : D → Except ε B → Prop) (p : AbsProg ε A B) :
+    p.Refines sem SRin SRout ↔ RefinesO sem SRin SRout p.toExcept := by
+  cases p with
+  | pure f =>
+      exact (refinesP_true_iff_refinesO_some sem SRin _ f).trans
+        (refinesO_iff_refinesO_mapOk sem SRin SRout (fun a => some (f a)))
+  | option f => exact refinesO_iff_refinesO_mapOk sem SRin SRout f
+  | except f => exact Iff.rfl
+
+/-- `Corres` is `RefinesP` at the concrete semantics `semScalar c`. -/
+theorem corres_iff_refinesP {AState : Type} (SR : SEnvScalar → AState → Prop)
+    (P : AState → Prop) (fa : AState → AState) (c : LowCT) :
+    Corres SR P fa c ↔ RefinesP (fun env => semScalar c env) SR SR P fa := Iff.rfl
+
+end Strengthen
 
 end CatCrypt.Crypto.SecureCompilation.Ascent

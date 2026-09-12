@@ -62,13 +62,13 @@ is not one of the two literal-bound shapes handled earlier), the lowering is the
 runtime-loop node. -/
 
 theorem haxToLowCT_forFold_runtime_some
-    (v : String) (hi body : CatCrypt.Hax.ImpExpr)
+    (v : String) (hi body : Hax.ImpExpr)
     (boundE : SExpr) (bodyC : LowCT)
     (hb : impBoundToSExpr hi = some boundE)
     (hbody : haxToLowCT body = some bodyC)
     -- `hi` is not a literal-bound shape (those lower to `RFor`, handled earlier):
     (hnl_int : ∀ n : Int, hi ≠ .lit (.int n))
-    (hnl_uint : ∀ (w : CatCrypt.Hax.IntWidth) (n : Nat), hi ≠ .lit (.uintLit w n)) :
+    (hnl_uint : ∀ (w : Hax.IntWidth) (n : Nat), hi ≠ .lit (.uintLit w n)) :
     haxToLowCT (.forFold v (.lit (.int 0)) hi body)
       = some (.RForRuntime v boundE bodyC) := by
   cases hi with

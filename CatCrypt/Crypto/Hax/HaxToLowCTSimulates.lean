@@ -7,8 +7,8 @@ module
 
 import all Init.Data.Repr
 public import CatCrypt.Crypto.Hax.HaxToLowCT
-public import CatCrypt.Hax.Semantics
-public import CatCrypt.Hax.Value
+public import HaxLean.Semantics
+public import HaxLean.Value
 public import CatCrypt.Crypto.Jasmin.LowCT
 
 /-!
@@ -82,7 +82,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Hax
 
-open CatCrypt.Hax (ImpExpr ImpLit ImpType IntWidth Value Env Outcome Builtins
+open _root_.Hax (ImpExpr ImpLit ImpType IntWidth Value Env Outcome Builtins
                    denote denoteArgs defaultBuiltins)
 open CatCrypt.Crypto.Jasmin.LowCT
   (TowerType LowCT RustState RustExec LeafSpec Located
@@ -94,11 +94,12 @@ Phase H3.bis covers scalar bindings only.  Tower-typed agreement
 (content-bearing, byte-layout transport per CryptoSSA's `bindingOK`)
 is added in H3.quarta. -/
 
-/-- Decode a Hax `Value` to a LowCT scalar.  H3.bis covers
-    `int n` (when `n ≥ 0`), `bool`, and `unit`.  Tower / bytes /
-    tuples / options decoded in H3.quarta. -/
+/-- Decode a Hax `Value` to a LowCT scalar: `int n` (when `n ≥ 0`),
+    the width-indexed `uint _ n`, `bool`, and `unit`.  Signed and array
+    values, towers, bytes, tuples and options have no scalar decoding. -/
 def valueToScalar : Value → Option Nat
   | .int n => if 0 ≤ n then some n.toNat else none
+  | .uint _ n => some n
   | .bool true => some 1
   | .bool false => some 0
   | .unit => some 0
@@ -195,6 +196,23 @@ theorem evalImp_unitVal_inv (bi : Builtins) (fuel : Nat)
   rw [key] at h
   rw [Option.some.injEq, Prod.mk.injEq] at h
   exact ⟨h.1.symm, h.2.symm⟩
+
+/-- `denote` erases a type ascription. -/
+theorem denote_typeAscription (bi : Builtins) (fuel : Nat) (e : ImpExpr) (ty : String) :
+    denote bi fuel (.typeAscription e ty) = denote bi fuel e := by
+  rw [denote]
+
+/-- `evalImp` erases a type ascription. -/
+theorem evalImp_typeAscription (bi : Builtins) (fuel : Nat) (e : ImpExpr) (ty : String)
+    (env : Env) :
+    evalImp bi fuel (.typeAscription e ty) env = evalImp bi fuel e env := by
+  unfold evalImp
+  rw [denote_typeAscription]
+
+/-- `haxToLowCT` erases a type ascription. -/
+theorem haxToLowCT_typeAscription_eq (e : ImpExpr) (ty : String) :
+    haxToLowCT (.typeAscription e ty) = haxToLowCT e := by
+  simp [haxToLowCT]
 
 /-! ## §3  Main simulation theorem (statement) -/
 
@@ -660,7 +678,7 @@ set_option maxHeartbeats 800000 in
 theorem haxToLowCT_forFold_eq_none
     (v : String) (lo hi body : ImpExpr)
     (h_not_lit : ¬ ∃ n : Int, lo = .lit (.int 0) ∧ hi = .lit (.int n) ∧ n ≥ 0)
-    (h_not_uint : ¬ ∃ (w : CatCrypt.Hax.IntWidth) (n : Nat),
+    (h_not_uint : ¬ ∃ (w : Hax.IntWidth) (n : Nat),
         lo = .lit (.int 0) ∧ hi = .lit (.uintLit w n))
     -- Stage 1a (2026-07-01): the runtime-bound arm fires when
     -- `lo = .lit (.int 0)` and `impBoundToSExpr hi` succeeds; exclude it.

@@ -28,7 +28,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Hax
 
-open CatCrypt.Hax (ImpExpr ImpLit ImpType IntWidth Value Env Outcome Builtins
+open _root_.Hax (ImpExpr ImpLit ImpType IntWidth Value Env Outcome Builtins
                    denote denoteWhile defaultBuiltins)
 open CatCrypt.Crypto.Jasmin.LowCT
   (TowerType LowCT RustState RustExec LeafSpec Located
@@ -207,6 +207,15 @@ theorem evalImp_whileLoop_var_step_inv_valArm
         refine ⟨vB, env_mid, rfl, hBody, ?_⟩
         exact evalImp_whileLoop_var_true_iterate bi n cond body env v env'
           vB env_mid hen hBody h
+    | uint _ _ | sint _ _ | array _ =>
+      exfalso
+      unfold evalImp at h
+      simp only [denote] at h
+      unfold denoteWhile at h
+      simp only [Nat.add_one_ne_zero, if_false, bind, Bind.bind,
+                 StateT.bind, denote, get, getThe, MonadStateOf.get,
+                 StateT.get, pure, Pure.pure, StateT.pure, StateT.run, hen] at h
+      cases h
     | unit =>
       exfalso
       unfold evalImp at h

@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Hax.AST
+public import HaxLean.AST
 public import CatCrypt.Crypto.Optimizer.SecretType
 
 /-!
@@ -64,7 +64,7 @@ invariant it certifies. Together with `impExprToThir`'s structural gate and
   `CompilableCT` / `com_ct_by_construction`.
 
 `exprLevel` is the conservative variant the deliverable allows: only the forms
-whose value-secrecy is genuinely a join of subexpressions are propagated
+whose value-secrecy is a join of subexpressions are propagated
 precisely; everything else is `sec`. The gate theorem is proved for this
 conservative `exprLevel`, so it is sound regardless of how loose the
 approximation is — a stricter analysis would only *accept more* programs, never
@@ -79,7 +79,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.ImpCTGate
 
-open CatCrypt.Hax
+open _root_.Hax
 open CatCrypt.Crypto.Optimizer.SecretType
 open CatCrypt.Crypto.Optimizer.SecretType.SecretLevel
 
@@ -101,7 +101,7 @@ def SecEnv.set (env : SecEnv) (x : String) (s : SecretLevel) : SecEnv :=
 /-! ## 2. The value-level over-approximation `exprLevel`
 
 The information-flow level of an expression's *value*. This is a **sound
-over-approximation**: precise on the genuinely-dataflow forms (atoms,
+over-approximation**: precise on the dataflow forms (atoms,
 applications, tuples, projections, sequencing and let-binding), and `sec`
 ("when unsure, secret") on every form whose value-secrecy we do not track. The
 gate theorem (§5) holds for this conservative reading, so soundness does not
@@ -169,6 +169,7 @@ def impCTSafe (env : SecEnv) : ImpExpr → Bool
   | .cfBreak e    => impCTSafe env e
   | .cfContinue e => impCTSafe env e
   | .cfBreakContinue e => impCTSafe env e
+  | .typeAscription e _ => impCTSafe env e
   -- Control surfaces: guard / scrutinee must be public.
   | .ifThenElse cond thn els =>
       isPub (exprLevel env cond) && impCTSafe env cond
@@ -240,6 +241,7 @@ def NoSecretControl (env : SecEnv) : ImpExpr → Prop
   | .cfBreak e    => NoSecretControl env e
   | .cfContinue e => NoSecretControl env e
   | .cfBreakContinue e => NoSecretControl env e
+  | .typeAscription e _ => NoSecretControl env e
   | .ifThenElse cond thn els =>
       exprLevel env cond = SecretLevel.pub
         ∧ NoSecretControl env cond ∧ NoSecretControl env thn
@@ -367,6 +369,7 @@ theorem impCTSafe_NoSecretControl (env : SecEnv) :
   | cfBreak e ih => intro h; simp only [impCTSafe] at h; exact ih h
   | cfContinue e ih => intro h; simp only [impCTSafe] at h; exact ih h
   | cfBreakContinue e ih => intro h; simp only [impCTSafe] at h; exact ih h
+  | typeAscription e _ ih => intro h; simp only [impCTSafe] at h; exact ih h
   | ifThenElse c t e ihc iht ihe =>
       intro h
       simp only [impCTSafe, Bool.and_eq_true] at h

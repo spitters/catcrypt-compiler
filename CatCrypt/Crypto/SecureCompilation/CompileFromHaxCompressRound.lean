@@ -29,7 +29,7 @@ materialisation one binding at a time, alongside the four block lemmas of
 
 namespace CatCrypt.Crypto.SecureCompilation.CompileFromHaxCompress
 
-open CatCrypt.Hax
+open _root_.Hax
 open CatCrypt.Crypto.SecureCompilation.ImpExprToThir
 open CatCrypt.Crypto.SecureCompilation.ThirToComFront
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect (JasminBinOp)

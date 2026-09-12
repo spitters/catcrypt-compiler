@@ -8,7 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidence
 
 /-!
-# DF keystone (immediate-shift extension): the two frontend denotations
+# Frontend coincidence (immediate-shift extension): the two frontend denotations
 # COINCIDE on the immediate logical-shift arms
 
 This module **extends** the base-case coincidence result of
@@ -75,13 +75,13 @@ These agree iff `n % 2 ^ 64 = n`, i.e. **`n < 2 ^ 64`** (lemma
   *arithmetic* shift. There is no logical/arithmetic node confusion here: we map
   only the logical shifts `shr`/`shl`, and do **not** claim `sar` coincides with
   any `SExpr` node.
-* **Rotate `ror` is genuinely out.** `SExpr` has **no rotate node at all**, so
+* **Rotate `ror` is out.** `SExpr` has **no rotate node at all**, so
   `ShiftKind.apply .ror av n = av.rotateRight n` has no `SExpr` image. Stated,
   not forced.
 * **`or`/`andn` remain out** on the binary side (no `SOr`/`SAndn` node), exactly
   as in the base file.
 
-Each lemma below is genuinely about **both** `denoteScalar`/`ShiftKind.apply`
+Each lemma below is about **both** `denoteScalar`/`ShiftKind.apply`
 (Path A) **and** `SExpr.evalBV` (Path B); none is a restatement of one side.
 -/
 
@@ -91,7 +91,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidence
 
-open CatCrypt.Hax
+open _root_.Hax
 open CatCrypt.Crypto.SecureCompilation.ImpExprToThir
 open CatCrypt.Crypto.Jasmin.LowCT
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect (JasminBinOp)
@@ -132,13 +132,13 @@ honest side condition `n < 2 ^ 64`; the `SShr`/`SShl` nodes on a literal operand
 then evaluate to `av >>> n` / `av <<< n`, matching `ShiftKind.apply`. -/
 
 /-- The literal-node `evalBV` reading: `evalBV β (.SLit n) = BitVec.ofNat 64 n`.
-    Genuinely about Path B (`SExpr.evalBV`). -/
+    About Path B (`SExpr.evalBV`). -/
 theorem evalBV_SLit (β : String → BitVec 64) (n : Nat) :
     SExpr.evalBV β (.SLit n) = BitVec.ofNat 64 n := rfl
 
 /-- Under the side condition `n < 2 ^ 64`, the `.SLit n` shift operand's
     `(evalBV β _).toNat` is exactly `n` — the amount Path A uses directly.
-    This is the load-bearing alignment fact for the immediate-shift coincidence;
+    This is the alignment fact for the immediate-shift coincidence;
     it is the *only* place the side condition is consumed. -/
 theorem ofNat_toNat_of_lt (β : String → BitVec 64) {n : Nat} (h : n < 2 ^ 64) :
     (SExpr.evalBV β (.SLit n)).toNat = n := by
@@ -147,7 +147,7 @@ theorem ofNat_toNat_of_lt (β : String → BitVec 64) {n : Nat} (h : n < 2 ^ 64)
 
 /-- **`shr` apply-agreement.** Under `n < 2 ^ 64`, Path A's `ShiftKind.apply .shr
     av n = av >>> n` agrees with the Path-B `SShr` node on a literal count:
-    `evalBV β (.SShr a (.SLit n)) = (evalBV β a) >>> n`. Genuinely about both
+    `evalBV β (.SShr a (.SLit n)) = (evalBV β a) >>> n`. About both
     `ShiftKind.apply` (LHS, via `av := evalBV β a`) and `SExpr.evalBV` (RHS). -/
 theorem apply_shr_eq_evalBV (β : String → BitVec 64) (sa : SExpr) {n : Nat}
     (h : n < 2 ^ 64) :
@@ -158,7 +158,7 @@ theorem apply_shr_eq_evalBV (β : String → BitVec 64) (sa : SExpr) {n : Nat}
 
 /-- **`shl` apply-agreement.** Under `n < 2 ^ 64`, Path A's `ShiftKind.apply .shl
     av n = av <<< n` agrees with the Path-B `SShl` node on a literal count:
-    `evalBV β (.SShl a (.SLit n)) = (evalBV β a) <<< n`. Genuinely about both
+    `evalBV β (.SShl a (.SLit n)) = (evalBV β a) <<< n`. About both
     `ShiftKind.apply` and `SExpr.evalBV`. -/
 theorem apply_shl_eq_evalBV (β : String → BitVec 64) (sa : SExpr) {n : Nat}
     (h : n < 2 ^ 64) :
@@ -224,7 +224,7 @@ coincide. -/
 
     and the two are equal (modulo the `some`). Consumes the atom-leaf coincidence
     (`atom_coincides`) on `a` and the per-kind agreement
-    (`apply_eq_evalBV_of_shiftCtor`). Genuinely about both `denoteScalar` (LHS)
+    (`apply_eq_evalBV_of_shiftCtor`). About both `denoteScalar` (LHS)
     and `SExpr.evalBV` (RHS). The crucial subtlety: `recogBin f` must be `none`
     so `denoteScalar` falls through to its `recogShift` arm (a recognised shift
     head is never a recognised binop head, so `recogBin f = none` is forced; we

@@ -21,7 +21,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Hax
 
-open CatCrypt.Hax (ImpExpr ImpLit ImpType IntWidth Value Env Outcome Builtins
+open _root_.Hax (ImpExpr ImpLit ImpType IntWidth Value Env Outcome Builtins
                    denote defaultBuiltins)
 open CatCrypt.Crypto.Jasmin.LowCT
   (TowerType LowCT RustState RustExec LeafSpec Located
@@ -130,10 +130,37 @@ theorem envAgreesRust_extend_scalar_local
 
 /-! ## §4  Simulation instance: `assign _ (.lit (.uintLit _ _))` -/
 
-/-- `haxToLowCT` reduces the assign-uintLit arm to `RScalarSet`. -/
+/-- Agreement extension for a width-indexed scalar binding: extending the env
+    at `name` with `.uint w n` and setting the Rust scalar `name` to `n`. -/
+theorem envAgreesRust_extend_scalar_uint_local
+    (env : Env) (rs : RustState) (name : String) (w : IntWidth) (n : Nat)
+    (hAgree : envAgreesRust env rs) :
+    envAgreesRust (env.extend name (.uint w n)) (rsSetScalar rs name n) := by
+  intro x v hxv m hm
+  by_cases hx : x = name
+  · subst hx
+    rw [Env.extend_same] at hxv
+    rw [Option.some.injEq] at hxv
+    subst hxv
+    have hVS : valueToScalar (.uint w n) = some n := rfl
+    rw [hVS] at hm
+    rw [Option.some.injEq] at hm
+    subst hm
+    simp [rsSetScalar]
+  · rw [Env.extend_other _ _ _ _ hx] at hxv
+    have hScalar : (rsSetScalar rs name n).rsScalar x = rs.rsScalar x := by
+      unfold rsSetScalar; simp only []
+      have : (x == name) = false := beq_eq_false_iff_ne.mpr hx
+      simp [this]
+    rw [hScalar]
+    exact hAgree x v hxv m hm
+
+/-- `haxToLowCT` reduces the assign-uintLit arm to `RScalarSet` at the wrapped
+    literal `n % w.modulus`, the value `Value.ofLit` gives the literal. -/
 theorem haxToLowCT_assign_lit_uintLit_some
     (name : String) (w : IntWidth) (n : Nat) :
-    haxToLowCT (.assign name (.lit (.uintLit w n))) = some (.RScalarSet name n) := by
+    haxToLowCT (.assign name (.lit (.uintLit w n)))
+      = some (.RScalarSet name (n % w.modulus)) := by
   unfold haxToLowCT; rfl
 
 /-- Simulation: assign-uintLit lowers to `RScalarSet` which sets the
@@ -151,15 +178,15 @@ theorem haxToLowCT_simulates_assign_lit_uintLit
   cases hHax
   -- Unpack the source-side evaluation
   obtain ⟨hv, henv⟩ := evalImp_assign_lit_inv bi fuel name (.uintLit w n) env v env' hEval
-  -- Value.ofLit (.uintLit w n) = .int n
-  have hOfLit : Value.ofLit (.uintLit w n) = .int n := rfl
+  -- Value.ofLit (.uintLit w n) = .uint w (n % w.modulus)
+  have hOfLit : Value.ofLit (.uintLit w n) = .uint w (n % w.modulus) := rfl
   rw [hOfLit] at henv
-  -- Choose rs' = rsSetScalar rs name n
-  refine ⟨rsSetScalar rs name n,
-          RustExec.scalarSet (N := N) (leafSpec := leafSpec) name n rs, ?_⟩
+  -- Choose rs' = rsSetScalar rs name (n % w.modulus)
+  refine ⟨rsSetScalar rs name (n % w.modulus),
+          RustExec.scalarSet (N := N) (leafSpec := leafSpec) name (n % w.modulus) rs, ?_⟩
   -- Agreement preservation
   rw [henv]
-  exact envAgreesRust_extend_scalar_local env rs name n hAgree
+  exact envAgreesRust_extend_scalar_uint_local env rs name w (n % w.modulus) hAgree
 
 /-! ## §4bis  Simulation instance: `assign _ (.lit (.bool b))`
 

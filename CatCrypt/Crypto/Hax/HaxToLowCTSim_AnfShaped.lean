@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Hax.HaxToLowCT
-public import CatCrypt.Hax.Semantics
+public import HaxLean.Semantics
 
 /-!
 # H3 Blocker 2 (part): per-constructor outcome lemmas for AnfShaped programs
@@ -72,7 +72,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Hax
 
-open CatCrypt.Hax (ImpExpr ImpLit ImpType Value Env Outcome Builtins
+open _root_.Hax (ImpExpr ImpLit ImpType Value Env Outcome Builtins
                    denote denoteWhile denoteForLoop denoteArgs denoteMatchArms)
 
 /-! ## §1  Per-constructor outcome dichotomies -/

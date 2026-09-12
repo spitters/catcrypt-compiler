@@ -78,7 +78,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidenceBody
 
-open CatCrypt.Hax
+open _root_.Hax
 open CatCrypt.Crypto.SecureCompilation.ImpExprToThir
 open CatCrypt.Crypto.Jasmin.LowCT
 open CatCrypt.Crypto.SecureCompilation.Dialects.FrontendCoincidence
@@ -302,6 +302,7 @@ theorem stateAgree_bodyExec {nIn : Nat} (params : List String)
   | .forFoldRev _ _ _ _, rs, ρ, _, hc, hsa, _ => leafCase rs ρ hc hsa
   | .forFoldReturn _ _ _ _, rs, ρ, _, hc, hsa, _ => leafCase rs ρ hc hsa
   | .forFoldRevReturn _ _ _ _, rs, ρ, _, hc, hsa, _ => leafCase rs ρ hc hsa
+  | .typeAscription _ _, rs, ρ, _, hc, hsa, _ => leafCase rs ρ hc hsa
 where
   /-- Leaf-case helper: a non-`.letBind` body lowers to `RSkip` (a no-op store);
       `RustExec.skip` gives the derivation and the input `StateAgree` carries. -/

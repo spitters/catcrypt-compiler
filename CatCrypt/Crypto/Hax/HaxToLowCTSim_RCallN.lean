@@ -42,7 +42,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Hax
 
-open CatCrypt.Hax (Value Env Builtins)
+open _root_.Hax (Value Env Builtins)
 open CatCrypt.Crypto.Jasmin.LowCT
   (TowerType LowCT RustState RustExec LeafSpec Located RustVal
    callNLeafName callNUpdate locatedLookup rsTower_callNUpdate_nth)

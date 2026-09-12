@@ -51,7 +51,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Hax
 
-open CatCrypt.Hax (ImpExpr ImpLit ImpType IntWidth Value Env Outcome Builtins
+open _root_.Hax (ImpExpr ImpLit ImpType IntWidth Value Env Outcome Builtins
                    denote denoteWhile denoteArgs defaultBuiltins)
 open CatCrypt.Crypto.Jasmin.LowCT
   (TowerType LowCT RustState RustExec LeafSpec Located RustVal
@@ -204,6 +204,7 @@ def simScope (S : List String) (Γ : TowerScope) : ImpExpr → Option TowerScope
       if argsInScope Γ dt args && decide (List.lookup name Γ = some dt)
           && !S.contains name then some Γ else none
   | .tuple es => if es.all isVar then some Γ else none
+  | .typeAscription e _ => simScope S Γ e
   | _ => none
 
 /-- The scalar-binding names of a program: the names of its literal
@@ -215,6 +216,7 @@ def scalarNames : ImpExpr → List String
   | .ifThenElse _ t e => scalarNames t ++ scalarNames e
   | .whileLoop _ body => scalarNames body
   | .assign name (.lit _) => [name]
+  | .typeAscription e _ => scalarNames e
   | _ => []
 
 /-- The decidable well-formedness predicate: the checker accepts `e` from the
@@ -349,6 +351,10 @@ theorem simScope_lookup_mono (S : List String) (e : ImpExpr) :
     split at h
     · rw [Option.some.injEq] at h; subst h; exact hm
     · cases h
+  | typeAscription e _ ih =>
+    intro Γ Γ' h
+    simp only [simScope] at h
+    exact ih Γ Γ' h
   | _ => intro Γ Γ' h; simp [simScope] at h
 
 /-- `ScopeBound` transfers along scope extension. -/
@@ -560,8 +566,8 @@ theorem Env.extend_self (env : Env) (name : String) (w : Value)
     (h : env name = some w) : env.extend name w = env := by
   funext x
   by_cases hx : x = name
-  · subst hx; simp [CatCrypt.Hax.Env.extend, h]
-  · simp [CatCrypt.Hax.Env.extend, hx]
+  · subst hx; simp [Hax.Env.extend, h]
+  · simp [Hax.Env.extend, hx]
 
 /-- Step inverse for `whileLoop (.var cond) body` at successor fuel, under the
     outcome dichotomy of the body at the entry environment. -/
@@ -599,6 +605,9 @@ theorem evalImp_whileLoop_var_step_inv
           · unfold evalImp; rw [denote_whileLoop_run_eq]; exact h
         · rw [hB] at h; cases h
     | int _ => cases h
+    | uint _ _ => cases h
+    | sint _ _ => cases h
+    | array _ => cases h
     | unit => cases h
     | tuple _ => cases h
     | option _ => cases h
@@ -1043,7 +1052,7 @@ theorem haxToLowCT_assign_lit_shape (name : String) (l : ImpLit) (c : LowCT)
   cases l with
   | uintLit w n =>
     rw [haxToLowCT_assign_lit_uintLit_some] at h
-    exact ⟨n, ((Option.some.injEq _ _).mp h).symm⟩
+    exact ⟨n % w.modulus, ((Option.some.injEq _ _).mp h).symm⟩
   | bool b =>
     rw [haxToLowCT_assign_lit_bool_some] at h
     exact ⟨if b then 1 else 0, ((Option.some.injEq _ _).mp h).symm⟩
@@ -1174,6 +1183,12 @@ theorem haxToLowCT_simulates_program
     | lit l => exact progSim_assign_lit bridge bi N leafSpec S name l
     | app f args => exact progSim_assign_app bridge bi N leafSpec S name f args hPre
     | _ => exact progSim_of_simScope_none bridge bi N leafSpec S _ (fun Γ => by simp [simScope])
+  | typeAscription e _ ih =>
+    intro fuel Γ Γ' c env env' rs v hScope hSB hSF hHax hEval hAgree
+    simp only [simScope] at hScope
+    rw [haxToLowCT_typeAscription_eq] at hHax
+    rw [evalImp_typeAscription] at hEval
+    exact ih fuel Γ Γ' c env env' rs v hScope hSB hSF hHax hEval hAgree
   | _ => exact progSim_of_simScope_none bridge bi N leafSpec S _ (fun Γ => by simp [simScope])
 
 /-- The program-level simulation in the shape of `HaxToLowCTSimulatesFull`: a

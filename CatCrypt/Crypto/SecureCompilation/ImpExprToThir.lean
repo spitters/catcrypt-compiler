@@ -6,8 +6,8 @@ Authors: CatCrypt Contributors
 module
 
 import all Init.Data.Repr
-public meta import CatCrypt.Hax.AST
-public import CatCrypt.Hax.AST
+public meta import HaxLean.AST
+public import HaxLean.AST
 public meta import CatCrypt.Crypto.SecureCompilation.ThirToComFront
 public import CatCrypt.Crypto.SecureCompilation.ThirToComFront
 
@@ -15,7 +15,7 @@ public import CatCrypt.Crypto.SecureCompilation.ThirToComFront
 # C2: hax `ImpExpr` extraction AST → verified `Thir` front IR
 
 This module is the **C2** step of the verified-compiler plan: it connects the
-hax extraction AST (`CatCrypt.Hax.ImpExpr`, the imperative-expression image of
+hax extraction AST (`Hax.ImpExpr`, the imperative-expression image of
 the Rust source) to the verified `Thir` front IR
 (`CatCrypt.Crypto.SecureCompilation.ThirToComFront.Thir`), **value-preservingly**,
 and exercises the connection end-to-end on the SHA-256 message-schedule leaf σ₀.
@@ -26,7 +26,7 @@ and exercises the connection end-to-end on the SHA-256 message-schedule leaf σ�
 `Com jasminDialect` (emitted owned-x86) with the universal preservation theorem
 `thirToJasmin_denote`. What was missing is the *top* of the chain: a verified
 translator from the `ImpExpr` the hax pipeline actually produces into that
-`Thir`. This file supplies it, plus the genuine preservation theorem and the σ₀
+`Thir`. This file supplies it, plus the preservation theorem and the σ₀
 demo that threads `ImpExpr → Thir → Com` in one statement.
 
 ## The supported subset (v1 — scalar, let-normalized ARX)
@@ -83,7 +83,7 @@ narrow; correctness is total.
   defined denotations. (App arguments are evaluated through `denoteAtomExpr`,
   the same atom-only leaf the translator's `atomOf` consumes — the ANF
   discipline.)
-* `impExprToThir_denoteScalar` — the genuine preservation theorem: whenever
+* `impExprToThir_denoteScalar` — the preservation theorem: whenever
   `impExprToThir params e = some t`, the source denotation `e.denoteScalar`
   equals the front denotation `t.denote`. Proved by structural induction on `e`.
 * `sigma0Src_to_jasmin` — the σ₀ end-to-end demo: `ImpExpr → Thir → Com`, with
@@ -98,7 +98,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.ImpExprToThir
 
-open CatCrypt.Hax
+open _root_.Hax
 open CatCrypt.Crypto.SecureCompilation.ThirToComFront
 open CatCrypt.Crypto.SecureCompilation.VIR (Com)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect (JasminBinOp jasminDialect)
@@ -377,7 +377,7 @@ theorem rhsOf_denote {w nIn : Nat} (params : List String)
 
 /-- **Preservation theorem.** Whenever the translator succeeds, the source
     denotation `denoteScalar` equals the front denotation `Thir.denote`. The
-    genuine value-preservation result connecting the hax `ImpExpr` AST to the
+    value-preservation result connecting the hax `ImpExpr` AST to the
     verified `Thir` front. Proved by structural induction on `e`. -/
 theorem impExprToThir_denoteScalar {w nIn : Nat} (params : List String)
     (I : Fin nIn → BitVec w) :
@@ -471,6 +471,7 @@ theorem impExprToThir_denoteScalar {w nIn : Nat} (params : List String)
   | .cfBreak _, _, _, h => by simp [impExprToThir] at h
   | .cfContinue _, _, _, h => by simp [impExprToThir] at h
   | .cfBreakContinue _, _, _, h => by simp [impExprToThir] at h
+  | .typeAscription _ _, _, _, h => by simp [impExprToThir] at h
 
 /-! ## §5  The σ₀ end-to-end demo (`ImpExpr → Thir → Com`)
 
@@ -612,7 +613,7 @@ source-level unrolling discipline (the `dotN`/`dotTail` pilot of
 `ThirToComFront` §6), giving the first *whole-function* (not just scalar-leaf)
 coverage past the straight-line scalar leaves: a bounded **reduction** loop is
 unrolled into a flat `ImpExpr` let-chain (which the existing §3 `impExprToThir`
-already consumes) and proved value-preserving against a genuine `List.foldl`
+already consumes) and proved value-preserving against a `List.foldl`
 source semantics.
 
 ### The supported `forFold` shape (precise restriction)
@@ -634,12 +635,12 @@ into the input atom `Atom.inp (cBase + i)`, so no loop-index register is needed.
 This is a **fixed two-op body shape** (deliberately, so the unrolling induction
 closes cleanly — see the task's "restrict to a FIXED small multi-op shape"
 fallback). It already beats the single-`Rhs` straight-line limitation: the per
-iteration step is genuinely two chained ALU ops with a carried accumulator. We do
+iteration step is two chained ALU ops with a carried accumulator. We do
 **not** yet support: non-literal bounds, multiple accumulators, an *arbitrary*
-let-chain body, or control-flow/loops inside the body. Honest scope: a bounded
+let-chain body, or control-flow/loops inside the body. Scope: a bounded
 Horner/MAC reduction, not arbitrary whole-function loops.
 
-`hornerStepFn` is the per-iteration `BitVec w` step; `hornerFold` is the genuine
+`hornerStepFn` is the per-iteration `BitVec w` step; `hornerFold` is the
 `List.range`-`foldl` source meaning; `hornerUnroll` is the flat unrolled
 `ImpExpr` the front compiles; `hornerUnroll_denoteScalar` is the preservation
 theorem tying them. -/
@@ -651,14 +652,14 @@ def accH : String := "acc"
     `prodN i`), keeping each iteration's temporary from clobbering the next. -/
 def mulH (i : Nat) : String := "h" ++ toString i
 
-/-- The genuine per-iteration `BitVec w` reduction step of Horner evaluation:
+/-- The per-iteration `BitVec w` reduction step of Horner evaluation:
     `acc ↦ acc * x + c[i]`, where `x = inpGet I xIdx` and `c[i] = inpGet I
     (cBase + i)`. This is the independent (translator-free) arithmetic meaning. -/
 def hornerStepFn {w nIn : Nat} (I : Fin nIn → BitVec w) (xIdx cBase : Nat)
     (acc : BitVec w) (i : Nat) : BitVec w :=
   acc * inpGet I xIdx + inpGet I (cBase + i)
 
-/-- The genuine `List.foldl` source meaning of the bounded Horner loop: starting
+/-- The `List.foldl` source meaning of the bounded Horner loop: starting
     from `init` (the program seeds `init = 0`), iterate the multiply-add step
     `acc ↦ acc * x + c[i]` over `i = 0 .. N-1`. With `init = 0` this is the
     standard Horner evaluation `c₀·xᴺ⁻¹ + c₁·xᴺ⁻² + … + c_{N-1}`
@@ -697,7 +698,7 @@ def hornerProgram (arr : String) (xLit N : Nat) : ImpExpr :=
 /-! ### §7.1  The unrolling-preservation theorem
 
 `hornerUnroll_denoteScalar` proves the unrolled flat `ImpExpr` denotes (under the
-independent §2 `denoteScalar`) exactly to the genuine `List.foldl` source
+independent §2 `denoteScalar`) exactly to the `List.foldl` source
 meaning, by induction on the iteration count. The carried accumulator survives
 because `acc` is rebound each step and the fresh `h_i` temporaries are dead
 across iterations. -/
@@ -770,7 +771,7 @@ theorem hornerUnroll_denoteScalar {w nIn : Nat} (I : Fin nIn → BitVec w)
       simp only [hornerStepFn, Nat.add_zero]
 
 /-- **Bounded Horner reduction is value-preserving.** The whole-program
-    `hornerProgram` denotes (under `denoteScalar`) exactly to the genuine
+    `hornerProgram` denotes (under `denoteScalar`) exactly to the
     `hornerFold` source meaning seeded at `0`. Combines the seed `let acc = 0`
     with the unrolled-tail induction `hornerUnroll_denoteScalar`. -/
 theorem hornerProgram_denoteScalar {w nIn : Nat} (I : Fin nIn → BitVec w)
@@ -825,10 +826,10 @@ the array-SSA preservation theorem with its env↔array-state invariant) is what
 generalises; only the per-step body is pinned. We do **not** here emit the full
 SHA-256 σ-schedule (`W[i] = σ₁(W[i-2]) + W[i-7] + σ₀(W[i-15]) + W[i-16]`): that
 needs the wider body and the rotate/shift reads; the read-read-write recurrence
-is the honest floor demonstrated. Honest scope: a bounded
+is the floor demonstrated. Scope: a bounded
 `W[i] = W[i-1] + W[i-2]` array recurrence, not an arbitrary array body.
 
-`arrStepFn`/`arrFold` are the genuine `Function.update` source semantics on an
+`arrStepFn`/`arrFold` are the `Function.update` source semantics on an
 array state `Nat → BitVec w`; `wReadExpr`/`arrRecUnroll` are the flat unrolled
 `ImpExpr` the front compiles; `arrRecUnroll_denoteScalar` is the preservation
 theorem tying them via the per-element-SSA env invariant. -/
@@ -841,13 +842,13 @@ theorem tying them via the per-element-SSA env invariant. -/
     internal SSA temporaries, not a front-emission contract. -/
 def wName (i : Nat) : String := "W" ++ String.ofList (List.replicate i 'I')
 
-/-- The genuine per-step `BitVec w` recurrence on the array state: the
+/-- The per-step `BitVec w` recurrence on the array state: the
     message-schedule read-read-write body `W[i] := W[i-1] + W[i-2]`. Independent
     of the translator — this is the arithmetic meaning. -/
 def arrStepFn {w : Nat} (W : Nat → BitVec w) (i : Nat) : BitVec w :=
   W (i - 1) + W (i - 2)
 
-/-- The genuine **array-state** source meaning of the bounded recurrence:
+/-- The **array-state** source meaning of the bounded recurrence:
     starting from `seed` (the input words for the `< base` slots), perform
     `count` writes `W[base + j] := arrStepFn W (base + j)` for `j = 0 .. count-1`,
     each via `Function.update`. Returns the final array state `Nat → BitVec w`.
@@ -890,7 +891,7 @@ def arrRecProgram (arr : String) (base N : Nat) : ImpExpr :=
 /-! ### §8.1  The per-element-SSA preservation theorem
 
 `arrRecUnroll_denoteScalar` proves the unrolled flat `ImpExpr` denotes (under the
-independent §2 `denoteScalar`) exactly to the genuine `arrFold` array-state
+independent §2 `denoteScalar`) exactly to the `arrFold` array-state
 source meaning, by induction on the write count. The invariant ties each env
 local `wName j` to the array state at `j` for every already-written slot — the
 array-SSA invariant. Fresh-element disjointness (`wName_inj`) keeps a write at
@@ -983,7 +984,7 @@ theorem arrFold_write {w : Nat} (seed : Nat → BitVec w) (base i : Nat)
 
 /-- **Array-write recurrence is value-preserving (per-element SSA).** The unrolled
     flat let-chain `arrRecUnroll` denotes (under `denoteScalar`, array parameter
-    `arr` distinct from every element name) exactly to the genuine `arrFold`
+    `arr` distinct from every element name) exactly to the `arrFold`
     array-state meaning. Proved by induction on the write `count`, generalized
     over the env `ρ`, under the **array-SSA invariant** `hρ`: every already-written
     local `wName k` (`base ≤ k < i`) equals the array state at `k`. The fresh
@@ -1050,7 +1051,7 @@ theorem arrRecUnroll_denoteScalar {w nIn : Nat} (I : Fin nIn → BitVec w)
       rw [e1, e2]
 
 /-- **Bounded array recurrence is value-preserving.** The whole-program
-    `arrRecProgram` denotes (under `denoteScalar`, the empty env) to the genuine
+    `arrRecProgram` denotes (under `denoteScalar`, the empty env) to the
     `arrFold` array-state meaning: the final element `W[N-1]` of the recurrence
     seeded from the input array. Specialises `arrRecUnroll_denoteScalar` at the
     initial state (no locals yet; the invariant holds vacuously since `i = base`
@@ -1073,7 +1074,7 @@ theorem arrRecProgram_denoteScalar {w nIn : Nat} (I : Fin nIn → BitVec w)
 
 This section is **the convergence demo**: it combines the two whole-function
 pieces — §7's bounded-loop unrolling and §8's array-write per-element SSA — with a
-genuine multi-op σ step body, giving the **real SHA-256 message-schedule
+multi-op σ step body, giving the **SHA-256 message-schedule
 recurrence** (FIPS 180-4), value-preserving from hax `ImpExpr` through the front.
 
 ### The recurrence (FIPS 180-4 §6.2.2)
@@ -1091,7 +1092,7 @@ rotate/shift/xor combos §5/§7 already prove. No new dialect op, no hardware le
 this is pure front machinery, the array-SSA (§8) + multi-op σ (ror/shr/xor + adds)
 convergence.
 
-`sigmaGen`/`schedStepFn`/`schedFold` are the genuine (translator-free) `BitVec 32`
+`sigmaGen`/`schedStepFn`/`schedFold` are the translator-free `BitVec 32`
 source semantics; `sigBlock`/`schedStepBody`/`schedUnroll` are the flat unrolled
 `ImpExpr` the front compiles; `schedUnroll_denoteScalar` is the preservation
 theorem, the §8 array-SSA induction re-run with the wider σ step.
@@ -1114,14 +1115,14 @@ def sigma0Fn (x : BitVec 32) : BitVec 32 := sigmaGen 7 18 3 x
 /-- FIPS 180-4 σ₁: `(x ⋙ 17) ⊕ (x ⋙ 19) ⊕ (x >> 10)`. -/
 def sigma1Fn (x : BitVec 32) : BitVec 32 := sigmaGen 17 19 10 x
 
-/-- The genuine per-step `BitVec 32` schedule recurrence (FIPS 180-4 §6.2.2):
+/-- The per-step `BitVec 32` schedule recurrence (FIPS 180-4 §6.2.2):
     `W[i] = σ₁(W[i-2]) + W[i-7] + σ₀(W[i-15]) + W[i-16]`. The wrapping adds are
     `BitVec` `+`. Independent of the translator — the arithmetic meaning the
     preservation theorem certifies. The §9 analogue of §8's `arrStepFn`. -/
 def schedStepFn (W : Nat → BitVec 32) (i : Nat) : BitVec 32 :=
   sigma1Fn (W (i - 2)) + W (i - 7) + sigma0Fn (W (i - 15)) + W (i - 16)
 
-/-- The genuine **array-state** source meaning of the bounded σ schedule: starting
+/-- The **array-state** source meaning of the bounded σ schedule: starting
     from `seed` (the input message words for `< 16` slots), perform `count` writes
     `W[16 + j] := schedStepFn W (16 + j)` for `j = 0 .. count-1`, each via
     `Function.update`. The §9 analogue of §8's `arrFold` with the σ step. -/
@@ -1228,7 +1229,7 @@ def schedProgram (N : Nat) : ImpExpr :=
 body. The `schedFold` stability lemmas (`schedFold_*`) mirror §8's `arrFold_*`
 exactly (the recurrence's only change is the step function, not the array-SSA
 bookkeeping). `wReadExpr_denoteSched` is the §8 `wReadExpr_denote` over `schedFold`;
-`schedStep_denote` is the per-step workhorse threading `sigBlock_denote` twice plus
+`schedStep_denote` is the per-step lemma threading `sigBlock_denote` twice plus
 the three adds. -/
 
 /-- `schedFold` is stable at any slot `j` not touched by the `(count)`-th write. -/
@@ -1307,7 +1308,7 @@ theorem wReadExpr_denoteSched_scratch {nIn : Nat} (I : Fin nIn → BitVec 32)
 /-- **The σ-schedule step is value-preserving.** Under the array-SSA invariant `hρ`
     (`cnt = i - 16`, every written `wName k` equal to the `schedFold` state), the
     step body for `i` denotes (via the two `sigBlock_denote` applications and the
-    three adds) to `cont` run in the env extended at `wName i` with the genuine
+    three adds) to `cont` run in the env extended at `wName i` with the
     step value `schedFold (inpGet I) (cnt + 1) i = schedStepFn …`, plus dead
     σ-scratch/temporary slots. The per-step computation the recurrence iterates. -/
 theorem schedStep_denote {nIn : Nat} (I : Fin nIn → BitVec 32) (i : Nat)
@@ -1395,7 +1396,7 @@ theorem schedStep_denote {nIn : Nat} (I : Fin nIn → BitVec 32) (i : Nat)
       if_neg (wName_ne_of_head (by decide) : wName k ≠ "t1")]
     exact hρ2 k hk1 hk2
   rw [hr16']
-  -- the bound step value is the genuine `schedStepFn` = `schedFold (cnt+1) i`.
+  -- the bound step value is `schedStepFn` = `schedFold (cnt+1) i`.
   have hstep : sigma1Fn v1 + schedFold (inpGet I) cnt (i - 7) + sigma0Fn v0
         + schedFold (inpGet I) cnt (i - 16)
       = schedFold (inpGet I) (cnt + 1) i := by
@@ -1427,7 +1428,7 @@ theorem schedStep_denote {nIn : Nat} (I : Fin nIn → BitVec 32) (i : Nat)
 
 /-- **The σ schedule recurrence is value-preserving (per-element SSA).** The
     unrolled flat let-chain `schedUnroll` denotes (under `denoteScalar`, array
-    parameter `"w"`) exactly to the genuine `schedFold` array-state meaning. Proved
+    parameter `"w"`) exactly to the `schedFold` array-state meaning. Proved
     by induction on the write `count`, generalized over the env `ρ`, under the
     array-SSA invariant `hρ`: every already-written `wName k` (`16 ≤ k < i`) equals
     the array state at `k`. The fresh σ step at `i` extends the invariant (earlier
@@ -1491,7 +1492,7 @@ theorem schedUnroll_denoteScalar {nIn : Nat} (I : Fin nIn → BitVec 32) :
         show (i + 1) + c - 1 = i + (c + 1) - 1 from by omega]
 
 /-- **The bounded σ schedule is value-preserving.** The whole-program
-    `schedProgram N` denotes (under `denoteScalar`, the empty env) to the genuine
+    `schedProgram N` denotes (under `denoteScalar`, the empty env) to the
     `schedFold` array-state meaning: the final element `W[N-1]` of the FIPS 180-4
     message-schedule recurrence seeded from the 16 input words. Specialises
     `schedUnroll_denoteScalar` at the initial state (no locals yet; the invariant
@@ -1535,7 +1536,7 @@ recognizers are therefore left untouched (avoiding any churn to the §5–§9
 *equivalently* because `anfLift` has already mapped them to bare form by the time
 a recognizer sees them.
 
-### Supported shape (honest scope)
+### Supported shape
 
 `anfLift` is scoped to the **nested scalar-ARX fragment** the σ-family leaves
 inhabit: `letBind`, `var`, `lit`, and `app f args` where `f` is a width-tagged or
@@ -1788,7 +1789,7 @@ nested `app`-arg lets `anfLift` introduces are themselves hoisted out of any
 enclosing let-RHS), and the output lands in the §3 flat let-normalized atom-arg
 subset that `impExprToThir`/`compileFromHax` consume directly.
 
-### Hygiene assumption (honest scope)
+### Hygiene assumption
 
 The hoisting law is value-preserving only when the hoisted inner binder `a` is
 **not free in `body`** — otherwise pulling `let a = e1` outward over `body`
@@ -1859,7 +1860,7 @@ theorem letFlatten_letBind_letBind (fuel : Nat) (x a : String)
 
 /-! ### §12.2  Preservation of the key rewrite step
 
-`letFlatten_swap_denote` is the genuine, *cleanly-general* preservation fact:
+`letFlatten_swap_denote` is the general preservation fact:
 the single hoisting rewrite `let r = (let a = e1; e2); body ↦
 let a = e1; let r = e2; body` denotes identically, **under the freshness
 side-condition** that `body`'s denotation does not depend on the hoisted slot

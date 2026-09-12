@@ -48,8 +48,8 @@ no emitted leaf; it is structural shuffling, not a primitive to compile.
 This module records the **SHAKE absorb-prep leaf** — the single straight-line
 `wrapping_add`/`BitXor` shape the chain-step's tweaked input mixing runs before
 the permutation (the `ADRS ‖ seed ‖ M` lane-XOR `xorIn` shape of FIPS-202 §6) —
-as the load-bearing compile-from-hax leaf at `w = 64`, the Keccak lane width. The
-genuine *engine* composition (the four tied step leaves reconstructing one
+as the compile-from-hax leaf at `w = 64`, the Keccak lane width. The
+*engine* composition (the four tied step leaves reconstructing one
 `keccakRound`) is the companion tie `CompileFromHaxSlhdsaShakeChainTie`.
 
 ## Front gap note (honest)
@@ -68,7 +68,7 @@ tie landed at the SHA-256 *round-engine* level (not the full message-schedule
 loop): we tie the leaves that the permutation runs (`θ`/`ρ`/`χ`/`ι` composing one
 `keccakRound`, the engine `keccakF`/`shake128`/`slhTweakHash` iterates), and
 record the absorb-prep lane mixing as the chain step's pre-permute leaf. The
-sponge padding / ADRS encoding / multi-block iteration are honestly **out of the
+sponge padding / ADRS encoding / multi-block iteration are **out of the
 front's expressible fragment** and are not claimed as compile-from-hax leaves.
 
 ## Honest framing
@@ -87,7 +87,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.CompileFromHaxSlhdsaShakeChain
 
-open CatCrypt.Hax
+open _root_.Hax
 open CatCrypt.Crypto.SecureCompilation.ThirToComFront
 open CatCrypt.Crypto.SecureCompilation.ImpExprToThir
 open CatCrypt.Crypto.SecureCompilation.CompileFromHax

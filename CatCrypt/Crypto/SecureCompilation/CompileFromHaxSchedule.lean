@@ -18,7 +18,7 @@ public import CatCrypt.Crypto.SecureCompilation.CompileFromHax
   W[i] = σ₁(W[i-2]) + W[i-7] + σ₀(W[i-15]) + W[i-16]      (i = 16 .. N-1)
 ```
 
-denotes (under the source semantics `denoteScalar`) to the genuine array-state
+denotes (under the source semantics `denoteScalar`) to the array-state
 fold `schedFold`. That is the front-IR half. This file supplies the missing
 **`compileFromHax`-level** tie: routing `schedProgram_denoteScalar` through the C3
 meta-theorem `compileFromHax_meets_spec` gives that the *compiled* `Com
@@ -40,7 +40,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.CompileFromHaxSchedule
 
-open CatCrypt.Hax
+open _root_.Hax
 open CatCrypt.Crypto.SecureCompilation.ImpExprToThir
 open CatCrypt.Crypto.SecureCompilation.CompileFromHax
 open CatCrypt.Crypto.SecureCompilation.ThirToComFront

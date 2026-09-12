@@ -14,7 +14,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTUnifiedMem
 `ImpFrontWiden.lean` (w6) widened the source front over the all-`IsDirect`
 fragment (scalar arith + branchless select + bounded literal loop), feeding the
 w7 unified backend `lowerUProg`, and discharged the capstone's assumed middle as
-the genuine `LoweringCTPreserving` interface — whose conclusion is the
+the `LoweringCTPreserving` interface — whose conclusion is the
 unconditional `CompilableCT b = allDirect b` (the trace is identical from *any*
 two states).
 
@@ -86,7 +86,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.ImpFrontWidenMem
 
-open CatCrypt.Hax
+open _root_.Hax
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT

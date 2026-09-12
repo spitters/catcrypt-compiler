@@ -8,7 +8,7 @@ module
 import all Init.Data.Repr
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxPrimeIrField
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxPrimeIrMontMul
-public import CatCrypt.Hax.AST
+public import HaxLean.AST
 
 /-!
 # Front integration: `haxpipeT`-extracted `primeir-hax` `EcGroup`/`ModArith` calls → dialect leaf
@@ -88,7 +88,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.CompileFromHaxPrimeIrFrontEc
 
-open CatCrypt.Hax (ImpExpr)
+open _root_.Hax (ImpExpr)
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.CompileFromHaxPrimeIrField
 open CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveDialect
@@ -215,7 +215,7 @@ theorem primeir_ecgroup_point_add_compiles_and_ties (p : Nat) (C : ECParams p)
          c.denote (.cons P (.cons Q .nil)) = C.add P Q :=
   ⟨pAddLeaf p C, rfl, primeir_ecgroup_point_add_recognized_denote p C P Q⟩
 
-/-- **The compiled `point_add` ties to the genuine group law on on-curve
+/-- **The compiled `point_add` ties to the group law on on-curve
     points.** For on-curve points `a b : EcCurvePoint C`, the compiled leaf on
     their underlying `ECPoint` values denotes to `(a + b).val` — the
     Mathlib-transported Weierstrass point addition (`EcPointGroup`'s

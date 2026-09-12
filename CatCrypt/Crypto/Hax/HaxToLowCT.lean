@@ -8,7 +8,7 @@ module
 import all Init.Data.Repr
 public meta import CatCrypt.Crypto.Hax.LowCTSubset
 public meta import CatCrypt.Crypto.Jasmin.LowCT
-public meta import CatCrypt.Hax.AST
+public meta import HaxLean.AST
 public import CatCrypt.Crypto.Hax.LowCTSubset
 public import CatCrypt.Crypto.Jasmin.LowCT
 
@@ -63,7 +63,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Hax
 
-open CatCrypt.Hax (ImpExpr ImpLit ImpType IntWidth)
+open _root_.Hax (ImpExpr ImpLit ImpType IntWidth)
 open CatCrypt.Crypto.Jasmin.LowCT
   (TowerType LowCT Located)
 
@@ -443,7 +443,7 @@ def _root_.CatCrypt.Crypto.Jasmin.LowCT.TowerType.elemType : TowerType → Tower
 def impBoundToSExpr : ImpExpr → Option CatCrypt.Crypto.Jasmin.LowCT.SExpr
   | .var n                  => some (.SVar n)
   | .lit (.int n)           => if n ≥ 0 then some (.SLit n.toNat) else none
-  | .lit (.uintLit _ n)     => some (.SLit n)
+  | .lit (.uintLit w n)     => some (.SLit (n % w.modulus))
   | .lit (.sintLit _ n)     => if n ≥ 0 then some (.SLit n.toNat) else none
   | .app "Add" [a, b]       =>
       match impBoundToSExpr a, impBoundToSExpr b with
@@ -469,7 +469,7 @@ def impBoundToSExpr : ImpExpr → Option CatCrypt.Crypto.Jasmin.LowCT.SExpr
     tail-copy loops). -/
 def impLitNat : ImpLit → Option Nat
   | .int n        => if n ≥ 0 then some n.toNat else none
-  | .uintLit _ n  => some n
+  | .uintLit w n  => some (n % w.modulus)
   | .sintLit _ n  => if n ≥ 0 then some n.toNat else none
   | _             => none
 
@@ -522,9 +522,10 @@ def haxToLowCT : ImpExpr → Option LowCT
           else
             some (.RLetZero name dt (.RSeq (.RCall f dest args') bodyC))
       | _,           _          => none
-  | .letBind name (.lit (.uintLit _ n)) body =>
+  | .letBind name (.lit (.uintLit w n)) body =>
       match haxToLowCT body with
-      | some bodyC => some (.RLetU64Zero name (.RSeq (.RScalarSet name n) bodyC))
+      | some bodyC =>
+          some (.RLetU64Zero name (.RSeq (.RScalarSet name (n % w.modulus)) bodyC))
       | none       => none
   | .letBind name (.lit (.int n)) body =>
       if h : n ≥ 0 then
@@ -588,7 +589,7 @@ def haxToLowCT : ImpExpr → Option LowCT
   -- §3.5  Assignments — only into already-allocated slots
   | .assign name (.lit (.int n)) =>
       if n ≥ 0 then some (.RScalarSet name n.toNat) else none
-  | .assign name (.lit (.uintLit _ n)) => some (.RScalarSet name n)
+  | .assign name (.lit (.uintLit w n)) => some (.RScalarSet name (n % w.modulus))
   -- Bool assignment: 0/1 scalar, mirroring the bool letBind arm.
   | .assign name (.lit (.bool b)) =>
       some (.RScalarSet name (if b then 1 else 0))
@@ -651,9 +652,9 @@ def haxToLowCT : ImpExpr → Option LowCT
       else
         let _ := h
         none
-  | .forFold v (.lit (.int 0)) (.lit (.uintLit _ n)) body =>
+  | .forFold v (.lit (.int 0)) (.lit (.uintLit w n)) body =>
       match haxToLowCT body with
-      | some bodyC => some (.RFor v n bodyC)
+      | some bodyC => some (.RFor v (n % w.modulus) bodyC)
       | none => none
   -- Stage 1a (2026-07-01): runtime-bound `forFold 0 hi body` with a
   -- non-literal `hi` that `impBoundToSExpr` accepts lowers to `RForRuntime`.
@@ -693,6 +694,9 @@ def haxToLowCT : ImpExpr → Option LowCT
   | .cfBreak _                 => none
   | .cfContinue _              => none
   | .cfBreakContinue _         => none
+  -- A type ascription is erased: the translation is that of the ascribed
+  -- expression.
+  | .typeAscription e _        => haxToLowCT e
 
 /-! ### §3.bis  Typed lowering with a `TypeEnv` and `LeafTable`
 
@@ -792,10 +796,11 @@ def haxToLowCTEnv (env : TypeEnv) (leaves : LeafTable) :
         | some args', some bodyC =>
             some (.RLetZero name dt (.RSeq (.RCall f dest args') bodyC))
         | _, _ => none
-  | .letBind name (.lit (.uintLit _ n)) body =>
+  | .letBind name (.lit (.uintLit w n)) body =>
       let envLit : TypeEnv := (name, .TU64) :: env
       match haxToLowCTEnv envLit leaves body with
-      | some bodyC => some (.RLetU64Zero name (.RSeq (.RScalarSet name n) bodyC))
+      | some bodyC =>
+          some (.RLetU64Zero name (.RSeq (.RScalarSet name (n % w.modulus)) bodyC))
       | none       => none
   | .letBind name (.lit (.int n)) body =>
       if h : n ≥ 0 then
@@ -866,7 +871,7 @@ def haxToLowCTEnv (env : TypeEnv) (leaves : LeafTable) :
   | .whileLoop _ _ => none
   | .assign name (.lit (.int n)) =>
       if n ≥ 0 then some (.RScalarSet name n.toNat) else none
-  | .assign name (.lit (.uintLit _ n)) => some (.RScalarSet name n)
+  | .assign name (.lit (.uintLit w n)) => some (.RScalarSet name (n % w.modulus))
   -- Bool assignment (typed twin): 0/1 scalar.
   | .assign name (.lit (.bool b)) =>
       some (.RScalarSet name (if b then 1 else 0))
@@ -913,10 +918,10 @@ def haxToLowCTEnv (env : TypeEnv) (leaves : LeafTable) :
       else
         let _ := h
         none
-  | .forFold v (.lit (.int 0)) (.lit (.uintLit _ n)) body =>
+  | .forFold v (.lit (.int 0)) (.lit (.uintLit w n)) body =>
       let envFor : TypeEnv := (v, .TU64) :: env
       match haxToLowCTEnv envFor leaves body with
-      | some bodyC => some (.RFor v n bodyC)
+      | some bodyC => some (.RFor v (n % w.modulus) bodyC)
       | none => none
   -- Stage 1a (2026-07-01): runtime-bound `forFold` (typed twin).
   | .forFold v (.lit (.int 0)) hi body =>
@@ -949,6 +954,7 @@ def haxToLowCTEnv (env : TypeEnv) (leaves : LeafTable) :
   | .cfBreak _                 => none
   | .cfContinue _              => none
   | .cfBreakContinue _         => none
+  | .typeAscription e _        => haxToLowCTEnv env leaves e
 
 /-- ML-KEM-typed entry point: lower `e` against a caller-supplied
     parameter environment (e.g. the kernel's parameter list, with the
@@ -1058,6 +1064,8 @@ def AnfShaped : ImpExpr → Bool
   -- nonneg literal, the bound converts, and the body is ANF-shaped.
   | .forFold _ (.lit lo) hi body =>
       (impLitNat lo).isSome && (impBoundToSExpr hi).isSome && AnfShaped body
+  -- A type ascription is erased; only the ascribed expression's shape matters.
+  | .typeAscription e _                      => AnfShaped e
   | _                                        => false
 
 /-- The argument-list helper succeeds exactly when every argument is
@@ -1320,6 +1328,7 @@ theorem haxToLowCT_isSome_iff_anf (e : ImpExpr) :
   | cfBreak _ _ => unfold haxToLowCT AnfShaped; simp [Option.isSome]
   | cfContinue _ _ => unfold haxToLowCT AnfShaped; simp [Option.isSome]
   | cfBreakContinue _ _ => unfold haxToLowCT AnfShaped; simp [Option.isSome]
+  | typeAscription _ _ ih => unfold haxToLowCT AnfShaped; exact ih
 
 /-- Corollary: any `ImpExpr` that satisfies the H1 filter *and* is
     `AnfShaped` translates to `some _`.  This is the strong (joint)

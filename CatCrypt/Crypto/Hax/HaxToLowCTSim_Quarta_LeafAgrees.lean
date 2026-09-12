@@ -21,7 +21,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Hax
 
-open CatCrypt.Hax (Value Builtins)
+open _root_.Hax (Value Builtins)
 open CatCrypt.Crypto.Jasmin.LowCT
   (TowerType RustState RustExec LeafSpec Located RustVal locatedLookup)
 

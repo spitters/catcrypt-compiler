@@ -34,7 +34,7 @@ proved lowering — closing the seam for cold/glue code.
 
 ## §0  Subset representation chosen — and why
 
-The **canonical Rust frontend** is hax's typed AST `CatCrypt.Hax.ImpExpr`
+The **canonical Rust frontend** is hax-lean's typed AST `Hax.ImpExpr`
 (`CatCrypt/Hax/AST.lean`): an expression-oriented Rust subset with `letBind`,
 `app`, `ifThenElse`, `forFold`, `assign`, fixed-width scalar literals, and
 tuples. We do **not** re-parse Rust — that frontend is the trusted reader.

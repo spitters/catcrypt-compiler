@@ -29,7 +29,7 @@ block.** It ties together
   `LoweringCTPreserving` the capstone consumes.
 
 The two ends are proved here; the middle is an explicit hypothesis, so the
-capstone is honest about exactly what the other workstream must deliver.
+capstone states exactly what the other workstream must deliver.
 
 `secureCompile` is the consumable entry: it gates the source, lowers it, and
 **re-checks `CompilableCT` at the machine level** — so `secureCompile_constant_time`
@@ -48,7 +48,7 @@ open CatCrypt.Crypto.SecureCompilation.ImpCTGate
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
 open CatCrypt.Crypto.SecureCompilation.X86Backend.CompilableCT
-open CatCrypt.Hax (ImpExpr)
+open _root_.Hax (ImpExpr)
 
 /-! ## 1. The middle interface (the other workstream's obligation) -/
 
@@ -71,7 +71,7 @@ def LoweringCTPreserving (env : SecEnv)
     constant-time. The front gate's structural invariant
     (`impCTSafe_NoSecretControl`) feeds the lowering interface, whose output
     `CompilableCT` discharges the machine guarantee (`CompilableCT.constant_time`,
-    the Phase-0 keystone). -/
+    the Phase-0 result). -/
 theorem secure_compile_constant_time {env : SecEnv}
     {lower : ImpExpr → Option (List (JInstr 64))}
     (hpre : LoweringCTPreserving env lower)

@@ -12,14 +12,15 @@ public meta import CatCrypt.Crypto.SecureCompilation.Ascent.KeystoneControl
 public import CatCrypt.Crypto.SecureCompilation.Ascent.KeystoneControl
 
 /-!
-# Loop / array source tower: welding `haxToLowCT_simulates_full` to the ascent emit weld
+# Loop / array source tower: welding `haxToLowCT_simulates_program` to the ascent emit weld
 
 The straight-line feSub tower (`Ascent/FeSubSourceTower.lean`) welded the source
 leg through `RustSubsetToLowCT.lowerRefines`, which covers only the `if`-free
 straight-line fragment.  The tower for the **loop / array / call** fragment is
-`haxToLowCT_simulates_full` (`Hax/HaxToLowCTSim_Main_Full.lean`), which carries a
-source `ImpExpr` to a `RustExec` run of its `haxToLowCT` image — the image that,
-for the array and bounded-loop arms, is *not* straight-line.
+the program-level simulation `haxToLowCT_simulates_program`
+(`Hax/HaxToLowCTSim_Program.lean`), which carries a source `ImpExpr` to a
+`RustExec` run of its `haxToLowCT` image — the image that, for the array and
+bounded-loop arms, is *not* straight-line.
 
 This module deploys that tower for a concrete **array-write** kernel (`arrKernel`,
 whose `haxToLowCT` image is headed by a dynamic-index `RArrStore` — the
@@ -30,8 +31,8 @@ source-loop-to-bytes chain from closing today.
 
 ## The two legs
 
-* **Source → `RustExec` (via the tower).**  `arrKernel_source_to_rustexec`
-  invokes `haxToLowCT_simulates_full` at `arrKernel`.  From the source `evalImp`
+* **Source → `RustExec` (via the tower).**  `arrKernel_source_to_rustexec_program`
+  invokes `haxToLowCT_simulates_program` at `arrKernel`.  From the source `evalImp`
   denotation and the input tower agreement, it delivers a `RustExec` run of the
   `RArrStore`-headed LowCT image.  This is the loop/array analogue of
   `feSubSrc_refines`.
@@ -66,18 +67,14 @@ see `Corres.lean`.
 
 set_option autoImplicit false
 
-open CatCrypt.Hax (ImpExpr Value Env Builtins)
+open _root_.Hax (ImpExpr Value Env Builtins)
 open CatCrypt.Crypto.Hax
-  (haxToLowCT evalImp HaxToLowCTSimulatesFull ValueTowerBridge FullSimPreconds
-   envAgreesRustFull
-   Hyp_match_full Hyp_whileLoop_full Hyp_arrayUpdate_full Hyp_index_full
-   Hyp_letBindVarAlias_full Hyp_letBindProj_full Hyp_index_full_of_vacuity
-   TowerFresh haxToLowCT_simulates_full towerOfCallName haxArgsToLocated
-   ArgsTowerBound evalImp_forFold_eq_none
+  (haxToLowCT evalImp ValueTowerBridge FullSimPreconds envAgreesRustFull
+   evalImp_forFold_eq_none
    ProgSim ProjPreconds ProgramSimArms TowerScope simScope isVar
    haxToLowCT_simulates_program progSim_index_of_vacuity)
 open CatCrypt.Crypto.Jasmin.LowCT
-  (LowCT RustState RustExec LeafSpec RustVal locatedLookup Located TowerType)
+  (LowCT RustState RustExec LeafSpec Located)
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar (semScalar)
 
 namespace CatCrypt.Crypto.SecureCompilation.Ascent
@@ -112,67 +109,10 @@ theorem arrKernel_image_shape {c : LowCT} (hImg : haxToLowCT arrKernel = some c)
   match c, h with
   | .RSeq (.RArrStore arr idxVar src) tail, _ => exact ⟨arr, src, idxVar, tail, rfl⟩
 
-/-! ## §2  Source → `RustExec` via `haxToLowCT_simulates_full` (the tower leg)
+/-! ## §2  Source → `RustExec` via the program-level simulation (the tower leg)
 
-The loop/array analogue of `feSubSrc_refines`.  Every hypothesis is a
-tower precondition; the array-store simulation hypothesis `hArrUpd` is the one the
-kernel exercises (the dynamic-array-store semantic bridge, protocol
-specific — see `Hyp_arrayUpdate_full`'s docstring).  The `index` arm hypothesis is
-*discharged here* by vacuity (`Hyp_index_full_of_vacuity`), since `arrKernel` does
-not index.  The remaining structural hypotheses (`hMatch`, `hWhileLoop`, `hAlias`,
-`hProj`) are the globally-pending / non-exercised tower arms, carried as explicit
-interface. -/
-
-/-- **`arrKernel_source_to_rustexec`.**  Deploys `haxToLowCT_simulates_full` at the
-    concrete array-write kernel `arrKernel`.  From the source `evalImp` denotation
-    (`hEval`) and the input tower agreement (`hAgree`), the tower delivers a
-    `RustExec` run of the image `c` (`RArrStore`-headed, by `arrKernel_image_shape`),
-    with the output tower agreement preserved.  `hIndex` is discharged internally
-    via vacuity; the
-    remaining tower hypotheses are explicit named interface. -/
-theorem arrKernel_source_to_rustexec
-    (bridge : ValueTowerBridge) (bi : Builtins) (fuel N : Nat) (leafSpec : LeafSpec)
-    (hMatch : Hyp_match_full bridge bi fuel N leafSpec)
-    (hWhileLoop : Hyp_whileLoop_full bridge bi fuel N leafSpec)
-    (hArrUpd : Hyp_arrayUpdate_full bridge bi fuel N leafSpec)
-    (hAlias : Hyp_letBindVarAlias_full bridge bi fuel N leafSpec)
-    (hProj : Hyp_letBindProj_full bridge bi fuel N leafSpec)
-    (hPre : FullSimPreconds bi leafSpec bridge)
-    (hScalarFresh : ∀ (name : String) (rs : RustState), TowerFresh rs name)
-    (hArgsEnvAll :
-       ∀ (_f : String) (args : List ImpExpr) (env : Env),
-         ∀ a ∈ args, ∃ n, a = .var n ∧ ∃ w, env n = some w)
-    (hArgsBoundAll :
-       ∀ (f : String) (args : List ImpExpr) (rs : RustState) args',
-         haxArgsToLocated (towerOfCallName f) args = some args' →
-         ArgsTowerBound rs args')
-    (hArgsFreshAll :
-       ∀ (f : String) (args : List ImpExpr) (name : String) args',
-         haxArgsToLocated (towerOfCallName f) args = some args' →
-         ∀ a ∈ args', a.locVar ≠ name)
-    (hDestBoundAll :
-       ∀ (f : String) (name : String) (rs : RustState),
-         ∃ oldDestV : RustVal (towerOfCallName f),
-           locatedLookup rs { locVar := name, locSrc := towerOfCallName f }
-             = some oldDestV)
-    (hIdxVac : ∀ vals, bi "index" vals = none)
-    (c : LowCT) (hImg : haxToLowCT arrKernel = some c)
-    (env env' : Env) (rs : RustState) (v : Value)
-    (hEval : evalImp bi fuel arrKernel env = some (v, env'))
-    (hAgree : envAgreesRustFull bridge env rs) :
-    ∃ rs', RustExec N leafSpec c rs rs' ∧ envAgreesRustFull bridge env' rs' := by
-  have hIndex : Hyp_index_full bridge bi fuel N leafSpec :=
-    Hyp_index_full_of_vacuity bridge bi fuel N leafSpec hIdxVac
-  have tower :=
-    haxToLowCT_simulates_full bridge bi fuel N leafSpec
-      hMatch hWhileLoop hArrUpd hIndex hAlias hProj hPre hScalarFresh
-      hArgsEnvAll hArgsBoundAll hArgsFreshAll hDestBoundAll arrKernel
-  exact tower c env env' rs v hImg hEval hAgree
-
-/-! ### §2.1  The tower leg on the program-level simulation
-
-`haxToLowCT_simulates_program` replaces the universally quantified call-side
-conditions of `haxToLowCT_simulates_full` by the scope checker `simScope` on the
+The loop/array analogue of `feSubSrc_refines`.  `haxToLowCT_simulates_program`
+states the call-side conditions through the scope checker `simScope` on the
 source program and two preconditions on the entry state.  `arrKernel` has no
 scalar bindings and its only call is the array store, so the checker accepts it
 from every entry scope with the empty scalar-name set, the entry-state
@@ -183,10 +123,12 @@ hypothesis the kernel exercises. -/
 theorem simScope_arrKernel (Γ : TowerScope) : simScope [] Γ arrKernel = some Γ := by
   simp [simScope, arrKernel, isVar]
 
-/-- **`arrKernel_source_to_rustexec_program`.**  `arrKernel_source_to_rustexec` on
-    the program-level simulation: the array-store arm `hArrUpd` (per program, the
-    inductive step from the body's simulation) and the vacuity of `index` are the
-    only hypotheses beyond the bridge-level preconditions. -/
+/-- **`arrKernel_source_to_rustexec_program`.**  The program-level simulation at the
+    array-write kernel `arrKernel`: from the source `evalImp` denotation and the
+    input tower agreement, a `RustExec` run of the `RArrStore`-headed image `c`
+    with the output tower agreement.  The array-store arm `hArrUpd` (per program,
+    the inductive step from the body's simulation) and the vacuity of `index` are
+    the only hypotheses beyond the bridge-level preconditions. -/
 theorem arrKernel_source_to_rustexec_program
     (bridge : ValueTowerBridge) (bi : Builtins) (fuel N : Nat) (leafSpec : LeafSpec)
     (hPre : FullSimPreconds bi leafSpec bridge)

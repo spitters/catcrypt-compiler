@@ -55,7 +55,7 @@ in addition to the four scalar-arith ops:
 
 The unified backend's output is **unconditionally** `allDirect`
 (`lowerUProg_allDirect`), so `CompilableCT` holds directly and the headline lands
-as the genuine `LoweringCTPreserving` interface `SecureCompileChain` consumes —
+as the `LoweringCTPreserving` interface `SecureCompileChain` consumes —
 no fall-back to a bare `blockLeak`-equality was needed.
 
 ## Scope notes
@@ -72,7 +72,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.ImpFrontWiden
 
-open CatCrypt.Hax
+open _root_.Hax
 open CatCrypt.Crypto.SecureCompilation.SecureCompileChain
 open CatCrypt.Crypto.SecureCompilation.ImpCTGate
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin

@@ -5,9 +5,10 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Hax.AST
-public import CatCrypt.Hax.Value
-public import CatCrypt.Hax.Features
+public import HaxLean.AST
+public import HaxLean.Value
+public import HaxLean.Features
+public import HaxLean.Pipeline
 public import CatCrypt.Deep.RawCode
 
 /-!
@@ -21,6 +22,7 @@ CatCrypt's `RawCode` deep embedding.
 
 * `toRawCode` — translate fully functional ImpExpr to RawCode Value
 * `toRawCode_noOracleCall` — output has no oracle calls
+* `pipelineToRawCode` — `Hax.pipeline` followed by `toRawCode`
 
 ## Design
 
@@ -36,6 +38,7 @@ translation produces `RawCode Value` — all computations return `Value`.
 namespace CatCrypt.Hax
 
 open CatCrypt.Deep
+open _root_.Hax (ImpExpr Value)
 
 /-- Translate a fully-functional `ImpExpr` into `RawCode Value`.
 
@@ -87,6 +90,8 @@ noncomputable def toRawCode : ImpExpr → RawCode Value
   | .cfBreak e => toRawCode e
   | .cfContinue e => toRawCode e
   | .cfBreakContinue e => toRawCode e
+  -- A type ascription is erased.
+  | .typeAscription e _ => toRawCode e
 where
   /-- Translate a list of expressions, collecting into a list of values. -/
   toRawCodeList : List ImpExpr → (List Value → RawCode Value) → RawCode Value
@@ -153,5 +158,16 @@ theorem toRawCode_noOracleCall (e : ImpExpr) :
   | cfBreak _ ih => exact ih
   | cfContinue _ ih => exact ih
   | cfBreakContinue _ ih => exact ih
+  | typeAscription _ _ ih => exact ih
+
+/-- The four-phase pipeline `Hax.pipeline` followed by the translation to
+    `RawCode`. -/
+noncomputable def pipelineToRawCode (e : ImpExpr) : RawCode Value :=
+  toRawCode (Hax.pipeline e)
+
+/-- The translated pipeline output has no oracle calls. -/
+theorem pipelineToRawCode_noOracleCall (e : ImpExpr) :
+    RawCode.NoOracleCall (pipelineToRawCode e) :=
+  toRawCode_noOracleCall _
 
 end CatCrypt.Hax

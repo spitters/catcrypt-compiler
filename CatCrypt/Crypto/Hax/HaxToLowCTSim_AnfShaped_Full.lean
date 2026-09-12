@@ -46,7 +46,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Hax
 
-open CatCrypt.Hax (ImpExpr ImpLit ImpType ImpPat Value Env Outcome Builtins
+open _root_.Hax (ImpExpr ImpLit ImpType ImpPat Value Env Outcome Builtins
                    denote denoteWhile denoteMatchArms denoteForLoop denoteArgs)
 
 /-! ## §1  Unfold equation for `denoteWhile`
@@ -194,12 +194,18 @@ theorem denoteWhile_outcome_val_or_err (bi : Builtins) (cond body : ImpExpr)
           right; exact ⟨"while condition not a bool", env_a, rfl⟩
         | .controlFlow _ _ =>
           right; exact ⟨"while condition not a bool", env_a, rfl⟩
+        | .uint _ _ =>
+          right; exact ⟨"while condition not a bool", env_a, rfl⟩
+        | .sint _ _ =>
+          right; exact ⟨"while condition not a bool", env_a, rfl⟩
+        | .array _ =>
+          right; exact ⟨"while condition not a bool", env_a, rfl⟩
       · rw [hc]
         right; exact ⟨msg, env_a, rfl⟩
 
 /-! ## §3  `denoteMatchArms` outcome dichotomy for AnfShaped 2-tuple pattern -/
 
-open CatCrypt.Hax (matchPat) in
+open _root_.Hax (matchPat) in
 /-- The denotation of `denoteMatchArms` on the single-arm 2-tuple destructure
     pattern admitted by `AnfShaped`.  Either the body fires (after binding the
     two variables) or the no-matching-pattern error is returned. -/
@@ -282,7 +288,7 @@ theorem AnfShaped_match_outcome
 `AnfShaped` programs never produce `.broke`, `.continued`, or `.earlyRet`
 under `denote`; only `.val _` or `.err _`. -/
 
-open CatCrypt.Hax (Value.ofLit) in
+open _root_.Hax (Value.ofLit) in
 /-- Combined outcome dichotomy for `AnfShaped` expressions. -/
 theorem AnfShaped_outcome_val_or_err
     (bi : Builtins) (fuel : Nat) (e : ImpExpr) (env : Env)
@@ -395,6 +401,9 @@ theorem AnfShaped_outcome_val_or_err
         | .option _ => right; exact ⟨"if condition not a bool", env_a, rfl⟩
         | .result _ _ => right; exact ⟨"if condition not a bool", env_a, rfl⟩
         | .controlFlow _ _ => right; exact ⟨"if condition not a bool", env_a, rfl⟩
+        | .uint _ _ => right; exact ⟨"if condition not a bool", env_a, rfl⟩
+        | .sint _ _ => right; exact ⟨"if condition not a bool", env_a, rfl⟩
+        | .array _ => right; exact ⟨"if condition not a bool", env_a, rfl⟩
       · rw [hc]
         right; exact ⟨msg, env_a, rfl⟩
     | _ => unfold AnfShaped at h; simp at h
@@ -491,12 +500,17 @@ theorem AnfShaped_outcome_val_or_err
       -- `AnfShaped` admits the literal- and convertible-runtime-bounded
       -- `.forFold` shapes (zero- and offset-start).  Independently of the
       -- shape, `.forFold` is a post-phase constructor whose ImpExpr
-      -- `denote` returns `pure (.err _)` (see `CatCrypt/Hax/Semantics.lean`),
+      -- `denote` returns `pure (.err _)` (see `HaxLean/Semantics.lean`),
       -- so the outcome dichotomy is discharged uniformly on the err side —
       -- no case split on `lo`/`hi` is needed.
       right
-      refine ⟨"forFold: post-phase constructor", env, ?_⟩
+      refine ⟨"forFold in pre-pipeline expression", env, ?_⟩
       unfold denote; rfl
+  | typeAscription e _ ih =>
+    unfold AnfShaped at h
+    rcases ih fuel env h with ⟨v, env', hv⟩ | ⟨msg, env', hm⟩
+    · exact Or.inl ⟨v, env', by unfold denote; exact hv⟩
+    · exact Or.inr ⟨msg, env', by unfold denote; exact hm⟩
   | forFoldRev _ _ _ _ _ _ _ => unfold AnfShaped at h; simp at h
   | whileFold _ _ _ _ => unfold AnfShaped at h; simp at h
   | forFoldReturn _ _ _ _ _ _ _ => unfold AnfShaped at h; simp at h

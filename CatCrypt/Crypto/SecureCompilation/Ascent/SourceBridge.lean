@@ -11,24 +11,25 @@ public import CatCrypt.Crypto.SecureCompilation.Ascent.PipelineWeld
 /-!
 # The source-word bridge
 
-Two reference semantics meet here.  `CatCrypt.Hax.denote` (this repository,
-`CatCrypt/Hax/Semantics.lean`) is the semantics the simulation
-`haxToLowCT_simulates_program` runs over; its `Value` has the untyped `int`
-constructor and `valueToScalar` reads a scalar from it.  `Hax.denote`
-(`../hax-lean`) is the semantics `PipelineWeld` runs over; its `Value` has the
-width-indexed `uint` constructor that `haxOutcomeWord` reads.  The two `ImpExpr`
-types are distinct inductives.
+The simulation `haxToLowCT_simulates_program` and the weld `PipelineWeld` run
+over one reference semantics, hax-lean's `Hax.denote`.  Its `Value` has the
+width-indexed `uint` constructor; `valueToScalar` reads the scalar slot from it
+and `haxOutcomeWord` reads the 64-bit word from it.
 
-§1 reads a word out of a `CatCrypt.Hax` outcome and derives it from the
-simulation's exit agreement: for a program that returns a variable `r`, the word
-of the source outcome is the word the `RustExec` run leaves in the scalar slot
-`r`.  §2 lifts this to the program-level simulation.  §3 discharges
-`PipelineWeld`'s `hBridge` for the `feSub` kernel by evaluating the hax-lean
-reference semantics on the kernel's `ImpExpr` at the width-aware builtin table
-(`defaultBuiltins` has no `sub` on `uint` values and returns an error outcome),
-together with the loop-freeness and early-exit-freeness side conditions.  §4
-is the emit weld on the program-level simulation, and §5 instantiates
-`feSub_raw_source_to_bytes` at the `feSub` kernel.
+§1 derives the word of a source outcome from the simulation's exit agreement:
+for a program that returns a variable `r` holding a `uint` value, the word of the
+source outcome is the word the `RustExec` run leaves in the scalar slot `r`; a
+second lemma gives the scalar slot for an `int` value, the value kind
+`defaultBuiltins` produces.  §2 lifts this to the program-level simulation and
+derives `raw_source_to_bytes_of_program`, which discharges
+`feSub_raw_source_to_bytes`'s word identification `hBridge` from the
+program-level simulation's side conditions and the output condition on the
+lowered program.  §3 discharges `hBridge` for the `feSub` kernel by evaluating
+the reference semantics on the kernel's `ImpExpr` at the width-aware builtin
+table (`defaultBuiltins` has no `sub` on `uint` values and returns an error
+outcome), together with the loop-freeness and early-exit-freeness side
+conditions.  §4 is the emit weld on the program-level simulation, and §5
+instantiates `feSub_raw_source_to_bytes` at the `feSub` kernel.
 -/
 
 @[expose] public section
@@ -41,24 +42,23 @@ open CatCrypt.Crypto.Hax
   (evalImp valueToScalar envAgreesRust envAgreesRustFull ValueTowerBridge FullSimPreconds
    ProjPreconds ProgramSimArms TowerScope ScopeBound NamesFresh simScope scalarNames
    SimWellFormed haxToLowCT_simulates_program evalImp_seq_inv evalImp_var_inv)
+open CatCrypt.Crypto.SecureCompilation.CryptoSSA (Ctx)
+open CatCrypt.Crypto.SecureCompilation.VIR
+open CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+open CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminComCorrect (ctTransTy)
+open CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect (ctMapValD)
 
 namespace CatCrypt.Crypto.SecureCompilation.Ascent
 
-/-! ## §1  The word of a `CatCrypt.Hax` outcome -/
-
-/-- The 64-bit word of a `CatCrypt.Hax` reference-semantics outcome: a normally
-    terminating non-negative integer value, reinterpreted as a `BitVec 64`. -/
-def impOutcomeWord : CatCrypt.Hax.Outcome → Option (BitVec 64)
-  | .val (.int n) => if 0 ≤ n then some (BitVec.ofNat 64 n.toNat) else none
-  | _ => none
+/-! ## §1  The word of a source outcome -/
 
 /-- A successful `evalImp` pins the outcome of `denote`. -/
-theorem denote_fst_of_evalImp (bi : CatCrypt.Hax.Builtins) (fuel : Nat)
-    (e : CatCrypt.Hax.ImpExpr) (env env' : CatCrypt.Hax.Env) (v : CatCrypt.Hax.Value)
+theorem denote_fst_of_evalImp (bi : _root_.Hax.Builtins) (fuel : Nat)
+    (e : _root_.Hax.ImpExpr) (env env' : _root_.Hax.Env) (v : _root_.Hax.Value)
     (h : evalImp bi fuel e env = some (v, env')) :
-    (CatCrypt.Hax.denote bi fuel e env).1 = .val v := by
+    (_root_.Hax.denote bi fuel e env).1 = .val v := by
   unfold evalImp at h
-  rcases hD : (CatCrypt.Hax.denote bi fuel e).run env with ⟨o, e2⟩
+  rcases hD : (_root_.Hax.denote bi fuel e).run env with ⟨o, e2⟩
   rw [hD] at h
   cases o with
   | val w =>
@@ -68,54 +68,115 @@ theorem denote_fst_of_evalImp (bi : CatCrypt.Hax.Builtins) (fuel : Nat)
   | _ => cases h
 
 /-- **`outcomeWord_of_agree`.**  For a source evaluation whose result `v` is the
-    value of the variable `r` in the exit environment, and an exit state agreeing
-    with it, the outcome's word is the scalar the state holds at `r`. -/
-theorem outcomeWord_of_agree (bi : CatCrypt.Hax.Builtins) (fuel : Nat)
-    (e : CatCrypt.Hax.ImpExpr) (env env' : CatCrypt.Hax.Env) (v : CatCrypt.Hax.Value)
+    `uint` value of the variable `r` in the exit environment, and an exit state
+    agreeing with it, the outcome's word is the scalar the state holds at `r`. -/
+theorem outcomeWord_of_agree (bi : _root_.Hax.Builtins) (fuel : Nat)
+    (e : _root_.Hax.ImpExpr) (env env' : _root_.Hax.Env) (v : _root_.Hax.Value)
+    (rs' : RustState) (r : String) (w : _root_.Hax.IntWidth) (n : Nat)
+    (hEval : evalImp bi fuel e env = some (v, env'))
+    (hRet : env' r = some v) (hUint : v = .uint w n)
+    (hAgree : envAgreesRust env' rs') :
+    haxOutcomeWord (_root_.Hax.denote bi fuel e env).1
+      = some (BitVec.ofNat 64 (rs'.rsScalar r)) := by
+  rw [denote_fst_of_evalImp bi fuel e env env' v hEval, hUint]
+  have hScalar : rs'.rsScalar r = n := hAgree r v hRet n (by rw [hUint]; rfl)
+  rw [hScalar]
+  rfl
+
+/-- **`outcomeWord_of_agree_int`.**  The `int` form of `outcomeWord_of_agree`, for
+    programs over `defaultBuiltins`, whose arithmetic produces `int` values: the
+    source outcome is the value `.int n`, and the scalar the exit state holds at
+    `r` is `n.toNat`. -/
+theorem outcomeWord_of_agree_int (bi : _root_.Hax.Builtins) (fuel : Nat)
+    (e : _root_.Hax.ImpExpr) (env env' : _root_.Hax.Env) (v : _root_.Hax.Value)
     (rs' : RustState) (r : String) (n : Int)
     (hEval : evalImp bi fuel e env = some (v, env'))
     (hRet : env' r = some v) (hInt : v = .int n) (hNonneg : 0 ≤ n)
     (hAgree : envAgreesRust env' rs') :
-    impOutcomeWord (CatCrypt.Hax.denote bi fuel e env).1
-      = some (BitVec.ofNat 64 (rs'.rsScalar r)) := by
-  rw [denote_fst_of_evalImp bi fuel e env env' v hEval, hInt]
+    (_root_.Hax.denote bi fuel e env).1 = .val (.int n)
+      ∧ rs'.rsScalar r = n.toNat := by
+  refine ⟨hInt ▸ denote_fst_of_evalImp bi fuel e env env' v hEval, ?_⟩
   have hDec : valueToScalar (.int n) = some n.toNat := by
     simp [valueToScalar, hNonneg]
-  have hScalar : rs'.rsScalar r = n.toNat := hAgree r v hRet n.toNat (hInt ▸ hDec)
-  rw [hScalar]
-  simp [impOutcomeWord, hNonneg]
+  exact hAgree r v hRet n.toNat (hInt ▸ hDec)
 
 /-! ## §2  The word bridge on the program-level simulation -/
 
 /-- **`program_source_word`.**  For a checked program `body; r` returning the
-    variable `r`, the `RustExec` run of its image leaves in the scalar slot `r`
-    the word of the source outcome. -/
+    variable `r` with a `uint` value, the `RustExec` run of its image leaves in
+    the scalar slot `r` the word of the source outcome. -/
 theorem program_source_word
-    (bridge : ValueTowerBridge) (bi : CatCrypt.Hax.Builtins) (fuel N : Nat)
+    (bridge : ValueTowerBridge) (bi : _root_.Hax.Builtins) (fuel N : Nat)
     (leafSpec : LeafSpec) (S : List String)
     (hPre : FullSimPreconds bi leafSpec bridge)
     (hProj : ProjPreconds bridge leafSpec)
     (hArms : ProgramSimArms bridge bi N leafSpec S)
-    (body : CatCrypt.Hax.ImpExpr) (r : String) (Γ Γ' : TowerScope) (c : LowCT)
-    (env env' : CatCrypt.Hax.Env) (rs : RustState) (n : Int)
+    (body : _root_.Hax.ImpExpr) (r : String) (Γ Γ' : TowerScope) (c : LowCT)
+    (env env' : _root_.Hax.Env) (rs : RustState) (w : _root_.Hax.IntWidth) (n : Nat)
     (hScope : simScope S Γ (.seq body (.var r)) = some Γ')
     (hSB : ScopeBound rs Γ) (hSF : NamesFresh rs S)
     (hHax : CatCrypt.Crypto.Hax.haxToLowCT (.seq body (.var r)) = some c)
-    (hEval : evalImp bi fuel (.seq body (.var r)) env = some (.int n, env'))
-    (hNonneg : 0 ≤ n)
+    (hEval : evalImp bi fuel (.seq body (.var r)) env = some (.uint w n, env'))
     (hAgree : envAgreesRustFull bridge env rs) :
     ∃ rs', RustExec N leafSpec c rs rs' ∧
-      impOutcomeWord (CatCrypt.Hax.denote bi fuel (.seq body (.var r)) env).1
+      haxOutcomeWord (_root_.Hax.denote bi fuel (.seq body (.var r)) env).1
         = some (BitVec.ofNat 64 (rs'.rsScalar r)) := by
   obtain ⟨rs', hExec, hAgree', _, _⟩ :=
     haxToLowCT_simulates_program bridge bi N leafSpec S hPre hProj hArms
-      (.seq body (.var r)) fuel Γ Γ' c env env' rs (.int n)
+      (.seq body (.var r)) fuel Γ Γ' c env env' rs (.uint w n)
       hScope hSB hSF hHax hEval hAgree
   refine ⟨rs', hExec, ?_⟩
-  obtain ⟨_, env_mid, _, hVar⟩ := evalImp_seq_inv bi fuel body (.var r) env (.int n) env' hEval
-  obtain ⟨hRet, henv⟩ := evalImp_var_inv bi fuel r env_mid (.int n) env' hVar
+  obtain ⟨_, env_mid, _, hVar⟩ :=
+    evalImp_seq_inv bi fuel body (.var r) env (.uint w n) env' hEval
+  obtain ⟨hRet, henv⟩ := evalImp_var_inv bi fuel r env_mid (.uint w n) env' hVar
   subst henv
-  exact outcomeWord_of_agree bi fuel _ env env' (.int n) rs' r n hEval hRet rfl hNonneg hAgree'.1
+  exact outcomeWord_of_agree bi fuel _ env env' (.uint w n) rs' r w n hEval hRet rfl hAgree'.1
+
+/-- **`raw_source_to_bytes_of_program`.**  `feSub_raw_source_to_bytes` with the word
+    identification `hBridge` discharged by the program-level simulation.
+
+    The raw program is `body; r`, returning the variable `r` with a `uint` value.
+    Its hypotheses are the program-level simulation's side conditions (the scope
+    checker `simScope`, `ScopeBound` and `NamesFresh` on the entry state,
+    `FullSimPreconds`, `ProjPreconds`, `ProgramSimArms`, the entry agreement), the
+    loop-freeness and early-exit-freeness of its post-phase-1-2 form, and the
+    output condition `hOut` on the lowered program `c`: every `RustExec` run of
+    `c` from the entry state leaves the word `feSubSourceWord` in the scalar slot
+    `r`.  The conclusion is `feSub_raw_source_to_bytes`'s: the optimized program
+    `pipeline (body; r)` evaluates to `feSubSourceWord`, which reaches the emitted
+    program `feJcom`, whose clean `ZMod 2^64` spec is `av - bv`. -/
+theorem raw_source_to_bytes_of_program
+    (bridge : ValueTowerBridge) (bi : _root_.Hax.Builtins) (fuel N : Nat)
+    (leafSpec : LeafSpec) (S : List String)
+    (hPre : FullSimPreconds bi leafSpec bridge)
+    (hProj : ProjPreconds bridge leafSpec)
+    (hArms : ProgramSimArms bridge bi N leafSpec S)
+    (body : _root_.Hax.ImpExpr) (r : String) (Γ Γ' : TowerScope) (c : LowCT)
+    (env env' : _root_.Hax.Env) (rs : RustState) (w : _root_.Hax.IntWidth) (n : Nat)
+    (hScope : simScope S Γ (.seq body (.var r)) = some Γ')
+    (hSB : ScopeBound rs Γ) (hSF : NamesFresh rs S)
+    (hHax : CatCrypt.Crypto.Hax.haxToLowCT (.seq body (.var r)) = some c)
+    (hEval : evalImp bi fuel (.seq body (.var r)) env = some (.uint w n, env'))
+    (hAgree : envAgreesRustFull bridge env rs)
+    (hOut : ∀ rs', RustExec N leafSpec c rs rs' →
+      BitVec.ofNat 64 (rs'.rsScalar r) = feSubSourceWord)
+    (hNoLoops : _root_.Hax.NoLoops
+      (_root_.Hax.localMutation (_root_.Hax.mutatedVars (.seq body (.var r)))
+        (_root_.Hax.dropReferences (.seq body (.var r)))))
+    (hNoEE : _root_.Hax.NoEarlyExit
+      (_root_.Hax.localMutation (_root_.Hax.mutatedVars (.seq body (.var r)))
+        (_root_.Hax.dropReferences (.seq body (.var r))))) :
+    haxOutcomeWord (_root_.Hax.denote bi fuel (_root_.Hax.pipeline (.seq body (.var r))) env).1
+        = some feSubSourceWord
+      ∧ feJcom.denote (ctMapValD (.nil : Ctxt.Valuation (d := catCryptDialect) ([] : Ctx)))
+          = ctTransTy feSubSourceWord
+      ∧ wEnc feSubSourceWord
+          = ((av : Nat) : ZMod (2 ^ 64)) - ((bv : Nat) : ZMod (2 ^ 64)) := by
+  obtain ⟨rs', hExec, hWord⟩ :=
+    program_source_word bridge bi fuel N leafSpec S hPre hProj hArms body r Γ Γ' c
+      env env' rs w n hScope hSB hSF hHax hEval hAgree
+  exact feSub_raw_source_to_bytes N leafSpec bi fuel env (.seq body (.var r))
+    hNoLoops hNoEE (hWord.trans (congrArg some (hOut rs' hExec)))
 
 /-! ## §3  The `feSub` kernel on the hax-lean side -/
 
@@ -173,15 +234,11 @@ open CatCrypt.Crypto.SecureCompilation.CryptoSSA (CryptoTy CVar Ctx)
 open CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA (VarMap RustStateInterp)
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect (DTransOut)
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
-open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-open CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge (toVIRVar)
 open CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom (cryptoDialectToJasminCom)
 open CatCrypt.Crypto.SecureCompilation.VIR.CompilerCorrectnessExtracted
 open CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminCom (mapTy mapCtx)
-open CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminComCorrect (ctTransTy)
-open CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect (ctMapValD)
 
 /-- **`welding_program`.** `welding` with the `RustExec` premise discharged by
     the program-level simulation `haxToLowCT_simulates_program`: the extracted
@@ -198,13 +255,13 @@ theorem welding_program
     (fa : (String → ZMod (2 ^ 64)) → (String → ZMod (2 ^ 64)))
     (P : (String → ZMod (2 ^ 64)) → Prop)
     (env₀ : SEnvScalar) (a₀ : String → ZMod (2 ^ 64))
-    (bridge : CatCrypt.Crypto.Hax.ValueTowerBridge) (bi : CatCrypt.Hax.Builtins)
+    (bridge : CatCrypt.Crypto.Hax.ValueTowerBridge) (bi : _root_.Hax.Builtins)
     (fuel : Nat) (S : List String)
     (hPre : CatCrypt.Crypto.Hax.FullSimPreconds bi leafSpec bridge)
     (hProj : CatCrypt.Crypto.Hax.ProjPreconds bridge leafSpec)
     (hArms : CatCrypt.Crypto.Hax.ProgramSimArms bridge bi N leafSpec S)
-    (e : CatCrypt.Hax.ImpExpr) (Γ Γ' : CatCrypt.Crypto.Hax.TowerScope)
-    (henv henv' : CatCrypt.Hax.Env) (rs : RustState) (v : CatCrypt.Hax.Value)
+    (e : _root_.Hax.ImpExpr) (Γ Γ' : CatCrypt.Crypto.Hax.TowerScope)
+    (henv henv' : _root_.Hax.Env) (rs : RustState) (v : _root_.Hax.Value)
     (hScope : CatCrypt.Crypto.Hax.simScope S Γ e = some Γ')
     (hSB : CatCrypt.Crypto.Hax.ScopeBound rs Γ)
     (hSF : CatCrypt.Crypto.Hax.NamesFresh rs S)
