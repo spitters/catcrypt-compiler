@@ -64,13 +64,8 @@ CatCrypt/Crypto/SecureCompilation/VIR/MLKem768MatvecLoop.lean  # R1 multi-op nes
 CatCrypt/Crypto/SecureCompilation/VIR/MaskingPredicate.lean  # masking-preservation predicate (analysis infra, Track 3c)
 CatCrypt/Crypto/SecureCompilation/VIR/MergeCom.lean  # Com merge translator (D2.1 CSE-trap infra)
 CatCrypt/Crypto/SecureCompilation/VIR/MontMulFragmentDemo.lean  # #477 dialect-capability demo (mulhi/addCarry ops), consumed by FieldEmitGoldenPath infra, not an emit kernel
-CatCrypt/Crypto/Quantum/VIR/MultiComQuantum.lean  # quantum ComMulti lowering infrastructure (PairDialect + allocator), not an emit kernel
 CatCrypt/Crypto/SecureCompilation/VIR/Poseidon2LinearMain.lean  # compiled producer driver (lake exe poseidon2linear), authors no Com
 CatCrypt/Crypto/SecureCompilation/VIR/Poseidon2WholePermCom.lean  # front-infrastructure word-block emitter library (emitAdd/emitCsub/emitFold regArith/regConst CPS block builders) that FieldDescentBB.translBB descends THROUGH, plus the *_denote_ret block-correctness PROOF SUBJECTS; the layer beneath the front, same category as the exempt JasminLsem*/loop-node emitters. The hand poseidon2PermComOut whole-Com is superseded as the deployed producer by FieldPipelineEmitBB's translBB front descent
-CatCrypt/Crypto/Quantum/VIR/Programs/DeutschJozsaVIR.lean  # quantum dialect demo program, no emit artifact
-CatCrypt/Crypto/Quantum/VIR/Programs/GroverVIR.lean  # quantum dialect demo program, no emit artifact
-CatCrypt/Crypto/Quantum/VIR/Programs/QFTVIR.lean  # quantum dialect scale-test demo, no emit artifact
-CatCrypt/Crypto/Quantum/VIR/QSSAToVIR.lean  # quantum frontend translation infrastructure
 CatCrypt/Crypto/SecureCompilation/VIR/QuantumDialect.lean  # VIR quantum dialect definition (Op/Ty/signature), core IR infra
 CatCrypt/Crypto/SecureCompilation/VIR/Sha256LinearMain.lean  # compiled producer driver (lake exe sha256linear), authors no Com
 CatCrypt/Crypto/SecureCompilation/VIR/Sha2RotateSelect.lean  # verified rotate instruction-selection pass (compiler transform), not an emit kernel
@@ -137,3 +132,18 @@ CatCrypt/Crypto/SecureCompilation/X86Backend/XorCombineRolledEmit.lean  # PROPOS
 CatCrypt/Crypto/SecureCompilation/VIR/Peephole.lean  # verified peephole-rewrite framework over Com (Zipper/Mapping/matchVar/rewritePeepholeAt); the literal Com terms are the worked PeepholeDemo rewrite and its test target, writes no artifact
 CatCrypt/Crypto/SecureCompilation/X86Backend/MpnLoopEmit.lean  # the deployed mpn_*_loop_owned.s single-limb symbols are front-sourced (MpnLoopFrontEmit rolled-loop front + MpnCmpEarlyExitFront); the only hand-built artifacts are the *_handtwin.s bench-perf twins and the blk4 add/sub perf-unroll (CF live across the k-limb block, which rolledForLoopNRt cannot express) — bench/perf references, not front-sourceable deployed kernels
 CatCrypt/Crypto/SecureCompilation/X86Backend/ToLprogFaithfulAssembled.lean  # RA faithfulness theorem over the emitted body (prologue ++ argMatSeq ++ physBody ++ Lret); states no kernel, emits nothing
+CatCrypt/Crypto/SecureCompilation/X86Backend/OptimizedEmitWiring.lean  # optimizer-onto-gather wiring demo on one body, #guard-measured; no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/RunBlockLsemAgreeColumnReset.lean  # runBlock<->lsem block agreement (schoolbook column/row/product); proof subject, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/RunBlockLsemAgreeCondSub.lean  # runBlock<->lsem block agreement (conditional-subtract round); proof subject, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/RunBlockLsemAgreeMatCarry.lean  # runBlock<->lsem gadget agreement (carry materialise); proof subject, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/RunBlockLsemAgreeMontRedc.lean  # runBlock<->lsem block agreement (Montgomery reduce); proof subject, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/RunBlockLsemAgreeMovReg.lean  # runBlock<->lsem opcode agreement (register-source MOV); proof subject, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/RunBlockLsemAgreeShiftReg.lean  # runBlock<->lsem opcode agreement (shifts); proof subject, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/StackZeroize.lean  # frame-zeroize Lprog->Lprog pass (zeroizeLprog appends zero stores before each Lret); .Lopn are pass constructors and #guard pins, writes no artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/AllocCTPreservation.lean  # CT-preservation proof over ConstantTimeCoverage.allDirect; its Lcmd terms are proof subjects, no emit driver
+CatCrypt/Crypto/SecureCompilation/X86Backend/LcmdToOwnedCF.lean  # partial recogniser Lcmd control flow -> MachineConstantTime.OwnedCF; no emit driver
+CatCrypt/Crypto/SecureCompilation/X86Backend/PhysExportCTBridge.lean  # CT bridge for the physical-register export; no emit driver
+CatCrypt/Crypto/SecureCompilation/X86Backend/SpeculativeCTPreservation.lean  # speculative-CT preservation proof; no emit driver
+CatCrypt/Crypto/SecureCompilation/X86Backend/LcmdLea.lean  # Lcmd->Lcmd LEA-formation optimizer pass; .Lopn occurrences are pass matchers and #guard fixtures, writes no artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/RunBlockLsemAgreeCondSubP.lean  # runBlock<->lsem block agreement (conditional subtract-p); proof subject, no emit artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/RunBlockLsemAgreeMontMulBlock.lean  # runBlock<->lsem block agreement (Montgomery multiply block); proof subject, no emit artifact
