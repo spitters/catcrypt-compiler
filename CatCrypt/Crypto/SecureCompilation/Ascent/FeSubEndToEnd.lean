@@ -30,6 +30,7 @@ import all CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
 import all CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 import all CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 import all CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresScalar
 public import CatCrypt.Crypto.SecureCompilation.Ascent.EmitBridge
 public import CatCrypt.Crypto.SecureCompilation.Ascent.CapstoneField
 public import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecRoundAdeq
@@ -234,12 +235,8 @@ theorem fValTy : ((fEnv "r0").get fValSome).1 = .sword 64 := by decide
 noncomputable def feVal : BitVec 64 :=
   cast (congrArg CryptoTy.denote fValTy) ((fEnv "r0").get fValSome).2
 
-theorem fHVal : fEnv "r0" = some ⟨.sword 64, feVal⟩ := by
-  rw [← Option.some_get fValSome]
-  exact congrArg some (Sigma.ext fValTy
-    (by unfold feVal
-        exact (cast_heq (congrArg CryptoTy.denote fValTy)
-          ((fEnv "r0").get fValSome).2).symm))
+theorem fHVal : fEnv "r0" = some ⟨.sword 64, feVal⟩ :=
+  envSlot_eq_some_sword fEnv "r0" fValSome fValTy feVal rfl
 
 theorem fRetSome : (fO.cont (Com.ret (toVIRVar fW))).isSome := by rfl
 
