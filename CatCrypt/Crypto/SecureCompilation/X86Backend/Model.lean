@@ -102,13 +102,16 @@ the shifts `SHL`/`SHR`/`SAR`, `CMOV`, and the **ADX/BMI2 bignum trio**
 safegcd and mpn kernels emit — `bench/mpn_adxblk_carry_compare/*.jazz`,
 `bench/mpn_invert_safegcd_compare/gen_divstep/wmul_hi.jazz`). All operate on a
 fixed machine word width `w` (the source `reg w`). We track the **carry flag**
-`CF` (set by `ADD`/`SUB`/`ADC`/`SBB`/`ADCX`; `CMOV` conditions read it) and the
-**overflow flag** `OF` (set by `ADOX`, its independent second carry
-accumulator); `MULX` touches no flag. We also model the **easy-tier unary
+`CF` (set by `ADD`/`SUB`/`ADC`/`SBB`/`ADCX`; `CMOV` conditions read it), the
+**overflow flag** `OF` (set by `ADD`/`SUB` as the signed overflow and by
+`ADOX`, its independent second carry accumulator), and the **zero and sign
+flags** `ZF`/`SF` (set by `ADD`/`SUB` from the result word; `CMOVE`/`CMOVNE`
+read `ZF`); `MULX` touches no flag. We also model the **easy-tier unary
 arms** `NOT` (bitwise complement, no flag) and `NEG` (two's-complement negate,
 sets `CF = dst ≠ 0`) — the `not`/`neg` the kernels emit (committed `.s`,
-header below). The rest of the flag ALU (`SF`/`PF`/`ZF`) is **modeled inert**
-and stated so. `DIV`/`IDIV`, rotates, `LEA`, `SETcc`, `TEST`/`CMP`, memory
+header below). `PF` is not modeled, and `OF`/`ZF`/`SF` are **modeled inert**
+on every arm other than `ADD`/`SUB`/`ADOX`, and stated so.
+`DIV`/`IDIV`, rotates, `LEA`, `SETcc`, `TEST`/`CMP`, memory
 operands + addressing modes, SIMD/AVX, calls/jumps and the byte encoder are
 deliberately **out of scope** — see `README.md` for the path to the full
 backend and the #260 cross-object-call story.
@@ -167,12 +170,11 @@ theorems (which quantify over the names). -/
 /-- An x86 general-purpose register, identified by name (e.g. `"RAX"`, `"r3"`). -/
 abbrev Reg := String
 
-/-- The architectural flags we model. The carry/zero/sign flags the modeled
-    ALU sets (sufficient for `CMOV` conditions), plus the overflow flag `of`,
-    which the ADX `ADOX` carry chain uses as its second, independent carry
-    accumulator (`ADCX` → `CF`, `ADOX` → `OF`). The remaining flag ALU
-    (`PF`, the signed/zero parts beyond what is set here) is a deliberate POC
-    simplification (see module header). -/
+/-- The architectural flags we model: the carry flag `cf`, the overflow flag
+    `of` (the signed overflow of `ADD`/`SUB`, and the second, independent carry
+    accumulator of the ADX `ADOX` chain: `ADCX` → `CF`, `ADOX` → `OF`), and the
+    zero and sign flags `zf`/`sf` of the `ADD`/`SUB` result word, which the
+    `CMOV` conditions read. `PF` is not modeled (see module header). -/
 structure Flags where
   cf : Bool := false
   of : Bool := false
@@ -269,6 +271,40 @@ def addCarry {w : Nat} (a b : BitVec w) (c : Bool) : Bool :=
 def subBorrow {w : Nat} (a b : BitVec w) (c : Bool) : Bool :=
   decide (a.toNat < b.toNat + (if c then 1 else 0))
 
+/-- Signed overflow at width `w`: the true signed value `v` of an ALU result
+    lies outside the two's-complement range `[-2^(w-1), 2^(w-1))`, matching
+    the `OF = (wsigned res ≠ vs)` Jasmin's `rflags_of_aluop` records. -/
+def signedOverflow (w : Nat) (v : Int) : Bool :=
+  decide (v < -(2 ^ (w - 1) : Int) ∨ (2 ^ (w - 1) : Int) ≤ v)
+
+/-- Signed overflow of `a + b + (c : carry-in)`. -/
+def addOverflow {w : Nat} (a b : BitVec w) (c : Bool) : Bool :=
+  signedOverflow w (a.toInt + b.toInt + (if c then 1 else 0))
+
+/-- Signed overflow of `a - b - (c : borrow-in)`. -/
+def subOverflow {w : Nat} (a b : BitVec w) (c : Bool) : Bool :=
+  signedOverflow w (a.toInt - b.toInt - (if c then 1 else 0))
+
+/-- The four modeled flags after an ALU op with result word `res`: the carry
+    and overflow flags as supplied, `ZF` the zero test of the result, `SF` its
+    top bit (Jasmin's `ZF_of_word`/`SF_of_word`). -/
+def aluFlags {w : Nat} (res : BitVec w) (cf of : Bool) : Flags :=
+  { cf := cf, of := of, zf := decide (res = 0), sf := res.msb }
+
+/-- Write `v` to register `r` *and* set all four modeled flags to `f`, leaving
+    the other registers unchanged. Used by `ADD`/`SUB`, whose Jasmin
+    instructions write the full five-flag tuple (`rflags_of_aluop`). -/
+def State.setALU {w : Nat} (s : State w) (r : Reg) (v : BitVec w) (f : Flags) :
+    State w :=
+  { (s.set r v) with flags := f }
+
+@[simp] theorem State.get_setALU_same {w : Nat} (s : State w) (r : Reg)
+    (v : BitVec w) (f : Flags) : (s.setALU r v f).get r = v := by
+  simp [State.setALU, State.set, State.get]
+
+@[simp] theorem State.setALU_flags {w : Nat} (s : State w) (r : Reg)
+    (v : BitVec w) (f : Flags) : (s.setALU r v f).flags = f := rfl
+
 /-- High word of the full unsigned product `a * b` (the `hi` output of `MULX`).
     Matches Jasmin `wumul`'s `high_bits sz (wunsigned a * wunsigned b)
     = wrepr sz ((a*b) >> w)`, i.e. `(a.toNat * b.toNat) / 2 ^ w`. -/
@@ -321,9 +357,11 @@ inductive Cond where
 inductive Instr (w : Nat) where
   /-- `MOV dst, src`. -/
   | mov (dst : Reg) (src : Operand)
-  /-- `ADD dst, src` : `dst := dst + src`; sets `CF` to the unsigned carry-out. -/
+  /-- `ADD dst, src` : `dst := dst + src`; sets `CF` to the unsigned carry-out,
+      `OF` to the signed overflow, and `ZF`/`SF` from the result word. -/
   | add (dst : Reg) (src : Operand)
-  /-- `SUB dst, src` : `dst := dst - src`; sets `CF` to the unsigned borrow. -/
+  /-- `SUB dst, src` : `dst := dst - src`; sets `CF` to the unsigned borrow,
+      `OF` to the signed overflow, and `ZF`/`SF` from the result word. -/
   | sub (dst : Reg) (src : Operand)
   /-- `ADC dst, src` : `dst := dst + src + CF`; sets `CF` to the new carry-out.
       The bignum add-with-carry instruction (no `JasminBinOp` source
@@ -385,12 +423,14 @@ inductive Instr (w : Nat) where
 
 /-! ## 4. Step semantics
 
-Each instruction maps a state to the next state. `ADD`/`SUB`/`ADC`/`SBB`/`ADCX`
-update the destination register **and the carry flag** (`CF`); `ADOX` updates
-its destination **and the overflow flag** (`OF`) instead, leaving `CF`
-untouched — the two carry chains are independent. The remaining flags
-(`SF`/`PF`/`ZF`, and the unused one of `CF`/`OF`) are left inert (modeled
-simplification, stated in the header). The logical/shift/`MOV`/`MUL`/`MULX`
+Each instruction maps a state to the next state. `ADD`/`SUB` update the
+destination register **and all four modeled flags** (`CF` the unsigned
+carry/borrow, `OF` the signed overflow, `ZF`/`SF` from the result word).
+`ADC`/`SBB`/`ADCX` update the destination register **and the carry flag**
+(`CF`); `ADOX` updates its destination **and the overflow flag** (`OF`)
+instead, leaving `CF` untouched — the two carry chains are independent. On
+those arms the remaining modeled flags are left inert (modeled simplification,
+stated in the header). The logical/shift/`MOV`/`MUL`/`MULX`
 arms touch no flag. `CMOV` reads the *current* flags. The data result is the
 part the source IR denotes and against which `Preservation.lean` /
 `TranslationValidation.lean` validate. -/
@@ -399,9 +439,13 @@ part the source IR denotes and against which `Preservation.lean` /
 def step {w : Nat} (s : State w) : Instr w → State w
   | .mov dst src  => s.set dst (src.eval s)
   | .add dst src  =>
-      s.setCF dst (s.get dst + src.eval s) (addCarry (s.get dst) (src.eval s) false)
+      s.setALU dst (s.get dst + src.eval s)
+        (aluFlags (s.get dst + src.eval s) (addCarry (s.get dst) (src.eval s) false)
+          (addOverflow (s.get dst) (src.eval s) false))
   | .sub dst src  =>
-      s.setCF dst (s.get dst - src.eval s) (subBorrow (s.get dst) (src.eval s) false)
+      s.setALU dst (s.get dst - src.eval s)
+        (aluFlags (s.get dst - src.eval s) (subBorrow (s.get dst) (src.eval s) false)
+          (subOverflow (s.get dst) (src.eval s) false))
   | .adc dst src  =>
       let c := s.flags.cf
       s.setCF dst (s.get dst + src.eval s + (if c then 1 else 0))

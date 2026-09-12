@@ -143,7 +143,7 @@ theorem hstep_x86_on (s : XState) (stmt : RegStmt) (h : X86FaithfulStmt stmt) :
     (x86Target.step s stmt).regs = evalRegStmtPure s.regs stmt := by
   cases stmt <;>
     simp only [x86Target, xrun, toX86, step, X86FaithfulStmt, evalRegStmtPure,
-      State.set, State.setCF, State.setLoHi, State.get, Env.set, Env.get,
+      State.set, State.setALU, State.setLoHi, State.get, Env.set, Env.get,
       mulHi, Operand.eval, addCarry, List.foldl_cons, List.foldl_nil,
       BitVec.toNat_ofNat, Nat.shiftRight_eq_div_pow] at h ⊢
   -- binary ops: `mov d a ; op d b`; freshness `d ≠ b` removes the alias `if b = d`

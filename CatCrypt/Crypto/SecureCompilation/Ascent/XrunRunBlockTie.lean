@@ -11,8 +11,8 @@ public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresDescentX86
 # The `xrun` machine lifted to `runBlock`
 
 The x86 `ScalarTarget` of `ScalarLinX86Demo` runs `xrun`, the `step` fold of
-`X86Backend.Model` over `List (Instr 64)`: a register file and the flags `CF`/`OF`
-(`ZF`/`SF` are fields the step never writes). The `runBlock` leaf library of
+`X86Backend.Model` over `List (Instr 64)`: a register file and the flags
+`CF`/`OF`/`ZF`/`SF`. The `runBlock` leaf library of
 `Ascent/RunBlockCorres.lean` (`corresJ_sbb`, `corresJ_adc`, `CorresSolver`) runs
 `runBlock`, the `evalInstr` fold of `X86Backend.JasminModel` over
 `List (JInstr 64)`: registers, memory and five `Option Bool` flags, the
@@ -23,14 +23,16 @@ the one to a run of the other.
 
 The two machines agree on every register a covered instruction writes; on the
 flags they agree only where the `Model` writes what Jasmin writes. `XJTrack`
-selects which of `CF`/`OF` the state relation `XJRel` tracks, and `XJFaithful t`
-is the instruction set on which `XJRel t` is preserved. An instruction is
-excluded at a track when Jasmin writes a tracked flag the `Model` leaves alone
-(`add`/`sub`/`adc`/`sbb`/`neg` at `OF`; `imul`, the bitwise ops and the shifts at
-both), when it reads an untracked flag (`adc`/`sbb`/`adcx`/`cmov b` need `CF`,
-`adox` needs `OF`), when it reads `ZF` (`cmov e`/`cmov ne`; the `Model` never
-writes `ZF`), or when its shift count is not an immediate below the word width
-(Jasmin masks the count, the `Model` does not).
+selects which of `CF`/`OF`/`ZF` the state relation `XJRel` tracks, and
+`XJFaithful t` is the instruction set on which `XJRel t` is preserved. `add`
+and `sub` are faithful at every track: the `Model` writes all of `CF`/`OF`/`ZF`
+as Jasmin's `rflags_of_aluop` does (`add_cf_eq`, `add_of_eq`, `zf_eq` and the
+`sub` twins). An instruction is excluded at a track when Jasmin writes a
+tracked flag the `Model` leaves alone (`adc`/`sbb`/`neg` at `OF` and `ZF`;
+`imul`, the bitwise ops and the shifts at all three), when it reads an
+untracked flag (`adc`/`sbb`/`adcx`/`cmov b` need `CF`, `adox` needs `OF`,
+`cmov e`/`cmov ne` need `ZF`), or when its shift count is not an immediate
+below the word width (Jasmin masks the count, the `Model` does not).
 
 ## Main results
 
@@ -106,27 +108,34 @@ def xinstrToJ : Instr 64 → JInstr 64
 
 /-! ## 2. The tracked state relation -/
 
-/-- Which of the two flags the `Model` carries the relation tracks. -/
+/-- Which of the flags the `Model` carries the relation tracks. -/
 structure XJTrack where
   /-- Track the carry flag. -/
   cf : Bool
   /-- Track the overflow flag. -/
   of : Bool
+  /-- Track the zero flag. -/
+  zf : Bool
 
 /-- Registers only. -/
-def XJTrack.regs : XJTrack := ⟨false, false⟩
+def XJTrack.regs : XJTrack := ⟨false, false, false⟩
 
 /-- Registers and the carry flag: the `adc`/`sbb` chain. -/
-def XJTrack.carry : XJTrack := ⟨true, false⟩
+def XJTrack.carry : XJTrack := ⟨true, false, false⟩
 
 /-- Registers and both carry chains: the `mulx`/`adcx`/`adox` idiom. -/
-def XJTrack.adx : XJTrack := ⟨true, true⟩
+def XJTrack.adx : XJTrack := ⟨true, true, false⟩
+
+/-- Registers and all three tracked flags: `add`/`sub` blocks with conditional
+    moves on the zero flag. -/
+def XJTrack.alu : XJTrack := ⟨true, true, true⟩
 
 /-- The register files agree, and each tracked flag of the `Model` equals the
     corresponding Jasmin flag read as a `Bool` (`Undef` reads as `false`). -/
 def XJRel (t : XJTrack) (s : State 64) (j : JState 64) : Prop :=
   s.regs = j.regs ∧ (t.cf = true → s.flags.cf = j.flagB (·.cf)) ∧
-    (t.of = true → s.flags.of = j.flagB (·.of))
+    (t.of = true → s.flags.of = j.flagB (·.of)) ∧
+    (t.zf = true → s.flags.zf = j.flagB (·.zf))
 
 /-- A shift count the two models agree on: an immediate below the word width. -/
 def ShiftOpOK : Operand → Prop
@@ -135,15 +144,16 @@ def ShiftOpOK : Operand → Prop
 
 /-- The instructions on which `XJRel t` is preserved. -/
 def XJFaithful (t : XJTrack) : Instr 64 → Prop
-  | .mov _ _ | .mulx _ _ _ _ | .not_ _ => True
-  | .add _ _ | .sub _ _ | .neg _ => t.of = false
-  | .adc _ _ | .sbb _ _ => t.cf = true ∧ t.of = false
+  | .mov _ _ | .mulx _ _ _ _ | .not_ _ | .add _ _ | .sub _ _ => True
+  | .neg _ => t.of = false ∧ t.zf = false
+  | .adc _ _ | .sbb _ _ => t.cf = true ∧ t.of = false ∧ t.zf = false
   | .adcx _ _ => t.cf = true
   | .adox _ _ => t.of = true
-  | .mul _ _ | .and_ _ _ | .or_ _ _ | .xor_ _ _ => t.cf = false ∧ t.of = false
-  | .shl _ src | .shr _ src | .sar _ src => t.cf = false ∧ t.of = false ∧ ShiftOpOK src
+  | .mul _ _ | .and_ _ _ | .or_ _ _ | .xor_ _ _ => t.cf = false ∧ t.of = false ∧ t.zf = false
+  | .shl _ src | .shr _ src | .sar _ src =>
+      t.cf = false ∧ t.of = false ∧ t.zf = false ∧ ShiftOpOK src
   | .cmov .b _ _ => t.cf = true
-  | .cmov .e _ _ | .cmov .ne _ _ => False
+  | .cmov .e _ _ | .cmov .ne _ _ => t.zf = true
 
 /-! ## 3. The word and flag arithmetic the two models share -/
 
@@ -206,6 +216,37 @@ theorem sbb_cf_eq (a b : BitVec 64) (c : Bool) :
     Int.toNat_of_nonneg (Int.emod_nonneg _ (by decide : ((2 ^ 64 : Nat) : Int) ≠ 0))]
   cases c <;> simp <;> omega
 
+/-- Jasmin's `x86_ADD` overflow flag is the `Model`'s signed overflow. -/
+theorem add_of_eq (a b : BitVec 64) :
+    decide ((a + b).toInt ≠ a.toInt + b.toInt) = addOverflow a b false := by
+  have ha := a.toInt_lt
+  have ha' := a.le_toInt
+  have hb := b.toInt_lt
+  have hb' := b.le_toInt
+  simp only [addOverflow, signedOverflow, Bool.false_eq_true, if_false, add_zero,
+    decide_eq_decide, BitVec.toInt_add]
+  unfold Int.bmod
+  simp only [Nat.reducePow, Nat.reduceSub, Int.reducePow] at *
+  split <;> omega
+
+/-- Jasmin's `x86_SUB` overflow flag is the `Model`'s signed overflow. -/
+theorem sub_of_eq (a b : BitVec 64) :
+    decide ((a - b).toInt ≠ a.toInt - b.toInt) = subOverflow a b false := by
+  have ha := a.toInt_lt
+  have ha' := a.le_toInt
+  have hb := b.toInt_lt
+  have hb' := b.le_toInt
+  simp only [subOverflow, signedOverflow, Bool.false_eq_true, if_false, sub_zero,
+    decide_eq_decide, BitVec.toInt_sub]
+  unfold Int.bmod
+  simp only [Nat.reducePow, Nat.reduceSub, Int.reducePow] at *
+  split <;> omega
+
+/-- Jasmin's `ZF_of_word` is the zero test of the word, the `Model`'s `ZF`. -/
+theorem zf_eq (v : BitVec 64) : ZF_of_word v = decide (v = 0) := by
+  simp only [ZF_of_word, decide_eq_decide, BitVec.toNat_eq]
+  exact Iff.rfl
+
 /-- The data word of `x86_SHL` is the shift by the masked count. -/
 theorem x86_SHL_word (v i : BitVec 64) : (x86_SHL v i).word = v <<< (i.toNat % 64) := by
   simp only [x86_SHL, shiftCount]
@@ -236,130 +277,140 @@ theorem imm_toNat_lt (n : Nat) (h : n < 64) : (BitVec.ofNat 64 n).toNat = n := b
 theorem step_evalInstr_xj (t : XJTrack) {s : State 64} {j : JState 64} (i : Instr 64)
     (hi : XJFaithful t i) (h : XJRel t s j) :
     XJRel t (step s i) (evalInstr j (xinstrToJ i)) := by
-  obtain ⟨hreg, hcf, hof⟩ := h
+  obtain ⟨hreg, hcf, hof, hzf⟩ := h
   obtain ⟨sr, sf⟩ := s
   obtain ⟨jr, jf, jm⟩ := j
   dsimp only at hreg
   subst hreg
-  simp only [JState.flagB] at hcf hof
+  simp only [JState.flagB] at hcf hof hzf
   have hop : ∀ o : Operand, (operandToJ o).eval ⟨sr, jf, jm⟩ = o.eval ⟨sr, sf⟩ :=
     fun o => operandToJ_eval o _ _ rfl
   cases i with
   | mov d o =>
     simp only [step, evalInstr, xinstrToJ, hop, State.set, JState.setReg, x86_MOV]
-    exact ⟨rfl, hcf, hof⟩
+    exact ⟨rfl, hcf, hof, hzf⟩
   | add d o =>
-    simp only [XJFaithful] at hi
-    simp only [step, evalInstr, xinstrToJ, hop, State.setCF, State.set, State.get,
-      JState.writeB5W, JState.get, wunsigned, x86_ADD, rflags_of_aluop]
-    exact ⟨rfl, fun _ => (add_cf_eq _ _).symm, by simp [hi]⟩
+    simp only [step, evalInstr, xinstrToJ, hop, State.setALU, State.set, State.get,
+      JState.writeB5W, JState.get, wunsigned, wsigned, x86_ADD, rflags_of_aluop, aluFlags]
+    exact ⟨rfl, fun _ => (add_cf_eq _ _).symm, fun _ => (add_of_eq _ _).symm,
+      fun _ => (zf_eq _).symm⟩
   | sub d o =>
-    simp only [XJFaithful] at hi
-    simp only [step, evalInstr, xinstrToJ, hop, State.setCF, State.set, State.get,
-      JState.writeB5W, JState.get, wunsigned, x86_SUB]
-    exact ⟨rfl, fun _ => (sub_cf_eq _ _).symm, by simp [hi]⟩
+    simp only [step, evalInstr, xinstrToJ, hop, State.setALU, State.set, State.get,
+      JState.writeB5W, JState.get, wunsigned, wsigned, x86_SUB, aluFlags]
+    exact ⟨rfl, fun _ => (sub_cf_eq _ _).symm, fun _ => (sub_of_eq _ _).symm,
+      fun _ => (zf_eq _).symm⟩
   | adc d o =>
     simp only [XJFaithful] at hi
-    obtain ⟨hc, ho⟩ := hi
+    obtain ⟨hc, ho, hz⟩ := hi
     have hcf' := hcf hc
     simp only [step, evalInstr, xinstrToJ, hop, State.setCF, State.set, State.get,
       JState.writeB5W, JState.get, JState.flagB, wunsigned, x86_ADC, rflags_of_aluop, hcf',
       add_carry_word]
-    exact ⟨rfl, fun _ => (adc_cf_eq _ _ _).symm, by simp [ho]⟩
+    exact ⟨rfl, fun _ => (adc_cf_eq _ _ _).symm, by simp [ho], by simp [hz]⟩
   | sbb d o =>
     simp only [XJFaithful] at hi
-    obtain ⟨hc, ho⟩ := hi
+    obtain ⟨hc, ho, hz⟩ := hi
     have hcf' := hcf hc
     simp only [step, evalInstr, xinstrToJ, hop, State.setCF, State.set, State.get,
       JState.writeB5W, JState.get, JState.flagB, wunsigned, x86_SBB, hcf', sub_borrow_word]
-    exact ⟨rfl, fun _ => (sbb_cf_eq _ _ _).symm, by simp [ho]⟩
+    exact ⟨rfl, fun _ => (sbb_cf_eq _ _ _).symm, by simp [ho], by simp [hz]⟩
   | mul d o =>
     simp only [XJFaithful] at hi
     simp only [step, evalInstr, xinstrToJ, hop, State.set, State.get, JState.writeB5W,
       JState.get, x86_IMULt, rflags_of_mul]
-    exact ⟨rfl, by simp [hi.1], by simp [hi.2]⟩
+    exact ⟨rfl, by simp [hi.1], by simp [hi.2.1], by simp [hi.2.2]⟩
   | and_ d o =>
     simp only [XJFaithful] at hi
     simp only [step, evalInstr, xinstrToJ, hop, State.set, State.get, JState.writeB5W,
       JState.get, x86_AND, rflags_of_bwop]
-    exact ⟨rfl, by simp [hi.1], by simp [hi.2]⟩
+    exact ⟨rfl, by simp [hi.1], by simp [hi.2.1], by simp [hi.2.2]⟩
   | or_ d o =>
     simp only [XJFaithful] at hi
     simp only [step, evalInstr, xinstrToJ, hop, State.set, State.get, JState.writeB5W,
       JState.get, x86_OR, rflags_of_bwop]
-    exact ⟨rfl, by simp [hi.1], by simp [hi.2]⟩
+    exact ⟨rfl, by simp [hi.1], by simp [hi.2.1], by simp [hi.2.2]⟩
   | xor_ d o =>
     simp only [XJFaithful] at hi
     simp only [step, evalInstr, xinstrToJ, hop, State.set, State.get, JState.writeB5W,
       JState.get, x86_XOR, rflags_of_bwop]
-    exact ⟨rfl, by simp [hi.1], by simp [hi.2]⟩
+    exact ⟨rfl, by simp [hi.1], by simp [hi.2.1], by simp [hi.2.2]⟩
   | shl d o =>
     simp only [XJFaithful] at hi
-    obtain ⟨hc, ho, hsh⟩ := hi
+    obtain ⟨hc, ho, hz, hsh⟩ := hi
     cases o with
     | reg _ => exact absurd hsh id
     | imm n =>
       simp only [step, evalInstr, xinstrToJ, operandToJ, Operand.eval, JOperand.eval,
         State.set, State.get, JState.writeB5W, JState.get, x86_SHL_word,
         imm_toNat_lt n hsh, Nat.mod_eq_of_lt hsh]
-      exact ⟨rfl, by simp [hc], by simp [ho]⟩
+      exact ⟨rfl, by simp [hc], by simp [ho], by simp [hz]⟩
   | shr d o =>
     simp only [XJFaithful] at hi
-    obtain ⟨hc, ho, hsh⟩ := hi
+    obtain ⟨hc, ho, hz, hsh⟩ := hi
     cases o with
     | reg _ => exact absurd hsh id
     | imm n =>
       simp only [step, evalInstr, xinstrToJ, operandToJ, Operand.eval, JOperand.eval,
         State.set, State.get, JState.writeB5W, JState.get, x86_SHR_word,
         imm_toNat_lt n hsh, Nat.mod_eq_of_lt hsh]
-      exact ⟨rfl, by simp [hc], by simp [ho]⟩
+      exact ⟨rfl, by simp [hc], by simp [ho], by simp [hz]⟩
   | sar d o =>
     simp only [XJFaithful] at hi
-    obtain ⟨hc, ho, hsh⟩ := hi
+    obtain ⟨hc, ho, hz, hsh⟩ := hi
     cases o with
     | reg _ => exact absurd hsh id
     | imm n =>
       simp only [step, evalInstr, xinstrToJ, operandToJ, Operand.eval, JOperand.eval,
         State.set, State.get, JState.writeB5W, JState.get, x86_SAR_word,
         imm_toNat_lt n hsh, Nat.mod_eq_of_lt hsh]
-      exact ⟨rfl, by simp [hc], by simp [ho]⟩
+      exact ⟨rfl, by simp [hc], by simp [ho], by simp [hz]⟩
   | cmov cc d o =>
     cases cc with
-    | e => exact absurd hi id
-    | ne => exact absurd hi id
+    | e =>
+      simp only [XJFaithful] at hi
+      have hzf' := hzf hi
+      simp only [step, evalInstr, xinstrToJ, hop, State.set, State.get, JState.setReg,
+        JState.get, JState.flagB, Cond.eval, x86_CMOVcc, hzf']
+      exact ⟨rfl, hcf, hof, hzf⟩
+    | ne =>
+      simp only [XJFaithful] at hi
+      have hzf' := hzf hi
+      simp only [step, evalInstr, xinstrToJ, hop, State.set, State.get, JState.setReg,
+        JState.get, JState.flagB, Cond.eval, x86_CMOVcc, hzf']
+      exact ⟨rfl, hcf, hof, hzf⟩
     | b =>
       simp only [XJFaithful] at hi
       have hcf' := hcf hi
       simp only [step, evalInstr, xinstrToJ, hop, State.set, State.get, JState.setReg,
         JState.get, JState.flagB, Cond.eval, x86_CMOVcc, hcf']
-      exact ⟨rfl, hcf, hof⟩
+      exact ⟨rfl, hcf, hof, hzf⟩
   | mulx dHi dLo a b =>
     simp only [step, evalInstr, xinstrToJ, hop, State.setLoHi, State.set, JState.setReg,
       x86_MULX_lo_hi, wumul, high_bits, mulHi, mul_word]
-    exact ⟨rfl, hcf, hof⟩
+    exact ⟨rfl, hcf, hof, hzf⟩
   | adcx d o =>
     simp only [XJFaithful] at hi
     have hcf' := hcf hi
     simp only [step, evalInstr, xinstrToJ, hop, State.setCF, State.set, State.get,
       JState.get, JState.flagB, x86_ADCX, waddcarry, hcf', add_carry_word, add_carry,
       addCarry]
-    exact ⟨rfl, fun _ => rfl, hof⟩
+    exact ⟨rfl, fun _ => rfl, hof, hzf⟩
   | adox d o =>
     simp only [XJFaithful] at hi
     have hof' := hof hi
     simp only [step, evalInstr, xinstrToJ, hop, State.setOF, State.set, State.get,
       JState.get, JState.flagB, x86_ADCX, waddcarry, hof', add_carry_word, add_carry,
       addCarry]
-    exact ⟨rfl, hcf, fun _ => rfl⟩
+    exact ⟨rfl, hcf, fun _ => rfl, hzf⟩
   | not_ d =>
     simp only [step, evalInstr, xinstrToJ, State.set, State.get, JState.setReg, JState.get,
       x86_NOT]
-    exact ⟨rfl, hcf, hof⟩
+    exact ⟨rfl, hcf, hof, hzf⟩
   | neg d =>
     simp only [XJFaithful] at hi
     simp only [step, evalInstr, xinstrToJ, State.setCF, State.set, State.get,
       JState.writeB5W, JState.get, x86_NEG]
-    exact ⟨rfl, fun _ => rfl, by simp [hi]⟩
+    exact ⟨rfl, fun _ => rfl, by simp [hi.1], by simp [hi.2]⟩
 
 /-! ## 5. The lift -/
 
@@ -393,7 +444,7 @@ theorem corresMPost_runBlock_of_xrun {AState : Type}
   subst hm'
   refine ⟨_, rfl, ?_⟩
   have htie := xrun_runBlock_tie .regs (s := ⟨j.regs, {}⟩) (j := j)
-    ⟨rfl, by simp [XJTrack.regs], by simp [XJTrack.regs]⟩ c hf
+    ⟨rfl, by simp [XJTrack.regs], by simp [XJTrack.regs], by simp [XJTrack.regs]⟩ c hf
   dsimp only at hout ⊢
   rw [htie.1] at hout
   exact hout

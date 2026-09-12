@@ -266,12 +266,12 @@ hold for all inputs (not just the differential samples). -/
 /-- `ADD` sets CF to the unsigned carry-out, for all inputs. -/
 theorem add_setsCF {w : Nat} (s : State w) (dst : Reg) (src : Operand) :
     (step s (.add dst src)).flags.cf = addCarry (s.get dst) (src.eval s) false := by
-  simp [step, State.setCF]
+  simp [step, State.setALU, aluFlags]
 
 /-- `SUB` sets CF to the unsigned borrow, for all inputs. -/
 theorem sub_setsCF {w : Nat} (s : State w) (dst : Reg) (src : Operand) :
     (step s (.sub dst src)).flags.cf = subBorrow (s.get dst) (src.eval s) false := by
-  simp [step, State.setCF]
+  simp [step, State.setALU, aluFlags]
 
 /-- `ADC` reads the carry-in and sets CF to the new carry-out, for all inputs. -/
 theorem adc_setsCF {w : Nat} (s : State w) (dst : Reg) (src : Operand) :

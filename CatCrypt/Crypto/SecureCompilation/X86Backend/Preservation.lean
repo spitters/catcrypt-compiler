@@ -79,13 +79,13 @@ theorem mov_preserves : (step s (.mov dst src)).get dst = src.eval s := by
 theorem add_preserves :
     (step s (.add dst src)).get dst
       = JasminBinOp.apply .add (s.get dst) (src.eval s) := by
-  simp [step, JasminBinOp.apply, State.get, State.setCF, State.set]
+  simp [step, JasminBinOp.apply, State.get, State.setALU, State.set]
 
 /-- `SUB` realises `JasminBinOp.sub` in the destination register. -/
 theorem sub_preserves :
     (step s (.sub dst src)).get dst
       = JasminBinOp.apply .sub (s.get dst) (src.eval s) := by
-  simp [step, JasminBinOp.apply, State.get, State.setCF, State.set]
+  simp [step, JasminBinOp.apply, State.get, State.setALU, State.set]
 
 /-- `MUL`/`IMUL` (low word) realises `JasminBinOp.mul`. The low `w` bits of the
     signed and unsigned products agree, so a single arm covers both. -/
@@ -152,7 +152,7 @@ theorem lower_arith_step_preserves (bop : JasminBinOp)
   cases bop <;>
     simp only [binOpName, lowerLinstrR, Option.some.injEq] at hlow <;>
     first
-      | (subst hlow; simp [step, JasminBinOp.apply, State.get, State.setCF, State.set])
+      | (subst hlow; simp [step, JasminBinOp.apply, State.get, State.setALU, State.set])
       | simp at hlow
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend
