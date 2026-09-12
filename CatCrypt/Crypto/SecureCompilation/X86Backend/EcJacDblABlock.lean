@@ -11,7 +11,6 @@ public import CatCrypt.Crypto.SecureCompilation.EcProjectiveGenericA
 @[expose] public section
 
 set_option autoImplicit false
-set_option maxHeartbeats 1000000
 
 /-!
 # Structural and value Jacobian point-double for `a = −3` over the shared frame
