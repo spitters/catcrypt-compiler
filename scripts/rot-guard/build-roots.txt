@@ -871,3 +871,4 @@ CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeCall
 CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeArrIdx
 CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeMem
 CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeCallBlock
+CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeArrBlock
