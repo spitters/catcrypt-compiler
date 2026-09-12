@@ -5,7 +5,10 @@ on:
     branches: [master]
   pull_request:
   workflow_dispatch:
-
+  # The heavy jobs run on this schedule, on demand, and on pull requests;
+  # a push to the default branch runs only the cheap gates (see each job's `if`).
+  schedule:
+    - cron: '0 3 * * 0'
 # Cancel superseded runs on the same ref.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -87,6 +90,7 @@ jobs:
         run: git diff --exit-code -- scripts/
 
   build:
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     # The full library on a 16 GB runner: long, but bounded. A run that has not
     # finished by here is stuck, not slow.
