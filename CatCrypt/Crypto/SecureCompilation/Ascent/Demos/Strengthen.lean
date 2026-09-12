@@ -31,11 +31,13 @@ ascent demos and capstones, closed by `rfl`; no kernel carries an annotation.
 | `searchU` | `Demos/EarlyExit` | exception | `return` inside the loop |
 | `countU` | this module | option | a hax loop without `return` |
 
-For `feSubC`, `qrFrag` and `searchU` the abstract program and its refinement theorem
-are stated as well (`feSubC_ts_refines`, `qrFrag_ts_refines`, `searchU_ts_refines`);
-`countU_ts_toExcept` states that the `Option` program of `countU` is its exception
-program, and `searchU_abs_found` reads the exception program of `searchU` at `x = 1`
-as the thrown index of `searchAbs`.
+## Main results
+
+* `feSubC_ts_refines`, `qrFrag_ts_refines`, `searchU_ts_refines`: the abstract
+  program at the computed level refines the kernel
+* `countU_ts_toExcept`: the `Option` program of `countU` is its exception program
+* `searchU_abs_found`: the exception program of `searchU` at `x = 1` throws the
+  index `searchAbs` returns
 -/
 
 @[expose] public section

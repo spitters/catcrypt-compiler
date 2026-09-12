@@ -57,6 +57,15 @@ commands that cannot exit; `haxToLowCT_eq_haxToLowCTK_none` states that
 
 `AnfShapedK sc tl inLoop e` is the shape predicate of `haxToLowCTK`
 (`haxToLowCTK_isSome_iff_anfK`); it accepts `cfBreak` exactly when `inLoop`.
+
+## Main results
+
+* `haxToLowCTK`, `haxToLowCTFn`: the exit-flag lowering of an expression and of a
+  function body
+* `haxToLowCT_eq_haxToLowCTK_none`: `haxToLowCT` is the exit-free projection of
+  `haxToLowCTK false false none`
+* `haxToLowCTK_isSome_iff_anfK`: the lowering succeeds exactly on `AnfShapedK`
+* `searchLoopShape_lowers`: the search loop with an early return lowers
 -/
 
 @[expose] public section

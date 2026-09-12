@@ -52,6 +52,17 @@ is a scalar value.
 `haxToLowCTK_simulates` is the simulation of every fragment expression, and
 `haxToLowCTFn_simulates` the function-level statement: the result slot holds the
 decoding of the returned or final value.
+
+## Main results
+
+* `haxToLowCTK_simulates`: the lowering of every `exitSimOk` expression simulates
+  `Hax.denote'` under `ScalarOpsSound`
+* `haxToLowCTFn_simulates`: the result slot of the lowered function holds the
+  decoding of the returned or final value
+* `exitLoop_sim`: the `whileFoldReturn` case, by induction on fuel
+* `scalarOpsSound_noOverflow64_width`: hax-lean's width-aware tables satisfy
+  `ScalarOpsSound` under the no-overflow refusal
+* `searchLoopShape_exitSimOk`: the search loop lies in the fragment
 -/
 
 @[expose] public section

@@ -16,7 +16,9 @@ none.  hax-lean's control-flow pipeline theorems (`pipeline_correct'`,
 `pipeline_full_correct`) take it as the contract on the table, and hax-lean
 discharges it for `defaultBuiltins`.
 
-This module discharges it for the width-aware tables of `HaxLean/Semantics.lean`:
+This module discharges it for the width-aware tables of `HaxLean/Semantics.lean`.
+
+## Main results
 
 * `deepNoControlFlow_orElse` — a table that tries one contract-satisfying table
   and falls back to another satisfies the contract;
