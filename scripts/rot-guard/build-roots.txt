@@ -868,3 +868,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockFullMemrefTextKat
 CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeCopn
 CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeFor
 CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeCall
+CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeArrIdx
+CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeMem
+CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeCallBlock
