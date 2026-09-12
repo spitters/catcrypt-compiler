@@ -1,0 +1,14 @@
+# The rolled-loop front family itself: the modules that define the combinators,
+# the equations relating a continuation-carrying combinator to its
+# continuation-free sibling, the bundler and the dispatcher. These name the
+# combinators because they ARE what a call site is supposed to go through, so
+# scripts/front-callsite-ratchet.sh does not count them.
+CatCrypt/Crypto/SecureCompilation/Dialects/TranslateDialectRolledLoop.lean
+CatCrypt/Crypto/SecureCompilation/Dialects/TranslateDialectRuntimeLoop.lean
+CatCrypt/Crypto/SecureCompilation/Dialects/TranslateDialectRuntimeLoopCarrySelect.lean
+CatCrypt/Crypto/SecureCompilation/Dialects/TranslateDialectWhileNode.lean
+CatCrypt/Crypto/SecureCompilation/Dialects/TranslateDialectPhaseCompose.lean
+CatCrypt/Crypto/SecureCompilation/Dialects/TranslateDialectRolledFor.lean
+CatCrypt/Crypto/SecureCompilation/VIR/RecursiveForLoopBlockFront.lean
+CatCrypt/Crypto/SecureCompilation/Dialects/RolledFront.lean
+CatCrypt/Crypto/SecureCompilation/Dialects/FrontRoutePlan.lean

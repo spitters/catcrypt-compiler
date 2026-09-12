@@ -1,0 +1,22 @@
+17
+# Modules naming a rolled-loop front combinator directly rather than reaching
+# it through FrontRoutePlan (frozen baseline; auto-tightened by
+# scripts/front-callsite-ratchet.sh). First line = count; the paths below are
+# the sites left to migrate.
+CatCrypt/Crypto/SecureCompilation/Dialects/FrontSiblingLoops.lean
+CatCrypt/Crypto/SecureCompilation/Dialects/RolledLoopFrontValidate.lean
+CatCrypt/Crypto/SecureCompilation/Dialects/RuntimeLoopFrontValidate.lean
+CatCrypt/Crypto/SecureCompilation/Dialects/RuntimeStrideRowFrontValidate.lean
+CatCrypt/Crypto/SecureCompilation/Secp256k1PointOpLoopBody.lean
+CatCrypt/Crypto/SecureCompilation/VIR/Poly1305RtLoopCom.lean
+CatCrypt/Crypto/SecureCompilation/X86Backend/HawkPointwiseEmit.lean
+CatCrypt/Crypto/SecureCompilation/X86Backend/MpnAddCarryFrontPrototype.lean
+CatCrypt/Crypto/SecureCompilation/X86Backend/MpnAddmulSubmul1FrontEmit.lean
+CatCrypt/Crypto/SecureCompilation/X86Backend/MpnCmpFrontEmit.lean
+CatCrypt/Crypto/SecureCompilation/X86Backend/MpnDivRem1FrontEmit.lean
+CatCrypt/Crypto/SecureCompilation/X86Backend/MpnLogicalFrontEmit.lean
+CatCrypt/Crypto/SecureCompilation/X86Backend/MpnLoopFrontEmit.lean
+CatCrypt/Crypto/SecureCompilation/X86Backend/MpnMul1FrontEmit.lean
+CatCrypt/Crypto/SecureCompilation/X86Backend/MpnShiftFrontEmit.lean
+CatCrypt/Crypto/SecureCompilation/X86Backend/TreehashChainEmit.lean
+CatCrypt/Crypto/SecureCompilation/X86Backend/WotsChainEmit.lean

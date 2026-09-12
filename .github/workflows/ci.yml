@@ -40,6 +40,9 @@ jobs:
       - name: No new hand-authored emit kernel (Com/Lcmd provenance)
         run: bash scripts/handcom-provenance-ratchet.sh
 
+      - name: No new direct rolled-loop combinator call site (FrontRoutePlan dispatch)
+        run: bash scripts/front-callsite-ratchet.sh
+
       - name: No new untagged hand-JInstr block (emit provenance)
         run: bash scripts/audit_emit_provenance.sh
 
