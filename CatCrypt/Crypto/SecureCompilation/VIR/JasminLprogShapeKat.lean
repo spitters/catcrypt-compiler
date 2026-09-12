@@ -6,12 +6,14 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.Sha512X8VpackZmmEmit
 
 /-!
 # Emitted-shape known-answer test, as a program
 
 The instruction-text shape of the exported Jasmin bodies, checked by running a
-program against a golden file rather than by `decide` inside a proof.
+program against a golden file rather than by `decide` inside a proof, together
+with named Boolean checks on the rendered text of owned emit kernels.
 
 `decide` on rendered text reduces `String.decEq` through `ByteArray`, which
 costs elaboration time, puts the check in the module's build, and blocks the
@@ -25,8 +27,11 @@ lake exe jasmin-lprog-shape-kat --write    # regenerate it
 ## Main definitions
 
 * `shapes`: the exported bodies paired with their names.
-* `main`: compares `shapes` against `goldenPath`, exiting non-zero on a
-  mismatch and reporting the first differing line.
+* `sha512Sigma0TextChecks`: the rendered-text checks of the SHA-512 8-way σ0
+  kernel of `Sha512X8VpackZmmEmit`.
+* `main`: evaluates the named text checks, exiting non-zero at the first
+  failing one and naming it; then compares `shapes` against `goldenPath`,
+  exiting non-zero on a mismatch and reporting the first differing line.
 -/
 
 @[expose] public section
@@ -67,6 +72,47 @@ def render : String :=
   String.intercalate "\n"
     (shapes.flatMap (fun p => p.2.map (fun s => p.1 ++ "\t" ++ s))) ++ "\n"
 
+section Sha512Sigma0
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.Sha512X8VpackZmmEmit
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (strContains)
+open CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmAsmPrint (renderVpackZmmCom)
+
+/-- The rendered-text checks of the SHA-512 8-way σ0 kernel
+    (`Sha512X8VpackZmmEmit`), each paired with its name. The body check fixes the
+    nine owned AT&T `%zmm` lines of `sigma0Com` under `sigma0Alloc` (EVEX order
+    `op src2, src1, dst`: two `vpsrlvq`/`vpsllvq`/`vporq` rotate triples, the
+    `x >>> 7` shift, the two `vpxorq` mixes); the others test the emitted `.s` for
+    the export label, the packed mnemonics, `%zmm` registers, the `.rodata`
+    shift-count label, and the absence of the jasmin intrinsic `#VPSRL_8u64`. -/
+def sha512Sigma0TextChecks (_ : Unit) : List (String × Bool) :=
+  let asm := sha512_x8_sigma0_vpackzmm_asm
+  [ ("Sha512X8VpackZmmEmit.body_lines",
+      (renderVpackZmmCom sigma0Alloc sigma0Com).1
+        == [ "\tvpsrlvq %zmm1, %zmm0, %zmm6"
+           , "\tvpsllvq %zmm2, %zmm0, %zmm7"
+           , "\tvporq %zmm7, %zmm6, %zmm8"
+           , "\tvpsrlvq %zmm3, %zmm0, %zmm9"
+           , "\tvpsllvq %zmm4, %zmm0, %zmm10"
+           , "\tvporq %zmm10, %zmm9, %zmm11"
+           , "\tvpsrlvq %zmm5, %zmm0, %zmm12"
+           , "\tvpxorq %zmm11, %zmm8, %zmm13"
+           , "\tvpxorq %zmm12, %zmm13, %zmm0" ])
+  , ("Sha512X8VpackZmmEmit.asm_has_export", strContains asm "sha512_x8_sigma0:")
+  , ("Sha512X8VpackZmmEmit asm contains vpsrlvq", strContains asm "vpsrlvq")
+  , ("Sha512X8VpackZmmEmit asm contains vpsllvq", strContains asm "vpsllvq")
+  , ("Sha512X8VpackZmmEmit asm contains vporq", strContains asm "vporq")
+  , ("Sha512X8VpackZmmEmit asm contains vpxorq", strContains asm "vpxorq")
+  , ("Sha512X8VpackZmmEmit asm contains %zmm", strContains asm "%zmm")
+  , ("Sha512X8VpackZmmEmit asm contains SHL_SIG0_C1:", strContains asm "SHL_SIG0_C1:")
+  , ("Sha512X8VpackZmmEmit asm lacks #VPSRL_8u64", !strContains asm "#VPSRL_8u64") ]
+
+end Sha512Sigma0
+
+/-- All named rendered-text checks this program evaluates, in order. -/
+def textChecks (u : Unit) : List (String × Bool) :=
+  sha512Sigma0TextChecks u
+
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogShapeKat
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogShapeKat in
@@ -76,6 +122,12 @@ def main (args : List String) : IO UInt32 := do
     IO.FS.writeFile goldenPath render
     IO.println s!"wrote {goldenPath}"
     return 0
+  let checks := textChecks ()
+  for (nm, ok) in checks do
+    unless ok do
+      IO.eprintln s!"jasmin-lprog-shape: check FAILED: {nm}"
+      return 1
+  IO.println s!"jasmin-lprog-shape: {checks.length} text checks hold"
   unless ← goldenPath.pathExists do
     IO.eprintln s!"missing {goldenPath}; regenerate with --write"
     return 1
