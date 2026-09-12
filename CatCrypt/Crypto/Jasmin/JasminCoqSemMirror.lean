@@ -475,12 +475,10 @@ namespace JArrayMirror
 /-- An all-zero array. -/
 def empty (n : Nat) : JArrayMirror n := fun _ => 0
 
--- mirror of warray_.v: WArray.get (simplified: 1-byte read)
-/-- Read one byte at index `i`. -/
+/-- Read one byte at index `i`. The word-width read `WArray.get` is `getWord`. -/
 def getByte {n : Nat} (a : JArrayMirror n) (i : Fin n) : BitVec 8 := a i
 
--- mirror of warray_.v: WArray.set (simplified: 1-byte write)
-/-- Write one byte at index `i`. -/
+/-- Write one byte at index `i`. The word-width write `WArray.set` is `setWord`. -/
 def setByte {n : Nat} (a : JArrayMirror n) (i : Fin n) (v : BitVec 8) : JArrayMirror n :=
   fun j => if j = i then v else a j
 
@@ -488,6 +486,100 @@ def setByte {n : Nat} (a : JArrayMirror n) (i : Fin n) (v : BitVec 8) : JArrayMi
 /-- Re-tag the size: succeeds only when sizes match. -/
 def cast {n : Nat} (m : Nat) (a : JArrayMirror n) : JResult (JArrayMirror m) :=
   if h : n = m then .ok (h ▸ a) else .typeError
+
+-- mirror of warray_.v: mk_scale
+/-- The index scale of an array access (`warray_.v: mk_scale`): the word size in
+    bytes for a scaled access, `1` for a direct one. -/
+def scale (aa : ArrAccess) (ws : WSize) : Int :=
+  match aa with
+  | .AAscale => (ws.bytes : Int)
+  | .AAdirect => 1
+
+/-- The byte at index `j`, or `0` outside the array. -/
+def getD {n : Nat} (a : JArrayMirror n) (j : Nat) : BitVec 8 :=
+  if h : j < n then a ⟨j, h⟩ else 0
+
+/-- The little-endian value of the `k` bytes of `a` starting at index `p`. -/
+def readLE {n : Nat} (a : JArrayMirror n) (p : Nat) : Nat → Nat
+  | 0 => 0
+  | k + 1 => (a.getD p).toNat + 256 * readLE a (p + 1) k
+
+/-- `a` with the `k` bytes starting at index `p` replaced by the little-endian
+    bytes of `v`. -/
+def writeLE {n : Nat} (a : JArrayMirror n) (p k v : Nat) : JArrayMirror n :=
+  fun j => if p ≤ j.val ∧ j.val < p + k then BitVec.ofNat 8 (v / 256 ^ (j.val - p)) else a j
+
+/-- The bounds and alignment condition of an access of width `ws` at the byte
+    offset `p` (`warray_.v: in_range`, and `is_align` for an aligned access). -/
+def AccessOk (n : Nat) (al : Aligned) (ws : WSize) (p : Int) : Prop :=
+  0 ≤ p ∧ p.toNat + ws.bytes ≤ n ∧ (al = .IsAligned → p.toNat % ws.bytes = 0)
+
+instance (n : Nat) (al : Aligned) (ws : WSize) (p : Int) : Decidable (AccessOk n al ws p) := by
+  unfold AccessOk; infer_instance
+
+-- mirror of warray_.v: WArray.get (read al (i * mk_scale aa ws) ws)
+/-- Read a word of width `ws` at index `i`: the `ws.bytes` bytes at byte offset
+    `i * scale aa ws`, little-endian, when that access is in bounds (and aligned,
+    for an aligned access). -/
+def getWord {n : Nat} (a : JArrayMirror n) (al : Aligned) (aa : ArrAccess) (ws : WSize)
+    (i : Int) : JResult (BitVec ws.bits) :=
+  let p := i * scale aa ws
+  if AccessOk n al ws p then .ok (BitVec.ofNat ws.bits (readLE a p.toNat ws.bytes))
+  else .typeError
+
+-- mirror of warray_.v: WArray.set (write al (i * mk_scale aa ws) ws v)
+/-- Write a word `v` of width `ws` at index `i`: the `ws.bytes` bytes at byte
+    offset `i * scale aa ws` become the little-endian bytes of `v`, under the
+    condition of `getWord`. -/
+def setWord {n : Nat} (a : JArrayMirror n) (al : Aligned) (aa : ArrAccess) (ws : WSize)
+    (i : Int) (v : BitVec ws.bits) : JResult (JArrayMirror n) :=
+  let p := i * scale aa ws
+  if AccessOk n al ws p then .ok (writeLE a p.toNat ws.bytes v.toNat)
+  else .typeError
+
+/-- At width `U8`, `getWord` is the one-byte read at index `i`. -/
+theorem getWord_U8 {n : Nat} (a : JArrayMirror n) (al : Aligned) (aa : ArrAccess) (i : Int) :
+    getWord a al aa .U8 i
+      = if h : 0 ≤ i ∧ i.toNat < n then .ok (a ⟨i.toNat, h.2⟩) else .typeError := by
+  have hs : i * scale aa .U8 = i := by cases aa <;> simp [scale, WSize.bytes]
+  have hok : AccessOk n al .U8 i ↔ 0 ≤ i ∧ i.toNat < n := by
+    simp [AccessOk, WSize.bytes, Nat.mod_one]; omega
+  unfold getWord
+  simp only [hs]
+  by_cases h : 0 ≤ i ∧ i.toNat < n
+  · rw [if_pos (hok.mpr h), dif_pos h]
+    congr 1
+    apply BitVec.eq_of_toNat_eq
+    show (readLE a i.toNat 1) % 2 ^ 8 = _
+    simp only [readLE, getD, dif_pos h.2, Nat.mul_zero, Nat.add_zero]
+    exact Nat.mod_eq_of_lt (a ⟨i.toNat, h.2⟩).isLt
+  · rw [if_neg (fun h' => h (hok.mp h')), dif_neg h]
+
+/-- At width `U8`, `setWord` is the one-byte write at index `i`. -/
+theorem setWord_U8 {n : Nat} (a : JArrayMirror n) (al : Aligned) (aa : ArrAccess) (i : Int)
+    (v : BitVec 8) :
+    setWord a al aa .U8 i v
+      = if h : 0 ≤ i ∧ i.toNat < n then .ok (setByte a ⟨i.toNat, h.2⟩ v) else .typeError := by
+  have hs : i * scale aa .U8 = i := by cases aa <;> simp [scale, WSize.bytes]
+  have hok : AccessOk n al .U8 i ↔ 0 ≤ i ∧ i.toNat < n := by
+    simp [AccessOk, WSize.bytes, Nat.mod_one]; omega
+  unfold setWord
+  simp only [hs]
+  by_cases h : 0 ≤ i ∧ i.toNat < n
+  · rw [if_pos (hok.mpr h), dif_pos h]
+    congr 1
+    funext j
+    show (if i.toNat ≤ j.val ∧ j.val < i.toNat + WSize.U8.bytes then
+        BitVec.ofNat 8 (v.toNat / 256 ^ (j.val - i.toNat)) else a j)
+      = (if j = ⟨i.toNat, h.2⟩ then v else a j)
+    by_cases hj : j.val = i.toNat
+    · have hj' : j = ⟨i.toNat, h.2⟩ := Fin.ext hj
+      rw [if_pos (by simp only [WSize.bytes]; omega), if_pos hj', hj]
+      apply BitVec.eq_of_toNat_eq
+      simp
+    · rw [if_neg (by simp only [WSize.bytes]; omega),
+        if_neg (fun e => hj (congrArg Fin.val e))]
+  · rw [if_neg (fun h' => h (hok.mp h')), dif_neg h]
 
 end JArrayMirror
 
@@ -817,16 +909,22 @@ def semPexpr (s : Estate SyscallState Mem) : Pexpr → JResult Value
   | .Parr_init _ws n =>                                                   -- psem_defs.v:125
       .ok (.Varr n (JArrayMirror.empty n))
   | .Pvar v => getGvar wdb gd s.evm v                                     -- psem_defs.v:128
-  | .Pget _al _aa _ws x e =>                                              -- psem_defs.v:129
+  | .Pget al aa ws x e =>                                                  -- psem_defs.v:129
       do
         let vr ← getGvar wdb gd s.evm x
         match vr with
         | .Varr n a =>
             let vi ← semPexpr s e
             let i ← vi.toInt
-            if h : 0 ≤ i ∧ i.toNat < n then
-              .ok (.Vword .U8 (a ⟨i.toNat, h.2⟩))
-            else .typeError
+            match ws with
+            | .U8 =>
+                -- `JArrayMirror.getWord_U8`: the one-byte read
+                if h : 0 ≤ i ∧ i.toNat < n then
+                  .ok (.Vword .U8 (a ⟨i.toNat, h.2⟩))
+                else .typeError
+            | ws =>
+                let w ← JArrayMirror.getWord a al aa ws i
+                .ok (.Vword ws w)
         | _ => .typeError
   | .Psub _aa _ws _len x e =>                                             -- psem_defs.v:134
       do
@@ -920,9 +1018,11 @@ def writeNone (s : Estate SyscallState Mem) (ty : Ctype) (v : Value) :
 
 -- mirror of psem_defs.v:175-196: Definition write_lval
 /-- `writeLval wdb gd opS l v s` mirrors Coq `write_lval`
-    (`psem_defs.v:175`).  The `Laset` / `Lasub` cases use the abstracted
-    `JArrayMirror.setByte`; the byte-window semantics for sub-arrays are
-    deferred (same NON-MIRRORED caveat as `Psub` above). -/
+    (`psem_defs.v:175`).  The `Laset` case writes `ws.bytes` bytes
+    little-endian at the scaled offset (`JArrayMirror.setWord`, stated as the
+    one-byte `setByte` at `U8` by `JArrayMirror.setWord_U8`); the byte-window
+    semantics of `Lasub` is deferred (same NON-MIRRORED caveat as `Psub`
+    above). -/
 def writeLval (l : Lval) (v : Value) (s : Estate SyscallState Mem) :
     JResult (Estate SyscallState Mem) := do
   match l with
@@ -936,17 +1036,24 @@ def writeLval (l : Lval) (v : Value) (s : Estate SyscallState Mem) :
       let w ← v.toWord sz
       let m ← MemModel.write s.emem al p sz w
       .ok (s.withMem m)
-  | .Laset _al _aa _ws x idx =>                                           -- psem_defs.v:184
+  | .Laset al aa ws x idx =>                                               -- psem_defs.v:184
       let valR ← getVar wdb s.evm x.v_var
       match valR with
       | .Varr n a =>
           let iV ← semPexpr (Mem := Mem) wdb gd opS s idx
           let i  ← iV.toInt
-          let wv ← v.toWord .U8
-          if h : 0 ≤ i ∧ i.toNat < n then
-            let a' := JArrayMirror.setByte a ⟨i.toNat, h.2⟩ wv
-            writeVar wdb x (.Varr n a') s
-          else .typeError
+          match ws with
+          | .U8 =>
+              -- `JArrayMirror.setWord_U8`: the one-byte write
+              let wv ← v.toWord .U8
+              if h : 0 ≤ i ∧ i.toNat < n then
+                let a' := JArrayMirror.setByte a ⟨i.toNat, h.2⟩ wv
+                writeVar wdb x (.Varr n a') s
+              else .typeError
+          | ws =>
+              let wv ← v.toWord ws
+              let a' ← JArrayMirror.setWord a al aa ws i wv
+              writeVar wdb x (.Varr n a') s
       | _ => .typeError
   | .Lasub _aa _ws _len x idx =>                                          -- psem_defs.v:190
       let valR ← getVar wdb s.evm x.v_var

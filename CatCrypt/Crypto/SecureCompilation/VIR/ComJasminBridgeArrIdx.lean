@@ -19,7 +19,7 @@ word-to-int conversion explicit as `Oint_of_word`. The mirror form of the
 emitted read is therefore
 
 ```
-Pget al aa ws arr (Papp1 (Oint_of_word Unsigned U64) (Pvar idx))
+Pget al aa U8 arr (Papp1 (Oint_of_word Unsigned U64) (Pvar idx))
 ```
 
 ## The index correspondence
@@ -108,18 +108,18 @@ theorem semPexpr_idxExpr
 
 /-! ## §2. The register-index cell read -/
 
-/-- The mirror `semPexpr` of `Pget al aa ws x (idxExpr idx)`, when `x` reads
+/-- The mirror `semPexpr` of `Pget al aa U8 x (idxExpr idx)`, when `x` reads
     `Varr n a` and `idx` reads `Vword U64 i` with `i.toNat < n`, is the cell byte
     `Vword U8 (a ⟨i.toNat, hin⟩)`. -/
 theorem semPexpr_pget_reg
     (gd : GlobDecls) (opS : OpSem) (s : Estate SyscallState Mem)
     (x idx : VarI) (n : Nat) (a : JArrayMirror n)
-    (al : Aligned) (aa : ArrAccess) (ws : WSize) (i : BitVec WSize.U64.bits)
+    (al : Aligned) (aa : ArrAccess) (i : BitVec WSize.U64.bits)
     (hagree : IntOfWordAgrees opS)
     (hread : (s.evm).get x.v_var = .Varr n a)
     (hidx : (s.evm).get idx.v_var = .Vword .U64 i)
     (hin : i.toNat < n) :
-    semPexpr (Mem := Mem) true gd opS s (.Pget al aa ws (mkLvar x) (idxExpr idx))
+    semPexpr (Mem := Mem) true gd opS s (.Pget al aa .U8 (mkLvar x) (idxExpr idx))
       = .ok (.Vword .U8 (a ⟨i.toNat, hin⟩)) := by
   have hgv : getGvar true gd s.evm (mkLvar x) = .ok (.Varr n a) := by
     unfold getGvar
@@ -164,19 +164,19 @@ theorem semPexpr_pget_reg
 theorem pget_reg_read_corr
     (gd : GlobDecls) (opS : OpSem) (s : Estate SyscallState Mem) (st : Store)
     (arrNames regNames : List Var) (x idx : VarI) (n : Nat) (a : JArrayMirror n)
-    (al : Aligned) (aa : ArrAccess) (ws : WSize) (i : BitVec WSize.U64.bits)
+    (al : Aligned) (aa : ArrAccess) (i : BitVec WSize.U64.bits)
     (hagree : IntOfWordAgrees opS)
     (harr : StateCorrArr arrNames st (s.evm)) (hxm : x.v_var ∈ arrNames)
     (hreg : StateCorrReg regNames st (s.evm)) (him : idx.v_var ∈ regNames)
     (hread : (s.evm).get x.v_var = .Varr n a)
     (hidx : (s.evm).get idx.v_var = .Vword .U64 i)
     (hin : i.toNat < n) :
-    semPexpr (Mem := Mem) true gd opS s (.Pget al aa ws (mkLvar x) (idxExpr idx))
+    semPexpr (Mem := Mem) true gd opS s (.Pget al aa .U8 (mkLvar x) (idxExpr idx))
       = .ok (.Vword .U8 (a ⟨i.toNat, hin⟩))
     ∧ stackGet (Store.get st x.v_var.vname (.stackArr 8 n))
         (BitVec.toNat (Store.get st idx.v_var.vname (.reg 64)))
         = a ⟨i.toNat, hin⟩ := by
-  refine ⟨semPexpr_pget_reg gd opS s x idx n a al aa ws i hagree hread hidx hin, ?_⟩
+  refine ⟨semPexpr_pget_reg gd opS s x idx n a al aa i hagree hread hidx hin, ?_⟩
   obtain ⟨_, hst⟩ :=
     arr_read_corr (SyscallState := SyscallState) gd s st arrNames x n a harr hxm hread
   have hi : Store.get st idx.v_var.vname (.reg WSize.U64.bits) = i :=
@@ -197,7 +197,7 @@ theorem pget_reg_read_corr
 theorem cassgn_pget_reg_selfContained
     (gd : GlobDecls) (opS : OpSem) (tag : AssgnTag)
     (dst arr idx : VarI) (n : Nat) (a : JArrayMirror n)
-    (al : Aligned) (aa : ArrAccess) (ws : WSize) (i : BitVec WSize.U64.bits)
+    (al : Aligned) (aa : ArrAccess) (i : BitVec WSize.U64.bits)
     (s : Estate SyscallState Mem) (st : Store) (names : List Var)
     (hagree : IntOfWordAgrees opS)
     (hdst : dst.v_var.vtype = .aword .U8)
@@ -207,14 +207,14 @@ theorem cassgn_pget_reg_selfContained
     (hdistinct : ∀ r' ∈ names, r' ≠ dst.v_var ∧ r'.vname ≠ dst.v_var.vname)
     (hcorr : StateCorrReg names st (s.evm)) :
     OpSemCoverage.assignExec (Mem := Mem) opS gd (.Lvar dst) (.aword .U8)
-        (.Pget al aa ws (mkLvar arr) (idxExpr idx)) s
+        (.Pget al aa .U8 (mkLvar arr) (idxExpr idx)) s
       = .ok (s.withVm ((s.evm).set dst.v_var (.Vword .U8 (a ⟨i.toNat, hin⟩))))
     ∧ StateCorrReg (dst.v_var :: names)
         (Store.set st dst.v_var.vname (t := .reg 8) (a ⟨i.toNat, hin⟩))
         ((s.evm).set dst.v_var (.Vword .U8 (a ⟨i.toNat, hin⟩))) := by
-  have hrhs := semPexpr_pget_reg gd opS s arr idx n a al aa ws i hagree hread hidx hin
+  have hrhs := semPexpr_pget_reg gd opS s arr idx n a al aa i hagree hread hidx hin
   exact cassgn_regArith_simulates (SyscallState := SyscallState) (Mem := Mem)
-    gd opS dst .U8 tag (.Pget al aa ws (mkLvar arr) (idxExpr idx))
+    gd opS dst .U8 tag (.Pget al aa .U8 (mkLvar arr) (idxExpr idx))
     (a ⟨i.toNat, hin⟩) s st names hdst hrhs hdistinct hcorr
 
 /-- **End-to-end per-step register-index `Pget` bridge.** Under the hypotheses of
@@ -225,7 +225,7 @@ theorem cassgn_pget_reg_selfContained
 theorem cassgn_pget_reg_endToEnd
     (aS : AsmSem) (opS : OpSem) (gd : GlobDecls) (prog : Prog) (fuel : Nat)
     (dst arr idx : VarI) (n : Nat) (a : JArrayMirror n)
-    (al : Aligned) (aa : ArrAccess) (ws : WSize) (i : BitVec WSize.U64.bits) (tag : AssgnTag)
+    (al : Aligned) (aa : ArrAccess) (i : BitVec WSize.U64.bits) (tag : AssgnTag)
     (s : Estate SyscallState Mem) (st : Store) (names : List Var)
     (hagree : IntOfWordAgrees opS)
     (hdst : dst.v_var.vtype = .aword .U8)
@@ -237,19 +237,19 @@ theorem cassgn_pget_reg_endToEnd
     (hdistinct : ∀ r' ∈ names, r' ≠ dst.v_var ∧ r'.vname ≠ dst.v_var.vname)
     (hcorr : StateCorrReg names st (s.evm)) :
     SemIr (Mem := Mem) aS opS gd prog s
-        (.Cassgn (.Lvar dst) tag (.aword .U8) (.Pget al aa ws (mkLvar arr) (idxExpr idx)))
+        (.Cassgn (.Lvar dst) tag (.aword .U8) (.Pget al aa .U8 (mkLvar arr) (idxExpr idx)))
         (s.withVm ((s.evm).set dst.v_var (.Vword .U8 (a ⟨i.toNat, hin⟩))))
     ∧ StateCorrReg (dst.v_var :: names)
         (Store.set st dst.v_var.vname (t := .reg 8) (a ⟨i.toNat, hin⟩))
         ((s.evm).set dst.v_var (.Vword .U8 (a ⟨i.toNat, hin⟩)))
     ∧ stackGet (Store.get st arr.v_var.vname (.stackArr 8 n))
         (BitVec.toNat (Store.get st idx.v_var.vname (.reg 64))) = a ⟨i.toNat, hin⟩ := by
-  have hrhs := semPexpr_pget_reg gd opS s arr idx n a al aa ws i hagree hread hidx hin
+  have hrhs := semPexpr_pget_reg gd opS s arr idx n a al aa i hagree hread hidx hin
   obtain ⟨hsem, hcorr'⟩ := cassgn_regArith_endToEnd (SyscallState := SyscallState) (Mem := Mem)
-    aS opS gd prog dst .U8 tag (.Pget al aa ws (mkLvar arr) (idxExpr idx))
+    aS opS gd prog dst .U8 tag (.Pget al aa .U8 (mkLvar arr) (idxExpr idx))
     (a ⟨i.toNat, hin⟩) s st names fuel hdst hrhs hdistinct hcorr
   exact ⟨hsem, hcorr',
-    (pget_reg_read_corr gd opS s st [arr.v_var] names arr idx n a al aa ws i hagree
+    (pget_reg_read_corr gd opS s st [arr.v_var] names arr idx n a al aa i hagree
       harr (by simp) hcorr him hread hidx hin).2⟩
 
 /-! ## §4. The `Laset` array-cell write

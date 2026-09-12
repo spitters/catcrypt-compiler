@@ -82,7 +82,7 @@ inductive ArrBlockStep where
   | base (step : BlockStep)
   /-- The register-index read `dst := arr[idx]`. -/
   | pget (ii : InstrInfo) (tag : AssgnTag) (dst arr idx : VarI)
-      (al : Aligned) (aa : ArrAccess) (ws : WSize)
+      (al : Aligned) (aa : ArrAccess)
   /-- The register-index write `arr[idx] := src`. -/
   | laset (ii : InstrInfo) (tag : AssgnTag) (arr idx src : VarI)
       (al : Aligned) (aa : ArrAccess)
@@ -90,8 +90,8 @@ inductive ArrBlockStep where
 /-- The emitted `Instr` of a step. -/
 def ArrBlockStep.toInstr : ArrBlockStep → Instr
   | .base step => step.toInstr
-  | .pget ii tag dst arr idx al aa ws =>
-      .MkI ii (.Cassgn (.Lvar dst) tag (.aword .U8) (.Pget al aa ws (mkLvar arr) (idxExpr idx)))
+  | .pget ii tag dst arr idx al aa =>
+      .MkI ii (.Cassgn (.Lvar dst) tag (.aword .U8) (.Pget al aa .U8 (mkLvar arr) (idxExpr idx)))
   | .laset ii tag arr idx src al aa =>
       .MkI ii (.Cassgn (.Laset al aa .U8 arr (idxExpr idx)) tag (.aword .U8) (.Pvar (mkLvar src)))
 
@@ -171,7 +171,7 @@ inductive ArrBlockSim (aS : AsmSem) (gd : GlobDecls) (opS : OpSem) (prog : Prog)
   /-- A register-index array read head step. -/
   | pget
       (ii : InstrInfo) (tag : AssgnTag) (dst arr idx : VarI)
-      (al : Aligned) (aa : ArrAccess) (ws : WSize)
+      (al : Aligned) (aa : ArrAccess)
       (n : Nat) (a : JArrayMirror n) (i : BitVec WSize.U64.bits)
       (rest : List ArrBlockStep)
       (st : Store) (s : Estate SyscallState Mem) (regs arrs : List Var)
@@ -187,7 +187,7 @@ inductive ArrBlockSim (aS : AsmSem) (gd : GlobDecls) (opS : OpSem) (prog : Prog)
           (Store.set st dst.v_var.vname (t := .reg 8) (a ⟨i.toNat, hin⟩))
           (s.withVm ((s.evm).set dst.v_var (.Vword .U8 (a ⟨i.toNat, hin⟩))))
           (dst.v_var :: regs) arrs st' s' regs' arrs') :
-      ArrBlockSim aS gd opS prog fuel P (.pget ii tag dst arr idx al aa ws :: rest)
+      ArrBlockSim aS gd opS prog fuel P (.pget ii tag dst arr idx al aa :: rest)
         st s regs arrs st' s' regs' arrs'
   /-- A register-index array write head step, on an array frame headed by the
       written array. -/
@@ -286,17 +286,17 @@ theorem arrBlock_simulates
     rw [hhead]
     simp only [JResult.bind]
     exact ih ⟨hreg', stateCorrArr_write_reg _ _ _ _ _ _ _ hdA hcorr.2.1, hP⟩
-  | pget ii tag dst arr idx al aa ws n a i rest st0 s0 regs0 arrs0 st'0 s'0 regs'0 arrs'0
+  | pget ii tag dst arr idx al aa n a i rest st0 s0 regs0 arrs0 st'0 s'0 regs'0 arrs'0
         hagree hdst hread hidx hin hdistinct hdA _ ih =>
     obtain ⟨hrun, hreg'⟩ :=
-      cassgn_pget_reg_selfContained gd opS tag dst arr idx n a al aa ws i s0 st0 regs0
+      cassgn_pget_reg_selfContained gd opS tag dst arr idx n a al aa i s0 st0 regs0
         hagree hdst hread hidx hin hdistinct hcorr.1
     show execCmd (Mem := Mem) aS opS gd (fuel + 1) s0
-        ((ArrBlockStep.pget ii tag dst arr idx al aa ws).toInstr :: arrBlockCmd rest) prog = _ ∧ _
+        ((ArrBlockStep.pget ii tag dst arr idx al aa).toInstr :: arrBlockCmd rest) prog = _ ∧ _
     rw [CmdRun.execCmd_cons]
     have hhead :
         execInstr (Mem := Mem) aS opS gd (fuel + 1) s0
-            (ArrBlockStep.pget ii tag dst arr idx al aa ws).toInstr prog
+            (ArrBlockStep.pget ii tag dst arr idx al aa).toInstr prog
           = .ok (s0.withVm ((s0.evm).set dst.v_var (.Vword .U8 (a ⟨i.toNat, hin⟩)))) := by
       rw [ArrBlockStep.toInstr, execInstr, OpSemCoverage.execInstrR_Cassgn_eq]
       exact hrun
