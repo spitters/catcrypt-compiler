@@ -41,11 +41,12 @@ The join between the two frameworks is a word identification: hax-lean's
 reference semantics returns an `Outcome` (a `Value`), whereas the source tower
 consumes a `BitVec 64`.  `haxOutcomeWord` reads a 64-bit word out of a hax
 `Outcome`, and the identification "the raw `e`'s evaluated output word *is*
-`feSubSourceWord`" is taken here as one explicit, named interface hypothesis
-`hBridge`.  Everything else — the denote-preservation of the whole optimization
-pipeline, and the source-word→bytes tower — is discharged with no free
-hypothesis.  So the remaining interface is precisely `hBridge`, the concrete
-`ImpExpr`↔`RustSubset` value coincidence for the feSub kernel.
+`feSubSourceWord`" is the hypothesis `hBridge`.  The denote-preservation of the
+whole optimization pipeline and the source-word→bytes tower carry no free
+hypothesis.  `hBridge` is discharged in `Ascent/SourceBridge.lean`: from the
+program-level simulation's side conditions by `raw_source_to_bytes_of_program`,
+and for the `feSub` kernel by evaluation (`feSubImp_word`, used by
+`feSubImp_raw_source_to_bytes`).
 
 Part of the AutoCorres-in-Lean ascent begun by Sebastian Graf (sgraf812/ascent).
 -/
@@ -158,9 +159,10 @@ theorem haxOutcomeWordCF_encodeCF_earlyRet (v : Hax.Value) :
       spec is exactly `(av : ZMod 2^64) - (bv : ZMod 2^64)`
       (the source→bytes tower `feSub_source_to_bytes_tower`).
 
-    The only free interface is `hBridge` — the concrete `ImpExpr`↔`RustSubset`
-    value coincidence for the feSub kernel.  `pipeline_correct` (denote
-    preservation) and the source-word→bytes tower carry no free hypothesis. -/
+    `pipeline_correct` (denote preservation) and the source-word→bytes tower
+    carry no free hypothesis.  `hBridge` is discharged from the program-level
+    simulation's side conditions by `raw_source_to_bytes_of_program`, and for the
+    kernel `feSubImp` by `feSubImp_word` (`Ascent/SourceBridge.lean`). -/
 theorem feSub_raw_source_to_bytes
     (N : Nat) (leafSpec : LeafSpec)
     (bi : Hax.Builtins) (fuel : Nat) (env : Hax.Env) (e : Hax.ImpExpr)
@@ -186,8 +188,7 @@ theorem feSub_raw_source_to_bytes
     with the control-flow-aware evaluator `denote'` via `pipeline_correct'`.  The
     loop-freeness side condition `hNoLoops` is replaced by the builtin-table
     contract `Builtins.DeepNoControlFlow`, discharged here for the concrete
-    `defaultBuiltins` by `Builtins.defaultBuiltins_deepNoControlFlow` — the
-    honest form of "feSub is control-flow-free".  The residual side conditions
+    `defaultBuiltins` by `Builtins.defaultBuiltins_deepNoControlFlow`.  The residual side conditions
     are `NoCFConstructors e`, `NoEarlyExit`, and `Env.NoControlFlow env` (all
     true of a real feSub extraction), plus the same word bridge `hBridge`. -/
 theorem feSub_raw_source_to_bytes'

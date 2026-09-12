@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Exit
+public import CatCrypt.Crypto.Hax.WidthBuiltins
 
 /-!
 # Demo: a search loop with an early return, read as an exception program
@@ -54,40 +55,11 @@ namespace CatCrypt.Crypto.SecureCompilation.Ascent.Demos
 def searchBuiltins : _root_.Hax.Builtins := fun f args =>
   _root_.Hax.widthCmpOps f args <|> _root_.Hax.widthArithOps f args
 
-/-- A table that tries a `DeepNoControlFlow` table and falls back to another is
-    `DeepNoControlFlow`. -/
-theorem deepNoControlFlow_orElse (t₁ t₂ : _root_.Hax.Builtins)
-    (h₁ : _root_.Hax.Builtins.DeepNoControlFlow t₁)
-    (h₂ : _root_.Hax.Builtins.DeepNoControlFlow t₂) :
-    _root_.Hax.Builtins.DeepNoControlFlow (fun f a => t₁ f a <|> t₂ f a) := by
-  intro f args v h hargs
-  cases ht : t₁ f args with
-  | some w =>
-      simp only [ht, HOrElse.hOrElse, OrElse.orElse, Option.orElse, Option.some.injEq] at h
-      exact h ▸ h₁ f args w ht hargs
-  | none =>
-      simp only [ht, HOrElse.hOrElse, OrElse.orElse, Option.orElse] at h
-      exact h₂ f args v h hargs
-
-/-- The unsigned comparison table returns booleans only. -/
-theorem widthCmpOps_deepNoControlFlow :
-    _root_.Hax.Builtins.DeepNoControlFlow _root_.Hax.widthCmpOps := by
-  intro f args v h _
-  revert h; unfold _root_.Hax.widthCmpOps
-  split <;> intro h <;> cases h <;> simp [_root_.Hax.Value.deepNoControlFlow]
-
-/-- The unsigned arithmetic table returns `uint` words only. -/
-theorem widthArithOps_deepNoControlFlow :
-    _root_.Hax.Builtins.DeepNoControlFlow _root_.Hax.widthArithOps := by
-  intro f args v h _
-  revert h; unfold _root_.Hax.widthArithOps
-  split <;> intro h <;> (try split at h) <;> cases h <;>
-    simp [_root_.Hax.Value.deepNoControlFlow, _root_.Hax.wrapUint]
-
 /-- `searchBuiltins` never fabricates a control-flow value. -/
 theorem searchBuiltins_deepNoControlFlow :
     _root_.Hax.Builtins.DeepNoControlFlow searchBuiltins :=
-  deepNoControlFlow_orElse _ _ widthCmpOps_deepNoControlFlow widthArithOps_deepNoControlFlow
+  CatCrypt.Crypto.Hax.deepNoControlFlow_orElse _ _
+    CatCrypt.Crypto.Hax.widthCmpOps_deepNoControlFlow CatCrypt.Crypto.Hax.widthArithOps_deepNoControlFlow
 
 /-! ## The source program and what the pipeline makes of it -/
 
