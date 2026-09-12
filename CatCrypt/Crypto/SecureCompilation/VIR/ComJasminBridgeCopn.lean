@@ -46,6 +46,11 @@ the predicate for every width.
 * `copn_ror_simulates` — the run, the source read agreeing with the `Store`, and
   the post-state correspondence to `Store.set st dst.vname (rotateRight w n)`.
 * `copn_ror_endToEnd` — the same run witnesses the relational `SemIr` step.
+* `MixedStep`, `mixedBlockCmd`, `MixedBlockSim` — straight-line blocks mixing
+  register-word `Cassgn`s and the rotate `Copn`; `mixedBlockSim_of_regBlockSim`
+  embeds `ComJasminBridgeCmd.RegBlockSim`.
+* `mixedBlock_simulates` / `mixedBlock_endToEnd` — the whole mixed command runs
+  to `.ok s'`, witnesses `Sem`, and ends in `StateCorrReg` with the final `Store`.
 -/
 
 @[expose] public section
@@ -245,5 +250,167 @@ theorem copn_ror_endToEnd_rorAsmSem
         ((s.evm).set dst.v_var (.Vword sz (w.rotateRight n))) :=
   copn_ror_endToEnd rorAsmSem opS gd prog tag dst src sz n w s st names
     hdst hmem hread hdistinct hcorr (rorAsmSem_agrees sz)
+
+/-! ## §5. Whole commands mixing `Cassgn` and the rotate `Copn`
+
+`ComJasminBridgeCmd.RegBlockSim` threads a block of register-word `Cassgn`s.
+`MixedBlockSim` threads a block whose steps are either such a `Cassgn`
+(`ComJasminBridgeCmd.RegStep`) or the emitted rotate `Copn`, each step's
+hypotheses stated at the running state, and the tail at the post-write state. -/
+
+open CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeCmd (RegStep RegBlockSim regBlockCmd)
+
+/-- One step of a mixed straight-line block: a register-word `Cassgn` or the
+    emitted rotate `Copn` of `src` by the immediate `n` into `dst`. -/
+inductive MixedStep where
+  /-- A register-word `Cassgn` step. -/
+  | assgn (step : RegStep)
+  /-- The rotate `Copn [_, _, dst] (Oasm ROR_sz) [src, n]`, annotated `ii`. -/
+  | ror (ii : InstrInfo) (tag : AssgnTag) (dst src : VarI) (sz : WSize) (n : Nat)
+
+/-- The emitted `Instr` of a mixed step. -/
+def MixedStep.toInstr : MixedStep → Instr
+  | .assgn step => step.toInstr
+  | .ror ii tag dst src sz n =>
+      .MkI ii (.Copn (rorLvals dst) tag (.Oasm (rorOpName sz)) (rorArgs src n))
+
+/-- The emitted `Cmd` of a mixed block. -/
+def mixedBlockCmd (steps : List MixedStep) : Cmd :=
+  steps.map MixedStep.toInstr
+
+/-- `MixedBlockSim aS gd opS steps st s names st' s' names'`: the mixed block
+    `steps`, started at JasminPrint `Store` `st`, mirror state `s` and register
+    frame `names`, ends at `(st', s', names')`. A `Cassgn` step carries the
+    hypotheses of `ComJasminBridgeCmd.RegBlockSim.cons`; a rotate step carries
+    those of `copn_ror_simulates`, all at the running state. -/
+inductive MixedBlockSim (aS : AsmSem) (gd : GlobDecls) (opS : OpSem) :
+    List MixedStep → Store → Estate SyscallState Mem → List Var →
+    Store → Estate SyscallState Mem → List Var → Prop where
+  /-- Empty block: the state and frame are unchanged. -/
+  | nil (st : Store) (s : Estate SyscallState Mem) (names : List Var) :
+      MixedBlockSim aS gd opS [] st s names st s names
+  /-- A register-word `Cassgn` head step followed by the tail run. -/
+  | assgn
+      (step : RegStep) (rest : List MixedStep)
+      (st : Store) (s : Estate SyscallState Mem) (names : List Var)
+      (w : BitVec step.sz.bits)
+      (st' : Store) (s' : Estate SyscallState Mem) (names' : List Var)
+      (hdst : step.dst.v_var.vtype = .aword step.sz)
+      (hrhs : semPexpr (Mem := Mem) true gd opS s step.e = .ok (.Vword step.sz w))
+      (hdistinct : ∀ r' ∈ names,
+          r' ≠ step.dst.v_var ∧ r'.vname ≠ step.dst.v_var.vname)
+      (htail : MixedBlockSim aS gd opS rest
+          (Store.set st step.dst.v_var.vname (t := .reg step.sz.bits) w)
+          (s.withVm ((s.evm).set step.dst.v_var (.Vword step.sz w)))
+          (step.dst.v_var :: names)
+          st' s' names') :
+      MixedBlockSim aS gd opS (.assgn step :: rest) st s names st' s' names'
+  /-- A rotate `Copn` head step followed by the tail run. -/
+  | ror
+      (ii : InstrInfo) (tag : AssgnTag) (dst src : VarI) (sz : WSize) (n : Nat)
+      (rest : List MixedStep)
+      (st : Store) (s : Estate SyscallState Mem) (names : List Var)
+      (w : BitVec sz.bits)
+      (st' : Store) (s' : Estate SyscallState Mem) (names' : List Var)
+      (hdst : dst.v_var.vtype = .aword sz)
+      (hmem : src.v_var ∈ names)
+      (hread : (s.evm).get src.v_var = .Vword sz w)
+      (hdistinct : ∀ r' ∈ names, r' ≠ dst.v_var ∧ r'.vname ≠ dst.v_var.vname)
+      (hasm : RorAsmAgrees aS sz)
+      (htail : MixedBlockSim aS gd opS rest
+          (Store.set st dst.v_var.vname (t := .reg sz.bits) (w.rotateRight n))
+          (s.withVm ((s.evm).set dst.v_var (.Vword sz (w.rotateRight n))))
+          (dst.v_var :: names)
+          st' s' names') :
+      MixedBlockSim aS gd opS (.ror ii tag dst src sz n :: rest) st s names st' s' names'
+
+/-- A `Cassgn`-only block is a mixed block: `RegBlockSim` embeds into
+    `MixedBlockSim` along `MixedStep.assgn`, with the same emitted command. -/
+theorem mixedBlockSim_of_regBlockSim
+    (aS : AsmSem) (gd : GlobDecls) (opS : OpSem) (steps : List RegStep)
+    (st : Store) (s : Estate SyscallState Mem) (names : List Var)
+    (st' : Store) (s' : Estate SyscallState Mem) (names' : List Var)
+    (h : RegBlockSim (SyscallState := SyscallState) (Mem := Mem)
+        gd opS steps st s names st' s' names') :
+    MixedBlockSim aS gd opS (steps.map MixedStep.assgn) st s names st' s' names'
+    ∧ mixedBlockCmd (steps.map MixedStep.assgn) = regBlockCmd steps := by
+  refine ⟨?_, ?_⟩
+  · induction h with
+    | nil st s names => exact .nil st s names
+    | cons step rest st0 s0 names0 w st'0 s'0 names'0 hdst hrhs hdistinct _ ih =>
+      exact .assgn step (rest.map MixedStep.assgn) st0 s0 names0 w st'0 s'0 names'0
+        hdst hrhs hdistinct ih
+  · simp only [mixedBlockCmd, regBlockCmd, List.map_map]
+    rfl
+
+/-- **Whole mixed-command simulation.** A `MixedBlockSim` chain started from a
+    `StateCorrReg names`-corresponding `(st, s)` witnesses that the `execCmd` run
+    of the emitted block at fuel `fuel+1` returns `.ok s'`, and that `s'`'s `Vm`
+    corresponds (`StateCorrReg names'`) to the final JasminPrint `Store` `st'`.
+    Each `Cassgn` step is `ComJasminBridgeFull.cassgn_regArith_simulates`, each
+    rotate step is `copn_ror_simulates`. -/
+theorem mixedBlock_simulates
+    (aS : AsmSem) (opS : OpSem) (gd : GlobDecls) (prog : Prog)
+    (steps : List MixedStep)
+    (st : Store) (s : Estate SyscallState Mem) (names : List Var)
+    (st' : Store) (s' : Estate SyscallState Mem) (names' : List Var)
+    (fuel : Nat)
+    (hblock : MixedBlockSim aS gd opS steps st s names st' s' names')
+    (hcorr : StateCorrReg names st s.evm) :
+    execCmd (Mem := Mem) aS opS gd (fuel + 1) s (mixedBlockCmd steps) prog = .ok s'
+    ∧ StateCorrReg names' st' s'.evm := by
+  induction hblock with
+  | nil st s names =>
+    exact ⟨CmdRun.execCmd_nil aS opS gd (fuel + 1) s prog, hcorr⟩
+  | assgn step rest st0 s0 names0 w st'0 s'0 names'0 hdst hrhs hdistinct _ ih =>
+    obtain ⟨hrun, hcorr'⟩ :=
+      ComJasminBridgeFull.cassgn_regArith_simulates (SyscallState := SyscallState) (Mem := Mem)
+        gd opS step.dst step.sz step.tag step.e w s0 st0 names0 hdst hrhs hdistinct hcorr
+    show execCmd (Mem := Mem) aS opS gd (fuel + 1) s0
+        ((MixedStep.assgn step).toInstr :: mixedBlockCmd rest) prog = _ ∧ _
+    rw [CmdRun.execCmd_cons]
+    have hhead :
+        execInstr (Mem := Mem) aS opS gd (fuel + 1) s0 (MixedStep.assgn step).toInstr prog
+          = .ok (s0.withVm ((s0.evm).set step.dst.v_var (.Vword step.sz w))) := by
+      rw [MixedStep.toInstr, RegStep.toInstr, execInstr, OpSemCoverage.execInstrR_Cassgn_eq]
+      exact hrun
+    rw [hhead]
+    simp only [JResult.bind]
+    exact ih hcorr'
+  | ror ii tag dst src sz n rest st0 s0 names0 w st'0 s'0 names'0
+        hdst hmem hread hdistinct hasm _ ih =>
+    obtain ⟨hrun, _, hcorr'⟩ :=
+      copn_ror_simulates aS opS gd prog fuel tag dst src sz n w s0 st0 names0
+        hdst hmem hread hdistinct hcorr hasm
+    show execCmd (Mem := Mem) aS opS gd (fuel + 1) s0
+        ((MixedStep.ror ii tag dst src sz n).toInstr :: mixedBlockCmd rest) prog = _ ∧ _
+    rw [CmdRun.execCmd_cons]
+    have hhead :
+        execInstr (Mem := Mem) aS opS gd (fuel + 1) s0
+            (MixedStep.ror ii tag dst src sz n).toInstr prog
+          = .ok (s0.withVm ((s0.evm).set dst.v_var (.Vword sz (w.rotateRight n)))) := by
+      rw [MixedStep.toInstr, execInstr]
+      exact hrun
+    rw [hhead]
+    simp only [JResult.bind]
+    exact ih hcorr'
+
+/-- **End-to-end whole mixed-command bridge.** Under the hypotheses of
+    `mixedBlock_simulates`, the emitted mixed block witnesses the relational
+    whole-command step `Sem` (the port of `psem.v`'s `sem`) to `s'`, and `s'`'s
+    `Vm` corresponds to the final JasminPrint `Store` `st'`. -/
+theorem mixedBlock_endToEnd
+    (aS : AsmSem) (opS : OpSem) (gd : GlobDecls) (prog : Prog)
+    (steps : List MixedStep)
+    (st : Store) (s : Estate SyscallState Mem) (names : List Var)
+    (st' : Store) (s' : Estate SyscallState Mem) (names' : List Var)
+    (fuel : Nat)
+    (hblock : MixedBlockSim aS gd opS steps st s names st' s' names')
+    (hcorr : StateCorrReg names st s.evm) :
+    Sem (Mem := Mem) aS opS gd prog s (mixedBlockCmd steps) s'
+    ∧ StateCorrReg names' st' s'.evm := by
+  obtain ⟨hrun, hcorr'⟩ :=
+    mixedBlock_simulates aS opS gd prog steps st s names st' s' names' fuel hblock hcorr
+  exact ⟨execCmd_sound (n := fuel + 1) aS opS gd prog hrun, hcorr'⟩
 
 end CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeCopn

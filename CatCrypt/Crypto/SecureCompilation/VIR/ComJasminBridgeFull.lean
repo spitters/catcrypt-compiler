@@ -23,7 +23,7 @@ single end-to-end statement over the single-`Cassgn`/`regArith` fragment, the
 | gap #1 (AST translation) | `InstrRTranslate.lean` | `translateInstrR` + `translateInstrR_regArith` (structure-preserving on the fragment) |
 | gap #2 (state bijection) | `StateBijection.lean` | `RegCorr`/`StateCorrReg` + `stateCorrReg_write` (write-preservation) |
 | operational adequacy | `ExecAdequacy.lean` | `execInstrR … = .ok s' → SemIr …` (executor ⟹ reference relation) |
-| the keystone witness | `ComJasminBridge.lean` | `golden_add_bridge` (`x := y + 1` on both sides = 6) |
+| the worked witness | `ComJasminBridge.lean` | `golden_add_bridge` (`x := y + 1` on both sides = 6) |
 
 ## The new content: the simulation lemma
 
@@ -45,7 +45,7 @@ JasminPrint `Store.set s dst.vname w`. It is proved by:
 * applying `StateBijection.stateCorrReg_write` to lift the paired write to the
   state correspondence.
 
-This is the genuinely-new "they agree when the states correspond" content the
+This is the "they agree when the states correspond" statement the
 four pieces could not state individually.
 
 ## The end-to-end composition
@@ -59,9 +59,8 @@ the resulting state corresponds to the JasminPrint `Store.set` that the
 (`golden_endToEnd`, §4) instantiates it, tying `ComJasminBridge.golden_add_bridge`
 into the single Com→…→reference-semantics statement.
 
-## What cleanly closed vs. deferred (honest)
+## Contents
 
-**Closed (sorry-free):**
 * the simulation lemma `cassgn_regArith_simulates` — *generic* over the
   register-word `Cassgn`/`Lvar`/`aword` fragment (any `sz`, `w`, `dst`, frame),
   with the mirror RHS supplied as a hypothesis `semPexpr … = .ok (.Vword sz w)`;
@@ -70,18 +69,20 @@ into the single Com→…→reference-semantics statement.
   adequacy (`SemIr` witnessed) to the state correspondence (`StateCorrReg`);
 * the `x := y + 1` worked instance `golden_endToEnd`.
 
-**Deferred (honest):** the *whole-program generic* bridge needs
-1. the **remaining `InstrR` constructors** — `Copn`/`Cif`/`Cwhile`/`Cfor`/`Ccall`
-   (gap #1 covers only `Cassgn`/`regArith`; the others map to `none`);
-2. the **array/memory fragment** of the state bijection (`Varr`/`emem`/`escs`),
-   the only genuinely byte-shaped layout (`StateBijection` §"Honest scope");
-3. lifting `semPexpr`/`evalPExpr` value-correspondence through *every* expression
-   shape (here the RHS value is supplied as a hypothesis rather than derived from
-   a paired `Store`-side evaluation of the same `Papp2` — the operand-read
-   correspondence for the binop is the one residual to fully discharge the RHS).
+## Scope of the `Com ↔ Jasmin` bridge family
 
-These are the same pre-existing deferrals catalogued in the four source files;
-none is introduced as a `sorry` here.
+This file supplies the RHS value as a hypothesis. Sibling modules extend the
+per-step lemma: `OperandReadCorr` derives the `Papp2` operand read,
+`ComJasminBridgeCmd` / `ComJasminBridgeSelfContained` thread it over blocks,
+`ComJasminBridgeExt` covers `castW`, `ComJasminBridgeExt2` sign extension and
+truncation, `ComJasminBridgeArr` the constant-index `Pget` and the byte-array
+slot correspondence `StateCorrArr`, and `ComJasminBridgeCopn` the `rorImm` `Copn`
+and blocks mixing it with `Cassgn`s.
+
+The arms of `JasminPrint.lowerExpr` not bridged to the mirror are `Cfor` (the
+`JForProg` loop), `Ccall` (leaf calls), the register-index `Pget … (Pvar idx)`
+of `stackLoad`, the `Laset` write of `stackStore`, and the memory `emem` in the
+state relation. `Cif` and `Cwhile` are not emitted by this lowering.
 
 0 sorries.
 -/

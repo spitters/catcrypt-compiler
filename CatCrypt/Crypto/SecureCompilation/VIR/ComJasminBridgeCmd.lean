@@ -27,7 +27,7 @@ reference whole-command relation `Sem`.
 
 ## The list-threading shape (`RegBlockSim`)
 
-The load-bearing design choice is *how* the per-step RHS-evaluation hypothesis
+The design choice is *how* the per-step RHS-evaluation hypothesis
 is stated. Each step's `semPexpr … = .ok (.Vword szᵢ wᵢ)` must hold **against
 the running mirror state** — the state reached after the *previous* writes, not
 the initial one. We capture this with an inductive predicate `RegBlockSim`
@@ -54,7 +54,7 @@ evaluates to the matching `Vword`.
 final JasminPrint `Store` `st_f` — the composed `Store.set`s. The induction is
 on the `RegBlockSim` derivation; each cons peels one `execCmd_cons`, rewrites
 the head `execInstr`/`execInstrR` to `assignExec` via the per-instruction
-keystone `execInstrR_Cassgn_eq`, fires `mirror_aword_assign_post` to pin the
+lemma `execInstrR_Cassgn_eq`, applies `mirror_aword_assign_post` to fix the
 head's `.ok` post-state, and threads the *grown* `StateCorrReg (dst :: names)`
 (from `stateCorrReg_write`) into the tail IH.
 
@@ -72,12 +72,11 @@ the `execCmd` run returns `.ok` of the state with `x = 6`, `z = 7`, *witnesses*
 the reference `Sem` whole-command relation, and the post-state corresponds
 (`StateCorrReg`) to the JasminPrint `Store.set`-sequence writing the same `6`,
 `7`. The second step's RHS (`x + 1`) reads the `x` written by the *first* step
-— the genuine threading the whole-command bridge captures (the second
+— the threading the whole-command bridge captures (the second
 `semPexpr` is evaluated at the post-first-write mirror state).
 
-## What cleanly closed vs. deferred (honest)
+## Contents
 
-**Closed (sorry-free):**
 * `RegBlockSim` — the list-threading predicate, generic over the register-word
   `Cassgn` fragment (any per-step `sz`, `w`, `dst`, frame);
 * `regBlock_simulates` — the whole straight-line command bridge: `execCmd`
@@ -87,22 +86,24 @@ the reference `Sem` whole-command relation, and the post-state corresponds
 * the 2-instruction worked example `block_endToEnd` (`x := y+1 ; z := x+1`),
   with the second step reading the first's write.
 
-**Deferred (honest — the same residuals the per-step file documents):**
-1. **Non-`Cassgn` instructions in the list.** `RegBlockSim` is a block of
-   register-word `Cassgn`s only. A list containing `Copn`/`Cif`/`Cwhile`/
-   `Cfor`/`Ccall` is out of this fragment — control-flow needs the per-step
-   simulation for those constructors first (gap #1 covers only `Cassgn`).
-2. **The operand-read correspondence.** Each step's RHS value is supplied as a
-   hypothesis `semPexpr … = .ok (.Vword sz w)` rather than *derived* from a
-   `Store`-side evaluation of the same `Papp2` operands. Threading
-   `semPexpr`/`evalPExpr` value-correspondence through every expression shape
-   (so the mirror `w` is forced equal to the JasminPrint binop result on
-   corresponding operands) is the residual the per-step file already names.
-3. **Arrays / memory / syscall state.** `RegBlockSim` tracks the register frame
-   only; `Varr`/`emem`/`escs` (the genuinely byte-shaped layout) are out of the
-   reg fragment, exactly as in `StateBijection`'s honest-scope note.
+## Scope of the `Com ↔ Jasmin` bridge family
 
-None of these is introduced as a `sorry` here.
+Each step's RHS value here is the hypothesis `semPexpr … = .ok (.Vword sz w)`.
+Sibling modules cover further shapes of the `JasminPrint.lowerExpr` output:
+
+* the operand read for `Papp2 op (Pvar a) (Pvar b)` is derived from
+  `StateCorrReg` in `OperandReadCorr`, and threaded over blocks in
+  `ComJasminBridgeSelfContained`;
+* `castW` (`Papp1 Ozeroext`) is `ComJasminBridgeExt`, sign extension and
+  truncation are `ComJasminBridgeExt2`, and the constant-index `Pget` together
+  with the byte-array slot correspondence `StateCorrArr` is `ComJasminBridgeArr`;
+* the `rorImm` `Copn`, and blocks mixing it with register-word `Cassgn`s, are
+  `ComJasminBridgeCopn`.
+
+The arms of the lowering not bridged to the mirror are `Cfor` (the `JForProg`
+loop), `Ccall` (leaf calls), the register-index `Pget … (Pvar idx)` of
+`stackLoad`, the `Laset` write of `stackStore`, and the memory `emem` in the
+state relation. `Cif` and `Cwhile` are not emitted by `JasminPrint.lowerExpr`.
 
 0 sorries.
 -/
@@ -245,7 +246,7 @@ theorem regBlock_simulates
     -- peel the head of the emitted command via `execCmd_cons`.
     rw [regBlockCmd_cons, CmdRun.execCmd_cons]
     -- the head `execInstr (MkI ii (Cassgn …))` = `execInstrR (Cassgn …)`
-    -- = `assignExec …` (per-instruction keystone), which `hrun` pins to `.ok`.
+    -- = `assignExec …` (per-instruction run lemma), which `hrun` gives as `.ok`.
     have hhead :
         execInstr (Mem := Mem) aS opS gd (fuel + 1) s0 step.toInstr prog
           = .ok (s0.withVm ((s0.evm).set step.dst.v_var (.Vword step.sz w))) := by
@@ -294,7 +295,7 @@ theorem regBlock_endToEnd
 
 /-! ## §4. Worked multi-instruction example: `x := y + 1 ; z := x + 1`
 
-A genuine 2-instruction straight-line block (register `u32`). The second step's
+A 2-instruction straight-line block (register `u32`). The second step's
 RHS `x + 1` reads the `x` *written by the first step* — the second `semPexpr` is
 evaluated at the post-first-write mirror state, which is exactly the threading
 `RegBlockSim` captures. Started at `y = 5`, the block produces `x = 6`, `z = 7`,
@@ -358,7 +359,7 @@ theorem step1_rhs_eval :
   rfl
 
 /-- `step2`'s RHS `x + 1` evaluates to `Vword U32 7` from `afterStep1` (`x = 6`)
-    — the genuine threading: the second RHS reads the *first step's* write. -/
+    — the second RHS reads the *first step's* write. -/
 theorem step2_rhs_eval :
     semPexpr (Mem := OpSemCoverage.AssignExample.TrivialMem) true []
         addOpSemW afterStep1 step2.e = .ok (.Vword .U32 (7 : BitVec 32)) := by
