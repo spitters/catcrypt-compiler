@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.NasmParse
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.SolinasSquareBlock
 
 /-!
 # Round-trip and coverage check of the NASM parser on CryptOpt assembly
@@ -29,19 +30,24 @@ with the canonical text of the line, lists the lines whose instruction has no
 `JInstr` constructor with the reason, and prints per-mnemonic counts of mapped
 and unmapped lines. A final `ret` is counted as the terminator `parseNasm`
 accepts. It then runs `parseNasm` on the whole file and, when that succeeds,
-compares `printNasm` of the result with `canonicalNasm` of the file.
+compares `printNasm` of the result with `canonicalNasm` of the file. For a file
+with an expected block, the parsed list must also equal that block: the solinas
+square file must parse to `SolinasSquareBlock.solinasSquareBlock`, the literal
+the proofs about the kernel unfold. The comparison is on the `repr` of both
+lists, since `JInstr` derives `Repr` and its `DecidableEq` instance lives in a
+module this program does not import.
 
 Exit status: `0` when every file meets its expectation; `1` when the lexical
 layer accepts every file and every mapped line prints back to its canonical
 text, but a file expected to parse completely has an instruction with no
 `JInstr` constructor; `2` when a file cannot be read or lexed, a mapped line
-prints back to a different text, or `printNasm (parseNasm file)` differs from
-`canonicalNasm file`.
+prints back to a different text, `printNasm (parseNasm file)` differs from
+`canonicalNasm file`, or the parsed list differs from the expected block.
 
 ## Main definitions
 
 * `Target`, `targets`: the input files, relative to the package root, with
-  whether each must parse completely.
+  whether each must parse completely and the block it must parse to, if any.
 * `LineResult`, `checkLine`: the per-line outcome.
 * `checkFile`: the checks on one file, returning its exit status.
 * `main`: runs `checkFile` on every target and reports.
@@ -54,16 +60,21 @@ set_option autoImplicit false
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.NasmParseKat
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.NasmParse
+open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin (JInstr)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.SolinasSquareBlock (solinasSquareBlock)
 
-/-- An input file, relative to the package root, and whether every instruction
-    of it must have a `JInstr` constructor. -/
+/-- An input file, relative to the package root, whether every instruction of it
+    must have a `JInstr` constructor, and the block `parseNasm` must return on
+    it, if any. -/
 structure Target where
   path : System.FilePath
   complete : Bool
+  expected : Option (List (JInstr 64)) := none
 
 /-- The input files. -/
 def targets : List Target :=
-  [ { path := "bench/cryptopt/fiat_curve25519_solinas_square.asm", complete := true },
+  [ { path := "bench/cryptopt/fiat_curve25519_solinas_square.asm", complete := true,
+      expected := some solinasSquareBlock },
     { path := "bench/cryptopt/fiat_curve25519_carry_mul.asm", complete := false } ]
 
 /-- The outcome of one source line: no instruction, the final `ret`, a mapped
@@ -143,7 +154,15 @@ def checkFile (t : Target) : IO UInt32 := do
       | .ok p =>
           if p == canon then
             IO.println s!"  {is.length} instructions parse and print back to the canonical text"
-            return 0
+            match t.expected with
+            | none => return 0
+            | some blk =>
+                if reprStr is == reprStr blk then
+                  IO.println s!"  the parsed list equals the expected {blk.length}-instruction block"
+                  return 0
+                else
+                  IO.eprintln s!"nasm-parse-kat: {t.path}: the parsed list differs from the expected block"
+                  return 2
           else
             IO.eprintln s!"nasm-parse-kat: {t.path}: printNasm (parseNasm file) differs from canonicalNasm file"
             return 2
