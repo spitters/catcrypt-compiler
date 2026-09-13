@@ -334,6 +334,8 @@ theorem mem_jinstrNames_of_mem_bNamesXsym (i : JInstr 64) (hs : loadSymFree i = 
   cases i <;>
     simp_all [loadSymFree, bNamesXsym, bNamesX, jinstrNames,
       SpillingRegAlloc.writtenNames, SpillingRegAlloc.readNames]
+  -- `xchg a b` lists both operands as written and as read.
+  all_goals tauto
 
 /-- Every scoped name of a `loadSym`-free block is a name the allocator sees. -/
 theorem mem_blockNames_of_mem_blockNamesXsym {block : List (JInstr 64)}

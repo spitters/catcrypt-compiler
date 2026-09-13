@@ -43,7 +43,10 @@ the register-count shift forms, and the immediate-source arms of `cmov`/`adcx`/
 than encoding the instruction it was given. `test`'s opcodes (`85 /r` and
 `F7 /0 id`) are emitted by the encoder but absent from the decoder's opcode
 tables (`SailX86ByteFields.aluMnemonic`), so a block containing one does not
-satisfy `blockCovered`.
+satisfy `blockCovered`. The instructions the encoder declines
+(`ScalarEncoder.encodableJInstr` false: `inc`, `dec`, `clc`, `stc`, `xchg`,
+`imulri`, `mul`, `imulWide`, `shld`, `shrd`, `rcl`, `rcr`, `cmovcc`, `setcc`,
+`testN`, `bt`, `btr`, `bts`) are outside the covered set as well.
 
 ## What the round-trip says
 
@@ -322,6 +325,25 @@ def renameJ (alloc : GpAlloc) : JInstr 64 → JInstr 64
   | .lea d base idx scale off =>
       .lea (nameOf alloc d) (nameOf alloc base) (nameOf alloc idx) scale off
   | .loadSym d sym => .loadSym (nameOf alloc d) sym
+  | .inc d => .inc (nameOf alloc d)
+  | .dec d => .dec (nameOf alloc d)
+  | .clc => .clc
+  | .stc => .stc
+  | .xchg a b => .xchg (nameOf alloc a) (nameOf alloc b)
+  | .imulri d src imm => .imulri (nameOf alloc d) (nameOf alloc src) imm
+  | .mul dh dl src => .mul (nameOf alloc dh) (nameOf alloc dl) (nameOf alloc src)
+  | .imulWide dh dl src =>
+      .imulWide (nameOf alloc dh) (nameOf alloc dl) (nameOf alloc src)
+  | .shld d src amt => .shld (nameOf alloc d) (nameOf alloc src) (operandOf alloc amt)
+  | .shrd d src amt => .shrd (nameOf alloc d) (nameOf alloc src) (operandOf alloc amt)
+  | .rcl d amt => .rcl (nameOf alloc d) (operandOf alloc amt)
+  | .rcr d amt => .rcr (nameOf alloc d) (operandOf alloc amt)
+  | .cmovcc c d s => .cmovcc c (nameOf alloc d) (operandOf alloc s)
+  | .setcc c d => .setcc c (nameOf alloc d)
+  | .testN sz a b => .testN sz (nameOf alloc a) (operandOf alloc b)
+  | .bt a b => .bt (nameOf alloc a) (operandOf alloc b)
+  | .btr d b => .btr (nameOf alloc d) (operandOf alloc b)
+  | .bts d b => .bts (nameOf alloc d) (operandOf alloc b)
 
 /-! ## 4. The covered set -/
 
@@ -1136,6 +1158,9 @@ theorem roundtrip_decodeJ1 (alloc : GpAlloc) (i : JInstr 64) (rest : List (BitVe
   | movzx d sw src => simp [decodableJ] at hd
   | movsx d sw src => simp [decodableJ] at hd
   | lea d base idx scale off => simp [decodableJ] at hd
+  | inc _ | dec _ | clc | stc | xchg _ _ | imulri _ _ _ | mul _ _ _ | imulWide _ _ _
+  | shld _ _ _ | shrd _ _ _ | rcl _ _ | rcr _ _ | cmovcc _ _ _ | setcc _ _
+  | testN _ _ _ | bt _ _ | btr _ _ | bts _ _ => simp [decodableJ] at hd
 
 /-- A block built from the covered forms decodes back, instruction by
     instruction, with no bytes left over. -/

@@ -28,7 +28,7 @@ and the relevant `∈ ns` membership facts; the 28-case step lemma derives those
 memberships from `hsub : ∀ n ∈ bNamesX i, n ∈ ns` (the block's written++read
 names, the same list `noAliasX` checks).
 
-## The `loadSym` scope (the honest part)
+## The `loadSym` scope
 
 `loadSym d sym` aliases `d`'s memory bank onto the `.rodata` label `sym`. Its
 `SpillingRegAlloc.readNames` is `[]` — `sym` is a fixed link-time label, **not** a
@@ -183,6 +183,68 @@ theorem load_rel_on {ns : List String} {ρ : String → String} {sL sR : JState 
     (h : StateRelOn ns ρ sL sR) (base : String) (hbase : base ∈ ns) (off : Int) :
     sL.load (ρ base) off = sR.load base off := h.memOn base hbase off
 
+/-- A `writeB4W` (data word + `OF`/`SF`/`PF`/`ZF`, `CF` kept) commutes through `ρ` on
+    `ns` (needs `d ∈ ns`). -/
+theorem writeB4W_rel_on {ns : List String} {ρ : String → String}
+    (hinj : RenInjOn ns ρ) {sL sR : JState 64} (h : StateRelOn ns ρ sL sR)
+    (d : String) (hd : d ∈ ns) (t : B4W 64) :
+    StateRelOn ns ρ (sL.writeB4W (ρ d) t) (sR.writeB4W d t) := by
+  refine ⟨?_, ?_, ?_⟩
+  · simpa [JState.writeB4W] using setReg_regs_rel_on hinj h.regsOn d hd t.word
+  · simp [JState.writeB4W, h.flags]
+  · intro b hb o; simpa [JState.writeB4W] using h.memOn b hb o
+
+/-- A `writeCFW` (data word + `CF`, the other four flags kept) commutes through `ρ` on
+    `ns` (needs `d ∈ ns`). -/
+theorem writeCFW_rel_on {ns : List String} {ρ : String → String}
+    (hinj : RenInjOn ns ρ) {sL sR : JState 64} (h : StateRelOn ns ρ sL sR)
+    (d : String) (hd : d ∈ ns) (t : JFlag × BitVec 64) :
+    StateRelOn ns ρ (sL.writeCFW (ρ d) t) (sR.writeCFW d t) := by
+  refine ⟨?_, ?_, ?_⟩
+  · simpa [JState.writeCFW] using setReg_regs_rel_on hinj h.regsOn d hd t.2
+  · simp [JState.writeCFW, h.flags]
+  · intro b hb o; simpa [JState.writeCFW] using h.memOn b hb o
+
+/-- A `writeB5N` (five flags of an operand-size op, no register) commutes through `ρ`
+    on `ns` with no name in scope and no injectivity. -/
+theorem writeB5N_rel_on {ns : List String} {ρ : String → String}
+    {sL sR : JState 64} {sz : Nat} (h : StateRelOn ns ρ sL sR) (t : B5W sz) :
+    StateRelOn ns ρ (sL.writeB5N t) (sR.writeB5N t) := by
+  refine ⟨?_, ?_, ?_⟩
+  · intro n hn; simpa [JState.writeB5N] using h.regsOn n hn
+  · simp [JState.writeB5N]
+  · intro b hb o; simpa [JState.writeB5N] using h.memOn b hb o
+
+/-- A flag-only update applied to the (equal) flag states commutes through `ρ` on `ns`:
+    the `clc`/`stc`/`bt` writes. -/
+theorem flagsWrite_rel_on {ns : List String} {ρ : String → String}
+    {sL sR : JState 64} (h : StateRelOn ns ρ sL sR) (setF : RFlags → RFlags) :
+    StateRelOn ns ρ { sL with flags := setF sL.flags } { sR with flags := setF sR.flags } := by
+  refine ⟨?_, ?_, ?_⟩
+  · exact h.regsOn
+  · simp [h.flags]
+  · intro b hb o; exact h.memOn b hb o
+
+/-- A `writeB5W2` (five flags, high word to `dh`, low word to `dl`) commutes through `ρ`
+    on `ns` (needs `dh, dl ∈ ns`); when the two destinations coincide both sides keep
+    the low word. -/
+theorem writeB5W2_rel_on {ns : List String} {ρ : String → String}
+    (hinj : RenInjOn ns ρ) {sL sR : JState 64} (h : StateRelOn ns ρ sL sR)
+    (dh dl : String) (hdh : dh ∈ ns) (hdl : dl ∈ ns) (t : B5W2 64) :
+    StateRelOn ns ρ (sL.writeB5W2 (ρ dh) (ρ dl) t) (sR.writeB5W2 dh dl t) := by
+  refine ⟨?_, ?_, ?_⟩
+  · intro n hn
+    simp only [JState.writeB5W2]
+    by_cases hl : n = dl
+    · subst hl; simp
+    · have hl' : ρ n ≠ ρ dl := fun he => hl (hinj n hn dl hdl he)
+      by_cases hh : n = dh
+      · subst hh; simp [hl, hl']
+      · have hh' : ρ n ≠ ρ dh := fun he => hh (hinj n hn dh hdh he)
+        simp [hl, hl', hh, hh', h.regsOn n hn]
+  · simp [JState.writeB5W2]
+  · intro b hb o; simpa [JState.writeB5W2] using h.memOn b hb o
+
 /-! ## 4. The scoped names of an instruction / block
 
 For every constructor except `loadSym`, the names the step lemma needs are exactly
@@ -228,6 +290,8 @@ theorem evalInstr_renameInstr_rel_on {ns : List String} {ρ : String → String}
   have hcf : sL.flagB (·.cf) = sR.flagB (·.cf) := by simp [JState.flagB, h.flags]
   have hof : sL.flagB (·.of) = sR.flagB (·.of) := by simp [JState.flagB, h.flags]
   have hzf : sL.flagB (·.zf) = sR.flagB (·.zf) := by simp [JState.flagB, h.flags]
+  have hcond : ∀ c, sL.condB c = sR.condB c := fun c => by
+    simp only [JState.condB, JState.flagB, h.flags]
   -- `hsub` specialised through `bNamesX` (for the non-loadSym cases)
   have hsubX : ∀ n ∈ bNamesX i, n ∈ ns :=
     fun n hn => hsub n (mem_bNamesXsym_of_bNamesX i hn)
@@ -500,6 +564,77 @@ theorem evalInstr_renameInstr_rel_on {ns : List String} {ρ : String → String}
       · subst hbd; simp [h.memOn sym hsym o]
       · have hne : ρ b ≠ ρ d := fun he => hbd (hinj b hb d hd he)
         simp [hne, hbd, h.memOn b hb o]
+  | inc d | dec d =>
+    have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    simp only [renameInstr, evalInstr, hget_on d hd]
+    exact writeB4W_rel_on hinj h d hd _
+  | clc | stc =>
+    simp only [renameInstr, evalInstr]
+    exact flagsWrite_rel_on h (fun fl => { fl with cf := _ })
+  | xchg a b =>
+    have ha : a ∈ ns := hsubX a (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    have hb : b ∈ ns := hsubX b (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    simp only [renameInstr, evalInstr, x86_XCHG, hget_on a ha, hget_on b hb]
+    exact setReg2_rel_on hinj h a b ha hb _ _
+  | imulri d src imm =>
+    have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    have hsrc : src ∈ ns := hsubX src (by simp [bNamesX,
+      SpillingRegAlloc.writtenNames, SpillingRegAlloc.readNames])
+    simp only [renameInstr, evalInstr, hget_on src hsrc]
+    exact writeB5W_rel_on hinj h d hd _
+  | mul dh dl src | imulWide dh dl src =>
+    have hdh : dh ∈ ns := hsubX dh (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    have hdl : dl ∈ ns := hsubX dl (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    have hsrc : src ∈ ns := hsubX src (by simp [bNamesX,
+      SpillingRegAlloc.writtenNames, SpillingRegAlloc.readNames])
+    simp only [renameInstr, evalInstr, hget_on dl hdl, hget_on src hsrc]
+    exact writeB5W2_rel_on hinj h dh dl hdh hdl _
+  | shld d src amt | shrd d src amt =>
+    have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    have hsrc : src ∈ ns := hsubX src (by simp [bNamesX,
+      SpillingRegAlloc.writtenNames, SpillingRegAlloc.readNames])
+    have hs : ∀ n ∈ srcNames amt, n ∈ ns := fun n hn =>
+      hsubX n (by simp [bNamesX, SpillingRegAlloc.readNames, hn])
+    simp only [renameInstr, evalInstr, hop_on amt hs, hget_on d hd, hget_on src hsrc]
+    exact writeB5W_rel_on hinj h d hd _
+  | rcl d amt | rcr d amt =>
+    have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    have hs : ∀ n ∈ srcNames amt, n ∈ ns := fun n hn =>
+      hsubX n (by simp [bNamesX, SpillingRegAlloc.readNames, hn])
+    simp only [renameInstr, evalInstr, hop_on amt hs, hget_on d hd, hcf]
+    exact writeB2W_rel_on hinj h d hd _
+  | cmovcc c d s =>
+    have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    have hs : ∀ n ∈ srcNames s, n ∈ ns := fun n hn =>
+      hsubX n (by simp [bNamesX, SpillingRegAlloc.readNames, hn])
+    simp only [renameInstr, evalInstr, hop_on s hs, hget_on d hd, hcond c]
+    exact setReg_rel_on hinj h d hd _
+  | setcc c d =>
+    have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    simp only [renameInstr, evalInstr, JState.setRegMerge, hget_on d hd, hcond c]
+    exact setReg_rel_on hinj h d hd _
+  | testN sz a b =>
+    have ha : a ∈ ns := hsubX a (by simp [bNamesX, SpillingRegAlloc.writtenNames,
+      SpillingRegAlloc.readNames])
+    have hs : ∀ n ∈ srcNames b, n ∈ ns := fun n hn =>
+      hsubX n (by simp [bNamesX, SpillingRegAlloc.writtenNames,
+        SpillingRegAlloc.readNames, hn])
+    simp only [renameInstr, evalInstr, hop_on b hs, hget_on a ha]
+    exact writeB5N_rel_on h _
+  | bt a b =>
+    have ha : a ∈ ns := hsubX a (by simp [bNamesX, SpillingRegAlloc.writtenNames,
+      SpillingRegAlloc.readNames])
+    have hs : ∀ n ∈ srcNames b, n ∈ ns := fun n hn =>
+      hsubX n (by simp [bNamesX, SpillingRegAlloc.writtenNames,
+        SpillingRegAlloc.readNames, hn])
+    simp only [renameInstr, evalInstr, hop_on b hs, hget_on a ha]
+    exact flagsWrite_rel_on h (fun fl => { fl with cf := _ })
+  | btr d b | bts d b =>
+    have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    have hs : ∀ n ∈ srcNames b, n ∈ ns := fun n hn =>
+      hsubX n (by simp [bNamesX, SpillingRegAlloc.readNames, hn])
+    simp only [renameInstr, evalInstr, hop_on b hs, hget_on d hd]
+    exact writeCFW_rel_on hinj h d hd _
 
 /-! ## 6. The whole-block scoped simulation -/
 

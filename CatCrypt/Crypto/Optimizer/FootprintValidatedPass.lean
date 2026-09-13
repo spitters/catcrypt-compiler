@@ -231,6 +231,15 @@ theorem agreeExcept_evalInstr {D : List (String × Int)} (i : JInstr 64)
     by_cases hc : b = dst
     · simp only [hc, if_pos]; exact hm sym o (hb o)
     · simp only [if_neg hc]; exact hm b o hbo
+  -- These instructions read and write registers and flags only, never a memory cell.
+  | inc _ | dec _ | clc | stc | xchg _ _ | imulri _ _ _ | mul _ _ _ | imulWide _ _ _
+  | shld _ _ _ | shrd _ _ _ | rcl _ _ | rcr _ _ | cmovcc _ _ _ | setcc _ _
+  | testN _ _ _ | bt _ _ | btr _ _ | bts _ _ =>
+    refine ⟨?_, ?_, fun b o hbo => ?_⟩
+    all_goals simp [evalInstr, JState.writeB4W, JState.writeB5W, JState.writeB5W2,
+      JState.writeB5N, JState.writeB2W, JState.writeCFW, JState.setRegMerge, JState.setReg,
+      JState.get, JOperand.eval, JState.flagB, JState.condB, x86_XCHG]
+    all_goals exact hm b o hbo
 
 /-- **The block frame rule.** Running a continuation `k` that reads no cell in `D`
     on two `agreeExcept D` states lands in `agreeExcept D` states — the observable

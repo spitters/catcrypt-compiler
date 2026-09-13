@@ -27,20 +27,23 @@ whose `runBlock`-equivalence is unconditional.
 `readsFlag` and `writesAllFlags` classify each `JInstr` constructor against
 `JasminModel.evalInstr`:
 
-* `readsFlag i` — `i` observes a flag: `adc`/`sbb`/`setc`/`cmovb`/`adcx` read `CF`,
-  `adox` reads `OF`, `cmove`/`cmovne` read `ZF`.
+* `readsFlag i` — `i` observes a flag: `adc`/`sbb`/`setc`/`cmovb`/`adcx`/`rcl`/`rcr`
+  read `CF`, `adox` reads `OF`, `cmove`/`cmovne` read `ZF`, and `cmovcc`/`setcc`
+  read the flags of their `Condt`.
 * `writesAllFlags i` — `i` overwrites **all five** flags as a pure function of its
-  register/immediate inputs (any `writeB5W`/`writeB5` op that does not first read a
-  flag): `add`/`sub`/`imul`/`neg`/`and_`/`or_`/`xor_`/`shl`/`shr`/`sar`/`andn`, and
-  `test`/`cmp`, whose only output is the five flags.
+  register/immediate inputs (a `writeB5W`/`writeB5`/`writeB5W2`/`writeB5N` op that
+  does not first read a flag): `add`/`sub`/`imul`/`imulri`/`neg`/`and_`/`or_`/`xor_`/
+  `shl`/`shr`/`sar`/`shld`/`shrd`/`andn`, the widening `mul`/`imulWide`, and
+  `test`/`testN`/`cmp`, whose only output is the five flags.
 
 The rotates `rol`/`ror` are a **partial** flag write: they set `OF`/`CF` through
-`JState.writeB2W` and leave `SF`/`PF`/`ZF` at their incoming values, so they are neither
-flag reads nor full flag writes.  The scan skips them, which is sound because their
-register and memory effect is a function of the register file alone.  Every remaining
-constructor (`mov`, `mulx`, `mulxMem`, the memory moves, `loadSym`, the BMI2
-`rorx`/`shlx`/`shrx`/`sarx`, `not_`, the extension moves and `lea`) touches no flag at
-all.  The two predicates are disjoint, and a constructor whose classification would be
+`JState.writeB2W` and leave `SF`/`PF`/`ZF` at their incoming values.  `inc`/`dec`
+write `OF`/`SF`/`PF`/`ZF` and keep `CF` (`writeB4W`); `clc`, `stc`, `bt`, `btr` and
+`bts` write `CF` alone.  These are neither flag reads nor full flag writes.  The scan
+skips them, which is sound because their register and memory effect is a function of
+the register file alone.  Every remaining constructor (`mov`, `xchg`, `mulx`,
+`mulxMem`, the memory moves, `loadSym`, the BMI2 `rorx`/`shlx`/`shrx`/`sarx`, `not_`,
+the extension moves and `lea`) touches no flag at all.  The two predicates are disjoint, and a constructor whose classification would be
 ambiguous is treated as reading a flag (conservative).
 
 `flagsDeadFrom instrs` scans the suffix straight-line: a leading flag **read**
@@ -75,8 +78,9 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 /-! ## 1. Per-instruction flag classification -/
 
 /-- `readsFlag i` is `true` when `evalInstr` reads a condition flag: `adc`, `sbb`,
-    `setc`, `cmovb`, and `adcx` read `CF`; `adox` reads `OF`; `cmove` and `cmovne`
-    read `ZF`.  Every other constructor reads no flag. -/
+    `setc`, `cmovb`, `adcx`, `rcl` and `rcr` read `CF`; `adox` reads `OF`; `cmove`
+    and `cmovne` read `ZF`; `cmovcc` and `setcc` read the flags of their condition.
+    Every other constructor reads no flag. -/
 def readsFlag {w : Nat} : JInstr w → Bool
   | .adc _ _    => true
   | .sbb _ _    => true
@@ -86,14 +90,23 @@ def readsFlag {w : Nat} : JInstr w → Bool
   | .adox _ _   => true
   | .cmove _ _  => true
   | .cmovne _ _ => true
+  -- the rotates through carry read `CF`.
+  | .rcl _ _    => true
+  | .rcr _ _    => true
+  -- the general conditional instructions read the flags of their condition
+  -- (`x86_eval_cond`), at least one for every `Condt`.
+  | .cmovcc _ _ _ => true
+  | .setcc _ _  => true
   | _           => false
 
 /-- `writesAllFlags i` is `true` when `evalInstr` overwrites all five flags as a
-    pure function of the register/immediate inputs (a `writeB5W`/`writeB5` op that
-    does not first read a flag): `add`, `sub`, `imul`, `neg`, `and_`, `or_`, `xor_`,
-    `shl`, `shr`, `sar`, `andn`, and `test`/`cmp`, whose five flags are their only
-    output.  The partial-write `adcx`/`adox`/`rol`/`ror` and the flag-reading
-    `adc`/`sbb` are excluded (`adcx`/`adox`/`adc`/`sbb` appear under `readsFlag`). -/
+    pure function of the register/immediate inputs (a `writeB5W`/`writeB5`/
+    `writeB5W2`/`writeB5N` op that does not first read a flag): `add`, `sub`, `imul`,
+    `imulri`, `neg`, `and_`, `or_`, `xor_`, `shl`, `shr`, `sar`, `shld`, `shrd`,
+    `andn`, `mul`, `imulWide`, and `test`/`testN`/`cmp`, whose five flags are their
+    only output.  The partial writes `adcx`/`adox`/`rol`/`ror`/`rcl`/`rcr`/`inc`/`dec`/
+    `clc`/`stc`/`bt`/`btr`/`bts` and the flag-reading `adc`/`sbb` are excluded
+    (`adcx`/`adox`/`adc`/`sbb`/`rcl`/`rcr` appear under `readsFlag`). -/
 def writesAllFlags {w : Nat} : JInstr w → Bool
   | .test _ _ => true
   | .cmp _ _  => true
@@ -115,6 +128,17 @@ def writesAllFlags {w : Nat} : JInstr w → Bool
   -- re-establish the whole flag map from the registers.
   | .rol _ _  => false
   | .ror _ _  => false
+  -- `imulri`, the double shifts (`writeB5W`), the widening multiplies (`writeB5W2`)
+  -- and the sized `testN` (`writeB5N`) write all five flags from their register and
+  -- immediate inputs.
+  | .imulri _ _ _ => true
+  | .mul _ _ _ => true
+  | .imulWide _ _ _ => true
+  | .shld _ _ _ => true
+  | .shrd _ _ _ => true
+  | .testN _ _ _ => true
+  -- `inc`/`dec` keep `CF`; `clc`, `stc`, `bt`, `btr` and `bts` write `CF` alone.
+  | .inc _ | .dec _ | .clc | .stc | .bt _ _ | .btr _ _ | .bts _ _ => false
   | _         => false
 
 /-! ## 2. The backward liveness scan -/
@@ -149,7 +173,7 @@ theorem evalInstr_full_eq_of_writesAll {i : JInstr 64} (hw : writesAllFlags i = 
     evalInstr s₁ i = evalInstr s₂ i := by
   cases i <;>
     simp_all [writesAllFlags, evalInstr, JState.writeB5W, JState.writeB5, JState.get,
-      JOperand.eval]
+      JState.writeB5W2, JState.writeB5N, JOperand.eval]
 
 /-- A flag-neutral instruction (neither reading nor fully writing flags) updates the
     register file and memory as a function of the register file and memory alone, so
@@ -163,7 +187,7 @@ theorem evalInstr_regsMem_congr {i : JInstr 64} (hnr : readsFlag i = false)
   cases i <;>
     simp_all [readsFlag, writesAllFlags, evalInstr, JState.setReg, JState.writeB2W,
       JState.store, JState.storeIdx, JState.load, JState.loadIdx, JState.get,
-      JOperand.eval]
+      JState.writeB4W, JState.writeCFW, x86_XCHG, JOperand.eval]
   all_goals exact rfl
 
 /-! ## 4. Liveness discharges the flag side condition -/

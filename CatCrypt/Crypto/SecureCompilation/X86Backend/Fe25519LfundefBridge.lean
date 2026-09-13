@@ -171,7 +171,11 @@ def memOperand (alloc : GpAlloc) (base : String) (off : Int) : LOperand :=
 /-- Lift one `JInstr 64` to its `LinstrR` over a resolved `GpAlloc`. The U64 width
     tag is attached to every op (the field kernels are uniform U64). The ADX/MULX
     arms lift to the faithful `MULX`/`MULXMEM`/`ADCX`/`ADOX` `Lopn` forms the byte
-    encoder and text path both consume (#656-residual; see module header). -/
+    encoder and text path both consume (#656-residual; see module header). The
+    instructions outside the field-op alphabet, among them `inc`, `dec`, `clc`,
+    `stc`, `xchg`, `imulri`, `mul`, `imulWide`, `shld`, `shrd`, `rcl`, `rcr`,
+    `cmovcc`, `setcc`, `testN`, `bt`, `btr` and `bts`, lift to mnemonics the
+    renderer does not handle, so they surface as `# UNHANDLED-OP`. -/
 def jinstrToLinstrR (alloc : GpAlloc) : JInstr 64 → LinstrR
   | .mov d s   => .Lopn [resolveReg alloc d] (withWidthTag 64 "MOV")
                     [resolveReg alloc d, resolveJOp alloc s]
@@ -265,6 +269,44 @@ def jinstrToLinstrR (alloc : GpAlloc) : JInstr 64 → LinstrR
   -- sources. The `LOADSYM` opn has no `attBase` mnemonic, so `renderLopn` emits a
   -- visible `# UNHANDLED-OP` sentinel rather than any silently-wrong instruction.
   | .loadSym d _ => .Lopn [resolveReg alloc d] (withWidthTag 64 "LOADSYM") []
+  -- The increment, carry-flag, exchange, widening-multiply, double-shift,
+  -- rotate-through-carry, general-condition, sized-test and bit-test instructions:
+  -- the fe25519/x25519 field leaves never emit them, and `LinstrR` has no operand
+  -- for their implicit registers, sizes or condition codes. Each lifts to its
+  -- natural `Lopn` shape under a mnemonic with no `attBase` entry, so `renderLopn`
+  -- emits the `# UNHANDLED-OP` sentinel. The widening multiplies do not use `MUL`,
+  -- which `attBase` renders as the two-operand `imul`.
+  | .inc d => .Lopn [resolveReg alloc d] (withWidthTag 64 "INC") [resolveReg alloc d]
+  | .dec d => .Lopn [resolveReg alloc d] (withWidthTag 64 "DEC") [resolveReg alloc d]
+  | .clc => .Lopn [] (withWidthTag 64 "CLC") []
+  | .stc => .Lopn [] (withWidthTag 64 "STC") []
+  | .xchg a b => .Lopn [resolveReg alloc a, resolveReg alloc b] (withWidthTag 64 "XCHG")
+                   [resolveReg alloc a, resolveReg alloc b]
+  | .imulri d s imm => .Lopn [resolveReg alloc d] (withWidthTag 64 "IMULRI")
+                         [resolveReg alloc s, .imm imm]
+  | .mul dh dl s => .Lopn [resolveReg alloc dh, resolveReg alloc dl]
+                      (withWidthTag 64 "MULWIDE") [resolveReg alloc dl, resolveReg alloc s]
+  | .imulWide dh dl s => .Lopn [resolveReg alloc dh, resolveReg alloc dl]
+                           (withWidthTag 64 "IMULWIDE")
+                           [resolveReg alloc dl, resolveReg alloc s]
+  | .shld d s amt => .Lopn [resolveReg alloc d] (withWidthTag 64 "SHLD")
+                       [resolveReg alloc d, resolveReg alloc s, resolveJOp alloc amt]
+  | .shrd d s amt => .Lopn [resolveReg alloc d] (withWidthTag 64 "SHRD")
+                       [resolveReg alloc d, resolveReg alloc s, resolveJOp alloc amt]
+  | .rcl d amt => .Lopn [resolveReg alloc d] (withWidthTag 64 "RCL")
+                    [resolveReg alloc d, resolveJOp alloc amt]
+  | .rcr d amt => .Lopn [resolveReg alloc d] (withWidthTag 64 "RCR")
+                    [resolveReg alloc d, resolveJOp alloc amt]
+  | .cmovcc _ d s => .Lopn [resolveReg alloc d] (withWidthTag 64 "CMOVCC")
+                       [resolveReg alloc d, resolveJOp alloc s]
+  | .setcc _ d => .Lopn [resolveReg alloc d] (withWidthTag 64 "SETCC") [resolveReg alloc d]
+  | .testN _ a b => .Lopn [] (withWidthTag 64 "TESTN")
+                      [resolveReg alloc a, resolveJOp alloc b]
+  | .bt a b => .Lopn [] (withWidthTag 64 "BT") [resolveReg alloc a, resolveJOp alloc b]
+  | .btr d b => .Lopn [resolveReg alloc d] (withWidthTag 64 "BTR")
+                  [resolveReg alloc d, resolveJOp alloc b]
+  | .bts d b => .Lopn [resolveReg alloc d] (withWidthTag 64 "BTS")
+                  [resolveReg alloc d, resolveJOp alloc b]
 
 /-- Lift a whole `JInstr 64` block to an `Lcmd` over a resolved `GpAlloc`, ending
     with the function-level `Lret`. The `li_ii` source tags are `0` (no position

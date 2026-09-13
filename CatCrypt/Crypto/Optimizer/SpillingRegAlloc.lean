@@ -78,7 +78,7 @@ projections so a name's live range is `[def, lastUse]`.
 writes two; for live-range purposes we record both as defs.  -/
 
 /-- Register names an instruction **writes** (its destinations). `storeMem`,
-    `test` and `cmp` write no register. -/
+    `test`, `testN`, `cmp`, `bt`, `clc` and `stc` write no register. -/
 def writtenNames : JInstr 64 → List String
   | .mov d _ | .add d _ | .sub d _ | .adc d _ | .sbb d _ | .imul d _ | .neg d | .setc d
   | .and_ d _ | .or_ d _ | .xor_ d _ | .shl d _ | .shr d _ | .sar d _
@@ -94,6 +94,14 @@ def writtenNames : JInstr 64 → List String
   | .test _ _ => []
   -- `cmp` is `sub` with the difference discarded: five flags, no register.
   | .cmp _ _ => []
+  | .inc d | .dec d | .imulri d _ _ | .shld d _ _ | .shrd d _ _ | .rcl d _ | .rcr d _
+  | .cmovcc _ d _ | .setcc _ d | .btr d _ | .bts d _ => [d]
+  -- `xchg` writes both operands.
+  | .xchg a b => [a, b]
+  -- the widening multiplies write the high word and the low word.
+  | .mul dh dl _ | .imulWide dh dl _ => [dh, dl]
+  -- `clc`, `stc`, `testN` and `bt` write flags only.
+  | .clc | .stc | .testN _ _ _ | .bt _ _ => []
 
 /-- Register names an instruction **reads** (its source operands and, for the
     two-address ALU ops, the destination, which is also a source; memory bases are
@@ -134,6 +142,26 @@ def readNames : JInstr 64 → List String
   -- SIB indexed addressing reads both the base and the index register
   | .loadMemIdx _ base idx _ => [base, idx]
   | .storeMemIdx base idx _ s => base :: idx :: srcNames s
+  -- one-address `inc`/`dec`: `dst` is both source and destination.
+  | .inc d | .dec d => [d]
+  -- `clc`/`stc` read no register.
+  | .clc | .stc => []
+  -- `xchg` reads both operands.
+  | .xchg a b => [a, b]
+  -- `imulri`: `dst` is write-only, the source is read.
+  | .imulri _ src _ => [src]
+  -- the widening multiplies read the implicit low-word register and the source; the
+  -- high-word register is write-only.
+  | .mul _ lo src | .imulWide _ lo src => [lo, src]
+  -- double shifts read the destination, the fill source and the count.
+  | .shld d src amt | .shrd d src amt => d :: src :: srcNames amt
+  | .rcl d amt | .rcr d amt => d :: srcNames amt
+  -- `cmovcc` keeps `dst` when the condition fails, so `dst` is read.
+  | .cmovcc _ d s => d :: srcNames s
+  -- `setcc` merges a byte into `dst`, keeping its upper bits, so `dst` is read.
+  | .setcc _ d => [d]
+  | .testN _ a b | .bt a b => a :: srcNames b
+  | .btr d b | .bts d b => d :: srcNames b
 
 /-- A value-name's live range over a block: `defIdx` is the first index that
     writes it (or, if it is only ever read — e.g. a frame base / input — `0`),

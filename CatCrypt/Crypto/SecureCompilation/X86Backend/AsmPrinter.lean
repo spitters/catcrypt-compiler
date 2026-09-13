@@ -117,6 +117,18 @@ def jinstrNames : {w : Nat} → JInstr w → List String
   -- `lea` names a destination and the two address registers; `scale`/`off` are literals.
   | _, .lea d base idx _ _ => [d, base, idx]
   | _, .loadSym d _   => [d]
+  | _, .inc d | _, .dec d => [d]
+  | _, .clc | _, .stc => []
+  | _, .xchg a b => [a, b]
+  | _, .imulri d s _ => [d, s]
+  -- the widening multiplies name their implicit `%rdx`/`%rax` destinations and the source.
+  | _, .mul dh dl s | _, .imulWide dh dl s => [dh, dl, s]
+  | _, .shld d s amt | _, .shrd d s amt => d :: s :: srcNames amt
+  | _, .rcl d amt | _, .rcr d amt => d :: srcNames amt
+  | _, .cmovcc _ d s => d :: srcNames s
+  | _, .setcc _ d => [d]
+  | _, .testN _ a b => a :: srcNames b
+  | _, .bt a b | _, .btr a b | _, .bts a b => a :: srcNames b
 
 /-- Collect the distinct register names of a block, in first-seen order. -/
 def blockNames {w : Nat} (block : List (JInstr w)) : List String :=
@@ -207,6 +219,35 @@ def gpReg32 (r : String) : String :=
   | "%r8"  => "%r8d" | "%r9"  => "%r9d" | "%r10" => "%r10d" | "%r11" => "%r11d"
   | "%r12" => "%r12d"| "%r13" => "%r13d"| "%r14" => "%r14d" | "%r15" => "%r15d"
   | other  => other
+
+/-- The AT&T condition-code suffix of a Jasmin condition, in the spelling GNU as
+    accepts after `set` and `cmov`: `nb` is `ae`, `nbe` is `a`, `nl` is `ge` and
+    `nle` is `g`; the other twelve keep their `Condt` name. -/
+def condSuffix : Condt → String
+  | .o => "o"  | .no => "no" | .b => "b"   | .nb => "ae"
+  | .e => "e"  | .ne => "ne" | .be => "be" | .nbe => "a"
+  | .s => "s"  | .ns => "ns" | .p => "p"   | .np => "np"
+  | .l => "l"  | .nl => "ge" | .le => "le" | .nle => "g"
+
+/-- A shift or rotate count: an immediate prints as `$v`; a register prints as its
+    low byte, the `%cl` operand the count-by-register encodings take. -/
+def renderCount (alloc : GpAlloc) : JOperand → String
+  | .reg r => gpReg8 (regOf alloc r)
+  | .imm v => "$" ++ toString v
+
+/-- An operand at operand size `sz`: a register as its `sz`-bit subregister name
+    (`%al`, `%ax`, `%eax`, `%rax` at 8, 16, 32, 64), an immediate as `$v`. Any
+    other size prints as a bracketed sentinel the assembler rejects. -/
+def renderOperandN (sz : Nat) (alloc : GpAlloc) : JOperand → String
+  | .imm v => "$" ++ toString v
+  | .reg r =>
+      let q := regOf alloc r
+      match sz with
+      | 8  => gpReg8 q
+      | 16 => gpReg16 q
+      | 32 => gpReg32 q
+      | 64 => q
+      | n  => "<UNSUPPORTED-WIDTH:" ++ toString n ++ ">"
 
 /-! ## 2. The AT&T mnemonic printer (one line per `JInstr`)
 
@@ -329,6 +370,46 @@ def renderJInstr {w : Nat} (alloc : GpAlloc) : JInstr w → String
   -- not a register); `dst` is resolved through the allocator like any GP base.
   | .loadSym d sym =>
       "\tleaq " ++ sym ++ "(%rip), " ++ regOf alloc d
+  | .inc d     => "\tincq "  ++ regOf alloc d
+  | .dec d     => "\tdecq "  ++ regOf alloc d
+  | .clc       => "\tclc"
+  | .stc       => "\tstc"
+  | .xchg a b  => "\txchgq " ++ regOf alloc b ++ ", " ++ regOf alloc a
+  -- three-operand `imulq $imm, %src, %dst` = `dst := src * imm`.
+  | .imulri d s imm =>
+      "\timulq $" ++ toString imm ++ ", " ++ regOf alloc s ++ ", " ++ regOf alloc d
+  -- One-operand widening multiplies: the hardware reads `%rax` and writes `%rdx:%rax`;
+  -- the destinations the model names are recorded in a comment, as `mulx` records its
+  -- implicit source.
+  | .mul dh dl s =>
+      "\tmulq " ++ regOf alloc s
+      ++ "  # hi=%rdx=" ++ regOf alloc dh ++ " lo=%rax=" ++ regOf alloc dl
+  | .imulWide dh dl s =>
+      "\timulq " ++ regOf alloc s
+      ++ "  # hi=%rdx=" ++ regOf alloc dh ++ " lo=%rax=" ++ regOf alloc dl
+  -- AT&T `shldq count, %src, %dst`; a register count is `%cl`.
+  | .shld d s amt =>
+      "\tshldq " ++ renderCount alloc amt ++ ", " ++ regOf alloc s ++ ", " ++ regOf alloc d
+  | .shrd d s amt =>
+      "\tshrdq " ++ renderCount alloc amt ++ ", " ++ regOf alloc s ++ ", " ++ regOf alloc d
+  | .rcl d amt => "\trclq "  ++ renderCount alloc amt ++ ", " ++ regOf alloc d
+  | .rcr d amt => "\trcrq "  ++ renderCount alloc amt ++ ", " ++ regOf alloc d
+  | .cmovcc c d s =>
+      "\tcmov" ++ condSuffix c ++ "q " ++ renderOperand alloc s ++ ", " ++ regOf alloc d
+  -- `SETcc` writes the low byte only; the upper bits of the register keep their
+  -- values (`setcc` is modeled under `MSB_MERGE`), so no zero extension follows.
+  | .setcc c d => "\tset" ++ condSuffix c ++ " " ++ gpReg8 (regOf alloc d)
+  -- `TEST` at an explicit size: the `b`/`w`/`l`/`q` suffix and the subregister names
+  -- of that size.
+  | .testN sz a b =>
+      let sfx := match sz with
+        | 8 => "b" | 16 => "w" | 32 => "l" | 64 => "q"
+        | n => "<UNSUPPORTED-TEST-WIDTH:" ++ toString n ++ ">"
+      "\ttest" ++ sfx ++ " " ++ renderOperandN sz alloc b ++ ", "
+        ++ renderOperandN sz alloc (.reg a)
+  | .bt a b    => "\tbtq "   ++ renderOperand alloc b ++ ", " ++ regOf alloc a
+  | .btr d b   => "\tbtrq "  ++ renderOperand alloc b ++ ", " ++ regOf alloc d
+  | .bts d b   => "\tbtsq "  ++ renderOperand alloc b ++ ", " ++ regOf alloc d
 
 /-- Print a whole block's instruction lines (one per `JInstr`). -/
 def renderBlockBody {w : Nat} (alloc : GpAlloc) (block : List (JInstr w)) : List String :=

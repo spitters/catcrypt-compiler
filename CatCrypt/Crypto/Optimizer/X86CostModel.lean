@@ -121,6 +121,9 @@ Placeholder latencies (see module docstring):
 - `neg`/`setc`     : 1 c
 - `cmp`/`not_`/`andn`/`rol`/`ror`/`rorx`/`shlx`/`shrx`/`sarx`/`movzx`/`movsx`/`lea` : 1 c
 - `loadSym`        : 3 c (RIP-relative LEA)
+- `inc`/`dec`/`clc`/`stc`/`xchg`/`cmovcc`/`setcc`/`testN`/`bt`/`btr`/`bts` : 1 c
+- `imulri`/`shld`/`shrd` : 3 c; `rcl`/`rcr` : 2 c
+- `mul`/`imulWide` : 4 c (one-operand widening multiply)
 
 Sources to consult for refresh: <https://uops.info/> (filter Skylake /
 Rocket Lake / Golden Cove), Agner Fog "Instruction Tables" (latest PDF). -/
@@ -194,6 +197,34 @@ def costOf : JInstr 64 → InstrCost
   | .storeMemIdx _ _ _ _ => ⟨1, 1, [.p4, .p23], 1⟩
   -- LEA / load symbol (RIP-relative address materialise): 3c, p1/p5.
   | .loadSym _ _         => ⟨3, 1, [.p1, .p5], 3⟩
+  -- INC/DEC: 1c ALU.
+  | .inc _               => ⟨1, 1, [.p0, .p1, .p5, .p6], 1⟩
+  | .dec _               => ⟨1, 1, [.p0, .p1, .p5, .p6], 1⟩
+  -- CLC/STC: 1c, flag write only.
+  | .clc                 => ⟨1, 1, [.p0, .p1, .p5, .p6], 1⟩
+  | .stc                 => ⟨1, 1, [.p0, .p1, .p5, .p6], 1⟩
+  -- XCHG (register pair): 1c ALU.
+  | .xchg _ _            => ⟨1, 1, [.p0, .p1, .p5, .p6], 1⟩
+  -- IMUL with immediate (low word): the same cost as `imul`.
+  | .imulri _ _ _        => ⟨3, 1, [.p1], 3⟩
+  -- MUL/IMUL one-operand widening multiply: 4c, p1 plus p5 for the high word.
+  | .mul _ _ _           => ⟨4, 1, [.p1, .p5], 4⟩
+  | .imulWide _ _ _      => ⟨4, 1, [.p1, .p5], 4⟩
+  -- SHLD/SHRD: 3c on p1.
+  | .shld _ _ _          => ⟨3, 1, [.p1], 3⟩
+  | .shrd _ _ _          => ⟨3, 1, [.p1], 3⟩
+  -- RCL/RCR: 2c on the shift ports.
+  | .rcl _ _             => ⟨2, 1, [.p0, .p6], 2⟩
+  | .rcr _ _             => ⟨2, 1, [.p0, .p6], 2⟩
+  -- CMOVcc/SETcc at a general condition: the cost of `cmov*`/`setc`.
+  | .cmovcc _ _ _        => ⟨1, 1, [.p0, .p1], 1⟩
+  | .setcc _ _           => ⟨1, 1, [.p0, .p1], 1⟩
+  -- TEST at an operand size: the cost of `test`; flags only.
+  | .testN _ _ _         => ⟨1, 1, [.p0, .p1, .p5, .p6], 1⟩
+  -- BT/BTR/BTS (register operands): 1c on the shift ports.
+  | .bt _ _              => ⟨1, 1, [.p0, .p6], 1⟩
+  | .btr _ _             => ⟨1, 1, [.p0, .p6], 1⟩
+  | .bts _ _             => ⟨1, 1, [.p0, .p6], 1⟩
 
 /-! ## 4. Data-dependence helpers -/
 

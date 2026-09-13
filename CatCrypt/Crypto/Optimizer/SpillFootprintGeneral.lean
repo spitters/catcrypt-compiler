@@ -178,7 +178,8 @@ theorem evalInstr_get_of_not_written {i : JInstr 64} {s : JState 64} {n : String
     (h : n ∉ writtenNames i) : (evalInstr s i).get n = s.get n := by
   cases i <;>
     simp_all [evalInstr, writtenNames, JState.get, JState.setReg, JState.writeB5W,
-      JState.writeB5, JState.writeB2W,
+      JState.writeB5, JState.writeB2W, JState.writeB4W, JState.writeB5W2, JState.writeB5N,
+      JState.writeCFW, JState.setRegMerge,
       JState.store, JState.storeIdx, x86_MOV, JOperand.eval, JState.loadIdx, JState.load,
       List.mem_cons, List.not_mem_nil]
 
@@ -200,7 +201,8 @@ theorem evalInstr_load_of_not_jinstrName {i : JInstr 64} {s : JState 64} {sb : S
     rw [if_neg h]
   all_goals
     simp [evalInstr, JState.load, JOperand.eval, x86_MOV, JState.flagB, JState.get,
-      JState.setReg, JState.writeB5W, JState.writeB5, JState.writeB2W]
+      JState.setReg, JState.writeB5W, JState.writeB5, JState.writeB2W, JState.writeB4W,
+      JState.writeB5W2, JState.writeB5N, JState.writeCFW, JState.setRegMerge]
 
 /-! ## 3. Reloads are no-ops under the invariant -/
 

@@ -649,6 +649,22 @@ theorem StoreDiff.step {base : String} {off : Int} {s t : JState 64}
   -- `loadSym` re-aliases a memory bank (a dynamic read of the `.rodata` table), so it
   -- is likewise excluded by the `readsDynamic i = false` hypothesis.
   | loadSym d sym => simp [readsDynamic] at hdyn
+  -- These instructions read registers and flags (equal in `s`, `t`), write registers and
+  -- flags from those reads, and neither read nor write memory.
+  | inc _ | dec _ | clc | stc | xchg _ _ | imulri _ _ _ | mul _ _ _ | imulWide _ _ _
+  | shld _ _ _ | shrd _ _ _ | rcl _ _ | rcr _ _ | cmovcc _ _ _ | setcc _ _
+  | testN _ _ _ | bt _ _ | btr _ _ | bts _ _ =>
+    have hop : ∀ op : JOperand, op.eval s = op.eval t := fun op => by
+      cases op <;> simp [JOperand.eval, JState.get, hr]
+    have hget : ∀ r, s.get r = t.get r := fun r => by simp only [JState.get]; rw [hr]
+    have hflagB : ∀ f, s.flagB f = t.flagB f := fun f => by simp only [JState.flagB, hf]
+    have hcond : ∀ c, s.condB c = t.condB c := fun c => by
+      simp only [JState.condB, JState.flagB, hf]
+    refine ⟨?_, ?_, fun b o hbo => ?_⟩
+    all_goals simp only [evalInstr, JState.writeB4W, JState.writeB5W, JState.writeB5W2,
+      JState.writeB5N, JState.writeB2W, JState.writeCFW, JState.setRegMerge,
+      JState.setReg, x86_XCHG, hop, hget, hflagB, hcond, hr, hf]
+    exact hm b o hbo
 
 /-! ### StoreDiff propagates through a block that never reads the dropped cell
 
@@ -865,6 +881,18 @@ def readRegs : JInstr 64 → List String
   -- SIB indexed addressing reads the base + index registers (and the stored source)
   | .loadMemIdx _ base idx _ => [base, idx]
   | .storeMemIdx base idx _ s => base :: idx :: srcNames s
+  | .inc d | .dec d => [d]              -- inc/dec read their own dst
+  | .clc | .stc => []                   -- clc/stc read no register
+  | .xchg a b => [a, b]
+  | .imulri _ src _ => [src]            -- imulri's dst is write-only
+  -- the widening multiplies read the low-word register and the source
+  | .mul _ dl src | .imulWide _ dl src => [dl, src]
+  | .shld d src s | .shrd d src s => d :: src :: srcNames s
+  | .rcl d s | .rcr d s => d :: srcNames s
+  | .cmovcc _ d s => d :: srcNames s    -- cmovcc reads dst (kept value)
+  | .setcc _ d => [d]                   -- setcc keeps the upper bits of dst
+  | .testN _ a s | .bt a s => a :: srcNames s
+  | .btr d s | .bts d s => d :: srcNames s
 
 /-- The cell an instruction reads **other than** via the promoted `loadMem`, plus the
     register read-set, do not touch `ρ` / `(b,off)` — packaged as the promotability side
@@ -891,6 +919,13 @@ where
   -- `test` and `cmp` write the five flags and no register.
   | .test _ _ => []
   | .cmp _ _ => []
+  | .inc d | .dec d | .imulri d _ _ | .shld d _ _ | .shrd d _ _ | .rcl d _ | .rcr d _
+  | .cmovcc _ d _ | .setcc _ d | .btr d _ | .bts d _ => [d]
+  -- `xchg` writes both operands; the widening multiplies write the high and low word.
+  | .xchg a b => [a, b]
+  | .mul dh dl _ | .imulWide dh dl _ => [dh, dl]
+  -- `clc`, `stc`, `testN` and `bt` write flags only.
+  | .clc | .stc | .testN _ _ _ | .bt _ _ => []
 
 open InstrTransparent (writtenRegsI)
 
@@ -997,6 +1032,87 @@ theorem PromoteRel.setReg2_ne {b : String} {off : Int} {ρ : String} {s t : JSta
     (lo hi : BitVec 64) :
     PromoteRel b off ρ ((s.setReg dl lo).setReg dh hi) ((t.setReg dl lo).setReg dh hi) :=
   ((h.setReg_ne dl hdl lo).setReg_ne dh hdh hi)
+
+/-- `writeB4W d` (`inc`/`dec`) to `d ≠ ρ` with an agreeing `B4W` preserves `PromoteRel`:
+    the data goes to `d`, `OF`/`SF`/`PF`/`ZF` are overwritten identically, and the retained
+    `CF` agrees because the pre-state flag states do. -/
+theorem PromoteRel.writeB4W_ne {b : String} {off : Int} {ρ : String} {s t : JState 64}
+    (h : PromoteRel b off ρ s t) (d : String) (hd : d ≠ ρ) (tt : B4W 64) :
+    PromoteRel b off ρ (s.writeB4W d tt) (t.writeB4W d tt) := by
+  obtain ⟨hr, hρv, hf, hm⟩ := h
+  refine ⟨fun r hrρ => ?_, ?_, ?_, ?_⟩
+  · by_cases hrd : r = d
+    · subst hrd; simp [JState.writeB4W, JState.get]
+    · simp only [JState.get, JState.writeB4W]; rw [if_neg hrd, if_neg hrd]; exact hr r hrρ
+  · simp only [JState.get, JState.writeB4W]; rw [if_neg (Ne.symm hd)]
+    simpa [JState.get] using hρv
+  · simp only [JState.writeB4W]; rw [hf]
+  · intro b' o' hc; simp only [JState.writeB4W]; exact hm b' o' hc
+
+/-- `writeCFW d` (`btr`/`bts`) to `d ≠ ρ` with an agreeing `(CF, word)` preserves
+    `PromoteRel`: the data goes to `d`, `CF` is overwritten identically, and the other four
+    flags agree because the pre-state flag states do. -/
+theorem PromoteRel.writeCFW_ne {b : String} {off : Int} {ρ : String} {s t : JState 64}
+    (h : PromoteRel b off ρ s t) (d : String) (hd : d ≠ ρ) (tt : JFlag × BitVec 64) :
+    PromoteRel b off ρ (s.writeCFW d tt) (t.writeCFW d tt) := by
+  obtain ⟨hr, hρv, hf, hm⟩ := h
+  refine ⟨fun r hrρ => ?_, ?_, ?_, ?_⟩
+  · by_cases hrd : r = d
+    · subst hrd; simp [JState.writeCFW, JState.get]
+    · simp only [JState.get, JState.writeCFW]; rw [if_neg hrd, if_neg hrd]; exact hr r hrρ
+  · simp only [JState.get, JState.writeCFW]; rw [if_neg (Ne.symm hd)]
+    simpa [JState.get] using hρv
+  · simp only [JState.writeCFW]; rw [hf]
+  · intro b' o' hc; simp only [JState.writeCFW]; exact hm b' o' hc
+
+/-- `writeB5W2 dh dl` (`mul`/`imulWide`) to `dh, dl ≠ ρ` with an agreeing `B5W2` preserves
+    `PromoteRel`: the two words go to `dh`/`dl`, the five flags are overwritten identically,
+    memory is untouched. -/
+theorem PromoteRel.writeB5W2_ne {b : String} {off : Int} {ρ : String} {s t : JState 64}
+    (h : PromoteRel b off ρ s t) (dh dl : String) (hdh : dh ≠ ρ) (hdl : dl ≠ ρ)
+    (tt : B5W2 64) :
+    PromoteRel b off ρ (s.writeB5W2 dh dl tt) (t.writeB5W2 dh dl tt) := by
+  obtain ⟨hr, hρv, _hf, hm⟩ := h
+  refine ⟨fun r hrρ => ?_, ?_, ?_, ?_⟩
+  · simp only [JState.get, JState.writeB5W2]
+    split
+    · rfl
+    · split
+      · rfl
+      · exact hr r hrρ
+  · simp only [JState.get, JState.writeB5W2]; rw [if_neg (Ne.symm hdl), if_neg (Ne.symm hdh)]
+    simpa [JState.get] using hρv
+  · simp only [JState.writeB5W2]
+  · intro b' o' hc; simp only [JState.writeB5W2]; exact hm b' o' hc
+
+/-- `writeB5N` (`testN`) writes the five flags and no register, so it preserves
+    `PromoteRel` with no freshness side condition. -/
+theorem PromoteRel.writeB5N {b : String} {off : Int} {ρ : String} {s t : JState 64}
+    {sz : Nat} (h : PromoteRel b off ρ s t) (tt : B5W sz) :
+    PromoteRel b off ρ (s.writeB5N tt) (t.writeB5N tt) := by
+  obtain ⟨hr, hρv, _hf, hm⟩ := h
+  refine ⟨fun r hrρ => ?_, ?_, ?_, ?_⟩
+  · simpa [JState.writeB5N, JState.get] using hr r hrρ
+  · simpa [JState.writeB5N, JState.get, JState.load] using hρv
+  · simp [JState.writeB5N]
+  · intro b' o' hc; simp only [JState.writeB5N]; exact hm b' o' hc
+
+/-- A flag-only update applied to the (equal) flag states preserves `PromoteRel`: the
+    `clc`/`stc`/`bt` writes. -/
+theorem PromoteRel.flagsWrite {b : String} {off : Int} {ρ : String} {s t : JState 64}
+    (h : PromoteRel b off ρ s t) (setF : RFlags → RFlags) :
+    PromoteRel b off ρ { s with flags := setF s.flags } { t with flags := setF t.flags } := by
+  obtain ⟨hr, hρv, hf, hm⟩ := h
+  refine ⟨fun r hrρ => ?_, ?_, ?_, ?_⟩
+  · simpa [JState.get] using hr r hrρ
+  · simpa [JState.get, JState.load] using hρv
+  · simp only []; rw [hf]
+  · intro b' o' hc; exact hm b' o' hc
+
+/-- Reading any condition agrees across `PromoteRel` (flags are equal). -/
+theorem PromoteRel.condB {b : String} {off : Int} {ρ : String} {s t : JState 64}
+    (h : PromoteRel b off ρ s t) (c : Condt) : s.condB c = t.condB c := by
+  simp only [JState.condB, JState.flagB, h.2.2.1]
 
 /-- A store to a cell `(b', o') ≠ (b, off)` with an agreeing value preserves `PromoteRel`. -/
 theorem PromoteRel.store_ne {b : String} {off : Int} {ρ : String} {s t : JState 64}
@@ -1307,6 +1423,63 @@ theorem PromoteRel.step_transparent {b : String} {off : Int} {ρ : String} {s t 
   -- `loadSym` re-aliases a memory bank, so it carries `readsDynamic = true` and is
   -- likewise excluded by the `InstrTransparent` conjunct `hdyn`.
   | loadSym d sym => simp [readsDynamic] at hdyn
+  | inc d | dec d =>
+    have hd : d ≠ ρ := fun hc => hwρ (by simp [InstrTransparent.writtenRegsI, hc])
+    simp only [evalInstr]; rw [h.get hd]; exact h.writeB4W_ne d hd _
+  | clc | stc => exact h.flagsWrite (fun fl => { fl with cf := _ })
+  | xchg a c =>
+    have haρ : a ≠ ρ := by intro hc; subst hc; exact hrρ (by simp [readRegs])
+    have hcρ : c ≠ ρ := by intro hc; subst hc; exact hrρ (by simp [readRegs])
+    simp only [evalInstr, x86_XCHG]; rw [h.get haρ, h.get hcρ]
+    exact h.setReg2_ne a c haρ hcρ _ _
+  | imulri d src imm =>
+    have hd : d ≠ ρ := fun hc => hwρ (by simp [InstrTransparent.writtenRegsI, hc])
+    have hvρ : src ≠ ρ := by intro hc; subst hc; exact hrρ (by simp [readRegs])
+    simp only [evalInstr]; rw [h.get hvρ]; exact h.writeB5W_ne d hd _
+  | mul dh dl src | imulWide dh dl src =>
+    have hdh : dh ≠ ρ := fun hc => hwρ (by simp [InstrTransparent.writtenRegsI, hc])
+    have hdl : dl ≠ ρ := fun hc => hwρ (by simp [InstrTransparent.writtenRegsI, hc])
+    have hvρ : src ≠ ρ := by intro hc; subst hc; exact hrρ (by simp [readRegs])
+    simp only [evalInstr]; rw [h.get hdl, h.get hvρ]; exact h.writeB5W2_ne dh dl hdh hdl _
+  | shld d src amt | shrd d src amt =>
+    have hd : d ≠ ρ := fun hc => hwρ (by simp [InstrTransparent.writtenRegsI, hc])
+    have hvρ : src ≠ ρ := by intro hc; subst hc; exact hrρ (by simp [readRegs])
+    have hsrcρ : ρ ∉ srcNames amt := by
+      simp only [readRegs, List.mem_cons, not_or] at hrρ; exact hrρ.2.2
+    simp only [evalInstr]; rw [h.reg_read amt hsrcρ, h.get hd, h.get hvρ]
+    exact h.writeB5W_ne d hd _
+  | rcl d amt | rcr d amt =>
+    have hd : d ≠ ρ := fun hc => hwρ (by simp [InstrTransparent.writtenRegsI, hc])
+    have hsrcρ : ρ ∉ srcNames amt := by
+      simp only [readRegs, List.mem_cons, not_or] at hrρ; exact hrρ.2
+    simp only [evalInstr]; rw [h.reg_read amt hsrcρ, h.get hd, h.flagB (·.cf)]
+    exact h.writeB2W_ne d hd _
+  | cmovcc c d src =>
+    have hd : d ≠ ρ := fun hc => hwρ (by simp [InstrTransparent.writtenRegsI, hc])
+    have hsrcρ : ρ ∉ srcNames src := by
+      simp only [readRegs, List.mem_cons, not_or] at hrρ; exact hrρ.2
+    simp only [evalInstr]; rw [h.reg_read src hsrcρ, h.get hd, h.condB c]
+    exact h.setReg_ne d hd _
+  | setcc c d =>
+    have hd : d ≠ ρ := fun hc => hwρ (by simp [InstrTransparent.writtenRegsI, hc])
+    simp only [evalInstr, JState.setRegMerge]; rw [h.get hd, h.condB c]
+    exact h.setReg_ne d hd _
+  | testN sz a src =>
+    have haρ : a ≠ ρ := by intro hc; subst hc; exact hrρ (by simp [readRegs])
+    have hsrcρ : ρ ∉ srcNames src := by
+      simp only [readRegs, List.mem_cons, not_or] at hrρ; exact hrρ.2
+    simp only [evalInstr]; rw [h.reg_read src hsrcρ, h.get haρ]; exact h.writeB5N _
+  | bt a src =>
+    have haρ : a ≠ ρ := by intro hc; subst hc; exact hrρ (by simp [readRegs])
+    have hsrcρ : ρ ∉ srcNames src := by
+      simp only [readRegs, List.mem_cons, not_or] at hrρ; exact hrρ.2
+    simp only [evalInstr]; rw [h.reg_read src hsrcρ, h.get haρ]
+    exact h.flagsWrite (fun fl => { fl with cf := _ })
+  | btr d src | bts d src =>
+    have hd : d ≠ ρ := fun hc => hwρ (by simp [InstrTransparent.writtenRegsI, hc])
+    have hsrcρ : ρ ∉ srcNames src := by
+      simp only [readRegs, List.mem_cons, not_or] at hrρ; exact hrρ.2
+    simp only [evalInstr]; rw [h.reg_read src hsrcρ, h.get hd]; exact h.writeCFW_ne d hd _
 
 /-! ### Per-instruction classification of a promotable cell's instructions
 

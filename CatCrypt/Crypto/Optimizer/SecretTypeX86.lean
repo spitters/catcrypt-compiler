@@ -148,6 +148,21 @@ def instrTaint (R : RegTaint) (C : CellTaint) : JInstr 64 → SecretLevel
   -- `leaq sym(%rip), %dst`: `sym` is a public `.rodata` label, so the loaded
   -- table-base address is a PUBLIC constant (like `loadImm`), never secret.
   | .loadSym _ _            => .pub
+  | .inc dst | .dec dst     => R dst
+  -- `clc`/`stc` write a constant flag and read nothing.
+  | .clc | .stc             => .pub
+  -- `xchg` writes both operands; `stepRegTaint` binds both to the join.
+  | .xchg a b               => R a ⊔ₛ R b
+  | .imulri _ src _         => R src
+  | .mul _ lo src | .imulWide _ lo src => R lo ⊔ₛ R src
+  | .shld dst src amt | .shrd dst src amt => R dst ⊔ₛ R src ⊔ₛ operandTaint R amt
+  | .testN _ a b | .bt a b  => R a ⊔ₛ operandTaint R b
+  | .btr dst b | .bts dst b => R dst ⊔ₛ operandTaint R b
+  -- `rcl`/`rcr` read `CF`, and `cmovcc`/`setcc` read the flags of their condition.
+  -- The environments record no flag taint, so the flag input is joined as `.sec`.
+  | .rcl dst amt | .rcr dst amt => R dst ⊔ₛ operandTaint R amt ⊔ₛ .sec
+  | .cmovcc _ dst src       => R dst ⊔ₛ operandTaint R src ⊔ₛ .sec
+  | .setcc _ dst            => R dst ⊔ₛ .sec
 
 /-- Threading an instruction through the register-taint env: bind every register
 it writes (`writtenRegs`) to the instruction's output taint. -/
@@ -429,6 +444,10 @@ theorem forwardStep_taint_sound {h : Held} {C : CellTaint} {R : RegTaint}
   | adox d s' => exact ⟨rfl, hv.killWrittenStep (JInstr.adox d s') (by intro b o v hc; nomatch hc)⟩
   | loadMemIdx d base idx scale =>
       exact ⟨rfl, hv.killWrittenStep (JInstr.loadMemIdx d base idx scale) (by intro b o v hc; nomatch hc)⟩
+  | inc _ | dec _ | clc | stc | xchg _ _ | imulri _ _ _ | mul _ _ _ | imulWide _ _ _
+  | shld _ _ _ | shrd _ _ _ | rcl _ _ | rcr _ _ | cmovcc _ _ _ | setcc _ _
+  | testN _ _ _ | bt _ _ | btr _ _ | bts _ _ =>
+      exact ⟨rfl, hv.killWrittenStep _ (by intro b o v hc; nomatch hc)⟩
 
 /-! ### The rewritten step threads the taint envs identically
 

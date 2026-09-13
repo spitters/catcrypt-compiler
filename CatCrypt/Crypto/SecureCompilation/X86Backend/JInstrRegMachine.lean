@@ -131,6 +131,33 @@ def writesJ (s : JState 64) : JInstr 64 → List (String × BitVec 64)
   | .loadMemIdx dst base idx scale => [(dst, x86_MOV (s.loadIdx base idx scale))]
   | .storeMemIdx _ _ _ _   => []
   | .loadSym dst _sym      => [(dst, BitVec.ofNat 64 1)]
+  | .inc dst => [(dst, (x86_INC (s.get dst)).word)]
+  | .dec dst => [(dst, (x86_DEC (s.get dst)).word)]
+  -- `clc`, `stc`, `testN` and `bt` write flags only.
+  | .clc => []
+  | .stc => []
+  -- `xchg` writes operand `a` first, then operand `b`.
+  | .xchg a b => [(a, s.get b), (b, s.get a)]
+  | .imulri dst src imm => [(dst, (x86_IMULt (s.get src) (BitVec.ofNat 64 imm)).word)]
+  -- the widening multiplies write the high word, then the low word, so the low word
+  -- remains when the two destinations coincide (`JState.writeB5W2`).
+  | .mul dh dl src =>
+      let t := x86_MUL (s.get dl) (s.get src)
+      [(dh, t.hi), (dl, t.lo)]
+  | .imulWide dh dl src =>
+      let t := x86_IMUL (s.get dl) (s.get src)
+      [(dh, t.hi), (dl, t.lo)]
+  | .shld dst src amt => [(dst, (x86_SHLD (s.get dst) (s.get src) (amt.eval s)).word)]
+  | .shrd dst src amt => [(dst, (x86_SHRD (s.get dst) (s.get src) (amt.eval s)).word)]
+  | .rcl dst amt => [(dst, (x86_RCL (s.get dst) (amt.eval s) (s.flagB (·.cf))).word)]
+  | .rcr dst amt => [(dst, (x86_RCR (s.get dst) (amt.eval s) (s.flagB (·.cf))).word)]
+  | .cmovcc c dst src => [(dst, x86_CMOVcc (s.condB c) (src.eval s) (s.get dst))]
+  -- `setcc` merges the byte into `dst`, keeping bits 8 and above.
+  | .setcc c dst => [(dst, wordExtendMerge (s.get dst) (x86_SETcc (s.condB c)))]
+  | .testN _ _ _ => []
+  | .bt _ _ => []
+  | .btr dst b => [(dst, (x86_BTR (s.get dst) (b.eval s)).2)]
+  | .bts dst b => [(dst, (x86_BTS (s.get dst) (b.eval s)).2)]
 
 /-- The written register names of one `JInstr`, **in the order `writesJ` applies them**.
     Identical to `SpillingRegAlloc.writtenNames` for every constructor except the two
@@ -173,7 +200,8 @@ theorem evalInst_eq_setJ (s : JState 64) (i : JInstr 64) (r : String) :
   cases i <;>
     simp [runBlock, evalInstr, writesJ, JState.get, JState.setReg, JState.writeB5,
       JState.writeB5W, JState.writeB2W, JState.store, JState.storeIdx, JState.load,
-      JState.loadIdx]
+      JState.loadIdx, JState.writeB4W, JState.writeB5W2, JState.writeB5N,
+      JState.writeCFW, JState.setRegMerge, x86_XCHG]
 
 /-! ## 3. The renaming agreement: `writesJ` commutes with `ρ` under read-agreement
 
@@ -391,6 +419,53 @@ theorem writesJ_rename (ρ : String → String) (s t : JState 64) (i : JInstr 64
     have hidx : t.get (ρ idx) = s.get idx :=
       h idx (List.mem_cons_of_mem _ (List.mem_cons_self ..))
     simp only [writesJ, renameInstr, hbase, hidx, List.map_cons, List.map_nil]
+  | inc d | dec d =>
+    have hd : t.get (ρ d) = s.get d := h d (List.mem_cons_self ..)
+    simp only [writesJ, renameInstr, hd, List.map_cons, List.map_nil]
+  | clc | stc | testN _ _ _ | bt _ _ => simp only [writesJ, renameInstr, List.map_nil]
+  | xchg a b =>
+    have ha : t.get (ρ a) = s.get a := h a (List.mem_cons_self ..)
+    have hb : t.get (ρ b) = s.get b := h b (List.mem_cons_of_mem _ (List.mem_cons_self ..))
+    simp only [writesJ, renameInstr, ha, hb, List.map_cons, List.map_nil]
+  | imulri d src imm =>
+    have hsrc : t.get (ρ src) = s.get src := h src (List.mem_cons_self ..)
+    simp only [writesJ, renameInstr, hsrc, List.map_cons, List.map_nil]
+  | mul dh dl src | imulWide dh dl src =>
+    have hl : t.get (ρ dl) = s.get dl := h dl (List.mem_cons_self ..)
+    have hsrc : t.get (ρ src) = s.get src :=
+      h src (List.mem_cons_of_mem _ (List.mem_cons_self ..))
+    simp only [writesJ, renameInstr, hl, hsrc, List.map_cons, List.map_nil]
+  | shld d src amt | shrd d src amt =>
+    have hd : t.get (ρ d) = s.get d := h d (List.mem_cons_self ..)
+    have hsrc : t.get (ρ src) = s.get src :=
+      h src (List.mem_cons_of_mem _ (List.mem_cons_self ..))
+    have hs : ∀ x ∈ srcNames amt, t.get (ρ x) = s.get x := fun x hx =>
+      h x (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ hx))
+    simp only [writesJ, renameInstr, renameOperand_eval_rename amt hs, hd, hsrc,
+      List.map_cons, List.map_nil]
+  -- `rcl`/`rcr`, `cmovcc` and `setcc` read flags, carried by `hflag`.
+  | rcl d amt | rcr d amt =>
+    have hd : t.get (ρ d) = s.get d := h d (List.mem_cons_self ..)
+    have hs : ∀ x ∈ srcNames amt, t.get (ρ x) = s.get x := fun x hx =>
+      h x (List.mem_cons_of_mem _ hx)
+    simp only [writesJ, renameInstr, renameOperand_eval_rename amt hs, hd, JState.flagB,
+      hflag, List.map_cons, List.map_nil]
+  | cmovcc c d src =>
+    have hd : t.get (ρ d) = s.get d := h d (List.mem_cons_self ..)
+    have hs : ∀ x ∈ srcNames src, t.get (ρ x) = s.get x := fun x hx =>
+      h x (List.mem_cons_of_mem _ hx)
+    simp only [writesJ, renameInstr, renameOperand_eval_rename src hs, hd, JState.condB,
+      JState.flagB, hflag, List.map_cons, List.map_nil]
+  | setcc c d =>
+    have hd : t.get (ρ d) = s.get d := h d (List.mem_cons_self ..)
+    simp only [writesJ, renameInstr, hd, JState.condB, JState.flagB, hflag, List.map_cons,
+      List.map_nil]
+  | btr d b | bts d b =>
+    have hd : t.get (ρ d) = s.get d := h d (List.mem_cons_self ..)
+    have hs : ∀ x ∈ srcNames b, t.get (ρ x) = s.get x := fun x hx =>
+      h x (List.mem_cons_of_mem _ hx)
+    simp only [writesJ, renameInstr, renameOperand_eval_rename b hs, hd, List.map_cons,
+      List.map_nil]
 
 /-! ## 4. The `MachineModel` instance and the `RegMachine` near-miss
 

@@ -62,7 +62,7 @@ register `n` of the original). This is precisely soundness of register
 allocation; there is no stronger all-states-literally-equal claim to make for a
 rename (and claiming one would be false).
 
-## Headroom (the honest part)
+## Headroom
 
 fe25519/s2n-class kernels have **zero** GP headroom (the #386 analysis null:
 `gpFreeSlots` is fully consumed and s2n itself reuses `%rax`). This pass therefore
@@ -150,6 +150,25 @@ def renameInstr (ρ : String → String) : JInstr 64 → JInstr 64
   -- is unchanged; renaming it here is what makes the simulation hold for an
   -- arbitrary injective `ρ`.
   | .loadSym d sym => .loadSym (ρ d) (ρ sym)
+  | .inc d     => .inc (ρ d)
+  | .dec d     => .dec (ρ d)
+  | .clc       => .clc
+  | .stc       => .stc
+  | .xchg a b  => .xchg (ρ a) (ρ b)
+  | .imulri d src imm => .imulri (ρ d) (ρ src) imm
+  | .mul dh dl src => .mul (ρ dh) (ρ dl) (ρ src)
+  | .imulWide dh dl src => .imulWide (ρ dh) (ρ dl) (ρ src)
+  | .shld d src amt => .shld (ρ d) (ρ src) (renameOperand ρ amt)
+  | .shrd d src amt => .shrd (ρ d) (ρ src) (renameOperand ρ amt)
+  | .rcl d amt => .rcl (ρ d) (renameOperand ρ amt)
+  | .rcr d amt => .rcr (ρ d) (renameOperand ρ amt)
+  -- the condition and the `testN` operand size are not names and are carried through.
+  | .cmovcc c d s => .cmovcc c (ρ d) (renameOperand ρ s)
+  | .setcc c d => .setcc c (ρ d)
+  | .testN sz a b => .testN sz (ρ a) (renameOperand ρ b)
+  | .bt a b    => .bt (ρ a) (renameOperand ρ b)
+  | .btr d b   => .btr (ρ d) (renameOperand ρ b)
+  | .bts d b   => .bts (ρ d) (renameOperand ρ b)
 
 /-- Apply a register renaming to a whole block. -/
 def renameBlock (ρ : String → String) (block : List (JInstr 64)) : List (JInstr 64) :=
@@ -290,6 +309,62 @@ theorem adcWrite_rel {ρ : String → String} (hρ : Function.Injective ρ)
   · simp [h.flags]
   · intro b o; exact h.mem b o
 
+/-- A `writeB4W` (data word + `OF`/`SF`/`PF`/`ZF`, `CF` kept) commutes through `ρ`. -/
+theorem writeB4W_rel {ρ : String → String} (hρ : Function.Injective ρ)
+    {sL sR : JState 64} (h : StateRel ρ sL sR) (d : String) (t : B4W 64) :
+    StateRel ρ (sL.writeB4W (ρ d) t) (sR.writeB4W d t) := by
+  refine ⟨?_, ?_, ?_⟩
+  · simpa [JState.writeB4W] using setReg_regs_rel hρ h.regs d t.word
+  · simp [JState.writeB4W, h.flags]
+  · intro b o; simpa [JState.writeB4W] using h.mem b o
+
+/-- A `writeCFW` (data word + `CF`, the other four flags kept) commutes through `ρ`. -/
+theorem writeCFW_rel {ρ : String → String} (hρ : Function.Injective ρ)
+    {sL sR : JState 64} (h : StateRel ρ sL sR) (d : String) (t : JFlag × BitVec 64) :
+    StateRel ρ (sL.writeCFW (ρ d) t) (sR.writeCFW d t) := by
+  refine ⟨?_, ?_, ?_⟩
+  · simpa [JState.writeCFW] using setReg_regs_rel hρ h.regs d t.2
+  · simp [JState.writeCFW, h.flags]
+  · intro b o; simpa [JState.writeCFW] using h.mem b o
+
+/-- A `writeB5N` (five flags of an operand-size op, no register) commutes through
+    `ρ` without injectivity. -/
+theorem writeB5N_rel {ρ : String → String} {sL sR : JState 64} {sz : Nat}
+    (h : StateRel ρ sL sR) (t : B5W sz) :
+    StateRel ρ (sL.writeB5N t) (sR.writeB5N t) := by
+  refine ⟨?_, ?_, ?_⟩
+  · intro n; simpa [JState.writeB5N] using h.regs n
+  · simp [JState.writeB5N]
+  · intro b o; simpa [JState.writeB5N] using h.mem b o
+
+/-- A flag-only update applied to the (equal) flag states commutes through `ρ`
+    without injectivity: the `CLC`/`STC`/`BT` writes. -/
+theorem flagsWrite_rel {ρ : String → String} {sL sR : JState 64}
+    (h : StateRel ρ sL sR) (setF : RFlags → RFlags) :
+    StateRel ρ { sL with flags := setF sL.flags } { sR with flags := setF sR.flags } := by
+  refine ⟨?_, ?_, ?_⟩
+  · exact h.regs
+  · simp [h.flags]
+  · intro b o; exact h.mem b o
+
+/-- A `writeB5W2` (five flags, high word to `dh`, low word to `dl`) commutes through
+    `ρ`; when the two destinations coincide both sides keep the low word. -/
+theorem writeB5W2_rel {ρ : String → String} (hρ : Function.Injective ρ)
+    {sL sR : JState 64} (h : StateRel ρ sL sR) (dh dl : String) (t : B5W2 64) :
+    StateRel ρ (sL.writeB5W2 (ρ dh) (ρ dl) t) (sR.writeB5W2 dh dl t) := by
+  refine ⟨?_, ?_, ?_⟩
+  · intro n
+    simp only [JState.writeB5W2]
+    by_cases hl : n = dl
+    · subst hl; simp
+    · have hl' : ρ n ≠ ρ dl := fun he => hl (hρ he)
+      by_cases hh : n = dh
+      · subst hh; simp [hl, hl']
+      · have hh' : ρ n ≠ ρ dh := fun he => hh (hρ he)
+        simp [hl, hl', hh, hh', h.regs n]
+  · simp [JState.writeB5W2]
+  · intro b o; simpa [JState.writeB5W2] using h.mem b o
+
 /-- A memory store at `(ρ base, off)` vs `(base, off)` commutes through `ρ` when
     the stored values agree: register files and flags are untouched; the new
     memory stays `ρ`-related because `ρ b = ρ base ↔ b = base` (injectivity). -/
@@ -328,6 +403,8 @@ theorem evalInstr_renameInstr_rel {ρ : String → String} (hρ : Function.Injec
     fun s => renameOperand_eval h s
   have hcf : sL.flagB (·.cf) = sR.flagB (·.cf) := by simp [JState.flagB, h.flags]
   have hof : sL.flagB (·.of) = sR.flagB (·.of) := by simp [JState.flagB, h.flags]
+  have hcond : ∀ c, sL.condB c = sR.condB c := fun c => by
+    simp only [JState.condB, JState.flagB, h.flags]
   cases i with
   | mov d s =>
     simp only [renameInstr, evalInstr, hop]; exact setReg_rel hρ h d _
@@ -450,6 +527,44 @@ theorem evalInstr_renameInstr_rel {ρ : String → String} (hρ : Function.Injec
         subst hbd; simp [h.mem sym o]
       · have hne : ρ b ≠ ρ d := fun he => hbd (hρ he)
         simp [hne, hbd, h.mem b o]
+  | inc d =>
+    simp only [renameInstr, evalInstr, hget]; exact writeB4W_rel hρ h d _
+  | dec d =>
+    simp only [renameInstr, evalInstr, hget]; exact writeB4W_rel hρ h d _
+  | clc =>
+    simp only [renameInstr, evalInstr]; exact flagsWrite_rel h (fun fl => { fl with cf := _ })
+  | stc =>
+    simp only [renameInstr, evalInstr]; exact flagsWrite_rel h (fun fl => { fl with cf := _ })
+  | xchg a b =>
+    simp only [renameInstr, evalInstr, x86_XCHG, hget]; exact setReg2_rel hρ h a b _ _
+  | imulri d src imm =>
+    simp only [renameInstr, evalInstr, hget]; exact writeB5W_rel hρ h d _
+  | mul dh dl src =>
+    simp only [renameInstr, evalInstr, hget]; exact writeB5W2_rel hρ h dh dl _
+  | imulWide dh dl src =>
+    simp only [renameInstr, evalInstr, hget]; exact writeB5W2_rel hρ h dh dl _
+  | shld d src amt =>
+    simp only [renameInstr, evalInstr, hop, hget]; exact writeB5W_rel hρ h d _
+  | shrd d src amt =>
+    simp only [renameInstr, evalInstr, hop, hget]; exact writeB5W_rel hρ h d _
+  | rcl d amt =>
+    simp only [renameInstr, evalInstr, hop, hget, hcf]; exact writeB2W_rel hρ h d _
+  | rcr d amt =>
+    simp only [renameInstr, evalInstr, hop, hget, hcf]; exact writeB2W_rel hρ h d _
+  | cmovcc c d s =>
+    simp only [renameInstr, evalInstr, hop, hget, hcond c]; exact setReg_rel hρ h d _
+  | setcc c d =>
+    simp only [renameInstr, evalInstr, JState.setRegMerge, hget, hcond c]
+    exact setReg_rel hρ h d _
+  | testN sz a b =>
+    simp only [renameInstr, evalInstr, hop, hget]; exact writeB5N_rel h _
+  | bt a b =>
+    simp only [renameInstr, evalInstr, hop, hget]
+    exact flagsWrite_rel h (fun fl => { fl with cf := _ })
+  | btr d b =>
+    simp only [renameInstr, evalInstr, hop, hget]; exact writeCFW_rel hρ h d _
+  | bts d b =>
+    simp only [renameInstr, evalInstr, hop, hget]; exact writeCFW_rel hρ h d _
 
 /-! ## 5. The whole-block translation validation (the contribution)
 
@@ -495,7 +610,7 @@ theorem stateRel_renameState {ρ σ : String → String}
     StateRel ρ (renameState σ s) s := by
   refine ⟨?_, rfl, ?_⟩
   · intro n; simp [renameState, hσ n]
-  · intro b o; simp [renameState, MemRel, hσ b]
+  · intro b o; simp [renameState, hσ b]
 
 /-- **Regalloc TV (machine-state level).** For an injective renaming `ρ` with left
     inverse `σ`, running the renamed block from the `σ`-renamed initial state lands
@@ -673,5 +788,4 @@ theorem addStep_headroom :
     is acceptable. -/
 theorem addStep_no_overflow :
     allocOverflow ptrPinned ((List.range 16).flatMap addStep) = none := by native_decide
-
 end CatCrypt.Crypto.Optimizer.RandomizedRegAlloc

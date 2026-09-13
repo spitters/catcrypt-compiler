@@ -33,9 +33,12 @@ writes are disjoint:
 - `loadMem`/`storeMem`/`mulxMem`/`loadSym`/`loadMemIdx`/`storeMemIdx`: excluded (touch memory).
 - `add`/`sub`/`adc`/`sbb`/`imul`/`neg`/`and`/`or`/`xor`/`shl`/`shr`/`sar`/`test`/`cmp`/
   `andn`: excluded (write all 5 flags).
-- `rol`/`ror`: excluded (write `OF`/`CF`, preserve `SF`/`PF`/`ZF`).
-- `setc`/`cmov*`/`not_`/`rorx`/`shlx`/`shrx`/`sarx`/`movzx`/`movsx`/`lea`: excluded
-  (not in commClass).
+- `imulri`/`mul`/`imulWide`/`shld`/`shrd`/`testN`: excluded (write all 5 flags).
+- `rol`/`ror`/`rcl`/`rcr`: excluded (write `OF`/`CF`, preserve `SF`/`PF`/`ZF`).
+- `inc`/`dec`: excluded (write `OF`/`SF`/`PF`/`ZF`, preserve `CF`).
+- `clc`/`stc`/`bt`/`btr`/`bts`: excluded (write `CF`).
+- `setc`/`cmov*`/`cmovcc`/`setcc`/`xchg`/`not_`/`rorx`/`shlx`/`shrx`/`sarx`/`movzx`/
+  `movsx`/`lea`: excluded (not in commClass).
 
 Every mixed-flag pair (`mov`/`mulx` × `adcx`/`adox`, and the `adcx × adox`
 dual-carry case) is discharged by a standalone abstract-output lemma:
@@ -87,12 +90,40 @@ def flagWrites : JInstr 64 → List FlagId
   | .storeMemIdx _ _ _ _ | .loadSym _ _
   | .not_ _ | .rorx _ _ _ | .shlx _ _ _ | .shrx _ _ _ | .sarx _ _ _
   | .movzx _ _ _ | .movsx _ _ _ | .lea _ _ _ _ _ => []
+  -- `inc`/`dec` write `OF`/`SF`/`PF`/`ZF` and preserve `CF` (`JState.writeB4W`).
+  | .inc _ | .dec _ => [.PF, .ZF, .SF, .OF]
+  -- `clc`/`stc`/`bt` write `CF` alone; `btr`/`bts` write `CF` and a register
+  -- (`JState.writeCFW`).
+  | .clc | .stc | .bt _ _ | .btr _ _ | .bts _ _ => [.CF]
+  | .imulri _ _ _ | .mul _ _ _ | .imulWide _ _ _ | .shld _ _ _ | .shrd _ _ _
+  | .testN _ _ _ => [.CF, .PF, .ZF, .SF, .OF]
+  -- The rotates through carry write `OF`/`CF` and preserve `SF`/`PF`/`ZF`.
+  | .rcl _ _ | .rcr _ _ => [.CF, .OF]
+  | .xchg _ _ | .cmovcc _ _ _ | .setcc _ _ => []
+
+/-- The flags a condition code reads, in the order `x86_eval_cond` reads them. -/
+def condFlagReads : Condt → List FlagId
+  | .o | .no => [.OF]
+  | .b | .nb => [.CF]
+  | .e | .ne => [.ZF]
+  | .s | .ns => [.SF]
+  | .p | .np => [.PF]
+  | .be | .nbe => [.CF, .ZF]
+  | .l | .nl => [.SF, .OF]
+  | .le | .nle => [.ZF, .SF, .OF]
 
 /-- The flags an instruction **reads**. -/
 def flagReads : JInstr 64 → List FlagId
   | .adc _ _  | .sbb _ _ | .adcx _ _ | .setc _  | .cmovb _ _ => [.CF]
   | .adox _ _ => [.OF]
   | .cmove _ _ | .cmovne _ _ => [.ZF]
+  -- the rotates through carry read `CF`.
+  | .rcl _ _ | .rcr _ _ => [.CF]
+  -- the general conditional instructions read the flags of their condition.
+  | .cmovcc c _ _ | .setcc c _ => condFlagReads c
+  | .inc _ | .dec _ | .clc | .stc | .xchg _ _ | .imulri _ _ _ | .mul _ _ _
+  | .imulWide _ _ _ | .shld _ _ _ | .shrd _ _ _ | .testN _ _ _ | .bt _ _ | .btr _ _
+  | .bts _ _ => []
   | _ => []
 
 /-- Whether an instruction reads or writes memory (conservative). `lea` computes an
@@ -139,7 +170,7 @@ theorem JState.ext {w : Nat} {s t : JState w}
 /-- `evalInstr` on a flag-free instruction preserves flags. -/
 theorem evalInstr_flagsEq (s : JState 64) (i : JInstr 64)
     (h : (flagWrites i).isEmpty = true) : (evalInstr s i).flags = s.flags := by
-  cases i <;> simp_all [flagWrites, evalInstr, JState.setReg]
+  cases i <;> simp_all [flagWrites, evalInstr, JState.setReg, JState.setRegMerge, x86_XCHG]
 
 /-- `evalInstr` on a `touchesMem = false` instruction preserves mem
     (no flag-free assumption needed: `adcx`/`adox` set `mem := s.mem` explicitly). -/
@@ -148,7 +179,8 @@ theorem evalInstr_memEq (s : JState 64) (i : JInstr 64)
     (evalInstr s i).mem = s.mem := by
   cases i <;>
     simp_all [touchesMem, evalInstr, JState.setReg, JState.writeB5, JState.writeB5W,
-      JState.writeB2W]
+      JState.writeB2W, JState.writeB4W, JState.writeB5W2, JState.writeB5N, JState.writeCFW,
+      JState.setRegMerge, x86_XCHG]
 
 /-- Operand eval is unchanged by `setReg r _` when `r ∉ srcNames src`. -/
 theorem eval_setReg_notMem (s : JState 64) (src : JOperand)
@@ -720,7 +752,7 @@ theorem evalInstr_comm (s : JState 64) (i1 i2 : JInstr 64)
         (Bool.eq_false_iff.mp hne_dst1_src2 ∘ List.contains_iff_mem.mpr)
         (Bool.eq_false_iff.mp hne_dst2_src1 ∘ List.contains_iff_mem.mpr)).symm
     | _ => simp_all [commClass, flagWrites, flagReads]
-  | _ => simp_all [commClass]
+  | _ => simp [commClass] at hcc1
 
 /-! ## 6. Adjacent-swap block equivalence -/
 

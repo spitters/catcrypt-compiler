@@ -47,12 +47,15 @@ repository states it. Paths are relative to the root of this package.
   Apache-2.0) and is distributed in the fiat-crypto repository.
 - Copied material: the CryptOpt Curve25519 `carry_mul` assembly
   `fiat-amd64/fiat_curve25519_carry_mul/seed1667947554054692_ratio13465.asm`
+  and `solinas_square` assembly
+  `fiat-amd64/fiat_curve25519_solinas_square/seed0000000157692275_ratio13608.asm`
   (fiat-crypto commit `8501773e604897ed3a482d89f9096cc49b73b690`), unmodified.
-  It is the input read by `CatCrypt/Crypto/SecureCompilation/X86Backend/NasmParseKat.lean`.
+  They are the inputs read by `CatCrypt/Crypto/SecureCompilation/X86Backend/NasmParseKat.lean`.
 - Files:
   - `CatCrypt/Crypto/Jasmin/EdwardsCurve.lean`
   - `CatCrypt/Crypto/Jasmin/Examples/Curve25519CryptoptPort.lean`
   - `bench/cryptopt/fiat_curve25519_carry_mul.asm`
+  - `bench/cryptopt/fiat_curve25519_solinas_square.asm`
 
 ### Jasmin
 

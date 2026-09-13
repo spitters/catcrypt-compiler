@@ -751,6 +751,14 @@ def encodeJInstr (alloc : GpAlloc) : JInstr 64 → List (BitVec 8)
   -- it. Emit NO bytes (an explicit, detectable gap in a byte-diff KAT) rather than
   -- a silently-wrong fixed-disp encoding.
   | .loadSym _ _ => []  -- unsupported: needs a relocation; use the text path
+  -- Not yet encoded: `INC`, `DEC`, `CLC`, `STC`, `XCHG`, `IMUL $imm, %src, %dst`, the
+  -- one-operand `MUL`/`IMUL`, `SHLD`/`SHRD`, `RCL`/`RCR`, the general `CMOVcc`/`SETcc`,
+  -- the sized `TEST` and `BT`/`BTR`/`BTS`. They emit no bytes and `encodableJInstr`
+  -- refuses them, so `encodeJInstr?` returns `none`; the text `AsmPrinter` path
+  -- renders them.
+  | .inc _ | .dec _ | .clc | .stc | .xchg _ _ | .imulri _ _ _ | .mul _ _ _
+  | .imulWide _ _ _ | .shld _ _ _ | .shrd _ _ _ | .rcl _ _ | .rcr _ _
+  | .cmovcc _ _ _ | .setcc _ _ | .testN _ _ _ | .bt _ _ | .btr _ _ | .bts _ _ => []
 
 /-- Encode a whole block: concatenate the byte encodings of its instructions. The
     contiguous machine-code stream a `.text` section / loader consumes. -/
@@ -915,7 +923,8 @@ theorem encAdxCarry_length (pfx d s : Nat) : (encAdxCarry pfx d s).length = 6 :=
 
 `encodeJInstr` is total: where x86-64 has no encoding for an operand shape it
 emits bytes anyway, and those bytes denote something other than the instruction.
-Two shapes are affected, both described in the docstrings above.
+Two shapes are affected, both described in the docstrings above; a third class,
+the instructions not yet encoded, emits no bytes at all.
 
 * The group-1 ALU forms `ADD/OR/ADC/SBB/AND/SUB/XOR/CMP $imm`. Their
   `81 /digit id` field is a signed 32-bit immediate that the CPU sign-extends to
@@ -924,6 +933,9 @@ Two shapes are affected, both described in the docstrings above.
   `v ≥ 2^32` additionally loses its high bits to `imm32LE`'s truncation.
 * `CMOVcc`, `ADCX`, `ADOX` and `MULX`, which take no immediate operand at all
   and whose `.imm` arms fall back to register `0` (`%rax`).
+* `INC`, `DEC`, `CLC`, `STC`, `XCHG`, `IMULri`, `MUL`, the one-operand `IMUL`,
+  `SHLD`, `SHRD`, `RCL`, `RCR`, the general `CMOVcc`/`SETcc`, the sized `TEST` and
+  `BT`/`BTR`/`BTS`, which are not yet encoded and whose arms return no bytes.
 
 `encodableJInstr` decides membership of the faithful fragment and
 `encodeJInstr?` refuses outside it, so an emitter reaching an unencodable
@@ -936,13 +948,21 @@ cannot make — so refusal is the correct behaviour here. -/
     field that `81 /digit id` carries and the CPU sign-extends? -/
 def fitsImm32S (v : Nat) : Bool := v < 2 ^ 31 || 2 ^ 64 - 2 ^ 31 ≤ v
 
-/-- The immediate operand shapes `encodeJInstr` encodes faithfully. -/
+/-- The instruction and immediate operand shapes `encodeJInstr` encodes faithfully.
+    The instructions `INC`, `DEC`, `CLC`, `STC`, `XCHG`, `IMULri`, `MUL`, the
+    one-operand `IMUL`, `SHLD`, `SHRD`, `RCL`, `RCR`, `CMOVcc`/`SETcc` at a general
+    condition, the sized `TEST` and `BT`/`BTR`/`BTS` are not yet encoded and are
+    outside the fragment. -/
 def encodableJInstr : JInstr 64 → Bool
   | .add _ (.imm v) | .sub _ (.imm v) | .adc _ (.imm v) | .sbb _ (.imm v)
   | .and_ _ (.imm v) | .or_ _ (.imm v) | .xor_ _ (.imm v) | .cmp _ (.imm v) =>
       fitsImm32S v
   | .cmove _ (.imm _) | .adcx _ (.imm _) | .adox _ (.imm _) => false
   | .mulx _ _ (.imm _) _ | .mulx _ _ _ (.imm _) => false
+  -- the instructions `encodeJInstr` does not yet encode.
+  | .inc _ | .dec _ | .clc | .stc | .xchg _ _ | .imulri _ _ _ | .mul _ _ _
+  | .imulWide _ _ _ | .shld _ _ _ | .shrd _ _ _ | .rcl _ _ | .rcr _ _
+  | .cmovcc _ _ _ | .setcc _ _ | .testN _ _ _ | .bt _ _ | .btr _ _ | .bts _ _ => false
   | _ => true
 
 /-- `encodeJInstr` restricted to the fragment it encodes faithfully. -/
@@ -957,7 +977,7 @@ def firstUnencodable : List (JInstr 64) → Option (JInstr 64)
 theorem encodeJInstr?_isSome (alloc : GpAlloc) (i : JInstr 64) :
     (encodeJInstr? alloc i).isSome = encodableJInstr i := by
   unfold encodeJInstr?
-  cases h : encodableJInstr i <;> simp [h]
+  split <;> simp_all
 
 theorem encodeJInstr?_eq_some (alloc : GpAlloc) (i : JInstr 64)
     (h : encodableJInstr i = true) :

@@ -23,12 +23,23 @@ an error naming the source line, never a different instruction.
 * Comments from `;` to the end of the line, blank lines, `SECTION` and `GLOBAL`
   directives, and label lines `name:`. Directives and labels produce no
   instruction.
-* Operands: the sixteen 64-bit general-purpose registers, non-negative
-  immediates in decimal or `0x` hexadecimal, and memory operands
-  `[ base ± disp ]`, `[ base + idx ]`, `[ base + idx*scale ]` with an optional
-  `qword` size. Mnemonics and register names are case-insensitive.
+* Operands: the sixteen 64-bit general-purpose registers; the 8-, 16- and
+  32-bit low subregisters (`al`, `r10b`, `ax`, `r10w`, `eax`, `r10d`) in the
+  forms that take them; immediates in decimal or `0x` hexadecimal, with an
+  optional `-` sign; and memory operands `[ base ± disp ]`, `[ base + idx ]`,
+  `[ base + idx*scale ]` with an optional `qword` size. Mnemonics and register
+  names are case-insensitive.
+* A subregister names the low bits of its 64-bit register: the produced
+  `JInstr` names the 64-bit register, and the width is carried by the
+  instruction (`setcc` writes a byte, `testN sz` tests `sz` bits, `movzx`/`movsx`
+  carry their source width, a shift count `cl` reads the low six bits of `rcx`).
+  The high-byte registers `ah`, `ch`, `dh`, `bh` have no such reading and are
+  rejected.
 * Register names in the produced `JInstr` carry the AT&T `%` prefix (`%rax`),
   the spelling `AsmPrinter.regOf` and the ascent modules use.
+* `ret` with no operand is accepted as the last instruction of the text only:
+  `parseNasm` returns the instructions before it, and any instruction after a
+  `ret` is an error. A straight-line `JInstr` block has no return instruction.
 
 `JState.mem` is keyed by the base register's name and a byte offset, so a
 parsed memory operand `[ rax + 0x20 ]` denotes cell `("%rax", 32)`. That cell
@@ -42,15 +53,21 @@ One instruction per line, lower case, `mnemonic op1, op2, op3`; immediates and
 displacements in lower-case `0x` hexadecimal; a memory operand without index is
 printed `[ base + 0xd ]` or `[ base - 0xd ]` (a zero displacement is printed),
 an indexed one `[ base + idx ]` or `[ base + idx*scale ]` followed by a
-displacement only when it is nonzero. `canonicalNasm` produces this form from
-the source text at the lexical level, without the `JInstr` mapping, and
+displacement only when it is nonzero. Two lexical identifications hold in the
+canonical form: a condition code is spelled by one name per condition
+(`setc` and `setnae` are `setb`, `cmovz` is `cmove`, `cmovnle` is `cmovg`; the
+names are `condName`), and an immediate in `[2^64 - 2^31, 2^64)` is spelled as
+the negative number congruent to it modulo `2^64` (`0xfffffffffffffffd` is
+`-0x3`), the value a sign-extended 32-bit immediate denotes. A final `ret` is
+not part of the canonical text. `canonicalNasm` produces this form from the
+source text at the lexical level, without the `JInstr` mapping, and
 `NasmParseKat` checks `printNasm ∘ parseNasm` against it.
 
 ## Coverage of `fiat_curve25519_carry_mul.asm`
 
-The file has 168 instructions. The table lists, for each mnemonic and operand
-form of the file, the `JInstr` constructor and the flags its `evalInstr` arm
-reads and writes, or the gap.
+The file has 167 instructions before its final `ret`. The table lists, for each
+mnemonic and operand form of the file, the `JInstr` constructor and the flags
+its `evalInstr` arm reads and writes, or the gap.
 
 | Mnemonic, form (count) | `JInstr` | Flags read / written |
 |---|---|---|
@@ -70,21 +87,18 @@ reads and writes, or the gap.
 | `sub r, imm` (1) | `sub` | none / OF CF SF PF ZF |
 | `shr r, imm` (2) | `shr` | none / `x86_SHR` flags |
 | `lea r, [b + i]` (3) | `lea r b i 1 0` | none / none |
-| `imul r, r', imm` (1) and `imul r, [b + d], imm` (4) | gap | |
+| `imul r, r', imm` (1) | `imulri` | none / OF CF, SF PF ZF undefined |
+| `imul r, [b + d], imm` (4) | gap | |
 | `bzhi` (7) | gap | |
-| `shrd r, r', imm` (5) | gap | |
-| `xchg r, r'` (1) | gap | |
-| `test al, al` (1) | gap | |
-| `ret` (1) | gap | |
+| `shrd r, r', imm` (5) | `shrd` | none / `x86_SHRD` flags |
+| `xchg r, r'` (1) | `xchg` | none / none |
+| `test al, al` (1) | `testN 8` | none / OF = CF = 0, SF PF ZF |
 
-The constructors and `evalInstr` arms that close the gaps:
+The constructors and `evalInstr` arms that would close the remaining gaps:
 
-* `imul r, src, imm`: `imulri (dst src : String) (imm : Int)` with
-  `s.writeB5W dst (x86_IMULt (s.get src) (BitVec.ofInt 64 imm))`
-  (`Ox86_IMULri_instr`), and a memory-source form
-  `imulriMem (dst base : String) (off imm : Int)` reading `s.load base off`.
-  `JInstr.imul d (.imm v)` is the case `src = dst` and is what the parser
-  produces for `imul d, d, imm`.
+* `imul r, [b + d], imm`: a memory-source form
+  `imulriMem (dst base : String) (off : Int) (imm : Nat)` reading
+  `s.load base off` in place of `s.get src`.
 * `adcx`, `adox`, `add` with a memory source: `adcxMem`, `adoxMem`, `addMem`
   `(dst base : String) (off : Int)`, each the register arm with `src.eval s`
   replaced by `s.load base off`; alternatively a memory case of `JOperand`.
@@ -93,20 +107,14 @@ The constructors and `evalInstr` arms that close the gaps:
   src`, `ZF`/`SF` from the word, `CF := decide (63 < n)`, `OF := false`, `PF`
   undefined, written with `writeB5W`. The cleared `OF` is read by the `adox` on
   lines 98 and 136 of the file.
-* `shrd dst, src, imm`: `shrd (dst src : String) (cnt : JOperand)` with
-  `x86_SHRD` shaped as `x86_SHR`: count `i` masked to six bits, `rflags_None`
-  for `i = 0`, otherwise word `(dst >>> i) ||| (src <<< (64 - i))`,
-  `CF := lsb (dst >>> (i - 1))`, `OF` defined only for `i = 1`
-  (`msb word ≠ msb dst`), `SF`/`PF`/`ZF` from the word (`Ox86_SHRD_instr`).
-* `xchg a, b`: `xchg (a b : String)` writing `a := s.get b` and `b := s.get a`
-  and no flag.
-* `test al, al`: a byte-width test `test8 (a b : String)` writing the five
-  flags of `x86_TEST` on the low bytes (`OF = CF = false`, `SF` from bit 7, `ZF`
-  and `PF` from the byte). The cleared `CF` and `OF` are read by the `adox` and
-  `adcx` on lines 53 to 56.
-* `ret`: no constructor of a straight-line block expresses a return. The
-  choices are a parser that accepts `ret` only as the last instruction and
-  returns the body, or a control-flow terminator in the block type.
+
+## Coverage of `fiat_curve25519_solinas_square.asm`
+
+The file has 99 instructions before its final `ret`, and every one has a `JInstr`
+constructor: beyond the forms of the table above it uses `inc r` (`inc`),
+`clc` (`clc`), `setc r8` (`setcc .b`), `movzx r, r8` (`movzx r 8 r'`),
+`cmovo r, r'` (`cmovcc .o`), `test al, al` (`testN 8`) and `mov r, -imm`
+(`mov r (.imm (2^64 - imm))`).
 
 ## Main definitions
 
@@ -134,14 +142,72 @@ def gpr64Names : List String :=
   ["rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi",
    "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"]
 
-/-- The 8-, 16- and 32-bit general-purpose register names, in Intel spelling. -/
-def subRegNames : List String :=
-  ["al", "cl", "dl", "bl", "spl", "bpl", "sil", "dil", "ah", "ch", "dh", "bh",
-   "ax", "cx", "dx", "bx", "sp", "bp", "si", "di",
-   "eax", "ecx", "edx", "ebx", "esp", "ebp", "esi", "edi"] ++
+/-- The low subregisters of the sixteen 64-bit registers, as
+    `(name, 64-bit register, width)`, in Intel spelling. -/
+def lowSubRegs : List (String × String × Nat) :=
+  [("al", "rax", 8), ("cl", "rcx", 8), ("dl", "rdx", 8), ("bl", "rbx", 8),
+   ("spl", "rsp", 8), ("bpl", "rbp", 8), ("sil", "rsi", 8), ("dil", "rdi", 8),
+   ("ax", "rax", 16), ("cx", "rcx", 16), ("dx", "rdx", 16), ("bx", "rbx", 16),
+   ("sp", "rsp", 16), ("bp", "rbp", 16), ("si", "rsi", 16), ("di", "rdi", 16),
+   ("eax", "rax", 32), ("ecx", "rcx", 32), ("edx", "rdx", 32), ("ebx", "rbx", 32),
+   ("esp", "rsp", 32), ("ebp", "rbp", 32), ("esi", "rsi", 32), ("edi", "rdi", 32)] ++
   (List.range 8).flatMap (fun i =>
     let n := s!"r{i + 8}"
-    [n ++ "b", n ++ "w", n ++ "d"])
+    [(n ++ "b", n, 8), (n ++ "w", n, 16), (n ++ "d", n, 32)])
+
+/-- The 8-, 16- and 32-bit general-purpose register names, in Intel spelling:
+    the low subregisters and the four high-byte registers. -/
+def subRegNames : List String :=
+  lowSubRegs.map (·.1) ++ ["ah", "ch", "dh", "bh"]
+
+/-- The 64-bit register and the width of a low subregister name. -/
+def subRegParent? (r : String) : Option (String × Nat) :=
+  (lowSubRegs.find? (·.1 == r)).map (·.2)
+
+/-- The low subregister name of width `sz` of a 64-bit register name. -/
+def subRegName? (parent : String) (sz : Nat) : Option String :=
+  (lowSubRegs.find? (fun e => e.2.1 == parent && e.2.2 == sz)).map (·.1)
+
+/-- The canonical condition-code name of a Jasmin condition, as it follows `set`
+    and `cmov`: `nb` is `ae`, `nbe` is `a`, `nl` is `ge` and `nle` is `g`; the
+    other twelve keep their `Condt` name. -/
+def condName : Condt → String
+  | .o => "o"  | .no => "no" | .b => "b"   | .nb => "ae"
+  | .e => "e"  | .ne => "ne" | .be => "be" | .nbe => "a"
+  | .s => "s"  | .ns => "ns" | .p => "p"   | .np => "np"
+  | .l => "l"  | .nl => "ge" | .le => "le" | .nle => "g"
+
+/-- The condition a NASM condition-code suffix names, with every alias the
+    Intel SDM lists (`c`, `nae` for `b`; `z` for `e`; `pe` for `p`; …). -/
+def condOfSuffix? : String → Option Condt
+  | "o" => some .o | "no" => some .no
+  | "b" | "c" | "nae" => some .b
+  | "ae" | "nc" | "nb" => some .nb
+  | "e" | "z" => some .e
+  | "ne" | "nz" => some .ne
+  | "be" | "na" => some .be
+  | "a" | "nbe" => some .nbe
+  | "s" => some .s | "ns" => some .ns
+  | "p" | "pe" => some .p
+  | "np" | "po" => some .np
+  | "l" | "nge" => some .l
+  | "ge" | "nl" => some .nl
+  | "le" | "ng" => some .le
+  | "g" | "nle" => some .nle
+  | _ => none
+
+/-- A mnemonic with its condition code, if it has one, spelled by `condName`. -/
+def canonMnemonic (word : List Char) : List Char :=
+  match word with
+  | 'c' :: 'm' :: 'o' :: 'v' :: cc =>
+      match condOfSuffix? (String.ofList cc) with
+      | some c => "cmov".toList ++ (condName c).toList
+      | none => word
+  | 's' :: 'e' :: 't' :: cc =>
+      match condOfSuffix? (String.ofList cc) with
+      | some c => "set".toList ++ (condName c).toList
+      | none => word
+  | _ => word
 
 /-- A memory operand `size [ base + idx*scale ± disp ]` as written. The base and
     index are Intel register names without prefix. -/
@@ -152,11 +218,13 @@ structure MemRef where
   disp : Int
 
 /-- An operand as written: a 64-bit register, a narrower register, a
-    non-negative immediate, or a memory operand. -/
+    non-negative immediate, a negative immediate `-v` with `0 < v ≤ 2^31`, or a
+    memory operand. -/
 inductive Operand where
   | reg (r : String)
   | subreg (r : String)
   | imm (v : Nat)
+  | negImm (v : Nat)
   | mem (m : MemRef)
 
 /-- A source line as written: blank or comment-only, a `SECTION`/`GLOBAL`
@@ -187,6 +255,11 @@ def digitsVal (b : Nat) : List Char → Option Nat
 def parseNum? : List Char → Option Nat
   | '0' :: 'x' :: rest => digitsVal 16 rest
   | cs => digitsVal 10 cs
+
+/-- The lexical immediate of a 64-bit value `v`: the negative spelling
+    `-(2^64 - v)` for `v` in `[2^64 - 2^31, 2^64)`, the value itself otherwise. -/
+def immOperand (v : Nat) : Operand :=
+  if 2 ^ 64 - 2 ^ 31 ≤ v ∧ v < 2 ^ 64 then .negImm (2 ^ 64 - v) else .imm v
 
 /-- Split a whitespace-free memory expression at top-level `+` and `-` into
     signed terms; `true` marks a positive term. -/
@@ -268,10 +341,18 @@ def parseOperand (cs : List Char) : Except String Operand := do
     parseMem size inner
   else if gpr64Names.contains s then pure (.reg s)
   else if subRegNames.contains s then pure (.subreg s)
-  else if cs.head? == some '-' then throw s!"negative immediate {s}"
-  else match parseNum? cs with
-    | some v => pure (.imm v)
-    | none => throw s!"unrecognised operand {s}"
+  else match cs with
+    | '-' :: rest =>
+        match parseNum? rest with
+        | some 0 => pure (.imm 0)
+        | some v =>
+            if v ≤ 2 ^ 31 then pure (.negImm v)
+            else throw s!"negative immediate {s} is below -2^31"
+        | none => throw s!"unrecognised operand {s}"
+    | _ =>
+        match parseNum? cs with
+        | some v => pure (immOperand v)
+        | none => throw s!"unrecognised operand {s}"
 
 /-- Split an operand list at commas outside brackets. -/
 def splitOperands (cs : List Char) : List (List Char) :=
@@ -287,7 +368,8 @@ where
     | ']' :: rest => go (depth - 1) (']' :: cur) rest
     | c :: rest => go depth (c :: cur) rest
 
-/-- Lex one source line. Comments run from `;` to the end of the line. -/
+/-- Lex one source line. Comments run from `;` to the end of the line. A
+    condition-code mnemonic is spelled by `canonMnemonic`. -/
 def lexLine (ln : String) : Except String Line := do
   let cs := trimChars (ln.toList.takeWhile (· ≠ ';'))
   if cs.isEmpty then return .blank
@@ -305,7 +387,7 @@ def lexLine (ln : String) : Except String Line := do
   unless word.all Char.isAlphanum do
     throw s!"malformed mnemonic {String.ofList word}"
   let ops ← if rest.isEmpty then pure [] else (splitOperands rest).mapM parseOperand
-  return .instr (String.ofList word) ops
+  return .instr (String.ofList (canonMnemonic word)) ops
 
 /-! ## 2. Canonical printing of the lexical form -/
 
@@ -331,11 +413,17 @@ def printOperand : Operand → String
   | .reg r => r
   | .subreg r => r
   | .imm v => hex v
+  | .negImm v => "-" ++ hex v
   | .mem m => printMem m
 
 /-- The canonical text of an instruction. -/
 def printInstrSyntax (mn : String) (ops : List Operand) : String :=
   if ops.isEmpty then mn else mn ++ " " ++ ", ".intercalate (ops.map printOperand)
+
+/-- A `ret` with no operand, the terminator `parseNasm` accepts as the last
+    instruction. -/
+def isRet (mn : String) (ops : List Operand) : Bool :=
+  mn == "ret" && ops.isEmpty
 
 /-! ## 3. Mapping to `JInstr 64` -/
 
@@ -351,6 +439,33 @@ def intelReg (r : String) : Except String String :=
       else throw s!"register {r} is not a 64-bit general-purpose register"
   | _ => throw s!"register {r} has no AT&T prefix"
 
+/-- The Intel low subregister name of width `sz` of a `JInstr` register name. -/
+def intelSubReg (r : String) (sz : Nat) : Except String String := do
+  let p ← intelReg r
+  match subRegName? p sz with
+  | some n => pure n
+  | none => throw s!"register {r} has no {sz}-bit subregister name"
+
+/-- The `JInstr` register and the width of a lexical low subregister. -/
+def subRegOf (r : String) : Except String (String × Nat) :=
+  match subRegParent? r with
+  | some (p, sz) => pure (jreg p, sz)
+  | none => throw s!"{r} is a high-byte register: no JInstr register holds it"
+
+/-- The 64-bit value of a sign-extended 32-bit immediate operand. -/
+def simm32? : Operand → Option Nat
+  | .imm v => if v < 2 ^ 31 then some v else none
+  | .negImm v => some (2 ^ 64 - v)
+  | _ => none
+
+/-- A shift or rotate count operand: an immediate below 256, or `cl`, which is
+    the register `%rcx` (the count is masked to its low six bits, which `cl`
+    holds). -/
+def countOf? : Operand → Option JOperand
+  | .imm v => if v < 256 then some (.imm v) else none
+  | .subreg "cl" => some (.reg "%rcx")
+  | _ => none
+
 /-- The two-operand flag-setting ALU mnemonics with a `JInstr` constructor of
     shape `dst src`. -/
 def aluOf? : String → Option (String → JOperand → JInstr 64)
@@ -365,21 +480,46 @@ def aluOf? : String → Option (String → JOperand → JInstr 64)
   | "test" => some .test
   | _ => none
 
-/-- The shift and rotate mnemonics taking an immediate count. -/
+/-- The shift and rotate mnemonics taking an immediate or `cl` count. -/
 def shiftOf? : String → Option (String → JOperand → JInstr 64)
   | "shl" => some .shl
   | "shr" => some .shr
   | "sar" => some .sar
   | "rol" => some .rol
   | "ror" => some .ror
+  | "rcl" => some .rcl
+  | "rcr" => some .rcr
   | _ => none
 
-/-- The conditional moves with a `JInstr` constructor. -/
-def cmovOf? : String → Option (String → JOperand → JInstr 64)
-  | "cmove" => some .cmove
-  | "cmovne" => some .cmovne
-  | "cmovb" => some .cmovb
+/-- The double-precision shifts. -/
+def dshiftOf? : String → Option (String → String → JOperand → JInstr 64)
+  | "shld" => some .shld
+  | "shrd" => some .shrd
   | _ => none
+
+/-- The bit-test mnemonics. -/
+def btOf? : String → Option (String → JOperand → JInstr 64)
+  | "bt" => some .bt
+  | "btr" => some .btr
+  | "bts" => some .bts
+  | _ => none
+
+/-- The condition of a `cmov<cc>` mnemonic. -/
+def cmovCond? (mn : String) : Option Condt :=
+  match mn.toList with
+  | 'c' :: 'm' :: 'o' :: 'v' :: cc => condOfSuffix? (String.ofList cc)
+  | _ => none
+
+/-- The condition of a `set<cc>` mnemonic. -/
+def setCond? (mn : String) : Option Condt :=
+  match mn.toList with
+  | 's' :: 'e' :: 't' :: cc => condOfSuffix? (String.ofList cc)
+  | _ => none
+
+/-- The mnemonics whose forms take a subregister operand. -/
+def takesSubReg (mn : String) : Bool :=
+  mn == "test" || mn == "movzx" || mn == "movsx" || mn == "movsxd" ||
+    (setCond? mn).isSome || (shiftOf? mn).isSome || (dshiftOf? mn).isSome
 
 /-- A memory operand without index and with no size or `qword` size, as the
     `(base, displacement)` pair of `loadMem`/`storeMem`/`mulxMem`. -/
@@ -396,33 +536,72 @@ def validScale (sc : Nat) : Bool := sc == 1 || sc == 2 || sc == 4 || sc == 8
 /-- A lexical instruction to its `JInstr 64`. The error names the missing
     constructor or operand form. -/
 def toJInstr (mn : String) (ops : List Operand) : Except String (JInstr 64) := do
-  for o in ops do
-    if let .subreg r := o then
-      throw s!"{mn} on the sub-64-bit register {r}: JInstr registers are 64-bit"
+  unless takesSubReg mn do
+    for o in ops do
+      if let .subreg r := o then
+        throw s!"{mn} on the sub-64-bit register {r}: JInstr registers are 64-bit"
+  if mn == "test" then
+    match ops with
+    | [.subreg a, .subreg b] =>
+        let (ra, sa) ← subRegOf a
+        let (rb, sb) ← subRegOf b
+        unless sa = sb do throw s!"test of registers of widths {sa} and {sb}"
+        return .testN sa ra (.reg rb)
+    | [.subreg a, .imm v] =>
+        let (ra, sa) ← subRegOf a
+        if v < 2 ^ sa then return .testN sa ra (.imm v)
+        else throw s!"test immediate {hex v} does not fit {sa} bits"
+    | [.subreg _, _] | [_, .subreg _] =>
+        throw "test of a subregister with an operand of another width"
+    | _ => pure ()
   if let some f := aluOf? mn then
     match ops with
     | [.reg d, .reg s] => return f (jreg d) (.reg (jreg s))
-    | [.reg d, .imm v] =>
-        if v < 2 ^ 31 then return f (jreg d) (.imm v)
-        else throw s!"{mn} immediate {hex v} is not a sign-extended imm32"
+    | [.reg d, o@(.imm _)] | [.reg d, o@(.negImm _)] =>
+        match simm32? o with
+        | some v => return f (jreg d) (.imm v)
+        | none => throw s!"{mn} immediate {printOperand o} is not a sign-extended imm32"
     | [.reg _, .mem _] => throw s!"{mn} with a memory source operand: no JInstr constructor"
     | [.mem _, _] => throw s!"{mn} with a memory destination operand: no JInstr constructor"
     | _ => throw s!"{mn}: unsupported operand form"
   if let some f := shiftOf? mn then
     match ops with
-    | [.reg d, .imm v] =>
-        if v < 256 then return f (jreg d) (.imm v)
-        else throw s!"{mn} count {hex v} is not an imm8"
-    | _ => throw s!"{mn}: only the register, imm8 form has a JInstr constructor"
-  if let some f := cmovOf? mn then
+    | [.reg d, c] =>
+        match countOf? c with
+        | some a => return f (jreg d) a
+        | none => throw s!"{mn} count {printOperand c} is neither an imm8 nor cl"
+    | _ => throw s!"{mn}: only the register, count form has a JInstr constructor"
+  if let some f := dshiftOf? mn then
+    match ops with
+    | [.reg d, .reg s, c] =>
+        match countOf? c with
+        | some a => return f (jreg d) (jreg s) a
+        | none => throw s!"{mn} count {printOperand c} is neither an imm8 nor cl"
+    | _ => throw s!"{mn}: only the register, register, count form has a JInstr constructor"
+  if let some f := btOf? mn then
     match ops with
     | [.reg d, .reg s] => return f (jreg d) (.reg (jreg s))
+    | [.reg d, .imm v] =>
+        if v < 256 then return f (jreg d) (.imm v)
+        else throw s!"{mn} bit offset {hex v} is not an imm8"
+    | _ => throw s!"{mn}: only the register, register or imm8 form has a JInstr constructor"
+  if let some c := cmovCond? mn then
+    match ops with
+    | [.reg d, .reg s] => return .cmovcc c (jreg d) (.reg (jreg s))
     | _ => throw s!"{mn}: only the register, register form has a JInstr constructor"
+  if let some c := setCond? mn then
+    match ops with
+    | [.subreg r] =>
+        let (p, sz) ← subRegOf r
+        if sz = 8 then return .setcc c p
+        else throw s!"{mn} on the {sz}-bit register {r}: SETcc writes a byte"
+    | _ => throw s!"{mn}: only the byte-register form has a JInstr constructor"
   match mn, ops with
   | "mov", [.reg d, .reg s] => return .mov (jreg d) (.reg (jreg s))
   | "mov", [.reg d, .imm v] =>
       if v < 2 ^ 64 then return .mov (jreg d) (.imm v)
       else throw s!"mov immediate {hex v} exceeds 64 bits"
+  | "mov", [.reg d, .negImm v] => return .mov (jreg d) (.imm (2 ^ 64 - v))
   | "mov", [.reg d, .mem m] =>
       match m.idx, m.disp with
       | some (i, sc), 0 =>
@@ -443,23 +622,43 @@ def toJInstr (mn : String) (ops : List Operand) : Except String (JInstr 64) := d
       | _, _ =>
           let (b, off) ← plainMem m
           return .storeMem (jreg b) off (.reg (jreg s))
-  | "mov", [.mem m, .imm v] =>
+  | "mov", [.mem m, o] =>
       unless m.size == some "qword" do
         throw "mov of an immediate to memory needs the qword size"
-      unless v < 2 ^ 31 do throw s!"mov immediate {hex v} is not a sign-extended imm32"
+      let some v := simm32? o
+        | throw s!"mov immediate {printOperand o} is not a sign-extended imm32"
       let (b, off) ← plainMem m
       return .storeMem (jreg b) off (.imm v)
+  | "movzx", [.reg d, .subreg s] =>
+      let (p, sz) ← subRegOf s
+      if sz = 8 ∨ sz = 16 then return .movzx (jreg d) sz p
+      else throw s!"movzx from the {sz}-bit register {s} has no NASM form"
+  | "movsx", [.reg d, .subreg s] =>
+      let (p, sz) ← subRegOf s
+      if sz = 8 ∨ sz = 16 then return .movsx (jreg d) sz p
+      else throw s!"movsx from the {sz}-bit register {s}: NASM spells it movsxd"
+  | "movsxd", [.reg d, .subreg s] =>
+      let (p, sz) ← subRegOf s
+      if sz = 32 then return .movsx (jreg d) 32 p
+      else throw s!"movsxd from the {sz}-bit register {s}"
   | "imul", [.reg d, .reg s] => return .imul (jreg d) (.reg (jreg s))
-  | "imul", [.reg d, .reg s, .imm v] =>
-      if s ≠ d then
-        throw "imul with three operands and source register different from the \
-          destination: no JInstr constructor (JInstr.imul is dst := dst * src)"
-      else if v < 2 ^ 31 then return .imul (jreg d) (.imm v)
-      else throw s!"imul immediate {hex v} is not a sign-extended imm32"
-  | "imul", [.reg _, .mem _, .imm _] =>
-      throw "imul with three operands and a memory source: no JInstr constructor"
+  | "imul", [.reg d, .reg s, o] =>
+      let some v := simm32? o
+        | throw s!"imul immediate {printOperand o} is not a sign-extended imm32"
+      if s = d then return .imul (jreg d) (.imm v)
+      else return .imulri (jreg d) (jreg s) v
+  | "imul", [.reg _, .mem _, _] =>
+      throw "imul with three operands and a memory source: no JInstr constructor \
+        (JInstr.imulri reads a register source)"
+  | "imul", [.reg s] => return .imulWide "%rdx" "%rax" (jreg s)
+  | "mul", [.reg s] => return .mul "%rdx" "%rax" (jreg s)
   | "neg", [.reg d] => return .neg (jreg d)
   | "not", [.reg d] => return .not_ (jreg d)
+  | "inc", [.reg d] => return .inc (jreg d)
+  | "dec", [.reg d] => return .dec (jreg d)
+  | "clc", [] => return .clc
+  | "stc", [] => return .stc
+  | "xchg", [.reg a, .reg b] => return .xchg (jreg a) (jreg b)
   | "andn", [.reg d, .reg a, .reg b] => return .andn (jreg d) (jreg a) (jreg b)
   | "shlx", [.reg d, .reg a, .reg c] => return .shlx (jreg d) (jreg a) (jreg c)
   | "shrx", [.reg d, .reg a, .reg c] => return .shrx (jreg d) (jreg a) (jreg c)
@@ -486,10 +685,8 @@ def toJInstr (mn : String) (ops : List Operand) : Except String (JInstr 64) := d
   | "adox", [.reg _, .mem _] =>
       throw "adox with a memory source operand: no JInstr constructor"
   | "bzhi", _ => throw "bzhi: no JInstr constructor"
-  | "shrd", _ => throw "shrd: no JInstr constructor"
-  | "shld", _ => throw "shld: no JInstr constructor"
-  | "xchg", _ => throw "xchg: no JInstr constructor"
-  | "ret", _ => throw "ret: a straight-line JInstr block has no return"
+  | "ret", _ => throw "ret: a straight-line JInstr block has no return; parseNasm \
+      accepts it as the last instruction"
   | _, _ => throw s!"{mn} with {ops.length} operands: no JInstr constructor"
 
 /-- A memory operand without size keyword. -/
@@ -501,14 +698,26 @@ def aluSyntax (mn d : String) (s : JOperand) : Except String (String × List Ope
   let d ← intelReg d
   match s with
   | .reg r => return (mn, [.reg d, .reg (← intelReg r)])
-  | .imm v => return (mn, [.reg d, .imm v])
+  | .imm v => return (mn, [.reg d, immOperand v])
 
-/-- The lexical form of a shift or rotate by an immediate. -/
+/-- The lexical form of a shift or rotate count: an immediate, or `cl` for
+    `%rcx`. -/
+def countSyntax (mn : String) : JOperand → Except String Operand
+  | .imm v => pure (.imm v)
+  | .reg "%rcx" => pure (.subreg "cl")
+  | .reg r => throw s!"{mn} by the register {r} has no NASM form (the count register is cl)"
+
+/-- The lexical form of a shift or rotate. -/
 def shiftSyntax (mn d : String) (a : JOperand) : Except String (String × List Operand) := do
   let d ← intelReg d
-  match a with
-  | .imm v => return (mn, [.reg d, .imm v])
-  | .reg _ => throw s!"{mn} by a 64-bit register has no NASM form"
+  return (mn, [.reg d, ← countSyntax mn a])
+
+/-- The lexical form of a double-precision shift. -/
+def dshiftSyntax (mn d s : String) (a : JOperand) :
+    Except String (String × List Operand) := do
+  let d ← intelReg d
+  let s ← intelReg s
+  return (mn, [.reg d, .reg s, ← countSyntax mn a])
 
 /-- The lexical form of a conditional move from a register. -/
 def cmovSyntax (mn d : String) (s : JOperand) : Except String (String × List Operand) := do
@@ -517,6 +726,13 @@ def cmovSyntax (mn d : String) (s : JOperand) : Except String (String × List Op
   | .reg r => return (mn, [.reg d, .reg (← intelReg r)])
   | .imm _ => throw s!"{mn} from an immediate has no NASM form"
 
+/-- The lexical form of a bit test. -/
+def btSyntax (mn d : String) (b : JOperand) : Except String (String × List Operand) := do
+  let d ← intelReg d
+  match b with
+  | .reg r => return (mn, [.reg d, .reg (← intelReg r)])
+  | .imm v => return (mn, [.reg d, .imm v])
+
 /-- The lexical instruction of a `JInstr 64`: the inverse of `toJInstr` on its
     image. Constructors and operand forms outside that image are errors. -/
 def toSyntax : JInstr 64 → Except String (String × List Operand)
@@ -524,7 +740,7 @@ def toSyntax : JInstr 64 → Except String (String × List Operand)
       let d ← intelReg d
       match src with
       | .reg s => return ("mov", [.reg d, .reg (← intelReg s)])
-      | .imm v => return ("mov", [.reg d, .imm v])
+      | .imm v => return ("mov", [.reg d, immOperand v])
   | .add d s => aluSyntax "add" d s
   | .sub d s => aluSyntax "sub" d s
   | .adc d s => aluSyntax "adc" d s
@@ -537,7 +753,7 @@ def toSyntax : JInstr 64 → Except String (String × List Operand)
   | .imul d (.reg s) => do return ("imul", [.reg (← intelReg d), .reg (← intelReg s)])
   | .imul d (.imm v) => do
       let d ← intelReg d
-      return ("imul", [.reg d, .reg d, .imm v])
+      return ("imul", [.reg d, .reg d, immOperand v])
   | .neg d => do return ("neg", [.reg (← intelReg d)])
   | .not_ d => do return ("not", [.reg (← intelReg d)])
   | .andn d a b => do
@@ -555,9 +771,41 @@ def toSyntax : JInstr 64 → Except String (String × List Operand)
   | .sar d a => shiftSyntax "sar" d a
   | .rol d a => shiftSyntax "rol" d a
   | .ror d a => shiftSyntax "ror" d a
+  | .rcl d a => shiftSyntax "rcl" d a
+  | .rcr d a => shiftSyntax "rcr" d a
+  | .shld d s a => dshiftSyntax "shld" d s a
+  | .shrd d s a => dshiftSyntax "shrd" d s a
   | .cmove d s => cmovSyntax "cmove" d s
   | .cmovne d s => cmovSyntax "cmovne" d s
   | .cmovb d s => cmovSyntax "cmovb" d s
+  | .cmovcc c d s => cmovSyntax ("cmov" ++ condName c) d s
+  | .setcc c d => do return ("set" ++ condName c, [.subreg (← intelSubReg d 8)])
+  | .testN sz a b => do
+      if sz = 64 then aluSyntax "test" a b
+      else if sz = 8 ∨ sz = 16 ∨ sz = 32 then
+        let an ← intelSubReg a sz
+        match b with
+        | .reg r => return ("test", [.subreg an, .subreg (← intelSubReg r sz)])
+        | .imm v => return ("test", [.subreg an, .imm v])
+      else throw s!"test at width {sz} has no NASM form"
+  | .bt a b => btSyntax "bt" a b
+  | .btr d b => btSyntax "btr" d b
+  | .bts d b => btSyntax "bts" d b
+  | .inc d => do return ("inc", [.reg (← intelReg d)])
+  | .dec d => do return ("dec", [.reg (← intelReg d)])
+  | .clc => return ("clc", [])
+  | .stc => return ("stc", [])
+  | .xchg a b => do return ("xchg", [.reg (← intelReg a), .reg (← intelReg b)])
+  | .imulri d s imm => do
+      return ("imul", [.reg (← intelReg d), .reg (← intelReg s), immOperand imm])
+  | .mul hi lo s => do
+      unless hi = "%rdx" ∧ lo = "%rax" do
+        throw "mul with destinations other than rdx:rax has no NASM form"
+      return ("mul", [.reg (← intelReg s)])
+  | .imulWide hi lo s => do
+      unless hi = "%rdx" ∧ lo = "%rax" do
+        throw "one-operand imul with destinations other than rdx:rax has no NASM form"
+      return ("imul", [.reg (← intelReg s)])
   | .lea d b i sc off => do
       let d ← intelReg d
       let bn ← intelReg b
@@ -595,7 +843,7 @@ def toSyntax : JInstr 64 → Except String (String × List Operand)
   | .storeMem b off (.imm v) => do
       let bN ← intelReg b
       return ("mov", [.mem { size := some "qword", base := bN, idx := none, disp := off },
-        .imm v])
+        immOperand v])
   | .loadMemIdx d b i sc => do
       let dN ← intelReg d
       let bN ← intelReg b
@@ -608,8 +856,16 @@ def toSyntax : JInstr 64 → Except String (String × List Operand)
       return ("mov", [memOp bN (some (iN, sc)) 0, .reg sN])
   | .storeMemIdx _ _ _ (.imm _) => throw "indexed store of an immediate is outside the parser image"
   | .setc _ => throw "setc (SETB then MOVZX) is two NASM instructions"
-  | .movzx _ _ _ => throw "movzx reads a sub-64-bit register"
-  | .movsx _ _ _ => throw "movsx reads a sub-64-bit register"
+  | .movzx d sw s => do
+      if sw = 8 ∨ sw = 16 then
+        return ("movzx", [.reg (← intelReg d), .subreg (← intelSubReg s sw)])
+      else throw s!"movzx from width {sw} has no NASM form"
+  | .movsx d sw s => do
+      if sw = 8 ∨ sw = 16 then
+        return ("movsx", [.reg (← intelReg d), .subreg (← intelSubReg s sw)])
+      else if sw = 32 then
+        return ("movsxd", [.reg (← intelReg d), .subreg (← intelSubReg s 32)])
+      else throw s!"movsx from width {sw} has no NASM form"
   | .loadSym _ _ => throw "RIP-relative symbol load is outside the parser image"
 
 /-! ## 4. Whole-text parse, print and canonicalisation -/
@@ -625,17 +881,24 @@ def numberedLines (src : String) : List (Nat × String) :=
   let ls := (src.splitOn "\n").map (fun l => String.ofList (l.toList.filter (· ≠ '\r')))
   (List.range ls.length).zip ls |>.map (fun (i, l) => (i + 1, l))
 
-/-- Parse NASM text into a `JInstr 64` block. The error names the first line
-    that does not lex or whose instruction has no `JInstr` constructor. -/
+/-- Parse NASM text into a `JInstr 64` block. A `ret` with no operand is
+    accepted as the last instruction and ends the block; the error names the
+    first line that does not lex, whose instruction has no `JInstr`
+    constructor, or that follows a `ret`. -/
 def parseNasm (src : String) : Except String (List (JInstr 64)) := do
   let mut out : Array (JInstr 64) := #[]
+  let mut retLine : Option Nat := none
   for (n, ln) in numberedLines src do
     match lexLine ln with
     | .error e => throw s!"line {n}: {e}"
     | .ok (.instr mn ops) =>
-        match toJInstr mn ops with
-        | .ok i => out := out.push i
-        | .error e => throw s!"line {n}: {printInstrSyntax mn ops}: {e}"
+        if let some r := retLine then
+          throw s!"line {n}: {printInstrSyntax mn ops}: instruction after the ret on line {r}"
+        if isRet mn ops then retLine := some n
+        else
+          match toJInstr mn ops with
+          | .ok i => out := out.push i
+          | .error e => throw s!"line {n}: {printInstrSyntax mn ops}: {e}"
     | .ok _ => pure ()
   return out.toList
 
@@ -653,13 +916,19 @@ def printNasm (is : List (JInstr 64)) : Except String String := do
   return joinLines (← is.mapM printInstr)
 
 /-- The canonical text of NASM source at the lexical level: instruction lines
-    only, without the `JInstr` mapping. -/
+    only, without the `JInstr` mapping, and without the final `ret`, under the
+    rule of `parseNasm` (an instruction after a `ret` is an error). -/
 def canonicalNasm (src : String) : Except String String := do
   let mut out : Array String := #[]
+  let mut retLine : Option Nat := none
   for (n, ln) in numberedLines src do
     match lexLine ln with
     | .error e => throw s!"line {n}: {e}"
-    | .ok (.instr mn ops) => out := out.push (printInstrSyntax mn ops)
+    | .ok (.instr mn ops) =>
+        if let some r := retLine then
+          throw s!"line {n}: {printInstrSyntax mn ops}: instruction after the ret on line {r}"
+        if isRet mn ops then retLine := some n
+        else out := out.push (printInstrSyntax mn ops)
     | .ok _ => pure ()
   return joinLines out.toList
 

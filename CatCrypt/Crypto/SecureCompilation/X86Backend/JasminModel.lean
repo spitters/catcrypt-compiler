@@ -65,12 +65,14 @@ trusted because:
 
 The *modeled subset* is the scalar GP-register data ALU jasminc emits: `MOV`,
 `ADD`/`SUB`, `ADC`/`SBB`, `IMULt` (low word), `NEG`, `AND`/`OR`/`XOR`,
-`SHL`/`SHR`/`SAR`, `CMOVcc`, the ADX/BMI2 trio `MULX`/`ADCX`/`ADOX`, and
+`SHL`/`SHR`/`SAR`, `CMOVcc`, the ADX/BMI2 trio `MULX`/`ADCX`/`ADOX`,
+`INC`/`DEC`, `CLC`/`STC`, `XCHG`, `IMULri`, the widening `MUL`/`IMUL`,
+`SHLD`/`SHRD`, `RCL`/`RCR`, `SETcc` and `CMOVcc` at every Jasmin condition code
+(`condt`), `TEST` at an explicit operand size, `BT`/`BTR`/`BTS`, and
 word-granular
 memory `MOV` through a register base (`loadMem`/`storeMem`, the reg-ptr ABI's
-argument-load and result-store). `DIV`/`IDIV`, rotates, `LEA`, sub-word /
-unaligned memory, SIMD/AVX, control flow, and the byte encoder are out of scope
-(see `README.md`).
+argument-load and result-store). `DIV`/`IDIV`, sub-word / unaligned memory,
+SIMD/AVX, control flow, and the byte encoder are out of scope (see `README.md`).
 
 ## What is faithful here that `Model.lean` simplified
 
@@ -480,6 +482,203 @@ def x86_MULX_lo_hi {w : Nat} (v1 v2 : BitVec w) : BitVec w × BitVec w :=
   let (hi, lo) := wumul v1 v2
   (lo, hi)
 
+/-! ### Increment, carry-flag, exchange, widening-multiply, double-shift,
+rotate-through-carry, set-byte and bit-test functions
+
+Each function transcribes the like-named definition of `x86_instr_decl.v`, at the
+operand size `sz` instantiated to the model width `w`, except `x86_SETcc`, whose
+Jasmin result is a byte at every size. -/
+
+/-- The `b4w_ty` result of `INC`/`DEC`: `OF`, `SF`, `PF`, `ZF` and the data word,
+    in Jasmin's `(:: OF, SF, PF, ZF & w)` order. `CF` is absent from the output
+    tuple, so the instruction leaves it unchanged. -/
+structure B4W (w : Nat) where
+  of : JFlag
+  sf : JFlag
+  pf : JFlag
+  zf : JFlag
+  word : BitVec w
+  deriving Repr
+
+/-- `rflags_of_aluop_nocf_w sz w vs` (l.292, l.305): `OF = (wsigned w ≠ vs)`,
+    `SF`/`PF`/`ZF` from the word, and no `CF` entry. -/
+def rflags_of_aluop_nocf {w : Nat} (res : BitVec w) (vs : Int) : B4W w :=
+  { of := some (decide (wsigned res ≠ vs))
+    sf := some (SF_of_word res)
+    pf := some (PF_of_word res)
+    zf := some (ZF_of_word res)
+    word := res }
+
+/-- `x86_INC sz w = rflags_of_aluop_nocf_w (w + 1) (wsigned w + 1)` (l.898). -/
+def x86_INC {w : Nat} (v : BitVec w) : B4W w :=
+  rflags_of_aluop_nocf (v + 1) (wsigned v + 1)
+
+/-- `x86_DEC sz w = rflags_of_aluop_nocf_w (w - 1) (wsigned w - 1)` (l.906). -/
+def x86_DEC {w : Nat} (v : BitVec w) : B4W w :=
+  rflags_of_aluop_nocf (v - 1) (wsigned v - 1)
+
+/-- `x86_CLC = Some false` (l.973): the `b_ty` value `CLC` writes to `CF`. -/
+def x86_CLC : JFlag := some false
+
+/-- `x86_STC = Some true` (l.978): the `b_ty` value `STC` writes to `CF`. -/
+def x86_STC : JFlag := some true
+
+/-- `x86_XCHG sz v1 v2 = (v2, v1)` (l.700): the `w2_ty` pair written to
+    operands 0 and 1 in that order. -/
+def x86_XCHG {w : Nat} (v1 v2 : BitVec w) : BitVec w × BitVec w := (v2, v1)
+
+/-- The `b5w2_ty` result of the one-operand widening multiplies: five flags, then
+    the high and the low word, in Jasmin's `(:: OF, CF, SF, PF, ZF, hi & lo)`
+    order. -/
+structure B5W2 (w : Nat) where
+  of : JFlag
+  cf : JFlag
+  sf : JFlag
+  pf : JFlag
+  zf : JFlag
+  hi : BitVec w
+  lo : BitVec w
+  deriving Repr
+
+/-- `wdwordu sz hi lo = wbase sz * wunsigned hi + wunsigned lo` (`word.v` l.758). -/
+def wdwordu {w : Nat} (hi lo : BitVec w) : Nat := 2 ^ w * hi.toNat + lo.toNat
+
+/-- `wdwords sz hi lo = wbase sz * wsigned hi + wunsigned lo` (`word.v` l.761). -/
+def wdwords {w : Nat} (hi lo : BitVec w) : Int := 2 ^ w * wsigned hi + (lo.toNat : Int)
+
+/-- `wmulhu sz x y = high_bits sz (wunsigned x * wunsigned y)` (`word.v` l.476). -/
+def wmulhu {w : Nat} (x y : BitVec w) : BitVec w := high_bits (x.toNat * y.toNat)
+
+/-- `high_bits sz n = wrepr sz (Z.shiftr n (wsize_bits sz))` (`word.v` l.469) on an
+    integer argument: the arithmetic right shift is floor division by `2^w`,
+    which `Int` division by a positive divisor computes. -/
+def high_bitsZ {w : Nat} (n : Int) : BitVec w := BitVec.ofInt w (n / 2 ^ w)
+
+/-- `wmulhs sz x y = high_bits sz (wsigned x * wsigned y)` (`word.v` l.479). -/
+def wmulhs {w : Nat} (x y : BitVec w) : BitVec w := high_bitsZ (wsigned x * wsigned y)
+
+/-- `x86_MUL sz v1 v2` (l.737): `lo = v1 * v2`, `hi = wmulhu v1 v2`, and
+    `OF = CF = (wdwordu hi lo > wbase sz - 1)`, with `SF`/`PF`/`ZF` undefined
+    (`rflags_of_mul`). -/
+def x86_MUL {w : Nat} (v1 v2 : BitVec w) : B5W2 w :=
+  let lo := v1 * v2
+  let hi := wmulhu v1 v2
+  let ov := decide (wdwordu hi lo > 2 ^ w - 1)
+  { of := some ov, cf := some ov, sf := none, pf := none, zf := none, hi := hi, lo := lo }
+
+/-- `x86_IMUL_overflow sz hi lo` (l.748): the double word `wdwords hi lo` lies
+    outside `[wmin_signed sz, wmax_signed sz] = [-2^(w-1), 2^(w-1) - 1]`. -/
+def x86_IMUL_overflow {w : Nat} (hi lo : BitVec w) : Bool :=
+  let ov := wdwords hi lo
+  decide (ov < -(2 ^ (w - 1) : Int)) || decide (ov > (2 ^ (w - 1) : Int) - 1)
+
+/-- `x86_IMUL sz v1 v2` (l.752): `lo = v1 * v2`, `hi = wmulhs v1 v2`, and
+    `OF = CF = x86_IMUL_overflow hi lo`, with `SF`/`PF`/`ZF` undefined. -/
+def x86_IMUL {w : Nat} (v1 v2 : BitVec w) : B5W2 w :=
+  let lo := v1 * v2
+  let hi := wmulhs v1 v2
+  let ov := x86_IMUL_overflow hi lo
+  { of := some ov, cf := some ov, sf := none, pf := none, zf := none, hi := hi, lo := lo }
+
+/-- `x86_SHLD sz v1 v2 i` (l.1163): mask `i`; if `0`, `rflags_None_w v1`; else
+    with `j = wsize_bits sz - i`, `rc = msb (wshl v1 (i-1))` and
+    `r = wor (wshl v1 i) (wshr v2 j)`, `rflags_OF i r rc (msb r ⊕ rc)`.
+    Jasmin's `ErrArith` branch is taken when `j < 0`; the count `shiftCount`
+    returns is below `w`, so `j` is positive and the branch is unreachable
+    here. -/
+def x86_SHLD {w : Nat} (v1 v2 : BitVec w) (icount : BitVec w) : B5W w :=
+  let i := shiftCount icount
+  if i = 0 then rflags_None v1
+  else
+    let j := w - i
+    let rc := msb (wshl v1 (i - 1))
+    let r1 := wshl v1 i
+    let r2 := wshr v2 j
+    let r := r1 ||| r2
+    rflags_OF i r rc (msb r != rc)
+
+/-- `x86_SHRD sz v1 v2 i` (l.1217): mask `i`; if `0`, `rflags_None_w v1`; else
+    with `j = wsize_bits sz - i`, `rc = lsb (wshr v1 (i-1))` and
+    `r = wor (wshr v1 i) (wshl v2 j)`, `rflags_OF i r rc (msb r ⊕ msb v1)`.
+    The `ErrArith` branch is unreachable for the reason given at `x86_SHLD`. -/
+def x86_SHRD {w : Nat} (v1 v2 : BitVec w) (icount : BitVec w) : B5W w :=
+  let i := shiftCount icount
+  if i = 0 then rflags_None v1
+  else
+    let j := w - i
+    let rc := lsb (wshr v1 (i - 1))
+    let r1 := wshr v1 i
+    let r2 := wshl v2 j
+    let r := r1 ||| r2
+    rflags_OF i r rc (msb r != msb v1)
+
+/-- `x86_rotate_with_carry sz rot ovf v i cf` (l.1076): mask `i`; form the
+    `(w+1)`-bit word whose bit 0 is `cf` and whose bits `1..w` are `v`
+    (`t2w [tuple of cf :: w2t v]`, `w2t` listing bits from the least significant);
+    rotate it by `i`; the new `CF` is its bit 0 and the new word its bits `1..w`;
+    `OF = ovf r CF` at a count of one and undefined otherwise. `CF` is written even
+    at a count of zero, where it keeps the value `cf`. Jasmin further reduces the
+    count modulo 9 at `U8` and modulo 17 at `U16`; those widths lie outside the
+    widths at which `shiftCount` agrees with `x86_shift_mask` (32, 64, 128, 256),
+    where the reduced count is the masked count. -/
+def x86_rotate_with_carry {w : Nat} (rot : BitVec (w + 1) → Nat → BitVec (w + 1))
+    (ovf : BitVec w → Bool → Bool) (v : BitVec w) (icount : BitVec w) (cf : Bool) :
+    B2W w :=
+  let i := shiftCount icount
+  let r : BitVec (w + 1) := rot (v ++ BitVec.ofBool cf) i
+  let CF := r.getLsbD 0
+  let r' : BitVec w := r.extractLsb' 1 w
+  { of := if i = 1 then some (ovf r' CF) else none
+    cf := some CF
+    word := r' }
+
+/-- `x86_RCR sz v i cf` (l.1096): rotate right through carry, with
+    `OF = (msb v ≠ cf)` at a count of one. The mathcomp `rotr` is
+    `BitVec.rotateRight`: bit `k` of the result is bit `(k + i) mod (w+1)`. -/
+def x86_RCR {w : Nat} (v : BitVec w) (icount : BitVec w) (cf : Bool) : B2W w :=
+  x86_rotate_with_carry (fun x n => x.rotateRight n) (fun _ _ => msb v != cf) v icount cf
+
+/-- `x86_RCL sz v i cf` (l.1102): rotate left through carry, with
+    `OF = (msb r ≠ CF)` at a count of one. The mathcomp `rotl` is
+    `BitVec.rotateLeft`. -/
+def x86_RCL {w : Nat} (v : BitVec w) (icount : BitVec w) (cf : Bool) : B2W w :=
+  x86_rotate_with_carry (fun x n => x.rotateLeft n) (fun r c => msb r != c) v icount cf
+
+/-- `x86_SETcc b = wrepr U8 (Z.b2z b)` (l.958): the byte `1` or `0`. -/
+def x86_SETcc (b : Bool) : BitVec 8 := BitVec.ofNat 8 (if b then 1 else 0)
+
+/-- `wbit sz w i = wbit_n w (wunsigned i mod wsize_bits sz)` (`word.v` l.839). -/
+def wbit {w : Nat} (x i : BitVec w) : Bool := x.getLsbD (i.toNat % w)
+
+/-- `x86_BT sz x y = Some (wbit x y)` (l.965): the `b_ty` value `BT` writes to
+    `CF`. -/
+def x86_BT {w : Nat} (x y : BitVec w) : JFlag := some (wbit x y)
+
+/-- `x86_BTX op sz x y` (l.1290): with `bit = wunsigned y mod wsize_bits sz`, the
+    `bw_ty` pair `(Some (wbit_n x bit), op (wrepr sz (2^bit)) x)`. -/
+def x86_BTX {w : Nat} (op : BitVec w → BitVec w → BitVec w) (x y : BitVec w) :
+    JFlag × BitVec w :=
+  let bit := y.toNat % w
+  (some (x.getLsbD bit), op (BitVec.ofNat w (2 ^ bit)) x)
+
+/-- `x86_BTX wandn` (`Ox86_BTR_instr`, l.1294): the tested bit, and `x` with that
+    bit cleared (`wandn m x = (~~~ m) &&& x`). -/
+def x86_BTR {w : Nat} (x y : BitVec w) : JFlag × BitVec w :=
+  x86_BTX (fun m v => (~~~ m) &&& v) x y
+
+/-- `x86_BTX wor` (`Ox86_BTS_instr`, l.1297): the tested bit, and `x` with that
+    bit set. -/
+def x86_BTS {w : Nat} (x y : BitVec w) : JFlag × BitVec w :=
+  x86_BTX (fun m v => m ||| v) x y
+
+/-- `word_extend MSB_MERGE sz szr old new` (`arch_sem.v` l.288–294), the register
+    write of an instruction whose `id_msb_flag` is `MSB_MERGE`
+    (`reg_msb_flag sz` for `sz ≤ U16`): `wxor (wand old (wshl (-1) sz))
+    (zero_extend szr new)`. The bits of `old` at and above `sz` are kept and the
+    low `sz` bits are replaced by `new`. -/
+def wordExtendMerge {w sz : Nat} (old : BitVec w) (new : BitVec sz) : BitVec w :=
+  (old &&& wshl (BitVec.allOnes w) sz) ^^^ new.setWidth w
+
 /-! ## 7. Machine state and the `eval_instr` / `eval_op` composition
 
 `arch_sem.v`'s `asmmem` has `asm_reg : regmap`, `asm_flag : rflagmap`, and a
@@ -664,6 +863,100 @@ def JState.writeB5 {w : Nat} (s : JState w) (t : B5W w) : JState w :=
 def JState.flagB {w : Nat} (s : JState w) (f : RFlags → JFlag) : Bool :=
   (f s.flags).getD false
 
+/-- Jasmin's x86 condition codes (`condt`, `x86_decl.v` l.50), in declaration
+    order: overflow, below, equal, below-or-equal, sign, parity, less,
+    less-or-equal, each with its negation. -/
+inductive Condt where
+  | o | no | b | nb | e | ne | be | nbe | s | ns | p | np | l | nl | le | nle
+  deriving DecidableEq, Repr
+
+/-- `x86_eval_cond get c` (`x86.v` l.4), over any monad: `get` reads one flag, and
+    each condition reads its flags in the order Jasmin reads them and combines
+    them with the same boolean formula. Instantiated at `Option` it is Jasmin's
+    `result error bool` evaluation (an undefined flag is an error); instantiated
+    at `Id` it is the evaluation over flags read as booleans. -/
+def x86_eval_cond {m : Type → Type} [Monad m] (get : (RFlags → JFlag) → m Bool) :
+    Condt → m Bool
+  | .o => get (·.of)
+  | .no => do let b ← get (·.of); pure (!b)
+  | .b => get (·.cf)
+  | .nb => do let b ← get (·.cf); pure (!b)
+  | .e => get (·.zf)
+  | .ne => do let b ← get (·.zf); pure (!b)
+  | .s => get (·.sf)
+  | .ns => do let b ← get (·.sf); pure (!b)
+  | .p => get (·.pf)
+  | .np => do let b ← get (·.pf); pure (!b)
+  | .be => do let cf ← get (·.cf); let zf ← get (·.zf); pure (cf || zf)
+  | .nbe => do let cf ← get (·.cf); let zf ← get (·.zf); pure (!cf && !zf)
+  | .l => do let sf ← get (·.sf); let of_ ← get (·.of); pure (sf != of_)
+  | .nl => do let sf ← get (·.sf); let of_ ← get (·.of); pure (sf == of_)
+  | .le => do
+      let zf ← get (·.zf); let sf ← get (·.sf); let of_ ← get (·.of)
+      pure (zf || (sf != of_))
+  | .nle => do
+      let zf ← get (·.zf); let sf ← get (·.sf); let of_ ← get (·.of)
+      pure (!zf && (sf == of_))
+
+/-- `eval_cond_mem s c` (`arch_sem.v` l.136): the condition evaluated with
+    `st_get_rflag`, which fails on an undefined flag. -/
+def JState.evalCondMem {w : Nat} (s : JState w) (c : Condt) : Option Bool :=
+  x86_eval_cond (m := Option) (fun f => f s.flags) c
+
+/-- The condition evaluated over the flags read by `flagB` (an undefined flag reads
+    as `false`). This is the value the conditional instructions of `evalInstr`
+    use; `JState.condB_eq_of_evalCondMem` states that it is Jasmin's value
+    whenever Jasmin's evaluation succeeds. -/
+def JState.condB {w : Nat} (s : JState w) (c : Condt) : Bool :=
+  Id.run (x86_eval_cond (m := Id) (fun f => pure (s.flagB f)) c)
+
+/-- Where Jasmin's condition evaluation succeeds, `condB` returns its value. -/
+theorem JState.condB_eq_of_evalCondMem {w : Nat} (s : JState w) (c : Condt) (b : Bool)
+    (h : s.evalCondMem c = some b) : s.condB c = b := by
+  unfold JState.evalCondMem at h
+  unfold JState.condB JState.flagB
+  generalize s.flags = f at h ⊢
+  cases c <;> simp [x86_eval_cond, Option.bind_eq_some_iff] at h ⊢ <;> grind
+
+/-- Write a register of width `sz` into the `w`-bit register `r` under
+    `MSB_MERGE` (`mem_write_reg MSB_MERGE`, `arch_sem.v` l.297): the bits of `r`
+    at and above `sz` are kept. -/
+def JState.setRegMerge {w sz : Nat} (s : JState w) (r : String) (v : BitVec sz) :
+    JState w :=
+  s.setReg r (wordExtendMerge (s.get r) v)
+
+/-- Write the `B4W` result of `INC`/`DEC`: the data word to `dst`, and `OF`, `SF`,
+    `PF`, `ZF`, with `CF` left as it was. Mirrors `exec_instr_op` for the
+    `id_out` list `[OF; SF; PF; ZF; data]` (`mk_instr_w_b4w_00`). -/
+def JState.writeB4W {w : Nat} (s : JState w) (dst : String) (t : B4W w) : JState w :=
+  { regs := fun r' => if r' = dst then t.word else s.regs r'
+    flags := { s.flags with of := t.of, sf := t.sf, pf := t.pf, zf := t.zf }
+    mem := s.mem }
+
+/-- Write the `B5W2` result of `MUL`/`IMUL`: the five flags, then `hi` to `dstHi`,
+    then `lo` to `dstLo`. Mirrors `exec_instr_op` for the `id_out` list
+    `[OF; CF; SF; PF; ZF; R RDX; R RAX]` (`mk_instr_w2_b5w2`); when the two
+    destinations coincide the later write, `lo`, is the one that remains. -/
+def JState.writeB5W2 {w : Nat} (s : JState w) (dstHi dstLo : String) (t : B5W2 w) :
+    JState w :=
+  { regs := fun r' => if r' = dstLo then t.lo else if r' = dstHi then t.hi else s.regs r'
+    flags := { cf := t.cf, pf := t.pf, zf := t.zf, sf := t.sf, of := t.of }
+    mem := s.mem }
+
+/-- Write the five flags of a flag-only op computed at an operand size `sz` that
+    may differ from the register width `w`. At `sz = w` this is `writeB5`. -/
+def JState.writeB5N {w sz : Nat} (s : JState w) (t : B5W sz) : JState w :=
+  { s with flags := { cf := t.cf, pf := t.pf, zf := t.zf, sf := t.sf, of := t.of } }
+
+/-- Write the `bw_ty` result `(CF, data)` of `BTR`/`BTS`: the data word to `dst`
+    and `CF`, with the other four flags left as they were (`id_out`
+    `[F CF; Ea 0]`, `mk_instr_w2_bw`). -/
+def JState.writeCFW {w : Nat} (s : JState w) (dst : String) (t : JFlag × BitVec w) :
+    JState w :=
+  { regs := fun r' => if r' = dst then t.2 else s.regs r'
+    flags := { s.flags with cf := t.1 }
+    mem := s.mem }
+
 @[simp] theorem JState.get_setReg_same {w : Nat} (s : JState w) (r : String)
     (v : BitVec w) : (s.setReg r v).get r = v := by simp [JState.setReg, JState.get]
 
@@ -715,14 +1008,37 @@ inductive JOperand where
     while leaking through timing. These are not gaps to close; adding one would
     put a variable-latency instruction inside a constant-time backend.
 
-    Not yet transcribed, with no reason beyond nothing having needed them:
-    `XCHG`, `INC`/`DEC`, `SHLD`/`SHRD`, `MUL`, `IMULr`/`IMULri`, `BT`/`BTR`/`BTS`,
-    `RCL`/`RCR`, and the SIMD/AES/SHA families. Add these as the fragment needs
-    them, following the transcription discipline: the `x86_*` function mirrors
-    the Rocq definition, and the writer matches the instruction's `id_out` —
-    `writeB5W` for a five-flag op with a data word, `writeB5` for flags alone
-    (`TEST`, `CMP`), `writeB2W` where only `OF`/`CF` are written and the other
-    three are PRESERVED (the rotates), and `setReg` where no flag moves. -/
+    Not yet transcribed: `MOVX`, `POR`, `PADD` and the SIMD/AES/SHA families.
+    Add these as the fragment needs them, following the transcription
+    discipline: the `x86_*` function mirrors the Rocq definition, and the writer
+    matches the instruction's `id_out` — `writeB5W` for a five-flag op with a
+    data word, `writeB5` for flags alone (`TEST`, `CMP`; `writeB5N` at an operand
+    size below the register width), `writeB4W` for `OF`/`SF`/`PF`/`ZF` with a
+    data word and `CF` PRESERVED (`INC`/`DEC`), `writeB2W` where only `OF`/`CF`
+    are written and the other three are PRESERVED (the rotates, with and
+    without carry), `writeCFW` for `CF` with a data word (`BTR`/`BTS`),
+    `writeB5W2` for five flags and a high and low word (`MUL`/`IMUL`), `setReg`
+    where no flag moves, and `setRegMerge` for a byte written under `MSB_MERGE`
+    (`SETcc`).
+
+    **Operand sizes.** Jasmin's instructions are indexed by an operand size
+    `sz`; the arms instantiate it to the register width `w`, except `setcc`,
+    whose destination is a byte at every size, and `testN`, which carries `sz`.
+    `movzx`/`movsx` carry their source width. `BT`/`BTR`/`BTS` are on Intel's
+    DOIT list (opcodes `0xa3`, `0xb3`, `0xab`, `0xba`) and are transcribed with
+    Jasmin's register bit base (`check_bt`).
+
+    **Conditions.** `cmovcc` and `setcc` take a `Condt` and read it through
+    `JState.condB`, which evaluates Jasmin's `x86_eval_cond` over the flags as
+    `flagB` reads them; `JState.condB_eq_of_evalCondMem` states agreement with
+    Jasmin's evaluation wherever that succeeds.
+
+    **The fixed-condition and fixed-width arms.** They are instances of the
+    general ones over `evalInstr` (section 9): `cmove`, `cmovne`, `cmovb` are
+    `cmovcc` at `E`, `NE`, `B` (`evalInstr_cmove_eq_cmovcc` and its two
+    siblings, by `rfl`); `test` is `testN w` (`evalInstr_test_eq_testN`); and
+    `setc dst` is `setcc .b dst` followed by `movzx dst 8 dst`
+    (`evalInstr_setc_eq_setcc_movzx`). `imul` is `Ox86_IMULr_instr`. -/
 inductive JInstr (w : Nat) where
   /-- `Ox86_MOV_instr`. -/
   | mov (dst : String) (src : JOperand)
@@ -851,6 +1167,62 @@ inductive JInstr (w : Nat) where
       reads the table — the same RIP-relative-addressing + PIE/PIC trust every
       `.rodata` access carries.) -/
   | loadSym (dst sym : String)
+  /-- `Ox86_INC_instr`: `dst := dst + 1`, writing `OF`/`SF`/`PF`/`ZF` and leaving
+      `CF` unchanged. -/
+  | inc (dst : String)
+  /-- `Ox86_DEC_instr`: `dst := dst - 1`, writing `OF`/`SF`/`PF`/`ZF` and leaving
+      `CF` unchanged. -/
+  | dec (dst : String)
+  /-- `Ox86_CLC_instr`: `CF := 0`; no other flag or register. -/
+  | clc
+  /-- `Ox86_STC_instr`: `CF := 1`; no other flag or register. -/
+  | stc
+  /-- `Ox86_XCHG_instr` on two registers: `a := b` then `b := a`, written in that
+      order. No flag. -/
+  | xchg (a b : String)
+  /-- `Ox86_IMULri_instr`: `dst := src * imm` (low word), with the flags of
+      `x86_IMULt`. The immediate is the word `BitVec.ofNat w imm`, the
+      representation `JOperand.imm` uses. `Ox86_IMULr_instr` is `imul`. -/
+  | imulri (dst src : String) (imm : Nat)
+  /-- `Ox86_MUL_instr`: the unsigned widening product of the implicit operand
+      `rax` and `src`, high word to `rdx`, low word to `rax`, `OF = CF` the
+      nonzero-high-word test. `rax`/`rdx` name the registers Jasmin's implicit
+      `R RAX`/`R RDX` operands denote. -/
+  | mul (rdx rax src : String)
+  /-- `Ox86_IMUL_instr` (one-operand form): as `mul`, with the signed product and
+      `OF = CF = x86_IMUL_overflow`. -/
+  | imulWide (rdx rax src : String)
+  /-- `Ox86_SHLD_instr`: `dst` shifted left by `amt`, filled from the top bits of
+      `src`. Writes the five flags. -/
+  | shld (dst src : String) (amt : JOperand)
+  /-- `Ox86_SHRD_instr`: `dst` shifted right by `amt`, filled from the low bits of
+      `src`. Writes the five flags. -/
+  | shrd (dst src : String) (amt : JOperand)
+  /-- `Ox86_RCL_instr`: rotate left through `CF`. Writes `OF` and `CF`; `SF`/`PF`/
+      `ZF` keep their values. -/
+  | rcl (dst : String) (amt : JOperand)
+  /-- `Ox86_RCR_instr`: rotate right through `CF`. Writes `OF` and `CF`; `SF`/`PF`/
+      `ZF` keep their values. -/
+  | rcr (dst : String) (amt : JOperand)
+  /-- `Ox86_CMOVcc_instr` at condition `c`: `dst := if c then src else dst`,
+      the condition read through `JState.condB`. No flag. -/
+  | cmovcc (c : Condt) (dst : String) (src : JOperand)
+  /-- `Ox86_SETcc_instr` at condition `c`: the byte `1`/`0` written to the low
+      8 bits of `dst` under `MSB_MERGE` (`reg_msb_flag U8`), so bits 8 and above
+      of the `w`-bit register keep their values (`JState.setRegMerge`). No flag. -/
+  | setcc (c : Condt) (dst : String)
+  /-- `Ox86_TEST_instr` at operand size `sz`: the five flags of
+      `a &&& b`, both operands truncated to their low `sz` bits (`test al, al` is
+      `testN 8`). No register. `test` is `testN w`. -/
+  | testN (sz : Nat) (a : String) (b : JOperand)
+  /-- `Ox86_BT_instr`: `CF := bit (b mod w) of a`; no other flag, no register. -/
+  | bt (a : String) (b : JOperand)
+  /-- `Ox86_BTR_instr`: `CF := bit (b mod w) of dst`, and that bit of `dst`
+      cleared. The other four flags keep their values. -/
+  | btr (dst : String) (b : JOperand)
+  /-- `Ox86_BTS_instr`: `CF := bit (b mod w) of dst`, and that bit of `dst` set.
+      The other four flags keep their values. -/
+  | bts (dst : String) (b : JOperand)
   deriving Repr
 
 /-- `eval_op`/`exec_instr_op` for one instruction (`arch_sem.v` l.386–391):
@@ -928,6 +1300,28 @@ def evalInstr {w : Nat} (s : JState w) : JInstr w → JState w
       { regs := fun r' => if r' = dst then BitVec.ofNat w 1 else s.regs r'
         flags := s.flags
         mem := fun b o => if b = dst then s.mem sym o else s.mem b o }
+  | .inc dst => s.writeB4W dst (x86_INC (s.get dst))
+  | .dec dst => s.writeB4W dst (x86_DEC (s.get dst))
+  | .clc => { s with flags := { s.flags with cf := x86_CLC } }
+  | .stc => { s with flags := { s.flags with cf := x86_STC } }
+  | .xchg a b =>
+      let (v0, v1) := x86_XCHG (s.get a) (s.get b)
+      -- output list [Eu 0; Eu 1]: operand 0 first, then operand 1
+      (s.setReg a v0).setReg b v1
+  | .imulri dst src imm => s.writeB5W dst (x86_IMULt (s.get src) (BitVec.ofNat w imm))
+  | .mul rdx rax src => s.writeB5W2 rdx rax (x86_MUL (s.get rax) (s.get src))
+  | .imulWide rdx rax src => s.writeB5W2 rdx rax (x86_IMUL (s.get rax) (s.get src))
+  | .shld dst src amt => s.writeB5W dst (x86_SHLD (s.get dst) (s.get src) (amt.eval s))
+  | .shrd dst src amt => s.writeB5W dst (x86_SHRD (s.get dst) (s.get src) (amt.eval s))
+  | .rcl dst amt => s.writeB2W dst (x86_RCL (s.get dst) (amt.eval s) (s.flagB (·.cf)))
+  | .rcr dst amt => s.writeB2W dst (x86_RCR (s.get dst) (amt.eval s) (s.flagB (·.cf)))
+  | .cmovcc c dst src => s.setReg dst (x86_CMOVcc (s.condB c) (src.eval s) (s.get dst))
+  | .setcc c dst => s.setRegMerge dst (x86_SETcc (s.condB c))
+  | .testN sz a b =>
+      s.writeB5N (x86_TEST ((s.get a).setWidth sz) ((b.eval s).setWidth sz))
+  | .bt a b => { s with flags := { s.flags with cf := x86_BT (s.get a) (b.eval s) } }
+  | .btr dst b => s.writeCFW dst (x86_BTR (s.get dst) (b.eval s))
+  | .bts dst b => s.writeCFW dst (x86_BTS (s.get dst) (b.eval s))
 
 /-- `runBlock`: a straight-line fold of `evalInstr`, the analogue of jasmin's
     sequential `lsem`/`eval_instr` iteration over a basic block. -/
@@ -939,5 +1333,52 @@ def runBlock {w : Nat} (s : JState w) : List (JInstr w) → JState w
 
 @[simp] theorem runBlock_cons {w : Nat} (s : JState w) (i : JInstr w)
     (is : List (JInstr w)) : runBlock s (i :: is) = runBlock (evalInstr s i) is := rfl
+
+/-! ## 9. The fixed-condition and fixed-width arms as instances of the general ones -/
+
+/-- `cmove` is `CMOVcc` at condition `E`. -/
+theorem evalInstr_cmove_eq_cmovcc {w : Nat} (s : JState w) (dst : String) (src : JOperand) :
+    evalInstr s (.cmove dst src) = evalInstr s (.cmovcc .e dst src) := rfl
+
+/-- `cmovne` is `CMOVcc` at condition `NE`. -/
+theorem evalInstr_cmovne_eq_cmovcc {w : Nat} (s : JState w) (dst : String)
+    (src : JOperand) :
+    evalInstr s (.cmovne dst src) = evalInstr s (.cmovcc .ne dst src) := rfl
+
+/-- `cmovb` is `CMOVcc` at condition `B`. -/
+theorem evalInstr_cmovb_eq_cmovcc {w : Nat} (s : JState w) (dst : String) (src : JOperand) :
+    evalInstr s (.cmovb dst src) = evalInstr s (.cmovcc .b dst src) := rfl
+
+/-- `test` is `TEST` at the register width. -/
+theorem evalInstr_test_eq_testN {w : Nat} (s : JState w) (a : String) (b : JOperand) :
+    evalInstr s (.test a b) = evalInstr s (.testN w a b) := by
+  simp [evalInstr, JState.writeB5, JState.writeB5N]
+
+/-- Zero-extending the low `sz` bits of a `MSB_MERGE` write of an `sz`-bit word
+    returns that word zero-extended: the kept upper bits are discarded. -/
+theorem x86_MOVZX_wordExtendMerge {w sz : Nat} (old : BitVec w) (new : BitVec sz) :
+    x86_MOVZX sz (wordExtendMerge old new) = new.setWidth w := by
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  simp [x86_MOVZX, wordExtendMerge, wshl, BitVec.getLsbD_setWidth]
+  grind
+
+/-- `setc` is the pair `SETB dst; MOVZX dst, dst8` it models: `SETcc` at
+    condition `B` writing the low byte of `dst`, then zero-extension of that
+    byte over the whole register. -/
+theorem evalInstr_setc_eq_setcc_movzx {w : Nat} (s : JState w) (dst : String) :
+    evalInstr s (.setc dst) = evalInstr (evalInstr s (.setcc .b dst)) (.movzx dst 8 dst) := by
+  simp only [evalInstr, JState.setRegMerge, JState.get_setReg_same, x86_MOVZX_wordExtendMerge]
+  have hb : ∀ c : Bool, (x86_SETcc c).setWidth w = (if c then 1 else 0 : BitVec w) := by
+    intro c
+    apply BitVec.eq_of_getLsbD_eq
+    intro i hi
+    cases c <;> simp [x86_SETcc, BitVec.getLsbD_setWidth]
+    grind
+  rw [hb]
+  simp only [JState.setReg]
+  congr 1
+  funext r
+  split <;> rfl
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin

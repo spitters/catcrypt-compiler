@@ -105,8 +105,9 @@ preserve the invariant: a register write `kills` that register's entries; a
 `storeMem (.reg r)` `sets` the cell to `r` (after killing the cell); any other
 memory or unknown write is handled conservatively (kill the affected cell). -/
 
-/-- The destination register an instruction writes (if it writes a single GP), used
-    to invalidate stale held entries. `mulx`/`mulxMem` write two; we kill both. -/
+/-- The registers an instruction writes, used to invalidate stale held entries.
+    `mulx`/`mulxMem`, `mul`/`imulWide` (high and low word) and `xchg` (both
+    operands) write two; the flag-only instructions write none. -/
 def writtenRegs : JInstr 64 → List String
   | .mov d _ | .add d _ | .sub d _ | .adc d _ | .sbb d _ | .imul d _ | .neg d | .setc d
   | .and_ d _ | .or_ d _ | .xor_ d _ | .shl d _ | .shr d _ | .sar d _
@@ -121,6 +122,12 @@ def writtenRegs : JInstr 64 → List String
   -- `test` and `cmp` write the five flags only, so they invalidate no held register.
   | .test _ _ => []
   | .cmp _ _ => []
+  | .inc d | .dec d | .imulri d _ _ | .shld d _ _ | .shrd d _ _ | .rcl d _ | .rcr d _
+  | .cmovcc _ d _ | .setcc _ d | .btr d _ | .bts d _ => [d]
+  | .xchg a b => [a, b]
+  | .mul dh dl _ | .imulWide dh dl _ => [dh, dl]
+  -- `clc`, `stc`, `testN` and `bt` write flags only.
+  | .clc | .stc | .testN _ _ _ | .bt _ _ => []
 
 /-- Kill every written register's held entries (one `Held.killReg` per dst). -/
 def killWritten (h : Held) (i : JInstr 64) : Held :=
@@ -322,7 +329,9 @@ theorem load_evalInstr_nonstore {s : JState 64} (i : JInstr 64)
   | cmp a s' => simp only [evalInstr, JState.writeB5, JState.load]
   | rol d amt => simp only [evalInstr, JState.writeB2W, JState.load]
   | ror d amt => simp only [evalInstr, JState.writeB2W, JState.load]
-  | _ => simp only [evalInstr, JState.setReg, JState.writeB5W, JState.load]
+  | _ => simp only [evalInstr, JState.setReg, JState.writeB5W, JState.writeB4W,
+      JState.writeB5W2, JState.writeB5N, JState.writeB2W, JState.writeCFW,
+      JState.setRegMerge, JState.load]
 
 /-- A non-`storeMem` instruction leaves every register it does not write unchanged. -/
 theorem get_evalInstr_unwritten {s : JState 64} (i : JInstr 64)
@@ -388,6 +397,12 @@ theorem get_evalInstr_unwritten {s : JState 64} (i : JInstr 64)
   | storeMem b o v => exact absurd rfl (hns b o v)
   | storeMemIdx base idx scale src =>
     simp [evalInstr]
+  | inc _ | dec _ | clc | stc | xchg _ _ | imulri _ _ _ | mul _ _ _ | imulWide _ _ _
+  | shld _ _ _ | shrd _ _ _ | rcl _ _ | rcr _ _ | cmovcc _ _ _ | setcc _ _
+  | testN _ _ _ | bt _ _ | btr _ _ | bts _ _ =>
+    simp_all [writtenRegs, evalInstr, JState.get, JState.setReg, JState.writeB4W,
+      JState.writeB5W, JState.writeB5W2, JState.writeB5N, JState.writeB2W,
+      JState.writeCFW, JState.setRegMerge, x86_XCHG]
 
 /-- The non-`storeMem`/`storeMemIdx`/`loadSym` instructions, packaged: their
     `evalInstr` neither writes memory nor (for `ρ` outside `writtenRegs`) the register
@@ -458,7 +473,7 @@ theorem heldValid_storeReg {h : Held} {s : JState 64} (base : String) (off : Int
   · simp only [List.mem_singleton] at he
     subst he
     rw [hstore]
-    simp [JState.load_store_same, JState.store, JState.get]
+    simp [JState.store, JState.get]
 
 /-! ### Per-step soundness and the whole-block translation validation -/
 
@@ -583,6 +598,12 @@ theorem forwardStep_sound {h : Held} {s : JState 64} (hv : HeldValid h s) (i : J
     have hns3 : ∀ d' sym, (JInstr.loadMemIdx d base idx scale) ≠ JInstr.loadSym (w := 64) d' sym := by
       intro d' sym h; cases h
     exact ⟨rfl, heldValid_killWritten_nonstore _ hv hns hns2 hns3⟩
+  -- the remaining instructions write registers and flags only, and are not rewritten.
+  | inc _ | dec _ | clc | stc | xchg _ _ | imulri _ _ _ | mul _ _ _ | imulWide _ _ _
+  | shld _ _ _ | shrd _ _ _ | rcl _ _ | rcr _ _ | cmovcc _ _ _ | setcc _ _
+  | testN _ _ _ | bt _ _ | btr _ _ | bts _ _ =>
+    exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h)
+      (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
 
 /-- **Whole-block translation validation.** Running the forwarded block from any
     state with a valid held environment lands in the *same* `runBlock` final state

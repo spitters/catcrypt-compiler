@@ -167,6 +167,24 @@ def rebaseInstr (rmap : String → String) (bmap : String → String)
   -- `loadSym` writes register `d` (rename via `rmap`); `sym` is a `.rodata` label,
   -- not a register or a memory base, so neither `rmap`/`bmap`/`boff` touch it.
   | .loadSym d sym => .loadSym (rmap d) sym
+  | .inc d => .inc (rmap d)
+  | .dec d => .dec (rmap d)
+  | .clc => .clc
+  | .stc => .stc
+  | .xchg a b => .xchg (rmap a) (rmap b)
+  | .imulri d src imm => .imulri (rmap d) (rmap src) imm
+  | .mul dh dl src => .mul (rmap dh) (rmap dl) (rmap src)
+  | .imulWide dh dl src => .imulWide (rmap dh) (rmap dl) (rmap src)
+  | .shld d src amt => .shld (rmap d) (rmap src) (rebaseOperand rmap amt)
+  | .shrd d src amt => .shrd (rmap d) (rmap src) (rebaseOperand rmap amt)
+  | .rcl d amt => .rcl (rmap d) (rebaseOperand rmap amt)
+  | .rcr d amt => .rcr (rmap d) (rebaseOperand rmap amt)
+  | .cmovcc c d s => .cmovcc c (rmap d) (rebaseOperand rmap s)
+  | .setcc c d => .setcc c (rmap d)
+  | .testN sz a b => .testN sz (rmap a) (rebaseOperand rmap b)
+  | .bt a b => .bt (rmap a) (rebaseOperand rmap b)
+  | .btr d b => .btr (rmap d) (rebaseOperand rmap b)
+  | .bts d b => .bts (rmap d) (rebaseOperand rmap b)
 
 /-- Rebase a whole leaf body. -/
 def rebaseBlock (rmap : String → String) (bmap : String → String)

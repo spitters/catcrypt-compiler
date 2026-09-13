@@ -40,7 +40,7 @@ for each memory instruction, its **effective address** computed against the
 running machine state, and proving the emitted address trace is identical from
 **any** two initial states.
 
-The honest dual: a register-indexed `storeMemIdx base idx scale` (an
+The contrasting case: a register-indexed `storeMemIdx base idx scale` (an
 `mov %src, (%base,%idx,scale)` scatter, e.g. a secret-dependent table write)
 has effective offset `scale · (s.get idx).toNat` — a function of the **value**
 in `idx`. Its address leak therefore *differs* between two states that disagree
@@ -121,7 +121,9 @@ def instrLeak {w : Nat} (s : JState w) : JInstr w → List MLeak
   -- register; it performs no memory access, so it emits no memory event even though its
   -- operands name a base and an index register.
   | .lea _ _ _ _ _ => []
-  -- every scalar ALU / mov / shift / cmov / mulx-reg op: no observable leak
+  -- every scalar ALU / mov / shift / rotate / cmov / set / test / bit-test / exchange /
+  -- widening-multiply / mulx-reg op: no memory access and no branch, so no observable
+  -- leak
   | _ => []
 
 /-! ## 3. The block leakage trace, threaded through the machine semantics -/
@@ -338,6 +340,13 @@ def dstRegs {w : Nat} : JInstr w → List String
   | .not_ d | .andn d _ _ | .rol d _ | .ror d _ | .rorx d _ _
   | .shlx d _ _ | .shrx d _ _ | .sarx d _ _
   | .movzx d _ _ | .movsx d _ _ | .lea d _ _ _ _ => [d]
+  -- `clc`/`stc`/`bt` and the sized `testN` write flags only.
+  | .clc | .stc => []
+  | .testN _ _ _ | .bt _ _ => []
+  | .inc d | .dec d | .imulri d _ _ | .shld d _ _ | .shrd d _ _ | .rcl d _ | .rcr d _
+  | .cmovcc _ d _ | .setcc _ d | .btr d _ | .bts d _ => [d]
+  | .xchg a b => [a, b]
+  | .mul dHi dLo _ | .imulWide dHi dLo _ => [dHi, dLo]
 
 /-- The index register an instruction reads to form a memory address, if any
     (only the register-indexed ops have one). -/
@@ -354,7 +363,8 @@ theorem evalInstr_get_of_not_dst {w : Nat} (s : JState w) (i : JInstr w) (r : St
     (h : r ∉ dstRegs i) : (evalInstr s i).get r = s.get r := by
   cases i <;>
     simp_all [evalInstr, dstRegs, JState.get, JState.setReg, JState.writeB5,
-      JState.writeB5W, JState.writeB2W, JState.store, JState.storeIdx]
+      JState.writeB5W, JState.writeB2W, JState.store, JState.storeIdx, JState.writeB4W,
+      JState.writeB5W2, JState.writeB5N, JState.writeCFW, JState.setRegMerge]
 
 /-- A leaf is **CT-addressed** w.r.t. `pub`: every memory index register it uses is
     public, and it never overwrites a public register (the address/counter frame is

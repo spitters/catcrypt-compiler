@@ -167,9 +167,18 @@ def writesFlags' : JInstr 64 → Bool
   | .movzx _ _ _       => false
   | .movsx _ _ _       => false
   | .lea _ _ _ _ _     => false
+  -- `inc`/`dec` write four flags, `clc`/`stc`/`bt`/`btr`/`bts` write `CF`, the
+  -- rotates through carry write `OF`/`CF`, and the multiplies, double shifts and
+  -- sized test write all five.
+  | .inc _ | .dec _ | .clc | .stc | .imulri _ _ _ | .mul _ _ _ | .imulWide _ _ _
+  | .shld _ _ _ | .shrd _ _ _ | .rcl _ _ | .rcr _ _ | .testN _ _ _
+  | .bt _ _ | .btr _ _ | .bts _ _ => true
+  -- `xchg` and the general conditional instructions write no flag.
+  | .xchg _ _ | .cmovcc _ _ _ | .setcc _ _ => false
   | _                  => true
 
-/-- Does instruction `b` read flags (carry-in for ADC/SBB/ADCX/ADOX)? -/
+/-- Does instruction `b` read flags (carry-in for ADC/SBB/ADCX/ADOX, the carry of
+    RCL/RCR, the condition of CMOVcc/SETcc)? -/
 def readsFlags' : JInstr 64 → Bool
   | .adc _ _  => true
   | .sbb _ _  => true
@@ -184,6 +193,11 @@ def readsFlags' : JInstr 64 → Bool
   | .rol _ _ | .ror _ _ | .rorx _ _ _ => false
   | .shlx _ _ _ | .shrx _ _ _ | .sarx _ _ _ => false
   | .movzx _ _ _ | .movsx _ _ _ | .lea _ _ _ _ _ => false
+  -- the rotates through carry read `CF`; `cmovcc`/`setcc` read their condition.
+  | .rcl _ _ | .rcr _ _ | .cmovcc _ _ _ | .setcc _ _ => true
+  | .inc _ | .dec _ | .clc | .stc | .xchg _ _ | .imulri _ _ _ | .mul _ _ _
+  | .imulWide _ _ _ | .shld _ _ _ | .shrd _ _ _ | .testN _ _ _ | .bt _ _ | .btr _ _
+  | .bts _ _ => false
   | _         => false
 
 /-- Flag-chain hazard: one writes a flag that the other reads, or both write

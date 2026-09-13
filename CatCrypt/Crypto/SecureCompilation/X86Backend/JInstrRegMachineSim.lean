@@ -33,8 +33,11 @@ elaborates and the generic theorem `renameBlock_runBlock_sim_reindexed` applies 
 
 * **Flags.** Flags are written by the `writeB5W` ALU arms, by the flag-only `test`/`cmp`
   (a `writeB5`), by the rotates `rol`/`ror` (a `writeB2W`, which sets `of`/`cf` and
-  carries `sf`/`pf`/`zf` over), and by `adcx`/`adox` (which set `cf`/`of` to the
-  `x86_ADCX` carry-out); every other arm of `evalInstr` leaves `flags` untouched. On the
+  carries `sf`/`pf`/`zf` over), by `adcx`/`adox` (which set `cf`/`of` to the
+  `x86_ADCX` carry-out), by `inc`/`dec` (four flags, `cf` kept), by the multiplies
+  `imulri`/`mul`/`imulWide`, the double shifts `shld`/`shrd`, the carry rotates
+  `rcl`/`rcr`, the flag-only `testN`/`bt`, and by `btr`/`bts` (`cf` only); every other
+  arm of `evalInstr` leaves `flags` untouched. On the
   flag-writing arms both sides compute the *same* flags: the data inputs agree by the
   register read-agreement on the read-names (the destination — for `test`/`cmp`, the
   first operand; for `andn`, the two sources — and the source operand), and for
@@ -147,8 +150,45 @@ theorem aux_stepJ (ρ : String → String) (s t : JState 64) (i : JInstr 64)
       have hs : (renameOperand ρ amt).eval t = amt.eval s :=
         renameOperand_eval_rename amt (fun x hx => h x (List.mem_cons_of_mem _ hx))
       simp only [renameInstr, evalInstr, JState.writeB2W, hs, hd, hflag]
+    | inc d | dec d =>
+      -- `inc`/`dec` write `OF`/`SF`/`PF`/`ZF` from the operand and keep `CF`.
+      have hd : t.get (ρ d) = s.get d := h d (List.mem_cons_self ..)
+      simp only [renameInstr, evalInstr, JState.writeB4W, hd, hflag]
+    | imulri d src imm =>
+      have hs : t.get (ρ src) = s.get src := h src (List.mem_cons_self ..)
+      simp only [renameInstr, evalInstr, JState.writeB5W, hs]
+    | mul dh lo src | imulWide dh lo src =>
+      have hl : t.get (ρ lo) = s.get lo := h lo (List.mem_cons_self ..)
+      have hs : t.get (ρ src) = s.get src :=
+        h src (List.mem_cons_of_mem _ (List.mem_cons_self ..))
+      simp only [renameInstr, evalInstr, JState.writeB5W2, hl, hs]
+    | shld d src amt | shrd d src amt =>
+      have hd : t.get (ρ d) = s.get d := h d (List.mem_cons_self ..)
+      have hsr : t.get (ρ src) = s.get src :=
+        h src (List.mem_cons_of_mem _ (List.mem_cons_self ..))
+      have hs : (renameOperand ρ amt).eval t = amt.eval s :=
+        renameOperand_eval_rename amt (fun x hx =>
+          h x (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ hx)))
+      simp only [renameInstr, evalInstr, JState.writeB5W, hs, hd, hsr]
+    | rcl d amt | rcr d amt =>
+      -- The carry rotates read the incoming `CF` and carry `SF`/`PF`/`ZF` over.
+      have hd : t.get (ρ d) = s.get d := h d (List.mem_cons_self ..)
+      have hs : (renameOperand ρ amt).eval t = amt.eval s :=
+        renameOperand_eval_rename amt (fun x hx => h x (List.mem_cons_of_mem _ hx))
+      simp only [renameInstr, evalInstr, JState.writeB2W, hs, hd, hcf, hflag]
+    | testN sz a b | bt a b =>
+      have ha : t.get (ρ a) = s.get a := h a (List.mem_cons_self ..)
+      have hs : (renameOperand ρ b).eval t = b.eval s :=
+        renameOperand_eval_rename b (fun x hx => h x (List.mem_cons_of_mem _ hx))
+      simp only [renameInstr, evalInstr, JState.writeB5N, hs, ha, hflag]
+    | btr d b | bts d b =>
+      have hd : t.get (ρ d) = s.get d := h d (List.mem_cons_self ..)
+      have hs : (renameOperand ρ b).eval t = b.eval s :=
+        renameOperand_eval_rename b (fun x hx => h x (List.mem_cons_of_mem _ hx))
+      simp only [renameInstr, evalInstr, JState.writeCFW, hs, hd, hflag]
     | _ =>
-      simp only [renameInstr, evalInstr, JState.setReg, JState.store, JState.storeIdx, hflag]
+      simp only [renameInstr, evalInstr, JState.setReg, JState.setRegMerge, JState.store,
+        JState.storeIdx, hflag]
   · -- Memory clause: `∀ b o, (evalInstr t (renameInstr ρ i)).mem (ρ b) o
     --                       = (evalInstr s i).mem b o`.
     intro b o
