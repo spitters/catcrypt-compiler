@@ -208,7 +208,6 @@ CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMemStore
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresDescent
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineTieFragments
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresRelationalWeld
-CatCrypt.Crypto.SecureCompilation.Ascent.CorresX86Mem
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.EarlyExitJasmin
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.HeapAbs
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.LeanSourceRiscv
@@ -230,7 +229,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.MultiLimb
 CatCrypt.Crypto.SecureCompilation.Ascent.Polish
 CatCrypt.Crypto.SecureCompilation.Ascent.RelationalExceptTMvcgen
 CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockMvcgenMorphism
-CatCrypt.Crypto.SecureCompilation.Ascent.SolinasSquareSpec
+CatCrypt.Crypto.SecureCompilation.Ascent.SolinasSquareCorrect
 CatCrypt.Crypto.SecureCompilation.Ascent.SourceBridge
 CatCrypt.Crypto.SecureCompilation.Ascent.UCLeakageDecomp
 CatCrypt.Crypto.SecureCompilation.Ascent.Width32Leaf
