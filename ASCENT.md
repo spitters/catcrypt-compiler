@@ -97,7 +97,7 @@ The demonstrations under `Ascent/Demos/` each state a small route end to end:
 | [Demos/LeanSourceRiscv](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/LeanSourceRiscv.lean) | the RV64 twin | `add_descent_riscv` |
 | [Demos/HeapAbs](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/HeapAbs.lean) | an `n`-limb add over the generic value abstraction | `feAddN_capstone`, `feAdd4_capstone_field` |
 | [Demos/SourceToBytes](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/SourceToBytes.lean) | the closed capstones at their values | `feSub_value`, `feAdd_value` |
-| [Demos/EarlyExit](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/EarlyExit.lean) | a hax search loop with `return`, read as an exception program | `searchU_except_found`, `searchU_word_found` |
+| [Demos/EarlyExit](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/EarlyExit.lean) | a search loop with `return`, an `ImpExpr` term written in Lean in the shape of an extraction, read as an exception program | `searchU_except_found`, `searchU_word_found` |
 | [Demos/Strengthen](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Strengthen.lean) | the result monad chosen per kernel | `feSubC_ts_refines`, `qrFrag_ts_refines`, `searchU_ts_refines` |
 
 ## A worked path: `feSub_source_to_bytes_tower`
@@ -153,6 +153,8 @@ to `r0 := a0 + b0 - c0` and is the template for a new closed kernel.
 This section states what the capstones prove and where they stop, with the theorem
 names at which each boundary can be checked.
 
+`bash scripts/ascent-corpus.sh` lists, from the declaration text of the tracked files, the kernels of the package (closed `LowCT` values, `reifyLowCT%` kernels, and `ImpExpr` terms with an exit-lowering theorem), which of them an ascent correspondence names (single-store correspondences in a separate column), and which a closed capstone reaches, one that takes no emit, denotation or correspondence equation as a hypothesis; its header states the method.
+
 ### The source-to-bytes capstones end at a `Com jasminDialect` denotation
 
 `legWeld`, `legWeld_lower`, `feSub_endToEnd`, `feAdd_endToEnd`,
@@ -176,7 +178,7 @@ the `ScalarLinX86Demo` target (`corres_of_refines_x86`), `runRBlock64` over `RIn
 `legWeld` takes `hReads : readsOK (fun _ => False) c`, so every read in `c` follows a
 write in `c`, and it closes the front at `VarMap.empty` and the jasmin program at the
 empty valuation. `F.jcom.denote (ctMapValD .nil)` is therefore a constant, and the
-conclusion is a statement about one input-free kernel. The `keystone` family requires
+conclusion is a statement about one input-free kernel. `corres_emit_weld` and the `keystone_*` welds require
 the same through `hAgree`: the word at the readout name is the same for every entry
 environment. Every instance in the package fixes its inputs as literals:
 `feSub_source_to_bytes_tower` and `feAdd_source_to_bytes_tower` at `av` and `bv`,
@@ -247,7 +249,7 @@ is `none` (`loop_forFold_source_vacuous`).
 
 ### Welds that take the emit equation as a hypothesis
 
-`keystone`, `keystone_setScalar`, `keystone_if`, `keystone_for`, `loop_keystone_emit`,
+`corres_emit_weld`, `keystone_setScalar`, `keystone_if`, `keystone_for`, `loop_keystone_emit`,
 `condKernel_bytes_of_emit`, `keystone_arr`, `keystone_arrStore`, `keystone_fq` and
 `keystone_setScalar_fq` are stated for an abstract map `Emit` and take
 `hEmit : jdenote = Emit val` as an argument, which they return as their first
