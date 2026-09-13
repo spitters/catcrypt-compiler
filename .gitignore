@@ -5,3 +5,19 @@
 docs/.lake/
 docs/_out/
 docs/lake-manifest.json
+
+# lean-beam daemon state
+/.beam/
+/.beam.stale-*/
+
+# Artifacts that the emit drivers write under bench/<kernel>/gen, gen_com and
+# gen_ra when a module is elaborated or run. The artifacts listed in
+# bench/PROVENANCE.md are tracked and re-included below.
+/bench/*/gen/*
+/bench/*/gen_com/*
+/bench/*/gen_ra/*
+!/bench/bls12_377_compare/gen_com/bls12_377_orch_owned.s
+!/bench/bn254_fieldmul_compare/gen_com/bn254_mont_mul_x86_from_lean.s
+!/bench/hmac_compare/gen/hmac_xor_pad.s
+!/bench/hmac_compare/gen/sha256_compress.s
+!/bench/x25519_fieldmul_compare/gen/fe25519_mul_proven.s

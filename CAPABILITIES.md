@@ -1,74 +1,88 @@
 # Primitive coverage index
 
-This table maps each cryptographic primitive shipped in `catcrypt-compiler` to
-(1) the Lean **module** that emits/compiles its bytes, (2) the **emit or
-correctness theorem / KAT** that pins that emit, and (3) its **compiler-provenance
-class** — how the shipped bytes are justified at the leaf boundary. The provenance
-classes are:
+This table maps each cryptographic primitive with kernels in `catcrypt-compiler` to
+(1) the Lean modules that build or emit them, (2) the theorems and checks about
+those kernels, stated at the strength of their statements, and (3) the provenance
+class of the kernel. Paths are relative to the repository root; `SC/` abbreviates
+`CatCrypt/Crypto/SecureCompilation/`. Theorems are cited by declaration name;
+`git grep -n 'theorem <name>'` locates each one.
 
-- **Lean-descent (front-sourced)** — bytes generated from a Lean spec through the
-  verified front (`LowCT → CryptoSSA → Com → jasmin`) and tied to the spec by a
-  `Com`-denotation theorem;
-- **owned-arithmetic-leaf (runBlock-proven)** — an owned x86 arithmetic leaf
-  justified by a `runBlock` denotation proof;
-- **trusted-symmetric-leaf (extCall)** — a symmetric permutation/compression left
-  as an opaque, trusted `extCall`/called leaf at the boundary;
-- **Rust/hax** — bytes sourced from Rust through the hax front;
-- **hand-authored (backlog)** — hand-built emit still listed in a provenance
-  baseline (`scripts/emit_provenance_baseline.txt`,
-  `scripts/handcom-provenance-baseline.txt`) awaiting re-sourcing through a front.
+## Provenance classes
 
-Several primitives carry two stories (fully-proven round arithmetic plus a deployed
-owned `.s` whose hot instruction is a trusted leaf); those cells name both. Line
-citations are given for the symmetric and pairing rows for spot-checking. Paths are
-relative to the repo root.
+- front-generated, denotation proved: the `Com` is produced by a front
+  (`reifyLowCT%`, `translateDialectControl`, `compileFromHax`, `buildOrchCom`) from a
+  source program, and a theorem states, for every input, that its denotation equals
+  a specification.
+- front-generated, sample-checked: the `Com` is produced by a front; its agreement
+  with a reference function is a `native_decide` evaluation on a fixed list of
+  inputs, which establishes agreement on those inputs only.
+- front-generated, no value theorem: the `Com` is produced by a front; the checks
+  are structural (lowering succeeds, op vocabulary, output layout).
+- builder `Com`: the `Com` is written in Lean as de Bruijn chains or by builder
+  functions, not produced by a front from a source program. The row states which
+  denotation theorems hold for it.
+- string-rendered: the emitted text is concatenated from Lean `String` templates.
+  The in-package checks on it are substring tests (`strContains`, `occursIn`,
+  `hasSub`), which constrain the text and say nothing about what it computes.
+- orchestration over leaves: the kernel sequences calls to external leaves. The
+  theorems state which leaves are called on which arguments, under a leaf oracle.
+- trusted leaf: an instruction or called routine whose semantics is assumed.
 
 ## Symmetric family
 
-| Primitive | Module | Theorem / KAT | Provenance |
+| Primitive | Modules | Theorems and checks | Provenance |
 |---|---|---|---|
-| AES-128 | `CatCrypt/Crypto/SecureCompilation/VIR/AesRoundCatCryptEmit.lean` (round GF(2⁸) math); `CatCrypt/Crypto/SecureCompilation/X86Backend/Aes128CtrVsimdEmit.lean` (whole CTR `.s`) | `xtimeW_eq_spec` / `mul3W_eq_spec` (`AesRoundCatCryptEmit.lean:92`, `:98`); `ecbCom_denote` (`Aes128CtrVsimdEmit.lean:271`); `asm_has_export` native_decide asm KAT (`:485`) + `#guard` byte checks (`:489`–`:518`) | Round GF(2⁸) arith: **Lean-descent (front-sourced)**, `Com`-denote proven. Deployed CTR keystream: owned whole-`.s` emit whose AES round is the AES-NI `VAESENC` hardware instruction — a **trusted-symmetric-leaf** at the instruction boundary, corroborated by asm KATs. |
-| GF(2¹²⁸) / GHASH | `CatCrypt/Crypto/SecureCompilation/VIR/GhashGf128CatCryptEmit.lean` (also owned `VIR/VPClmulEmit.lean`) | `accStepCom_denote` (`GhashGf128CatCryptEmit.lean:259`) and `valStepCom_denote` (`:267`) denote to `GF128.gf128_step`; `accStepW_eq_spec` (`:109`) | **Lean-descent (front-sourced)** — `Com` built on `catCryptDialect` and denote-proven to the `GF128` bit-serial spec. |
-| HMAC | `CatCrypt/Crypto/SecureCompilation/VIR/HmacHkdfEmit.lean` | `xorPadCom_denote` (`:278`), `xorPadCom_bindings` (`:255`), `hmacXorPad_has_export` native_decide ABI KAT (`:411`); HKDF-Expand recurrence `expandLoop_denote_eq` (`:390`) | Mixed. The ipad/opad and SHA-2 core are **Lean-descent (front-sourced)** (`FrontSourced`, rfl-provenance, `:626`); the HKDF-Expand step is encapsulated as a single `hkdf_expand_step` **trusted-symmetric-leaf (extCall)** (`:366`–`:390`). |
-| Keccak / SHAKE | `CatCrypt/Crypto/SecureCompilation/VIR/KeccakRoundCatCryptEmit.lean` (round); `CatCrypt/Crypto/SecureCompilation/VIR/Shake256SpongeOwnedEmit.lean` (variable-length sponge) | `keccakRound_catcrypt_eq` (`KeccakRoundCatCryptEmit.lean:334`); `shake256Body_front_sourced` (`Shake256SpongeOwnedEmit.lean:350`), `shake256_shape` / `shake256_renders_sponge` native_decide KATs (`:316`, `:357`) | Round permutation arith: **Lean-descent (front-sourced)**, `Com`-denote proven. Deployed SHAKE256: front-sourced sponge marshalling around a **trusted-symmetric-leaf** — the called `keccak_f1600_resident` permutation (FIPS-202 KAT'd). |
-| Poly1305 | `CatCrypt/Crypto/SecureCompilation/VIR/Poly1305OwnedCom.lean` (front-compiled owned kernel); also `VIR/ChaChaPolyEmit.lean`, `X86Backend/Poly1305Kernel.lean` (HACL variant) | `poly1305_is_purearith_only` (`Poly1305OwnedCom.lean:254`), `poly1305MacLowered_isSome` native_decide (`:214`); `poly1305_mac_dot` / `poly1305_isPoly` (`ChaChaPolyEmit.lean:156`, `:147`) + jazz `#guard` KATs (`:325`–`:344`) | **Lean-descent (front-sourced)** — 5×26-limb field MAC compiled through the front, no hand-built `Com`; proven pure-arith (no `extCall`). |
-| SHA-256 | `CatCrypt/Crypto/SecureCompilation/VIR/Sha256CompressCatCryptEmit.lean` (whole 64-round); round funcs in `VIR/Sha256RoundCatCryptEmit.lean` | `sha256Compress_catcrypt_denote` (`Sha256CompressCatCryptEmit.lean:317`); round-func denote `sha256_smallsigma0_catcrypt_denote` (`:123`) | **Lean-descent (front-sourced)** — `Com`-denote proven equal to the FIPS 180-4 §6.2 reference compression. |
-| SHA-512 | `CatCrypt/Crypto/SecureCompilation/VIR/Sha512CompressCatCryptEmit.lean` (whole 80-round); round funcs in `VIR/Sha512RoundCatCryptEmit.lean` | `sha512Compress_catcrypt_denote` (`Sha512CompressCatCryptEmit.lean:317`), `sha512RoundCat_eq` (`:205`), `runRoundsCat_eq` (`:280`) | **Lean-descent (front-sourced)** — `Com`-denote proven equal to the FIPS 180-4 §6.2 reference compression. |
-| BLAKE3 | `CatCrypt/Crypto/BLAKE3/CompressEmit.lean`, `CatCrypt/Crypto/BLAKE3/CompressOwnedEmit.lean` | `blake3_lower_denote` (`CompressEmit.lean:257`); `blake3_G_computes_spec` native_decide (`:199`); `blake3_G_lower_denote` (`:189`) | **hand-authored (backlog)** — both files are listed in `scripts/emit_provenance_baseline.txt` as grandfathered hand-authored `List (JInstr)` emission; corroborated by a `runBlock`-proven denotation tie. |
+| AES-128 | `SC/VIR/AesRoundCatCryptEmit.lean` (GF(2⁸) helpers); `SC/X86Backend/Aes128CtrVsimdEmit.lean` (CTR `.s`) | `xtimeW_eq_spec`, `mul3W_eq_spec`: `BitVec 8` identities against `AES128.xtime`/`AES128.mul3`; `AesRoundCatCryptEmit` defines no `Com`. `keyExpandRoundCom_denote`, `ecbCom_denote`: for every input, a builder `Com jasminDialect` equals `keyExpandRoundSpec`/`ecbSpec`, which are written over the same `wAESKEYGENASSISTW`/`wAESENCW` op denotations; no theorem relates them to `Primitives.AES128`. `asm_has_export` (`native_decide`) and the `#guard`s on `aesCtrExportAsm` are substring tests. | Key schedule and ECB body: builder `Com`, rendered by `renderVsimdCom` with fixed XMM maps. CTR loop, counter, tail copy and ABI: string-rendered (`aesCtrExportAsm`). The AES round is the `VAESENC` instruction, a trusted leaf. No theorem relates the `.s` to FIPS-197 or SP 800-38A. |
+| GF(2¹²⁸) / GHASH | `SC/VIR/GhashGf128CatCryptEmit.lean`; `SC/VIR/VPClmulEmit.lean` | `accStepW_eq_spec`, `valStepW_eq_spec`; `accStepCom_denote`, `valStepCom_denote`: one `gf128_step`, with the reduce bit passed to `valStepCom` as a constant parameter. `accStepCom_not_lowered`, `valStepCom_not_lowered` (`native_decide`): `cryptoDialectToJasminCom` returns `none` on both. `vpclmulqdq_eq_polyMul` gives the `VPCLMULQDQ` op denotation. | Builder `Com` on `catCryptDialect`, denotation only: the step does not lower and this module emits no bytes. `VPClmulEmit.lean` is an instruction denotation, not a GHASH emitter. |
+| HMAC / HKDF | `SC/VIR/HmacHkdfEmit.lean` | `xorPadCom_denote` (`rfl`): the returned word, output word 15, is `K[15] ⊕ pad`; the other fifteen output words are not stated. `xorPadCom_bindings`, `xorPadComW_denote`. `hmacXorPad_has_export`, `hmacXorPad_abi` (`native_decide`) and the `#guard`s are substring tests on `hmacXorPadJazz`. `expandLoop_denote_eq`, `expandSkelLoop_denote_eq`: running the loop equals the `Com` denotation, under `LeafAgrees`, which equates the leaf semantics with `jasminExtSem`; they state nothing about HKDF values. In namespace `FrontSourced`, `hmac_ipad_lowers`/`hmac_opad_lowers` (`rfl`) show that a one-word pad expression lowers through the front. | XOR pad: builder `Com` (`emitXorPad`) rendered by `emitAbiOrchReg`. HKDF-Expand step: the `hkdf_expand_step` `extCall`, a trusted leaf. The SHA-256 compression it composes with is the SHA-256 row below. |
+| Keccak / SHAKE | `SC/VIR/KeccakEmit.lean` (permutation `Com`); `SC/VIR/KeccakFipsAscent.lean`; `SC/VIR/KeccakRoundCatCryptEmit.lean` (round); `SC/VIR/Shake256SpongeEmit.lean` (sponge) | `KeccakFipsAscent.keccakF1600Com_denote_spec`: for every 25-lane state, the denotation of `keccakF1600Com` on the canonical input valuation is lane 24 of the 24-round FIPS 202 iteration; `keccak_emit_state_fips` states all 25 lanes of the slot-map model; `toKState_round` identifies the round with `Primitives.Keccak.keccakRound`. `keccakRound_catcrypt_eq` equates a Lean function built from `.denote` of five per-lane `catCryptDialect` sub-`Com`s with `keccakRound`; their `bvRol` rotates do not lower. `shake256Body_front_sourced` (`rfl`): `shake256Body = spband 64 (shake256Steps spongeCfg)`. The `#guard`s on `shake256Asm` are substring tests. | Permutation: builder `Com jasminDialect` with a universal denotation theorem; `SC/VIR/KeccakLinearMain.lean` lowers it with `Com.toLprogPhysAbi`. SHAKE256: absorb, pad and squeeze rendered from the `SpStep` schedule of `SC/VIR/Shake256SpongeFront.lean` at `Lcmd` level, with no semantic theorem; the permutation is the called symbol `keccak_f1600_resident`, a trusted leaf; the `.jazz` texts in this package that export that symbol (`KeccakEmit.keccakF1600ResidentJazz`, `keccakF1600ResidentJazzN`) are string-rendered. |
+| Poly1305 | `SC/VIR/Poly1305Com.lean` (fixed 10-block MAC); `SC/VIR/Poly1305RtLoopCom.lean` (runtime block count); `SC/VIR/ChaChaPolyEmit.lean`, `SC/X86Backend/Poly1305Kernel.lean` (`.jazz` text) | No correctness theorem for any Poly1305 kernel. `poly1305MacLowered_isSome`, `frontComAt_q_isSome`, `poly1305_is_purearith_only`, `poly1305_last_five_bindings_are_copies`, `macRtProg_isSome` (all `native_decide`) are structural. `poly1305_dot`, `poly1305_isPoly`, `poly1305_mac_dot` (and `poly1305_hacl_dot`, `poly1305_hacl_isPoly`) are sum identities over abstract `ZMod (2¹³⁰−5)` that mention no `Com`. The `#guard`s in `ChaChaPolyEmit` and `Poly1305Kernel` are substring tests on the rendered `.jazz`. | `Poly1305Com`: front-generated (`translateDialectControl`, `cryptoDialectToJasminCom`), no value theorem; no theorem instantiates the front correctness theorems at `macBody` or relates it to `CatCrypt/Crypto/Primitives/Poly1305.lean`. `ChaChaPolyEmit` and `Poly1305Kernel`: string-rendered. |
+| SHA-256 | `SC/VIR/Sha2Emit.lean` (`compressCom`); `SC/VIR/Sha256CompressCatCryptEmit.lean`; `SC/VIR/Sha256RoundCatCryptEmit.lean` | `sha256Compress_catcrypt_denote` equates two Lean functions: the schedule recursion and 64-round `Fin.foldl` evaluated through `.denote` of builder mixing `Com`s, and `sha256CompressSpec`, defined in the same module and parametric in the round constants. `sha256_smallsigma0_catcrypt_denote`, `sha256_smallsigma1_catcrypt_denote` (in the compress module); `sha256_sigma0_jasmin_denote`, `sha256_sigma1_jasmin_denote`, `sha256_ch_jasmin_denote`, `sha256_maj_jasmin_denote`: the lowered mixing functions equal their `Sha256Verified` references for every input. `sha256_binding_count` (`Sha2Emit`) counts bindings. | Mixing functions: builder `Com`s with universal denotation theorems through `cryptoDialectToJasminCom_denote_eq'`. Whole compression: `bench/sha2_linear_compare/sha256_owned_body.s` is lowered from the builder `Com` `Sha2Emit.compressCom sha256Spec` (`SC/VIR/Sha256LinearMain.lean`), and no theorem relates `compressCom` to FIPS 180-4. |
+| SHA-512 | `SC/VIR/Sha2Emit.lean` (`compressCom`); `SC/VIR/Sha512CompressCatCryptEmit.lean`; `SC/VIR/Sha512RoundCatCryptEmit.lean` | `sha512Compress_catcrypt_denote`, `sha512RoundCat_eq`, `runRoundsCat_eq`: equalities of Lean functions, as for SHA-256. `sha512_sigma0_jasmin_denote`, `sha512_sigma1_jasmin_denote`, `sha512_ch_jasmin_denote`, `sha512_maj_jasmin_denote` for the lowered mixing functions. | As for SHA-256, with `bench/sha2_linear_compare/sha512_owned_body.s` lowered from `compressCom sha512Spec`. |
+| BLAKE3 (`G` step) | `SC/CompileFromHaxBlake3.lean` | `blake3GA_compiles` … `blake3GD_compiles`: `compileFromHax` returns a `Com jasminDialect` whose denotation equals the corresponding output word of `blake3GSpec` for every input, via `compileFromHax_meets_spec`; `blake3GSpec` is a transcription of the reference `g` in the same module. `gA_compileFromHax_isSome` … `gD_compileFromHax_isSome` (`native_decide`). | Front-generated, denotation proved, for the `G` mixing step only. The source is a hax `ImpExpr` written in the module; the module writes no artifact, and the package holds no whole-compression BLAKE3 kernel. |
 
 ## Field / EC / pairing family
 
-| Primitive | Module | Theorem / KAT | Provenance |
+| Primitive | Modules | Theorems and checks | Provenance |
 |---|---|---|---|
-| BN254 pairing arithmetic | `CatCrypt/Crypto/Pairing/BN254GroupEmit.lean` | `lamCom_denote` (`:324`), `lamComShadow_denote` (`:299`), `lamCom_isSome` (`:280`), `lamCom_eq_shadow` (`:294`), leaf bridge `binLeafExpr_denote` (`:218`) | G1 group-law orchestration **Lean-descent (front-sourced)** via `buildOrchCom` (`:283`–`:324`), over opaque `fp_*` field **`extCall` leaves that are `runBlock`-verified owned-arithmetic** (`:100`). |
-| BLS12-377 pairing arithmetic | `CatCrypt/Crypto/Pairing/Bls12_377Emit.lean` | `fieldMulCom_eq_shadow` (`:335`), `fieldAddCom_isSome` (`:275`), `fieldAddCom_eq_shadow` (`:286`), leaf builders at `:224`–`:243` | Field + pairing orchestration **Lean-descent (front-sourced)** via `buildOrchCom` (`:249`), over single-leaf straight-line `extCall`-over-`stackArr` field kernels (**owned-arithmetic-leaf**); corroborated by a **Rust KAT** cross-check `bench/bls12_377_compare/bls377_kat.rs`. |
+| BN254 G1 affine point add | `CatCrypt/Crypto/Pairing/BN254GroupEmit.lean`; `CatCrypt/Crypto/Pairing/BN254GroupDenote.lean` | `BN254GroupDenote.lamCom_denoteWith`, `bn254AddxCom_denoteWith`, `bn254AddyCom_denoteWith`: for every leaf oracle satisfying `FieldLeafAgrees prims`, the slope, `x₃` and `y₃` kernels compute the corresponding composition of `prims.mul`/`sub`/`inv`. `bn254FieldOracle_agrees` shows such an oracle exists for every `prims`. `BN254GroupDenote.lamCom_denote`, `bn254AddxCom_denote`, `bn254AddyCom_denote` instantiate them at the deployed oracle and rest on the axiom `bn254GroupLeafOracle_agrees`. `lamCom_isSome`, `bn254AddxCom_isSome`, `bn254AddyCom_isSome` are generation gates; `lamCom_eq_shadow` and its siblings are `rfl` equalities between two `Com`s. No theorem relates the primitives to `FpBN254` under a satisfiable hypothesis (see Notes). | Orchestration over leaves, front-generated by `buildOrchCom`. The field leaves are external: per the docstring of `mulLeafName`, `bn254_fp_mul` links to the kernel of `SC/X86Backend/Bn254MontMulKernel.lean`, whose `bn254MontMulBlock_lowering_correct` relates its `Com (x86Dialect 64)` lowering to `runBlock` and states no Montgomery value; `bn254_fp_sub`, `bn254_fp_add` and the inverse `bn254_invert_divstep_sat` are AUCurves routines, trusted leaves. The pairing tower is not covered. |
+| BLS12-377 field and pairing orchestration | `CatCrypt/Crypto/Pairing/Bls12_377Emit.lean`; `CatCrypt/Crypto/Pairing/Bls12_377Denote.lean` | `Bls12_377Denote.fieldAddCom_denoteWith`, `fieldSubCom_denoteWith`, `fieldMulCom_denoteWith`, `fieldSquareCom_denoteWith`, `fieldInvCom_denoteWith`, `pairingCom_denoteWith`, `fp12MulCom_denoteWith`, `pairingProductCom_denoteWith`: under a leaf oracle satisfying the agreements, each kernel computes the corresponding field of the abstract byte-level record `Bls377Primitives`. The deployed-oracle forms (`fieldMulCom_denote` and siblings in `Bls12_377Denote`) rest on the axiom `bls377LeafOracle_agrees`. `fieldAddCom_front_sourced` and siblings restate the `*_isSome` generation gates. The `#guard` on `bls12_377Asm` is a substring test. | Orchestration over leaves, front-generated by `buildOrchCom`; the emitted orchestration is `bench/bls12_377_compare/gen_com/bls12_377_orch_owned.s`. Field arithmetic, pairing and `Fp12` product are AUCurves routines, trusted leaves; `Bls377Primitives` carries no field or pairing semantics. |
 
 ## Lattice / PQ family
 
-| Primitive | Module | Theorem / KAT | Provenance |
+| Primitive | Modules | Theorems and checks | Provenance |
 |---|---|---|---|
-| HAWK negacyclic multiply | `CatCrypt/Crypto/SecureCompilation/VIR/HawkMulEmit.lean` (HAWK-512 NTT hot phase in `X86Backend/HawkNttOwnedEmit.lean`, `X86Backend/HawkPointwiseOwnedEmit.lean`) | `hawk_denote_spec` native_decide, `hawk_is_purearith_only`, `hawkLowered_isSome` native_decide | **Lean-descent (front-sourced)** — negacyclic ring multiply over `Z/1024[x]/(xⁿ+1)` compiled through the front; proven pure-arith (no `extCall`). |
-| NTRU-HRSS ring multiply | `CatCrypt/Crypto/SecureCompilation/VIR/Ntruhrss701MulEmit.lean` (Karatsuba sibling `VIR/Ntruhrss701KaratsubaEmit.lean`) | `ntru_denote_spec` native_decide, `ntru_is_purearith_only`, `ntruLowered_isSome` native_decide | **Lean-descent (front-sourced)** — `Z/8192[x]/(xⁿ−1)` cyclic product through the front, no hand-built `Com`. |
-| FN-DSA (Falcon) emit | `CatCrypt/Crypto/SecureCompilation/VIR/FndsaEmit.lean` (reflect surface `Jasmin/FalconReflect.lean`) | `fndsa_emit_verify_denotation_preserves`, `fndsa_emit_sampler_range_preserves`, `fndsa_emit_sampler_ct` (constant-time), `fndsa_emit_sampler_distance_bound`; jazz `#guard` KATs (`:240`+) | **Lean-descent (front-sourced)** — emit carries denotation-preservation, sampler range, and constant-time proofs; corroborated by Jasmin-source `#guard` KATs. |
+| HAWK-style negacyclic multiply, degree-16 tile over `Z/1024[x]/(x¹⁶+1)` | `SC/VIR/HawkMulEmit.lean`; `SC/VIR/HawkMulComDenoteTie.lean` | Deployed `hawkMulFrontCom`: `hawk_denote_spec` (`native_decide`) evaluates the front program on the four pairs in `samples` against `refCoeff`; `hawkLowered_isSome`, `hawk_is_purearith_only`, `hawk_last_bindings_are_copies` (`native_decide`) are structural, and `hawkMulFrontCom` is obtained from `hawkLowered_isSome`. Proof-model `hawkMulCom`: `HawkMulComDenoteTie.hawkMulCom_denote_spec` holds for every input pair; that `Com` is built separately and renders no artifact. | Front-generated, sample-checked. HAWK parameter degrees are not instantiated. |
+| HAWK-512 NTT butterflies and pointwise Montgomery multiply | `SC/X86Backend/HawkNttEmit.lean`; `SC/X86Backend/HawkPointwiseEmit.lean` | `nttBflyLowered_isSome`, `inttBflyLowered_isSome`, `pwComL_isSome` (`native_decide`); `ntt_front_provenance`, `intt_front_provenance`, `pw_provenance` restate the generation gates. `pwProgS_denote` (`native_decide`) checks the rolled loop at `sN = 4` on one sample input stream. | Front-generated, no value theorem for the deployed butterflies; the pointwise loop is sample-checked at a small instance. |
+| NTRU-HRSS-style cyclic multiply, degree-16 tile over `Z/8192[x]/(x¹⁶−1)` | `SC/VIR/Ntruhrss701MulEmit.lean`; `SC/VIR/Ntruhrss701KaratsubaEmit.lean` | `ntru_denote_spec` (`native_decide`) on the four pairs in `samples`; `ntruLowered_isSome`, `ntru_is_purearith_only`, `ntru_last_bindings_are_copies` (`native_decide`). Karatsuba sibling: `karaLowered_isSome`, `kara_is_purearith_only`, `kara_mul_count_192` (`native_decide`). No denotation theorem for all inputs. | Front-generated, sample-checked. The scheme degree `n = 701` is not instantiated. |
+| FN-DSA (Falcon) verify subtraction and CDT base sampler | `SC/VIR/FndsaEmit.lean`; `SC/VIR/FndsaEmit/Sampler.lean` (sampler specification); `CatCrypt/Crypto/Jasmin/FalconReflect.lean` | Specification level only. `Sampler.fixedPointCDTGaussian_range`: the Lean sampler function returns a value in `[-19, 19]`. `fndsa_verify_lane_map`: for any block function, the lane map equals per-lane application (`funext`, `rfl`). The `#guard`s on `fndsaVerifyJazz` and `fndsaSamplerJazz` are substring tests. No theorem relates either rendered text to its specification, and no theorem states constant time or the statistical-distance bound of the sampler. `FalconReflect.lean` declares its leaves as axioms and proves no theorem. | String-rendered (`emitFndsaVerifyJazz`, `emitFndsaSamplerJazz`). The sampler text renders its 19 RCDT constants as `0` and reads the random value little-endian, whereas `Sampler.packBytesBE` packs big-endian. |
 
 ## Proof-systems family
 
-| Primitive | Module | Theorem / KAT | Provenance |
+| Primitive | Modules | Theorems and checks | Provenance |
 |---|---|---|---|
-| Plonky3 reflect | `CatCrypt/Crypto/Jasmin/Plonky3Reflect.lean` (Merkle) plus the `Jasmin/Plonky3{Air,Fri,Lde,Prove}Reflect.lean` family | Pinned by reflection-reification `#eval` well-formedness checks (`:315`–`:321`); emit routes through the verified chain `LowCT → CryptoSSA → Com → jasmin` | **Lean-descent (front-sourced)** reflect surface. Caveat: several Plonky3 *owned-emit* modules — `VIR/Plonky3OrchLoopsOwnedEmit.lean`, `VIR/Plonky3PaddingFreeSpongeOwnedEmit.lean`, `VIR/Plonky3SerializeOwnedEmit.lean` — are **hand-authored (backlog)** per `scripts/handcom-provenance-baseline.txt`. |
-| Bulletproofs reflect | `CatCrypt/Crypto/Jasmin/BulletproofsIPAReflect.lean` | Pinned by reflection-reification `#eval` checks (`:222`–`:223`); reuses already-emitted MSM leaves with realization tie `Pairing/MsmReduce.msm_eq_scalarFold` | **Lean-descent (front-sourced)** reflect surface — IPA reduction orchestration reflected through the verified chain over the already-emitted toy-EC MSM primitive. |
+| Plonky3 reflect surfaces | `CatCrypt/Crypto/Jasmin/Plonky3Reflect.lean`, `Plonky3AirReflect.lean`, `Plonky3FriReflect.lean`, `Plonky3LdeReflect.lean`, `Plonky3ProveReflect.lean` (same directory) | No correctness theorem; the one theorem, `quotient_degree_is_selector_inclusive`, is `rfl` on a constant. The leaf functions and types are Lean `axiom`s. The `#eval` lines print fields of the `ReifiedFunc` records (argument names, argument count, result name) and assert nothing. `Plonky3LdeReflect.lean` defines its leaf-correctness propositions as `True`. | Orchestration over axiomatized leaves: a hand-written `LowCT` body; no theorem relates the body to a specification, and the leaves have no Lean semantics. |
+| Bulletproofs IPA prover reflect | `CatCrypt/Crypto/Jasmin/BulletproofsIPAReflect.lean` | No correctness theorem. The leaves are Lean `axiom`s; the two `#eval` lines print record fields and assert nothing. No theorem relates `ipaProverBody8` to `ipaProverLean8`, and no theorem links the `ipa_*` leaves to `CatCrypt/Crypto/Pairing/MsmReduce.lean`. | Orchestration over axiomatized leaves. Both `ipaProverLean8` and `ipaProverBody8` compute rounds 1 and 2 from the original `a`/`G` rather than the folded vectors and pass the round-0 fold `a1` to `ipa_final`, so they describe one folding round repeated three times, not a three-round IPA. `Halo2IPAProverReflect.lean` has the same dataflow. |
 
 ## Notes
 
-- **Rust/hax** provenance is present in the wider GF-MQ emit family
-  (`CatCrypt/Crypto/MAYO/KernelFromRustcmdFrontEmit.lean`), but none of the headline
-  primitives in `README.md` is Rust/hax-sourced; BLS12-377 uses Rust only as a
-  corroborating KAT, not as the byte source.
-- Cells reading "pinned by `#eval` reification checks" (Plonky3/Bulletproofs
-  reflect) reflect what is present: these surfaces are validated by `#eval`
-  reification over the reflected front output rather than a single named `theorem`.
-  The correctness obligation lives on the shared front chain; the per-module pin is
-  a reification check, not a KAT byte-equality.
-- Where a primitive has both a fully-proven round/step kernel and a deployed owned
-  `.s` whose hot instruction (`VAESENC`) or called routine (`keccak_f1600_resident`)
-  is a trusted leaf, both modules and both classes are named — a two-part provenance.
+- A `native_decide` or `#eval` check over a fixed input list establishes agreement
+  on those inputs. The byte-level KAT harnesses referred to in several module
+  docstrings (`bench/*_compare/*.c`) are in the CatCrypt development tree, not in
+  this package; `bench/PROVENANCE.md` lists the emitted artifacts the package ships.
+- `BN254GroupEmit.lamCom_denote`, `bn254AddxCom_denote`, `bn254AddyCom_denote`,
+  `emittedAffineAdd_realizes` and the `Bls12_377Emit.*Com_denote` theorems take
+  their leaf agreement at `jasminExtSem`, which denotes every `stackArr 8` leaf call
+  as the zero array. Their hypotheses therefore force the field primitives to be
+  constant, and for BN254 together with `FieldRealizes` they force the opaque
+  `wireToFp` to be identically zero; the index cites the `*_denoteWith` forms
+  instead.
+- `SC/VIR/Plonky3OrchLoopsEmit.lean`, `SC/VIR/Plonky3PaddingFreeSpongeEmit.lean` and
+  `SC/VIR/Plonky3SerializeEmit.lean` render the Plonky3 orchestration loops, the
+  sponge buffer movement around a called Poseidon2 permutation, and the proof
+  serializer. Their theorems include structural equalities of the rendered `Lcmd`
+  (for example `orchLoopFundef_eq_buildOrchLoop`, `leWriterFundef_body_eq`) and
+  substring tests on the rendered `.s`; none states what a whole routine computes.
+- No row's bytes are produced from Rust. The `compileFromHax` modules
+  (`SC/CompileFromHaxBlake3.lean`, `SC/CompileFromHaxMayoGf16.lean` and siblings)
+  compile hax `ImpExpr` sources written in the module and write no artifact.

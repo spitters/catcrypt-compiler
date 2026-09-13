@@ -119,8 +119,8 @@ if [ "$CURRENT" -gt "$BASELINE" ]; then
   echo "      FrontRoutePlan.compile (whole LowCT source in, plan + CompileResult out —"
   echo "      its denote_prog carries no front hypothesis), or, when the site fixes the"
   echo "      axes itself, through FrontRoutePlan.compileLoop / compileNested /"
-  echo "      compileBlock at the axis literals. See Dialects/FrontRoutePlan.lean and"
-  echo "      .claude/rules/secure-compilation.md."
+  echo "      compileBlock at the axis literals. See"
+  echo "      CatCrypt/Crypto/SecureCompilation/Dialects/FrontRoutePlan.lean."
   echo "      NEW call site(s) (not in the baseline):"
   comm -13 <(baseline_paths) "$TMP" | sed 's/^/        /'
   exit 1

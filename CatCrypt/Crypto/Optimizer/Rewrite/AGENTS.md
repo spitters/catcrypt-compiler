@@ -1,68 +1,93 @@
-# Rewrite — verified equality-saturation + algebraic rewrite library
+# Rewrite: equality saturation and the algebraic rewrite library
 
-Index for the "optimize a `Com` up to proven equivalence" subsystem. Grep here
-before adding a rewrite pass, a program-search heuristic, or a "pick the fastest
-implementation" selector — the substrate below already exists over the compiler
-IR, not just as a quantum-diagram demo.
+Index for optimizing a `Com` up to proven equivalence. Search here before adding a
+rewrite pass, a program-search heuristic, or a selector that picks the fastest of
+several equivalent implementations.
 
-## Engine (proof-carrying)
+## Engine
 
-- `Egraph.lean` — `saturateCom fuel c k` over `Com jasminDialect`.
-  `saturateCom_denote` proves the output denotes the same function as the input.
-  `comCost`/`opCost` is the cost model (`mul` expensive, shift cheap);
-  `saturate_cost_le` proves each step is cost-non-increasing. This is a
-  rewrite-saturation engine: greedy cost descent, no union-find, no e-classes, so
-  it does **not** extract a global cost minimum (see "Two levels").
-- `ProofCarryingExtraction.lean` — generic over any `f : α → β`
-  (`RewriteStep`/`RewriteChain`/`RewriteWitness`/`optimizeChecked`). An untrusted
-  extractor emits a witness (its explanation); `optimizeChecked_denote` checks it
-  against the kernel. The untrusted-search / checked-result boundary.
-  `ComWitness`/`saturateWitness` instantiate it for `Com`.
-- `RegistryEgraphBridge.lean`, `EgraphGrindIntegration.lean` — bridges to the
-  `Related` registry and to `grind`.
-- `../../Bridges/Quantum/ZXEgraph.lean` instantiates the same `Related`/
-  `RelatedBinOp` machinery for ZX diagrams — the framework is term-language-agnostic.
+- `Egraph.lean`: `saturateCom fuel c k` over `Com jasminDialect`.
+  `saturateCom_denote` states that the output denotes the same function as the
+  input for a known-constant environment consistent with the valuation.
+  `comCost`/`opCost` is the cost model (multiply expensive, shift cheap), and
+  `saturate_cost_le` states that the rewritten `Com` costs no more than the input.
+  The engine applies rewrite rules up to a fuel bound and stops at a local fixpoint;
+  it has no union-find and no e-classes, and it does not find a global cost minimum.
+- `ComPipeline.lean`: `comAlgebraicPipeline` runs `Peephole.peepCom` and then
+  `saturateCom`; `comAlgebraicPipeline_denote` composes the two preservation
+  theorems.
+- `ProofCarryingExtraction.lean`: generic over any `f : α → β` (`RewriteStep`,
+  `RewriteChain`, `RewriteWitness`, `optimizeChecked`). An untrusted extractor
+  returns a witness, and `optimizeChecked_denote` checks it. `ComWitness` and
+  `saturateWitness` instantiate it for `Com`.
+- `MultiplyMethodSelect.lean`: cost-minimum choice over a listed set of multiply
+  methods proved equal (`select_cost_min`, `select_denote_eq`).
+- `EgraphGlobalMin.lean`: an explicit e-class `EClass f`, a representative plus
+  members, each member carrying a `RewriteWitness` to the representative.
+  `extractMin` returns the cheapest member; `extractMin_cost_min` states its cost is
+  at most that of every member, and `extractMin_denote_eq` that it denotes the
+  representative. On the multiply-method families, `mul2Selected` and `mul3Selected`
+  recover the choices of `selectMul2` and `selectMul3`.
+- `RegistryEgraphBridge.lean`, `EgraphGrindIntegration.lean`: bridges to the
+  `Related` registry (`Transfer.Base.Related`, from ParamTransfer) and to `grind`.
+- `../EgraphOracle.lean`: a proposal from an untrusted `Com → Com` oracle enters the
+  output only through a decidable denotation check (`oracleOpt_denote`).
+  `../TranslationValidationEgraph.lean` accepts a candidate structurally equal to the
+  output of `comAlgebraicPipeline` (`tvCheckCanon_sound`).
 
 ## Cost models
 
 `../X86CostModel.lean`, `../InOrderCostModel.lean` (cycle-level),
 `../RandomizedScheduleSearch.lean`, `../JointScheduleRegAlloc.lean`.
 
-## Rewrite library (leaf equivalences, proved as equations — not KAT)
+## Rewrite library
 
-Each is an algebraic identity proved as an equation, usable as a saturation rule:
+Each module proves algebraic identities as equations, usable as rewrite rules:
 
-- Multiply: `MultiplyMethodEquiv` (schoolbook / Karatsuba / Toom-3 = product),
-  `KaratsubaGenericPass`, `Toom3GenericPass`.
+- Multiply: `MultiplyMethodEquiv` (schoolbook, Karatsuba and Toom-3 equal the
+  product), `KaratsubaGenericPass`, `Toom3GenericPass`.
 - Reduction: `MontgomeryMulGeneric`, `MontgomeryRedcGeneric`, `MontDomainElimPass`,
+  `MontgomeryTransport` (Montgomery-domain transport for NTT arithmetic),
   `BarrettMulGeneric`, `BarrettReduceGeneric`, `CrtGeneric`, `RadixDecompGeneric`.
 - Inverse: `ModInverseGeneric`, `FermatInverseGeneric`, `BatchInverseGeneric`.
-- Exponent / scalar-mul: `ModPowGeneric`, `MonoidPowLadderPass`,
+- Exponent and scalar multiplication: `ModPowGeneric`, `MonoidPowLadderPass`,
   `WindowedScalarMulGeneric`.
+- Field structure: `FieldSqrtGeneric` (modular square roots), `LegendreSymbolGeneric`
+  (quadratic-residue test), `FrobeniusGeneric` (the Frobenius endomorphism).
+- Evaluation and sums: `LagrangeInterpGeneric` (Lagrange interpolation),
+  `LinearCombGeneric` (linear-combination and inner-product evaluation).
 - Field peephole: `FieldConstFoldPass`, `FieldCsePass`, `FieldHornerPass`,
   `FieldStrengthReducePass`, `FieldLetDcePass`, `NegElimPass`, `Peephole`.
-- NTT algebra: `../Lattice/NTTConvolutionTheorem.lean` (DFT = multi-point
+- Canonicalization: `AbsentRewrites` (`neg (neg x) = x` on `BitVec`,
+  `fromMont ∘ toMont = id` over `ZMod p`, `reverse ∘ reverse = id` for bit
+  reversal).
+- NTT algebra: `../Lattice/NTTConvolutionTheorem.lean` (the DFT is multi-point
   polynomial evaluation; convolution theorem).
 
-## Two levels
+## Levels
 
-- **Level 1 (present):** rewrite-saturation with monotone cost descent and a
-  per-step denotation proof — apply verified rewrites, never get slower, carry the
-  proof.
-- **Level 2 (not built):** a union-find e-graph with non-destructive sharing and
-  global cost-minimum extraction — required to consider all equivalent
-  implementations and select the globally fastest. `Egraph.lean` records this as
-  the delta. It reuses the cost models above and `ProofCarryingExtraction` for the
-  certificate.
+- Rewrite saturation, present: `Egraph.lean`, `ComPipeline.lean`. Monotone cost
+  descent with a denotation proof per step.
+- Minimum extraction over an explicit class, present: `EgraphGlobalMin.lean` for an
+  e-class whose members are listed with their certificates, and
+  `MultiplyMethodSelect.lean` for a finite list.
+- Union-find saturation, not present: non-destructive sharing and congruence closure
+  that would fill an e-class from the rewrite rules instead of an enumerated list.
+  The section "Scope: finite-set cost-minimum with a certificate" of
+  `MultiplyMethodSelect.lean` lists what it adds.
 
-## Targets for "choose the fastest up to equivalence"
+## Selection targets
 
-- **Field multiply / reduction** is the readiest: the equivalences
-  (`MultiplyMethodEquiv`, the Montgomery/Barrett generics) and a manual selector
-  (`../../SecureCompilation/RelationalFrontCiosSelect.lean`, `preferCios`) already
-  exist, so Level-2 extraction generalizes a selection that is currently hand-written.
-- **Modular inverse, scalar-mul, exponentiation** — the generics above.
-- **NTT** emit correctness currently rests on a byte-KAT (the emit carries an `id`
-  denotation placeholder in `../../SecureCompilation/VIR/LatticeNttEmit.lean`).
-  Bridging the emit to `NTTConvolutionTheorem` replaces the KAT with a proof; this
-  is the one arithmetic primitive still test-gated rather than equation-backed.
+- Field multiply and reduction: the equivalences (`MultiplyMethodEquiv`, the
+  Montgomery and Barrett generics) exist. `EgraphGlobalMin` derives the
+  multiply-method choice through `extractMin`; the CIOS/Barrett choice `preferCios`
+  (`../../SecureCompilation/RelationalFrontCiosSelect.lean`) is a hand-written cost
+  comparison.
+- Modular inverse, scalar multiplication, exponentiation: the generics above.
+- NTT: `../Lattice/NttEmitDenotationBridge.lean` proves that the ML-KEM
+  butterfly-stage sequence, as a value model, equals `nttIter`
+  (`nttIter_succ_eq_ctMergeStage`), `dft` (`IterativeNttEqRec.mlkem_nttIter_eq_dft`)
+  and polynomial evaluation. The per-lane blocks of
+  `../../SecureCompilation/VIR/LatticeNttEmit.lean` are the placeholder `id`, and no
+  theorem relates the emitted `.jazz` text (`emitMlkemNttFull16wayJazz`) to the value
+  model.

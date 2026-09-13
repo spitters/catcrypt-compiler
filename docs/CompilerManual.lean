@@ -9,262 +9,365 @@ open Verso.Genre Manual
 
 #doc (Manual) "The CatCrypt verified compiler for cryptography" =>
 
-🚧 _Under construction — experimental research prototype._ This compiler is part of
-the CatCrypt project ([ePrint 2026/604](https://eprint.iacr.org/2026/604.pdf)). The
-interfaces, the covered source fragment, and the trusted base are evolving. This is
-not a production tool.
+_Experimental research prototype._ This compiler is part of the CatCrypt project
+([ePrint 2026/604](https://eprint.iacr.org/2026/604.pdf)). Its interfaces, the
+covered source fragment and the trusted base change without notice. It is not a
+production tool.
 
-A crypto implementation has three parts: _orchestration_ (the protocol and control
-spine), _algebra_ (field, curve, and polynomial mathematics), and _leaves_
-(low-level hand-tuned primitives). CatCrypt gives each part a verified source,
-lowers them through a stack of typed MLIR-style dialects, and emits constant-time
-x86-64, AArch64, and RISC-V as machine bytes inside the Lean 4 proof assistant. A
-machine-checked proof shows the emitted kernel denotes its source specification over
-the covered fragment, under the hypotheses each backend's statement carries. The
-correctness proof is over the compiler, not per primitive, so a new primitive is a
-recompilation.
+A cryptographic implementation has three parts: _orchestration_ (the protocol and
+its control flow), _algebra_ (field, curve and polynomial arithmetic) and _leaves_
+(low-level primitives). CatCrypt accepts each part at its own level of abstraction,
+lowers it through typed MLIR-style dialects, and emits x86-64, AArch64 and RISC-V
+code inside the Lean 4 proof assistant. The lowering from the SSA intermediate
+representation to the Jasmin dialect is proved to preserve the denotation of every
+program it accepts. On each of the three backends, a scalar instruction selection is
+proved to compute the source denotation of a straight-line program over 64-bit
+registers. The package `README.md` states each result with its fragment and its
+hypotheses, and `CAPABILITIES.md` records, for each primitive, how its kernel is
+produced and which theorems hold for it.
 
 The API reference is generated separately, by doc-gen4 from the module docstrings
-(see `BUILDING.md`), and gives the per-declaration signatures; `AxiomAudit.lean`
-prints the axiom ledger of the machine-checked theorems.
+(see `BUILDING.md`), and gives the per-declaration signatures;
+`lake env lean AxiomAudit.lean` prints the axioms of the theorems that file lists.
 
 # The three aspects
 
-A cryptographic implementation is written, implicitly, at three levels. CatCrypt
-makes that structure explicit and gives each level a verified path to machine code.
+Production Rust implementations of cryptography are usually split into two layers:
+orchestration in Rust, and the constant-time-critical code hand-written in assembly,
+because `rustc` is not trusted to preserve constant time. A compiler proved to
+preserve constant time lets each part be written at its natural level of
+abstraction. The chapters below state how far the theorems of this package reach.
 
-Crypto today splits that structure by trust rather than by nature: the orchestration
-in Rust, but the constant-time-critical code hand-written in assembly, because `rustc`
-is not trusted to preserve constant time. A verified compiler removes the split — it
-preserves constant time itself, so each part is written at its natural level and
-compiled with trust.
+_Orchestration_ is the protocol and its control flow: the message flow, the key
+schedule, the loop structure. Its source is Rust, exported by
+[hax](https://github.com/hacspec/hax) to the typed AST of
+[hax-lean](https://github.com/spitters/hax-lean), whose AST and evaluator the
+package's hax front reads. hax-lean's own passes (removal of references, local
+mutation, loops and early returns) carry denotation-preservation proofs. The hax
+export from Rust is outside the proofs, trait methods reach the compiler as named
+calls, and complex generic types fall back to an unknown type (hax-lean's
+`LIMITATIONS.md`). The front translates the program to LowCT, a low-level
+constant-time command language, and from there to the dialect stack. Orchestration
+can also be written directly in Lean, as a LowCT term or as a Lean function compiled
+relationally in the style of Rupicola.
 
-_Orchestration_ is the protocol and control spine — the message flow, the key
-schedule, the loop structure. Its source is Rust, extracted through
-[hax](https://github.com/hacspec/hax). The extraction eliminates trait methods,
-generics, closures, and heap references, each step proved correct, and hands the
-covered control spine to the dialect stack.
+_Algebra_ is the arithmetic a scheme runs on: prime fields, modular and Montgomery
+arithmetic, elliptic curves, polynomials. CatCrypt's field, modular-arithmetic,
+elliptic-curve and polynomial dialects are Lean dialects with Lean denotations,
+modelled on [PrimeIR](https://github.com/fractalyze/prime-ir)'s MLIR dialects for
+cryptography. Rust code reaches them through the `primeir-hax` crate, which is not
+part of this package: the hax front recognises a call to one of its trait methods by
+name and emits a single-operation program in the matching dialect. In this package
+none of these dialects has a `Com`-level lowering to the Jasmin dialect;
+`VIR/DIALECTS.md` gives the lowering graph.
 
-_Algebra_ is the mathematics a cipher runs on — prime fields, modular and Montgomery
-arithmetic, elliptic curves, polynomial and NTT forms. CatCrypt's algebraic dialects
-are the verified analogs of [PrimeIR](https://github.com/fractalyze/prime-ir)'s MLIR
-dialects for cryptography, and they structure the compiler over a Jasmin-like
-substrate. A companion Rust library exposes these operations, so a kernel that uses
-them compiles to the matching dialect operation.
+_Leaves_ are the low-level primitives: a field multiply, an AES round, an NTT
+butterfly. Their language is [Jasmin](https://github.com/jasmin-lang/jasmin),
+presented as an MLIR-style word-level dialect. The compiler relates to Jasmin in both
+directions: it compiles to the Jasmin dialect, and it imports hand-written Jasmin
+leaves through the same backend. Inside the dialect stack a leaf call is opaque: in
+`catCryptDialect` an `extCall` denotes a default value, so a value statement about a
+kernel that calls leaves needs a leaf semantics supplied as a hypothesis.
 
-_Leaves_ are the low-level, hand-tuned primitives — a field multiply, an AES round,
-an NTT butterfly. Their language is [Jasmin](https://github.com/jasmin-lang/jasmin),
-whose word-level dialect is the compiler's MLIR substrate. The compiler relates to
-Jasmin in both directions: it compiles to the Jasmin dialect, and it imports
-hand-written Jasmin leaves through the same backend.
-
-An ML-KEM protocol shows the division. The orchestration — key schedule and message
-flow — stays in Rust or Lean. The algebra — the number-theoretic transform and field
-arithmetic — is expressed in the MLIR/prime-ir dialects, targeted from a Lean
-specification by relational compilation. Only the hand-tuned leaves remain at the
-assembly level. The verified compiler carries constant time and correctness across
-all three, so no part drops to assembly for trust.
+An ML-KEM implementation illustrates the intended division: the key schedule and
+message flow as orchestration, the number-theoretic transform and field arithmetic
+as algebra, and the hand-tuned kernels as leaves. The package does not carry ML-KEM
+through that division. The route that lowers an NTT multiply to Jasmin passes
+through the lattice dialect, which models the NTT and inverse NTT as the identity,
+and the per-lane blocks of the emitted ML-KEM NTT text (`VIR/LatticeNttEmit.lean`)
+are identity placeholders.
 
 # The pipeline
 
 The passes, in order:
-`Rust (hax) or Lean spec (relational) → SSA IR → prime-ir algebra → Jasmin dialect → backend → x86-64 / AArch64 / RISC-V bytes`.
-Each arrow is a total Lean function proved to preserve the denotation.
+`Rust (hax) or Lean spec (relational) → SSA IR → Jasmin dialect → backend → x86-64 / AArch64 / RISC-V`.
+The hax export is outside the proofs, and every later arrow is a Lean function. A
+lowering returns `none` on a program outside the fragment it accepts, and its
+preservation theorem holds whenever it returns a program. The printers that write
+assembly text carry no theorem.
 
-The two sources — hax-extracted Rust and Lean relational specifications — feed one
-SSA intermediate representation. The relational front relates a specification to a
-low-level program by a denotation-preserving relation, in the style of
-[Rupicola](https://github.com/mit-plv/rupicola). From the intermediate
-representation a source descends through the algebraic dialects and the word-level
-Jasmin dialect to a backend that encodes instructions to bytes for x86-64,
-AArch64, and RISC-V.
+The two sources, Rust through hax and Lean specifications, reach one SSA
+intermediate representation, `catCryptDialect`. The relational front relates a Lean
+specification, through an injective encoding into machine words, to a low-level
+program by a denotation-preserving relation, in the style of
+[Rupicola](https://github.com/mit-plv/rupicola); in `RelationalFrontMachine` the
+related `Com` is written in Lean rather than generated (`DEMO.md`). From the
+intermediate representation a program lowers to the word-level Jasmin dialect and
+then to a backend that emits assembly text or machine bytes for x86-64, AArch64 and
+RISC-V.
 
-Every dialect carries a Lean denotation, and every lowering is a total Lean function
-proved to commute with the two denotations. Chaining the lowerings composes the
-per-step preservation proofs into the whole-pipeline result, so a well-typed term
-denotes its specification by construction. The intermediate-representation structure
-follows [lean-mlir](https://github.com/opencompl/lean-mlir); code generation is
-CatCrypt's own backend. `PROVENANCE.md` records the low-level lineage: AUCurves,
-bedrock2, Rupicola.
+The dialects on this path carry Lean denotations. When the lowering from
+`catCryptDialect` to the Jasmin dialect succeeds, the lowered program denotes the
+transport of the source denotation (`cryptoDialectToJasminCom_denote_eq'`).
+`compileVia_comp_correct` composes two dialect lowerings with the Jasmin-IR
+evaluator `runProg`, under per-operation transport hypotheses, agreement of the
+opaque leaves with the evaluator's leaf semantics, and a straight-line lowered
+program. The intermediate-representation structure follows
+[lean-mlir](https://github.com/opencompl/lean-mlir), through the Veir library; code
+generation is CatCrypt's own backend, which began as a port of the Jasmin compiler.
+`PROVENANCE.md` records the low-level lineage: AUCurves, bedrock2, Rupicola.
 
 ## The two-way relationship with Jasmin
 
 The compiler reaches machine code through Jasmin in two ways, both inside Lean. It
-compiles _to_ the Jasmin dialect, which reaches x86 by either the bytes-direct
-encoder or Jasmin's own verified compiler, reached by printing Jasmin text. And it
-imports _from_ Jasmin: a hand-written Jasmin leaf is parsed into the intermediate
-representation and lowered through the same backend. The external `jasminc`
-tool is a differential byte oracle.
+compiles _to_ the Jasmin dialect, which reaches x86 through CatCrypt's own backend,
+or as printed Jasmin text through Jasmin's compiler `jasminc`; the Jasmin printer is
+proved structurally only (`VIR/JasminPrintCorrect.lean`). It also imports _from_
+Jasmin: hand-written Jasmin leaves are imported through the same backend, and
+`JincParserDemo` parses one `.jinc` leaf into the intermediate representation and
+inspects it. A further path prints a
+Jasmin program as MLIR text for `mlir-opt`, `mlir-translate` and `llc`. That path has
+no end-to-end correctness theorem, and `MLIRBackend/Denote.lean` states the external
+toolchain's correctness as the opaque proposition `MlirBackendSemanticsAgrees`.
 
 # The optimizer
 
-Optimization is verified equality saturation. Rewrites populate an e-graph of
-equivalent terms, and a cost model selects a representative. Every rewrite is an
-instance of the same denotation-preserving relation that drives compilation, so an
-optimized term is equal in denotation to its input. The optimizer and the compiler
-share one object.
+The optimizer passes over the `Com` intermediate representation carry
+denotation-preservation theorems: common-subexpression elimination, dead-code
+elimination, copy propagation and constant folding (`comCSE_denote`,
+`comDCE_denote`, `copyProp_denote`, `foldCom_denote`), composed in
+`comOptPipeline_denote` and `comFullOpt_denote`. The constant-folding and saturation
+stages assume a known-constant environment consistent with the valuation.
+
+Rewriting is rewrite saturation. `saturateCom` applies denotation-preserving rewrite
+rules until no rule fires or a fuel bound is reached. `saturateCom_denote` proves
+that the output denotes the same function as the input, and `saturate_cost_le` that
+the output costs no more than the input under the cost model `comCost`. The engine
+has no union-find and no e-classes, and it does not find a global cost minimum.
+`EgraphGlobalMin` gives an explicit e-class of members, each with a rewrite witness
+to a representative, and extracts the cheapest member (`extractMin_cost_min`);
+`EgraphOracle` admits a proposal from an untrusted oracle only through a decidable
+denotation check (`oracleOpt_denote`). `Pipeline.optPipelineJ` composes four stages
+that each return their input program, so its theorems hold for every program.
+`CatCrypt/Crypto/Optimizer/README.md` indexes the passes.
 
 # The guarantee
 
-The pipeline preserves three properties from source to emitted bytes.
+_Functional correctness._ The lowering from `catCryptDialect` to the Jasmin dialect
+preserves the denotation of every program it accepts. At machine level,
+`com_x86_e2e`, `com_arm_e2e` and `com_riscv_e2e` prove, for a straight-line program
+over the supported operations (`ComOK`) in a context of 64-bit registers, that the
+block produced by each backend's scalar instruction selection, run from a state whose
+registers hold the inputs, leaves `Com.denote` in the result register; the x86
+statement also assumes that shift amounts are in range. The x86 assembly that the
+owned exporters write is printed by `renderLeafFn` or `renderLprogAtt` and assembled
+by the GNU assembler. Neither printer carries a theorem, and `x86Target` is not the
+selection those exporters run.
 
-_Functional correctness._ Each lowering preserves the denotation, so a well-typed
-term over the covered fragment denotes its source specification at every dialect
-boundary. For the lattice NTT, the compiled code equals the source polynomial
-multiply. At machine level, `com_x86_e2e`, `com_arm_e2e` and `com_riscv_e2e` prove
-that the compiled block computes the source `Com.denote` for a straight-line program
-over the supported op set in an all-`reg 64` context. The Rust-front result reaches
-the tracked output over the machine-word semantics on the `IsCoveredCtl` fragment and
-covers data-dependent loops.
+The Rust-front theorems start at a LowCT program and end at the Jasmin `Com`
+denotation. `rustToJasminCom_endToEnd` holds on `IsCoveredCtl` and takes the value
+equation relating the dialect program to the LowCT post-state as the hypothesis
+`hAdequacy`. `rustToJasminCom_endToEnd_unconditional` has no adequacy hypothesis and
+states the Jasmin value over the machine-word semantics `semScalar` on
+`IsCoveredSCtl`. Neither fragment contains a data-dependent loop; for data-dependent
+`while` loops, `transU_to_jasminCom_endToEnd` states the Jasmin value over the
+fuel-bounded semantics `semU` on `IsCoveredSU`. The translation from hax-lean's AST
+to LowCT has its own simulation theorems (`haxToLowCT_simulates_program`), which the
+Rust-front statements do not include.
 
-_Constant time._ The emitted code preserves constant time over the full modern
-constructor set, data-dependent loops included. A loop is constant-time exactly when
-its guard is public: the analyzer accepts a public-count loop and rejects a
-secret-dependent one. A public-input variable-time kernel, such as an RSA
-verification, is accepted, and a secret-dependent one is rejected.
+For the NTT, `PolyDialect.nttMul_negacyclic_coeff` proves, under its parameter
+hypotheses, that the polynomial dialect's NTT multiply denotes the negacyclic
+convolution in `Z_q[X]/(Xⁿ+1)`, and `NttEmitDenotationBridge` proves that the
+butterfly-stage sequence, as a value model, computes the transform
+(`nttIter_succ_eq_ctMergeStage`, `mlkemNttKernelSpec_eq_polyEval`). No theorem
+relates the emitted ML-KEM NTT kernel to that model. The lattice-route theorems
+(`latticeNttMul_compile_correct`, `compile_correct_all`,
+`robustCompilation_source_to_x86`) are stated over the lattice dialect, whose NTT and
+inverse NTT denote the identity and whose base multiply is the coefficient-wise
+product.
 
-_Security._ Security is proven in the computational model, with hax as the entrance
-to those proofs. Carrying a security bound onto the emitted bytes — byte-level
-transfer — holds for the symmetric family and is a roadmap goal for the asymmetric
-families. Transfer is where hax's two roles, compiler frontend and proof entrance,
-meet: a goal beyond the compiler's correctness.
+_Constant time._ At machine level, `toLprogPhysAbi_gather_constant_time` states that
+when an exported function body gathers to an x86 instruction block with no labels,
+conditional jumps or calls, the block's machine leakage trace (branch decisions and
+memory addresses) is the same from any two states. `owned_ct_control_flow` states
+the same, from any two states that agree on the public registers, for a block built
+from conditionals with public guards and loops with literal trip counts; no theorem
+states that the block the recogniser `lcmdToOwnedCF` produces executes as the
+exported command does. At source level, the analysis `cmdCT` accepts a
+data-dependent loop exactly when its guard is labelled public and its body is
+accepted (`cmdCT_RWhileNz_iff`), and `cmdCT_sound` states that an accepted program
+run from two public-equivalent states reaches public-equivalent states, under the
+per-leaf assumption `LeafCTAssumption` and the hypothesis `CMOVInvariant`. Under a
+level table in which every slot is public, as for RSA verification, `cmdCT` accepts
+an early-terminating modular-inverse loop, and it rejects the same loop when the
+guard is secret (`vartimeInvert_public_only`). No theorem carries the source
+analysis of a data-dependent loop to emitted code, and the AArch64 and RISC-V
+backends have no constant-time theorems.
 
-`lake env lean AxiomAudit.lean` prints the axiom ledger of the machine-checked
-theorems.
+_Security._ hax lets one Rust source serve both as compiler input and as the model
+for computational security proofs in the wider CatCrypt development, following
+[The Last Yard](https://eprint.iacr.org/2023/185). The `*SecurityTie` modules equate
+a dependency record built from the `Com` denotations of compiled kernels with the
+record the security layer reasons over, and `tie_transfer` carries any property of
+the second record to the first. The transfer is at the `Com` denotation; no theorem
+in the package carries a security bound to emitted machine code.
 
 # Headline theorems
 
-Four machine-checked theorems govern the pipeline. `AxiomAudit.lean` prints the
-axiom set each one rests on.
+Four theorems are cited as headlines. `AxiomAudit.lean` prints the axioms each one
+rests on.
 
-_Compiler correctness_ — `Compiler.compile_correct_all`. At lattice parameters `q`,
-`n`, decoding the run output of the emitted code `m` equals the source's
-per-slot denotation:
+_Lattice route over the model interface_: `Compiler.compile_correct_all`. The
+lattice source at parameters `q`, `n` is one fixed program in the lattice dialect.
+Decoding the model's run of the emitted code `m` equals the source's per-slot
+denotation:
 ```
 (chosenModel choice q n).validated
 ∧ M.decodeOut (M.exec m (M.encodeIn (fun j => runOutputToWords (runProg leafSem m (mapVal V)) j))) i
     = latticeDenote q n V i
 ```
-Five hypotheses are explicit arguments, carried rather than assumed: `hVal`, the
-chosen model's own validation proposition; `hLeaf : LeafAgrees leafSem`, the leaf
-agreement edge; `hInj`, injectivity of the fresh-name supply; `hPinj`, injectivity
-of the whole-function lowering's parameter map; and `hCompile`, the witness that
-`compile q n (.lattice q n)` returned `m`. The statement is at the lattice route:
-`compile` returns `none` on the front route, whose correctness is
-`Compiler.compile_correct_front`. This is an evaluator-level statement: for the
-lattice carrier, `exec` is the identity that re-exposes the `Com` evaluator
-`runProg`, and `validated` is that carrier's encode∘decode round-trip carried as
-`hVal` — so the equation constrains the emitted `Com`'s denotation, not an
-instruction-set execution. The theorems that run actual backend instructions are
-`CompileCorrectBaseAlu.compile_correct_riscv` / `compile_correct_arm` over the
-base-ALU subset, and `com_x86_e2e` at x86.
+The explicit hypotheses are `hVal`, the chosen model's validation proposition;
+`hLeaf : LeafAgrees leafSem`, leaf agreement; `hInj`, injectivity of the fresh-name
+supply; `hPinj`, injectivity of the whole-function lowering's parameter map; and
+`hCompile`, the witness that `compile q n (.lattice q n)` returned `m`. `compile`
+returns `none` on the front route, whose statement is `Compiler.compile_correct_front`.
+For every model choice, `exec`, `encodeIn` and `decodeOut` are identities, so the
+equation is a statement about the `Com` evaluator `runProg`, and `validated` is the
+encoder round trip that each model records. The theorems that run backend
+instructions are `CompileCorrectBaseAlu.compile_correct_riscv` and
+`compile_correct_arm` on the base arithmetic-logic subset, and `com_x86_e2e` at x86.
 
-_Rust front, end to end_ — `CompilerCorrectnessExtracted.rustToJasminCom_endToEnd`. A
-hax-extracted source, lowered through the dialect stack to the Jasmin `Com`, denotes
-the value the source leaves — `jcom.denote (ctMapValD W) = ctTransTy (w.lookup V')` —
-on the `IsCoveredCtl` fragment, data-dependent loops included, with the front's
-adequacy edge carried as an explicit hypothesis; the sibling
-`rustToJasminCom_endToEnd_unconditional` discharges that edge over the scalar
-machine-word semantics `semScalar`.
+_Rust front_: `CompilerCorrectnessExtracted.rustToJasminCom_endToEnd`. For a LowCT
+source in `IsCoveredCtl`, given a `RustExec` run, a related entry state, the success
+of each pass, and the front's value equation as the hypothesis `hAdequacy`, the
+Jasmin `Com` denotes the value that a valuation related to the post-state holds in
+the tracked output: `jcom.denote (ctMapValD W) = ctTransTy (w.lookup V')`.
+`IsCoveredCtl` contains no data-dependent `while` loop. The sibling
+`rustToJasminCom_endToEnd_unconditional` has no adequacy hypothesis and states the
+value over `semScalar` on `IsCoveredSCtl`, in which an opaque leaf call returns a
+default value.
 
-_Robust source to x86_ — `RobustCompilationPipeline.robustCompilation_source_to_x86`.
-For every lattice-dialect source program, the emitted-and-compiled x86 observable is
-the decode of the transported source meaning — no drift through lowering, emission,
-or the Jasmin compiler — and the emitted code is constant-time at x86. Jasmin's
-verified compiler enters as an explicit `JasminVerifiedCompiler` hypothesis,
-alongside leaf agreement and the SSA-naming injectivity side conditions.
+_Robust source to x86_: `RobustCompilationPipeline.robustCompilation_source_to_x86`.
+For a lattice-dialect program lowered to Jasmin, the theorem takes the x86
+observable, behaviour and constant-time predicate as parameters. Its two conjuncts
+are the `semRefine` and `ctPreserve` fields of its hypothesis
+`JasminVerifiedCompiler`, applied to the evaluator-level result and to the
+`Com`-level constant-time result, so the statement contains no x86 instruction
+semantics. The one instance in the package,
+`OwnedX86RobustInstance.ownedJasminVerifiedCompiler`, takes the evaluator result as
+the observable and `True` as the constant-time predicate. Leaf agreement and
+SSA-naming injectivity are further hypotheses.
 
-_Concrete x86 execution_ — `ScalarLinX86Demo.com_x86_e2e`. This is the theorem that
-actually runs instructions: for a straight-line `Com` over the all-`reg 64` fragment,
+_Machine code_: `ScalarLinX86Demo.com_x86_e2e`. For a straight-line `Com` over
+`ComOK` in a context of 64-bit registers (`AllReg64`), with shift amounts in range
+(`ShiftAmtOK`) and a state `s` whose registers hold the inputs,
 ```
 (x86Target.runOps s (x86Target.compile (comToRegProg com Γ.length))).regs (comRetName …)
   = Com.denote com V
 ```
-— the emitted ops, executed on the x86 target semantics, land the source `Com`'s
-denotation in the result register (`ComOK`/`AllReg64`/`ShiftAmtOK` are the fragment's
-coverage hypotheses, not assumptions of the conclusion). Where `compile_correct_all`
-stops at the `Com` evaluator under an identity carrier, this closes the last step onto
-concrete instruction execution; `ComToArmLsem.comToArmLsem_correct` /
-`ComToRiscvLsem.comToRiscvLsem_correct` do the same for AArch64 / RISC-V against the
-vendor Sail models over the base-ALU subset.
+that is, running the ops of the scalar selection `x86Target` leaves the source
+`Com`'s denotation in the result register. The x86 assembly that the owned exporters
+write comes from other routes, which this theorem does not cover.
+`ComToArmLsem.comToArmLsem_correct` and `ComToRiscvLsem.comToRiscvLsem_correct` state
+the AArch64 and RISC-V results over the machine models `runBBlock` and `runRBlock64`
+on the base arithmetic-logic subset, and add that every instruction of the block lies
+in that subset.
 
 # The backends and the trusted base
 
-The compiler has one backend for three architectures. The x86-64
-backend carries the constant-time clause. The AArch64 and RISC-V backends emit and
-run end to end, with `decode ∘ encode` round-trips proved against the transcribed
-vendor Sail decode clauses — the emitted RV64I subset for RISC-V, the GP-ALU subset
-for AArch64 — and with the emitted block proved to compute the source denotation on
-the base-ALU, all-`reg 64` fragment (`ComToArmLsem.comToArmLsem_correct`,
-`ComToRiscvLsem.comToRiscvLsem_correct`); the constant-time model is x86. What
-grounds the execution semantics differs between the two. For RISC-V, each base-ALU
-step of the model is proved to write the value the `execute_RTYPE` clause of the
-official [Sail](https://github.com/riscv/sail-riscv) specification writes. For
-AArch64 there is no in-tree `sail-arm` execute model, so the steps rest on the
-decode round-trip, differential testing against the GNU assembler and qemu, and the
-hand-written `ArmModel` semantics.
+The compiler has one backend with three instruction sets, and only the x86 side has
+constant-time theorems. The package contains no Sail source, and no backend is
+checked against a Sail model it vendors. For RISC-V, `riscvStep64_sail_grounded`
+proves, under an alignment of register names with register numbers, that each base
+arithmetic-logic instruction of the model writes the value written by an
+`execute_RTYPE` clause copied by hand from `opencompl/sail-riscv-lean` (commit
+`9eba3f07`, generated from the [sail-riscv](https://github.com/riscv/sail-riscv)
+specification) into `RISCVBackend/SailRiscv64Refinement.lean`, where it runs over a
+simplified register-file state monad. For AArch64 no theorem relates the model
+semantics `runBBlock` to a Sail execute clause; the model rests on the hand-written
+`ArmModel` semantics and on differential testing against the GNU assembler and qemu,
+with a harness that is not in this package. The encoders of both backends carry
+decode round trips, `decode (encode i) = i`, against decode field splits transcribed
+by hand from the sail-arm and sail-riscv decode clauses (`SailArmDecoder`,
+`SailRiscvDecoder`, `SailRiscvDecoder64`); these round trips are not conjuncts of the
+machine-code theorems.
 
-The trusted base is named. It comprises the cryptographic-hardness assumptions the
-protocols rest on; the per-architecture machine model the backend is checked
-against; the cited Jasmin constant-time-preservation theorem; and the fidelity of
-hax extraction. The byte-level instruction facts — the decode/encode round-trip and
-the arithmetic-carry instructions — are proved theorems, and the backend
-carries no `jasminc` assumption.
+The trusted base includes the following. The package declares axioms, both
+uninterpreted types and operations of the reflection and Vale leaf modules and
+propositions about concrete computations and external tools, among them `bn254_pairing_correct_rocq`,
+`RustcExec_correct`, and the Jasmin compiler statements `x86CompilerCorrect`,
+`aarch64CompilerCorrect` and `riscvCompilerCorrect`. Proofs use `native_decide`, and a
+theorem that depends on one rests on the Lean compiler's evaluation. The hax export,
+the assembly printers and the GNU assembler carry no theorem. Three predicates are
+the constant `True`: `ownedX86CTSafe`, `printableShape` and `CpuMatchesModel`. A
+theorem depends on an axiom only if `#print axioms` lists it. The Limitations section
+of `README.md` gives the axiom and `native_decide` counts with the commands that
+produce them.
 
-The leaves are verified: symmetric primitives emitted in Lean, and arithmetic and
-curve leaves by AUCurves and fiat-crypto, carried as cross-prover results. Two
-residuals remain: the advanced-pairing mathematics, which mirrors upstream
-assumptions and lies outside the compiler-correctness proof, and the byte-level
-security transfer for the asymmetric families.
+Leaves are trusted or taken as hypotheses. The AES round is the `VAESENC`
+instruction. The BLS12-377 field and pairing arithmetic, and the BN254 field
+subtraction, addition and inversion, are AUCurves routines called as external
+symbols. At the dialect level an opaque leaf call denotes a default value, so a
+statement about a kernel that calls leaves takes the leaf semantics as a hypothesis,
+such as `LeafAgrees` or the leaf oracles of the BN254 and BLS12-377 denotation
+theorems. `CAPABILITIES.md` states, per primitive, which parts are trusted leaves.
 
 # Benchmarks
 
-The emitted assembly is measured against the fastest deployed references — Jasmin,
-libcrux, fiat-crypto, s2n-bignum, Vale — cycle-for-cycle at matching scope. The
-field and bignum kernels are at parity, and the symmetric primitives are at or ahead
-of the optimized reference. The measured ratios, the method, and the per-family
-coverage are in `bench.md`; the harness that produces them is part of the wider
-CatCrypt development, not of this package.
+The emitted assembly is measured cycle-for-cycle at matching scope against deployed
+references: s2n-bignum, libgmp, Jasmin, `HACL*` and Plonky3. The field and bignum
+kernels are at parity with s2n-bignum's scalar kernels and faster than libgmp at
+practical sizes. The SHA-256 and SHA-512 compression kernels are slower than the
+`HACL*` scalar references, and the unadopted X25519 ladder and the Poseidon2
+permutation are slower than their references. The measured ratios, the method, the
+provenance header of each measured artifact and the per-family coverage are in
+`bench.md`; the harness that produces the ratios is part of the wider CatCrypt
+development, not of this package.
 
 # A worked example
 
-Two programs travel the whole pipeline. One is authored in Lean: a kernel computing
-`v2 := v0 · v1` in the shared register waist. The compiler flattens it to a register
-program, then lowers that to an AArch64 machine block and to a RISC-V one, with a
-theorem for each backend proving the compiled block computes the source denotation.
-The general result behind them holds for every supported program, so the kernel is
-one instance of it.
+Two example modules exercise the backends and the front.
 
-The other starts in Rust — a routine that calls the SHA-256 σ₀ leaf. hax extracts it,
-the front lowers it to a term with one leaf-call boundary, and linking the σ₀ leaf
-proves the compiled program denotes the FIPS 180-4 formula
-`(x ror 7) ⊕ (x ror 18) ⊕ (x >> 3)`. This is the two-front path: a compiled outer met
-with a fast leaf at one call boundary.
+`MultiBackendDemo` compiles a register program `r := a·b + a`, and a `Com` that
+binds one 64-bit multiply, to AArch64 and to RISC-V. For each backend a theorem
+equates the run of the machine block with the scalar selection's denotation of the
+register program (`kernel_arm`, `kernel_riscv`, `mulCom_arm`, `mulCom_riscv`).
+`mulCom_riscv_e2e` states that the RISC-V block leaves `Com.denote mulCom V` in the
+result register; it is an instance of `com_riscv_e2e`, which holds for every
+supported `Com`, and `com_arm_e2e` is the AArch64 counterpart.
 
-The two modules are `MultiBackendDemo` and `CompileFromHaxLinkExample`. `DEMO.md`
-lists the commands to build and inspect them, and `AxiomAudit.lean` prints what the
-endpoints rest on.
+`CompileFromHaxLinkExample` links two front-lowered programs. The outer program
+`let r = sha256_sigma0(inp[0]); ret r` is a `Thir` term written in Lean, not a hax
+extraction, and the scalar front lowers it to a `Com` with one external call. The
+leaf is `ThirToComFront.sigma0Com`, the front lowering of the SHA-256 σ₀ term, which
+`sigma0Com_denote` proves equal to the FIPS 180-4 formula for every input word.
+`inlineCalls` inlines that kernel at the call, and `linkedExample_correct` proves,
+with no hypothesis, that the linked program `linkedSigma0Com` denotes
+`x.rotateRight 7 ^^^ x.rotateRight 18 ^^^ x >>> 3` for every 32-bit `x`.
+
+The two modules are `CatCrypt.Crypto.SecureCompilation.MultiBackendDemo` and
+`CatCrypt.Crypto.SecureCompilation.CompileFromHaxLinkExample`. `EXAMPLES.md` gives
+the build command for each, and `AxiomAudit.lean` prints the axioms of the theorems
+it lists.
 
 # Scope
 
 The covered source is the prime-ir algebra and the control spine that cryptography
 is written in: straight-line leaf calls, counted and public-condition loops,
-branchless select, public-index array access, tuples, byte slices, fixed-width and
-widening integer arithmetic, and data-dependent loops, over the algebraic
-operations. SIMD intrinsics enter through an explicit-SIMD vector front with
-verified semantics. The relational front compiles Lean specifications directly.
+branchless select, public-index array access, tuples, byte slices, and fixed-width
+and widening integer arithmetic, over the prime-ir algebraic operations. The front
+also accepts data-dependent loops; the guarantee above states what is proved about
+them. SIMD intrinsics enter through an explicit-SIMD vector front with its own
+semantics.
 
-Some primitives are present as arithmetic and permutation leaves rather than whole
-signers: HAWK is emitted at the NTRU-ring-multiply level, and FN-DSA (Falcon) is
-reference-linked because its discrete-Gaussian sampler is variable-time. The
-constant-time clause is anchored on the x86 model; AArch64 and RISC-V carry
-functional correctness and byte encoding.
+Several primitives have kernels in the package without a whole scheme. HAWK is
+present as a degree-16 tile of the negacyclic ring multiply over
+`Z/1024[x]/(x¹⁶+1)`, whose deployed program is checked against a reference on four
+input pairs by `native_decide`, and as the HAWK-512 NTT butterflies (generation
+checks only) and pointwise Montgomery multiply (its loop checked on one sample input
+at a small instance). NTRU-HRSS is present as a degree-16 tile of the
+cyclic ring multiply over `Z/8192[x]/(x¹⁶−1)`, checked in the same way. FN-DSA
+(Falcon) is present as the Jasmin text of the verify subtraction and of a CDT base
+sampler, both rendered from string templates; no theorem relates either text to its
+specification, and no theorem states the constant time of either text or the
+statistical-distance bound of the sampler. `CAPABILITIES.md` lists every primitive
+with its modules and theorems.
 
 # How this documentation is organized
 
 Three layers document the compiler: this manual (the narrative and worked examples),
 the API reference (every declaration with its signature, generated by doc-gen4), and
-the proof blueprint (the theorem-dependency graph linking each informal statement to
-its formal theorem). See `BUILDING.md` for how to build the manual and the API
-reference; the blueprint is currently a statement outline without its build
-scaffolding.
+the blueprint outline `blueprint/src/content.tex`, which lists the headline
+statements, each with a reference to its formal theorem. `BUILDING.md` describes how
+to build the manual and the API reference. The package carries no leanblueprint
+build files, so the outline is a source document only.

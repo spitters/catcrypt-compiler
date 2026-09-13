@@ -1,4 +1,4 @@
-7
+5
 # `(composition plumbing)` docstring tags in CatCrypt/*.lean.
 # Each marks a security statement that is a lift of an assumed bound
 # rather than a reduction. The count may fall, never rise.

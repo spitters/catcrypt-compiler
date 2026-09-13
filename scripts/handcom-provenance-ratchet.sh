@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Hand-authored Com/Lcmd owned-emit provenance ratchet (see EMIT_PROVENANCE.md,
-# GOLDEN_PATH_PRIMITIVES.md).
+# Hand-authored Com/Lcmd owned-emit provenance ratchet. CAPABILITIES.md records the
+# provenance class of each primitive's emit.
 #
-# CANONICAL RULE (EMIT_PROVENANCE.md): the deployed emitted artifact is GENERATED
+# CANONICAL RULE: the deployed emitted artifact is GENERATED
 # by the verified front (compileFromHax / haxToLowCT / RelationalCompile /
 # FieldEmitGoldenPath -> Com -> cryptoDialectToJasminCom -> owned x86 backend). It
 # is NEVER hand-authored as `Com` / `Lcmd` / `Linstr` / `.s`. A hand-authored
@@ -414,7 +414,7 @@ if [ "$CURRENT" -gt "$BASELINE" ]; then
   echo "      as Com/Lcmd/.s (a hand-Lcmd + self-authored spec is a vacuous proof)."
   echo "      Re-source the kernel through a front (TranslateDialectRolledLoop.rolledForLoopN"
   echo "      / translateDialectControl / cryptoDialectToJasminCom / reifyLowCT /"
-  echo "      FieldEmitGoldenPath). See EMIT_PROVENANCE.md + GOLDEN_PATH_PRIMITIVES.md."
+  echo "      FieldEmitGoldenPath). CAPABILITIES.md lists the provenance classes."
   echo "      NEW hand-Com module(s) (not in the baseline):"
   comm -13 <(baseline_paths) "$TMP" | sed 's/^/        /'
   exit 1
@@ -427,8 +427,8 @@ if [ "$CURRENT" -lt "$BASELINE" ]; then
     echo "$CURRENT"
     echo "# Hand-authored Com/Lcmd owned-emit modules (frozen baseline; auto-tightened"
     echo "# by scripts/handcom-provenance-ratchet.sh). First line = count; each path"
-    echo "# below carries the reason its emitted artifact is not front-generated. See"
-    echo "# EMIT_PROVENANCE.md — the goal is to re-source each through a front (-> 0)."
+    echo "# below carries the reason its emitted artifact is not front-generated; the"
+    echo "# goal is to re-source each through a front (-> 0)."
     while IFS= read -r m; do
       printf '%s  %s\n' "$m" "$(baseline_reason "$m")"
     done < "$TMP"
