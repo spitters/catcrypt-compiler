@@ -100,7 +100,7 @@ theorem eip197VerifyCom_denoteWith (leafSem : LeafSem) (prims : Bn254Primitives)
   rw [hP (.cons p1 (.cons q1 .nil)), hP (.cons p2 (.cons q2 .nil))]
   simp only [HVector.head, HVector.tail]
   rw [hM (.cons (prims.pairing p1 q1) (.cons (prims.pairing p2 q2) .nil))]
-  simp only [HVector.head, HVector.tail]
+  rfl
 
 /-! ## 3. The deployed leaf oracle + the verifier at that oracle -/
 

@@ -101,7 +101,7 @@ theorem pairingCom_denoteWith (leafSem : LeafSem) (prims : Bn254Primitives)
   show leafSem pairingLeafName pairingArgTys gtRetTy (.cons p (.cons q .nil))
       = prims.pairing p q
   rw [hP (.cons p (.cons q .nil))]
-  simp only [HVector.head, HVector.tail]
+  rfl
 
 /-- **The deployed G1 MSM step, evaluated with a leaf oracle.** For a leaf oracle
     `leafSem` realising the G1 group primitives (`EcLeafAgrees prims leafSem`), the
@@ -125,7 +125,7 @@ theorem g1MsmTermCom_denoteWith (leafSem : LeafSem) (prims : Bn254Primitives)
   rw [hMul (.cons k (.cons P .nil))]
   simp only [HVector.head, HVector.tail]
   rw [hAdd (.cons acc (.cons (prims.g1Mul k P) .nil))]
-  simp only [HVector.head, HVector.tail]
+  rfl
 
 /-! ## 3. The deployed leaf oracle + the kernels at that oracle -/
 

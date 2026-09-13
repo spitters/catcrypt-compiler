@@ -13,7 +13,7 @@ public import CatCrypt.Crypto.Bridges.CoqEAL.Karatsuba
 
 This file extends the one-level Karatsuba step of `Karatsuba.lean` to the **full
 recursion**. Where `karatsubaMul` takes the four already-split halves as explicit
-arguments, `karatsubaRec` is a genuine binary multiply `CPolynomial R →
+arguments, `karatsubaRec` is a binary multiply `CPolynomial R →
 CPolynomial R → CPolynomial R` that splits each input itself, recurses on the
 three Karatsuba subproducts, and recombines.
 
@@ -90,7 +90,7 @@ noncomputable def loPart (k : ℕ) (p : CPolynomial R) : CPolynomial R :=
 theorem loPart_add_hiPart (k : ℕ) (p : CPolynomial R) :
     loPart k p + (CPolynomial.X ^ k) * hiPart k p = p := by
   apply (CompPoly.CPolynomial.ringEquiv (R := R)).injective
-  show CPolynomial.toPoly _ = CPolynomial.toPoly _
+  simp only [CompPoly.CPolynomial.ringEquiv_apply]
   unfold loPart
   simp only [toPoly_add, toPoly_sub, toPoly_mul, toPoly_pow]
   ring
@@ -159,7 +159,7 @@ theorem karatsubaRec_eq (fuel : ℕ) (p q : CPolynomial R) :
 @[transfer] theorem karatsubaRec_repr (fuel : ℕ) (p q : CPolynomial R) :
     p * q = karatsubaRec fuel p q := by
   apply (CompPoly.CPolynomial.ringEquiv (R := R)).injective
-  show CPolynomial.toPoly _ = CPolynomial.toPoly _
+  simp only [CompPoly.CPolynomial.ringEquiv_apply]
   rw [toPoly_mul, karatsubaRec_eq]
 
 /-- Sanity check that the recursive registry entry fires. Unlike the one-level

@@ -9,6 +9,7 @@ import all Init.Data.Repr
 public import Mathlib.Tactic.Ring
 public import Mathlib.Tactic.LinearCombination
 public import Mathlib.Data.ZMod.Basic
+public meta import Mathlib.Data.ZMod.Defs
 
 
 @[expose] public section
@@ -127,7 +128,7 @@ example (a₀ a₁ a₂ a₃ a₄ b₀ b₁ b₂ b₃ b₄ x : Fp25519) :
 
 /-! ## Tier 0e: the `2^255 ≡ 19 (mod p)` reduction identity.
 
-This is THE load-bearing identity for Layer C of `poly_zp`. If
+Layer C of `poly_zp` rests on this identity. If
 `ring` doesn't handle it directly (it doesn't, since it's a
 non-polynomial fact about the specific modulus), we need a separate
 lemma proven via `decide` / `ZMod` machinery. -/

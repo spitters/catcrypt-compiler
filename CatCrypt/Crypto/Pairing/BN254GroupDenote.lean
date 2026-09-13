@@ -108,7 +108,7 @@ theorem lamCom_denoteWith (leafSem : LeafSem) (prims : FieldPrimitives)
   rw [hInv (.cons (prims.sub Qx Px) .nil)]
   simp only [HVector.head]
   rw [hMul (.cons (prims.sub Qy Py) (.cons (prims.inv (prims.sub Qx Px)) .nil))]
-  simp only [HVector.head, HVector.tail]
+  rfl
 
 /-- **The deployed `x₃` kernel, evaluated with a leaf oracle.** For a leaf oracle
     `leafSem` realising the base-field primitives, the deployed
@@ -133,7 +133,7 @@ theorem bn254AddxCom_denoteWith (leafSem : LeafSem) (prims : FieldPrimitives)
   rw [hSub (.cons (prims.mul lam lam) (.cons Px .nil))]
   simp only [HVector.head, HVector.tail]
   rw [hSub (.cons (prims.sub (prims.mul lam lam) Px) (.cons Qx .nil))]
-  simp only [HVector.head, HVector.tail]
+  rfl
 
 /-- **The deployed `y₃` kernel, evaluated with a leaf oracle.** For a leaf oracle
     `leafSem` realising the base-field primitives, the deployed
@@ -158,7 +158,7 @@ theorem bn254AddyCom_denoteWith (leafSem : LeafSem) (prims : FieldPrimitives)
   rw [hMul (.cons lam (.cons (prims.sub Px Rx) .nil))]
   simp only [HVector.head, HVector.tail]
   rw [hSub (.cons (prims.mul lam (prims.sub Px Rx)) (.cons Py .nil))]
-  simp only [HVector.head, HVector.tail]
+  rfl
 
 /-! ## 3. The deployed leaf oracle + the kernels at that oracle -/
 

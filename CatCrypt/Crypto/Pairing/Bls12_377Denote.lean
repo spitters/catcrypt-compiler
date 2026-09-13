@@ -107,7 +107,7 @@ theorem fieldAddCom_denoteWith (leafSem : LeafSem) (prims : Bls377Primitives)
   show leafSem addLeafName fieldBinArgTys fpRetTy (.cons x (.cons y .nil))
       = prims.fieldAdd x y
   rw [hAdd (.cons x (.cons y .nil))]
-  simp only [HVector.head, HVector.tail]
+  rfl
 
 /-- **The deployed field-sub kernel, evaluated with a leaf oracle.** Computes
     `prims.fieldSub x y`. -/
@@ -121,7 +121,7 @@ theorem fieldSubCom_denoteWith (leafSem : LeafSem) (prims : Bls377Primitives)
   show leafSem subLeafName fieldBinArgTys fpRetTy (.cons x (.cons y .nil))
       = prims.fieldSub x y
   rw [hSub (.cons x (.cons y .nil))]
-  simp only [HVector.head, HVector.tail]
+  rfl
 
 /-- **The deployed field-multiply kernel, evaluated with a leaf oracle.** Computes
     `prims.fieldMul x y`. -/
@@ -135,7 +135,7 @@ theorem fieldMulCom_denoteWith (leafSem : LeafSem) (prims : Bls377Primitives)
   show leafSem mulLeafName fieldBinArgTys fpRetTy (.cons x (.cons y .nil))
       = prims.fieldMul x y
   rw [hMul (.cons x (.cons y .nil))]
-  simp only [HVector.head, HVector.tail]
+  rfl
 
 /-- **The deployed field-square kernel, evaluated with a leaf oracle.** Computes
     `prims.fieldSquare x`. -/
@@ -149,7 +149,7 @@ theorem fieldSquareCom_denoteWith (leafSem : LeafSem) (prims : Bls377Primitives)
   show leafSem squareLeafName fieldUnArgTys fpRetTy (.cons x .nil)
       = prims.fieldSquare x
   rw [hSq (.cons x .nil)]
-  simp only [HVector.head]
+  rfl
 
 /-- **The deployed field-inverse kernel, evaluated with a leaf oracle.** Computes
     `prims.fieldInv x`. -/
@@ -163,7 +163,7 @@ theorem fieldInvCom_denoteWith (leafSem : LeafSem) (prims : Bls377Primitives)
   show leafSem invLeafName fieldUnArgTys fpRetTy (.cons x .nil)
       = prims.fieldInv x
   rw [hInv (.cons x .nil)]
-  simp only [HVector.head]
+  rfl
 
 /-- **The deployed single-pairing kernel, evaluated with a leaf oracle.** For a
     leaf oracle `leafSem` realising the pairing primitives, `pairingCom` computes
@@ -179,7 +179,7 @@ theorem pairingCom_denoteWith (leafSem : LeafSem) (prims : Bls377Primitives)
   show leafSem pairingLeafName pairingArgTys gtRetTy (.cons p (.cons q .nil))
       = prims.pairing p q
   rw [hP (.cons p (.cons q .nil))]
-  simp only [HVector.head, HVector.tail]
+  rfl
 
 /-- **The deployed GT-product kernel, evaluated with a leaf oracle.** Computes
     `prims.fp12Mul a b`. -/
@@ -193,7 +193,7 @@ theorem fp12MulCom_denoteWith (leafSem : LeafSem) (prims : Bls377Primitives)
   show leafSem fp12MulLeafName fp12MulArgTys gtRetTy (.cons a (.cons b .nil))
       = prims.fp12Mul a b
   rw [hM (.cons a (.cons b .nil))]
-  simp only [HVector.head, HVector.tail]
+  rfl
 
 /-- **The deployed pairing-product verifier, evaluated with a leaf oracle.** For a
     leaf oracle `leafSem` realising the pairing primitives, `pairingProductCom` —
@@ -219,7 +219,7 @@ theorem pairingProductCom_denoteWith (leafSem : LeafSem) (prims : Bls377Primitiv
   rw [hP (.cons p1 (.cons q1 .nil)), hP (.cons p2 (.cons q2 .nil))]
   simp only [HVector.head, HVector.tail]
   rw [hM (.cons (prims.pairing p1 q1) (.cons (prims.pairing p2 q2) .nil))]
-  simp only [HVector.head, HVector.tail]
+  rfl
 
 /-! ## 3. The deployed leaf oracle + each `Com` at that oracle -/
 

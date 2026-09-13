@@ -5,9 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public meta import CatCrypt.Crypto.Jasmin.JincElab
 public import CatCrypt.Crypto.Jasmin.JincElab
-public meta import CatCrypt.Crypto.Number.MontgomeryReduction
 public import CatCrypt.Crypto.Number.MontgomeryReduction
 
 /-!
@@ -25,10 +23,10 @@ rendered to AT&T x86 by `Com.toLprogPhysAbi` / `renderLprogAtt`.
 `montgomeryReduce_correct`: the result lies in `[0, 2q)` and satisfies
 `result * R ≡ t (mod q)`.
 
-The parse and the elaboration shape are compile-time `#guard`s. They evaluate
-`partial def`s (`JincToCom.tokenize`, `JincElab.elabStmts`), which the kernel
-cannot unfold, so they are interpreter checks rather than theorems. For the same
-reason the elaborated `Com`'s denotation is not tied to `mldsaMontRedWord` by a
+The parse, the elaboration shape and the rendering are checked by the executable
+`mldsa-jinc-import-kat` (`MldsaJincImportKat.lean`). They evaluate `partial def`s
+(`JincToCom.tokenize`, `JincElab.elabStmts`), which the kernel cannot unfold. For the
+same reason the elaborated `Com`'s denotation is not tied to `mldsaMontRedWord` by a
 theorem: `mldsaMontRedCom?` reduces only through those `partial def`s.
 
 ## Main definitions
@@ -90,13 +88,6 @@ def mldsaMontRedSrc : String :=
      return r;
    }"
 
--- The leaf parses to a 1-parameter, 3-declaration, 7-statement function.
-#guard (parseJincFun mldsaMontRedSrc).toOption.map
-    (fun f => (f.params.length, f.decls.length, f.body.length)) == some (1, 3, 7)
-
--- The parsed return type is `reg u64`.
-#guard (parseJincFun mldsaMontRedSrc).toOption.map (fun f => f.retTy) == some (JTy.reg 64)
-
 /-- The elaborated `Com` at its concrete type (`[t] → reg 64`). -/
 def mldsaMontRedCom? : Option (Com jasminDialect [.reg 64] (.reg 64)) :=
   match elabFun ((parseJincFun mldsaMontRedSrc).toOption.getD default) with
@@ -105,9 +96,6 @@ def mldsaMontRedCom? : Option (Com jasminDialect [.reg 64] (.reg 64)) :=
         if hτ : τ = .reg 64 then some (hΓ ▸ hτ ▸ com) else none
       else none
   | none => none
-
--- The leaf elaborates to a 1-argument `Com` returning `reg 64`.
-#guard mldsaMontRedCom?.isSome
 
 /-! ## 3. The word computation and its Montgomery law -/
 
@@ -119,17 +107,12 @@ def mldsaMontRedWord (t : BitVec 64) : BitVec 64 :=
 theorem mldsaMontRed_digit (t : BitVec 64) :
     (((t * 4236238847) <<< 32 >>> 32 : BitVec 64)).toNat
       = (t.toNat * mldsaQNegInv) % mldsaR := by
+  have ht := t.isLt
   have hc : ((4236238847 : BitVec 64)).toNat = 4236238847 := by simp
-  have hsplit : ∀ A : Nat, A * 2 ^ 32 % 2 ^ 64 / 2 ^ 32 = A % 2 ^ 32 := by
-    intro A
-    have h : A * 2 ^ 32 % (2 ^ 32 * 2 ^ 32) = A % 2 ^ 32 * 2 ^ 32 :=
-      Nat.mul_mod_mul_right _ _ _
-    rw [show (2 : Nat) ^ 64 = 2 ^ 32 * 2 ^ 32 by norm_num, h]
-    simp
-  simp only [BitVec.toNat_ushiftRight, BitVec.toNat_shiftLeft, BitVec.toNat_mul, hc,
+  rw [BitVec.toNat_ushiftRight, BitVec.toNat_shiftLeft, BitVec.toNat_mul, hc,
     Nat.shiftRight_eq_div_pow, Nat.shiftLeft_eq]
-  rw [hsplit, Nat.mod_mod_of_dvd _ (by norm_num : (2 : Nat) ^ 32 ∣ 2 ^ 64)]
-  norm_num [mldsaQNegInv, mldsaR]
+  simp only [Nat.reducePow, mldsaQNegInv, mldsaR] at ht ⊢
+  omega
 
 /-- The word computation is the abstract Montgomery reduction at the ML-DSA
     parameters, for inputs below `R * q`. -/
@@ -163,7 +146,6 @@ theorem mldsaMontRedWord_toNat (t : BitVec 64) (ht : t.toNat < mldsaR * mldsaQ) 
     rw [hmdef]
     norm_num [mldsaQ, mldsaR]
   rw [hspec, mldsaMontRedWord, BitVec.toNat_ushiftRight, Nat.shiftRight_eq_div_pow, hsum]
-  norm_num
 
 /-- The imported leaf is a Montgomery reduction: on an input below `R * q` the
     result lies in `[0, 2q)` and satisfies `result * R ≡ t (mod q)`. -/
@@ -183,10 +165,5 @@ theorem mldsaMontRed_montgomery_law (t : BitVec 64) (ht : t.toNat < mldsaR * mld
     whichever register the allocator assigned. -/
 def mldsaMontRedAsm : String :=
   emitJincAsm mldsaMontRedSrc "mldsa_montgomery_reduce"
-
--- The render reached the printer: no parse or elaboration failure, one label.
-#guard (mldsaMontRedAsm.splitOn "; parse error").length == 1
-        && (mldsaMontRedAsm.splitOn "elaboration failed").length == 1
-        && (mldsaMontRedAsm.splitOn "mldsa_montgomery_reduce:").length == 2
 
 end CatCrypt.Crypto.Jasmin.MldsaJincImport

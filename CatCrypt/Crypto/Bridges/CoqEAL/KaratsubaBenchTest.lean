@@ -10,6 +10,8 @@ public import CatCrypt.Crypto.Bridges.CoqEAL.KaratsubaBench
 public meta import CatCrypt.Crypto.Bridges.CoqEAL.KaratsubaRec
 public import CatCrypt.Crypto.Bridges.CoqEAL.KaratsubaRec
 public import CompPoly.Univariate.ToPoly
+import all CompPoly.Univariate.Raw.Core
+import all CompPoly.Univariate.Raw.Ops
 
 /-!
 # Correctness + agreement check for the Karatsuba benchmark harness
@@ -153,7 +155,7 @@ theorem karatsubaComp_trim_eq_schoolbook (p q : P) :
     `karatsubaMul_toPoly` (this file), the right by
     `Karatsuba.karatsubaRec_eq` (the CoqEAL refinement transferred across
     `CPolynomial.ringEquiv`). This makes precise that `karatsubaComp` is the
-    computable mirror of the verified algorithm, not merely a lookalike. -/
+    computable mirror of the verified algorithm. -/
 theorem karatsubaComp_toPoly_eq_karatsubaRec
     (fuel : ℕ) (p q : P) (p' q' : CPolynomial Int)
     (hp : p'.toPoly = p.toPoly) (hq : q'.toPoly = q.toPoly) :

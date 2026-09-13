@@ -8,6 +8,8 @@ module
 public import CatCrypt.Crypto.Util.BLS12381Verified
 public import CatCrypt.Crypto.Pairing.IsogenyPolyIdentity
 public import Transfer.Examples.ZModPowMod
+public meta import CatCrypt.Crypto.Util.BLS12381Verified
+public meta import Transfer.Examples.ZModPowMod
 
 /-!
 # RFC 9380 hash-to-curve for BLS12-381 G1 — Lean port of the AUCurves Rocq spec
@@ -26,7 +28,7 @@ Lean 4 port of the AUCurves Rocq formalization
 * the full `hash_to_curve` / `encode_to_curve` pipeline (RFC 9380 §3).
 
 Field: `FpBLS = ZMod p` (`CatCrypt.Util.BLS12381Verified`), a Mathlib `Field`
-(primality of the 381-bit `p` is the named axiom `bls12381_prime` there).
+(primality of the 381-bit `p` is the theorem `bls12381_prime` there).
 
 ## Rocq correspondence
 
@@ -45,7 +47,7 @@ Field: `FpBLS = ZMod p` (`CatCrypt.Util.BLS12381Verified`), a Mathlib `Field`
 | `clearCofactorPreserves` | `clear_cofactor_preserves` (`HashToCurveClosureProof.v`) |
 | `swuGxRatio` | `swu_gx_ratio` (`HashToCurveSWUProof.v`) |
 
-## Honest caveats (exploratory verification, not a published proof)
+## Scope
 
 1. **On-curve, NOT prime-order-subgroup.** `mapProducesCurvePoints` and
    `clearCofactorPreserves` prove the output lies on the affine curve
@@ -60,31 +62,26 @@ Field: `FpBLS = ZMod p` (`CatCrypt.Util.BLS12381Verified`), a Mathlib `Field`
    verified as a function of its output field elements `u₀, u₁`. The
    Rocq side imports `hash_to_field` from `Crypto.Spec.SHA256_axiom` likewise.
 
-## Proof status (see the per-theorem docstrings and the module tail)
+## Proof status
 
-Fully proved (mirroring the Rocq `field`/`fsatz`/`ring` proofs):
-`swuGxRatio` (the key `gx₂ = t³·gx₁` field identity), the constant-nonzero
-lemmas, `swuZ_nonsquare` (`Z = 11` is a nonresidue — via Jacobi-symbol
-reciprocity, `norm_num` on `jacobiSym 11 p` + `ZMod.euler_criterion`),
-`fpSqrt_correct` (Euler-criterion square-root correctness),
-`swuMapsToEprime` **as an algebraic assembly** (its own body is `sorry`-free:
-`swuGxRatio` + `swuZ_nonsquare` + quadratic-character multiplicativity +
-`fpSqrt_correct`; it transitively rests on the one edge lemma below),
-`pointAddPreserves` / `scalarMulPreserves` / `clearCofactorPreserves`
-(the cofactor-clearing closure), and `mapProducesCurvePoints` **as the
-composition** of its two component theorems.
+All theorems are proved without `sorry`. The symbolic parts mirror the Rocq
+`field`/`fsatz`/`ring` proofs: `swuGxRatio` (the `gx₂ = t³·gx₁` field identity),
+the constant-nonzero lemmas, `swuZ_nonsquare` (`Z = 11` is a nonresidue, by
+`norm_num` on `jacobiSym 11 p` and `ZMod.euler_criterion`), `fpSqrt_correct`,
+`swuMapsToEprime` (`swuGxRatio`, `swuZ_nonsquare`, multiplicativity of the Euler
+symbol, `fpSqrt_correct`, and the edge lemma below), `pointAddPreserves` /
+`scalarMulPreserves` / `clearCofactorPreserves`, and `mapProducesCurvePoints` as
+the composition of `swuMapsToEprime` and `isoMapsEprimeToE`.
 
-Carrying `sorry` (each a *computational* step over the 381-bit field that Rocq
-discharges by `vm_compute`/`native_compute` reflection, infeasible to replay in
-Lean here without OOM): `edge_case_gx1_is_square` (the lone `tv1 = 0` Legendre
-check — that `gx₁ = curveRhs A' B' (B'·(Z·A')⁻¹)` is a QR — a property of the
-concrete `(A', B', Z)` triple, not derivable "by construction"; the entire
-`swuMapsToEprime` reduces to exactly this one check),
-and the `isogenyPolyIdentity` inside `isoMapsEprimeToE` (a degree-≈45 identity
-over `ZMod p` with the RFC E.2 coefficients — the two sides agree only *mod p*,
-not as integer-coefficient polynomials, so `ring` cannot close it; it needs a
-reflective `ℤ/pℤ` polynomial evaluator, the Rocq `poly_*_Z` machinery). Neither
-weakens a *statement*.
+Two steps are computations over the 381-bit field, which Rocq discharges by
+`vm_compute`/`native_compute`:
+* `edge_case_gx1_is_square` (the `tv1 = 0` Legendre check that
+  `curveRhs A' B' (B'·(Z·A')⁻¹)` is a square, a property of the concrete
+  `(A', B', Z)` triple) evaluates one modular exponentiation over `Nat` by
+  `native_decide`, so `swuMapsToEprime` and its consumers depend on
+  `Lean.ofReduceBool`;
+* `isogenyPolyIdentity` (used by `isoMapsEprimeToE`) is proved in
+  `IsogenyPolyIdentity` by a bounded reflective coefficient check.
 -/
 
 @[expose] public section
@@ -406,10 +403,9 @@ private theorem swuZ_pow_legendreExp : swuZ ^ legendreExp = -1 :=
     reflexivity` (a Legendre-symbol evaluation on the concrete field element
     `gx₁ = curveRhs A' B' (B'·(Z·A')⁻¹)`).
 
-    **Carries `sorry`.** Replaying that computation over `ZMod p` needs either a
-    `decide` over a 115-digit modular-inverse residue or a `jacobiSym` on the same
-    large numerator — both OOM the elaborator in this environment. This is the
-    lone concrete Euler/Legendre check the algebraic assembly cannot avoid. -/
+    The proof computes the natural-number representative `gn` of `gx₁` through
+    `invMod`, checks `powMod gn legendreExp p = 1` by `native_decide`, and
+    transports both to `FpBLS` with `invMod_cast` and `powMod_cast`. -/
 private theorem edge_case_gx1_is_square :
     isSquare (curveRhs isoA isoB (isoB * (swuZ * isoA)⁻¹)) = true := by
   set aAn : ℕ := 0x144698a3b8e9433d693a02c96d4982b0ea985383ee66a8d8e8981aefd881ac98936f8da0e0f97f5cf428082d584c1d
@@ -446,22 +442,29 @@ private theorem edge_case_gx1_is_square :
     -Legendre(gx₁)`, so `gx₁` a nonsquare forces `gx₂` a square; and (iii)
     `fpSqrt_correct` (proved), giving `y² = g(x)` for whichever branch is chosen.
 
-    Its **only** `sorry`-dependency is `edge_case_gx1_is_square` — the lone concrete
-    `tv1 = 0` Legendre check, which is not derivable "by construction" (it is a
-    property of the concrete `(A', B', Z)` triple; Rocq uses `native_compute`) and
-    OOMs here. Everything in this proof body is symbolic — no big-numeral eval. -/
+    The `tv1 = 0` branch uses `edge_case_gx1_is_square`, the concrete Legendre
+    check on the `(A', B', Z)` triple, proved by `native_decide`; this is the
+    theorem's only dependence on `Lean.ofReduceBool`. The proof body itself
+    evaluates no numeral: the map's output is related to named intermediates by
+    rewriting each intermediate into the definition's `let`-form body and closing
+    with `exact rfl`, without zeta-expanding the body. -/
 theorem swuMapsToEprime (u : FpBLS) :
     onCurveEprime (mapToCurveSimpleSWU isoA isoB swuZ u) := by
-  unfold onCurveEprime mapToCurveSimpleSWU
-  dsimp only
-  set tv1 : FpBLS := (swuZ ^ 2 * (u ^ 2) ^ 2 + swuZ * u ^ 2)⁻¹ with htv1
-  set x1 : FpBLS := (if tv1 = 0 then isoB * (swuZ * isoA)⁻¹
-    else -isoB * isoA⁻¹ * (1 + tv1)) with hx1
-  set gx1 : FpBLS := curveRhs isoA isoB x1 with hgx1
-  set x2 : FpBLS := swuZ * u ^ 2 * x1 with hx2
-  set gx2 : FpBLS := curveRhs isoA isoB x2 with hgx2
-  set xy : FpBLS × FpBLS :=
-    (if isSquare gx1 then (x1, fpSqrt gx1) else (x2, fpSqrt gx2)) with hxy
+  obtain ⟨tv1, htv1⟩ : ∃ t : FpBLS, t = (swuZ ^ 2 * (u ^ 2) ^ 2 + swuZ * u ^ 2)⁻¹ := ⟨_, rfl⟩
+  obtain ⟨x1, hx1⟩ : ∃ x : FpBLS,
+      x = if tv1 = 0 then isoB * (swuZ * isoA)⁻¹ else -isoB * isoA⁻¹ * (1 + tv1) := ⟨_, rfl⟩
+  obtain ⟨gx1, hgx1⟩ : ∃ g : FpBLS, g = curveRhs isoA isoB x1 := ⟨_, rfl⟩
+  obtain ⟨x2, hx2⟩ : ∃ x : FpBLS, x = swuZ * u ^ 2 * x1 := ⟨_, rfl⟩
+  obtain ⟨gx2, hgx2⟩ : ∃ g : FpBLS, g = curveRhs isoA isoB x2 := ⟨_, rfl⟩
+  obtain ⟨xy, hxy⟩ : ∃ p : FpBLS × FpBLS,
+      p = if isSquare gx1 then (x1, fpSqrt gx1) else (x2, fpSqrt gx2) := ⟨_, rfl⟩
+  -- the map's output in terms of the named intermediates; the equation is closed
+  -- by `exact rfl` against the `let`-form body, which is never zeta-expanded
+  have hmap : mapToCurveSimpleSWU isoA isoB swuZ u
+      = (xy.1, if sgn0 u = sgn0 xy.2 then xy.2 else -xy.2) := by
+    rw [hxy, hgx2, hx2, hgx1, hx1, htv1]
+    exact rfl
+  rw [onCurveEprime, hmap]
   -- the sign fix does not change `y²`
   have hy2 : (if sgn0 u = sgn0 xy.2 then xy.2 else -xy.2) ^ 2 = xy.2 ^ 2 := by
     split_ifs <;> ring
@@ -497,7 +500,7 @@ theorem swuMapsToEprime (u : FpBLS) :
           rw [hx1, if_neg htv0, htv1b]
         have hgx2v : gx2 = (swuZ * u ^ 2) ^ 3 * gx1 := by
           have key := swuGxRatio isoA isoB (swuZ * u ^ 2) isoA_nonzero hSne'
-          rw [hgx2, hx2, hx1v, hgx1, hx1v]
+          rw [hgx2, hx2, hgx1, hx1v]
           exact key
         have htleg : (swuZ * u ^ 2) ^ legendreExp = -1 := by
           rw [mul_pow, swuZ_pow_legendreExp, pow_right_comm, sq_pow_legendreExp u hu0, mul_one]
@@ -558,8 +561,7 @@ theorem isoMapsEprimeToE (pt : FpBLS × FpBLS) (h : onCurveEprime pt) :
 /-! ### §8.6  Full map produces curve points (Rocq `map_produces_curve_points`) -/
 
 /-- **The full G1 map produces points on `E`.** Proved as the composition
-    `isoMapsEprimeToE ∘ swuMapsToEprime` — this assembly is a *real* proof; its
-    two premises carry `sorry` (see above). Mirrors
+    `isoMapsEprimeToE ∘ swuMapsToEprime`. Mirrors
     `map_produces_curve_points_proof`. -/
 theorem mapProducesCurvePoints (u : FpBLS) : onCurveE (mapToCurveG1 u) := by
   unfold mapToCurveG1

@@ -89,7 +89,7 @@ theorem msmTermCom_denoteWith (leafSem : EcLeafSem) (prims : EcPrimitives)
   rw [hMul (.cons k (.cons P .nil))]
   simp only [HVector.head, HVector.tail]
   rw [hAdd (.cons acc (.cons (prims.scalarMul k P) .nil))]
-  simp only [HVector.head, HVector.tail]
+  rfl
 
 /-! ## 3. The deployed leaf oracle + the kernel at that oracle -/
 

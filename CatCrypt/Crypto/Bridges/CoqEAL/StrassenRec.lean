@@ -13,7 +13,7 @@ public import Mathlib.Tactic.NoncommRing
 # Recursive (fuel-driven) Strassen block multiplication
 
 `Strassen.lean` proved the **one-level** `2×2` Strassen identity over a
-commutative ring. This file lifts it to a genuinely **recursive** Strassen
+commutative ring. This file lifts it to a recursive Strassen
 multiply on block matrices: a matrix on a doubled index type `B ⊕ B` is split
 into four `B`-indexed blocks, the seven Strassen products are computed by
 *recursive* sub-multiplications (one fuel level down), and the four result
@@ -39,7 +39,7 @@ blocks are recombined via `Matrix.fromBlocks`.
 
 ## Scope and the named residual
 
-This is the genuine recursion (real sub-multiplications down the fuel tower),
+This is the recursion (real sub-multiplications down the fuel tower),
 generalizing one level. The complexity/termination *accounting* (that fuel `k`
 uses `7^k` base multiplications, the `O(n^log₂7)` bound) and pivoting to the
 ragged `Fin (2*n)` data layout are the remaining residual and are not done here.
@@ -134,7 +134,8 @@ theorem strassenRec_eq (m₀ : Type*) [Fintype m₀] [DecidableEq m₀] :
   | 0, A, B => rfl
   | (k + 1), A, B => by
     simp only [strassenRec, strassenRec_eq m₀ k]
-    rw [strassen_blocks_eq, Matrix.fromBlocks_toBlocks, Matrix.fromBlocks_toBlocks]
+    rw [strassen_blocks_eq]
+    erw [Matrix.fromBlocks_toBlocks, Matrix.fromBlocks_toBlocks]
     rfl
 
 end CatCrypt.Crypto.Bridges.CoqEAL.StrassenRec

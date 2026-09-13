@@ -68,6 +68,7 @@ CatCrypt.Crypto.Jasmin.LowCTReflectComputable
 CatCrypt.Crypto.Jasmin.MarlinKZGProverReflect
 CatCrypt.Crypto.Jasmin.MemAbiReflect
 CatCrypt.Crypto.Jasmin.MldsaJincImport
+CatCrypt.Crypto.Jasmin.MldsaJincImportKat
 CatCrypt.Crypto.Jasmin.Mpn.GenericWidth
 CatCrypt.Crypto.Jasmin.Mpn.MLIRBackend
 CatCrypt.Crypto.Jasmin.Mpn.QhatBound

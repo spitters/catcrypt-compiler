@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import Lean
+public import Mathlib.Tactic.Ring
 
 /-!
 # `tower_ring_377`: coordinate-equality prover for the `bls12_377` `Fp6` tower

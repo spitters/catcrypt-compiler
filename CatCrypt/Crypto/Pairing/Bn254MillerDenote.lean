@@ -108,7 +108,7 @@ theorem cycloPowStepCom_denoteWith (leafSem : LeafSem) (prims : Bn254MillerPrimi
   rw [h.fp12CycloSquare (.cons r .nil)]
   simp only [HVector.head]
   rw [h.fp12Mul (.cons (prims.fp12CycloSquare r) (.cons base .nil))]
-  simp only [HVector.head, HVector.tail]
+  rfl
 
 /-- **The deployed final-exp easy part, evaluated with a leaf oracle.** For a leaf
     oracle realising the tower primitives, `finalExpEasyCom` — denoted through
@@ -140,8 +140,7 @@ theorem finalExpEasyCom_denoteWith (leafSem : LeafSem) (prims : Bn254MillerPrimi
   simp only [HVector.head]
   rw [h.fp12Frob (.cons (prims.fp12Frob (prims.fp12Mul (prims.fp12Conj f) (prims.fp12Conj f))) .nil)]
   simp only [HVector.head]
-  rw [h.fp12Mul]
-  simp only [HVector.head, HVector.tail]
+  exact h.fp12Mul _
 
 /-- **The deployed fused-line Miller doubling step, evaluated with a leaf oracle.**
     For a leaf oracle realising the tower primitives, `millerDoubleStepCom` —
@@ -177,8 +176,13 @@ theorem millerDoubleStepCom_denoteWith (leafSem : LeafSem) (prims : Bn254MillerP
                       (.cons ty (.cons ty .nil))) .nil)) .nil)))
                 (.cons tx (.cons ty (.cons px (.cons py .nil)))))) .nil)) := rfl
   rw [hLHS]
-  simp only [HVector.head, HVector.tail, h.fp2Square, h.fp2Add, h.fp2Inv, h.fp2Mul,
-    h.makeLine, h.fp12Square, h.fp12Mul]
+  exact (h.fp12Mul _).trans (congrArg₂ prims.fp12Mul (h.fp12Square _)
+    ((h.makeLine _).trans (congrArg (fun l => prims.makeLine l tx ty px py)
+      ((h.fp2Mul _).trans (congrArg₂ prims.fp2Mul
+        ((h.fp2Add _).trans (congrArg₂ prims.fp2Add
+          ((h.fp2Add _).trans (congrArg₂ prims.fp2Add (h.fp2Square _) (h.fp2Square _)))
+          (h.fp2Square _)))
+        ((h.fp2Inv _).trans (congrArg prims.fp2Inv (h.fp2Add _))))))))
 
 /-! ## 3. The deployed leaf oracle + the kernels at that oracle -/
 

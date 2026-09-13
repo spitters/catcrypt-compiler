@@ -107,7 +107,7 @@ theorem g1MsmTermCom_denoteWith (leafSem : LeafSem) (prims : BlsPrimitives)
   rw [hMul (.cons k (.cons P .nil))]
   simp only [HVector.head, HVector.tail]
   rw [hAdd (.cons acc (.cons (prims.g1Mul k P) .nil))]
-  simp only [HVector.head, HVector.tail]
+  rfl
 
 /-- **The deployed BLS-verify LHS, evaluated with a leaf oracle.** For a leaf
     oracle `leafSem` realising the pairing primitives
@@ -127,7 +127,7 @@ theorem blsVerifyLhsCom_denoteWith (leafSem : LeafSem) (prims : BlsPrimitives)
   show leafSem pairingLeafName pairingArgTys gtRetTy
         (.cons sig (.cons g2 .nil)) = prims.pairing sig g2
   rw [hP (.cons sig (.cons g2 .nil))]
-  simp only [HVector.head, HVector.tail]
+  rfl
 
 /-- **The deployed KZG-verify LHS, evaluated with a leaf oracle.** For a leaf
     oracle `leafSem` realising the pairing primitives
@@ -147,7 +147,7 @@ theorem kzgVerifyLhsCom_denoteWith (leafSem : LeafSem) (prims : BlsPrimitives)
   show leafSem pairingLeafName pairingArgTys gtRetTy
         (.cons proof (.cons sMinusZ_g2 .nil)) = prims.pairing proof sMinusZ_g2
   rw [hP (.cons proof (.cons sMinusZ_g2 .nil))]
-  simp only [HVector.head, HVector.tail]
+  rfl
 
 /-- **The deployed Groth16 verifier RHS product, evaluated with a leaf oracle.**
     For a leaf oracle `leafSem` realising the pairing primitives
@@ -187,7 +187,7 @@ theorem groth16VerifyRhsCom_denoteWith (leafSem : LeafSem) (prims : BlsPrimitive
   simp only [HVector.head, HVector.tail]
   rw [hM (.cons (prims.fp12Mul (prims.pairing aG1 bG2) (prims.pairing l gG2))
             (.cons (prims.pairing c dG2) .nil))]
-  simp only [HVector.head, HVector.tail]
+  rfl
 
 /-! ## 3. The deployed leaf oracle + the verifiers at that oracle -/
 
