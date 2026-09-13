@@ -31,7 +31,7 @@ register-arithmetic op agrees on both sides, tied by a state correspondence
   lowering picks computes exactly `bop.apply (s.get dst) (s.get rb)`. Both the
   dialect denotation and the machine step reduce to the *same* `BitVec 64` op.
 * `jasminSingleOp_denote` — the dialect side: the single-op `regArith bop`
-  `Com` denotes to `bop.apply (V a) (V b)`, a genuine value read from `V`.
+  `Com` denotes to `bop.apply (V a) (V b)`, a value read from `V`.
 * `jasminOp_runBlock_tie` — **the tie**: reading the destination register after
   running the lowered `mov; op` block equals the `Com`'s denotation on `V`.
 
@@ -83,7 +83,7 @@ def jasminSingleOp (bop : JasminBinOp) : Com jasminDialect Γ2 (.reg 64) :=
     (.ret .here)
 
 /-- **The dialect side.** The single-op `Com` denotes to `bop.apply (V a) (V b)`,
-    a genuine value read from the valuation `V`. Reduces definitionally through
+    a value read from the valuation `V`. Reduces definitionally through
     `Com.denote`/`Expr.denote`/`lookupArgs` and the `regArith` arm of
     `jasminDenote`. -/
 theorem jasminSingleOp_denote (bop : JasminBinOp) (V : Ctxt.Valuation Γ2) :
@@ -119,7 +119,7 @@ def bopToJInstr (bop : JasminBinOp) (dst : String) (src : JOperand) : JInstr 64 
   | .andn => .mov dst src
 
 /-- The per-variable register map: an `SSA reg 64` variable to a machine register
-    name. A genuine register allocation assigns distinct physical registers to
+    name. A register allocation assigns distinct physical registers to
     simultaneously-live slots; we keep it abstract and constrain it only where the
     tie needs it (the destination must differ from the second-operand register). -/
 abbrev RegMap := Ctxt.Var Γ2 (.reg 64) → String
@@ -214,7 +214,7 @@ def sampleρ : RegMap := fun v =>
   | .here => "a"
   | .there .here => "b"
 
-/-- The dialect side computes the genuine value `7 + 35 = 42`. -/
+/-- The dialect side computes the value `7 + 35 = 42`. -/
 example : (jasminSingleOp .add).denote sampleV = (42 : BitVec 64) := by rfl
 
 /-- The machine side (running `mov d a; add d b` and reading `d`) computes `42`. -/

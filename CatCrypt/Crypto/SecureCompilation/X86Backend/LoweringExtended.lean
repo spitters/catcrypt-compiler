@@ -62,11 +62,8 @@ non-`Lopn` `LinstrR` constructor (`Lsyscall`/`Lcall`/`Lret`/`Lalign`/`Llabel`/
 chain the byte path enters at `gatherJBlock6`: every level above it intercepts
 the shapes it adds before delegating the rest down, so much of the list is
 accepted upstream and never arrives here, and an arm added here for such a shape
-is unreachable. What the GATHER accepts — one row per shape, with the `file:line`
-of the arm that accepts it, and the chain's own declined set — is derived from
-these sources into `GATHER_COVERAGE.md` by `scripts/gen-gather-coverage.sh`,
-which CI re-derives and diffs. Consult that table before reading any entry above
-as a pipeline capability gap.
+is unreachable. What the GATHER accepts is decided by the whole chain, so an entry
+above is not by itself a pipeline capability gap.
 
 `loadMemIdx`/`storeMemIdx` are **not** `IsDirect` — their CT shape is the
 `agreePub`/`CTAddressed` one of `LowCTMemCT.lean`, not the unconditional

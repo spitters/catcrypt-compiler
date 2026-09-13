@@ -48,7 +48,7 @@ The interference check at point `i` is over `{b_i.dst} ∪ liveOut_i`, which is
 exactly the seeded def-clobbers-live-out edge.
 
 `set_option autoImplicit false` is intentionally *not* set (SecureCompilation
-convention; see root `CLAUDE.md`).
+convention).
 -/
 
 @[expose] public section

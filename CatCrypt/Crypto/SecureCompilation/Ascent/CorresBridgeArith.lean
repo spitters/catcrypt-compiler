@@ -28,7 +28,7 @@ lowered JInstr leaves holds there.
 
 ## Why the read is restricted to `dst`
 
-The whole-environment equality `hmirror` demands is genuinely **false** for
+The whole-environment equality `hmirror` demands is **false** for
 `ArithSrc`: `semScalar`'s `RScalarSetExpr` arm evaluates the source `SExpr` by
 threading a chain of *fresh temporaries* (`semLowerSExpr`, the `__sx` namespace)
 into the environment, and those temporary slots have no counterpart in the

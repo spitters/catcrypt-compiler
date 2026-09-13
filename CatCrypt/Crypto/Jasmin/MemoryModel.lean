@@ -213,7 +213,7 @@ def array64Footprint (base : UInt64) (n : Nat) : AddrSet :=
 
 /-! ## §5. Frame lemma: a store outside the array doesn't disturb it
 
-This is the load-bearing lemma for our mvcgen attachment. If a routine
+This is the lemma the mvcgen attachment rests on. If a routine
 stores only into a region disjoint from `array64 a xs`'s footprint,
 then `array64 a xs` survives the store. -/
 
@@ -292,16 +292,8 @@ remain to close `body → algoNat` for the bignum ports:
 3. **Wire `mvcgen`**: tactic configuration that emits VCs of shape
    `{array64 base xs ∗ ...} body {array64 base xs' ∗ ...}` and
    reduces them to algorithmic obligations of the form `xs' =
-   algoNat-of-body xs`. The algoNat correctness theorems landed in
-   commit `5aef5df3` then close the residual obligations.
-
-Effort estimate per `mvcgen-loom-evaluation.md` Option C:
-- (1) ~3 days: extend `jasminSem` (load/store + ~10 intrinsic rules)
-- (2) ~3 days: Hoare judgment + soundness lemma
-- (3) ~1 week: mvcgen attachment + first port closure
-
-Total ~2 weeks for the first complete `body → algoNat` proof; thereafter
-each additional port is ~1 day (reuses the framework).
+   algoNat-of-body xs`. The algoNat correctness theorems then close the
+   residual obligations.
 -/
 
 end CatCrypt.Crypto.Jasmin.MemoryModel

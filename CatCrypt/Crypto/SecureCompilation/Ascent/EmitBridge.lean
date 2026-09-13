@@ -9,16 +9,15 @@ public import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
 public import CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
 
 /-!
-# The keystone: the ascent abstraction leg discharges the emit leg
+# The emit weld: an ascent correspondence read at the emit leg's output word
 
 The ascent calculus (`Ascent/Corres.lean`) proves the **abstraction** leg
-`semScalar c → clean ZMod 2^64 spec` via `Corres SR P fa c`. Every existing
-kernel-correctness result instead proves the **emit** leg
-`denote(emitted jasmin bytes) = ctTransTy (tracked output word)` via
-`rustToJasminCom_endToEnd_topLevel_unconditional`. `Corres` alone touches no
-jasmin bytes, so it discharges no emit conclusion on its own.
+`semScalar c → clean ZMod 2^64 spec` via `Corres SR P fa c`. The **emit** leg
+`rustToJasminCom_endToEnd_topLevel_unconditional` proves
+`jcom.denote … = ctTransTy (tracked output word)` for the `Com jasminDialect`
+program `jcom` the pipeline produces. `Corres` alone says nothing about `jcom`.
 
-This module is the bridge. The two legs share one seam — the denotation
+This module joins the two. The legs share one seam — the denotation
 `semScalar c env = some env'`:
 
 * the emit leg reads the tracked output word `val` out of `env'` at `name`
@@ -26,10 +25,11 @@ This module is the bridge. The two legs share one seam — the denotation
 * the ascent leg's state relation `SRword env' (fa a₀)` says that same slot's
   word encodes the clean spec value `fa a₀ name` (`wEnc val = fa a₀ name`).
 
-`keystone` composes them: an abstract `Corres SRword P fa c` result, run at a
-`SRword`-populated entry `env₀`, pins `wEnc val = fa a₀ name`, and the emit-leg
-output supplies `denote = ctTransTy val`. `keystone_emit` wires the *real*
-`rustToJasminCom_endToEnd_topLevel_unconditional` in as the emit supplier.
+The weld stated for an abstract emit map composes them: from a `Corres SRword P fa c`
+result run at a `SRword`-populated entry `env₀` and the emit equation `hEmit`, taken
+as a hypothesis, it concludes `hEmit` together with `wEnc val = fa a₀ name`.
+`keystone_emit` discharges `hEmit` with
+`rustToJasminCom_endToEnd_topLevel_unconditional`.
 
 ## The satisfiability seam (why the closed-kernel adapter is needed)
 
@@ -45,12 +45,12 @@ recorded in `RustExecSemScalarBridge`.
 
 ## Upward welding
 
-`welding` threads the `RustExec` produced by `haxToLowCT_simulates_full`
-(`evalImp` of the extracted `ImpExpr` ↔ `RustExec` of the lowered `LowCT`) into
-the emit leg's `hExec`, so the statement reads from the `ImpExpr` denotation down
-to the emitted bytes' clean spec. The hax-lean leg `pipeline_correct`
-(cross-repo, `../hax-lean`) attaches one level above, rewriting the source
-`ImpExpr` that `evalImp` consumes.
+`welding` takes the `RustExec` run of `c` as the premise `hExec` of the emit leg.
+A source simulation supplies such a run from an `ImpExpr` evaluation;
+`SourceBridge.welding_program` states the weld with `hExec` supplied by the
+program-level simulation `haxToLowCT_simulates_program`. hax-lean's
+`pipeline_correct` (`HaxLean/Pipeline.lean`) relates a raw `ImpExpr` to its
+pipeline output, one level above; `PipelineWeld` uses it.
 -/
 
 @[expose] public section
@@ -76,15 +76,16 @@ open CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect (ctMapValD)
 
 namespace CatCrypt.Crypto.SecureCompilation.Ascent
 
-/-! ## The keystone (abstract in the emit map) -/
+/-! ## The emit weld, abstract in the emit map -/
 
-/-- **`keystone`.** From an ascent correspondence `Corres SRword P fa c` run at a
-    `SRword`-populated entry `(env₀, a₀)` and the emit-leg output `hEmit`
-    (`jdenote = Emit val`), together with the closed-kernel adapter `hAgree`
-    (the `env₀`-run leaves `val` at `name`), conclude both the emit equation and
-    that the emitted word's clean `ZMod 2^64` spec is `fa a₀ name`. `Emit` is
-    abstract; it is instantiated to `ctTransTy` in `keystone_emit`. -/
-theorem keystone {β : Type} (Emit : BitVec 64 → β)
+/-- From an ascent correspondence `Corres SRword P fa c` run at a
+    `SRword`-populated entry `(env₀, a₀)`, the emit equation `hEmit`
+    (`jdenote = Emit val`) taken as a hypothesis, and the closed-kernel adapter
+    `hAgree` (the `env₀`-run leaves `val` at `name`), conclude both the emit
+    equation and that the word's clean `ZMod 2^64` spec is `fa a₀ name`. `Emit` is
+    abstract; `keystone_emit` instantiates it to `ctTransTy` and discharges
+    `hEmit`. -/
+theorem corres_emit_weld {β : Type} (Emit : BitVec 64 → β)
     (c : LowCT) (name : String) (val : BitVec 64)
     (fa : (String → ZMod (2 ^ 64)) → (String → ZMod (2 ^ 64)))
     (P : (String → ZMod (2 ^ 64)) → Prop)
@@ -100,13 +101,12 @@ theorem keystone {β : Type} (Emit : BitVec 64 → β)
   subst hwv
   exact ⟨hEmit, hwenc⟩
 
-/-! ## The composed keystone (real emit theorem) -/
+/-! ## The emit weld with the emit leg discharged -/
 
-/-- **`keystone_emit`.** The keystone with the emit supplier discharged by the
-    real end-to-end theorem `rustToJasminCom_endToEnd_topLevel_unconditional`:
-    the emitted jasmin program `jcom` denotes to `ctTransTy val`, and `val`'s
-    clean `ZMod 2^64` spec is `fa a₀ name`. This is the theorem that makes an
-    ascent `Corres` result discharge an emit conclusion. The `Corres`/`SRword`
+/-- **`keystone_emit`.** The emit weld with `hEmit` discharged by the
+    end-to-end theorem `rustToJasminCom_endToEnd_topLevel_unconditional`:
+    the jasmin program `jcom` denotes to `ctTransTy val`, and `val`'s
+    clean `ZMod 2^64` spec is `fa a₀ name`. The `Corres`/`SRword`
     entry and the closed-kernel adapter `hAgree` use the *satisfiable* route
     (a populated entry `env₀`, not the empty env the emit leg runs at). -/
 theorem keystone_emit
@@ -134,18 +134,17 @@ theorem keystone_emit
   have hEmit := (rustToJasminCom_endToEnd_topLevel_unconditional
       c o N leafSpec rs rs' env' name w val com jcom
       hCov hTrans hExec hSem hName hVal hRet hCom).2
-  exact keystone (ctTransTy (t := .sword 64)) c name val fa P env₀ a₀ _
+  exact corres_emit_weld (ctTransTy (t := .sword 64)) c name val fa P env₀ a₀ _
     hCorres hSR hP hAgree hEmit
 
-/-! ## Non-vacuity witness for the abstraction/adapter side
+/-! ## The abstraction side at a literal write
 
 For the concrete closed kernel `RScalarSet name n`, the `Corres`/`SRword`/`P`
 entry and the closed-kernel adapter `hAgree` are all dischargeable: `Corres` by
 `corres_setScalar`, the entry `SRword` by a constant word env, `P = True`, and
-`hAgree` by `rfl`. This exhibits that `keystone`'s abstraction-side hypotheses
-are jointly satisfiable (the bridge is not vacuous); the emit-side data is the
-standard covered-kernel input to `rustToJasminCom_endToEnd_topLevel_unconditional`.
-The clean spec value read out is exactly the literal `(n : ZMod 2^64)`. -/
+`hAgree` by `rfl`. The abstraction-side hypotheses of the emit weld are therefore
+jointly satisfiable. The theorem keeps `Emit` abstract and takes `hEmit` as a
+hypothesis; the word reads as the literal `(n : ZMod 2^64)`. -/
 theorem keystone_setScalar {β : Type} (Emit : BitVec 64 → β)
     (name : String) (n : Nat) (jdenote : β)
     (hEmit : jdenote = Emit (BitVec.ofNat 64 n)) :
@@ -155,7 +154,7 @@ theorem keystone_setScalar {β : Type} (Emit : BitVec 64 → β)
           = (fun (a : String → ZMod (2 ^ 64)) s =>
               if s = name then (n : ZMod (2 ^ 64)) else a s) (fun _ => wEnc 0) name := by
     let env₀ : SEnvScalar := fun _ => some ⟨.sword 64, (0 : BitVec 64)⟩
-    refine keystone Emit (.RScalarSet name n) name (BitVec.ofNat 64 n) _ (fun _ => True)
+    refine corres_emit_weld Emit (.RScalarSet name n) name (BitVec.ofNat 64 n) _ (fun _ => True)
       env₀ (fun _ => wEnc 0) jdenote
       (corres_setScalar name n) (fun x => ⟨0, rfl, rfl⟩) trivial ?_ hEmit
     intro e he
@@ -169,16 +168,14 @@ theorem keystone_setScalar {β : Type} (Emit : BitVec 64 → β)
 
 /-! ## Upward welding -/
 
-/-- **`welding`.** The emit-side `RustExec` premise `hExec` is exactly the
-    conclusion `haxToLowCT_simulates_full` delivers for the kernel `e`/`c`
-    (`evalImp bi fuel e env = some (v, env')` and the tower agreement give
-    `∃ rs', RustExec N leafSpec c rs rs' ∧ …`). Threading that `RustExec` into
-    `keystone_emit` reads the whole chain from the extracted `ImpExpr`'s
-    `evalImp` denotation down to the emitted bytes' clean `ZMod 2^64` spec. The
-    hax-lean leg `pipeline_correct` (`denote (pipeline e) = denote e`, cross-repo
-    in `../hax-lean`) attaches one level *above*: it rewrites the source
-    `ImpExpr` that supplies `evalImp e = some (v, env')` for the post-pipeline
-    program, and does not build in this repo. -/
+/-- **`welding`.** `keystone_emit`, with the emit-side `RustExec` premise `hExec`
+    listed first among the hypotheses: the premise a source simulation delivers for a kernel
+    `e`/`c` (`evalImp bi fuel e env = some (v, env')` and the tower agreement give
+    `∃ rs', RustExec N leafSpec c rs rs' ∧ …`). `SourceBridge.welding_program`
+    supplies it from the program-level simulation `haxToLowCT_simulates_program`.
+    hax-lean's `pipeline_correct` (`denote (pipeline e) = denote e`,
+    `HaxLean/Pipeline.lean`) relates the raw `ImpExpr` to its pipeline output one
+    level above; `PipelineWeld` uses it. -/
 theorem welding
     (c : LowCT) (o : DTransOut ([] : Ctx))
     (N : Nat) (leafSpec : LeafSpec) (rs rs' : RustState)
@@ -188,7 +185,7 @@ theorem welding
     (fa : (String → ZMod (2 ^ 64)) → (String → ZMod (2 ^ 64)))
     (P : (String → ZMod (2 ^ 64)) → Prop)
     (env₀ : SEnvScalar) (a₀ : String → ZMod (2 ^ 64))
-    (hExec : RustExec N leafSpec c rs rs')       -- from `haxToLowCT_simulates_full`
+    (hExec : RustExec N leafSpec c rs rs')       -- from a source simulation
     (hCov : IsCoveredSCtl c)
     (hTrans : translateDialectControl VarMap.empty c = some o)
     (hSem : semScalar c (fun _ => none) = some env')

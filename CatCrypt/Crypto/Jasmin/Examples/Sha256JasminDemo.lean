@@ -11,9 +11,9 @@ public import CatCrypt.Crypto.Jasmin.JasminToRustEmit
 /-!
 # SHA-256 inner bit-functions in Lean Jasmin AST + safe-Rust emit
 
-Hand-transcribed from `BLS/libjade/oldsrc-should-delete/crypto_hash/
-sha256/amd64/ref/sha256.jinc` (lines 81–138).  Demonstrates path
-(iii) of the Jasmin → safe-Rust pipeline:
+Hand-transcribed from libjade (https://github.com/formosa-crypto/libjade),
+`oldsrc-should-delete/crypto_hash/sha256/amd64/ref/sha256.jinc` (lines 81–138).
+Demonstrates path (iii) of the Jasmin → safe-Rust pipeline:
 
   1. Build a `JasminProg` containing the four SHA-256 round helpers
      (Ch, Maj, BSig0, BSig1) directly as `FunDecl` AST values.

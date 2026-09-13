@@ -53,8 +53,7 @@ swap: &Fp25519)`.  Used here for the four cswap sites in
 
 (NOTE: borrowOk for `RCallSwap` — `dest1 ≠ dest2`, neither in
 args — is asserted by the constructor's intent but not yet
-formally proved as a `Decidable` predicate.  Tracked as a
-follow-up in NEXT.md.)
+formally proved as a `Decidable` predicate.)
 -/
 
 @[expose] public section
@@ -142,9 +141,7 @@ def ladder255 : LowCT := rustcmd| do
   -- Persistent ladder state.  `x1` (u-coord) and `k` (scalar) are
   -- function-input parameters; the emitter declares them in the
   -- signature, so we do NOT `rc_let` them here (otherwise the emitted
-  -- Rust shadows the inputs with zero-initialised locals — a bug
-  -- found while wiring this DSL into signal-wasm/component, see
-  -- B.3 in NEXT.md).
+  -- Rust shadows the inputs with zero-initialised locals).
   rc_let "x2" TFp25519
   rc_let "z2" TFp25519
   rc_let "x3" TFp25519
@@ -173,7 +170,7 @@ def ladder255 : LowCT := rustcmd| do
     -- (borrowOk invariant), so the only arg is `k`; the leaf infers
     -- the iteration index from a hidden side-channel (or, in the
     -- preferred design, `i` is a fresh u64 local set by `rc_letU64`
-    -- + `rc_set` before the call — see B.3 in NEXT.md).
+    -- + `rc_set` before the call).
     rc_call "scalar_bit" (loc "swap" TFp25519) [loc "k" TFp25519]
     let _ := i  -- i is implicit in the unrolled position
     ladderStep

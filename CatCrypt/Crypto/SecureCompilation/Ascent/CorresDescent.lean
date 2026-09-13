@@ -20,19 +20,22 @@ abstract transformer's output at the destination.
 
 `frefines_ret` is `FRefines` at the returning continuation `Com.ret v`, and
 states the descent's contract in that same shape: the fragment closed with a
-return denotes to the abstract step's output at `v`. The two legs meet at a
-denotation equality on one side each, so for a program reached by both they
-compose by transitivity.
+return denotes to the abstract step's output at `v`. Each leg concludes a
+denotation equality, so for one program reached by both they would compose by
+transitivity.
 
-What is not stated here is that program identity. The descent builds its `Com`
-from the Lean source; the ascent reads a `Com` off a `LowCT` through
-`translateDialectControl`. That the two are one program is a coherence fact about
-the printer and the front. At the `LowCT` level, `LegWeld.legWeld` states the
-identity for any straight-line word kernel: the descent's `RRefines`, the front's
-translation and the ascent's `Corres` are indexed by one term, and the two
-semantics of that term are reconciled by `LegWeld.agreeRun`.
-`PipelineWeld.feSub_raw_source_to_bytes` carries the chain one level up, to the
-raw hax `ImpExpr`, for the feSub kernel.
+No such program is stated here, and the dialects differ: `frefines_ret` is over
+`Com fieldDialect`, while `corresScalar_frontDenote` concludes over
+`Com catCryptDialect`, and the package contains no program to which both apply.
+The descent builds its `Com` from the Lean source; the ascent reads a `Com` off a
+`LowCT` through `translateDialectControl`. At the `LowCT` level, `LegWeld.legWeld`
+states the identity for any straight-line word kernel: the descent's `RRefines`,
+the front's translation and the ascent's `Corres` are indexed by one term, and the
+two semantics of that term are reconciled by `LegWeld.agreeRun`. At the x86 machine,
+`XrunRunBlockTie.corres_of_refines_x86_runBlock` states a descent result as a
+correspondence over the same `runBlock` blocks the ascent's x86 solver refines.
+`PipelineWeld.feSub_raw_source_to_bytes` conjoins the feSub capstone with a statement
+about a raw hax `ImpExpr` through its output word.
 
 ## Main definitions
 

@@ -23,10 +23,10 @@ deliver.  This module instantiates that tower concretely for the feSub kernel
 
 The emitted kernel `feSubC` writes `r0` through a `RScalarSetExpr r0 (a0 - b0)`
 node.  `RScalarSetExpr` with an arithmetic `SExpr` right-hand side is *not* in
-the image of the generic `haxToLowCT` front (whose only scalar-assignment arms
-produce `RScalarSet` for literals or `RCall` for a leaf application), so
-`haxToLowCT_simulates_full` is not the faithful tower for this kernel.  The
-faithful verified tower for an `RScalarSetExpr` straight-line kernel is
+the image of the generic `haxToLowCT` front (whose scalar-assignment arms
+produce `RScalarSet` for literals or `RCall` for a leaf application), so the
+`haxToLowCT` simulations do not reach this kernel.  The verified source leg for an
+`RScalarSetExpr` straight-line kernel is
 `RustSubsetToLowCT`: its `RRefines (RustSrc.exec src) (lower src)`
 (`lowerRefines`) is a proved, non-optimizing `RustSubset → LowCT` lowering whose
 `lower` arm for `assign x e` / `letE x e` is exactly `RScalarSetExpr x e`.

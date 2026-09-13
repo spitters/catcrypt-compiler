@@ -573,8 +573,7 @@ theorem keccak_decisions_differ :
     directly fewer cycles. Linear scan's farthest-end rule spilled the hot column
     parities (each `C_x` used many times over the rounds); graph coloring's use-density
     cost kept all parities resident and spilled only the cold lanes, cutting the reload
-    count. (Concrete counts: graph-color 144 vs linear-scan 228 reloads — see
-    `KECCAK_RA_BENCH.md`.) -/
+    count. (Measured counts: graph-color 144 vs linear-scan 228 reloads.) -/
 theorem keccak_graphColor_fewer_reloads :
     reloadCount (graphColorAlloc keccakPins 0 (keccakLiveBody 4)) keccakSpillBase
         (keccakLiveBody 4)

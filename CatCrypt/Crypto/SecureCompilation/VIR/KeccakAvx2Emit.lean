@@ -17,8 +17,7 @@ chain over a module-local instruction type, joined as strings, with no `Com`/`Lp
 IR and no `renderLprogAtt` descent. The `#eval`/`decide` self-checks run over a
 separate executable AVX2 lane model, not over a denotation of the emitted asm, and
 are validated against an external FIPS-202 byte-KAT. "Owned" here means *no
-jasminc*, not *compiler-generated*. `bench/framework/AUDIT_EMIT_BYPASS.md` classifies
-this STRING-TEMPLATED; Keccak reaches no verified front, and the deepest verified
+jasminc*, not *compiler-generated*. Keccak reaches no verified front, and the deepest verified
 Keccak emit in the tree is the HAND-IR
 `CatCrypt/Crypto/SecureCompilation/VIR/KeccakLinearMain.lean`
 (`keccak_f1600_x86_from_lean.s`), a hand-built `Com` printed by `renderLprogAtt`.

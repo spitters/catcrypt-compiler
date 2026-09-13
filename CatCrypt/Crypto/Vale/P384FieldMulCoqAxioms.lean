@@ -40,8 +40,9 @@ radix `R = 2^384`, 6×u64 saturated limbs (48 bytes).
 
 * `CatCrypt/Crypto/Vale/P384FieldMul.lean` — the leaf bridge.
 * `CatCrypt/Crypto/Vale/SafegcdP384.lean` — the companion Bernstein-Yang inverter.
-* `BLS/AUCurves/fiat-crypto/src/Arithmetic/WordByWordMontgomery.v` — `mulmod_correct`.
-* `BLS/AUCurves/fiat-crypto/src/COperationSpecifications.v` — `mul_correct`.
+* `fiat-crypto/src/Arithmetic/WordByWordMontgomery.v` — `mulmod_correct`
+  (https://github.com/mit-plv/fiat-crypto).
+* `fiat-crypto/src/COperationSpecifications.v` — `mul_correct`.
 
 This file is intentionally declaration-free (markdown only). Each cited
 name in the first backtick pair of a table row matches an `^axiom`

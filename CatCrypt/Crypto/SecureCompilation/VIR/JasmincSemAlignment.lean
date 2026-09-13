@@ -17,11 +17,8 @@ the source `Com` denotes. jasmin's own Coq compiler-correctness theorem
 `compile_prog_to_asmP` (`proofs/compiler/compiler_proof.v:1221`) proves the dual edge:
 the source program under jasmin's **Coq operational semantics `psem`** (`sem_call`,
 `proofs/lang/psem.v`) refines the generated x86 (`asmsem_exportcall`). Composing them
-gives `Com.denote ⟹ x86` — but the composition rests on one assumption recorded in
-`bench/mlkem_compare/TCB.md`:
-
-> our Lean `execExpr`/`execCom` is faithful to jasmin's Coq `psem` on the emitted
-> program.
+gives `Com.denote ⟹ x86` — but the composition rests on one assumption: our Lean
+`execExpr`/`execCom` is faithful to jasmin's Coq `psem` on the emitted program.
 
 This file turns that vague assumption into a **finite, per-opcode list**, each
 discharged down to "a Lean `BitVec`/array primitive mirrors the corresponding Coq
@@ -161,7 +158,7 @@ theorem castW_agrees_jasmin {w w' : Nat} (src : BitVec w) :
 /-- **The discharged half of the alignment**, bundled: every ALU and cast shape our
     emitter produces matches jasmin's `psem` word primitives. This is the part of "our
     Lean jasmin model is faithful to Coq `psem`" that is now *proved* (down to the §1
-    transcriptions mirroring the Coq `word` ops); the `TCB.md` statement can cite this
+    transcriptions mirroring the Coq `word` ops); a trusted-base statement cites this
     theorem for the ALU/cast obligations and §4 for the memory/leaf/loop residuals. -/
 theorem alu_cast_agrees_jasmin :
     (∀ {w : Nat} (bop : JasminBinOp) (a b : BitVec w), JasminBinOp.apply bop a b = jWordOp bop a b)

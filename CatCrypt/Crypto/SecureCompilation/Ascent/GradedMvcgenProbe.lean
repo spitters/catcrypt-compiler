@@ -79,7 +79,7 @@ out-of-band. It **cannot**, and here is the exact wall, with a compiling witness
 
 * **What stock `mvcgen` supports today:** a grade encoded as **operational state**
   (`StateM G`, `.arg G .pure`). `mvcgen` threads it and leaves `total ≤ budget` as
-  the residual VC — genuinely proved in Part 1. Adequate for a runtime cost counter;
+  the residual VC — proved in Part 1. Adequate for a runtime cost counter;
   it changes the operational semantics (the program computes the grade).
 
 * **What a *faithful* spec-only grade requires:** a **`.graded G` `PostShape`
@@ -170,14 +170,14 @@ def demoTicks : CostM Unit := do
     `0 + 1 + 1 + 1 = 3`; the postcondition pins the final cost to `3` and the
     residual verification condition is exactly `3 ≤ budget`, discharged from the
     hypothesis. This is the positive result: a **graded triple whose grade `mvcgen`
-    genuinely accumulates**, with `total ≤ budget` as the residual VC. -/
+    accumulates**, with `total ≤ budget` as the residual VC. -/
 theorem demo_cost (budget : Nat) (h : 3 ≤ budget) :
     GradedTriple budget (fun c => c = 0) demoTicks (fun _ c => c = 3) := by
   unfold GradedTriple demoTicks
   mvcgen [tick_spec]
   simp_all
 
-/-- **The grade genuinely accumulates onto the incoming cost.** From any starting
+/-- **The grade accumulates onto the incoming cost.** From any starting
     cost `w`, the three ticks bring the total to `w + 3` — `mvcgen` *adds* onto
     whatever the incoming counter was, and the residual bound `w + 3 ≤ w + 3` holds.
     Witnesses that the cost is a real accumulation, not overwritten. -/

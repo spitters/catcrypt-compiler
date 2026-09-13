@@ -21,7 +21,7 @@ This module machine-checks the decomposition
 
 where the leakage/interface component lives **inside** the relational logic as the
 `ExceptT` / `.except` branch (per `LeakageExceptT.leakEquiv`), while the
-**simulator existential `∃ sim` is the genuine UC-specific quantifier** —
+**simulator existential `∃ sim` is the UC-specific quantifier** —
 orthogonal to the leakage-inside-vs-outside question. Leakage internalization
 (claim of `LeakageExceptT`) settles *where the interface lives*; it does **not**
 supply the `∃ sim`, which is what separates universal composability from a plain
@@ -66,10 +66,10 @@ iso.
 * `UCviaRel_iff_UCEmulatesPerfect_of_sep` — combining the two: under separation,
   the perfect metric UC and the `∃sim`-relational reading coincide.
 * `UCviaRelAlg_implies_UCviaRel` — the algebraic (`∃Sim ∀A`) simulator construction
-  yields the semantic (`∀A ∃sim`) one; the `∃ sim` is the genuine UC quantifier.
+  yields the semantic (`∀A ∃sim`) one; the `∃ sim` is the UC quantifier.
 * `identityRel_implies_UCviaRel` — **orthogonality witness**: identity-simulator
   relational agreement (`real ≡ ideal` directly, `sim = A`) implies UC. The
-  converse fails (see the closing remark): genuine UC (Pedersen / dual-OT) needs a
+  converse fails (see the closing remark): UC for Pedersen or dual OT needs a
   *non-trivial* equivocating/extracting simulator, so dropping `∃ sim` is a
   strictly stronger requirement — the `∃ sim` is essential and UC is not the plain
   relational judgment.
@@ -130,7 +130,7 @@ def UCviaRel [UCMonadBase T] {hon out leak sim_if view : Type}
 
 /-- **UC, decomposed (algebraic: outermost simulator construction).** A single
     simulator construction `Sim : (leak → T view) → (sim_if → T view)` works for
-    every environment. This is the `∃ Sim, ∀ A` shape — the genuine UC quantifier
+    every environment. This is the `∃ Sim, ∀ A` shape — the UC quantifier
     `∃ Sim` sits *outside* the environment quantifier. -/
 def UCviaRelAlg [UCMonadBase T] {hon out leak sim_if view : Type}
     (π : hon → T (out ⊕ leak))
@@ -146,7 +146,7 @@ def UCviaRelAlg [UCMonadBase T] {hon out leak sim_if view : Type}
 /-- **The decomposition, in general.** The `∃sim`-over-relational-`ExceptT` reading
     of UC is *literally* the exact UC notion `UCMonad.ExactUCEmulates`: the
     relational judgment `RelLeakExact` unfolds (via `relLeakExact_iff_eq`) to the
-    Kleisli equality that `ExactUCEmulates` demands. This is the honest content of
+    Kleisli equality that `ExactUCEmulates` demands. This is the content of
     "UC = ∃sim. relational-Hoare-over-`ExceptT`-leakage" at the exact level —
     no probabilistic coupling required. -/
 theorem UCviaRel_iff_ExactUCEmulates [UCMonadBase T]
@@ -204,7 +204,7 @@ theorem UCviaRel_iff_UCEmulatesPerfect_of_sep [UCMonadMetric T]
   ⟨UCviaRel_implies_UCEmulatesPerfect,
    UCEmulatesPerfect_implies_UCviaRel hsep⟩
 
-/-! ## 5. The simulator existential is the genuine extra -/
+/-! ## 5. The simulator existential is essential -/
 
 /-- **Algebraic ⇒ semantic.** A single outermost simulator construction
     (`∃ Sim, ∀ A`) yields the per-environment existential (`∀ A, ∃ sim`): the `∃ sim`
@@ -223,7 +223,7 @@ theorem UCviaRelAlg_implies_UCviaRel [UCMonadBase T]
 
 The following shows one side of the non-collapse. If the **identity** simulator
 already relates real and ideal (same interface, `sim = A`), UC holds. The converse
-— UC forcing identity agreement — is **false**: genuine UC results
+— UC forcing identity agreement — is **false**: UC results
 (`pedersen_uc_secure`, `dualOT_uc_secure`, `sigma_uc_zk_secure`) hold precisely via
 a *non-trivial* equivocating / extracting / RO-programming simulator with `S ≠ A`,
 where `real ≠ ideal` as leakage channels. Hence forcing `sim = id` is a strictly
@@ -235,7 +235,7 @@ stronger requirement than UC, and the `∃ sim` quantifier cannot be dropped: UC
     `leak = sim_if`, `sim := A`), then UC holds. The `∃ sim` is satisfied by the
     trivial witness. The converse fails on any protocol whose UC proof needs a
     non-trivial simulator (Pedersen, dual-OT), so this implication is strict — the
-    honest non-collapse of UC and plain relational agreement. -/
+    non-collapse of UC and plain relational agreement. -/
 theorem identityRel_implies_UCviaRel [UCMonadBase T]
     {hon out leak view : Type}
     {π F : hon → T (out ⊕ leak)}

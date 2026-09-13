@@ -38,8 +38,8 @@ lowerSExprW`). The **ascent** side is not: the `Corres` correspondence runs over
 
 So `semScalar (.RScalarSetExpr x e)` leaves a **`.sword 64`** slot at `x` for every
 `e` — never `.sword 32` (`semScalar_setExpr_width64` below pins this precisely). A
-genuine `Corres SRword32` leaf for `RScalarSetExpr` is therefore **not** provable
-against the current `semScalar`: the post-state contradicts `SRword32`'s `.sword 32`
+`Corres SRword32` leaf for `RScalarSetExpr` with a satisfiable precondition is therefore
+**not** provable against `semScalar`: the post-state contradicts `SRword32`'s `.sword 32`
 requirement. Forcing such a leaf would be vacuous, so it is deliberately not stated.
 `SRword32` is defined here as the state relation a width-generic substrate would
 use, and the exact genericity needed is: a width-parametric `semScalarW w` / `evalBVW
@@ -156,7 +156,7 @@ def IsArithClean32 : SExpr → Prop
 
 /-- The width-32 word evaluator over the arithmetic fragment (the 32-bit twin of
     `SExpr.evalBV`): variables read the concrete word valuation, literals truncate
-    to 32 bits, and the three ring nodes do genuine 32-bit wrapping arithmetic.
+    to 32 bits, and the three ring nodes do 32-bit wrapping arithmetic.
     Non-arithmetic arms are `0` (outside `IsArithClean32`). -/
 def evalBV32 (β : String → BitVec 32) : SExpr → BitVec 32
   | .SVar x => β x

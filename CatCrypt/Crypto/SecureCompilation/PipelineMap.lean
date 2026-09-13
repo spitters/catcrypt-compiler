@@ -22,18 +22,15 @@ LANDED. The mid-level is now the upstream-named denoting dialects in
 (`RegMachineSim` / `GenericRegAllocSim` + the x86 `JInstrRegMachineSim` instance)
 below it.  The two **physical IRs were collapsed** (`encodeLprog = encodeJBlock`
 on the covered fragment; GoldenPath kernels emit via the JInstr path).
-**`CProg`/`CExpr` and the `Lprog` kernel-emit path are DEPRECATED** (ratchet:
-`scripts/cprog-deprecation-ratchet.sh`), superseded by `catCryptDialect`
-(`Com catCryptDialect`, the MLIR-aligned successor) — do not add new
-`CProg`/`CExpr`/`Lprog` kernel uses.  The `llvm` waist (D2) is veir-deferred
-(no in-tree LLVM dialect by design).  The **frontend ingestion** below is
+The crypto-SSA IR for kernels is `catCryptDialect` (`Com catCryptDialect`, aligned
+with MLIR); new kernels do not use `CProg`/`CExpr` or the `Lprog` kernel-emit path.
+The `llvm` waist (D2) is veir-deferred (no in-tree LLVM dialect by design).  The **frontend ingestion** below is
 the two ingestion paths, whose scalar denotations coincide by the DF result (`Dialects/FrontendCoincidence*` —
 base, shifts, let-engine, whole-body, RustState bridge).
 
-A discoverability index for the hax→Lean compiler IRs.  The EMIT side has its
-own indexes (`bench/.../OWNED_VS_LIBCRUX.md`, the portfolio-completeness map);
-this is the COMPILER side.  It exists because the same capability kept getting
-re-planned/rebuilt for want of a map — see the `#check`s at the bottom: if any
+A discoverability index for the hax→Lean compiler IRs.  The EMIT side is indexed
+per primitive in `CAPABILITIES.md`; this is the COMPILER side.  It exists because
+the same capability kept getting re-planned/rebuilt for want of a map — see the `#check`s at the bottom: if any
 referenced entry point is renamed, this file fails to build, so the map cannot
 silently rot.
 
@@ -120,7 +117,8 @@ FRONT map — not just the private roadmap — tracks them:
 
 The scalar-arith arm closes the common `haxToLowCT → catCryptDialect` path for scalar
 bodies; the SIMD-ext and orchestration rows are the named residual that keeps the
-hand-authored owned-emit fleet on hand-`Com` (see `EMIT_PROVENANCE.md`).
+hand-authored owned-emit fleet on hand-`Com` (listed in
+`scripts/handcom-provenance-baseline.txt`).
 
 ## Convention (keep this map true)
 

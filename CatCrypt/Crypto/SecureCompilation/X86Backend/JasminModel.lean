@@ -705,8 +705,10 @@ inductive JOperand where
     **Coverage against jasmin's `x86_op`, and where the line is drawn.** This is
     a subset, and the omissions are of two kinds that should not be confused.
 
-    Declined on constant-time grounds, per the Intel DOIT ∩ AMD DIT rule in
-    `bench/framework/CT_INSTRUCTION_REFERENCES.md`: `DIV`/`IDIV` and `CQO`
+    Declined on constant-time grounds, per the Intel DOIT ∩ AMD DIT rule (Intel's
+    DOIT instruction list:
+    https://www.intel.com/content/www/us/en/developer/articles/technical/software-security-guidance/resources/data-operand-independent-timing-instructions.html):
+    `DIV`/`IDIV` and `CQO`
     (variable latency on the operand values), `BSR`/`BSF`, `BSWAP`, `LZCNT`,
     `TZCNT`, `POPCNT`, and `PDEP`/`PEXT` — the last are microcoded and
     data-dependent on AMD Zen 1 and 2, so they read as ordinary bit operations

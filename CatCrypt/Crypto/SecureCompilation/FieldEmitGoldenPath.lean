@@ -115,7 +115,7 @@ theorem fieldAddCom_riscv_e2e (V : Ctxt.Valuation ([.reg 64, .reg 64] : Ctxt jas
     bytes via the generic driver `compileComToElf` (`Com.toLprogPhysAbi` → encoder; the
     path `bench/{ascon,chacha,keccak}_compare` and `Bignum4AddArrAbiDemo` use).
 
-    **Honest proof tier** (see `EMIT_PROVENANCE.md` / `ARCHITECTURE.md`): unlike the
+    **Proof tier**: unlike the
     AArch64/RISC-V legs above — which carry the `comToReg_faithful` *denote = spec*
     lowering theorem — this x86 leg is **KAT-gated** (`decode ∘ encode = id` against the
     Jasmin x86 model + KAT vs reference), NOT yet carried by a `Com → x86` faithfulness

@@ -15,8 +15,7 @@ set_option autoImplicit false
 
 Canonical Lean-side declaration of the Ed25519 KAT vectors. The bench
 (`bench_ed25519_sign.c` in catcrypt-bench, `KATS[]`)
-must hold the same bytes; the audit script
-`scripts/check_kat_consistency.sh` diffs them.
+must hold the same bytes.
 
 ## Why this lives in Lean rather than only the bench
 
@@ -149,11 +148,10 @@ example : (all.all wellShaped) = true := by decide
   `bench_ed25519_sign.c` (compiled C linking fiat-crypto + dalek_shim).
   Lean cannot compute the signatures without un-opaquing the field
   axioms — so the conformance gate is necessarily a separate shell
-  invocation. See `scripts/check_kat_consistency.sh` (when written) for
-  the diff between this file's bytes and the C `KATS[]` array.
+  invocation that diffs this file's bytes against the C `KATS[]` array.
 
-- **Phase 3 hand-off**: when `scripts/extract_ed25519_rust.sh` activates
-  (Phase 1.5 of `option-b-plan.md`), the certified Rust path inherits
-  these vectors as its conformance gate too. -/
+- **Certified Rust path**: once the AUCurves Coq → Rust extraction of
+  Ed25519 is wired in, the certified Rust path uses these vectors as its
+  conformance gate too. -/
 
 end CatCrypt.Crypto.Jasmin.Ed25519.KAT

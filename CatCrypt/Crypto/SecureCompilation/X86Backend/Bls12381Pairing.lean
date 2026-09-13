@@ -19,8 +19,6 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Fp6Fp12MulKer
 (`framedDriver`/`renderLeafFn` join `movq`/`leaq`/`call` string literals), with
 no `Com`/`Lprog` IR and no verified printer, so no theorem relates the emitted
 bytes to a source; the byte-identity to RELIC below is the only corroboration.
-See `bench/framework/AUDIT_EMIT_BYPASS.md` and `EMIT_PROVENANCE.md`
-§"Which emit is verified?".
 
 This owned x86 emit is
 hand-transcribed from the RELIC pairing reference and gated **byte-identical to

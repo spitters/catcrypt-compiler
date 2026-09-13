@@ -19,10 +19,10 @@ tag) can be lifted through the verified compiler chain
 `LowCT → CryptoSSA → Com → jasmin`, **without** editing
 `LowCTReflect.lean`'s `knownOps` table.
 
-## Background — the `AUDIT_EMIT_BYPASS.md` hybrid
+## Background — the hybrid emit pattern
 
 The AES-GCM family (`aesgcm`, `aesccm`, `aessiv`, `aesgcmsiv`, `aegis`) has a
-per-file HYBRID pattern (see `bench/framework/AUDIT_EMIT_BYPASS.md` §3):
+per-file HYBRID pattern:
 
 * the **per-round** `Com jasminDialect [.reg 128, .reg 128] (.reg 128)` AES round
   step is Tier B (a verified emitter over a hand-built `Com`), e.g.
@@ -90,8 +90,6 @@ cryptoDialectToJasminCom → emitAbiOrchRegPtr`) is the unmodified verified fron
   reflect surface registering one fixed-N leaf)
 * `CatCrypt/Crypto/Jasmin/FalconReflect.lean` — sibling pattern (multi-leaf
   reflect surface)
-* `bench/framework/AUDIT_EMIT_BYPASS.md` §3 — the AES-GCM family chain-glue
-  gap this file closes
 -/
 
 @[expose] public section

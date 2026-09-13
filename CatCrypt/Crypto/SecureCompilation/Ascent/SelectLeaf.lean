@@ -28,7 +28,7 @@ inside the `BitVec 64` word algebra — the mask select is a composition of `^^^
 and `&&&`, exactly the `IsWordClean` bitwise fragment `corres_setExprBitwise`
 covers — so nothing here leaves the `SRwordBV` word relation for `ZMod`.
 
-The genuine content is `ctSelect_bitmask`: the branchless formula equals the
+The content is `ctSelect_bitmask`: the branchless formula equals the
 per-bit multiplexer `(x &&& m) ||| (y &&& ~~~m)` **unconditionally**, and
 `ctSelect_spec`: for a proper Boolean mask `m ∈ {0, allOnes}` the select is the
 intended `if m = 0 then y else x`. The leaf `corres_ctSelect` runs the two-step
@@ -54,10 +54,10 @@ open CatCrypt.Crypto.Jasmin.LowCT
 def ctSelect (cond x y : BitVec 64) : BitVec 64 :=
   y ^^^ ((x ^^^ y) &&& cond)
 
-/-- **The genuine per-bit content.** The branchless mask formula equals the bitwise
+/-- **The per-bit identity.** The branchless mask formula equals the bitwise
     multiplexer `(x &&& cond) ||| (y &&& ~~~cond)` — for every bit, `x`'s bit where
     the mask is set and `y`'s bit where it is clear — with **no** hypothesis on the
-    mask. This is the honest word-algebra characterization of the select. -/
+    mask. This is the word-algebra characterization of the select. -/
 theorem ctSelect_bitmask (cond x y : BitVec 64) :
     ctSelect cond x y = (x &&& cond) ||| (y &&& ~~~cond) := by
   unfold ctSelect

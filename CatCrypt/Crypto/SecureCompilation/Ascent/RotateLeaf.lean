@@ -24,7 +24,7 @@ native rotate arm** — the covered word fragment is `SVar`/`SLit`/`SShl`/`SShr`
 `ExprLeaf` bitwise docstring already records: `SXor (SShl x n) (SShr x (w-n))`,
 itself `IsWordClean`. For a rotate the two shifted halves are bit-disjoint, so the
 `|||` in the spec coincides with the `^^^` the LowCT chain emits — this is the
-genuine content of `rotl_or_eq_xor`, letting the chain be ascended through the
+content of `rotl_or_eq_xor`, letting the chain be ascended through the
 existing bitwise value leaf `corres_setExprBitwise` with no new `SExpr` op and no
 `|||` leaf.
 
@@ -63,7 +63,7 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
     `(x <<< n) ||| (x >>> (64 - n))`. -/
 def rotlWord (x : BitVec 64) (n : Nat) : BitVec 64 := (x <<< n) ||| (x >>> (64 - n))
 
-/-- **The genuine rotate content.** The shift-`|||` open-coding is exactly
+/-- **The rotate identity.** The shift-`|||` open-coding is exactly
     `BitVec.rotateLeft` for an in-range count `n < 64`: `BitVec.rotateLeft` is
     (`BitVec.rotateLeft_def`) `x <<< (n % 64) ||| x >>> (64 - n % 64)`, and
     `n % 64 = n`. -/

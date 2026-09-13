@@ -12,52 +12,50 @@ public meta import CatCrypt.Crypto.SecureCompilation.Ascent.KeystoneControl
 public import CatCrypt.Crypto.SecureCompilation.Ascent.KeystoneControl
 
 /-!
-# Loop / array source tower: welding `haxToLowCT_simulates_program` to the ascent emit weld
+# Loop / array source tower: `haxToLowCT_simulates_program` and the loop emit weld
 
-The straight-line feSub tower (`Ascent/FeSubSourceTower.lean`) welded the source
-leg through `RustSubsetToLowCT.lowerRefines`, which covers only the `if`-free
-straight-line fragment.  The tower for the **loop / array / call** fragment is
+The straight-line feSub tower (`Ascent/FeSubSourceTower.lean`) obtains the source
+leg from `RustSubsetToLowCT.lowerRefines`, which covers only the `if`-free
+straight-line fragment.  For the **loop / array / call** fragment the source leg is
 the program-level simulation `haxToLowCT_simulates_program`
 (`Hax/HaxToLowCTSim_Program.lean`), which carries a source `ImpExpr` to a
 `RustExec` run of its `haxToLowCT` image — the image that, for the array and
 bounded-loop arms, is *not* straight-line.
 
-This module deploys that tower for a concrete **array-write** kernel (`arrKernel`,
-whose `haxToLowCT` image is headed by a dynamic-index `RArrStore` — the
-smallest non-straight-line kernel the tower's array arm covers), and pairs it with
-the bounded-loop ascent weld (`RFor`, via `keystone_for`).  It also records,
-as theorems where possible, the two coverage gaps that keep a *single*
-source-loop-to-bytes chain from closing today.
+This module applies that simulation to a concrete **array-write** kernel
+(`arrKernel`, whose `haxToLowCT` image is headed by a dynamic-index `RArrStore`),
+states the bounded-loop emit weld (`RFor`, via `keystone_for`) next to it, and
+records as theorems the two reasons the legs do not form one source-loop-to-emit
+statement.
 
 ## The two legs
 
-* **Source → `RustExec` (via the tower).**  `arrKernel_source_to_rustexec_program`
+* **Source → `RustExec` (via the simulation).**  `arrKernel_source_to_rustexec_program`
   invokes `haxToLowCT_simulates_program` at `arrKernel`.  From the source `evalImp`
-  denotation and the input tower agreement, it delivers a `RustExec` run of the
-  `RArrStore`-headed LowCT image.  This is the loop/array analogue of
-  `feSubSrc_refines`.
-* **Bounded `RFor` → clean spec (the ascent weld).**  `loop_keystone_emit`
-  reuses `keystone_for` on the closed bounded-loop kernel `forClosedKernel`: the
-  emitted output word is pinned to the clean `ZMod 2^64` loop spec `(v : ZMod
-  2^64)`.  A bounded-`RFor` emit conclusion.
+  denotation and the input tower agreement, it gives a `RustExec` run of the
+  `RArrStore`-headed LowCT image.  The array-store step `hArrUpd` of the simulation,
+  the only construct `arrKernel` exercises, is a hypothesis; `ProgramSimArms_of_vacuity`
+  discharges it only for a builtin table that does not implement `array_update`.
+* **Bounded `RFor` → clean spec (the emit weld).**  `loop_keystone_emit`
+  is `keystone_for` on the closed bounded-loop kernel `forClosedKernel`: for an emit
+  output given by the hypothesis `hEmit`, the word reads as the loop result
+  `(v : ZMod 2^64)`.
 
-## The two walls (why the legs do not yet compose into one chain)
+## Why the legs do not compose
 
 * **Loop source preimage.**  The only source `ImpExpr` constructor whose
-  `haxToLowCT` image is the ascent-covered bounded `RFor` is `.forFold`, and its
-  source semantics is empty: `evalImp bi fuel (.forFold …) env = none`
-  (`evalImp_forFold_eq_none`, a post-phase error constructor).  So the tower never
-  produces an inhabited `RustExec` over an `RFor` from a source loop.  The
-  tower's one loop arm, `.whileLoop (.var _) _`, lowers to `RWhileNz` —
-  a node `semScalar` (hence `Corres`) does not interpret at all — so it cannot
-  reach the ascent weld either.  `loop_forFold_source_vacuous` witnesses the
-  first half.
-* **Array ascent leaf.**  `semScalar` *does* interpret `RArrStore`
-  (`arrStore_executes`), but the ascent calculus (`Ascent/Corres.lean`,
-  `Control.lean`, `Ascend.lean`) provides a `Corres` value-leaf only for
-  `RScalarSet` / `RScalarSetExpr` / `RIfNz` / `RFor` — **none for
-  `RArrStore` / `RArrLoad`**.  So the array-write image the tower delivers has no
-  weld to attach to.
+  `haxToLowCT` image is a bounded `RFor` is `.forFold`, and its source semantics is
+  empty: `evalImp bi fuel (.forFold …) env = none` (`evalImp_forFold_eq_none`).  So
+  the simulation never produces a `RustExec` run over an `RFor` from a source loop
+  (`loop_forFold_source_vacuous`).  The simulation's loop arm, `.whileLoop (.var _) _`,
+  lowers to `RWhileNz`, which `semScalar` does not interpret and the emit fragment
+  `IsCoveredSCtl` does not contain; `corresU_while` (`WhileTop.lean`) states the
+  ascent rule for it at the unified waist `semU`.
+* **Array weld.**  `semScalar` interprets `RArrStore` (`arrStore_executes`), and the
+  value leaves `corres_arrStore` (`ArrStoreLeaf.lean`) and `corres_arrLoad`
+  (`ArrLoadLeaf.lean`) abstract a single store and load.  No theorem joins the
+  `RArrStore`-headed image of `arrKernel` to those leaves or to the array emit weld
+  `keystone_emit_arr`.
 
 Part of the AutoCorres-in-Lean ascent begun by Sebastian Graf (`sgraf812/ascent`);
 see `Corres.lean`.
@@ -154,16 +152,15 @@ theorem arrKernel_source_to_rustexec_program
 /-! ## §3  The bounded-`RFor` ascent weld (the ascent leg)
 
 `keystone_for` (the control weld) joins `corres_for` (the bounded-loop ascent rule
-over the real `semScalar` `RFor` arm) to the emit output word.  For the closed
-bounded-loop kernel `forClosedKernel "i" "o" v (N'+1)` — `N'+1` trips each writing
-the literal `v` into `o` and resetting the counter `i` — the emit output word is
-pinned to the clean `ZMod 2^64` loop spec `(v : ZMod 2^64)`. -/
+over the `semScalar` `RFor` arm) to an emit output word given by the hypothesis
+`hEmit`.  For the closed bounded-loop kernel `forClosedKernel "i" "o" v (N'+1)` —
+`N'+1` trips each writing the literal `v` into `o` and resetting the counter `i` —
+the word reads as the clean `ZMod 2^64` loop spec `(v : ZMod 2^64)`. -/
 
-/-- **`loop_keystone_emit`.**  The bounded-loop analogue of the feSub weld: the
-    emit output of the closed `RFor` kernel `forClosedKernel "i" "o" v (N'+1)` is
-    `Emit (ofNat v)`, and that word's clean `ZMod 2^64` spec is the loop's fixed
-    result `(v : ZMod 2^64)`.  A bounded-loop (`RFor`) emit
-    conclusion — the ascent leaf the array image (below) lacks. -/
+/-- **`loop_keystone_emit`.**  `keystone_for` at the closed `RFor` kernel
+    `forClosedKernel "i" "o" v (N'+1)`: given the emit equation
+    `hEmit : jdenote = Emit (ofNat v)` as a hypothesis, the word's clean `ZMod 2^64`
+    spec is the loop's fixed result `(v : ZMod 2^64)`. -/
 theorem loop_keystone_emit {β : Type} (Emit : BitVec 64 → β) (v N' : Nat)
     (jdenote : β) (hEmit : jdenote = Emit (BitVec.ofNat 64 v)) :
     jdenote = Emit (BitVec.ofNat 64 v)
@@ -182,12 +179,10 @@ theorem loop_forFold_source_vacuous
     evalImp bi fuel (.forFold var lo hi body) env = none :=
   evalImp_forFold_eq_none bi fuel var lo hi body env
 
-/-- **Array ascent-leaf wall (executability half).**  `semScalar`
-    interprets a dynamic-index `RArrStore` node (here the shape-fallback branch,
-    always `some`).  The array-write image the tower delivers is therefore a live
-    LowCT program — yet the ascent calculus registers no `Corres` value-leaf for
-    `RArrStore` / `RArrLoad`, so there is no weld to attach it to.  This exhibits
-    the node the ascent leaf is missing, not a proof that a leaf is impossible. -/
+/-- **`arrStore_executes`.**  `semScalar` interprets a dynamic-index `RArrStore`
+    node (here the shape-fallback branch, always `some`), so the array-write image
+    of `arrKernel` is a LowCT program with a defined run.  The value leaf for the
+    store is `corres_arrStore` (`ArrStoreLeaf.lean`). -/
 theorem arrStore_executes (arr src : Located) (idxVar : String) :
     (semScalar (.RArrStore arr idxVar src) (fun _ => none)).isSome = true := by
   simp [semScalar]

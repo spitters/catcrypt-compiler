@@ -35,9 +35,9 @@ physical register.
 The remaining step toward the ARM `BInst`-style result — *weakening*
 `regalloc_runBlock_sound`'s global-injectivity hypothesis to the checker's
 on-block-names injectivity — requires re-proving the `StateRel` simulation in a
-name-scoped form (`StateRelOn`); see `docs/jasmin-parity-plan.md` (x86 X2). The
+name-scoped form (`StateRelOn`). The
 `ZInstr` vector backend, being memory-free and single-output, already gets the
-*scoped* keystone for free via `Avx512RegAllocValidated`.
+*scoped* result for free via `Avx512RegAllocValidated`.
 -/
 
 @[expose] public section

@@ -29,7 +29,7 @@ into an `SEnvScalar` `.memref n` slot — element `j` is the machine word at byt
 offset `scale · j` of the region `regionName` (`st.mem regionName (scale·j)`) —
 while every other name reads its register at `.sword 64` exactly as `regEnv`
 does. This is the `HL` (heap-abstraction) twin of `regEnv`'s `L2`
-register-lifting: the memory the register view forgot is now a genuine memref
+register-lifting: the memory the register view forgot is a memref
 variable, so `semScalar`'s `RArrLoad`/`RArrStore` arm can be run over it.
 
 ## The crux (`mem_load_middle_tie_at_dst`)
@@ -40,7 +40,7 @@ For a dynamic-index array read `dst := src[idx]`, both output values reduce to t
 * on the scalar side, `semScalar`'s `RArrLoad` arm writes `memGetDyn arr i.toNat`
   where `arr` is the memref slot of `regMemEnv`; on an in-range index this reduces
   (`memGetDyn_regionArr`) to `st.mem m.arr (scale · i.toNat)` — the read value
-  genuinely comes from `st.mem`;
+  comes from `st.mem`;
 * on the machine side, `runBlock` of the lowered gather `lowerMemLoad idRho m`
   loads `st.loadIdx m.arr m.idx scale = st.mem m.arr (scale · (st.regs m.idx))`
   into `ρ dst` (`runBlock_lowerMemLoad`).
@@ -110,7 +110,7 @@ theorem regMemEnv_reg (st : JState 64) (regionName : String) (n scale : Nat)
 /-- **`memGetDyn` reduction over the view.** On an in-range index `k < n`, reading
     element `k` of `regMemEnv`'s memref slot recovers the machine memory word at
     byte offset `scale · k` — the `memGetDyn` index-modulo collapses (`k < n`) to
-    the raw cell, so the read value genuinely comes from `st.mem`. -/
+    the raw cell, so the read value comes from `st.mem`. -/
 theorem memGetDyn_regionArr (st : JState 64) (regionName : String) (n scale k : Nat)
     (hk : k < n) :
     memGetDyn (fun j : Fin n => st.mem regionName (scale * j.val)) k
@@ -156,7 +156,7 @@ theorem runBlock_lowerMemStore_cell (m : MemStoreSrc) (st : JState 64) :
     The side conditions: the destination is a `u64` (`hdst`, selecting the real
     load arm), the index register is distinct from the array region (`hidx_ne`, so
     the view reads it at `.sword 64`), and the index is in range (`hidx_lt`, so
-    `memGetDyn`'s modulo collapses and the read genuinely hits `st.mem`). The
+    `memGetDyn`'s modulo collapses and the read hits `st.mem`). The
     memory analogue of `arith_middle_tie_at_dst`. -/
 theorem mem_load_middle_tie_at_dst (m : MemLoadSrc) (st : JState 64) (n : Nat)
     (hdst : m.dstTy = .TU64) (hidx_ne : m.idx ≠ m.arr)

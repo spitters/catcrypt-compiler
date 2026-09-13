@@ -22,9 +22,7 @@ broadcast / store frame lines, with no single verified-printer descent for the
 whole file. The `native_decide`/`#guard` checks are substring/structural
 assertions; the round-body denote fold `whole_round_denote` scopes the block
 model, not the hand-written frame. It is a bench/interop reference. The verified
-emit path is the FRONT-SOURCED descent; see
-`bench/framework/AUDIT_EMIT_BYPASS.md` and `EMIT_PROVENANCE.md`
-§"Which emit is verified?".
+emit path is the FRONT-SOURCED descent.
 
 The committed per-sub-step twins in
 `Keccak4WayVpackZmmEmit.{thetaColCom,rotlStepCom,chiStepCom,iotaStepCom}` each

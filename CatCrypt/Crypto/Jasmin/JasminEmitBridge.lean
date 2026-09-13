@@ -1975,8 +1975,7 @@ the mirror executor's output state is *structurally equal* to
 representation, structural equality follows by `funext` from pointwise
 agreement (`liftVm_setReg_eq`).
 
-A future restructure of `Vm` to a finite map (Path A in
-`bench/framework/JASMIN_SEM_COVERAGE.md`, blocking the universal
+A future restructure of `Vm` to a finite map (blocking the universal
 connector for MAYO's `runFullBody`) breaks structural equality: the
 LHS and RHS of `Vm.set (liftVm s) v ... = liftVm (setReg s v.vname ...)`
 will have different store layouts even though their `.get` views still
@@ -2285,7 +2284,7 @@ theorem bignumExec_agrees_coqSem_chain_equiv_skel
 /-! ### §6.c. Documentation: what changes under Vm restructure
 
 When the canonical `Vm := Var → Value` is replaced by a finite map
-structure (Path A of `bench/framework/JASMIN_SEM_COVERAGE.md`):
+structure:
 
 * `Vm.eq_of_vm_equiv` (in `VmFlatExec.lean` §3) will fail — under a
   finite map, two `Vm`s that agree pointwise can have different

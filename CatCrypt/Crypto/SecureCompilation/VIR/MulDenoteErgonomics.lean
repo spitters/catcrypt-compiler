@@ -17,9 +17,9 @@ dialect's denotation is fully structural — but a bare `rfl` forces the kernel
 *defeq* through the entire `Com.denote / Expr.denote / lookupArgs / Var.lookup`
 recursion plus the `jasminDenote` instance match at the kernel's reducibility
 setting. For a wide kernel (a full CIOS Montgomery limb chain) that single
-`isDefEq` is what heartbeat-outs: the `EMIT_PROVENANCE.md` note that `mul`/`mulhi`
-"LOWER golden but the value step has no cheap `rfl`" is exactly this — the bare
-`rfl` over the whole body, not any one op.
+`isDefEq` is what exceeds the heartbeat budget. `mul`/`mulhi` kernels lower through
+the golden path, but their value step has no cheap `rfl`; the cost lies in the bare
+`rfl` over the whole body, not in any one op.
 
 This file factors the denotation machinery out as a one-line tactic
 (`com_denote`) built on a small reusable `simp` set. Instead of one monolithic
@@ -45,8 +45,7 @@ The win over the bare `rfl` of `MontMulFragmentDemo` / `FieldEmitGoldenPath` is
 by rewriting, and the kernel `rfl` only discharges an already-unfolded shallow
 residue. For the small kernels below a bare `rfl` still works at default
 heartbeats; the two-phase form is the shape that scales to a wide CIOS limb
-chain, where a single `rfl` over the whole body is what `EMIT_PROVENANCE.md`
-reports as having "no cheap `rfl`".
+chain, where a single `rfl` over the whole body exceeds the heartbeat budget.
 
 ## What the set contains
 
@@ -122,7 +121,7 @@ def solinas251Fold (x : BitVec 64) : BitVec 64 :=
 /-! ## 4. The `Com` program
 
 `c5 := 5 ; hi := x >>> 8 ; prod := hi * c5 ; c255 := 255 ; lo := x &&& c255 ;
- r := prod + lo ; ret r` — over arg `[x]`. The `prod := hi * c5` is a genuine
+ r := prod + lo ; ret r` — over arg `[x]`. The `prod := hi * c5` is a
 `regArith .mul` binding (the demo's reason to exist), `hi := x >>> 8` a `shrImm`,
 `lo := x &&& c255` an `and`, and the constants are `regConst`s. -/
 def solinas251FoldCom : Com jasminDialect Γ (.reg 64) :=

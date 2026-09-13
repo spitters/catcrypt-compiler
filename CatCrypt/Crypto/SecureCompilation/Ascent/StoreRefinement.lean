@@ -11,10 +11,10 @@ public import Transfer.Examples.MachineLimbField
 # Single-limb value abstraction (re-export shim)
 
 The single-limb value-abstraction layer of the LowCT ascent calculus — the
-limb→field split surjection `BitVec 64 ↠ ZMod p` — now lives in the ParamTransfer
+limb→field split surjection `BitVec 64 ↠ ZMod p` — is defined in the ParamTransfer
 release library as `Transfer.Examples.MachineLimbField`. This module re-exports the
-single-limb names into `CatCrypt.Crypto.SecureCompilation.Ascent` so existing
-consumers resolve them unqualified exactly as before.
+single-limb names into `CatCrypt.Crypto.SecureCompilation.Ascent`, where consumers
+resolve them unqualified.
 -/
 
 @[expose] public section

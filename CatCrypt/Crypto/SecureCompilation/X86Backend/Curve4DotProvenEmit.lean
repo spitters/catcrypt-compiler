@@ -23,9 +23,7 @@ block carry `runBlock`-level proofs (`secp256k1_mmMul_realizes`,
 `FieldAddSubTierA.modAdd_runBlock`), but the `secp256k1_dot` orchestrator
 schedule (call sequence + scratch staging + inline ripple-add text) is
 hand-written trusted scaffolding. Value identity is external (GMP KAT). It is a
-bench/interop reference. The verified emit path is the FRONT-SOURCED descent;
-see `bench/framework/AUDIT_EMIT_BYPASS.md` and `EMIT_PROVENANCE.md`
-§"Which emit is verified?".
+bench/interop reference. The verified emit path is the FRONT-SOURCED descent.
 
 `Curve4MontMulProvenEmit.lean` emits ONE leaf — the secp256k1 Montgomery field
 multiply `secp256k1_montmul_proven` — assembled from the two proven `runBlock`

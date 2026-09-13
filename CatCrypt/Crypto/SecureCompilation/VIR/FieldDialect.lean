@@ -13,9 +13,8 @@ public import Mathlib.Data.ZMod.Basic
 
 Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
-The **L3** level of the PrimeIR-style layered crypto-IR stack
-(`docs/dialect-restructure-plan.md`), sitting between the elliptic-curve group
-law and the residue-ring ModArith dialect:
+The **L3** level of the PrimeIR-style layered crypto-IR stack, sitting between
+the elliptic-curve group law and the residue-ring ModArith dialect:
 
     EllipticCurve(L4) → **Field(L3)** → ModArith(L2) → {Vector | LowCT} → {jasmin | x86}
 

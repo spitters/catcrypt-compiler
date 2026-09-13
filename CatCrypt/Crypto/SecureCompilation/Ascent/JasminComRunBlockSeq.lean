@@ -8,7 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.Ascent.JasminComRunBlockTie
 
 /-!
-# The straight-line multi-op `Com jasminDialect` ↔ `runBlock` tie (ascent keystone)
+# The straight-line multi-op `Com jasminDialect` ↔ `runBlock` tie
 
 `JasminComRunBlockTie` ties a **single** register-arithmetic op's dialect
 denotation (`Com jasminDialect`) to the register-machine (`runBlock` of the
@@ -24,8 +24,8 @@ denotes.
 `ArithBlock Γ` is the covered straight-line sublanguage: a chain of scalar
 `regArith` ops, each binding a fresh `reg 64` slot in the growing De Bruijn
 context, terminated by returning one variable. Every `ArithBlock` compiles to a
-genuine `Com jasminDialect Γ (.reg 64)` (`ArithBlock.toCom`) — so the tie below
-is a real `Com.denote` statement, not a bespoke source semantics. This is the
+`Com jasminDialect Γ (.reg 64)` (`ArithBlock.toCom`), so the tie below is a
+statement about `Com.denote`, with no separate source semantics. This is the
 `Com`-valuation analogue (Framing A) of `LowCTToJInstrCT.lowerSeq_denote`, with
 the growing dependent context handled by structural induction on `ArithBlock`
 (no casing on arbitrary `Expr.op`, so no dependent-op pain).
@@ -39,12 +39,12 @@ the growing dependent context handled by structural induction on `ArithBlock`
 * `FreshFor` — the register-allocation freshness invariant: the fresh-name
   stream is injective and disjoint from the live register map's range. Preserved
   as the context grows (`FreshFor_extend`).
-* `lowerBlock_tie` — **the keystone**: for every straight-line `ArithBlock`,
+* `lowerBlock_tie` — the block tie: for every straight-line `ArithBlock`,
   under a `JStateInterpG` state correspondence and a `FreshFor` allocation,
   `(runBlock s (lowerBlock block ρ g)).get (outReg block ρ g)
-     = block.toCom.denote V`. Both sides are genuine: the LHS a real machine
-  register read after a real `runBlock` of the whole lowered block, the RHS a
-  real `Com jasminDialect` denotation folding `bop.apply` over the valuation.
+     = block.toCom.denote V`. The left side is a machine register read after
+  `runBlock` of the whole lowered block, the right side the `Com jasminDialect`
+  denotation folding `bop.apply` over the valuation.
 
 ## Register reuse
 
@@ -135,15 +135,15 @@ def arithExpr {Γ : Ctxt jasminDialect} (bop : JasminBinOp)
     (a b : Ctxt.Var Γ (.reg 64)) : Expr jasminDialect Γ (.reg 64) :=
   .mk (.regArith bop 64) rfl (.cons a (.cons b .nil))
 
-/-- The `regArith` expression denotes to `bop.apply (a.lookup V) (b.lookup V)` —
-    a genuine two-operand value read from the valuation. -/
+/-- The `regArith` expression denotes to `bop.apply (a.lookup V) (b.lookup V)`,
+    a two-operand value read from the valuation. -/
 theorem arithExpr_denote {Γ : Ctxt jasminDialect} (bop : JasminBinOp)
     (a b : Ctxt.Var Γ (.reg 64)) (V : Ctxt.Valuation Γ) :
     (arithExpr bop a b).denote V = bop.apply (a.lookup V) (b.lookup V) := rfl
 
-/-- **Compile an `ArithBlock` to a genuine `Com jasminDialect`.** The `.ret`
-    becomes `Com.ret`; each `.op` becomes a `Com.var` binding `arithExpr`. So the
-    tie below is a real `Com.denote` statement. -/
+/-- **Compile an `ArithBlock` to a `Com jasminDialect`.** The `.ret`
+    becomes `Com.ret`; each `.op` becomes a `Com.var` binding `arithExpr`. The
+    tie below is stated over this program's `Com.denote`. -/
 def ArithBlock.toCom : {Γ : Ctxt jasminDialect} → ArithBlock Γ →
     Com jasminDialect Γ (.reg 64)
   | _, .ret v => .ret v
@@ -177,7 +177,7 @@ def JStateInterpG {Γ : Ctxt jasminDialect} (ρ : RegMapG Γ)
 
 /-- **The fresh-allocation invariant.** The fresh-name stream `g` is injective
     and disjoint from the live register map `ρ`'s range: every op's freshly
-    allocated destination is a genuinely new physical register. This is the
+    allocated destination is a physical register not yet in use. This is the
     fresh-allocation leg (register *reuse* is added by `regalloc_runBlock_sound`,
     see the module docstring). -/
 def FreshFor {Γ : Ctxt jasminDialect} (ρ : RegMapG Γ) (g : Nat → String) : Prop :=
@@ -219,9 +219,9 @@ def outReg : {Γ : Ctxt jasminDialect} → ArithBlock Γ → RegMapG Γ →
   | _, .op _ _ _ _ rest, ρ, g =>
       outReg rest (ρ.extend (g 0)) (fun k => g (k + 1))
 
-/-! ## 7. The keystone: the single-op tie composes over the block -/
+/-! ## 7. The block tie: the single-op tie composes over the block -/
 
-/-- **The straight-line multi-op `.denote ↔ runBlock` tie (ascent keystone).**
+/-- **The straight-line multi-op `.denote ↔ runBlock` tie.**
     For every straight-line `ArithBlock`, under the state correspondence
     `JStateInterpG ρ V s` and a fresh (injective, range-disjoint) allocation
     `FreshFor ρ g`, reading the block's output register after `runBlock` of the
@@ -232,8 +232,8 @@ def outReg : {Γ : Ctxt jasminDialect} → ArithBlock Γ → RegMapG Γ →
     (`lowerArith2_get_dst`) with its frame (`lowerArith2_get_other`): each op
     extends `JStateInterpG` to the grown context (new slot holds the op's value,
     every old register survives by the frame + freshness), and `FreshFor` is
-    preserved by `FreshFor_extend`. Both sides are genuine — the LHS a real
-    `runBlock` register read, the RHS a real `Com.denote` fold of `bop.apply`. -/
+    preserved by `FreshFor_extend`. The left side is a `runBlock` register read,
+    the right side a `Com.denote` fold of `bop.apply`. -/
 theorem lowerBlock_tie : {Γ : Ctxt jasminDialect} → (block : ArithBlock Γ) →
     (ρ : RegMapG Γ) → (g : Nat → String) → (s : JState 64) →
     (V : Ctxt.Valuation Γ) → JStateInterpG ρ V s → FreshFor ρ g →
@@ -277,9 +277,8 @@ theorem lowerBlock_tie : {Γ : Ctxt jasminDialect} → (block : ArithBlock Γ) �
 /-! ## 8. Non-vacuity — a symbolic 2-op block
 
 A concrete two-op straight-line block over inputs `⟨a, b⟩` computing
-`(a + b) * a`. The dialect side folds two genuine `bop.apply` calls (shown by a
-symbolic `rfl`, not a concrete-value KAT); the tie then holds by the keystone,
-so neither side collapses to `default`. -/
+`(a + b) * a`. The dialect side folds two `bop.apply` calls over a symbolic
+valuation (by `rfl`), and the tie follows from `lowerBlock_tie`. -/
 
 /-- The two-input context `[reg 64, reg 64]`. -/
 abbrev Δ2 : Ctxt jasminDialect := [.reg 64, .reg 64]
@@ -290,7 +289,7 @@ abbrev dA : Ctxt.Var Δ2 (.reg 64) := .here
 /-- Input `b` (de Bruijn 1) in `Δ2`. -/
 abbrev dB : Ctxt.Var Δ2 (.reg 64) := .there .here
 
-/-- **A genuine 2-op block**: `s1 := a + b ; s2 := s1 * a ; ret s2`.
+/-- **A 2-op block**: `s1 := a + b ; s2 := s1 * a ; ret s2`.
     After op 1 the context is `reg 64 :: Δ2`; `s1 = .here`, `a` shifts to
     `.there .here`. After op 2, `s2 = .here`. -/
 def block2 : ArithBlock Δ2 :=
@@ -298,20 +297,19 @@ def block2 : ArithBlock Δ2 :=
     (.op .mul trivial (.here) (.there .here)
       (.ret .here))
 
-/-- **The 2-op denotation is a genuine two-`bop` fold** (symbolic, no concrete
-    values): `block2` denotes to `mul (add a b) a` over the valuation — a real
-    nested composition of `JasminBinOp.apply`, not `default`. -/
+/-- **The 2-op denotation is a two-`bop` fold** over a symbolic valuation:
+    `block2` denotes to `mul (add a b) a`, a nested composition of
+    `JasminBinOp.apply`. -/
 theorem block2_denote (V : Ctxt.Valuation Δ2) :
     block2.toCom.denote V
       = JasminBinOp.mul.apply
           (JasminBinOp.add.apply (dA.lookup V) (dB.lookup V)) (dA.lookup V) := by
   rfl
 
-/-- **The keystone instantiated on the 2-op block.** Under any state
+/-- **The block tie instantiated on the 2-op block.** Under any state
     correspondence and fresh allocation, the machine `runBlock` of the whole
-    lowered 2-op block reads exactly `(a + b) * a` — the composed dialect
-    denotation. Non-vacuous: the RHS is the genuine 2-op fold of `block2_denote`,
-    the LHS a real two-op machine run. -/
+    lowered 2-op block reads exactly `(a + b) * a`, the composed dialect
+    denotation of `block2_denote`. -/
 theorem block2_tie (ρ : RegMapG Δ2) (g : Nat → String) (s : JState 64)
     (V : Ctxt.Valuation Δ2) (hinterp : JStateInterpG ρ V s) (hfresh : FreshFor ρ g) :
     (runBlock s (lowerBlock block2 ρ g)).get (outReg block2 ρ g)

@@ -14,9 +14,8 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.Negacyclic
 
 Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
-The **L4′** level of the PrimeIR-style layered crypto-IR stack
-(`docs/dialect-restructure-plan.md`), the polynomial-ring sibling of the
-EllipticCurve(L4) layer.  It sits above the `Field`/`ModArith` dialects:
+The **L4′** level of the PrimeIR-style layered crypto-IR stack, the
+polynomial-ring sibling of the EllipticCurve(L4) layer.  It sits above the `Field`/`ModArith` dialects:
 
     **Poly(L4′)** → Field(L3) → ModArith(L2) → {Vector | LowCT} → {jasmin | x86}
 

@@ -38,7 +38,7 @@ capstone (`JasminRegAllocPhase3.lean`):
       `#eval` is the orchestrator's (heavy); we state it and report the command.
 
 `set_option autoImplicit false` is intentionally *not* set (SecureCompilation
-convention; see root `CLAUDE.md`).
+convention).
 -/
 
 @[expose] public section
@@ -460,7 +460,7 @@ theorem colSum16_outputs_checked {w : Nat} (st' st : RegStore w)
 
 /-! ## 6. End-to-end demo: the capstone fires on a REAL reloaded body
 
-We lower the allocated MDS kernel `allocKernel mds4Rho mds4Kernel` with genuine
+We lower the allocated MDS kernel `allocKernel mds4Rho mds4Kernel` with actual
 reload events spliced in — the first binop routed through a `srcReload`, one
 through a `dstReload`, one through a `bothReload` — using reserved scratch slots
 `100,101` (disjoint from the physical homes `0..6`). The reserved-scratch set is

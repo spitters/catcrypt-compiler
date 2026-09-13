@@ -39,9 +39,9 @@ The parser correctly handles the `Easy`-tier `.jinc` constructs:
 - decimal and hex constants (`0x1`, `0x3`, `0xf`)
 
 The output `Cmd` is the exact same value as the hand-authored AST in
-`MayoLeafJasminSim`.  This closes the "Easy" tier of
-`bench/framework/JASMIN_SEM_COVERAGE.md`: parser output is now
-denotation-equivalent to hand-authored AST for one verified leaf.
+`MayoLeafJasminSim`.  For the "Easy" tier of `.jinc` constructs (straight-line
+`Cassgn` + `Copn` + word arithmetic), parser output is denotation-equivalent to
+hand-authored AST for one verified leaf.
 -/
 
 namespace CatCrypt.Crypto.Jasmin.JincParserDemo

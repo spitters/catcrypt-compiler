@@ -338,7 +338,7 @@ def emitMain : IO Unit := do
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Plonky3PaddingFreeSpongeEmit
 
-/-- Top-level entry point (`lake env lean --run` / `lake exe plonky3sponge`). -/
+/-- Top-level entry point, run with `lake env lean --run` on this file. -/
 def main : IO UInt32 := do
   CatCrypt.Crypto.SecureCompilation.VIR.Plonky3PaddingFreeSpongeEmit.emitMain
   return 0

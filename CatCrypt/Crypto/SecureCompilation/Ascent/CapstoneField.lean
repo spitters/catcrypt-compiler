@@ -17,7 +17,7 @@ kernel `r := a - b` over word variables ascends — through the ParamTransfer wo
 transfer at the leaf — to the pure word spec `φa - φb`, and its output word projects to
 the `ZMod p` field value.
 
-Honesty on the field connection: the ascent target is the `ZMod 2^64` *word* subtraction,
+The field connection: the ascent target is the `ZMod 2^64` *word* subtraction,
 projected to `ZMod p`. Matching *true field* subtraction `(a : ZMod p) - (b : ZMod p)`
 needs the no-borrow / canonical-range condition (`a ≥ b`, or a conditional add-p) — the
 `Corres` precondition of "Way 1". The word ascent itself is unconditional.

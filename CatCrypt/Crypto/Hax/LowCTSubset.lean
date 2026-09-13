@@ -16,7 +16,7 @@ public import HaxLean.ImpType
 /-!
 # H1: LowCT Subset Filter for hax `ImpExpr`
 
-This file implements **Track H1** from `BLS/NEXT.md`: a decidable predicate on
+This file defines a decidable predicate on
 hax's existing imperative AST (`Hax.ImpExpr` / `Hax.ImpType`) that decides
 whether a given Rust function lies in the **tower-typed subset** representable
 by `CatCrypt.Crypto.Jasmin.LowCT.LowCT`.

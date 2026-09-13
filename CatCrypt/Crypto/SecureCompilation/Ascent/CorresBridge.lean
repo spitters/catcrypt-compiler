@@ -39,7 +39,7 @@ AutoCorres's two lower phases:
   obligation for the emitted fragment.
 * **L2 (local-variable lifting).** `regEnv` turns the register file (hardware state)
   into named scalar variables — AutoCorres's L2 replaces the state-record encoding of
-  locals with genuine variables; here the registers *are* the lifted locals.
+  locals with named variables; here the registers *are* the lifted locals.
 
 The **flag axis** `regEnv` forgets makes `CorresJ` strictly lower than `Corres`: a
 carry/borrow chain (`corresJ_sbb`) cannot be stated over `SEnvScalar` (no flag
@@ -145,7 +145,7 @@ theorem regEnv_mirror_setConst (name : String) (n : Nat) (st : JState 64) :
   · simp [hr]
 
 /-- **Non-vacuity witness for Bridge 1.** Instantiating `corresJ_forget_to_corres`
-    at the matched constant-set kernel yields a genuine `Corres` from any `CorresJ`
+    at the matched constant-set kernel yields a `Corres` from any `CorresJ`
     for the immediate-`mov` block — the forgetful transport fires on a real pair. -/
 theorem corres_of_corresJ_setConst {AState : Type} (SR_J : JState 64 → AState → Prop)
     (P : AState → Prop) (fa : AState → AState) (name : String) (n : Nat)

@@ -21,8 +21,8 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 `BignumMontMulKernel.lean` lowers s2n-bignum's `bignum_mul_4_8` dual-carry-chain
 idiom through the owned in-Lean x86 backend (no jasminc). This module does the
 same for the **linear** elementary kernels at the sizes where jasminc's register
-allocator rejects the fully-unrolled body (a documented GPR-budget limit, see
-`bench/PERF_GMP_PARITY.md`): `mpn_add_n` / `mpn_sub_n` / `mpn_submul_1` at
+allocator rejects the fully-unrolled body (it exceeds the general-purpose-register
+budget): `mpn_add_n` / `mpn_sub_n` / `mpn_submul_1` at
 `n = 16, 32`.
 
 ## Why the owned backend clears the jasminc GPR-budget fallback

@@ -26,7 +26,7 @@ alternative; folding was chosen because the value types already coincide at
 
 ## What the leaf computes
 
-Per `PRIME_IR_OP_CORRESPONDENCE.md` (repo root, §2), CatCrypt already *has* the field
+Against prime-ir's `mod_arith` dialect (`VIR/DIALECTS.md`), CatCrypt already *has* the field
 inverse — `ModArithDialect.byInverse` / `FieldDialect.fInv` denote to `ZMod p`'s
 native `a⁻¹`, realised by the Bernstein–Yang / Fermat chains — but it does **not**
 expose the *Montgomery-domain* inverse as a standalone op.  The gap analysis

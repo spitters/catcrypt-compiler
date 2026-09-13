@@ -77,7 +77,7 @@ The select spec is env-independent only if the guard is written from a literal
 before the branch reads it (`ifClosedKernel`, via `ifClosed_hAgree`). A bare
 `RIfNz` reads the entry guard, so its output word is entry-dependent (no `hAgree`),
 and at the top-level empty varmap its guard is unbound (the front declines it).
-The abstraction leg itself is stated on the bare `RIfNz` (`corres_if`, the genuine
+The abstraction leg itself is stated on the bare `RIfNz` (`corres_if`, the
 φ-merge rule); the closed kernel is what the front consumes.
 -/
 

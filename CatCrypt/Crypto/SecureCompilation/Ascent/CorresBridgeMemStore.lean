@@ -37,12 +37,12 @@ written one.
 Lining cell `j` up with byte offset `m.scale · j` needs distinct in-range cells to
 land at distinct byte offsets: an off-cell `j ≠ idx` must satisfy
 `m.scale · j ≠ m.scale · idx`, so the machine store at `m.scale · idx` leaves it
-untouched. This holds exactly when `0 < m.scale` (`hscale`, an explicit honest
+untouched. This holds exactly when `0 < m.scale` (`hscale`, an explicit
 hypothesis) — `Nat.eq_of_mul_eq_mul_left`.
 
 The written cell reuses `mem_store_middle_tie_at_cell` (both sides
 `st.regs m.src`); every other cell is preserved to `st.mem m.arr (m.scale · j)`,
-a genuine machine memory read, on both sides.
+a machine memory read, on both sides.
 -/
 
 @[expose] public section
@@ -88,7 +88,7 @@ theorem runBlock_lowerMemStore_other (m : MemStoreSrc) (st : JState 64) (off : I
 
     The written cell `j` with `m.scale · j = m.scale · idx` carries the scattered
     source word `st.regs m.src` (via `mem_store_middle_tie_at_cell`); every other
-    cell is preserved to the genuine machine read `st.mem m.arr (m.scale · j)` — on
+    cell is preserved to the machine read `st.mem m.arr (m.scale · j)` — on
     the source side because `memSetDyn` touches only the index cell, on the machine
     side because the scatter touches only offset `m.scale · idx`
     (`runBlock_lowerMemStore_other`), the two lined up by scale-injectivity
@@ -96,7 +96,7 @@ theorem runBlock_lowerMemStore_other (m : MemStoreSrc) (st : JState 64) (off : I
 
     Side conditions mirror `mem_store_middle_tie_at_cell` — the array region
     encodes to `.memref n` (`harr`), index/source registers distinct from the
-    region (`hidx_ne`/`hsrc_ne`), index in range (`hidx_lt`) — plus the honest
+    region (`hidx_ne`/`hsrc_ne`), index in range (`hidx_lt`) — plus the
     scale-positivity `hscale : 0 < m.scale` that makes distinct in-range cells map
     to distinct byte offsets. -/
 theorem mem_store_middle_tie_full (m : MemStoreSrc) (st : JState 64) (n : Nat)

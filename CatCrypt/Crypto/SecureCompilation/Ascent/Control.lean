@@ -22,19 +22,19 @@ re-axiomatised loop/conditional semantics.
   because that is definitionally the per-trip transition `semRForD` performs.
   Generic in the state relation `SR` / abstract state `AState`.
 
-* **`corres_if`** — the genuine φ-merge conditional `RIfNz name thenBr elseBr`
+* **`corres_if`** — the φ-merge conditional `RIfNz name thenBr elseBr`
   where both branches are a single `RScalarSet` on the SAME name (the only shape
-  the front compiles as a real conditional — the (C′) cmov arm).  Over the word
+  the front compiles as a conditional — the (C′) cmov arm).  Over the word
   state relation `SRword`, the concrete guard's zero-test is exactly the abstract
   guard `a name = 0`, so the `phiSelect` cmov denotes the abstract branch select.
 
-`corres_while` (`RWhileNz`) is deferred: `semScalar` has NO `RWhileNz` arm — it
-falls to the catch-all `none`, so `Corres SR _ _ (.RWhileNz …)` cannot hold
-non-vacuously.  The real do-while denotation is the separate transformer
+This module has no rule for `RWhileNz`: `semScalar` has no `RWhileNz` arm — it
+falls to the catch-all `none`, so `Corres SR _ _ (.RWhileNz …)` never holds with a
+satisfiable precondition.  The do-while denotation is the separate transformer
 `semScalarWhile` (`TranslateDialectWhileDenote`), whose fuel/trip bridge
-`semScalarWhile_eq_iter` reduces it to the unconditional `semWhileIter`; a while
-rule belongs against THAT transformer, not `Corres`-over-`semScalar`, and is left
-to the while-denote layer.
+`semScalarWhile_eq_iter` reduces it to the unconditional `semWhileIter`.  The while
+rules are stated against that transformer: `corres_while` (`Ascent/While.lean`) and
+`corresU_while` at the unified waist `semU` (`Ascent/WhileTop.lean`).
 -/
 
 @[expose] public section
@@ -110,7 +110,7 @@ theorem wEnc_eq_zero_iff (w : BitVec 64) : wEnc w = 0 ↔ w = 0#64 := by
 
 /-- **The φ-merge conditional rule.**  For `RIfNz name (RScalarSet nv thenVal)
     (RScalarSet nv elseVal)` — both branches a single scalar-set on the SAME name
-    `nv`, the (C′) cmov shape `semScalar` compiles as a genuine conditional — the
+    `nv`, the (C′) cmov shape `semScalar` compiles as a conditional — the
     concrete `phiSelect` cmov (guard `condv = 0` ↦ else, else ↦ then) denotes the
     abstract branch select on the abstract zero-test `a name = 0`, over the word
     state relation `SRword`. -/

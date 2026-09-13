@@ -14,9 +14,8 @@ public import Mathlib.Data.ZMod.Basic
 
 Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
-The **L4** level of the PrimeIR-style layered crypto-IR stack
-(`docs/dialect-restructure-plan.md`), sitting above the `Field` dialect and the
-prime-field base it lowers onto:
+The **L4** level of the PrimeIR-style layered crypto-IR stack, sitting above the
+`Field` dialect and the prime-field base it lowers onto:
 
     **EllipticCurve(L4)** → Field(L3) → ModArith(L2) → {Vector | LowCT} → {jasmin | x86}
 

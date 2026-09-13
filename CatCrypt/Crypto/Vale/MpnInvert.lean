@@ -51,8 +51,8 @@ modulus-parametric.
 ## Pilot scope (BY/safegcd wave 2, general `mpn_invert`)
 
 Where the BLS12-381 leaf served the BLS12/KZG/Groth16 pairing path,
-this leaf closes the **catastrophic `mpn_invert` gap** flagged in
-`bench/framework/BIGNUM_BASELINE.md`:
+this leaf closes the **`mpn_invert` performance gap** of the binary-extended
+Euclidean baseline against GMP (measured cycles):
 
 | Kernel | k | Ours cyc | GMP cyc | Ratio |
 |---|---:|---:|---:|---:|

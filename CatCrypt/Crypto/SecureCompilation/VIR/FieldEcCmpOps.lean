@@ -20,17 +20,17 @@ counterpart of prime-ir's `field.cmp`, `mod_arith.cmp`, and
 
 ## Why this dialect exists (the gap it closes)
 
-Per `PRIME_IR_OP_CORRESPONDENCE.md` (repo root, §1 & §4), CatCrypt already *had* the
-comparison and identity-test functionality, but only at the **bit / sword
-layer** and via the `none` carrier of the EC add law:
+Against prime-ir's `field`, `mod_arith` and `elliptic_curve` dialects
+(`VIR/DIALECTS.md`), CatCrypt already *had* the comparison and identity-test
+functionality, but only at the **bit / sword layer** and via the `none` carrier
+of the EC add law:
 
-* `field.cmp` (§1, line 26) — "no dedicated field-cmp op (cmp done in
-  `.bit`/sword layer)" — **PARTIAL**.
-* `mod_arith.cmp` (§4, line 60) — "done at sword layer" — **PARTIAL**.
-* `elliptic_curve.is_zero` (§4, line 114) — "identity check (option `none`
-  carrier in add law)" — **PARTIAL**.
-* `elliptic_curve.cmp` (§4, line 122) — "point-eq via coord compare" —
+* `field.cmp` — no dedicated field-cmp op (cmp done in the `.bit`/sword layer) —
   **PARTIAL**.
+* `mod_arith.cmp` — done at the sword layer — **PARTIAL**.
+* `elliptic_curve.is_zero` — identity check (option `none` carrier in the add
+  law) — **PARTIAL**.
+* `elliptic_curve.cmp` — point equality via coordinate compare — **PARTIAL**.
 
 The gap analysis classified all four **PARTIAL** — *functionality present, not
 factored as a first-class field/EC `cmp`/`is_zero` op*.  This file **factors

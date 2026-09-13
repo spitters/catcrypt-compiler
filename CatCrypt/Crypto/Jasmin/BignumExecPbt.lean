@@ -22,9 +22,6 @@ These complement the existing in-file `native_decide` smoke tests:
 * Smoke tests check fixed inputs.
 * PBT tests check ~100 random inputs per property.
 
-Per next.md backlog:
-> "Property-based testing on the BignumExec rules (Plausible)."
-
 Rather than testing the full `bignumExec` interpreter (which would
 need custom `Sampleable`/`Shrinkable` instances for `InstrR`,
 `BignumState`, etc.), this file targets the **leaf primitives** —

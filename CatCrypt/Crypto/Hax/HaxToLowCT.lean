@@ -15,8 +15,7 @@ public import CatCrypt.Crypto.Jasmin.LowCT
 /-!
 # H2: Translation `ImpExpr → Option LowCT`
 
-Implements **Track H2** from `BLS/NEXT.md`: a structural-recursive
-translation that lifts the H1 decidable filter
+A structural-recursive translation that lifts the H1 decidable filter
 (`CatCrypt.Crypto.Hax.LowCTRepresentable.Expr`) into a lowering function
 `haxToLowCT : ImpExpr → Option LowCT`.
 
@@ -491,8 +490,7 @@ def haxToLowCT : ImpExpr → Option LowCT
   -- remains a single `letBind _ (.app _ _) _` arm — that keeps the H2.2
   -- biconditional proof structurally unchanged.
   /- TODO(simulation): haxToLowCT_simulates_full does not yet cover the
-     array_update / index / forFold sub-cases.  See
-     bench/mlkem_compare/HAXTOR_EXTENSION_PLAN.md §3. -/
+     array_update / index / forFold sub-cases. -/
   | .letBind name (.app f args) body =>
       let dt := towerOfCallName f
       let dest : Located := { locVar := name, locSrc := dt }
@@ -549,7 +547,7 @@ def haxToLowCT : ImpExpr → Option LowCT
   -- (`let a = a; let b = b; let r = ZERO_VEC; ...`).  We treat the
   -- binding as a no-op and recurse on `body` directly — the alias's
   -- name is shadowed by the original `src` slot in the body's lexical
-  -- scope.  See HAXTOR_EXTENSION_PLAN §3 / smoke test in §5.
+  -- scope.
   | .letBind _name (.var _src) body =>
       haxToLowCT body
   -- Tuple-component read: `let name = tup.i; body` — `.proj` of a named
@@ -638,8 +636,7 @@ def haxToLowCT : ImpExpr → Option LowCT
   | .continue_                 => none
   | .earlyReturn _             => none
   | .questionMark _            => none
-  /- TODO(simulation): haxToLowCT_simulates_full does not yet cover this case.
-     See bench/mlkem_compare/HAXTOR_EXTENSION_PLAN.md §3. -/
+  /- TODO(simulation): haxToLowCT_simulates_full does not yet cover this case. -/
   -- Bounded for-fold with literal `lo = 0` and literal nonneg-int `hi = n`
   -- lowers to `RFor v n body`.  `RFor`'s second parameter is a closed `Nat`
   -- (structurally terminating); runtime-bound forms (`hi = .var k`) are
@@ -1614,8 +1611,7 @@ theorem non_anf_tuple_let_iff :
 
 /-! ### Extension smoke tests (2026-05-22)
 
-Minimal positive tests for the three new patterns added by
-`HAXTOR_EXTENSION_PLAN.md` §3 — bounded `forFold` with literal bounds,
+Minimal positive tests for three lowering patterns — bounded `forFold` with literal bounds,
 `array_update` self-store, and `index` array load.  The simulation
 theorem (`haxToLowCT_simulates_full`) does **not** yet cover these
 arms; that backfill is a separate workstream. -/

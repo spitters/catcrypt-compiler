@@ -72,9 +72,11 @@ cast to `ZMod N`, equals `T · R⁻¹` — routed through the numeric bridge
 `montRedc_spec`. Composing the two, `montRedcStep_runBlock_residue` reads the emitted step's
 shifted-window `runBlock` value directly as the `ZMod (valLimbs p)` residue `⟦T⟧ · (2^64)⁻¹`.
 
-The multi-word fusion — four word-steps as a single `runBlock` trace with the inter-step register
-routing — is the residual recorded in `X86Backend.MontRedc4RunBlockProven.montRedc4RunBlock_gap`;
-the two-phase state here refines one word-step and does not compose with itself across that routing.
+The two-phase state of `corresJ_montRedcStep` refines one word-step and does not compose with
+itself across the inter-step register routing. The four chained word-steps
+`Curve4MontMulProvenEmit.emitMontRedc4Block`, as a single `runBlock` trace, are refined by
+`corresJ_montRedc4Block` through `SRmontRedc4`, discharged by `montRedc4RunBlock_proven`;
+`montRedc4_residue` reads the output as the residue `⟦T⟧ · (2^256)⁻¹`.
 -/
 
 @[expose] public section

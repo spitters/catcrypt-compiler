@@ -16,9 +16,8 @@ set_option autoImplicit false
 /-!
 # Curve25519 CryptOpt-tuned `carry_mul` / `carry_square` — JasminAST leaves
 
-Track F1 of `BLS/NEXT.md` (residual): pipeline (2) (LowCT → CryptoSSA →
-Jasmin → x86-64) needs JasminAST entries for the CryptOpt-tuned
-radix-2^51 unsaturated 5-limb multiplication and squaring on the
+Pipeline (2) (LowCT → CryptoSSA → Jasmin → x86-64) needs JasminAST entries
+for the CryptOpt-tuned radix-2^51 unsaturated 5-limb multiplication and squaring on the
 Curve25519 base field. The bench wire-up (commits `cae8ccb`, `7e9023d`)
 already routes pipeline-(1) callers through the asm under
 `-DUSE_CRYPTOPT_25519_MUL`; this file adds the parallel pipeline-(2)
@@ -27,11 +26,12 @@ declaration so the verified Jasmin chain emits the same leaf.
 ## Source
 
 Two CryptOpt-synthesized AMD64 asms picked for highest measured ratio on
-the chip CryptOpt was driven on:
+the chip CryptOpt was driven on, from the `fiat-amd64/` directory of
+fiat-crypto (https://github.com/mit-plv/fiat-crypto):
 
-- `mul`     ≡ `BLS/AUCurves/fiat-crypto/fiat-amd64/fiat_curve25519_carry_mul/seed1667947554054692_ratio13465.asm`
+- `mul`     ≡ `fiat-amd64/fiat_curve25519_carry_mul/seed1667947554054692_ratio13465.asm`
               (182 LoC, ratio 1.3465 vs. fiat-crypto's C `fiat_25519_carry_mul`)
-- `square`  ≡ `BLS/AUCurves/fiat-crypto/fiat-amd64/fiat_curve25519_carry_square/seed0000000394998752_ratio13350.asm`
+- `square`  ≡ `fiat-amd64/fiat_curve25519_carry_square/seed0000000394998752_ratio13350.asm`
               (126 LoC, ratio 1.3350 vs. fiat-crypto's C `fiat_25519_carry_square`)
 
 Each is a verified-equivalent (per CryptOpt's own equivalence theorem)
@@ -55,19 +55,15 @@ name is mechanical but extending the operational interpreter
 adds intrinsic semantics for `bzhi`, `shrd`, `imul`-with-immediate, the
 flag-mask aliases of `lea`/`xor`/`test`, and so on.
 
-Per writeup §5.8 ("synthesized leaf carries fiat-crypto's
-`carry_mul_correct` on its target") the asm is treated as **one leaf**
-inheriting CryptOpt's equivalence theorem; the SSA-level audit lives at
-the `carry_mul_correct` boundary, not at the per-x86-instruction level.
+A synthesized leaf carries fiat-crypto's `carry_mul_correct` on its target,
+so the asm is treated as **one leaf** inheriting CryptOpt's equivalence
+theorem; the SSA-level audit lives at the `carry_mul_correct` boundary, not at the per-x86-instruction level.
 The leaf-stub here is the JasminAST representation of that boundary:
 the function is declared with the right signature and a `body` of `[]`
 denoting "extern, resolved by the linker against the CryptOpt-emitted
 asm". Pipeline (2)'s emit step produces a forward declaration in the
-generated Jasmin / `.jazz` source; the asm object (built by `nasm` via
-the `cryptopt_objs` Makefile target in `BLS/catcrypt-bench/`) supplies
-the body at link time. This matches how pipeline (1)'s `fp_mul` /
-`fp_inv` were treated as opaque leaves before F2 reified the addition
-chains in commit `fb3fe389`.
+generated Jasmin / `.jazz` source; the asm object (assembled by `nasm` in
+the benchmark harness) supplies the body at link time.
 
 ## Future tightening
 

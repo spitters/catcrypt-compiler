@@ -20,7 +20,7 @@ fractalyze/prime-ir's **TensorExt** dialect, whose one op is
 
 ## Why this dialect exists (the gap it closes)
 
-Per `PRIME_IR_OP_CORRESPONDENCE.md` (repo root, §5), CatCrypt already *had* the
+Against prime-ir's `tensor_ext` dialect (`VIR/DIALECTS.md`), CatCrypt already *had* the
 bit-reversal functionality, but only **inlined** inside the NTT emit kernels:
 `Plonky3ProveEmit.bitReverse`/`bitReversePermute` (`ntt.rs::bit_reverse`,
 reverse-the-low-`logN`-bits, used by `bbNtt`), and the same permutation reused

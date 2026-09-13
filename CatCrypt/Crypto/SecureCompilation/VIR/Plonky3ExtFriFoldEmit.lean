@@ -10,12 +10,12 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3EmitMain
 /-!
 # Plonky3 extension-FRI fold: ExtensionMmcs fold + barycentric OOD/DEEP, owned
 
-`FULL_PROVER_VS_P3.md` records the precise ext-FRI residual after the core deg-4
-arithmetic landed (`Plonky3ExtFieldEmit`): *"the `ExtensionMmcs` fold (flatten the
-arity-2 fold layer's 16×8 base rows, then Merkle-commit) … and the barycentric
-OOD/DEEP-over-extension evaluation are the remaining C orchestration."*
+Beyond the core degree-4 extension arithmetic (`Plonky3ExtFieldEmit`), the
+extension FRI needs the `ExtensionMmcs` fold (flatten the arity-2 fold layer's 16×8
+base rows, then Merkle-commit) and the barycentric OOD/DEEP-over-extension
+evaluation, which the benchmarked prover otherwise runs as C orchestration.
 
-This module closes that residual at the leaf level. The ExtensionMmcs fold and the
+This module emits both at the leaf level. The ExtensionMmcs fold and the
 barycentric reduced-opening loop are **compositions** of the per-coordinate
 extension operations — `eadd` / `esub` / `emul` / `escale` / `einv` — each of
 which is an emitted verified-front leaf:

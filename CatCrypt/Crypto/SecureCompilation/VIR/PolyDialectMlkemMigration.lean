@@ -30,9 +30,8 @@ poly leaf and no broken proof.
 
 ## The one-tie-per-level payoff
 
-The plan's headline (`docs/dialect-restructure-plan.md` §"Verification payoff"):
-the realization ties connect **once per dialect level** (structural) instead of
-per-protocol.  Here that is concrete:
+The realization ties connect **once per dialect level** (structural) instead of
+per-protocol.  In this module:
 
 * the **field** leaves tie once at L3 (`FieldDialect`);
 * the **NTT / polynomial ring** ties once at L4′ (this file):
@@ -50,7 +49,7 @@ per-protocol.  Here that is concrete:
   ML-KEM NTT-mul program (`realSrcCom` / its NTT-expanded `realTgtCom`), on the
   encoded inputs, denotes to the **same** value as the Poly dialect's `nttMul`
   op, and (via `PolyDialect.nttMul_negacyclic_coeff`) that value's negacyclic
-  reduction is the genuine negacyclic convolution.
+  reduction is the negacyclic convolution.
 
 ## Deferred (the continuation, #482-5)
 
@@ -135,7 +134,7 @@ theorem nttMul_matches_emitter_tgt [Fact (Nat.Prime q)]
 
 /-- **Negacyclic correctness inherited through the migration.** The emitted
     ML-KEM NTT-mul program, transported onto the Poly dialect's `nttMul` op, has
-    the genuine negacyclic-convolution `k`-th coefficient (`k < n`) — combining
+    the negacyclic-convolution `k`-th coefficient (`k < n`) — combining
     the migration bridge (`nttMul_matches_emitter_src`) with the dialect's
     once-per-dialect negacyclic tie (`nttMul_negacyclic_coeff`).  This is the
     payoff: the protocol's emitted NTT inherits the convolution correctness from

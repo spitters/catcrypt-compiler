@@ -15,9 +15,7 @@ Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
 A minimal `VIR.Dialect` whose `Ty` distinguishes **coefficient-form** from
 **NTT-form** polynomials, making the NTT-domain multiplication rewrite a
-*typed*, denotation-preserving transformation. This is the Phase 3 deliverable
-of the Jasmin ⇄ VIR convergence plan; see the design draft
-`lattice-dialect-design.md`.
+*typed*, denotation-preserving transformation.
 
 ## The point
 

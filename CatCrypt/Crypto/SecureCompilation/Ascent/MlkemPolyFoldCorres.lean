@@ -15,19 +15,15 @@ public import CatCrypt.Crypto.SecureCompilation.Ascent.KeystoneControl
 `Ascent.MlkemFieldLeaf` proves the **per-coefficient** correspondence
 `corres_setExpr_fqAdd` (one unreduced `ZMod 3329` add `r := a + b` refines its
 `φ a + φ b` spec), and `Ascent.MlkemPolyAddCapstone` composes a *single*
-coefficient step (`polyAddCoeff_corres`).  Its frontier note records the exact
-gap this module attacks:
+coefficient step (`polyAddCoeff_corres`).  `corres_for` (`Ascent.Control`) is
+homogeneous and takes an **index-independent** abstract step (`nfold fa`, the
+*same* `fa` each trip), while a polynomial loop runs a *different* step per
+coefficient.  This module states the index-dependent loop rule and the
+whole-polynomial correspondence.
 
-> The 256-coefficient loop needs a heterogeneous `corresH_for` at loop level,
-> **which does not exist**.  `corres_for` (`Ascent.Control`) is homogeneous and,
-> crucially, hardwired to an **index-independent** abstract step (`nfold fa`, the
-> *same* `fa` each trip) — a poly loop runs a *different* step per coefficient.
+## Main results
 
-This file closes the loop-rule gap and delivers the whole-polynomial tie.
-
-## What lands here (all verified, no `sorry`, no new axioms)
-
-* **`corres_for_indexed`** — the missing combinator.  The **index-dependent**
+* **`corres_for_indexed`** — the **index-dependent**
   bounded-loop rule over the real `semScalar`/`semRForD` `RFor` semantics: from a
   per-trip body `Corres SR P (fa n) (RSeq (RScalarSet x n) body)` whose abstract
   step `fa n` may depend on the trip index `n`, plus the invariant `P`, the
@@ -39,7 +35,7 @@ This file closes the loop-rule gap and delivers the whole-polynomial tie.
   index-varying poly body needs the `semRForD` counter-driven loop, not the
   `while`.
 
-* **The index-dependence is exercised, not vacuous** — `accLoop_corres` lifts the
+* **An index-dependent instance** — `accLoop_corres` lifts the
   index-varying accumulator loop `for i in 0..N { acc := acc + i }` to
   its clean `ZMod 2^64` step, and `accLoop_acc` reads the closed form
   `acc + ∑_{k<N} k` off the fold.  A constant-step `corres_for` cannot state this.
@@ -65,12 +61,11 @@ This file closes the loop-rule gap and delivers the whole-polynomial tie.
   This is `poly_add ≈ 256 pointwise `ZMod 3329` adds` as one machine-checked
   `Corres`, welded from the per-lane leaf + the loop invariant.
 
-## Frontier — see the module-end note for the precise remaining lemmas.
+## Scope
 
 `polyAdd_fold_corres` is over the **unrolled** `RSeq` chain with per-index scalar
-names.  Fusing it into a single *counter-driven* `RFor` over `Array` memory (the
-shape the extracted Rust actually lowers to) is the residual, and `corres_for_indexed`
-is exactly the loop rule that will consume it once the array-load leaf exists.
+names.  No theorem in the package states the counter-driven `RFor` over array
+memory; §8 lists the pieces such a statement combines.
 
 Part of the AutoCorres-in-Lean ascent begun by Sebastian Graf (`sgraf812/ascent`);
 see `Corres.lean`.
@@ -444,36 +439,29 @@ theorem polyAddStep_is_ring_add (i : Nat) (φ : String → ZMod 3329) :
     polyAddStep i φ (rNm i) = φ (aNm i) + φ (bNm i) := by
   simp only [polyAddStep, if_pos]
 
-/-! ## §8  Frontier — the residual to a source→bytes 256-coefficient array poly-add
+/-! ## §8  What `polyAdd_fold_corres` does not cover
 
-`polyAdd_fold_corres` closes the ascent leg for the **unrolled** poly-add over
-per-index scalar names.  Three residual pieces separate it from a single
-*counter-driven* `RFor` over `Array` memory (the shape the extracted Rust lowers to):
+`polyAdd_fold_corres` is the ascent leg for the **unrolled** poly-add over
+per-index scalar names.  A *counter-driven* `RFor` over array memory differs in
+three respects, none of which a theorem in the package states:
 
-1. **The array-load leaf `corres_arrLoad` (`RArrLoad`).**  A counter-driven body
-   reads `a[i]`/`b[i]` and writes `r[i]` through the array ops `RArrLoad`/`RArrStore`,
-   not scalar names.  The store leaf `corres_arrStore` exists; the load leaf is the
-   open dual.  Once it lands, the counter-driven body is exactly the per-trip body
-   `corres_for_indexed` (§2) already consumes — the loop rule is ready, only the
-   array-indexed leaf is missing.  (The abstract state then becomes `Vector Zq3329
-   256`, and the coefficient at index `i` is selected by the counter, replacing the
-   `i`-indexed scalar names here.)
+1. **Array access.**  A counter-driven body reads `a[i]`/`b[i]` and writes `r[i]`
+   through `RArrLoad`/`RArrStore`, whose leaves are `corres_arrLoad` and
+   `corres_arrStore`, over the relations `SRarrLoad` and `SRarr`.  The abstract state
+   of such a loop is a vector of coefficients, selected by the counter, in place of
+   the `i`-indexed scalar names here.
 
 2. **Width-16 lanes.**  The deployed ML-KEM emit carries coefficients as 16-bit SIMD
-   lanes; `SRfqMixed` / `fqEnc` here are at the reused `.sword 64` slot.  Relating a
+   lanes; `SRfqMixed` / `fqEnc` here are at the `.sword 64` slot.  Relating a
    16-bit lane to `ZMod 3329` needs `semScalar`/`SExpr.evalBV`/`semLowerSExpr_ok'`
-   re-indexed at width 16 — the same width-parametricity lift `MlkemFieldLeaf` notes.
+   at width 16, as `MlkemFieldLeaf` notes.
 
-3. **A per-coefficient emit weld + decimal-index injectivity.**  Reading the final
-   `r{j}` off `ifold polyAddStep n` (to phrase the output as a `Vector`) needs
-   `rNm` injective (`toString` decimal injectivity) so later trips do not alias
-   `r{j}`; and welding one coefficient to bytes is `keystone_emit_fq`
-   (`MlkemPolyAddCapstone`) fed the concrete emit data, a mechanical clone of
-   `FeAddEndToEnd` at canonical literals.
+3. **Readout and emit.**  Reading the final `r{j}` off `ifold polyAddStep n` needs
+   `rNm` injective (injectivity of the decimal `toString`), so that later trips do
+   not alias `r{j}`; an emit weld for one coefficient is `keystone_emit_fq`
+   (`MlkemPolyAddCapstone`) together with the front and emit facts of a kernel with
+   canonical literals.
 
-None of the three is a gap in the loop rule: §2's `corres_for_indexed` is the
-index-dependent counted-loop combinator the capstone frontier named as missing, and
-§7 is the whole-polynomial `ZMod 3329` tie via the per-lane leaf + the loop
-invariant. -/
+The loop rule for all three is `corres_for_indexed` (§2). -/
 
 end CatCrypt.Crypto.SecureCompilation.Ascent

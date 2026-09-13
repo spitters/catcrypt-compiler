@@ -26,10 +26,8 @@ symbol-ref attributes) for `extCall`, and a `catcrypt.unknown`
 dialect tag for ops with no Veir-side counterpart. `mlir-opt`
 accepts the output under `--allow-unregistered-dialect` once the
 caller wraps it in a `builtin.module` containing private extern
-declarations for each callee — see Stage H smoke-test in
-`docs/2026-05-22-project-4-vir-veir-wiring.md`. The emitter does
-*not* yet generate those extern declarations automatically;
-follow-up work.
+declarations for each callee. The emitter does *not* generate those
+extern declarations.
 -/
 
 @[expose] public section

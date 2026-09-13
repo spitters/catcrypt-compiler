@@ -9,37 +9,35 @@ public import CatCrypt.Crypto.SecureCompilation.Ascent.MlkemFieldLeaf
 public import CatCrypt.Crypto.SecureCompilation.Ascent.EmitBridge
 
 /-!
-# The `ZMod 3329` keystone: an ML-KEM coefficient value ascends to emitted bytes
+# The `ZMod 3329` emit weld for an ML-KEM coefficient value
 
 `Ascent.EmitBridge` welds the *word* ascent (`Corres SRword`) to the emit leg,
-concluding `denote(bytes) = ctTransTy val ∧ wEnc val = fa a₀ name` for the
-`ZMod 2^64` word spec. This module builds the **`ZMod 3329` counterpart**
+concluding `jcom.denote … = ctTransTy val ∧ wEnc val = fa a₀ name` for the
+`ZMod 2^64` word spec. This module states the **`ZMod 3329` counterpart**
 (`keystone_fq` / `keystone_emit_fq`): given the heterogeneous coefficient
-correspondence `CorresH SRfqCanon SRfqVal` (`Ascent.MlkemFieldLeaf`), the emitted
-jasmin bytes denote to `ctTransTy val` with `fqEnc val = fa a₀ name` the clean
+correspondence `CorresH SRfqCanon SRfqVal` (`Ascent.MlkemFieldLeaf`), the jasmin
+program denotes to `ctTransTy val` with `fqEnc val = fa a₀ name` the clean
 `ZMod 3329` coefficient spec.
 
-The emit leg is the SAME `rustToJasminCom_endToEnd_topLevel_unconditional` — it is
-agnostic to which value abstraction reads the tracked output word `val`. Only the
-abstraction seam changes: instead of pinning `wEnc val` through `SRword`, we pin
-`fqEnc val` through the value-only output relation `SRfqVal`.
+The emit leg is the same `rustToJasminCom_endToEnd_topLevel_unconditional`; it does
+not depend on which value abstraction reads the tracked output word `val`. Only the
+abstraction seam differs: `fqEnc val` is pinned through the value-only output
+relation `SRfqVal` instead of `wEnc val` through `SRword`.
 
-## What lands here
+## Main results
 
-* `keystone_fq` / `keystone_emit_fq` — the abstract and emit-composed bridges over
-  the coefficient relations.
+* `keystone_fq` — the weld abstract in the emit map, with the emit equation `hEmit`
+  as a hypothesis; `keystone_emit_fq` — the weld with `hEmit` discharged by the emit
+  leg. The package contains no instance of `keystone_emit_fq`.
 * `corres_setScalar_fq` — the literal-coefficient leaf (`CorresH SRfqCanon SRfqVal`).
-* `keystone_setScalar_fq` — a **non-vacuity witness**: for a canonical literal
-  coefficient `n < 3329`, the emitted bytes denote to `Emit (ofNat 64 n)` and its
-  clean `ZMod 3329` spec is `(n : ZMod 3329)`. This exhibits the coefficient
-  keystone's abstraction-side hypotheses as jointly satisfiable — the bridge is not
-  vacuous — exactly as `keystone_setScalar` does for the word layer.
+* `keystone_setScalar_fq` — `keystone_fq` at a canonical literal coefficient
+  `n < 3329`: the abstraction-side hypotheses are discharged, `hEmit` remains a
+  hypothesis, and the word reads as `(n : ZMod 3329)`.
+* `corresH_seq`, `polyAddCoeff_corres` — heterogeneous sequencing and the ascent leg
+  of one `poly_add` coefficient step.
 
-## Frontier (see the module-end note)
-
-The full `poly_add` capstone — the 256-coefficient loop composed via `corres_for`,
-then welded to bytes — is NOT closed here. The precise obstructions are recorded at
-the end of this file.
+The whole-polynomial correspondence `polyAdd_fold_corres` is in
+`Ascent/MlkemPolyFoldCorres.lean`; no theorem welds it to the emit leg.
 -/
 
 @[expose] public section
@@ -65,13 +63,14 @@ open CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect (ctMapValD)
 
 namespace CatCrypt.Crypto.SecureCompilation.Ascent
 
-/-! ## The `ZMod 3329` keystone (abstract in the emit map) -/
+/-! ## The `ZMod 3329` emit weld, abstract in the emit map -/
 
-/-- **`keystone_fq`.** The coefficient analogue of `keystone`. From the heterogeneous
-    coefficient correspondence `CorresH SRfqCanon SRfqVal P fa c` run at a canonical
-    entry `(env₀, a₀)`, the closed-kernel adapter `hAgree`, and the non-temp readout
-    side condition `hName_nt`, conclude the emit equation together with
-    `fqEnc val = fa a₀ name` — the emitted word's clean `ZMod 3329` spec. -/
+/-- **`keystone_fq`.** The emit weld of `EmitBridge` at the coefficient relations.
+    From the heterogeneous coefficient correspondence `CorresH SRfqCanon SRfqVal P fa c`
+    run at a canonical entry `(env₀, a₀)`, the closed-kernel adapter `hAgree`, the
+    non-temp readout side condition `hName_nt`, and the emit equation `hEmit` taken as
+    a hypothesis, conclude the emit equation together with `fqEnc val = fa a₀ name`,
+    the word's clean `ZMod 3329` spec. -/
 theorem keystone_fq {β : Type} (Emit : BitVec 64 → β)
     (c : LowCT) (name : String) (val : BitVec 64)
     (fa : (String → ZMod 3329) → (String → ZMod 3329))
@@ -89,11 +88,11 @@ theorem keystone_fq {β : Type} (Emit : BitVec 64 → β)
   subst hwv
   exact ⟨hEmit, hwenc⟩
 
-/-- **`keystone_emit_fq`.** `keystone_fq` with the emit supplier discharged by the
-    real `rustToJasminCom_endToEnd_topLevel_unconditional`: the emitted jasmin program
+/-- **`keystone_emit_fq`.** `keystone_fq` with `hEmit` discharged by
+    `rustToJasminCom_endToEnd_topLevel_unconditional`: the jasmin program
     `jcom` denotes to `ctTransTy val`, and `val`'s clean `ZMod 3329` coefficient spec
-    is `fa a₀ name`. The emit-side data is the standard covered-kernel input, shared
-    verbatim with the word keystone `keystone_emit`. -/
+    is `fa a₀ name`. The emit-side hypotheses are those of the word weld
+    `keystone_emit`. -/
 theorem keystone_emit_fq
     (c : LowCT) (o : DTransOut ([] : Ctx))
     (N : Nat) (leafSpec : LeafSpec) (rs rs' : RustState)
@@ -123,7 +122,7 @@ theorem keystone_emit_fq
   exact keystone_fq (ctTransTy (t := .sword 64)) c name val fa P env₀ a₀ _
     hCorres hSR hP hAgree hName_nt hEmit
 
-/-! ## The literal-coefficient leaf and the non-vacuity witness -/
+/-! ## The literal-coefficient leaf and the weld at a literal -/
 
 /-- The literal-coefficient value leaf: `RScalarSet name n` for a canonical literal
     `n < 3329` sets `name` to `(n : ZMod 3329)`, as a `CorresH SRfqCanon SRfqVal`.
@@ -147,13 +146,12 @@ theorem corres_setScalar_fq (name : String) (n : Nat) (hn : n < 3329) :
     show fqEnc w = if x = name then (n : ZMod 3329) else a x
     rw [if_neg hx]; exact hwEnc
 
-/-- **`keystone_setScalar_fq` — the coefficient keystone is not vacuous.** For a
-    canonical literal coefficient `n < 3329` written to a non-temp `name`, the
-    coefficient keystone's abstraction-side hypotheses (`CorresH`, the canonical
-    entry `SRfqCanon`, `P = True`, the closed-kernel adapter `hAgree`) are jointly
-    dischargeable, and the clean spec value read out is exactly `(n : ZMod 3329)`.
-    The emit map `Emit` is abstract (instantiated to `ctTransTy` in
-    `keystone_emit_fq`); this exhibits satisfiability, mirroring `keystone_setScalar`. -/
+/-- **`keystone_setScalar_fq`.** For a canonical literal coefficient `n < 3329`
+    written to a non-temp `name`, the abstraction-side hypotheses of `keystone_fq`
+    (`CorresH`, the canonical entry `SRfqCanon`, `P = True`, the closed-kernel
+    adapter `hAgree`) are discharged, and the word reads as `(n : ZMod 3329)`. The
+    emit map `Emit` is abstract and the emit equation `hEmit` is a hypothesis, as in
+    `keystone_setScalar`. -/
 theorem keystone_setScalar_fq {β : Type} (Emit : BitVec 64 → β)
     (name : String) (n : Nat) (hn : n < 3329) (hname_nt : ¬ isTmpName name)
     (jdenote : β) (hEmit : jdenote = Emit (BitVec.ofNat 64 n)) :
@@ -183,7 +181,7 @@ coefficient ascent, being heterogeneous, needs the heterogeneous sequencing
 `corresH_seq` and a canonical-preserving literal leaf `corres_setScalar_fqCanon`
 (so the two literal input writes keep the env canonical up to the add). -/
 
-/-- Heterogeneous sequencing — the `CorresH` analogue of `corres_seq`. -/
+/-- Heterogeneous sequencing: `corres_seq` for `CorresH`. -/
 theorem corresH_seq {AState : Type} {SR1 SR2 SR3 : SEnvScalar → AState → Prop}
     {P Q : AState → Prop} {fa ga : AState → AState} {c₁ c₂ : LowCT}
     (h₁ : CorresH SR1 SR2 P fa c₁) (h₂ : CorresH SR2 SR3 Q ga c₂)
@@ -221,9 +219,9 @@ theorem corres_setScalar_fqCanon (name : String) (n : Nat) (hn : n < 3329) :
     `a0 := 100; b0 := 200; r0 := a0 + b0` (canonical literal inputs, `< 3329`)
     ascends, as one `CorresH SRfqCanon SRfqVal`, to its `ZMod 3329` coefficient spec —
     the two canonical literal writes (`corres_setScalar_fqCanon`) sequenced before the
-    coefficient-add leaf (`corres_setExpr_fqAdd`) via `corresH_seq`. This is the
-    coefficient analogue of `feAdd_corres`, and the exact ascent input the emit weld
-    `keystone_emit_fq` consumes. -/
+    coefficient-add leaf (`corres_setExpr_fqAdd`) via `corresH_seq`. It has the shape
+    of `feAdd_corres` at the coefficient relations, and is of the form the emit weld
+    `keystone_emit_fq` takes as `hCorres`. -/
 theorem polyAddCoeff_corres :
     CorresH SRfqCanon SRfqVal (fun _ => True)
       (fun a =>
@@ -250,29 +248,22 @@ theorem polyAddCoeff_at_r0 (a : String → ZMod 3329) :
       = ((100 : Nat) : ZMod 3329) + ((200 : Nat) : ZMod 3329) := by
   simp
 
-/-! ## Frontier — the two remaining gaps to a closed `poly_add` source→bytes capstone
+/-! ## What the coefficient results do not cover
 
-**(1) The concrete emit weld for one coefficient — mechanical.** `polyAddCoeff_corres`
-is the full ascent leg; welding it to emitted bytes is `keystone_emit_fq` fed the
-concrete-kernel emit data (`translateDialectControl` / `RustExec` / `semScalar` /
-`cryptoDialectToJasminCom` `.get`/`rfl` facts). That scaffolding is exactly
-`FeAddEndToEnd`'s ~150 lines, but its literals `av = 1634760805`, `bv = 857760878`
-are NOT canonical (`≥ 3329`), so it cannot be reused as-is; a canonical-literal clone
-(`a0 := 100; b0 := 200`) is needed. No new theory — a mechanical clone.
+**The emit weld for one coefficient.** `polyAddCoeff_corres` is the ascent leg of the
+kernel `a0 := 100; b0 := 200; r0 := a0 + b0`. No theorem in the package supplies the
+front and emit facts (`translateDialectControl`, `RustExec`, `semScalar`,
+`cryptoDialectToJasminCom`) for this kernel, so `keystone_emit_fq` has no instance.
+The front facts of `FeAddEndToEnd` are for the literals `av = 1634760805` and
+`bv = 857760878`, which are not canonical (`≥ 3329`).
 
-**(2) The 256-coefficient loop — genuine new work.** `corres_for`
-(`Ascent.Control`) is generic in the state relation, but it is HOMOGENEOUS
-(`Corres SR`, one relation) and hardwired to a 64-bit counter (`BitVec.ofNat 64 n`).
-An unreduced `poly_add` loop needs the heterogeneous `CorresH` at the loop level
-(canonical inputs, non-canonical outputs), i.e. a `corresH_for`, which does not
-exist. Beyond that, the loop body reads `a[i]`, `b[i]` and writes `r[i]` through
-array load/store, not scalar names: the array-store leaf `corres_arrStore` exists,
-but the array-LOAD leaf (`RArrLoad`) is the open dual noted in the Ascent frontier,
-and the abstract state would be a `Vector Zq3329 256`, not `String → ZMod 3329`.
-Finally, the spike's index-fold lemma `ExtractionTransferSpike.go_update_getElem?`
-characterizes `Hax.foldRange.go` over `Array Int` (the extraction's own fold), which
-is a DIFFERENT recursion from `semScalar`'s `semRForD` that `corres_for` peels — so
-it does not plug into `corres_for` directly; bridging them is part of the same
-array/loop tower work. -/
+**The polynomial loop.** `corres_for` (`Ascent.Control`) is homogeneous (one relation
+`SR`) and takes an index-independent step. `MlkemPolyFoldCorres` states the
+index-dependent loop rule `corres_for_indexed` and the whole-polynomial
+correspondence `polyAdd_fold_corres` over an unrolled chain of per-index scalar
+names, with the homogeneous mixed relation `SRfqMixed`. A loop over array memory
+would read `a[i]`, `b[i]` and write `r[i]` through `RArrLoad` and `RArrStore`
+(`corres_arrLoad`, `corres_arrStore`), with an abstract state of `256` coefficients;
+no theorem in the package states that loop. -/
 
 end CatCrypt.Crypto.SecureCompilation.Ascent

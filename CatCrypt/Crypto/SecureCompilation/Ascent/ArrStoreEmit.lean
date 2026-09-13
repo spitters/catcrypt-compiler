@@ -9,23 +9,23 @@ public import CatCrypt.Crypto.SecureCompilation.Ascent.ArrStoreLeaf
 public import CatCrypt.Crypto.SecureCompilation.Ascent.EmitBridge
 
 /-!
-# The emit keystone for the array-store leaf
+# The emit weld for the array-store leaf
 
 Part of the AutoCorres-in-Lean ascent begun by Sebastian Graf
 (`sgraf812/ascent`).
 
-`Ascent/EmitBridge.lean` welds the scalar value leaf (`SRword`) to emitted jasmin
-bytes: `keystone`/`keystone_emit` turn a `Corres SRword …` into
+`Ascent/EmitBridge.lean` welds the scalar value leaf (`SRword`) to the jasmin
+program of the emit leg: `keystone_emit` turns a `Corres SRword …` into
 `jcom.denote (…) = ctTransTy val` with `wEnc val` the clean `ZMod 2^64` spec.
-`Ascent/ArrStoreLeaf.lean` proves the array analogue on the abstraction side —
+`Ascent/ArrStoreLeaf.lean` proves the array counterpart on the abstraction side:
 `corres_arrStore`, a `Corres SRarr …` value leaf for the dynamic-index write
 `RArrStore`, landing in the abstract array-update `arr[idx] := src`
-(`memSetDynAbs`) — but had no keystone to weld it to emitted bytes.
+(`memSetDynAbs`).
 
-This module is that array keystone. It generalises `EmitBridge`'s `SRword` seam to
-the `SRarr` array component: the tracked output is the array slot (type
-`.memref n`, value `av : Fin n → BitVec 64`), and the abstraction leg's `SRarr`
-pins its pointwise encoding `wEnc (av j) = (fa a₀).arr j` to the clean array spec.
+This module states the emit weld for the `SRarr` array component: the tracked
+output is the array slot (type `.memref n`, value `av : Fin n → BitVec 64`), and
+the abstraction leg's `SRarr` pins its pointwise encoding
+`wEnc (av j) = (fa a₀).arr j` to the clean array spec.
 
 ## The emit backend does lower `RArrStore`
 
@@ -39,21 +39,20 @@ with denotational agreement `stackSet_eq_memSetDyn`. So
 `rustToJasminCom_endToEnd_topLevel_unconditional` — polymorphic in the output
 `CryptoTy` — carries the `.memref n` output the same way it carries `.sword 64`.
 
-## The keystone
+## The weld
 
-`keystone_arr` is the abstract-`Emit` seam: from `Corres SRarr P fa c` run at a
-`SRarr`-populated entry `(env₀, a₀)`, the emit-leg output `hEmit`, and the
-closed-kernel adapter `hAgree` (the `env₀`-run leaves the array `val` at the slot),
-it concludes the emit equation and `∀ j, wEnc (val j) = (fa a₀).arr j` — the
-emitted array's pointwise clean spec is the abstract array update.
-`keystone_emit_arr` discharges the emit supplier with the real
-`rustToJasminCom_endToEnd_topLevel_unconditional` at `t = .memref n`.
+`keystone_arr` is abstract in the emit map `Emit`: from `Corres SRarr P fa c` run at
+a `SRarr`-populated entry `(env₀, a₀)`, the emit equation `hEmit` taken as a
+hypothesis, and the closed-kernel adapter `hAgree` (the `env₀`-run leaves the array
+`val` at the slot), it concludes the emit equation and
+`∀ j, wEnc (val j) = (fa a₀).arr j`: the array's pointwise clean spec is the
+abstract array update. `keystone_emit_arr` discharges `hEmit` with
+`rustToJasminCom_endToEnd_topLevel_unconditional` at `t = .memref n`; the package
+contains no instance of it.
 
-`keystone_arrStore` is the non-vacuity witness: `corres_arrStore` discharges the
-abstraction-side hypotheses (`Corres`/`SRarr`/`P`/`hAgree`) for the concrete
-closed store `RArrStore`, so the array keystone's abstraction inputs are jointly
-satisfiable (the bridge is not vacuous); the emit-side data is the standard
-covered-kernel input to the end-to-end theorem.
+`keystone_arrStore` applies `keystone_arr` to the concrete store `RArrStore`, with
+`corres_arrStore` discharging `Corres`; the abstraction-side hypotheses
+(`Corres`/`SRarr`/`P`) are satisfiable, and `hAgree` and `hEmit` remain hypotheses.
 -/
 
 @[expose] public section
@@ -79,12 +78,12 @@ open CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect (ctMapValD)
 
 namespace CatCrypt.Crypto.SecureCompilation.Ascent
 
-/-! ## The array keystone (abstract in the emit map) -/
+/-! ## The array emit weld, abstract in the emit map -/
 
-/-- **`keystone_arr`.** The array analogue of `keystone`. From an ascent
-    correspondence `Corres (SRarr n arrName idxName srcName) P fa c` run at a
-    `SRarr`-populated entry `(env₀, a₀)`, the emit-leg output `hEmit`
-    (`jdenote = Emit val`), and the closed-kernel adapter `hAgree` (the `env₀`-run
+/-- **`keystone_arr`.** The emit weld of `EmitBridge` at the array relation. From an
+    ascent correspondence `Corres (SRarr n arrName idxName srcName) P fa c` run at a
+    `SRarr`-populated entry `(env₀, a₀)`, the emit equation `hEmit`
+    (`jdenote = Emit val`) taken as a hypothesis, and the closed-kernel adapter `hAgree` (the `env₀`-run
     leaves the array `val` at `arrName`), conclude both the emit equation and that
     the emitted array's pointwise clean `ZMod 2^64` spec is `(fa a₀).arr` — the
     abstract array update. `Emit` is abstract; it is instantiated to `ctTransTy`
@@ -108,14 +107,13 @@ theorem keystone_arr {β : Type} {n : Nat} (Emit : (Fin n → BitVec 64) → β)
   obtain rfl : av = val := by simpa using hcast
   exact ⟨hEmit, hArrEnc⟩
 
-/-! ## The composed array keystone (real emit theorem) -/
+/-! ## The array emit weld with the emit leg discharged -/
 
-/-- **`keystone_emit_arr`.** The array keystone with the emit supplier discharged
-    by the real end-to-end theorem `rustToJasminCom_endToEnd_topLevel_unconditional`
-    at output type `.memref n`: the emitted jasmin program `jcom` denotes to
-    `ctTransTy val`, and the emitted array's pointwise clean `ZMod 2^64` spec is the
-    abstract array update `(fa a₀).arr`. This is the theorem that makes the
-    `corres_arrStore` abstraction result discharge an emit conclusion. The
+/-- **`keystone_emit_arr`.** `keystone_arr` with `hEmit` discharged
+    by the end-to-end theorem `rustToJasminCom_endToEnd_topLevel_unconditional`
+    at output type `.memref n`: the jasmin program `jcom` denotes to
+    `ctTransTy val`, and the array's pointwise clean `ZMod 2^64` spec is the
+    abstract array update `(fa a₀).arr`. The
     `Corres`/`SRarr` entry and the closed-kernel adapter `hAgree` use the
     *satisfiable* route (a populated entry `env₀`, not the empty env the emit leg
     runs at). -/
@@ -150,15 +148,11 @@ theorem keystone_emit_arr {n : Nat}
   exact keystone_arr (ctTransTy (t := .memref n)) c arrName idxName srcName val fa P
     env₀ a₀ _ hCorres hSR hP hAgree hEmit
 
-/-! ## Non-vacuity witness for the abstraction/adapter side
+/-! ## The abstraction side at a concrete store
 
-For the concrete closed store `RArrStore arr idxVar src`, the `Corres`/`SRarr`/`P`
-entry and the closed-kernel adapter `hAgree` are all dischargeable:
-`corres_arrStore` supplies `Corres`, an `SRarr`-populated entry env supplies the
-state relation, `P = True`, and the store's determinism supplies `hAgree`. This
-exhibits that `keystone_arr`'s abstraction-side hypotheses are jointly satisfiable
-(the array bridge is not vacuous); the emit-side data is the standard
-covered-kernel input to `rustToJasminCom_endToEnd_topLevel_unconditional`. -/
+`keystone_arr` at the store `RArrStore arr idxVar src`: `corres_arrStore` supplies
+`Corres` and `P = True`. The entry relation `hSR`, the closed-kernel adapter
+`hAgree` and the emit equation `hEmit` remain hypotheses of the theorem. -/
 theorem keystone_arrStore {β : Type} {n : Nat} (Emit : (Fin n → BitVec 64) → β)
     (arr src : Located) (idxVar : String)
     (harr : encodeTy arr.locSrc = .memref n)

@@ -55,8 +55,7 @@ the tactic. This is the mechanism by which the generator stays open.
 **Same-file caveat (why the in-file tactic uses an explicit bundle).** An
 attribute registered with `register_simp_attr` is created by an `initialize`
 block that runs at *import* time, so within its *defining* file the attribute is
-neither taggable (`@[xspec]`) nor referenceable (`simp only [xspec]`) — the same
-constraint the codebase's `NominalTactics` records. The in-file `xmvcgen`
+neither taggable (`@[xspec]`) nor referenceable (`simp only [xspec]`). The in-file `xmvcgen`
 therefore drives normalization with the **explicit** reduction bundle listed
 below (semantically the `xspec` set); a downstream `xmvcgen`-style variant using
 `simp only [xspec, …]` extends automatically. The four demos at the end exercise

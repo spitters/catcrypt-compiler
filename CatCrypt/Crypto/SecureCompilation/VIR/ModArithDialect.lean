@@ -16,7 +16,7 @@ public import Mathlib.Data.ZMod.Basic
 Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
 The single, shared modular-arithmetic dialect of the PrimeIR-style layered
-crypto-IR stack (`docs/dialect-restructure-plan.md`). It is the **L2** level
+crypto-IR stack. It is the **L2** level
 between the abstract field math and the IR backends:
 
     EllipticCurve(L4) → Field(L3) → **ModArith(L2)** → {Vector | LowCT} → {jasmin | x86}

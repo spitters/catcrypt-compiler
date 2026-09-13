@@ -18,8 +18,9 @@ set_option autoImplicit false
 and, for the monad-morphism axis, ships the identity `XWPMorphism` (`instXWPMorphismId`,
 all maps `id`, `transfer` by `rfl`), which shows the shape of the law but transfers
 nothing. This module supplies a non-identity `XWPMorphism` — a weakest-precondition
-transfer along an effect morphism — and connects the morphism axis to the codebase's
-`GradedUCMonadMorphism` (`Bridges/IrisBridge/ModalRetraction.lean`).
+transfer along an effect morphism — and relates the morphism axis to ε-graded monad
+morphisms of UC monads. Those morphisms are not defined in this package; the
+relation is described structurally below.
 
 ## The morphism: base change `StateM σ → StateT σ Option`, at the PostShape level
 
@@ -44,33 +45,28 @@ law holds by `rfl` (both WP observations reduce to `x.apply` at the pushed-forwa
 over the total shape is transported, by `xwp_morphism`, into the same triple for the
 base-changed `θ incr` in the exception-carrying shape.
 
-## Relation to `GradedUCMonadMorphism` (the ε-graded refinement)
+## Relation to ε-graded monad morphisms
 
 `XWPMorphism` is the weakest-precondition (spec-monad) face of a monad morphism
 `θ : m → n`: `transfer` states that WP-observation is natural in `θ` (with
-`preMap`/`postMap` = `θ`'s action on pre- and postconditions). `GradedUCMonadMorphism T₁ T₂ ε`
-(`UCMonad/GradedMorphism.lean`) is the operational, ε-graded refinement: a monad morphism
+`preMap`/`postMap` = `θ`'s action on pre- and postconditions). An ε-graded monad
+morphism of UC monads is an operational refinement of this: a monad morphism
 `lift : T₁ → T₂` that preserves `pure`/`bind`/`ucMapSum` and is non-expansive up to an
-additive distance cost `ε` (`lift_graded_nonexpansive`). Composition adds grades
-(`GradedUCMonadMorphism.comp`), matching `xseq`, where grades add as values (`xseq_grade`).
+additive distance cost `ε`, with grades adding under composition, as grades add as
+values under `xseq` (`xseq_grade`).
 
-The ungraded `XWPMorphism` is the `ε = 0` (grade-forgetting) shadow of a
-`GradedUCMonadMorphism`. Two facts witness this in-file:
+The ungraded `XWPMorphism` corresponds to grade `ε = 0`. Two facts witness this
+in-file:
 
 * `thetaX_grade` — the base-change morphism preserves the grade
   (`(thetaX t).grade = t.grade`): it adds zero grade, the `ε = 0` case.
 * `thetaX_grade_xseq` — it commutes with the additive grade accumulation of `xseq`
   (`grade (θ (xseq x y)) = grade (θ x) + grade (θ y)`): `θ` is a grade-`0` graded monad
-  morphism in the grade axis, the value-level analogue of
-  `GradedUCMonadMorphism.ofUCMonadMorphism : UCMonadMorphism → GradedUCMonadMorphism _ _ 0`.
+  morphism in the grade axis.
 
-A `GradedUCMonadMorphism T₁ T₂ 0` (equivalently a plain `UCMonadMorphism`) is thus the
-operational object whose WP face is an `XWPMorphism`; a positive grade `ε` refines it to
-charge `ε` of `ucSdist` slack per application — the same slack `ModalRetraction.protBI_box`
-charges (`ε + ε_r + ε_s`) when the graded retraction `(s, r)` builds the closure modality
-`♢ = s_* ∘ r_*` (`GradedModalRetraction.box`). No `UCMonad`/`SPComp` import is needed: the
-connection is the structural correspondence above (`transfer` ↔ WP-naturality of `lift`;
-`grade`/`xseq` ↔ the additive `ε`), witnessed by the two grade lemmas.
+No `UCMonad`/`SPComp` import is needed: the correspondence is structural
+(`transfer` ↔ WP-naturality of `lift`; `grade`/`xseq` ↔ the additive `ε`), witnessed
+by the two grade lemmas.
 -/
 
 namespace CatCrypt.XDijkstra
@@ -181,14 +177,13 @@ theorem demo_base_change_transport :
   show s + 1 = 1
   omega
 
-/-! ## 5. The graded bridge: `thetaX` is the `ε = 0` shadow of a `GradedUCMonadMorphism`
+/-! ## 5. The graded bridge: `thetaX` at grade `ε = 0`
 
 These two lemmas witness, in-file, the relation described in the module docstring:
-the ungraded `XWPMorphism` is the grade-forgetting (`ε = 0`) shadow of a
-`GradedUCMonadMorphism`. `thetaX` carries the grade through unchanged (adds `0`),
-and it commutes with `xseq`'s additive grade accumulation — the value-level
-counterpart of `GradedUCMonadMorphism.ofUCMonadMorphism`'s grade-`0` packaging and
-of `GradedUCMonadMorphism.comp`'s additive composition. -/
+the ungraded `XWPMorphism` corresponds to an ε-graded morphism at `ε = 0`. `thetaX`
+carries the grade through unchanged (adds `0`), and it commutes with `xseq`'s
+additive grade accumulation, the value-level counterparts of grade-`0` packaging and
+of additive composition of graded morphisms. -/
 
 /-- **`thetaX` adds zero grade** — it preserves the grade. This is the `ε = 0`
 face of the graded morphism: the WP transfer charges no extra grade. -/
@@ -199,8 +194,8 @@ theorem thetaX_grade {α : Type}
 /-- **`thetaX` commutes with additive grade accumulation.** Sequencing under `xseq`
 and then transporting equals transporting each step and adding the grades:
 `grade (θ (xseq x y)) = grade (θ x) + grade (θ y)`. So `θ` is a grade-`0` *graded*
-monad morphism in the XDijkstra grade axis — the shadow of a
-`GradedUCMonadMorphism _ _ 0`. -/
+monad morphism in the XDijkstra grade axis, corresponding to
+an ε-graded morphism at `ε = 0`. -/
 theorem thetaX_grade_xseq [Add G] {α β : Type}
     (x : XPredTrans (.graded G (.arg σ .pure)) Ω α)
     (y : XPredTrans (.graded G (.arg σ .pure)) Ω β) :

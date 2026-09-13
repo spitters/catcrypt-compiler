@@ -62,12 +62,10 @@ the fresh-temp namespace, so the total relation is *not* preserved across an
 expression assignment (a source kernel never observes those temps). `SRword`
 weakens into `SRwordNT` (`srword_srwordNT`) but not conversely, and
 `Corres SRword _ _ (.RScalarSetExpr …)` is unprovable. So this module
-uses the faithful `SRwordNT` counterparts `keystone_NT` / `keystone_emit_NT`
-(exact copies of the two `EmitBridge` welding theorems with `SRword` replaced by
-`SRwordNT` and the extra readout-name non-temp side condition `¬ isTmpName name`,
-discharged by `not_isTmp_short`). This is the honest reconciliation of the
-`SRword`/`SRwordNT` seam the `welding` structure leaves open for `RScalarSetExpr`
-kernels.
+uses the `SRwordNT` counterparts `keystone_NT` / `keystone_emit_NT`
+(the two `EmitBridge` welding theorems with `SRword` replaced by `SRwordNT` and the
+extra readout-name non-temp side condition `¬ isTmpName name`, discharged by
+`not_isTmp_short`). They are the welds for `RScalarSetExpr` kernels.
 -/
 
 @[expose] public section
@@ -98,8 +96,8 @@ namespace CatCrypt.Crypto.SecureCompilation.Ascent
 /-! ## The `SRwordNT` welding theorems -/
 
 /-- **`keystone_NT`.** The `SRword` welding theorem of `EmitBridge` over the
-    non-temp restriction `SRwordNT`, which is the honest relation for a
-    `RScalarSetExpr` value leaf. Identical proof, plus the extra readout-name
+    non-temp restriction `SRwordNT`, the relation a `RScalarSetExpr` value leaf
+    preserves. Identical proof, plus the extra readout-name
     side condition `¬ isTmpName name` (`SRwordNT` only constrains non-temp
     names). -/
 theorem keystone_NT {β : Type} (Emit : BitVec 64 → β)
@@ -120,7 +118,7 @@ theorem keystone_NT {β : Type} (Emit : BitVec 64 → β)
   exact ⟨hEmit, hwenc⟩
 
 /-- **`keystone_emit_NT`.** The composed `SRword` welding theorem
-    (`EmitBridge.keystone_emit`) over `SRwordNT`: the emit supplier is the real
+    (`EmitBridge.keystone_emit`) over `SRwordNT`: the emit equation is supplied by the
     end-to-end theorem `rustToJasminCom_endToEnd_topLevel_unconditional`, the
     abstraction leg is an `SRwordNT` `Corres`, and the readout name carries the
     `¬ isTmpName name` side condition. -/
@@ -327,24 +325,15 @@ theorem feSub_endToEnd (N : Nat) (leafSpec : LeafSpec) :
   refine ⟨h.1, ?_⟩
   rw [h.2, faSub_at_r0]
 
-/-! ## Welding the hax-lean source leg (interface)
+/-! ## The source word as an interface hypothesis
 
-`feSub_endToEnd` reads from the emitted `feSubC` kernel down to bytes. One level
-*up* is the hax-lean source: the extracted `ImpExpr` program `r = a - b`, whose
-`evalImp` semantics reach `feSubC` through two cross-repo legs — hax-lean's
-`pipeline_correct` (`HaxLean/Pipeline.lean`, denote-preserving `ImpExpr → ImpExpr`,
-which builds in `../hax-lean`, not here) and `haxToLowCT_simulates_full`
-(`CatCrypt/Crypto/Hax/HaxToLowCTSim_Main_Full.lean`, `evalImp` of the extracted
-`ImpExpr` ↔ `RustExec` of the lowered `feSubC`). Fully instantiating that ~14-hypothesis
-simulation tower for the concrete feSub `ImpExpr` is out of scope for this module,
-so the source→LowCT output identification is taken here as the **explicit interface
-hypothesis** `hSourceWord`: the source program's evaluated output word coincides
-with the emitted kernel's tracked word `feVal`. That identification is exactly the
-conclusion the (cross-repo) simulation tower delivers; chaining it with the
-already-discharged emit + ascent legs reads from the source output word all the way
-to the emitted bytes' clean `ZMod 2^64` subtraction spec. The remaining interface
-is precisely `hSourceWord` — `haxToLowCT_simulates_full ∘ pipeline_correct` for the
-feSub `ImpExpr`. -/
+`feSub_endToEnd` is stated for the `LowCT` kernel `feSubC`. `feSub_source_to_bytes`
+restates it for any word `sourceWord` with `hSourceWord : sourceWord = feVal`, the
+identification of a source program's output word with the kernel's tracked word.
+`FeSubSourceTower.feSub_source_to_bytes_tower` states the capstone for the source
+word of the `RustSrc` program `feSubSrc`, through `LegWeld.legWeld_lower`, and
+`PipelineWeld.feSub_raw_source_to_bytes` and `SourceBridge.feSubImp_raw_source_to_bytes`
+conjoin it with a statement about a raw hax-lean `ImpExpr` through its output word. -/
 theorem feSub_source_to_bytes (N : Nat) (leafSpec : LeafSpec)
     (sourceWord : BitVec 64) (hSourceWord : sourceWord = feVal) :
     feJcom.denote (ctMapValD (.nil : Ctxt.Valuation (d := catCryptDialect) ([] : Ctx)))

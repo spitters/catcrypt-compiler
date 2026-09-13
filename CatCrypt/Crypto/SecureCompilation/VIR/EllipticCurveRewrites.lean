@@ -11,8 +11,8 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.EllipticCurveDialect
 # EllipticCurve-dialect optimization rewrites (#482-3)
 
 The EC-level optimization passes of the layered crypto-IR stack
-(`docs/dialect-restructure-plan.md` §"Optimization passes attach at their natural
-level"): **MSM bucketing (Straus/Pippenger, #452/#487), comb tables (#451), and
+(`VIR/DIALECTS.md`), each attached at the dialect level where it is stated:
+**MSM bucketing (Straus/Pippenger, #452/#487), comb tables (#451), and
 wNAF (#459)** become **EllipticCurve-dialect rewrites** here, each
 *denotation-preserving* against the abstract `ECPoint` group spec.
 

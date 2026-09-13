@@ -13,11 +13,10 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCove
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 /-!
-# P5 — a generic MUL→MULX instruction-selection pass over `List (JInstr 64)`
+# A generic MUL→MULX instruction-selection pass over `List (JInstr 64)`
 
-This module implements **P5** from `owned-vs-jasminc-perf-review.md`: a *generic*
-instruction-selection pass that recognises a low-word multiply paired with the
-widening (high-word) form of the same product and rewrites the pair to a single
+This module implements a *generic* instruction-selection pass that recognises a
+low-word multiply paired with the widening (high-word) form of the same product and rewrites the pair to a single
 two-output `MULX`. Today the fast ADX/BMI2 instructions (`MULX`/`ADCX`/`ADOX`)
 reach the emitted assembly only from hand-written `*Emit` kernels and the
 one-off `FheMontMulEmit.fuseMulHiLprog` post-pass, which runs on the

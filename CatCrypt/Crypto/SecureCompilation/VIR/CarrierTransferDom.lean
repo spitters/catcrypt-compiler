@@ -17,14 +17,10 @@ public import Transfer.Integrations.ParamNormCast
 Every `TransferDom` registered by the engine so far is **diagonal** (graph `Eq`):
 the same-type field domain (`ParamCryptoDomains.instTransferDomBabyBear`), the
 diagonal `paramDiag`, and the lone change-of-representation toy `Num ↦ ℕ`
-(`ParamTrocq.instTransferDomNumNat`). The engine README names the extension point
-explicitly (`Trocq/README.md` §"Scope & limitations"):
-
-> **`TransferDom` domains are diagonal.** `param_transfer` resolves the diagonal
-> and `Num↦ℕ`; the Baby Bear `TransferDom` is the field's diagonal. A
-> non-diagonal representation domain (`F↔limbs`, `ZMod p↔limbs`, group↔bytes)
-> needs a registered **backward decoder** and the **limb predicate** the `∀`-rule
-> emits.
+(`ParamTrocq.instTransferDomNumNat`). `param_transfer` resolves the diagonal and
+`Num↦ℕ`; the Baby Bear `TransferDom` is the field's diagonal. A non-diagonal
+representation domain (`F↔limbs`, `ZMod p↔limbs`, group↔bytes) needs a registered
+**backward decoder** and the **limb predicate** the `∀`-rule emits.
 
 This file registers exactly such a non-diagonal domain for the **compiler carrier
 change** `lo32 : BitVec 64 → BitVec 32` (the dword-lane projection `setWidth 32`
@@ -46,7 +42,7 @@ packages the three pieces the README asks for, in the `paramNumNat` mould:
 * **the width/range predicate** the `∀`-rule emits — the round-trip
   `lo32 (setWidth 64 b) = b`, i.e. `setWidth 32 (setWidth 64 b) = b`, which holds
   because truncating a zero-extension to a narrower width recovers the original
-  (`32 ≤ 64`). This is the "limb predicate" content: the decoder is a genuine
+  (`32 ≤ 64`). This is the "limb predicate" content: the decoder is a
   *right* inverse of the truncation, so the backward `map2a` `map_in_R` closes.
 
 Because `R` is the graph of the forward map `lo32`, this is also literally the
@@ -69,9 +65,9 @@ the documented frontier (`ParamCryptoDomains` §"The non-diagonal frontier"): th
 `∀`-rule phrases the obligation against `P'` but cannot *infer* `P'` from `P`
 through the carrier (that is the annotation-inference gap — full `⟦t⟧` over
 arbitrary terms with per-subterm levels). So the public API **suffices** to
-register a genuine non-diagonal carrier domain and to auto-resolve it in
+register a non-diagonal carrier domain and to auto-resolve it in
 `param_transfer`; it does **not** auto-synthesize the limb predicate, which
-remains the one hand step at the leaf. Honest verdict in `§5`.
+remains the one hand step at the leaf. §5 states the assessment in full.
 
 ## Scope
 
@@ -111,7 +107,7 @@ representation. -/
 
     This is the README's named extension point realized: a non-diagonal
     `representation` domain with a registered backward decoder, in the `paramNumNat`
-    shape but carrying a genuine 64→32 compiler lane change. -/
+    shape but carrying a 64→32 compiler lane change. -/
 def paramLo32 : Param .map0 .map2a (BitVec 64) (BitVec 32) where
   R := fun a b => lo32 a = b
   fwd := ⟨⟩
@@ -255,7 +251,7 @@ theorem andLo32Wit_viaCastHom :
 lo32 (chQ x y z)` by hand, composing the `andHomLo`/`xorHomLo`/`notHomLo` squares.
 The same recovery runs through the registered carrier domain: a 64-bit-lane
 `Ch`-idempotence-style fact transports to the dword lane. We show the single-binder
-shape (the genuine `param_transfer` payoff — a 3-binder version needs the nested
+shape (the `param_transfer` payoff — a 3-binder version needs the nested
 `∀`-rule `forallTransfer3`, the same hand composition `chD_transports` performs).
 
 The point of comparison (`§5`): the *domain resolution* is now automatic, where the
@@ -293,11 +289,11 @@ spells out, leaving exactly **one** manual step at each leaf: applying the lane
 homomorphism against a caller-written limb predicate. That residual is the
 README's documented frontier — *not* a defect of this registration.
 
-## The honest verdict: did the public API suffice?
+## Does the public API suffice?
 
 **Yes, for the domain.** The public `Param`/`TransferDom` constructors and the
 `ParamNormCast` `RArrow`/`paramWitOfCastHom` shape are sufficient to register a
-genuine **non-diagonal** carrier `TransferDom (BitVec 64) (BitVec 32)` — forward
+**non-diagonal** carrier `TransferDom (BitVec 64) (BitVec 32)` — forward
 cast graph, backward zero-extend decoder at `map2a`, round-trip predicate — and to
 have `param_transfer` auto-resolve it (`§1`) and transport carrier-changing facts
 across it (`§2`, `§4`). No engine edit was needed.

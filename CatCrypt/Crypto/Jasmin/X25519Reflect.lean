@@ -44,10 +44,9 @@ type.
 
 ## NO HAX BRIDGE — bridge is to RFC 7748 §5 spec only
 
-Per `bench/framework/AUDIT_HAX_BRIDGE.md` (row "x25519 (ladder)"):
-> The rustcmd's `x25519` builds on opaque `fe_*` leaves; no hax exists
-> to bridge against. Bridge target is the hand-written Lean spec used by
-> `bench/x25519_ladder/x25519_ladder_emit.lean` — not from hax.
+The rustcmd's `x25519` builds on opaque `fe_*` leaves; no hax extraction exists
+to bridge against. The bridge target is the hand-written Lean spec used by
+`bench/x25519_ladder/x25519_ladder_emit.lean`, not hax output.
 
 There is no `x25519-hax/` Rust source. The L3 bridge for x25519 is to
 the RFC 7748 §5.2 byte-vector test vectors (KAT-only); the named
@@ -70,7 +69,7 @@ reifier *would* produce.
 * `bench/x25519_ladder/x25519_ladder_emit.lean` — the verified-loop-layer
   emit driver (the loop wrapper around this Reflect surface's iteration)
 * `CatCrypt/Crypto/SecureCompilation/VIR/X25519Ladder.lean` —
-  `x25519Ladder.toCfor` / `x25519Ladder_loop_denote_eq` keystone
+  `x25519Ladder.toCfor` / `x25519Ladder_loop_denote_eq`
 -/
 
 @[expose] public section

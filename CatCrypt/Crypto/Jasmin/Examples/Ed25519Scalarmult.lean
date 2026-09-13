@@ -263,10 +263,8 @@ theorem scalarmult256_correct
 ```
 
 This is the same proof shape as AUCurves' missing
-`ed25519_scalarmult_correct` would have in Coq, executed in Lean.
-Effort estimate (per `mvcgen-loom-evaluation.md` §Option C): ~2 weeks
-once the field-leaf Hoare specs land. Comparable to the AUCurves
-bedrock2-Coq path estimated at 100-200 LoC bedrock2 + 100-200 LoC WP.
+`ed25519_scalarmult_correct` would have in Coq, executed in Lean. It
+depends on Hoare specifications of the field leaves.
 -/
 
 end CatCrypt.Crypto.Jasmin.Examples.Ed25519Scalarmult

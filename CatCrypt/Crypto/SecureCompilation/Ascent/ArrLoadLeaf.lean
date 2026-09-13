@@ -17,7 +17,7 @@ Part of the AutoCorres-in-Lean ascent begun by Sebastian Graf
 This is the **read dual** of `ArrStoreLeaf.lean`'s `corres_arrStore`. Where the
 store leaf abstracts one dynamic-index array write `RArrStore arr idxVar src`, this
 module abstracts one dynamic-index array read `RArrLoad dst src idxVar`. `semScalar`
-genuinely interprets `RArrLoad`: in its real arm — destination a `u64`, source a
+interprets `RArrLoad`: in its arm — destination a `u64`, source a
 `.memref n`, index a `.sword 64` word — it writes the dynamic-index read
 `memGetDyn arr i` into the `.sword 64` destination. This module welds a `Corres`
 value leaf to that arm, mirroring the store side.

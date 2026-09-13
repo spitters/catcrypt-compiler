@@ -27,7 +27,7 @@ It supplies the limb arithmetic the EC field-sub kernels need:
   integer specification `sbbLimbs_spec` — the recomposed output value minus the
   top borrow weight equals the true multi-precision difference. This is the fact
   a whole `feSub` block is correct *about*, stated over `ℤ` with the borrow-out as
-  an honest underflow bit.
+  an underflow bit.
 * `sbbChain`/`corresJ_sbbChain`, an arbitrary-length chain of `sbb` instructions
   refining the composed abstract borrow fold through `corresJ_append` — the
   emit-block leg.

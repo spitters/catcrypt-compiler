@@ -18,7 +18,7 @@ and Jacobian → affine.  It is the CatCrypt counterpart of prime-ir's
 
 ## Why this dialect exists (the gap it closes)
 
-Per `PRIME_IR_OP_CORRESPONDENCE.md` (repo root, §4), CatCrypt already *moves between*
+Against prime-ir's `elliptic_curve` dialect (`VIR/DIALECTS.md`), CatCrypt already *moves between*
 the affine and Jacobian representations — `affToPoint` embeds an affine wire
 point into the abstract group, and the MSM kernels normalise Jacobian
 accumulators back to affine via `Pairing/BatchInverse.lean` — but it does **not**

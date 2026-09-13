@@ -29,7 +29,7 @@ opt-ins**: each carries a *side-conditioned* certificate (`AgreeOn`, a
 `SpillValid` sandwich, a `StateRel` simulation, a per-block legality proof) that
 does not chain transitively without threading a hypothesis.
 
-This module is P1 from `owned-vs-jasminc-perf-review.md`: a **CompCert-style
+This module is a **CompCert-style
 verified-validator** pipeline that lets those stronger passes become the default
 *safely*.  The design is the classic translation-validation gate:
 

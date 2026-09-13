@@ -9,14 +9,10 @@ module
 /-!
 # Single-binary diff-test driver (`lake exe difftest`)
 
-Lean port of `scripts/diff_bignum_sem.sh` (per next.md backlog
-"Convert the diff-test cases to use `lake exe difftest`").
-
-Replaces the bash-orchestrated 4-stage pipeline (emit → compile →
-rustc → run) with a single typed Lean executable. Same external tools
-(jasminc / clang / rustc) are invoked via `IO.Process.run`; the
-test-case ↔ port mapping is now Lean data instead of parallel bash
-arrays.
+Runs the 4-stage bignum diff-test pipeline (emit → compile → rustc →
+run) as a single typed Lean executable. The external tools (jasminc /
+clang / rustc) are invoked via `IO.Process.run`; the test-case ↔ port
+mapping is Lean data.
 
 ## Usage
 
@@ -30,14 +26,7 @@ lake exe difftest <case_name>      # run one case
 Each case has a name (matching a `tc*` def in
 `Test/EmitDiffTestRs.lean`) and a port name (matching a `*Port` def
 in `Test/EmitPortJazz.lean`). The pairs are listed in `allCases`
-below; updating the list here is the single source of truth (no more
-bash array index correspondence).
-
-## What this replaces
-
-`scripts/diff_bignum_sem.sh` remains for interactive single-stage
-debugging (`stage_emit_rs`, `stage_compile_port`, etc.). The
-all-cases driver is now this Lean exe.
+below; that list is the single source of truth.
 -/
 
 @[expose] public section
@@ -194,15 +183,13 @@ def stageRunCheck (tc : TestCase) : IO Bool := do
 
 /-! ## §3.5. Path 3: AUCurves-extracted Rust (Phase 1.5 Stage 2)
 
-Per next.md backlog: "Phase 1.5 Stage 2 actually wired through the
-diff-test (consume the AUCurves-emitted Rust as a third path alongside
-our jasminc output)".
+This stage consumes the AUCurves-emitted Rust as a third path alongside
+the jasminc output.
 
 The AUCurves Coq side defines
 `AUCurves/.../Ed25519/ExtractRust.v::ed25519_safe_rust : string` — a
 verified-extraction Rust module text. To consume it as a diff-test
-path, the Coq side must `Compute` and dump it to a file (see
-`scripts/extract_ed25519_rust.sh::stage_extract_rust`). Once the file
+path, the Coq side must `Compute` and dump it to a file. Once the file
 exists, this stage compiles it via `rustc` and the resulting binary
 becomes a third comparison path alongside Lean+jasminc.
 
@@ -217,9 +204,9 @@ becomes a third comparison path alongside Lean+jasminc.
 ## What's NOT wired
 
 * The Coq `Compute` + file-dump step. That requires editing AUCurves's
-  `ExtractRust.v` to add a `Redirect` directive, or wrapping the
-  `coqtop -batch` invocation in `extract_ed25519_rust.sh`. AUCurves is
-  in a separate repo; that's a Coq-side change tracked as Phase 1.5.
+  `ExtractRust.v` to add a `Redirect` directive, or wrapping a
+  `coqtop -batch` invocation in a script. AUCurves is a separate
+  repository, so this is a Coq-side change.
 * Integration into the bignum diff-test cases: `tcModCanonical` etc.
   test bignum primitives, not full Ed25519 sign/verify. Adding an
   Ed25519-level test case (with KAT vectors from RFC 8032 §7.1) is a
@@ -234,9 +221,7 @@ extraction is automated and Ed25519-level test cases exist, the call
 moves into `runOneCase`. -/
 
 /-- Canonical path the Coq AUCurves extractor is expected to write
-    `ed25519_safe_rust` to. The shell script
-    `scripts/extract_ed25519_rust.sh` uses this path; environments
-    that build AUCurves locally should run that script first. -/
+    `ed25519_safe_rust` to. -/
 def aucursvesRustPath (cfg : Config) : String :=
   s!"{cfg.ssprove}/eddsa-hax/extracted/ed25519_extracted.rs"
 

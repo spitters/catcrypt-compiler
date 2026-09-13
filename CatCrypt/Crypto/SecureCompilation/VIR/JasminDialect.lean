@@ -15,10 +15,9 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
 Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
 A minimal `VIR.Dialect` whose `Op`/`Ty` model the word-level, register/stack,
-two-address fragment of Jasmin that `RustEmitJazz` emits empirically. This is
-spike (a) of the Jasmin ⇄ VIR convergence plan: move the optimizer onto a typed
-`Com` substrate and let every backend (jasminc, Veir, MLIR text) hang off the
-shared `Com`. See the design draft `jasmin-vir-convergence-plan.md`.
+two-address fragment of Jasmin that `RustEmitJazz` emits empirically. It moves
+the optimizer onto a typed `Com` substrate, so that every backend (jasminc, Veir,
+MLIR text) hangs off the shared `Com`.
 
 It mirrors `CatCryptDialect.lean` exactly in structure: an `Op` tag inductive,
 a `Dialect`, a `TyDenote`, a `DialectSignature`, and a total `DialectDenote`.

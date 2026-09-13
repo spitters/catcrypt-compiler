@@ -9,25 +9,27 @@ public import CatCrypt.Crypto.SecureCompilation.Ascent.EmitBridge
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Control
 
 /-!
-# Discharging the keystone adapter `hAgree` for control kernels
+# Discharging the closed-kernel adapter `hAgree` for control kernels
 
 _Part of the AutoCorres-in-Lean ascent begun by Sebastian Graf (`sgraf812/ascent`);
 see `Corres.lean`._
 
-`Ascent/EmitBridge.lean`'s `keystone` requires the closed-kernel adapter
+The emit weld of `Ascent/EmitBridge.lean` requires the closed-kernel adapter
 
   `hAgree : ∀ e, semScalar c env₀ = some e → e name = some ⟨.sword 64, val⟩`
 
 — the tracked output word at the written `name` is a fixed word, independent of
 the entry env `env₀`. For a straight-line closed kernel (`RScalarSet`) this is
 `rfl` (see `keystone_setScalar`). For kernels with **control** (`RIfNz` φ-merge,
-`RFor` bounded loop) it is a real lemma: the output word is still a fixed word
-computable from the kernel (`valOf c`), because every value the kernel reads is
-one it wrote earlier from a literal.
+`RFor` bounded loop) it is a lemma: the output word is a fixed word computable
+from the kernel, because every value the kernel reads is one it wrote earlier from
+a literal.
 
 This module proves that env-independence for the two covered control shapes and
-instantiates `keystone` with it, yielding `keystone_if` / `keystone_for`
-analogous to `keystone_setScalar`.
+instantiates the emit weld with it, yielding `keystone_if` / `keystone_for`
+analogous to `keystone_setScalar`. Like that theorem, both are stated for an
+abstract emit map `Emit` and take the emit equation `hEmit` as a hypothesis, which
+they return as their first conjunct.
 
 ## `RIfNz` (φ-merge)
 
@@ -68,12 +70,12 @@ def ifClosedKernel (g r : String) (gv tv ev : Nat) : LowCT :=
 def ifClosedVal (gv tv ev : Nat) : BitVec 64 :=
   phiSelect (w := 64) (BitVec.ofNat 64 gv) (BitVec.ofNat 64 tv) (BitVec.ofNat 64 ev)
 
-/-! ## `RIfNz` env-independence (the keystone adapter) -/
+/-! ## `RIfNz` env-independence (the closed-kernel adapter) -/
 
 /-- **`ifClosed_hAgree`.** The output word of the closed φ-merge kernel at the
     written name `r` is the fixed word `ifClosedVal gv tv ev`, for **any** entry
     env `env₀`. This is the control-kernel replacement for the `rfl` that
-    discharges `keystone`'s `hAgree` in the straight-line case. -/
+    discharges the adapter `hAgree` in the straight-line case. -/
 theorem ifClosed_hAgree (g r : String) (gv tv ev : Nat) (env₀ : SEnvScalar) :
     ∀ e, semScalar (ifClosedKernel g r gv tv ev) env₀ = some e →
       e r = some ⟨.sword 64, ifClosedVal gv tv ev⟩ := by
@@ -95,15 +97,15 @@ theorem ifClosed_hAgree (g r : String) (gv tv ev : Nat) (env₀ : SEnvScalar) :
   subst he'
   simp [SEnvScalar.upd]
 
-/-! ## The control-kernel keystone for `RIfNz` -/
+/-! ## The emit weld for the closed `RIfNz` kernel -/
 
-/-- **`keystone_if`.** The keystone instantiated at the closed φ-merge kernel:
+/-- **`keystone_if`.** The emit weld instantiated at the closed φ-merge kernel:
     the branch abstraction (`corres_setScalar` for the guard, `corres_if` for the
-    branch, sequenced by `corres_seq`) plus the env-independence adapter
-    `ifClosed_hAgree` discharge `keystone`, so an emit output `Emit (ifClosedVal ..)`
-    is pinned to the clean-spec branch select
-    `if gv = 0 then ev else tv` in `ZMod 2^64`. Analogous to `keystone_setScalar`,
-    but for a genuine conditional kernel. -/
+    branch, sequenced by `corres_seq`) and the env-independence adapter
+    `ifClosed_hAgree` discharge the abstraction side, so for an emit output
+    `jdenote` with `hEmit : jdenote = Emit (ifClosedVal ..)` the word is read as the
+    branch select `if gv = 0 then ev else tv` in `ZMod 2^64`. It has the shape of
+    `keystone_setScalar`, for a conditional kernel; `hEmit` is a hypothesis. -/
 theorem keystone_if {β : Type} (Emit : BitVec 64 → β)
     (g r : String) (gv tv ev : Nat) (jdenote : β)
     (hEmit : jdenote = Emit (ifClosedVal gv tv ev)) :
@@ -111,7 +113,7 @@ theorem keystone_if {β : Type} (Emit : BitVec 64 → β)
       ∧ wEnc (ifClosedVal gv tv ev)
           = (if (gv : ZMod (2 ^ 64)) = 0 then (ev : ZMod (2 ^ 64)) else (tv : ZMod (2 ^ 64))) := by
   let env₀ : SEnvScalar := fun _ => some ⟨.sword 64, (0 : BitVec 64)⟩
-  -- The branch abstraction: guard-set then a genuine φ-merge conditional.
+  -- The branch abstraction: guard-set then a φ-merge conditional.
   have hCorres :
       Corres SRword (fun _ => True)
         (fun a => (fun b s => if s = r then
@@ -119,15 +121,14 @@ theorem keystone_if {β : Type} (Emit : BitVec 64 → β)
             (fun s => if s = g then (gv : ZMod (2 ^ 64)) else a s))
         (ifClosedKernel g r gv tv ev) :=
     corres_seq (SR := SRword) (corres_setScalar g gv) (corres_if g r tv ev) (fun _ _ => trivial)
-  have h := keystone Emit (ifClosedKernel g r gv tv ev) r (ifClosedVal gv tv ev) _ (fun _ => True)
+  have h := corres_emit_weld Emit (ifClosedKernel g r gv tv ev) r (ifClosedVal gv tv ev) _ (fun _ => True)
     env₀ (fun _ => wEnc 0) jdenote
     hCorres (fun _ => ⟨0, rfl, rfl⟩) trivial (ifClosed_hAgree g r gv tv ev env₀) hEmit
   refine ⟨h.1, ?_⟩
   rw [h.2]; simp
 
-/-- A concrete closed branch kernel: a literal-`0` guard selects the else-value
-    `9`, so the pinned clean spec is `(9 : ZMod 2^64)`. Exhibits `keystone_if` is
-    non-vacuous (a real conditional keystone that closes). -/
+/-- `keystone_if` at `Emit := id` and a literal-`0` guard, which selects the
+    else-value `9`: the word reads as `(9 : ZMod 2^64)`. -/
 theorem keystone_if_example :
     (ifClosedVal 0 7 9) = (ifClosedVal 0 7 9)
       ∧ wEnc (ifClosedVal 0 7 9) = (9 : ZMod (2 ^ 64)) := by
@@ -162,7 +163,7 @@ theorem corres_fa_congr {AState : Type} {SR : SEnvScalar → AState → Prop}
   obtain ⟨env', hs, hSR'⟩ := h env a hSR hP
   exact ⟨env', hs, hfg a ▸ hSR'⟩
 
-/-! ## `RFor` env-independence (the keystone adapter) -/
+/-! ## `RFor` env-independence (the closed-kernel adapter) -/
 
 /-- **`forClosed_hAgree`.** With `r ≠ x`, the closed bounded-loop kernel's output
     at `r` is the fixed literal word `ofNat v`, for **any** entry env — the last
@@ -189,15 +190,15 @@ theorem forClosed_hAgree (x r : String) (v N' : Nat) (hne : r ≠ x) (env₀ : S
       subst he''
       simp [SEnvScalar.upd, hne]
 
-/-! ## The control-kernel keystone for `RFor` -/
+/-! ## The emit weld for the closed `RFor` kernel -/
 
-/-- **`keystone_for`.** The keystone instantiated at the closed bounded-loop
+/-- **`keystone_for`.** The emit weld instantiated at the closed bounded-loop
     kernel: `corres_for` supplies the loop abstraction (each trip realized by
     `forStep`, glued from three `corres_setScalar`s and re-based to the fixed step
     by `corres_fa_congr`), and `forClosed_hAgree` is the env-independence adapter.
-    With `r ≠ x` the emit output `Emit (ofNat v)` is pinned to the clean-spec
-    literal `(v : ZMod 2^64)`. Analogous to `keystone_setScalar`, but for a
-    genuine bounded loop. -/
+    With `r ≠ x` and `hEmit : jdenote = Emit (ofNat v)` as a hypothesis, the word
+    reads as the literal `(v : ZMod 2^64)`; that second conjunct holds for every
+    `v`. It has the shape of `keystone_setScalar`, for a bounded loop. -/
 theorem keystone_for {β : Type} (Emit : BitVec 64 → β)
     (x r : String) (v N' : Nat) (hne : r ≠ x) (jdenote : β)
     (hEmit : jdenote = Emit (BitVec.ofNat 64 v)) :
@@ -229,14 +230,13 @@ theorem keystone_for {β : Type} (Emit : BitVec 64 → β)
   have hval : nfold (forStep x r v) (N' + 1) (fun _ => wEnc 0) r = (v : ZMod (2 ^ 64)) := by
     show forStep x r v (nfold (forStep x r v) N' (fun _ => wEnc 0)) r = _
     simp [forStep, hne]
-  have h := keystone Emit (forClosedKernel x r v (N' + 1)) r (BitVec.ofNat 64 v) _ (fun _ => True)
+  have h := corres_emit_weld Emit (forClosedKernel x r v (N' + 1)) r (BitVec.ofNat 64 v) _ (fun _ => True)
     env₀ (fun _ => wEnc 0) jdenote
     hloop (fun _ => ⟨0, rfl, rfl⟩) trivial (forClosed_hAgree x r v N' hne env₀) hEmit
   exact ⟨h.1, h.2.trans hval⟩
 
-/-- A concrete closed loop kernel (`3` trips, counter `"i"`, output `"o" := 5`):
-    the pinned clean spec is `(5 : ZMod 2^64)`. Exhibits `keystone_for` is
-    non-vacuous (a real bounded-loop keystone that closes). -/
+/-- `keystone_for` at `Emit := id` for the closed loop kernel with `3` trips,
+    counter `"i"` and output `"o" := 5`: the word reads as `(5 : ZMod 2^64)`. -/
 theorem keystone_for_example :
     (BitVec.ofNat 64 5) = (BitVec.ofNat 64 5)
       ∧ wEnc (BitVec.ofNat 64 5) = (5 : ZMod (2 ^ 64)) :=

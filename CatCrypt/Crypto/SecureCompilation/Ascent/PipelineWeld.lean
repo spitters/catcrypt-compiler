@@ -13,15 +13,15 @@ public import HaxLean.PipelineCF
 # Welding hax-lean's `pipeline_correct` on top of the `feSub` source tower
 
 `FeSubSourceTower.feSub_source_to_bytes_tower` carries the `feSub` source kernel
-`r0 := a0 - b0` — as a `RustSubset` straight-line program — all the way down to
-the emitted jasmin program `feJcom`'s bytes and their clean `ZMod 2^64`
+`r0 := a0 - b0` — as a `RustSubset` straight-line program — down to the
+denotation of the jasmin program `feJcom` and its clean `ZMod 2^64`
 subtraction spec, with no free `Corres`/`RustExec` hypothesis.  That tower starts
-from the *already-lowered* source word `feSubSourceWord`.
+from the source word `feSubSourceWord` of the `RustSubset` program.
 
 One level *up* sits hax-lean's own imperative front: the RAW, pre-optimization
 extracted `ImpExpr e` produced by `cargo hax into lean`, before any of the
-functionalizing phases run.  hax-lean's `pipeline` (`../hax-lean`,
-`HaxLean/Pipeline.lean`) is the 4-phase lowering
+functionalizing phases run.  hax-lean's `pipeline` (`HaxLean/Pipeline.lean` in the
+hax-lean dependency) is the 4-phase lowering
 (`dropReferences → localMutation → functionalizeLoops → cfIntoMonads`), and
 `pipeline_correct` proves it *denote-preserving*: `denote bi fuel (pipeline e) =
 denote bi fuel e` for every `ImpExpr` whose post-phase-1-2 form is loop-free and
@@ -43,7 +43,9 @@ consumes a `BitVec 64`.  `haxOutcomeWord` reads a 64-bit word out of a hax
 `Outcome`, and the identification "the raw `e`'s evaluated output word *is*
 `feSubSourceWord`" is the hypothesis `hBridge`.  The denote-preservation of the
 whole optimization pipeline and the source-word→bytes tower carry no free
-hypothesis.  `hBridge` is discharged in `Ascent/SourceBridge.lean`: from the
+hypothesis.  The join relates `e` to the capstone only through that word: the
+jasmin program `feJcom` is the front's translation of the `LowCT` kernel `feSubC`,
+and the conclusions about `feJcom` do not mention `e`.  `hBridge` is discharged in `Ascent/SourceBridge.lean`: from the
 program-level simulation's side conditions by `raw_source_to_bytes_of_program`,
 and for the `feSub` kernel by evaluation (`feSubImp_word`, used by
 `feSubImp_raw_source_to_bytes`).
@@ -189,8 +191,12 @@ theorem feSub_raw_source_to_bytes
     loop-freeness side condition `hNoLoops` is replaced by the builtin-table
     contract `Builtins.DeepNoControlFlow`, discharged here for the concrete
     `defaultBuiltins` by `Builtins.defaultBuiltins_deepNoControlFlow`.  The residual side conditions
-    are `NoCFConstructors e`, `NoEarlyExit`, and `Env.NoControlFlow env` (all
-    true of a real feSub extraction), plus the same word bridge `hBridge`. -/
+    are `NoCFConstructors e`, `NoEarlyExit`, and `Env.NoControlFlow env`, plus the
+    word bridge `hBridge` at `defaultBuiltins`.  That table's `sub` accepts only
+    `int` arguments and `haxOutcomeWord` reads only `uint` values, so `hBridge` fails
+    for a program whose result is computed by `sub` at this table;
+    `feSubImp_raw_source_to_bytes` (`SourceBridge.lean`) uses the unprimed form at
+    `widthAwareBuiltins`. -/
 theorem feSub_raw_source_to_bytes'
     (N : Nat) (leafSpec : LeafSpec)
     (fuel : Nat) (env : Hax.Env) (e : Hax.ImpExpr)

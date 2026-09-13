@@ -48,17 +48,16 @@ block (`runBlockM_spec`) and strengthens the precondition. Chaining
 leaf to a `Std.Do` triple, and `mvcgen [stepM_spec]` discharges it — witnessed on
 the subtract-with-borrow leaf `corresJ_sbb`.
 
-## Relationship to the bignum interpreter (`Jasmin/BignumHoare.lean`)
+## Relationship to the bignum interpreter (`Jasmin/BignumExec.lean`)
 
-`BignumHoare.BignumTriple` is the same *shape* of statement over a different
+A Hoare triple over the bignum interpreter has the same *shape* over a different
 machine: `bignumExec : List InstrR → BignumState → Option BignumState` is
 **partial** (it runs in `StateT BignumState Option`, not the total `StateM`), so
-its `Std.Do` incarnation has the richer `PostShape` `.arg BignumState (.except
-Unit .pure)` and needs a custom per-instruction `wp` lemma (the `StateT _ Option`
-monad `mvcgen` does not auto-drive). The pure-`StateM` bridge here therefore does
-not *literally* subsume `BignumTriple`; it is the total-machine instance of the
-same recipe, and the bignum interpreter would become a second `Std.Do` mvcgen
-instance built the same way over its Option monad rather than folded into this one.
+its `Std.Do` form has the `PostShape` `.arg BignumState (.except Unit .pure)` and
+needs a per-instruction `wp` lemma (the `StateT _ Option` monad `mvcgen` does not
+drive automatically). The pure-`StateM` bridge here is the total-machine instance
+of that recipe and does not cover the partial interpreter;
+`RunBlockMvcgenMorphism` transports its triples into `StateT _ Option`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Ascent

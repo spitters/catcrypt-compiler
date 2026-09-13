@@ -34,9 +34,8 @@ The worked results tie this to the variable-time modular inverse:
   verify declassifying the public modulus) flips reject → accept: the source-level
   downgrade licenses the vartime kernel.
 
-This is the compiler-side consumption path of the plan in `TRANSFER_BOUNDARY.md`
-§"The CT transfer". It reuses the `cmdCT` machinery and the vartime accept/reject
-theorems verbatim; only the *provenance* of the label table changes.
+This is the compiler-side consumption path of the constant-time transfer. It
+reuses the `cmdCT` machinery and the vartime accept/reject theorems verbatim; only the *provenance* of the label table changes.
 -/
 
 @[expose] public section
@@ -64,7 +63,7 @@ structure SourceSecrecy where
 
 /-- The `LevelTable` a `SourceSecrecy` induces: `Public` unless the binding is a
     non-declassified secret. `declassify` wins over `secret` (a downgraded value
-    is public). This is the table `cmdCT` consumes — no longer hand-authored. -/
+    is public). This is the table `cmdCT` consumes, derived rather than hand-authored. -/
 def SourceSecrecy.toLevelTable (s : SourceSecrecy) : LevelTable :=
   fun v =>
     if s.declassified.contains v then .Public

@@ -16,9 +16,7 @@ with no `Com`/`Lprog` IR and no verified printer, so no theorem relates the
 emitted bytes to a source. Correctness is corroborated by the byte-level checks
 only — the interpreted FIPS-202 self-check (§5) and the external byte-KAT
 `bench/keccak_compare/keccak_kat_simd.c` — not a lowering theorem. It is a
-bench/interop reference. The verified emit path is the FRONT-SOURCED descent;
-see `bench/framework/AUDIT_EMIT_BYPASS.md` and `EMIT_PROVENANCE.md`
-§"Which emit is verified?".
+bench/interop reference. The verified emit path is the FRONT-SOURCED descent.
 
 The single-instance analogue of `KeccakAvx2Emit` (which is 4-way): a
 SELF-CONTAINED per-kernel module that re-emits the **single** Keccak-p[1600,24]

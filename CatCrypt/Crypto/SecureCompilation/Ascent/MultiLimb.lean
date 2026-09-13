@@ -11,11 +11,10 @@ public import CatCrypt.Crypto.SecureCompilation.Ascent.StoreRefinement
 # Multi-limb value abstraction (re-export shim)
 
 The multi-limb value-abstraction layer — the base-`2^64` limb-array→field split
-surjection `(Fin n → BitVec 64) ↠ ZMod p` — now lives in the ParamTransfer release
+surjection `(Fin n → BitVec 64) ↠ ZMod p` — is defined in the ParamTransfer release
 library as `Transfer.Examples.MachineLimbField`. This module re-exports the
-multi-limb names into `CatCrypt.Crypto.SecureCompilation.Ascent` so existing
-consumers resolve them unqualified exactly as before. It imports the single-limb
-shim (`StoreRefinement`) to preserve the original import chain.
+multi-limb names into `CatCrypt.Crypto.SecureCompilation.Ascent`, where consumers
+resolve them unqualified. It imports the single-limb shim (`StoreRefinement`).
 -/
 
 @[expose] public section

@@ -21,9 +21,7 @@ rendered from the typed `mpnSimdChunkBlock` by the module-local printer
 file. The `native_decide`/`example` checks are structural assertions; the block
 denotation `mpnSimdChunk_denotation` (tied to the verified `VPCmpEmit` lane
 reference) scopes the compare/extract block, not the emitted frame. It is a
-bench/interop reference. The verified emit path is the FRONT-SOURCED descent;
-see `bench/framework/AUDIT_EMIT_BYPASS.md` and `EMIT_PROVENANCE.md`
-§"Which emit is verified?".
+bench/interop reference. The verified emit path is the FRONT-SOURCED descent.
 
 The **model-free** mpn SIMD-compare owned `.s` emit (the `vpcmpeqq`/`vpmovmskb`
 extract kernel). It writes

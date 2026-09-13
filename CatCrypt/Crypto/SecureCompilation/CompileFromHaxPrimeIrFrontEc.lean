@@ -26,8 +26,8 @@ pass in `CompileFromHaxPrimeIrFront`.
 ## What `haxpipeT` emits for an `EcGroup` / `ModArith` call
 
 Running the crate through the typed extraction path
-(`haxpipeT --hax hax_frontend_export.json --emit-certified --name Primeir`, i.e.
-`scripts/run_haxpipe.sh` — **not** `cargo hax into lean`) lowers the generic
+(`haxpipeT --hax hax_frontend_export.json --emit-certified --name Primeir`,
+**not** `cargo hax into lean`) lowers the generic
 callers `ec_demo`/`ec_double_demo`/`modarith_demo` (`primeir-hax/src/lib.rs`) to
 keyed `ImpExpr` literals:
 

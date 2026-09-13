@@ -13,7 +13,7 @@ public import CatCrypt.Crypto.SecureCompilation.BignumSubEmit
 
 > **`@kat-target`.** Hand-authored leaf blocks + direct `runBlock` proofs — a KAT oracle /
 > prototype for the bridge technique, NOT the canonical artifact. New field ops go via the
-> golden path (`FieldEmitGoldenPath`; see `EMIT_PROVENANCE.md`); do not extend by hand.
+> golden path (`FieldEmitGoldenPath`); do not extend by hand.
 
 The Barrett field reduction `MultiLimbKernel.barrettReduce x p mu W` reduces a `W`-limb
 value modulo `p` by: a multiply + limb-drop (the quotient estimate `q = ⌊x·μ/2^{64W}⌋`), a

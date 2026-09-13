@@ -43,10 +43,10 @@ re-establishes that agreement on the post-states.  `for_middle_tie_gen` threads
 ## The loop variable is the subtle axis
 
 The source binds `x := n` before each trip; the machine unroll never writes `x`.
-So a **non-temp** loop counter is a slot where the two machines genuinely
+So a **non-temp** loop counter is a slot where the two machines
 disagree (the source overwrites it, the machine leaves it stale) unless the body
 itself maintains it.  `for_middle_tie_arith` instantiates the abstract tie at a
-straight-line arithmetic body under the honest side-condition **`isTmpName x`**:
+straight-line arithmetic body under the side condition **`isTmpName x`**:
 when the counter lives in the reserved `__sx` temp namespace it is quotiented out
 of the observed non-temp fibre (`nonTmpAgree_upd_tmp`), so the counter bind is
 invisible to the readout and `arith_seq_tie_gen` supplies the per-iteration tie

@@ -11,8 +11,8 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.PolyLowering
 # Poly-dialect optimization rewrites (#482-4)
 
 The Poly-level optimization passes of the layered crypto-IR stack
-(`docs/dialect-restructure-plan.md` §"Optimization passes attach at their natural
-level"): **NTT layer-fusion, Montgomery-domain NTT (#152/#160), and the 4-way
+(`VIR/DIALECTS.md`), each attached at the dialect level where it is stated:
+**NTT layer-fusion, Montgomery-domain NTT (#152/#160), and the 4-way
 batched NTT (#150/#389)** become **Poly-dialect rewrites** here, each
 *denotation-preserving* against the abstract polynomial-ring / butterfly spec.
 
@@ -107,7 +107,7 @@ Applying the per-lane butterfly to 4 packed lanes in parallel equals running it
 sequentially on each lane: each lane's coefficients are an independent
 `ZMod q × ZMod q` pair, so the packed `#VPMULLD`/`#VPADDD`/`#VPSUBD` 4-way emit
 denotes the same value as the scalar lane-by-lane NTT.  (The "independence per
-lane" keystone; cf. `LatticeNttEmit.mlkem_ntt_4way_denotation_preserves`.) -/
+lane" lemma; cf. `LatticeNttEmit.mlkem_ntt_4way_denotation_preserves`.) -/
 
 /-- A 4-lane input: 4 `(a, b)` coefficient pairs and a per-lane twiddle. -/
 abbrev Ntt4Lanes (q : Nat) := Fin 4 → (ZMod q × ZMod q × ZMod q)

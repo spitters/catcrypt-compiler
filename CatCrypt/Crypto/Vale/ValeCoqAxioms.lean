@@ -42,14 +42,14 @@ that come closest are Vale's build-time taint analysis (🚧) and HACL\*'s
 have neither, and rest on fixed public iteration counts and branch-free
 generated code.
 
-## Upstream checkouts these lines refer to
+## Upstream repositories these paths refer to
 
-| Prefix | Checkout |
+| Prefix | Repository |
 |---|---|
-| `hacl-star/` | `/tmp/catcrypt-compare/hacl-star` |
-| `AUCurves/` | `BLS/AUCurves` |
-| `fiat-crypto/` | `BLS/AUCurves/fiat-crypto` |
-| `libjade/` | `BLS/libjade` |
+| `hacl-star/` | https://github.com/hacl-star/hacl-star |
+| `AUCurves/` | https://github.com/AU-COBRA/AUCurves |
+| `fiat-crypto/` | https://github.com/mit-plv/fiat-crypto (a submodule of AUCurves) |
+| `libjade/` | https://github.com/formosa-crypto/libjade |
 
 ## The two upstream mechanisms
 
@@ -74,7 +74,8 @@ analysis and it returned true", not "here is the theorem".
 on or used as indices, so a well-typed body is secret-independent by
 construction. No leakage theorem exists: a search for `leakage` /
 `isConstantTime` over `hacl-star/code/` and `hacl-star/lib/` finds nothing.
-The project scopes the claim itself at `hacl-star/SECURITY.md`:6 — "HACL\* only
+The project scopes the claim itself at
+https://github.com/hacl-star/hacl-star/blob/main/SECURITY.md (line 6) — "HACL\* only
 protects against remote timing attacks and so it is possible that there are
 side-channel leaks in the compiled code."
 
@@ -194,7 +195,6 @@ above cites them.
 ## See also
 
 * `CatCrypt/Crypto/Vale/LeafLeakage.lean` — `LeafLeak` and `SecretIndependent`.
-* `CatCrypt/Crypto/Vale/AGENTS.md` — the adoption boundary and its upstreams.
 * `CatCrypt/Crypto/Jasmin/LowCTCTAnalysis.lean` — `cmdCT` and `LeafCTTable`,
   the program-level analysis whose per-leaf side condition these axioms carry.
 

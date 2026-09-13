@@ -13,64 +13,57 @@ public meta import CatCrypt.Crypto.SecureCompilation.Ascent.KeystoneControl
 public import CatCrypt.Crypto.SecureCompilation.Ascent.KeystoneControl
 
 /-!
-# Closing the loop source-preimage gap: a `RustSrc.forN` kernel welded to `corres_for`
+# A source preimage for `corres_for`: a `RustSrc.forN` kernel
 
-`LoopSourceTower.lean` recorded a *wall*: no source construct in the hax
-`ImpExpr` / `haxToLowCT` front reaches the bounded-loop ascent leaf `corres_for`
-(the `RFor` arm) with a **defined** evaluation.  Its two witnesses:
+In the hax `ImpExpr` / `haxToLowCT` front no source construct reaches the
+bounded-loop ascent leaf `corres_for` (the `RFor` arm) with a **defined**
+evaluation (`LoopSourceTower.lean`):
 
 * `ImpExpr.forFold` lowers to `RFor` but `evalImp (.forFold …) = none`
   (`loop_forFold_source_vacuous`), and
 * `ImpExpr.whileLoop` evaluates but lowers to `RWhileNz`, which `semScalar` (and
-  hence `Corres`) does not interpret.
+  hence `Corres`) does not interpret; `corresU_while` (`WhileTop.lean`) is the rule
+  at the unified waist `semU`.
 
-That wall is real *for the `haxToLowCT` front only*.  The **other** verified
-source front — `RustSubsetToLowCT`, the `RustSrc`/`lower`/`lowerRefines` layer the
-straight-line feSub tower (`FeSubSourceTower.lean`) already welds through — carries
-a bounded counted-loop constructor `RustSrc.forN` that
+The verified source front `RustSubsetToLowCT` — the `RustSrc`/`lower`/`lowerRefines`
+layer of the straight-line feSub tower (`FeSubSourceTower.lean`) — has a bounded
+counted-loop constructor `RustSrc.forN` that
 
-* **(a)** has a **total, defined** evaluation `RustSrc.exec` (a state transformer,
-  not a post-phase `none`), and
-* **(b)** lowers to a genuine `RFor` node: `lower (.forN x n body) = RFor x n
-  (lower body)` — the exact arm `corres_for` / `keystone_for` handle.
+* **(a)** has a **total, defined** evaluation `RustSrc.exec` (a state transformer),
+  and
+* **(b)** lowers to an `RFor` node: `lower (.forN x n body) = RFor x n
+  (lower body)` — the arm `corres_for` / `keystone_for` handle.
 
-So the source preimage the loop tower lacked exists; it just lives on the
-`RustSrc` front, which `LoopSourceTower` did not examine.  This module deploys it
-on a concrete fixed-trip-count copy loop
+This module applies it to a concrete fixed-trip-count copy loop
 
 ```rust
 // loopSrc v n  (RustSrc):
 for i in 0..n { o = v; i = 0; }
 ```
 
-and delivers, on the *same* lowered `RFor` image `lower (loopSrc v n)`, both legs:
+and states, on the *same* lowered `RFor` image `lower (loopSrc v n)`, both legs:
 
 * **Source → LowCT (the descent / `RustExec` leg).**  `loopSrc_refines` is
-  `RRefines (RustSrc.exec (loopSrc v n)) (lower (loopSrc v n))` via `lowerRefines`
-  — the loop analogue of `feSubSrc_refines`, now over a `forN`/`RFor` body.
+  `RRefines (RustSrc.exec (loopSrc v n)) (lower (loopSrc v n))` via `lowerRefines`,
+  the counterpart of `feSubSrc_refines` over a `forN`/`RFor` body.
 * **LowCT → clean spec (the ascent / `semScalar` leg).**  `loopSrc_corres` welds
   `corres_for`: the lowered `RFor` image `Corres`-refines the `n`-fold iteration
   `nfold (loopSrcStep v) n` of the counter-independent loop-invariant step.  The
   per-trip body leaf is assembled from `corres_setScalar_NT` (counter bind) and
-  two `corres_setExpr`s (the `RScalarSetExpr` writes `lower` actually emits),
-  re-based to the fixed step by `corres_fa_congr` — the same discipline
-  `keystone_for` uses, but consuming `lower`'s real `RScalarSetExpr` output rather
-  than the hand-written `RScalarSet` closed kernel.
+  two `corres_setExpr`s (the `RScalarSetExpr` writes `lower` emits), re-based to
+  the fixed step by `corres_fa_congr` as in `keystone_for`, whose closed kernel
+  writes by `RScalarSet` instead.
 
-`loopSrc_source_preimage` bundles the two legs plus the `RFor`-headed shape as one
-statement: the source-preimage gap for a bounded counted loop is closed on the
-`RustSubsetToLowCT` front.
+`loopSrc_source_preimage` conjoins the two legs and the `RFor`-headed shape.
 
-## Residual (honest)
+## Scope
 
 The two legs are two *denotations* of the one lowered `RFor` node: `RRefines` is
 over `RustExec` (the abstract result `RustSrc.exec`, in `Nat`), `Corres` is over
-`semScalar` (the abstract result `nfold (loopSrcStep v) n`, in `ZMod 2^64`).  They are
-consistent through the `RustExec ↔ semScalar` bridge (`RustExecSemScalarBridge`);
-fusing them into a *single* `RustSrc.exec`-indexed emit conclusion (the loop twin
-of the `FeSub` capstone, via `keystone_for`) is the next step and is not attempted
-here — `keystone_for` is stated over the `RScalarSet` closed kernel, so the fusion
-needs a `keystone` instance over the `RScalarSetExpr` loop body.
+`semScalar` (the abstract result `nfold (loopSrcStep v) n`, in `ZMod 2^64`).  No
+theorem in the package fuses them into an emit conclusion indexed by
+`RustSrc.exec`: `keystone_for` is stated over the `RScalarSet` closed kernel, and
+`legWeld` admits only the straight-line runs of `AdeqRun`.
 
 Part of the AutoCorres-in-Lean ascent begun by Sebastian Graf (`sgraf812/ascent`);
 see `Corres.lean`.
@@ -100,7 +93,7 @@ def loopSrc (v n : Nat) : RustSrc :=
   .forN "i" n (loopBodySrc v)
 
 /-- **The source lowering reaches the `RFor` ascent arm.**  `lower` sends the
-    `forN` source loop to a genuine `RFor` node — the arm `corres_for` handles.
+    `forN` source loop to an `RFor` node — the arm `corres_for` handles.
     (Definitional; the point is that a source construct with a *defined* `exec`
     lands here, unlike `forFold`.) -/
 theorem loopSrc_lower (v n : Nat) :
@@ -129,7 +122,7 @@ theorem loopSrc_refines (v n : Nat) :
 /-! ## §3  LowCT → clean spec: welding `corres_for` (the ascent leg) -/
 
 /-- The counter-independent loop-invariant abstract step: reset `i := 0`, set
-    `o := v`.  (The `keystone_for.forStep` analogue for this kernel.) -/
+    `o := v`.  (The counterpart of `forStep` in `KeystoneControl` for this kernel.) -/
 def loopSrcStep (v : Nat) : (String → ZMod (2 ^ 64)) → (String → ZMod (2 ^ 64)) :=
   fun a s => if s = "i" then 0 else if s = "o" then (v : ZMod (2 ^ 64)) else a s
 

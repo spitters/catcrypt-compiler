@@ -23,10 +23,10 @@ interpretation over the `Std.Do` WP metatheory. This calculus follows and
 instantiates that design, specialized to LowCT / `semScalar` (the `Option`-failure
 `StateT` monad). `Corres` is the AutoCorres `corres` relation in that lineage.
 
-Division of labor (see the private design notes `lowct-ascent-refinement-calculus.md`
-and `ascend-autocorres-methodology.md` — the latter for why `Corres` is the
-AutoCorres pattern, piggybacking on a proven embedding of an imperative language
-into type theory, and its applications):
+As in AutoCorres (Greenaway, Andronick, Klein, ITP 2012; Greenaway, Lim, Andronick,
+Klein, PLDI 2014), the abstraction is proved against a fixed semantics of the
+imperative language, here `semScalar`. `ASCENT.md` at the package root describes
+the calculus and its scope. Division of labor:
 * **`Corres`** (here) owns the monad/control structure and the arithmetic side
   conditions (the precondition `P`) — the structural lemmas `corres_seq`/`_skip`/
   `_block`/`_weaken` rest on `semScalar`'s definitional Kleisli-in-`Option` fold.

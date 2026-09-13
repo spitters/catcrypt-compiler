@@ -11,8 +11,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.ModArithDialect
 /-!
 # ModArith lowering (#482-1) — the L2 → {Vector | LowCT} step
 
-The lowering step of the layered crypto-IR stack
-(`docs/dialect-restructure-plan.md`):
+The lowering step of the layered crypto-IR stack (`VIR/DIALECTS.md`):
 
     ModArith → {Vector  if redundant-limb-vectorizable (#442)
               | LowCT/Com scalar otherwise}

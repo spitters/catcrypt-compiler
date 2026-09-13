@@ -24,18 +24,16 @@ the same maps one ring layer down).
 
 ## Why this dialect exists (the gap it closes)
 
-Per `PRIME_IR_OP_CORRESPONDENCE.md` (repo root, §1 & §2), CatCrypt already *computes*
-these derived ops — but only by **deriving them from the primitive ops**, never
-as standalone ops:
+Against prime-ir's `field` and `mod_arith` dialects (`VIR/DIALECTS.md`), CatCrypt
+already *computes* these derived ops — but only by **deriving them from the
+primitive ops**, never as standalone ops:
 
-* `field.double` (§1, line 30) — "derived (`fAdd a a`); no dedicated `fDouble`
-  op" — **PARTIAL**.
-* `field.square` (§1, line 31) — "derived (`fMul a a`); no dedicated `fSquare`
-  op" — **PARTIAL**.
-* `field.powui` (§1, line 36) — "no dedicated pow op (Fermat chain is a
-  fixed-exponent unrolled mul/sqr schedule, `pow249Spec`)" — **PARTIAL**.
-* `mod_arith.double` (§2, line 65) — "derived `modAdd a a`" — **PARTIAL**.
-* `mod_arith.square` (§2, line 62) — "derived `modMul a a`" — **PARTIAL**.
+* `field.double` — derived (`fAdd a a`); no dedicated `fDouble` op — **PARTIAL**.
+* `field.square` — derived (`fMul a a`); no dedicated `fSquare` op — **PARTIAL**.
+* `field.powui` — no dedicated pow op (the Fermat chain is a fixed-exponent
+  unrolled mul/sqr schedule, `pow249Spec`) — **PARTIAL**.
+* `mod_arith.double` — derived `modAdd a a` — **PARTIAL**.
+* `mod_arith.square` — derived `modMul a a` — **PARTIAL**.
 
 The gap analysis classified all five **PARTIAL** — *functionality present, not
 factored as a first-class derived op*.  This file **factors `double`, `square`,

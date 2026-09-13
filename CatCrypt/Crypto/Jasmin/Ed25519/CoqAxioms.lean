@@ -10,17 +10,15 @@ module
 # Ed25519 Lean axioms ↔ Coq theorem index
 
 Single-place reference connecting every axiom in `Ed25519Spec.lean`
-(and related Ed25519 files) to its discharging Coq theorem. This is
-a structured
-audit trail so `scripts/audit_coq_citations.lean` can verify each
-axiom is cited.
+(and related Ed25519 files) to its discharging Coq theorem, as a
+structured audit trail that records a citation for each axiom.
 
 ## Status legend
 
 | Status | Meaning |
 |---|---|
 | ✅ proved | Coq theorem already exists and is `Qed`-closed in fiat-crypto |
-| 🚧 phase1 | Will be discharged by AUCurves Phase 1 (Terminal B's track) |
+| 🚧 phase1 | Will be discharged by AUCurves Phase 1 |
 | 📌 cite-only | Citation is the trust boundary; no Lean-side proof planned |
 
 ## Field arithmetic (Fp = GF(2²⁵⁵−19))
@@ -54,7 +52,7 @@ axiom is cited.
 |---|---|---|
 | `L_is_prime` | 📌 cite-only | Pratt certificate (deferred; AUCurves uses abstract ZMod L) |
 | `interp` (scalar) | 📌 cite-only | Built-in fiat-crypto F L |
-| `interp_scalar_add` | 🚧 phase1 (Parameter) | `AUCurves/src/Bedrock/End2End/Ed25519/Scalar25519_64.v::fe25519_scalar_add_correct` — declared as `Parameter`; discharge target sits in `Scalar25519_64_Synthesis.v.todo` (uncompiled, ~100 min one-time cost on rocq-9 — see `feedback_wbw_synthesis_slow_first_build.md`) |
+| `interp_scalar_add` | 🚧 phase1 (Parameter) | `AUCurves/src/Bedrock/End2End/Ed25519/Scalar25519_64.v::fe25519_scalar_add_correct` — declared as `Parameter`; discharge target sits in `Scalar25519_64_Synthesis.v.todo` (uncompiled, ~100 min one-time cost on rocq-9) |
 | `interp_scalar_sub` | 🚧 phase1 (Parameter) | `AUCurves/.../Scalar25519_64.v::fe25519_scalar_sub_correct` — same |
 | `interp_scalar_mul` | 🚧 phase1 (Parameter) | `AUCurves/.../Scalar25519_64.v::fe25519_scalar_mul_correct` — same |
 | `interp_scalar_neg` | 🚧 phase1 (Parameter) | `AUCurves/.../Scalar25519_64.v::fe25519_scalar_opp_correct` — same |
@@ -104,9 +102,8 @@ AUCurves Coq stack. Concretely:
 1. Every Lean `axiom` in `Ed25519Spec.lean` and dependent files is in
    this table.
 2. Every entry has either an extant Coq theorem or a Phase-1 ticket.
-3. The audit script `scripts/audit_coq_citations.lean` greps every
-   `axiom` in `CatCrypt/Crypto/{KeyAgreement,Jasmin}/Ed25519*.lean`
-   and verifies each has a citation in the docstring or here.
+3. Every `axiom` in `CatCrypt/Crypto/{KeyAgreement,Jasmin}/Ed25519*.lean`
+   has a citation in its docstring or here.
 
 ## Trust boundary diagram
 
@@ -143,8 +140,7 @@ Cross-check every entry in this file when AUCurves Phase 1 lands:
 
 ## Batch citation rows (wildcard patterns)
 
-The audit script (`scripts/audit_coq_citations.lean`) honors wildcard
-patterns of the form `prefix*` in the table rows below.  A wildcard row
+The table rows below may use wildcard patterns of the form `prefix*`.  A wildcard row
 covers every axiom whose name starts with `prefix`.  These are used to
 acknowledge groups of opaque interface stubs (libcrux / Jasmin) without
 individually citing each one — the trust statement is identical for the

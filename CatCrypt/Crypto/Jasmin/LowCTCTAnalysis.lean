@@ -22,11 +22,8 @@ public import CatCrypt.Crypto.Jasmin.Examples.XEdDSAVerify
 /-!
 # Phase J — `cmdCT` constant-time analyser for `LowCT`
 
-This module closes the audit-vs-proof gap noted in
-`curve25519-jasmin-rs/docs/timing-resistance-2026-05-13.md` §4–§5: the
-existing `SecretLevel` / `LevelTable` infrastructure in `LowCT.lean`
-classifies slots, but no analyser had yet enforced the classification
-at the *body* level.
+The `SecretLevel` / `LevelTable` infrastructure in `LowCT.lean` classifies
+slots; this module enforces the classification at the *body* level.
 
 `cmdCT cmd lt leafCT` returns `true` iff every branch condition,
 loop guard, and memory index in `cmd` is `Public` under `lt`, and

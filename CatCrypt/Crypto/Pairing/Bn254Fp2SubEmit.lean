@@ -45,8 +45,8 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
 
 The AUCurves jasminc `tower_subset` artifact covers exactly the `Fp2`
 `{add, sub, felem_copy}` leaf functions (the 12 functions that compile under the
-`reg u64`/byte-offset convention; the other 39 hit the `reg ptr u64[N]` stackalloc
-gap, `bench/bn254_compare/jasmin_tower/JASMIN_TOWER_222.md`).
+`reg u64`/byte-offset convention; the other 39 hit the jasminc `reg ptr u64[N]`
+stackalloc gap).
 
 `bench/bn254_compare/fp_tower_from_rustcmd.lean` already emits the *owned*
 reg-ptr re-emit of the tower field arithmetic through CatCrypt's verified front —
@@ -190,6 +190,7 @@ def main : IO Unit := do
 
 /-! ## Artifact generation
 
-The two renders are written by `lake exe emit-artifacts`, which calls `main`. -/
+The two renders are written by `main`, run with `lake env lean --run` on this
+file. -/
 
 end CatCrypt.Crypto.Pairing.Bn254Fp2SubEmit

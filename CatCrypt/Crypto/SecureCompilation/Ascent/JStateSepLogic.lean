@@ -40,7 +40,7 @@ footprint lemmas (the "an op writes only its `dst`" seeds such as
   `{P ∧ R} body {Q ∧ R}` holds: `writesOnly` + `DependsOn` preserve `R` across
   `runBlock`.
 
-* **A framed leaf.** `sbb_framed_triple` frames the genuine carry leaf
+* **A framed leaf.** `sbb_framed_triple` frames the carry leaf
   `sbb_as_triple` (from `CorresHoare`) with a points-to `r₀ ↦ v` on a disjoint
   register, showing local reasoning holds for a real machine block.
 
@@ -155,7 +155,7 @@ theorem RunBlockTriple.frame {P Q R : JState 64 → Prop} {body : List (JInstr 6
 
 /-! ## A framed leaf — local reasoning holds on a real machine block -/
 
-/-- **A framed carry leaf.** Framing the genuine subtract-with-borrow triple
+/-- **A framed carry leaf.** Framing the subtract-with-borrow triple
     `sbb_as_triple` with a points-to `r₀ ↦ v` on a register `r₀ ≠ dst`. The
     resulting triple `{SRcarry · a ∧ r₀ ↦ v} sbb dst src {SRcarry · (sbbStep …) ∧ r₀ ↦ v}`
     shows the points-to on the disjoint register `r₀` is preserved across the

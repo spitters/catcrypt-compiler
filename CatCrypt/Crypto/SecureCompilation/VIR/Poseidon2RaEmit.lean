@@ -38,7 +38,7 @@ broadcast constants (`vp_const`, `vmm_const`, `vmask32_const`,
 `vmu_const`, `vrsq_const`) and 13 scratches (`va`, `vb`, `vt`, `vu`, `vv`,
 `vr`, `vm`, `vsub`, `vmgt`, `vsq`, `vx4`, `vx_orig`, `vsumYmm`). The total
 of 26 symbolic YMM names against 16 physical YMM registers forces jasminc
-to spill — and per RESULTS.md, the residual gap to Plonky3's AVX2 backend
+to spill — and the measured residual gap to Plonky3's AVX2 backend
 (~2.4×) traces to spill traffic in the partial-rounds region.
 
 ### Slot weights per round role
@@ -70,7 +70,7 @@ We count YMM uses per slot per "round class" (external vs partial):
   * **`vsq, vx4, vx_orig`: 0 ops (dead in partial rounds)**
 
 So during the 13 partial rounds (which dominate the gap per #171 and the
-RESULTS.md profile), `vsq`, `vx4`, `vx_orig` are dead, but the existing
+measured profile), `vsq`, `vx4`, `vx_orig` are dead, but the existing
 declaration `reg u256 ... vsq vx4 vx_orig ...` keeps them claiming YMM
 slots in jasminc's register file accounting. The slot pressure from this
 "phase-dead live range" forces jasminc to spill some of the
@@ -261,7 +261,7 @@ def isPhaseDead (s : Nat) : Bool := phaseDeadSlots.contains s
 
 `slotOf := id` keeps `Function.Injective` trivial. The decision lives in
 `seqOf`: phase-dead slots get a "stack tag" (we encode this as the slot's
-own index for now — the emit-time renderer reads `phaseDeadSlots` directly
+own index — the emit-time renderer reads `phaseDeadSlots` directly
 to choose `stack u256` vs `reg u256` for each scratch declaration). This
 mirrors `ChachaRaEmit.chachaXmmRA`'s "real decision in seqOf, slotOf is
 identity" packing. -/

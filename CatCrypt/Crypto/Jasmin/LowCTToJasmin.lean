@@ -23,7 +23,8 @@ public import CatCrypt.Core.Heap
 /-!
 # LowCT → Jasmin AST Translation
 
-Port of `AUCurves/src/Bedrock/Jasmin/LowCTToJasmin.v`.
+Port of `AUCurves/src/Bedrock/Jasmin/RustCmdToJasmin.v`, where `LowCT` is
+AUCurves' `rust_cmd`.
 
 ## Contents
 

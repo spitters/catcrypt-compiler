@@ -13,7 +13,7 @@ public import CatCrypt.Crypto.SecureCompilation.MultiLimbEmitBridge
 
 > **`@kat-target`.** Hand-authored leaf block + direct `runBlock` proof — a KAT oracle /
 > prototype for the bridge technique, NOT the canonical artifact. New field ops go via the
-> golden path (`FieldEmitGoldenPath`; see `EMIT_PROVENANCE.md`); do not extend by hand.
+> golden path (`FieldEmitGoldenPath`); do not extend by hand.
 
 The Barrett reduction's final step: reduce a value `x ∈ [0, 2p)` to `x mod p` with a
 data-oblivious conditional subtract — `x − p` via an SBB borrow chain, then a `CMOVcc`

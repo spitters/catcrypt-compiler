@@ -25,9 +25,9 @@ producing a `JasminProg`; no string-munging happens here.
 Com[jasminDialect]  ──lowerComToProg──▶  JasminProg (AST)  ──ppJasminProg──▶ .jazz
 ```
 
-This realises §3 of `jasmin-vir-convergence-plan.md` ("emit the AST, not
-text"): the reg-vs-stack and width distinctions that `RustEmitJazz` inferred
-by hand are now *dialect types*, lowered to `JasminAST` constructs.
+The lowering emits the AST, not text: the reg-vs-stack and width distinctions
+that `RustEmitJazz` inferred by hand are *dialect types*, lowered to `JasminAST`
+constructs.
 
 ## Naming scheme (de Bruijn → strings)
 
@@ -619,9 +619,9 @@ def ppExportFn (prog : JasminProg) : String :=
     `LprogOptPipeline.renderOwned`); the `.jazz` produced here exists so the
     classic jasmin compiler (`jasminc`, an EXTERNAL toolchain) can lower the same
     emitted `Com` for a head-to-head cycle comparison. Never treat a `.jazz`
-    (or the fact that a bench registry names one) as the deployed emit — see
-    `bench/AGENTS.md` "jasminc is also an external toolchain" and the
-    AST-direct-canonical convention.
+    (or the fact that a bench registry names one) as the deployed emit: `jasminc`
+    is an external toolchain, and the deployed artifact is the AST-direct owned
+    emit.
 
     Convenience: lower + pretty-print to jasminc-compilable `.jazz` text. For a
     scalar `reg w` kernel this is the `export fn … { … return … }` scaffold

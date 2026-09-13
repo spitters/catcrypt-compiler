@@ -32,8 +32,8 @@ validating its stored certificate (`EClass.member_denote_eq`).
 
 This is the explicit, eager form of an e-class: the members are enumerated and
 their certificates stored directly, rather than materialised on demand from a
-union-find. What a full congruence-closure engine would add over this is
-described in the module report, not here.
+union-find. A congruence-closure engine would add a union-find over classes and
+congruence propagation through operator arguments; neither is implemented here.
 
 ## Extraction
 

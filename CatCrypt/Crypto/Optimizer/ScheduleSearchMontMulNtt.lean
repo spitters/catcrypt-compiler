@@ -78,7 +78,7 @@ null. The NTT 1.34×/1.11×-PQClean residual is the cross-stage **memory residen
 (the emitted stream is 45 % `vmovdqu` — 389 of 869 ops — vs the hand-asm's 19 %,
 because every intermediate round-trips through the `inp[]`/`out[]` arrays while
 the hand-asm keeps the polynomial register-resident across stages). That is
-register allocation (`MlkemRaEmit` / `MLKEM_NTT_RA_BENCH.md`), **not** schedule.
+register allocation (`MlkemRaEmit`), **not** schedule.
 
 ## Bottom line (all machine-checked here / MCA-measured in bench/)
 
@@ -288,8 +288,7 @@ theorem ntt_search_no_improvement :
 /-- Two NTT stages back-to-back: the store→load barrier (stage `i`'s `out[...]`
     store feeds stage `i+1`'s `inp[...]` load) blocks cross-stage interleaving, so
     even the two-stage neighbourhood yields no cost improvement. The unroll is
-    sequentially ordered by construction — confirming the `MLKEM_NTT_RA_BENCH.md`
-    structural finding that the gap is residency. -/
+    sequentially ordered by construction, so the gap is memory residency. -/
 def nttTwoStageBlock : List (JInstr 64) :=
   nttStageBlock ++
   [ .loadMem "a" "inp" 16

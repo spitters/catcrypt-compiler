@@ -40,7 +40,7 @@ the resulting env — which the `RScalarSetExpr` arm carries into the post-state
 has those temp slots overwritten. The base `SRword` is *total* (it constrains
 **every** name, temps included), so it is not preserved across a temp-adding
 lowering such as a subtraction: the abstract post-state only updates `x`, while
-the concrete env also scribbles `tmpName k`. The honest, true state relation for
+the concrete env also scribbles `tmpName k`. The state relation that holds for
 this leaf is therefore `SRword` **restricted to non-temp names** (`SRwordNT`);
 `srword_srwordNT` weakens the total relation into it, so every `SRword` context
 supplies it for free. Non-temp names are exactly the source names a real kernel
@@ -167,7 +167,7 @@ theorem varsBoundIn_true : ∀ e, varsBoundIn (fun _ => True) e := by
 
 /-- The word-phase state relation restricted to non-temp source names: every
     non-temp name holds a `.sword 64` whose ParamTransfer encoding `wEnc` is the
-    abstract value. This is the honest relation for `RScalarSetExpr` — the lowering
+    abstract value. This is the relation that holds for `RScalarSetExpr` — the lowering
     scribbles the fresh-temp namespace, which a source kernel never observes. -/
 def SRwordNT (env : SEnvScalar) (a : String → ZMod (2 ^ 64)) : Prop :=
   ∀ x, ¬ isTmpName x → ∃ w : BitVec 64, env x = some ⟨.sword 64, w⟩ ∧ wEnc w = a x
@@ -250,7 +250,7 @@ theorem corres_setExpr (x : String) (e : SExpr) (he : IsArithClean e) :
 The arithmetic leaf `corres_setExpr` abstracts words to `ZMod 2^64` through `wEnc`,
 because `+`/`-`/`*` are `ZMod`-ring operations. The bitwise operations `^^^`/`&&&`
 /`<<<`/`>>>` are **not** ring operations of `ZMod 2^64`, so there is no `wEnc`
-square for them; the honest clean spec keeps the value in the `BitVec 64` word
+square for them; the clean spec keeps the value in the `BitVec 64` word
 algebra itself (`SExpr.evalBV`). The abstraction is the identity — the clean spec
 IS the word computation — so the value transfer is definitional (no ring square),
 unlike the arithmetic leaf's `wEnc_evalBV_evalZMod`. This is the coverable fragment

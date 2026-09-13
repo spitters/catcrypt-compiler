@@ -13,7 +13,7 @@ public import CatCrypt.Crypto.SecureCompilation.MultiLimbEmitBridge
 
 > **`@kat-target`.** Hand-authored leaf block + direct `runBlock` proof — a KAT oracle /
 > prototype for the bridge technique, NOT the canonical artifact. New field ops go via the
-> golden path (`FieldEmitGoldenPath`; see `EMIT_PROVENANCE.md`); do not extend by hand.
+> golden path (`FieldEmitGoldenPath`); do not extend by hand.
 
 The `SBB` borrow-chain analogue of `BignumAddEmit`: a two-limb subtract-with-borrow
 over the `JInstr`/`JState` x86 machine, whose `runBlock` value is proven — symbolically,

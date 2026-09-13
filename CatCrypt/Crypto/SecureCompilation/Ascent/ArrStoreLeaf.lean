@@ -15,14 +15,12 @@ public import Mathlib.Tactic.Ring
 Part of the AutoCorres-in-Lean ascent begun by Sebastian Graf
 (`sgraf812/ascent`).
 
-`Ascent/Corres.lean` registers `Corres` value leaves for the scalar arms
-(`RScalarSet`/`RScalarSetExpr`) and control (`Control.lean` for
-`RIfNz`/`RFor`), but — as `LoopSourceTower.lean` records — **none for the
-dynamic-index array-write `RArrStore`**. `semScalar` genuinely interprets
-`RArrStore` (`arrStore_executes`), so the loop/array tower delivers a live
-array image, but the ascent had no keystone to weld it to. This module closes
-that first loop/array frontier gap: a `Corres` value leaf that abstracts one
-`RArrStore arr idxVar src` step to the array-update `arr[idx] := src`.
+`Ascent/Corres.lean` and `Ascent/ExprLeaf.lean` state `Corres` value leaves for the
+scalar arms (`RScalarSet`/`RScalarSetExpr`), and `Control.lean` the rules for
+`RIfNz`/`RFor`. `semScalar` interprets the dynamic-index array write `RArrStore`
+(`arrStore_executes`). This module states a `Corres` value leaf that abstracts one
+`RArrStore arr idxVar src` step to the array-update `arr[idx] := src`; its read
+counterpart is `corres_arrLoad` (`ArrLoadLeaf.lean`).
 
 ## The abstract array-update relation
 

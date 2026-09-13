@@ -11,8 +11,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.ModArithLowering
 /-!
 # Field lowering (#482-2) — the L3 → L2 (Field → ModArith) step
 
-The lowering step of the layered crypto-IR stack
-(`docs/dialect-restructure-plan.md`):
+The lowering step of the layered crypto-IR stack (`VIR/DIALECTS.md`):
 
     Field → ModArith
 

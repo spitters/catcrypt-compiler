@@ -58,11 +58,12 @@ first written as literals, then added). It is the addition analogue of
 * **Source leg** — `feAddSrc : RustSrc` encodes `r0 := a0 + b0`; its
   source→LowCT simulation `feAddSrc_refines` is delivered by the verified
   non-optimizing `RustSubset → LowCT` lowering `RustSubsetToLowCT.lowerRefines`
-  (the faithful tower for an `RScalarSetExpr` arithmetic kernel — the generic
+  (the source leg for an `RScalarSetExpr` arithmetic kernel — the generic
   `haxToLowCT` front does not emit `RScalarSetExpr` from arithmetic). The
   source word coincides with the emitted kernel's tracked word
-  (`feAddSourceWord_eq_feVal`, by `decide`), giving the source `ImpExpr` all the
-  way to the emitted bytes as one closed statement.
+  (`feAddSourceWord_eq_feVal`, by `decide`). `feAdd_source_to_bytes_tower`, an
+  instance of `LegWeld.legWeld_lower`, states the closed kernel from the `RustSrc`
+  source word to the jasmin program's denotation as one statement.
 
 ## `SRwordNT`, not `SRword`
 
@@ -273,7 +274,7 @@ theorem feAdd_endToEnd (N : Nat) (leafSpec : LeafSpec) :
   refine ⟨h.1, ?_⟩
   rw [h.2, faAdd_at_r0]
 
-/-! ## Welding the hax-lean source leg (interface) -/
+/-! ## The source word as an interface hypothesis -/
 
 /-- **`feAdd_source_to_bytes`.** The `feAdd_endToEnd` chain read from a source
     program's evaluated output word, taking the source-word identification

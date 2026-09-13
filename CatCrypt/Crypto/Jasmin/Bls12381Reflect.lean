@@ -81,10 +81,10 @@ hand-typed string text.
 * `CatCrypt/Crypto/Pairing/Bls12381AUCurves.lean` — AUCurves-symbol binding
 * `bench/bls12381_compare/bls12381_emit.lean` — legacy Tier C emit (superseded)
 * `CatCrypt/Crypto/Jasmin/UovReflect.lean` — canonical leaf-shim reference
-* `bench/framework/AUDIT_HAX_BRIDGE.md` — BLS12-381 hax tree available
-  (`bls-hax/`, `EUDIW/`), bridge mechanizable but kept as named hypothesis
-  here (the AUCurves field/pairing leaves are the verified production
-  witness; the hax bridge would tie the Rust spec to the same leaves).
+* Hax bridge: a BLS12-381 hax tree exists (`bls-hax/`, `EUDIW/`); the bridge
+  is mechanizable but kept as a named hypothesis here (the AUCurves
+  field/pairing leaves are the verified production witness; the hax bridge
+  would tie the Rust spec to the same leaves).
 -/
 
 @[expose] public section

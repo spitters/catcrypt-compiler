@@ -25,11 +25,11 @@ public import CatCrypt.Crypto.SecureCompilation.ScalarLinX86Demo
 # Golden path, capstone: the GF(251) full multiply `(a * b) mod 251`
 
 This is the asm-sourced big-kernel that defeated the hand-written routes: a
-19-binding straight-line kernel with two genuine `regArith .mul` bindings (the
+19-binding straight-line kernel with two `regArith .mul` bindings (the
 `a * b` product and the `hi * 5` Solinas fold) plus the branchless
 conditional-subtract reduction tail. Hand-authoring its de-Bruijn `Com` chain
-and discharging its denotation by a brute `rfl` (or `native_decide`) is exactly
-what `EMIT_PROVENANCE.md` flagged as the wall.
+and discharging its denotation by a brute `rfl` (or `native_decide`) does not
+scale to it (§C).
 
 It is now mechanizable end-to-end via the two enablers:
 
@@ -117,7 +117,7 @@ def gf251MulBuilt : Com jasminDialect [.reg 64, .reg 64] (.reg 64) :=
 /-! ## C. The value proof — `Com.denote = NamedSSA.eval`, the turnkey eval route
 
 For this wide kernel the per-kernel `Com.denote` `rfl` (and the `com_denote`
-binder-chain rewrite) hits the `whnf` heartbeat wall `EMIT_PROVENANCE.md` flagged.
+binder-chain rewrite) exceeds the `whnf` heartbeat budget.
 The turnkey value layer is `build_preserves_denote`: `Com.denote` of a built kernel
 equals the **computable** `NamedSSA.eval`, so a denote fact becomes an `eval`
 *computation* (`decide`/`native_decide`) rather than a deep `Com.denote` unfolding.

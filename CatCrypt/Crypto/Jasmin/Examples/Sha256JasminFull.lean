@@ -11,9 +11,9 @@ public import CatCrypt.Crypto.Jasmin.JasminToRustEmit
 /-!
 # SHA-256: full inner functions + compression + schedule, in Lean Jasmin AST
 
-Hand-transcribed from `BLS/libjade/oldsrc-should-delete/crypto_hash/
-sha256/amd64/ref/sha256.jinc` — the FIPS 180-4 / RFC 6234 SHA-256
-specification.
+Hand-transcribed from libjade (https://github.com/formosa-crypto/libjade),
+`oldsrc-should-delete/crypto_hash/sha256/amd64/ref/sha256.jinc` — the FIPS 180-4 /
+RFC 6234 SHA-256 specification.
 
 What gets emitted:
 

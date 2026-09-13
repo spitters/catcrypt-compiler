@@ -10,8 +10,7 @@ public import CatCrypt.Crypto.Jasmin.LowCT
 /-!
 # Pass 1.1 — Barrett Reduction
 
-First concrete pass of CatCrypt's verified optimizing compiler (per
-`verified-optimizing-compiler-plan.md`, Tier 1.1).  Rewrites
+A pass of CatCrypt's verified optimizing compiler.  Rewrites
 `RCall "mod_q" [x]` (and ML-KEM's `"reduce"` leaf) to
 `RCall s!"barrett_{q}" [x]` when `q` is a statically-known modulus.
 

@@ -50,8 +50,7 @@ and operations are in place, but the connector proofs that would
 take the MAYO `runFullBody` through `execCmdFlat` are deferred to a
 larger batch.  The `runFullBody = mayoQuadformJincModel` universal
 connector remains open; the per-row relational `SemFor` induction
-(Path C in `bench/framework/JASMIN_SEM_COVERAGE.md`) is the alternate
-path.
+is the alternate path.
 -/
 
 namespace CatCrypt.Crypto.Jasmin.VmFlatExec
@@ -263,7 +262,7 @@ variable (aS : AsmSem) (opS : OpSem) (gd : GlobDecls)
 
 /-- `writeVarFlat`: like `writeVar` but writes directly to `VmFlat.set`
     (O(1) cons) instead of `Vm.set` (closure-chain growth).  This is
-    the load-bearing primitive that prevents closure-chain compounding
+    the primitive that prevents closure-chain compounding
     across a long Cmd. -/
 def writeVarFlat (wdb : Bool) (x : VarI) (v : Value)
     (s : Estate' SyscallState Mem) :
@@ -486,8 +485,7 @@ end ExecFlat
 /-! ## §3. `Vm.Equiv` — pointwise equality on the canonical `Vm`
 
 Even with `Vm` kept as `Var → Value`, downstream proofs that want to
-abstract over the future flat-map restructure (Path A in
-`bench/framework/JASMIN_SEM_COVERAGE.md`) can pre-emptively use
+abstract over the future flat-map restructure can pre-emptively use
 `Vm.Equiv` (pointwise on `.get`) wherever the per-opcode bridge proofs
 currently rely on `funext`-style structural equality.  When the
 canonical `Vm` is later swapped to a finite map, the strict-equality
@@ -545,7 +543,7 @@ theorem vm_equiv_of_eq {vm₁ vm₂ : Vm} (h : vm₁ = vm₂) :
     (and vice versa) for free.
 
     When the canonical `Vm` is later restructured to a finite map,
-    this lemma will no longer hold (`funext` fails on a structure with
+    this lemma fails to hold (`funext` fails on a structure with
     different list orderings even when the lookups agree) — that's
     precisely the reason for introducing `Equiv`. -/
 theorem eq_of_vm_equiv (vm₁ vm₂ : Vm) (h : Vm.Equiv vm₁ vm₂) :

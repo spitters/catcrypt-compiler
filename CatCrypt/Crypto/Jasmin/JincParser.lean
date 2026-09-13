@@ -47,7 +47,8 @@ subset** of jasmin surface syntax used by the "Easy"-tier verified leaves
 * SIMD intrinsics (`#VPSHUFB_256(...)` etc.).
 * `return` statement (caller strips it).
 
-This matches the **Easy** tier of `bench/framework/JASMIN_SEM_COVERAGE.md`.
+This is the **Easy** tier of `.jinc` constructs: straight-line `Cassgn`, `Copn`
+and word arithmetic.
 
 ## Output
 

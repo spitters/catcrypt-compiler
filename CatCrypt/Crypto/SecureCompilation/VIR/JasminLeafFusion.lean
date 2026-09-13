@@ -10,8 +10,8 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 /-!
 # Jasmin leaf fusion: a verified `Com → Com` rewrite
 
-This file gives the **verified** form of the hand-written `gen_matvec` shim leaf
-described in `bench/mlkem_compare/KEM_PERF.md`.
+The **verified** form of the hand-written `gen_matvec` shim leaf of the ML-KEM
+benchmark.
 
 ## The verification-vs-performance tension
 
@@ -25,13 +25,12 @@ spec'd (each leaf's agreement is a `LeafAgrees`/leaf-spec obligation, see
 But modularity costs performance: between two adjacent leaves the first leaf's
 result is materialised into a stack array and re-read by the second. At ML-KEM
 scale the `gen_matrix → matvec` pair alone round-trips a `u16[2304]` intermediate
-copy (KEM_PERF.md: "+ fuse `gen_matrix→matvec` (no 2304 copy)", 20.2 → 18.2 µs
-encaps). The hand-written `gen_matvec` shim removes that copy by fusing the two
-leaves into one — at the cost of giving up the per-op granularity.
+copy (measured 20.2 µs per encapsulation, against 18.2 µs with the pair fused).
+The hand-written `gen_matvec` shim removes that copy by fusing the two leaves into
+one — at the cost of giving up the per-op granularity.
 
-This is the *verification-vs-performance tension at the AVX2-leaf boundary*
-(KEM_PERF.md). The principled resolution is **leaf fusion as a verified
-`Com → Com` rewrite**: keep the modular, per-op-spec'd source, emit the fused
+This is the *verification-vs-performance tension at the AVX2-leaf boundary*. The
+principled resolution is **leaf fusion as a verified `Com → Com` rewrite**: keep the modular, per-op-spec'd source, emit the fused
 form, and prove the fusion preserves `Com.denote` — *given* the fused leaf
 computes the composition of the two it replaces. The composition fact is exactly
 the fused leaf's own KAT/spec obligation (`hgf` below); the *rewrite* is
@@ -54,7 +53,7 @@ form (newest binding at the head of the context `Γ`), with input variables
   In the fusion case `body` reads the `g`-result through `here` and does **not**
   otherwise read the intermediate `f`-result.
 
-* **fused** — one leaf, the `f`-result no longer named:
+* **fused** — one leaf, the `f`-result unnamed:
   ```
   .var (extCall gf [x, y])                     -- binds  tg  : Γ_f = tg :: Γ
     body'                                       -- body' : Com (tg :: Γ) s

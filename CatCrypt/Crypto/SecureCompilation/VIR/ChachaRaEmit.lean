@@ -33,7 +33,7 @@ XMM-resident analog** — the unrolled lane-parallel-map sibling.
 with the 16 state words pinned to the AVX2 XMM file. The 16-XMM cap forces
 **2 spills** (16 state words + 2 rotate scratches = 18 XMM live, exceeding
 the file's 16). The current emit's spill choice is **fixed**: slots 14 and
-15 always spill to `m14s`/`m15s`. RESULTS.md row 105 / line 340:
+15 always spill to `m14s`/`m15s`. The benchmark record reads:
 
 > "AVX2-16-XMM cap forces 2 spills for the 16 ChaCha words + 2 rotate
 > scratches, same constraint HACL* Vec256 handles with compiler-allocated

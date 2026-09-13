@@ -46,7 +46,8 @@ clean `k`-fold layer) and proves the loop rule there:
 `kfold` mirrors `semWhileIter`'s last-trip peeling exactly, so the trip-index
 induction closes in lock-step.
 
-**0 sorries; no axioms beyond the front's existing set.**
+The rule at the unified waist `semU`, which denotes `RWhileNz` directly, is
+`corresU_while` (`Ascent/WhileTop.lean`).
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Ascent

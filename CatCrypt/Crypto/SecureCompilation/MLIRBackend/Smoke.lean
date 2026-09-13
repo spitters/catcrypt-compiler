@@ -48,8 +48,6 @@ A future toolchain bump (CatCrypt → lean4 nightly-2025-12-x or later) is
 the route to swap Veir → opencompl/lean-mlir; the `MLIRBackend/` shape
 here is designed to make that swap mechanical.
 
-See `bench/framework/MLIR_BACKEND_PLAN.md` for the full phased plan.
-
 ## What this file is
 
 A minimal "MLIR-style program" constructed using Veir's `OpCode` enum

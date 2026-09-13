@@ -146,8 +146,8 @@ def gpReg32 : String → String
     512-bit value cannot be allocated to a ZMM register through that path — it
     keeps producing GP names (`RAX`…). This namer therefore only resolves an
     operand already carrying a `vN` ZMM name (a hand-built or SIMD-RA `Lcmd`); a
-    GP name surfaces as an obviously-wrong `%<NOTZMM>` form gas rejects. See the
-    module report — VPACK end-to-end needs a vector-RA path, out of this scope. -/
+    GP name surfaces as an obviously-wrong `%<NOTZMM>` form gas rejects. VPACK
+    end-to-end needs a vector-RA path, which this printer does not provide. -/
 def zmmReg : String → String
   | n =>
     if "v".isPrefixOf n then "%zmm" ++ (n.drop 1).toString

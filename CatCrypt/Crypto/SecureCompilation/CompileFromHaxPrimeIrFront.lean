@@ -22,8 +22,8 @@ so the recognizer keys on a real extraction head rather than a hypothesized name
 ## What `haxpipeT` emits for a `Field` call
 
 Running the crate through the typed extraction path
-(`haxpipeT --hax hax_frontend_export.json --emit-certified --name Primeir`, i.e.
-`scripts/run_haxpipe.sh` — **not** `cargo hax into lean`) lowers the generic
+(`haxpipeT --hax hax_frontend_export.json --emit-certified --name Primeir`,
+**not** `cargo hax into lean`) lowers the generic
 caller `field_demo<F: Field>(x, y) = x.mul(y).add(x)` to a keyed `ImpExpr`:
 
 ```text

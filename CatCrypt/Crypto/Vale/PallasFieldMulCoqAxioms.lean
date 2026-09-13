@@ -51,8 +51,9 @@ fiat-crypto theorem below is the cross-prover citation for the linked C symbol.
 * `CatCrypt/Crypto/Vale/PallasFieldMul.lean` — the leaf bridge.
 * `CatCrypt/Crypto/Vale/Pallas.lean` — the companion Bernstein-Yang inverter.
 * `CatCrypt/Crypto/Vale/VestaFieldMul.lean` — the Pasta-cycle twin.
-* `BLS/AUCurves/fiat-crypto/src/Arithmetic/WordByWordMontgomery.v` — `mulmod_correct`.
-* `BLS/AUCurves/fiat-crypto/src/COperationSpecifications.v` — `mul_correct`.
+* `fiat-crypto/src/Arithmetic/WordByWordMontgomery.v` — `mulmod_correct`
+  (https://github.com/mit-plv/fiat-crypto).
+* `fiat-crypto/src/COperationSpecifications.v` — `mul_correct`.
 
 This file is intentionally declaration-free (markdown only). Each cited
 name in the first backtick pair of a table row matches a declaration in

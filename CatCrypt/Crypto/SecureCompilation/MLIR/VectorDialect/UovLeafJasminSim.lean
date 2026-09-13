@@ -34,8 +34,7 @@ simulation through the OPAQUE rustcmd `gf256_dot_l8` symbol:
 
 * The `Cfor` *relational* rule is deferred (the functional executor
   handles `Cfor`, but the relational `SemIr` constructor is not yet
-  ported); per `bench/framework/JASMIN_SEM_COVERAGE.md` this lets us
-  run smoke tests through `execCmd` but not yet prove a relational
+  ported); this lets us run smoke tests through `execCmd` but not yet prove a relational
   simulation theorem.
 * The `Ccall` / `inline fn` table (`fnDef`) is deferred; this is what
   would tie the opaque rustcmd `gf256_dot_l8` symbol to its body.
@@ -57,9 +56,6 @@ GF(256) scalar leaf transcription. The chain to the *full* unrolled
 `uov_gf256_dot_l8` body (8 inner mul rounds × 8 outer XOR-accumulation
 steps) is mechanical follow-up once the `fnDef` / `Ccall` gap is
 closed.
-
-See `bench/framework/JASMIN_SEM_COVERAGE.md` for the full coverage
-audit and the per-protocol extension plan.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.UovLeafJasminSim
@@ -337,9 +333,7 @@ follow-up once the `Ccall` / `fnDef` gap is closed.
 **What's missing for axiom removal**: same blockers as MAYO —
 `Ccall` / `inline fn` table for the opaque rustcmd `gf256_dot_l8`
 symbol, and (for fully relational reasoning) the `Cfor` relational
-constructor in `JasminCoqSemMirror`. See
-`bench/framework/JASMIN_SEM_COVERAGE.md` for the per-protocol extension
-plan.
+constructor in `JasminCoqSemMirror`.
 -/
 
 end CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.UovLeafJasminSim

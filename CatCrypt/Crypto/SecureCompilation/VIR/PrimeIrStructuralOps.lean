@@ -21,19 +21,20 @@ ops, which move data between equivalent representations without doing arithmetic
   field / mod-arith residue and its fixed-width `BitVec` storage.
 
 It is the CatCrypt counterpart of prime-ir's `poly.to_tensor` /
-`poly.from_tensor` (§3 of `PRIME_IR_OP_CORRESPONDENCE.md`) and `field.bitcast` /
-`mod_arith.bitcast` (§1 / §2).
+`poly.from_tensor` (`poly` dialect) and `field.bitcast` / `mod_arith.bitcast`
+(`field` and `mod_arith` dialects); the dialect correspondence is in
+`VIR/DIALECTS.md`.
 
 ## Why this dialect exists (the gaps it closes)
 
-Per `PRIME_IR_OP_CORRESPONDENCE.md` (repo root), these reinterpret maps were already
-*used* — but only **implicitly**, never factored as standalone ops:
+These reinterpret maps were already *used* — but only **implicitly**, never
+factored as standalone ops:
 
-* `poly.to_tensor` (§3, line 89) — "`polyC`↔coeff-tensor via `from_tensor`
-  leaf; implicit" — **PARTIAL**.
-* `poly.from_tensor` (§3, line 90) — "implicit coeff construction" — **PARTIAL**.
-* `field.bitcast` (§1, line 25) — "via leaf decode; no dedicated op" — **PARTIAL**.
-* `mod_arith.bitcast` (§2, line 56) — "leaf decode" — **PARTIAL**.
+* `poly.to_tensor` — `polyC`↔coeff-tensor via the `from_tensor` leaf; implicit —
+  **PARTIAL**.
+* `poly.from_tensor` — implicit coefficient construction — **PARTIAL**.
+* `field.bitcast` — via leaf decode; no dedicated op — **PARTIAL**.
+* `mod_arith.bitcast` — leaf decode — **PARTIAL**.
 
 This file **factors all four as first-class ops** with concrete denotations and
 the round-trip lemmas a reinterpret op must satisfy — WITHOUT modifying the
@@ -83,14 +84,14 @@ Lowering status: `VIR/DIALECTS.md`.
 
 ## What this file does NOT close (still-PARTIAL)
 
-* `elliptic_curve.pairing_check` (§4, line 123) — we have the Miller-loop / Fp12
+* `elliptic_curve.pairing_check` — we have the Miller-loop / Fp12
   pieces (`RelationalFrontBls377MillerLoop.lean`, `…Fp12*.lean`) but a *fused*
   single `pairing_check` op that packages them is **deliberately skipped here**.
   Packaging it faithfully requires routing through those relational-front pieces
   (not a clean carrier-level identity like the maps above), so it would not be
   the additive, denotation-by-leaf shape this file keeps.  It remains a
   **PARTIAL**; this file does not claim to close it.
-* `elliptic_curve.bitcast` (§4, line 125) — the EC-point bit reinterpret — is
+* `elliptic_curve.bitcast` — the EC-point bit reinterpret — is
   also left as PARTIAL: an EC point is a multi-coordinate aggregate, so its
   bitcast is a tuple-of-residues reinterpret, not the single-residue map factored
   here.

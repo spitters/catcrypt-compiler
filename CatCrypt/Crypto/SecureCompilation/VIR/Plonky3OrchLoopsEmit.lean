@@ -297,8 +297,7 @@ def wholeProverOrchAsm : String := CatCrypt.Crypto.SecureCompilation.X86Backend.
 /-! ## 3b. Route the Merkle / FRI / FS / PoW permute call to the owned ZMM
     Poseidon2 leaf (the #647 Gap-2-item-1 lever, symbol-level wiring)
 
-`FULL_PROVER_VS_P3.md` records the single remaining residual of Gap 2: the
-single emitted whole-prover object inlines the **scalar** Poseidon2 permutation
+The single emitted whole-prover object inlines the **scalar** Poseidon2 permutation
 (the `plonky3_merkle_{hash_leaf,compress}_rc` / `fri_fold_rc` leaves are scalar
 `regArith` BabyBear arithmetic — jasmin's word model caps at U256, so it can
 never emit ZMM). Poseidon2 is ~97% of the prover's Merkle / FRI / Fiat-Shamir /

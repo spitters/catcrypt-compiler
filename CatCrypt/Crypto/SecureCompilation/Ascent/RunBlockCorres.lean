@@ -31,7 +31,7 @@ This module supplies the `runBlock`-level dual, `CorresJ`, whose **state relatio
 and the flags** — so a carry-carrying relation is expressible. It proves the
 structural core (`corresJ_nil`, `corresJ_append`, `corresJ_weaken`, and the
 `corresJ_single` bridge) over `runBlock`'s left-fold-over-append, plus **one
-genuine flag leaf**: a subtract-with-borrow step (`corresJ_sbb`) whose `SR`
+flag leaf**: a subtract-with-borrow step (`corresJ_sbb`) whose `SR`
 tracks `CF` against a clean integer-borrow specification. The leaf discharges the
 non-trivial content the pilot flagged as inexpressible — the borrow-out bit equals
 "the true signed difference underflowed" — and the two-limb example

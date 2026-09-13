@@ -17,7 +17,7 @@ set_option autoImplicit false
 `Ascent/RunBlockMvcgen.lean` puts the **total** machine `runBlock` on the `Std.Do`
 weakest-precondition metatheory: `runBlockM : List (JInstr 64) → StateM (JState 64) Unit`
 lives in the pure state monad, `PostShape = .arg (JState 64) .pure`, and `mvcgen`
-walks it natively. The **partial** bignum interpreter (`Jasmin/BignumHoare.lean`)
+walks it natively. The **partial** bignum interpreter `bignumExec` (`Jasmin/BignumExec.lean`)
 instead runs in `StateT _ Option` — `PostShape = .arg _ (.except PUnit .pure)` — and
 its triples do not literally subsume the total ones.
 

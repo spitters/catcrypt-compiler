@@ -14,8 +14,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 /-!
 # `Com latticeDialect → Com jasminDialect → .jazz` (Phase 4: backend unification)
 
-This file closes the missing link of the Jasmin ⇄ VIR convergence
-(`jasmin-vir-convergence-plan.md` §6, "backend unification"): the optimizer
+This file joins the two halves of the Jasmin ⇄ VIR pipeline: the optimizer
 runs on the **lattice** dialect (`Com latticeDialect`, see `LatticeDialect.lean`),
 while the `.jazz` printer (`JasminPrint.lean`) emits from the **Jasmin** dialect
 (`Com jasminDialect → JasminProg → .jazz`). To get an *optimized* lattice

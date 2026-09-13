@@ -34,8 +34,10 @@ single `Qed` theorem covers the BLS12-381 base prime; the generated
 
 ## Rocq sources (paths)
 
-* `BLS/AUCurves/fiat-crypto/src/Arithmetic/WordByWordMontgomery.v` — `mulmod_correct` (the proof; prime-parametric).
-* `BLS/AUCurves/fiat-crypto/src/COperationSpecifications.v` — `mul_correct` (the C-operation spec form).
+Paths are relative to fiat-crypto (https://github.com/mit-plv/fiat-crypto).
+
+* `src/Arithmetic/WordByWordMontgomery.v` — `mulmod_correct` (the proof; prime-parametric).
+* `src/COperationSpecifications.v` — `mul_correct` (the C-operation spec form).
 
 ## Codegen note (provenance, not proof)
 

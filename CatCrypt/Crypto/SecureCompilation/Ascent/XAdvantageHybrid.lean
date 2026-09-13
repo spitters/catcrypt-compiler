@@ -16,29 +16,26 @@ set_option autoImplicit false
 # `XAdvantageHybrid`: the advantage-triangle composition tactic
 
 The advantage-triangle composition tactic — `advChain_triangle` / `advChain_uniform` +
-`advmvcgen` — the `relSpec_forN` analogue for Core's **native advantage idiom** (the triangle
-inequality over a game chain on `SPComp` / `AdvantageA`). It composes Core's hybrid arguments
-(`MultiQueryPRF`, `HybridArgument`) in their native form, with no coupling reformulation, and
-is core-portable.
+`advmvcgen` — for Core's **advantage idiom** (the triangle inequality over a game chain on
+`SPComp` / `AdvantageA`). It composes Core's hybrid arguments (`MultiQueryPRF`,
+`HybridArgument`) in their own form, with no coupling reformulation.
 
-## Motivation — the native idiom, not the coupling idiom
+## The advantage idiom and the coupling idiom
 
-The XDijkstra coupling tactic (`XRelMvcgenControl.relmvcgen` / `relSpec_forN`) composes
-`ε`-approximate `SDistr` **couplings** (`liftRApprox`) through the coupling-spec-monad bind.
-But Core's protocol reductions (`MultiQueryPRF`, `HybridArgument`, the switching-lemma and
-dual-mode-OT hybrids) are **advantage-shaped**: they compose `AdvantageA` / `Advantage` bounds
-by the **triangle inequality** over a chain of games on `SPComp`. The coupling tactic reaches
-them only after reformulating each hop as a coupling.
+A coupling tactic composes `ε`-approximate `SDistr` **couplings** (`liftRApprox`) through a
+coupling-spec-monad bind; no such tactic is part of this package. Core's protocol reductions
+(`MultiQueryPRF`, `HybridArgument`, the switching-lemma and dual-mode-OT hybrids) are
+**advantage-shaped**: they compose `AdvantageA` / `Advantage` bounds by the **triangle
+inequality** over a chain of games on `SPComp`, and a coupling tactic reaches them only after
+reformulating each hop as a coupling.
 
-This module builds the tactic for the native idiom instead — the advantage-triangle analogue,
-which composes the Core hybrids as they already stand and needs only Core primitives
-(`AdvantageA` + `advantage_triangle`), so unlike the coupling tactic it is **core-portable**.
+This module states the composition for the advantage idiom, which composes the Core hybrids
+as they stand and needs only Core primitives (`AdvantageA` + `advantage_triangle`).
 
 ## The Core game-chain representation
 
-The task's sketch used a `Fin (n+1) → Game` chain with per-hop bounds indexed by
-`Fin n` (`G i.castSucc` / `G i.succ`) and a `∑ i, ε i` conclusion. **Core does not use that
-representation.** `CatCryptCore/Crypto/HybridArgument.lean` indexes the chain by `ℕ`:
+The hybrid engine of CatCrypt-core (module `HybridArgument`) indexes the chain by `ℕ`, not by
+`Fin (n+1)`:
 
 * a game chain is `G : ℕ → SPComp α` (with `G 0` the real game and `G n` the ideal game),
 * the adversary is explicit, `A : α → SPComp Bool`, and distinguishing is measured by
@@ -52,8 +49,8 @@ wrap the Core engine directly (no re-indexing, no re-proof).
 
 ## What this module provides
 
-1. **The advantage-chain composition rules** (the advantage-idiom analogues of `relSpec_seq` /
-   `relSpec_forN`):
+1. **The advantage-chain composition rules** (sequencing and iteration in the advantage
+   idiom):
    * `advChain_triangle` — per-hop bounds `AdvantageA (G i) (G (i+1)) A ≤ ε i` fold, by the
      triangle inequality, to `AdvantageA (G 0) (G n) A ≤ ∑ i ∈ Finset.range n, ε i`. Wraps the
      Core engine lemma `HybridArgument.advantage_hybrid_dep_bound`.
@@ -66,10 +63,9 @@ wrap the Core engine directly (no re-indexing, no re-proof).
 2. **The tactic `advmvcgen`** — on a goal `AdvantageA (G 0) (G n) A ≤ budget`, fires
    `advChain_uniform_le` / `advChain_triangle_le`, reducing it to the per-hop leaf obligation
    `∀ i, i < n → AdvantageA (G i) (G (i+1)) A ≤ ε` and the arithmetic VC `n * ε ≤ budget`. It
-   does the **composition**; the per-hop leaves stay obligations — exactly `relmvcgen` for the
-   advantage axis. The per-hop advantage `ε` is left as a metavariable, pinned when the leaf is
-   discharged (the calling convention of `relmvcgen`). `advmvcgen_dep` is the varying-`εᵢ`
-   (`∑`) variant.
+   does the **composition**; the per-hop leaves stay obligations. The per-hop advantage `ε` is
+   left as a metavariable, pinned when the leaf is discharged. `advmvcgen_dep` is the
+   varying-`εᵢ` (`∑`) variant.
 
 3. **The `MultiQueryPRF` demo, composed in the native idiom.** `advmvcgen` re-derives the
    q-query PRF hybrid bound `AdvantageA (G 0) (G q) A ≤ q * ε` from the per-hop single-query
@@ -79,12 +75,8 @@ wrap the Core engine directly (no re-indexing, no re-proof).
    `prf_query_ideal`), so the composition touches `MultiQueryPRF` objects. And
    `prf_multi_query_bound_is_advChain` shows Core's native bound *is* `advChain_uniform`.
 
-4. **Core-portability.** Every declaration here depends only on `CatCrypt.Crypto.AdvantageA`,
-   `advantage_triangle`, and the `HybridArgument` engine — all in **CatCrypt-core**. Unlike the
-   coupling tactic (which needs the dev-only `RelQ0` / `liftRApprox` coupling-spec-monad), this
-   tactic can move dev → core and compose the published Core hybrids directly. It is written
-   here (dev) only because the sibling coupling tactics it mirrors live here; nothing in it
-   references a dev-only primitive.
+4. **Dependencies.** Every declaration here depends only on `CatCrypt.Crypto.AdvantageA`,
+   `advantage_triangle`, and the `HybridArgument` engine, all in **CatCrypt-core**.
 -/
 
 namespace CatCrypt.XDijkstra
@@ -96,8 +88,8 @@ open CatCrypt.Crypto.MultiQueryPRF
 
 /-! ## 1. The advantage-chain composition rules
 
-The advantage-idiom analogues of the coupling tactic's `relSpec_seq` / `relSpec_forN`. Where
-those fold `ε`-approximate couplings through the coupling-spec-monad bind, these fold
+Sequencing and iteration rules in the advantage idiom. Where a coupling tactic folds
+`ε`-approximate couplings through a coupling-spec-monad bind, these fold
 `AdvantageA` bounds through the **triangle inequality** `advantage_triangle`, over Core's
 `ℕ`-indexed game chain `G : ℕ → SPComp α`. The fold itself is the Core engine
 (`HybridArgument.advantage_hybrid_dep` / `advantage_hybrid_uniform`); the rules here are the
@@ -109,9 +101,7 @@ variable {α : Type}
 and an adversary `A`, per-hop bounds `AdvantageA (G i) (G (i+1)) A ≤ ε i` compose, by the
 triangle inequality over the chain, to `AdvantageA (G 0) (G n) A ≤ ∑ i ∈ Finset.range n, ε i`.
 
-This is the advantage-axis counterpart of `XRelMvcgenControl.relSpec_forN_varying`: there the
-per-round coupling advantages sum in the coupling-spec-monad index; here the per-hop
-distinguishing advantages sum by `advantage_triangle`. Wraps the Core engine lemma
+The per-hop distinguishing advantages sum by `advantage_triangle`. Wraps the Core engine lemma
 `HybridArgument.advantage_hybrid_dep_bound` at the boundary `real = G 0`, `ideal = G n`. -/
 theorem advChain_triangle (G : ℕ → SPComp α) (A : α → SPComp Bool) (n : ℕ) (ε : ℕ → ℝ≥0∞)
     (hstep : ∀ i, i < n → AdvantageA (G i) (G (i + 1)) A ≤ ε i) :
@@ -120,8 +110,7 @@ theorem advChain_triangle (G : ℕ → SPComp α) (A : α → SPComp Bool) (n : 
 
 /-- **Advantage-chain triangle rule (uniform advantage).** When every hop is bounded by the same
 `ε`, the chain composes to `AdvantageA (G 0) (G n) A ≤ n * ε`. The uniform case of
-`advChain_triangle`; the advantage-axis counterpart of `relSpec_forN` (whose grade is
-`ε₀ + n • ε`). Wraps `HybridArgument.advantage_hybrid_uniform`. -/
+`advChain_triangle`. Wraps `HybridArgument.advantage_hybrid_uniform`. -/
 theorem advChain_uniform (G : ℕ → SPComp α) (A : α → SPComp Bool) (n : ℕ) (ε : ℝ≥0∞)
     (hstep : ∀ i, i < n → AdvantageA (G i) (G (i + 1)) A ≤ ε) :
     AdvantageA (G 0) (G n) A ≤ n * ε :=
@@ -151,21 +140,18 @@ theorem advChain_uniform_le (G : ℕ → SPComp α) (A : α → SPComp Bool) (n 
 
 /-! ## 2. The tactic `advmvcgen`
 
-`advmvcgen` is the advantage-axis analogue of `relmvcgen`: on a goal
-`AdvantageA (G 0) (G n) A ≤ budget` it fires the composition rule `advChain_uniform_le` (or, for
-`advmvcgen_dep`, `advChain_triangle_le`), leaving exactly the per-hop leaf obligation and the
-arithmetic verification condition. It does the **composition** — the triangle fold over the
-chain — and leaves the per-hop bounds as goals, exactly as `relmvcgen` leaves the per-hop
-couplings.
+On a goal `AdvantageA (G 0) (G n) A ≤ budget`, `advmvcgen` fires the composition rule
+`advChain_uniform_le` (or, for `advmvcgen_dep`, `advChain_triangle_le`), leaving exactly the
+per-hop leaf obligation and the arithmetic verification condition. It does the
+**composition** — the triangle fold over the chain — and leaves the per-hop bounds as goals.
 
 The per-hop advantage `ε` is not determined by a `≤ budget` goal, so it is left as a
-metavariable, pinned when the per-hop leaf is discharged — the same metavariable-deferral
-convention as `relmvcgen` (hence `apply`, not `refine`). -/
+metavariable, pinned when the per-hop leaf is discharged (hence `apply`, not `refine`). -/
 
 /-- **Advantage-chain VC generator (uniform).** On a goal `AdvantageA (G 0) (G n) A ≤ budget`,
 fires `advChain_uniform_le`, reducing it to the per-hop leaf `∀ i, i < n → AdvantageA (G i)
 (G (i+1)) A ≤ ?ε` and the arithmetic VC `n * ?ε ≤ budget`; `?ε` is pinned when the leaf is
-discharged. The advantage-axis analogue of `relmvcgen`. -/
+discharged. -/
 macro "advmvcgen" : tactic =>
   `(tactic| apply advChain_uniform_le)
 

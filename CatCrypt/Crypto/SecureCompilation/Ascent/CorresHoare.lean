@@ -10,30 +10,30 @@ public import CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockCorres
 /-!
 # `CorresJ` as a Hoare triple — joining ascend to the Hoare-logic style
 
-The ascent's `CorresJ` (a forward simulation over `runBlock`) and the project's
-Hoare-logic track (`Jasmin/BignumHoare.lean`'s `BignumTriple`) are two views of the
-same machine-level reasoning. This module makes the join explicit: it defines the
-`runBlock` analogue of `BignumTriple` and proves `CorresJ` **is** a family of such
-Hoare triples.
+The ascent's `CorresJ` (a forward simulation over `runBlock`) and the Hoare-logic
+judgment of `Jasmin/Hoare.lean` are two views of the same machine-level reasoning.
+This module makes the join explicit: it defines a `runBlock` Hoare triple and proves
+`CorresJ` **is** a family of such triples.
 
-`BignumHoare.BignumTriple P body Q := ∀ s s', P s → bignumStep body s s' → Q s'` is a
-partial-correctness Hoare triple over the relational `bignumStep`. `runBlock` is
-total, so its triple drops the `s'`-existential:
+`Jasmin.Hoare.HoareTriple step P body Q := ∀ s s', P s → step body s s' → Q s'` is a
+partial-correctness Hoare triple over a step relation `step`. `runBlock` is
+total, so its triple drops the `s'`-quantifier:
 
     RunBlockTriple P body Q := ∀ st, P st → Q (runBlock st body)
 
-The Hoare algebra (consequence, sequencing, conjunction) is the same as
-`BignumTriple`'s, re-proved over `runBlock`. `corresJ_iff_triple` closes the join:
+The Hoare algebra (consequence, sequencing, conjunction) is that of `HoareTriple`,
+proved over `runBlock`. `corresJ_iff_triple` closes the join:
 `CorresJ SR P fa c` holds iff, for every abstract state `a` satisfying `P`, the
 triple `{SR · a} c {SR · (fa a)}` holds — the forward simulation is exactly a
 `fa`-indexed family of `runBlock` Hoare triples. So ascend's correspondence and the
 Hoare-logic formalism are interchangeable at the machine level; a `CorresJ` leaf can
 be read as a Hoare triple and composed with the triple rules, and vice versa.
 
-A full join to `BignumHoare` itself (over `bignumStep`/`BignumState`, a distinct
-machine) additionally needs the `runBlock ↔ bignumStep` semantics bridge — the same
-`runBlock ↔ lsem` territory as `RunBlockLsemAgree`. This module supplies the
-formalism-level half.
+Relating `RunBlockTriple` to a `HoareTriple` over the bignum interpreter `bignumExec`
+(`Jasmin/BignumExec.lean`, a distinct machine) additionally needs a semantics bridge
+between `runBlock` and that interpreter, of the kind `RunBlockLsemAgree` states
+between `runBlock` and `lsem`. This module states the triple-level correspondence
+only.
 -/
 
 @[expose] public section
@@ -46,12 +46,12 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 
 /-- **The `runBlock` Hoare triple.** From a `JState` satisfying the precondition `P`,
     running `body` under the total `runBlock` lands in a state satisfying `Q`. The
-    `runBlock` analogue of `BignumHoare.BignumTriple` — total, so no `s'`-existential. -/
+    `runBlock` form of `Jasmin.Hoare.HoareTriple` — total, so no `s'`-quantifier. -/
 def RunBlockTriple (P : JState 64 → Prop) (body : List (JInstr 64))
     (Q : JState 64 → Prop) : Prop :=
   ∀ st, P st → Q (runBlock st body)
 
-/-! ## The Hoare algebra (mirrors `BignumTriple`'s rules) -/
+/-! ## The Hoare algebra (the rules of `Jasmin.Hoare.HoareTriple`) -/
 
 /-- Consequence: strengthen the precondition, weaken the postcondition. -/
 theorem RunBlockTriple.consequence {P P' Q Q' : JState 64 → Prop}

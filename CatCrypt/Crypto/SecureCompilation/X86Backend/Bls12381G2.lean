@@ -22,8 +22,7 @@ substring assertions. The composed `Fp` add/sub leaves are `runBlock`-verified
 in `Bls12381Fp2MulKernel` and the `Fp` mul is the #490 CIOS kernel (block
 model); the `Fp2`/`G2` drivers here are hand-written SysV call-frame
 scaffolding. It is a bench/interop reference. The verified emit path is the
-FRONT-SOURCED descent; see `bench/framework/AUDIT_EMIT_BYPASS.md` and
-`EMIT_PROVENANCE.md` §"Which emit is verified?".
+FRONT-SOURCED descent.
 
 **Variant: RELIC-transcribed (tests-only correctness).** This owned x86 emit is
 hand-transcribed from the RELIC pairing reference and gated **byte-identical to

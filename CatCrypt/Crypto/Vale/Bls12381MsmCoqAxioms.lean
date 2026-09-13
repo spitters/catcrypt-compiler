@@ -65,7 +65,7 @@ and the leaf value equation `Σ kᵢ · Pᵢ` is not derived from it.
    reduction, over an abstract `G1 : Type` with list-of-`Z` scalars. The one
    proof that a Pippenger reference computes the naive `Σ kᵢ · Pᵢ` is
    `MSM_Spec.msm_pippenger_correct` (`Qed`,
-   `BLS/Commitments/theories/MSM_Spec.v:266`), and it concerns a **different
+   `Commitments/theories/MSM_Spec.v:266`), and it concerns a **different
    function**: a **single-window** mathcomp `msm_pippenger` (`MSM_Spec.v:153`)
    over a `finGroupType`, with a `\prod_(s : 'F_r | s != 0)` bucket reduction
    and `'F_r`-valued scalars, proving `msm_pippenger = msm_spec` where
@@ -121,16 +121,19 @@ machine recheck.
 
 ## Rocq sources (paths)
 
-* `BLS/AUCurves/src/Bedrock/BLS12_MSM.v` — `msm_bls12_ok` (`:8558`),
+`AUCurves/` is https://github.com/AU-COBRA/AUCurves and `Commitments/` is
+https://github.com/SSProve/Commitments.
+
+* `AUCurves/src/Bedrock/BLS12_MSM.v` — `msm_bls12_ok` (`:8558`),
   `msm_bls12_exec_correct` (`:8498`), multi-window `msm_pippenger` (`:98`),
   `msm_spec_output` (`:526`), group hypotheses (`:461–465`),
   `CurveAddAliasedOK` / `CurveDoubleInplaceOK` / `StoreZero3OK`
   (`:1142` / `:1165` / `:1181`).
-* `BLS/AUCurves/src/Bedrock/BLS12_MSM_Check.v` — `Print Assumptions
+* `AUCurves/src/Bedrock/BLS12_MSM_Check.v` — `Print Assumptions
   msm_bls12_ok` (does not discharge the parametric hypotheses).
-* `BLS/AUCurves/src/Bedrock/BLS12_MSM_Extract.v` — extraction driver
+* `AUCurves/src/Bedrock/BLS12_MSM_Extract.v` — extraction driver
   (`msm_bls12` → Safe Rust `msm` / `bls12_msm_raw`, → Jasmin).
-* `BLS/Commitments/theories/MSM_Spec.v` — `msm_pippenger_correct` (`:266`),
+* `Commitments/theories/MSM_Spec.v` — `msm_pippenger_correct` (`:266`),
   `msm_spec` (`:92`, the naive `∏ pᵢ ^ sᵢ` reference).
 -/
 

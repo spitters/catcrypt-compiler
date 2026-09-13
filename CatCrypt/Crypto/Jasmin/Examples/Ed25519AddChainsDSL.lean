@@ -24,12 +24,11 @@ that ship in the trusted hand-written `dalek_shim.c`:
   dalek's `fp_sqrt_ratio_i`. First 8 blocks are shared with `fpInvChain`
   (both walk to `z^(2^250 - 1)`); only the tail differs.
 
-Both compile to a `func.func` in the emitted MLIR via `emitFunc`,
-replacing the previously-trusted external `fp_inv` / `fp_invsqrt`. Track
-F2 of `BLS/NEXT.md`: the math is already proved (`Ed25519Spec.lean`'s
-`interp_fp_inv` via Mathlib's Fermat); reifying the chain into Lean
-shrinks the TCB by removing the only "trusted hand-written C" in the
-Ed25519 binary.
+Both compile to a `func.func` in the emitted MLIR via `emitFunc`, in
+place of the trusted external `fp_inv` / `fp_invsqrt`. The math is
+proved (`Ed25519Spec.lean`'s `interp_fp_inv` via Mathlib's Fermat);
+reifying the chain into Lean removes the only trusted hand-written C
+from the Ed25519 binary's TCB.
 
 ## Conventions
 

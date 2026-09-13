@@ -132,10 +132,7 @@ The cleanest path to closing this gap is:
   C-callable `mpn_gcd_safegcd(rp, ap, an, bp, bn)` taking length-
   tagged slices.
 
-That is research-grade work (estimated 4-6 weeks for the algorithm
-port and 8-12 weeks for the Bedrock2 proof port, per the
-`mpn_hgcd_compare/README.md` "Future work" §5 estimate of 20 years
-of GMP hgcd-side tuning at one engineer-decade per `log n` factor).
+That is research-grade work.
 
 ## What this file *does* (placeholder)
 
@@ -221,9 +218,8 @@ noncomputable instance : Inhabited MpnBuf := ⟨MpnBuf.default⟩
 
 The `NOT_YET_PROVEN` suffix on the axiom name is the audit-visible
 marker that *no* upstream verification supports this denotation
-*yet*. The audit script (`scripts/audit_security.lean`) flags any
-`SurfaceDeps.lean` that references a `NOT_YET_PROVEN` axiom, so the
-gap cannot silently be wired into a security theorem. -/
+*yet*, so a security theorem that depends on it names the gap in its
+axiom list. -/
 
 /-- **Placeholder denotation axiom — NOT BACKED BY AUCurves YET.**
     A future generic Bernstein-Yang HGCD leaf would compute

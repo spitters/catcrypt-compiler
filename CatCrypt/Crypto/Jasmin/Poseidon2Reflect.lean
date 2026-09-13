@@ -68,10 +68,6 @@ front.
 
 ## References
 
-* `bench/poseidon2_compare/poseidon2_emit.lean` — legacy Tier C baseline emit
-  (superseded — kept as out-of-chain reference per CLAUDE.md).
-* `bench/poseidon2_compare/poseidon2_montgomery_*_emit.lean` — legacy Tier C
-  Montgomery emits (3 variants — superseded).
 * `CatCrypt/Crypto/Jasmin/UovReflect.lean` — sibling reference for the
   hand-built-body around `@[rust_cmd_pattern]` registration pattern.
 * `bench/uov_compare/include/uov_leaves.jinc` — sibling reference for the

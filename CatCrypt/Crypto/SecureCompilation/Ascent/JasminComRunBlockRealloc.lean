@@ -8,28 +8,28 @@ module
 public import CatCrypt.Crypto.SecureCompilation.Ascent.JasminComRunBlockSeq
 
 /-!
-# Extending the ascent keystone toward a general D: register reuse + a non-arith op
+# The block tie under register reuse, and with a `mulhi` arm
 
 `JasminComRunBlockSeq.lowerBlock_tie` ties a straight-line scalar-arithmetic block
 (`Com jasminDialect` ↔ `runBlock`) under a **fresh** register allocation. This
-module widens that keystone two ways toward the general `Com jasminDialect ↔
+module states the tie in two further forms, toward the general `Com jasminDialect ↔
 JState` correspondence D:
 
-1. **The register-reuse leg** (`lowerBlock_tie_realloc`). The keystone lowers with
-   a fresh (injective, range-disjoint) allocation; a real allocator then *reuses*
-   physical registers via a renaming `ρr`. Composing the keystone with
+1. **The register-reuse leg** (`lowerBlock_tie_realloc`). The block tie lowers with
+   a fresh (injective, range-disjoint) allocation; an allocator *reuses*
+   physical registers via a renaming `ρr`. Composing the block tie with
    `Optimizer.RandomizedRegAlloc.regalloc_runBlock_sound` (the `StateRel`
    renaming-soundness theorem) lifts the tie from the fresh allocation to the
    renamed one: reading the *renamed* output register after `runBlock` of the
-   renamed lowered block still equals the block's `Com` denotation.
+   renamed lowered block equals the block's `Com` denotation.
 
 2. **One non-arithmetic op** (`mulhi`, the `MULX` high word). The six scalar-arith
    arms of `ArithBlock` all denote a plain `BitVec 64` ALU op; `mulhi` denotes the
    widening-multiply high word (`mulHiW`), lowered to the two-write machine `MULX`
    whose `dstHi` read carries it. Its single-op tie (`mulhiOp_runBlock_tie`) is the
-   `jasminOp_runBlock_tie` analogue. `RegBlock` then folds the arith and mulhi arms
-   into one straight-line block type and `lowerBlockR_tie` re-proves the keystone
-   over it — a block that covers more than the scalar-arith fragment.
+   `jasminOp_runBlock_tie` analogue. `RegBlock` folds the arith and mulhi arms
+   into one straight-line block type and `lowerBlockR_tie` proves the block tie
+   over it.
 
 ## What is proved
 
@@ -42,13 +42,12 @@ JState` correspondence D:
 * `mulhiOp_runBlock_tie` — the single-op `Com ↔ runBlock` tie for `mulhi`.
 * `RegBlock` / `lowerBlockR` / `outRegR` / `RegBlock.toCom` — the combined
   straight-line block over arith + mulhi arms.
-* `lowerBlockR_tie` — the keystone re-proved over the combined block: the mulhi
+* `lowerBlockR_tie` — the block tie over the combined block: the mulhi
   arm consumes two fresh registers (`dstHi = g 0`, scratch `dstLo = g 1`) and the
   fresh invariant is preserved by `FreshFor_extend2`.
 
-Both sides of every tie are genuine — a real machine register read after a real
-`runBlock`, and a real `Com jasminDialect` denotation (`bop.apply` / `mulHiW`
-folds), never `default`.
+In every tie the left side is a machine register read after `runBlock` and the
+right side a `Com jasminDialect` denotation (`bop.apply` / `mulHiW` folds).
 -/
 
 @[expose] public section
@@ -64,18 +63,18 @@ open CatCrypt.Crypto.Optimizer.RandomizedRegAlloc
 
 /-! ## 1. The register-reuse leg
 
-The keystone `lowerBlock_tie` reads the fresh-allocation output register. A real
+The block tie `lowerBlock_tie` reads the fresh-allocation output register. An
 allocator reuses physical registers, applying a renaming `ρr` (injective on the
 live set, with left inverse `σr`). `regalloc_runBlock_sound` certifies that the
 renamed run's register `ρr n` agrees with the original run's register `n`; taking
-`n` to be the keystone's output register moves the tie onto the reused allocation. -/
+`n` to be the block tie's output register moves the tie onto the reused allocation. -/
 
 /-- **The reuse leg.** Lower the block with a fresh allocation (`lowerBlock`), then
     apply a register renaming `ρr` (injective, left inverse `σr`) — a register
     *reuse*. Reading the renamed output register `ρr (outReg …)` after `runBlock`
     of the renamed block from the `σr`-renamed initial state still equals the
     block's `Com jasminDialect` denotation. This composes the fresh-allocation
-    keystone (`lowerBlock_tie`) with the renaming-soundness theorem
+    block tie (`lowerBlock_tie`) with the renaming-soundness theorem
     (`regalloc_runBlock_sound`), transported through `StateRel`'s register
     agreement (`ρr n` of the renamed run = `n` of the original run). -/
 theorem lowerBlock_tie_realloc {Γ : Ctxt jasminDialect} (block : ArithBlock Γ)
@@ -95,7 +94,7 @@ theorem lowerBlock_tie_realloc {Γ : Ctxt jasminDialect} (block : ArithBlock Γ)
 /-! ## 2. The `mulhi` op: single-instruction lowering and value agreement
 
 `mulhi` is the widening-multiply high word — the `hi` output of x86 `MULX`. It is
-not a plain ALU op (unlike `add/sub/and/or/xor/mul`), so it exercises a genuinely
+not a plain ALU op (unlike `add/sub/and/or/xor/mul`), so it exercises a
 different arm. The machine `MULX` writes both outputs `(lo, hi)`; reading `dstHi`
 recovers `mulHiW`. -/
 
@@ -132,7 +131,7 @@ def mulhiSingleOp : Com jasminDialect Γ2 (.reg 64) :=
   .var (.mk (.mulhi 64) rfl (.cons vA (.cons vB .nil))) (.ret .here)
 
 /-- The dialect side: the single-op `mulhi` `Com` denotes to
-    `mulHiW (V a) (V b)`, a genuine widening-multiply high word read from `V`. -/
+    `mulHiW (V a) (V b)`, the widening-multiply high word of two values read from `V`. -/
 theorem mulhiSingleOp_denote (V : Ctxt.Valuation Γ2) :
     mulhiSingleOp.denote V = mulHiW (vA.lookup V) (vB.lookup V) := rfl
 
@@ -148,15 +147,14 @@ theorem mulhiOp_runBlock_tie (ρ : RegMap) (dstHi dstLo : String) (s : JState 64
 
 /-! ## 4. Non-vacuity of the mulhi machine side
 
-A concrete `MULX` whose high word is nonzero: `2^32 · 2^33 = 2^65`, high word `2`
-— a real machine run, not a `default`/zero collapse. -/
+A concrete `MULX` whose high word is nonzero: `2^32 · 2^33 = 2^65`, high word `2`. -/
 
 /-- Concrete machine state with `"a" = 2^32`, `"b" = 2^33`. -/
 def mulhiSampleS : JState 64 :=
   { regs := fun r => if r = "a" then (BitVec.ofNat 64 (2 ^ 32)) else
                      if r = "b" then (BitVec.ofNat 64 (2 ^ 33)) else 0 }
 
-/-- The machine `MULX` high-word read is the genuine value `2` (`2^65 / 2^64`). -/
+/-- The machine `MULX` high-word read is `2` (`2^65 / 2^64`). -/
 example :
     (runBlock mulhiSampleS (lowerMulHi "a" "b" "hi" "lo")).get "hi"
       = (2 : BitVec 64) := by
@@ -166,7 +164,7 @@ example :
 
 `RegBlock` is the covered straight-line block over both the scalar-arith arms and
 the mulhi arm — all two-input, single-`reg 64`-output ops binding a fresh slot.
-The keystone re-proves over it (`lowerBlockR_tie`). The mulhi arm consumes **two**
+The block tie holds over it (`lowerBlockR_tie`). The mulhi arm consumes **two**
 fresh registers: `dstHi = g 0` (the SSA slot) and a scratch `dstLo = g 1` (dead —
 never in the register map's range), so the recursion shifts the fresh stream by
 two and `FreshFor` is preserved by `FreshFor_extend2`. -/
@@ -190,13 +188,13 @@ def mulhiExpr {Γ : Ctxt jasminDialect} (a b : Ctxt.Var Γ (.reg 64)) :
     Expr jasminDialect Γ (.reg 64) :=
   .mk (.mulhi 64) rfl (.cons a (.cons b .nil))
 
-/-- The `mulhi` expression denotes to `mulHiW (a.lookup V) (b.lookup V)` — a genuine
-    widening-multiply high word from the valuation. -/
+/-- The `mulhi` expression denotes to `mulHiW (a.lookup V) (b.lookup V)`, the
+    widening-multiply high word of two values from the valuation. -/
 theorem mulhiExpr_denote {Γ : Ctxt jasminDialect} (a b : Ctxt.Var Γ (.reg 64))
     (V : Ctxt.Valuation Γ) :
     (mulhiExpr a b).denote V = mulHiW (a.lookup V) (b.lookup V) := rfl
 
-/-- **Compile a `RegBlock` to a genuine `Com jasminDialect`.** `.arith` binds
+/-- **Compile a `RegBlock` to a `Com jasminDialect`.** `.arith` binds
     `arithExpr`; `.mulhi` binds `mulhiExpr`; `.ret` is `Com.ret`. -/
 def RegBlock.toCom : {Γ : Ctxt jasminDialect} → RegBlock Γ →
     Com jasminDialect Γ (.reg 64)
@@ -240,7 +238,7 @@ def outRegR : {Γ : Ctxt jasminDialect} → RegBlock Γ → RegMapG Γ →
   | _, .mulhi _ _ rest, ρ, g =>
       outRegR rest (ρ.extend (g 0)) (fun k => g (k + 2))
 
-/-- **The keystone re-proved over the combined arith + mulhi block.** For every
+/-- **The block tie over the combined arith + mulhi block.** For every
     straight-line `RegBlock`, under the state correspondence `JStateInterpG ρ V s`
     and a fresh allocation `FreshFor ρ g`, reading the block's output register
     after `runBlock` of the whole lowered block equals the multi-op `Com
@@ -309,8 +307,8 @@ theorem lowerBlockR_tie : {Γ : Ctxt jasminDialect} → (block : RegBlock Γ) �
 /-! ## 6. Non-vacuity of the combined block
 
 A concrete 2-op block exercising **both** arms: `s1 := a + b ; s2 := mulhi s1 a ;
-ret s2`. The denotation is a real `mulHiW ∘ add` composition (symbolic `rfl`, not a
-concrete-value KAT), so neither side collapses to `default`. -/
+ret s2`. Its denotation is the composition `mulHiW ∘ add` over a symbolic valuation,
+proved by `rfl`. -/
 
 /-- A combined 2-op block over `Δ2`: `s1 := a + b ; s2 := mulhi s1 a ; ret s2`. -/
 def blockAM : RegBlock Δ2 :=
@@ -318,14 +316,14 @@ def blockAM : RegBlock Δ2 :=
     (.mulhi (.here) (.there .here)
       (.ret .here))
 
-/-- The combined block denotes to `mulHiW (a + b) a` over the valuation — a genuine
-    composition of `JasminBinOp.add.apply` and `mulHiW`, not `default`. -/
+/-- The combined block denotes to `mulHiW (a + b) a` over the valuation, the
+    composition of `JasminBinOp.add.apply` and `mulHiW`. -/
 theorem blockAM_denote (V : Ctxt.Valuation Δ2) :
     blockAM.toCom.denote V
       = mulHiW (JasminBinOp.add.apply (dA.lookup V) (dB.lookup V)) (dA.lookup V) := by
   rfl
 
-/-- **The combined keystone on the 2-op block.** The machine `runBlock` of the whole
+/-- **The combined block tie on the 2-op block.** The machine `runBlock` of the whole
     lowered block reads exactly `mulHiW (a + b) a` — the composed dialect
     denotation over both arms. -/
 theorem blockAM_tie (ρ : RegMapG Δ2) (g : Nat → String) (s : JState 64)

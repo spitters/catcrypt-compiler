@@ -39,7 +39,7 @@ the extracted `Fp / Fp2 / Fp6 / Fp12` tower over verified fiat leaves, plus
 the FIELD/PAIRING tower; the G1/G2 group add law stays trusted (the same
 hybrid contract as BLS12-381).
 
-## Bridge — no hax extraction available (per AUDIT_HAX_BRIDGE.md)
+## Bridge — no hax extraction available
 
 Unlike BLS12-381 (which has `bls-hax/`) and Groth16/KZG (which have their
 own hax extractions), BN254 has **no upstream hax tree**. The drivers
@@ -56,7 +56,6 @@ the bn254 crate's `pairing_optimal` linked by the Rust KAT.
   `eip197VerifyCom_denote`, `pairingCom_denote`
 * `bench/bn254_compare/bn254_emit.lean` — legacy Tier C emit (superseded)
 * `CatCrypt/Crypto/Jasmin/Bls12381Reflect.lean` — sibling pattern
-* `bench/framework/AUDIT_HAX_BRIDGE.md` — confirms NO hax extraction
 * EIP-196 / EIP-197 — published precompile test vectors
 -/
 
@@ -221,9 +220,8 @@ The §1–§7 surface above keeps the whole pairing tower (`Fp2/Fp6/Fp12`, the
 Miller loop, the final exponentiation) inside the opaque `bn254_pairing` /
 `bn254_fp12_mul` leaves: the field arithmetic is composition-trusted (the #222
 path — the tower-composition layer is rustc/LLVM-compiled and linked through the
-C/FFI shim, or — in the AUCurves direct reg-ptr emit — hits the regalloc /
-address-of-stack-array wall documented in
-`bench/bn254_compare/jasmin_tower/regptr/JASMIN_TOWER_259.md`).
+C/FFI shim, or — in the AUCurves direct reg-ptr emit — hits the jasminc regalloc /
+address-of-stack-array limit).
 
 This section drops the **pairing-tower field arithmetic** down a level: it
 surfaces the AUCurves verified `Fp` word leaves (`bn254_add` / `bn254_mul` /

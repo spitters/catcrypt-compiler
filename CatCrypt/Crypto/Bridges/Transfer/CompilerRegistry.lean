@@ -11,8 +11,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.Preservation
 /-!
 # The compiler's preservation lemmas, wired into the `Related` registry
 
-Concrete realization of the relational-compilation ↔ Trocq connection
-(`relational-compilation-trocq-connection.md`): the in-Lean x86 backend's
+Concrete realization of the relational-compilation ↔ Trocq connection: the in-Lean x86 backend's
 per-instruction **preservation lemmas** (`X86Backend.Preservation.*`) become
 `RelatedBinOp` instances in the **same** `Trocq.Related` registry that hosts the
 security-bridge realizations. Then the **same** `Related`-resolution engine that

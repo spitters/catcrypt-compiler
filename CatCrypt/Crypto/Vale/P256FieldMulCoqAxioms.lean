@@ -49,8 +49,9 @@ to. Montgomery radix `R = 2^256`, 4×u64 saturated limbs (32 bytes).
 * `CatCrypt/Crypto/Vale/P256FieldMul.lean` — the leaf bridge.
 * `CatCrypt/Crypto/Vale/SafegcdP256.lean` — the companion Bernstein-Yang inverter.
 * `CatCrypt/Crypto/Pairing/P256GroupEmit.lean` — the point-add routing to `fiat_p256_mul`.
-* `BLS/AUCurves/fiat-crypto/src/Arithmetic/WordByWordMontgomery.v` — `mulmod_correct`.
-* `BLS/AUCurves/fiat-crypto/src/COperationSpecifications.v` — `mul_correct`.
+* `fiat-crypto/src/Arithmetic/WordByWordMontgomery.v` — `mulmod_correct`
+  (https://github.com/mit-plv/fiat-crypto).
+* `fiat-crypto/src/COperationSpecifications.v` — `mul_correct`.
 
 This file is intentionally declaration-free (markdown only). The cited
 `P256_fmul_denote` and its grounding theorems are declarations in

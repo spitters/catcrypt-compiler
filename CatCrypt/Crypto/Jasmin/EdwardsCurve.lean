@@ -385,7 +385,7 @@ theorem add_neg_self (P : EdwardsPointAff E) :
 
 /-- **Polynomial form of `add_assoc` x-coordinate identity.** Cleared
     denominator form of `((P+Q)+R).x = (P+(Q+R)).x`. SymPy-computed
-    witness; see `scripts/find_add_assoc_witness.py`. -/
+    witness. -/
 theorem add_assoc_x_polynomial {F : Type*} [Field F] {E : EdwardsParams F}
     (Px Py Qx Qy Rx Ry : F)
     (hP : OnCurveAff E Px Py) (hQ : OnCurveAff E Qx Qy) (hR : OnCurveAff E Rx Ry) :

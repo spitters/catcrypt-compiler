@@ -10,7 +10,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 /-!
 # Wide / multi-pointer leaf ABI — the 4- and 5-pointer (modulus-as-pointer) witnesses
 
-Item #2 (wide / array ABI) of `COMPILER_ROADMAP.md`. The leaf calling convention
+The leaf calling convention
 is general over up to six SysV integer/pointer arguments via
 `AsmPrinter.intArgRegs` + `argMarshalMoves` — the proven Montgomery kernels
 (`Curve4MontMulProvenEmit` &c.) already use a

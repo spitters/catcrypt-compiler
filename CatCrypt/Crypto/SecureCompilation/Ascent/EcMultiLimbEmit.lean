@@ -10,7 +10,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgree
 public import Mathlib.Tactic.Ring
 
 /-!
-# Welding the multi-limb EC subtract capstone to emitted machine-wire bytes
+# The multi-limb EC subtract chain at the machine wire `lsemStraightMem`
 
 _Part of the AutoCorres-in-Lean ascent begun by Sebastian Graf (`sgraf812/ascent`);
 see `Corres.lean` / `RunBlockCorres.lean`._
@@ -20,36 +20,37 @@ lifts an arbitrary-length `sbb`-instruction chain `sbbBlock pairs` up to the cle
 abstract borrow fold `sbbAbs pairs` through the flag-carrying relation `SRcarry`,
 and `sbbLimbs_spec` states the base-`2^64` borrow-chain value identity (the
 recomposed difference minus the top borrow weight equals `⟦X⟧ − ⟦Y⟧ − b_in`).
-`X86Backend/RunBlockLsemAgree.lean` supplies the **machine-wire leg**: it bridges
-the total fold `runBlock` down to the machine wire `lsemStraightMem` over `LstateM`
-through the correspondence `JLstateCorr`.
+`X86Backend/RunBlockLsemAgree.lean` supplies the **machine-wire leg** for its opcode
+subset: it relates the total fold `runBlock` to the machine wire `lsemStraightMem`
+over `LstateM` through the correspondence `JLstateCorr`.
 
 This module **composes the two legs** so that the machine-wire denotation of an
-emitted `sbb` chain computes the abstract borrow fold, and — through the value
-identity — realizes the clean multi-limb field-subtract spec `⟦X⟧ − ⟦Y⟧ − b_in`
-over the recomposed limbs. This is the `CorresJ` analogue of `feSub_endToEnd`.
+`sbb` chain lowering computes the abstract borrow fold, and — through the value
+identity — the clean multi-limb field-subtract spec `⟦X⟧ − ⟦Y⟧ − b_in` over the
+recomposed limbs.
 
-## The opcode gap the composition exposes (the honest deliverable)
+## The `sbb` opcode and the wire correspondence
 
 `RunBlockLsemAgree`'s machine-wire agreement covers the flag-free ALU core
 (`add`/`sub`/`imul`/`and`/`or`/`xor`), the compile-time-offset word memory ops
 (`loadMem`/`storeMem`), the two-write `mulx`, and — on the **flag/carry** axis
 (§9, `adcx_case`/`adox_case`, `JLstateCorrF`) — the **ADX add-with-carry** opcodes
-`adcx` / `adox` only. It does **not** cover `sbb` (subtract-with-borrow):
+`adcx` / `adox`. It does **not** cover `sbb` (subtract-with-borrow):
 
-* `sbb ∉ InFieldArithSubset` and `sbb ∉ InSubsetM` (`sbb_not_in_bridge_subset`);
-* the concrete lowering sends it to a `Lret` no-op (`sbb_lowers_to_lret`), i.e. the
-  bridge emits **no wire** for an `sbb` limb;
-* the flag/carry designated-register scheme is built for the `CF`/`OF` carry-**out**
-  of the ADX add pair (`addCarryWord` / `carryOutBit`), not the borrow-**out** of
-  `sbb`.
+* `sbb ∉ InFieldArithSubset` and `sbb ∉ InSubsetM` (`sbb_not_in_field_subset`,
+  `sbb_not_in_subsetM`);
+* the concrete lowering `jToRM` sends it to a `Lret` no-op (`sbb_lowers_to_lret`),
+  i.e. that lowering emits **no wire** for an `sbb` limb.
 
-So the machine-wire leg for the `sbb` chain is a gap. We name it as the
-honest interface `SbbChainWire` — the exact conclusion shape `RunBlockLsemAgree`
-delivers for its in-subset opcodes (`runBlock_lsem_agree`), for an `sbb`-supporting
-lowering. Closing it means extending the bridge's flag axis with an `sbb` leaf that
-threads the borrow-out (the mirror of `adcx_case` on the underflow predicate) — the
-same shape `corresJ_sbb` already proved on the abstraction side.
+The module states the wire leg two ways. `SbbChainWire` is the conclusion shape of
+`runBlock_lsem_agree` for an arbitrary lowering of the chain, over `JLstateCorr`, and
+`sbbChain_emit_realizes_abstract` takes it as the hypothesis `hwire`.
+`SbbChainWireCF` is the same shape over `JLstateCorrCF`, which tracks register
+agreement off a set of flag slots plus one borrow slot; `runBlock_lsem_agreeCF`
+proves it for the threaded lowering `sbbChainL` defined here, and
+`sbbChain_emit_realizes_abstract_CF` composes it with `corresJ_sbbChain` with no
+wire hypothesis. `sbbChainL` is a lowering defined in this module, not the output of
+the owned x86 backend.
 -/
 
 @[expose] public section
@@ -87,14 +88,13 @@ theorem sbb_not_in_subsetM (dst src : String) :
     ¬ InSubsetM (.sbb dst (.reg src)) := by
   intro h; exact h
 
-/-! ## The machine-wire leg for the `sbb` chain (the honest interface)
+/-! ## The machine-wire leg for the `sbb` chain over `JLstateCorr`
 
-Because the bridge's concrete `jToRM` does not lower `sbb`, the machine-wire leg is
-stated over an **arbitrary** lowering `lowered : List LinstrRM` of the `sbb`
-chain — precisely the conclusion `RunBlockLsemAgree.runBlock_lsem_agree` proves for
-its in-subset opcodes, generalized to the `sbb` chain that lies outside that subset.
-Discharging this hypothesis is exactly the residual bridge work (an `sbb` borrow
-leaf on the flag axis). -/
+Because the bridge's concrete `jToRM` does not lower `sbb`, this form of the
+machine-wire leg is stated over an **arbitrary** lowering `lowered : List LinstrRM`
+of the `sbb` chain: the conclusion `RunBlockLsemAgree.runBlock_lsem_agree` proves for
+its in-subset opcodes, for the `sbb` chain outside that subset. Here it is a
+hypothesis; the `JLstateCorrCF` form below is proved for the lowering `sbbChainL`. -/
 
 /-- `SbbChainWire lowered block`: some machine-wire program `lowered` agrees with the
     total fold `runBlock` on `block` — from any `JLstateCorr`-related start state it

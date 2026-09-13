@@ -513,7 +513,7 @@ def emitMain : IO Unit := do
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Plonky3LdeColumnEmit
 
-/-- Top-level entry point for `lake exe plonky3ldeowned`. -/
+/-- Top-level entry point, run with `lake env lean --run` on this file. -/
 def main : IO UInt32 := do
   CatCrypt.Crypto.SecureCompilation.VIR.Plonky3LdeColumnEmit.emitMain
   return 0

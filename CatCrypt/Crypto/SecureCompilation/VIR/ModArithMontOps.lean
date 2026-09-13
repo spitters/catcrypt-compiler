@@ -19,7 +19,7 @@ of fractalyze/prime-ir's **ModArith** dialect ops `mod_arith.to_mont`,
 
 ## Why this dialect exists (the gap it closes)
 
-Per `PRIME_IR_OP_CORRESPONDENCE.md` (repo root, §2), CatCrypt already *computes* in the
+Against prime-ir's `mod_arith` dialect (`VIR/DIALECTS.md`), CatCrypt already *computes* in the
 Montgomery domain — `montMul N R N'` / `redc N R N'`
 (`Optimizer/Rewrite/MontgomeryRedcGeneric.lean`), with the proven defining
 property `redc T · R ≡ T (mod N)` — but it does **not** expose the

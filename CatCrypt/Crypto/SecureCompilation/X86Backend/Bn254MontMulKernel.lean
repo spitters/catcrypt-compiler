@@ -26,8 +26,8 @@ BN254 analog of the BLS12-381 field-multiply (#490): four CIOS iterations
 instead of six.
 
 BN254 was the one production curve whose `Fp` multiply still **adopted** an
-external fiat/bedrock2 Montgomery tower (per the #489 cross-curve audit,
-`bench/CROSS_CURVE_AUDIT.md`) while the sibling curves emit their own ADX
+external fiat/bedrock2 Montgomery tower (#489 cross-curve audit) while the
+sibling curves emit their own ADX
 field-mul. Own-emitting it makes the whole BN254 `G1` group law
 (`Pairing/BN254GroupEmit.lean`) own-emitted end-to-end down to the field
 multiply, subtract, and (already #488/#489) the divstep inverse.

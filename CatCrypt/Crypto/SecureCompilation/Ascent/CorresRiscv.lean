@@ -18,9 +18,10 @@ runner, and `corresR_eq_corresM` exhibits it as `CorresM` at that machine's step
 and `runBlock`.
 
 RV64 has no carry flag and no conditional select, so a borrow is a materialised
-word rather than a flag. The structural rules below are therefore the whole of
-what transfers from the x86 side; the arithmetic leaves (`corresJ_sbb` and its
-chain) have no RV64 analogue and are not restated here.
+word rather than a flag. This module states the structural rules; the flag leaves
+of the x86 side (`corresJ_sbb` and its chain) have no RV64 form. The RV64 value
+leaves are in `CorresRiscvLeaves`, and the three-limb subtract with materialised
+borrows, `corresR_subBorrow3`, is in `CorresRiscvSolver`.
 
 ## Main definitions
 

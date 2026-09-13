@@ -140,7 +140,7 @@ Per-constructor extensions:
 * **`RArrLoad` / `RArrStore`**: covered **conditionally** on Public
   index. See `ArrayPreservation.R{ArrLoad,ArrStore}_ct_preserves_if_idx_public`.
 
-The conditional clause is load-bearing: a secret-derived index breaks
+The conditional clause is necessary: a secret-derived index breaks
 CT (`R{ArrLoad,ArrStore}_secret_index_rejected`).
 -/
 
@@ -249,9 +249,7 @@ RArrStore     | RobustCompilation_RArrStore_ext| CTPreservation_RArrStore_ext
               | (positive, via arrStoreDyn)    | (CONDITIONAL on Public idx)
 ```
 
-Foundation theorems unchanged. See
-`bench/framework/RobustCompilation_CT_Coverage.md` for the per-protocol
-implication map.
+The foundation theorems are not modified by the extensions.
 -/
 
 end CatCrypt.Crypto.SecureCompilation.LowCTExtensions.CombinedExtended

@@ -22,9 +22,7 @@ joined with `String.intercalate`), with no single verified-printer descent for
 the whole file. The `#guard` checks are structural assertions; the per-lane
 realization theorems `roundBlk_realizes_zmm`/`schedBlk_realizes_zmm` scope the
 `runZBlock` round/schedule blocks, not the emitted frame. It is a bench/interop
-reference. The verified emit path is the FRONT-SOURCED descent; see
-`bench/framework/AUDIT_EMIT_BYPASS.md` and `EMIT_PROVENANCE.md`
-§"Which emit is verified?".
+reference. The verified emit path is the FRONT-SOURCED descent.
 
 `sha512_compress_x8` runs eight independent SHA-512 streams packed across the
 eight `u64` lanes of a 512-bit ZMM register: one FIPS-180-4 §6.4 single-block

@@ -38,7 +38,7 @@ the box.
 The general **graded**-`PostShape` route — a writer whose WP tracks the emitted
 monoid element as its own barrel rather than folding it into a state — is tier 3
 and lives separately; it is what one needs when the log must *not* be encoded as
-state (e.g. a genuinely commutative or resource-graded accumulation).
+state (e.g. a commutative or resource-graded accumulation).
 
 ## What is proved
 
@@ -144,7 +144,7 @@ theorem demo_log {I : Type} (a b : I) :
   simp_all
 
 /-- **`mvcgen` on the writer, started from an arbitrary log.** From any starting log
-    `w`, `demoProg a b` ends with `w ++ [a, b]` — the writer genuinely *accumulates*
+    `w`, `demoProg a b` ends with `w ++ [a, b]` — the writer *accumulates*
     onto whatever the incoming log was, rather than overwriting it. Same `mvcgen`
     walk; the residual is the append fold `(w ++ [a]) ++ [b] = w ++ [a, b]`. -/
 theorem demo_log_accumulates {I : Type} (a b : I) (w : List I) :

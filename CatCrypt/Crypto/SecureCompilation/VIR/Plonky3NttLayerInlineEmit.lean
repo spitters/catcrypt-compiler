@@ -18,9 +18,8 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 /-!
 # Plonky3 two-NTT-layer fusion, FRONT-COMPILED (`plonky3_ntt_layer8x2_fused_rc`)
 
-`FULL_PROVER_VS_P3.md` §"per-leaf-call ABI tax" names the precise overhead in
-the emitted whole-prover: every emitted field-leaf round-trips its data through
-a caller `(out, in)` buffer. When leaf **A** feeds leaf **B**, the bytes are
+The emitted whole-prover pays a per-leaf-call ABI tax: every emitted field-leaf
+round-trips its data through a caller `(out, in)` buffer. When leaf **A** feeds leaf **B**, the bytes are
 stored out of A's registers by A's copy-out, then loaded back by B's copy-in —
 `2·nOut_A + 2·nCopy_B` pure-marshalling moves.
 

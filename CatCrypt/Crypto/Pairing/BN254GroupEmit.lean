@@ -51,7 +51,7 @@ for BN254 `G1`, with no opaque group leaf in the emitted term.
 
 ## Honesty boundary
 
-The emitted point-add term genuinely contains only `fp_mul`/`fp_sub`/`fp_inv`
+The emitted point-add term contains only `fp_mul`/`fp_sub`/`fp_inv`
 `extCall`s — there is no hidden `bn254_g1_add` leaf. The slope `λ` carries the
 one base-field inverse (`fp_inv`); the two coordinate maps are polynomial in
 `λ`. **Scope:** this is the `G1` base-field group add only. The pairing tower
@@ -95,8 +95,8 @@ abbrev FpWire : Type := Fin FESZ → BitVec 8
     MULX + dual ADCX/ADOX kernel through the OWNED x86 backend, the BN254 analog
     of the BLS12-381 `Bls12381MontMulKernel` #490), **replacing the adopted
     fiat-crypto/bedrock2 WBW Montgomery tower** (`bn254-safe-rust`) that BN254
-    was the last production curve to still adopt for its `Fp` multiply (per the
-    #489 cross-curve audit, `bench/CROSS_CURVE_AUDIT.md`).  With the divstep
+    was the last production curve to still adopt for its `Fp` multiply (#489
+    cross-curve audit).  With the divstep
     inverse already own-routed (`invLeafName`, #489), this lifts the BN254 `G1`
     base-field group law to own-emitted end-to-end down to `fp_mul`/`fp_sub`/
     `fp_inv`.  The emitted block is `runBlock`-verified
@@ -514,7 +514,7 @@ def emittedAffineAdd (P Q : WirePoint) : WirePoint :=
     field-leaf `Com`s and interpreted through `wireToFp` coordinate-wise, equals
     `bn254AffineAdd` over `FpBN254` applied to the interpreted slope and points —
     where the interpreted slope is exactly `(Qy − Py)·(Qx − Px)⁻¹`. The
-    full-group realization, with the emitted term a genuine field-leaf
+    full-group realization, with the emitted term a field-leaf
     composition (no opaque `bn254_g1_add`). -/
 theorem emittedAffineAdd_realizes (prims : FieldPrimitives)
     (hLeaf : FieldLeafAgrees prims jasminExtSem) (hReal : FieldRealizes prims)

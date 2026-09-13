@@ -14,10 +14,9 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
 /-!
-# Plonky3 whole-prover SINGLE-BINARY composing module (FULL_PROVER_VS_P3 Gap 2)
+# Plonky3 whole-prover SINGLE-BINARY composing module
 
-`FULL_PROVER_VS_P3.md` Gap 2 names the precise blocker: every Plonky3 prover
-phase is emitted as a verified-front `Com jasminDialect` regArith leaf
+Every Plonky3 prover phase is emitted as a verified-front `Com jasminDialect` regArith leaf
 (`Plonky3{Compress,HashLeaf,NttLayer,FriFold}Emit`, rendered to owned `.s`
 through `Com.toLprogPhysAbi` in `Plonky3EmitMain`), **but no module
 composes them into one binary** — the existing `*_kat.c` drivers each link a
