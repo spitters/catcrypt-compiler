@@ -31,9 +31,8 @@ Both leave exactly the residual as a goal: the wrapper never invents the
 commuting square or the pointwise witness, it composes a given one — the same
 non-fabrication invariant the underlying lemmas carry.
 
-`ArkLibKZGDemo.ForallFoldTacticDemos` exercises both on the BLS12-381
-byte↔group realization; the demos live there so this module depends only on the
-generic transfer layer.
+This module depends only on the generic transfer layer; its consumers supply
+the realization.
 
 ## Scope
 

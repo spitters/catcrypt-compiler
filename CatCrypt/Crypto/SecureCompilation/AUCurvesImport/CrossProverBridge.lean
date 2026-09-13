@@ -50,7 +50,7 @@ delivers the honest, deliverable middle:
    CatCrypt's `RustExec` can be compared inside Lean — modulo the transcription
    trust edge stated in §"Residual".
 
-2. **The per-constructor correspondence theorems that genuinely close
+2. **The per-constructor correspondence theorems that close
    in-Lean** — given explicit *bridge* hypotheses tying the Rocq-shape opaque
    effects (`calleePost`, `limbVal`, `limbWrite`) to a CatCrypt `LeafSpec`,
    each constructor (`skip`, `seq`, `letZero`, `call`, `limbStore`) lifts an
@@ -199,7 +199,7 @@ def limbWriteBridge
 
 Each theorem says: under the bridge hypotheses, an `AUCurvesExec` step (the
 Rocq-transcription side) lifts to the corresponding `RustExec` step (the
-CatCrypt side) with the *same* post-state.  These are genuine Lean theorems —
+CatCrypt side) with the *same* post-state.  These are Lean theorems —
 they are what "the two big-step relations agree, constructor-by-constructor"
 means *on the CatCrypt side of the trust edge*. -/
 
@@ -287,7 +287,7 @@ What the above theorems establish, and what they do NOT:
   steps to a `RustExec` step.  This is a real, machine-checked statement about
   CatCrypt's semantics.
 
-* **NOT established (the genuine two-prover residual).**  Two pieces remain on
+* **NOT established (the two-prover residual).**  Two pieces remain on
   the trust edge, and neither can be a Lean `theorem`:
 
   1. **Transcription faithfulness.**  `AUCurvesExec` is *asserted* (by reading
@@ -312,7 +312,7 @@ What the above theorems establish, and what they do NOT:
      deliberately tight: `limbValBridge` is even *plausibly closable* should a
      future step instantiate `limbVal := fun rs e => e.evalState rs` (then it
      is `rfl`), and `limbWriteBridge` closes by `rfl` for any `limbWrite`
-     defined as the CatCrypt `leafSpec.limbStore` image.  The genuinely
+     defined as the CatCrypt `leafSpec.limbStore` image.  The
      irreducible edge is `CallBridge` (the opaque FFI leaf) together with the
      transcription-faithfulness meta-claim.
 
@@ -349,17 +349,9 @@ theorem limbWriteBridge_canonical (leafSpec : LeafSpec) :
 /-! ## §5  The cross-prover residual as machine-recorded named assumptions (#368)
 
 §2–§4 expressed the trust edge as loose predicates (`CallBridge`, …) plus prose
-in §4 ("transcription faithfulness").  This section promotes the **two genuinely
-irreducible cross-prover edges** to *named assumption objects*, in exactly the
-discipline of:
-
-* the ZK named-soundness catalog `Assumptions/ZKSoundness.lean` (#366), where
-  each residual is a `structure` carrying its precise statement as a field, so a
-  downstream theorem genuinely *assumes* it rather than asserting it — and which
-  explicitly **deferred** this cross-prover `CallBridge` residual to this file
-  (it imports the `Jasmin/LowCT` emit layer, which the abstract ZK layer does
-  not); and
-* the FFI trust edge `SecureCompilation/VIR/LeafAxiomConsolidation.lean`'s
+in §4 ("transcription faithfulness").  This section promotes the **two
+irreducible cross-prover edges** to *named assumption objects*, in the
+discipline of the FFI trust edge `SecureCompilation/VIR/LeafAxiomConsolidation.lean`'s
   `LeafFFIValidated` (#200, `844fce2d`), the canonical pattern for a residual
   that *cannot* be a Lean theorem because it crosses a boundary Lean cannot see
   (there: an externally compiled binary; here: a second proof assistant). That
@@ -372,22 +364,20 @@ deliverable.  No `sorry`, no new global `axiom`. -/
 
 /-! ### §5.1  Edge 1 — the call-oracle bridge (the irreducible two-prover edge)
 
-`CallBridge` (§2) is the genuinely irreducible edge: it relates the Rocq
+`CallBridge` (§2) is the irreducible edge: it relates the Rocq
 `Prop`-oracle `callee_post` to the CatCrypt *function* oracle `leafSpec.call`,
 so discharging it requires a shared semantic anchor exported across Rocq+Lean
 (an FFI-style boundary, exactly as `LeafFFIValidated` is for the emitted
 binary).  We package it as a Catalog-style assumption *structure* carrying the
 `CallBridge` predicate as its single field — so a downstream theorem that takes
-a `CrossProverCallBridge` value genuinely *assumes* the edge, as a hypothesis,
-in the ZKSoundness/Catalog style. -/
+a `CrossProverCallBridge` value *assumes* the edge, as a hypothesis. -/
 
 /-- **Named assumption: the cross-prover call-oracle bridge (#368).**
 
     Bundles the irreducible two-prover edge `CallBridge calleePost leafSpec`
     (the Rocq `Prop`-oracle `callee_post` agrees with the CatCrypt function
-    oracle `leafSpec.call`) as a Catalog-style assumption object, mirroring the
-    residual `structure`s of `Assumptions/ZKSoundness.lean` (#366) and the
-    named FFI predicate `LeafFFIValidated` (#200).
+    oracle `leafSpec.call`) as an assumption object, mirroring the named FFI
+    predicate `LeafFFIValidated` (#200).
 
     This is **not** a Lean theorem and cannot be one: it relates a Rocq object
     (`callee_post` in `AUCurves/src/Bedrock/SafeRustEd25519Sim.v`) to a Lean
@@ -454,8 +444,8 @@ theorem transcriptionFaithful_canonical :
 `CrossProverResidual` bundles *exactly* the two irreducible named edges (call
 bridge + transcription faithfulness) plus the two `rfl`-closable limb bridges,
 so the entire cross-prover trust surface of the AUCurves retarget is one named,
-inhabited Lean object — the analogue of a row in the ZKSoundness residual index.
-A downstream theorem quantifying over it genuinely assumes the cross-prover gap;
+inhabited Lean object.
+A downstream theorem quantifying over it assumes the cross-prover gap;
 everything else is the closed Lean proof of §3. -/
 
 /-- **The complete AUCurves cross-prover residual (#368).**
@@ -468,10 +458,10 @@ everything else is the closed Lean proof of §3. -/
     3. `limbVal`/`limbWrite` bridges — the two `rfl`-closable limb edges (§2),
        included so the residual is the *whole* gap, not a partial one.
 
-    This is the single citable Lean object the §3 correspondence theorems consume
-    (cf. the ZKSoundness residual index, #366). Holding it = assuming the
+    This is the single citable Lean object the §3 correspondence theorems
+    consume. Holding it = assuming the
     cross-prover gap; it is inhabited (see `crossProverResidual_canonical`), so it
-    is a genuine assumption, not a vacuous one. -/
+    is a satisfiable assumption. -/
 structure CrossProverResidual
     (calleePost : String → List Located → Located → RustState → RustState → Prop)
     (limbVal : RustState → SExpr → Nat)
@@ -491,8 +481,7 @@ structure CrossProverResidual
 /-! ### §5.4  The residual is consumable (worked theorems)
 
 To show each named assumption is *usable as an explicit hypothesis* — not just a
-prose label — we record the canonical conclusions they support, in the
-ZKSoundness §"Worked hypothesis-taking statements" / `LeafFFIValidated`
+prose label — we record the canonical conclusions they support, in the `LeafFFIValidated`
 `leafAgrees_of_FFIValidated` discipline.  Each takes the named residual as a
 hypothesis and discharges a `RustExec` correspondence with it. -/
 

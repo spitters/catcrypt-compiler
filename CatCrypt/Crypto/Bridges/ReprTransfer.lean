@@ -16,10 +16,9 @@ A small, protocol-agnostic **proof-transfer** layer for the recurring CatCrypt
 pattern: a security proof quantifies over an *abstract* (often `noncomputable`,
 classical) operation, while the emitted/compiled artifact computes a
 *computational* (byte-level) operation, and the two are tied by a chosen
-encoding. Each such bridge — KZG's byte↔group pairing
-(`Bridges/ArkLibKZGDemo/ByteGroupRealization.lean`), and the analogous
-ML-KEM/ML-DSA/STARK emit-realization ties — has been written by hand as a
-bespoke `structure` + `iff`. This module factors out the shared content: the
+encoding. Each such bridge (a KZG byte↔group pairing realization, and the
+ML-KEM/ML-DSA/STARK emit-realization ties) is otherwise a bespoke
+`structure` + `iff`. This module factors out the shared content: the
 relation structure and the one generic transfer theorem.
 
 ## Lineage (this is proof transfer, not an ad-hoc hypothesis)
@@ -106,7 +105,7 @@ variable {A B C : Type u} {α β γ : Type u} {op : A → B → C} {bop : α →
 /-- **The transfer theorem.** An abstract equation between two applications of
     `op` holds **iff** the computational `bop` agrees on the encoded operands.
 
-    This is the workhorse: a verification predicate phrased as `op a b = op a' b'`
+    A verification predicate phrased as `op a b = op a' b'`
     (e.g. a pairing-check `e(X,Y) = e(X',Y')`) is decided, equivalently, by the
     byte-level comparison the emitted code computes. -/
 theorem eq_transfer (R : BinOpRealization op bop) (a a' : A) (b b' : B) :

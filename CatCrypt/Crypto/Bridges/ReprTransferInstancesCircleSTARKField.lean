@@ -50,8 +50,7 @@ the `native_decide` primality certificate for `p` (`fact_prime_m31`, inherited
 from the multiply lane — the same set as the existing multiply-only
 connection). CircleSTARK's
 circle-group point operations and the FRI low-degree-proximity soundness remain
-separate edges, orthogonal to this base-field layer; see
-`ZK/CircleSTARK/Security.lean` and `ZK/CircleSTARK/FRIRealisation.lean`.
+separate edges, orthogonal to this base-field layer.
 -/
 
 @[expose] public section

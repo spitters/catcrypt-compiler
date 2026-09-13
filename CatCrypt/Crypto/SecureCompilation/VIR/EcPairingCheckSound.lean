@@ -23,7 +23,7 @@ valid relation.
 We do **not** prove that any map is a pairing.  Mathlib has no Weil/Tate
 pairing, and the AUCurves (Coq/fiat-crypto) pairing development has its
 bilinearity `Admitted` and no non-degeneracy lemma.  So bilinearity and
-non-degeneracy are genuine **assumptions** here, modelled as the fields of an
+non-degeneracy are **assumptions** here, modelled as the fields of an
 interface structure (`Fp12Pairing`) — exactly mirroring
 `AUCurvesPort.PairingAxioms` (`Bridges/AUCurvesPort/PairingAxioms.lean`), but
 with the target group `Gₜ` fixed to the `FieldDialect` carrier `Fp12Val p` and
@@ -39,8 +39,7 @@ bilinearity written directly over `Fp12Val.mul ξ₀`, the `1`-normalisations fr
 `Fp12Gt.lean`, and non-degeneracy — without claiming `Fp12Val p` is a monoid
 under `Fp12Val.mul ξ₀`.
 
-This is the **same trust surface** as the existing KZG/Marlin pairing edge
-(`PairingAxioms`, `ArkLibKZGDemo/PairingGroupAxioms.lean`): we assume the
+The trust surface is that of a pairing group: we assume the
 pairing is bilinear and non-degenerate, and prove the verification op is sound
 relative to that assumption.  We claim **no** proof that `Fp12Val.mul ξ₀`
 realises the mathematical Tate/Weil pairing.
@@ -53,7 +52,7 @@ realises the mathematical Tate/Weil pairing.
 * `Fp12Pairing.pairingCheck2_accepts` — the `pairingCheck2` op **accepts** the
   canonical valid relation `(e P Q, e P (-Q))` (it returns `true`).  This is the
   soundness/completeness link: the op admits exactly the GT-identity products a
-  genuine pairing produces.
+  pairing produces.
 * `Fp12Pairing.bls_verify_complete` — the BLS-verify-shape **forward** direction:
   if `e σ g₂ = e H pk` then `pairingCheck2F ξ₀ (e σ g₂) (e H (-pk)) = true`.  A
   valid BLS signature is accepted.
@@ -101,7 +100,7 @@ non-degenerate.  The fields are exactly the bilinearity/non-degeneracy laws of
 
 This is a hypothesis structure, **not** a Lean `axiom`: bilinearity is `Admitted`
 in AUCurves' Coq development and non-degeneracy is absent there, so these are
-genuine assumptions a caller must discharge, not facts this file proves. -/
+assumptions a caller must discharge, not facts this file proves. -/
 structure Fp12Pairing (p : Nat) (ξ0 : ZMod p) where
   /-- Source group `G₁` (the signature / first pairing argument group). -/
   G1 : Type
@@ -152,7 +151,7 @@ theorem gtProd_inverse (P : pair.G1) (Q : pair.G2) :
 The two-pairing op `pairingCheck2 p ξ₀` returns `true` on `(e P Q, e P (-Q))`:
 the GT product is the identity (`gtProd_inverse`), so the GT-identity test
 passes.  This is the soundness link — the op admits exactly the GT-identity
-products a genuine (assumed) pairing produces. -/
+products an (assumed) pairing produces. -/
 theorem pairingCheck2_accepts (pub : Bool) (P : pair.G1) (Q : pair.G2) :
     pairingCheckDenote.denote (.pairingCheck2 p ξ0 pub)
         (.cons (pair.e P Q) (.cons (pair.e P (-Q)) .nil)) = true := by

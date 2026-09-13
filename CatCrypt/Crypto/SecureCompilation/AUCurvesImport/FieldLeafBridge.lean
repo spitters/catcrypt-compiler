@@ -37,7 +37,7 @@ theorem (`§4`) showing it is usable as a hypothesis — the analogue of
 Every entry below was confirmed by reading the AUCurves `.v` source.  Where a
 file records its `Print Assumptions` status, that is noted; where the result is
 **axiomatized** in Rocq (with independent external validation), that is stated
-explicitly so the catalog is honest about which leaves are kernel-`Qed`'d.
+explicitly so the catalog states which leaves are kernel-`Qed`'d.
 
 ### Field-multiply / field-op leaves (curve25519 / Ed25519)
 
@@ -75,8 +75,7 @@ relevant to the safegcd modular-inverse performance story (10 outer × 59
 divsteps, matching libsecp256k1's `modinv64`).  **They are recorded in Rocq as
 `Axiom`s, not `Qed`'d** (the `N.iter 590 …` term is too large to kernel-check;
 the same certificate is independently validated in OCaml via
-`Arithmetic/safegcd/multi_curve_driver`).  This is stated here so the catalog is
-honest about kernel status:
+`Arithmetic/safegcd/multi_curve_driver`).  The catalog states their kernel status:
 
 | Rocq object (verified by reading the file)       | File                                      | Status |
 |--------------------------------------------------|-------------------------------------------|--------|
@@ -166,8 +165,8 @@ def FieldMulSpecAgrees (leaf : FieldMulLeaf) (leafSpec : LeafSpec) : Prop :=
 
 As in `CrossProverBridge.§5`, we promote the predicate to a `structure … :
 Prop` carrying it as its single field, so a downstream theorem that takes a
-`AUCurvesFieldMulBridge leaf leafSpec` value genuinely *assumes* the edge, in
-the `CrossProverCallBridge` / ZKSoundness discipline. -/
+`AUCurvesFieldMulBridge leaf leafSpec` value *assumes* the edge, as
+`CrossProverCallBridge` does. -/
 
 /-- **Named assumption: the AUCurves cross-prover field-mul bridge.**
 
@@ -218,7 +217,7 @@ def fieldMulCallSpec (leaf : FieldMulLeaf)
     `LeafSpec` built from `fieldMulCallSpec leaf encode` with a decoder section
     `encode` (`leaf.decode ∘ encode = id`), the field-mul spec agreement holds —
     confirming the predicate is the *right* shape (an inhabited cross-prover
-    claim), not an unsatisfiable over-constraint.  The genuine cross-prover
+    claim), not an unsatisfiable over-constraint.  The cross-prover
     content is precisely the gap between this canonical realizer and AUCurves'
     actual Rocq-proved oracle, which lives outside Lean. -/
 theorem fieldMulSpecAgrees_canonical (leaf : FieldMulLeaf)
@@ -232,7 +231,7 @@ theorem fieldMulSpecAgrees_canonical (leaf : FieldMulLeaf)
 
 /-- **Non-vacuous witness for the bundled assumption.**  Packages the canonical
     realizer as an inhabitant of `AUCurvesFieldMulBridge`, the analogue of
-    `crossProverResidual_canonical` confirming the named assumption is genuine,
+    `crossProverResidual_canonical` confirming the named assumption is satisfiable,
     not vacuous. -/
 theorem aucurvesFieldMulBridge_canonical (leaf : FieldMulLeaf)
     (encode : ZMod leaf.modulus → RustVal leaf.dt)

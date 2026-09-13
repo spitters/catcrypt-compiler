@@ -37,8 +37,7 @@ point** `ecAffineAdd lam P Q`.
 
 The boundary the emitted leaf cannot prove is the byte↔field correspondence: the
 opaque leaf `<curve>_point_add`, applied to the byte encodings of the four input
-coordinates, produces the byte encoding of the group-sum coordinate.  Exactly as
-in `Bridges/ArkLibKZGDemo/ByteGroupRealization.lean` (the pairing analogue), we
+coordinates, produces the byte encoding of the group-sum coordinate.  We
 bundle this as an explicit `EcEmitRealizes` structure: a coordinate encoding
 `enc : F → RustVal .TFp` plus the two commuting squares (one per output
 coordinate) tying the leaf's `call` value to the encoded `ecAffineAdd`
@@ -72,7 +71,7 @@ the commuting squares.
   `ByteGroupRealization`.
 * The affine group-law *value* `ecAffineAdd lam P Q` is the one
   `ec_jacAdd_realizes_affineAdd` certifies equals the inversion-free Jacobian
-  sum, so this module's output value is the genuine EC group sum (generic chart),
+  sum, so this module's output value is the EC group sum (generic chart),
   not an opaque restatement.
 * Vertical-line / point-at-infinity exceptional cases are out of scope, exactly
   as for `ec_jacAdd_realizes_affineAdd`.
