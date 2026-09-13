@@ -82,10 +82,10 @@ from four segments closed by `corres_solve_mem`.
 * `absStepMem`, `absRunMem`, `corresJ_absRunMem_append`: the abstract run and its
   sequencing rule.
 * `solinasCells`, `srmem_solinas_satisfiable`: the `solinas_square` layout.
-* `solinasSeg1_corres` … `solinasSeg4_corres`, `solinasBody_corres`, `solinasBody_eq_block`,
+* `solinasSeg1_corres` … `solinasSeg4_corres`, `solinasBody_corres`,
   `solinasSquareBlock_corres`: the four segments
-  and the whole body of `solinas_square` refine their abstract runs, and the body is
-  the parsed kernel `solinasSquareBlock`.
+  and the whole body of `solinas_square` refine their abstract runs (the segment
+  literals and `solinasBody_eq_block` are in `X86Backend/SolinasSquareBlock.lean`).
 -/
 
 @[expose] public section
@@ -95,6 +95,7 @@ set_option autoImplicit false
 namespace CatCrypt.Crypto.SecureCompilation.Ascent
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
+open CatCrypt.Crypto.SecureCompilation.X86Backend.SolinasSquareBlock
 
 /-! ## The abstract state and the relation -/
 
@@ -841,9 +842,10 @@ def absStepMem : JInstr 64 → AMemX → AMemX
   | _ => id
 
 /-- The abstract run of a block over `AMemX`: `absStepMem` folded left to right. -/
-def absRunMem : List (JInstr 64) → AMemX → AMemX
-  | [], a => a
-  | i :: is, a => absRunMem is (absStepMem i a)
+def absRunMem (c : List (JInstr 64)) (a : AMemX) : AMemX :=
+  match c with
+  | [] => a
+  | i :: is => absRunMem is (absStepMem i a)
 
 /-- The abstract run of a concatenation runs the second block after the first. -/
 theorem absRunMem_append (c₁ c₂ : List (JInstr 64)) :
@@ -889,127 +891,6 @@ theorem srmem_solinas_satisfiable : ∃ st a, SRmem solinasCells st a := by
   unfold CellsSeparated
   decide
 
-/-! ## The `solinas_square` body
-
-The 99 instructions of the file, as `NasmParse.toJInstr` maps them, in four segments:
-the partial products and the first carry chains (lines 1–33), the doubling and the
-reduction multiplies around `inc`, `setc`, `clc`, `movzx`, `lea` and `test`
-(lines 34–65), the final reduction with `adc`, `cmovo` and the output stores
-(lines 66–93), and the restores of the spilled registers (lines 94–99). -/
-
-/-- Instructions 1–33 of `solinas_square`. -/
-def solinasSeg1 : List (JInstr 64) :=
-  [.loadMem "%rdx" "%rsi" 0,
-   .mulxMem "%r10" "%rax" (.reg "%rdx") "%rsi" 8,
-   .loadMem "%rdx" "%rsi" 0,
-   .mulxMem "%rcx" "%r11" (.reg "%rdx") "%rsi" 16,
-   .xor_ "%rdx" (.reg "%rdx"),
-   .adox "%r11" (.reg "%r10"),
-   .loadMem "%rdx" "%rsi" 0,
-   .mulx "%r9" "%r8" (.reg "%rdx") (.reg "%rdx"),
-   .loadMem "%rdx" "%rsi" 24,
-   .storeMem "%rsp" (-0x80) (.reg "%rbx"),
-   .mulxMem "%rbx" "%r10" (.reg "%rdx") "%rsi" 0,
-   .loadMem "%rdx" "%rsi" 8,
-   .storeMem "%rsp" (-0x78) (.reg "%rbp"),
-   .storeMem "%rsp" (-0x70) (.reg "%r12"),
-   .mulx "%r12" "%rbp" (.reg "%rdx") (.reg "%rdx"),
-   .adox "%r10" (.reg "%rcx"),
-   .loadMem "%rdx" "%rsi" 8,
-   .storeMem "%rsp" (-0x68) (.reg "%r13"),
-   .mulxMem "%r13" "%rcx" (.reg "%rdx") "%rsi" 16,
-   .adcx "%rcx" (.reg "%r10"),
-   .loadMem "%rdx" "%rsi" 8,
-   .storeMem "%rsp" (-0x60) (.reg "%r14"),
-   .mulxMem "%r14" "%r10" (.reg "%rdx") "%rsi" 24,
-   .adox "%r10" (.reg "%rbx"),
-   .adcx "%r13" (.reg "%r10"),
-   .loadMem "%rdx" "%rsi" 16,
-   .mulxMem "%r10" "%rbx" (.reg "%rdx") "%rsi" 24,
-   .adox "%rbx" (.reg "%r14"),
-   .mov "%rdx" (.imm 0),
-   .mov "%r14" (.reg "%rdx"),
-   .adcx "%r14" (.reg "%rbx"),
-   .adox "%r10" (.reg "%rdx"),
-   .mov "%rbx" (.imm 18446744073709551613)]
-
-/-- Instructions 34–65 of `solinas_square`. -/
-def solinasSeg2 : List (JInstr 64) :=
-  [.inc "%rbx",
-   .adox "%rax" (.reg "%rax"),
-   .storeMem "%rsp" (-0x58) (.reg "%r15"),
-   .mov "%r15" (.reg "%rdx"),
-   .adcx "%r15" (.reg "%r10"),
-   .adox "%r11" (.reg "%r11"),
-   .adox "%rcx" (.reg "%rcx"),
-   .adox "%r13" (.reg "%r13"),
-   .adox "%r14" (.reg "%r14"),
-   .setcc .b "%r10",
-   .clc,
-   .adcx "%r9" (.reg "%rax"),
-   .adcx "%rbp" (.reg "%r11"),
-   .adcx "%r12" (.reg "%rcx"),
-   .loadMem "%rdx" "%rsi" 16,
-   .mulx "%r11" "%rax" (.reg "%rdx") (.reg "%rdx"),
-   .adcx "%rax" (.reg "%r13"),
-   .adcx "%r11" (.reg "%r14"),
-   .adox "%r15" (.reg "%r15"),
-   .loadMem "%rdx" "%rsi" 24,
-   .mulx "%r13" "%rcx" (.reg "%rdx") (.reg "%rdx"),
-   .mov "%rdx" (.imm 38),
-   .mulx "%rbx" "%r14" (.reg "%rdx") (.reg "%rax"),
-   .adcx "%rcx" (.reg "%r15"),
-   .movzx "%rax" 8 "%r10",
-   .mov "%r15" (.imm 0),
-   .adox "%rax" (.reg "%r15"),
-   .movzx "%r15" 8 "%r10",
-   .lea "%r15" "%r15" "%rax" 1 0,
-   .adcx "%r15" (.reg "%r13"),
-   .mulx "%r13" "%r10" (.reg "%rdx") (.reg "%r11"),
-   .testN 8 "%rax" (.reg "%rax")]
-
-/-- Instructions 66–93 of `solinas_square`. -/
-def solinasSeg3 : List (JInstr 64) :=
-  [.adox "%r10" (.reg "%r9"),
-   .mulx "%r11" "%r9" (.reg "%rdx") (.reg "%rcx"),
-   .adox "%r9" (.reg "%rbp"),
-   .mulx "%rcx" "%rbp" (.reg "%rdx") (.reg "%r15"),
-   .adox "%rbp" (.reg "%r12"),
-   .mov "%r12" (.imm 0),
-   .adox "%rcx" (.reg "%r12"),
-   .adcx "%r14" (.reg "%r8"),
-   .adcx "%rbx" (.reg "%r10"),
-   .adcx "%r13" (.reg "%r9"),
-   .adcx "%r11" (.reg "%rbp"),
-   .adc "%rcx" (.imm 0),
-   .mulx "%rax" "%r8" (.reg "%rdx") (.reg "%rcx"),
-   .xor_ "%rax" (.reg "%rax"),
-   .adox "%r8" (.reg "%r14"),
-   .mov "%r12" (.reg "%rax"),
-   .adox "%r12" (.reg "%rbx"),
-   .storeMem "%rdi" 8 (.reg "%r12"),
-   .mov "%r15" (.reg "%rax"),
-   .adox "%r15" (.reg "%r13"),
-   .mov "%r10" (.reg "%rax"),
-   .adox "%r10" (.reg "%r11"),
-   .storeMem "%rdi" 24 (.reg "%r10"),
-   .mov "%r9" (.reg "%rax"),
-   .cmovcc .o "%r9" (.reg "%rdx"),
-   .adcx "%r8" (.reg "%r9"),
-   .storeMem "%rdi" 16 (.reg "%r15"),
-   .storeMem "%rdi" 0 (.reg "%r8")]
-
-/-- Instructions 94–99 of `solinas_square`. -/
-def solinasSeg4 : List (JInstr 64) :=
-  [.loadMem "%rbx" "%rsp" (-0x80),
-   .loadMem "%rbp" "%rsp" (-0x78),
-   .loadMem "%r12" "%rsp" (-0x70),
-   .loadMem "%r13" "%rsp" (-0x68),
-   .loadMem "%r14" "%rsp" (-0x60),
-   .loadMem "%r15" "%rsp" (-0x58)]
-
-/-- The body of `solinas_square`, without the final `ret`. -/
-def solinasBody : List (JInstr 64) := solinasSeg1 ++ solinasSeg2 ++ solinasSeg3 ++ solinasSeg4
 
 /-- Instructions 1–33 refine their abstract run over `SRmem solinasCells`. -/
 theorem solinasSeg1_corres :
@@ -1043,11 +924,6 @@ theorem solinasBody_corres :
     (corresJ_absRunMem_append _
       (corresJ_absRunMem_append _ solinasSeg1_corres solinasSeg2_corres) solinasSeg3_corres)
     solinasSeg4_corres
-
-/-- The four segments are the parsed kernel: `solinasBody` is `solinasSquareBlock`,
-    the list `nasm-parse-kat` checks against the `.asm` file. -/
-theorem solinasBody_eq_block :
-    solinasBody = X86Backend.SolinasSquareBlock.solinasSquareBlock := rfl
 
 /-- The parsed `solinas_square` kernel refines its abstract run over
     `SRmem solinasCells`. -/
