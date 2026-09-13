@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+Changes since `v0.1.0-alpha.2`.
+
+- `JInstr` covers Jasmin's scalar `x86_op` set except the instructions declined for
+  constant time: `inc`, `dec`, `clc`, `stc`, `xchg`, three-operand `imul`, one-operand
+  `mul` and `imul`, `shld`, `shrd`, `rcl`, `rcr`, `cmovcc` and `setcc` over the sixteen
+  conditions, sized `test`, `bt`, `btr` and `bts`. Register allocation, rescheduling,
+  flag liveness, `Mem2Reg`, store-to-load forwarding, secret typing, the cost model, the
+  encoder, the printer and the constant-time leakage state each new instruction's reads
+  and writes.
+- Hand-written assembly: `NasmParse` reads CryptOpt's NASM output, and
+  `solinasSquare_correct` proves the CryptOpt `solinas_square` kernel against
+  fiat-crypto's `sqr_correct` for `2^255 - 19` ([ASCENT.md](ASCENT.md), "Hand-written
+  assembly").
+- `addMod251_front_weld` relates the relational compiler's ZMod 251 addition, the
+  front's compilation of `r := a + b mod 251` and the ascent's `SRenc` states.
+- The dialect classification gate (`scripts/dialect-lowering-ratchet.sh`) runs in this
+  package.
+
 ## 0.1.0-alpha.2 — 2026-09-13 (pre-release)
 
 Changes since `v0.1.0-alpha.1`. The toolchain, the dependency pins, the module set

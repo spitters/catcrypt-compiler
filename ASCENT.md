@@ -308,6 +308,35 @@ the emitted Keccak permutation is `keccakF1600Com_denote_spec` in
 `searchU_ts_refines` are stated at hax-lean's `denote'` and `pipeline`, with no `LowCT`
 term and no emit leg.
 
+### Hand-written assembly
+
+`X86Backend/NasmParse.lean` reads the NASM Intel subset CryptOpt emits into `JInstr`
+blocks. `JInstr` covers Jasmin's scalar `x86_op` set except the instructions declined
+for constant time (`DIV`, `IDIV`, `CQO`, `BSR`, `BSF`, `BSWAP`, `LZCNT`, `TZCNT`,
+`POPCNT`, `PDEP`, `PEXT`); the `JInstr` docstring in `X86Backend/JasminModel.lean` lists
+them with the reason. The CryptOpt Curve25519 `solinas_square` kernel from fiat-crypto
+(`bench/cryptopt/fiat_curve25519_solinas_square.asm`) parses in full;
+`solinasSquareBlock` is its 99 instructions, and `lake exe nasm-parse-kat` fails unless
+parsing the file yields exactly that list. The route to its specification has three
+results:
+
+- `solinasSquareBlock_corres` (`Ascent/CorresX86Mem.lean`): the block refines its
+  abstract run `absRunMem` over `SRmem solinasCells`, which relates JState's name-keyed
+  memory to an address-keyed abstract memory on the fourteen cells the kernel reads and
+  writes.
+- `absRunMem_solinas_spec` (`Ascent/SolinasSquareCorrect.lean`): the abstract run
+  satisfies `SolinasSquareSpec`, fiat-crypto's `sqr_correct` for `2^255 - 19` on four
+  saturated limbs, when the spill slots and the input limbs have distinct addresses.
+- `solinasSquare_correct`: for every `JState` whose fourteen tracked cells have
+  separated addresses, the output limbs of `runBlock st solinasSquareBlock` are
+  congruent to the square of the input limbs modulo `2^255 - 19`.
+
+The abstract state carries the registers, `CF` and `OF`. The leaves for `setcc` and
+`cmovcc` are stated at the conditions that read those two flags; a kernel branching on
+`ZF`, `SF` or `PF` needs further leaves. CryptOpt's `carry_mul` kernel does not parse in
+full: it uses memory-source `adcx`, `adox` and `add`, `bzhi`, and the three-operand
+`imul` with a memory source, which have no `JInstr` constructor.
+
 ### The descent contracts and the ascent meet at the x86 register file
 
 `frefines_ret` (`CorresDescent.lean`) is stated over `Com fieldDialect`, and
