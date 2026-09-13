@@ -16,16 +16,13 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
 /-!
 # ChaCha20 4-way XMM-resident with live-range-aware register allocation
 
-`RegisterAllocation.lean` (#141/#143) ships the verified linear-scan RA
-framework: a `RegisterAllocation` is a slot remap (`slotOf`) plus a sequencing
-hint (`seqOf`), well-formed when `slotOf` is injective and `applyRA` preserves
-`JForProg.denote`. The central theorem `applyRA_denote_preserves` is
-RA-agnostic: it holds for **any** well-formed RA via the `preserves` witness.
-
-`Sha2RaEmit.lean` / `KeccakRaEmit.lean` / `UnrolledComRA.lean` (#153 / #158)
-wired the framework into the `Com`-emitted SHA-2 and Keccak round bodies
-through `raDstName` / `keccakRaDstName`. This module is the **ChaCha20 4-way
-XMM-resident analog** — the unrolled lane-parallel-map sibling.
+A `RegisterAllocation` (`RegisterAllocation.lean`) is a slot remap (`slotOf`)
+plus a sequencing hint (`seqOf`). `applyRA` is the identity, so
+`applyRA_denote_preserves` holds for every allocation and says nothing about
+the emitted text; the allocator with a semantic theorem is `physScanSpill`
+(`toLprogPhysAbi_faithful_uniform`). `Sha2RaEmit.lean` and `KeccakRaEmit.lean`
+read `seqOf` when naming destinations of the SHA-2 and Keccak round bodies; this
+module does the same for the ChaCha20 4-way XMM-resident kernel.
 
 ## Why the XMM emit needs RA more than SHA-2 / Keccak
 
@@ -204,13 +201,11 @@ def chachaXmmSeqOf (j : Nat) : Nat :=
 
 /-! ## 3. The `RegisterAllocation`
 
-`slotOf := id` keeps the framework's `Function.Injective` discharge
-trivial; the real decision lives in `seqOf` (consumed by the emit pass
-via `chachaRaSlotName`), following the `linearScanRA` packing. -/
+`slotOf` is `id`; the allocation decision is `seqOf`, which the emit pass reads
+through `chachaRaSlotName`, following the `linearScanRA` packing. -/
 
 /-- **The ChaCha20 4-way XMM-resident register allocation.**
-`seqOf` is the lightest-pair-to-spill remap; `slotOf := id` keeps the
-denotation theorem trivial. -/
+`seqOf` is the lightest-pair-to-spill remap and `slotOf` is `id`. -/
 def chachaXmmRA : RegisterAllocation where
   slotOf := id
   seqOf  := chachaXmmSeqOf

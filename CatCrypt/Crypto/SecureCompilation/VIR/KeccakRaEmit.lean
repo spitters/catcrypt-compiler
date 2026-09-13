@@ -13,87 +13,51 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
 public import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
 
 /-!
-# Keccak-p[1600,24] with linear-scan register allocation — the proof-of-concept
-RA consumer
+# Keccak-p[1600,24] emitted with slot names taken from a register allocation
 
-`RegisterAllocation.lean` (#141/#143) ships the verified linear-scan RA
-framework: live-range analysis, lowest-free-slot assignment, and a
-`RegisterAllocation` decision record consumed by downstream emit passes.
+`KeccakEmit.lean` emits the Keccak permutation over a fixed slot file
+(`numSlots`-element `stack u64[..] k` array, slots `0..24` for state lanes,
+`25..56` for scratch/parity/B seeds). This module emits the same `Com` with
+destination slots rerouted through a `RegisterAllocation`: where
+`KeccakEmit.keccakDstName j = slotReg (keccakSlots.getD j 0)`, the RA-driven
+version uses `slotReg (ra.seqOf (keccakSlots.getD j 0))`. For
+`RegisterAllocation.identity` the destination names agree pointwise with
+`keccakDstName` (§4).
 
-`KeccakEmit.lean` (#121) provides the current Keccak emit (the scalar
-24-round straight-line + the SIMD lane-parallel θ-parity ABI mode). Both
-bake in a fixed slot file (`numSlots`-element `stack u64[..] k` array,
-slots `25..56` for scratch/parity/B seeds, `0..24` for state lanes).
-
-This module is the **RA-driven Keccak emit**: an additive sibling of
-`KeccakEmit.lean` that takes a `RegisterAllocation` produced by
-`linearScanRA` and emits a register-allocated Keccak round body whose
-denotation matches the current emit's. The headline theorem is
-
-  `keccak_ra_emit_denotation_preserves`:
-    `(applyRA keccakRoundLoop ra).denote init = keccakRoundLoop.denote init`
-
-a direct corollary of `applyRA_denote_preserves` for the Keccak-shaped
-wrapper. The Com is unchanged at the Com level; the RA's slot decisions
-are consumed by the emit-text rewrite.
-
-## Why this is the right factoring
-
-`applyRA p ra = p` is the Com-level identity by construction (RA is a
-*labelling* of binders, not a structural rewrite). So at the Com level the
-RA-driven emit produces a Com whose denotation equals the original's by
-`rfl`. The RA decisions live in `ra.seqOf` (the real linear-scan slot map
-for the `linearScanRA` packing — see `RegisterAllocation.lean` §8) and are
-consumed by the emit-text rewrite below.
-
-The emit-text rewrite reroutes the destination slot through the RA's
-`seqOf`. Where `KeccakEmit.keccakDstName j = slotReg (keccakSlots.getD j 0)`,
-the RA-driven version uses `slotReg (ra.seqOf (keccakSlots.getD j 0))`. For
-`RegisterAllocation.identity`, the emit reduces byte-identically to the
-current Keccak emit.
+`RegisterAllocation.applyRA` is the identity, so the denotation theorems of
+this module hold for every allocation
+(`RegisterAllocation.applyRA_denote_preserves_of_any`). They are stated over
+the round loop `keccakRoundJForProg`, not over the `keccakF1600Com` text that
+`emitKeccakRoundRaJazz` renders, and they state nothing about the
+`ra.seqOf`-routed rendering. No theorem here relates the emitted text to the
+unrenamed emit. The register allocator with a semantic theorem is
+`physScanSpill` (`toLprogPhysAbi_faithful_uniform`).
 
 ## Contents
 
-* `keccakRoundJForProg` — the Keccak 24-round bounded-loop wrapper. Already
-  defined in `KeccakEmit.lean` as `keccakRoundLoop`; we re-export it under
-  a clearly RA-relevant name.
-* `emitKeccakRoundRaJazz` — the RA-driven emit. Takes a `RegisterAllocation`
-  and a name; produces the `.jazz` text with slot names rewritten through
-  `ra.seqOf`.
-* `keccak_ra_emit_denotation_preserves` — the headline theorem.
-* `keccak_ra_emit_denotation_preserves_linearScan` — the corollary for the
-  concrete `linearScanRA`-produced decision.
+* `keccakRoundJForProg` — `KeccakEmit.keccakRoundLoop`, the 24-round loop.
+* `emitKeccakRoundRaJazz` — the `.jazz` text of `keccakF1600Com` with
+  destination slot names rewritten through `ra.seqOf`.
+* `keccak_ra_emit_denotation_preserves` and its corollaries —
+  `applyRA keccakRoundJForProg ra` denotes `keccakRoundJForProg`; true for
+  every `ra` because `applyRA` is the identity.
+* `keccakRaDstName_identity_eq`, `keccakRaRoundDstName_identity_eq` — for the
+  identity allocation, destination names agree with the unrenamed emit
+  pointwise.
 
-## Axiom budget
+## Axioms
 
-`[propext, Quot.sound]` only. The denotation theorem reduces to
-`applyRA_denote_preserves` which is `rfl` under the identity-RA-rewrite
-shape of `applyRA`.
+`[propext, Quot.sound]` for the denotation theorems.
 
-## Scope of the bench-driven emit
+## Allocations used by the bench emit
 
-`linearScanRA p` produces RA decisions parameterised by the *binders of `p`*.
-The natural `JForProg` wrapper for Keccak is the round loop
-(`keccakRoundLoop`) with a single 1600-bit accumulator and 4 binders. The
-fully-unrolled permutation `Com` (`KeccakEmit.keccakF1600Com`) used by the
-bench/KAT pipeline operates over a much richer slot file
-(`numSlots = 57`); its slot indices are NOT binder indices of the
-`JForProg` wrapper. The bench-driven emit (in
-`bench/keccak_compare/keccak_ra_emit.lean`) therefore consumes
-`RegisterAllocation.identity` as `ra` and produces the canonical Keccak
-emit — what the framework calls the "no-op RA" baseline. The
-`emitKeccakRoundRaJazz` driver is parametric over `ra`, so a future RA
-algorithm defined directly over `keccakF1600Com`'s slot domain (rather
-than the JForProg-binder domain) plugs in without changing the headline
-theorem. The headline theorem `keccak_ra_emit_denotation_preserves` is
-RA-agnostic and holds for any well-formed RA, including the not-yet-defined
-unrolled-permutation RA.
+`linearScanRA p` assigns slots to the binders of `p`. The slot indices of
+`KeccakEmit.keccakF1600Com` (`numSlots = 57`) are not binder indices of the
+`JForProg` wrapper. The bench emit (`bench/keccak_compare/keccak_ra_emit.lean`
+in the development repository) passes `keccakRA_coalesce_renamed`, a linear scan
+with coalescing over a slot trace of `keccakF1600Com`.
 
-## Canonical entry point
-
-See `KeccakEmit.lean` for the full 12-file Keccak VIR canonical map. This
-file is steps #153 / #158 in that chain: the canonical RA-driven sibling
-emit, consumed by `bench/keccak_compare/keccak_ra_emit.lean`.
+See `KeccakEmit.lean` for the map of the Keccak VIR modules.
 -/
 
 @[expose] public section
@@ -111,18 +75,18 @@ set_option autoImplicit false
 /-! ## 1. The Keccak round body as a `JForProg`
 
 `KeccakEmit.keccakRoundLoop : JForProg St` is the 24-round bounded-loop
-wrapper over the 1600-bit state. We re-export it under a clearly
-RA-relevant name. -/
+wrapper over the 1600-bit state; this module names it
+`keccakRoundJForProg`. -/
 
-/-- **The Keccak round body wrapped as a `JForProg`.**
+/-- **The Keccak round loop as a `JForProg`.**
 24 iterations of the uniform round body over the 1600-bit state
-accumulator. This is the JForProg shape the RA framework consumes. -/
+accumulator. -/
 def keccakRoundJForProg : JForProg St := keccakRoundLoop
 
 /-! ## 2. The emit-text rewrite under an RA
 
-The RA decisions live in `ra.seqOf` (per `linearScanRA`'s framework
-packing). The RA-driven `keccakRaDstName` reroutes the slot through
+`linearScanRA` stores its slots in `ra.seqOf` (its `slotOf` is `id`).
+The RA-driven `keccakRaDstName` reroutes the slot through
 `ra.seqOf`. The input operand resolver and the rest of the emit machinery
 are unchanged. -/
 
@@ -159,25 +123,18 @@ def emitKeccakSingleRoundRaJazz (ra : RegisterAllocation) (name : String) : Stri
   JasminAbiEmit.emitAbiOrchReg name (w := 64) (nIn := nInputs) (nOut := 25) (nCopy := 25)
     keccakRaRegDecls keccakInName (keccakRaRoundDstName ra) keccakRoundCom
 
-/-! ## 3. The headline denotation-preservation theorem
+/-! ## 3. Denotation of `applyRA` on the round loop
 
-The theorem is a direct corollary of `applyRA_denote_preserves`: for any
-well-formed `RegisterAllocation`, the RA-rewritten `JForProg` denotes the
-same function as the original. -/
+`RegisterAllocation.applyRA` is the identity, so each theorem below holds for
+every allocation (`RegisterAllocation.applyRA_denote_preserves_of_any`). The
+theorems are stated over `keccakRoundJForProg`, not over the text
+`emitKeccakRoundRaJazz` renders; the allocator with a semantic theorem is
+`physScanSpill` (`toLprogPhysAbi_faithful_uniform`). -/
 
-/-- **Headline theorem:** for any well-formed register allocation, the
-RA-applied Keccak round-loop denotes the same function as the original
-Keccak round-loop.
-
-The Com-level rewrite is the identity (`applyRA p ra = p` by definition);
-the proof reduces to `applyRA_denote_preserves`, which delegates to the
-`preserves` witness packaged in `WellFormed`. For `linearScanRA` and
-`identity` this witness is `rfl`.
-
-This is the proof obligation `#143` shipped (`applyRA_denote_preserves`)
-specialised to Keccak — the proof that RA-driven emit does not change
-the Keccak permutation's mathematical meaning, only its slot
-labelling. -/
+/-- `applyRA keccakRoundJForProg ra` denotes the same function as
+`keccakRoundJForProg`. It holds for every `ra` because `applyRA` is the
+identity; the `WellFormed` hypothesis is not needed, and the statement says
+nothing about the `ra.seqOf`-routed rendering of `emitKeccakRoundRaJazz`. -/
 theorem keccak_ra_emit_denotation_preserves (ra : RegisterAllocation)
     (hwf : WellFormed ra) (init : ⟦St⟧) :
     (applyRA keccakRoundJForProg ra).denote init = keccakRoundJForProg.denote init :=
@@ -199,10 +156,9 @@ theorem keccak_ra_emit_denotation_preserves_identity (init : ⟦St⟧) :
 /-- **Concrete corollary for the unrolled-Com-domain RA (#158).**
 `UnrolledComRA.unrolledSlotRAKeccak` is the linear-scan allocation over the
 slot-index domain of `keccakF1600Com` (the unrolled permutation body), not over
-the binder domain of the JForProg wrapper. It is the RA the bench-driven emit
-consumes (it reduces spills while respecting live-range non-overlap —
-`UnrolledComRA.unrolledSlotRA_no_collision_keccak`). The headline theorem fires
-unchanged because it is RA-agnostic. -/
+the binder domain of the JForProg wrapper. Its live-range non-overlap is
+`UnrolledComRA.unrolledSlotRA_no_collision_keccak`. The denotation statement
+holds because `applyRA` is the identity. -/
 theorem keccak_ra_emit_denotation_preserves_unrolled (init : ⟦St⟧) :
     (applyRA keccakRoundJForProg UnrolledComRA.unrolledSlotRAKeccak).denote init
       = keccakRoundJForProg.denote init :=
@@ -212,9 +168,8 @@ theorem keccak_ra_emit_denotation_preserves_unrolled (init : ⟦St⟧) :
 /-! ## 4. Identity-RA per-binding destination name equals the current emit
 
 For `RegisterAllocation.identity` (`seqOf k = k`), the RA-driven per-binding
-destination name reduces pointwise to the current `keccakDstName`. The
-full-text byte-identity follows from this pointwise equality together with
-the determinism of `JasminAbiEmit.emitAbiOrchReg`. -/
+destination name reduces pointwise to `keccakDstName`. The full-text equality
+is not stated; the pointwise form is. -/
 
 /-- **Identity-RA destination name equals the current Keccak destination
 name pointwise (full-permutation form).** -/
@@ -234,7 +189,7 @@ theorem keccakRaRoundDstName_identity_eq (j : Nat) :
 coalesce-aware variant of the cross-iter RA that fuses `dst` and `src1`
 into one physical slot when `src1` dies at the event.
 
-Keccak's θ/ρπ/χ structure is genuinely **three-address**:
+Keccak's θ/ρπ/χ structure is **three-address**:
 
 * θ-D uses scratch slot `56` as `chiScr`:
   `[⟨56, [C[x+1]]⟩, ⟨56, [56]⟩, ⟨56, [56, 55]⟩, ⟨56, [56, C[x-1]]⟩]`.
@@ -255,8 +210,8 @@ On `UnrolledComRA.kSlotTrace`, `coalesceCandidateCount` is **positive**
 (see `keccak_coalesce_candidate_count_pos`) — the coalescing pass fires.
 
 The cross-iter + coalesce RA `keccakRA_coalesce` is well-formed by
-`unrolledSlotRAofItersCoalesce_WellFormed`, and the denotation theorem
-fires unchanged because it is RA-agnostic. -/
+`unrolledSlotRAofItersCoalesce_WellFormed`; its denotation theorem holds
+because `applyRA` is the identity. -/
 
 /-- **The cross-iter + coalesce-aware Keccak register allocation
 (Phase B+).** Built over `UnrolledComRA.kSlotTrace` and `kIterChunks`
@@ -272,8 +227,8 @@ def keccakRA_coalesce : RegisterAllocation :=
 theorem keccakRA_coalesce_WellFormed : WellFormed keccakRA_coalesce :=
   UnrolledComRA.unrolledSlotRAofItersCoalesce_WellFormed _ _
 
-/-- **Denotation preservation for the coalesce-aware RA.** The headline
-theorem is RA-agnostic; this is its application at `keccakRA_coalesce`. -/
+/-- `keccak_ra_emit_denotation_preserves` at `keccakRA_coalesce`; holds
+because `applyRA` is the identity. -/
 theorem keccak_ra_emit_denotation_preserves_coalesce (init : ⟦St⟧) :
     (applyRA keccakRoundJForProg keccakRA_coalesce).denote init
       = keccakRoundJForProg.denote init :=
@@ -283,17 +238,15 @@ theorem keccak_ra_emit_denotation_preserves_coalesce (init : ⟦St⟧) :
 three-address events (θ-D `mov chiScr ← C[x+1]`, χ `mov chiScr ← B[x+1,y]`,
 and ρπ lane copies) whose `src1` dies at the event and differs from `dst`.
 After seed filtering the count is **7** — the seven θ-D / χ scratch-load
-events whose `src1` (the column parity / B-lane being loaded) is genuinely
-dying. This is the empirically-validated firing point of the Phase B+
-coalescing pass on Keccak's slot encoding. -/
+events whose `src1` (the column parity / B-lane being loaded) dies at the
+event. -/
 theorem keccak_coalesce_candidate_count :
     UnrolledComRA.coalesceCandidateCount UnrolledComRA.kSlotTrace = 7 := by
   native_decide
 
 /-- **Keccak coalesce candidate count is positive.** Direct consequence
-of `keccak_coalesce_candidate_count`; surfaces the architectural fact
-that Keccak — unlike ChaCha and Poseidon2 — is genuinely three-address
-at the slot-trace level. -/
+of `keccak_coalesce_candidate_count`: Keccak's slot trace has three-address
+events, which the ChaCha and Poseidon2 traces lack. -/
 theorem keccak_coalesce_candidate_count_pos :
     UnrolledComRA.coalesceCandidateCount UnrolledComRA.kSlotTrace > 0 := by
   rw [keccak_coalesce_candidate_count]; decide
@@ -322,20 +275,15 @@ per-round variant `chiScrRoundSlot round`. The slot universe grows from
 `57` to `81` (slots `57..80` are the 24 per-round chiScrs). No other
 trace structure changes.
 
-The renaming is **denotation-preserving** as a Com-level rewrite: the
-`SlotEvent` trace is a per-binding **footprint** the RA framework
-consumes to compute live ranges; the underlying `keccakF1600Com` body
-is unchanged. The RA-driven emit only consumes `seqOf` (via
-`keccakRaDstName`), and `seqOf` is a slot-remap that respects the
-no-collision invariant by construction (`unrolledSlotRAofItersCoalesce`'s
-`tryMergeOne` rejects any merge that violates it).
+The renaming changes the `SlotEvent` trace from which live ranges are
+computed; the `keccakF1600Com` body is unchanged. The RA-driven emit reads
+only `seqOf` (via `keccakRaDstName`); `unrolledSlotRAofItersCoalesce`'s
+`tryMergeOne` commits a merge only when the trace-level no-collision check
+passes.
 
-Per the headline theorem `keccak_ra_emit_denotation_preserves`, the
-denotation is preserved for **any** well-formed RA — including this
-renamed one. The emit-text rewrite reroutes the slot through the RA's
-`seqOf`, so the Com body's slot-56 writes map to the renamed
-`chiScrRoundSlot round` logical slots, and through `seqOf` to whatever
-physical slot the linear scan + coalescer assigns. -/
+`keccak_ra_emit_denotation_preserves_coalesce_renamed` holds because
+`applyRA` is the identity. No theorem here states that the text rendered
+through this allocation's `seqOf` computes the permutation. -/
 
 /-- **Per-round `chiScr` slot for round `round ∈ {0..23}`.** Maps to
 logical slot `57 + round`; the 24 variants occupy logical slots

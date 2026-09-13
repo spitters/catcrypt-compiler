@@ -14,87 +14,46 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
 public import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
 
 /-!
-# SHA-2 compression with linear-scan register allocation — the proof-of-concept
-RA consumer
+# SHA-2 compression emitted with slot names taken from a register allocation
 
-`RegisterAllocation.lean` (#141/#143) ships the verified linear-scan RA
-framework: live-range analysis (`computeLastUse`), lowest-free-slot assignment
-(`linearScanAssign`), and a `RegisterAllocation` decision record consumed by
-downstream emit passes. The framework's central theorem
-`applyRA_denote_preserves` says: for any well-formed RA, the Com→Com transform
-is denotation-preserving.
+`Sha2Emit.lean` emits each `Com.var` of the SHA-2 compression to `st[slot]`
+through the fixed slot file `slotSeq`. This module emits the same `Com` with
+destination slots rerouted through a `RegisterAllocation`: where
+`Sha2Emit.dstName sp k = "st[" ++ toString (slotSeq sp).getD k 0 ++ "]"`, the
+RA-driven version uses `"st[" ++ toString (ra.seqOf ((slotSeq sp).getD k 0)) ++ "]"`.
+For `RegisterAllocation.identity` the destination names agree pointwise with
+`Sha2Emit.dstName` (§4).
 
-`Sha2Emit.lean` (#120) provides the current SHA-2 batched emit. It bakes in a
-fixed slot file (`wkA = 100`, `sigS = 111`, `scA..scD = 114..117`, etc.) and
-emits each `Com.var` to `st[slot]` via `slotSeq`. The slot decisions are
-hard-coded — they do not consume RA decisions.
-
-This module is the **RA-driven SHA-2 emit**: an additive sibling of
-`Sha2Emit.lean` that takes a `RegisterAllocation` produced by `linearScanRA`
-and emits a register-allocated SHA-2 round body whose denotation matches the
-current emit's. The headline theorem is
-
-  `sha2_ra_emit_denotation_preserves`:
-    `(applyRA (sha2RoundJForProg sp) ra).denote init = (sha2RoundJForProg sp).denote init`
-
-a direct corollary of `applyRA_denote_preserves` for the SHA-2-shaped wrapper.
-
-## Why this is the right factoring
-
-`applyRA p ra = p` is the Com-level identity by construction (RA is a
-*labelling* of binders, not a structural rewrite). So at the Com level the
-RA-driven emit produces a Com whose denotation equals the original's by
-`rfl`. The RA decisions live in `ra.seqOf` (the real linear-scan slot map for
-the `linearScanRA` packing — see `RegisterAllocation.lean` §8) and are
-consumed by the emit-text rewrite below.
-
-The emit-text rewrite reroutes destination slots through the RA: where
-`Sha2Emit.dstName sp k = "st[" ++ toString (slotSeq sp).getD k 0 ++ "]"`,
-the RA-driven version uses `"st[" ++ toString (ra.seqOf ((slotSeq sp).getD k 0)) ++ "]"`.
-For `linearScanRA`, `ra.seqOf` is the real linear-scan decision; for
-`RegisterAllocation.identity`, the emit reduces byte-identically to the
-current SHA-2 emit. This is the framework's "Com-level identity, emit-pass
-under register renaming" story.
+`RegisterAllocation.applyRA` is the identity, so the denotation theorems of §3
+hold for every allocation (`RegisterAllocation.applyRA_denote_preserves_of_any`).
+They are stated over the schedule loop `sha2RoundJForProg`, not over the
+`compressCom` text that `emitSha2RoundRaJazz` renders, and they state nothing
+about the `ra.seqOf`-routed rendering. No theorem here relates the emitted text
+to the unrenamed emit. The register allocator with a semantic theorem is
+`physScanSpill` (`toLprogPhysAbi_faithful_uniform`).
 
 ## Contents
 
-* `sha2RoundJForProg` — the SHA-2 round body wrapped as a `JForProg` so the
-  RA framework applies. The accumulator is the wide register (16·w lanes)
-  carrying the schedule window; the body is `schedLeafBody`. This is exactly
-  the JForProg shape `applyRA_denote_preserves` consumes.
-* `emitSha2RoundRaJazz` — the RA-driven emit. Takes a `Sha2Spec`, a
-  `RegisterAllocation`, and a name; produces the `.jazz` text with slot names
-  rewritten through `ra.seqOf`.
-* `sha2_ra_emit_denotation_preserves` — the headline theorem. For any
-  `ra : RegisterAllocation` and any wellformedness witness, the RA-applied
-  SHA-2 round body denotes the same function as the original.
-* `sha2_ra_emit_denotation_preserves_linearScan` — the corollary for the
-  concrete `linearScanRA`-produced decision.
+* `sha2RoundJForProg` — the SHA-2 schedule loop `schedLoop` as a `JForProg`.
+* `emitSha2RoundRaJazz` — the `.jazz` text of `compressCom` with destination
+  slot names rewritten through `ra.seqOf`.
+* `sha2_ra_emit_denotation_preserves` and its `_linearScan`, `_identity` and
+  `_unrolled` corollaries — `applyRA (sha2RoundJForProg sp) ra` denotes
+  `sha2RoundJForProg sp`; true for every `ra` because `applyRA` is the identity.
+* `raDstName_identity_eq` (§4) — for the identity allocation, destination names
+  agree with `Sha2Emit.dstName` pointwise.
 
-## Axiom budget
+## Axioms
 
-`[propext, Quot.sound]` only. The denotation theorem reduces to
-`applyRA_denote_preserves` which is itself `rfl` under the identity-RA-rewrite
-shape of `applyRA`. The string rewrite is a definition that does not appear
-in the theorem statement.
+`[propext, Quot.sound]`.
 
-## Scope of the bench-driven emit
+## Allocations used by the bench emit
 
-`linearScanRA p` produces RA decisions parameterised by the *binders of `p`*.
-The natural `JForProg` wrapper for SHA-2 is the schedule loop (`schedLoop`)
-with a single multi-bit accumulator and 4 binders. The fully-unrolled
-compression `Com` (`Sha2Emit.compressCom`) used by the bench/KAT pipeline
-operates over a much richer slot file (slots `0..127`); its slot indices are
-NOT binder indices of the `JForProg` wrapper. The bench-driven emit (in
-`bench/sha2_compare/sha2_ra_emit.lean`) therefore consumes
-`RegisterAllocation.identity` as `ra` and produces the canonical SHA-2
-emit — what the framework calls the "no-op RA" baseline. The
-`emitSha2RoundRaJazz` driver is parametric over `ra`, so a future RA
-algorithm defined directly over `compressCom`'s slot domain (rather than
-the JForProg-binder domain) plugs in without changing the headline
-theorem. The headline theorem `sha2_ra_emit_denotation_preserves` is
-RA-agnostic and holds for any well-formed RA, including the not-yet-defined
-unrolled-compression RA.
+`linearScanRA p` assigns slots to the binders of `p`. The slot indices of
+`Sha2Emit.compressCom` (`0..127`) are not binder indices of the `JForProg`
+wrapper. The bench emit (`bench/sha2_compare/sha2_ra_emit.lean` in the
+development repository) passes `UnrolledComRA.unrolledSlotRASha`, a linear scan
+over the slot domain of `compressCom`.
 -/
 
 @[expose] public section
@@ -112,17 +71,15 @@ set_option autoImplicit false
 /-! ## 1. The SHA-2 round body as a `JForProg`
 
 The schedule-loop wrapper `Sha2Emit.schedLoop` already has the shape
-`JForProg (WinAcc sp.w)`. We re-export it under a SHA-2-RA-specific name so
-the headline theorem is stated against a clearly RA-relevant program. -/
+`JForProg (WinAcc sp.w)`; this module names it `sha2RoundJForProg`. -/
 
-/-- **The SHA-2 round body wrapped as a `JForProg`.**
-The schedule-loop view of SHA-2: iterate the recurrence step `rounds - 16`
-times. This is the JForProg shape the RA framework consumes. -/
+/-- **The SHA-2 schedule loop as a `JForProg`.**
+Iterates the recurrence step `rounds - 16` times. -/
 def sha2RoundJForProg (sp : Sha2Spec) : JForProg (WinAcc sp.w) := schedLoop sp
 
 /-! ## 2. The emit-text rewrite under an RA
 
-The RA decisions live in `ra.seqOf` (per `linearScanRA`'s framework packing).
+`linearScanRA` stores its slots in `ra.seqOf` (its `slotOf` is `id`).
 The RA-driven `dstName` reroutes the slot through `ra.seqOf`. The input
 operand resolver `inName sp` is unchanged (inputs are not register-allocated;
 they are read from the constant pool / immediate). -/
@@ -158,25 +115,18 @@ def emitSha256RaJazz (ra : RegisterAllocation) : String :=
 def emitSha512RaJazz (ra : RegisterAllocation) : String :=
   emitSha2RoundRaJazz sha512Spec ra "sha512_compress_ra"
 
-/-! ## 3. The headline denotation-preservation theorem
+/-! ## 3. Denotation of `applyRA` on the schedule loop
 
-The theorem is a direct corollary of `applyRA_denote_preserves`: for any
-well-formed `RegisterAllocation`, the RA-rewritten `JForProg` denotes the
-same function as the original. -/
+`RegisterAllocation.applyRA` is the identity, so each theorem below holds for
+every allocation (`RegisterAllocation.applyRA_denote_preserves_of_any`). The
+theorems are stated over `sha2RoundJForProg`, not over the text
+`emitSha2RoundRaJazz` renders; the allocator with a semantic theorem is
+`physScanSpill` (`toLprogPhysAbi_faithful_uniform`). -/
 
-/-- **Headline theorem:** for any well-formed register allocation, the
-RA-applied SHA-2 round body denotes the same function as the original
-SHA-2 round body.
-
-The Com-level rewrite is the identity (`applyRA p ra = p` by definition);
-the proof reduces to `applyRA_denote_preserves`, which delegates to the
-`preserves` witness packaged in `WellFormed`. For `linearScanRA` and
-`identity` this witness is `rfl`.
-
-This is the proof obligation `#143` shipped (`applyRA_denote_preserves`)
-specialised to the SHA-2 round body — the proof that RA-driven emit does
-not change the SHA-2 round's mathematical meaning, only its slot
-labelling. -/
+/-- `applyRA (sha2RoundJForProg sp) ra` denotes the same function as
+`sha2RoundJForProg sp`. It holds for every `ra` because `applyRA` is the
+identity; the `WellFormed` hypothesis is not needed, and the statement says
+nothing about the `ra.seqOf`-routed rendering of `emitSha2RoundRaJazz`. -/
 theorem sha2_ra_emit_denotation_preserves (sp : Sha2Spec) (ra : RegisterAllocation)
     (hwf : WellFormed ra) (init : ⟦WinAcc sp.w⟧) :
     (applyRA (sha2RoundJForProg sp) ra).denote init
@@ -201,10 +151,9 @@ theorem sha2_ra_emit_denotation_preserves_identity (sp : Sha2Spec)
 /-- **Concrete corollary for the unrolled-Com-domain RA (#158).**
 `UnrolledComRA.unrolledSlotRASha sp` is the linear-scan allocation over the
 slot-index domain of `compressCom sp` (the unrolled body), not over the binder
-domain of the JForProg wrapper. It is the RA the bench-driven emit consumes
-(it reduces spills while respecting live-range non-overlap —
-`UnrolledComRA.unrolledSlotRA_no_collision_sha256/512`). The headline theorem
-fires unchanged because it is RA-agnostic. -/
+domain of the JForProg wrapper, and the allocation the bench emit passes. Its
+live-range non-overlap is `UnrolledComRA.unrolledSlotRA_no_collision_sha256/512`.
+The denotation statement holds because `applyRA` is the identity. -/
 theorem sha2_ra_emit_denotation_preserves_unrolled (sp : Sha2Spec)
     (init : ⟦WinAcc sp.w⟧) :
     (applyRA (sha2RoundJForProg sp) (UnrolledComRA.unrolledSlotRASha sp)).denote init
@@ -215,12 +164,8 @@ theorem sha2_ra_emit_denotation_preserves_unrolled (sp : Sha2Spec)
 /-! ## 4. Identity-RA per-binding destination name equals the current emit
 
 For `RegisterAllocation.identity` (`seqOf k = k`), the RA-driven per-binding
-destination name reduces pointwise to the current `Sha2Emit.dstName`. The
-full-text byte-identity follows from this pointwise equality together with
-the determinism of `JasminAbiEmit.emitAbiOrchReg` — we expose the pointwise
-fact as the headline-level smoke test (the full-text equality is a
-~14 KB-string `rfl` that is heartbeat-bounded; the pointwise form is
-constant-time). -/
+destination name reduces pointwise to `Sha2Emit.dstName`. The full-text
+equality (a ~14 KB string) is not stated; the pointwise form is. -/
 
 /-- **Identity-RA destination name equals the current SHA-2 destination name
 pointwise.** For `ra = RegisterAllocation.identity`, `seqOf k = k`, so each
@@ -235,9 +180,8 @@ theorem raDstName_identity_eq (sp : Sha2Spec) (k : Nat) :
 
 `UnrolledComRA.lean` §7 ships `unrolledSlotRAofIters tr iters`: a
 `RegisterAllocation` derived from a per-iteration `SlotEvent` chunking with a
-carry-aware linear-scan priority. Phase B-2 wires the SHA-2 consumer through
-this API, exposing the per-round iteration chunking already declared
-upstream as `UnrolledComRA.shaIterChunks`.
+carry-aware linear-scan priority. This section applies it to SHA-2 with the
+per-round iteration chunking `UnrolledComRA.shaIterChunks`.
 
 ### Chunk derivation
 
@@ -279,8 +223,8 @@ def sha2RA_iters (sp : Sha2Spec) : RegisterAllocation :=
 theorem sha2RA_iters_WellFormed (sp : Sha2Spec) : WellFormed (sha2RA_iters sp) :=
   UnrolledComRA.unrolledSlotRAofIters_WellFormed _ _
 
-/-- **Cross-iteration corollary of the headline denotation-preservation
-theorem for SHA-2.** -/
+/-- `sha2_ra_emit_denotation_preserves` at `sha2RA_iters`; holds because
+`applyRA` is the identity. -/
 theorem sha2_ra_emit_denotation_preserves_iters (sp : Sha2Spec)
     (init : ⟦WinAcc sp.w⟧) :
     (applyRA (sha2RoundJForProg sp) (sha2RA_iters sp)).denote init
@@ -303,7 +247,7 @@ into one physical slot when `src1` dies at the event.
 
 Unlike ChaCha20 (whose `⟨a, [a, b]⟩` events are already two-address by
 construction) and Poseidon2 (whose self-touch events `⟨s, [s]⟩` have `dst
-= head rds`), SHA-2's compression body contains **genuinely three-address**
+= head rds`), SHA-2's compression body contains **three-address**
 ops where the first source is a different logical slot from the
 destination. The cross-round trace has 12 raw candidates; 10 are filtered
 out as touching the seed-pinned schedule slots `0..15` or the output
@@ -318,9 +262,9 @@ These are exactly the pairs the x86-64 two-address encoding licenses
 in principle: at the syntactic event-stream level, `scA` and `t1S` are
 dying first-sources.
 
-### Honest outcome: candidates detected, both merges rejected
+### Candidates detected, both merges rejected
 
-The framework's coalesce pass (`tryMergeOne`) tentatively merges each
+The coalesce pass (`tryMergeOne`) tentatively merges each
 pair and re-runs the no-collision check on the live-range summary; the
 merge is committed only when the recheck passes. On both SHA-2
 candidates, the recheck **rejects** the merge — the conservative
@@ -335,23 +279,13 @@ Concretely:
 * The total distinct-physical-slot count over the SHA-256 universe stays
   at 112 under both RAs.
 
-This is the architectural finding: for SHA-2, the candidate-detection
-half of the coalesce pipeline fires (12 raw, 2 surviving seed filter),
-but the soundness half of the pipeline (no-collision recheck) blocks the
-merges. To unlock coalescing on SHA-2 the trace encoding would have to
-report tighter live ranges than `[firstTouch, lastTouch]` — e.g. by
-emitting `SlotEvent`s with explicit kill-points, which is an
-encoding-level change outside this consumer.
+For SHA-2, candidate detection finds 12 raw candidates, 2 of which survive
+the seed filter, and the no-collision recheck rejects both merges. Coalescing
+on SHA-2 would need live ranges tighter than `[firstTouch, lastTouch]` in the
+trace encoding, for example `SlotEvent`s with explicit kill-points.
 
-### Why coalescing still **enters the pipeline** for SHA-2
-
-The Phase-B+ machinery is RA-agnostic: the headline denotation theorem
-`sha2_ra_emit_denotation_preserves_coalesce` fires unchanged from any
-well-formed RA. So even with zero effective fusions on the current trace
-encoding, wiring the coalesce-aware RA through SHA-2's consumer is the
-infrastructure validation: the pipeline composes, all theorems compose,
-and any future trace-encoding refinement (tighter kill-points) plugs in
-without re-proving the SHA-2 denotation. -/
+`sha2_ra_emit_denotation_preserves_coalesce` holds because `applyRA` is the
+identity; it states nothing about the coalesced slots. -/
 
 /-- The cross-iter + coalesce-aware SHA-2 register allocation. Fuses
 `dst` and `src1` for events where `src1` dies post-event and the merge
@@ -365,8 +299,8 @@ theorem sha2RA_coalesce_WellFormed (sp : Sha2Spec) :
     WellFormed (sha2RA_coalesce sp) :=
   UnrolledComRA.unrolledSlotRAofItersCoalesce_WellFormed _ _
 
-/-- **Coalesce corollary of the headline denotation-preservation theorem
-for SHA-2.** -/
+/-- `sha2_ra_emit_denotation_preserves` at `sha2RA_coalesce`; holds because
+`applyRA` is the identity. -/
 theorem sha2_ra_emit_denotation_preserves_coalesce (sp : Sha2Spec)
     (init : ⟦WinAcc sp.w⟧) :
     (applyRA (sha2RoundJForProg sp) (sha2RA_coalesce sp)).denote init
@@ -376,7 +310,7 @@ theorem sha2_ra_emit_denotation_preserves_coalesce (sp : Sha2Spec)
 /-- **SHA-256 has two coalesce candidates surviving seed filtering.**
 Unlike ChaCha20 / Poseidon2 (which see zero candidates because their
 trace encodings are already two-address-shaped), SHA-256's body has
-genuinely three-address scratch-flank ops where `dst ≠ head rds` and
+three-address scratch-flank ops where `dst ≠ head rds` and
 the first-source dies. The two survivors are scratch-flank fusions in
 the round body. NB: candidate detection is the *first* half of the
 coalesce pipeline; whether the merge is actually committed depends on

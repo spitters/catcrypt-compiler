@@ -444,7 +444,7 @@ theorem optimizer_preserves_simulates
 
 /-! ## §7.5  Intra-block instruction scheduling (#273) wired in
 
-The ILP list scheduler (`SchedulerPass.scheduleBlock`) is a genuine
+The ILP list scheduler (`SchedulerPass.scheduleBlock`) is a
 `LowCT → LowCT` reorder, but its certificates are phrased over a
 `List BBStmt` lowered with `blockToCmd` (because `scheduleBlock` reorders
 the statements of a *block*).  We wire it into this orchestrator at that
@@ -511,19 +511,21 @@ theorem scheduled_ct_eq (lt : LevelTable) (leafCT : LeafCTTable)
 
 /-! ## §7.6  Default `JForProg`-level optimisation pipeline (W5 / #305)
 
-The headline composition this file exposes for the *typed VIR* IR
-(`JForProg accTy = a bounded for-loop whose body is a
-`Com jasminDialect [accTy] accTy`).  It sequences the four cleanly-
-composable `JForProg → JForProg` analysis-and-rewrite passes into a single
-function `optPipelineJ`, and proves both end-to-end **denotation** and
-**constant-time** preservation by chaining the per-pass certificates.
+The composition for the typed VIR IR (`JForProg accTy`, a bounded for-loop
+whose body is a `Com jasminDialect [accTy] accTy`). `optPipelineJ` sequences
+four `JForProg → JForProg` analysis-then-apply stages. Each `apply*` function
+(`applyCse`, `applyStrengthReduce`, `applyDce`, `RegisterAllocation.applyRA`)
+returns its program argument and ignores the analysis result, so
+`optPipelineJ p` is `p` definitionally, and `optPipelineJ_denote` and
+`optPipelineJ_isCT` hold by rewriting with identity lemmas. They state no
+property of any analysis. The program-changing passes are the `*Real.lean`
+transforms (`DeadCodeElimReal`, `CommonSubexprElimReal`, …); the register
+allocator with a semantic theorem is `physScanSpill`
+(`toLprogPhysAbi_faithful_uniform`).
 
-### Passes in the proved pipeline (unconditional, `JForProg → JForProg`)
+### Stages of `optPipelineJ` (each `apply*` is the identity)
 
-Applied left-to-right (each analyses the program, then `apply*` rewrites it;
-at the current Com shape each `apply*` is the identity Com-rewrite carrying
-its decisions in metadata consumed downstream by the emit pass, so the
-denotation/CT obligations are discharged):
+Applied left-to-right:
 
 1. **CSE / GVN (#210)** — `analyzeCse` then `applyCse`
    (`CommonSubexprElim.lean`); denote: `applyCse_denote_preserves`,
@@ -535,12 +537,13 @@ denotation/CT obligations are discharged):
 3. **Dead-code elimination** — `analyzeDce` then `applyDce`
    (`DeadCodeElim.lean`); denote: `applyDce_denote_preserves`, CT:
    `applyDce_preserves_CT`.
-4. **Linear-scan register allocation (#143)** — `linearScanRA` then
+4. **Register allocation** — `linearScanRA` then
    `RegisterAllocation.applyRA` (`RegisterAllocation.lean`); denote:
-   `linearScanRA_denote_preserves`, CT: `applyRA_preserves_CT`.
+   `linearScanRA_denote_preserves`, CT: `applyRA_preserves_CT`. Both hold for
+   every allocation because `applyRA` is the identity.
 
-`optPipelineJ_denote` and `optPipelineJ_isCT` carry **no extra hypotheses**:
-the four per-pass preservation lemmas are unconditional.
+`optPipelineJ_denote` and `optPipelineJ_isCT` carry no extra hypotheses,
+because each stage is the identity.
 
 ### Passes composed elsewhere / deferred (and why)
 
@@ -561,7 +564,7 @@ the four per-pass preservation lemmas are unconditional.
   the witness; its CT lemma `unrollN_preserves_CT` additionally needs the
   emit-pass obligation `ctSafeJasmin u.unrolled.update … = true`.  We expose
   `optPipelineJ_afterUnroll` that chains the unroll witness in front of the
-  core pipeline, threading both hypotheses honestly.
+  core pipeline, taking the unroll witness as a hypothesis.
 * **Verified vectorizer (#68/#108)** — the lane-ring `scalarFold`
   construction (`LaneMap.lean`, `VectorReduce.lean`) is, like unrolling, a
   per-kernel construction with a `scalarFold_eq_hsum`-style equality rather
@@ -585,12 +588,10 @@ open CatCrypt.Crypto.Optimizer.Rewrite.Egraph
 
 /-- **The default `JForProg`-level optimisation pipeline (W5 / #305).**
 
-    Sequences the four unconditional `JForProg → JForProg` passes:
-    CSE → strength-reduction → dead-code elimination → register allocation.
-    Each pass analyses the program and applies its (denotation- and
-    CT-preserving) rewrite.  This is the entry point the emitter calls on a
-    loop body before lowering; it composes the verified passes so the
-    emitted kernel is denotation-identical to the source. -/
+    Sequences four analysis-then-apply stages: CSE → strength reduction →
+    dead-code elimination → register allocation. Each `apply*` function
+    returns its program argument, so `optPipelineJ p` is `p`
+    definitionally; the analyses are computed and discarded. -/
 def optPipelineJ {accTy : JasminTy} (p : JForProg accTy) : JForProg accTy :=
   let p₁ := applyCse p (analyzeCse p)
   let p₂ := applyStrengthReduce p₁ (analyzeStrengthReduce p₁)
@@ -603,8 +604,8 @@ def optPipelineJ {accTy : JasminTy} (p : JForProg accTy) : JForProg accTy :=
     `applyCse_denote_preserves`, `applyStrengthReduce_denote_preserves`,
     `applyDce_denote_preserves`, and `linearScanRA_denote_preserves`.
 
-    Carries **no** extra hypotheses: every per-pass preservation lemma is
-    unconditional. -/
+    Carries no extra hypotheses: every stage is the identity, so the statement
+    holds by `rfl` and constrains no analysis. -/
 theorem optPipelineJ_denote {accTy : JasminTy} (p : JForProg accTy)
     (init : ⟦accTy⟧) :
     (optPipelineJ p).denote init = p.denote init := by
@@ -620,7 +621,7 @@ theorem optPipelineJ_denote {accTy : JasminTy} (p : JForProg accTy)
     (`applyRA_preserves_CT`, `applyDce_preserves_CT`,
     `applyStrengthReduce_preserves_CT`, `applyCse_preserves_CT`).
 
-    Carries **no** extra hypotheses. -/
+    Carries no extra hypotheses: every stage is the identity. -/
 theorem optPipelineJ_isCT {accTy : JasminTy} (p : JForProg accTy)
     (accL : SecretLevel) :
     ctSafeJForProg (optPipelineJ p) accL = ctSafeJForProg p accL := by

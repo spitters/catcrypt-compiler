@@ -16,16 +16,19 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.UnrolledComRA
 /-!
 # Poseidon2 BabyBear with live-range-aware register allocation
 
-`RegisterAllocation.lean` (#141/#143) ships the verified linear-scan RA
-framework: a `RegisterAllocation` is a slot remap (`slotOf`) plus a sequencing
-hint (`seqOf`), well-formed when `slotOf` is injective and `applyRA` preserves
-`JForProg.denote`. The central theorem `applyRA_denote_preserves` is RA-agnostic.
+A `RegisterAllocation` (`RegisterAllocation.lean`) is a slot map (`slotOf`) and
+a sequencing map (`seqOf`). `RegisterAllocation.applyRA` is the identity, so
+`applyRA_denote_preserves` holds for every allocation and states no property of
+either map. The register allocator with a semantic theorem is `physScanSpill`
+(`toLprogPhysAbi_faithful_uniform`).
 
-`Sha2RaEmit.lean` / `KeccakRaEmit.lean` / `ChachaRaEmit.lean` wired the
-framework into the SHA-2, Keccak, and ChaCha20 4-way XMM-resident emit
-pipelines. This module is the **Poseidon2 BabyBear width-16 analog** —
-the lane-resident Montgomery + YMM-direct internal_mat single-pass emit
-(TWENTIETH ABI mode, #171) re-emitted under the verified RA.
+`Sha2RaEmit.lean`, `KeccakRaEmit.lean` and `ChachaRaEmit.lean` render the SHA-2,
+Keccak and ChaCha20 4-way XMM-resident emits with names taken from an
+allocation. This module does the same for Poseidon2 BabyBear width 16: the
+lane-resident Montgomery + YMM-direct internal_mat single-pass emit (TWENTIETH
+ABI mode) with three scratch declarations moved from `reg u256` to
+`stack u256`. No theorem in this module relates the rendered text to the
+permutation.
 
 ## Why the Poseidon2 emit needs RA
 
@@ -101,21 +104,22 @@ spill victims.
 * `phaseDeadSlots` — slots with zero partial-round uses.
 * `poseidonRA` — the `RegisterAllocation` packing the phase-dead-spill
   decision as `slotOf := id`, `seqOf := poseidonSeqOf`.
-* `poseidonRA_WellFormed` — well-formedness (`preserves := rfl`).
+* `poseidonRA_WellFormed` — well-formedness (`preserves := rfl`, because
+  `applyRA` is the identity).
 * `emitPoseidon2ResidentPartialRaJazz` — the RA-driven emit. Same body
   text as the TWENTIETH ABI mode emit, with scratch declarations rerouted
   through `ra.seqOf` (phase-dead scratches declared as `stack u256`
   instead of `reg u256`).
-* `poseidon2_ra_emit_denotation_preserves` — the headline denotation
-  theorem: composes `MontIso.montPerm_sandwich_eq`.
+* `poseidon2_ra_emit_denotation_preserves` — `MontIso.montPerm_sandwich_eq`:
+  the Montgomery-form permutation, converted in and out of Montgomery form,
+  equals `poseidon2BabyBearPermute`. Its statement does not mention the
+  emitted text or the allocation.
 
-## Axiom budget
+## Axioms
 
-`[propext, Quot.sound]` only. The denotation theorem composes
-`MontIso.montPerm_sandwich_eq` (storage-class-agnostic by construction),
-exactly as `Poseidon2Montgomery`'s NINETEENTH and TWENTIETH-mode emits
-do. The slot-remap is a string-level relabeling of declarations and
-does not enter any theorem statement.
+`[propext, Quot.sound]` for `poseidon2_ra_emit_denotation_preserves`. The
+storage-class change is a string-level edit of declarations and does not
+enter any theorem statement.
 -/
 
 @[expose] public section
@@ -268,9 +272,8 @@ identity" packing. -/
 
 /-- The Poseidon2 RA's seq mapping. For non-phase-dead slots, the
 identity. For phase-dead slots, the same index (the actual storage-class
-decision lives in `isPhaseDead` and is consumed by the emit-pass
-renderer, NOT in the `Com`). This keeps `applyRA p ra = p` so
-`preserves` is `rfl`. -/
+decision lives in `isPhaseDead` and is read by the renderer). `preserves` is
+`rfl` because `applyRA` is the identity. -/
 def poseidonSeqOf (j : Nat) : Nat := j
 
 /-- **The Poseidon2 register allocation.** `seqOf := id`, `slotOf := id`;
@@ -423,18 +426,17 @@ def emitPoseidon2ResidentPartialRaJazz (ra : RegisterAllocation) : String :=
   let preamble := (baseline.dropEnd baselineBody.length).toString
   preamble ++ emitPoseidon2ResidentPartialRaBodyJazz ra ++ "\n"
 
-/-! ## 6. Headline denotation-preservation theorem
+/-! ## 6. The Montgomery-form permutation equals the specification
 
-The RA-driven emit's denotation equals the canonical Poseidon2 BabyBear
-permutation. The witness is `MontIso.montPerm_sandwich_eq` from the
-companion `Poseidon2Montgomery` module — the same theorem the TWENTIETH
-ABI mode emit uses. It is parametric over the storage class (lane-pinned
-YMM vs stack array, reg-resident vs stack-spilled scratches), so the RA
-demotion of three S-box scratches to stack does not affect the
-denotation. -/
+`MontIso.montPerm_sandwich_eq` states that the Montgomery-form Poseidon2
+BabyBear permutation, converted in and out of Montgomery form, equals
+`poseidon2BabyBearPermute`. The statement involves neither the emitted text nor
+a `RegisterAllocation`; no theorem here relates
+`emitPoseidon2ResidentPartialRaJazz` to it. -/
 
-/-- **Denotation preservation for the RA-driven Poseidon2 BabyBear emit.**
-Composes `MontIso.montPerm_sandwich_eq`. -/
+/-- `MontIso.montPerm_sandwich_eq` restated: the Montgomery-form permutation,
+converted in and out of Montgomery form, equals `poseidon2BabyBearPermute`. It
+does not mention the RA-driven emit. -/
 theorem poseidon2_ra_emit_denotation_preserves
     (s : Fin width → CatCrypt.Crypto.Hash.Poseidon2.BabyBear.F) :
     MontIso.vUnform (MontIso.montPoseidon2BabyBearPermute (MontIso.vForm s))

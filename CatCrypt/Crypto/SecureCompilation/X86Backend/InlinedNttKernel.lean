@@ -16,57 +16,61 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLeafFusion
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLeafFusion
 
 /-!
-# Inlining + register allocation closes the per-leaf ABI tax (#304, W4)
+# Per-leaf ABI tax of a two-butterfly NTT composition
 
-W3 (#303) lowered the Barrett NTT butterfly *body* end-to-end through the
-in-Lean x86 backend (`BarrettButterflyKernel`), removing jasminc from the chain
-and removing its body-size cap. This module is the W4 proof-of-concept: take a
-SMALL **two-butterfly composition** (one feeds the other), and show that
+`BarrettButterflyKernel` lowers the Barrett NTT butterfly body through the
+in-Lean x86 backend. This module is a demonstration over a small
+**two-butterfly composition** (one feeds the other), showing that
 
 1. composing the two butterflies **as separate leaves** pays a per-leaf ABI
    copy-out/copy-in tax — the producer stores its result word to a buffer and
    the consumer reloads it as an argument across the call boundary; while
-2. **inlining** the two bodies at the IR level and **re-running register
-   allocation** lets the producer's result stay register-resident and feed the
-   consumer directly, eliminating the boundary store + reload.
+2. the **inlined** form, in which the producer's result stays
+   register-resident and feeds the consumer directly, has no boundary store +
+   reload.
 
 Two complementary levels:
 
-* **`Com jasminDialect` level (the verified inline+RA story).** A `JForProg`
-  whose `update` body is one `extCall` to a registered NTT-layer wrapper leaf
-  (the call boundary). `ComInline.inline` (#210) replaces the call with the
-  registered body; `RegisterAllocation.applyRA` (#143) re-runs RA. The headline
-  theorem `inlineThenRA_denote_preserves` composes
-  `ComInline.inline_preserves_denote` and
-  `RegisterAllocation.applyRA_denote_preserves` — so the inlined + RA'd merged
-  body denotes exactly the original ABI-boundary composition. This is the
-  primary deliverable.
+* **`Com jasminDialect` level.** A one-call `JForProg` whose `update` body is
+  one `extCall` to a registered NTT-layer wrapper leaf; the leaves have opaque
+  external semantics. `inline_denote_eq_boundary` states that
+  `ComInline.inline` preserves its denotation. The `jasminExtSem` arm for
+  `[stackArr 16 _] → stackArr 16 _` returns its argument whatever the leaf
+  name, so the registry consistency this rests on holds by `rfl`.
+  `RegisterAllocation.applyRA` is the identity (`inlinedRAProg_eq_inlinedProg`);
+  the allocation content at this level is `inlinedRA_slotOfInjectiveOnLive`.
+  This program is not the Part B blocks, which are written as `JInstr` lists.
 
-* **`List (JInstr 64)` level (the measured ABI-tax delta).** Two concrete
-  butterfly blocks chained through W3's backend: `abiBoundaryBlock` routes the
-  producer's `o0` through memory (a `storeMem` then a `loadMem` reload — the
-  ABI tax), while `inlinedMergedBlock` forwards `o0` in a register. Both lower
-  via `lowerBlock_denote_closed` and `runBlock`-compute the **same** observable
-  output words (`abi_eq_inlined_outputs`). We emit both to `.s` and the bench
-  harness KATs them identical and reports cyc/op for each → the ABI-tax delta
-  the inlining closes.
+* **`List (JInstr 64)` level.** Two concrete butterfly blocks chained through
+  the x86 backend: `abiBoundaryBlock` routes the producer's `o0` through memory (a
+  `storeMem` then a `loadMem` reload), while `inlinedMergedBlock` forwards `o0`
+  in a register. Both lower via `lowerBlock_denote_closed`. Their observable
+  output words agree on two fixed inputs (`abi_eq_inlined_outputs_kat`,
+  `abi_eq_inlined_outputs_kat2`). `emitMain` writes both to `.s` for the bench
+  harness, which compares their outputs and reports cyc/op for each.
 
-## What is proved (sorry-free)
+## Contents
 
-* `inlineThenRA_denote_preserves` — the inline + RA composition preserves
-  `JForProg.denote`, by composing the two library preservation lemmas under
-  `RegistryConsistent` for the NTT-layer registry.
+* `inline_denote_eq_boundary` — the inlined program denotes the boundary
+  program on every initial accumulator, under `nttRegistry_consistent`.
+* `inlinedRAProg_eq_inlinedProg` — `applyRA` returns the inlined program.
+* `inlinedRA_slotOfInjectiveOnLive` — the linear scan assigns distinct slots to
+  simultaneously live binders of the inlined body.
+* `inlineThenRA_denote_preserves` — the RA-applied inlined program denotes the
+  boundary program; the RA component is the identity.
 * `abi_boundary_lowering_correct` / `inlined_merged_lowering_correct` — both
-  JInstr blocks lower denotation-preservingly through W3's backend
+  JInstr blocks lower denotation-preservingly through the x86 backend
   (instances of `lowerBlock_denote_closed`).
-* `abi_eq_inlined_outputs` — the two forms compute identical observable output
-  words on every input (the inlining is observationally transparent: it only
-  removes the memory round-trip of the forwarded value).
-* `abiTaxInstrs = 2` — the two boundary memory instructions (one store, one
-  reload) the inlined form removes.
+* `abi_eq_inlined_outputs_kat` / `abi_eq_inlined_outputs_kat2` — equal
+  observable output words on two fixed inputs (`native_decide`).
+* `abiTaxInstrs_eq : abiTaxInstrs = 4` — the boundary block has four more
+  instructions: the store and reload of `o0` and of `o1`.
+* `allocations_complete` — `livenessAllocGp` assigns every name of both blocks
+  a pool register. No theorem relates `livenessAllocGp` to `runBlock`.
 
-Axioms match the rest of the backend: `[propext, Quot.sound]` (+
-`Lean.ofReduceBool` for the `native_decide` numeric pins).
+Axioms: `[propext, Quot.sound]` for `inlineThenRA_denote_preserves`;
+`inlinedRA_slotOfInjectiveOnLive` adds `Classical.choice`; the `native_decide`
+numeric pins add `Lean.ofReduceBool`.
 -/
 
 @[expose] public section
@@ -88,14 +92,15 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 open CatCrypt.Crypto.SecureCompilation.X86Backend.BarrettButterflyKernel
   (muN pN)
 
-/-! ## Part A — the verified inline + RA story at the `Com jasminDialect` level
+/-! ## Part A — inlining at the `Com jasminDialect` level
 
-The call boundary between two composed leaves is an `extCall`. We model the
-"two butterflies composed as separate leaves" as a single accumulator-update
-body that calls one registered NTT-layer wrapper leaf. Inlining replaces the
-call with the wrapper's body; re-running RA is the identity Com-rewrite (RA
-decisions are consumed by the emit pass). Composing the two library
-preservation lemmas gives denotation preservation across the whole pass. -/
+The call boundary between two composed leaves is an `extCall`. The composition
+is modelled as a single accumulator-update body that calls one registered
+NTT-layer wrapper leaf. Inlining replaces the call with the wrapper's body, and
+`ComInline.inline_preserves_denote` gives denotation preservation.
+`RegisterAllocation.applyRA` returns its argument and ignores `inlinedRA`; Part C
+allocates registers independently with `livenessAllocGp` over the `JInstr`
+block. -/
 
 /-- The accumulator type: a length-8 BabyBear coefficient array (an NTT layer's
     worth of values), keyed at the `stackArr 16 8` dialect type so it routes
@@ -159,43 +164,45 @@ def inlinedUpdate : Com jasminDialect [nttAcc] nttAcc :=
 /-- The inlined program. -/
 def inlinedProg : JForProg nttAcc := { n := 1, update := inlinedUpdate }
 
-/-- The register allocation re-run on the inlined merged body. `linearScanRA`
-    (#143) computes the slot decision; `applyRA` applies it (identity at the
-    Com level — the slot decisions are consumed downstream by the emit pass). -/
+/-- The `linearScanRA` allocation of the inlined program. Its `slotOf` is the
+    identity (`RegisterAllocation.linearScanRA_slotOf_eq_id`); only `applyRA`
+    reads it, and `applyRA` ignores it. -/
 def inlinedRA : RegisterAllocation :=
   RegisterAllocation.linearScanRA inlinedProg
 
-/-- The inlined + RA-rewritten program. -/
+/-- `applyRA` of the inlined program under `inlinedRA`; equal to `inlinedProg`
+    (`inlinedRAProg_eq_inlinedProg`). -/
 def inlinedRAProg : JForProg nttAcc :=
   RegisterAllocation.applyRA inlinedProg inlinedRA
 
-/-- **Headline theorem: inlining the leaf boundary then re-running register
-    allocation preserves the composition's denotation.**
-
-    The inlined + RA'd merged body denotes exactly the original ABI-boundary
-    composition, on every initial accumulator. The proof composes the two
-    library preservation lemmas:
-
-    * `RegisterAllocation.applyRA_denote_preserves` (re-running RA preserves
-      `JForProg.denote`, under `linearScanRA`'s well-formedness witness), and
-    * `ComInline.inline_preserves_denote` (inlining preserves `Com.denote`,
-      under `nttRegistry_consistent`),
-
-    lifted through `JForProg.denote`'s per-iteration `step`/`update.denote`. -/
-theorem inlineThenRA_denote_preserves (init : ⟦nttAcc⟧) :
-    inlinedRAProg.denote init = boundaryProg.denote init := by
-  -- Step 1: RA is denotation-preserving (linearScanRA is well-formed).
-  have hRA : inlinedRAProg.denote init = inlinedProg.denote init :=
-    RegisterAllocation.applyRA_denote_preserves inlinedProg inlinedRA
-      (RegisterAllocation.linearScanRA_WellFormed inlinedProg) init
-  rw [hRA]
-  -- Step 2: inlining is denotation-preserving (registry is consistent).
-  -- `JForProg.denote` with `n = 1` is one `step` = `update.denote (.cons init .nil)`.
-  show inlinedProg.denote init = boundaryProg.denote init
-  simp only [JForProg.denote, JForProg.step, inlinedProg, boundaryProg, inlinedProg,
+/-- Inlining the wrapper leaf preserves the denotation: the inlined program
+    denotes the boundary program on every initial accumulator
+    (`ComInline.inline_preserves_denote` under `nttRegistry_consistent`). -/
+theorem inline_denote_eq_boundary (init : ⟦nttAcc⟧) :
+    inlinedProg.denote init = boundaryProg.denote init := by
+  simp only [JForProg.denote, JForProg.step, inlinedProg, boundaryProg,
     inlinedUpdate, List.range_one, List.foldl_cons, List.foldl_nil]
   exact inline_preserves_denote nttRegistry nttRegistry_consistent boundaryUpdate
     (.cons init .nil)
+
+/-- `applyRA` returns its argument, so the RA-applied program is the inlined
+    program. -/
+theorem inlinedRAProg_eq_inlinedProg : inlinedRAProg = inlinedProg := rfl
+
+/-- Simultaneously live binders of the inlined body receive distinct slots under
+    the linear scan (`linearScanRA_real_slotOfInjectiveOnLive`). -/
+theorem inlinedRA_slotOfInjectiveOnLive :
+    RegisterAllocation.SlotOfInjectiveOnLive inlinedProg :=
+  RegisterAllocation.linearScanRA_real_slotOfInjectiveOnLive inlinedProg
+
+/-- The RA-applied inlined program denotes the boundary program on every initial
+    accumulator. The RA component is the identity
+    (`inlinedRAProg_eq_inlinedProg`), so the statement is
+    `inline_denote_eq_boundary`. -/
+theorem inlineThenRA_denote_preserves (init : ⟦nttAcc⟧) :
+    inlinedRAProg.denote init = boundaryProg.denote init := by
+  rw [inlinedRAProg_eq_inlinedProg]
+  exact inline_denote_eq_boundary init
 
 /-- The inlined body is not syntactically the boundary body: the pass
     eliminates the boundary `extCall name = wrapperName` and splices in the
@@ -207,20 +214,20 @@ theorem inline_changed_the_call :
 
 /-! ## Part B — the measured ABI-tax delta at the `List (JInstr 64)` level
 
-We now exhibit the tax concretely on W3's backend. Two BabyBear NTT butterflies
+The tax, on the x86 backend. Two BabyBear NTT butterflies
 are chained: butterfly 1 maps `(a, b, w) ↦ (o0, o1)` with
 `o0 = a + ω·b`, `o1 = a − ω·b`; butterfly 2 consumes `o0` as its `a`-input,
 with fresh `(b2, w2)`, producing `(o0', o1')`. The composition's observable
 output is the three words `(o0', o1', o1)`.
 
-`butterflyBody dst a b w` is the W3 butterfly word arithmetic (the
+`butterflyBody dst a b w` is the butterfly word arithmetic (the
 `BarrettButterflyKernel.butterflyBlock` Barrett+csub sequence) writing its two
 results into the named registers `dst.1` (= `a + ω·b`) and `dst.2`
 (= `a − ω·b`), reading inputs from the named registers `a, b, w`. It uses NO
 memory ops — pure register arithmetic — so chaining is a question of where the
 producer's `o0` lives between the two butterflies. -/
 
-/-- The W3 Barrett butterfly *word arithmetic* as a register-to-register block:
+/-- The Barrett butterfly *word arithmetic* as a register-to-register block:
     reads inputs from registers `ra, rb, rw`; writes `a + ω·b` to register
     `oLo` and `a − ω·b` to register `oHi`. Scratch registers are name-prefixed
     by `p` so two instances don't collide. This is the
@@ -310,14 +317,13 @@ def abiBoundaryBlock : List (JInstr 64) :=
      , .loadMem "o1tmp" "scratch" 8       -- carry o1 through (was copied out)
      , .storeMem "out" 16 (.reg "o1tmp") ]
 
-/-! ### B.2 The inlined-merged composition (one fused body, RA re-run)
+/-! ### B.2 The inlined-merged composition (one fused body)
 
-Inlining the two bodies at the IR level removes the leaf boundary: butterfly 1's
-result `o0` is already in a register, so butterfly 2 reads it directly — no
-copy-out, no reload. Re-running register allocation over the merged body lets
-`o0` keep its register across the (former) boundary. The `storeMem o0` and the
-`loadMem a2` of the boundary form are both gone; `o1` likewise stays in a
-register until the final store. -/
+Without the leaf boundary, butterfly 1's result `o0` is already in a register,
+so butterfly 2 reads it directly, with no copy-out and no reload. The block is
+written by hand in this form; it is not the output of `ComInline.inline` or of a
+register allocator. The `storeMem o0` and the `loadMem a2` of the boundary form
+are absent; `o1` stays in a register until the final store. -/
 
 /-- The inlined-merged chained block. Butterfly 1 computes into registers
     `o0, o1`; butterfly 2 reads `o0` **directly from the register** as its
@@ -385,7 +391,7 @@ theorem inlinedMergedBlock_constant_time (s₁ s₂ : JState 64) :
     blockLeak s₁ inlinedMergedBlock = blockLeak s₂ inlinedMergedBlock :=
   allDirect_constant_time inlinedMergedBlock inlinedMergedBlock_allDirect s₁ s₂
 
-/-! ### B.3 Both blocks lower denotation-preservingly through W3's backend -/
+/-! ### B.3 Both blocks lower denotation-preservingly through the x86 backend -/
 
 /-- The shared input state: `inp[0,8,16] = a,b,w`; `inp[24,32] = b2,w2`. The
     `inp`/`out`/`scratch` pointer registers only key the memory map. -/
@@ -470,10 +476,9 @@ registers from butterfly 1 are reused by butterfly 2.
 `livenessAllocGp` is the linear-scan allocator (the JInstr-name analogue of
 `RegisterAllocation.linearScanAssign`): compute each name's last-use index in
 the block, walk the block freeing registers whose owner's last use is behind
-us, and assign each newly-seen name the lowest free pool register. This is the
-emit-side consumer of the RA decision that the `Com`-level `applyRA`
-(Part A) records — re-running it on the merged body is what makes the inlined
-composition fit in registers. -/
+us, and assign each newly-seen name the lowest free pool register. It reads the
+`JInstr` block only and takes no `RegisterAllocation`; it is independent of
+Part A. -/
 
 /-! ### C.1 The liveness-aware allocator -/
 
@@ -569,9 +574,9 @@ def inlinedAsmBody : List String := renderBlockBody inlinedAlloc inlinedMergedBl
     distinct name of each block (24 for the ABI form, 21 for the inlined form)
     is assigned a pool register — none collapses to the `%rax` spill fallback.
     The naive first-fit `allocGp` would overflow (two butterflies' working sets
-    exceed 14 registers); the liveness re-run reuses butterfly 1's dead
-    input/scratch registers in butterfly 2, which is exactly the RA decision the
-    `Com`-level `applyRA` (Part A) records and the emit consumes here. -/
+    exceed 14 registers); `livenessAllocGp` reuses butterfly 1's dead
+    input/scratch registers in butterfly 2. The statement is completeness of
+    the assignment only; no theorem relates the allocation to `runBlock`. -/
 theorem allocations_complete :
     (orderedNames abiBoundaryBlock).all (fun n => (abiAlloc.lookup n).isSome) = true
       ∧ (orderedNames inlinedMergedBlock).all
@@ -608,8 +613,7 @@ def memOpCount : List (JInstr 64) → Nat
 /-- **The ABI tax in memory traffic.** The ABI-boundary block issues 4 more
     memory instructions than the inlined-merged block: the forwarded `o0`'s
     copy-out store + copy-in reload, and the `o1` store + reload that the
-    register-resident inlined form avoids. This is the per-leaf ABI tax the
-    inlining + RA composition closes. -/
+    register-resident inlined form avoids. -/
 theorem abi_memops_exceed_inlined :
     memOpCount abiBoundaryBlock = memOpCount inlinedMergedBlock + 4 := by native_decide
 
