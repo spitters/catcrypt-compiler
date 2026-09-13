@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-alpha.2 — 2026-09-13 (pre-release)
 
 Changes since `v0.1.0-alpha.1`. The toolchain, the dependency pins, the module set
 and the set of theorems have changed; the list below records the main changes.

@@ -12,8 +12,8 @@ authors:
     given-names: Bas
 license: MIT
 repository-code: "https://github.com/spitters/catcrypt-compiler"
-version: 0.1.0-alpha.1
-date-released: "2026-07-18"
+version: 0.1.0-alpha.2
+date-released: "2026-09-13"
 preferred-citation:
   type: article
   title: "CatCrypt: From Rust to Cryptographic Security in Lean"
