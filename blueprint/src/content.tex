@@ -1,55 +1,109 @@
-% CatCrypt verified compiler — blueprint (leanblueprint).
-% Source text only — the leanblueprint scaffolding is not committed, so
-% `leanblueprint pdf` / `leanblueprint web` do not yet run from a fresh clone
-% (see BUILDING.md).
-% Each \lean{...}\leanok node links an informal statement to its formal theorem.
+% CatCrypt verified compiler: blueprint outline in leanblueprint syntax.
+% Source text only. The package carries no leanblueprint build files (web.tex,
+% print.tex, plastex.cfg, macros), so `leanblueprint pdf` and `leanblueprint web`
+% do not run on this directory from a clone (see BUILDING.md).
+% Each \lean{...}\leanok node names the fully qualified formal declaration.
 
 \chapter{The CatCrypt verified compiler}
 
 \section{Scope}
 
-The compiler is proved correct on the covered sublanguage $\mathsf{IsCoveredCtl}$
---- the fragment of hax-extracted Rust the front handles (ANF / structured
-control flow). It is \emph{not} a proof about arbitrary Rust. The per-scheme emit
-endpoints are in this package; the scheme-level security chains that consume them
-are not. This blueprint states the capstone nodes only: the backend machine
-models, the $\mathsf{decode}\circ\mathsf{encode}$ round-trips, and leakage/CT
-preservation are proved in Lean but are not yet nodes in the graph; front
-totality over the covered fragment is established per program (\texttt{isSome}
-witnesses), with translation success carried as an explicit hypothesis of the
-end-to-end theorems.
+The nodes below are headline correctness statements of the compiler. Each is stated
+for a fragment and under hypotheses, which the node text names; README.md, section
+``The guarantees'', gives the full list. The front fragments are predicates over the
+command language LowCT, to which hax-exported Rust is translated; no statement
+concerns arbitrary Rust. The backend machine models, the
+$\mathsf{decode}\circ\mathsf{encode}$ round trips and the constant-time results are
+proved in Lean and are not nodes of this outline. Success of the front translation
+is a hypothesis of the end-to-end statements and is established per program.
 
 \begin{definition}[Covered control-flow fragment]
   \label{def:covered-ctl}
   \lean{CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl.IsCoveredCtl}
   \leanok
-  The predicate carving the source fragment for which every pipeline stage is
-  total and correctness-preserving.
+  The LowCT fragment of the control front: the covered straight-line arms, counted
+  \texttt{RFor} loops and \texttt{RIfNz} conditionals.
+\end{definition}
+
+\begin{definition}[Scalar-covered control-flow fragment]
+  \label{def:covered-sctl}
+  \uses{def:covered-ctl}
+  \lean{CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar.IsCoveredSCtl}
+  \leanok
+  The fragment of $\mathsf{IsCoveredCtl}$ on which the front's denotation is proved
+  against the source semantics $\mathsf{semScalar}$: the same arms, with the side
+  condition $\mathsf{srcClean}$ on the expression of a \texttt{RScalarSetExpr}
+  assignment.
 \end{definition}
 
 \section{Pipeline}
 
-Two fronts (hax/Rust $\to$ LowCT $\to$ \texttt{Com} IR) lower to one verified
-x86/ARM/RISC-V backend. The trust surface (ISA models,
-$\mathsf{decode}\circ\mathsf{encode}=\mathrm{id}$, byte-level instruction trust)
-is confined to this package.
+The source fronts differ in the dialect they emit. The LowCT front, which receives
+hax-exported Rust through $\mathsf{haxToLowCT}$, emits the SSA IR
+$\mathsf{catCryptDialect}$ ($\mathsf{translateDialectControl}$), and
+$\mathsf{cryptoDialectToJasminCom}$ lowers that to the word-level Jasmin dialect
+$\mathsf{jasminDialect}$; its rolled-loop arms emit \texttt{Com jasminDialect}
+directly. The hax front $\mathsf{compileFromHax}$ translates a hax
+\texttt{ImpExpr} through THIR to \texttt{Com jasminDialect} ($\mathsf{thirToJasmin}$)
+without passing through $\mathsf{catCryptDialect}$. Relational compilation from Lean
+specifications emits \texttt{Com jasminDialect} (modules
+\texttt{RelationalCompile} and \texttt{RelationalFront}) or
+\texttt{Com fieldDialect} (module \texttt{RelationalCompileHigh}), also without
+$\mathsf{catCryptDialect}$. From $\mathsf{jasminDialect}$ the backends lower to
+x86-64, AArch64 and RISC-V.
 
-\begin{theorem}[Rust $\to$ jasmin \texttt{Com}, end to end]
+\begin{theorem}[LowCT to Jasmin \texttt{Com}, end to end]
   \label{thm:rust-to-jasmin}
-  \uses{def:covered-ctl}
-  \lean{CatCrypt.Crypto.SecureCompilation.VIR.CompilerCorrectnessExtracted.rustToJasminCom_endToEnd}
+  \uses{def:covered-sctl}
+  \lean{CatCrypt.Crypto.SecureCompilation.VIR.CompilerCorrectnessExtracted.rustToJasminCom_endToEnd_unconditional, CatCrypt.Crypto.SecureCompilation.VIR.CompilerCorrectnessExtracted.rustToJasminCom_endToEnd_topLevel_unconditional}
   \leanok
-  For a source in the covered fragment, the compiled \texttt{Com} program refines
-  the reference semantics.
+  Let $c$ be a LowCT program in $\mathsf{IsCoveredSCtl}$ on which the front
+  $\mathsf{translateDialectControl}$ succeeds from the variable map $\mathit{vm}$
+  with output $o$. Let $o.\mathsf{vm}$ resolve the output name to the slot $w$, let
+  $\mathit{com}$ be the front's continuation closed by returning $w$
+  ($o.\mathsf{cont}\ (\mathsf{Com.ret}\ w) = \mathsf{some}\ \mathit{com}$), and let
+  $\mathsf{cryptoDialectToJasminCom}$ send $\mathit{com}$ to $\mathit{jcom}$. Let
+  $\mathsf{semScalar}$ run $c$ from an environment consistent with the entry
+  valuation $V$ to an environment holding $\mathit{val}$ at the output name, and let
+  $\mathsf{RustExec}$ run $c$ from a state related to an entry valuation by
+  $\mathsf{RustStateInterp}$. Then a valuation related to the final
+  $\mathsf{RustExec}$ state exists, and the denotation of $\mathit{jcom}$ at the
+  transport of $V$ is the transport of $\mathit{val}$. The top-level form fixes the
+  empty variable map and environment and discharges both entry hypotheses.
+
+  The value equation is stated over $\mathsf{semScalar}$, which wraps machine words
+  and denotes an opaque leaf call by a default value. $\mathsf{RustExec}$ evaluates
+  scalar expressions in saturating natural-number arithmetic and resolves leaf calls
+  through an oracle; relating the two values on a program requires
+  $\mathsf{SExpr.inRange}$ and a leaf-free body or a matching oracle, established per
+  kernel.
+
+  The theorem $\mathsf{rustToJasminCom\_endToEnd}$ in the same module, on
+  $\mathsf{IsCoveredCtl}$, is conditional on its hypothesis $\mathsf{hAdequacy}$. In
+  it the dialect program $\mathit{com}$ and the valuation $W$ are universally
+  quantified: $\mathit{com}$ is tied to the translation output only through
+  $\mathsf{hAdequacy}$, which states that $\mathit{com}$ denotes at $W$ the tracked
+  output's value in every valuation related to the final state, and $W$ occurs in no
+  other hypothesis. The conclusion, that $\mathit{jcom}$ denotes at the transport of
+  $W$ the transport of that value, therefore takes all of its value content from
+  $\mathsf{hAdequacy}$; the proof contributes the existence of the related valuation
+  and the lowering equation for $\mathit{com}$.
 \end{theorem}
 
-\begin{theorem}[Robust compilation, source to x86]
+\begin{theorem}[Robust compilation, lattice dialect to x86]
   \label{thm:robust-x86}
-  \uses{thm:rust-to-jasmin}
   \lean{CatCrypt.Crypto.SecureCompilation.VIR.RobustCompilationPipeline.robustCompilation_source_to_x86}
   \leanok
-  The composed pipeline down to x86 bytes preserves the source guarantee
-  robustly (against the covered fragment's contexts).
+  For a program $c$ of the lattice dialect, assume leaf agreement
+  $\mathsf{LeafAgrees}\ \mathit{leafSem}$, injectivity of $\mathsf{freshName}$ and of
+  the parameter map, and a record $\mathit{jvc} : \mathsf{JasminVerifiedCompiler}$
+  whose x86 observable, behaviour and constant-time predicate are parameters. Then the
+  behaviour of $\mathsf{lowerLatticeToJasmin}\ c$ on the transported input is
+  $\mathit{jvc}.\mathsf{obsOf}$ of the transported source denotation, and the lowered
+  program satisfies the constant-time predicate. The two conjuncts are the fields
+  $\mathsf{semRefine}$ and $\mathsf{ctPreserve}$ of $\mathit{jvc}$ applied to the
+  evaluator-level and \texttt{Com}-level results; the statement contains no x86
+  instruction semantics.
 \end{theorem}
 
 \begin{theorem}[Backend correctness, lattice route]
@@ -58,9 +112,8 @@ is confined to this package.
   \leanok
   Fix a target model choice and lattice parameters $(q,n)$. Assume
   \begin{itemize}
-    \item $\mathsf{hVal}$: the chosen model's $\mathsf{validated}$ proposition
-      --- the ISA validation that model records (deepest for x86, a
-      $\mathsf{decode}\circ\mathsf{encode}$ round-trip for RISC-V and ARM);
+    \item $\mathsf{hVal}$: the chosen model's $\mathsf{validated}$ proposition, the
+      encoder round trip that model records;
     \item $\mathsf{hLeaf} : \mathsf{LeafAgrees}\ \mathit{leafSem}$, the leaf
       agreement edge;
     \item $\mathsf{hInj}$: injectivity of the fresh-name supply
@@ -70,32 +123,31 @@ is confined to this package.
     \item $\mathsf{hCompile} : \mathsf{compile}\ q\ n\ (\mathsf{lattice}\ q\ n)
       = \mathsf{some}\ m$.
   \end{itemize}
-  Then the model's validation is in force and, slot-wise, decoding the model's
-  execution of the emitted code $m$ equals the source denotation
-  $\mathsf{latticeDenote}\ q\ n\ V$.
+  Then the conclusion is a conjunction. Its first conjunct, the model's validation,
+  is the hypothesis $\mathsf{hVal}$ returned unchanged. Its second states that,
+  slot-wise, decoding the model's execution of the emitted code $m$ on the
+  run-output state equals the source denotation $\mathsf{latticeDenote}\ q\ n\ V$.
 
   The statement is at the lattice route only: $\mathsf{compile}$ returns
   $\mathsf{none}$ on $\mathsf{Source.front}$, whose correctness is the separate
-  $\mathsf{compile\_correct\_front}$, an instance of
-  Theorem~\ref{thm:rust-to-jasmin}. The lattice carrier's $\mathsf{exec}$ is the
-  run-output-preserving identity, so the equation concerns the emitted code's
-  denotation under that carrier; the block-executing models are
-  Theorem~\ref{thm:compile-correct-basealu}.
+  $\mathsf{compile\_correct\_front}$. The lattice carrier's $\mathsf{exec}$ is the
+  identity, so the equation concerns the emitted code's denotation under that
+  carrier; the block-executing models are Theorem~\ref{thm:compile-correct-basealu}.
 \end{theorem}
 
 \begin{theorem}[Backend correctness over a block-execution semantics]
   \label{thm:compile-correct-basealu}
-  \lean{compile_correct_riscv}
+  \lean{CatCrypt.Crypto.SecureCompilation.VIR.CompileCorrectBaseAlu.compile_correct_riscv}
   \leanok
   For a straight-line \texttt{Com} whose every operation is base-ALU
-  (\texttt{ADD}/\texttt{SUB}/\texttt{AND}/\texttt{OR}/\texttt{XOR} at width 64)
-  over an all-\texttt{reg 64} context, decoding the RISC-V model's execution of
-  the compiled-and-lowered block on the encoded input state --- where
-  $\mathsf{exec}$ is the $\mathsf{runRBlock64}$ instruction fold --- reads back
-  the source $\mathsf{Com.denote}$ at the result register, and every executed
-  instruction is base-ALU, hence matches its sail-riscv
-  $\mathsf{execute\_RTYPE}$ clause. $\mathsf{compile\_correct\_arm}$ is the
-  AArch64 counterpart over $\mathsf{runBBlock}$, grounded by the
-  \texttt{sail-arm} decode round-trip rather than by an execute-model
-  refinement.
+  ($\mathsf{ComBaseAlu}$) over an all-\texttt{reg 64} context, decoding the RISC-V
+  model's execution of the compiled and lowered block on the encoded input state,
+  where $\mathsf{exec}$ is the instruction fold $\mathsf{runRBlock64}$, reads back
+  $\mathsf{Com.denote}$ at the result register, and every instruction of the block
+  is base-ALU. The relation between such an instruction and an
+  $\mathsf{execute\_RTYPE}$ clause copied by hand from sail-riscv is the separate
+  theorem $\mathsf{ComToRiscvLsem.riscvStep64\_sail\_grounded}$.
+  $\mathsf{compile\_correct\_arm}$ in the same module is the AArch64 counterpart over
+  $\mathsf{runBBlock}$; no theorem relates $\mathsf{runBBlock}$ to a Sail execute
+  clause.
 \end{theorem}
