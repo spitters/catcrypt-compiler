@@ -43,9 +43,12 @@ correspondence to Lean's `Std.Do` triples in `RunBlockMvcgen`. The module docstr
 credit the port.
 
 The definitions and proofs in the package are written for its own semantics. The
-package's `Corres` is a forward simulation over the `LowCT` denotation `semScalar`; the
-port's `Corres` is an abstract-interpretation inequality between `Std.Internal.Do`
-weakest preconditions. A comparison of the 293 distinct declaration names in the port's Lean
+package's `Corres` is a forward simulation over the `LowCT` denotation `semScalar`. The
+port's `Corres`, described in its README, was an abstract-interpretation inequality
+between `Std.Internal.Do` weakest preconditions; at revision `1fdcb17` (2026-07-10) its
+judgment is `RTriple`, a triple over the relational weakest precondition `rwp` of a
+`Concretization` with value and exception couplings, and its `ascend` engine is a
+worklist driver over registered rules. A comparison of the 293 distinct declaration names in the port's Lean
 files (revision `1fdcb17`) with the declarations of the package's `Ascent` modules finds
 two common names, `Heap` and `incr`, with different definitions, and no declaration
 taken from the port. The port's repository has no license file.
