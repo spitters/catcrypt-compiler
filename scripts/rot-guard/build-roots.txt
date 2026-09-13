@@ -882,3 +882,5 @@ CatCrypt.Crypto.SecureCompilation.Ascent.Strengthen
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Strengthen
 CatCrypt.Crypto.SecureCompilation.Ascent.Polish
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresRelational
+CatCrypt.Crypto.SecureCompilation.X86Backend.NasmParse
+CatCrypt.Crypto.SecureCompilation.X86Backend.NasmParseKat

@@ -2011,6 +2011,8 @@ def pkgModules10 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.MpnSimdExtractEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.Mul48ProvenEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.MulxSelect,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.NasmParse,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.NasmParseKat,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.NttBflyThirEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElf,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfFull,
@@ -2050,10 +2052,10 @@ def pkgModules10 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgreeNeg,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgreeShift,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgreeShiftReg,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgreeSubImm,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.RustAbiPrinter,
   ]
 def pkgModules11 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgreeSubImm,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.RustAbiPrinter,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86BlockRoundtrip,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86ByteFields,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86CFDecoder,
@@ -2252,10 +2254,10 @@ def pkgModules11 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Util.P256.NodeL,
     Lake.Glob.one `CatCrypt.Crypto.Util.P256.NodeM,
     Lake.Glob.one `CatCrypt.Crypto.Util.P256N.NodeA,
-    Lake.Glob.one `CatCrypt.Crypto.Util.P256N.NodeB,
-    Lake.Glob.one `CatCrypt.Crypto.Util.P256N.NodeC,
   ]
 def pkgModules12 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.Util.P256N.NodeB,
+    Lake.Glob.one `CatCrypt.Crypto.Util.P256N.NodeC,
     Lake.Glob.one `CatCrypt.Crypto.Util.P256NPrimeCert,
     Lake.Glob.one `CatCrypt.Crypto.Util.P256PrimeCert,
     Lake.Glob.one `CatCrypt.Crypto.Util.P256Verified,
@@ -2518,6 +2520,10 @@ lean_exe «chacha20-block-full-memref-text-kat» where
 lean_exe «mldsa-jinc-import-kat» where
   -- Parse, elaboration and rendering checks on the ML-DSA `.jinc` leaf, run rather than elaborated.
   root := `CatCrypt.Crypto.Jasmin.MldsaJincImportKat
+
+lean_exe «nasm-parse-kat» where
+  -- NASM parser round-trip and coverage check on the CryptOpt carry_mul, run rather than elaborated.
+  root := `CatCrypt.Crypto.SecureCompilation.X86Backend.NasmParseKat
 
 lean_exe sha256linear where
   root := `CatCrypt.Crypto.SecureCompilation.VIR.Sha256LinearMain
