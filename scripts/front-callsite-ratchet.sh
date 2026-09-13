@@ -98,7 +98,7 @@ exempt_paths > "$EXEMPT_LIST"
 {
   for f in $(grep -rlE 'rolled(ForLoopN|WhileNzComL)' --include='*.lean' CatCrypt/ bench/); do
     if grep -qxF "$f" "$EXEMPT_LIST"; then continue; fi
-    if code_text "$f" | grep -qE "$COMBINATOR_RE"; then echo "$f"; fi
+    if code_text "$f" | grep -E "$COMBINATOR_RE" >/dev/null; then echo "$f"; fi
   done
 } | sort -u > "$TMP"
 CURRENT="$(grep -c . "$TMP" || true)"

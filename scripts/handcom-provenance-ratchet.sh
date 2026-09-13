@@ -171,9 +171,9 @@ code_text() {
     print;' "$1"
 }
 
-has_construct() { code_text "$1" | grep -qE "$CONSTRUCT_RE"; }
-has_render()    { code_text "$1" | grep -qE "$RENDER_RE"; }
-has_front()     { code_text "$1" | grep -qE "$FRONT_RE"; }
+has_construct() { code_text "$1" | grep -E "$CONSTRUCT_RE" >/dev/null; }
+has_render()    { code_text "$1" | grep -E "$RENDER_RE" >/dev/null; }
+has_front()     { code_text "$1" | grep -E "$FRONT_RE" >/dev/null; }
 
 # Declaration index: `<name>\t<file>` for every `def`/`abbrev` under CatCrypt/.
 # Built once; `def_file` resolves an identifier to the module that defines it.
@@ -334,8 +334,8 @@ authored_from() {
   : > "$key"
   local body; body="$(local_body "$f" "$id")"
   [ -z "$body" ] && return 1
-  printf '%s' "$body" | grep -qE "$FRONT_RE" && return 1
-  if printf '%s' "$body" | grep -qE "$AUTHORED_IR_RE"; then echo "$f :: $id"; return 0; fi
+  printf '%s' "$body" | grep -E "$FRONT_RE" >/dev/null && return 1
+  if printf '%s' "$body" | grep -E "$AUTHORED_IR_RE" >/dev/null; then echo "$f :: $id"; return 0; fi
   local x tgt
   for x in $(printf '%s' "$body" | grep -oE "[A-Za-z_][A-Za-z0-9_.]*" | sed 's/.*\.//' | sort -u); do
     [ "$x" = "$id" ] && continue
@@ -347,9 +347,9 @@ authored_from() {
       [ "$tgt" = "$f" ] && continue
       # Never follow into a front or into exempt compiler infrastructure: those
       # modules legitimately build IR nodes, and they are judged by detector A.
-      printf '%s' "$tgt" | grep -qE "$FRONT_RE" && continue
+      printf '%s' "$tgt" | grep -E "$FRONT_RE" >/dev/null && continue
       is_infra "$tgt" && continue
-      ct "$tgt" | grep -qE "$AUTHORED_IR_RE" || continue
+      ct "$tgt" | grep -E "$AUTHORED_IR_RE" >/dev/null || continue
       authored_from "$tgt" "$x" $((depth - 1)) && return 0
     fi
   done
@@ -382,7 +382,7 @@ TMP="$(mktemp)"
     echo "$f"
   done
   for f in $(grep -rl 'IO\.FS\.writeFile' --include='*.lean' CatCrypt/ bench/); do
-    ct "$f" | grep -qE "$AUTHORED_IR_RE" || continue
+    ct "$f" | grep -E "$AUTHORED_IR_RE" >/dev/null || continue
     is_infra "$f" && continue
     writes_hand_authored_artifact "$f" && echo "$f"
   done

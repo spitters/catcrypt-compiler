@@ -126,7 +126,7 @@ for m in "${mods[@]}"; do
     # `def` further down is not mistaken for the guarded proof.
     if sed -n "${ln},$((ln + 20))p" "$f" 2>/dev/null \
          | grep -oE '^\s*(private\s+|protected\s+|noncomputable\s+|@\[[^]]*\]\s*)*(theorem|lemma|example|def|abbrev|instance|structure|inductive)\b' \
-         | head -1 | grep -qE '(theorem|lemma|example)\b'; then
+         | head -1 | grep -E '(theorem|lemma|example)\b' >/dev/null; then
       guarded=$((guarded + 1))
     fi
   done < <(grep -nE '^\s*set_option\s+(maxRecDepth|maxHeartbeats)\b' "$f" 2>/dev/null || true)
@@ -195,7 +195,7 @@ for m in "${mods[@]}"; do
     *)
       # `lean -M` turns a memory overrun into a kernel error at RC != 0 rather than
       # a signal; distinguish it from an ordinary compile error by the message.
-      if printf '%s\n' "$out" | grep -qiE 'excessive memory|memory consumption'; then
+      if printf '%s\n' "$out" | grep -iE 'excessive memory|memory consumption' >/dev/null; then
         echo "  OOM   (mem cap ${MEM_MB} MB)  $m  -- heavy rfl/decide/monolithic unfold; make it per-coordinate/per-limb, never a flat reduction"
       else
         echo "  build-error (exit $ec)  $m  -- re-run to see diagnostics:  lake env lean $src"
