@@ -8,6 +8,7 @@ module
 import all Init.Data.Repr
 public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
 public import CatCrypt.Crypto.Jasmin.LowCTReflect
+public meta import CatCrypt.Crypto.Jasmin.LowCTStraightLineCheck
 
 /-!
 # Plonky3 FRI reflect surface — Tier A migration of the FRI layer
@@ -123,8 +124,9 @@ Each leaf is parameterised by its array-width (the layer size in field
 elements); a single emit instantiates these at a fixed depth `k`, so the
 leaves below are family-indexed by `Nat`. -/
 
-/-- One FRI fold round: `p'[i] = (p[i] + p[i+half])/2 + α · (p[i] - p[i+half])/(2 xs[i])`
-    over `i ∈ [0, N)`. Input has `2·N` evaluations; output has `N`. -/
+/-- One FRI fold round, taking `2·N` evaluations to `N`. The fold equation
+    `p'[i] = (p[i] + p[i+half])/2 + α · (p[i] - p[i+half])/(2 xs[i])` uses a
+    challenge `α`, but this leaf takes no challenge argument. -/
 axiom plonky3_fri_fold_layer (N : Nat) :
     Plonky3FriEvals (2 * N) → Plonky3FriEvals N
 
@@ -412,10 +414,14 @@ def friProver1024Reified : ReifiedFunc :=
     body    := friProverBody1024
     retName := "__result" }
 
-/-! ## 6. Inspection -/
+/-! ## 6. Dataflow checks
 
-#eval friProver2Reified.args.map Prod.fst              -- [evals]
-#eval friProver4Reified.args.length                    -- 1
-#eval friProver1024Reified.retName                     -- __result
+Static checks on the hand-written bodies: no call reads an undefined slot. The
+fold leaf takes no challenge argument, so the squeezed challenges `alpha_k` are
+read by no later call and no unread-slot check is stated for these bodies. -/
+
+#guard straightLineUndefined friProver2Reified = some []
+#guard straightLineUndefined friProver4Reified = some []
+#guard straightLineUndefined friProver1024Reified = some []
 
 end CatCrypt.Crypto.Jasmin.LowCTReflect

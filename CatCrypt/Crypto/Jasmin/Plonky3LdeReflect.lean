@@ -8,6 +8,7 @@ module
 import all Init.Data.Repr
 public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
 public import CatCrypt.Crypto.Jasmin.LowCTReflect
+public meta import CatCrypt.Crypto.Jasmin.LowCTStraightLineCheck
 
 /-!
 # Plonky3 LDE (coset-FFT low-degree extension) reflect surface — Tier A migration
@@ -444,18 +445,16 @@ the extraction is in place. -/
        the proof is mechanical (refl-up-to-leaf-renaming). -/
 def Phase2LdeBridgeToHaxExtraction : Prop := True  -- named hypothesis only
 
-/-! ## 9. Inspection -/
+/-! ## 9. Dataflow checks
 
-#eval ldeCosetFft64x4Reified.args.map Prod.fst              -- [evals]
-#eval ldeCosetFft256x4Reified.args.length                   -- 1
-#eval ldeCosetFft1024x4Reified.retName                      -- __result
-#eval ldeCosetFftReified.args.length                        -- 1 (alias of 256x4)
+Static checks on the hand-written bodies: no call reads an undefined slot, and
+every computed slot other than `__result` is read by a later call. -/
 
-open Lean in
-#eval show Lean.MetaM _ from do
-  LowCTPattern.taggedDecls
-  -- expect babybear_* patterns: ntt_inverse_{64,256,1024},
-  -- zero_extend_*_to_*, coset_twist_*, ntt_forward_*, mul_256
-  -- (+ all the Plonky3 Merkle and Falcon patterns from earlier registrations)
+#guard straightLineUndefined ldeCosetFft64x4Reified = some []
+#guard straightLineUnread ldeCosetFft64x4Reified = some []
+#guard straightLineUndefined ldeCosetFft256x4Reified = some []
+#guard straightLineUnread ldeCosetFft256x4Reified = some []
+#guard straightLineUndefined ldeCosetFft1024x4Reified = some []
+#guard straightLineUnread ldeCosetFft1024x4Reified = some []
 
 end CatCrypt.Crypto.Jasmin.LowCTReflect

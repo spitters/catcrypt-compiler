@@ -14,6 +14,7 @@ CatCrypt.Crypto.Jasmin.Bls12381Reflect
 CatCrypt.Crypto.Jasmin.BoundsTransformer
 CatCrypt.Crypto.Jasmin.Bulletproofs
 CatCrypt.Crypto.Jasmin.BulletproofsIPAReflect
+CatCrypt.Crypto.Jasmin.LowCTStraightLineCheck
 CatCrypt.Crypto.Jasmin.ByteOps
 CatCrypt.Crypto.Jasmin.Chacha4WayReflect
 CatCrypt.Crypto.Jasmin.CoalesceWriteHazardTest

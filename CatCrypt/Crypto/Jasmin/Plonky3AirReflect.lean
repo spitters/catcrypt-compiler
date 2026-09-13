@@ -8,6 +8,7 @@ module
 import all Init.Data.Repr
 public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
 public import CatCrypt.Crypto.Jasmin.LowCTReflect
+public meta import CatCrypt.Crypto.Jasmin.LowCTStraightLineCheck
 
 /-!
 # Plonky3 AIR reflect surface — Tier A migration of the AIR layer
@@ -189,10 +190,14 @@ def airTransitionReified3x16 : ReifiedFunc :=
     aliases the height-8 demonstrator. -/
 def airTransitionReified : ReifiedFunc := airTransitionReified3x8
 
-/-! ## 6. Inspection -/
+/-! ## 6. Dataflow checks
 
-#eval airTransitionReified3x8.args.map Prod.fst              -- [trace]
-#eval airTransitionReified3x16.args.length                   -- 1
-#eval airTransitionReified.retName                           -- __result
+Static checks on the hand-written bodies: no call reads an undefined slot, and
+every computed slot other than `__result` is read by a later call. -/
+
+#guard straightLineUndefined airTransitionReified3x8 = some []
+#guard straightLineUnread airTransitionReified3x8 = some []
+#guard straightLineUndefined airTransitionReified3x16 = some []
+#guard straightLineUnread airTransitionReified3x16 = some []
 
 end CatCrypt.Crypto.Jasmin.LowCTReflect

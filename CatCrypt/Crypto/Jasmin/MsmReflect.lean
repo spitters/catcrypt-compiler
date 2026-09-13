@@ -8,6 +8,7 @@ module
 import all Init.Data.Repr
 public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
 public import CatCrypt.Crypto.Jasmin.LowCTReflect
+public meta import CatCrypt.Crypto.Jasmin.LowCTStraightLineCheck
 
 /-!
 # Toy-EC MSM reflect surface — pairing-ZK shared MSM kernel via the verified front
@@ -153,10 +154,12 @@ def msmEcTermReified : ReifiedFunc :=
     body    := msmEcTermBody
     retName := "__result" }
 
-/-! ## 7. Inspection -/
+/-! ## 7. Dataflow checks
 
-#eval msmEcTermReified.args.map Prod.fst              -- [k, P]
-#eval msmEcTermReified.args.length                    -- 2
-#eval msmEcTermReified.retName                        -- __result
+Static checks on the hand-written body: no call reads an undefined slot, and
+every computed slot other than `__result` is read by a later call. -/
+
+#guard straightLineUndefined msmEcTermReified = some []
+#guard straightLineUnread msmEcTermReified = some []
 
 end CatCrypt.Crypto.Jasmin.LowCTReflect

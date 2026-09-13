@@ -7,6 +7,7 @@ module
 
 public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
 public import CatCrypt.Crypto.Jasmin.LowCTReflect
+public meta import CatCrypt.Crypto.Jasmin.LowCTStraightLineCheck
 
 /-!
 # Plonky3 end-to-end prover orchestrator — Tier A migration
@@ -340,11 +341,12 @@ def proveOrchestratorReified3x8 : ReifiedFunc :=
 /-- Canonical alias name used in the bench docstring. -/
 def proveOrchestratorReified : ReifiedFunc := proveOrchestratorReified3x8
 
-/-! ## 7. Inspection -/
+/-! ## 7. Dataflow checks
 
-#eval proveOrchestratorReified3x8.args.map Prod.fst             -- [trace]
-#eval proveOrchestratorReified3x8.args.length                   -- 1
-#eval proveOrchestratorReified.retName                          -- __result
-#eval quotientCompositionDegree                                 -- 2
+Static checks on the hand-written body: no call reads an undefined slot, and
+every computed slot other than `__result` is read by a later call. -/
+
+#guard straightLineUndefined proveOrchestratorReified3x8 = some []
+#guard straightLineUnread proveOrchestratorReified3x8 = some []
 
 end CatCrypt.Crypto.Jasmin.LowCTReflect

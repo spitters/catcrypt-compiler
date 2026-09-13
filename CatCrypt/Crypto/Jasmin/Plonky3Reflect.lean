@@ -8,20 +8,26 @@ module
 import all Init.Data.Repr
 public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
 public import CatCrypt.Crypto.Jasmin.LowCTReflect
+public meta import CatCrypt.Crypto.Jasmin.LowCTStraightLineCheck
 
 /-!
 # Plonky3 Merkle reflect surface — Tier A migration of the Merkle layer
 
 Layer 1 of the Plonky3 STARK chain (binary Merkle tree commitment over
-BabyBear leaves) lifted through the verified compiler chain
-`LowCT → CryptoSSA → Com → jasmin`.
+BabyBear leaves) as an orchestration over axiomatized leaves: a pure Lean
+let-chain per tree size, and a hand-written `LowCT` body with the same call
+sequence, which the front lowers to jasmin.
 
-This is the **architectural opposite** of the legacy
-`CatCrypt/Crypto/SecureCompilation/VIR/Plonky3MerkleEmit.lean` string-template
-emit (`bench/plonky3_compare/gen/merkle_build_root.jazz` is built by
-`String.intercalate` — out-of-chain by construction). This file is the
-lattice-Merkle analogue of `FalconReflect.lean` (#191): every byte of the
-new emit goes through the verified front.
+The surface types and leaf functions are Lean `axiom`s (9 declarations: three
+types, their three default inhabitants, and three leaf functions); they have
+no Lean semantics. No theorem relates a body to its let-chain. The `#guard`
+checks in §7 constrain the dataflow of each body: every call argument is
+defined before it is read, and every computed slot other than the result is
+read by a later call.
+
+The legacy `CatCrypt/Crypto/SecureCompilation/VIR/Plonky3MerkleEmit.lean`
+builds its jasmin text by `String.intercalate`; the bodies here instead go
+through the front, as in `FalconReflect.lean`.
 
 ## Merkle equation
 
@@ -50,18 +56,13 @@ verified front. For each target depth `k`, we emit one `ReifiedFunc`.
 
 ## Reflection→front gap
 
-Same as `FalconReflect.lean` and `MemAbiReflect.lean`: `reifyLowCT%` does not
-consult the `LowCTPattern` registry, so we hand-build the `LowCT` body the
-reifier *would* produce. The rest of the front (`translate → cryptoDialectToJasminCom →
-emitAbiOrchRegPtr`) is unchanged.
-
-## Relation to legacy Tier C `Plonky3MerkleEmit.lean`
-
-The legacy file emits its `.jazz` via `String.intercalate` (no compiler
-correctness theorem witnesses the body). This file replaces that pattern with
-an in-chain emit: same final artifact shape, routed through the verified
-compiler. The legacy emit is kept as an out-of-chain reference until the
-`bench/plonky3_compare` C harness migrates.
+The reifier's registry match (`matchPatternUnsafe` in `LowCTReflect.lean`)
+accepts an application only when its argument count equals the registered
+`arity`. The width index is an explicit argument of every family-indexed leaf
+here, so `plonky3_merkle_level 512 d0` has two arguments against the registered
+arity 1 and matches no registration; the `LowCT` bodies are therefore written
+by hand. The rest of the front (`translate → cryptoDialectToJasminCom →
+emitAbiOrchRegPtr`) consumes them unchanged.
 
 ## References
 
@@ -316,16 +317,18 @@ def merkleBuildRoot1Reified : ReifiedFunc :=
     body    := merkleBuildRootBody1
     retName := "__result" }
 
-/-! ## 7. Inspection -/
+/-! ## 7. Dataflow checks
 
-#eval merkleBuildRoot2Reified.args.map Prod.fst              -- [leaves]
-#eval merkleBuildRoot4Reified.args.length                    -- 1
-#eval merkleBuildRoot1024Reified.retName                     -- __result
-#eval merkleBuildRoot1Reified.args.length                    -- 1
+Static checks on the hand-written bodies: no call reads an undefined slot, and
+every computed slot other than `__result` is read by a later call. -/
 
-open Lean in
-#eval show Lean.MetaM _ from do
-  LowCTPattern.taggedDecls
-  -- expect Plonky3 patterns: hash_leaves_1024, level_512, extract_root (+ Falcon, etc.)
+#guard straightLineUndefined merkleBuildRoot1Reified = some []
+#guard straightLineUnread merkleBuildRoot1Reified = some []
+#guard straightLineUndefined merkleBuildRoot2Reified = some []
+#guard straightLineUnread merkleBuildRoot2Reified = some []
+#guard straightLineUndefined merkleBuildRoot4Reified = some []
+#guard straightLineUnread merkleBuildRoot4Reified = some []
+#guard straightLineUndefined merkleBuildRoot1024Reified = some []
+#guard straightLineUnread merkleBuildRoot1024Reified = some []
 
 end CatCrypt.Crypto.Jasmin.LowCTReflect
