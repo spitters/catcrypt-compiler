@@ -325,8 +325,8 @@ correctness theorem. The scheme security proofs
 and the UC/MPC protocol chains live in the wider CatCrypt development, with one
 exception: `CatCrypt/Crypto/Hash/Security.lean`, `CatCrypt/Crypto/Hash/Reduction.lean`
 and `CatCrypt/Crypto/Hash/FullSecurity.lean` state a SHAKE-versus-random-oracle bound
-(`CatCrypt.Crypto.Hash.Security.shake_rom_security`), derived from two supplied
-hypotheses (`h_reduce`, `h_rp`), and a UC emulation at ε = 0 between a real and an
+(`CatCrypt.Crypto.Hash.Security.shake_rom_security`) as the sum of two supplied
+hop bounds (`h_reduce`, `h_rp`), neither proved, and a UC emulation at ε = 0 between a real and an
 ideal hashing protocol that are the same function (`hash_uc_secure`); no other module
 of the package imports them. The [CatCrypt paper](https://eprint.iacr.org/2026/604) describes the full
 system; [CITATION.cff](CITATION.cff) carries the citation metadata.

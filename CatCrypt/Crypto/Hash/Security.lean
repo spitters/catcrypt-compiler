@@ -13,8 +13,8 @@ public import CatCrypt.Crypto.UC
 
 Connects the SHA-3 hash primitives to the random oracle model via the
 sponge indifferentiability framework. Provides UC wrapping for the
-hash functionality and states the standard instantiation theorems
-for NIST PQC standards.
+hash functionality and records the SHAKE capacities used by the NIST PQC
+standards.
 
 ## Architecture
 
@@ -38,10 +38,8 @@ The security argument is:
 
 * `RPAssumption` -- random permutation assumption for Keccak-f
 * `RP_Advantage` -- RP distinguishing advantage
-* `sponge_indiff_theorem` -- sponge indifferentiability from RP
 * `shake_rom_security` -- SHAKE as random oracle under RP
 * `hash_uc_secure` -- UC emulation for hash functionality
-* `pqc_hash_instantiation` -- PQC standard instantiation theorem
 
 ## References
 
@@ -110,20 +108,6 @@ noncomputable def RP_Advantage {W : Type} [SampleableType W]
 noncomputable def sponge_indiff_bound (numQueries : ℕ) (capacityBits : ℕ) : ℝ≥0∞ :=
   (numQueries * numQueries : ℕ) / (2 ^ capacityBits : ℕ)
 
-/-- Sponge indifferentiability theorem (abstract).
-
-    If the underlying permutation is epsilon_rp-close to a random
-    permutation, then the sponge construction is
-    (epsilon_rp + q^2/2^c)-close to a random oracle.
-
-    This encapsulates the 2-step game hop:
-    1. Replace concrete perm with RP: cost epsilon_rp
-    2. RP-sponge to RO via indifferentiability: cost q^2/2^c -/
-theorem sponge_indiff_theorem
-    (ε_rp : ℝ≥0∞) (numQueries capacityBits : ℕ) :
-    ε_rp + sponge_indiff_bound numQueries capacityBits =
-    ε_rp + sponge_indiff_bound numQueries capacityBits := rfl
-
 /-- The indifferentiability bound is monotone in queries. -/
 theorem sponge_indiff_bound_mono {q₁ q₂ : ℕ} (h : q₁ ≤ q₂) (c : ℕ) :
     sponge_indiff_bound q₁ c ≤ sponge_indiff_bound q₂ c := by
@@ -157,15 +141,14 @@ noncomputable def shake128_rom_bound (ε_rp : ℝ≥0∞) (numQueries : ℕ) : �
 noncomputable def shake256_rom_bound (ε_rp : ℝ≥0∞) (numQueries : ℕ) : ℝ≥0∞ :=
   ε_rp + sponge_indiff_bound numQueries 512
 
-/-- SHAKE random oracle security (abstract).
+/-- SHAKE-versus-random-oracle bound as the sum of two supplied hops.
 
-    Under the RP assumption for Keccak-f, SHAKE is indistinguishable
-    from a random oracle. The bound depends on the capacity:
-    - SHAKE-128: epsilon_rp + q^2/2^256
-    - SHAKE-256: epsilon_rp + q^2/2^512
-
-    This is the composition of the RP assumption with sponge
-    indifferentiability. -/
+    For games `shake_game` and `ro_game` and a distinguisher `A`, the
+    advantage is at most `ε_rp + q^2/2^c` when each input's advantage factors
+    through a random-permutation distinguisher plus the sponge bound
+    (`h_reduce`) and every such distinguisher has advantage at most `ε_rp`
+    (`h_rp`). Neither hop is proved here, and the games are parameters not
+    tied to Keccak-f. -/
 theorem shake_rom_security
     (ε_rp : ℝ≥0∞) (numQueries capacityBits : ℕ)
     {W : Type} [SampleableType W]
@@ -221,8 +204,7 @@ noncomputable def hash_ideal (hashFn : List (BitVec 8) → List (BitVec 8)) :
 theorem hash_real_eq_ideal (hashFn : List (BitVec 8) → List (BitVec 8)) :
     hash_real hashFn = hash_ideal hashFn := rfl
 
-/-- **Hash UC security**: the real hash protocol UC-emulates the ideal
-    functionality with zero error.
+/-- **Hash UC security**: the real hash protocol UC-emulates the ideal functionality with zero error.
 
     Since the hash function is a deterministic public computation,
     the real and ideal worlds are identical. UC emulation holds
@@ -276,26 +258,6 @@ def slhdsa_hash_usage : PQCHashUsage where
   primaryHash := shake256_params
   kdfHash := shake256_params
   xofHash := shake256_params
-
-/-- **PQC hash instantiation theorem.**
-
-    For any PQC scheme using SHAKE-based hash functions, the security
-    reduces to the random permutation assumption for Keccak-f plus
-    the sponge birthday bound in the relevant capacity.
-
-    - ML-KEM uses SHAKE-128 (H) and SHAKE-256 (G, PRF, XOF)
-    - ML-DSA uses SHAKE-256 (H) and SHAKE-128 (ExpandA)
-    - SLH-DSA uses SHAKE-256 for everything
-
-    The overall hash security bound is:
-      epsilon_rp + q^2 / 2^min(c₁, c₂, ...)
-    where cᵢ are the capacities of the SHAKE variants used. -/
-theorem pqc_hash_instantiation
-    (usage : PQCHashUsage) (ε_rp : ℝ≥0∞) (numQueries : ℕ) :
-    let minCapacity := min (min usage.primaryHash.capacity usage.kdfHash.capacity)
-                           usage.xofHash.capacity
-    ε_rp + sponge_indiff_bound numQueries minCapacity =
-    ε_rp + sponge_indiff_bound numQueries minCapacity := rfl
 
 /-- ML-KEM minimum capacity is 256 (from SHAKE-128). -/
 theorem mlkem_min_capacity :
