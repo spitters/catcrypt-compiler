@@ -15,19 +15,19 @@ The deployed BN254 `G1` short-Weierstrass point-add kernels
 `BN254GroupEmit.bn254AddxCom` (`x₃ = λ·λ − x₁ − x₂`), and
 `BN254GroupEmit.bn254AddyCom` (`y₃ = λ·(x₁ − x₃) − y₁`) — each a
 `buildOrchCom`-generated straight-line `Com` over the `fp_*` field leaves — are
-denoted here against an **abstract** leaf oracle `leafSem : LeafSem`, threaded
-through the `DialectDenote jasminDialect` instance
+denoted by `BN254GroupEmit.lamCom_denoteWith` / `bn254AddxCom_denoteWith` /
+`bn254AddyCom_denoteWith` against a leaf oracle `leafSem : LeafSem` passed as a
+parameter, threaded through the `DialectDenote jasminDialect` instance
 `JasminDialect.jasminDenoteWith leafSem` (whose `extCall` arm consults `leafSem`
-and whose every other arm delegates to `jasminDenote`).
+and whose every other arm delegates to `jasminDenote`). This module supplies the
+oracles that parameter is instantiated at.
 
 * `bn254FieldOracle prims` — a concrete leaf oracle realising the four BN254
   base-field primitives (`prims.mul`/`prims.sub`/`prims.add` on the binary
   signature, `prims.inv` on the unary signature), dispatched by leaf name and
   signature, with `bn254FieldOracle_agrees` proving it satisfies the leaf
-  agreement `FieldLeafAgrees`.
-* `lamCom_denoteWith` / `bn254AddxCom_denoteWith` / `bn254AddyCom_denoteWith` —
-  the deployed kernels, evaluated with any leaf oracle realising the field
-  primitives, compute the corresponding `fp_*`-primitive composition.
+  agreement `FieldLeafAgrees`, so the agreement hypothesis of the
+  `BN254GroupEmit` denotation theorems is satisfiable for every `prims`.
 * `bn254GroupLeafOracle` / `bn254GroupLeafOracle_agrees` — the leaf oracle for
   the deployed primitives and its agreement, a named axiom (the leaf edge;
   establishing it means bridging the emitted `fp_*` leaves to the primitive spec
@@ -37,7 +37,8 @@ and whose every other arm delegates to `jasminDenote`).
 
 `bn254FieldOracle prims` is an abstract constant standing for the field
 primitives the deployed code targets; the coordinate realization over `FpBN254`
-(via `wireToFp`) is the separate `BN254GroupEmit.*Com_denote` layer.
+(via `wireToFp`, under `FieldRealizes`) is the separate `BN254GroupEmit.*Com_denote`
+layer, stated for the same leaf-model parameter.
 -/
 
 @[expose] public section
@@ -78,89 +79,7 @@ theorem bn254FieldOracle_agrees (prims : FieldPrimitives) :
     FieldLeafAgrees prims (bn254FieldOracle prims) := by
   refine ⟨?_, ?_, ?_, ?_⟩ <;> (intro args; rfl)
 
-/-! ## 2. Value of the deployed `Com`s under a realising leaf oracle -/
-
-/-- **The deployed slope kernel, evaluated with a leaf oracle.** For a leaf
-    oracle `leafSem` realising the base-field primitives, the deployed
-    `BN254GroupEmit.lamCom` — denoted through `jasminDenoteWith leafSem` —
-    computes the `fp_*` composition `mul (sub Qy Py) (inv (sub Qx Px))`. The four
-    field `extCall` arms each unfold to a `leafSem` call, and the carried
-    agreements close it. -/
-theorem lamCom_denoteWith (leafSem : LeafSem) (prims : FieldPrimitives)
-    (h : FieldLeafAgrees prims leafSem)
-    (Px Py Qx Qy : FpWire) :
-    @Com.denote _ _ _ (JasminDialect.jasminDenoteWith leafSem) _ _
-        BN254GroupEmit.lamCom
-        (.cons Px (.cons Py (.cons Qx (.cons Qy .nil))))
-      = prims.mul (prims.sub Qy Py) (prims.inv (prims.sub Qx Px)) := by
-  rw [BN254GroupEmit.lamCom_eq_shadow]
-  obtain ⟨hMul, hSub, _hAdd, hInv⟩ := h
-  show leafSem mulLeafName binArgTys feRetTy
-        (.cons (leafSem subLeafName binArgTys feRetTy (.cons Qy (.cons Py .nil)))
-          (.cons (leafSem invLeafName unArgTys feRetTy
-            (.cons (leafSem subLeafName binArgTys feRetTy
-              (.cons Qx (.cons Px .nil))) .nil)) .nil))
-      = prims.mul (prims.sub Qy Py) (prims.inv (prims.sub Qx Px))
-  rw [hSub (.cons Qy (.cons Py .nil))]
-  simp only [HVector.head, HVector.tail]
-  rw [hSub (.cons Qx (.cons Px .nil))]
-  simp only [HVector.head, HVector.tail]
-  rw [hInv (.cons (prims.sub Qx Px) .nil)]
-  simp only [HVector.head]
-  rw [hMul (.cons (prims.sub Qy Py) (.cons (prims.inv (prims.sub Qx Px)) .nil))]
-  rfl
-
-/-- **The deployed `x₃` kernel, evaluated with a leaf oracle.** For a leaf oracle
-    `leafSem` realising the base-field primitives, the deployed
-    `BN254GroupEmit.bn254AddxCom` — denoted through `jasminDenoteWith leafSem` —
-    computes `sub (sub (mul lam lam) Px) Qx` (the `x₃ = λ·λ − x₁ − x₂` chain). -/
-theorem bn254AddxCom_denoteWith (leafSem : LeafSem) (prims : FieldPrimitives)
-    (h : FieldLeafAgrees prims leafSem)
-    (lam Px Qx : FpWire) :
-    @Com.denote _ _ _ (JasminDialect.jasminDenoteWith leafSem) _ _
-        BN254GroupEmit.bn254AddxCom
-        (.cons lam (.cons Px (.cons Qx .nil)))
-      = prims.sub (prims.sub (prims.mul lam lam) Px) Qx := by
-  rw [BN254GroupEmit.bn254AddxCom_eq_shadow]
-  obtain ⟨hMul, hSub, _hAdd, _⟩ := h
-  show leafSem subLeafName binArgTys feRetTy
-        (.cons (leafSem subLeafName binArgTys feRetTy
-          (.cons (leafSem mulLeafName binArgTys feRetTy (.cons lam (.cons lam .nil)))
-            (.cons Px .nil))) (.cons Qx .nil))
-      = prims.sub (prims.sub (prims.mul lam lam) Px) Qx
-  rw [hMul (.cons lam (.cons lam .nil))]
-  simp only [HVector.head, HVector.tail]
-  rw [hSub (.cons (prims.mul lam lam) (.cons Px .nil))]
-  simp only [HVector.head, HVector.tail]
-  rw [hSub (.cons (prims.sub (prims.mul lam lam) Px) (.cons Qx .nil))]
-  rfl
-
-/-- **The deployed `y₃` kernel, evaluated with a leaf oracle.** For a leaf oracle
-    `leafSem` realising the base-field primitives, the deployed
-    `BN254GroupEmit.bn254AddyCom` — denoted through `jasminDenoteWith leafSem` —
-    computes `sub (mul lam (sub Px Rx)) Py` (the `y₃ = λ·(x₁ − x₃) − y₁` chain). -/
-theorem bn254AddyCom_denoteWith (leafSem : LeafSem) (prims : FieldPrimitives)
-    (h : FieldLeafAgrees prims leafSem)
-    (lam Px Rx Py : FpWire) :
-    @Com.denote _ _ _ (JasminDialect.jasminDenoteWith leafSem) _ _
-        BN254GroupEmit.bn254AddyCom
-        (.cons lam (.cons Px (.cons Rx (.cons Py .nil))))
-      = prims.sub (prims.mul lam (prims.sub Px Rx)) Py := by
-  rw [BN254GroupEmit.bn254AddyCom_eq_shadow]
-  obtain ⟨hMul, hSub, _hAdd, _⟩ := h
-  show leafSem subLeafName binArgTys feRetTy
-        (.cons (leafSem mulLeafName binArgTys feRetTy
-          (.cons lam (.cons (leafSem subLeafName binArgTys feRetTy
-            (.cons Px (.cons Rx .nil))) .nil))) (.cons Py .nil))
-      = prims.sub (prims.mul lam (prims.sub Px Rx)) Py
-  rw [hSub (.cons Px (.cons Rx .nil))]
-  simp only [HVector.head, HVector.tail]
-  rw [hMul (.cons lam (.cons (prims.sub Px Rx) .nil))]
-  simp only [HVector.head, HVector.tail]
-  rw [hSub (.cons (prims.mul lam (prims.sub Px Rx)) (.cons Py .nil))]
-  rfl
-
-/-! ## 3. The deployed leaf oracle + the kernels at that oracle -/
+/-! ## 2. The deployed leaf oracle + the kernels at that oracle -/
 
 /-- `FieldPrimitives` is inhabited (all fields are functions into `FpWire`), so
     the deployed primitives can be introduced as an opaque constant. -/

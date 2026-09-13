@@ -33,26 +33,40 @@ the **field leaves** (`fp_mul`, `fp_sub`, `fp_inv`) — *not* a single opaque
    y₃  = λ·(x₁ − x₃) − y₁
 ```
 
-is built as a chain of `fp_*` `extCall`s, and the `Com` denotation is proved
-equal to `bn254AffineAdd` over `FpBN254` (`Util/BN254Verified.lean`) under
+is built as a chain of `fp_*` `extCall`s. The leaf model is a parameter
+`leafSem : LeafSem`, and every denotation theorem denotes the `Com` through
+`jasminDenoteWith leafSem`. At the primitive level, `lamCom_denoteWith` /
+`bn254AddxCom_denoteWith` / `bn254AddyCom_denoteWith` compute the `fp_*`
+composition under
 
-1. a **field-leaf agreement** (`FieldLeafAgrees`): the dialect leaf semantics
-   `jasminExtSem` on the `fp_*` leaf names is the abstract field primitive —
-   the same opaque-leaf edge `Bn254Emit` carries, but now at the *field*
-   granularity (one `fp_mul`/`fp_sub`/`fp_inv` per leaf), and
-2. a **field realization** (`FieldRealizes`): each field primitive, transported
-   by the canonical-residue interpretation `wireToFp`, equals `FpBN254`'s native
-   `*`/`−`/`⁻¹`. This is exactly `EmittedFieldRealization.feMul_realizes_mul`
-   etc. lifted to the wire primitive — the AUCurves field tower.
+1. a **field-leaf agreement** (`FieldLeafAgrees prims leafSem`): on the `fp_*`
+   leaf names `leafSem` is the abstract field primitive — the same opaque-leaf
+   edge `Bn254Emit` carries, at the *field* granularity (one
+   `fp_mul`/`fp_sub`/`fp_inv` per leaf). `BN254GroupDenote.bn254FieldOracle`
+   satisfies it for every `prims`.
+
+At the `FpBN254` level, `lamCom_denote` / `bn254AddxCom_denote` /
+`bn254AddyCom_denote` and `emittedAffineAdd_realizes` additionally assume
+
+2. a **field realization** (`FieldRealizes prims`): each field primitive,
+   transported by the interpretation `wireToFp`, equals `FpBN254`'s native
+   `*`/`−`/`⁻¹` — the commuting square `EmittedFieldRealization.feMul_realizes_mul`
+   etc. state for the AUCurves field tower, lifted to the wire primitive.
 
 Composing (1)+(2), `emittedAffineAdd_realizes` ties the field-leaf composition
-to the abstract `G1` group op — the **full-group realization** P-256 has, now
-for BN254 `G1`, with no opaque group leaf in the emitted term.
+to the abstract `G1` group op, with no opaque group leaf in the emitted term.
+`wireToFp` is an opaque constant, so `FieldRealizes` is a hypothesis on the
+caller's primitives that this module does not discharge.
 
-## Honesty boundary
+The leaves: `fp_mul` resolves to the owned `runBlock`-verified CIOS kernel, whose
+value correctness is the external KAT `bench/bn254_fieldmul_compare`; `fp_sub`
+and `fp_add` are AUCurves leaves; `fp_inv` is the AUCurves safegcd divstep
+inverter, whose value correctness is its Rust round-trip test.
+
+## Scope
 
 The emitted point-add term contains only `fp_mul`/`fp_sub`/`fp_inv`
-`extCall`s — there is no hidden `bn254_g1_add` leaf. The slope `λ` carries the
+`extCall`s; it has no `bn254_g1_add` leaf. The slope `λ` carries the
 one base-field inverse (`fp_inv`); the two coordinate maps are polynomial in
 `λ`. **Scope:** this is the `G1` base-field group add only. The pairing tower
 (`Fp2`/`Fp6`/`Fp12` + Miller loop + final exponentiation) is **not** lifted —
@@ -215,21 +229,21 @@ def unLeafExpr {Γ : Ctxt jasminDialect} (name : String)
     (a : Ctxt.Var Γ (.stackArr 8 FESZ)) : Expr jasminDialect Γ feRetTy :=
   { op := .extCall name unArgTys feRetTy, retTy_eq := rfl, args := .cons a .nil }
 
-/-- A binary field-leaf `Expr` denotes to `jasminExtSem` of the looked-up
-    operands. By `rfl`. -/
-theorem binLeafExpr_denote {Γ : Ctxt jasminDialect} (name : String)
-    (a b : Ctxt.Var Γ (.stackArr 8 FESZ)) (V : Ctxt.Valuation Γ) :
-    (binLeafExpr name a b).denote V
-      = jasminExtSem name binArgTys feRetTy
+/-- Denoted through `jasminDenoteWith leafSem`, a binary field-leaf `Expr` is
+    `leafSem` of the looked-up operands. By `rfl`. -/
+theorem binLeafExpr_denote (leafSem : LeafSem) {Γ : Ctxt jasminDialect}
+    (name : String) (a b : Ctxt.Var Γ (.stackArr 8 FESZ)) (V : Ctxt.Valuation Γ) :
+    @Expr.denote _ _ _ (jasminDenoteWith leafSem) _ _ (binLeafExpr name a b) V
+      = leafSem name binArgTys feRetTy
           (.cons (a.lookup V) (.cons (b.lookup V) .nil)) :=
   rfl
 
-/-- A unary field-leaf `Expr` denotes to `jasminExtSem` of the looked-up
-    operand. By `rfl`. -/
-theorem unLeafExpr_denote {Γ : Ctxt jasminDialect} (name : String)
-    (a : Ctxt.Var Γ (.stackArr 8 FESZ)) (V : Ctxt.Valuation Γ) :
-    (unLeafExpr name a).denote V
-      = jasminExtSem name unArgTys feRetTy (.cons (a.lookup V) .nil) :=
+/-- Denoted through `jasminDenoteWith leafSem`, a unary field-leaf `Expr` is
+    `leafSem` of the looked-up operand. By `rfl`. -/
+theorem unLeafExpr_denote (leafSem : LeafSem) {Γ : Ctxt jasminDialect}
+    (name : String) (a : Ctxt.Var Γ (.stackArr 8 FESZ)) (V : Ctxt.Valuation Γ) :
+    @Expr.denote _ _ _ (jasminDenoteWith leafSem) _ _ (unLeafExpr name a) V
+      = leafSem name unArgTys feRetTy (.cons (a.lookup V) .nil) :=
   rfl
 
 /-! ## 5. The slope `λ = (Qy − Py) · (Qx − Px)⁻¹` as a field-leaf `Com`
@@ -295,21 +309,25 @@ def lamCom :
     hand-threaded `.here`/`.there` chains. -/
 theorem lamCom_eq_shadow : lamCom = lamComShadow := by rfl
 
-/-- **The slope Com denotes to the abstract slope** `(Qy − Py) · (Qx − Px)⁻¹`
-    over `FpBN254`, under the field-leaf agreement and the field realization. No
-    opaque group leaf is involved — only `fp_sub`/`fp_inv`/`fp_mul`. -/
-theorem lamComShadow_denote (prims : FieldPrimitives)
-    (hLeaf : FieldLeafAgrees prims jasminExtSem) (hReal : FieldRealizes prims)
+/-- **The deployed slope kernel, evaluated with a leaf oracle.** For a leaf oracle
+    `leafSem` realising the base-field primitives, `lamCom`, denoted through
+    `jasminDenoteWith leafSem`, computes the `fp_*` composition
+    `mul (sub Qy Py) (inv (sub Qx Px))`. The four field `extCall` arms each unfold
+    to a `leafSem` call, and the agreements rewrite them. -/
+theorem lamCom_denoteWith (leafSem : LeafSem) (prims : FieldPrimitives)
+    (h : FieldLeafAgrees prims leafSem)
     (Px Py Qx Qy : FpWire) :
-    wireToFp (lamComShadow.denote (.cons Px (.cons Py (.cons Qx (.cons Qy .nil)))))
-      = (wireToFp Qy - wireToFp Py) * (wireToFp Qx - wireToFp Px)⁻¹ := by
-  obtain ⟨hMul, hSub, _hAdd, hInv⟩ := hLeaf
-  show wireToFp (jasminExtSem mulLeafName binArgTys feRetTy
-        (.cons (jasminExtSem subLeafName binArgTys feRetTy (.cons Qy (.cons Py .nil)))
-          (.cons (jasminExtSem invLeafName unArgTys feRetTy
-            (.cons (jasminExtSem subLeafName binArgTys feRetTy
-              (.cons Qx (.cons Px .nil))) .nil)) .nil)))
-      = (wireToFp Qy - wireToFp Py) * (wireToFp Qx - wireToFp Px)⁻¹
+    @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        lamCom (.cons Px (.cons Py (.cons Qx (.cons Qy .nil))))
+      = prims.mul (prims.sub Qy Py) (prims.inv (prims.sub Qx Px)) := by
+  rw [lamCom_eq_shadow]
+  obtain ⟨hMul, hSub, _hAdd, hInv⟩ := h
+  show leafSem mulLeafName binArgTys feRetTy
+        (.cons (leafSem subLeafName binArgTys feRetTy (.cons Qy (.cons Py .nil)))
+          (.cons (leafSem invLeafName unArgTys feRetTy
+            (.cons (leafSem subLeafName binArgTys feRetTy
+              (.cons Qx (.cons Px .nil))) .nil)) .nil))
+      = prims.mul (prims.sub Qy Py) (prims.inv (prims.sub Qx Px))
   rw [hSub (.cons Qy (.cons Py .nil))]
   simp only [HVector.head, HVector.tail]
   rw [hSub (.cons Qx (.cons Px .nil))]
@@ -317,18 +335,22 @@ theorem lamComShadow_denote (prims : FieldPrimitives)
   rw [hInv (.cons (prims.sub Qx Px) .nil)]
   simp only [HVector.head]
   rw [hMul (.cons (prims.sub Qy Py) (.cons (prims.inv (prims.sub Qx Px)) .nil))]
-  simp only [HVector.head, HVector.tail]
-  rw [hReal.mul_realizes, hReal.sub_realizes, hReal.inv_realizes, hReal.sub_realizes]
+  rfl
 
-/-- **The deployed slope Com denotes the abstract slope** (front-sourced). Via
-    `lamCom_eq_shadow` + the shadow's denote, so downstream users of `lamCom` by
-    name are unaffected by the front-sourcing. -/
-theorem lamCom_denote (prims : FieldPrimitives)
-    (hLeaf : FieldLeafAgrees prims jasminExtSem) (hReal : FieldRealizes prims)
+/-- **The deployed slope Com denotes the abstract slope** `(Qy − Py) · (Qx − Px)⁻¹`
+    over `FpBN254`. For a leaf oracle `leafSem` realising the field primitives
+    (`FieldLeafAgrees prims leafSem`) whose primitives satisfy the field
+    realization `FieldRealizes prims`, `lamCom` denoted through
+    `jasminDenoteWith leafSem` and read through `wireToFp` is the slope. Only
+    `fp_sub`/`fp_inv`/`fp_mul` leaves occur. -/
+theorem lamCom_denote (leafSem : LeafSem) (prims : FieldPrimitives)
+    (hLeaf : FieldLeafAgrees prims leafSem) (hReal : FieldRealizes prims)
     (Px Py Qx Qy : FpWire) :
-    wireToFp (lamCom.denote (.cons Px (.cons Py (.cons Qx (.cons Qy .nil)))))
+    wireToFp (@Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        lamCom (.cons Px (.cons Py (.cons Qx (.cons Qy .nil)))))
       = (wireToFp Qy - wireToFp Py) * (wireToFp Qx - wireToFp Px)⁻¹ := by
-  rw [lamCom_eq_shadow]; exact lamComShadow_denote prims hLeaf hReal Px Py Qx Qy
+  rw [lamCom_denoteWith leafSem prims hLeaf, hReal.mul_realizes, hReal.sub_realizes,
+    hReal.inv_realizes, hReal.sub_realizes]
 
 /-! ## 6. The `x₃` coordinate `x₃ = λ·λ − x₁ − x₂` as a field-leaf `Com`
 
@@ -375,37 +397,44 @@ def bn254AddxCom :
 /-- **Exactness.** `bn254AddxCom` is definitionally the hand shadow. -/
 theorem bn254AddxCom_eq_shadow : bn254AddxCom = bn254AddxComShadow := by rfl
 
-/-- **The `x₃` Com realizes `bn254AffineRx` (`λ·λ − x₁ − x₂`)** over `FpBN254`,
-    under the field-leaf agreement + realization. Built only from `fp_mul` and
-    `fp_sub` leaves. -/
-theorem bn254AddxComShadow_denote (prims : FieldPrimitives)
-    (hLeaf : FieldLeafAgrees prims jasminExtSem) (hReal : FieldRealizes prims)
+/-- **The deployed `x₃` kernel, evaluated with a leaf oracle.** For a leaf oracle
+    `leafSem` realising the base-field primitives, `bn254AddxCom`, denoted through
+    `jasminDenoteWith leafSem`, computes `sub (sub (mul lam lam) Px) Qx` (the
+    `x₃ = λ·λ − x₁ − x₂` chain). -/
+theorem bn254AddxCom_denoteWith (leafSem : LeafSem) (prims : FieldPrimitives)
+    (h : FieldLeafAgrees prims leafSem)
     (lam Px Qx : FpWire) :
-    wireToFp (bn254AddxComShadow.denote (.cons lam (.cons Px (.cons Qx .nil))))
-      = bn254AffineRx (wireToFp lam) (wireToFp Px) (wireToFp Qx) := by
-  obtain ⟨hMul, hSub, _hAdd, _⟩ := hLeaf
-  unfold bn254AffineRx
-  show wireToFp (jasminExtSem subLeafName binArgTys feRetTy
-        (.cons (jasminExtSem subLeafName binArgTys feRetTy
-          (.cons (jasminExtSem mulLeafName binArgTys feRetTy (.cons lam (.cons lam .nil)))
-            (.cons Px .nil))) (.cons Qx .nil)))
-      = wireToFp lam * wireToFp lam - wireToFp Px - wireToFp Qx
+    @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        bn254AddxCom (.cons lam (.cons Px (.cons Qx .nil)))
+      = prims.sub (prims.sub (prims.mul lam lam) Px) Qx := by
+  rw [bn254AddxCom_eq_shadow]
+  obtain ⟨hMul, hSub, _hAdd, _⟩ := h
+  show leafSem subLeafName binArgTys feRetTy
+        (.cons (leafSem subLeafName binArgTys feRetTy
+          (.cons (leafSem mulLeafName binArgTys feRetTy (.cons lam (.cons lam .nil)))
+            (.cons Px .nil))) (.cons Qx .nil))
+      = prims.sub (prims.sub (prims.mul lam lam) Px) Qx
   rw [hMul (.cons lam (.cons lam .nil))]
   simp only [HVector.head, HVector.tail]
   rw [hSub (.cons (prims.mul lam lam) (.cons Px .nil))]
   simp only [HVector.head, HVector.tail]
   rw [hSub (.cons (prims.sub (prims.mul lam lam) Px) (.cons Qx .nil))]
-  simp only [HVector.head, HVector.tail]
-  rw [hReal.sub_realizes, hReal.sub_realizes, hReal.mul_realizes]
+  rfl
 
-/-- **The deployed `x₃` Com realizes `bn254AffineRx`** (front-sourced). Via
-    `bn254AddxCom_eq_shadow` + the shadow's denote. -/
-theorem bn254AddxCom_denote (prims : FieldPrimitives)
-    (hLeaf : FieldLeafAgrees prims jasminExtSem) (hReal : FieldRealizes prims)
+/-- **The deployed `x₃` Com realizes `bn254AffineRx` (`λ·λ − x₁ − x₂`)** over
+    `FpBN254`. For a leaf oracle `leafSem` realising the field primitives whose
+    primitives satisfy `FieldRealizes prims`, `bn254AddxCom` denoted through
+    `jasminDenoteWith leafSem` and read through `wireToFp` is `bn254AffineRx`.
+    Built only from `fp_mul` and `fp_sub` leaves. -/
+theorem bn254AddxCom_denote (leafSem : LeafSem) (prims : FieldPrimitives)
+    (hLeaf : FieldLeafAgrees prims leafSem) (hReal : FieldRealizes prims)
     (lam Px Qx : FpWire) :
-    wireToFp (bn254AddxCom.denote (.cons lam (.cons Px (.cons Qx .nil))))
+    wireToFp (@Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        bn254AddxCom (.cons lam (.cons Px (.cons Qx .nil))))
       = bn254AffineRx (wireToFp lam) (wireToFp Px) (wireToFp Qx) := by
-  rw [bn254AddxCom_eq_shadow]; exact bn254AddxComShadow_denote prims hLeaf hReal lam Px Qx
+  unfold bn254AffineRx
+  rw [bn254AddxCom_denoteWith leafSem prims hLeaf, hReal.sub_realizes,
+    hReal.sub_realizes, hReal.mul_realizes]
 
 /-! ## 7. The `y₃` coordinate `y₃ = λ·(x₁ − x₃) − y₁` as a field-leaf `Com`
 
@@ -453,38 +482,44 @@ def bn254AddyCom :
 /-- **Exactness.** `bn254AddyCom` is definitionally the hand shadow. -/
 theorem bn254AddyCom_eq_shadow : bn254AddyCom = bn254AddyComShadow := by rfl
 
-/-- **The `y₃` Com realizes `bn254AffineRy` (`λ·(x₁ − x₃) − y₁`)** over
-    `FpBN254`, under the field-leaf agreement + realization. Built only from
-    `fp_sub` and `fp_mul` leaves. -/
-theorem bn254AddyComShadow_denote (prims : FieldPrimitives)
-    (hLeaf : FieldLeafAgrees prims jasminExtSem) (hReal : FieldRealizes prims)
+/-- **The deployed `y₃` kernel, evaluated with a leaf oracle.** For a leaf oracle
+    `leafSem` realising the base-field primitives, `bn254AddyCom`, denoted through
+    `jasminDenoteWith leafSem`, computes `sub (mul lam (sub Px Rx)) Py` (the
+    `y₃ = λ·(x₁ − x₃) − y₁` chain). -/
+theorem bn254AddyCom_denoteWith (leafSem : LeafSem) (prims : FieldPrimitives)
+    (h : FieldLeafAgrees prims leafSem)
     (lam Px Rx Py : FpWire) :
-    wireToFp (bn254AddyComShadow.denote (.cons lam (.cons Px (.cons Rx (.cons Py .nil)))))
-      = bn254AffineRy (wireToFp lam) (wireToFp Px) (wireToFp Rx) (wireToFp Py) := by
-  obtain ⟨hMul, hSub, _hAdd, _⟩ := hLeaf
-  unfold bn254AffineRy
-  show wireToFp (jasminExtSem subLeafName binArgTys feRetTy
-        (.cons (jasminExtSem mulLeafName binArgTys feRetTy
-          (.cons lam (.cons (jasminExtSem subLeafName binArgTys feRetTy
-            (.cons Px (.cons Rx .nil))) .nil))) (.cons Py .nil)))
-      = wireToFp lam * (wireToFp Px - wireToFp Rx) - wireToFp Py
+    @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        bn254AddyCom (.cons lam (.cons Px (.cons Rx (.cons Py .nil))))
+      = prims.sub (prims.mul lam (prims.sub Px Rx)) Py := by
+  rw [bn254AddyCom_eq_shadow]
+  obtain ⟨hMul, hSub, _hAdd, _⟩ := h
+  show leafSem subLeafName binArgTys feRetTy
+        (.cons (leafSem mulLeafName binArgTys feRetTy
+          (.cons lam (.cons (leafSem subLeafName binArgTys feRetTy
+            (.cons Px (.cons Rx .nil))) .nil))) (.cons Py .nil))
+      = prims.sub (prims.mul lam (prims.sub Px Rx)) Py
   rw [hSub (.cons Px (.cons Rx .nil))]
   simp only [HVector.head, HVector.tail]
   rw [hMul (.cons lam (.cons (prims.sub Px Rx) .nil))]
   simp only [HVector.head, HVector.tail]
   rw [hSub (.cons (prims.mul lam (prims.sub Px Rx)) (.cons Py .nil))]
-  simp only [HVector.head, HVector.tail]
-  rw [hReal.sub_realizes, hReal.mul_realizes, hReal.sub_realizes]
+  rfl
 
-/-- **The deployed `y₃` Com realizes `bn254AffineRy`** (front-sourced). Via
-    `bn254AddyCom_eq_shadow` + the shadow's denote. -/
-theorem bn254AddyCom_denote (prims : FieldPrimitives)
-    (hLeaf : FieldLeafAgrees prims jasminExtSem) (hReal : FieldRealizes prims)
+/-- **The deployed `y₃` Com realizes `bn254AffineRy` (`λ·(x₁ − x₃) − y₁`)** over
+    `FpBN254`. For a leaf oracle `leafSem` realising the field primitives whose
+    primitives satisfy `FieldRealizes prims`, `bn254AddyCom` denoted through
+    `jasminDenoteWith leafSem` and read through `wireToFp` is `bn254AffineRy`.
+    Built only from `fp_sub` and `fp_mul` leaves. -/
+theorem bn254AddyCom_denote (leafSem : LeafSem) (prims : FieldPrimitives)
+    (hLeaf : FieldLeafAgrees prims leafSem) (hReal : FieldRealizes prims)
     (lam Px Rx Py : FpWire) :
-    wireToFp (bn254AddyCom.denote (.cons lam (.cons Px (.cons Rx (.cons Py .nil)))))
+    wireToFp (@Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        bn254AddyCom (.cons lam (.cons Px (.cons Rx (.cons Py .nil)))))
       = bn254AffineRy (wireToFp lam) (wireToFp Px) (wireToFp Rx) (wireToFp Py) := by
-  rw [bn254AddyCom_eq_shadow]
-  exact bn254AddyComShadow_denote prims hLeaf hReal lam Px Rx Py
+  unfold bn254AffineRy
+  rw [bn254AddyCom_denoteWith leafSem prims hLeaf, hReal.sub_realizes,
+    hReal.mul_realizes, hReal.sub_realizes]
 
 /-! ## 8. The full emitted affine point-add realizes `bn254AffineAdd` -/
 
@@ -499,37 +534,46 @@ structure WirePoint where
 def WirePoint.toAlg (P : WirePoint) : BN254Point :=
   { x := wireToFp P.x, y := wireToFp P.y }
 
-/-- The emitted affine point-add as the composition of the three field-leaf
-    `Com`s: compute `λ`, then `x₃` via `bn254AddxCom`, then `y₃` via
-    `bn254AddyCom` (which consumes `x₃`). -/
-def emittedAffineAdd (P Q : WirePoint) : WirePoint :=
-  let lam := lamCom.denote (.cons P.x (.cons P.y (.cons Q.x (.cons Q.y .nil))))
-  let rx := bn254AddxCom.denote (.cons lam (.cons P.x (.cons Q.x .nil)))
-  let ry := bn254AddyCom.denote (.cons lam (.cons P.x (.cons rx (.cons P.y .nil))))
+/-- The emitted affine point-add under the leaf model `leafSem`: the composition
+    of the three field-leaf `Com`s, each denoted through `jasminDenoteWith leafSem`.
+    It computes `λ`, then `x₃` via `bn254AddxCom`, then `y₃` via `bn254AddyCom`
+    (which consumes `x₃`). -/
+def emittedAffineAdd (leafSem : LeafSem) (P Q : WirePoint) : WirePoint :=
+  let lam := @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+    lamCom (.cons P.x (.cons P.y (.cons Q.x (.cons Q.y .nil))))
+  let rx := @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+    bn254AddxCom (.cons lam (.cons P.x (.cons Q.x .nil)))
+  let ry := @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+    bn254AddyCom (.cons lam (.cons P.x (.cons rx (.cons P.y .nil))))
   { x := rx, y := ry }
 
 /-- **The emitted field-leaf composition realizes the abstract `G1` group op.**
 
-    The on-wire affine point-add, assembled from the slope / `x₃` / `y₃`
-    field-leaf `Com`s and interpreted through `wireToFp` coordinate-wise, equals
+    For a leaf model `leafSem` realising the field primitives
+    (`FieldLeafAgrees prims leafSem`) whose primitives satisfy the field
+    realization `FieldRealizes prims`, the on-wire affine point-add
+    `emittedAffineAdd leafSem`, assembled from the slope / `x₃` / `y₃` field-leaf
+    `Com`s and interpreted through `wireToFp` coordinate-wise, equals
     `bn254AffineAdd` over `FpBN254` applied to the interpreted slope and points —
-    where the interpreted slope is exactly `(Qy − Py)·(Qx − Px)⁻¹`. The
-    full-group realization, with the emitted term a field-leaf
-    composition (no opaque `bn254_g1_add`). -/
-theorem emittedAffineAdd_realizes (prims : FieldPrimitives)
-    (hLeaf : FieldLeafAgrees prims jasminExtSem) (hReal : FieldRealizes prims)
+    where the interpreted slope is exactly `(Qy − Py)·(Qx − Px)⁻¹`. The emitted
+    term is a field-leaf composition (no opaque `bn254_g1_add`). -/
+theorem emittedAffineAdd_realizes (leafSem : LeafSem) (prims : FieldPrimitives)
+    (hLeaf : FieldLeafAgrees prims leafSem) (hReal : FieldRealizes prims)
     (P Q : WirePoint) :
-    (emittedAffineAdd P Q).toAlg
+    (emittedAffineAdd leafSem P Q).toAlg
       = bn254AffineAdd
           ((wireToFp Q.y - wireToFp P.y) * (wireToFp Q.x - wireToFp P.x)⁻¹)
           P.toAlg Q.toAlg := by
   unfold emittedAffineAdd bn254AffineAdd WirePoint.toAlg
   refine BN254Point.mk.injEq .. ▸ ⟨?_, ?_⟩
   · -- x-coordinate
-    rw [bn254AddxCom_denote prims hLeaf hReal, lamCom_denote prims hLeaf hReal]
+    rw [bn254AddxCom_denote leafSem prims hLeaf hReal,
+      lamCom_denote leafSem prims hLeaf hReal]
   · -- y-coordinate; the inner `x₃` is `bn254AffineRx` of the interpreted slope
-    rw [bn254AddyCom_denote prims hLeaf hReal, lamCom_denote prims hLeaf hReal,
-      bn254AddxCom_denote prims hLeaf hReal, lamCom_denote prims hLeaf hReal]
+    rw [bn254AddyCom_denote leafSem prims hLeaf hReal,
+      lamCom_denote leafSem prims hLeaf hReal,
+      bn254AddxCom_denote leafSem prims hLeaf hReal,
+      lamCom_denote leafSem prims hLeaf hReal]
 
 /-! ## 6. Batched affine conversion via Montgomery's trick
 

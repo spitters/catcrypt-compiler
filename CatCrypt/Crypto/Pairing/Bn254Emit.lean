@@ -47,7 +47,10 @@ that reference on the **published EIP-196 / EIP-197 vectors** (standard generato
   at the production BN254 G1 `AddCommMonoid` lane — no new content;
 * the **EIP-197 verifier** is a straight-line composition of pairing / Fp12-mul
   leaves, with a denotation-preservation theorem reducing the `Com` to the
-  abstract product of pairings under the carried agreements.
+  abstract product of pairings. The theorem takes the leaf model as a parameter
+  `leafSem`, denotes the `Com` through `jasminDenoteWith leafSem`, and assumes the
+  agreements at that `leafSem`; `Bn254Denote.bn254Oracle` satisfies them for every
+  `prims`.
 
 ## What AUCurves verifies vs. what stays trusted
 
@@ -73,7 +76,7 @@ A BN254 base-field element `Fp` is 4 little-endian `u64` limbs = `32` bytes
 * the pairing output **GT = Fp12** is twelve `Fp`s = `12·FPSZ = 384` bytes.
 
 0 sorries; the only hypotheses are the opaque-leaf agreements
-(`EcLeafAgrees` / `PairingLeafAgrees`), the edge carried throughout this theory.
+(`EcLeafAgrees` / `PairingLeavesAgree`) at the leaf-model parameter `leafSem`.
 -/
 
 @[expose] public section
@@ -271,42 +274,42 @@ def fp12MulLeafExpr {Γ : Ctxt jasminDialect}
   { op := .extCall fp12MulLeafName fp12MulArgTys gtRetTy, retTy_eq := rfl,
     args := .cons a (.cons b .nil) }
 
-/-- The G1 point-add leaf `Expr` denotes to `jasminExtSem` of the looked-up points.
-    By `rfl`. -/
-theorem g1AddLeafExpr_denote {Γ : Ctxt jasminDialect}
+/-- Denoted through `jasminDenoteWith leafSem`, the G1 point-add leaf `Expr` is
+    `leafSem` of the looked-up points. By `rfl`. -/
+theorem g1AddLeafExpr_denote (leafSem : LeafSem) {Γ : Ctxt jasminDialect}
     (P Q : Ctxt.Var Γ (.stackArr 8 G1SZ)) (V : Ctxt.Valuation Γ) :
-    (g1AddLeafExpr P Q).denote V
-      = jasminExtSem g1AddLeafName g1AddArgTys g1RetTy
+    @Expr.denote _ _ _ (jasminDenoteWith leafSem) _ _ (g1AddLeafExpr P Q) V
+      = leafSem g1AddLeafName g1AddArgTys g1RetTy
           (.cons (P.lookup V) (.cons (Q.lookup V) .nil)) :=
   rfl
 
-/-- The G1 scalar-mul leaf `Expr` denotes to `jasminExtSem` of the looked-up
-    scalar + point. By `rfl`. -/
-theorem g1MulLeafExpr_denote {Γ : Ctxt jasminDialect}
+/-- Denoted through `jasminDenoteWith leafSem`, the G1 scalar-mul leaf `Expr` is
+    `leafSem` of the looked-up scalar and point. By `rfl`. -/
+theorem g1MulLeafExpr_denote (leafSem : LeafSem) {Γ : Ctxt jasminDialect}
     (k : Ctxt.Var Γ (.stackArr 8 FPSZ)) (P : Ctxt.Var Γ (.stackArr 8 G1SZ))
     (V : Ctxt.Valuation Γ) :
-    (g1MulLeafExpr k P).denote V
-      = jasminExtSem g1MulLeafName g1MulArgTys g1RetTy
+    @Expr.denote _ _ _ (jasminDenoteWith leafSem) _ _ (g1MulLeafExpr k P) V
+      = leafSem g1MulLeafName g1MulArgTys g1RetTy
           (.cons (k.lookup V) (.cons (P.lookup V) .nil)) :=
   rfl
 
-/-- The pairing leaf `Expr` denotes to `jasminExtSem` of the looked-up G1 + G2
-    points. By `rfl`. The bridge point a concrete `leafSem` discharges via
-    `PairingLeafAgrees`. -/
-theorem pairingLeafExpr_denote {Γ : Ctxt jasminDialect}
+/-- Denoted through `jasminDenoteWith leafSem`, the pairing leaf `Expr` is
+    `leafSem` of the looked-up G1 and G2 points. By `rfl`; `PairingLeafAgrees`
+    at `leafSem` rewrites it to `prims.pairing`. -/
+theorem pairingLeafExpr_denote (leafSem : LeafSem) {Γ : Ctxt jasminDialect}
     (P : Ctxt.Var Γ (.stackArr 8 G1SZ)) (Q : Ctxt.Var Γ (.stackArr 8 G2SZ))
     (V : Ctxt.Valuation Γ) :
-    (pairingLeafExpr P Q).denote V
-      = jasminExtSem pairingLeafName pairingArgTys gtRetTy
+    @Expr.denote _ _ _ (jasminDenoteWith leafSem) _ _ (pairingLeafExpr P Q) V
+      = leafSem pairingLeafName pairingArgTys gtRetTy
           (.cons (P.lookup V) (.cons (Q.lookup V) .nil)) :=
   rfl
 
-/-- The GT-multiply leaf `Expr` denotes to `jasminExtSem` of the looked-up GT
-    operands. By `rfl`. -/
-theorem fp12MulLeafExpr_denote {Γ : Ctxt jasminDialect}
+/-- Denoted through `jasminDenoteWith leafSem`, the GT-multiply leaf `Expr` is
+    `leafSem` of the looked-up GT operands. By `rfl`. -/
+theorem fp12MulLeafExpr_denote (leafSem : LeafSem) {Γ : Ctxt jasminDialect}
     (a b : Ctxt.Var Γ (.stackArr 8 GTSZ)) (V : Ctxt.Valuation Γ) :
-    (fp12MulLeafExpr a b).denote V
-      = jasminExtSem fp12MulLeafName fp12MulArgTys gtRetTy
+    @Expr.denote _ _ _ (jasminDenoteWith leafSem) _ _ (fp12MulLeafExpr a b) V
+      = leafSem fp12MulLeafName fp12MulArgTys gtRetTy
           (.cons (a.lookup V) (.cons (b.lookup V) .nil)) :=
   rfl
 
@@ -358,44 +361,35 @@ def g1MsmTermCom : Com jasminDialect g1MsmTermCtxt g1RetTy :=
     so the shadow's value semantics and the array-ABI lowering transfer verbatim. -/
 theorem g1MsmTermCom_eq_shadow : g1MsmTermCom = g1MsmTermComShadow := by rfl
 
-/-- **Proof carry for one G1 MSM step (shadow).** Denotes to
-    `prims.g1Add acc (prims.g1Mul k P)` — `acc + k·P` — under the carried
-    `EcLeafAgrees prims jasminExtSem`. Mirror of `Bls12381Emit.g1MsmTermCom_denote`. -/
-theorem g1MsmTermComShadow_denote (prims : Bn254Primitives)
-    (hLeaf : EcLeafAgrees prims jasminExtSem)
+/-- **The deployed G1 MSM step, evaluated with a leaf oracle.** For a leaf oracle
+    `leafSem` realising the G1 group primitives (`EcLeafAgrees prims leafSem`), the
+    deployed `g1MsmTermCom`, denoted through `jasminDenoteWith leafSem`, computes
+    `prims.g1Add acc (prims.g1Mul k P)` (the `scalarFold` step `acc + k·P`). The
+    leaf model is the parameter `leafSem`; `Bn254Denote` instantiates it. -/
+theorem g1MsmTermCom_denote (leafSem : LeafSem) (prims : Bn254Primitives)
+    (hLeaf : EcLeafAgrees prims leafSem)
     (acc : Fin G1SZ → BitVec 8) (k : Fin FPSZ → BitVec 8) (P : Fin G1SZ → BitVec 8) :
-    g1MsmTermComShadow.denote (.cons acc (.cons k (.cons P .nil)))
+    @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        g1MsmTermCom (.cons acc (.cons k (.cons P .nil)))
       = prims.g1Add acc (prims.g1Mul k P) := by
+  rw [g1MsmTermCom_eq_shadow]
   obtain ⟨hAdd, hMul, _, _⟩ := hLeaf
-  show jasminExtSem g1AddLeafName g1AddArgTys g1RetTy
-        (.cons acc (.cons (jasminExtSem g1MulLeafName g1MulArgTys g1RetTy
+  show leafSem g1AddLeafName g1AddArgTys g1RetTy
+        (.cons acc (.cons (leafSem g1MulLeafName g1MulArgTys g1RetTy
                             (.cons k (.cons P .nil))) .nil))
       = prims.g1Add acc (prims.g1Mul k P)
   rw [hMul (.cons k (.cons P .nil))]
-  show jasminExtSem g1AddLeafName g1AddArgTys g1RetTy
-        (.cons acc (.cons (prims.g1Mul k P) .nil))
-      = prims.g1Add acc (prims.g1Mul k P)
+  simp only [HVector.head, HVector.tail]
   rw [hAdd (.cons acc (.cons (prims.g1Mul k P) .nil))]
   rfl
-
-/-- **Deployed MSM-step denotation.** The front-sourced `g1MsmTermCom` denotes to
-    `prims.g1Add acc (prims.g1Mul k P)` under `EcLeafAgrees`, via
-    `g1MsmTermCom_eq_shadow` and the shadow's proof. -/
-theorem g1MsmTermCom_denote (prims : Bn254Primitives)
-    (hLeaf : EcLeafAgrees prims jasminExtSem)
-    (acc : Fin G1SZ → BitVec 8) (k : Fin FPSZ → BitVec 8) (P : Fin G1SZ → BitVec 8) :
-    g1MsmTermCom.denote (.cons acc (.cons k (.cons P .nil)))
-      = prims.g1Add acc (prims.g1Mul k P) := by
-  rw [g1MsmTermCom_eq_shadow]
-  exact g1MsmTermComShadow_denote prims hLeaf acc k P
 
 /-! ## 6. The EIP-197 pairing-product verifier (straight-line `Com` of leaves)
 
 The Ethereum `bn256Pairing` precompile (EIP-197) checks
 `Π_{i} e(P_i, Q_i) = 1` in GT. We emit the canonical 2-pair check
 `e(P₁,Q₁) · e(P₂,Q₂)` (the form used for `e(P,Q)·e(−P,Q) = 1`): two pairing
-leaves accumulated by one `fp12_mul` leaf. Its denotation reduces (under the
-carried `PairingLeavesAgree`) to `prims.fp12Mul (e P₁ Q₁) (e P₂ Q₂)`; the
+leaves accumulated by one `fp12_mul` leaf. Its denotation through
+`jasminDenoteWith leafSem` reduces (under `PairingLeavesAgree prims leafSem`) to `prims.fp12Mul (e P₁ Q₁) (e P₂ Q₂)`; the
 caller's final `= 1` test on the denoted GT value is the precompile's result. -/
 
 /-- EIP-197 2-pair product `e(P₁,Q₁) · e(P₂,Q₂)` — the hand-authored **shadow**.
@@ -453,41 +447,34 @@ def eip197VerifyCom : Com jasminDialect eip197VerifyCtxt (.stackArr 8 GTSZ) :=
 /-- **Exactness.** The front generates *definitionally* the hand-authored shadow. -/
 theorem eip197VerifyCom_eq_shadow : eip197VerifyCom = eip197VerifyComShadow := by rfl
 
-/-- **EIP-197 verifier denotation (shadow).** The straight-line `Com`
-    `e(P₁,Q₁) · e(P₂,Q₂)` denotes to
-    `prims.fp12Mul (prims.pairing P₁ Q₁) (prims.pairing P₂ Q₂)` under the carried
-    `PairingLeavesAgree`. The precompile accepts iff this equals `1` in GT. Each
-    leaf reduces by its `*_denote` `rfl` then the carried agreement; no new
-    content beyond the leaf edge. -/
-theorem eip197VerifyComShadow_denote (prims : Bn254Primitives)
-    (hPair : PairingLeavesAgree prims jasminExtSem)
+/-- **The deployed EIP-197 verifier, evaluated with a leaf oracle.** For a leaf
+    oracle `leafSem` realising the pairing primitives
+    (`PairingLeavesAgree prims leafSem`), the deployed `eip197VerifyCom`, denoted
+    through `jasminDenoteWith leafSem`, computes
+    `prims.fp12Mul (prims.pairing P₁ Q₁) (prims.pairing P₂ Q₂)`. The precompile
+    accepts iff this equals `1` in GT. The two `pairing` and one `fp12_mul`
+    `extCall` arms each unfold to a `leafSem` call, and the agreements rewrite
+    them. The leaf model is the parameter `leafSem`; `Eip197Denote` and
+    `Bn254PairingTransport` instantiate it. -/
+theorem eip197VerifyCom_denote (leafSem : LeafSem) (prims : Bn254Primitives)
+    (hPair : PairingLeavesAgree prims leafSem)
     (p1 : Fin G1SZ → BitVec 8) (q1 : Fin G2SZ → BitVec 8)
     (p2 : Fin G1SZ → BitVec 8) (q2 : Fin G2SZ → BitVec 8) :
-    eip197VerifyComShadow.denote (.cons p1 (.cons q1 (.cons p2 (.cons q2 .nil))))
+    @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        eip197VerifyCom (.cons p1 (.cons q1 (.cons p2 (.cons q2 .nil))))
       = prims.fp12Mul (prims.pairing p1 q1) (prims.pairing p2 q2) := by
+  rw [eip197VerifyCom_eq_shadow]
   obtain ⟨hP, hM⟩ := hPair
-  show jasminExtSem fp12MulLeafName fp12MulArgTys gtRetTy
-        (.cons (jasminExtSem pairingLeafName pairingArgTys gtRetTy
+  show leafSem fp12MulLeafName fp12MulArgTys gtRetTy
+        (.cons (leafSem pairingLeafName pairingArgTys gtRetTy
                   (.cons p1 (.cons q1 .nil)))
-          (.cons (jasminExtSem pairingLeafName pairingArgTys gtRetTy
+          (.cons (leafSem pairingLeafName pairingArgTys gtRetTy
                     (.cons p2 (.cons q2 .nil))) .nil))
       = prims.fp12Mul (prims.pairing p1 q1) (prims.pairing p2 q2)
   rw [hP (.cons p1 (.cons q1 .nil)), hP (.cons p2 (.cons q2 .nil))]
   simp only [HVector.head, HVector.tail]
   rw [hM (.cons (prims.pairing p1 q1) (.cons (prims.pairing p2 q2) .nil))]
   rfl
-
-/-- **Deployed EIP-197 verifier denotation.** The front-sourced `eip197VerifyCom`
-    denotes to `prims.fp12Mul (prims.pairing P₁ Q₁) (prims.pairing P₂ Q₂)` under
-    `PairingLeavesAgree`, via `eip197VerifyCom_eq_shadow` and the shadow's proof. -/
-theorem eip197VerifyCom_denote (prims : Bn254Primitives)
-    (hPair : PairingLeavesAgree prims jasminExtSem)
-    (p1 : Fin G1SZ → BitVec 8) (q1 : Fin G2SZ → BitVec 8)
-    (p2 : Fin G1SZ → BitVec 8) (q2 : Fin G2SZ → BitVec 8) :
-    eip197VerifyCom.denote (.cons p1 (.cons q1 (.cons p2 (.cons q2 .nil))))
-      = prims.fp12Mul (prims.pairing p1 q1) (prims.pairing p2 q2) := by
-  rw [eip197VerifyCom_eq_shadow]
-  exact eip197VerifyComShadow_denote prims hPair p1 q1 p2 q2
 
 /-! ### 6b. The single-pairing leaf (EIP-196 / Groth16-BN254 building block) -/
 
@@ -524,26 +511,22 @@ def pairingCom : Com jasminDialect pairingCtxt (.stackArr 8 GTSZ) :=
 /-- **Exactness.** The front generates *definitionally* the hand-authored shadow. -/
 theorem pairingCom_eq_shadow : pairingCom = pairingComShadow := by rfl
 
-/-- **Single-pairing denotation (shadow).** `e(P, Q)` denotes to
-    `prims.pairing P Q` under the carried `PairingLeavesAgree`. -/
-theorem pairingComShadow_denote (prims : Bn254Primitives)
-    (hPair : PairingLeavesAgree prims jasminExtSem)
+/-- **The deployed single BN254 pairing, evaluated with a leaf oracle.** For a
+    leaf oracle `leafSem` realising the pairing primitives
+    (`PairingLeavesAgree prims leafSem`), the deployed `pairingCom`, denoted
+    through `jasminDenoteWith leafSem`, computes `prims.pairing P Q`. The leaf
+    model is the parameter `leafSem`; `Bn254Denote` instantiates it. -/
+theorem pairingCom_denote (leafSem : LeafSem) (prims : Bn254Primitives)
+    (hPair : PairingLeavesAgree prims leafSem)
     (p : Fin G1SZ → BitVec 8) (q : Fin G2SZ → BitVec 8) :
-    pairingComShadow.denote (.cons p (.cons q .nil)) = prims.pairing p q := by
+    @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        pairingCom (.cons p (.cons q .nil))
+      = prims.pairing p q := by
+  rw [pairingCom_eq_shadow]
   obtain ⟨hP, _⟩ := hPair
-  show jasminExtSem pairingLeafName pairingArgTys gtRetTy
-        (.cons p (.cons q .nil)) = prims.pairing p q
+  show leafSem pairingLeafName pairingArgTys gtRetTy (.cons p (.cons q .nil))
+      = prims.pairing p q
   rw [hP (.cons p (.cons q .nil))]
   rfl
-
-/-- **Deployed single-pairing denotation.** The front-sourced `pairingCom` denotes
-    to `prims.pairing P Q` under `PairingLeavesAgree`, via `pairingCom_eq_shadow`
-    and the shadow's proof. -/
-theorem pairingCom_denote (prims : Bn254Primitives)
-    (hPair : PairingLeavesAgree prims jasminExtSem)
-    (p : Fin G1SZ → BitVec 8) (q : Fin G2SZ → BitVec 8) :
-    pairingCom.denote (.cons p (.cons q .nil)) = prims.pairing p q := by
-  rw [pairingCom_eq_shadow]
-  exact pairingComShadow_denote prims hPair p q
 
 end CatCrypt.Crypto.Pairing.Bn254Emit

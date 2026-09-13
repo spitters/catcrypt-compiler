@@ -45,15 +45,19 @@ for the symmetric and lattice kernels.
 ## What's verified / what's the leaf edge
 
 The field tower (`Fp2/Fp6/Fp12` add/mul/square, conjugate, frobenius, the line)
-are leaves whose *agreement* with the abstract primitives is carried as a
-hypothesis (`Bn254MillerLeavesAgree`), the same opaque-leaf edge as
-`Bn254Emit.PairingLeavesAgree`. The AUCurves verified reference
+are leaves whose *agreement* with the abstract primitives is a hypothesis
+(`Bn254MillerLeavesAgree prims leafSem`), the same opaque-leaf edge as
+`Bn254Emit.PairingLeavesAgree`. Each denotation theorem takes the leaf model as a
+parameter `leafSem` and denotes its `Com` through `jasminDenoteWith leafSem`;
+`Bn254MillerDenote.bn254MillerOracle` satisfies the agreement for every `prims`.
+The AUCurves verified reference
 (`bn254_miller_loop_optimal` / `bn254_make_line_corrected` / `bn254_Fp12_pow_u`
 / `bn254_final_exp_dsd`) is the production witness; the byte-exact KAT
 (`bench/bn254_compare/pairing_from_rustcmd.lean` + `bn254_pairing_kat.rs`)
 cross-checks the whole `pairing_optimal` against it.
 
-0 sorries; the only hypotheses are the carried leaf agreements.
+0 sorries; the only hypotheses are the leaf agreements at the leaf-model parameter
+`leafSem`.
 -/
 
 @[expose] public section
@@ -221,32 +225,28 @@ def cycloPowStepCom :
 /-- **Exactness.** `cycloPowStepCom` is definitionally the hand shadow. -/
 theorem cycloPowStepCom_eq_shadow : cycloPowStepCom = cycloPowStepComShadow := by rfl
 
-/-- **Cyclotomic pow-step denotation.** `cycloPowStepCom` denotes to
-    `prims.fp12Mul (prims.fp12CycloSquare r) base` under the carried agreements —
-    one square-and-multiply iteration with the compressed cyclotomic square. -/
-theorem cycloPowStepComShadow_denote (prims : Bn254MillerPrimitives)
-    (h : Bn254MillerLeavesAgree prims jasminExtSem)
+/-- **The deployed cyclotomic pow-step, evaluated with a leaf oracle.** For a leaf
+    oracle `leafSem` realising the tower primitives
+    (`Bn254MillerLeavesAgree prims leafSem`), `cycloPowStepCom`, denoted through
+    `jasminDenoteWith leafSem`, computes `prims.fp12Mul (prims.fp12CycloSquare r)
+    base`: one square-and-multiply iteration with the compressed cyclotomic
+    square. The leaf model is the parameter `leafSem`; `Bn254MillerDenote`
+    instantiates it. -/
+theorem cycloPowStepCom_denote (leafSem : LeafSem) (prims : Bn254MillerPrimitives)
+    (h : Bn254MillerLeavesAgree prims leafSem)
     (r base : Fin GTSZ → BitVec 8) :
-    cycloPowStepComShadow.denote (.cons r (.cons base .nil))
+    @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        cycloPowStepCom (.cons r (.cons base .nil))
       = prims.fp12Mul (prims.fp12CycloSquare r) base := by
-  show jasminExtSem fp12MulLeafName fp12MulArgTys gtRetTy
-        (.cons (jasminExtSem fp12CycloSquareLeafName fp12UnArgTys gtRetTy
-                  (.cons r .nil)) (.cons base .nil))
+  rw [cycloPowStepCom_eq_shadow]
+  show leafSem fp12MulLeafName fp12MulArgTys gtRetTy
+        (.cons (leafSem fp12CycloSquareLeafName fp12UnArgTys gtRetTy (.cons r .nil))
+          (.cons base .nil))
       = prims.fp12Mul (prims.fp12CycloSquare r) base
   rw [h.fp12CycloSquare (.cons r .nil)]
   simp only [HVector.head]
   rw [h.fp12Mul (.cons (prims.fp12CycloSquare r) (.cons base .nil))]
-  simp only [HVector.head, HVector.tail]
   rfl
-
-/-- **The deployed cyclotomic pow-step Com denotes** `cycloSq(r)·base`
-    (front-sourced). Via `cycloPowStepCom_eq_shadow` + the shadow's denote. -/
-theorem cycloPowStepCom_denote (prims : Bn254MillerPrimitives)
-    (h : Bn254MillerLeavesAgree prims jasminExtSem)
-    (r base : Fin GTSZ → BitVec 8) :
-    cycloPowStepCom.denote (.cons r (.cons base .nil))
-      = prims.fp12Mul (prims.fp12CycloSquare r) base := by
-  rw [cycloPowStepCom_eq_shadow]; exact cycloPowStepComShadow_denote prims h r base
 
 /-! ## 7. (L3) Final-exp easy part: `r = conj(f)·conj(f)`, then `r·frob²(r)` -/
 
@@ -300,25 +300,30 @@ def finalExpEasyCom :
 /-- **Exactness.** `finalExpEasyCom` is definitionally the hand shadow. -/
 theorem finalExpEasyCom_eq_shadow : finalExpEasyCom = finalExpEasyComShadow := by rfl
 
-/-- **Final-exp easy-part denotation.** `finalExpEasyComShadow` denotes to
-    `fp12Mul (fp12Mul (conj f) (conj f)) (frob (frob (fp12Mul (conj f) (conj f))))`
-    under the carried agreements. -/
-theorem finalExpEasyComShadow_denote (prims : Bn254MillerPrimitives)
-    (h : Bn254MillerLeavesAgree prims jasminExtSem)
+/-- **The deployed final-exp easy part, evaluated with a leaf oracle.** For a leaf
+    oracle `leafSem` realising the tower primitives
+    (`Bn254MillerLeavesAgree prims leafSem`), `finalExpEasyCom`, denoted through
+    `jasminDenoteWith leafSem`, computes `r · frob²(r)` with
+    `r = conj(f)·conj(f)`. The leaf model is the parameter `leafSem`;
+    `Bn254MillerDenote` instantiates it. -/
+theorem finalExpEasyCom_denote (leafSem : LeafSem) (prims : Bn254MillerPrimitives)
+    (h : Bn254MillerLeavesAgree prims leafSem)
     (f : Fin GTSZ → BitVec 8) :
-    finalExpEasyComShadow.denote (.cons f .nil)
+    @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        finalExpEasyCom (.cons f .nil)
       = (let cf := prims.fp12Conj f
          let r  := prims.fp12Mul cf cf
          prims.fp12Mul r (prims.fp12Frob (prims.fp12Frob r))) := by
-  show jasminExtSem fp12MulLeafName fp12MulArgTys gtRetTy
-        (.cons (jasminExtSem fp12MulLeafName fp12MulArgTys gtRetTy
-                  (.cons (jasminExtSem fp12ConjLeafName fp12UnArgTys gtRetTy (.cons f .nil))
-                    (.cons (jasminExtSem fp12ConjLeafName fp12UnArgTys gtRetTy (.cons f .nil)) .nil)))
-          (.cons (jasminExtSem fp12FrobLeafName fp12UnArgTys gtRetTy
-                    (.cons (jasminExtSem fp12FrobLeafName fp12UnArgTys gtRetTy
-                              (.cons (jasminExtSem fp12MulLeafName fp12MulArgTys gtRetTy
-                                        (.cons (jasminExtSem fp12ConjLeafName fp12UnArgTys gtRetTy (.cons f .nil))
-                                          (.cons (jasminExtSem fp12ConjLeafName fp12UnArgTys gtRetTy (.cons f .nil)) .nil))) .nil)) .nil)) .nil))
+  rw [finalExpEasyCom_eq_shadow]
+  show leafSem fp12MulLeafName fp12MulArgTys gtRetTy
+        (.cons (leafSem fp12MulLeafName fp12MulArgTys gtRetTy
+                  (.cons (leafSem fp12ConjLeafName fp12UnArgTys gtRetTy (.cons f .nil))
+                    (.cons (leafSem fp12ConjLeafName fp12UnArgTys gtRetTy (.cons f .nil)) .nil)))
+          (.cons (leafSem fp12FrobLeafName fp12UnArgTys gtRetTy
+                    (.cons (leafSem fp12FrobLeafName fp12UnArgTys gtRetTy
+                              (.cons (leafSem fp12MulLeafName fp12MulArgTys gtRetTy
+                                        (.cons (leafSem fp12ConjLeafName fp12UnArgTys gtRetTy (.cons f .nil))
+                                          (.cons (leafSem fp12ConjLeafName fp12UnArgTys gtRetTy (.cons f .nil)) .nil))) .nil)) .nil)) .nil))
       = _
   rw [h.fp12Conj (.cons f .nil)]
   simp only [HVector.head]
@@ -328,23 +333,7 @@ theorem finalExpEasyComShadow_denote (prims : Bn254MillerPrimitives)
   simp only [HVector.head]
   rw [h.fp12Frob (.cons (prims.fp12Frob (prims.fp12Mul (prims.fp12Conj f) (prims.fp12Conj f))) .nil)]
   simp only [HVector.head]
-  rw [h.fp12Mul (.cons (prims.fp12Mul (prims.fp12Conj f) (prims.fp12Conj f))
-    (.cons (prims.fp12Frob (prims.fp12Frob (prims.fp12Mul (prims.fp12Conj f) (prims.fp12Conj f))))
-      .nil))]
-  simp only [HVector.head, HVector.tail]
-  rfl
-
-/-- **The deployed final-exp easy-part Com denotes** `r·frob²(r)` with
-    `r = conj(f)·conj(f)` (front-sourced). Via `finalExpEasyCom_eq_shadow` + the
-    shadow's denote. -/
-theorem finalExpEasyCom_denote (prims : Bn254MillerPrimitives)
-    (h : Bn254MillerLeavesAgree prims jasminExtSem)
-    (f : Fin GTSZ → BitVec 8) :
-    finalExpEasyCom.denote (.cons f .nil)
-      = (let cf := prims.fp12Conj f
-         let r  := prims.fp12Mul cf cf
-         prims.fp12Mul r (prims.fp12Frob (prims.fp12Frob r))) := by
-  rw [finalExpEasyCom_eq_shadow]; exact finalExpEasyComShadow_denote prims h f
+  exact h.fp12Mul _
 
 /-! ## 8. (L2) The fused-line Miller doubling step `Com`
 
@@ -461,65 +450,19 @@ def millerDoubleStepCom :
 theorem millerDoubleStepCom_eq_shadow :
     millerDoubleStepCom = millerDoubleStepComShadow := by rfl
 
-/-- **Fused-line Miller-step denotation.** `millerDoubleStepComShadow` denotes to the
-    abstract doubling step `f² · make_line(λ, tₓ, t_y, pₓ, p_y)` with
-    `λ = (tₓ²+tₓ²+tₓ²) · (t_y+t_y)⁻¹`, under the carried leaf agreements. -/
-theorem millerDoubleStepComShadow_denote (prims : Bn254MillerPrimitives)
-    (h : Bn254MillerLeavesAgree prims jasminExtSem)
+/-- **The deployed fused-line Miller doubling step, evaluated with a leaf oracle.**
+    For a leaf oracle `leafSem` realising the tower primitives
+    (`Bn254MillerLeavesAgree prims leafSem`), `millerDoubleStepCom`, denoted through
+    `jasminDenoteWith leafSem`, computes the abstract doubling step
+    `f² · make_line(λ, tₓ, t_y, pₓ, p_y)` with `λ = (tₓ²+tₓ²+tₓ²) · (t_y+t_y)⁻¹`.
+    The leaf model is the parameter `leafSem`; `Bn254MillerDenote` instantiates
+    it. -/
+theorem millerDoubleStepCom_denote (leafSem : LeafSem) (prims : Bn254MillerPrimitives)
+    (h : Bn254MillerLeavesAgree prims leafSem)
     (f : Fin GTSZ → BitVec 8) (tx ty : Fin FP2SZ → BitVec 8)
     (px py : Fin FPSZ → BitVec 8) :
-    millerDoubleStepComShadow.denote (.cons f (.cons tx (.cons ty (.cons px (.cons py .nil)))))
-      = (let tx2  := prims.fp2Square tx
-         let lamN := prims.fp2Add (prims.fp2Add tx2 tx2) tx2
-         let tyI  := prims.fp2Inv (prims.fp2Add ty ty)
-         let lam  := prims.fp2Mul lamN tyI
-         let line := prims.makeLine lam tx ty px py
-         prims.fp12Mul (prims.fp12Square f) line) := by
-  -- The (deeply nested) LHS denotation reduces to a flat `jasminExtSem` shape
-  -- by `rfl`; the carried agreements (universally quantified) then rewrite every
-  -- leaf-semantics occurrence to the abstract primitive in one `simp only` pass.
-  have hLHS : millerDoubleStepComShadow.denote
-        (.cons f (.cons tx (.cons ty (.cons px (.cons py .nil)))))
-      = jasminExtSem fp12MulLeafName fp12MulArgTys gtRetTy
-          (.cons (jasminExtSem fp12SquareLeafName fp12UnArgTys gtRetTy (.cons f .nil))
-            (.cons (jasminExtSem makeLineLeafName makeLineArgTys gtRetTy
-              (.cons (jasminExtSem fp2MulLeafName fp2BinArgTys fp2RetTy
-                (.cons (jasminExtSem fp2AddLeafName fp2BinArgTys fp2RetTy
-                  (.cons (jasminExtSem fp2AddLeafName fp2BinArgTys fp2RetTy
-                    (.cons (jasminExtSem fp2SquareLeafName fp2UnArgTys fp2RetTy (.cons tx .nil))
-                      (.cons (jasminExtSem fp2SquareLeafName fp2UnArgTys fp2RetTy (.cons tx .nil)) .nil)))
-                    (.cons (jasminExtSem fp2SquareLeafName fp2UnArgTys fp2RetTy (.cons tx .nil)) .nil)))
-                  (.cons (jasminExtSem fp2InvLeafName fp2UnArgTys fp2RetTy
-                    (.cons (jasminExtSem fp2AddLeafName fp2BinArgTys fp2RetTy
-                      (.cons ty (.cons ty .nil))) .nil)) .nil)))
-                (.cons tx (.cons ty (.cons px (.cons py .nil)))))) .nil)) := rfl
-  rw [hLHS]
-  simp only [HVector.head, HVector.tail,
-    h.fp2Square (.cons tx .nil),
-    h.fp2Add (.cons (prims.fp2Square tx) (.cons (prims.fp2Square tx) .nil)),
-    h.fp2Add (.cons (prims.fp2Add (prims.fp2Square tx) (prims.fp2Square tx))
-      (.cons (prims.fp2Square tx) .nil)),
-    h.fp2Add (.cons ty (.cons ty .nil)),
-    h.fp2Inv (.cons (prims.fp2Add ty ty) .nil),
-    h.fp2Mul (.cons (prims.fp2Add (prims.fp2Add (prims.fp2Square tx) (prims.fp2Square tx))
-        (prims.fp2Square tx)) (.cons (prims.fp2Inv (prims.fp2Add ty ty)) .nil)),
-    h.makeLine (.cons (prims.fp2Mul
-        (prims.fp2Add (prims.fp2Add (prims.fp2Square tx) (prims.fp2Square tx)) (prims.fp2Square tx))
-        (prims.fp2Inv (prims.fp2Add ty ty)))
-      (.cons tx (.cons ty (.cons px (.cons py .nil))))),
-    h.fp12Square (.cons f .nil),
-    h.fp12Mul (.cons (prims.fp12Square f) (.cons (prims.makeLine (prims.fp2Mul
-        (prims.fp2Add (prims.fp2Add (prims.fp2Square tx) (prims.fp2Square tx)) (prims.fp2Square tx))
-        (prims.fp2Inv (prims.fp2Add ty ty))) tx ty px py) .nil))]
-
-/-- **The deployed fused-line Miller-step Com denotes** the abstract doubling step
-    `f²·make_line(λ, tₓ, t_y, pₓ, p_y)` (front-sourced). Via
-    `millerDoubleStepCom_eq_shadow` + the shadow's denote. -/
-theorem millerDoubleStepCom_denote (prims : Bn254MillerPrimitives)
-    (h : Bn254MillerLeavesAgree prims jasminExtSem)
-    (f : Fin GTSZ → BitVec 8) (tx ty : Fin FP2SZ → BitVec 8)
-    (px py : Fin FPSZ → BitVec 8) :
-    millerDoubleStepCom.denote (.cons f (.cons tx (.cons ty (.cons px (.cons py .nil)))))
+    @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        millerDoubleStepCom (.cons f (.cons tx (.cons ty (.cons px (.cons py .nil)))))
       = (let tx2  := prims.fp2Square tx
          let lamN := prims.fp2Add (prims.fp2Add tx2 tx2) tx2
          let tyI  := prims.fp2Inv (prims.fp2Add ty ty)
@@ -527,7 +470,32 @@ theorem millerDoubleStepCom_denote (prims : Bn254MillerPrimitives)
          let line := prims.makeLine lam tx ty px py
          prims.fp12Mul (prims.fp12Square f) line) := by
   rw [millerDoubleStepCom_eq_shadow]
-  exact millerDoubleStepComShadow_denote prims h f tx ty px py
+  -- The nested LHS denotation is, by `rfl`, a flat term of `leafSem` calls; the
+  -- agreements then rewrite each call to the abstract primitive.
+  have hLHS : @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        millerDoubleStepComShadow
+        (.cons f (.cons tx (.cons ty (.cons px (.cons py .nil)))))
+      = leafSem fp12MulLeafName fp12MulArgTys gtRetTy
+          (.cons (leafSem fp12SquareLeafName fp12UnArgTys gtRetTy (.cons f .nil))
+            (.cons (leafSem makeLineLeafName makeLineArgTys gtRetTy
+              (.cons (leafSem fp2MulLeafName fp2BinArgTys fp2RetTy
+                (.cons (leafSem fp2AddLeafName fp2BinArgTys fp2RetTy
+                  (.cons (leafSem fp2AddLeafName fp2BinArgTys fp2RetTy
+                    (.cons (leafSem fp2SquareLeafName fp2UnArgTys fp2RetTy (.cons tx .nil))
+                      (.cons (leafSem fp2SquareLeafName fp2UnArgTys fp2RetTy (.cons tx .nil)) .nil)))
+                    (.cons (leafSem fp2SquareLeafName fp2UnArgTys fp2RetTy (.cons tx .nil)) .nil)))
+                  (.cons (leafSem fp2InvLeafName fp2UnArgTys fp2RetTy
+                    (.cons (leafSem fp2AddLeafName fp2BinArgTys fp2RetTy
+                      (.cons ty (.cons ty .nil))) .nil)) .nil)))
+                (.cons tx (.cons ty (.cons px (.cons py .nil)))))) .nil)) := rfl
+  rw [hLHS]
+  exact (h.fp12Mul _).trans (congrArg₂ prims.fp12Mul (h.fp12Square _)
+    ((h.makeLine _).trans (congrArg (fun l => prims.makeLine l tx ty px py)
+      ((h.fp2Mul _).trans (congrArg₂ prims.fp2Mul
+        ((h.fp2Add _).trans (congrArg₂ prims.fp2Add
+          ((h.fp2Add _).trans (congrArg₂ prims.fp2Add (h.fp2Square _) (h.fp2Square _)))
+          (h.fp2Square _)))
+        ((h.fp2Inv _).trans (congrArg prims.fp2Inv (h.fp2Add _))))))))
 
 /-! ## 9. (L2) AVX2 line-eval lane fusion — denotation preservation
 

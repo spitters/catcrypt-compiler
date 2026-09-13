@@ -14,23 +14,21 @@ The eight deployed BLS12-377 orchestration `Com`s of `Pairing.Bls12_377Emit` —
 the five `Fp` field kernels (`fieldAddCom` / `fieldSubCom` / `fieldMulCom` /
 `fieldSquareCom` / `fieldInvCom`), the single-pairing kernel `pairingCom`, the
 GT product `fp12MulCom`, and the pairing-product verifier `pairingProductCom` —
-are denoted here against an **abstract** leaf oracle `leafSem : LeafSem`, threaded
-through the `DialectDenote jasminDialect` instance
-`JasminDialect.jasminDenoteWith leafSem` (whose `extCall` arm consults `leafSem`
-and whose every other arm delegates to `jasminDenote`).
-
-This is the two-level design: the orchestration is proven over an abstract leaf,
-and the concrete AUCurves-backed leaf is plugged in as a realising oracle.
+are denoted by the `Bls12_377Emit.<name>Com_denote` theorems against a leaf oracle
+`leafSem : LeafSem` passed as a parameter, threaded through the
+`DialectDenote jasminDialect` instance `JasminDialect.jasminDenoteWith leafSem`
+(whose `extCall` arm consults `leafSem` and whose every other arm delegates to
+`jasminDenote`). Each computes the abstract-primitive value: a field op
+`op(x, y)`, a pairing `e(P, Q)`, a GT product `a · b`, or the pairing product
+`e(P₁,Q₁) · e(P₂,Q₂)`. This module supplies the oracles that parameter is
+instantiated at.
 
 * `bls377Oracle prims` — a concrete leaf oracle realising all seven BLS12-377
   leaves (the five field ops, the pairing, and the GT product) from a
   `Bls377Primitives` interface, with `bls377Oracle_fieldAgrees` /
   `bls377Oracle_pairingAgrees` proving it satisfies the field and pairing leaf
-  agreement bundles.
-* `<name>Com_denoteWith` — each deployed `Com`, evaluated with any leaf oracle
-  realising the relevant primitives, computes the abstract-primitive value:
-  a field op `op(x, y)`, a pairing `e(P, Q)`, a GT product `a · b`, or the
-  pairing product `e(P₁,Q₁) · e(P₂,Q₂)`.
+  agreement bundles, so the hypotheses of the `Bls12_377Emit` denotation
+  theorems are satisfiable for every `prims`.
 * `bls377Prims` / `bls377LeafOracle` / `bls377LeafOracle_agrees` — the deployed
   primitives, the leaf oracle for them, and the leaf agreement bundle, a named
   axiom (the leaf edge; a leaf proof or a jasmin/AUCurves bridge would establish
@@ -92,136 +90,7 @@ theorem bls377Oracle_pairingAgrees (prims : Bls377Primitives) :
     Bls377PairingLeavesAgree prims (bls377Oracle prims) := by
   refine ⟨?_, ?_⟩ <;> (intro args; rfl)
 
-/-! ## 2. Value of each deployed `Com` under a realising leaf oracle -/
-
-/-- **The deployed field-add kernel, evaluated with a leaf oracle.** For a leaf
-    oracle `leafSem` realising the field primitives, `fieldAddCom` — denoted
-    through `jasminDenoteWith leafSem` — computes `prims.fieldAdd x y`. -/
-theorem fieldAddCom_denoteWith (leafSem : LeafSem) (prims : Bls377Primitives)
-    (h : Bls377FieldLeavesAgree prims leafSem) (x y : Fin FPSZ → BitVec 8) :
-    @Com.denote _ _ _ (JasminDialect.jasminDenoteWith leafSem) _ _
-        Bls12_377Emit.fieldAddCom (.cons x (.cons y .nil))
-      = prims.fieldAdd x y := by
-  rw [Bls12_377Emit.fieldAddCom_eq_shadow]
-  obtain ⟨hAdd, _, _, _, _⟩ := h
-  show leafSem addLeafName fieldBinArgTys fpRetTy (.cons x (.cons y .nil))
-      = prims.fieldAdd x y
-  rw [hAdd (.cons x (.cons y .nil))]
-  rfl
-
-/-- **The deployed field-sub kernel, evaluated with a leaf oracle.** Computes
-    `prims.fieldSub x y`. -/
-theorem fieldSubCom_denoteWith (leafSem : LeafSem) (prims : Bls377Primitives)
-    (h : Bls377FieldLeavesAgree prims leafSem) (x y : Fin FPSZ → BitVec 8) :
-    @Com.denote _ _ _ (JasminDialect.jasminDenoteWith leafSem) _ _
-        Bls12_377Emit.fieldSubCom (.cons x (.cons y .nil))
-      = prims.fieldSub x y := by
-  rw [Bls12_377Emit.fieldSubCom_eq_shadow]
-  obtain ⟨_, hSub, _, _, _⟩ := h
-  show leafSem subLeafName fieldBinArgTys fpRetTy (.cons x (.cons y .nil))
-      = prims.fieldSub x y
-  rw [hSub (.cons x (.cons y .nil))]
-  rfl
-
-/-- **The deployed field-multiply kernel, evaluated with a leaf oracle.** Computes
-    `prims.fieldMul x y`. -/
-theorem fieldMulCom_denoteWith (leafSem : LeafSem) (prims : Bls377Primitives)
-    (h : Bls377FieldLeavesAgree prims leafSem) (x y : Fin FPSZ → BitVec 8) :
-    @Com.denote _ _ _ (JasminDialect.jasminDenoteWith leafSem) _ _
-        Bls12_377Emit.fieldMulCom (.cons x (.cons y .nil))
-      = prims.fieldMul x y := by
-  rw [Bls12_377Emit.fieldMulCom_eq_shadow]
-  obtain ⟨_, _, hMul, _, _⟩ := h
-  show leafSem mulLeafName fieldBinArgTys fpRetTy (.cons x (.cons y .nil))
-      = prims.fieldMul x y
-  rw [hMul (.cons x (.cons y .nil))]
-  rfl
-
-/-- **The deployed field-square kernel, evaluated with a leaf oracle.** Computes
-    `prims.fieldSquare x`. -/
-theorem fieldSquareCom_denoteWith (leafSem : LeafSem) (prims : Bls377Primitives)
-    (h : Bls377FieldLeavesAgree prims leafSem) (x : Fin FPSZ → BitVec 8) :
-    @Com.denote _ _ _ (JasminDialect.jasminDenoteWith leafSem) _ _
-        Bls12_377Emit.fieldSquareCom (.cons x .nil)
-      = prims.fieldSquare x := by
-  rw [Bls12_377Emit.fieldSquareCom_eq_shadow]
-  obtain ⟨_, _, _, hSq, _⟩ := h
-  show leafSem squareLeafName fieldUnArgTys fpRetTy (.cons x .nil)
-      = prims.fieldSquare x
-  rw [hSq (.cons x .nil)]
-  rfl
-
-/-- **The deployed field-inverse kernel, evaluated with a leaf oracle.** Computes
-    `prims.fieldInv x`. -/
-theorem fieldInvCom_denoteWith (leafSem : LeafSem) (prims : Bls377Primitives)
-    (h : Bls377FieldLeavesAgree prims leafSem) (x : Fin FPSZ → BitVec 8) :
-    @Com.denote _ _ _ (JasminDialect.jasminDenoteWith leafSem) _ _
-        Bls12_377Emit.fieldInvCom (.cons x .nil)
-      = prims.fieldInv x := by
-  rw [Bls12_377Emit.fieldInvCom_eq_shadow]
-  obtain ⟨_, _, _, _, hInv⟩ := h
-  show leafSem invLeafName fieldUnArgTys fpRetTy (.cons x .nil)
-      = prims.fieldInv x
-  rw [hInv (.cons x .nil)]
-  rfl
-
-/-- **The deployed single-pairing kernel, evaluated with a leaf oracle.** For a
-    leaf oracle `leafSem` realising the pairing primitives, `pairingCom` computes
-    `prims.pairing P Q`. -/
-theorem pairingCom_denoteWith (leafSem : LeafSem) (prims : Bls377Primitives)
-    (h : Bls377PairingLeavesAgree prims leafSem)
-    (p : Fin G1SZ → BitVec 8) (q : Fin G2SZ → BitVec 8) :
-    @Com.denote _ _ _ (JasminDialect.jasminDenoteWith leafSem) _ _
-        Bls12_377Emit.pairingCom (.cons p (.cons q .nil))
-      = prims.pairing p q := by
-  rw [Bls12_377Emit.pairingCom_eq_shadow]
-  obtain ⟨hP, _⟩ := h
-  show leafSem pairingLeafName pairingArgTys gtRetTy (.cons p (.cons q .nil))
-      = prims.pairing p q
-  rw [hP (.cons p (.cons q .nil))]
-  rfl
-
-/-- **The deployed GT-product kernel, evaluated with a leaf oracle.** Computes
-    `prims.fp12Mul a b`. -/
-theorem fp12MulCom_denoteWith (leafSem : LeafSem) (prims : Bls377Primitives)
-    (h : Bls377PairingLeavesAgree prims leafSem) (a b : Fin GTSZ → BitVec 8) :
-    @Com.denote _ _ _ (JasminDialect.jasminDenoteWith leafSem) _ _
-        Bls12_377Emit.fp12MulCom (.cons a (.cons b .nil))
-      = prims.fp12Mul a b := by
-  rw [Bls12_377Emit.fp12MulCom_eq_shadow]
-  obtain ⟨_, hM⟩ := h
-  show leafSem fp12MulLeafName fp12MulArgTys gtRetTy (.cons a (.cons b .nil))
-      = prims.fp12Mul a b
-  rw [hM (.cons a (.cons b .nil))]
-  rfl
-
-/-- **The deployed pairing-product verifier, evaluated with a leaf oracle.** For a
-    leaf oracle `leafSem` realising the pairing primitives, `pairingProductCom` —
-    the two `bls377_pairing` leaves accumulated by one `bls377_Fp12_mul` leaf —
-    computes `prims.fp12Mul (prims.pairing P₁ Q₁) (prims.pairing P₂ Q₂)`, the
-    canonical pairing-equation building block. -/
-theorem pairingProductCom_denoteWith (leafSem : LeafSem) (prims : Bls377Primitives)
-    (h : Bls377PairingLeavesAgree prims leafSem)
-    (p1 : Fin G1SZ → BitVec 8) (q1 : Fin G2SZ → BitVec 8)
-    (p2 : Fin G1SZ → BitVec 8) (q2 : Fin G2SZ → BitVec 8) :
-    @Com.denote _ _ _ (JasminDialect.jasminDenoteWith leafSem) _ _
-        Bls12_377Emit.pairingProductCom
-        (.cons p1 (.cons q1 (.cons p2 (.cons q2 .nil))))
-      = prims.fp12Mul (prims.pairing p1 q1) (prims.pairing p2 q2) := by
-  rw [Bls12_377Emit.pairingProductCom_eq_shadow]
-  obtain ⟨hP, hM⟩ := h
-  show leafSem fp12MulLeafName fp12MulArgTys gtRetTy
-        (.cons (leafSem pairingLeafName pairingArgTys gtRetTy
-                  (.cons p1 (.cons q1 .nil)))
-          (.cons (leafSem pairingLeafName pairingArgTys gtRetTy
-                    (.cons p2 (.cons q2 .nil))) .nil))
-      = prims.fp12Mul (prims.pairing p1 q1) (prims.pairing p2 q2)
-  rw [hP (.cons p1 (.cons q1 .nil)), hP (.cons p2 (.cons q2 .nil))]
-  simp only [HVector.head, HVector.tail]
-  rw [hM (.cons (prims.pairing p1 q1) (.cons (prims.pairing p2 q2) .nil))]
-  rfl
-
-/-! ## 3. The deployed leaf oracle + each `Com` at that oracle -/
+/-! ## 2. The deployed leaf oracle + each `Com` at that oracle -/
 
 /-- `Bls377Primitives` is inhabited (all fields are functions into `Fin _ → BitVec 8`,
     which has a zero element), so the deployed primitives can be introduced as an
@@ -254,7 +123,7 @@ theorem fieldAddCom_denote (x y : Fin FPSZ → BitVec 8) :
     @Com.denote _ _ _ (JasminDialect.jasminDenoteWith bls377LeafOracle) _ _
         Bls12_377Emit.fieldAddCom (.cons x (.cons y .nil))
       = bls377Prims.fieldAdd x y :=
-  fieldAddCom_denoteWith bls377LeafOracle bls377Prims bls377LeafOracle_agrees.1 x y
+  Bls12_377Emit.fieldAddCom_denote bls377LeafOracle bls377Prims bls377LeafOracle_agrees.1 x y
 
 /-- **The deployed field-sub kernel at the deployed oracle.** Computes
     `bls377Prims.fieldSub x y`. -/
@@ -262,7 +131,7 @@ theorem fieldSubCom_denote (x y : Fin FPSZ → BitVec 8) :
     @Com.denote _ _ _ (JasminDialect.jasminDenoteWith bls377LeafOracle) _ _
         Bls12_377Emit.fieldSubCom (.cons x (.cons y .nil))
       = bls377Prims.fieldSub x y :=
-  fieldSubCom_denoteWith bls377LeafOracle bls377Prims bls377LeafOracle_agrees.1 x y
+  Bls12_377Emit.fieldSubCom_denote bls377LeafOracle bls377Prims bls377LeafOracle_agrees.1 x y
 
 /-- **The deployed field-multiply kernel at the deployed oracle.** Computes
     `bls377Prims.fieldMul x y`. -/
@@ -270,7 +139,7 @@ theorem fieldMulCom_denote (x y : Fin FPSZ → BitVec 8) :
     @Com.denote _ _ _ (JasminDialect.jasminDenoteWith bls377LeafOracle) _ _
         Bls12_377Emit.fieldMulCom (.cons x (.cons y .nil))
       = bls377Prims.fieldMul x y :=
-  fieldMulCom_denoteWith bls377LeafOracle bls377Prims bls377LeafOracle_agrees.1 x y
+  Bls12_377Emit.fieldMulCom_denote bls377LeafOracle bls377Prims bls377LeafOracle_agrees.1 x y
 
 /-- **The deployed field-square kernel at the deployed oracle.** Computes
     `bls377Prims.fieldSquare x`. -/
@@ -278,7 +147,7 @@ theorem fieldSquareCom_denote (x : Fin FPSZ → BitVec 8) :
     @Com.denote _ _ _ (JasminDialect.jasminDenoteWith bls377LeafOracle) _ _
         Bls12_377Emit.fieldSquareCom (.cons x .nil)
       = bls377Prims.fieldSquare x :=
-  fieldSquareCom_denoteWith bls377LeafOracle bls377Prims bls377LeafOracle_agrees.1 x
+  Bls12_377Emit.fieldSquareCom_denote bls377LeafOracle bls377Prims bls377LeafOracle_agrees.1 x
 
 /-- **The deployed field-inverse kernel at the deployed oracle.** Computes
     `bls377Prims.fieldInv x`. -/
@@ -286,7 +155,7 @@ theorem fieldInvCom_denote (x : Fin FPSZ → BitVec 8) :
     @Com.denote _ _ _ (JasminDialect.jasminDenoteWith bls377LeafOracle) _ _
         Bls12_377Emit.fieldInvCom (.cons x .nil)
       = bls377Prims.fieldInv x :=
-  fieldInvCom_denoteWith bls377LeafOracle bls377Prims bls377LeafOracle_agrees.1 x
+  Bls12_377Emit.fieldInvCom_denote bls377LeafOracle bls377Prims bls377LeafOracle_agrees.1 x
 
 /-- **The deployed single-pairing kernel at the deployed oracle.** Computes
     `bls377Prims.pairing P Q`. -/
@@ -294,7 +163,7 @@ theorem pairingCom_denote (p : Fin G1SZ → BitVec 8) (q : Fin G2SZ → BitVec 8
     @Com.denote _ _ _ (JasminDialect.jasminDenoteWith bls377LeafOracle) _ _
         Bls12_377Emit.pairingCom (.cons p (.cons q .nil))
       = bls377Prims.pairing p q :=
-  pairingCom_denoteWith bls377LeafOracle bls377Prims bls377LeafOracle_agrees.2 p q
+  Bls12_377Emit.pairingCom_denote bls377LeafOracle bls377Prims bls377LeafOracle_agrees.2 p q
 
 /-- **The deployed GT-product kernel at the deployed oracle.** Computes
     `bls377Prims.fp12Mul a b`. -/
@@ -302,7 +171,7 @@ theorem fp12MulCom_denote (a b : Fin GTSZ → BitVec 8) :
     @Com.denote _ _ _ (JasminDialect.jasminDenoteWith bls377LeafOracle) _ _
         Bls12_377Emit.fp12MulCom (.cons a (.cons b .nil))
       = bls377Prims.fp12Mul a b :=
-  fp12MulCom_denoteWith bls377LeafOracle bls377Prims bls377LeafOracle_agrees.2 a b
+  Bls12_377Emit.fp12MulCom_denote bls377LeafOracle bls377Prims bls377LeafOracle_agrees.2 a b
 
 /-- **The deployed pairing-product verifier at the deployed oracle.** Computes
     `bls377Prims.fp12Mul (bls377Prims.pairing P₁ Q₁) (bls377Prims.pairing P₂ Q₂)`
@@ -315,7 +184,7 @@ theorem pairingProductCom_denote
         Bls12_377Emit.pairingProductCom
         (.cons p1 (.cons q1 (.cons p2 (.cons q2 .nil))))
       = bls377Prims.fp12Mul (bls377Prims.pairing p1 q1) (bls377Prims.pairing p2 q2) :=
-  pairingProductCom_denoteWith bls377LeafOracle bls377Prims bls377LeafOracle_agrees.2
+  Bls12_377Emit.pairingProductCom_denote bls377LeafOracle bls377Prims bls377LeafOracle_agrees.2
     p1 q1 p2 q2
 
 end CatCrypt.Crypto.Pairing.Bls12_377Denote

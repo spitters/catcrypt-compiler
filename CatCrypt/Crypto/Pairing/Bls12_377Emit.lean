@@ -62,13 +62,16 @@ The **orchestration** (the field kernel `out = op(x,y)`, the pairing-product
 gather → `call` → `call` → scatter glue) is owned-emitted via the array-ABI
 backend. The **leaf** (one `Fp` multiply, the Miller-loop + final-exp pairing,
 an `Fp12` product) stays a `call <leaf>` resolved at link time against the
-verified AUCurves tower. The value meaning is carried by the `*_denote` theorems
-below, reducing each orchestration `Com` to the abstract field/pairing
-primitives under the carried leaf agreements; this emit does not touch the
-`Com`, so those agreements are untouched.
+verified AUCurves tower. The `*_denote` theorems below take the leaf model as a
+parameter `leafSem`, denote each orchestration `Com` through
+`jasminDenoteWith leafSem`, and reduce it to the abstract byte-level
+`Bls377Primitives` under the leaf agreements at that `leafSem`. No field
+realization over a mathematical `Fp` is stated; the values of the primitives
+themselves rest on the Rust KAT `bench/bls12_377_compare/bls377_kat.rs`.
 
 0 sorries; the only hypotheses are the opaque-leaf agreements
-(`Bls377FieldLeavesAgree` / `Bls377PairingLeavesAgree`), the AUCurves-leaf edge.
+(`Bls377FieldLeavesAgree` / `Bls377PairingLeavesAgree`) at the leaf-model
+parameter `leafSem`.
 -/
 
 @[expose] public section
@@ -225,9 +228,9 @@ def Bls377PairingLeavesAgree (prims : Bls377Primitives) (leafSem : LeafSem) : Pr
 
 /-! ## 3. Leaf `Expr` builders + denotation (the `extCall` bridge point)
 
-Each leaf `Expr` denotes (by `rfl`) to `jasminExtSem` of the looked-up
-arguments — the dialect's opaque-leaf semantics — which the carried agreement
-rewrites to the abstract primitive. -/
+Denoted through `jasminDenoteWith leafSem`, each leaf `Expr` is (by `rfl`)
+`leafSem` of the looked-up arguments, which a leaf agreement at `leafSem` rewrites
+to the abstract primitive. -/
 
 /-- Build a binary field-leaf `Expr` (`out = op(x, y)`) from two `Fp` vars. -/
 def fieldBinLeafExpr {Γ : Ctxt jasminDialect} (leafName : String)
@@ -520,169 +523,139 @@ def pairingProductCom :
 theorem pairingProductCom_eq_shadow :
     pairingProductCom = pairingProductComShadow := by rfl
 
-/-! ## 6. Denotation carries (each `Com` reduces to the abstract primitives) -/
+/-! ## 6. Denotation under a leaf oracle (each `Com` reduces to the abstract primitives)
 
-/-- **Field-add denotation (shadow).** `out = x + y` denotes to `prims.fieldAdd x y`
-    under the carried `Bls377FieldLeavesAgree`. -/
-theorem fieldAddComShadow_denote (prims : Bls377Primitives)
-    (hLeaf : Bls377FieldLeavesAgree prims jasminExtSem)
-    (x y : Fin FPSZ → BitVec 8) :
-    fieldAddComShadow.denote (.cons x (.cons y .nil)) = prims.fieldAdd x y := by
+Each theorem takes the leaf model as a parameter `leafSem`, denotes the deployed
+`Com` through `jasminDenoteWith leafSem`, and assumes the leaf agreement at that
+`leafSem`. `Bls12_377Denote.bls377Oracle` satisfies both agreements for every
+`prims`. -/
+
+/-- **The deployed field-add kernel, evaluated with a leaf oracle.** For a leaf
+    oracle `leafSem` realising the field primitives, `fieldAddCom`, denoted through
+    `jasminDenoteWith leafSem`, computes `prims.fieldAdd x y`. -/
+theorem fieldAddCom_denote (leafSem : LeafSem) (prims : Bls377Primitives)
+    (hLeaf : Bls377FieldLeavesAgree prims leafSem) (x y : Fin FPSZ → BitVec 8) :
+    @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        fieldAddCom (.cons x (.cons y .nil))
+      = prims.fieldAdd x y := by
+  rw [fieldAddCom_eq_shadow]
   obtain ⟨hAdd, _, _, _, _⟩ := hLeaf
-  show jasminExtSem addLeafName fieldBinArgTys fpRetTy (.cons x (.cons y .nil))
+  show leafSem addLeafName fieldBinArgTys fpRetTy (.cons x (.cons y .nil))
       = prims.fieldAdd x y
-  rw [hAdd (.cons x (.cons y .nil))]; rfl
+  rw [hAdd (.cons x (.cons y .nil))]
+  rfl
 
-/-- **Field-add denotation (deployed, front-sourced).** Via `fieldAddCom_eq_shadow`
-    + the shadow's denote, so downstream users of `fieldAddCom` by name are
-    unaffected by the front-sourcing. -/
-theorem fieldAddCom_denote (prims : Bls377Primitives)
-    (hLeaf : Bls377FieldLeavesAgree prims jasminExtSem)
-    (x y : Fin FPSZ → BitVec 8) :
-    fieldAddCom.denote (.cons x (.cons y .nil)) = prims.fieldAdd x y := by
-  rw [fieldAddCom_eq_shadow]; exact fieldAddComShadow_denote prims hLeaf x y
-
-/-- **Field-sub denotation (shadow).** `out = x − y` denotes to `prims.fieldSub x y`. -/
-theorem fieldSubComShadow_denote (prims : Bls377Primitives)
-    (hLeaf : Bls377FieldLeavesAgree prims jasminExtSem)
-    (x y : Fin FPSZ → BitVec 8) :
-    fieldSubComShadow.denote (.cons x (.cons y .nil)) = prims.fieldSub x y := by
+/-- **The deployed field-sub kernel, evaluated with a leaf oracle.** Computes
+    `prims.fieldSub x y`. -/
+theorem fieldSubCom_denote (leafSem : LeafSem) (prims : Bls377Primitives)
+    (hLeaf : Bls377FieldLeavesAgree prims leafSem) (x y : Fin FPSZ → BitVec 8) :
+    @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        fieldSubCom (.cons x (.cons y .nil))
+      = prims.fieldSub x y := by
+  rw [fieldSubCom_eq_shadow]
   obtain ⟨_, hSub, _, _, _⟩ := hLeaf
-  show jasminExtSem subLeafName fieldBinArgTys fpRetTy (.cons x (.cons y .nil))
+  show leafSem subLeafName fieldBinArgTys fpRetTy (.cons x (.cons y .nil))
       = prims.fieldSub x y
-  rw [hSub (.cons x (.cons y .nil))]; rfl
+  rw [hSub (.cons x (.cons y .nil))]
+  rfl
 
-/-- **Field-sub denotation (deployed, front-sourced).** -/
-theorem fieldSubCom_denote (prims : Bls377Primitives)
-    (hLeaf : Bls377FieldLeavesAgree prims jasminExtSem)
-    (x y : Fin FPSZ → BitVec 8) :
-    fieldSubCom.denote (.cons x (.cons y .nil)) = prims.fieldSub x y := by
-  rw [fieldSubCom_eq_shadow]; exact fieldSubComShadow_denote prims hLeaf x y
-
-/-- **Field-multiply denotation (shadow).** `out = x · y` denotes to
+/-- **The deployed field-multiply kernel, evaluated with a leaf oracle.** Computes
     `prims.fieldMul x y`. -/
-theorem fieldMulComShadow_denote (prims : Bls377Primitives)
-    (hLeaf : Bls377FieldLeavesAgree prims jasminExtSem)
-    (x y : Fin FPSZ → BitVec 8) :
-    fieldMulComShadow.denote (.cons x (.cons y .nil)) = prims.fieldMul x y := by
+theorem fieldMulCom_denote (leafSem : LeafSem) (prims : Bls377Primitives)
+    (hLeaf : Bls377FieldLeavesAgree prims leafSem) (x y : Fin FPSZ → BitVec 8) :
+    @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        fieldMulCom (.cons x (.cons y .nil))
+      = prims.fieldMul x y := by
+  rw [fieldMulCom_eq_shadow]
   obtain ⟨_, _, hMul, _, _⟩ := hLeaf
-  show jasminExtSem mulLeafName fieldBinArgTys fpRetTy (.cons x (.cons y .nil))
+  show leafSem mulLeafName fieldBinArgTys fpRetTy (.cons x (.cons y .nil))
       = prims.fieldMul x y
-  rw [hMul (.cons x (.cons y .nil))]; rfl
+  rw [hMul (.cons x (.cons y .nil))]
+  rfl
 
-/-- **Field-multiply denotation (deployed, front-sourced).** -/
-theorem fieldMulCom_denote (prims : Bls377Primitives)
-    (hLeaf : Bls377FieldLeavesAgree prims jasminExtSem)
-    (x y : Fin FPSZ → BitVec 8) :
-    fieldMulCom.denote (.cons x (.cons y .nil)) = prims.fieldMul x y := by
-  rw [fieldMulCom_eq_shadow]; exact fieldMulComShadow_denote prims hLeaf x y
-
-/-- **Field-square denotation (shadow).** `out = x²` denotes to
+/-- **The deployed field-square kernel, evaluated with a leaf oracle.** Computes
     `prims.fieldSquare x`. -/
-theorem fieldSquareComShadow_denote (prims : Bls377Primitives)
-    (hLeaf : Bls377FieldLeavesAgree prims jasminExtSem)
-    (x : Fin FPSZ → BitVec 8) :
-    fieldSquareComShadow.denote (.cons x .nil) = prims.fieldSquare x := by
+theorem fieldSquareCom_denote (leafSem : LeafSem) (prims : Bls377Primitives)
+    (hLeaf : Bls377FieldLeavesAgree prims leafSem) (x : Fin FPSZ → BitVec 8) :
+    @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        fieldSquareCom (.cons x .nil)
+      = prims.fieldSquare x := by
+  rw [fieldSquareCom_eq_shadow]
   obtain ⟨_, _, _, hSq, _⟩ := hLeaf
-  show jasminExtSem squareLeafName fieldUnArgTys fpRetTy (.cons x .nil)
+  show leafSem squareLeafName fieldUnArgTys fpRetTy (.cons x .nil)
       = prims.fieldSquare x
-  rw [hSq (.cons x .nil)]; rfl
+  rw [hSq (.cons x .nil)]
+  rfl
 
-/-- **Field-square denotation (deployed, front-sourced).** -/
-theorem fieldSquareCom_denote (prims : Bls377Primitives)
-    (hLeaf : Bls377FieldLeavesAgree prims jasminExtSem)
-    (x : Fin FPSZ → BitVec 8) :
-    fieldSquareCom.denote (.cons x .nil) = prims.fieldSquare x := by
-  rw [fieldSquareCom_eq_shadow]; exact fieldSquareComShadow_denote prims hLeaf x
-
-/-- **Field-inverse denotation (shadow).** `out = x⁻¹` denotes to
+/-- **The deployed field-inverse kernel, evaluated with a leaf oracle.** Computes
     `prims.fieldInv x`. -/
-theorem fieldInvComShadow_denote (prims : Bls377Primitives)
-    (hLeaf : Bls377FieldLeavesAgree prims jasminExtSem)
-    (x : Fin FPSZ → BitVec 8) :
-    fieldInvComShadow.denote (.cons x .nil) = prims.fieldInv x := by
+theorem fieldInvCom_denote (leafSem : LeafSem) (prims : Bls377Primitives)
+    (hLeaf : Bls377FieldLeavesAgree prims leafSem) (x : Fin FPSZ → BitVec 8) :
+    @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        fieldInvCom (.cons x .nil)
+      = prims.fieldInv x := by
+  rw [fieldInvCom_eq_shadow]
   obtain ⟨_, _, _, _, hInv⟩ := hLeaf
-  show jasminExtSem invLeafName fieldUnArgTys fpRetTy (.cons x .nil)
+  show leafSem invLeafName fieldUnArgTys fpRetTy (.cons x .nil)
       = prims.fieldInv x
-  rw [hInv (.cons x .nil)]; rfl
+  rw [hInv (.cons x .nil)]
+  rfl
 
-/-- **Field-inverse denotation (deployed, front-sourced).** -/
-theorem fieldInvCom_denote (prims : Bls377Primitives)
-    (hLeaf : Bls377FieldLeavesAgree prims jasminExtSem)
-    (x : Fin FPSZ → BitVec 8) :
-    fieldInvCom.denote (.cons x .nil) = prims.fieldInv x := by
-  rw [fieldInvCom_eq_shadow]; exact fieldInvComShadow_denote prims hLeaf x
-
-/-- **Single-pairing denotation.** `out = e(P, Q)` denotes to `prims.pairing P Q`
-    under the carried `Bls377PairingLeavesAgree`. -/
-theorem pairingComShadow_denote (prims : Bls377Primitives)
-    (hPair : Bls377PairingLeavesAgree prims jasminExtSem)
+/-- **The deployed single-pairing kernel, evaluated with a leaf oracle.** For a
+    leaf oracle `leafSem` realising the pairing primitives, `pairingCom` computes
+    `prims.pairing P Q`. -/
+theorem pairingCom_denote (leafSem : LeafSem) (prims : Bls377Primitives)
+    (hPair : Bls377PairingLeavesAgree prims leafSem)
     (p : Fin G1SZ → BitVec 8) (q : Fin G2SZ → BitVec 8) :
-    pairingComShadow.denote (.cons p (.cons q .nil)) = prims.pairing p q := by
+    @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        pairingCom (.cons p (.cons q .nil))
+      = prims.pairing p q := by
+  rw [pairingCom_eq_shadow]
   obtain ⟨hP, _⟩ := hPair
-  show jasminExtSem pairingLeafName pairingArgTys gtRetTy (.cons p (.cons q .nil))
+  show leafSem pairingLeafName pairingArgTys gtRetTy (.cons p (.cons q .nil))
       = prims.pairing p q
-  rw [hP (.cons p (.cons q .nil))]; rfl
+  rw [hP (.cons p (.cons q .nil))]
+  rfl
 
-/-- **Single-pairing denotation (deployed, front-sourced).** -/
-theorem pairingCom_denote (prims : Bls377Primitives)
-    (hPair : Bls377PairingLeavesAgree prims jasminExtSem)
-    (p : Fin G1SZ → BitVec 8) (q : Fin G2SZ → BitVec 8) :
-    pairingCom.denote (.cons p (.cons q .nil)) = prims.pairing p q := by
-  rw [pairingCom_eq_shadow]; exact pairingComShadow_denote prims hPair p q
-
-/-- **GT-product denotation (shadow).** `out = a · b` denotes to
+/-- **The deployed GT-product kernel, evaluated with a leaf oracle.** Computes
     `prims.fp12Mul a b`. -/
-theorem fp12MulComShadow_denote (prims : Bls377Primitives)
-    (hPair : Bls377PairingLeavesAgree prims jasminExtSem)
-    (a b : Fin GTSZ → BitVec 8) :
-    fp12MulComShadow.denote (.cons a (.cons b .nil)) = prims.fp12Mul a b := by
+theorem fp12MulCom_denote (leafSem : LeafSem) (prims : Bls377Primitives)
+    (hPair : Bls377PairingLeavesAgree prims leafSem) (a b : Fin GTSZ → BitVec 8) :
+    @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        fp12MulCom (.cons a (.cons b .nil))
+      = prims.fp12Mul a b := by
+  rw [fp12MulCom_eq_shadow]
   obtain ⟨_, hM⟩ := hPair
-  show jasminExtSem fp12MulLeafName fp12MulArgTys gtRetTy (.cons a (.cons b .nil))
+  show leafSem fp12MulLeafName fp12MulArgTys gtRetTy (.cons a (.cons b .nil))
       = prims.fp12Mul a b
-  rw [hM (.cons a (.cons b .nil))]; rfl
+  rw [hM (.cons a (.cons b .nil))]
+  rfl
 
-/-- **GT-product denotation (deployed, front-sourced).** -/
-theorem fp12MulCom_denote (prims : Bls377Primitives)
-    (hPair : Bls377PairingLeavesAgree prims jasminExtSem)
-    (a b : Fin GTSZ → BitVec 8) :
-    fp12MulCom.denote (.cons a (.cons b .nil)) = prims.fp12Mul a b := by
-  rw [fp12MulCom_eq_shadow]; exact fp12MulComShadow_denote prims hPair a b
-
-/-- **Pairing-product denotation.** `out = e(P₁,Q₁) · e(P₂,Q₂)` denotes to
-    `prims.fp12Mul (prims.pairing P₁ Q₁) (prims.pairing P₂ Q₂)` under the carried
-    `Bls377PairingLeavesAgree`. The pairing-equation check `= 1` in GT is the
-    caller's final equality test on this value. -/
-theorem pairingProductComShadow_denote (prims : Bls377Primitives)
-    (hPair : Bls377PairingLeavesAgree prims jasminExtSem)
+/-- **The deployed pairing-product verifier, evaluated with a leaf oracle.** For a
+    leaf oracle `leafSem` realising the pairing primitives, `pairingProductCom` —
+    the two `bls377_pairing` leaves accumulated by one `bls377_Fp12_mul` leaf —
+    computes `prims.fp12Mul (prims.pairing P₁ Q₁) (prims.pairing P₂ Q₂)`. The
+    pairing-equation check `= 1` in GT is the caller's final equality test on this
+    value. -/
+theorem pairingProductCom_denote (leafSem : LeafSem) (prims : Bls377Primitives)
+    (hPair : Bls377PairingLeavesAgree prims leafSem)
     (p1 : Fin G1SZ → BitVec 8) (q1 : Fin G2SZ → BitVec 8)
     (p2 : Fin G1SZ → BitVec 8) (q2 : Fin G2SZ → BitVec 8) :
-    pairingProductComShadow.denote (.cons p1 (.cons q1 (.cons p2 (.cons q2 .nil))))
+    @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        pairingProductCom (.cons p1 (.cons q1 (.cons p2 (.cons q2 .nil))))
       = prims.fp12Mul (prims.pairing p1 q1) (prims.pairing p2 q2) := by
+  rw [pairingProductCom_eq_shadow]
   obtain ⟨hP, hM⟩ := hPair
-  show jasminExtSem fp12MulLeafName fp12MulArgTys gtRetTy
-        (.cons (jasminExtSem pairingLeafName pairingArgTys gtRetTy
+  show leafSem fp12MulLeafName fp12MulArgTys gtRetTy
+        (.cons (leafSem pairingLeafName pairingArgTys gtRetTy
                   (.cons p1 (.cons q1 .nil)))
-          (.cons (jasminExtSem pairingLeafName pairingArgTys gtRetTy
+          (.cons (leafSem pairingLeafName pairingArgTys gtRetTy
                     (.cons p2 (.cons q2 .nil))) .nil))
       = prims.fp12Mul (prims.pairing p1 q1) (prims.pairing p2 q2)
   rw [hP (.cons p1 (.cons q1 .nil)), hP (.cons p2 (.cons q2 .nil))]
   simp only [HVector.head, HVector.tail]
   rw [hM (.cons (prims.pairing p1 q1) (.cons (prims.pairing p2 q2) .nil))]
-  simp only [HVector.head, HVector.tail]
   rfl
-
-/-- **Pairing-product denotation (deployed, front-sourced).** Via
-    `pairingProductCom_eq_shadow` + the shadow's denote, so `Bls12_377Emit`
-    and downstream users of `pairingProductCom` by name are unaffected. -/
-theorem pairingProductCom_denote (prims : Bls377Primitives)
-    (hPair : Bls377PairingLeavesAgree prims jasminExtSem)
-    (p1 : Fin G1SZ → BitVec 8) (q1 : Fin G2SZ → BitVec 8)
-    (p2 : Fin G1SZ → BitVec 8) (q2 : Fin G2SZ → BitVec 8) :
-    pairingProductCom.denote (.cons p1 (.cons q1 (.cons p2 (.cons q2 .nil))))
-      = prims.fp12Mul (prims.pairing p1 q1) (prims.pairing p2 q2) := by
-  rw [pairingProductCom_eq_shadow]
-  exact pairingProductComShadow_denote prims hPair p1 q1 p2 q2
 
 end CatCrypt.Crypto.Pairing.Bls12_377Emit
 

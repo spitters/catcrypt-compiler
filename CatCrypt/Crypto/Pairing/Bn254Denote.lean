@@ -13,19 +13,20 @@ public import CatCrypt.Crypto.Pairing.Bn254Emit
 The deployed BN254 `buildOrchCom`-generated straight-line kernels
 `Bn254Emit.pairingCom` (a single `bn254_pairing` leaf) and
 `Bn254Emit.g1MsmTermCom` (one `bn254_g1_scalar_mul` leaf accumulated by one
-`bn254_g1_add` leaf) are denoted here against an **abstract** leaf oracle
-`leafSem : LeafSem`, threaded through the `DialectDenote jasminDialect` instance
+`bn254_g1_add` leaf) are denoted by `Bn254Emit.pairingCom_denote` /
+`Bn254Emit.g1MsmTermCom_denote` against a leaf oracle `leafSem : LeafSem` passed as
+a parameter, threaded through the `DialectDenote jasminDialect` instance
 `JasminDialect.jasminDenoteWith leafSem` (whose `extCall` arm consults `leafSem`
-and whose every other arm delegates to `jasminDenote`).
+and whose every other arm delegates to `jasminDenote`). This module supplies the
+oracles that parameter is instantiated at.
 
 * `bn254Oracle prims` — a concrete leaf oracle realising the BN254 group + pairing
   primitives (`prims.g1Add` / `prims.g1Mul` / `prims.g2Add` / `prims.g2Mul` on the
   G1/G2 signatures, `prims.pairing` on the pairing signature, `prims.fp12Mul` on
   the `fp12_mul` signature), with `bn254Oracle_ecAgrees` / `bn254Oracle_pairingAgrees`
-  proving it satisfies the leaf agreements `EcLeafAgrees` / `PairingLeavesAgree`.
-* `pairingCom_denoteWith` / `g1MsmTermCom_denoteWith` — the deployed kernels,
-  evaluated with any leaf oracle realising the relevant primitives, compute
-  `prims.pairing P Q` and `prims.g1Add acc (prims.g1Mul k P)`.
+  proving it satisfies the leaf agreements `EcLeafAgrees` / `PairingLeavesAgree`,
+  so the hypotheses of the `Bn254Emit` denotation theorems are satisfiable for
+  every `prims`.
 * `bn254LeafOracle` / `bn254LeafOracle_ecAgrees` / `bn254LeafOracle_pairingAgrees`
   — the leaf oracle for the deployed primitives and its agreements, named axioms
   (the leaf edges; a leaf proof or a jasmin/AUCurves bridge would establish them).
@@ -82,52 +83,7 @@ theorem bn254Oracle_pairingAgrees (prims : Bn254Primitives) :
     PairingLeavesAgree prims (bn254Oracle prims) := by
   refine ⟨?_, ?_⟩ <;> (intro args; rfl)
 
-/-! ## 2. Value of the deployed `Com`s under a realising leaf oracle -/
-
-/-- **The deployed single BN254 pairing, evaluated with a leaf oracle.** For a leaf
-    oracle `leafSem` realising the pairing primitives, the deployed
-    `Bn254Emit.pairingCom` — denoted through `jasminDenoteWith leafSem` — computes
-    `prims.pairing P Q`. The single `extCall` arm unfolds to a `leafSem` call, and
-    the pairing agreement rewrite closes it. -/
-theorem pairingCom_denoteWith (leafSem : LeafSem) (prims : Bn254Primitives)
-    (h : PairingLeavesAgree prims leafSem)
-    (p : Fin G1SZ → BitVec 8) (q : Fin G2SZ → BitVec 8) :
-    @Com.denote _ _ _ (JasminDialect.jasminDenoteWith leafSem) _ _
-        Bn254Emit.pairingCom
-        (.cons p (.cons q .nil))
-      = prims.pairing p q := by
-  rw [Bn254Emit.pairingCom_eq_shadow]
-  obtain ⟨hP, _⟩ := h
-  show leafSem pairingLeafName pairingArgTys gtRetTy (.cons p (.cons q .nil))
-      = prims.pairing p q
-  rw [hP (.cons p (.cons q .nil))]
-  rfl
-
-/-- **The deployed G1 MSM step, evaluated with a leaf oracle.** For a leaf oracle
-    `leafSem` realising the G1 group primitives (`EcLeafAgrees prims leafSem`), the
-    deployed `Bn254Emit.g1MsmTermCom` — denoted through `jasminDenoteWith leafSem`
-    — computes `prims.g1Add acc (prims.g1Mul k P)` (the `scalarFold` step
-    `acc + k·P`). The scalar-mul and point-add `extCall` arms each unfold to a
-    `leafSem` call, and the two carried agreements close it. -/
-theorem g1MsmTermCom_denoteWith (leafSem : LeafSem) (prims : Bn254Primitives)
-    (h : EcLeafAgrees prims leafSem)
-    (acc : Fin G1SZ → BitVec 8) (k : Fin FPSZ → BitVec 8) (P : Fin G1SZ → BitVec 8) :
-    @Com.denote _ _ _ (JasminDialect.jasminDenoteWith leafSem) _ _
-        Bn254Emit.g1MsmTermCom
-        (.cons acc (.cons k (.cons P .nil)))
-      = prims.g1Add acc (prims.g1Mul k P) := by
-  rw [Bn254Emit.g1MsmTermCom_eq_shadow]
-  obtain ⟨hAdd, hMul, _, _⟩ := h
-  show leafSem g1AddLeafName g1AddArgTys g1RetTy
-        (.cons acc (.cons (leafSem g1MulLeafName g1MulArgTys g1RetTy
-                            (.cons k (.cons P .nil))) .nil))
-      = prims.g1Add acc (prims.g1Mul k P)
-  rw [hMul (.cons k (.cons P .nil))]
-  simp only [HVector.head, HVector.tail]
-  rw [hAdd (.cons acc (.cons (prims.g1Mul k P) .nil))]
-  rfl
-
-/-! ## 3. The deployed leaf oracle + the kernels at that oracle -/
+/-! ## 2. The deployed leaf oracle + the kernels at that oracle -/
 
 /-- `Bn254Primitives` is inhabited (all fields are functions into `BitVec 8`), so
     the deployed primitives can be introduced as an opaque constant. -/
@@ -168,7 +124,7 @@ theorem pairingCom_denote (p : Fin G1SZ → BitVec 8) (q : Fin G2SZ → BitVec 8
         Bn254Emit.pairingCom
         (.cons p (.cons q .nil))
       = bn254DeployedPrims.pairing p q :=
-  pairingCom_denoteWith bn254LeafOracle bn254DeployedPrims
+  Bn254Emit.pairingCom_denote bn254LeafOracle bn254DeployedPrims
     bn254LeafOracle_pairingAgrees p q
 
 /-- **The deployed G1 MSM step at the deployed oracle.** The deployed
@@ -182,7 +138,7 @@ theorem g1MsmTermCom_denote
         Bn254Emit.g1MsmTermCom
         (.cons acc (.cons k (.cons P .nil)))
       = bn254DeployedPrims.g1Add acc (bn254DeployedPrims.g1Mul k P) :=
-  g1MsmTermCom_denoteWith bn254LeafOracle bn254DeployedPrims
+  Bn254Emit.g1MsmTermCom_denote bn254LeafOracle bn254DeployedPrims
     bn254LeafOracle_ecAgrees acc k P
 
 end CatCrypt.Crypto.Pairing.Bn254Denote

@@ -12,18 +12,18 @@ public import CatCrypt.Crypto.Pairing.Bn254Emit
 
 The deployed `Bn254Emit.eip197VerifyCom` — the `buildOrchCom`-generated
 straight-line `Com` of two `pairing` leaves accumulated by one `fp12_mul` leaf —
-is denoted here against an **abstract** leaf oracle `leafSem : LeafSem`, threaded
-through the `DialectDenote jasminDialect` instance
-`JasminDialect.jasminDenoteWith leafSem` (whose `extCall` arm consults `leafSem`
-and whose every other arm delegates to `jasminDenote`).
+is denoted by `Bn254Emit.eip197VerifyCom_denote` against a leaf oracle
+`leafSem : LeafSem` passed as a parameter, threaded through the
+`DialectDenote jasminDialect` instance `JasminDialect.jasminDenoteWith leafSem`
+(whose `extCall` arm consults `leafSem` and whose every other arm delegates to
+`jasminDenote`). This module supplies the oracles that parameter is instantiated
+at.
 
 * `pairingOracle prims` — a concrete leaf oracle realising the BN254 pairing-side
   primitives (`prims.pairing` on the pairing signature, `prims.fp12Mul` on the
   `fp12_mul` signature), with `pairingOracle_agrees` proving it satisfies the
-  leaf agreement `PairingLeavesAgree`.
-* `eip197VerifyCom_denoteWith` — the deployed verifier, evaluated with any leaf
-  oracle realising the pairing primitives, computes
-  `fp12Mul (pairing P₁ Q₁) (pairing P₂ Q₂)`.
+  leaf agreement `PairingLeavesAgree`, so the hypothesis of
+  `Bn254Emit.eip197VerifyCom_denote` is satisfiable for every `prims`.
 * `eip197LeafOracle` / `eip197LeafOracle_agrees` — the leaf oracle for the
   deployed primitives and its agreement, a named axiom (the leaf edge; a leaf
   proof or a jasmin/AUCurves bridge would establish it).
@@ -68,41 +68,7 @@ theorem pairingOracle_agrees (prims : Bn254Primitives) :
   · intro args; rfl
   · intro args; rfl
 
-/-! ## 2. Value of the deployed `Com` under a realising leaf oracle -/
-
-/-- **The deployed EIP-197 verifier, evaluated with a leaf oracle.** For a leaf
-    oracle `leafSem` realising the pairing primitives
-    (`PairingLeavesAgree prims leafSem`), the deployed
-    `Bn254Emit.eip197VerifyCom` — denoted through the enabler instance
-    `jasminDenoteWith leafSem` — computes
-    `prims.fp12Mul (prims.pairing P₁ Q₁) (prims.pairing P₂ Q₂)`.
-
-    `Com.denote` driven by `jasminDenoteWith leafSem` unfolds each of the
-    verifier's three `extCall` arms (two `pairing`, one `fp12_mul`) to a
-    `leafSem` call, so the `show` normalises the program to the leaf-nested term
-    and the two `pairing` + one `fp12_mul` agreement rewrites close it. -/
-theorem eip197VerifyCom_denoteWith (leafSem : LeafSem) (prims : Bn254Primitives)
-    (h : PairingLeavesAgree prims leafSem)
-    (p1 : Fin G1SZ → BitVec 8) (q1 : Fin G2SZ → BitVec 8)
-    (p2 : Fin G1SZ → BitVec 8) (q2 : Fin G2SZ → BitVec 8) :
-    @Com.denote _ _ _ (JasminDialect.jasminDenoteWith leafSem) _ _
-        Bn254Emit.eip197VerifyCom
-        (.cons p1 (.cons q1 (.cons p2 (.cons q2 .nil))))
-      = prims.fp12Mul (prims.pairing p1 q1) (prims.pairing p2 q2) := by
-  rw [Bn254Emit.eip197VerifyCom_eq_shadow]
-  obtain ⟨hP, hM⟩ := h
-  show leafSem fp12MulLeafName fp12MulArgTys gtRetTy
-        (.cons (leafSem pairingLeafName pairingArgTys gtRetTy
-                  (.cons p1 (.cons q1 .nil)))
-          (.cons (leafSem pairingLeafName pairingArgTys gtRetTy
-                    (.cons p2 (.cons q2 .nil))) .nil))
-      = prims.fp12Mul (prims.pairing p1 q1) (prims.pairing p2 q2)
-  rw [hP (.cons p1 (.cons q1 .nil)), hP (.cons p2 (.cons q2 .nil))]
-  simp only [HVector.head, HVector.tail]
-  rw [hM (.cons (prims.pairing p1 q1) (.cons (prims.pairing p2 q2) .nil))]
-  rfl
-
-/-! ## 3. The deployed leaf oracle + the verifier at that oracle -/
+/-! ## 2. The deployed leaf oracle + the verifier at that oracle -/
 
 /-- `Bn254Primitives` is inhabited (all fields are functions into `BitVec 8`), so
     the deployed primitives can be introduced as an opaque constant. -/
@@ -137,7 +103,7 @@ theorem eip197VerifyCom_denote
         (.cons p1 (.cons q1 (.cons p2 (.cons q2 .nil))))
       = deployedPrims.fp12Mul (deployedPrims.pairing p1 q1)
           (deployedPrims.pairing p2 q2) :=
-  eip197VerifyCom_denoteWith eip197LeafOracle deployedPrims eip197LeafOracle_agrees
+  Bn254Emit.eip197VerifyCom_denote eip197LeafOracle deployedPrims eip197LeafOracle_agrees
     p1 q1 p2 q2
 
 /-! ## 4. The schedule evaluator (same value, independent of the `Com`) -/

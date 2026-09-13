@@ -34,8 +34,9 @@ every downstream fact of the hand-authored one:
 * **exactness** — the generated `Com` is *definitionally* the hand-authored one
   (`pairingProductBuilt_eq`), so `pairingProductCom_denote`, the array-ABI
   backend, and the memory-safety framing all transfer verbatim;
-* **denote gate** — the generated `Com` denotes to
-  `fp12Mul (pairing P₁ Q₁) (pairing P₂ Q₂)` under the carried leaf agreement
+* **denote gate** — for a leaf model `leafSem` passed as a parameter, the
+  generated `Com`, denoted through `jasminDenoteWith leafSem`, computes
+  `fp12Mul (pairing P₁ Q₁) (pairing P₂ Q₂)` under the leaf agreement at `leafSem`
   (`pairingProductBuilt_denote`), reusing `pairingProductCom_denote`;
 * **shape gate (array-ABI KAT sketch)** — lowering the generated `Com` through
   `Com.toLprogArrAbi` + `renderLprogAtt` produces the SysV `.s` that `call`s the
@@ -101,18 +102,20 @@ theorem pairingProductBuilt_eq : pairingProductBuilt = pairingProductCom := by
 
 /-! ## 3. Denote gate (value correctness under the leaf agreement) -/
 
-/-- **Denote gate.** The front-generated orchestration denotes to
-    `fp12Mul (pairing P₁ Q₁) (pairing P₂ Q₂)` under the carried
-    `Bls377PairingLeavesAgree` — reusing `pairingProductCom_denote` through
-    `pairingProductBuilt_eq`. -/
-theorem pairingProductBuilt_denote (prims : Bls377Primitives)
-    (hPair : Bls377PairingLeavesAgree prims jasminExtSem)
+/-- **Denote gate.** For a leaf model `leafSem` satisfying
+    `Bls377PairingLeavesAgree prims leafSem`, the front-generated orchestration,
+    denoted through `jasminDenoteWith leafSem`, computes
+    `fp12Mul (pairing P₁ Q₁) (pairing P₂ Q₂)` — reusing
+    `Bls12_377Emit.pairingProductCom_denote` through `pairingProductBuilt_eq`. -/
+theorem pairingProductBuilt_denote (leafSem : LeafSem) (prims : Bls377Primitives)
+    (hPair : Bls377PairingLeavesAgree prims leafSem)
     (p1 : Fin G1SZ → BitVec 8) (q1 : Fin G2SZ → BitVec 8)
     (p2 : Fin G1SZ → BitVec 8) (q2 : Fin G2SZ → BitVec 8) :
-    pairingProductBuilt.denote (.cons p1 (.cons q1 (.cons p2 (.cons q2 .nil))))
+    @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        pairingProductBuilt (.cons p1 (.cons q1 (.cons p2 (.cons q2 .nil))))
       = prims.fp12Mul (prims.pairing p1 q1) (prims.pairing p2 q2) := by
   rw [pairingProductBuilt_eq]
-  exact pairingProductCom_denote prims hPair p1 q1 p2 q2
+  exact pairingProductCom_denote leafSem prims hPair p1 q1 p2 q2
 
 /-! ## 4. Shape gate (array-ABI emit KAT sketch)
 

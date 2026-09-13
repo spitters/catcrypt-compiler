@@ -58,12 +58,14 @@ flagging the group add law as the remaining trusted edge.
 ## AUCurves leaf-name binding
 
 The leaf names below record which AUCurves crate symbol realises each
-`Bls12381Emit` leaf. The `*Backed` predicates re-package the carried agreements
-so a downstream caller states "these leaves are the AUCurves verified witness"
-once, and the existing `Bls12381Emit.*_denote` theorems carry through verbatim.
+`Bls12381Emit` leaf. The `*Backed` predicates re-package the leaf agreements at a
+leaf model `leafSem`, so a downstream caller states "the leaves of `leafSem` are
+the AUCurves verified witness" once, and the `Bls12381Emit.*_denote` theorems,
+which denote each `Com` through `jasminDenoteWith leafSem`, carry through
+verbatim.
 
-0 sorries; no new custom axioms; the only hypotheses are the carried leaf
-agreements (now explicitly the AUCurves witness).
+0 sorries; no new custom axioms; the only hypotheses are the leaf agreements at
+the leaf-model parameter `leafSem`, named for the AUCurves witness.
 -/
 
 @[expose] public section
@@ -72,7 +74,8 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.Pairing.Bls12381AUCurves
 
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect (jasminExtSem)
+open CatCrypt.Crypto.SecureCompilation.VIR
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect (jasminDenoteWith)
 open CatCrypt.Crypto.Pairing.Bls12381Emit
 
 /-! ## 1. AUCurves crate-symbol binding for each leaf
@@ -100,74 +103,84 @@ def g1MulAUCurvesSymbol : String := "bls12_381::g1_scalar_mul (group-law over ve
 
 /-! ## 2. AUCurves-backed agreement predicates
 
-`PairingLeavesAUCurvesBacked prims` asserts the pairing-side leaves of
-`Bls12381Emit` agree with `prims` under `jasminExtSem`, with the intended
-witness being the AUCurves verified `pairing` / `fp12_mul`. It is definitionally
-the existing `Bls12381Emit.PairingLeavesAgree` at `jasminExtSem`; naming it
-records that the witness is the verified AUCurves tower. -/
+`PairingLeavesAUCurvesBacked prims leafSem` asserts the pairing-side leaves of
+`Bls12381Emit` agree with `prims` under the leaf model `leafSem`, with the
+intended witness being the AUCurves verified `pairing` / `fp12_mul`. It is
+definitionally `Bls12381Emit.PairingLeavesAgree prims leafSem`; naming it records
+that the witness is the verified AUCurves tower. -/
 
-/-- The pairing / GT-multiply leaves are realised by the AUCurves **verified**
-    `pairing` / `fp12_mul`. Definitionally `Bls12381Emit.PairingLeavesAgree prims
-    jasminExtSem`; the name documents the verified witness. -/
-def PairingLeavesAUCurvesBacked (prims : BlsPrimitives) : Prop :=
-  PairingLeavesAgree prims jasminExtSem
+/-- The pairing / GT-multiply leaves, under the leaf model `leafSem`, are realised
+    by the AUCurves **verified** `pairing` / `fp12_mul`. Definitionally
+    `Bls12381Emit.PairingLeavesAgree prims leafSem`; the name documents the
+    verified witness. -/
+def PairingLeavesAUCurvesBacked (prims : BlsPrimitives) (leafSem : LeafSem) : Prop :=
+  PairingLeavesAgree prims leafSem
 
-/-- The G1/G2 group leaves are realised by the AUCurves-field-backed (but
-    group-law **trusted**) `g1_add` / … . Definitionally
-    `Bls12381Emit.EcLeafAgrees prims jasminExtSem`. -/
-def EcLeavesAUCurvesBacked (prims : BlsPrimitives) : Prop :=
-  EcLeafAgrees prims jasminExtSem
+/-- The G1/G2 group leaves, under the leaf model `leafSem`, are realised by the
+    AUCurves-field-backed (but group-law **trusted**) `g1_add` / … .
+    Definitionally `Bls12381Emit.EcLeafAgrees prims leafSem`. -/
+def EcLeavesAUCurvesBacked (prims : BlsPrimitives) (leafSem : LeafSem) : Prop :=
+  EcLeafAgrees prims leafSem
 
 /-! ## 3. The verifier denotations, restated under the AUCurves-backed witness
 
-These carry the existing `Bls12381Emit.*_denote` theorems through the
-AUCurves-backed predicates verbatim — making explicit that the verifier
-equations are computed by the AUCurves verified pairing/GT-multiply (and the
-trusted group law for the MSM). No new content; the AUCurves witness is the
-intended discharge of the carried agreement. -/
+These carry the `Bls12381Emit.*_denote` theorems through the AUCurves-backed
+predicates verbatim. Each takes the leaf model `leafSem` as a parameter and
+denotes the verifier `Com` through `jasminDenoteWith leafSem`; the AUCurves
+binding is the intended `leafSem`. -/
 
-/-- **BLS verify under the AUCurves witness.** `e(σ, G2)` is computed by the
-    AUCurves **verified** `pairing` (`PairingLeavesAUCurvesBacked`). The full
-    check `e(σ,G2) = e(H(m),pk)` compares this to the RHS pairing. -/
-theorem blsVerify_aucurves (prims : BlsPrimitives)
-    (hPair : PairingLeavesAUCurvesBacked prims)
+/-- **BLS verify under the AUCurves witness.** For a leaf model `leafSem` whose
+    pairing leaves are the AUCurves **verified** `pairing`
+    (`PairingLeavesAUCurvesBacked prims leafSem`), `blsVerifyLhsCom` denotes
+    `e(σ, G2)`. The full check `e(σ,G2) = e(H(m),pk)` compares this to the RHS
+    pairing. -/
+theorem blsVerify_aucurves (leafSem : LeafSem) (prims : BlsPrimitives)
+    (hPair : PairingLeavesAUCurvesBacked prims leafSem)
     (sig : Fin G1SZ → BitVec 8) (g2 : Fin G2SZ → BitVec 8) :
-    blsVerifyLhsCom.denote (.cons sig (.cons g2 .nil)) = prims.pairing sig g2 :=
-  blsVerifyLhsCom_denote prims hPair sig g2
+    @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        blsVerifyLhsCom (.cons sig (.cons g2 .nil))
+      = prims.pairing sig g2 :=
+  blsVerifyLhsCom_denote leafSem prims hPair sig g2
 
-/-- **KZG opening verify under the AUCurves witness.** `e(π, [s−z]G2)` is computed
-    by the AUCurves **verified** `pairing`. -/
-theorem kzgVerify_aucurves (prims : BlsPrimitives)
-    (hPair : PairingLeavesAUCurvesBacked prims)
+/-- **KZG opening verify under the AUCurves witness.** For a leaf model `leafSem`
+    whose pairing leaves are the AUCurves **verified** `pairing`,
+    `kzgVerifyLhsCom` denotes `e(π, [s−z]G2)`. -/
+theorem kzgVerify_aucurves (leafSem : LeafSem) (prims : BlsPrimitives)
+    (hPair : PairingLeavesAUCurvesBacked prims leafSem)
     (proof : Fin G1SZ → BitVec 8) (sMinusZ_g2 : Fin G2SZ → BitVec 8) :
-    kzgVerifyLhsCom.denote (.cons proof (.cons sMinusZ_g2 .nil))
+    @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        kzgVerifyLhsCom (.cons proof (.cons sMinusZ_g2 .nil))
       = prims.pairing proof sMinusZ_g2 :=
-  kzgVerifyLhsCom_denote prims hPair proof sMinusZ_g2
+  kzgVerifyLhsCom_denote leafSem prims hPair proof sMinusZ_g2
 
-/-- **Groth16 verify under the AUCurves witness.** The pairing-product
-    `e(αG1,βG2)·e(L,γG2)·e(C,δG2)` is computed entirely by the AUCurves
-    **verified** `pairing` (three calls) and `fp12_mul` (two calls). -/
-theorem groth16Verify_aucurves (prims : BlsPrimitives)
-    (hPair : PairingLeavesAUCurvesBacked prims)
+/-- **Groth16 verify under the AUCurves witness.** For a leaf model `leafSem`
+    whose pairing and GT-multiply leaves are the AUCurves **verified** `pairing`
+    (three calls) and `fp12_mul` (two calls), `groth16VerifyRhsCom` denotes the
+    pairing-product `e(αG1,βG2)·e(L,γG2)·e(C,δG2)`. -/
+theorem groth16Verify_aucurves (leafSem : LeafSem) (prims : BlsPrimitives)
+    (hPair : PairingLeavesAUCurvesBacked prims leafSem)
     (aG1 : Fin G1SZ → BitVec 8) (bG2 : Fin G2SZ → BitVec 8)
     (l : Fin G1SZ → BitVec 8) (gG2 : Fin G2SZ → BitVec 8)
     (c : Fin G1SZ → BitVec 8) (dG2 : Fin G2SZ → BitVec 8) :
-    groth16VerifyRhsCom.denote
+    @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        groth16VerifyRhsCom
         (.cons aG1 (.cons bG2 (.cons l (.cons gG2 (.cons c (.cons dG2 .nil))))))
       = prims.fp12Mul
           (prims.fp12Mul (prims.pairing aG1 bG2) (prims.pairing l gG2))
           (prims.pairing c dG2) :=
-  groth16VerifyRhsCom_denote prims hPair aG1 bG2 l gG2 c dG2
+  groth16VerifyRhsCom_denote leafSem prims hPair aG1 bG2 l gG2 c dG2
 
-/-- **G1 MSM step under the (trusted) group-law witness.** One `scalarFold` step
-    `acc ↦ acc + k·P` is computed by the `g1_add` / `g1_scalar_mul` leaves —
-    built over the AUCurves verified `Fp`/`Fp2` ops, but with the group-law
-    formulas as the carried trusted edge (`EcLeavesAUCurvesBacked`). -/
-theorem g1MsmStep_aucurves (prims : BlsPrimitives)
-    (hLeaf : EcLeavesAUCurvesBacked prims)
+/-- **G1 MSM step under the (trusted) group-law witness.** For a leaf model
+    `leafSem` whose `g1_add` / `g1_scalar_mul` leaves are built over the AUCurves
+    verified `Fp`/`Fp2` ops, with the group-law formulas as the trusted edge
+    (`EcLeavesAUCurvesBacked prims leafSem`), `g1MsmTermCom` denotes one
+    `scalarFold` step `acc ↦ acc + k·P`. -/
+theorem g1MsmStep_aucurves (leafSem : LeafSem) (prims : BlsPrimitives)
+    (hLeaf : EcLeavesAUCurvesBacked prims leafSem)
     (acc : Fin G1SZ → BitVec 8) (k : Fin FPSZ → BitVec 8) (P : Fin G1SZ → BitVec 8) :
-    g1MsmTermCom.denote (.cons acc (.cons k (.cons P .nil)))
+    @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        g1MsmTermCom (.cons acc (.cons k (.cons P .nil)))
       = prims.g1Add acc (prims.g1Mul k P) :=
-  g1MsmTermCom_denote prims hLeaf acc k P
+  g1MsmTermCom_denote leafSem prims hLeaf acc k P
 
 end CatCrypt.Crypto.Pairing.Bls12381AUCurves

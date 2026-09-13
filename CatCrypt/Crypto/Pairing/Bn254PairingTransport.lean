@@ -55,7 +55,7 @@ whose bedrock2 WP spec is `bn254_fp12_to_Z out = bn254_optimal_ate_spec …`
 field-multiply spec (the `Curve/BN254Curve_G1_BignumSpecs.v` Montgomery-mul
 leaf, consumed by `BN254_PairingCorrect.v`).
 
-## Honest framing (what this file does and does NOT claim)
+## Scope (what this file does and does not claim)
 
 The transport axioms are **cross-prover edges** (Rocq→Lean): each carries an
 AUCurves Rocq-`Qed`'d spec into Lean as a named hypothesis, exactly the status
@@ -215,8 +215,9 @@ theorem deployedBn254Prims_leavesAgree :
     value).**  `Bn254Emit.eip197VerifyCom`, denoted through
     `jasminDenoteWith (pairingOracle deployedBn254Prims)`, computes the deployed
     byte product `fp12Mul (pairing P₁ Q₁) (pairing P₂ Q₂)`.  Instantiation of
-    `Eip197Denote.eip197VerifyCom_denoteWith` at `deployedBn254Prims` and the
-    Lean-proven agreement — no `eip197LeafOracle_agrees` self-seal. -/
+    the leaf-parametric `Bn254Emit.eip197VerifyCom_denote` at the leaf model
+    `pairingOracle deployedBn254Prims` and the Lean-proven agreement — no
+    `eip197LeafOracle_agrees` self-seal. -/
 theorem eip197VerifyCom_denote_deployed
     (p1 : Fin G1SZ → BitVec 8) (q1 : Fin G2SZ → BitVec 8)
     (p2 : Fin G1SZ → BitVec 8) (q2 : Fin G2SZ → BitVec 8) :
@@ -225,7 +226,7 @@ theorem eip197VerifyCom_denote_deployed
         Bn254Emit.eip197VerifyCom
         (.cons p1 (.cons q1 (.cons p2 (.cons q2 .nil))))
       = bn254Fp12MulLeaf (bn254PairingLeaf p1 q1) (bn254PairingLeaf p2 q2) :=
-  eip197VerifyCom_denoteWith (pairingOracle deployedBn254Prims) deployedBn254Prims
+  Bn254Emit.eip197VerifyCom_denote (pairingOracle deployedBn254Prims) deployedBn254Prims
     deployedBn254Prims_leavesAgree p1 q1 p2 q2
 
 /-- **The deployed EIP-197 verifier at the transport-anchored oracle (field

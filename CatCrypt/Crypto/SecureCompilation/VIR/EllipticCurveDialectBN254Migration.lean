@@ -119,31 +119,32 @@ add. -/
     (through the bespoke `WirePoint.toAlg`, then embed). -/
 def wirePointToEC (P : WirePoint) : ECPoint CatCrypt.Util.BN254 := bnToEC P.toAlg
 
-/-- **BN254 `G1` migration headline.** The emitted BN254 `G1` point-add
-    (`emittedAffineAdd`), interpreted into the EllipticCurve dialect's `ECPoint`
-    (`wirePointToEC`), denotes to the dialect's `padd` on the interpreted
-    **distinct** affine input points — under the same `FieldLeafAgrees` +
-    `FieldRealizes` edges the bespoke `G1` realization carries.
+/-- **BN254 `G1` migration headline.** For a leaf model `leafSem` passed as a
+    parameter, the emitted BN254 `G1` point-add (`emittedAffineAdd leafSem`, whose
+    field-leaf `Com`s are denoted through `jasminDenoteWith leafSem`), interpreted
+    into the EllipticCurve dialect's `ECPoint` (`wirePointToEC`), denotes to the
+    dialect's `padd` on the interpreted **distinct** affine input points — under
+    `FieldLeafAgrees prims leafSem` and `FieldRealizes prims`, the hypotheses of
+    `emittedAffineAdd_realizes`.
 
-    This is the single **one-tie-per-level** structural tie: the verified
-    emitted `G1` group-law kernel is connected to the dialect's abstract group
-    op, so every BN254-`G1` protocol inherits the group law without re-proving
-    it. -/
-theorem bn254_padd_realized (prims : FieldPrimitives)
-    (hLeaf : FieldLeafAgrees prims jasminExtSem) (hReal : FieldRealizes prims)
+    This is the single **one-tie-per-level** structural tie: the emitted `G1`
+    group-law kernel is connected to the dialect's abstract group op, so every
+    BN254-`G1` protocol inherits the group law without re-proving it. -/
+theorem bn254_padd_realized (leafSem : LeafSem) (prims : FieldPrimitives)
+    (hLeaf : FieldLeafAgrees prims leafSem) (hReal : FieldRealizes prims)
     (P Q : WirePoint) (hne : P.toAlg.x ≠ Q.toAlg.x) :
-    wirePointToEC (emittedAffineAdd P Q)
+    wirePointToEC (emittedAffineAdd leafSem P Q)
       = ecDenote.denote (.padd CatCrypt.Util.BN254 bn254Params)
           (.cons (wirePointToEC P) (.cons (wirePointToEC Q) .nil)) := by
   -- the dialect `padd` denotation is the abstract group add `bn254Params.add`
-  show wirePointToEC (emittedAffineAdd P Q)
+  show wirePointToEC (emittedAffineAdd leafSem P Q)
     = bn254Params.add (wirePointToEC P) (wirePointToEC Q)
   -- rewrite the group add on the embedded distinct points to `bn254AffineAdd`
   unfold wirePointToEC
   rw [bnToEC_add_distinct P.toAlg Q.toAlg hne]
   -- and the emitted kernel realizes exactly that `bn254AffineAdd`; the chord
   -- slope coordinates agree because `WirePoint.toAlg` is `wireToFp`-wise.
-  rw [emittedAffineAdd_realizes prims hLeaf hReal P Q]
+  rw [emittedAffineAdd_realizes leafSem prims hLeaf hReal P Q]
   rfl
 
 /-! ## 4. Smoke test: the embedding commutes structurally

@@ -12,18 +12,18 @@ public import CatCrypt.Crypto.Pairing.MsmReduce
 
 The deployed `buildOrchCom`-generated straight-line MSM-step kernel
 `MsmReduce.msmTermCom` — one `ec_scalar_mul` leaf accumulated by one
-`ec_point_add` leaf, the `scalarFold` body `acc ↦ acc + k_i·P_i` — is denoted
-here against an **abstract** leaf oracle `leafSem : EcLeafSem`, threaded through
-the `DialectDenote jasminDialect` instance `JasminDialect.jasminDenoteWith leafSem`
-(whose `extCall` arm consults `leafSem` and whose every other arm delegates to
-`jasminDenote`).
+`ec_point_add` leaf, the `scalarFold` body `acc ↦ acc + k_i·P_i` — is denoted in
+`MsmReduce.msmTermCom_denote` against a leaf oracle `leafSem : EcLeafSem` passed
+as a parameter, threaded through the `DialectDenote jasminDialect` instance
+`JasminDialect.jasminDenoteWith leafSem` (whose `extCall` arm consults `leafSem`
+and whose every other arm delegates to `jasminDenote`). This module supplies the
+oracles that parameter is instantiated at.
 
 * `msmOracle prims` — a concrete leaf oracle realising the EC primitives
   (`prims.pointAdd` on the `ec_point_add` signature, `prims.scalarMul` on the
   `ec_scalar_mul` signature), with `msmOracle_agrees` proving it satisfies the
-  leaf agreement `EcLeafAgrees`.
-* `msmTermCom_denoteWith` — the deployed MSM step, evaluated with any leaf oracle
-  realising the EC primitives, computes `prims.pointAdd acc (prims.scalarMul k P)`.
+  leaf agreement `EcLeafAgrees`, so the hypothesis of
+  `MsmReduce.msmTermCom_denote` is satisfiable for every `prims`.
 * `msmLeafOracle` / `msmLeafOracle_agrees` — the leaf oracle for the deployed
   primitives and its agreement, a named axiom (the leaf edge; a leaf proof or a
   jasmin/EC-reference bridge would establish it).
@@ -64,34 +64,7 @@ theorem msmOracle_agrees (prims : EcPrimitives) :
     EcLeafAgrees prims (msmOracle prims) := by
   refine ⟨?_, ?_⟩ <;> (intro args; rfl)
 
-/-! ## 2. Value of the deployed `Com` under a realising leaf oracle -/
-
-/-- **The deployed MSM step, evaluated with a leaf oracle.** For a leaf oracle
-    `leafSem` realising the EC primitives (`EcLeafAgrees prims leafSem`), the
-    deployed `MsmReduce.msmTermCom` — denoted through `jasminDenoteWith leafSem` —
-    computes `prims.pointAdd acc (prims.scalarMul k P)` (the running-accumulator
-    step `acc + k·P` of the left-fold). The scalar-mul and point-add `extCall` arms
-    each unfold to a `leafSem` call, and the two carried agreements close it. -/
-theorem msmTermCom_denoteWith (leafSem : EcLeafSem) (prims : EcPrimitives)
-    (h : EcLeafAgrees prims leafSem)
-    (acc : Fin (2 * WSZ) → BitVec 8) (k : Fin WSZ → BitVec 8)
-    (P : Fin (2 * WSZ) → BitVec 8) :
-    @Com.denote _ _ _ (JasminDialect.jasminDenoteWith leafSem) _ _
-        MsmReduce.msmTermCom
-        (.cons acc (.cons k (.cons P .nil)))
-      = prims.pointAdd acc (prims.scalarMul k P) := by
-  rw [MsmReduce.msmTermCom_eq_shadow]
-  obtain ⟨hAdd, hMul⟩ := h
-  show leafSem ecAddLeafName ecAddArgTys ecAddRetTy
-        (.cons acc (.cons (leafSem ecMulLeafName ecMulArgTys ecMulRetTy
-                            (.cons k (.cons P .nil))) .nil))
-      = prims.pointAdd acc (prims.scalarMul k P)
-  rw [hMul (.cons k (.cons P .nil))]
-  simp only [HVector.head, HVector.tail]
-  rw [hAdd (.cons acc (.cons (prims.scalarMul k P) .nil))]
-  rfl
-
-/-! ## 3. The deployed leaf oracle + the kernel at that oracle -/
+/-! ## 2. The deployed leaf oracle + the kernel at that oracle -/
 
 /-- `EcPrimitives` is inhabited (both fields are functions into `BitVec 8`), so the
     deployed primitives can be introduced as an opaque constant. -/
@@ -125,6 +98,6 @@ theorem msmTermCom_denote
         MsmReduce.msmTermCom
         (.cons acc (.cons k (.cons P .nil)))
       = msmDeployedPrims.pointAdd acc (msmDeployedPrims.scalarMul k P) :=
-  msmTermCom_denoteWith msmLeafOracle msmDeployedPrims msmLeafOracle_agrees acc k P
+  MsmReduce.msmTermCom_denote msmLeafOracle msmDeployedPrims msmLeafOracle_agrees acc k P
 
 end CatCrypt.Crypto.Pairing.MsmReduceDenote

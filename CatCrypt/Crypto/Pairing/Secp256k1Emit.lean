@@ -38,7 +38,7 @@ machine-checked `fiat-crypto/fiat-rust/secp256k1_montgomery_64` field ops
 Bernstein–Yang constant-time inverse `fp_inv` (verified against the convergence
 certificate `src/Arithmetic/safegcd/divsteps_secp256k1_half.v`). The **group
 law** (point-add, scalar-mul) is *built from* those verified field ops; we keep
-it as the carried trusted leaf edge (the same honest stance as `Bls12381Emit`,
+it as the trusted leaf edge (the same stance as `Bls12381Emit`,
 where AUCurves verifies the field/pairing tower and the group add law stays
 trusted). The KAT (`bench/secp256k1_compare/`) exercises those verified field
 leaves on the **published SEC 2 / Bitcoin generator** coordinates.
@@ -61,7 +61,9 @@ A secp256k1 field element `Fp` is 4 little-endian `u64` limbs = `32` bytes
 `2·FESZ = 64` bytes; a **scalar** (an `Fn` element mod `n`) is also `32` bytes.
 
 0 sorries; the only hypotheses are the opaque EC-leaf agreements
-(`EcLeafAgrees`), the edge carried throughout this theory.
+(`EcLeafAgrees prims leafSem`) at the leaf-model parameter `leafSem`: each
+denotation theorem denotes its `Com` through `jasminDenoteWith leafSem`, and
+`secp256k1Oracle_agrees` shows the agreement is satisfiable for every `prims`.
 -/
 
 @[expose] public section
@@ -185,30 +187,52 @@ def mulLeafExpr {Γ : Ctxt jasminDialect}
   { op := .extCall mulLeafName mulArgTys ptRetTy, retTy_eq := rfl,
     args := .cons k (.cons P .nil) }
 
-/-- The point-add leaf `Expr` denotes to `jasminExtSem` of the looked-up points.
-    By `rfl`. -/
-theorem addLeafExpr_denote {Γ : Ctxt jasminDialect}
+/-- Denoted through `jasminDenoteWith leafSem`, the point-add leaf `Expr` is
+    `leafSem` of the looked-up points. By `rfl`. -/
+theorem addLeafExpr_denote (leafSem : LeafSem) {Γ : Ctxt jasminDialect}
     (P Q : Ctxt.Var Γ (.stackArr 8 PTSZ)) (V : Ctxt.Valuation Γ) :
-    (addLeafExpr P Q).denote V
-      = jasminExtSem addLeafName addArgTys ptRetTy
+    @Expr.denote _ _ _ (jasminDenoteWith leafSem) _ _ (addLeafExpr P Q) V
+      = leafSem addLeafName addArgTys ptRetTy
           (.cons (P.lookup V) (.cons (Q.lookup V) .nil)) :=
   rfl
 
-/-- The scalar-mul leaf `Expr` denotes to `jasminExtSem` of the looked-up scalar +
-    point. By `rfl`. -/
-theorem mulLeafExpr_denote {Γ : Ctxt jasminDialect}
+/-- Denoted through `jasminDenoteWith leafSem`, the scalar-mul leaf `Expr` is
+    `leafSem` of the looked-up scalar and point. By `rfl`. -/
+theorem mulLeafExpr_denote (leafSem : LeafSem) {Γ : Ctxt jasminDialect}
     (k : Ctxt.Var Γ (.stackArr 8 FESZ)) (P : Ctxt.Var Γ (.stackArr 8 PTSZ))
     (V : Ctxt.Valuation Γ) :
-    (mulLeafExpr k P).denote V
-      = jasminExtSem mulLeafName mulArgTys ptRetTy
+    @Expr.denote _ _ _ (jasminDenoteWith leafSem) _ _ (mulLeafExpr k P) V
+      = leafSem mulLeafName mulArgTys ptRetTy
           (.cons (k.lookup V) (.cons (P.lookup V) .nil)) :=
   rfl
+
+/-- A leaf oracle realising the two secp256k1 primitives, selected by dialect
+    signature: on the point-add signature (`64 / 64 → 64`) it returns
+    `prims.pointAdd`, on the scalar-mul signature (`32 / 64 → 64`) it returns
+    `prims.scalarMul`, and it is `JasminTy.default` on any other leaf. -/
+def secp256k1Oracle (prims : Secp256k1Primitives) : LeafSem :=
+  fun _name argTys retTy =>
+    match argTys, retTy with
+    | [.stackArr 8 64, .stackArr 8 64], .stackArr 8 64 =>
+        fun args => prims.pointAdd args.head args.tail.head
+    | [.stackArr 8 32, .stackArr 8 64], .stackArr 8 64 =>
+        fun args => prims.scalarMul args.head args.tail.head
+    | _, retTy => fun _ => JasminTy.default retTy
+
+/-- `secp256k1Oracle prims` satisfies `EcLeafAgrees prims`, so the agreement
+    hypothesis of the denotation theorems below is satisfiable for every `prims`.
+    By `rfl` in each component: the two leaf signatures select the intended match
+    arms. -/
+theorem secp256k1Oracle_agrees (prims : Secp256k1Primitives) :
+    EcLeafAgrees prims (secp256k1Oracle prims) := by
+  refine ⟨?_, ?_⟩ <;> (intro args; rfl)
 
 /-! ## 5. One MSM term, with the denotation carry
 
 Production analogue of `MsmReduce.msmTermCom` / `Bls12381Emit.g1MsmTermCom`: one
 MSM step `acc ↦ acc + k_i · P_i`, built from the two EC leaves, denoting to
-`prims.pointAdd acc (prims.scalarMul k P)` under the carried `EcLeafAgrees`. -/
+`prims.pointAdd acc (prims.scalarMul k P)` through `jasminDenoteWith leafSem` for
+every leaf oracle `leafSem` satisfying `EcLeafAgrees`. -/
 
 /-- One MSM step as an orchestrating `Com` over `(acc, k, P)` — the **hand
     shadow**: first the scalar-mul leaf `t = secp256k1_scalar_mul(k, P)`, then the
@@ -257,35 +281,28 @@ def msmTermCom :
     hand-threaded `.here`/`.there` chains. -/
 theorem msmTermCom_eq_shadow : msmTermCom = msmTermComShadow := by rfl
 
-/-- **Proof carry for one MSM step (hand shadow, the `scalarFold` body at the leaf
-    level).** Denotes to `prims.pointAdd acc (prims.scalarMul k P)` — `acc + k·P` —
-    under the carried `EcLeafAgrees prims jasminExtSem`. Mirror of
-    `MsmReduce.msmTermCom_denote`; no new content, only the leaf edge. -/
-theorem msmTermComShadow_denote (prims : Secp256k1Primitives)
-    (hLeaf : EcLeafAgrees prims jasminExtSem)
+/-- **The deployed MSM step, evaluated with a leaf oracle.** For a leaf oracle
+    `leafSem` realising the secp256k1 primitives (`EcLeafAgrees prims leafSem`),
+    the deployed `msmTermCom`, denoted through `jasminDenoteWith leafSem`, computes
+    `prims.pointAdd acc (prims.scalarMul k P)` — `acc + k·P`, the `scalarFold`
+    body at the leaf level. The leaf model is the parameter `leafSem`;
+    `secp256k1Oracle_agrees` shows the hypothesis is satisfiable. -/
+theorem msmTermCom_denote (leafSem : LeafSem) (prims : Secp256k1Primitives)
+    (hLeaf : EcLeafAgrees prims leafSem)
     (acc : Fin PTSZ → BitVec 8) (k : Fin FESZ → BitVec 8) (P : Fin PTSZ → BitVec 8) :
-    msmTermComShadow.denote (.cons acc (.cons k (.cons P .nil)))
+    @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        msmTermCom (.cons acc (.cons k (.cons P .nil)))
       = prims.pointAdd acc (prims.scalarMul k P) := by
+  rw [msmTermCom_eq_shadow]
   obtain ⟨hAdd, hMul⟩ := hLeaf
-  show jasminExtSem addLeafName addArgTys ptRetTy
-        (.cons acc (.cons (jasminExtSem mulLeafName mulArgTys ptRetTy
+  show leafSem addLeafName addArgTys ptRetTy
+        (.cons acc (.cons (leafSem mulLeafName mulArgTys ptRetTy
                             (.cons k (.cons P .nil))) .nil))
       = prims.pointAdd acc (prims.scalarMul k P)
   rw [hMul (.cons k (.cons P .nil))]
-  show jasminExtSem addLeafName addArgTys ptRetTy
-        (.cons acc (.cons (prims.scalarMul k P) .nil))
-      = prims.pointAdd acc (prims.scalarMul k P)
+  simp only [HVector.head, HVector.tail]
   rw [hAdd (.cons acc (.cons (prims.scalarMul k P) .nil))]
   rfl
-
-/-- **Proof carry for one MSM step (front-sourced deployed).** Via
-    `msmTermCom_eq_shadow` + the shadow's denote. -/
-theorem msmTermCom_denote (prims : Secp256k1Primitives)
-    (hLeaf : EcLeafAgrees prims jasminExtSem)
-    (acc : Fin PTSZ → BitVec 8) (k : Fin FESZ → BitVec 8) (P : Fin PTSZ → BitVec 8) :
-    msmTermCom.denote (.cons acc (.cons k (.cons P .nil)))
-      = prims.pointAdd acc (prims.scalarMul k P) := by
-  rw [msmTermCom_eq_shadow]; exact msmTermComShadow_denote prims hLeaf acc k P
 
 /-! ## 6. The ECDSA verification equation (straight-line `Com` of EC leaves)
 
@@ -293,8 +310,9 @@ ECDSA verification recomputes `R' = u₁·G + u₂·Q` (where `u₁ = z·s⁻¹`
 `G` the base point, `Q` the public key) and accepts iff `R'.x mod n = r`. The
 group computation `u₁·G + u₂·Q` is exactly a 2-term MSM: two scalar-mul leaves
 accumulated by one point-add leaf. We emit it as a straight-line `Com` and prove
-its denotation is `prims.pointAdd (prims.scalarMul u₁ G) (prims.scalarMul u₂ Q)`
-under the carried `EcLeafAgrees`. The final `x mod n = r` check is the caller's
+its denotation through `jasminDenoteWith leafSem` is
+`prims.pointAdd (prims.scalarMul u₁ G) (prims.scalarMul u₂ Q)` under
+`EcLeafAgrees prims leafSem`. The final `x mod n = r` check is the caller's
 equality test on the denoted point. -/
 
 /-- ECDSA verify, the recomputed point `R' = u₁·G + u₂·Q` — the **hand shadow**. A
@@ -350,39 +368,30 @@ def ecdsaVerifyCom :
 /-- **Exactness.** `ecdsaVerifyCom` is definitionally the hand shadow. -/
 theorem ecdsaVerifyCom_eq_shadow : ecdsaVerifyCom = ecdsaVerifyComShadow := by rfl
 
-/-- **ECDSA verify denotation (hand shadow).** The recomputed point
-    `R' = u₁·G + u₂·Q` denotes to
-    `prims.pointAdd (prims.scalarMul u₁ G) (prims.scalarMul u₂ Q)` under the
-    carried `EcLeafAgrees`. The verifier accepts iff `R'.x mod n = r` (the
-    caller's equality test). Each of the three leaves reduces by its `*_denote`
-    `rfl` then the carried agreement; no new content beyond the leaf edge. This is
-    the 2-term MSM (`msm` at `L = 2`) at the leaf level. -/
-theorem ecdsaVerifyComShadow_denote (prims : Secp256k1Primitives)
-    (hLeaf : EcLeafAgrees prims jasminExtSem)
+/-- **The deployed ECDSA verifier, evaluated with a leaf oracle.** For a leaf
+    oracle `leafSem` realising the secp256k1 primitives
+    (`EcLeafAgrees prims leafSem`), the recomputed point `R' = u₁·G + u₂·Q` of
+    `ecdsaVerifyCom`, denoted through `jasminDenoteWith leafSem`, is
+    `prims.pointAdd (prims.scalarMul u₁ G) (prims.scalarMul u₂ Q)`: the 2-term MSM
+    (`msm` at `L = 2`) at the leaf level. The verifier accepts iff
+    `R'.x mod n = r` (the caller's equality test). -/
+theorem ecdsaVerifyCom_denote (leafSem : LeafSem) (prims : Secp256k1Primitives)
+    (hLeaf : EcLeafAgrees prims leafSem)
     (u1 : Fin FESZ → BitVec 8) (G : Fin PTSZ → BitVec 8)
     (u2 : Fin FESZ → BitVec 8) (Q : Fin PTSZ → BitVec 8) :
-    ecdsaVerifyComShadow.denote (.cons u1 (.cons G (.cons u2 (.cons Q .nil))))
+    @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        ecdsaVerifyCom (.cons u1 (.cons G (.cons u2 (.cons Q .nil))))
       = prims.pointAdd (prims.scalarMul u1 G) (prims.scalarMul u2 Q) := by
+  rw [ecdsaVerifyCom_eq_shadow]
   obtain ⟨hAdd, hMul⟩ := hLeaf
-  show jasminExtSem addLeafName addArgTys ptRetTy
-        (.cons (jasminExtSem mulLeafName mulArgTys ptRetTy (.cons u1 (.cons G .nil)))
-          (.cons (jasminExtSem mulLeafName mulArgTys ptRetTy (.cons u2 (.cons Q .nil)))
+  show leafSem addLeafName addArgTys ptRetTy
+        (.cons (leafSem mulLeafName mulArgTys ptRetTy (.cons u1 (.cons G .nil)))
+          (.cons (leafSem mulLeafName mulArgTys ptRetTy (.cons u2 (.cons Q .nil)))
             .nil))
       = prims.pointAdd (prims.scalarMul u1 G) (prims.scalarMul u2 Q)
   rw [hMul (.cons u1 (.cons G .nil)), hMul (.cons u2 (.cons Q .nil))]
   simp only [HVector.head, HVector.tail]
   rw [hAdd (.cons (prims.scalarMul u1 G) (.cons (prims.scalarMul u2 Q) .nil))]
   rfl
-
-/-- **ECDSA verify denotation (front-sourced deployed).** Via
-    `ecdsaVerifyCom_eq_shadow` + the shadow's denote. -/
-theorem ecdsaVerifyCom_denote (prims : Secp256k1Primitives)
-    (hLeaf : EcLeafAgrees prims jasminExtSem)
-    (u1 : Fin FESZ → BitVec 8) (G : Fin PTSZ → BitVec 8)
-    (u2 : Fin FESZ → BitVec 8) (Q : Fin PTSZ → BitVec 8) :
-    ecdsaVerifyCom.denote (.cons u1 (.cons G (.cons u2 (.cons Q .nil))))
-      = prims.pointAdd (prims.scalarMul u1 G) (prims.scalarMul u2 Q) := by
-  rw [ecdsaVerifyCom_eq_shadow]
-  exact ecdsaVerifyComShadow_denote prims hLeaf u1 G u2 Q
 
 end CatCrypt.Crypto.Pairing.Secp256k1Emit

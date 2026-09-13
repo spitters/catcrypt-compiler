@@ -16,7 +16,7 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFront
 /-!
 # The pairing-ZK shared hot kernel: multi-scalar multiplication (MSM) over an EC group
 
-The prover/commitment workhorse of the pairing-based zero-knowledge systems —
+The shared prover/commitment computation of the pairing-based zero-knowledge systems —
 **Groth16**, **KZG**, and **Bulletproofs** — is a single hot computation: a
 **multi-scalar multiplication**
 `MSM(k, P) = Σ_{i=0}^{L-1} k_i · P_i`
@@ -54,7 +54,7 @@ on a short-Weierstrass curve `y² = x³ + a·x + b` over the prime field
 `Fp = ZMod 23`. Mathlib proves it an `AddCommGroup` for free (the affine group law);
 that `AddCommGroup` is the `AddCommMonoid` the reduction core requires. This is a
 **clearly-labelled small/model EC group** that *validates* the
-"MSM = scalarFold over the EC AddCommMonoid" reduction — the load-bearing result.
+"MSM = scalarFold over the EC AddCommMonoid" reduction (`msm_eq_scalarFold`).
 It is the lattice/GF analogue: the production AUCurves/fiat BLS12-381 G1 (the
 `scalar_mul` / `g1_add` leaves wired in `CatCrypt/Crypto/{KZG,ECDSA}`) is the same
 shape at a 381-bit field; this file pins the reduction at a concrete field where
@@ -135,7 +135,7 @@ noncomputable example (a b : Fp) : AddCommGroup (ECPt a b) := inferInstance
 /-- Hence an `AddCommMonoid` — the lane structure the reduction core requires. -/
 noncomputable example (a b : Fp) : AddCommMonoid (ECPt a b) := inferInstance
 
-/-! ## 2. The MSM and its reduction to `scalarFold` (the load-bearing result)
+/-! ## 2. The MSM and its reduction to `scalarFold`
 
 `MSM(k, P) = Σ_i k_i · P_i` where `k_i · P_i` is EC scalar-mul (`nsmul`, the lane
 op `•`) and `Σ` is iterated EC point-add (the horizontal sum `hsum`). The
@@ -156,7 +156,7 @@ noncomputable def msmFold {a b : Fp} {L : ℕ} (k : Fin L → ℕ) (P : Fin L �
     ECPt a b :=
   scalarFold (fun i => (k i) • (P i))
 
-/-- **THE LOAD-BEARING RESULT.** The MSM reduces to `scalarFold` over the EC
+/-- **MSM reduction.** The MSM reduces to `scalarFold` over the EC
     `AddCommMonoid`: the sequential left-fold of the EC scalar-multiples
     (`msmFold`, what the straight-line emitter produces) equals their horizontal
     reduction (`msm`, what a packed scalar-mul + tree point-add computes). This is
@@ -277,23 +277,24 @@ def ecMulLeafExpr {Γ : Ctxt jasminDialect}
     retTy_eq := rfl
     args := .cons k (.cons P .nil) }
 
-/-- The EC point-add leaf `Expr` denotes (under any valuation) to `jasminExtSem`
-    of the looked-up points — the dialect's opaque-leaf semantics. By `rfl`. This
-    is the bridge point a concrete `leafSem` discharges via `EcAddLeafAgrees`. -/
-theorem ecAddLeafExpr_denote {Γ : Ctxt jasminDialect}
+/-- Denoted through `jasminDenoteWith leafSem`, the EC point-add leaf `Expr` is
+    (under any valuation) `leafSem` of the looked-up points. By `rfl`;
+    `EcAddLeafAgrees` at `leafSem` rewrites it to `prims.pointAdd`. -/
+theorem ecAddLeafExpr_denote (leafSem : EcLeafSem) {Γ : Ctxt jasminDialect}
     (P Q : Ctxt.Var Γ (.stackArr 8 (2 * WSZ))) (V : Ctxt.Valuation Γ) :
-    (ecAddLeafExpr P Q).denote V
-      = jasminExtSem ecAddLeafName ecAddArgTys ecAddRetTy
+    @Expr.denote _ _ _ (jasminDenoteWith leafSem) _ _ (ecAddLeafExpr P Q) V
+      = leafSem ecAddLeafName ecAddArgTys ecAddRetTy
           (.cons (P.lookup V) (.cons (Q.lookup V) .nil)) :=
   rfl
 
-/-- The EC scalar-multiply leaf `Expr` denotes (under any valuation) to
-    `jasminExtSem` of the looked-up scalar + point. By `rfl`. -/
-theorem ecMulLeafExpr_denote {Γ : Ctxt jasminDialect}
+/-- Denoted through `jasminDenoteWith leafSem`, the EC scalar-multiply leaf `Expr`
+    is (under any valuation) `leafSem` of the looked-up scalar and point. By
+    `rfl`. -/
+theorem ecMulLeafExpr_denote (leafSem : EcLeafSem) {Γ : Ctxt jasminDialect}
     (k : Ctxt.Var Γ (.stackArr 8 WSZ)) (P : Ctxt.Var Γ (.stackArr 8 (2 * WSZ)))
     (V : Ctxt.Valuation Γ) :
-    (ecMulLeafExpr k P).denote V
-      = jasminExtSem ecMulLeafName ecMulArgTys ecMulRetTy
+    @Expr.denote _ _ _ (jasminDenoteWith leafSem) _ _ (ecMulLeafExpr k P) V
+      = leafSem ecMulLeafName ecMulArgTys ecMulRetTy
           (.cons (k.lookup V) (.cons (P.lookup V) .nil)) :=
   rfl
 
@@ -301,8 +302,9 @@ theorem ecMulLeafExpr_denote {Γ : Ctxt jasminDialect}
 
 A single MSM term `k_i · P_i` accumulated into the running sum: `acc + (k · P)`.
 `msmTermCom` is the orchestrating `Com` (one scalar-mul leaf, then one point-add
-leaf); `msmTermCom_denote` proves its denotation is `prims.pointAdd acc
-(prims.scalarMul k P)` under the carried `EcLeafAgrees` — exactly the
+leaf); `msmTermCom_denote` proves its denotation through `jasminDenoteWith
+leafSem` is `prims.pointAdd acc (prims.scalarMul k P)` for every leaf oracle
+`leafSem` satisfying `EcLeafAgrees` — exactly the
 `scalarFold` step `acc + k_i • P_i`, at the leaf level. The full straight-line
 MSM is this step folded `L` times, matched at the EC-group lane by
 `msm_eq_scalarFold`. -/
@@ -357,45 +359,30 @@ def msmTermCom :
     hand-threaded `.here`/`.there` chains. -/
 theorem msmTermCom_eq_shadow : msmTermCom = msmTermComShadow := by rfl
 
-/-- **Proof carry for one MSM step (the `scalarFold` body at the leaf level).**
-    The orchestrating `Com` denotes to `prims.pointAdd acc (prims.scalarMul k P)`
-    — i.e. `acc + k·P`, the running-accumulator step of the left-fold — under the
-    carried EC-leaf agreement `EcLeafAgrees prims jasminExtSem`. The proof is:
-    the two-`var` `Com` denote reduces to the two leaf-`Expr` denotes (each an
-    `extCall` = the dialect opaque-leaf semantics `jasminExtSem`,
-    `ecMulLeafExpr_denote` / `ecAddLeafExpr_denote`), which the carried agreement
-    rewrites to the abstract EC primitives. No new content; only the leaf edge. -/
-theorem msmTermComShadow_denote (prims : EcPrimitives)
-    (hLeaf : EcLeafAgrees prims jasminExtSem)
+/-- **The deployed MSM step, evaluated with a leaf oracle.** For a leaf oracle
+    `leafSem` realising the EC primitives (`EcLeafAgrees prims leafSem`), the
+    deployed `msmTermCom`, denoted through `jasminDenoteWith leafSem`, computes
+    `prims.pointAdd acc (prims.scalarMul k P)`: the running-accumulator step
+    `acc + k·P` of the left-fold. The scalar-mul and point-add `extCall` arms each
+    unfold to a `leafSem` call, and the two agreements rewrite them to the abstract
+    EC primitives. The leaf model is the parameter `leafSem`; `MsmReduceDenote`
+    instantiates it at a concrete oracle. -/
+theorem msmTermCom_denote (leafSem : EcLeafSem) (prims : EcPrimitives)
+    (hLeaf : EcLeafAgrees prims leafSem)
     (acc : Fin (2 * WSZ) → BitVec 8) (k : Fin WSZ → BitVec 8)
     (P : Fin (2 * WSZ) → BitVec 8) :
-    msmTermComShadow.denote (.cons acc (.cons k (.cons P .nil)))
+    @Com.denote _ _ _ (jasminDenoteWith leafSem) _ _
+        msmTermCom (.cons acc (.cons k (.cons P .nil)))
       = prims.pointAdd acc (prims.scalarMul k P) := by
+  rw [msmTermCom_eq_shadow]
   obtain ⟨hAdd, hMul⟩ := hLeaf
-  -- unfold the two-step Com denote to the two leaf extCalls
-  show jasminExtSem ecAddLeafName ecAddArgTys ecAddRetTy
-        (.cons acc (.cons (jasminExtSem ecMulLeafName ecMulArgTys ecMulRetTy
+  show leafSem ecAddLeafName ecAddArgTys ecAddRetTy
+        (.cons acc (.cons (leafSem ecMulLeafName ecMulArgTys ecMulRetTy
                             (.cons k (.cons P .nil))) .nil))
       = prims.pointAdd acc (prims.scalarMul k P)
   rw [hMul (.cons k (.cons P .nil))]
-  -- the scalar-mul leaf's args reduce (`.head`/`.tail.head`) to `k`/`P` by `rfl`
-  show jasminExtSem ecAddLeafName ecAddArgTys ecAddRetTy
-        (.cons acc (.cons (prims.scalarMul k P) .nil))
-      = prims.pointAdd acc (prims.scalarMul k P)
+  simp only [HVector.head, HVector.tail]
   rw [hAdd (.cons acc (.cons (prims.scalarMul k P) .nil))]
-  -- the point-add leaf's args reduce (`.head`/`.tail.head`) to `acc`/`k·P` by `rfl`
   rfl
-
-/-- **The deployed MSM-step Com denotes the running-accumulator step**
-    `acc + k·P` (front-sourced). Via `msmTermCom_eq_shadow` + the shadow's denote,
-    so downstream users of `msmTermCom` by name are unaffected by the
-    front-sourcing. -/
-theorem msmTermCom_denote (prims : EcPrimitives)
-    (hLeaf : EcLeafAgrees prims jasminExtSem)
-    (acc : Fin (2 * WSZ) → BitVec 8) (k : Fin WSZ → BitVec 8)
-    (P : Fin (2 * WSZ) → BitVec 8) :
-    msmTermCom.denote (.cons acc (.cons k (.cons P .nil)))
-      = prims.pointAdd acc (prims.scalarMul k P) := by
-  rw [msmTermCom_eq_shadow]; exact msmTermComShadow_denote prims hLeaf acc k P
 
 end CatCrypt.Crypto.Pairing.MsmReduce
