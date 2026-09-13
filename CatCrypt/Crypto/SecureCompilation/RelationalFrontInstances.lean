@@ -20,8 +20,8 @@ instance `fieldAddRealizedKernel` — but that instance uses `enc = id`, the
 cap collapses to nothing when the carrier is the spec's own type). It exercises
 the IR seam but says nothing about the **encoding** half of the relational front.
 
-This module is the **second customer**, exercising the genuinely interesting
-transport path: an encoding `enc` that is **injective but not surjective** — the
+This module gives a second instance, whose encoding `enc` is injective but not
+surjective: the
 exact regime the module docstring of `RelationalFront` flags as the next step
 ("a non-`id` `enc` instance ... with a serialization"), and the regime *every*
 real crypto serialization lives in (most byte strings are not valid field
@@ -51,7 +51,7 @@ elements / points).
 i.e. `bop` must perform the **mod-251 reduction** that the BitVec carrier does not
 do for free (plain `fieldAddCom` would compute `enc a + enc b` un-reduced — the
 square would FAIL: `BitVec.ofNat 64 ((a.val+b.val) % 251) ≠ enc a + enc b` in
-general). So this instance genuinely needs a reducing kernel, not `fieldAddCom`.
+general). The instance therefore uses a reducing kernel in place of `fieldAddCom`.
 
 We emit `fieldAddMod251Com` (below): `s := a + b; <conditional-subtract-251 on s>`
 — `fieldAddCom`'s add followed by the golden-path `fieldCondSub251Com` body. For
@@ -69,7 +69,7 @@ denotation on the *serialized* operands — through an encoding that is injectiv
 and **not** onto. That is the relational front carrying a real serialization,
 not the `id` shortcut.
 
-## The `381 → 377` curve note (HONEST)
+## Scope: the `381 → 377` curve target
 
 The bench-D reuse target named in `RelationalFront` is a full curve
 `ECParams.add` (`bls12_381 → bls12_377`). That is **not** reached here and needs
@@ -79,10 +79,9 @@ affine pair, not a single residue), and (ii) its computational realization is a
 whole chord/tangent *schedule* of field ops (one `fInv` + several `fMul`/`fSub`),
 i.e. a multi-op `Com` whose `com_denotes_bop` is the field-lowering correctness,
 not a one-line `rfl`. This module establishes the injective-not-surjective
-*encoding* path on the smallest honest spec (a field add that genuinely reduces);
-lifting it to `ECParams.add` reuses this `EndoOpRealization` shape but swaps the
-carrier for `Option (ZMod p × ZMod p)` and the kernel for the lowered group-law
-schedule — tracked, not done here.
+*encoding* path on a field addition with a reduction step; lifting it to
+`ECParams.add` reuses this `EndoOpRealization` shape with the carrier
+`Option (ZMod p × ZMod p)` and the lowered group-law schedule as kernel.
 -/
 
 @[expose] public section
@@ -160,15 +159,41 @@ theorem fieldAddMod251Com_denote (x0 x1 : BitVec 64) :
 
 The single arithmetic fact behind the commuting square: for a sum word `s ≤ 500`
 (every sum of two `F_251` residues is `≤ 500`), the branch-free conditional-
-subtract equals the modular reduction `s % 251`. Closed by `bv_decide` once the
-range bound is phrased as the BitVec comparison `s ≤ 500#64`. -/
+subtract equals the modular reduction `s % 251`. The proof splits on `s < 251`:
+the sign bit `(s - 251) >>> 63` is `1` below `251` and `0` from `251` to `500`,
+and each case is linear arithmetic on `toNat`. -/
 
-/-- **The conditional-subtract is the modular reduction (in range).** For
-    `s ≤ 500`, `csub251 s = s % 251`. The carry-free correctness fact; `bv_decide`
-    discharges it from the BitVec range bound. -/
+/-- For `s ≤ 500`, `csub251 s = s % 251`. The proof computes the sign bit of
+    `s - 251` on `toNat` in the two cases `s < 251` and `251 ≤ s`, and closes
+    each case with `omega`. -/
 theorem csub251_eq (s : BitVec 64) (h : s ≤ (500 : BitVec 64)) :
     csub251 s = s % (251 : BitVec 64) := by
-  unfold csub251; bv_decide
+  have hs : s.toNat ≤ 500 := BitVec.le_def.mp h
+  have h251 : (251 : BitVec 64).toNat = 251 := rfl
+  have hsub : (s - 251).toNat = (2 ^ 64 - 251 + s.toNat) % 2 ^ 64 := by
+    rw [BitVec.toNat_sub, h251]
+  unfold csub251
+  by_cases hlt : s.toNat < 251
+  · have hsh : (s - 251) >>> 63 = 1#64 := by
+      apply BitVec.eq_of_toNat_eq
+      rw [BitVec.toNat_ushiftRight, hsub, Nat.shiftRight_eq_div_pow,
+        show (1#64).toNat = 1 from rfl]
+      simp only [Nat.reducePow]
+      omega
+    rw [hsh, show ((0 : BitVec 64) - 1#64) &&& 251 = 251 from rfl, BitVec.sub_add_cancel]
+    apply BitVec.eq_of_toNat_eq
+    rw [BitVec.toNat_umod, h251]
+    omega
+  · have hsh : (s - 251) >>> 63 = 0#64 := by
+      apply BitVec.eq_of_toNat_eq
+      rw [BitVec.toNat_ushiftRight, hsub, Nat.shiftRight_eq_div_pow,
+        show (0#64).toNat = 0 from rfl]
+      simp only [Nat.reducePow]
+      omega
+    rw [hsh, show ((0 : BitVec 64) - 0#64) &&& 251 = 0#64 from rfl, BitVec.add_zero]
+    apply BitVec.eq_of_toNat_eq
+    rw [BitVec.toNat_umod, hsub, h251]
+    omega
 
 /-! ## 3. The injective-not-surjective encoding and its `EndoOpRealization`
 
@@ -185,7 +210,7 @@ def encMod251 (a : ZMod 251) : BitVec 64 := BitVec.ofNat 64 a.val
 /-- **`encMod251` is injective** (equality-reflecting): distinct residues have
     distinct `val < 251 < 2^64`, so distinct 64-bit images. This is the
     `map4`-level `enc_inj` the transport needs — note it is **not** surjective
-    (`BitVec.ofNat 64 251` has no preimage), the genuine injective-not-onto case. -/
+    (`BitVec.ofNat 64 251` has no preimage). -/
 theorem encMod251_injective : Function.Injective encMod251 := by
   intro a b hab
   have ha : a.val < 251 := ZMod.val_lt a
@@ -240,11 +265,10 @@ Tie the realization to the emitted kernel `fieldAddMod251Com`. The seam
 `csub251 (x1 + x0)` (`fieldAddMod251Com_denote`), and `com_ok` is the supported-
 fragment check (`fieldAddMod251Com_ok`). -/
 
-/-- **The relationally-emitted `F_251`-add kernel — the non-`id` second customer.**
-    Unlike `fieldAddRealizedKernel` (`enc = id`, same-rep), this kernel carries a
-    genuine injective-not-surjective serialization (`encMod251`): its abstract
-    source is `ZMod 251` and its computational side is the emitted reducing
-    kernel. The encoding half of the relational front is exercised, not trivialised. -/
+/-- The relationally emitted `F_251` addition kernel. Its encoding `encMod251`
+    is injective and not surjective (`fieldAddRealizedKernel` has `enc = id`); its
+    abstract source is `ZMod 251` and its computational side is the reducing
+    kernel `fieldAddMod251Com`. -/
 def addMod251RealizedKernel :
     RealizedKernel (fun a b : ZMod 251 => a + b) where
   bop := fun x y => csub251 (x + y)
@@ -280,9 +304,8 @@ example :
 
 /-- A concrete *wrap* instance: `200 + 100 = 49 + 0` in `F_251` (the sum `300`
     reduces to `49 = 300 − 251`), decided by the emitted reducing kernel — the
-    case plain (non-reducing) `fieldAddCom` would get wrong, so it genuinely
-    exercises the serialization's reduction (the encoding is not onto and the
-    kernel must perform the mod-251 carry). -/
+    case on which the non-reducing `fieldAddCom` differs, since the kernel must
+    perform the mod-251 reduction. -/
 example :
     csub251 (encMod251 200 + encMod251 100) = csub251 (encMod251 49 + encMod251 0) :=
   (addMod251_spec_transfers 200 49 100 0).mp (by decide)
