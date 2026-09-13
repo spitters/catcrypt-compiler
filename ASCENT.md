@@ -333,9 +333,12 @@ results:
 
 The abstract state carries the registers, `CF` and `OF`. The leaves for `setcc` and
 `cmovcc` are stated at the conditions that read those two flags; a kernel branching on
-`ZF`, `SF` or `PF` needs further leaves. CryptOpt's `carry_mul` kernel does not parse in
-full: it uses memory-source `adcx`, `adox` and `add`, `bzhi`, and the three-operand
-`imul` with a memory source, which have no `JInstr` constructor.
+`ZF`, `SF` or `PF` needs further leaves. `JInstr` has memory-source forms of `add` (both
+memory kinds), `adcx`, `adox`, `imul` and three-operand `imul` (`addMem`, `addToMem`,
+`adcxMem`, `adoxMem`, `imulMem`, `imulriMem`), each equal to a load into a scratch
+register followed by the register form (`runBlock_loadMem_*_eq_*Mem`), with `CorresJ`
+leaves in `Ascent/CorresX86Mem.lean`. CryptOpt's `carry_mul` kernel still does not parse
+in full: it uses `bzhi`, which has no `JInstr` constructor.
 
 ### The descent contracts and the ascent meet at the x86 register file
 
