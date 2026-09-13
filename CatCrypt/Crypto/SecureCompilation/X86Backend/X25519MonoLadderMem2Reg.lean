@@ -21,10 +21,9 @@ moves; `SpillingRegAlloc` (#413) measured that the residual is the **round-trip
 instructions** (96 `loadMem` + 68 `storeMem` per step), not register pressure — the body
 is frame-resident by construction, so no allocator removes them.
 
-This module lands the connective levers and chains the full pipeline. The **#555 keystone**
-is the order: the verified cross-op store-to-load forwarder (`X86ComPipeline.optimizeX86Block`,
-the unconditional composed core) is **stacked first**, on the fused body, so its 40-load
-cross-op win is in place *before* mem2reg + the spilling allocator run.
+This module chains the full pipeline. The verified cross-op store-to-load forwarder
+(`X86ComPipeline.optimizeX86Block`, the unconditional composed core) runs first, on the fused
+body, so its 40 removed loads precede mem2reg and the spilling allocator.
 
 1. **`monoLadderStepBlock`** (#411): the fused 1058-instruction no-call body. Of its 60
    distinct frame cells, 20 are the harness-observable ladder coordinates + input
@@ -32,7 +31,7 @@ cross-op win is in place *before* mem2reg + the spilling allocator run.
    per-step temporaries A, AA, B, BB, E, C, D, DA, CB, T, four limbs each).
 2. **`optimizeX86Block` / `forwardedFusedBody`** (#555): the cross-op store-to-load forwarder
    applied to the fused body — 96 → 56 `loadMem`, each store-then-reload of a still-live
-   register collapsed to a register `mov`. This is the keystone: the forwarder is inert on the
+   register collapsed to a register `mov`. The forwarder is inert on the
    per-op blocks (`monoStep_pipeline_identity_per_op`) but fires across ops on the fused body.
    Value-faithful by the proved `optimizeX86Block_runBlock`.
 3. **`promoteSlots`** (#415): scalar replacement of the **sound** scratch cells (BB, DA, CB,
@@ -97,16 +96,18 @@ We compute the sound subset by dropping every offset read by a `mulxMem fp` anyw
 body. This is the corrected promotability analysis: a frame slot is promotable only if read
 solely via `loadMem` (loadMem-only ⇒ the rewrite touches every read; no stale frame read). -/
 
-/-- Offsets read by some `mulxMem` at base `fp` in the body (these are NOT loadMem-only, so
-    NOT promotable by `promoteCellInstr`). -/
+/-- Offsets read at base `fp` by some `mulxMem` or memory-operand arithmetic instruction in
+    the body (these are NOT loadMem-only, so NOT promotable by `promoteCellInstr`). -/
 def mulxReadOffs (block : List (JInstr 64)) : List Int :=
   (block.filterMap (fun i => match i with
     | .mulxMem _ _ _ "fp" off => some off
+    | .addMem _ "fp" off | .addToMem "fp" off _ | .adcxMem _ "fp" off | .adoxMem _ "fp" off
+    | .imulMem _ "fp" off | .imulriMem _ "fp" off _ => some off
     | _ => none)).eraseDups
 
-/-! ### Cross-op store-to-load forwarding stacked BEFORE mem2reg (#555 keystone)
+/-! ### Cross-op store-to-load forwarding before mem2reg (#555)
 
-The #555 keystone: the verified cross-op store-to-load forwarder
+The verified cross-op store-to-load forwarder
 (`X86ComPipeline.optimizeX86Block`, the unconditional composed core =
 `StoreToLoadForward.storeToLoadForward`) is **inert on the per-op blocks**
 (`X25519MonoLadderKernel.monoStep_pipeline_identity_per_op` — a single field-op never
@@ -206,7 +207,7 @@ theorem promoted_loadCount : loadCount promotedMonoStepBlock = 42 := by native_d
     stores remain (56 of the original 68). -/
 theorem promoted_storeCount : storeCount promotedMonoStepBlock = 56 := by native_decide
 
-/-- **Total frame ops removed by forward-then-promote (#555 keystone).** Original 96+68 = 164
+/-- **Total frame ops removed by forward-then-promote (#555).** Original 96+68 = 164
     frame ops; the stacked pipeline (cross-op store-to-load forwarding, then #417-sound mem2reg
     promotion of BB, DA, CB) leaves 42 loads + 56 stores = 98, so it soundly removes **66**
     frame ops. This beats the mem2reg-only figure of 40 (the forwarder collapses 26 additional
@@ -233,7 +234,7 @@ are read as a `mulxMem` multiplicand, which `promoteCellInstr` does **not** rewr
 them leaves a stale frame read.
 
 The #417 fix is the promotability *analysis* (`soundScratchOffs`): drop every offset read by a
-`mulxMem`, so only the genuinely-`loadMem`-only cells (BB, DA, CB — 12 limbs) are promoted. The
+`mulxMem`, so only the `loadMem`-only cells (BB, DA, CB — 12 limbs) are promoted. The
 hypotheses of `promoteCell_protected_runBlock` hold for exactly these cells, so the promoted
 body is **proved** value-faithful on the ladder outputs (not KAT-gated); `promotedMono_diff_sound`
 confirms it on a concrete state, and `oldPromotion_diff_unsound` pins the #415 bug as a regression
@@ -340,7 +341,7 @@ names share a register). The model-level gate `pipelined_diff_faithful` confirms
 denotation-faithful and the **KAT vs s2n `curve25519_x25519` passes byte-identically** (RFC 7748
 §5.2 vec1+vec2 + 5000 random, `bench/x25519_ladder_compare/`).
 
-**Static outcome (#555 keystone).** Stacking the cross-op store-to-load forwarder *before*
+**Static outcome (#555).** Stacking the cross-op store-to-load forwarder *before*
 mem2reg + spill (`forwardedFusedBody := optimizeX86Block monoLadderStepBlock`) drops the promoted
 body from 68 to **42** `loadMem` (the forwarder collapses 26 additional cross-op redundant reloads
 the per-op / mem2reg-only path could not reach), so the stacked pipeline removes **66** frame ops
@@ -574,7 +575,7 @@ def spilledMaterialisedPinned (n : String) : Option Int :=
   if pinnedNames.contains n then none else spillSlotOf promotedSpillDecisionsPinned n
 
 /-- The pin-aware `SpillView` for one instruction: resident map includes the `%rdx`
-    multipliers; spilled reads/writes are the genuinely-spilled (non-multiplier) names. -/
+    multipliers; spilled reads/writes are the spilled (non-multiplier) names. -/
 def viewOfPinned (i : JInstr 64) : AsmPrinter.SpillView where
   resident := residentAllocPinned
   frameBase := "fp"

@@ -129,6 +129,10 @@ def jinstrNames : {w : Nat} → JInstr w → List String
   | _, .setcc _ d => [d]
   | _, .testN _ a b => a :: srcNames b
   | _, .bt a b | _, .btr a b | _, .bts a b => a :: srcNames b
+  -- the memory-operand arithmetic names its register destination and the base register.
+  | _, .addMem d base _ | _, .adcxMem d base _ | _, .adoxMem d base _
+  | _, .imulMem d base _ | _, .imulriMem d base _ _ => [d, base]
+  | _, .addToMem base _ s => base :: srcNames s
 
 /-- Collect the distinct register names of a block, in first-seen order. -/
 def blockNames {w : Nat} (block : List (JInstr w)) : List String :=
@@ -410,6 +414,22 @@ def renderJInstr {w : Nat} (alloc : GpAlloc) : JInstr w → String
   | .bt a b    => "\tbtq "   ++ renderOperand alloc b ++ ", " ++ regOf alloc a
   | .btr d b   => "\tbtrq "  ++ renderOperand alloc b ++ ", " ++ regOf alloc d
   | .bts d b   => "\tbtsq "  ++ renderOperand alloc b ++ ", " ++ regOf alloc d
+  -- AT&T memory operands `off(%base)` for the memory kinds of `ADD`, `ADCX`, `ADOX`
+  -- and `IMUL`: `addq off(%base), %dst`, `addq %src, off(%base)`,
+  -- `imulq $imm, off(%base), %dst`.
+  | .addMem d base off =>
+      "\taddq " ++ toString off ++ "(" ++ regOf alloc base ++ "), " ++ regOf alloc d
+  | .addToMem base off s =>
+      "\taddq " ++ renderOperand alloc s ++ ", " ++ toString off ++ "(" ++ regOf alloc base ++ ")"
+  | .adcxMem d base off =>
+      "\tadcxq " ++ toString off ++ "(" ++ regOf alloc base ++ "), " ++ regOf alloc d
+  | .adoxMem d base off =>
+      "\tadoxq " ++ toString off ++ "(" ++ regOf alloc base ++ "), " ++ regOf alloc d
+  | .imulMem d base off =>
+      "\timulq " ++ toString off ++ "(" ++ regOf alloc base ++ "), " ++ regOf alloc d
+  | .imulriMem d base off imm =>
+      "\timulq $" ++ toString imm ++ ", " ++ toString off ++ "(" ++ regOf alloc base ++ "), "
+        ++ regOf alloc d
 
 /-- Print a whole block's instruction lines (one per `JInstr`). -/
 def renderBlockBody {w : Nat} (alloc : GpAlloc) (block : List (JInstr w)) : List String :=

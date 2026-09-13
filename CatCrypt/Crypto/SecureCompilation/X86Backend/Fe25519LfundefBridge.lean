@@ -307,6 +307,21 @@ def jinstrToLinstrR (alloc : GpAlloc) : JInstr 64 → LinstrR
                   [resolveReg alloc d, resolveJOp alloc b]
   | .bts d b => .Lopn [resolveReg alloc d] (withWidthTag 64 "BTS")
                   [resolveReg alloc d, resolveJOp alloc b]
+  -- The memory-operand arithmetic: the field leaves never emit it, and each lifts under
+  -- a mnemonic with no `attBase` entry, so `renderLopn` emits the `# UNHANDLED-OP`
+  -- sentinel.
+  | .addMem d base off => .Lopn [resolveReg alloc d] (withWidthTag 64 "ADDMEM")
+                            [resolveReg alloc d, memOperand alloc base off]
+  | .addToMem base off s => .Lopn [memOperand alloc base off] (withWidthTag 64 "ADDTOMEM")
+                              [memOperand alloc base off, resolveJOp alloc s]
+  | .adcxMem d base off => .Lopn [resolveReg alloc d] (withWidthTag 64 "ADCXMEM")
+                             [resolveReg alloc d, memOperand alloc base off]
+  | .adoxMem d base off => .Lopn [resolveReg alloc d] (withWidthTag 64 "ADOXMEM")
+                             [resolveReg alloc d, memOperand alloc base off]
+  | .imulMem d base off => .Lopn [resolveReg alloc d] (withWidthTag 64 "IMULMEM")
+                             [resolveReg alloc d, memOperand alloc base off]
+  | .imulriMem d base off imm => .Lopn [resolveReg alloc d] (withWidthTag 64 "IMULRIMEM")
+                                   [memOperand alloc base off, .imm imm]
 
 /-- Lift a whole `JInstr 64` block to an `Lcmd` over a resolved `GpAlloc`, ending
     with the function-level `Lret`. The `li_ii` source tags are `0` (no position

@@ -344,6 +344,12 @@ def renameJ (alloc : GpAlloc) : JInstr 64 → JInstr 64
   | .bt a b => .bt (nameOf alloc a) (operandOf alloc b)
   | .btr d b => .btr (nameOf alloc d) (operandOf alloc b)
   | .bts d b => .bts (nameOf alloc d) (operandOf alloc b)
+  | .addMem d base off => .addMem (nameOf alloc d) (nameOf alloc base) off
+  | .addToMem base off s => .addToMem (nameOf alloc base) off (operandOf alloc s)
+  | .adcxMem d base off => .adcxMem (nameOf alloc d) (nameOf alloc base) off
+  | .adoxMem d base off => .adoxMem (nameOf alloc d) (nameOf alloc base) off
+  | .imulMem d base off => .imulMem (nameOf alloc d) (nameOf alloc base) off
+  | .imulriMem d base off imm => .imulriMem (nameOf alloc d) (nameOf alloc base) off imm
 
 /-! ## 4. The covered set -/
 
@@ -1160,7 +1166,9 @@ theorem roundtrip_decodeJ1 (alloc : GpAlloc) (i : JInstr 64) (rest : List (BitVe
   | lea d base idx scale off => simp [decodableJ] at hd
   | inc _ | dec _ | clc | stc | xchg _ _ | imulri _ _ _ | mul _ _ _ | imulWide _ _ _
   | shld _ _ _ | shrd _ _ _ | rcl _ _ | rcr _ _ | cmovcc _ _ _ | setcc _ _
-  | testN _ _ _ | bt _ _ | btr _ _ | bts _ _ => simp [decodableJ] at hd
+  | testN _ _ _ | bt _ _ | btr _ _ | bts _ _
+  | addMem _ _ _ | addToMem _ _ _ | adcxMem _ _ _ | adoxMem _ _ _ | imulMem _ _ _
+  | imulriMem _ _ _ _ => simp [decodableJ] at hd
 
 /-- A block built from the covered forms decodes back, instruction by
     instruction, with no bytes left over. -/

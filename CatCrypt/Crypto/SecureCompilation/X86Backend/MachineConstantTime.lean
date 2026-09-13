@@ -112,6 +112,10 @@ def instrLeak {w : Nat} (s : JState w) : JInstr w → List MLeak
   | .loadMem _ base off    => [.mem base off]
   | .storeMem base off _   => [.mem base off]
   | .mulxMem _ _ _ base off => [.mem base off]
+  | .addMem _ base off | .adcxMem _ base off | .adoxMem _ base off
+  | .imulMem _ base off | .imulriMem _ base off _ => [.mem base off]
+  -- `add [base + off], src` reads the cell and writes it back: two accesses at one address
+  | .addToMem base off _ => [.mem base off, .mem base off]
   -- register-indexed memory ops: effective offset depends on the index VALUE
   | .loadMemIdx _ base idx scale  =>
       [.mem base ((scale * (s.get idx).toNat : Nat) : Int)]
@@ -347,6 +351,9 @@ def dstRegs {w : Nat} : JInstr w → List String
   | .cmovcc _ d _ | .setcc _ d | .btr d _ | .bts d _ => [d]
   | .xchg a b => [a, b]
   | .mul dHi dLo _ | .imulWide dHi dLo _ => [dHi, dLo]
+  | .addMem d _ _ | .adcxMem d _ _ | .adoxMem d _ _ | .imulMem d _ _ | .imulriMem d _ _ _ => [d]
+  -- `add [base + off], src` writes memory and the five flags, no register.
+  | .addToMem _ _ _ => []
 
 /-- The index register an instruction reads to form a memory address, if any
     (only the register-indexed ops have one). -/
@@ -364,7 +371,8 @@ theorem evalInstr_get_of_not_dst {w : Nat} (s : JState w) (i : JInstr w) (r : St
   cases i <;>
     simp_all [evalInstr, dstRegs, JState.get, JState.setReg, JState.writeB5,
       JState.writeB5W, JState.writeB2W, JState.store, JState.storeIdx, JState.writeB4W,
-      JState.writeB5W2, JState.writeB5N, JState.writeCFW, JState.setRegMerge]
+      JState.writeB5W2, JState.writeB5N, JState.writeCFW, JState.setRegMerge,
+      JState.writeB5Mem]
 
 /-- A leaf is **CT-addressed** w.r.t. `pub`: every memory index register it uses is
     public, and it never overwrites a public register (the address/counter frame is

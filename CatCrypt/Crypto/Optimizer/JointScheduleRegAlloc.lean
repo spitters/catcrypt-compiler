@@ -198,6 +198,8 @@ def readsFlags' : JInstr 64 → Bool
   | .inc _ | .dec _ | .clc | .stc | .xchg _ _ | .imulri _ _ _ | .mul _ _ _
   | .imulWide _ _ _ | .shld _ _ _ | .shrd _ _ _ | .testN _ _ _ | .bt _ _ | .btr _ _
   | .bts _ _ => false
+  -- the memory-source carry additions read `CF` resp. `OF`.
+  | .adcxMem _ _ _ | .adoxMem _ _ _ => true
   | _         => false
 
 /-- Flag-chain hazard: one writes a flag that the other reads, or both write

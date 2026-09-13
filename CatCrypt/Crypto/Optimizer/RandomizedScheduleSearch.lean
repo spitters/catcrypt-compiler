@@ -298,6 +298,8 @@ def readsFlags : JInstr 64 → Bool
   | .rol _ _ | .ror _ _ | .rorx _ _ _ => false
   | .shlx _ _ _ | .shrx _ _ _ | .sarx _ _ _ => false
   | .movzx _ _ _ | .movsx _ _ _ | .lea _ _ _ _ _ => false
+  -- the memory-source carry additions read `CF` resp. `OF`.
+  | .adcxMem _ _ _ | .adoxMem _ _ _ => true
   | _ => false
 
 /-- Two registers-lists are disjoint. -/
@@ -501,6 +503,9 @@ def writeSet' : JInstr 64 → List String
   | .mov d _ => [d]
   | .loadMem d _ _ => [d]
   | .storeMem _ _ _ => [memCell]
+  -- the memory-source arithmetic writes its destination; `addToMem` writes memory.
+  | .addMem d _ _ | .adcxMem d _ _ | .adoxMem d _ _ | .imulMem d _ _ | .imulriMem d _ _ _ => [d]
+  | .addToMem _ _ _ => [memCell]
   -- `test` and `cmp` have no destination: their whole output is the flag state.
   | .test _ _ => []
   | .cmp _ _ => []
@@ -558,6 +563,13 @@ def readSet' : JInstr 64 → List String
   | .rorx _ src _ => [src]
   | .shlx _ src c | .shrx _ src c | .sarx _ src c => [src, c]
   | .movzx _ _ src | .movsx _ _ src => [src]
+  -- the memory-source arithmetic reads its cell through `base`; the two-address forms
+  -- also read the destination.
+  | .addMem d base _ | .adcxMem d base _ | .adoxMem d base _ | .imulMem d base _ =>
+      [d, base, memCell]
+  | .imulriMem _ base _ _ => [base, memCell]
+  | .addToMem base _ (.reg r) => [base, r, memCell]
+  | .addToMem base _ _ => [base, memCell]
   -- `lea` reads its two address registers and performs no memory access, so it
   -- does not read `memCell` the way `loadMem`/`mulxMem` do.
   | .lea _ base idx _ _ => [base, idx]

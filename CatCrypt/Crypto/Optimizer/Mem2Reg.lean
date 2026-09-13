@@ -80,19 +80,24 @@ mem2reg's safety analysis needs the *memory cells* an instruction reads (the dua
 `storeMem base off _` *writes* the cell `(base, off)` (kills any pending read-forward),
 and reads none. -/
 
-/-- The memory cell an instruction **reads** (if any). Only `loadMem`/`mulxMem` read
-    memory in the emitted subset. -/
+/-- The memory cell an instruction **reads** (if any): `loadMem`, `mulxMem` and the
+    memory-operand arithmetic `addMem`, `addToMem`, `adcxMem`, `adoxMem`, `imulMem` and
+    `imulriMem` read the cell at a constant offset. -/
 def readCell : JInstr 64 → Option (String × Int)
   | .loadMem _ base off => some (base, off)
   | .mulxMem _ _ _ base off => some (base, off)
+  | .addMem _ base off | .addToMem base off _ | .adcxMem _ base off | .adoxMem _ base off
+  | .imulMem _ base off | .imulriMem _ base off _ => some (base, off)
   -- `lea` computes `base + idx·scale + off` into a register without dereferencing
   -- it, so it reads no cell.
   | .lea _ _ _ _ _ => none
   | _ => none
 
-/-- The memory cell an instruction **writes** (if any). Only `storeMem` writes. -/
+/-- The memory cell an instruction **writes** at a constant offset (if any): `storeMem`
+    and `addToMem`. -/
 def writeCell : JInstr 64 → Option (String × Int)
   | .storeMem base off _ => some (base, off)
+  | .addToMem base off _ => some (base, off)
   | _ => none
 
 /-- Does an instruction read memory at a **dynamic** (index-register-computed) address?
@@ -649,6 +654,23 @@ theorem StoreDiff.step {base : String} {off : Int} {s t : JState 64}
   -- `loadSym` re-aliases a memory bank (a dynamic read of the `.rodata` table), so it
   -- is likewise excluded by the `readsDynamic i = false` hypothesis.
   | loadSym d sym => simp [readsDynamic] at hdyn
+  -- The memory-operand arithmetic reads its cell, which is not `(base, off)`, and
+  -- registers and flags, all equal in `s`, `t`; `addToMem` writes that cell back.
+  | addMem _ b' o' | addToMem b' o' _ | adcxMem _ b' o' | adoxMem _ b' o' | imulMem _ b' o'
+  | imulriMem _ b' o' _ =>
+    have hne : ¬ (b' = base ∧ o' = off) := by
+      intro hc; exact hread (by simp only [readCell]; rw [hc.1, hc.2])
+    have hcell : s.mem b' o' = t.mem b' o' := hm b' o' hne
+    have hop : ∀ op : JOperand, op.eval s = op.eval t := fun op => by
+      cases op <;> simp [JOperand.eval, JState.get, hr]
+    have hget : ∀ r, s.get r = t.get r := fun r => by simp only [JState.get]; rw [hr]
+    have hflagB : ∀ f, s.flagB f = t.flagB f := fun f => by simp only [JState.flagB, hf]
+    refine ⟨?_, ?_, fun b o hbo => ?_⟩
+    all_goals simp only [evalInstr, JState.writeB5W, JState.writeB5Mem, JState.writeB5,
+      JState.store, JState.setReg, JState.load, hop, hget, hflagB, hcell, hr, hf]
+    all_goals first
+      | exact hm b o hbo
+      | (split <;> first | rfl | exact hm b o hbo)
   -- These instructions read registers and flags (equal in `s`, `t`), write registers and
   -- flags from those reads, and neither read nor write memory.
   | inc _ | dec _ | clc | stc | xchg _ _ | imulri _ _ _ | mul _ _ _ | imulWide _ _ _
@@ -893,6 +915,11 @@ def readRegs : JInstr 64 → List String
   | .setcc _ d => [d]                   -- setcc keeps the upper bits of dst
   | .testN _ a s | .bt a s => a :: srcNames s
   | .btr d s | .bts d s => d :: srcNames s
+  -- the memory-source arithmetic reads its destination (except `imulriMem`); the base
+  -- names a memory bank, as for `loadMem`.
+  | .addMem d _ _ | .adcxMem d _ _ | .adoxMem d _ _ | .imulMem d _ _ => [d]
+  | .imulriMem _ _ _ _ => []
+  | .addToMem _ _ s => srcNames s
 
 /-- The cell an instruction reads **other than** via the promoted `loadMem`, plus the
     register read-set, do not touch `ρ` / `(b,off)` — packaged as the promotability side
@@ -926,6 +953,8 @@ where
   | .mul dh dl _ | .imulWide dh dl _ => [dh, dl]
   -- `clc`, `stc`, `testN` and `bt` write flags only.
   | .clc | .stc | .testN _ _ _ | .bt _ _ => []
+  | .addMem d _ _ | .adcxMem d _ _ | .adoxMem d _ _ | .imulMem d _ _ | .imulriMem d _ _ _ => [d]
+  | .addToMem _ _ _ => []
 
 open InstrTransparent (writtenRegsI)
 
@@ -1480,6 +1509,40 @@ theorem PromoteRel.step_transparent {b : String} {off : Int} {ρ : String} {s t 
     have hsrcρ : ρ ∉ srcNames src := by
       simp only [readRegs, List.mem_cons, not_or] at hrρ; exact hrρ.2
     simp only [evalInstr]; rw [h.reg_read src hsrcρ, h.get hd]; exact h.writeCFW_ne d hd _
+  | addMem d base o | imulMem d base o =>
+    have hd : d ≠ ρ := fun hc => hwρ (by simp [InstrTransparent.writtenRegsI, hc])
+    have hcellne : ¬ (base = b ∧ o = off) := by
+      intro hc; exact hrcell (by simp only [readCell]; rw [hc.1, hc.2])
+    simp only [evalInstr]; rw [h.get hd, h.load_other hcellne]; exact h.writeB5W_ne d hd _
+  | imulriMem d base o imm =>
+    have hd : d ≠ ρ := fun hc => hwρ (by simp [InstrTransparent.writtenRegsI, hc])
+    have hcellne : ¬ (base = b ∧ o = off) := by
+      intro hc; exact hrcell (by simp only [readCell]; rw [hc.1, hc.2])
+    simp only [evalInstr]; rw [h.load_other hcellne]; exact h.writeB5W_ne d hd _
+  | adcxMem d base o | adoxMem d base o =>
+    have hd : d ≠ ρ := fun hc => hwρ (by simp [InstrTransparent.writtenRegsI, hc])
+    have hcellne : ¬ (base = b ∧ o = off) := by
+      intro hc; exact hrcell (by simp only [readCell]; rw [hc.1, hc.2])
+    have hgd : s.get d = t.get d := h.get hd
+    have hcell : s.load base o = t.load base o := h.load_other hcellne
+    have hcf := h.flagB (·.cf)
+    have hof := h.flagB (·.of)
+    obtain ⟨hr, hρv, hflags, hm⟩ := h
+    simp only [evalInstr]; rw [hgd, hcell]; first | rw [hcf] | rw [hof]
+    refine ⟨fun r hrρ => ?_, ?_, ?_, ?_⟩
+    · by_cases hrd : r = d
+      · subst hrd; simp [JState.get]
+      · simp only [JState.get]; rw [if_neg hrd, if_neg hrd]; exact hr r hrρ
+    · simp only [JState.get]; rw [if_neg (Ne.symm hd)]; simpa [JState.get] using hρv
+    · simp only []; rw [hflags]
+    · intro b' o' hc; exact hm b' o' hc
+  | addToMem base o src =>
+    have hcellne : ¬ (base = b ∧ o = off) := by
+      intro hc; exact hwcell (by simp only [writeCell]; rw [hc.1, hc.2])
+    have hsrc := h.reg_read src (by simpa [readRegs] using hrρ)
+    have hcell : s.load base o = t.load base o := h.load_other hcellne
+    simp only [evalInstr, JState.writeB5Mem]; rw [hsrc, hcell]
+    exact (h.writeB5 _).store_ne base o hcellne _
 
 /-! ### Per-instruction classification of a promotable cell's instructions
 

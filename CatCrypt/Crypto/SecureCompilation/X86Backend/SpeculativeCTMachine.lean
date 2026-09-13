@@ -138,9 +138,12 @@ def bypasses {w : Nat} (O : BypassOracle w) (σ : SpecState w) (base : String)
 /-- One instruction of the speculative semantics.
 
     A store steps `evalInstr` and pushes the word it overwrote onto the buffer. A
-    memory read (`loadMem`, `loadMemIdx`, the memory source of `mulxMem`) takes the
-    bypassed stale value when `bypasses` supplies one, consuming a unit of window,
-    and otherwise steps `evalInstr`. Every other instruction steps `evalInstr`. -/
+    memory read (`loadMem`, `loadMemIdx`, the memory source of `mulxMem` and of the
+    memory-operand arithmetic `addMem`, `adcxMem`, `adoxMem`, `imulMem`, `imulriMem`)
+    takes the bypassed stale value when `bypasses` supplies one, consuming a unit of
+    window, and otherwise steps `evalInstr`. `addToMem` does both: it reads its cell,
+    possibly bypassed, and pushes the word it overwrites. Every other instruction steps
+    `evalInstr`. -/
 def specStep {w : Nat} (O : BypassOracle w) (σ : SpecState w) :
     JInstr w → SpecState w
   | .storeMem base off src =>
@@ -170,6 +173,52 @@ def specStep {w : Nat} (O : BypassOracle w) (σ : SpecState w) :
           { arch := (σ.arch.setReg dLo lo).setReg dHi hi
             buf := σ.buf, window := σ.window - 1 }
       | none => { σ with arch := evalInstr σ.arch (.mulxMem dHi dLo a base off) }
+  | .addMem dst base off =>
+      match bypasses O σ base off with
+      | some stale =>
+          { arch := σ.arch.writeB5W dst (x86_ADD (σ.arch.get dst) stale)
+            buf := σ.buf, window := σ.window - 1 }
+      | none => { σ with arch := evalInstr σ.arch (.addMem dst base off) }
+  | .adcxMem dst base off =>
+      match bypasses O σ base off with
+      | some stale =>
+          let (co, res) := x86_ADCX (σ.arch.get dst) stale (σ.arch.flagB (·.cf))
+          { arch := { regs := fun r' => if r' = dst then res else σ.arch.regs r'
+                      flags := { σ.arch.flags with cf := co }
+                      mem := σ.arch.mem }
+            buf := σ.buf, window := σ.window - 1 }
+      | none => { σ with arch := evalInstr σ.arch (.adcxMem dst base off) }
+  | .adoxMem dst base off =>
+      match bypasses O σ base off with
+      | some stale =>
+          let (co, res) := x86_ADCX (σ.arch.get dst) stale (σ.arch.flagB (·.of))
+          { arch := { regs := fun r' => if r' = dst then res else σ.arch.regs r'
+                      flags := { σ.arch.flags with of := co }
+                      mem := σ.arch.mem }
+            buf := σ.buf, window := σ.window - 1 }
+      | none => { σ with arch := evalInstr σ.arch (.adoxMem dst base off) }
+  | .imulMem dst base off =>
+      match bypasses O σ base off with
+      | some stale =>
+          { arch := σ.arch.writeB5W dst (x86_IMULt (σ.arch.get dst) stale)
+            buf := σ.buf, window := σ.window - 1 }
+      | none => { σ with arch := evalInstr σ.arch (.imulMem dst base off) }
+  | .imulriMem dst base off imm =>
+      match bypasses O σ base off with
+      | some stale =>
+          { arch := σ.arch.writeB5W dst (x86_IMULt stale (BitVec.ofNat w imm))
+            buf := σ.buf, window := σ.window - 1 }
+      | none => { σ with arch := evalInstr σ.arch (.imulriMem dst base off imm) }
+  | .addToMem base off src =>
+      match bypasses O σ base off with
+      | some stale =>
+          { arch := σ.arch.writeB5Mem base off (x86_ADD stale (src.eval σ.arch))
+            buf := (base, off, σ.arch.load base off) :: σ.buf
+            window := σ.window - 1 }
+      | none =>
+          { arch := evalInstr σ.arch (.addToMem base off src)
+            buf := (base, off, σ.arch.load base off) :: σ.buf
+            window := σ.window }
   | i => { σ with arch := evalInstr σ.arch i }
 
 /-- The speculative leakage trace: the per-instruction leak

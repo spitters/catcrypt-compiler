@@ -635,6 +635,38 @@ theorem evalInstr_renameInstr_rel_on {ns : List String} {ρ : String → String}
       hsubX n (by simp [bNamesX, SpillingRegAlloc.readNames, hn])
     simp only [renameInstr, evalInstr, hop_on b hs, hget_on d hd]
     exact writeCFW_rel_on hinj h d hd _
+  | addMem d base off | imulMem d base off =>
+    have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    have hbase : base ∈ ns := hsubX base
+      (by simp [bNamesX, SpillingRegAlloc.readNames])
+    simp only [renameInstr, evalInstr, hget_on d hd, load_rel_on h base hbase off]
+    exact writeB5W_rel_on hinj h d hd _
+  | imulriMem d base off imm =>
+    have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    have hbase : base ∈ ns := hsubX base
+      (by simp [bNamesX, SpillingRegAlloc.readNames])
+    simp only [renameInstr, evalInstr, load_rel_on h base hbase off]
+    exact writeB5W_rel_on hinj h d hd _
+  | adcxMem d base off =>
+    have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    have hbase : base ∈ ns := hsubX base
+      (by simp [bNamesX, SpillingRegAlloc.readNames])
+    simp only [renameInstr, evalInstr, hget_on d hd, load_rel_on h base hbase off, hcf]
+    exact adcWrite_rel_on hinj h d hd _ (fun fl => { fl with cf := _ })
+  | adoxMem d base off =>
+    have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    have hbase : base ∈ ns := hsubX base
+      (by simp [bNamesX, SpillingRegAlloc.readNames])
+    simp only [renameInstr, evalInstr, hget_on d hd, load_rel_on h base hbase off, hof]
+    exact adcWrite_rel_on hinj h d hd _ (fun fl => { fl with of := _ })
+  | addToMem base off s =>
+    have hbase : base ∈ ns := hsubX base
+      (by simp [bNamesX, SpillingRegAlloc.readNames])
+    have hs : ∀ n ∈ srcNames s, n ∈ ns := fun n hn =>
+      hsubX n (by simp [bNamesX, SpillingRegAlloc.readNames, hn])
+    simp only [renameInstr, evalInstr, JState.writeB5Mem, hop_on s hs,
+      load_rel_on h base hbase off]
+    exact store_rel_on hinj (writeB5_rel_on h _) base hbase off _
 
 /-! ## 6. The whole-block scoped simulation -/
 

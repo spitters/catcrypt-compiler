@@ -181,7 +181,7 @@ theorem evalInstr_get_of_not_written {i : JInstr 64} {s : JState 64} {n : String
       JState.writeB5, JState.writeB2W, JState.writeB4W, JState.writeB5W2, JState.writeB5N,
       JState.writeCFW, JState.setRegMerge,
       JState.store, JState.storeIdx, x86_MOV, JOperand.eval, JState.loadIdx, JState.load,
-      List.mem_cons, List.not_mem_nil]
+      JState.writeB5Mem, List.mem_cons, List.not_mem_nil]
 
 /-- `evalInstr` does not change the memory at a base the instruction never names. -/
 theorem evalInstr_load_of_not_jinstrName {i : JInstr 64} {s : JState 64} {sb : String}
@@ -194,6 +194,10 @@ theorem evalInstr_load_of_not_jinstrName {i : JInstr 64} {s : JState 64} {sb : S
   case storeMemIdx base idx sc src =>
     simp only [jinstrNames, List.mem_cons, not_or] at h
     simp only [evalInstr, JState.load, JState.storeIdx, JState.store, x86_MOV, JOperand.eval]
+    rw [if_neg (fun hc => h.1 hc.1)]
+  case addToMem base o' src =>
+    simp only [jinstrNames, List.mem_cons, not_or] at h
+    simp only [evalInstr, JState.load, JState.writeB5Mem, JState.writeB5, JState.store]
     rw [if_neg (fun hc => h.1 hc.1)]
   case loadSym dst sym =>
     simp only [jinstrNames, List.mem_singleton] at h

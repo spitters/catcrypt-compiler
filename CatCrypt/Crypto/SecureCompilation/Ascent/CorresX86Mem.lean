@@ -65,6 +65,9 @@ from four segments closed by `corres_solve_mem`.
   leaves.
 * `corresJ_movM`, `corresJ_addM`, `corresJ_xorM`, `corresJ_imulM`, `corresJ_mulxM`,
   `corresJ_adcxM`, `corresJ_adoxM`: the lifted register leaves.
+* `corresJ_memSrcM`, `corresJ_addMemM`, `corresJ_imulMemM`, `corresJ_imulriMemM`,
+  `corresJ_adcxMemM`, `corresJ_adoxMemM`: the leaves of the memory-source arithmetic,
+  each an `SRcarry2` leaf at the loaded word.
 * `runBlock_imulMemImm`: the block `loadMem d b o; imul d k` has the effect of the
   three-operand `imul d, [b + o], k` on registers, flags and memory.
 * `corres_solve_mem`: the solver over `SRmem`.
@@ -422,6 +425,174 @@ theorem runBlock_imulMemImm (s : JState 64) (d b : String) (o : Int) (k : Nat) :
   funext r
   split <;> simp_all
 
+/-! ## The memory-source arithmetic leaves
+
+`addMem`, `imulMem`, `imulriMem`, `adcxMem` and `adoxMem` read one tracked cell and
+write one register. Each has the effect of its register form with the cell's word in
+place of the register operand, so each leaf is an `SRcarry2` leaf at an immediate
+source equal to the word, lifted through `corresJ_memSrcM`. -/
+
+/-- A memory-source instruction `i` reading the tracked cell `(b, o)` refines the
+    `SRcarry2` leaf of a block `gs v` that takes the cell's word as the immediate `v`:
+    `i` runs as `gs` at the loaded word, `gs` writes no memory, and its abstract step
+    leaves the base registers. -/
+theorem corresJ_memSrcM (cells : List (String × Int)) {i : JInstr 64}
+    (gs : Nat → List (JInstr 64)) (f : Nat → ACarry2 → ACarry2) (b : String) (o : Int)
+    (hc : (b, o) ∈ cells)
+    (hleaf : ∀ v, CorresJ SRcarry2 (fun _ => True) (f v) (gs v))
+    (heq : ∀ s : JState 64, runBlock s [i] = runBlock s (gs (s.load b o).toNat))
+    (hmem : ∀ v (s : JState 64), (runBlock s (gs v)).mem = s.mem)
+    (hbase : ∀ v (x : ACarry2), ∀ r ∈ baseRegs cells, (f v x).regs r = x.regs r) :
+    CorresJ (SRmem cells) (fun _ => True)
+      (fun a => ⟨f (a.mem (cellAddr a.c.regs (b, o))).toNat a.c, a.mem⟩) [i] := by
+  intro s a ⟨h2, hm, hsep⟩ _
+  have hv : s.load b o = a.mem (cellAddr a.c.regs (b, o)) := hm (b, o) hc
+  rw [heq s, hv]
+  refine ⟨hleaf _ s a.c h2 trivial, ?_, cellsSeparated_frame cells _ _ (hbase _ a.c) hsep⟩
+  intro c hc'
+  rw [hmem, cellAddr_frame cells a.c.regs _ (hbase _ a.c) c hc']
+  exact hm c hc'
+
+/-- `adcx d, $v` over `ACarry2`: `adcxStep2` with the immediate word `v` as source. -/
+def adcxImmStep2 (dst : String) (v : Nat) (a : ACarry2) : ACarry2 :=
+  { regs := fun r => if r = dst then
+      add_carry (a.regs dst) (BitVec.ofNat 64 v) (if a.cf then 1 else 0) else a.regs r
+    cf := decide (2 ^ 64 ≤ (a.regs dst).toNat + (BitVec.ofNat 64 v).toNat +
+      (if a.cf then 1 else 0))
+    of := a.of }
+
+/-- `adox d, $v` over `ACarry2`: `adoxStep2` with the immediate word `v` as source. -/
+def adoxImmStep2 (dst : String) (v : Nat) (a : ACarry2) : ACarry2 :=
+  { regs := fun r => if r = dst then
+      add_carry (a.regs dst) (BitVec.ofNat 64 v) (if a.of then 1 else 0) else a.regs r
+    cf := a.cf
+    of := decide (2 ^ 64 ≤ (a.regs dst).toNat + (BitVec.ofNat 64 v).toNat +
+      (if a.of then 1 else 0)) }
+
+/-- The `adcx` evaluation at an immediate source refines `adcxImmStep2`. -/
+theorem corresJ_adcxImm2 (dst : String) (v : Nat) :
+    CorresJ SRcarry2 (fun _ => True) (adcxImmStep2 dst v) [.adcx dst (.imm v)] := by
+  intro st a hSR _
+  obtain ⟨hreg, hcf, hof⟩ := hSR
+  have hcf' : Option.getD st.flags.cf false = a.cf := by simpa [JState.flagB] using hcf
+  have hof' : Option.getD st.flags.of false = a.of := by simpa [JState.flagB] using hof
+  refine ⟨?_, ?_, ?_⟩
+  · intro r
+    by_cases hr : r = dst
+    · subst hr
+      simp only [runBlock_cons, runBlock_nil, evalInstr, x86_ADCX, waddcarry,
+        add_carry, adcxImmStep2, JState.get, JOperand.eval, hcf, hreg]
+    · simp only [runBlock_cons, runBlock_nil, evalInstr, x86_ADCX, waddcarry,
+        adcxImmStep2, JState.get, JOperand.eval, hcf, hreg, if_neg hr]
+  · simp only [runBlock_cons, runBlock_nil, evalInstr, x86_ADCX, waddcarry,
+      JState.flagB, Option.getD_some, adcxImmStep2, JState.get, JOperand.eval, hcf', hreg]
+  · simp only [runBlock_cons, runBlock_nil, evalInstr, x86_ADCX, waddcarry,
+      JState.flagB, adcxImmStep2]
+    exact hof'
+
+/-- The `adox` evaluation at an immediate source refines `adoxImmStep2`. -/
+theorem corresJ_adoxImm2 (dst : String) (v : Nat) :
+    CorresJ SRcarry2 (fun _ => True) (adoxImmStep2 dst v) [.adox dst (.imm v)] := by
+  intro st a hSR _
+  obtain ⟨hreg, hcf, hof⟩ := hSR
+  have hcf' : Option.getD st.flags.cf false = a.cf := by simpa [JState.flagB] using hcf
+  have hof' : Option.getD st.flags.of false = a.of := by simpa [JState.flagB] using hof
+  refine ⟨?_, ?_, ?_⟩
+  · intro r
+    by_cases hr : r = dst
+    · subst hr
+      simp only [runBlock_cons, runBlock_nil, evalInstr, x86_ADCX, waddcarry,
+        add_carry, adoxImmStep2, JState.get, JOperand.eval, hof, hreg]
+    · simp only [runBlock_cons, runBlock_nil, evalInstr, x86_ADCX, waddcarry,
+        adoxImmStep2, JState.get, JOperand.eval, hof, hreg, if_neg hr]
+  · simp only [runBlock_cons, runBlock_nil, evalInstr, x86_ADCX, waddcarry,
+      JState.flagB, adoxImmStep2]
+    exact hcf'
+  · simp only [runBlock_cons, runBlock_nil, evalInstr, x86_ADCX, waddcarry,
+      JState.flagB, Option.getD_some, adoxImmStep2, JState.get, JOperand.eval, hof', hreg]
+
+/-- `add d, [b + o]` over `AMemX`: `addStep2` with the cell's word as source. -/
+def addMemStepM (d b : String) (o : Int) (a : AMemX) : AMemX :=
+  ⟨addStep2 d (.imm (a.mem (cellAddr a.c.regs (b, o))).toNat) a.c, a.mem⟩
+
+/-- `imul d, [b + o]` over `AMemX`: `imulStep2` with the cell's word as source. -/
+def imulMemStepM (d b : String) (o : Int) (a : AMemX) : AMemX :=
+  ⟨imulStep2 d (.imm (a.mem (cellAddr a.c.regs (b, o))).toNat) a.c, a.mem⟩
+
+/-- `imul d, [b + o], k` over `AMemX`: `d` receives the cell's word, then `imulStep2`
+    multiplies it by `k`. -/
+def imulriMemStepM (d b : String) (o : Int) (k : Nat) (a : AMemX) : AMemX :=
+  ⟨imulStep2 d (.imm k) (movStep2 d (.imm (a.mem (cellAddr a.c.regs (b, o))).toNat) a.c),
+    a.mem⟩
+
+/-- `adcx d, [b + o]` over `AMemX`: `adcxImmStep2` at the cell's word. -/
+def adcxMemStepM (d b : String) (o : Int) (a : AMemX) : AMemX :=
+  ⟨adcxImmStep2 d (a.mem (cellAddr a.c.regs (b, o))).toNat a.c, a.mem⟩
+
+/-- `adox d, [b + o]` over `AMemX`: `adoxImmStep2` at the cell's word. -/
+def adoxMemStepM (d b : String) (o : Int) (a : AMemX) : AMemX :=
+  ⟨adoxImmStep2 d (a.mem (cellAddr a.c.regs (b, o))).toNat a.c, a.mem⟩
+
+/-- `add` with a tracked memory source into a register that is not a base refines
+    `addMemStepM`. -/
+theorem corresJ_addMemM (cells : List (String × Int)) (d b : String) (o : Int)
+    (hc : (b, o) ∈ cells) (hd : d ∉ baseRegs cells) :
+    CorresJ (SRmem cells) (fun _ => True) (addMemStepM d b o) [.addMem d b o] :=
+  corresJ_memSrcM cells (fun v => [.add d (.imm v)]) (fun v => addStep2 d (.imm v)) b o hc
+    (fun v => corresJ_add2 d (.imm v))
+    (fun s => by simp [runBlock_cons, runBlock_nil, evalInstr, JOperand.eval])
+    (fun _ _ => rfl) (fun _ x => base_of_write cells d hd _ x.regs)
+
+/-- Two-operand `imul` with a tracked memory source into a register that is not a base
+    refines `imulMemStepM`. -/
+theorem corresJ_imulMemM (cells : List (String × Int)) (d b : String) (o : Int)
+    (hc : (b, o) ∈ cells) (hd : d ∉ baseRegs cells) :
+    CorresJ (SRmem cells) (fun _ => True) (imulMemStepM d b o) [.imulMem d b o] :=
+  corresJ_memSrcM cells (fun v => [.imul d (.imm v)]) (fun v => imulStep2 d (.imm v)) b o hc
+    (fun v => corresJ_imul2 d (.imm v))
+    (fun s => by simp [runBlock_cons, runBlock_nil, evalInstr, JOperand.eval])
+    (fun _ _ => rfl) (fun _ x => base_of_write cells d hd _ x.regs)
+
+/-- Three-operand `imul` with a tracked memory source into a register that is not a
+    base refines `imulriMemStepM`. -/
+theorem corresJ_imulriMemM (cells : List (String × Int)) (d b : String) (o : Int) (k : Nat)
+    (hc : (b, o) ∈ cells) (hd : d ∉ baseRegs cells) :
+    CorresJ (SRmem cells) (fun _ => True) (imulriMemStepM d b o k) [.imulriMem d b o k] :=
+  corresJ_memSrcM cells (fun v => [.mov d (.imm v), .imul d (.imm k)])
+    (fun v c => imulStep2 d (.imm k) (movStep2 d (.imm v) c)) b o hc
+    (fun v => corresJ_cons SRcarry2 (corresJ_mov2 d (.imm v)) (corresJ_imul2 d (.imm k))
+      (fun _ _ => trivial))
+    (fun s => by
+      simp only [runBlock_cons, runBlock_nil, evalInstr, JState.setReg, JState.writeB5W,
+        JState.get, JOperand.eval, x86_MOV, if_pos, BitVec.ofNat_toNat, BitVec.setWidth_eq]
+      congr 1
+      funext r
+      split <;> simp_all)
+    (fun _ _ => rfl)
+    (fun _ x r hr => by
+      have hne : r ≠ d := fun h => hd (h ▸ hr)
+      simp [imulStep2, movStep2, hne])
+
+/-- `adcx` with a tracked memory source into a register that is not a base refines
+    `adcxMemStepM`. -/
+theorem corresJ_adcxMemM (cells : List (String × Int)) (d b : String) (o : Int)
+    (hc : (b, o) ∈ cells) (hd : d ∉ baseRegs cells) :
+    CorresJ (SRmem cells) (fun _ => True) (adcxMemStepM d b o) [.adcxMem d b o] :=
+  corresJ_memSrcM cells (fun v => [.adcx d (.imm v)]) (fun v => adcxImmStep2 d v) b o hc
+    (fun v => corresJ_adcxImm2 d v)
+    (fun s => by simp [runBlock_cons, runBlock_nil, evalInstr, JOperand.eval])
+    (fun _ _ => rfl) (fun _ x => base_of_write cells d hd _ x.regs)
+
+/-- `adox` with a tracked memory source into a register that is not a base refines
+    `adoxMemStepM`. -/
+theorem corresJ_adoxMemM (cells : List (String × Int)) (d b : String) (o : Int)
+    (hc : (b, o) ∈ cells) (hd : d ∉ baseRegs cells) :
+    CorresJ (SRmem cells) (fun _ => True) (adoxMemStepM d b o) [.adoxMem d b o] :=
+  corresJ_memSrcM cells (fun v => [.adox d (.imm v)]) (fun v => adoxImmStep2 d v) b o hc
+    (fun v => corresJ_adoxImm2 d v)
+    (fun s => by simp [runBlock_cons, runBlock_nil, evalInstr, JOperand.eval])
+    (fun _ _ => rfl) (fun _ x => base_of_write cells d hd _ x.regs)
+
 /-! ## `SRcarry2` leaves for `inc`, `clc`, `test`, `adc`, `lea`, `movzx`, `setcc`, `cmovcc`
 
 `ACarry2` tracks the registers, `CF` and `OF`. `ZF`, `SF` and `PF` are not tracked, so
@@ -678,6 +849,7 @@ attribute [corres] corresJ_mov2 corresJ_add2 corresJ_xor2 corresJ_imul2
   corresJ_movzx2
   corresJ_incM corresJ_clcM corresJ_testNM corresJ_testM corresJ_adcM corresJ_leaM
   corresJ_movzxM corresJ_setccM corresJ_cmovccM
+  corresJ_addMemM corresJ_imulMemM corresJ_imulriMemM corresJ_adcxMemM corresJ_adoxMemM
 
 /-- Apply a `@[corres]` leaf to a single-instruction goal and discharge its side
     conditions (cell membership, base-register non-membership) by `decide`. -/
@@ -839,6 +1011,11 @@ def absStepMem : JInstr 64 → AMemX → AMemX
   | .loadMem d b o => loadStepM d b o
   | .storeMem b o src => storeStepM b o src
   | .mulxMem dHi dLo x b o => mulxMemStepM dHi dLo x b o
+  | .addMem d b o => addMemStepM d b o
+  | .imulMem d b o => imulMemStepM d b o
+  | .imulriMem d b o k => imulriMemStepM d b o k
+  | .adcxMem d b o => adcxMemStepM d b o
+  | .adoxMem d b o => adoxMemStepM d b o
   | _ => id
 
 /-- The abstract run of a block over `AMemX`: `absStepMem` folded left to right. -/

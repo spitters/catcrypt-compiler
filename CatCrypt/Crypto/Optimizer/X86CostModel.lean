@@ -124,6 +124,7 @@ Placeholder latencies (see module docstring):
 - `inc`/`dec`/`clc`/`stc`/`xchg`/`cmovcc`/`setcc`/`testN`/`bt`/`btr`/`bts` : 1 c
 - `imulri`/`shld`/`shrd` : 3 c; `rcl`/`rcr` : 2 c
 - `mul`/`imulWide` : 4 c (one-operand widening multiply)
+- `addMem`/`adcxMem`/`adoxMem`/`addToMem` : 2 c; `imulMem`/`imulriMem` : 4 c
 
 Sources to consult for refresh: <https://uops.info/> (filter Skylake /
 Rocket Lake / Golden Cove), Agner Fog "Instruction Tables" (latest PDF). -/
@@ -225,6 +226,15 @@ def costOf : JInstr 64 → InstrCost
   | .bt _ _              => ⟨1, 1, [.p0, .p6], 1⟩
   | .btr _ _             => ⟨1, 1, [.p0, .p6], 1⟩
   | .bts _ _             => ⟨1, 1, [.p0, .p6], 1⟩
+  -- Memory-source arithmetic: the register form's latency plus one cycle for the
+  -- load, with the AGU on p23, as `mulxMem` is charged against `mulx`.
+  | .addMem _ _ _        => ⟨2, 1, [.p0, .p1, .p5, .p6, .p23], 2⟩
+  | .adcxMem _ _ _       => ⟨2, 1, [.p1, .p23], 2⟩
+  | .adoxMem _ _ _       => ⟨2, 1, [.p1, .p23], 2⟩
+  | .imulMem _ _ _       => ⟨4, 1, [.p1, .p23], 4⟩
+  | .imulriMem _ _ _ _   => ⟨4, 1, [.p1, .p23], 4⟩
+  -- ADD into memory: load, add and store-data, with the AGU on p23 and the store on p4.
+  | .addToMem _ _ _      => ⟨2, 1, [.p0, .p1, .p5, .p6, .p4, .p23], 2⟩
 
 /-! ## 4. Data-dependence helpers -/
 

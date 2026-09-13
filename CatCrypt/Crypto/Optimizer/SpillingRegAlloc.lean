@@ -102,6 +102,9 @@ def writtenNames : JInstr 64 → List String
   | .mul dh dl _ | .imulWide dh dl _ => [dh, dl]
   -- `clc`, `stc`, `testN` and `bt` write flags only.
   | .clc | .stc | .testN _ _ _ | .bt _ _ => []
+  -- the memory-source arithmetic writes its destination; `addToMem` writes memory only.
+  | .addMem d _ _ | .adcxMem d _ _ | .adoxMem d _ _ | .imulMem d _ _ | .imulriMem d _ _ _ => [d]
+  | .addToMem _ _ _ => []
 
 /-- Register names an instruction **reads** (its source operands and, for the
     two-address ALU ops, the destination, which is also a source; memory bases are
@@ -162,6 +165,11 @@ def readNames : JInstr 64 → List String
   | .setcc _ d => [d]
   | .testN _ a b | .bt a b => a :: srcNames b
   | .btr d b | .bts d b => d :: srcNames b
+  -- two-address memory-source arithmetic reads the destination and the base register;
+  -- `imulriMem` leaves `dst` write-only.
+  | .addMem d base _ | .adcxMem d base _ | .adoxMem d base _ | .imulMem d base _ => [d, base]
+  | .imulriMem _ base _ _ => [base]
+  | .addToMem base _ s => base :: srcNames s
 
 /-- A value-name's live range over a block: `defIdx` is the first index that
     writes it (or, if it is only ever read — e.g. a frame base / input — `0`),

@@ -158,6 +158,18 @@ def writesJ (s : JState 64) : JInstr 64 → List (String × BitVec 64)
   | .bt _ _ => []
   | .btr dst b => [(dst, (x86_BTR (s.get dst) (b.eval s)).2)]
   | .bts dst b => [(dst, (x86_BTS (s.get dst) (b.eval s)).2)]
+  | .addMem dst base off => [(dst, (x86_ADD (s.get dst) (s.load base off)).word)]
+  -- `add [base + off], src` writes the cell and the flags, no register.
+  | .addToMem _ _ _ => []
+  | .adcxMem dst base off =>
+      let (_co, res) := x86_ADCX (s.get dst) (s.load base off) (s.flagB (·.cf))
+      [(dst, res)]
+  | .adoxMem dst base off =>
+      let (_co, res) := x86_ADCX (s.get dst) (s.load base off) (s.flagB (·.of))
+      [(dst, res)]
+  | .imulMem dst base off => [(dst, (x86_IMULt (s.get dst) (s.load base off)).word)]
+  | .imulriMem dst base off imm =>
+      [(dst, (x86_IMULt (s.load base off) (BitVec.ofNat 64 imm)).word)]
 
 /-- The written register names of one `JInstr`, **in the order `writesJ` applies them**.
     Identical to `SpillingRegAlloc.writtenNames` for every constructor except the two
@@ -201,7 +213,7 @@ theorem evalInst_eq_setJ (s : JState 64) (i : JInstr 64) (r : String) :
     simp [runBlock, evalInstr, writesJ, JState.get, JState.setReg, JState.writeB5,
       JState.writeB5W, JState.writeB2W, JState.store, JState.storeIdx, JState.load,
       JState.loadIdx, JState.writeB4W, JState.writeB5W2, JState.writeB5N,
-      JState.writeCFW, JState.setRegMerge, x86_XCHG]
+      JState.writeCFW, JState.setRegMerge, x86_XCHG, JState.writeB5Mem]
 
 /-! ## 3. The renaming agreement: `writesJ` commutes with `ρ` under read-agreement
 
@@ -443,6 +455,21 @@ theorem writesJ_rename (ρ : String → String) (s t : JState 64) (i : JInstr 64
       h x (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ hx))
     simp only [writesJ, renameInstr, renameOperand_eval_rename amt hs, hd, hsrc,
       List.map_cons, List.map_nil]
+  -- the memory-source arithmetic reads its cell through `hmem`, and `adcxMem`/`adoxMem`
+  -- a flag through `hflag`.
+  | addMem dst base off | imulMem dst base off =>
+    have hd : t.get (ρ dst) = s.get dst := h dst (List.mem_cons_self ..)
+    have hload : t.mem (ρ base) off = s.mem base off := hmem base off
+    simp only [writesJ, renameInstr, JState.load, hload, hd, List.map_cons, List.map_nil]
+  | adcxMem dst base off | adoxMem dst base off =>
+    have hd : t.get (ρ dst) = s.get dst := h dst (List.mem_cons_self ..)
+    have hload : t.mem (ρ base) off = s.mem base off := hmem base off
+    simp only [writesJ, renameInstr, JState.load, hload, hd, JState.flagB, hflag,
+      List.map_cons, List.map_nil]
+  | imulriMem dst base off imm =>
+    have hload : t.mem (ρ base) off = s.mem base off := hmem base off
+    simp only [writesJ, renameInstr, JState.load, hload, List.map_cons, List.map_nil]
+  | addToMem base off src => simp only [writesJ, renameInstr, List.map_nil]
   -- `rcl`/`rcr`, `cmovcc` and `setcc` read flags, carried by `hflag`.
   | rcl d amt | rcr d amt =>
     have hd : t.get (ρ d) = s.get d := h d (List.mem_cons_self ..)

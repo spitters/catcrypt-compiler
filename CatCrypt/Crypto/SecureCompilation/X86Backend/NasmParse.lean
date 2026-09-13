@@ -77,31 +77,27 @@ its `evalInstr` arm reads and writes, or the gap.
 | `mulx hi, lo, r` | `mulx hi lo (.reg "%rdx") (.reg r)` | none / none |
 | `mulx hi, lo, [b + d]` | `mulxMem hi lo (.reg "%rdx") b d` | none / none |
 | `adcx r, r` (13 of 17) | `adcx` | CF / CF only |
-| `adcx r, [b + d]` (4) | gap | |
+| `adcx r, [b + d]` (4) | `adcxMem` | CF / CF only |
 | `adox r, r` (12 of 16) | `adox` | OF / OF only |
-| `adox r, [b + d]` (4) | gap | |
+| `adox r, [b + d]` (4) | `adoxMem` | OF / OF only |
 | `add r, r` / `add r, imm` (10 of 12) | `add` | none / OF CF SF PF ZF |
-| `add r, [b + d]` (2) | gap | |
+| `add r, [b + d]` (2) | `addMem` | none / OF CF SF PF ZF |
 | `adc r, imm` (4) | `adc` | CF / OF CF SF PF ZF |
 | `xor r, r` (5) | `xor_` | none / OF = CF = 0, SF PF ZF |
 | `sub r, imm` (1) | `sub` | none / OF CF SF PF ZF |
 | `shr r, imm` (2) | `shr` | none / `x86_SHR` flags |
 | `lea r, [b + i]` (3) | `lea r b i 1 0` | none / none |
 | `imul r, r', imm` (1) | `imulri` | none / OF CF, SF PF ZF undefined |
-| `imul r, [b + d], imm` (4) | gap | |
+| `imul r, [b + d], imm` (4) | `imulriMem` | none / OF CF, SF PF ZF undefined |
 | `bzhi` (7) | gap | |
 | `shrd r, r', imm` (5) | `shrd` | none / `x86_SHRD` flags |
 | `xchg r, r'` (1) | `xchg` | none / none |
 | `test al, al` (1) | `testN 8` | none / OF = CF = 0, SF PF ZF |
 
-The constructors and `evalInstr` arms that would close the remaining gaps:
+The parser also maps `add [b + d], r`, `add qword [b + d], imm` (`addToMem`) and
+`imul r, [b + d]` (`imulMem`), which the file does not use. The constructor and
+`evalInstr` arm that would close the remaining gap:
 
-* `imul r, [b + d], imm`: a memory-source form
-  `imulriMem (dst base : String) (off : Int) (imm : Nat)` reading
-  `s.load base off` in place of `s.get src`.
-* `adcx`, `adox`, `add` with a memory source: `adcxMem`, `adoxMem`, `addMem`
-  `(dst base : String) (off : Int)`, each the register arm with `src.eval s`
-  replaced by `s.load base off`; alternatively a memory case of `JOperand`.
 * `bzhi dst, src, idx`: `bzhi (dst src idx : String)` with
   `n := (s.get idx).toNat % 256`, word `if n < 64 then src &&& (2^n - 1) else
   src`, `ZF`/`SF` from the word, `CF := decide (63 < n)`, `OF := false`, `PF`
@@ -561,8 +557,25 @@ def toJInstr (mn : String) (ops : List Operand) : Except String (JInstr 64) := d
         match simm32? o with
         | some v => return f (jreg d) (.imm v)
         | none => throw s!"{mn} immediate {printOperand o} is not a sign-extended imm32"
-    | [.reg _, .mem _] => throw s!"{mn} with a memory source operand: no JInstr constructor"
-    | [.mem _, _] => throw s!"{mn} with a memory destination operand: no JInstr constructor"
+    | [.reg d, .mem m] =>
+        if mn == "add" then
+          let (b, off) ← plainMem m
+          return .addMem (jreg d) (jreg b) off
+        else throw s!"{mn} with a memory source operand: no JInstr constructor"
+    | [.mem m, .reg s] =>
+        if mn == "add" then
+          let (b, off) ← plainMem m
+          return .addToMem (jreg b) off (.reg (jreg s))
+        else throw s!"{mn} with a memory destination operand: no JInstr constructor"
+    | [.mem m, o] =>
+        if mn == "add" then
+          unless m.size == some "qword" do
+            throw "add of an immediate to memory needs the qword size"
+          let some v := simm32? o
+            | throw s!"add immediate {printOperand o} is not a sign-extended imm32"
+          let (b, off) ← plainMem m
+          return .addToMem (jreg b) off (.imm v)
+        else throw s!"{mn} with a memory destination operand: no JInstr constructor"
     | _ => throw s!"{mn}: unsupported operand form"
   if let some f := shiftOf? mn then
     match ops with
@@ -647,9 +660,14 @@ def toJInstr (mn : String) (ops : List Operand) : Except String (JInstr 64) := d
         | throw s!"imul immediate {printOperand o} is not a sign-extended imm32"
       if s = d then return .imul (jreg d) (.imm v)
       else return .imulri (jreg d) (jreg s) v
-  | "imul", [.reg _, .mem _, _] =>
-      throw "imul with three operands and a memory source: no JInstr constructor \
-        (JInstr.imulri reads a register source)"
+  | "imul", [.reg d, .mem m, o] =>
+      let some v := simm32? o
+        | throw s!"imul immediate {printOperand o} is not a sign-extended imm32"
+      let (b, off) ← plainMem m
+      return .imulriMem (jreg d) (jreg b) off v
+  | "imul", [.reg d, .mem m] =>
+      let (b, off) ← plainMem m
+      return .imulMem (jreg d) (jreg b) off
   | "imul", [.reg s] => return .imulWide "%rdx" "%rax" (jreg s)
   | "mul", [.reg s] => return .mul "%rdx" "%rax" (jreg s)
   | "neg", [.reg d] => return .neg (jreg d)
@@ -680,10 +698,12 @@ def toJInstr (mn : String) (ops : List Operand) : Except String (JInstr 64) := d
       return .mulxMem (jreg hi) (jreg lo) (.reg "%rdx") (jreg b) off
   | "adcx", [.reg d, .reg s] => return .adcx (jreg d) (.reg (jreg s))
   | "adox", [.reg d, .reg s] => return .adox (jreg d) (.reg (jreg s))
-  | "adcx", [.reg _, .mem _] =>
-      throw "adcx with a memory source operand: no JInstr constructor"
-  | "adox", [.reg _, .mem _] =>
-      throw "adox with a memory source operand: no JInstr constructor"
+  | "adcx", [.reg d, .mem m] =>
+      let (b, off) ← plainMem m
+      return .adcxMem (jreg d) (jreg b) off
+  | "adox", [.reg d, .mem m] =>
+      let (b, off) ← plainMem m
+      return .adoxMem (jreg d) (jreg b) off
   | "bzhi", _ => throw "bzhi: no JInstr constructor"
   | "ret", _ => throw "ret: a straight-line JInstr block has no return; parseNasm \
       accepts it as the last instruction"
@@ -867,6 +887,34 @@ def toSyntax : JInstr 64 → Except String (String × List Operand)
         return ("movsxd", [.reg (← intelReg d), .subreg (← intelSubReg s 32)])
       else throw s!"movsx from width {sw} has no NASM form"
   | .loadSym _ _ => throw "RIP-relative symbol load is outside the parser image"
+  | .addMem d b off => do
+      let dN ← intelReg d
+      let bN ← intelReg b
+      return ("add", [.reg dN, memOp bN none off])
+  | .addToMem b off (.reg s) => do
+      let bN ← intelReg b
+      let sN ← intelReg s
+      return ("add", [memOp bN none off, .reg sN])
+  | .addToMem b off (.imm v) => do
+      let bN ← intelReg b
+      return ("add", [.mem { size := some "qword", base := bN, idx := none, disp := off },
+        immOperand v])
+  | .adcxMem d b off => do
+      let dN ← intelReg d
+      let bN ← intelReg b
+      return ("adcx", [.reg dN, memOp bN none off])
+  | .adoxMem d b off => do
+      let dN ← intelReg d
+      let bN ← intelReg b
+      return ("adox", [.reg dN, memOp bN none off])
+  | .imulMem d b off => do
+      let dN ← intelReg d
+      let bN ← intelReg b
+      return ("imul", [.reg dN, memOp bN none off])
+  | .imulriMem d b off imm => do
+      let dN ← intelReg d
+      let bN ← intelReg b
+      return ("imul", [.reg dN, memOp bN none off, immOperand imm])
 
 /-! ## 4. Whole-text parse, print and canonicalisation -/
 

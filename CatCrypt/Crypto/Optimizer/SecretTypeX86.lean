@@ -163,6 +163,11 @@ def instrTaint (R : RegTaint) (C : CellTaint) : JInstr 64 → SecretLevel
   | .rcl dst amt | .rcr dst amt => R dst ⊔ₛ operandTaint R amt ⊔ₛ .sec
   | .cmovcc _ dst src       => R dst ⊔ₛ operandTaint R src ⊔ₛ .sec
   | .setcc _ dst            => R dst ⊔ₛ .sec
+  -- the memory-operand arithmetic joins the cell's taint with its register inputs.
+  | .addMem dst base off | .adcxMem dst base off | .adoxMem dst base off
+  | .imulMem dst base off   => R dst ⊔ₛ C (base, off)
+  | .imulriMem _ base off _ => C (base, off)
+  | .addToMem base off src  => C (base, off) ⊔ₛ operandTaint R src
 
 /-- Threading an instruction through the register-taint env: bind every register
 it writes (`writtenRegs`) to the instruction's output taint. -/
@@ -171,13 +176,15 @@ def stepRegTaint (R : RegTaint) (C : CellTaint) (i : JInstr 64) : RegTaint :=
 
 /-- Threading an instruction through the cell-taint env: a `storeMem (.reg r)`
 records that cell `(base, off)` now carries register `r`'s taint; any other
-single-cell store records that cell's stored taint; everything else leaves the
-cell env unchanged (loads and register ops do not write a statically-known
-cell). -/
+single-cell store records that cell's stored taint; `addToMem` records the join of
+the cell's taint and its source's; everything else leaves the cell env unchanged
+(loads and register ops do not write a statically-known cell). -/
 def stepCellTaint (R : RegTaint) (C : CellTaint) (i : JInstr 64) : CellTaint :=
   fun y =>
     match i with
     | .storeMem base off src => if y = (base, off) then operandTaint R src else C y
+    | .addToMem base off src =>
+        if y = (base, off) then C (base, off) ⊔ₛ operandTaint R src else C y
     | _ => C y
 
 /-- The block taint summary: the running join of every instruction's output
@@ -227,11 +234,14 @@ theorem HeldTaintValid.killCell {h : Held} {C : CellTaint} {R : RegTaint}
     (d base : String) (off : Int) :
     stepCellTaint R C (.loadMem d base off) = C := rfl
 
-/-- After a non-`storeMem` instruction the cell env is unchanged. -/
+/-- After an instruction other than `storeMem` and `addToMem` the cell env is
+    unchanged. -/
 theorem stepCellTaint_nonstore (R : RegTaint) (C : CellTaint) (i : JInstr 64)
-    (h : ∀ b o v, i ≠ .storeMem b o v) : stepCellTaint R C i = C := by
+    (h : ∀ b o v, i ≠ .storeMem b o v) (h2 : ∀ b o v, i ≠ .addToMem b o v) :
+    stepCellTaint R C i = C := by
   cases i with
   | storeMem b o v => exact absurd rfl (h b o v)
+  | addToMem b o v => exact absurd rfl (h2 b o v)
   | _ => rfl
 
 /-- A member of `foldl killReg h ws` is a member of `h` (the held register is not
@@ -250,9 +260,9 @@ its taint at `R`; the cell env is unchanged for a non-store instruction. So
 R C i)` whenever `i` writes no static cell. -/
 theorem HeldTaintValid.killWrittenStep {h : Held} {C : CellTaint} {R : RegTaint}
     (hv : HeldTaintValid h C R) (i : JInstr 64)
-    (hns : ∀ b o v, i ≠ .storeMem b o v) :
+    (hns : ∀ b o v, i ≠ .storeMem b o v) (hns2 : ∀ b o v, i ≠ .addToMem b o v) :
     HeldTaintValid (killWritten h i) (stepCellTaint R C i) (stepRegTaint R C i) := by
-  rw [stepCellTaint_nonstore R C i hns]
+  rw [stepCellTaint_nonstore R C i hns hns2]
   intro e he
   obtain ⟨hmem, hnin⟩ := mem_foldl_killReg _ _ he
   have : stepRegTaint R C i e.2 = R e.2 := by simp [stepRegTaint, hnin]
@@ -401,53 +411,71 @@ theorem forwardStep_taint_sound {h : Held} {C : CellTaint} {R : RegTaint}
       simp [forwardStep]
     rw [hstep]
     exact ⟨rfl, by intro e he; simp at he⟩
-  | mov d s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.mov d s') (by intro b o v hc; nomatch hc)⟩
-  | add d s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.add d s') (by intro b o v hc; nomatch hc)⟩
-  | sub d s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.sub d s') (by intro b o v hc; nomatch hc)⟩
-  | adc d s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.adc d s') (by intro b o v hc; nomatch hc)⟩
-  | sbb d s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.sbb d s') (by intro b o v hc; nomatch hc)⟩
-  | imul d s' => exact ⟨rfl, hv.killWrittenStep (JInstr.imul d s') (by intro b o v hc; nomatch hc)⟩
-  | neg d     => exact ⟨rfl, hv.killWrittenStep (JInstr.neg d) (by intro b o v hc; nomatch hc)⟩
-  | setc d    => exact ⟨rfl, hv.killWrittenStep (JInstr.setc d) (by intro b o v hc; nomatch hc)⟩
-  | and_ d s' => exact ⟨rfl, hv.killWrittenStep (JInstr.and_ d s') (by intro b o v hc; nomatch hc)⟩
-  | test a s' => exact ⟨rfl, hv.killWrittenStep (JInstr.test a s') (by intro b o v hc; nomatch hc)⟩
-  | cmp a s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.cmp a s') (by intro b o v hc; nomatch hc)⟩
-  | not_ d    => exact ⟨rfl, hv.killWrittenStep (JInstr.not_ d) (by intro b o v hc; nomatch hc)⟩
-  | andn d a c => exact ⟨rfl, hv.killWrittenStep (JInstr.andn d a c) (by intro b o v hc; nomatch hc)⟩
-  | rol d amt => exact ⟨rfl, hv.killWrittenStep (JInstr.rol d amt) (by intro b o v hc; nomatch hc)⟩
-  | ror d amt => exact ⟨rfl, hv.killWrittenStep (JInstr.ror d amt) (by intro b o v hc; nomatch hc)⟩
+  | mov d s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.mov d s') (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | add d s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.add d s') (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | sub d s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.sub d s') (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | adc d s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.adc d s') (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | sbb d s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.sbb d s') (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | imul d s' => exact ⟨rfl, hv.killWrittenStep (JInstr.imul d s') (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | neg d     => exact ⟨rfl, hv.killWrittenStep (JInstr.neg d) (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | setc d    => exact ⟨rfl, hv.killWrittenStep (JInstr.setc d) (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | and_ d s' => exact ⟨rfl, hv.killWrittenStep (JInstr.and_ d s') (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | test a s' => exact ⟨rfl, hv.killWrittenStep (JInstr.test a s') (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | cmp a s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.cmp a s') (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | not_ d    => exact ⟨rfl, hv.killWrittenStep (JInstr.not_ d) (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | andn d a c => exact ⟨rfl, hv.killWrittenStep (JInstr.andn d a c) (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | rol d amt => exact ⟨rfl, hv.killWrittenStep (JInstr.rol d amt) (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | ror d amt => exact ⟨rfl, hv.killWrittenStep (JInstr.ror d amt) (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
   | rorx d src amt =>
-      exact ⟨rfl, hv.killWrittenStep (JInstr.rorx d src amt) (by intro b o v hc; nomatch hc)⟩
+      exact ⟨rfl, hv.killWrittenStep (JInstr.rorx d src amt) (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
   | shlx d src c =>
-      exact ⟨rfl, hv.killWrittenStep (JInstr.shlx d src c) (by intro b o v hc; nomatch hc)⟩
+      exact ⟨rfl, hv.killWrittenStep (JInstr.shlx d src c) (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
   | shrx d src c =>
-      exact ⟨rfl, hv.killWrittenStep (JInstr.shrx d src c) (by intro b o v hc; nomatch hc)⟩
+      exact ⟨rfl, hv.killWrittenStep (JInstr.shrx d src c) (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
   | sarx d src c =>
-      exact ⟨rfl, hv.killWrittenStep (JInstr.sarx d src c) (by intro b o v hc; nomatch hc)⟩
+      exact ⟨rfl, hv.killWrittenStep (JInstr.sarx d src c) (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
   | movzx d sw src =>
-      exact ⟨rfl, hv.killWrittenStep (JInstr.movzx d sw src) (by intro b o v hc; nomatch hc)⟩
+      exact ⟨rfl, hv.killWrittenStep (JInstr.movzx d sw src) (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
   | movsx d sw src =>
-      exact ⟨rfl, hv.killWrittenStep (JInstr.movsx d sw src) (by intro b o v hc; nomatch hc)⟩
+      exact ⟨rfl, hv.killWrittenStep (JInstr.movsx d sw src) (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
   | lea d bs ix sc dsp =>
-      exact ⟨rfl, hv.killWrittenStep (JInstr.lea d bs ix sc dsp) (by intro b o v hc; nomatch hc)⟩
-  | or_ d s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.or_ d s') (by intro b o v hc; nomatch hc)⟩
-  | xor_ d s' => exact ⟨rfl, hv.killWrittenStep (JInstr.xor_ d s') (by intro b o v hc; nomatch hc)⟩
-  | shl d s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.shl d s') (by intro b o v hc; nomatch hc)⟩
-  | shr d s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.shr d s') (by intro b o v hc; nomatch hc)⟩
-  | sar d s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.sar d s') (by intro b o v hc; nomatch hc)⟩
-  | cmove d s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.cmove d s') (by intro b o v hc; nomatch hc)⟩
-  | cmovne d s' => exact ⟨rfl, hv.killWrittenStep (JInstr.cmovne d s') (by intro b o v hc; nomatch hc)⟩
-  | cmovb d s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.cmovb d s') (by intro b o v hc; nomatch hc)⟩
-  | mulx dh dl a b => exact ⟨rfl, hv.killWrittenStep (JInstr.mulx dh dl a b) (by intro b o v hc; nomatch hc)⟩
-  | mulxMem dh dl a base off => exact ⟨rfl, hv.killWrittenStep (JInstr.mulxMem dh dl a base off) (by intro b o v hc; nomatch hc)⟩
-  | adcx d s' => exact ⟨rfl, hv.killWrittenStep (JInstr.adcx d s') (by intro b o v hc; nomatch hc)⟩
-  | adox d s' => exact ⟨rfl, hv.killWrittenStep (JInstr.adox d s') (by intro b o v hc; nomatch hc)⟩
+      exact ⟨rfl, hv.killWrittenStep (JInstr.lea d bs ix sc dsp) (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | or_ d s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.or_ d s') (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | xor_ d s' => exact ⟨rfl, hv.killWrittenStep (JInstr.xor_ d s') (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | shl d s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.shl d s') (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | shr d s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.shr d s') (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | sar d s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.sar d s') (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | cmove d s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.cmove d s') (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | cmovne d s' => exact ⟨rfl, hv.killWrittenStep (JInstr.cmovne d s') (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | cmovb d s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.cmovb d s') (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | mulx dh dl a b => exact ⟨rfl, hv.killWrittenStep (JInstr.mulx dh dl a b) (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | mulxMem dh dl a base off => exact ⟨rfl, hv.killWrittenStep (JInstr.mulxMem dh dl a base off) (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | adcx d s' => exact ⟨rfl, hv.killWrittenStep (JInstr.adcx d s') (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | adox d s' => exact ⟨rfl, hv.killWrittenStep (JInstr.adox d s') (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
   | loadMemIdx d base idx scale =>
-      exact ⟨rfl, hv.killWrittenStep (JInstr.loadMemIdx d base idx scale) (by intro b o v hc; nomatch hc)⟩
+      exact ⟨rfl, hv.killWrittenStep (JInstr.loadMemIdx d base idx scale) (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
   | inc _ | dec _ | clc | stc | xchg _ _ | imulri _ _ _ | mul _ _ _ | imulWide _ _ _
   | shld _ _ _ | shrd _ _ _ | rcl _ _ | rcr _ _ | cmovcc _ _ _ | setcc _ _
-  | testN _ _ _ | bt _ _ | btr _ _ | bts _ _ =>
-      exact ⟨rfl, hv.killWrittenStep _ (by intro b o v hc; nomatch hc)⟩
+  | testN _ _ _ | bt _ _ | btr _ _ | bts _ _
+  | addMem _ _ _ | adcxMem _ _ _ | adoxMem _ _ _ | imulMem _ _ _ | imulriMem _ _ _ _ =>
+      exact ⟨rfl, hv.killWrittenStep _ (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | addToMem base off src =>
+    -- `add [base + off], src` kills the binding of its cell and writes no register;
+    -- the surviving bindings name other cells, whose taint is unchanged.
+    have hstep : forwardStep h (.addToMem base off src)
+        = (.addToMem base off src, h.killCell base off) := by
+      simp [forwardStep]
+    rw [hstep]
+    refine ⟨rfl, ?_⟩
+    intro e he
+    rw [Held.killCell, List.mem_filter] at he
+    have hne : e.1 ≠ (base, off) := by simpa using he.2
+    have hcell : stepCellTaint R C (.addToMem base off src) e.1 = C e.1 := by
+      simp [stepCellTaint, hne]
+    have hreg : stepRegTaint R C (.addToMem base off src) e.2 = R e.2 := by
+      simp [stepRegTaint, writtenRegs]
+    rw [hcell, hreg]
+    exact hv e he.1
 
 /-! ### The rewritten step threads the taint envs identically
 

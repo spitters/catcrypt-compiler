@@ -169,6 +169,12 @@ def renameInstr (ρ : String → String) : JInstr 64 → JInstr 64
   | .bt a b    => .bt (ρ a) (renameOperand ρ b)
   | .btr d b   => .btr (ρ d) (renameOperand ρ b)
   | .bts d b   => .bts (ρ d) (renameOperand ρ b)
+  | .addMem d base off => .addMem (ρ d) (ρ base) off
+  | .addToMem base off s => .addToMem (ρ base) off (renameOperand ρ s)
+  | .adcxMem d base off => .adcxMem (ρ d) (ρ base) off
+  | .adoxMem d base off => .adoxMem (ρ d) (ρ base) off
+  | .imulMem d base off => .imulMem (ρ d) (ρ base) off
+  | .imulriMem d base off imm => .imulriMem (ρ d) (ρ base) off imm
 
 /-- Apply a register renaming to a whole block. -/
 def renameBlock (ρ : String → String) (block : List (JInstr 64)) : List (JInstr 64) :=
@@ -565,6 +571,21 @@ theorem evalInstr_renameInstr_rel {ρ : String → String} (hρ : Function.Injec
     simp only [renameInstr, evalInstr, hop, hget]; exact writeCFW_rel hρ h d _
   | bts d b =>
     simp only [renameInstr, evalInstr, hop, hget]; exact writeCFW_rel hρ h d _
+  | addMem d base off =>
+    simp only [renameInstr, evalInstr, hget, load_rel h base off]; exact writeB5W_rel hρ h d _
+  | addToMem base off s =>
+    simp only [renameInstr, evalInstr, JState.writeB5Mem, hop, load_rel h base off]
+    exact store_rel hρ (writeB5_rel h _) base off _
+  | adcxMem d base off =>
+    simp only [renameInstr, evalInstr, hget, hcf, load_rel h base off]
+    exact adcWrite_rel hρ h d _ (fun fl => { fl with cf := _ })
+  | adoxMem d base off =>
+    simp only [renameInstr, evalInstr, hget, hof, load_rel h base off]
+    exact adcWrite_rel hρ h d _ (fun fl => { fl with of := _ })
+  | imulMem d base off =>
+    simp only [renameInstr, evalInstr, hget, load_rel h base off]; exact writeB5W_rel hρ h d _
+  | imulriMem d base off imm =>
+    simp only [renameInstr, evalInstr, load_rel h base off]; exact writeB5W_rel hρ h d _
 
 /-! ## 5. The whole-block translation validation (the contribution)
 

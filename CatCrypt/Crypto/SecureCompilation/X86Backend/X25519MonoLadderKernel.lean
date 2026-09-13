@@ -185,6 +185,12 @@ def rebaseInstr (rmap : String → String) (bmap : String → String)
   | .bt a b => .bt (rmap a) (rebaseOperand rmap b)
   | .btr d b => .btr (rmap d) (rebaseOperand rmap b)
   | .bts d b => .bts (rmap d) (rebaseOperand rmap b)
+  | .addMem d base off => .addMem (rmap d) (bmap base) (off + boff base)
+  | .addToMem base off s => .addToMem (bmap base) (off + boff base) (rebaseOperand rmap s)
+  | .adcxMem d base off => .adcxMem (rmap d) (bmap base) (off + boff base)
+  | .adoxMem d base off => .adoxMem (rmap d) (bmap base) (off + boff base)
+  | .imulMem d base off => .imulMem (rmap d) (bmap base) (off + boff base)
+  | .imulriMem d base off imm => .imulriMem (rmap d) (bmap base) (off + boff base) imm
 
 /-- Rebase a whole leaf body. -/
 def rebaseBlock (rmap : String → String) (bmap : String → String)

@@ -751,6 +751,30 @@ def encodeJInstr (alloc : GpAlloc) : JInstr 64 → List (BitVec 8)
   -- it. Emit NO bytes (an explicit, detectable gap in a byte-diff KAT) rather than
   -- a silently-wrong fixed-disp encoding.
   | .loadSym _ _ => []  -- unsupported: needs a relocation; use the text path
+  -- The memory-operand arithmetic, with the shared base-aware `memTail`:
+  -- `ADD r64, r/m64` = `REX.W 03 /r`; `ADD r/m64, r64` = `REX.W 01 /r`;
+  -- `ADD r/m64, imm32` = `REX.W 81 /0 id` (the `encAluImm` precondition on the
+  -- immediate, gated by `encodableJInstr`); `ADCX`/`ADOX r64, r/m64` =
+  -- `66`/`F3 REX.W 0F 38 F6 /r`; `IMUL r64, r/m64` = `REX.W 0F AF /r`;
+  -- `IMUL r64, r/m64, imm32` = `REX.W 69 /r id`.
+  | .addMem d base off => encMemMov 0x03 (gpNum (regOf alloc d)) (gpNum (regOf alloc base)) off
+  | .addToMem base off s =>
+      match s with
+      | .reg r => encMemMov 0x01 (gpNum (regOf alloc r)) (gpNum (regOf alloc base)) off
+      | .imm v => encMemMov 0x81 0 (gpNum (regOf alloc base)) off ++ imm32LE v
+  | .adcxMem d base off =>
+      let dn := gpNum (regOf alloc d); let bn := gpNum (regOf alloc base)
+      ([ 0x66, rex 1 (bit dn 3) 0 (bit bn 3), 0x0f, 0x38, 0xf6 ].map (BitVec.ofNat 8))
+        ++ memTail dn bn off
+  | .adoxMem d base off =>
+      let dn := gpNum (regOf alloc d); let bn := gpNum (regOf alloc base)
+      ([ 0xf3, rex 1 (bit dn 3) 0 (bit bn 3), 0x0f, 0x38, 0xf6 ].map (BitVec.ofNat 8))
+        ++ memTail dn bn off
+  | .imulMem d base off =>
+      let dn := gpNum (regOf alloc d); let bn := gpNum (regOf alloc base)
+      ([ rex 1 (bit dn 3) 0 (bit bn 3), 0x0f, 0xaf ].map (BitVec.ofNat 8)) ++ memTail dn bn off
+  | .imulriMem d base off imm =>
+      encMemMov 0x69 (gpNum (regOf alloc d)) (gpNum (regOf alloc base)) off ++ imm32LE imm
   -- Not yet encoded: `INC`, `DEC`, `CLC`, `STC`, `XCHG`, `IMUL $imm, %src, %dst`, the
   -- one-operand `MUL`/`IMUL`, `SHLD`/`SHRD`, `RCL`/`RCR`, the general `CMOVcc`/`SETcc`,
   -- the sized `TEST` and `BT`/`BTR`/`BTS`. They emit no bytes and `encodableJInstr`
@@ -955,7 +979,8 @@ def fitsImm32S (v : Nat) : Bool := v < 2 ^ 31 || 2 ^ 64 - 2 ^ 31 ≤ v
     outside the fragment. -/
 def encodableJInstr : JInstr 64 → Bool
   | .add _ (.imm v) | .sub _ (.imm v) | .adc _ (.imm v) | .sbb _ (.imm v)
-  | .and_ _ (.imm v) | .or_ _ (.imm v) | .xor_ _ (.imm v) | .cmp _ (.imm v) =>
+  | .and_ _ (.imm v) | .or_ _ (.imm v) | .xor_ _ (.imm v) | .cmp _ (.imm v)
+  | .addToMem _ _ (.imm v) | .imulriMem _ _ _ v =>
       fitsImm32S v
   | .cmove _ (.imm _) | .adcx _ (.imm _) | .adox _ (.imm _) => false
   | .mulx _ _ (.imm _) _ | .mulx _ _ _ (.imm _) => false

@@ -78,7 +78,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 /-! ## 1. Per-instruction flag classification -/
 
 /-- `readsFlag i` is `true` when `evalInstr` reads a condition flag: `adc`, `sbb`,
-    `setc`, `cmovb`, `adcx`, `rcl` and `rcr` read `CF`; `adox` reads `OF`; `cmove`
+    `setc`, `cmovb`, `adcx`, `adcxMem`, `rcl` and `rcr` read `CF`; `adox` and
+    `adoxMem` read `OF`; `cmove`
     and `cmovne` read `ZF`; `cmovcc` and `setcc` read the flags of their condition.
     Every other constructor reads no flag. -/
 def readsFlag {w : Nat} : JInstr w → Bool
@@ -97,14 +98,18 @@ def readsFlag {w : Nat} : JInstr w → Bool
   -- (`x86_eval_cond`), at least one for every `Condt`.
   | .cmovcc _ _ _ => true
   | .setcc _ _  => true
+  -- the memory-source carry additions read `CF` resp. `OF`.
+  | .adcxMem _ _ _ => true
+  | .adoxMem _ _ _ => true
   | _           => false
 
 /-- `writesAllFlags i` is `true` when `evalInstr` overwrites all five flags as a
     pure function of the register/immediate inputs (a `writeB5W`/`writeB5`/
     `writeB5W2`/`writeB5N` op that does not first read a flag): `add`, `sub`, `imul`,
     `imulri`, `neg`, `and_`, `or_`, `xor_`, `shl`, `shr`, `sar`, `shld`, `shrd`,
-    `andn`, `mul`, `imulWide`, and `test`/`testN`/`cmp`, whose five flags are their
-    only output.  The partial writes `adcx`/`adox`/`rol`/`ror`/`rcl`/`rcr`/`inc`/`dec`/
+    `andn`, `mul`, `imulWide`, the memory-operand `addMem`/`addToMem`/`imulMem`/
+    `imulriMem`, and `test`/`testN`/`cmp`, whose five flags are their
+    only output.  The partial writes `adcx`/`adox`/`adcxMem`/`adoxMem`/`rol`/`ror`/`rcl`/`rcr`/`inc`/`dec`/
     `clc`/`stc`/`bt`/`btr`/`bts` and the flag-reading `adc`/`sbb` are excluded
     (`adcx`/`adox`/`adc`/`sbb`/`rcl`/`rcr` appear under `readsFlag`). -/
 def writesAllFlags {w : Nat} : JInstr w → Bool
@@ -139,6 +144,10 @@ def writesAllFlags {w : Nat} : JInstr w → Bool
   | .testN _ _ _ => true
   -- `inc`/`dec` keep `CF`; `clc`, `stc`, `bt`, `btr` and `bts` write `CF` alone.
   | .inc _ | .dec _ | .clc | .stc | .bt _ _ | .btr _ _ | .bts _ _ => false
+  -- The memory-operand `add` and `imul` forms write all five flags from their register,
+  -- memory and immediate inputs; `adcxMem`/`adoxMem` write one flag.
+  | .addMem _ _ _ | .addToMem _ _ _ | .imulMem _ _ _ | .imulriMem _ _ _ _ => true
+  | .adcxMem _ _ _ | .adoxMem _ _ _ => false
   | _         => false
 
 /-! ## 2. The backward liveness scan -/
@@ -173,7 +182,8 @@ theorem evalInstr_full_eq_of_writesAll {i : JInstr 64} (hw : writesAllFlags i = 
     evalInstr s₁ i = evalInstr s₂ i := by
   cases i <;>
     simp_all [writesAllFlags, evalInstr, JState.writeB5W, JState.writeB5, JState.get,
-      JState.writeB5W2, JState.writeB5N, JOperand.eval]
+      JState.writeB5W2, JState.writeB5N, JOperand.eval, JState.writeB5Mem, JState.store,
+      JState.load]
 
 /-- A flag-neutral instruction (neither reading nor fully writing flags) updates the
     register file and memory as a function of the register file and memory alone, so

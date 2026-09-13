@@ -128,6 +128,10 @@ def writtenRegs : JInstr 64 → List String
   | .mul dh dl _ | .imulWide dh dl _ => [dh, dl]
   -- `clc`, `stc`, `testN` and `bt` write flags only.
   | .clc | .stc | .testN _ _ _ | .bt _ _ => []
+  -- the memory-source arithmetic writes its register destination; `addToMem` writes a
+  -- memory cell and the flags, no register.
+  | .addMem d _ _ | .adcxMem d _ _ | .adoxMem d _ _ | .imulMem d _ _ | .imulriMem d _ _ _ => [d]
+  | .addToMem _ _ _ => []
 
 /-- Kill every written register's held entries (one `Held.killReg` per dst). -/
 def killWritten (h : Held) (i : JInstr 64) : Held :=
@@ -165,6 +169,10 @@ def forwardStep (h : Held) : JInstr 64 → (JInstr 64 × Held)
       -- cells alias statically, conservatively forget every binding (mirroring the
       -- dynamic-index store). The instruction itself is not rewritten.
       (.loadSym d sym, [])
+  | .addToMem base off src =>
+      -- `add [base + off], src` rewrites the cell `(base, off)` and no register: the
+      -- binding of that cell is killed, as for a store of an immediate.
+      (.addToMem base off src, h.killCell base off)
   | i =>
       -- any other instruction (incl. `loadMemIdx`, which writes a GP and reads —
       -- but does not write — memory): kill the registers it writes; cell bindings
@@ -305,7 +313,8 @@ sets `d := s.get r`, while `evalInstr s (.loadMem d base off)` sets `d := s.load
 base off`; the invariant `heldValid_find` gives `s.load base off = s.get r`, so the
 two states are equal. -/
 
-/-- Memory is untouched by every non-`storeMem`, non-`loadSym` instruction. The
+/-- Memory is untouched by every instruction other than `storeMem`, `storeMemIdx`,
+    `addToMem` (which writes its cell) and `loadSym`. The
     register/flag writers (`setReg`, `writeB5W`, the explicit ADCX/ADOX records, the
     MULX double write) all leave `s.mem` literally unchanged. `loadSym` is excluded
     because its `evalInstr` re-aliases the memory bank at its base register (so a
@@ -313,12 +322,16 @@ two states are equal. -/
 theorem load_evalInstr_nonstore {s : JState 64} (i : JInstr 64)
     (h : ∀ b o v, i ≠ .storeMem b o v)
     (h2 : ∀ b idx sc v, i ≠ .storeMemIdx b idx sc v)
-    (h3 : ∀ d sym, i ≠ .loadSym d sym) (b : String) (o : Int) :
+    (h3 : ∀ d sym, i ≠ .loadSym d sym) (h4 : ∀ b o v, i ≠ .addToMem b o v)
+    (b : String) (o : Int) :
     (evalInstr s i).load b o = s.load b o := by
   cases i with
   | storeMem b' o' v => exact absurd rfl (h b' o' v)
   | storeMemIdx b idx sc src => exact absurd rfl (h2 b idx sc src)
   | loadSym d sym => exact absurd rfl (h3 d sym)
+  | addToMem b' o' v => exact absurd rfl (h4 b' o' v)
+  | adcxMem d base off => simp only [evalInstr, JState.load]
+  | adoxMem d base off => simp only [evalInstr, JState.load]
   | mulx dh dl a c => simp only [evalInstr, JState.setReg, JState.load]
   | mulxMem dh dl a base off => simp only [evalInstr, JState.setReg, JState.load]
   | adcx d s' => simp only [evalInstr, JState.load]
@@ -399,10 +412,13 @@ theorem get_evalInstr_unwritten {s : JState 64} (i : JInstr 64)
     simp [evalInstr]
   | inc _ | dec _ | clc | stc | xchg _ _ | imulri _ _ _ | mul _ _ _ | imulWide _ _ _
   | shld _ _ _ | shrd _ _ _ | rcl _ _ | rcr _ _ | cmovcc _ _ _ | setcc _ _
-  | testN _ _ _ | bt _ _ | btr _ _ | bts _ _ =>
+  | testN _ _ _ | bt _ _ | btr _ _ | bts _ _
+  | addMem _ _ _ | addToMem _ _ _ | adcxMem _ _ _ | adoxMem _ _ _ | imulMem _ _ _
+  | imulriMem _ _ _ _ =>
     simp_all [writtenRegs, evalInstr, JState.get, JState.setReg, JState.writeB4W,
       JState.writeB5W, JState.writeB5W2, JState.writeB5N, JState.writeB2W,
-      JState.writeCFW, JState.setRegMerge, x86_XCHG]
+      JState.writeCFW, JState.setRegMerge, x86_XCHG, JState.writeB5Mem, JState.writeB5,
+      JState.store]
 
 /-- The non-`storeMem`/`storeMemIdx`/`loadSym` instructions, packaged: their
     `evalInstr` neither writes memory nor (for `ρ` outside `writtenRegs`) the register
@@ -411,9 +427,9 @@ theorem get_evalInstr_unwritten {s : JState 64} (i : JInstr 64)
 theorem heldValid_killWritten_nonstore {h : Held} {s : JState 64} (i : JInstr 64)
     (hv : HeldValid h s) (hns : ∀ b o v, i ≠ .storeMem b o v)
     (hns2 : ∀ b idx sc v, i ≠ .storeMemIdx b idx sc v)
-    (hns3 : ∀ d sym, i ≠ .loadSym d sym) :
+    (hns3 : ∀ d sym, i ≠ .loadSym d sym) (hns4 : ∀ b o v, i ≠ .addToMem b o v) :
     HeldValid (killWritten h i) (evalInstr s i) :=
-  heldValid_regWrite i hv (load_evalInstr_nonstore i hns hns2 hns3)
+  heldValid_regWrite i hv (load_evalInstr_nonstore i hns hns2 hns3 hns4)
     (fun ρ hρ => get_evalInstr_unwritten i hns ρ hρ)
 
 /-- A new cell binding `(base, off) ↦ r` added after a register write to `r` (a
@@ -430,7 +446,10 @@ theorem heldValid_loadForward {h : Held} {s : JState 64} (d base : String) (off 
     intro b idx sc v h; cases h
   have hns3 : ∀ d' sym, (JInstr.loadMem d base off) ≠ JInstr.loadSym (w := 64) d' sym := by
     intro d' sym h; cases h
-  have hkill := (heldValid_killWritten_nonstore (.loadMem d base off) hv hns hns2 hns3).killCell base off
+  have hns4 : ∀ b o v, (JInstr.loadMem d base off) ≠ JInstr.addToMem (w := 64) b o v := by
+    intro b o v h; cases h
+  have hkill :=
+    (heldValid_killWritten_nonstore (.loadMem d base off) hv hns hns2 hns3 hns4).killCell base off
   intro e he
   rw [Held.set, List.mem_append] at he
   rcases he with he | he
@@ -441,7 +460,7 @@ theorem heldValid_loadForward {h : Held} {s : JState 64} (d base : String) (off 
     subst he
     -- goal: (evalInstr s _).load base off = (evalInstr s _).get d
     have hmem : (evalInstr s (.loadMem d base off)).load base off = s.load base off :=
-      load_evalInstr_nonstore (.loadMem d base off) hns hns2 hns3 base off
+      load_evalInstr_nonstore (.loadMem d base off) hns hns2 hns3 hns4 base off
     have hreg : (evalInstr s (.loadMem d base off)).get d = s.load base off := by
       simp [evalInstr, x86_MOV, JState.setReg, JState.get]
     show (evalInstr s (.loadMem d base off)).load base off
@@ -535,43 +554,43 @@ theorem forwardStep_sound {h : Held} {s : JState 64} (hv : HeldValid h s) (i : J
         apply JState.load_store_other
         intro hcon; exact hcell (by rw [Prod.ext_iff]; exact ⟨hcon.1, hcon.2⟩)
       rw [this]; simpa [JState.store, JState.get] using hval
-  | mov d s'  => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | add d s'  => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | sub d s'  => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | adc d s'  => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | sbb d s'  => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | imul d s' => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | neg d     => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | setc d    => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | and_ d s' => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
+  | mov d s'  => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | add d s'  => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | sub d s'  => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | adc d s'  => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | sbb d s'  => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | imul d s' => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | neg d     => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | setc d    => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | and_ d s' => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
   -- `test` and `cmp` kill nothing (`writtenRegs = []`), so `killWritten h i = h`.
-  | test a b  => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | cmp a b   => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | not_ d    => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | andn d a c => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | rol d amt => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | ror d amt => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | rorx d src amt => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | shlx d src c => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | shrx d src c => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | sarx d src c => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | movzx d sw src => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | movsx d sw src => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
+  | test a b  => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | cmp a b   => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | not_ d    => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | andn d a c => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | rol d amt => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | ror d amt => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | rorx d src amt => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | shlx d src c => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | shrx d src c => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | sarx d src c => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | movzx d sw src => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | movsx d sw src => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
   -- `lea` writes a register and touches no memory, so no cell binding is invalidated.
-  | lea d bs ix sc dsp => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | or_ d s'  => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | xor_ d s' => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | shl d s'  => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | shr d s'  => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | sar d s'  => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | cmove d s'  => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | cmovne d s' => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | cmovb d s'  => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | mulx dh dl a b => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
+  | lea d bs ix sc dsp => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | or_ d s'  => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | xor_ d s' => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | shl d s'  => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | shr d s'  => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | sar d s'  => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | cmove d s'  => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | cmovne d s' => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | cmovb d s'  => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | mulx dh dl a b => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
   | mulxMem dh dl a base off =>
-      exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | adcx d s' => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
-  | adox d s' => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
+      exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | adcx d s' => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | adox d s' => exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h) (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
   | storeMemIdx base idx scale src =>
     have hstep : forwardStep h (.storeMemIdx base idx scale src)
         = (.storeMemIdx base idx scale src, []) := by
@@ -597,13 +616,32 @@ theorem forwardStep_sound {h : Held} {s : JState 64} (hv : HeldValid h s) (i : J
       intro b idx' sc v h; cases h
     have hns3 : ∀ d' sym, (JInstr.loadMemIdx d base idx scale) ≠ JInstr.loadSym (w := 64) d' sym := by
       intro d' sym h; cases h
-    exact ⟨rfl, heldValid_killWritten_nonstore _ hv hns hns2 hns3⟩
+    have hns4 : ∀ b o v, (JInstr.loadMemIdx d base idx scale) ≠ JInstr.addToMem (w := 64) b o v := by
+      intro b o v h; cases h
+    exact ⟨rfl, heldValid_killWritten_nonstore _ hv hns hns2 hns3 hns4⟩
   -- the remaining instructions write registers and flags only, and are not rewritten.
   | inc _ | dec _ | clc | stc | xchg _ _ | imulri _ _ _ | mul _ _ _ | imulWide _ _ _
   | shld _ _ _ | shrd _ _ _ | rcl _ _ | rcr _ _ | cmovcc _ _ _ | setcc _ _
-  | testN _ _ _ | bt _ _ | btr _ _ | bts _ _ =>
+  | testN _ _ _ | bt _ _ | btr _ _ | bts _ _
+  | addMem _ _ _ | adcxMem _ _ _ | adoxMem _ _ _ | imulMem _ _ _ | imulriMem _ _ _ _ =>
     exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h)
-      (by intro b idx sc v h; cases h) (by intro d sym h; cases h)⟩
+      (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
+  | addToMem base off src =>
+    -- `add [base + off], src` changes the cell `(base, off)` and no register; the
+    -- surviving bindings name other cells, which the write leaves unchanged.
+    have hstep : forwardStep h (.addToMem base off src)
+        = (.addToMem base off src, h.killCell base off) := by
+      simp [forwardStep]
+    rw [hstep]
+    refine ⟨rfl, ?_⟩
+    intro e he
+    rw [Held.killCell, List.mem_filter] at he
+    have hcell : e.1 ≠ (base, off) := by simpa using he.2
+    have hval := hv e he.1
+    have hne : ¬(e.1.1 = base ∧ e.1.2 = off) := fun hcon =>
+      hcell (by rw [Prod.ext_iff]; exact ⟨hcon.1, hcon.2⟩)
+    simpa [evalInstr, JState.writeB5Mem, JState.writeB5, JState.store, JState.load,
+      JState.get, hne] using hval
 
 /-- **Whole-block translation validation.** Running the forwarded block from any
     state with a valid held environment lands in the *same* `runBlock` final state

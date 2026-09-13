@@ -957,6 +957,14 @@ def JState.writeCFW {w : Nat} (s : JState w) (dst : String) (t : JFlag × BitVec
     flags := { s.flags with cf := t.1 }
     mem := s.mem }
 
+/-- Write the five flags of a flag-setting op and store its data word at
+    `[base + off]`, leaving every register alone. Mirrors `exec_instr_op` for the
+    `id_out` list `[OF; CF; SF; PF; ZF; data]` when the data operand is a memory
+    cell (`m_ri`, `ADD` into memory). -/
+def JState.writeB5Mem {w : Nat} (s : JState w) (base : String) (off : Int) (t : B5W w) :
+    JState w :=
+  (s.writeB5 t).store base off t.word
+
 @[simp] theorem JState.get_setReg_same {w : Nat} (s : JState w) (r : String)
     (v : BitVec w) : (s.setReg r v).get r = v := by simp [JState.setReg, JState.get]
 
@@ -1007,6 +1015,20 @@ inductive JOperand where
     data-dependent on AMD Zen 1 and 2, so they read as ordinary bit operations
     while leaking through timing. These are not gaps to close; adding one would
     put a variable-latency instruction inside a constant-time backend.
+
+    **Memory operands.** An operand of kind `rm` or `m` (`x86_instr_decl.v`) is a
+    register or a memory cell `[base + off]` read through `JState.load` and written
+    through `JState.store`. The memory forms transcribed are `MOV` (`loadMem`,
+    `storeMem` and the indexed `loadMemIdx`, `storeMemIdx`), `MULX` (`mulxMem`),
+    `ADD` at both of `check_add`'s memory kinds (`addMem` for `r_rmi`, `addToMem`
+    for `m_ri`, whose output word goes to the cell through `JState.writeB5Mem`),
+    `ADCX` and `ADOX` at `check_adcx`'s `r_rm` (`adcxMem`, `adoxMem`), `IMULr` at
+    `r_rm` (`imulMem`) and `IMULri` at `[r; rm; i]` (`imulriMem`). Each evaluates as
+    its register form with the cell's word in place of the register operand; the
+    equations `runBlock_loadMem_add_eq_addMem` and its siblings (section 10) state
+    that each is a `loadMem` into a scratch register followed by the register
+    form. The memory kinds of the other instructions sharing `check_add` (`SUB`,
+    `ADC`, `SBB`) are not transcribed.
 
     Not yet transcribed: `MOVX`, `POR`, `PADD` and the SIMD/AES/SHA families.
     Add these as the fragment needs them, following the transcription
@@ -1223,6 +1245,25 @@ inductive JInstr (w : Nat) where
   /-- `Ox86_BTS_instr`: `CF := bit (b mod w) of dst`, and that bit of `dst` set.
       The other four flags keep their values. -/
   | bts (dst : String) (b : JOperand)
+  /-- `Ox86_ADD_instr` with a memory source (`r_rmi`): `dst := dst + [base + off]`,
+      writing the five flags. -/
+  | addMem (dst base : String) (off : Int)
+  /-- `Ox86_ADD_instr` with a memory destination (`m_ri`):
+      `[base + off] := [base + off] + src`, writing the five flags; no register is
+      written. -/
+  | addToMem (base : String) (off : Int) (src : JOperand)
+  /-- `Ox86_ADCX_instr` with a memory source (`r_rm`):
+      `dst := dst + [base + off] + CF`, carry to `CF` only. -/
+  | adcxMem (dst base : String) (off : Int)
+  /-- `Ox86_ADOX_instr` with a memory source (`r_rm`):
+      `dst := dst + [base + off] + OF`, carry to `OF` only. -/
+  | adoxMem (dst base : String) (off : Int)
+  /-- `Ox86_IMULr_instr` with a memory source (`r_rm`): `dst :=` the low word of
+      `dst * [base + off]`, with the flags of `x86_IMULt`. -/
+  | imulMem (dst base : String) (off : Int)
+  /-- `Ox86_IMULri_instr` with a memory source (`[r; rm; i]`): `dst :=` the low word
+      of `[base + off] * imm`, with the flags of `x86_IMULt`. -/
+  | imulriMem (dst base : String) (off : Int) (imm : Nat)
   deriving Repr
 
 /-- `eval_op`/`exec_instr_op` for one instruction (`arch_sem.v` l.386–391):
@@ -1322,6 +1363,22 @@ def evalInstr {w : Nat} (s : JState w) : JInstr w → JState w
   | .bt a b => { s with flags := { s.flags with cf := x86_BT (s.get a) (b.eval s) } }
   | .btr dst b => s.writeCFW dst (x86_BTR (s.get dst) (b.eval s))
   | .bts dst b => s.writeCFW dst (x86_BTS (s.get dst) (b.eval s))
+  | .addMem dst base off => s.writeB5W dst (x86_ADD (s.get dst) (s.load base off))
+  | .addToMem base off src =>
+      s.writeB5Mem base off (x86_ADD (s.load base off) (src.eval s))
+  | .adcxMem dst base off =>
+      let (co, res) := x86_ADCX (s.get dst) (s.load base off) (s.flagB (·.cf))
+      { regs := fun r' => if r' = dst then res else s.regs r'
+        flags := { s.flags with cf := co }
+        mem := s.mem }
+  | .adoxMem dst base off =>
+      let (co, res) := x86_ADCX (s.get dst) (s.load base off) (s.flagB (·.of))
+      { regs := fun r' => if r' = dst then res else s.regs r'
+        flags := { s.flags with of := co }
+        mem := s.mem }
+  | .imulMem dst base off => s.writeB5W dst (x86_IMULt (s.get dst) (s.load base off))
+  | .imulriMem dst base off imm =>
+      s.writeB5W dst (x86_IMULt (s.load base off) (BitVec.ofNat w imm))
 
 /-- `runBlock`: a straight-line fold of `evalInstr`, the analogue of jasmin's
     sequential `lsem`/`eval_instr` iteration over a basic block. -/
@@ -1380,5 +1437,91 @@ theorem evalInstr_setc_eq_setcc_movzx {w : Nat} (s : JState w) (dst : String) :
   congr 1
   funext r
   split <;> rfl
+
+/-! ## 10. The memory-operand arms as a load followed by the register form
+
+A memory-source arm is a `loadMem` into a scratch register `t` distinct from the
+destination, followed by the register form reading `t`; the two agree on flags,
+memory and every register, `t` holding the loaded word. For `imulriMem` the
+destination itself serves as the scratch register, and the equation is exact. -/
+
+/-- `add dst, [base + off]` is `loadMem t base off; add dst t`, with `t` holding the
+    loaded word. -/
+theorem runBlock_loadMem_add_eq_addMem {w : Nat} (s : JState w) (dst base t : String)
+    (off : Int) (ht : t ≠ dst) :
+    runBlock s [.loadMem t base off, .add dst (.reg t)] =
+      (evalInstr s (.addMem dst base off)).setReg t (s.load base off) := by
+  simp only [runBlock_cons, runBlock_nil, evalInstr, JState.setReg, JState.writeB5W,
+    JState.get, JOperand.eval, x86_MOV, if_neg (Ne.symm ht), if_pos]
+  congr 1
+  funext r
+  by_cases h1 : r = t <;> by_cases h2 : r = dst <;> simp_all
+
+/-- `adcx dst, [base + off]` is `loadMem t base off; adcx dst t`, with `t` holding
+    the loaded word. -/
+theorem runBlock_loadMem_adcx_eq_adcxMem {w : Nat} (s : JState w) (dst base t : String)
+    (off : Int) (ht : t ≠ dst) :
+    runBlock s [.loadMem t base off, .adcx dst (.reg t)] =
+      (evalInstr s (.adcxMem dst base off)).setReg t (s.load base off) := by
+  simp only [runBlock_cons, runBlock_nil, evalInstr, JState.setReg, JState.flagB,
+    JState.get, JOperand.eval, x86_MOV, if_neg (Ne.symm ht), if_pos]
+  congr 1
+  funext r
+  by_cases h1 : r = t <;> by_cases h2 : r = dst <;> simp_all
+
+/-- `adox dst, [base + off]` is `loadMem t base off; adox dst t`, with `t` holding
+    the loaded word. -/
+theorem runBlock_loadMem_adox_eq_adoxMem {w : Nat} (s : JState w) (dst base t : String)
+    (off : Int) (ht : t ≠ dst) :
+    runBlock s [.loadMem t base off, .adox dst (.reg t)] =
+      (evalInstr s (.adoxMem dst base off)).setReg t (s.load base off) := by
+  simp only [runBlock_cons, runBlock_nil, evalInstr, JState.setReg, JState.flagB,
+    JState.get, JOperand.eval, x86_MOV, if_neg (Ne.symm ht), if_pos]
+  congr 1
+  funext r
+  by_cases h1 : r = t <;> by_cases h2 : r = dst <;> simp_all
+
+/-- `imul dst, [base + off]` is `loadMem t base off; imul dst t`, with `t` holding
+    the loaded word. -/
+theorem runBlock_loadMem_imul_eq_imulMem {w : Nat} (s : JState w) (dst base t : String)
+    (off : Int) (ht : t ≠ dst) :
+    runBlock s [.loadMem t base off, .imul dst (.reg t)] =
+      (evalInstr s (.imulMem dst base off)).setReg t (s.load base off) := by
+  simp only [runBlock_cons, runBlock_nil, evalInstr, JState.setReg, JState.writeB5W,
+    JState.get, JOperand.eval, x86_MOV, if_neg (Ne.symm ht), if_pos]
+  congr 1
+  funext r
+  by_cases h1 : r = t <;> by_cases h2 : r = dst <;> simp_all
+
+/-- `imul dst, [base + off], imm` is `loadMem dst base off; imul dst, dst, imm`. -/
+theorem runBlock_loadMem_imulri_eq_imulriMem {w : Nat} (s : JState w) (dst base : String)
+    (off : Int) (imm : Nat) :
+    runBlock s [.loadMem dst base off, .imulri dst dst imm] =
+      evalInstr s (.imulriMem dst base off imm) := by
+  simp only [runBlock_cons, runBlock_nil, evalInstr, JState.setReg, JState.writeB5W,
+    JState.get, x86_MOV, if_pos]
+  congr 1
+  funext r
+  split <;> simp_all
+
+/-- `add [base + off], src` is `loadMem t base off; add t src; storeMem base off t`,
+    with `t` holding the sum, for a source other than `t`. -/
+theorem runBlock_loadMem_add_store_eq_addToMem {w : Nat} (s : JState w) (base t : String)
+    (off : Int) (src : JOperand) (hsrc : src ≠ .reg t) :
+    runBlock s [.loadMem t base off, .add t src, .storeMem base off (.reg t)] =
+      (evalInstr s (.addToMem base off src)).setReg t
+        (x86_ADD (s.load base off) (src.eval s)).word := by
+  have hev : src.eval (s.setReg t (x86_MOV (s.load base off))) = src.eval s := by
+    cases src with
+    | reg r =>
+      have : r ≠ t := fun h => hsrc (h ▸ rfl)
+      simp [JState.setReg, this]
+    | imm v => rfl
+  simp only [runBlock_cons, runBlock_nil, evalInstr, hev]
+  simp only [JState.setReg, JState.writeB5W, JState.writeB5Mem, JState.writeB5,
+    JState.store, JState.get, JOperand.eval, x86_MOV, if_pos]
+  congr 1
+  funext r
+  by_cases h : r = t <;> simp [h]
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin

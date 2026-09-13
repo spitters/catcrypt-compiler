@@ -293,11 +293,15 @@ def CFAllDirect {w : Nat} : OwnedCF w → Prop
   | .ifPub _ thenB elseB => CFAllDirect thenB ∧ CFAllDirect elseB
 
 /-- The leakage event an instruction emits when its addressing is direct: the
-    memory access at its base register and compile-time displacement, or none. -/
+    memory accesses at its base register and compile-time displacement, or none;
+    `addToMem` reads and writes its cell, two accesses. -/
 def instrAddrs {w : Nat} : JInstr w → List MLeak
   | .loadMem _ base off => [.mem base off]
   | .storeMem base off _ => [.mem base off]
   | .mulxMem _ _ _ base off => [.mem base off]
+  | .addMem _ base off | .adcxMem _ base off | .adoxMem _ base off
+  | .imulMem _ base off | .imulriMem _ base off _ => [.mem base off]
+  | .addToMem base off _ => [.mem base off, .mem base off]
   | _ => []
 
 /-- A direct instruction's leak is its compile-time address event. -/

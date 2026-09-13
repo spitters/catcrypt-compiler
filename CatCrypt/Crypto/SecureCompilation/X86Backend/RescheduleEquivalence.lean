@@ -100,6 +100,11 @@ def flagWrites : JInstr 64 → List FlagId
   -- The rotates through carry write `OF`/`CF` and preserve `SF`/`PF`/`ZF`.
   | .rcl _ _ | .rcr _ _ => [.CF, .OF]
   | .xchg _ _ | .cmovcc _ _ _ | .setcc _ _ => []
+  -- the memory-operand forms write the flags of their register forms.
+  | .addMem _ _ _ | .addToMem _ _ _ | .imulMem _ _ _ | .imulriMem _ _ _ _ =>
+      [.CF, .PF, .ZF, .SF, .OF]
+  | .adcxMem _ _ _ => [.CF]
+  | .adoxMem _ _ _ => [.OF]
 
 /-- The flags a condition code reads, in the order `x86_eval_cond` reads them. -/
 def condFlagReads : Condt → List FlagId
@@ -124,6 +129,8 @@ def flagReads : JInstr 64 → List FlagId
   | .inc _ | .dec _ | .clc | .stc | .xchg _ _ | .imulri _ _ _ | .mul _ _ _
   | .imulWide _ _ _ | .shld _ _ _ | .shrd _ _ _ | .testN _ _ _ | .bt _ _ | .btr _ _
   | .bts _ _ => []
+  | .adcxMem _ _ _ => [.CF]
+  | .adoxMem _ _ _ => [.OF]
   | _ => []
 
 /-- Whether an instruction reads or writes memory (conservative). `lea` computes an
@@ -132,6 +139,8 @@ def flagReads : JInstr 64 → List FlagId
 def touchesMem : JInstr 64 → Bool
   | .loadMem _ _ _  | .storeMem _ _ _  | .mulxMem _ _ _ _ _
   | .loadMemIdx _ _ _ _ | .storeMemIdx _ _ _ _ | .loadSym _ _ => true
+  | .addMem _ _ _ | .addToMem _ _ _ | .adcxMem _ _ _ | .adoxMem _ _ _ | .imulMem _ _ _
+  | .imulriMem _ _ _ _ => true
   | .lea _ _ _ _ _ => false
   | _ => false
 

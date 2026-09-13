@@ -186,6 +186,23 @@ theorem aux_stepJ (ρ : String → String) (s t : JState 64) (i : JInstr 64)
       have hs : (renameOperand ρ b).eval t = b.eval s :=
         renameOperand_eval_rename b (fun x hx => h x (List.mem_cons_of_mem _ hx))
       simp only [renameInstr, evalInstr, JState.writeCFW, hs, hd, hflag]
+    -- The memory-operand arithmetic computes its flags from the cell, carried by `hmem`.
+    | addMem d base off | imulMem d base off =>
+      have hd : t.get (ρ d) = s.get d := h d (List.mem_cons_self ..)
+      simp only [renameInstr, evalInstr, JState.writeB5W, JState.load, hmem base off, hd]
+    | imulriMem d base off imm =>
+      simp only [renameInstr, evalInstr, JState.writeB5W, JState.load, hmem base off]
+    | adcxMem d base off =>
+      have hd : t.get (ρ d) = s.get d := h d (List.mem_cons_self ..)
+      simp only [renameInstr, evalInstr, JState.load, hmem base off, hd, hcf, hflag]
+    | adoxMem d base off =>
+      have hd : t.get (ρ d) = s.get d := h d (List.mem_cons_self ..)
+      simp only [renameInstr, evalInstr, JState.load, hmem base off, hd, hof, hflag]
+    | addToMem base off src =>
+      have hs : (renameOperand ρ src).eval t = src.eval s :=
+        renameOperand_eval_rename src (fun x hx => h x (List.mem_cons_of_mem _ hx))
+      simp only [renameInstr, evalInstr, JState.writeB5Mem, JState.store, JState.writeB5,
+        JState.load, hmem base off, hs]
     | _ =>
       simp only [renameInstr, evalInstr, JState.setReg, JState.setRegMerge, JState.store,
         JState.storeIdx, hflag]
@@ -222,6 +239,20 @@ theorem aux_stepJ (ρ : String → String) (s t : JState 64) (i : JInstr 64)
         · simp only [ho, and_false, ↓reduceIte]; exact hmem b o
       · have hne : ρ b ≠ ρ base := fun he => hbb (hinj he)
         simp only [hne, hbb, false_and, ↓reduceIte]; exact hmem b o
+    | addToMem base off src =>
+      -- `add [base + off], src` stores a sum computed from the cell (`hmem`) and the
+      -- source operand; the other cells are handled as for `storeMem`.
+      have hs : (renameOperand ρ src).eval t = src.eval s :=
+        renameOperand_eval_rename src (fun a ha => h a (List.mem_cons_of_mem _ ha))
+      simp only [renameInstr, evalInstr, JState.writeB5Mem, JState.writeB5, JState.store,
+        JState.load, hs, hmem base off]
+      by_cases hbb : b = base
+      · subst hbb
+        by_cases ho : o = off
+        · subst ho; simp
+        · rw [if_neg (fun hc => ho hc.2), if_neg (fun hc => ho hc.2)]; exact hmem b o
+      · have hne : ρ b ≠ ρ base := fun he => hbb (hinj he)
+        rw [if_neg (fun hc => hne hc.1), if_neg (fun hc => hbb hc.1)]; exact hmem b o
     | test a src =>
       -- `test` writes only the five flags, so both sides keep their own memory.
       simp only [renameInstr, evalInstr, JState.writeB5]
