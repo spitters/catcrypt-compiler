@@ -208,6 +208,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMemStore
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresDescent
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineTieFragments
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresRelationalWeld
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresSym
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.EarlyExitJasmin
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.HeapAbs
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.LeanSourceRiscv
