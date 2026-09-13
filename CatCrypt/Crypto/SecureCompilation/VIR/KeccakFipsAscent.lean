@@ -727,11 +727,14 @@ theorem thetaDM5 (σ : SV) (ι : IV) :
       = thetaDColM 4 (thetaDColM 3 (thetaDColM 2 (thetaDColM 1 (thetaDColM 0 σ ι) ι) ι) ι) ι :=
   rfl
 
-set_option maxHeartbeats 1000000 in
 theorem thetaDM5_aSlot (σ : SV) (ι : IV) (x y : Nat) (hx : x < 5) (hy : y < 5) :
     thetaDM 5 0 σ ι (aSlot x y) = σ (aSlot x y) ^^^ thetaDW σ ι x := by
   interval_cases x <;> interval_cases y <;>
-    simp [thetaDM5, thetaDColM, thetaDW]
+    (rw [thetaDM5]
+     simp only [↓thetaDColM, thetaDW, ↓Function.update_self, ↓upd_aSlot_at_aSlot,
+       ↓upd_chiScr_at_aSlot, ↓upd_rotScr_at_aSlot, ↓upd_aSlot_at_cSlot, ↓upd_chiScr_at_cSlot,
+       ↓upd_rotScr_at_cSlot, Nat.reduceMod, Nat.reduceAdd, Nat.reduceEqDiff, and_false,
+       and_true, ↓reduceIte])
 
 theorem thetaDM5_bSlot (σ : SV) (ι : IV) (x y : Nat) :
     thetaDM 5 0 σ ι (bSlot x y) = σ (bSlot x y) := by
@@ -755,13 +758,16 @@ theorem rhoPiM25_aSlot (σ : SV) (ι : IV) (x y : Nat) :
     rhoPiM 25 0 σ ι (aSlot x y) = σ (aSlot x y) := by
   simp [rhoPiM25, rhoPiLaneM, rhoOffset_eq_zero_iff]
 
-set_option maxHeartbeats 1000000 in
 theorem rhoPiM25_bSlot (σ : SV) (ι : IV) (x y : Nat) (hx : x < 5) (hy : y < 5) :
     rhoPiM 25 0 σ ι (bSlot x y)
       = rotModel (σ (aSlot ((x + 3 * y) % 5) x)) ι
           (rhoOffset ((x + 3 * y) % 5 + 5 * x)) := by
   interval_cases x <;> interval_cases y <;>
-    simp [rhoPiM25, rhoPiLaneM, rhoOffset_eq_zero_iff]
+    (rw [rhoPiM25]
+     simp only [↓rhoPiLaneM, rhoOffset_eq_zero_iff, ↓Function.update_self,
+       ↓upd_bSlot_at_bSlot, ↓upd_rotScr_at_bSlot, ↓upd_bSlot_at_aSlot, ↓upd_rotScr_at_aSlot,
+       Nat.reduceMod, Nat.reduceAdd, Nat.reduceMul, Nat.reduceEqDiff, Nat.reduceLT, and_false,
+       and_true, ↓reduceIte])
 
 theorem chiM25 (σ : SV) (ι : IV) :
     chiM 25 0 σ ι
@@ -773,12 +779,15 @@ theorem chiM25 (σ : SV) (ι : IV) :
           ι) ι) ι) ι) ι) ι) ι) ι) ι) ι) ι) ι) ι) ι) ι) ι) ι) ι) ι) ι) ι) ι) ι) ι :=
   rfl
 
-set_option maxHeartbeats 1000000 in
 theorem chiM25_aSlot (σ : SV) (ι : IV) (x y : Nat) (hx : x < 5) (hy : y < 5) :
     chiM 25 0 σ ι (aSlot x y)
       = (σ (bSlot x y)) ^^^
           (((σ (bSlot (x + 1) y)) ^^^ ι (immIdx maskImm)) &&& (σ (bSlot (x + 2) y))) := by
-  interval_cases x <;> interval_cases y <;> simp [chiM25, chiLaneM]
+  interval_cases x <;> interval_cases y <;>
+    (rw [chiM25]
+     simp only [↓chiLaneM, ↓Function.update_self, ↓upd_aSlot_at_aSlot, ↓upd_chiScr_at_aSlot,
+       ↓upd_aSlot_at_bSlot, ↓upd_chiScr_at_bSlot, Nat.reduceMod, Nat.reduceAdd,
+       Nat.reduceEqDiff, and_false, and_true, ↓reduceIte])
 
 /-! ## 11. The lane view and the FIPS 202 round -/
 
