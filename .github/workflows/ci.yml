@@ -52,6 +52,9 @@ jobs:
       - name: No new plumbing-tagged security theorem
         run: bash scripts/uc-plumbing-ratchet.sh
 
+      - name: Every Dialect classified (lowers, theory, test)
+        run: bash scripts/dialect-lowering-ratchet.sh
+
       - name: No new native_decide or maxHeartbeats bump (proof cost)
         run: bash scripts/proof-cost-ratchet.sh
 

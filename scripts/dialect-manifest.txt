@@ -1,0 +1,64 @@
+# Dialect classification manifest — the mechanical "no unmarked toys" registry.
+#
+# Every `def/abbrev <name> : Dialect` in CatCrypt/ must appear here in exactly one
+# bucket. scripts/dialect-lowering-ratchet.sh FAILS if a dialect def is not listed
+# (an UNMARKED toy) and warns on the `review` bucket. Authoritative source for
+# lowers/theory: CatCrypt/Crypto/SecureCompilation/VIR/DIALECTS.md.
+#
+# Format: one `<bucket> <dialectName>` per line.
+#   lowers  — has a bytes-reaching lowering (→ Com jasminDialect → x86/ELF, direct
+#             or via the DialectLoweringChain). Usable on an emit path.
+#   theory  — correspondence / MLIR-mirror / optimizer-playground. NO lowering out,
+#             zero emit traffic. MUST NOT be wired into an emit/plan path.
+#   test    — smoke / example / pilot dialect, not shipped.
+#   review  — not yet classified against DIALECTS.md; tracked (warned), not silently
+#             unmarked. Drive this bucket to zero.
+
+# ---- lowers (bytes-reaching; DIALECTS.md "genuine Com → jasmin → ELF spine") ----
+lowers jasminDialect
+lowers x86Dialect
+lowers fieldDialect
+lowers latticeDialect
+lowers thirDialect
+lowers catCryptDialect
+lowers polyDialect
+lowers modArithDialect
+lowers ecDialect
+lowers fpDialect
+lowers pairingCheckDialect
+lowers arithDialect
+lowers funcDialect
+lowers vectorDialect
+lowers memrefDialect
+lowers scfDialect
+lowers tileDialect
+
+# ---- theory (correspondence / MLIR-mirror / optimizer-playground; no lowering out) ----
+theory mlirArithDialect
+theory mlirMemrefDialect
+theory mlirVectorDialect
+theory mlirScfDialect
+theory mlirPolynomialDialect
+theory mlirArithScfDialect
+theory derivedDialect
+theory cmpDialect
+theory fieldCmpDialect
+theory modArithMontDialect
+theory ecConvertDialect
+theory edAffDialect
+theory tensorExtDialect
+theory quantumDialect
+theory realLatticeDialect
+theory latticeDialectG
+theory numDialect
+theory flagDialect
+theory mixedDialect
+
+# ---- test / example ----
+test toyDialect
+test smokeDialect
+test pilot
+test D
+
+# ---- review (per-file lowering check pending; tracked, NOT silently unmarked) ----
+# (empty — all dialects classified as of 2026-07-19.)
