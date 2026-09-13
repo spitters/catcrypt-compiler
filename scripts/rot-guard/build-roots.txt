@@ -858,6 +858,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.Guards
 CatCrypt.Crypto.SecureCompilation.Ascent.Exit
 CatCrypt.Crypto.SecureCompilation.Ascent.SourceBridge
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.EarlyExit
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.EarlyExitLowCT
 CatCrypt.Crypto.Hax.HaxToLowCTSim_Program
 CatCrypt.Crypto.SecureCompilation.Ascent.HeapAbs
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.HeapAbs
