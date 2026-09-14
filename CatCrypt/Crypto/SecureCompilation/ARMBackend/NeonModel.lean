@@ -21,9 +21,8 @@ quarter-round emits — the V-register sibling of `ArmModel`'s scalar `AState` /
 64-bit `BState`.
 
 `NeonLowering.lean` lifts a register-named op alphabet (`NOp`) onto this model
-with the block-lowering denotation theorem `neonBlock_lowering_denote` (the NEON
-analogue of `Vec128Lowering.vec128Block_lowering_denote`, proved by induction
-with no new custom axioms); `NeonAsmPrinter.lean` renders the lowered `NInst`
+with the block-lowering denotation theorem `neonBlock_lowering_denote` (proved by
+induction with no new custom axioms); `NeonAsmPrinter.lean` renders the lowered `NInst`
 block to GAS AArch64 ASIMD assembly text with a linear-scan V allocator;
 `NeonEncoder.lean` + `SailNeonDecoder.lean` give the verified-to-bytes
 `decode(encode i) = i` against the hand-transcribed `rems-project/sail-arm`

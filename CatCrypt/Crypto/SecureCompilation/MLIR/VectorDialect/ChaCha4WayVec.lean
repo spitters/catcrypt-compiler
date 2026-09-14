@@ -32,10 +32,10 @@ cluster without regression:
   realizes (`add` for `VPADD`, the generic binary `add`-carrying-xor / `or`,
   the new `shiftL`/`shiftR` for `VPSLL`/`VPSRL`);
 * `ChaCha4WayVecOp.render` emits the *same mnemonic strings* the direct emit
-  uses, so the rendered body is provably byte-identical
-  (`chacha4wayVec_body_eq_direct`, by `native_decide`);
+  uses, so the rendered body equals the direct one (`vecBody_eq_direct`, and
+  for the whole export `chacha4wayVecJazz_eq_direct`, both by rewriting);
 * the denotation is the dialect's lane-parallel map, grounded in
-  `LaneMap.chacha4way_lane_map` (the proven #107 lane-map keystone).
+  `LaneMap.chacha4way_lane_map`.
 
 Because the rendered text is *identical* to the direct emit, the KAT
 (`bench/chacha_compare/` RFC 8439 §2.3.2 known-answer test) that validates
@@ -132,7 +132,7 @@ def doubleRoundsProgram : Nat → List ChaCha4WayVecOp
   | 0 => []
   | (k+1) => doubleProgram ++ doubleRoundsProgram k
 
-/-! ## 4. Byte-identity with the direct emit (the keystone)
+/-! ## 4. Byte-identity with the direct emit
 
 These show that rendering the tagged-op program produces **exactly** the same
 lines as the existing direct-mnemonic emit, op for op and round for round. -/
@@ -191,7 +191,7 @@ def vecBody : List String :=
     renderProgram (doubleRoundsProgram 10) ++
     renderChacha4wayStore
 
-/-- **Keystone: the tagged-op (VectorDialect) body is byte-identical to the
+/-- **The tagged-op (VectorDialect) body is byte-identical to the
     direct-mnemonic body.** Every line is the same; only the round leg routes
     through `ChaCha4WayVecOp`. Hence the emitted `.jazz` (and its RFC 8439
     KAT in `bench/chacha_compare/`) is preserved verbatim. -/
@@ -220,8 +220,8 @@ theorem chacha4wayVecJazz_eq_direct (name : String) :
 
 The tagged-op program denotes the lane-parallel map of the per-block ChaCha
 function across the 4 lanes — the same denotation `chacha4way_denotation_preserves`
-gives the direct emit, grounded in the proven `LaneMap.chacha4way_lane_map`
-keystone. Independence per lane means the abstract `VectorOp` add/shift ops
+gives the direct emit, grounded in `LaneMap.chacha4way_lane_map`. Independence
+per lane means the abstract `VectorOp` add/shift ops
 applied across 4 lanes equal four sequential scalar applications. -/
 
 open CatCrypt.Crypto.SecureCompilation.VIR.LaneMap (laneMap chacha4way_lane_map)
@@ -242,7 +242,7 @@ theorem vec_denotation_preserves
 `rotL` realizes `VectorOp.shiftL` + `VectorOp.shiftR` + binary-or (lowered by
 `lower_shiftL_correct` / `lower_shiftR_correct` / `lower_add_correct`). We pin
 the abstract per-lane meaning of one ARX rotate against the dialect ops to show
-the alphabet genuinely covers ChaCha's lane arithmetic.
+that the alphabet covers ChaCha's lane arithmetic.
 
 `rotL x n` = `(x <<< n) ||| (x >>> (32 - n))` per `BitVec 32` lane — exactly
 the composition the dialect expresses. -/

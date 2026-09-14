@@ -18,35 +18,33 @@ public import CatCrypt.Crypto.Util.X25519Verified
 dalek's `FieldElement2625x4` packs **four** Curve25519 field elements as
 `10 × 26/25`-bit limbs across AVX2 lanes, so a point operation runs its four
 coordinate multiplies in parallel (`VPMULUDQ` 32×32→64 over fixed lanes,
-`VPADD`/`VPSRL` for the in-lane carry/reduce). This closes the *same* residual
-that the #452 Bulletproofs MSM (Straus bucket MSM, algorithm gap closed) and
-#459 Ed25519 verify (vartime double-scalar, algorithm gap closed) both left: our
-scalar HACL/fiat `5×51` field vs dalek's `2625x4` SIMD field.
+`VPADD`/`VPSRL` for the in-lane carry/reduce). This module models that layout
+next to the scalar `5×51` field.
 
-The vectorizer machinery is in-class — the lattice 4-way NTT
-(`MldsaNtt4WayVec`) already packs field coefficients into AVX2 lanes and reduces
-in-lane (Montgomery), proven through `LaneMap.laneMap_eq_scalarMap` + the dialect
-`mul`/`add`/`shiftR` lowering keystones. SIMD Ristretto is the **same pattern on
-the curve25519 field**, with the radix changed from `5×51` to `10×26/25` (for
-4-way carry headroom) and an x19 Solinas reduce (`2^255 ≡ 19`) replacing the NTT's
+The lattice 4-way NTT (`MldsaNtt4WayVec`) packs field coefficients into AVX2 lanes
+using `LaneMap.laneMap_eq_scalarMap` and the dialect `mul`/`add`/`shiftR` lowering
+lemmas. This module follows the same pattern on the curve25519 field, with the
+radix `10×26/25` and an x19 Solinas reduce (`2^255 ≡ 19`) in place of the NTT's
 Montgomery reduce.
 
-## What is genuinely PROVED here (the meat)
+## What is proved here
 
-The substance of this task is the **radix-change reduction proof** — that the
-in-lane `10×26/25` packed mul + x19-fold reduce decodes to the scalar field
-product over `ZMod (2^255 − 19)`:
+Limbs are modelled as unbounded integers (`Fin 10 → ℤ`), decoded into
+`Fp25519 = ZMod (2^255 − 19)`; lane overflow of the 32/64-bit lane words is not
+modelled.
 
-* `evalLimbs_fold19` — the keystone wrap identity: a high limb at weight
-  `2^(255+e)` contributes `19 · 2^e` to the residue, because `(2:ZMod p)^255 =
-  19`. This is the algebraic heart of the radix change (the NTT used a different
-  reduce; here it is the `2^255 − 19` Solinas wrap).
-* `eval2625_reduce19` — folding the nine high limbs (10..18) of a product
-  back into the low ten limbs by `+= 19 · limb` preserves the `ZMod p` value.
-* `mul2625x4_decode` — the per-lane packed schoolbook-mul then x19-reduce
-  decodes to the field product `eval a * eval b`. This is the
-  denotation-preservation theorem for the packed field multiply.
-* `sqr2625x4_decode` — the squaring specialization.
+* `two_pow_high` — `(2 : Fp25519)^(255 + e) = 19 · 2^e`, so a term at bit
+  position `255 + e` folds to `19 · 2^e`.
+* `eval2625_reduce19` — the concrete fold `reduce19`, which adds `19 · limb`
+  of the nine high limbs (10..18) of a nineteen-limb product to the low limbs,
+  preserves the `Fp25519` value.
+* `prodEval_eq_mul` — the unreduced double-sum product decode equals
+  `eval2625 a * eval2625 b`.
+* `mul2625_decode` / `sqr2625_decode` / `mul2625x4_decode` — for any reduction
+  `red` satisfying the hypothesis `ReducesTo red` (its limbs decode to the
+  unreduced product value), `mul2625 red` decodes to the field product. No
+  theorem here shows that a concrete limb-level reduce satisfies `ReducesTo`;
+  in particular `reduce19` is not connected to it.
 
 ## Lane-parallel structure (reuse, structural)
 
@@ -57,33 +55,28 @@ same structural step the ChaCha / Keccak / NTT 4-way emits use.
 
 ## Edwards point arithmetic
 
-`edwardsAdd4way_decode` shows the vectorized twisted-Edwards point-add (the four
-coordinate multiplies onto the four lanes) decodes to `ed25519AffineAdd` over
-`Fp25519`, by routing each coordinate field-op through the proven packed
-mul/add/sub and `laneMap`. The double is `P + P` (unified law), reusing the add.
+`edwardsAdd2625_decode` shows that the affine twisted-Edwards point-add built from
+`mul2625` / `add2625` / `sub2625` decodes to `ed25519AffineAdd` over `Fp25519`,
+under the hypotheses `ReducesTo red`, decodes of the constants `1` and `d`, and a
+packed inverse `inv` that decodes to the field inverse. The double
+(`edwardsDouble2625_decode`) is `P + P`, reusing the add.
 
-## Honesty boundary (PROVED vs KAT-only)
+## Scope
 
-* **PROVED in-Lean** (this file, no `sorry`, no new axiom beyond the existing
-  `p25519_prime` the whole curve25519 tower rests on): the radix-change
-  reduction `mul2625x4_decode` / `eval2625_reduce19` / `evalLimbs_fold19`, the
-  lane-parallel structural equality `field4way_lane_map`, the dialect-op lowering
-  preservation at the `2625x4` lane shape, and the Edwards-add decode.
-* **KAT-only** (external bench harness, not in-Lean): the byte-identical match of
-  the emitted packed limbs against the scalar field oracle on concrete vectors,
-  and the wall-clock dalek ratio. The in-Lean theorems pin the *symbolic*
-  radix-decode identity; the concrete-vector byte match is the bench's job
-  (`bench/dalek/`), per the REV-12 discipline of not gating value-correctness
-  with heavy in-kernel `native_decide`.
+* **In Lean**: the statements listed above, the lane-map equality
+  `field4way_lane_map`, and the dialect-op lowering equalities
+  `ristretto_ops_lower_correct` at the `2625x4` lane shape (`BitVec 32` lanes).
+  Primality of `p` comes from the theorem `p25519_prime`.
+* **Not in Lean**: the emitted limb shuffle, value checks of emitted code on
+  concrete vectors, and timing; none of these are part of this package.
 
 ## Constant-time
 
-The packed field is data-INDEPENDENT SIMD: `VPMULUDQ` / `VPADD` / `VPSRL` /
-`VPAND` over fixed lanes, with no data-dependent branch or memory index. The
-reduce is the straight Solinas fold (no conditional subtract in the hot path;
-the single final canonical subtract is a masked select, branch-free). So the
-packed field stays constant-time — confirmed structurally by `ct_data_indep`
-(the op list contains no branch / data-indexed load). No vartime path.
+The intended packed field uses `VPMULUDQ` / `VPADD` / `VPSRL` / `VPAND` over
+fixed lanes, with no data-dependent branch or memory index, and a branch-free
+masked select for the final canonical subtract. No theorem in this module states
+a constant-time property: `ct_data_indep` holds by definition, because
+`PackedFieldOp.dataIndep` returns `true` for every op.
 -/
 
 @[expose] public section
@@ -166,11 +159,11 @@ def reduce19 (p : Limbs19) : Limbs10 := fun i =>
   else
     p ⟨i, by have := i.isLt; omega⟩
 
-/-- **Reduction keystone: the x19 fold preserves the field value.**
-    Decoding the reduced ten limbs equals decoding all nineteen limbs of the
-    product — the high nine limbs, weighted `2^(255 + weight k)`, fold onto the
-    low limbs as `19 · 2^(weight k)` by `two_pow_high`. This is the genuine
-    radix-change reduction proof. -/
+/-- **The x19 fold preserves the field value.**
+    Decoding the reduced ten limbs equals decoding all nineteen limbs — the high
+    nine limbs, weighted `2^(255 + weight k)`, fold onto the low limbs as
+    `19 · 2^(weight k)` by `two_pow_high`. The limbs are integers; the statement
+    says nothing about limb bounds. -/
 theorem eval2625_reduce19 (p : Limbs19) :
     eval2625 (reduce19 p) = evalN 19 p := by
   unfold eval2625 evalN reduce19
@@ -211,10 +204,10 @@ The packed `VPMULUDQ`s form, for each limb-index pair `(i, j)`, the lane product
 additivity is assumed — each lane product carries its own bit position). The
 reduce then folds every bit position `≥ 255` by the `2^255 = 19` wrap.
 
-We define `mul2625` abstractly via a `reduceTo` function over the bit-position
-double sum, and prove the keystone decode by combining the product identity with
-the wrap. (The concrete limb-shuffle that realizes `reduceTo` is fixed by the
-emit; its byte-identity with this decode is the bench's KAT, per REV-12.) -/
+We define `mul2625` abstractly via a reduction `red` that receives the
+bit-position decode `prodEval` itself, and prove its decode from the product
+identity and the hypothesis `ReducesTo red`. The concrete limb shuffle of the
+emitted reduce is not defined in this module. -/
 
 /-- The unreduced product decode: `Σ_{i,j} a_i b_j · 2^(weight i + weight j)`.
     This is the true bit-position-correct decode of the packed `VPMULUDQ`
@@ -237,26 +230,22 @@ theorem prodEval_eq_mul (a b : Limbs10) :
   rw [pow_add]
   ring
 
-/-- A reduction realizer: a function turning the unreduced bit-position decode
-    into ten reduced limbs whose decode equals the unreduced decode. The
-    `2^255 = 19` Solinas fold is such a realizer (it rewrites every `≥ 255`
-    bit-position term by `two_pow_high`, preserving the `Fp25519` value); this
-    is the abstract form of the in-lane reduce, whose concrete limb shuffle is
-    fixed by the emit. -/
+/-- A reduction realizer: `red prodEval a b` is ten limbs whose decode equals the
+    unreduced decode `prodEval a b`. Because `red` receives the field-valued
+    function `prodEval`, the property can be met without any limb arithmetic;
+    no theorem here shows that a limb-level Solinas fold satisfies it. -/
 def ReducesTo (red : (Limbs10 → Limbs10 → Fp25519) → Limbs10 → Limbs10 → Limbs10) : Prop :=
   ∀ a b, eval2625 (red prodEval a b) = prodEval a b
 
-/-- The full packed field multiply: the bit-position product, then the x19
-    Solinas reduce (a value-preserving `ReducesTo` realizer). -/
+/-- The packed field multiply, parametric in the reduction `red` applied to the
+    bit-position product decode. -/
 def mul2625 (red : (Limbs10 → Limbs10 → Fp25519) → Limbs10 → Limbs10 → Limbs10)
     (a b : Limbs10) : Limbs10 := red prodEval a b
 
-/-- **THE radix-change denotation-preservation keystone.** The packed `2625x4`
-    field multiply (bit-position product + value-preserving x19 in-lane reduce)
-    decodes to the scalar field product over `Fp25519`. Composes the reduce's
-    value-preservation (`ReducesTo`, rooted in `eval2625_reduce19` /
-    `two_pow_255`) with the product identity (`prodEval_eq_mul`). This is the
-    per-lane correctness the SIMD field rests on. -/
+/-- **Decode of the packed multiply.** For any `red` with `ReducesTo red`,
+    `mul2625 red a b` decodes to `eval2625 a * eval2625 b`. The proof rewrites
+    with the hypothesis `ReducesTo red` and then `prodEval_eq_mul`; the
+    reduction's value preservation is assumed, not proved. -/
 theorem mul2625_decode
     {red : (Limbs10 → Limbs10 → Fp25519) → Limbs10 → Limbs10 → Limbs10}
     (hred : ReducesTo red) (a b : Limbs10) :
@@ -310,18 +299,20 @@ theorem mul2625x4_decode
 
 /-! ## 6. The packed field ops as dialect `mul` / `add` / `shiftR`
 
-The packed `VPMULUDQ` lane products are the dialect `mul` op; the limb adds
-(`VPADD`) and the in-lane carry/reduce shifts (`VPSRL`, `VPAND`) are `add` /
-`shiftR`. They lower with proven denotation preservation at the `2625x4` lane
-shape (`BitVec 32` lanes, 8 lanes per `__m256i` holding the limbs of the four
-field elements). -/
+The limb adds (`VPADD`), the lane multiply and the carry/reduce shifts (`VPSRL`)
+are the dialect `add` / `mul` / `shiftR` ops at `BitVec 32` lanes, 8 lanes per
+`__m256i`. The theorems below state the dialect denotation and lowering of these
+ops at that shape. The lane multiply `lmul` is the wrapping 32-bit product; the
+64-bit result of `VPMULUDQ` is not modelled, and no theorem connects these
+`BitVec 32` lanes to the integer limbs of §§1–5. -/
 
 /-- The `2625` lane element on the AVX2 wire: a `BitVec 32` limb. -/
 abbrev limbLaneN : Nat := 8
 
 /-- The `BitVec 32` lane add (`VPADDD`). -/
 abbrev ladd (x y : BitVec 32) : BitVec 32 := x + y
-/-- The `BitVec 32` lane multiply (`VPMULUDQ`'s lane product). -/
+/-- The `BitVec 32` lane multiply: the low 32 bits of the product (the 64-bit
+    `VPMULUDQ` result is not modelled). -/
 abbrev lmul (x y : BitVec 32) : BitVec 32 := x * y
 /-- The `BitVec 32` lane logical shift-right (`VPSRLD` — the carry/reduce shift). -/
 abbrev lshr (x : BitVec 32) (m : Nat) : BitVec 32 := x >>> m
@@ -331,7 +322,7 @@ theorem limbAdd_denote (v w : VectorTy (BitVec 32) limbLaneN) :
     denoteVectorOp (.add ladd v w : VectorOp (BitVec 32) limbLaneN)
       = .vec (fun i => v i + w i) := rfl
 
-/-- The packed `VPMULUDQ` lane product denotes the dialect `mul` op pointwise. -/
+/-- The 32-bit lane multiply denotes the dialect `mul` op pointwise. -/
 theorem limbMul_denote (v w : VectorTy (BitVec 32) limbLaneN) :
     denoteVectorOp (.mul lmul v w : VectorOp (BitVec 32) limbLaneN)
       = .vec (fun i => v i * w i) := rfl
@@ -342,9 +333,10 @@ theorem limbShr_denote (m : Nat) (v : VectorTy (BitVec 32) limbLaneN) :
     denoteVectorOp (.shiftR lshr m v : VectorOp (BitVec 32) limbLaneN)
       = .vec (fun i => v i >>> m) := rfl
 
-/-- The three packed limb ops lower to proven per-lane scalar expansions at the
-    `2625x4` lane shape — the dialect keystones at this lane instance, the same
-    bundling the lattice NTT and Poseidon2 lane-bundle files use. -/
+/-- The three limb ops lower to per-lane scalar expansions with the stated
+    denotation at the `2625x4` lane shape: `lower_add_correct`,
+    `lower_mul_correct` and `lower_shiftR_correct` instantiated at `BitVec 32`,
+    8 lanes. -/
 theorem ristretto_ops_lower_correct (v w : VectorTy (BitVec 32) limbLaneN) (m : Nat) :
     (lower (0 : BitVec 32) (.add ladd v w)).map (·.denote)
         = some (VectorTy.map₂ ladd v w)
@@ -365,8 +357,8 @@ packed field, decoding each coordinate through `eval2625`, and show it equals
 `ed25519AffineAdd` over `Fp25519` — the intra-point 4-lane flavor (four coords
 of one point, which speeds a single scalar-mult / MSM term and Ed25519 verify).
 
-We reuse the proven packed `mul2625` for every coordinate multiply; the adds /
-subtracts are the limb-wise `add` op decoded by linearity of `evalN`. -/
+Every coordinate multiply is `mul2625 red` (decoded under `ReducesTo red`); the
+adds / subtracts are the limb-wise `add` op decoded by linearity of `evalN`. -/
 
 /-- Limb-wise add of two ten-limb elements (`VPADD`); decodes additively. -/
 def add2625 (a b : Limbs10) : Limbs10 := fun i => a i + b i
@@ -403,12 +395,9 @@ def Point2625.toAlg (P : Point2625) : Ed25519Point :=
 
 /-- The vectorized affine point-add over the packed field. Each coordinate
     numerator / the common product `t` / the two `1 ± t` factors are built from
-    the proven packed `mul2625` / `add2625` / `sub2625`; the two field inverses
-    of the `1 ± t` denominators are carried as a packed-field inverse `inv`
-    (the dalek `invert` runs the same `2625x4` packed mul chain, so it decodes
-    to the scalar inverse by `mul2625_decode` applied along the addition
-    chain — taken here as the carried per-lane inverse hypothesis, the same
-    granularity as `Ed25519GroupEmit.FieldRealizes.inv_realizes`). -/
+    `mul2625` / `add2625` / `sub2625`; the two field inverses of the `1 ± t`
+    denominators use a parameter `inv`, whose decode to the field inverse is a
+    hypothesis of `edwardsAdd2625_decode`. -/
 def edwardsAdd2625 (red : (Limbs10 → Limbs10 → Fp25519) → Limbs10 → Limbs10 → Limbs10)
     (inv : Limbs10 → Limbs10) (oneL dL : Limbs10) (P Q : Point2625) :
     Point2625 :=
@@ -422,14 +411,10 @@ def edwardsAdd2625 (red : (Limbs10 → Limbs10 → Fp25519) → Limbs10 → Limb
 
 /-- **The vectorized packed Edwards point-add decodes to `ed25519AffineAdd`.**
 
-    Routing every coordinate operation through the proven packed field
-    (`mul2625_decode`, `add2625_decode`, `sub2625_decode`) and the carried
-    packed-inverse realization, the on-lane vectorized point-add decodes
-    coordinate-wise to the abstract twisted-Edwards group op over `Fp25519`.
-    The hypotheses are the reduce's value-preservation (`ReducesTo`), the
-    packed-field constant decodes (`one`/`d`) and the packed-inverse
-    realization — the exact field-leaf granularity of
-    `Ed25519GroupEmit.FieldRealizes`. -/
+    Using `mul2625_decode`, `add2625_decode` and `sub2625_decode`, the point-add
+    decodes coordinate-wise to the twisted-Edwards addition over `Fp25519`. The
+    hypotheses are `ReducesTo red`, the decodes of the constants `oneL`/`dL`, and
+    `hinv : ∀ a, eval2625 (inv a) = (eval2625 a)⁻¹`. -/
 theorem edwardsAdd2625_decode
     {red : (Limbs10 → Limbs10 → Fp25519) → Limbs10 → Limbs10 → Limbs10}
     (hred : ReducesTo red) (inv : Limbs10 → Limbs10) (oneL dL : Limbs10)
@@ -444,7 +429,7 @@ theorem edwardsAdd2625_decode
     simp only [mul2625_decode hred, add2625_decode, sub2625_decode, hinv, hone, hd]
 
 /-- The vectorized point-DOUBLE is the unified addition at `P = Q` (twisted
-    Edwards is complete; `[2]P = P + P`), reusing the proven add decode. -/
+    Edwards is complete; `[2]P = P + P`), reusing `edwardsAdd2625`. -/
 def edwardsDouble2625 (red : (Limbs10 → Limbs10 → Fp25519) → Limbs10 → Limbs10 → Limbs10)
     (inv : Limbs10 → Limbs10) (oneL dL : Limbs10) (P : Point2625) :
     Point2625 := edwardsAdd2625 red inv oneL dL P P
@@ -460,16 +445,14 @@ theorem edwardsDouble2625_decode
   unfold edwardsDouble2625 ed25519Double
   exact edwardsAdd2625_decode hred inv oneL dL hone hd hinv P P
 
-/-! ## 8. Constant-time: the packed field is data-independent SIMD
+/-! ## 8. The packed field op alphabet
 
-The packed field ops are a fixed list of lane-parallel intrinsics
-(`VPMULUDQ`/`VPADD`/`VPSUB`/`VPSRL`/`VPAND`) over fixed lane indices, with no
-data-dependent branch and no data-dependent memory index. We record the op
-alphabet and confirm structurally that it is branch- and index-free, so the
-emitted packed field stays constant-time (no vartime path). -/
+The intended packed field ops are lane-parallel intrinsics
+(`VPMULUDQ`/`VPADD`/`VPSUB`/`VPSRL`/`VPAND`) over fixed lane indices. This section
+records the op alphabet and an op list. It has no semantics for the ops and no
+leakage model, so it states no constant-time property. -/
 
-/-- The packed field op alphabet (the lane intrinsics the emit uses). All are
-    data-independent SIMD over fixed lanes. -/
+/-- The packed field op alphabet (names of lane intrinsics). -/
 inductive PackedFieldOp where
   /-- `VPMULUDQ` — 32×32→64 lane product. -/
   | vpmuludq
@@ -483,46 +466,38 @@ inductive PackedFieldOp where
   | vpand
   deriving DecidableEq, Repr
 
-/-- Whether an op is data-independent: every packed-field op is (none branch on
-    or index by secret data — the lane index is a compile-time constant and the
-    shift amount is the fixed `25`/`26`). -/
+/-- A Boolean label on ops, defined as the constant function `true`. It is not
+    derived from any semantics of the op. -/
 def PackedFieldOp.dataIndep : PackedFieldOp → Bool := fun _ => true
 
-/-- The op list realizing one packed field multiply + x19 reduce: a fixed
-    sequence of lane intrinsics, no branch. -/
+/-- A fixed list of lane-intrinsic names for one packed field multiply + x19
+    reduce. The list is not connected to `mul2625` or to any emitted code. -/
 def mulReduceOps : List PackedFieldOp :=
   [.vpmuludq, .vpmuludq, .vpmuludq, .vpmuludq, .vpmuludq,  -- the convolution products
    .vpadd, .vpadd, .vpadd, .vpadd,                          -- accumulate degrees
    .vpsrl, .vpand, .vpadd,                                  -- carry/reduce
    .vpmuludq, .vpadd]                                       -- x19 fold
 
-/-- **CT confirmation: every op in the packed field multiply is data-
-    independent.** The op list contains no branch and no data-indexed access —
-    purely lane-parallel SIMD over fixed lanes — so the packed field is
-    constant-time. (The single final canonical subtract is a branch-free masked
-    select, not in this hot-path list.) -/
+/-- Every op in `mulReduceOps` has `dataIndep = true`. The statement holds for any
+    list, since `PackedFieldOp.dataIndep` is constantly `true`; it carries no
+    constant-time content. -/
 theorem ct_data_indep : ∀ op ∈ mulReduceOps, op.dataIndep = true := by
   intro op _; rfl
 
-/-! ## 9. Summary of the proved bridge
+/-! ## 9. Summary
 
-* `mul2625_decode` / `sqr2625_decode` — the packed `2625x4` field multiply
-  (convolution + x19 in-lane reduce) decodes to the scalar field product:
-  the radix-change reduction proof (`eval2625_reduce19` ∘ `evalN_convolve`,
-  rooted in `two_pow_255 : (2:Fp25519)^255 = 19`).
-* `field4way_lane_map` / `mul2625x4_decode` — the four field elements ride the
-  four AVX2 lanes (structural, via `laneMap_eq_scalarMap`); each lane decodes
-  independently.
-* `ristretto_ops_lower_correct` — the packed limb ops lower with proven
-  denotation preservation at the `2625x4` lane shape.
-* `edwardsAdd2625_decode` / `edwardsDouble2625_decode` — the vectorized
-  Edwards point-add/double over the packed field decode to `ed25519AffineAdd` /
-  `ed25519Double`, at the same field-leaf granularity as `Ed25519GroupEmit`.
-* `ct_data_indep` — the packed field is data-independent SIMD (constant-time).
-
-The concrete-vector byte-identity against the scalar field oracle and the
-wall-clock dalek ratio are the external bench's job (`bench/dalek/`), not gated
-in-kernel here (REV-12 discipline).
+* `eval2625_reduce19` — the integer-limb x19 fold preserves the `Fp25519` value.
+* `prodEval_eq_mul` — the double-sum product decode is the field product.
+* `mul2625_decode` / `sqr2625_decode` / `mul2625x4_decode` — the parametric packed
+  multiply decodes to the field product under the hypothesis `ReducesTo red`.
+* `field4way_lane_map` — lane-wise application equals `laneMap`
+  (`laneMap_eq_scalarMap`).
+* `ristretto_ops_lower_correct` — dialect lowering of add / 32-bit mul / shift at
+  `BitVec 32`, 8 lanes.
+* `edwardsAdd2625_decode` / `edwardsDouble2625_decode` — the point add/double
+  decode to `ed25519AffineAdd` / `ed25519Double` under `ReducesTo red`, the
+  constant decodes and the inverse hypothesis.
+* `ct_data_indep` — holds by definition of `dataIndep`; no constant-time content.
 -/
 
 end CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.RistrettoFieldVec

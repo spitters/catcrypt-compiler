@@ -11,36 +11,31 @@ public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Denote
 /-!
 # MLIR `vector` dialect — AVX-512 lowering pass (task #276)
 
-This is a **second** lowering target for the abstract `VectorOp` alphabet,
-landed *alongside* the AVX2 / per-lane `ScalarExpansion` lowering in
-[`Lowering.lean`](Lowering.lean) without touching it.
+A second lowering target for the abstract `VectorOp` alphabet, next to the
+AVX2 / per-lane `ScalarExpansion` lowering in [`Lowering.lean`](Lowering.lean).
+A `VectorOp` term is lowered to a 512-bit mnemonic instruction by one pass,
+`lowerAVX512 : LaneWidth → VectorOp α n → Option (AVX512Inst α n)`, instead of
+per-primitive mnemonic tables.
 
-## The #183 architectural win, demonstrated
-
-The thesis of the structured `VectorOp` dialect (#183) is:
-
-> adding a new SIMD width should be **a new lowering pass, not 22 mnemonics ×
-> 7 per-primitive rewrites.**
-
-Before the dialect, ChaCha / ML-DSA / ML-KEM / GFNI / VAES each spelled their
-512-bit mnemonics inline in their own emit file; adding AVX-512 meant editing
-every one of them. With the dialect, every migrated consumer already emits its
-kernel as a `VectorOp` term. So a *single* new pass here —
-`lowerAVX512 : VectorOp α n → Option AVX512Inst` — re-targets **all** of them
-to 512-bit mnemonics, with the consumer code left byte-for-byte unchanged.
-
-This file lands that pass:
+This file defines:
 
 * `AVX512Inst` — a 512-bit mnemonic instruction (the `zmm` analogue of the
-  `__m256i` mnemonics the consumers emit at AVX2 width, e.g. `#VPADD_8u64`,
+  `__m256i` mnemonics emitted at AVX2 width, e.g. `#VPADD_8u64`,
   `#VPMULL_16u32`, `#VPSRA_*`);
-* `lowerAVX512` — the new lowering pass, one rule per `VectorOp` constructor;
-* `render512` — the emitted 512-bit mnemonic line;
-* a `BitVec`-shaped semantic model `denote512` for each mnemonic, and a
-  family of **denotation-preservation theorems** (`lowerAVX512_*_correct`)
-  proving that the 512-bit mnemonic the pass selects denotes the *same
-  per-lane operation* as the abstract op. These mirror the AVX2
-  `lower_*_correct` shape, one per constructor.
+* `lowerAVX512` — the lowering pass, one rule per `VectorOp` constructor;
+* `renderAVX512` — the mnemonic line for an instruction;
+* `denote512` — a meaning for each instruction, and the theorems
+  `lowerAVX512_*_correct`, one per constructor.
+
+## What the theorems state
+
+Each `AVX512Inst` constructor stores the lane function of the abstract op it was
+lowered from (`op`, `shf`, `aff`, `rnd`), and `denote512` applies that stored
+function lane-wise. The `lowerAVX512_*_correct` theorems are therefore `rfl`:
+they say that lowering does not change the stored lane function. `denote512` is
+not a model of the named x86 instruction. Nothing ties the mnemonic to the
+function it carries (an `.add` with a multiplication as `op` is rendered as
+`#VPADD`), nor the `LaneWidth` to the lane type `α` or the lane count `n`.
 
 ## Lane-count contract
 
@@ -53,25 +48,22 @@ AVX-512 doubles the lane count of AVX2 at every element width:
 | u16     | 16 lanes         | **32** lanes    | `32u16`         |
 | u8      | 32 lanes         | **64** lanes    | `64u8`          |
 
-The abstract `VectorOp α n` is lane-count-polymorphic (`n` is a parameter), so
-the *same* `VectorOp` term re-targets to a wider `zmm` instruction simply by
-carrying the AVX-512 width string — there is nothing per-lane to rewrite. The
-width is recorded in `AVX512Inst.width` (a `LaneWidth`) so `render512` produces
-the right `_8u64` / `_16u32` / … suffix.
+The abstract `VectorOp α n` is lane-count-polymorphic (`n` is a parameter). The
+width is recorded in the instruction's `LaneWidth` argument so `renderAVX512`
+produces the `_8u64` / `_16u32` / … suffix; the caller chooses a width consistent
+with `α` and `n`.
 
-## Honest gaps (no clean 512-bit mnemonic)
+## ISA extensions
 
-Two `VectorOp` ops do *not* lower to a baseline-AVX-512 mnemonic: `affineByte`
-(needs the `AVX512_GFNI` extension's `VGF2P8AFFINEQB zmm`) and `aesRound`
-(needs the `AVX512_VAES` extension's `VAESENC zmm`). These are real ISA
-instructions, but they are *extensions* on top of `AVX512F`, not part of the
-foundation set. We model them honestly: `lowerAVX512` tags them with an
-`requiresExt` flag (`GFNI512` / `VAES512`) so a backend that targets a CPU
-without those extensions can reject them, rather than silently emitting an
-instruction the target cannot decode. Their denotation preservation still
-holds (the per-lane semantics is unchanged by width), so they are *correct
-when the extension is present* — the gap is an ISA-availability concern, not a
-semantic one, and is surfaced explicitly.
+`affineByte` lowers to `VGF2P8AFFINEQB zmm` (the `AVX512_GFNI` extension) and
+`aesRound` to `VAESENC zmm` (the `AVX512_VAES` extension). `AVX512Inst.ext` tags
+these two with `Ext.gfni512` / `Ext.vaes512`, so a backend targeting a CPU
+without them can reject them, and tags every other instruction `Ext.f`. That
+tagging is coarser than the ISA: the byte and word forms (`VPADDB`/`VPADDW`,
+`VPBROADCASTB`/`W`, `VPMULLW`, `VPMULHW`, `VPSRAW`, `VPERMW`) require
+`AVX512BW`, `VPERMB` requires `AVX512_VBMI`, and `VPMULLQ` requires `AVX512DQ`,
+none of which `Ext` records. x86 has no high-half multiply at 32- or 64-bit lane
+width, so `#VPMULH_16u32` / `#VPMULH_8u64` name no single instruction.
 -/
 
 @[expose] public section
@@ -121,9 +113,11 @@ def LaneWidth.lanes : LaneWidth → Nat
   | .w64u8  => 64
 
 /-- An ISA extension an AVX-512 mnemonic may require on top of baseline
-    `AVX512F`. `none` = foundation set; the others flag the honest gaps. -/
+    `AVX512F`: `f` for the baseline, `gfni512` / `vaes512` for the two
+    extensions this model tracks (`AVX512BW`, `AVX512DQ` and `AVX512_VBMI` are
+    not represented). -/
 inductive Ext where
-  /-- Baseline `AVX512F` — always available on an AVX-512 target. -/
+  /-- Baseline `AVX512F`, present on every AVX-512 target. -/
   | f
   /-- `AVX512_GFNI` (the `VGF2P8AFFINEQB zmm` family). -/
   | gfni512
@@ -131,10 +125,10 @@ inductive Ext where
   | vaes512
   deriving DecidableEq, Repr
 
-/-- A 512-bit mnemonic instruction the AVX-512 lowering pass emits. The carried
-    lane op (`α → α → α` / `α → Nat → α` / `α → α`) is kept so `denote512` can
-    state the per-lane semantics; the `width` records the `zmm` element shape;
-    `ext` records the ISA extension required (for the honest-gap reporting). -/
+/-- A 512-bit mnemonic instruction the AVX-512 lowering pass emits. Each
+    constructor stores the lane function of the abstract op it came from
+    (`α → α → α` / `α → Nat → α` / `α → α`), which `denote512` applies; the
+    `width` records the `zmm` element shape used in the rendered suffix. -/
 inductive AVX512Inst (α : Type) (n : Nat) where
   /-- `#VPBROADCAST_<w>(x)` — splat scalar `x` to all `zmm` lanes. -/
   | vpbroadcast (width : LaneWidth) (x : α) : AVX512Inst α n
@@ -164,18 +158,19 @@ inductive AVX512Inst (α : Type) (n : Nat) where
   | vperm (width : LaneWidth) (v : VectorTy α n) (π : Fin n → Fin n) :
       AVX512Inst α n
   /-- `#VGF2P8AFFINEQB_512(v)` — per-lane GF(2) affine. Requires `AVX512_GFNI`
-      (`ext = .gfni512`); honest gap. The matrix/bias are closed over in `aff`. -/
+      (`ext = .gfni512`). The matrix/bias are closed over in `aff`. -/
   | vgf2p8affine (aff : α → α) (v : VectorTy α n) : AVX512Inst α n
   /-- `#VAESENC_512(state, key)` — per-lane AES round. Requires `AVX512_VAES`
-      (`ext = .vaes512`); honest gap. -/
+      (`ext = .vaes512`). -/
   | vaesenc (rnd : α → α → α) (state key : VectorTy α n) : AVX512Inst α n
 
 namespace AVX512Inst
 
 variable {α : Type} {n : Nat}
 
-/-- The ISA extension an emitted instruction requires. `affineByte` / `aesRound`
-    are the only ops that escape the `AVX512F` foundation set. -/
+/-- The ISA extension tag of an instruction: `gfni512` / `vaes512` for the
+    `affineByte` / `aesRound` lowerings, `f` for every other constructor
+    regardless of width (see the module header for the extensions this omits). -/
 def ext : AVX512Inst α n → Ext
   | .vgf2p8affine _ _ => .gfni512
   | .vaesenc _ _ _ => .vaes512
@@ -197,12 +192,12 @@ def widthSuffix : AVX512Inst α n → String
 
 /-! ## 2. Per-instruction denotation (`Fin n → α`)
 
-Each instruction's *meaning* as a lane function. This is the same per-lane
-operation the abstract `denoteVectorOp` produces — the width is purely an
-emit-side concern, so the semantics is width-independent. We prove that
-equality below (`lowerAVX512_*_correct`). -/
+Each instruction's meaning as a lane vector: the stored lane function applied
+lane-wise (or the stored permutation / broadcast value). The mnemonic and the
+width do not enter. -/
 
-/-- The `Fin n → α` semantics of an AVX-512 instruction. -/
+/-- The `Fin n → α` meaning of an AVX-512 instruction: its stored lane function
+    applied lane-wise. It is not an x86 semantics of the mnemonic. -/
 @[reducible] def denote512 : AVX512Inst α n → VectorTy α n
   | .vpbroadcast _ x => VectorTy.replicate x
   | .vpaddFamily _ _ op v w => VectorTy.map₂ op v w
@@ -219,14 +214,10 @@ end AVX512Inst
 
 /-! ## 3. The AVX-512 lowering pass
 
-`lowerAVX512 width op` re-targets a *vector-result* `VectorOp` to a 512-bit
-mnemonic instruction at the chosen `width`. Scalar-result ops (`extract` /
-`reduce`) return `none` — exactly as the AVX2 `lower` does (they are not
-`zmm`-vector-shaped; their lowering is a single scalar `vpextr` / horizontal
-reduction, Phase-2 as in the AVX2 path).
-
-This is **one rule per constructor** — the whole pass. Compare: pre-dialect,
-re-targeting to 512-bit width meant editing every consumer's emit file. -/
+`lowerAVX512 width op` maps a vector-result `VectorOp` to a 512-bit mnemonic
+instruction at the chosen `width`. Scalar-result ops (`extract` / `reduce`), the
+single-lane `insert` and the integer `fma` return `none`. The pass has one rule
+per constructor. -/
 def lowerAVX512 {α : Type} {n : Nat} (width : LaneWidth) :
     VectorOp α n → Option (AVX512Inst α n)
   | .broadcast x => some (.vpbroadcast width x)
@@ -255,11 +246,10 @@ def lowerAVX512 {α : Type} {n : Nat} (width : LaneWidth) :
 
 /-! ## 4. Rendering — the emitted 512-bit mnemonic line
 
-`render512` produces the jasmin / `x86vector` mnemonic text the backend emits.
-This is the AVX-512 analogue of `MldsaNtt4WayVec.LatticeNttVecOp.render` —
-same `dst = #MNEM_<width>(args);` shape, but at `zmm` width. We render against
-named string operands so the demonstration can show a consumer's `VectorOp`
-term producing a 512-bit emit line. -/
+`renderAVX512` produces jasmin / `x86vector` mnemonic text in the
+`dst = #MNEM_<width>(args);` shape of `MldsaNtt4WayVec.LatticeNttVecOp.render`,
+at `zmm` width, against named string operands. No theorem relates the rendered
+text to `denote512`. -/
 
 /-- Render an AVX-512 instruction to its mnemonic line, given string operand
     names. Binary ops take two source names; unary/immediate ops take one
@@ -293,137 +283,127 @@ def renderAVX512 {α : Type} {n : Nat} (dst : String) (srcs : List String) :
   | .vaesenc _ _ _ =>
       dst ++ " = #VAESENC_512(" ++ String.intercalate ", " (srcs.take 2) ++ ");"
 
-/-! ## 5. Denotation-preservation theorems (the keystones)
+/-! ## 5. Lowering keeps the stored lane function
 
-For each abstract op, the 512-bit mnemonic the pass selects denotes the *same
-per-lane operation* as the abstract `denoteVectorOp`. These mirror the AVX2
-`lower_*_correct` shape one-for-one: `(lowerAVX512 w op).map (·.denote512)`
-equals the per-lane vector the abstract denotation produces.
+For each constructor, `(lowerAVX512 w op).map (·.denote512)` equals the lane
+vector obtained by applying the abstract op's own lane function, in the shape of
+the AVX2 `lower_*_correct` lemmas. Every proof is `rfl`, because the instruction
+stores that function and `denote512` applies it; the statements do not describe
+the x86 instruction named by the mnemonic. -/
 
-Every proof is `rfl`-shaped (the lowering and `denote512` are definitionally
-the abstract op's per-lane meaning), so all are `propext`/`Quot`/`choice`-free
-beyond what the kernel needs — checked by `#print axioms` at the foot. -/
-
-/-- **AVX-512 keystone (broadcast).** `VPBROADCAST_<w>` denotes `replicate x`. -/
+/-- Lowering `.broadcast x` and applying `denote512` gives `replicate x`. -/
 theorem lowerAVX512_broadcast_correct {α : Type} {n : Nat}
     (w : LaneWidth) (x : α) :
     (lowerAVX512 w (.broadcast x : VectorOp α n)).map (·.denote512)
       = some (VectorTy.replicate x) := rfl
 
-/-- **AVX-512 keystone (add).** `VPADD_<w>` denotes the pointwise carried op. -/
+/-- Lowering `.add op` (rendered `#VPADD_<w>`) and applying `denote512` gives
+    `op` applied lane-wise, for any `op`. -/
 theorem lowerAVX512_add_correct {α : Type} {n : Nat}
     (w : LaneWidth) (op : α → α → α) (v w' : VectorTy α n) :
     (lowerAVX512 w (.add op v w' : VectorOp α n)).map (·.denote512)
       = some (VectorTy.map₂ op v w') := rfl
 
-/-- **AVX-512 keystone (mul).** `VPMULL_<w>` denotes the pointwise low-half
-    multiply. -/
+/-- Lowering `.mul op` (rendered `#VPMULL_<w>`) and applying `denote512` gives
+    `op` applied lane-wise, for any `op`. -/
 theorem lowerAVX512_mul_correct {α : Type} {n : Nat}
     (w : LaneWidth) (op : α → α → α) (v w' : VectorTy α n) :
     (lowerAVX512 w (.mul op v w' : VectorOp α n)).map (·.denote512)
       = some (VectorTy.map₂ op v w') := rfl
 
-/-- **AVX-512 keystone (mulHi).** `VPMULH_<w>` denotes the pointwise high-half
-    multiply — the `VPMULH` leg of Montgomery / Barrett, now at `zmm` width. -/
+/-- Lowering `.mulHi op` (rendered `#VPMULH_<w>`) and applying `denote512` gives
+    `op` applied lane-wise, for any `op`. -/
 theorem lowerAVX512_mulHi_correct {α : Type} {n : Nat}
     (w : LaneWidth) (op : α → α → α) (v w' : VectorTy α n) :
     (lowerAVX512 w (.mulHi op v w' : VectorOp α n)).map (·.denote512)
       = some (VectorTy.map₂ op v w') := rfl
 
-/-- **AVX-512 keystone (shiftL).** `VPSLL_<w>` denotes pointwise shift-left. -/
+/-- Lowering `.shiftL shf m` (rendered `#VPSLL_<w>`) and applying `denote512`
+    gives `shf · m` applied lane-wise, for any `shf`. -/
 theorem lowerAVX512_shiftL_correct {α : Type} {n : Nat}
     (w : LaneWidth) (shf : α → Nat → α) (m : Nat) (v : VectorTy α n) :
     (lowerAVX512 w (.shiftL shf m v : VectorOp α n)).map (·.denote512)
       = some (VectorTy.map₁imm shf m v) := rfl
 
-/-- **AVX-512 keystone (shiftR).** `VPSRL_<w>` denotes pointwise logical
-    shift-right. -/
+/-- Lowering `.shiftR shf m` (rendered `#VPSRL_<w>`) and applying `denote512`
+    gives `shf · m` applied lane-wise, for any `shf`. -/
 theorem lowerAVX512_shiftR_correct {α : Type} {n : Nat}
     (w : LaneWidth) (shf : α → Nat → α) (m : Nat) (v : VectorTy α n) :
     (lowerAVX512 w (.shiftR shf m v : VectorOp α n)).map (·.denote512)
       = some (VectorTy.map₁imm shf m v) := rfl
 
-/-- **AVX-512 keystone (shiftRA).** `VPSRA_<w>` denotes pointwise arithmetic
-    (signed) shift-right — the `VPSRA` leg of Montgomery / Barrett at `zmm`
-    width. -/
+/-- Lowering `.shiftRA shf m` (rendered `#VPSRA_<w>`) and applying `denote512`
+    gives `shf · m` applied lane-wise, for any `shf`. -/
 theorem lowerAVX512_shiftRA_correct {α : Type} {n : Nat}
     (w : LaneWidth) (shf : α → Nat → α) (m : Nat) (v : VectorTy α n) :
     (lowerAVX512 w (.shiftRA shf m v : VectorOp α n)).map (·.denote512)
       = some (VectorTy.map₁imm shf m v) := rfl
 
-/-- **AVX-512 keystone (shuffle).** `VPERM_<w>` denotes the lane permutation.
-    AVX-512's full cross-`zmm` permute realizes the abstract `shuffle` directly
-    (AVX2 needed in-lane shuffle + cross-lane blend; the wider permute is one
-    instruction). -/
+/-- Lowering `.shuffle v π` (rendered `#VPERM_<w>`) and applying `denote512`
+    gives `VectorTy.shuffle π v`. The rendered line passes the fixed operand
+    name `idx`; the index vector is not rendered from `π`. -/
 theorem lowerAVX512_shuffle_correct {α : Type} {n : Nat}
     (w : LaneWidth) (v : VectorTy α n) (π : Fin n → Fin n) :
     (lowerAVX512 w (.shuffle v π : VectorOp α n)).map (·.denote512)
       = some (VectorTy.shuffle π v) := rfl
 
-/-- **AVX-512 keystone (affineByte).** `VGF2P8AFFINEQB_512` denotes the
-    pointwise GF(2) affine. Requires `AVX512_GFNI` (`ext = .gfni512`); the
-    semantics is width-independent so preservation holds when the extension is
-    present. -/
+/-- Lowering `.affineByte aff` (rendered `#VGF2P8AFFINEQB_512`, tagged
+    `ext = .gfni512`) and applying `denote512` gives `aff` applied lane-wise, for
+    any `aff`. -/
 theorem lowerAVX512_affineByte_correct {α : Type} {n : Nat}
     (w : LaneWidth) (aff : α → α) (v : VectorTy α n) :
     (lowerAVX512 w (.affineByte aff v : VectorOp α n)).map (·.denote512)
       = some (VectorTy.map₁ aff v) := rfl
 
-/-- **AVX-512 keystone (aesRound).** `VAESENC_512` denotes the pointwise AES
-    round. Requires `AVX512_VAES` (`ext = .vaes512`); preservation holds when
-    the extension is present. -/
+/-- Lowering `.aesRound rnd` (rendered `#VAESENC_512`, tagged `ext = .vaes512`)
+    and applying `denote512` gives `rnd` applied lane-wise, for any `rnd`. -/
 theorem lowerAVX512_aesRound_correct {α : Type} {n : Nat}
     (w : LaneWidth) (rnd : α → α → α) (s k : VectorTy α n) :
     (lowerAVX512 w (.aesRound rnd s k : VectorOp α n)).map (·.denote512)
       = some (VectorTy.map₂ rnd s k) := rfl
 
-/-! ## 6. AVX-512 denotes the same vector as the abstract op (bundled)
+/-! ## 6. Agreement with `denoteVectorOp`
 
-For the vector-result ops, the AVX-512 lowering's denotation equals the vector
-component of the abstract `denoteVectorOp`. This is the cross-target invariant:
-**the same `VectorOp` term has the same meaning whether lowered to AVX2's
-`ScalarExpansion` or to this AVX-512 instruction** — only the emit text width
-differs. -/
+For `add` and `mulHi`, the lowered instruction's `denote512`, wrapped as a
+vector result, equals the abstract `denoteVectorOp`. Only these two
+constructors are stated. -/
 
-/-- The AVX-512 lowering of a vector-result op denotes the same lane vector as
-    the abstract `denoteVectorOp` (whenever the abstract op is vector-shaped
-    and the pass returns an instruction). Stated per the binary `add` family;
-    the other ops follow the same `rfl` shape (see the `*_correct` keystones). -/
+/-- For `.add op`, `denote512` of the lowered instruction, wrapped as
+    `VectorOp.Result.vec`, equals `denoteVectorOp` of the abstract op (`rfl`). -/
 theorem lowerAVX512_add_eq_abstract {α : Type} {n : Nat}
     (w : LaneWidth) (op : α → α → α) (v w' : VectorTy α n) :
     (lowerAVX512 w (.add op v w' : VectorOp α n)).map
         (fun i => VectorOp.Result.vec i.denote512)
       = some (denoteVectorOp (.add op v w' : VectorOp α n)) := rfl
 
-/-- The same cross-target invariant for `mulHi` (the Montgomery high-half
-    product): AVX-512 `VPMULH` and the abstract op denote the same vector. -/
+/-- The same statement as `lowerAVX512_add_eq_abstract` for `.mulHi op`. -/
 theorem lowerAVX512_mulHi_eq_abstract {α : Type} {n : Nat}
     (w : LaneWidth) (op : α → α → α) (v w' : VectorTy α n) :
     (lowerAVX512 w (.mulHi op v w' : VectorOp α n)).map
         (fun i => VectorOp.Result.vec i.denote512)
       = some (denoteVectorOp (.mulHi op v w' : VectorOp α n)) := rfl
 
-/-! ## 7. Honest-gap report (the ops escaping `AVX512F`)
+/-! ## 7. Extension tags
 
-The two ops that need an ISA extension beyond baseline `AVX512F` are surfaced
-by `ext`. A backend targeting a CPU without `AVX512_GFNI` / `AVX512_VAES` can
-inspect this and reject, rather than emit an undecodable instruction. -/
+`ext` tags the `affineByte` and `aesRound` lowerings with `AVX512_GFNI` /
+`AVX512_VAES`, so a backend targeting a CPU without them can reject them. The
+theorems below evaluate the tag at one width each. -/
 
-/-- `affineByte` requires the `AVX512_GFNI` extension. -/
+/-- At width `w64u8`, the lowering of `affineByte` is tagged `Ext.gfni512`. -/
 theorem affineByte_requires_gfni512 {α : Type} {n : Nat} (aff : α → α)
     (v : VectorTy α n) :
     ((lowerAVX512 .w64u8 (.affineByte aff v)).map AVX512Inst.ext)
       = some Ext.gfni512 := rfl
 
-/-- `aesRound` requires the `AVX512_VAES` extension. -/
+/-- At width `w64u8`, the lowering of `aesRound` is tagged `Ext.vaes512`. -/
 theorem aesRound_requires_vaes512 {α : Type} {n : Nat} (rnd : α → α → α)
     (s k : VectorTy α n) :
     ((lowerAVX512 .w64u8 (.aesRound rnd s k)).map AVX512Inst.ext)
       = some Ext.vaes512 := rfl
 
-/-- Every other vector-result op stays in the baseline `AVX512F` foundation
-    set (`ext = .f`). Pinned for `add`/`mul`/`mulHi`/`shiftL`/`shiftR`/
-    `shiftRA`/`shuffle`/`broadcast`. -/
+/-- At width `w16u32`, the lowering of `add` is tagged `Ext.f`. Only this op and
+    width are stated; the other constructors are tagged `f` by the definition
+    of `ext`. -/
 theorem add_is_avx512f {α : Type} {n : Nat} (op : α → α → α)
     (v w : VectorTy α n) :
     ((lowerAVX512 .w16u32 (.add op v w)).map AVX512Inst.ext) = some Ext.f := rfl

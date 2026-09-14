@@ -12,14 +12,10 @@ public import CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonModel
 /-!
 # Wiring a register-named packed-u32 op alphabet to the NEON machine model (#548)
 
-`Vec128Lowering.lean` lowers a register-named packed-u32 `VOp` alphabet to the
-XMM machine `VInst` with the block-lowering denotation theorem
-`vec128Block_lowering_denote`, and the ChaCha 4-way SIMD kernel rides it. This
-module is the **AArch64 NEON/ASIMD** analogue: a register-named op alphabet
+This module is the **AArch64 NEON/ASIMD** lowering: a register-named op alphabet
 `NOp`, the one-rule-per-constructor lowering `toNInst` to `NeonModel.NInst`, and
-the block-lowering denotation theorem `neonBlock_lowering_denote` (the NEON
-analogue of `vec128Block_lowering_denote`, proved by induction with no new custom
-axioms). The concrete payoff is the RFC 8439 §2.1.1 ChaCha20 quarter-round
+the block-lowering denotation theorem `neonBlock_lowering_denote` (proved by
+induction with no new custom axioms). The concrete payoff is the RFC 8439 §2.1.1 ChaCha20 quarter-round
 written as an `NOp` block, lowered, run on the model, and pinned **byte-identical
 to the published RFC test vector** in all four 4-way lanes.
 
@@ -104,7 +100,7 @@ theorem shl_evalNInst_denote (s : NState) (dst a : String) (imm : Nat) :
       = VectorTy.map₁imm laneShl imm (s.get a) := by
   simp only [toNInst, evalNInst, NState.get_setV_same]
 
-/-! ## 3. The block-lowering denotation theorem (the NEON keystone)
+/-! ## 3. The block-lowering denotation theorem
 
 The NEON analogue of `Vec128Lowering.vec128Block_lowering_denote`: lowering a
 straight-line `NOp` block to machine `NInst`s and running it on the NEON model

@@ -11,14 +11,10 @@ public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmModel
 /-!
 # Wiring a register-named scalar op alphabet to the A64 machine model (#533)
 
-`Vec128Lowering.lean` lowers a register-named packed-u32 op alphabet (`VOp`) to
-the XMM machine `VInst` with the block-lowering denotation theorem
-`vec128Block_lowering_denote`, and the ChaCha 4-way SIMD kernel rides it. This
-module is the **AArch64 scalar** analogue for the ChaCha20 quarter-round: a
+This module lowers the **AArch64 scalar** ChaCha20 quarter-round: a
 register-named op alphabet `AOp`, the one-rule-per-constructor lowering `toAInst`
 to `ArmModel.AInst`, and the block-lowering denotation theorem
-`armBlock_lowering_denote` (the A64 analogue of `vec128Block_lowering_denote`,
-proved by induction with no new custom axioms). The concrete payoff is the RFC
+`armBlock_lowering_denote` (proved by induction with no new custom axioms). The concrete payoff is the RFC
 8439 §2.1.1 ChaCha20 quarter-round written as an `AOp` block, lowered, run on the
 model, and pinned **byte-identical to the published RFC test vector**.
 
@@ -98,7 +94,7 @@ theorem rotr_evalAInst_denote (s : AState) (dst a : String) (imm : Nat)
     (evalAInst s (toAInst (.rotr dst a imm))).get dst = opRor (s.get a) imm := by
   simp only [toAInst, evalAInst, AState.get_set_same _ _ _ h]
 
-/-! ## 3. The block-lowering denotation theorem (the A64 keystone)
+/-! ## 3. The block-lowering denotation theorem
 
 The A64 analogue of `Vec128Lowering.vec128Block_lowering_denote`: lowering a
 straight-line `AOp` block to machine `AInst`s and running it on the A64 model

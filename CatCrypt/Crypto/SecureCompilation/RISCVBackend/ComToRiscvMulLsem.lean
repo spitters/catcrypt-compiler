@@ -8,21 +8,19 @@ module
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.ComToRiscvLsem
 
 /-!
-# `Com → RISC-V`: the Sail-grounded value-preservation theorem with `MUL`/`MULHU`
+# `Com → RISC-V`: value preservation and per-step Sail agreement with `MUL`/`MULHU`
 
-`ComToRiscvLsem.lean` (item 5) grounded the RV64 base-ALU fragment
-(ADD/SUB/AND/OR/XOR) in the verbatim sail-riscv `execute_RTYPE` clause and built
-a non-`id` `MachineModel` (`riscvBaseAluModel`, `exec := runRBlock64`)
-whose `validated` field is the per-op Sail grounding. It explicitly **deferred**
-`MUL`/`MULHU`: those ops route through a *different* Sail clause
-(`execute_MUL`, the M-extension `mult_to_bits_half` path), so the uniform
-`execute_RTYPE` step grounding there did not reach them.
+`ComToRiscvLsem.lean` relates the RV64 base-ALU fragment (ADD/SUB/AND/OR/XOR) to
+the sail-riscv `execute_RTYPE` clause and builds a `MachineModel`
+(`riscvBaseAluModel`, `exec := runRBlock64`) whose `validated` field is the per-op
+Sail agreement. `MUL`/`MULHU` go through a different Sail clause (`execute_MUL`,
+the M-extension `mult_to_bits_half` path), which that module does not cover.
 
-This module closes that gap. It widens the fragment to the **arith+mul** subset
-— base-ALU ∪ {`MUL`, `MULHU`} — for which `SailRiscv64Ref` already proves the
-two M-extension refinements (`rtype_mul`, `rtype_mulhu`).
+This module extends the fragment to the **arith+mul** subset — base-ALU ∪
+{`MUL`, `MULHU`} — using the two M-extension refinements of `SailRiscv64Ref`
+(`rtype_mul`, `rtype_mulhu`).
 
-## What is reused (not re-derived)
+## What is reused
 
 * **The two M-extension Sail refinements** —
   `SailRiscv64Ref.rtype_mul`/`rtype_mulhu`: the verbatim generated
@@ -31,10 +29,8 @@ two M-extension refinements (`rtype_mul`, `rtype_mulhu`).
   These are already proved, through the L1/L2 BitVec lemmas
   (`mulhu_value`, `mul_value`).
 * **The model semantics** — `RiscvModel64.evalRInst64` already has the
-  `.mul`/`.mulhu` arms (writing `opMul64`/`opMulhu`); no definitional addition
-  to `RiscvModel64` was needed (the item-5 scout's "no MUL/MULHU yet" was about
-  the *grounding*, not the model — the per-op semantics and the `RInst64`
-  constructors were already present).
+  `.mul`/`.mulhu` arms (writing `opMul64`/`opMulhu`) and the matching `RInst64`
+  constructors.
 * **The whole-`Com` value chain** — `MultiBackendDemo.com_riscv_e2e`, which
   already threads `.regArith .mul`/`.mulhi` through the front
   (`opToStmts → .mul`/`.umulh`, `regStmtToROp → .mul`/`.mulhu`,
@@ -51,14 +47,17 @@ two M-extension refinements (`rtype_mul`, `rtype_mulhu`).
    base-ALU arms, `execute_MUL … (rinstMulOp i)` for `MUL`/`MULHU`. This is the
    uniform selector across the two Sail clauses.
 2. **`riscvStepArithMul_sail_grounded`** (the widened 5a) — for any `IsArithMul`
-   `RInst64`, the value `evalRInst64` writes to the destination equals the value
-   its `sailClause` writes (`runRd …`). The base-ALU arms dispatch to
+   `RInst64` whose destination is not `zero`/`x0`, on a state aligned with the
+   Sail register file (`RegAlign`) and with a non-zero Sail destination index,
+   the value `evalRInst64` writes to the destination equals the value its
+   `sailClause` writes (`runRd …`). The base-ALU arms dispatch to
    `riscvStep64_sail_grounded`; the `MUL`/`MULHU` arms dispatch to
    `rtype_mul`/`rtype_mulhu`.
-3. **`comToRiscvLsem_correct_mul`** (the widened 5b) — the whole-`Com` theorem
-   over the arith+mul `Com` fragment (`ComArithMul`): the RV64 `runRBlock64`
-   execution computes `Com.denote` (via `com_riscv_e2e`) **and** every executed
-   instruction is `IsArithMul`, hence Sail-grounded by the widened 5a.
+3. **`comToRiscvLsem_correct_mul`** (the widened 5b) — over the arith+mul `Com`
+   fragment (`ComArithMul`): running the lowered block with `runRBlock64` computes
+   `Com.denote` (via `com_riscv_e2e`), and every instruction of the block satisfies
+   `IsArithMul`. The theorem does not apply the step agreement of item 2 along the
+   run; the block execution is the `RiscvModel64` fold, not the Sail semantics.
 4. **`riscvArithMulModel`** (the widened 5c) — the non-`id`
    `MachineModel` (`exec := runRBlock64`) whose `validated` field is the widened
    grounding `RiscvArithMulGrounded`, inhabited by the proved step lemma.
@@ -298,8 +297,8 @@ theorem comToRegProg_RegArithMul :
       · exact opToStmts_arithMul _ _ _ hb stmt hh
       · exact ih (depth + 1) stmt hh
 
-/-- **The compiled-and-lowered RV64 block of an arith+mul `Com` is all arith+mul**
-    — so every executed instruction is Sail-grounded by
+/-- **The compiled-and-lowered RV64 block of an arith+mul `Com` is all arith+mul**:
+    every instruction satisfies `IsArithMul`, the hypothesis of
     `riscvStepArithMul_sail_grounded`. -/
 theorem riscvBlock_all_arithMul {Γ : Ctxt jasminDialect}
     {com : Com jasminDialect Γ (.reg 64)} (ham : ComArithMul com) :
@@ -308,19 +307,21 @@ theorem riscvBlock_all_arithMul {Γ : Ctxt jasminDialect}
 
 /-! ## 4. (5b widened) The `Com → RISC-V` value-preservation theorem -/
 
-/-- **5b (widened) — the Sail-grounded whole-`Com` theorem over base-ALU ∪
-    {MUL, MULHU}.** For an arith+mul all-`reg 64` `Com`, executing the
-    compiled-and-lowered RV64 block on the model:
+/-- **5b (widened) — the whole-`Com` theorem over base-ALU ∪ {MUL, MULHU}.** For
+    an arith+mul all-`reg 64` `Com`, with the model state initialised from the
+    valuation (`s.regs = envOf Γ.length V`), executing the compiled-and-lowered
+    RV64 block on the `RiscvModel64` model:
 
-    1. **computes the source `Com.denote`** (the value chain, via the existing
-       `com_riscv_e2e` — the front already threads `.regArith .mul`/`.mulhi`), and
-    2. **runs only Sail-grounded instructions** (`riscvBlock_all_arithMul` —
-       every executed `RInst64` is arith+mul, so each step matches its actual
-       Sail clause by `riscvStepArithMul_sail_grounded`: `execute_RTYPE` for the
-       base-ALU ops, `execute_MUL` for `MUL`/`MULHU`).
+    1. leaves `Com.denote com V` in the return register (`com_riscv_e2e`), and
+    2. every instruction of the block satisfies `IsArithMul`
+       (`riscvBlock_all_arithMul`).
 
-    This widens `ComToRiscvLsem.comToRiscvLsem_correct` from the base-ALU subset
-    to the arith+mul subset, the M-extension included. -/
+    Part 2 is a membership fact. The per-step agreement with the Sail clauses is
+    the separate theorem `riscvStepArithMul_sail_grounded`, which has side
+    conditions (register alignment, non-zero destination) that this statement
+    neither assumes nor establishes along the run. The theorem extends
+    `ComToRiscvLsem.comToRiscvLsem_correct` from the base-ALU subset to the
+    arith+mul subset. -/
 theorem comToRiscvLsem_correct_mul {Γ : Ctxt jasminDialect}
     {com : Com jasminDialect Γ (.reg 64)} (ham : ComArithMul com) (hΓ : AllReg64 Γ)
     (V : Ctxt.Valuation Γ) (s : RState64) (hs : s.regs = envOf Γ.length V) :

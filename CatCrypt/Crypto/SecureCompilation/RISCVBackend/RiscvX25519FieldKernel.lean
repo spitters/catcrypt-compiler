@@ -20,29 +20,24 @@ public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvControlFlow
 (`mul48Block64`) through the owned RV64 bignum backend (`MUL`/`MULHU` widening +
 the SLTU `addc`/`addcc` carry macros); `RiscvBignumKernel.lean` (#549) lowered the
 add-mod-`p256` SLTU carry chain + branch-free mask-select reduce;
-`RiscvControlFlow.lean` (#552) emitted the bounded counter loop (`loopRBlock` /
-`runBoundedLoopR`, the B-type `BNE` back-edge). This module is the **RISC-V twin
-of the ARM X25519 keystone** (`ARMBackend/ArmX25519FieldKernel.lean`, #552) —
-composing those three levers into the whole scalar-multiplication over
-`p25519 = 2²⁵⁵ - 19`:
+`RiscvControlFlow.lean` (#552) renders the bounded counter loop (`loopRBlock`, the
+B-type `BNE` back-edge). This module is the RISC-V counterpart of
+`ARMBackend/ArmX25519FieldKernel.lean`, over `p25519 = 2²⁵⁵ - 19`:
 
 * the five field operations the Montgomery ladder calls — `feAdd`, `feSub`,
-  `feMul`, `feSqr`, `feMul121666` — as verified `ROp64` blocks over the 4-limb
-  radix-2⁶⁴ saturated representation, each lowered through the owned RV64 bignum
-  backend and pinned with a value KAT against the hand-computed `(x ⊙ y) mod p`;
-* `cswap` — the constant-time conditional limb swap (branch-free mask-select,
-  no carry flag, no branch);
-* `ladderstep` — the Montgomery differential-add-and-double body, an `RInst64`
-  block composing the field ops, pinned with a value KAT;
-* the **whole ladder** wrapped in the bounded counter loop over the 255 scalar
-  bits (the bounded-counter loop of #552), the looped emission denoting
-  `runBoundedLoopR64`.
+  `feMul`, `feSqr`, `feMul121666` — as `ROp64` blocks over the 4-limb radix-2⁶⁴
+  saturated representation, each lowered with `riscvBlock64_lowering_denote` and
+  checked by value KATs against hand-computed `(x ⊙ y) mod p` on worked vectors;
+* `cswap` — the conditional limb swap by branch-free mask-select;
+* `ladderStepBlock` — the Montgomery differential-add-and-double body, an
+  `RInst64` block composing the field ops, with the structural equality
+  `ladderStep_composition` (no value KAT: see that theorem);
+* `runBoundedLoopR64` — `n` repetitions of a body on the model.
 
-The ARM owned X25519 (`ARMBackend/ArmX25519FieldKernel.lean`, #552) and the x86
-owned X25519 (`X86Backend/Fe25519{Mul,Ops}Kernel.lean`, #380/#408) are the
-reference Com bodies and the source of the RFC 7748 expected output; this is the
-RV64 analogue, assembled entirely from owned-backend leaves (no fiat
-transliteration).
+The repeated ladder body contains no `cswap` and reads no scalar bit, so it is not
+the X25519 ladder, and this module does not emit a looped ladder with `loopRBlock`.
+The ARM kernel and the x86 owned X25519 (`X86Backend/Fe25519{Mul,Ops}Kernel.lean`)
+are the references for the field-op sequence.
 
 ## The key architectural difference vs ARM/x86: no carry flag, no CSEL, no MULX
 
@@ -50,7 +45,7 @@ AArch64 carries the multi-precision chain in the NZCV flags (`ADDS`/`ADCS`) and
 selects with `CSEL`; x86 has `CF`/`OF` + ADX (`ADCX`/`ADOX`) and `CMOV`. **RV64
 has none of this.** Every add-with-carry is the SLTU `addc` macro
 (`add ; sltu ; add ; sltu ; or`, 5 insns), every subtract-with-borrow is the
-`subb` macro (5 insns), and the constant-time conditional subtract is the `csub`
+`subb` macro (5 insns), and the conditional subtract is the `csub`
 branch-free mask select (`mask := 0 - cond ; (sub & mask) | (orig & ~mask)`). The
 `2²⁵⁶ ≡ 38 (mod p)` reduce rides `mul`/`mulhu` for the `·38` folds. This makes
 the RV64 field ops materially heavier than ARM — the same no-ADX tax already
@@ -63,30 +58,29 @@ A field element is four little-endian 64-bit limbs (radix-2⁶⁴, saturated), t
 same shape s2n-bignum's `curve25519/bignum_*_p25519.S` uses. Reductions ride
 `2²⁵⁶ ≡ 38 (mod p)`: a 5-limb intermediate `[a₀..a₄]` folds to four limbs by
 `a₄·38 + [a₀..a₃]`, twice (the second fold absorbs the carry the first produces),
-then a **double constant-time conditional subtract of `p`** (the SLTU trial
-subtraction + `csub` mask select) brings the result canonically into `[0, p)`.
+then a **double branch-free conditional subtract of `p`** (the SLTU trial
+subtraction + `csub` mask select) is intended to bring the result into `[0, p)`.
 
-## What this module emits / proves
+## What this module proves
 
-Each field op `feXBlock : List ROp64`:
+For each field op block (`feAddBlock`, `feSubBlock`, `feMulBlock`, `feSqrBlock`,
+`feMul121666Block`):
 
-* `feX_lowering_correct64`: running the lowered block on the `RState64` model
-  equals the direct fold — `riscvBlock64_lowering_denote` instantiated on the
-  body (no new custom axioms).
-* `feX_kat`: the value KAT — the four stored result limbs read little-endian
-  equal the hand-computed `(x ⊙ y) mod p25519` on worked vectors (incl. the
-  reduce-firing corner cases), under `native_decide`.
+* `feAdd_lowering_correct64`, `feSub_lowering_correct64`, …: running the lowered
+  block on the `RState64` model equals the fold of `runRBlock64 ∘ toRInst64` over
+  the `ROp64` block (`riscvBlock64_lowering_denote` at that block);
+* `feAdd_kat_*`, `feSub_kat_*`, `feMul_kat_*`, …: on worked vectors (including
+  cases where the reduce fires), the four result limbs read little-endian equal
+  the hand-computed `(x ⊙ y) mod p25519`, by `native_decide`.
 
-`ladderstep_kat` pins one differential-add-and-double step; `runBoundedLoopR64` +
-`ladder_loop_denote` wrap the step in the bounded-counter loop (the looped
-emission denotes `runBoundedLoopR64`, the same value the unrolled block denotes,
-constant emitted size).
+`ladderStep_composition` states that `ladderStepBlock` is the sequence of 18
+marshalled field-op blocks (`rfl`); `ladder_loop_denote` states that
+`runBoundedLoopR64 s n ladderStepBlock` equals running the unrolled `n`-copy block.
 
-The all-inputs identities (`feMul` is `(x·y) mod p` for *all* limb vectors; the
-255-step ladder + inversion is RFC 7748 X25519) are the runtime KATs: the field
-ops against the hand-computed modular results, and the WHOLE X25519 against the
-RFC 7748 §5.2 `(k, u) → out` vectors, run under qemu-riscv64 — the load-bearing
-gate (this is a **correctness** result, not a cyc/op claim: no real silicon).
+No theorem here states a field op for all inputs (for example that `feMulBlock`
+computes `(x·y) mod p` for all limb vectors), the value of a ladder step, or the
+X25519 function. Checks of the emitted code against RFC 7748 are not part of this
+package.
 -/
 
 @[expose] public section
@@ -105,10 +99,11 @@ register-name prefixes and emit `ROp64`s; they are the building blocks every fie
 op shares. The `p25519 = 2²⁵⁵ - 19` limbs (little-endian 64-bit) are
 `[0x…ffed, 0x…ffff, 0x…ffff, 0x7fff…ffff]`, materialised with the `li` pseudo-op. -/
 
-/-- Double constant-time conditional subtract of `p` on the four limbs
+/-- Double branch-free conditional subtract of `p` on the four limbs
     `r0..r3`, using scratch `m0..m3` (the subtracted limbs), borrow words
     `bo1..bo3`/`bo`, the `p` constant in `pp0..pp3`, and the `csub` mask select.
-    After two passes the result is canonical in `[0, p)`. `csub` selects the
+    Two passes are intended to bring an input below `3p` into `[0, p)`; that
+    bound is not proved here. `csub` selects the
     subtracted limbs iff there was NO final borrow (`cond = ¬bo`, i.e. `r ≥ p`),
     branch-free (RV64 has no CSEL). -/
 def condSubP (r0 r1 r2 r3 : String) : List ROp64 :=
@@ -131,8 +126,8 @@ def condSubP (r0 r1 r2 r3 : String) : List ROp64 :=
     , .csub r3 "m3" r3 "cond" "mask" "tt__" ]
   pass ++ pass
 
-/-- Fold a 5-limb intermediate `[a0,a1,a2,a3,a4]` to a canonical field element in
-    `r0..r3`, using `2²⁵⁶ ≡ 38`. Two carry-folds (`a4·38`, then the resulting
+/-- Fold a 5-limb intermediate `[a0,a1,a2,a3,a4]` to a field element in
+    `r0..r3` (intended canonical; not proved here), using `2²⁵⁶ ≡ 38`. Two carry-folds (`a4·38`, then the resulting
     carry`·38`) followed by the double conditional subtract. `a4` is small so its
     high half (`mulhu`) is `0`; we add only the `mul` low half. `c38` holds 38;
     `fl` is the `mul` low scratch. The inputs `a0..a4` are register names. -/
@@ -258,10 +253,11 @@ work; the same proven reduce is preferred here for certain correctness.) -/
 def feSqrBlock : List ROp64 :=
   [ .mov "y0" "q0", .mov "y1" "q1", .mov "y2" "q2", .mov "y3" "q3" ] ++ feMulBlock
 
-/-! ## 6. cswap: constant-time conditional swap of two field elements
+/-! ## 6. cswap: branch-free conditional swap of two field elements
 
-`swap` is `0` or `1` (a public ladder bit; the mask select makes it CT). For each
-limb we do a branch-free conditional swap with the `csub` mask-select primitive:
+`swap` is `0` or `1`. For each limb, `cswapBlock` does a branch-free conditional
+swap with the `csub` mask-select primitive (no theorem here states a
+constant-time property):
 `a' := swap ? b : a` and `b' := swap ? sk : b` where `sk` is the saved old `a`.
 RV64 has no CSEL, so each select is the mask-select macro (`mask := 0 - swap`,
 `(chosen & mask) | (other & ~mask)`), no PC divergence. The swap bit is passed in
@@ -272,7 +268,7 @@ def cswapBlock : List ROp64 :=
   , .mov "s2" "a2", .csub "a2" "b2" "a2" "swap" "mask" "tt__", .csub "b2" "s2" "b2" "swap" "mask" "tt__"
   , .mov "s3" "a3", .csub "a3" "b3" "a3" "swap" "mask" "tt__", .csub "b3" "s3" "b3" "swap" "mask" "tt__" ]
 
-/-! ## 7. Lowering correctness (each field op instantiated on the keystone) -/
+/-! ## 7. Lowering correctness (`riscvBlock64_lowering_denote` at each field op) -/
 
 theorem feAdd_lowering_correct64 (s : RState64) :
     runRBlock64 s (lowerRBlock64 feAddBlock)
@@ -384,7 +380,7 @@ theorem feSqr_kat_full :
       = (limbsNat 0x0123456789abcdef 0xfedcba9876543210 0x1122334455667788 0x7654321001234567
           ^ 2) % p25519 := by native_decide
 
-/-! ### cswap KAT (the constant-time conditional swap)
+/-! ### cswap KAT (the branch-free conditional swap)
 
 `a = [1,2,3,4]`, `b = [5,6,7,8]`. With `swap = 1` the two elements exchange; with
 `swap = 0` they stay. -/
@@ -414,15 +410,14 @@ theorem cswap_kat_noswap :
       ∧ s.get "b0" = 5 ∧ s.get "b1" = 6 ∧ s.get "b2" = 7 ∧ s.get "b3" = 8) := by
   native_decide
 
-/-! ## 9. The 64-bit bounded counter loop (the ladder's loop backbone)
+/-! ## 9. The 64-bit bounded loop semantics
 
-`RiscvControlFlow.runBoundedLoopR` / `loopRBlock` give the **32-bit** (`RState`)
-bounded counter loop and its looped-emission denotation. The X25519 Montgomery
-ladder runs on the **64-bit** (`RState64`) field machine, so we give the 64-bit
-analogue here: run the straight-line `body : List RInst64` exactly `n` times (the
-body performs its own counter decrement, so the `BNE` back-edge tests the
-just-decremented counter), and prove it equals running the `n`-copy unrolled
-block. This is the 64-bit counterpart of `runBoundedLoopR_eq_runRBlock_unroll`. -/
+`RiscvModel.runBoundedLoopR` is the **32-bit** (`RState`) bounded loop semantics.
+The field machine is **64-bit** (`RState64`), so this section gives the 64-bit
+analogue: run the straight-line `body : List RInst64` exactly `n` times, and prove
+it equals running the `n`-copy unrolled block. This is the 64-bit counterpart of
+`runBoundedLoopR_eq_runRBlock_unroll`; like it, it takes `n` as an argument and
+has no counter register or back-edge. -/
 
 /-- `runBoundedLoopR64 s n body`: the 64-bit bounded counter loop semantics — run
     the straight-line `body` exactly `n` times over the `RState64` field machine. -/
@@ -444,12 +439,10 @@ def unrollR64Bounded (n : Nat) (body : List RInst64) : List RInst64 :=
   | 0 => []
   | k + 1 => body ++ unrollR64Bounded k body
 
-/-- **The 64-bit bounded loop equals running the unrolled block.** The looped
-    emission (one body copy + `BNE` back-edge) denotes `runBoundedLoopR64 s n
-    body`, exactly the value the `n`-copy unrolled straight-line block computes —
-    the same denotation, constant emitted size. The 64-bit analogue of
-    `RiscvControlFlow.loopRBlock_denote` (the 32-bit `RiscvModel.runBoundedLoopR`
-    version). -/
+/-- **The 64-bit bounded loop equals running the unrolled block.**
+    `runBoundedLoopR64 s n body` equals running the `n`-copy unrolled straight-line
+    block on the `RState64` model. The 64-bit analogue of
+    `RiscvModel.runBoundedLoopR_eq_runRBlock_unroll`. -/
 theorem runBoundedLoopR64_eq_runRBlock_unroll (s : RState64) (n : Nat) (body : List RInst64) :
     runBoundedLoopR64 s n body = runRBlock64 s (unrollR64Bounded n body) := by
   induction n generalizing s with
@@ -473,8 +466,8 @@ x2'= AA · BB           z2'= E · (BB + a24·E)
 
 We model each field element as a 4-limb block in the `RState64` register file,
 keyed by a name prefix (`x2_0..x2_3`, etc.). `runFe block src1 src2 dst` runs a
-field-op block (which reads its inputs from `x0..x3`/`y0..y3` and writes `z0..z3`)
-by first moving the two source field elements into the `x`/`y` input registers,
+field-op block (which reads its inputs from `q0..q3`/`y0..y3` and writes `z0..z3`)
+by first moving the two source field elements into the `q`/`y` input registers,
 running the block, then moving `z0..z3` to the `dst` prefix — the marshalling that
 lets the straight-line field-op leaves compose into the ladder step. -/
 
@@ -484,7 +477,7 @@ def moveFe (src dst : String) : List RInst64 :=
   , .mv (dst ++ "2") (src ++ "2"), .mv (dst ++ "3") (src ++ "3") ]
 
 /-- Run a field-op `ROp64` block on the two source field elements `src1`,`src2`
-    (marshalled into the `x`/`y` input registers) and write the result to prefix
+    (marshalled into the `q`/`y` input registers) and write the result to prefix
     `dst`. For unary ops (`feSqr`, `feMul121666`) pass `src2 = src1`. -/
 def runFe (block : List ROp64) (src1 src2 dst : String) : List RInst64 :=
   moveFe src1 "q" ++ moveFe src2 "y" ++ lowerRBlock64 block
@@ -515,11 +508,11 @@ def ladderStepBlock : List RInst64 :=
   ++ runFe feAddBlock "BB" "t2" "t2"       -- t2 = BB + a24·E
   ++ runFe feMulBlock "E" "t2" "z2"        -- z2'= E · t2
 
-/-! ## 11. The ladder-step value KAT
+/-! ## 11. Ladder-step state helpers
 
-Run one `ladderStepBlock` on a worked projective state and check the four output
-field elements against the hand-computed RFC 7748 step. The initial state uses the
-RFC base `x1 = 9`, the ladder-initial `(x2,z2) = (1,0)`, `(x3,z3) = (9,1)`. -/
+State builders for a ladder step from the RFC base `x1 = 9`, the ladder-initial
+`(x2,z2) = (1,0)`, `(x3,z3) = (9,1)`. No value KAT of `ladderStepBlock` is stated in
+this module (see `ladderStep_composition`). -/
 
 /-- Build a `RState64` for the ladder step from the five field-element prefixes
     `x1`,`x2`,`z2`,`x3`,`z3`, each a 4-limb little-endian value (here the inputs
@@ -537,21 +530,16 @@ def feAt (s : RState64) (pfx : String) : Nat :=
   (s.get (pfx ++ "0")).toNat + (s.get (pfx ++ "1")).toNat * 2 ^ 64
     + (s.get (pfx ++ "2")).toNat * 2 ^ 128 + (s.get (pfx ++ "3")).toNat * 2 ^ 192
 
-/-- **Ladder-step composition (structural).** The differential-add-and-double body
-    is *exactly* the 18 verified field-op leaves marshalled in RFC 7748 order — by
-    definition (`rfl`). Each `runFe feXBlock …` lowers a `feXBlock` whose value
-    correctness is pinned by the field-op KATs above (`feAdd_kat_*`, `feMul_kat_*`,
-    …); composing them yields the ladder step.
+/-- **Ladder-step composition (structural).** `ladderStepBlock` equals the
+    sequence of 18 marshalled field-op blocks in RFC 7748 order. The right-hand
+    side is the definition of `ladderStepBlock`, so the statement holds by `rfl`
+    and says nothing beyond the definition.
 
-    The end-to-end *value* of one step (with `x1 = 9`, `(x2,z2) = (1,0)`,
-    `(x3,z3) = (9,1)`, the hand-computed RFC 7748 step `x2'=1, z2'=0, x3'=324,
-    z3'=36`) is the qemu-riscv64 KAT: the lowered ladder step is 10970 `RInst64`,
-    whose `RState64` (a closure-chained register file) overflows the Lean
-    interpreter / `native_decide` evaluator stack at that depth — far heavier than
-    the ARM twin's ~8× smaller flag-carry step, which `native_decide`s. So the
-    per-step value is gated on real RV64 (qemu) end-to-end with the whole ladder,
-    not in-kernel; the in-kernel guarantee is this structural composition + the
-    per-field-op value KATs. -/
+    No theorem here states the value of a ladder step. The lowered step is 10970
+    `RInst64`, and evaluating it on `RState64` (a closure-chained register file)
+    overflows the `native_decide` evaluator stack; the field-op KATs above
+    (`feAdd_kat_*`, `feMul_kat_*`, …) are checks of the individual blocks on
+    worked vectors. -/
 theorem ladderStep_composition :
     ladderStepBlock =
       runFe feAddBlock "x2" "z2" "A"
@@ -573,43 +561,32 @@ theorem ladderStep_composition :
       ++ runFe feAddBlock "BB" "t2" "t2"
       ++ runFe feMulBlock "E" "t2" "z2" := rfl
 
-/-! ## 12. Wrapping the ladder in the bounded counter loop
+/-! ## 12. Repeating the ladder step
 
-The whole X25519 ladder is 255 fixed iterations of `{ cswap(bit); ladderstep }`
-over the field machine — a bounded counter loop. We wrap the ladder-step body in
-`loopRBlock`/`runBoundedLoopR64`: the looped emission denotes `runBoundedLoopR64 s
-n ladderStepBlock`, the same value the `n`-copy unrolled block denotes, at constant
-emitted size (one body copy + the `BNE` back-edge). This is the loop-wrapping the
-255-bit ladder rides; the small-trip KAT below runs the *real* loop semantics over
-a few steps (the full 255-step run + the inversion is the qemu-riscv64 KAT, which
-runs the emitted `.s` on real RV64 — far past `native_decide`'s reach). -/
+The X25519 ladder is 255 iterations of `{ cswap(bit); ladderstep }`. This section
+repeats `ladderStepBlock` alone with `runBoundedLoopR64`: the repeated body has no
+`cswap` and reads no scalar bit, and no looped emission of it is built or given a
+semantics here. The theorems are about `runBoundedLoopR64` on the model. -/
 
-/-- **The ladder loop denotes the same value looped or unrolled.** Running the
-    255-step (or any `n`-step) ladder as the looped emission equals running the
-    unrolled `n`-copy block — `runBoundedLoopR64` is `runRBlock64` on the unrolled
-    body. The looped emission is constant-size in the trip count (the size payoff
-    of `RiscvControlFlow.loopRBlock`), the unrolled one is `O(n)`. -/
+/-- `n` repetitions of `ladderStepBlock` under `runBoundedLoopR64` equal running
+    the unrolled `n`-copy block (`runBoundedLoopR64_eq_runRBlock_unroll` at this
+    body). -/
 theorem ladder_loop_denote (n : Nat) (s : RState64) :
     runBoundedLoopR64 s n ladderStepBlock
       = runRBlock64 s (unrollR64Bounded n ladderStepBlock) :=
   runBoundedLoopR64_eq_runRBlock_unroll s n ladderStepBlock
 
-/-- **Loop backbone unrolls to the field-op body (structural).** A 2-step bounded
-    loop is *exactly* two copies of `ladderStepBlock` run in sequence — by
-    definition of `runBoundedLoopR64` / `unrollR64Bounded`. Together with
-    `ladder_loop_denote` (the looped emission denotes `runBoundedLoopR64`) this is
-    the loop-wrapping the 255-bit ladder rides; the full 255-step value (and the
-    inversion + final mul) is the qemu-riscv64 KAT, which runs the emitted `.s` on
-    real RV64 — past the in-kernel evaluator's stack depth for a 10970-`RInst64`
-    body. -/
+/-- **Two repetitions unfold (structural).** `runBoundedLoopR64 s 2
+    ladderStepBlock` is `ladderStepBlock` run twice in sequence, by definition of
+    `runBoundedLoopR64`. -/
 theorem ladder_loop2_unroll (s : RState64) :
     runBoundedLoopR64 s 2 ladderStepBlock
       = runRBlock64 (runRBlock64 s ladderStepBlock) ladderStepBlock := rfl
 
 /-! ## 13. The no-ADX cost (the cross-ISA datum vs ARM)
 
-The lowered RV64 field-op instruction counts, the honest no-ADX/no-flag/no-CSEL
-tax against the ARM twin (`ARMBackend/ArmX25519FieldKernel`, which rides
+The lowered RV64 field-op instruction counts, the cost of having no ADX, flags or
+CSEL, compared with the ARM kernel (`ARMBackend/ArmX25519FieldKernel`, which rides
 single-instruction `ADDS`/`ADCS`/`SUBS`/`SBCS`/`CSEL`). Each ARM `ADCS`/`SBCS` is
 one instruction; on RV64 each is the 5-insn SLTU `addc`/`subb` macro, and each
 `CSEL` is the 4-insn `csub` mask select. The `feMul` body inherits the `mul48`

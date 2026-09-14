@@ -2264,9 +2264,10 @@ Montgomery representatives `a`, `b` held in 64-bit words, the REDC product is:
     r = (t + (u64)m * p) >> 32;
 
 The result is lazy: there is no final conditional subtraction (these programs
-are straight-line). For inputs below `p` the sum `t + m·p` stays below `2^64`,
-so the shift is an exact division, `r ≡ a·b·R⁻¹ (mod p)` and `r < 2p`; for
-larger inputs the sum can wrap. This module proves only the equalities between
+are straight-line). When `a·b + (2^32 − 1)·p < 2^64` (for example `a < 2p` and
+`b < p`) the sum `t + m·p` stays below `2^64`, so the shift is an exact division
+and `r ≡ a·b·R⁻¹ (mod p)`; if moreover `a·b < p·2^32` then `r < 2p`. For two
+operands below `2p` the sum can wrap (§16 gives an instance). This module proves only the equalities between
 the programs and the reference definitions `montMulSpec64`/`montMulSpec`, and
 neither the congruence nor the bound. In contrast to the ARX leaves (§12/§13)
 the program uses `thBin .mul` (integer multiply), `thBin .and`, `thShrImm` and
@@ -2680,11 +2681,15 @@ Montgomery representative `x`, the power is computed by four `montmul`s:
 The output is lazy: there is no final conditional subtraction. Each `montmul` is
 the REDC body of §14 (`montMulSpec64`), and the S-box is their composition. This
 module proves only the equalities with the reference definitions
-`sboxSpec64`/`sboxSpec`; the range of the result and its congruence to `x^7`
-modulo `p` are not proved. The no-wrap bound of §14 (both operands below `p`)
-does not cover every step: that argument bounds `x3` only by `2p`, and with
-both operands below `2p` it does not bound the sum `t + m·p` of
-`x6 = montmul(x3, x3)` by `2^64`. Like §14 the S-box
+`sboxSpec64`/`sboxSpec`; the range of the result and its congruence to
+`x^7 · R⁻⁶` modulo `p` (for a Montgomery representative `x = x̃·R`, the
+representative `x̃^7 · R` of `x̃^7`) are not proved. The congruence fails for some
+inputs below `p`: for `x = 2012966596` the intermediate `x3 = 3223893146`
+exceeds `1.5p`, the sum `t + m·p` of `x6 = montmul(x3, x3)` exceeds `2^64` and
+wraps, and `sboxSpec64 x · R⁶ ≢ x^7 (mod p)`. Each step is an exact REDC when its
+sum `t + m·p` is below `2^64`, which holds whenever `a·b + (2^32 − 1)·p < 2^64`
+for its operands `a`, `b`; with the step bound `r ≤ (a·b + (2^32 − 1)·p) / 2^32`
+this holds at all four steps for every `x ≤ 1756563332`. Like §14 the S-box
 has a single output: `x7`, the result `r` of the last `montmul`, is the last
 binding, with no identity copy. The program runs at width 64 (the `32×32→64`
 REDC product needs 64-bit intermediates), so the `u32` input is held in a `u64`

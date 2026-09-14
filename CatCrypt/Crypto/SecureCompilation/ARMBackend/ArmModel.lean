@@ -18,9 +18,8 @@ A64 word registers (`w0…w30`, the 32-bit views of `x0…x30`, plus `wzr`) and 
 per-instruction semantics (`evalAInst` / `runABlock`) of that subset.
 
 `ArmLowering.lean` lifts a register-named op alphabet (`AOp`) onto this model
-with the block-lowering denotation theorem `armBlock_lowering_denote` (the A64
-analogue of `Vec128Lowering.vec128Block_lowering_denote`, proved by induction
-with no new custom axioms); `ArmAsmPrinter.lean` renders the lowered `AInst`
+with the block-lowering denotation theorem `armBlock_lowering_denote` (proved by
+induction with no new custom axioms); `ArmAsmPrinter.lean` renders the lowered `AInst`
 block to GAS AArch64 assembly text with a linear-scan GP allocator.
 
 ## The honest anchor (same posture as the x86 owned model)
@@ -263,7 +262,7 @@ def runABlock (s : AState) : List AInst → AState
   | nil => rfl
   | cons i is ih => simp only [List.cons_append, runABlock_cons, ih]
 
-/-! ## 3b. A64 bounded counter loop semantics (the looped-emission backbone, #551)
+/-! ## 3b. A64 bounded loop semantics (used by `ArmControlFlow`, #551)
 
 `ArmControlFlow.lean` lowers a **bounded counter loop** — `for k in 0..n { body }`
 — to a single body copy wrapped in an A64 back-edge `label: <body> ; CBNZ <ctr>,

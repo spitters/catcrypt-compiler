@@ -22,9 +22,10 @@ Two things on top of the proved `ComToArm` core:
 2. **A field-leaf compile (step 2 differential, in-Lean)** — the BabyBear Barrett
    `bbMul` field multiply, written as a `RegProg`, compiles through `regToBOp` to
    *exactly* the hand-written `BOp` block the owned ARM Poseidon2 leaf emits
-   (`plonky3_perm16_a64_emit.bbMul`). That equality is a theorem (`by rfl`), so
-   "compiled == hand-written" is proved, not byte-diffed — and via the keystone
-   the compiled bytes provably compute `bbMulReg.denote`.
+   (`plonky3_perm16_a64_emit.bbMul`), by `rfl` (`bbMul_compiled_eq_hand`).
+   `bbMul_machine_eq_denote` then states that the lowered `BInst` block, run on
+   the `BState` model, computes `armTarget.denote (bbMulReg dst a b)`. Neither
+   theorem mentions the encoded bytes.
 -/
 
 @[expose] public section
@@ -90,9 +91,9 @@ def bbMulReg (dst a b : String) : RegProg :=
   , .sub dst "x" "P", .shrI "q" dst 63, .sub "q" "zero" "q", .and "q" "q" "P"
   , .add dst dst "q" ]
 
-/-- The hand-written `BOp` block the owned ARM Poseidon2 leaf emits for `bbMul`
-    (`bench/arm_compare/plonky3_perm16_a64_emit.bbMul`), reproduced for the
-    equality below. -/
+/-- The hand-written `BOp` block of the owned ARM Poseidon2 leaf for `bbMul`
+    (the bench emitter `plonky3_perm16_a64_emit.bbMul`, which is not part of this
+    package), reproduced for the equality below. -/
 def bbMulHandBOp (dst a b : String) : List BOp :=
   [ .mul "x" a b
   , .lsr "q" "x" 30, .mul "q" "q" "MU", .lsr "q" "q" 32, .mul "q" "q" "P"
@@ -100,15 +101,14 @@ def bbMulHandBOp (dst a b : String) : List BOp :=
   , .sub dst "x" "P", .lsr "q" dst 63, .sub "q" "zero" "q", .and "q" "q" "P"
   , .add dst dst "q" ]
 
-/-- **Step-2 differential (in-Lean).** Compiling `bbMulReg` through the verified
-    `regToBOp` instruction selection yields *exactly* the hand-written owned-leaf
-    `BOp` block — "compiled == hand-written", proved, not byte-diffed. -/
+/-- Compiling `bbMulReg` through the `regToBOp` instruction selection yields
+    exactly the hand-written owned-leaf `BOp` block `bbMulHandBOp`. -/
 theorem bbMul_compiled_eq_hand (dst a b : String) :
     regToBOp (bbMulReg dst a b) = bbMulHandBOp dst a b := by
   rfl
 
-/-- Consequently, the compiled-and-lowered machine block computes the source
-    `bbMulReg` denotation (the keystone, instantiated at this leaf). -/
+/-- The compiled-and-lowered `BInst` block, run on the `BState` model, computes
+    the source `bbMulReg` denotation (`regToBOp_denote` at this program). -/
 theorem bbMul_machine_eq_denote (dst a b : String) (s : BState) :
     runBBlock s (lowerBBlock (regToBOp (bbMulReg dst a b)))
       = armTarget.denote (bbMulReg dst a b) s :=

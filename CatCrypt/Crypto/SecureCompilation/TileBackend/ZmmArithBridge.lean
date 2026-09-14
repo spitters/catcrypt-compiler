@@ -99,10 +99,8 @@ and the full 64-bit multiply `vpmullq`) is the unified-dialect packed binop
 /-- **AVX-512 ZMM packed arithmetic is the shape-generic tile lowering.** For
     every `JasminBinOp`, viewing the packed `zmmPackQ bop a b` as a `Tile 8 64`
     equals `evalTileOp` of the lowered `RegInstr.bin bop` over the tile state whose
-    `"a"`/`"b"` registers carry the lane views of `a`/`b`. This is the
-    equal-strength replacement for the old `zinst_is_tile_lowering`, now riding the
-    unified `zmmPackQ` semantics over the packed `BitVec 512` carrier rather than
-    the bespoke `Avx512Model` machine. -/
+    `"a"`/`"b"` registers carry the lane views of `a`/`b`. The left side is the
+    `zmmPackQ` semantics function over the packed `BitVec 512` carrier. -/
 theorem zmmPackQ_is_tile_lowering (bop : JasminBinOp) (a b : BitVec 512) :
     zmmBvToTile (zmmPackQ bop a b)
       = (evalTileOp ⟨fun nm => if nm = "b" then zmmBvToTile b else zmmBvToTile a⟩
@@ -137,9 +135,8 @@ def zmmPermXvar (idx a : BitVec 512) : BitVec 512 :=
 /-- **AVX-512 ZMM variable cross-lane permute is the tile model's `permxv`.**
     Viewing the packed `zmmPermXvar idx a` as a `Tile 8 64` equals `evalTileOp …
     (.permxv "d" "idx" "a")`: both are the whole-lane data-dependent gather where
-    dst lane `i` reads src lane `(idx[i]).toNat % 8` of `a`. This is the
-    equal-strength replacement for the old `zpermxv_is_tile_permxv`, now riding the
-    unified `zmmPermXvar` semantics over the packed `BitVec 512` carrier. Together
+    dst lane `i` reads src lane `(idx[i]).toNat % 8` of `a`, stated over the
+    `zmmPermXvar` semantics function on the packed `BitVec 512` carrier. Together
     with `zmmPackQ_is_tile_lowering` it shows the ZMM bank's elementwise *and*
     lane-moving cores are both instances of the shape-generic tile semantics. -/
 theorem zmmPermXvar_is_tile_permxv (idx a : BitVec 512) :
@@ -154,14 +151,13 @@ theorem zmmPermXvar_is_tile_permxv (idx a : BitVec 512) :
 
 /-! ## 4. The consolidation, stated
 
-Together with `TileModel.lowerRegBlock_denote` (the shape-generic keystone, proven
-for every `(n, w)`), these bridges mean: the AVX-512 ZMM packed lane semantics —
-and the `Tile 4 32` AVX2 / NEON / RVV backends of `VectorBackendBridge.lean`, and
-the `Tile 8 16` FIPS-203 high-mul of `TileS16HighMul.lean` — are **all** the same
-shape-generic verified lowering, `Tile n w` at `(8,64)`, `(4,32)`, `(8,16)`, …,
-both for the elementwise arithmetic (`zmmPackQ`/`evalTileOp ∘ lowerRegInstr`) and
-for the cross-lane permute (`zmmPermXvar`/`evalTileOp`'s `.permxv` arm). The
-per-backend lane models are instances of one proof, not separate semantics. -/
+The bridges of this module state, per operation, that the ZMM packed semantics
+functions `zmmPackQ` (elementwise arithmetic) and `zmmPermXvar` (cross-lane
+permute), viewed as `Tile 8 64`, equal `evalTileOp` of the corresponding tile op.
+`VectorBackendBridge.lean` and `TileS16HighMul.lean` state the analogous facts at
+`Tile 4 32` and `Tile 8 16`, and `TileModel.lowerRegBlock_denote` (proved for every
+`(n, w)`) lifts the tile side to blocks. No theorem here composes the
+per-operation bridges over a whole program. -/
 
 /-- The ZMM packed arithmetic core and the cross-lane permute both lower to the
     shape-generic tile semantics: the elementwise `zmmPackQ bop` targets

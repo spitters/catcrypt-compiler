@@ -246,10 +246,9 @@ def vpmulhw16BvToTile (v : BitVec 128) : Tile 8 16 :=
 /-- **x86 `VPMULHW`, via the unified `Com jasminDialect` op, is the shape-generic
     `mulhs` tile lowering.** Viewing the packed `vpmulhw16W a b` as a `Tile 8 16`
     equals `evalTileOp` of the lowered `RegInstr.mulhs` over the tile state whose
-    `"a"`/`"b"` registers carry the lane views of `a`/`b` — the equal-strength
-    replacement for the old `vpmulhw_is_tile_lowering`, now riding the unified
+    `"a"`/`"b"` registers carry the lane views of `a`/`b`, stated over the unified
     `SimdOp.mulhi16` semantics (`s16HighMulCom_denote : s16HighMulCom.denote ⟨a,b⟩
-    = vpmulhw16W a b`) rather than the bespoke `Vec128` machine. So `VPMULHW`
+    = vpmulhw16W a b`). So `VPMULHW`
     realises `tileMontMulS16`'s per-lane `mulhs` on the verified lowering, landing
     on the *same* `evalTileOp (lowerRegInstr (.mulhs …))` as the ARM/RISC-V legs. -/
 theorem vpmulhw_com_is_tile_lowering (a b : BitVec 128) :

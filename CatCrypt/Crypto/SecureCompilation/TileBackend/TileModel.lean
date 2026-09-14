@@ -13,44 +13,42 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect (JasminBinOp)
 
 /-!
-# Tile model — a tile-level semantics for the GPU backend (Phase 1 spike)
+# Tile model — a tile-level semantics for the GPU backend
 
-This is the Phase-1 skeleton of the `Com → Tile → NVIDIA Tile IR` plan.
-It gives a small
-**tile-level operational semantics** in Lean — the GPU analogue of `Avx512Model`'s
-lane-function discipline, raised from per-lane to per-tile — against which a
-`Com → Tile IR` lowering can later be proved denotation-preserving.
+A small **tile-level operational semantics** in Lean for the
+`Com → Tile → NVIDIA Tile IR` path: a tile is a lane vector, and a tile program is
+a straight-line list of lane-wise and lane-moving ops over named tiles.
 
-## Scope of THIS increment (the honest spike)
+## Contents
 
-* **Models** a tile as a shaped array of `BitVec 64` lanes (`Tile`) and a tiny set
-  of **elementwise** integer ops (`add`/`sub`/`mul`/`and`/`shr`/`const`) over named
-  tiles — exactly the field-arithmetic `regArith` alphabet the BabyBear leaves use,
-  lifted from a lane to a whole tile. `evalTileOp` is the obvious per-element
-  integer op (auditable by eye, the same honest-anchor posture as the ZMM model).
-* **Demonstrates** the verifiable core: the BabyBear Barrett `bbMul` as a tile
-  program (`bbMulTile`), with `bbMulTile_denote` proving the tile semantics
-  computes the field multiply on **every** lane — a mini denotation-preservation
-  (the GPU analogue of `m4Block_eval` / `bignumBlock_lowering_denote`).
+* **Model**: a tile is `n` lanes of `BitVec w` (`Tile n w`); `TileOp` has
+  elementwise integer ops (`add`/`sub`/`mul`/`and`/`orr`/`xorr`/`andn`/shifts/
+  `const`/`mulhs`) and the lane-moving `permxv`/`bcast`/`hadd`; `evalTileOp` gives
+  each op its per-lane `BitVec w` meaning.
+* **`bbMul`**: the BabyBear Barrett multiply as a tile program (`bbMulTile`);
+  `bbMulTile_denote` proves that its output lane `i` is `bbMulWord (a i) (b i)`,
+  where `bbMulWord` is the branchless Barrett word function. No theorem here
+  proves `bbMulWord a b = (a · b) mod p`; `bbMulTile_kat` checks it on four lanes.
+* **Lowering**: `lowerRegBlock_denote` proves that the `RegInstr → TileOp`
+  lowering preserves the `TileState` semantics for every block and every shape
+  `(n, w)`. The source semantics `evalRegInstr` is defined lane-wise with
+  `JasminBinOp.apply`; no theorem here relates it to `Com.denote` or to an
+  x86/ARM/RISC-V vector model (the bridges for those are `ZmmArithBridge` and
+  `VectorBackendBridge`).
 
-## What this is NOT yet (deferred, per the plan)
+## Relation to `cuda_tile`
 
-* **Grounded in NVIDIA/cuda-tile (the real MLIR dialect), names not yet emitted.**
-  The op set here is the `CudaTile` integer-arithmetic subset
+* The op set is the `CudaTile` integer-arithmetic subset
   (`github.com/NVIDIA/cuda-tile`, `Dialect/CudaTile/IR/Ops.td`): our `add`/`sub`/
   `mul`/`and`/`shr`/`const` are `cuda_tile.{addi,subi,muli,andi,shli/shrui,
   constant}`, all "Element-wise integer" ops, over the tile type
   `!cuda_tile.tile<8xi64>` (`Types.td`: shape × element, power-of-two dims). The
-  cross-tile ops we will need next (`cuda_tile.{permute,reduce,broadcast,iota}`,
-  and `mmaf` for MSM/tensor-core) are named there too. This file fixes the
-  *semantics*; the `Com → cuda_tile` MLIR emit is Phase 3.
-* **No memory-consistency model.** The elementwise core touches no cross-tile
-  reduction/barrier, so spec §7 (Memory Model) is not exercised. It enters only
-  with the reduction/permute ops (NTT/MDS/MSM, Phase 4b+) and is the genuinely new
-  semantics work the plan scopes there.
-* **No emit + no execution.** This is the semantics; the `Com → Tile IR` emitter
-  and bytecode are Phase 3/4. (The thread-level NVPTX PoC `ComToNvptx` already
-  proved the low-road emission path to clang-validated PTX.)
+  correspondence of these names to `cuda_tile` semantics is by reading the
+  dialect definition, not a theorem. The emitter is `ComToTileIR`.
+* **No memory-consistency model.** Asynchronous copies and barriers (spec §7,
+  Memory Model) are not modelled; every op is a pure function of the lane
+  vectors.
+* **No execution.** Nothing in this module runs on a GPU or checks emitted IR.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel
@@ -60,11 +58,11 @@ set_option autoImplicit false
 /-! ## 1. Tiles and tile state — the shape-generic SIMD lane model
 
 A tile is `n` lanes of `BitVec w` — the **shape-polymorphic** lane abstraction
-(`cuda_tile.tile<n × w>`). This is the unifying lane model the fixed-shape vector
-backends are instances of: ZMM is `Tile 8 64`, AVX2 `Tile 4 64`, NEON `Tile 2 64`,
-a wide GPU tile `Tile n w`. The tile state is a register file of named tiles
-(mirrors `Avx512Model`'s `ZState`, which is exactly `Tile 8 64`). Proving the
-lowering keystone over arbitrary `(n, w)` (§6) gives every SIMD width one proof. -/
+(`cuda_tile.tile<n × w>`). The fixed-shape vector lane types have this shape: ZMM
+is `Tile 8 64`, AVX2 `Tile 4 64`, NEON `Tile 2 64`. The tile state is a register
+file of named tiles. The lowering theorem of §6 is stated for arbitrary
+`(n, w)`; relating a machine vector model to `TileState` is done in separate
+bridge modules. -/
 
 /-- A tile: `n` lanes of `BitVec w`. The shape-generic SIMD lane model. -/
 abbrev Tile (n w : Nat) := Fin n → BitVec w
@@ -85,9 +83,9 @@ def TileState.set {n w : Nat} (s : TileState n w) (nm : String) (t : Tile n w) :
 
 /-! ## 2. The elementwise tile op alphabet + its semantics
 
-Each op is the obvious per-element integer operation over `BitVec 64`. `shr`
-carries an immediate; `const` is a lane-uniform broadcast. (The Tile IR spec §8
-mnemonics are reconciled in Phase 0; the meaning is fixed here.) -/
+Each elementwise op is the per-element integer operation over `BitVec w`. `shr`
+carries an immediate; `const` is a lane-uniform broadcast. The meaning is fixed
+by `evalTileOp`, independently of the Tile IR spec §8 mnemonics. -/
 
 /-- A tile op over named tiles. The `add`/`sub`/`mul`/`and`/`orr`/`xorr`/
     `andn` are the **elementwise** two-operand `cuda_tile.{addi,subi,muli,andi,
@@ -201,14 +199,8 @@ Like `permxv` they move data across lanes rather than acting elementwise, but
 both are still **pure functions of the lane carrier** `Fin n → BitVec w`, so
 their denotation ties are the same `funext`/`simp` shape as `permxv_denote` —
 no memory-consistency model is needed (that enters only with async copy /
-barrier, deferred to Phase 4b). These complete the cross-tile op denotation set
-begun by `permxv_denote`.
-
-This increment was prompted by evaluating NVlabs' `cuda-oxide`
-(source: https://github.com/NVlabs/cuda-oxide): that compiler reaches the same
-GPU ops through hand-written Rust intrinsics lowered via Pliron → LLVM → PTX;
-here we instead pin the `cuda_tile` op *semantics* in Lean, so the emitted tile
-IR has a denotation to be proved against rather than a trusted intrinsic. -/
+barrier, which this model does not have). These complete the cross-tile op denotation set
+begun by `permxv_denote`. -/
 
 /-- **`bcast` denotation (the defining splat property).** After `[.bcast d a k]`
     *every* lane of `d` holds the single source lane `a[k mod n]`, so all output
@@ -247,12 +239,14 @@ theorem hadd_sum_kat :
 
 /-! ## 3. The BabyBear Barrett `bbMul` as a tile program
 
-`bbMulWord a b = (a·b) mod p` over BabyBear (`p = 2013265921`, Barrett
-`MU = 2290649223`), branchless — the *same* word arithmetic the x86/ARM/ZMM field
-leaves compute. The tile program applies it to every lane of the tile. -/
+`bbMulWord` is the branchless Barrett multiply over BabyBear (`p = 2013265921`,
+Barrett `MU = 2290649223`), intended to compute `(a·b) mod p` for `a, b < p`;
+that identity is not proved in this module. The tile program applies it to every
+lane of the tile. -/
 
-/-- The branchless BabyBear Barrett `bbMul` on one word (the reference the tile
-    program must compute, lane for lane): shift-multiply-shift reduce + csub. -/
+/-- The branchless BabyBear Barrett `bbMul` on one word: shift-multiply-shift
+    reduce + csub. The word reference the tile program is proved to compute lane
+    for lane. -/
 def bbMulWord (a b : BitVec 64) : BitVec 64 :=
   let x := a * b
   let q := (((x >>> 30) * BitVec.ofNat 64 2290649223) >>> 32) * BitVec.ofNat 64 2013265921
@@ -276,15 +270,13 @@ def bbMulTile : List TileOp :=
 def bbMulInit {n : Nat} (a b : Tile n 64) : TileState n 64 :=
   { regs := fun r => if r = "a" then a else if r = "b" then b else fun _ => 0 }
 
-/-! ## 4. The denotation theorem (the Phase-1 keystone)
+/-! ## 4. The `bbMul` tile program computes `bbMulWord` lane-wise
 
-Running the `bbMul` tile program on input tiles `a`, `b` computes, in `o`, the
-BabyBear `bbMul` of every lane — `o[i] = bbMulWord (a[i]) (b[i])`. This is the
-tile-level denotation-preservation (the GPU analogue of `m4Block_eval`): the tile
-semantics realises the field op the source program denotes, for the whole tile. -/
+Running the `bbMul` tile program on input tiles `a`, `b` computes, in `o`,
+`o[i] = bbMulWord (a[i]) (b[i])` for every lane. -/
 
-/-- **The `bbMul` tile program computes the field multiply on every lane** — for
-    a tile of any lane count `n` (one proof; ZMM/AVX2/NEON are `n = 8/4/2`). -/
+/-- **The `bbMul` tile program computes `bbMulWord` on every lane**, for a tile of
+    any lane count `n`. -/
 theorem bbMulTile_denote {n : Nat} (a b : Tile n 64) :
     (runTileBlock (bbMulInit a b) bbMulTile).get "o"
       = fun i => bbMulWord (a i) (b i) := by
@@ -295,52 +287,49 @@ theorem bbMulTile_denote {n : Nat} (a b : Tile n 64) :
 
 /-! ## 5. KAT — the tile `bbMul` matches the field reference on a worked vector
 
-`bbMulWord` on concrete BabyBear residues equals `(a·b) mod p`. Two lanes:
-`7·9 = 63` (no reduce), and a high pair `(p-1)·(p-1) ≡ 1 (mod p)`. -/
+On four concrete lanes the tile output equals `(a·b) mod p`, including
+`7·9 = 63` (no reduce) and the high pair `(p-1)·(p-1) ≡ 1 (mod p)`. -/
 
 /-- The KAT input tiles: `a = [7, p-1, 2, 3, …]`, `b = [9, p-1, 4, 5, …]` (8 lanes). -/
 def katA : Tile 8 64 := fun i => (#[7, 2013265920, 2, 3, 0,0,0,0].getD i.val 0 : BitVec 64)
 def katB : Tile 8 64 := fun i => (#[9, 2013265920, 4, 5, 0,0,0,0].getD i.val 0 : BitVec 64)
 
 /-- **Tile `bbMul` KAT.** Lane 0 `7·9 = 63`; lane 1 `(p-1)² ≡ 1 (mod p)`; lane 2
-    `2·4 = 8`; lane 3 `3·5 = 15` — the tile program's output equals `(a·b) mod p`
-    on each lane, byte-identical to the BabyBear field multiply. -/
+    `2·4 = 8`; lane 3 `3·5 = 15`. On these four lanes the tile program's output
+    equals `(a·b) mod p`. -/
 theorem bbMulTile_kat :
     let o := (runTileBlock (bbMulInit katA katB) bbMulTile).get "o"
     (o 0 = 63) ∧ (o 1 = 1) ∧ (o 2 = 8) ∧ (o 3 = 15) := by native_decide
 
-/-! ## 6. The verified lowering `regArith → Tile` (the GPU keystone)
+/-! ## 6. The lowering `regArith → Tile`
 
-This is the GPU analogue of `avx512Block_lowering_denote` / `lowerLinstrR`: a
-lowering from the **source `regArith` alphabet** (`JasminBinOp`, the two-address
-register arithmetic the x86/ARM/ZMM field leaves are emitted from) into tile ops,
-proved **denotation-preserving for every op and every straight-line block**. The
-source semantics is `JasminBinOp.apply` at width 64 (the same word op the source
-`Com jasminDialect` denotes); the lowering carries it lane-for-lane onto a tile.
+A lowering from a **source `regArith` alphabet** (`RegInstr`: `JasminBinOp`
+two-address register arithmetic, constant loads and `mulhs`) into tile ops, with
+a proof that it preserves the `TileState` semantics for every op and every
+straight-line block. The source semantics `evalRegInstr` is defined here, lane
+by lane, with `JasminBinOp.apply` at width `w`; no theorem in this module relates
+`RegInstr` programs to `Com jasminDialect` programs or their denotation.
 
-Unlike `bbMulTile` (a hand-written tile program proved for that one kernel), this
-proves the *lowering itself* correct — so any `regArith` straight-line kernel
-(`bbMul`, the NTT/Merkle/FRI leaves, …) lowers to a tile program with the same
-denotation, by instantiation, with no per-kernel proof. -/
+Unlike `bbMulTile` (a hand-written tile program proved for that one kernel), the
+statement covers every `RegInstr` block. -/
 
 /-- A source straight-line `regArith` instruction: a two-address binary op
-    `dst := op(a, b)` over named registers, or a constant load. This is the
-    elementwise (per-lane) image of `Com jasminDialect`'s `regArith`/const ops. -/
+    `dst := op(a, b)` over named registers, a constant load, or `mulhs`. The
+    constructors mirror `Com jasminDialect`'s `regArith`/const ops; no theorem
+    here relates the two. -/
 inductive RegInstr where
   | bin (op : JasminBinOp) (dst a b : String)
   | const (dst : String) (n : Nat)
   /-- Signed high-half multiply (`mulhs`), the FIPS-203 ML-KEM NTT Montgomery
-      primitive (x86 `VPMULHW` / ARM `SQDMULH` / RISC-V `vmulh.vv`). Kept a
-      dedicated arm rather than a `JasminBinOp` constructor: `JasminBinOp` is
-      matched exhaustively across ~13 dialect/optimizer files, so the surgical
-      route is a `RegInstr`/`TileOp` arm that lowers `1:1` to `TileOp.mulhs`. -/
+      primitive (x86 `VPMULHW` / ARM `SQDMULH` / RISC-V `vmulh.vv`). A dedicated
+      arm, not a `JasminBinOp` constructor, that lowers `1:1` to
+      `TileOp.mulhs`. -/
   | mulhs (dst a b : String)
   deriving DecidableEq
 
 /-- The source per-lane semantics at shape `n×w`: each `bin` op applies
-    `JasminBinOp.apply` to every lane; `const` broadcasts. (The reference the
-    lowering must preserve — the meaning a `regArith` `Com` program denotes,
-    lifted to a tile.) -/
+    `JasminBinOp.apply` to every lane; `const` broadcasts; `mulhs` takes the
+    signed high half. The reference semantics the lowering preserves. -/
 def evalRegInstr {n w : Nat} (s : TileState n w) : RegInstr → TileState n w
   | .bin op d a b => s.set d (fun i => op.apply (s.get a i) (s.get b i))
   | .const d k => s.set d (fun _ => BitVec.ofNat w k)
@@ -373,7 +362,7 @@ def lowerRegBlock (blk : List RegInstr) : List TileOp := blk.map lowerRegInstr
 
 /-- **Per-op correctness**: the tile semantics of a lowered op equals the source
     op's semantics — `evalTileOp ∘ lowerRegInstr = evalRegInstr`. Proved by cases
-    on the op (each arm is definitionally the same per-lane `BitVec 64` op). -/
+    on the op (each arm is definitionally the same per-lane `BitVec w` op). -/
 theorem lowerRegInstr_denote {n w : Nat} (s : TileState n w) (i : RegInstr) :
     evalTileOp s (lowerRegInstr i) = evalRegInstr s i := by
   cases i with
@@ -381,13 +370,12 @@ theorem lowerRegInstr_denote {n w : Nat} (s : TileState n w) (i : RegInstr) :
   | const d k => rfl
   | mulhs d a b => rfl
 
-/-- **The keystone — the lowering is denotation-preserving for every block AND
-    every tile shape `(n, w)`.** Running the lowered tile program on any state
-    computes exactly the source `regArith` block's result. The GPU analogue of
-    `avx512Block_lowering_denote`, but *shape-generic*: `runTileBlock ∘
-    lowerRegBlock = runRegBlock`. ZMM (`n=8, w=64`), AVX2 (`n=4`), NEON (`n=2`),
-    and any GPU tile are instances of THIS ONE theorem — the per-backend lane
-    models collapse to one proof. -/
+/-- **The lowering preserves the tile semantics for every block and every tile
+    shape `(n, w)`.** Running the lowered tile program on any state computes the
+    source `runRegBlock` result: `runTileBlock ∘ lowerRegBlock = runRegBlock`.
+    Both sides are `TileState` semantics defined in this module; relating a
+    machine vector model (ZMM, NEON, RVV) to `TileState` is the content of the
+    separate bridge modules. -/
 theorem lowerRegBlock_denote {n w : Nat} (s : TileState n w) (blk : List RegInstr) :
     runTileBlock s (lowerRegBlock blk) = runRegBlock s blk := by
   induction blk generalizing s with
@@ -397,13 +385,12 @@ theorem lowerRegBlock_denote {n w : Nat} (s : TileState n w) (blk : List RegInst
     rw [lowerRegInstr_denote]
     exact ih (evalRegInstr s hd)
 
-/-! ## 7. `bbMul` as an instance of the verified lowering
+/-! ## 7. `bbMul` through the lowering
 
-The BabyBear `bbMul` Barrett reduce, written in the **source** `regArith` alphabet
-(`bbMulReg`), lowers — via the verified `lowerRegBlock` — to a tile program whose
-denotation is the field multiply on every lane. The correctness is now a
-*corollary of the lowering keystone* + the source-level field identity, not a
-hand proof about a hand-written tile program. -/
+The BabyBear `bbMul` Barrett reduce, written in the source `regArith` alphabet
+(`bbMulReg`), lowers through `lowerRegBlock` to a tile program whose output lane
+`i` is `bbMulWord (a i) (b i)`. The proof rewrites with `lowerRegBlock_denote`
+and unfolds the source run. -/
 
 /-- `bbMul` in the source `regArith` alphabet: the same Barrett reduce + csub,
     with the shift amounts as constants and the variable-shift `regArith .shr`. -/
@@ -415,11 +402,11 @@ def bbMulReg : List RegInstr :=
   , .bin .sub "o" "x" "P", .bin .shr "m" "o" "c63", .bin .sub "m" "zero" "m"
   , .bin .and "m" "m" "P", .bin .add "o" "o" "m" ]
 
-/-- **The lowered `bbMul` tile program computes the field multiply on every lane**
-    — `(runTileBlock (lowerRegBlock bbMulReg)).get "o" i = bbMulWord (a i) (b i)`.
-    Via `lowerRegBlock_denote` the tile run equals the source `regArith` run; the
-    rest is the source-level Barrett identity (`native_decide`-free `rfl` chain on
-    the per-lane words). This ties the GPU lowering to the BabyBear field op. -/
+/-- **The lowered `bbMul` tile program computes `bbMulWord` on every lane** —
+    `(runTileBlock (lowerRegBlock bbMulReg)).get "o" i = bbMulWord (a i) (b i)`.
+    Via `lowerRegBlock_denote` the tile run equals the source `regArith` run,
+    which unfolds (`simp only`) to `bbMulWord` per lane. The statement does not
+    say that `bbMulWord` is the field multiply. -/
 theorem bbMulReg_lowered_denote {n : Nat} (a b : Tile n 64) :
     (runTileBlock (bbMulInit a b) (lowerRegBlock bbMulReg)).get "o"
       = fun i => bbMulWord (a i) (b i) := by
@@ -429,43 +416,40 @@ theorem bbMulReg_lowered_denote {n : Nat} (a b : Tile n 64) :
     TileState.set, TileState.get, bbMulInit, bbMulWord, JasminBinOp.apply,
     String.reduceEq, if_true, if_false, BitVec.toNat_ofNat]
 
-/-- **KAT for the lowered `bbMul`** — same worked vector as `bbMulTile_kat`, now
-    through the verified lowering: `7·9=63`, `(p-1)²≡1`, `2·4=8`, `3·5=15`. -/
+/-- **KAT for the lowered `bbMul`** — the worked vector of `bbMulTile_kat`,
+    through the lowering: `7·9=63`, `(p-1)²≡1`, `2·4=8`, `3·5=15`. -/
 theorem bbMulReg_lowered_kat :
     let o := (runTileBlock (bbMulInit katA katB) (lowerRegBlock bbMulReg)).get "o"
     (o 0 = 63) ∧ (o 1 = 1) ∧ (o 2 = 8) ∧ (o 3 = 15) := by native_decide
 
-/-! ## 8. The consolidation: one lowering proof, every SIMD width
+/-! ## 8. Instances at fixed shapes
 
-The whole point of the shape-generic keystone — the *same* verified lowering and
-the *same* `bbMul` correctness specialise to every fixed-shape vector backend with
-**no new proof**. ZMM (8 lanes), AVX2 (4), NEON (2), and a wide GPU tile (16) are
-all instances of `bbMulReg_lowered_denote` / `lowerRegBlock_denote`. This is the
-per-backend lane models (`Avx512Model`'s `ZState = Tile 8 64`, an AVX2 `Tile 4 64`,
-a NEON `Tile 2 64`) collapsing onto one parametric proof. -/
+`bbMulReg_lowered_denote` and `lowerRegBlock_denote` are stated for any lane
+count, so they specialise to the ZMM (8 lanes), AVX2 (4), NEON (2) and 16-lane
+shapes without a new proof. The instances below are statements about
+`TileState n 64` at those shapes, not about the machine vector models. -/
 
-/-- ZMM (`Tile 8 64`) — the shape of `Avx512Model.ZState`. -/
+/-- The ZMM shape (`Tile 8 64`). -/
 example (a b : Tile 8 64) :
     (runTileBlock (bbMulInit a b) (lowerRegBlock bbMulReg)).get "o"
       = fun i => bbMulWord (a i) (b i) := bbMulReg_lowered_denote a b
 
-/-- AVX2 (`Tile 4 64`) — same lowering, no new proof. -/
+/-- The AVX2 shape (`Tile 4 64`). -/
 example (a b : Tile 4 64) :
     (runTileBlock (bbMulInit a b) (lowerRegBlock bbMulReg)).get "o"
       = fun i => bbMulWord (a i) (b i) := bbMulReg_lowered_denote a b
 
-/-- NEON (`Tile 2 64`) — same lowering, no new proof. -/
+/-- The NEON shape (`Tile 2 64`). -/
 example (a b : Tile 2 64) :
     (runTileBlock (bbMulInit a b) (lowerRegBlock bbMulReg)).get "o"
       = fun i => bbMulWord (a i) (b i) := bbMulReg_lowered_denote a b
 
-/-- A wide GPU tile (`Tile 16 64`) — same lowering, no new proof. -/
+/-- A 16-lane tile (`Tile 16 64`). -/
 example (a b : Tile 16 64) :
     (runTileBlock (bbMulInit a b) (lowerRegBlock bbMulReg)).get "o"
       = fun i => bbMulWord (a i) (b i) := bbMulReg_lowered_denote a b
 
-/-- And the lowering keystone itself, at an arbitrary shape — every `regArith`
-    straight-line block lowers correctly at *any* lane count and width. -/
+/-- `lowerRegBlock_denote` at an arbitrary shape `(n, w)`. -/
 example {n w : Nat} (s : TileState n w) (blk : List RegInstr) :
     runTileBlock s (lowerRegBlock blk) = runRegBlock s blk := lowerRegBlock_denote s blk
 

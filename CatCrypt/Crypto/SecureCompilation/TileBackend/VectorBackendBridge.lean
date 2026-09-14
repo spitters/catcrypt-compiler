@@ -34,9 +34,9 @@ For the **x86 leg** the packed ALU is re-homed onto the unified
 `v128Pack32_lane` is the packed↔lane round-trip (lane `k` of the packed result is
 `bop.apply` of the input lanes), and `vpadd32_com_is_tile_lowering` ties the
 unified op, transported to a `TileState 4 32` via `v128BvToTile`, to the
-shape-generic `evalTileOp ∘ lowerRegInstr` of the matching `regArith` op — the
-equal-strength successor of the old lane-function `vinst_is_tile_lowering`. The
-x86 leg therefore no longer references `Vec128Model`.
+shape-generic `evalTileOp ∘ lowerRegInstr` of the matching `regArith` op. The
+x86 leg is stated over the unified packed op, not over a separate XMM machine
+model.
 
 For the ARM / RISC-V legs the key structural fact is definitional:
 `VectorTy α n := Fin n → α` is reducible, so `Tile 4 32`, `Neon.Vec128`, and
@@ -100,9 +100,8 @@ def v128BvToTile (v : BitVec 128) : Tile 4 32 := fun k => BitVec.extractLsb' (32
     lowering.** The unified op `v128PackLanesW 32 bop a b`, transported to a
     `TileState 4 32` via `v128BvToTile`, equals `evalTileOp` of the lowered
     `regArith` op (`TileModel`'s verified lowering) at shape `4×32`, on a state
-    whose `"a"`/`"b"` tiles are the transported inputs. The equal-strength
-    successor of the old lane-function `vinst_is_tile_lowering`, now carried by
-    the unified `Com jasminDialect` packed op rather than `Vec128Model`. -/
+    whose `"a"`/`"b"` tiles are the transported inputs. The left side is the
+    unified `Com jasminDialect` packed-op semantics. -/
 theorem vpadd32_com_is_tile_lowering (bop : JasminBinOp) (a b : BitVec 128) :
     v128BvToTile (v128PackLanesW 32 bop a b)
       = (evalTileOp ⟨fun nm => if nm = "b" then v128BvToTile b else v128BvToTile a⟩
@@ -179,13 +178,12 @@ theorem rvinst_is_tile_lowering (s : RISCVBackend.Rvv.VState) (i : RISCVBackend.
 
 /-! ## 4. The consolidation, stated
 
-Together with `TileModel.lowerRegBlock_denote` (the shape-generic keystone, proven
-for every `(n, w)`), the three bridges above mean: the x86-AVX2, ARM-NEON, and
-RISC-V-RVV arithmetic lane semantics, and the `Tile 8 64` ZMM / GPU tile, are
-**all** the same shape-generic verified lowering — `Tile n w` at `(4,32)`,
-`(8,64)`, …. The per-backend lane models are instances of one proof, not four
-separate semantics. The remaining per-backend code (encoders, printers, the
-non-arith ops) is the genuinely target-specific surface; the *arithmetic core*
-across all four SIMD ISAs is now provably shared. -/
+The three bridges above state, per arithmetic instruction, that the x86-AVX2
+unified packed op, the ARM-NEON and the RISC-V-RVV instruction semantics,
+transported to `TileState 4 32`, equal `evalTileOp` of the lowered `regArith` op.
+`TileModel.lowerRegBlock_denote` (proved for every `(n, w)`) lifts the tile side to
+blocks. No theorem here composes the per-instruction bridges over a whole machine
+block, and encoders, printers and the non-arithmetic ops are outside these
+statements. -/
 
 end CatCrypt.Crypto.SecureCompilation.TileBackend.VectorBackendBridge

@@ -18,24 +18,22 @@ public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmControlFlow
 (`bignum_mul_4_8`) through the owned A64 bignum backend (`MUL`/`UMULH` widening +
 `ADDS`/`ADCS` carry chain); `ArmBignumKernel.lean` (#547) lowered the
 add-mod-`p256` carry-chain + conditional-subtract reduce; `ArmControlFlow.lean`
-(#551) emitted the bounded counter loop (`loopABlock` / `runBoundedLoopA`). This
-module is the **X25519 keystone** — the flagship deployment-reach result, since
-phones / Graviton / Apple-Silicon all run X25519 — composing those three levers
-into the whole scalar-multiplication over `p25519 = 2²⁵⁵ - 19`:
+(#551) renders the bounded counter loop (`loopABlock`). This module builds, on
+the owned A64 bignum backend over `p25519 = 2²⁵⁵ - 19`:
 
 * the five field operations the Montgomery ladder calls — `feAdd`, `feSub`,
-  `feMul`, `feSqr`, `feMul121666` — as verified `BOp` blocks over the 4-limb
-  radix-2⁶⁴ saturated representation, each lowered through the owned A64 bignum
-  backend and pinned with a value KAT against the hand-computed `(x ⊙ y) mod p`;
-* `cswap` — the constant-time conditional limb swap (mask-select, no branch);
-* `ladderstep` — the Montgomery differential-add-and-double body, an `BOp` block
-  composing the field ops, pinned with a value KAT;
-* the **whole ladder** wrapped in `loopABlock` over the 255 scalar bits (the
-  bounded-counter loop of #551), the looped emission denoting `runBoundedLoopA`.
+  `feMul`, `feSqr`, `feMul121666` — as `BOp` blocks over the 4-limb radix-2⁶⁴
+  saturated representation, each lowered with `bignumBlock_lowering_denote` and
+  checked by value KATs against hand-computed `(x ⊙ y) mod p` on worked vectors;
+* `cswap` — the conditional limb swap by mask-select (`CSEL`, no branch);
+* `ladderStepBlock` — the Montgomery differential-add-and-double body, a `BInst`
+  block composing the field ops, checked by a value KAT on one input;
+* `runBoundedLoopB` — `n` repetitions of `ladderStepBlock` on the model.
 
-The x86 owned X25519 (`X86Backend/Fe25519{Mul,Ops}Kernel.lean`, #380/#408) is the
-reference Com body and the source of the RFC 7748 expected output; this is its A64
-analogue, assembled entirely from owned-backend leaves (no fiat transliteration).
+The repeated body contains no `cswap` and reads no scalar bit, so it is not the
+X25519 ladder, and this module does not emit a looped ladder with `loopABlock`.
+The x86 owned X25519 (`X86Backend/Fe25519{Mul,Ops}Kernel.lean`) is the reference
+for the field-op sequence.
 
 ## The field representation and the `2²⁵⁵-19` reduce
 
@@ -43,34 +41,30 @@ A field element is four little-endian 64-bit limbs (radix-2⁶⁴, saturated), t
 same shape s2n-bignum's `curve25519/bignum_*_p25519.S` uses. Reductions ride
 `2²⁵⁶ ≡ 38 (mod p)`: a 5-limb intermediate `[a₀..a₄]` folds to four limbs by
 `a₄·38 + [a₀..a₃]`, twice (the second fold absorbs the carry the first produces),
-then a **double constant-time conditional subtract of `p`** (`SUBS`/`SBCS` trial
-subtraction + `CSEL`) brings the result canonically into `[0, p)`. This is the
-A64 carry-chain analogue of the x86 fused-quotient-estimate reduce, chosen here
-for an obviously-correct word sequence (every limb is one modelled `ADDS`/`ADCS`/
-`SUBS`/`SBCS`/`CSEL`/`MUL`/`UMULH`), validated below by `native_decide` KATs and,
-end-to-end, by the qemu-aarch64 RFC 7748 KAT in `bench/arm_compare/`.
+then a **double conditional subtract of `p`** (`SUBS`/`SBCS` trial subtraction
++ `CSEL`) is intended to bring the result into `[0, p)`. Every limb step is one
+modelled `ADDS`/`ADCS`/`SUBS`/`SBCS`/`CSEL`/`MUL`/`UMULH`. The value checks in
+this module are `native_decide` KATs on worked vectors.
 
-## What this module emits / proves
+## What this module proves
 
-Each field op `feXBlock : List BOp`:
+For each field op block (`feAddBlock`, `feSubBlock`, `feMulBlock`, `feSqrBlock`,
+`feMul121666Block`):
 
-* `feXBlock_lowering_correct`: running the lowered block on the `BState` model
-  equals the direct machine fold — `bignumBlock_lowering_denote` instantiated on
-  the body (no new custom axioms).
-* `feX_kat`: the value KAT — the four stored result limbs read little-endian equal
-  the hand-computed `(x ⊙ y) mod p25519` on worked vectors (incl. the reduce-firing
-  corner cases), under `native_decide`.
+* `feAdd_lowering_correct`, `feSub_lowering_correct`, …: running the lowered block
+  on the `BState` model equals the fold of `evalBInst ∘ toBInst` over the `BOp`
+  block (`bignumBlock_lowering_denote` at that block);
+* `feAdd_kat_*`, `feSub_kat_*`, `feMul_kat_*`, …: on worked vectors (including
+  cases where the reduce fires), the four result limbs read little-endian equal
+  the hand-computed `(x ⊙ y) mod p25519`, by `native_decide`.
 
-`ladderstep_kat` pins one differential-add-and-double step; `ladderLoopBody` +
-`ladder_loop_denote` wrap the step in the bounded-counter loop (the looped
-emission denotes `runBoundedLoopA`, the same value the unrolled block denotes,
-constant emitted size).
+`ladderStep_kat` checks one differential-add-and-double step on one input;
+`ladder_loop_denote` states that `runBoundedLoopB s n ladderStepBlock` equals
+running the unrolled `n`-copy block.
 
-The all-inputs identities (`feMul` is `(x·y) mod p` for *all* limb vectors; the
-255-step ladder + inversion is RFC 7748 X25519) are the runtime KATs: the field
-ops against the hand-computed modular results, and the WHOLE X25519 against the
-RFC 7748 §5.2 `(k, u) → out` vectors, run under qemu-aarch64 — the load-bearing
-gate (this is a **correctness** result, not a cyc/op claim: no real silicon).
+No theorem here states a field op for all inputs (for example that `feMulBlock`
+computes `(x·y) mod p` for all limb vectors), nor the X25519 function. Checks of
+the emitted code against RFC 7748 are not part of this package.
 -/
 
 @[expose] public section
@@ -98,9 +92,10 @@ def buildPmax (r : String) : List BOp :=  -- 0xffffffffffffffff
 def buildPtop (r : String) : List BOp :=  -- 0x7fffffffffffffff
   [ .movz r 0xffff, .movk r 0xffff 1, .movk r 0xffff 2, .movk r 0x7fff 3 ]
 
-/-- Double constant-time conditional subtract of `p` on the four limbs
+/-- Double branch-free conditional subtract of `p` on the four limbs
     `r0..r3`, using scratch `n0..n3` (the subtracted limbs), `pp0..pp3` (the `p`
-    constant), and `cc`. After two passes the result is canonical in `[0, p)`.
+    constant), and `cc`. Two passes are intended to bring an input below `3p`
+    into `[0, p)`; that bound is not proved here.
     `CSEL .cs` selects the subtracted limbs iff there was no borrow (`C=1`, i.e.
     `r ≥ p`). -/
 def condSubP (r0 r1 r2 r3 : String) : List BOp :=
@@ -117,8 +112,8 @@ def condSubP (r0 r1 r2 r3 : String) : List BOp :=
   buildP0 "pp0" ++ buildPmax "pp1" ++ buildPmax "pp2" ++ buildPtop "pp3"
     ++ pass ++ pass
 
-/-- Fold a 5-limb intermediate `[a0,a1,a2,a3,a4]` to a canonical field element in
-    `r0..r3`, using `2²⁵⁶ ≡ 38`. Two carry-folds (`a4·38`, then the resulting
+/-- Fold a 5-limb intermediate `[a0,a1,a2,a3,a4]` to a field element in
+    `r0..r3` (intended canonical; not proved here), using `2²⁵⁶ ≡ 38`. Two carry-folds (`a4·38`, then the resulting
     carry`·38`) followed by the double conditional subtract. `c38` holds 38;
     `fl`/`fh` are the `MUL`/`UMULH` scratch for the fold product. The inputs
     `a0..a4` are register names. -/
@@ -242,16 +237,12 @@ work; the same proven reduce is preferred here for certain correctness.) -/
 def feSqrBlock : List BOp :=
   [ .mov "y0" "x0", .mov "y1" "x1", .mov "y2" "x2", .mov "y3" "x3" ] ++ feMulBlock
 
-/-! ## 6. cswap: constant-time conditional swap of two field elements
+/-! ## 6. cswap: branch-free conditional swap of two field elements
 
-`swap` is `0` or `0xff…ff` (a full mask). For each limb, `t := mask & (a ⊕ b)`,
-`a := a ⊕ t`, `b := b ⊕ t` — the standard branchless conditional swap, no `CSEL`
-and no PC divergence (the mask is a public ladder bit, CT-admissible). Implemented
-with the modelled ops: `EOR` is not in `BOp`, so we use the algebraic identity via
-`sub`-free masking — here we realise `a ⊕ t` and the masking with the bitwise ops
-the model carries (`add`/`sub` are not bitwise), so cswap uses `CSEL` directly:
-`CSEL a' = mask?b:a`, `CSEL b' = mask?a:b`. The select condition is the carry flag
-the caller sets from the ladder bit (`mask ≠ 0 ⇒ swap`). -/
+For each limb, `cswapBlock` saves `a` in a scratch register and selects with
+`CSEL`: `a' = C ? b : a`, `b' = C ? a : b`. The select condition is the carry flag
+`C`, which the caller sets from the swap bit. The block has no branch; no theorem
+here states a constant-time property. -/
 def cswapBlock : List BOp :=
   -- precondition: the carry flag C encodes the swap bit (set by the caller's
   -- `SUBS`/`CMP` on the ladder bit). `csel d x y .cs` = `C ? x : y`. We stash the
@@ -261,7 +252,7 @@ def cswapBlock : List BOp :=
   , .mov "s2" "a2", .csel "a2" "b2" "a2" .cs, .csel "b2" "s2" "b2" .cs
   , .mov "s3" "a3", .csel "a3" "b3" "a3" .cs, .csel "b3" "s3" "b3" .cs ]
 
-/-! ## 7. Lowering correctness (each field op instantiated on the keystone) -/
+/-! ## 7. Lowering correctness (`bignumBlock_lowering_denote` at each field op) -/
 
 theorem feAdd_lowering_correct (s : BState) :
     runBBlock s (lowerBBlock feAddBlock)
@@ -372,7 +363,7 @@ theorem feSqr_kat_full :
       = (limbsNat 0x0123456789abcdef 0xfedcba9876543210 0x1122334455667788 0x7654321001234567
           ^ 2) % p25519 := by native_decide
 
-/-! ### cswap KAT (the constant-time conditional swap)
+/-! ### cswap KAT (the branch-free conditional swap)
 
 `a = [1,2,3,4]`, `b = [5,6,7,8]`. With the carry flag set (`swap = 1`) the two
 elements exchange; with it clear they stay. -/
@@ -400,15 +391,14 @@ theorem cswap_kat_noswap :
       ∧ s.get "b0" = 5 ∧ s.get "b1" = 6 ∧ s.get "b2" = 7 ∧ s.get "b3" = 8) := by
   native_decide
 
-/-! ## 9. The 64-bit bounded counter loop (the ladder's loop backbone)
+/-! ## 9. The 64-bit bounded loop semantics
 
-`ArmModel.runBoundedLoopA` / `ArmControlFlow.loopABlock` give the **32-bit**
-(`AState`) bounded counter loop and its looped-emission denotation. The X25519
-Montgomery ladder runs on the **64-bit** (`BState`) field machine, so we give the
-64-bit analogue here: run the straight-line `body : List BInst` exactly `n` times
-(the body performs its own counter decrement, so the `CBNZ` back-edge tests the
-just-decremented counter), and prove it equals running the `n`-copy unrolled
-block. This is the 64-bit counterpart of `runBoundedLoopA_eq_runABlock_unroll`. -/
+`ArmModel.runBoundedLoopA` is the **32-bit** (`AState`) bounded loop semantics.
+The field machine is **64-bit** (`BState`), so this section gives the 64-bit
+analogue: run the straight-line `body : List BInst` exactly `n` times, and prove
+it equals running the `n`-copy unrolled block. This is the 64-bit counterpart of
+`runBoundedLoopA_eq_runABlock_unroll`; like it, it takes `n` as an argument and
+has no counter register or back-edge. -/
 
 /-- `runBoundedLoopB s n body`: the 64-bit bounded counter loop semantics — run the
     straight-line `body` exactly `n` times over the `BState` field machine. -/
@@ -436,10 +426,9 @@ def unrollBBounded (n : Nat) (body : List BInst) : List BInst :=
   | nil => rfl
   | cons i is ih => simp only [List.cons_append, runBBlock_cons, ih]
 
-/-- **The 64-bit bounded loop equals running the unrolled block.** The looped
-    emission (one body copy + `CBNZ` back-edge) denotes `runBoundedLoopB s n body`,
-    exactly the value the `n`-copy unrolled straight-line block computes — the
-    same denotation, constant emitted size. The 64-bit analogue of
+/-- **The 64-bit bounded loop equals running the unrolled block.**
+    `runBoundedLoopB s n body` equals running the `n`-copy unrolled straight-line
+    block on the `BState` model. The 64-bit analogue of
     `ArmModel.runBoundedLoopA_eq_runABlock_unroll`. -/
 theorem runBoundedLoopB_eq_runBBlock_unroll (s : BState) (n : Nat) (body : List BInst) :
     runBoundedLoopB s n body = runBBlock s (unrollBBounded n body) := by
@@ -537,33 +526,23 @@ theorem ladderStep_kat :
     (feAt s "x2" = 1 ∧ feAt s "z2" = 0
       ∧ feAt s "x3" = 324 ∧ feAt s "z3" = 36) := by native_decide
 
-/-! ## 12. Wrapping the ladder in the bounded counter loop
+/-! ## 12. Repeating the ladder step
 
-The whole X25519 ladder is 255 fixed iterations of `{ cswap(bit); ladderstep }`
-over the field machine — a bounded counter loop. We wrap the ladder-step body in
-`loopABlock`/`runBoundedLoopB`: the looped emission denotes `runBoundedLoopB s n
-ladderStepBlock`, the same value the `n`-copy unrolled block denotes, at constant
-emitted size (one body copy + the `CBNZ` back-edge). This is the loop-wrapping the
-255-bit ladder rides; the small-trip KAT below runs the *real* loop semantics over
-a few steps (the full 255-step run + the inversion is the qemu-aarch64 KAT, which
-runs the emitted `.s` on real AArch64 — far past `native_decide`'s reach). -/
+The X25519 ladder is 255 iterations of `{ cswap(bit); ladderstep }`. This section
+repeats `ladderStepBlock` alone with `runBoundedLoopB`: the repeated body has no
+`cswap` and reads no scalar bit, and no looped emission of it is built or given a
+semantics here. The theorems are about `runBoundedLoopB` on the model. -/
 
-/-- **The ladder loop denotes the same value looped or unrolled.** Running the
-    255-step (or any `n`-step) ladder as the looped emission equals running the
-    unrolled `n`-copy block — `runBoundedLoopB` is `runBBlock` on the unrolled
-    body. The looped emission is constant-size in the trip count (the size payoff
-    of `ArmControlFlow.loopABlock`), the unrolled one is `O(n)`. -/
+/-- `n` repetitions of `ladderStepBlock` under `runBoundedLoopB` equal running the
+    unrolled `n`-copy block (`runBoundedLoopB_eq_runBBlock_unroll` at this body). -/
 theorem ladder_loop_denote (n : Nat) (s : BState) :
     runBoundedLoopB s n ladderStepBlock
       = runBBlock s (unrollBBounded n ladderStepBlock) :=
   runBoundedLoopB_eq_runBBlock_unroll s n ladderStepBlock
 
-/-- **Small-trip ladder-loop KAT (real loop semantics).** A 2-step bounded loop of
-    the ladder body from `x1 = 9`, `(x2,z2) = (1,0)`, `(x3,z3) = (9,1)` runs the
-    differential-add-and-double twice (the second step doubles/adds from the first
-    step's output). This exercises the `runBoundedLoopB` loop backbone — the same
-    semantics the 255-step ladder rides — over the field machine. The 4-bit and
-    full 255-bit runs are the qemu-aarch64 KAT. -/
+/-- **Two-step KAT.** Two repetitions of the ladder body under `runBoundedLoopB`
+    from `x1 = 9`, `(x2,z2) = (1,0)`, `(x3,z3) = (9,1)` leave `(x2, z2) = (1, 0)`.
+    Only these two output limbs are checked. -/
 theorem ladder_loop2_runs :
     let s := runBoundedLoopB (mkLadder 9 1 0 9 1) 2 ladderStepBlock
     -- the loop runs (the second step consumes the first's x2'/z2'/x3'/z3' output);

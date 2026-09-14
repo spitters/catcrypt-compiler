@@ -15,7 +15,7 @@ public import Mathlib.Data.ZMod.Basic
 /-!
 # Lattice 4-way batched NTT — ML-KEM-768 and ML-DSA-65
 
-This module instantiates the **proven** lane-parallel-map heart
+This module instantiates the lane-parallel-map theorem
 (`LaneMap.laneMap_eq_scalarMap` / `LaneMap.vmap_eq_scalarMap`) at two lattice
 NTT rings:
 
@@ -31,37 +31,23 @@ of 4 lanes (32-bit per lane for ML-DSA; 16-bit per lane for ML-KEM, where
 8-way is also possible but 4-way matches the lane-map shape exposed by
 `LaneMap.lean`).
 
-## What the Lean theorems here do and do NOT establish (read this first)
+## What the Lean theorems here establish
 
-The lane-parallel-MAP heart `laneMap_eq_scalarMap` is parametric over (1) the
-per-lane function `f : α → β` and (2) the lane type `α`. It says that applying
-`f` independently to each of `L` lanes of a packed vector equals running `f`
-sequentially on each lane — structural (`funext + rfl`), no algebra needed.
+`laneMap_eq_scalarMap` is parametric over the per-lane function `f : α → β` and
+the lane type `α`: applying `f` to each of `L` lanes of a packed vector equals
+running `f` on each lane (`funext + rfl`).
 
-The two theorems below (`mlkem_ntt_4way_denotation_preserves`,
-`mldsa_ntt_4way_denotation_preserves`) instantiate that heart. They establish
-exactly **lane-independence of the 4-way batching**: the SIMD packing introduces
-no cross-lane interference, so the batched form denotes the same value as running
-the per-lane block sequentially. They are **parametric over the per-lane block**
-and prove nothing about the NTT itself.
+`mlkem_ntt_4way_lane_map` / `mldsa_ntt_4way_lane_map` state this at the two lane
+types for any block. `mlkem_ntt_4way_denotation_preserves` /
+`mldsa_ntt_4way_denotation_preserves` state it at `mlkemNttButterflySpec` /
+`mldsaNttButterflySpec`, which are defined as the identity function (`:= id`),
+not as the Cooley–Tukey stage `(a,b,ω) ↦ (a+ω·b, a−ω·b)` (`ctButterfly` in
+`Optimizer/Lattice/NTTButterflyPass.lean`). These theorems hold for any block and
+say nothing about the NTT or about the emitted text.
 
-In particular they do **NOT** establish that the per-lane block computes a genuine
-NTT butterfly. The block functions `mlkemNttButterflySpec` / `mldsaNttButterflySpec`
-in this file are **placeholder identities** (`:= id`), *not* the Cooley–Tukey stage
-`(a,b,ω) ↦ (a+ω·b, a−ω·b)` (which lives, proven, in
-`Optimizer/Lattice/NTTButterflyPass.lean` as `ctButterfly`, and is **not yet wired
-to this emit**). The NTT correctness of the emitted kernel — each lane computing a
-real butterfly stage, and the assembled lanes matching PQClean's 256-coefficient
-order — is carried by the **external byte-KAT**
-`bench/mlkem_compare/mlkem_ntt_full_bench.c` (which runs the emitted NTT against
-`PQCLEAN_MLKEM768_CLEAN_ntt` element-by-element), not by the Lean theorems here.
-
-So: the emit↔PQClean byte-identity is **KAT-gated (Tier-B)**; the Lean contribution
-is the batching's lane-independence, not the transform's correctness. Wiring
-`ctButterfly` (and the zetas + the lane↔coefficient layout map) into these theorems
-to make them a non-vacuous Lean NTT-denotation statement is open follow-up work.
-
-Axiom status of the lane-independence theorems: `[propext, Quot.sound]` only.
+No theorem in this module relates the rendered `.jazz` kernels to an NTT, to
+`ctButterfly`, or to `PQCLEAN_MLKEM768_CLEAN_ntt`. Value checks of the emitted
+kernels against PQClean are external to Lean and not part of this package.
 
 ## Emit (the .jazz driver shape)
 
@@ -74,17 +60,8 @@ AVX2 ops:
   `#VPMULLW` over `__m128i` holding 8 `u16` lanes, restricted to the lower 4
   for the 4-way shape.
 
-The emit functions are sibling-local helpers (NOT additions to
-`JasminAbiEmit.lean`); the proven denotation equality covers them by virtue
-of the per-lane block function applied lane-wise.
-
-## Bench / KAT
-
-`bench/mlkem_compare/gen/mlkem_ntt_4way.jazz` and
-`bench/mldsa_compare/gen/mldsa_ntt_4way.jazz` are the .jazz files this module
-prints; they are KAT-checked at the bench level against the PQClean reference
-(when installed; otherwise against `Mathlib.Polynomial` reduce-mod-q evaluation
-as the primary correctness oracle).
+The emit functions are local helpers (not additions to `JasminAbiEmit.lean`)
+that produce `.jazz` text; no theorem gives that text a semantics.
 -/
 
 @[expose] public section
@@ -97,8 +74,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 
 /-! ## 1. Ring abbreviations -/
 
-/-- The ML-KEM-768 coefficient ring `ℤ_{3329}` (12-bit prime, `q ≡ 1 mod 256`,
-    NTT-friendly per `MLKEM.ConcreteParams.q_ntt_friendly`). -/
+/-- The ML-KEM-768 coefficient ring `ℤ_{3329}` (12-bit prime, `q ≡ 1 mod 256`). -/
 abbrev Zq3329 := ZMod 3329
 
 /-- The ML-DSA-65 coefficient ring `ℤ_{8380417}` (23-bit prime, `q ≡ 1 mod 512`,
@@ -117,10 +93,9 @@ the 64 pairs the lane processes through one full sweep of one stage (128 pairs
 per stage / 4 lanes per batch / two values per pair = 64 lane-pairs per stage,
 times 4 lanes per batch = the 256 coefficients of the NTT).
 
-For the lane-map theorem we don't need the concrete butterfly content: the
-theorem holds for ANY per-lane block function `f : α → β`. We carry an abstract
-`block : LaneState → LaneState` in each ring and instantiate the lane-map
-keystone at it. -/
+The lane-map theorem holds for any per-lane block function `f : α → β`, so it
+uses no butterfly content: each ring carries an abstract
+`block : LaneState → LaneState` at which `laneMap_eq_scalarMap` is instantiated. -/
 
 /-- The per-lane state of one batch of the ML-KEM-768 4-way NTT: 64 ring
     elements (the 64 lane-pairs the lane will sweep). Same shape as
@@ -140,46 +115,38 @@ abbrev MldsaNttLane := Fin 64 → Zq8380417
 /-- The 4-way packed ML-DSA-65 NTT lane bundle. -/
 abbrev MldsaNtt4Way := Fin 4 → MldsaNttLane
 
-/-! ## 3. The per-lane block function — a PLACEHOLDER, not the genuine butterfly
+/-! ## 3. The per-lane block functions (identity)
 
-The lane-map denotation theorem is parametric over the per-lane block, so its
-proof is the same for any block. These two definitions are deliberately the
-**identity placeholder** (`:= id`) — they are *not* the Cooley–Tukey butterfly
-`ctButterfly` (`Optimizer/Lattice/NTTButterflyPass.lean`). Consequently the
-theorems instantiated at them say nothing about the NTT; they assert only the
-lane-independence of the batching (see the module header). The genuine per-lane
-butterfly + the lane↔coefficient layout are checked by the external byte-KAT
-`bench/mlkem_compare/mlkem_ntt_full_bench.c`, not here. Replacing these `id`s with
-`ctButterfly` (and proving the emit denotes it) is the open follow-up.
+The lane-map theorem is parametric over the per-lane block, so its proof is the
+same for any block. The two definitions below are the identity function
+(`:= id`), not the Cooley–Tukey butterfly `ctButterfly`
+(`Optimizer/Lattice/NTTButterflyPass.lean`), so the theorems instantiated at them
+say nothing about the NTT.
 
-**The genuine spec now exists** in `Optimizer/Lattice/MlkemNttLayout.lean`:
-`mlkemNttKernelSpec = nttIter 8 (17 : ZMod 3329)` (the iterative Cooley–Tukey
-transform, proved `= dft` via `bitrevPerm 8` from the `IterativeNttEqRec` keystones).
-Because the 4-way lanes hold ONE 256-poly with cross-lane mixing (not 4 independent
-lanes), the genuine statement is that *whole-transform* spec — it cannot be hosted by
-the per-lane `LaneMap` theorem here, so this file's lane-map stays lane-independence
-only, and the emit↔`mlkemNttKernelSpec` byte tie is the KAT-gated residual. -/
+A whole-transform specification exists in `Optimizer/Lattice/MlkemNttLayout.lean`:
+`mlkemNttKernelSpec = nttIter 8 (17 : ZMod 3329)`, proved equal to `dft` via
+`bitrevPerm 8`. The 4-way lanes hold one 256-coefficient polynomial with
+cross-lane mixing, so that specification is not an instance of the per-lane
+`LaneMap` theorem, and no theorem here relates the emitted kernel to it. -/
 
-/-- Placeholder per-lane block for ML-KEM-768 (`Zq3329` lane). **`:= id`, not the
-    real butterfly** — present only so the parametric lane-independence theorem can
-    be instantiated. NTT correctness is KAT-gated, not established by this. -/
+/-- Per-lane block for ML-KEM-768 (`Zq3329` lane), defined as `id` rather than the
+    butterfly. It exists so the parametric lane-map theorem can be instantiated;
+    it carries no NTT content. -/
 def mlkemNttButterflySpec : MlkemNttLane → MlkemNttLane := id
 
-/-- Placeholder per-lane block for ML-DSA-65 (`Zq8380417` lane). **`:= id`, not the
-    real butterfly** — see `mlkemNttButterflySpec`. -/
+/-- Per-lane block for ML-DSA-65 (`Zq8380417` lane), defined as `id` — see
+    `mlkemNttButterflySpec`. -/
 def mldsaNttButterflySpec : MldsaNttLane → MldsaNttLane := id
 
 /-! ## 4. The 4-way lane-map corollaries (statements + proofs)
 
-Both follow immediately from `LaneMap.laneMap_eq_scalarMap` at the respective
-lane ring; the proof is structural (`funext + rfl`) and introduces no new
-axioms beyond the lane-map keystone's `[propext, Quot.sound]`. -/
+Both are `LaneMap.laneMap_eq_scalarMap` at the respective lane type; the proof
+is structural (`funext + rfl`). -/
 
-/-- **ML-KEM-768 4-way lane-map equality** (corollary of
-    `LaneMap.laneMap_eq_scalarMap` at `α = β = MlkemNttLane`, `L = 4`).
-    Applying the scalar butterfly to each of the 4 lanes in parallel equals
-    running it sequentially on each lane. The bench emits the SIMD form; the
-    lane-map theorem says it denotes the same value as the scalar form. -/
+/-- **ML-KEM-768 4-way lane-map equality** (`LaneMap.laneMap_eq_scalarMap` at
+    `α = β = MlkemNttLane`, `L = 4`). For any `block`, `laneMap block` equals
+    applying `block` to each of the 4 lanes. The statement does not mention the
+    emitted SIMD text. -/
 theorem mlkem_ntt_4way_lane_map (block : MlkemNttLane → MlkemNttLane)
     (lanes : MlkemNtt4Way) :
     LaneMap.laneMap block lanes = (fun b => block (lanes b)) := by
@@ -195,28 +162,22 @@ theorem mldsa_ntt_4way_lane_map (block : MldsaNttLane → MldsaNttLane)
   funext i
   rfl
 
-/-! ## 5. The lane-independence theorems (NOT NTT-correctness)
+/-! ## 5. The lane-map theorems at the identity block
 
 These instantiate `mlkem_ntt_4way_lane_map` / `mldsa_ntt_4way_lane_map` at the
-placeholder block. They establish that the 4-way batching is lane-independent —
-the packed form denotes the same value as the per-lane block run sequentially —
-and **nothing about the NTT** (the block is `id`; see §3 and the module header).
-The emit↔PQClean NTT byte-identity is KAT-gated, not proved here. -/
+identity blocks of §3. Since the lane-map equality holds for every block, the
+instances carry no information about the NTT or the emitted kernels. -/
 
-/-- **Lane-independence of the ML-KEM-768 4-way batching** (NOT NTT correctness).
-    `LaneMap.laneMap mlkemNttButterflySpec lanes` equals the sequential per-lane
-    evaluation `fun b => mlkemNttButterflySpec (lanes b)`. Holds for any block;
-    here the block is the placeholder `id`, so this says the batching introduces
-    no cross-lane interference — it does *not* say the lane computes a butterfly.
-    Structural, `[propext, Quot.sound]` only. -/
+/-- `LaneMap.laneMap mlkemNttButterflySpec lanes` equals
+    `fun b => mlkemNttButterflySpec (lanes b)`; `mlkem_ntt_4way_lane_map` at the
+    identity block. It does not say that a lane computes a butterfly. -/
 theorem mlkem_ntt_4way_denotation_preserves (lanes : MlkemNtt4Way) :
     LaneMap.laneMap mlkemNttButterflySpec lanes =
       (fun b => mlkemNttButterflySpec (lanes b)) :=
   mlkem_ntt_4way_lane_map mlkemNttButterflySpec lanes
 
-/-- **Lane-independence of the ML-DSA-65 4-way batching** (NOT NTT correctness).
-    Same shape as the ML-KEM theorem; the lane ring is `Zq8380417`. The block is
-    the placeholder `id` — see `mlkem_ntt_4way_denotation_preserves`. -/
+/-- The ML-DSA-65 counterpart of `mlkem_ntt_4way_denotation_preserves`, over
+    `Zq8380417` lanes, at the identity block. -/
 theorem mldsa_ntt_4way_denotation_preserves (lanes : MldsaNtt4Way) :
     LaneMap.laneMap mldsaNttButterflySpec lanes =
       (fun b => mldsaNttButterflySpec (lanes b)) :=
@@ -225,9 +186,9 @@ theorem mldsa_ntt_4way_denotation_preserves (lanes : MldsaNtt4Way) :
 /-! ## 6. Emit functions (the .jazz drivers)
 
 These render a 4-way batched NTT stage as a sequence of packed AVX2 ops over
-`__m128i` lanes. The emit is sibling-local to this file and does NOT modify
-`JasminAbiEmit.lean`. The lane-map denotation theorem above covers the emit
-by virtue of the per-lane block function being applied lane-wise.
+`__m128i` lanes. The emit is local to this file and does not modify
+`JasminAbiEmit.lean`. The rendered text has no semantics in Lean, and the
+lane-map theorems above do not refer to it.
 
 ## ABI
 
@@ -341,15 +302,12 @@ expanded zeta table). Layout:
 * slots 127..130 — the `#VPSHUFB` controls (duph4, dupl4, duph2, dupl2).
 
 The `vfqmul` lane-wise Montgomery multiply
-`hi(x·zl) − hi(lo(x·zh)·q) = montgomery_reduce(x·z)` is byte-identical to
-PQClean's `fqmul`; the assembled transform is byte-identical to PQClean's
-`PQCLEAN_MLKEM768_CLEAN_ntt` on all inputs (validated at the bench level
-against the reference, all 256 coefficients, 64+ random inputs).
-
-The denotation theorem `mlkem_ntt_4way_lane_map` still covers the per-lane
-independence of the packed butterfly; the per-layer twiddle/Montgomery content
-is the concrete block whose KAT-equality with the scalar reference is checked
-at the bench (no fabricated vectors — the oracle is PQClean's own `ntt`). -/
+`hi(x·zl) − hi(lo(x·zh)·q)` is intended to compute `montgomery_reduce(x·z)` as
+PQClean's `fqmul` does, and the assembled transform to agree with
+`PQCLEAN_MLKEM768_CLEAN_ntt`. Neither is proved in Lean; agreement was checked
+outside Lean on sampled inputs (at least 64 random polynomials, all 256
+coefficients), which does not cover all inputs, and that harness is not part of
+this package. `mlkem_ntt_4way_lane_map` does not refer to this kernel. -/
 
 /-- The lane-wise Montgomery multiply helper (`vfqmul`): the packed analogue of
     PQClean's `fqmul`, in the **expanded-zeta** (3-multiply) form that matches
@@ -406,8 +364,7 @@ def renderBcastLayer (len gcount vcount stride zbase : Nat) : List String :=
           , "}}" ])
 
 /-- The complete ML-KEM-768 full-NTT body: `vfqmul` helper, the 4 vector-pair
-    layers (len 128,64,32,16), then the 3 within-vector layers (len 8,4,2). The
-    text is byte-identical to the bench-validated `gen/mlkem_ntt_full_16way.jazz`. -/
+    layers (len 128,64,32,16), then the 3 within-vector layers (len 8,4,2). -/
 def renderMlkemNttFull16wayBody : List String :=
   [ "  reg u256 vq a b t zl zh c d radd rsub bb alow;"
   , "  reg u256 duph4 dupl4 duph2 dupl2;"
@@ -495,9 +452,8 @@ def renderMlkemNttFull16wayBody : List String :=
 /-- Emit the full 16-lane AVX2 ML-KEM-768 forward NTT `.jazz` text. The
     `vfqmul` helper precedes the `export fn`. ABI: `reg mut ptr u16[256] r`
     (in-place polynomial), `reg const ptr u16[2112] aux` (q broadcast,
-    per-layer (zl,zh) expanded-zeta pairs, shuffle controls). Byte-identical to
-    the bench-validated prototype. Sibling-local; does NOT modify
-    `JasminAbiEmit.lean`. -/
+    per-layer (zl,zh) expanded-zeta pairs, shuffle controls). Local to this
+    file; does not modify `JasminAbiEmit.lean`. -/
 def emitMlkemNttFull16wayJazz (name : String) : String :=
   String.intercalate "\n" renderVfqmul ++ "\n\n"
     ++ "export fn " ++ name
@@ -518,17 +474,17 @@ The packed Montgomery multiply (`dmont`) mirrors the Dilithium AVX2 butterfly:
 `#VPMUL_4u64` (= `VPMULDQ`, signed 32×32→64 on even lanes) on the even and the
 `#VMOVSHDUP_256`-extracted odd lanes, with a **precomputed** `zh = (zeta·qinv)
 mod 2^32` so the Montgomery quotient is a single `VPMULDQ`. Result high-32
-words are recombined with `#VMOVSHDUP_256` + `#VPBLEND_8u32`. Validated
-byte-identical to `PQCLEAN_MLDSA65_CLEAN_montgomery_reduce` (300 trials) and the
-full transform byte-identical to `PQCLEAN_MLDSA65_CLEAN_ntt` (65 inputs).
+words are recombined with `#VMOVSHDUP_256` + `#VPBLEND_8u32`. Agreement with
+`PQCLEAN_MLDSA65_CLEAN_montgomery_reduce` (300 sampled inputs) and of the full
+transform with `PQCLEAN_MLDSA65_CLEAN_ntt` (65 sampled inputs) was checked
+outside Lean; it is not proved, and that harness is not part of this package.
 
 Layout: 256 `int32` as 32 vectors of 8 lanes. Layers `len ≥ 8` are vector-pair
 butterflies; `len = 4` is cross-128-bit (`#VPERMQ`); `len = 2, 1` are
 within-128-bit (`#VPSHUFD_256`). The `aux` buffer (2048 `u32` = 256 `u256`
 slots) holds `q` (slot 0), then `(zl, zh)` zeta-vector pairs for every group. -/
 
-/-- The full ML-DSA-65 NTT body — `dmont` helper then the 8 layers. Byte-
-    identical to the bench-validated `gen/mldsa_ntt_full_8way.jazz`. -/
+/-- The full ML-DSA-65 NTT body — `dmont` helper then the 8 layers. -/
 def renderMldsaNttFull8wayBody : List String :=
   [ "  reg u256 vq a b t c d radd rsub bb alow zl zh;"
   , "  inline int v vv;"
@@ -660,7 +616,7 @@ coefficients across two zeta-groups, using the **packed-dual-zeta** form
 (`zl0/zl1` even/odd via `vpsrlq $32`, `zh0/zh1` via `vmovshdup`).  That halves
 the deep `VPMULDQ` count to **288** (1056 → 768 total).  The price is that the
 output is left LANE-PERMUTED; restoring the standard (PQClean-clean) coefficient
-order our KAT requires costs a separate `nttunpack` (~64 shuffle ops over the
+order costs a separate `nttunpack` (~64 shuffle ops over the
 256 coefficients).
 
 `dmont2` is the dual-zeta butterfly multiply: even lanes use `(zl0, zh0)`, odd
@@ -697,9 +653,9 @@ def renderDmont2 : List String :=
     `zh`), so the single 6-mul Montgomery multiply twiddles BOTH sub-butterfly
     groups at once.  This is the packed-dual-zeta emit primitive #405 named
     (one 6-mul call, two zeta groups) — the same per-vector dual-zeta packing
-    the §6c `len = 2` layer already uses.  Bench-validated byte-identical to a
-    lane-by-lane scalar two-zeta butterfly reference
-    (`bench/mldsa_compare/ntt_dualzeta_kat.c`).
+    the §6c `len = 2` layer uses.  Agreement with a lane-by-lane scalar
+    two-zeta butterfly reference was checked outside Lean on sampled inputs; the
+    harness is not part of this package, and no theorem states it.
 
     ABI: `reg mut ptr u32[8] r` (one vector = 8 int32 lanes in place),
     `reg const ptr u32[40] aux` (q @ slot 0; `zl` @ slot 1, `zh` @ slot 2 —
@@ -722,9 +678,8 @@ def renderMldsaDualZetaButterflyBody : List String :=
 
 /-- Emit a standalone packed-dual-zeta butterfly `.jazz` (#420 primitive demo):
     `dmont` + a one-vector `len = 4` two-zeta butterfly export, where the zeta
-    vector carries one zeta per 128-bit half.  KAT'd against a scalar two-zeta
-    reference; this isolates and validates the dual-zeta multiply that the
-    deep-level restructure uses (one 6-mul call, two zeta groups). -/
+    vector carries one zeta per 128-bit half.  It isolates the dual-zeta
+    multiply used by the deep layers (one 6-mul call, two zeta groups). -/
 def emitMldsaDualZetaButterflyJazz (name : String) : String :=
   String.intercalate "\n" renderDmont ++ "\n\n"
     ++ "export fn " ++ name
@@ -746,10 +701,9 @@ runs layers `len = 1 … 128` with `(a, b) ↦ (a + b, z·(a − b))`
 `u256` slot `i / 8`, lane `i % 8`, in natural order — the forward leaf keeps the
 PQClean-standard coefficient order in memory (no `nttunpack` permute), so the
 inverse mirrors the SAME per-layer index/partner-alignment geometry, only
-reversing the layer order and swapping the butterfly to GS.  Output is
-byte-identical to `PQCLEAN_MLDSA65_CLEAN_invntt_tomont` (standard order,
-multiplied by the Montgomery factor `2³²`), the drop-in contract the emitted
-scalar `mldsa_invntt_tomont` already satisfies.
+reversing the layer order and swapping the butterfly to GS.  The intended
+output is that of `PQCLEAN_MLDSA65_CLEAN_invntt_tomont` (standard order,
+multiplied by the Montgomery factor `2³²`); this is not proved in Lean.
 
 The GS butterfly reuses the SAME `dmont` (signed 64-bit Montgomery multiply,
 6 `VPMULDQ`); the zeta tables hold `−zetas[k]` (the GS sign) in the consumption
@@ -759,8 +713,7 @@ the forward leaf, but recombine `sum = a + b` (kept) with `tw = z·(a − b)`
 (the GS twiddle), masked into the partner lanes. -/
 
 /-- The full ML-DSA-65 inverse NTT body — GS layers `len = 1 … 128` then the
-    `n⁻¹` scale.  Uses `dmont` (shared with the forward leaf).  Byte-identical
-    to the bench-validated `gen/mldsa_invntt_8way.jazz`. -/
+    `n⁻¹` scale.  Uses `dmont` (shared with the forward leaf). -/
 def renderMldsaInvNttFull8wayBody : List String :=
   [ "  reg u256 vq a b t c d sum diff bb alow zl zh fl fh;"
   , "  inline int v vv;"
@@ -979,7 +932,7 @@ def mldsaNtt4wayJazz : String := emitMldsaNtt4wayJazz "mldsa_ntt_4way"
 /- The ML-DSA emit renders 8 butterfly stages. -/
 #guard (strContains mldsaNtt4wayJazz "// stage 0") && (strContains mldsaNtt4wayJazz "// stage 7")
 
-/-- The bench-validated full ML-KEM-768 NTT export. -/
+/-- The full ML-KEM-768 NTT export text. -/
 def mlkemNttFull16wayJazz : String := emitMlkemNttFull16wayJazz "ntt_full_proto"
 
 /- The full-NTT export has the expected in-place ABI with the 1152-u16 aux
@@ -1005,7 +958,7 @@ def mlkemNttFull16wayJazz : String := emitMlkemNttFull16wayJazz "ntt_full_proto"
     && (strContains mlkemNttFull16wayJazz "#VPSHUFB_256(")
     && (strContains mlkemNttFull16wayJazz "#VPBLEND_8u32(")
 
-/-- The bench-validated full ML-DSA-65 NTT export. -/
+/-- The full ML-DSA-65 NTT export text. -/
 def mldsaNttFull8wayJazz : String := emitMldsaNttFull8wayJazz "dsa_ntt_proto"
 
 /- The ML-DSA full-NTT export has the expected in-place ABI (256 u32 in place,
@@ -1053,7 +1006,7 @@ theorem mldsa_dmont2_six_muls :
         acc + (if strContains l "#VPMUL_4u64(" then 1 else 0)) 0) = 6 := by
   native_decide
 
-/-- The bench-validated full ML-DSA-65 inverse NTT export (GS, #645-followon). -/
+/-- The full ML-DSA-65 inverse NTT export text (Gentleman–Sande). -/
 def mldsaInvNttFull8wayJazz : String := emitMldsaInvNttFull8wayJazz "dsa_invntt_proto"
 
 /- The ML-DSA inverse-NTT export has the expected in-place ABI (256 u32 in
@@ -1079,7 +1032,7 @@ def mldsaInvNttFull8wayJazz : String := emitMldsaInvNttFull8wayJazz "dsa_invntt_
 /- The inverse NTT carries the final `n⁻¹·mont²` scale (`f = 41978`). -/
 #guard (strContains mldsaInvNttFull8wayJazz "final scale")
 
-/-- The bench-validated 8-lane AVX2 pointwise-Montgomery basemul export. -/
+/-- The 8-lane AVX2 pointwise-Montgomery basemul export text. -/
 def mldsaPointwise8wayJazz : String := emitMldsaPointwise8wayJazz "dsa_pointwise_proto"
 
 /- The pointwise basemul export has the expected two-input in-place ABI. -/

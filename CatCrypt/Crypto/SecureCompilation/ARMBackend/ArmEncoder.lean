@@ -38,7 +38,7 @@ auditable field by field against the Arm Architecture Reference Manual (the C4.1
 *this encoder matches the ARM*, discharged two ways:
 
 * **structurally** — `encodeAInst` always emits a well-formed 4-byte word
-  (`encode_length` below), proved unconditionally for all inputs;
+  (`encodeAInst_length` below), proved for all inputs;
 * **round-trip** — `SailArmDecoder.lean` proves `decode (encode i) = i` against
   `decode64` field splits transcribed by hand from the public sail-arm sources
   (this repo does not vendor a sail-arm checkout, so the transcription is not

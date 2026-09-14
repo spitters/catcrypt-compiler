@@ -14,10 +14,8 @@ public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvAsmPrinter
 
 `RiscvLowering.lean` (#535) lowers a straight-line `ROp` block to the RV64 machine
 `RInst`s with `riscvBlock_lowering_denote`; `RiscvSha256Kernel.lean` rode that for
-the whole SHA-256 compression. Every RISC-V kernel so far is **straight-line /
-unrolled** — an `n`-iteration loop emits an `n`-copy `RInst` block, so the `.s`
-grows linearly in the trip count, and any iterative primitive (the X25519 ladder,
-multi-block hashing) had no looped emission.
+the SHA-256 compression. A straight-line lowering emits an `n`-iteration loop as
+an `n`-copy `RInst` block, so the `.s` grows linearly in the trip count.
 
 This module is the **RV64 analogue of the ARM owned-backend loop emission**
 (`ARMBackend/ArmControlFlow.lean`, #551) and the original x86 #538
@@ -45,22 +43,24 @@ using the hard-wired zero register `x0` as the comparand. B-type branches carry 
 scramble and `SailRiscvDecoder.roundtrip_bcc` round-trips it (the high-risk spot
 the gas byte-diff also catches).
 
-## The denotation theorem (the key correctness statement)
+## What is proved about the loop
 
-The looped emission and the unrolled emission denote the **same** machine
-transformer. We do not re-prove the loop denotation from scratch: the machine
-semantics of the looped form *is* `RiscvModel.runBoundedLoopR s n body` (the
-counter-decrement body run `n` times), and
-`RiscvModel.runBoundedLoopR_eq_runRBlock_unroll` already proves
-`runBoundedLoopR s n body = runRBlock s (unrollRBounded n body)`.
+`loopRBlock` returns rendered GAS lines (`List String`), and the `RInst` model
+has no semantics for labels or branches, so no theorem here states what the
+looped emission computes. The proved facts are:
 
-`loopRBlock_denote` packages this: the looped emission's body denotes exactly
-`runBoundedLoopR s n body` — the same value the unrolled straight-line block
-denotes. The two emissions differ only in **size** (looped: 1 body copy + 2
-control instrs; unrolled: `n` body copies), not in denotation. `NO compile-time
-unroll` is performed on the looped path.
+* `loopRBlock_length` / `unrollRGasLines_length` / `looped_shorter_than_unrolled`:
+  line counts of the two renderings;
+* `loopRBlock_denote`: the unrolled straight-line block
+  `unrollRBounded n body`, run on the `RState` model, equals
+  `RiscvModel.runBoundedLoopR s n body`, the body run `n` times
+  (`RiscvModel.runBoundedLoopR_eq_runRBlock_unroll`, restated).
 
-## What is lowered (and the honest residual)
+`runBoundedLoopR` takes the trip count `n` as an argument and does not read the
+counter register, so the correspondence between `n` iterations and the
+`BNE <ctr>` back-edge is an assumption about the emitted loop, not a theorem.
+
+## What is lowered
 
 * **Bounded for-loop (counter-decrement)** — `for k in 0..n { body }`, where the
   body decrements its own counter (`ADDIW ctr,ctr,-1` / `SUBW`) and the back-edge
@@ -71,19 +71,17 @@ unroll` is performed on the looped path.
   through the same `renderRBranch` arms (`RiscvAsmPrinter`).
 
 A **general data-dependent loop** (a runtime, non-counter guard) is *not* lowered
-here, exactly as on the x86/ARM side: the denotation backbone is the bounded
-counter loop whose trip count is the compile-time / loaded limb count; an
-unbounded loop needs a fixpoint denotation the framework's pure model does not
-carry. We lower the bounded-for layer and the B-type branch; the unbounded
-residual is reported, not claimed.
+here, as on the x86/ARM side: the loop semantics used is the bounded counter loop
+whose trip count is the compile-time / loaded limb count; an unbounded loop needs
+a fixpoint denotation the framework's pure model does not carry.
 
-## Constant-time note (ISA-agnostic CT discipline)
+## Constant-time note
 
-The loop counter and the back-edge condition are **public** (a block count / limb
-count / fixed ladder length), so `bne <ctr>, x0, .L<top>` is a public branch: the
-iteration count is already observable by construction. A *secret*-dependent loop
-bound or branch is forbidden in the constant-time subset. The bounded-for layer
-here is public-counter by construction, so it is CT-admissible.
+The loop counter and the back-edge condition are intended to be **public** (a
+block count / limb count / fixed ladder length), so `bne <ctr>, x0, .L<top>`
+branches on public data only. A *secret*-dependent loop bound or branch is outside
+the constant-time subset. No theorem in this module states a constant-time
+property.
 -/
 
 @[expose] public section
@@ -147,36 +145,32 @@ theorem looped_shorter_than_unrolled (alloc : GpAlloc) (top : RLabel) (ctr : Str
   have h4 : 4 * body.length ≤ n * body.length := Nat.mul_le_mul_right body.length hn
   omega
 
-/-! ## 3. Denotation preservation (the key correctness statement)
+/-! ## 3. The bounded-loop semantics and the unrolled block
 
-The machine semantics of the looped counter loop is `RiscvModel.runBoundedLoopR`
-(run the counter-decrement `body` `n` times). `runBoundedLoopR_eq_runRBlock_unroll`
-already proves the unrolled straight-line block computes that value; the looped
-block denotes the **same** value. We package the equivalence under the looped
-name, mirroring the ARM `loopABlock_denote` and the x86 `loopLcmd_denote`. -/
+`RiscvModel.runBoundedLoopR s n body` runs `body` `n` times on the `RState` model.
+`runBoundedLoopR_eq_runRBlock_unroll` proves that running the unrolled
+straight-line block `unrollRBounded n body` computes the same state. The looped
+rendering `loopRBlock` has no semantics in the model, so the statement below is
+about the unrolled block only. -/
 
-/-- **Looped lowering denotation = bounded-loop semantics.** The looped emission of
-    a bounded counter loop denotes `runBoundedLoopR s n body` — exactly the value
-    the unrolled straight-line block (`unrollRBounded`) denotes when run on the RV64
-    model. The looped and unrolled emissions therefore agree on denotation and
-    differ only in size (`loopRBlock_length` vs `unrollRGasLines_length`). This is
-    the denotation-preservation statement for the RV64 branch/loop lowering:
-    replacing the `n`-copy unrolled body by the single-copy looped body does not
-    change the machine transformer. NO compile-time unroll. -/
+/-- The unrolled straight-line block `unrollRBounded n body`, run on the `RState`
+    model, equals `runBoundedLoopR s n body` (the body run `n` times); the symmetric
+    form of `runBoundedLoopR_eq_runRBlock_unroll`. The looped emission
+    `loopRBlock` does not occur in the statement: it is a list of rendered lines,
+    and no theorem relates its execution to `runBoundedLoopR`. -/
 theorem loopRBlock_denote (n : Nat) (body : List RInst) (s : RState) :
     runRBlock s (unrollRBounded n body) = runBoundedLoopR s n body :=
   (runBoundedLoopR_eq_runRBlock_unroll s n body).symm
 
-/-- Looped vs unrolled denote the same transformer: both equal
-    `runBoundedLoopR s n body`. Makes the "same denotation, smaller code" claim a
-    single rewrite. -/
+/-- The same statement as `loopRBlock_denote`: the unrolled block run on the
+    model equals `runBoundedLoopR s n body`. -/
 theorem looped_eq_unrolled_denote (n : Nat) (body : List RInst) (s : RState) :
     runRBlock s (unrollRBounded n body) = runBoundedLoopR s n body :=
   loopRBlock_denote n body s
 
 /-! ## 4. A small counted-loop kernel through the owned branch path
 
-The smallest iterative kernel that exercises the looped emission end-to-end: a
+A small iterative kernel for the looped emission: a
 counted accumulate — `acc := 0 ; for k in 0..n { acc += step ; ctr -= 1 }`, i.e.
 `acc := n · step` computed by an `n`-iteration loop rather than `n` copies of the
 add. The body is the two-instruction `{ ADDW acc,acc,step ; SUBW ctr,ctr,one }`
@@ -191,11 +185,12 @@ We pin:
   linear (`#looped < #unrolled` for the real trip counts);
 * the rendered looped `.s` contains the loop label `.Lacc:`, the body's
   `addw`/`subw`, and the back-edge `bne … zero`;
-* the **machine semantics**: after `n` iterations the accumulator holds
-  `n · step` (the bounded-loop denotation on the concrete body).
+* on the model: `runBoundedLoopR` of the body, from `acc = 0`, `step = 7`,
+  `ctr = 5`, leaves `acc = 35` and `ctr = 0` after 5 iterations.
 
-The qemu-riscv64 byte KAT (the emitted looped `.s` run on real RV64, accumulating
-`n · step`) lives in `bench/riscv_compare/` (`acc-loop-rv64-kat`).
+The rendering checks are substring tests on the emitted lines; the value check
+is on `runBoundedLoopR`, not on the rendered loop. Execution of the emitted `.s`
+is not checked in this package.
 
 For the loop we model the counter decrement as `SUBW ctr,ctr,one` (`one` holds
 the constant `1`); the `RInst` model carries no flags, so the back-edge condition
@@ -239,9 +234,8 @@ example :
 
 We instantiate the bounded-loop denotation on `accBody` over a concrete state.
 Running `accBody` `n` times from `acc = 0` leaves `acc = n · step` (32-bit
-wrapping). The back-edge `BNE` and the label/jump machinery are correct by
-`loopRBlock_denote` (the looped emission denotes `runBoundedLoopR`); this pins the
-value the bounded loop computes. -/
+wrapping); the check below is at `n = 5`. It concerns `runBoundedLoopR`, not the
+rendered `BNE` loop, whose execution has no model here. -/
 
 /-- Initial state for the accumulate KAT: `acc = 0`, `step = 7`, `ctr = 5`,
     `one = 1`. -/
@@ -250,18 +244,15 @@ def accInit : RState :=
       | "acc" => 0 | "step" => 7 | "ctr" => 5 | "one" => 1 | _ => 0 }
 
 /-- **Counted-loop value KAT.** Running the accumulate body 5 times from `acc = 0`,
-    `step = 7` leaves `acc = 35` (= 5·7), through the bounded-loop semantics the
-    looped emission denotes (`loopRBlock_denote`). The counter `ctr` ends at 0
-    (5 decrements from 5), the condition the `BNE` back-edge falls through on. -/
+    `step = 7` leaves `acc = 35` (= 5·7) under `runBoundedLoopR`. The counter
+    `ctr` ends at 0 (5 decrements from 5). -/
 theorem acc_loop_kat :
     (runBoundedLoopR accInit 5 accBody).get "acc" = 35
       ∧ (runBoundedLoopR accInit 5 accBody).get "ctr" = 0 := by
   native_decide
 
-/-- **The looped emission denotes the same value as the unrolled one** on the
-    accumulate kernel: running the unrolled 5-copy block equals `runBoundedLoopR
-    accInit 5 accBody`, which the value KAT pins to `acc = 35`. The single rewrite
-    that turns "smaller code" into "same result". -/
+/-- On the accumulate kernel, running the unrolled 5-copy block equals
+    `runBoundedLoopR accInit 5 accBody` (`loopRBlock_denote` at `n = 5`). -/
 theorem acc_loop_looped_eq_unrolled :
     runRBlock accInit (unrollRBounded 5 accBody) = runBoundedLoopR accInit 5 accBody :=
   loopRBlock_denote 5 accBody accInit

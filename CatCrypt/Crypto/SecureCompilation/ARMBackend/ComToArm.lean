@@ -27,12 +27,13 @@ RegProg ──armTarget.compile──▶ List BOp ──lowerBBlock──▶ Lis
    └──────────── regToBOp_denote = ScalarTarget.compile_denote ───────────┘
 ```
 
-The `BOp → BInst → bytes` back half is proved (`bignumBlock_lowering_denote`,
-`encodeBInst_length`, the `SailArmDecoder` `decode(encode)=i` round-trip) and
-externally differentially validated (`bench/arm_compare/decoder_diff`: 704/704
-encode/decode vs GNU `as`/objdump + LLVM, 237/237 execute vs real AArch64 under
-qemu). The remaining verified piece is the `Com`-tree flattening
-`Com jasminDialect → RegProg` feeding this waist (the de-Bruijn front).
+For the `BOp → BInst → bytes` back half, `bignumBlock_lowering_denote` proves
+the `BOp → BInst` lowering against the `BState` model, `encodeBInst_length`
+gives the 4-byte width of each encoded instruction, and the `SailArmDecoder`
+round-trips (`roundtrip_binst_*`) prove `decode (encode i) = i` per instruction
+form. No theorem in this module states what the byte stream computes when
+executed. The `Com`-tree flattening `Com jasminDialect → RegProg` that feeds this
+waist is in the de-Bruijn front.
 -/
 
 @[expose] public section
@@ -207,7 +208,7 @@ theorem regToBOp_denote (p : RegProg) (s : BState) :
   rw [bignumBlock_lowering_denote]
   exact armTarget.compile_denote p s
 
-/-! ## 4. End-to-end: bytes that compute the denotation -/
+/-! ## 4. The byte stream: length of the encoding -/
 
 /-- The compiled byte stream is `4 · |regToBOp p|` bytes (fixed-width A64). -/
 theorem compiled_length (alloc : GpAlloc) (p : RegProg) :
@@ -225,10 +226,12 @@ theorem compiled_length (alloc : GpAlloc) (p : RegProg) :
 def regProgToArmBytes (alloc : GpAlloc) (p : RegProg) : List (BitVec 8) :=
   ArmEncoder.encodeBBlock alloc (lowerBBlock (regToBOp p))
 
-/-- **End-to-end compiler correctness** (the content the `Jasmin/ISA.lean`
-    `aarch64Compile`/`aarch64CompilerCorrect` axioms assert, now a theorem modulo
-    the legacy `JasminProg → RegProg` adapter): the emitted machine block computes
-    the source denotation, and the byte stream is its `4·|·|` fixed-width encoding. -/
+/-- Two facts about a compiled `RegProg`: running the lowered `BInst` block on the
+    `BState` model computes the source denotation `armTarget.denote p s`, and the
+    byte stream `regProgToArmBytes alloc p` has length `4 · |regToBOp p|`. The
+    statement does not relate the bytes to the semantics: no execution model for
+    the byte stream appears in it, and the per-instruction decoder round-trips
+    (`SailArmDecoder.roundtrip_binst_*`) are separate theorems. -/
 theorem regProgToArmBytes_spec (alloc : GpAlloc) (p : RegProg) (s : BState) :
     runBBlock s (lowerBBlock (regToBOp p)) = armTarget.denote p s
     ∧ (regProgToArmBytes alloc p).length = 4 * (regToBOp p).length :=
