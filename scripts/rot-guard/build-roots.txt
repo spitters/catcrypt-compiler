@@ -89,6 +89,7 @@ CatCrypt.Crypto.Jasmin.LeafOps
 CatCrypt.Crypto.Jasmin.LowCTBorrowCheckInPlace
 CatCrypt.Crypto.Jasmin.LowCTBorrowCheckSig
 CatCrypt.Crypto.Jasmin.LowCTReflectComputable
+CatCrypt.Crypto.Jasmin.LowCTToJasminImplOk
 CatCrypt.Crypto.Jasmin.MVCGenSmoke
 CatCrypt.Crypto.Jasmin.MarlinKZGProverReflect
 CatCrypt.Crypto.Jasmin.MemAbiReflect
@@ -223,7 +224,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.GradedMvcgenProbe
 CatCrypt.Crypto.SecureCompilation.Ascent.GradedWP
 CatCrypt.Crypto.SecureCompilation.Ascent.InvariantSchemas
 CatCrypt.Crypto.SecureCompilation.Ascent.JStateSepLogic
-CatCrypt.Crypto.SecureCompilation.Ascent.JasminComRunBlockRealloc
+CatCrypt.Crypto.SecureCompilation.Ascent.JasminMirrorTie
 CatCrypt.Crypto.SecureCompilation.Ascent.LoopSourceLeaf
 CatCrypt.Crypto.SecureCompilation.Ascent.LoopSourceTower
 CatCrypt.Crypto.SecureCompilation.Ascent.MlkemPolyFoldCorres
@@ -506,7 +507,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.EcPairingCheckSound
 CatCrypt.Crypto.SecureCompilation.VIR.EdPointOnCurve
 CatCrypt.Crypto.SecureCompilation.VIR.EndToEndTransport
 CatCrypt.Crypto.SecureCompilation.VIR.ExampleTest
-CatCrypt.Crypto.SecureCompilation.VIR.ExecCompleteness
 CatCrypt.Crypto.SecureCompilation.VIR.ExtCallVeirSmoke
 CatCrypt.Crypto.SecureCompilation.VIR.FaestByteCombineVsimdCovered
 CatCrypt.Crypto.SecureCompilation.VIR.FibProverSkeleton
