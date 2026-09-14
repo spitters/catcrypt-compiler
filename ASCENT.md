@@ -309,20 +309,64 @@ have no instance in the package. The emit fragment `IsCoveredSCtl` has no `RWhil
 arm, so `corres_while`, `corresU_while` and the exit rules have no weld to a
 `Com jasminDialect` program.
 
-### The total abstraction assigns an unsatisfiable guard to most constructors
+### The total abstraction assigns an unsatisfiable guard to 14 constructors
 
-`ascendG` (`Guards.lean`) maps 17 of the 27 `LowCT` constructors to `unsupportedAbs`,
-whose guard `Guard.unsupported` means `False`: `RLetZero`, `RCall`, `RCallSwap`,
-`RCloneCall`, `RCallN`, `RSelect`, `RLimbStore`, `RLimbStoreExpr`, `RFnDef`, `RFnCall`,
-`RTupleLoad`, `RArrStore`, `RArrLoad`, `RArrStoreLit`, `RArrLoadLit`,
-`RCallDstThreaded` and `RForRuntime`. Twelve of these are in the emit leg's fragment
-`IsCoveredS`. `ascendG` does the same for `RLetU64Zero` over a body containing a loop,
-for `RIfNz` and `RWhileNz` on a temporary name, for `RIfNz` shapes other than a guarded
-then-branch or a φ-merge of two literal writes to one name, and for `RScalarSetExpr`
-outside `srcClean`. `ascendG_sound` holds for every command, but at those nodes its
-precondition `guardsHold` is unsatisfiable; `tsLowCT` returns `none` for them
-(`tsLowCT_isSome_iff`). The leaves `corres_arrStore`, `corres_arrLoad` and
-`corres_ctSelect` are not used by `ascendG`.
+The total abstraction `ascendGL L` (`Guards.lean`) is indexed by an array layout
+`L : ArrLayout`, the `.memref` slots of the concrete store with their lengths, and is
+sound over `SRwordL L` (`ascendGL_sound`): unreserved non-temp names hold `u64` words,
+and element `j` of a layout array `arr` is encoded at the abstract name
+`elemKey arr j`. `ascendG` is `ascendGL []`, and `SRwordL []` is `SRwordNT`
+(`srwordL_nil_iff`), so `ascendG_sound` is the empty-layout instance. `tsLowCTL L`
+(`Strengthen.lean`) is the type-strengthening pass over a layout, with `tsLowCTL_sound`
+and `tsLowCTL_isSome_iff`; `tsLowCT` is `tsLowCTL []`.
+
+Over a layout that contains the array, three array constructors carry no guard; their
+side conditions are static and decided by the abstraction:
+
+| constructor | leaf | static condition | abstract step |
+|---|---|---|---|
+| `RArrLoad dst src i` | `corresL_arrLoad` | `src` has length `m + 1` in `L`; `dst` typed `TU64` and unreserved; `i` non-temp and unreserved | `dst := A[i mod (m + 1)]` |
+| `RArrStore arr i src` | `corresL_arrStore` | `arr` has length `m + 1` in `L` and `encodeTy` gives `.memref (m + 1)`; `i` and `src` non-temp and unreserved | `A[i mod (m + 1)] := src` |
+| `RLimbStore loc idx v` | `corresL_limbStore` | `loc` has length `n` in `L` and `idx < n` | `A[idx] := v` |
+
+The index is reduced modulo the length because `semScalar` reads and writes through
+`memGetDyn` and `memSetDyn`, which do; an out-of-bounds index is not a guard. Over the
+empty layout these constructors stay unsupported, since `SRwordNT` requires every
+non-temp name to hold a word. The value leaves over a layout (`corresL_setScalar`,
+`corresL_setExprVal`, `corresL_if`) additionally require the written and read word
+names to be unreserved by the layout; `ascendGL` returns the unsupported guard when one
+is reserved. The worked instance is `arrSelK`: two array reads, the mask select
+`r := y ^^^ ((x ^^^ y) &&& m)` and an array write over `[("A", 4)]`.
+`arrSelK_ascendGL_prog` states its abstract program, `arrSelK_guardsHold` that its one
+guard holds on every store, `arrSelK_corres` the correspondence, `arrSelK_srwordL` a
+store and abstract store related by `SRwordL [("A", 4)]`, and `arrSelK_tsLowCTL` that
+the pass returns the pure program.
+
+The remaining 14 constructors map to `unsupportedAbs`, whose guard means `False`, and
+the obstruction is in the waist semantics `semScalar`, not in a missing leaf:
+
+* `RLetZero`, `RLimbStoreExpr`, `RFnDef`, `RFnCall` and `RForRuntime` have no arm in
+  `semScalar`, which returns `none`; `CorresU` requires a successor state, so no
+  satisfiable precondition exists at this waist.
+* `RCall`, `RCallSwap`, `RCloneCall`, `RCallN`, `RCallDstThreaded`, `RSelect`,
+  `RTupleLoad`, `RArrLoadLit` and `RArrStoreLit` bind their destinations to
+  `CryptoTy.default`, the opaque `extCall` waist, independent of the arguments. An arm
+  would abstract a leaf call, a select or a literal-index array access to a zero write.
+  `LowCT.LeafSpec` gives these nodes their meaning in `RustExec`, and
+  `CompileFromHaxLink.LeafSpec` relates `jasminExtSem` to a specification, but neither
+  enters `semScalar`; a leaf specification at this waist needs `semScalar` arms that
+  read the arguments. `corres_ctSelect` abstracts the `RScalarSetExpr` xor/and chain,
+  which `ascendG` covers (`ctSelectChain_ascendG_prog`), not the `RSelect` node.
+
+Nine of these 14 are in the emit leg's fragment `IsCoveredS`. `ascendGL` also returns
+the unsupported guard for `RLetU64Zero` over a body containing a loop, for `RIfNz` and
+`RWhileNz` on a temporary name, for `RIfNz` shapes other than a guarded then-branch or a
+φ-merge of two literal writes to one name, for `RScalarSetExpr` outside `srcClean`, and
+for word names the layout reserves. `ascendGL_sound` holds for every command, but at
+those nodes its precondition `guardsHold` is unsatisfiable; `tsLowCTL` returns `none`
+for them (`tsLowCTL_isSome_iff`). The three-name leaves `corres_arrStore` and
+`corres_arrLoad` over `SRarr` and `SRarrLoad` are not used by `ascendGL`, whose relation
+ties the whole store.
 
 ### Worked examples with symbolic inputs
 

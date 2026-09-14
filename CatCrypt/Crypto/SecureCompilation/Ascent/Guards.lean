@@ -6,18 +6,32 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.Ascent.AscendDecide
+public import CatCrypt.Crypto.SecureCompilation.Ascent.ArrStoreLeaf
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Phases
 public import CatCrypt.Crypto.SecureCompilation.Ascent.WhileTop
 
 /-!
 # Total abstraction with guards
 
-`ascendG fuel c` abstracts every `LowCT` command `c` to a pure word transformer over
+`ascendGL L fuel c` abstracts every `LowCT` command `c` to a pure word transformer over
 `AField = String → ZMod 2^64` together with a list of `Guard`s: the side conditions
 the abstraction does not discharge on its own. The abstraction is total — every
-constructor produces a transformer and a guard list — and `ascendG_sound` states
+constructor produces a transformer and a guard list — and `ascendGL_sound` states
 that under the guards the transformer is a `CorresU` correspondent of `c` at the
-unified waist `semU fuel`, over the non-temp word relation `SRwordNT`.
+unified waist `semU fuel`, over the layout relation `SRwordL L`.
+
+## Array layouts
+
+An array layout `L : ArrLayout` lists the `.memref` slots of the concrete store with
+their lengths. `SRwordL L` relates a store to an abstract word store: every non-temp
+name the layout does not reserve holds a `u64` word encoded at that name, and element
+`j` of a layout array `arr` is encoded at the name `elemKey arr j`. A layout reserves
+its array names and, when it is not empty, every name beginning with the character
+`\x01`, which every element name does (`arrKeyB`). Over the empty layout the relation
+is `SRwordNT` (`srwordL_nil_iff`), and `ascendG` is `ascendGL []`: `ascendG_sound`
+is the instance of `ascendGL_sound` at the empty layout.
+
+## Guards
 
 The guards are of five kinds:
 
@@ -37,11 +51,21 @@ The guards are of five kinds:
   sequence, the body of a conditional, the trips of a counted loop, the trips of a
   while loop).
 
-The value abstraction is the one of `ExprLeaf`: `RScalarSet` and arithmetic
-`RScalarSetExpr` terminals go through `corres_setScalar_NT` and `corres_setExpr`
-with no guard; the counted loop goes through the trip-indexed rule
-`corresU_for_trips`, the guarded conditional through `corresU_cond`, the φ-merge
-conditional through `corres_if_NT`, and the while loop through `corresU_whileNz`.
+The static side conditions of a node — a written or read word name not reserved by
+the layout, an array name with its length in the layout, the tower type of an array
+slot — are decided by the abstraction itself, which returns the `unsupported` guard
+when one fails.
+
+## Value leaves
+
+`RScalarSet` and arithmetic `RScalarSetExpr` terminals go through `corresL_setScalar`
+and `corresL_setExprVal` with no guard; the counted loop goes through the trip-indexed
+rule `corresU_for_trips`, the guarded conditional through `corresU_cond`, the φ-merge
+conditional through `corresL_if`, and the while loop through `corresU_whileNz`. The
+dynamic-index array read and write `RArrLoad` / `RArrStore` go through
+`corresL_arrLoad` / `corresL_arrStore`, which read and write the element at the index
+modulo the array length, as `memGetDyn` / `memSetDyn` do; the literal limb store
+`RLimbStore` goes through `corresL_limbStore`. These three nodes carry no store guard.
 
 On the decidable straight-line fragments (`isAscendableB`, `isAscendableExprB`)
 `ascendG` emits no guard and its transformer is `asemW` / `asemWExpr`
@@ -51,9 +75,13 @@ On the decidable straight-line fragments (`isAscendableB`, `isAscendableExprB`)
 ## Main definitions
 
 * `Guard`, `Guard.holds`, `guardsHold` — the guard language and its meaning on a store
-* `ascendG` — the total abstraction
-* `ascendG_sound` — soundness at the unified waist
-* `ascendG_sound_scalar` — the same over `Corres` on loop-free commands
+* `ArrLayout`, `elemKey`, `arrKeyB`, `SRwordL` — array layouts and the layout relation
+* `ascendGL`, `ascendG` — the total abstraction, and its instance at the empty layout
+* `ascendGL_sound`, `ascendG_sound` — soundness at the unified waist
+* `ascendGL_sound_scalar`, `ascendG_sound_scalar` — the same over `Corres` on
+  loop-free commands
+* `arrSelK` — a kernel with two array reads, a mask select and an array write, closed
+  through `ascendGL_sound_scalar`
 -/
 
 @[expose] public section
@@ -66,6 +94,7 @@ open CatCrypt.Crypto.Jasmin.LowCT
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
 open CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
 open CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
+open CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect (memGetDyn memSetDyn)
 
 /-! ## Store combinators -/
 
@@ -329,6 +358,8 @@ theorem semU_eq_semScalar_of_loopFree (fuel : Nat) :
 
 /-! ## Structural rules at the unified waist -/
 
+section Structural
+
 variable {AState : Type} (SR : SEnvScalar → AState → Prop)
 
 theorem corresU_weaken {fuel : Nat} {P P' : AState → Prop} {fa : AState → AState}
@@ -440,73 +471,234 @@ theorem corresU_for_trips {fuel : Nat} {Q : AState → Prop} {fb : AState → AS
       show semRForD (fun e => semU fuel body e) x (n + 1) env = some env'
       simp only [semRForD, hPre', hstep]
 
-/-! ## Leaves over `SRwordNT` -/
+end Structural
 
-/-- The counter set `x := n` preserves `SRwordNT` against `setLit x n`. -/
-theorem srwordNT_upd_lit {env : SEnvScalar} {a : AField} (x : String) (n : Nat)
-    (hSR : SRwordNT env a) :
-    SRwordNT (env.upd x (t := .sword 64) (BitVec.ofNat 64 n)) (setLit x n a) := by
-  obtain ⟨env', hstep, hSR'⟩ := corres_setScalar_NT x n env a hSR trivial
-  have h : env.upd x (t := .sword 64) (BitVec.ofNat 64 n) = env' := Option.some.inj hstep
-  rw [h]; exact hSR'
+/-! ## Array layouts and the layout relation -/
 
-/-- Under `SRwordNT`, the concrete guard `guardNz name` on a non-temp name is the
-    abstract `nzB name`. -/
-theorem guardNz_srwordNT {env : SEnvScalar} {a : AField} {name : String}
-    (hname : ¬ isTmpName name) (hSR : SRwordNT env a) :
+/-- An array layout: the names of the `.memref` slots of the concrete store, with their
+    lengths. -/
+abbrev ArrLayout := List (String × Nat)
+
+/-- The abstract-store name of element `j` of the array `arr`: `j + 1` copies of the
+    character `\x01`, the character `\x00`, then the array name. -/
+def elemKey (arr : String) (j : Nat) : String :=
+  String.ofList (List.replicate (j + 1) '\x01' ++ '\x00' :: arr.toList)
+
+theorem replicate_sep_inj {c d : Char} (hcd : c ≠ d) :
+    ∀ (j k : Nat) (l l' : List Char),
+      List.replicate j c ++ d :: l = List.replicate k c ++ d :: l' → j = k ∧ l = l'
+  | 0, 0, l, l', h => by simpa using h
+  | 0, k + 1, l, l', h => by simp [List.replicate_succ] at h; exact absurd h.1.symm hcd
+  | j + 1, 0, l, l', h => by simp [List.replicate_succ] at h; exact absurd h.1 hcd
+  | j + 1, k + 1, l, l', h => by
+      simp only [List.replicate_succ, List.cons_append, List.cons.injEq, true_and] at h
+      obtain ⟨hj, hl⟩ := replicate_sep_inj hcd j k l l' h
+      exact ⟨by omega, hl⟩
+
+/-- Element names are injective in the array name and the index. -/
+theorem elemKey_inj {a b : String} {j k : Nat} (h : elemKey a j = elemKey b k) :
+    a = b ∧ j = k := by
+  have h' := congrArg String.toList h
+  simp only [elemKey, String.toList_ofList] at h'
+  obtain ⟨hj, hl⟩ := replicate_sep_inj (by decide) _ _ _ _ h'
+  exact ⟨String.toList_inj.mp hl, by omega⟩
+
+theorem elemKey_head (arr : String) (j : Nat) : (elemKey arr j).toList.head? = some '\x01' := by
+  simp [elemKey, List.replicate_succ]
+
+/-- The name is reserved by the layout: an array name, or, when the layout is not empty,
+    a name beginning with `\x01`, as every element name does. -/
+def arrKeyB (L : ArrLayout) (x : String) : Bool :=
+  (L.map Prod.fst).contains x || (!L.isEmpty && x.toList.head? == some '\x01')
+
+theorem arrKeyB_name {L : ArrLayout} {p : String × Nat} (hp : p ∈ L) : arrKeyB L p.1 = true := by
+  simp only [arrKeyB, Bool.or_eq_true, List.contains_iff_mem, List.mem_map]
+  exact Or.inl ⟨p, hp, rfl⟩
+
+theorem arrKeyB_elemKey {L : ArrLayout} {p : String × Nat} (hp : p ∈ L) (s : String) (j : Nat) :
+    arrKeyB L (elemKey s j) = true := by
+  have hne : L.isEmpty = false := by
+    cases L with
+    | nil => exact absurd hp List.not_mem_nil
+    | cons _ _ => rfl
+  simp [arrKeyB, hne, elemKey_head]
+
+theorem ne_of_arrKeyB {L : ArrLayout} {x y : String} (hx : arrKeyB L x = false)
+    (hy : arrKeyB L y = true) : x ≠ y := by
+  rintro rfl; rw [hx] at hy; exact Bool.false_ne_true hy
+
+/-- The length the layout gives a name, reading the first entry for it. -/
+def layoutSize : ArrLayout → String → Option Nat
+  | [], _ => none
+  | p :: L, s => if p.1 = s then some p.2 else layoutSize L s
+
+theorem layoutSize_mem : ∀ {L : ArrLayout} {s : String} {n : Nat},
+    layoutSize L s = some n → (s, n) ∈ L
+  | [], _, _, h => by simp [layoutSize] at h
+  | p :: L, s, n, h => by
+      simp only [layoutSize] at h
+      split at h
+      · rename_i hp
+        obtain rfl := Option.some.inj h
+        exact List.mem_cons.mpr (Or.inl (by rw [← hp]))
+      · exact List.mem_cons_of_mem _ (layoutSize_mem h)
+
+/-- The state relation over a layout: every non-temp name the layout does not reserve
+    holds a `.sword 64` whose `wEnc` encoding is the abstract value, and every layout
+    entry `(arr, n)` is a non-temp name holding a `.memref n` whose element `j` is
+    encoded at `elemKey arr j`. -/
+def SRwordL (L : ArrLayout) (env : SEnvScalar) (a : AField) : Prop :=
+  (∀ x, ¬ isTmpName x → arrKeyB L x = false →
+      ∃ w : BitVec 64, env x = some ⟨.sword 64, w⟩ ∧ wEnc w = a x) ∧
+  (∀ p ∈ L, ¬ isTmpName p.1 ∧ ∃ av : Fin p.2 → BitVec 64,
+      env p.1 = some ⟨.memref p.2, av⟩ ∧ ∀ j : Fin p.2, wEnc (av j) = a (elemKey p.1 j))
+
+/-- Over the empty layout the relation is `SRwordNT`. -/
+theorem srwordL_nil_iff {env : SEnvScalar} {a : AField} : SRwordL [] env a ↔ SRwordNT env a :=
+  ⟨fun h x hx => h.1 x hx rfl,
+    fun h => ⟨fun x hx _ => h x hx, fun _ hp => absurd hp List.not_mem_nil⟩⟩
+
+/-- A word write at an unreserved name that leaves every other non-temp name unchanged
+    preserves the relation against `setVal`. -/
+theorem srwordL_set {L : ArrLayout} {env env' : SEnvScalar} {a : AField} (x : String)
+    (v : BitVec 64) (z : ZMod (2 ^ 64)) (hx : arrKeyB L x = false) (hz : wEnc v = z)
+    (hSR : SRwordL L env a) (hxv : env' x = some ⟨.sword 64, v⟩)
+    (hframe : ∀ y, ¬ isTmpName y → y ≠ x → env' y = env y) :
+    SRwordL L env' (setVal x z a) := by
+  refine ⟨fun y hy hyk => ?_, fun p hp => ?_⟩
+  · by_cases hyx : y = x
+    · subst hyx; exact ⟨v, hxv, by simp [setVal, hz]⟩
+    · obtain ⟨w, hw, hwe⟩ := hSR.1 y hy hyk
+      exact ⟨w, by rw [hframe y hy hyx, hw], by simp [setVal, hyx, hwe]⟩
+  · obtain ⟨hnt, av, hav, havE⟩ := hSR.2 p hp
+    have hpx : p.1 ≠ x := (ne_of_arrKeyB hx (arrKeyB_name hp)).symm
+    refine ⟨hnt, av, by rw [hframe _ hnt hpx, hav], fun j => ?_⟩
+    have hkx : elemKey p.1 j ≠ x := (ne_of_arrKeyB hx (arrKeyB_elemKey hp _ _)).symm
+    simp [setVal, hkx, havE j]
+
+/-- A write of element `k < n` of the layout array `s` preserves the relation against
+    `setVal` at `elemKey s k`. -/
+theorem srwordL_arrWrite {L : ArrLayout} {env env' : SEnvScalar} {a : AField} (s : String)
+    (n k : Nat) (av av' : Fin n → BitVec 64) (v : BitVec 64) (z : ZMod (2 ^ 64))
+    (hz : wEnc v = z) (hSR : SRwordL L env a) (hmem : (s, n) ∈ L)
+    (hs : env s = some ⟨.memref n, av⟩)
+    (hav' : ∀ j : Fin n, av' j = if j.val = k then v else av j)
+    (henv' : ∀ y, env' y = if y = s then some ⟨.memref n, av'⟩ else env y) :
+    SRwordL L env' (setVal (elemKey s k) z a) := by
+  refine ⟨fun y hy hyk => ?_, fun p hp => ?_⟩
+  · have hys : y ≠ s := ne_of_arrKeyB hyk (arrKeyB_name hmem)
+    have hyk' : y ≠ elemKey s k := ne_of_arrKeyB hyk (arrKeyB_elemKey hmem _ _)
+    obtain ⟨w, hw, hwe⟩ := hSR.1 y hy hyk
+    exact ⟨w, by rw [henv', if_neg hys, hw], by simp [setVal, hyk', hwe]⟩
+  · obtain ⟨hnt, bv, hbv, hbvE⟩ := hSR.2 p hp
+    refine ⟨hnt, ?_⟩
+    obtain ⟨p1, p2⟩ := p
+    simp only at hnt hbv hbvE ⊢
+    by_cases hps : p1 = s
+    · subst hps
+      rw [hs] at hbv
+      simp only [Option.some.injEq, Sigma.mk.inj_iff, CryptoSSA.CryptoTy.memref.injEq] at hbv
+      obtain ⟨rfl, hb⟩ := hbv
+      obtain rfl := eq_of_heq hb
+      refine ⟨av', by rw [henv', if_pos rfl], fun j => ?_⟩
+      rw [hav' j]
+      by_cases hj : j.val = k
+      · simp [hj, setVal, hz]
+      · have hne : elemKey p1 j ≠ elemKey p1 k := fun h => hj (elemKey_inj h).2
+        simp [hj, setVal, hne, hbvE j]
+    · refine ⟨bv, by rw [henv', if_neg hps, hbv], fun j => ?_⟩
+      have hne : elemKey p1 j ≠ elemKey s k := fun h => hps (elemKey_inj h).1
+      simp [setVal, hne, hbvE j]
+
+/-! ## Leaves over a layout -/
+
+/-- The counter set `x := n` on an unreserved name preserves `SRwordL` against
+    `setLit x n`. -/
+theorem srwordL_upd_lit {L : ArrLayout} {env : SEnvScalar} {a : AField} (x : String) (n : Nat)
+    (hx : arrKeyB L x = false) (hSR : SRwordL L env a) :
+    SRwordL L (env.upd x (t := .sword 64) (BitVec.ofNat 64 n)) (setLit x n a) :=
+  srwordL_set x (BitVec.ofNat 64 n) (n : ZMod (2 ^ 64)) hx
+    (by simp [wEnc, BitVec.toNat_ofNat, ZMod.natCast_mod]) hSR
+    (by simp [SEnvScalar.upd]) (fun y _ hy => by simp [SEnvScalar.upd, hy])
+
+/-- The literal leaf over a layout. -/
+theorem corresL_setScalar (L : ArrLayout) (x : String) (n : Nat) (hx : arrKeyB L x = false) :
+    Corres (SRwordL L) (fun _ => True) (setLit x n) (.RScalarSet x n) :=
+  fun _ _ hSR _ => ⟨_, rfl, srwordL_upd_lit x n hx hSR⟩
+
+/-- Under `SRwordL`, the concrete guard `guardNz name` on a non-temp unreserved name is
+    the abstract `nzB name`. -/
+theorem guardNz_srwordL {L : ArrLayout} {env : SEnvScalar} {a : AField} {name : String}
+    (hname : ¬ isTmpName name) (hk : arrKeyB L name = false) (hSR : SRwordL L env a) :
     guardNz name env = nzB name a := by
-  obtain ⟨w, hw, hwe⟩ := hSR name hname
+  obtain ⟨w, hw, hwe⟩ := hSR.1 name hname hk
   simp only [guardNz, envReadU64, hw, Option.getD_some, nzB]
   rw [← hwe]
   exact Bool.decide_congr (not_congr (wEnc_eq_zero_iff w)).symm
 
-/-- The φ-merge conditional over the non-temp relation, on a non-temp guard name:
-    `corres_if` with `SRwordNT` in place of `SRword`. -/
-theorem corres_if_NT (name nv : String) (tv ev : Nat) (hname : ¬ isTmpName name) :
-    Corres SRwordNT (fun _ => True) (phiSet name nv tv ev)
-      (.RIfNz name (.RScalarSet nv tv) (.RScalarSet nv ev)) := by
-  intro env a hSR _
-  obtain ⟨cw, hcw, hcwEnc⟩ := hSR name hname
-  refine ⟨env.upd nv (t := .sword 64)
-      (phiSelect (w := 64) cw (BitVec.ofNat 64 tv) (BitVec.ofNat 64 ev)), ?_, ?_⟩
-  · simp only [semScalar, hcw, asSingleScalarSet, if_true]
-  · intro s hs
-    by_cases hsv : s = nv
-    · subst hsv
-      refine ⟨phiSelect (w := 64) cw (BitVec.ofNat 64 tv) (BitVec.ofNat 64 ev),
-        by simp [SEnvScalar.upd], ?_⟩
-      show wEnc _ = if s = s then (if a name = 0 then _ else _) else a s
-      rw [if_pos rfl]
-      by_cases hz : cw = 0#64
-      · have haz : a name = 0 := hcwEnc ▸ (wEnc_eq_zero_iff cw).mpr hz
-        simp only [phiSelect, if_pos hz, if_pos haz, wEnc, BitVec.toNat_ofNat, ZMod.natCast_mod]
-      · have haz : ¬ a name = 0 := fun h => hz ((wEnc_eq_zero_iff cw).mp (hcwEnc ▸ h))
-        simp only [phiSelect, if_neg hz, if_neg haz, wEnc, BitVec.toNat_ofNat, ZMod.natCast_mod]
-    · obtain ⟨w, hw, hwn⟩ := hSR s hs
-      exact ⟨w, by simp [SEnvScalar.upd, hsv, hw], by simp [phiSet, hsv, hwn]⟩
-
-/-- The `u64` word read at a non-temp name is the canonical residue of the abstract
-    value: `BitVec.ofNat 64 (a s).val` is the stored word. -/
-theorem envReader_eq_liftEnv {env : SEnvScalar} {a : AField} (hSR : SRwordNT env a)
-    (s : String) (hs : ¬ isTmpName s) :
+/-- The word read at a non-temp unreserved name is the canonical residue of the abstract
+    value. -/
+theorem envReader_eq_liftEnvL {L : ArrLayout} {env : SEnvScalar} {a : AField}
+    (hSR : SRwordL L env a) (s : String) (hs : ¬ isTmpName s) (hk : arrKeyB L s = false) :
     envReader env s = SExpr.liftEnv (natStore a) s := by
-  obtain ⟨w, hw, hwe⟩ := hSR s hs
+  obtain ⟨w, hw, hwe⟩ := hSR.1 s hs hk
   simp only [envReader, hw, SExpr.liftEnv, natStore]
   rw [← hwe, wEnc, ZMod.val_natCast, Nat.mod_eq_of_lt w.isLt]
   apply BitVec.eq_of_toNat_eq
   rw [BitVec.toNat_ofNat]
   exact (Nat.mod_eq_of_lt w.isLt).symm
 
-/-- The range leaf: a source-clean `RScalarSetExpr x e` abstracts to the Nat-model
-    value `natEval e` under the range guard `SExpr.inRange` on the current store. -/
-theorem corres_setExprRange (x : String) (e : SExpr) (he : srcClean e) :
-    Corres SRwordNT (fun a => e.inRange (natStore a))
-      (fun a => setVal x (natEval e a) a) (.RScalarSetExpr x e) := by
-  intro env a hSR hir
+/-- A predicate holding everywhere bounds the variables of every expression. -/
+theorem varsBoundIn_of_forall {B : String → Prop} (hB : ∀ y, B y) : ∀ e, varsBoundIn B e := by
+  intro e
+  induction e with
+  | SVar x => exact hB x
+  | SAdd a b iha ihb | SSub a b iha ihb | SMul a b iha ihb | SAnd a b iha ihb
+  | SXor a b iha ihb | SShl a b iha ihb | SShr a b iha ihb | SMulHiU a b iha ihb =>
+      exact ⟨iha, ihb⟩
+  | _ => trivial
+
+/-- The variables of the expression are unreserved by the layout. -/
+def varsWordB (L : ArrLayout) : SExpr → Bool
+  | .SVar x => !arrKeyB L x
+  | .SAdd a b | .SSub a b | .SMul a b | .SAnd a b | .SXor a b
+  | .SShl a b | .SShr a b | .SMulHiU a b => varsWordB L a && varsWordB L b
+  | _ => true
+
+/-- `varsWordB`, true without inspecting the expression on the empty layout. -/
+def exprWordB (L : ArrLayout) (e : SExpr) : Bool := L.isEmpty || varsWordB L e
+
+theorem varsWordB_sound (L : ArrLayout) :
+    ∀ e, varsWordB L e = true → varsBoundIn (fun y => arrKeyB L y = false) e := by
+  intro e
+  induction e with
+  | SVar x => intro h; simpa [varsWordB, varsBoundIn] using h
+  | SAdd a b iha ihb | SSub a b iha ihb | SMul a b iha ihb | SAnd a b iha ihb
+  | SXor a b iha ihb | SShl a b iha ihb | SShr a b iha ihb | SMulHiU a b iha ihb =>
+      intro h
+      simp only [varsWordB, Bool.and_eq_true] at h
+      exact ⟨iha h.1, ihb h.2⟩
+  | _ => intro _; trivial
+
+theorem exprWordB_sound {L : ArrLayout} {e : SExpr} (h : exprWordB L e = true) :
+    varsBoundIn (fun y => arrKeyB L y = false) e := by
+  cases L with
+  | nil => exact varsBoundIn_of_forall (fun _ => rfl) e
+  | cons p L => exact varsWordB_sound _ e (by simpa [exprWordB] using h)
+
+/-- The expression leaf over a layout: a source-clean `RScalarSetExpr x e` whose
+    variables and destination are unreserved assigns `val a`, for any `val` that is the
+    encoding of the word evaluation of `e` at the canonical residues of `a` under `P`. -/
+theorem corresL_setExprVal (L : ArrLayout) (x : String) (e : SExpr) (hx : arrKeyB L x = false)
+    (hvb : varsBoundIn (fun y => arrKeyB L y = false) e) (he : srcClean e)
+    (P : AField → Prop) (val : AField → ZMod (2 ^ 64))
+    (hval : ∀ a, P a → wEnc (SExpr.evalBV (SExpr.liftEnv (natStore a)) e) = val a) :
+    Corres (SRwordL L) P (fun a => setVal x (val a) a) (.RScalarSetExpr x e) := by
+  intro env a hSR hP
   set rs : RustState := ⟨fun _ => none, fun y => (envReader env y).toNat⟩ with hrs
-  have hEB : EnvBoundOn rs env (fun _ => True) := by
-    intro y _ hnt
-    obtain ⟨w, hw, _⟩ := hSR y hnt
+  have hEB : EnvBoundOn rs env (fun y => arrKeyB L y = false) := by
+    intro y hy hnt
+    obtain ⟨w, hw, _⟩ := hSR.1 y hnt hy
     have hr : envReader env y = w := by simp only [envReader, hw]
     have hround : BitVec.ofNat 64 w.toNat = w := by
       apply BitVec.eq_of_toNat_eq
@@ -515,26 +707,116 @@ theorem corres_setExprRange (x : String) (e : SExpr) (he : srcClean e) :
     show env y = some ⟨.sword 64, BitVec.ofNat 64 ((envReader env y).toNat)⟩
     rw [hr, hround]; exact hw
   obtain ⟨env2, nm, cnt', hsem, _, hotb, _, _⟩ :=
-    semLowerSExpr_ok' rs (fun _ => True) e env 0 hEB (varsBoundIn_true e) he
-  have hval : wEnc (SExpr.evalBV (envReader env) e) = natEval e a := by
-    rw [evalBV_congr_on (fun _ => True) (envReader env) (SExpr.liftEnv (natStore a)) e
-      (fun s _ hs => envReader_eq_liftEnv hSR s hs) (varsBoundIn_true e) he]
-    simp only [wEnc, natEval]
-    rw [SExpr.toNat_evalBV_of_inRange (natStore a) e hir]
+    semLowerSExpr_ok' rs (fun y => arrKeyB L y = false) e env 0 hEB hvb he
+  have hcongr : SExpr.evalBV (envReader env) e = SExpr.evalBV (SExpr.liftEnv (natStore a)) e :=
+    evalBV_congr_on _ _ _ e (fun s hs hnt => envReader_eq_liftEnvL hSR s hnt hs) hvb he
   refine ⟨env2.upd x (t := .sword 64) (SExpr.evalBV (envReader env) e), ?_, ?_⟩
   · simp only [semScalar, hsem]
-  · intro y hnt
-    by_cases hyx : y = x
-    · refine ⟨SExpr.evalBV (envReader env) e, ?_, ?_⟩
-      · simp only [SEnvScalar.upd, if_pos hyx]
-      · show wEnc (SExpr.evalBV (envReader env) e) = if y = x then natEval e a else a y
-        rw [if_pos hyx]; exact hval
-    · obtain ⟨w, hw, hwe⟩ := hSR y hnt
-      refine ⟨w, ?_, ?_⟩
-      · simp only [SEnvScalar.upd, if_neg hyx]
-        rw [hotb y (Or.inl hnt)]; exact hw
-      · show wEnc w = if y = x then natEval e a else a y
-        rw [if_neg hyx]; exact hwe
+  · refine srwordL_set x (SExpr.evalBV (envReader env) e) (val a) hx
+      (by rw [hcongr]; exact hval a hP) hSR (by simp [SEnvScalar.upd]) (fun y hy hyx => ?_)
+    simp only [SEnvScalar.upd, if_neg hyx]
+    exact hotb y (Or.inl hy)
+
+/-- The `ZMod 2^64` value of an arithmetic expression at the canonical residues. -/
+theorem wEnc_evalBV_liftEnv_arith (a : AField) (e : SExpr) (he : IsArithClean e) :
+    wEnc (SExpr.evalBV (SExpr.liftEnv (natStore a)) e) = evalZMod a e := by
+  refine wEnc_evalBV_evalZMod _ a (fun y _ => ?_) e he
+  simp only [wEnc, SExpr.liftEnv, natStore, BitVec.toNat_ofNat,
+    Nat.mod_eq_of_lt (ZMod.val_lt (a y)), ZMod.natCast_zmod_val]
+
+/-- The Nat-model value of an in-range expression at the canonical residues. -/
+theorem wEnc_evalBV_liftEnv_range (a : AField) (e : SExpr) (hir : e.inRange (natStore a)) :
+    wEnc (SExpr.evalBV (SExpr.liftEnv (natStore a)) e) = natEval e a := by
+  simp only [wEnc, natEval]
+  rw [SExpr.toNat_evalBV_of_inRange (natStore a) e hir]
+
+/-- The φ-merge conditional over a layout, on a non-temp guard name, with guard and
+    destination unreserved. -/
+theorem corresL_if (L : ArrLayout) (name nv : String) (tv ev : Nat) (hname : ¬ isTmpName name)
+    (hk : arrKeyB L name = false) (hnv : arrKeyB L nv = false) :
+    Corres (SRwordL L) (fun _ => True) (phiSet name nv tv ev)
+      (.RIfNz name (.RScalarSet nv tv) (.RScalarSet nv ev)) := by
+  intro env a hSR _
+  obtain ⟨cw, hcw, hcwEnc⟩ := hSR.1 name hname hk
+  refine ⟨env.upd nv (t := .sword 64)
+      (phiSelect (w := 64) cw (BitVec.ofNat 64 tv) (BitVec.ofNat 64 ev)), ?_, ?_⟩
+  · simp only [semScalar, hcw, asSingleScalarSet, if_true]
+  · refine srwordL_set nv (phiSelect (w := 64) cw (BitVec.ofNat 64 tv) (BitVec.ofNat 64 ev))
+      (if a name = 0 then (ev : ZMod (2 ^ 64)) else (tv : ZMod (2 ^ 64)))
+      hnv ?_ hSR (by simp [SEnvScalar.upd]) (fun y _ hy => by simp [SEnvScalar.upd, hy])
+    by_cases hz : cw = 0#64
+    · have haz : a name = 0 := hcwEnc ▸ (wEnc_eq_zero_iff cw).mpr hz
+      simp only [phiSelect, if_pos hz, if_pos haz, wEnc, BitVec.toNat_ofNat, ZMod.natCast_mod]
+    · have haz : ¬ a name = 0 := fun h => hz ((wEnc_eq_zero_iff cw).mp (hcwEnc ▸ h))
+      simp only [phiSelect, if_neg hz, if_neg haz, wEnc, BitVec.toNat_ofNat, ZMod.natCast_mod]
+
+/-- The residue of the abstract value at a word name is the stored word's `toNat`. -/
+theorem val_of_wEnc {w : BitVec 64} {z : ZMod (2 ^ 64)} (h : wEnc w = z) : z.val = w.toNat := by
+  rw [← h, wEnc, ZMod.val_natCast, Nat.mod_eq_of_lt w.isLt]
+
+/-- The dynamic-index array read over a layout: `RArrLoad dst src idxVar` with `src` a
+    layout array of length `m + 1` and `dst` a `u64` word reads the element at
+    `elemKey src.locVar (idx % (m + 1))`. -/
+theorem corresL_arrLoad (L : ArrLayout) (dst src : Located) (idxVar : String) (m : Nat)
+    (hdst : dst.locSrc = .TU64) (hsz : (src.locVar, m + 1) ∈ L)
+    (hdk : arrKeyB L dst.locVar = false) (hit : ¬ isTmpName idxVar)
+    (hik : arrKeyB L idxVar = false) :
+    Corres (SRwordL L) (fun _ => True)
+      (fun a => setVal dst.locVar (a (elemKey src.locVar ((a idxVar).val % (m + 1)))) a)
+      (.RArrLoad dst src idxVar) := by
+  intro env a hSR _
+  obtain ⟨_, av, hav, havE⟩ := hSR.2 _ hsz
+  have hav' : env src.locVar = some ⟨.memref (m + 1), av⟩ := hav
+  obtain ⟨iv, hiv, hivE⟩ := hSR.1 idxVar hit hik
+  refine ⟨env.upd dst.locVar (t := .sword 64) (memGetDyn av iv.toNat), ?_, ?_⟩
+  · simp only [semScalar, Located.locDst, hdst, hav', hiv]
+  · refine srwordL_set dst.locVar (memGetDyn av iv.toNat) _ hdk ?_ hSR
+      (by simp [SEnvScalar.upd]) (fun y _ hy => by simp [SEnvScalar.upd, hy])
+    rw [val_of_wEnc hivE]
+    exact havE ⟨iv.toNat % (m + 1), Nat.mod_lt _ (Nat.succ_pos m)⟩
+
+/-- The dynamic-index array write over a layout: `RArrStore arr idxVar src` with `arr` a
+    layout array of length `m + 1`, typed `.memref (m + 1)`, stores the word at `src` at
+    `elemKey arr.locVar (idx % (m + 1))`. -/
+theorem corresL_arrStore (L : ArrLayout) (arr src : Located) (idxVar : String) (m : Nat)
+    (harr : encodeTy arr.locSrc = .memref (m + 1)) (hsz : (arr.locVar, m + 1) ∈ L)
+    (hit : ¬ isTmpName idxVar) (hik : arrKeyB L idxVar = false)
+    (hst : ¬ isTmpName src.locVar) (hsk : arrKeyB L src.locVar = false) :
+    Corres (SRwordL L) (fun _ => True)
+      (fun a => setVal (elemKey arr.locVar ((a idxVar).val % (m + 1))) (a src.locVar) a)
+      (.RArrStore arr idxVar src) := by
+  intro env a hSR _
+  obtain ⟨_, av, hav, _⟩ := hSR.2 _ hsz
+  have hav' : env arr.locVar = some ⟨.memref (m + 1), av⟩ := hav
+  obtain ⟨iv, hiv, hivE⟩ := hSR.1 idxVar hit hik
+  obtain ⟨sv, hsv, hsvE⟩ := hSR.1 src.locVar hst hsk
+  refine ⟨env.upd arr.locVar (t := encodeTy arr.locSrc) (harr.symm ▸ memSetDyn av iv.toNat sv),
+    ?_, ?_⟩
+  · simp only [semScalar, Located.locDst, hav', hiv, hsv, harr, dif_pos]
+  · show SRwordL L _ (setVal (elemKey arr.locVar ((a idxVar).val % (m + 1))) (a src.locVar) a)
+    rw [val_of_wEnc hivE]
+    refine srwordL_arrWrite arr.locVar (m + 1) (iv.toNat % (m + 1)) av
+      (memSetDyn av iv.toNat sv) sv _ hsvE hSR hsz hav' (fun j => ?_) (fun y => ?_)
+    · by_cases h : j.val = iv.toNat % (m + 1) <;> simp [memSetDyn, h, Fin.ext_iff]
+    · by_cases hy : y = arr.locVar
+      · simp only [SEnvScalar.upd, if_pos hy]
+        exact congrArg some (sigma_memref harr _)
+      · simp [SEnvScalar.upd, hy]
+
+/-- The literal limb store over a layout: `RLimbStore loc idx v` with `loc` a layout
+    array of length above `idx` stores `v` at `elemKey loc.locVar idx`. -/
+theorem corresL_limbStore (L : ArrLayout) (loc : Located) (idx : Nat) (v : BitVec 64) (n : Nat)
+    (hsz : (loc.locVar, n) ∈ L) (hidx : idx < n) :
+    Corres (SRwordL L) (fun _ => True) (setVal (elemKey loc.locVar idx) (wEnc v))
+      (.RLimbStore loc idx v) := by
+  intro env a hSR _
+  obtain ⟨_, av, hav, _⟩ := hSR.2 _ hsz
+  have hav' : env loc.locVar = some ⟨.memref n, av⟩ := hav
+  refine ⟨env.upd loc.locVar (t := .memref n) (fun j => if j = ⟨idx, hidx⟩ then v else av j),
+    ?_, ?_⟩
+  · simp only [semScalar, hav', dif_pos hidx]
+  · exact srwordL_arrWrite loc.locVar n idx av _ v _ rfl hSR hsz hav'
+      (fun j => by by_cases h : j.val = idx <;> simp [h, Fin.ext_iff]) (fun y => rfl)
 
 /-! ## The total abstraction -/
 
@@ -551,66 +833,119 @@ def ascendExpr (x : String) (e : SExpr) : List Guard × (AField → AField) :=
   else if srcCleanB e then ([Guard.range x e], fun a => setVal x (natEval e a) a)
   else unsupportedAbs "RScalarSetExpr"
 
+/-- `ascendExpr` when the destination and the variables of the expression are
+    unreserved by the layout, unsupported otherwise. -/
+def ascendExprL (L : ArrLayout) (x : String) (e : SExpr) : List Guard × (AField → AField) :=
+  if arrKeyB L x || !exprWordB L e then unsupportedAbs "RScalarSetExpr" else ascendExpr x e
+
 /-- The abstraction of a conditional: the guarded `RIfNz name thenBlk RSkip` from the
     abstraction `rec` of its then-branch; the φ-merge on two literal sets of one name;
-    unsupported otherwise. A temp guard name is unsupported, `SRwordNT` binding no
-    temp. -/
-def ascendIf (name : String) (thenBr elseBr : LowCT) (rec : List Guard × (AField → AField)) :
-    List Guard × (AField → AField) :=
+    unsupported otherwise. A temp guard name is unsupported, the relation binding no
+    temp, and so is a guard or destination name reserved by the layout. -/
+def ascendIf (L : ArrLayout) (name : String) (thenBr elseBr : LowCT)
+    (rec : List Guard × (AField → AField)) : List Guard × (AField → AField) :=
   if isSkipB elseBr then
-    if notTmpB name then
+    if arrKeyB L name then unsupportedAbs "RIfNz"
+    else if notTmpB name then
       (rec.1.map (Guard.whenNz name), fun a => if nzB name a then rec.2 a else a)
     else unsupportedAbs "RIfNz"
   else
     match asSingleScalarSet thenBr, asSingleScalarSet elseBr with
     | some ts, some es =>
-        if ts.name = es.name ∧ notTmpB name = true then ([], phiSet name ts.name ts.val es.val)
+        if ts.name = es.name ∧ notTmpB name = true ∧ arrKeyB L name = false ∧
+            arrKeyB L ts.name = false then
+          ([], phiSet name ts.name ts.val es.val)
         else unsupportedAbs "RIfNz"
     | _, _ => unsupportedAbs "RIfNz"
 
-/-- The total abstraction: every `LowCT` command to a word transformer over `AField`
-    and the guards under which it is sound at the unified waist `semU fuel`. -/
-def ascendG (fuel : Nat) : LowCT → List Guard × (AField → AField)
+/-- The abstraction of `RArrLoad dst src idxVar`: the read of element
+    `idx % (m + 1)` of the layout array `src` of length `m + 1` into the `u64` word
+    `dst`, the index a non-temp word name; unsupported otherwise. -/
+def arrLoadAbs (L : ArrLayout) (dst src : Located) (idxVar : String) :
+    List Guard × (AField → AField) :=
+  match layoutSize L src.locVar with
+  | some (m + 1) =>
+      if dst.locSrc = .TU64 ∧ arrKeyB L dst.locVar = false ∧ notTmpB idxVar = true ∧
+          arrKeyB L idxVar = false then
+        ([], fun a => setVal dst.locVar (a (elemKey src.locVar ((a idxVar).val % (m + 1)))) a)
+      else unsupportedAbs "RArrLoad"
+  | _ => unsupportedAbs "RArrLoad"
+
+/-- The abstraction of `RArrStore arr idxVar src`: the write of the word `src` to element
+    `idx % (m + 1)` of the layout array `arr` of length `m + 1`, typed
+    `.memref (m + 1)`, index and source non-temp word names; unsupported otherwise. -/
+def arrStoreAbs (L : ArrLayout) (arr : Located) (idxVar : String) (src : Located) :
+    List Guard × (AField → AField) :=
+  match layoutSize L arr.locVar with
+  | some (m + 1) =>
+      if encodeTy arr.locSrc = .memref (m + 1) ∧ notTmpB idxVar = true ∧
+          arrKeyB L idxVar = false ∧ notTmpB src.locVar = true ∧
+          arrKeyB L src.locVar = false then
+        ([], fun a => setVal (elemKey arr.locVar ((a idxVar).val % (m + 1))) (a src.locVar) a)
+      else unsupportedAbs "RArrStore"
+  | _ => unsupportedAbs "RArrStore"
+
+/-- The abstraction of `RLimbStore loc idx v`: the write of `v` to element `idx` of the
+    layout array `loc`, when `idx` is below its length; unsupported otherwise. -/
+def limbStoreAbs (L : ArrLayout) (loc : Located) (idx : Nat) (v : BitVec 64) :
+    List Guard × (AField → AField) :=
+  match layoutSize L loc.locVar with
+  | some n =>
+      if idx < n then ([], setVal (elemKey loc.locVar idx) (wEnc v))
+      else unsupportedAbs "RLimbStore"
+  | none => unsupportedAbs "RLimbStore"
+
+/-- The total abstraction over a layout: every `LowCT` command to a word transformer
+    over `AField` and the guards under which it is sound at the unified waist
+    `semU fuel`, over `SRwordL L`. -/
+def ascendGL (L : ArrLayout) (fuel : Nat) : LowCT → List Guard × (AField → AField)
   | .RSkip => ([], id)
-  | .RBlock body => ascendG fuel body
+  | .RBlock body => ascendGL L fuel body
   | .RSeq c₁ c₂ =>
-      ((ascendG fuel c₁).1 ++ (ascendG fuel c₂).1.map (Guard.after (ascendG fuel c₁).2),
-        fun a => (ascendG fuel c₂).2 ((ascendG fuel c₁).2 a))
-  | .RScalarSet x n => ([], setLit x n)
-  | .RScalarSetExpr x e => ascendExpr x e
+      ((ascendGL L fuel c₁).1 ++ (ascendGL L fuel c₂).1.map (Guard.after (ascendGL L fuel c₁).2),
+        fun a => (ascendGL L fuel c₂).2 ((ascendGL L fuel c₁).2 a))
+  | .RScalarSet x n => if arrKeyB L x then unsupportedAbs "RScalarSet" else ([], setLit x n)
+  | .RScalarSetExpr x e => ascendExprL L x e
   | .RAssert label => ([Guard.assert label], id)
   | .RLetU64Zero x body =>
-      if loopFree body then
-        ((ascendG fuel body).1.map (Guard.after (setLit x 0)),
-          fun a => (ascendG fuel body).2 (setLit x 0 a))
+      if arrKeyB L x then unsupportedAbs "RLetU64Zero"
+      else if loopFree body then
+        ((ascendGL L fuel body).1.map (Guard.after (setLit x 0)),
+          fun a => (ascendGL L fuel body).2 (setLit x 0 a))
       else unsupportedAbs "RLetU64Zero"
-  | .RIfNz name thenBr elseBr => ascendIf name thenBr elseBr (ascendG fuel thenBr)
+  | .RIfNz name thenBr elseBr => ascendIf L name thenBr elseBr (ascendGL L fuel thenBr)
   | .RWhileNz name body =>
-      if notTmpB name then
-        (Guard.loopHalts name fuel (ascendG fuel body).2 ::
-            (ascendG fuel body).1.map (Guard.loopBody name fuel (ascendG fuel body).2),
-          awhile (nzB name) (ascendG fuel body).2 fuel)
+      if arrKeyB L name then unsupportedAbs "RWhileNz"
+      else if notTmpB name then
+        (Guard.loopHalts name fuel (ascendGL L fuel body).2 ::
+            (ascendGL L fuel body).1.map (Guard.loopBody name fuel (ascendGL L fuel body).2),
+          awhile (nzB name) (ascendGL L fuel body).2 fuel)
       else unsupportedAbs "RWhileNz"
   | .RFor x N body =>
-      ((ascendG fuel body).1.map (Guard.everyTrip x N (ascendG fuel body).2),
-        forFold (setLit x) (ascendG fuel body).2 N)
+      if arrKeyB L x then unsupportedAbs "RFor"
+      else
+        ((ascendGL L fuel body).1.map (Guard.everyTrip x N (ascendGL L fuel body).2),
+          forFold (setLit x) (ascendGL L fuel body).2 N)
+  | .RArrLoad dst src idxVar => arrLoadAbs L dst src idxVar
+  | .RArrStore arr idxVar src => arrStoreAbs L arr idxVar src
+  | .RLimbStore loc idx v => limbStoreAbs L loc idx v
   | .RLetZero _ _ _ => unsupportedAbs "RLetZero"
   | .RCall _ _ _ => unsupportedAbs "RCall"
   | .RCallSwap _ _ _ _ => unsupportedAbs "RCallSwap"
   | .RCloneCall _ _ _ _ _ _ => unsupportedAbs "RCloneCall"
   | .RCallN _ _ _ => unsupportedAbs "RCallN"
   | .RSelect _ _ _ _ => unsupportedAbs "RSelect"
-  | .RLimbStore _ _ _ => unsupportedAbs "RLimbStore"
   | .RLimbStoreExpr _ _ _ => unsupportedAbs "RLimbStoreExpr"
   | .RFnDef _ _ _ _ _ => unsupportedAbs "RFnDef"
   | .RFnCall _ _ _ => unsupportedAbs "RFnCall"
   | .RTupleLoad _ _ _ => unsupportedAbs "RTupleLoad"
-  | .RArrStore _ _ _ => unsupportedAbs "RArrStore"
-  | .RArrLoad _ _ _ => unsupportedAbs "RArrLoad"
   | .RArrStoreLit _ _ _ => unsupportedAbs "RArrStoreLit"
   | .RArrLoadLit _ _ _ => unsupportedAbs "RArrLoadLit"
   | .RCallDstThreaded _ _ _ => unsupportedAbs "RCallDstThreaded"
   | .RForRuntime _ _ _ => unsupportedAbs "RForRuntime"
+
+/-- The total abstraction over the empty layout, whose relation is `SRwordNT`. -/
+abbrev ascendG (fuel : Nat) : LowCT → List Guard × (AField → AField) := ascendGL [] fuel
 
 /-! ## Soundness -/
 
@@ -620,63 +955,89 @@ theorem asSingleScalarSet_some {c : LowCT} {s : SingleScalarSet}
   rfl
 
 /-- Soundness of the total abstraction at the unified waist: under its guards, the
-    transformer `ascendG fuel c` is a `CorresU fuel SRwordNT` correspondent of `c`. -/
-theorem ascendG_sound (fuel : Nat) :
-    ∀ c : LowCT, CorresU fuel SRwordNT (guardsHold (ascendG fuel c).1) (ascendG fuel c).2 c := by
+    transformer `ascendGL L fuel c` is a `CorresU fuel (SRwordL L)` correspondent of
+    `c`. -/
+theorem ascendGL_sound (L : ArrLayout) (fuel : Nat) :
+    ∀ c : LowCT,
+      CorresU fuel (SRwordL L) (guardsHold (ascendGL L fuel c).1) (ascendGL L fuel c).2 c := by
   intro c
   induction c
   case RSkip =>
-    show CorresU fuel SRwordNT (guardsHold []) id .RSkip
-    exact corresU_weaken SRwordNT (corresU_of_corres SRwordNT rfl (corres_skip SRwordNT))
-      (fun _ _ => trivial)
+    show CorresU fuel (SRwordL L) (guardsHold []) id .RSkip
+    exact corresU_weaken _ (corresU_of_corres _ rfl (corres_skip _)) (fun _ _ => trivial)
   case RBlock body ih =>
-    show CorresU fuel SRwordNT (guardsHold (ascendG fuel body).1) (ascendG fuel body).2 (.RBlock body)
-    exact corresU_block SRwordNT ih
+    show CorresU fuel (SRwordL L) (guardsHold (ascendGL L fuel body).1) (ascendGL L fuel body).2
+      (.RBlock body)
+    exact corresU_block _ ih
   case RSeq c₁ c₂ ih₁ ih₂ =>
-    show CorresU fuel SRwordNT
-      (guardsHold ((ascendG fuel c₁).1 ++ (ascendG fuel c₂).1.map (Guard.after (ascendG fuel c₁).2)))
-      (fun a => (ascendG fuel c₂).2 ((ascendG fuel c₁).2 a)) (.RSeq c₁ c₂)
-    refine corresU_seq SRwordNT
-      (corresU_weaken SRwordNT ih₁ (fun a h => (guardsHold_append.mp h).1)) ih₂ (fun a h => ?_)
+    show CorresU fuel (SRwordL L)
+      (guardsHold ((ascendGL L fuel c₁).1 ++
+        (ascendGL L fuel c₂).1.map (Guard.after (ascendGL L fuel c₁).2)))
+      (fun a => (ascendGL L fuel c₂).2 ((ascendGL L fuel c₁).2 a)) (.RSeq c₁ c₂)
+    refine corresU_seq _
+      (corresU_weaken _ ih₁ (fun a h => (guardsHold_append.mp h).1)) ih₂ (fun a h => ?_)
     exact guardsHold_map_after.mp (guardsHold_append.mp h).2
   case RScalarSet x n =>
-    show CorresU fuel SRwordNT (guardsHold []) (setLit x n) (.RScalarSet x n)
-    exact corresU_weaken SRwordNT (corresU_of_corres SRwordNT rfl (corres_setScalar_NT x n))
-      (fun _ _ => trivial)
-  case RScalarSetExpr x e =>
-    show CorresU fuel SRwordNT (guardsHold (ascendExpr x e).1) (ascendExpr x e).2 (.RScalarSetExpr x e)
-    unfold ascendExpr
-    rcases h1 : isArithCleanB e
-    · rcases h2 : srcCleanB e
-      · simp only [Bool.false_eq_true, if_false]
-        exact corresU_unsupported _ _ _ _
-      · simp only [if_true, Bool.false_eq_true, if_false]
-        exact corresU_weaken SRwordNT
-          (corresU_of_corres SRwordNT rfl (corres_setExprRange x e (srcCleanB_sound e h2)))
-          (fun a h => h _ (List.mem_singleton.mpr rfl))
-    · simp only [if_true]
-      exact corresU_weaken SRwordNT
-        (corresU_of_corres SRwordNT rfl (corres_setExpr x e (isArithCleanB_sound e h1)))
+    simp only [ascendGL]
+    rcases hk : arrKeyB L x
+    · simp only [Bool.false_eq_true, if_false]
+      exact corresU_weaken _ (corresU_of_corres _ rfl (corresL_setScalar L x n hk))
         (fun _ _ => trivial)
+    · simp only [if_true]
+      exact corresU_unsupported _ _ _ _
+  case RScalarSetExpr x e =>
+    show CorresU fuel (SRwordL L) (guardsHold (ascendExprL L x e).1) (ascendExprL L x e).2
+      (.RScalarSetExpr x e)
+    unfold ascendExprL
+    rcases hx : arrKeyB L x
+    · rcases hw : exprWordB L e
+      · simp only [Bool.false_or, Bool.not_false, if_true]
+        exact corresU_unsupported _ _ _ _
+      · simp only [Bool.false_or, Bool.not_true, Bool.false_eq_true, if_false]
+        have hvb := exprWordB_sound hw
+        unfold ascendExpr
+        rcases h1 : isArithCleanB e
+        · rcases h2 : srcCleanB e
+          · simp only [Bool.false_eq_true, if_false]
+            exact corresU_unsupported _ _ _ _
+          · simp only [if_true, Bool.false_eq_true, if_false]
+            exact corresU_weaken _
+              (corresU_of_corres _ rfl
+                (corresL_setExprVal L x e hx hvb (srcCleanB_sound e h2)
+                  (fun a => e.inRange (natStore a)) (natEval e)
+                  (fun a hir => wEnc_evalBV_liftEnv_range a e hir)))
+              (fun a h => h _ (List.mem_singleton.mpr rfl))
+        · simp only [if_true]
+          have he := isArithCleanB_sound e h1
+          exact corresU_weaken _
+            (corresU_of_corres _ rfl
+              (corresL_setExprVal L x e hx hvb (isArithClean_srcClean e he) (fun _ => True)
+                (fun a => evalZMod a e) (fun a _ => wEnc_evalBV_liftEnv_arith a e he)))
+            (fun _ _ => trivial)
+    · simp only [Bool.true_or, if_true]
+      exact corresU_unsupported _ _ _ _
   case RAssert label =>
-    show CorresU fuel SRwordNT (guardsHold [Guard.assert label]) id (.RAssert label)
-    exact corresU_weaken SRwordNT (corresU_of_corres SRwordNT rfl (corres_assert SRwordNT label))
+    show CorresU fuel (SRwordL L) (guardsHold [Guard.assert label]) id (.RAssert label)
+    exact corresU_weaken _ (corresU_of_corres _ rfl (corres_assert _ label))
       (fun _ _ => trivial)
   case RLetU64Zero x body ih =>
-    simp only [ascendG]
-    rcases hlf : loopFree body
-    · simp only [Bool.false_eq_true, if_false]
-      exact corresU_unsupported _ _ _ _
+    simp only [ascendGL]
+    rcases hk : arrKeyB L x
+    · rcases hlf : loopFree body
+      · simp only [Bool.false_eq_true, if_false]
+        exact corresU_unsupported _ _ _ _
+      · simp only [Bool.false_eq_true, if_false, if_true]
+        intro env a hSR hP
+        obtain ⟨env', hstep, hSRf⟩ :=
+          ih _ _ (srwordL_upd_lit x 0 hk hSR) (guardsHold_map_after.mp hP)
+        refine ⟨env', ?_, hSRf⟩
+        show semScalar body (env.upd x (t := .sword 64) (0 : BitVec 64)) = some env'
+        rw [← semU_eq_semScalar_of_loopFree fuel body hlf]
+        exact hstep
     · simp only [if_true]
-      intro env a hSR hP
-      obtain ⟨env', hstep, hSRf⟩ :=
-        ih _ _ (srwordNT_upd_lit x 0 hSR) (guardsHold_map_after.mp hP)
-      refine ⟨env', ?_, hSRf⟩
-      show semScalar body (env.upd x (t := .sword 64) (0 : BitVec 64)) = some env'
-      rw [← semU_eq_semScalar_of_loopFree fuel body hlf]
-      exact hstep
+      exact corresU_unsupported _ _ _ _
   case RIfNz name thenBr elseBr ihT _ =>
-    simp only [ascendG]
+    simp only [ascendGL]
     unfold ascendIf
     rcases hsk : isSkipB elseBr
     · simp only [Bool.false_eq_true, if_false]
@@ -687,46 +1048,129 @@ theorem ascendG_sound (fuel : Nat) :
       · rcases he : asSingleScalarSet elseBr with _ | ⟨nv', ev⟩
         · exact corresU_unsupported _ _ _ _
         · dsimp only
-          by_cases hc : nv = nv' ∧ notTmpB name = true
+          by_cases hc : nv = nv' ∧ notTmpB name = true ∧ arrKeyB L name = false ∧
+              arrKeyB L nv = false
           · rw [if_pos hc]
-            obtain ⟨hnv, hnt⟩ := hc
+            obtain ⟨hnv, hnt, hk, hkv⟩ := hc
             subst hnv
             obtain rfl := asSingleScalarSet_some ht
             obtain rfl := asSingleScalarSet_some he
-            exact corresU_weaken SRwordNT
-              (corresU_of_corres SRwordNT (isSeqLike_rIfNz_of_ne _ _ _ hne)
-                (corres_if_NT name nv tv ev (notTmpB_sound name hnt)))
+            exact corresU_weaken _
+              (corresU_of_corres _ (isSeqLike_rIfNz_of_ne _ _ _ hne)
+                (corresL_if L name nv tv ev (notTmpB_sound name hnt) hk hkv))
               (fun _ _ => trivial)
           · rw [if_neg hc]
             exact corresU_unsupported _ _ _ _
     · obtain rfl := (isSkipB_iff elseBr).mp hsk
       simp only [if_true]
-      rcases hnt : notTmpB name
+      rcases hk : arrKeyB L name
+      · simp only [Bool.false_eq_true, if_false]
+        rcases hnt : notTmpB name
+        · simp only [Bool.false_eq_true, if_false]
+          exact corresU_unsupported _ _ _ _
+        · simp only [if_true]
+          exact corresU_weaken _
+            (corresU_cond _ (nzB name)
+              (fun env a hSR => guardNz_srwordL (notTmpB_sound name hnt) hk hSR) ihT)
+            (fun a h => guardsHold_map_whenNz.mp h)
+      · simp only [if_true]
+        exact corresU_unsupported _ _ _ _
+  case RWhileNz name body ih =>
+    simp only [ascendGL]
+    rcases hk : arrKeyB L name
+    · rcases hnt : notTmpB name
       · simp only [Bool.false_eq_true, if_false]
         exact corresU_unsupported _ _ _ _
-      · simp only [if_true]
-        exact corresU_weaken SRwordNT
-          (corresU_cond SRwordNT (nzB name)
-            (fun env a hSR => guardNz_srwordNT (notTmpB_sound name hnt) hSR) ihT)
-          (fun a h => guardsHold_map_whenNz.mp h)
-  case RWhileNz name body ih =>
-    simp only [ascendG]
-    rcases hnt : notTmpB name
-    · simp only [Bool.false_eq_true, if_false]
-      exact corresU_unsupported _ _ _ _
+      · simp only [Bool.false_eq_true, if_false, if_true]
+        refine corresU_weaken _
+          (corresU_whileNz _ (nzB name)
+            (fun env a hSR => guardNz_srwordL (notTmpB_sound name hnt) hk hSR) ih)
+          (fun a h => ?_)
+        refine ⟨h _ (List.mem_cons.mpr (Or.inl rfl)), guardsHold_map_loopBody.mp ?_⟩
+        exact fun g hg => h g (List.mem_cons.mpr (Or.inr hg))
     · simp only [if_true]
-      refine corresU_weaken SRwordNT
-        (corresU_whileNz SRwordNT (nzB name)
-          (fun env a hSR => guardNz_srwordNT (notTmpB_sound name hnt) hSR) ih)
-        (fun a h => ?_)
-      refine ⟨h _ (List.mem_cons.mpr (Or.inl rfl)), guardsHold_map_loopBody.mp ?_⟩
-      exact fun g hg => h g (List.mem_cons.mpr (Or.inr hg))
+      exact corresU_unsupported _ _ _ _
   case RFor x N body ih =>
-    simp only [ascendG]
-    exact corresU_weaken SRwordNT
-      (corresU_for_trips SRwordNT (setLit x) (fun env a n hSR => srwordNT_upd_lit x n hSR) ih N)
-      (fun a h => guardsHold_map_everyTrip.mp h)
+    simp only [ascendGL]
+    rcases hk : arrKeyB L x
+    · simp only [Bool.false_eq_true, if_false]
+      exact corresU_weaken _
+        (corresU_for_trips _ (setLit x) (fun env a n hSR => srwordL_upd_lit x n hk hSR) ih N)
+        (fun a h => guardsHold_map_everyTrip.mp h)
+    · simp only [if_true]
+      exact corresU_unsupported _ _ _ _
+  case RArrLoad dst src idxVar =>
+    show CorresU fuel (SRwordL L) (guardsHold (arrLoadAbs L dst src idxVar).1)
+      (arrLoadAbs L dst src idxVar).2 (.RArrLoad dst src idxVar)
+    unfold arrLoadAbs
+    rcases hs : layoutSize L src.locVar with _ | _ | m
+    · exact corresU_unsupported _ _ _ _
+    · exact corresU_unsupported _ _ _ _
+    · dsimp only
+      by_cases hc : dst.locSrc = .TU64 ∧ arrKeyB L dst.locVar = false ∧
+          notTmpB idxVar = true ∧ arrKeyB L idxVar = false
+      · rw [if_pos hc]
+        obtain ⟨hdst, hdk, hit, hik⟩ := hc
+        exact corresU_weaken _
+          (corresU_of_corres _ rfl
+            (corresL_arrLoad L dst src idxVar m hdst (layoutSize_mem hs) hdk
+              (notTmpB_sound _ hit) hik))
+          (fun _ _ => trivial)
+      · rw [if_neg hc]
+        exact corresU_unsupported _ _ _ _
+  case RArrStore arr idxVar src =>
+    show CorresU fuel (SRwordL L) (guardsHold (arrStoreAbs L arr idxVar src).1)
+      (arrStoreAbs L arr idxVar src).2 (.RArrStore arr idxVar src)
+    unfold arrStoreAbs
+    rcases hs : layoutSize L arr.locVar with _ | _ | m
+    · exact corresU_unsupported _ _ _ _
+    · exact corresU_unsupported _ _ _ _
+    · dsimp only
+      by_cases hc : encodeTy arr.locSrc = .memref (m + 1) ∧ notTmpB idxVar = true ∧
+          arrKeyB L idxVar = false ∧ notTmpB src.locVar = true ∧ arrKeyB L src.locVar = false
+      · rw [if_pos hc]
+        obtain ⟨harr, hit, hik, hst, hsk⟩ := hc
+        exact corresU_weaken _
+          (corresU_of_corres _ rfl
+            (corresL_arrStore L arr src idxVar m harr (layoutSize_mem hs)
+              (notTmpB_sound _ hit) hik (notTmpB_sound _ hst) hsk))
+          (fun _ _ => trivial)
+      · rw [if_neg hc]
+        exact corresU_unsupported _ _ _ _
+  case RLimbStore loc idx v =>
+    show CorresU fuel (SRwordL L) (guardsHold (limbStoreAbs L loc idx v).1)
+      (limbStoreAbs L loc idx v).2 (.RLimbStore loc idx v)
+    unfold limbStoreAbs
+    rcases hs : layoutSize L loc.locVar with _ | n
+    · exact corresU_unsupported _ _ _ _
+    · dsimp only
+      by_cases hc : idx < n
+      · rw [if_pos hc]
+        exact corresU_weaken _
+          (corresU_of_corres _ rfl (corresL_limbStore L loc idx v n (layoutSize_mem hs) hc))
+          (fun _ _ => trivial)
+      · rw [if_neg hc]
+        exact corresU_unsupported _ _ _ _
   all_goals exact corresU_unsupported _ _ _ _
+
+/-- Soundness of `ascendG`: the instance of `ascendGL_sound` at the empty layout, over
+    `SRwordNT`. -/
+theorem ascendG_sound (fuel : Nat) :
+    ∀ c : LowCT, CorresU fuel SRwordNT (guardsHold (ascendG fuel c).1) (ascendG fuel c).2 c := by
+  intro c env a hSR hP
+  obtain ⟨env', hstep, hSR'⟩ := ascendGL_sound [] fuel c env a (srwordL_nil_iff.mpr hSR) hP
+  exact ⟨env', hstep, srwordL_nil_iff.mp hSR'⟩
+
+/-- On a loop-free command the unified waist is `semScalar`, so the abstraction over a
+    layout is a `Corres` correspondent. -/
+theorem ascendGL_sound_scalar (L : ArrLayout) (fuel : Nat) (c : LowCT)
+    (hlf : loopFree c = true) :
+    Corres (SRwordL L) (guardsHold (ascendGL L fuel c).1) (ascendGL L fuel c).2 c := by
+  intro env a hSR hP
+  obtain ⟨env', hstep, hSR'⟩ := ascendGL_sound L fuel c env a hSR hP
+  refine ⟨env', ?_, hSR'⟩
+  rw [← semU_eq_semScalar_of_loopFree fuel c hlf]
+  exact hstep
 
 /-- On a loop-free command the unified waist is `semScalar`, so the abstraction is a
     `Corres` correspondent. -/
@@ -868,5 +1312,72 @@ theorem sumK_corres : Corres SRwordNT (fun a => a = zeroStore) (ascendG 0 sumK).
     (fun _ ha => ha ▸ sumK_guards_hold)
 
 theorem sumK_value : (ascendG 0 sumK).2 zeroStore "acc" = 6 := by decide
+
+/-! ## An array kernel closed through `ascendGL_sound_scalar`
+
+`arrSelK` reads `x := A[i]` and `y := A[j]` from a four-element array `A`, computes the
+branchless mask select `r := y ^^^ ((x ^^^ y) &&& m)`, and writes `A[k] := r`. Over the
+layout `[("A", 4)]` its abstraction carries one guard, the range condition of the
+select, which holds on every store (`arrSelK_guardsHold`), and its transformer is
+`arrSelKAbs` (`arrSelK_ascendGL_prog`). `arrSelK_srwordL` exhibits a store and an
+abstract store related by `SRwordL [("A", 4)]`. -/
+
+/-- The layout with one array `A` of four elements. -/
+def arrSelLayout : ArrLayout := [("A", 4)]
+
+/-- The mask-select expression `y ^^^ ((x ^^^ y) &&& m)`. -/
+def arrSelE : SExpr := .SXor (.SVar "y") (.SAnd (.SXor (.SVar "x") (.SVar "y")) (.SVar "m"))
+
+/-- `x := A[i]; y := A[j]; r := y ^^^ ((x ^^^ y) &&& m); A[k] := r`. -/
+def arrSelK : LowCT :=
+  .RSeq (.RArrLoad ⟨"x", .TU64⟩ ⟨"A", .TFp25519_64⟩ "i")
+    (.RSeq (.RArrLoad ⟨"y", .TU64⟩ ⟨"A", .TFp25519_64⟩ "j")
+      (.RSeq (.RScalarSetExpr "r" arrSelE)
+        (.RArrStore ⟨"A", .TFp25519_64⟩ "k" ⟨"r", .TU64⟩)))
+
+/-- The abstract program of `arrSelK`: the two reads at the indices modulo `4`, the
+    Nat-model select, and the write at the index modulo `4`. -/
+def arrSelKAbs (a : AField) : AField :=
+  let a₁ := setVal "x" (a (elemKey "A" ((a "i").val % 4))) a
+  let a₂ := setVal "y" (a₁ (elemKey "A" ((a₁ "j").val % 4))) a₁
+  let a₃ := setVal "r" (natEval arrSelE a₂) a₂
+  setVal (elemKey "A" ((a₃ "k").val % 4)) (a₃ "r") a₃
+
+theorem arrSelK_ascendGL_prog (fuel : Nat) :
+    (ascendGL arrSelLayout fuel arrSelK).2 = arrSelKAbs := rfl
+
+theorem arrSelK_guards (fuel : Nat) :
+    (ascendGL arrSelLayout fuel arrSelK).1 =
+      [Guard.after (fun a => setVal "x" (a (elemKey "A" ((a "i").val % 4))) a)
+        (Guard.after (fun a => setVal "y" (a (elemKey "A" ((a "j").val % 4))) a)
+          (Guard.range "r" arrSelE))] := rfl
+
+theorem arrSelK_guardsHold (fuel : Nat) (a : AField) :
+    guardsHold (ascendGL arrSelLayout fuel arrSelK).1 a := by
+  rw [arrSelK_guards]
+  simp [guardsHold, Guard.holds, arrSelE, SExpr.inRange, natStore, ZMod.val_lt]
+
+/-- `arrSelK` refines `arrSelKAbs` over `SRwordL arrSelLayout` on every store. -/
+theorem arrSelK_corres : Corres (SRwordL arrSelLayout) (fun _ => True) arrSelKAbs arrSelK := by
+  have h := ascendGL_sound_scalar arrSelLayout 0 arrSelK rfl
+  rw [arrSelK_ascendGL_prog] at h
+  exact corres_weaken _ h (fun a _ => arrSelK_guardsHold 0 a)
+
+/-- The concrete store binding `A` to the zero array and every other name to the zero
+    word. -/
+def arrSelEnv : SEnvScalar :=
+  fun s => if s = "A" then some ⟨.memref 4, fun _ => (0 : BitVec 64)⟩
+    else some ⟨.sword 64, (0 : BitVec 64)⟩
+
+/-- The relation of `arrSelK_corres` holds between `arrSelEnv` and the all-zero
+    abstract store. -/
+theorem arrSelK_srwordL : SRwordL arrSelLayout arrSelEnv zeroStore := by
+  refine ⟨fun x _ hx => ?_, fun p hp => ?_⟩
+  · have hxA : x ≠ "A" := by rintro rfl; exact absurd hx (by decide)
+    exact ⟨0, by simp [arrSelEnv, hxA], by simp [wEnc, zeroStore]⟩
+  · simp only [arrSelLayout, List.mem_singleton] at hp
+    subst hp
+    exact ⟨notTmpB_sound "A" rfl, fun _ => 0, by simp [arrSelEnv], fun _ => by
+      simp [wEnc, zeroStore]⟩
 
 end CatCrypt.Crypto.SecureCompilation.Ascent

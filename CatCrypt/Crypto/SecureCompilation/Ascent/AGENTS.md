@@ -94,8 +94,8 @@ the table gives the role and the declarations to read first.
 | [`Ascend`](Ascend.lean) | the fragments and their soundness `ascend_sound`, `ascend_expr_sound`, `ascend_bitwise_sound`; tactics `ascend`, `ascend_expr`, `ascend_bitwise` |
 | [`AscendDecide`](AscendDecide.lean) | `Bool` fragment checkers with soundness; tactics `ascend!`, `ascend_expr!`, `ascend_bitwise!`, `ascend_unified!` |
 | [`AscendMeta`](AscendMeta.lean) | tactic `ascend_meta` (membership by syntax walk); `keccakRoundBody_bitwise` |
-| [`Guards`](Guards.lean) | `Guard`, `guardsHold`, the total abstraction `ascendG`; `ascendG_sound`, `ascendG_sound_scalar`; `corresU_for_trips`, `corresU_whileNz` |
-| [`Strengthen`](Strengthen.lean) | `tsLowCT`, `tsLowCT_sound`, `tsLowCT_isSome_iff`; `tsHax`, `tsHax_sound`; `Kernel.tsLevel` |
+| [`Guards`](Guards.lean) | `Guard`, `guardsHold`; array layouts `ArrLayout`, `elemKey`, `SRwordL`; the total abstraction `ascendGL` over a layout and `ascendG = ascendGL []`; `ascendGL_sound`, `ascendG_sound`, `ascendG_sound_scalar`; array leaves `corresL_arrLoad`, `corresL_arrStore`, `corresL_limbStore`; `corresU_for_trips`, `corresU_whileNz` |
+| [`Strengthen`](Strengthen.lean) | `tsLowCTL`, `tsLowCTL_sound`, `tsLowCTL_isSome_iff` and the empty-layout `tsLowCT`, `tsLowCT_sound`, `tsLowCT_isSome_iff`; `tsHax`, `tsHax_sound`; `Kernel.tsLevel` |
 | [`CorresAttr`](CorresAttr.lean) | the `@[corres]` label attribute |
 | [`CorresSolver`](CorresSolver.lean) | `corresJ_cons`, `corresJ_castFa`; tactics `corres_leaf`, `corres_chain`, `corres_solve` |
 | [`CorresX86Solver`](CorresX86Solver.lean) | `SRx`, `corresJ_of_regs`, the leaves `corresJ_movX` … `corresJ_mulxX`; tactic `corres_solve_x86` |
@@ -213,6 +213,7 @@ These modules are not imported by any module above and are not part of the calcu
 | the same goal when every terminal is a literal `RScalarSet` | `ascend`, `ascend_expr`, `ascend_bitwise` | constructor search; leaves the `IsArithClean` / `IsWordClean` side conditions of expression terminals open |
 | `Corres SRwordBV (fun _ => True) fold c` for a straight-line `RSeq` / `RScalarSetExpr` kernel mixing arithmetic and bitwise nodes | `corres_solve_scalar` | synthesises the `wordStep` fold; the only leaf is `corres_setExprWord` |
 | a kernel with loops, conditionals, range side conditions or unsupported nodes | `ascendG_sound`, `ascendG_sound_scalar`, `tsLowCT_sound` (terms) | inspect `(ascendG fuel c).1` first; an `unsupported` guard makes the precondition unsatisfiable |
+| a kernel with `RArrLoad`, `RArrStore` or `RLimbStore` | `ascendGL_sound_scalar`, `tsLowCTL_sound_scalar` over the array layout (terms) | pass the layout listing each array with its length; `arrSelK` is the template |
 | `CorresJ SRcarry` or `CorresJ SRcarry2` over a carry-family `JInstr` block | `corres_solve` | composes the `@[corres]` leaves by `corresJ_cons` |
 | `CorresJ SRx` over value instructions, given as `JInstr`s, as `xs.map xinstrToJ`, or as `x86Target.compile p` | `corres_solve_x86` | normalises the block, then `corres_solve` |
 | `CorresR SRr` over an `RInst64` block | `corres_solve_rv` | composes the `@[corresR]` leaves |
