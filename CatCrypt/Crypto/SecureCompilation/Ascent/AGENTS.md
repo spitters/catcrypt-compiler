@@ -180,6 +180,19 @@ the table gives the role and the declarations to read first.
 | [`Demos/EarlyExit`](Demos/EarlyExit.lean) | a hax search loop with `return` read by `pipeline_exceptProg` |
 | [`Demos/Strengthen`](Demos/Strengthen.lean) | the level `Kernel.tsLevel` picks for each demo kernel |
 
+### Loops as functions
+
+| Module | Role |
+|---|---|
+| [`WhileFun`](WhileFun.lean) | the fuel-free abstract loop `LoopRecIn` / `LoopTerminates` / `loopFun`; `whileFun_sim`, `whileFun_total`; node rules `corresU_whileFun_terminates`, `corresU_whileFun`, `corresU_whileFun_total`; `corresU_while_of_loopRec` |
+| [`Demos/WhileFunSum`](Demos/WhileFunSum.lean) | a summation do-while with its exit state `sumExit` proved by induction on the loop variable (`sum_loopRecIn`, `sumLoop_corres`, `sumLoop_total`) |
+
+For an `RWhileNz` whose result the caller needs as a value, state the abstract guard
+`guardA` and step `fb`, prove `LoopRecIn guardA fb n a (exit a)` by induction on the
+loop variable, and apply `corresU_whileFun` or `corresU_whileFun_total`; the value of
+`loopFun` then follows from `loopFun_eq_of_loopRecIn`. `corresU_while` remains the
+rule when only an invariant of the exit state is needed.
+
 ### Research probes
 
 These modules are not imported by any module above and are not part of the calculus.

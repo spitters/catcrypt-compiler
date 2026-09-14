@@ -100,6 +100,49 @@ The demonstrations under `Ascent/Demos/` each state a small route end to end:
 | [Demos/EarlyExit](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/EarlyExit.lean) | a search loop with `return`, an `ImpExpr` term written in Lean in the shape of an extraction, read as an exception program | `searchU_except_found`, `searchU_word_found` |
 | [Demos/Strengthen](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Strengthen.lean) | the result monad chosen per kernel | `feSubC_ts_refines`, `qrFrag_ts_refines`, `searchU_ts_refines` |
 
+## Data-dependent loops as functions
+
+`corresU_while` (`WhileTop.lean`) relates a terminating run of `.RWhileNz name body`
+to some abstract state that satisfies the invariant. The rule in
+[WhileFun.lean](CatCrypt/Crypto/SecureCompilation/Ascent/WhileFun.lean) relates it to
+the value of one abstract function, in the manner of Myreen's decompilation of loops
+into tail-recursive functions (TR-765 §2.7) as adapted to Lean 4 by
+[dhsorens/riscv-decomp](https://github.com/dhsorens/riscv-decomp).
+
+The abstract loop is a guard `guardA : A → Bool` and a step `fb : A → A`.
+`LoopRecIn guardA fb n a b` is the inductive predicate "the top-tested loop from `a`
+exits in `b` after `n` trips". Its least fixpoint is termination
+(`LoopTerminates guardA fb a`), and the trip count is an index of the derivation, so
+the abstract side has no fuel. `loopFun guardA fb a h` is the exit state of a
+terminating loop and `loopTrips` its trip count; `LoopRecIn.det`,
+`loopFun_of_guard_false`, `loopFun_of_guard_true`, `LoopTerminates.induction` and
+`loopTerminates_of_measure` are the determinism, unfolding, induction and measure
+lemmas.
+
+`RWhileNz` is a do-while, so the abstract function at entry `a` is
+`loopFun guardA fb (fb a)`. The node rules take the body correspondence
+`CorresU fuel SR P fb body`, the invariant `∀ a, P a → P (fb a)` and the guard
+agreement `SR env a → P a → guardNz name env = guardA a`:
+
+* `corresU_whileFun_terminates`: a terminating run proves
+  `LoopTerminates guardA fb (fb a)`;
+* `corresU_whileFun`: a terminating run lands in a state related to
+  `loopFun guardA fb (fb a) h`, for every termination proof `h`;
+* `corresU_whileFun_total`: when `loopTrips guardA fb (fb a) h < fuel`, the run
+  terminates and lands in such a state.
+
+A caller proves termination by the same induction that computes the loop's value.
+`corresU_while_of_loopRec` derives the conclusion of `corresU_while` from the
+underlying simulation `whileFun_sim`, taking as abstract state the pair of the
+concrete environment and the abstract state.
+
+[Demos/WhileFunSum](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/WhileFunSum.lean)
+applies the rule to `do { acc := acc + k; k := k - 1 } while (k != 0)` over
+`SRwordBV`. `sum_loopRecIn` proves by induction on the value of `k` that the abstract
+loop exits in `sumExit`, where `k` is `0` and `acc` has grown by `k (k + 1) / 2`;
+`sumLoop_corres` and `sumLoop_total` are the partial and total node statements, and
+`sumLoop_corres_of_ne_zero` states the result for entry states with `k ≠ 0`.
+
 ## A worked path: `feSub_source_to_bytes_tower`
 
 The kernel is `r0 := a0 - b0` with the inputs written as the literals
