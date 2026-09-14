@@ -34,9 +34,12 @@ opaque `extCall` leaf bindings (the crypto leaf calls) or a `memrefSet` chain:
 * `RCallDstThreaded` — one `extCall fname` with `dst :: args`;
 * `RTupleLoad`       — one `extCall "tupleLoad:i"`;
 * `RArrLoadLit` / `RArrStoreLit` — a `bvConst` index temporary and a
-  `memrefGetDyn` / `memrefSetDyn` `varBind` when the array slot is `.memref n`
-  and the destination (load) or source (store) is a 64-bit word; otherwise one
-  `extCall "arrLoad:i"` / `"arrStore:i"`;
+  `memrefGetDyn` / `memrefSetDyn` `varBind` when the array has tower type
+  `TArr _ .TU64` and is bound as `.memref n`, and the destination (load) or source
+  (store) is a 64-bit word; otherwise one `extCall "arrLoad:i"` / `"arrStore:i"`.
+  `encodeTy` binds byte and `u32` arrays as `.memref` too, and the direct route
+  (`LowCTToJasmin.arrLitElemWS`) reads their element `idx` at the array's own
+  width, not word `idx`, so those arrays take the opaque leaf;
 * `RArrLoad` / `RArrStore` — a `memrefGetDyn` / `memrefSetDyn` `varBind` when the
   operands match the dynamic-index memref ABI (array `.memref n`, index/value
   `.sword 64`, word destination), else one `extCall "arrLoadDyn"` / `"arrStoreDyn"`
@@ -805,12 +808,13 @@ def translateDialectFull {Γ : Ctx} (vm : VarMap Γ) :
             let e : Expr catCryptDialect Γ retTy :=
               extCallExpr ("tupleLoad:" ++ toString idx) retTy hv
             some { Γ' := retTy :: Γ, cont := ComCont.varBind e, vm := vm.bind dst.locVar }
-  -- Literal-index array read of a word array into a `u64` word: the index as a
-  -- `bvConst` in an anonymous temporary, then `memrefGetDyn`. Any other shape
-  -- is the opaque `extCall "arrLoad:i"` leaf.
+  -- Literal-index array read of a `u64` word array (`TArr _ .TU64`) into a `u64`
+  -- word: the index as a `bvConst` in an anonymous temporary, then
+  -- `memrefGetDyn`. Any other shape, a byte or `u32` array included, is the
+  -- opaque `extCall "arrLoad:i"` leaf.
   | .RArrLoadLit dst src idx =>
-      match dst.locDst, vm.lookup src.locVar with
-      | .TU64, some ⟨.memref n, arrV⟩ =>
+      match dst.locDst, src.locDst, vm.lookup src.locVar with
+      | .TU64, .TArr _ .TU64, some ⟨.memref n, arrV⟩ =>
           let eIdx : Expr catCryptDialect Γ (.sword 64) :=
             { op := .bvConst 64 (BitVec.ofNat 64 idx), retTy_eq := rfl, args := .nil }
           let eLoad : Expr catCryptDialect (.sword 64 :: Γ) (.sword 64) :=
@@ -820,7 +824,7 @@ def translateDialectFull {Γ : Ctx} (vm : VarMap Γ) :
           some { Γ' := .sword 64 :: .sword 64 :: Γ,
                  cont := ComCont.comp (ComCont.varBind eIdx) (ComCont.varBind eLoad),
                  vm := (vm.weaken (t := .sword 64)).bind (t := .sword 64) dst.locVar }
-      | _, _ =>
+      | _, _, _ =>
           match resolveLocatedArgs vm [src] with
           | none => none
           | some resolvedArgs =>
@@ -831,12 +835,13 @@ def translateDialectFull {Γ : Ctx} (vm : VarMap Γ) :
                   extCallExpr ("arrLoad:" ++ toString idx) retTy hv
                 some { Γ' := retTy :: Γ, cont := ComCont.varBind e,
                        vm := vm.bind dst.locVar }
-  -- Literal-index array write of a word into a word array: the index as a
-  -- `bvConst` in an anonymous temporary, then `memrefSetDyn`. Any other shape
-  -- is the opaque `extCall "arrStore:i"` leaf.
+  -- Literal-index array write of a word into a `u64` word array (`TArr _ .TU64`):
+  -- the index as a `bvConst` in an anonymous temporary, then `memrefSetDyn`. Any
+  -- other shape, a byte or `u32` array included, is the opaque
+  -- `extCall "arrStore:i"` leaf.
   | .RArrStoreLit arr idx src =>
-      match vm.lookup arr.locVar, vm.lookup src.locVar with
-      | some ⟨.memref n, arrV⟩, some ⟨.sword 64, srcV⟩ =>
+      match arr.locDst, vm.lookup arr.locVar, vm.lookup src.locVar with
+      | .TArr _ .TU64, some ⟨.memref n, arrV⟩, some ⟨.sword 64, srcV⟩ =>
           let eIdx : Expr catCryptDialect Γ (.sword 64) :=
             { op := .bvConst 64 (BitVec.ofNat 64 idx), retTy_eq := rfl, args := .nil }
           let eStore : Expr catCryptDialect (.sword 64 :: Γ) (.memref n) :=
@@ -847,7 +852,7 @@ def translateDialectFull {Γ : Ctx} (vm : VarMap Γ) :
           some { Γ' := .memref n :: .sword 64 :: Γ,
                  cont := ComCont.comp (ComCont.varBind eIdx) (ComCont.varBind eStore),
                  vm := (vm.weaken (t := .sword 64)).bind (t := .memref n) arr.locVar }
-      | _, _ =>
+      | _, _, _ =>
           match resolveLocatedArgs vm [arr, src] with
           | none => none
           | some resolvedArgs =>

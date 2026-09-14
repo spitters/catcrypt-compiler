@@ -55,8 +55,8 @@ fragment: the `RSeq` / `RBlock` / `RSkip` closure; the const/zero scalar binds
 `RCallDstThreaded`, `RTupleLoad`, the two-dest `RCallSwap` and `RCloneCall`, the
 N-dest `RCallN`); the dynamic-index array **load**/**store** arms (`RArrLoad` via
 `memGetDyn`, `RArrStore` via `memSetDyn`) and their literal-index twins
-(`RArrLoadLit`/`RArrStoreLit`, a `bvConst` index temp + the same read or write, opaque
-on other slot types); the constant-time word select `RSelect` (the eight-op mask
+(`RArrLoadLit`/`RArrStoreLit`, a `bvConst` index temp + the same read or write on a
+`TArr _ .TU64` word array, opaque on other slot and array types); the constant-time word select `RSelect` (the eight-op mask
 chain, §5e′, opaque on other slot types); the memref limb write `RLimbStore` (a
 weaken-step + a `memrefSet` bind); and the contract assertion `RAssert` (no
 emission, identity waist — §4b). Every single-binding arm reduces to `scalar_step`; the
@@ -476,8 +476,9 @@ def semRForD (semBody : SEnvScalar → Option SEnvScalar) (x : String) :
       default;
     * `RArrLoadLit` / `RArrStoreLit` — the read `memGetDyn arr i` / write
       `memSetDyn arr i v` at the literal index `i` taken as a 64-bit word, when the
-      array slot is a `.memref n` and the destination (load) or source (store) a
-      64-bit word; else the opaque default;
+      array has tower type `TArr _ .TU64` and is bound as a `.memref n`, and the
+      destination (load) or source (store) is a 64-bit word; else the opaque
+      default, byte and `u32` arrays included;
     * `RArrLoad` — the dynamic-index read `memGetDyn arr i` when the array slot is
       a `.memref n`, the index a `.sword 64`, and the destination a `u64` word;
       else the opaque `extCall "arrLoadDyn"` default;
@@ -513,19 +514,19 @@ def semScalar : LowCT → SEnvScalar → Option SEnvScalar
       let retTy := encodeTy dst.locDst
       some (env.upd dst.locVar (t := retTy) (CryptoTy.default retTy))
   | .RArrLoadLit dst src idx, env =>
-      match dst.locDst, env src.locVar with
-      | .TU64, some ⟨.memref _n, arr⟩ =>
+      match dst.locDst, src.locDst, env src.locVar with
+      | .TU64, .TArr _ .TU64, some ⟨.memref _n, arr⟩ =>
           some (env.upd dst.locVar (t := .sword 64)
             (memGetDyn arr (BitVec.ofNat 64 idx).toNat))
-      | _, _ =>
+      | _, _, _ =>
           let retTy := encodeTy dst.locDst
           some (env.upd dst.locVar (t := retTy) (CryptoTy.default retTy))
   | .RArrStoreLit arr idx src, env =>
-      match env arr.locVar, env src.locVar with
-      | some ⟨.memref n, a⟩, some ⟨.sword 64, v⟩ =>
+      match arr.locDst, env arr.locVar, env src.locVar with
+      | .TArr _ .TU64, some ⟨.memref n, a⟩, some ⟨.sword 64, v⟩ =>
           some (env.upd arr.locVar (t := .memref n)
             (memSetDyn a (BitVec.ofNat 64 idx).toNat v))
-      | _, _ =>
+      | _, _, _ =>
           let retTy := encodeTy arr.locDst
           some (env.upd arr.locVar (t := retTy) (CryptoTy.default retTy))
   | .RCallSwap _fname dest1 dest2 _args, env =>
@@ -703,21 +704,25 @@ theorem semScalar_rSelect_word (dst : Located) (sel : String) (src0 src1 : Locat
       some (env.upd dst.locVar (t := .sword 64) (selectWord s a c)) := by
   simp only [semScalar, Located.locDst, hd, hs, ha, hc]
 
-/-- The waist semantics of a literal-index read of a word array into a `u64` word. -/
+/-- The waist semantics of a literal-index read of a `u64` word array
+    (`TArr k .TU64`) into a `u64` word. -/
 theorem semScalar_rArrLoadLit_word (dst src : Located) (idx : Nat) (env : SEnvScalar)
-    (n : Nat) (arr : Fin n → BitVec 64) (hd : dst.locSrc = .TU64)
+    (k n : Nat) (arr : Fin n → BitVec 64) (hd : dst.locSrc = .TU64)
+    (hsrc : src.locSrc = .TArr k .TU64)
     (hs : env src.locVar = some ⟨.memref n, arr⟩) :
     semScalar (.RArrLoadLit dst src idx) env =
       some (env.upd dst.locVar (t := .sword 64) (memGetDyn arr (BitVec.ofNat 64 idx).toNat)) := by
-  simp only [semScalar, Located.locDst, hd, hs]
+  simp only [semScalar, Located.locDst, hd, hsrc, hs]
 
-/-- The waist semantics of a literal-index write of a word into a word array. -/
+/-- The waist semantics of a literal-index write of a word into a `u64` word array
+    (`TArr k .TU64`). -/
 theorem semScalar_rArrStoreLit_word (arr src : Located) (idx : Nat) (env : SEnvScalar)
-    (n : Nat) (a : Fin n → BitVec 64) (v : BitVec 64)
+    (k n : Nat) (a : Fin n → BitVec 64) (v : BitVec 64)
+    (harr : arr.locSrc = .TArr k .TU64)
     (ha : env arr.locVar = some ⟨.memref n, a⟩) (hs : env src.locVar = some ⟨.sword 64, v⟩) :
     semScalar (.RArrStoreLit arr idx src) env =
       some (env.upd arr.locVar (t := .memref n) (memSetDyn a (BitVec.ofNat 64 idx).toNat v)) := by
-  simp only [semScalar, ha, hs]
+  simp only [semScalar, Located.locDst, harr, ha, hs]
 
 /-! ## 5. Op-denotation helpers (the waist each single-binding arm binds by) -/
 
@@ -2044,11 +2049,11 @@ theorem translateDialectFull_denote {c : LowCT} (hcov : IsCoveredS c) :
       intro Γ vm V env env' o hc htr hsem
       simp only [translateDialectFull] at htr
       split at htr
-      · rename_i n arrV hd hs
+      · rename_i k n arrV hd hsrc hs
         obtain rfl := Option.some.inj htr
         have henv : env src.locVar = some ⟨.memref n, (toVIRVar arrV).lookup V⟩ := by
           rw [← hc src.locVar, hs]; rfl
-        simp only [semScalar, hd, henv] at hsem
+        simp only [semScalar, hd, hsrc, henv] at hsem
         obtain rfl := Option.some.inj hsem
         let eIdx : Expr catCryptDialect Γ (.sword 64) :=
           { op := .bvConst 64 (BitVec.ofNat 64 idx), retTy_eq := rfl, args := .nil }
@@ -2079,9 +2084,9 @@ theorem translateDialectFull_denote {c : LowCT} (hcov : IsCoveredS c) :
                 (CryptoTy.default (encodeTy dst.locDst))) := by
             simp only [semScalar]
             split
-            · rename_i n arr hd hs
+            · rename_i k n arr hd hsrc hs
               obtain ⟨arrV, hs'⟩ := consistentS_bound hc hs
-              exact (hnot n arrV hd hs').elim
+              exact (hnot k n arrV hd hsrc hs').elim
             · rfl
           rw [hsem'] at hsem
           obtain rfl := Option.some.inj hsem
@@ -2094,13 +2099,13 @@ theorem translateDialectFull_denote {c : LowCT} (hcov : IsCoveredS c) :
       intro Γ vm V env env' o hc htr hsem
       simp only [translateDialectFull] at htr
       split at htr
-      · rename_i n arrV srcV ha hs
+      · rename_i k n arrV srcV harr ha hs
         obtain rfl := Option.some.inj htr
         have henvA : env arr.locVar = some ⟨.memref n, (toVIRVar arrV).lookup V⟩ := by
           rw [← hc arr.locVar, ha]; rfl
         have henvS : env src.locVar = some ⟨.sword 64, (toVIRVar srcV).lookup V⟩ := by
           rw [← hc src.locVar, hs]; rfl
-        simp only [semScalar, henvA, henvS] at hsem
+        simp only [semScalar, harr, henvA, henvS] at hsem
         obtain rfl := Option.some.inj hsem
         let eIdx : Expr catCryptDialect Γ (.sword 64) :=
           { op := .bvConst 64 (BitVec.ofNat 64 idx), retTy_eq := rfl, args := .nil }
@@ -2132,10 +2137,10 @@ theorem translateDialectFull_denote {c : LowCT} (hcov : IsCoveredS c) :
                 (CryptoTy.default (encodeTy arr.locDst))) := by
             simp only [semScalar]
             split
-            · rename_i n a v ha hs
+            · rename_i k n a v harr ha hs
               obtain ⟨arrV, ha'⟩ := consistentS_bound hc ha
               obtain ⟨srcV, hs'⟩ := consistentS_bound hc hs
-              exact (hnot n arrV srcV ha' hs').elim
+              exact (hnot k n arrV srcV harr ha' hs').elim
             · rfl
           rw [hsem'] at hsem
           obtain rfl := Option.some.inj hsem
@@ -2744,7 +2749,7 @@ theorem translateDialectFull_ext (c : LowCT) :
   case RArrStoreLit arr idx src =>
       simp only [translateDialectFull] at htr
       split at htr
-      · rename_i n _ _ _ _
+      · rename_i _ n _ _ _ _ _
         obtain rfl := Option.some.inj htr
         exact ⟨[.memref n, .sword 64], rfl, fun h => absurd h (by simp)⟩
       · rcases hra : resolveLocatedArgs vm [arr, src] with _ | resolvedArgs

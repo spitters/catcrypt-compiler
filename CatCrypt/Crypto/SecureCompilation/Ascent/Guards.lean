@@ -67,7 +67,7 @@ dynamic-index array read and write `RArrLoad` / `RArrStore` go through
 modulo the array length, as `memGetDyn` / `memSetDyn` do; the literal limb store
 `RLimbStore` goes through `corresL_limbStore`, and the literal-index read and write
 `RArrLoadLit` / `RArrStoreLit` go through `corresL_arrLoadLit` / `corresL_arrStoreLit`
-at an index below the array length. The constant-time word select `RSelect` goes
+on a `TArr _ .TU64` word array at an index below the array length. The constant-time word select `RSelect` goes
 through `corresL_select`, which sets the destination to the first source when the
 selector is zero and to the second otherwise, as `selectWord` does. These six nodes
 carry no store guard.
@@ -834,11 +834,26 @@ theorem litIdx_mod {idx m : Nat} (hidx : idx < m + 1) (hlit : idx < 2 ^ 64) :
     (BitVec.ofNat 64 idx).toNat % (m + 1) = idx := by
   rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hlit, Nat.mod_eq_of_lt hidx]
 
+/-- Whether a tower type is a `u64` word array `TArr k .TU64`, the array type on which
+    `semScalar` reads and writes a literal-index element as a 64-bit word. -/
+def isU64ArrB : TowerType → Bool
+  | .TArr _ .TU64 => true
+  | _ => false
+
+/-- `isU64ArrB` holds exactly on `TArr k .TU64`. -/
+theorem isU64ArrB_sound {t : TowerType} (h : isU64ArrB t = true) :
+    ∃ k, t = .TArr k .TU64 := by
+  unfold isU64ArrB at h
+  split at h
+  · exact ⟨_, rfl⟩
+  · exact absurd h (by simp)
+
 /-- The literal-index array read over a layout: `RArrLoadLit dst src idx` with `src` a
-    layout array of length `m + 1` above `idx` and `dst` an unreserved `u64` word reads
-    the element at `elemKey src.locVar idx`. -/
-theorem corresL_arrLoadLit (L : ArrLayout) (dst src : Located) (idx m : Nat)
-    (hdst : dst.locSrc = .TU64) (hsz : (src.locVar, m + 1) ∈ L) (hidx : idx < m + 1)
+    `u64` word array (`TArr k .TU64`) in the layout of length `m + 1` above `idx` and
+    `dst` an unreserved `u64` word reads the element at `elemKey src.locVar idx`. -/
+theorem corresL_arrLoadLit (L : ArrLayout) (dst src : Located) (idx k m : Nat)
+    (hdst : dst.locSrc = .TU64) (hsrc : src.locSrc = .TArr k .TU64)
+    (hsz : (src.locVar, m + 1) ∈ L) (hidx : idx < m + 1)
     (hlit : idx < 2 ^ 64) (hdk : arrKeyB L dst.locVar = false) :
     Corres (SRwordL L) (fun _ => True)
       (fun a => setVal dst.locVar (a (elemKey src.locVar idx)) a)
@@ -847,7 +862,7 @@ theorem corresL_arrLoadLit (L : ArrLayout) (dst src : Located) (idx m : Nat)
   obtain ⟨_, av, hav, havE⟩ := hSR.2 _ hsz
   have hav' : env src.locVar = some ⟨.memref (m + 1), av⟩ := hav
   refine ⟨env.upd dst.locVar (t := .sword 64) (memGetDyn av (BitVec.ofNat 64 idx).toNat),
-    semScalar_rArrLoadLit_word dst src idx env (m + 1) av hdst hav', ?_⟩
+    semScalar_rArrLoadLit_word dst src idx env k (m + 1) av hdst hsrc hav', ?_⟩
   refine srwordL_set dst.locVar (memGetDyn av (BitVec.ofNat 64 idx).toNat) _ hdk ?_ hSR
     (by simp [SEnvScalar.upd]) (fun y _ hy => by simp [SEnvScalar.upd, hy])
   have hk : (⟨(BitVec.ofNat 64 idx).toNat % (m + 1), Nat.mod_lt _ (Nat.succ_pos m)⟩ :
@@ -857,9 +872,10 @@ theorem corresL_arrLoadLit (L : ArrLayout) (dst src : Located) (idx m : Nat)
   exact havE ⟨idx, hidx⟩
 
 /-- The literal-index array write over a layout: `RArrStoreLit arr idx src` with `arr` a
-    layout array of length `m + 1` above `idx` stores the word at the non-temp
-    unreserved name `src` at `elemKey arr.locVar idx`. -/
-theorem corresL_arrStoreLit (L : ArrLayout) (arr src : Located) (idx m : Nat)
+    `u64` word array (`TArr k .TU64`) in the layout of length `m + 1` above `idx`
+    stores the word at the non-temp unreserved name `src` at `elemKey arr.locVar idx`. -/
+theorem corresL_arrStoreLit (L : ArrLayout) (arr src : Located) (idx k m : Nat)
+    (harr : arr.locSrc = .TArr k .TU64)
     (hsz : (arr.locVar, m + 1) ∈ L) (hidx : idx < m + 1) (hlit : idx < 2 ^ 64)
     (hst : ¬ isTmpName src.locVar) (hsk : arrKeyB L src.locVar = false) :
     Corres (SRwordL L) (fun _ => True)
@@ -871,7 +887,7 @@ theorem corresL_arrStoreLit (L : ArrLayout) (arr src : Located) (idx m : Nat)
   obtain ⟨sv, hsv, hsvE⟩ := hSR.1 src.locVar hst hsk
   refine ⟨env.upd arr.locVar (t := .memref (m + 1))
       (memSetDyn av (BitVec.ofNat 64 idx).toNat sv),
-    semScalar_rArrStoreLit_word arr src idx env (m + 1) av sv hav' hsv, ?_⟩
+    semScalar_rArrStoreLit_word arr src idx env k (m + 1) av sv harr hav' hsv, ?_⟩
   refine srwordL_arrWrite arr.locVar (m + 1) idx av
     (memSetDyn av (BitVec.ofNat 64 idx).toNat sv) sv _ hsvE hSR hsz hav' (fun j => ?_)
     (fun y => rfl)
@@ -985,26 +1001,29 @@ def limbStoreAbs (L : ArrLayout) (loc : Located) (idx : Nat) (v : BitVec 64) :
   | none => unsupportedAbs "RLimbStore"
 
 /-- The abstraction of `RArrLoadLit dst src idx`: the read of element `idx` of the
-    layout array `src` of length `m + 1 > idx` into the unreserved `u64` word `dst`,
-    `idx < 2 ^ 64`; unsupported otherwise. -/
+    layout array `src` of length `m + 1 > idx`, typed `TArr _ .TU64`, into the
+    unreserved `u64` word `dst`, `idx < 2 ^ 64`; unsupported otherwise, a byte or `u32`
+    array included. -/
 def arrLoadLitAbs (L : ArrLayout) (dst src : Located) (idx : Nat) :
     List Guard × (AField → AField) :=
   match layoutSize L src.locVar with
   | some (m + 1) =>
-      if dst.locSrc = .TU64 ∧ arrKeyB L dst.locVar = false ∧ idx < m + 1 ∧ idx < 2 ^ 64 then
+      if dst.locSrc = .TU64 ∧ isU64ArrB src.locSrc = true ∧ arrKeyB L dst.locVar = false ∧
+          idx < m + 1 ∧ idx < 2 ^ 64 then
         ([], fun a => setVal dst.locVar (a (elemKey src.locVar idx)) a)
       else unsupportedAbs "RArrLoadLit"
   | _ => unsupportedAbs "RArrLoadLit"
 
 /-- The abstraction of `RArrStoreLit arr idx src`: the write of the word `src` to element
-    `idx` of the layout array `arr` of length `m + 1 > idx`, `idx < 2 ^ 64`, the source a
-    non-temp unreserved name; unsupported otherwise. -/
+    `idx` of the layout array `arr` of length `m + 1 > idx`, typed `TArr _ .TU64`,
+    `idx < 2 ^ 64`, the source a non-temp unreserved name; unsupported otherwise, a byte
+    or `u32` array included. -/
 def arrStoreLitAbs (L : ArrLayout) (arr : Located) (idx : Nat) (src : Located) :
     List Guard × (AField → AField) :=
   match layoutSize L arr.locVar with
   | some (m + 1) =>
-      if idx < m + 1 ∧ idx < 2 ^ 64 ∧ notTmpB src.locVar = true ∧
-          arrKeyB L src.locVar = false then
+      if isU64ArrB arr.locSrc = true ∧ idx < m + 1 ∧ idx < 2 ^ 64 ∧
+          notTmpB src.locVar = true ∧ arrKeyB L src.locVar = false then
         ([], fun a => setVal (elemKey arr.locVar idx) (a src.locVar) a)
       else unsupportedAbs "RArrStoreLit"
   | _ => unsupportedAbs "RArrStoreLit"
@@ -1284,13 +1303,15 @@ theorem ascendGL_sound (L : ArrLayout) (fuel : Nat) :
     · exact corresU_unsupported _ _ _ _
     · exact corresU_unsupported _ _ _ _
     · dsimp only
-      by_cases hc : dst.locSrc = .TU64 ∧ arrKeyB L dst.locVar = false ∧ idx < m + 1 ∧
-          idx < 2 ^ 64
+      by_cases hc : dst.locSrc = .TU64 ∧ isU64ArrB src.locSrc = true ∧
+          arrKeyB L dst.locVar = false ∧ idx < m + 1 ∧ idx < 2 ^ 64
       · rw [if_pos hc]
-        obtain ⟨hdst, hdk, hidx, hlit⟩ := hc
+        obtain ⟨hdst, hu, hdk, hidx, hlit⟩ := hc
+        obtain ⟨k, hsrc⟩ := isU64ArrB_sound hu
         exact corresU_weaken _
           (corresU_of_corres _ rfl
-            (corresL_arrLoadLit L dst src idx m hdst (layoutSize_mem hs) hidx hlit hdk))
+            (corresL_arrLoadLit L dst src idx k m hdst hsrc (layoutSize_mem hs) hidx hlit
+              hdk))
           (fun _ _ => trivial)
       · rw [if_neg hc]
         exact corresU_unsupported _ _ _ _
@@ -1302,13 +1323,14 @@ theorem ascendGL_sound (L : ArrLayout) (fuel : Nat) :
     · exact corresU_unsupported _ _ _ _
     · exact corresU_unsupported _ _ _ _
     · dsimp only
-      by_cases hc : idx < m + 1 ∧ idx < 2 ^ 64 ∧ notTmpB src.locVar = true ∧
-          arrKeyB L src.locVar = false
+      by_cases hc : isU64ArrB arr.locSrc = true ∧ idx < m + 1 ∧ idx < 2 ^ 64 ∧
+          notTmpB src.locVar = true ∧ arrKeyB L src.locVar = false
       · rw [if_pos hc]
-        obtain ⟨hidx, hlit, hst, hsk⟩ := hc
+        obtain ⟨hu, hidx, hlit, hst, hsk⟩ := hc
+        obtain ⟨k, harr⟩ := isU64ArrB_sound hu
         exact corresU_weaken _
           (corresU_of_corres _ rfl
-            (corresL_arrStoreLit L arr src idx m (layoutSize_mem hs) hidx hlit
+            (corresL_arrStoreLit L arr src idx k m harr (layoutSize_mem hs) hidx hlit
               (notTmpB_sound _ hst) hsk))
           (fun _ _ => trivial)
       · rw [if_neg hc]

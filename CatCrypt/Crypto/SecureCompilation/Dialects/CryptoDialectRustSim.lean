@@ -1102,9 +1102,10 @@ theorem rustExecSimulatesDialect
          obtain ⟨w, hInv'⟩ := interp_cons_setTower_any hInv dst.locVar (encodeTy dst.locDst)
            ⟨dst.locDst, leafSpec.arrLoad dst oldV ⟨src.locDst, srcV⟩ idx⟩
          exact ⟨HVec.cons w V, hInv'⟩)
-  -- The word-array literal-index access binds an anonymous index temporary and the
-  -- destination; its post-state valuation is the canonical witness of the
-  -- alias-free `VarMap`. Any other shape is one opaque leaf binding.
+  -- The literal-index access to a `TArr _ .TU64` word array binds an anonymous index
+  -- temporary and the destination; its post-state valuation is the canonical witness
+  -- of the alias-free `VarMap`. Any other shape, a byte or `u32` array included, is
+  -- one opaque leaf binding.
   | arrStoreLit arr idx src rs0 oldV srcV _hLookArr _hLookSrc =>
       simp only [translateDialectControl, translateDialectFull] at hTrans
       split at hTrans
