@@ -2106,13 +2106,12 @@ lemma translateCmd_cif_newSid
 
 /-- **rustExecSimulates**: the `LowCT → Jasmin` translation is operationally correct.
 
-    If `c` is while-free, `env` correctly implements `leafSpec`, and the initial
-    heap encodes `rs`, then executing `translateCmd env (toJasminCmd c)` from that
-    heap deterministically produces a heap encoding `rs'`.
+    If `c` is while-free and call-free and the initial heap encodes `rs`, then
+    executing `translateCmd env (toJasminCmd c)` from that heap, for any `env`,
+    deterministically produces a heap encoding `rs'`.
 
     ## Signature
 
-    * `hLeaf : ∀ fuel', LeafImplOk leafSpec env fuel'` — `LeafImplOk` at any fuel
     * `hFuel : jasminFuel c ≤ fuel` — minimum fuel for the translated program to run
     * Induction generalizes over `sid`, `heap`, and `fuel` to allow IH reuse at subterms.
 
@@ -2125,11 +2124,8 @@ lemma translateCmd_cif_newSid
     * `scalarSet` — writes to `wordLoc` (disjoint from towerLoc by encodeSType); HeapInv preserved
     * `ifTrue/False` — IH on taken branch
     * `whileFalse/True` — `False` from `hWf : whileFree (.RWhileNz ..) = false ≠ true` ✓
-    * `call`      — `hLeaf` gives result heap; HeapInv blocked by scope mismatch
-    * `cloneCall` — `rsSetTower` + IH(inner call) + `rsRemoveTower`
-    * `limbStore` — similar to `call`; writes to `towerLoc dest`
-
-    **Proved: all 11 cases (0 sorry).**
+    * `call`, `cloneCall`, `limbStore` and the other call-like constructors —
+      excluded by `hCF`
 
     ## Hypotheses
 
@@ -2144,7 +2140,6 @@ lemma translateCmd_cif_newSid
     Uses `sid` (not `newSid`) since call-free programs preserve `newSid = sid`. -/
 theorem rustExecSimulates
     (N : Nat) (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat)
-    (hLeaf : ∀ fuel', LeafImplOk leafSpec env fuel')
     (c : LowCT) (rs rs' : RustState)
     (hWf : whileFree c = true)
     (hCF : callFree c = true)
@@ -2476,15 +2471,15 @@ theorem rustExecSimulates
   | arrLoadLit _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
   | scalarSetExpr _ _ _ => simp [whileFree] at hWf
 
-/-- **Standalone call simulation**: an `RCall` instruction simulates correctly
-    given `LeafImplOk`. This is the case that `rustExecSimulates` omits via
-    the `callFree = true` precondition.
+/-- **Standalone call simulation**: an `RCall` instruction run at `fuel`
+    simulates correctly given `LeafImplOk` at that fuel. This is the case that
+    `rustExecSimulates` omits via the `callFree = true` precondition.
 
     Composes with `rustExecSimulates` via `translateCmd_append_eval` when a
     call is sequenced with call-free code. -/
 lemma rustCallSimulates
     (N : Nat) (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat)
-    (hLeaf : ∀ fuel', LeafImplOk leafSpec env fuel')
+    (hLeaf : LeafImplOk leafSpec env fuel)
     (f : String) (dest : Located) (args : List Located)
     (rs rs' : RustState)
     (hExec : RustExec N leafSpec (.RCall f dest args) rs rs')
@@ -2512,7 +2507,7 @@ lemma rustCallSimulates
         · simp at hLookup
       · simp at hLookup
     obtain ⟨heap1, hEval, hDest, hOtherTower, hScalarPreserve⟩ :=
-      hLeaf fuel f dest args rs sid heap oldDestV argList hInv hTower hArgs
+      hLeaf f dest args rs sid heap oldDestV argList hInv hTower hArgs
     refine ⟨heap1, ?_, ?_, ?_, ?_⟩
     · simp only [toJasminCmd_RCall]; exact hEval
     · -- HeapInv after call
@@ -2569,7 +2564,7 @@ def LimbStoreImplOk (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat) : Prop :
     for Jasmin `Oasm` operators (Rocq's `asm_correct`). -/
 lemma rustLimbStoreSimulates
     (N : Nat) (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat)
-    (hLimb : ∀ fuel', LimbStoreImplOk leafSpec env fuel')
+    (hLimb : LimbStoreImplOk leafSpec env fuel)
     (loc : Located) (idx : Nat) (v : BitVec 64)
     (rs rs' : RustState)
     (hExec : RustExec N leafSpec (.RLimbStore loc idx v) rs rs')
@@ -2597,7 +2592,7 @@ lemma rustLimbStoreSimulates
         · simp at hLookup
       · simp at hLookup
     obtain ⟨heap1, hEval, hDest, hOtherTower, hScalarPreserve⟩ :=
-      hLimb fuel loc idx v rs sid heap oldDestV hInv hTower
+      hLimb loc idx v rs sid heap oldDestV hInv hTower
     refine ⟨heap1, ?_, ?_, ?_, ?_⟩
     · simp only [toJasminCmd_RLimbStore]; exact hEval
     · intro x t vx hxTower
@@ -2621,11 +2616,16 @@ lemma rustLimbStoreSimulates
 /-- **Clone oracle hypothesis**: the `.Copn ... (.Oasm "CLONE_TOWER") [oldDest]`
     instruction copies the tower value at `oldDest` into the tower slot
     associated to `cloneVar` at type `cloneTy.byteSize`. Mirrors Rocq
-    `asm_correct` for `Oasm` operators. -/
+    `asm_correct` for `Oasm` operators.
+
+    The premise `oldDest.locDst = cloneTy` makes the instruction read the slot
+    that `HeapInv` constrains: the operand `locToPExpr oldDest` reads at
+    `oldDest.locDst`'s storage width. -/
 def CloneImplOk (env : TransEnv) (fuel : Nat) : Prop :=
   ∀ (cloneVar : String) (cloneTy : TowerType) (oldDest : Located)
     (rs0 : RustState) (sid : ScopeId) (heap0 : Heap)
     (oldDestV : RustVal cloneTy),
+    oldDest.locDst = cloneTy →
     HeapInv rs0 heap0 sid →
     rs0.rsTower oldDest.locVar = some ⟨cloneTy, oldDestV⟩ →
     ∃ heap1 : Heap,
@@ -2646,18 +2646,20 @@ def CloneImplOk (env : TransEnv) (fuel : Nat) : Prop :=
     composition of `CloneImplOk` (for the clone step) and `LeafImplOk` (for
     the inner call). Mirrors Rocq's structural decomposition of sequences.
 
-    Requires `rs.rsTower oldDest.locVar = some ⟨cloneTy, oldV⟩` — the clone
-    is well-typed. -/
+    Requires `rs.rsTower oldDest.locVar = some ⟨cloneTy, oldV⟩` and
+    `oldDest.locDst = cloneTy` — the clone is well-typed. The clone step runs at
+    `fuel` and the inner call at `fuel - 1`. -/
 lemma rustCloneCallSimulates
     (N : Nat) (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat)
-    (hLeaf : ∀ fuel', LeafImplOk leafSpec env fuel')
-    (hClone : ∀ fuel', CloneImplOk env fuel')
+    (hLeaf : LeafImplOk leafSpec env (fuel - 1))
+    (hClone : CloneImplOk env fuel)
     (cloneVar : String) (cloneTy : TowerType) (oldDest : Located)
     (innerF : String) (dest : Located) (args : List Located)
     (rs rs' : RustState)
     (hExec : RustExec N leafSpec
         (.RCloneCall cloneVar cloneTy oldDest innerF dest args) rs rs')
     (oldV : RustVal cloneTy)
+    (hTy : oldDest.locDst = cloneTy)
     (hOldDest : rs.rsTower oldDest.locVar = some ⟨cloneTy, oldV⟩)
     (sid : ScopeId) (heap : Heap)
     (hInv : HeapInv rs heap sid)
@@ -2674,7 +2676,7 @@ lemma rustCloneCallSimulates
   | cloneCall _ _ _ _ _ _ _ rsClone _ hClone_eq hCall =>
     -- Apply clone oracle to get heap1
     obtain ⟨heap1, hEvalClone, hCloneDest, hCloneOther, hCloneScalar⟩ :=
-      hClone fuel cloneVar cloneTy oldDest rs sid heap oldV hInv hOldDest
+      hClone cloneVar cloneTy oldDest rs sid heap oldV hTy hInv hOldDest
     -- Establish invariants at rsClone / heap1
     have hRsClone : rsClone = rsSetTower rs cloneVar ⟨cloneTy, oldV⟩ := by
       rw [hClone_eq, hOldDest]; rfl
@@ -2723,7 +2725,7 @@ lemma rustCloneCallSimulates
         cases n <;> simp only [translateCmd]
     rw [h_newSid]
     simp only [List.length_cons, List.length_nil, Nat.zero_add]
-    -- Apply rustCallSimulates for the inner call (now takes explicit N)
+    -- Apply rustCallSimulates for the inner call
     obtain ⟨heap2, hEvalCall, hInv2, hSInv2, hB2⟩ :=
       rustCallSimulates N leafSpec env (fuel - 1) hLeaf innerF dest args
         rsClone rs' hCall sid heap1 hInv1 hSInv1 hBounded1
@@ -2742,28 +2744,20 @@ each get a standalone simulation lemma mirroring the
   hypothesis plus heap-encoding invariants (`HeapInv`, `ScalarInv`,
   `ScalarsBounded`).
 
-For Phase G (`RCallN`), the `RustExec` semantics is an identity
-stub (`rs' = rs`); the `ImplOk` hypothesis correspondingly requires
-that the Jasmin `Ccall` instruction preserves the heap-level
-encoding of `rs` (no tower or scalar updates).  Future tightening to
-real multi-output semantics would parameterise over a
-per-instruction oracle in `LeafSpec`; the current shape captures the
-"opcode-as-no-op" lowering that the verified pipeline emits for this
-constructor.
+For `RCallN`, `RustExec.callN` writes destination `i` with
+`leafSpec.call (callNLeafName f i)`; the `ImplOk` hypothesis requires
+the Jasmin `Ccall` instruction to produce a heap encoding that state.
 
-For Phase H (`RSelect`), the `RustExec` semantics is a real
-conditional copy (selectFalse / selectTrue cases); the `ImplOk`
-hypothesis encodes that the Jasmin `CMOV` opcode writes the
-correct source value to `dst` based on the runtime value of `sel`.
+For `RSelect`, the `RustExec` semantics is a conditional copy
+(selectFalse / selectTrue cases); the `ImplOk` hypothesis states that
+the Jasmin `CMOV` opcode writes the source selected by the runtime
+value of `sel` to `dst`.
 -/
 
-/-- **Phase G.1 — CallN oracle hypothesis**: the translated
+/-- **CallN oracle hypothesis**: the translated
     `.Ccall .DoNotInline (...) { name := f } (...)` instruction (run
-    from any heap encoding `rs`) produces a heap that preserves the
-    encoding of `rs` (matching `RustExec.callN`'s identity-stub
-    semantics).  Future tightening to multi-output semantics would
-    parameterise over a `CallNSpec` oracle; this shape captures the
-    current verified-pipeline lowering. -/
+    from any heap encoding `rs`) produces a heap encoding the state that
+    `RustExec.callN` produces, with the scalar cells unchanged. -/
 def CallNImplOk (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat) : Prop :=
   ∀ (f : String) (dests args : List Located)
     (rs0 : RustState) (sid : ScopeId) (heap0 : Heap),
@@ -2786,7 +2780,7 @@ def CallNImplOk (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat) : Prop :=
     what `CallNImplOk` supplies; the scalar heap is untouched on both sides. -/
 lemma rustCallNSimulates
     (N : Nat) (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat)
-    (hCallN : ∀ fuel', CallNImplOk leafSpec env fuel')
+    (hCallN : CallNImplOk leafSpec env fuel)
     (f : String) (dests args : List Located)
     (rs rs' : RustState)
     (hExec : RustExec N leafSpec (.RCallN f dests args) rs rs')
@@ -2804,7 +2798,7 @@ lemma rustCallNSimulates
   | callN _ _ _ _ argList hArg hArgsBound hDestsBound =>
     subst hArg
     obtain ⟨heap1, hEval, hInv1, hScalarEq⟩ :=
-      hCallN fuel f dests args rs sid heap hInv hArgsBound hDestsBound
+      hCallN f dests args rs sid heap hInv hArgsBound hDestsBound
     refine ⟨heap1, ?_, hInv1, ?_, ?_⟩
     · simp only [toJasminCmd_RCallN]; exact hEval
     · intro x
@@ -2818,7 +2812,10 @@ lemma rustCallNSimulates
     `.Copn [dst] .AT_none (.Oasm { name := "CMOV" }) [sel; src0; src1]`
     instruction reads `sel`'s scalar value, copies the appropriate
     source's tower value into `dst`, and leaves all other locations
-    unchanged.  Matches `RustExec.selectFalse` / `selectTrue`. -/
+    unchanged.  Matches `RustExec.selectFalse` / `selectTrue`.
+
+    The premise `ScalarsBounded rs0` makes the 64-bit cell of `sel` determine
+    whether `rs0.rsScalar sel` is zero. -/
 def SelectImplOk (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat) : Prop :=
   ∀ (dst : Located) (sel : String) (src0 src1 : Located)
     (rs0 : RustState) (sid : ScopeId) (heap0 : Heap)
@@ -2827,6 +2824,7 @@ def SelectImplOk (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat) : Prop :=
     (src0V : RustVal src0.locDst) (src1V : RustVal src1.locDst),
     HeapInv rs0 heap0 sid →
     ScalarInv rs0 heap0 sid →
+    ScalarsBounded rs0 →
     rs0.rsTower dst.locVar = some ⟨dst.locDst, oldDestV⟩ →
     locatedLookup rs0 src0 = some src0V →
     locatedLookup rs0 src1 = some src1V →
@@ -2845,16 +2843,13 @@ def SelectImplOk (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat) : Prop :=
       (∀ (x : String),
         heap1.get (translateVar sid { vname := x, vtype := .sword .U64 }) =
         heap0.get (translateVar sid { vname := x, vtype := .sword .U64 }))
-  -- `leafSpec` parameter retained for symmetry with other ImplOk
-  -- predicates (e.g. `LimbStoreImplOk`, `LeafImplOk`) and to allow
-  -- future tightening that introduces a `LeafSpec.cmov` oracle.
 
 /-- **Phase H.1 — Standalone RSelect simulation**.  Real conditional-
     copy semantics: post-state writes `dst` to either `src0` or `src1`
     depending on the runtime scalar `sel`. -/
 lemma rustSelectSimulates
     (N : Nat) (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat)
-    (hSel : ∀ fuel', SelectImplOk leafSpec env fuel')
+    (hSel : SelectImplOk leafSpec env fuel)
     (dst : Located) (sel : String) (src0 src1 : Located)
     (rs rs' : RustState)
     (hExec : RustExec N leafSpec (.RSelect dst sel src0 src1) rs rs')
@@ -2875,8 +2870,8 @@ lemma rustSelectSimulates
       ScalarInv rs' heap' sid ∧
       ScalarsBounded rs' := by
   obtain ⟨heap1, hEval, hDestVal, hOtherTower, hScalarEq⟩ :=
-    hSel fuel dst sel src0 src1 rs sid heap h0 h1 oldDestV src0V src1V
-      hInv hSInv hDestLk hSrc0Lk hSrc1Lk
+    hSel dst sel src0 src1 rs sid heap h0 h1 oldDestV src0V src1V
+      hInv hSInv hBounded hDestLk hSrc0Lk hSrc1Lk
   cases hExec with
   | selectFalse _ _ _ _ _ hSrc0Eq srcV hSel0 hLk0 =>
     -- srcV = src0V (both come from locatedLookup rs src0 = some _).
@@ -2924,17 +2919,12 @@ lemma rustSelectSimulates
     · intro x
       exact hBounded x
 
-/-! ### Inline-extension simulation theorem (D4.2 sketch)
+/-! ### Inline-registry simulation
 
-The strengthened simulation statement for `toJasminCmdWithInlines`. The
-key insight: per-leaf inline-equivalence is a *hypothesis on the
-registry*, discharged once per registry by combining per-leaf refinement
-lemmas (D4.1). Compared to `rustExecSimulates`, it requires an extra
-hypothesis `hInline` saying that every entry in `env` (the inline
-registry) computes the same result as the corresponding `Ccall` would.
-
-Statement only — proof is `sorry` pending the per-leaf refinement
-artifacts in `Curve25519Inline.lean` (currently structural skeletons).
+Simulation statements for `toJasminCmdWithInlines`, and the per-registry
+refinement predicate `InlineRegistryRefines` stating that every registered
+inline body has the heap effect `LeafImplOk` asks of the corresponding
+`Ccall`.
 -/
 
 /-- The hypothesis "every inline registered in `env` refines the leaf's
@@ -2968,53 +2958,12 @@ def InlineRegistryRefines
           heap1.get (translateVar sid { vname := x, vtype := .sword .U64 }) =
           heap0.get (translateVar sid { vname := x, vtype := .sword .U64 }))
 
-/-! ### Strengthened-simulation closure path (documented obligation)
-
-The natural strengthening of `rustExecSimulates` to inline-substituted
-output (`toJasminCmdWithInlines env c`) takes a per-leaf refinement
-hypothesis `InlineRegistryRefines` (defined above) and threads it
-through the `RCall` case of the existing simulation induction. All
-other cases are identical to `rustExecSimulates` (since
-`toJasminCmdWithInlines` agrees with `toJasminCmd` on every non-RCall
-constructor).
-
-Two corollaries close immediately, without further proof:
-
-1. `rustExecSimulates_emptyInlineRegistry` (Qed below): for `env :=
-   emptyInlineRegistry`, the hypothesis is vacuous and the inline
-   substitution reduces to `toJasminCmd` via
-   `toJasminCmdWithInlines_emptyRegistry_eq_toJasminCmd`. This is
-   the **soundness anchor**: introducing the registry extension is
-   conservative.
-2. (Per-registry) for `env := curve25519InlineRegistry`, discharging
-   the hypothesis requires per-leaf refinement lemmas from
-   `Curve25519Inline.lean`. Each lemma states that the inline-body
-   `impl dest args` produces the same observable heap effect as the
-   `LeafSpec.call f` with the same dest+args. ~50 LoC per leaf × 6
-   leaves = ~300 LoC, plus a ~50-LoC composition theorem. Deferred
-   to a separate file (`Curve25519InlineCorrect.lean` or similar)
-   under the **0-sorry policy**: the substantive operational lemma
-   isn't shipped as a `sorry`-bearing placeholder here.
-
-The structural-induction proof itself mirrors `rustExecSimulates`
-section-by-section; the only new case is the RCall-with-`some impl`
-arm, which closes via direct application of `InlineRegistryRefines`.
-Future work (estimated ~3-5 days including TFp25519_64 width
-invariants) lands the per-registry refinement and consequently the
-strengthened simulation theorem at the same axiom set as
-`rustExecSimulates`. -/
-
 /-- **Empty-registry corollary**: when `env = emptyInlineRegistry`,
-the inline-substituted output coincides with the existing
-`toJasminCmd`, so the simulation theorem closes by direct appeal to
-`rustExecSimulates`. This is the **soundness anchor** for the inline
-extension: it confirms that adding the registry doesn't break the
-existing trust path. The non-trivial registries (e.g.,
-`curve25519InlineRegistry`) need the per-leaf refinement hypothesis
-of the parent theorem; the empty case discharges trivially. -/
+the inline-substituted output coincides with `toJasminCmd`
+(`toJasminCmdWithInlines_emptyRegistry_eq_toJasminCmd`), so the
+simulation follows from `rustExecSimulates`. -/
 theorem rustExecSimulates_emptyInlineRegistry
     (N : Nat) (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat)
-    (hLeaf : ∀ fuel', LeafImplOk leafSpec env fuel')
     (c : LowCT) (rs rs' : RustState)
     (hWf : whileFree c = true)
     (hCF : callFree c = true)
@@ -3032,7 +2981,7 @@ theorem rustExecSimulates_emptyInlineRegistry
       ScalarInv rs' heap' sid ∧
       ScalarsBounded rs' := by
   rw [toJasminCmdWithInlines_emptyRegistry_eq_toJasminCmd]
-  exact rustExecSimulates N leafSpec env fuel hLeaf c rs rs' hWf hCF hSSS hFuel hExec
+  exact rustExecSimulates N leafSpec env fuel c rs rs' hWf hCF hSSS hFuel hExec
     sid heap hInv hSInv hBounded
 
 /-- **Helper lemma (D4.2 closure)**: under the existing `callFree`
@@ -3146,32 +3095,16 @@ theorem toJasminCmdWithInlines_eq_toJasminCmd_of_callFree
       intro hCF
       simp [callFree] at hCF
 
-/-- **Strengthened simulation theorem (D4.2)**: the parent theorem the
-plan calls for. Same conclusion shape as `rustExecSimulates`, but stated
-over `toJasminCmdWithInlines env c` for an arbitrary inline registry
-`env` and an extra refinement hypothesis `hInline` discharging the
-inline bodies' semantics.
+/-- **Simulation over inline-substituted output**: the conclusion of
+`rustExecSimulates`, stated over `toJasminCmdWithInlines env c` for an
+arbitrary inline registry `env`.
 
-Under the existing `callFree c = true` precondition (which the plan
-preserves), the inline registry has nothing to do — every `RCall` is
-already excluded — so the inline output is definitionally equal to the
-plain `toJasminCmd` output, and the proof reduces to
-`rustExecSimulates`. The `hInline` hypothesis is consequently unused on
-this restricted input class, but is retained in the signature for
-forward-compat with a future relaxation of `callFree`.
-
-This closes D4.2 at 0-sorry: the strengthening is real (it permits any
-registry, including `curve25519InlineRegistry`), and the conclusion is
-exactly what downstream consumers (`Curve25519Inline`, future
-`Ed25519Inline`) need. The natural follow-on — relaxing `callFree` so
-inline-substituted `RCall` is allowed inside the program — is a
-separate, independent strengthening that requires the per-leaf
-refinement lemmas already factored out in `Curve25519Inline.lean`. -/
+Under `callFree c = true` no `RCall` occurs, so the inline output equals
+the `toJasminCmd` output (`toJasminCmdWithInlines_eq_toJasminCmd_of_callFree`)
+and the proof reduces to `rustExecSimulates`. -/
 theorem rustExecSimulates_with_inlines
     (N : Nat) (leafSpec : LeafSpec) (transEnv : TransEnv) (fuel : Nat)
     (env : InlineRegistry)
-    (hLeaf : ∀ fuel', LeafImplOk leafSpec transEnv fuel')
-    (_hInline : InlineRegistryRefines env leafSpec transEnv fuel)
     (c : LowCT) (rs rs' : RustState)
     (hWf : whileFree c = true)
     (hCF : callFree c = true)
@@ -3189,54 +3122,34 @@ theorem rustExecSimulates_with_inlines
       ScalarInv rs' heap' sid ∧
       ScalarsBounded rs' := by
   rw [toJasminCmdWithInlines_eq_toJasminCmd_of_callFree env c hCF]
-  exact rustExecSimulates N leafSpec transEnv fuel hLeaf c rs rs'
+  exact rustExecSimulates N leafSpec transEnv fuel c rs rs'
     hWf hCF hSSS hFuel hExec sid heap hInv hSInv hBounded
 
-/-! ### §4.X  RCall extension via threaded `newSid` (2026-05-12)
+/-! ### `RCall` at the threaded `newSid`
 
-The original `rustExecSimulates` is stated with `HeapInv rs' heap' sid`
-in its conclusion and requires `callFree c = true`.  The reason is
-that `translateInstrR .Ccall` returns `newSid := freshId sid |>.1`
-(a fresh `sid'`), so the next instruction's translation operates at
-`sid'` ≠ `sid`.  Therefore, when `c` contains an `RCall`, the
-`callFree`-rewrite `(translateCmd c sid fuel).newSid = sid` fails,
-and the seq case's composition step (which uses this rewrite
-to align the IH₂ heap location with the conclusion) breaks down.
+`translateInstrR .Ccall` returns `newSid := (freshId sid).1`, so the
+instructions after a call are translated at a scope different from `sid`,
+and the call-free rewrite `(translateCmd c sid fuel).newSid = sid` does not
+hold for a program containing `RCall`. The statements below post the
+invariants at the threaded `newSid`, from the leaf oracle `LeafImplOkNewSid`.
+-/
 
-**Audit conclusion (2026-05-12):** The Lean LowCT → Jasmin
-translation carries an architectural mismatch: `translateInstrR .Ccall`
-advances `newSid` to a fresh sid, but `LeafImplOk` writes the abstract
-result at the *caller's* sid. The subsequent code translation operates
-at the fresh sid, where the state is unconstrained by `LeafImplOk`.
+/-- **Leaf oracle at the post-call scope**: like `LeafImplOk`, but the heap
+    postcondition is stated at the scope `newSid` of the `Ccall` translation
+    (equal to `(freshId sid).1` for `fuel ≥ 1`) rather than at the caller's
+    `sid`, and it covers the scalar cells as well as the tower cells.
 
-The clean fix is to either:
-1. **Fix the translation** so `Ccall` returns `newSid := sid` (matches
-   Rocq SSProve's `translate_instr` semantics).  Out of scope here;
-   touches `JasminTranslate.lean` plus downstream lemmas.
-2. **Strengthen the leaf oracle** to specify heap state at the
-   post-call sid (the natural place for a leaf to write outputs in a
-   threaded-newSid model).
-
-This file delivers option 2 as a **checkpoint**: we add
-`LeafImplOkNewSid` and prove `rustCallSimulates_newSid`, the
-standalone RCall case stated at the threaded `newSid`.  The composition
-into the full inductive `rustExecSimulates_withRCall` is queued as
-follow-on work (it requires propagating `newSid` through every case
-of the existing 250-LoC inductive proof — mechanical but bulky). -/
-
-/-- **Strengthened leaf oracle**: like `LeafImplOk`, but the heap
-    postcondition is stated at the **post-call** scope `newSid` (the
-    `newSid` of the Ccall translation, equal to `(freshId sid).1`)
-    rather than at the caller's `sid`.
-
-    Discharges the seq-case-with-RCall composition obligation that
-    `LeafImplOk` alone cannot satisfy. -/
+    The premise `ScalarInv rs0 heap0 sid` ties the scalar cells of the
+    pre-heap to `rs0`; without it the postcondition `ScalarInv rs' heap1 newSid`
+    would have to hold for two states that differ only in a scalar and share
+    `heap0`. -/
 def LeafImplOkNewSid (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat) : Prop :=
   ∀ (f : String) (dest : Located) (args : List Located)
     (rs0 : RustState) (sid : ScopeId) (heap0 : Heap)
     (oldDestV : RustVal dest.locDst)
     (argList : List (Σ t, RustVal t)),
     HeapInv rs0 heap0 sid →
+    ScalarInv rs0 heap0 sid →
     rs0.rsTower dest.locVar = some ⟨dest.locDst, oldDestV⟩ →
     argList = args.filterMap (fun a => rs0.rsTower a.locVar) →
     ScalarsBounded rs0 →
@@ -3254,28 +3167,21 @@ def LeafImplOkNewSid (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat) : Prop 
       ScalarInv rs' heap1 newSid ∧
       ScalarsBounded rs'
 
-/-- **`rustCallSimulates_newSid`** (Qed checkpoint, 2026-05-12): the
-    `RCall` case stated at the post-call scope `newSid`.  Direct
-    consumer of `LeafImplOkNewSid`.
+/-- **`rustCallSimulates_newSid`**: the `RCall` case run at `fuel`, stated at
+    the post-call scope `newSid`, from `LeafImplOkNewSid` at that fuel.
 
-    Compared to the existing `rustCallSimulates` (which posts at `sid`,
-    the caller's scope), this version posts at `newSid` — the actual
-    scope at which subsequent code in a `RSeq` would operate, per
-    `translateCmd_append_eval`.
-
-    This is the building block for lifting `rustExecSimulates` to
-    support `RCall` chains.  The seq-composition (combining this with
-    `rustExecSimulates` for the callFree continuation) is the
-    remaining mechanical step. -/
+    `rustCallSimulates` posts at the caller's `sid`; this version posts at
+    `newSid`, the scope at which subsequent code in an `RSeq` is translated
+    (`translateCmd_append_eval`). -/
 lemma rustCallSimulates_newSid
     (N : Nat) (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat)
-    (hLeafN : ∀ fuel', LeafImplOkNewSid leafSpec env fuel')
+    (hLeafN : LeafImplOkNewSid leafSpec env fuel)
     (f : String) (dest : Located) (args : List Located)
     (rs rs' : RustState)
     (hExec : RustExec N leafSpec (.RCall f dest args) rs rs')
     (sid : ScopeId) (heap : Heap)
     (hInv : HeapInv rs heap sid)
-    (_hSInv : ScalarInv rs heap sid)
+    (hSInv : ScalarInv rs heap sid)
     (hBounded : ScalarsBounded rs) :
     ∃ heap' : Heap,
       let newSid := (translateCmd env (toJasminCmd (.RCall f dest args))
@@ -3299,21 +3205,16 @@ lemma rustCallSimulates_newSid
         · simp at hLookup
       · simp at hLookup
     -- Apply LeafImplOkNewSid (which gives HeapInv/ScalarInv at newSid).
-    have hOk := hLeafN fuel f dest args rs sid heap oldDestV argList hInv hTower hArgs hBounded
+    have hOk := hLeafN f dest args rs sid heap oldDestV argList hInv hSInv hTower hArgs hBounded
     obtain ⟨heap1, hEval, hInvNew, hSInvNew, hBNew⟩ := hOk
     refine ⟨heap1, ?_, hInvNew, hSInvNew, hBNew⟩
     simp only [toJasminCmd_RCall]; exact hEval
 
-/-! ### §4.Y.1  RCloneCall extension to the threaded-newSid lift (2026-05-13)
+/-! ### `RCloneCall` at the threaded `newSid`
 
-`RCloneCall` lowers to `[Copn(CLONE_TOWER), Ccall]`.  The trailing
-`Ccall` advances `newSid` to `(freshId sid).1`, so the post-state's
-actual scope is `newSid`, not `sid`.  We compose the existing
-`CloneImplOk` oracle (for the Copn step, which preserves
-`newSid = sid`) with `rustCallSimulates_newSid` (for the inner call
-posted at `(freshId sid).1`).  No new oracle is needed — the
-existing `CloneImplOk` and `LeafImplOkNewSid` together discharge
-the obligation. -/
+`RCloneCall` lowers to `[Copn(CLONE_TOWER), Ccall]`.  The leading `Copn`
+keeps `newSid = sid` and the trailing `Ccall` advances it, so the
+simulation composes `CloneImplOk` with `rustCallSimulates_newSid`. -/
 
 /-- The `newSid` after lowering `RCloneCall` to Jasmin coincides with
     the `newSid` after lowering the inner `RCall` (since the leading
@@ -3357,23 +3258,23 @@ lemma cloneCall_toJasmin_newSid
     instruction with the post-state stated at the threaded `newSid`
     (i.e. `(freshId sid).1`, the scope after the trailing `Ccall`).
 
-    Combines `CloneImplOk` (for the leading `Copn(CLONE_TOWER)`,
-    which preserves `newSid = sid`) with `rustCallSimulates_newSid`
-    (for the trailing `Ccall`, which advances `newSid`).  No new
-    oracle is required.
+    Combines `CloneImplOk` at `fuel` (for the leading `Copn(CLONE_TOWER)`,
+    which preserves `newSid = sid`) with `rustCallSimulates_newSid` at
+    `fuel - 1` (for the trailing `Ccall`, which advances `newSid`).
 
-    Mirrors `rustCloneCallSimulates` but with `LeafImplOkNewSid` in
-    place of `LeafImplOk` on the inner call. -/
+    Mirrors `rustCloneCallSimulates` with `LeafImplOkNewSid` in place of
+    `LeafImplOk` on the inner call. -/
 lemma rustCloneCallSimulates_newSid
     (N : Nat) (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat)
-    (hLeafN : ∀ fuel', LeafImplOkNewSid leafSpec env fuel')
-    (hClone : ∀ fuel', CloneImplOk env fuel')
+    (hLeafN : LeafImplOkNewSid leafSpec env (fuel - 1))
+    (hClone : CloneImplOk env fuel)
     (cloneVar : String) (cloneTy : TowerType) (oldDest : Located)
     (innerF : String) (dest : Located) (args : List Located)
     (rs rs' : RustState)
     (hExec : RustExec N leafSpec
         (.RCloneCall cloneVar cloneTy oldDest innerF dest args) rs rs')
     (oldV : RustVal cloneTy)
+    (hTy : oldDest.locDst = cloneTy)
     (hOldDest : rs.rsTower oldDest.locVar = some ⟨cloneTy, oldV⟩)
     (sid : ScopeId) (heap : Heap)
     (hInv : HeapInv rs heap sid)
@@ -3392,7 +3293,7 @@ lemma rustCloneCallSimulates_newSid
   | cloneCall _ _ _ _ _ _ _ rsClone _ hClone_eq hCall =>
     -- Apply clone oracle to get heap1 at sid.
     obtain ⟨heap1, hEvalClone, hCloneDest, hCloneOther, hCloneScalar⟩ :=
-      hClone fuel cloneVar cloneTy oldDest rs sid heap oldV hInv hOldDest
+      hClone cloneVar cloneTy oldDest rs sid heap oldV hTy hInv hOldDest
     -- Establish invariants at rsClone / heap1 / sid.
     have hRsClone : rsClone = rsSetTower rs cloneVar ⟨cloneTy, oldV⟩ := by
       rw [hClone_eq, hOldDest]; rfl
@@ -3459,62 +3360,27 @@ lemma rustCloneCallSimulates_newSid
         env sid fuel
       rw [hNS]; exact hSInv2
 
-/-! ### §4.Y  RCall extension to the structural lift (2026-05-13)
+/-! ### Programs with call leaves
 
-Builds the **first compositional layer** of `LowCT → Jasmin`
-simulation supporting `RCall`.  Where `rustExecSimulates` requires
-`callFree c = true` and posts at `sid`, this layer admits `RCall` as
-a single instruction or sequenced with call-free code, and posts at
-the threaded `newSid`.
-
-The full lift (every constructor + RCall) needs `newSid` threaded
-through every IH; that's a 200+ line mechanical refactor of the
-existing `rustExecSimulates` body.  This checkpoint instead delivers
-the **compositional kernel**:
-
-* a "call-free or single-call" predicate `callFreePlusCall`,
-* a `rustExecSimulates_withCalls` theorem that closes the RSeq
-  chain by alternating IH₁/IH₂ between `rustExecSimulates`
-  (call-free fragment) and `rustCallSimulates_newSid` (the RCall).
-
-This unblocks the practical case (signature/verify code is mostly
-callFree blocks separated by RCall leaves), which is the actual
-target of the Jasmin pipeline. -/
+`rustExecSimulates_withCalls` admits `RCall`, `RLimbStore` and `RCloneCall`
+leaves under `RSeq` and `RIfNz`, with call-free subprograms elsewhere, and
+posts the invariants at the threaded `newSid`. -/
 
 namespace RustExecWithCalls
 
-/-- `callFreePlusCall c = true` iff `c` is structurally a tree of
-    `RSeq` whose leaves are either `callFree` subprograms, a single
-    `RCall`, or a single `RLimbStore`.
+/-- `callFreePlusCall c = true` iff `c` is a tree of `RSeq` and `RIfNz` nodes
+    whose leaves are `callFree` subprograms, single `RCall`s, single
+    `RLimbStore`s or single `RCloneCall`s.
 
-    The `RLimbStore` extension (2026-05-13) is symmetric to `RCall`:
-    both translate to a single Jasmin instruction (an `Oasm`-Copn for
-    `RLimbStore`, a `Ccall` for `RCall`).  Crucially `RLimbStore`'s
-    `.Copn` translation preserves `newSid := sid` (unlike `.Ccall`
-    which advances it), so the seq composition is straightforward —
-    no analog of `LeafImplOkNewSid` is needed; `LimbStoreImplOk` and
-    `limbStore_toJasmin_newSid` suffice.
+    `RLimbStore` lowers to one `.Copn`, which keeps `newSid = sid`
+    (`limbStore_toJasmin_newSid`); `RCall` lowers to one `.Ccall`, which
+    advances it; `RCloneCall` lowers to `[Copn(CLONE_TOWER), Ccall]`. At an
+    `RIfNz` the invariants must survive the scope advance through both branches,
+    which `BranchScopeMerges` states.
 
-    The `RCloneCall` extension (2026-05-13) follows the same pattern:
-    `RCloneCall` lowers to `[Copn(CLONE_TOWER), Ccall]`, where the trailing
-    `Ccall` advances `newSid` to `(freshId sid).1`.  Composition of
-    `CloneImplOk` (for the Copn) with `LeafImplOkNewSid` (for the Ccall)
-    discharges the obligation — see `rustCloneCallSimulates_newSid`.
-
-    The `RIfNz` mixed-branch extension (2026-05-13) allows `RIfNz e ct cf`
-    in the structural recursion when both `ct` and `cf` are themselves
-    `callFreePlusCall`.  The merge obligation — that the heap/scalar
-    invariants survive the cross-branch scope advancement on the Jasmin
-    side — is exposed as a separate `Prop` precondition
-    (`BranchScopeMerges`) on the simulation theorem; see
-    `rustExecSimulates_withCalls`.
-
-    Excludes `RFor`, `RBlock`, `RLetZero`, `RLetU64Zero`,
-    `RCallSwap` from call-bearing positions — those need separate
-    threading work and are the next structural checkpoints.
-
-    Excludes `RWhileNz` and all phases F/G/H/I/Ext (gated by
-    `whileFree = false` upstream). -/
+    `RFor`, `RBlock`, `RLetZero`, `RLetU64Zero` and `RCallSwap` are admitted only
+    call-free; `RWhileNz` and the constructors with `whileFree = false` are
+    excluded by the `whileFree` precondition. -/
 def callFreePlusCall : LowCT → Bool
   | .RCall _ _ _              => true
   | .RLimbStore _ _ _         => true
@@ -3557,8 +3423,7 @@ lemma callFreePlusCall_of_callFree :
   | .RCallSwap _ _ _ _ => simp [callFreePlusCall, hCF]
   | .RCloneCall _ _ _ _ _ _ => simp [callFree] at hCF
   | .RLimbStore _ _ _ => simp [callFree] at hCF
-    -- (`RLimbStore` is now in `callFreePlusCall = true`, but unreachable
-    -- here because the hypothesis is on `callFree`, which excludes it.)
+    -- (unreachable: the hypothesis is on `callFree`, which excludes `RLimbStore`)
   | .RLimbStoreExpr _ _ _ => simp [callFreePlusCall, hCF]
   | .RTupleLoad _ _ _ => simp [callFreePlusCall, hCF]
   | .RArrStore _ _ _ => simp [callFreePlusCall, hCF]
@@ -3568,7 +3433,7 @@ lemma callFreePlusCall_of_callFree :
   | .RScalarSetExpr _ _ => simp [callFreePlusCall, hCF]
   | .RCallDstThreaded _ _ _ => simp [callFree] at hCF
 
-/-- **Branch-symmetric merge property for `RIfNz` (2026-05-13).**
+/-- **Branch-symmetric merge property for `RIfNz`.**
 
     For every `RIfNz e ct cf` reached during execution of `c` starting
     at `rs`, two scope-lift obligations must hold so the Jasmin-side
@@ -3629,8 +3494,8 @@ def BranchScopeMerges (N : Nat) (leafSpec : LeafSpec) (env : TransEnv) :
 /-- **Runtime witness for `RCloneCall` well-typedness.**
 
     For every `RCloneCall cloneVar cloneTy oldDest …` reached during
-    execution of `c` starting at `rs`, the lookup
-    `rs.rsTower oldDest.locVar` returns `some ⟨cloneTy, v⟩`.
+    execution of `c` starting at `rs`, `oldDest.locDst = cloneTy` and the
+    lookup `rs.rsTower oldDest.locVar` returns `some ⟨cloneTy, v⟩`.
 
     The `RustExec.cloneCall` constructor uses `Option.getD` on the
     lookup, so it admits "bad" executions where the lookup is `none`
@@ -3644,13 +3509,14 @@ def BranchScopeMerges (N : Nat) (leafSpec : LeafSpec) (env : TransEnv) :
 def CloneCallsWellTyped (N : Nat) (leafSpec : LeafSpec) :
     LowCT → RustState → Prop
   | .RCloneCall _ cloneTy oldDest _ _ _, rs =>
+      oldDest.locDst = cloneTy ∧
       ∃ v : RustVal cloneTy, rs.rsTower oldDest.locVar = some ⟨cloneTy, v⟩
   | .RSeq c1 c2, rs =>
       CloneCallsWellTyped N leafSpec c1 rs ∧
       (∀ rs1 : RustState, RustExec N leafSpec c1 rs rs1 →
         CloneCallsWellTyped N leafSpec c2 rs1)
   -- Recurse through RIfNz so nested clones inside either branch are tracked
-  -- regardless of which branch the runtime takes (2026-05-13 extension).
+  -- regardless of which branch the runtime takes.
   | .RIfNz _ ct cf, rs =>
       CloneCallsWellTyped N leafSpec ct rs ∧
       CloneCallsWellTyped N leafSpec cf rs
@@ -3723,13 +3589,14 @@ lemma branchScopeMerges_of_callFree
 
 end RustExecWithCalls
 
-/-- **`rustExecSimulates_withCalls`** (2026-05-13 checkpoint): the
-    structural lift extended to admit `RCall` interleaved with
-    call-free fragments via `RSeq`.
+/-- **`rustExecSimulates_withCalls`**: the structural simulation extended to
+    admit `RCall`, `RLimbStore` and `RCloneCall` leaves interleaved with
+    call-free fragments via `RSeq` and `RIfNz`.
 
-    Drops the `callFree c = true` precondition of `rustExecSimulates`
-    in exchange for the `callFreePlusCall c = true` predicate, which
-    allows `RCall` and `RLimbStore` leaves to appear inside `RSeq` chains.
+    Replaces the `callFree c = true` precondition of `rustExecSimulates`
+    with `callFreePlusCall c = true`. The leaf oracles are required at every
+    fuel `≥ 2`, the least fuel at which a one-instruction command runs
+    (`jasminFuel` of each leaf is at least `2`).
 
     The conclusion is stated at the threaded `newSid`. In the pure
     call-free case this collapses back to `sid` via
@@ -3739,15 +3606,15 @@ end RustExecWithCalls
 
     Coverage:
     * single `RCall`: closed via `rustCallSimulates_newSid`.
-    * single `RLimbStore` (2026-05-13): closed via `rustLimbStoreSimulates`
+    * single `RLimbStore`: closed via `rustLimbStoreSimulates`
       after the `newSid = sid` rewrite (limb store is `.Copn` which preserves
       `newSid`, unlike `.Ccall`).  Requires `hLimb : LimbStoreImplOk`.
-    * single `RCloneCall` (2026-05-13): closed via
+    * single `RCloneCall`: closed via
       `rustCloneCallSimulates_newSid`.  Requires `hClone : CloneImplOk`
       and a runtime well-typedness witness `hCloneWT`.
     * `RSeq c1 c2` with both `callFreePlusCall`: closed by threaded
-      composition (the structurally new content).
-    * `RIfNz e ct cf` with mixed-branch calls (2026-05-13): branches are
+      composition.
+    * `RIfNz e ct cf` with mixed-branch calls: branches are
       themselves `callFreePlusCall` and may contain calls.  Dispatches
       via `cases hExec` on `ifTrue`/`ifFalse`, recurses through the IH
       on the executed branch, then lifts the resulting invariant from
@@ -3767,10 +3634,9 @@ end RustExecWithCalls
     by structural decrease on the `RSeq` tree). -/
 theorem rustExecSimulates_withCalls
     (N : Nat) (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat)
-    (hLeaf : ∀ fuel', LeafImplOk leafSpec env fuel')
-    (hLeafN : ∀ fuel', LeafImplOkNewSid leafSpec env fuel')
-    (hLimb : ∀ fuel', LimbStoreImplOk leafSpec env fuel')
-    (hClone : ∀ fuel', CloneImplOk env fuel')
+    (hLeafN : ∀ fuel', 2 ≤ fuel' → LeafImplOkNewSid leafSpec env fuel')
+    (hLimb : ∀ fuel', 2 ≤ fuel' → LimbStoreImplOk leafSpec env fuel')
+    (hClone : ∀ fuel', 2 ≤ fuel' → CloneImplOk env fuel')
     (c : LowCT) (rs rs' : RustState)
     (hWf : whileFree c = true)
     (hCFx : RustExecWithCalls.callFreePlusCall c = true)
@@ -3797,7 +3663,8 @@ theorem rustExecSimulates_withCalls
   | .RCall f dest args =>
     -- Single-call leaf: delegate to `rustCallSimulates_newSid`.
     subst h
-    exact rustCallSimulates_newSid N leafSpec env fuel hLeafN
+    have hF : 2 ≤ fuel := by simpa [jasminFuel] using hFuel
+    exact rustCallSimulates_newSid N leafSpec env fuel (hLeafN fuel hF)
       f dest args rs rs' hExec sid heap hInv hSInv hBounded
   | .RSeq c1 c2 =>
     -- Compositional RSeq case: thread `newSid` from IH₁ to IH₂.
@@ -3839,7 +3706,7 @@ theorem rustExecSimulates_withCalls
       have := jasminFuel_gt_length c1; omega
     -- Recursive call on c1 (structurally smaller).
     obtain ⟨heap1, heval1, hInv1, hSInv1, hB1⟩ :=
-      rustExecSimulates_withCalls N leafSpec env fuel hLeaf hLeafN hLimb hClone
+      rustExecSimulates_withCalls N leafSpec env fuel hLeafN hLimb hClone
         c1 rs r1 hWf.1 hCFx.1 hSSS.1 hFuel1 h1 hCWT1
         sid heap hInv hSInv hBounded hBM1
     -- After IH₁ we are at `newSid₁ := (translateCmd ... c1 sid fuel).newSid`.
@@ -3847,7 +3714,7 @@ theorem rustExecSimulates_withCalls
     -- Recursive call on c2 at the threaded newSid₁.
     obtain ⟨heap2, heval2, hInv2, hSInv2, hB2⟩ :=
       rustExecSimulates_withCalls N leafSpec env
-        (fuel - (toJasminCmd c1).length) hLeaf hLeafN hLimb hClone
+        (fuel - (toJasminCmd c1).length) hLeafN hLimb hClone
         c2 r1 rs' hWf.2 hCFx.2 hSSS.2 hFuel2 h2 hCWT2
         newSid1 heap1 hInv1 hSInv1 hB1 hBM2
     -- Compose evaluations via `translateCmd_append_eval`.
@@ -3875,7 +3742,7 @@ theorem rustExecSimulates_withCalls
     have hNewSid : (translateCmd env (toJasminCmd LowCT.RSkip) sid fuel).newSid = sid :=
       callFree_toJasmin_newSid _ hCF env sid fuel
     rw [hNewSid]
-    exact rustExecSimulates N leafSpec env fuel hLeaf _ rs rs'
+    exact rustExecSimulates N leafSpec env fuel _ rs rs'
       hWf hCF hSSS hFuel hExec sid heap hInv hSInv hBounded
   | .RScalarSet x v =>
     subst h
@@ -3883,7 +3750,7 @@ theorem rustExecSimulates_withCalls
     have hNewSid : (translateCmd env (toJasminCmd (LowCT.RScalarSet x v)) sid fuel).newSid = sid :=
       callFree_toJasmin_newSid _ hCF env sid fuel
     rw [hNewSid]
-    exact rustExecSimulates N leafSpec env fuel hLeaf _ rs rs'
+    exact rustExecSimulates N leafSpec env fuel _ rs rs'
       hWf hCF hSSS hFuel hExec sid heap hInv hSInv hBounded
   | .RLetZero x t body =>
     subst h
@@ -3893,7 +3760,7 @@ theorem rustExecSimulates_withCalls
     have hNewSid : (translateCmd env (toJasminCmd (LowCT.RLetZero x t body)) sid fuel).newSid = sid :=
       callFree_toJasmin_newSid _ hCF env sid fuel
     rw [hNewSid]
-    exact rustExecSimulates N leafSpec env fuel hLeaf _ rs rs'
+    exact rustExecSimulates N leafSpec env fuel _ rs rs'
       hWf hCF hSSS hFuel hExec sid heap hInv hSInv hBounded
   | .RLetU64Zero x body =>
     subst h
@@ -3903,10 +3770,10 @@ theorem rustExecSimulates_withCalls
     have hNewSid : (translateCmd env (toJasminCmd (LowCT.RLetU64Zero x body)) sid fuel).newSid = sid :=
       callFree_toJasmin_newSid _ hCF env sid fuel
     rw [hNewSid]
-    exact rustExecSimulates N leafSpec env fuel hLeaf _ rs rs'
+    exact rustExecSimulates N leafSpec env fuel _ rs rs'
       hWf hCF hSSS hFuel hExec sid heap hInv hSInv hBounded
   | .RIfNz e ct cf =>
-    -- Mixed-branch case (2026-05-13): both `ct` and `cf` may contain calls.
+    -- Mixed-branch case: both `ct` and `cf` may contain calls.
     -- Dispatch via the executed branch's IH, then use `hBranchMerges` to lift
     -- the resulting invariant from the branch's newSid to the outer Cif's
     -- newSid (which depends symmetrically on BOTH branches' newSid via
@@ -3934,7 +3801,7 @@ theorem rustExecSimulates_withCalls
         exact hCloneWT.1
       obtain ⟨heap', heval', hInv', hSInv', hB'⟩ :=
         rustExecSimulates_withCalls N leafSpec env fuel'
-          hLeaf hLeafN hLimb hClone ct rs rs' hWf.1 hCFx.1 hSSS.1 hFuel_ct
+          hLeafN hLimb hClone ct rs rs' hWf.1 hCFx.1 hSSS.1 hFuel_ct
           hExecCt hCWT_ct sid heap hInv hSInv hBounded hBM_ct
       -- Cif eval (TRUE): produces heap' from heap.
       have he_val : heap.get (translateVar sid { vname := e, vtype := .sword .U64 }) =
@@ -3995,7 +3862,7 @@ theorem rustExecSimulates_withCalls
       -- Recurse on cf at sid_ct.
       obtain ⟨heap', heval', hInv', hSInv', hB'⟩ :=
         rustExecSimulates_withCalls N leafSpec env fuel'
-          hLeaf hLeafN hLimb hClone cf rs rs' hWf.2 hCFx.2 hSSS.2 hFuel_cf
+          hLeafN hLimb hClone cf rs rs' hWf.2 hCFx.2 hSSS.2 hFuel_cf
           hExecCf hCWT_cf
           ((translateCmd env (toJasminCmd ct) sid fuel').newSid)
           heap hInv_lift hSInv_lift hBounded hBM_cf_from_start
@@ -4023,7 +3890,7 @@ theorem rustExecSimulates_withCalls
     have hNewSid : (translateCmd env (toJasminCmd (LowCT.RFor x n body)) sid fuel).newSid = sid :=
       callFree_toJasmin_newSid _ hCF env sid fuel
     rw [hNewSid]
-    exact rustExecSimulates N leafSpec env fuel hLeaf _ rs rs'
+    exact rustExecSimulates N leafSpec env fuel _ rs rs'
       hWf hCF hSSS hFuel hExec sid heap hInv hSInv hBounded
   | .RAssert label =>
     subst h
@@ -4031,7 +3898,7 @@ theorem rustExecSimulates_withCalls
     have hNewSid : (translateCmd env (toJasminCmd (LowCT.RAssert label)) sid fuel).newSid = sid :=
       callFree_toJasmin_newSid _ hCF env sid fuel
     rw [hNewSid]
-    exact rustExecSimulates N leafSpec env fuel hLeaf _ rs rs'
+    exact rustExecSimulates N leafSpec env fuel _ rs rs'
       hWf hCF hSSS hFuel hExec sid heap hInv hSInv hBounded
   | .RBlock body =>
     subst h
@@ -4041,7 +3908,7 @@ theorem rustExecSimulates_withCalls
     have hNewSid : (translateCmd env (toJasminCmd (LowCT.RBlock body)) sid fuel).newSid = sid :=
       callFree_toJasmin_newSid _ hCF env sid fuel
     rw [hNewSid]
-    exact rustExecSimulates N leafSpec env fuel hLeaf _ rs rs'
+    exact rustExecSimulates N leafSpec env fuel _ rs rs'
       hWf hCF hSSS hFuel hExec sid heap hInv hSInv hBounded
   | .RWhileNz _ _ => subst h; simp [whileFree] at hWf
   | .RForRuntime _ _ _ => subst h; simp [whileFree] at hWf
@@ -4053,9 +3920,11 @@ theorem rustExecSimulates_withCalls
     -- Extract the runtime well-typedness witness from `hCloneWT`.
     subst h
     simp only [RustExecWithCalls.CloneCallsWellTyped] at hCloneWT
-    obtain ⟨oldV, hOldDest⟩ := hCloneWT
-    exact rustCloneCallSimulates_newSid N leafSpec env fuel hLeafN hClone
-      cloneVar cloneTy oldDest innerF dest args rs rs' hExec oldV hOldDest
+    obtain ⟨hTy, oldV, hOldDest⟩ := hCloneWT
+    have hF : 3 ≤ fuel := by simpa [jasminFuel] using hFuel
+    exact rustCloneCallSimulates_newSid N leafSpec env fuel
+      (hLeafN (fuel - 1) (by omega)) (hClone fuel (by omega))
+      cloneVar cloneTy oldDest innerF dest args rs rs' hExec oldV hTy hOldDest
       sid heap hInv hSInv hBounded
   | .RLimbStore loc idx v =>
     -- Single limb-store leaf: delegate to `rustLimbStoreSimulates` after
@@ -4066,7 +3935,8 @@ theorem rustExecSimulates_withCalls
         (translateCmd env (toJasminCmd (.RLimbStore loc idx v)) sid fuel).newSid = sid :=
       limbStore_toJasmin_newSid loc idx v env sid fuel
     rw [hNewSid]
-    exact rustLimbStoreSimulates N leafSpec env fuel hLimb
+    have hF : 2 ≤ fuel := by simpa [jasminFuel] using hFuel
+    exact rustLimbStoreSimulates N leafSpec env fuel (hLimb fuel hF)
       loc idx v rs rs' hExec sid heap hInv hSInv hBounded
   | .RCallN _ _ _ => subst h; simp [whileFree] at hWf
   | .RSelect _ _ _ _ => subst h; simp [whileFree] at hWf

@@ -314,8 +314,8 @@ def aesOps : List String :=
    "VPXOR", "VPAND", "VPOR", "VPANDN",
    "VPSHUFD", "VPSLLDQ", "VPSRLDQ", "VMOVDQU"]
 
-/-- Execute a known assembly operation on typed value arguments. -/
-def execSopn (op : AsmOp) (args : List TypedValue) : OpResult :=
+/-- Execute a known x86 assembly operation on typed value arguments. -/
+def execAsmSopn (op : AsmOp) (args : List TypedValue) : OpResult :=
   match op.name, args with
   -- AES round operations (2 args → 1 result)
   | "AESENC", [⟨.sword .U128, a⟩, ⟨.sword .U128, b⟩] =>
@@ -354,6 +354,40 @@ def execSopn (op : AsmOp) (args : List TypedValue) : OpResult :=
     .ok [⟨.sword .U128, wVMOVDQU src⟩]
   -- Unsupported
   | name, _ => .unsupported name
+
+/-! ## Tower pseudo-operations
+
+`LowCTToJasmin.toJasminCmd` emits three `Oasm` operators on byte arrays that are
+not x86 instructions: `STORE64` writes a 64-bit limb, `CMOV` selects one of two
+arrays by a 64-bit selector, and `CLONE_TOWER` copies an array. -/
+
+/-- `STORE64 [a, i, v]`: the array `a` with the 64-bit word `v` written little-endian
+    at byte offset `8 * i`. The value operand is an integer constant or a 64-bit word. -/
+def execStore64 : List TypedValue → OpResult
+  | [⟨.sarr n, a⟩, ⟨.sint, i⟩, ⟨.sint, v⟩] =>
+    .ok [⟨.sarr n, JArray.setWord a .U64 (i.toNat * 8) (intToWord .U64 v)⟩]
+  | [⟨.sarr n, a⟩, ⟨.sint, i⟩, ⟨.sword .U64, v⟩] =>
+    .ok [⟨.sarr n, JArray.setWord a .U64 (i.toNat * 8) v⟩]
+  | _ => .unsupported "STORE64"
+
+/-- `CMOV [s, a, b]`: the array `a` when the 64-bit selector `s` is zero, `b` otherwise. -/
+def execCmovTower : List TypedValue → OpResult
+  | [⟨.sword .U64, s⟩, ⟨.sarr n, a⟩, ⟨.sarr m, b⟩] =>
+    .ok [if s = 0 then ⟨.sarr n, a⟩ else ⟨.sarr m, b⟩]
+  | _ => .unsupported "CMOV"
+
+/-- `CLONE_TOWER [a]`: the array `a`. -/
+def execCloneTower : List TypedValue → OpResult
+  | [⟨.sarr n, a⟩] => .ok [⟨.sarr n, a⟩]
+  | _ => .unsupported "CLONE_TOWER"
+
+/-- Execute an operation on typed value arguments: the tower pseudo-operations
+    `STORE64`, `CMOV` and `CLONE_TOWER` by name, every other name by `execAsmSopn`. -/
+def execSopn (op : AsmOp) (args : List TypedValue) : OpResult :=
+  if op.name = "STORE64" then execStore64 args
+  else if op.name = "CMOV" then execCmovTower args
+  else if op.name = "CLONE_TOWER" then execCloneTower args
+  else execAsmSopn op args
 
 /-! ## AES Round-Trip Cancellation Proofs
 
