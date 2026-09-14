@@ -51,12 +51,12 @@ that removes the stack traffic.
      what the original computed at the corresponding name. This is the A64 analogue
      of `RandomizedRegAlloc.regalloc_runBlock_sound`, proved by induction over the
      block with no new custom axioms (the core of the register-resident path).
-   * `evalReload_noop` (restated as `reload_sandwich`) + `spillStore_establishes`
-     (the *spill* core): on a memory-extended A64 state (`AMemState`, `AState` + a
-     frame), reloading a value whose cell still holds it is a no-op, and the
-     matching store establishes that invariant. Unlike
-     `SpillingRegAlloc.spillReload_sandwich_runBlock`, no statement here composes
-     these with an intervening block.
+   * `reload_sandwich` (the *spill* core): on a memory-extended A64 state
+     (`AMemState`, `AState` + a frame), storing `r` to a cell, running a block that
+     does not write `r`, and reloading `r` from the cell yields the state reached
+     after the block. Its parts are `spillStore_establishes` (the store makes the
+     cell agree with `r`), `spillValid_runAMemBlock` (the block keeps that
+     agreement) and `evalReload_noop` (a reload from an agreeing cell is a no-op).
 
 No `sorry`, no new custom axioms; the value identity of the applied SHA-256 body is
 its runtime KAT vs the FIPS 180-4 digest (`bench/arm_compare`, qemu-aarch64).
@@ -552,11 +552,11 @@ theorem evalSpillStore_other_cell (m : AMemState) (off o : Int) (r : String)
 
 /-! ### The single-spill roundtrip sandwich
 
-The shape each spilled name produces: define `r`, store it to a fresh cell, run a
-`mid` that does not touch the cell, then reload `r` before its use. The statement
-below covers only the final reload: when the cell holds `r`'s value, the reload
-is a no-op. That `mid` preserves the cell is not stated or proved here, so this is
-a weaker statement than `SpillingRegAlloc.spillReload_sandwich_runBlock`. -/
+The shape each spilled name produces: store `r` to a cell, run a block `mid`
+that does not write `r`, then reload `r` before its use. `reload_sandwich` states
+that the reload after `mid` is a no-op. The `AInst` instructions write registers
+only, so `mid` preserves every frame cell; the hypothesis on `mid` is that no
+instruction in it has `r` as destination. -/
 
 /-- The `AMemState` straight-line fold over a list of `AInst` (registers only; the
     spill stores/reloads are interleaved explicitly by the roundtrip statements). -/
@@ -566,12 +566,41 @@ def runAMemBlock (m : AMemState) : List AInst → AMemState
 
 @[simp] theorem runAMemBlock_nil (m : AMemState) : runAMemBlock m [] = m := rfl
 
-/-- **Reload at a valid cell.** Whenever `SpillValid off r m'`, the reload
-    `ldr r ← [off]` leaves `m'` unchanged. The statement is `evalReload_noop`; it
-    does not mention the store or an intervening block. -/
-theorem reload_sandwich (m' : AMemState) (off : Int) (r : String) (hr : r ≠ "wzr")
-    (hv : SpillValid off r m') : evalReload m' r off hr = m' :=
-  evalReload_noop m' off r hr hv
+/-- A block of `AInst` preserves every frame cell. -/
+theorem runAMemBlock_load (m : AMemState) (mid : List AInst) (off : Int) :
+    (runAMemBlock m mid).load off = m.load off := by
+  induction mid generalizing m with
+  | nil => rfl
+  | cons i is ih => exact ih _
+
+/-- A block none of whose instructions writes `r` preserves register `r`. -/
+theorem runAMemBlock_get_of_not_written (m : AMemState) (mid : List AInst) (r : String)
+    (hmid : ∀ i ∈ mid, writtenName i ≠ r) :
+    (runAMemBlock m mid).get r = m.get r := by
+  induction mid generalizing m with
+  | nil => rfl
+  | cons i is ih =>
+    simp only [runAMemBlock]
+    rw [ih _ (fun j hj => hmid j (List.mem_cons_of_mem _ hj))]
+    simp only [AMemState.get, evalAInst_eq_set]
+    exact AState.get_set_other _ _ _ _ (Ne.symm (hmid i (List.mem_cons_self ..)))
+
+/-- A block that does not write `r` preserves `SpillValid off r`. -/
+theorem spillValid_runAMemBlock (m : AMemState) (mid : List AInst) (off : Int) (r : String)
+    (hmid : ∀ i ∈ mid, writtenName i ≠ r) (hv : SpillValid off r m) :
+    SpillValid off r (runAMemBlock m mid) := by
+  unfold SpillValid at hv ⊢
+  rw [runAMemBlock_load, runAMemBlock_get_of_not_written m mid r hmid, hv]
+
+/-- **The spill/reload sandwich.** Store `r` to cell `off`, run a block `mid` in
+    which no instruction writes `r`, and reload `r` from `off`: the reload leaves
+    the state reached after `mid` unchanged. -/
+theorem reload_sandwich (m : AMemState) (off : Int) (r : String) (hr : r ≠ "wzr")
+    (mid : List AInst) (hmid : ∀ i ∈ mid, writtenName i ≠ r) :
+    evalReload (runAMemBlock (evalSpillStore m off r) mid) r off hr
+      = runAMemBlock (evalSpillStore m off r) mid :=
+  evalReload_noop _ off r hr
+    (spillValid_runAMemBlock _ mid off r hmid (spillStore_establishes m off r))
 
 /-! ## 6. Applying the allocator: the rewritten block + spill traffic metrics
 
