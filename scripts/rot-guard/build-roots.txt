@@ -216,6 +216,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.Demos.LeanSourceX86
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Riscv
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.SourceToBytes
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.X86StraightLine
+CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSymbolic
 CatCrypt.Crypto.SecureCompilation.Ascent.GradedMvcgenProbe
 CatCrypt.Crypto.SecureCompilation.Ascent.GradedWP
 CatCrypt.Crypto.SecureCompilation.Ascent.InvariantSchemas
