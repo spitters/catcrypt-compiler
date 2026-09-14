@@ -46,7 +46,7 @@ relative to `CatCrypt/Crypto/SecureCompilation/Ascent/`.
 | Machine-level leaves and value results | `RunBlockCorres`, `EcMultiLimbCapstone`, `EcMultiLimbMul`, `MpnAdxCorres`, `FieldReduce`, `CorresX86Solver`, `CorresRiscvLeaves`, `Capstone`, `CapstoneField`, `EcMultiLimbEmit` | `corresJ_sbb`, `corresJ_adc`, `srcarryLimbs_recompose`; `sbbLimbs_spec`, `corresJ_sbbChain`; `mulLimbs_spec`, `corresJ_adxBlock`; `mpnAdd_runBlock`, `mpnSub_runBlock`; `montRedc_spec`, `corresJ_montRedc4Block`; `corresJ_movX` … `corresJ_mulxX`; `corresR_add` … `corresR_slli`; `sbbChain_emit_realizes_abstract_CF` |
 | Ties between machines, and program logics | `CorresBridge`, `CorresBridgeArith`, `CorresBridgeArithComplete`, `CorresBridgeMem`, `CorresBridgeMemStore`, `CorresBridgeCtrl`, `CorresMachineTie`, `CorresMachineTieFragments`, `JasminComRunBlockTie`, `JasminComRunBlockSeq`, `JasminComRunBlockRealloc`, `XrunRunBlockTie`, `CorresHoare`, `RunBlockMvcgen`, `RunBlockMvcgenMorphism`, `JStateSepLogic` | `corresJ_forget_to_corres`, `coRefine`; `arith_middle_tie_seq_nonTmp`, `mem_store_middle_tie_full`, `for_middle_tie_gen`; `SimTie`, `simTie_seq`; `lowerBlock_tie`, `lowerBlockR_tie`; `xrun_runBlock_tie`; `corresJ_iff_triple`, `runBlockM_triple_iff`, `Spec.wp_theta`, `RunBlockTriple.frame` |
 | Descent contracts in the ascent's shape | `CorresDescent`, `CorresDescentX86`, `CorresDescentRiscv`, `XrunRunBlockTie` | `frefines_ret`; `CorresMPost`, `corres_of_refines_x86`; `corresR_of_refines`; `corres_of_refines_x86_runBlock` |
-| Welds to the emit leg and to sources | `EmitBridge`, `FeSubEndToEnd`, `FeAddEndToEnd`, `KeystoneControl`, `CondKernelCapstone`, `ArrStoreEmit`, `MlkemPolyAddCapstone`, `LegWeld`, `LegWeldDemo`, `FeSubSourceTower`, `LoopSourceLeaf`, `LoopSourceTower`, `PipelineWeld`, `SourceBridge`, `CorresScalar` | `keystone_emit`, `keystone_emit_NT`; `legWeld`, `legWeld_lower`; `feSub_source_to_bytes_tower`, `feAdd_source_to_bytes_tower`; `feSub_raw_source_to_bytes`, `feSubImp_raw_source_to_bytes`; `corresScalar_frontDenote_two` |
+| Welds to the emit leg and to sources | `EmitBridge`, `FeSubEndToEnd`, `FeAddEndToEnd`, `KeystoneControl`, `CondKernelCapstone`, `ArrStoreEmit`, `MlkemPolyAddCapstone`, `LegWeld`, `LegWeldDemo`, `FeSubSourceTower`, `LoopSourceLeaf`, `LoopSourceTower`, `PipelineWeld`, `SourceBridge`, `CorresScalar` | `keystone_emit`, `keystone_emit_NT`; `legWeld`, `legWeld_lower`; `feSub_source_to_bytes_tower`, `feAdd_source_to_bytes_tower`; `feSub_raw_source_to_bytes`, `feSubImp_raw_source_to_bytes`; `corresScalar_frontDenote_two`; `corresScalar_jasminDenote`, `feSub_symbolic_source_to_jasmin` (`FeSubSymbolic`) |
 | Demonstrations | `Demos/*` | see below |
 
 ## Entry points
@@ -148,6 +148,45 @@ It is one application of `legWeld_lower`. The arguments are assembled as follows
 evaluates the second conjunct to `776999927`. `LegWeldDemo.lean` applies the same weld
 to `r0 := a0 + b0 - c0` and is the template for a new closed kernel.
 
+## A worked path with symbolic inputs: `feSub_symbolic_source_to_jasmin`
+
+The kernel is `feSubSymC`, `r := a - b`, with `a` and `b` read from the entry
+valuation. The theorem, in
+[FeSubSymbolic.lean](CatCrypt/Crypto/SecureCompilation/Ascent/FeSubSymbolic.lean), is
+
+```lean
+theorem feSub_symbolic_source_to_jasmin (a b : BitVec 64) :
+    feSubSymJcom.denote (ctMapValD (valAB a b)) = ctTransTy (a - b)
+```
+
+where `valAB a b` is the two-word `catCryptDialect` valuation holding `a` and `b`,
+`ctMapValD_valAB` states that its transport holds `ctTransTy a` and `ctTransTy b` at
+the same slots, and `feSubSymJcom` is `cryptoDialectToJasminCom` applied to the front's
+translation of `feSubSymC` at the entry map `vmAB` (`a` at the first slot, `b` at the
+second), closed at `r`.
+
+1. Ascent. `feSubSym_corres : Corres SRwordBV (fun _ => True) _ feSubSymC` is closed by
+   `corres_solve_scalar`. The abstract step sets `r` to the wrapping difference, so no
+   range condition appears.
+2. Weld at a nonempty valuation. `corresScalar_jasminDenote` is `corresScalar_frontDenote`
+   at the entry environment `valEnv vm V`, the one the valuation induces through the map,
+   composed with `cryptoDialectToJasminCom_denote_eq'`. `ConsistentS vm V (valEnv vm V)`
+   holds by definition. `SRwordBV` constrains every non-temp name, so the weld asks that
+   `vm` resolve every non-temp name to a word slot carrying the abstract value.
+3. Entry map. `vmSubAll` sends `b` to the second slot and every other name to the first,
+   which satisfies that condition (`vmSubAll_resolves`). The front produces the same
+   `Com catCryptDialect` program at `vmSubAll` as at `vmAB` (`comSubAll_eq`, by `rfl`),
+   so the conclusion is stated at `vmAB`.
+4. Lowering. No descent lemma is generalised: `cryptoDialectToJasminCom_denote_eq'` and
+   `semScalarToJasminCom_denote_eq` are stated at an arbitrary entry map and valuation,
+   and the empty valuation enters only in their `_topLevel` specialisations.
+
+`feSub_symbolic_frontDenote` is the same result one lowering up,
+`feSubSymCom.denote (valAB a b) = a - b`. The source of this path is the `LowCT` term.
+A `RustSrc` source through `lowerRefines` would add the `Nat` model of `RustExec`,
+whose subtraction saturates, so a statement through `legWeld` would hold only for
+`b ≤ a`.
+
 ## Scope
 
 This section states what the capstones prove and where they stop, with the theorem
@@ -186,8 +225,10 @@ environment. Every instance in the package fixes its inputs as literals:
 concludes `qrCom.denote .nil = 393216#64`.
 
 The weld at a nonempty entry valuation is `corresScalar_frontDenote` in
-`CorresScalar.lean`. Its conclusion is over `Com catCryptDialect Γ`, one lowering above
-`Com jasminDialect`, and the package contains no instance of it.
+`CorresScalar.lean`, over `Com catCryptDialect Γ`, and its lowering
+`corresScalar_jasminDenote` in `FeSubSymbolic.lean`, over `Com jasminDialect`. Their one
+instance is `feSub_symbolic_source_to_jasmin`, for `r := a - b` at all `a`, `b`; its
+source is the `LowCT` term, not a `RustSrc` or hax term.
 
 ### The raw hax source is joined to the capstone by its output word
 

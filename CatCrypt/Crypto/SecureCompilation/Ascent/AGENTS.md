@@ -163,6 +163,7 @@ the table gives the role and the declarations to read first.
 | [`LoopSourceTower`](LoopSourceTower.lean) | `arrKernel_source_to_rustexec_program`, `loop_keystone_emit`, `loop_forFold_source_vacuous`, `arrStore_executes` |
 | [`PipelineWeld`](PipelineWeld.lean) | `haxOutcomeWord`, `haxOutcomeWordCF`, `feSub_raw_source_to_bytes`, `feSub_raw_source_to_bytes'` |
 | [`SourceBridge`](SourceBridge.lean) | `program_source_word`, `raw_source_to_bytes_of_program`, `welding_program`, `feSubImp_raw_source_to_bytes` |
+| [`FeSubSymbolic`](FeSubSymbolic.lean) | `valEnv`, `corresScalar_jasminDenote`; `feSub_symbolic_frontDenote`, `feSub_symbolic_source_to_jasmin` for `r := a - b` at all inputs |
 
 ### Demonstrations
 

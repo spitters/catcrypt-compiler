@@ -38,8 +38,8 @@ algebra (`SRwordBV`), and the weld tying such a result to the front-compiled
   `hAgree` of `FeSubEndToEnd.keystone_NT`. The front-compiled kernel's
   `Com.denote` at the tracked output slot is the abstract value the `Corres`
   result computes. `corresScalar_frontDenote` is its single-environment
-  corollary, applicable when the entry `VarMap` tracks every non-temp name; the
-  package contains no instance of it. Both compose
+  corollary, applicable when the entry `VarMap` tracks every non-temp name;
+  `FeSubSymbolic.corresScalar_jasminDenote` lowers it to `Com jasminDialect`. Both compose
   `translateDialectControl_denote_ctl` with `ConsistentS.lookup_eq`, the pieces
   `VIR.CompilerCorrectnessExtracted.semScalarToJasminCom_denote_eq` uses.
 -/
