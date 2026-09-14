@@ -138,7 +138,7 @@ theorem agreeExcept_evalInstr {D : List (String × Int)} (i : JInstr 64)
     refine ⟨?_, rfl, ?_⟩
     · simp [evalInstr, JState.setReg, JState.get]
     · intro x y hxy; simpa [evalInstr, JState.setReg] using hm x y hxy
-  | andn dst a c =>
+  | andn dst a c | bzhi dst a c =>
     refine ⟨?_, ?_, ?_⟩
     · simp [evalInstr, JState.writeB5W, JState.get]
     · simp [evalInstr, JState.writeB5W, JState.get]

@@ -556,7 +556,7 @@ theorem StoreDiff.step {base : String} {off : Int} {s t : JState 64}
     · simp only [evalInstr, JState.setReg]; rw [hr, hd]
     · simp only [evalInstr, JState.setReg]; exact hf
     · intro x y hxy; simp only [evalInstr, JState.setReg]; exact hm x y hxy
-  | andn d a c =>
+  | andn d a c | bzhi d a c =>
     have ha : s.get a = t.get a := by simp only [JState.get]; rw [hr]
     have hc : s.get c = t.get c := by simp only [JState.get]; rw [hr]
     refine ⟨?_, ?_, ?_⟩
@@ -920,6 +920,7 @@ def readRegs : JInstr 64 → List String
   | .addMem d _ _ | .adcxMem d _ _ | .adoxMem d _ _ | .imulMem d _ _ => [d]
   | .imulriMem _ _ _ _ => []
   | .addToMem _ _ s => srcNames s
+  | .bzhi _ a c => [a, c]               -- bzhi is non-destructive in both sources
 
 /-- The cell an instruction reads **other than** via the promoted `loadMem`, plus the
     register read-set, do not touch `ρ` / `(b,off)` — packaged as the promotability side
@@ -955,6 +956,7 @@ where
   | .clc | .stc | .testN _ _ _ | .bt _ _ => []
   | .addMem d _ _ | .adcxMem d _ _ | .adoxMem d _ _ | .imulMem d _ _ | .imulriMem d _ _ _ => [d]
   | .addToMem _ _ _ => []
+  | .bzhi d _ _ => [d]
 
 open InstrTransparent (writtenRegsI)
 
@@ -1284,7 +1286,7 @@ theorem PromoteRel.step_transparent {b : String} {off : Int} {ρ : String} {s t 
     have hd : d ≠ ρ := fun hc => hwρ (by simp [InstrTransparent.writtenRegsI, hc])
     have hgd : s.get d = t.get d := h.get hd
     simp only [evalInstr]; rw [hgd]; exact h.setReg_ne d hd _
-  | andn d a c =>
+  | andn d a c | bzhi d a c =>
     have hd : d ≠ ρ := fun hc => hwρ (by simp [InstrTransparent.writtenRegsI, hc])
     have haρ : a ≠ ρ := by intro hc; subst hc; exact hrρ (by simp [readRegs])
     have hcρ : c ≠ ρ := by intro hc; subst hc; exact hrρ (by simp [readRegs])

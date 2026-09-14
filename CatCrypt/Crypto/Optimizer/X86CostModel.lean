@@ -119,7 +119,7 @@ Placeholder latencies (see module docstring):
 - Store ops        : 1 c (store-data p4 + AGU p23)
 - `cmov*`          : 1 c
 - `neg`/`setc`     : 1 c
-- `cmp`/`not_`/`andn`/`rol`/`ror`/`rorx`/`shlx`/`shrx`/`sarx`/`movzx`/`movsx`/`lea` : 1 c
+- `cmp`/`not_`/`andn`/`bzhi`/`rol`/`ror`/`rorx`/`shlx`/`shrx`/`sarx`/`movzx`/`movsx`/`lea` : 1 c
 - `loadSym`        : 3 c (RIP-relative LEA)
 - `inc`/`dec`/`clc`/`stc`/`xchg`/`cmovcc`/`setcc`/`testN`/`bt`/`btr`/`bts` : 1 c
 - `imulri`/`shld`/`shrd` : 3 c; `rcl`/`rcr` : 2 c
@@ -235,6 +235,8 @@ def costOf : JInstr 64 → InstrCost
   | .imulriMem _ _ _ _   => ⟨4, 1, [.p1, .p23], 4⟩
   -- ADD into memory: load, add and store-data, with the AGU on p23 and the store on p4.
   | .addToMem _ _ _      => ⟨2, 1, [.p0, .p1, .p5, .p6, .p4, .p23], 2⟩
+  -- BZHI (BMI2): charged as ANDN, 1c on p1/p5.
+  | .bzhi _ _ _          => ⟨1, 1, [.p1, .p5], 1⟩
 
 /-! ## 4. Data-dependence helpers -/
 

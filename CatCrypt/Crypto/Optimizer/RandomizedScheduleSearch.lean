@@ -146,7 +146,7 @@ def writesReg : JInstr 64 → Option String
   | .cmp _ _ => none
   -- every remaining new op writes exactly its destination register.
   | .not_ d => some d
-  | .andn d _ _ => some d
+  | .andn d _ _ | .bzhi d _ _ => some d
   | .rol d _ | .ror d _ | .rorx d _ _ => some d
   | .shlx d _ _ | .shrx d _ _ | .sarx d _ _ => some d
   | .movzx d _ _ | .movsx d _ _ => some d
@@ -163,7 +163,7 @@ def readsReg : JInstr 64 → Option String
   -- `readSet`/`readSet'`, as are those of the multi-source ops below.
   | .test _ _ => none
   | .cmp _ _ => none
-  | .andn _ _ _ => none
+  | .andn _ _ _ | .bzhi _ _ _ => none
   | .lea _ _ _ _ _ => none
   -- the single-source ops name the register whose value they transform.
   | .not_ d | .rol d _ | .ror d _ => some d
@@ -217,7 +217,7 @@ def writeSet : JInstr 64 → List String
   | .test _ _ => []
   | .cmp _ _ => []
   -- every remaining new op writes exactly its destination register.
-  | .not_ d | .andn d _ _ => [d]
+  | .not_ d | .andn d _ _ | .bzhi d _ _ => [d]
   | .rol d _ | .ror d _ | .rorx d _ _ => [d]
   | .shlx d _ _ | .shrx d _ _ | .sarx d _ _ => [d]
   | .movzx d _ _ | .movsx d _ _ | .lea d _ _ _ _ => [d]
@@ -249,7 +249,7 @@ def readSet : JInstr 64 → List String
   | .rol d (.reg r) | .ror d (.reg r) => [d, r]
   | .rol d _ | .ror d _ => [d]
   -- three-operand forms read their sources only.
-  | .andn _ a b => [a, b]
+  | .andn _ a b | .bzhi _ a b => [a, b]
   | .rorx _ src (.reg r) => [src, r]
   | .rorx _ src _ => [src]
   | .shlx _ src c | .shrx _ src c | .sarx _ src c => [src, c]
@@ -273,7 +273,7 @@ def writesFlags : JInstr 64 → Bool
   | .cmp _ _ => true
   -- `andn` writes all five flags; the rotates write `OF` and `CF` and keep
   -- `SF`/`PF`/`ZF`, which still makes them flag writers.
-  | .andn _ _ _ => true
+  | .andn _ _ _ | .bzhi _ _ _ => true
   | .rol _ _ | .ror _ _ => true
   -- `not_`, the BMI2 rotate/shift forms, the extension moves and `lea` write no
   -- flag at all.
@@ -511,7 +511,7 @@ def writeSet' : JInstr 64 → List String
   | .cmp _ _ => []
   -- each remaining new op writes its destination register and nothing else;
   -- `lea` computes an address without touching memory, so `memCell` is absent.
-  | .not_ d | .andn d _ _ => [d]
+  | .not_ d | .andn d _ _ | .bzhi d _ _ => [d]
   | .rol d _ | .ror d _ | .rorx d _ _ => [d]
   | .shlx d _ _ | .shrx d _ _ | .sarx d _ _ => [d]
   | .movzx d _ _ | .movsx d _ _ | .lea d _ _ _ _ => [d]
@@ -558,7 +558,7 @@ def readSet' : JInstr 64 → List String
   | .not_ d => [d]
   | .rol d (.reg r) | .ror d (.reg r) => [d, r]
   | .rol d _ | .ror d _ => [d]
-  | .andn _ a b => [a, b]
+  | .andn _ a b | .bzhi _ a b => [a, b]
   | .rorx _ src (.reg r) => [src, r]
   | .rorx _ src _ => [src]
   | .shlx _ src c | .shrx _ src c | .sarx _ src c => [src, c]

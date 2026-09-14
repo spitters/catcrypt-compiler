@@ -105,6 +105,7 @@ def flagWrites : JInstr 64 → List FlagId
       [.CF, .PF, .ZF, .SF, .OF]
   | .adcxMem _ _ _ => [.CF]
   | .adoxMem _ _ _ => [.OF]
+  | .bzhi _ _ _ => [.CF, .PF, .ZF, .SF, .OF]
 
 /-- The flags a condition code reads, in the order `x86_eval_cond` reads them. -/
 def condFlagReads : Condt → List FlagId

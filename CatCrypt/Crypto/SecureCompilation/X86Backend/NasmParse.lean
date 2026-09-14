@@ -89,20 +89,15 @@ its `evalInstr` arm reads and writes, or the gap.
 | `lea r, [b + i]` (3) | `lea r b i 1 0` | none / none |
 | `imul r, r', imm` (1) | `imulri` | none / OF CF, SF PF ZF undefined |
 | `imul r, [b + d], imm` (4) | `imulriMem` | none / OF CF, SF PF ZF undefined |
-| `bzhi` (7) | gap | |
+| `bzhi r, r', r''` (7) | `bzhi` | none / OF = 0, CF, SF ZF, PF undefined |
 | `shrd r, r', imm` (5) | `shrd` | none / `x86_SHRD` flags |
 | `xchg r, r'` (1) | `xchg` | none / none |
 | `test al, al` (1) | `testN 8` | none / OF = CF = 0, SF PF ZF |
 
-The parser also maps `add [b + d], r`, `add qword [b + d], imm` (`addToMem`) and
-`imul r, [b + d]` (`imulMem`), which the file does not use. The constructor and
-`evalInstr` arm that would close the remaining gap:
-
-* `bzhi dst, src, idx`: `bzhi (dst src idx : String)` with
-  `n := (s.get idx).toNat % 256`, word `if n < 64 then src &&& (2^n - 1) else
-  src`, `ZF`/`SF` from the word, `CF := decide (63 < n)`, `OF := false`, `PF`
-  undefined, written with `writeB5W`. The cleared `OF` is read by the `adox` on
-  lines 98 and 136 of the file.
+Every instruction of the file has a `JInstr` constructor. The `OF` that `bzhi`
+clears is read by the `adox` on lines 98 and 136 of the file. The parser also maps
+`add [b + d], r`, `add qword [b + d], imm` (`addToMem`) and `imul r, [b + d]`
+(`imulMem`), which the file does not use.
 
 ## Coverage of `fiat_curve25519_solinas_square.asm`
 
@@ -704,7 +699,7 @@ def toJInstr (mn : String) (ops : List Operand) : Except String (JInstr 64) := d
   | "adox", [.reg d, .mem m] =>
       let (b, off) ← plainMem m
       return .adoxMem (jreg d) (jreg b) off
-  | "bzhi", _ => throw "bzhi: no JInstr constructor"
+  | "bzhi", [.reg d, .reg s, .reg i] => return .bzhi (jreg d) (jreg s) (jreg i)
   | "ret", _ => throw "ret: a straight-line JInstr block has no return; parseNasm \
       accepts it as the last instruction"
   | _, _ => throw s!"{mn} with {ops.length} operands: no JInstr constructor"
@@ -915,6 +910,8 @@ def toSyntax : JInstr 64 → Except String (String × List Operand)
       let dN ← intelReg d
       let bN ← intelReg b
       return ("imul", [.reg dN, memOp bN none off, immOperand imm])
+  | .bzhi d s i => do
+      return ("bzhi", [.reg (← intelReg d), .reg (← intelReg s), .reg (← intelReg i)])
 
 /-! ## 4. Whole-text parse, print and canonicalisation -/
 

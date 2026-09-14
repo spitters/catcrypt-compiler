@@ -327,16 +327,20 @@ side conditions are static and decided by the abstraction:
 |---|---|---|---|
 | `RArrLoad dst src i` | `corresL_arrLoad` | `src` has length `m + 1` in `L`; `dst` typed `TU64` and unreserved; `i` non-temp and unreserved | `dst := A[i mod (m + 1)]` |
 | `RArrStore arr i src` | `corresL_arrStore` | `arr` has length `m + 1` in `L` and `encodeTy` gives `.memref (m + 1)`; `i` and `src` non-temp and unreserved | `A[i mod (m + 1)] := src` |
-| `RArrLoadLit dst src idx` | `corresL_arrLoadLit` | `src` has length `m + 1` in `L`; `idx < m + 1` and `idx < 2 ^ 64`; `dst` typed `TU64` and unreserved | `dst := A[idx]` |
-| `RArrStoreLit arr idx src` | `corresL_arrStoreLit` | `arr` has length `m + 1` in `L`; `idx < m + 1` and `idx < 2 ^ 64`; `src` non-temp and unreserved | `A[idx] := src` |
+| `RArrLoadLit dst src idx` | `corresL_arrLoadLit` | `src` typed `TArr _ .TU64` and of length `m + 1` in `L`; `idx < m + 1` and `idx < 2 ^ 64`; `dst` typed `TU64` and unreserved | `dst := A[idx]` |
+| `RArrStoreLit arr idx src` | `corresL_arrStoreLit` | `arr` typed `TArr _ .TU64` and of length `m + 1` in `L`; `idx < m + 1` and `idx < 2 ^ 64`; `src` non-temp and unreserved | `A[idx] := src` |
 | `RLimbStore loc idx v` | `corresL_limbStore` | `loc` has length `n` in `L` and `idx < n` | `A[idx] := v` |
 
 The index is reduced modulo the length because `semScalar` reads and writes through
 `memGetDyn` and `memSetDyn`, which do; an out-of-bounds dynamic index is not a guard.
 A literal index is taken as a 64-bit word before the reduction, as the front's
 `bvConst` temporary holds it, so the literal leaves require it below `2 ^ 64` and the
-length. Over the empty layout these constructors stay unsupported, since `SRwordNT`
-requires every non-temp name to hold a word.
+length. The literal leaves also require the array to be typed `TArr _ .TU64`:
+`encodeTy` binds byte and `u32` arrays as `.memref` as well, but the direct route
+(`LowCTToJasmin.arrLitElemWS`) reads their element `idx` at the array's own width, so
+`semScalar` and the front give those arrays the opaque leaf. Over the empty layout
+these constructors stay unsupported, since `SRwordNT` requires every non-temp name to
+hold a word.
 
 The constant-time select `RSelect dst sel src0 src1` goes through `corresL_select`
 over any layout, with the abstract step `dst := if sel = 0 then src0 else src1`, when
@@ -361,8 +365,8 @@ the obstruction is in the waist semantics `semScalar`, not in a missing leaf:
 * `RCall`, `RCallSwap`, `RCloneCall`, `RCallN`, `RCallDstThreaded` and `RTupleLoad`
   bind their destinations to `CryptoTy.default`, the opaque `extCall` waist,
   independent of the arguments. So do `RSelect` over slots other than 64-bit words
-  and `RArrLoadLit` / `RArrStoreLit` over slots other than a `.memref` array and a
-  64-bit word, which the front lowers to the opaque `extCall "select"`,
+  and `RArrLoadLit` / `RArrStoreLit` over slots other than a `TArr _ .TU64` array
+  bound as `.memref` and a 64-bit word, which the front lowers to the opaque `extCall "select"`,
   `"arrLoad:i"` and `"arrStore:i"`. An arm would abstract such a node to a zero write.
 
 Six of these 11 are in the emit leg's fragment `IsCoveredS`.
@@ -460,8 +464,28 @@ The abstract state carries the registers, `CF` and `OF`. The leaves for `setcc` 
 memory kinds), `adcx`, `adox`, `imul` and three-operand `imul` (`addMem`, `addToMem`,
 `adcxMem`, `adoxMem`, `imulMem`, `imulriMem`), each equal to a load into a scratch
 register followed by the register form (`runBlock_loadMem_*_eq_*Mem`), with `CorresJ`
-leaves in `Ascent/CorresX86Mem.lean`. CryptOpt's `carry_mul` kernel still does not parse
-in full: it uses `bzhi`, which has no `JInstr` constructor.
+leaves in `Ascent/CorresX86Mem.lean`.
+
+`JInstr` also has BMI2 `bzhi` (`x86_BZHI`, following the Intel SDM, since Jasmin's
+`x86_op` has no `BZHI`), in the constant-time set. With it the CryptOpt Curve25519
+`carry_mul` kernel (`bench/cryptopt/fiat_curve25519_carry_mul.asm`) parses in full:
+`carryMulBlock` (`X86Backend/CarryMulBlock.lean`) is its 167 instructions, checked by
+the same `lake exe nasm-parse-kat`. The kernel writes registers it uses as memory bases
+(`sub rsp`, `xchg rdx, rax`, `mov r10, [rsp - 0x50]`), so `SRmem` over one cell list
+does not hold across the whole block; the block splits at those instructions:
+
+- `carryMulMid_corres` and `carryMulTail_corres` (`Ascent/CarryMulCorres.lean`):
+  instructions 5–146 and 148–166 refine their abstract runs over `SRmem` on their own
+  cell lists (inputs and frame slots; outputs and saved-register slots).
+- `absRunMem_carryMulMid_spec` and `absRunMem_carryMulTail_spec`
+  (`Ascent/CarryMulCorrect.lean`): for inputs below `2^54` apart from the frame slots,
+  the two abstract runs compute limbs whose value is congruent to the product of the
+  inputs modulo `2^255 - 19`.
+- `carryMul_correct`: for every `JState` whose input limbs are below `2^54`, whose
+  cells are separated at the addresses the kernel uses, and whose memory bank `%rax`
+  agrees with `%rdx` on the second input, the five words `runBlock st carryMulBlock`
+  writes through `%r10` meet `CarryMulSpec`, fiat-crypto's `mul_correct` congruence.
+  Instructions 1–4, 147 and 167 are stepped on the machine state directly.
 
 ### The descent contracts and the ascent meet at the x86 register file
 

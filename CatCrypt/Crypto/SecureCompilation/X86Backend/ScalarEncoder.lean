@@ -775,6 +775,11 @@ def encodeJInstr (alloc : GpAlloc) : JInstr 64 → List (BitVec 8)
       ([ rex 1 (bit dn 3) 0 (bit bn 3), 0x0f, 0xaf ].map (BitVec.ofNat 8)) ++ memTail dn bn off
   | .imulriMem d base off imm =>
       encMemMov 0x69 (gpNum (regOf alloc d)) (gpNum (regOf alloc base)) off ++ imm32LE imm
+  -- BZHI = VEX.LZ.0F38.W1 F5 /r; `vvvv` carries the index. Gas-pinned:
+  -- `bzhi %rbx,%rcx,%rax` = `C4 E2 E0 F5 C1`, `bzhi %r11,%rbx,%r13` = `C4 62 A0 F5 EB`.
+  | .bzhi d src idx =>
+      encVex3RR 0b00010 0b00 0xf5 (gpNum (regOf alloc d))
+        (gpNum (regOf alloc idx)) (gpNum (regOf alloc src))
   -- Not yet encoded: `INC`, `DEC`, `CLC`, `STC`, `XCHG`, `IMUL $imm, %src, %dst`, the
   -- one-operand `MUL`/`IMUL`, `SHLD`/`SHRD`, `RCL`/`RCR`, the general `CMOVcc`/`SETcc`,
   -- the sized `TEST` and `BT`/`BTR`/`BTS`. They emit no bytes and `encodableJInstr`

@@ -82,6 +82,12 @@ from four segments closed by `corres_solve_mem`.
   to `SRmem`.
 * `wordExtendMerge_setcc`, `x86_MOVZX_eq_mod`, `condB_eq_condStep2`: the byte merge of
   `SETcc`, zero extension as a residue, and the carry conditions on `ACarry2`.
+* `writeStep2`, `corresJ_writeB5W2`: the leaf of an instruction writing a five-flag tuple
+  computed from the registers; `corresJ_shrd2`, `corresJ_shr2`, `corresJ_imulri2`,
+  `corresJ_bzhi2` and their `SRmem` lifts `corresJ_shrdM`, `corresJ_shrM`,
+  `corresJ_imulriM`, `corresJ_bzhiM` are its instances.
+* `cellMem`, `cellMem_eq`, `srmem_cellMem`: the address-keyed memory read off a machine
+  state along separated cells, which is `SRmem`-related to that state.
 * `absStepMem`, `absRunMem`, `corresJ_absRunMem_append`: the abstract run and its
   sequencing rule.
 * `solinasCells`, `srmem_solinas_satisfiable`: the `solinas_square` layout.
@@ -839,6 +845,105 @@ theorem corresJ_cmovccM (cells : List (String × Int)) (c : Condt) (d : String) 
   corresJ_liftCarry2 cells (corresJ_cmovcc2 c d o hc) (fun _ => rfl)
     (fun x => base_of_write cells d hd _ x.regs)
 
+/-! ## Leaves for the instructions writing a five-flag tuple from registers
+
+`shrd`, `shr`, three-operand `imul` and `bzhi` write one register and the five flags
+through `JState.writeB5W`, from a tuple that is a function of the register file.
+`corresJ_writeB5W2` states the `SRcarry2` leaf once for every such instruction; the
+abstract step `writeStep2` writes the word and reads `CF` and `OF` off the tuple, an
+undefined flag reading as `false`, as `JState.flagB` reads it. -/
+
+/-- The abstract write of a five-flag tuple `t` to `d` over `ACarry2`: `d := t.word`,
+    `CF` and `OF` from the tuple, an undefined flag as `false`. -/
+def writeStep2 (d : String) (t : B5W 64) (a : ACarry2) : ACarry2 :=
+  { regs := fun r => if r = d then t.word else a.regs r
+    cf := t.cf.getD false
+    of := t.of.getD false }
+
+/-- An instruction whose effect is `writeB5W d (f regs)` refines `writeStep2 d (f regs)`. -/
+theorem corresJ_writeB5W2 (i : JInstr 64) (d : String) (f : (String → BitVec 64) → B5W 64)
+    (hi : ∀ s : JState 64, evalInstr s i = s.writeB5W d (f s.regs)) :
+    CorresJ SRcarry2 (fun _ => True) (fun a => writeStep2 d (f a.regs) a) [i] := by
+  intro s a ⟨hreg, _, _⟩ _
+  have hf : f s.regs = f a.regs := congrArg f (funext hreg)
+  refine ⟨?_, ?_, ?_⟩
+  · intro r
+    simp only [runBlock_cons, runBlock_nil, hi, JState.writeB5W, writeStep2, hf]
+    split <;> simp [hreg r]
+  · simp only [runBlock_cons, runBlock_nil, hi, JState.flagB, JState.writeB5W_flags,
+      writeStep2, hf]
+  · simp only [runBlock_cons, runBlock_nil, hi, JState.flagB, JState.writeB5W_flags,
+      writeStep2, hf]
+
+/-- `shrd d s k` over `ACarry2`: `writeStep2` of `x86_SHRD`. -/
+def shrdStep2 (d s : String) (k : JOperand) (a : ACarry2) : ACarry2 :=
+  writeStep2 d (x86_SHRD (a.regs d) (a.regs s) (evalX a.regs k)) a
+
+/-- `shr d k` over `ACarry2`: `writeStep2` of `x86_SHR`. -/
+def shrStep2 (d : String) (k : JOperand) (a : ACarry2) : ACarry2 :=
+  writeStep2 d (x86_SHR (a.regs d) (evalX a.regs k)) a
+
+/-- `imul d, s, k` over `ACarry2`: `writeStep2` of `x86_IMULt` at the immediate word. -/
+def imulriStep2 (d s : String) (k : Nat) (a : ACarry2) : ACarry2 :=
+  writeStep2 d (x86_IMULt (a.regs s) (BitVec.ofNat 64 k)) a
+
+/-- `bzhi d s idx` over `ACarry2`: `writeStep2` of `x86_BZHI`. -/
+def bzhiStep2 (d s idx : String) (a : ACarry2) : ACarry2 :=
+  writeStep2 d (x86_BZHI (a.regs s) (a.regs idx)) a
+
+/-- `shrd` refines `shrdStep2`. -/
+theorem corresJ_shrd2 (d s : String) (k : JOperand) :
+    CorresJ SRcarry2 (fun _ => True) (shrdStep2 d s k) [.shrd d s k] :=
+  corresJ_writeB5W2 _ d (fun regs => x86_SHRD (regs d) (regs s) (evalX regs k))
+    (fun st => by cases k <;> rfl)
+
+/-- `shr` refines `shrStep2`. -/
+theorem corresJ_shr2 (d : String) (k : JOperand) :
+    CorresJ SRcarry2 (fun _ => True) (shrStep2 d k) [.shr d k] :=
+  corresJ_writeB5W2 _ d (fun regs => x86_SHR (regs d) (evalX regs k))
+    (fun st => by cases k <;> rfl)
+
+/-- Three-operand `imul` refines `imulriStep2`. -/
+theorem corresJ_imulri2 (d s : String) (k : Nat) :
+    CorresJ SRcarry2 (fun _ => True) (imulriStep2 d s k) [.imulri d s k] :=
+  corresJ_writeB5W2 _ d (fun regs => x86_IMULt (regs s) (BitVec.ofNat 64 k)) (fun _ => rfl)
+
+/-- `bzhi` refines `bzhiStep2`. -/
+theorem corresJ_bzhi2 (d s idx : String) :
+    CorresJ SRcarry2 (fun _ => True) (bzhiStep2 d s idx) [.bzhi d s idx] :=
+  corresJ_writeB5W2 _ d (fun regs => x86_BZHI (regs s) (regs idx)) (fun _ => rfl)
+
+/-- `shrd` to a register that is not a base, over `SRmem`. -/
+theorem corresJ_shrdM (cells : List (String × Int)) (d s : String) (k : JOperand)
+    (hd : d ∉ baseRegs cells) :
+    CorresJ (SRmem cells) (fun _ => True) (fun a => ⟨shrdStep2 d s k a.c, a.mem⟩)
+      [.shrd d s k] :=
+  corresJ_liftCarry2 cells (corresJ_shrd2 d s k) (fun _ => rfl)
+    (fun x => base_of_write cells d hd _ x.regs)
+
+/-- `shr` of a register that is not a base, over `SRmem`. -/
+theorem corresJ_shrM (cells : List (String × Int)) (d : String) (k : JOperand)
+    (hd : d ∉ baseRegs cells) :
+    CorresJ (SRmem cells) (fun _ => True) (fun a => ⟨shrStep2 d k a.c, a.mem⟩) [.shr d k] :=
+  corresJ_liftCarry2 cells (corresJ_shr2 d k) (fun _ => rfl)
+    (fun x => base_of_write cells d hd _ x.regs)
+
+/-- Three-operand `imul` to a register that is not a base, over `SRmem`. -/
+theorem corresJ_imulriM (cells : List (String × Int)) (d s : String) (k : Nat)
+    (hd : d ∉ baseRegs cells) :
+    CorresJ (SRmem cells) (fun _ => True) (fun a => ⟨imulriStep2 d s k a.c, a.mem⟩)
+      [.imulri d s k] :=
+  corresJ_liftCarry2 cells (corresJ_imulri2 d s k) (fun _ => rfl)
+    (fun x => base_of_write cells d hd _ x.regs)
+
+/-- `bzhi` to a register that is not a base, over `SRmem`. -/
+theorem corresJ_bzhiM (cells : List (String × Int)) (d s idx : String)
+    (hd : d ∉ baseRegs cells) :
+    CorresJ (SRmem cells) (fun _ => True) (fun a => ⟨bzhiStep2 d s idx a.c, a.mem⟩)
+      [.bzhi d s idx] :=
+  corresJ_liftCarry2 cells (corresJ_bzhi2 d s idx) (fun _ => rfl)
+    (fun x => base_of_write cells d hd _ x.regs)
+
 /-! ## `@[corres]` registrations and the solver -/
 
 attribute [corres] corresJ_mov2 corresJ_add2 corresJ_xor2 corresJ_imul2
@@ -850,6 +955,8 @@ attribute [corres] corresJ_mov2 corresJ_add2 corresJ_xor2 corresJ_imul2
   corresJ_incM corresJ_clcM corresJ_testNM corresJ_testM corresJ_adcM corresJ_leaM
   corresJ_movzxM corresJ_setccM corresJ_cmovccM
   corresJ_addMemM corresJ_imulMemM corresJ_imulriMemM corresJ_adcxMemM corresJ_adoxMemM
+  corresJ_shrd2 corresJ_shr2 corresJ_imulri2 corresJ_bzhi2
+  corresJ_shrdM corresJ_shrM corresJ_imulriM corresJ_bzhiM
 
 /-- Apply a `@[corres]` leaf to a single-instruction goal and discharge its side
     conditions (cell membership, base-register non-membership) by `decide`. -/
@@ -918,6 +1025,35 @@ def witnessState (a : AMemX) : JState 64 :=
 theorem srmem_witnessState (cells : List (String × Int)) (a : AMemX)
     (hs : CellsSeparated cells a.c.regs) : SRmem cells (witnessState a) a :=
   ⟨⟨fun _ => rfl, rfl, rfl⟩, fun _ _ => rfl, hs⟩
+
+/-- The address-keyed memory read off a machine state along `cells`: the word at address
+    `p` is the machine word of the first tracked cell whose address is `p`, and `0` at
+    untracked addresses. -/
+def cellMem (cells : List (String × Int)) (st : JState 64) (p : BitVec 64) : BitVec 64 :=
+  match cells.find? (fun c => decide (cellAddr st.regs c = p)) with
+  | some c => st.mem c.1 c.2
+  | none => 0
+
+/-- On separated cells, `cellMem` at the address of a tracked cell is that cell's word. -/
+theorem cellMem_eq (cells : List (String × Int)) (st : JState 64)
+    (hsep : CellsSeparated cells st.regs) (c : String × Int) (hc : c ∈ cells) :
+    cellMem cells st (cellAddr st.regs c) = st.mem c.1 c.2 := by
+  unfold cellMem
+  cases h : cells.find? (fun c' => decide (cellAddr st.regs c' = cellAddr st.regs c)) with
+  | none =>
+    exact absurd (by simp) (List.find?_eq_none.mp h c hc)
+  | some c' =>
+    have hp := List.find?_some h
+    have hm := List.mem_of_find?_eq_some h
+    simp only [decide_eq_true_eq] at hp
+    rw [hsep c' hm c hc hp]
+
+/-- A machine state and the abstract state read off it along separated `cells` are
+    related by `SRmem cells`. -/
+theorem srmem_cellMem (cells : List (String × Int)) (st : JState 64)
+    (hsep : CellsSeparated cells st.regs) :
+    SRmem cells st ⟨⟨st.regs, st.flagB (·.cf), st.flagB (·.of)⟩, cellMem cells st⟩ :=
+  ⟨⟨fun _ => rfl, rfl, rfl⟩, fun c hc => (cellMem_eq _ _ hsep c hc).symm, hsep⟩
 
 /-- The entry layout of `carry_mul` is satisfiable. -/
 theorem srmem_carryMulEntry_satisfiable :
@@ -1016,6 +1152,10 @@ def absStepMem : JInstr 64 → AMemX → AMemX
   | .imulriMem d b o k => imulriMemStepM d b o k
   | .adcxMem d b o => adcxMemStepM d b o
   | .adoxMem d b o => adoxMemStepM d b o
+  | .shrd d s k => fun a => ⟨shrdStep2 d s k a.c, a.mem⟩
+  | .shr d k => fun a => ⟨shrStep2 d k a.c, a.mem⟩
+  | .imulri d s k => fun a => ⟨imulriStep2 d s k a.c, a.mem⟩
+  | .bzhi d s idx => fun a => ⟨bzhiStep2 d s idx a.c, a.mem⟩
   | _ => id
 
 /-- The abstract run of a block over `AMemX`: `absStepMem` folded left to right. -/

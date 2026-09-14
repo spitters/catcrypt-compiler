@@ -417,6 +417,21 @@ def rflags_of_andn {w : Nat} (res : BitVec w) : B5W w :=
     `wandn v1 v2` is `(~~~ v1) &&& v2`. -/
 def x86_ANDN {w : Nat} (v1 v2 : BitVec w) : B5W w := rflags_of_andn ((~~~ v1) &&& v2)
 
+/-- `BZHI` (BMI2), which `x86_instr_decl.v` does not declare; the definition follows the
+    Intel SDM (Vol. 2A, BZHI) in the shape of `x86_ANDN`. The index `n` is the low byte
+    of `idx`; the word is `v` with bits `n` and above cleared when `n < w`, and `v`
+    itself otherwise. `CF` is set when `n` is at least the operand size, `OF` is
+    cleared, `SF`/`ZF` are read off the word, and `PF` is undefined. -/
+def x86_BZHI {w : Nat} (v idx : BitVec w) : B5W w :=
+  let n := idx.toNat % 256
+  let res := if n < w then v &&& BitVec.ofNat w (2 ^ n - 1) else v
+  { of := some false
+    cf := some (decide (w ≤ n))
+    sf := some (SF_of_word res)
+    pf := none
+    zf := some (ZF_of_word res)
+    word := res }
+
 /-- `x86_NOT sz v = wnot v` (l.1036): the `w_ty` shape, so no flag is written. -/
 def x86_NOT {w : Nat} (v : BitVec w) : BitVec w := ~~~ v
 
@@ -1016,6 +1031,11 @@ inductive JOperand where
     while leaking through timing. These are not gaps to close; adding one would
     put a variable-latency instruction inside a constant-time backend.
 
+    `BZHI` (BMI2, `bzhi`) is in the constant-time set: it forms a mask from the low
+    byte of the index and ANDs it into the source, and its latency does not depend
+    on the operand values. Jasmin's `x86_op` has no `BZHI`; `x86_BZHI` follows the
+    Intel SDM, and only the register-source form is transcribed.
+
     **Memory operands.** An operand of kind `rm` or `m` (`x86_instr_decl.v`) is a
     register or a memory cell `[base + off]` read through `JState.load` and written
     through `JState.store`. The memory forms transcribed are `MOV` (`loadMem`,
@@ -1264,6 +1284,10 @@ inductive JInstr (w : Nat) where
   /-- `Ox86_IMULri_instr` with a memory source (`[r; rm; i]`): `dst :=` the low word
       of `[base + off] * imm`, with the flags of `x86_IMULt`. -/
   | imulriMem (dst base : String) (off : Int) (imm : Nat)
+  /-- `BZHI` (BMI2) on registers, `x86_BZHI`: `dst := src` with the bits at and above
+      the low byte of `idx` cleared, writing the five flags (`PF` undefined).
+      Non-destructive in both sources. -/
+  | bzhi (dst src idx : String)
   deriving Repr
 
 /-- `eval_op`/`exec_instr_op` for one instruction (`arch_sem.v` l.386–391):
@@ -1379,6 +1403,7 @@ def evalInstr {w : Nat} (s : JState w) : JInstr w → JState w
   | .imulMem dst base off => s.writeB5W dst (x86_IMULt (s.get dst) (s.load base off))
   | .imulriMem dst base off imm =>
       s.writeB5W dst (x86_IMULt (s.load base off) (BitVec.ofNat w imm))
+  | .bzhi d src idx => s.writeB5W d (x86_BZHI (s.get src) (s.get idx))
 
 /-- `runBlock`: a straight-line fold of `evalInstr`, the analogue of jasmin's
     sequential `lsem`/`eval_instr` iteration over a basic block. -/

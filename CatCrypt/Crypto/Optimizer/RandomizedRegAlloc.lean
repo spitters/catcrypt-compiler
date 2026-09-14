@@ -175,6 +175,7 @@ def renameInstr (ρ : String → String) : JInstr 64 → JInstr 64
   | .adoxMem d base off => .adoxMem (ρ d) (ρ base) off
   | .imulMem d base off => .imulMem (ρ d) (ρ base) off
   | .imulriMem d base off imm => .imulriMem (ρ d) (ρ base) off imm
+  | .bzhi d src idx => .bzhi (ρ d) (ρ src) (ρ idx)
 
 /-- Apply a register renaming to a whole block. -/
 def renameBlock (ρ : String → String) (block : List (JInstr 64)) : List (JInstr 64) :=
@@ -586,6 +587,8 @@ theorem evalInstr_renameInstr_rel {ρ : String → String} (hρ : Function.Injec
     simp only [renameInstr, evalInstr, hget, load_rel h base off]; exact writeB5W_rel hρ h d _
   | imulriMem d base off imm =>
     simp only [renameInstr, evalInstr, load_rel h base off]; exact writeB5W_rel hρ h d _
+  | bzhi d src idx =>
+    simp only [renameInstr, evalInstr, hget]; exact writeB5W_rel hρ h d _
 
 /-! ## 5. The whole-block translation validation (the contribution)
 

@@ -107,7 +107,7 @@ def readsFlag {w : Nat} : JInstr w → Bool
     pure function of the register/immediate inputs (a `writeB5W`/`writeB5`/
     `writeB5W2`/`writeB5N` op that does not first read a flag): `add`, `sub`, `imul`,
     `imulri`, `neg`, `and_`, `or_`, `xor_`, `shl`, `shr`, `sar`, `shld`, `shrd`,
-    `andn`, `mul`, `imulWide`, the memory-operand `addMem`/`addToMem`/`imulMem`/
+    `andn`, `bzhi`, `mul`, `imulWide`, the memory-operand `addMem`/`addToMem`/`imulMem`/
     `imulriMem`, and `test`/`testN`/`cmp`, whose five flags are their
     only output.  The partial writes `adcx`/`adox`/`adcxMem`/`adoxMem`/`rol`/`ror`/`rcl`/`rcr`/`inc`/`dec`/
     `clc`/`stc`/`bt`/`btr`/`bts` and the flag-reading `adc`/`sbb` are excluded
@@ -148,6 +148,8 @@ def writesAllFlags {w : Nat} : JInstr w → Bool
   -- memory and immediate inputs; `adcxMem`/`adoxMem` write one flag.
   | .addMem _ _ _ | .addToMem _ _ _ | .imulMem _ _ _ | .imulriMem _ _ _ _ => true
   | .adcxMem _ _ _ | .adoxMem _ _ _ => false
+  -- BMI2 `bzhi` writes the full `B5W` tuple from its two register sources.
+  | .bzhi _ _ _ => true
   | _         => false
 
 /-! ## 2. The backward liveness scan -/

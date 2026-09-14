@@ -322,6 +322,9 @@ def jinstrToLinstrR (alloc : GpAlloc) : JInstr 64 → LinstrR
                              [resolveReg alloc d, memOperand alloc base off]
   | .imulriMem d base off imm => .Lopn [resolveReg alloc d] (withWidthTag 64 "IMULRIMEM")
                                    [memOperand alloc base off, .imm imm]
+  -- BMI2 `bzhi`: the field leaves never emit it, and `BZHI` has no `attBase` entry.
+  | .bzhi d s i => .Lopn [resolveReg alloc d] (withWidthTag 64 "BZHI")
+                     [resolveReg alloc s, resolveReg alloc i]
 
 /-- Lift a whole `JInstr 64` block to an `Lcmd` over a resolved `GpAlloc`, ending
     with the function-level `Lret`. The `li_ii` source tags are `0` (no position

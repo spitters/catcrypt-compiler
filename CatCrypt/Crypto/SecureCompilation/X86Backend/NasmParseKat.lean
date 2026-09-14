@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.NasmParse
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.SolinasSquareBlock
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CarryMulBlock
 
 /-!
 # Round-trip and coverage check of the NASM parser on CryptOpt assembly
@@ -17,13 +18,10 @@ A program over two CryptOpt Curve25519 kernels, run from the package root:
 lake exe nasm-parse-kat
 ```
 
-* `bench/cryptopt/fiat_curve25519_solinas_square.asm`, every instruction of
-  which has a `JInstr` constructor: the whole file must parse and print back to
-  its canonical text.
-* `bench/cryptopt/fiat_curve25519_carry_mul.asm`, which uses forms with no
-  `JInstr` constructor (memory-source `adcx`/`adox`/`add`/`imul`, and `bzhi`):
-  every mapped line must print back to its canonical text, and the unmapped
-  lines are listed.
+* `bench/cryptopt/fiat_curve25519_solinas_square.asm` and
+  `bench/cryptopt/fiat_curve25519_carry_mul.asm`, every instruction of which has a
+  `JInstr` constructor: each whole file must parse, print back to its canonical
+  text, and equal its expected block.
 
 For every instruction line of a file it compares `printInstr (toJInstr line)`
 with the canonical text of the line, lists the lines whose instruction has no
@@ -32,8 +30,9 @@ and unmapped lines. A final `ret` is counted as the terminator `parseNasm`
 accepts. It then runs `parseNasm` on the whole file and, when that succeeds,
 compares `printNasm` of the result with `canonicalNasm` of the file. For a file
 with an expected block, the parsed list must also equal that block: the solinas
-square file must parse to `SolinasSquareBlock.solinasSquareBlock`, the literal
-the proofs about the kernel unfold. The comparison is on the `repr` of both
+square file must parse to `SolinasSquareBlock.solinasSquareBlock` and the carry_mul
+file to `CarryMulBlock.carryMulBlock`, the literals the proofs about the kernels
+unfold. The comparison is on the `repr` of both
 lists, since `JInstr` derives `Repr` and its `DecidableEq` instance lives in a
 module this program does not import.
 
@@ -62,6 +61,7 @@ namespace CatCrypt.Crypto.SecureCompilation.X86Backend.NasmParseKat
 open CatCrypt.Crypto.SecureCompilation.X86Backend.NasmParse
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin (JInstr)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.SolinasSquareBlock (solinasSquareBlock)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.CarryMulBlock (carryMulBlock)
 
 /-- An input file, relative to the package root, whether every instruction of it
     must have a `JInstr` constructor, and the block `parseNasm` must return on
@@ -75,7 +75,8 @@ structure Target where
 def targets : List Target :=
   [ { path := "bench/cryptopt/fiat_curve25519_solinas_square.asm", complete := true,
       expected := some solinasSquareBlock },
-    { path := "bench/cryptopt/fiat_curve25519_carry_mul.asm", complete := false } ]
+    { path := "bench/cryptopt/fiat_curve25519_carry_mul.asm", complete := true,
+      expected := some carryMulBlock } ]
 
 /-- The outcome of one source line: no instruction, the final `ret`, a mapped
     instruction whose printed text agrees or disagrees with the canonical text,

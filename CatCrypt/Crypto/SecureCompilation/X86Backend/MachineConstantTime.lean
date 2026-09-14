@@ -354,6 +354,7 @@ def dstRegs {w : Nat} : JInstr w → List String
   | .addMem d _ _ | .adcxMem d _ _ | .adoxMem d _ _ | .imulMem d _ _ | .imulriMem d _ _ _ => [d]
   -- `add [base + off], src` writes memory and the five flags, no register.
   | .addToMem _ _ _ => []
+  | .bzhi d _ _ => [d]
 
 /-- The index register an instruction reads to form a memory address, if any
     (only the register-indexed ops have one). -/

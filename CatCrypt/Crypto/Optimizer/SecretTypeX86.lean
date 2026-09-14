@@ -130,7 +130,7 @@ def instrTaint (R : RegTaint) (C : CellTaint) : JInstr 64 → SecretLevel
   | .cmp a src      => R a ⊔ₛ operandTaint R src
   | .setc _         => .pub
   | .not_ dst       => R dst
-  | .andn _ a b     => R a ⊔ₛ R b
+  | .andn _ a b | .bzhi _ a b => R a ⊔ₛ R b
   | .rol dst amt | .ror dst amt => R dst ⊔ₛ operandTaint R amt
   | .rorx _ src amt => R src ⊔ₛ operandTaint R amt
   | .shlx _ src cnt | .shrx _ src cnt | .sarx _ src cnt => R src ⊔ₛ R cnt
@@ -424,6 +424,7 @@ theorem forwardStep_taint_sound {h : Held} {C : CellTaint} {R : RegTaint}
   | cmp a s'  => exact ⟨rfl, hv.killWrittenStep (JInstr.cmp a s') (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
   | not_ d    => exact ⟨rfl, hv.killWrittenStep (JInstr.not_ d) (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
   | andn d a c => exact ⟨rfl, hv.killWrittenStep (JInstr.andn d a c) (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
+  | bzhi d a c => exact ⟨rfl, hv.killWrittenStep (JInstr.bzhi d a c) (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
   | rol d amt => exact ⟨rfl, hv.killWrittenStep (JInstr.rol d amt) (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
   | ror d amt => exact ⟨rfl, hv.killWrittenStep (JInstr.ror d amt) (by intro b o v hc; nomatch hc) (by intro b o v hc; nomatch hc)⟩
   | rorx d src amt =>

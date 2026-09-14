@@ -366,7 +366,7 @@ theorem evalInstr_renameInstr_rel_on {ns : List String} {ρ : String → String}
     have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
     simp only [renameInstr, evalInstr, hget_on d hd]
     exact setReg_rel_on hinj h d hd _
-  | andn d a b =>
+  | andn d a b | bzhi d a b =>
     have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
     have ha : a ∈ ns := hsubX a (by simp [bNamesX, SpillingRegAlloc.writtenNames,
       SpillingRegAlloc.readNames])

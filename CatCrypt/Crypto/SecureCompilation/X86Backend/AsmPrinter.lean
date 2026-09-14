@@ -133,6 +133,7 @@ def jinstrNames : {w : Nat} → JInstr w → List String
   | _, .addMem d base _ | _, .adcxMem d base _ | _, .adoxMem d base _
   | _, .imulMem d base _ | _, .imulriMem d base _ _ => [d, base]
   | _, .addToMem base _ s => base :: srcNames s
+  | _, .bzhi d src idx => [d, src, idx]
 
 /-- Collect the distinct register names of a block, in first-seen order. -/
 def blockNames {w : Nat} (block : List (JInstr w)) : List String :=
@@ -430,6 +431,9 @@ def renderJInstr {w : Nat} (alloc : GpAlloc) : JInstr w → String
   | .imulriMem d base off imm =>
       "\timulq $" ++ toString imm ++ ", " ++ toString off ++ "(" ++ regOf alloc base ++ "), "
         ++ regOf alloc d
+  -- BMI2 `BZHI dst, src, idx`; AT&T lists the index, the source, then the destination.
+  | .bzhi d src idx =>
+      "\tbzhiq " ++ regOf alloc idx ++ ", " ++ regOf alloc src ++ ", " ++ regOf alloc d
 
 /-- Print a whole block's instruction lines (one per `JInstr`). -/
 def renderBlockBody {w : Nat} (alloc : GpAlloc) (block : List (JInstr w)) : List String :=

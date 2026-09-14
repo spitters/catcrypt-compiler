@@ -105,6 +105,7 @@ def writtenNames : JInstr 64 → List String
   -- the memory-source arithmetic writes its destination; `addToMem` writes memory only.
   | .addMem d _ _ | .adcxMem d _ _ | .adoxMem d _ _ | .imulMem d _ _ | .imulriMem d _ _ _ => [d]
   | .addToMem _ _ _ => []
+  | .bzhi d _ _ => [d]
 
 /-- Register names an instruction **reads** (its source operands and, for the
     two-address ALU ops, the destination, which is also a source; memory bases are
@@ -170,6 +171,8 @@ def readNames : JInstr 64 → List String
   | .addMem d base _ | .adcxMem d base _ | .adoxMem d base _ | .imulMem d base _ => [d, base]
   | .imulriMem _ base _ _ => [base]
   | .addToMem base _ s => base :: srcNames s
+  -- BMI2 `bzhi`: non-destructive in both sources, `dst` is write-only.
+  | .bzhi _ src idx => [src, idx]
 
 /-- A value-name's live range over a block: `defIdx` is the first index that
     writes it (or, if it is only ever read — e.g. a frame base / input — `0`),

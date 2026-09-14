@@ -132,6 +132,7 @@ def writtenRegs : JInstr 64 → List String
   -- memory cell and the flags, no register.
   | .addMem d _ _ | .adcxMem d _ _ | .adoxMem d _ _ | .imulMem d _ _ | .imulriMem d _ _ _ => [d]
   | .addToMem _ _ _ => []
+  | .bzhi d _ _ => [d]
 
 /-- Kill every written register's held entries (one `Held.killReg` per dst). -/
 def killWritten (h : Held) (i : JInstr 64) : Held :=
@@ -378,6 +379,7 @@ theorem get_evalInstr_unwritten {s : JState 64} (i : JInstr 64)
   | cmp a b   => simp [evalInstr, JState.writeB5, JState.get]
   | not_ d    => exact JState.get_setReg_other s _ _ _ (hsingle d hρ)
   | andn d a c => have := hsingle d hρ; simp [evalInstr, JState.writeB5W, JState.get, this]
+  | bzhi d a c => have := hsingle d hρ; simp [evalInstr, JState.writeB5W, JState.get, this]
   -- the rotates write their destination through `writeB2W`.
   | rol d amt => have := hsingle d hρ; simp [evalInstr, JState.writeB2W, JState.get, this]
   | ror d amt => have := hsingle d hρ; simp [evalInstr, JState.writeB2W, JState.get, this]
@@ -623,7 +625,8 @@ theorem forwardStep_sound {h : Held} {s : JState 64} (hv : HeldValid h s) (i : J
   | inc _ | dec _ | clc | stc | xchg _ _ | imulri _ _ _ | mul _ _ _ | imulWide _ _ _
   | shld _ _ _ | shrd _ _ _ | rcl _ _ | rcr _ _ | cmovcc _ _ _ | setcc _ _
   | testN _ _ _ | bt _ _ | btr _ _ | bts _ _
-  | addMem _ _ _ | adcxMem _ _ _ | adoxMem _ _ _ | imulMem _ _ _ | imulriMem _ _ _ _ =>
+  | addMem _ _ _ | adcxMem _ _ _ | adoxMem _ _ _ | imulMem _ _ _ | imulriMem _ _ _ _
+  | bzhi _ _ _ =>
     exact ⟨rfl, heldValid_killWritten_nonstore _ hv (by intro b o v h; cases h)
       (by intro b idx sc v h; cases h) (by intro d sym h; cases h) (by intro b o v h; cases h)⟩
   | addToMem base off src =>

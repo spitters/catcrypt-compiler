@@ -138,8 +138,9 @@ theorem aux_stepJ (ρ : String → String) (s t : JState 64) (i : JInstr 64)
       have hs : (renameOperand ρ src).eval t = src.eval s :=
         renameOperand_eval_rename src (fun x hx => h x (List.mem_cons_of_mem _ hx))
       simp only [renameInstr, evalInstr, JState.writeB5, hs, hd]
-    | andn d a b =>
-      -- BMI1 `andn` is non-destructive in both sources: its read-names are `a` and `b`.
+    | andn d a b | bzhi d a b =>
+      -- BMI1 `andn` and BMI2 `bzhi` are non-destructive in both sources: their
+      -- read-names are `a` and `b`.
       have ha : t.get (ρ a) = s.get a := h a (List.mem_cons_self ..)
       have hb : t.get (ρ b) = s.get b := h b (List.mem_cons_of_mem _ (List.mem_cons_self ..))
       simp only [renameInstr, evalInstr, JState.writeB5W, ha, hb]

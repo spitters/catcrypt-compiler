@@ -170,6 +170,7 @@ def writesJ (s : JState 64) : JInstr 64 → List (String × BitVec 64)
   | .imulMem dst base off => [(dst, (x86_IMULt (s.get dst) (s.load base off)).word)]
   | .imulriMem dst base off imm =>
       [(dst, (x86_IMULt (s.load base off) (BitVec.ofNat 64 imm)).word)]
+  | .bzhi d src idx => [(d, (x86_BZHI (s.get src) (s.get idx)).word)]
 
 /-- The written register names of one `JInstr`, **in the order `writesJ` applies them**.
     Identical to `SpillingRegAlloc.writtenNames` for every constructor except the two
@@ -400,7 +401,7 @@ theorem writesJ_rename (ρ : String → String) (s t : JState 64) (i : JInstr 64
   | not_ d =>
     have hd : t.get (ρ d) = s.get d := h d (List.mem_cons_self ..)
     simp only [writesJ, renameInstr, hd, List.map_cons, List.map_nil]
-  | andn d a b =>
+  | andn d a b | bzhi d a b =>
     have ha : t.get (ρ a) = s.get a := h a (List.mem_cons_self ..)
     have hb : t.get (ρ b) = s.get b := h b (List.mem_cons_of_mem _ (List.mem_cons_self ..))
     simp only [writesJ, renameInstr, ha, hb, List.map_cons, List.map_nil]

@@ -875,27 +875,6 @@ theorem spillsApart_of_cellsSeparated (regs : String → BitVec 64)
   subst this
   rcases hc with rfl | rfl | rfl | rfl | rfl | rfl <;> simp at hc'
 
-/-- The address-keyed memory read off a machine state along `cells`: the word at address
-    `p` is the machine word of the first tracked cell whose address is `p`, and `0` at
-    untracked addresses. -/
-def cellMem (cells : List (String × Int)) (st : JState 64) (p : BitVec 64) : BitVec 64 :=
-  match cells.find? (fun c => decide (cellAddr st.regs c = p)) with
-  | some c => st.mem c.1 c.2
-  | none => 0
-
-/-- On separated cells, `cellMem` at the address of a tracked cell is that cell's word. -/
-theorem cellMem_eq (cells : List (String × Int)) (st : JState 64)
-    (hsep : CellsSeparated cells st.regs) (c : String × Int) (hc : c ∈ cells) :
-    cellMem cells st (cellAddr st.regs c) = st.mem c.1 c.2 := by
-  unfold cellMem
-  cases h : cells.find? (fun c' => decide (cellAddr st.regs c' = cellAddr st.regs c)) with
-  | none =>
-    exact absurd (by simp) (List.find?_eq_none.mp h c hc)
-  | some c' =>
-    have hp := List.find?_some h
-    have hm := List.mem_of_find?_eq_some h
-    simp only [decide_eq_true_eq] at hp
-    rw [hsep c' hm c hc hp]
 
 /-- **Functional correctness of CryptOpt's `fiat_curve25519_solinas_square`.** For every
     machine state whose fourteen `solinas_square` cells (input limbs `[rsi + 8i]`, output
