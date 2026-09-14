@@ -283,8 +283,10 @@ or `corresR_of_refines`.
 - hax-lean's `pipeline`: `pipeline_correct`, `pipeline_correct'` and
   `pipeline_full_correct`, used in `PipelineWeld` and `Exit`.
 
-Do not build on `haxToLowCT_simulates_full`: each of its five universal call-side
-hypotheses is refuted in `CatCrypt/Crypto/Hax/HaxToLowCTSim_Program.lean`.
+State call-side side conditions per program, as `haxToLowCT_simulates_program`
+and its corollary `haxToLowCT_simulates_full` (`CatCrypt/Crypto/Hax/HaxToLowCTSim_Full.lean`)
+do with `simScope`, `ScopeBound` and `NamesFresh`. The same conditions quantified
+over every name and state are refuted in `CatCrypt/Crypto/Hax/HaxToLowCTSim_Program.lean`.
 
 ## Editing in this directory
 

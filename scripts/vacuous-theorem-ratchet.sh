@@ -58,6 +58,11 @@
 #       Lean's unused-variable warning, so it is a reliable tell that a NAMED,
 #       ADVERTISED assumption is not used by the proof (the theorem holds without
 #       it). See "Dimension 4" below for the exact rule.
+#   (6) UNRESTRICTED UNIVERSAL STATE PRECONDITIONS — a structure field or theorem
+#       hypothesis quantified over every state (RustState, Env, …) with no premise
+#       on that state. The numbering follows the development tree's copy of this
+#       script, whose dimension 5 matches a record name absent from this package.
+#       See "Dimension 6" below for the exact rule.
 #
 # Each dimension FAILS if it GROWS (a NEW vacuous predicate / NEW crypto-assumption
 # axiom appeared — derive the bound, or deliberately re-baseline with a literature
@@ -443,5 +448,174 @@ if [ "$UA_CURRENT" -lt "$UA_BASELINE" ]; then
   } > "$UA_BASELINE_FILE"
 fi
 
-echo "OK: vacuous-predicate, assumption-axiom, self-hypothesis and"
-echo "    unused-assumption ratchets satisfied."
+# Dimension 6 — UNRESTRICTED UNIVERSAL STATE PRECONDITIONS. A site is
+#   * a structure field (UNIVFIELD), or
+#   * a theorem/lemma binder whose name starts with `h`, `H` or `_` (UNIVHYP),
+# whose type is `∀ binders, body` where
+#   * some binder is typed by a state type (RustState, Env, Heap, Store,
+#     Valuation, MachineState, LState, RegState),
+#   * no premise of the body (a depth-0 `→` antecedent) mentions that variable,
+#   * and every conjunct of the conclusion that mentions it mentions it exactly
+#     once and is not a relation on it: no depth-0 `↔`, `≤`, `≥`, `<`, and no `=`
+#     with the variable on both sides.
+# The shape is a precondition that constrains the contents of every state at
+# once (`∀ rs, TowerFresh rs name`, `∀ rs, ∃ v, lookup rs x = some v`), which no
+# single state satisfies for every name. Preservation statements
+# (`RustExec c rs rs' ↔ RustExec c' rs rs'`), per-state bounds and execution
+# hypotheses (`RustExec body rs (step rs)`) fall under the exclusions. The scan
+# is textual: a record whose fields quantify over names or argument lists only
+# (`PipelineAppInvariants`) or a predicate hidden behind a definition is not
+# matched.
+UV_BASELINE_FILE="scripts/universal-precondition-baseline.txt"
+UV_TMP="$(mktemp)"; UV_SCAN="$(mktemp)"
+UV_PROG='
+  BEGIN {
+    $STATE = qr/^(?:RustState|Env|Heap|Store|Valuation|MachineState|LState|RegState)$/;
+  }
+  sub dsplit {
+    my ($s, $op) = @_;
+    my $d = 0; my $n = length($s); my $l = length($op);
+    for (my $i = 0; $i < $n; $i++) {
+      my $c = substr($s, $i, 1);
+      if ($c =~ /[\(\[\{]/) { $d++ }
+      elsif ($c =~ /[\)\]\}]/) { $d-- }
+      elsif ($d == 0 && substr($s, $i, $l) eq $op) { return $i }
+    }
+    return -1;
+  }
+  sub strip_quant {
+    my $t = shift; $t =~ s/^\s+//;
+    while ($t =~ /^(?:∀|∃)/) {
+      my $cm = dsplit($t, ",");
+      last if $cm < 0;
+      $t = substr($t, $cm + 1); $t =~ s/^\s+//;
+    }
+    $t;
+  }
+  sub univ_state {
+    my $ty = shift;
+    $ty =~ s/\s+/ /g; $ty =~ s/^\s+//;
+    return 0 unless $ty =~ /^∀/;
+    my $cm = dsplit($ty, ",");
+    return 0 if $cm < 0;
+    my $binders = substr($ty, length("∀"), $cm - length("∀"));
+    my $r = substr($ty, $cm + 1);
+    my @svars;
+    while ($binders =~ /\(\s*([^():]+?)\s*:\s*([^()]+?)\s*\)/g) {
+      my ($names, $t) = ($1, $2);
+      push @svars, split(/\s+/, $names) if $t =~ $STATE;
+    }
+    return 0 unless @svars;
+    my @prem;
+    while ((my $a = dsplit($r, "→")) >= 0) {
+      push @prem, substr($r, 0, $a); $r = substr($r, $a + length("→"));
+    }
+    my $premtext = join(" ", @prem);
+    my @conj; my $c = $r;
+    while ((my $a = dsplit($c, "∧")) >= 0) {
+      push @conj, substr($c, 0, $a); $c = substr($c, $a + length("∧"));
+    }
+    push @conj, $c;
+    VAR: for my $v (@svars) {
+      my $vre = qr/(?<![\w\x27])\Q$v\E(?![\w\x27])/;
+      next if $premtext =~ $vre;
+      next unless $r =~ $vre;
+      for my $cj (@conj) {
+        my $k = strip_quant($cj);
+        my $occ = () = $k =~ /$vre/g;
+        next unless $occ;
+        next VAR if $occ >= 2;
+        next VAR if dsplit($k, "↔") >= 0 || dsplit($k, "≤") >= 0
+                 || dsplit($k, "≥") >= 0 || dsplit($k, "<") >= 0;
+        my $e = dsplit($k, "=");
+        next VAR if $e >= 0 && substr($k, 0, $e) =~ $vre && substr($k, $e + 1) =~ $vre;
+      }
+      return 1;
+    }
+    return 0;
+  }
+  $path = $ARGV;
+  s{/-.*?-/}{}gs;
+  s{--[^\n]*}{}g;
+  while (/^([ \t]*)structure\s+([A-Za-z_][\w\x27]*)[^\n]*?\bwhere[ \t]*\n((?:\1[ \t]+[^\n]*\n|[ \t]*\n)*)/mg) {
+    my ($sname, $block) = ($2, $3);
+    my (@fields, $cur, $findent);
+    for my $line (split /\n/, $block) {
+      my ($ind) = $line =~ /^([ \t]*)/;
+      if ($line =~ /^[ \t]*([A-Za-z_][\w\x27]*)\s*:(?!=)\s*(.*)$/
+          && (!defined $findent || length($ind) <= $findent)) {
+        $findent = length($ind) unless defined $findent;
+        push @fields, $cur if $cur;
+        $cur = [$1, $2];
+      } elsif ($cur) {
+        $cur->[1] .= " " . $line;
+      }
+    }
+    push @fields, $cur if $cur;
+    for my $f (@fields) {
+      print "UNIVFIELD\t$path\t$sname.$f->[0]\n" if univ_state($f->[1]);
+    }
+  }
+  for my $chunk (split /\n(?=[ \t]*(?:\@\[[^\]]*\]\s*)?(?:(?:private|protected|nonrec|noncomputable)\s+)*(?:theorem|lemma|def|structure|instance|abbrev|end\b|namespace|section|open|variable))/, $_) {
+    next unless $chunk =~ /^\s*(?:\@\[[^\]]*\]\s*)?(?:(?:private|protected|nonrec|noncomputable)\s+)*(?:theorem|lemma)\s+([A-Za-z_][\w\x27.]*)/s;
+    my $decl = $1;
+    my $cut = dsplit($chunk, ":=");
+    my $sig = $cut >= 0 ? substr($chunk, 0, $cut) : $chunk;
+    my $n = length($sig);
+    for (my $i = 0; $i < $n; $i++) {
+      next unless substr($sig, $i, 1) eq "(";
+      my $d = 0; my $j = $i;
+      for (; $j < $n; $j++) {
+        my $ch = substr($sig, $j, 1);
+        if ($ch =~ /[\(\[\{]/) { $d++ } elsif ($ch =~ /[\)\]\}]/) { $d--; last if $d == 0 }
+      }
+      last if $j >= $n;
+      my $inner = substr($sig, $i + 1, $j - $i - 1);
+      my $cp = dsplit($inner, ":");
+      if ($cp >= 0) {
+        my ($names, $ty) = (substr($inner, 0, $cp), substr($inner, $cp + 1));
+        if ($names =~ /^\s*[hH_][\w\x27]*\s*$/ && univ_state($ty)) {
+          $names =~ s/\s+//g;
+          print "UNIVHYP\t$path\t$decl\t$names\n";
+        }
+      }
+      $i = $j;
+    }
+  }
+'
+UV_FILES="$(mktemp)"
+grep -rl --include='*.lean' -E '^[[:space:]]*(structure|theorem|lemma)' CatCrypt/ > "$UV_FILES"
+if [ ! -s "$UV_FILES" ] || ! xargs perl -0777 -ne "$UV_PROG" < "$UV_FILES" > "$UV_SCAN"; then
+  echo "FAIL: the universal-precondition scanner matched no source or exited non-zero." >&2
+  echo "      Baseline left untouched." >&2
+  rm -f "$UV_FILES" "$UV_SCAN" "$UV_TMP"; exit 2
+fi
+rm -f "$UV_FILES"
+{ sed -n 's/^UNIVFIELD\t\([^\t]*\)\t\(.*\)$/\1  \2/p' "$UV_SCAN"
+  sed -n 's/^UNIVHYP\t\([^\t]*\)\t\([^\t]*\)\t\(.*\)$/\1  \2  \3/p' "$UV_SCAN"; } | sort -u > "$UV_TMP"
+rm -f "$UV_SCAN"
+UV_CURRENT="$(grep -c . "$UV_TMP" || true)"
+UV_BASELINE="$(grep -m1 -oE '^[0-9]+' "$UV_BASELINE_FILE" 2>/dev/null || echo "$UV_CURRENT")"
+echo "Unrestricted universal state preconditions: current=$UV_CURRENT  baseline=$UV_BASELINE"
+if [ "$UV_CURRENT" -gt "$UV_BASELINE" ]; then
+  echo ""
+  echo "FAIL: a NEW precondition quantifies over every state without restricting it ($UV_BASELINE -> $UV_CURRENT)."
+  echo "      No state satisfies such a hypothesis for every name, so a theorem taking it is"
+  echo "      a conditional on False. State the precondition on the entry state instead"
+  echo "      (ScopeBound / NamesFresh and a decidable checker, as haxToLowCT_simulates_program does)."
+  comm -13 <(grep -E '^CatCrypt/' "$UV_BASELINE_FILE" 2>/dev/null | sort) "$UV_TMP" | sed 's/^/        /'
+  rm -f "$UV_TMP"; exit 1
+fi
+if [ "$UV_CURRENT" -lt "$UV_BASELINE" ] || [ ! -f "$UV_BASELINE_FILE" ]; then
+  {
+    echo "$UV_CURRENT"
+    echo "# Structure fields and theorem hypotheses in CatCrypt/ that quantify over every state"
+    echo "# with no premise on it (ratchet: may fall, never rise; auto-tightened by"
+    echo "# scripts/vacuous-theorem-ratchet.sh, dimension 6). Goal: count -> 0."
+    cat "$UV_TMP"
+  } > "$UV_BASELINE_FILE"
+fi
+rm -f "$UV_TMP"
+
+echo "OK: vacuous-predicate, assumption-axiom, self-hypothesis, unused-assumption"
+echo "    and universal-precondition ratchets satisfied."

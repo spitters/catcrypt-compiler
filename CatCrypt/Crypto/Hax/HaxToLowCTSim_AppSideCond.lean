@@ -191,21 +191,17 @@ theorem hDestBound_of_RsHasDestBinding
     ∃ oldDestV : RustVal dt,
       locatedLookup rs { locVar := name, locSrc := dt } = some oldDestV := h
 
-/-! ## §5  Compatibility bundle
+/-! ## §5  State-wide invariant bundle
 
-To plug into `haxToLowCT_simulates_full` (in
-`HaxToLowCTSim_Main_Full.lean`), we expose a single
-"pipeline well-formedness" structure that bundles the four invariants.
-
-The intended use is: a caller establishes one
-`PipelineAppInvariants env rs` at the top of the pipeline, then derives
-the four universally-quantified precondition bundles
-(`hArgsEnvAll`, `hArgsBoundAll`, `hArgsFreshAll`, `hDestBoundAll`)
-via the lemmas below.  This collapses the four ad-hoc precondition
-universals into a single structural witness.
-
-In the hax extraction pipeline these are simultaneous invariants
-established by the SSA-form emitter; here we make their use explicit. -/
+`PipelineAppInvariants env rs` bundles the four side conditions of the
+leaf-call arms, each quantified over every argument list, name and
+destination.  The `_from_pipeline` lemmas derive the per-call
+preconditions of `haxToLowCT_simulates_letBind_app_full` and
+`haxToLowCT_simulates_assign_app_full` from it.  No state satisfies it:
+`pipelineAppInvariants_unsat` refutes it with a call whose destination
+is also its argument.  The program-level simulation
+`haxToLowCT_simulates_program` (`HaxToLowCTSim_Program.lean`) decides
+these side conditions per call on the source program with `simScope`. -/
 
 /-- Pipeline-level well-formedness for the app side-conditions.
 
@@ -224,15 +220,8 @@ structure PipelineAppInvariants (env : Env) (rs : RustState) : Prop where
     ∀ (f : String) (dest : Located) (args' : List Located),
       borrowOk (.RCall f dest args') = true
 
-/-- Universally-quantified pipeline invariants — for use in
-    `haxToLowCT_simulates_full` deployment records that need the
-    invariants to hold for every (env, rs) pair that arises during the
-    induction.
-
-    Friction-fix (2026-05-22): Ed25519 deployment surfaced that
-    `PipelineAppInvariants env rs` is per-state, but the framework's
-    `haxToLowCT_simulates_full` quantifies over all (env, env', rs).
-    This `*All` form bundles the per-state invariant under a universal. -/
+/-- `PipelineAppInvariants env rs` for every environment and state; false by
+    `pipelineAppInvariants_unsat`. -/
 def PipelineAppInvariantsAll : Prop :=
   ∀ (env : Env) (rs : RustState), PipelineAppInvariants env rs
 
@@ -282,7 +271,16 @@ theorem hDestBoundAll_from_pipeline
         = some oldDestV :=
   inv.rsDestBound name (towerOfCallName f)
 
-/-! ## §6  Status
+/-- No environment and state satisfy `PipelineAppInvariants`: its
+    `borrowOkRCall` field makes every argument of every call distinct from
+    the destination, which fails for the call whose destination `x` is also
+    its argument. -/
+theorem pipelineAppInvariants_unsat (env : Env) (rs : RustState) :
+    ¬ PipelineAppInvariants env rs := fun inv =>
+  hArgsFreshAll_from_pipeline env rs inv "f" "x" [{ locVar := "x", locSrc := .TFp }] _
+    (List.mem_singleton.mpr rfl) rfl
+
+/-! ## §6  Lemma index
 
 | Lemma | Closed? |
 |---|---|
@@ -295,19 +293,14 @@ theorem hDestBoundAll_from_pipeline
 | `hArgsEnvAll_from_pipeline` | Yes |
 | `hArgsBoundAll_from_pipeline` | Yes |
 | `hArgsFreshAll_from_pipeline` | Yes |
-| `hDestBoundAll_from_pipeline` | Yes |
+| `hDestBoundAll_from_pipeline` | Yes (from an unsatisfiable record) |
+| `pipelineAppInvariants_unsat` | Yes |
 
-All four goals discharged.  Goal 3 (`hArgsFresh`) is the cleanest: it
-follows from `borrowOk` alone, no additional invariants needed.  Goals
-1, 2, 4 each require a single "scopedness" invariant on top of
-agreement (env totality for Goal 1; tower-binding existence for Goals
-2 and 4).  These are *not* provable from agreement alone because
-agreement is a consistency predicate, not an existence predicate.
-
-`PipelineAppInvariants` bundles the three "scopedness" invariants plus
-`borrowOk`, giving callers a single structural witness from which all
-four universally-quantified precondition bundles in
-`haxToLowCT_simulates_full` are mechanically derivable.
+Goal 3 (`hArgsFresh`) follows from `borrowOk` alone.  Goals 1, 2 and 4
+each take a scopedness invariant on top of agreement (environment
+totality for Goal 1; tower-binding existence for Goals 2 and 4), which
+agreement does not imply: agreement is a consistency predicate, not an
+existence predicate.
 -/
 
 end CatCrypt.Crypto.Hax

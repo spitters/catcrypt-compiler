@@ -952,3 +952,4 @@ CatCrypt.Tactics.Triangle
 CatCrypt.Tactics.TryBij2
 CatCrypt.Tactics.UpToBad
 CatCrypt.Tactics.WP
+CatCrypt.Crypto.Hax.HaxToLowCTSim_Full

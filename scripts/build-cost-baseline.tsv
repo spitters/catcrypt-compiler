@@ -1,3 +1,4 @@
 # Per-module elaboration cost baseline (target<TAB>elab_ms<TAB>import_ms<TAB>peak_MB). Populated by: bash scripts/check-build-cost.sh --record <Module.lean>  (and read by scripts/build-cost-ratchet.sh check).
+CatCrypt/Crypto/Hax/HaxToLowCTSim_Full.lean	101	2150	1547
 CatCrypt/Crypto/SecureCompilation/Ascent/CarryMulCorrect.lean	2990	4860	3756
 CatCrypt/Crypto/SecureCompilation/X86Backend/CarryMulBlock.lean	260	677	755

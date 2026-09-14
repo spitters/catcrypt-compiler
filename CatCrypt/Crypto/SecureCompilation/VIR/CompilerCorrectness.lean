@@ -43,8 +43,15 @@ forward NTTs, the base multiply, the inverse NTT).
 The end-to-end functional-correctness story bottoms out at four explicit edges,
 each handled separately rather than hand-waved:
 
-1. **extraction → LowCT** — `haxToLowCT_simulates_full`, discharged
-   per-protocol by the bridge `Hyp_*` obligations.
+1. **extraction → LowCT** — `haxToLowCT_simulates_full`
+   (`Hax/HaxToLowCTSim_Full.lean`), the corollary of
+   `haxToLowCT_simulates_program` for a program accepted by the scope checker
+   `simScope`, from an entry state bound on the checker's scope and fresh on
+   the program's scalar names, under the bridge-level preconditions
+   `FullSimPreconds`, `ProjPreconds` and `ProgramSimArms`. `FullSimPreconds`
+   excludes builtins whose results decode as scalars; programs calling
+   arithmetic builtins are covered by `haxToLowCT_simulates_programT`
+   (`Hax/HaxToLowCTSim_ProgramTower.lean`) under `LeafCallAgreesArgs`.
 2. **leaf-spec'd jasmin denotation** — for the lattice leaves this is
    *discharged* (A3, `jasminExtSem`); for external leaves (CryptoSSA
    `fp_*` intrinsics on the `cryptoDialectToJasminCom` front, A1) it stays parametric in

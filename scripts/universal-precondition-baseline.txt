@@ -1,0 +1,4 @@
+0
+# Structure fields and theorem hypotheses in CatCrypt/ that quantify over every state
+# with no premise on it (ratchet: may fall, never rise; auto-tightened by
+# scripts/vacuous-theorem-ratchet.sh, dimension 6). Goal: count -> 0.

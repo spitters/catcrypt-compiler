@@ -302,12 +302,22 @@ scalar. It therefore does not reach the `RScalarSetExpr` kernels that `legWeld` 
 value leaves abstract. `raw_source_to_bytes_of_program` and `welding_program` are stated
 for arbitrary programs and have no instance in the package.
 
-`haxToLowCT_simulates_full` (`HaxToLowCTSim_Main_Full.lean`) takes five universally
-quantified call-side hypotheses, each refuted in `HaxToLowCTSim_Program.lean` by
+`haxToLowCT_simulates_full` (`HaxToLowCTSim_Full.lean`) is the corollary of
+`haxToLowCT_simulates_program` for a program accepted by `simScope` from an entry
+scope `Γ`, an entry state bound on `Γ` and fresh on the program's scalar names, and
+the bridge-level preconditions `FullSimPreconds`, `ProjPreconds` and
+`ProgramSimArms`; its conclusion adds the exit-scope invariants. `simFull_runs`
+instantiates every hypothesis at `let y = leaf(a); y` with a builtin table whose
+builtin `leaf` returns the constant `.array []`. Because `FullSimPreconds.leafScalar`
+excludes scalar-decoding builtin results, programs calling arithmetic builtins are
+the scope of `haxToLowCT_simulates_programT`
+(`CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramTower.lean`), stated under
+`LeafCallAgreesArgs`. The same side conditions quantified over every name, state
+and argument list are unsatisfiable: `HaxToLowCTSim_Program.lean` refutes them by
 `hScalarFresh_all_unsat`, `hDestBoundAll_unsat`, `hArgsEnvAll_unsat`,
-`hArgsBoundAll_unsat` and `hArgsFreshAll_unsat`. No ascent theorem uses it:
-`EmitBridge.welding` takes its `RustExec` premise as a hypothesis, and
-`welding_program` supplies that premise from `haxToLowCT_simulates_program`.
+`hArgsBoundAll_unsat` and `hArgsFreshAll_unsat`. `EmitBridge.welding` takes its
+`RustExec` premise as a hypothesis, and `welding_program` supplies that premise
+from `haxToLowCT_simulates_program`.
 
 The exit-flag lowering `haxToLowCTK` (`CatCrypt/Crypto/Hax/HaxToLowCTExit.lean`), with
 scalar operations enabled, lowers `let x = op(a, b)` for `add`, `sub` and the unsigned

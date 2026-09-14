@@ -65,8 +65,16 @@ explains why the value leg is stated over `semScalar` and not over a
 
 As in `CompilerCorrectness.lean`, the chain ends at explicit edges:
 
-1. **extraction → LowCT** — `haxToLowCT_simulates_full`, whose hypotheses are
-   per-protocol obligations. This edge is not used in this file.
+1. **extraction → LowCT** — `haxToLowCT_simulates_full`
+   (`Hax/HaxToLowCTSim_Full.lean`), the corollary of
+   `haxToLowCT_simulates_program` for a program accepted by the scope checker
+   `simScope`, from an entry state bound on the checker's scope and fresh on the
+   program's scalar names, under the bridge-level preconditions
+   `FullSimPreconds`, `ProjPreconds` and `ProgramSimArms`. `FullSimPreconds`
+   excludes builtins whose results decode as scalars; programs calling
+   arithmetic builtins are covered by `haxToLowCT_simulates_programT`
+   (`Hax/HaxToLowCTSim_ProgramTower.lean`) under `LeafCallAgreesArgs`. This
+   edge is not used in this file.
 2. **LowCT → catCryptDialect** — `rustExecSimulatesDialect` (a *simulation*;
    the state invariant `RustStateInterp` is the byte-layout relation preserved).
 3. **catCryptDialect→jasmin adequacy** — proved in §2c over the

@@ -17,21 +17,25 @@ public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta_Discharge
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta_LeafAgrees
 
 /-!
-# H3.quarta-final: Main_Full assembly
+# Per-arm simulation lemmas under the Full predicate
 
-Mirrors `HaxToLowCTSim_Main.lean` but under the stronger
-`HaxToLowCTSimulatesFull` predicate (combined scalar + tower
-agreement).  This discharges the `Hyp_letBindApp` and `Hyp_assignApp`
-hypotheses from `Main.lean` mechanically via the Quarta-Discharge
-lemmas in `HaxToLowCTSim_Quarta_Discharge.lean`.
+Per-constructor simulation lemmas for `haxToLowCT` under the
+`HaxToLowCTSimulatesFull` predicate (combined scalar and tower
+agreement), and the bridge-level preconditions `FullSimPreconds` of the
+leaf-call arms.  The leaf-call arms are
+`haxToLowCT_simulates_letBind_app_full` and
+`haxToLowCT_simulates_assign_app_full` in
+`HaxToLowCTSim_Quarta_Discharge.lean`.
 
-The two remaining parametric hypotheses (carried as theorem inputs)
-are:
+The program-level theorem over these arms is
+`haxToLowCT_simulates_program` (`HaxToLowCTSim_Program.lean`), with the
+call-side conditions decided on the source program by `simScope`; its
+corollary with exit invariants is `haxToLowCT_simulates_full`
+(`HaxToLowCTSim_Full.lean`).  The `Hyp_*_full` abbreviations below state
+the remaining arms (`match_`, `whileLoop`, alias, array calls,
+tuple-component reads) as inductive-step hypotheses.
 
-* `Hyp_match_full` — H2.1 tuple-destructure mechanics still pending
-* `Hyp_whileLoop_full` — fuel-polymorphic IH + AnfShaped lemma
-
-## Strategy for productive scalar cases
+## Productive scalar cases
 
 For productive scalar-only cases (`var`, `unitVal`, `seq`, `letBind
 (lit ..)`, `assign (lit ..)`) we provide Full-predicate variants that
@@ -41,14 +45,13 @@ touch `rsTower`, so tower agreement is preserved under scalar updates
 env binding at `name` could conflict with a pre-existing tower
 binding).
 
-We package the freshness condition as a `TowerFreshness` predicate —
-the hypothesis that scalar-lit binds use fresh tower names.  In a
-production pipeline, this is automatic (hax extraction emits SSA-like
-shapes where introduced names don't collide with tower slots).
+The freshness condition is the predicate `TowerFresh rs name` on the
+entry state of the arm.  At the program level it is
+`NamesFresh rs (scalarNames e)` (`HaxToLowCTSim_Program.lean`).
 
-## Architecture summary
+## Arm index
 
-| Constructor | Closure | Source file |
+| Constructor | Lemma | Source file |
 |---|---|---|
 | `var _` | `simulates_var_full` | this file |
 | `unitVal` | `simulates_unitVal_full` | this file |
@@ -56,17 +59,11 @@ shapes where introduced names don't collide with tower slots).
 | `letBind _ (lit _) _` | `simulates_letBind_lit_full` (with freshness) | this file |
 | `letBind _ (app _ _) _` | `haxToLowCT_simulates_letBind_app_full` | Quarta_Discharge |
 | `letBind _ (proj (var _) _) _` | `Hyp_letBindProj_full` (discharged by `haxToLowCT_simulates_letBind_proj_full`) | this file |
-| `letBind _ _ _` (other) | contradiction | inline |
 | `assign _ (lit _)` | `simulates_assign_lit_full` / `_bool_full` (with freshness) | this file |
 | `assign _ (app _ _)` | `haxToLowCT_simulates_assign_app_full` | Quarta_Discharge |
-| `tuple es` (all `var`s → `RSkip`) | inline via `evalImp_tuple_vars_inv` | this file |
-| `assign _ _` (other) | contradiction | inline |
 | `ifThenElse (var _) _ _` | `simulates_ifThenElse_var_full` | this file |
-| `ifThenElse _ _ _` (other) | contradiction | inline |
-| `match_ _ _` | `Hyp_match_full` | parametric |
-| `whileLoop (var _) _` | `Hyp_whileLoop_full` | parametric |
-| `whileLoop _ _` (other) | contradiction | inline |
-| All other rejected arms | scalar `_simulates_*` lifted to `False` | inline |
+| `match_ _ _` | `Hyp_match_full` | this file |
+| `whileLoop (var _) _` | `Hyp_whileLoop_full`; `progSim_whileLoop` at program level | this file; Program |
 -/
 
 @[expose] public section
@@ -642,32 +639,17 @@ theorem simulates_ifThenElse_var_full
     refine ⟨rs', ?_, hAgree'⟩
     exact rustExec_RIfNz_dispatch_false N leafSpec cond tC eC rs rs' hScalar hEexec
 
-/-! ## §7  Unreachable-arm closures under Full predicate
+/-! ## §7  Bridge-level preconditions of the leaf-call arms
 
 For every constructor whose `haxToLowCT` arm returns `none`, the
-hypothesis `haxToLowCT e = some c` is `False`; these dispatch
-mechanically.  Since the contradiction doesn't depend on the predicate
-shape, we inline them in the main theorem rather than spelling each
-one out. -/
+hypothesis `haxToLowCT e = some c` is `False`.  The program-level
+theorem over the arms of this file is `haxToLowCT_simulates_program`
+(`HaxToLowCTSim_Program.lean`), whose call-side conditions are decided
+on the source program by `simScope`. -/
 
-/-! ## §8  Main parametric theorem under Full predicate
-
-The bulk of the discharge work happens in the `letBind (app ..)` and
-`assign (app ..)` arms — both call into `haxToLowCT_simulates_letBind_app_full`
-and `haxToLowCT_simulates_assign_app_full` from Quarta_Discharge.
-
-Preconditions:
-
-* `hMatch`, `hWhileLoop` — parametric (still pending H2.1 / fuel-IH work)
-* `hAllLeavesAgree` — `LeafCallAgreesTower` instance for every leaf
-* `hLeafScalar` — leaf results are tower-typed (decode as scalar = `none`)
-* `hScalarFresh` — every introduced let / assign name is tower-fresh
-* `hArgsEnv`, `hArgsBound`, `hArgsFresh`, `hDestBound` — per-call args
-  shape preconditions for the Quarta_Discharge inputs
--/
-
-/-- Convenience bundle of per-call preconditions for `letBind (.app)`
-    and `assign (.app)` arms. -/
+/-- The bridge-level preconditions of the `letBind (.app)` and
+    `assign (.app)` arms: every leaf call is bridge-aligned with its
+    `LeafSpec` output, and no leaf result decodes to a scalar. -/
 structure FullSimPreconds (bi : Builtins) (leafSpec : LeafSpec)
     (bridge : ValueTowerBridge) where
   /-- Every leaf call has a tower-typed bridge agreement. -/
@@ -676,266 +658,5 @@ structure FullSimPreconds (bi : Builtins) (leafSpec : LeafSpec)
   /-- Leaf return values are tower-typed (do not decode to scalar). -/
   leafScalar :
     ∀ f vals vRes, bi f vals = some vRes → valueToScalar vRes = none
-
-/-- The Full-predicate parametric main theorem.
-
-Inputs (parametric):
-* `hMatch` — Full-predicate `match_` simulation hypothesis.
-* `hWhileLoop` — Full-predicate `whileLoop` simulation hypothesis.
-
-Inputs (semantic preconditions, packaged via `FullSimPreconds`):
-* per-leaf tower agreement and tower-typed-result conditions.
-
-Inputs (universal call-side conditions, taken pointwise):
-* `hScalarFresh` — scalar-let / assign names are tower-fresh
-* `hArgsEnvAll` — args of every `(.app f args)` are `.var` env-bound
-* `hArgsBoundAll` — args of every translated app are tower-bound in `rs`
-* `hArgsFreshAll` — args of every translated app are distinct from the
-  fresh dest name (for `letBind app`)
-* `hDestBoundAll` — dest of every `(.assign name (.app ..))` is bound
-  in the tower (it's a pre-existing slot, not a fresh one)
--/
-theorem haxToLowCT_simulates_full
-    (bridge : ValueTowerBridge)
-    (bi : Builtins) (fuel N : Nat) (leafSpec : LeafSpec)
-    (hMatch : Hyp_match_full bridge bi fuel N leafSpec)
-    (hWhileLoop : Hyp_whileLoop_full bridge bi fuel N leafSpec)
-    (hArrUpd : Hyp_arrayUpdate_full bridge bi fuel N leafSpec)
-    (hIndex : Hyp_index_full bridge bi fuel N leafSpec)
-    (hAlias : Hyp_letBindVarAlias_full bridge bi fuel N leafSpec)
-    (hProj : Hyp_letBindProj_full bridge bi fuel N leafSpec)
-    (hPre : FullSimPreconds bi leafSpec bridge)
-    (hScalarFresh :
-       ∀ (name : String) (rs : RustState), TowerFresh rs name)
-    (hArgsEnvAll :
-       ∀ (_f : String) (args : List ImpExpr) (env : Env),
-         ∀ a ∈ args, ∃ n, a = .var n ∧ ∃ w, env n = some w)
-    (hArgsBoundAll :
-       ∀ (f : String) (args : List ImpExpr) (rs : RustState) args',
-         haxArgsToLocated (towerOfCallName f) args = some args' →
-         ArgsTowerBound rs args')
-    (hArgsFreshAll :
-       ∀ (f : String) (args : List ImpExpr) (name : String) args',
-         haxArgsToLocated (towerOfCallName f) args = some args' →
-         ∀ a ∈ args', a.locVar ≠ name)
-    (hDestBoundAll :
-       ∀ (f : String) (name : String) (rs : RustState),
-         ∃ oldDestV : RustVal (towerOfCallName f),
-           locatedLookup rs { locVar := name, locSrc := towerOfCallName f }
-             = some oldDestV)
-    (e : ImpExpr) :
-    ∀ (c : LowCT) (env env' : Env) (rs : RustState) (v : Value),
-      HaxToLowCTSimulatesFull bridge bi fuel N leafSpec e c env env' rs v := by
-  induction e using ImpExpr.ind with
-  -- ── Trivial / unreachable arms ────────────────────────────────────
-  | lit l => intro c env env' rs v hHax _ _
-             rw [haxToLowCT_lit_top_eq_none] at hHax
-             contradiction
-  | tuple elems _ =>
-      -- Productive shape: the all-`var` tuple tail lowers to `RSkip`;
-      -- the source-side evaluation leaves the env unchanged, so `rs`
-      -- itself witnesses the post-state.  Non-`var` tuples contradict.
-      intro c env env' rs v hHax hEval hAgree
-      by_cases hAll : elems.all isVar = true
-      · rw [haxToLowCT_tuple_of_vars elems hAll] at hHax
-        cases hHax
-        have henv := evalImp_tuple_vars_inv bi fuel elems env v env' hAll hEval
-        subst henv
-        exact ⟨rs, RustExec.skip rs, hAgree⟩
-      · rw [haxToLowCT_tuple_eq_none_of_not_all_vars elems hAll] at hHax
-        contradiction
-  | proj e i _ => intro c env env' rs v hHax _ _
-                  rw [haxToLowCT_proj_eq_none] at hHax
-                  contradiction
-  | borrow e _ => intro c env env' rs v hHax _ _
-                  rw [haxToLowCT_borrow_eq_none] at hHax
-                  contradiction
-  | deref e _ => intro c env env' rs v hHax _ _
-                 rw [haxToLowCT_deref_eq_none] at hHax
-                 contradiction
-  | continue_ => intro c env env' rs v hHax _ _
-                 rw [haxToLowCT_continue_eq_none] at hHax
-                 contradiction
-  | break_none => intro c env env' rs v hHax _ _
-                  rw [haxToLowCT_break_eq_none] at hHax
-                  contradiction
-  | break_some e _ => intro c env env' rs v hHax _ _
-                      rw [haxToLowCT_break_eq_none] at hHax
-                      contradiction
-  | earlyReturn e _ => intro c env env' rs v hHax _ _
-                       rw [haxToLowCT_earlyReturn_eq_none] at hHax
-                       contradiction
-  | questionMark e _ => intro c env env' rs v hHax _ _
-                        rw [haxToLowCT_questionMark_eq_none] at hHax
-                        contradiction
-  | forLoop v_l lo hi body _ _ _ =>
-      intro c env env' rs v hHax _ _
-      rw [haxToLowCT_forLoop_eq_none] at hHax
-      contradiction
-  | forLoopRev v_l lo hi body _ _ _ =>
-      intro c env env' rs v hHax _ _
-      rw [haxToLowCT_forLoopRev_eq_none] at hHax
-      contradiction
-  | forFold v_l lo hi body _ _ _ =>
-      -- All `.forFold` shapes close uniformly: on the source side,
-      -- `denote bi fuel (.forFold ..)` is `pure (.err _)` (post-phase
-      -- constructor), so `evalImp` returns `none` and the simulation
-      -- hypothesis is vacuous, regardless of whether the translator
-      -- produces `some (.RFor ..)` (literal-bounded shapes) or `none`.
-      intro c env env' rs v _ hEval _
-      rw [evalImp_forFold_eq_none] at hEval
-      contradiction
-  | forFoldRev v_l lo hi body _ _ _ =>
-      intro c env env' rs v hHax _ _
-      rw [haxToLowCT_forFoldRev_eq_none] at hHax
-      contradiction
-  | whileFold cond body _ _ =>
-      intro c env env' rs v hHax _ _
-      rw [haxToLowCT_whileFold_eq_none] at hHax
-      contradiction
-  | forFoldReturn v_l lo hi body _ _ _ =>
-      intro c env env' rs v hHax _ _
-      rw [haxToLowCT_forFoldReturn_eq_none] at hHax
-      contradiction
-  | forFoldRevReturn v_l lo hi body _ _ _ =>
-      intro c env env' rs v hHax _ _
-      rw [haxToLowCT_forFoldRevReturn_eq_none] at hHax
-      contradiction
-  | typeAscription e ty ih =>
-      intro c env env' rs v hHax hEval hAgr
-      rw [haxToLowCT_typeAscription_eq] at hHax
-      rw [evalImp_typeAscription] at hEval
-      exact ih c env env' rs v hHax hEval hAgr
-  | whileFoldReturn cond body _ _ =>
-      intro c env env' rs v hHax _ _
-      rw [haxToLowCT_whileFoldReturn_eq_none] at hHax
-      contradiction
-  | cfBreak e _ => intro c env env' rs v hHax _ _
-                   rw [haxToLowCT_cfBreak_eq_none] at hHax
-                   contradiction
-  | cfContinue e _ => intro c env env' rs v hHax _ _
-                      rw [haxToLowCT_cfContinue_eq_none] at hHax
-                      contradiction
-  | cfBreakContinue e _ => intro c env env' rs v hHax _ _
-                           rw [haxToLowCT_cfBreakContinue_eq_none] at hHax
-                           contradiction
-  -- `app` at top is rejected by haxToLowCT.
-  | app f args _ => intro c env env' rs v hHax _ _
-                    simp [haxToLowCT] at hHax
-  -- `lam` (first-class closure) is rejected by haxToLowCT.
-  | lam _ _ _ => intro c env env' rs v hHax _ _
-                 simp [haxToLowCT] at hHax
-  -- ── Productive arms ──────────────────────────────────────────────
-  | var name => intro c env env' rs v
-                exact simulates_var_full bridge bi fuel N leafSpec name c env env' rs v
-  | unitVal => intro c env env' rs v
-               exact simulates_unitVal_full bridge bi fuel N leafSpec c env env' rs v
-  | seq e1 e2 ih1 ih2 =>
-      intro c env env' rs v
-      exact simulates_seq_full bridge bi fuel N leafSpec e1 e2 c env env' rs v ih1 ih2
-  | letBind name val body _ ihBody =>
-      intro c env env' rs v
-      cases val with
-      | lit l =>
-          exact simulates_letBind_lit_full bridge bi fuel N leafSpec name l body c
-                  env env' rs v (hScalarFresh name rs) ihBody
-      | app f args =>
-          by_cases hf_arr : f = "array_update"
-          · subst hf_arr
-            exact hArrUpd name args body c env env' rs v ihBody
-          by_cases hf_idx : f = "index"
-          · subst hf_idx
-            exact hIndex name args body c env env' rs v ihBody
-          exact haxToLowCT_simulates_letBind_app_full bridge bi fuel N leafSpec
-                  name f args body c env env' rs v
-                  (hPre.allLeavesAgree f)
-                  (hArgsEnvAll f args env)
-                  (hArgsBoundAll f args rs)
-                  (hArgsFreshAll f args name)
-                  (hPre.leafScalar f)
-                  hf_arr hf_idx
-                  ihBody
-      | var _src =>
-          exact hAlias name _src body c env env' rs v ihBody
-      | proj pe i =>
-          -- Tuple-component read: productive only for a `var` base
-          -- (delegated to `hProj`; per-instance closure via
-          -- `haxToLowCT_simulates_letBind_proj_full`).  Non-`var`
-          -- bases stay untranslated.
-          cases pe with
-          | var t => exact hProj name t i body c env env' rs v ihBody
-          | _ => intro hHax _ _; simp [haxToLowCT] at hHax
-      | _ => intro hHax _ _; simp [haxToLowCT] at hHax
-  | ifThenElse cond t e _ ihT ihE =>
-      intro c env env' rs v
-      cases cond with
-      | var v_cond =>
-          exact simulates_ifThenElse_var_full bridge bi fuel N leafSpec v_cond t e c
-                  env env' rs v ihT ihE
-      | _ => intro hHax _ _; simp [haxToLowCT] at hHax
-  | match_ scrut arms ihScrut ihArms =>
-      intro c env env' rs v
-      exact hMatch scrut arms c env env' rs v ihScrut ihArms
-  | whileLoop cond body _ ihBody =>
-      intro c env env' rs v
-      cases cond with
-      | var v_cond => exact hWhileLoop v_cond body c env env' rs v ihBody
-      | _ => intro hHax _ _; simp [haxToLowCT] at hHax
-  | assign name rhs _ =>
-      intro c env env' rs v
-      cases rhs with
-      | lit l =>
-          cases l with
-          | uintLit w n =>
-              exact simulates_assign_lit_uintLit_full bridge bi fuel N leafSpec
-                      name w n c env env' rs v (hScalarFresh name rs)
-          | bool b =>
-              exact simulates_assign_lit_bool_full bridge bi fuel N leafSpec
-                      name b c env env' rs v (hScalarFresh name rs)
-          | int n =>
-              by_cases hn : 0 ≤ n
-              · exact simulates_assign_lit_int_full bridge bi fuel N leafSpec
-                        name n hn c env env' rs v (hScalarFresh name rs)
-              · intro hHax _ _; simp [haxToLowCT, hn] at hHax
-          | _ => intro hHax _ _; simp [haxToLowCT] at hHax
-      | app f args =>
-          exact haxToLowCT_simulates_assign_app_full bridge bi fuel N leafSpec
-                  name f args c env env' rs v
-                  (hPre.allLeavesAgree f)
-                  (hArgsEnvAll f args env)
-                  (hArgsBoundAll f args rs)
-                  (hDestBoundAll f name rs)
-                  (hPre.leafScalar f)
-      | _ => intro hHax _ _; simp [haxToLowCT] at hHax
-
-/-! ## §9  Status
-
-This file lands the Full-predicate parametric main theorem
-`haxToLowCT_simulates_full`.  It mirrors `haxToLowCT_simulates_param`
-from `Main.lean` but uses `HaxToLowCTSimulatesFull` throughout,
-discharging the `letBind (.app ..)` and `assign (.app ..)` cases
-inline via `haxToLowCT_simulates_letBind_app_full` /
-`haxToLowCT_simulates_assign_app_full` from
-`HaxToLowCTSim_Quarta_Discharge.lean`.
-
-Residual hypotheses (carried as parameters):
-
-* `Hyp_match_full` — H2.1 tuple-destructure mechanics
-* `Hyp_whileLoop_full` — fuel-polymorphic IH + `AnfShaped` lemma
-
-Additional preconditions packaged as universally-quantified inputs:
-
-* `hScalarFresh` — scalar-introduced names are tower-fresh
-* `hArgsEnvAll`, `hArgsBoundAll`, `hArgsFreshAll`, `hDestBoundAll` —
-  per-call argument shape conditions
-* `FullSimPreconds` — leaf-agreement + tower-typed-leaf-result
-
-In a production deployment, these preconditions are discharged by
-the hax extraction pipeline's invariants (SSA shape, well-typed
-calls, tower-typed primitives).
--/
-
-/-- Marker theorem: the chain composes. -/
-theorem h3_quarta_final_compiles : True := trivial
 
 end CatCrypt.Crypto.Hax

@@ -489,8 +489,8 @@ def haxToLowCT : ImpExpr → Option LowCT
   -- top-level `match` arm), so that the equation lemma for this branch
   -- remains a single `letBind _ (.app _ _) _` arm — that keeps the H2.2
   -- biconditional proof structurally unchanged.
-  /- TODO(simulation): haxToLowCT_simulates_full does not yet cover the
-     array_update / index / forFold sub-cases. -/
+  /- The program-level simulation `haxToLowCT_simulates_program` takes the
+     array_update and index sub-cases as the `ProgramSimArms` hypotheses. -/
   | .letBind name (.app f args) body =>
       let dt := towerOfCallName f
       let dest : Located := { locVar := name, locSrc := dt }
@@ -636,7 +636,8 @@ def haxToLowCT : ImpExpr → Option LowCT
   | .continue_                 => none
   | .earlyReturn _             => none
   | .questionMark _            => none
-  /- TODO(simulation): haxToLowCT_simulates_full does not yet cover this case. -/
+  /- `simScope` rejects `forFold`, so `haxToLowCT_simulates_program` does not
+     cover this case. -/
   -- Bounded for-fold with literal `lo = 0` and literal nonneg-int `hi = n`
   -- lowers to `RFor v n body`.  `RFor`'s second parameter is a closed `Nat`
   -- (structurally terminating); runtime-bound forms (`hi = .var k`) are
@@ -1609,12 +1610,13 @@ theorem non_anf_tuple_let_iff :
       AnfShaped nonAnfTupleLet = true :=
   haxToLowCT_isSome_iff_anf nonAnfTupleLet
 
-/-! ### Extension smoke tests (2026-05-22)
+/-! ### Lowering tests for `forFold`, `array_update` and `index`
 
-Minimal positive tests for three lowering patterns — bounded `forFold` with literal bounds,
-`array_update` self-store, and `index` array load.  The simulation
-theorem (`haxToLowCT_simulates_full`) does **not** yet cover these
-arms; that backfill is a separate workstream. -/
+Positive tests for three lowering patterns — bounded `forFold` with literal bounds,
+`array_update` self-store, and `index` array load.  The program-level
+simulation `haxToLowCT_simulates_program` takes the `array_update` and
+`index` arms as the `ProgramSimArms` hypotheses, and `simScope` rejects
+`forFold`. -/
 
 -- `forFold` with literal `lo = 0`, literal `hi = 0` and unit body
 -- lowers to `RFor v 0 RSkip`.

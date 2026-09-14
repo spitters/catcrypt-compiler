@@ -30,24 +30,22 @@ formalise the *syntactic* side of that guarantee here:
 * `TowerFresh_of_unused` — trivial repackaging used as the discharge
   shape from the surrounding initial-state freshness predicate.
 
-The full *semantic* claim — that for AnfShaped, well-scoped (no
-shadowing) source programs the initial `TowerFresh rs name`
-side-condition is dischargeable from the surrounding scope — needs
-threading freshness through every recursive call.  We leave that as
-the `WellScopedInitial` predicate below, providing the boilerplate
-shape but no proof; this is a known limitation captured by the
-remaining `hScalarFresh` parameter in
-`haxToLowCT_simulates_full`.
+The semantic claim — that for AnfShaped, well-scoped (no shadowing)
+source programs the initial `TowerFresh rs name` side-condition is
+dischargeable from the surrounding scope — is stated as the
+`WellScopedInitial` predicate below, without a proof in this file.  The
+program-level simulation `haxToLowCT_simulates_program`
+(`HaxToLowCTSim_Program.lean`) threads freshness through the program as
+`NamesFresh rs S` for the scalar-binding names `S` accepted by
+`simScope`.
 
 ## Caller-facing content
 
-The two scalar-let arms of `haxToLowCT_simulates_full` take a
-universal `hScalarFresh : ∀ name rs, TowerFresh rs name` precondition.
-That predicate is too strong (it asserts ALL names are tower-fresh in
-ALL states).  This file provides the name `TowerFresh_of_unused` which
-lets users supply a per-call discharge from a per-name initial
-freshness fact, plus the syntactic bookkeeping that connects
-`boundNames` to `haxToLowCT`'s structure.
+The scalar-let arms `simulates_letBind_lit_full` and
+`simulates_assign_lit_*_full` take a per-call `TowerFresh rs name`
+precondition.  This file provides `TowerFresh_of_unused`, a per-call
+discharge from a per-name initial freshness fact, and the syntactic
+bookkeeping that connects `boundNames` to `haxToLowCT`'s structure.
 -/
 
 @[expose] public section
@@ -177,9 +175,8 @@ theorem ScalarFresh_of_zero
     ScalarFresh rs name := h
 
 /-- `TowerFresh` survives any `rsSetScalar` update (scalar writes
-    don't touch the tower).  This is the propagation lemma the
-    induction in `haxToLowCT_simulates_full` needs when threading
-    freshness through nested `letBind`s. -/
+    don't touch the tower): freshness propagates through nested
+    scalar `letBind`s. -/
 theorem TowerFresh_rsSetScalar
     (rs : RustState) (name name' : String) (n : Nat)
     (h : TowerFresh rs name) :
