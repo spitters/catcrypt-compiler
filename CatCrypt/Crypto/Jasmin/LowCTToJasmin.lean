@@ -119,6 +119,30 @@ def arrElemWS (loc : Located) : WSize :=
   | .TArr _ .TU64 => .U64
   | _             => .U32
 
+/-- The Jasmin element word size of a literal-index array access
+    (`RArrLoadLit` / `RArrStoreLit`), read off the slot's tower type: `.U64`
+    for a `TArr _ .TU64` word array (the width `arrElemWS` gives it, and the
+    64-bit word that `memrefGetDyn` / `memrefSetDyn` read and write on the
+    dialect route), `.U32` for a `TArr _ .TU32` array, and `.U8` for every
+    other slot, so a byte array (`TArr _ .TU8`, `TBytes n`) is accessed one
+    byte per element. -/
+def arrLitElemWS (loc : Located) : WSize :=
+  match loc.locSrc with
+  | .TArr _ .TU64 => .U64
+  | .TArr _ .TU32 => .U32
+  | _             => .U8
+
+/-- On a `u64` word array the literal-index width agrees with the
+    runtime-index width `arrElemWS`. -/
+theorem arrLitElemWS_eq_arrElemWS_of_u64 (loc : Located) (n : Nat)
+    (h : loc.locSrc = .TArr n .TU64) : arrLitElemWS loc = arrElemWS loc := by
+  simp [arrLitElemWS, arrElemWS, h]
+
+example : arrLitElemWS ⟨"a", .TArr 4 .TU64⟩ = .U64 := rfl
+example : arrLitElemWS ⟨"a", .TArr 4 .TU32⟩ = .U32 := rfl
+example : arrLitElemWS ⟨"a", .TArr 8 .TU8⟩ = .U8 := rfl
+example : arrLitElemWS ⟨"a", .TBytes 1024⟩ = .U8 := rfl
+
 /-- Make a Jasmin variable for a named tower-type location. -/
 def locToVar (loc : Located) : Var :=
   { vname := loc.locVar, vtype := towerToSType loc.locSrc }
@@ -367,20 +391,20 @@ def toJasminCmdLeaf : LowCT → Cmd
       | _ =>
           [.Cassgn dstLv .AT_none (.sword .U64)
             (.Papp1 (.Ozeroext .U64 .U32) (.Pget .AAscale .U32 (locToGVar src) idxPv))]
-  -- Phase DD (2026-05-28): literal-index array load/store.  Real Jasmin
-  -- lowering via `Cassgn` with `Pget`/`Laset` and `Int.ofNat idx`.  The
-  -- byte-width is fixed at U8 (matching the typical [u8; N] array used by
-  -- the bench-driver layer); refine to a per-elt-width arm if a wider
-  -- element type ever needs literal-index access.
+  -- Literal-index array load/store: a `Cassgn` with `Pget`/`Laset` at the
+  -- constant index `Int.ofNat idx`, at the element width `arrLitElemWS` of
+  -- the array slot (`U64` for a `u64` word array, `U32` for a `u32` array,
+  -- `U8` for a byte array).  The assignment type is the element width: a
+  -- store narrows the source to it, a load yields an element-width word.
   | .RArrStoreLit arr idx src =>
       [.Cassgn
-        (.Laset .AAscale .U8
+        (.Laset .AAscale (arrLitElemWS arr)
           { var := locToVar arr, info := {} }
           (.Pconst (Int.ofNat idx)))
-        .AT_none (.sword .U8) (locToPExpr src)]
+        .AT_none (.sword (arrLitElemWS arr)) (locToPExpr src)]
   | .RArrLoadLit dst src idx =>
-      [.Cassgn (locToLVal dst) .AT_none (.sword .U8)
-        (.Pget .AAscale .U8 (locToGVar src) (.Pconst (Int.ofNat idx)))]
+      [.Cassgn (locToLVal dst) .AT_none (.sword (arrLitElemWS src))
+        (.Pget .AAscale (arrLitElemWS src) (locToGVar src) (.Pconst (Int.ofNat idx)))]
   -- Phase RND (2026-05-30): runtime-scalar arithmetic assignment.  Lowers
   -- the `SExpr` into a nested `PExpr` over `u64` word ops (`sexprToPExpr`)
   -- and assigns it to the `u64` scalar slot `x`.  jasminc renders the nested
@@ -587,14 +611,51 @@ each by `rfl` through the `foldNode` reduction lemmas.  Emit proofs use
 
 @[simp] theorem toJasminCmd_RArrStoreLit (arr : Located) (idx : Nat) (src : Located) :
     toJasminCmd (.RArrStoreLit arr idx src)
-      = [.Cassgn (.Laset .AAscale .U8 { var := locToVar arr, info := {} }
+      = [.Cassgn (.Laset .AAscale (arrLitElemWS arr) { var := locToVar arr, info := {} }
                    (.Pconst (Int.ofNat idx)))
-                 .AT_none (.sword .U8) (locToPExpr src)] := rfl
+                 .AT_none (.sword (arrLitElemWS arr)) (locToPExpr src)] := rfl
 
 @[simp] theorem toJasminCmd_RArrLoadLit (dst src : Located) (idx : Nat) :
     toJasminCmd (.RArrLoadLit dst src idx)
+      = [.Cassgn (locToLVal dst) .AT_none (.sword (arrLitElemWS src))
+                 (.Pget .AAscale (arrLitElemWS src) (locToGVar src)
+                   (.Pconst (Int.ofNat idx)))] := rfl
+
+/-- On a byte array the literal-index store lowers to a one-byte `Laset`. -/
+theorem toJasminCmd_RArrStoreLit_u8 (arr : Located) (idx : Nat) (src : Located) (n : Nat)
+    (h : arr.locSrc = .TArr n .TU8) :
+    toJasminCmd (.RArrStoreLit arr idx src)
+      = [.Cassgn (.Laset .AAscale .U8 { var := locToVar arr, info := {} }
+                   (.Pconst (Int.ofNat idx)))
+                 .AT_none (.sword .U8) (locToPExpr src)] := by
+  simp [arrLitElemWS, h]
+
+/-- On a `u64` word array the literal-index store lowers to a 64-bit `Laset`, the
+    width of the runtime-index `RArrStore` lowering on the same array. -/
+theorem toJasminCmd_RArrStoreLit_u64 (arr : Located) (idx : Nat) (src : Located) (n : Nat)
+    (h : arr.locSrc = .TArr n .TU64) :
+    toJasminCmd (.RArrStoreLit arr idx src)
+      = [.Cassgn (.Laset .AAscale .U64 { var := locToVar arr, info := {} }
+                   (.Pconst (Int.ofNat idx)))
+                 .AT_none (.sword .U64) (locToPExpr src)] := by
+  simp [arrLitElemWS, h]
+
+/-- On a byte array the literal-index load lowers to a one-byte `Pget`. -/
+theorem toJasminCmd_RArrLoadLit_u8 (dst src : Located) (idx : Nat) (n : Nat)
+    (h : src.locSrc = .TArr n .TU8) :
+    toJasminCmd (.RArrLoadLit dst src idx)
       = [.Cassgn (locToLVal dst) .AT_none (.sword .U8)
-                 (.Pget .AAscale .U8 (locToGVar src) (.Pconst (Int.ofNat idx)))] := rfl
+                 (.Pget .AAscale .U8 (locToGVar src) (.Pconst (Int.ofNat idx)))] := by
+  simp [arrLitElemWS, h]
+
+/-- On a `u64` word array the literal-index load lowers to a 64-bit `Pget`, the
+    width of the runtime-index `RArrLoad` lowering on the same array. -/
+theorem toJasminCmd_RArrLoadLit_u64 (dst src : Located) (idx : Nat) (n : Nat)
+    (h : src.locSrc = .TArr n .TU64) :
+    toJasminCmd (.RArrLoadLit dst src idx)
+      = [.Cassgn (locToLVal dst) .AT_none (.sword .U64)
+                 (.Pget .AAscale .U64 (locToGVar src) (.Pconst (Int.ofNat idx)))] := by
+  simp [arrLitElemWS, h]
 
 @[simp] theorem toJasminCmd_RArrStore (arr : Located) (idxVar : String) (src : Located) :
     toJasminCmd (.RArrStore arr idxVar src)
@@ -966,16 +1027,16 @@ def toJasminCmdWithInlines (env : InlineRegistry) : LowCT → Cmd
       | _ =>
           [.Cassgn dstLv .AT_none (.sword .U64)
             (.Papp1 (.Ozeroext .U64 .U32) (.Pget .AAscale .U32 (locToGVar src) idxPv))]
-  -- Phase DD (2026-05-28): literal-index variants — mirror toJasminCmd.
+  -- Literal-index variants at the element width `arrLitElemWS` — mirror toJasminCmd.
   | .RArrStoreLit arr idx src =>
       [.Cassgn
-        (.Laset .AAscale .U8
+        (.Laset .AAscale (arrLitElemWS arr)
           { var := locToVar arr, info := {} }
           (.Pconst (Int.ofNat idx)))
-        .AT_none (.sword .U8) (locToPExpr src)]
+        .AT_none (.sword (arrLitElemWS arr)) (locToPExpr src)]
   | .RArrLoadLit dst src idx =>
-      [.Cassgn (locToLVal dst) .AT_none (.sword .U8)
-        (.Pget .AAscale .U8 (locToGVar src) (.Pconst (Int.ofNat idx)))]
+      [.Cassgn (locToLVal dst) .AT_none (.sword (arrLitElemWS src))
+        (.Pget .AAscale (arrLitElemWS src) (locToGVar src) (.Pconst (Int.ofNat idx)))]
   | .RScalarSetExpr x e =>
       sexprSetExprCmd x e
   -- Phase E2 (2026-05-29): dst-threaded leaf call.  Mirror toJasminCmd
