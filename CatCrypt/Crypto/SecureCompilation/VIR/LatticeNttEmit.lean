@@ -11,6 +11,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMap
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 public import Mathlib.Data.ZMod.Basic
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTButterflyPass
 
 /-!
 # Lattice 4-way batched NTT — ML-KEM-768 and ML-DSA-65
@@ -38,15 +39,22 @@ the lane type `α`: applying `f` to each of `L` lanes of a packed vector equals
 running `f` on each lane (`funext + rfl`).
 
 `mlkem_ntt_4way_lane_map` / `mldsa_ntt_4way_lane_map` state this at the two lane
-types for any block. `mlkem_ntt_4way_denotation_preserves` /
-`mldsa_ntt_4way_denotation_preserves` state it at `mlkemNttButterflySpec` /
-`mldsaNttButterflySpec`, which are defined as the identity function (`:= id`),
-not as the Cooley–Tukey stage `(a,b,ω) ↦ (a+ω·b, a−ω·b)` (`ctButterfly` in
-`Optimizer/Lattice/NTTButterflyPass.lean`). These theorems hold for any block and
-say nothing about the NTT or about the emitted text.
+types for any block; `mlkemNttButterflySpec` / `mldsaNttButterflySpec` are
+identity blocks at which consumers instantiate them, and carry no NTT content.
 
-No theorem in this module relates the rendered `.jazz` kernels to an NTT, to
-`ctButterfly`, or to `PQCLEAN_MLKEM768_CLEAN_ntt`. Value checks of the emitted
+`mlkem_ntt_4way_denotation_preserves` / `mldsa_ntt_4way_denotation_preserves`
+(§6f) are about the emitted 4-way kernel bodies. The body is a program
+`ntt4wayBody` over the instruction type `Ntt4wayInstr`, whose rendering is
+`renderMlkemNtt4wayBody` / `renderMldsaNtt4wayBody` line for line, and whose
+semantics `runNtt4way` acts on `L`-lane registers of `n`-bit words and word-indexed
+input and output buffers. Each theorem states that the rendering equals the emitted
+body and that running the body writes, for each of the 8 stages and each lane,
+the Cooley–Tukey butterfly `ctButterfly ω a b` (`Optimizer/Lattice/NTTButterflyPass.lean`)
+of the two input chunks with the per-lane twiddle, in wrapping `n`-bit arithmetic
+(no modular reduction), and leaves the rest of the output buffer unchanged.
+
+The full-transform kernels (§6b–§6e) are text only: no theorem in this module
+relates them to an NTT or to `PQCLEAN_MLKEM768_CLEAN_ntt`. Value checks of those
 kernels against PQClean are external to Lean and not part of this package.
 
 ## Emit (the .jazz driver shape)
@@ -61,7 +69,8 @@ AVX2 ops:
   for the 4-way shape.
 
 The emit functions are local helpers (not additions to `JasminAbiEmit.lean`)
-that produce `.jazz` text; no theorem gives that text a semantics.
+that produce `.jazz` text. The 4-way bodies have the semantics of §6f; the
+full-transform bodies have none in Lean.
 -/
 
 @[expose] public section
@@ -127,7 +136,8 @@ A whole-transform specification exists in `Optimizer/Lattice/MlkemNttLayout.lean
 `mlkemNttKernelSpec = nttIter 8 (17 : ZMod 3329)`, proved equal to `dft` via
 `bitrevPerm 8`. The 4-way lanes hold one 256-coefficient polynomial with
 cross-lane mixing, so that specification is not an instance of the per-lane
-`LaneMap` theorem, and no theorem here relates the emitted kernel to it. -/
+`LaneMap` theorem, and no theorem here relates an emitted kernel to it. The
+semantics of the emitted 4-way bodies is in §6f. -/
 
 /-- Per-lane block for ML-KEM-768 (`Zq3329` lane), defined as `id` rather than the
     butterfly. It exists so the parametric lane-map theorem can be instantiated;
@@ -162,44 +172,22 @@ theorem mldsa_ntt_4way_lane_map (block : MldsaNttLane → MldsaNttLane)
   funext i
   rfl
 
-/-! ## 5. The lane-map theorems at the identity block
-
-These instantiate `mlkem_ntt_4way_lane_map` / `mldsa_ntt_4way_lane_map` at the
-identity blocks of §3. Since the lane-map equality holds for every block, the
-instances carry no information about the NTT or the emitted kernels. -/
-
-/-- `LaneMap.laneMap mlkemNttButterflySpec lanes` equals
-    `fun b => mlkemNttButterflySpec (lanes b)`; `mlkem_ntt_4way_lane_map` at the
-    identity block. It does not say that a lane computes a butterfly. -/
-theorem mlkem_ntt_4way_denotation_preserves (lanes : MlkemNtt4Way) :
-    LaneMap.laneMap mlkemNttButterflySpec lanes =
-      (fun b => mlkemNttButterflySpec (lanes b)) :=
-  mlkem_ntt_4way_lane_map mlkemNttButterflySpec lanes
-
-/-- The ML-DSA-65 counterpart of `mlkem_ntt_4way_denotation_preserves`, over
-    `Zq8380417` lanes, at the identity block. -/
-theorem mldsa_ntt_4way_denotation_preserves (lanes : MldsaNtt4Way) :
-    LaneMap.laneMap mldsaNttButterflySpec lanes =
-      (fun b => mldsaNttButterflySpec (lanes b)) :=
-  mldsa_ntt_4way_lane_map mldsaNttButterflySpec lanes
-
 /-! ## 6. Emit functions (the .jazz drivers)
 
-These render a 4-way batched NTT stage as a sequence of packed AVX2 ops over
+These render each 4-way batched NTT stage into packed AVX2 ops over
 `__m128i` lanes. The emit is local to this file and does not modify
-`JasminAbiEmit.lean`. The rendered text has no semantics in Lean, and the
-lane-map theorems above do not refer to it.
+`JasminAbiEmit.lean`. The semantics of the rendered bodies is `runNtt4way` (§6f).
 
 ## ABI
 
-* `mlkem_ntt_4way`: `reg ptr u16[256] out, reg const ptr u16[256] inp`
-  (one ML-KEM polynomial, 256 × `u16`, 4-way lane-bundled in `__m128i`).
-* `mldsa_ntt_4way`: `reg ptr u32[256] out, reg const ptr u32[256] inp`
-  (one ML-DSA polynomial, 256 × `u32`, 4-way lane-bundled in `__m128i`). -/
+* `mlkem_ntt_4way`: `reg ptr u16[256] out, reg const ptr u16[264] inp`
+  (256 `u16` coefficients followed by 8 twiddle words, 8 lanes per `__m128i`).
+* `mldsa_ntt_4way`: `reg ptr u32[256] out, reg const ptr u32[260] inp`
+  (256 `u32` coefficients followed by 4 twiddle words, 4 lanes per `__m128i`). -/
 
 /-- Render one ML-DSA 4-way butterfly stage line for stage `s` (0..7). Loads
-    two `__m128i` (4 × `u32`) chunks, multiplies the second by the per-stage
-    twiddle (held in `tw`), adds and subtracts into the output lanes. The
+    two `__m128i` (4 × `u32`) chunks, multiplies the second by the twiddle
+    (held in `tw`), adds and subtracts into the output lanes. The
     `[:u128 k]` index is jasmin's *u128-chunk* index into the underlying byte
     storage: each chunk is 16 bytes = 4 × `u32`, so chunk `k` covers `u32[4k
     .. 4k+3]`. Stage `s` reads `u32[8s..8s+7]` = chunks `2s, 2s+1`. -/
@@ -215,10 +203,10 @@ def renderMldsaNtt4wayStage (s : Nat) : List String :=
   , "out[:u128 " ++ toString chunkA ++ "] = c;"
   , "out[:u128 " ++ toString chunkB ++ "] = d;" ]
 
-/-- The emitted `.jazz` body for the ML-DSA-65 4-way NTT (one stage; the full
-    NTT is 8 stages × 32 butterflies/stage, 4 butterflies/lane bundle = 8
-    bundles/stage). The body declares 4 working `__m128i` regs and emits the
-    8 stage-bundles. The twiddle lives at u128-chunk index `64` of `inp`
+/-- The emitted `.jazz` body for the ML-DSA-65 4-way kernel: 8 stages, each
+    butterflying input chunks `2s` and `2s+1` with one shared twiddle, covering
+    the first 64 coefficient words. It is one butterfly layer, not a full NTT.
+    The body declares the working `__m128i` regs. The twiddle lives at u128-chunk index `64` of `inp`
     (= `u32[256..259]`, i.e. the 4 trailing u32 immediately after the 256
     coefficient words). -/
 def renderMldsaNtt4wayBody : List String :=
@@ -238,9 +226,8 @@ def emitMldsaNtt4wayJazz (name : String) : String :=
     ++ String.intercalate "\n  " renderMldsaNtt4wayBody ++ "\n  return out;\n}"
 
 /-- Render one ML-KEM 4-way butterfly stage line for stage `s` (0..7). Loads
-    two `__m128i` (8 × `u16`) chunks (the 8-lane packed-`u16` multiply
-    `#VPMULL_8u16`, with 4 of the lanes carrying the ML-KEM coefficient pairs
-    and the rest acting as padding). The `[:u128 k]` index is jasmin's u128-
+    two `__m128i` (8 × `u16`) chunks and butterflies all 8 lanes with the
+    packed-`u16` ops `#VPMULL_8u16` / `#VPADD_8u16` / `#VPSUB_8u16`. The `[:u128 k]` index is jasmin's u128-
     chunk index into the underlying byte storage: each chunk is 16 bytes = 8 ×
     `u16`. Stage `s` reads `u16[16s..16s+15]` = chunks `2s, 2s+1`. -/
 def renderMlkemNtt4wayStage (s : Nat) : List String :=
@@ -255,7 +242,8 @@ def renderMlkemNtt4wayStage (s : Nat) : List String :=
   , "out[:u128 " ++ toString chunkA ++ "] = c;"
   , "out[:u128 " ++ toString chunkB ++ "] = d;" ]
 
-/-- The emitted `.jazz` body for the ML-KEM-768 4-way NTT. The twiddle lives
+/-- The emitted `.jazz` body for the ML-KEM-768 4-way kernel: 8 stages over the
+    first 128 coefficient words with one shared twiddle. The twiddle lives
     at u128-chunk index `32` of `inp` (= `u16[256..263]`, the 8 trailing u16
     words after the 256-coefficient polynomial; the chunks `33..` are unused
     padding). -/
@@ -889,6 +877,268 @@ def emitMldsaPointwise8wayJazz (name : String) : String :=
     ++ "    -> reg mut ptr u32[256]\n{\n"
     ++ String.intercalate "\n" renderMldsaPointwise8wayBody
     ++ "\n\n  return ra;\n}"
+
+/-! ## 6f. Semantics of the 4-way kernel bodies
+
+`Ntt4wayInstr` is the instruction type of the §6 4-way bodies: a comment or
+declaration line, a chunk load from `inp`, a chunk store to `out`, and the three
+packed lane ops. `Ntt4wayInstr.render` prints each instruction as the line the
+§6 emitters produce, and `ntt4wayBody` renders to `renderMldsaNtt4wayBody` /
+`renderMlkemNtt4wayBody` (`ntt4wayBody_render_mldsa` / `ntt4wayBody_render_mlkem`).
+
+`runNtt4way` runs a program on an `Ntt4wayState L n`: registers holding `L` lanes
+of `n`-bit words, and word-indexed `inp` / `out` buffers; chunk `k` is words
+`L·k … L·k+L-1`. The packed ops act lane-wise with wrapping `BitVec n`
+arithmetic. The ML-DSA body is the instance `L = 4`, `n = 32`, twiddle chunk 64;
+the ML-KEM body is `L = 8`, `n = 16`, twiddle chunk 32. -/
+
+open CatCrypt.Crypto.Optimizer.Lattice.NTTButterflyPass (ctButterfly)
+
+/-- An instruction of the 4-way butterfly kernel body. -/
+inductive Ntt4wayInstr where
+  /-- A comment line, printed verbatim. -/
+  | comment (text : String)
+  /-- A declaration line, printed verbatim. -/
+  | decl (text : String)
+  /-- `dst = inp[:u128 chunk];` -/
+  | load (dst : String) (chunk : Nat)
+  /-- `out[:u128 chunk] = src;` -/
+  | store (chunk : Nat) (src : String)
+  /-- `dst = #VPMULL_w(x, y);` -/
+  | mull (dst x y : String)
+  /-- `dst = #VPADD_w(x, y);` -/
+  | add (dst x y : String)
+  /-- `dst = #VPSUB_w(x, y);` -/
+  | sub (dst x y : String)
+  deriving DecidableEq, Repr
+
+/-- The jasmin line an `Ntt4wayInstr` renders to, for packed-op width suffix `w`. -/
+def Ntt4wayInstr.render (w : String) : Ntt4wayInstr → String
+  | .comment t => t
+  | .decl t => t
+  | .load dst k => dst ++ " = inp[:u128 " ++ toString k ++ "];"
+  | .store k src => "out[:u128 " ++ toString k ++ "] = " ++ src ++ ";"
+  | .mull dst x y => dst ++ " = #VPMULL_" ++ w ++ "(" ++ x ++ ", " ++ y ++ ");"
+  | .add dst x y => dst ++ " = #VPADD_" ++ w ++ "(" ++ x ++ ", " ++ y ++ ");"
+  | .sub dst x y => dst ++ " = #VPSUB_" ++ w ++ "(" ++ x ++ ", " ++ y ++ ");"
+
+/-- Machine state of a 4-way kernel: registers of `L` lanes of `n`-bit words and
+    the word-indexed input and output buffers. -/
+structure Ntt4wayState (L n : Nat) where
+  /-- The packed registers, by name. -/
+  reg : String → Fin L → BitVec n
+  /-- The input buffer, by word index. -/
+  inp : Nat → BitVec n
+  /-- The output buffer, by word index. -/
+  out : Nat → BitVec n
+
+namespace Ntt4wayState
+variable {L n : Nat}
+
+/-- Chunk `k` of the input buffer: words `L·k … L·k+L-1`. -/
+def chunk (s : Ntt4wayState L n) (k : Nat) : Fin L → BitVec n :=
+  fun j => s.inp (L * k + j)
+
+/-- Write register `r`. -/
+def setReg (s : Ntt4wayState L n) (r : String) (v : Fin L → BitVec n) : Ntt4wayState L n :=
+  { s with reg := fun r' => if r' = r then v else s.reg r' }
+
+/-- Write chunk `k` of the output buffer. -/
+def storeChunk (s : Ntt4wayState L n) (k : Nat) (v : Fin L → BitVec n) : Ntt4wayState L n :=
+  { s with out := fun i =>
+      if h : L * k ≤ i ∧ i < L * k + L then v ⟨i - L * k, by omega⟩ else s.out i }
+
+end Ntt4wayState
+
+/-- One instruction step. -/
+def Ntt4wayInstr.eval {L n : Nat} (s : Ntt4wayState L n) : Ntt4wayInstr → Ntt4wayState L n
+  | .comment _ => s
+  | .decl _ => s
+  | .load dst k => s.setReg dst (s.chunk k)
+  | .store k src => s.storeChunk k (s.reg src)
+  | .mull dst x y => s.setReg dst (fun j => s.reg x j * s.reg y j)
+  | .add dst x y => s.setReg dst (fun j => s.reg x j + s.reg y j)
+  | .sub dst x y => s.setReg dst (fun j => s.reg x j - s.reg y j)
+
+/-- Run a program of `Ntt4wayInstr` from left to right. -/
+def runNtt4way {L n : Nat} (s : Ntt4wayState L n) (p : List Ntt4wayInstr) : Ntt4wayState L n :=
+  p.foldl Ntt4wayInstr.eval s
+
+theorem runNtt4way_append {L n : Nat} (s : Ntt4wayState L n) (p q : List Ntt4wayInstr) :
+    runNtt4way s (p ++ q) = runNtt4way (runNtt4way s p) q := by
+  simp [runNtt4way, List.foldl_append]
+
+/-- Stage `s`: load input chunks `2s` and `2s+1`, butterfly them with register `tw`,
+    store the results to output chunks `2s` and `2s+1`. -/
+def ntt4wayStage (s : Nat) : List Ntt4wayInstr :=
+  [ .comment ("// stage " ++ toString s), .load "a" (2 * s), .load "b" (2 * s + 1),
+    .mull "t" "b" "tw", .add "c" "a" "t", .sub "d" "a" "t",
+    .store (2 * s) "c", .store (2 * s + 1) "d" ]
+
+/-- The 4-way kernel body: register declaration, twiddle load from input chunk
+    `twChunk`, and stages `0 … 7`. -/
+def ntt4wayBody (twChunk : Nat) : List Ntt4wayInstr :=
+  [ .decl "reg u128 a b c d t tw;", .load "tw" twChunk ] ++ (List.range 8).flatMap ntt4wayStage
+
+theorem ntt4wayStage_render_mldsa (s : Nat) :
+    (ntt4wayStage s).map (Ntt4wayInstr.render "4u32") = renderMldsaNtt4wayStage s := by
+  simp only [ntt4wayStage, renderMldsaNtt4wayStage, List.map, Ntt4wayInstr.render,
+    String.append_assoc, String.reduceAppend]
+
+theorem ntt4wayStage_render_mlkem (s : Nat) :
+    (ntt4wayStage s).map (Ntt4wayInstr.render "8u16") = renderMlkemNtt4wayStage s := by
+  simp only [ntt4wayStage, renderMlkemNtt4wayStage, List.map, Ntt4wayInstr.render,
+    String.append_assoc, String.reduceAppend]
+
+/-- `ntt4wayBody 64` renders to the emitted ML-DSA 4-way body. -/
+theorem ntt4wayBody_render_mldsa :
+    (ntt4wayBody 64).map (Ntt4wayInstr.render "4u32") = renderMldsaNtt4wayBody := by
+  simp only [ntt4wayBody, renderMldsaNtt4wayBody, List.map_append, List.map_flatMap,
+    ntt4wayStage_render_mldsa]
+  rfl
+
+/-- `ntt4wayBody 32` renders to the emitted ML-KEM 4-way body. -/
+theorem ntt4wayBody_render_mlkem :
+    (ntt4wayBody 32).map (Ntt4wayInstr.render "8u16") = renderMlkemNtt4wayBody := by
+  simp only [ntt4wayBody, renderMlkemNtt4wayBody, List.map_append, List.map_flatMap,
+    ntt4wayStage_render_mlkem]
+  rfl
+
+private theorem lane_idx_lt {L : Nat} (c c' : Nat) (j : Fin L) (h : c < c') :
+    L * c + j < L * c' := by
+  have h1 : L * (c + 1) ≤ L * c' := Nat.mul_le_mul_left L h
+  rw [Nat.mul_succ] at h1
+  omega
+
+/-- The state reached by running stage `m`. -/
+theorem runNtt4way_stage {L n : Nat} (s : Ntt4wayState L n) (m : Nat) :
+    runNtt4way s (ntt4wayStage m) =
+      { reg := fun r =>
+          if r = "d" then (fun j => s.chunk (2 * m) j - s.chunk (2 * m + 1) j * s.reg "tw" j)
+          else if r = "c" then (fun j => s.chunk (2 * m) j + s.chunk (2 * m + 1) j * s.reg "tw" j)
+          else if r = "t" then (fun j => s.chunk (2 * m + 1) j * s.reg "tw" j)
+          else if r = "b" then s.chunk (2 * m + 1)
+          else if r = "a" then s.chunk (2 * m)
+          else s.reg r
+        inp := s.inp
+        out := fun i =>
+          if h : L * (2 * m + 1) ≤ i ∧ i < L * (2 * m + 1) + L then
+            s.chunk (2 * m) ⟨i - L * (2 * m + 1), by omega⟩
+              - s.chunk (2 * m + 1) ⟨i - L * (2 * m + 1), by omega⟩
+                * s.reg "tw" ⟨i - L * (2 * m + 1), by omega⟩
+          else if h : L * (2 * m) ≤ i ∧ i < L * (2 * m) + L then
+            s.chunk (2 * m) ⟨i - L * (2 * m), by omega⟩
+              + s.chunk (2 * m + 1) ⟨i - L * (2 * m), by omega⟩
+                * s.reg "tw" ⟨i - L * (2 * m), by omega⟩
+          else s.out i } := by
+  cases s with
+  | mk reg inp out =>
+    simp only [runNtt4way, ntt4wayStage, List.foldl, Ntt4wayInstr.eval, Ntt4wayState.setReg,
+      Ntt4wayState.storeChunk, Ntt4wayState.chunk]
+    congr 1
+
+/-- After stages `0 … m-1` from `s0`: the input buffer and register `tw` are
+    unchanged, output chunks `0 … 2m-1` hold the butterflies of the matching input
+    chunks, and output words from `L·2m` on are unchanged. -/
+theorem runNtt4way_stages {L n : Nat} (s0 : Ntt4wayState L n) (m : Nat) :
+    (runNtt4way s0 ((List.range m).flatMap ntt4wayStage)).inp = s0.inp ∧
+    (runNtt4way s0 ((List.range m).flatMap ntt4wayStage)).reg "tw" = s0.reg "tw" ∧
+    (∀ p < m, ∀ j : Fin L,
+      (runNtt4way s0 ((List.range m).flatMap ntt4wayStage)).out (L * (2 * p) + j)
+        = s0.inp (L * (2 * p) + j) + s0.inp (L * (2 * p + 1) + j) * s0.reg "tw" j ∧
+      (runNtt4way s0 ((List.range m).flatMap ntt4wayStage)).out (L * (2 * p + 1) + j)
+        = s0.inp (L * (2 * p) + j) - s0.inp (L * (2 * p + 1) + j) * s0.reg "tw" j) ∧
+    (∀ i, L * (2 * m) ≤ i →
+      (runNtt4way s0 ((List.range m).flatMap ntt4wayStage)).out i = s0.out i) := by
+  induction m with
+  | zero => simp [runNtt4way]
+  | succ m ih =>
+    obtain ⟨hinp, htw, hdone, hrest⟩ := ih
+    rw [List.range_succ, List.flatMap_append, runNtt4way_append, List.flatMap_singleton,
+      runNtt4way_stage]
+    set s := runNtt4way s0 ((List.range m).flatMap ntt4wayStage)
+    refine ⟨hinp, ?_, ?_, ?_⟩
+    · simpa using htw
+    · intro p hp j
+      simp only [Ntt4wayState.chunk, hinp, htw]
+      rcases Nat.lt_succ_iff_lt_or_eq.mp hp with hp | rfl
+      · have h1 : L * (2 * p) + j < L * (2 * m) := lane_idx_lt _ _ j (by omega)
+        have h2 : L * (2 * p + 1) + j < L * (2 * m) := lane_idx_lt _ _ j (by omega)
+        have hm : L * (2 * m + 1) = L * (2 * m) + L := by ring
+        rw [dif_neg (by omega), dif_neg (by omega), dif_neg (by omega), dif_neg (by omega)]
+        exact hdone p hp j
+      · have hm : L * (2 * p + 1) = L * (2 * p) + L := by ring
+        have hj := j.isLt
+        simp only [hm]
+        constructor
+        · rw [dif_neg (by omega), dif_pos (by omega)]
+          simp
+        · rw [dif_pos (by omega)]
+          simp
+    · intro i hi
+      have hm : L * (2 * (m + 1)) = L * (2 * m + 1) + L := by ring
+      have hm' : L * (2 * m + 1) = L * (2 * m) + L := by ring
+      simp only
+      rw [dif_neg (by omega), dif_neg (by omega)]
+      exact hrest i (by omega)
+
+/-- **The 4-way kernel body computes Cooley–Tukey butterflies.** Running
+    `ntt4wayBody twChunk` from any state: for each stage `p < 8` and lane `j`,
+    output words `L·2p+j` and `L·(2p+1)+j` are `ctButterfly ω a b` of the input
+    words `a = inp (L·2p+j)` and `b = inp (L·(2p+1)+j)` with twiddle
+    `ω = inp (L·twChunk+j)`, in wrapping `n`-bit arithmetic; output words from
+    `L·16` on are unchanged. -/
+theorem runNtt4way_body {L n : Nat} (s0 : Ntt4wayState L n) (twChunk : Nat) :
+    (∀ p < 8, ∀ j : Fin L,
+      ((runNtt4way s0 (ntt4wayBody twChunk)).out (L * (2 * p) + j),
+        (runNtt4way s0 (ntt4wayBody twChunk)).out (L * (2 * p + 1) + j))
+      = ctButterfly (s0.inp (L * twChunk + j)) (s0.inp (L * (2 * p) + j))
+          (s0.inp (L * (2 * p + 1) + j))) ∧
+    (∀ i, L * 16 ≤ i → (runNtt4way s0 (ntt4wayBody twChunk)).out i = s0.out i) := by
+  obtain ⟨-, htw, hdone, hrest⟩ :=
+    runNtt4way_stages (s0.setReg "tw" (s0.chunk twChunk)) 8
+  have hb : runNtt4way s0 (ntt4wayBody twChunk)
+      = runNtt4way (s0.setReg "tw" (s0.chunk twChunk)) ((List.range 8).flatMap ntt4wayStage) := by
+    rw [ntt4wayBody, runNtt4way_append]; rfl
+  rw [hb]
+  refine ⟨fun p hp j => ?_, fun i hi => hrest i hi⟩
+  obtain ⟨h1, h2⟩ := hdone p hp j
+  rw [h1, h2]
+  simp [Ntt4wayState.setReg, Ntt4wayState.chunk, ctButterfly, mul_comm]
+
+/-- **ML-DSA-65 4-way kernel.** `ntt4wayBody 64` renders to the emitted body
+    `renderMldsaNtt4wayBody`, and running it on 4 lanes of `u32` writes, for each
+    stage `p < 8` and lane `j < 4`, the butterfly `ctButterfly ω a b` of input
+    words `a = inp (8p+j)`, `b = inp (8p+4+j)` with `ω = inp (256+j)` (wrapping
+    32-bit arithmetic) to output words `8p+j` and `8p+4+j`, leaving output words
+    from 64 on unchanged. -/
+theorem mldsa_ntt_4way_denotation_preserves :
+    (ntt4wayBody 64).map (Ntt4wayInstr.render "4u32") = renderMldsaNtt4wayBody ∧
+    ∀ s0 : Ntt4wayState 4 32,
+      (∀ p < 8, ∀ j : Fin 4,
+        ((runNtt4way s0 (ntt4wayBody 64)).out (4 * (2 * p) + j),
+          (runNtt4way s0 (ntt4wayBody 64)).out (4 * (2 * p + 1) + j))
+        = ctButterfly (s0.inp (4 * 64 + j)) (s0.inp (4 * (2 * p) + j))
+            (s0.inp (4 * (2 * p + 1) + j))) ∧
+      (∀ i, 4 * 16 ≤ i → (runNtt4way s0 (ntt4wayBody 64)).out i = s0.out i) :=
+  ⟨ntt4wayBody_render_mldsa, fun s0 => runNtt4way_body s0 64⟩
+
+/-- **ML-KEM-768 4-way kernel.** `ntt4wayBody 32` renders to the emitted body
+    `renderMlkemNtt4wayBody`, and running it on 8 lanes of `u16` writes, for each
+    stage `p < 8` and lane `j < 8`, the butterfly `ctButterfly ω a b` of input
+    words `a = inp (16p+j)`, `b = inp (16p+8+j)` with `ω = inp (256+j)` (wrapping
+    16-bit arithmetic) to output words `16p+j` and `16p+8+j`, leaving output words
+    from 128 on unchanged. -/
+theorem mlkem_ntt_4way_denotation_preserves :
+    (ntt4wayBody 32).map (Ntt4wayInstr.render "8u16") = renderMlkemNtt4wayBody ∧
+    ∀ s0 : Ntt4wayState 8 16,
+      (∀ p < 8, ∀ j : Fin 8,
+        ((runNtt4way s0 (ntt4wayBody 32)).out (8 * (2 * p) + j),
+          (runNtt4way s0 (ntt4wayBody 32)).out (8 * (2 * p + 1) + j))
+        = ctButterfly (s0.inp (8 * 32 + j)) (s0.inp (8 * (2 * p) + j))
+            (s0.inp (8 * (2 * p + 1) + j))) ∧
+      (∀ i, 8 * 16 ≤ i → (runNtt4way s0 (ntt4wayBody 32)).out i = s0.out i) :=
+  ⟨ntt4wayBody_render_mlkem, fun s0 => runNtt4way_body s0 32⟩
 
 /-! ## 7. Structural sanity checks on the emitted text -/
 

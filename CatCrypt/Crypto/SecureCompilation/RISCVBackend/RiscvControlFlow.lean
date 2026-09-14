@@ -45,20 +45,22 @@ the gas byte-diff also catches).
 
 ## What is proved about the loop
 
-`loopRBlock` returns rendered GAS lines (`List String`), and the `RInst` model
-has no semantics for labels or branches, so no theorem here states what the
-looped emission computes. The proved facts are:
+A loop is the model instruction `RLoop` (top label, counter register, body), whose
+rendering `RLoop.render` is `loopRBlock`: the label line, the body lines and the
+`BNE <ctr>, zero, .L<top>` line. Its semantics `runRLoop fuel s l` executes the
+rendered control flow with at most `fuel` passes: run the body, stop when the
+counter register reads `0`, otherwise branch back to the label. The proved facts
+are:
 
 * `loopRBlock_length` / `unrollRGasLines_length` / `looped_shorter_than_unrolled`:
   line counts of the two renderings;
-* `loopRBlock_denote`: the unrolled straight-line block
-  `unrollRBounded n body`, run on the `RState` model, equals
-  `RiscvModel.runBoundedLoopR s n body`, the body run `n` times
-  (`RiscvModel.runBoundedLoopR_eq_runRBlock_unroll`, restated).
-
-`runBoundedLoopR` takes the trip count `n` as an argument and does not read the
-counter register, so the correspondence between `n` iterations and the
-`BNE <ctr>` back-edge is an assumption about the emitted loop, not a theorem.
+* `looped_eq_unrolled_denote`: if every run of the body decrements the counter
+  register by one (under an invariant `P` the body preserves), and the counter
+  holds `n` with `1 ≤ n < 2^32`, then with fuel at least `n` the loop terminates
+  in the state of the unrolled block `unrollRBounded n body`;
+* `loopRBlock_denote`: the same final state is `runBoundedLoopR s n body`;
+* `acc_loop_looped_eq_unrolled`: the accumulate kernel with counter `5` runs to the
+  state of its unrolled 5-copy block.
 
 ## What is lowered
 
@@ -145,28 +147,77 @@ theorem looped_shorter_than_unrolled (alloc : GpAlloc) (top : RLabel) (ctr : Str
   have h4 : 4 * body.length ≤ n * body.length := Nat.mul_le_mul_right body.length hn
   omega
 
-/-! ## 3. The bounded-loop semantics and the unrolled block
+/-! ## 3. The loop as a model instruction and its execution
 
-`RiscvModel.runBoundedLoopR s n body` runs `body` `n` times on the `RState` model.
-`runBoundedLoopR_eq_runRBlock_unroll` proves that running the unrolled
-straight-line block `unrollRBounded n body` computes the same state. The looped
-rendering `loopRBlock` has no semantics in the model, so the statement below is
-about the unrolled block only. -/
+`RLoop` is the counted loop the renderer prints as `loopRBlock`. `runRLoop` runs
+that control flow: the body falls through to the `BNE`, which branches back to
+the label while the counter register is non-zero. The fuel bounds the number of
+passes; `none` means the fuel ran out. -/
 
-/-- The unrolled straight-line block `unrollRBounded n body`, run on the `RState`
-    model, equals `runBoundedLoopR s n body` (the body run `n` times); the symmetric
-    form of `runBoundedLoopR_eq_runRBlock_unroll`. The looped emission
-    `loopRBlock` does not occur in the statement: it is a list of rendered lines,
-    and no theorem relates its execution to `runBoundedLoopR`. -/
-theorem loopRBlock_denote (n : Nat) (body : List RInst) (s : RState) :
-    runRBlock s (unrollRBounded n body) = runBoundedLoopR s n body :=
-  (runBoundedLoopR_eq_runRBlock_unroll s n body).symm
+/-- A counted loop: the label `top`, the counter register `ctr` tested by the
+    back-edge, and the body. -/
+structure RLoop where
+  /-- The loop label. -/
+  top : RLabel
+  /-- The register the `BNE` back-edge compares with `zero`. -/
+  ctr : String
+  /-- The loop body. -/
+  body : List RInst
 
-/-- The same statement as `loopRBlock_denote`: the unrolled block run on the
-    model equals `runBoundedLoopR s n body`. -/
-theorem looped_eq_unrolled_denote (n : Nat) (body : List RInst) (s : RState) :
-    runRBlock s (unrollRBounded n body) = runBoundedLoopR s n body :=
-  loopRBlock_denote n body s
+/-- The GAS lines of a loop: label, body, `BNE ctr, zero, .L<top>`. -/
+def RLoop.render (alloc : GpAlloc) (l : RLoop) : List String :=
+  loopRBlock alloc l.top l.ctr l.body
+
+/-- Execution of a loop with at most `fuel` passes: run the body; if the counter
+    register then reads `0`, fall through with that state, otherwise take the
+    back-edge. -/
+def runRLoop (fuel : Nat) (s : RState) (l : RLoop) : Option RState :=
+  match fuel with
+  | 0 => none
+  | f + 1 =>
+    if (runRBlock s l.body).get l.ctr = 0 then some (runRBlock s l.body)
+    else runRLoop f (runRBlock s l.body) l
+
+/-- **The looped emission computes the unrolled block.** Let the body decrement the
+    counter register by one on every state satisfying an invariant `P` that it
+    preserves. From a state satisfying `P` whose counter holds `n`, with
+    `1 ≤ n < 2^32` and fuel at least `n`, the loop terminates in the state reached
+    by the unrolled block `unrollRBounded n l.body`. -/
+theorem looped_eq_unrolled_denote (P : RState → Prop) (l : RLoop)
+    (hdec : ∀ s, P s → P (runRBlock s l.body) ∧
+      (runRBlock s l.body).get l.ctr = s.get l.ctr - 1) :
+    ∀ (n fuel : Nat) (s : RState), P s → 1 ≤ n → n < 2 ^ 32 →
+      s.get l.ctr = BitVec.ofNat 32 n → n ≤ fuel →
+      runRLoop fuel s l = some (runRBlock s (unrollRBounded n l.body)) := by
+  intro n
+  induction n with
+  | zero => intro _ _ _ h; omega
+  | succ k ih =>
+    intro fuel s hP _ hlt hctr hfuel
+    obtain ⟨f, rfl⟩ : ∃ f, fuel = f + 1 := ⟨fuel - 1, by omega⟩
+    obtain ⟨hP', hc⟩ := hdec s hP
+    rw [hctr] at hc
+    have hc' : (runRBlock s l.body).get l.ctr = BitVec.ofNat 32 k := by
+      rw [hc]; apply BitVec.eq_of_toNat_eq
+      simp [BitVec.toNat_sub]; omega
+    simp only [runRLoop, unrollRBounded, runRBlock_append_model]
+    by_cases hk : k = 0
+    · subst hk
+      rw [if_pos (by rw [hc']; rfl)]
+      rfl
+    · rw [if_neg (by rw [hc']; intro h; have := congrArg BitVec.toNat h; simp at this; omega)]
+      exact ih f _ hP' (by omega) (by omega) hc' (by omega)
+
+/-- Under the hypotheses of `looped_eq_unrolled_denote`, the loop terminates in
+    `runBoundedLoopR s n l.body`, the body run `n` times. -/
+theorem loopRBlock_denote (P : RState → Prop) (l : RLoop)
+    (hdec : ∀ s, P s → P (runRBlock s l.body) ∧
+      (runRBlock s l.body).get l.ctr = s.get l.ctr - 1)
+    (n fuel : Nat) (s : RState) (hP : P s) (hn : 1 ≤ n) (hlt : n < 2 ^ 32)
+    (hctr : s.get l.ctr = BitVec.ofNat 32 n) (hfuel : n ≤ fuel) :
+    runRLoop fuel s l = some (runBoundedLoopR s n l.body) := by
+  rw [looped_eq_unrolled_denote P l hdec n fuel s hP hn hlt hctr hfuel,
+    runBoundedLoopR_eq_runRBlock_unroll]
 
 /-! ## 4. A small counted-loop kernel through the owned branch path
 
@@ -188,14 +239,13 @@ We pin:
 * on the model: `runBoundedLoopR` of the body, from `acc = 0`, `step = 7`,
   `ctr = 5`, leaves `acc = 35` and `ctr = 0` after 5 iterations.
 
-The rendering checks are substring tests on the emitted lines; the value check
-is on `runBoundedLoopR`, not on the rendered loop. Execution of the emitted `.s`
-is not checked in this package.
+The rendering checks are substring tests on the emitted lines. The value check is
+on `runBoundedLoopR`; `acc_loop_looped_eq_unrolled` transfers it to the loop
+`accLoop` executed by `runRLoop`. Execution of the emitted `.s` on hardware is not
+checked in this package.
 
-For the loop we model the counter decrement as `SUBW ctr,ctr,one` (`one` holds
-the constant `1`); the `RInst` model carries no flags, so the back-edge condition
-is the model-level "counter reached 0 after `n` decrements", which
-`runBoundedLoopR … n` captures directly. -/
+The counter decrement is `SUBW ctr,ctr,one` with `one` holding `1`
+(`accBody_dec`); `BNE` compares the register value with `zero`. -/
 
 /-- The accumulate-loop **body**: `acc += step ; ctr -= 1`. Two `RInst`s; the
     `subw` is the counter decrement the `BNE` back-edge tests. -/
@@ -251,10 +301,30 @@ theorem acc_loop_kat :
       ∧ (runBoundedLoopR accInit 5 accBody).get "ctr" = 0 := by
   native_decide
 
-/-- On the accumulate kernel, running the unrolled 5-copy block equals
-    `runBoundedLoopR accInit 5 accBody` (`loopRBlock_denote` at `n = 5`). -/
+/-- The accumulate kernel as a loop: label `acc`, counter `ctr`, body `accBody`. -/
+def accLoop : RLoop := { top := "acc", ctr := "ctr", body := accBody }
+
+/-- The rendering of `accLoop` is `accLoopGas`. -/
+theorem accLoop_render (alloc : GpAlloc) : accLoop.render alloc = accLoopGas alloc := rfl
+
+/-- On states with `one = 1`, `accBody` keeps `one = 1` and decrements `ctr`. -/
+theorem accBody_dec (s : RState) (h : s.get "one" = 1) :
+    (runRBlock s accBody).get "one" = 1 ∧
+      (runRBlock s accBody).get "ctr" = s.get "ctr" - 1 := by
+  have hnil : ∀ t : RState, runRBlock t [] = t := fun _ => rfl
+  simp only [accBody, runRBlock_cons, evalRInst, hnil]
+  refine ⟨?_, ?_⟩
+  · rw [RState.get_set_other _ _ _ _ (by decide), RState.get_set_other _ _ _ _ (by decide), h]
+  · rw [RState.get_set_same _ _ _ (by decide), RState.get_set_other _ _ _ _ (by decide),
+      RState.get_set_other _ _ _ _ (by decide), h]
+    rfl
+
+/-- **The accumulate loop runs to its unrolled block.** Executing `accLoop` from
+    `accInit` (counter `5`) with fuel `5` terminates in the state of the unrolled
+    5-copy block. -/
 theorem acc_loop_looped_eq_unrolled :
-    runRBlock accInit (unrollRBounded 5 accBody) = runBoundedLoopR accInit 5 accBody :=
-  loopRBlock_denote 5 accBody accInit
+    runRLoop 5 accInit accLoop = some (runRBlock accInit (unrollRBounded 5 accBody)) :=
+  looped_eq_unrolled_denote (fun s => s.get "one" = 1) accLoop (fun s h => accBody_dec s h)
+    5 5 accInit rfl (by decide) (by decide) rfl (Nat.le_refl 5)
 
 end CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvControlFlow

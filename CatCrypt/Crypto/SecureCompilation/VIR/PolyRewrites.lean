@@ -107,7 +107,7 @@ Applying the per-lane butterfly to 4 packed lanes in parallel equals running it
 sequentially on each lane: each lane's coefficients are an independent
 `ZMod q × ZMod q` pair, so the packed `#VPMULLD`/`#VPADDD`/`#VPSUBD` 4-way emit
 denotes the same value as the scalar lane-by-lane NTT.  (The "independence per
-lane" lemma; cf. `LatticeNttEmit.mlkem_ntt_4way_denotation_preserves`.) -/
+lane" lemma; cf. `LatticeNttEmit.mlkem_ntt_4way_lane_map`.) -/
 
 /-- A 4-lane input: 4 `(a, b)` coefficient pairs and a per-lane twiddle. -/
 abbrev Ntt4Lanes (q : Nat) := Fin 4 → (ZMod q × ZMod q × ZMod q)

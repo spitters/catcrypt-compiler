@@ -12,31 +12,27 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeNttEmit
 /-!
 # ML-DSA-65 / ML-KEM-768 4-way NTT through the structured VectorDialect (task #275)
 
-The existing lattice NTT emit (`VIR/LatticeNttEmit.renderMldsaNtt4wayStage` /
-`renderMlkemNtt4wayStage`) renders each 4-way batched Cooley–Tukey butterfly
-stage DIRECTLY as packed mnemonic strings (`#VPMULL`, `#VPADD`, `#VPSUB`). It is
-left **untouched** — this file adds a PARALLEL path that routes the same
-emission through the abstract `VectorOp` alphabet, then proves the two paths
-are byte-identical (so the bench KAT validating the direct emit validates this
-path with no new bytes).
+The lattice 4-way emit (`VIR/LatticeNttEmit.renderMldsaNtt4wayStage` /
+`renderMlkemNtt4wayStage`) renders each batched Cooley–Tukey butterfly stage into
+packed mnemonic strings (`#VPMULL`, `#VPADD`, `#VPSUB`). This file expresses the
+stage arithmetic as ops tagged with their `VectorOp` role and proves that their
+rendering equals the direct emit line for line.
 
 ## Coverage
 
-* The listed butterfly ops `#VPADD`/`#VPSUB`/`#VPMULL` are pure **reuse** of the
-  dialect `add` / `mul` constructors (binary pointwise, `lower_add_correct` /
-  the `mul` analogue lower with proven preservation).
-* The full Montgomery / Barrett reduction the lattice NTT additionally needs
-  (not yet in the direct emit, which stops at the schoolbook butterfly) is
-  expressed by the two NEW dialect ops `mulHi` (`VPMULH`, high-half product)
-  and `shiftRA` (`VPSRA`, signed arithmetic shift-right). We pin their
-  `BitVec`-lane semantics here against the standard Montgomery-reduction
-  recurrence and confirm they lower with proven denotation preservation
-  (`lower_mulHi_correct`, `lower_shiftRA_correct` in `Lowering.lean`).
+* The butterfly ops `#VPADD`/`#VPSUB`/`#VPMULL` are the dialect `add` / `mul`
+  constructors (binary pointwise).
+* The dialect ops `mulHi` (`VPMULH`, high-half product) and `shiftRA` (`VPSRA`,
+  signed arithmetic shift-right) used by Montgomery / Barrett reduction are given
+  `BitVec`-lane semantics here, and lower with denotation preservation
+  (`lower_mulHi_correct`, `lower_shiftRA_correct` in `Lowering.lean`). The 4-way
+  stage does not use them.
 
-Because the rendered stage text is *identical* to the direct emit, the bench
-KAT (`bench/mldsa_compare/`, `bench/mlkem_compare/` against PQClean /
-`Mathlib.Polynomial`-mod-q) that validates the direct emit validates this path
-verbatim — no new bytes, no fabricated KAT.
+The semantics of the rendered 4-way body is `LatticeNttEmit.runNtt4way`;
+`mldsaVec_denotation_preserves` / `mlkemVec_denotation_preserves` identify the
+tagged-op rendering with the program `LatticeNttEmit.ntt4wayBody`, whose run is
+characterized by `LatticeNttEmit.mldsa_ntt_4way_denotation_preserves` /
+`mlkem_ntt_4way_denotation_preserves`.
 -/
 
 @[expose] public section
@@ -126,19 +122,19 @@ def mlkemStageVec (s : Nat) : List String :=
   ++ [ "out[:u128 " ++ toString chunkA ++ "] = c;"
      , "out[:u128 " ++ toString chunkB ++ "] = d;" ]
 
-/-! ## 4. Byte-identity with the direct emit (the keystone)
+/-! ## 4. Equality with the direct emit
 
-The tagged-op stage renders to **exactly** the same lines as the direct
-`renderMldsaNtt4wayStage` / `renderMlkemNtt4wayStage`, op for op. -/
+The tagged-op stage renders to the same lines as the direct
+`renderMldsaNtt4wayStage` / `renderMlkemNtt4wayStage`. -/
 
-/-- **Keystone (ML-DSA): the tagged-op stage is byte-identical to the direct
-    `renderMldsaNtt4wayStage`** for every stage `s`. -/
+/-- The tagged-op ML-DSA stage equals the direct `renderMldsaNtt4wayStage` for
+    every stage `s`. -/
 theorem mldsaStageVec_eq_direct (s : Nat) :
     mldsaStageVec s = renderMldsaNtt4wayStage s := by
   rfl
 
-/-- **Keystone (ML-KEM): the tagged-op stage is byte-identical to the direct
-    `renderMlkemNtt4wayStage`** for every stage `s`. -/
+/-- The tagged-op ML-KEM stage equals the direct `renderMlkemNtt4wayStage` for
+    every stage `s`. -/
 theorem mlkemStageVec_eq_direct (s : Nat) :
     mlkemStageVec s = renderMlkemNtt4wayStage s := by
   rfl
@@ -149,18 +145,15 @@ def mldsaVecBody : List String :=
   [ "reg u128 a b c d t tw;" ] ++ [ "tw = inp[:u128 64];" ]
     ++ (List.range 8).flatMap mldsaStageVec
 
-/-- **Keystone: the full tagged-op ML-DSA body is byte-identical to the direct
-    body.** Hence the emitted `.jazz` (and its bench KAT) is preserved
-    verbatim. -/
+/-- The tagged-op ML-DSA body equals the direct `renderMldsaNtt4wayBody`. -/
 theorem mldsaVecBody_eq_direct : mldsaVecBody = renderMldsaNtt4wayBody := by
   rfl
 
 /-! ## 5. The listed butterfly ops as dialect `add`/`mul`
 
-The packed add/sub/mul lanes denote pointwise over the 4 (ML-DSA) / 8 (ML-KEM)
-`BitVec`-lane butterfly, grounded in the proven `mldsa_ntt_4way_lane_map` /
-`mlkem_ntt_4way_lane_map` keystones. The dialect `add`/`mul` ops lower with
-proven denotation preservation (`lower_add_correct`, `lower_mul`-shape). -/
+The dialect `add` / `mul` ops at `BitVec 32` lanes denote the pointwise lane
+sum, difference and wrapping product that the packed ops of the ML-DSA stage
+compute. -/
 
 /-- The lattice-lane shape this consumer denotes over: 4 lanes (ML-DSA) of the
     coefficient word. We pin the alphabet against `BitVec 32` lanes. -/
@@ -229,25 +222,41 @@ theorem newOps_lower_correct (v w : VectorTy (BitVec 16) 8) (m : Nat) :
   · exact lower_mulHi_correct (0 : BitVec 16) mulHi16 v w
   · exact lower_shiftRA_correct (0 : BitVec 16) shiftRA16 m v
 
-/-! ## 7. Denotation grounding (lane-parallel map)
+/-! ## 7. The tagged-op bodies as `ntt4wayBody`
 
-The tagged-op stage denotes the lane-parallel map of the per-lane butterfly
-across the 4 (ML-DSA) lanes, grounded in the proven
-`mldsa_ntt_4way_denotation_preserves` / `mlkem_ntt_4way_denotation_preserves`
-keystones. -/
+The tagged-op renderings are the renderings of the program
+`LatticeNttEmit.ntt4wayBody`, whose semantics `runNtt4way` computes the
+Cooley–Tukey butterflies (`mldsa_ntt_4way_denotation_preserves` /
+`mlkem_ntt_4way_denotation_preserves`). -/
 
-/-- **Denotation preservation for the VectorDialect ML-DSA 4-way path** — the
-    same lane-parallel-map equality the direct emit enjoys. Instantiates the
-    proven `mldsa_ntt_4way_lane_map`. -/
-theorem mldsaVec_denotation_preserves (lanes : MldsaNtt4Way) :
-    CatCrypt.Crypto.SecureCompilation.VIR.LaneMap.laneMap mldsaNttButterflySpec lanes =
-      (fun b => mldsaNttButterflySpec (lanes b)) :=
-  mldsa_ntt_4way_denotation_preserves lanes
+/-- The tagged-op ML-DSA body is the rendering of `ntt4wayBody 64`, and running
+    that program on 4 lanes of `u32` writes the butterfly of input chunks `2p`,
+    `2p+1` with the twiddle chunk 64 to output chunks `2p`, `2p+1` for `p < 8`. -/
+theorem mldsaVec_denotation_preserves :
+    mldsaVecBody = (ntt4wayBody 64).map (Ntt4wayInstr.render "4u32") ∧
+    ∀ s0 : Ntt4wayState 4 32,
+      (∀ p < 8, ∀ j : Fin 4,
+        ((runNtt4way s0 (ntt4wayBody 64)).out (4 * (2 * p) + j),
+          (runNtt4way s0 (ntt4wayBody 64)).out (4 * (2 * p + 1) + j))
+        = CatCrypt.Crypto.Optimizer.Lattice.NTTButterflyPass.ctButterfly
+            (s0.inp (4 * 64 + j)) (s0.inp (4 * (2 * p) + j)) (s0.inp (4 * (2 * p + 1) + j))) ∧
+      (∀ i, 4 * 16 ≤ i → (runNtt4way s0 (ntt4wayBody 64)).out i = s0.out i) :=
+  ⟨mldsaVecBody_eq_direct.trans mldsa_ntt_4way_denotation_preserves.1.symm,
+    mldsa_ntt_4way_denotation_preserves.2⟩
 
-/-- **Denotation preservation for the VectorDialect ML-KEM 4-way path.** -/
-theorem mlkemVec_denotation_preserves (lanes : MlkemNtt4Way) :
-    CatCrypt.Crypto.SecureCompilation.VIR.LaneMap.laneMap mlkemNttButterflySpec lanes =
-      (fun b => mlkemNttButterflySpec (lanes b)) :=
-  mlkem_ntt_4way_denotation_preserves lanes
+/-- Each tagged-op ML-KEM stage is the rendering of `ntt4wayStage s`, and running
+    `ntt4wayBody 32` on 8 lanes of `u16` writes the butterfly of input chunks `2p`,
+    `2p+1` with the twiddle chunk 32 to output chunks `2p`, `2p+1` for `p < 8`. -/
+theorem mlkemVec_denotation_preserves :
+    (∀ s, mlkemStageVec s = (ntt4wayStage s).map (Ntt4wayInstr.render "8u16")) ∧
+    ∀ s0 : Ntt4wayState 8 16,
+      (∀ p < 8, ∀ j : Fin 8,
+        ((runNtt4way s0 (ntt4wayBody 32)).out (8 * (2 * p) + j),
+          (runNtt4way s0 (ntt4wayBody 32)).out (8 * (2 * p + 1) + j))
+        = CatCrypt.Crypto.Optimizer.Lattice.NTTButterflyPass.ctButterfly
+            (s0.inp (8 * 32 + j)) (s0.inp (8 * (2 * p) + j)) (s0.inp (8 * (2 * p + 1) + j))) ∧
+      (∀ i, 8 * 16 ≤ i → (runNtt4way s0 (ntt4wayBody 32)).out i = s0.out i) :=
+  ⟨fun s => (mlkemStageVec_eq_direct s).trans (ntt4wayStage_render_mlkem s).symm,
+    mlkem_ntt_4way_denotation_preserves.2⟩
 
 end CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.MldsaNtt4WayVec

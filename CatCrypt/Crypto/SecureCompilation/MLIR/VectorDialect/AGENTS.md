@@ -49,7 +49,7 @@ Names below are relative to `CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialec
 |---|---|---|
 | `ConsumerDemo.lean` | none | `vpadd4u32_abstract_eq`, `vpadd4u32_lowered_eq` |
 | `ChaCha4WayVec.lean` | `chacha4wayVecJazz_eq_direct`, `vecBody_eq_direct` | `vec_denotation_preserves` (an instance of `LaneMap.chacha4way_lane_map`) |
-| `MldsaNtt4WayVec.lean` | `mldsaStageVec_eq_direct`, `mldsaVecBody_eq_direct` | `mldsaVec_denotation_preserves` (lane map); `newOps_lower_correct` |
+| `MldsaNtt4WayVec.lean` | `mldsaStageVec_eq_direct`, `mldsaVecBody_eq_direct` | `mldsaVec_denotation_preserves` / `mlkemVec_denotation_preserves` (the rendering is `LatticeNttEmit.ntt4wayBody`, whose run writes Cooley–Tukey butterflies); `newOps_lower_correct` |
 | `GfniLaneVec.lean` | `render_eq_direct_mulb` and the affine variants | `mulb_packs_to_denoteGfni` |
 | `VAESLaneVec.lean` | `render_eq_direct` | `aesRound_eq_denoteVAES2` |
 | `KeccakRhoVec.lean` | none | `rho_denotation_preserves` (lane map) |
@@ -68,22 +68,21 @@ refer to the rendered text of the same module.
 | Per-lane lowering | `lower_add_correct` and the other `lower_*_correct` | one constructor each, any carrier and lane count | `Lowering.lean` |
 | Selector correctness | `lowerWithSelector_denote_of_classEquiv` | the selector returns a class member (`ClassMemberSelector`), `build op = some cls`, every candidate in `cls` denotes `spec` | `LoweringChoice.lean` |
 | Vectorizing the `lanewiseAdd` pattern | `AutoVectorize.lanewiseAdd_vectorize_denotation_preserves` | the `lanewiseAdd` pattern only | `AutoVectorize/Vectorize.lean` |
-| AVX-512 lowering | `lowerAVX512_add_correct` and the other `lowerAVX512_*_correct` | one constructor each | `LoweringAVX512.lean` |
-| Packed field multiply | `RistrettoFieldVec.mul2625_decode` | `ReducesTo red` | `RistrettoFieldVec.lean` |
-| Packed Edwards addition | `RistrettoFieldVec.edwardsAdd2625_decode` | `ReducesTo red`, decodes of the constants `1` and `d`, an inverse realizer | `RistrettoFieldVec.lean` |
+| AVX-512 lowering | `lowerAVX512_correct` | the instruction semantics `denote512` is per lane, determined by mnemonic and width; `VGF2P8AFFINEQB` / `VAESENC` take the byte affine map and AES round as a `LeafSem` parameter | `LoweringAVX512.lean` |
+| Packed field multiply | `RistrettoFieldVec.mul2625_decode` | integer limbs, no lane overflow | `RistrettoFieldVec.lean` |
+| Packed Edwards addition | `RistrettoFieldVec.edwardsAdd2625_decode` | the limb vector `dL` decodes to `d` | `RistrettoFieldVec.lean` |
 
 ## What is not proved
 
-- `denote512` is defined as the lane function carried by the instruction, so the
-  `lowerAVX512_*_correct` theorems hold by `rfl`. No theorem relates an AVX-512
-  mnemonic or the text of `renderAVX512` to an x86 semantics, and the chosen
-  `LaneWidth` is not tied to the lane count `n`.
+- No theorem relates the text of `renderAVX512` to `denote512`; masking, memory
+  operands and the EVEX encoding are not modelled.
 - The `*_eq_direct` theorems are string equalities with the existing emitters; no
   theorem in this directory relates that text to a machine model.
-- `mul2625_decode` takes `ReducesTo red` as a hypothesis, and no theorem shows that a
-  concrete reduction satisfies it; `eval2625_reduce19` is proved separately.
-  `ct_data_indep` holds because `PackedFieldOp.dataIndep` is constantly `true`, and
-  states nothing about leakage.
+- The limbs of `RistrettoFieldVec` are unbounded integers, and no theorem connects
+  them to the `BitVec 64` lane words of the same module. `ct_data_indep` states that
+  the op list `mulReduceOps` contains no data-dependent op of the `PackedFieldOp`
+  alphabet; the list is not derived from `mul2625`, and no leakage semantics is
+  given.
 - The two leaf simulations are `native_decide` checks of a Boolean agreement function
   on bounded inputs: all residues below 127 for QR-UOV, and 4-bit inputs for one round
   of the UOV GF(256) multiply.

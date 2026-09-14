@@ -266,19 +266,14 @@ def runABlock (s : AState) : List AInst → AState
 
 `ArmControlFlow.lean` lowers a **bounded counter loop** — `for k in 0..n { body }`
 — to a single body copy wrapped in an A64 back-edge `label: <body> ; CBNZ <ctr>,
-label`, instead of unrolling the body `n` times. The machine semantics of that
-looped form is `runBoundedLoopA s n body`: the `evalAInst`-fold of `body` run `n`
-times, the A64 analogue of `X86Backend/LoopUnroll.runBoundedLoop`. We give the
-semantics here (it lives at the model level, no control-flow `AInst` needed: the
-body is assumed to perform its own counter decrement, so the looped emission and
-the semantics agree on the register state) and prove its denotation in
-`ArmControlFlow.lean`. -/
+label`, instead of unrolling the body `n` times. `runBoundedLoopA s n body` is the
+`evalAInst`-fold of `body` run `n` times, the A64 analogue of
+`X86Backend/LoopUnroll.runBoundedLoop`. `ArmControlFlow.loopABlock_denote` shows
+that executing the looped form (`ArmControlFlow.runALoop`) from a counter holding
+`n` reaches this state when the body decrements the counter. -/
 
-/-- `runBoundedLoopA s n body`: the machine semantics of a bounded counter loop
-    that runs the straight-line `body` exactly `n` times over the `AState` model.
-    The A64 analogue of `X86Backend/LoopUnroll.runBoundedLoop`; `body` is assumed
-    to perform its own counter decrement (so the looped emission's `CBNZ` back-edge
-    tests the just-decremented counter). -/
+/-- `runBoundedLoopA s n body`: the straight-line `body` run exactly `n` times over
+    the `AState` model. The A64 analogue of `X86Backend/LoopUnroll.runBoundedLoop`. -/
 def runBoundedLoopA (s : AState) (n : Nat) (body : List AInst) : AState :=
   match n with
   | 0 => s

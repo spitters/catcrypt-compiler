@@ -24,7 +24,7 @@ modules declare into `ARMBackend.<ModuleName>`. Exceptions: `ArmModel.lean`,
 | `ArmModel.lean` | `AState`, `evalAInst`, `runABlock`; `BState`, `evalBInst`, `runBBlock`; the counter loop `runBoundedLoopA` with `runBoundedLoopA_eq_runABlock_unroll` |
 | `ArmLowering.lean` | `AOp → AInst` and `BOp → BInst`; `armBlock_lowering_denote`, `bignumBlock_lowering_denote` (the lowered run equals the fold of the per-op semantics); the RFC 8439 quarter-round KAT `qr_rfc_kat` |
 | `ArmAsmPrinter.lean` | GAS text for `AInst` (`renderAInst`), `BInst` (`renderBInst`) and branches; the non-spilling linear-scan allocator `allocGp` and the name map `gpOf` |
-| `ArmControlFlow.lean` | `loopABlock`, the GAS lines of a counter loop (label, one body copy, `CBNZ`), with `loopABlock_length`; `loopABlock_denote` |
+| `ArmControlFlow.lean` | `loopABlock`, the GAS lines of a counter loop (label, one body copy, `CBNZ`), with `loopABlock_length`; the loop instruction `ALoop` (rendered by `loopABlock`) with the fuel-bounded execution `runALoop`, and `looped_eq_unrolled_denote`: a body that decrements the counter runs to the unrolled block |
 | `NeonModel.lean`, `NeonLowering.lean`, `NeonAsmPrinter.lean` | The 4×u32 register file `NState` and the 8×i16 view `NState8x16` (`evalNInst8x16`); `neonBlock_lowering_denote`; GAS ASIMD text |
 | `NeonCryptoModel.lean` | AESE, AESMC, AESD, AESIMC, PMULL, PMULL2 on 128-bit registers: semantics, `neonCryptoBlock_lowering_denote`, encoder, `roundtrip_ncrypt_*`; `aese_aesmc_eq_x86` on the FIPS-197 example |
 
@@ -117,8 +117,11 @@ computed values are checked by `native_decide` on worked vectors (`addp256_kat`,
   `SailArm64Refinement.lean` above). The per-instruction semantics is checked against
   the Arm ARM by reading and by external differential tests.
 - No theorem relates the text of `ArmAsmPrinter.lean` or `NeonAsmPrinter.lean` to a
-  model. `loopABlock_denote` and `ladder_loop_denote` equate the semantic loop with
-  the unrolled block and do not mention the rendered `CBNZ` form.
+  model. The `loopABlock` lines are the rendering of an `ALoop`, whose execution
+  `runALoop` follows the label and `CBNZ` back-edge; `looped_eq_unrolled_denote`
+  equates it with the unrolled block when the body decrements the counter.
+  `ladder_loop_denote` is about `runBoundedLoopB`, which takes the trip count as an
+  argument.
 - The `mulhs` arm of `evalNInst8x16` is the plain signed high half, while
   `encodeNInst8x16` emits `SQDMULH`, which doubles and saturates; the difference is
   not discharged (see also `../TileBackend/TileS16HighMul.lean`).

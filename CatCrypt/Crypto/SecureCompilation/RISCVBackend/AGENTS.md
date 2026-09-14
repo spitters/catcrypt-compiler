@@ -30,7 +30,7 @@ modules declare into `RISCVBackend.<ModuleName>`. Exceptions: `RiscvModel.lean`,
 | `RiscvModel64.lean`, `RiscvLowering64.lean` | `RState64`, `evalRInst64`, `runRBlock64`; `sltu_add_carry`, `sltu_sub_borrow`; carry, borrow and mask-select macros with `riscvBlock64_lowering_denote` and `native_decide` KATs (`addcc_carry_kat`, `csub_cond1_kat`, ...) |
 | `RvvModel.lean`, `RvvLowering.lean`, `RvvAsmPrinter.lean` | `VState`, `evalVInst`, `runVBlock`; the 8×i16 view `VState8x16` with `evalVInst8x16`; `rvvBlock_lowering_denote`; GAS RVV text |
 | `RiscvAsmPrinter.lean`, `RiscvAsmPrinter64.lean` | GAS text (`renderRInst`, `renderRInst64`) and linear-scan allocators (`allocGp`, pool `gpPool64`) |
-| `RiscvControlFlow.lean` | `loopRBlock`, the GAS lines of a counter loop with a `BNE` back-edge, `loopRBlock_length`, `loopRBlock_denote` |
+| `RiscvControlFlow.lean` | `loopRBlock`, the GAS lines of a counter loop with a `BNE` back-edge, `loopRBlock_length`; the loop instruction `RLoop` (rendered by `loopRBlock`) with the fuel-bounded execution `runRLoop`, and `looped_eq_unrolled_denote`: a body that decrements the counter runs to the unrolled block |
 
 ## Encoders, round trips and objects
 
@@ -111,9 +111,11 @@ is the concatenation of the field-operation blocks; its value is not checked in 
   discharge, and no theorem composes the per-step relation over a block.
 - The decode round trips are not conjuncts of the whole-`Com` theorems, and no theorem
   maps the names of the compiled `RInst64` block into `emittedRegs`.
-- No theorem relates the printers' text or the `loopRBlock` lines to a model;
-  `loopRBlock_denote` and `ladder_loop_denote` equate the semantic loop with the
-  unrolled block.
+- No theorem relates the printers' text to a model. The `loopRBlock` lines are the
+  rendering of an `RLoop`, whose execution `runRLoop` follows the label and `BNE`
+  back-edge; `looped_eq_unrolled_denote` equates it with the unrolled block when the
+  body decrements the counter. `ladder_loop_denote` is about `runBoundedLoopR64`,
+  which takes the trip count as an argument.
 - The correspondence between the in-file Sail excerpts and the sail-riscv-lean output
   is not checked in the package.
 

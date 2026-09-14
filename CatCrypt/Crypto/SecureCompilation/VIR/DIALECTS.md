@@ -149,8 +149,10 @@ mathematical Tate or Weil pairing.
 
 - There is no NTT-specific dialect. The ML-KEM NTT text is
   `VIR/LatticeNttEmit.lean`'s `emitMlkemNttFull16wayJazz`, a string renderer that no
-  theorem relates to the transform; the module's lane-independence theorems are
-  instantiated at the per-lane block `id` (`mlkemNttButterflySpec`).
+  theorem relates to the transform. The module's 4-way butterfly kernels have a
+  semantics (`runNtt4way` over `ntt4wayBody`), and
+  `mlkem_ntt_4way_denotation_preserves` states that they compute Cooley–Tukey
+  butterflies in wrapping word arithmetic.
   `latticeNttMul_compile_correct`
   (`VIR/CompilerCorrectness.lean`) concerns the `.bits` lattice model described in
   the transport table.

@@ -316,6 +316,6 @@ def emitMain : IO Unit := do
   IO.println "  ONE .s: owned BabyBear leaves (compress/squeeze/round-step/bb_inv)"
   IO.println "  + owned sum-check orchestration loops (Spartan two-phase, Jolt), loopLcmd back-edges"
   IO.println "  Spartan+Jolt sum-check FIELD CORE, owned x86 backend, NO jasminc"
-  IO.println "  RESIDUAL: PCS curve MSM not owned-emittable (curve backend); see ZK_PHASE_APPLES_TO_APPLES.md"
+  IO.println "  not included: the polynomial-commitment multi-scalar multiplication over the curve"
 
 end CatCrypt.Crypto.SecureCompilation.VIR.ZkSumCheckWholeProverEmit

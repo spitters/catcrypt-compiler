@@ -86,7 +86,7 @@ earliest live slot), so the resulting RA is informative regardless.
 * `mlkemNttRA_coalesce` — the cross-iter + coalesce RA.
 * `mlkemNttRA_coalesce_WellFormed` — well-formedness.
 * `coalesceCandidateCount` test — the butterfly's three-address `t =
-  VPMULL(b, tw)` and `c = VPADD(a, t)` shapes are genuine three-address
+  VPMULL(b, tw)` and `c = VPADD(a, t)` shapes are three-address
   (`dst ≠ head rds`), so coalesce candidates EXIST (unlike ChaCha and
   Poseidon2 where everything is already two-address).
 * `emitMlkemNtt4wayRaJazz` — the RA-driven emit.
@@ -96,9 +96,8 @@ earliest live slot), so the resulting RA is informative regardless.
 ## Axiom budget
 
 `[propext, Quot.sound]` only. The denotation theorem composes
-`mlkem_ntt_4way_lane_map` (storage-class-agnostic by construction),
-exactly as `LatticeNttEmit.mlkem_ntt_4way_denotation_preserves` does for
-the baseline emit. The slot-remap is a string-level relabeling and does
+`mlkem_ntt_4way_lane_map` (storage-class-agnostic by construction)
+at the identity block `mlkemNttButterflySpec`. The slot-remap is a string-level relabeling and does
 not enter any theorem statement.
 -/
 
@@ -239,7 +238,7 @@ theorem tw_not_carried_crossIter :
 
 /-! ## 5. Coalesce-candidate audit
 
-The ML-KEM butterfly has **genuine three-address** ops:
+The ML-KEM butterfly has three-address ops:
 
 * `t = VPMULL(b, tw)`: `dst = t = 2`, `head rds = b = 1`. So `dst ≠ src1`.
 * `c = VPADD(a, t)`:  `dst = c = 3`, `head rds = a = 0`. So `dst ≠ src1`.

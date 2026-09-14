@@ -268,8 +268,9 @@ RV64 has no `CBNZ`: the counter back-edge is the **B-type** conditional branch
 in the **scrambled** field layout `imm[12|10:5] rs2 rs1 funct3 imm[4:1|11]
 opcode`, the RV64 immediate quirk handled in `RiscvEncoder`. The branch alphabet
 is a *separate* inductive from `RInst` (the straight-line model carries no PC);
-the loop *semantics* is `runBoundedLoopR` (the body's counter decrement + the
-back-edge collapse to "run the body `n` times"). -/
+`runBoundedLoopR` runs the body `n` times, and `RiscvControlFlow.loopRBlock_denote`
+shows that executing the looped form (`RiscvControlFlow.runRLoop`) from a counter
+holding `n` reaches that state when the body decrements the counter. -/
 
 /-- A function-local branch label (a string symbol). -/
 abbrev RLabel : Type := String
@@ -315,11 +316,8 @@ inductive RBranch where
   | j (l : RLabel)
   deriving Repr, DecidableEq
 
-/-- `runBoundedLoopR s n body`: the machine semantics of a bounded counter loop
-    that runs the straight-line `body` exactly `n` times over the `RState` model.
-    The RV64 analogue of `ARMBackend.runBoundedLoopA`; `body` is assumed to perform
-    its own counter decrement (so the looped emission's `BNE` back-edge tests the
-    just-decremented counter). -/
+/-- `runBoundedLoopR s n body`: the straight-line `body` run exactly `n` times over
+    the `RState` model. The RV64 analogue of `ARMBackend.runBoundedLoopA`. -/
 def runBoundedLoopR (s : RState) (n : Nat) (body : List RInst) : RState :=
   match n with
   | 0 => s

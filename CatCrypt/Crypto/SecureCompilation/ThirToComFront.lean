@@ -2680,16 +2680,15 @@ Montgomery representative `x`, the power is computed by four `montmul`s:
 
 The output is lazy: there is no final conditional subtraction. Each `montmul` is
 the REDC body of §14 (`montMulSpec64`), and the S-box is their composition. This
-module proves only the equalities with the reference definitions
-`sboxSpec64`/`sboxSpec`; the range of the result and its congruence to
-`x^7 · R⁻⁶` modulo `p` (for a Montgomery representative `x = x̃·R`, the
-representative `x̃^7 · R` of `x̃^7`) are not proved. The congruence fails for some
-inputs below `p`: for `x = 2012966596` the intermediate `x3 = 3223893146`
-exceeds `1.5p`, the sum `t + m·p` of `x6 = montmul(x3, x3)` exceeds `2^64` and
-wraps, and `sboxSpec64 x · R⁶ ≢ x^7 (mod p)`. Each step is an exact REDC when its
-sum `t + m·p` is below `2^64`, which holds whenever `a·b + (2^32 − 1)·p < 2^64`
-for its operands `a`, `b`; with the step bound `r ≤ (a·b + (2^32 − 1)·p) / 2^32`
-this holds at all four steps for every `x ≤ 1756563332`. Like §14 the S-box
+module proves the equalities with the reference definitions
+`sboxSpec64`/`sboxSpec`. The congruence `sboxSpec64 x · R⁶ ≡ x^7 (mod p)` (for a
+Montgomery representative `x = x̃·R`, the output is the representative `x̃^7 · R`
+of `x̃^7`) is `ThirSboxRange.sboxSpec64_modEq`, for every `x ≤ 1756563332`; its
+steps are `ThirSboxRange.montMulSpec64_exact` (a REDC step is exact when
+`a·b + (2^32 − 1)·p < 2^64`) and `ThirSboxRange.montMulSpec64_step`. The congruence
+fails for some inputs below `p`: for `x = 2012966596` the intermediate
+`x3 = 3223893146` exceeds `1.5p`, the sum `t + m·p` of `x6 = montmul(x3, x3)`
+exceeds `2^64` and wraps, and `sboxSpec64 x · R⁶ ≢ x^7 (mod p)`. Like §14 the S-box
 has a single output: `x7`, the result `r` of the last `montmul`, is the last
 binding, with no identity copy. The program runs at width 64 (the `32×32→64`
 REDC product needs 64-bit intermediates), so the `u32` input is held in a `u64`

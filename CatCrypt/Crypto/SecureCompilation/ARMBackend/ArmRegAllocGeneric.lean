@@ -18,7 +18,7 @@ proved **once**. This module **validates the abstraction against the existing AR
 instance**: it exhibits `MachineModel AInst` / `RegMachine AInst AState` / `MemMachine
 AMemState` instances built from the *already-proved* `ArmRegAlloc` facts
 (`evalAInst_eq_set`, `writtenName_rename`, the `AState` register-file laws, the
-`AMemState` cell laws), and shows the generic `renameBlock_runBlock` keystone, instantiated
+`AMemState` cell laws), and shows the generic theorem `renameBlock_runBlock`, instantiated
 at the ARM types, gives back exactly what `ArmRegAlloc.renameABlock_runABlock` proved.
 
 This is the "do the generic lemmas, specialized, recover the hand-proved ones?" check:
@@ -75,7 +75,7 @@ instance instMachineModelAInst : MachineModel AInst where
   mkReload r _off := .mov r r
 
 /-- **`RegMachine AInst AState`**: the A64 semantic interface, wired from the existing
-    `ArmRegAlloc`/`ArmModel` facts. The generic `renameBlock_runBlock` keystone specializes
+    `ArmRegAlloc`/`ArmModel` facts. The generic theorem `renameBlock_runBlock` specializes
     through this instance to the A64 register-resident path that `ArmRegAlloc.renameABlock_runABlock`
     proves by hand. -/
 instance instRegMachineAInst : RegMachine AInst AState where
@@ -135,8 +135,9 @@ instance instMemMachineAMemState : MemMachine AMemState where
 /-! ## 3. The abstraction validated: the generic keystones recover the ARM ones
 
 The generic `renameBlock_runBlock` / `spillStore_establishes` / `reload_sandwich`,
-instantiated at the A64 types, are the statements `ArmRegAlloc` proved by hand — obtained
-here from the generic pass with no re-proof. -/
+instantiated at the A64 types, give `ArmRegAlloc.renameABlock_runABlock`,
+`ArmRegAlloc.spillStore_establishes` and `ArmRegAlloc.evalReload_noop` from the generic
+pass with no re-proof. -/
 
 /-- **A64 resident-path soundness via the generic pass.** `GenericRegAlloc.renameBlock_runBlock`
     at `AInst`/`AState`: an injective `wzr`-preserving renaming `ρ` commutes with `runABlock`.
@@ -163,8 +164,10 @@ theorem spillStore_establishes_generic (m : AMemState) (off : Int) (r : String) 
       (CatCrypt.Crypto.Optimizer.GenericRegAlloc.evalSpillStore m off r) :=
   CatCrypt.Crypto.Optimizer.GenericRegAlloc.spillStore_establishes m off r
 
-/-- **A64 reload-roundtrip via the generic pass** — `GenericRegAlloc.reload_sandwich` at
-    `AMemState` (the content of `ArmRegAlloc.reload_sandwich`). -/
+/-- **A64 reload at an agreeing cell via the generic pass** — `GenericRegAlloc.reload_sandwich`
+    at `AMemState`: when cell `off` holds `r`'s value, the reload is a no-op (the content of
+    `ArmRegAlloc.evalReload_noop`). The composition with a spill store and an intervening
+    block is `ArmRegAlloc.reload_sandwich`. -/
 theorem reload_sandwich_generic (m : AMemState) (off : Int) (r : String)
     (hv : CatCrypt.Crypto.Optimizer.GenericRegAlloc.SpillValid off r m) :
     CatCrypt.Crypto.Optimizer.GenericRegAlloc.evalReload m r off = m :=

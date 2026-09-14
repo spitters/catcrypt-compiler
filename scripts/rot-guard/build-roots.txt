@@ -953,3 +953,5 @@ CatCrypt.Tactics.TryBij2
 CatCrypt.Tactics.UpToBad
 CatCrypt.Tactics.WP
 CatCrypt.Crypto.Hax.HaxToLowCTSim_Full
+CatCrypt.Crypto.SecureCompilation.ThirSboxRange
+CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.ConsumerDemo
