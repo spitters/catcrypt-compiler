@@ -351,9 +351,14 @@ theorem translateDialectFull_preserves_noAlias {Γ : Ctx} (vm : VarMap Γ) {c : 
   | rSelect dst sel src0 src1 =>
       simp only [translateDialectFull] at hT
       split at hT
-      · exact absurd hT (by simp)
-      · rename_i ra hra; simp only [Option.some.injEq] at hT; subst hT
-        exact noAlias_bind hNA dst.locVar
+      · simp only [Option.some.injEq] at hT; subst hT
+        exact noAlias_bind (noAlias_weaken (noAlias_weaken (noAlias_weaken
+          (noAlias_weaken (noAlias_weaken (noAlias_weaken (noAlias_weaken hNA)))))))
+          dst.locVar
+      · split at hT
+        · exact absurd hT (by simp)
+        · simp only [Option.some.injEq] at hT; subst hT
+          exact noAlias_bind hNA dst.locVar
   | rCallDstThreaded fname dst args =>
       simp only [translateDialectFull] at hT
       split at hT
@@ -369,15 +374,21 @@ theorem translateDialectFull_preserves_noAlias {Γ : Ctx} (vm : VarMap Γ) {c : 
   | rArrLoadLit dst src idx =>
       simp only [translateDialectFull] at hT
       split at hT
-      · exact absurd hT (by simp)
-      · rename_i ra hra; simp only [Option.some.injEq] at hT; subst hT
-        exact noAlias_bind hNA dst.locVar
+      · simp only [Option.some.injEq] at hT; subst hT
+        exact noAlias_bind (noAlias_weaken hNA) dst.locVar
+      · split at hT
+        · exact absurd hT (by simp)
+        · simp only [Option.some.injEq] at hT; subst hT
+          exact noAlias_bind hNA dst.locVar
   | rArrStoreLit arr idx src =>
       simp only [translateDialectFull] at hT
       split at hT
-      · exact absurd hT (by simp)
-      · rename_i ra hra; simp only [Option.some.injEq] at hT; subst hT
-        exact noAlias_bind hNA arr.locVar
+      · simp only [Option.some.injEq] at hT; subst hT
+        exact noAlias_bind (noAlias_weaken hNA) arr.locVar
+      · split at hT
+        · exact absurd hT (by simp)
+        · simp only [Option.some.injEq] at hT; subst hT
+          exact noAlias_bind hNA arr.locVar
   | rArrLoad dst src idxVar =>
       simp only [translateDialectFull] at hT
       split at hT <;>
@@ -1013,28 +1024,41 @@ theorem rustExecSimulatesDialect
         obtain ⟨w, hInv'⟩ := interp_cons_setTower_any hInv dst.locVar (encodeTy dst.locDst)
           ⟨dst.locDst, leafSpec.call f dst.locDst ((dst :: args).map (·.locDst)) oldDestV argList⟩
         exact ⟨HVec.cons w V, hInv'⟩
+  -- The word select chain binds seven anonymous temporaries and the destination;
+  -- its post-state valuation is the canonical witness of the alias-free `VarMap`.
+  -- Any other select is one opaque leaf binding.
   | selectFalse dst sel src0 src1 rs0 hTy srcV _hSel _hLook =>
       simp only [translateDialectControl, translateDialectFull] at hTrans
       split at hTrans
-      · exact absurd hTrans (by simp)
-      · rename_i ra hra
-        simp only [Option.some.injEq] at hTrans
+      · simp only [Option.some.injEq] at hTrans
         subst hTrans
-        simp only [locatedUpdate]
-        obtain ⟨w, hInv'⟩ := interp_cons_setTower_any hInv dst.locVar (encodeTy dst.locDst)
-          ⟨dst.locDst, hTy ▸ srcV⟩
-        exact ⟨HVec.cons w V, hInv'⟩
+        exact ⟨_, noAlias_canonical_witness (noAlias_bind (noAlias_weaken (noAlias_weaken
+          (noAlias_weaken (noAlias_weaken (noAlias_weaken (noAlias_weaken
+            (noAlias_weaken hInv.noAlias))))))) dst.locVar) _⟩
+      · split at hTrans
+        · exact absurd hTrans (by simp)
+        · simp only [Option.some.injEq] at hTrans
+          subst hTrans
+          simp only [locatedUpdate]
+          obtain ⟨w, hInv'⟩ := interp_cons_setTower_any hInv dst.locVar (encodeTy dst.locDst)
+            ⟨dst.locDst, hTy ▸ srcV⟩
+          exact ⟨HVec.cons w V, hInv'⟩
   | selectTrue dst sel src0 src1 rs0 hTy v srcV _hSel _hNe _hLook =>
       simp only [translateDialectControl, translateDialectFull] at hTrans
       split at hTrans
-      · exact absurd hTrans (by simp)
-      · rename_i ra hra
-        simp only [Option.some.injEq] at hTrans
+      · simp only [Option.some.injEq] at hTrans
         subst hTrans
-        simp only [locatedUpdate]
-        obtain ⟨w, hInv'⟩ := interp_cons_setTower_any hInv dst.locVar (encodeTy dst.locDst)
-          ⟨dst.locDst, hTy ▸ srcV⟩
-        exact ⟨HVec.cons w V, hInv'⟩
+        exact ⟨_, noAlias_canonical_witness (noAlias_bind (noAlias_weaken (noAlias_weaken
+          (noAlias_weaken (noAlias_weaken (noAlias_weaken (noAlias_weaken
+            (noAlias_weaken hInv.noAlias))))))) dst.locVar) _⟩
+      · split at hTrans
+        · exact absurd hTrans (by simp)
+        · simp only [Option.some.injEq] at hTrans
+          subst hTrans
+          simp only [locatedUpdate]
+          obtain ⟨w, hInv'⟩ := interp_cons_setTower_any hInv dst.locVar (encodeTy dst.locDst)
+            ⟨dst.locDst, hTy ▸ srcV⟩
+          exact ⟨HVec.cons w V, hInv'⟩
   | assert label rs0 =>
       simp only [translateDialectControl, translateDialectFull, Option.some.injEq] at hTrans
       subst hTrans
@@ -1078,28 +1102,39 @@ theorem rustExecSimulatesDialect
          obtain ⟨w, hInv'⟩ := interp_cons_setTower_any hInv dst.locVar (encodeTy dst.locDst)
            ⟨dst.locDst, leafSpec.arrLoad dst oldV ⟨src.locDst, srcV⟩ idx⟩
          exact ⟨HVec.cons w V, hInv'⟩)
+  -- The word-array literal-index access binds an anonymous index temporary and the
+  -- destination; its post-state valuation is the canonical witness of the
+  -- alias-free `VarMap`. Any other shape is one opaque leaf binding.
   | arrStoreLit arr idx src rs0 oldV srcV _hLookArr _hLookSrc =>
       simp only [translateDialectControl, translateDialectFull] at hTrans
       split at hTrans
-      · exact absurd hTrans (by simp)
-      · rename_i ra hra
-        simp only [Option.some.injEq] at hTrans
+      · simp only [Option.some.injEq] at hTrans
         subst hTrans
-        simp only [locatedUpdate]
-        obtain ⟨w, hInv'⟩ := interp_cons_setTower_any hInv arr.locVar (encodeTy arr.locDst)
-          ⟨arr.locDst, leafSpec.arrStore arr oldV idx ⟨src.locDst, srcV⟩⟩
-        exact ⟨HVec.cons w V, hInv'⟩
+        exact ⟨_, noAlias_canonical_witness
+          (noAlias_bind (noAlias_weaken hInv.noAlias) arr.locVar) _⟩
+      · split at hTrans
+        · exact absurd hTrans (by simp)
+        · simp only [Option.some.injEq] at hTrans
+          subst hTrans
+          simp only [locatedUpdate]
+          obtain ⟨w, hInv'⟩ := interp_cons_setTower_any hInv arr.locVar (encodeTy arr.locDst)
+            ⟨arr.locDst, leafSpec.arrStore arr oldV idx ⟨src.locDst, srcV⟩⟩
+          exact ⟨HVec.cons w V, hInv'⟩
   | arrLoadLit dst src idx rs0 oldV srcV _hLookDst _hLookSrc =>
       simp only [translateDialectControl, translateDialectFull] at hTrans
       split at hTrans
-      · exact absurd hTrans (by simp)
-      · rename_i ra hra
-        simp only [Option.some.injEq] at hTrans
+      · simp only [Option.some.injEq] at hTrans
         subst hTrans
-        simp only [locatedUpdate]
-        obtain ⟨w, hInv'⟩ := interp_cons_setTower_any hInv dst.locVar (encodeTy dst.locDst)
-          ⟨dst.locDst, leafSpec.arrLoad dst oldV ⟨src.locDst, srcV⟩ idx⟩
-        exact ⟨HVec.cons w V, hInv'⟩
+        exact ⟨_, noAlias_canonical_witness
+          (noAlias_bind (noAlias_weaken hInv.noAlias) dst.locVar) _⟩
+      · split at hTrans
+        · exact absurd hTrans (by simp)
+        · simp only [Option.some.injEq] at hTrans
+          subst hTrans
+          simp only [locatedUpdate]
+          obtain ⟨w, hInv'⟩ := interp_cons_setTower_any hInv dst.locVar (encodeTy dst.locDst)
+            ⟨dst.locDst, leafSpec.arrLoad dst oldV ⟨src.locDst, srcV⟩ idx⟩
+          exact ⟨HVec.cons w V, hInv'⟩
   | limbStoreExpr loc idx e rs0 oldDestV _hLook =>
       cases hCov with | ofCovered hc => cases hc
   | scalarSetExpr x e rs0 =>

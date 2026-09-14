@@ -65,7 +65,12 @@ conditional through `corresL_if`, and the while loop through `corresU_whileNz`. 
 dynamic-index array read and write `RArrLoad` / `RArrStore` go through
 `corresL_arrLoad` / `corresL_arrStore`, which read and write the element at the index
 modulo the array length, as `memGetDyn` / `memSetDyn` do; the literal limb store
-`RLimbStore` goes through `corresL_limbStore`. These three nodes carry no store guard.
+`RLimbStore` goes through `corresL_limbStore`, and the literal-index read and write
+`RArrLoadLit` / `RArrStoreLit` go through `corresL_arrLoadLit` / `corresL_arrStoreLit`
+at an index below the array length. The constant-time word select `RSelect` goes
+through `corresL_select`, which sets the destination to the first source when the
+selector is zero and to the second otherwise, as `selectWord` does. These six nodes
+carry no store guard.
 
 On the decidable straight-line fragments (`isAscendableB`, `isAscendableExprB`)
 `ascendG` emits no guard and its transformer is `asemW` / `asemWExpr`
@@ -117,6 +122,11 @@ def phiSet (name nv : String) (tv ev : Nat) (a : AField) : AField :=
   fun s => if s = nv then
       (if a name = 0 then (ev : ZMod (2 ^ 64)) else (tv : ZMod (2 ^ 64)))
     else a s
+
+/-- The constant-time select on the abstract store:
+    `dst := if a sel = 0 then a s0 else a s1`. -/
+def selSet (sel dst s0 s1 : String) (a : AField) : AField :=
+  setVal dst (if a sel = 0 then a s0 else a s1) a
 
 /-- The abstract guard of `RWhileNz name _` and of the guarded `RIfNz name _ RSkip`:
     the word at `name` is nonzero. -/
@@ -818,6 +828,85 @@ theorem corresL_limbStore (L : ArrLayout) (loc : Located) (idx : Nat) (v : BitVe
   · exact srwordL_arrWrite loc.locVar n idx av _ v _ rfl hSR hsz hav'
       (fun j => by by_cases h : j.val = idx <;> simp [h, Fin.ext_iff]) (fun y => rfl)
 
+/-- A literal index below the array length and below `2 ^ 64`, taken as a 64-bit word
+    and reduced modulo the length, is the index itself. -/
+theorem litIdx_mod {idx m : Nat} (hidx : idx < m + 1) (hlit : idx < 2 ^ 64) :
+    (BitVec.ofNat 64 idx).toNat % (m + 1) = idx := by
+  rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hlit, Nat.mod_eq_of_lt hidx]
+
+/-- The literal-index array read over a layout: `RArrLoadLit dst src idx` with `src` a
+    layout array of length `m + 1` above `idx` and `dst` an unreserved `u64` word reads
+    the element at `elemKey src.locVar idx`. -/
+theorem corresL_arrLoadLit (L : ArrLayout) (dst src : Located) (idx m : Nat)
+    (hdst : dst.locSrc = .TU64) (hsz : (src.locVar, m + 1) ∈ L) (hidx : idx < m + 1)
+    (hlit : idx < 2 ^ 64) (hdk : arrKeyB L dst.locVar = false) :
+    Corres (SRwordL L) (fun _ => True)
+      (fun a => setVal dst.locVar (a (elemKey src.locVar idx)) a)
+      (.RArrLoadLit dst src idx) := by
+  intro env a hSR _
+  obtain ⟨_, av, hav, havE⟩ := hSR.2 _ hsz
+  have hav' : env src.locVar = some ⟨.memref (m + 1), av⟩ := hav
+  refine ⟨env.upd dst.locVar (t := .sword 64) (memGetDyn av (BitVec.ofNat 64 idx).toNat),
+    semScalar_rArrLoadLit_word dst src idx env (m + 1) av hdst hav', ?_⟩
+  refine srwordL_set dst.locVar (memGetDyn av (BitVec.ofNat 64 idx).toNat) _ hdk ?_ hSR
+    (by simp [SEnvScalar.upd]) (fun y _ hy => by simp [SEnvScalar.upd, hy])
+  have hk : (⟨(BitVec.ofNat 64 idx).toNat % (m + 1), Nat.mod_lt _ (Nat.succ_pos m)⟩ :
+      Fin (m + 1)) = ⟨idx, hidx⟩ := Fin.ext (litIdx_mod hidx hlit)
+  show wEnc (av ⟨(BitVec.ofNat 64 idx).toNat % (m + 1), Nat.mod_lt _ (Nat.succ_pos m)⟩) = _
+  rw [hk]
+  exact havE ⟨idx, hidx⟩
+
+/-- The literal-index array write over a layout: `RArrStoreLit arr idx src` with `arr` a
+    layout array of length `m + 1` above `idx` stores the word at the non-temp
+    unreserved name `src` at `elemKey arr.locVar idx`. -/
+theorem corresL_arrStoreLit (L : ArrLayout) (arr src : Located) (idx m : Nat)
+    (hsz : (arr.locVar, m + 1) ∈ L) (hidx : idx < m + 1) (hlit : idx < 2 ^ 64)
+    (hst : ¬ isTmpName src.locVar) (hsk : arrKeyB L src.locVar = false) :
+    Corres (SRwordL L) (fun _ => True)
+      (fun a => setVal (elemKey arr.locVar idx) (a src.locVar) a)
+      (.RArrStoreLit arr idx src) := by
+  intro env a hSR _
+  obtain ⟨_, av, hav, _⟩ := hSR.2 _ hsz
+  have hav' : env arr.locVar = some ⟨.memref (m + 1), av⟩ := hav
+  obtain ⟨sv, hsv, hsvE⟩ := hSR.1 src.locVar hst hsk
+  refine ⟨env.upd arr.locVar (t := .memref (m + 1))
+      (memSetDyn av (BitVec.ofNat 64 idx).toNat sv),
+    semScalar_rArrStoreLit_word arr src idx env (m + 1) av sv hav' hsv, ?_⟩
+  refine srwordL_arrWrite arr.locVar (m + 1) idx av
+    (memSetDyn av (BitVec.ofNat 64 idx).toNat sv) sv _ hsvE hSR hsz hav' (fun j => ?_)
+    (fun y => rfl)
+  have hk := litIdx_mod hidx hlit
+  show (if j = ⟨(BitVec.ofNat 64 idx).toNat % (m + 1), Nat.mod_lt _ (Nat.succ_pos m)⟩
+    then sv else av j) = _
+  by_cases h : j.val = idx
+  · rw [if_pos (Fin.ext (h.trans hk.symm)), if_pos h]
+  · rw [if_neg (fun hj => h ((congrArg Fin.val hj).trans hk)), if_neg h]
+
+/-- The constant-time word select over a layout: `RSelect dst sel src0 src1` with `dst`
+    a `u64` word and the selector and both sources non-temp unreserved word names sets
+    `dst` to the word at `src0` when the selector is zero and to the word at `src1`
+    otherwise. -/
+theorem corresL_select (L : ArrLayout) (dst : Located) (sel : String) (src0 src1 : Located)
+    (hdst : dst.locSrc = .TU64) (hdk : arrKeyB L dst.locVar = false)
+    (hst : ¬ isTmpName sel) (hsk : arrKeyB L sel = false)
+    (h0t : ¬ isTmpName src0.locVar) (h0k : arrKeyB L src0.locVar = false)
+    (h1t : ¬ isTmpName src1.locVar) (h1k : arrKeyB L src1.locVar = false) :
+    Corres (SRwordL L) (fun _ => True) (selSet sel dst.locVar src0.locVar src1.locVar)
+      (.RSelect dst sel src0 src1) := by
+  intro env a hSR _
+  obtain ⟨sw, hsw, hswE⟩ := hSR.1 sel hst hsk
+  obtain ⟨aw, haw, hawE⟩ := hSR.1 src0.locVar h0t h0k
+  obtain ⟨cw, hcw, hcwE⟩ := hSR.1 src1.locVar h1t h1k
+  refine ⟨env.upd dst.locVar (t := .sword 64) (selectWord sw aw cw),
+    semScalar_rSelect_word dst sel src0 src1 env sw aw cw hdst hsw haw hcw, ?_⟩
+  refine srwordL_set dst.locVar (selectWord sw aw cw) _ hdk ?_ hSR
+    (by simp [SEnvScalar.upd]) (fun y _ hy => by simp [SEnvScalar.upd, hy])
+  by_cases hz : sw = 0#64
+  · have haz : a sel = 0 := hswE ▸ (wEnc_eq_zero_iff sw).mpr hz
+    rw [selectWord, if_pos hz, if_pos haz, hawE]
+  · have haz : ¬ a sel = 0 := fun h => hz ((wEnc_eq_zero_iff sw).mp (hswE ▸ h))
+    rw [selectWord, if_neg hz, if_neg haz, hcwE]
+
 /-! ## The total abstraction -/
 
 /-- The unsupported-constructor abstraction: the identity under a guard that never
@@ -895,6 +984,42 @@ def limbStoreAbs (L : ArrLayout) (loc : Located) (idx : Nat) (v : BitVec 64) :
       else unsupportedAbs "RLimbStore"
   | none => unsupportedAbs "RLimbStore"
 
+/-- The abstraction of `RArrLoadLit dst src idx`: the read of element `idx` of the
+    layout array `src` of length `m + 1 > idx` into the unreserved `u64` word `dst`,
+    `idx < 2 ^ 64`; unsupported otherwise. -/
+def arrLoadLitAbs (L : ArrLayout) (dst src : Located) (idx : Nat) :
+    List Guard × (AField → AField) :=
+  match layoutSize L src.locVar with
+  | some (m + 1) =>
+      if dst.locSrc = .TU64 ∧ arrKeyB L dst.locVar = false ∧ idx < m + 1 ∧ idx < 2 ^ 64 then
+        ([], fun a => setVal dst.locVar (a (elemKey src.locVar idx)) a)
+      else unsupportedAbs "RArrLoadLit"
+  | _ => unsupportedAbs "RArrLoadLit"
+
+/-- The abstraction of `RArrStoreLit arr idx src`: the write of the word `src` to element
+    `idx` of the layout array `arr` of length `m + 1 > idx`, `idx < 2 ^ 64`, the source a
+    non-temp unreserved name; unsupported otherwise. -/
+def arrStoreLitAbs (L : ArrLayout) (arr : Located) (idx : Nat) (src : Located) :
+    List Guard × (AField → AField) :=
+  match layoutSize L arr.locVar with
+  | some (m + 1) =>
+      if idx < m + 1 ∧ idx < 2 ^ 64 ∧ notTmpB src.locVar = true ∧
+          arrKeyB L src.locVar = false then
+        ([], fun a => setVal (elemKey arr.locVar idx) (a src.locVar) a)
+      else unsupportedAbs "RArrStoreLit"
+  | _ => unsupportedAbs "RArrStoreLit"
+
+/-- The abstraction of `RSelect dst sel src0 src1`: the select of the word `src0` or
+    `src1` by the word `sel` into the `u64` word `dst`, all non-temp names unreserved by
+    the layout; unsupported otherwise. -/
+def selectAbs (L : ArrLayout) (dst : Located) (sel : String) (src0 src1 : Located) :
+    List Guard × (AField → AField) :=
+  if dst.locSrc = .TU64 ∧ arrKeyB L dst.locVar = false ∧ notTmpB sel = true ∧
+      arrKeyB L sel = false ∧ notTmpB src0.locVar = true ∧ arrKeyB L src0.locVar = false ∧
+      notTmpB src1.locVar = true ∧ arrKeyB L src1.locVar = false then
+    ([], selSet sel dst.locVar src0.locVar src1.locVar)
+  else unsupportedAbs "RSelect"
+
 /-- The total abstraction over a layout: every `LowCT` command to a word transformer
     over `AField` and the guards under which it is sound at the unified waist
     `semU fuel`, over `SRwordL L`. -/
@@ -934,13 +1059,13 @@ def ascendGL (L : ArrLayout) (fuel : Nat) : LowCT → List Guard × (AField → 
   | .RCallSwap _ _ _ _ => unsupportedAbs "RCallSwap"
   | .RCloneCall _ _ _ _ _ _ => unsupportedAbs "RCloneCall"
   | .RCallN _ _ _ => unsupportedAbs "RCallN"
-  | .RSelect _ _ _ _ => unsupportedAbs "RSelect"
+  | .RSelect dst sel src0 src1 => selectAbs L dst sel src0 src1
   | .RLimbStoreExpr _ _ _ => unsupportedAbs "RLimbStoreExpr"
   | .RFnDef _ _ _ _ _ => unsupportedAbs "RFnDef"
   | .RFnCall _ _ _ => unsupportedAbs "RFnCall"
   | .RTupleLoad _ _ _ => unsupportedAbs "RTupleLoad"
-  | .RArrStoreLit _ _ _ => unsupportedAbs "RArrStoreLit"
-  | .RArrLoadLit _ _ _ => unsupportedAbs "RArrLoadLit"
+  | .RArrStoreLit arr idx src => arrStoreLitAbs L arr idx src
+  | .RArrLoadLit dst src idx => arrLoadLitAbs L dst src idx
   | .RCallDstThreaded _ _ _ => unsupportedAbs "RCallDstThreaded"
   | .RForRuntime _ _ _ => unsupportedAbs "RForRuntime"
 
@@ -1151,6 +1276,59 @@ theorem ascendGL_sound (L : ArrLayout) (fuel : Nat) :
           (fun _ _ => trivial)
       · rw [if_neg hc]
         exact corresU_unsupported _ _ _ _
+  case RArrLoadLit dst src idx =>
+    show CorresU fuel (SRwordL L) (guardsHold (arrLoadLitAbs L dst src idx).1)
+      (arrLoadLitAbs L dst src idx).2 (.RArrLoadLit dst src idx)
+    unfold arrLoadLitAbs
+    rcases hs : layoutSize L src.locVar with _ | _ | m
+    · exact corresU_unsupported _ _ _ _
+    · exact corresU_unsupported _ _ _ _
+    · dsimp only
+      by_cases hc : dst.locSrc = .TU64 ∧ arrKeyB L dst.locVar = false ∧ idx < m + 1 ∧
+          idx < 2 ^ 64
+      · rw [if_pos hc]
+        obtain ⟨hdst, hdk, hidx, hlit⟩ := hc
+        exact corresU_weaken _
+          (corresU_of_corres _ rfl
+            (corresL_arrLoadLit L dst src idx m hdst (layoutSize_mem hs) hidx hlit hdk))
+          (fun _ _ => trivial)
+      · rw [if_neg hc]
+        exact corresU_unsupported _ _ _ _
+  case RArrStoreLit arr idx src =>
+    show CorresU fuel (SRwordL L) (guardsHold (arrStoreLitAbs L arr idx src).1)
+      (arrStoreLitAbs L arr idx src).2 (.RArrStoreLit arr idx src)
+    unfold arrStoreLitAbs
+    rcases hs : layoutSize L arr.locVar with _ | _ | m
+    · exact corresU_unsupported _ _ _ _
+    · exact corresU_unsupported _ _ _ _
+    · dsimp only
+      by_cases hc : idx < m + 1 ∧ idx < 2 ^ 64 ∧ notTmpB src.locVar = true ∧
+          arrKeyB L src.locVar = false
+      · rw [if_pos hc]
+        obtain ⟨hidx, hlit, hst, hsk⟩ := hc
+        exact corresU_weaken _
+          (corresU_of_corres _ rfl
+            (corresL_arrStoreLit L arr src idx m (layoutSize_mem hs) hidx hlit
+              (notTmpB_sound _ hst) hsk))
+          (fun _ _ => trivial)
+      · rw [if_neg hc]
+        exact corresU_unsupported _ _ _ _
+  case RSelect dst sel src0 src1 =>
+    show CorresU fuel (SRwordL L) (guardsHold (selectAbs L dst sel src0 src1).1)
+      (selectAbs L dst sel src0 src1).2 (.RSelect dst sel src0 src1)
+    unfold selectAbs
+    by_cases hc : dst.locSrc = .TU64 ∧ arrKeyB L dst.locVar = false ∧ notTmpB sel = true ∧
+        arrKeyB L sel = false ∧ notTmpB src0.locVar = true ∧ arrKeyB L src0.locVar = false ∧
+        notTmpB src1.locVar = true ∧ arrKeyB L src1.locVar = false
+    · rw [if_pos hc]
+      obtain ⟨hdst, hdk, hst, hsk, h0t, h0k, h1t, h1k⟩ := hc
+      exact corresU_weaken _
+        (corresU_of_corres _ rfl
+          (corresL_select L dst sel src0 src1 hdst hdk (notTmpB_sound _ hst) hsk
+            (notTmpB_sound _ h0t) h0k (notTmpB_sound _ h1t) h1k))
+        (fun _ _ => trivial)
+    · rw [if_neg hc]
+      exact corresU_unsupported _ _ _ _
   all_goals exact corresU_unsupported _ _ _ _
 
 /-- Soundness of `ascendG`: the instance of `ascendGL_sound` at the empty layout, over

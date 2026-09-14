@@ -51,13 +51,15 @@ constructors.
 
 `IsCoveredS` / the proved theorem cover the whole straight-line mechanical
 fragment: the `RSeq` / `RBlock` / `RSkip` closure; the const/zero scalar binds
-(`RScalarSet`, `RLetU64Zero`); every opaque leaf-call arm (`RCall`, `RSelect`,
-`RCallDstThreaded`, `RTupleLoad`, `RArrLoadLit`/`RArrStoreLit`, the
-two-dest `RCallSwap` and `RCloneCall`, the N-dest `RCallN`); the dynamic-index
-array **load**/**store** arms (`RArrLoad` via `memGetDyn`, `RArrStore` via
-`memSetDyn`); the memref limb write `RLimbStore` (a weaken-step + a
-`memrefSet` bind); and the contract assertion `RAssert` (no emission, identity
-waist — §4b). Every single-binding arm reduces to `scalar_step`; the
+(`RScalarSet`, `RLetU64Zero`); every opaque leaf-call arm (`RCall`,
+`RCallDstThreaded`, `RTupleLoad`, the two-dest `RCallSwap` and `RCloneCall`, the
+N-dest `RCallN`); the dynamic-index array **load**/**store** arms (`RArrLoad` via
+`memGetDyn`, `RArrStore` via `memSetDyn`) and their literal-index twins
+(`RArrLoadLit`/`RArrStoreLit`, a `bvConst` index temp + the same read or write, opaque
+on other slot types); the constant-time word select `RSelect` (the eight-op mask
+chain, §5e′, opaque on other slot types); the memref limb write `RLimbStore` (a
+weaken-step + a `memrefSet` bind); and the contract assertion `RAssert` (no
+emission, identity waist — §4b). Every single-binding arm reduces to `scalar_step`; the
 multi-binding arms (`RLetU64Zero`, `RCallSwap`, `RCloneCall`, `RLimbStore`,
 `RCallN`) compose per-bind via `ComCont.comp` along the `RSeq` spine (`RCallN` by
 induction on its dest list, generalizing the context).
@@ -442,6 +444,12 @@ def phiSelect {w : Nat} (condv : BitVec w) (thenV elseV : BitVec 64) : BitVec 64
     parameter for the same `Decidable`-resolution reason as `phiSelect`. -/
 def condIsZero {w : Nat} (v : BitVec w) : Bool := decide (v = 0#w)
 
+/-- The constant-time word select `RSelect` computes: the first source when the
+    selector is zero, the second otherwise (`RustExec.selectFalse` /
+    `RustExec.selectTrue`). -/
+def selectWord (s a c : BitVec 64) : BitVec 64 :=
+  if s = 0#64 then a else c
+
 /-- The env-level fold behind the bounded `RFor` loop: run the body semantics
     once per trip, binding the counter `x` to the trip index `n` (ascending
     `0, 1, …, N-1`), peeling the LAST trip first — the exact recursion shape of
@@ -463,6 +471,13 @@ def semRForD (semBody : SEnvScalar → Option SEnvScalar) (x : String) :
 
     * `RCall` — an opaque leaf: `CryptoTy.default (encodeTy dst)` (the dialect
       `extCall` denotation, independent of the argument values);
+    * `RSelect` — `selectWord s a c` on 64-bit word slots, the value of the
+      front's mask chain; on any other slots the opaque `extCall "select"`
+      default;
+    * `RArrLoadLit` / `RArrStoreLit` — the read `memGetDyn arr i` / write
+      `memSetDyn arr i v` at the literal index `i` taken as a 64-bit word, when the
+      array slot is a `.memref n` and the destination (load) or source (store) a
+      64-bit word; else the opaque default;
     * `RArrLoad` — the dynamic-index read `memGetDyn arr i` when the array slot is
       a `.memref n`, the index a `.sword 64`, and the destination a `u64` word;
       else the opaque `extCall "arrLoadDyn"` default;
@@ -484,21 +499,35 @@ def semScalar : LowCT → SEnvScalar → Option SEnvScalar
   | .RCall _fname dst _args, env =>
       let retTy := encodeTy dst.locDst
       some (env.upd dst.locVar (t := retTy) (CryptoTy.default retTy))
-  | .RSelect dst _sel _src0 _src1, env =>
-      let retTy := encodeTy dst.locDst
-      some (env.upd dst.locVar (t := retTy) (CryptoTy.default retTy))
+  | .RSelect dst sel src0 src1, env =>
+      match dst.locDst, env sel, env src0.locVar, env src1.locVar with
+      | .TU64, some ⟨.sword 64, s⟩, some ⟨.sword 64, a⟩, some ⟨.sword 64, c⟩ =>
+          some (env.upd dst.locVar (t := .sword 64) (selectWord s a c))
+      | _, _, _, _ =>
+          let retTy := encodeTy dst.locDst
+          some (env.upd dst.locVar (t := retTy) (CryptoTy.default retTy))
   | .RCallDstThreaded _fname dst _args, env =>
       let retTy := encodeTy dst.locDst
       some (env.upd dst.locVar (t := retTy) (CryptoTy.default retTy))
   | .RTupleLoad dst _src _idx, env =>
       let retTy := encodeTy dst.locDst
       some (env.upd dst.locVar (t := retTy) (CryptoTy.default retTy))
-  | .RArrLoadLit dst _src _idx, env =>
-      let retTy := encodeTy dst.locDst
-      some (env.upd dst.locVar (t := retTy) (CryptoTy.default retTy))
-  | .RArrStoreLit arr _idx _src, env =>
-      let retTy := encodeTy arr.locDst
-      some (env.upd arr.locVar (t := retTy) (CryptoTy.default retTy))
+  | .RArrLoadLit dst src idx, env =>
+      match dst.locDst, env src.locVar with
+      | .TU64, some ⟨.memref _n, arr⟩ =>
+          some (env.upd dst.locVar (t := .sword 64)
+            (memGetDyn arr (BitVec.ofNat 64 idx).toNat))
+      | _, _ =>
+          let retTy := encodeTy dst.locDst
+          some (env.upd dst.locVar (t := retTy) (CryptoTy.default retTy))
+  | .RArrStoreLit arr idx src, env =>
+      match env arr.locVar, env src.locVar with
+      | some ⟨.memref n, a⟩, some ⟨.sword 64, v⟩ =>
+          some (env.upd arr.locVar (t := .memref n)
+            (memSetDyn a (BitVec.ofNat 64 idx).toNat v))
+      | _, _ =>
+          let retTy := encodeTy arr.locDst
+          some (env.upd arr.locVar (t := retTy) (CryptoTy.default retTy))
   | .RCallSwap _fname dest1 dest2 _args, env =>
       let retTy1 := encodeTy dest1.locDst
       let retTy2 := encodeTy dest2.locDst
@@ -663,6 +692,32 @@ unconditionally, and its `LowCTLeakTraceDef` leak trace is empty). -/
 theorem semScalar_rAssert_seq (label : String) (c : LowCT) (env : SEnvScalar) :
     semScalar (.RSeq (.RAssert label) c) env = semScalar c env := by
   simp [semScalar]
+
+/-- The waist semantics of a select whose destination is a `u64` word and whose
+    selector and sources hold 64-bit words binds the destination to `selectWord`. -/
+theorem semScalar_rSelect_word (dst : Located) (sel : String) (src0 src1 : Located)
+    (env : SEnvScalar) (s a c : BitVec 64) (hd : dst.locSrc = .TU64)
+    (hs : env sel = some ⟨.sword 64, s⟩) (ha : env src0.locVar = some ⟨.sword 64, a⟩)
+    (hc : env src1.locVar = some ⟨.sword 64, c⟩) :
+    semScalar (.RSelect dst sel src0 src1) env =
+      some (env.upd dst.locVar (t := .sword 64) (selectWord s a c)) := by
+  simp only [semScalar, Located.locDst, hd, hs, ha, hc]
+
+/-- The waist semantics of a literal-index read of a word array into a `u64` word. -/
+theorem semScalar_rArrLoadLit_word (dst src : Located) (idx : Nat) (env : SEnvScalar)
+    (n : Nat) (arr : Fin n → BitVec 64) (hd : dst.locSrc = .TU64)
+    (hs : env src.locVar = some ⟨.memref n, arr⟩) :
+    semScalar (.RArrLoadLit dst src idx) env =
+      some (env.upd dst.locVar (t := .sword 64) (memGetDyn arr (BitVec.ofNat 64 idx).toNat)) := by
+  simp only [semScalar, Located.locDst, hd, hs]
+
+/-- The waist semantics of a literal-index write of a word into a word array. -/
+theorem semScalar_rArrStoreLit_word (arr src : Located) (idx : Nat) (env : SEnvScalar)
+    (n : Nat) (a : Fin n → BitVec 64) (v : BitVec 64)
+    (ha : env arr.locVar = some ⟨.memref n, a⟩) (hs : env src.locVar = some ⟨.sword 64, v⟩) :
+    semScalar (.RArrStoreLit arr idx src) env =
+      some (env.upd arr.locVar (t := .memref n) (memSetDyn a (BitVec.ofNat 64 idx).toNat v)) := by
+  simp only [semScalar, ha, hs]
 
 /-! ## 5. Op-denotation helpers (the waist each single-binding arm binds by) -/
 
@@ -1020,6 +1075,99 @@ theorem mulHiC_eq_sexprMulHiU (x y : BitVec 64) :
       = BitVec.ofNat 64 (CatCrypt.Crypto.Jasmin.LowCT.sexprMulHiU x.toNat y.toNat) := by
   simp [mulHiC, CatCrypt.Crypto.Jasmin.LowCT.sexprMulHiU, Nat.shiftRight_eq_div_pow,
     Nat.mod_eq_of_lt x.isLt, Nat.mod_eq_of_lt y.isLt]
+
+/-! ## 5e′. The constant-time word select chain (`RSelect`) -/
+
+/-- A name the env binds at type `t` is bound to a slot of type `t` in a consistent
+    `VarMap`. -/
+theorem consistentS_bound {Γ : Ctx} {vm : VarMap Γ}
+    {V : Ctxt.Valuation (d := catCryptDialect) Γ} {env : SEnvScalar}
+    (hc : ConsistentS vm V env) {s : String} {t : CryptoTy} {v : ⟦t⟧}
+    (h : env s = some ⟨t, v⟩) : ∃ cv, vm.lookup s = some ⟨t, cv⟩ := by
+  have hs := hc s
+  rw [h] at hs
+  cases hl : vm.lookup s with
+  | none => rw [hl] at hs; simp at hs
+  | some p =>
+      obtain ⟨t', cv⟩ := p
+      rw [hl] at hs
+      simp only [Option.map_some, Option.some.injEq, Sigma.mk.injEq] at hs
+      obtain ⟨rfl, _⟩ := hs
+      exact ⟨cv, rfl⟩
+
+/-- The mask chain of `selectMaskCont` computes `selectWord`: for `s ≠ 0` the
+    top bit of `s ||| (0 - s)` is set, so the mask `0 - ((s ||| (0 - s)) >>> 63)`
+    is all ones; for `s = 0` it is zero. -/
+theorem selectWord_mask (s a c : BitVec 64) :
+    a ^^^ ((a ^^^ c) &&& (0 - BitVec.ushiftRight (s ||| (0 - s)) 63))
+      = selectWord s a c := by
+  unfold selectWord
+  by_cases hs : s = 0#64
+  · subst hs; simp
+  · rw [if_neg hs]
+    have hb : BitVec.ushiftRight (s ||| (0 - s)) 63 = 1 := by
+      apply BitVec.eq_of_toNat_eq
+      have h1 : s.toNat ≠ 0 := fun h => hs (BitVec.eq_of_toNat_eq (by simpa using h))
+      have hlt := s.isLt
+      have hneg : (0 - s).toNat = 2 ^ 64 - s.toNat := by
+        rw [BitVec.toNat_sub]; simp; omega
+      have hor : (s ||| (0 - s)).toNat < 2 ^ 64 := (s ||| (0 - s)).isLt
+      have hge : 2 ^ 63 ≤ (s ||| (0 - s)).toNat := by
+        rw [BitVec.toNat_or]
+        by_cases hh : 2 ^ 63 ≤ s.toNat
+        · exact Nat.le_trans hh Nat.left_le_or
+        · exact Nat.le_trans (by rw [hneg]; omega) Nat.right_le_or
+      show (s ||| (0 - s)).toNat >>> 63 = (1 : BitVec 64).toNat
+      rw [Nat.shiftRight_eq_div_pow]
+      have h1' : (1 : BitVec 64).toNat = 1 := rfl
+      rw [h1']
+      omega
+    rw [hb]
+    have hm : (0 : BitVec 64) - 1 = BitVec.allOnes 64 := by decide
+    rw [hm, BitVec.and_allOnes, ← BitVec.xor_assoc, BitVec.xor_self, BitVec.zero_xor]
+
+/-- The select chain binds `dst` to `selectWord` of the three source slots,
+    keeps every other name consistent (the seven temporaries are anonymous), and
+    applied to any tail denotes that tail at the extended valuation. -/
+theorem selectMaskCont_denote {Γ : Ctx} (vm : VarMap Γ)
+    (V : Ctxt.Valuation (d := catCryptDialect) Γ) (env : SEnvScalar)
+    (hc : ConsistentS vm V env) (dst : String) (sV aV cV : CVar Γ (.sword 64)) :
+    ∃ V' : Ctxt.Valuation (d := catCryptDialect) (selectCtx Γ),
+      ConsistentS (selectVm vm dst) V'
+        (env.upd dst (t := .sword 64) (selectWord ((toVIRVar sV).lookup V)
+          ((toVIRVar aV).lookup V) ((toVIRVar cV).lookup V))) ∧
+      ∀ {t : CryptoTy} (tail : Com catCryptDialect (selectCtx Γ) t),
+        ∃ com, selectMaskCont sV aV cV tail = some com ∧
+          com.denote V = tail.denote V' := by
+  let s : BitVec 64 := (toVIRVar sV).lookup V
+  let a : BitVec 64 := (toVIRVar aV).lookup V
+  let c : BitVec 64 := (toVIRVar cV).lookup V
+  let z : BitVec 64 := 0
+  let n : BitVec 64 := z - s
+  let o : BitVec 64 := s ||| n
+  let b : BitVec 64 := BitVec.ushiftRight o 63
+  let m : BitVec 64 := z - b
+  let x : BitVec 64 := a ^^^ c
+  let y : BitVec 64 := x &&& m
+  let ext := fun {Δ : Ctx} (W : Ctxt.Valuation (d := catCryptDialect) Δ) (v : BitVec 64) =>
+    Ctxt.Valuation.extend (d := catCryptDialect) (t := CryptoTy.sword 64) W v
+  let V₇ := ext (ext (ext (ext (ext (ext (ext V z) n) o) b) m) x) y
+  have h₇ : ConsistentS ((((((((vm.weaken (t := .sword 64)).weaken (t := .sword 64)).weaken
+      (t := .sword 64)).weaken (t := .sword 64)).weaken (t := .sword 64)).weaken
+      (t := .sword 64)).weaken (t := .sword 64))) V₇ env :=
+    have hw : ∀ {Δ : Ctx} (vm' : VarMap Δ) (W : Ctxt.Valuation (d := catCryptDialect) Δ),
+        ConsistentS vm' W env → ∀ v : BitVec 64,
+          ConsistentS (vm'.weaken (t := .sword 64)) (ext W v) env :=
+      fun vm' W h v => consistentS_weaken (t := .sword 64) vm' W env h v
+    hw _ _ (hw _ _ (hw _ _ (hw _ _ (hw _ _ (hw _ _ (hw vm V hc z) n) o) b) m) x) y
+  refine ⟨ext V₇ (selectWord s a c), ?_, ?_⟩
+  · exact (scalar_step _ V₇ env h₇ dst
+      ({ op := .bvConst 64 (selectWord s a c), retTy_eq := rfl, args := .nil } :
+        Expr catCryptDialect _ (.sword 64))).1
+  · intro t tail
+    refine ⟨_, rfl, ?_⟩
+    exact congrArg (fun v => tail.denote (ext V₇ v))
+      (selectWord_mask s a c)
 
 /-! ## 6. Front-general scalar preservation over the straight-line fragment -/
 
@@ -1832,16 +1980,41 @@ theorem translateDialectFull_denote {c : LowCT} (hcov : IsCoveredS c) :
         exact ⟨_, hcons, fun tail => hcont tail⟩
   | rSelect dst sel src0 src1 =>
       intro Γ vm V env env' o hc htr hsem
-      rcases hra : resolveLocatedArgs vm [src0, src1] with _ | resolvedArgs
-      · simp [translateDialectFull, hra] at htr
-      · simp only [translateDialectFull, hra] at htr
+      simp only [translateDialectFull] at htr
+      split at htr
+      · rename_i sV aV cV hd hs ha hcv
         obtain rfl := Option.some.inj htr
-        simp only [semScalar] at hsem
+        have henvS : env sel = some ⟨.sword 64, (toVIRVar sV).lookup V⟩ := by
+          rw [← hc sel, hs]; rfl
+        have henvA : env src0.locVar = some ⟨.sword 64, (toVIRVar aV).lookup V⟩ := by
+          rw [← hc src0.locVar, ha]; rfl
+        have henvC : env src1.locVar = some ⟨.sword 64, (toVIRVar cV).lookup V⟩ := by
+          rw [← hc src1.locVar, hcv]; rfl
+        simp only [semScalar, hd, henvS, henvA, henvC] at hsem
         obtain rfl := Option.some.inj hsem
-        obtain ⟨hcons, hcont⟩ :=
-          scalar_step vm V env hc dst.locVar
-            (extCallExpr "select" (encodeTy dst.locDst) (listSigmaToCHVector resolvedArgs).snd)
-        exact ⟨_, hcons, fun tail => hcont tail⟩
+        exact selectMaskCont_denote vm V env hc dst.locVar sV aV cV
+      · rename_i hnot
+        rcases hra : resolveLocatedArgs vm [src0, src1] with _ | resolvedArgs
+        · simp [hra] at htr
+        · simp only [hra] at htr
+          obtain rfl := Option.some.inj htr
+          have hsem' : semScalar (.RSelect dst sel src0 src1) env =
+              some (env.upd dst.locVar (t := encodeTy dst.locDst)
+                (CryptoTy.default (encodeTy dst.locDst))) := by
+            simp only [semScalar]
+            split
+            · rename_i s a c hd hs ha hcv
+              obtain ⟨sV, hs'⟩ := consistentS_bound hc hs
+              obtain ⟨aV, ha'⟩ := consistentS_bound hc ha
+              obtain ⟨cV, hcv'⟩ := consistentS_bound hc hcv
+              exact (hnot sV aV cV hd hs' ha' hcv').elim
+            · rfl
+          rw [hsem'] at hsem
+          obtain rfl := Option.some.inj hsem
+          obtain ⟨hcons, hcont⟩ :=
+            scalar_step vm V env hc dst.locVar
+              (extCallExpr "select" (encodeTy dst.locDst) (listSigmaToCHVector resolvedArgs).snd)
+          exact ⟨_, hcons, fun tail => hcont tail⟩
   | rCallDstThreaded fname dst args =>
       intro Γ vm V env env' o hc htr hsem
       rcases hra : resolveLocatedArgs vm (dst :: args) with _ | resolvedArgs
@@ -1869,30 +2042,108 @@ theorem translateDialectFull_denote {c : LowCT} (hcov : IsCoveredS c) :
         exact ⟨_, hcons, fun tail => hcont tail⟩
   | rArrLoadLit dst src idx =>
       intro Γ vm V env env' o hc htr hsem
-      rcases hra : resolveLocatedArgs vm [src] with _ | resolvedArgs
-      · simp [translateDialectFull, hra] at htr
-      · simp only [translateDialectFull, hra] at htr
+      simp only [translateDialectFull] at htr
+      split at htr
+      · rename_i n arrV hd hs
         obtain rfl := Option.some.inj htr
-        simp only [semScalar] at hsem
+        have henv : env src.locVar = some ⟨.memref n, (toVIRVar arrV).lookup V⟩ := by
+          rw [← hc src.locVar, hs]; rfl
+        simp only [semScalar, hd, henv] at hsem
         obtain rfl := Option.some.inj hsem
-        obtain ⟨hcons, hcont⟩ :=
-          scalar_step vm V env hc dst.locVar
-            (extCallExpr ("arrLoad:" ++ toString idx) (encodeTy dst.locDst)
-              (listSigmaToCHVector resolvedArgs).snd)
-        exact ⟨_, hcons, fun tail => hcont tail⟩
+        let eIdx : Expr catCryptDialect Γ (.sword 64) :=
+          { op := .bvConst 64 (BitVec.ofNat 64 idx), retTy_eq := rfl, args := .nil }
+        have hcw := consistentS_weaken vm V env hc (eIdx.denote V)
+        obtain ⟨_, hcont1⟩ := scalar_step vm V env hc dst.locVar eIdx
+        obtain ⟨hcons2, hcont2⟩ :=
+          scalar_step vm.weaken (V.extend _) env hcw dst.locVar
+            ({ op := .memrefGetDyn n, retTy_eq := rfl,
+               args := .cons (toVIRVar (CVar.there arrV))
+                 (.cons (toVIRVar (CVar.here : CVar (.sword 64 :: Γ) (.sword 64))) .nil) } :
+              Expr catCryptDialect (.sword 64 :: Γ) (.sword 64))
+        refine ⟨_, hcons2, ?_⟩
+        intro t tail
+        obtain ⟨com2, hcom2, hden2⟩ := hcont2 tail
+        obtain ⟨com, hcom, hden⟩ := hcont1 com2
+        refine ⟨com, ?_, ?_⟩
+        · show ComCont.comp (ComCont.varBind _) (ComCont.varBind _) tail = some com
+          simp only [ComCont.comp, hcom2]
+          exact hcom
+        · rw [hden, hden2]
+      · rename_i hnot
+        rcases hra : resolveLocatedArgs vm [src] with _ | resolvedArgs
+        · simp [hra] at htr
+        · simp only [hra] at htr
+          obtain rfl := Option.some.inj htr
+          have hsem' : semScalar (.RArrLoadLit dst src idx) env =
+              some (env.upd dst.locVar (t := encodeTy dst.locDst)
+                (CryptoTy.default (encodeTy dst.locDst))) := by
+            simp only [semScalar]
+            split
+            · rename_i n arr hd hs
+              obtain ⟨arrV, hs'⟩ := consistentS_bound hc hs
+              exact (hnot n arrV hd hs').elim
+            · rfl
+          rw [hsem'] at hsem
+          obtain rfl := Option.some.inj hsem
+          obtain ⟨hcons, hcont⟩ :=
+            scalar_step vm V env hc dst.locVar
+              (extCallExpr ("arrLoad:" ++ toString idx) (encodeTy dst.locDst)
+                (listSigmaToCHVector resolvedArgs).snd)
+          exact ⟨_, hcons, fun tail => hcont tail⟩
   | rArrStoreLit arr idx src =>
       intro Γ vm V env env' o hc htr hsem
-      rcases hra : resolveLocatedArgs vm [arr, src] with _ | resolvedArgs
-      · simp [translateDialectFull, hra] at htr
-      · simp only [translateDialectFull, hra] at htr
+      simp only [translateDialectFull] at htr
+      split at htr
+      · rename_i n arrV srcV ha hs
         obtain rfl := Option.some.inj htr
-        simp only [semScalar] at hsem
+        have henvA : env arr.locVar = some ⟨.memref n, (toVIRVar arrV).lookup V⟩ := by
+          rw [← hc arr.locVar, ha]; rfl
+        have henvS : env src.locVar = some ⟨.sword 64, (toVIRVar srcV).lookup V⟩ := by
+          rw [← hc src.locVar, hs]; rfl
+        simp only [semScalar, henvA, henvS] at hsem
         obtain rfl := Option.some.inj hsem
-        obtain ⟨hcons, hcont⟩ :=
-          scalar_step vm V env hc arr.locVar
-            (extCallExpr ("arrStore:" ++ toString idx) (encodeTy arr.locDst)
-              (listSigmaToCHVector resolvedArgs).snd)
-        exact ⟨_, hcons, fun tail => hcont tail⟩
+        let eIdx : Expr catCryptDialect Γ (.sword 64) :=
+          { op := .bvConst 64 (BitVec.ofNat 64 idx), retTy_eq := rfl, args := .nil }
+        have hcw := consistentS_weaken vm V env hc (eIdx.denote V)
+        obtain ⟨_, hcont1⟩ := scalar_step vm V env hc arr.locVar eIdx
+        obtain ⟨hcons2, hcont2⟩ :=
+          scalar_step vm.weaken (V.extend _) env hcw arr.locVar
+            ({ op := .memrefSetDyn n, retTy_eq := rfl,
+               args := .cons (toVIRVar (CVar.there arrV))
+                 (.cons (toVIRVar (CVar.here : CVar (.sword 64 :: Γ) (.sword 64)))
+                   (.cons (toVIRVar (CVar.there srcV)) .nil)) } :
+              Expr catCryptDialect (.sword 64 :: Γ) (.memref n))
+        refine ⟨_, hcons2, ?_⟩
+        intro t tail
+        obtain ⟨com2, hcom2, hden2⟩ := hcont2 tail
+        obtain ⟨com, hcom, hden⟩ := hcont1 com2
+        refine ⟨com, ?_, ?_⟩
+        · show ComCont.comp (ComCont.varBind _) (ComCont.varBind _) tail = some com
+          simp only [ComCont.comp, hcom2]
+          exact hcom
+        · rw [hden, hden2]
+      · rename_i hnot
+        rcases hra : resolveLocatedArgs vm [arr, src] with _ | resolvedArgs
+        · simp [hra] at htr
+        · simp only [hra] at htr
+          obtain rfl := Option.some.inj htr
+          have hsem' : semScalar (.RArrStoreLit arr idx src) env =
+              some (env.upd arr.locVar (t := encodeTy arr.locDst)
+                (CryptoTy.default (encodeTy arr.locDst))) := by
+            simp only [semScalar]
+            split
+            · rename_i n a v ha hs
+              obtain ⟨arrV, ha'⟩ := consistentS_bound hc ha
+              obtain ⟨srcV, hs'⟩ := consistentS_bound hc hs
+              exact (hnot n arrV srcV ha' hs').elim
+            · rfl
+          rw [hsem'] at hsem
+          obtain rfl := Option.some.inj hsem
+          obtain ⟨hcons, hcont⟩ :=
+            scalar_step vm V env hc arr.locVar
+              (extCallExpr ("arrStore:" ++ toString idx) (encodeTy arr.locDst)
+                (listSigmaToCHVector resolvedArgs).snd)
+          exact ⟨_, hcons, fun tail => hcont tail⟩
   | rCallSwap fname dest1 dest2 args =>
       intro Γ vm V env env' o hc htr hsem
       rcases hra : resolveLocatedArgs vm args with _ | resolvedArgs
@@ -2152,17 +2403,19 @@ theorem translateDialectControl_denote {c : LowCT} (hcov : IsCoveredS c) :
 The whole mechanical straight-line fragment is proved. Beyond the composition
 arms (`RSeq`/`RBlock`/`RSkip`), three shapes of arm close uniformly:
 
-* **Single-binding opaque leaf** (`RCall`, `RSelect`, `RCallDstThreaded`,
-  `RTupleLoad`, `RArrLoadLit`/`RArrStoreLit`) and single concrete
-  bind (`RScalarSet`, a `bvConst`): one `ComCont.varBind` closed directly by
-  `scalar_step`; the emitted `extCallExpr`/`bvConst` denotes to the same waist
-  (`CryptoTy.default` / the literal) `semScalar` binds, so the `exact` closes by
-  definitional agreement.
+* **Single-binding opaque leaf** (`RCall`, `RCallDstThreaded`, `RTupleLoad`, and
+  `RSelect`/`RArrLoadLit`/`RArrStoreLit` on slots outside their word shapes) and
+  single concrete bind (`RScalarSet`, a `bvConst`): one `ComCont.varBind` closed
+  directly by `scalar_step`; the emitted `extCallExpr`/`bvConst` denotes to the
+  same waist (`CryptoTy.default` / the literal) `semScalar` binds, so the `exact`
+  closes by definitional agreement.
 * **Multi-binding folds** (`RLetU64Zero` = prefix bind + body IH; `RCallSwap` /
-  `RCloneCall` = two binds; `RLimbStore` = a weaken-step + a `memrefSet` bind;
-  `RCallN` = N binds by induction on the dest list, generalizing the context):
-  each per-bind step is a `scalar_step` (or `consistentS_weaken` for the anonymous
-  `RLimbStore` temp), composed via `ComCont.comp` along the `RSeq` spine.
+  `RCloneCall` = two binds; `RLimbStore` and the word-shape `RArrLoadLit` /
+  `RArrStoreLit` = a weaken-step + one bind; the word-shape `RSelect` = seven
+  weaken-steps + one bind, `selectMaskCont_denote`; `RCallN` = N binds by induction
+  on the dest list, generalizing the context): each per-bind step is a `scalar_step`
+  (or `consistentS_weaken` for an anonymous temp), composed via `ComCont.comp` along
+  the `RSeq` spine.
 
 The dynamic-index **load** and **store** arms (`RArrLoad`, `RArrStore`) are now
 proved cases of the homomorphism (§5b/§5c + the `rArrLoad`/`rArrStore` arms of
@@ -2456,11 +2709,16 @@ theorem translateDialectFull_ext (c : LowCT) :
         obtain rfl := Option.some.inj htr
         exact ⟨[encodeTy dest.locDst], rfl, fun h => absurd h (by simp)⟩
   case RSelect dst sel src0 src1 =>
-      rcases hra : resolveLocatedArgs vm [src0, src1] with _ | resolvedArgs
-      · simp [translateDialectFull, hra] at htr
-      · simp only [translateDialectFull, hra] at htr
-        obtain rfl := Option.some.inj htr
-        exact ⟨[encodeTy dst.locDst], rfl, fun h => absurd h (by simp)⟩
+      simp only [translateDialectFull] at htr
+      split at htr
+      · obtain rfl := Option.some.inj htr
+        exact ⟨[.sword 64, .sword 64, .sword 64, .sword 64,
+          .sword 64, .sword 64, .sword 64, .sword 64], rfl, fun h => absurd h (by simp)⟩
+      · rcases hra : resolveLocatedArgs vm [src0, src1] with _ | resolvedArgs
+        · simp [hra] at htr
+        · simp only [hra] at htr
+          obtain rfl := Option.some.inj htr
+          exact ⟨[encodeTy dst.locDst], rfl, fun h => absurd h (by simp)⟩
   case RCallDstThreaded fname dst args =>
       rcases hra : resolveLocatedArgs vm (dst :: args) with _ | resolvedArgs
       · simp [translateDialectFull, hra] at htr
@@ -2474,17 +2732,26 @@ theorem translateDialectFull_ext (c : LowCT) :
         obtain rfl := Option.some.inj htr
         exact ⟨[encodeTy dst.locDst], rfl, fun h => absurd h (by simp)⟩
   case RArrLoadLit dst src idx =>
-      rcases hra : resolveLocatedArgs vm [src] with _ | resolvedArgs
-      · simp [translateDialectFull, hra] at htr
-      · simp only [translateDialectFull, hra] at htr
-        obtain rfl := Option.some.inj htr
-        exact ⟨[encodeTy dst.locDst], rfl, fun h => absurd h (by simp)⟩
+      simp only [translateDialectFull] at htr
+      split at htr
+      · obtain rfl := Option.some.inj htr
+        exact ⟨[.sword 64, .sword 64], rfl, fun h => absurd h (by simp)⟩
+      · rcases hra : resolveLocatedArgs vm [src] with _ | resolvedArgs
+        · simp [hra] at htr
+        · simp only [hra] at htr
+          obtain rfl := Option.some.inj htr
+          exact ⟨[encodeTy dst.locDst], rfl, fun h => absurd h (by simp)⟩
   case RArrStoreLit arr idx src =>
-      rcases hra : resolveLocatedArgs vm [arr, src] with _ | resolvedArgs
-      · simp [translateDialectFull, hra] at htr
-      · simp only [translateDialectFull, hra] at htr
+      simp only [translateDialectFull] at htr
+      split at htr
+      · rename_i n _ _ _ _
         obtain rfl := Option.some.inj htr
-        exact ⟨[encodeTy arr.locDst], rfl, fun h => absurd h (by simp)⟩
+        exact ⟨[.memref n, .sword 64], rfl, fun h => absurd h (by simp)⟩
+      · rcases hra : resolveLocatedArgs vm [arr, src] with _ | resolvedArgs
+        · simp [hra] at htr
+        · simp only [hra] at htr
+          obtain rfl := Option.some.inj htr
+          exact ⟨[encodeTy arr.locDst], rfl, fun h => absurd h (by simp)⟩
   case RArrLoad dst src idxVar =>
       rcases hra : resolveLocatedArgs vm [src] with _ | resolvedArgs
       · simp [translateDialectFull, hra] at htr

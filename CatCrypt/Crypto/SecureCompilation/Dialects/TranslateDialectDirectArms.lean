@@ -29,10 +29,14 @@ This file extends that front to the **multi-binding arms** — the ones whose
 opaque `extCall` leaf bindings (the crypto leaf calls) or a `memrefSet` chain:
 
 * `RCall`            — one `extCall fname` rebinding the destination;
-* `RSelect`          — one `extCall "select"` (CT-safe cmov);
+* `RSelect`          — on 64-bit word slots, the eight-op branchless mask chain
+  of §1d; on any other slots, one opaque `extCall "select"`;
 * `RCallDstThreaded` — one `extCall fname` with `dst :: args`;
 * `RTupleLoad`       — one `extCall "tupleLoad:i"`;
-* `RArrLoadLit` / `RArrStoreLit` — one `extCall "arrLoad:i"` / `"arrStore:i"`;
+* `RArrLoadLit` / `RArrStoreLit` — a `bvConst` index temporary and a
+  `memrefGetDyn` / `memrefSetDyn` `varBind` when the array slot is `.memref n`
+  and the destination (load) or source (store) is a 64-bit word; otherwise one
+  `extCall "arrLoad:i"` / `"arrStore:i"`;
 * `RArrLoad` / `RArrStore` — a `memrefGetDyn` / `memrefSetDyn` `varBind` when the
   operands match the dynamic-index memref ABI (array `.memref n`, index/value
   `.sword 64`, word destination), else one `extCall "arrLoadDyn"` / `"arrStoreDyn"`
@@ -613,6 +617,83 @@ def arrStoreCont {Γ : Ctx} (dty : TowerType)
       else ComCont.varBind (extCallExpr "arrStoreDyn" (encodeTy dty) hv)
   | _, _ => ComCont.varBind (extCallExpr "arrStoreDyn" (encodeTy dty) hv)
 
+/-! ### 1d. The constant-time word select
+
+`RSelect dst sel src0 src1` on 64-bit words lowers to the branchless mask chain
+
+    z = 0; n = z - s; o = s | n; b = o >> 63; m = z - b;
+    x = a ^ c; y = x & m; r = a ^ y
+
+over the selector `s` and the sources `a` (`src0`) and `c` (`src1`). `b` is `1`
+exactly when `s ≠ 0`, so `m` is all ones exactly then and `r` is `c`; otherwise
+`m = 0` and `r = a`. Every op is in the fragment `DialectToJasminCom` lowers
+(`regConst`, `regArith sub/or/xor/and`, `shrImm`). -/
+
+/-- The context the select chain grows over `Γ`: seven 64-bit temporaries and
+    the destination word on top. -/
+abbrev selectCtx (Γ : Ctx) : Ctx :=
+  .sword 64 :: .sword 64 :: .sword 64 :: .sword 64 ::
+    .sword 64 :: .sword 64 :: .sword 64 :: .sword 64 :: Γ
+
+/-- The eight-op mask chain computing `if s = 0 then a else c` over the word
+    slots `sV` (selector), `aV` and `cV`. -/
+def selectMaskCont {Γ : Ctx} (sV aV cV : CVar Γ (.sword 64)) :
+    ComCont Γ (selectCtx Γ) :=
+  let Γ₁ : Ctx := .sword 64 :: Γ
+  let Γ₂ : Ctx := .sword 64 :: Γ₁
+  let Γ₃ : Ctx := .sword 64 :: Γ₂
+  let Γ₄ : Ctx := .sword 64 :: Γ₃
+  let Γ₅ : Ctx := .sword 64 :: Γ₄
+  let Γ₆ : Ctx := .sword 64 :: Γ₅
+  let Γ₇ : Ctx := .sword 64 :: Γ₆
+  let eZ : Expr catCryptDialect Γ (.sword 64) :=
+    { op := .bvConst 64 0, retTy_eq := rfl, args := .nil }
+  let eN : Expr catCryptDialect Γ₁ (.sword 64) :=
+    { op := .bvSub 64, retTy_eq := rfl,
+      args := .cons (toVIRVar (CVar.here : CVar Γ₁ (.sword 64)))
+        (.cons (toVIRVar (CVar.there sV : CVar Γ₁ (.sword 64))) .nil) }
+  let eO : Expr catCryptDialect Γ₂ (.sword 64) :=
+    { op := .bvOr 64, retTy_eq := rfl,
+      args := .cons (toVIRVar (CVar.there (CVar.there sV) : CVar Γ₂ (.sword 64)))
+        (.cons (toVIRVar (CVar.here : CVar Γ₂ (.sword 64))) .nil) }
+  let eB : Expr catCryptDialect Γ₃ (.sword 64) :=
+    { op := .bvShiftR 64 63, retTy_eq := rfl,
+      args := .cons (toVIRVar (CVar.here : CVar Γ₃ (.sword 64))) .nil }
+  let eM : Expr catCryptDialect Γ₄ (.sword 64) :=
+    { op := .bvSub 64, retTy_eq := rfl,
+      args := .cons (toVIRVar (CVar.there (CVar.there (CVar.there CVar.here)) :
+          CVar Γ₄ (.sword 64)))
+        (.cons (toVIRVar (CVar.here : CVar Γ₄ (.sword 64))) .nil) }
+  let eX : Expr catCryptDialect Γ₅ (.sword 64) :=
+    { op := .bvXor 64, retTy_eq := rfl,
+      args := .cons (toVIRVar (CVar.there (CVar.there (CVar.there (CVar.there
+          (CVar.there aV)))) : CVar Γ₅ (.sword 64)))
+        (.cons (toVIRVar (CVar.there (CVar.there (CVar.there (CVar.there
+          (CVar.there cV)))) : CVar Γ₅ (.sword 64))) .nil) }
+  let eY : Expr catCryptDialect Γ₆ (.sword 64) :=
+    { op := .bvAnd 64, retTy_eq := rfl,
+      args := .cons (toVIRVar (CVar.here : CVar Γ₆ (.sword 64)))
+        (.cons (toVIRVar (CVar.there CVar.here : CVar Γ₆ (.sword 64))) .nil) }
+  let eR : Expr catCryptDialect Γ₇ (.sword 64) :=
+    { op := .bvXor 64, retTy_eq := rfl,
+      args := .cons (toVIRVar (CVar.there (CVar.there (CVar.there (CVar.there
+          (CVar.there (CVar.there (CVar.there aV)))))) : CVar Γ₇ (.sword 64)))
+        (.cons (toVIRVar (CVar.here : CVar Γ₇ (.sword 64))) .nil) }
+  ComCont.comp (ComCont.varBind eZ)
+    (ComCont.comp (ComCont.varBind eN)
+      (ComCont.comp (ComCont.varBind eO)
+        (ComCont.comp (ComCont.varBind eB)
+          (ComCont.comp (ComCont.varBind eM)
+            (ComCont.comp (ComCont.varBind eX)
+              (ComCont.comp (ComCont.varBind eY) (ComCont.varBind eR)))))))
+
+/-- The `VarMap` after the select chain: the seven temporaries are anonymous
+    and `dst` names the top slot. -/
+def selectVm {Γ : Ctx} (vm : VarMap Γ) (dst : String) : VarMap (selectCtx Γ) :=
+  (((((((vm.weaken (t := .sword 64)).weaken (t := .sword 64)).weaken
+    (t := .sword 64)).weaken (t := .sword 64)).weaken (t := .sword 64)).weaken
+    (t := .sword 64)).weaken (t := .sword 64)).bind (t := .sword 64) dst
+
 /-! ## 2. The fused multi-binding front `translateDialectFull`
 
 Mirrors `translate`'s control flow on the leaf-call arms, building `ComCont`
@@ -687,15 +768,24 @@ def translateDialectFull {Γ : Ctx} (vm : VarMap Γ) :
           | ⟨_argTys, hv⟩ =>
             let e : Expr catCryptDialect Γ retTy := extCallExpr fname retTy hv
             some { Γ' := retTy :: Γ, cont := ComCont.varBind e, vm := vm.bind dest.locVar }
-  | .RSelect dst _sel src0 src1 =>
-      match resolveLocatedArgs vm [src0, src1] with
-      | none => none
-      | some resolvedArgs =>
-          let retTy := encodeTy dst.locDst
-          match listSigmaToCHVector resolvedArgs with
-          | ⟨_argTys, hv⟩ =>
-            let e : Expr catCryptDialect Γ retTy := extCallExpr "select" retTy hv
-            some { Γ' := retTy :: Γ, cont := ComCont.varBind e, vm := vm.bind dst.locVar }
+  -- Constant-time select on 64-bit words: the mask chain of §1d. A select over
+  -- any other slots (a point bundle, a field-element tower) is the opaque
+  -- `extCall "select"` leaf over the two sources.
+  | .RSelect dst sel src0 src1 =>
+      match dst.locDst, vm.lookup sel, vm.lookup src0.locVar, vm.lookup src1.locVar with
+      | .TU64, some ⟨.sword 64, sV⟩, some ⟨.sword 64, aV⟩, some ⟨.sword 64, cV⟩ =>
+          some { Γ' := selectCtx Γ, cont := selectMaskCont sV aV cV,
+                 vm := selectVm vm dst.locVar }
+      | _, _, _, _ =>
+          match resolveLocatedArgs vm [src0, src1] with
+          | none => none
+          | some resolvedArgs =>
+              let retTy := encodeTy dst.locDst
+              match listSigmaToCHVector resolvedArgs with
+              | ⟨_argTys, hv⟩ =>
+                let e : Expr catCryptDialect Γ retTy := extCallExpr "select" retTy hv
+                some { Γ' := retTy :: Γ, cont := ComCont.varBind e,
+                       vm := vm.bind dst.locVar }
   | .RCallDstThreaded fname dst args =>
       match resolveLocatedArgs vm (dst :: args) with
       | none => none
@@ -715,26 +805,59 @@ def translateDialectFull {Γ : Ctx} (vm : VarMap Γ) :
             let e : Expr catCryptDialect Γ retTy :=
               extCallExpr ("tupleLoad:" ++ toString idx) retTy hv
             some { Γ' := retTy :: Γ, cont := ComCont.varBind e, vm := vm.bind dst.locVar }
+  -- Literal-index array read of a word array into a `u64` word: the index as a
+  -- `bvConst` in an anonymous temporary, then `memrefGetDyn`. Any other shape
+  -- is the opaque `extCall "arrLoad:i"` leaf.
   | .RArrLoadLit dst src idx =>
-      match resolveLocatedArgs vm [src] with
-      | none => none
-      | some resolvedArgs =>
-          let retTy := encodeTy dst.locDst
-          match listSigmaToCHVector resolvedArgs with
-          | ⟨_argTys, hv⟩ =>
-            let e : Expr catCryptDialect Γ retTy :=
-              extCallExpr ("arrLoad:" ++ toString idx) retTy hv
-            some { Γ' := retTy :: Γ, cont := ComCont.varBind e, vm := vm.bind dst.locVar }
+      match dst.locDst, vm.lookup src.locVar with
+      | .TU64, some ⟨.memref n, arrV⟩ =>
+          let eIdx : Expr catCryptDialect Γ (.sword 64) :=
+            { op := .bvConst 64 (BitVec.ofNat 64 idx), retTy_eq := rfl, args := .nil }
+          let eLoad : Expr catCryptDialect (.sword 64 :: Γ) (.sword 64) :=
+            { op := .memrefGetDyn n, retTy_eq := rfl,
+              args := .cons (toVIRVar (CVar.there arrV))
+                (.cons (toVIRVar (CVar.here : CVar (.sword 64 :: Γ) (.sword 64))) .nil) }
+          some { Γ' := .sword 64 :: .sword 64 :: Γ,
+                 cont := ComCont.comp (ComCont.varBind eIdx) (ComCont.varBind eLoad),
+                 vm := (vm.weaken (t := .sword 64)).bind (t := .sword 64) dst.locVar }
+      | _, _ =>
+          match resolveLocatedArgs vm [src] with
+          | none => none
+          | some resolvedArgs =>
+              let retTy := encodeTy dst.locDst
+              match listSigmaToCHVector resolvedArgs with
+              | ⟨_argTys, hv⟩ =>
+                let e : Expr catCryptDialect Γ retTy :=
+                  extCallExpr ("arrLoad:" ++ toString idx) retTy hv
+                some { Γ' := retTy :: Γ, cont := ComCont.varBind e,
+                       vm := vm.bind dst.locVar }
+  -- Literal-index array write of a word into a word array: the index as a
+  -- `bvConst` in an anonymous temporary, then `memrefSetDyn`. Any other shape
+  -- is the opaque `extCall "arrStore:i"` leaf.
   | .RArrStoreLit arr idx src =>
-      match resolveLocatedArgs vm [arr, src] with
-      | none => none
-      | some resolvedArgs =>
-          let retTy := encodeTy arr.locDst
-          match listSigmaToCHVector resolvedArgs with
-          | ⟨_argTys, hv⟩ =>
-            let e : Expr catCryptDialect Γ retTy :=
-              extCallExpr ("arrStore:" ++ toString idx) retTy hv
-            some { Γ' := retTy :: Γ, cont := ComCont.varBind e, vm := vm.bind arr.locVar }
+      match vm.lookup arr.locVar, vm.lookup src.locVar with
+      | some ⟨.memref n, arrV⟩, some ⟨.sword 64, srcV⟩ =>
+          let eIdx : Expr catCryptDialect Γ (.sword 64) :=
+            { op := .bvConst 64 (BitVec.ofNat 64 idx), retTy_eq := rfl, args := .nil }
+          let eStore : Expr catCryptDialect (.sword 64 :: Γ) (.memref n) :=
+            { op := .memrefSetDyn n, retTy_eq := rfl,
+              args := .cons (toVIRVar (CVar.there arrV))
+                (.cons (toVIRVar (CVar.here : CVar (.sword 64 :: Γ) (.sword 64)))
+                  (.cons (toVIRVar (CVar.there srcV)) .nil)) }
+          some { Γ' := .memref n :: .sword 64 :: Γ,
+                 cont := ComCont.comp (ComCont.varBind eIdx) (ComCont.varBind eStore),
+                 vm := (vm.weaken (t := .sword 64)).bind (t := .memref n) arr.locVar }
+      | _, _ =>
+          match resolveLocatedArgs vm [arr, src] with
+          | none => none
+          | some resolvedArgs =>
+              let retTy := encodeTy arr.locDst
+              match listSigmaToCHVector resolvedArgs with
+              | ⟨_argTys, hv⟩ =>
+                let e : Expr catCryptDialect Γ retTy :=
+                  extCallExpr ("arrStore:" ++ toString idx) retTy hv
+                some { Γ' := retTy :: Γ, cont := ComCont.varBind e,
+                       vm := vm.bind arr.locVar }
   | .RArrLoad dst src idxVar =>
       match resolveLocatedArgs vm [src], vm.lookup idxVar with
       | some resolvedArgs, some idxSig =>

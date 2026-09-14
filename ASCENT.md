@@ -309,7 +309,7 @@ have no instance in the package. The emit fragment `IsCoveredSCtl` has no `RWhil
 arm, so `corres_while`, `corresU_while` and the exit rules have no weld to a
 `Com jasminDialect` program.
 
-### The total abstraction assigns an unsatisfiable guard to 14 constructors
+### The total abstraction assigns an unsatisfiable guard to 11 constructors
 
 The total abstraction `ascendGL L` (`Guards.lean`) is indexed by an array layout
 `L : ArrLayout`, the `.memref` slots of the concrete store with their lengths, and is
@@ -320,19 +320,29 @@ and element `j` of a layout array `arr` is encoded at the abstract name
 (`Strengthen.lean`) is the type-strengthening pass over a layout, with `tsLowCTL_sound`
 and `tsLowCTL_isSome_iff`; `tsLowCT` is `tsLowCTL []`.
 
-Over a layout that contains the array, three array constructors carry no guard; their
+Over a layout that contains the array, five array constructors carry no guard; their
 side conditions are static and decided by the abstraction:
 
 | constructor | leaf | static condition | abstract step |
 |---|---|---|---|
 | `RArrLoad dst src i` | `corresL_arrLoad` | `src` has length `m + 1` in `L`; `dst` typed `TU64` and unreserved; `i` non-temp and unreserved | `dst := A[i mod (m + 1)]` |
 | `RArrStore arr i src` | `corresL_arrStore` | `arr` has length `m + 1` in `L` and `encodeTy` gives `.memref (m + 1)`; `i` and `src` non-temp and unreserved | `A[i mod (m + 1)] := src` |
+| `RArrLoadLit dst src idx` | `corresL_arrLoadLit` | `src` has length `m + 1` in `L`; `idx < m + 1` and `idx < 2 ^ 64`; `dst` typed `TU64` and unreserved | `dst := A[idx]` |
+| `RArrStoreLit arr idx src` | `corresL_arrStoreLit` | `arr` has length `m + 1` in `L`; `idx < m + 1` and `idx < 2 ^ 64`; `src` non-temp and unreserved | `A[idx] := src` |
 | `RLimbStore loc idx v` | `corresL_limbStore` | `loc` has length `n` in `L` and `idx < n` | `A[idx] := v` |
 
 The index is reduced modulo the length because `semScalar` reads and writes through
-`memGetDyn` and `memSetDyn`, which do; an out-of-bounds index is not a guard. Over the
-empty layout these constructors stay unsupported, since `SRwordNT` requires every
-non-temp name to hold a word. The value leaves over a layout (`corresL_setScalar`,
+`memGetDyn` and `memSetDyn`, which do; an out-of-bounds dynamic index is not a guard.
+A literal index is taken as a 64-bit word before the reduction, as the front's
+`bvConst` temporary holds it, so the literal leaves require it below `2 ^ 64` and the
+length. Over the empty layout these constructors stay unsupported, since `SRwordNT`
+requires every non-temp name to hold a word.
+
+The constant-time select `RSelect dst sel src0 src1` goes through `corresL_select`
+over any layout, with the abstract step `dst := if sel = 0 then src0 else src1`, when
+`dst` is typed `TU64` and `dst`, `sel`, `src0` and `src1` are non-temp names the layout
+does not reserve. `semScalar` gives it `selectWord`, the value of the front's eight-op
+mask chain (`selectMaskCont_denote`), which lowers to jasmin. The value leaves over a layout (`corresL_setScalar`,
 `corresL_setExprVal`, `corresL_if`) additionally require the written and read word
 names to be unreserved by the layout; `ascendGL` returns the unsupported guard when one
 is reserved. The worked instance is `arrSelK`: two array reads, the mask select
@@ -342,23 +352,51 @@ guard holds on every store, `arrSelK_corres` the correspondence, `arrSelK_srword
 store and abstract store related by `SRwordL [("A", 4)]`, and `arrSelK_tsLowCTL` that
 the pass returns the pure program.
 
-The remaining 14 constructors map to `unsupportedAbs`, whose guard means `False`, and
+The remaining 11 constructors map to `unsupportedAbs`, whose guard means `False`, and
 the obstruction is in the waist semantics `semScalar`, not in a missing leaf:
 
 * `RLetZero`, `RLimbStoreExpr`, `RFnDef`, `RFnCall` and `RForRuntime` have no arm in
   `semScalar`, which returns `none`; `CorresU` requires a successor state, so no
   satisfiable precondition exists at this waist.
-* `RCall`, `RCallSwap`, `RCloneCall`, `RCallN`, `RCallDstThreaded`, `RSelect`,
-  `RTupleLoad`, `RArrLoadLit` and `RArrStoreLit` bind their destinations to
-  `CryptoTy.default`, the opaque `extCall` waist, independent of the arguments. An arm
-  would abstract a leaf call, a select or a literal-index array access to a zero write.
-  `LowCT.LeafSpec` gives these nodes their meaning in `RustExec`, and
-  `CompileFromHaxLink.LeafSpec` relates `jasminExtSem` to a specification, but neither
-  enters `semScalar`; a leaf specification at this waist needs `semScalar` arms that
-  read the arguments. `corres_ctSelect` abstracts the `RScalarSetExpr` xor/and chain,
-  which `ascendG` covers (`ctSelectChain_ascendG_prog`), not the `RSelect` node.
+* `RCall`, `RCallSwap`, `RCloneCall`, `RCallN`, `RCallDstThreaded` and `RTupleLoad`
+  bind their destinations to `CryptoTy.default`, the opaque `extCall` waist,
+  independent of the arguments. So do `RSelect` over slots other than 64-bit words
+  and `RArrLoadLit` / `RArrStoreLit` over slots other than a `.memref` array and a
+  64-bit word, which the front lowers to the opaque `extCall "select"`,
+  `"arrLoad:i"` and `"arrStore:i"`. An arm would abstract such a node to a zero write.
 
-Nine of these 14 are in the emit leg's fragment `IsCoveredS`. `ascendGL` also returns
+Six of these 11 are in the emit leg's fragment `IsCoveredS`.
+
+#### Leaf calls: the boundary of `semScalar`
+
+`LowCT.LeafSpec` gives the leaf calls their meaning in `RustExec` (`call`,
+`tupleLoad`, and `arrLoad` / `arrStore`, of which `semScalar` fixes the word-cell
+instance `memGetDyn` / `memSetDyn`), and `CompileFromHaxLink.LeafSpec` relates
+`jasminExtSem` to a specification. Neither enters `semScalar`, so no statement over
+`semScalar` constrains the value a leaf call returns: the emit-leg preservation
+theorems `translateDialectControl_denote_ctl`, `semScalarToJasminCom_denote_eq` and
+`rustToJasminCom_endToEnd_unconditional` equate two opaque defaults at those nodes, the
+dialect `extCall` and the jasmin `extCall` both denoting `CryptoTy.default`.
+
+Giving `semScalar` a meaning for leaf calls takes four changes (`SemLeafSpec` and
+`corresL_call` below name declarations that the package does not contain):
+
+1. `semScalar` and `semU` take a leaf oracle `ls : SemLeafSpec`, a function from the
+   leaf name, the destination encoding and the argument values read from the env to
+   a value of the destination's `CryptoTy`, and the leaf arms bind the destination to
+   `ls` applied to the arguments instead of `CryptoTy.default`.
+2. The dialect `extCall` denotation and the jasmin `extCall` denotation
+   (`dialectJasminLeafAgrees_holds`) take the same oracle, so that
+   `cryptoDialectToJasminCom_denote_eq'` holds at every oracle; `leafAgrees_extCallD`
+   becomes the statement that the lowering passes the arguments through unchanged.
+3. The bridge `rustExec_semScalar_agree` relates a `RustExec` `LeafSpec` to a
+   `SemLeafSpec` on the encoded values (`cryptoTyOfRustVal`), which is where a
+   `RustExec` oracle and a waist oracle are shown to compute the same function.
+4. `ascendGL` takes an abstract leaf function per name and `corresL_call` needs the
+   oracle to commute with `wEnc`, stated as a hypothesis of the leaf.
+
+At the oracle that returns `CryptoTy.default`, each of these statements specialises to
+the corresponding statement the package proves. `ascendGL` also returns
 the unsupported guard for `RLetU64Zero` over a body containing a loop, for `RIfNz` and
 `RWhileNz` on a temporary name, for `RIfNz` shapes other than a guarded then-branch or a
 φ-merge of two literal writes to one name, for `RScalarSetExpr` outside `srcClean`, and

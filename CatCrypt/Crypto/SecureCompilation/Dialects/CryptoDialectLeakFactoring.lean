@@ -390,6 +390,20 @@ theorem lowerSExpr_cont_leakFactors {Γ : Ctx} (vm : VarMap Γ) (cnt : Nat)
   | SMulHiS _ _ _ _ => simp only [lowerSExpr] at h; exact absurd h (by simp)
   | SLimb _ _ => simp only [lowerSExpr] at h; exact absurd h (by simp)
 
+/-- **The word-select prefix leak-factors.** The eight `varBind`s of
+    `selectMaskCont` prepend a fixed number of leak events. -/
+theorem selectMaskCont_leakFactors {Γ : Ctx} (sV aV cV : CVar Γ (.sword 64)) :
+    ∃ k : Nat, ComCont.LeakFactors (selectMaskCont sV aV cV) k := by
+  unfold selectMaskCont
+  exact ⟨_, ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+    (ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+      (ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+        (ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+          (ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+            (ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+              (ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+                (ComCont.varBind_leakFactors _)))))))⟩
+
 /-- **The leaf-call front's prefix leak-factors (covered fragment).** On every
     `IsCovered` `LowCT`, whenever `translateDialectFull` succeeds its emitted
     `ComCont` prefix leak-factors: the straight-line/leaf-call/fold arms each
@@ -464,6 +478,37 @@ theorem translateDialectFull_cont_leakFactors {Γ : Ctx} (vm : VarMap Γ) {c : L
           split at h <;> first
             | (simp only [Option.some.injEq] at h; subst h
                exact ⟨k + 1, pushVarBind_leakFactors _ _ hk⟩)
+            | exact absurd h (by simp)
+  | rSelect dst sel src0 src1 =>
+      rw [translateDialectFull] at h
+      split at h
+      · rw [Option.some.injEq] at h; subst h; exact selectMaskCont_leakFactors _ _ _
+      · split at h <;>
+          first
+            | (split at h; dsimp only at h; rw [Option.some.injEq] at h; subst h;
+               exact ⟨1, ComCont.varBind_leakFactors _⟩)
+            | exact absurd h (by simp)
+  | rArrLoadLit dst src idx =>
+      rw [translateDialectFull] at h
+      split at h
+      · rw [Option.some.injEq] at h; subst h
+        exact ⟨_, ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+          (ComCont.varBind_leakFactors _)⟩
+      · split at h <;>
+          first
+            | (split at h; dsimp only at h; rw [Option.some.injEq] at h; subst h;
+               exact ⟨1, ComCont.varBind_leakFactors _⟩)
+            | exact absurd h (by simp)
+  | rArrStoreLit arr idx src =>
+      rw [translateDialectFull] at h
+      split at h
+      · rw [Option.some.injEq] at h; subst h
+        exact ⟨_, ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+          (ComCont.varBind_leakFactors _)⟩
+      · split at h <;>
+          first
+            | (split at h; dsimp only at h; rw [Option.some.injEq] at h; subst h;
+               exact ⟨1, ComCont.varBind_leakFactors _⟩)
             | exact absurd h (by simp)
   | rArrLoad dst src idxVar =>
       rw [translateDialectFull] at h
@@ -860,6 +905,19 @@ theorem lowerSExpr_cont_leakFactorsTrace {Γ : Ctx} (vm : VarMap Γ) (cnt : Nat)
   | SMulHiS _ _ _ _ => simp only [lowerSExpr] at h; exact absurd h (by simp)
   | SLimb _ _ => simp only [lowerSExpr] at h; exact absurd h (by simp)
 
+/-- **The word-select prefix has a fixed leak-event trace.** -/
+theorem selectMaskCont_leakFactorsTrace {Γ : Ctx} (sV aV cV : CVar Γ (.sword 64)) :
+    ∃ pre : LeakTrace, ComCont.LeakFactorsTrace (selectMaskCont sV aV cV) pre := by
+  unfold selectMaskCont
+  exact ⟨_, ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+    (ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+      (ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+        (ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+          (ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+            (ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+              (ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+                (ComCont.varBind_leakFactorsTrace _)))))))⟩
+
 /-- The leaf-call front's trace-factoring (covered fragment). -/
 theorem translateDialectFull_cont_leakFactorsTrace {Γ : Ctx} (vm : VarMap Γ) {c : LowCT}
     (hc : IsCovered c) {o : DTransOut Γ}
@@ -929,6 +987,37 @@ theorem translateDialectFull_cont_leakFactorsTrace {Γ : Ctx} (vm : VarMap Γ) {
           split at h <;> first
             | (simp only [Option.some.injEq] at h; subst h
                exact ⟨_, pushVarBind_leakFactorsTrace _ _ hp⟩)
+            | exact absurd h (by simp)
+  | rSelect dst sel src0 src1 =>
+      rw [translateDialectFull] at h
+      split at h
+      · rw [Option.some.injEq] at h; subst h; exact selectMaskCont_leakFactorsTrace _ _ _
+      · split at h <;>
+          first
+            | (split at h; dsimp only at h; rw [Option.some.injEq] at h; subst h;
+               exact ⟨_, ComCont.varBind_leakFactorsTrace _⟩)
+            | exact absurd h (by simp)
+  | rArrLoadLit dst src idx =>
+      rw [translateDialectFull] at h
+      split at h
+      · rw [Option.some.injEq] at h; subst h
+        exact ⟨_, ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+          (ComCont.varBind_leakFactorsTrace _)⟩
+      · split at h <;>
+          first
+            | (split at h; dsimp only at h; rw [Option.some.injEq] at h; subst h;
+               exact ⟨_, ComCont.varBind_leakFactorsTrace _⟩)
+            | exact absurd h (by simp)
+  | rArrStoreLit arr idx src =>
+      rw [translateDialectFull] at h
+      split at h
+      · rw [Option.some.injEq] at h; subst h
+        exact ⟨_, ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+          (ComCont.varBind_leakFactorsTrace _)⟩
+      · split at h <;>
+          first
+            | (split at h; dsimp only at h; rw [Option.some.injEq] at h; subst h;
+               exact ⟨_, ComCont.varBind_leakFactorsTrace _⟩)
             | exact absurd h (by simp)
   | rArrLoad dst src idxVar =>
       rw [translateDialectFull] at h
