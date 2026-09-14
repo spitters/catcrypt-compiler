@@ -2483,7 +2483,7 @@ lean_lib CatCryptCompiler where
 -- The sibling packages are pinned by commit on their `lean-upgrade-4.32`
 -- branches; they carry no release label at Lean 4.32 yet.
 require catcryptCore from git
-  "https://github.com/spitters/CatCrypt-core.git" @ "2adfac7c5162ab0e89c9b494d53ee4b2fdc75613"
+  "https://github.com/spitters/CatCrypt-core.git" @ "8cc92950220d2c48dcebed51e87987d4bb9d69ec"
 
 -- IR lowering target (`Com` → Veir / MLIR). Pinned to a private staging fork:
 -- upstream Veir at Lean 4.32 plus the CatCrypt additions (the catcrypt/memref/
