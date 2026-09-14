@@ -222,6 +222,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.Demos.X86StraightLine
 CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSymbolic
 CatCrypt.Crypto.SecureCompilation.Ascent.GradedMvcgenProbe
 CatCrypt.Crypto.SecureCompilation.Ascent.GradedWP
+CatCrypt.Crypto.SecureCompilation.Ascent.GuardsLeaf
 CatCrypt.Crypto.SecureCompilation.Ascent.InvariantSchemas
 CatCrypt.Crypto.SecureCompilation.Ascent.JStateSepLogic
 CatCrypt.Crypto.SecureCompilation.Ascent.JasminMirrorTie
@@ -332,6 +333,7 @@ CatCrypt.Crypto.SecureCompilation.Dialects.RuntimeLoopFrontValidate
 CatCrypt.Crypto.SecureCompilation.Dialects.RuntimeStrideRowFrontValidate
 CatCrypt.Crypto.SecureCompilation.Dialects.RustExecChaChaAdeq
 CatCrypt.Crypto.SecureCompilation.Dialects.RustExecKeccakAdeq
+CatCrypt.Crypto.SecureCompilation.Dialects.RustExecLeafOracleBridge
 CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSha256FullAdeq
 CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSExprFrontValidate
 CatCrypt.Crypto.SecureCompilation.Dialects.Sha256RoundWidth32Front
@@ -499,6 +501,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.CrossLaneSimdEmit
 CatCrypt.Crypto.SecureCompilation.VIR.DeadCodeElimReal
 CatCrypt.Crypto.SecureCompilation.VIR.DialectCoproduct
 CatCrypt.Crypto.SecureCompilation.VIR.DialectLoweringCorrectAndRobust
+CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComLeaf
 CatCrypt.Crypto.SecureCompilation.VIR.EcConvertToFieldLowering
 CatCrypt.Crypto.SecureCompilation.VIR.EcEdwardsAffineDialect
 CatCrypt.Crypto.SecureCompilation.VIR.EcOnCurveGroup

@@ -95,6 +95,7 @@ the table gives the role and the declarations to read first.
 | [`AscendDecide`](AscendDecide.lean) | `Bool` fragment checkers with soundness; tactics `ascend!`, `ascend_expr!`, `ascend_bitwise!`, `ascend_unified!` |
 | [`AscendMeta`](AscendMeta.lean) | tactic `ascend_meta` (membership by syntax walk); `keccakRoundBody_bitwise` |
 | [`Guards`](Guards.lean) | `Guard`, `guardsHold`; array layouts `ArrLayout`, `elemKey`, `SRwordL`; the total abstraction `ascendGL` over a layout and `ascendG = ascendGL []`; `ascendGL_sound`, `ascendG_sound`, `ascendG_sound_scalar`; array leaves `corresL_arrLoad`, `corresL_arrStore`, `corresL_limbStore`; `corresU_for_trips`, `corresU_whileNz` |
+| [`GuardsLeaf`](GuardsLeaf.lean) | `CorresL`, `CorresUL` over the waist at a leaf oracle (`semScalarL`, `semUL`); abstract leaves `AVal`, `absArg`, `LeafAbs`, `AbsLeaves`; `ascendGLL`, `ascendGLL_sound`, `ascendGLL_noLeaves`; leaves `corresL_call`, `corresL_selectLeaf`, `corresL_arrLoadLitLeaf`; `leafK_corres` |
 | [`Strengthen`](Strengthen.lean) | `tsLowCTL`, `tsLowCTL_sound`, `tsLowCTL_isSome_iff` and the empty-layout `tsLowCT`, `tsLowCT_sound`, `tsLowCT_isSome_iff`; `tsHax`, `tsHax_sound`; `Kernel.tsLevel` |
 | [`CorresAttr`](CorresAttr.lean) | the `@[corres]` label attribute |
 | [`CorresSolver`](CorresSolver.lean) | `corresJ_cons`, `corresJ_castFa`; tactics `corres_leaf`, `corres_chain`, `corres_solve` |

@@ -425,25 +425,56 @@ theorems `translateDialectControl_denote_ctl`, `semScalarToJasminCom_denote_eq` 
 `rustToJasminCom_endToEnd_unconditional` equate two opaque defaults at those nodes, the
 dialect `extCall` and the jasmin `extCall` both denoting `CryptoTy.default`.
 
-Giving `semScalar` a meaning for leaf calls takes four changes (`SemLeafSpec` and
-`corresL_call` below name declarations that the package does not contain):
+A leaf oracle `SemLeafSpec` (`VIR/CatCryptLeafOracle.lean`) maps a leaf name, the
+destination's `CryptoTy` and the typed argument values to a value of that type;
+`defaultLeaf` returns `CryptoTy.default`. Four layers are stated at a leaf oracle, each
+alongside the default statement, which is unchanged:
 
-1. `semScalar` and `semU` take a leaf oracle `ls : SemLeafSpec`, a function from the
-   leaf name, the destination encoding and the argument values read from the env to
-   a value of the destination's `CryptoTy`, and the leaf arms bind the destination to
-   `ls` applied to the arguments instead of `CryptoTy.default`.
-2. The dialect `extCall` denotation and the jasmin `extCall` denotation
-   (`dialectJasminLeafAgrees_holds`) take the same oracle, so that
-   `cryptoDialectToJasminCom_denote_eq'` holds at every oracle; `leafAgrees_extCallD`
-   becomes the statement that the lowering passes the arguments through unchanged.
-3. The bridge `rustExec_semScalar_agree` relates a `RustExec` `LeafSpec` to a
-   `SemLeafSpec` on the encoded values (`cryptoTyOfRustVal`), which is where a
-   `RustExec` oracle and a waist oracle are shown to compute the same function.
-4. `ascendGL` takes an abstract leaf function per name and `corresL_call` needs the
-   oracle to commute with `wEnc`, stated as a hypothesis of the leaf.
+1. `semScalarL ls` and `semUL ls fuel` (`Dialects/LeafOracleScalar.lean`) are
+   `semScalar` and `semU` with each leaf arm binding its destination to `ls` at the name
+   and arguments of the `extCall` the front emits for that node, the arguments read with
+   `argVals`. `semScalar_eq_semScalarL` and `semU_eq_semUL` identify the default
+   instances. The front's `"select"` leaf receives the two sources and not the selector.
+2. `catCryptDenoteWith ls` is the dialect denotation consulting `ls` at `extCall`, and
+   `jasminDenoteWith jls` the jasmin one. `cryptoDialectToJasminCom_denote_eq_of_transport`
+   (`VIR/DialectToJasminComLeaf.lean`) holds for every oracle pair related by
+   `LeafTransport ls jls`, the jasmin oracle on transported arguments being the
+   transport of `ls`; the lowering passes the argument variables through
+   (`lookupArgs_toJArgsD`). With `leafTransport_default`, `catCryptDenoteWith_default` and
+   `jasminDenoteWith_jasminExtSem` it gives `cryptoDialectToJasminCom_denote_eq'`
+   (`cryptoDialectToJasminCom_denote_eq'_of_default`).
+3. `CallAgrees leafSpec ls` and `ArrLoadAgrees leafSpec ls`
+   (`Dialects/RustExecLeafOracleBridge.lean`) say a `RustExec` oracle, encoded by
+   `cryptoTyOfRustVal`, is `ls` on the encoded arguments. Under them
+   `rustExec_semScalarL_call` and `rustExec_semScalarL_arrLoadLit` relate a `RustExec`
+   step of `RCall`, and of a literal-index read in the leaf case, to the `semScalarL` step
+   from an environment encoding the arguments. `zeroLeafSpec` agrees with `defaultLeaf`
+   (`callAgrees_zero`, `rustExec_semScalar_call_zero`). `RSelect` has no such statement:
+   `RustExec` reads the selector, and the `"select"` leaf does not receive it.
+4. `ascendGLL lf L fuel` (`Ascent/GuardsLeaf.lean`) is `ascendGL L fuel` with abstract
+   leaves `lf : AbsLeaves`, an optional function `List AVal → ZMod 2^64` per name, where
+   an argument abstracts to a word or to the element values of a layout array
+   (`absArg`). `LeafAbs ls name f` is the hypothesis that `wEnc` of the oracle's `u64`
+   result is `f` of the abstracted arguments. `corresL_call` (`RCall`),
+   `corresL_selectLeaf` (`RSelect` with a layout array among the selector and sources)
+   and `corresL_arrLoadLitLeaf` (`RArrLoadLit` from a source that is not a `TArr _ .TU64`
+   array in the layout) abstract such a node to a write of `f` to a `u64` destination,
+   and `ascendGLL_sound` holds at `semUL ls fuel` under `LeavesSound ls lf`.
+   `ascendGLL_noLeaves` and `ascendGL_sound_of_ascendGLL` recover `ascendGL_sound`;
+   `leafAbs_leafOfAbs` gives, for every family of abstract leaves, an oracle for which it
+   is sound. The worked instance `leafK` reads a `TBytes 8` array through `"arrLoad:0"`
+   and selects over it through `"select"`; `leafK_corres` refines it to `leafKProg` with
+   no guard.
 
-At the oracle that returns `CryptoTy.default`, each of these statements specialises to
-the corresponding statement the package proves. `ascendGL` also returns
+The front preservation theorems `translateDialectFull_denote` and
+`translateDialectControl_denote_ctl` are stated at `catCryptDenote` and `semScalar`
+only, so no theorem relates `semScalarL ls` to `catCryptDenoteWith ls`. The leaf rules
+of the ascent write a `u64` destination: a leaf writing an array (`"arrStore:i"`, or
+`RSelect` into an array) stays unsupported, as do `RCallSwap`, `RCloneCall`, `RCallN`,
+`RCallDstThreaded` and `RTupleLoad`. The `RustExec` bridge covers `RCall` and
+`RArrLoadLit`.
+
+`ascendGL` also returns
 the unsupported guard for `RLetU64Zero` over a body containing a loop, for `RIfNz` and
 `RWhileNz` on a temporary name, for `RIfNz` shapes other than a guarded then-branch or a
 φ-merge of two literal writes to one name, for `RScalarSetExpr` outside `srcClean`, and
