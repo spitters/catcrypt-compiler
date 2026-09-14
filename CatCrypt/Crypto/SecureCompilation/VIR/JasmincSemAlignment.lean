@@ -23,19 +23,20 @@ gives `Com.denote ⟹ x86` — but the composition rests on one assumption: our 
 This file turns that vague assumption into a **finite, per-opcode list**, each
 discharged down to "a Lean `BitVec`/array primitive mirrors the corresponding Coq
 `word`/`WArray` primitive" — an eyeball-checkable equation on primitives, not a
-whole-model trust. The `jasminDialect` has **exactly five op constructors**
-(`regArith`, `stackLoad`, `stackStore`, `castW`, `extCall`), with `regArith`
-ranging over the **eight** `JasminBinOp` operators (add/sub/mul/and/or/xor/shl/
-shr), so `execExpr` (`JasminPrintSemCorrect.lean`) is an *exhaustive* match —
-there is **no loop op in the dialect** (bounded loops are a separate additive
-layer, task #48, not part of the core emit; the `Com` the semantics theorem
-ranges over is loop-free). The alignment below is **total** over this emittable
-op set: every operation gets a row, summarised in `opcode_alignment_total`
-(the four `rfl`-closed shapes) plus the named `ExtCallAgrees` leaf edge:
+whole-model trust. `JasminOp` has 22 constructors. The rows below cover five of
+them: `regArith` over the nine `JasminBinOp` operators (add/sub/mul/and/or/xor/
+shl/shr/andn), `stackLoad`, `stackStore` and `castW`, summarised in
+`opcode_alignment_total` (the four `rfl`-closed shapes), plus `extCall`, whose
+row is the named leaf edge `ExtCallAgrees`. The other constructors (`regConst`,
+the packed-vector operations, `mulhi`, the carry, immediate-shift and rotate
+operations, `select`, `callN`) have no row in `opcode_alignment_total`; later
+sections of this module give rows for some vector operations. The dialect has no
+loop constructor; bounded loops are a separate layer, and the `Com` that
+`lowerComToProg_sem_eq` ranges over is loop-free.
 
 | our shape (`execExpr`)            | jasmin `psem` primitive (Coq)                               | row |
 |-----------------------------------|-------------------------------------------------------------|-----|
-| `regArith bop w` → `bop.apply`    | `sem_sop2_typed` of `Oadd/Osub/Omul/Oland/Olor/Olxor/Olsl/Olsr` (`sem_op_typed.v:127`) | `binop_agrees_jasmin` (8 ops) |
+| `regArith bop w` → `bop.apply`    | `sem_sop2_typed` of `Oadd/Osub/Omul/Oland/Olor/Olxor/Olsl/Olsr` (`sem_op_typed.v:127`) | `binop_agrees_jasmin` (9 ops, with `andn`) |
 | `castW w w'` → `zeroExtend`       | `Papp1 (Ozeroext …)` (`sem_op_typed.v`)                     | `castW_agrees_jasmin` |
 | `stackLoad w n` → `stackGet`      | `WArray.get len al AAscale ws a p` (`warray_.v:147`)        | `stackLoad_agrees_jasmin` |
 | `stackStore w n` → `stackSet`     | `WArray.set a al AAscale p v` (`warray_.v:150`)             | `stackStore_agrees_jasmin` |
@@ -95,8 +96,8 @@ def jWordOp {w : Nat} : JasminBinOp → BitVec w → BitVec w → BitVec w
   -- Logical shifts: jasmin `Olsl`/`Olsr` = `wshl`/`wshr` (`sem_op_typed.v`,
   -- `word/word.v`), transcribed as `jWordShl`/`jWordShr` above. These align with
   -- `JasminBinOp.apply`'s `.shl`/`.shr` arms (`a <<< b.toNat` / `a >>> b.toNat`),
-  -- so `binop_agrees_jasmin`'s `cases bop <;> rfl` closes every one of the eight
-  -- arms — the regArith psem alignment is now total over `JasminBinOp`.
+  -- so `binop_agrees_jasmin`'s `cases bop <;> rfl` closes every arm of
+  -- `JasminBinOp`.
   | .shl, a, b => jWordShl a b | .shr, a, b => jWordShr a b
   -- BMI1 `andn` data effect (`#ANDN_w` intrinsic, not an `SOp2`): `(¬a) ∧ b`.
   | .andn, a, b => jWordAndn a b
@@ -142,8 +143,7 @@ theorem apply_andn_eq_jasmin {w : Nat} (a b : BitVec w) :
     operators (add/sub/mul/and/or/xor/shl/shr/andn — every register binary op
     the dialect can emit): each equals its jasmin word op. The first eight are
     `sem_sop2_typed` operators; `andn` is the `#ANDN_w` intrinsic data effect
-    (`(¬a) ∧ b`, `jWordAndn`). With every row transcribed, this is the **total**
-    `regArith` per-opcode psem alignment. -/
+    (`(¬a) ∧ b`, `jWordAndn`). This covers every operator of `regArith`. -/
 theorem binop_agrees_jasmin {w : Nat} (bop : JasminBinOp) (a b : BitVec w) :
     JasminBinOp.apply bop a b = jWordOp bop a b := by
   cases bop <;> rfl
@@ -185,8 +185,7 @@ matching `jasminDenote`). jasmin reads/writes a stack array with `WArray.get`/
   (`stackMem_agrees_jasmin`) is discharged in the downstream
   `JasmincWArrayAlignment.lean` (which imports this file), `[propext, Quot.sound]`.
   This section records the element-layer row that the byte layer refines, so the
-  per-opcode table here is **total** over the emittable op set without forward
-  dependence.
+  per-opcode table here does not depend on that module.
 
 | our shape (`execExpr`)            | jasmin `psem` primitive (Coq)                  |
 |-----------------------------------|------------------------------------------------|
@@ -241,8 +240,7 @@ interpretation is `jasminExtSem` (`JasminDialect`). jasmin's `psem` evaluates an
 intrinsic, a formosa NTT leaf, …), so its agreement with `jasmin`'s `sem_call`
 is precisely the `LeafAgrees leafSem` hypothesis that `lowerComToProg_sem_eq`
 already carries. We make the op-set entry explicit by *naming* the predicate the
-`extCall` row reduces to — it is not a new obligation, it is the existing leaf
-edge, surfaced so the per-opcode table is total. -/
+`extCall` row reduces to; it is the existing leaf edge, not a new obligation. -/
 
 /-- **`extCall` row (the leaf boundary).** The per-opcode psem agreement for an
     `extCall` is exactly that the evaluator's leaf semantics `leafSem` matches the
@@ -250,7 +248,7 @@ edge, surfaced so the per-opcode table is total. -/
     `sem_call` of the linked function (`expr.v:420`). This is the *definition* of
     the alignment for the `extCall` op; it is discharged not by `rfl` but by the
     `LeafAgrees leafSem` hypothesis carried through `lowerComToProg_sem_eq` and
-    `RobustCompilationPipeline`. We phrase it pointwise so the op-set is total. -/
+    `RobustCompilationPipeline`. It is stated pointwise in the arguments. -/
 def ExtCallAgrees
     (leafSem : (name : String) → (argTys : List JasminTy) → (retTy : JasminTy) →
       HVector (fun t => ⟦t⟧) argTys → ⟦retTy⟧) : Prop :=
@@ -258,11 +256,11 @@ def ExtCallAgrees
     (args : HVector (fun t => ⟦t⟧) argTys),
     leafSem name argTys retTy args = jasminExtSem name argTys retTy args
 
-/-! ## 4c. Totality of the per-opcode alignment over the emittable op set
+/-! ## 4c. The per-opcode alignment rows
 
-`jasminDialect`'s `JasminOp` has exactly five op constructors, and `regArith`
-ranges over the eight-element `JasminBinOp`. The per-opcode alignment is now a
-row for **every** emittable operation:
+`regArith` ranges over the nine-element `JasminBinOp`. The rows below cover
+`regArith`, `castW`, `stackLoad`, `stackStore` and `extCall`, five of the 22
+constructors of `JasminOp`; the other constructors have no row here:
 
 | op constructor                | alignment row(s)                                  | status |
 |-------------------------------|---------------------------------------------------|--------|
@@ -274,25 +272,24 @@ row for **every** emittable operation:
 | `regArith .xor`               | `apply_xor_eq_jasmin`                              | rfl    |
 | `regArith .shl`               | `apply_shl_eq_jasmin`                              | rfl    |
 | `regArith .shr`               | `apply_shr_eq_jasmin`                              | rfl    |
-| (all eight, packaged)         | `binop_agrees_jasmin`                              | rfl    |
+| `regArith .andn`              | `apply_andn_eq_jasmin`                             | rfl    |
+| (all nine, packaged)          | `binop_agrees_jasmin`                              | rfl    |
 | `castW`                       | `castW_agrees_jasmin`                              | rfl    |
 | `stackLoad`                   | `stackLoad_agrees_jasmin`                          | rfl    |
 | `stackStore`                  | `stackStore_agrees_jasmin`                         | rfl    |
 | `extCall`                     | `ExtCallAgrees` (the carried `LeafAgrees` edge)    | leaf   |
 
-There is **no `Cfor` obligation**: `jasminDialect` has no loop op, so the `Com`
-ranged over by `lowerComToProg_sem_eq` is straight-line; bounded loops are the
-separate additive for-loop layer. The bundle below packages the four closed (`rfl`) shapes; the
-fifth (`extCall`) is the explicitly-named leaf edge `ExtCallAgrees`, the only
-per-opcode row not discharged by `rfl` because the leaf is external. -/
+There is no `Cfor` obligation: `jasminDialect` has no loop constructor, so the
+`Com` ranged over by `lowerComToProg_sem_eq` is straight-line; bounded loops are a
+separate layer. The bundle below packages the four `rfl` shapes; the `extCall` row
+is the named leaf edge `ExtCallAgrees`, not discharged by `rfl` because the leaf is
+external. -/
 
-/-- **Total per-opcode psem alignment over the closed (`rfl`-dischargeable) op
-    set.** Bundles every emittable operation whose alignment is definitional: the
-    eight `regArith` word ops, `castW`, and the `stackLoad`/`stackStore` element
-    accessors. The one remaining op, `extCall`, is the external leaf,
-    whose alignment is the named predicate `ExtCallAgrees` (the carried
-    `LeafAgrees` edge), not a `rfl` row. So this conjunction plus `ExtCallAgrees`
-    is the **complete** per-opcode obligation for the dialect's emittable ops. -/
+/-- **Per-opcode psem alignment for `regArith`, `castW`, `stackLoad` and
+    `stackStore`.** Bundles the four `rfl` rows: the nine `regArith` word ops,
+    `castW`, and the `stackLoad`/`stackStore` element accessors. The `extCall` row
+    is the named predicate `ExtCallAgrees` (the carried `LeafAgrees` edge). The
+    other constructors of `JasminOp` are not covered by this theorem. -/
 theorem opcode_alignment_total :
     (∀ {w : Nat} (bop : JasminBinOp) (a b : BitVec w),
         JasminBinOp.apply bop a b = jWordOp bop a b)
@@ -689,9 +686,9 @@ row at `BitVec 8`).
 | `(64u)a` zero-extend             | `Papp1 (Ozeroext …)` (= §3 `castW_agrees_jasmin`)                      |
 | XOR-accumulate (`acc ^= …`)      | `Ox86 (VPXOR …)`/`wxor` byte (= §7 `gf16_xoracc_agrees_jasmin`)        |
 
-**All of these rows are already discharged.** The `stackLoad`-by-register-index
-alignment was made psem-total by R4 #95 (`stackLoad_agrees_jasmin`'s `rfl` row
-covers ANY runtime `k : Nat`, the dynamic register index `idx.toNat` included
+**Each of these rows is proved in an earlier section.** The
+`stackLoad`-by-register-index row is `stackLoad_agrees_jasmin`, whose `rfl` proof
+covers any runtime `k : Nat`, the dynamic register index `idx.toNat` included
 — the row is parametric in `k`, not in a compile-time literal). The index
 computation `(64u)a << 4 | (64u)b` is three §1-aligned `regArith` ops on
 `BitVec 64`. The XOR-accumulate at byte width is the same `wxor` alignment as
@@ -719,11 +716,9 @@ theorem gf16Tab_stackLoad_agrees_jasmin
     runtime index. Every op in the emit (the table read, the index `<< 4` and
     `|`, the `(64u)` zero-extend, the XOR-accumulate) is *already* discharged
     by §1 (regArith `shl`/`or`), §3 (`castW` zero-extend), §4 (`stackLoad`
-    element read), and §7 (byte-wise XOR for the GF(16) additive monoid). No
-    new transcription is needed — this is the precedent the brief calls out:
-    "the stackLoad-by-index alignment is ALREADY proven (R4 #95 made stackLoad
-    psem-total)". So the new emit reuses the existing psem rows; this bundle
-    just packages them at the GF(16) TAB instantiation. -/
+    element read), and §7 (byte-wise XOR for the GF(16) additive monoid), so no
+    new transcription is needed; this bundle packages those rows at the GF(16)
+    table instantiation. -/
 theorem gf16_tab_agrees_jasmin :
     (∀ {w n : Nat} (a : Fin n → BitVec w) (k : Nat),
         stackGet a k = jArrGetEl a k)
@@ -852,7 +847,7 @@ sanity checks in the emitter file (`sha256_batched_has_reg_state`,
 
 **Denotation-preservation.** The 4-block batched emit denotes 4 invocations
 of the committed single-block compression `Sha2Emit.compressCom` composed
-via the `JForProgMultiOp.loop_denote_eq_multiOp` lemma (#92) at N=4:
+via the `JForProgMultiOp.loop_denote_eq_multiOp` lemma at N=4:
 
   `⟦ emitSha256BatchedJazz ⟧ state K M = (compressCom ∘ chain)^4 state`
 
@@ -904,7 +899,7 @@ theorem sha512_batched_shr64_agrees_jasmin (a : BitVec 64) (k : Nat) :
     jasmin's `psem` primitive. What remains trusted is the same width-32 /
     width-64 §1 transcriptions Sha2Emit already relied on (no widening). The
     denotation-preservation core is `JForProgMultiOp.loop_denote_eq_multiOp`
-    at N=4 (#92), establishing 4-batched-blocks ⟶ 4x compressCom composition. -/
+    at N=4, establishing 4-batched-blocks ⟶ 4x compressCom composition. -/
 theorem sha2_batched_agrees_jasmin :
     (∀ a b : BitVec 32, a + b = jWordAdd a b)
     ∧ (∀ a b : BitVec 64, a + b = jWordAdd a b)
@@ -938,9 +933,9 @@ the §10 GF(16) TAB row uses, at the SAME byte width).
 | `(64u)a`, `(8u)ma` cast           | `Papp1 (Ozeroext …)` (= §3 `castW_agrees_jasmin`)                      |
 | XOR-accumulate (`acc ^= …`)       | `Ox86 (VPXOR …)`/`wxor` byte (= §7 `gf16_xoracc_agrees_jasmin`)        |
 
-**All of these rows are already discharged.** As with §10, the
-`stackLoad`-by-register-index alignment was made psem-total by R4 #95
-(`stackLoad_agrees_jasmin`'s `rfl` row covers ANY runtime `k : Nat`, the
+**Each of these rows is proved in an earlier section.** As in §10, the
+`stackLoad`-by-register-index row is `stackLoad_agrees_jasmin`, whose `rfl` proof
+covers any runtime `k : Nat`, the
 two dynamic register indices `ax.toNat` and `idx.toNat` included — the row
 is parametric in `k`, not in a compile-time literal). The index computation
 `la + lb` is a §1-aligned `regArith` `wadd` on `BitVec 64`. The mask
@@ -985,11 +980,9 @@ theorem gf256TabLog_stackLoad_agrees_jasmin
     style mask reduce, the negate, the XOR-accumulate) is *already*
     discharged by §1 (regArith add/shr/and), §3 (`castW` zero-extend /
     truncating cast), §4 (`stackLoad` element read), and §7 (byte-wise
-    XOR for the GF(256) additive monoid). No new transcription is
-    needed — this is the precedent the brief calls out: "the stackLoad-
-    by-index alignment is ALREADY proven (R4 #95 made stackLoad
-    psem-total)". So the new emit reuses the existing psem rows; this
-    bundle just packages them at the GF(256) TAB instantiation. -/
+    XOR for the GF(256) additive monoid), so no new transcription is
+    needed; this bundle packages those rows at the GF(256) table
+    instantiation. -/
 theorem gf256_tab_agrees_jasmin :
     (∀ {w n : Nat} (a : Fin n → BitVec w) (k : Nat),
         stackGet a k = jArrGetEl a k)

@@ -38,7 +38,7 @@ unmarked=$(comm -23 <(printf '%s\n' "$discovered") <(printf '%s\n' "$manifest_na
 if [ -n "$unmarked" ]; then
   echo "FAIL: dialect def(s) not classified in $MANIFEST (unmarked toys):"
   printf '  %s\n' $unmarked
-  echo "  -> classify each as lowers|theory|test|review per DIALECTS.md."
+  echo "  -> classify each as lowers|theory|test|review per CatCrypt/Crypto/SecureCompilation/VIR/DIALECTS.md."
   fail=1
 fi
 
@@ -53,7 +53,7 @@ fi
 # 5. Review bucket: tracked, warn (not a failure).
 if [ -n "$review_names" ]; then
   n=$(printf '%s\n' "$review_names" | grep -c . || true)
-  echo "WARN: $n dialect(s) in the 'review' bucket — classify against DIALECTS.md:"
+  echo "WARN: $n dialect(s) in the 'review' bucket — classify against CatCrypt/Crypto/SecureCompilation/VIR/DIALECTS.md:"
   printf '  %s\n' $review_names
 fi
 

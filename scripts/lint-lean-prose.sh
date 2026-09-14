@@ -22,9 +22,9 @@
 # change ADDS, and the pre-commit hook runs it on staged files; both are ratchets
 # that clean the tree forward.
 #
-# `--docs` gates a NAMED LIST, not all markdown: the documents other documents
-# cite as authority, where a diction slip is a claim slip. Add a document to
-# scripts/prose-lint-docs.txt once it is clean; the list is a ratchet.
+# `--docs` gates the documents named in scripts/prose-lint-docs.txt, and fails when
+# a tracked Markdown file, Verso manual file (`docs/*.lean`) or blueprint source
+# (`blueprint/*.tex`) is not named there.
 set -uo pipefail
 
 DOCLIST="scripts/prose-lint-docs.txt"
@@ -39,6 +39,14 @@ if [ "${1:-}" = "--docs" ]; then
     [ -f "$f" ] || { echo "  MISSING: $f (listed in $DOCLIST)"; missing=1; }
   done
   [ "$missing" -eq 1 ] && { echo "lint-lean-prose: $DOCLIST names a file that does not exist — a rename left it stale."; exit 1; }
+  unlisted=$(LC_ALL=C comm -23 \
+    <(git ls-files '*.md' 'docs/*.lean' 'blueprint/*.tex' | grep -vx 'docs/lakefile.lean' | LC_ALL=C sort) \
+    <(printf '%s\n' "${files[@]}" | LC_ALL=C sort))
+  if [ -n "$unlisted" ]; then
+    printf '  UNLISTED: %s\n' $unlisted
+    echo "lint-lean-prose: tracked document(s) above are not in $DOCLIST; add each to the list."
+    exit 1
+  fi
 elif [ ${#files[@]} -eq 0 ]; then
   mapfile -t files < <(git diff --cached --name-only --diff-filter=ACM 2>/dev/null | grep '\.lean$')
 fi

@@ -11,14 +11,19 @@ public import CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
 public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
 
 /-!
-# The de-Bruijn proof, shared across all backends
+# The de-Bruijn proof, shared across `ScalarTarget` backends
 
-The payoff of the neutral semantics: the `Com → RegProg` de-Bruijn faithfulness
-is needed **once** (against `RegProg.denotePure`, backend-free), and
-`com_machine_faithful` lifts it to *any* backend that plugs into the neutral
-semantics — generically, over an abstract `ScalarTarget`. AArch64 is instantiated
-here as a concrete witness (`hstep_arm`); RISC-V / x86 / GPU plug in identically
-via their own register projection (RISC-V uses the `zero`/`x0` convention).
+The `Com → RegProg` de-Bruijn faithfulness is stated once, against the
+backend-independent `RegProg.denotePure`, and `com_machine_faithful` lifts it to
+any `ScalarTarget` with a register projection `proj` whose `step` agrees with
+`evalRegStmtPure` on every statement. This module instantiates it for AArch64
+(`hstep_arm`). The package's other `ScalarTarget` instances are `rvTarget`
+(`RISCVBackend/RegToRiscv.lean`) and `x86Target` (`ScalarLinX86Demo.lean`); their
+step agreement holds only on a restricted set of statements (RISC-V: no
+`zero`/`x0`/`xzr` names and `RvOk`; x86: no `xzr` names, destination distinct
+from the sources, shift amounts below `2^64`),
+so they use the restricted lift `ScalarTarget.compile_denote_pure_on` instead
+(`MultiBackendDemo.com_riscv_e2e`, `ScalarLinX86Demo.com_x86_e2e`).
 -/
 
 @[expose] public section
@@ -35,13 +40,14 @@ open CatCrypt.Crypto.SecureCompilation.ARMBackend
 open CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
 open CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
 
-/-! ## 1. The shared master: one de-Bruijn lemma ⟹ every backend
+/-! ## 1. The generic statement: one de-Bruijn lemma for every `ScalarTarget`
 
-Given any backend `T` plugged into the neutral semantics (a projection `proj`
-with `step`-agreement `hstep`) and the **single, backend-neutral** de-Bruijn
+Given a backend `T` with a projection `proj` whose `step` agrees with the neutral
+semantics on all statements (`hstep`), and the backend-independent de-Bruijn
 faithfulness `deBruijn` (the source value equals the flattened program's neutral
 denotation at the result register), the backend's machine run computes that
-value. Generic over `T` — so it serves AArch64, RISC-V, x86, GPU at once. -/
+value. The statement is generic over `T`; it applies to a backend whose step
+agreement holds for every `RegStmt`, such as AArch64 below. -/
 theorem com_machine_faithful
     (T : ScalarTarget) (proj : T.St → Env)
     (hstep : ∀ (s : T.St) (stmt : RegStmt),
@@ -66,10 +72,11 @@ theorem hstep_arm (s : BState) (stmt : RegStmt) :
       Env.set, Env.get, opMul, opAnd64, opOrr64, opEor64, opUmulh, opLsr64, opLsl64,
       movkInsert, apply_ite BState.regs]
 
-/-- **AArch64 instance of the master.** The compiled-and-run AArch64 block, read at
-    the result register, computes the source value — given only the shared
-    de-Bruijn lemma. (RISC-V is the same call with `rvTarget`, `RState64.regs`,
-    and its own `hstep`.) -/
+/-- **AArch64 instance of `com_machine_faithful`.** The compiled-and-run AArch64
+    block, read at the result register, computes the source value, given the
+    de-Bruijn equality `deBruijn`. (The RISC-V counterpart uses `rvTarget` and
+    `RState64.regs` with the restricted lift `compile_denote_pure_on`, because
+    `hstep_riscv` requires `RvFaithfulStmt`; see `MultiBackendDemo.com_riscv_e2e_of`.) -/
 theorem com_arm_faithful
     {Γ : Ctxt jasminDialect} {ty : JasminTy}
     (com : Com jasminDialect Γ ty) (depth : Nat) (s : BState) (result : BitVec 64)
@@ -80,14 +87,14 @@ theorem com_arm_faithful
         (comRetName com depth) = result :=
   com_machine_faithful ComToArm.armTarget (fun s => s.regs) hstep_arm com depth s result deBruijn
 
-/-! ## 3. A concrete de-Bruijn lemma, discharged → end-to-end with no hypothesis
+/-! ## 3. A concrete de-Bruijn lemma and its end-to-end instance
 
-For the concrete `addCom` (`v2 := v0 + v1`), the de-Bruijn faithfulness holds
-outright: `Com.denote` equals the flattened program's neutral denotation at the
-result register. Composing with `com_arm_faithful` discharges its hypothesis,
-giving a `sorry`-free end-to-end `Com → AArch64` correctness for this leaf —
-proof that the whole architecture (flatten → compile → machine semantics)
-computes the source, not just the scaffolding. -/
+For the concrete `addCom` (`v2 := v0 + v1`), the de-Bruijn faithfulness is proved
+directly (`deBruijn_addCom`): `Com.denote` equals the flattened program's neutral
+denotation at the result register, for an environment with `e "v0" = x1` and
+`e "v1" = x0`. Composing with `com_arm_faithful` gives `addCom_arm_e2e`: the
+compiled AArch64 block, run from a state whose registers `v0`/`v1` hold these
+values, computes `Com.denote addCom`. -/
 
 theorem deBruijn_addCom (x0 x1 : BitVec 64) (e : Env)
     (h0 : e "v0" = x1) (h1 : e "v1" = x0) :
@@ -109,18 +116,19 @@ theorem addCom_arm_e2e (x0 x1 : BitVec 64) (s : BState)
       = Com.denote addCom (.cons x0 (.cons x1 .nil)) :=
   com_arm_faithful addCom 2 s _ (deBruijn_addCom x0 x1 s.regs h0 h1)
 
-/-! ## 4. The Milestone-A payoff: end-to-end with NO per-kernel hand-discharge
+/-! ## 4. End-to-end for every `ComOK` kernel
 
-`com_arm_faithful` (§2) takes the de-Bruijn equality as a *hypothesis*; for `addCom`
-it was discharged by hand (`deBruijn_addCom`). With Milestone A complete,
-`comToReg_faithful` discharges that hypothesis **mechanically** from `ComOK` (the op
-is supported) and `AllReg64` (the context is all-`reg 64`) — so any kernel over the
-field-leaf alphabet compiles to a verified AArch64 block with no bespoke proof. -/
+`com_arm_faithful` (§2) takes the de-Bruijn equality as a hypothesis; for `addCom`
+it is proved by `deBruijn_addCom`. For general `Com`s, `comToReg_faithful` proves
+it from `ComOK` (every op is a `SupportedOp`) and `AllReg64` (the context is
+all-`reg 64`). A kernel satisfying both therefore has an AArch64 correctness
+theorem, `com_arm_e2e`, without a kernel-specific de-Bruijn proof. -/
 
-/-- **Composition theorem.** For any supported straight-line `Com` over an all-`reg 64`
-    context, started from a machine state whose registers match the valuation, the
-    compiled-and-run AArch64 block reads back the source `Com.denote`. No per-kernel
-    de-Bruijn proof — `ComOK` + `AllReg64` suffice. -/
+/-- **Composition theorem.** For a straight-line `Com` with `ComOK com` over a
+    context with `AllReg64 Γ`, started from a machine state with
+    `s.regs = envOf Γ.length V`, the compiled-and-run AArch64 block read at the
+    result register equals `Com.denote com V`. No kernel-specific de-Bruijn proof
+    is needed. -/
 theorem com_arm_e2e {Γ : Ctxt jasminDialect} {com : Com jasminDialect Γ (.reg 64)}
     (hok : ComOK com) (hΓ : AllReg64 Γ) (V : Ctxt.Valuation Γ) (s : BState)
     (hs : s.regs = envOf Γ.length V) :
@@ -132,10 +140,12 @@ theorem com_arm_e2e {Γ : Ctxt jasminDialect} {com : Com jasminDialect Γ (.reg 
 
 /-! ### A worked multi-op kernel: `mulhi(a,b) + K`
 
-A two-binding kernel exercising the ops Milestone A unlocked — widening-high
-multiply (`mulhi`, 5b) and a materialised constant (`regConst`, 5d) — composed with
-an add (5a). `ComOK` is mechanical (each op is `SupportedOp`); `com_arm_e2e` then
-gives sorry-free `Com → AArch64` faithfulness with no hand-written de-Bruijn proof. -/
+A three-binding kernel using a widening-high multiply (`mulhi`, covered by
+`ScalarLinDeBruijn.opToStmts_mulhi_correct`), a materialised constant
+(`regConst`, covered by `opToStmts_const_correct`) and an add (covered by
+`opToStmts_bin_correct`). `ComOK` holds op by op (each op is a `SupportedOp`), and
+`com_arm_e2e` gives the `Com → AArch64` theorem without a kernel-specific
+de-Bruijn proof. -/
 
 /-- `v2 := mulhi v0 v1 ; v3 := K ; v4 := v2 + v3 ; ret v4` over args `[a, b]`. -/
 def mulhiAddKCom (K : Nat) : Com jasminDialect [.reg 64, .reg 64] (.reg 64) :=
@@ -160,9 +170,9 @@ theorem allReg64_two : AllReg64 ([.reg 64, .reg 64] : Ctxt jasminDialect) := by
     · exact h
     · exact absurd h (List.not_mem_nil)
 
-/-- **End-to-end, sorry-free.** The compiled AArch64 block for `mulhi(a,b)+K`, run
-    from a matching state, computes the source denotation — via `com_arm_e2e`, with
-    zero bespoke de-Bruijn reasoning. -/
+/-- **End-to-end for `mulhiAddKCom`.** The compiled AArch64 block for
+    `mulhi(a,b)+K`, run from a state with `s.regs = envOf 2 V`, read at the result
+    register, equals the source denotation; an instance of `com_arm_e2e`. -/
 theorem mulhiAddKCom_arm_e2e (K : Nat) (V : Ctxt.Valuation ([.reg 64, .reg 64] : Ctxt jasminDialect))
     (s : BState) (hs : s.regs = envOf 2 V) :
     ((ComToArm.armTarget.runOps s

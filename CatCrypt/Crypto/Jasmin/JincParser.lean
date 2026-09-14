@@ -58,9 +58,10 @@ where `sz` is the declared width of the LHS register.
 
 ## Smoke test
 
-See `CatCrypt/Crypto/Jasmin/Examples/JincParserDemo.lean` for parsing
-the inner round body of `gf16_mul_scalar` and proving structural equality
-with the hand-authored `MayoLeafJasminSim.gf16MulStepCmd`.
+`CatCrypt/Crypto/Jasmin/Examples/JincParserDemo.lean` parses the inner round
+body of `gf16_mul_scalar` and compares the result with a reference AST defined
+there, by instruction count, constructor shape, left-hand-side names and
+right-hand-side operator tags.
 -/
 
 namespace CatCrypt.Crypto.Jasmin.JincParser
@@ -285,7 +286,7 @@ def parseExpr (lhsSz : WSize) : P Pexpr := do
   | some .shl   => advance
                    let rhs ← parseAtom lhsSz
                    -- jasmin's `<<` corresponds to `Olsl (.Op_w sz)` (kind
-                   -- carries the width as an `OpKind`); see MayoLeafJasminSim.
+                   -- carries the width as an `OpKind`).
                    return .Papp2 (.Olsl (.Op_w lhsSz)) lhs rhs
   | _ => return lhs
 

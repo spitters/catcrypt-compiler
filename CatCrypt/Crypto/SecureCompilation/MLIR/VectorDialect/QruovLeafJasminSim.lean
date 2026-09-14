@@ -23,8 +23,8 @@ This file connects QR-UOV's scalar `gf127_mul` `.jinc` leaf body (from
 jasmin operational semantics in
 `CatCrypt/Crypto/Jasmin/JasminCoqSemMirror.lean`.
 
-Sibling to `MayoLeafJasminSim.lean` (MAYO pilot) and
-`UovLeafJasminSim.lean` (UOV scalar mul-step pilot).
+`UovLeafJasminSim.lean` has the same structure for the UOV scalar multiply
+step.
 
 ## Scope (limited per fallback gate)
 
@@ -56,12 +56,10 @@ What we CAN do at this batch:
     `a, b ∈ [0..126]` produces a post-state whose `p` matches the
     verified `(Zq127.fromNat a * Zq127.fromNat b).asNat`.
 
-This is the QR-UOV analogue of MAYO's `gf16MulStepCmd` and UOV's
-`gf256MulOneRoundCmd`: the first concrete bridge from the new jasmin
-semantics to QR-UOV's GF(127) scalar leaf transcription. The chain
-to the *full* unrolled `qruov_block_dot_b4_l3` body (36 inner mul + 36
-inner add + packing) is mechanical follow-up once the `fnDef` /
-`Ccall` gap is closed.
+This relates the `JasminCoqSemMirror` semantics to QR-UOV's GF(127) scalar
+leaf transcription, as `UovLeafJasminSim.gf256MulOneRoundCmd` does for UOV.
+The full unrolled `qruov_block_dot_b4_l3` body (36 inner mul + 36 inner add +
+packing) is not covered; it needs the `fnDef` / `Ccall` forms.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.QruovLeafJasminSim
@@ -281,10 +279,7 @@ modular multiplication `(a * b) mod 127`.
 To stay within `native_decide`'s reachable budget we restrict the
 universal to the **canonical residue space** `(a, b) ∈ [0..126]²`
 (16129 cases) — matching the .jinc body's documented input
-contract (`reg u16 a, b` with `a, b < 127`).
-
-The structural shape of the theorem matches MAYO's
-`gf16MulStep_jasmin_sem_eq_smallInputs` exactly. -/
+contract (`reg u16 a, b` with `a, b < 127`). -/
 
 /-- **Connector theorem (full-input form on the canonical residue
     space).** For all `a, b ∈ [0..126]` the operational-semantics step
@@ -326,16 +321,13 @@ theorem nat_mul_mod_eq_Zq127 (a b : Nat) (ha : a < 127) (hb : b < 127) :
 | `gf127Mul_jasmin_sem_eq_smallInputs` | Mul-Cmd ≅ `(a * b) % 127` on the canonical 127 × 127 input space (16129 cases) | **`native_decide` PROVED** |
 | `nat_mul_mod_eq_Zq127` | Nat-level mod-127 mul = verified `Zq127` mul | **Proved** |
 
-**What this delivers**: the QR-UOV analogue of MAYO's
-`gf16MulStep_jasmin_sem_eq_smallInputs` and UOV's
-`gf256MulStep_jasmin_sem_eq_smallInputs` — a proved bridge from the
-new `JasminCoqSemMirror` operational semantics to a verified
-`.jinc`-leaf transcription for the Mersenne-reduce GF(127) multiply.
-The chain to the full unrolled `qruov_block_dot_b4_l3` body
-(36 inner mul rounds + 36 inner add rounds + outer packing) is
-mechanical follow-up once the `Ccall` / `fnDef` gap is closed.
+**Scope of the checks**: `gf127Mul_jasmin_sem_eq_smallInputs` evaluates, by
+`native_decide`, the `JasminCoqSemMirror` run of the Mersenne-reduce GF(127)
+multiply against `(a * b) % 127` on all canonical residues `a, b < 127`. The full
+unrolled `qruov_block_dot_b4_l3` body (36 inner mul rounds + 36 inner add rounds +
+outer packing) is not covered.
 
-**What's missing for axiom removal**: same blockers as MAYO and UOV —
+**Missing for replacing the leaf axiom**: as for UOV (`UovLeafJasminSim`),
 `Ccall` / `inline fn` table for the opaque rustcmd
 `qruov_block_dot_b4_l3` symbol, and (for fully relational reasoning)
 the `Cfor` relational constructor in `JasminCoqSemMirror`.

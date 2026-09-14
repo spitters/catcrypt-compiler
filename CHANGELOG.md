@@ -19,6 +19,16 @@ Changes since `v0.1.0-alpha.2`.
   front's compilation of `r := a + b mod 251` and the ascent's `SRenc` states.
 - The dialect classification gate (`scripts/dialect-lowering-ratchet.sh`) runs in this
   package.
+- The `Veir` dependency `spitters/veir-catcrypt` is a public repository; a build needs
+  no credentials ([BUILDING.md](BUILDING.md#the-veir-dependency)).
+- [bench.md](bench.md) states that its ratios were measured in the development
+  repository and cannot be reproduced from this package, names the reference each
+  ratio was measured against, and marks the rows whose timed object file is not
+  shipped; [bench/PROVENANCE.md](bench/PROVENANCE.md) names the declaration or
+  executable that writes each shipped assembly file.
+- `scripts/check-doc-paths.sh` checks that file paths in document code spans name
+  tracked files, and `scripts/lint-lean-prose.sh --docs` covers every tracked
+  document.
 
 ## 0.1.0-alpha.2 — 2026-09-13 (pre-release)
 
@@ -27,9 +37,8 @@ and the set of theorems have changed; the list below records the main changes.
 
 - Lean toolchain `v4.33.1` (the release used `v4.30.0`), with mathlib, CompPoly and
   doc-gen4 at `v4.33.1` and the other dependencies pinned by commit or tag. `Veir`
-  resolves from the private fork `spitters/veir-catcrypt` (the release required
-  `opencompl/veir` at `v4.29.0`); [BUILDING.md](BUILDING.md) describes the access
-  it needs.
+  resolves from the fork `spitters/veir-catcrypt`, then private (the release required
+  `opencompl/veir` at `v4.29.0`).
 - The package was resynced from the CatCrypt development and holds 2389 Lean modules
   under `CatCrypt/` (the release held 1851). The library names its modules one by one
   in `lakefile.lean`; `scripts/gen-module-globs.sh` generates the list and CI checks

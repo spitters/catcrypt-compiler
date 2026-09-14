@@ -3,8 +3,8 @@
 # A line here asserts the file is compiler/proof infrastructure, a front/pass/
 # predicate/driver, or a backend-arm demo WITHOUT a deployable emit artifact —
 # NOT an owned-emit kernel. Placeholder-leaf kernels are NOT exemptible (they
-# stay on the reroute worklist). Evidence: the 2026-07-03 255-module triage
-# (catcrypt-private/docs/handcom-triage-2026-07-03.tsv).
+# stay on the reroute worklist). The justification on each line is the evidence
+# for that exemption.
 CatCrypt/Crypto/Jasmin/Ed25519/CompressCom.lean  # self-declared hand-Com optimizer-wiring handle; byte tie lives in CompressEmitDenoteCorrect, no artifact
 CatCrypt/Crypto/Jasmin/JincElab.lean  # .jinc import elaborator (JincImportAll rot-guard infra), not an emit kernel
 CatCrypt/Crypto/Optimizer/ComCSE.lean  # verified Com-to-Com CSE optimizer pass, not an emit kernel

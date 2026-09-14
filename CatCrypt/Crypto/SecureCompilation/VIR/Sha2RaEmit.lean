@@ -51,9 +51,8 @@ to the unrenamed emit. The register allocator with a semantic theorem is
 
 `linearScanRA p` assigns slots to the binders of `p`. The slot indices of
 `Sha2Emit.compressCom` (`0..127`) are not binder indices of the `JForProg`
-wrapper. The bench emit (`bench/sha2_compare/sha2_ra_emit.lean` in the
-development repository) passes `UnrolledComRA.unrolledSlotRASha`, a linear scan
-over the slot domain of `compressCom`.
+wrapper. The benchmark emit passes `UnrolledComRA.unrolledSlotRASha`, a linear
+scan over the slot domain of `compressCom`.
 -/
 
 @[expose] public section

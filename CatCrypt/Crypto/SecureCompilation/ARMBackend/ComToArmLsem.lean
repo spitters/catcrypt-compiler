@@ -11,84 +11,86 @@ public import CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArmDecoder
 public import CatCrypt.Crypto.SecureCompilation.VIR.Compiler
 
 /-!
-# `Com → AArch64`: a block-execution `MachineModel` + value-preservation keystone
+# `Com → AArch64`: a block-execution `MachineModel` and value preservation
 
-This module mirrors the RISC-V cross-arch result
-(`RISCVBackend/ComToRiscvLsem.lean`) on the AArch64 side: it replaces the
-`MachineModel.exec := fun _ s => s` validation shell of `VIR/Compiler.lean`'s
-`latticeModel`/`armModel` with a `MachineModel` whose `exec` is the **real**
-`ArmModel.runBBlock` block fold, carrying a genuine value-level `validated`
-field — the whole-`Com → AArch64` value-preservation keystone for the base-ALU
-(GP-ALU) fragment.
+This module is the AArch64 counterpart of `RISCVBackend/ComToRiscvLsem.lean`. In
+`VIR/Compiler.lean`, `latticeModel` and `armModel` have
+`exec := fun _ s => s`, which does not run the code. This module defines a
+`MachineModel` whose `exec` is the `ArmModel.runBBlock` block fold and whose
+`validated` field is the value-preservation statement for the base-ALU (GP-ALU)
+fragment of `Com → AArch64`.
 
-## What was already in the tree (reused verbatim, not re-derived)
+## Dependencies
 
 * **The block model** — `ARMBackend.runBBlock` (the `evalBInst` fold over the
-  64-bit `X`-register `BState`) and `runBBlock_cons`/`bignumBlock_lowering_denote`,
-  already proved (`ArmModel.lean`, `ArmLowering.lean`).
+  64-bit `X`-register `BState`) and `runBBlock_cons`/`bignumBlock_lowering_denote`
+  (`ArmModel.lean`, `ArmLowering.lean`).
 * **The whole-`Com` value chain** — `ScalarLinNeutralDemo.com_arm_e2e`: for a
-  supported all-`reg 64` `Com`, the AArch64 machine run computes `Com.denote`.
-  This chains `comToReg_faithful` (the de-Bruijn front), the neutral-semantics
-  master `com_machine_faithful`, and the AArch64 `ScalarTarget` keystone
-  (`ComToArm.regToBOp_denote`). It terminates at `armTarget.runOps`/
+  `Com` satisfying `ComOK` over an `AllReg64` context, run from a state whose
+  registers are `envOf Γ.length V`, the AArch64 machine run computes `Com.denote`.
+  It composes `comToReg_faithful` (the de-Bruijn front), the neutral-semantics
+  theorem `com_machine_faithful`, and the AArch64 `ScalarTarget` theorem
+  `ComToArm.regToBOp_denote`. It is stated over `armTarget.runOps`/
   `armTarget.compile`, which `bignumBlock_lowering_denote` identifies with the
   model run `runBBlock ∘ lowerBBlock`.
 * **The `Com`-level base-ALU restriction** — `ComBaseAlu`, `BaseAluOp`,
-  `RegBaseAlu`, `comToRegProg_RegBaseAlu` are **front-only** (over `RegStmt` /
-  `opToStmts` / `Com`, not RISC-V lowering), so they are imported verbatim from
-  `RISCVBackend.ComToRiscvLsem` and reused for the ARM coverage proof.
+  `RegBaseAlu`, `comToRegProg_RegBaseAlu` are defined over `RegStmt` /
+  `opToStmts` / `Com` and do not mention RISC-V lowering; they are imported from
+  `RISCVBackend.ComToRiscvLsem` and used for the ARM coverage proof.
 * **The decode round-trip** — `SailArmDecoder.roundtrip_binst_add`, `_sub`,
   `_and`, `_orr`, `_eor` (the five GP-ALU ops this module's fragment executes),
   alongside the rest of the `roundtrip_binst_*` family and the 32-bit
-  `roundtrip_ainst_*`: `decode (encode i) = i` against field splits **hand
-  transcribed** from the public `rems-project/sail-arm` `aarch_decode.sail`
-  (no sail-arm checkout is vendored in this repo, so that transcription is a
-  trusted step). `roundtrip_binst_orr` carries the `Rn ≠ XZR` side condition
-  that separates a real `ORR` from the `MOV` alias.
+  `roundtrip_ainst_*`: `decode (encode i) = i` against field splits hand
+  transcribed from the public `rems-project/sail-arm` `aarch_decode.sail`.
+  No sail-arm checkout is vendored in this repository, so the transcription is a
+  trusted step. `roundtrip_binst_orr` carries the side condition `Rn ≠ XZR`,
+  which separates `ORR` from the `MOV` alias.
 
-## What this module adds (the missing completion)
+## Contents
 
-1. **`comToArmLsem_correct`** (the ARM keystone) — the whole-`Com` value-
-   preservation fact: the AArch64 `runBBlock` execution of the compiled-and-
-   lowered base-ALU `Com` computes `Com.denote` (via `com_arm_e2e` bridged
-   through `bignumBlock_lowering_denote`) **and** every executed `BInst` is in
-   the GP-ALU subset (`armBlock_all_gpAlu`).
-2. **`armBaseAluModel`** — a genuine `MachineModel` with
-   `exec := fun code s => runBBlock s code` (a non-`id` execution semantics) and
-   a `validated` field carrying the value-level keystone, analogous to
+1. **`comToArmLsem_correct`** (main theorem) — for `ComBaseAlu com`,
+   `AllReg64 Γ` and a start state with `s.regs = envOf Γ.length V`, the AArch64
+   `runBBlock` execution of the compiled-and-lowered block, read at the result
+   register, equals `Com.denote com V`, and every executed `BInst` is in the
+   GP-ALU subset (`armBlock_all_gpAlu`).
+2. **`armBaseAluModel`** — a `MachineModel` with
+   `exec := fun code s => runBBlock s code` and `validated := ArmBaseAluGrounded`,
+   the proposition stated by `comToArmLsem_correct`; the AArch64 counterpart of
    `riscvBaseAluModel`.
 
-## HONEST trust scope: decode round-trip, NOT a Sail-execute refinement
+## Trust scope: decode round-trip, no Sail-execute refinement
 
-**This is the residual that separates ARM from RISC-V.** The RISC-V model's
-`validated` (`RiscvBaseAluGrounded`) is a *value-level Sail-execute refinement*:
-each base-ALU step of `runRBlock64` is proved equal to the value the sail-riscv
+The RISC-V model's `validated` (`RiscvBaseAluGrounded`) is a value-level
+Sail-execute refinement: under a register-name alignment, the value each base-ALU
+`evalRInst64` step writes is proved equal to the value the sail-riscv
 `execute_RTYPE` clause writes, where that clause is an in-file excerpt of the
 sail-riscv-lean generated output (commit `9eba3f07`; upstream not vendored)
-(`SailRiscv64Refinement`). ARM has an
-in-tree *hand-transcribed* execute-clause file — `SailArm64Refinement.lean`,
-which renders two Arm ARM pseudocode clauses and proves their per-op value
-matches `ArmModel`'s `opAnd64`/`opOrr64`/`opEor64` (and raw `BitVec` `+`/`-`) —
-but **no theorem links it to `runBBlock`**: nothing in it mentions `evalBInst`,
-`BState`, or `runBBlock`, nothing in the package imports it, and its clauses were
-not read from a checkout vendored in this repo; the transcription's provenance is
-not recorded. So it does not ground this model. What grounds the ARM model is:
+(`SailRiscv64Refinement`). ARM has an in-tree hand-transcribed execute-clause
+file, `SailArm64Refinement.lean`, which renders two Arm ARM pseudocode clauses and
+proves that their per-op value matches `ArmModel`'s `opAnd64`/`opOrr64`/`opEor64`
+(and raw `BitVec` `+`/`-`). No theorem links it to `runBBlock`: the file does not
+mention `evalBInst`, `BState` or `runBBlock`, no module in the package imports it,
+its clauses were not read from a checkout vendored in this repository, and the
+provenance of the transcription is not recorded. It therefore does not ground
+this model. The ARM model rests on:
 
 * the **`SailArmDecoder` decode round-trip** — `decode (encode i) = i` against the
-  transcribed `sail-arm` `aarch_decode.sail` *parse* clauses (which operand bits
+  transcribed `sail-arm` `aarch_decode.sail` parse clauses (which operand bits
   each instruction names), for the full emitted GP-ALU subset;
 * **differential testing** against the GNU assembler / objdump / LLVM and a qemu
   execute KAT — 704/704 encode-decode, 237/237 execute, a tally from an untracked
-  local harness, not vendored in this repo and not reproducible from this tree;
-* the **hand-written `ArmModel` semantics**, auditable against the Arm ARM by eye.
+  local harness, not vendored in this repository and not reproducible from this
+  tree;
+* the **hand-written `ArmModel` semantics**, checked against the Arm ARM by
+  reading.
 
-There is **no machine-checked equality between `runBBlock`'s per-op effect and an
-authoritative `sail-arm` *execute* clause** — only between the encoder bytes and
-the transcribed *decode* parse. Bringing ARM to RISC-V's depth needs a vendored
-`sail-arm` execute-semantics model and a theorem carrying `SailArm64Refinement`'s
-value-level lemmas across to `evalBInst`/`runBBlock`; that is the explicit
-residual, called out here so the `validated` field is not read as a Sail-execute
-grounding it is not.
+No machine-checked equality relates `runBBlock`'s per-op effect to a `sail-arm`
+execute clause; the machine-checked relation is between the encoder output and the
+transcribed decode parse. A Sail-execute grounding for ARM requires a vendored
+`sail-arm` execute-semantics model and a theorem carrying the value-level lemmas of
+`SailArm64Refinement` to `evalBInst`/`runBBlock`. The `validated` field of
+`armBaseAluModel` is value preservation plus GP-ALU coverage, not a Sail-execute
+refinement.
 -/
 
 @[expose] public section
@@ -130,8 +132,9 @@ because `regToBOp` is *definitionally* `armTarget.compile` and `armTarget` is a
 structure literal that bundles its `select_correct` proof field — whose `loadImm`
 case (`ComToArm.regStmtToBOp_denote`→`loadImm_lower`→`mk_recon`) is closed by
 `bv_decide`, pulling SAT-certificate axioms into the term. The `instSel`
-abbreviation below is the *same* op-selection (`regToBOp_eq` proves they are
-equal), kept axiom-entanglement-free for the keystone. -/
+abbreviation below is the same op-selection (`regToBOp_eq` proves they are
+equal) and does not depend on the `bv_decide` axioms, so `comToArmLsem_correct`
+can be stated over it without them. -/
 
 /-- The op-selection of a `RegProg` (= `ComToArm.regToBOp`, spelled without the
     axiom-entangled `armTarget` structure literal). -/
@@ -139,7 +142,7 @@ def instSel (p : RegProg) : List BOp := p.flatMap regStmtToBOp
 
 /-- `instSel` is exactly `ComToArm.regToBOp` — definitionally equal, but stated as
     a propositional bridge so the equality (and `regToBOp`'s `mk_recon`
-    `bv_decide` axioms) stays *outside* the keystone's axiom budget. -/
+    `bv_decide` axioms) is not a dependency of `comToArmLsem_correct`. -/
 theorem regToBOp_eq (p : RegProg) : regToBOp p = instSel p := rfl
 
 /-- The lowered AArch64 machine block of a `RegProg`: select ops, lower to
@@ -148,11 +151,11 @@ def armBlockOf (p : RegProg) : List BInst := lowerBBlock (instSel p)
 
 /-! ## 2. The compiled-and-lowered block is entirely GP-ALU
 
-So every step the `runBBlock` execution takes is a decode-round-trip-grounded
-GP-ALU instruction, we show the lowered block of a base-ALU `Com` contains only
-GP-ALU `BInst`s. The `Com`/`RegStmt`-level base-ALU restriction (`ComBaseAlu`,
-`RegBaseAlu`, `comToRegProg_RegBaseAlu`) is front-only and imported from the
-RISC-V module; only the ARM-local lowering `regStmtToBOp` / `toBInst` is new. -/
+The lowered block of a base-ALU `Com` contains only GP-ALU `BInst`s, the five
+instruction forms covered by the `SailArmDecoder` decode round-trip theorems. The
+`Com`/`RegStmt`-level base-ALU restriction (`ComBaseAlu`, `RegBaseAlu`,
+`comToRegProg_RegBaseAlu`) is imported from the RISC-V module; the lemmas below
+concern the ARM lowering `regStmtToBOp` / `toBInst`. -/
 
 /-- One base-ALU `RegStmt` lowers (`regStmtToBOp` then `toBInst`) to all GP-ALU
     `BInst`s — the ARM analogue of RISC-V's `stmt_lower_base`. -/
@@ -172,9 +175,11 @@ theorem regprog_lower_gpAlu (p : RegProg) (hp : ∀ stmt ∈ p, RegBaseAlu stmt)
   obtain ⟨stmt, hstmt, hi'⟩ := hi
   exact stmt_lower_gpAlu stmt (hp stmt hstmt) i hi'
 
-/-- **The compiled-and-lowered AArch64 block of a base-ALU `Com` is all GP-ALU** —
-    so every `BInst` the model executes is decode-round-trip-grounded (the ARM
-    analogue of `riscvBlock_all_baseAlu`). -/
+/-- **The compiled-and-lowered AArch64 block of a base-ALU `Com` is all GP-ALU.**
+    Every `BInst` the model executes is `ADD`/`SUB`/`AND`/`ORR`/`EOR`, the forms
+    covered by the `SailArmDecoder` round-trip theorems (for `ORR` under
+    `Rn ≠ XZR`); those theorems are separate and not part of this statement. The
+    ARM counterpart of `riscvBlock_all_baseAlu`. -/
 theorem armBlock_all_gpAlu {Γ : Ctxt jasminDialect}
     {com : Com jasminDialect Γ (.reg 64)} (hba : ComBaseAlu com) :
     ∀ i ∈ armBlockOf (comToRegProg com Γ.length), IsGpAlu i :=
@@ -187,10 +192,10 @@ theorem armBlock_all_gpAlu {Γ : Ctxt jasminDialect}
 `ComToArm.mk_recon`, that pulls SAT-certificate axioms into the term). The
 base-ALU fragment never emits `loadImm`, so we build the value bridge directly
 over the GP-ALU statements — for which `runBBlock ∘ lowerBBlock ∘ regStmtToBOp`
-realises `evalRegStmt` by `rfl` — keeping the keystone's axiom set
-`{propext, Classical.choice, Quot.sound}` (matching `comToRiscvLsem_correct`).
-The de-Bruijn front (`comToReg_faithful`) and the neutral projection
-(`hstep_arm`) are themselves axiom-clean. -/
+realises `evalRegStmt` by `rfl`. The proof of `comToArmLsem_correct` therefore
+does not pass through `mk_recon` and its `bv_decide` SAT-certificate axioms. The
+de-Bruijn front (`comToReg_faithful`) and the neutral projection (`hstep_arm`) do
+not use `bv_decide`. -/
 
 /-- For a base-ALU `RegStmt`, the lowered machine run of its selected `BOp`(s)
     realises the source effect `evalRegStmt` — `rfl` on each of the five GP-ALU
@@ -244,37 +249,36 @@ theorem runBBlock_regToBOp_base_pure (p : RegProg)
       rw [← hstep_arm s x]
       exact ih (fun stmt h => hp stmt (List.mem_cons.mpr (Or.inr h))) (evalRegStmt s x)
 
-/-! ## 4. The `Com → AArch64` value-preservation keystone -/
+/-! ## 4. `Com → AArch64` value preservation -/
 
-/-- **The whole-`Com` value-preservation keystone (the ARM completion).** For a
-    base-ALU all-`reg 64` `Com`, executing the compiled-and-lowered AArch64 block
-    on the model:
+/-- **Whole-`Com` value preservation for AArch64.** For a `Com` with
+    `ComBaseAlu com` over a context with `AllReg64 Γ`, and a start state `s` with
+    `s.regs = envOf Γ.length V`, executing the compiled-and-lowered AArch64 block
+    with `runBBlock`:
 
-    1. **computes the source `Com.denote`** (the value chain: the de-Bruijn front
-       `comToReg_faithful`, the per-statement base-ALU machine fact
-       `runBBlock_regStmtToBOp_base`, and the neutral projection `hstep_arm` — all
-       reusing the existing AArch64 `ArmModel`/`ComToArm` pieces, restricted to the
-       `loadImm`-free GP-ALU subset so the axiom set matches
-       `comToRiscvLsem_correct`), and
-    2. **runs only GP-ALU instructions** (`armBlock_all_gpAlu` — every executed
-       `BInst` is `ADD`/`SUB`/`AND`/`ORR`/`EOR`, each grounded by the
-       `SailArmDecoder` decode round-trip).
+    1. yields a state whose register `comRetName com Γ.length` holds
+       `Com.denote com V` (proof: the de-Bruijn front `comToReg_faithful`, the
+       per-statement base-ALU machine fact `runBBlock_regStmtToBOp_base`, and the
+       neutral projection `hstep_arm`, restricted to the `loadImm`-free GP-ALU
+       subset), and
+    2. executes only GP-ALU instructions (`armBlock_all_gpAlu`: every executed
+       `BInst` is `ADD`/`SUB`/`AND`/`ORR`/`EOR`).
 
     The block `armBlockOf (comToRegProg com Γ.length)` is definitionally
-    `lowerBBlock (regToBOp (comToRegProg com Γ.length))` — the `ComToArm` pipeline
-    (`regToBOp_eq`); it is spelled via `armBlockOf` so the keystone's axiom set
-    stays `{propext, Classical.choice, Quot.sound}` (the `regToBOp`/`armTarget`
-    spelling drags in `mk_recon`'s `bv_decide` axioms via the `loadImm` selection
-    the base-ALU fragment never uses).
+    `lowerBBlock (regToBOp (comToRegProg com Γ.length))`, the `ComToArm` pipeline
+    (`regToBOp_eq`). It is spelled via `armBlockOf` because the
+    `regToBOp`/`armTarget` spelling depends on `mk_recon`'s `bv_decide` axioms
+    through the `loadImm` selection, which the base-ALU fragment does not use.
 
-    The `MachineModel.exec := fun _ s => s` shell of `latticeModel`/`armModel` is
-    thereby replaced, on the base-ALU fragment, by the genuine `runBBlock`
-    functional semantics — the AArch64 mirror of `comToRiscvLsem_correct`.
+    This is the AArch64 counterpart of `comToRiscvLsem_correct`, with `runBBlock`
+    as the execution semantics in place of the identity `exec` of
+    `latticeModel`/`armModel`.
 
-    **Trust scope (the residual vs RISC-V):** conjunct (2) is a *decode* round-trip
-    + differential/qemu grounding, **not** a Sail-execute refinement. The in-tree
-    `SailArm64Refinement` hand-transcribes execute clauses but no theorem links it
-    to `runBBlock`, so it is not a `SailRiscv64Refinement` analogue. -/
+    **Trust scope:** conjunct (2) states only membership in the GP-ALU subset. For
+    that subset the package has the `SailArmDecoder` decode round-trip theorems and
+    external differential/qemu testing; it has no Sail-execute refinement. The
+    in-tree `SailArm64Refinement` transcribes execute clauses, but no theorem links
+    it to `runBBlock`, so it is not a counterpart of `SailRiscv64Refinement`. -/
 theorem comToArmLsem_correct {Γ : Ctxt jasminDialect}
     {com : Com jasminDialect Γ (.reg 64)} (hba : ComBaseAlu com) (hΓ : AllReg64 Γ)
     (V : Ctxt.Valuation Γ) (s : BState) (hs : s.regs = envOf Γ.length V) :
@@ -286,26 +290,25 @@ theorem comToArmLsem_correct {Γ : Ctxt jasminDialect}
   rw [runBBlock_regToBOp_base_pure _ (comToRegProg_RegBaseAlu hba Γ.length), hs,
       ← comToReg_faithful (ComBaseAlu.toComOK hba) hΓ V]
 
-/-! ## 5. A genuine non-`id` `exec` for the AArch64 model -/
+/-! ## 5. An AArch64 `MachineModel` with `exec := runBBlock` -/
 
-/-- The proposition recording the value-level keystone (and its GP-ALU coverage),
-    to inhabit the `MachineModel.validated` field — the AArch64 analogue of
-    RISC-V's `RiscvBaseAluGrounded`, but at the **value-preservation** depth this
-    backend supports. For every base-ALU all-`reg 64` `Com`, run from a matching
-    state, the `runBBlock` execution reads back the source `Com.denote` and runs
-    only GP-ALU instructions.
+/-- The statement of `comToArmLsem_correct` as a proposition, used as the
+    `MachineModel.validated` field. The AArch64 counterpart of RISC-V's
+    `RiscvBaseAluGrounded`, at the value-preservation level: for every `Com` with
+    `ComBaseAlu com` over an `AllReg64` context, run from a state with
+    `s.regs = envOf Γ.length V`, the `runBBlock` execution holds `Com.denote com V`
+    at the result register and executes only GP-ALU instructions.
 
-    **It is NOT a Sail-execute refinement.** Unlike `RiscvBaseAluGrounded` (which
-    equates each model step with the `execute_RTYPE` Sail clause held as an
-    in-file excerpt of the sail-riscv-lean generated output — commit `9eba3f07`;
-    upstream not vendored), no
-    theorem here connects `runBBlock` to an execute-clause model. The in-tree
-    `SailArm64Refinement.lean` hand-transcribes two Arm ARM execute clauses, but
-    it is import-orphaned and never mentions `evalBInst`/`runBBlock`, so it does
-    not close that gap. The GP-ALU coverage is grounded by the `SailArmDecoder`
-    decode round-trip + differential/qemu testing + the hand-written `ArmModel`.
-    The residual to RISC-V depth is a vendored `sail-arm` execute port plus a
-    theorem bridging it to `runBBlock`. -/
+    It is not a Sail-execute refinement. `RiscvBaseAluGrounded` equates each model
+    step with the `execute_RTYPE` Sail clause held as an in-file excerpt of the
+    sail-riscv-lean generated output (commit `9eba3f07`; upstream not vendored);
+    no theorem here connects `runBBlock` to an execute-clause model. The in-tree
+    `SailArm64Refinement.lean` transcribes two Arm ARM execute clauses by hand, but
+    no module imports it and it does not mention `evalBInst`/`runBBlock`. The
+    GP-ALU instructions are covered by the `SailArmDecoder` decode round-trip,
+    differential/qemu testing and the hand-written `ArmModel`. A Sail-execute
+    refinement would require a vendored `sail-arm` execute model and a theorem
+    relating it to `runBBlock`. -/
 def ArmBaseAluGrounded : Prop :=
   ∀ {Γ : Ctxt jasminDialect} {com : Com jasminDialect Γ (.reg 64)},
     ComBaseAlu com → AllReg64 Γ → ∀ (V : Ctxt.Valuation Γ) (s : BState),
@@ -315,23 +318,21 @@ def ArmBaseAluGrounded : Prop :=
         = Com.denote com V
       ∧ (∀ i ∈ armBlockOf (comToRegProg com Γ.length), IsGpAlu i)
 
-/-- `ArmBaseAluGrounded` is inhabited by the proved keystone (not `True`). -/
+/-- `ArmBaseAluGrounded` holds, by `comToArmLsem_correct`. -/
 theorem armBaseAluGrounded_proof : ArmBaseAluGrounded :=
   fun hba hΓ V s hs => comToArmLsem_correct hba hΓ V s hs
 
-/-- **The AArch64 base-ALU `MachineModel`, with a genuine `exec`.** Unlike
-    `VIR/Compiler.lean`'s `latticeModel`/`armModel` (whose `exec := fun _ s => s`
-    is a validation shell that does not run the code), this model's `exec` is the
-    real `runBBlock` block fold over `BState`, and its `validated` field is the
-    value-level keystone `ArmBaseAluGrounded` (inhabited by
-    `armBaseAluGrounded_proof`). `Code` is the executed `BInst` list;
-    `State`/`Value` is `BState`. This is the non-`id` execution model the AArch64
-    path was missing for the base-ALU fragment — the mirror of `riscvBaseAluModel`.
+/-- **The AArch64 base-ALU `MachineModel`.** Its `exec` is the `runBBlock` block
+    fold over `BState`, and its `validated` field is `ArmBaseAluGrounded`
+    (proved by `armBaseAluGrounded_proof`). `Code` is the executed `BInst` list;
+    `State` and `Value` are `BState`; `encodeIn` and `decodeOut` are `id`. In
+    `VIR/Compiler.lean`, `latticeModel`/`armModel` have `exec := fun _ s => s`,
+    which does not run the code. The AArch64 counterpart of `riscvBaseAluModel`.
 
-    **Honest depth:** `validated` is value-preservation + GP-ALU decode-round-trip
-    grounding, NOT a Sail-execute refinement — RISC-V has one against an in-file
+    **Scope:** `validated` states value preservation and GP-ALU coverage, not a
+    Sail-execute refinement. RISC-V has such a refinement against an in-file
     excerpt of the sail-riscv-lean generated output; ARM's `SailArm64Refinement`
-    is a hand transcription with no theorem reaching `runBBlock`. -/
+    is a hand transcription and no theorem relates it to `runBBlock`. -/
 def armBaseAluModel : MachineModel where
   Code := List BInst
   State := BState
@@ -341,13 +342,13 @@ def armBaseAluModel : MachineModel where
   exec := fun code s => runBBlock s code
   validated := ArmBaseAluGrounded
 
-/-- The model's `exec` genuinely runs the code: it is `runBBlock`, not the
+/-- The model's `exec` is `runBBlock`, which runs the code, in contrast to the
     `latticeModel` identity `fun _ s => s`. -/
 theorem armBaseAluModel_exec (code : List BInst) (s : BState) :
     armBaseAluModel.exec code s = runBBlock s code := rfl
 
-/-- The model's `validated` field is the genuine value-level keystone, discharged
-    by `armBaseAluGrounded_proof` (never `True`-by-fiat). -/
+/-- The model's `validated` field, `ArmBaseAluGrounded`, holds by
+    `armBaseAluGrounded_proof`. -/
 theorem armBaseAluModel_validated : armBaseAluModel.validated :=
   armBaseAluGrounded_proof
 

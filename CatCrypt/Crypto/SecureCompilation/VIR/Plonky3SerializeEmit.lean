@@ -21,7 +21,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.QuerySampleBranchFront
 public import CatCrypt.Crypto.SecureCompilation.VIR.QuerySampleBranchFront
 
 /-!
-# Plonky3 `Proof<SC>` bincode SERIALIZATION as owned byte-packer `Lcmd` (FULL_PROVER_VS_P3 Gap 2 item 2)
+# Plonky3 `Proof<SC>` bincode serialization as an owned byte-packer `Lcmd`
 
 The top-level `prove()` writes the proof in the bincode 1.x serde layout of
 `Proof<SC>` — phase 5 of `bench/plonky3_compare/p3_accept_prove.c`. That layout

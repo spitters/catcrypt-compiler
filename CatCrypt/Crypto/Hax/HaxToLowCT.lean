@@ -821,7 +821,7 @@ def haxToLowCTEnv (env : TypeEnv) (leaves : LeafTable) :
   -- IMPORTANT: when `src` is unknown (e.g. an external identifier like
   -- `ZERO_VEC` that lives outside the env), do NOT shadow `name`'s existing
   -- binding.  Otherwise the alias clobbers a known parameter type with
-  -- `.TFp` — see SLICE_CODEGEN_GAP follow-up.
+  -- `.TFp`.
   | .letBind name (.var src) body =>
       match mlkemZeroConst? src with
       | some t =>

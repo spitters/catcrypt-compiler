@@ -41,18 +41,23 @@ public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RegToRiscv
 
 /-!
-# One kernel, four backends: the migration payoff (steps 2–3)
+# One kernel, two backends: AArch64 and RISC-V
 
-The point of the shared `ScalarLin` waist: a kernel authored once (or flattened
-once from a high-level `Com`) compiles to *every* backend, each with its proved
-denotation theorem — no per-target hand-authoring. This file demonstrates the
-mechanism end-to-end for a shift-free arithmetic kernel on both AArch64 and
-RISC-V, and shows the `Com`-front feeding the same waist.
+A kernel written once as a `RegProg` in the shared `ScalarLin` intermediate
+language, or flattened from a `Com`, compiles to AArch64 through `regToBOp` and
+to RV64 through `regToROp`, each with a denotation theorem. This file proves:
 
-This is the template the field/plonky3 kernel migration (steps 2–3) follows:
-replace each hand-written `List BOp`/`List ROp64` leaf with `regToBOp`/`regToROp`
-of the kernel's `RegProg` (itself the flattening of the verified `Com`), so the
-emitted block provably computes the source denotation on each target.
+* for the shift-free kernel `kernel` (`r := a·b + a`), that both compiled blocks
+  compute the target's `denote` of the `RegProg` (`kernel_arm`, `kernel_riscv`);
+* for `mulCom` (`v2 := v0 · v1`), that `comToRegProg` produces the expected
+  `RegProg` (`mulCom_flatten`) and that both compiled blocks compute its
+  `denote` (`mulCom_arm`, `mulCom_riscv`);
+* for RISC-V, the end-to-end theorem from `Com.denote`: `com_riscv_e2e` for every
+  `Com` with `ComOK` over an `AllReg64` context, run from a state with
+  `regs = envOf Γ.length V`, and its instance `mulCom_riscv_e2e`.
+
+The AArch64 end-to-end theorem from `Com.denote` is
+`ScalarLinNeutralDemo.com_arm_e2e`.
 -/
 
 @[expose] public section
@@ -71,9 +76,7 @@ open CatCrypt.Crypto.SecureCompilation.RISCVBackend
 open CatCrypt.Crypto.SecureCompilation.RISCVBackend.RegToRiscv
 open CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
 
-/-- A shift-free arithmetic kernel in the shared waist: `r := a·b + a`. (Shift-free
-    so it is in the current RV-selectable subset; the field Barrett kernels need
-    the RV immediate-shift extension.) -/
+/-- A shift-free arithmetic kernel as a `RegProg`: `r := a·b + a`. -/
 def kernel : RegProg := [.mul "t" "a" "b", .add "r" "t" "a"]
 
 /-- **AArch64**: the kernel compiles to a machine block computing its denotation. -/
@@ -114,14 +117,14 @@ theorem mulCom_riscv (s : RState64) :
       = rvTarget.denote (comToRegProg mulCom 2) s :=
   regToROp_denote (comToRegProg mulCom 2) s
 
-/-! ## 3. End-to-end on RISC-V: the compiled machine block computes `Com.denote`
+/-! ## End-to-end on RISC-V: the compiled machine block computes `Com.denote`
 
-The ARM e2e (`ScalarLinNeutralDemo.com_arm_e2e`) lifts via the shared, axiom-clean
-`comToReg_faithful`. RISC-V is the same shape: the RV64 machine run, projected to the
-register environment, computes the source `Com.denote`. The RV64 state's `zero`/`x0`
-convention differs from the neutral `xzr`, but the de-Bruijn names (`v0`, `v1`, …)
-avoid all three, so the projection is faithful on compiled programs — shown here
-directly for `mulCom`. -/
+The ARM end-to-end theorem (`ScalarLinNeutralDemo.com_arm_e2e`) is obtained from
+the shared `comToReg_faithful`. RISC-V has the same shape: the RV64 machine run,
+projected to the register environment, computes the source `Com.denote`. The RV64
+state's `zero`/`x0` convention differs from the neutral `xzr`, but the de-Bruijn
+names (`v0`, `v1`, …) avoid all three, so the projection agrees with the neutral
+semantics on compiled programs (`comToRegProg_RvFaithful`). -/
 
 /-- The registers a statement mentions (for the no-special-register side condition). -/
 def regsOf : RegStmt → List String
@@ -249,8 +252,11 @@ theorem com_riscv_e2e_of {Γ : Ctxt jasminDialect} {com : Com jasminDialect Γ (
   rw [congrFun key, hs]
   exact (comToReg_faithful hok hΓ V).symm
 
-/-- **General end-to-end RISC-V, no side condition** (full mirror of `com_arm_e2e`).
-    The faithfulness hypothesis is discharged automatically by `comToRegProg_RvFaithful`. -/
+/-- **General end-to-end RISC-V** (counterpart of `com_arm_e2e`). For a `Com` with
+    `ComOK com` over a context with `AllReg64 Γ`, run from a state with
+    `s.regs = envOf Γ.length V`, the compiled-and-run RV64 block read at the result
+    register equals `Com.denote com V`. The hypothesis `hf` of `com_riscv_e2e_of` is
+    discharged by `comToRegProg_RvFaithful`. -/
 theorem com_riscv_e2e {Γ : Ctxt jasminDialect} {com : Com jasminDialect Γ (.reg 64)}
     (hok : ComOK com) (hΓ : AllReg64 Γ) (V : Ctxt.Valuation Γ) (s : RState64)
     (hs : s.regs = envOf Γ.length V) :
@@ -259,8 +265,7 @@ theorem com_riscv_e2e {Γ : Ctxt jasminDialect} {com : Com jasminDialect Γ (.re
       = Com.denote com V :=
   com_riscv_e2e_of hok hΓ V s hs (comToRegProg_RvFaithful com Γ.length)
 
-/-- **End-to-end RISC-V on `mulCom`** — now a direct instance of the automatic
-    `com_riscv_e2e`. -/
+/-- **End-to-end RISC-V on `mulCom`**, an instance of `com_riscv_e2e`. -/
 theorem mulCom_riscv_e2e (V : Ctxt.Valuation ([.reg 64, .reg 64] : Ctxt jasminDialect))
     (s : RState64) (hs : s.regs = envOf 2 V) :
     (runRBlock64 s (lowerRBlock64 (regToROp (comToRegProg mulCom 2)))).regs

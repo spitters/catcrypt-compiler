@@ -13,28 +13,27 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
 public import CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
 
 /-!
-# Pilot front lane (#568, #605): width-parameterized THIR → `Com jasminDialect` → owned-x86
+# Scalar THIR front: width-parameterized THIR-ANF → `Com jasminDialect` → owned x86
 
-`ThirToComPilot.lean` piloted a verified THIR → `Com` lowering against a *toy*
-target dialect (`pilot`, with only `const`/`add`/`mul`) whose `Com` the codegen
-backend does **not** consume. This module is the **working end-to-end front
-lane**: it lowers real monomorphic scalar crypto functions from a faithful
-THIR-ANF representation into a `Com` over the **`jasminDialect`** that the
-existing verified emit chain (`emitAbiOrchReg`, `JasminAbiEmit.lean`) renders to
-owned-x86 jasmin/asm — the same `regArith` path `R3MulEmit`, `AsconEmit`,
-and `ChaChaEmit` use. So the THIR lowers all the way to a callable artifact, and
-the denotation-preservation theorem ties the THIR meaning to the emitted Com.
+This module lowers monomorphic scalar crypto functions from a THIR-ANF
+representation into `Com` over `jasminDialect`, the dialect that the emit
+functions of `JasminAbiEmit.lean` (`emitAbiOrchReg` and its variants) render to
+jasmin text for the owned x86 backend, along the same `regArith` path that
+`R3MulEmit`, `AsconEmit` and `ChaChaEmit` use. The denotation-preservation
+theorem `thirToJasmin_denote` relates the THIR semantics to the denotation of
+the lowered `Com`. `ThirToComPilot.lean` contains the same style of lowering
+against a small dialect (`const`/`add`/`mul`) that the backend does not consume.
 
-## Width-parameterized (#605, Step 3)
+## Width parameter
 
-The whole front is parameterized over a register width `w : Nat` (the THIR and
-`Com` worlds both denote into `BitVec w`). The original `u64` pilot is the `w =
-64` instance (`dot4`); the SHA-256 leaf `small_sigma0` is the `w = 32` instance
-(`sigma0`, #605 Step 4). Width threads through `frontCtxt`/`FState`/`Agree`, the
-`Atom`/`Rhs`/`Thir` denotations (`BitVec w`), `rhsExpr` (op widths `w`), and the
-main preservation theorem `thirToJasmin_denote`.
+The front is parameterized over a register width `w : Nat`; the THIR and `Com`
+semantics both denote into `BitVec w`. The inner product `dot4` is the `w = 64`
+instance and the SHA-256 leaf `small_sigma0` (`sigma0Thir`) is the `w = 32`
+instance. The width appears in `frontCtxt`/`FState`/`Agree`, in the
+`Atom`/`Rhs`/`Thir` denotations (`BitVec w`), in `rhsExpr` (op widths `w`), and
+in the preservation theorem `thirToJasmin_denote`.
 
-## The pilot functions
+## Example functions
 
 ### `dot` — fixed-width unsigned inner product (schoolbook MAC step), `w = 64`
 
@@ -43,9 +42,9 @@ main preservation theorem `thirToJasmin_denote`.
 fn dot(a: [u64; N], b: [u64; N]) -> u64 { ... }
 ```
 
-The **schoolbook coefficient product / MAC accumulate** — the inner arithmetic
-of `R3_mult` / `Rq_mult_small` (sntrup761) and of a Poly1305-style field MAC,
-restricted to a single output coefficient.
+The schoolbook coefficient product and MAC accumulation step: the inner
+arithmetic of `R3_mult` / `Rq_mult_small` (sntrup761) and of a Poly1305-style
+field MAC, restricted to a single output coefficient.
 
 ### `small_sigma0` — SHA-256 message-schedule σ₀, `w = 32`
 
@@ -55,33 +54,56 @@ fn small_sigma0(x: u32) -> u32 {
 }
 ```
 
-The first ARX/sponge leaf taken end-to-end: two native right-rotates
-(`Rhs.ror`), one logical shift (`Rhs.bin .shr`), two xors (`Rhs.bin .xor`), all
-at width 32. It is the simplest *real* SHA-256 building block and exercises the
-new `Rhs.ror`/`Rhs.bin` arms together at the non-`u64` width.
+An ARX leaf at width 32: two native right-rotates (`Rhs.ror`), one logical
+right shift by an immediate count (`Rhs.shrImm`), and two xors
+(`Rhs.bin .xor`).
 
-## What is proved vs trusted
+## What is proved and what is trusted
 
-* **Verified front (this file):** the lowering `thirToJasmin` and the
-  preservation theorem `thirToJasmin_denote` — for any THIR `t` in the supported
-  fragment and any width `w`, the THIR big-step denotation `t.denote` equals the
-  lowered `Com jasminDialect`'s `Com.denote` under the matching valuation. The
-  connecting theorems `dot4_FrontValueAgrees` (`w = 64`) and
-  `sigma0_FrontValueAgrees` (`w = 32`) instantiate it for the pilot fns.
-* **Verified emit (reused, not re-proved here):** `emitAbiOrchReg`
-  (`JasminAbiEmit.lean`) renders a `regArith`/`rorImm` `Com jasminDialect` to
-  jasmin; the jasmin-print correctness lemmas cover the straight-line fragment.
-* **Trusted (thin):** the SysV-ABI orchestration string (param decls, copy-in /
-  copy-out), `as`/`jasminc` downstream, and the C KAT harness.
+* **Proved in this file:** the lowering `thirToJasmin` and the preservation
+  theorem `thirToJasmin_denote`: for every width `w`, THIR program `t`,
+  environment and `Com` valuation related by `Agree`, if the lowering returns
+  `some c` then the THIR big-step denotation of `t` is `some (c.denote V)`. The
+  connecting theorems `dot4_FrontValueAgrees` (`w = 64`),
+  `sigma0_FrontValueAgrees` (`w = 32`) and the SHA-256 round theorems of §10
+  instantiate it. Sections §11–§20 and §22–§24 build programs in
+  `Com thirDialect` and lower them with `ThirDialect.lowerThir`, whose
+  preservation theorem is `lowerThir_denote`.
+* **Not proved here:** the emit functions of `JasminAbiEmit.lean` and
+  `JForProg.toJazzExport` that render a `Com jasminDialect` to jasmin text. This
+  module checks properties of the rendered text with `#guard` and
+  `native_decide`.
+* **Trusted:** the SysV-ABI orchestration text (parameter declarations, copy-in
+  and copy-out), the downstream `jasminc`/`as` toolchain, and the external C
+  test harness.
 
-## Scope
+## Scope of `thirToJasmin`
 
-This compiles **two** monomorphic scalar fns end-to-end with the connecting
-theorem (`u64` inner product, `u32` SHA-256 σ₀). It shares `ThirToComPilot`'s
-boundaries (ANF operands, compile-time-`N` loops unrolled, pure-`Option`
-no-effect model, no structs/enums/match/refs). The new things over the pilot are
-indexed array reads (`Atom.inp`), the ARX op surface (`Rhs.ror`/`Rhs.bin`),
-width-parameterization, and retargeting onto `jasminDialect`.
+The front `thirToJasmin` accepts ANF operands, bounded loops with a
+compile-time trip count (unrolled), a pure `Option` semantics without effects,
+indexed reads of the input vector (`Atom.inp`), the op surface of `Rhs`
+(`add`, `mul`, `mulHi`, `bin`, `ror`, `shrImm`, `sarImm`, `shlImm`, same-width
+`cast`, single-result `call`), and a single register width per program. It has
+no structs, enums, `match` or references. Sections §8, §9 and §21 give
+hand-built `Com jasminDialect` programs for width casts and runtime-indexed
+stores and loads; the other sections from §11 on cover further constructs
+through `thirDialect`.
+
+## Contents
+
+* §1–§5: the THIR-ANF subset, its denotation, the lowering and the
+  preservation proof.
+* §6–§7: `dot` (`w = 64`) and SHA-256 `small_sigma0` (`w = 32`), with emit.
+* §8–§9: width casts and indexed array stores.
+* §10: the SHA-256 compression round and message-schedule word.
+* §11–§13: σ₀, the ChaCha20 quarter-round and the BLAKE2b G function through
+  `thirDialect`.
+* §14–§16: BabyBear Montgomery multiplication, NTT butterfly and Poseidon2
+  S-box.
+* §17–§18: widening multiply, carry-chain add and constant-time select.
+* §19–§22: function calls, AVX-512 packed add, runtime-indexed table load, and
+  struct state with tag dispatch.
+* §23–§24: bounded `for` loops, and a call inside a loop (treehash chain).
 -/
 
 @[expose] public section
@@ -115,8 +137,8 @@ inductive Atom where
   | inp (i : Nat)
   deriving Repr, DecidableEq
 
-/-- Trivial `Repr` for `JasminBinOp` so the `Rhs`/`Thir` ASTs (which now carry a
-    `JasminBinOp`) can `deriving Repr` for debug `#eval`. -/
+/-- A constant `Repr` for `JasminBinOp` (every op prints as `binop`), so that the
+    `Rhs`/`Thir` ASTs, which carry a `JasminBinOp`, can derive `Repr`. -/
 local instance : Repr JasminBinOp := ⟨fun _ _ => "binop"⟩
 
 /-- The right-hand side of a `let`: an atom, or a binary op on two atoms. -/
@@ -125,51 +147,52 @@ inductive Rhs where
   | add (a b : Atom)
   | mul (a b : Atom)
   /-- High word of the widening multiply `a * b` (`mulHiW a b`), the companion of
-      `mul`'s low word: together they are MULX's `(hi, lo)`. The single-op front
-      handle for bignum/EC/pairing multi-limb field arithmetic (the dialect's
-      `thMulHi`, lowered 1:1 to jasmin `mulhi w`). Homogeneous `rW w`, so it flows
-      through the front's monomorphic register file unchanged. -/
+      `mul`'s low word: together they are MULX's `(hi, lo)`. The front op for
+      multi-limb field arithmetic (bignum, EC, pairings); it corresponds to the
+      dialect's `thMulHi` and lowers to the single jasmin op `mulhi w`. Its type
+      is the homogeneous `rW w`, so it uses the front's single-width register
+      file. -/
   | mulHi (a b : Atom)
-  /-- A general carry-free binary op (`sub`/`and`/`or`/`xor`/`shl`/`shr`, and
-      `add`/`mul`) on two atoms — the ARX/sponge op surface. The backend already
-      renders every `regArith` binop, so this needs no emit change. -/
+  /-- A carry-free binary op (`sub`/`and`/`or`/`xor`/`shl`/`shr`, and
+      `add`/`mul`) on two atoms: the ARX/sponge op surface. It lowers to
+      `regArith op w`, which the emit renders for every `JasminBinOp`. -/
   | bin (op : JasminBinOp) (a b : Atom)
   /-- Native right-rotate by a compile-time `n` (`rotate_right#w`), emitted as the
-      single `rorImm` op — the ARX/sponge rotate surface. -/
+      single `rorImm` op: the ARX/sponge rotate surface. -/
   | ror (n : Nat) (a : Atom)
-  /-- Native logical right-shift by a **compile-time** `n` (`x >> n`), emitted as
+  /-- Native logical right-shift by a compile-time `n` (`x >> n`), emitted as
       the single `shrImm` op (an immediate-count shift `dst = src >> n;`). The
-      constant-shift surface for SHA-256/BLAKE2 (`x >> 3`, …): a `Rhs.bin .shr`
-      reads its count from a register, which jasminc x86 rejects, so a literal
-      shift must go through this arm instead (#605). -/
+      constant-shift surface for SHA-256/BLAKE2 (`x >> 3`, …). A `Rhs.bin .shr`
+      reads its count from a register, which jasminc on x86 rejects, so a
+      shift by a literal uses this arm. -/
   | shrImm (n : Nat) (a : Atom)
-  /-- Native **arithmetic** right-shift by a compile-time `n` (`x >> n` on a
+  /-- Native arithmetic right-shift by a compile-time `n` (`x >> n` on a
       signed word), emitted as the single `sarImm` op (an immediate-count
-      arithmetic shift `dst = (signed)src >> n;`). The sign-extending twin of
-      `shrImm`: it denotes `BitVec.sshiftRight` rather than `>>>`
-      (`BitVec.ushiftRight`). Unlocks the signed-shift surface of ML-DSA
+      arithmetic shift `dst = (signed)src >> n;`). The sign-extending counterpart
+      of `shrImm`: it denotes `BitVec.sshiftRight` rather than `>>>`
+      (`BitVec.ushiftRight`). It covers the signed shifts of ML-DSA
       (`reduce32`'s `>> 23`, `montgomery_reduce`'s `>> 32`, `decompose`,
-      `make_hint`), where `>>` on an `i32`/`i64` is arithmetic (#606). -/
+      `make_hint`), where `>>` on an `i32`/`i64` is arithmetic. -/
   | sarImm (n : Nat) (a : Atom)
   /-- Native logical left-shift by a compile-time `n` (`x << n`); the left-shift
-      counterpart of `shrImm` (#605). -/
+      counterpart of `shrImm`. -/
   | shlImm (n : Nat) (a : Atom)
-  /-- Width zero-extend of an atom at the working width `w`, emitted as the single
-      `castW w w` op (#605, Step 5b). `BitVec.zeroExtend w` at the same width is
-      the identity, so this stays in the homogeneous `rW w` register file and
-      flows through the preservation proof unchanged; it is the front-connected
-      image of the dialect's `castW` op. The **cross-width** cast (the
-      `cast#8` digest-byte case `(u32)((u8) x)`) is the `castW w w'` composition
-      exercised end-to-end by the dedicated `castDemoCom` pilot (§8). -/
+  /-- Zero-extension of an atom at the working width `w`, emitted as the single
+      `castW w w` op. `BitVec.zeroExtend w` at the same width is the identity,
+      so the arm stays in the homogeneous `rW w` register file and is covered
+      by the preservation proof like every other arm; it is the front image of
+      the dialect's `castW` op. The cross-width cast (the `cast#8` digest-byte
+      case `(u32)((u8) x)`) is the `castW w w'` composition of the hand-built
+      `castDemoCom` (§8). -/
   | cast (a : Atom)
-  /-- A single-result function CALL `name(args…)` — the front handle for
-      kernel-to-kernel COMPOSITION (treehash, FO transforms, Fiat-Shamir, #616
-      E5a). Every argument is an atom resolvable to a `Var`; the callee is an
-      opaque already-verified single-result leaf, lowered to the dialect's
-      `thExtCall` (and thence to jasmin's `extCall`) at the working width `w`.
-      Its value is `jasminExtSem name (replicate n (rW w)) (rW w)` — opaque, so
-      the front emits a real call and the callee's meaning is a separate leaf
-      obligation. -/
+  /-- A single-result function call `name(args…)`: the front op for composing
+      kernels (treehash, FO transforms, Fiat-Shamir). Every argument is an atom
+      that resolves to a `Var`; the callee is an opaque single-result leaf,
+      lowered to jasmin's `extCall` at the working width `w` (the dialect's
+      `thExtCall` is the corresponding `thirDialect` op). Its value is
+      `jasminExtSem name (replicate n (rW w)) (rW w)`, which is opaque: the
+      front emits a call, and the callee's meaning is a separate obligation on
+      the leaf. -/
   | call (name : String) (args : List Atom)
   deriving Repr
 
@@ -183,9 +206,9 @@ inductive Thir where
 
 /-! ## §2  Big-step THIR denotation over a `BitVec w` input vector
 
-We denote into `BitVec w` (the jasmin `reg w` semantic type) rather than a
-fixed machine int so the THIR meaning lives in the *same* type the `Com` denotes
-into, making the preservation theorem a plain equality of `BitVec w`s. Wrapping
+The THIR denotes into `BitVec w`, the semantic type of the jasmin `reg w`, which
+is the type the `Com` denotes into; the preservation theorem is therefore an
+equality of `BitVec w` values. Wrapping
 add/mul is exactly `BitVec w`'s `+`/`*`. The input vector `I : Fin nIn → BitVec
 w` supplies `inp[i]`; locals live in a partial `String → Option (BitVec w)`
 environment. -/
@@ -265,8 +288,8 @@ def Thir.denote {w nIn : Nat} (I : Fin nIn → BitVec w) :
 
 The lowering context is `inCtxt nIn ++ localScope`, where `inCtxt nIn` is the
 `nIn`-word input file (replicated `rW w`) and `localScope` is the let-bound
-locals (newest first), each `rW w`. We thread the input variables and the local
-name → de-Bruijn map through a small state. -/
+locals (newest first), each `rW w`. The lowering state `FState` resolves input
+indices and local names to de Bruijn variables. -/
 
 /-- The `Com` typing context: `nIn` input words plus one `rW w` per local. -/
 def frontCtxt (w nIn : Nat) : (locals : List String) → Ctxt jasminDialect
@@ -334,7 +357,7 @@ def atomsToVarHV {w nIn : Nat} {locals : List String} (st : FState w nIn locals)
 
 /-- Lower a `Rhs` to the single `Expr` it binds at the head of the context.
 
-    ANF discipline (charon-faithful): binary-op operands must be atoms with a
+    ANF discipline, as in charon's output: binary-op operands must be atoms with a
     `Var` (`lvar`/`inp`); a `lit` operand must already be `let`-bound. A
     literal `Rhs` (`atom (lit n)`) lowers to a `regConst`; a variable `Rhs`
     re-binds via `regArith .or` with itself (the identity copy, since
@@ -817,12 +840,12 @@ theorem initAgree {w nIn : Nat} (I : Fin nIn → BitVec w) :
     simp only [initFState] at hv
     exact absurd hv (by simp)
 
-/-! ## §6  Pilot fn `dotN` (`w = 64`) and its end-to-end wiring
+/-! ## §6  Inner product `dotN` (`w = 64`): THIR, lowering and emit
 
 `dotN N` is the THIR for `dot` at array length `N` (input vector `nIn = 2N`,
-`a[i] = inp[i]`, `b[i] = inp[N + i]`). Because the inner-product step `acc +=
-a[i]*b[i]` is two ops (a `mul` then an `add`) and `forUp`'s body is a single
-`Rhs`, we emit the fully unrolled ANF directly. -/
+`a[i] = inp[i]`, `b[i] = inp[N + i]`). The inner-product step `acc +=
+a[i]*b[i]` is two ops (a `mul` then an `add`) while the body of `forUp` is a
+single `Rhs`, so `dotN` is written directly as the unrolled ANF. -/
 
 /-- Local accumulator name. -/
 def accN : String := "acc"
@@ -839,7 +862,7 @@ def dotTail (N : Nat) : (fuel : Nat) → (i : Nat) → Thir
         (.let_ accN (.add (.lvar accN) (.lvar (prodN i)))
           (dotTail N fuel (i + 1)))
 
-/-- The pilot THIR for `dot` at length `N`: `acc = a[0]*b[0]`, then the unrolled
+/-- The THIR for `dot` at length `N`: `acc = a[0]*b[0]`, then the unrolled
     `acc += a[i]*b[i]` tail for `i = 1 .. N-1`. -/
 def dotN (N : Nat) : Thir :=
   .let_ accN (.mul (.inp 0) (.inp N)) (dotTail N (N - 1) 1)
@@ -853,7 +876,7 @@ def dotSpec (N : Nat) (I : Fin (2 * N) → BitVec 64) : BitVec 64 :=
     (fun acc j => acc + inpGet I (j + 1) * inpGet I (N + (j + 1)))
     (inpGet I 0 * inpGet I N)
 
-/-! ### §6.1  Pilot length `N = 4` (concrete, `w = 64`) -/
+/-! ### §6.1  Length `N = 4` (`w = 64`) -/
 
 /-- `dot4`: the inner product over length-4 arrays (`nIn = 8`). -/
 def dot4 : Thir := dotN 4
@@ -875,9 +898,10 @@ def dot4Com : Com jasminDialect ctxt4 (rW 64) :=
 theorem dot4_lowers : (thirToJasmin [] (initFState 64 8) dot4).isSome := by
   native_decide
 
-/-- **Connecting theorem (`FrontValueAgrees`) for the `u64` pilot fn.** The
-    lowered `Com jasminDialect` for `dot4` denotes the same `BitVec 64` as the
-    THIR `dot4` for every input vector `I`. This is the `w = 64` regression. -/
+/-- **Connecting theorem (`FrontValueAgrees`) for `dot4`.** For every input
+    vector `I` and every `c` returned by the lowering of `dot4`, the THIR
+    denotation of `dot4` is `some` of the denotation of `c` under
+    `inputValuation`. The `w = 64` instance of `thirToJasmin_denote`. -/
 theorem dot4_FrontValueAgrees (I : Fin 8 → BitVec 64)
     (c : Com jasminDialect ctxt4 (rW 64))
     (hc : thirToJasmin [] (initFState 64 8) dot4 = some c) :
@@ -885,12 +909,12 @@ theorem dot4_FrontValueAgrees (I : Fin 8 → BitVec 64)
   thirToJasmin_denote [] I dot4 (LEnv.empty 64) (initFState 64 8)
     (inputValuation 64 8 I) c (initAgree I) hc
 
-/-! ### §6.2  Emit `dot4` through the verified `emitAbiOrchReg` → owned-x86
+/-! ### §6.2  Emit `dot4` through `emitAbiOrchReg`
 
-`emitAbiOrchReg` (`JasminAbiEmit.lean`) walks any `Com jasminDialect`
-structurally, keying binding `k`'s destination to `dstName k` and input word `i`
-to `inName i`. We feed it **the front's own lowered Com** (`dot4Com`) so the
-emitted artifact is exactly the `Com` the connecting theorem covers. -/
+`emitAbiOrchReg` (`JasminAbiEmit.lean`) walks a `Com jasminDialect`
+structurally, sending the destination of binding `k` to `dstName k` and input
+word `i` to `inName i`. Its argument is the lowered `Com` `dot4Com`, the program
+that the connecting theorem covers. -/
 
 /-- The flat destination-slot mirror of `dotN`'s lowered bindings: binding `0`
     writes the `acc` slot; then each of the `N-1` inner-product steps writes
@@ -910,8 +934,8 @@ def dotInName (i : Nat) : String := "k[" ++ toString (2 + i) ++ "]"
 def dotRegDecls (N : Nat) : List String :=
   ["stack u64[" ++ toString (2 + 2 * N) ++ "] k"]
 
-/-- The emitted `.jazz` for `dot4` through the verified register-arith
-    orchestration, applied to the **front's own** lowered Com (`dot4Com`). ABI:
+/-- The emitted `.jazz` for `dot4` through the register-arith orchestration,
+    applied to the lowered `Com` `dot4Com`. ABI:
     `reg ptr u64[1] out`, `reg const ptr u64[8] inp`. -/
 def dot4Jazz : String :=
   emitAbiOrchReg "dot4" (w := 64) (nIn := 8) (nOut := 1) (nCopy := 8)
@@ -922,10 +946,10 @@ def dot4Jazz : String :=
 /- The export has the expected `dot4` ABI (1-word out, 8-word in). -/
 #guard (strContains dot4Jazz "export fn dot4(reg ptr u64[1] out, reg const ptr u64[8] inp)")
 
-/- The emitted body renders real multiply/add computation (no skipped ops). -/
+/- The emitted body contains no skipped-op marker: every binding is rendered. -/
 #guard !(strContains dot4Jazz "non-regArith op skipped")
 
-/-! ## §7  SHA-256 leaf `small_sigma0` (`w = 32`, #605 Step 4)
+/-! ## §7  SHA-256 leaf `small_sigma0` (`w = 32`)
 
 ```rust
 fn small_sigma0(x: u32) -> u32 {
@@ -933,8 +957,8 @@ fn small_sigma0(x: u32) -> u32 {
 }
 ```
 
-A single `u32` input (`nIn = 1`, `x = inp[0]`). The ANF lowering (charon-shaped)
-binds each ARX op to a fresh local:
+A single `u32` input (`nIn = 1`, `x = inp[0]`). The ANF form, in the shape of
+charon's output, binds each ARX op to a fresh local:
 
 ```
 let r7  = ror(7,  x);          -- rotate_right(x, 7)
@@ -945,10 +969,10 @@ let o   = t ^ s3;             -- second xor  (Rhs.bin .xor)
 ret o
 ```
 
-This exercises `Rhs.ror`, `Rhs.shrImm`, and `Rhs.bin .xor` together at the
-non-`u64` width — the first ARX/sponge leaf taken end-to-end. The `x >> 3` uses
-the immediate-count `Rhs.shrImm` (not `Rhs.bin .shr`, whose count is a register
-read jasminc x86 rejects), so the emitted shift is `w0 = w0 >> 3;`. -/
+The program uses `Rhs.ror`, `Rhs.shrImm` and `Rhs.bin .xor` at width 32. The
+`x >> 3` uses the immediate-count `Rhs.shrImm` rather than `Rhs.bin .shr`, whose
+count is a register read that jasminc on x86 rejects, so the emitted shift is
+`w0 = w0 >> 3;`. -/
 
 /-- The σ₀ THIR over `nIn = 1` (`x = inp[0]`). -/
 def sigma0Thir : Thir :=
@@ -987,10 +1011,10 @@ def sigma0Com : Com jasminDialect ctxtSigma0 (rW 32) :=
 theorem sigma0_lowers : (thirToJasmin [] (initFState 32 1) sigma0Thir).isSome := by
   native_decide
 
-/-- **Connecting theorem (`FrontValueAgrees`) for `small_sigma0`.** The lowered
-    `Com jasminDialect` for σ₀ denotes the same `BitVec 32` as the THIR for every
-    input vector `I` (single word `x = I 0`). This is the `w = 32` end-to-end
-    milestone, instantiating the width-parameterized `thirToJasmin_denote`. -/
+/-- **Connecting theorem (`FrontValueAgrees`) for `small_sigma0`.** For every
+    input vector `I` (single word `x = I 0`) and every `c` returned by the
+    lowering of `sigma0Thir`, the THIR denotation is `some` of the denotation of
+    `c`. The `w = 32` instance of `thirToJasmin_denote`. -/
 theorem sigma0_FrontValueAgrees (I : Fin 1 → BitVec 32)
     (c : Com jasminDialect ctxtSigma0 (rW 32))
     (hc : thirToJasmin [] (initFState 32 1) sigma0Thir = some c) :
@@ -998,7 +1022,7 @@ theorem sigma0_FrontValueAgrees (I : Fin 1 → BitVec 32)
   thirToJasmin_denote [] I sigma0Thir (LEnv.empty 32) (initFState 32 1)
     (inputValuation 32 1 I) c (initAgree I) hc
 
-/-! ### §7.1  Emit `small_sigma0` → owned-x86 -/
+/-! ### §7.1  Emit `small_sigma0` -/
 
 /-- σ₀'s lowered bindings, in order: `r7`, `r18`, `s3` (immediate shift), `t`,
     `o`, then the `ret` trailing copy. Each gets its own slot `0..5`. -/
@@ -1015,9 +1039,9 @@ def sigma0InName (_ : Nat) : String := "k[6]"
 /-- The state file: 6 working slots plus the 1 input slot. -/
 def sigma0RegDecls : List String := ["stack u32[7] k"]
 
-/-- The emitted `.jazz` for `small_sigma0` through the verified register-arith /
-    rotate orchestration, applied to the **front's own** lowered Com
-    (`sigma0Com`). ABI: `reg ptr u32[1] out`, `reg const ptr u32[1] inp`. -/
+/-- The emitted `.jazz` for `small_sigma0` through the register-arith / rotate
+    orchestration, applied to the lowered `Com` `sigma0Com`. ABI:
+    `reg ptr u32[1] out`, `reg const ptr u32[1] inp`. -/
 def sigma0Jazz : String :=
   emitAbiOrchReg "small_sigma0" (w := 32) (nIn := 1) (nOut := 1) (nCopy := 1)
     sigma0RegDecls sigma0InName sigma0DstName sigma0Com
@@ -1027,33 +1051,32 @@ def sigma0Jazz : String :=
 /- The export has the expected `small_sigma0` ABI (1-word out, 1-word in, u32). -/
 #guard (strContains sigma0Jazz "export fn small_sigma0(reg ptr u32[1] out, reg const ptr u32[1] inp)")
 
-/- The emitted body renders real computation (no skipped ops). -/
+/- The emitted body contains no skipped-op marker. -/
 #guard !(strContains sigma0Jazz "non-regArith op skipped")
 
-/- The emitted body uses the native right-rotate op (`#ROR_32`, the `Rhs.ror`
-    arm) — both σ₀ rotates render through the single x86 rotate intrinsic. -/
+/- The emitted body contains the native right-rotate intrinsic `#ROR_32`, the
+    rendering of the `Rhs.ror` arm. -/
 #guard (strContains sigma0Jazz "#ROR_32(")
 
-/-! ## §8  Width CAST pilot (`castW`, #605 Step 5b)
+/-! ## §8  Width casts (`castW`)
 
-Two complementary pieces close Step 5b — the width cast:
+The width cast has two parts:
 
-* **Front-connected, homogeneous (proved through `thirToJasmin_denote`).** The
-  `Rhs.cast` arm lowers to the dialect `castW w w` op (a same-width zero-extend
-  = the identity), so it stays in the homogeneous `rW w` register file and is
-  carried by the *same* preservation theorem as every other op. `castThir`
-  exercises it end-to-end; `cast_FrontValueAgrees` is its connecting theorem.
+* **Same width, through the front.** The `Rhs.cast` arm lowers to the dialect
+  op `castW w w` (a same-width zero-extension, which is the identity), so it
+  stays in the homogeneous `rW w` register file and is covered by
+  `thirToJasmin_denote` like every other op. `castThir` uses it;
+  `cast_FrontValueAgrees` is its connecting theorem.
 
-* **Cross-width (the `cast#8` digest-byte case).** The dialect's `castW`
-  op is width-changing; the register-arith front is single-width, so the
-  `u32 → u8 → u32` round-trip (`(u32)((u8) x) = x & 0xff`, the SHA-256 digest
-  byte-extract / repack) is realised by a dedicated two-`castW` `Com`
-  (`castDemoCom`) and the focused `emitAbiOrchCast` orchestration. Its
-  denotation is checked equal to the FIPS byte-mask reference, and the KAT
-  (`bench/thir_front_step5`) ties the emitted jasmin to it. -/
+* **Cross width (the `cast#8` digest-byte case).** The dialect op `castW`
+  changes width, while the register-arith front has a single width, so the
+  `u32 → u8 → u32` round trip (`(u32)((u8) x) = x & 0xff`, the SHA-256 digest
+  byte extraction and repacking) is a hand-built two-`castW` `Com`
+  (`castDemoCom`) rendered by `emitAbiOrchCast`. `castDemoCom_denote` proves its
+  denotation equal to the byte-mask reference. -/
 
-/-- The σ-style THIR exercising the front `Rhs.cast` arm (a same-width zero-extend
-    of the single input word, `w = 32`). -/
+/-- A THIR program using the front `Rhs.cast` arm: a same-width zero-extension
+    of the single input word, `w = 32`. -/
 def castThir : Thir :=
   .let_ "c" (.cast (.inp 0)) (.ret (.lvar "c"))
 
@@ -1064,9 +1087,9 @@ theorem castThir_denote (I : Fin 1 → BitVec 32) :
   simp only [castThir, Thir.denote, Rhs.denote, Atom.denote, h0,
     LEnv.set, Option.map_some, Option.bind_some, BitVec.setWidth_eq, reduceIte]
 
-/-- **Connecting theorem (`FrontValueAgrees`) for the front cast arm.** The
-    lowered `Com jasminDialect` for `castThir` denotes the same `BitVec 32` as the
-    THIR, for every input vector `I`. -/
+/-- **Connecting theorem (`FrontValueAgrees`) for the front cast arm.** For every
+    input vector `I` and every `c` returned by the lowering of `castThir`, the
+    THIR denotation is `some` of the denotation of `c`. -/
 theorem cast_FrontValueAgrees (I : Fin 1 → BitVec 32)
     (c : Com jasminDialect (frontCtxt 32 1 []) (rW 32))
     (hc : thirToJasmin [] (initFState 32 1) castThir = some c) :
@@ -1081,9 +1104,9 @@ theorem castThir_lowers : (thirToJasmin [] (initFState 32 1) castThir).isSome :=
 /-! ### §8.1  Cross-width cast `Com` (`u32 → u8 → u32`) and its emit
 
 `castDemoCom` is the two-op `Com` `let y = (u8) x; let z = (u32) y; ret z`, the
-SHA-256 digest byte-extract/repack shape. Its denotation is the byte mask
-`x &&& 0xff`. `emitAbiOrchCast` renders it to jasmin (a narrowing `(8u)` then a
-widening `(32u)`), KAT'd value-identical in `bench/thir_front_step5`. -/
+SHA-256 digest byte extraction and repacking. Its denotation is the byte mask
+`x &&& 0xff`. `emitAbiOrchCast` renders it to jasmin as a narrowing `(8u)`
+followed by a widening `(32u)`. -/
 
 /-- Cross-width cast `Com`: `let y = castW 32 8 x; let z = castW 8 32 y; ret z`,
     over the one-word `[reg 32]` input context. -/
@@ -1092,7 +1115,7 @@ def castDemoCom : Com jasminDialect [rW 32] (rW 32) :=
     (.var (.mk (.castW 8 32) rfl (.cons .here .nil))
       (.ret .here))
 
-/-- The FIPS reference for the cast round-trip: zero all but the low byte. -/
+/-- The reference for the cast round trip: zero all but the low byte. -/
 def castDemoSpec (x : BitVec 32) : BitVec 32 := x &&& 0xff
 
 /-- `castDemoCom` denotes the byte mask `x &&& 0xff` (the `(u32)((u8) x)`
@@ -1115,24 +1138,22 @@ def castDemoJazz : String := emitAbiOrchCast "cast_demo" 32 8
 /- The emitted body renders the narrowing then widening jasmin width casts. -/
 #guard (strContains castDemoJazz "(8u) w0") && (strContains castDemoJazz "(32u) wn")
 
-/-! ## §9  Indexed array STORE pilot (`stackStore`, #605 Step 5a)
+/-! ## §9  Indexed array store (`stackStore`)
 
-The dialect's `stackStore w n` op (the dual of the `inp[i]` indexed *read* the
-front already supports) writes one element of a stack array at a runtime index.
-It was already in the dialect but unrendered by the register-arith emit; the
-`emitBodyReg` `stackStore` arm now renders it as `arr[(uint)idx] = val;`.
-`storeDemoCom` exercises the op directly: write `arr[idx] = val` on a length-4
-`u32` array; `storeDemoCom_denote` proves the denotation is the functional
-update `stackSet`. `emitAbiOrchStore` renders it to jasmin (copy-in, indexed
-store, copy-out), KAT'd in `bench/thir_front_step5`.
+The dialect op `stackStore w n`, the dual of the indexed read `inp[i]`, writes
+one element of a stack array at a runtime index. The `stackStore` arm of
+`emitBodyReg` renders it as `arr[(uint)idx] = val;`. `storeDemoCom` uses the op
+directly, writing `arr[idx] = val` on a length-4 `u32` array;
+`storeDemoCom_denote` proves that its denotation is the functional update
+`stackSet`. `emitAbiOrchStore` renders it to jasmin (copy-in, indexed store,
+copy-out).
 
-**Scope (5a):** the array *write* op is wired into the dialect emit and
-exercised by this pilot, but a stack-array *value* is not a `rW w` register, so
-threading a mutable `stackArr` through the homogeneous register-file front
-(`thirToJasmin`) would require a heterogeneous typing pass. That generalisation
-is deferred; Step 6 (`sha256_compress`) operates over a fixed 8-word `u32` state
-that the register-file front already models as `inp[i]` reads + `dstName` slot
-writes (no runtime-indexed store), so it is **not blocked** by this deferral. -/
+**Scope.** A stack-array value is not a `rW w` register, so the homogeneous
+register-file front `thirToJasmin` does not carry a mutable `stackArr`; doing so
+requires a heterogeneous typing pass, and the store is available only as a
+hand-built `Com`. The SHA-256 compression round of §10 does not need it: its
+fixed `u32` state is modelled by `inp[i]` reads and `dstName` slot writes, with
+no runtime-indexed store. -/
 
 /-- Indexed-store `Com`: `let arr' = stackStore arr idx val; ret arr'`, over the
     context `[stackArr 32 4, reg 64, reg 32]` (array, index, value). -/
@@ -1163,16 +1184,15 @@ theorem storeDemo_export_sig :
 /- The emitted body renders the runtime-indexed element store. -/
 #guard (strContains storeDemoJazz "out[(uint)idx] = val;")
 
-/-! ## §10  SHA-256 compression round core through the front (`w = 32`, #605 Step 6)
+/-! ## §10  SHA-256 compression round through the front (`w = 32`)
 
-The capstone of the THIR→Com compile-from-hax front: the SHA-256 compression
-round update (FIPS 180-4 §6.2.2) and the message-schedule word (§6.2.1), lowered
-from THIR-ANF into `Com jasminDialect` by the verified width-parameterized front
-and emitted to owned-x86 jasmin. Every op is already in the `Rhs` surface — the
-round uses `Rhs.ror` (the six `Σ` rotates), `Rhs.bin .and`/`.xor` (Ch/Maj), and
-`Rhs.add` (the wrapping u32 sum). Bitwise-NOT (the `~e` of `Ch`) is **not** a
-dialect op, so `~e` is expressed as `e ^ 0xffffffff` (a `Rhs.bin .xor` against an
-all-ones literal); this keeps the op surface and the preservation cascade closed.
+The SHA-256 compression round update (FIPS 180-4 §6.2.2) and the
+message-schedule word (§6.2.1), lowered from THIR-ANF into `Com jasminDialect`
+by `thirToJasmin` and emitted to jasmin. The round uses `Rhs.ror` (the six `Σ`
+rotates), `Rhs.bin .and`/`.xor` (Ch/Maj) and `Rhs.add` (the wrapping u32 sum).
+Bitwise NOT (the `~e` of `Ch`) is not a dialect op, so `~e` is written as
+`e ^ 0xffffffff` (a `Rhs.bin .xor` against an all-ones literal), which keeps the
+program inside the `Rhs` op surface covered by `thirToJasmin_denote`.
 
 ### FIPS 180-4 functions (the reference spec)
 
@@ -1186,10 +1206,10 @@ all-ones literal); this keeps the op surface and the preservation cascade closed
 * σ₁(x) = ROTR¹⁷(x) ⊕ ROTR¹⁹(x) ⊕ SHR¹⁰(x)
 * W_t = σ₁(W_{t-2}) + W_{t-7} + σ₀(W_{t-15}) + W_{t-16}
 
-### What carries the connecting theorem
+### Connecting theorems
 
 The round's two single-word outputs (`a'`, `e'`), the message-schedule word
-(`W_t`), and the four sub-functions (Σ₁/Ch/Σ₀/Maj/σ₁) are each lowered through
+(`W_t`), and the five sub-functions (Σ₁/Ch/Σ₀/Maj/σ₁) are each lowered through
 `thirToJasmin` with a `FrontValueAgrees` connecting theorem (the lowered Com
 denotes the same `BitVec 32` as the THIR) and a `*_denote` theorem (the THIR
 denotation equals the FIPS reference). The connecting theorems are direct
@@ -1239,11 +1259,12 @@ def sha256RoundASpec (a b c _d e f g h kt wt : BitVec 32) : BitVec 32 :=
 def sha256RoundESpec (_a _b _c d e f g h kt wt : BitVec 32) : BitVec 32 :=
   d + t1Spec e f g h kt wt
 
-/-! ### §10.1  Sub-function front fns (each a `FrontValueAgrees` leaf)
+/-! ### §10.1  Sub-functions, each with a `FrontValueAgrees` theorem
 
-Σ₁/Σ₀ are direct width-32 analogs of the proven `sigma0Thir` (three rotates and
-two xors); σ₁ adds a `Rhs.shrImm 10`. Ch/Maj exercise the `Rhs.bin .and`/`.xor`
-surface and the NOT-via-xor encoding. Each is a single bundled-input THIR. -/
+Σ₁/Σ₀ have the shape of `sigma0Thir` with three rotates in place of two rotates
+and a shift, followed by two xors; σ₁ has the shape of `sigma0Thir` with a
+`Rhs.shrImm 10`. Ch/Maj use the `Rhs.bin .and`/`.xor` surface and the
+NOT-via-xor encoding. Each is a THIR over a single bundled input vector. -/
 
 /-- Σ₁(e) THIR over `nIn = 1` (`e = inp[0]`). -/
 def bigSigma1Thir : Thir :=
@@ -1466,12 +1487,13 @@ theorem sha256RoundEThir_denote (I : Fin 10 → BitVec 32) :
     JasminBinOp.apply, Option.bind_some, Option.map_some, reduceIte,
     String.reduceEq, BitVec.ofNat_eq_ofNat]
 
-/-! ### §10.3  Connecting theorems (`FrontValueAgrees`) for every round fn
+/-! ### §10.3  Connecting theorems (`FrontValueAgrees`) for the round functions
 
-Each front fn's lowered `Com jasminDialect` denotes the same `BitVec 32` as its
-THIR, for every input vector — a direct instantiation of the width-parameterized
-`thirToJasmin_denote`. Composed with the `*_denote` theorems above (THIR = FIPS
-spec) these tie the emitted Com to the FIPS 180-4 reference. -/
+For every input vector, each program's THIR denotation is `some` of the
+denotation of the lowered `Com jasminDialect`: an instantiation of
+`thirToJasmin_denote`. Composed with the `*_denote` theorems above (THIR
+denotation equals the FIPS reference), they relate the lowered `Com` to the
+FIPS 180-4 reference. -/
 
 /-- Connecting theorem for Σ₁. -/
 theorem bigSigma1_FrontValueAgrees (I : Fin 1 → BitVec 32)
@@ -1521,9 +1543,9 @@ theorem msgSched_FrontValueAgrees (I : Fin 4 → BitVec 32)
   thirToJasmin_denote [] I msgSchedThir (LEnv.empty 32) (initFState 32 4)
     (inputValuation 32 4 I) c (initAgree I) hc
 
-/-- **Connecting theorem for the round output `a'`** — the THIR→Com front lowers
-    the full SHA-256 compression-round `a' = T₁+T₂` to a `Com jasminDialect` that
-    denotes the same `BitVec 32` as the THIR, for every 10-word input vector. -/
+/-- **Connecting theorem for the round output `a'`.** For every 10-word input
+    vector and every `c` returned by the lowering of the SHA-256 round output
+    `a' = T₁+T₂`, the THIR denotation is `some` of the denotation of `c`. -/
 theorem sha256RoundA_FrontValueAgrees (I : Fin 10 → BitVec 32)
     (c : Com jasminDialect (frontCtxt 32 10 []) (rW 32))
     (hc : thirToJasmin [] (initFState 32 10) sha256RoundAThir = some c) :
@@ -1541,10 +1563,10 @@ theorem sha256RoundE_FrontValueAgrees (I : Fin 10 → BitVec 32)
   thirToJasmin_denote [] I sha256RoundEThir (LEnv.empty 32) (initFState 32 10)
     (inputValuation 32 10 I) c (initAgree I) hc
 
-/-! ### §10.4  Emit the round fns → owned-x86 jasmin
+/-! ### §10.4  Emit the round functions to jasmin
 
-Each fn is lowered to its own `Com` and emitted through the verified
-register-arith / rotate orchestration `emitAbiOrchReg`. The slot scheme mirrors
+Each function is lowered to its own `Com` and emitted through the
+register-arith / rotate orchestration `emitAbiOrchReg`. The slot scheme follows
 `sigma0`: binding `k` writes working slot `k`; the `nIn` input words are copied
 into the trailing register slots `nB, nB+1, …` (`nB` = binding count). The
 `stack u32[nB+nIn] k` file holds them all. -/
@@ -1647,10 +1669,11 @@ def sha256RoundEJazz : String :=
 /- The `a'` round export has the expected ABI (1-word out, 10-word in, u32). -/
 #guard (strContains sha256RoundAJazz "export fn sha256_round_a(reg ptr u32[1] out, reg const ptr u32[10] inp)")
 
-/- The `a'` round body renders real computation (no skipped ops). -/
+/- The `a'` round body contains no skipped-op marker. -/
 #guard !(strContains sha256RoundAJazz "non-regArith op skipped")
 
-/- The `a'` round body uses the native right-rotate op (the six Σ rotates). -/
+/- The `a'` round body contains the native right-rotate intrinsic `#ROR_32`
+    (the rendering of the Σ rotates). -/
 #guard (strContains sha256RoundAJazz "#ROR_32(")
 
 /- The `e'` round export has the expected ABI. -/
@@ -1674,15 +1697,14 @@ def sha256RoundEJazz : String :=
 /- The σ₁ export has the expected ABI. -/
 #guard (strContains smallSigma1Jazz "export fn small_sigma1(reg ptr u32[1] out, reg const ptr u32[1] inp)")
 
-/-! ## §9  σ₀ re-derived through the `thirDialect` two-stage spine (#616)
+/-! ## §11  σ₀ through the two-stage `thirDialect` path
 
-`ssaSmallSigma0` is the SHA-256 σ₀ program built directly at the **THIR-dialect**
-level (`Com thirDialect`), using the higher-level `ThirOp` surface (`thRor`,
-`thShrImm`, `thBin`). `sigma0_via_thirDialect` re-derives the existing
-`sigma0_FrontValueAgrees` value (`sigma0Spec`) through the new two-stage path
-`Com[thir] →lowerThir→ Com[jasmin] →denote→ BitVec 32` — demonstrating the front
-now factors through the dialect (rather than only the bespoke `thirToJasmin`).
-The direct `thirToJasmin` path (`sigma0Com`, §7) is kept alongside. -/
+`ssaSmallSigma0` is the SHA-256 σ₀ program built at the THIR-dialect level
+(`Com thirDialect`) from the `ThirOp` surface (`thRor`, `thShrImm`, `thBin`).
+`sigma0_via_thirDialect` proves that the two-stage path
+`Com[thir] →lowerThir→ Com[jasmin] →denote→ BitVec 32` computes `sigma0Spec`,
+the value of `sigma0Thir` (§7). The direct `thirToJasmin` path (`sigma0Com`, §7)
+is a separate route to the same function. -/
 
 open CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect
   (thirDialect ThirOp lowerThir lowerThir_denote)
@@ -1709,22 +1731,20 @@ theorem ssaSmallSigma0_denote (x : BitVec 32) :
     ssaSmallSigma0.denote (.cons x .nil) = sigma0Spec x := by
   rfl
 
-/-- **σ₀ re-derived through the dialect spine.** The lowered (two-stage)
-    `Com jasminDialect` for σ₀ denotes the same `BitVec 32` as the FIPS σ₀ spec —
-    the existing `sigma0_FrontValueAgrees` value, obtained through
-    `Com[thir] →lowerThir→ Com[jasmin]` rather than the bespoke `thirToJasmin`.
-    Combines `lowerThir_denote` (the generic, proved dialect lowering) with
-    `ssaSmallSigma0_denote`. -/
+/-- **σ₀ through the dialect path.** The `Com jasminDialect` obtained by
+    `lowerThir ssaSmallSigma0` denotes the FIPS σ₀ reference `sigma0Spec` on
+    every input word; `sigma0Thir_denote` gives the same value on the
+    `thirToJasmin` path. Combines `lowerThir_denote` (preservation of the generic
+    dialect lowering) with `ssaSmallSigma0_denote`. -/
 theorem sigma0_via_thirDialect (x : BitVec 32) :
     (lowerThir ssaSmallSigma0).denote (.cons x .nil) = sigma0Spec x := by
   rw [lowerThir_denote ssaSmallSigma0 (.cons x .nil), ssaSmallSigma0_denote]
 
-/-! ## 11. ChaCha20 quarter-round through the thirDialect spine (#606)
+/-! ## §12  ChaCha20 quarter-round through `thirDialect`
 
-The first Phase-2 fan-out primitive: the ChaCha20 quarter-round `QR(a,b,c,d)`
-over four `u32` words, compiled through the **same** `Com[thir] →lowerThir→
-Com[jasmin]` spine the σ₀ demonstrator uses. The quarter-round body is the 12
-straight-line ARX operations (RFC 8439 §2.1):
+The ChaCha20 quarter-round `QR(a,b,c,d)` over four `u32` words, compiled along
+the `Com[thir] →lowerThir→ Com[jasmin]` path of §11. The quarter-round body is
+12 straight-line ARX operations (RFC 8439 §2.1):
 
     a += b;  d ^= a;  d = rol(d,16);
     c += d;  b ^= c;  b = rol(b,12);
@@ -1733,9 +1753,9 @@ straight-line ARX operations (RFC 8439 §2.1):
 
 `rol` is rotate-LEFT; the THIR surface has the native rotate-RIGHT op `thRor`, so
 each `rol n` over a `u32` is emitted as `thRor (32 - n)` (`rol(x,n) =
-ror(x,32-n)`). All three operation kinds (`thBin .add 32`, `thBin .xor 32`,
-`thRor 32 _`) are already in the dialect surface — no new op is needed. The
-quarter-round produces four output words, so it is split into four single-output
+ror(x,32-n)`). The three operation kinds (`thBin .add 32`, `thBin .xor 32`,
+`thRor 32 _`) are all dialect ops. The quarter-round produces four output words,
+so it is split into four single-output
 programs `qrAThir`/`qrBThir`/`qrCThir`/`qrDThir`, each computing the shared
 12-binding SSA body and returning its own output word (`a'`/`b'`/`c'`/`d'`),
 mirroring the SHA-256 round's `a'`/`e'` split. -/
@@ -1866,45 +1886,45 @@ theorem qrDThir_denote (a b c d : BitVec 32) :
       = ((chachaQRSpec a b c d).2.2.2).rotateRight 0 := rfl
   rw [e]; simp [BitVec.rotateRight_def]
 
-/-- **`a'` re-derived through the dialect spine.** The lowered (two-stage)
+/-- **`a'` through the dialect path.** The lowered (two-stage)
     `Com jasminDialect` for the quarter-round `a'` output denotes the same
-    `BitVec 32` as the RFC 8439 reference, obtained through
-    `Com[thir] →lowerThir→ Com[jasmin]`. Combines `lowerThir_denote` (the generic,
-    proved dialect lowering) with `qrAThir_denote`. -/
+    `BitVec 32` as the RFC 8439 reference, along
+    `Com[thir] →lowerThir→ Com[jasmin]`. Combines `lowerThir_denote`
+    (preservation of the generic dialect lowering) with `qrAThir_denote`. -/
 theorem qrA_via_thirDialect (a b c d : BitVec 32) :
     (lowerThir qrAThir).denote (.cons a (.cons b (.cons c (.cons d .nil))))
       = (chachaQRSpec a b c d).1 := by
   rw [lowerThir_denote qrAThir (.cons a (.cons b (.cons c (.cons d .nil)))),
     qrAThir_denote]
 
-/-- **`b'` re-derived through the dialect spine.** -/
+/-- **`b'` through the dialect path.** -/
 theorem qrB_via_thirDialect (a b c d : BitVec 32) :
     (lowerThir qrBThir).denote (.cons a (.cons b (.cons c (.cons d .nil))))
       = (chachaQRSpec a b c d).2.1 := by
   rw [lowerThir_denote qrBThir (.cons a (.cons b (.cons c (.cons d .nil)))),
     qrBThir_denote]
 
-/-- **`c'` re-derived through the dialect spine.** -/
+/-- **`c'` through the dialect path.** -/
 theorem qrC_via_thirDialect (a b c d : BitVec 32) :
     (lowerThir qrCThir).denote (.cons a (.cons b (.cons c (.cons d .nil))))
       = (chachaQRSpec a b c d).2.2.1 := by
   rw [lowerThir_denote qrCThir (.cons a (.cons b (.cons c (.cons d .nil)))),
     qrCThir_denote]
 
-/-- **`d'` re-derived through the dialect spine.** -/
+/-- **`d'` through the dialect path.** -/
 theorem qrD_via_thirDialect (a b c d : BitVec 32) :
     (lowerThir qrDThir).denote (.cons a (.cons b (.cons c (.cons d .nil))))
       = (chachaQRSpec a b c d).2.2.2 := by
   rw [lowerThir_denote qrDThir (.cons a (.cons b (.cons c (.cons d .nil)))),
     qrDThir_denote]
 
-/-! ### §11.1  Emit the quarter-round outputs → owned-x86 jasmin
+/-! ### §12.1  Emit the quarter-round outputs to jasmin
 
-Each of the four output programs is lowered through the thirDialect spine
-(`lowerThir qrXThir`) and emitted by the existing verified register-arith /
-rotate orchestration `emitAbiOrchReg`. The slot scheme mirrors the SHA-256
-rounds: binding `k` writes working slot `k`; the 4 input words are copied into
-the trailing register slots. The body has 12 bindings + 1 trailing `ret` copy,
+Each of the four output programs is lowered along the dialect path
+(`lowerThir qrXThir`) and emitted by the register-arith / rotate orchestration
+`emitAbiOrchReg`. The slot scheme follows the SHA-256 rounds: binding `k`
+writes working slot `k`; the 4 input words are copied into
+the trailing register slots. The body has 12 bindings + 1 final identity copy,
 so 13 working slots precede the 4 input slots in the `stack u32[17] k` file. -/
 
 /-- Per-output register-file decls: 13 working slots + 4 input slots. -/
@@ -1916,24 +1936,24 @@ def qrDstName (n : Nat) : String := "k[" ++ toString n ++ "]"
 /-- Input word `i` (`a`/`b`/`c`/`d`) → copied-in register slot `13 + i`. -/
 def qrInName (i : Nat) : String := "k[" ++ toString (13 + i) ++ "]"
 
-/-- The emitted `.jazz` for the quarter-round `a'` output through the thirDialect
-    spine (`lowerThir qrAThir`) and the verified register-arith / rotate
-    orchestration. ABI: `reg ptr u32[1] out`, `reg const ptr u32[4] inp`. -/
+/-- The emitted `.jazz` for the quarter-round `a'` output, along the dialect path
+    (`lowerThir qrAThir`) and the register-arith / rotate orchestration. ABI:
+    `reg ptr u32[1] out`, `reg const ptr u32[4] inp`. -/
 def qrAJazz : String :=
   emitAbiOrchReg "chacha_qr_a" (w := 32) (nIn := 4) (nOut := 1) (nCopy := 4)
     qrRegDecls qrInName qrDstName (lowerThir qrAThir)
 
-/-- The emitted `.jazz` for the quarter-round `b'` output through the spine. -/
+/-- The emitted `.jazz` for the quarter-round `b'` output through the dialect path. -/
 def qrBJazz : String :=
   emitAbiOrchReg "chacha_qr_b" (w := 32) (nIn := 4) (nOut := 1) (nCopy := 4)
     qrRegDecls qrInName qrDstName (lowerThir qrBThir)
 
-/-- The emitted `.jazz` for the quarter-round `c'` output through the spine. -/
+/-- The emitted `.jazz` for the quarter-round `c'` output through the dialect path. -/
 def qrCJazz : String :=
   emitAbiOrchReg "chacha_qr_c" (w := 32) (nIn := 4) (nOut := 1) (nCopy := 4)
     qrRegDecls qrInName qrDstName (lowerThir qrCThir)
 
-/-- The emitted `.jazz` for the quarter-round `d'` output through the spine. -/
+/-- The emitted `.jazz` for the quarter-round `d'` output through the dialect path. -/
 def qrDJazz : String :=
   emitAbiOrchReg "chacha_qr_d" (w := 32) (nIn := 4) (nOut := 1) (nCopy := 4)
     qrRegDecls qrInName qrDstName (lowerThir qrDThir)
@@ -1941,30 +1961,28 @@ def qrDJazz : String :=
 /- The `a'` quarter-round export has the expected ABI (1-word out, 4-word in). -/
 #guard (strContains qrAJazz "export fn chacha_qr_a(reg ptr u32[1] out, reg const ptr u32[4] inp)")
 
-/- The emitted `a'` body renders real computation (no skipped ops). -/
+/- The emitted `a'` body contains no skipped-op marker. -/
 #guard !(strContains qrAJazz "non-regArith op skipped")
 
-/- The emitted `a'` body uses the native right-rotate op (`#ROR_32`), the
-    `rol`-via-`thRor` encoding. -/
+/- The emitted `a'` body contains the native right-rotate intrinsic `#ROR_32`,
+    the rendering of the `rol`-via-`thRor` encoding. -/
 #guard (strContains qrAJazz "#ROR_32(")
 
-/- The four emitted quarter-round functions return DISTINCT output words: each
-    copies its own result slot into the final binding before the `out[0]` write
-    (`a' = k[6]`, `b' = k[11]`, `c' = k[9]`, `d' = k[8]`). The register-arith
-    emit reads back the last binding's slot, so distinct final-copy sources are
-    exactly what makes the four exports compute the four quarter-round outputs
-    rather than a shared last value. -/
+/- The four emitted quarter-round functions copy different result slots into the
+    final binding `k[12]` before the `out[0]` write (`a' = k[6]`, `b' = k[11]`,
+    `c' = k[9]`, `d' = k[8]`). The register-arith emit returns the slot of the
+    last binding, so each export returns its own output word. -/
 #guard (strContains qrAJazz "w0 = k[6];\n  _, _, w0 = #ROR_32(w0, 0);\n  k[12] = w0;")
     && (strContains qrBJazz "w0 = k[11];\n  _, _, w0 = #ROR_32(w0, 0);\n  k[12] = w0;")
     && (strContains qrCJazz "w0 = k[9];\n  _, _, w0 = #ROR_32(w0, 0);\n  k[12] = w0;")
     && (strContains qrDJazz "w0 = k[8];\n  _, _, w0 = #ROR_32(w0, 0);\n  k[12] = w0;")
 
-/-! ## §12  BLAKE2b G mixing function through the thirDialect spine (#606)
+/-! ## §13  BLAKE2b G mixing function through `thirDialect`
 
-Phase-2 fan-out, the `u64` ARX analog of the ChaCha20 quarter-round (§11). The
-BLAKE2b G mixing function `G(a,b,c,d,x,y)` (RFC 7693 §3.1) over four `u64` state
-words `a,b,c,d` plus two `u64` message words `x,y`, compiled through the **same**
-`Com[thir] →lowerThir→ Com[jasmin]` spine, now at width 64:
+The `u64` ARX analogue of the ChaCha20 quarter-round (§12): the BLAKE2b G mixing
+function `G(a,b,c,d,x,y)` (RFC 7693 §3.1) over four `u64` state words `a,b,c,d`
+and two `u64` message words `x,y`, compiled along the
+`Com[thir] →lowerThir→ Com[jasmin]` path at width 64:
 
     a = a + b + x;   d = ror64(d ^ a, 32);
     c = c + d;       b = ror64(b ^ c, 24);
@@ -1973,9 +1991,9 @@ words `a,b,c,d` plus two `u64` message words `x,y`, compiled through the **same*
 
 The two three-input adds `a + b + x` / `a + b + y` are each two chained
 `thBin .add 64` ops. The rotates are the native right-rotate `thRor 64 n`
-(`n = 32/24/16/63`, all immediate). All three operation kinds (`thBin .add 64`,
-`thBin .xor 64`, `thRor 64 _`) are already in the dialect surface — no new op is
-needed. G produces four output words, so it is split into four single-output
+(`n = 32/24/16/63`, all immediate). The three operation kinds (`thBin .add 64`,
+`thBin .xor 64`, `thRor 64 _`) are all dialect ops. G produces four output
+words, so it is split into four single-output
 programs `gAThir`/`gBThir`/`gCThir`/`gDThir`, each computing the shared 14-binding
 SSA body and returning its own output word (`a'`/`b'`/`c'`/`d'`), mirroring the
 quarter-round's `a'`/`b'`/`c'`/`d'` split. -/
@@ -1999,12 +2017,13 @@ def blake2bGSpec (a b c d x y : BitVec 64) :
     (`a = here`, …, `y = there⁵ here`), parameterized over the source variable
     `outSrc` of a final identity-copy binding (`thRor 64 0`, a rotate-by-zero =
     identity) so each single-output program ends with its OWN output word as the
-    LAST binding. The 14 compute bindings, head-first:
+    LAST binding. The 14 compute bindings, in binding order:
 
         a1, a2, d1, d2, c1, b1, b2, a3, a4, d3, d4, c2, b3, b4
 
-    so the output words live at: `a' = a4` (binding 8), `b' = b4` (binding 13),
-    `c' = c2` (binding 11), `d' = d4` (binding 10). The 15th binding copies
+    so the output words are at: `a' = a4` (binding 8), `b' = b4` (binding 13),
+    `c' = c2` (binding 11), `d' = d4` (binding 10), counting from 0. The 15th
+    binding copies
     `outSrc` to the head slot, which is what the register-arith emit reads back as
     the result (it takes the last `nOut` bindings, not the `ret` variable). -/
 def gBody
@@ -2132,11 +2151,11 @@ theorem gDThir_denote (a b c d x y : BitVec 64) :
       = ((blake2bGSpec a b c d x y).2.2.2).rotateRight 0 := rfl
   rw [e]; simp [BitVec.rotateRight_def]
 
-/-- **`a'` re-derived through the dialect spine.** The lowered (two-stage)
+/-- **`a'` through the dialect path.** The lowered (two-stage)
     `Com jasminDialect` for the BLAKE2b G `a'` output denotes the same `BitVec 64`
-    as the RFC 7693 §3.1 reference, obtained through
-    `Com[thir] →lowerThir→ Com[jasmin]`. Combines `lowerThir_denote` (the generic,
-    proved dialect lowering) with `gAThir_denote`. -/
+    as the RFC 7693 §3.1 reference, along
+    `Com[thir] →lowerThir→ Com[jasmin]`. Combines `lowerThir_denote`
+    (preservation of the generic dialect lowering) with `gAThir_denote`. -/
 theorem gA_via_thirDialect (a b c d x y : BitVec 64) :
     (lowerThir gAThir).denote
       (.cons a (.cons b (.cons c (.cons d (.cons x (.cons y .nil))))))
@@ -2145,7 +2164,7 @@ theorem gA_via_thirDialect (a b c d x y : BitVec 64) :
       (.cons a (.cons b (.cons c (.cons d (.cons x (.cons y .nil)))))),
     gAThir_denote]
 
-/-- **`b'` re-derived through the dialect spine.** -/
+/-- **`b'` through the dialect path.** -/
 theorem gB_via_thirDialect (a b c d x y : BitVec 64) :
     (lowerThir gBThir).denote
       (.cons a (.cons b (.cons c (.cons d (.cons x (.cons y .nil))))))
@@ -2154,7 +2173,7 @@ theorem gB_via_thirDialect (a b c d x y : BitVec 64) :
       (.cons a (.cons b (.cons c (.cons d (.cons x (.cons y .nil)))))),
     gBThir_denote]
 
-/-- **`c'` re-derived through the dialect spine.** -/
+/-- **`c'` through the dialect path.** -/
 theorem gC_via_thirDialect (a b c d x y : BitVec 64) :
     (lowerThir gCThir).denote
       (.cons a (.cons b (.cons c (.cons d (.cons x (.cons y .nil))))))
@@ -2163,7 +2182,7 @@ theorem gC_via_thirDialect (a b c d x y : BitVec 64) :
       (.cons a (.cons b (.cons c (.cons d (.cons x (.cons y .nil)))))),
     gCThir_denote]
 
-/-- **`d'` re-derived through the dialect spine.** -/
+/-- **`d'` through the dialect path.** -/
 theorem gD_via_thirDialect (a b c d x y : BitVec 64) :
     (lowerThir gDThir).denote
       (.cons a (.cons b (.cons c (.cons d (.cons x (.cons y .nil))))))
@@ -2172,13 +2191,13 @@ theorem gD_via_thirDialect (a b c d x y : BitVec 64) :
       (.cons a (.cons b (.cons c (.cons d (.cons x (.cons y .nil)))))),
     gDThir_denote]
 
-/-! ### §12.1  Emit the BLAKE2b G outputs → owned-x86 jasmin
+/-! ### §13.1  Emit the BLAKE2b G outputs to jasmin
 
-Each of the four output programs is lowered through the thirDialect spine
-(`lowerThir gXThir`) and emitted by the existing verified register-arith / rotate
-orchestration `emitAbiOrchReg` at width 64. The slot scheme mirrors §11: binding
+Each of the four output programs is lowered along the dialect path
+(`lowerThir gXThir`) and emitted by the register-arith / rotate orchestration
+`emitAbiOrchReg` at width 64. The slot scheme follows §12.1: binding
 `k` writes working slot `k`; the 6 input words are copied into the trailing
-register slots. The body has 14 bindings + 1 trailing `ret` copy, so 15 working
+register slots. The body has 14 bindings + 1 final identity copy, so 15 working
 slots precede the 6 input slots in the `stack u64[21] k` file. -/
 
 /-- Per-output register-file decls: 15 working slots + 6 input slots. -/
@@ -2190,24 +2209,24 @@ def gDstName (n : Nat) : String := "k[" ++ toString n ++ "]"
 /-- Input word `i` (`a`/`b`/`c`/`d`/`x`/`y`) → copied-in register slot `15 + i`. -/
 def gInName (i : Nat) : String := "k[" ++ toString (15 + i) ++ "]"
 
-/-- The emitted `.jazz` for the BLAKE2b G `a'` output through the thirDialect
-    spine (`lowerThir gAThir`) and the verified register-arith / rotate
-    orchestration. ABI: `reg ptr u64[1] out`, `reg const ptr u64[6] inp`. -/
+/-- The emitted `.jazz` for the BLAKE2b G `a'` output, along the dialect path
+    (`lowerThir gAThir`) and the register-arith / rotate orchestration. ABI:
+    `reg ptr u64[1] out`, `reg const ptr u64[6] inp`. -/
 def gAJazz : String :=
   emitAbiOrchReg "blake2b_g_a" (w := 64) (nIn := 6) (nOut := 1) (nCopy := 6)
     gRegDecls gInName gDstName (lowerThir gAThir)
 
-/-- The emitted `.jazz` for the BLAKE2b G `b'` output through the spine. -/
+/-- The emitted `.jazz` for the BLAKE2b G `b'` output through the dialect path. -/
 def gBJazz : String :=
   emitAbiOrchReg "blake2b_g_b" (w := 64) (nIn := 6) (nOut := 1) (nCopy := 6)
     gRegDecls gInName gDstName (lowerThir gBThir)
 
-/-- The emitted `.jazz` for the BLAKE2b G `c'` output through the spine. -/
+/-- The emitted `.jazz` for the BLAKE2b G `c'` output through the dialect path. -/
 def gCJazz : String :=
   emitAbiOrchReg "blake2b_g_c" (w := 64) (nIn := 6) (nOut := 1) (nCopy := 6)
     gRegDecls gInName gDstName (lowerThir gCThir)
 
-/-- The emitted `.jazz` for the BLAKE2b G `d'` output through the spine. -/
+/-- The emitted `.jazz` for the BLAKE2b G `d'` output through the dialect path. -/
 def gDJazz : String :=
   emitAbiOrchReg "blake2b_g_d" (w := 64) (nIn := 6) (nOut := 1) (nCopy := 6)
     gRegDecls gInName gDstName (lowerThir gDThir)
@@ -2215,54 +2234,50 @@ def gDJazz : String :=
 /- The `a'` G export has the expected ABI (1-word out, 6-word in). -/
 #guard (strContains gAJazz "export fn blake2b_g_a(reg ptr u64[1] out, reg const ptr u64[6] inp)")
 
-/- The emitted `a'` body renders real computation (no skipped ops). -/
+/- The emitted `a'` body contains no skipped-op marker. -/
 #guard !(strContains gAJazz "non-regArith op skipped")
 
-/- The emitted `a'` body uses the native right-rotate op (`#ROR_64`), the
-    `ror64` encoding. -/
+/- The emitted `a'` body contains the native right-rotate intrinsic `#ROR_64`,
+    the rendering of `ror64`. -/
 #guard (strContains gAJazz "#ROR_64(")
 
-/- The four emitted G functions return DISTINCT output words: each copies its
-    own result slot into the final binding before the `out[0]` write
-    (`a' = k[8]`, `b' = k[13]`, `c' = k[11]`, `d' = k[10]`). The register-arith
-    emit reads back the last binding's slot, so distinct final-copy sources are
-    exactly what makes the four exports compute the four G outputs rather than a
-    shared last value. -/
+/- The four emitted G functions copy different result slots into the final
+    binding `k[14]` before the `out[0]` write (`a' = k[8]`, `b' = k[13]`,
+    `c' = k[11]`, `d' = k[10]`). The register-arith emit returns the slot of the
+    last binding, so each export returns its own output word. -/
 #guard (strContains gAJazz "w0 = k[8];\n  _, _, w0 = #ROR_64(w0, 0);\n  k[14] = w0;")
     && (strContains gBJazz "w0 = k[13];\n  _, _, w0 = #ROR_64(w0, 0);\n  k[14] = w0;")
     && (strContains gCJazz "w0 = k[11];\n  _, _, w0 = #ROR_64(w0, 0);\n  k[14] = w0;")
     && (strContains gDJazz "w0 = k[10];\n  _, _, w0 = #ROR_64(w0, 0);\n  k[14] = w0;")
 
-/-! ## §13  BabyBear lazy Montgomery multiply through the thirDialect spine (#606)
+/-! ## §14  BabyBear lazy Montgomery multiplication through `thirDialect`
 
-Phase-2 fan-out, the FIRST non-ARX (field-arithmetic) primitive through the
-unified `Com[thir] →lowerThir→ Com[jasmin]` spine: a lazy Montgomery modular
-multiply (REDC) over the Plonky3/Poseidon2 **BabyBear** prime
-`p = 0x78000001 = 2^31 − 2^27 + 1`, with `R = 2^32` and
-`minv = −p⁻¹ mod R = 0x77ffffff` (verified: `minv · p ≡ −1 mod 2^32`, i.e.
-`(minv · p) mod 2^32 = 0xffffffff`). For two Montgomery representatives `a`, `b`
-(each `< 2^32`), the REDC product is:
+A field-arithmetic kernel along the `Com[thir] →lowerThir→ Com[jasmin]` path: a
+lazy Montgomery modular multiplication (REDC) over the Plonky3/Poseidon2
+BabyBear prime `p = 0x78000001 = 2^31 − 2^27 + 1`, with `R = 2^32` and
+`minv = −p⁻¹ mod R = 0x77ffffff` (`montMul_minv_correct` proves
+`(minv · p) mod 2^32 = 2^32 − 1`, i.e. `minv · p ≡ −1 mod 2^32`). For two
+Montgomery representatives `a`, `b` held in 64-bit words, the REDC product is:
 
-    t = a * b;                       -- exact 64-bit product (a,b < 2^32)
+    t = a * b;                       -- 64-bit product, exact when a,b < 2^32
     m = ((u32)t * minv) & 0xffffffff;-- low-word REDC multiplier
-    r = (t + (u64)m * p) >> 32;      -- ≡ a·b·R⁻¹  (mod p)
+    r = (t + (u64)m * p) >> 32;
 
-`r` is the LAZY Montgomery representative — congruent mod `p` to the canonical
-product, with NO final conditional subtract (the thirDialect front is
-straight-line, no `select`). Unlike the ARX leaves (§11/§12) this uses
-`thBin .mul` (integer multiply) and `thBin .and` / `thShrImm` / `thConst`, with
-no rotation.
+The result is lazy: there is no final conditional subtraction (these programs
+are straight-line). For inputs below `p` the sum `t + m·p` stays below `2^64`,
+so the shift is an exact division, `r ≡ a·b·R⁻¹ (mod p)` and `r < 2p`; for
+larger inputs the sum can wrap. This module proves only the equalities between
+the programs and the reference definitions `montMulSpec64`/`montMulSpec`, and
+neither the congruence nor the bound. In contrast to the ARX leaves (§12/§13)
+the program uses `thBin .mul` (integer multiply), `thBin .and`, `thShrImm` and
+`thConst`, and no rotation.
 
-The exact 32×32→64 product needs 64-bit intermediates. The verified
-register-arith orchestration `emitAbiOrchReg` runs over a single homogeneous
-register width, so the whole REDC is realised at **width 64**: the two `u32`
-inputs are held in `u64` words (each `< 2^32`, so the `thBin .mul 64` product is
-exact), and every REDC step (`m`, `r`) is a `u64` op. The output `r` is a `u64`
-in `[0, 3p)` congruent to the canonical product mod `p` — the lazy form. This
-keeps the program in the single-width spine (no cross-width `thCast` inside the
-homogeneous emit). `montMulSpec` over `BitVec 32` inputs zero-extends to 64,
-runs the same REDC, and truncates the result back to `BitVec 32` (the low word
-carries the residue mod `p`). -/
+The 32×32→64 product needs 64-bit intermediates, and the register-arith
+orchestration `emitAbiOrchReg` uses a single register width, so the REDC runs
+at width 64: the `u32` inputs are held in `u64` words and every REDC step
+(`m`, `r`) is a `u64` op, with no cross-width `thCast`. `montMulSpec` over
+`BitVec 32` inputs zero-extends to 64 bits, runs the same REDC and truncates
+the result to `BitVec 32`. -/
 
 /-- The BabyBear prime `p = 0x78000001 = 2^31 − 2^27 + 1` (Plonky3/Poseidon2). -/
 def babyBearP : Nat := 0x78000001
@@ -2281,11 +2296,10 @@ theorem montMul_minv_correct :
 
 /-- The reference lazy BabyBear Montgomery REDC over two `BitVec 32` Montgomery
     representatives `a`, `b`. Both are zero-extended to 64 bits (so the product is
-    exact), reduced by one REDC step, and the 64-bit result `r` (in `[0, 3p)`,
-    congruent to `a·b·R⁻¹ mod p`) is truncated back to a `BitVec 32`. The full
-    REDC at width 64:
+    exact), reduced by one REDC step, and the 64-bit result `r` is truncated to a
+    `BitVec 32`. The REDC at width 64:
 
-        t = (a ++ b widened) * …;  m = (t & 0xffffffff) * minv & 0xffffffff;
+        t = zext a * zext b;  m = ((t & 0xffffffff) * minv) & 0xffffffff;
         r = (t + m * p) >> 32 -/
 def montMulSpec (a b : BitVec 32) : BitVec 32 :=
   let a64 : BitVec 64 := a.zeroExtend 64
@@ -2300,9 +2314,9 @@ def montMulSpec (a b : BitVec 32) : BitVec 32 :=
   r.truncate 32
 
 /-- The 64-bit lazy Montgomery REDC over two `u64` words holding `u32`
-    representatives `a`, `b`. The full-width result word (in `[0, 3p)`, congruent
-    to `a·b·R⁻¹ mod p`) before the final truncation in `montMulSpec`. This is the
-    value the width-64 emit computes (the C KAT checks it congruent mod `p`). -/
+    representatives `a`, `b`: the full-width result word before the final
+    truncation in `montMulSpec`, and the value that the width-64 program
+    `montMulThir` denotes (`montMulThir_denote`). -/
 def montMulSpec64 (a b : BitVec 64) : BitVec 64 :=
   let t : BitVec 64 := a * b
   let mask : BitVec 64 := BitVec.ofNat 64 0xffffffff
@@ -2355,28 +2369,27 @@ theorem montMulThir_denote (a b : BitVec 64) :
     montMulThir.denote (.cons a (.cons b .nil)) = montMulSpec64 a b := by
   rfl
 
-/-- **Montgomery REDC re-derived through the dialect spine.** The lowered
-    (two-stage) `Com jasminDialect` for the lazy BabyBear Montgomery multiply
-    denotes the same `BitVec 64` as the width-64 REDC reference, obtained through
-    `Com[thir] →lowerThir→ Com[jasmin]` rather than a bespoke lowering. Combines
-    `lowerThir_denote` (the generic, proved dialect lowering) with
-    `montMulThir_denote`. -/
+/-- **Montgomery REDC through the dialect path.** The lowered (two-stage)
+    `Com jasminDialect` for the lazy BabyBear Montgomery multiplication denotes
+    the width-64 REDC reference `montMulSpec64`, along
+    `Com[thir] →lowerThir→ Com[jasmin]`. Combines `lowerThir_denote`
+    (preservation of the generic dialect lowering) with `montMulThir_denote`. -/
 theorem montMul_via_thirDialect (a b : BitVec 64) :
     (lowerThir montMulThir).denote (.cons a (.cons b .nil)) = montMulSpec64 a b := by
   rw [lowerThir_denote montMulThir (.cons a (.cons b .nil)), montMulThir_denote]
 
 /-- The width-64 REDC restricted to `u32` inputs (zero-extended to 64) and
-    truncated back to 32 is exactly `montMulSpec` — ties the emitted/lowered
-    width-64 program (`montMulSpec64`) to the `BitVec 32` reference. -/
+    truncated back to 32 is `montMulSpec`; it relates the value of the width-64
+    program (`montMulSpec64`) to the `BitVec 32` reference. -/
 theorem montMulSpec_eq_spec64 (a b : BitVec 32) :
     montMulSpec a b = (montMulSpec64 (a.zeroExtend 64) (b.zeroExtend 64)).truncate 32 := by
   rfl
 
-/-! ### §13.1  Emit the Montgomery REDC → owned-x86 jasmin
+/-! ### §14.1  Emit the Montgomery REDC to jasmin
 
-The single-output REDC is lowered through the thirDialect spine
-(`lowerThir montMulThir`) and emitted by the verified register-arith
-orchestration `emitAbiOrchReg` at width 64. The body has 11 bindings, so 11
+The single-output REDC is lowered along the dialect path
+(`lowerThir montMulThir`) and emitted by the register-arith orchestration
+`emitAbiOrchReg` at width 64. The body has 11 bindings, so 11
 working slots precede the 2 input slots in the `stack u64[13] k` file. The two
 `u32` inputs are passed as `u64` words. The result is the LAST binding's slot
 (no identity-copy tail — single output). -/
@@ -2390,9 +2403,9 @@ def montDstName (n : Nat) : String := "k[" ++ toString n ++ "]"
 /-- Input word `i` (`a`/`b`) → copied-in register slot `11 + i`. -/
 def montInName (i : Nat) : String := "k[" ++ toString (11 + i) ++ "]"
 
-/-- The emitted `.jazz` for the lazy BabyBear Montgomery multiply through the
-    thirDialect spine (`lowerThir montMulThir`) and the verified register-arith
-    orchestration. ABI: `reg ptr u64[1] out`, `reg const ptr u64[2] inp`. -/
+/-- The emitted `.jazz` for the lazy BabyBear Montgomery multiplication, along the
+    dialect path (`lowerThir montMulThir`) and the register-arith orchestration.
+    ABI: `reg ptr u64[1] out`, `reg const ptr u64[2] inp`. -/
 def montMulJazz : String :=
   emitAbiOrchReg "babybear_montmul" (w := 64) (nIn := 2) (nOut := 1) (nCopy := 2)
     montRegDecls montInName montDstName (lowerThir montMulThir)
@@ -2400,17 +2413,17 @@ def montMulJazz : String :=
 /- The REDC export has the expected ABI (1-word out, 2-word in). -/
 #guard (strContains montMulJazz "export fn babybear_montmul(reg ptr u64[1] out, reg const ptr u64[2] inp)")
 
-/- The emitted REDC body renders real computation (no skipped ops). -/
+/- The emitted REDC body contains no skipped-op marker. -/
 #guard !(strContains montMulJazz "non-regArith op skipped")
 
-/- The emitted REDC body uses an integer multiply (`w0 = w0 * w1;`), the
-    `thBin .mul 64` REDC product — the field-arithmetic op distinguishing this
-    leaf from the pure-ARX rotates of §11/§12. -/
+/- The emitted REDC body contains an integer multiply (`w0 = w0 * w1;`), the
+    rendering of the `thBin .mul 64` REDC product; the ARX leaves of §12/§13
+    have no multiply. -/
 #guard (strContains montMulJazz "w0 = w0 * w1;")
 
-/-- The emitted REDC body materializes the `minv` and `p` constants and the
-    `0xffffffff` low-word mask, and performs the final `>> 32` reduction — the
-    distinctive REDC shape. -/
+/-- The emitted REDC body stores the `minv` and `p` constants and the
+    `0xffffffff` low-word mask in slots `k[3]`, `k[7]`, `k[1]`, and contains the
+    final `>> 32` shift. -/
 theorem montMul_redc_shape :
     strContains montMulJazz "k[3] = 2013265919;" = true          -- minv = 0x77ffffff
       ∧ strContains montMulJazz "k[7] = 2013265921;" = true      -- p = 0x78000001
@@ -2418,44 +2431,43 @@ theorem montMul_redc_shape :
       ∧ strContains montMulJazz "w0 = w0 >> 32;" = true := by     -- final reduction
   native_decide
 
-/-! ## §14  BabyBear Cooley–Tukey NTT butterfly (Montgomery domain) through the thirDialect spine (#606)
+/-! ## §15  BabyBear Cooley–Tukey NTT butterfly (Montgomery domain) through `thirDialect`
 
-Phase-2 fan-out, the SECOND field-arithmetic primitive through the unified
-`Com[thir] →lowerThir→ Com[jasmin]` spine, and the first to COMPOSE the §13 lazy
-Montgomery multiply: a Cooley–Tukey decimation-in-time NTT butterfly in the
-Montgomery domain over the BabyBear prime `p = 0x78000001`, `R = 2^32`. For three
-Montgomery representatives `a`, `b`, `w` (the twiddle `ω`), each `< 2p`:
+A field-arithmetic kernel that composes the lazy Montgomery multiplication of
+§14: a Cooley–Tukey decimation-in-time NTT butterfly in the Montgomery domain
+over the BabyBear prime `p = 0x78000001`, `R = 2^32`. For three Montgomery
+representatives `a`, `b`, `w` (the twiddle `ω`):
 
-    t  = montmul(w, b);        -- (w·b)·R⁻¹  (mod p), one REDC step, in [0, 3p)
-    a' = a + t;                -- (a + ω·b) lazy   in [0, 5p)
-    b' = a + 4p − t;           -- (a − ω·b) lazy   in [0, 5p)
+    t  = montmul(w, b);        -- one REDC step of §14
+    a' = a + t;                -- lazy a + ω·b
+    b' = a + 4p − t;           -- lazy a − ω·b
 
-`a'`, `b'` are the LAZY Montgomery representatives — congruent mod `p` to the
-canonical butterfly outputs, with NO final conditional subtract (the thirDialect
-front is straight-line, no `select`). The `4p` bias (`thConst 64 (4·p)`, a
-multiple of `p`) keeps `b'` non-negative before the subtract: `a < 2p` and
-`t < 3p`, so `a + 4p − t < 6p` and `a + 4p − t > 4p − 3p = p ≥ 0` (no wraparound).
+The outputs are lazy: there is no final conditional subtraction. The `4p` bias
+(`thConst 64 (4·p)`, a multiple of `p`) keeps `b'` from wrapping below zero. For
+inputs below `p`, §14 gives `t < 2p` and `t ≡ w·b·R⁻¹ (mod p)`, so
+`2p < b' < 5p`, `a' < 3p`, and both outputs are congruent mod `p` to the
+butterfly outputs. As in §14, this module proves only the equalities with the
+reference definitions `nttButterflySpec64`/`nttButterflySpec`.
 
-The `t = montmul(w, b)` step REUSES the §13 REDC body verbatim (`montMulSpec64`);
-the two extra outputs are one `thBin .add 64` (`a'`) and a `thConst 64 (4p)` +
-`thBin .add 64` + `thBin .sub 64` (`b'`). Like §13 the whole butterfly runs at
-**width 64** (the `32×32→64` REDC product needs 64-bit intermediates, and the
-lazy `a'`/`b'` reach `~5p > 2^32`), so the three `u32` inputs are held in `u64`
-words and the two outputs are `u64`. TWO outputs `a'`, `b'`: following §11/§12,
-each is a SEPARATE single-output program (`bflyAThir`/`bflyBThir`) that seats its
-own word as the LAST binding (an identity `thRor 64 0` copy), which the
-register-arith emit reads back as the result. -/
+The `t = montmul(w, b)` step is the REDC body of §14 (`montMulSpec64`); the two
+outputs add one `thBin .add 64` (`a'`) and a `thConst 64 (4p)`, a
+`thBin .add 64` and a `thBin .sub 64` (`b'`). As in §14 the butterfly runs at
+width 64 (the `32×32→64` REDC product needs 64-bit intermediates, and the lazy
+outputs can exceed `2^32`), so the three `u32` inputs are held in `u64` words
+and the two outputs are `u64`. As in §12/§13, each of the two outputs `a'`,
+`b'` is a separate single-output program (`bflyAThir`/`bflyBThir`) whose last
+binding is an identity `thRor 64 0` copy of its own word, which the
+register-arith emit returns as the result. -/
 
 /-- The `4p` bias constant `4 · 0x78000001 = 0x1e0000004`, a multiple of `p`
-    large enough that `a + 4p − t ≥ 0` for `a < 2p`, `t < 3p`. -/
+    with `a + 4p − t ≥ 0` whenever `t ≤ 4p`. -/
 def babyBear4P : Nat := 4 * babyBearP
 
 /-- The width-64 lazy butterfly over three `u64` words holding `u32` Montgomery
     representatives `a`, `b`, `w` (the twiddle). Returns the lazy pair
-    `(a', b') = (a + t, a + 4p − t)` with `t = montmul(w, b)` the §13 REDC — both
-    full-width words (in `[0, 5p)`, congruent mod `p` to the canonical butterfly).
-    These are the values the width-64 emit computes (the C KAT checks them
-    congruent mod `p`). -/
+    `(a', b') = (a + t, a + 4p − t)` with `t = montmul(w, b)` the REDC of §14,
+    both as full-width words. These are the values that the programs
+    `bflyAThir`/`bflyBThir` denote. -/
 def nttButterflySpec64 (a b w : BitVec 64) : BitVec 64 × BitVec 64 :=
   let t : BitVec 64 := montMulSpec64 w b
   let bias : BitVec 64 := BitVec.ofNat 64 babyBear4P
@@ -2463,20 +2475,20 @@ def nttButterflySpec64 (a b w : BitVec 64) : BitVec 64 × BitVec 64 :=
 
 /-- The reference Montgomery-domain BabyBear butterfly over three `BitVec 32`
     representatives `a`, `b`, `w`. Each input is zero-extended to 64 bits, the
-    width-64 lazy butterfly (`nttButterflySpec64`, reusing the §13
-    `montMulSpec`/`montMulSpec64` REDC) is run, and the two lazy outputs are
-    truncated back to `BitVec 32`. The truncation drops the (rare) high bit of a
-    lazy `~5p` representative; the C KAT checks the full `u64` outputs CONGRUENT
-    mod `p`, the canonical-correctness statement for the lazy form. -/
+    width-64 lazy butterfly (`nttButterflySpec64`, using the REDC `montMulSpec64`
+    of §14) is run, and the two lazy outputs are truncated to `BitVec 32`. The
+    truncation drops the high bits of a lazy output at or above `2^32`, so the
+    32-bit values need not be congruent mod `p` to the butterfly outputs; the
+    full `u64` outputs of `nttButterflySpec64` are the lazy representatives. -/
 def nttButterflySpec (a b w : BitVec 32) : BitVec 32 × BitVec 32 :=
   let p := nttButterflySpec64 (a.zeroExtend 64) (b.zeroExtend 64) (w.zeroExtend 64)
   (p.1.truncate 32, p.2.truncate 32)
 
-/-- Shared butterfly body over `[a, b, w]` (all `.reg 64`). Computes the §13 REDC
+/-- Shared butterfly body over `[a, b, w]` (all `.reg 64`). Computes the §14 REDC
     `t = montmul(w, b)` (bindings 0–10), then `a' = a + t` (binding 11) and
     `b' = a + 4p − t` (bindings 12–14: `4p` const, `a + 4p`, then `− t`), and
     finally an identity copy (`thRor 64 0`) of the chosen output word `outSrc` as
-    the LAST binding — which the register-arith emit reads back as the result.
+    the LAST binding, which the register-arith emit returns as the result.
     `outSrc` is `a'` (de Bruijn 3) for `bflyAThir` or `b'` (de Bruijn 0) for
     `bflyBThir`. The REDC bindings, head-first:
 
@@ -2565,26 +2577,26 @@ theorem bflyBThir_denote (a b w : BitVec 64) :
       = ((nttButterflySpec64 a b w).2).rotateRight 0 := rfl
   rw [e]; simp [BitVec.rotateRight_def]
 
-/-- **NTT butterfly `a'` re-derived through the dialect spine.** The lowered
+/-- **NTT butterfly `a'` through the dialect path.** The lowered
     (two-stage) `Com jasminDialect` for the BabyBear Montgomery-domain butterfly
-    `a'` output denotes the same `BitVec 64` as the width-64 reference, obtained
-    through `Com[thir] →lowerThir→ Com[jasmin]` rather than a bespoke lowering.
-    Combines `lowerThir_denote` (the generic, proved dialect lowering) with
+    `a'` output denotes the first component of the width-64 reference
+    `nttButterflySpec64`, along `Com[thir] →lowerThir→ Com[jasmin]`. Combines
+    `lowerThir_denote` (preservation of the generic dialect lowering) with
     `bflyAThir_denote`. -/
 theorem bflyA_via_thirDialect (a b w : BitVec 64) :
     (lowerThir bflyAThir).denote (.cons a (.cons b (.cons w .nil)))
       = (nttButterflySpec64 a b w).1 := by
   rw [lowerThir_denote bflyAThir (.cons a (.cons b (.cons w .nil))), bflyAThir_denote]
 
-/-- **NTT butterfly `b'` re-derived through the dialect spine.** -/
+/-- **NTT butterfly `b'` through the dialect path.** -/
 theorem bflyB_via_thirDialect (a b w : BitVec 64) :
     (lowerThir bflyBThir).denote (.cons a (.cons b (.cons w .nil)))
       = (nttButterflySpec64 a b w).2 := by
   rw [lowerThir_denote bflyBThir (.cons a (.cons b (.cons w .nil))), bflyBThir_denote]
 
 /-- The width-64 butterfly restricted to `u32` inputs (zero-extended to 64) and
-    truncated back to 32 is exactly `nttButterflySpec` — ties the emitted/lowered
-    width-64 program to the `BitVec 32` reference. -/
+    truncated back to 32 is `nttButterflySpec`; it relates the value of the
+    width-64 programs to the `BitVec 32` reference. -/
 theorem nttButterflySpec_eq_spec64 (a b w : BitVec 32) :
     nttButterflySpec a b w
       = ((nttButterflySpec64 (a.zeroExtend 64) (b.zeroExtend 64)
@@ -2593,13 +2605,13 @@ theorem nttButterflySpec_eq_spec64 (a b w : BitVec 32) :
             (w.zeroExtend 64)).2.truncate 32) := by
   rfl
 
-/-! ### §14.1  Emit the NTT butterfly outputs → owned-x86 jasmin
+/-! ### §15.1  Emit the NTT butterfly outputs to jasmin
 
-Each of the two output programs is lowered through the thirDialect spine
-(`lowerThir bflyXThir`) and emitted by the verified register-arith orchestration
-`emitAbiOrchReg` at width 64. The slot scheme mirrors §12/§13: binding `k` writes
+Each of the two output programs is lowered along the dialect path
+(`lowerThir bflyXThir`) and emitted by the register-arith orchestration
+`emitAbiOrchReg` at width 64. The slot scheme follows §13.1/§14.1: binding `k` writes
 working slot `k`; the 3 input words are copied into the trailing register slots.
-The body has 15 bindings + 1 trailing `ret` copy, so 16 working slots precede the
+The body has 15 bindings + 1 final identity copy, so 16 working slots precede the
 3 input slots in the `stack u64[19] k` file. The three `u32` inputs are passed as
 `u64` words; the result is the LAST binding's slot. -/
 
@@ -2612,14 +2624,14 @@ def bflyDstName (n : Nat) : String := "k[" ++ toString n ++ "]"
 /-- Input word `i` (`a`/`b`/`w`) → copied-in register slot `16 + i`. -/
 def bflyInName (i : Nat) : String := "k[" ++ toString (16 + i) ++ "]"
 
-/-- The emitted `.jazz` for the NTT butterfly `a'` output through the thirDialect
-    spine (`lowerThir bflyAThir`) and the verified register-arith orchestration.
+/-- The emitted `.jazz` for the NTT butterfly `a'` output, along the dialect path
+    (`lowerThir bflyAThir`) and the register-arith orchestration.
     ABI: `reg ptr u64[1] out`, `reg const ptr u64[3] inp` (`inp = a, b, w`). -/
 def bflyAJazz : String :=
   emitAbiOrchReg "babybear_ntt_bfly_a" (w := 64) (nIn := 3) (nOut := 1) (nCopy := 3)
     bflyRegDecls bflyInName bflyDstName (lowerThir bflyAThir)
 
-/-- The emitted `.jazz` for the NTT butterfly `b'` output through the spine. -/
+/-- The emitted `.jazz` for the NTT butterfly `b'` output through the dialect path. -/
 def bflyBJazz : String :=
   emitAbiOrchReg "babybear_ntt_bfly_b" (w := 64) (nIn := 3) (nOut := 1) (nCopy := 3)
     bflyRegDecls bflyInName bflyDstName (lowerThir bflyBThir)
@@ -2630,13 +2642,13 @@ def bflyBJazz : String :=
 /- The `b'` butterfly export has the expected ABI. -/
 #guard (strContains bflyBJazz "export fn babybear_ntt_bfly_b(reg ptr u64[1] out, reg const ptr u64[3] inp)")
 
-/- The emitted `a'` body renders real computation (no skipped ops). -/
+/- The emitted `a'` body contains no skipped-op marker. -/
 #guard !(strContains bflyAJazz "non-regArith op skipped")
 
-/-- The emitted butterfly bodies materialize the `minv`, `p`, and `4p` constants
-    and the `0xffffffff` mask, use an integer multiply (the §13 REDC product) and
-    a subtract (`w0 = w0 - w1;`, the lazy `a − ω·b`), and perform the `>> 32`
-    reduction — the distinctive Montgomery-butterfly shape composing §13. -/
+/-- The emitted `b'` body stores the `minv`, `p` and `4p` constants in slots
+    `k[3]`, `k[7]`, `k[12]`, and contains an integer multiply (the §14 REDC
+    product), a subtraction (`w0 = w0 - w1;`, the lazy `a − ω·b`) and the
+    `>> 32` shift. -/
 theorem bfly_redc_shape :
     strContains bflyBJazz "k[3] = 2013265919;" = true          -- minv = 0x77ffffff
       ∧ strContains bflyBJazz "k[7] = 2013265921;" = true      -- p = 0x78000001
@@ -2646,46 +2658,45 @@ theorem bfly_redc_shape :
       ∧ strContains bflyBJazz "w0 = w0 >> 32;" = true := by     -- REDC reduction
   native_decide
 
-/- The two emitted butterfly functions return DISTINCT output words: each copies
-    its own result slot into the final binding before the `out[0]` write
-    (`a' = k[11]`, `b' = k[14]`). The register-arith emit reads back the last
-    binding's slot, so distinct final-copy sources are exactly what makes the two
-    exports compute the two butterfly outputs rather than a shared last value. -/
+/- The two emitted butterfly functions copy different result slots into the
+    final binding `k[15]` before the `out[0]` write (`a' = k[11]`, `b' = k[14]`).
+    The register-arith emit returns the slot of the last binding, so each export
+    returns its own output word. -/
 #guard (strContains bflyAJazz "w0 = k[11];\n  _, _, w0 = #ROR_64(w0, 0);\n  k[15] = w0;")
     && (strContains bflyBJazz "w0 = k[14];\n  _, _, w0 = #ROR_64(w0, 0);\n  k[15] = w0;")
 
-/-! ## §15  Poseidon2 BabyBear S-box `x^7` (Montgomery domain) through the thirDialect spine (#606)
+/-! ## §16  Poseidon2 BabyBear S-box `x^7` (Montgomery domain) through `thirDialect`
 
-Phase-2 fan-out, the THIRD field-arithmetic primitive through the unified
-`Com[thir] →lowerThir→ Com[jasmin]` spine, and the second to COMPOSE the §13
-lazy Montgomery multiply: the Poseidon2 BabyBear S-box `x ↦ x^7` in the
-Montgomery domain over the BabyBear prime `p = 0x78000001`, `R = 2^32`,
-`alpha = 7`. For one Montgomery representative `x` (`< 2p`), the power is a
-field-power gadget — a composition of four `montmul`s (§13 REDC), each
-squaring/multiplying in the Montgomery domain:
+A field-arithmetic kernel that composes four instances of the lazy Montgomery
+multiplication of §14: the Poseidon2 BabyBear S-box `x ↦ x^7` in the Montgomery
+domain over the BabyBear prime `p = 0x78000001`, `R = 2^32`, `alpha = 7`. For a
+Montgomery representative `x`, the power is computed by four `montmul`s:
 
-    x2 = montmul(x,  x);     -- x²·R⁻¹ … lazy, in [0, 3p)
-    x3 = montmul(x2, x);     -- x³·R⁻¹
-    x6 = montmul(x3, x3);    -- x⁶·R⁻¹
-    x7 = montmul(x6, x);     -- x⁷·R⁻¹   OUTPUT
+    x2 = montmul(x,  x);     -- intended x²
+    x3 = montmul(x2, x);     -- intended x³
+    x6 = montmul(x3, x3);    -- intended x⁶
+    x7 = montmul(x6, x);     -- intended x⁷, the output
 
-`x7` is the LAZY Montgomery representative — congruent mod `p` to the canonical
-`x^7`, with NO final conditional subtract (the thirDialect front is
-straight-line, no `select`). Each `montmul` REUSES the §13 REDC body verbatim
-(`montMulSpec64`); the S-box is the 4-fold composition. Like §13 the S-box is
-SINGLE-OUTPUT: `x7` is the last montmul's result `r`, naturally the LAST
-binding — no identity-copy tail. The whole gadget runs at **width 64** (the
-`32×32→64` REDC product needs 64-bit intermediates, the lazy reps reach
-`< 3p > 2^32`), so the `u32` input is held in a `u64` word and the output is a
-`u64`. `sboxSpec` over a `BitVec 32` input zero-extends to 64, runs the same
-4-montmul chain, and truncates the result back to a `BitVec 32`. -/
+The output is lazy: there is no final conditional subtraction. Each `montmul` is
+the REDC body of §14 (`montMulSpec64`), and the S-box is their composition. This
+module proves only the equalities with the reference definitions
+`sboxSpec64`/`sboxSpec`; the range of the result and its congruence to `x^7`
+modulo `p` are not proved. The no-wrap bound of §14 (both operands below `p`)
+does not cover every step: that argument bounds `x3` only by `2p`, and with
+both operands below `2p` it does not bound the sum `t + m·p` of
+`x6 = montmul(x3, x3)` by `2^64`. Like §14 the S-box
+has a single output: `x7`, the result `r` of the last `montmul`, is the last
+binding, with no identity copy. The program runs at width 64 (the `32×32→64`
+REDC product needs 64-bit intermediates), so the `u32` input is held in a `u64`
+word and the output is a `u64`. `sboxSpec` over a `BitVec 32` input
+zero-extends to 64 bits, runs the same chain of four `montmul`s and truncates
+the result to a `BitVec 32`. -/
 
 /-- The width-64 lazy Poseidon2 BabyBear S-box `x^7` over a `u64` word holding a
-    `u32` Montgomery representative `x`. Four §13 REDC steps:
+    `u32` Montgomery representative `x`: four REDC steps of §14,
     `x2 = montmul(x,x)`, `x3 = montmul(x2,x)`, `x6 = montmul(x3,x3)`,
-    `x7 = montmul(x6,x)`. The result is the lazy Montgomery rep of `x^7` (in
-    `[0, 3p)`, congruent mod `p` to `x^7`) — the value the width-64 emit
-    computes (the C KAT checks it congruent mod `p`). -/
+    `x7 = montmul(x6,x)`. This is the value that the width-64 program
+    `sboxThir` denotes (`sboxThir_denote`). -/
 def sboxSpec64 (x : BitVec 64) : BitVec 64 :=
   let x2 : BitVec 64 := montMulSpec64 x x
   let x3 : BitVec 64 := montMulSpec64 x2 x
@@ -2694,20 +2705,19 @@ def sboxSpec64 (x : BitVec 64) : BitVec 64 :=
 
 /-- The reference lazy Poseidon2 BabyBear S-box `x^7` over a `BitVec 32`
     representative `x`. The input is zero-extended to 64 bits, the width-64
-    4-montmul chain (`sboxSpec64`, reusing the §13 `montMulSpec64` REDC) is run,
-    and the lazy `u64` output is truncated back to a `BitVec 32`. The C KAT
-    checks the full `u64` output CONGRUENT mod `p`, the canonical-correctness
-    statement for the lazy form. -/
+    chain of four `montmul`s (`sboxSpec64`, using the REDC `montMulSpec64` of
+    §14) is run, and the lazy `u64` output is truncated to a `BitVec 32`. -/
 def sboxSpec (x : BitVec 32) : BitVec 32 :=
   (sboxSpec64 (x.zeroExtend 64)).truncate 32
 
 /-- The Poseidon2 BabyBear S-box `x^7` as a `Com thirDialect` over `[x]`
     (`.reg 64`, holding a `u32` Montgomery representative). Single-output: the
-    last binding (the 4th montmul's `r`) IS the result, so no identity-copy tail
-    is needed. Four inlined §13 REDC blocks (11 bindings each = 44 total),
-    head-first; each block is `t = a₁·a₂`, then `c1, tlo, cm, mr, c2, m, cp, mp,
-    s, r = s >> 32` with the same internal de Bruijn shape as §13. The only
-    per-block variation is the two product args at the `t` binding:
+    last binding (the `r` of the fourth `montmul`) is the result, so no identity
+    copy is needed. Four inlined REDC blocks of §14 (11 bindings each, 44 in
+    total), in binding order; each block is `t = a₁·a₂`, then `c1, tlo, cm, mr,
+    c2, m, cp, mp, s, r = s >> 32`, with the same internal de Bruijn shape as
+    `montMulThir`. The blocks differ only in the two product arguments of the `t`
+    binding:
 
         x2 : t = x·x       (x @0, x @0)
         x3 : t = x2·x      (x2 @0, x @11)
@@ -2771,31 +2781,30 @@ theorem sboxThir_denote (x : BitVec 64) :
     sboxThir.denote (.cons x .nil) = sboxSpec64 x := by
   rfl
 
-/-- **Poseidon2 S-box `x^7` re-derived through the dialect spine.** The lowered
-    (two-stage) `Com jasminDialect` for the lazy BabyBear S-box denotes the same
-    `BitVec 64` as the width-64 reference, obtained through
-    `Com[thir] →lowerThir→ Com[jasmin]` rather than a bespoke lowering. Combines
-    `lowerThir_denote` (the generic, proved dialect lowering) with
-    `sboxThir_denote`. -/
+/-- **Poseidon2 S-box `x^7` through the dialect path.** The lowered
+    (two-stage) `Com jasminDialect` for the lazy BabyBear S-box denotes the
+    width-64 reference `sboxSpec64`, along `Com[thir] →lowerThir→ Com[jasmin]`.
+    Combines `lowerThir_denote` (preservation of the generic dialect lowering)
+    with `sboxThir_denote`. -/
 theorem sbox_via_thirDialect (x : BitVec 64) :
     (lowerThir sboxThir).denote (.cons x .nil) = sboxSpec64 x := by
   rw [lowerThir_denote sboxThir (.cons x .nil), sboxThir_denote]
 
 /-- The width-64 S-box restricted to a `u32` input (zero-extended to 64) and
-    truncated back to 32 is exactly `sboxSpec` — ties the emitted/lowered
-    width-64 program (`sboxSpec64`) to the `BitVec 32` reference. -/
+    truncated back to 32 is `sboxSpec`; it relates the value of the width-64
+    program (`sboxSpec64`) to the `BitVec 32` reference. -/
 theorem sboxSpec_eq_spec64 (x : BitVec 32) :
     sboxSpec x = (sboxSpec64 (x.zeroExtend 64)).truncate 32 := by
   rfl
 
-/-! ### §15.1  Emit the Poseidon2 S-box → owned-x86 jasmin
+/-! ### §16.1  Emit the Poseidon2 S-box to jasmin
 
-The single-output S-box is lowered through the thirDialect spine
-(`lowerThir sboxThir`) and emitted by the verified register-arith orchestration
-`emitAbiOrchReg` at width 64. The body has 44 bindings (four §13 REDC blocks),
-so 44 working slots precede the 1 input slot in the `stack u64[45] k` file. The
-`u32` input is passed as a `u64` word. The result is the LAST binding's slot
-(no identity-copy tail — single output, like §13). -/
+The single-output S-box is lowered along the dialect path (`lowerThir sboxThir`)
+and emitted by the register-arith orchestration `emitAbiOrchReg` at width 64.
+The body has 44 bindings (four REDC blocks of §14), so 44 working slots precede
+the 1 input slot in the `stack u64[45] k` file. The `u32` input is passed as a
+`u64` word. The result is the slot of the last binding (single output, no
+identity copy, as in §14.1). -/
 
 /-- Per-output register-file decls: 44 working slots + 1 input slot. -/
 def sboxRegDecls : List String := ["stack u64[45] k"]
@@ -2806,9 +2815,9 @@ def sboxDstName (n : Nat) : String := "k[" ++ toString n ++ "]"
 /-- Input word `i` (`x`) → copied-in register slot `44 + i`. -/
 def sboxInName (i : Nat) : String := "k[" ++ toString (44 + i) ++ "]"
 
-/-- The emitted `.jazz` for the lazy Poseidon2 BabyBear S-box `x^7` through the
-    thirDialect spine (`lowerThir sboxThir`) and the verified register-arith
-    orchestration. ABI: `reg ptr u64[1] out`, `reg const ptr u64[1] inp`. -/
+/-- The emitted `.jazz` for the lazy Poseidon2 BabyBear S-box `x^7`, along the
+    dialect path (`lowerThir sboxThir`) and the register-arith orchestration.
+    ABI: `reg ptr u64[1] out`, `reg const ptr u64[1] inp`. -/
 def sboxJazz : String :=
   emitAbiOrchReg "babybear_poseidon2_sbox" (w := 64) (nIn := 1) (nOut := 1) (nCopy := 1)
     sboxRegDecls sboxInName sboxDstName (lowerThir sboxThir)
@@ -2816,17 +2825,17 @@ def sboxJazz : String :=
 /- The S-box export has the expected ABI (1-word out, 1-word in). -/
 #guard (strContains sboxJazz "export fn babybear_poseidon2_sbox(reg ptr u64[1] out, reg const ptr u64[1] inp)")
 
-/- The emitted S-box body renders real computation (no skipped ops). -/
+/- The emitted S-box body contains no skipped-op marker. -/
 #guard !(strContains sboxJazz "non-regArith op skipped")
 
-/- The emitted S-box body uses an integer multiply (`w0 = w0 * w1;`), the
-    `thBin .mul 64` REDC product reused across the four field multiplies — the
-    field-arithmetic op composed by the power gadget. -/
+/- The emitted S-box body contains an integer multiply (`w0 = w0 * w1;`), the
+    rendering of the `thBin .mul 64` REDC product of the four field
+    multiplications. -/
 #guard (strContains sboxJazz "w0 = w0 * w1;")
 
-/-- The emitted S-box body materializes the `minv` and `p` REDC constants and the
-    `0xffffffff` low-word mask, and performs the `>> 32` reduction — the
-    distinctive §13 REDC shape, replicated across the four montmuls. -/
+/-- The emitted S-box body stores the `minv` and `p` REDC constants and the
+    `0xffffffff` low-word mask in slots `k[3]`, `k[7]`, `k[1]` of the first REDC
+    block, and contains the `>> 32` shift. -/
 theorem sbox_redc_shape :
     strContains sboxJazz "k[3] = 2013265919;" = true          -- minv = 0x77ffffff
       ∧ strContains sboxJazz "k[7] = 2013265921;" = true      -- p = 0x78000001
@@ -2834,35 +2843,36 @@ theorem sbox_redc_shape :
       ∧ strContains sboxJazz "w0 = w0 >> 32;" = true := by     -- REDC reduction
   native_decide
 
-/- The final montmul (`x7 = montmul(x6, x)`) writes the OUTPUT into the last
-    working slot `k[43]`, which the register-arith emit reads back as the result
-    (`r = s >> 32` of the fourth REDC block, no identity-copy tail). -/
+/- The final `montmul` (`x7 = montmul(x6, x)`) writes its result into the last
+    working slot `k[43]`, which the register-arith emit copies to `out[0]`
+    (`r = s >> 32` of the fourth REDC block, no identity copy). -/
 #guard (strContains sboxJazz "k[43] = w0;\n  w0 = k[43];\n  out[0] = w0;")
 
-/-! ## §16  Widening multiply + carry-chain add through the thirDialect spine (#616, E1a)
+/-! ## §17  Widening multiply and carry-chain add through `thirDialect`
 
-Phase-2 front op-exposure for the BMI2/ADX trio: the THIR front now carries the
-high word of a `64×64→128` widening multiply (`thMulHi`) and the data / carry-out
-words of a carry-chain add (`thAddCarryLo` / `thAddCarryHi`), each lowering 1:1 to
-the matching jasmin op (`mulhi` / `addCarryLo` / `addCarryHi`) through the generic
-verified `lowerThir`. These are the front handle for multi-limb bignum / EC /
-pairing field arithmetic (Class B): a `64×64→128` multiply is the pair
-`(thBin .mul 64, thMulHi 64)` = MULX's `(lo, hi)`, and a multi-limb add is a
-data-flow thread of `(thAddCarryLo, thAddCarryHi)` over a `reg 1` carry.
+The BMI2/ADX ops at the THIR level: the high word of a `64×64→128` widening
+multiply (`thMulHi`) and the data and carry-out words of a carry-chain add
+(`thAddCarryLo` / `thAddCarryHi`), each lowered to the single matching jasmin op
+(`mulhi` / `addCarryLo` / `addCarryHi`) by the generic `lowerThir`. They are the
+front ops for multi-limb field arithmetic (bignum, EC, pairings): a
+`64×64→128` multiply is the pair `(thBin .mul 64, thMulHi 64)`, MULX's
+`(lo, hi)`, and a multi-limb add threads `(thAddCarryLo, thAddCarryHi)` through a
+`reg 1` carry.
 
-Scope: this is the op-exposure + value-correctness step. The field-correctness of
-a Montgomery multi-limb leaf (AUCurves) is the separate follow-on E1b.
+Scope: this section proves the values of the individual ops and of a 2-limb add.
+The field correctness of a Montgomery multi-limb kernel is not covered here.
 
-### §16.1  `widenMul64`: the `64×64→128` widening multiply
+### §17.1  `widenMul64`: the `64×64→128` widening multiply
 
 Two `u64` outputs over `[a, b]`: `lo = thBin .mul 64 a b` (the low word) and
 `hi = thMulHi 64 a b` (`mulHiW a b`). Together they are the full `128`-bit product
-`a · b = hi · 2^64 + lo`. Following §14, each output is a SEPARATE single-output
-`Com thirDialect` program that seats its word as the LAST binding (an identity
-`thRor 64 0` copy), which the register-arith emit reads back as the result. -/
+`a · b = hi · 2^64 + lo` (`widenMul_reconstruct`). As in §15, each output is a
+separate single-output `Com thirDialect` program whose last binding is an
+identity `thRor 64 0` copy of its word, which the register-arith emit returns as
+the result. -/
 
-/-- The value spec of the widening multiply low word: `(a · b) mod 2^64`. This is
-    exactly `(a * b : BitVec 64)` (the jasmin `mul`) by `BitVec` multiplication. -/
+/-- The value spec of the widening multiply low word: `(a · b) mod 2^64`, which
+    is the `BitVec 64` product `a * b` (the jasmin `mul`). -/
 def widenMulLoSpec (a b : BitVec 64) : BitVec 64 := a * b
 
 /-- The value spec of the widening multiply high word: `(a · b) / 2^64`, the
@@ -2903,23 +2913,23 @@ theorem widenMulHiThir_denote (a b : BitVec 64) :
       = (widenMulHiSpec a b).rotateRight 0 := rfl
   rw [e]; simp [BitVec.rotateRight_def]
 
-/-- **Widening multiply LOW word re-derived through the dialect spine.** The
-    lowered `Com jasminDialect` (via the generic, proved `lowerThir`) denotes the
-    same `BitVec 64` as the spec. -/
+/-- **Widening multiply LOW word through the dialect path.** The
+    lowered `Com jasminDialect` (by the generic `lowerThir`, with
+    `lowerThir_denote`) denotes the same `BitVec 64` as the spec. -/
 theorem widenMul_lo_via_thirDialect (a b : BitVec 64) :
     (lowerThir widenMulLoThir).denote (.cons a (.cons b .nil)) = widenMulLoSpec a b := by
   rw [lowerThir_denote widenMulLoThir (.cons a (.cons b .nil)), widenMulLoThir_denote]
 
-/-- **Widening multiply HIGH word re-derived through the dialect spine.** This is
-    the `thMulHi → mulhi` arm of `lowerThir` exercised end-to-end: the lowered
-    jasmin program denotes `mulHiW a b`, the MULX high word. -/
+/-- **Widening multiply HIGH word through the dialect path.** An instance of
+    the `thMulHi → mulhi` arm of `lowerThir`: the lowered jasmin program denotes
+    `mulHiW a b`, the MULX high word. -/
 theorem widenMul_hi_via_thirDialect (a b : BitVec 64) :
     (lowerThir widenMulHiThir).denote (.cons a (.cons b .nil)) = widenMulHiSpec a b := by
   rw [lowerThir_denote widenMulHiThir (.cons a (.cons b .nil)), widenMulHiThir_denote]
 
 /-- The two output words reconstruct the full `128`-bit product over `ℕ`:
-    `(hi · 2^64 + lo) = a.toNat · b.toNat`. Ties the `(lo, hi)` pair to the
-    `(unsigned __int128) a * b` the KAT checks. -/
+    `(hi · 2^64 + lo) = a.toNat · b.toNat`, the value of the C expression
+    `(unsigned __int128) a * b`. -/
 theorem widenMul_reconstruct (a b : BitVec 64) :
     (widenMulHiSpec a b).toNat * 2 ^ 64 + (widenMulLoSpec a b).toNat
       = a.toNat * b.toNat := by
@@ -2933,22 +2943,20 @@ theorem widenMul_reconstruct (a b : BitVec 64) :
   simp only [mulHiW, BitVec.toNat_ofNat, BitVec.toNat_mul, Nat.mod_eq_of_lt hdiv]
   omega
 
-/-! #### §16.1a  Emit the widening-multiply LOW word → owned-x86 jasmin
+/-! #### §17.1a  Emit the widening multiply to jasmin
 
 The low word is `thBin .mul 64`, which lowers (`lowerThir`) to `regArith .mul 64`
-and renders through `emitBodyReg`'s `regArith` arm as the real `64×64→64` low
-multiply `w0 = w0 * w1;` — exactly `(unsigned __int128)(a)*b` truncated to 64
-bits. Single u64 output over two u64 inputs; slot scheme mirrors §13. The body
-has 2 bindings (mul + identity copy) so 2 working slots precede the 2 input slots
-in `stack u64[4] k`.
+and renders through the `regArith` arm of `emitBodyReg` as the `64×64→64` low
+multiply `w0 = w0 * w1;`, i.e. `(unsigned __int128)(a)*b` truncated to 64 bits.
+One u64 output over two u64 inputs, with the slot scheme of §14.1. The body has
+2 bindings (multiply + identity copy), so 2 working slots precede the 2 input
+slots in `stack u64[4] k`.
 
-The HIGH word (`thMulHi`) and the carry-chain words (`thAddCarryLo` /
-`thAddCarryHi`) lower to the jasmin `mulhi` / `addCarryLo` / `addCarryHi` ops,
-which `emitBodyReg` does not yet render to jazz text (they route through its
-non-`regArith` skip arm). Rendering those three ops to jasmin (e.g. `MULX` and the
-`ADCX`/`ADOX` carry chain) is the emit-side arm in `JasminAbiEmit.lean` — the
-immediate follow-on. The value-level lowering and the `*_via_thirDialect`
-denotation theorems above are independent of that emit arm. -/
+The high word (`thMulHi`) lowers to the jasmin op `mulhi`, which `emitBodyReg`
+renders as the `#MULX` intrinsic; the carry-chain words (`thAddCarryLo` /
+`thAddCarryHi`) are rendered in §17.2a. The denotation theorems
+`*_via_thirDialect` above concern the lowered `Com` and do not depend on the
+emit. -/
 
 /-- Per-output register-file decls for `widenMulLo`: 2 working slots + 2 inputs. -/
 def widenRegDecls : List String := ["stack u64[4] k"]
@@ -2959,9 +2967,9 @@ def widenDstName (n : Nat) : String := "k[" ++ toString n ++ "]"
 /-- Input word `i` (`a`/`b`) → copied-in register slot `2 + i`. -/
 def widenInName (i : Nat) : String := "k[" ++ toString (2 + i) ++ "]"
 
-/-- The emitted `.jazz` for the widening-multiply LOW word through the thirDialect
-    spine (`lowerThir widenMulLoThir`) and the verified register-arith
-    orchestration. ABI: `reg ptr u64[1] out`, `reg const ptr u64[2] inp`. -/
+/-- The emitted `.jazz` for the widening-multiply LOW word, along the dialect path
+    (`lowerThir widenMulLoThir`) and the register-arith orchestration. ABI:
+    `reg ptr u64[1] out`, `reg const ptr u64[2] inp`. -/
 def widenMulLoJazz : String :=
   emitAbiOrchReg "widen_mul_lo" (w := 64) (nIn := 2) (nOut := 1) (nCopy := 2)
     widenRegDecls widenInName widenDstName (lowerThir widenMulLoThir)
@@ -2969,16 +2977,17 @@ def widenMulLoJazz : String :=
 /- The LOW-word export has the expected ABI (1-word out, 2-word in). -/
 #guard (strContains widenMulLoJazz "export fn widen_mul_lo(reg ptr u64[1] out, reg const ptr u64[2] inp)")
 
-/- The emitted LOW-word body renders the real `64×64→64` low multiply
-    (`w0 = w0 * w1;`) and skips no op — the rendering side of `thBin .mul 64`. -/
+/- The emitted LOW-word body contains the `64×64→64` low multiply
+    (`w0 = w0 * w1;`), the rendering of `thBin .mul 64`, and no skipped-op
+    marker. -/
 #guard (strContains widenMulLoJazz "w0 = w0 * w1;")
     && !(strContains widenMulLoJazz "non-regArith op skipped")
 
-/-- The emitted `.jazz` for the widening-multiply HIGH word through the
-    thirDialect spine (`lowerThir widenMulHiThir`) and the verified register-arith
-    orchestration. The `thMulHi 64` op lowers to `mulhi 64` and renders (the new
-    `emitBodyReg` arm) as a `#MULX` high-multiply `w0, w1 = #MULX(w0, w1);` reading
-    back the hi word (#616 E1a). Same ABI/slot scheme as the low word:
+/-- The emitted `.jazz` for the widening-multiply HIGH word, along the dialect
+    path (`lowerThir widenMulHiThir`) and the register-arith orchestration. The
+    `thMulHi 64` op lowers to `mulhi 64`, which the `mulhi` arm of `emitBodyReg`
+    renders as the high multiply `w0, w1 = #MULX(w0, w1);`, reading back the high
+    word. Same ABI and slot scheme as the low word:
     `reg ptr u64[1] out`, `reg const ptr u64[2] inp`, 2 working + 2 input slots. -/
 def widenMulHiJazz : String :=
   emitAbiOrchReg "widen_mul_hi" (w := 64) (nIn := 2) (nOut := 1) (nCopy := 2)
@@ -2987,22 +2996,22 @@ def widenMulHiJazz : String :=
 /- The HIGH-word export has the expected ABI (1-word out, 2-word in). -/
 #guard (strContains widenMulHiJazz "export fn widen_mul_hi(reg ptr u64[1] out, reg const ptr u64[2] inp)")
 
-/- The emitted HIGH-word body renders the `#MULX` high-multiply and skips no op —
-    the rendering side of `thMulHi 64 → mulhi 64`. -/
+/- The emitted HIGH-word body contains the `#MULX` high multiply, the rendering
+    of `thMulHi 64 → mulhi 64`, and no skipped-op marker. -/
 #guard (strContains widenMulHiJazz "w0, w1 = #MULX(w0, w1);")
     && !(strContains widenMulHiJazz "non-regArith op skipped")
 
-/-! ### §16.2  `addCarry2limb`: a 2-limb carry-chain add `(a1:a0)+(b1:b0)=(s1:s0)`
+/-! ### §17.2  `addCarry2limb`: a 2-limb carry-chain add `(a1:a0)+(b1:b0)=(s1:s0)`
 
 Four `u64` inputs `[a0, a1, b0, b1]`; two `u64` outputs `s0`, `s1` threading a
 1-bit carry:
 
     s0 = addCarryLo a0 b0 0;    c = addCarryHi a0 b0 0;    s1 = addCarryLo a1 b1 c.
 
-`c` is a `reg 1` value (no hidden flag state) — the explicit data-flow thread of
-the carry chain. Following §14, each output is a separate single-output program
-built from a shared body (`addCarry2limbBody`) that seats the chosen output word
-as the LAST binding via an identity `thRor 64 0` copy. -/
+`c` is a `reg 1` value (no hidden flag state), so the carry chain is explicit
+data flow. As in §15, each output is a separate single-output program
+built from a shared body (`addCarry2limbBody`) whose last binding is an identity
+`thRor 64 0` copy of the chosen output word. -/
 
 /-- The width-64 reference 2-limb add: `(s0, s1)` of `(a1:a0)+(b1:b0)`, with the
     carry from limb 0 threaded into limb 1, each limb's data word in `[0, 2^64)`
@@ -3070,16 +3079,16 @@ theorem addCarry2limbS1Thir_denote (a0 a1 b0 b1 : BitVec 64) :
       = ((addCarry2limbSpec a0 a1 b0 b1).2).rotateRight 0 := rfl
   rw [e]; simp [BitVec.rotateRight_def]
 
-/-- **2-limb add `s0` re-derived through the dialect spine.** The lowered jasmin
-    program (via the generic proved `lowerThir`, exercising the
+/-- **2-limb add `s0` through the dialect path.** The lowered jasmin
+    program (by the generic `lowerThir`, through its
     `thAddCarryLo → addCarryLo` and `thAddCarryHi → addCarryHi` arms) denotes the
-    same `BitVec 64`. -/
+    first component of `addCarry2limbSpec`. -/
 theorem addCarry2limb_s0_via_thirDialect (a0 a1 b0 b1 : BitVec 64) :
     (lowerThir addCarry2limbS0Thir).denote (.cons a0 (.cons a1 (.cons b0 (.cons b1 .nil))))
       = (addCarry2limbSpec a0 a1 b0 b1).1 := by
   rw [lowerThir_denote addCarry2limbS0Thir _, addCarry2limbS0Thir_denote]
 
-/-- **2-limb add `s1` re-derived through the dialect spine.** -/
+/-- **2-limb add `s1` through the dialect path.** -/
 theorem addCarry2limb_s1_via_thirDialect (a0 a1 b0 b1 : BitVec 64) :
     (lowerThir addCarry2limbS1Thir).denote (.cons a0 (.cons a1 (.cons b0 (.cons b1 .nil))))
       = (addCarry2limbSpec a0 a1 b0 b1).2 := by
@@ -3087,7 +3096,7 @@ theorem addCarry2limb_s1_via_thirDialect (a0 a1 b0 b1 : BitVec 64) :
 
 /-- `addCarry2limb` realises the `128`-bit add over `ℕ`:
     `(s1 · 2^64 + s0) = (a1·2^64 + a0) + (b1·2^64 + b0)` whenever the top limb does
-    not overflow (`a1 + b1 + c < 2^64`), the regime the KAT drives. Ties the
+    not overflow (`a1 + b1 + c < 2^64`, hypothesis `htop`). It relates the
     `(s0, s1)` pair to the `128`-bit reference add. -/
 theorem addCarry2limb_reconstruct (a0 a1 b0 b1 : BitVec 64)
     (htop : a1.toNat + b1.toNat + (carryOutBit a0 b0 0).toNat < 2 ^ 64) :
@@ -3120,18 +3129,17 @@ theorem addCarry2limb_reconstruct (a0 a1 b0 b1 : BitVec 64)
   simp only [addCarry2limbSpec, ← hcdef, hs0, hs1, hc]
   omega
 
-/-! #### §16.2a  Emit the 2-limb carry-chain add → owned-x86 jasmin
+/-! #### §17.2a  Emit the 2-limb carry-chain add to jasmin
 
 `addCarry2limbS0Thir` / `addCarry2limbS1Thir` lower (`lowerThir`) to jasmin `Com`s
-whose ops are `addCarryLo` / `addCarryHi` (+ a `regConst` carry-in zero and the
-final identity `ror`), which the register-arith emit now renders (#616 E1a): the
-data word `addCarryLo` as the value→flag `#ADD`/`#ADC` idiom reading the ADC
-result, the carry-out `addCarryHi` materialising the propagated `cf` back to a 0/1
-word. The carry-in `reg 1` value threads through the register file like any other
-word, so the explicit carry data-flow is preserved with no hidden flag state
-across bindings.
+whose ops are `addCarryLo` / `addCarryHi`, a `regConst` carry-in zero and the
+final identity `ror`. The register-arith emit renders the data word
+`addCarryLo` with the value-to-flag `#ADD`/`#ADC` idiom, reading the ADC result,
+and the carry-out `addCarryHi` by converting the propagated `cf` to a 0/1 word.
+The carry-in `reg 1` value is stored in the register file like any other word,
+so no flag state is carried between bindings.
 
-Each output is a separate single-output export (`§14` convention). The body has 5
+Each output is a separate single-output export (as in §15). The body has 5
 bindings (carry-in zero + the three carry ops + the identity copy), so the
 register file is `stack u64[9] k`: 5 working slots `k[0..4]` then the 4 input
 slots `k[5..8]`. -/
@@ -3143,10 +3151,9 @@ def addCarry2RegDecls : List String := ["stack u64[9] k"]
 /-- Input word `i` (`a0`/`a1`/`b0`/`b1`) → copied-in register slot `5 + i`. -/
 def addCarry2InName (i : Nat) : String := "k[" ++ toString (5 + i) ++ "]"
 
-/-- The emitted `.jazz` for the 2-limb-add `s0` (limb-0 data word) through the
-    thirDialect spine (`lowerThir addCarry2limbS0Thir`) and the verified
-    register-arith orchestration. ABI: `reg ptr u64[1] out`,
-    `reg const ptr u64[4] inp`. -/
+/-- The emitted `.jazz` for the 2-limb-add `s0` (limb-0 data word), along the
+    dialect path (`lowerThir addCarry2limbS0Thir`) and the register-arith
+    orchestration. ABI: `reg ptr u64[1] out`, `reg const ptr u64[4] inp`. -/
 def addCarry2limbS0Jazz : String :=
   emitAbiOrchReg "addcarry2limb_s0" (w := 64) (nIn := 4) (nOut := 1) (nCopy := 4)
     addCarry2RegDecls addCarry2InName widenDstName (lowerThir addCarry2limbS0Thir)
@@ -3164,35 +3171,32 @@ def addCarry2limbS1Jazz : String :=
 /- The `s1` export has the expected ABI (1-word out, 4-word in). -/
 #guard (strContains addCarry2limbS1Jazz "export fn addcarry2limb_s1(reg ptr u64[1] out, reg const ptr u64[4] inp)")
 
-/- The `s1` body renders the `#ADC` carry-chain data word and the carry-out
-    materialisation, and skips no op — the rendering side of `addCarryLo` /
-    `addCarryHi`. -/
+/- The `s1` body contains the `#ADC_64` carry-chain data word, the rendering of
+    `addCarryLo` with the carry `cf`, and no skipped-op marker. -/
 #guard (strContains addCarry2limbS1Jazz "= #ADC_64(w0, w1, cf);")
     && !(strContains addCarry2limbS1Jazz "non-regArith op skipped")
 
-/-! ## §17  Constant-time conditional-subtract (SELECT / cmov) through the thirDialect spine (#594, E2)
+/-! ## §18  Constant-time conditional subtraction (select / cmov) through `thirDialect`
 
-Phase-2 front op-exposure for branch-free conditional code: the THIR front now
-carries a constant-time SELECT `thSelect` (`if cond then a else b`, both operands
-always evaluated), lowering 1:1 to the matching jasmin `select` op through the
-generic verified `lowerThir`. The emit renders it as a **branchless mask-select**
-`b ^ ((a ^ b) & mask)`, `mask = 0 - cond` (`renderSelect` in
-`JasminAbiEmit.lean`) — a data-oblivious conditional move with no
+Branch-free conditional code at the THIR level: the select op `thSelect`
+(`if cond then a else b`, both operands always evaluated), lowered to the single
+jasmin `select` op by the generic `lowerThir`. The emit renders it as the
+branchless mask select `b ^ ((a ^ b) & mask)` with `mask = 0 - cond`
+(`renderSelect` in `JasminAbiEmit.lean`), a conditional move with no
 secret-dependent branch.
 
-`thSelect` is the front's constant-time primitive for the canonical
-conditional-subtract demonstrated here, for the `cswap` of a Montgomery /
-X25519 ladder (`select cond a b` / `select cond b a` over a pair), and for a
-rejection sampler's conditional core. Constant-time preservation of the lowered
-`Com` follows from the `#594` secret-type qualifier already in Com/VIR: a
-`.Secret`-tagged branch (`ComR.ifBit _ .Secret …`) is rejected by
-`CTPredicate.ctSafeComR` (`ctSafeComR_ifBit_secret`), so the only CT-safe way to
-realise a secret-dependent conditional is exactly this branch-free SELECT — its
-two operands are both evaluated, so there is no `.Secret` `ifBit` to reject. The
-`SecretLevel` tag is `CatCrypt.Crypto.Jasmin.LowCT.SecretLevel`.
+`thSelect` is the front op for the conditional subtraction below, for the
+`cswap` of a Montgomery / X25519 ladder (`select cond a b` / `select cond b a`
+over a pair), and for the conditional core of a rejection sampler. This module
+states no constant-time theorem about the lowered `Com`. The secret-type
+qualifier of Com/VIR rejects a `.Secret`-tagged branch
+(`ComR.ifBit _ .Secret …`, over `catCryptDialect` regions) in
+`CTPredicate.ctSafeComR`
+(`ctSafeComR_ifBit_secret`); a select evaluates both operands and contains no
+such branch. The `SecretLevel` tag is `CatCrypt.Crypto.Jasmin.LowCT.SecretLevel`.
 
-Scope: this is the op-exposure + value-correctness step (one `thBin .sub` + one
-`thSelect`). The branch-free cswap of a full ladder leaf is the follow-on. -/
+Scope: the values of a single `thBin .sub` followed by one `thSelect`. A
+branch-free `cswap` inside a full ladder kernel is not covered here. -/
 
 /-- The value spec of the constant-time conditional-subtract: `if cond = 1 then
     a - b else a`. The canonical "subtract `b` only when the carry/condition bit
@@ -3229,32 +3233,31 @@ theorem condSubSelectThir_denote (a b : BitVec 64) (cond : BitVec 1) :
       = (condSubSelectSpec a b cond).rotateRight 0 := rfl
   rw [e]; simp [BitVec.rotateRight_def]
 
-/-- **Constant-time conditional-subtract re-derived through the dialect spine.**
-    The lowered `Com jasminDialect` (via the generic, proved `lowerThir`,
-    exercising the `thSelect → select` arm) denotes the same `BitVec 64` as the
-    spec, on every `(a, b, cond)`. -/
+/-- **Constant-time conditional-subtract through the dialect path.**
+    The lowered `Com jasminDialect` (by the generic `lowerThir`, through its
+    `thSelect → select` arm) denotes the same `BitVec 64` as the spec, on every
+    `(a, b, cond)`. -/
 theorem condSubSelect_via_thirDialect (a b : BitVec 64) (cond : BitVec 1) :
     (lowerThir condSubSelectThir).denote (.cons a (.cons b (.cons cond .nil)))
       = condSubSelectSpec a b cond := by
   rw [lowerThir_denote condSubSelectThir (.cons a (.cons b (.cons cond .nil))),
     condSubSelectThir_denote]
 
-/-- `condSubSelect` realises the canonical conditional reduction over `ℕ`: when
-    `cond = 1` and the subtract does not underflow (`b ≤ a`) the result is
-    `a - b`; when `cond = 0` it is `a`. Ties the SELECT output to the `cond ? a-b
-    : a` reference the KAT checks. -/
+/-- `condSubSelectSpec` is the conditional reduction `cond ? a - b : a`: for
+    `cond = 1` it is the wrapping `BitVec 64` difference `a - b`, and otherwise
+    it is `a`. -/
 theorem condSubSelect_reconstruct (a b : BitVec 64) (cond : BitVec 1) :
     (condSubSelectSpec a b cond) = (if cond = 1#1 then a - b else a) := by
   simp only [condSubSelectSpec, selectW]
 
-/-! #### §17.1  Emit the constant-time conditional-subtract → owned-x86 jasmin
+/-! #### §18.1  Emit the constant-time conditional subtraction to jasmin
 
 `condSubSelectThir` lowers (`lowerThir`) to a jasmin `Com` whose ops are
-`regArith .sub` (the difference) and `select` (+ the final identity `ror`). The
-register-arith emit now renders `select` (#594, E2) as the branchless
-mask-select `(a & mask) | (b & ~mask)`, `mask = 0 - cond` — a data-oblivious
-conditional move (no secret-dependent branch, no flag read). The `reg 1`
-condition value threads through the register file like any other word.
+`regArith .sub` (the difference), `select`, and the final identity `ror`. The
+register-arith emit renders `select` as the branchless mask select
+`b ^ ((a ^ b) & mask)` with `mask = 0 - cond`: a conditional move with no
+secret-dependent branch and no flag read. The `reg 1` condition value is stored
+in the register file like any other word.
 
 Three inputs `[a, b, cond]`; one `u64` output. The body has 3 bindings (sub +
 select + identity copy), so the register file is `stack u64[6] k`: 3 working
@@ -3267,10 +3270,10 @@ def condSubRegDecls : List String := ["stack u64[6] k"]
 /-- Input word `i` (`a`/`b`/`cond`) → copied-in register slot `3 + i`. -/
 def condSubInName (i : Nat) : String := "k[" ++ toString (3 + i) ++ "]"
 
-/-- The emitted `.jazz` for the constant-time conditional-subtract through the
-    thirDialect spine (`lowerThir condSubSelectThir`) and the verified
-    register-arith orchestration. The `thSelect 64` op lowers to `select 64` and
-    renders (the new `emitBodyReg` arm) as the branchless mask-select. ABI:
+/-- The emitted `.jazz` for the constant-time conditional subtraction, along the
+    dialect path (`lowerThir condSubSelectThir`) and the register-arith
+    orchestration. The `thSelect 64` op lowers to `select 64`, which the `select`
+    arm of `emitBodyReg` renders as the branchless mask select. ABI:
     `reg ptr u64[1] out`, `reg const ptr u64[3] inp` (`inp = a, b, cond`). -/
 def condSubSelectJazz : String :=
   emitAbiOrchReg "condsub_select" (w := 64) (nIn := 3) (nOut := 1) (nCopy := 3)
@@ -3281,50 +3284,47 @@ def condSubSelectJazz : String :=
 /- The export has the expected ABI (1-word out, 3-word in). -/
 #guard (strContains condSubSelectJazz "export fn condsub_select(reg ptr u64[1] out, reg const ptr u64[3] inp)")
 
-/- The emitted body renders the branchless mask-select (`mask = -cond`, i.e.
-    `0 - cond`, then `b ^ ((a ^ b) & mask)`) and the real subtract, and skips no
-    op — the rendering side of `thBin .sub 64 → regArith .sub` and `thSelect 64 →
-    select`. -/
+/- The emitted body contains the mask computation `wb = -wb;` (`mask = 0 - cond`)
+    and the masking step `w0 = w0 & wb;` of the branchless select
+    `b ^ ((a ^ b) & mask)`, and no skipped-op marker. -/
 #guard (strContains condSubSelectJazz "wb = -wb;")
     && (strContains condSubSelectJazz "w0 = w0 & wb;")
     && !(strContains condSubSelectJazz "non-regArith op skipped")
 
-/-- The two binding destinations of the demonstrator are distinct working slots
-    (`k[0]` for the difference, `k[1]` for the select), so neither output
-    overwrites a still-live input — the `outputs_distinct` guard. -/
+/-- The destination names of the first two bindings differ (`k[0]` for the
+    difference, `k[1]` for the select), and the emitted body contains no
+    skipped-op marker. -/
 theorem condSubSelect_outputs_distinct :
     (widenDstName 0 ≠ widenDstName 1)
       ∧ strContains condSubSelectJazz "non-regArith op skipped" = false := by
   native_decide
 
-/-! ## §18  Function CALL composition — `treehashNode` through the thirDialect spine (#616, E5a)
+/-! ## §19  Function calls: `treehashNode` through `thirDialect`
 
-Phase-2 front op-exposure for kernel-to-kernel COMPOSITION: the THIR front now
-carries a single-result function call `thExtCall name argTys retTy`, lowering 1:1
-to jasmin's `extCall` through the generic verified `lowerThir`. This is the
-whole-protocol unlock — a function can now CALL an already-verified leaf and
-compose it (treehash, FO transforms, Fiat-Shamir). Single-result callees only.
+Composition of kernels at the THIR level: the single-result function call
+`thExtCall name argTys retTy`, lowered to jasmin's `extCall` by the generic
+`lowerThir`. A function calls a leaf kernel by name and composes it (treehash,
+FO transforms, Fiat-Shamir). Only single-result callees are
+supported.
 
-The demonstrator is a Merkle/treehash inner node:
+The example is a Merkle/treehash inner node:
 
     treehashNode(l, r) = compress(l ‖ r)
 
-where `compress` is an OPAQUE already-verified single-result leaf, modelled as
-the `thExtCall "compress" [.reg 64, .reg 64] (.reg 64)`. Its denotation is the
-leaf semantics `jasminExtSem "compress" …`, which for a non-lattice leaf is the
-opaque default (`JasminTy.default`) — so the value of the COMPOSITION is an
-opaque leaf obligation, exactly as a real verified-leaf-composition should be
-(the caller's correctness is conditional on the callee's). The KAT
-(`bench/thir_front_extcall`) discharges that obligation against a concrete C
-stand-in (`compress(l, r) = l ^ r`).
+where `compress` is an opaque single-result leaf, modelled as
+`thExtCall "compress" [.reg 64, .reg 64] (.reg 64)`. Its denotation is the leaf
+semantics `jasminExtSem "compress" …`, which for register-typed arguments is the
+opaque default `JasminTy.default` (zero). The value of the composition is
+therefore stated relative to the leaf semantics, and the correctness of the
+callee is a separate obligation. The emitted unit uses the stand-in
+`compress(l, r) = l ^ r` (§19.1).
 
-Scope: this is the call-composition op-exposure + emit step (one `thExtCall`).
-Structs/enums/match are the later E5b sub-step. -/
+Scope: one `thExtCall` and its emit. Structs, enums and `match` are in §22. -/
 
 /-- The (opaque) value spec of `treehashNode`: the leaf semantics of the
-    `compress` call, `jasminExtSem "compress" [.reg 64, .reg 64] (.reg 64)`. For a
-    non-lattice leaf this is the opaque default — the value-correctness of the
-    composition is the callee's separate (KAT-discharged) obligation. -/
+    `compress` call, `jasminExtSem "compress" [.reg 64, .reg 64] (.reg 64)`. For
+    register-typed arguments this is the opaque default; the value correctness
+    of the composition is a separate obligation on the callee. -/
 def treehashNodeSpec (l r : BitVec 64) : BitVec 64 :=
   jasminExtSem "compress" [.reg 64, .reg 64] (.reg 64) (.cons l (.cons r .nil))
 
@@ -3334,8 +3334,8 @@ def treehashNodeSpec (l r : BitVec 64) : BitVec 64 :=
         h   = thExtCall "compress" [reg 64, reg 64] (reg 64) l r
         out = thRor 64 0 h      -- identity copy (the emit reads back the last binding)
 
-    The single `thExtCall` binding is the function-call composition — the front
-    handle that calls the already-verified `compress` leaf by name. -/
+    The single `thExtCall` binding is the call that composes the `compress` leaf
+    by name. -/
 def treehashNodeThir : Com thirDialect [.reg 64, .reg 64] (.reg 64) :=
   -- h = compress(l, r)   (ctx [l, r]; l = dB0, r = dB1)
   .var (.mk (.thExtCall "compress" [.reg 64, .reg 64] (.reg 64)) rfl
@@ -3352,26 +3352,26 @@ theorem treehashNodeThir_denote (l r : BitVec 64) :
       = (treehashNodeSpec l r).rotateRight 0 := rfl
   rw [e]; simp [BitVec.rotateRight_def]
 
-/-- **`treehashNode` re-derived through the dialect spine.** The lowered
-    `Com jasminDialect` (via the generic, proved `lowerThir`, exercising the new
-    `thExtCall → extCall` arm) denotes the same `BitVec 64` as the spec — i.e. the
-    same opaque `compress` leaf semantics. The callee is treated as a
-    `jasminExtSem` leaf, so the composition's value-correctness is the callee's
-    opaque obligation (discharged by the KAT against the C stand-in). -/
+/-- **`treehashNode` through the dialect path.** The lowered
+    `Com jasminDialect` (by the generic `lowerThir`, through its
+    `thExtCall → extCall` arm) denotes the same `BitVec 64` as the spec, i.e. the
+    opaque `compress` leaf semantics. The callee is a `jasminExtSem` leaf, so the
+    value correctness of the composition is a separate obligation on the
+    callee. -/
 theorem treehashNode_via_thirDialect (l r : BitVec 64) :
     (lowerThir treehashNodeThir).denote (.cons l (.cons r .nil)) = treehashNodeSpec l r := by
   rw [lowerThir_denote treehashNodeThir (.cons l (.cons r .nil)), treehashNodeThir_denote]
 
-/-! ### §18.1  Emit the treehash node (caller + callee) → owned-x86 jasmin
+/-! ### §19.1  Emit the treehash node (caller and callee) to jasmin
 
-`treehashNodeThir` lowers (`lowerThir`) to a jasmin `Com` whose op is `extCall
-"compress" …` (+ the final identity `ror`). The register-arith emit now renders
-the call (the new `emitBodyReg` arm) as `dst = compress(wa0, wa1);`, and
-`emitAbiOrchRegWithCallees` hosts the callee's own `inline fn compress(reg u64
-a0, reg u64 a1) -> reg u64` alongside the caller `export fn` in one `.jazz` unit.
-The callee here is a concrete stand-in `compress(l, r) = l ^ r` so the C
-reference is computable; the call SHAPE (`dst = compress(args…);`) is the
-verified-front image independent of the leaf body.
+`treehashNodeThir` lowers (`lowerThir`) to a jasmin `Com` whose ops are
+`extCall "compress" …` and the final identity `ror`. The `extCall` arm of
+`emitBodyReg` renders the call as `dst = compress(wa0, wa1);`, and
+`emitAbiOrchRegWithCallees` places the callee `inline fn compress(reg u64 a0,
+reg u64 a1) -> reg u64` next to the caller `export fn` in one `.jazz` unit. The
+callee is the concrete stand-in `compress(l, r) = l ^ r`, so that a C reference
+is computable; the rendered call `dst = compress(args…);` does not depend on the
+leaf body.
 
 Two inputs `[l, r]`; one `u64` output. The caller body has 2 bindings (the call
 + the identity copy), so the register file is `stack u64[4] k`: 2 working slots
@@ -3383,15 +3383,15 @@ scratch regs. -/
 def treehashRegDecls : List String := ["stack u64[4] k"]
 
 /-- The concrete `compress` callee stand-in: `inline fn compress(a0, a1) -> u64`
-    computing `a0 ^ a1` over a scratch register `c0`. A stand-in so the C
-    reference is computable; the verified content is the CALL composition, not the
-    leaf body (which is opaque at the Lean denotation level). -/
+    computing `a0 ^ a1` over a scratch register `c0`. A stand-in so that a C
+    reference is computable; the theorems of §19 concern the call composition,
+    and the leaf body is opaque at the level of the Lean denotation. -/
 def compressLeafJazz : String :=
   emitInlineLeaf "compress" 64 2
     ["reg u64 c0;", "c0 = a0;", "c0 = c0 ^ a1;"] "c0"
 
-/-- The emitted `.jazz` for the treehash node through the thirDialect spine
-    (`lowerThir treehashNodeThir`) and the call-hosting register-arith
+/-- The emitted `.jazz` for the treehash node, along the dialect path
+    (`lowerThir treehashNodeThir`) and the callee-hosting register-arith
     orchestration. Emits the `compress` callee `inline fn` and the caller
     `export fn treehash_node` that calls it. ABI: `reg ptr u64[1] out`,
     `reg const ptr u64[2] inp` (`inp = l, r`). -/
@@ -3408,37 +3408,37 @@ def treehashNodeJazz : String :=
 /- The callee `compress` ships as an `inline fn` alongside the caller. -/
 #guard (strContains treehashNodeJazz "inline fn compress(reg u64 a0, reg u64 a1) -> reg u64")
 
-/- The caller body renders a real call to the `compress` leaf (`k[0] =
-    compress(wa0, wa1);`) and skips no op — the rendering side of `thExtCall →
-    extCall`. -/
+/- The caller body contains the call to the `compress` leaf
+    (`k[0] = compress(wa0, wa1);`), the rendering of `thExtCall → extCall`, and
+    no skipped-op marker. -/
 #guard (strContains treehashNodeJazz "k[0] = compress(wa0, wa1);")
     && !(strContains treehashNodeJazz "non-regArith op skipped")
 
-/-! ## §19  AVX-512 8-lane packed add — homogeneous `reg 512` SIMD through the
-    thirDialect spine (#616, E6)
+/-! ## §20  AVX-512 8-lane packed add: homogeneous `reg 512` SIMD through `thirDialect`
 
-Phase-2 front op-exposure for the SIMD lane surface: the THIR front now carries
-an AVX-512 8×u64 packed-lane op `thVpack bop` (`[reg 512, reg 512] → reg 512`,
-`zmmPackQ bop`), lowering 1:1 to jasmin's `vpackZMM bop` through the generic
-verified `lowerThir`. This is the front handle for the homogeneous-512 SIMD
-register surface (Poseidon2 MDS / RC-add, 8-way packed lane arithmetic).
+The SIMD lane ops at the THIR level: the AVX-512 8×u64 packed-lane op
+`thVpack bop` (`[reg 512, reg 512] → reg 512`, denoting `zmmPackQ bop`), lowered
+to jasmin's `vpackZMM bop` by the generic `lowerThir`. It is the front op for
+homogeneous 512-bit SIMD registers (Poseidon2 MDS and round-constant addition,
+8-way packed lane arithmetic).
 
-The demonstrator is a homogeneous 8-lane packed add:
+The example is a homogeneous 8-lane packed add:
 
     vpackAdd8(x, y) = thVpack .add x y   -- 8 independent u64 lane adds
 
-over two `reg 512` ZMM inputs (one `reg 512` output). It is **all-`reg 512`** —
-every binding is `reg 512`, so the front orchestration is instantiated at
-`w = 512` (`emitAbiOrchReg` params / scratch all become `reg u512`), sidestepping
-any mixed-width plumbing.
+over two `reg 512` ZMM inputs, with one `reg 512` output. Every binding has type
+`reg 512`, so the orchestration is instantiated at `w = 512` (all parameters and
+scratch registers of `emitAbiOrchReg` are `reg u512`) and no mixed-width
+handling is needed.
 
-Scope: this is the SIMD lane op-exposure + emit step (one `thVpack`). A
-mixed-width kernel (e.g. an `reg 64` reduction folded over `reg 512` lanes) is a
-later sub-step that needs the front's single-width plumbing relaxed.
+Scope: one `thVpack` and its emit. A mixed-width kernel (e.g. a `reg 64`
+reduction folded over `reg 512` lanes) requires the single-width orchestration
+to be generalized.
 
-The dialect denotation of `thVpack .add` is exactly `zmmPackQ .add` — the
-verified 8×u64 packed add (`JasminDialect.zmmPackQ`), per-lane validated against
-`MpnAvx512Emit.denoteVPaddQ8` in `Poseidon2Avx512Jasmin.lean`. -/
+The dialect denotation of `thVpack .add` is `zmmPackQ .add`, the 8×u64 packed
+add of `JasminDialect`. `Poseidon2Avx512Jasmin.lean` proves that every lane of
+the denotation of a `Com` built from `vpackZMM .add` equals the lane-wise model
+`denoteVPaddQ8` (`mdsAddZmm_eq_avx512_model`). -/
 
 /-- The value spec of the 8-lane packed add: the dialect ZMM packed add
     `zmmPackQ .add` (8 independent u64 lane adds, no cross-lane carry). -/
@@ -3458,29 +3458,27 @@ def vpackAdd8Thir : Com thirDialect [.reg 512, .reg 512] (.reg 512) :=
 theorem vpackAdd8Thir_denote (x y : BitVec 512) :
     vpackAdd8Thir.denote (.cons x (.cons y .nil)) = vpackAdd8Spec x y := rfl
 
-/-- **The 8-lane packed add re-derived through the dialect spine.** The lowered
-    `Com jasminDialect` (via the generic, proved `lowerThir`, exercising the new
-    `thVpack → vpackZMM` arm) denotes the same `BitVec 512` as the spec — i.e. the
-    verified 8×u64 packed add `zmmPackQ .add`. -/
+/-- **The 8-lane packed add through the dialect path.** The lowered
+    `Com jasminDialect` (by the generic `lowerThir`, through its
+    `thVpack → vpackZMM` arm) denotes the same `BitVec 512` as the spec, i.e. the
+    8×u64 packed add `zmmPackQ .add`. -/
 theorem vpackAdd8_via_thirDialect (x y : BitVec 512) :
     (lowerThir vpackAdd8Thir).denote (.cons x (.cons y .nil)) = vpackAdd8Spec x y := by
   rw [lowerThir_denote vpackAdd8Thir (.cons x (.cons y .nil)), vpackAdd8Thir_denote]
 
-/-! ### §19.1  Emit the 8-lane packed add → owned-x86 jasmin (homogeneous `u512`)
+/-! ### §20.1  Emit the 8-lane packed add to jasmin (homogeneous `u512`)
 
 `vpackAdd8Thir` lowers (`lowerThir`) to a jasmin `Com` whose op is `vpackZMM .add`.
-The register-arith emit renders it (the new `emitBodyReg` arm) as the single
-intrinsic line `dst = #VPADD_8u64(a, b);`. The orchestration is instantiated at
-`w = 512`, so every slot / scratch register is `reg u512`: ABI `reg ptr u512[1]
-out`, `reg const ptr u512[2] inp`. One binding → 1 working slot; 2 inputs copied
-into the 2 trailing slots.
+The `vpackZMM` arm of `emitBodyReg` renders it as the single intrinsic line
+`dst = #VPADD_8u64(a, b);`. The orchestration is instantiated at `w = 512`, so
+every slot and scratch register is `reg u512`: ABI `reg ptr u512[1] out`,
+`reg const ptr u512[2] inp`. One binding uses 1 working slot; the 2 inputs are
+copied into the trailing slots.
 
-Jasminc surface note: `#VPADD_8u64` (the u512 ZMM packed add) is the verified
-mnemonic but is REJECTED by jasminc 2026.03.1 (u512 not yet in its intrinsic
-table — see `MpnAvx512Emit.lean`); the accepted ymm subset is `#VPADD_4u64`
-(2× to cover 8 lanes). The KAT (`bench/thir_front_vpack`) checks the 8-lane
-packed-add VALUE against a lane-by-lane scalar reference; the surface gap is the
-upstream jasmin patch, independent of this verified front lowering. -/
+Toolchain note: jasminc release 2026.03.1 does not accept `#VPADD_8u64` (the
+u512 ZMM packed add), since u512 is absent from its intrinsic table; the
+accepted AVX2 form is `#VPADD_4u64`, applied twice to cover 8 lanes. The
+lowering and its denotation theorem do not depend on this. -/
 
 /-- Per-output register-file decls for `vpackAdd8`: 1 working slot + 2 inputs
     (`stack u512[4] k`), all `u512`. Mirrors `widenRegDecls` at width 512. -/
@@ -3493,8 +3491,8 @@ def vpackDstName (n : Nat) : String := "k[" ++ toString n ++ "]"
     the 2 inputs). -/
 def vpackInName (i : Nat) : String := "k[" ++ toString (1 + i) ++ "]"
 
-/-- The emitted `.jazz` for the 8-lane packed add through the thirDialect spine
-    (`lowerThir vpackAdd8Thir`) and the verified register-arith orchestration,
+/-- The emitted `.jazz` for the 8-lane packed add, along the dialect path
+    (`lowerThir vpackAdd8Thir`) and the register-arith orchestration,
     instantiated at `w = 512` (homogeneous `u512`). ABI: `reg ptr u512[1] out`,
     `reg const ptr u512[2] inp`. The single `vpackZMM .add` binding renders as
     `k[0] = #VPADD_8u64(k[1], k[2]);`. -/
@@ -3507,60 +3505,54 @@ def vpackAdd8Jazz : String :=
 /- The export has the expected `u512` ABI (1-word out, 2-word in). -/
 #guard (strContains vpackAdd8Jazz "export fn vpack_add8(reg ptr u512[1] out, reg const ptr u512[2] inp)")
 
-/- The emitted body renders the real 8×u64 packed add (`#VPADD_8u64`) and skips
-    no op — the rendering side of `thVpack .add → vpackZMM .add`. -/
+/- The emitted body contains the 8×u64 packed add intrinsic `#VPADD_8u64`, the
+    rendering of `thVpack .add → vpackZMM .add`, and no skipped-op marker. -/
 #guard (strContains vpackAdd8Jazz "#VPADD_8u64")
     && !(strContains vpackAdd8Jazz "non-regArith op skipped")
 
-/-! ## §20  Runtime-indexed table LOAD — public NTT twiddle lookup `zeta[i]` (#619, E4)
+/-! ## §21  Runtime-indexed table load: public NTT twiddle lookup `zeta[i]`
 
-Phase-2 front op-exposure for a runtime-indexed array READ: the dialect's
-`stackLoad w n` op (`[stackArr w n, reg 64] → reg w`, the dual of the §9 indexed
-STORE `stackStore`) loads one element of a stack array at a runtime index. It was
-already in the dialect but unrendered by the register-arith emit; the
-`emitBodyReg` `stackLoad` arm now renders it as `dst = arr[(uint)idx];` and
-`emitAbiOrchLoad` orchestrates it (copy-in, indexed read, copy-out), KAT'd in
-`bench/thir_front_gather`.
+A runtime-indexed array read: the dialect op `stackLoad w n`
+(`[stackArr w n, reg 64] → reg w`, the dual of the indexed store `stackStore` of
+§9) loads one element of a stack array at a runtime index. The `stackLoad` arm
+of `emitBodyReg` renders it as `dst = arr[(uint)idx];`, and `emitAbiOrchLoad`
+wraps it with copy-in and copy-out.
 
-The demonstrator is the canonical safe use of a runtime gather — a **public**
-loop-counter table lookup: the NTT twiddle read `zetaLookup(zeta, i) = zeta[i]`,
-where `i` is the (public) NTT round/butterfly counter. The dialect denotes the
-load as the total read `stackGet zeta i.toNat = zeta[i % N]`; `stackGet_id`
-discharges the in-range `% N` ↔ direct-index bridge for any `i : Fin N`, so on a
-valid round counter the lookup reads exactly `zeta i`.
+The example is a table lookup at a public loop counter: the NTT twiddle read
+`zetaLookup(zeta, i) = zeta[i]`, where `i` is the public NTT round or butterfly
+counter. The dialect denotes the load as the total read
+`stackGet zeta i.toNat = zeta[i % N]`; `stackGet_id` shows that `% N` is the
+identity for `i : Fin N`, so for an in-range counter the lookup reads `zeta i`
+(`zetaLookupCom_inrange`).
 
-### Constant-time requirement (BLOCKING)
+### Constant-time requirement
 
-The index `i` MUST be PUBLIC. `JasminCTPredicate.opIndexPublic` admits a
-`stackLoad`/`stackStore` as CT-safe **iff** its index register is `.Public`
-(non-vacuous: a secret index is flagged non-CT, a public one CT). An NTT twiddle
-index is a public loop counter, so the lookup is data-oblivious. A
-**secret-indexed** table lookup (e.g. an S-box gather on a secret byte) is a
-cache-timing leak and is rejected by the #594 CT predicate — the
-Argon2 / bitsliced-AES precedent, where the secret-dependent table access must be
-replaced by a constant-time `select`-based scan (§17) instead of a gather.
+The index `i` must be public. `JasminCTPredicate.opIndexPublic` accepts a
+`stackLoad`/`stackStore` exactly when its index register has label `.Public`.
+An NTT twiddle index is a public loop counter, so the lookup's memory access
+pattern does not depend on secrets. A table lookup at a secret index (e.g. an
+S-box lookup on a secret byte) is a cache-timing leak and is rejected by
+`opIndexPublic`; the constant-time alternative, as in bitsliced AES, is a scan
+built from `select` (§18).
 
-### Scope (E4)
+### Scope
 
-The indexed-READ op is wired into the dialect emit and exercised by this pilot
-through a hand-built `Com jasminDialect` (the read dual of §9's `storeDemoCom`),
-with the denotation pinned to `stackGet` and the in-range case discharged by
-`stackGet_id`. As with the §9 store pilot, a stack-array VALUE is not a `rW w`
-register, so threading a mutable `stackArr` slot through the homogeneous
-register-file front (`thirToJasmin` / `frontCtxt`) would require a heterogeneous
-typing pass — deferred; the table-lookup demonstrator stands alone at the `Com`
-level, exactly like the store pilot. No new `ThirOp` is introduced (the dialect
-`stackLoad` op already exists; the front carries it as the direct `Com` the way
-§9 carries `stackStore`). -/
+The indexed read is available as a hand-built `Com jasminDialect` (the read
+dual of `storeDemoCom`, §9), with its denotation given by `stackGet` and the
+in-range case by `stackGet_id`. As for the store of §9, a stack-array value is
+not a `rW w` register, so the homogeneous register-file front
+(`thirToJasmin` / `frontCtxt`) does not carry a mutable `stackArr` slot; that
+requires a heterogeneous typing pass. There is no `ThirOp` for the load: the
+program is a `Com` over the dialect op `stackLoad`, as §9 uses `stackStore`. -/
 
-/-- The NTT-twiddle table length used by the demonstrator (a small `u16` zeta
-    table; the KAT exercises all in-range indices + random trials). -/
+/-- The length of the NTT twiddle table in the example (a small `u16` zeta
+    table). -/
 abbrev zetaLen : Nat := 8
 
 /-- Runtime-indexed table-load `Com`: `let v = stackLoad zeta idx; ret v`, over
     the context `[stackArr 16 zetaLen, reg 64]` (the `u16` zeta table + the
-    PUBLIC index register). The single `stackLoad` binding is the runtime gather
-    — the read dual of §9's `storeDemoCom`. The loaded value is a `reg 16`. -/
+    public index register). The single `stackLoad` binding is the runtime-indexed
+    read, the dual of `storeDemoCom` (§9). The loaded value is a `reg 16`. -/
 def zetaLookupCom :
     Com jasminDialect [.stackArr 16 zetaLen, .reg 64] (.reg 16) :=
   .var (.mk (.stackLoad 16 zetaLen) rfl
@@ -3575,9 +3567,9 @@ theorem zetaLookupCom_denote (zeta : Fin zetaLen → BitVec 16) (idx : BitVec 64
 
 /-- **In-range public lookup reads exactly `zeta i`.** For an in-range index
     `i : Fin zetaLen` whose `u64` representative is `BitVec.ofNat 64 i.val` (a
-    public NTT loop counter; `i.val < zetaLen ≤ 2^64`), the runtime gather reads
-    the underlying twiddle `zeta i`. The `% zetaLen` reduction of `stackGet` is
-    the identity here (`stackGet_id`), closing the in-range ↔ direct-index gap. -/
+    public NTT loop counter; `i.val < zetaLen ≤ 2^64`), the runtime-indexed read
+    returns the twiddle `zeta i`. The `% zetaLen` reduction of `stackGet` is the
+    identity on such an index (`stackGet_id`). -/
 theorem zetaLookupCom_inrange (zeta : Fin zetaLen → BitVec 16) (i : Fin zetaLen) :
     zetaLookupCom.denote (.cons zeta (.cons (BitVec.ofNat 64 i.val) .nil))
       = zeta i := by
@@ -3590,13 +3582,14 @@ theorem zetaLookupCom_inrange (zeta : Fin zetaLen → BitVec 16) (i : Fin zetaLe
         rw [BitVec.toNat_ofNat]; exact Nat.mod_eq_of_lt hlt]
   exact stackGet_id zeta i
 
-/-! ### §20.1  Emit the public twiddle lookup → owned-x86 jasmin
+/-! ### §21.1  Emit the public twiddle lookup to jasmin
 
-`emitAbiOrchLoad` renders the runtime-indexed table read to jasmin: copy the
-input `u16[zetaLen]` table into an owned `stack` buffer, read `buf[(uint)idx]` at
-the public runtime index, copy the scalar out. ABI: `reg ptr u16[1] out`,
-`reg const ptr u16[zetaLen] inp`, `reg u64 idx`. The `idx` param is the public
-loop counter (an NTT round index), so the gather is data-oblivious. -/
+`emitAbiOrchLoad` renders the runtime-indexed table read to jasmin: it copies the
+input `u16[zetaLen]` table into a local `stack` buffer, reads `buf[(uint)idx]` at
+the runtime index, and copies the scalar out. ABI: `reg ptr u16[1] out`,
+`reg const ptr u16[zetaLen] inp`, `reg u64 idx`. The `idx` parameter is the
+public loop counter (an NTT round index), so the memory access pattern does not
+depend on secrets. -/
 
 /-- The emitted public-indexed twiddle-lookup `.jazz` over a length-`zetaLen`
     `u16` table. -/
@@ -3611,84 +3604,77 @@ theorem zetaLookup_export_sig :
       ("export fn zeta_lookup(reg ptr u16[1] out, reg const ptr u16[8] inp, "
         ++ "reg u64 idx)") = true := by native_decide
 
-/- The emitted body renders the runtime-indexed element LOAD `buf[(uint)idx]`. -/
+/- The emitted body contains the runtime-indexed element load `buf[(uint)idx]`. -/
 #guard (strContains zetaLookupJazz "buf[(uint)idx];")
 
-/-! ## §21  STRUCT (product state) + usize-tag MATCH dispatch through the
-    thirDialect spine (#617, E5b)
+/-! ## §22  Struct state and `usize`-tag `match` dispatch through `thirDialect`
 
-Phase-2 front op-exposure for the **dispatch + product-state** half of E5: a
-whole-protocol body that carries a STRUCT-shaped register state and updates one
-field by a `match` over a tag. This is what turns kernel-compile into
-whole-protocol compile (the FO transform, treehash recursion, Fiat-Shamir, a
-ratchet's state record). E5a (§18) added single-result CALLs; this is the
-product-and-dispatch step.
+A body that carries a struct-shaped register state and updates one field by a
+`match` over a tag. Together with the calls of §19, this is the structure of
+protocol-level code such as the FO transform, treehash recursion, Fiat-Shamir,
+or a ratchet's state record.
 
-### The two front representations chosen (and the two-AST gap)
+### Front representations of structs and matches
 
-**STRUCT = N consecutive `reg w` slots.** The front register context is already
-homogeneous, so a struct is *exactly* N adjacent context entries (one per
-field). Field PROJECTION is a de Bruijn `Ctxt.Var` into the context (no op);
-field CONSTRUCTION is the ordinary sequence of `let` bindings that produce the
-fields (no op). The 2-field state record `{ acc, ctr }` here is the input pair
-`[acc, ctr]` (`reg 64` each); the body returns the updated `acc` field while
-`ctr` threads through untouched (the product-state flow). **This handles a
-FIXED-ARITY struct of equal-width fields only.** It does NOT yet model variant
-PAYLOADS of differing widths, nested/recursive ADTs, or a heap-boxed struct —
-those are the two-AST gap (hax `ImpExpr.ctorPat`/`proj` over a sum type
-does not map onto a fixed register tuple). A struct here is a flat fixed tuple
-of `reg w` slots.
+**A struct is N consecutive `reg w` slots.** The register context is
+homogeneous, so a struct is N adjacent context entries, one per field. Field
+projection is a de Bruijn `Ctxt.Var` into the context (no op); field
+construction is the sequence of `let` bindings that produce the fields (no op).
+The 2-field state record `{ acc, ctr }` here is the input pair `[acc, ctr]`
+(`reg 64` each); the body returns the updated `acc` field and does not modify
+`ctr`. This covers fixed-arity structs whose fields all have the same width. It
+does not model variant payloads of different widths, nested or recursive ADTs,
+or heap-allocated structs: hax's `ImpExpr.ctorPat`/`proj` over a sum type does
+not map onto a fixed register tuple.
 
-**MATCH = a `usize` tag + branch-free nested `thSelect`.** hax extracts an enum
-as an opaque `usize` tag (the ADT constructors are lost in extraction — they
-become integer constants + `if`/`else`), so the canonical front image of `match
-tag { 0 => e0, 1 => e1, _ => e2 }` is: test the tag against each constant
-(`thEqLit w k`, a `reg 1` flag), then nest the existing constant-time `thSelect`
-(§17) so the matching arm's value is selected:
+**A `match` is a `usize` tag with nested branch-free `thSelect`.** hax extracts
+an enum as a `usize` tag (the constructors become integer constants and
+`if`/`else`), so the front image of `match tag { 0 => e0, 1 => e1, _ => e2 }`
+tests the tag against each constant (`thEqLit w k`, a `reg 1` flag) and nests
+the constant-time `thSelect` of §18 to select the value of the matching arm:
 
     sel1 = select (tag == 1) e1 e2     -- default arm e2 if neither 0 nor 1
     out  = select (tag == 0) e0 sel1
 
-The tag test `thEqLit w k` is the one new dialect op (lowers 1:1 to an OPAQUE
-single-result equality leaf `extCall (eqLitLeafName w k) [reg w] (reg 1)` — the
-carry-free jasmin alphabet has no compare op, so the test is treated as an
-already-verified constant-time equality leaf exactly as §18's `compress`). The
-DISPATCH (the nested `thSelect`) is fully transparent and proved; only the
-per-arm tag-test VALUE is the opaque leaf obligation the KAT discharges. **This
-handles a `usize`-tag match over k arms, every arm a `reg w` value, generalised
-to k variants by nesting `thSelect`.** It does NOT model an arm that BINDS a
-variant payload of a different width, a guard, or an or-pattern — those need the
-struct/payload extension above. A match here is a flat `usize` tag dispatched
-to `reg w` arms.
+The tag test `thEqLit w k` lowers to an opaque single-result equality leaf
+`extCall (eqLitLeafName w k) [reg w] (reg 1)`: the carry-free jasmin op alphabet
+has no comparison op, so the test is a constant-time equality leaf, treated
+like `compress` in §19. The dispatch (the nested `thSelect`) is transparent in
+the denotation; the value of each tag test is an obligation on the opaque
+leaf. This covers a `usize`-tag match over `k` arms whose values are all
+`reg w`, by nesting `k - 1` selects. It does not model an arm that binds a
+variant payload of a different width, a guard, or an or-pattern; those need the
+struct payload extension described above.
 
-**CT note.** The match tag here is **public** (a `step_kind` selector / FO
-domain-separation tag), so the data-dependent dispatch is data-oblivious: the
-`thEqLit` compares against a *compile-time public constant*, and `thSelect` is
-already branch-free (both arms always evaluated, §17). A *secret* tag would
-still lower (the SELECT is branch-free) but the `thEqLit` leaf must then be a
-constant-time equality — which the branchless mask emit already is.
+**Constant time.** The match tag here is public (a `step_kind` selector or an
+FO domain-separation tag): `thEqLit` compares against a compile-time constant,
+and `thSelect` is branch-free (both arms are always evaluated, §18). A secret
+tag also lowers, since the select is branch-free, but then the `thEqLit` leaf
+must be a constant-time equality; the stand-in `eqLitLeafJazz` is written
+branch-free.
 
-The demonstrator is a 2-field state record updated by a 3-arm match:
+The example is a 2-field state record updated by a 3-arm match:
 
     fn step({ acc, ctr } : St, tag : usize) -> u64 {
         match tag { 0 => acc + ctr, 1 => acc ^ ctr, _ => acc - ctr }
     }
 
-i.e. an FO-transform / ratchet-shaped product-state update dispatched by a public tag. -/
+a state update of the shape found in an FO transform or a ratchet, dispatched by
+a public tag. -/
 
 /-- The opaque-leaf value of the tag test `tag == k` at width 64: the equality
-    leaf semantics `jasminExtSem (eqLitLeafName 64 k) [reg 64] (reg 1)`. For the
-    non-lattice leaf this is the opaque default (`0`), so the tag-test VALUE is
-    the leaf's separate (KAT-discharged) obligation — the EQ is opaque,
-    exactly like §18's `compress`. -/
+    leaf semantics `jasminExtSem (eqLitLeafName 64 k) [reg 64] (reg 1)`. For a
+    register-typed argument this is the opaque default (`0`), so the value of
+    the tag test is a separate obligation on the leaf; the equality is opaque,
+    like `compress` in §19. -/
 def tagEqSpec (k : Nat) (tag : BitVec 64) : BitVec 1 :=
   (jasminExtSem (ThirDialect.eqLitLeafName 64 k) [.reg 64] (.reg 1) (.cons tag .nil) : BitVec 1)
 
 /-- The value spec of the 3-arm tag dispatch, with the two tag tests left as the
-    opaque equality leaves: nested constant-time SELECT
+    opaque equality leaves: the nested constant-time select
     `select (tag==0) (acc+ctr) (select (tag==1) (acc^ctr) (acc-ctr))`. The arm
-    VALUES (`add`/`xor`/`sub` over the struct fields `acc`,`ctr`) are transparent;
-    only the two `tagEqSpec` conditions are opaque leaf obligations. -/
+    values (`add`/`xor`/`sub` over the struct fields `acc`,`ctr`) are
+    transparent; only the two `tagEqSpec` conditions are opaque. -/
 def matchStepSpec (acc ctr tag : BitVec 64) : BitVec 64 :=
   selectW (tagEqSpec 0 tag) (acc + ctr)
     (selectW (tagEqSpec 1 tag) (acc ^^^ ctr) (acc - ctr))
@@ -3706,9 +3692,9 @@ def matchStepSpec (acc ctr tag : BitVec 64) : BitVec 64 :=
         sel0 = thSelect 64 eq0 vAdd sel1  -- if tag==0 then add else sel1
         ret sel0
 
-    The struct `{acc, ctr}` is the two leading context slots; `ctr` flows through
-    untouched (product-state). The nested `thSelect` is the desugared k-arm
-    match; the `thEqLit` tag tests are the opaque equality leaves. -/
+    The struct `{acc, ctr}` is the two leading context slots; `ctr` is not
+    modified. The nested `thSelect` is the desugared 3-arm match; the `thEqLit`
+    tag tests are the opaque equality leaves. -/
 def matchStepThir : Com thirDialect [.reg 64, .reg 64, .reg 64] (.reg 64) :=
   -- eq0 = (tag == 0)   ctx [acc, ctr, tag];  tag = dB2
   .var (.mk (.thEqLit 64 0) rfl (.cons (.there (.there .here)) .nil))
@@ -3744,27 +3730,28 @@ theorem matchStepThir_denote (acc ctr tag : BitVec 64) :
     matchStepThir.denote (.cons acc (.cons ctr (.cons tag .nil)))
       = matchStepSpec acc ctr tag := rfl
 
-/-- **Struct + usize-tag match re-derived through the dialect spine.** The lowered
-    `Com jasminDialect` (via the generic, proved `lowerThir`, exercising the new
-    `thEqLit → extCall` arm together with the §17 `thSelect → select` and the
-    `thBin → regArith` arms) denotes the same `BitVec 64` as the dispatch spec, on
-    every `(acc, ctr, tag)`. The DISPATCH (nested SELECT) is transparent; the two
-    tag-test conditions are the opaque equality leaves the KAT discharges. -/
+/-- **Struct + usize-tag match through the dialect path.** The lowered
+    `Com jasminDialect` (by the generic `lowerThir`, through its
+    `thEqLit → extCall` arm together with the `thSelect → select` arm of §18 and
+    the `thBin → regArith` arms) denotes the same `BitVec 64` as the dispatch
+    spec, on every `(acc, ctr, tag)`. The dispatch (nested select) is
+    transparent; the two tag-test conditions are the opaque equality leaves. -/
 theorem matchStep_via_thirDialect (acc ctr tag : BitVec 64) :
     (lowerThir matchStepThir).denote (.cons acc (.cons ctr (.cons tag .nil)))
       = matchStepSpec acc ctr tag := by
   rw [lowerThir_denote matchStepThir (.cons acc (.cons ctr (.cons tag .nil))),
     matchStepThir_denote]
 
-/-! ### §21.1  Emit the struct + match dispatch (caller + tag-test leaves) → owned-x86 jasmin
+/-! ### §22.1  Emit the struct and match dispatch (caller and tag-test leaves) to jasmin
 
 `matchStepThir` lowers (`lowerThir`) to a jasmin `Com` whose ops are two
-`extCall (eqLitLeafName 64 k)` tag tests, three `regArith` arm values, and two
-branchless `select`s (+ the final result). `emitAbiOrchRegWithCallees` hosts the
-two tag-test `inline fn`s (`thir_eqlit_64_0`, `thir_eqlit_64_1`) alongside the
-caller `export fn match_step`. The tag tests are concrete stand-ins
-`a0 == k ? 1 : 0` so the C reference is computable; the verified content is the
-DISPATCH shape (nested branchless `select`), independent of the leaf bodies.
+`extCall (eqLitLeafName 64 k)` tag tests, three `regArith` arm values and two
+branchless `select`s. `emitAbiOrchRegWithCallees` places the two tag-test
+`inline fn`s (`thir_eqlit_64_0`, `thir_eqlit_64_1`) next to the caller
+`export fn match_step`. The tag tests are the concrete stand-ins
+`a0 == k ? 1 : 0`, so that a C reference is computable; the theorems of §22
+concern the dispatch (nested branchless `select`), which does not depend on the
+leaf bodies.
 
 Three inputs `[acc, ctr, tag]`; one `u64` output. The caller body has 7 bindings
 (2 tag tests + 3 arms + 2 selects), so the register file is `stack u64[10] k`: 7
@@ -3781,9 +3768,9 @@ def matchStepInName (i : Nat) : String := "k[" ++ toString (7 + i) ++ "]"
 /-- The tag-test leaf `thir_eqlit_64_k`: `inline fn …(a0) -> u64` returning
     `a0 == k ? 1 : 0` over a scratch register `c0`, branch-free via the mask
     idiom (`c0 = a0 ^ k; (c0|-c0)>>63` gives `0` iff equal, then complement). A
-    concrete constant-time stand-in so the C reference is computable; the leaf is
-    opaque at the Lean denotation level (the dispatch SHAPE is the verified
-    content). The `reg 1` flag is carried as a `u64` 0/1 in the register file, so
+    concrete constant-time stand-in so that a C reference is computable; the leaf
+    is opaque at the level of the Lean denotation, and the theorems concern the
+    dispatch. The `reg 1` flag is carried as a `u64` 0/1 in the register file, so
     the `select` mask `-cond` is well-formed. -/
 def eqLitLeafJazz (k : Nat) : String :=
   emitInlineLeaf (ThirDialect.eqLitLeafName 64 k) 64 1
@@ -3799,8 +3786,8 @@ def eqLitLeafJazz (k : Nat) : String :=
      "c0 = c1 - c0;"]                      -- 1 iff a0 == k
     "c0"
 
-/-- The emitted `.jazz` for the struct + usize-tag match through the thirDialect
-    spine (`lowerThir matchStepThir`) and the call-hosting register-arith
+/-- The emitted `.jazz` for the struct and `usize`-tag match, along the dialect
+    path (`lowerThir matchStepThir`) and the callee-hosting register-arith
     orchestration. Emits the two tag-test `inline fn`s and the caller `export fn
     match_step` that dispatches via two branchless `select`s. ABI:
     `reg ptr u64[1] out`, `reg const ptr u64[3] inp` (`inp = acc, ctr, tag`). -/
@@ -3820,55 +3807,55 @@ def matchStepJazz : String :=
 #guard (strContains matchStepJazz "inline fn thir_eqlit_64_0(reg u64 a0) -> reg u64")
     && (strContains matchStepJazz "inline fn thir_eqlit_64_1(reg u64 a0) -> reg u64")
 
-/- The caller body renders the dispatch: real calls to both tag tests and the
-    branchless mask-select (`-wb`, `& wb`) of the nested `thSelect`, and skips no
-    op — the rendering side of `thEqLit → extCall` + `thSelect → select`. -/
+/- The caller body contains the calls to both tag tests, the mask computation
+    `wb = -wb;` of the branchless select, and no skipped-op marker: the
+    renderings of `thEqLit → extCall` and `thSelect → select`. -/
 #guard (strContains matchStepJazz "thir_eqlit_64_0(wa0);")
     && (strContains matchStepJazz "thir_eqlit_64_1(wa0);")
     && (strContains matchStepJazz "wb = -wb;")
     && !(strContains matchStepJazz "non-regArith op skipped")
 
-/-! ## §22  Bounded FOR-loop front construct: an ARX round schedule as ONE loop
-    (#618, E3)
+/-! ## §23  Bounded `for` loops: an ARX round schedule as one loop
 
-The straight-line front (§1–§21) could only emit an *unrolled* kernel. This
-section exposes a LOOP: a bounded for-loop over a register-state accumulator,
-lowered to the EXISTING jasmin for-loop layer (`JForProg`, the `for i = 0 to n`
-the §7 doubling-loop and the NTT sweeps already emit) via the THIR front
-construct `ThirDialect.ThirForProg`. No new control-flow op; the loop body is the
-THIR-dialect `Com` lowered by the generic, proved `lowerThir`, and the
-iteration structure is the unchanged `JForProg`.
+The front `thirToJasmin` (§1–§5) unrolls loops, and §6–§22 are straight-line
+programs. This section gives a bounded `for` loop over a register-state
+accumulator, written with the THIR loop construct `ThirDialect.ThirForProg` and
+lowered to the jasmin `for`-loop layer `JForProg` (`for i = 0 to n`). There is
+no control-flow op in the dialect for this: the loop body is a THIR-dialect
+`Com` lowered by the generic `lowerThir`, and the iteration structure is
+`JForProg`.
 
-### The demonstrator: an ARX round, iterated `n` times
+### The example: an ARX round iterated `n` times
 
-The Class-A unlock is a body that is an ARX round, run a public number of
-rounds threading a single 64-bit register-state accumulator:
+The body is an ARX round, run a public number of rounds on a single 64-bit
+register-state accumulator:
 
     fn fold(acc, n) { for _ in 0..n { acc = (acc + C) ^ rotr(acc, 32) } ; acc }
 
-one `+ C` (a round constant, the expanding `thBinLit` op), one rotate-by-32
-(written as `(acc >> 32) | (acc << 32)`, the shift/shift/or idiom — `thShrImm`,
-`thShlImm`, `thBin .or`), and one `xor` (`thBin`) — the add-rotate-xor primitive
-shape, emitted as ONE `for` loop (NOT unrolled). The round constant
-`C = 0x9E3779B97F4A7C15` is the golden-ratio constant used by real ARX schedules.
-The rotate is built from shifts (not the native `thRor`/`#ROR` intrinsic) so the
-loop body lowers to plain `Cassgn` ops the `JForProg.toJazzExport` printer renders
-as jasminc-compilable straight-line code.
+It has one `+ C` (a round constant, the op `thBinLit`, which lowers to a
+constant binding and a `regArith` add), one rotate by 32 (written
+`(acc >> 32) | (acc << 32)` with `thShrImm`, `thShlImm` and `thBin .or`), and
+one `xor` (`thBin`), emitted as one `for` loop rather than unrolled. The round
+constant `C = 0x9E3779B97F4A7C15` is the golden-ratio constant
+`floor(2^64 / φ)`. The rotate is built from shifts rather than the native
+`thRor`/`#ROR` intrinsic, so that the loop body lowers to plain `Cassgn`
+assignments, which `JForProg.toJazzExport` prints as straight-line code.
 
-### Constant-time scope
+### Constant time
 
-The trip count `n` is the **public** static field of `ThirForProg` and the loop
-index ranges over `0..n`; the loop is data-independent control flow and adds no
-CT obligation beyond its (straight-line, branch-free) body. A *secret-dependent*
-trip count (rejection sampling) is the flagged follow-on — see
-`bench/thir_front_loop/Makefile`.
+The trip count `n` is the public static field of `ThirForProg`, and the loop
+index ranges over `0..n`; the control flow of the loop does not depend on data,
+so the loop adds no constant-time obligation beyond its straight-line,
+branch-free body. A secret-dependent trip count (as in rejection sampling) is
+not covered.
 
 ### Denotation
 
-`foldRound_via_thirDialect` closes the `n`-fold by `toJForProg_denote` (the
-bounded-FOR lowering soundness: the lowered jasmin loop's `JForProg.denote`
-equals the THIR loop's `n`-fold), composed with the THIR step's definitional
-denotation — NOT an unrolled equality. -/
+`foldRound_via_thirDialect` obtains the `n`-fold from `toJForProg_denote`
+(soundness of the bounded-loop lowering: `JForProg.denote` of the lowered loop
+is the `n`-fold of the THIR step), composed with the definitional denotation of
+the THIR step. The statement is about the loop for every `n`, and is not an
+equality of unrolled programs. -/
 
 /-- The ARX round constant (golden-ratio fractional bits, `floor(2^64 / φ)`). -/
 def foldRoundConst : Nat := 0x9E3779B97F4A7C15
@@ -3879,17 +3866,17 @@ def foldRoundRot : Nat := 32
 /-- One ARX round as a `Com thirDialect` over the singleton accumulator state
     `[acc]` (`reg 64`): `acc ↦ (acc + C) ^^^ ((acc >> 32) | (acc << 32))`.
 
-        t0  = thBinLit .add 64 C  acc     -- acc + C   (expanding op)
+        t0  = thBinLit .add 64 C  acc     -- acc + C   (constant, then add)
         hi  = thShrImm 64 32      acc     -- acc >> 32
         lo  = thShlImm 64 32      acc     -- acc << 32
         rot = thBin .or 64        hi lo   -- rotr(acc, 32) = (acc>>32)|(acc<<32)
         out = thBin .xor 64       t0 rot  -- combine
         ret out
 
-    The expanding `thBinLit`, the shift/shift/or rotate, and the `thBin` xor — the
-    add-rotate-xor leaf, the loop-carried body. The rotate is the shift idiom (not
-    the native `thRor`) so every binding lowers to a plain `Cassgn` that
-    `JForProg.toJazzExport` renders as jasminc-compilable code. -/
+    The `thBinLit` add, the shift/shift/or rotate and the `thBin` xor form the
+    add-rotate-xor loop body. The rotate uses shifts rather than the native
+    `thRor`, so every binding lowers to a plain `Cassgn` that
+    `JForProg.toJazzExport` prints as an assignment. -/
 def foldRoundBodyThir : Com thirDialect [.reg 64] (.reg 64) :=
   -- t0 = acc + C    ctx [acc];  acc = dB0
   .var (.mk (.thBinLit .add 64 foldRoundConst) rfl (.cons .here .nil))
@@ -3912,38 +3899,38 @@ def foldRoundStep (acc : BitVec 64) : BitVec 64 :=
 theorem foldRoundBodyThir_denote (acc : BitVec 64) :
     foldRoundBodyThir.denote (.cons acc .nil) = foldRoundStep acc := rfl
 
-/-- The bounded FOR-loop front program: the ARX round body, iterated `n` rounds,
-    as a `ThirForProg` (the THIR front loop construct). -/
+/-- The bounded loop: the ARX round body iterated `n` rounds, as a
+    `ThirForProg` (the THIR loop construct). -/
 def foldRoundLoop (n : Nat) : ThirDialect.ThirForProg (.reg 64) :=
   { n := n, update := foldRoundBodyThir }
 
-/-- **The ARX round schedule re-derived through the bounded-FOR front spine.** The
-    lowered jasmin for-loop (`toJForProg`, run through the unchanged
-    `JForProg.denote` — the existing `for i = 0 to n` layer) computes exactly the
-    `n`-fold of the ARX round step, on every initial accumulator and every public
-    trip count `n`. The loop STRUCTURE is the unchanged jasmin loop layer; the
-    per-iteration body is the generic, proved `lowerThir`; the `n`-fold close is
-    `toJForProg_denote`. This is a LOOP, not an unrolled body. -/
+/-- **The ARX round schedule through the bounded-loop lowering.** The lowered
+    jasmin loop (`toJForProg`, evaluated by `JForProg.denote`, the semantics of
+    `for i = 0 to n`) computes the `n`-fold of the ARX round step, for every
+    initial accumulator and every trip count `n`. The iteration structure is the
+    jasmin loop layer, the per-iteration body is lowered by the generic
+    `lowerThir`, and the `n`-fold follows from `toJForProg_denote`. The
+    statement is about the loop, not an unrolled body. -/
 theorem foldRound_via_thirDialect (n : Nat) (init : BitVec 64) :
     (foldRoundLoop n).toJForProg.denote init
       = (List.range n).foldl (fun acc _ => foldRoundStep acc) init := by
   rw [ThirDialect.toJForProg_denote]
   rfl
 
-/-! ### §22.1  Emit the ARX round loop → owned-x86 jasmin (ONE `for` loop)
+/-! ### §23.1  Emit the ARX round loop to jasmin (one `for` loop)
 
 `(foldRoundLoop n).toJForProg` is a `JForProg (.reg 64)`; `JForProg.toJazzExport`
-renders it as a self-contained jasminc `export fn fold_round(reg u64 acc0) ->
-reg u64` whose body is the **actual** emitted `for i = 0 to n { … }` (printed by
-the shared `ppInstrR`), NEVER unrolled. The body's per-iteration ops are
-`acc + C` (a `regConst` + `regArith add`), the shift/shift/or rotate
-(`acc >> 32`, `acc << 32`, `regArith or`), and the combining `xor`
-(a `regArith xor`) — the lowered ARX round, all plain `Cassgn`s. The KAT below
-pins a fixed trip count; the proof `foldRound_via_thirDialect` covers every `n`. -/
+renders it as a self-contained jasmin `export fn fold_round(reg u64 acc0) ->
+reg u64` whose body is a `for i = 0 to n { … }` loop (printed by the shared
+`ppInstrR`), not unrolled. The per-iteration ops are `acc + C` (a `regConst`
+and a `regArith add`), the shift/shift/or rotate (`acc >> 32`, `acc << 32`,
+`regArith or`) and the combining `xor` (a `regArith xor`): the lowered ARX
+round, all plain `Cassgn`s. The guards below check the trip count `8`; the
+theorem `foldRound_via_thirDialect` covers every `n`. -/
 
-/-- The emitted ARX-round-loop `.jazz` for a fixed public trip count `n`, through
-    the bounded-FOR front spine (`(foldRoundLoop n).toJForProg`) and the existing
-    jasmin loop-emit (`JForProg.toJazzExport`). A real `for i = 0 to n` loop. -/
+/-- The emitted ARX-round-loop `.jazz` for a fixed public trip count `n`, from
+    the bounded-loop lowering (`(foldRoundLoop n).toJForProg`) and the jasmin
+    loop printer (`JForProg.toJazzExport`): a `for i = 0 to n` loop. -/
 def foldRoundJazz (n : Nat) : String :=
   CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint.JForProg.toJazzExport
     "fold_round" ((foldRoundLoop n).toJForProg)
@@ -3954,83 +3941,78 @@ def foldRoundJazz (n : Nat) : String :=
     (`reg u64 acc0 -> reg u64`). -/
 #guard (strContains (foldRoundJazz 8) "export fn fold_round(reg u64 acc0) -> reg u64")
 
-/- The body is a REAL `for i = 0 to 8` loop — emitted, not unrolled. -/
+/- The body contains the loop header `for i = 0 to 8`: the loop is emitted, not
+    unrolled. -/
 #guard (strContains (foldRoundJazz 8) "for i = 0 to 8")
 
-/- The loop body renders the lowered ARX round: the shift/shift/or rotate
-    (`>>` `<<` `|`) and the combining xor (`^`). -/
+/- The emitted unit contains the operators of the lowered ARX round: the
+    shift/shift/or rotate (`>>` `<<` `|`) and the combining xor (`^`). -/
 #guard (strContains (foldRoundJazz 8) " >> ")
     && (strContains (foldRoundJazz 8) " << ")
     && (strContains (foldRoundJazz 8) " | ")
     && (strContains (foldRoundJazz 8) " ^ ")
 
-/-! ## §23  FIRST whole-protocol SHAPE: a treehash CHAIN — the §18 leaf CALL run
-    inside the §22 bounded FOR loop (#606, E5a × E3 composed)
+/-! ## §24  A call inside a loop: the treehash chain
 
-This is the Phase-2 milestone: the first whole-protocol SHAPE through the THIR
-front, composing the two just-landed front extensions into one driver:
+This section composes the function call of §19 with the bounded loop of §23:
 
-  * §18 (E5a) gave a single-result function CALL `thExtCall name argTys retTy`
-    (lowering 1:1 to jasmin's `extCall`), so a function can compose an
-    already-verified leaf by name.
-  * §22 (E3) gave the bounded FOR loop `ThirForProg` (lowering to the existing
-    jasmin `JForProg` for-loop layer), so a body can run a public number of
-    times threading a register-state accumulator.
+  * §19: the single-result function call `thExtCall name argTys retTy`
+    (lowered to jasmin's `extCall`), by which a function composes a leaf
+    kernel by name.
+  * §23: the bounded loop `ThirForProg` (lowered to the jasmin `JForProg` loop
+    layer), by which a body runs a public number of times on a register-state
+    accumulator.
 
-§23 puts the CALL *inside* the LOOP: the per-iteration body is exactly one call
-to the tweakable-hash leaf `Th`, applied to the running node accumulator —
+The per-iteration body is one call to the tweakable-hash leaf `Th`, applied to
+the running node:
 
     fn treehash_chain(node, N) { for _ in 0..N { node = Th(node) } ; node }
 
-i.e. the running node folded through `Th` over `N` levels. This is the
-hash-based-signature CHAIN spine: the WOTS+ hash chain and the Merkle
-authentication-path fold (the SLH-DSA / XMSS treehash *spine* shape), where a
-single state word is repeatedly tweak-hashed.
+i.e. the running node folded through `Th` over `N` levels. This is the chain
+structure of hash-based signatures: the WOTS+ hash chain and the Merkle
+authentication-path fold of SLH-DSA / XMSS treehash, where a single state word
+is hashed repeatedly with a tweak.
 
-### Register-light by construction (the jasminc-RA payoff)
+### Register use
 
-Unlike the §22 ARX body (which reads the accumulator THREE times per iteration —
-`acc + C`, `acc >> 32`, `acc << 32` — so jasmin's two-address register allocator
-cannot merge the still-live accumulator and rejects the loop, the #468
-limitation), the `Th`-chain body reads the loop state EXACTLY ONCE per iteration:
-the single input to the `Th` call. After that read the old node is dead (the call
-result is the new node), so there is no two-address merge conflict — the loop
-state is one `reg w` slot read once, written once. This is precisely the body
-shape jasminc's RA *can* compile, so this demonstrator targets a REAL byte-KAT
-(not the §22 clean SKIP).
+The ARX body of §23 reads the accumulator three times per iteration
+(`acc + C`, `acc >> 32`, `acc << 32`); jasmin's two-address register allocator
+cannot merge the accumulator while it is still live, and rejects that loop. The
+`Th`-chain body reads the loop state exactly once per iteration, as the single
+argument of the `Th` call. After that read the old node is dead (the call result
+is the new node), so there is no two-address merge conflict: the loop state is
+one `reg w` slot, read once and written once, a body shape that jasminc's
+register allocator accepts.
 
-The leaf `Th` is single-input (`node -> node`) for exactly this register-light
-reason. A multi-input `Th(left ‖ right)` (a binary Merkle parent) reads
-two live operands and is the stated follow-on.
+The leaf `Th` has a single input (`node -> node`) for this reason. A two-input
+`Th(left ‖ right)` (a binary Merkle parent) reads two live operands and is not
+covered here.
 
 ### Denotation
 
-`treehashChain_via_thirDialect` closes the `N`-fold by `ThirDialect.toJForProg_denote`
-(the bounded-FOR lowering soundness, §22) composed with the leaf body's
-definitional denotation (§18): the lowered jasmin for-loop computes exactly the
-`N`-fold of the `Th` leaf over the initial node, for every initial node and every
-public level count `N`. The `Th` leaf VALUE is an opaque `jasminExtSem` leaf
-(the default for a non-lattice `[reg 64] -> reg 64` call), so the value of the
-COMPOSITION is the callee's separate, KAT-discharged obligation — exactly as
-§18's `compress`. The FOLD composition (loop + call) is the transparent proved
-part; the leaf body is the opaque obligation the KAT cross-checks against the
-concrete C stand-in.
+`treehashChain_via_thirDialect` obtains the `N`-fold from
+`ThirDialect.toJForProg_denote` (soundness of the bounded-loop lowering, §23),
+composed with the definitional denotation of the leaf body (§19): the lowered
+jasmin loop computes the `N`-fold of the `Th` leaf over the initial node, for
+every initial node and every level count `N`. The value of `Th` is an opaque
+`jasminExtSem` leaf (the default for a `[reg 64] -> reg 64` call), so the value
+of the composition is stated relative to the leaf, and the correctness of the
+callee is a separate obligation, as for `compress` in §19. The fold (loop and
+call) is transparent in the denotation; the leaf body is opaque.
 
 ### Scope
 
-This lands the treehash CHAIN: a LINEAR fold of the tweakable hash over `N`
-levels (the WOTS+ hash chain / Merkle-path-authentication spine). It is NOT the
-full BINARY-tree treehash: there is no runtime index addressing into a leaf array
-(that needs E4 gather + nested loops) and `Th` is single-input here (a real
-Merkle parent hashes `left ‖ right`, two inputs). Both — index-gather binary-tree
-treehash, and multi-input `Th` — are the stated follow-ons. This is the chain
-SHAPE only. -/
+The treehash chain: a linear fold of the tweakable hash over `N` levels (the
+WOTS+ hash chain, or the Merkle authentication-path fold). The full binary-tree
+treehash is not covered: it needs runtime indexing into a leaf array (the load
+of §21 inside nested loops), and a Merkle parent hashes two inputs
+`left ‖ right` whereas `Th` has one. -/
 
 /-- The (opaque) value spec of the tweakable-hash leaf `Th`: the leaf semantics
     of the `thir_th` call, `jasminExtSem "thir_th" [.reg 64] (.reg 64)`. For a
-    non-lattice single-input leaf this is the opaque default — the value
-    correctness of one level is the callee's separate (KAT-discharged)
-    obligation, exactly as §18's `compress`. -/
+    single register-typed argument this is the opaque default; the value
+    correctness of one level is a separate obligation on the callee, as for
+    `compress` in §19. -/
 def treehashLeafSpec (node : BitVec 64) : BitVec 64 :=
   jasminExtSem "thir_th" [.reg 64] (.reg 64) (.cons node .nil)
 
@@ -4041,78 +4023,74 @@ def treehashLeafSpec (node : BitVec 64) : BitVec 64 :=
         node' = thExtCall "thir_th" [reg 64] (reg 64) node   -- node' = Th(node)
         ret node'
 
-    The body has ONE binding (the call), so the loop state — the running node —
-    is read EXACTLY ONCE per iteration (the call's single argument), then dead.
-    This is the register-light shape: no two-address merge conflict, so jasmin's
-    RA can compile the loop (contrast §22's three-reads ARX body). The leaf `Th`
-    is the §18 CALL composition: a function composing an already-verified leaf by
-    name, the body that §23 runs inside the §22 loop. -/
+    The body has one binding (the call), so the loop state, the running node, is
+    read exactly once per iteration (the single argument of the call) and is dead
+    afterwards. There is no two-address merge conflict, so jasmin's register
+    allocator accepts the loop, in contrast to the ARX body of §23, which reads
+    the accumulator three times. The call is the composition of §19, run inside
+    the loop of §23. -/
 def treehashLeafThir : Com thirDialect [.reg 64] (.reg 64) :=
   -- node' = Th(node)   ctx [node]; node = dB0
   .var (.mk (.thExtCall "thir_th" [.reg 64] (.reg 64)) rfl (.cons .here .nil))
   (.ret .here)
 
 /-- The treehash level body denotes the spec (the opaque `Th` leaf semantics), by
-    definitional unfolding of the `thirDialect` denotation — exactly as §18's
-    `treehashNodeThir_denote`, here single-input. -/
+    definitional unfolding of the `thirDialect` denotation, as
+    `treehashNodeThir_denote` (§19) with a single input. -/
 theorem treehashLeafThir_denote (node : BitVec 64) :
     treehashLeafThir.denote (.cons node .nil) = treehashLeafSpec node := rfl
 
-/-- The treehash CHAIN as a `ThirForProg`: the §18 `Th`-call level body, iterated
-    `N` levels (the §22 bounded-FOR front loop construct). The composition of the
-    two front extensions — a CALL inside a LOOP — the first whole-protocol shape
-    through the front. -/
+/-- The treehash chain as a `ThirForProg`: the level body calling `Th` (§19),
+    iterated over `N` levels with the bounded loop construct of §23. -/
 def treehashChain (n : Nat) : ThirDialect.ThirForProg (.reg 64) :=
   { n := n, update := treehashLeafThir }
 
-/-- **The treehash chain re-derived through the composed CALL-in-LOOP front
-    spine.** The lowered jasmin for-loop (`toJForProg`, run through the unchanged
-    `JForProg.denote` — the existing `for i = 0 to n` layer) computes exactly the
-    `N`-fold of the `Th` leaf over the initial node, on every initial node and
-    every public level count `N`. The loop STRUCTURE is the unchanged jasmin loop
-    layer (§22); the per-iteration body is the generic, proved `lowerThir` applied
-    to the §18 `thExtCall` leaf; the `N`-fold close is `ThirDialect.toJForProg_denote`.
-    The `Th` leaf VALUE is the opaque `jasminExtSem` obligation (KAT-discharged
-    against the C stand-in), exactly as §18; the FOLD composition is the
-    transparent proved part. This is a LOOP-OF-CALLS, not an unrolled body. -/
+/-- **The treehash chain through the bounded-loop lowering.** The lowered jasmin
+    loop (`toJForProg`, evaluated by `JForProg.denote`, the semantics of
+    `for i = 0 to n`) computes the `N`-fold of the `Th` leaf over the initial
+    node, for every initial node and every level count `N`. The iteration
+    structure is the jasmin loop layer (§23), the per-iteration body is the
+    `thExtCall` leaf of §19 lowered by the generic `lowerThir`, and the `N`-fold
+    follows from `ThirDialect.toJForProg_denote`. The value of `Th` is the opaque
+    `jasminExtSem` leaf, as in §19; the fold is transparent. The statement is
+    about the loop of calls, not an unrolled body. -/
 theorem treehashChain_via_thirDialect (n : Nat) (init : BitVec 64) :
     (treehashChain n).toJForProg.denote init
       = (List.range n).foldl (fun node _ => treehashLeafSpec node) init := by
   rw [ThirDialect.toJForProg_denote]
   rfl
 
-/-! ### §23.1  Emit the treehash chain → owned-x86 jasmin (ONE `for` loop OF a CALL)
+/-! ### §24.1  Emit the treehash chain to jasmin (one `for` loop of a call)
 
 `(treehashChain n).toJForProg` is a `JForProg (.reg 64)`; `JForProg.toJazzExport`
 renders it as a self-contained `export fn treehash_chain_<n>(reg u64 acc0) ->
-reg u64` (the `JForProg` accumulator-naming convention: the loop state is `acc`)
-whose body is the **actual** emitted
-`for i = 0 to n { v0 = thir_th(acc); acc = v0; }` (printed by the shared
-`ppInstrR` — the `extCall` arm renders the call `v0 = thir_th(acc);`, then the
-loop write-back rebinds `acc = v0;`), NEVER unrolled. The accumulator `acc` is
-read EXACTLY ONCE per iteration (the call argument), then dead — register-light.
-The callee `inline fn thir_th` is hosted
-ALONGSIDE the export by prepending `emitInlineLeaf` (the §18 callee-hosting
-pattern; `JForProg.toJazzExport` emits only the loop export, so the leaf is
-composed in here). The callee here is a concrete stand-in
-`thir_th(x) = (x + GOLDEN) ^ (x >> 29)` (one add, one shift, one xor — a
-single-input tweakable-hash leaf) so the C reference is computable; the verified
-content is the CALL-in-LOOP SHAPE, not the leaf body (opaque at the Lean
-denotation level). -/
+reg u64` (by the accumulator-naming convention of `JForProg`, the loop state is
+`acc`) whose body is the loop
+`for i = 0 to n { v0 = thir_th(acc); acc = v0; }`, not unrolled. It is printed
+by the shared `ppInstrR`: the `extCall` arm renders the call
+`v0 = thir_th(acc);`, and the loop write-back rebinds `acc = v0;`. The
+accumulator `acc` is read once per iteration (the call argument) and is dead
+afterwards. The callee `inline fn thir_th` is placed next to the export by
+prepending the output of `emitInlineLeaf` (as in §19.1;
+`JForProg.toJazzExport` emits only the loop export). The callee is the concrete
+stand-in `thir_th(x) = (x + GOLDEN) ^ (x >> 29)` (one add, one shift, one xor;
+a single-input tweakable-hash leaf), so that a C reference is computable; the
+theorems concern the call inside the loop, and the leaf body is opaque at the
+level of the Lean denotation. -/
 
-/-- The golden-ratio mixing constant for the `Th` stand-in (the §22 fold
-    constant), reused so the leaf is a recognisable mix step. -/
+/-- The golden-ratio mixing constant for the `Th` stand-in, equal to the round
+    constant `foldRoundConst` of §23. -/
 def treehashThConst : Nat := 0x9E3779B97F4A7C15
 
 /-- The concrete `Th` tweakable-hash callee stand-in: `inline fn thir_th(a0) -> u64`
     computing `(a0 + GOLDEN) ^ (a0 >> 29)` over a scratch register `c0` (and a
     second scratch `c1` for the shifted term). A single-input (`node -> node`)
-    leaf — register-light: the caller passes the live node ONCE. A stand-in so the
-    C reference is computable; the verified content is the CALL-in-LOOP
-    composition, not the leaf body (opaque at the Lean level). The 64-bit constant
-    is materialised into a register first (`c0 = GOLDEN; c0 = c0 + a0;`) so the
-    `add` takes a register operand, not a 64-bit immediate — portable across
-    jasminc versions (x86 `add r64, imm` only accepts an imm32). -/
+    leaf: the caller passes the live node once. A stand-in so that a C reference
+    is computable; the leaf body is opaque at the level of the Lean denotation.
+    The 64-bit constant is first loaded into a register
+    (`c0 = GOLDEN; c0 = c0 + a0;`), so the `add` takes a register operand rather
+    than a 64-bit immediate, which x86 `add r64, imm` does not accept (it takes
+    at most an imm32). -/
 def treehashThLeafJazz : String :=
   emitInlineLeaf "thir_th" 64 1
     ["reg u64 c0;", "reg u64 c1;",
@@ -4124,9 +4102,9 @@ def treehashThLeafJazz : String :=
 /-- The emitted treehash-chain `.jazz` for a fixed public level count `n`: the
     `Th` callee `inline fn thir_th` hosted alongside the `export fn
     treehash_chain_<n>` whose body is the actual
-    `for i = 0 to n { v0 = thir_th(acc); acc = v0; }` (the §18 call inside the §22
-    loop). The leaf is prepended to `JForProg.toJazzExport`'s loop export (which
-    hosts only the export fn). -/
+    `for i = 0 to n { v0 = thir_th(acc); acc = v0; }` (the call of §19 inside the
+    loop of §23). The leaf is prepended to the loop export of
+    `JForProg.toJazzExport`, which emits only the export fn. -/
 def treehashChainJazz (n : Nat) : String :=
   treehashThLeafJazz ++ "\n\n" ++
     CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint.JForProg.toJazzExport
@@ -4138,14 +4116,13 @@ def treehashChainJazz (n : Nat) : String :=
 #guard (strContains (treehashChainJazz 8) "inline fn thir_th(reg u64 a0) -> reg u64")
 
 /- The emitted unit is an `export fn treehash_chain_8` with the bounded-loop ABI
-    (`reg u64 node0 -> reg u64`). -/
+    (`reg u64 acc0 -> reg u64`). -/
 #guard (strContains (treehashChainJazz 8) "export fn treehash_chain_8(reg u64 acc0) -> reg u64")
 
-/- The body is a REAL `for i = 0 to 8` loop whose iteration CALLS the `Th` leaf
-    (`v0 = thir_th(acc);`) and rebinds the running node (`acc = v0;`) — the §18
-    call inside the §22 loop, emitted, not unrolled. The accumulator is read
-    EXACTLY ONCE per iteration (the call argument), then dead: the single-acc-read
-    register-light shape jasmin's RA can compile. -/
+/- The emitted unit contains the loop header `for i = 0 to 8`, the call of the
+    `Th` leaf (`v0 = thir_th(acc);`) and the rebinding of the running node
+    (`acc = v0;`): the call of §19 inside the loop of §23, emitted rather than
+    unrolled. -/
 #guard (strContains (treehashChainJazz 8) "for i = 0 to 8")
     && (strContains (treehashChainJazz 8) "v0 = thir_th(acc);")
     && (strContains (treehashChainJazz 8) "acc = v0;")

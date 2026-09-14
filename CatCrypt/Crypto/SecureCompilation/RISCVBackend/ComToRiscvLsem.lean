@@ -11,57 +11,62 @@ public import CatCrypt.Crypto.SecureCompilation.MultiBackendDemo
 public import CatCrypt.Crypto.SecureCompilation.VIR.Compiler
 
 /-!
-# `Com → RISC-V`: a Sail-grounded block-execution model + value-preservation keystone
+# `Com → RISC-V`: a Sail-related block-execution model and value preservation
 
-This module turns the RISC-V path into a **genuine functional semantics** for the
-RV64 base-ALU fragment that already carries a Sail refinement, replacing the
-`MachineModel.exec := id` validation shell of `VIR/Compiler.lean`'s `latticeModel`
-(`exec := fun _ s => s`) with a `MachineModel` whose `exec` is the real
-`runRBlock64` block fold, *grounded* in the per-op `riscv/sail-riscv`-validated
-semantics.
+For the RV64 base-ALU fragment, this module defines a `MachineModel` whose `exec`
+is the `runRBlock64` block fold and relates each base-ALU step of that fold to the
+`execute_RTYPE` clause of an in-file excerpt of the sail-riscv-lean generated
+model (`SailRiscv64Refinement`). In `VIR/Compiler.lean`, `latticeModel` has
+`exec := fun _ s => s`, which does not run the code.
 
-## What was already in the tree (reused verbatim, not re-derived)
+## Dependencies
 
 * **The block model** — `RiscvModel64.runRBlock64` (the `evalRInst64` fold) and
-  `runRBlock64_append`, already proved.
-* **The whole-`Com` value chain** — `MultiBackendDemo.com_riscv_e2e`: for a
-  supported all-`reg 64` `Com`, the RV64 machine run computes `Com.denote`. This
-  chains `ScalarLinDeBruijn.comToReg_faithful` (the de-Bruijn front),
+  `runRBlock64_append`.
+* **The whole-`Com` value chain** — `MultiBackendDemo.com_riscv_e2e`: for a `Com`
+  satisfying `ComOK` over an `AllReg64` context, run from a state whose registers
+  are `envOf Γ.length V`, the RV64 machine run computes `Com.denote`. It composes
+  `ScalarLinDeBruijn.comToReg_faithful` (the de-Bruijn front),
   `ScalarLin.compile_denote_pure_on` (the neutral backend lift), and
-  `RegToRiscv.regToROp_denote` (the `ScalarTarget` keystone). The chain terminates
-  at the model `evalRInst64`.
+  `RegToRiscv.regToROp_denote` (the `ScalarTarget` theorem). Its machine
+  semantics is the hand-written `evalRInst64`.
 * **The per-op Sail refinement** — `SailRiscv64Ref.rtype_{add,sub,and,or,xor}`:
-  the verbatim sail-riscv `execute_RTYPE` clause writes our `RiscvModel64` op.
+  for `rd` with `rd.toNat ≠ 0`, the value the in-file `execute_RTYPE` excerpt
+  writes to `rd` equals the corresponding `RiscvModel64` op on the operands. The
+  excerpt is a hand copy of the sail-riscv-lean generated output (commit
+  `9eba3f07`); its fidelity to that output is not machine-checked in this
+  repository.
 
-## What this module adds (the missing grounding)
+## Contents
 
-`com_riscv_e2e` terminates at the **trusted hand-written** `evalRInst64`; nothing
-tied that model back to the **proved Sail** semantics, which live in a separate
-register representation (`RegFile = BitVec 5 → BitVec 64`, run via `runRd`). The
-new content here is exactly that bridge, for the five ADD/SUB/AND/OR/XOR ops with
-a Sail refinement:
+`com_riscv_e2e` is stated over the hand-written `evalRInst64`. The Sail excerpt
+uses a different register representation (`RegFile = BitVec 5 → BitVec 64`, run
+via `runRd`). This module relates the two for the five ops ADD/SUB/AND/OR/XOR:
 
-1. **5a `riscvStep64_sail_grounded`** — for a base-ALU `RInst64`, under a
-   register-name ↔ register-number alignment `RegAlign`, the value `evalRInst64`
-   writes to the destination **equals the value the Sail `execute_RTYPE` clause
-   writes** (`runRd …`). So each step of the model is the Sail-validated step.
-2. **5b `comToRiscvLsem_correct`** — the whole-`Com` keystone: the RV64
-   `runRBlock64` execution of the compiled-and-lowered base-ALU `Com` computes
-   `Com.denote` (via `com_riscv_e2e`) **and** every instruction it runs is base-ALU
-   (`riscvBlock_all_baseAlu`), hence every step is Sail-grounded by 5a.
-3. **5c `riscvBaseAluModel`** — a genuine `MachineModel` with
-   `exec := runRBlock64` (a non-`id` execution semantics) and `validated` the 5a
-   grounding, inhabited by `riscvBaseAluGrounded_proof`.
+1. **`riscvStep64_sail_grounded`** — for a base-ALU `RInst64` whose destination
+   name is neither `"zero"` nor `"x0"`, under a register-name ↔ register-number
+   alignment `RegAlign s rf nm` with `(nm rd).toNat ≠ 0`, the value `evalRInst64`
+   writes to the destination equals the value the Sail `execute_RTYPE` excerpt
+   writes (`runRd …`).
+2. **`comToRiscvLsem_correct`** (main theorem) — for `ComBaseAlu com`,
+   `AllReg64 Γ` and a start state with `s.regs = envOf Γ.length V`, the RV64
+   `runRBlock64` execution of the compiled-and-lowered block, read at the result
+   register, equals `Com.denote com V` (via `com_riscv_e2e`), and every
+   instruction it runs is base-ALU (`riscvBlock_all_baseAlu`). The per-step Sail
+   relation of item 1 applies to these instructions under its own hypotheses; it
+   is not a conjunct of this theorem.
+3. **`riscvBaseAluModel`** — a `MachineModel` with `exec := runRBlock64` and
+   `validated := RiscvBaseAluGrounded` (the statement of item 1), proved by
+   `riscvBaseAluGrounded_proof`.
 
-## Honest scope: base-ALU only
+## Scope: base-ALU only
 
-Covered: **ADD, SUB, AND, OR, XOR** — exactly the RV64I R-type subset for which
-`SailRiscv64Ref` proves `execute_RTYPE`-vs-model refinement. **Deferred:**
-`MUL`/`MULHU` — `SailRiscv64Ref.rtype_mul`/`rtype_mulhu` are proved, but they go
-through `execute_MUL` (a different Sail clause), so the uniform `execute_RTYPE`
-grounding here does not cover them; folding them in is a mechanical extension of
-`rinstRop`/the case split, left out so the base-ALU keystone stays clean. `SLTU`
-(carry synthesis) is likewise not in this R-type-uniform statement.
+Covered: **ADD, SUB, AND, OR, XOR**, the RV64I R-type ops for which
+`SailRiscv64Ref` proves an `execute_RTYPE` refinement. `MUL`/`MULHU` are not
+covered here: `SailRiscv64Ref.rtype_mul`/`rtype_mulhu` are proved against
+`execute_MUL`, a different Sail clause, and are used in
+`RISCVBackend/ComToRiscvMulLsem.lean`. `SLTU` (carry synthesis) is not in this
+statement.
 -/
 
 @[expose] public section
@@ -114,15 +119,15 @@ def rinstB : RInst64 → String
 def RegAlign (s : RState64) (rf : RegFile) (nm : String → BitVec 5) : Prop :=
   ∀ r : String, rget rf (nm r) = s.get r
 
-/-! ## 2. (5a) The Sail-grounded per-op preservation -/
+/-! ## 2. Per-op agreement with the Sail excerpt -/
 
-/-- **5a — the per-op semantics is the Sail-validated semantics.** For a base-ALU
-    `RInst64`, under a register-name alignment, the value our model `evalRInst64`
-    writes to the destination equals the value the **verbatim sail-riscv
-    `execute_RTYPE` clause** writes to `rd` (`runRd …`). Each arm dispatches to the
-    corresponding proved `SailRiscv64Ref.rtype_*` refinement; the non-base-ALU
-    arms are vacuous (`IsBaseAlu` is `False` there). This is the grounding the
-    model `runRBlock64` was missing — its steps are the Sail steps. -/
+/-- **Per-op agreement of `evalRInst64` with the Sail `execute_RTYPE` excerpt.**
+    For a base-ALU `RInst64` whose destination name is neither `"zero"` nor
+    `"x0"`, under a register-name alignment `RegAlign s rf nm` with
+    `(nm (rinstD i)).toNat ≠ 0`, the value `evalRInst64` writes to the destination
+    equals the value the in-file `execute_RTYPE` excerpt writes to `rd`
+    (`runRd …`). Each arm applies the corresponding `SailRiscv64Ref.rtype_*`
+    refinement; the non-base-ALU arms are excluded by `IsBaseAlu`. -/
 theorem riscvStep64_sail_grounded
     (s : RState64) (rf : RegFile) (nm : String → BitVec 5) (i : RInst64)
     (hbase : IsBaseAlu i)
@@ -161,10 +166,10 @@ theorem riscvStep64_sail_grounded
   | srli d a sh => exact absurd hbase (by simp [IsBaseAlu])
   | slli d a sh => exact absurd hbase (by simp [IsBaseAlu])
 
-/-! ## 3. (5b, part I) The compiled block is entirely base-ALU
+/-! ## 3. The compiled block is entirely base-ALU
 
-So that *every* step the `runRBlock64` execution takes is Sail-grounded by 5a, we
-show the lowered block of a base-ALU `Com` contains only base-ALU instructions. -/
+The lowered block of a base-ALU `Com` contains only base-ALU instructions, the
+instructions to which `riscvStep64_sail_grounded` applies. -/
 
 /-- A `RegStmt` whose RV64 selection + lowering is the base-ALU fragment: the five
     binary ALU ops the front emits for `regArith {add,sub,and,or,xor}`. -/
@@ -243,29 +248,33 @@ theorem comToRegProg_RegBaseAlu :
       · exact opToStmts_base _ _ _ hb stmt hh
       · exact ih (depth + 1) stmt hh
 
-/-- **The compiled-and-lowered RV64 block of a base-ALU `Com` is all base-ALU** —
-    so every instruction the model executes is Sail-grounded by
-    `riscvStep64_sail_grounded`. -/
+/-- **The compiled-and-lowered RV64 block of a base-ALU `Com` is all base-ALU.**
+    Every instruction the model executes is therefore in the domain of
+    `riscvStep64_sail_grounded`, which relates it to the Sail excerpt under that
+    theorem's register hypotheses. -/
 theorem riscvBlock_all_baseAlu {Γ : Ctxt jasminDialect}
     {com : Com jasminDialect Γ (.reg 64)} (hba : ComBaseAlu com) :
     ∀ i ∈ lowerRBlock64 (regToROp (comToRegProg com Γ.length)), IsBaseAlu i :=
   regprog_lower_base (comToRegProg com Γ.length) (comToRegProg_RegBaseAlu hba Γ.length)
 
-/-! ## 4. (5b) The `Com → RISC-V` value-preservation keystone -/
+/-! ## 4. `Com → RISC-V` value preservation -/
 
-/-- **5b — the Sail-grounded whole-`Com` value-preservation keystone.** For a
-    base-ALU all-`reg 64` `Com`, executing the compiled-and-lowered RV64 block on
-    the model:
+/-- **Whole-`Com` value preservation for RV64.** For a `Com` with
+    `ComBaseAlu com` over a context with `AllReg64 Γ`, and a start state `s` with
+    `s.regs = envOf Γ.length V`, executing the compiled-and-lowered RV64 block
+    with `runRBlock64`:
 
-    1. **computes the source `Com.denote`** (the value chain, via the existing
-       `com_riscv_e2e` — `comToReg_faithful` ∘ `compile_denote_pure_on` ∘
-       `regToROp_denote`), and
-    2. **runs only Sail-grounded instructions** (`riscvBlock_all_baseAlu` — every
-       executed `RInst64` is base-ALU, so each step matches its `execute_RTYPE`
-       clause by `riscvStep64_sail_grounded`).
+    1. yields a state whose register `comRetName com Γ.length` holds
+       `Com.denote com V` (via `com_riscv_e2e`, which composes
+       `comToReg_faithful`, `compile_denote_pure_on` and `regToROp_denote`), and
+    2. executes only base-ALU instructions (`riscvBlock_all_baseAlu`).
 
-    The `MachineModel.exec := id` shell of `latticeModel` is thereby replaced, on
-    the base-ALU fragment, by the genuine `runRBlock64` functional semantics. -/
+    Conjunct (2) states membership only. For each such instruction,
+    `riscvStep64_sail_grounded` relates its `evalRInst64` step to the
+    `execute_RTYPE` excerpt under a register alignment, a destination other than
+    `"zero"`/`"x0"`, and a nonzero Sail register number; those hypotheses are not
+    discharged here. The execution semantics is `runRBlock64`, in place of the
+    identity `exec` of `latticeModel`. -/
 theorem comToRiscvLsem_correct {Γ : Ctxt jasminDialect}
     {com : Com jasminDialect Γ (.reg 64)} (hba : ComBaseAlu com) (hΓ : AllReg64 Γ)
     (V : Ctxt.Valuation Γ) (s : RState64) (hs : s.regs = envOf Γ.length V) :
@@ -275,13 +284,15 @@ theorem comToRiscvLsem_correct {Γ : Ctxt jasminDialect}
     ∧ (∀ i ∈ lowerRBlock64 (regToROp (comToRegProg com Γ.length)), IsBaseAlu i) :=
   ⟨com_riscv_e2e hba.toComOK hΓ V s hs, riscvBlock_all_baseAlu hba⟩
 
-/-! ## 5. (5c) A genuine non-`id` `exec` for the RISC-V model -/
+/-! ## 5. A RISC-V `MachineModel` with `exec := runRBlock64` -/
 
-/-- The proposition recording the per-op Sail grounding (5a), to inhabit the
-    `MachineModel.validated` field — the RISC-V analogue of `VIR/Compiler.lean`'s
-    `RiscvValidated`, but at the **value** (not just `decode∘encode`) depth: every
-    base-ALU step of the execution semantics is the sail-riscv `execute_RTYPE`
-    step. -/
+/-- The statement of `riscvStep64_sail_grounded` as a proposition, used as the
+    `MachineModel.validated` field. Where `VIR/Compiler.lean`'s `RiscvValidated`
+    concerns the `decode∘encode` round-trip, this proposition is value-level: for
+    every base-ALU `RInst64` with destination other than `"zero"`/`"x0"`, under
+    `RegAlign s rf nm` and `(nm (rinstD i)).toNat ≠ 0`, the value `evalRInst64`
+    writes to the destination equals the value the `execute_RTYPE` excerpt
+    writes. -/
 def RiscvBaseAluGrounded : Prop :=
   ∀ (s : RState64) (rf : RegFile) (nm : String → BitVec 5) (i : RInst64),
     IsBaseAlu i → ¬ (rinstD i = "zero" ∨ rinstD i = "x0") → RegAlign s rf nm →
@@ -290,18 +301,16 @@ def RiscvBaseAluGrounded : Prop :=
       = runRd (execute_RTYPE ⟨nm (rinstB i)⟩ ⟨nm (rinstA i)⟩ ⟨nm (rinstD i)⟩ (rinstRop i))
           rf (nm (rinstD i))
 
-/-- `RiscvBaseAluGrounded` is inhabited by the proved 5a theorem (not `True`). -/
+/-- `RiscvBaseAluGrounded` holds, by `riscvStep64_sail_grounded`. -/
 theorem riscvBaseAluGrounded_proof : RiscvBaseAluGrounded :=
   fun s rf nm i hbase hdst halign hrd => riscvStep64_sail_grounded s rf nm i hbase hdst halign hrd
 
-/-- **5c — the RISC-V base-ALU `MachineModel`, with a genuine `exec`.** Unlike
-    `VIR/Compiler.lean`'s `latticeModel` (whose `exec := fun _ s => s` is a
-    validation shell that does not run the code), this model's `exec` is the real
-    `runRBlock64` block fold over `RState64`, and its `validated` field is the 5a
-    Sail-grounding `RiscvBaseAluGrounded` (inhabited by `riscvBaseAluGrounded_proof`).
-    `Code` is the executed `RInst64` list; `State`/`Value` is `RState64`. This is
-    the non-`id` execution model the RISC-V path was missing for the base-ALU
-    fragment. -/
+/-- **The RISC-V base-ALU `MachineModel`.** Its `exec` is the `runRBlock64` block
+    fold over `RState64`, and its `validated` field is `RiscvBaseAluGrounded`
+    (proved by `riscvBaseAluGrounded_proof`). `Code` is the executed `RInst64`
+    list; `State` and `Value` are `RState64`; `encodeIn` and `decodeOut` are `id`.
+    In `VIR/Compiler.lean`, `latticeModel` has `exec := fun _ s => s`, which does
+    not run the code. -/
 def riscvBaseAluModel : MachineModel where
   Code := List RInst64
   State := RState64
@@ -311,13 +320,13 @@ def riscvBaseAluModel : MachineModel where
   exec := fun code s => runRBlock64 s code
   validated := RiscvBaseAluGrounded
 
-/-- The model's `exec` genuinely runs the code: it is `runRBlock64`, not the
+/-- The model's `exec` is `runRBlock64`, which runs the code, in contrast to the
     `latticeModel` identity `fun _ s => s`. -/
 theorem riscvBaseAluModel_exec (code : List RInst64) (s : RState64) :
     riscvBaseAluModel.exec code s = runRBlock64 s code := rfl
 
-/-- The model's `validated` field is the genuine 5a Sail-grounding, discharged by
-    `riscvBaseAluGrounded_proof` (never `True`-by-fiat). -/
+/-- The model's `validated` field, `RiscvBaseAluGrounded`, holds by
+    `riscvBaseAluGrounded_proof`. -/
 theorem riscvBaseAluModel_validated : riscvBaseAluModel.validated :=
   riscvBaseAluGrounded_proof
 

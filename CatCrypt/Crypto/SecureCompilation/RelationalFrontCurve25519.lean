@@ -33,39 +33,33 @@ X25519 / Ed25519:
    = 0x7FFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFED`
 (64 hex digits / 256-bit field width; top nibble `7`).
 
-## The limb count: `k = 4` (the natural saturated layout)
+## The limb count: `k = 4`
 
-Unlike secp256k1's prime (`p ≈ 2^256`, a *full* 256-bit value, so `2p ≈ 2^257` and the
-ADD no-overflow bound `2q ≤ (2^64)^4` fails — forcing `k = 5`), the Curve25519 prime is a
-**255-bit** value: `2p = 2^256 − 38 ≤ 2^256 = (2^64)^4`. The bound `2q ≤ (2^64)^4`
-therefore **holds at `k = 4`** with the single 64-bit limb-ceiling to spare, so we use the
-natural saturated **`k = 4`** 64-bit layout (top limb `0x7FFFFFFFFFFFFFFF`, no spurious
-zero limb). The product width for MUL is then `2k = 8` limbs.
+`KLimbPrime` requires the ADD no-overflow bound `2q ≤ (2^64)^k`. The Curve25519 prime is
+a 255-bit value, so `2q = 2·(2^255 − 19) = 2^256 − 38 ≤ 2^256 = (2^64)^4`, and the bound
+holds at `k = 4` (field `two_q_le` of `c25519KLimbPrime`, closed by `norm_num`). This
+module uses the saturated 4×64-bit layout with top limb `0x7FFFFFFFFFFFFFFF`. For
+comparison, the secp256k1 prime is a full 256-bit value, `2q > (2^64)^4`, and
+`RelationalFrontSecp256k1` uses `k = 5`. The product width for MUL is `2k = 8` limbs.
 
-(The task brief anticipated a `k = 5` forced layout by analogy with secp256k1; that
-analogy does not hold here — `2·(2^255−19) ≤ (2^64)^4` is `decide`/`norm_num`-true, and
-the 4-limb vector round-trips to the prime — so `k = 4` is both correct and tighter. The
-`KLimbPrime` machinery is `k`-generic, so the choice is purely the limb count.)
+## Proved statements
 
-## Curve25519 instance scope (HONEST)
+* **ADD:** the `ZMod q` field addition `a + b`, serialized by the 4-limb encoding
+  `encMLK q 4`, equals the 4-limb reducing kernel `mlAddModK` (carry-extended limb
+  addition followed by the `condSubLimbs` conditional-subtract reduce) on the serialized
+  operands, read through `bignumVal`. This is `c25519_add_commutes`.
+* **MUL:** the `ZMod q` field multiplication `a * b`, serialized by the same encoding,
+  equals the 8-limb (`2k = 8`) Barrett-reducing kernel `mlMulMod` on the serialized
+  operands, read through `bignumVal` (`mu = ⌊(2^64)^8 / q⌋`, defined as its
+  side-condition value so no `2^512` literal is evaluated). This is
+  `c25519_mul_commutes`.
+* The three `Nat` side conditions (`q ≠ 0`, `2q ≤ (2^64)^4`, `bignumVal c25519Limbs = q`)
+  are closed by `norm_num`/`simp` on the 255-bit literal (no `native_decide`); the Barrett
+  reciprocal side conditions are closed by `Nat.div_lt_self` and the generic re-limbing
+  round-trip, without evaluating the quotient digits.
 
-* **ADD (sorry-free):** the abstract `ZMod q` field add `a + b`, serialized by the
-  4-limb encoding `encMLK q 4`, equals the emitted 4-limb reducing kernel `mlAddModK`
-  on the serialized operands (with the genuine `condSubLimbs` reduce), read through
-  `bignumVal`. This is `c25519_add_commutes`.
-* **MUL (sorry-free):** the abstract `ZMod q` field multiply `a * b`, serialized by the
-  same encoding, equals the emitted 8-limb (`2k = 8`) Barrett-reducing kernel `mlMulMod`
-  on the serialized operands — with the genuine multi-limb Barrett reduce of the product
-  (`mu = ⌊(2^64)^8 / q⌋`, defined *as its side-condition value* so no `2^512` literal is
-  evaluated). This is `c25519_mul_commutes`.
-* The three Nat side conditions (`q ≠ 0`, `2q ≤ (2^64)^4`, `bignumVal c25519Limbs = q`)
-  discharge by `norm_num`/`simp` on the 255-bit literal (no `native_decide`); the Barrett
-  reciprocal-width side conditions discharge by `Nat.div_lt_self` + the generic re-limbing
-  round-trip, never evaluating the quotient digits.
-
-With ADD + MUL both realized over the 4-limb carrier, the Curve25519 base-field op set is
-complete for the inversion-free arithmetic (Montgomery-ladder steps are straight-line
-`+`/`·`; field inversion is a separate addition-chain `MUL` leaf, not a relational front).
+`mlAddModK` and `mlMulMod` are Lean functions on limb lists. Subtraction and inversion
+in this field are not stated in this module.
 -/
 
 @[expose] public section
@@ -84,8 +78,8 @@ The Curve25519 base prime:
    = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFED
    = 57896044618658097711785492504343953926634992332820282019728792003956564819949`.
 A 255-bit prime, so the low three 64-bit limbs are `0xFFFFFFFFFFFFFFFF` except the low
-limb `0xFFFFFFFFFFFFFFED`, and the top limb is `0x7FFFFFFFFFFFFFFF` (high bit clear). We
-lay it out over the natural saturated **`k = 4`** limbs; the ADD no-overflow bound
+limb `0xFFFFFFFFFFFFFFED`, and the top limb is `0x7FFFFFFFFFFFFFFF` (high bit clear). It
+is laid out over the saturated `k = 4` limbs; the ADD no-overflow bound
 `2q ≤ (2^64)^4` holds because `2q = 2^256 − 38 ≤ 2^256` (see the module header). -/
 
 /-- The Curve25519 base-field prime `q` (`= 2^255 − 19`, 255-bit). -/
@@ -105,7 +99,7 @@ def c25519Limbs : List (BitVec 64) :=
     BitVec.ofNat 64 0x7FFFFFFFFFFFFFFF ]
 
 /-- `c25519Limbs` reads back to `curve25519Q` — the 4-limb vector represents the prime.
-    Closed axiom-cleanly by `simp [bignumVal, BitVec.toNat_ofNat] + norm_num` (no
+    Proved by `simp only [bignumVal, BitVec.toNat_ofNat]` and `norm_num` (no
     `native_decide`). -/
 theorem bignumVal_c25519Limbs : bignumVal c25519Limbs = curve25519Q := by
   simp only [c25519Limbs, curve25519Q, bignumVal, BitVec.toNat_ofNat]; norm_num
@@ -113,7 +107,7 @@ theorem bignumVal_c25519Limbs : bignumVal c25519Limbs = curve25519Q := by
 /-! ## 2. The Curve25519 base-field prime as a `KLimbPrime` (`k = 4`) — the ADD datum -/
 
 /-- **The Curve25519 base-field prime as a `KLimbPrime` (`k = 4`).** All three side
-    conditions discharge axiom-cleanly: `q ≠ 0` and `2q ≤ (2^64)^4` by `norm_num`
+    conditions are closed without `native_decide`: `q ≠ 0` and `2q ≤ (2^64)^4` by `norm_num`
     (pure-`Nat`); `bignumVal c25519Limbs = q` by `bignumVal_c25519Limbs`. The `k = 4`
     layout holds `2q ≤ (2^64)^4` because `2q = 2^256 − 38 ≤ 2^256` — the 255-bit prime
     sits just under the 4-limb ceiling (unlike secp256k1, whose full-256-bit prime needs
@@ -128,11 +122,11 @@ def c25519KLimbPrime : KLimbPrime where
   two_q_le := by unfold curve25519Q; norm_num
 
 /-- **The Curve25519 base-field ADD commuting square.** The abstract Curve25519
-    base-field addition `a + b` (in `ZMod q` for the genuine 255-bit prime
-    `q = curve25519Q`), serialized by the 4-limb encoding `encMLK q 4`, equals the emitted
+    base-field addition `a + b` (in `ZMod q` for the 255-bit prime
+    `q = curve25519Q`), serialized by the 4-limb encoding `encMLK q 4`, equals the
     4×64-bit reducing kernel `mlAddModK` on the serialized operands, read through
-    `bignumVal` — with the genuine 4-limb conditional-subtract modular reduce. The
-    Curve25519 sibling of `secp_add_commutes`. -/
+    `bignumVal`; `mlAddModK` ends with the 4-limb conditional-subtract modular reduce.
+    The Curve25519 counterpart of `secp_add_commutes`. -/
 theorem c25519_add_commutes (a b : ZMod curve25519Q) :
     (a + b).val
       = bignumVal (mlAddModK c25519Limbs (encMLK curve25519Q 4 a) (encMLK curve25519Q 4 b)) :=
@@ -142,13 +136,13 @@ theorem c25519_add_commutes (a b : ZMod curve25519Q) :
 
 Two Curve25519 base-field elements whose abstract sum exceeds `q` — so the 4-limb
 conditional-subtract reduce *fires*. Take `a = q - 1 = -1` (the maximal residue) and
-`b = 5`: in `ZMod q`, `a + b = q - 1 + 5 = q + 4 ≡ 4`, which the emitted kernel must
+`b = 5`: in `ZMod q`, `a + b = q - 1 + 5 = q + 4 ≡ 4`, which the kernel must
 reduce. The abstract field equation `(-1) + 5 = 4 + 0` transfers (through
-`mlAddK_spec_transfers`) to the emitted 4-limb kernel agreeing on the serialized
+`mlAddK_spec_transfers`) to the 4-limb kernel agreeing on the serialized
 operands. -/
 
 /-- **Worked wrapping example.** In the Curve25519 base field, `(-1) + 5` wraps to `4`.
-    The abstract field equation `(-1) + 5 = 4 + 0` in `ZMod q` transfers to the emitted
+    The abstract field equation `(-1) + 5 = 4 + 0` in `ZMod q` transfers to the
     4-limb `mlAddModK` kernel agreeing (through `bignumVal`) on the serialized operands
     — the wrapping case the 4-limb conditional-subtract reduce must get right. -/
 theorem c25519_add_wrap_example :
@@ -207,11 +201,11 @@ def c25519KLimbPrimeMul : KLimbPrimeMul where
   k_pos := by decide
 
 /-- **The Curve25519 base-field MUL commuting square.** The abstract Curve25519
-    base-field multiply `a * b` (in `ZMod q` for the genuine 255-bit prime
-    `q = curve25519Q`), serialized by the 4-limb encoding `encMLK q 4`, equals the emitted
+    base-field multiply `a * b` (in `ZMod q` for the 255-bit prime
+    `q = curve25519Q`), serialized by the 4-limb encoding `encMLK q 4`, equals the
     8-limb Barrett-reducing kernel `mlMulMod` on the serialized operands, read through
-    `bignumVal` — with the genuine multi-limb Barrett modular reduce of the product. The
-    Curve25519 sibling of `secp_mul_commutes`, completing the Curve25519 field-op set. -/
+    `bignumVal`; `mlMulMod` applies the multi-limb Barrett modular reduce to the product.
+    The Curve25519 counterpart of `secp_mul_commutes`. -/
 theorem c25519_mul_commutes (a b : ZMod curve25519Q) :
     (a * b).val
       = bignumVal (mlMulMod 4 c25519MuLimbs c25519Limbs
@@ -222,8 +216,8 @@ theorem c25519_mul_commutes (a b : ZMod curve25519Q) :
 
 `addModRealizationK curve25519Q` / `mulModRealizationK curve25519Q` tie the abstract
 `ZMod q` ops to the value-carrier `bop`s `(· + ·) % q` / `(· * ·) % q`; the whole-term
-abstraction theorem (`OpExpr.expr_eq_transfer`) is inherited from `ReprTransferExpr` for
-free. -/
+abstraction theorem (`OpExpr.expr_eq_transfer`) from `ReprTransferExpr` applies to
+them. -/
 
 /-- **The `EndoOpRealization` for the Curve25519 base-field ADD.** `op = (· + ·)` on
     `ZMod curve25519Q`; `bop = fun x y => (x + y) % curve25519Q`; `enc = ZMod.val`. -/
@@ -244,12 +238,12 @@ def c25519MulRealization :
 Two Curve25519 base-field elements whose abstract product exceeds `q`, so the 8-limb
 Barrett reduce must wrap. Take `a = -1 = q - 1` (the maximal residue) and `b = 2`: in
 `ZMod q`, `(-1) * 2 = -2 = q - 2`, which equals `(-2) * 1` — the abstract field equation
-`(-1) * 2 = (-2) * 1` transfers (through `mlMulK_spec_transfers`) to the emitted 8-limb
+`(-1) * 2 = (-2) * 1` transfers (through `mlMulK_spec_transfers`) to the 8-limb
 MUL-reduce kernel agreeing on the serialized operands. -/
 
 /-- **Worked product example.** In the Curve25519 base field, `(-1) * 2 = -2` (the maximal
     residue times `2`, reduced). The abstract field equation `(-1) * 2 = (-2) * 1` in
-    `ZMod q` transfers to the emitted 8-limb `mlMulMod` kernel agreeing (through
+    `ZMod q` transfers to the 8-limb `mlMulMod` kernel agreeing (through
     `bignumVal`) on the serialized operands — the wrapping case the multi-limb Barrett
     reduce must get right. -/
 theorem c25519_mul_wrap_example :

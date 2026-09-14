@@ -23,7 +23,7 @@ This file connects UOV's scalar `.jinc` leaf body (`_gf256_mul_one` and
 the Lean-level jasmin operational semantics in
 `CatCrypt/Crypto/Jasmin/JasminCoqSemMirror.lean`.
 
-Sibling to `MayoLeafJasminSim.lean` (the MAYO pilot, same shape).
+`QruovLeafJasminSim.lean` has the same structure for QR-UOV.
 
 ## Scope (limited per fallback gate)
 
@@ -50,9 +50,8 @@ What we CAN do at this batch:
     initialised with input bytes `acc`, `a`, `b` produces a post-state
     whose `(acc', a')` matches `Gf256.mulStep` on the projection.
 
-This is the UOV analogue of `MayoLeafJasminSim.gf16MulStepCmd`: the
-first concrete bridge from the new jasmin semantics to UOV's
-GF(256) scalar leaf transcription. The chain to the *full* unrolled
+This relates the `JasminCoqSemMirror` semantics to UOV's GF(256) scalar
+leaf transcription. The chain to the *full* unrolled
 `uov_gf256_dot_l8` body (8 inner mul rounds × 8 outer XOR-accumulation
 steps) is mechanical follow-up once the `fnDef` / `Ccall` gap is
 closed.
@@ -291,13 +290,8 @@ the new jasmin operational semantics produces a post-state whose
 
 To stay within `native_decide`'s reachable budget we restrict the
 universal to the **low-byte product space**: 4 + 4 + 4 = 12-bit space
-(4096 cases), modelling the GF(16) sub-window used by MAYO's
-companion file (a deliberately tractable sub-corner for CI). The
-full GF(256) space (24-bit, 16M cases) would close by `native_decide`
-on a workstation; we leave that for follow-up.
-
-The structural shape of the theorem matches MAYO's
-`gf16MulStep_jasmin_sem_eq_smallInputs` exactly. -/
+(4096 cases). The full GF(256) input space (24 bits, about 16M cases) is not
+checked. -/
 
 /-- **Connector theorem (single-round, restricted-input form).**
     On all inputs in the 4-bit window (`a, b, acc < 16`), the one-round
@@ -322,15 +316,14 @@ theorem gf256MulStep_jasmin_sem_eq_smallInputs :
 | Smoke tests (5 examples) | Per-input agreement with `Gf256.mulStep` | **`native_decide` PROVED** |
 | `gf256MulStep_jasmin_sem_eq_smallInputs` | Round-Cmd ≅ `Gf256.mulStep` on the 4-bit input window (4096 cases) | **`native_decide` PROVED** |
 
-**What this delivers**: the UOV analogue of MAYO's
-`MayoLeafJasminSim.gf16MulStep_jasmin_sem_eq_smallInputs` — a proved
-bridge from the new `JasminCoqSemMirror` operational semantics to a
-verified `.jinc`-leaf transcription for the bit-serial GF(256)
-multiply. The chain to the full unrolled `uov_gf256_dot_l8` body
-(8 mul rounds × 8 outer XOR-accumulation steps) is mechanical
-follow-up once the `Ccall` / `fnDef` gap is closed.
+**Scope of the checks**: `gf256MulStep_jasmin_sem_eq_smallInputs` evaluates,
+by `native_decide`, the `JasminCoqSemMirror` run of the round command against
+`Gf256.mulStep` on the 4096 inputs of the 4-bit window; it is not a statement for
+all byte inputs. The full unrolled `uov_gf256_dot_l8` body (8 mul rounds × 8
+outer XOR-accumulation steps) is not covered; it needs the `Ccall` / `fnDef`
+forms.
 
-**What's missing for axiom removal**: same blockers as MAYO —
+**Missing for replacing the leaf axiom**: a
 `Ccall` / `inline fn` table for the opaque rustcmd `gf256_dot_l8`
 symbol, and (for fully relational reasoning) the `Cfor` relational
 constructor in `JasminCoqSemMirror`.

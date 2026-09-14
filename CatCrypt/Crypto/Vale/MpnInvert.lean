@@ -149,18 +149,18 @@ Euclidean baseline at the `mpn_invert` boundary, because:
   outer-loop count, parity-strip loops, and `if u >= v` branch),
   and the safegcd path is constant-time at the same modulus.
 * The safegcd asymptotic complexity is `O(b)` divsteps versus the
-  binary-extended's `O(b²)` per the BIGNUM_BASELINE measurements.
+  binary-extended path's `O(b²)`.
 
-## Axiom-retirement status (#258)
+## The k = 4 path
 
-The k=4 / 256-bit divstep loop is now **emitted and owned by CatCrypt**,
+The k=4 / 256-bit divstep loop is **emitted by CatCrypt**,
 not adopted as a Rust leaf. `CatCrypt/Crypto/Vale/SafegcdDivstepEmit.lean`
 authors the 30-bit-radix (`libsecp256k1 modinv32`) Bernstein-Yang divstep
-modular inverse as a `LowCT` body and emits it through the verified front
+modular inverse as a `LowCT` body and emits it through the front
 (`LowCT.toJasminCmd` → `Emit.emitFunDeclSpill`) to a `.jazz` that
-`jasminc -arch x86-64` compiles cleanly. The emitted kernel is **field-
-correct against libgmp `mpz_invert`** (`bench/.../divstep_emit_kat.c`:
-4132 OK / 0 FAIL / 868 gcd-skipped over 5000 random + edge inputs).
+`jasminc -arch x86-64` compiles. The emitted kernel is compared with libgmp
+`mpz_invert` by a known-answer harness that is not part of this package; no
+theorem in this module states its correctness.
 
 Consequently, for the **k=4 path the three leaf axioms below are unused**:
 there is no `RCall "mpn_invert_safegcd_k4"` extCall in the

@@ -1,5 +1,5 @@
 0
 # Hand-authored Com/Lcmd owned-emit modules (frozen baseline; auto-tightened
 # by scripts/handcom-provenance-ratchet.sh). First line = count; each path
-# below carries the reason its emitted artifact is not front-generated. See
-# EMIT_PROVENANCE.md — the goal is to re-source each through a front (-> 0).
+# below carries the reason its emitted artifact is not front-generated; the
+# goal is to re-source each through a front (-> 0).

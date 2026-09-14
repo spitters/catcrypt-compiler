@@ -1,32 +1,17 @@
 # Building
 
 Requires Lean 4 (the toolchain pinned in `lean-toolchain`, installed via
-[elan](https://github.com/leanprover/elan)), git, and read access to the private
-repository `spitters/veir-catcrypt` (next section). The other dependencies resolve
-from public git repositories; `lakefile.lean` lists them with their pins.
+[elan](https://github.com/leanprover/elan)) and git. Every dependency resolves from a
+public git repository; `lakefile.lean` lists them with their pins.
 
-## Access to the Veir dependency
+## The Veir dependency
 
-`lakefile.lean` requires `Veir` from `https://github.com/spitters/veir-catcrypt` at
-tag `v4.33.1-catcrypt.1`. That repository is private: a fork of
-[opencompl/veir](https://github.com/opencompl/veir) that adds the CatCrypt lowering
-dialects. Lake clones every required package when it resolves the workspace, so no
-build of this package, including a single-module build, works without read access to
-it. Access to this repository does not include access to the fork; a collaborator
-obtains read access to `spitters/veir-catcrypt` from the maintainer.
-
-Lake clones over https, so git needs GitHub credentials for https URLs. Either run
-`gh auth login` followed by `gh auth setup-git`, or, with an ssh key registered on
-GitHub, rewrite this one URL to ssh:
-
-```bash
-git config --global url."git@github.com:spitters/veir-catcrypt".insteadOf "https://github.com/spitters/veir-catcrypt"
-```
-
-`git ls-remote https://github.com/spitters/veir-catcrypt v4.33.1-catcrypt.1` prints
-the tag's ref when access works. Without credentials the clone stops with
-`fatal: could not read Username for 'https://github.com'`. CI uses the ssh form with
-a read-only deploy key (`.github/workflows/ci.yml`).
+`lakefile.lean` requires `Veir` from the public repository
+`https://github.com/spitters/veir-catcrypt` at tag `v4.33.1-catcrypt.1`. That
+repository is a fork of [VeIR](https://github.com/opencompl/veir): VeIR `v4.29.0`
+with the CatCrypt opcode dialects and the toolchain updates to the Lean version this
+package uses, under VeIR's Apache-2.0 licence. Lake clones it over https together with
+the other dependencies, and no credentials are needed.
 
 ## What a build consists of
 
@@ -125,9 +110,11 @@ bash scripts/build-cost-ratchet.sh check
 A complete `lake build` refuses every declaration whose proof reaches `sorryAx`:
 `lakefile.lean` passes `-E hasSorry`, which reports Lean's `hasSorry` message as an
 error. `scripts/sorry-gate.sh` covers a build that stops early: it reads the log of
-the modules that build reached and compares per-file counts with
-`scripts/sorry-baseline.txt`. Under `-E hasSorry` the only baseline consistent with a
-complete build allows no such declaration.
+the modules that build reached and compares per-file counts with a baseline file,
+`scripts/sorry-baseline.txt`, which `scripts/sorry-gate.sh --init` writes. The
+package ships no baseline, so `scripts/sorry-gate.sh check` fails until one is
+written. Under `-E hasSorry` the only baseline consistent with a complete build
+allows no such declaration.
 
 ## Diagnosing an out-of-memory kill
 

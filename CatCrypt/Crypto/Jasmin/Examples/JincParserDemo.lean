@@ -14,34 +14,36 @@ public import CatCrypt.Crypto.Jasmin.JincParser
 set_option autoImplicit false
 
 /-!
-# Demo: parse the inner round body of `gf16_mul_scalar`
+# Demo: parse one round of a MAYO GF(16) multiply-step leaf
 
-This file demonstrates the `.jinc` text → `JasminCoqSemMirror.Cmd` parser
-on the inner round body of MAYO's `gf16_mul_scalar` (taken straight from
-`bench/mayo_compare/include/mayo_leaves.jinc:35-52`, one iteration of the
-`for bit_i = 0 to 4` loop).
+This file applies the `.jinc` text → `JasminCoqSemMirror.Cmd` parser
+(`JincParser.parseBody`) to one round of the inner `for bit_i = 0 to 4` loop of
+`gf16_mul_scalar`, a MAYO GF(16) scalar-multiply leaf written in Jasmin. The
+source text is `gf16MulRoundSrc`; the reference AST `handGf16MulStepCmd` is
+written by hand in this file.
 
-## Stage 2 deliverable
+## Constructs used by the source text
 
-Parse the body string, compare the produced `Cmd` against the
-hand-authored `MayoLeafJasminSim.handGf16MulStepCmd`.  Verified by `decide`
-(/ `rfl` if Lean reduces hard enough) — the syntax trees must agree
-constructor-by-constructor and field-by-field.
-
-## What this proves
-
-The parser correctly handles the `Easy`-tier `.jinc` constructs:
 - `reg u8 ...;` declarations
-- straight-line `Cassgn` (`x = expr;`)
+- straight-line assignments (`x = expr;`)
 - compound `>>=` and `<<=`
 - binary `&`, `^` with two atoms
 - unary `-x`
-- decimal and hex constants (`0x1`, `0x3`, `0xf`)
+- hex constants (`0x1`, `0x3`, `0xf`) and decimal shift amounts
 
-The output `Cmd` is the exact same value as the hand-authored AST in
-`MayoLeafJasminSim`.  For the "Easy" tier of `.jinc` constructs (straight-line
-`Cassgn` + `Copn` + word arithmetic), parser output is denotation-equivalent to
-hand-authored AST for one verified leaf.
+## What is checked
+
+The parser output is compared with `handGf16MulStepCmd` through projections,
+each checked by `native_decide`:
+
+- the instruction counts are equal (an `example`);
+- the per-instruction pair (LHS `Lval` constructor, RHS `Pexpr` constructor)
+  agrees (`parsedCmd_shapes_eq_handShapes`);
+- the LHS variable names agree (`parsedCmd_lhs_names_eq`);
+- the RHS head-operator tags agree (`parsedCmd_rhs_ops_eq`).
+
+Equality of the two `Cmd` values is not proved, and neither is equivalence of
+their execution under `JasminCoqSemMirror` or agreement with a specification.
 -/
 
 namespace CatCrypt.Crypto.Jasmin.JincParserDemo
@@ -51,10 +53,10 @@ open CatCrypt.Crypto.Jasmin.JincParser
 
 /-! ## §0. Hand-authored reference AST
 
-This is a near-copy of `MayoLeafJasminSim.handGf16MulStepCmd` (which we
-cannot import in this batch — see header note).  Both authorings use
-the same `mkLvar` / `aword .U8` / `AT_none` convention, so syntactic
-equality is meaningful. -/
+The reference AST for one round, written with the `mkLvar` / `aword .U8` /
+`AT_none` convention: every instruction is a `Cassgn` of type `aword .U8` with
+assignment tag `AT_none` to a `u8` variable, and variables are read with local
+scope (`mkLvar`). -/
 
 /-- A `reg u8` variable. -/
 def vU8 (s : String) : VarI :=
@@ -73,8 +75,8 @@ def wrU8 (v : VarI) : Lval := .Lvar v
 def cU8 (n : Nat) : Pexpr :=
   .Papp1 (.Oword_of_int .U8) (.Pconst (Int.ofNat n))
 
-/-- One round of `gf16_mul_scalar`'s body, hand-authored (mirror of
-    `MayoLeafJasminSim.handGf16MulStepCmd`). -/
+/-- One round of `gf16_mul_scalar`'s inner loop body, hand-authored as a
+    `Cmd` by transcribing `gf16MulRoundSrc` instruction by instruction. -/
 def handGf16MulStepCmd : Cmd :=
   let mk (l : Lval) (e : Pexpr) : Instr :=
     .MkI () (.Cassgn l .AT_none (.aword .U8) e)
@@ -98,8 +100,8 @@ def handGf16MulStepCmd : Cmd :=
 
 /-! ## §1. Source: one round of `gf16_mul_scalar`
 
-This is verbatim the body of the inner `for bit_i = 0 to 4` loop
-from `bench/mayo_compare/include/mayo_leaves.jinc:35-52` (one iteration). -/
+The body of the inner `for bit_i = 0 to 4` loop of the Jasmin leaf
+`gf16_mul_scalar` (one iteration), preceded by its `reg u8` declarations. -/
 
 /-- Source text of one round of `gf16_mul_scalar`'s inner loop. -/
 def gf16MulRoundSrc : String := "
@@ -132,30 +134,29 @@ def parsedCmd : Except String Cmd := parseBody gf16MulRoundSrc
   | .ok c => s!"parsed {c.length} instructions"
   | .error e => s!"parse error: {e}")
 
-/-! ## §3. Equality with the hand-authored AST
+/-! ## §3. Comparison with the hand-authored AST
 
-`handGf16MulStepCmd` in `MayoLeafJasminSim` is the same body, hand-authored
-by transcribing the .jinc text directly into `Instr` / `Cassgn` calls.
-The parser must reproduce that exact AST. -/
+`handGf16MulStepCmd` (§0) transcribes the same body into `Instr` / `Cassgn`
+terms. This section and the next two compare projections of the parser output
+with the same projections of `handGf16MulStepCmd`. -/
 
-/-- The parser-produced `Cmd` extracted from the `Except`. -/
+/-- The parser-produced `Cmd` extracted from the `Except` (the empty `Cmd` on a
+    parse error). -/
 def parsedCmdValue : Cmd :=
   match parsedCmd with
   | .ok c => c
   | .error _ => []
 
-/-- The instruction counts agree. -/
+/-- The instruction counts agree (checked by `native_decide`). -/
 example : parsedCmdValue.length = handGf16MulStepCmd.length := by
   native_decide
 
--- Diagnostic: print the first parsed instruction in repr form for
--- debugging when something breaks.
+-- Diagnostic: report whether the parser output has a first instruction.
 #eval (parsedCmdValue.head?.map fun _ => "first instr parsed OK").getD "no instructions"
 
--- **Smoke test (structural equality).** Compare the parser output to
--- the hand-authored AST by checking each instruction has the same
--- constructor pattern.  We use a tag-projection function below since
--- `DecidableEq Instr` is non-reducible (Value carries `JArrayMirror`).
+-- **Shape comparison.** The parser output and the hand-authored AST are
+-- compared through constructor-tag projections rather than through
+-- `DecidableEq Instr`, which does not reduce (`Value` carries `JArrayMirror`).
 
 /-- Tag a `Pexpr` constructor by a small enum for compare-friendly
     projection. -/
@@ -204,9 +205,9 @@ def cassgnShape : InstrR → Nat × Nat
   | .Cassgn lv _ _ e => (lvalTag lv, pexprTag e)
   | _ => (0, 0)
 
-/-- All 16 instructions in both the parser output and the hand-authored
-    AST are `Cassgn (Lvar ...) ... (Papp1|Papp2|Pvar ...)`.  Compare the
-    shallow shapes. -/
+/-- Shape vector of the parser output: for each instruction, the pair
+    (`lvalTag`, `pexprTag`) of its `Cassgn`, or `(0, 0)` if it is not a
+    `Cassgn`. -/
 def parsedShapes : List (Nat × Nat) :=
   parsedCmdValue.map (fun i => cassgnShape (instrPayload i))
 
@@ -217,14 +218,16 @@ def handShapes : List (Nat × Nat) :=
 #eval parsedShapes
 #eval handShapes
 
-/-- **Stage 2 deliverable (shallow shape).** -/
+/-- **Shape agreement.** The parser output and `handGf16MulStepCmd` have equal
+    shape vectors: the same length and, per instruction, the same `Lval` and
+    `Pexpr` constructor tags of the `Cassgn`. Checked by `native_decide`. -/
 theorem parsedCmd_shapes_eq_handShapes : parsedShapes = handShapes := by
   native_decide
 
 /-! ## §4. Deeper structural test: variable names + ops
 
-For each `Cassgn`, project the LHS variable name and the operator
-constructor of the RHS (if any).  These are decidable. -/
+For each `Cassgn`, project the LHS variable name (this section) and the
+head operator of the RHS (§5). Both projections have decidable equality. -/
 
 /-- Extract the LHS variable name from an `Instr` that is a `Cassgn (Lvar v) ...`. -/
 def cassgnLhsName? : Instr → Option String
@@ -240,14 +243,18 @@ def handLhsNames : List (Option String) := handGf16MulStepCmd.map cassgnLhsName?
 #eval parsedLhsNames
 #eval handLhsNames
 
-/-- **Stage 2 deliverable (LHS names).** -/
+/-- **LHS name agreement.** Per instruction, the LHS variable name of a
+    `Cassgn (Lvar x) …` (or `none` otherwise) agrees between the parser output
+    and `handGf16MulStepCmd`. Checked by `native_decide`. -/
 theorem parsedCmd_lhs_names_eq : parsedLhsNames = handLhsNames := by
   native_decide
 
 /-! ## §5. Op-discriminator test
 
-Project each `Cassgn`'s RHS to the head operator (Papp1/Papp2/Pvar
-constructor).  This catches operator mismatches (e.g., shr vs shl). -/
+Project each `Cassgn`'s RHS to a string tag of its head constructor and, for
+`Papp1`/`Papp2`, its operator constructor (for example `Papp2.Olsr` versus
+`Papp2.Olsl`). Operators outside the listed ones map to `Papp1.other` or
+`Papp2.other`; operand trees and operator width arguments are not compared. -/
 
 /-- Project the RHS head operator as a short string. -/
 def cassgnRhsOpTag : Instr → String
@@ -276,28 +283,26 @@ def handRhsOps : List String := handGf16MulStepCmd.map cassgnRhsOpTag
 #eval parsedRhsOps
 #eval handRhsOps
 
-/-- **Stage 2 deliverable (RHS ops match).** -/
+/-- **RHS operator-tag agreement.** Per instruction, the RHS head-operator tag
+    (`cassgnRhsOpTag`) agrees between the parser output and
+    `handGf16MulStepCmd`. Checked by `native_decide`. -/
 theorem parsedCmd_rhs_ops_eq : parsedRhsOps = handRhsOps := by
   native_decide
 
 /-! ## §6. Summary
 
-| Property | Parser ≅ Hand-authored | Proof |
+| Property compared (parser output vs. `handGf16MulStepCmd`) | Declaration | Tactic |
 |---|---|---|
-| Instruction count | `decide`-proved | `parsedCmd_shapes_eq_handShapes` (implicitly) |
-| Shallow shape per-instr | `decide`-proved | `parsedCmd_shapes_eq_handShapes` |
-| LHS variable names | `decide`-proved | `parsedCmd_lhs_names_eq` |
-| RHS top-level operator | `decide`-proved | `parsedCmd_rhs_ops_eq` |
+| Instruction count | `example` in §3 | `native_decide` |
+| Per-instruction (`Lval`, `Pexpr`) constructor tags | `parsedCmd_shapes_eq_handShapes` | `native_decide` |
+| LHS variable names | `parsedCmd_lhs_names_eq` | `native_decide` |
+| RHS head-operator tags | `parsedCmd_rhs_ops_eq` | `native_decide` |
 
-Three orthogonal projections all agree.  Together they witness that the
-parser correctly reproduces the hand-authored `handGf16MulStepCmd` AST modulo
-the un-projected fields (`VarInfo`, `VScope`, `AssgnTag`, `Atype`, the
-inner argument trees) — all of which the parser fixes uniformly (`AT_none`,
-`Slocal`, `aword .U8`).
-
-The chain `.jinc text → AST → execCmd → equality with verified spec` is
-now complete for this leaf (the `execCmd → equality` step is the
-existing `gf16MulStep_jasmin_sem_eq_smallInputs` in `MayoLeafJasminSim`).
+The projections do not compare the variable scope, the assignment tag, the
+assignment type, the operator width arguments, or the operand trees below the
+head operator. Equality of the parsed `Cmd` with `handGf16MulStepCmd`, and
+equivalence of their execution under `JasminCoqSemMirror`, are not proved in
+this package.
 -/
 
 end CatCrypt.Crypto.Jasmin.JincParserDemo

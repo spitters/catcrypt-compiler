@@ -14,7 +14,7 @@
 #   review  — not yet classified against DIALECTS.md; tracked (warned), not silently
 #             unmarked. Drive this bucket to zero.
 
-# ---- lowers (bytes-reaching; DIALECTS.md "genuine Com → jasmin → ELF spine") ----
+# ---- lowers (bytes-reaching; DIALECTS.md "Reaches `jasminDialect` or `x86Dialect`") ----
 lowers jasminDialect
 lowers x86Dialect
 lowers fieldDialect

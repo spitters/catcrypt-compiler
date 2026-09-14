@@ -25,7 +25,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.Dialects.OrchFront
 public import CatCrypt.Crypto.SecureCompilation.Dialects.OrchFront
 
 /-!
-# Plonky3 whole-prover ORCHESTRATION LOOPS as owned control flow (FULL_PROVER_VS_P3 Gap 2 items 1–2)
+# Plonky3 whole-prover orchestration loops as owned control flow
 
 `Plonky3WholeProverEmit` composes the five owned phase-leaf `Lprog`s into
 ONE `.s` carrying every field-arithmetic kernel (compress, hash_leaf, ntt_layer,

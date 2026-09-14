@@ -31,7 +31,7 @@ notice.
   mutation, loops and early returns) carry denotation-preservation proofs. The hax
   export from Rust is outside the proofs, trait methods reach the compiler as named
   calls, and complex generic types fall back to an unknown type (hax-lean's
-  `LIMITATIONS.md`). The
+  [LIMITATIONS.md](https://github.com/spitters/hax-lean/blob/master/LIMITATIONS.md)). The
   program is translated to LowCT, a low-level constant-time command language, and
   from there to the dialect stack. Orchestration can also be written directly in
   Lean, as a LowCT term or as a Lean function compiled relationally in the style of
@@ -78,7 +78,9 @@ lower (`accStepCom_not_lowered` in
 `CatCrypt/Crypto/SecureCompilation/VIR/GhashGf128CatCryptEmit.lean`). The IR
 structure follows [lean-mlir](https://github.com/opencompl/lean-mlir), through the
 Veir library. Code
-generation is CatCrypt's own backend, which began as a port of the Jasmin compiler.
+generation is CatCrypt's own backend, which began as a port of the Jasmin compiler;
+module names and documents call it the owned backend, and its output owned emit, to
+distinguish it from output of Jasmin's compiler `jasminc`.
 A second path prints a Jasmin program as MLIR text in the `arith`, `func` and `scf`
 dialects (`emitFunc`, `CatCrypt/Crypto/SecureCompilation/MLIRBackend/ComToMLIR.lean`)
 for `mlir-opt`, `mlir-translate` and `llc`. That path has shape lemmas and no
@@ -356,17 +358,23 @@ the compiler's low levels (a LowCT command, an x86 or RV64 instruction list) com
 a Lean specification.
 [CAPABILITIES.md](CAPABILITIES.md) indexes each shipped primitive to its emit module,
 its correctness theorem or KAT, and its provenance class; [bench.md](bench.md)
-reports the measured performance, with the emitted artifacts and their provenance
-under [bench/](bench/). The [manual](docs/CompilerManual.lean), a
+reports performance ratios measured in the development repository, which cannot be
+reproduced from this package, and [bench/PROVENANCE.md](bench/PROVENANCE.md)
+describes the assembly files shipped under `bench/`. The [manual](docs/CompilerManual.lean), a
 [Verso](https://github.com/leanprover/verso) document, gives the narrative.
+[CatCrypt/Crypto/SecureCompilation/AGENTS.md](CatCrypt/Crypto/SecureCompilation/AGENTS.md)
+indexes the compiler's source directories, with the entry modules and theorems of
+each and links to the per-directory indexes;
+[CatCrypt/Crypto/Optimizer/README.md](CatCrypt/Crypto/Optimizer/README.md) indexes the
+optimizer.
 
 See [BUILDING.md](BUILDING.md). Dependencies resolve from git:
 [`catcryptCore`](https://github.com/spitters/CatCrypt-core) (the CatCrypt
 methodology library), `Veir`, [`paramTransfer`](https://github.com/spitters/ParamTransfer)
 (the proof-transfer bridge), `CompPoly`, [`hax-lean`](https://github.com/spitters/hax-lean)
-(the typed hax front) and `mathlib`. `Veir` resolves from the private repository
-`spitters/veir-catcrypt`, a fork of [opencompl/veir](https://github.com/opencompl/veir)
-with the CatCrypt lowering dialects. Every build clones it, so building requires read
-access to that repository, which a collaborator obtains from the maintainer;
-[BUILDING.md](BUILDING.md#access-to-the-veir-dependency) describes the setup.
+(the typed hax front) and `mathlib`. `Veir` resolves from the public repository
+[`spitters/veir-catcrypt`](https://github.com/spitters/veir-catcrypt) at tag
+`v4.33.1-catcrypt.1`, a fork of [VeIR](https://github.com/opencompl/veir) `v4.29.0`
+with the CatCrypt opcode dialects and toolchain updates (Apache-2.0);
+[BUILDING.md](BUILDING.md#the-veir-dependency) describes it.
 BUILDING.md also covers generating the API reference and the manual.

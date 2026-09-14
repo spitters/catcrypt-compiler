@@ -129,18 +129,18 @@ jobs:
           curl -sSfL https://elan.lean-lang.org/elan-init.sh | sh -s -- -y --default-toolchain "$(cat lean-toolchain)"
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
 
-      # The Veir dependency is the private spitters/veir-catcrypt staging
-      # fork, required over ssh; VEIR_DEPLOY_KEY is a read-only deploy key
-      # on that repository.
+      # The Veir dependency spitters/veir-catcrypt is a public repository that
+      # Lake clones over https without credentials, so this key step and the
+      # ssh URL rewrite in it are unnecessary; VEIR_DEPLOY_KEY is a read-only
+      # deploy key on that repository.
       - name: SSH key for the private Veir dependency
         run: |
           mkdir -p ~/.ssh
           printf '%s\n' "${{ secrets.VEIR_DEPLOY_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan github.com >> ~/.ssh/known_hosts
-          # lake-manifest.json pins Veir by its https URL, so git clones over
-          # https and asks for a username the runner cannot supply; the deploy
-          # key is reachable only over ssh, so this one URL is rewritten.
+          # lakefile.lean requires Veir by its https URL; this rewrite sends
+          # that one URL over ssh, where the deploy key applies.
           git config --global \
             url."git@github.com:spitters/veir-catcrypt".insteadOf \
             "https://github.com/spitters/veir-catcrypt"

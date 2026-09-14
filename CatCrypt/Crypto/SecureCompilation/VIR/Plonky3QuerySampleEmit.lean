@@ -15,7 +15,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.QuerySampleBranchFront
 public import CatCrypt.Crypto.SecureCompilation.VIR.QuerySampleBranchFront
 
 /-!
-# Plonky3 FRI query-index sampler (`sample_bits(5)`) as owned control flow (FULL_PROVER_VS_P3 Gap 2 item 2)
+# Plonky3 FRI query-index sampler (`sample_bits(5)`) as owned control flow
 
 The gap-2 Fiat-Shamir work (`Plonky3FiatShamirEmit.lean`) emitted the
 duplex **bookkeeping** — the absorb/squeeze buffer marshalling around the

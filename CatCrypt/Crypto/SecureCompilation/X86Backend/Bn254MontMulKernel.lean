@@ -355,10 +355,10 @@ def emitMain : IO Unit := do
     bn254MontMulAsm
   IO.println "wrote gen_com/bn254_mont_mul_x86_from_lean.s (in-Lean x86 backend CIOS, no jasminc)"
 
-/-! ## Artifact generation at elaboration
+/-! ## Artifact generation
 
-The render is written while this module elaborates, so `lake` produces it from
-this file and no separate driver or Makefile rule carries the dependency. -/
+`emitMain` writes the render. Elaborating this module does not run it (the
+`#eval` below is commented out), and no executable in `lakefile.lean` calls it. -/
 
 -- #eval emitMain
 

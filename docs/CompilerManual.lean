@@ -46,7 +46,7 @@ package's hax front reads. hax-lean's own passes (removal of references, local
 mutation, loops and early returns) carry denotation-preservation proofs. The hax
 export from Rust is outside the proofs, trait methods reach the compiler as named
 calls, and complex generic types fall back to an unknown type (hax-lean's
-`LIMITATIONS.md`). The front translates the program to LowCT, a low-level
+[LIMITATIONS.md](https://github.com/spitters/hax-lean/blob/master/LIMITATIONS.md)). The front translates the program to LowCT, a low-level
 constant-time command language, and from there to the dialect stack. Orchestration
 can also be written directly in Lean, as a LowCT term or as a Lean function compiled
 relationally in the style of Rupicola.
@@ -73,9 +73,10 @@ An ML-KEM implementation illustrates the intended division: the key schedule and
 message flow as orchestration, the number-theoretic transform and field arithmetic
 as algebra, and the hand-tuned kernels as leaves. The package does not carry ML-KEM
 through that division. The route that lowers an NTT multiply to Jasmin passes
-through the lattice dialect, which models the NTT and inverse NTT as the identity,
-and the per-lane blocks of the emitted ML-KEM NTT text (`VIR/LatticeNttEmit.lean`)
-are identity placeholders.
+through the lattice dialect, which models the NTT and inverse NTT as the identity.
+No theorem relates the batched ML-KEM NTT Jasmin text that `VIR/LatticeNttEmit.lean`
+renders to the transform; the lane-independence theorems of that module are
+instantiated at an identity per-lane block.
 
 # The pipeline
 
@@ -104,7 +105,8 @@ evaluator `runProg`, under per-operation transport hypotheses, agreement of the
 opaque leaves with the evaluator's leaf semantics, and a straight-line lowered
 program. The intermediate-representation structure follows
 [lean-mlir](https://github.com/opencompl/lean-mlir), through the Veir library; code
-generation is CatCrypt's own backend, which began as a port of the Jasmin compiler.
+generation is CatCrypt's own backend, which began as a port of the Jasmin compiler;
+module names and documents call it the owned backend, and its output owned emit.
 `PROVENANCE.md` records the low-level lineage: AUCurves, bedrock2, Rupicola.
 
 ## The two-way relationship with Jasmin
@@ -304,15 +306,14 @@ theorems. `CAPABILITIES.md` states, per primitive, which parts are trusted leave
 
 # Benchmarks
 
-The emitted assembly is measured cycle-for-cycle at matching scope against deployed
-references: s2n-bignum, libgmp, Jasmin, `HACL*` and Plonky3. The field and bignum
-kernels are at parity with s2n-bignum's scalar kernels and faster than libgmp at
-practical sizes. The SHA-256 and SHA-512 compression kernels are slower than the
-`HACL*` scalar references, and the unadopted X25519 ladder and the Poseidon2
-permutation are slower than their references. The measured ratios, the method, the
-provenance header of each measured artifact and the per-family coverage are in
-`bench.md`; the harness that produces the ratios is part of the wider CatCrypt
-development, not of this package.
+`bench.md` reports cycle-count ratios measured in the CatCrypt development
+repository against s2n-bignum, libgmp, `jasminc`, `HACL*` and Plonky3. In those
+measurements the Curve25519 field multiply and `bignum_mul_4_8` are within 5% of
+s2n-bignum, the SHA-256 and SHA-512 compression kernels are slower than the `HACL*`
+scalar references, and the X25519 ladder and the Poseidon2 permutation are slower
+than their references. The harnesses and references are not in this package, so no
+ratio can be reproduced from it, and for most rows the timed object file is not
+shipped; `bench/PROVENANCE.md` describes the assembly files that are.
 
 # A worked example
 

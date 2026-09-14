@@ -22,8 +22,7 @@ set_option autoImplicit false
 
 This module documents the **architectural gap** between AUCurves'
 Bernstein-Yang (BY) divstep machinery and a generic multi-precision
-`gcd(a, b)` leaf suitable for closing the 8.34-83.49× HGCD lag
-recorded in `bench/mpn_hgcd_compare/results.txt`.
+`gcd(a, b)` leaf of the kind a half-GCD (HGCD) routine calls.
 
 No verified leaf is adopted in this file. The file declares the
 intended `LowCTPattern` and `LeafSig` *shape* of a future generic

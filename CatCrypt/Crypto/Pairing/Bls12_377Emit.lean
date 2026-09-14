@@ -764,10 +764,10 @@ def emitMain : IO Unit := do
   IO.println "wrote owned BLS12-377 field/pairing orchestration .s (no jasminc):"
   IO.println "  bench/bls12_377_compare/gen_com/bls12_377_orch_owned.s"
 
-/-! ## Artifact generation at elaboration
+/-! ## Artifact generation
 
-The render is written while this module elaborates, so `lake` produces it from
-this file and no separate driver or Makefile rule carries the dependency. -/
+`emitMain` writes the render. Elaborating this module does not run it (the
+`#eval` below is commented out), and no executable in `lakefile.lean` calls it. -/
 
 -- #eval emitMain
 

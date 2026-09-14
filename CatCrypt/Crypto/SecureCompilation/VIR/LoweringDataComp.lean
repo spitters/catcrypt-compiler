@@ -19,7 +19,7 @@ generic compiler `CompilerGeneric.compileVia` runs such a lowering into jasmin
 and `compileVia_correct` proves it correct from the three per-op transport
 squares of `fundamental`.
 
-This file supplies the **missing composition**: two 1-to-1 lowerings
+This file defines the composition of lowerings: two 1-to-1 lowerings
 `L1 : LoweringData d d'` and `L2 : LoweringData d' d''` compose into a single
 `L1.comp L2 : LoweringData d d''`, and a 1-to-1 chain collapses into one
 `LoweringData` usable directly by `compileVia`. Concretely:
@@ -37,14 +37,13 @@ This file supplies the **missing composition**: two 1-to-1 lowerings
    standalone cons-commute `have`.
 3. `comp_fundamental` — the whole-program transport square for `L1.comp L2`,
    derived by **chaining** `fundamental L2` (on `L1.lowerCom c`) after
-   `fundamental L1` (on `c`). The payoff: a composed 1-to-1 chain transports
-   end-to-end, from each stage's per-op leaves, with no fresh induction.
+   `fundamental L1` (on `c`), from the per-op transport hypotheses of `L1` and
+   `L2`, without a new induction on `c`.
 
 The composite transports `⟦t⟧ → ⟦L2.mapTy (L1.mapTy t)⟧` via
 `transTy2 ∘ transTy1` and valuations via `mapVal2 ∘ mapVal1`.
 
-**0 goals open**; target axiom set `{propext, Classical.choice, Quot.sound}`,
-no custom axioms.
+The file contains no `sorry` and declares no axioms.
 -/
 
 @[expose] public section
@@ -164,17 +163,17 @@ def compMapVal (mapVal1 : MapVal L1) (mapVal2 : MapVal L2) :
     composite lowering transports every program end-to-end, derived purely by
     **chaining** the two `fundamental` lemmas — `fundamental L2` on the
     once-lowered program `L1.lowerCom c`, after `fundamental L1` on `c`. No fresh
-    induction: each stage contributes only its per-op leaf squares
-    (`hVar*`/`hOp*`/`hExt*`), and the composite square pops out.
+    induction: the hypotheses are the per-op transport squares of each lowering
+    (`hVar*`/`hOp*`/`hExt*`).
 
     Concretely, for every `c` and input valuation `V`:
 
         ((L1.comp L2).lowerCom c).denote ((mapVal2 ∘ mapVal1) V)
           = (transTy2 ∘ transTy1) (c.denote V)
 
-    i.e. `ComLowerTransports (L1.comp L2) (compTransTy …) (compMapVal …) c`. This
-    is the payoff: a composed 1-to-1 lowering chain transports end-to-end, usable
-    directly by `CompilerGeneric.compileVia` when `d'' = jasminDialect`. -/
+    i.e. `ComLowerTransports (L1.comp L2) (compTransTy …) (compMapVal …) c`. When
+    `d'' = jasminDialect`, `L1.comp L2` is a lowering that
+    `CompilerGeneric.compileVia` accepts (see `compileVia_comp_correct`). -/
 theorem comp_fundamental
     (transTy1 : TransTy L1) (mapVal1 : MapVal L1)
     (hVar1 : VarTransports L1 transTy1 mapVal1)
@@ -230,10 +229,9 @@ end CompileViaSanity
 
 `comp_fundamental` (§3) gives the composite *transport square*; composing it with
 the owned whole-function backend gives the `runProg`-level correctness for a
-program compiled through TWO dialects `d → d' → jasmin`. This is the general
-theorem for programs that cross dialect boundaries: the same CompCert-shape
-equation as `CompilerGeneric.compileVia_correct`, but for the collapsed chain
-`L1.comp L2`. -/
+program compiled through two dialects `d → d' → jasmin`. It has the same
+CompCert-style equation as `CompilerGeneric.compileVia_correct`, for the
+composite `L1.comp L2`. -/
 
 section CompileViaComp
 
@@ -248,20 +246,20 @@ variable [TyDenote d'.Ty] [DialectDenote d']
 /-- **`compileVia_comp_correct` — two-dialect compile correctness.**
 
     For a source dialect `d`, an intermediate dialect `d'`, structural lowerings
-    `L1 : d → d'` and `L2 : d' → jasmin`, the owned-emitted jasmin program
+    `L1 : d → d'` and `L2 : d' → jasmin`, the jasmin program
     `compileVia (L1.comp L2) c`, run under `leafSem`, computes the composite
     value transport of the source denotation:
 
         runProg leafSem (compileVia (L1.comp L2) c) (compMapVal … V)
           = compTransTy … (c.denote V)
 
-    Each stage contributes only its own transport squares
-    (`hVar₁/hOp₁/hExt₁`, `hVar₂/hOp₂/hExt₂`); the owned backend contributes
-    `hJLeaf` and `hStraight`. No fresh induction, no `jasminc`: the `runProg`
-    step is `lowerComToProg_sem_eq'`, and the denotation equality is
-    `comp_fundamental`. Programs that lower through several dialects instantiate
-    this with the appropriate chain (a longer chain re-associates into nested
-    `comp`s, each an instance of this theorem). -/
+    The hypotheses are the transport squares of each lowering
+    (`hVar₁/hOp₁/hExt₁`, `hVar₂/hOp₂/hExt₂`), the leaf agreement `hJLeaf`, and
+    the straight-line condition `hStraight` on the compiled program. The
+    `runProg` step is `lowerComToProg_sem_eq'`, and the denotation equality is
+    `comp_fundamental`. A chain of more than two lowerings can be written with
+    nested `comp`s; applying this theorem to it requires the transport squares
+    of the nested composite as hypotheses. -/
 theorem compileVia_comp_correct
     (L1 : LoweringData d d') (L2 : LoweringData d' jasminDialect)
     (transTy1 : TransTy L1) (mapVal1 : MapVal L1)

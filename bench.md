@@ -1,82 +1,55 @@
 # Benchmarks
 
-The compiler emits assembly inside Lean. These benchmarks compare that emitted
-assembly against deployed references, cycle-for-cycle on one host (AMD Ryzen 7 PRO
-7840U, RDTSC, `taskset`-pinned). Ratios are ours / reference — below 1.0 is faster,
-above 1.0 is slower. The emitted `.s` artifacts for the rows below ship under
-`bench/`, each with a provenance header naming which symbols are owned-emit versus
-`call <leaf>`. The timing harness is part of the wider CatCrypt development and is
-not shipped here, so each ratio is cited to the development scoreboard rather than
-re-run from this repository.
+The figures below were measured in the CatCrypt development repository on one host
+(AMD Ryzen 7 PRO 7840U, RDTSC cycle counts, `taskset`-pinned). The timing harnesses,
+the reference builds and the raw results are in that repository, which is private.
+No ratio on this page can be reproduced from this package: the package ships
+neither a harness nor the reference implementations, and for most rows it does not
+ship the measured object either (column "artifact"). The figures are reported for
+orientation only.
 
-Comparisons are made only at matching scope — an emitted kernel against an emitted
-or verified-scalar kernel, an adopted leaf against an adopted leaf — and each row is
-one of:
-
-- **like-for-like** — both sides at the same optimisation tier;
-- **adopted leaf** — the emit rides a verified external leaf, so the ratio is near
-  1.0 by construction;
-- **partial** — a kernel whose whole-primitive assembly is not yet linked in a
-  single binary, or a tier the owned register allocator has not yet closed; the
-  ratio is a target, not a verdict.
+A ratio is our kernel's time divided by the reference's time: below 1.0 is faster,
+above 1.0 is slower. "Owned x86 backend" is this package's own lowering and assembly
+printer, as distinct from Jasmin's compiler `jasminc`. "Artifact" names the file under `bench/` for the row, or states that
+none is shipped; [bench/PROVENANCE.md](bench/PROVENANCE.md)
+describes every shipped `.s` file and the declaration that writes it.
 
 ## Field and bignum
 
-The emitted arithmetic is the strongest tier: at parity with s2n-bignum's scalar
-kernels, and ahead of libgmp at practical sizes.
-
-| kernel | reference (same tier) | ratio |
-|---|---|---|
-| Curve25519 `fe25519_mul` (4×64) | s2n-bignum `bignum_mul_p25519` (scalar ADX) | 0.98× |
-| 4-limb `bignum_mul_4_8` | s2n-bignum (scalar) | 1.05× (parity) |
-| `mpn_mul_basecase` (cwhile4, n ≥ 16) | libgmp (scalar) | 0.79–0.90× |
-| owned vs jasminc, 9 both-emit kernels | jasmin | 0.749× geomean |
+| kernel | reference | ratio | artifact |
+|---|---|---|---|
+| Curve25519 field multiply, 4×64 limbs (`fe25519_mul_x86_from_lean`, owned x86 backend) | s2n-bignum `bignum_mul_p25519` | 0.98× | none; `x25519_fieldmul_compare/gen/fe25519_mul_proven.s` is a different render and was not timed |
+| `bignum_mul_4_8`, 4×4 → 8 limbs (owned x86 backend) | s2n-bignum `bignum_mul_4_8` | 1.05× | none |
+| `mpn_mul_basecase`, n = 16 to 128 limbs (emitted Jasmin compiled by `jasminc`) | libgmp | 0.79–0.90× | none |
+| owned x86 backend against `jasminc` on the same emitted programs, 9 kernels | `jasminc` | 0.749× (geometric mean) | none |
 
 ## Symmetric
 
-Stated at matching tier against the verified-C scalar references, the emitted
-symmetric compression kernels are behind: this is where the owned register
-allocator has the most headroom, and the rows are a partial target rather than a
-result.
+| primitive | reference | ratio | artifact |
+|---|---|---|---|
+| SHA-256 compression (owned x86 backend) | HACL\* `Hacl_Hash_SHA2`, scalar, long messages, cycles per byte | 2.98× | none; `sha2_linear_compare/sha256_owned_body.s` is a body-only render without prologue or return |
+| SHA-256 compression (emitted) | a C implementation built with `gcc -O3`, checked to give output identical to the emitted kernel | 6.65× | none |
+| SHA-512 compression (emitted, owned register allocation) | HACL\* `Hacl_Hash_SHA2`, scalar | 5.1–5.7× | none; `sha2_linear_compare/sha512_owned_body.s` is a body-only render without prologue or return |
+| HMAC-SHA256, amortised over precomputed pad states (emitted SHA-256 compression) | HACL\* scalar SHA-2 | 1.06× | `hmac_compare/gen/sha256_compress.s` and `hmac_compare/gen/hmac_xor_pad.s` ship; the package does not record that they are the timed object files |
 
-| primitive | reference (same tier) | ratio |
-|---|---|---|
-| SHA-256 compress | HACL\* scalar | ~6.6× (slower) |
-| SHA-512 compress | HACL\* scalar | ~5.1–5.7× (slower) |
-| HMAC-SHA256 (amortised) | HACL\* scalar | 1.06× |
-| Keccak-f1600 | HACL\* | no same-tier win (~1.01×) |
+Keccak-f1600 has no current measurement against a reference. A render that predates
+the current register allocator measured 2.55–3.82× slower per byte than HACL\*
+`Hacl_Hash_SHA3`. `keccak_linear_compare/keccak_owned.s` ships without a record of
+which render it is.
 
-## Elliptic curve
+## Elliptic curve and pairing
 
-| operation | reference (same tier) | ratio |
-|---|---|---|
-| X25519 scalar-mul ladder (in-Lean, unadopted) | s2n-bignum | 1.857× (slower) |
+| operation | reference | ratio | artifact |
+|---|---|---|---|
+| X25519 scalar-multiplication ladder (emitted from Lean, no external field leaf) | s2n-bignum | 1.857×, from an automatically parsed timing table with no audit of the comparison | none |
+| BN254 Montgomery field multiply (owned x86 backend) | libgmp | 0.493×, from the same automatically parsed table; the reference's instruction-set tier is not recorded | `bn254_fieldmul_compare/gen_com/bn254_mont_mul_x86_from_lean.s` ships; the package does not record that it is the timed object file |
 
-The X25519 ladder is the modularity floor: where the compiler emits an unadopted
-in-Lean kernel rather than riding a verified leaf, a scheduling factor remains.
-
-## Pairing
-
-| primitive | status |
-|---|---|
-| BLS12-377 | adopted leaf — the orchestration is owned-emit; the field and pairing arithmetic are `call`ed into the AUCurves verified bedrock2 tower, not emitted here. No committed ratio. |
-| BN254 field multiply | uncurated — an auto-parsed 0.493× vs libgmp (scalar) whose tier is unconfirmed and which is not on the vetted scoreboard. |
+BLS12-377 has no ratio. Its orchestration is emitted by the owned backend, and the
+field and pairing arithmetic are external calls into the AUCurves bedrock2 routines
+(`bls12_377_compare/gen_com/bls12_377_orch_owned.s`).
 
 ## Proof-system hashing
 
-| primitive | reference (same tier) | ratio |
-|---|---|---|
-| Poseidon2 (BabyBear, scalar owned-RA emit) | Plonky3 production (scalar) | 1.30× (slower) |
-
-The Poseidon2 permutation is emitted through the front field descent (`translBB`); the
-owned register allocator closes ~36% of the residual to the Plonky3 production scalar
-kernel (from ~1.47×), leaving a scheduling gap — the same modularity floor as the
-symmetric kernels.
-
-## Artifacts
-
-Each emitted row above ships its `.s` under `bench/<comparison>/` with a one-line
-provenance header. Owned-emit (verified-compiler output, self-contained): SHA-256
-and SHA-512 compress, Keccak-f1600, `fe25519_mul`, BN254 mont-mul. Adopted-leaf
-(owned glue over a linked verified leaf): HMAC over the resident owned compress, and
-the BLS12-377 orchestration over the AUCurves tower.
+| primitive | reference | ratio | artifact |
+|---|---|---|---|
+| Poseidon2 BabyBear width-16 permutation (AVX2 emit, lowered by `jasminc`) | Plonky3 v0.5.3, AVX2 backend | 1.30× | none |

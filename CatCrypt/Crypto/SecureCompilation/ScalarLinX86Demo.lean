@@ -18,8 +18,11 @@ public import CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath
 The x86 analogue of `com_arm_e2e` / `com_riscv_e2e`: a `ScalarTarget` over the
 executable native-Lean x86 model (`X86Backend.Model`), and the composed
 `com_x86_e2e` lifting the shared, axiom-clean `comToReg_faithful` to the x86
-machine run. This retires the x86 KAT gate for the golden path — the emitted x86
-block now *provably* computes the source `Com.denote`, not just on tested vectors.
+machine run. For a `Com` with `ComOK` over an `AllReg64` context, whose compiled
+shift amounts satisfy `ShiftAmtOK`, run from a state whose registers are
+`envOf Γ.length V`, the compiled x86 block read at the result register equals
+`Com.denote com V` for every valuation. The x86 semantics is the `step` function
+of `X86Backend.Model`.
 
 ## Why the selection is two-address (and the freshness side condition)
 
@@ -137,8 +140,9 @@ def X86FaithfulStmt : RegStmt → Prop
 
 /-- **x86 per-statement faithfulness.** For a faithful statement, the x86 machine
     run of the selected block, projected to the registers, equals the neutral
-    `evalRegStmtPure`. This is the only genuinely new proof in the x86 backend —
-    the two-address `mov;op` realises the three-address effect under freshness. -/
+    `evalRegStmtPure`. This is the x86-specific step of the end-to-end theorem:
+    the two-address `mov;op` realises the three-address effect when the destination
+    differs from each source. -/
 theorem hstep_x86_on (s : XState) (stmt : RegStmt) (h : X86FaithfulStmt stmt) :
     (x86Target.step s stmt).regs = evalRegStmtPure s.regs stmt := by
   cases stmt <;>
@@ -333,8 +337,8 @@ theorem com_x86_e2e_of {Γ : Ctxt jasminDialect} {com : Com jasminDialect Γ (.r
 
 /-- **General end-to-end x86** (full mirror of `com_arm_e2e`). The register-freshness
     faithfulness is discharged automatically by `comToRegProg_X86Faithful`; the only
-    residual side condition is the shift-count range `ShiftAmtOK` (vacuous for
-    shift-free kernels, e.g. the field-add golden path). -/
+    remaining side condition is the shift-count range `ShiftAmtOK`, which holds
+    trivially for shift-free kernels such as `FieldEmitGoldenPath.fieldAddCom`. -/
 theorem com_x86_e2e {Γ : Ctxt jasminDialect} {com : Com jasminDialect Γ (.reg 64)}
     (hok : ComOK com) (hΓ : AllReg64 Γ) (V : Ctxt.Valuation Γ) (s : XState)
     (hs : s.regs = envOf Γ.length V)

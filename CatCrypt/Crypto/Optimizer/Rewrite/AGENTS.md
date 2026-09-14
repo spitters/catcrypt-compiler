@@ -1,4 +1,4 @@
-# Rewrite: equality saturation and the algebraic rewrite library
+# Rewrite: rewrite saturation and the algebraic rewrite library
 
 Index for optimizing a `Com` up to proven equivalence. Search here before adding a
 rewrite pass, a program-search heuristic, or a selector that picks the fastest of
@@ -87,7 +87,7 @@ Each module proves algebraic identities as equations, usable as rewrite rules:
 - NTT: `../Lattice/NttEmitDenotationBridge.lean` proves that the ML-KEM
   butterfly-stage sequence, as a value model, equals `nttIter`
   (`nttIter_succ_eq_ctMergeStage`), `dft` (`IterativeNttEqRec.mlkem_nttIter_eq_dft`)
-  and polynomial evaluation. The per-lane blocks of
-  `../../SecureCompilation/VIR/LatticeNttEmit.lean` are the placeholder `id`, and no
-  theorem relates the emitted `.jazz` text (`emitMlkemNttFull16wayJazz`) to the value
-  model.
+  and polynomial evaluation. No theorem relates the `.jazz` text that
+  `../../SecureCompilation/VIR/LatticeNttEmit.lean` renders
+  (`emitMlkemNttFull16wayJazz`) to the value model; that module's lane-independence
+  theorems are instantiated at the per-lane block `id`.

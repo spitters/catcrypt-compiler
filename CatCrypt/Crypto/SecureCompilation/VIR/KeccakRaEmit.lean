@@ -53,9 +53,8 @@ unrenamed emit. The register allocator with a semantic theorem is
 
 `linearScanRA p` assigns slots to the binders of `p`. The slot indices of
 `KeccakEmit.keccakF1600Com` (`numSlots = 57`) are not binder indices of the
-`JForProg` wrapper. The bench emit (`bench/keccak_compare/keccak_ra_emit.lean`
-in the development repository) passes `keccakRA_coalesce_renamed`, a linear scan
-with coalescing over a slot trace of `keccakF1600Com`.
+`JForProg` wrapper. The benchmark emit passes `keccakRA_coalesce_renamed`, a
+linear scan with coalescing over a slot trace of `keccakF1600Com`.
 
 See `KeccakEmit.lean` for the map of the Keccak VIR modules.
 -/

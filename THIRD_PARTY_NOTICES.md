@@ -361,7 +361,7 @@ the package repository's `LICENSE` file.
 | Package | Repository | Licence |
 |---|---|---|
 | `catcryptCore` | <https://github.com/spitters/CatCrypt-core> | MIT, "Copyright (c) 2026 CatCrypt Contributors" |
-| `Veir` | <https://github.com/spitters/veir-catcrypt> (a staging fork of <https://github.com/opencompl/veir>; read access required) | Apache-2.0 |
+| `Veir` | <https://github.com/spitters/veir-catcrypt> (a public fork of <https://github.com/opencompl/veir> at `v4.29.0` with the CatCrypt opcode dialects and toolchain updates) | Apache-2.0 |
 | `paramTransfer` | <https://github.com/spitters/ParamTransfer> | LGPL-3.0 (`LICENSE`; the GPL-3.0 text it incorporates is in `COPYING`) |
 | `CompPoly` | <https://github.com/Verified-zkEVM/CompPoly> | Apache-2.0 |
 | `hax-lean` | <https://github.com/spitters/hax-lean> | MIT, "Copyright (c) 2026 CatCrypt Contributors" |

@@ -2,9 +2,8 @@
 
 ## Build and run a first example
 
-This needs the toolchain, read access to the private Veir dependency, and the
-first-time setup from [BUILDING.md](BUILDING.md) (sections "Access to the Veir
-dependency" and "First-time setup"). From the package root:
+This needs the toolchain and the first-time setup from [BUILDING.md](BUILDING.md)
+(section "First-time setup"). From the package root:
 
 ```bash
 lake build CatCrypt.Crypto.SecureCompilation.CompilerHelloDemo   # the demo and its import closure
@@ -42,8 +41,9 @@ the module and prints AArch64 assembly for the routine
 - [DEMO.md](DEMO.md): the theorems behind this run, and the relational front (a
   Lean specification related to compiled code).
 - [EXAMPLES.md](EXAMPLES.md): a set of buildable example modules.
-- [bench.md](bench.md): measured performance of the emitted assembly against the
-  deployed reference for each primitive.
+- [bench.md](bench.md): performance ratios against reference implementations,
+  measured in the development repository; they cannot be reproduced from this
+  package.
 - The manual, with the narrative:
   `cd docs && lake update && lake build CompilerManual && lake exe compiler-manual --output _out`.
 - [AxiomAudit.lean](AxiomAudit.lean): prints the axioms of the theorems it lists,

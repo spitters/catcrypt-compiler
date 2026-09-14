@@ -1,15 +1,32 @@
 # Documents gated by `scripts/lint-lean-prose.sh --docs`.
 #
-# These are the documents a reader is pointed at as authority for what the
-# compiler does, where a diction slip is a claim slip. A document joins the list
-# once it passes; the list only grows.
-#
-# Not yet listed (they carry hits today): DEMO.md, bench.md.
+# Every tracked Markdown file, the Verso manual and the blueprint source are
+# listed. `--docs` fails when a tracked document of these kinds is missing from
+# this list, so a new document joins the gate when it is added.
 README.md
 BUILDING.md
 GETTING_STARTED.md
 EXAMPLES.md
+DEMO.md
+ASCENT.md
+CAPABILITIES.md
 PROVENANCE.md
+THIRD_PARTY_NOTICES.md
 CHANGELOG.md
+bench.md
+bench/PROVENANCE.md
 CatCrypt/Crypto/Optimizer/README.md
+CatCrypt/Crypto/Optimizer/Rewrite/AGENTS.md
+CatCrypt/Crypto/SecureCompilation/AGENTS.md
+CatCrypt/Crypto/SecureCompilation/ARMBackend/AGENTS.md
+CatCrypt/Crypto/SecureCompilation/RISCVBackend/AGENTS.md
+CatCrypt/Crypto/SecureCompilation/TileBackend/AGENTS.md
+CatCrypt/Crypto/SecureCompilation/MLIR/VectorDialect/AGENTS.md
+CatCrypt/Crypto/SecureCompilation/Ascent/AGENTS.md
+CatCrypt/Crypto/SecureCompilation/Dialects/AGENTS.md
+CatCrypt/Crypto/SecureCompilation/VIR/AGENTS.md
 CatCrypt/Crypto/SecureCompilation/VIR/DIALECTS.md
+CatCrypt/Crypto/SecureCompilation/X86Backend/AGENTS.md
+docs/CompilerManual.lean
+docs/ManualMain.lean
+blueprint/src/content.tex

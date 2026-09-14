@@ -36,7 +36,7 @@ would fail to `decide` is suspect of being either (a) wrong, or (b)
 requiring a property of `Fp25519` not captured at the structural
 level. Either way, fail-loud is good.
 
-## Skipped (structural check inapplicable, per option-b-plan §0.2)
+## Skipped (structural check inapplicable)
 
 - `interp_fp_*` axioms (opaque carrier on LHS)
 - `interp_fp_inv_pow` (same)
