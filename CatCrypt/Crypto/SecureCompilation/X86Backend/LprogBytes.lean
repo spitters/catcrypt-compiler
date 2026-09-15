@@ -88,8 +88,9 @@ of its call sites. A proof over a closed mnemonic literal is indifferent to the
 placement, since literal disequality reduces in the kernel.
 
 The `LEA` and `LOADIDX` arms therefore sit at the end of the one-source
-`[d], [s]` cascade, and `STOREIDX` and the reg-reg `CMP` flag compare at the
-end of the two-source `[d], [a, s]` cascade, in the fallback reached only once
+`[d], [s]` cascade, and `STOREIDX`, the reg-reg `CMP` flag compare and the
+register-count `SHL`/`SHR`/`SAR` (BMI2 `shlx`/`shrx`/`sarx`) at the end of the
+two-source `[d], [a, s]` cascade, in the fallback reached only once
 `tagShiftExt`, `aluOpcode` and `twoByteOpcode` have all missed. Every variable-mnemonic dispatch lemma supplies
 one of those three as a hypothesis and so never reaches them. The `CMOV` select
 arm sits in the three-source `[d], [cond, t, f]` position, which the one- and
@@ -1017,6 +1018,26 @@ def encodeLopn (frame spillW : Nat) : LinstrR → List (BitVec 8)
                           | none => []
                         else []
                     | _, _ => []
+                  -- Register-count shift `SHL/SHR/SAR:64 [d] [val, count]` (the
+                  -- `regArith .shl/.shr/.sar` export with a runtime count): the
+                  -- BMI2 three-operand `shlx`/`shrx`/`sarx` the printer's
+                  -- variable-shift arm renders, `ScalarEncoder.encShiftX` with
+                  -- `d` the destination, `a` the shifted value and `s` the count
+                  -- (`VEX.LZ.{66,F2,F3}.0F38.W1 F7 /r`). U64 only, since the
+                  -- encoder hard-codes `W=1`; register-resident GP operands
+                  -- only, since BMI2 takes the count in a register and a
+                  -- spill/qsave/`mem.*` operand is left as the visible empty
+                  -- byte list. Reached last: the untagged `SHL`/`SHR`/`SAR` is
+                  -- in none of `tagShiftExt` (which needs the `SH?:` count
+                  -- prefix), `aluOpcode` and `twoByteOpcode`.
+                  else if base == "SHL" || base == "SHR" || base == "SAR" then
+                    match d, a, s with
+                    | .reg dn, .reg an, .reg sn =>
+                        if w = 1 && isGpName dn && isGpName an && isGpName sn then
+                          encShiftX (if base == "SHL" then 4 else if base == "SAR" then 7 else 5)
+                            (gpNumU dn) (gpNumU an) (gpNumU sn)
+                        else []
+                    | _, _, _ => []
                   else []
       -- Branchless constant-time select `CMOV:<w> [cond, t, f]` (§3c): the byte
       -- image of `renderLopn`'s CMOV arm, with the same aliasing-driven choice
@@ -1392,20 +1413,32 @@ def mnemonicEncodability : List (LinstrR × Bool) :=
   , (.Lopn [.reg "R8"] "ROR:7:64" [.reg "R8"], false)
   , (.Lopn [.reg "R8"] "ANDN:64" [.reg "RAX", .reg "RBX"], false)
   -- the register-count shifts (`regArith .shr`/`.shl`/`.sar` with a runtime
-  -- count), which `LprogAsmPrinter.renderLopn` renders as BMI2 `shrx`/`shlx`/`sarx`
-  -- and this encoder has no arm for.
-  , (.Lopn [.reg "R8"] "SHR:64" [.reg "RAX", .reg "RCX"], false)
-  , (.Lopn [.reg "R8"] "SHL:64" [.reg "RAX", .reg "RCX"], false)
-  , (.Lopn [.reg "R8"] "SAR:64" [.reg "RAX", .reg "RCX"], false) ]
+  -- count), the BMI2 `shrx`/`shlx`/`sarx` that `LprogAsmPrinter.renderLopn`
+  -- renders (`ScalarEncoder.encShiftX`); U64 only, since the VEX encoder
+  -- hard-codes `W=1`.
+  , (.Lopn [.reg "R8"] "SHR:64" [.reg "RAX", .reg "RCX"], true)
+  , (.Lopn [.reg "R8"] "SHL:64" [.reg "RAX", .reg "RCX"], true)
+  , (.Lopn [.reg "R8"] "SAR:64" [.reg "RAX", .reg "RCX"], true)
+  , (.Lopn [.reg "R8"] "SHR" [.reg "RAX", .reg "RCX"], false) ]
 
 #guard mnemonicEncodability.all fun p => encodableLinstrR 64 64 p.1 == p.2
 
-/-- A register-count shift `Lopn [d] "SHR:64" [val, count]` reaches no arm of
-    `encodeLopn`: the gate declines a body containing it rather than dropping
-    the instruction. The `SHL`/`SAR` duals are pinned in `mnemonicEncodability`. -/
-theorem encodableLinstrR_shr_regCount_false :
-    encodableLinstrR 64 64 (.Lopn [.reg "R8"] "SHR:64" [.reg "RAX", .reg "RCX"]) = false := by
+/-- A register-count shift `Lopn [d] "SHR:64" [val, count]` reaches the BMI2
+    `shrx` arm of `encodeLopn`, so the gate accepts a body containing it. The
+    `SHL`/`SAR` duals are pinned in `mnemonicEncodability`. -/
+theorem encodableLinstrR_shr_regCount :
+    encodableLinstrR 64 64 (.Lopn [.reg "R8"] "SHR:64" [.reg "RAX", .reg "RCX"]) = true := by
   decide +kernel
+
+/-- The bytes of `Lopn [RDX] "SHR:64" [RAX, RCX]` are those of
+    `shrx %rcx, %rax, %rdx`, `C4 E2 F3 F7 D0` (`ScalarEncoder.encShiftX_shrx_rcx_rax_rdx`). -/
+theorem encodeLopn_shr_regCount_bytes :
+    encodeLopn 64 64 (.Lopn [.reg "RDX"] "SHR:64" [.reg "RAX", .reg "RCX"])
+      = [0xc4, 0xe2, 0xf3, 0xf7, 0xd0] := by
+  decide +kernel
+
+-- The count-in-register shift at a 32-bit width has no arm: `encShiftX` is `W=1`.
+#guard encodeLopn 64 64 (.Lopn [.reg "RDX"] "SHR" [.reg "RAX", .reg "RCX"]) = []
 
 /-! ### Byte pins for the `SAR:<n>` and `CMOV` arms
 

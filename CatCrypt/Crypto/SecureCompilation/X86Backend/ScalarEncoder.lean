@@ -263,13 +263,6 @@ def encShiftByOne (ext d : Nat) : List (BitVec 8) :=
 def encShiftCl (ext d : Nat) : List (BitVec 8) :=
   [ rex 1 0 0 (bit d 3), 0xd3, modRMReg ext d ].map (BitVec.ofNat 8)
 
-/-- The bytes of a register-count shift `sh d, c` at group-2 extension `ext`:
-    the `%cl` form `encShiftCl` when the count register `c` is allocated to
-    `%rcx`, and no bytes otherwise, since x86 has no group-2 shift by another
-    register. -/
-def encShiftRegCount (alloc : GpAlloc) (ext : Nat) (d c : String) : List (BitVec 8) :=
-  if regOf alloc c = "%rcx" then encShiftCl ext (gpNum (regOf alloc d)) else []
-
 /-- `MOV $imm32, %dst` (`C7 /0 id`). -/
 def encMovImm (d v : Nat) : List (BitVec 8) :=
   ([ rex 1 0 0 (bit d 3), 0xc7, modRMReg 0 d ].map (BitVec.ofNat 8)) ++ imm32LE v
@@ -501,6 +494,35 @@ def encVex3RR (mm pp op dst vvvv rm : Nat) : List (BitVec 8) :=
   let vex2 := 128 + vbar * 8 + pp                       -- W = 1, L = 0
   [ 0xc4, vex1, vex2, op, modRMReg dst rm ].map (BitVec.ofNat 8)
 
+/-- The VEX `pp` field of the BMI2 variable shift at group-2 extension `ext`:
+    `SHLX` (`/4`) is `VEX.66` (`01`), `SHRX` (`/5`) is `VEX.F2` (`11`), `SARX`
+    (`/7`) is `VEX.F3` (`10`). SDM Vol 2B, `SARX/SHLX/SHRX`. -/
+def shiftXpp (ext : Nat) : Nat :=
+  if ext = 4 then 0b01 else if ext = 7 then 0b10 else 0b11
+
+/-- `SHLX`/`SHRX`/`SARX r64a, r/m64, r64b` (`VEX.LZ.{66,F2,F3}.0F38.W1 F7 /r`):
+    `dst := src` shifted by the low six bits of `cnt`, no flag written. The
+    destination is `ModRM.reg`, the shifted value `ModRM.rm`, the count the
+    `~vvvv` register; `ext` selects the mnemonic as for the group-2 form
+    (`SHL = /4`, `SHR = /5`, `SAR = /7`), so a register-count group-2 shift and its
+    BMI2 image share one extension argument. Five bytes: `C4`, then
+    `R̄ X̄ B̄ 0_0010`, then `W=1 ~vvvv L=0 pp`, then `F7`, then the register-direct
+    ModRM. AT&T `shrx %rcx, %rax, %rdx` (count `%rcx`, value `%rax`, destination
+    `%rdx`) is `encShiftX 5 2 0 1` = `C4 E2 F3 F7 D0`, pinned in
+    `encShiftX_shrx_rcx_rax_rdx`. -/
+def encShiftX (ext dst src cnt : Nat) : List (BitVec 8) :=
+  encVex3RR 0b00010 (shiftXpp ext) 0xf7 dst cnt src
+
+/-- The bytes of a register-count shift `sh d, c` at group-2 extension `ext`:
+    the `%cl` form `encShiftCl` (`REX.W D3 /ext`, which writes the flags
+    `x86_SHL`/`x86_SHR`/`x86_SAR` write) when the count register `c` is allocated
+    to `%rcx`, and no bytes otherwise: the group-2 shift reads its count from
+    `%cl` only, and the BMI2 `encShiftX` writes no flag where `evalInstr` writes
+    them. The flag-free register-count shift at the `JInstr` level is
+    `.shlx`/`.shrx`/`.sarx`. -/
+def encShiftRegCount (alloc : GpAlloc) (ext : Nat) (d c : String) : List (BitVec 8) :=
+  if regOf alloc c = "%rcx" then encShiftCl ext (gpNum (regOf alloc d)) else []
+
 /-- `RORX $imm8, %rm, %dst` — the VEX form above with no `vvvv` operand and a
     trailing `imm8`.  Gas-pinned: `rorx $7,%rcx,%rax` = `C4 E3 FB F0 C1 07`. -/
 def encRorx (dst rm imm : Nat) : List (BitVec 8) :=
@@ -568,11 +590,17 @@ with the per-op SDM extension digit), and the two store-immediate forms
     reads its count from `%cl` only. A count register allocated to `%rcx` encodes
     as `REX.W D3 /ext` (`encShiftCl`); any other count register carries no bytes
     (`encShiftRegCount`), and `encodableJInstr` is `false` on the shape, so
-    `encodeJInstr?` refuses it. The gather's two-source `regArith .shr`/`.shl`
-    export lowers to this shape with an arbitrary count register
-    (`LoweringExtended.lowerAluJ2`), which is how a variable shift such as the
-    P-256 ladder's per-trip bit load reaches it; the text printer renders
-    `shlq %rN, %d`, which gas rejects unless `%rN` is `%rcx`.
+    `encodeJInstr?` refuses it. `evalInstr` runs `.shr d (.reg c)` as `x86_SHR`,
+    which writes `CF`/`SF`/`ZF`/`PF`; the BMI2 `shrx` (`encShiftX`) computes the
+    same data word (`x86_SHR_word_eq_SHRX` and its duals: both mask the count to
+    six bits) but writes no flag, so it is not a byte image of this `JInstr`.
+    The flag-free register-count shift at the `JInstr` level is `.shlx`/`.shrx`/
+    `.sarx`, which `LoweringExtended.lowerAluJ2` does not yet emit for the
+    gather's two-source `regArith .shr`/`.shl` export; that export lowers to
+    this shape with an arbitrary count register, which is how a variable shift
+    such as the P-256 ladder's per-trip bit load reaches it. The `Lopn` route
+    (`LprogBytes.encodeLopn`), whose two-source shift semantics is value-only,
+    encodes the same export as `encShiftX`.
 
     The `.imm` divergence is unreachable from the compiler: no lowering constructs
     those shapes. `LoweringExtended.lowerJOperand` only puts an `.imm` where the
@@ -646,16 +674,14 @@ def encodeJInstr (alloc : GpAlloc) : JInstr 64 → List (BitVec 8)
       match amt with
       | .imm v => encRorx (gpNum (regOf alloc d)) (gpNum (regOf alloc src)) v
       | .reg _ => []
-  -- SHLX/SHRX/SARX = VEX.LZ.{66,F2,F3}.0F38.W1 F7 /r; `vvvv` carries the count.
+  -- SHLX/SHRX/SARX = VEX.LZ.{66,F2,F3}.0F38.W1 F7 /r (`encShiftX`); `vvvv`
+  -- carries the count.
   | .shlx d src c =>
-      encVex3RR 0b00010 0b01 0xf7 (gpNum (regOf alloc d))
-        (gpNum (regOf alloc c)) (gpNum (regOf alloc src))
+      encShiftX 4 (gpNum (regOf alloc d)) (gpNum (regOf alloc src)) (gpNum (regOf alloc c))
   | .shrx d src c =>
-      encVex3RR 0b00010 0b11 0xf7 (gpNum (regOf alloc d))
-        (gpNum (regOf alloc c)) (gpNum (regOf alloc src))
+      encShiftX 5 (gpNum (regOf alloc d)) (gpNum (regOf alloc src)) (gpNum (regOf alloc c))
   | .sarx d src c =>
-      encVex3RR 0b00010 0b10 0xf7 (gpNum (regOf alloc d))
-        (gpNum (regOf alloc c)) (gpNum (regOf alloc src))
+      encShiftX 7 (gpNum (regOf alloc d)) (gpNum (regOf alloc src)) (gpNum (regOf alloc c))
   -- MOVZX from 8/16 is `0F B6`/`0F B7`; from 32 the plain 32-bit `MOV` (89 /r,
   -- no REX.W) already zeroes the upper half, which is why gas emits `movl`.
   | .movzx d sw src =>
@@ -696,10 +722,11 @@ def encodeJInstr (alloc : GpAlloc) : JInstr 64 → List (BitVec 8)
       | .imm v => encShiftImm 4 (gpNum (regOf alloc d)) v
       -- x86's variable shift (`D3 /ext`) reads the count from `%cl` only: a
       -- register count allocated to `%rcx` encodes as that form and any other
-      -- count register carries no bytes (`encShiftRegCount`). The gather's
-      -- two-source `regArith .shr`/`.shl` export (`LoweringExtended.lowerAluJ2`)
-      -- produces this shape with an arbitrary count register, and
-      -- `encodableJInstr` excludes it, so `encodeJInstr?` refuses it.
+      -- count register carries no bytes (`encShiftRegCount`), since the BMI2
+      -- form writes no flag where `x86_SHL` does. The gather's two-source
+      -- `regArith .shr`/`.shl` export (`LoweringExtended.lowerAluJ2`) produces
+      -- this shape with an arbitrary count register, and `encodableJInstr`
+      -- excludes it, so `encodeJInstr?` refuses it.
       | .reg c => encShiftRegCount alloc 4 d c
   | .shr d s =>
       match s with
@@ -1012,7 +1039,8 @@ def encodableJInstr : JInstr 64 → Bool
   | .cmove _ (.imm _) | .adcx _ (.imm _) | .adox _ (.imm _) => false
   | .mulx _ _ (.imm _) _ | .mulx _ _ _ (.imm _) => false
   -- a register-count shift encodes only when its count register is `%rcx`, a
-  -- fact of the allocation this gate does not see.
+  -- fact of the allocation this gate does not see; the flag-free BMI2 form is
+  -- the separate `.shlx`/`.shrx`/`.sarx`.
   | .shl _ (.reg _) | .shr _ (.reg _) | .sar _ (.reg _) => false
   -- the instructions `encodeJInstr` does not yet encode.
   | .inc _ | .dec _ | .clc | .stc | .xchg _ _ | .imulri _ _ _ | .mul _ _ _
@@ -1058,7 +1086,32 @@ theorem encodeJInstr?_cmove_imm (alloc : GpAlloc) (d : String) (v : Nat) :
 The group-2 shifts take a register count only in `%cl`. The bytes of
 `.shl`/`.shr`/`.sar d (.reg c)` are the `REX.W D3 /ext` form when `c` is
 allocated to `%rcx` and empty otherwise, and the gated encoder refuses the shape
-outright. -/
+outright; the flag-free BMI2 form is the separate `.shlx`/`.shrx`/`.sarx`
+(`encShiftX`), whose bytes are pinned against the SDM encoding below, since
+`SailX86Decoder` has no VEX decode path. -/
+
+/-- A BMI2 variable shift is five bytes. -/
+@[simp] theorem encShiftX_length (ext dst src cnt : Nat) :
+    (encShiftX ext dst src cnt).length = 5 := by
+  simp [encShiftX, encVex3RR]
+
+/-- `shrx %rcx, %rax, %rdx` (count `%rcx`, value `%rax`, destination `%rdx`) is
+    `C4 E2 F3 F7 D0`: `C4`; `R̄=1 X̄=1 B̄=1 mm=00010` = `E2` (no extended register);
+    `W=1`, `~vvvv = ~0001 = 1110`, `L=0`, `pp=11` (`F2`) = `F3`; opcode `F7`;
+    ModRM `11 010 000` (`reg = %rdx`, `rm = %rax`) = `D0`. -/
+theorem encShiftX_shrx_rcx_rax_rdx :
+    encShiftX 5 2 0 1 = [0xc4, 0xe2, 0xf3, 0xf7, 0xd0] := by decide
+
+/-- `shlx %rbx, %rcx, %rax` is `C4 E2 E1 F7 C1` (the `encVex3RR` gas pin):
+    `~vvvv = ~0011 = 1100`, `pp=01` (`66`) = `E1`; ModRM `11 000 001` = `C1`. -/
+theorem encShiftX_shlx_rbx_rcx_rax :
+    encShiftX 4 0 1 3 = [0xc4, 0xe2, 0xe1, 0xf7, 0xc1] := by decide
+
+/-- `sarx %r11, %rbx, %r13` is `C4 62 A2 F7 EB`: `R̄=0` (`%r13`), `B̄=1`,
+    so the second byte is `62`; `~vvvv = ~1011 = 0100`, `pp=10` (`F3`) = `A2`;
+    ModRM `11 101 011` = `EB`. -/
+theorem encShiftX_sarx_r11_rbx_r13 :
+    encShiftX 7 13 3 11 = [0xc4, 0x62, 0xa2, 0xf7, 0xeb] := by decide
 
 /-- The bytes of a register-count logical right shift: the `%cl` form
     `D3 /5` when the count is allocated to `%rcx`, none otherwise. -/
@@ -1083,6 +1136,12 @@ theorem encodeJInstr_shr_reg_ne_rcx (alloc : GpAlloc) (d c : String)
     (h : regOf alloc c ≠ "%rcx") : encodeJInstr alloc (.shr d (.reg c)) = [] := by
   rw [encodeJInstr_shr_reg, if_neg h]
 
+/-- A register-count shift whose count is in `%rcx` is the `D3 /5` form. -/
+theorem encodeJInstr_shr_reg_rcx (alloc : GpAlloc) (d c : String)
+    (h : regOf alloc c = "%rcx") :
+    encodeJInstr alloc (.shr d (.reg c)) = encShiftCl 5 (gpNum (regOf alloc d)) := by
+  rw [encodeJInstr_shr_reg, if_pos h]
+
 /-- The gated encoder refuses a register-count logical right shift. -/
 theorem encodeJInstr?_shr_reg (alloc : GpAlloc) (d c : String) :
     encodeJInstr? alloc (.shr d (.reg c)) = none :=
@@ -1097,5 +1156,40 @@ theorem encodeJInstr?_shl_reg (alloc : GpAlloc) (d c : String) :
 theorem encodeJInstr?_sar_reg (alloc : GpAlloc) (d c : String) :
     encodeJInstr? alloc (.sar d (.reg c)) = none :=
   encodeJInstr?_eq_none alloc _ rfl
+
+/-- The gated encoder accepts the BMI2 `shrx`, the flag-free register-count
+    shift at the `JInstr` level. -/
+theorem encodeJInstr?_shrx (alloc : GpAlloc) (d src c : String) :
+    encodeJInstr? alloc (.shrx d src c)
+      = some (encShiftX 5 (gpNum (regOf alloc d)) (gpNum (regOf alloc src))
+          (gpNum (regOf alloc c))) :=
+  encodeJInstr?_eq_some alloc _ rfl
+
+/-! ### The two encodings compute one data word
+
+`JasminModel.evalInstr` runs `.shr d (.reg c)` as `x86_SHR`, whose count is
+`shiftCount c = c.toNat % 64`, and `.shrx d src c` as `x86_SHRX` with the same
+mask. The data words coincide for every count, so `shr %cl, %d` (`encShiftCl`)
+and `shrx %c, %d, %d` (`encShiftX`) write the same destination; the flags
+`x86_SHR` writes at a nonzero count are the difference between the two
+instructions, which is why only `.shrx` is encoded as `encShiftX`. -/
+
+/-- The `x86_SHR` data word is the `x86_SHRX` word at every count. -/
+theorem x86_SHR_word_eq_SHRX {w : Nat} (v c : BitVec w) :
+    (x86_SHR v c).word = x86_SHRX v c := by
+  unfold x86_SHR x86_SHRX
+  by_cases h : shiftCount c = 0 <;> simp [rflags_None, rflags_OF, wshr, h]
+
+/-- The `x86_SHL` data word is the `x86_SHLX` word at every count. -/
+theorem x86_SHL_word_eq_SHLX {w : Nat} (v c : BitVec w) :
+    (x86_SHL v c).word = x86_SHLX v c := by
+  unfold x86_SHL x86_SHLX
+  by_cases h : shiftCount c = 0 <;> simp [rflags_None, rflags_OF, wshl, h]
+
+/-- The `x86_SAR` data word is the `x86_SARX` word at every count. -/
+theorem x86_SAR_word_eq_SARX {w : Nat} (v c : BitVec w) :
+    (x86_SAR v c).word = x86_SARX v c := by
+  unfold x86_SAR x86_SARX
+  by_cases h : shiftCount c = 0 <;> simp [rflags_None, rflags_OF, wsar, h]
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder

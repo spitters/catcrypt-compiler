@@ -22,9 +22,18 @@ x86 backend:
 - Register-count group-2 shifts: `encShiftCl` encodes `shl`/`shr`/`sar` by `%cl`
   (`REX.W D3 /ext`, round trip `roundtrip_ShiftCl`) when the count register is allocated
   to `%rcx`; `encShiftRegCount` gives no bytes for any other count register, and
-  `encodableJInstr` and `encodableLinstrR` refuse the shape
-  (`encodeJInstr_shl_reg`, `encodeJInstr_shr_reg`, `encodeJInstr_sar_reg`,
-  `encodableLinstrR_shr_regCount_false`), where the earlier arms emitted a count-0 shift.
+  `encodableJInstr` refuses the shape (`encodeJInstr_shl_reg`, `encodeJInstr_shr_reg`,
+  `encodeJInstr_sar_reg`), where the earlier arms emitted a count-0 shift; `evalInstr`
+  runs `x86_SHR` on that instruction, which writes CF/SF/ZF/PF, so the flag-free
+  register-count shift at the `JInstr` level is `.shlx`/`.shrx`/`.sarx`.
+- `encShiftX` encodes BMI2 `shlx`/`shrx`/`sarx` (VEX `C4`, map `0F38`, `W1`, `pp` by the
+  group-2 extension, opcode `F7`; bytes pinned by `decide` from the SDM fields:
+  `encShiftX_shrx_rcx_rax_rdx` = `c4 e2 f3 f7 d0`), the `.shlx`/`.shrx`/`.sarx` arms of
+  `encodeJInstr` go through it, and the two-source `Lopn "SHL:64"/"SHR:64"/"SAR:64"
+  [val, count]` form of `encodeLopn` emits it (`encodeLopn_shr_regCount_bytes`,
+  `encodableLinstrR_shr_regCount`), which is faithful to the value-only `JasminLsem`
+  semantics of that form; `x86_SHR_word_eq_SHRX`, `x86_SHL_word_eq_SHLX`,
+  `x86_SAR_word_eq_SARX` relate the data words of the two forms for every count.
 
 Leak traces:
 
