@@ -12,14 +12,17 @@ public import CatCrypt.Crypto.Symbolic.SigningDiscipline
 /-!
 # MLS Protocol Verification
 
-Proves that the MLS commit operation maintains `traceInvariant`,
-starting from the empty trace. This closes the verification gap where
-`traceInvariant` was assumed rather than derived.
+Proves that the honest MLS commit session maintains `traceInvariant`,
+starting from the empty trace.
 
 ## Main results
 
 * `mlsEventPredMono` — MLS invariants are monotone under snoc
-* `honestSession_mls_invariant` — MLS honest session maintains invariant from `.nil`
+* `honestSession_mls` — the committer and the verifying receiver as one
+  `Traceful` program; the path secret and the commit secret are `kemKey`
+  samples
+* `honestSession_mls_eq` — its trace is the named trace `tr₁₀`
+* `honestSession_mls_invariant` — that trace satisfies the invariant from `.nil`
 -/
 
 @[expose] public section
@@ -55,18 +58,26 @@ instance mlsEventPredMono : EventPredMono where
 
 /-! ## Honest MLS Session
 
-Define the trace produced by composing committer and receiver roles
-in an honest execution (no KEM loop, shared key by construction). -/
+The trace produced by composing the committer and receiver roles in an
+honest execution. The committer samples the path secret and the commit
+secret as `kemKey` values, signs the root hash and sends the commit message;
+the receiver verifies the committer's signature on the delivered message and
+triggers its events only when verification returns the signed root hash.
+The receiver's epoch key is the committer's: the sealed path message of
+`commitOperation` is not sent here, because `labelOf` of a KEM encapsulation
+is the label of its secret, so sending it would violate the publishability
+condition of `traceInvariant`. -/
 
-/-- Honest MLS session: committer creates a commit, receiver verifies.
-Both sides use the committer-computed epoch key (justified by honest
-execution where path secret is correctly transmitted). -/
+/-- Honest MLS session: the committer creates a commit and the receiver
+verifies the signature on the delivered commit message before triggering
+its `CommitVerified`, `GroupEstablished` and `EpochKey` events. Returns the
+epoch key, or `none` when signature verification fails. -/
 def honestSession_mls (C R : String) (sigKey : Bytes)
     (members : List String) (groupId : Bytes) (epoch : Nat)
-    (rootHash : Bytes) : Traceful Bytes := do
+    (rootHash : Bytes) : Traceful (Option Bytes) := do
   -- Committer: generate path secret and commit secret
-  let pathSecret ← mkRand .nonce (groupLabel members) 32
-  let commitSecret ← mkRand .nonce (principalLabel C) 32
+  let pathSecret ← mkRand .kemKey (groupLabel members) 32
+  let commitSecret ← mkRand .kemKey (principalLabel C) 32
   let epochKey := mlsKeySchedule pathSecret commitSecret (.literal "".toUTF8)
   -- Committer: trigger pathSecret event
   triggerEvent C pathSecretTag (mkPathSecretContent C pathSecret)
@@ -76,20 +87,24 @@ def honestSession_mls (C R : String) (sigKey : Bytes)
   -- Committer: trigger commit event
   triggerEvent C commitTag (mkCommitContent C groupId epoch rootHash)
   -- Committer: send commit message
-  sendMsg (.concat sig rootHash)
+  let commitMsg := Bytes.concat sig rootHash
+  sendMsg commitMsg
   -- Committer: trigger epoch key event
   triggerEvent C epochKeyTag (mkEpochKeyContent C epochKey)
-  -- Receiver: verify and process commit
-  -- (In honest execution, signature verification succeeds; we directly
-  -- trigger the corresponding events)
-  triggerEvent R commitVerifiedTag
-    (mkCommitVerifiedContent R C groupId epoch rootHash)
-  -- Receiver: trigger group established
-  triggerEvent R groupEstablishedTag
-    (mkGroupContent R groupId epoch rootHash)
-  -- Receiver: trigger epoch key event (using shared key)
-  triggerEvent R epochKeyTag (mkEpochKeyContent R epochKey)
-  return epochKey
+  -- Receiver: verify the committer's signature on the delivered message
+  let received ← recvMsg commitMsg
+  match Bytes.signVerify (.vk sigKey) (received.splitL.getD Bytes.empty) with
+  | none => return none
+  | some signedRoot =>
+    -- Receiver: trigger commit verified
+    triggerEvent R commitVerifiedTag
+      (mkCommitVerifiedContent R C groupId epoch signedRoot)
+    -- Receiver: trigger group established
+    triggerEvent R groupEstablishedTag
+      (mkGroupContent R groupId epoch signedRoot)
+    -- Receiver: trigger epoch key event
+    triggerEvent R epochKeyTag (mkEpochKeyContent R epochKey)
+    return (some epochKey)
 
 abbrev Inv := @traceInvariant mlsInvariants
 
@@ -98,14 +113,14 @@ abbrev Inv := @traceInvariant mlsInvariants
 noncomputable def tr₀ : Trace := .nil
 
 noncomputable def ePS (_C : String) (_members : List String) :=
-  Bytes.rand .nonce 32 0
+  Bytes.rand .kemKey 32 0
 noncomputable def tr₁ (_C : String) (members : List String) : Trace :=
-  .snoc tr₀ (.randGen .nonce (groupLabel members) 32)
+  .snoc tr₀ (.randGen .kemKey (groupLabel members) 32)
 
 noncomputable def eCS (C : String) (members : List String) :=
-  Bytes.rand .nonce 32 (tr₁ C members).length
+  Bytes.rand .kemKey 32 (tr₁ C members).length
 noncomputable def tr₂ (C : String) (members : List String) : Trace :=
-  .snoc (tr₁ C members) (.randGen .nonce (principalLabel C) 32)
+  .snoc (tr₁ C members) (.randGen .kemKey (principalLabel C) 32)
 
 noncomputable def pathSecret (_C : String) (members : List String) :=
   ePS _C members
@@ -164,8 +179,8 @@ theorem honestSession_mls_eq (C R : String) (sigKey : Bytes)
     tr₁₀ C R members sigKey groupId epoch rootHash := by
   unfold honestSession_mls tr₁₀ tr₉ tr₈ tr₇ tr₆ tr₅ tr₄ tr₃ tr₂ tr₁ tr₀
   unfold epochKey commitSecret pathSecret sig eNonce eCS ePS
-  simp only [bind, instMonadTraceful, mkRand, triggerEvent, sendMsg,
-    Trace.length_nil, Trace.length_snoc]
+  simp only [bind, mkRand, triggerEvent, sendMsg, recvMsg, Bytes.splitL, Option.getD,
+    Bytes.signVerify, Bytes.beq_self, ↓reduceIte, Trace.length_nil, Trace.length_snoc]
   rfl
 
 /-- The honest MLS session maintains trace invariant from the empty trace.
@@ -179,8 +194,10 @@ theorem honestSession_mls_invariant (C R : String) (sigKey : Bytes)
   unfold tr₁₀
   -- Chain of intermediate invariants
   have hInv₀ : Inv tr₀ := traceInvariant_nil
-  have hInv₁ : Inv (tr₁ C members) := traceInvariant_randGen hInv₀ (Or.inl rfl)
-  have hInv₂ : Inv (tr₂ C members) := traceInvariant_randGen hInv₁ (Or.inl rfl)
+  have hInv₁ : Inv (tr₁ C members) :=
+    traceInvariant_randGen hInv₀ (Or.inr (Or.inl rfl))
+  have hInv₂ : Inv (tr₂ C members) :=
+    traceInvariant_randGen hInv₁ (Or.inr (Or.inl rfl))
   have hInv₃ : Inv (tr₃ C members) := by
     unfold tr₃; apply traceInvariant_event hInv₂
     show mlsEventPred _ _ _ _ _; unfold mlsEventPred

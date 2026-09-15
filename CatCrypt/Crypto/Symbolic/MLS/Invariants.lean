@@ -166,8 +166,9 @@ def mlsEventPred (tr : Trace) (i : Nat) (prin tag : String) (content : Bytes) : 
 
 /-- MLS-specific usage predicate.
 
-MLS uses nonces (path secrets, commit secrets), KEM keys (HPKE),
-signing keys (credential), and AEAD keys (application). -/
+MLS uses KEM keys (path secrets, commit secrets, HPKE), nonces
+(signature and AEAD nonces), signing keys (credential), and AEAD keys
+(application). -/
 def mlsUsagePred (usage : Usage) (_label : Label) : Prop :=
   usage = .nonce ∨ usage = .kemKey ∨ usage = .sigKey ∨ usage = .aeadKey
 
