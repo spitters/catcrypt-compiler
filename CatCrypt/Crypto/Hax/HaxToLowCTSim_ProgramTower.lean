@@ -404,10 +404,10 @@ theorem progSimT_letBind_app (name f : String) (args : List ImpExpr) (body : Imp
   split at hScope
   · rename_i hc
     simp only [Bool.and_eq_true] at hc
-    obtain ⟨⟨⟨hArgsIn, hAvoid⟩, hCompat⟩, hNotS⟩ := hc
+    obtain ⟨⟨⟨⟨hNotSc, hArgsIn⟩, hAvoid⟩, hCompat⟩, hNotS⟩ := hc
     have hNotMem : name ∉ S := not_mem_of_not_contains S name hNotS
     obtain ⟨args', bodyC, hArgsT, hBodyT, hC⟩ :=
-      haxToLowCT_letBind_app_some name f args body c hf_arr hf_idx hHax
+      haxToLowCT_letBind_app_some name f args body c hf_arr hf_idx (by simpa using hNotSc) hHax
     subst hC
     have hArgsEnv := evalImp_letBind_app_argsDefined bi fuel name f args body env v env'
       (argsInScope_allVars Γ _ args hArgsIn) hEval

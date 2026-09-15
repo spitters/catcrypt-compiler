@@ -160,6 +160,13 @@ def letHead (name : String) : ImpExpr → Option (LowCT → LowCT)
               let arrLoc  : Located := { locVar := arr,  locSrc := dtL }
               .RLetZero name dtL (.RSeq (.RArrLoad destLoc arrLoc idx) bodyC)
           | _ => .RLetZero name dt (.RSeq (.RCall f dest args') bodyC)
+        else if scalarCallName f then
+          match args with
+          | [.var a, .var b] =>
+              match scalarCallSExpr f (.SVar a) (.SVar b) with
+              | some se => .RLetU64Zero name (.RSeq (.RScalarSetExpr name se) bodyC)
+              | none => .RLetZero name dt (.RSeq (.RCall f dest args') bodyC)
+          | _ => .RLetZero name dt (.RSeq (.RCall f dest args') bodyC)
         else
           .RLetZero name dt (.RSeq (.RCall f dest args') bodyC)
   | .lit (.uintLit w n) =>

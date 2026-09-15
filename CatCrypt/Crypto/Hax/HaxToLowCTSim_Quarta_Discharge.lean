@@ -108,6 +108,7 @@ theorem haxToLowCT_letBind_app_some
     (name f : String) (args : List ImpExpr) (body : ImpExpr) (c : LowCT)
     (hf_not_arr : f ≠ "array_update")
     (hf_not_idx : f ≠ "index")
+    (hf_not_sc : scalarCallName f = false)
     (h : haxToLowCT (.letBind name (.app f args) body) = some c) :
     ∃ (args' : List Located) (bodyC : LowCT),
       haxArgsToLocated (towerOfCallName f) args = some args' ∧
@@ -122,8 +123,8 @@ theorem haxToLowCT_letBind_app_some
     cases hBody : haxToLowCT body with
     | none => simp [hArgs, hBody] at h
     | some bodyC =>
-      simp only [hArgs, hBody, if_neg hf_not_arr, if_neg hf_not_idx,
-                 Option.some.injEq] at h
+      simp only [hArgs, hBody, if_neg hf_not_arr, if_neg hf_not_idx, hf_not_sc,
+                 Bool.false_eq_true, if_false, Option.some.injEq] at h
       exact ⟨args', bodyC, rfl, rfl, h.symm⟩
 
 /-! ## §4  Source-side inverse for `letBind name (.app f args) body`
@@ -320,6 +321,7 @@ theorem haxToLowCT_simulates_letBind_app_full
                    valueToScalar vRes = none)
     (hf_not_arr : f ≠ "array_update")
     (hf_not_idx : f ≠ "index")
+    (hf_not_sc : scalarCallName f = false)
     (ihBody : ∀ c' env_a env_b rs_a v_a,
                 HaxToLowCTSimulatesFull bridge bi fuel N leafSpec
                   body c' env_a env_b rs_a v_a) :
@@ -328,7 +330,7 @@ theorem haxToLowCT_simulates_letBind_app_full
   intro hHax hEval hAgreeFull
   -- §1: Unpack syntactic translation.
   obtain ⟨args', bodyC, hArgsT, hBodyT, hC⟩ :=
-    haxToLowCT_letBind_app_some name f args body c hf_not_arr hf_not_idx hHax
+    haxToLowCT_letBind_app_some name f args body c hf_not_arr hf_not_idx hf_not_sc hHax
   subst hC
   -- §2: Source-side decomposition.
   obtain ⟨vals, vRes, _hAV, hBi, hBodyEval⟩ :=

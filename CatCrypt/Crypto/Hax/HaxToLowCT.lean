@@ -554,6 +554,48 @@ def impLitNat : ImpLit → Option Nat
   | .sintLit _ n  => if n ≥ 0 then some n.toNat else none
   | _             => none
 
+/-! ### Calls computed in the scalar heap
+
+A call named `scalar#<Op>` for a binary operation `<Op>` of `scalarCallNames`
+has its operands and its result in the scalar heap: a binding
+`let name = scalar#<Op>(a, b)` on two variables lowers to the scalar assignment
+`RScalarSetExpr name e` of the scalar expression `e` of `<Op>` on `a` and `b`,
+inside `RLetU64Zero name`. -/
+
+/-- The call names computed in the scalar heap. -/
+def scalarCallNames : List String :=
+  ["scalar#Add", "scalar#Sub", "scalar#Mul", "scalar#BitAnd", "scalar#BitXor",
+   "scalar#Lt", "scalar#Gt", "scalar#Le", "scalar#Ge", "scalar#Eq", "scalar#Ne"]
+
+/-- `f` is a call name computed in the scalar heap. -/
+def scalarCallName (f : String) : Bool := scalarCallNames.contains f
+
+/-- The scalar expression of the call `f` on the operands `a` and `b`: `Add`,
+    `Sub`, `Mul`, `BitAnd` and `BitXor` as the `SExpr` operations (`SSub`
+    truncates at `0`), and the comparisons as `0` or `1` from `SLt`. -/
+def scalarCallSExpr (f : String) (a b : CatCrypt.Crypto.Jasmin.LowCT.SExpr) :
+    Option CatCrypt.Crypto.Jasmin.LowCT.SExpr :=
+  match f with
+  | "scalar#Add" => some (.SAdd a b)
+  | "scalar#Sub" => some (.SSub a b)
+  | "scalar#Mul" => some (.SMul a b)
+  | "scalar#BitAnd" => some (.SAnd a b)
+  | "scalar#BitXor" => some (.SXor a b)
+  | "scalar#Lt" => some (.SLt a b)
+  | "scalar#Gt" => some (.SLt b a)
+  | "scalar#Le" => some (.SSub (.SLit 1) (.SLt b a))
+  | "scalar#Ge" => some (.SSub (.SLit 1) (.SLt a b))
+  | "scalar#Eq" => some (.SSub (.SSub (.SLit 1) (.SLt a b)) (.SLt b a))
+  | "scalar#Ne" => some (.SAdd (.SLt a b) (.SLt b a))
+  | _ => none
+
+/-- The scalar expression of a call is defined exactly on the call names
+    computed in the scalar heap. -/
+theorem scalarCallSExpr_isSome (f : String) (a b : CatCrypt.Crypto.Jasmin.LowCT.SExpr) :
+    (scalarCallSExpr f a b).isSome = scalarCallName f := by
+  unfold scalarCallSExpr scalarCallName scalarCallNames
+  split <;> simp_all
+
 /-- Structural recursion `ImpExpr → Option LowCT`.
 
     Each recursive call is on a strict syntactic subterm of the input
@@ -598,6 +640,15 @@ def haxToLowCT : ImpExpr → Option LowCT
                 let destLoc : Located := { locVar := name, locSrc := dtL }
                 let arrLoc  : Located := { locVar := arr,  locSrc := dtL }
                 some (.RLetZero name dtL (.RSeq (.RArrLoad destLoc arrLoc idx) bodyC))
+            | _ => some (.RLetZero name dt (.RSeq (.RCall f dest args') bodyC))
+          -- Scalar call: `let name = scalar#<Op>(a, b); body` lowers to the
+          -- scalar assignment of the expression of `<Op>` on `a` and `b`.
+          else if scalarCallName f then
+            match args with
+            | [.var a, .var b] =>
+                match scalarCallSExpr f (.SVar a) (.SVar b) with
+                | some se => some (.RLetU64Zero name (.RSeq (.RScalarSetExpr name se) bodyC))
+                | none => some (.RLetZero name dt (.RSeq (.RCall f dest args') bodyC))
             | _ => some (.RLetZero name dt (.RSeq (.RCall f dest args') bodyC))
           else
             some (.RLetZero name dt (.RSeq (.RCall f dest args') bodyC))

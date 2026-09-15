@@ -271,8 +271,8 @@ def simScopeA (tow : String → TowerType) (S T : List String) (A Γ : TowerScop
         | _ => none
       else
         let dt := tow f
-        if argsInScope Γ dt args && argsAvoid name args && scopeCompat Γ name dt
-            && !S.contains name then
+        if !scalarCallName f && argsInScope Γ dt args && argsAvoid name args
+            && scopeCompat Γ name dt && !S.contains name then
           simScopeA tow S T A ((name, dt) :: Γ) body
         else none
   | .letBind name (.lit l) body =>
@@ -746,10 +746,10 @@ theorem progSimA_letBind_app (name f : String) (args : List ImpExpr) (body : Imp
   split at hScope
   · rename_i hc
     simp only [Bool.and_eq_true] at hc
-    obtain ⟨⟨⟨hArgsIn, hAvoid⟩, hCompat⟩, hNotS⟩ := hc
+    obtain ⟨⟨⟨⟨hNotSc, hArgsIn⟩, hAvoid⟩, hCompat⟩, hNotS⟩ := hc
     have hNotMem : name ∉ S := not_mem_of_not_contains S name hNotS
     obtain ⟨args', bodyC, hArgsT, hBodyT, hC⟩ :=
-      haxToLowCT_letBind_app_some name f args body c hf_arr hf_idx hHax
+      haxToLowCT_letBind_app_some name f args body c hf_arr hf_idx (by simpa using hNotSc) hHax
     subst hC
     rw [litTower_letZero, litTower_seq, litTower_call, arrTower_letZero, arrTower_seq, arrTower_call]
     have hArgsEnv := evalImp_letBind_app_argsDefined bi fuel name f args body env v env'

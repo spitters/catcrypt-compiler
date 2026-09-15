@@ -30,6 +30,11 @@ the same range, guard and body.
   whose bound is unbound; the invariant excludes both.
 * `ProgSimW` is the simulation predicate, with `ScalarInv` as a hypothesis on the
   entry environment and a conclusion on the exit environment.
+* A binding `let x = f(a, b)` of a call name `f` computed in the scalar heap
+  (`scalarCallName`) lowers to `RScalarSetExpr`; `simScopeW` accepts it when `x`,
+  `a` and `b` are names of `S` and `a`, `b` differ from `x`, and
+  `ScalarCallsAgree` is the condition it places on the builtin table
+  (`progSimW_letBind_scalar`).
 
 ## Main results
 
@@ -207,6 +212,14 @@ def simScopeW (tow : String → TowerType) (D S T : List String) (A Γ : TowerSc
                 else none
             | none => none
         | _ => none
+      else if scalarCallName f then
+        match args with
+        | [.var a, .var b] =>
+            if S.contains name && S.contains a && S.contains b && decide (a ≠ name)
+                && decide (b ≠ name) then
+              simScopeW tow D S T A Γ body
+            else none
+        | _ => none
       else
         let dt := tow f
         if argsInScope Γ dt args && argsAvoid name args && scopeCompat Γ name dt
@@ -273,7 +286,7 @@ def simScopeW (tow : String → TowerType) (D S T : List String) (A Γ : TowerSc
       if f = "array_update" ∨ f = "index" then none
       else
         let dt := tow f
-        if argsInScope Γ dt args && decide (List.lookup name Γ = some dt)
+        if !scalarCallName f && argsInScope Γ dt args && decide (List.lookup name Γ = some dt)
             && !S.contains name then some Γ else none
   | .tuple es => if es.all isVar then some Γ else none
   | .typeAscription e _ => simScopeW tow D S T A Γ e
@@ -328,11 +341,17 @@ theorem simScopeW_lookup_mono (tow : String → TowerType) (D S T : List String)
             · cases h
           · cases h
         · split at h
-          · rename_i hc
-            simp only [Bool.and_eq_true] at hc
-            exact ihBody _ Γ' h m dt
-              (lookup_cons_of_scopeCompat Γ name (tow f) hc.1.2 m dt hm)
-          · cases h
+          · split at h
+            · split at h
+              · exact ihBody Γ Γ' h m dt hm
+              · cases h
+            · cases h
+          · split at h
+            · rename_i hc
+              simp only [Bool.and_eq_true] at hc
+              exact ihBody _ Γ' h m dt
+                (lookup_cons_of_scopeCompat Γ name (tow f) hc.1.2 m dt hm)
+            · cases h
     | lit l =>
       simp only [simScopeW] at h
       split at h
@@ -534,6 +553,29 @@ theorem progSimW_of_progSimA (e : ImpExpr)
   rw [hScopeEq] at hScope
   obtain ⟨rs', hExec, hAgree', hSB', hSF'⟩ :=
     h fuel Γ Γ' c env env' rs v hScope hConds hSB hSF hHax hEval hAgree
+  exact ⟨rs', hExec, hAgree', hSB', hSF', hNN'⟩
+
+/-- `progSimW_of_progSimA` with the simulation of `ProgSimA` over a second builtin
+    table `bi'` whose runs of `e` agree with those of `bi` when `simScopeW`
+    accepts `e`. -/
+theorem progSimW_of_progSimA_tables (bi' : Builtins) (e : ImpExpr)
+    (hScopeEq : ∀ Γ, simScopeW towerOfCallName D S T A Γ e = simScopeA towerOfCallName S T A Γ e)
+    (hConds : condsScalar S e = true)
+    (hLoop : ∀ Γ Γ', simScopeW towerOfCallName D S T A Γ e = some Γ' → forToLoop e = e)
+    (hInv : ∀ Γ Γ' c fuel env env' v, simScopeW towerOfCallName D S T A Γ e = some Γ' →
+      haxToLowCT e = some c → evalImp bi fuel e env = some (v, env') →
+      ScalarInv D S env → ScalarInv D S env')
+    (heq : ∀ Γ Γ', simScopeW towerOfCallName D S T A Γ e = some Γ' →
+      ∀ fuel env, evalImp bi fuel e env = evalImp bi' fuel e env)
+    (h : ProgSimA bridge bi' N leafSpec S T A e) : ProgSimW bridge bi N leafSpec D S T A e := by
+  intro fuel Γ Γ' c env env' rs v hScope hSB hSF hHax hEval hAgree hNN
+  rw [hLoop Γ Γ' hScope] at hEval
+  have hNN' := hInv Γ Γ' c fuel env env' v hScope hHax hEval hNN
+  rw [heq Γ Γ' hScope] at hEval
+  have hScopeA := hScope
+  rw [hScopeEq] at hScopeA
+  obtain ⟨rs', hExec, hAgree', hSB', hSF'⟩ :=
+    h fuel Γ Γ' c env env' rs v hScopeA hConds hSB hSF hHax hEval hAgree
   exact ⟨rs', hExec, hAgree', hSB', hSF', hNN'⟩
 
 theorem progSimW_seq (a b : ImpExpr)
@@ -1067,18 +1109,18 @@ theorem progSimW_letBind_var (name src : String) (body : ImpExpr)
 
 theorem progSimW_letBind_app (name f : String) (args : List ImpExpr) (body : ImpExpr)
     (hLeaf : LeafCallAgreesArgs bi leafSpec f (towerOfCallName f) bridge)
-    (hf_arr : f ≠ "array_update") (hf_idx : f ≠ "index")
+    (hf_arr : f ≠ "array_update") (hf_idx : f ≠ "index") (hf_sc : scalarCallName f = false)
     (ihBody : ProgSimW bridge bi N leafSpec D S T A body) :
     ProgSimW bridge bi N leafSpec D S T A (.letBind name (.app f args) body) := by
   intro fuel Γ Γ' c env env' rs v hScope hSB hSF hHax hEval hAgree hNN
-  simp only [simScopeW, if_neg hf_arr, if_neg hf_idx] at hScope
+  simp only [simScopeW, if_neg hf_arr, if_neg hf_idx, hf_sc, Bool.false_eq_true, if_false] at hScope
   split at hScope
   · rename_i hc
     simp only [Bool.and_eq_true] at hc
     obtain ⟨⟨⟨hArgsIn, hAvoid⟩, hCompat⟩, hNotS⟩ := hc
     have hNotMem : name ∉ S := not_mem_of_not_contains S name hNotS
     obtain ⟨args', bodyC, hArgsT, hBodyT, hC⟩ :=
-      haxToLowCT_letBind_app_some name f args body c hf_arr hf_idx hHax
+      haxToLowCT_letBind_app_some name f args body c hf_arr hf_idx hf_sc hHax
     subst hC
     rw [litTower_letZero, litTower_seq, litTower_call, arrTower_letZero, arrTower_seq, arrTower_call]
     have hAllVar := argsInScope_allVars Γ _ args hArgsIn
@@ -1130,6 +1172,137 @@ theorem progSimW_letBind_app (name f : String) (args : List ImpExpr) (body : Imp
     refine RustExec.letZero name dt _ rs rs' ?_
     exact RustExec.seq _ _ _ _ _ hCall hBodyExec
   · cases hScope
+
+/-- The natural-number operation of a call computed in the scalar heap. -/
+def scalarCallNat (f : String) : Option (Nat → Nat → Nat) :=
+  match f with
+  | "scalar#Add" => some (· + ·)
+  | "scalar#Sub" => some (· - ·)
+  | "scalar#Mul" => some (· * ·)
+  | "scalar#BitAnd" => some (· &&& ·)
+  | "scalar#BitXor" => some (· ^^^ ·)
+  | "scalar#Lt" => some fun a b => if a < b then 1 else 0
+  | "scalar#Gt" => some fun a b => if b < a then 1 else 0
+  | "scalar#Le" => some fun a b => if a ≤ b then 1 else 0
+  | "scalar#Ge" => some fun a b => if b ≤ a then 1 else 0
+  | "scalar#Eq" => some fun a b => if a = b then 1 else 0
+  | "scalar#Ne" => some fun a b => if a = b then 0 else 1
+  | _ => none
+
+theorem scalarCallNat_of_sexpr {f : String} {a b se : SExpr}
+    (h : scalarCallSExpr f a b = some se) : ∃ k, scalarCallNat f = some k := by
+  unfold scalarCallSExpr at h
+  unfold scalarCallNat
+  split at h <;> first | exact ⟨_, rfl⟩ | cases h
+
+/-- The scalar expression of a call evaluates to its natural-number operation on
+    the values of the operands. -/
+theorem scalarCallSExpr_eval {f : String} {ea eb se : SExpr} {k : Nat → Nat → Nat}
+    (hk : scalarCallNat f = some k) (hse : scalarCallSExpr f ea eb = some se)
+    (σ : String → Nat) : se.eval σ = k (ea.eval σ) (eb.eval σ) := by
+  unfold scalarCallSExpr at hse
+  unfold scalarCallNat at hk
+  split at hse <;> cases hse <;> cases hk <;> simp only [SExpr.eval] <;> split_ifs <;> omega
+
+/-- The builtin table agrees with the calls computed in the scalar heap: such a
+    call succeeds only on two values with scalar readings, and its result reads
+    as the natural-number operation on them. -/
+def ScalarCallsAgree (bi : Builtins) : Prop :=
+  ∀ (f : String) (k : Nat → Nat → Nat) (va vb r : Value), scalarCallNat f = some k →
+    bi f [va, vb] = some r →
+    ∃ n m, valueToScalar va = some n ∧ valueToScalar vb = some m ∧
+      valueToScalar r = some (k n m)
+
+theorem evalImp_letBind_app2_inv (bi : Builtins) (fuel : Nat) (name f a b : String)
+    (body : ImpExpr) (env : Env) (v : Value) (env' : Env)
+    (h : evalImp bi fuel (.letBind name (.app f [.var a, .var b]) body) env = some (v, env')) :
+    ∃ va vb r, env a = some va ∧ env b = some vb ∧ bi f [va, vb] = some r ∧
+      evalImp bi fuel body (env.extend name r) = some (v, env') := by
+  unfold evalImp at h ⊢
+  have hNil : (denoteArgs bi fuel ([] : List ImpExpr)).run env = (some [], env) := by
+    unfold denoteArgs; rfl
+  rw [denote_letBind_run_eq, denote_app_run_eq, denoteArgs_cons_run_eq, denote_var_run_eq] at h
+  cases ha : env a with
+  | none => rw [ha] at h; simp at h
+  | some va =>
+    rw [ha] at h
+    simp only at h
+    rw [denoteArgs_cons_run_eq, denote_var_run_eq] at h
+    cases hb : env b with
+    | none => rw [hb] at h; simp at h
+    | some vb =>
+      rw [hb] at h
+      simp only at h
+      rw [hNil] at h
+      simp only [Option.map_some] at h
+      cases hbi : bi f [va, vb] with
+      | none => rw [hbi] at h; simp at h
+      | some r =>
+        rw [hbi] at h
+        exact ⟨va, vb, r, rfl, rfl, hbi, h⟩
+
+theorem litTower_letU64Zero_scalarSetExpr (T : List String) (x y : String) (e : SExpr)
+    (b : LowCT) :
+    litTower T (.RLetU64Zero x (.RSeq (.RScalarSetExpr y e) b)) =
+      .RLetU64Zero x (.RSeq (.RScalarSetExpr y e) (litTower T b)) := by
+  simp [litTower]
+
+/-- The arm of a call computed in the scalar heap: `let name = f(a, b)` with
+    `name`, `a` and `b` scalar names and `a`, `b` distinct from `name` runs
+    `RScalarSetExpr name e` for the scalar expression `e` of `f`, and the body
+    from the extended scalar heap. -/
+theorem progSimW_letBind_scalar (name f a b : String) (body : ImpExpr)
+    (hSc : ScalarCallsAgree bi) (hf_sc : scalarCallName f = true)
+    (hf_arr : f ≠ "array_update") (hf_idx : f ≠ "index")
+    (ihBody : ProgSimW bridge bi N leafSpec D S T A body) :
+    ProgSimW bridge bi N leafSpec D S T A (.letBind name (.app f [.var a, .var b]) body) := by
+  intro fuel Γ Γ' c env env' rs v hScope hSB hSF hHax hEval hAgree hNN
+  simp only [simScopeW, if_neg hf_arr, if_neg hf_idx, hf_sc, ↓reduceIte] at hScope
+  split at hScope
+  swap
+  · cases hScope
+  rename_i hS
+  simp only [Bool.and_eq_true, decide_eq_true_eq] at hS
+  obtain ⟨⟨⟨⟨hName, ha⟩, hb⟩, hna⟩, hnb⟩ := hS
+  obtain ⟨se, hse⟩ : ∃ se, scalarCallSExpr f (.SVar a) (.SVar b) = some se :=
+    Option.isSome_iff_exists.mp (by rw [scalarCallSExpr_isSome]; exact hf_sc)
+  have hHax' : ∃ bodyC, haxToLowCT body = some bodyC ∧
+      c = .RLetU64Zero name (.RSeq (.RScalarSetExpr name se) bodyC) := by
+    simp only [haxToLowCT, haxArgsToLocated, haxArgToLocated] at hHax
+    cases hB : haxToLowCT body with
+    | none => simp [hB] at hHax
+    | some bodyC =>
+      simp only [hB, if_neg hf_arr, if_neg hf_idx, hf_sc, ↓reduceIte, hse,
+        Option.some.injEq] at hHax
+      exact ⟨bodyC, rfl, hHax.symm⟩
+  obtain ⟨bodyC, hB, rfl⟩ := hHax'
+  simp only [forToLoop, forToLoopArgs] at hEval
+  obtain ⟨va, vb, r, hva, hvb, hbi, hBodyEval⟩ :=
+    evalImp_letBind_app2_inv bi fuel name f a b _ env v env' hEval
+  obtain ⟨k, hk⟩ := scalarCallNat_of_sexpr hse
+  obtain ⟨n, m, hn, hm, hr⟩ := hSc f k va vb r hk hbi
+  have hTa : rs.rsTower a = none := hSF a (mem_of_contains S a ha)
+  have hTb : rs.rsTower b = none := hSF b (mem_of_contains S b hb)
+  have hsa : rs.rsScalar a = n := hAgree.1 a va n hva hTa hn
+  have hsb : rs.rsScalar b = m := hAgree.1 b vb m hvb hTb hm
+  have hEvalSe : se.eval (rsSetScalar rs name 0).rsScalar = k n m := by
+    rw [scalarCallSExpr_eval hk hse]
+    simp [SExpr.eval, rsSetScalar, hna, hnb, hsa, hsb]
+  have hFresh : TowerFresh rs name := hSF name (mem_of_contains S name hName)
+  have hAgree' :=
+    envAgreesRustT_extend_scalar_fresh bridge env rs name r (k n m) hFresh hr hAgree
+  have hNN' : ScalarInv D S (env.extend name r) :=
+    hNN.extend_of_nonneg name (nonneg_of_valueToScalar hr)
+  obtain ⟨rs', hBodyExec, hAgreeF, hSB', hSF', hNNF⟩ :=
+    ihBody fuel Γ Γ' bodyC (env.extend name r) env' (rsSetScalar rs name (k n m)) v hScope hSB
+      hSF hB hBodyEval hAgree' hNN'
+  refine ⟨rs', ?_, hAgreeF, hSB', hSF', hNNF⟩
+  rw [litTower_letU64Zero_scalarSetExpr, arrTower_letU64Zero, arrTower_seq, arrTower_scalarSetExpr]
+  refine RustExec.letU64Zero name _ rs rs' ?_
+  refine RustExec.seq _ _ _ (rsSetScalar rs name (k n m)) _ ?_ hBodyExec
+  have hS := RustExec.scalarSetExpr (N := N) (leafSpec := leafSpec) name se (rsSetScalar rs name 0)
+  rw [hEvalSe, rsSetScalar_collapse] at hS
+  exact hS
 
 theorem progSimW_letBind_proj (name t : String) (i : Nat) (body : ImpExpr)
     (hProj : TupleLoadAgrees bridge leafSpec)
@@ -1421,37 +1594,139 @@ theorem simScopeW_eq_tow (tow tow' : String → TowerType) (D S T : List String)
 
 /-! ## §6  The program-level theorem -/
 
+/-- The builtin table `bi` with every call computed in the scalar heap undefined. -/
+def scalarCallFree (bi : Builtins) : Builtins := fun f vals =>
+  if scalarCallName f then none else bi f vals
+
+theorem scalarCallFree_of_false {bi : Builtins} {f : String} (h : scalarCallName f = false)
+    (vals : List Value) : scalarCallFree bi f vals = bi f vals := by
+  simp only [scalarCallFree, h, Bool.false_eq_true, if_false]
+
+theorem scalarCallFree_leaf (bridge : ValueTowerBridge) (bi : Builtins) (leafSpec : LeafSpec)
+    (hLeaf : ∀ f, f ≠ "array_update" → f ≠ "index" → scalarCallName f = false →
+      LeafCallAgreesArgs bi leafSpec f (towerOfCallName f) bridge) :
+    ∀ f, f ≠ "array_update" → f ≠ "index" →
+      LeafCallAgreesArgs (scalarCallFree bi) leafSpec f (towerOfCallName f) bridge := by
+  intro f h1 h2 args vals argList oldV vRes hBi hF
+  cases hc : scalarCallName f with
+  | true => simp only [scalarCallFree, hc, if_true] at hBi; cases hBi
+  | false =>
+    rw [scalarCallFree_of_false hc] at hBi
+    exact hLeaf f h1 h2 hc args vals argList oldV vRes hBi hF
+
+theorem scalarCallFree_index (bridge : ValueTowerBridge) (bi : Builtins) (leafSpec : LeafSpec)
+    (h : IndexAgrees bridge bi leafSpec) : IndexAgrees bridge (scalarCallFree bi) leafSpec := by
+  intro name t vArr vIdx vRes arrV k hB hk hBi
+  rw [scalarCallFree_of_false (by decide)] at hBi
+  exact h name t vArr vIdx vRes arrV k hB hk hBi
+
+theorem scalarCallFree_arrUpdate (bridge : ValueTowerBridge) (bi : Builtins)
+    (leafSpec : LeafSpec) (h : ArrUpdateAgrees bridge bi leafSpec) :
+    ArrUpdateAgrees bridge (scalarCallFree bi) leafSpec := by
+  intro arr t vArr vIdx vSrc vRes arrV srcV k hB hk hS hBi
+  rw [scalarCallFree_of_false (by decide)] at hBi
+  exact h arr t vArr vIdx vSrc vRes arrV srcV k hB hk hS hBi
+
+/-- The run of a list of variables does not read the builtin table. -/
+theorem denoteArgs_allVar_eq_tables (bi bi' : Builtins) (fuel : Nat) :
+    ∀ (args : List ImpExpr), args.all isVar = true →
+      denoteArgs bi fuel args = denoteArgs bi' fuel args
+  | [], _ => by
+    unfold denoteArgs
+    rfl
+  | a :: as, h => by
+    simp only [List.all_cons, Bool.and_eq_true] at h
+    obtain ⟨n, rfl⟩ : ∃ n, a = .var n := by
+      cases a <;> simp_all [isVar]
+    have ih := denoteArgs_allVar_eq_tables bi bi' fuel as h.2
+    have hv : denote bi fuel (.var n) = denote bi' fuel (.var n) := by
+      unfold denote
+      rfl
+    unfold denoteArgs
+    rw [hv]
+    refine congrArg (fun k => denote bi' fuel (.var n) >>= k) ?_
+    funext r
+    cases r <;> first | rfl | rw [ih]
+
+theorem evalImp_var_eq_tables (bi bi' : Builtins) (fuel : Nat) (n : String) (env : Env) :
+    evalImp bi fuel (.var n) env = evalImp bi' fuel (.var n) env := by
+  unfold evalImp denote
+  rfl
+
+theorem evalImp_unitVal_eq_tables (bi bi' : Builtins) (fuel : Nat) (env : Env) :
+    evalImp bi fuel .unitVal env = evalImp bi' fuel .unitVal env := by
+  unfold evalImp denote
+  rfl
+
+theorem evalImp_assign_lit_eq_tables (bi bi' : Builtins) (fuel : Nat) (n : String) (l : ImpLit)
+    (env : Env) :
+    evalImp bi fuel (.assign n (.lit l)) env = evalImp bi' fuel (.assign n (.lit l)) env := by
+  unfold evalImp
+  rw [denote_assign_run_eq, denote_assign_run_eq, denote_lit_eq, denote_lit_eq]
+
+theorem evalImp_tuple_eq_tables (bi bi' : Builtins) (fuel : Nat) (es : List ImpExpr)
+    (h : es.all isVar = true) (env : Env) :
+    evalImp bi fuel (.tuple es) env = evalImp bi' fuel (.tuple es) env := by
+  unfold evalImp
+  rw [denote_tuple_run_eq, denote_tuple_run_eq, denoteArgs_allVar_eq_tables bi bi' fuel es h]
+
+theorem evalImp_assign_app_eq_tables (bi bi' : Builtins) (fuel : Nat) (n f : String)
+    (args : List ImpExpr) (hv : args.all isVar = true) (hf : ∀ vals, bi f vals = bi' f vals)
+    (env : Env) :
+    evalImp bi fuel (.assign n (.app f args)) env =
+      evalImp bi' fuel (.assign n (.app f args)) env := by
+  unfold evalImp
+  rw [denote_assign_run_eq, denote_assign_run_eq, denote_app_run_eq, denote_app_run_eq,
+    denoteArgs_allVar_eq_tables bi bi' fuel args hv]
+  rcases (denoteArgs bi' fuel args).run env with ⟨mvals, env_a⟩
+  cases mvals with
+  | none => rfl
+  | some vals => simp only [hf]
+
+theorem allVar_of_argsInScope (Γ : TowerScope) (dt : TowerType) (args : List ImpExpr)
+    (h : argsInScope Γ dt args = true) : args.all isVar = true := by
+  refine List.all_eq_true.mpr fun a ha => ?_
+  obtain ⟨n, rfl⟩ := argsInScope_allVars Γ dt args h a ha
+  rfl
+
 /-- **Program-level simulation with counted, reverse, runtime-bound and
     data-dependent loops.**  Every source program simulates by
     `arrTower A (litTower T c)` for its lowering `c` under `envAgreesRustT`, with
     its loops read back by `forToLoop`, from an environment whose names of `D`
     are bound and whose names of `S` hold non-negative integers, from the
-    hypotheses of `haxToLowCT_simulates_programA`. -/
+    hypotheses of `haxToLowCT_simulates_programA` with the leaf condition on the
+    call names not computed in the scalar heap, and `ScalarCallsAgree`. -/
 theorem haxToLowCT_simulates_programW
     (bridge : ValueTowerBridge) (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
     (D S T : List String) (A : TowerScope)
-    (hLeaf : ∀ f, f ≠ "array_update" → f ≠ "index" →
+    (hLeaf : ∀ f, f ≠ "array_update" → f ≠ "index" → scalarCallName f = false →
       LeafCallAgreesArgs bi leafSpec f (towerOfCallName f) bridge)
     (hProj : TupleLoadAgrees bridge leafSpec)
     (hLit : LitStoreAgrees bridge leafSpec)
     (hIdx : IndexAgrees bridge bi leafSpec)
     (hUpd : ArrUpdateAgrees bridge bi leafSpec)
+    (hSc : ScalarCallsAgree bi)
     (e : ImpExpr) : ProgSimW bridge bi N leafSpec D S T A e := by
   have noneArm := progSimW_of_simScopeW_none bridge bi N leafSpec D S T A
-  have hA := haxToLowCT_simulates_programA bridge bi N leafSpec S T A hLeaf hProj hLit hIdx hUpd
+  have hA := haxToLowCT_simulates_programA bridge (scalarCallFree bi) N leafSpec S T A
+    (scalarCallFree_leaf bridge bi leafSpec hLeaf) hProj hLit (scalarCallFree_index bridge bi leafSpec hIdx)
+    (scalarCallFree_arrUpdate bridge bi leafSpec hUpd)
   induction e using ImpExpr.ind with
   | var name =>
-    refine progSimW_of_progSimA bridge bi N leafSpec D S T A _ (fun _ => rfl) rfl
-      (fun _ _ _ => rfl) ?_ (hA _)
+    refine progSimW_of_progSimA_tables bridge bi N leafSpec D S T A (scalarCallFree bi) _
+      (fun _ => rfl) rfl (fun _ _ _ => rfl) ?_
+      (fun _ _ _ fuel env => evalImp_var_eq_tables bi _ fuel name env) (hA _)
     intro Γ Γ' c fuel env env' v _ _ hEval hNN
     exact ScalarInv_of_eq hNN (evalImp_var_inv bi fuel name env v env' hEval).2
   | unitVal =>
-    refine progSimW_of_progSimA bridge bi N leafSpec D S T A _ (fun _ => rfl) rfl
-      (fun _ _ _ => rfl) ?_ (hA _)
+    refine progSimW_of_progSimA_tables bridge bi N leafSpec D S T A (scalarCallFree bi) _
+      (fun _ => rfl) rfl (fun _ _ _ => rfl) ?_
+      (fun _ _ _ fuel env => evalImp_unitVal_eq_tables bi _ fuel env) (hA _)
     intro Γ Γ' c fuel env env' v _ _ hEval hNN
     exact ScalarInv_of_eq hNN (evalImp_unitVal_inv bi fuel env v env' hEval).2
   | tuple es _ =>
-    refine progSimW_of_progSimA bridge bi N leafSpec D S T A _ (fun _ => rfl) rfl ?_ ?_ (hA _)
+    refine progSimW_of_progSimA_tables bridge bi N leafSpec D S T A (scalarCallFree bi) _
+      (fun _ => rfl) rfl ?_ ?_ ?_ (hA _)
     · intro Γ Γ' h
       simp only [simScopeW] at h
       split at h
@@ -1464,6 +1739,12 @@ theorem haxToLowCT_simulates_programW
       · rename_i hAll
         exact ScalarInv_of_eq hNN (evalImp_tuple_vars_inv bi fuel es env v env' hAll hEval)
       · cases hScope
+    · intro Γ Γ' h fuel env
+      simp only [simScopeW] at h
+      split at h
+      · rename_i hAll
+        exact evalImp_tuple_eq_tables bi _ fuel es hAll env
+      · cases h
   | seq a b iha ihb => exact progSimW_seq bridge bi N leafSpec D S T A a b iha ihb
   | letBind name val body _ ihBody =>
     cases val with
@@ -1489,8 +1770,19 @@ theorem haxToLowCT_simulates_programW
         · rw [varArgs2_some hSh]
           exact progSimW_letBind_index bridge bi N leafSpec D S T A name f arr idx body hf_arr
             hf_idx hIdx ihBody
+      by_cases hsc : scalarCallName f = true
+      · rcases hSh : varArgs2 args with _ | ⟨a, b⟩
+        · refine noneArm _ fun Γ => ?_
+          simp only [simScopeW, if_neg hf_arr, if_neg hf_idx, hsc, ↓reduceIte]
+          split
+          · simp [varArgs2] at hSh
+          · rfl
+        · rw [varArgs2_some hSh]
+          exact progSimW_letBind_scalar bridge bi N leafSpec D S T A name f a b body hSc hsc
+            hf_arr hf_idx ihBody
+      have hsc' : scalarCallName f = false := by simpa using hsc
       exact progSimW_letBind_app bridge bi N leafSpec D S T A name f args body
-        (hLeaf f hf_arr hf_idx) hf_arr hf_idx ihBody
+        (hLeaf f hf_arr hf_idx hsc') hf_arr hf_idx hsc' ihBody
     | var src => exact progSimW_letBind_var bridge bi N leafSpec D S T A name src body ihBody
     | proj pe i =>
       cases pe with
@@ -1526,15 +1818,23 @@ theorem haxToLowCT_simulates_programW
   | assign name rhs _ =>
     cases rhs with
     | lit l =>
-      refine progSimW_of_progSimA bridge bi N leafSpec D S T A _ (fun _ => rfl) rfl
-        (fun _ _ _ => rfl) ?_ (hA _)
+      refine progSimW_of_progSimA_tables bridge bi N leafSpec D S T A (scalarCallFree bi) _
+        (fun _ => rfl) rfl (fun _ _ _ => rfl) ?_
+        (fun _ _ _ fuel env => evalImp_assign_lit_eq_tables bi _ fuel name l env) (hA _)
       intro Γ Γ' c fuel env env' v _ hHax hEval hNN
       rw [(evalImp_assign_lit_inv bi fuel name l env v env' hEval).2]
       exact hNN.extend_of_nonneg name (assign_lit_nonneg name l c hHax)
     | app f args =>
-      refine progSimW_of_progSimA bridge bi N leafSpec D S T A _ (fun _ => rfl) rfl ?_ ?_ (hA _)
+      by_cases hsc : scalarCallName f = true
+      · exact noneArm _ fun Γ => by
+          simp only [simScopeW, hsc, Bool.not_true, Bool.false_and, Bool.false_eq_true, if_false,
+            ite_self]
+      have hsc' : scalarCallName f = false := by simpa using hsc
+      refine progSimW_of_progSimA_tables bridge bi N leafSpec D S T A (scalarCallFree bi) _
+        (fun _ => by simp only [simScopeW, simScopeA, hsc', Bool.not_false, Bool.true_and]) rfl
+        ?_ ?_ ?_ (hA _)
       · intro Γ Γ' h
-        simp only [simScopeW] at h
+        simp only [simScopeW, hsc', Bool.not_false, Bool.true_and] at h
         split at h
         · cases h
         · split at h
@@ -1543,7 +1843,7 @@ theorem haxToLowCT_simulates_programW
             simp only [forToLoop, forToLoopArgs_of_vars args (argsInScope_allVars Γ _ args hc.1.1)]
           · cases h
       · intro Γ Γ' c fuel env env' v hScope _ hEval hNN
-        simp only [simScopeW] at hScope
+        simp only [simScopeW, hsc', Bool.not_false, Bool.true_and] at hScope
         split at hScope
         · cases hScope
         · split at hScope
@@ -1558,6 +1858,17 @@ theorem haxToLowCT_simulates_programW
             rw [henv']
             exact hNN.extend_of_not_mem (not_mem_of_not_contains S name hc.2) _
           · cases hScope
+      · intro Γ Γ' h fuel env
+        simp only [simScopeW, hsc', Bool.not_false, Bool.true_and] at h
+        split at h
+        · cases h
+        · split at h
+          · rename_i hc
+            simp only [Bool.and_eq_true] at hc
+            exact evalImp_assign_app_eq_tables bi _ fuel name f args
+              (allVar_of_argsInScope Γ _ args hc.1.1)
+              (fun vals => (scalarCallFree_of_false hsc' vals).symm) env
+          · cases h
     | _ => exact noneArm _ fun Γ => by simp [simScopeW]
   | typeAscription e _ ih =>
     intro fuel Γ Γ' c env env' rs v hScope hSB hSF hHax hEval hAgree hNN
@@ -1572,35 +1883,36 @@ section ClosedForms
 
 variable (bridge : ValueTowerBridge) (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
   (D S T : List String) (A : TowerScope)
-  (hLeaf : ∀ f, f ≠ "array_update" → f ≠ "index" →
+  (hLeaf : ∀ f, f ≠ "array_update" → f ≠ "index" → scalarCallName f = false →
     LeafCallAgreesArgs bi leafSpec f (towerOfCallName f) bridge)
   (hProj : TupleLoadAgrees bridge leafSpec)
   (hLit : LitStoreAgrees bridge leafSpec)
   (hIdx : IndexAgrees bridge bi leafSpec)
   (hUpd : ArrUpdateAgrees bridge bi leafSpec)
+  (hSc : ScalarCallsAgree bi)
 
-include hLeaf hProj hLit hIdx hUpd
+include hLeaf hProj hLit hIdx hUpd hSc
 
 /-- A counted loop with non-negative integer literal bounds simulates, with the
     source run of the `forLoop` it is read as. -/
 theorem haxToLowCT_simulates_forFold (i : String) (lo hi : Int) (body : ImpExpr) :
     ProgSimW bridge bi N leafSpec D S T A (.forFold i (.lit (.int lo)) (.lit (.int hi)) body) :=
   progSimW_forFold bridge bi N leafSpec D S T A i lo hi body
-    (haxToLowCT_simulates_programW bridge bi N leafSpec D S T A hLeaf hProj hLit hIdx hUpd body)
+    (haxToLowCT_simulates_programW bridge bi N leafSpec D S T A hLeaf hProj hLit hIdx hUpd hSc body)
 
 /-- A reverse counted loop with non-negative integer literal bounds simulates,
     with the source run of the `forLoopRev` it is read as. -/
 theorem haxToLowCT_simulates_forFoldRev (i : String) (lo hi : Int) (body : ImpExpr) :
     ProgSimW bridge bi N leafSpec D S T A (.forFoldRev i (.lit (.int lo)) (.lit (.int hi)) body) :=
   progSimW_forFoldRev bridge bi N leafSpec D S T A i lo hi body
-    (haxToLowCT_simulates_programW bridge bi N leafSpec D S T A hLeaf hProj hLit hIdx hUpd body)
+    (haxToLowCT_simulates_programW bridge bi N leafSpec D S T A hLeaf hProj hLit hIdx hUpd hSc body)
 
 /-- A data-dependent loop on a scalar guard simulates, with the source run of
     the `whileLoop` it is read as. -/
 theorem haxToLowCT_simulates_whileFold (cond : String) (body : ImpExpr) :
     ProgSimW bridge bi N leafSpec D S T A (.whileFold (.var cond) body) :=
   progSimW_whileFold bridge bi N leafSpec D S T A cond body
-    (haxToLowCT_simulates_programW bridge bi N leafSpec D S T A hLeaf hProj hLit hIdx hUpd body)
+    (haxToLowCT_simulates_programW bridge bi N leafSpec D S T A hLeaf hProj hLit hIdx hUpd hSc body)
 
 end ClosedForms
 

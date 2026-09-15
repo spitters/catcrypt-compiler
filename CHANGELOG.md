@@ -16,6 +16,16 @@ hax front to LowCT:
   environment invariant `ScalarInv`; `haxToLowCT` and `AnfShaped` gain the `forFoldRev`
   and `whileFold` arms, and `denoteForLoopRev` has unfold equations and the outcome
   dichotomy in `HaxToLowCTSim_AnfShaped_Full`.
+- Scalar calls computed in the scalar heap: `haxToLowCT` lowers `let name = scalar#Op(a, b)`
+  for the eleven names of `scalarCallNames` (add, sub, mul, and, xor and the six
+  comparisons as 0/1) to `RLetU64Zero name (RSeq (RScalarSetExpr name se) body)`, other
+  argument shapes staying on `RCall`. The checkers `simScope`, `simScopeL`, `simScopeA` and
+  `simScopeF` exclude these names from the tower-call arm, `simScopeW` accepts them when
+  the operands are scalar and differ from the bound name, and
+  `haxToLowCT_simulates_programW` takes the agreement `ScalarCallsAgree bi` of the builtin
+  table with `scalarCallNat`, its leaf hypothesis now excluding the scalar names;
+  `progSimW_letBind_scalar` is the new arm, and `progSimW_of_progSimA_tables` transports
+  the array simulation from the table with the scalar names undefined.
 
 x86 backend:
 
