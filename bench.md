@@ -2,7 +2,11 @@
 
 Every figure below is transcribed from the owned-emit scoreboard of the CatCrypt
 development repository (bench/scoreboard/RESULTS.md there), at its last revision,
-dated 2026-08-11; it is the only source of figures here. Method, as the
+dated 2026-08-11; it is the only source of figures here. That scoreboard was
+reconciled on 2026-09-15 against bench/framework/geomean_ratios.tsv in the same
+repository, the artifact-tied per-row record in which each row names the binary it
+measured and carries a dated note, and the figures below follow the reconciled
+scoreboard. Method, as the
 scoreboard states it: core-pinned (`taskset`), `lfence;rdtsc`, min-of-N, on one
 host — AMD Ryzen 7 PRO 7840U (Zen 4), carrying GFNI, AVX2, AVX-512, SHA-NI, VAES
 and VPCLMULQDQ. Each cycle figure is printed only when the row's known-answer
@@ -38,7 +42,7 @@ reference's own kernel; this is not the whole protocol.
 | kernel | reference (tier) | ratio | same-tier | KAT | artifact |
 |---|---|---:|---|---|---|
 | SNOVA GF(16) multiply, GFNI | SNOVA upstream GFNI ring-dot, `VGF2P8MULB` (GFNI) | 0.85× | survives | 7/7 | none |
-| SDitH GF(251) syndrome / RS-eval | sdith-ref Barrett (scalar) | 0.71× | survives | 6/6 | none |
+| SDitH GF(251) syndrome / RS-eval | sdith-ref Barrett (scalar) | 0.57× | survives | 6/6 | none |
 | QR-UOV GF(127) block matvec | QR-UOV Mersenne ref (scalar) | 1.00× | parity | 6/6 | none |
 | MQOM GF(251) MQ-eval, N = 8 | mqom-ref `%251` (scalar) | 1.18× | ours slower, same-tier | 6/6 | none |
 | NTRU hrss701 ring multiply, 2-way Karatsuba | ntruhrss701 ref, `%`-idiv (scalar) | 1.22× | ours slower, same-tier | 12/12 | none |
@@ -51,6 +55,23 @@ multiply table, a GFNI-against-scalar tier mismatch; NTRU's 1.22× supersedes
 1.35×, measured on a Toom-Cook path that emitted nothing. MQOM's 1.18× is a
 serial latency-bound accumulator, where a Barrett leaf measured 594 cycles and
 was reverted.
+
+SDitH's 0.57× (132 against 231 cycles) comes from the 2026-07-28 re-measurement
+recorded in geomean_ratios.tsv; it supersedes the 0.71× (165 against 231) this
+page carried before the 2026-09-15 reconciliation, which belonged to a render
+whose generator built hand-authored `Linstr`/`Lopn` lists and was retired, and
+which the artifact-tied record withdraws rather than re-measures.
+
+Three rows in this table the artifact-tied record disputes without settling, so
+they stand as the scoreboard states them. Against SNOVA's own production
+constant-time multiply table, that record measures the owned bit-serial GF(16)
+twin at 6.55× and the owned GFNI variant at 5.03× on the Tier-2 m = 8 inner loop
+(re-measured 2026-08-26), and the ring-dot fold at 1.43× against the reference
+opt64 multiply-table fold; the 0.85× above is a different kernel shape, n = 4 and
+l = 2, against upstream's own `USE_GFNI` primitive. For MQOM it holds 1.150×
+against the same reference, undated, on an artifact absent from disk. For QR-UOV
+it holds 1.200×, carried forward rather than re-measured, against an in-tree
+schoolbook GF(127) reference rather than the QR-UOV Mersenne one.
 
 ## (B) Adopted-validated-leaf rows
 
@@ -69,6 +90,16 @@ HACL\*'s scalar AEAD under a "Vec256" label and a spill-heavy 4-way ChaCha rathe
 than the XMM-resident variant; against HACL\* Simd256 (AVX2, a higher tier) the
 same measurement is 0.92–0.94×. The HMAC and HKDF rows supersede a composed form
 that re-padded per message and showed a 2.0× tax, which the one-shot path retains.
+
+All three rows are disputed in the artifact-tied record without being settled.
+For ChaCha20-Poly1305 it carries 1.660× at long-message cycles per byte against
+HACL\* `Chacha20Poly1305_encrypt`, a different size regime, and 2.515× at the same
+114 B against libcrux's hacl-rs rather than HACL\* Simd128 and on the spill-heavy
+4-way render this row's correction replaced. For HMAC it carries 1.220× at 64 B
+and for HKDF 2.050× at L = 64 and 1.38× at L = 512, both re-measured 2026-07-27
+through the same harnesses but timing the native-`ror` compression core rather
+than the resident one these rows time; neither date is established as later than
+the scoreboard's.
 
 ## (C) Whole-protocol owned rows
 
@@ -89,6 +120,16 @@ scalar row. FAEST's 2.1× uses a gcc-O3 Keccak leaf proven byte-identical to the
 verified owned emit over the XKCP zero state and 200000 random states; the
 gcc-free path is the 2.68× row. FrodoKEM's 28× the scoreboard attributes to a
 by-value-leaf ABI cost, not to arithmetic.
+
+The FAEST rows are disputed in the artifact-tied record, which times the same
+owned-max harness at 95.6M cycles against a faest-ref v2.0.4 rebuilt with AVX2
+Keccak and AES-NI at 85.2M, for 1.120×. Two things differ from the rows above at
+once: the reference here is the shipped scalar build, and our side has moved,
+because the record's 95.6M postdates a resident-Keccak leaf landing on the seed
+tree while the 2.68× carries 189M from before it. The reference builds sit at
+different instruction tiers, so 1.120× replaces neither figure. The record's
+nearest FrodoKEM row measures the matmul kernel at 8.790× against HACL\*, not the
+whole encapsulation against liboqs.
 
 ## Owned x86 backend against `jasminc` on the same emitted programs
 
@@ -207,4 +248,9 @@ module holds the `emitMain` and its body comes from its imports. Per-primitive t
 
 The scoreboard records no committed whole-protocol owned timer for ML-KEM-768 or
 ML-DSA-65, and none for the SNOVA, UOV, MAYO or NTRU whole-protocol paths, whose
-settled kernel figures are in table (A).
+settled kernel figures are in table (A). The artifact-tied record disagrees for
+two of those: it carries a UOV-Ip whole-sign at 1.850× against pqov with an owned
+fraction of 55.3%, and a MAYO-1 whole-sign at 1.465× against MAYO-C AVX2, both
+byte-identical to their references and both carrying a whole-protocol `rdtsc`
+box-noise caveat. The 2026-09-15 reconciliation states them where they are
+disputed and does not promote them into table (C).
