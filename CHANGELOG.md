@@ -38,6 +38,15 @@ Block lowering framework:
   `VIR/BlockLoweringCPSDerivedToField.lean` instantiates it at
   `derivedDialect → fieldDialect` (`lowerDerivedToFieldK_denote`,
   `lowerDoubleSquareK_denote`).
+- `Algebraic/FieldWord/SingleWord.lean`: `SingleWordField p` packages a 64-bit
+  word encoding of `ZMod p` with add, sub, neg, const, copy and multiply blocks as
+  `Com jasminDialect` programs over `regArith`/`regConst` and their value theorems
+  (`a.lookup V = enc x → b.lookup V = enc y → (mulBlk a b).denote V = enc (x * y)`),
+  built from a conditional subtraction `csubW` and a fold reduction proved by
+  `toNat` arithmetic. `Algebraic/FieldWord/BabyBear.lean` instantiates it at
+  p = 2013265921 on the Poseidon2 multiply (`bbReduce_toNat_eq_mod`, `babyBear`),
+  and `Algebraic/FieldWord/KoalaBear.lean` at p = 2130706433 with five folds
+  (`reduceW_toNat`, `koalaBear`).
 
 x86 backend:
 
