@@ -30,7 +30,8 @@ opaque `extCall` leaf bindings (the crypto leaf calls) or a `memrefSet` chain:
 
 * `RCall`            — one `extCall fname` rebinding the destination;
 * `RSelect`          — on 64-bit word slots, the eight-op branchless mask chain
-  of §1d; on any other slots, one opaque `extCall "select"`;
+  of §1d; on any other slots, one opaque `extCall "select"` over the selector and
+  the two sources;
 * `RCallDstThreaded` — one `extCall fname` with `dst :: args`;
 * `RTupleLoad`       — one `extCall "tupleLoad:i"`;
 * `RArrLoadLit` / `RArrStoreLit` — a `bvConst` index temporary and a
@@ -773,14 +774,14 @@ def translateDialectFull {Γ : Ctx} (vm : VarMap Γ) :
             some { Γ' := retTy :: Γ, cont := ComCont.varBind e, vm := vm.bind dest.locVar }
   -- Constant-time select on 64-bit words: the mask chain of §1d. A select over
   -- any other slots (a point bundle, a field-element tower) is the opaque
-  -- `extCall "select"` leaf over the two sources.
+  -- `extCall "select"` leaf over the selector and the two sources, in that order.
   | .RSelect dst sel src0 src1 =>
       match dst.locDst, vm.lookup sel, vm.lookup src0.locVar, vm.lookup src1.locVar with
       | .TU64, some ⟨.sword 64, sV⟩, some ⟨.sword 64, aV⟩, some ⟨.sword 64, cV⟩ =>
           some { Γ' := selectCtx Γ, cont := selectMaskCont sV aV cV,
                  vm := selectVm vm dst.locVar }
       | _, _, _, _ =>
-          match resolveLocatedArgs vm [src0, src1] with
+          match resolveLocatedArgs vm [{ locVar := sel, locSrc := .TU64 }, src0, src1] with
           | none => none
           | some resolvedArgs =>
               let retTy := encodeTy dst.locDst

@@ -693,7 +693,7 @@ def semScalarL (ls : SemLeafSpec) : LowCT → SEnvScalar → Option SEnvScalar
       | _, _, _, _ =>
           let retTy := encodeTy dst.locDst
           some (env.upd dst.locVar (t := retTy)
-            (ls "select" retTy (argVals env (locNames [src0, src1]))))
+            (ls "select" retTy (argVals env (sel :: locNames [src0, src1]))))
   | .RCallDstThreaded fname dst args, env =>
       let retTy := encodeTy dst.locDst
       some (env.upd dst.locVar (t := retTy)
@@ -2352,13 +2352,15 @@ theorem translateDialectFull_denoteWith (ls : SemLeafSpec) {c : LowCT} (hcov : I
         obtain rfl := Option.some.inj hsem
         exact selectMaskCont_denoteWith ls vm V env hc dst.locVar sV aV cV
       · rename_i hnot
-        rcases hra : resolveLocatedArgs vm [src0, src1] with _ | resolvedArgs
+        rcases hra : resolveLocatedArgs vm [{ locVar := sel, locSrc := .TU64 }, src0, src1]
+          with _ | resolvedArgs
         · simp [hra] at htr
         · simp only [hra] at htr
           obtain rfl := Option.some.inj htr
           have hsem' : semScalarL ls (.RSelect dst sel src0 src1) env =
               some (env.upd dst.locVar (t := encodeTy dst.locDst)
-                (ls "select" (encodeTy dst.locDst) (argVals env (locNames [src0, src1])))) := by
+                (ls "select" (encodeTy dst.locDst)
+                  (argVals env (locNames [{ locVar := sel, locSrc := .TU64 }, src0, src1])))) := by
             simp only [semScalarL]
             split
             · rename_i s a c hd hs ha hcv
@@ -3142,7 +3144,8 @@ theorem translateDialectFull_extWith (ls : SemLeafSpec) (c : LowCT) :
       · obtain rfl := Option.some.inj htr
         exact ⟨[.sword 64, .sword 64, .sword 64, .sword 64,
           .sword 64, .sword 64, .sword 64, .sword 64], rfl, fun h => absurd h (by simp)⟩
-      · rcases hra : resolveLocatedArgs vm [src0, src1] with _ | resolvedArgs
+      · rcases hra : resolveLocatedArgs vm [{ locVar := sel, locSrc := .TU64 }, src0, src1]
+          with _ | resolvedArgs
         · simp [hra] at htr
         · simp only [hra] at htr
           obtain rfl := Option.some.inj htr

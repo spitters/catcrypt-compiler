@@ -32,8 +32,9 @@ optional abstract leaf per name, and `LeavesSound ls lf` says each is sound.
   non-temp word name;
 * `RSelect dst sel src0 src1` goes through `corresL_selectLeaf` at the name
   `"select"` when one of `sel`, `src0`, `src1` is a layout array, so that `semScalarL`
-  takes its leaf arm; the leaf receives `src0` and `src1`, as the front's `extCall`
-  does, and not the selector;
+  takes its leaf arm, and each of `sel`, `src0`, `src1` is a layout array or an
+  unreserved non-temp word name; the leaf receives `sel`, `src0` and `src1`, as the
+  front's `extCall` does;
 * `RArrLoadLit dst src idx` goes through `corresL_arrLoadLitLeaf` at the name
   `"arrLoad:idx"` when `src` is not a `TArr _ .TU64` array held in the layout.
 
@@ -490,22 +491,23 @@ theorem srwordL_layout_not_word {L : ArrLayout} {env : SEnvScalar} {a : AField} 
 
 /-- **The `"select"` leaf rule.** A select into an unreserved `u64` word one of whose
     selector and sources is a layout array takes the leaf arm of `semScalarL`, and
-    abstracts to `dst := f [src0, src1]` for an abstract leaf `f` sound for the oracle at
-    `"select"`. -/
+    abstracts to `dst := f [sel, src0, src1]` for an abstract leaf `f` sound for the
+    oracle at `"select"`. -/
 theorem corresL_selectLeaf (ls : SemLeafSpec) (L : ArrLayout) (dst : Located) (sel : String)
     (src0 src1 : Located) (f : List AVal → ZMod (2 ^ 64)) (hf : LeafAbs ls "select" f)
     (hd : dst.locSrc = .TU64) (hdk : arrKeyB L dst.locVar = false)
+    (hs : argOkB L sel = true)
     (h0 : argOkB L src0.locVar = true) (h1 : argOkB L src1.locVar = true)
     (harr : ((layoutSize L sel).isSome || (layoutSize L src0.locVar).isSome ||
       (layoutSize L src1.locVar).isSome) = true) :
     CorresL ls (SRwordL L) (fun _ => True)
-      (fun a => setVal dst.locVar (f ((locNames [src0, src1]).map (absArg L a))) a)
+      (fun a => setVal dst.locVar (f ((sel :: locNames [src0, src1]).map (absArg L a))) a)
       (.RSelect dst sel src0 src1) := by
   obtain ⟨dv, dt⟩ := dst
   simp only at hd hdk ⊢
   subst hd
   refine corresL_leafWord ls L _ "select" dv _ f hf hdk
-    (by simp [locNames, h0, h1]) (fun env a hSR => ?_)
+    (by simp [locNames, hs, h0, h1]) (fun env a hSR => ?_)
   refine semScalarL_rSelect_leaf ls ⟨dv, .TU64⟩ sel src0 src1 env (fun s x c _ hs hx hc => ?_)
   simp only [Bool.or_eq_true] at harr
   rcases harr with (h | h) | h
@@ -588,11 +590,11 @@ def selectAbsL (lf : AbsLeaves) (L : ArrLayout) (dst : Located) (sel : String)
     (src0 src1 : Located) : List Guard × (AField → AField) :=
   match lf "select" with
   | some f =>
-      if dst.locSrc = .TU64 ∧ arrKeyB L dst.locVar = false ∧ argOkB L src0.locVar = true ∧
-          argOkB L src1.locVar = true ∧
+      if dst.locSrc = .TU64 ∧ arrKeyB L dst.locVar = false ∧ argOkB L sel = true ∧
+          argOkB L src0.locVar = true ∧ argOkB L src1.locVar = true ∧
           ((layoutSize L sel).isSome || (layoutSize L src0.locVar).isSome ||
             (layoutSize L src1.locVar).isSome) = true then
-        ([], fun a => setVal dst.locVar (f ((locNames [src0, src1]).map (absArg L a))) a)
+        ([], fun a => setVal dst.locVar (f ((sel :: locNames [src0, src1]).map (absArg L a))) a)
       else selectAbs L dst sel src0 src1
   | none => selectAbs L dst sel src0 src1
 
@@ -959,14 +961,14 @@ theorem ascendGLL_sound (ls : SemLeafSpec) (lf : AbsLeaves) (hlf : LeavesSound l
     · exact corresUL_selectAbs ls L fuel dst sel src0 src1
     · dsimp only
       by_cases hc : dst.locSrc = .TU64 ∧ arrKeyB L dst.locVar = false ∧
-          argOkB L src0.locVar = true ∧ argOkB L src1.locVar = true ∧
+          argOkB L sel = true ∧ argOkB L src0.locVar = true ∧ argOkB L src1.locVar = true ∧
           ((layoutSize L sel).isSome || (layoutSize L src0.locVar).isSome ||
             (layoutSize L src1.locVar).isSome) = true
       · rw [if_pos hc]
-        obtain ⟨hd, hdk, h0, h1, harr⟩ := hc
+        obtain ⟨hd, hdk, hs, h0, h1, harr⟩ := hc
         exact corresUL_weaken _ _
           (corresUL_of_corresL _ _ rfl
-            (corresL_selectLeaf ls L dst sel src0 src1 f (hlf _ _ hl) hd hdk h0 h1 harr))
+            (corresL_selectLeaf ls L dst sel src0 src1 f (hlf _ _ hl) hd hdk hs h0 h1 harr))
           (fun _ _ => trivial)
       · rw [if_neg hc]
         exact corresUL_selectAbs ls L fuel dst sel src0 src1
@@ -1014,10 +1016,11 @@ theorem ascendGLL_sound_scalar (ls : SemLeafSpec) (lf : AbsLeaves) (hlf : Leaves
 `leafK` is the literal-index read `y := B[0]` from an array `B` of type `TBytes 8`, which
 is not a `u64` word array, so the front emits the opaque leaf `extCall "arrLoad:0"`,
 followed by the select `r := select(s, B, y)` with an array source, which the front
-emits as the opaque leaf `extCall "select"` over `B` and `y`. `TBytes 8` is encoded as
-`.memref 1`. The abstract leaf `leafKAbs` is the same function at every name and
+emits as the opaque leaf `extCall "select"` over `s`, `B` and `y`. `TBytes 8` is encoded
+as `.memref 1`. The abstract leaf `leafKAbs` is the same function at every name and
 distinguishes the two nodes by the number of arguments: on one argument it is element
-`0` of that argument, on two it is element `0` of the first plus the second. Over the
+`0` of that argument, on three it is the first word plus element `0` of the second plus
+the third word. Over the
 layout `[("B", 1)]` at the oracle `leafOfAbs leafKAbs` the abstraction carries no guard
 (`leafK_guards`), `leafK_corres` refines the kernel to `leafKProg`, and `leafK_value`
 evaluates `leafKProg` on a store related to a concrete environment (`leafK_srwordL`). -/
@@ -1036,12 +1039,13 @@ def avalWord : AVal → ZMod (2 ^ 64)
   | _ => 0
 
 /-- The abstract leaf of `leafK`, the same at every name: on one argument, element `0`
-    of that argument (the `"arrLoad:0"` read); on two, element `0` of the first plus the
-    word of the second (the `"select"` node). -/
+    of that argument (the `"arrLoad:0"` read); on three, the word of the first plus
+    element `0` of the second plus the word of the third (the `"select"` node on the
+    selector and the two sources). -/
 def leafKAbs (_name : String) (args : List AVal) : ZMod (2 ^ 64) :=
   match args with
   | [x] => avalElem0 x
-  | [x, y] => avalElem0 x + avalWord y
+  | [s, x, y] => avalWord s + avalElem0 x + avalWord y
   | _ => 0
 
 /-- The abstract leaf family of `leafK`: `leafKAbs` at every name. -/
@@ -1060,7 +1064,7 @@ def leafK : LowCT :=
 /-- The abstract program of `leafK`. -/
 def leafKProg (a : AField) : AField :=
   let a₁ := setVal "y" (a (elemKey "B" 0)) a
-  setVal "r" (a₁ (elemKey "B" 0) + a₁ "y") a₁
+  setVal "r" (a₁ "s" + a₁ (elemKey "B" 0) + a₁ "y") a₁
 
 /-- The abstraction of `leafK` carries no guard. -/
 theorem leafK_guards (fuel : Nat) : (ascendGLL leafKLeaves leafLayout fuel leafK).1 = [] := by
@@ -1103,7 +1107,7 @@ theorem leafK_srwordL : SRwordL leafLayout leafEnv leafStore := by
     subst hj
     simp [wEnc, leafStore]
 
-/-- On `leafStore` the abstract program sets `r` to `7 + 7`. -/
+/-- On `leafStore` the abstract program sets `r` to `0 + 7 + 7`. -/
 theorem leafK_value : leafKProg leafStore "r" = 14 := by
   decide
 

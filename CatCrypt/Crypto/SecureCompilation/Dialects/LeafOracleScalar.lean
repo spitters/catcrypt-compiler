@@ -32,7 +32,7 @@ Each leaf arm passes the oracle the name and the arguments of the `extCall` that
 | `RCall f dst args` | `f` | `args` |
 | `RCallDstThreaded f dst args` | `f` | `dst :: args` |
 | `RTupleLoad dst src i` | `"tupleLoad:i"` | `[src]` |
-| `RSelect dst sel src0 src1`, slots other than words | `"select"` | `[src0, src1]` |
+| `RSelect dst sel src0 src1`, slots other than words | `"select"` | `[sel, src0, src1]` |
 | `RArrLoadLit dst src i`, other than a word read of a `TArr _ .TU64` | `"arrLoad:i"` | `[src]` |
 | `RArrStoreLit arr i src`, other than a word write to a `TArr _ .TU64` | `"arrStore:i"` | `[arr, src]` |
 | `RArrLoad dst src i`, other than a word read | `"arrLoadDyn"` | `[src, i]` |
@@ -40,8 +40,6 @@ Each leaf arm passes the oracle the name and the arguments of the `extCall` that
 | `RCallSwap f d1 d2 args` | `f`, twice | `args`, the second read after `d1` is written |
 | `RCloneCall cv _ old f new args` | `"clone"`, then `f` | `[old]`, then `args` after `cv` is written |
 | `RCallN f dests args` | `callNLeafName f i` per destination | `args`, read before each write |
-
-The front's opaque `"select"` leaf receives the two sources and not the selector.
 
 The arguments are read with `argVals`, which drops unbound names; where the front
 succeeds every argument is bound, and the list is the front's argument vector.
@@ -132,14 +130,14 @@ theorem semScalarL_rSelect_word (ls : SemLeafSpec) (dst : Located) (sel : String
   simp only [semScalarL, Located.locDst, hd, hs, ha, hc]
 
 /-- A select outside the word case binds its destination to the oracle at `"select"`
-    and the two sources. -/
+    on the selector and the two sources. -/
 theorem semScalarL_rSelect_leaf (ls : SemLeafSpec) (dst : Located) (sel : String)
     (src0 src1 : Located) (env : SEnvScalar)
     (hleaf : ∀ s a c : BitVec 64, dst.locSrc = .TU64 → env sel = some ⟨.sword 64, s⟩ →
       env src0.locVar = some ⟨.sword 64, a⟩ → env src1.locVar = some ⟨.sword 64, c⟩ → False) :
     semScalarL ls (.RSelect dst sel src0 src1) env =
       some (env.upd dst.locVar (t := encodeTy dst.locSrc)
-        (ls "select" (encodeTy dst.locSrc) (argVals env (locNames [src0, src1])))) := by
+        (ls "select" (encodeTy dst.locSrc) (argVals env (sel :: locNames [src0, src1])))) := by
   simp only [semScalarL]
   split
   · rename_i s a c hd hs ha hc

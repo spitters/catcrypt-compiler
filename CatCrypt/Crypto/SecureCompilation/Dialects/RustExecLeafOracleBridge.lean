@@ -29,8 +29,9 @@ The default oracle `defaultLeaf` agrees with `zeroLeafSpec`, whose `call` and `a
 return the all-zero tower value (`callAgrees_zero`, `arrLoadAgrees_zero`), and at them
 the step statements are statements about `semScalar` (`rustExec_semScalar_call_zero`).
 
-The `RSelect` node has no statement here: `RustExec` selects a source by the scalar at
-the selector, while the `"select"` leaf of `semScalarL` receives the two sources only.
+The `RSelect` node has no statement here. The `"select"` leaf of `semScalarL` receives
+the selector and the two sources; `RustExec` reads the selector from the scalar store
+(`rsScalar`), which `TowerEncOn` does not relate to the environment.
 
 ## Main definitions
 
