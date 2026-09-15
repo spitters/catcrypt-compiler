@@ -38,7 +38,9 @@ section [Scope](#scope) gives their hypotheses.
 
 - Data-dependent loops: `corresU_whileFun` relates a terminating `RWhileNz` run to the
   exit state `loopFun` of the abstract loop, and `corresU_whileFun_total` gives the run
-  when the trip count is below the fuel
+  when the trip count is below the fuel; `corresU_whileFun_jasminDenote` carries the
+  exit value through the front's unified descent `transU` and the jasmin lowering to
+  the `Com jasminDialect` of the node, unrolled at the entry environment's trip count
   ([Data-dependent loops as functions](#data-dependent-loops-as-functions)).
 - Leaf calls: `ascendGLL_sound` abstracts `RCall`, `RSelect` with a layout array among
   its operands, and `RArrLoadLit` from a source that is not a `TArr _ .TU64` layout
@@ -61,8 +63,10 @@ Not covered by any theorem in the package:
 - hax programs with renaming aliases, tower-bound conditions, `forFold` or `whileFold`,
   or a builtin table implementing `index` or `array_update`, and a composition of the
   hax simulations with the front and the jasmin lowering;
-- a weld of `corresU_whileFun` to a `Com jasminDialect` program, since the emit
-  fragment `IsCoveredSCtl` has no `RWhileNz` arm.
+- a weld of `corresU_whileFun` to the rolled loop: the `Com jasminDialect` of
+  `corresU_whileFun_jasminDenote` is the front's unrolling of the `RWhileNz` node at
+  the entry environment's trip count (`transU`), and no theorem relates it to the
+  back-edge emitted at `Lcmd` (`TranslateDialectDataWhile.rolledWhileNz`).
 
 ## Layers
 
@@ -74,7 +78,7 @@ relative to `CatCrypt/Crypto/SecureCompilation/Ascent/`.
 | Correspondence relations | `Corres`, `WhileTop`, `While`, `RunBlockCorres`, `CorresRiscv`, `CorresGeneric`, `Exit` | `Corres` over `semScalar` with `corres_seq`, `corres_weaken`; `CorresU` over `semU`; `CorresWhile`; `CorresJ` over `runBlock` with `corresJ_append`, `corresJ_loop`; `CorresR` over `runRBlock64`; `CorresM`, the machine-generic form, with `corres_eq_corresM`, `corresJ_eq_corresM`, `corresR_eq_corresM`; `CorresE`, `CorresUE` for bodies that throw |
 | Value abstraction | `Corres`, `ExprLeaf`, `HeapAbs`, `StoreRefinement`, `MultiLimb`, `MlkemFieldLeaf`, `Width32Leaf`, `Phases` | `wEnc : BitVec 64 → ZMod 2^64` and the ParamTransfer squares `wEncAdd`, `wEncSub`, `wEncMul`; `SRword`, `SRwordNT`, `SRwordBV`; `ValueAbs` with `SRof`, `SRcarryOf` and the instance theorems `srwordNT_iff_srof`, `srcarry_iff_srcarryOf`; `fqEnc` and `CorresH`; `corres_WA`, `AbsProg` |
 | Leaves over `LowCT` | `Corres`, `ExprLeaf`, `CorresScalar`, `BitwiseOrNot`, `RotateLeaf`, `SelectLeaf`, `ArrStoreLeaf`, `ArrLoadLeaf`, `MlkemFieldLeaf` | `corres_setScalar`, `corres_setScalar_NT`, `corres_setExpr` (arithmetic into `ZMod 2^64`), `corres_setExprBitwise`, `corres_setExprWord` (the `srcClean` word algebra over `BitVec 64`), `corres_setExprOr`, `corres_rotl`, `corres_ctSelect`, `corres_arrStore`, `corres_arrLoad`, `corres_setExpr_fqAdd` |
-| Control and early exit | `Control`, `While`, `WhileTop`, `WhileFun`, `MlkemPolyFoldCorres`, `Exit` | `corres_for`, `corres_if`, `corres_for_indexed`, `polyAdd_fold_corres`, `corres_while`, `corresU_while`, `corresU_whileFun`, `corresU_whileFun_total`, `pipeline_exceptProg`, `whileExit_sim`, `corresU_while_exit` |
+| Control and early exit | `Control`, `While`, `WhileTop`, `WhileFun`, `WhileFunEmit`, `MlkemPolyFoldCorres`, `Exit` | `corres_for`, `corres_if`, `corres_for_indexed`, `polyAdd_fold_corres`, `corres_while`, `corresU_while`, `corresU_whileFun`, `corresU_whileFun_total`, `corresU_whileFun_jasminDenote`, `pipeline_exceptProg`, `whileExit_sim`, `corresU_while_exit` |
 | Automation and total abstraction | `Ascend`, `AscendDecide`, `AscendMeta`, `Guards`, `GuardsLeaf`, `Strengthen`, `CorresSolver`, `CorresAttr`, `CorresX86Solver`, `CorresRiscvLeaves`, `CorresRiscvSolver`, `CorresScalar`, `MontBounds`, `InvariantSchemas` | `ascend_sound`, `ascend_expr_sound`, `ascend_bitwise_sound` and the tactics `ascend!`, `ascend_meta`; `ascendG`, `ascendG_sound`; `ascendGLL`, `ascendGLL_sound`; `tsLowCT_sound`, `tsHax_sound`, `Kernel.tsLevel`; the solvers `corres_solve`, `corres_solve_x86`, `corres_solve_rv`, `corres_solve_scalar`; `mont_bound` |
 | Machine-level leaves and value results | `RunBlockCorres`, `EcMultiLimbCapstone`, `EcMultiLimbMul`, `MpnAdxCorres`, `FieldReduce`, `CorresX86Solver`, `CorresRiscvLeaves`, `Capstone`, `CapstoneField`, `EcMultiLimbEmit` | `corresJ_sbb`, `corresJ_adc`, `srcarryLimbs_recompose`; `sbbLimbs_spec`, `corresJ_sbbChain`; `mulLimbs_spec`, `corresJ_adxBlock`; `mpnAdd_runBlock`, `mpnSub_runBlock`; `montRedc_spec`, `corresJ_montRedc4Block`; `corresJ_movX` … `corresJ_mulxX`; `corresR_add` … `corresR_slli`; `sbbChain_emit_realizes_abstract_CF` |
 | Ties between machines, and program logics | `CorresBridge`, `CorresBridgeArith`, `CorresBridgeArithComplete`, `CorresBridgeMem`, `CorresBridgeMemStore`, `CorresBridgeCtrl`, `CorresMachineTie`, `CorresMachineTieFragments`, `JasminComRunBlockTie`, `JasminComRunBlockSeq`, `JasminComRunBlockRealloc`, `JasminMirrorTie`, `XrunRunBlockTie`, `CorresHoare`, `RunBlockMvcgen`, `RunBlockMvcgenMorphism`, `JStateSepLogic` | `corresJ_forget_to_corres`, `coRefine`; `arith_middle_tie_seq_nonTmp`, `mem_store_middle_tie_full`, `for_middle_tie_gen`; `SimTie`, `simTie_seq`; `lowerBlock_tie`, `lowerBlockR_tie`; `forFold_eq_loopStep`, `mulhiLoop_mirror_runBlock`; `xrun_runBlock_tie`; `corresJ_iff_triple`, `runBlockM_triple_iff`, `Spec.wp_theta`, `RunBlockTriple.frame` |
@@ -132,6 +136,7 @@ The demonstrations under `Ascent/Demos/` each state a small route end to end:
 | [Demos/SourceToBytes](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/SourceToBytes.lean) | the closed capstones at their values | `feSub_value`, `feAdd_value` |
 | [Demos/EarlyExit](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/EarlyExit.lean) | a search loop with `return`, an `ImpExpr` term written in Lean in the shape of an extraction, read as an exception program | `searchU_except_found`, `searchU_word_found` |
 | [Demos/Strengthen](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Strengthen.lean) | the result monad chosen per kernel | `feSubC_ts_refines`, `qrFrag_ts_refines`, `searchU_ts_refines` |
+| [Demos/WhileFunSumJasmin](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/WhileFunSumJasmin.lean) | the summation do-while through `transU` and the jasmin lowering, at every entry and closed at `k = 3` | `sumLoop_jasminDenote`, `sumLoop3_jasminDenote` |
 
 ## Data-dependent loops as functions
 
@@ -175,6 +180,26 @@ applies the rule to `do { acc := acc + k; k := k - 1 } while (k != 0)` over
 loop exits in `sumExit`, where `k` is `0` and `acc` has grown by `k (k + 1) / 2`;
 `sumLoop_corres` and `sumLoop_total` are the partial and total node statements, and
 `sumLoop_corres_of_ne_zero` states the result for entry states with `k ≠ 0`.
+
+[WhileFunEmit.lean](CatCrypt/Crypto/SecureCompilation/Ascent/WhileFunEmit.lean) carries
+the exit value to the front's jasmin program. The front compiles the node through the
+unified descent `transU fuel vm env` (`Dialects/TranslateDialectUnifiedDenote.lean`),
+which unrolls the loop to the trip count of the run from the entry environment `env`,
+and `transU_to_jasminCom_endToEnd` (`VIR/RustToJasminComWhile.lean`) carries a tracked
+output slot of the resulting `Com catCryptDialect` through `cryptoDialectToJasminCom`.
+`corresU_whileFun_jasminDenote` composes it with `corresU_whileFun`: under the node
+rule's hypotheses, an entry environment consistent with the entry valuation `V`, the
+front's output at that environment with the output name resolved to a word slot, and
+the jasmin lowering `jcom` of the continuation closed at that slot,
+`jcom.denote (ctMapValD V)` is the projection of `loopFun guardA fb (fb a)` to the
+output name. `corresU_whileFun_jasminDenote_of_fuel` replaces the run by a trip count
+below the fuel, and `corresU_whileFun_jasminDenote_word` is the form over `SRwordBV`
+with the entry environment `valEnv vm V`.
+[Demos/WhileFunSumJasmin](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/WhileFunSumJasmin.lean)
+applies it to `sumLoop`: `sumLoop_jasminDenote` states that for every entry `k ≠ 0`,
+`acc`, the jasmin program returning `acc` denotes `acc + k (k + 1) / 2`, and
+`sumLoop3_jasminDenote` closes the front's output at `k = 3`, `acc = 0`, where the
+program denotes `6`.
 
 ## A worked path: `feSub_source_to_bytes_tower`
 

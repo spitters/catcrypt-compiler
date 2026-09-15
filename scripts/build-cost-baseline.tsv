@@ -5,6 +5,7 @@ CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramFor.lean	1070	2310	1818
 CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramLit.lean	404	2210	1660
 CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	1210	3290	1853
 CatCrypt/Crypto/SecureCompilation/Ascent/CarryMulCorrect.lean	2990	4860	3756
+CatCrypt/Crypto/SecureCompilation/Ascent/Demos/WhileFunSumJasmin.lean	328	12100	2867
 CatCrypt/Crypto/SecureCompilation/Dialects/TranslateDialectScalarDenote.lean	3250	2340	1926
 CatCrypt/Crypto/SecureCompilation/ThirSboxRange.lean	61	3730	1627
 CatCrypt/Crypto/SecureCompilation/VIR/LowCTMirrorCorres.lean	1350	3610	1902

@@ -187,6 +187,8 @@ the table gives the role and the declarations to read first.
 |---|---|
 | [`WhileFun`](WhileFun.lean) | the fuel-free abstract loop `LoopRecIn` / `LoopTerminates` / `loopFun`; `whileFun_sim`, `whileFun_total`; node rules `corresU_whileFun_terminates`, `corresU_whileFun`, `corresU_whileFun_total`; `corresU_while_of_loopRec` |
 | [`Demos/WhileFunSum`](Demos/WhileFunSum.lean) | a summation do-while with its exit state `sumExit` proved by induction on the loop variable (`sum_loopRecIn`, `sumLoop_corres`, `sumLoop_total`) |
+| [`WhileFunEmit`](WhileFunEmit.lean) | the node rule at `Com jasminDialect`: `corresU_whileFun_jasminDenote`, `corresU_whileFun_jasminDenote_of_fuel`, `corresU_whileFun_jasminDenote_word`, through `transU_to_jasminCom_endToEnd` |
+| [`Demos/WhileFunSumJasmin`](Demos/WhileFunSumJasmin.lean) | `sumLoop` through `transU` and the jasmin lowering: `sumLoop_jasminDenote` at every entry `k ≠ 0`, `sumLoop3_jasminDenote` closed at `k = 3` |
 
 For an `RWhileNz` whose result the caller needs as a value, state the abstract guard
 `guardA` and step `fb`, prove `LoopRecIn guardA fb n a (exit a)` by induction on the
