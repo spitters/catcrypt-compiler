@@ -27,6 +27,18 @@ hax front to LowCT:
   `progSimW_letBind_scalar` is the new arm, and `progSimW_of_progSimA_tables` transports
   the array simulation from the table with the scalar names undefined.
 
+Block lowering framework:
+
+- `VIR/BlockLoweringCPS.lean`: a coverage predicate `CoveredCom Good` and
+  `blockFundamental_on`, which gives whole-program denotation preservation for every
+  `Good`-covered program from `Good`-gated block squares; `spliceComK` applies the
+  continuation once at a block's return, and `BlockLoweringData.blockLowerComK`
+  renames each source block once through a renaming accumulator, with
+  `blockLowerComR_denote` and `blockLowerComK_denote_on`.
+  `VIR/BlockLoweringCPSDerivedToField.lean` instantiates it at
+  `derivedDialect → fieldDialect` (`lowerDerivedToFieldK_denote`,
+  `lowerDoubleSquareK_denote`).
+
 x86 backend:
 
 - Register-count shifts from the gather's two-source `regArith .shr`/`.shl`/`.sar` export
