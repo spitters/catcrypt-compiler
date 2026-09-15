@@ -8,6 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.Algebraic.Ed25519PointAddLower
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
 
 /-!
 # x86-64 rendering of the lowered Ed25519 extended-coordinate point addition
@@ -22,7 +23,8 @@ bindings and differ only in the returned variable, so the choice of `i` here doe
 not change the exported body.
 
 `pointAddLprog` exports it as the function `ed25519_point_add` with the ABI maps
-below, and `pointAddAsm` renders it with `LprogOptPipeline.renderOwned`.
+below, and `pointAddAsm` renders it with `FheMontMulEmit.fuseMulHiLprog` followed
+by `LprogOptPipeline.renderOwned`.
 
 ## Argument and output layout
 
@@ -117,9 +119,14 @@ def pointAddLprog : Lprog :=
   Com.toLprogPhysAbi pointAddCom "ed25519_point_add" (fun _ => none) pointAddImmSlots
     pointAddInLoadMap pointAddOutStoreMap
 
-/-- The AT&T text of `pointAddLprog` through `renderOwned`. -/
+/-- The AT&T text of `pointAddLprog` through the MULX fusion pass and
+    `renderOwned`. `fuseMulHiLprog` coalesces the low `MUL` and the `MULXHI` that
+    `FieldLimbs.Curve25519.mulRowK` emits for the same pair of limbs into the
+    printer's two-output `MULX`. The body is straight-line, so the pass runs in
+    its default mode, in which `%rdx` carries no live value across a fused pair. -/
 def pointAddAsm : String :=
-  CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned pointAddLprog
+  CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned
+    (CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit.fuseMulHiLprog pointAddLprog)
 
 /-- Whether `s` contains the marker `UNHANDLED`. -/
 def hasUnhandled (s : String) : Bool :=

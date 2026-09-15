@@ -947,6 +947,12 @@ def limbsOf (n : Nat) : ListDenote R4 :=
     representative. -/
 def enc (x : ZMod p25519) : ListDenote R4 := limbsOf x.val
 
+/-- A 64-bit word is unchanged when its natural argument is truncated to 64
+    bits. -/
+theorem ofNat_mod_two_pow (n : Nat) :
+    BitVec.ofNat 64 (n % 2 ^ 64) = BitVec.ofNat 64 n :=
+  BitVec.eq_of_toNat_eq (by simp only [BitVec.toNat_ofNat, Nat.mod_mod])
+
 theorem limbsOf_injective {m n : Nat} (hm : m < 2 ^ 256) (hn : n < 2 ^ 256)
     (h : limbsOf m = limbsOf n) : m = n := by
   simp only [limbsOf, HVector.cons.injEq] at h
@@ -1037,10 +1043,13 @@ def mulBlk (x₀ x₁ x₂ x₃ y₀ y₁ y₂ y₃ : Var Γ w64) : MC Γ R4 :=
 def sqrBlk (x₀ x₁ x₂ x₃ : Var Γ w64) : MC Γ R4 :=
   mulBlk x₀ x₁ x₂ x₃ x₀ x₁ x₂ x₃
 
-/-- The constant block: the four limbs of `x.val` as `regConst` bindings. -/
+/-- The constant block: the four limbs of `x.val` as `regConst` bindings. Each
+    bound natural is the 64-bit remainder of its digit, so it is the limb itself
+    and fits a 64-bit immediate. -/
 def constBlk (x : ZMod p25519) : MC Γ R4 :=
-  .var (eConst x.val) <| .var (eConst (x.val / 2 ^ 64)) <|
-  .var (eConst (x.val / 2 ^ 128)) <| .var (eConst (x.val / 2 ^ 192)) <|
+  .var (eConst (x.val % 2 ^ 64)) <| .var (eConst (x.val / 2 ^ 64 % 2 ^ 64)) <|
+  .var (eConst (x.val / 2 ^ 128 % 2 ^ 64)) <|
+  .var (eConst (x.val / 2 ^ 192 % 2 ^ 64)) <|
   .ret (.cons (.there (.there (.there .here))) (.cons (.there (.there .here))
     (.cons (.there .here) (.cons .here .nil))))
 
@@ -1098,7 +1107,10 @@ theorem sqrBlk_denote (x₀ x₁ x₂ x₃ : Var Γ w64) (x : ZMod p25519)
     (sqrBlk x₀ x₁ x₂ x₃).denote W = enc (x * x) :=
   mulBlk_denote W x₀ x₁ x₂ x₃ x₀ x₁ x₂ x₃ x x hx hx
 
-theorem constBlk_denote (x : ZMod p25519) : (constBlk (Γ := Γ) x).denote W = enc x := rfl
+theorem constBlk_denote (x : ZMod p25519) : (constBlk (Γ := Γ) x).denote W = enc x := by
+  rw [enc, limbsOf, ← ofNat_mod_two_pow x.val, ← ofNat_mod_two_pow (x.val / 2 ^ 64),
+    ← ofNat_mod_two_pow (x.val / 2 ^ 128), ← ofNat_mod_two_pow (x.val / 2 ^ 192)]
+  rfl
 
 theorem copyBlk_denote (x₀ x₁ x₂ x₃ : Var Γ w64) (x : ZMod p25519)
     (hx : nv W [x₀, x₁, x₂, x₃] = x.val) :

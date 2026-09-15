@@ -1035,13 +1035,48 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false) :
         let tOp := resolveOperand frame spillW w s
         let fOp := resolveOperand frame spillW w cin
         let sz := sizeSuffix w
-        if dOp == tOp then
-          [ "\ttest" ++ sz ++ " " ++ condOp ++ ", " ++ condOp,
-            "\tcmove" ++ sz ++ " " ++ fOp ++ ", " ++ dOp ]
+        -- `test` takes at most one memory operand, so a SPILLED CONDITION is
+        -- compared against zero instead: `cmp $0, cond` sets `ZF = (cond == 0)`,
+        -- the flag both conditional moves read.
+        let testLine :=
+          if isMemOperand a then "\tcmp" ++ sz ++ " $0, " ++ condOp
+          else "\ttest" ++ sz ++ " " ++ condOp ++ ", " ++ condOp
+        if isMemOperand d then
+          -- **Spilled destination.** `cmov` requires a REGISTER destination, so
+          -- the select runs in a borrowed register saved at the bottom of the
+          -- red zone, as the spilled `adcx`/`adox` destination below does (the
+          -- bodies are call-free leaves and the export's red-zone stash slots
+          -- sit at `-8·k` for the ≤ 6 register ABI args, never that deep):
+          --
+          --   mov  scratch, -128(%rsp)
+          --   mov  f, scratch
+          --   test cond, cond
+          --   cmovne t, scratch
+          --   mov  scratch, [d]
+          --   mov  -128(%rsp), scratch
+          --
+          -- The scratch avoids every operand's text (including SIB/mem base
+          -- registers, via substring check), and `[d]` is read through `t` or
+          -- `f` — when either aliases it — before the store writes it.
+          let usedTexts := [dOp, condOp, tOp, fOp]
+          let freeOf : String → Bool := fun cand =>
+            usedTexts.all (fun t => (t.splitOn cand).length == 1)
+          let scratch :=
+            if freeOf "%rax" then "%rax"
+            else if freeOf "%rbx" then "%rbx"
+            else if freeOf "%rcx" then "%rcx"
+            else "%rdx"
+          [ "\tmovq " ++ scratch ++ ", -128(%rsp)",
+            "\tmov" ++ sz ++ " " ++ fOp ++ ", " ++ scratch,
+            testLine,
+            "\tcmovne" ++ sz ++ " " ++ tOp ++ ", " ++ scratch,
+            "\tmov" ++ sz ++ " " ++ scratch ++ ", " ++ dOp,
+            "\tmovq -128(%rsp), " ++ scratch ]
+        else if dOp == tOp then
+          [ testLine, "\tcmove" ++ sz ++ " " ++ fOp ++ ", " ++ dOp ]
         else
           (if fOp == dOp then [] else [ "\tmov" ++ sz ++ " " ++ fOp ++ ", " ++ dOp ])
-            ++ [ "\ttest" ++ sz ++ " " ++ condOp ++ ", " ++ condOp,
-                 "\tcmovne" ++ sz ++ " " ++ tOp ++ ", " ++ dOp ]
+            ++ [ testLine, "\tcmovne" ++ sz ++ " " ++ tOp ++ ", " ++ dOp ]
       else
       -- **ADX carry-chain DATA binding** `Lopn [d] ADCX/ADOX [a, s, cin]`: compute
       -- `d := a + s + cin` where `cin` is the IR's explicit `reg 1` carry-in. Real

@@ -4,6 +4,36 @@
 
 Changes since `v0.1.0-alpha.2`.
 
+### 2026-09-16
+
+Ed25519 extended-coordinate point addition, from the algebraic route to assembly
+an assembler accepts:
+
+- `Algebraic/Ed25519PointAddEmit.lean`: `pointAddAsm` applies
+  `FheMontMulEmit.fuseMulHiLprog` before `LprogOptPipeline.renderOwned`, which
+  runs no fusion of its own. Without the pass every widening multiply of the
+  Curve25519 limb blocks printed `# UNHANDLED-MULXHI-UNFUSED` — 189 markers and
+  no `mulx`, one per `mulhi` of the nine multiply blocks; with it the rendering
+  carries 189 `mulx` and no marker.
+- `X86Backend/LprogAsmPrinter.lean`: the `CMOV` arm covers a spilled destination
+  and a spilled condition. `cmov` admits no memory destination, so a spilled
+  select destination runs in a register borrowed around `-128(%rsp)`, as the
+  spilled `adcx`/`adox` destination does; a spilled condition is compared against
+  zero, `test` admitting at most one memory operand. Bodies with no spilled
+  select render byte-identically, checked by re-rendering the comb select kernel
+  and the four other emitted Ed25519 kernels.
+- `Algebraic/FieldLimbs/Curve25519.lean`: `constBlk` binds each limb's 64-bit
+  remainder. `regConst 64 n` denotes `BitVec.ofNat 64 n` for every `n`, but the
+  printer emits `n` verbatim, so the three low limbs of the curve constant `2d`
+  left the immediate range. `ofNat_mod_two_pow` is the rewrite that keeps
+  `constBlk_denote`'s statement unchanged, and with it every emitted immediate is
+  below `2 ^ 64`.
+
+The emitted `ed25519_point_add` passes a known-answer test against libsodium's
+`crypto_core_ed25519_add`: 576 additions of comb-table points, compressed by the
+emitted inversion and compression kernels, byte-identical, with `T₃·Z₃ = X₃·Y₃`
+on every raw output (`bench/ed25519_comb_compare/point_add_compare.c`, dev repo).
+
 ### 2026-09-15
 
 hax front to LowCT:
