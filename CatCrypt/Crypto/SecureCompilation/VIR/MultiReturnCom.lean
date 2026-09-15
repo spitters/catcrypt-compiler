@@ -102,6 +102,39 @@ def MultiReturnCom.toSingle {d : Dialect} [DialectSignature d] :
   | _, _, .ret (.cons v .nil) => .ret v
   | _, _, .var e body         => .var e body.toSingle
 
+/-- Project a multi-return program to a single-return one, keeping every binding
+    and returning the first of the returned variables.
+
+    `toSingle` is typed at the singleton return list; this applies at any return
+    list and drops all but the first returned variable. It is the step from a
+    multi-value block lowering to the single-return `Com` that
+    `JasminLprogExport.Com.toLprogPhysAbi` exports.
+
+    The returned variable does not determine what that export writes. Its store ABI
+    reads *bindings*: `comToLfundefPhysAbi` emits one epilogue store per binding
+    among the last `outStoreMap.length` bindings of the body, in output order,
+    while the returned variable only fixes the function's register return value. A
+    block whose last bindings are its outputs therefore exports with its outputs
+    intact, whichever of them is named here. -/
+def MultiReturnCom.toComHead {d : Dialect} [DialectSignature d] :
+    {Γ : Ctxt d} → {t : d.Ty} → {ts : List d.Ty} →
+    MultiReturnCom d Γ (t :: ts) → Com d Γ t
+  | _, _, _, .ret (.cons v _) => .ret v
+  | _, _, _, .var e body      => .var e body.toComHead
+
+/-- `toComHead` denotes the first entry of the multi-return denotation. -/
+theorem MultiReturnCom.toComHead_denote {d : Dialect} [TyDenote d.Ty]
+    [DialectSignature d] [DialectDenote d] :
+    ∀ {Γ : Ctxt d} {t : d.Ty} {ts : List d.Ty}
+      (m : MultiReturnCom d Γ (t :: ts)) (V : Ctxt.Valuation Γ),
+      m.toComHead.denote V = (m.denote V).head
+  | _, _, _, .ret (.cons _ _), _ => by
+      simp [MultiReturnCom.toComHead, MultiReturnCom.denote, Com.denote,
+        MultiReturnCom.lookupVars, HVector.head]
+  | _, _, _, .var _ body, V      => by
+      simp [MultiReturnCom.toComHead, MultiReturnCom.denote, Com.denote,
+        toComHead_denote body]
+
 /-! ## 5. Equivalence: `Com d Γ t ≃ MultiReturnCom d Γ [t]` -/
 
 /-- Round-trip: `toSingle ∘ toMulti = id`. -/
