@@ -32,7 +32,7 @@ Each constructor case dispatches to its per-file lemma:
 | `seq a b` | `haxToLowCT_simulates_seq` | `HaxToLowCTSimulates.lean` |
 | `letBind _ (lit _) _` | `haxToLowCT_simulates_letBind_lit` | `HaxToLowCTSim_Agreement.lean` |
 | `letBind _ (app _ _) _` | **DEFERRED** (H3.quarta) | parametric hyp `Hyp_letBindApp` |
-| `letBind _ (proj (var _) _) _` | parametric hyp `Hyp_letBindProj` | genuine closure in `Main_Full` |
+| `letBind _ (proj (var _) _) _` | parametric hyp `Hyp_letBindProj` | closure in `Main_Full` |
 | `letBind _ _ _` (other) | contradiction | inline `simp [haxToLowCT]` |
 | `assign _ (lit (uintLit ..))` | `haxToLowCT_simulates_assign_lit_uintLit` | `HaxToLowCTSim_AssignMatch.lean` |
 | `assign _ (lit (int n))`, n≥0 | `haxToLowCT_simulates_assign_lit_int` | `HaxToLowCTSim_AssignMatch.lean` |
@@ -288,7 +288,7 @@ abbrev Hyp_letBindVarAlias
     simulates.  The translator lowers this shape to
     `RLetZero name _ (RSeq (RTupleLoad ..) ..)`, whose result lands in a
     *tower* slot — outside the scalar-only agreement this predicate
-    threads.  The genuine closure (component value related through the
+    threads.  The closure (component value related through the
     `leafSpec.tupleLoad` oracle) is
     `haxToLowCT_simulates_letBind_proj_full` in
     `HaxToLowCTSim_Main_Full.lean`. -/
@@ -348,14 +348,20 @@ theorem haxToLowCT_simulates_param
       intro c env env' rs v
       exact haxToLowCT_simulates_forLoopRev bi fuel N leafSpec v_l lo hi body c env env' rs v
   | forFold v_l lo hi body _ _ _ =>
-      intro c env env' rs v
-      exact haxToLowCT_simulates_forFold bi fuel N leafSpec v_l lo hi body c env env' rs v
+      -- `denote` gives the post-phase loop constructors no meaning; the
+      -- simulation over `forToLoop` is `haxToLowCT_simulates_forFold`
+      -- (`HaxToLowCTSim_ProgramLoops`).
+      intro c env env' rs v _ hEval _
+      rw [evalImp_forFold_eq_none] at hEval
+      contradiction
   | forFoldRev v_l lo hi body _ _ _ =>
-      intro c env env' rs v
-      exact haxToLowCT_simulates_forFoldRev bi fuel N leafSpec v_l lo hi body c env env' rs v
+      intro c env env' rs v _ hEval _
+      rw [evalImp_forFoldRev_eq_none] at hEval
+      contradiction
   | whileFold cond body _ _ =>
-      intro c env env' rs v
-      exact haxToLowCT_simulates_whileFold bi fuel N leafSpec cond body c env env' rs v
+      intro c env env' rs v _ hEval _
+      rw [evalImp_whileFold_eq_none] at hEval
+      contradiction
   | forFoldReturn v_l lo hi body _ _ _ =>
       intro c env env' rs v
       exact haxToLowCT_simulates_forFoldReturn bi fuel N leafSpec v_l lo hi body c env env' rs v

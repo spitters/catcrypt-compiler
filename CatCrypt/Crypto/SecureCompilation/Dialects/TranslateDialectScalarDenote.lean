@@ -335,6 +335,42 @@ def isTmpName (s : String) : Prop := ∃ k, s = TranslateDialectDirectArms.tmpNa
 theorem isTmpName_tmpName (k : Nat) : isTmpName (TranslateDialectDirectArms.tmpName k) :=
   ⟨k, rfl⟩
 
+/-- A name whose first character is not `'_'` is not a fresh temporary: every
+    `tmpName k` starts with `"__sx"`. -/
+theorem notTmp_of_headNe {s : String} {c : Char} {t : List Char}
+    (hs : s.toList = c :: t) (hc : c ≠ '_') : ¬ isTmpName s := by
+  rintro ⟨k, hk⟩
+  have hd := congrArg String.toList hk
+  rw [TranslateDialectDirectArms.tmpName, String.toList_append, hs] at hd
+  simp only [show "__sx".toList = ['_', '_', 's', 'x'] from rfl,
+    List.cons_append, List.nil_append] at hd
+  injection hd with h1 _
+  exact hc h1
+
+/-- A name shorter than the four-character prefix `"__sx"` is not a fresh
+    temporary. -/
+theorem notTmp_of_len (s : String) (hs : s.length < 4) : ¬ isTmpName s := by
+  rintro ⟨k, hk⟩
+  have hlen := congrArg String.length hk
+  rw [TranslateDialectDirectArms.tmpName, String.length_append] at hlen
+  have h2 : "__sx".length = 4 := rfl
+  omega
+
+theorem notTmp_empty : ¬ isTmpName "" := notTmp_of_len "" (by decide)
+
+/-- A name is head-clean when it is non-empty and its first character is not
+    `'_'`. `tmpName k = "__sx" ++ toString k` starts with `'_'`, so a head-clean
+    name is never a fresh temporary, and it stays head-clean under any suffix. -/
+def HeadOk (s : String) : Prop := ∃ c t, s.toList = c :: t ∧ c ≠ '_'
+
+theorem HeadOk.notTmp {s : String} (h : HeadOk s) : ¬ isTmpName s := by
+  obtain ⟨c, t, hs, hc⟩ := h
+  exact notTmp_of_headNe hs hc
+
+theorem HeadOk.append {s : String} (h : HeadOk s) (u : String) : HeadOk (s ++ u) := by
+  obtain ⟨c, t, hs, hc⟩ := h
+  exact ⟨c, t ++ u.toList, by rw [String.toList_append, hs]; rfl, hc⟩
+
 /-- Read a `.sword 64` word slot out of an `SEnvScalar` (default `0` for an
     unbound / mistyped name). The `SExpr` word evaluator `SExpr.evalBV` reads its
     `SVar` leaves through this. -/

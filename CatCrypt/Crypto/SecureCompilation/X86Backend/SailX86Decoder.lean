@@ -408,6 +408,15 @@ theorem roundtrip_NegF7 (d : Nat) (hd : d < 16) :
     rexR, rexB, regField, rmField, rex, modRMReg, bit, BitVec.toNat_ofNat]
   interval_cases d <;> rfl
 
+/-- **Round-trip for the shift-by-`%cl` forms** (`encShiftCl`): `D3 /ext` form,
+    `reg`=ext (the `/digit`: SHL=`/4`, SHR=`/5`, SAR=`/7`), `rm`=dst, no
+    immediate. -/
+theorem roundtrip_ShiftCl (ext d : Nat) (hext : ext < 8) (hd : d < 16) :
+    decodeReg (encShiftCl ext d) = some { opcode := 0xd3, reg := ext, rm := d } := by
+  simp only [encShiftCl, decodeReg, List.map_cons, List.map_nil, isRex, modField,
+    rexR, rexB, regField, rmField, rex, modRMReg, bit, BitVec.toNat_ofNat]
+  interval_cases ext <;> interval_cases d <;> rfl
+
 /-! ## 5. Instruction-level round-trip: `decode (encode i) ≡ i`
 
 The field-level lemmas above invert each *shape* encoder. We now lift them to

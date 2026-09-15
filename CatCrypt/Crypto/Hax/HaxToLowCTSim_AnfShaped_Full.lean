@@ -51,7 +51,7 @@ set_option autoImplicit false
 namespace CatCrypt.Crypto.Hax
 
 open _root_.Hax (ImpExpr ImpLit ImpType ImpPat Value Env Outcome Builtins
-                   denote denoteWhile denoteMatchArms denoteForLoop denoteArgs)
+                   denote denoteWhile denoteMatchArms denoteForLoop denoteForLoopRev denoteArgs)
 
 /-! ## §1  Unfold equation for `denoteWhile`
 
@@ -515,8 +515,16 @@ theorem AnfShaped_outcome_val_or_err
     rcases ih fuel env h with ⟨v, env', hv⟩ | ⟨msg, env', hm⟩
     · exact Or.inl ⟨v, env', by unfold denote; exact hv⟩
     · exact Or.inr ⟨msg, env', by unfold denote; exact hm⟩
-  | forFoldRev _ _ _ _ _ _ _ => unfold AnfShaped at h; simp at h
-  | whileFold _ _ _ _ => unfold AnfShaped at h; simp at h
+  | forFoldRev _ _ _ _ _ _ _ =>
+      -- A post-phase constructor: `denote` returns `pure (.err _)` whatever
+      -- the shape.
+      right
+      refine ⟨"forFoldRev in pre-pipeline expression", env, ?_⟩
+      unfold denote; rfl
+  | whileFold _ _ _ _ =>
+      right
+      refine ⟨"whileFold in pre-pipeline expression", env, ?_⟩
+      unfold denote; rfl
   | forFoldReturn _ _ _ _ _ _ _ => unfold AnfShaped at h; simp at h
   | forFoldRevReturn _ _ _ _ _ _ _ => unfold AnfShaped at h; simp at h
   | whileFoldReturn _ _ _ _ => unfold AnfShaped at h; simp at h
@@ -641,6 +649,124 @@ theorem denote_forLoop_val_or_err (bi : Builtins) (fuel : Nat) (v : String)
     (∃ w env', (denote bi fuel (.forLoop v lo hi body)).run env = (.val w, env'))
       ∨ (∃ msg env', (denote bi fuel (.forLoop v lo hi body)).run env = (.err msg, env')) := by
   have hL := denoteForLoop_val_or_err bi v body hBody fuel
+  simp only [denote, StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure]
+  rcases hlo env with ⟨a, e1, ha⟩ | ⟨m, e1, ha⟩ <;>
+  rcases hhi e1 with ⟨b, e2, hb⟩ | ⟨m', e2, hb⟩ <;>
+  simp only [StateT.run] at ha hb <;> simp only [ha, hb]
+  · cases a <;> cases b <;>
+      first | exact Or.inr ⟨_, _, rfl⟩ | exact Or.inl ⟨_, _, rfl⟩ | exact hL _ _ _
+  · cases a <;> exact Or.inl ⟨_, _, rfl⟩
+  · exact Or.inr ⟨_, _, rfl⟩
+  · exact Or.inr ⟨_, _, rfl⟩
+
+/-! ## §7  Reverse counted loops
+
+Unfold equations for `denoteForLoopRev` separated by the bound test and the
+fuel, the unfold equation of `.forLoop` at a variable bound, and the outcome
+dichotomy for `denoteForLoopRev` and `.forLoopRev`. -/
+
+/-- A reverse counted loop whose start is not below its bound runs no trip. -/
+theorem denoteForLoopRev_ge_run (bi : Builtins) (fuel : Nat) (v : String) (lo hi : Int)
+    (body : ImpExpr) (env : Env) (h : hi ≤ lo) :
+    (denoteForLoopRev bi fuel v lo hi body).run env = (.val .unit, env) := by
+  show (denoteForLoopRev bi fuel v lo hi body).run env = _
+  unfold denoteForLoopRev
+  simp [h, StateT.run, pure, Pure.pure, StateT.pure]
+
+/-- A reverse counted loop with a trip left fails at zero fuel. -/
+theorem denoteForLoopRev_zero_run (bi : Builtins) (v : String) (lo hi : Int)
+    (body : ImpExpr) (env : Env) (h : lo < hi) :
+    (denoteForLoopRev bi 0 v lo hi body).run env = (.err "out of fuel", env) := by
+  show (denoteForLoopRev bi 0 v lo hi body).run env = _
+  unfold denoteForLoopRev
+  simp [show ¬ hi ≤ lo by omega, StateT.run, pure, Pure.pure, StateT.pure]
+
+/-- One trip of a reverse counted loop at successor fuel: the body runs at the
+    same fuel with the counter bound to the bound less one, and the loop
+    continues with that bound at the predecessor fuel. -/
+theorem denoteForLoopRev_succ_run (bi : Builtins) (fuel : Nat) (v : String) (lo hi : Int)
+    (body : ImpExpr) (env : Env) (h : lo < hi) :
+    (denoteForLoopRev bi (fuel + 1) v lo hi body).run env =
+      (match (denote bi (fuel + 1) body).run (env.extend v (.int (hi - 1))) with
+       | (.val _, env_b) => (denoteForLoopRev bi fuel v lo (hi - 1) body).run env_b
+       | (.continued, env_b) => (denoteForLoopRev bi fuel v lo (hi - 1) body).run env_b
+       | (.broke w, env_b) => (.val w, env_b)
+       | (other, env_b) => (other, env_b)) := by
+  have hFor : denoteForLoopRev bi (fuel + 1) v lo hi body = (do
+      modify (Env.extend · v (.int (hi - 1)))
+      let rb ← denote bi (fuel + 1) body
+      match rb with
+      | .val _ | .continued => denoteForLoopRev bi fuel v lo (hi - 1) body
+      | .broke w => pure (.val w)
+      | other => pure other) := by
+    conv_lhs => unfold denoteForLoopRev
+    simp only [show ¬ lo ≥ hi by omega, if_false, Nat.succ_ne_zero, Nat.add_sub_cancel]
+    rfl
+  show (denoteForLoopRev bi (fuel + 1) v lo hi body).run env = _
+  rw [hFor]
+  simp only [StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure, modify, modifyGet,
+    MonadStateOf.modifyGet, StateT.modifyGet]
+  cases denote bi (fuel + 1) body (env.extend v (.int (hi - 1))) with
+  | mk a s => cases a <;> rfl
+
+/-- Unfold equation for `.forLoopRev` with integer literal bounds. -/
+theorem denote_forLoopRev_lit_run (bi : Builtins) (fuel : Nat) (v : String) (lo hi : Int)
+    (body : ImpExpr) (env : Env) :
+    (denote bi fuel (.forLoopRev v (.lit (.int lo)) (.lit (.int hi)) body)).run env =
+      (denoteForLoopRev bi fuel v lo hi body).run env := by
+  simp [denote, StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure, StateT.pure,
+    Value.ofLit]
+
+/-- Unfold equation for `.forLoop` from an integer literal to a variable bound
+    holding an integer. -/
+theorem denote_forLoop_lit_var_run (bi : Builtins) (fuel : Nat) (v : String) (lo : Int)
+    (n : String) (k : Int) (body : ImpExpr) (env : Env) (hk : env n = some (.int k)) :
+    (denote bi fuel (.forLoop v (.lit (.int lo)) (.var n) body)).run env =
+      (denoteForLoop bi fuel v lo k body).run env := by
+  simp [denote, StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure, StateT.pure,
+    Value.ofLit, get, getThe, MonadStateOf.get, StateT.get, hk]
+
+/-- A reverse counted loop whose body runs to a value or an error at every fuel
+    runs to a value or an error. -/
+theorem denoteForLoopRev_val_or_err (bi : Builtins) (v : String) (body : ImpExpr)
+    (hBody : ∀ fuel env,
+        (∃ w env', (denote bi fuel body).run env = (.val w, env'))
+      ∨ (∃ msg env', (denote bi fuel body).run env = (.err msg, env'))) :
+    ∀ (fuel : Nat) (lo hi : Int) (env : Env),
+        (∃ w env', (denoteForLoopRev bi fuel v lo hi body).run env = (.val w, env'))
+      ∨ (∃ msg env', (denoteForLoopRev bi fuel v lo hi body).run env = (.err msg, env')) := by
+  intro fuel
+  induction fuel with
+  | zero =>
+    intro lo hi env
+    by_cases h : hi ≤ lo
+    · exact Or.inl ⟨_, _, denoteForLoopRev_ge_run bi 0 v lo hi body env h⟩
+    · exact Or.inr ⟨_, _, denoteForLoopRev_zero_run bi v lo hi body env (by omega)⟩
+  | succ m ih =>
+    intro lo hi env
+    by_cases h : hi ≤ lo
+    · exact Or.inl ⟨_, _, denoteForLoopRev_ge_run bi _ v lo hi body env h⟩
+    rw [denoteForLoopRev_succ_run bi m v lo hi body env (by omega)]
+    rcases hBody (m + 1) (env.extend v (.int (hi - 1))) with ⟨w, e1, hb⟩ | ⟨msg, e1, hb⟩
+    · rw [hb]; exact ih lo (hi - 1) e1
+    · rw [hb]; exact Or.inr ⟨msg, e1, rfl⟩
+
+/-- `.forLoopRev` whose bounds and body run to a value or an error runs to a
+    value or an error. -/
+theorem denote_forLoopRev_val_or_err (bi : Builtins) (fuel : Nat) (v : String)
+    (lo hi body : ImpExpr) (env : Env)
+    (hlo : ∀ env,
+        (∃ w env', (denote bi fuel lo).run env = (.val w, env'))
+      ∨ (∃ msg env', (denote bi fuel lo).run env = (.err msg, env')))
+    (hhi : ∀ env,
+        (∃ w env', (denote bi fuel hi).run env = (.val w, env'))
+      ∨ (∃ msg env', (denote bi fuel hi).run env = (.err msg, env')))
+    (hBody : ∀ fuel env,
+        (∃ w env', (denote bi fuel body).run env = (.val w, env'))
+      ∨ (∃ msg env', (denote bi fuel body).run env = (.err msg, env'))) :
+    (∃ w env', (denote bi fuel (.forLoopRev v lo hi body)).run env = (.val w, env'))
+      ∨ (∃ msg env', (denote bi fuel (.forLoopRev v lo hi body)).run env = (.err msg, env')) := by
+  have hL := denoteForLoopRev_val_or_err bi v body hBody fuel
   simp only [denote, StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure]
   rcases hlo env with ⟨a, e1, ha⟩ | ⟨m, e1, ha⟩ <;>
   rcases hhi e1 with ⟨b, e2, hb⟩ | ⟨m', e2, hb⟩ <;>

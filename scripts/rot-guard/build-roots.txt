@@ -963,3 +963,5 @@ CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramArr
 CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramFor
 CatCrypt.Crypto.SecureCompilation.Ascent.WhileFunEmit
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.WhileFunSumJasmin
+CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramLoops
+CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakExpansion

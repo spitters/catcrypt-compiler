@@ -3,10 +3,12 @@ CatCrypt/Crypto/Hax/HaxToLowCTSim_Full.lean	101	2150	1547
 CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramArr.lean	724	1730	1718
 CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramFor.lean	1070	2310	1818
 CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramLit.lean	404	2210	1660
+CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramLoops.lean	868	1360	1907
 CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	1210	3290	1853
 CatCrypt/Crypto/SecureCompilation/Ascent/CarryMulCorrect.lean	2990	4860	3756
 CatCrypt/Crypto/SecureCompilation/Ascent/Demos/WhileFunSumJasmin.lean	328	12100	2867
 CatCrypt/Crypto/SecureCompilation/Ascent/GuardsLeaf.lean	2180	47600	2036
+CatCrypt/Crypto/SecureCompilation/Dialects/CryptoDialectLeakExpansion.lean	316	1520	1735
 CatCrypt/Crypto/SecureCompilation/Dialects/RustExecLeafOracleBridge.lean	485	7990	1254
 CatCrypt/Crypto/SecureCompilation/Dialects/TranslateDialectScalarDenote.lean	3250	2340	1926
 CatCrypt/Crypto/SecureCompilation/ThirSboxRange.lean	61	3730	1627

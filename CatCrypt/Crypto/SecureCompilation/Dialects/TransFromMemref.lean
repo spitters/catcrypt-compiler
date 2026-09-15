@@ -27,8 +27,8 @@ its name at its own type, fixing the shape.
 
 * `SrcSet` / `ReadsFrom` and the expression builders — the temp-freshness and
   reads-bound predicates over the covered `SExpr` fragment.
-* `notTmp_of_headNe` — a name whose first character is not `_` is not a fresh
-  temporary.
+* the temp-freshness lemma `notTmp_of_headNe` (a name whose first character is
+  not `_` is not a fresh temporary) is `TranslateDialectScalarDenote`'s.
 * `TransSteps` / `TransSteps.append` — the list form of `TransTotal`.
 * `nameTysM` and its update laws (`nameTysM_mem` / `nameTysM_word` /
   `nameTysM_upd_word` / `nameTysM_upd_mem` / `srcTys_nameTysM`).
@@ -62,18 +62,6 @@ theorem srcSet_or {W : String → Prop} {x : String} (hW : SrcSet W) (hx : ¬ is
   rintro y (h | rfl)
   · exact hW y h
   · exact hx
-
-/-- A name whose first character is not `_` is not a fresh temporary. -/
-theorem notTmp_of_headNe {s : String} {c : Char} {t : List Char}
-    (hs : s.toList = c :: t) (hc : c ≠ '_') : ¬ isTmpName s := by
-  rintro ⟨k, hk⟩
-  have hd := congrArg String.toList hk
-  rw [CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms.tmpName,
-      String.toList_append, hs] at hd
-  simp only [show "__sx".toList = ['_', '_', 's', 'x'] from rfl,
-    List.cons_append, List.nil_append] at hd
-  injection hd with h1 _
-  exact hc h1
 
 /-- A `srcClean` expression all of whose `SVar` leaves lie in `R`. -/
 def ReadsFrom (R : String → Prop) (e : SExpr) : Prop :=

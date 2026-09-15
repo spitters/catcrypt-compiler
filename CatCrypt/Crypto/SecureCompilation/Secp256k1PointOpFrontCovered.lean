@@ -61,37 +61,13 @@ open CatCrypt.Crypto.SecureCompilation.Secp256k1FeMulFront
 /-! ## 1. Head-clean names
 
 A name whose first character is not `'_'` is outside the `__sx` fresh-temp
-namespace, and stays outside it under any suffix extension. -/
+namespace, and stays outside it under any suffix extension. `HeadOk`,
+`HeadOk.notTmp`, `HeadOk.append`, `notTmp_of_len` and `notTmp_empty` are the
+shared lemmas of `TranslateDialectScalarDenote`, re-exported here under this
+namespace for the point-op modules that name them through it. -/
 
-/-- A name is head-clean when it is non-empty and its first character is not
-    `'_'`. `tmpName k = "__sx" ++ toString k` starts with `'_'`, so a head-clean
-    name is never a fresh temp. -/
-def HeadOk (s : String) : Prop := ∃ c t, s.toList = c :: t ∧ c ≠ '_'
-
-theorem notTmp_of_len (s : String) (hs : s.length < 4) : ¬ isTmpName s := by
-  rintro ⟨k, hk⟩
-  have hlen := congrArg String.length hk
-  rw [CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms.tmpName,
-    String.length_append] at hlen
-  have h2 : "__sx".length = 4 := rfl
-  omega
-
-theorem notTmp_empty : ¬ isTmpName "" := notTmp_of_len "" (by decide)
-
-theorem HeadOk.notTmp {s : String} (h : HeadOk s) : ¬ isTmpName s := by
-  obtain ⟨c, t, hs, hc⟩ := h
-  rintro ⟨k, hk⟩
-  have hd := congrArg String.toList hk
-  rw [CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms.tmpName,
-      String.toList_append, hs] at hd
-  simp only [show "__sx".toList = ['_', '_', 's', 'x'] from rfl,
-    List.cons_append, List.nil_append] at hd
-  injection hd with h1 _
-  exact hc h1
-
-theorem HeadOk.append {s : String} (h : HeadOk s) (u : String) : HeadOk (s ++ u) := by
-  obtain ⟨c, t, hs, hc⟩ := h
-  exact ⟨c, t ++ u.toList, by rw [String.toList_append, hs]; rfl, hc⟩
+export CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
+  (HeadOk HeadOk.notTmp HeadOk.append notTmp_of_len notTmp_empty)
 
 /-! ## 2. Name lists
 

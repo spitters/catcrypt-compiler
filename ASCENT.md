@@ -53,7 +53,14 @@ section [Scope](#scope) gives their hypotheses.
   ([Leaf calls](#leaf-calls-the-boundary-of-semscalar)).
 - hax source: `haxToLowCT_simulates_programT` and `haxToLowCT_simulates_programL`
   simulate programs whose builtins return scalars, the latter with literal call
-  arguments stored in tower slots; both end at `RustExec`
+  arguments stored in tower slots; `haxToLowCT_simulates_programA` adds the array
+  builtins `index` and `array_update`, `haxToLowCT_simulates_programF` counted loops
+  (`forFold` over literal bounds, read as the `forLoop` of `forToLoop`), and
+  `haxToLowCT_simulates_programW` reverse loops (`forFoldRev` over literal bounds),
+  runtime-bound loops (`forFold` from a literal to a variable bound, lowered to
+  `RForRuntime`) and data-dependent loops (`whileFold` on a scalar guard, lowered to
+  `RWhileNz`) under the checker `simScopeW` and the environment invariant `ScalarInv`;
+  all end at `RustExec`
   ([Simulations from hax source](#simulations-from-hax-source-end-at-rustexec)).
 - Jasmin mirror: `mulhiLoop_mirror_runBlock` relates a `psem.v` mirror derivation of a
   loop calling a `MULX` function to the `runBlock` run of the unrolled `MULX` loop.
@@ -64,9 +71,11 @@ Not covered by any theorem in the package:
   the scalar store; the `RustExec` counterparts of `RCallSwap` and `RCallN` when a
   destination is also an argument; and the ascent of `RArrLoadLit` into a layout-array
   destination;
-- hax programs with renaming aliases, tower-bound conditions, `forFold` or `whileFold`,
-  or a builtin table implementing `index` or `array_update`, and a composition of the
-  hax simulations with the front and the jasmin lowering;
+- hax programs with renaming aliases or tower-bound conditions (a source-level renaming
+  pass and its simulation exist only in the dev tree), loops whose bounds are
+  expressions other than literals and variables, and a composition of the hax
+  simulations with the front and the jasmin lowering (the dev tree carries one for the
+  extracted SHA-256 `maj`);
 - a weld of `corresU_whileFun` to the rolled loop: the `Com jasminDialect` of
   `corresU_whileFun_jasminDenote` is the front's unrolling of the `RWhileNz` node at
   the entry environment's trip count (`transU`), and no theorem relates it to the

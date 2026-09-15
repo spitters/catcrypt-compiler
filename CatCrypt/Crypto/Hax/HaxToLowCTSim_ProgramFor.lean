@@ -62,8 +62,9 @@ open CatCrypt.Crypto.Jasmin.LowCT
 
 mutual
 
-/-- Every `forFold v lo hi body` of a program replaced by
-    `forLoop v lo hi body`, recursively. -/
+/-- Every `forFold v lo hi body`, `forFoldRev v lo hi body` and `whileFold c body`
+    of a program replaced by `forLoop v lo hi body`, `forLoopRev v lo hi body`
+    and `whileLoop c body`, recursively. -/
 def forToLoop : ImpExpr → ImpExpr
   | .lit l => .lit l
   | .var n => .var n
@@ -88,8 +89,8 @@ def forToLoop : ImpExpr → ImpExpr
   | .earlyReturn e => .earlyReturn (forToLoop e)
   | .questionMark e => .questionMark (forToLoop e)
   | .forFold v lo hi b => .forLoop v (forToLoop lo) (forToLoop hi) (forToLoop b)
-  | .forFoldRev v lo hi b => .forFoldRev v (forToLoop lo) (forToLoop hi) (forToLoop b)
-  | .whileFold c b => .whileFold (forToLoop c) (forToLoop b)
+  | .forFoldRev v lo hi b => .forLoopRev v (forToLoop lo) (forToLoop hi) (forToLoop b)
+  | .whileFold c b => .whileLoop (forToLoop c) (forToLoop b)
   | .forFoldReturn v lo hi b => .forFoldReturn v (forToLoop lo) (forToLoop hi) (forToLoop b)
   | .forFoldRevReturn v lo hi b =>
       .forFoldRevReturn v (forToLoop lo) (forToLoop hi) (forToLoop b)
@@ -150,6 +151,14 @@ theorem anfShaped_forFold_inv (v : String) (lo hi body : ImpExpr)
     (h : AnfShaped (.forFold v lo hi body) = true) :
     AnfShaped body = true ∧ (∃ l, lo = .lit l) ∧
       ((∃ l, hi = .lit l) ∨ (impBoundToSExpr hi).isSome = true) := by
+  unfold AnfShaped at h
+  split at h <;> simp_all
+
+/-- The shape of a `forFoldRev` that `AnfShaped` accepts: literal bounds and an
+    `AnfShaped` body. -/
+theorem anfShaped_forFoldRev_inv (v : String) (lo hi body : ImpExpr)
+    (h : AnfShaped (.forFoldRev v lo hi body) = true) :
+    AnfShaped body = true ∧ (∃ l, lo = .lit l) ∧ (∃ l, hi = .lit l) := by
   unfold AnfShaped at h
   split at h <;> simp_all
 
@@ -293,6 +302,23 @@ theorem anfShaped_forToLoop_val_or_err (bi : Builtins) (e : ImpExpr) (h : AnfSha
     rcases hhi with ⟨l', rfl⟩ | hs
     · exact Or.inl ⟨_, _, denote_lit_eq bi fuel l' env⟩
     · exact denote_atom_val_or_err bi fuel _ (impBoundToSExpr_atom hi hs) env
+  | forFoldRev v lo hi body _ _ ihbody =>
+    intro fuel env
+    obtain ⟨hb, ⟨l, rfl⟩, ⟨l', rfl⟩⟩ := anfShaped_forFoldRev_inv v lo hi body h
+    simp only [forToLoop]
+    exact denote_forLoopRev_val_or_err bi fuel v _ _ _ env
+      (fun env => Or.inl ⟨_, _, denote_lit_eq bi fuel l env⟩)
+      (fun env => Or.inl ⟨_, _, denote_lit_eq bi fuel l' env⟩) (ihbody hb)
+  | whileFold c body _ ihbody =>
+    intro fuel env
+    cases c with
+    | var name =>
+      simp only [AnfShaped] at h
+      simp only [forToLoop]
+      rw [denote_whileLoop_run_eq]
+      exact denoteWhile_outcome_val_or_err bi (.var name) _
+        (fun f e => denote_var_outcome bi f name e) (fun f e => ihbody h f e) fuel env
+    | _ => simp [AnfShaped] at h
   | typeAscription e ty ih =>
     intro fuel env
     simp only [AnfShaped] at h

@@ -256,6 +256,20 @@ def encAluRRrev (op d s : Nat) : List (BitVec 8) :=
 def encShiftByOne (ext d : Nat) : List (BitVec 8) :=
   [ rex 1 0 0 (bit d 3), 0xd1, modRMReg ext d ].map (BitVec.ofNat 8)
 
+/-- A shift by the count in `%cl` (`REX.W D3 /ext`), the only register-count form
+    of the group-2 shifts: `shl/shr/sar %cl, %d`. The count is the low byte of
+    `%rcx` masked to six bits, the count semantics of the `JState` shift words.
+    SDM Vol 2B, `SAL/SAR/SHL/SHR`: `shrq %cl, %rdx` = `48 D3 EA`. -/
+def encShiftCl (ext d : Nat) : List (BitVec 8) :=
+  [ rex 1 0 0 (bit d 3), 0xd3, modRMReg ext d ].map (BitVec.ofNat 8)
+
+/-- The bytes of a register-count shift `sh d, c` at group-2 extension `ext`:
+    the `%cl` form `encShiftCl` when the count register `c` is allocated to
+    `%rcx`, and no bytes otherwise, since x86 has no group-2 shift by another
+    register. -/
+def encShiftRegCount (alloc : GpAlloc) (ext : Nat) (d c : String) : List (BitVec 8) :=
+  if regOf alloc c = "%rcx" then encShiftCl ext (gpNum (regOf alloc d)) else []
+
 /-- `MOV $imm32, %dst` (`C7 /0 id`). -/
 def encMovImm (d v : Nat) : List (BitVec 8) :=
   ([ rex 1 0 0 (bit d 3), 0xc7, modRMReg 0 d ].map (BitVec.ofNat 8)) ++ imm32LE v
@@ -548,14 +562,21 @@ with the per-op SDM extension digit), and the two store-immediate forms
     The `AsmPrinter` TEXT path does not agree: it renders `cmoveq $v, %d` /
     `adcx $v, %d` / `mulx $v, …`, which `gas` **rejects** (no such operand form), so
     the text path fails loudly where the byte path silently emits a well-formed but
-    different instruction. The same holds for the register-source `SHL`/`SHR`/`SAR`
-    arms (x86's variable shift reads `%cl` only): text prints `shlq %rN, %d` (a gas
-    error unless `%rN` is `%rcx`), bytes emit `shlq $0, %d`, a no-op shift.
+    different instruction.
 
-    That divergence is unreachable from the compiler: no lowering constructs any of
-    these shapes. `LoweringExtended.lowerJOperand` only puts an `.imm` where the
-    mnemonic has an imm form, the gather lowers count-in-tag shifts to `.imm`
-    counts (`lowerShiftImmJ`), and a repo-wide search finds `.adcx _ (.imm _)` /
+    **The register-count `SHL`/`SHR`/`SAR` arms.** x86's group-2 variable shift
+    reads its count from `%cl` only. A count register allocated to `%rcx` encodes
+    as `REX.W D3 /ext` (`encShiftCl`); any other count register carries no bytes
+    (`encShiftRegCount`), and `encodableJInstr` is `false` on the shape, so
+    `encodeJInstr?` refuses it. The gather's two-source `regArith .shr`/`.shl`
+    export lowers to this shape with an arbitrary count register
+    (`LoweringExtended.lowerAluJ2`), which is how a variable shift such as the
+    P-256 ladder's per-trip bit load reaches it; the text printer renders
+    `shlq %rN, %d`, which gas rejects unless `%rN` is `%rcx`.
+
+    The `.imm` divergence is unreachable from the compiler: no lowering constructs
+    those shapes. `LoweringExtended.lowerJOperand` only puts an `.imm` where the
+    mnemonic has an imm form, and a repo-wide search finds `.adcx _ (.imm _)` /
     `.adox _ (.imm _)` only inside `evalInstr` semantics tests, never on a byte
     path. Both sites are commented; if a lowering ever starts producing one, the
     text path's gas error is the detector, not this encoder. -/
@@ -673,20 +694,21 @@ def encodeJInstr (alloc : GpAlloc) : JInstr 64 → List (BitVec 8)
   | .shl d s =>
       match s with
       | .imm v => encShiftImm 4 (gpNum (regOf alloc d)) v
-      -- x86's variable shift (`D3 /ext`) reads the count from `%cl` only, so a
-      -- register-source shift has no faithful encoding here: we emit a count-0
-      -- (no-op) shift, while `AsmPrinter` prints `shlq %rN, %d` — invalid AT&T
-      -- that gas rejects. Unreachable: the gather lowers count-in-tag shifts to
-      -- an `.imm` count (`LoweringExtended.lowerShiftImmJ`); see `encodeJInstr`.
-      | .reg _ => encShiftImm 4 (gpNum (regOf alloc d)) 0  -- variable shift not emitted
+      -- x86's variable shift (`D3 /ext`) reads the count from `%cl` only: a
+      -- register count allocated to `%rcx` encodes as that form and any other
+      -- count register carries no bytes (`encShiftRegCount`). The gather's
+      -- two-source `regArith .shr`/`.shl` export (`LoweringExtended.lowerAluJ2`)
+      -- produces this shape with an arbitrary count register, and
+      -- `encodableJInstr` excludes it, so `encodeJInstr?` refuses it.
+      | .reg c => encShiftRegCount alloc 4 d c
   | .shr d s =>
       match s with
       | .imm v => encShiftImm 5 (gpNum (regOf alloc d)) v
-      | .reg _ => encShiftImm 5 (gpNum (regOf alloc d)) 0
+      | .reg c => encShiftRegCount alloc 5 d c
   | .sar d s =>
       match s with
       | .imm v => encShiftImm 7 (gpNum (regOf alloc d)) v
-      | .reg _ => encShiftImm 7 (gpNum (regOf alloc d)) 0
+      | .reg c => encShiftRegCount alloc 7 d c
   -- The `.imm` arms of `CMOVcc`/`ADCX`/`ADOX`/`MULX` below fall back to source
   -- register `0` (`%rax`): x86 gives these opcodes NO immediate operand form, so
   -- there is nothing faithful to emit. `AsmPrinter` diverges here — it prints
@@ -989,6 +1011,9 @@ def encodableJInstr : JInstr 64 → Bool
       fitsImm32S v
   | .cmove _ (.imm _) | .adcx _ (.imm _) | .adox _ (.imm _) => false
   | .mulx _ _ (.imm _) _ | .mulx _ _ _ (.imm _) => false
+  -- a register-count shift encodes only when its count register is `%rcx`, a
+  -- fact of the allocation this gate does not see.
+  | .shl _ (.reg _) | .shr _ (.reg _) | .sar _ (.reg _) => false
   -- the instructions `encodeJInstr` does not yet encode.
   | .inc _ | .dec _ | .clc | .stc | .xchg _ _ | .imulri _ _ _ | .mul _ _ _
   | .imulWide _ _ _ | .shld _ _ _ | .shrd _ _ _ | .rcl _ _ | .rcr _ _
@@ -1026,6 +1051,51 @@ theorem encodeJInstr?_add_imm_wide (alloc : GpAlloc) (d : String) (v : Nat)
 /-- `CMOVcc $imm` has no x86 encoding and is refused. -/
 theorem encodeJInstr?_cmove_imm (alloc : GpAlloc) (d : String) (v : Nat) :
     encodeJInstr? alloc (.cmove d (.imm v)) = none :=
+  encodeJInstr?_eq_none alloc _ rfl
+
+/-! ### Register-count shifts
+
+The group-2 shifts take a register count only in `%cl`. The bytes of
+`.shl`/`.shr`/`.sar d (.reg c)` are the `REX.W D3 /ext` form when `c` is
+allocated to `%rcx` and empty otherwise, and the gated encoder refuses the shape
+outright. -/
+
+/-- The bytes of a register-count logical right shift: the `%cl` form
+    `D3 /5` when the count is allocated to `%rcx`, none otherwise. -/
+theorem encodeJInstr_shr_reg (alloc : GpAlloc) (d c : String) :
+    encodeJInstr alloc (.shr d (.reg c))
+      = if regOf alloc c = "%rcx" then encShiftCl 5 (gpNum (regOf alloc d)) else [] := rfl
+
+/-- The bytes of a register-count left shift: the `%cl` form `D3 /4` when the
+    count is allocated to `%rcx`, none otherwise. -/
+theorem encodeJInstr_shl_reg (alloc : GpAlloc) (d c : String) :
+    encodeJInstr alloc (.shl d (.reg c))
+      = if regOf alloc c = "%rcx" then encShiftCl 4 (gpNum (regOf alloc d)) else [] := rfl
+
+/-- The bytes of a register-count arithmetic right shift: the `%cl` form
+    `D3 /7` when the count is allocated to `%rcx`, none otherwise. -/
+theorem encodeJInstr_sar_reg (alloc : GpAlloc) (d c : String) :
+    encodeJInstr alloc (.sar d (.reg c))
+      = if regOf alloc c = "%rcx" then encShiftCl 7 (gpNum (regOf alloc d)) else [] := rfl
+
+/-- A register-count shift whose count is not in `%rcx` carries no bytes. -/
+theorem encodeJInstr_shr_reg_ne_rcx (alloc : GpAlloc) (d c : String)
+    (h : regOf alloc c ≠ "%rcx") : encodeJInstr alloc (.shr d (.reg c)) = [] := by
+  rw [encodeJInstr_shr_reg, if_neg h]
+
+/-- The gated encoder refuses a register-count logical right shift. -/
+theorem encodeJInstr?_shr_reg (alloc : GpAlloc) (d c : String) :
+    encodeJInstr? alloc (.shr d (.reg c)) = none :=
+  encodeJInstr?_eq_none alloc _ rfl
+
+/-- The gated encoder refuses a register-count left shift. -/
+theorem encodeJInstr?_shl_reg (alloc : GpAlloc) (d c : String) :
+    encodeJInstr? alloc (.shl d (.reg c)) = none :=
+  encodeJInstr?_eq_none alloc _ rfl
+
+/-- The gated encoder refuses a register-count arithmetic right shift. -/
+theorem encodeJInstr?_sar_reg (alloc : GpAlloc) (d c : String) :
+    encodeJInstr? alloc (.sar d (.reg c)) = none :=
   encodeJInstr?_eq_none alloc _ rfl
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder

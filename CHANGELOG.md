@@ -8,6 +8,34 @@ Changes since `v0.1.0-alpha.2`.
 
 hax front to LowCT:
 
+- `haxToLowCT_simulates_programW` (`Hax/HaxToLowCTSim_ProgramLoops.lean`): program-level
+  simulation with reverse loops (`forFoldRev` over literal bounds, lowered to `RFor` with
+  the counter mapped to `hi - 1 - j`), runtime-bound loops (`forFold` from a literal to a
+  variable bound, lowered to `RForRuntime`) and data-dependent loops (`whileFold` on a
+  scalar guard, lowered to `RWhileNz`), under the checker `simScopeW` and the
+  environment invariant `ScalarInv`; `haxToLowCT` and `AnfShaped` gain the `forFoldRev`
+  and `whileFold` arms, and `denoteForLoopRev` has unfold equations and the outcome
+  dichotomy in `HaxToLowCTSim_AnfShaped_Full`.
+
+x86 backend:
+
+- Register-count group-2 shifts: `encShiftCl` encodes `shl`/`shr`/`sar` by `%cl`
+  (`REX.W D3 /ext`, round trip `roundtrip_ShiftCl`) when the count register is allocated
+  to `%rcx`; `encShiftRegCount` gives no bytes for any other count register, and
+  `encodableJInstr` and `encodableLinstrR` refuse the shape
+  (`encodeJInstr_shl_reg`, `encodeJInstr_shr_reg`, `encodeJInstr_sar_reg`,
+  `encodableLinstrR_shr_regCount_false`), where the earlier arms emitted a count-0 shift.
+
+Leak traces:
+
+- `Dialects/CryptoDialectLeakExpansion.lean`: `translateDialectFull_leakTrace_expand`
+  and `lowerSExpr_leakTrace_expand` state that the leak-factor trace of the front's
+  continuation is `expand` of the LowCT program at the entry typing;
+  `selectMaskCont_leakFactorsTrace_eq` and `arrLoadCont_leakFactorsTrace_eq` give the
+  select and array-load continuations their traces.
+- `notTmp_of_headNe` (a name whose first character is not `_` is not a fresh temporary
+  of the `SExpr` lowering) is in `TranslateDialectScalarDenote`, shared by
+  `Secp256k1PointOpFrontCovered` and the dev P-256 module.
 - `haxToLowCT_simulates_programT`: program-level simulation for builtin tables whose
   results are scalars, under `envAgreesRustT`, the argument-relating leaf condition
   `LeafCallAgreesArgs` and scalar-bound conditions `condsScalar`, for tables

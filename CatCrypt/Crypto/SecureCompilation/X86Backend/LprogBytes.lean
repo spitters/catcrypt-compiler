@@ -1390,9 +1390,22 @@ def mnemonicEncodability : List (LinstrR × Bool) :=
   , (.Lopn [.reg "R8"] "MULXHI:64" [.reg "RAX", .reg "RBX"], true)
   , (.Lopn [.reg "R8"] "ROL:7:64" [.reg "R8"], false)
   , (.Lopn [.reg "R8"] "ROR:7:64" [.reg "R8"], false)
-  , (.Lopn [.reg "R8"] "ANDN:64" [.reg "RAX", .reg "RBX"], false) ]
+  , (.Lopn [.reg "R8"] "ANDN:64" [.reg "RAX", .reg "RBX"], false)
+  -- the register-count shifts (`regArith .shr`/`.shl`/`.sar` with a runtime
+  -- count), which `LprogAsmPrinter.renderLopn` renders as BMI2 `shrx`/`shlx`/`sarx`
+  -- and this encoder has no arm for.
+  , (.Lopn [.reg "R8"] "SHR:64" [.reg "RAX", .reg "RCX"], false)
+  , (.Lopn [.reg "R8"] "SHL:64" [.reg "RAX", .reg "RCX"], false)
+  , (.Lopn [.reg "R8"] "SAR:64" [.reg "RAX", .reg "RCX"], false) ]
 
 #guard mnemonicEncodability.all fun p => encodableLinstrR 64 64 p.1 == p.2
+
+/-- A register-count shift `Lopn [d] "SHR:64" [val, count]` reaches no arm of
+    `encodeLopn`: the gate declines a body containing it rather than dropping
+    the instruction. The `SHL`/`SAR` duals are pinned in `mnemonicEncodability`. -/
+theorem encodableLinstrR_shr_regCount_false :
+    encodableLinstrR 64 64 (.Lopn [.reg "R8"] "SHR:64" [.reg "RAX", .reg "RCX"]) = false := by
+  decide +kernel
 
 /-! ### Byte pins for the `SAR:<n>` and `CMOV` arms
 

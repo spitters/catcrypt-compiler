@@ -762,15 +762,23 @@ theorem haxToLowCT_forFold_eq_none
       | _ => simp [impLitNat, h_not_runtime]
   | _ => rfl
 
-theorem haxToLowCT_forFoldRev_eq_none
-    (v : String) (lo hi body : ImpExpr) :
+/-- `haxToLowCT` rejects a `forFoldRev` whose bounds are not both literals. -/
+theorem haxToLowCT_forFoldRev_eq_none (v : String) (lo hi body : ImpExpr)
+    (h : ¬ ∃ l1 l2 : Hax.ImpLit, lo = .lit l1 ∧ hi = .lit l2) :
     haxToLowCT (.forFoldRev v lo hi body) = none := by
-  simp [haxToLowCT]
+  cases lo with
+  | lit l1 =>
+    cases hi with
+    | lit l2 => exact absurd ⟨l1, l2, rfl, rfl⟩ h
+    | _ => simp [haxToLowCT]
+  | _ => simp [haxToLowCT]
 
-theorem haxToLowCT_whileFold_eq_none
-    (cond body : ImpExpr) :
+/-- `haxToLowCT` rejects a `whileFold` whose guard is not a variable. -/
+theorem haxToLowCT_whileFold_eq_none (cond body : ImpExpr) (h : ∀ v, cond ≠ .var v) :
     haxToLowCT (.whileFold cond body) = none := by
-  simp [haxToLowCT]
+  cases cond with
+  | var v => exact absurd rfl (h v)
+  | _ => simp [haxToLowCT]
 
 theorem haxToLowCT_forFoldReturn_eq_none
     (v : String) (lo hi body : ImpExpr) :
@@ -927,39 +935,19 @@ theorem evalImp_forFold_eq_none (bi : Builtins) (fuel : Nat)
   unfold evalImp denote
   simp only [pure, Pure.pure, StateT.pure, StateT.run]
 
-/-- For-fold simulation.
+/-- `denote` gives `forFoldRev` no meaning, so `evalImp` returns `none`. -/
+theorem evalImp_forFoldRev_eq_none (bi : Builtins) (fuel : Nat)
+    (var : String) (lo hi body : ImpExpr) (env : Env) :
+    evalImp bi fuel (.forFoldRev var lo hi body) env = none := by
+  unfold evalImp denote
+  simp only [pure, Pure.pure, StateT.pure, StateT.run]
 
-    After the 2026-05 extension, two literal-bounded shapes of `.forFold`
-    translate to `.RFor`.  But on the source side, `denote bi fuel
-    (.forFold ..)` is `pure (.err ..)` (post-phase constructor), so
-    `evalImp` returns `none` and the simulation hypothesis is vacuous —
-    closing all three sub-cases uniformly. -/
-theorem haxToLowCT_simulates_forFold
-    (bi : Builtins) (fuel N : Nat) (leafSpec : LeafSpec)
-    (var : String) (lo hi body : ImpExpr) (c : LowCT) (env env' : Env)
-    (rs : RustState) (v : Value) :
-    HaxToLowCTSimulates bi fuel N leafSpec (.forFold var lo hi body) c env env' rs v := by
-  intro _ hEval _
-  rw [evalImp_forFold_eq_none] at hEval
-  contradiction
-
-theorem haxToLowCT_simulates_forFoldRev
-    (bi : Builtins) (fuel N : Nat) (leafSpec : LeafSpec)
-    (var : String) (lo hi body : ImpExpr) (c : LowCT) (env env' : Env)
-    (rs : RustState) (v : Value) :
-    HaxToLowCTSimulates bi fuel N leafSpec (.forFoldRev var lo hi body) c env env' rs v := by
-  intro h _ _
-  rw [haxToLowCT_forFoldRev_eq_none] at h
-  contradiction
-
-theorem haxToLowCT_simulates_whileFold
-    (bi : Builtins) (fuel N : Nat) (leafSpec : LeafSpec)
-    (cond body : ImpExpr) (c : LowCT) (env env' : Env)
-    (rs : RustState) (v : Value) :
-    HaxToLowCTSimulates bi fuel N leafSpec (.whileFold cond body) c env env' rs v := by
-  intro h _ _
-  rw [haxToLowCT_whileFold_eq_none] at h
-  contradiction
+/-- `denote` gives `whileFold` no meaning, so `evalImp` returns `none`. -/
+theorem evalImp_whileFold_eq_none (bi : Builtins) (fuel : Nat)
+    (cond body : ImpExpr) (env : Env) :
+    evalImp bi fuel (.whileFold cond body) env = none := by
+  unfold evalImp denote
+  simp only [pure, Pure.pure, StateT.pure, StateT.run]
 
 theorem haxToLowCT_simulates_forFoldReturn
     (bi : Builtins) (fuel N : Nat) (leafSpec : LeafSpec)

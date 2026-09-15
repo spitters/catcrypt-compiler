@@ -766,7 +766,21 @@ def haxToLowCT : ImpExpr → Option LowCT
             (.RSeq (.RScalarSetExpr v (.SAdd (.SVar v) (.SLit loN))) bodyC))
       | _, _, _ => none
   | .forFold _ _ _ _           => none
+  -- Reverse counted loop over literal bounds: `hi - lo` trips of the zero-based
+  -- `RFor`, whose body first maps the trip counter `j` to the source counter
+  -- `hi - 1 - j`.
+  | .forFoldRev v (.lit lo) (.lit hi) body =>
+      match impLitNat lo, impLitNat hi, haxToLowCT body with
+      | some loN, some hiN, some bodyC =>
+          some (.RFor v (hiN - loN)
+            (.RSeq (.RScalarSetExpr v (.SSub (.SLit (hiN - 1)) (.SVar v))) bodyC))
+      | _, _, _ => none
   | .forFoldRev _ _ _ _        => none
+  -- Data-dependent loop on a scalar guard, lowered as `whileLoop (var v)`.
+  | .whileFold (.var v) body =>
+      match haxToLowCT body with
+      | some bC => some (.RWhileNz v bC)
+      | none    => none
   | .whileFold _ _             => none
   | .forFoldReturn _ _ _ _     => none
   | .forFoldRevReturn _ _ _ _  => none
@@ -1026,7 +1040,18 @@ def haxToLowCTEnv (env : TypeEnv) (leaves : LeafTable) :
             (.RSeq (.RScalarSetExpr v (.SAdd (.SVar v) (.SLit loN))) bodyC))
       | _, _, _ => none
   | .forFold _ _ _ _           => none
+  | .forFoldRev v (.lit lo) (.lit hi) body =>
+      let envFor : TypeEnv := (v, .TU64) :: env
+      match impLitNat lo, impLitNat hi, haxToLowCTEnv envFor leaves body with
+      | some loN, some hiN, some bodyC =>
+          some (.RFor v (hiN - loN)
+            (.RSeq (.RScalarSetExpr v (.SSub (.SLit (hiN - 1)) (.SVar v))) bodyC))
+      | _, _, _ => none
   | .forFoldRev _ _ _ _        => none
+  | .whileFold (.var v) body =>
+      match haxToLowCTEnv env leaves body with
+      | some bC => some (.RWhileNz v bC)
+      | none    => none
   | .whileFold _ _             => none
   | .forFoldReturn _ _ _ _     => none
   | .forFoldRevReturn _ _ _ _  => none
@@ -1144,6 +1169,11 @@ def AnfShaped : ImpExpr → Bool
   -- nonneg literal, the bound converts, and the body is ANF-shaped.
   | .forFold _ (.lit lo) hi body =>
       (impLitNat lo).isSome && (impBoundToSExpr hi).isSome && AnfShaped body
+  -- Reverse for-fold over nonneg literal endpoints with an ANF-shaped body.
+  | .forFoldRev _ (.lit lo) (.lit hi) body =>
+      (impLitNat lo).isSome && (impLitNat hi).isSome && AnfShaped body
+  -- While-fold on a variable guard with an ANF-shaped body.
+  | .whileFold (.var _) body                 => AnfShaped body
   -- A type ascription is erased; only the ascribed expression's shape matters.
   | .typeAscription e _                      => AnfShaped e
   | _                                        => false
@@ -1400,8 +1430,23 @@ theorem haxToLowCT_isSome_iff_anf (e : ImpExpr) :
         | lit l2 => simp [impLitNat, Option.isSome]
         | _ => simp [impLitNat, Option.isSome]
     | _ => simp [Option.isSome]
-  | forFoldRev _ _ _ _ _ _ _ => unfold haxToLowCT AnfShaped; simp [Option.isSome]
-  | whileFold _ _ _ _ => unfold haxToLowCT AnfShaped; simp [Option.isSome]
+  | forFoldRev _ lo hi body _ _ ihbody =>
+    -- Both sides gate on the two literal endpoints and the body.
+    unfold haxToLowCT AnfShaped
+    cases lo with
+    | lit l1 =>
+      cases hi with
+      | lit l2 =>
+        cases hl : impLitNat l1 <;> cases hh : impLitNat l2 <;>
+          cases h2 : haxToLowCT body <;> simp_all [Option.isSome]
+      | _ => simp [Option.isSome]
+    | _ => simp [Option.isSome]
+  | whileFold c _ _ihc ihbody =>
+    cases c with
+    | var _ =>
+      unfold haxToLowCT AnfShaped
+      cases h1 : haxToLowCT _ <;> simp_all [Option.isSome]
+    | _ => unfold haxToLowCT AnfShaped; simp [Option.isSome]
   | forFoldReturn _ _ _ _ _ _ _ => unfold haxToLowCT AnfShaped; simp [Option.isSome]
   | forFoldRevReturn _ _ _ _ _ _ _ => unfold haxToLowCT AnfShaped; simp [Option.isSome]
   | whileFoldReturn _ _ _ _ => unfold haxToLowCT AnfShaped; simp [Option.isSome]
