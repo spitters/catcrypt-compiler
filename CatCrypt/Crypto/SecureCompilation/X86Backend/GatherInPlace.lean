@@ -28,37 +28,35 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringCoverageCmovS
    `mov RDX, RDX` (`48 89 D2`) the Lprog `encodeLopn` never emits — the latter
    encodes the same `Lopn` as the single `or %rcx, %rdx` (`48 09 CA`).
 
-2. **The count-in-tag shift representation mismatch — NOW FIXED in `encodeLopn`.**
-   `Com.toLprogPhysAbi` emits the rotate shifts as `Lopn [RAX] "SHR:19:64" [RBX]` —
-   count in the **mnemonic tag**, source a **register**. The gather lowers this to
-   `mov RAX, RBX ; shr RAX, $19` (7 bytes). `encodeLopn` USED to have **no arm** for a
-   count-in-tag register-source shift (its shift arm fired only on a separate `.imm`
-   count), so it emitted **0 bytes** — silently dropping the rotation. The
-   `encTagShift` arm now closes that: `encodeLopn` emits the `shr RAX, $19` op
+2. **The count-in-tag shift representation.** `Com.toLprogPhysAbi` emits the rotate
+   shifts as `Lopn [RAX] "SHR:19:64" [RBX]` — count in the **mnemonic tag**, source a
+   **register**. The gather lowers this to `mov RAX, RBX ; shr RAX, $19` (7 bytes);
+   `encodeLopn`'s `encTagShift` arm emits the `shr RAX, $19` op
    (`[0x48,0xc1,0xe8,0x13]`), matching the trailing `shr` of the gather's block.
 
-This module is the **additive** fix for divergence (1): a new lowering
-`lowerLinstrExtCov3` with the `d == s0 ⇒ skip the leading mov` peephole on the
-two-source `regArith` shapes, a gather `gatherJBlock3` / entries built on it, the
-per-op byte-agreement theorem for the in-place case (`native_decide`-free, via the
-`BlockBytesAgreeExtended` dispatch technique), and `#eval` evidence that with the
-peephole the two-source ALU core now byte-matches `encodeLopn`.
+This module addresses divergence (1): a lowering `lowerLinstrExtCov3` with the
+`d == s0 ⇒ skip the leading mov` peephole on the two-source `regArith` shapes, a
+gather `gatherJBlock3` / entries built on it, the per-op byte-agreement theorem for
+the in-place case (`native_decide`-free, via the `BlockBytesAgreeExtended` dispatch
+technique), and `#eval` evidence that with the peephole the two-source ALU core
+byte-matches `encodeLopn`.
 
-Divergence (2) — the shift — is **fixed in `encodeLopn`** (the `encTagShift` arm,
-`BlockBytesAgreeExtended.encodeLopn_shr19_emits`). §4c records the regression
-witnesses (the Lprog encoder now emits each rotation's bytes — count of dropped
-shifts `4 → 0`). The remaining shift residual between the two gathers is the
-gather's leading materialise `mov d, src` (the shift arm `lowerShiftImmJ` does not
-coalesce `d = src`), not a dropped op — the shift OP byte-agrees on both sides.
+Divergence (2) — the shift — is encoded by `encodeLopn`'s `encTagShift` arm
+(`BlockBytesAgreeExtended.encodeLopn_shr19_emits`). The shift residual between the
+two gathers is the gather's leading materialise `mov d, src` (the shift arm
+`lowerShiftImmJ` does not coalesce `d = src`); the shift op byte-agrees on both
+sides.
 
 ## The peephole (divergence 1)
 
 `lowerLinstrExtCov` delegates the two-source `regArith` shapes to
-`lowerLinstrExt2 → lowerAluJ2`, which is
+`lowerLinstrExt2 → lowerAluJ2`, which outside the register-count shifts is
 
   `lowerAluJ2 d opn s0 s1 = (lowerAluJ d (stripWidthTag opn) s1).map (fun i => [mov d s0, i])`
 
-— always a leading `mov d s0`. The in-place variant `lowerAluJ2InPlace` keeps the
+— always a leading `mov d s0` (a register-count `SHL`/`SHR`/`SAR` is the single
+BMI2 `shlx`/`shrx`/`sarx`, `LoweringExtended.lowerShiftRegJ`, on both variants).
+The in-place variant `lowerAluJ2InPlace` keeps the
 `[mov d s0, OP d s1]` split **except** when `s0 = .reg d`: then it emits just
 `[OP d s1]` (the destructive single-op form `encodeLopn` produces). `lowerLinstrExtCov3`
 intercepts the two-source `regArith` mnemonics (`ADD/SUB/AND/OR/XOR:64`) with this
@@ -117,16 +115,18 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.BlockBytesAgreeExtended
 /-! ## 1. The in-place two-source lowering (the skip-mov peephole) -/
 
 /-- The in-place (skip-mov) two-source ALU lowering. Identical to `lowerAluJ2`
+    (including the single BMI2 `shlx`/`shrx`/`sarx` of a register-count shift)
     except when the first source is the destination itself (`s0 = .reg dst` — the
     destructive form `Com.toLprogPhysAbi` produces): then the leading materialise
     `mov dst s0` is `mov dst, dst`, a redundant self-move the Lprog `encodeLopn`
     does not emit, so it is **elided** and only the destructive op `OP dst s1`
     remains — matching the Lprog encoder's single-op form. `none` if the
-    (tag-stripped) mnemonic is outside the `lowerAluJ` table. -/
+    (tag-stripped) mnemonic is outside both tables. -/
 def lowerAluJ2InPlace (dst : String) (opn : String) (s0 s1 : JOperand) :
     Option (List (JInstr 64)) :=
-  (lowerAluJ dst (stripWidthTag opn) s1).map (fun i =>
-    if s0 = JOperand.reg dst then [i] else [JInstr.mov dst s0, i])
+  (lowerShiftRegJ dst (stripWidthTag opn) s0 s1).or
+    ((lowerAluJ dst (stripWidthTag opn) s1).map (fun i =>
+      if s0 = JOperand.reg dst then [i] else [JInstr.mov dst s0, i]))
 
 /-- The in-place coverage lowering. The two-source `regArith` mnemonics
     (`ADD/SUB/AND/OR/XOR:64`, plus their untagged forms) are intercepted with the
@@ -219,8 +219,8 @@ theorem lower_or64_inplace (dst s1 : String) :
       = some [JInstr.or_ dst (.reg s1)] := by
   show lowerAluJ2InPlace dst "OR:64" (lowerJOperand (.reg dst)) (lowerJOperand (.reg s1)) = _
   simp only [lowerAluJ2InPlace, lowerJOperand,
-    show stripWidthTag "OR:64" = "OR" from by decide +kernel, lowerAluJ, Option.map_some,
-    if_pos]
+    show stripWidthTag "OR:64" = "OR" from by decide +kernel, lowerShiftRegJ_OR,
+    Option.none_or, lowerAluJ, Option.map_some, if_pos]
 
 /-- In-place `XOR:64 [d, s1]` lowers to just `[xor_ d s1]`. -/
 theorem lower_xor64_inplace (dst s1 : String) :
@@ -228,8 +228,8 @@ theorem lower_xor64_inplace (dst s1 : String) :
       = some [JInstr.xor_ dst (.reg s1)] := by
   show lowerAluJ2InPlace dst "XOR:64" (lowerJOperand (.reg dst)) (lowerJOperand (.reg s1)) = _
   simp only [lowerAluJ2InPlace, lowerJOperand,
-    show stripWidthTag "XOR:64" = "XOR" from by decide +kernel, lowerAluJ, Option.map_some,
-    if_pos]
+    show stripWidthTag "XOR:64" = "XOR" from by decide +kernel, lowerShiftRegJ_XOR,
+    Option.none_or, lowerAluJ, Option.map_some, if_pos]
 
 /-- In-place `ADD:64 [d, s1]` lowers to just `[add d s1]`. -/
 theorem lower_add64_inplace (dst s1 : String) :
@@ -237,8 +237,8 @@ theorem lower_add64_inplace (dst s1 : String) :
       = some [JInstr.add dst (.reg s1)] := by
   show lowerAluJ2InPlace dst "ADD:64" (lowerJOperand (.reg dst)) (lowerJOperand (.reg s1)) = _
   simp only [lowerAluJ2InPlace, lowerJOperand,
-    show stripWidthTag "ADD:64" = "ADD" from by decide +kernel, lowerAluJ, Option.map_some,
-    if_pos]
+    show stripWidthTag "ADD:64" = "ADD" from by decide +kernel, lowerShiftRegJ_ADD,
+    Option.none_or, lowerAluJ, Option.map_some, if_pos]
 
 /-- In-place `SUB:64 [d, s1]` lowers to just `[sub d s1]`. -/
 theorem lower_sub64_inplace (dst s1 : String) :
@@ -246,8 +246,8 @@ theorem lower_sub64_inplace (dst s1 : String) :
       = some [JInstr.sub dst (.reg s1)] := by
   show lowerAluJ2InPlace dst "SUB:64" (lowerJOperand (.reg dst)) (lowerJOperand (.reg s1)) = _
   simp only [lowerAluJ2InPlace, lowerJOperand,
-    show stripWidthTag "SUB:64" = "SUB" from by decide +kernel, lowerAluJ, Option.map_some,
-    if_pos]
+    show stripWidthTag "SUB:64" = "SUB" from by decide +kernel, lowerShiftRegJ_SUB,
+    Option.none_or, lowerAluJ, Option.map_some, if_pos]
 
 /-- In-place `AND:64 [d, s1]` lowers to just `[and_ d s1]`. -/
 theorem lower_and64_inplace (dst s1 : String) :
@@ -255,8 +255,97 @@ theorem lower_and64_inplace (dst s1 : String) :
       = some [JInstr.and_ dst (.reg s1)] := by
   show lowerAluJ2InPlace dst "AND:64" (lowerJOperand (.reg dst)) (lowerJOperand (.reg s1)) = _
   simp only [lowerAluJ2InPlace, lowerJOperand,
-    show stripWidthTag "AND:64" = "AND" from by decide +kernel, lowerAluJ, Option.map_some,
-    if_pos]
+    show stripWidthTag "AND:64" = "AND" from by decide +kernel, lowerShiftRegJ_AND,
+    Option.none_or, lowerAluJ, Option.map_some, if_pos]
+
+/-! ### 2b. The register-count shifts: one BMI2 instruction, no leading `mov`
+
+A two-source `SHL:64`/`SHR:64`/`SAR:64 [v, c]` with a register count lowers, on
+both `lowerLinstrExt2` and the in-place `lowerLinstrExtCov3`, to the single
+flag-free `shlx`/`shrx`/`sarx dst v c`, which `ScalarEncoder.encodableJInstr`
+accepts and `encodeJInstr` encodes as `encShiftX` (five bytes). This is the
+shape the SSA exporter emits for `regArith .shr 64` over a runtime count (the
+dialect `bvShiftRV`, e.g. the P-256 ladder's per-trip scalar-bit load
+`bit := limb >> sa`). -/
+
+/-- `SHR:64 [v, c]` lowers on `lowerLinstrExt2` to the single `shrx`. -/
+theorem lowerLinstrExt2_shr_reg (dst v c : String) :
+    lowerLinstrExt2 (.Lopn [.reg dst] "SHR:64" [.reg v, .reg c])
+      = some [JInstr.shrx dst v c] := by
+  show lowerAluJ2 dst "SHR:64" (lowerJOperand (.reg v)) (lowerJOperand (.reg c)) = _
+  exact lowerAluJ2_shr_reg dst _ v c (by decide +kernel)
+
+/-- `SHL:64 [v, c]` lowers on `lowerLinstrExt2` to the single `shlx`. -/
+theorem lowerLinstrExt2_shl_reg (dst v c : String) :
+    lowerLinstrExt2 (.Lopn [.reg dst] "SHL:64" [.reg v, .reg c])
+      = some [JInstr.shlx dst v c] := by
+  show lowerAluJ2 dst "SHL:64" (lowerJOperand (.reg v)) (lowerJOperand (.reg c)) = _
+  exact lowerAluJ2_shl_reg dst _ v c (by decide +kernel)
+
+/-- `SAR:64 [v, c]` lowers on `lowerLinstrExt2` to the single `sarx`. -/
+theorem lowerLinstrExt2_sar_reg (dst v c : String) :
+    lowerLinstrExt2 (.Lopn [.reg dst] "SAR:64" [.reg v, .reg c])
+      = some [JInstr.sarx dst v c] := by
+  show lowerAluJ2 dst "SAR:64" (lowerJOperand (.reg v)) (lowerJOperand (.reg c)) = _
+  exact lowerAluJ2_sar_reg dst _ v c (by decide +kernel)
+
+/-- `SHR:64 [v, c]` lowers on the in-place gather to the single `shrx`. -/
+theorem lower_shr64_reg (dst v c : String) :
+    lowerLinstrExtCov3 (.Lopn [.reg dst] "SHR:64" [.reg v, .reg c])
+      = some [JInstr.shrx dst v c] := by
+  show lowerAluJ2InPlace dst "SHR:64" (lowerJOperand (.reg v)) (lowerJOperand (.reg c)) = _
+  simp only [lowerAluJ2InPlace, lowerJOperand,
+    show stripWidthTag "SHR:64" = "SHR" from by decide +kernel, lowerShiftRegJ, Option.some_or]
+
+/-- `SHL:64 [v, c]` lowers on the in-place gather to the single `shlx`. -/
+theorem lower_shl64_reg (dst v c : String) :
+    lowerLinstrExtCov3 (.Lopn [.reg dst] "SHL:64" [.reg v, .reg c])
+      = some [JInstr.shlx dst v c] := by
+  show lowerAluJ2InPlace dst "SHL:64" (lowerJOperand (.reg v)) (lowerJOperand (.reg c)) = _
+  simp only [lowerAluJ2InPlace, lowerJOperand,
+    show stripWidthTag "SHL:64" = "SHL" from by decide +kernel, lowerShiftRegJ, Option.some_or]
+
+/-- `SAR:64 [v, c]` lowers on the in-place gather to the single `sarx`. -/
+theorem lower_sar64_reg (dst v c : String) :
+    lowerLinstrExtCov3 (.Lopn [.reg dst] "SAR:64" [.reg v, .reg c])
+      = some [JInstr.sarx dst v c] := by
+  show lowerAluJ2InPlace dst "SAR:64" (lowerJOperand (.reg v)) (lowerJOperand (.reg c)) = _
+  simp only [lowerAluJ2InPlace, lowerJOperand,
+    show stripWidthTag "SAR:64" = "SAR" from by decide +kernel, lowerShiftRegJ, Option.some_or]
+
+/-- The lowered register-count `SHR` block passes the per-instruction byte gate:
+    every instruction of it is `encodableJInstr`. -/
+theorem lowerLinstrExt2_shr_reg_encodable (dst v c : String) :
+    (lowerLinstrExt2 (.Lopn [.reg dst] "SHR:64" [.reg v, .reg c])).map
+        (fun b => b.all encodableJInstr) = some true := by
+  rw [lowerLinstrExt2_shr_reg]; rfl
+
+/-- The bytes of the lowered register-count `SHR` block are the BMI2 `shrx`
+    encoding `encShiftX 5 dst v c` (`VEX.LZ.F2.0F38.W1 F7 /r`). -/
+theorem encJ_shr_reg (alloc : GpAlloc) (dst v c : String) :
+    (lowerLinstrExt2 (.Lopn [.reg dst] "SHR:64" [.reg v, .reg c])).map (encodeJBlock alloc)
+      = some (encShiftX 5 (gpNum (regOf alloc dst)) (gpNum (regOf alloc v))
+          (gpNum (regOf alloc c))) := by
+  rw [lowerLinstrExt2_shr_reg, Option.map_some]
+  simp [encodeJBlock, List.flatMap_cons, encodeJInstr]
+
+/-- The gated per-instruction encoder accepts the lowered `shrx` and returns
+    `encShiftX`. -/
+theorem encodeJInstr?_lowered_shr_reg (alloc : GpAlloc) (dst v c : String) :
+    (lowerLinstrExt2 (.Lopn [.reg dst] "SHR:64" [.reg v, .reg c])).map
+        (fun b => b.map (encodeJInstr? alloc))
+      = some [some (encShiftX 5 (gpNum (regOf alloc dst)) (gpNum (regOf alloc v))
+          (gpNum (regOf alloc c)))] := by
+  rw [lowerLinstrExt2_shr_reg, Option.map_some, List.map_cons, List.map_nil,
+    encodeJInstr?_shrx]
+
+/-- The P-256 scalar-bit load shape `bit := limb >> sa` (the `bvShiftRV` export,
+    a runtime count register) lowers to a block the byte gate accepts, evaluated
+    in the kernel. This is a static check: the lowering is closed and reduces. -/
+example :
+    (lowerLinstrExt2 (.Lopn [.reg "bit"] "SHR:64" [.reg "limb", .reg "sa"])).map
+        (fun b => b.all encodableJInstr) = some true := by
+  decide +kernel
 
 /-! ## 3. The per-op byte-agreement theorem (the deliverable)
 
@@ -320,7 +409,7 @@ theorem inplace_or64_block_single (alloc : GpAlloc) (d r : String) :
 
 The `#eval` byte-compares on the real GoldenPath kernel
 `AsconLinear.asconSigma0Com` (reusing `physBody`/`aluCore`), plus the shift-free
-core byte-match and the dropped-rotation regression witnesses, are re-homed in
+core byte-match and the per-rotation byte witnesses, are placed in
 `GoldenPathByteIdentityDemo` (above the chain) so this file is GoldenPath-free.
 The kernel-independent per-op in-place byte-agreement certificates are kept here:
 the in-place gather's `OR:64 [RDX, RCX]` / `XOR:64 [RAX, RDX]` encode to exactly

@@ -595,12 +595,13 @@ with the per-op SDM extension digit), and the two store-immediate forms
     same data word (`x86_SHR_word_eq_SHRX` and its duals: both mask the count to
     six bits) but writes no flag, so it is not a byte image of this `JInstr`.
     The flag-free register-count shift at the `JInstr` level is `.shlx`/`.shrx`/
-    `.sarx`, which `LoweringExtended.lowerAluJ2` does not yet emit for the
-    gather's two-source `regArith .shr`/`.shl` export; that export lowers to
-    this shape with an arbitrary count register, which is how a variable shift
-    such as the P-256 ladder's per-trip bit load reaches it. The `Lopn` route
-    (`LprogBytes.encodeLopn`), whose two-source shift semantics is value-only,
-    encodes the same export as `encShiftX`.
+    `.sarx`, which `LoweringExtended.lowerAluJ2` emits for the gather's
+    two-source `regArith .shl`/`.shr`/`.sar` export over two register sources
+    (`LoweringExtended.lowerShiftRegJ`), so a variable shift such as the P-256
+    ladder's per-trip bit load reaches this encoder as `encShiftX`. The `Lopn`
+    route (`LprogBytes.encodeLopn`), whose two-source shift semantics is
+    value-only, encodes the same export as `encShiftX`. The `.shl`/`.shr`/`.sar`
+    register-count shape itself is reached only by a hand-built `JInstr` block.
 
     The `.imm` divergence is unreachable from the compiler: no lowering constructs
     those shapes. `LoweringExtended.lowerJOperand` only puts an `.imm` where the
@@ -724,9 +725,9 @@ def encodeJInstr (alloc : GpAlloc) : JInstr 64 → List (BitVec 8)
       -- register count allocated to `%rcx` encodes as that form and any other
       -- count register carries no bytes (`encShiftRegCount`), since the BMI2
       -- form writes no flag where `x86_SHL` does. The gather's two-source
-      -- `regArith .shr`/`.shl` export (`LoweringExtended.lowerAluJ2`) produces
-      -- this shape with an arbitrary count register, and `encodableJInstr`
-      -- excludes it, so `encodeJInstr?` refuses it.
+      -- `regArith .shr`/`.shl` export (`LoweringExtended.lowerAluJ2`) lowers
+      -- to the BMI2 `.shlx`/`.shrx` instead; `encodableJInstr` excludes this
+      -- shape, so `encodeJInstr?` refuses it.
       | .reg c => encShiftRegCount alloc 4 d c
   | .shr d s =>
       match s with

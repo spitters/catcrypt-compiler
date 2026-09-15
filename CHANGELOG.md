@@ -19,6 +19,16 @@ hax front to LowCT:
 
 x86 backend:
 
+- Register-count shifts from the gather's two-source `regArith .shr`/`.shl`/`.sar` export
+  lower to one `.shrx`/`.shlx`/`.sarx` instruction: `lowerShiftRegJ` is the first
+  alternative of `lowerAluJ2` and `lowerAluJ2InPlace` (`lowerAluJ2_shr_reg`,
+  `lowerAluJ2_shl_reg`, `lowerAluJ2_sar_reg`; the immediate-count arms are unchanged,
+  `lowerAluJ2_imm_count`). `lowerAluJ2_shr_reg_lsem_agree` and
+  `lowerAluJ2_shl_reg_lsem_agree` relate the lowered block to the Lprog semantics when the
+  count register holds a value below 64, since that semantics does not mask the count;
+  `SAR` has no Lprog arm and no such theorem. `encJ_shr_reg` and
+  `encodeJInstr?_lowered_shr_reg` give the block's bytes as `encShiftX`, and the gate
+  accepts the P-256 bit-load shift.
 - Register-count group-2 shifts: `encShiftCl` encodes `shl`/`shr`/`sar` by `%cl`
   (`REX.W D3 /ext`, round trip `roundtrip_ShiftCl`) when the count register is allocated
   to `%rcx`; `encShiftRegCount` gives no bytes for any other count register, and

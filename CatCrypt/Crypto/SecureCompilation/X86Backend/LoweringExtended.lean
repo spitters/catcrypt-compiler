@@ -170,7 +170,9 @@ def lowerStore (base : String) (off : Nat) (src : JOperand) : JInstr 64 :=
 shapes the POC single-source ALU arm does **not** match:
 
 * `regArith bop 64` → `Lopn [reg dst] "ADD:64" [s0, s1]` — **two** sources, and
-  the mnemonic carries the `:64` width tag;
+  the mnemonic carries the `:64` width tag; for `bop ∈ {shl, shr, sar}` with a
+  register count the sources are `[reg v, reg c]` and the lowered form is the
+  BMI2 `shlx`/`shrx`/`sarx` (`lowerShiftRegJ`);
 * `mulhi 64` → `Lopn [reg dst] "MULXHI:64" [s0, s1]` — two sources, a mnemonic
   with no `lowerAluJ` arm;
 * `shrImm 64 n` / `shlImm 64 n` → `Lopn [reg dst] "SHR:<n>:64" [src]` /
@@ -180,14 +182,100 @@ The helpers below lower each into the memory-capable `JInstr 64` model, strippin
 the width tag first (`stripWidthTag`). They are the bodies the new
 `lowerLinstrExt` arms (§4) dispatch to; the existing arms are untouched. -/
 
+/-- The BMI2 image of a register-count shift `dst := s0 SH s1`: the flag-free
+    three-address `shlx`/`shrx`/`sarx dst s0 s1` when the (tag-stripped)
+    mnemonic `bare` is `SHL`/`SHR`/`SAR` and both sources are registers.
+    `none` otherwise: an immediate count keeps the two-address `[mov; sh #n]`
+    split of `lowerAluJ2`, and an immediate shifted value has no BMI2 form. -/
+def lowerShiftRegJ (dst bare : String) (s0 s1 : JOperand) : Option (List (JInstr 64)) :=
+  match bare, s0, s1 with
+  | "SHL", .reg v, .reg c => some [JInstr.shlx dst v c]
+  | "SHR", .reg v, .reg c => some [JInstr.shrx dst v c]
+  | "SAR", .reg v, .reg c => some [JInstr.sarx dst v c]
+  | _, _, _ => none
+
 /-- Strip the `:64` width tag and lower a **two-source** ALU op
-    `dst := s0 OP s1` to two-address form `[mov dst s0; OP dst s1]` — first
-    materialise `dst := s0`, then apply the binop against `s1` (the standard
-    SSA→two-address split, here made explicit). `none` if the (tag-stripped)
-    mnemonic is outside the `lowerAluJ` table. -/
+    `dst := s0 OP s1`. A register-count shift (`SHL`/`SHR`/`SAR` over two
+    register sources) lowers to the single BMI2 instruction `lowerShiftRegJ`
+    gives; every other op lowers to the two-address form
+    `[mov dst s0; OP dst s1]` — first materialise `dst := s0`, then apply the
+    binop against `s1` (the standard SSA→two-address split, here made
+    explicit). `none` if the (tag-stripped) mnemonic is outside both tables. -/
 def lowerAluJ2 (dst : String) (opn : String) (s0 s1 : JOperand) :
     Option (List (JInstr 64)) :=
-  (lowerAluJ dst (stripWidthTag opn) s1).map (fun i => [JInstr.mov dst s0, i])
+  (lowerShiftRegJ dst (stripWidthTag opn) s0 s1).or
+    ((lowerAluJ dst (stripWidthTag opn) s1).map (fun i => [JInstr.mov dst s0, i]))
+
+/-! ### The shape of `lowerAluJ2` on each arm -/
+
+/-- `lowerShiftRegJ` is `none` on every mnemonic other than the three shifts. -/
+theorem lowerShiftRegJ_of_ne (dst bare : String) (s0 s1 : JOperand)
+    (h1 : bare ≠ "SHL") (h2 : bare ≠ "SHR") (h3 : bare ≠ "SAR") :
+    lowerShiftRegJ dst bare s0 s1 = none := by
+  unfold lowerShiftRegJ
+  split <;> simp_all
+
+/-- `lowerShiftRegJ` is `none` at an immediate count. -/
+theorem lowerShiftRegJ_imm_count (dst bare : String) (s0 : JOperand) (v : Nat) :
+    lowerShiftRegJ dst bare s0 (.imm v) = none := by
+  unfold lowerShiftRegJ
+  split <;> simp_all
+
+@[simp] theorem lowerShiftRegJ_ADD (dst : String) (s0 s1 : JOperand) :
+    lowerShiftRegJ dst "ADD" s0 s1 = none :=
+  lowerShiftRegJ_of_ne dst "ADD" s0 s1 (by decide) (by decide) (by decide)
+
+@[simp] theorem lowerShiftRegJ_SUB (dst : String) (s0 s1 : JOperand) :
+    lowerShiftRegJ dst "SUB" s0 s1 = none :=
+  lowerShiftRegJ_of_ne dst "SUB" s0 s1 (by decide) (by decide) (by decide)
+
+@[simp] theorem lowerShiftRegJ_MUL (dst : String) (s0 s1 : JOperand) :
+    lowerShiftRegJ dst "MUL" s0 s1 = none :=
+  lowerShiftRegJ_of_ne dst "MUL" s0 s1 (by decide) (by decide) (by decide)
+
+@[simp] theorem lowerShiftRegJ_AND (dst : String) (s0 s1 : JOperand) :
+    lowerShiftRegJ dst "AND" s0 s1 = none :=
+  lowerShiftRegJ_of_ne dst "AND" s0 s1 (by decide) (by decide) (by decide)
+
+@[simp] theorem lowerShiftRegJ_OR (dst : String) (s0 s1 : JOperand) :
+    lowerShiftRegJ dst "OR" s0 s1 = none :=
+  lowerShiftRegJ_of_ne dst "OR" s0 s1 (by decide) (by decide) (by decide)
+
+@[simp] theorem lowerShiftRegJ_XOR (dst : String) (s0 s1 : JOperand) :
+    lowerShiftRegJ dst "XOR" s0 s1 = none :=
+  lowerShiftRegJ_of_ne dst "XOR" s0 s1 (by decide) (by decide) (by decide)
+
+@[simp] theorem lowerShiftRegJ_MOV (dst : String) (s0 s1 : JOperand) :
+    lowerShiftRegJ dst "MOV" s0 s1 = none :=
+  lowerShiftRegJ_of_ne dst "MOV" s0 s1 (by decide) (by decide) (by decide)
+
+/-- Outside the register-count shifts, `lowerAluJ2` is the two-address split. -/
+theorem lowerAluJ2_of_shiftReg_none (dst opn : String) (s0 s1 : JOperand)
+    (h : lowerShiftRegJ dst (stripWidthTag opn) s0 s1 = none) :
+    lowerAluJ2 dst opn s0 s1
+      = (lowerAluJ dst (stripWidthTag opn) s1).map (fun i => [JInstr.mov dst s0, i]) := by
+  simp only [lowerAluJ2, h, Option.none_or]
+
+/-- At an immediate count `lowerAluJ2` is the two-address split `[mov; sh #n]`. -/
+theorem lowerAluJ2_imm_count (dst opn : String) (s0 : JOperand) (v : Nat) :
+    lowerAluJ2 dst opn s0 (.imm v)
+      = (lowerAluJ dst (stripWidthTag opn) (.imm v)).map (fun i => [JInstr.mov dst s0, i]) :=
+  lowerAluJ2_of_shiftReg_none dst opn s0 (.imm v) (lowerShiftRegJ_imm_count _ _ _ _)
+
+/-- A register-count logical right shift lowers to the single `shrx`. -/
+theorem lowerAluJ2_shr_reg (dst opn v c : String) (hs : stripWidthTag opn = "SHR") :
+    lowerAluJ2 dst opn (.reg v) (.reg c) = some [JInstr.shrx dst v c] := by
+  simp only [lowerAluJ2, hs, lowerShiftRegJ, Option.some_or]
+
+/-- A register-count left shift lowers to the single `shlx`. -/
+theorem lowerAluJ2_shl_reg (dst opn v c : String) (hs : stripWidthTag opn = "SHL") :
+    lowerAluJ2 dst opn (.reg v) (.reg c) = some [JInstr.shlx dst v c] := by
+  simp only [lowerAluJ2, hs, lowerShiftRegJ, Option.some_or]
+
+/-- A register-count arithmetic right shift lowers to the single `sarx`. -/
+theorem lowerAluJ2_sar_reg (dst opn v c : String) (hs : stripWidthTag opn = "SAR") :
+    lowerAluJ2 dst opn (.reg v) (.reg c) = some [JInstr.sarx dst v c] := by
+  simp only [lowerAluJ2, hs, lowerShiftRegJ, Option.some_or]
 
 /-- Lower the high-word widening multiply `dst := high(s0 · s1)` (`MULXHI`) to a
     single `mulx`, routing the low word to a scratch register `dst ++ "__mulxlo"`

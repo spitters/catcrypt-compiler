@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgreeLoop
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtended
 
 /-!
 # `runBlock` ↔ `lsemStraightMem` agreement for the register-count shifts
@@ -57,6 +58,11 @@ index below the limb count, a constant materialised by an earlier `mov`.
 * `jToRMShR_agrees`: per-opcode totality and `JLstateCorr` preservation.
 * `runBlock_lsem_agreeShR`: the block-induction lift over a straight-line block.
 * `runBlock_lsem_agreeShR_loop`: the counted-loop lift.
+* `x86_SHRX_mask` / `x86_SHLX_mask`, `lowerAluJ2_shr_reg_lsem_agree` /
+  `lowerAluJ2_shl_reg_lsem_agree`: the register-count `SHR:64` / `SHL:64` export
+  lowers through `LoweringExtended.lowerAluJ2` to the single `shrx` / `shlx`,
+  whose `JState` word is the shift by the count masked to six bits, and at an
+  in-range count that block agrees with `lsemStraightMem` on the export.
 -/
 
 @[expose] public section
@@ -335,5 +341,69 @@ theorem runBlock_lsem_agreeShR_loop (b : List (JInstr 64))
       obtain ⟨ls1, hstep1, hcorr1⟩ := runBlock_lsem_agreeShR b hb s ls hcntb h
       rw [runBoundedLoopMem_succ, hstep1, Option.bind_some, runBoundedLoop_succ]
       exact ih (runBlock s b) (ls1.setLpc 1) hcntl (JLstateCorr_setLpc _ _ hcorr1 1)
+
+/-! ## 8. The lowered register-count shift export
+
+The SSA exporter emits a register-count shift as
+`Lopn [.reg dst] (withWidthTag 64 "SHR") [.reg v, .reg c]`, and
+`LoweringExtended.lowerAluJ2` lowers it to the single BMI2 `[.shrx dst v c]`.
+The `JState` word of that instruction is `v >>> (c.toNat % 64)` at every count
+(`x86_SHRX_mask`); the lsem word `applyOpnN 64 "SHR" [a, b] = some (a >>> b.toNat)`
+is unmasked, so the two agree exactly on the in-range counts `c.toNat < 64`
+(`ShiftCountInRange`), which is the side condition the agreement theorem carries. -/
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtended
+  (lowerAluJ2 lowerAluJ2_shr_reg lowerAluJ2_shl_reg)
+
+/-- The `x86_SHRX` word at every count: the shift by the count masked to six
+    bits. -/
+theorem x86_SHRX_mask (v c : BitVec 64) : x86_SHRX v c = v >>> (c.toNat % 64) := by
+  have hmin : min 64 (c.toNat % 64) = c.toNat % 64 :=
+    Nat.min_eq_right (Nat.le_of_lt (Nat.mod_lt _ (by decide)))
+  simp only [x86_SHRX, shiftCount, wshr, hmin]
+
+/-- The `x86_SHLX` word at every count: the shift by the count masked to six
+    bits. -/
+theorem x86_SHLX_mask (v c : BitVec 64) : x86_SHLX v c = v <<< (c.toNat % 64) := by
+  have hmin : min 64 (c.toNat % 64) = c.toNat % 64 :=
+    Nat.min_eq_right (Nat.le_of_lt (Nat.mod_lt _ (by decide)))
+  simp only [x86_SHLX, shiftCount, wshl, hmin]
+
+/-- `runBlock` of the lowered `shrx` block writes the masked shift to `dst`. -/
+theorem runBlock_shrx (s : JState 64) (dst v c : String) :
+    runBlock s [.shrx dst v c] = s.setReg dst (s.get v >>> ((s.get c).toNat % 64)) := by
+  simp only [runBlock_cons, runBlock_nil, evalInstr, x86_SHRX_mask]
+
+/-- `runBlock` of the lowered `shlx` block writes the masked shift to `dst`. -/
+theorem runBlock_shlx (s : JState 64) (dst v c : String) :
+    runBlock s [.shlx dst v c] = s.setReg dst (s.get v <<< ((s.get c).toNat % 64)) := by
+  simp only [runBlock_cons, runBlock_nil, evalInstr, x86_SHLX_mask]
+
+/-- **The lowered register-count `SHR` agrees with its export.** The exporter's
+    `Lopn [dst] "SHR:64" [reg v, reg c]` lowers through `lowerAluJ2` to
+    `[shrx dst v c]`, and at an in-range count `(s.get c).toNat < 64` the
+    `runBlock` result of that block corresponds, via `JLstateCorr`, to the
+    `lsemStraightMem` result on the export. -/
+theorem lowerAluJ2_shr_reg_lsem_agree (s : JState 64) (ls : LstateM)
+    (hcorr : JLstateCorr s ls) (dst v c : String) (h : (s.get c).toNat < 64) :
+    ∃ b ls', lowerAluJ2 dst (withWidthTag 64 "SHR") (.reg v) (.reg c) = some b ∧
+      lsemStraightMem
+        [(.Lopn [.reg dst] (withWidthTag 64 "SHR") [.reg v, .reg c], .reg none)] ls
+        = some ls' ∧
+      JLstateCorr (runBlock s b) ls' := by
+  obtain ⟨ls', hstep, hc⟩ := shrxReg_case s ls hcorr dst v c h
+  exact ⟨_, ls', lowerAluJ2_shr_reg dst _ v c (stripWidthTag_withWidthTag_SHR 64), hstep, hc⟩
+
+/-- **The lowered register-count `SHL` agrees with its export**, the left-shift
+    twin of `lowerAluJ2_shr_reg_lsem_agree`. -/
+theorem lowerAluJ2_shl_reg_lsem_agree (s : JState 64) (ls : LstateM)
+    (hcorr : JLstateCorr s ls) (dst v c : String) (h : (s.get c).toNat < 64) :
+    ∃ b ls', lowerAluJ2 dst (withWidthTag 64 "SHL") (.reg v) (.reg c) = some b ∧
+      lsemStraightMem
+        [(.Lopn [.reg dst] (withWidthTag 64 "SHL") [.reg v, .reg c], .reg none)] ls
+        = some ls' ∧
+      JLstateCorr (runBlock s b) ls' := by
+  obtain ⟨ls', hstep, hc⟩ := shlxReg_case s ls hcorr dst v c h
+  exact ⟨_, ls', lowerAluJ2_shl_reg dst _ v c (stripWidthTag_withWidthTag_SHL 64), hstep, hc⟩
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgreeShiftReg

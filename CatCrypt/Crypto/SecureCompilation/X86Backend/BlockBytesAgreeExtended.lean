@@ -17,15 +17,14 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrMnemDispat
 the **POC fragment** (reg-reg ALU/`MOV`, const-offset `LOAD`/`STORE`) the JInstr encoder
 agrees byte-for-byte with the Lprog `encodeLopn`. That agreement is the `hbody` hypothesis
 of `ComToFramedJInstrLeaq.framedLeaqText_eq_lprog` /
-`CompileComToElfJInstr.jinstrElf_eq_lprogElf` — the load-bearing fact that lets a kernel's
-framed JInstr `.text` be proven byte-equal to its Lprog `.text`.
+`CompileComToElfJInstr.jinstrElf_eq_lprogElf` — the fact from which a kernel's
+framed JInstr `.text` is proven byte-equal to its Lprog `.text`.
 
-This file carries that reconciliation onto the **real** GoldenPath op set that
-`JInstrGatherExtended.gatherJBlock2` now covers — the width-tagged two-source `regArith`
-exports (`OR:64`/`XOR:64`/…) and the immediate shifts (`SHR:<n>:64`/`SHL:<n>:64`) — and
-reports the truth honestly: **at the byte level the extended JInstr gather does NOT agree
-with the Lprog `encodeLopn` on these two shapes.** The disagreement is precise, structural,
-and proved, not hand-waved.
+This file carries that reconciliation onto the GoldenPath op set that
+`JInstrGatherExtended.gatherJBlock2` covers — the width-tagged two-source `regArith`
+exports (`OR:64`/`XOR:64`/…) and the immediate shifts (`SHR:<n>:64`/`SHL:<n>:64`): **at
+the byte level the extended JInstr gather does NOT agree with the Lprog `encodeLopn` on
+the two-source shape**, and the difference is stated and proved below.
 
 ## What the extended gather lowers the real op set into
 
@@ -43,12 +42,8 @@ The Lprog byte encoder `encodeLopn`, by contrast, is fed the **physical** body
 * a two-source binop is **already** split into a separate `MOV` Lopn plus a *destructive*
   `OP:64 [d, s1]` Lopn (`d` self-source) — so `encodeLopn` emits exactly the single
   `OP d, s1` byte (no leading mov; the mov is its own prior Lopn);
-* a count-in-mnemonic shift `SHR:<n>:64 [src]` is left single-source — and `encodeLopn`
-  **now encodes it** to `shr/shl %d, $n` (`encTagShift`, via the `tagShiftExt` arm). This
-  USED to fall to `[]` — the byte encoder's shift arm fired only on an `.imm`-source
-  `SHL`/`SHR` via `encImmOp`, and a `stripWidthTag "SHR:19:64" = "SHR:19"` matched no
-  `aluOpcode`/`twoByteOpcode`/`shiftImmExt` — a silent dropped-rotation correctness bug,
-  now closed (§2).
+* a count-in-mnemonic shift `SHR:<n>:64 [src]` is left single-source, and `encodeLopn`
+  encodes it to `shr/shl %d, $n` (`encTagShift`, via the `tagShiftExt` arm, §2).
 
 ## The byte picture (proved here)
 
@@ -63,39 +58,37 @@ a **leading `mov d, s0`** prepended. When the physical RA has placed `d = s0` (t
 destructive case the `physBody` split produces — `OR:64 [RDX, RCX]` with `dst = RDX`), that
 leading instruction is `mov d, d`, a real **3-byte `0x48 0x89 0xc0`-class self-move** that
 `encodeLopn` does not emit. So the JInstr block is *strictly longer* by that self-move: the
-two byte streams differ. (This is the SSA-split artifact: `lowerAluJ2` always materialises
-the first source into the destination, even when the RA already coalesced them.)
+two byte streams differ. (This is the SSA-split artifact: outside the register-count
+shifts, `lowerAluJ2` always materialises the first source into the destination, even
+when the RA already coalesced them.)
 
-### §2 — Count-in-tag shift: now ENCODED (the dropped-rotation bug, closed)
+### §2 — Count-in-tag shift: encoded on both sides
 
-For a count-in-mnemonic shift `SHR:<n>:64 [src]` the Lprog `encodeLopn` **now emits** the
+For a count-in-mnemonic shift `SHR:<n>:64 [src]` the Lprog `encodeLopn` emits the
 `shr/shl %d, $n` op (`encodeLopn_shr19_emits` / `_shl45_` / … = `encTagShift 1 ext (gpNumU dn) base`),
-the SAME `C1 /ext ib` (or `D1 /ext` count-1) bytes the `.imm`-source shift arm produces — so
-the trailing `shr` of the gather's `mov d, src; shr d, #n` block now byte-agrees with the
-Lprog op. This USED to be `[]` (`encodeLopn_shr19_nil` & friends), a silent dropped-rotation
-correctness bug: every rotation-heavy GoldenPath kernel (asconSigma0's four Σ₀ rotations,
-SipHash, Sha512) emitted code MISSING its rotations. The arm selection is kernel-clean
-(`tagShiftExt`, prefix-only — no `String.toNat?`); the emitted count is `#eval`/`native_decide`-
-witnessed (the `toNat?` value is not kernel-reducible) but is the SAME `n` the gather lowers.
+the same `C1 /ext ib` (or `D1 /ext` count-1) bytes the `.imm`-source shift arm produces, so
+the trailing `shr` of the gather's `mov d, src; shr d, #n` block byte-agrees with the
+Lprog op. The arm selection is kernel-clean (`tagShiftExt`, prefix-only — no
+`String.toNat?`); the emitted count is `#eval`/`native_decide`-witnessed (the `toNat?`
+value is not kernel-reducible) and is the same `n` the gather lowers.
 
-## Verdict on `hbody` for a real kernel (honest)
+## `hbody` on a physical kernel body
 
-On `AsconLinear.asconSigma0Com`'s **physical** body (`Com.toLprogPhysAbi`, `#eval`'d here),
-the §2 shift now agrees per-op (the rotation is no longer dropped on the Lprog side). The
-remaining `encodeJBlock alloc (gatherJBlock2 body) ≠ encodeLcmd body` residual via the
-non-in-place `gatherJBlock2` is §1's SSA-split self-`mov` (each two-source `OR:64 [d,s1]`/
-`XOR:64 [d,s1]` contributes a spurious `mov d,d` on the JInstr side) — which `GatherInPlace`'s
-in-place peephole (`gatherJBlock3`) elides. So the §1+§2 residuals are both now addressed;
-what remains for a whole-kernel `hbody` is the arg-marshal `hmar` gap (below).
+On `AsconLinear.asconSigma0Com`'s **physical** body (`Com.toLprogPhysAbi`), the §2 shift
+agrees per-op. The `encodeJBlock alloc (gatherJBlock2 body) ≠ encodeLcmd body` residual
+via the non-in-place `gatherJBlock2` is §1's SSA-split self-`mov` (each two-source
+`OR:64 [d,s1]`/`XOR:64 [d,s1]` contributes a `mov d,d` on the JInstr side), which
+`GatherInPlace`'s in-place peephole (`gatherJBlock3`) elides. What remains for a
+whole-kernel `hbody` is the arg-marshal `hmar` gap (below).
 
 ### The residuals (stated precisely)
 
-1. **Two-source coalescing** — CLOSED by `GatherInPlace`. `lowerLinstrExtCov3`'s in-place
+1. **Two-source coalescing** — handled by `GatherInPlace`. `lowerLinstrExtCov3`'s in-place
    peephole elides the leading `mov d, s0` when `s0 = d` (the destructive case), matching the
-   Lprog encoder; the two-source ALU bytes then agree (the residual §1 was exactly the
+   Lprog encoder; the two-source ALU bytes then agree (the residual §1 is exactly the
    un-elided self-move).
-2. **Shift byte parity** — CLOSED here. The Lprog `encodeLopn` learned the count-in-tag shift
-   arm (`encTagShift`, was `[]`); both sides now emit the `shr/shl %d, $n` op for the count.
+2. **Shift byte parity** — proved here. The Lprog `encodeLopn` count-in-tag shift arm
+   (`encTagShift`) and the gather both emit the `shr/shl %d, $n` op for the count.
 3. **Arg-marshal `hmar`.** Independently of the body, `asconSigma0Com`'s physical body
    carries a real arg-marshal (`MOVQ R14, RSI`) and a full 8-register qsave/restore frame,
    so `framedLeaqText_eq_lprog`'s `hmar : argMarshalBytes … = []` (empty marshal) is also
@@ -141,7 +134,7 @@ theorem lower_or64 (dst s0 s1 : String) :
       = some [JInstr.mov dst (.reg s0), JInstr.or_ dst (.reg s1)] := by
   show (lowerAluJ2 dst "OR:64" (lowerJOperand (.reg s0)) (lowerJOperand (.reg s1))) = _
   simp only [lowerAluJ2, lowerJOperand, show stripWidthTag "OR:64" = "OR" from by decide +kernel,
-    lowerAluJ, Option.map_some]
+    lowerShiftRegJ_OR, Option.none_or, lowerAluJ, Option.map_some]
 
 /-- `gatherJBlock2`'s lowering of `XOR:64 [s0, s1]`: `[mov d s0, xor_ d s1]`. -/
 theorem lower_xor64 (dst s0 s1 : String) :
@@ -149,7 +142,7 @@ theorem lower_xor64 (dst s0 s1 : String) :
       = some [JInstr.mov dst (.reg s0), JInstr.xor_ dst (.reg s1)] := by
   show (lowerAluJ2 dst "XOR:64" (lowerJOperand (.reg s0)) (lowerJOperand (.reg s1))) = _
   simp only [lowerAluJ2, lowerJOperand, show stripWidthTag "XOR:64" = "XOR" from by decide +kernel,
-    lowerAluJ, Option.map_some]
+    lowerShiftRegJ_XOR, Option.none_or, lowerAluJ, Option.map_some]
 
 /-- `gatherJBlock2`'s lowering of `ADD:64 [s0, s1]`: `[mov d s0, add d s1]`. -/
 theorem lower_add64 (dst s0 s1 : String) :
@@ -157,7 +150,7 @@ theorem lower_add64 (dst s0 s1 : String) :
       = some [JInstr.mov dst (.reg s0), JInstr.add dst (.reg s1)] := by
   show (lowerAluJ2 dst "ADD:64" (lowerJOperand (.reg s0)) (lowerJOperand (.reg s1))) = _
   simp only [lowerAluJ2, lowerJOperand, show stripWidthTag "ADD:64" = "ADD" from by decide +kernel,
-    lowerAluJ, Option.map_some]
+    lowerShiftRegJ_ADD, Option.none_or, lowerAluJ, Option.map_some]
 
 /-- `gatherJBlock2`'s lowering of `SUB:64 [s0, s1]`: `[mov d s0, sub d s1]`. -/
 theorem lower_sub64 (dst s0 s1 : String) :
@@ -165,7 +158,7 @@ theorem lower_sub64 (dst s0 s1 : String) :
       = some [JInstr.mov dst (.reg s0), JInstr.sub dst (.reg s1)] := by
   show (lowerAluJ2 dst "SUB:64" (lowerJOperand (.reg s0)) (lowerJOperand (.reg s1))) = _
   simp only [lowerAluJ2, lowerJOperand, show stripWidthTag "SUB:64" = "SUB" from by decide +kernel,
-    lowerAluJ, Option.map_some]
+    lowerShiftRegJ_SUB, Option.none_or, lowerAluJ, Option.map_some]
 
 /-- `gatherJBlock2`'s lowering of `AND:64 [s0, s1]`: `[mov d s0, and_ d s1]`. -/
 theorem lower_and64 (dst s0 s1 : String) :
@@ -173,7 +166,7 @@ theorem lower_and64 (dst s0 s1 : String) :
       = some [JInstr.mov dst (.reg s0), JInstr.and_ dst (.reg s1)] := by
   show (lowerAluJ2 dst "AND:64" (lowerJOperand (.reg s0)) (lowerJOperand (.reg s1))) = _
   simp only [lowerAluJ2, lowerJOperand, show stripWidthTag "AND:64" = "AND" from by decide +kernel,
-    lowerAluJ, Option.map_some]
+    lowerShiftRegJ_AND, Option.none_or, lowerAluJ, Option.map_some]
 
 /-! ### §1b. The Lprog destructive two-source dispatch (`encodeLopn → encTwoAddr`)
 
@@ -258,7 +251,7 @@ theorem xor64_block_eq_mov_prepend_lopn
 When the physical RA coalesces `d = s0` (the destructive form `physBody` produces — e.g.
 `OR:64 [RDX, RCX]`, `dst = RDX`), the prepended `mov d, s0` is `mov d, d`, whose bytes are
 the 3-byte `REX.W 0x89 ModRM(11,d,d)` self-move — *never* empty. So the JInstr block is
-strictly longer than the Lprog op by those 3 bytes: the two encoders genuinely differ. -/
+strictly longer than the Lprog op by those 3 bytes. -/
 
 /-- The leading self-`mov` (`d = s0`) the SSA split materialises is the 3-byte
     `mov %d, %d` (`encAluRR 0x89 (gpNum d) (gpNum d)`) — non-empty, the precise excess the
@@ -363,18 +356,18 @@ theorem encodeLopn_shl36_emits (frame spillW : Nat) (dn sn : String)
         (by decide +kernel) (by decide +kernel) hgp hds (by native_decide),
       show rexW (mnemWidth "SHL:36:64") = 1 from by decide +kernel]
 
-/-- The four count-in-tag shifts each emit a **non-empty** byte list — the precise statement
-    that the rotation is no longer dropped (without evaluating the `String.toNat?` count: the
-    `encShift1`/`encShiftImmw` body always carries at least the opcode byte). -/
+/-- The count-in-tag shift `SHR:19:64` emits a **non-empty** byte list: the rotation is
+    encoded (without evaluating the `String.toNat?` count: the `encShift1`/`encShiftImmw`
+    body always carries at least the opcode byte). -/
 theorem encodeLopn_shr19_ne_nil (frame spillW : Nat) (dn sn : String)
     (hgp : (isGpName dn && isGpName sn) = true) (hds : (dn == sn) = true) :
     encodeLopn frame spillW (.Lopn [.reg dn] "SHR:19:64" [.reg sn]) ≠ [] := by
   rw [encodeLopn_shr19_emits frame spillW dn sn hgp hds, encTagShift]
   split <;> simp [encShift1, encShiftImmw, rexOpt]
 
-/-- The bare (un-tagged) count-in-tag shift form `SHR:<n>` also now encodes: `tagShiftExt`
+/-- The bare (un-tagged) count-in-tag shift form `SHR:<n>` encodes too: `tagShiftExt`
     detects the `"SHR:"`/`"SHL:"` prefix regardless of the `:64` tag, so a U32-width
-    register-source shift is no longer dropped either. (Was `encodeLopn_shr_reg_nil = []`.) -/
+    register-source shift is emitted as `encTagShift 0 5`. -/
 theorem encodeLopn_shr7_emits (frame spillW : Nat) (dn sn : String)
     (hgp : (isGpName dn && isGpName sn) = true) (hds : (dn == sn) = true) :
     encodeLopn frame spillW (.Lopn [.reg dn] "SHR:7" [.reg sn])
@@ -386,7 +379,7 @@ theorem encodeLopn_shr7_emits (frame spillW : Nat) (dn sn : String)
 
 /-! ### §2b. The shift per-op byte-identity reconciliation (`native_decide`-free)
 
-The fix makes the Lprog `encodeLopn` and the JInstr gather AGREE on the shift OP. The
+The Lprog `encodeLopn` and the JInstr gather agree on the shift op. The
 gather lowers `SHR:<n>:64 [src]` to `[mov d src, shr d (.imm n)]` (`lowerShiftImmJ`), so
 its **trailing** op is `encodeJInstr alloc (JInstr.shr d (.imm n))`; the Lprog encoder
 emits `encTagShift 1 5 (gpNumU dn) base` for the same count. Both reduce to the same
@@ -422,22 +415,21 @@ theorem encJShl_eq_encTagShift
   show encShiftImm 4 (gpNum (regOf alloc dn)) n = encShiftImmw 1 4 (gpNumU dn) n
   rw [hd]; simp [encShiftImm, encShiftImmw, rexOpt]
 
-/-! ## §3. The block-level account, and the `hbody` verdict on a real kernel
+/-! ## §3. The block-level account, and `hbody` on a physical kernel body
 
 `encodeJBlock` flattens per-instruction bytes (`encodeJBlock_flatMap`, from
 `LprogJInstrBytesAgree`); `encodeLcmd` flattens the per-`Lopn` bytes. So a whole-body
 agreement is the pointwise lift of the per-op agreement. §1 + §2 give the per-op picture:
-the §2 shift now ENCODES (the dropped-rotation bug is fixed — both sides emit the
-`shr/shl %d, $n` op), so the only residual on the real op set is §1's SSA-split excess
-self-`mov` (which `GatherInPlace`'s peephole removes for the destructive `d == s0` case).
+both sides emit the `shr/shl %d, $n` op of a count-in-tag shift, so the only residual on
+this op set is §1's SSA-split excess self-`mov` (which `GatherInPlace`'s peephole removes
+for the destructive `d == s0` case).
 
-We record the honest conclusion on `AsconLinear.asconSigma0Com`'s physical body. The
-`#eval`s below print the physical body's per-`Lopn` mnemonics (it contains four
+On `AsconLinear.asconSigma0Com`'s physical body the per-`Lopn` mnemonics are four
 single-source `SHR/SHL:<n>:64` shifts and two destructive `OR:64 [d, …]` / `XOR:64 [d, …]`
-forms), the Lprog `encodeLopn` bytes on the first shift (now the **non-empty** `shr %d, $19`
-op `[0x48,0xc1,0xe8,0x13]`, no longer dropped), and the JInstr gather's `mov;shr` block on
-the same shift — the shift op itself now agrees; the residual is the gather's leading
-materialise `mov` (the §1 form, in-place-elided by `GatherInPlace`). -/
+forms; the Lprog `encodeLopn` bytes on the first shift are the `shr %d, $19` op
+`[0x48,0xc1,0xe8,0x13]`, and the JInstr gather's block on the same shift is `mov;shr`, whose
+shift op agrees; the residual is the gather's leading materialise `mov` (the §1 form,
+in-place-elided by `GatherInPlace`). -/
 
 /-! The physical (`Com.toLprogPhysAbi`) body of `asconSigma0Com` — eight ABI qsave
     `MOVQ`s, the arg-marshal `MOVQ R14, RSI`, then the compute spine

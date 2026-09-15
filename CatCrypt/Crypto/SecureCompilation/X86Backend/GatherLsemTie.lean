@@ -212,12 +212,15 @@ theorem strip_MOV : stripWidthTag "MOV:64" = "MOV" := by decide +kernel
     destination, the SSA split otherwise. -/
 theorem lower_bin (frame spillW : Nat) (d opn : String) (s0 s1 : LOperand) (i : JInstr 64)
     (h1 : opn ≠ "MULXHI:64") (h2 : opn ≠ "STORE") (h3 : opn ≠ "STOREIDX")
+    (hsh : LoweringExtended.lowerShiftRegJ d (stripWidthTag opn) (lowerJOperand s0)
+      (lowerJOperand s1) = none)
     (halu : lowerAluJ d (stripWidthTag opn) (lowerJOperand s1) = some i) :
     lowerCov6 frame spillW (.Lopn [.reg d] opn [s0, s1])
       = some (if lowerJOperand s0 = JOperand.reg d then [i]
               else [JInstr.mov d (lowerJOperand s0), i]) := by
   unfold lowerCov6
-  split <;> simp_all [lowerCov5, lowerLinstrExtCov4, lowerLinstrExtCov3, lowerAluJ2InPlace]
+  split <;> simp_all [lowerCov5, lowerLinstrExtCov4, lowerLinstrExtCov3, lowerAluJ2InPlace,
+    Option.none_or]
 
 /-- The gather's image of a single-source `Lopn` over a register or immediate
     whose tag-stripped mnemonic is in the `lowerAluJ` table. -/
@@ -270,6 +273,7 @@ theorem bin_case (frame spillW : Nat) {ls : Lstate 64} {s : JState 64} (hc : LJC
     (f : BitVec 64 → BitVec 64 → BitVec 64)
     (hne1 : opn ≠ "MULXHI:64") (hne2 : opn ≠ "STORE") (hne3 : opn ≠ "STOREIDX")
     (halu : ∀ op : JOperand, lowerAluJ d (stripWidthTag opn) op = some (mk d op))
+    (hsh : ∀ o0 o1 : JOperand, LoweringExtended.lowerShiftRegJ d (stripWidthTag opn) o0 o1 = none)
     (h0 : tiedOperand s0 = true) (h1 : tiedOperand s1 = true)
     (hguard : isRegNamed d s0 = true ∨ isRegNamed d s1 = false)
     (happly : ∀ a b : BitVec 64, applyOpn (stripWidthTag opn) [a, b] = some (f a b))
@@ -278,7 +282,7 @@ theorem bin_case (frame spillW : Nat) {ls : Lstate 64} {s : JState 64} (hc : LJC
     ∃ g ls', lowerCov6 frame spillW (.Lopn [.reg d] opn [s0, s1]) = some g ∧
       lsemStep (.Lopn [.reg d] opn [s0, s1]) ls = some ls' ∧ LJCorr ls' (runBlock s g) := by
   have hlow := lower_bin frame spillW d opn s0 s1 (mk d (lowerJOperand s1))
-    hne1 hne2 hne3 (halu (lowerJOperand s1))
+    hne1 hne2 hne3 (hsh _ _) (halu (lowerJOperand s1))
   have hstep : lsemStep (.Lopn [.reg d] opn [s0, s1]) ls
       = some ((ls.setReg d (f (evalOperand ls s0) (evalOperand ls s1))).nextPc) := by
     cases s0 with
@@ -361,21 +365,27 @@ theorem instr_agree (frame spillW : Nat) (i : Linstr) (hi : tiedInstr i = true)
     rcases hm with ((((rfl | rfl) | rfl) | rfl) | rfl) | rfl
     · exact bin_case frame spillW hc d _ s0 s1 JInstr.add (· + ·)
         (by decide) (by decide) (by decide) (fun op => by rw [strip_ADD]; rfl)
+        (fun _ _ => by rw [strip_ADD]; exact LoweringExtended.lowerShiftRegJ_ADD _ _ _)
         h0 h1 hguard (fun a b => by rw [strip_ADD]; rfl) (fun _ _ _ => rfl)
     · exact bin_case frame spillW hc d _ s0 s1 JInstr.sub (· - ·)
         (by decide) (by decide) (by decide) (fun op => by rw [strip_SUB]; rfl)
+        (fun _ _ => by rw [strip_SUB]; exact LoweringExtended.lowerShiftRegJ_SUB _ _ _)
         h0 h1 hguard (fun a b => by rw [strip_SUB]; rfl) (fun _ _ _ => rfl)
     · exact bin_case frame spillW hc d _ s0 s1 JInstr.imul (· * ·)
         (by decide) (by decide) (by decide) (fun op => by rw [strip_MUL]; rfl)
+        (fun _ _ => by rw [strip_MUL]; exact LoweringExtended.lowerShiftRegJ_MUL _ _ _)
         h0 h1 hguard (fun a b => by rw [strip_MUL]; rfl) (fun _ _ _ => rfl)
     · exact bin_case frame spillW hc d _ s0 s1 JInstr.and_ (· &&& ·)
         (by decide) (by decide) (by decide) (fun op => by rw [strip_AND]; rfl)
+        (fun _ _ => by rw [strip_AND]; exact LoweringExtended.lowerShiftRegJ_AND _ _ _)
         h0 h1 hguard (fun a b => by rw [strip_AND]; rfl) (fun _ _ _ => rfl)
     · exact bin_case frame spillW hc d _ s0 s1 JInstr.or_ (· ||| ·)
         (by decide) (by decide) (by decide) (fun op => by rw [strip_OR]; rfl)
+        (fun _ _ => by rw [strip_OR]; exact LoweringExtended.lowerShiftRegJ_OR _ _ _)
         h0 h1 hguard (fun a b => by rw [strip_OR]; rfl) (fun _ _ _ => rfl)
     · exact bin_case frame spillW hc d _ s0 s1 JInstr.xor_ (· ^^^ ·)
         (by decide) (by decide) (by decide) (fun op => by rw [strip_XOR]; rfl)
+        (fun _ _ => by rw [strip_XOR]; exact LoweringExtended.lowerShiftRegJ_XOR _ _ _)
         h0 h1 hguard (fun a b => by rw [strip_XOR]; rfl) (fun _ _ _ => rfl)
   · rename_i d src
     exact mov_case frame spillW hc d src hi

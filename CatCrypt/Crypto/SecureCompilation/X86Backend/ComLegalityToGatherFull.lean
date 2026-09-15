@@ -12,10 +12,10 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.ComLegalityToGather
 /-!
 # D4 (typed-`Com` step), completed: the supported-op set lowers under `lowerLinstrExt2`
 
-The prior step (`ComLegalityToGather.lean`) reconciled the `:64` width tag and
-proved the per-op `Com → gather` bridge for the **single** op whose export was
-blocked *solely* by the tag — the materialised constant `regConst`. It surfaced,
-honestly, the two further blockers for the rest of the legal set:
+`ComLegalityToGather.lean` reconciles the `:64` width tag and proves the per-op
+`Com → gather` bridge for the **single** op whose export is blocked *solely* by the
+tag — the materialised constant `regConst`. The rest of the legal set has two
+further blockers:
 
 * **arity** — `regArith` / `mulhi` export *two* sources `[s0, s1]`, but the POC
   optimized lowering `LoweringExtended.lowerLinstrExt`'s ALU arm matches a single
@@ -24,15 +24,15 @@ honestly, the two further blockers for the rest of the legal set:
   `"SHR:<n>"` / `"SHL:<n>"`, none of which `lowerAluJ` covers.
 
 This file completes the bridge for the **reduction-tractable** majority of the
-legal set. `LoweringExtended.lean` now carries (added there purely additively —
-the POC arms and their boolean mirror `linstrRSupported` are byte-identical) the
-**supported-op superset** lowering `lowerLinstrExt2`, with the three new arms the
-prior step named:
+legal set. `LoweringExtended.lean` carries (beside the POC arms and their boolean
+mirror `linstrRSupported`, which it leaves unchanged) the **supported-op superset**
+lowering `lowerLinstrExt2`, with three arms beyond the POC:
 
 1. a width-tag strip before the ALU dispatch (so `"ADD:64"` / `"MOV:64"` reach
    `lowerAluJ`);
-2. a **two-source** ALU arm (`op dst, [s0, s1] ↦ [mov dst s0; op dst s1]`) — the
-   load-bearing change, without which no `regArith` export lowers; and
+2. a **two-source** ALU arm (`op dst, [s0, s1] ↦ [mov dst s0; op dst s1]`, and the
+   single BMI2 `shlx`/`shrx`/`sarx` for a register-count shift), without which no
+   `regArith` export lowers; and
 3. the `MULXHI` (high-word multiply) and `SHR:<n>` / `SHL:<n>` (immediate shift)
    arms.
 
@@ -47,7 +47,7 @@ The per-op bridge `lowerLinstrExt2_isSome_*` is proved for the three families
 whose export mnemonic is a **closed** string (so the `stripWidthTag` /
 `lowerAluJ` dispatch reduces):
 
-* `regArith bop 64` (the load-bearing two-source ALU) — `bop ∈ {add,…,xor}`;
+* `regArith bop 64` (the two-source ALU) — `bop ∈ {add,…,xor}`;
 * `mulhi 64` (the `"MULXHI:64"` high-word multiply); and
 * `regConst 64 n` (the `"MOV:64"` materialised constant).
 
@@ -59,10 +59,10 @@ reduce over `_ ++ toString n` (there is no `String.toNat?`/`splitOn`-over-append
 roundtrip lemma in the toolchain), so the `parseShiftMnem`-gated `isSome` of the
 shift arm cannot be discharged by kernel reduction for a symbolic `n`. The shift
 *arms are present* in `lowerLinstrExt2` (so the lowering table is complete — the
-shift mnemonics no longer fall to `_ => none`); only the symbolic-`n` `isSome`
+shift mnemonics do not fall to `_ => none`); only the symbolic-`n` `isSome`
 *proof* is out of reach at this layer. We therefore phrase the `Com`-wide gate
 over the reduction-tractable sublattice `comAllSupportedRed` (a subset of the
-canonical `comAllSupported`), exactly as the prior step phrased its gate over the
+canonical `comAllSupported`), as `ComLegalityToGather` phrases its gate over the
 `regConst`-only `comAllCleanlyLowers`.
 
 ## The gather story (over the extended lowering)
@@ -80,7 +80,7 @@ instance of the prior file's `mapM_isSome_iff_all`).
 and `lowerLinstrExt2L .Lret = none` (the superset still does not lower control
 flow — `gatherJBlock2` is a *straight-line* lowerer). So `gatherJBlock2` of a
 *full* exported body is `none` regardless of op legality — exactly the terminator
-blocker the prior step recorded. The `Com`-level result is therefore phrased as
+blocker `ComLegalityToGather` records. The `Com`-level result is therefore phrased as
 the invariant *every emitted instruction lowers via `lowerLinstrExt2L` **or** is
 the terminal `Lret`* (`comToBody_lower_or_ret`); the gather success is stated for
 the straight-line image (the body with its `Lret` terminator dropped).
@@ -146,17 +146,18 @@ theorem lowerLinstrExt2_single_isSome (dst opn : String) (src : LOperand)
 For each closed-mnemonic supported op we feed `opToLinstrR`'s actual export shape
 (at the op's signature arity) into `lowerLinstrExt2`; each lowers by reduction. -/
 
-/-- The two-source ALU arm lowers exactly when the tag-stripped mnemonic is in the
-    `lowerAluJ` table. (`lowerAluJ2`'s `isSome` is the inner `lowerAluJ`'s, via
-    `isAluMnemonic`.) -/
+/-- The two-source ALU arm lowers when the tag-stripped mnemonic is in the
+    `lowerAluJ` table (the two-address split is the second alternative of
+    `lowerAluJ2`, so its `isSome` is the inner `lowerAluJ`'s, via
+    `isAluMnemonic`). -/
 theorem lowerAluJ2_isSome (dst opn : String) (o0 o1 : Jasmin.JOperand)
     (h : isAluMnemonic (stripWidthTag opn) = true) :
     (lowerAluJ2 dst opn o0 o1).isSome = true := by
-  simp only [lowerAluJ2, Option.isSome_map]
-  exact (isAluMnemonic_iff_isSome dst (stripWidthTag opn) o1).mp h
+  simp only [lowerAluJ2, Option.isSome_or, Option.isSome_map, Bool.or_eq_true]
+  exact Or.inr ((isAluMnemonic_iff_isSome dst (stripWidthTag opn) o1).mp h)
 
 /-- `regArith bop 64` (`bop` a supported binop) exports `op dst, [s0, s1]` — the
-    two-source ALU shape — and lowers (the load-bearing arm). The export reduces
+    two-source ALU shape — and lowers. The export reduces
     (by `rfl`) to `lowerLinstrExt2`'s two-source arm `lowerAluJ2 dst "BOP:64" …`;
     the tag-stripped mnemonic `"BOP"` is in the `lowerAluJ` table. -/
 theorem lowerLinstrExt2_isSome_regArith (bop : JasminBinOp) (dst : String)

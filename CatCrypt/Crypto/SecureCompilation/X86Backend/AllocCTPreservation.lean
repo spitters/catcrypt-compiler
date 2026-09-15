@@ -139,9 +139,17 @@ theorem lowerMulHiJ_direct (dst : String) (s0 s1 : JOperand) :
     allDirect (lowerMulHiJ dst s0 s1) = true :=
   allDirect_of_forall (by simp [lowerMulHiJ, IsDirect])
 
+theorem lowerShiftRegJ_direct {dst bare : String} {s0 s1 : JOperand} {js : List (JInstr 64)}
+    (h : lowerShiftRegJ dst bare s0 s1 = some js) : allDirect js = true := by
+  unfold lowerShiftRegJ at h
+  split at h <;> simp only [Option.some.injEq, reduceCtorEq] at h <;>
+    subst h <;> exact allDirect_of_forall (by simp [IsDirect])
+
 theorem lowerAluJ2_direct {dst opn : String} {s0 s1 : JOperand} {js : List (JInstr 64)}
     (h : lowerAluJ2 dst opn s0 s1 = some js) : allDirect js = true := by
   unfold lowerAluJ2 at h
+  rcases Option.or_eq_some_iff.mp h with h | ⟨_, h⟩
+  · exact lowerShiftRegJ_direct h
   simp only [Option.map_eq_some_iff] at h
   obtain ⟨a, ha, rfl⟩ := h
   exact allDirect_of_forall (by
@@ -221,6 +229,8 @@ theorem lowerAluJ2InPlace_direct {dst opn : String} {s0 s1 : JOperand}
     {js : List (JInstr 64)} (h : lowerAluJ2InPlace dst opn s0 s1 = some js) :
     allDirect js = true := by
   unfold lowerAluJ2InPlace at h
+  rcases Option.or_eq_some_iff.mp h with h | ⟨_, h⟩
+  · exact lowerShiftRegJ_direct h
   simp only [Option.map_eq_some_iff] at h
   obtain ⟨a, ha, rfl⟩ := h
   refine allDirect_of_forall ?_
