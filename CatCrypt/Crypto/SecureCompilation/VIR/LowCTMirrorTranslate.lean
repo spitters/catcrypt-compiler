@@ -137,7 +137,8 @@ theorem toJasminCmd_translateCmdExt_isSome :
     rw [toJasminCmd_RLetU64Zero]
     refine translateCmdExt_cons_isSome _ _ ?_ (ih (callFreePlusCall_of_callFree _ h))
     simp [translateInstrRExt, translateLValExt, translateVarIExt, translateVarExt,
-      translateSTypeExt, translateSType, translateWSize, translatePExprExt, translatePExpr]
+      translateSTypeExt, translateSType, translateWSize, translatePExprExt, translateSOp1,
+      translatePExpr]
   | RScalarSet x v =>
     simp [translateCmdExt, translateInstrRExt, translateLValExt, translateVarIExt,
       translateVarExt, translateSTypeExt, translateSType, translateWSize, translatePExprExt,
@@ -168,7 +169,7 @@ theorem toJasminCmd_translateCmdExt_isSome :
     obtain ⟨b, hb⟩ := Option.isSome_iff_exists.mp (ih (callFreePlusCall_of_callFree _ h))
     simp [translateInstrRExt, hb, translateCmdExt, translatePExprExt, translateSOp2Ext,
       translateWSize, translateGVarExt, translateVarIExt, translateVarExt, translateSTypeExt,
-      translateSType, translatePExpr]
+      translateSType, translateSOp1, translatePExpr]
   | RFor x n body ih =>
     simp only [callFreePlusCall, callFree] at h
     rw [toJasminCmd_RFor]

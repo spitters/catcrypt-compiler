@@ -20,9 +20,10 @@ loop with the abstract loops of the ascent's loop rules, `loopStep` of
 that a loop proved on two machines at the same abstract step gives the same
 abstract result on both.
 
-## Contents
+## Main results
 
 * `forFold_eq_loopStep`, `forFold_const_eq_nfold` — the abstract loops coincide.
+* `iterFold_eq_nfold` — the abstract loop of `corresSem_while` is `nfold`.
 * `mulx_hi_eq_mulHiW` — the high word of `x86_MULX_lo_hi` is `mulHiW`.
 * `mulhiLoop_corresJ` — the `runBlock` loop of `n` copies of `MULX h, lo, h, b`
   corresponds at `loopStep (hiStep b) n`, by `corresJ_loop`.
@@ -61,6 +62,10 @@ theorem forFold_const_eq_nfold {A : Type} (fa : A → A) :
     funext a
     show fa (forFold (fun _ => fa) n a) = fa (nfold fa n a)
     rw [forFold_const_eq_nfold fa n]
+
+/-- The abstract loop of `corresSem_while` is the abstract loop of `corres_for`. -/
+theorem iterFold_eq_nfold {A : Type} (fa : A → A) (n : Nat) : iterFold fa n = nfold fa n :=
+  forFold_const_eq_nfold fa n
 
 /-- The high word of the x86 `MULX` result tuple is `mulHiW`. -/
 theorem mulx_hi_eq_mulHiW (a b : BitVec 64) : (x86_MULX_lo_hi a b).2 = mulHiW a b := by

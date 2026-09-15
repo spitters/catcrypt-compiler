@@ -21,8 +21,8 @@ the `handled_instr_r` subset (what `toJasminCmd` can emit).
 
 **Supported** (matches Rocq `handled_instr_r = true`):
 - `Cassgn` with `Parr_init` (for RLetZero)
-- `Cassgn` with `Pconst 0` of u64 (for RLetU64Zero)
-- `Cassgn` with `Papp1 (Oword_of_int U64) (Pconst v)` (for RScalarSet)
+- `Cassgn` with `Papp1 (Oword_of_int U64) (Pconst v)` (for RLetU64Zero at `v = 0`
+  and for RScalarSet)
 - `Cif` with the RIfNz canonical condition
 - `Ccall` (for RCall)
 - `Copn (Oasm "STORE64")` (for RLimbStore)
@@ -227,7 +227,7 @@ theorem rustExecSoundInJasmin
     simp only [whileFree] at hWf
     simp only [toJasminCmd_RLetU64Zero]
     exact jasminSem.cons _ _ rs0 _ rs0'
-      (jasminSem.assgn_u64_zero x rs0)
+      (jasminSem.assgn_u64_val x 0 rs0)
       (ih hWf)
   | scalarSet x v rs0 => grind [toJasminCmd_RScalarSet, jasminSem.assgn_u64_val]
   | ifTrue e ct cf rs0 rs0' v hv hne_zero _h ih =>

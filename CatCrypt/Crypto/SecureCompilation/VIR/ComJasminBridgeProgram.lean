@@ -53,6 +53,15 @@ loop corresponds at `forFold step n`. `forFold` has the recursion of
 `Ascent.loopStep` (the abstract loop of `corresJ_loop`) and of `Ascent.nfold` (the
 abstract loop of `corres_for`); `Ascent.JasminMirrorTie` proves the equations.
 
+## `Cwhile`
+
+`corresSem_while` is the rule for `while (e) { body }` with an empty prefix command:
+when the guard evaluates to `cond a` from every related state, the body corresponds at
+`step` while the guard holds, and `count a` is an iteration count at which the guard
+first fails, the loop corresponds at `iterFold step (count a)`, the `count a`-fold
+iterate of `step` (`forFold` at an index-independent step). `semIr_while_iter` is the
+derivation of the `Ewhile_true`/`Ewhile_false` chain by induction on the count.
+
 ## `Ccall`
 
 `ccall_words_semIr` is the call rule for a callee defined in the program whose
@@ -70,6 +79,21 @@ callee body derivation.
 `MulhiLoop.mainLoop_sem`: the loop `for i = 0 to n { h = mulhi(h, b) }`, where
 `mulhi` is a function whose body is one `MULX_64` `Copn`, runs under `x86AsmSem`
 to a state holding `forFold (hiStep b) n h0` at `h`, with memory unchanged.
+
+## Main results
+
+* `corresSem_nil`, `corresSem_append`, `corresSem_instr`, `corresSem_weaken`: the
+  empty command, sequencing, one instruction and precondition strengthening.
+* `corresSem_exec`: a correspondence is realised by `execCmd` at some fuel.
+* `copn_regs_semIr`: the effect of a register-and-flag `Copn` whose asm semantics
+  maps the operand values to the result values.
+* `stateCorrReg_applyOuts`: `StateCorrReg` is carried across the result writes.
+* `corresSem_for`: the counted loop `Cfor i (0..n) body` corresponds at `forFold step n`.
+* `corresSem_while`: the loop `while (e) { body }` corresponds at
+  `iterFold step (count a)`, given the guard and a first-failing iteration count.
+* `ccall_words_semIr`: the call rule for word parameters and results.
+* `ccall_leaf_of_body`: the emitted one-result call from a callee body derivation.
+* `MulhiLoop.mainLoop_sem`: the worked instance above.
 -/
 
 @[expose] public section
@@ -501,6 +525,83 @@ theorem corresSem_for {A : Type} (SR : Estate SyscallState Mem → A → Prop) (
   exact hs'
 
 end For
+
+/-! ## §3b. `Cwhile` -/
+
+section While
+variable (aS : AsmSem) (opS : OpSem) (gd : GlobDecls) (prog : Prog)
+
+/-- The abstract loop body `step` iterated `k` times: `forFold` at a step that does
+    not read the iteration index. -/
+def iterFold {A : Type} (step : A → A) (k : Nat) : A → A :=
+  forFold (fun _ => step) k
+
+theorem iterFold_zero {A : Type} (step : A → A) (a : A) : iterFold step 0 a = a := rfl
+
+theorem iterFold_succ {A : Type} (step : A → A) (k : Nat) (a : A) :
+    iterFold step (k + 1) a = step (iterFold step k a) := rfl
+
+/-- Iterating from `step a` is one more iteration from `a`. -/
+theorem iterFold_step {A : Type} (step : A → A) :
+    ∀ (k : Nat) (a : A), iterFold step k (step a) = iterFold step (k + 1) a
+  | 0, _ => rfl
+  | k + 1, a => by
+    rw [iterFold_succ, iterFold_step step k a]
+    rfl
+
+/-- The loop `while (e) { body }` whose guard is `cond` on the abstract state and whose
+    body corresponds at `step` while the guard holds: from a state related to `a` from
+    which the guard holds for the first `k` iterates and fails at the `k`-th, the loop
+    has a derivation to a state related to `iterFold step k a`. -/
+theorem semIr_while_iter {A : Type} (SR : Estate SyscallState Mem → A → Prop) (P : A → Prop)
+    (cond : A → Bool) (step : A → A) (al : Align) (e : Pexpr) (ii : InstrInfo) (body : Cmd)
+    (hcond : ∀ s a, SR s a → P a → semPexpr (Mem := Mem) true gd opS s e = .ok (.Vbool (cond a)))
+    (hbody : ∀ s a, SR s a → P a → cond a = true → ∃ s',
+        Sem aS opS gd prog s body s' ∧ SR s' (step a))
+    (hinv : ∀ a, P a → cond a = true → P (step a)) :
+    ∀ (k : Nat) (a : A) (s : Estate SyscallState Mem), SR s a → P a →
+      (∀ j < k, cond (iterFold step j a) = true) → cond (iterFold step k a) = false →
+      ∃ s', SemIr aS opS gd prog s (.Cwhile al [] e ii body) s' ∧ SR s' (iterFold step k a) := by
+  intro k
+  induction k with
+  | zero =>
+    intro a s hSR hP _ hfalse
+    refine ⟨s, .Ewhile_false s s al [] e ii body (.Eskip s) ?_, hSR⟩
+    rw [hcond s a hSR hP, iterFold_zero] at *
+    rw [hfalse]
+  | succ k ih =>
+    intro a s hSR hP htrue hfalse
+    have h0 : cond a = true := htrue 0 (Nat.succ_pos k)
+    obtain ⟨s1, hs1, hSR1⟩ := hbody s a hSR hP h0
+    obtain ⟨s', hs', hSR'⟩ := ih (step a) s1 hSR1 (hinv a hP h0)
+      (fun j hj => by rw [iterFold_step]; exact htrue (j + 1) (by omega))
+      (by rw [iterFold_step]; exact hfalse)
+    refine ⟨s', .Ewhile_true s s s1 s' al [] e ii body (.Eskip s) ?_ hs1 hs', ?_⟩
+    · rw [hcond s a hSR hP, h0]
+    · rw [iterFold_step] at hSR'
+      exact hSR'
+
+/-- **The loop rule.** Let the guard `e` evaluate to `cond a` from every state related to
+    `a` with `P a`, let the body correspond at `step` when the guard holds, let `step`
+    preserve `P` when the guard holds, and let `count a` be an iteration count at which
+    the guard first fails. Then `while (e) { body }` corresponds at
+    `fun a => iterFold step (count a) a`. -/
+theorem corresSem_while {A : Type} (SR : Estate SyscallState Mem → A → Prop) (P : A → Prop)
+    (cond : A → Bool) (step : A → A) (count : A → Nat)
+    (al : Align) (e : Pexpr) (ii : InstrInfo) (body : Cmd)
+    (hcond : ∀ s a, SR s a → P a → semPexpr (Mem := Mem) true gd opS s e = .ok (.Vbool (cond a)))
+    (hbody : ∀ s a, SR s a → P a → cond a = true → ∃ s',
+        Sem aS opS gd prog s body s' ∧ SR s' (step a))
+    (hinv : ∀ a, P a → cond a = true → P (step a))
+    (hcount : ∀ a, P a → (∀ j < count a, cond (iterFold step j a) = true) ∧
+        cond (iterFold step (count a) a) = false) :
+    CorresSemIr aS opS gd prog SR P (fun a => iterFold step (count a) a)
+      (.Cwhile al [] e ii body) := by
+  intro s a hSR hP
+  exact semIr_while_iter aS opS gd prog SR P cond step al e ii body hcond hbody hinv
+    (count a) a s hSR hP (hcount a hP).1 (hcount a hP).2
+
+end While
 
 /-! ## §4. Calls to functions with word parameters and results -/
 

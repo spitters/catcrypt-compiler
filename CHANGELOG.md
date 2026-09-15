@@ -35,6 +35,18 @@ x86 backend:
   semantics of that form; `x86_SHR_word_eq_SHRX`, `x86_SHL_word_eq_SHLX`,
   `x86_SAR_word_eq_SARX` relate the data words of the two forms for every count.
 
+Jasmin lowering and the psem mirror:
+
+- `RLetU64Zero` lowers to the typed zero `(64u)0` (`Papp1 (Oword_of_int U64) (Pconst 0)`)
+  and the `RWhileNz` guard compares against it; the printers render both forms as
+  before. `MirrorSimFragment` covers `RLetU64Zero` and `RCloneCall`;
+  `corresSem_while` (a count function and `iterFold`) is the `Cwhile` rule over the
+  mirror's `Sem`, instantiated as `corresSem_whileNz` with
+  `toJasminCmd_whileNz_mirror_exec`; `ccall_arrsN_semIr`, `corresTrans_callN` and the
+  swap instance cover multi-output calls; `iterFold_eq_nfold` ties the loop to the
+  ascent; witnesses `letZeroSetProg_mirror_exec`, `whileClearProg_mirror_exec`,
+  `cloneCallProg_mirror_exec`, `swapCallProg_mirror_exec`.
+
 Dialect front:
 
 - Literal slots: an `RLimbStore ⟨x, .TFp⟩ idx v` whose destination is not yet bound

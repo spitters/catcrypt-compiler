@@ -435,11 +435,11 @@ def toJasminCmdLeaf : LowCT → Cmd
     - `RCall f dest args`   → `Ccall [dest] f [arg₀, …, argₙ]`
     - `RSeq c1 c2`          → `toJasminCmd c1 ++ toJasminCmd c2`
     - `RLetZero x t body`   → `[assign x := zero] ++ toJasminCmd body`
-    - `RLetU64Zero x body`  → `[assign x := 0u64] ++ toJasminCmd body`
-    - `RScalarSet x v`      → `[assign x := v]`
+    - `RLetU64Zero x body`  → `[assign x := (64u)0] ++ toJasminCmd body`
+    - `RScalarSet x v`      → `[assign x := (64u)v]`
     - `RCloneCall …`        → clone assignment ++ inner call
-    - `RIfNz e ct cf`       → `Cif (e ≠ 0) (toJasminCmd ct) (toJasminCmd cf)`
-    - `RWhileNz e body`     → `Cwhile [] (e ≠ 0) (toJasminCmd body)`
+    - `RIfNz e ct cf`       → `Cif (e ≠ (64u)0) (toJasminCmd ct) (toJasminCmd cf)`
+    - `RWhileNz e body`     → `Cwhile [] (e ≠ (64u)0) (toJasminCmd body)`
     - `RFor x n body`       → static-unrolling: `n` iterations of
                               `[scalarSet x k] ++ toJasminCmd body`
     - `RLimbStore loc i v`  → array-set instruction
@@ -488,14 +488,14 @@ def toJasminCmd : LowCT → Cmd :=
       | .RLetU64Zero x _ =>
           let initInstr : InstrR :=
             .Cassgn (.Lvar { var := { vname := x, vtype := .sword .U64 }, info := {} })
-                    .AT_none (.sword .U64) (.Pconst 0)
+                    .AT_none (.sword .U64) (.Papp1 (.Oword_of_int .U64) (.Pconst 0))
           initInstr :: r
       | .RWhileNz e _ =>
           let condExpr : PExpr :=
             .Papp2 (.Oneq .U64)
               (.Pvar { gv := { var := { vname := e, vtype := .sword .U64 }, info := {} },
                        gs := false })
-              (.Pconst 0)
+              (.Papp1 (.Oword_of_int .U64) (.Pconst 0))
           [.Cwhile [] condExpr r]
       | .RFor x n _ =>
           unrollForJ x r n
@@ -526,7 +526,7 @@ each by `rfl` through the `foldNode` reduction lemmas.  Emit proofs use
 @[simp] theorem toJasminCmd_RLetU64Zero (x : String) (body : LowCT) :
     toJasminCmd (.RLetU64Zero x body)
       = (.Cassgn (.Lvar { var := { vname := x, vtype := .sword .U64 }, info := {} })
-                 .AT_none (.sword .U64) (.Pconst 0))
+                 .AT_none (.sword .U64) (.Papp1 (.Oword_of_int .U64) (.Pconst 0)))
         :: toJasminCmd body := rfl
 
 @[simp] theorem toJasminCmd_RScalarSet (x : String) (v : Nat) :
@@ -565,7 +565,7 @@ each by `rfl` through the `foldNode` reduction lemmas.  Emit proofs use
       = [.Cwhile [] (.Papp2 (.Oneq .U64)
                       (.Pvar { gv := { var := { vname := e, vtype := .sword .U64 }, info := {} },
                                gs := false })
-                      (.Pconst 0))
+                      (.Papp1 (.Oword_of_int .U64) (.Pconst 0)))
                 (toJasminCmd body)] := rfl
 
 @[simp] theorem toJasminCmd_RFor (x : String) (n : Nat) (body : LowCT) :
@@ -917,7 +917,7 @@ def toJasminCmdWithInlines (env : InlineRegistry) : LowCT → Cmd
   | .RLetU64Zero x body =>
       let initInstr : InstrR :=
         .Cassgn (.Lvar { var := { vname := x, vtype := .sword .U64 }, info := {} })
-                .AT_none (.sword .U64) (.Pconst 0)
+                .AT_none (.sword .U64) (.Papp1 (.Oword_of_int .U64) (.Pconst 0))
       initInstr :: toJasminCmdWithInlines env body
   | .RScalarSet x v =>
       [.Cassgn (.Lvar { var := { vname := x, vtype := .sword .U64 }, info := {} })
@@ -960,7 +960,7 @@ def toJasminCmdWithInlines (env : InlineRegistry) : LowCT → Cmd
         .Papp2 (.Oneq .U64)
           (.Pvar { gv := { var := { vname := e, vtype := .sword .U64 }, info := {} },
                    gs := false })
-          (.Pconst 0)
+          (.Papp1 (.Oword_of_int .U64) (.Pconst 0))
       [.Cwhile [] condExpr (toJasminCmdWithInlines env body)]
   | .RFor x n body =>
       -- Static unrolling: same shape as in `toJasminCmd`.
@@ -1958,6 +1958,22 @@ lemma translatePExpr_word_of_int_eval (sid : ScopeId) (v : Nat) (heap : Heap) :
   simp [translatePExpr, evalSop1, intToWord_U64_ofNat,
         CatCrypt.Deep.eval_ret, CatCrypt.Deep.eval_bind, SPComp.pure_def, SDistr.pure_bind]
 
+/-- A `Cassgn` with `Papp1 (Oword_of_int U64) (Pconst v)` followed by `rest` writes
+    `BitVec.ofNat 64 v` and runs `rest` on the resulting heap. -/
+lemma translateCmd_cons_cassgn_u64_val_eval
+    (env : TransEnv) (sid : ScopeId) (x : String) (v : Nat)
+    (rest : Cmd) (n : Nat) (heap : Heap) :
+    (translateCmd env
+        (.Cassgn (.Lvar { var := { vname := x, vtype := .sword .U64 }, info := {} })
+                  .AT_none (.sword .U64) (.Papp1 (.Oword_of_int .U64) (.Pconst (v : Int))) :: rest)
+        sid (n + 2)).code.eval heap =
+    (translateCmd env rest sid (n + 1)).code.eval
+        (heap.set (translateVar sid { vname := x, vtype := .sword .U64 }) (BitVec.ofNat 64 v)) := by
+  simp only [translateCmd, translateInstrR, translatePExpr, evalSop1, intToWord_U64_ofNat,
+             coerceValue_u64_u64, translateWriteLVal, writeVar_u64_val,
+             eval_bind, eval_ret, SPComp.bind_def, SPComp.pure_def, SDistr.pure_bind]
+  exact eval_put_bind_heap heap _ _ (translateCmd env rest sid (n + 1)).code.eval
+
 /-- Eval of a `Cassgn` with `Papp1 (Oword_of_int U64) (Pconst v)` writes `BitVec.ofNat 64 v`. -/
 lemma translateCmd_cassgn_u64_val_eval
     (env : TransEnv) (sid : ScopeId) (x : String) (v : Nat) (n : Nat) (heap : Heap) :
@@ -2221,7 +2237,10 @@ theorem rustExecSimulates
       scalarsBounded_rsSetScalar_zero rs0 x hBounded
     obtain ⟨heap'', heval', hInv'', hSInv'', hB''⟩ := ih (n + 1) hWf hCF hSSS hFuel' sid heap' hInv' hSInv' hB'
     refine ⟨heap'', ?_, ?_, ?_, hB''⟩
-    · simp only [toJasminCmd_RLetU64Zero]; rw [translateCmd_cons_cassgn_u64_eval]; exact heval'
+    · simp only [toJasminCmd_RLetU64Zero]
+      rw [show (.Pconst 0 : PExpr) = .Pconst ((0 : Nat) : Int) from rfl,
+        translateCmd_cons_cassgn_u64_val_eval]
+      exact heval'
     · exact hInv''
     · exact hSInv''
 
