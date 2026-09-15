@@ -956,3 +956,4 @@ CatCrypt.Crypto.Hax.HaxToLowCTSim_Full
 CatCrypt.Crypto.SecureCompilation.ThirSboxRange
 CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.ConsumerDemo
 CatCrypt.Crypto.SecureCompilation.VIR.SemScalarLToJasminCom
+CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramLit
