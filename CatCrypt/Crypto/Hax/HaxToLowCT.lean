@@ -105,10 +105,81 @@ end CatCrypt.Crypto.EdDSA
 The same shape works for BLS to remap `scalar_*`, `g2_*`, `bbs_*`, and
 `*_be_bytes` to BLS-correct tower types.  -/
 
-/-- Default dispatch from leaf-call names to `TowerType`.  This is the
-    *historical* prefix-based function — kept under the `_default`
-    suffix so it remains available as a baseline, and registered as the
-    default instance of `TowerOfCallNameInst` below.
+/-! ### Array constructors
+
+A hax `repeat(v, n)` with literal fill value `v` and literal count `n` is an
+array constructor.  The source pass `ctorNorm` (dev `HaxToLowCT_ArithCtor.lean`)
+names the call `repeat_<v>_<n>` with no arguments, so both literals are part of
+the call name and the located type of the destination is the word-array type
+`.TArr n .TFp`.  The name family is decoded by `arrCtorLen`, which the dispatch
+on call names consults first. -/
+
+/-- The value of a list of decimal digits, accumulated onto `acc`. -/
+@[simp] def digitsVal : List Char → Nat → Option Nat
+  | [], acc => some acc
+  | c :: cs, acc =>
+      if '0'.toNat ≤ c.toNat ∧ c.toNat ≤ '9'.toNat then
+        digitsVal cs (acc * 10 + (c.toNat - '0'.toNat))
+      else none
+
+/-- The value of a non-empty list of decimal digits. -/
+@[simp] def digitsVal? : List Char → Option Nat
+  | [] => none
+  | c :: cs => digitsVal (c :: cs) 0
+
+/-- The list `l` without its prefix `p`, when `p` is a prefix of `l`. -/
+@[simp] def stripPrefixL : List Char → List Char → Option (List Char)
+  | [], l => some l
+  | _ :: _, [] => none
+  | p :: ps, c :: cs => if p = c then stripPrefixL ps cs else none
+
+/-- The characters before and after the first `'_'` of a list. -/
+@[simp] def splitUnderscore : List Char → Option (List Char × List Char)
+  | [] => none
+  | c :: cs => if c = '_' then some ([], cs) else (splitUnderscore cs).map fun p => (c :: p.1, p.2)
+
+/-- The prefix of the array-constructor call names. -/
+@[simp] def arrCtorPrefix : String := "repeat_"
+
+/-- The array-constructor call name for the literal fill value `v` and count `n`. -/
+def arrCtorName (v n : Nat) : String := arrCtorPrefix ++ Nat.repr v ++ "_" ++ Nat.repr n
+
+/-- The fill value and count of an array-constructor call name `repeat_<v>_<n>`,
+    on the characters of the name. -/
+@[simp] def arrCtorLenL (l : List Char) : Option (Nat × Nat) :=
+  match stripPrefixL arrCtorPrefix.toList l with
+  | some rest =>
+      match splitUnderscore rest with
+      | some (ds, es) =>
+          match digitsVal? ds, digitsVal? es with
+          | some v, some n => some (v, n)
+          | _, _ => none
+      | none => none
+  | none => none
+
+/-- The fill value and count of an array-constructor call name `repeat_<v>_<n>`;
+    `none` on every other name. -/
+@[simp] def arrCtorLen (f : String) : Option (Nat × Nat) := arrCtorLenL f.toList
+
+/-- The located type of the destination of an array-constructor call: the
+    word-array type of the count. -/
+def arrCtorTower (f : String) : Option TowerType :=
+  (arrCtorLen f).map fun p => .TArr p.2 .TFp
+
+theorem arrCtorTower_of_arrCtorLen {f : String} {v n : Nat} (h : arrCtorLen f = some (v, n)) :
+    arrCtorTower f = some (.TArr n .TFp) := by
+  simp only [arrCtorTower, h, Option.map_some]
+
+theorem arrCtorTower_of_arrCtorLen_none {f : String} (h : arrCtorLen f = none) :
+    arrCtorTower f = none := by
+  simp only [arrCtorTower, h, Option.map_none]
+
+/-- Default dispatch from leaf-call names to `TowerType`: an array-constructor
+    name `repeat_<v>_<n>` is dispatched to the word-array type `.TArr n .TFp`, and
+    every other name by its prefix.  This is the *historical* prefix-based
+    function — kept under the `_default` suffix so it remains available as a
+    baseline, and registered as the default instance of `TowerOfCallNameInst`
+    below.
 
     Falls back to `.TFp` for unrecognised names — but the H1 filter has
     already restricted us to the whitelist, so every reachable string
@@ -121,6 +192,9 @@ The same shape works for BLS to remap `scalar_*`, `g2_*`, `bbs_*`, and
     appropriate tower type (point ops → `.TFp25519`, scalar ops →
     `.TFpL25519`, hash challenges → `.TFpL25519`). -/
 def towerOfCallName_default (f : String) : TowerType :=
+  match arrCtorLen f with
+  | some p => .TArr p.2 .TFp
+  | none =>
   if f.startsWith "fp12_" then .TFp12
   else if f.startsWith "fp6_" then .TFp6
   else if f.startsWith "fp2_" then .TFp2
@@ -227,6 +301,14 @@ per-leaf lemmas using the override. -/
     field is exactly `towerOfCallName_default`. -/
 theorem towerOfCallName_default_eq (f : String) :
     towerOfCallName f = towerOfCallName_default f := rfl
+
+/-- An array-constructor call name `repeat_<v>_<n>` is dispatched to the
+    word-array type `.TArr n .TFp`. -/
+theorem towerOfCallName_of_arrCtorLen {f : String} {v n : Nat}
+    (h : arrCtorLen f = some (v, n)) : towerOfCallName f = .TArr n .TFp := by
+  rw [towerOfCallName_default_eq]
+  unfold towerOfCallName_default
+  rw [h]
 
 /-! ## §2  Argument translation
 
