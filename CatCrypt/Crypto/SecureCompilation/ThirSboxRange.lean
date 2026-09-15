@@ -15,6 +15,8 @@ S-box `sboxSpec64 x = montmul(montmul(montmul(montmul(x,x),x), ·), x)`, whose
 programs denote these functions. Both compute in wrapping 64-bit arithmetic. This
 module states when the arithmetic does not wrap and what the results are then.
 
+## Main results
+
 * `montMulSpec64_exact`: if `a·b + (2^32 − 1)·p < 2^64`, then
   `montMulSpec64 a b · 2^32 = a·b + k·p` for some `k < 2^32`; the REDC is an exact
   division.

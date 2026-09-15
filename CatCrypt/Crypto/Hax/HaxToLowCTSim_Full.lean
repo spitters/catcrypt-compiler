@@ -35,6 +35,13 @@ replaces `FullSimPreconds` by the argument-relating agreement
 §2 instantiates every hypothesis for the program `let y = leaf(a); y`, with a
 builtin table whose one builtin `leaf` returns the constant `.array []` (a value
 that decodes to no scalar), and obtains the lowered run.
+
+## Main results
+
+* `haxToLowCT_simulates_full`: a successful source run of a `simScope`-accepted
+  program is matched by a `RustExec` run of its lowering, with the exit invariants.
+* `simFull_runs`: the hypotheses hold for `let y = leaf(a); y` with the constant
+  builtin table `simFullBuiltins`, and the lowered program runs.
 -/
 
 @[expose] public section

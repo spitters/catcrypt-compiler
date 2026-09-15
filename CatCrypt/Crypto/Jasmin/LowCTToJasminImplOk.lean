@@ -33,7 +33,7 @@ returns the bytewise sum of two arrays, so its calls write a destination value t
 depends on the arguments only; `addProg_simulates` instantiates
 `rustExecSimulates_withCalls` on a program with one such call.
 
-## Contents
+## Main results
 
 * `not_forall_leafImplOk`, `not_forall_leafImplOkNewSid`, `not_forall_callNImplOk`,
   `not_forall_limbStoreImplOk`, `not_forall_selectImplOk`,
