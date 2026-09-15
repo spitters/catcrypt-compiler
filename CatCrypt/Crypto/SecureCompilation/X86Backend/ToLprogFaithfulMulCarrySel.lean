@@ -9,17 +9,18 @@ import all Init.Data.String.TakeDrop
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulConst
 
 /-!
-# Whole-function register-allocation faithfulness with widening-multiply and carry-chain bindings
+# Whole-function register-allocation faithfulness with widening-multiply, carry-chain and select bindings
 
 `ToLprogFaithfulConst.toLprogPhysAbi_faithful_uniformConst` covers a `Com` whose
-bindings are binary same-width `regArith` or `regConst`. This module extends it to
-a `Com` whose bindings are those together with `mulhi`, `addCarryLo` and
-`addCarryHi`.
+bindings are binary same-width `regArith` or `regConst`. This module covers a
+`Com` whose bindings are those together with `mulhi`, `addCarryLo`, `addCarryHi`
+and `select`.
 
-The three added ops are emitted by `opToLinstrR` as width-tagged single-`Lopn`
+The four added ops are emitted by `opToLinstrR` as width-tagged single-`Lopn`
 heads with their operands in source order: `mulhi w` as `MULXHI[:w] dst, a, b`,
-`addCarryLo w` as `ADCX[:w] dst, a, b, cin` and `addCarryHi w` as
-`ADCXHI[:w] dst, a, b, cin`. None of the three mnemonics is in `physBody`'s
+`addCarryLo w` as `ADCX[:w] dst, a, b, cin`, `addCarryHi w` as
+`ADCXHI[:w] dst, a, b, cin` and `select w` as `CMOV[:w] dst, cond, a, b`. None of
+the four mnemonics is in `physBody`'s
 two-address `isBinop` alphabet, is a native shift or rotate, or is a memory
 load or store, so each takes the general `physBodyElem` arm: every operand is
 renamed by `remapOperand` and the single instruction is emitted unchanged. There
@@ -28,19 +29,19 @@ two-address collapse obligation `hcol` on the register allocation — the only
 allocator obligation is the destination injectivity `hinj` that every binding
 kind carries.
 
-`JasminLsem.applyOpn` models all three opcodes and ties each to the dialect
+`JasminLsem.applyOpn` models all four opcodes and ties each to the dialect
 denotation it lowers from (`applyOpn_mulhi`, `applyOpn_addCarryLo`,
-`applyOpn_addCarryHi`), so each binding's store step is one `lsemStep` whose
-written value is the dialect's `mulHiW` / `addCarryWord` / `carryOutBit` of the
-virtual operand values.
+`applyOpn_addCarryHi`, `applyOpn_select`), so each binding's store step is one
+`lsemStep` whose written value is the dialect's `mulHiW` / `addCarryWord` /
+`carryOutBit` / `selectW` of the virtual operand values.
 
 The proof reuses the binop and constant development unchanged and adds:
 
 * `remapBlockMaintains2` / `remapBlockMaintains3`, the store-relation maintenance
   of a two- resp. three-source single-instruction binding under the destination
   injectivity `hinj`, parametric in the mnemonic and the value oracle;
-* `MulHiBinding`, `AddCarryLoBinding`, `AddCarryHiBinding` and their
-  `physBodyElem` expansions;
+* `MulHiBinding`, `AddCarryLoBinding`, `AddCarryHiBinding`, `SelectBinding` and
+  their `physBodyElem` expansions;
 * `MulCarryBinding`, the sum of these with `ArithConstBinding`, with the cover
   `BodyCoverMCS` and the threaded `CoverDataMCS`, into which
   `ToLprogFaithfulConst.CoverDataConst` embeds by `CoverDataConst.toMCS`.
@@ -54,7 +55,7 @@ The proof reuses the binop and constant development unchanged and adds:
   the single renamed instruction.
 * `UniformRegArithMCS`: the `Com` fragment of non-shift, non-64-bit binary
   `regArith` bindings, `regConst` bindings, and `mulhi` / `addCarryLo` /
-  `addCarryHi` bindings.
+  `addCarryHi` / `select` bindings.
 * `CoverDataMCS.uniformRegArithMCS`: cover data exists only for that fragment;
   `CoverDataConst.toMCS` embeds the binop-or-constant cover data.
 * `physBody_lsem_result_uniformMCS`: the physical body run of such a `Com` reads
@@ -66,19 +67,19 @@ The proof reuses the binop and constant development unchanged and adds:
   `[RDI, RSI]` materialization pairs.
 * `toLprogPhysAbi_faithful_uniformMCS_epilogue`: the same with the callee-save
   restore epilogue before the `Lret`.
-* `lsemStep_select_eq_none`: the `select` head has no `lsemStep` image.
+* `lsemStep_select`: the `select` head writes the dialect's `selectW` of its
+  three operand values.
 
 ## `select`
 
-`opToLinstrR` emits `select w` as `CMOV[:w] dst, cond, a, b`, and
-`JasminLsem.applyOpn` has no `CMOV` arm: `applyOpn "CMOV" [c, a, b]` is `none`,
-so `lsemStep` of the head is `none` (`lsemStep_select_eq_none`). A `select`
-binding therefore has no `BlockMaintains` witness at this layer, and a
-`Com` containing one is outside every theorem here. Covering it requires an arm
-`applyOpn "CMOV" [c, a, b] = some (selectW (BitVec.setWidth 1 c) a b)` in
-`JasminLsem`, with the fidelity lemma tying it to the dialect's `selectW`; the
-binding kind, its `physBodyElem` expansion and its cover arm then follow the
-`AddCarryLoBinding` pattern verbatim through `remapBlockMaintains3`.
+`opToLinstrR` emits `select w` as `CMOV[:w] dst, cond, a, b` — the condition
+first, then the word taken when the condition bit is one and the word taken when
+it is zero. `JasminLsem.applyOpn` models that mnemonic as
+`applyOpn "CMOV" [c, a, b] = some (selectW (BitVec.setWidth 1 c) a b)`, reading
+the `reg 1` condition off the low bit of the condition register as the carry-in
+of `ADCX` is read. `SelectBinding` is the binding kind of such a head; its
+`maintains` step goes through `remapBlockMaintains3` at the operand order
+`cond, a, b`.
 
 ## Scope
 
@@ -166,6 +167,13 @@ theorem not_isBinop_ADCXHI (w : Nat) :
     ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR"].contains
       (stripWidthTag (withWidthTag w "ADCXHI")) = false := by
   rw [stripWidthTag_withWidthTag_ADCXHI]
+  decide +kernel
+
+/-- `CMOV` is outside `physBody`'s two-address binop alphabet. -/
+theorem not_isBinop_CMOV (w : Nat) :
+    ["ADD", "SUB", "MUL", "AND", "OR", "XOR", "SHL", "SHR"].contains
+      (stripWidthTag (withWidthTag w "CMOV")) = false := by
+  rw [stripWidthTag_withWidthTag_CMOV]
   decide +kernel
 
 /-- The width-tagged `MULXHI` mnemonic is not a memory store. -/
@@ -364,23 +372,55 @@ theorem AddCarryHiBinding.maintains {w : Nat} {body : Lcmd} {tbl : Array Nat}
     b.hinj
     (fun s => by rw [stripWidthTag_withWidthTag_ADCXHI]; exact applyOpn_addCarryHi _ _ _)
 
-/-! ## 4. The `select` head has no step
+/-- A `select` binding along the renaming `physRename body tbl`: the logical
+    destination `nDst` receives the value at `nA` when the low bit of the value
+    at `nCond` is one and the value at `nB` when it is zero. -/
+structure SelectBinding (w : Nat) (body : Lcmd) (tbl : Array Nat) where
+  nDst : String
+  nCond : String
+  nA : String
+  nB : String
+  hinj : ∀ m, physRename body tbl m = physRename body tbl nDst → m = nDst
 
-`opToLinstrR` emits `select w` as `CMOV[:w]` and `applyOpn` has no `CMOV` arm, so
-the head does not step. -/
+/-- The physical block of a `select` binding: `CMOV ρ nDst, ρ nCond, ρ nA,
+    ρ nB` at width `w`. -/
+def SelectBinding.block {w : Nat} {body : Lcmd} {tbl : Array Nat}
+    (b : SelectBinding w body tbl) : List LinstrR :=
+  [.Lopn [.reg (physRename body tbl b.nDst)] (withWidthTag w "CMOV")
+    [.reg (physRename body tbl b.nCond), .reg (physRename body tbl b.nA),
+     .reg (physRename body tbl b.nB)]]
 
-/-- `applyOpn` does not model `CMOV`. -/
-theorem applyOpn_CMOV {w : Nat} (c a b : BitVec w) :
-    applyOpn "CMOV" [c, a, b] = (none : Option (BitVec w)) := rfl
+/-- The virtual transformer of a `select` binding: write `selectW` of the
+    condition bit and the two operand values at `nDst`. -/
+def SelectBinding.vstep {w : Nat} {body : Lcmd} {tbl : Array Nat}
+    (b : SelectBinding w body tbl) : Lstate w → Lstate w :=
+  fun s => s.setReg b.nDst
+    (selectW (BitVec.setWidth 1 (s.lvm b.nCond)) (s.lvm b.nA) (s.lvm b.nB))
 
-/-- The `select` head has no `lsemStep` image: its opcode is outside the modeled
-    word-op fragment. -/
-theorem lsemStep_select_eq_none {w : Nat} (nD nC nA nB : String) (wOp : Nat)
+/-- A `select` binding's block re-establishes `StoreRel` against its virtual
+    transformer. -/
+theorem SelectBinding.maintains {w : Nat} {body : Lcmd} {tbl : Array Nat}
+    (b : SelectBinding w body tbl) : BlockMaintains body tbl b.block b.vstep :=
+  remapBlockMaintains3 body tbl b.nDst b.nCond b.nA b.nB (withWidthTag w "CMOV")
+    (fun s => selectW (BitVec.setWidth 1 (s.lvm b.nCond)) (s.lvm b.nA) (s.lvm b.nB))
+    b.hinj
+    (fun s => by rw [stripWidthTag_withWidthTag_CMOV]; exact applyOpn_select _ _ _)
+
+/-! ## 4. The step of the `select` head
+
+`opToLinstrR` emits `select w` as `CMOV[:w] dst, cond, a, b`, and `applyOpn`
+models that mnemonic as the dialect's `selectW`. -/
+
+/-- The `select` head writes the dialect's `selectW` of the condition register's
+    low bit and the two data registers, and advances the pc. -/
+theorem lsemStep_select {w : Nat} (nD nC nA nB : String) (wOp : Nat)
     (s : Lstate w) :
     lsemStep (.Lopn [.reg nD] (withWidthTag wOp "CMOV")
-      [.reg nC, .reg nA, .reg nB]) s = none := by
-  simp only [lsemStep, List.map_cons, List.map_nil, evalOperand,
-    stripWidthTag_withWidthTag_CMOV, applyOpn_CMOV]
+      [.reg nC, .reg nA, .reg nB]) s
+      = some ((s.setReg nD
+          (selectW (BitVec.setWidth 1 (s.lvm nC)) (s.lvm nA) (s.lvm nB))).nextPc) :=
+  lsemStep_src3 nD nC nA nB (withWidthTag wOp "CMOV") s _
+    (by rw [stripWidthTag_withWidthTag_CMOV]; exact applyOpn_select _ _ _)
 
 /-! ## 5. The `physBody` expansion of the three heads -/
 
@@ -411,12 +451,14 @@ theorem physBodyElem_src3 (body : Lcmd) (tbl : Array Nat) (ii : Nat)
 
 /-! ## 6. The sum of binding kinds -/
 
-/-- A binding of the binop-or-constant-or-widening-or-carry fragment. -/
+/-- A binding of the binop-or-constant-or-widening-or-carry-or-select
+    fragment. -/
 inductive MulCarryBinding (w : Nat) (body : Lcmd) (tbl : Array Nat) where
   | arith (b : ArithConstBinding w body tbl)
   | mulhi (m : MulHiBinding w body tbl)
   | addCarryLo (c : AddCarryLoBinding w body tbl)
   | addCarryHi (c : AddCarryHiBinding w body tbl)
+  | select (c : SelectBinding w body tbl)
 
 /-- The physical block of a binding. -/
 def MulCarryBinding.block {w : Nat} {body : Lcmd} {tbl : Array Nat} :
@@ -425,6 +467,7 @@ def MulCarryBinding.block {w : Nat} {body : Lcmd} {tbl : Array Nat} :
   | .mulhi m => m.block
   | .addCarryLo c => c.block
   | .addCarryHi c => c.block
+  | .select c => c.block
 
 /-- The virtual transformer of a binding. -/
 def MulCarryBinding.vstep {w : Nat} {body : Lcmd} {tbl : Array Nat} :
@@ -433,6 +476,7 @@ def MulCarryBinding.vstep {w : Nat} {body : Lcmd} {tbl : Array Nat} :
   | .mulhi m => m.vstep
   | .addCarryLo c => c.vstep
   | .addCarryHi c => c.vstep
+  | .select c => c.vstep
 
 /-- Every binding's block is a `BlockMaintains` witness. -/
 theorem MulCarryBinding.maintains {w : Nat} {body : Lcmd} {tbl : Array Nat}
@@ -442,6 +486,7 @@ theorem MulCarryBinding.maintains {w : Nat} {body : Lcmd} {tbl : Array Nat}
   | mulhi m => exact m.maintains
   | addCarryLo c => exact c.maintains
   | addCarryHi c => exact c.maintains
+  | select c => exact c.maintains
 
 /-- A cover of a source body by a binding list: the `physBody` expansion of the
     `i`-th instruction, projected to `LinstrR`, is the `i`-th binding's block. -/
@@ -541,6 +586,13 @@ inductive UniformRegArithMCS : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
       (hbody : UniformRegArithMCS body) :
       UniformRegArithMCS
         (.var ⟨JasminOp.addCarryHi w, heq, .cons a0 (.cons a1 (.cons a2 .nil))⟩ body)
+  | select {Γ s} {w : Nat}
+      (heq : DialectSignature.ret (d := jasminDialect) (JasminOp.select w) = .reg w)
+      (c : Ctxt.Var Γ (JasminTy.reg 1)) (a0 a1 : Ctxt.Var Γ (JasminTy.reg w))
+      (body : Com jasminDialect (JasminTy.reg w :: Γ) s)
+      (hbody : UniformRegArithMCS body) :
+      UniformRegArithMCS
+        (.var ⟨JasminOp.select w, heq, .cons c (.cons a0 (.cons a1 .nil))⟩ body)
 
 /-- The binop-or-constant fragment is contained in the extended fragment. -/
 theorem UniformRegArithConst.toMCS {Γ : Ctxt jasminDialect} {t : JasminTy}
@@ -618,6 +670,19 @@ inductive CoverDataMCS {w : Nat} (body : Lcmd) (tbl : Array Nat) (nArgs : Nat) :
       CoverDataMCS body tbl nArgs
         (.var ⟨JasminOp.addCarryHi w, heq, .cons a0 (.cons a1 (.cons a2 .nil))⟩ bdy) d
         (.addCarryHi c :: bs)
+  | select {Γ s}
+      {heq : DialectSignature.ret (d := jasminDialect) (JasminOp.select w) = .reg w}
+      {a0 : Ctxt.Var Γ (JasminTy.reg 1)} {a1 a2 : Ctxt.Var Γ (JasminTy.reg w)}
+      {bdy : Com jasminDialect (JasminTy.reg w :: Γ) s}
+      (d : Nat) (c : SelectBinding w body tbl) (bs : List (MulCarryBinding w body tbl))
+      (hdst : c.nDst = regName d)
+      (hCond : c.nCond = resolveVarName d nArgs a0)
+      (hA : c.nA = resolveVarName d nArgs a1)
+      (hB : c.nB = resolveVarName d nArgs a2)
+      (htail : CoverDataMCS body tbl nArgs bdy (d + 1) bs) :
+      CoverDataMCS body tbl nArgs
+        (.var ⟨JasminOp.select w, heq, .cons a0 (.cons a1 (.cons a2 .nil))⟩ bdy) d
+        (.select c :: bs)
 
 /-- Cover data exists only for an extended `Com`. -/
 theorem CoverDataMCS.uniformRegArithMCS {w : Nat} {body : Lcmd} {tbl : Array Nat}
@@ -631,6 +696,7 @@ theorem CoverDataMCS.uniformRegArithMCS {w : Nat} {body : Lcmd} {tbl : Array Nat
   | mulhi d m bs _ _ _ _ ih => exact .mulhi _ _ _ _ ih
   | addCarryLo d c bs _ _ _ _ _ ih => exact .addCarryLo _ _ _ _ _ ih
   | addCarryHi d c bs _ _ _ _ _ ih => exact .addCarryHi _ _ _ _ _ ih
+  | select d c bs _ _ _ _ _ ih => exact .select _ _ _ _ _ ih
 
 /-- Binop-or-constant cover data is cover data of the extended fragment, with
     every binding tagged `arith`. -/
@@ -704,6 +770,26 @@ theorem bindingHeads_addCarryHi_eq {Γ : Ctxt jasminDialect} {s : JasminTy}
        resolveVar curDepth nArgs argName (fun _ => none) a2]⟩ : Linstr) :: _ = _
   rw [resolveVar_eq_reg, resolveVar_eq_reg, resolveVar_eq_reg]
 
+/-- The `bindingHeads` head of a `select w` binding at depth `curDepth` is
+    `CMOV[:w] regName curDepth, a0, a1, a2`. -/
+theorem bindingHeads_select_eq {Γ : Ctxt jasminDialect} {s : JasminTy}
+    (nArgs w : Nat)
+    (heq : DialectSignature.ret (d := jasminDialect) (JasminOp.select w) = .reg w)
+    (a0 : Ctxt.Var Γ (JasminTy.reg 1)) (a1 a2 : Ctxt.Var Γ (JasminTy.reg w))
+    (body : Com jasminDialect (JasminTy.reg w :: Γ) s) (curDepth : Nat) :
+    bindingHeads nArgs argName (fun _ => none)
+      (.var ⟨JasminOp.select w, heq, .cons a0 (.cons a1 (.cons a2 .nil))⟩ body) curDepth
+      = (⟨0, .Lopn [.reg (regName curDepth)] (withWidthTag w "CMOV")
+          [.reg (resolveVarName curDepth nArgs a0),
+           .reg (resolveVarName curDepth nArgs a1),
+           .reg (resolveVarName curDepth nArgs a2)]⟩ : Linstr)
+        :: bindingHeads nArgs argName (fun _ => none) body (curDepth + 1) := by
+  show (⟨0, .Lopn [.reg (regName curDepth)] (withWidthTag w "CMOV")
+      [resolveVar curDepth nArgs argName (fun _ => none) a0,
+       resolveVar curDepth nArgs argName (fun _ => none) a1,
+       resolveVar curDepth nArgs argName (fun _ => none) a2]⟩ : Linstr) :: _ = _
+  rw [resolveVar_eq_reg, resolveVar_eq_reg, resolveVar_eq_reg]
+
 /-- The threaded cover data yields a cover of the head list `bindingHeads … com d`. -/
 theorem coverDataMCS_bodyCover {w : Nat} (body : Lcmd) (tbl : Array Nat) (nArgs : Nat)
     {Γ : Ctxt jasminDialect} {t : JasminTy} (com : Com jasminDialect Γ t)
@@ -735,6 +821,11 @@ theorem coverDataMCS_bodyCover {w : Nat} (body : Lcmd) (tbl : Array Nat) (nArgs 
       refine .cons ?_ ih
       rw [physBodyElem_src3 body tbl 0 _ _ _ _ _ (not_isBinop_ADCXHI _),
         MulCarryBinding.block, AddCarryHiBinding.block, hdst, hA, hB, hC]
+  | select d c bs hdst hCond hA hB _ ih =>
+      rw [bindingHeads_select_eq]
+      refine .cons ?_ ih
+      rw [physBodyElem_src3 body tbl 0 _ _ _ _ _ (not_isBinop_CMOV _),
+        MulCarryBinding.block, SelectBinding.block, hdst, hCond, hA, hB]
 
 /-- **Physical body faithfulness, extended fragment.** For a body that is the head
     list `bindingHeads … com d` of a `Com` with threaded `CoverDataMCS`, running

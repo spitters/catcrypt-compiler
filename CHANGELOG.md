@@ -93,6 +93,16 @@ Block lowering framework:
   `EdwardsPointExt ed25519Ext`, so the formula has no exceptional case.
   `Algebraic/Ed25519PointAddLower.lean` lowers it through `fieldToJasminLimbs_denote`
   (`pointAddProg_lowered`, `pointAddProg_lowered_m1add`).
+- `VIR/MultiReturnCom.lean`: `toComHead` turns a multi-result program into a
+  single-return `Com` keeping every binding and returning the first result variable,
+  with `toComHead_denote`; the assembly export stores the last `outStoreMap.length`
+  bindings in output order, so the returned variable fixes only the register return
+  value. `Algebraic/Ed25519PointAddEmit.lean` uses it for the export of the point
+  addition (`pointAddCom`, `pointAddLprog`, `pointAddAsm`, `hasUnhandled`), reading the
+  32 input limb words through RSI and writing the 16 output words through RDI. What is
+  proved reaches the lowered program's denotation; `toLprogPhysAbi` on this body and
+  `renderOwned`'s passes are not covered, since the limb blocks' binary arithmetic at
+  width 64 is still outside the faithfulness fragment.
 
 x86 backend:
 
@@ -112,9 +122,21 @@ x86 backend:
   no width restriction; `UniformRegArithMCS` and `CoverDataMCS` embed the constant
   fragment (`UniformRegArithConst.toMCS`, `CoverDataConst.toMCS`), and
   `toLprogPhysAbi_faithful_uniformMCS` with `_twoPtr` and `_epilogue` keeps the
-  conclusions of the earlier theorems. `select` is not covered: `opToLinstrR` emits
-  `CMOV`, for which `JasminLsem.applyOpn` has no arm, recorded as the proved negative
-  `lsemStep_select_eq_none`.
+  conclusions of the earlier theorems. `select` is covered too, once
+  `JasminLsem.applyOpn` gained its `CMOV` arm: `SelectBinding` with its `maintains`
+  step, the `select` arms of `UniformRegArithMCS` and `CoverDataMCS`, and the positive
+  `lsemStep_select` in place of the earlier `lsemStep_select_eq_none`; the
+  whole-program conclusions are unchanged.
+- `VIR/JasminLsem.lean`: `applyOpn` models `CMOV` as `selectW (BitVec.setWidth 1 c) a b`
+  on the dialect's operand order, the convention `JasminLsemWidthN.lsemStepN` already
+  used, with the fidelity lemma `applyOpn_select`; no other mnemonic changes.
+- `X86Backend/ToLprogFaithfulCurve25519Fragment.lean`: of the Curve25519 block
+  constructors, `eConst`, `eBit`, `eMulhi`, `eAdc`, `eCarry` and `eSel` are inside the
+  extended fragment, so every conditional correction of the blocks is
+  (`uniformRegArithMCS_eSel`). `eBin`, binary `regArith` at width 64, is outside it: the
+  fragment's binop arm carries `w ≠ 64`, which the width-64 mnemonic violates
+  (`hasSuffix_withWidthTag_64_binOpName`), so the blocks as programs are not yet in the
+  fragment.
 
 - Register-count shifts from the gather's two-source `regArith .shr`/`.shl`/`.sar` export
   lower to one `.shrx`/`.shlx`/`.sarx` instruction: `lowerShiftRegJ` is the first

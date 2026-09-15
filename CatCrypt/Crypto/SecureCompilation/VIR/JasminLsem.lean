@@ -171,10 +171,11 @@ def evalOperand {w : Nat} (s : Lstate w) : LOperand → BitVec w
     `MULXHI`/`ADCX`/`ADCXHI` (the high-word `MULX` binding and the carry-chain
     add's data and carry-out bindings), denoted by the same `JasminDialect`
     functions `mulHiW`/`addCarryWord`/`carryOutBit` the dialect uses for
-    `mulhi`/`addCarryLo`/`addCarryHi`.
+    `mulhi`/`addCarryLo`/`addCarryHi`, and the conditional move `CMOV` (the
+    image of the dialect's `select`), denoted by the dialect's `selectW`.
 
     Returns `none` for any opcode outside the modeled straight-line word
-    fragment (e.g. `CALL:…`, `LOAD`/`STORE`, `CMOV`) — honest partiality, not a
+    fragment (e.g. `CALL:…`, `LOAD`/`STORE`) — honest partiality, not a
     default value. -/
 def applyOpn {w : Nat} : String → List (BitVec w) → Option (BitVec w)
   | "ADD", [a, b] => some (a + b)
@@ -200,6 +201,17 @@ def applyOpn {w : Nat} : String → List (BitVec w) → Option (BitVec w)
   -- (`BitVec.setWidth w` of the dialect's `carryOutBit`), so it threads into the
   -- next limb's carry-in register.
   | "ADCXHI", [a, b, cin] => some (BitVec.setWidth w (carryOutBit a b (BitVec.setWidth 1 cin)))
+  -- `CMOV`: the conditional move, the image of the dialect's `select w` under
+  -- `opToLinstrR`, with the operands in the dialect's source order
+  -- `[cond, a, b]` — the condition first, then the two data words. The condition
+  -- register holds a `0`/`1` value at the uniform width and its low bit
+  -- (`BitVec.setWidth 1`) is the `reg 1` condition the dialect threads, as for
+  -- the carry-in of `ADCX`. The result is the dialect's `selectW` of that bit:
+  -- the first data word `a` when the bit is one, the second data word `b` when
+  -- it is zero. The machine instruction is an x86 `cmov<cc>` at the width the
+  -- mnemonic's tag carries, taken when the condition word is non-zero; both data
+  -- words are read, so there is no condition-dependent branch.
+  | "CMOV", [c, a, b] => some (selectW (BitVec.setWidth 1 c) a b)
   -- `MOVQ`: the 64-bit register/memory move the ABI prologue, arg-pointer
   -- materialization, and epilogue emit (`buildPrologue`/`buildArgPtrMaterialize`/
   -- `buildEpilogue`/`calleeSaveRestoreEpilogue`). Identical word semantics to
@@ -270,6 +282,13 @@ theorem applyOpn_binOpName {w : Nat} (bop : JasminBinOp) (a b : BitVec w) :
 @[simp] theorem applyOpn_addCarryHi {w : Nat} (a b cin : BitVec w) :
     applyOpn "ADCXHI" [a, b, cin]
       = some (BitVec.setWidth w (carryOutBit a b (BitVec.setWidth 1 cin))) := rfl
+
+/-- `applyOpn` on `CMOV` denotes the dialect's `selectW`, reading the condition
+    register's low bit — the fidelity tie for the conditional move (`select`).
+    The operand order is the dialect's: condition, then the word taken when the
+    condition bit is one, then the word taken when it is zero. -/
+@[simp] theorem applyOpn_select {w : Nat} (c a b : BitVec w) :
+    applyOpn "CMOV" [c, a, b] = some (selectW (BitVec.setWidth 1 c) a b) := rfl
 
 /-- The ABI `MOVQ` opcode copies its single source word unchanged — the fidelity
     tie for the 64-bit move the prologue/arg-materialization/epilogue emit (same
