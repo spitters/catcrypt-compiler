@@ -12,14 +12,15 @@ public import CatCrypt.Crypto.Hax.HaxToLowCTSim_While
 /-!
 # Program-level simulation for `haxToLowCT`
 
-`haxToLowCT_simulates_full` (`HaxToLowCTSim_Main_Full.lean`) takes its call-side
-conditions universally quantified over every name, state and argument list.
-§1 shows that each of those five hypotheses is unsatisfiable on its own, so the
-theorem, and every consumer that threads them through, is a conditional whose
-premise is `False`.
+A simulation for `haxToLowCT` whose call-side conditions are universally
+quantified over every name, state and argument list has an unsatisfiable
+premise: §1 gives a counterexample to each of the five such conditions
+(freshness, destination bound, argument environment, argument bound, argument
+freshness).
 
-This module restates the simulation with side conditions that are decided on the
-source program:
+This module states the simulation with side conditions that are decided on the
+source program; `haxToLowCT_simulates_full` (`HaxToLowCTSim_Full.lean`) is its
+corollary for programs accepted by the checker:
 
 * `simScope S Γ e` is a syntactic scope checker.  `Γ` records the names known to
   be tower-bound in the entry state, with their `TowerType`; `S` is the set of
@@ -59,8 +60,8 @@ open CatCrypt.Crypto.Jasmin.LowCT
 
 /-! ## §1  The universal call-side hypotheses are unsatisfiable
 
-Each hypothesis of `haxToLowCT_simulates_full` that is quantified over every
-name, state or argument list has a counterexample. -/
+Each call-side condition quantified over every name, state or argument list has
+a counterexample. -/
 
 /-- The empty tower state, with all scalars zero. -/
 def rsEmpty : RustState := { rsTower := fun _ => none, rsScalar := fun _ => 0 }
@@ -113,9 +114,8 @@ theorem hArgsFreshAll_unsat :
   exact h "fp_add" [.var "x"] "x" [{ locVar := "x", locSrc := towerOfCallName "fp_add" }]
     (by simp [haxArgsToLocated, haxArgToLocated]) _ (List.mem_singleton.mpr rfl) rfl
 
-/-- The conjunction of the universal freshness, destination-bound and
-    argument-environment hypotheses of `haxToLowCT_simulates_full` is
-    unsatisfiable. -/
+/-- The conjunction of the universally quantified freshness, destination-bound
+    and argument-environment conditions is unsatisfiable. -/
 theorem sim_universal_hyps_unsat :
     ¬ ((∀ (name : String) (rs : RustState), TowerFresh rs name)
        ∧ (∀ (f name : String) (rs : RustState),

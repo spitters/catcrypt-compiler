@@ -90,15 +90,15 @@ earliest live slot), so the resulting RA is informative regardless.
   (`dst ≠ head rds`), so coalesce candidates EXIST (unlike ChaCha and
   Poseidon2 where everything is already two-address).
 * `emitMlkemNtt4wayRaJazz` — the RA-driven emit.
-* `mlkem_ntt_4way_ra_emit_denotation_preserves` — the headline denotation
-  theorem; composes `mlkem_ntt_4way_lane_map`.
-
-## Axiom budget
-
-`[propext, Quot.sound]` only. The denotation theorem composes
-`mlkem_ntt_4way_lane_map` (storage-class-agnostic by construction)
-at the identity block `mlkemNttButterflySpec`. The slot-remap is a string-level relabeling and does
-not enter any theorem statement.
+* `mlkemRaBody` — the RA-driven body as an `Ntt4wayInstr` list, rendering to
+  `renderRaBody` (`mlkemRaBody_render`).
+* `runNtt4way_rename` — renaming registers injectively commutes with
+  `runNtt4way` on the input and output buffers.
+* `mlkem_ntt_4way_ra_emit_denotation_preserves` — for every allocation whose six
+  physical names are distinct (`RaNamesDistinct`; `raNamesDistinct_identity`
+  for the identity), the RA-driven body renders to the emitted body
+  and its run writes the Cooley–Tukey butterflies of
+  `LatticeNttEmit.runNtt4way_body`.
 -/
 
 @[expose] public section
@@ -187,9 +187,8 @@ def mlkemNttTrace : List UnrolledComRA.SlotEvent :=
 
 /-- **The ML-KEM 4-way NTT register allocation.** Built by
 `UnrolledComRA.unrolledSlotRAofItersCoalesce` over the 8-stage chunking.
-The cross-iter carry analysis identifies `tw` (slot 5) as carried (read
-in every stage); `a, b, c, d, t` are all written and consumed within
-their stage. -/
+The cross-iter carry analysis marks `a, b, t` (slots 0, 1, 2) as carried
+and `c, d, tw` as not carried (`mlkem_carriedSet_eq`). -/
 def mlkemNttRA_coalesce : RegisterAllocation :=
   UnrolledComRA.unrolledSlotRAofItersCoalesce mlkemNttTrace mlkemNttIters
 
@@ -258,8 +257,7 @@ candidate at every stage. Similarly `(d, a)` is a candidate (since `a`
 is overwritten at the next stage's start) and `(d, t)` is a candidate
 (since `t` is overwritten at the next stage's `t = VPMULL(...)`).
 
-This is the architecturally-honest finding: **ML-KEM's butterfly trace
-has nonzero coalesce candidates** — unlike ChaCha and Poseidon2 where
+So **ML-KEM's butterfly trace has nonzero coalesce candidates** — unlike ChaCha and Poseidon2 where
 `coalesceCandidateCount = 0`. The downstream `unrolledSlotRAofItersCoalesce`
 exercises the coalesce-merge code path on a real trace. -/
 
@@ -332,22 +330,224 @@ def emitMlkemNtt4wayRaJazz (ra : RegisterAllocation) (name : String) : String :=
     ++ String.intercalate ", " paramStrs ++ ") -> reg ptr u16[256] {\n  "
     ++ String.intercalate "\n  " (renderRaBody ra) ++ "\n  return out;\n}"
 
-/-! ## 7. Headline denotation-preservation theorem
+/-! ## 7. Semantics of the RA-driven body
 
-The RA-driven 4-way NTT emit denotes the same value as the canonical
-4-way NTT: the per-lane butterfly applied independently to each of the 4
-lanes. The witness is `mlkem_ntt_4way_lane_map` from `LatticeNttEmit` —
-the same theorem the baseline emit uses. It is parametric over the
-per-lane block function and the lane bundling, with no dependence on the
-storage class. The RA only changes which slots receive which physical
-names; the SSA sequence and per-slot data flow are unchanged. -/
+`mlkemRaBody ra` is the instruction list of the RA-driven body: the
+declaration line of `renderRaBody ra`, the twiddle load, and the stages of
+`LatticeNttEmit.ntt4wayBody 32` with every register renamed by
+`mlkemRaName ra`. It renders line for line to `renderRaBody ra`
+(`mlkemRaBody_render`). When the six physical names are pairwise distinct,
+renaming commutes with `runNtt4way` on the buffers (`runNtt4way_rename`), so the
+RA-driven body computes the same Cooley–Tukey butterflies as the baseline body
+(`mlkem_ntt_4way_ra_emit_denotation_preserves`). -/
 
-/-- **Denotation preservation for the RA-driven ML-KEM-768 4-way NTT.**
-Composes `mlkem_ntt_4way_lane_map` at the per-protocol butterfly. -/
-theorem mlkem_ntt_4way_ra_emit_denotation_preserves (lanes : MlkemNtt4Way) :
-    LaneMap.laneMap mlkemNttButterflySpec lanes =
-      (fun b => mlkemNttButterflySpec (lanes b)) :=
-  mlkem_ntt_4way_lane_map mlkemNttButterflySpec lanes
+open CatCrypt.Crypto.Optimizer.Lattice.NTTButterflyPass (ctButterfly)
+
+/-- The register names of an `Ntt4wayInstr`. -/
+def instrRegs : Ntt4wayInstr → List String
+  | .comment _ => []
+  | .decl _ => []
+  | .load dst _ => [dst]
+  | .store _ src => [src]
+  | .mull dst x y => [dst, x, y]
+  | .add dst x y => [dst, x, y]
+  | .sub dst x y => [dst, x, y]
+
+/-- Rename every register of an `Ntt4wayInstr` by `σ`; comments and declaration
+    lines are unchanged. -/
+def instrRename (σ : String → String) : Ntt4wayInstr → Ntt4wayInstr
+  | .comment t => .comment t
+  | .decl t => .decl t
+  | .load dst k => .load (σ dst) k
+  | .store k src => .store k (σ src)
+  | .mull dst x y => .mull (σ dst) (σ x) (σ y)
+  | .add dst x y => .add (σ dst) (σ x) (σ y)
+  | .sub dst x y => .sub (σ dst) (σ x) (σ y)
+
+/-- States `s` and `s'` agree up to the renaming `σ` on `names`: equal buffers,
+    and register `r ∈ names` of `s` is register `σ r` of `s'`. -/
+def RenameRel {L n : Nat} (names : List String) (σ : String → String)
+    (s s' : Ntt4wayState L n) : Prop :=
+  s.inp = s'.inp ∧ s.out = s'.out ∧ ∀ r ∈ names, s.reg r = s'.reg (σ r)
+
+theorem renameRel_setReg {L n : Nat} (names : List String) (σ : String → String)
+    (hinj : ∀ x ∈ names, ∀ y ∈ names, σ x = σ y → x = y)
+    {s s' : Ntt4wayState L n} (h : RenameRel names σ s s') (dst : String) (hdst : dst ∈ names)
+    (v : Fin L → BitVec n) :
+    RenameRel names σ (s.setReg dst v) (s'.setReg (σ dst) v) := by
+  obtain ⟨hi, ho, hr⟩ := h
+  refine ⟨hi, ho, fun r hr' => ?_⟩
+  simp only [Ntt4wayState.setReg]
+  by_cases hrd : r = dst
+  · subst hrd; simp
+  · have : σ r ≠ σ dst := fun he => hrd (hinj r hr' dst hdst he)
+    simp [hrd, this, hr r hr']
+
+/-- One instruction step preserves `RenameRel` when `σ` is injective on `names`
+    and the instruction's registers lie in `names`. -/
+theorem renameRel_eval {L n : Nat} (names : List String) (σ : String → String)
+    (hinj : ∀ x ∈ names, ∀ y ∈ names, σ x = σ y → x = y)
+    (i : Ntt4wayInstr) (hi : ∀ r ∈ instrRegs i, r ∈ names)
+    {s s' : Ntt4wayState L n} (h : RenameRel names σ s s') :
+    RenameRel names σ (i.eval s) ((instrRename σ i).eval s') := by
+  have hr := h.2.2
+  cases i with
+  | comment t => exact h
+  | decl t => exact h
+  | load dst k =>
+    simp only [instrRegs, List.mem_singleton, forall_eq] at hi
+    simp only [Ntt4wayInstr.eval, instrRename]
+    have hc : s.chunk k = s'.chunk k := by unfold Ntt4wayState.chunk; rw [h.1]
+    rw [hc]
+    exact renameRel_setReg names σ hinj h dst hi _
+  | store k src =>
+    simp only [instrRegs, List.mem_singleton, forall_eq] at hi
+    simp only [Ntt4wayInstr.eval, instrRename]
+    refine ⟨h.1, ?_, hr⟩
+    simp [Ntt4wayState.storeChunk, h.2.1, hr src hi]
+  | mull dst x y =>
+    simp only [instrRegs, List.mem_cons, List.not_mem_nil, or_false,
+      forall_eq_or_imp, forall_eq] at hi
+    simp only [Ntt4wayInstr.eval, instrRename, hr x hi.2.1, hr y hi.2.2]
+    exact renameRel_setReg names σ hinj h dst hi.1 _
+  | add dst x y =>
+    simp only [instrRegs, List.mem_cons, List.not_mem_nil, or_false,
+      forall_eq_or_imp, forall_eq] at hi
+    simp only [Ntt4wayInstr.eval, instrRename, hr x hi.2.1, hr y hi.2.2]
+    exact renameRel_setReg names σ hinj h dst hi.1 _
+  | sub dst x y =>
+    simp only [instrRegs, List.mem_cons, List.not_mem_nil, or_false,
+      forall_eq_or_imp, forall_eq] at hi
+    simp only [Ntt4wayInstr.eval, instrRename, hr x hi.2.1, hr y hi.2.2]
+    exact renameRel_setReg names σ hinj h dst hi.1 _
+
+/-- **Renaming commutes with `runNtt4way`.** If `σ` is injective on `names` and
+    every register of `p` lies in `names`, running `p` and running `p` renamed by
+    `σ` from `RenameRel`-related states reach `RenameRel`-related states. -/
+theorem runNtt4way_rename {L n : Nat} (names : List String) (σ : String → String)
+    (hinj : ∀ x ∈ names, ∀ y ∈ names, σ x = σ y → x = y) :
+    ∀ (p : List Ntt4wayInstr), (∀ i ∈ p, ∀ r ∈ instrRegs i, r ∈ names) →
+    ∀ {s s' : Ntt4wayState L n}, RenameRel names σ s s' →
+      RenameRel names σ (runNtt4way s p) (runNtt4way s' (p.map (instrRename σ)))
+  | [], _, _, _, h => h
+  | i :: p, hp, _, _, h => by
+    simp only [runNtt4way, List.map_cons, List.foldl_cons] at *
+    exact runNtt4way_rename names σ hinj p (fun j hj => hp j (List.mem_cons_of_mem _ hj))
+      (renameRel_eval names σ hinj i (hp i List.mem_cons_self) h)
+
+theorem runNtt4way_decl {L n : Nat} (s : Ntt4wayState L n) (t : String)
+    (p : List Ntt4wayInstr) : runNtt4way s (.decl t :: p) = runNtt4way s p := rfl
+
+/-- The six register names of the baseline body, in slot order. -/
+def mlkemRegNames : List String := ["a", "b", "t", "c", "d", "tw"]
+
+/-- The physical name, under RA `ra`, of the baseline register `r`. -/
+def mlkemRaName (ra : RegisterAllocation) (r : String) : String :=
+  if r = "a" then mlkemRaSlotName ra slotA
+  else if r = "b" then mlkemRaSlotName ra slotB
+  else if r = "t" then mlkemRaSlotName ra slotT
+  else if r = "c" then mlkemRaSlotName ra slotC
+  else if r = "d" then mlkemRaSlotName ra slotD
+  else mlkemRaSlotName ra slotTW
+
+/-- The RA-driven body as an instruction list. -/
+def mlkemRaBody (ra : RegisterAllocation) : List Ntt4wayInstr :=
+  [ .decl ("reg u128 " ++ String.intercalate " "
+      ((List.range 6).map (fun s => mlkemRaSlotName ra s)) ++ ";"),
+    .load (mlkemRaName ra "tw") 32 ] ++
+  (List.range 8).flatMap (fun s => (ntt4wayStage s).map (instrRename (mlkemRaName ra)))
+
+theorem mlkemRaStage_render (ra : RegisterAllocation) (s : Nat) :
+    ((ntt4wayStage s).map (instrRename (mlkemRaName ra))).map
+      (Ntt4wayInstr.render "8u16") = renderRaStage ra s := by
+  have hm : ∀ x : String, " = #VPMULL_" ++ ("8u16" ++ ("(" ++ x)) = " = #VPMULL_8u16(" ++ x :=
+    fun x => by simp only [← String.append_assoc, String.reduceAppend]
+  have ha : ∀ x : String, " = #VPADD_" ++ ("8u16" ++ ("(" ++ x)) = " = #VPADD_8u16(" ++ x :=
+    fun x => by simp only [← String.append_assoc, String.reduceAppend]
+  have hs : ∀ x : String, " = #VPSUB_" ++ ("8u16" ++ ("(" ++ x)) = " = #VPSUB_8u16(" ++ x :=
+    fun x => by simp only [← String.append_assoc, String.reduceAppend]
+  simp only [ntt4wayStage, renderRaStage, mlkemRaName, List.map, instrRename,
+    Ntt4wayInstr.render, ↓reduceIte, String.reduceEq, String.append_assoc, hm, ha, hs]
+
+/-- `mlkemRaBody ra` renders line for line to `renderRaBody ra`. -/
+theorem mlkemRaBody_render (ra : RegisterAllocation) :
+    (mlkemRaBody ra).map (Ntt4wayInstr.render "8u16") = renderRaBody ra := by
+  simp only [mlkemRaBody, renderRaBody, List.map_append, List.map_flatMap, List.map_cons,
+    List.map_nil, mlkemRaStage_render]
+  have h32 : toString (32 : Nat) = "32" := rfl
+  simp only [Ntt4wayInstr.render, mlkemRaName, ↓reduceIte, String.reduceEq, h32,
+    List.cons_append, List.nil_append, String.append_assoc]
+  rfl
+
+theorem ntt4wayStage_regs (s : Nat) :
+    ∀ i ∈ ntt4wayStage s, ∀ r ∈ instrRegs i, r ∈ mlkemRegNames := by
+  simp [ntt4wayStage, instrRegs, mlkemRegNames]
+
+/-- The physical names of the six slots under `ra` are pairwise distinct. -/
+def RaNamesDistinct (ra : RegisterAllocation) : Prop :=
+  ((List.range 6).map (mlkemRaSlotName ra)).Nodup
+
+theorem mlkemRaName_injOn (ra : RegisterAllocation) (h : RaNamesDistinct ra) :
+    ∀ x ∈ mlkemRegNames, ∀ y ∈ mlkemRegNames, mlkemRaName ra x = mlkemRaName ra y → x = y := by
+  have hmap : mlkemRegNames.map (mlkemRaName ra) =
+      (List.range 6).map (mlkemRaSlotName ra) := by
+    simp only [mlkemRegNames, List.map_cons, List.map_nil, mlkemRaName, ↓reduceIte,
+      String.reduceEq]
+    rfl
+  have hnd : (mlkemRegNames.map (mlkemRaName ra)).Nodup := by
+    unfold RaNamesDistinct at h; rw [hmap]; exact h
+  exact fun x hx y hy hxy => List.inj_on_of_nodup_map hnd hx hy hxy
+
+/-- **The RA-driven ML-KEM-768 4-way body computes Cooley–Tukey butterflies.**
+    For every register allocation `ra` whose six physical names are pairwise
+    distinct, `mlkemRaBody ra` renders to the emitted body `renderRaBody ra`, and
+    running it on 8 lanes of `u16` writes, for each stage `p < 8` and lane `j < 8`,
+    the butterfly `ctButterfly ω a b` of input words `a = inp (16p+j)`,
+    `b = inp (16p+8+j)` with `ω = inp (256+j)` (wrapping 16-bit arithmetic) to
+    output words `16p+j` and `16p+8+j`, leaving output words from 128 on
+    unchanged. These are the outputs of the baseline body
+    (`LatticeNttEmit.mlkem_ntt_4way_denotation_preserves`). -/
+theorem mlkem_ntt_4way_ra_emit_denotation_preserves (ra : RegisterAllocation)
+    (hra : RaNamesDistinct ra) :
+    (mlkemRaBody ra).map (Ntt4wayInstr.render "8u16") = renderRaBody ra ∧
+    ∀ s0 : Ntt4wayState 8 16,
+      (∀ p < 8, ∀ j : Fin 8,
+        ((runNtt4way s0 (mlkemRaBody ra)).out (8 * (2 * p) + j),
+          (runNtt4way s0 (mlkemRaBody ra)).out (8 * (2 * p + 1) + j))
+        = ctButterfly (s0.inp (8 * 32 + j)) (s0.inp (8 * (2 * p) + j))
+            (s0.inp (8 * (2 * p + 1) + j))) ∧
+      (∀ i, 8 * 16 ≤ i → (runNtt4way s0 (mlkemRaBody ra)).out i = s0.out i) := by
+  refine ⟨mlkemRaBody_render ra, fun s0 => ?_⟩
+  obtain ⟨s1, hrel⟩ : ∃ s1 : Ntt4wayState 8 16, RenameRel mlkemRegNames (mlkemRaName ra) s1 s0 :=
+    ⟨{ reg := fun r => s0.reg (mlkemRaName ra r), inp := s0.inp, out := s0.out },
+      rfl, rfl, fun _ _ => rfl⟩
+  have hp : ∀ i ∈ (Ntt4wayInstr.load "tw" 32 :: (List.range 8).flatMap ntt4wayStage),
+      ∀ r ∈ instrRegs i, r ∈ mlkemRegNames := by
+    intro i hi r hr
+    simp only [List.mem_cons, List.mem_flatMap] at hi
+    rcases hi with rfl | ⟨s, -, hs⟩
+    · simp_all [instrRegs, mlkemRegNames]
+    · exact ntt4wayStage_regs s i hs r hr
+  have hsim := runNtt4way_rename mlkemRegNames (mlkemRaName ra) (mlkemRaName_injOn ra hra) _ hp
+    hrel
+  have hbase : runNtt4way s1 (ntt4wayBody 32) =
+      runNtt4way s1 (Ntt4wayInstr.load "tw" 32 :: (List.range 8).flatMap ntt4wayStage) := by
+    simp only [ntt4wayBody, List.cons_append, List.nil_append, runNtt4way_decl]
+  have hra' : runNtt4way s0 (mlkemRaBody ra) =
+      runNtt4way s0 ((Ntt4wayInstr.load "tw" 32 :: (List.range 8).flatMap ntt4wayStage).map
+        (instrRename (mlkemRaName ra))) := by
+    simp only [mlkemRaBody, List.map_cons, List.map_flatMap, List.cons_append, List.nil_append,
+      runNtt4way_decl, instrRename]
+  have hout : (runNtt4way s0 (mlkemRaBody ra)).out = (runNtt4way s1 (ntt4wayBody 32)).out := by
+    rw [hra', hbase]; exact hsim.2.1.symm
+  have h1 := (runNtt4way_body s1 32).1
+  have h2 := (runNtt4way_body s1 32).2
+  rw [← hrel.1, ← hrel.2.1] at *
+  exact ⟨fun p hp j => by rw [hout]; exact h1 p hp j, fun i hi => by rw [hout]; exact h2 i hi⟩
+
+/-- The identity allocation names the six slots `a, b, t, c, d, tw`. -/
+theorem raNamesDistinct_identity : RaNamesDistinct RegisterAllocation.identity := by
+  unfold RaNamesDistinct; decide
 
 /-! ## 8. Identity-RA byte-equivalence smoke
 
@@ -362,9 +562,8 @@ theorem mlkemRaSlotName_identity_eq (j : Nat) :
 
 /-! ## 9. Concrete carry / coalesce sanity
 
-For our concrete `mlkemNttRA_coalesce`, the carry analysis identifies
-exactly the twiddle slot as carried; the five per-stage scratches are
-not. -/
+On the per-stage chunking the carry analysis marks exactly `a, b, t` as
+carried. -/
 
 /-- The carried-slot set on the per-stage chunking is exactly `{a, b, t}`
 (slots `0, 1, 2`). `c` (slot 3) and `d` (slot 4) are write-only sinks;
@@ -386,7 +585,7 @@ NTT trace, exposed for the bench driver. -/
 def coalesceCount : Nat := mlkemCoalesceCount
 
 /-- The carried-slot set for the ML-KEM NTT, exposed for the bench
-driver. The list equals `[slotTW]`. -/
+driver. The list equals `[slotA, slotB, slotT]` (`mlkem_carriedSet_eq`). -/
 def carriedSlots : List Nat :=
   (List.range 6).filter (fun s => UnrolledComRA.carriedAcross s mlkemNttIters)
 

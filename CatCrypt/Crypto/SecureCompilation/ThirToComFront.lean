@@ -2267,9 +2267,12 @@ The result is lazy: there is no final conditional subtraction (these programs
 are straight-line). When `a·b + (2^32 − 1)·p < 2^64` (for example `a < 2p` and
 `b < p`) the sum `t + m·p` stays below `2^64`, so the shift is an exact division
 and `r ≡ a·b·R⁻¹ (mod p)`; if moreover `a·b < p·2^32` then `r < 2p`. For two
-operands below `2p` the sum can wrap (§16 gives an instance). This module proves only the equalities between
-the programs and the reference definitions `montMulSpec64`/`montMulSpec`, and
-neither the congruence nor the bound. In contrast to the ARX leaves (§12/§13)
+operands below `2p` the sum can wrap (§16 gives an instance). This module proves the equalities between
+the programs and the reference definitions `montMulSpec64`/`montMulSpec`. The
+congruence and the bound are proved in `ThirSboxRange`: `montMulSpec64_exact`
+(the REDC is an exact division under the no-wrap condition),
+`montMulSpec64_step` (the bound and the congruence in `ZMod p` under operand
+bounds) and `sboxSpec64_modEq` (the S-box congruence for `x ≤ 1756563332`). In contrast to the ARX leaves (§12/§13)
 the program uses `thBin .mul` (integer multiply), `thBin .and`, `thShrImm` and
 `thConst`, and no rotation.
 

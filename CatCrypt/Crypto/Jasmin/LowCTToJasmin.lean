@@ -1140,19 +1140,16 @@ def whileFree : LowCT → Bool
   -- exactly like `RWhileNz`, so the refinement theorem's `forRuntime` case
   -- closes by `whileFree`-contradiction.
   | .RForRuntime _ _ _ => false
-  -- Phase G/H/L/M (2026-05-03): the simulation theorem
-  -- `rustExecSimulates` is not yet extended to these constructors,
-  -- so we exclude them here.  Once a per-constructor simulation case
-  -- is proved (each is straight-line by construction), flip these
-  -- to the natural `true` / `whileFree body` values.  The lowering
-  -- (`toJasminCmd`) already emits the right Jasmin; this gate is
-  -- purely about which programs the simulation theorem covers.
+  -- `RCallN` and `RSelect` are outside the structural induction of
+  -- `rustExecSimulates`. Each has a single-instruction simulation at one
+  -- fuel: `rustCallNSimulates` under `CallNImplOk` and `rustSelectSimulates`
+  -- under `SelectImplOk`. This gate selects the programs the structural
+  -- theorem covers; `toJasminCmd` lowers both constructors.
   | .RCallN _ _ _ | .RSelect _ _ _ _ => false
-  -- Phase R5 (2026-06-01): runtime-valued limb store — not yet covered
-  -- by the standalone `rustExecSimulates` theorem (its `STORE64`-with-
-  -- runtime-arg simulation case is future work), so excluded here like
-  -- the other post-2026-05 constructors.  Lowering already emits the
-  -- right Jasmin `Copn`.
+  -- `RLimbStoreExpr` (a limb store of a runtime `SExpr` value) lowers to a
+  -- `STORE64` `Copn` and has no simulation case in this module; the
+  -- constant-word `RLimbStore` is simulated by `rustLimbStoreSimulates`
+  -- under `LimbStoreImplOk`.
   | .RLimbStoreExpr _ _ _ => false
   -- Phase L.1: RAssert is while-free *and* covered by the
   -- simulation theorem (lowers to `[]`, identity semantics).

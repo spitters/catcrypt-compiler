@@ -7,4 +7,5 @@ CatCrypt/Crypto/SecureCompilation/Dialects/TranslateDialectScalarDenote.lean	325
 CatCrypt/Crypto/SecureCompilation/ThirSboxRange.lean	61	3730	1627
 CatCrypt/Crypto/SecureCompilation/VIR/LowCTMirrorCorres.lean	1350	3610	1902
 CatCrypt/Crypto/SecureCompilation/VIR/LowCTMirrorTranslate.lean	112	2910	1876
+CatCrypt/Crypto/SecureCompilation/VIR/MlkemNttFullResidentEmit.lean	1100	2570	2221
 CatCrypt/Crypto/SecureCompilation/X86Backend/CarryMulBlock.lean	260	677	755

@@ -5,6 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
+import all Init.Data.Repr
 public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeNttEmit
 
 /-!
@@ -24,15 +25,23 @@ the Montgomery-multiply scratch would need 18 `%ymm`, above the 16-register file
 
 ## Denotation
 
-`mlkem_ntt_full_resident_denotation_preserves` composes the lane-map lemma
-`LatticeNttEmit.mlkem_ntt_4way_lane_map`: the deep-layer fusion reorders loads and
-stores of independent vectors and does not change the per-lane butterfly data flow.
-Axioms `[propext, Quot.sound]`.
+The deep-layer section of both bodies is given as a `DeepStmt` program:
+`separateDeepProg` (three `for v = 0 to 16` loops) renders to the deep-layer lines
+of `LatticeNttEmit.renderMlkemNttFull16wayBody`, and `residentDeepProg` (one fused
+loop) renders to `residentDeepSweep`. `runStmts` runs such a program on registers,
+the polynomial array `r` and the auxiliary array `aux`, with every packed operation
+and `vfqmul` interpreted by an arbitrary `DeepOpSem`.
+`mlkem_ntt_full_resident_denotation_preserves` states that both bodies are
+`residentPairLayers` followed by the rendering of their deep program, and that for
+every operation semantics and every entry state the two deep programs leave the
+same polynomial array. The pair-layer lines are identical in both bodies. No
+theorem relates `DeepOpSem` to x86 instruction semantics or the transform to the
+NTT.
 
 ## KAT
 
-The emitted `.jazz` is jasminc-lowered and validated byte-identical to
-`PQCLEAN_MLKEM768_CLEAN_ntt` at the bench level
+The emitted `.jazz` is jasminc-lowered and compared with
+`PQCLEAN_MLKEM768_CLEAN_ntt` at the bench level on sampled inputs
 (`bench/mlkem_compare/mlkem_ntt_avx2_bench.c`).
 -/
 
@@ -282,13 +291,333 @@ def emitMlkemNttFull16wayResidentJazz (name : String) : String :=
     ++ String.intercalate "\n" renderMlkemNttFull16wayResidentBody
     ++ "\n\n  return r;\n}"
 
-/-- Denotation preservation for the resident full ML-KEM-768 NTT emit. Composes
-    the lane-map lemma `LatticeNttEmit.mlkem_ntt_4way_lane_map` at the per-lane
-    butterfly: the deep-layer fusion reorders loads and stores of independent
-    vectors and leaves the per-lane data flow unchanged. -/
-theorem mlkem_ntt_full_resident_denotation_preserves (lanes : MlkemNtt4Way) :
-    LaneMap.laneMap mlkemNttButterflySpec lanes =
-      (fun b => mlkemNttButterflySpec (lanes b)) :=
-  mlkem_ntt_4way_lane_map mlkemNttButterflySpec lanes
+/-! ## Semantics of the deep-layer section -/
+
+/-- A packed 256-bit word. -/
+abbrev DeepWord := BitVec 256
+
+/-- An argument of a packed operation: a register or an immediate, printed verbatim. -/
+inductive DeepArg where
+  | reg (r : String)
+  | imm (t : String)
+
+/-- The text of a `DeepArg`. -/
+def DeepArg.render : DeepArg → String
+  | .reg r => r
+  | .imm t => t
+
+/-- The strings of a list joined by `sep`. -/
+def joinSep (sep : String) : List String → String
+  | [] => ""
+  | [x] => x
+  | x :: xs => x ++ sep ++ joinSep sep xs
+
+/-- An instruction of a deep-layer loop body, with loop variable `v`. -/
+inductive DeepInstr where
+  /-- `dst = aux[:u256 base + 2*v];` -/
+  | loadAux (dst : String) (base : Nat)
+  /-- `dst = r[:u256 v];` -/
+  | loadR (dst : String)
+  /-- `r[:u256 v] = src;` -/
+  | storeR (src : String)
+  /-- `dst<pad> = f(args);` -/
+  | op (dst pad f : String) (args : List DeepArg)
+
+/-- The text of a `DeepInstr`. -/
+def DeepInstr.render : DeepInstr → String
+  | .loadAux d b => d ++ " = aux[:u256 " ++ toString b ++ " + 2*v];"
+  | .loadR d => d ++ " = r[:u256 v];"
+  | .storeR x => "r[:u256 v] = " ++ x ++ ";"
+  | .op d pad f args =>
+      d ++ pad ++ " = " ++ f ++ "(" ++ joinSep ", " (args.map DeepArg.render) ++ ");"
+
+/-- A line of a loop body: instructions separated by spaces, or a comment. -/
+inductive DeepLine where
+  | instrs (is : List DeepInstr)
+  | comment (t : String)
+
+/-- The text of a `DeepLine`, indented by four spaces. -/
+def DeepLine.render : DeepLine → String
+  | .instrs is => "    " ++ joinSep " " (is.map DeepInstr.render)
+  | .comment t => "    " ++ t
+
+/-- A statement of the deep-layer section. -/
+inductive DeepStmt where
+  /-- An empty line. -/
+  | blank
+  /-- A comment line. -/
+  | comment (t : String)
+  /-- `dst = aux[:u256 k];` -/
+  | loadConst (dst : String) (k : Nat)
+  /-- `for v = 0 to n { body }` -/
+  | loop (n : Nat) (body : List DeepLine)
+
+/-- The lines of a `DeepStmt`, indented by two spaces. -/
+def DeepStmt.render : DeepStmt → List String
+  | .blank => [""]
+  | .comment t => ["  " ++ t]
+  | .loadConst d k => ["  " ++ d ++ " = aux[:u256 " ++ toString k ++ "];"]
+  | .loop n body =>
+      ("  for v = 0 to " ++ toString n ++ " {") :: body.map DeepLine.render ++ ["  }"]
+
+/-- Registers, the polynomial array `r` and the auxiliary array `aux`, by vector
+    index. -/
+structure DeepState where
+  reg : String → DeepWord
+  r : Nat → DeepWord
+  aux : Nat → DeepWord
+
+/-- Write register `x`. -/
+def DeepState.setReg (s : DeepState) (x : String) (w : DeepWord) : DeepState :=
+  { s with reg := fun y => if y = x then w else s.reg y }
+
+/-- A semantics for the packed operations and `vfqmul`: the result of operation `f`
+    on register values and immediates. -/
+abbrev DeepOpSem := String → List (DeepWord ⊕ String) → DeepWord
+
+/-- The value of an argument. -/
+def DeepArg.val (s : DeepState) : DeepArg → DeepWord ⊕ String
+  | .reg x => .inl (s.reg x)
+  | .imm t => .inr t
+
+/-- One instruction step at loop index `v`. -/
+def DeepInstr.eval (σ : DeepOpSem) (v : Nat) (s : DeepState) : DeepInstr → DeepState
+  | .loadAux d b => s.setReg d (s.aux (b + 2 * v))
+  | .loadR d => s.setReg d (s.r v)
+  | .storeR x => { s with r := Function.update s.r v (s.reg x) }
+  | .op d _ f args => s.setReg d (σ f (args.map (DeepArg.val s)))
+
+/-- One line step at loop index `v`. -/
+def DeepLine.eval (σ : DeepOpSem) (v : Nat) (s : DeepState) : DeepLine → DeepState
+  | .instrs is => is.foldl (DeepInstr.eval σ v) s
+  | .comment _ => s
+
+/-- Run a loop body at loop index `v`. -/
+def runLines (σ : DeepOpSem) (v : Nat) (s : DeepState) (ls : List DeepLine) : DeepState :=
+  ls.foldl (DeepLine.eval σ v) s
+
+/-- One statement step; a loop runs its body for `v = 0 … n-1`. -/
+def DeepStmt.eval (σ : DeepOpSem) (s : DeepState) : DeepStmt → DeepState
+  | .blank => s
+  | .comment _ => s
+  | .loadConst d k => s.setReg d (s.aux k)
+  | .loop n body => (List.range n).foldl (fun s v => runLines σ v s body) s
+
+/-- Run a statement list. -/
+def runStmts (σ : DeepOpSem) (s : DeepState) (p : List DeepStmt) : DeepState :=
+  p.foldl (DeepStmt.eval σ) s
+
+/-- The zeta load `zl = aux[:u256 zb + 2*v]; zh = aux[:u256 zb+1 + 2*v];`. -/
+def zetaLine (zb : Nat) : DeepLine := .instrs [.loadAux "zl" zb, .loadAux "zh" (zb + 1)]
+
+/-- The within-vector butterfly on register `a`: partner selection by `f`, `vfqmul`,
+    add, subtract, and the blend into `dst`. -/
+def butterflyLines (f : String) (bbA alowA : DeepArg) (dst blendF blendImm : String) :
+    List DeepLine :=
+  [ .instrs [.op "bb" "  " f [.reg "a", bbA]],
+    .instrs [.op "alow" "" f [.reg "a", alowA]],
+    .instrs [.op "t" " " "vfqmul" [.reg "bb", .reg "zl", .reg "zh", .reg "vq"]],
+    .instrs [.op "radd" "" "#VPADD_16u16" [.reg "a", .reg "t"]],
+    .instrs [.op "rsub" "" "#VPSUB_16u16" [.reg "alow", .reg "t"]],
+    .instrs [.op dst "" blendF [.reg "radd", .reg "rsub", .imm blendImm]] ]
+
+/-- The `len = 8` butterfly (cross-128 `#VPERMQ`). -/
+def ops8 (dst : String) : List DeepLine :=
+  butterflyLines "#VPERMQ" (.imm "0xEE") (.imm "0x44") dst "#VPBLEND_8u32" "0xF0"
+
+/-- The `len = 4` butterfly (within-128 `#VPSHUFB_256`). -/
+def ops4 (dst : String) : List DeepLine :=
+  butterflyLines "#VPSHUFB_256" (.reg "duph4") (.reg "dupl4") dst "#VPBLEND_16u16" "0xF0"
+
+/-- The `len = 2` butterfly (within-128 `#VPSHUFB_256`). -/
+def ops2 (dst : String) : List DeepLine :=
+  butterflyLines "#VPSHUFB_256" (.reg "duph2") (.reg "dupl2") dst "#VPBLEND_16u16" "0xCC"
+
+/-- A separate deep-layer loop body: zeta load, vector load, butterfly into `c`,
+    store. -/
+def layerBody (zb : Nat) (ops : List DeepLine) : List DeepLine :=
+  [zetaLine zb, .instrs [.loadR "a"]] ++ ops ++ [.instrs [.storeR "c"]]
+
+/-- The shuffle-control loads that open both deep-layer sections. -/
+def constLoads : List DeepStmt :=
+  [ .blank, .loadConst "duph4" 127, .loadConst "dupl4" 128, .loadConst "duph2" 129,
+    .loadConst "dupl2" 130, .blank ]
+
+/-- The deep-layer section of `LatticeNttEmit.renderMlkemNttFull16wayBody`: three
+    separate loops. -/
+def separateDeepProg : List DeepStmt :=
+  constLoads ++
+  [ .comment "// === len = 8 (cross-128) zl,zh pairs @ aux 31..62 ===",
+    .loop 16 (layerBody 31 (ops8 "c")), .blank,
+    .comment "// === len = 4 (within 128) zl,zh pairs @ aux 63..94 ===",
+    .loop 16 (layerBody 63 (ops4 "c")), .blank,
+    .comment "// === len = 2 (within 128) zl,zh pairs @ aux 95..126 ===",
+    .loop 16 (layerBody 95 (ops2 "c")) ]
+
+/-- The fused loop body: one vector load, the three butterflies with the first two
+    blending back into `a`, one store. -/
+def residentBody : List DeepLine :=
+  [ .instrs [.loadR "a"], .comment "// len = 8 (cross-128) zl,zh @ aux 31..62", zetaLine 31 ] ++
+  ops8 "a" ++
+  [ .comment "// len = 4 (within 128) zl,zh @ aux 63..94", zetaLine 63 ] ++ ops4 "a" ++
+  [ .comment "// len = 2 (within 128) zl,zh @ aux 95..126", zetaLine 95 ] ++ ops2 "c" ++
+  [ .instrs [.storeR "c"] ]
+
+/-- The deep-layer section of the resident body: one fused loop. -/
+def residentDeepProg : List DeepStmt :=
+  constLoads ++
+  [ .comment "// === fused deep layers len = 8, 4, 2 (each vector resident across them) ===",
+    .loop 16 residentBody ]
+
+/-- `residentDeepProg` renders to `residentDeepSweep`. -/
+theorem residentDeepProg_render :
+    residentDeepProg.flatMap DeepStmt.render = residentDeepSweep := by
+  decide +kernel
+
+/-- The baseline full-NTT body is `residentPairLayers` followed by the rendering of
+    `separateDeepProg`. -/
+theorem separateDeepProg_render :
+    residentPairLayers ++ separateDeepProg.flatMap DeepStmt.render =
+      renderMlkemNttFull16wayBody := by
+  decide +kernel
+
+/-- The registers the deep-layer loop bodies read without writing. -/
+def deepConsts : List String := ["vq", "duph4", "dupl4", "duph2", "dupl2"]
+
+/-- `s` has auxiliary array `A` and holds `kv c` in each register `c ∈ deepConsts`. -/
+def DeepFrame (A : Nat → DeepWord) (kv : String → DeepWord) (s : DeepState) : Prop :=
+  s.aux = A ∧ ∀ c ∈ deepConsts, s.reg c = kv c
+
+/-- A loop whose body keeps `DeepFrame A kv` and updates only `r v`, by `G v`, updates
+    every `r i` for `i < n` by `G i` and keeps the frame. -/
+theorem loop_frame (σ : DeepOpSem) (A : Nat → DeepWord) (kv : String → DeepWord)
+    (B : List DeepLine) (G : Nat → DeepWord → DeepWord)
+    (hf : ∀ v s, DeepFrame A kv s →
+      DeepFrame A kv (runLines σ v s B) ∧
+        (runLines σ v s B).r = Function.update s.r v (G v (s.r v))) :
+    ∀ (n : Nat) (s : DeepState), DeepFrame A kv s →
+      DeepFrame A kv ((List.range n).foldl (fun s v => runLines σ v s B) s) ∧
+      ((List.range n).foldl (fun s v => runLines σ v s B) s).r =
+        fun i => if i < n then G i (s.r i) else s.r i := by
+  intro n
+  induction n with
+  | zero => intro s hs; exact ⟨hs, by simp⟩
+  | succ n ih =>
+    intro s hs
+    obtain ⟨hF, hr⟩ := ih s hs
+    rw [List.range_succ, List.foldl_append, List.foldl_cons, List.foldl_nil]
+    obtain ⟨hF', hr'⟩ := hf n _ hF
+    refine ⟨hF', ?_⟩
+    rw [hr', hr]
+    funext i
+    by_cases hi : i = n
+    · subst hi; simp
+    · rw [Function.update_of_ne hi]
+      by_cases hlt : i < n
+      · simp [hlt, show i < n + 1 by omega]
+      · simp [hlt, show ¬ i < n + 1 by omega]
+
+/-- The state holding `kv` in every register, `x` in every vector, and `aux = A`. -/
+def deepCanon (A : Nat → DeepWord) (kv : String → DeepWord) (x : DeepWord) : DeepState :=
+  { reg := kv, r := fun _ => x, aux := A }
+
+theorem body8_step (σ : DeepOpSem) (A : Nat → DeepWord) (kv : String → DeepWord) (v : Nat)
+    (s : DeepState) (hs : DeepFrame A kv s) :
+    DeepFrame A kv (runLines σ v s (layerBody 31 (ops8 "c"))) ∧
+    (runLines σ v s (layerBody 31 (ops8 "c"))).r = Function.update s.r v
+      ((runLines σ v (deepCanon A kv (s.r v)) (layerBody 31 (ops8 "c"))).r v) := by
+  obtain ⟨hA, hK⟩ := hs
+  simp only [deepConsts, List.mem_cons, List.not_mem_nil, or_false, forall_eq_or_imp,
+    forall_eq] at hK
+  simp [runLines, layerBody, ops8, butterflyLines, zetaLine, DeepLine.eval, DeepInstr.eval,
+    DeepState.setReg, DeepArg.val, deepCanon, DeepFrame, deepConsts, hA, hK]
+
+theorem body4_step (σ : DeepOpSem) (A : Nat → DeepWord) (kv : String → DeepWord) (v : Nat)
+    (s : DeepState) (hs : DeepFrame A kv s) :
+    DeepFrame A kv (runLines σ v s (layerBody 63 (ops4 "c"))) ∧
+    (runLines σ v s (layerBody 63 (ops4 "c"))).r = Function.update s.r v
+      ((runLines σ v (deepCanon A kv (s.r v)) (layerBody 63 (ops4 "c"))).r v) := by
+  obtain ⟨hA, hK⟩ := hs
+  simp only [deepConsts, List.mem_cons, List.not_mem_nil, or_false, forall_eq_or_imp,
+    forall_eq] at hK
+  simp [runLines, layerBody, ops4, butterflyLines, zetaLine, DeepLine.eval, DeepInstr.eval,
+    DeepState.setReg, DeepArg.val, deepCanon, DeepFrame, deepConsts, hA, hK]
+
+theorem body2_step (σ : DeepOpSem) (A : Nat → DeepWord) (kv : String → DeepWord) (v : Nat)
+    (s : DeepState) (hs : DeepFrame A kv s) :
+    DeepFrame A kv (runLines σ v s (layerBody 95 (ops2 "c"))) ∧
+    (runLines σ v s (layerBody 95 (ops2 "c"))).r = Function.update s.r v
+      ((runLines σ v (deepCanon A kv (s.r v)) (layerBody 95 (ops2 "c"))).r v) := by
+  obtain ⟨hA, hK⟩ := hs
+  simp only [deepConsts, List.mem_cons, List.not_mem_nil, or_false, forall_eq_or_imp,
+    forall_eq] at hK
+  simp [runLines, layerBody, ops2, butterflyLines, zetaLine, DeepLine.eval, DeepInstr.eval,
+    DeepState.setReg, DeepArg.val, deepCanon, DeepFrame, deepConsts, hA, hK]
+
+theorem residentBody_step (σ : DeepOpSem) (A : Nat → DeepWord) (kv : String → DeepWord)
+    (v : Nat) (s : DeepState) (hs : DeepFrame A kv s) :
+    DeepFrame A kv (runLines σ v s residentBody) ∧
+    (runLines σ v s residentBody).r = Function.update s.r v
+      ((runLines σ v (deepCanon A kv (s.r v)) residentBody).r v) := by
+  obtain ⟨hA, hK⟩ := hs
+  simp only [deepConsts, List.mem_cons, List.not_mem_nil, or_false, forall_eq_or_imp,
+    forall_eq] at hK
+  simp [runLines, residentBody, ops8, ops4, ops2, butterflyLines, zetaLine, DeepLine.eval,
+    DeepInstr.eval, DeepState.setReg, DeepArg.val, deepCanon, DeepFrame, deepConsts, hA, hK]
+
+/-- On one vector, the fused body computes the `len = 2` butterfly of the `len = 4`
+    butterfly of the `len = 8` butterfly. -/
+theorem residentBody_fuse (σ : DeepOpSem) (A : Nat → DeepWord) (kv : String → DeepWord)
+    (v : Nat) (x : DeepWord) :
+    (runLines σ v (deepCanon A kv x) residentBody).r v =
+      (runLines σ v (deepCanon A kv
+        ((runLines σ v (deepCanon A kv
+          ((runLines σ v (deepCanon A kv x) (layerBody 31 (ops8 "c"))).r v))
+          (layerBody 63 (ops4 "c"))).r v))
+        (layerBody 95 (ops2 "c"))).r v := by
+  simp [runLines, residentBody, layerBody, ops8, ops4, ops2, butterflyLines, zetaLine,
+    DeepLine.eval, DeepInstr.eval, DeepState.setReg, DeepArg.val, deepCanon]
+
+/-- The fused loop and the three separate loops leave the same polynomial array. -/
+theorem residentDeepProg_r_eq (σ : DeepOpSem) (s : DeepState) :
+    (runStmts σ s residentDeepProg).r = (runStmts σ s separateDeepProg).r := by
+  simp only [runStmts, residentDeepProg, separateDeepProg, List.foldl_append, List.foldl_cons,
+    List.foldl_nil, DeepStmt.eval]
+  generalize constLoads.foldl (DeepStmt.eval σ) s = s1
+  have h1 : DeepFrame s1.aux s1.reg s1 := ⟨rfl, fun _ _ => rfl⟩
+  obtain ⟨hF2, hr2⟩ := loop_frame σ s1.aux s1.reg _
+    (fun v x => (runLines σ v (deepCanon s1.aux s1.reg x) (layerBody 31 (ops8 "c"))).r v)
+    (body8_step σ s1.aux s1.reg) 16 s1 h1
+  obtain ⟨hF3, hr3⟩ := loop_frame σ s1.aux s1.reg _
+    (fun v x => (runLines σ v (deepCanon s1.aux s1.reg x) (layerBody 63 (ops4 "c"))).r v)
+    (body4_step σ s1.aux s1.reg) 16 _ hF2
+  obtain ⟨-, hr4⟩ := loop_frame σ s1.aux s1.reg _
+    (fun v x => (runLines σ v (deepCanon s1.aux s1.reg x) (layerBody 95 (ops2 "c"))).r v)
+    (body2_step σ s1.aux s1.reg) 16 _ hF3
+  obtain ⟨-, hrF⟩ := loop_frame σ s1.aux s1.reg _
+    (fun v x => (runLines σ v (deepCanon s1.aux s1.reg x) residentBody).r v)
+    (residentBody_step σ s1.aux s1.reg) 16 s1 h1
+  rw [hr4, hr3, hr2, hrF]
+  funext i
+  by_cases hi : i < 16
+  · simp only [hi, ↓reduceIte]
+    exact residentBody_fuse σ s1.aux s1.reg i (s1.r i)
+  · simp [hi]
+
+/-- **The resident full ML-KEM-768 NTT body agrees with the baseline body.** The
+    resident body `renderMlkemNttFull16wayResidentBody` is `residentPairLayers`
+    followed by the rendering of `residentDeepProg`, the baseline body
+    `renderMlkemNttFull16wayBody` is `residentPairLayers` followed by the rendering
+    of `separateDeepProg`, and for every semantics `σ` of the packed operations and
+    `vfqmul` and every entry state, the fused loop and the three separate loops
+    leave the same polynomial array `r`. -/
+theorem mlkem_ntt_full_resident_denotation_preserves :
+    renderMlkemNttFull16wayResidentBody =
+      residentPairLayers ++ residentDeepProg.flatMap DeepStmt.render ∧
+    renderMlkemNttFull16wayBody =
+      residentPairLayers ++ separateDeepProg.flatMap DeepStmt.render ∧
+    ∀ (σ : DeepOpSem) (s : DeepState),
+      (runStmts σ s residentDeepProg).r = (runStmts σ s separateDeepProg).r :=
+  ⟨by rw [residentDeepProg_render]; rfl, separateDeepProg_render.symm, residentDeepProg_r_eq⟩
 
 end CatCrypt.Crypto.SecureCompilation.VIR.MlkemNttFullResidentEmit

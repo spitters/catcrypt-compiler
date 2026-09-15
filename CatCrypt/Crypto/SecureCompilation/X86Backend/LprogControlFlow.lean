@@ -55,19 +55,30 @@ denotation (iterate-until-guard-false) which the framework's pure A-normal
 `Com` does not carry. We lower the bounded-for layer and the public forward
 branch; the unbounded `RWhile` residual is reported, not claimed.
 
-## Denotation preservation (the key correctness statement)
+## What is proved about the loop
 
-The looped emission and the unrolled emission denote the **same** machine
-transformer. We do not re-prove the loop denotation from scratch: the machine
-semantics of the looped form *is* `runBoundedLoop s n body` (the structured
-guard-loop that runs the counter-decrement body until `n` hits 0), and
-`LoopUnroll.boundedLoop_lowering_denote` already proves
-`(lowerBoundedLoop n body).denote (s ::ᵥ V) = runBoundedLoop s n body`.
+`loopLcmd_denote` restates `LoopUnroll.boundedLoop_lowering_denote_closed`: the
+unrolled `Com` lowering `lowerBoundedLoop n body` denotes `runBoundedLoop s n body`.
+It says nothing about the looped emission.
 
-`loopLcmd_denote` packages this: the looped `Lcmd` we emit denotes exactly
-`runBoundedLoop s n body` — the same value the unrolled `Com` lowering denotes.
-The two emissions differ only in **size** (looped: 1 body copy + 3 control
-instrs; unrolled: `n` body copies), not in denotation.
+The looped emission is modelled by `XLoop` (label, counter register, body over the
+`JInstr` model). `runXLoop fuel s l` executes the control flow `loopLcmd` emits,
+with at most `fuel` passes: run the body, run `cmp ctr, 0`, and take the `jne`
+back-edge while `ZF` is clear. The proved facts are:
+
+* `looped_eq_unrolled_denote`: if every run of the body decrements the counter
+  register by one (under an invariant `P` preserved by a pass), and the counter
+  holds `n` with `1 ≤ n < 2^w`, then with fuel at least `n` the loop terminates in
+  the state of the unrolled block `unrollBounded n (body ++ [cmp ctr, 0])`;
+* `looped_eq_boundedLoop`: the same final state is `runBoundedLoop` of the body with
+  the compare, and the denotation of its unrolled `Com` lowering;
+* `unrolled_cmp_regs_mem`: when the body's result does not depend on the entry
+  flags, that state has the registers and memory of `unrollBounded n body`;
+* `xAcc_looped_eq_unrolled`: the accumulate kernel with counter `5` and step `7`
+  runs to that state, with `acc = 35` and `ctr = 0`.
+
+No theorem relates the `Linstr` form of the body inside `loopLcmd` to the `JInstr`
+body of an `XLoop`.
 
 ## Constant-time note (cmdCT is ISA-agnostic; #460 vartime policy)
 
@@ -170,35 +181,216 @@ theorem looped_shorter_than_unrolled (w : Nat) (top : LLabel) (nReg : String) (b
   -- 4 * |body| > |body| + 3 when |body| ≥ 2, and n * |body| ≥ 4 * |body|
   omega
 
-/-! ## 3. Denotation preservation
+/-! ## 3. The unrolled lowering and the looped execution
 
-The machine semantics of the looped counter loop is `LoopUnroll.runBoundedLoop`
-(run the counter-decrement `body` `n` times). `LoopUnroll.boundedLoop_lowering_denote`
-already proves the unrolled `Com` lowering denotes that value; the looped `Lcmd`
-denotes the **same** value. We re-export the bounded-loop denotation under the
-looped name to make the equivalence explicit. -/
+`loopLcmd_denote` is the denotation of the unrolled `Com` lowering. `XLoop` is the
+counted loop `loopLcmd` emits, over the `JInstr` model, and `runXLoop` executes its
+control flow: body, `cmp ctr, 0`, and the `jne` back-edge on a clear `ZF`. -/
 
-/-- **Looped lowering denotation = bounded-loop semantics.** The looped emission
-    of a bounded counter loop denotes `runBoundedLoop s n body` — exactly the
-    value the unrolled `Com` lowering (`lowerBoundedLoop`) denotes. The looped
-    and unrolled emissions therefore agree on denotation and differ only in size
-    (`loopLcmd_length` vs `unrollLcmd_length`). This is the denotation-preservation
-    statement for the branch/loop lowering: replacing the `n`-copy unrolled body
-    by the single-copy looped body does not change the machine transformer. -/
+/-- The unrolled `Com` lowering `lowerBoundedLoop n body` denotes
+    `runBoundedLoop s n body` (`LoopUnroll.boundedLoop_lowering_denote_closed`). -/
 theorem loopLcmd_denote {w : Nat} (n : Nat) (body : List (JInstr w)) (s : JState w) :
     (lowerBoundedLoop (Γ := []) n body).denote (.cons s .nil)
       = runBoundedLoop s n body :=
   boundedLoop_lowering_denote_closed n body s
 
-/-- Looped vs unrolled denote the same transformer (transitivity of
-    `loopLcmd_denote` with itself across the two emission strategies): both equal
-    `runBoundedLoop s n body`. Stated to make the "same denotation, smaller code"
-    claim a single rewrite. -/
-theorem looped_eq_unrolled_denote {w : Nat} (n : Nat) (body : List (JInstr w))
-    (s : JState w) :
-    (lowerBoundedLoop (Γ := []) n body).denote (.cons s .nil)
-      = runBoundedLoop s n body :=
-  loopLcmd_denote n body s
+/-- A counted loop: the label `top`, the counter register `ctr` compared with `0`
+    before the back-edge, and the body. -/
+structure XLoop (w : Nat) where
+  /-- The loop label. -/
+  top : LLabel
+  /-- The counter register. -/
+  ctr : String
+  /-- The loop body, including its counter decrement. -/
+  body : List (JInstr w)
+
+/-- The compare the loop emits before its back-edge: `cmp ctr, 0`. -/
+def XLoop.cmpInstr {w : Nat} (l : XLoop w) : JInstr w := .cmp l.ctr (.imm 0)
+
+/-- The looped `Lcmd` of a loop whose body instructions are lowered by `lower`:
+    `loopLcmd w top ctr`, whose `CMP ctr,#0` and `Lcond NZ` lines are `cmpInstr`
+    and the back-edge taken while `ZF` is clear. -/
+def XLoop.lcmd {w : Nat} (lower : JInstr w → Linstr) (l : XLoop w) : Lcmd :=
+  loopLcmd w l.top l.ctr (l.body.map lower)
+
+/-- One pass of the loop: the body followed by the compare. -/
+def XLoop.pass {w : Nat} (l : XLoop w) (s : JState w) : JState w :=
+  runBlock s (l.body ++ [l.cmpInstr])
+
+/-- Execution of a loop with at most `fuel` passes: run a pass; if `ZF` is then
+    set, fall through with that state, otherwise take the back-edge. -/
+def runXLoop {w : Nat} (fuel : Nat) (s : JState w) (l : XLoop w) : Option (JState w) :=
+  match fuel with
+  | 0 => none
+  | f + 1 =>
+    if (l.pass s).flagB (·.zf) then some (l.pass s) else runXLoop f (l.pass s) l
+
+/-- A pass leaves the registers the body leaves. -/
+theorem XLoop.pass_get {w : Nat} (l : XLoop w) (s : JState w) (r : String) :
+    (l.pass s).get r = (runBlock s l.body).get r := by
+  simp [XLoop.pass, XLoop.cmpInstr, runBlock_append, evalInstr, JState.writeB5]
+
+/-- After a pass, `ZF` is set exactly when the counter register reads `0`. -/
+theorem XLoop.pass_zf {w : Nat} (l : XLoop w) (s : JState w) :
+    (l.pass s).flagB (·.zf) = decide ((runBlock s l.body).get l.ctr = 0) := by
+  simp only [XLoop.pass, XLoop.cmpInstr, runBlock_append, runBlock_cons, runBlock_nil,
+    evalInstr, JState.writeB5, JState.flagB, x86_CMP, x86_SUB, ZF_of_word, JOperand.eval,
+    Option.getD_some]
+  simp [BitVec.toNat_eq]
+
+/-- **The looped emission computes the unrolled block.** Let the body decrement the
+    counter register by one on every state satisfying an invariant `P` that a pass
+    preserves. From a state satisfying `P` whose counter holds `n`, with
+    `1 ≤ n < 2^w` and fuel at least `n`, the loop terminates in the state reached
+    by the unrolled block `unrollBounded n (l.body ++ [l.cmpInstr])`. -/
+theorem looped_eq_unrolled_denote {w : Nat} (P : JState w → Prop) (l : XLoop w)
+    (hdec : ∀ s, P s → P (l.pass s) ∧
+      (runBlock s l.body).get l.ctr = s.get l.ctr - 1) :
+    ∀ (n fuel : Nat) (s : JState w), P s → 1 ≤ n → n < 2 ^ w →
+      s.get l.ctr = BitVec.ofNat w n → n ≤ fuel →
+      runXLoop fuel s l = some (runBlock s (unrollBounded n (l.body ++ [l.cmpInstr]))) := by
+  intro n
+  induction n with
+  | zero => intro _ _ _ h; omega
+  | succ k ih =>
+    intro fuel s hP _ hlt hctr hfuel
+    obtain ⟨f, rfl⟩ : ∃ f, fuel = f + 1 := ⟨fuel - 1, by omega⟩
+    obtain ⟨hP', hc⟩ := hdec s hP
+    rw [hctr] at hc
+    have hc' : (l.pass s).get l.ctr = BitVec.ofNat w k := by
+      rw [XLoop.pass_get, hc, BitVec.ofNat_add]; exact BitVec.add_sub_cancel _ _
+    have hzf := XLoop.pass_zf l s
+    rw [← XLoop.pass_get] at hzf
+    simp only [runXLoop, unrollBounded_succ]
+    rw [runBlock_append]
+    by_cases hk : k = 0
+    · subst hk
+      rw [if_pos (by rw [hzf, hc']; rfl)]
+      rfl
+    · rw [if_neg (by
+        rw [hzf, hc']; simp only [decide_eq_true_eq]; intro h
+        have := congrArg BitVec.toNat h
+        rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)] at this
+        simp at this; omega)]
+      exact ih f (l.pass s) hP' (by omega) (by omega) hc' (by omega)
+
+/-- Under the hypotheses of `looped_eq_unrolled_denote`, the loop terminates in
+    `runBoundedLoop s n (l.body ++ [l.cmpInstr])`, which is the denotation of the
+    unrolled `Com` lowering `lowerBoundedLoop n (l.body ++ [l.cmpInstr])`. -/
+theorem looped_eq_boundedLoop {w : Nat} (P : JState w → Prop) (l : XLoop w)
+    (hdec : ∀ s, P s → P (l.pass s) ∧
+      (runBlock s l.body).get l.ctr = s.get l.ctr - 1)
+    (n fuel : Nat) (s : JState w) (hP : P s) (hn : 1 ≤ n) (hlt : n < 2 ^ w)
+    (hctr : s.get l.ctr = BitVec.ofNat w n) (hfuel : n ≤ fuel) :
+    runXLoop fuel s l = some (runBoundedLoop s n (l.body ++ [l.cmpInstr])) ∧
+    runXLoop fuel s l =
+      some ((lowerBoundedLoop (Γ := []) n (l.body ++ [l.cmpInstr])).denote (.cons s .nil)) := by
+  rw [looped_eq_unrolled_denote P l hdec n fuel s hP hn hlt hctr hfuel,
+    loopLcmd_denote, runBoundedLoop_eq_runBlock_unroll]
+  exact ⟨rfl, rfl⟩
+
+/-- A pass is the body's final state with the flags replaced. -/
+theorem XLoop.pass_eq_flags {w : Nat} (l : XLoop w) (s : JState w) :
+    ∃ fl : RFlags, l.pass s = { runBlock s l.body with flags := fl } :=
+  ⟨(l.pass s).flags, by rw [XLoop.pass, runBlock_append]; rfl⟩
+
+/-- If the body's final state does not depend on the entry flags, then for `n ≥ 1`
+    the unrolled block with the compares and the unrolled body agree on registers
+    and memory. -/
+theorem unrolled_cmp_regs_mem {w : Nat} (l : XLoop w)
+    (hflags : ∀ (s : JState w) (fl : RFlags), runBlock { s with flags := fl } l.body =
+      runBlock s l.body) :
+    ∀ (n : Nat) (s : JState w), 1 ≤ n →
+      (runBlock s (unrollBounded n (l.body ++ [l.cmpInstr]))).regs =
+        (runBlock s (unrollBounded n l.body)).regs ∧
+      (runBlock s (unrollBounded n (l.body ++ [l.cmpInstr]))).mem =
+        (runBlock s (unrollBounded n l.body)).mem := by
+  intro n
+  induction n with
+  | zero => intro _ h; omega
+  | succ k ih =>
+    intro s _
+    obtain ⟨fl, hfl⟩ := XLoop.pass_eq_flags l s
+    have e1 : runBlock s ((l.body ++ [l.cmpInstr]) ++ unrollBounded k (l.body ++ [l.cmpInstr]))
+        = runBlock (l.pass s) (unrollBounded k (l.body ++ [l.cmpInstr])) := runBlock_append _ _ _
+    have e2 : runBlock s (l.body ++ unrollBounded k l.body)
+        = runBlock (runBlock s l.body) (unrollBounded k l.body) := runBlock_append _ _ _
+    rw [unrollBounded_succ, unrollBounded_succ, e1, e2]
+    by_cases hk : k = 0
+    · subst hk; rw [hfl]; exact ⟨rfl, rfl⟩
+    · obtain ⟨h1, h2⟩ := ih (l.pass s) (by omega)
+      obtain ⟨j, rfl⟩ : ∃ j, k = j + 1 := ⟨k - 1, by omega⟩
+      have e3 : runBlock (l.pass s) (unrollBounded (j + 1) l.body)
+          = runBlock (runBlock (runBlock s l.body) l.body) (unrollBounded j l.body) := by
+        rw [unrollBounded_succ, runBlock_append, hfl, hflags]
+      have e4 : runBlock (runBlock s l.body) (unrollBounded (j + 1) l.body)
+          = runBlock (runBlock (runBlock s l.body) l.body) (unrollBounded j l.body) := by
+        rw [unrollBounded_succ, runBlock_append]
+      rw [h1, h2, e3, e4]
+      exact ⟨rfl, rfl⟩
+
+/-! ### The accumulate kernel
+
+`acc := acc + step ; ctr := ctr - 1`, looped on `ctr`. -/
+
+/-- The accumulate body: `add acc, step ; sub ctr, 1`. -/
+def xAccBody : List (JInstr 64) := [.add "acc" (.reg "step"), .sub "ctr" (.imm 1)]
+
+/-- The accumulate loop: label `0`, counter `ctr`, body `xAccBody`. -/
+def xAccLoop : XLoop 64 := { top := 0, ctr := "ctr", body := xAccBody }
+
+/-- The entry state: `step = 7`, `ctr = 5`, every other register `0`. -/
+def xAccInit : JState 64 :=
+  { regs := fun r => if r = "step" then 7 else if r = "ctr" then 5 else 0 }
+
+theorem xAccBody_get (s : JState 64) :
+    (runBlock s xAccBody).get "acc" = s.get "acc" + s.get "step" ∧
+    (runBlock s xAccBody).get "step" = s.get "step" ∧
+    (runBlock s xAccBody).get "ctr" = s.get "ctr" - 1 := by
+  simp [xAccBody, runBlock, evalInstr, JState.writeB5W, x86_ADD, x86_SUB, rflags_of_aluop]
+
+theorem xAccBody_flags (s : JState 64) (fl : RFlags) :
+    runBlock { s with flags := fl } xAccBody = runBlock s xAccBody := by
+  simp [xAccBody, runBlock, evalInstr, JState.writeB5W]
+
+/-- `n` runs of the accumulate body add `n · step` to `acc` and subtract `n` from
+    `ctr`. -/
+theorem xAccBody_boundedLoop (n : Nat) (s : JState 64) :
+    (runBoundedLoop s n xAccBody).get "acc" = s.get "acc" + BitVec.ofNat 64 n * s.get "step" ∧
+    (runBoundedLoop s n xAccBody).get "ctr" = s.get "ctr" - BitVec.ofNat 64 n := by
+  induction n generalizing s with
+  | zero => simp
+  | succ k ih =>
+    obtain ⟨ha, hs, hc⟩ := xAccBody_get s
+    obtain ⟨ha', hc'⟩ := ih (runBlock s xAccBody)
+    rw [runBoundedLoop_succ, ha', hc', ha, hs, hc, BitVec.ofNat_add]
+    constructor
+    · rw [BitVec.add_mul]
+      have h1 : (1#64) * s.get "step" = s.get "step" := BitVec.one_mul _
+      rw [h1]
+      generalize BitVec.ofNat 64 k * s.get "step" = m
+      bv_omega
+    · bv_omega
+
+/-- **The accumulate loop runs to its unrolled block.** Executing `xAccLoop` from
+    `xAccInit` with fuel `5` terminates in the state of the unrolled 5-pass block,
+    in which `acc = 35` and `ctr = 0`. -/
+theorem xAcc_looped_eq_unrolled :
+    runXLoop 5 xAccInit xAccLoop =
+      some (runBlock xAccInit (unrollBounded 5 (xAccBody ++ [xAccLoop.cmpInstr]))) ∧
+    (runBlock xAccInit (unrollBounded 5 (xAccBody ++ [xAccLoop.cmpInstr]))).get "acc" = 35 ∧
+    (runBlock xAccInit (unrollBounded 5 (xAccBody ++ [xAccLoop.cmpInstr]))).get "ctr" = 0 := by
+  refine ⟨looped_eq_unrolled_denote (fun _ => True) xAccLoop
+    (fun s _ => ⟨trivial, (xAccBody_get s).2.2⟩) 5 5 xAccInit trivial (by decide) (by decide)
+    rfl (Nat.le_refl 5), ?_⟩
+  obtain ⟨hr, -⟩ := unrolled_cmp_regs_mem xAccLoop xAccBody_flags 5 xAccInit (by decide)
+  have hr' : (runBlock xAccInit (unrollBounded 5 (xAccBody ++ [xAccLoop.cmpInstr]))).regs =
+      (runBlock xAccInit (unrollBounded 5 xAccBody)).regs := hr
+  have h := xAccBody_boundedLoop 5 xAccInit
+  rw [runBoundedLoop_eq_runBlock_unroll] at h
+  simp only [JState.get] at h ⊢
+  rw [hr', h.1, h.2]
+  exact ⟨rfl, rfl⟩
 
 /-! ## 4. KAT: a representative looping kernel through the owned branch path
 
