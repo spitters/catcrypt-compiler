@@ -36,6 +36,11 @@ The neutral `arith`, `memref`, `vector` and `func` dialects are in `../Dialects/
   `Com jasminDialect`. `DialectToJasminComCorrect.lean`:
   `DialectToJasminComCorrect.cryptoDialectToJasminCom_denote_eq'`, denotation
   preservation under leaf agreement.
+- Leaf oracles: `CatCryptLeafOracle.lean` (`SemLeafSpec`, `catCryptDenoteWith`);
+  `DialectToJasminComLeaf.lean` (`cryptoDialectToJasminCom_denote_eq_of_transport`,
+  for oracle pairs related by `LeafTransport`); `SemScalarLToJasminCom.lean`
+  (`semScalarLToJasminCom_denote_eq`, from `semScalarL ls` through the front to the
+  jasmin denotation at `IsCoveredSCtl`; `jleafOfAbs`, `leafTransport_leafOfAbs`).
 - `LatticeToJasmin.lean`: `lowerLatticeToJasmin`. `LatticeToJasminDenote.lean`
   (`lowerLatticeToJasmin_denote_eq`) and `LatticeToJasminDenoteUncond.lean`
   (`lowerLatticeToJasmin_denote_eq_uncond`).
@@ -109,6 +114,23 @@ README.md, section "The guarantees", discusses the first four rows.
 `ExecAdequacy.lean` and `ExecCompleteness.lean` relate the fuel-bounded executor to
 the relational semantics; `EndToEndTransport.lean` composes the lowering chain with
 an x86 instruction step.
+
+Over the `psem.v` mirror: `ComJasminBridgeProgram.lean` states the correspondence
+`CorresSem` with sequencing (`corresSem_append`, `corresSem_exec`), `Copn` over
+registers and flags with `MULX_64`, `ADCX_64` and `CMOVcc_64` results
+(`copn_regs_semIr`), `Cfor` with any body (`corresSem_for`) and `Ccall` from a callee
+body derivation (`ccall_words_semIr`, `ccall_leaf_of_body`).
+`LowCTMirrorTranslate.lean` (`toJasminCmd_translateCmdExt_isSome`) shows that the
+JasminAST output of `LowCTToJasmin.toJasminCmd` on `callFreePlusCall` programs has a
+mirror translation, and `LowCTMirrorCorres.lean` (`toJasminCmd_corresTrans`,
+`toJasminCmd_mirror_exec`) that on `MirrorSimFragment` programs the `RawCode`
+translation and the mirror image run to states related by `MirrorHeapCorr`, given a
+correspondence for each call. `MirrorSimFragment` admits skips, assertions,
+sequences, blocks, function definitions, scalar constants, branches, counted loops,
+literal limb stores, selections within one tower type and admitted calls; it excludes
+`RLetU64Zero`, which lowers to an integer `0` that the mirror rejects at a word type,
+`RWhileNz`, which the `RawCode` translation maps to failure, and `RCloneCall` and
+`RCallN`.
 
 ## Constant time and robust compilation
 

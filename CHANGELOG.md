@@ -4,6 +4,122 @@
 
 Changes since `v0.1.0-alpha.2`.
 
+### 2026-09-15
+
+hax front to LowCT:
+
+- `haxToLowCT_simulates_programT`: program-level simulation for builtin tables whose
+  results are scalars, under `envAgreesRustT`, the argument-relating leaf condition
+  `LeafCallAgreesArgs` and scalar-bound conditions `condsScalar`, for tables
+  implementing neither `index` nor `array_update`.
+- `haxToLowCT_simulates_programL`: the same for `litTower T` of the lowering, which
+  stores literal call arguments in `.TFp` slots with `RLimbStore`, under `simScopeL`
+  and `LitStoreAgrees`; `litTower_nil` and `simScopeL_nil` give the case `T = []`.
+- `haxToLowCT_simulates_full` is restated as a corollary of
+  `haxToLowCT_simulates_program` for programs accepted by `simScope`, with exit-scope
+  invariants; `simFull_runs` instantiates all its hypotheses at `let y = leaf(a); y`.
+- `pipelineAppInvariants_unsat`: no environment and state satisfy
+  `PipelineAppInvariants`.
+- `scripts/vacuous-theorem-ratchet.sh` counts hypotheses quantified over every state
+  without restriction, with baseline 0.
+
+LowCT to JasminAST:
+
+- `rustExecSimulates` and its inline and empty-registry forms take no leaf hypothesis;
+  `rustCallSimulates` and the limb-store, call-N, select and clone-call simulations take
+  their implementation hypotheses at the fuel they use, and
+  `rustExecSimulates_withCalls` at every fuel `≥ 2`.
+- `not_forall_leafImplOk`, `not_forall_leafImplOkNewSid`, `not_forall_callNImplOk`,
+  `not_forall_limbStoreImplOk`, `not_forall_selectImplOk`, `not_forall_cloneImplOk`:
+  the all-fuel forms of the implementation hypotheses are false.
+- `execSopn` gives the pseudo-operations `STORE64`, `CMOV` and `CLONE_TOWER` their heap
+  semantics; `limbStoreImplOk_storeLeafSpec`, `selectImplOk_of_two_le`,
+  `cloneImplOk_of_two_le`, `leafImplOk_storeLeafSpec` and `callNImplOk_storeLeafSpec`
+  state the implementation hypotheses at every fuel `≥ 2`.
+- `translateInstrR` keeps the caller scope at `Ccall` and writes the callee's results to
+  the call's l-values; `leafImplOk_pureLeafEnv` holds for environments of pure
+  functions, `leafImplOkNewSid_addLeafSpec` and `callNImplOk_addCallNLeafSpec` for a
+  bytewise-addition leaf, and `addProg_simulates` instantiates
+  `rustExecSimulates_withCalls` on a program with such a call.
+- `translateCmd_newSid`: `Cfor` keeps the entry scope, so every translated command
+  does; `translateFun_countLoop_eval` runs a function body that writes a variable
+  before, inside and after a counted loop.
+- `toJasminCmd_translateCmdExt_isSome`: `toJasminCmd` output on `callFreePlusCall`
+  programs has a `psem.v` mirror translation; `toJasminCmd_corresTrans` and
+  `toJasminCmd_mirror_exec` relate the `RawCode` run and the mirror run on
+  `MirrorSimFragment`, given a correspondence for each call, with the call rule
+  instantiated at a copying function (`corresTrans_call_copy`).
+- `sboxArray_size` and `invSboxArray_size` are proved by `decide +kernel`.
+
+The `psem.v` mirror:
+
+- `corresSem_append`, `corresSem_exec`: sequencing of the correspondence `CorresSem`
+  over `Sem`, and its reading as a run of `execCmd`.
+- `copn_regs_semIr`: `Copn` over register and flag operands, with `x86AsmSem` giving
+  `MULX_64`, `ADCX_64` and `CMOVcc_64` their result tuples.
+- `corresSem_for`: `Cfor` with any body at `forFold`.
+- `ccall_words_semIr`, `ccall_leaf_of_body`: `Ccall` from a derivation of the callee
+  body.
+- `mulhiLoop_mirror_runBlock`: a mirror loop calling a `MULX` function ends with the
+  word the `runBlock` `MULX` loop leaves.
+
+Leaf oracles:
+
+- `cryptoDialectToJasminCom_denote_eq_of_transport`: the jasmin lowering preserves
+  denotation for every oracle pair related by `LeafTransport`.
+- `semScalar_eq_semScalarL`, `semU_eq_semUL`: the waist semantics at a leaf oracle,
+  `semScalarL` and `semUL`, are `semScalar` and `semU` at `defaultLeaf`.
+- `rustExec_semScalarL_call`, `rustExec_semScalarL_arrLoadLit`: `RustExec` call and
+  literal array-load steps agree with `semScalarL` under `CallAgrees` and
+  `ArrLoadAgrees`.
+- `ascendGLL_sound`: the total abstraction with abstract leaves, with the leaf rules
+  `corresL_call`, `corresL_selectLeaf`, `corresL_arrLoadLitLeaf` and the example
+  `leafK_corres`.
+- `translateDialectFull_denoteWith`, `translateDialectControl_denote_ctlWith`: front
+  preservation at every leaf oracle; `translateDialectFull_denote` and
+  `translateDialectControl_denote_ctl` are their instances at `defaultLeaf`.
+- `semScalarLToJasminCom_denote_eq`: `semScalarL` through the front and the jasmin
+  lowering at an oracle pair related by `LeafTransport`; `leafTransport_leafOfAbs` and
+  `leafK_semScalarLToJasminCom`.
+
+Ascent:
+
+- `corresU_whileFun`, `corresU_whileFun_total`: a terminating `RWhileNz` run
+  corresponds to the exit state `loopFun` of the abstract loop; `sumLoop_corres` and
+  `sumLoop_total` apply them to a summing countdown loop.
+
+Backends:
+
+- `mldsa_ntt_4way_denotation_preserves`, `mlkem_ntt_4way_denotation_preserves`: the
+  ML-DSA and ML-KEM 4-way kernel bodies render to the emitted text and, under
+  `runNtt4way`, write the Cooley–Tukey butterflies of their input chunks in wrapping
+  word arithmetic (`runNtt4way_body`).
+- `sboxSpec64_modEq`: the width-64 Poseidon2 BabyBear S-box satisfies
+  `sboxSpec64 x · 2^(32·6) ≡ x^7 (mod p)` for `x ≤ 1756563332`; `montMulSpec64_exact`
+  states that a REDC step is an exact division when `a·b + (2^32 − 1)·p < 2^64`, and
+  `montMulSpec64_step` its bound and congruence.
+- `mul2625_decode`, `edwardsAdd2625_decode`: the packed Curve25519 multiply
+  `reduce19 (prod19 a b)` decodes to the field product, with no hypothesis on the
+  reduction, and the packed Edwards addition to `ed25519AffineAdd` for a limb vector
+  decoding to `d`;
+  `lmuludq_toNat` gives the 64-bit `VPMULUDQ` lane, and `jccLane_not_dataIndep` and
+  `gatherLane_not_dataIndep` state that the data-independence predicate is false on
+  lane branches and gathers.
+- `lowerAVX512_correct`, `lowerInst_denote`: the AVX-512 instruction semantics
+  `AVX512Inst.denote512` is determined by mnemonic family and width; the
+  `lowerAVX512_*_w*` theorems state the forms without an instruction and the `exts_*`
+  theorems the required CPU extensions.
+- `looped_eq_unrolled_denote` (ARM and RISC-V): the loop interpreters `runALoop` and
+  `runRLoop` of the emitted label, body and back-edge run to the state of the unrolled
+  block when the body decrements the counter.
+- `ArmRegAlloc.reload_sandwich`: after a spill store, a block that does not write the
+  spilled register leaves the reload a no-op.
+- Docstrings of the ARM, RISC-V, vector and tile backends state the content of their
+  theorems (`regProgToArmBytes_spec` relates no bytes to semantics;
+  `RiscvX25519FieldKernel.ladderStep_composition` is block concatenation).
+
+### Earlier unreleased changes
+
 - `JInstr` covers Jasmin's scalar `x86_op` set except the instructions declined for
   constant time: `inc`, `dec`, `clc`, `stc`, `xchg`, three-operand `imul`, one-operand
   `mul` and `imul`, `shld`, `shrd`, `rcl`, `rcr`, `cmovcc` and `setcc` over the sixteen

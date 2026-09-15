@@ -31,6 +31,39 @@ The modules are in `CatCrypt/Crypto/SecureCompilation/Ascent/`, namespace
 map, naming conventions and the choice of tactic, is
 [Ascent/AGENTS.md](CatCrypt/Crypto/SecureCompilation/Ascent/AGENTS.md).
 
+## Status, 2026-09-15
+
+The following statements concern the source and leaf boundaries of the ascent; the
+section [Scope](#scope) gives their hypotheses.
+
+- Data-dependent loops: `corresU_whileFun` relates a terminating `RWhileNz` run to the
+  exit state `loopFun` of the abstract loop, and `corresU_whileFun_total` gives the run
+  when the trip count is below the fuel
+  ([Data-dependent loops as functions](#data-dependent-loops-as-functions)).
+- Leaf calls: `ascendGLL_sound` abstracts `RCall`, `RSelect` with a layout array among
+  its operands, and `RArrLoadLit` from a source that is not a `TArr _ .TU64` layout
+  array, to abstract leaves at `semUL ls fuel`;
+  `semScalarLToJasminCom_denote_eq` carries `semScalarL ls` through the front and the
+  jasmin lowering for every oracle pair related by `LeafTransport`
+  ([Leaf calls](#leaf-calls-the-boundary-of-semscalar)).
+- hax source: `haxToLowCT_simulates_programT` and `haxToLowCT_simulates_programL`
+  simulate programs whose builtins return scalars, the latter with literal call
+  arguments stored in tower slots; both end at `RustExec`
+  ([Simulations from hax source](#simulations-from-hax-source-end-at-rustexec)).
+- Jasmin mirror: `mulhiLoop_mirror_runBlock` relates a `psem.v` mirror derivation of a
+  loop calling a `MULX` function to the `runBlock` run of the unrolled `MULX` loop.
+
+Not covered by any theorem in the package:
+
+- the selector of `RSelect` at the front's `"select"` leaf, and the ascent of
+  array-writing leaves, `RCallSwap`, `RCloneCall`, `RCallN`, `RCallDstThreaded` and
+  `RTupleLoad`;
+- hax programs with renaming aliases, tower-bound conditions, `forFold` or `whileFold`,
+  or a builtin table implementing `index` or `array_update`, and a composition of the
+  hax simulations with the front and the jasmin lowering;
+- a weld of `corresU_whileFun` to a `Com jasminDialect` program, since the emit
+  fragment `IsCoveredSCtl` has no `RWhileNz` arm.
+
 ## Layers
 
 Each row names the modules of a layer and the declarations that carry it. Paths are
@@ -41,10 +74,10 @@ relative to `CatCrypt/Crypto/SecureCompilation/Ascent/`.
 | Correspondence relations | `Corres`, `WhileTop`, `While`, `RunBlockCorres`, `CorresRiscv`, `CorresGeneric`, `Exit` | `Corres` over `semScalar` with `corres_seq`, `corres_weaken`; `CorresU` over `semU`; `CorresWhile`; `CorresJ` over `runBlock` with `corresJ_append`, `corresJ_loop`; `CorresR` over `runRBlock64`; `CorresM`, the machine-generic form, with `corres_eq_corresM`, `corresJ_eq_corresM`, `corresR_eq_corresM`; `CorresE`, `CorresUE` for bodies that throw |
 | Value abstraction | `Corres`, `ExprLeaf`, `HeapAbs`, `StoreRefinement`, `MultiLimb`, `MlkemFieldLeaf`, `Width32Leaf`, `Phases` | `wEnc : BitVec 64 → ZMod 2^64` and the ParamTransfer squares `wEncAdd`, `wEncSub`, `wEncMul`; `SRword`, `SRwordNT`, `SRwordBV`; `ValueAbs` with `SRof`, `SRcarryOf` and the instance theorems `srwordNT_iff_srof`, `srcarry_iff_srcarryOf`; `fqEnc` and `CorresH`; `corres_WA`, `AbsProg` |
 | Leaves over `LowCT` | `Corres`, `ExprLeaf`, `CorresScalar`, `BitwiseOrNot`, `RotateLeaf`, `SelectLeaf`, `ArrStoreLeaf`, `ArrLoadLeaf`, `MlkemFieldLeaf` | `corres_setScalar`, `corres_setScalar_NT`, `corres_setExpr` (arithmetic into `ZMod 2^64`), `corres_setExprBitwise`, `corres_setExprWord` (the `srcClean` word algebra over `BitVec 64`), `corres_setExprOr`, `corres_rotl`, `corres_ctSelect`, `corres_arrStore`, `corres_arrLoad`, `corres_setExpr_fqAdd` |
-| Control and early exit | `Control`, `While`, `WhileTop`, `MlkemPolyFoldCorres`, `Exit` | `corres_for`, `corres_if`, `corres_for_indexed`, `polyAdd_fold_corres`, `corres_while`, `corresU_while`, `pipeline_exceptProg`, `whileExit_sim`, `corresU_while_exit` |
-| Automation and total abstraction | `Ascend`, `AscendDecide`, `AscendMeta`, `Guards`, `Strengthen`, `CorresSolver`, `CorresAttr`, `CorresX86Solver`, `CorresRiscvLeaves`, `CorresRiscvSolver`, `CorresScalar`, `MontBounds`, `InvariantSchemas` | `ascend_sound`, `ascend_expr_sound`, `ascend_bitwise_sound` and the tactics `ascend!`, `ascend_meta`; `ascendG`, `ascendG_sound`; `tsLowCT_sound`, `tsHax_sound`, `Kernel.tsLevel`; the solvers `corres_solve`, `corres_solve_x86`, `corres_solve_rv`, `corres_solve_scalar`; `mont_bound` |
+| Control and early exit | `Control`, `While`, `WhileTop`, `WhileFun`, `MlkemPolyFoldCorres`, `Exit` | `corres_for`, `corres_if`, `corres_for_indexed`, `polyAdd_fold_corres`, `corres_while`, `corresU_while`, `corresU_whileFun`, `corresU_whileFun_total`, `pipeline_exceptProg`, `whileExit_sim`, `corresU_while_exit` |
+| Automation and total abstraction | `Ascend`, `AscendDecide`, `AscendMeta`, `Guards`, `GuardsLeaf`, `Strengthen`, `CorresSolver`, `CorresAttr`, `CorresX86Solver`, `CorresRiscvLeaves`, `CorresRiscvSolver`, `CorresScalar`, `MontBounds`, `InvariantSchemas` | `ascend_sound`, `ascend_expr_sound`, `ascend_bitwise_sound` and the tactics `ascend!`, `ascend_meta`; `ascendG`, `ascendG_sound`; `ascendGLL`, `ascendGLL_sound`; `tsLowCT_sound`, `tsHax_sound`, `Kernel.tsLevel`; the solvers `corres_solve`, `corres_solve_x86`, `corres_solve_rv`, `corres_solve_scalar`; `mont_bound` |
 | Machine-level leaves and value results | `RunBlockCorres`, `EcMultiLimbCapstone`, `EcMultiLimbMul`, `MpnAdxCorres`, `FieldReduce`, `CorresX86Solver`, `CorresRiscvLeaves`, `Capstone`, `CapstoneField`, `EcMultiLimbEmit` | `corresJ_sbb`, `corresJ_adc`, `srcarryLimbs_recompose`; `sbbLimbs_spec`, `corresJ_sbbChain`; `mulLimbs_spec`, `corresJ_adxBlock`; `mpnAdd_runBlock`, `mpnSub_runBlock`; `montRedc_spec`, `corresJ_montRedc4Block`; `corresJ_movX` … `corresJ_mulxX`; `corresR_add` … `corresR_slli`; `sbbChain_emit_realizes_abstract_CF` |
-| Ties between machines, and program logics | `CorresBridge`, `CorresBridgeArith`, `CorresBridgeArithComplete`, `CorresBridgeMem`, `CorresBridgeMemStore`, `CorresBridgeCtrl`, `CorresMachineTie`, `CorresMachineTieFragments`, `JasminComRunBlockTie`, `JasminComRunBlockSeq`, `JasminComRunBlockRealloc`, `XrunRunBlockTie`, `CorresHoare`, `RunBlockMvcgen`, `RunBlockMvcgenMorphism`, `JStateSepLogic` | `corresJ_forget_to_corres`, `coRefine`; `arith_middle_tie_seq_nonTmp`, `mem_store_middle_tie_full`, `for_middle_tie_gen`; `SimTie`, `simTie_seq`; `lowerBlock_tie`, `lowerBlockR_tie`; `xrun_runBlock_tie`; `corresJ_iff_triple`, `runBlockM_triple_iff`, `Spec.wp_theta`, `RunBlockTriple.frame` |
+| Ties between machines, and program logics | `CorresBridge`, `CorresBridgeArith`, `CorresBridgeArithComplete`, `CorresBridgeMem`, `CorresBridgeMemStore`, `CorresBridgeCtrl`, `CorresMachineTie`, `CorresMachineTieFragments`, `JasminComRunBlockTie`, `JasminComRunBlockSeq`, `JasminComRunBlockRealloc`, `JasminMirrorTie`, `XrunRunBlockTie`, `CorresHoare`, `RunBlockMvcgen`, `RunBlockMvcgenMorphism`, `JStateSepLogic` | `corresJ_forget_to_corres`, `coRefine`; `arith_middle_tie_seq_nonTmp`, `mem_store_middle_tie_full`, `for_middle_tie_gen`; `SimTie`, `simTie_seq`; `lowerBlock_tie`, `lowerBlockR_tie`; `forFold_eq_loopStep`, `mulhiLoop_mirror_runBlock`; `xrun_runBlock_tie`; `corresJ_iff_triple`, `runBlockM_triple_iff`, `Spec.wp_theta`, `RunBlockTriple.frame` |
 | Descent contracts in the ascent's shape | `CorresDescent`, `CorresDescentX86`, `CorresDescentRiscv`, `XrunRunBlockTie` | `frefines_ret`; `CorresMPost`, `corres_of_refines_x86`; `corresR_of_refines`; `corres_of_refines_x86_runBlock` |
 | Welds to the emit leg and to sources | `EmitBridge`, `FeSubEndToEnd`, `FeAddEndToEnd`, `KeystoneControl`, `CondKernelCapstone`, `ArrStoreEmit`, `MlkemPolyAddCapstone`, `LegWeld`, `LegWeldDemo`, `FeSubSourceTower`, `LoopSourceLeaf`, `LoopSourceTower`, `PipelineWeld`, `SourceBridge`, `CorresScalar` | `keystone_emit`, `keystone_emit_NT`; `legWeld`, `legWeld_lower`; `feSub_source_to_bytes_tower`, `feAdd_source_to_bytes_tower`; `feSub_raw_source_to_bytes`, `feSubImp_raw_source_to_bytes`; `corresScalar_frontDenote_two`; `corresScalar_jasminDenote`, `feSub_symbolic_source_to_jasmin` (`FeSubSymbolic`) |
 | Demonstrations | `Demos/*` | see below |
@@ -290,34 +323,68 @@ whose `sub` accepts only `int` arguments, while `haxOutcomeWord` reads only `uin
 values; its `hBridge` therefore fails for a kernel whose result is computed by `sub` at
 that table.
 
-### Simulations from hax source do not reach the arithmetic kernels
+### Simulations from hax source end at `RustExec`
 
 `haxToLowCT` lowers a builtin call to a leaf call (`RCall`, or `RCallSwap` for a
 two-component result) or, for `array_update` and `index`, to `RArrStore` and
 `RArrLoad`. It produces `RScalarSetExpr` only for the index shift of a `forFold` with
-a nonzero start. The program-level simulation
-`haxToLowCT_simulates_program` (`CatCrypt/Crypto/Hax/HaxToLowCTSim_Program.lean`) takes
-`FullSimPreconds`, whose field `leafScalar` states that no builtin result decodes as a
-scalar. It therefore does not reach the `RScalarSetExpr` kernels that `legWeld` and the
-value leaves abstract. `raw_source_to_bytes_of_program` and `welding_program` are stated
-for arbitrary programs and have no instance in the package.
+a nonzero start, so no lowered hax program contains the `RScalarSetExpr` kernels that
+`legWeld` and the value leaves abstract; the arithmetic of a hax program is carried by
+the leaf specification of its `RCall` nodes. `raw_source_to_bytes_of_program` and
+`welding_program` are stated for arbitrary programs and have no instance in the
+package.
 
-`haxToLowCT_simulates_full` (`HaxToLowCTSim_Full.lean`) is the corollary of
-`haxToLowCT_simulates_program` for a program accepted by `simScope` from an entry
-scope `Γ`, an entry state bound on `Γ` and fresh on the program's scalar names, and
-the bridge-level preconditions `FullSimPreconds`, `ProjPreconds` and
-`ProgramSimArms`; its conclusion adds the exit-scope invariants. `simFull_runs`
-instantiates every hypothesis at `let y = leaf(a); y` with a builtin table whose
-builtin `leaf` returns the constant `.array []`. Because `FullSimPreconds.leafScalar`
-excludes scalar-decoding builtin results, programs calling arithmetic builtins are
-the scope of `haxToLowCT_simulates_programT`
-(`CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramTower.lean`), stated under
-`LeafCallAgreesArgs`. The same side conditions quantified over every name, state
-and argument list are unsatisfiable: `HaxToLowCTSim_Program.lean` refutes them by
+Three program-level simulations conclude, for a program accepted by a scope checker
+and an entry state related to the entry environment, that every successful source run
+`evalImp` is matched by a `RustExec` run of the lowered program to a state related to
+the exit environment:
+
+* `haxToLowCT_simulates_program` (`CatCrypt/Crypto/Hax/HaxToLowCTSim_Program.lean`)
+  takes `FullSimPreconds`, whose field `leafScalar` states that no builtin result
+  decodes as a scalar; a builtin table implementing arithmetic does not satisfy it.
+  `haxToLowCT_simulates_full` (`CatCrypt/Crypto/Hax/HaxToLowCTSim_Full.lean`) is its
+  corollary for a program with `SimWellFormed Γ e`, an entry state bound on `Γ` and
+  fresh on the program's scalar names, and the preconditions `FullSimPreconds`,
+  `ProjPreconds` and `ProgramSimArms`; its conclusion adds the exit-scope invariants.
+  `simFull_runs` instantiates every hypothesis at `let y = leaf(a); y` with a builtin
+  table whose builtin `leaf` returns the constant `.array []`.
+* `haxToLowCT_simulates_programT` (`CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramTower.lean`)
+  relates environment and state by `envAgreesRustT`, which asks scalar agreement only at
+  names without a tower binding, and replaces `FullSimPreconds` by `LeafCallAgreesArgs`:
+  when the argument values are related to the tower slots the call reads, the builtin's
+  result is related to the leaf output. It requires `condsScalar` (every `if` and
+  `while` condition is a scalar-binding name) and a builtin table implementing neither
+  `array_update` nor `index`.
+* `haxToLowCT_simulates_programL` (`CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramLit.lean`)
+  is the same statement for `litTower T` of the lowering, which stores each literal
+  bound to a name of `T` into a `.TFp` slot with `RLimbStore`, so that a call can read a
+  literal argument. Its scope checker is `simScopeL`, and it adds the leaf condition
+  `LitStoreAgrees`. `litTower_nil` and `simScopeL_nil` recover the lowering and
+  `simScope` at `T = []`.
+
+The side conditions of the call arms quantified over every name, state and argument
+list are unsatisfiable: `HaxToLowCTSim_Program.lean` refutes them by
 `hScalarFresh_all_unsat`, `hDestBoundAll_unsat`, `hArgsEnvAll_unsat`,
-`hArgsBoundAll_unsat` and `hArgsFreshAll_unsat`. `EmitBridge.welding` takes its
-`RustExec` premise as a hypothesis, and `welding_program` supplies that premise
-from `haxToLowCT_simulates_program`.
+`hArgsBoundAll_unsat` and `hArgsFreshAll_unsat`, and `pipelineAppInvariants_unsat`
+refutes the bundle `PipelineAppInvariants`. `EmitBridge.welding` takes its `RustExec`
+premise as a hypothesis, and `welding_program` supplies that premise from
+`haxToLowCT_simulates_program`.
+
+The instances of `haxToLowCT_simulates_programT` and `haxToLowCT_simulates_programL`
+at a builtin table with arithmetic, bitwise, shift and rotation builtins on `int`
+values below `2 ^ 64` (`arith_haxToLowCT_simulates_programT`,
+`arith_haxToLowCT_simulates_programL`), their composition with A-normalisation, and
+their application to the extracted SHA-256 functions `maj` and `big_sigma0` (`maj_runs`,
+`bigSigma0_runs`, each at one input) are in the CatCrypt development repository, not in
+this package. Those statements end at the `RustExec` run of the lowered normal form; no
+theorem composes them with the front and the jasmin lowering.
+
+`simScope` and `simScopeL` reject a renaming alias `let a = b` with `a ≠ b` and the
+fold forms `forFold` and `whileFold`; `condsScalar` rejects an `if` or `while` condition
+bound in the tower, such as the result of a comparison builtin; and
+`haxToLowCT_simulates_programT` and `haxToLowCT_simulates_programL` require a builtin
+table without `index` and `array_update`. No simulation in the package covers programs
+with these constructs.
 
 The exit-flag lowering `haxToLowCTK` (`CatCrypt/Crypto/Hax/HaxToLowCTExit.lean`), with
 scalar operations enabled, lowers `let x = op(a, b)` for `add`, `sub` and the unsigned
@@ -476,10 +543,24 @@ alongside the default statement, which is unchanged:
    and selects over it through `"select"`; `leafK_corres` refines it to `leafKProg` with
    no guard.
 
-The front preservation theorems `translateDialectFull_denote` and
-`translateDialectControl_denote_ctl` are stated at `catCryptDenote` and `semScalar`
-only, so no theorem relates `semScalarL ls` to `catCryptDenoteWith ls`. The leaf rules
-of the ascent write a `u64` destination: a leaf writing an array (`"arrStore:i"`, or
+The front preservation theorems hold at every leaf oracle.
+`translateDialectFull_denoteWith` and `translateDialectControl_denote_ctlWith`
+(`Dialects/TranslateDialectScalarDenote.lean`) state, for an `IsCoveredS` and an
+`IsCoveredSCtl` body respectively, that the dialect prefix the front emits, denoted
+under `catCryptDenoteWith ls`, agrees with `semScalarL ls` from a consistent entry
+state; `translateDialectFull_denote` and `translateDialectControl_denote_ctl` are their
+instances at `defaultLeaf`. `semScalarLToJasminCom_denote_eq`
+(`VIR/SemScalarLToJasminCom.lean`) composes the control form with
+`cryptoDialectToJasminCom_denote_eq_of_transport`: for oracles `ls` and `jls` related by
+`LeafTransport`, the lowered program denoted under `jasminDenoteWith jls` computes the
+transport of the value `semScalarL ls` leaves in the tracked output. `jleafOfAbs fs`
+is the jasmin oracle of a family of abstract leaves on `u64` destinations,
+`leafTransport_leafOfAbs` relates it to `leafOfAbs fs`, and
+`leafK_semScalarLToJasminCom` is the composed statement at `leafK`. Since the
+`"select"` leaf does not receive the selector (item 1), no oracle computes the value
+`RustExec` gives `RSelect` at that node.
+
+The leaf rules of the ascent write a `u64` destination: a leaf writing an array (`"arrStore:i"`, or
 `RSelect` into an array) stays unsupported, as do `RCallSwap`, `RCloneCall`, `RCallN`,
 `RCallDstThreaded` and `RTupleLoad`. The `RustExec` bridge covers `RCall` and
 `RArrLoadLit`.

@@ -277,6 +277,13 @@ or `corresR_of_refines`.
 - A hax program accepted by the scope checker `simScope`:
   `haxToLowCT_simulates_program`. Its image contains no `RScalarSetExpr` from
   arithmetic, and its `FullSimPreconds.leafScalar` excludes scalar-valued builtins.
+- A hax program whose builtins return scalars: `haxToLowCT_simulates_programT`
+  (`CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramTower.lean`) under `LeafCallAgreesArgs`
+  and `condsScalar`, and, with literal call arguments stored in tower slots by
+  `litTower`, `haxToLowCT_simulates_programL`
+  (`CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramLit.lean`) under `simScopeL` and
+  `LitStoreAgrees`. Both require a builtin table implementing neither `index` nor
+  `array_update`, and both end at `RustExec`.
 - A hax function with early returns, through the exit-flag lowering:
   `haxToLowCTFn_simulates` (`CatCrypt/Crypto/Hax/HaxToLowCTSim_Exit.lean`), stated over
   `Hax.denote'`.

@@ -34,6 +34,7 @@ modules share a namespace other than their file name: `TranslateDialectScalarDen
 |---|---|---|
 | `TranslateDialectScalar.translateDialectFull_denote`, `TranslateDialectScalar.translateDialectControl_denote` | `IsCoveredS` | `TranslateDialectScalarDenote.lean` |
 | `TranslateDialectScalar.translateDialectControl_denote_ctl` | `IsCoveredSCtl` (straight line, `RFor`, `RIfNz`) | same |
+| `TranslateDialectScalar.translateDialectFull_denoteWith`, `TranslateDialectScalar.translateDialectControl_denote_ctlWith` | `IsCoveredS`, `IsCoveredSCtl`, at a leaf oracle `ls`: `catCryptDenoteWith ls` against `semScalarL ls`; `translateDialectFull_denote` and `translateDialectControl_denote_ctl` are their instances at `defaultLeaf` | same |
 | `TranslateDialectScalar.rWhileNz_whole_denote` | an `RWhileNz` over an `IsCoveredSCtl` body | `TranslateDialectWhileDenote.lean` |
 | `TranslateDialectScalar.rCond_whole_denote` | a guarded conditional over an `IsCoveredSCtl` block | `TranslateDialectCondDenote.lean` |
 | `TranslateDialectScalar.transU_denote` | `IsCoveredSU`, closed under `RSeq`, `RBlock`, `RFor`, guarded `RIfNz … RSkip` and `RWhileNz`, against the fuel-bounded semantics `semU` | `TranslateDialectUnifiedDenote.lean` |
