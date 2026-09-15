@@ -23,7 +23,10 @@ The translation is structured as:
 3. `translateInstrR` — instructions to RawCode
 4. `translateCmd` — command sequences
 
-Function calls are handled by inlining (matching the Rocq approach).
+A function call `Ccall lvs f args` evaluates `args` in the caller scope `sid`, runs
+the translated body of `f` in the callee scope `(freshId sid).2`, and writes the
+values the body returns to `lvs` in scope `sid`; the instructions after the call are
+translated in scope `sid`.
 
 ## References
 
@@ -45,9 +48,10 @@ We work in `RawCode TypedValue` for expressions and `RawCode (ULift Unit)` for
 statements. All heap access goes through `TypedValue` to avoid type-level
 dependence on `Location.ty`. -/
 
-/-- Translation environment: translated function bodies for inlining. -/
+/-- Translation environment: for each function, the translated body as code that takes
+    the callee scope and the argument values and returns the result values. -/
 structure TransEnv where
-  fdefs : FunName → Option (ScopeId → List TypedValue → RawCode (ULift Unit))
+  fdefs : FunName → Option (ScopeId → List TypedValue → RawCode (List TypedValue))
 
 /-- Translation result: updated scope + code. -/
 structure TransResult where
@@ -274,13 +278,13 @@ def translateInstrR (env : TransEnv) (sid : ScopeId) (fuel : Nat) :
     { newSid := sid',
       code := translateForLoop env sid v.var (loopRange range) body fuel }
   | .Cwhile _ _ _ => { newSid := sid, code := .fail }
-  | .Ccall _ii _lvs fn args =>
-    let (sid', sid'') := freshId sid
-    { newSid := sid',
+  | .Ccall _ii lvs fn args =>
+    { newSid := sid,
       code := .bind (translatePExprAll sid args) fun argVals =>
         match env.fdefs fn with
         | some body =>
-          .bind (body sid'' argVals) fun _ => .ret ⟨()⟩
+          .bind (body (freshId sid).2 argVals) fun results =>
+            translateWriteLVals sid lvs results
         | none => .ret ⟨()⟩ }
 
 /-- Translate a for-loop by unrolling. -/
@@ -335,8 +339,7 @@ def buildTransEnv (prog : JasminProg) (fuel : Nat) : TransEnv :=
   prog.funcs.foldl (fun env fd =>
     { fdefs := fun fn =>
         if fn == fd.name then
-          some (fun sid args =>
-            .bind (translateFun env fd sid args fuel) fun _ => .ret ⟨()⟩)
+          some (fun sid args => translateFun env fd sid args fuel)
         else env.fdefs fn }
   ) { fdefs := fun _ => none }
 

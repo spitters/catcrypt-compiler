@@ -1255,8 +1255,8 @@ def jasminFuel : LowCT → Nat
   | .RCallDstThreaded _ _ _ => 2
 
 /-- `callFree c = true` iff `c` contains no `RCall`, `RCloneCall`, or `RLimbStore`.
-    Call-free programs translate to instruction lists with no `Ccall` instructions,
-    so `translateCmd` never invokes `freshId` and `newSid` stays equal to `sid`. -/
+    Call-free programs translate to instruction lists with no `Ccall` and no `Cfor`
+    instructions, so `newSid` stays equal to `sid`. -/
 def callFree : LowCT → Bool
   | .RSkip | .RScalarSet _ _ => true
   | .RSeq c1 c2 | .RIfNz _ c1 c2 => callFree c1 && callFree c2
@@ -1400,14 +1400,14 @@ open CatCrypt.Core
 open CatCrypt.Deep
 open CatCrypt.Prob
 
-/-- **Leaf implementation hypothesis**: for each `RCall f dest args`, the
-    translated `Ccall` instruction (run from any heap encoding `rs`) produces
-    a heap where `dest` holds `leafSpec f ...` and all other tower locs are unchanged.
+/-- **Leaf implementation hypothesis**: for each `RCall f dest args` whose arguments
+    are bound at their types, the translated `Ccall` instruction (run from any heap
+    encoding `rs`) produces a heap where `dest` holds `leafSpec f ...` and all other
+    tower locations and the scalar cells are unchanged.
 
-    This axiomatises what the concrete Jasmin function bodies in `env` must do.
-    Note: `translateInstrR` ignores the `_lvs` in `Ccall`, so this condition
-    cannot be derived from the translation alone — it is a semantic assumption
-    about `env`. -/
+    This is the condition on the function bodies in `env`: the `Ccall` translation
+    writes the values the body of `f` returns to `dest`, so the hypothesis states
+    that those values are the leaf specification of the arguments. -/
 def LeafImplOk (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat) : Prop :=
   ∀ (f : String) (dest : Located) (args : List Located)
     (rs0 : RustState) (sid : ScopeId) (heap0 : Heap)
@@ -1416,6 +1416,7 @@ def LeafImplOk (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat) : Prop :=
     HeapInv rs0 heap0 sid →
     rs0.rsTower dest.locVar = some ⟨dest.locDst, oldDestV⟩ →
     argList = args.filterMap (fun a => rs0.rsTower a.locVar) →
+    (∀ a ∈ args, ∃ v, rs0.rsTower a.locVar = some ⟨a.locDst, v⟩) →
     ∃ heap1 : Heap,
       (translateCmd env
         [.Ccall .DoNotInline [locToLVal dest] { name := f } (args.map locToPExpr)]
@@ -1878,7 +1879,7 @@ lemma callFree_toJasmin_newSid
   | RCallDstThreaded _ _ _ => simp [callFree] at hCF
 
 /-- `RLimbStore` translates to a single `.Copn` instruction, which preserves
-    `newSid` (only `.Ccall` and `.Cfor` advance it).  Therefore the threaded
+    `newSid` (only `.Cfor` advances it).  Therefore the threaded
     newSid is identical to the input `sid` for any fuel ≥ 2.
 
     Companion to `callFree_toJasmin_newSid`: the latter is gated by `callFree`
@@ -2130,7 +2131,7 @@ lemma translateCmd_cif_newSid
     ## Hypotheses
 
     * `hCF : callFree c = true` — excludes `RCall`, `RCloneCall`, `RLimbStore`
-      (those advance `newSid`; without them `newSid = sid` throughout)
+      (their leaf hypotheses are separate; `rustExecSimulates_withCalls` admits them)
     * `hSSS : scalarSetsSmall c = true` — all `RScalarSet x v` have `v < 2^64`
     * `hSInv : ScalarInv rs heap sid` — heap correctly encodes `rsScalar`
     * `hBounded : ScalarsBounded rs` — all scalars fit in 64 bits
@@ -2494,7 +2495,7 @@ lemma rustCallSimulates
       ScalarInv rs' heap' sid ∧
       ScalarsBounded rs' := by
   cases hExec with
-  | call f' dest' args' rs'' oldDestV argList hLookup hArgs =>
+  | call f' dest' args' rs'' oldDestV argList hLookup hArgs hArgsT =>
     have hTower : rs.rsTower dest.locVar = some ⟨dest.locDst, oldDestV⟩ := by
       unfold locatedLookup at hLookup
       split at hLookup
@@ -2507,7 +2508,7 @@ lemma rustCallSimulates
         · simp at hLookup
       · simp at hLookup
     obtain ⟨heap1, hEval, hDest, hOtherTower, hScalarPreserve⟩ :=
-      hLeaf f dest args rs sid heap oldDestV argList hInv hTower hArgs
+      hLeaf f dest args rs sid heap oldDestV argList hInv hTower hArgs hArgsT
     refine ⟨heap1, ?_, ?_, ?_, ?_⟩
     · simp only [toJasminCmd_RCall]; exact hEval
     · -- HeapInv after call
@@ -3127,17 +3128,15 @@ theorem rustExecSimulates_with_inlines
 
 /-! ### `RCall` at the threaded `newSid`
 
-`translateInstrR .Ccall` returns `newSid := (freshId sid).1`, so the
-instructions after a call are translated at a scope different from `sid`,
-and the call-free rewrite `(translateCmd c sid fuel).newSid = sid` does not
-hold for a program containing `RCall`. The statements below post the
-invariants at the threaded `newSid`, from the leaf oracle `LeafImplOkNewSid`.
+The statements below post the invariants at the scope `newSid` threaded by
+`translateCmd`, from the leaf oracle `LeafImplOkNewSid`. `translateInstrR .Ccall`
+returns `newSid := sid`, so for a call the threaded scope is the caller's scope
+(`translateCmd_ccall_newSid` in `LowCTToJasminImplOk`).
 -/
 
 /-- **Leaf oracle at the post-call scope**: like `LeafImplOk`, but the heap
-    postcondition is stated at the scope `newSid` of the `Ccall` translation
-    (equal to `(freshId sid).1` for `fuel ≥ 1`) rather than at the caller's
-    `sid`, and it covers the scalar cells as well as the tower cells.
+    postcondition is stated at the scope `newSid` of the `Ccall` translation,
+    and it covers the scalar cells as well as the tower cells.
 
     The premise `ScalarInv rs0 heap0 sid` ties the scalar cells of the
     pre-heap to `rs0`; without it the postcondition `ScalarInv rs' heap1 newSid`
@@ -3152,6 +3151,7 @@ def LeafImplOkNewSid (leafSpec : LeafSpec) (env : TransEnv) (fuel : Nat) : Prop 
     ScalarInv rs0 heap0 sid →
     rs0.rsTower dest.locVar = some ⟨dest.locDst, oldDestV⟩ →
     argList = args.filterMap (fun a => rs0.rsTower a.locVar) →
+    (∀ a ∈ args, ∃ v, rs0.rsTower a.locVar = some ⟨a.locDst, v⟩) →
     ScalarsBounded rs0 →
     let newSid := (translateCmd env
       [.Ccall .DoNotInline [locToLVal dest] { name := f } (args.map locToPExpr)]
@@ -3192,7 +3192,7 @@ lemma rustCallSimulates_newSid
       ScalarInv rs' heap' newSid ∧
       ScalarsBounded rs' := by
   cases hExec with
-  | call f' dest' args' rs'' oldDestV argList hLookup hArgs _ =>
+  | call f' dest' args' rs'' oldDestV argList hLookup hArgs hArgsT =>
     have hTower : rs.rsTower dest.locVar = some ⟨dest.locDst, oldDestV⟩ := by
       unfold locatedLookup at hLookup
       split at hLookup
@@ -3205,7 +3205,8 @@ lemma rustCallSimulates_newSid
         · simp at hLookup
       · simp at hLookup
     -- Apply LeafImplOkNewSid (which gives HeapInv/ScalarInv at newSid).
-    have hOk := hLeafN f dest args rs sid heap oldDestV argList hInv hSInv hTower hArgs hBounded
+    have hOk :=
+      hLeafN f dest args rs sid heap oldDestV argList hInv hSInv hTower hArgs hArgsT hBounded
     obtain ⟨heap1, hEval, hInvNew, hSInvNew, hBNew⟩ := hOk
     refine ⟨heap1, ?_, hInvNew, hSInvNew, hBNew⟩
     simp only [toJasminCmd_RCall]; exact hEval
@@ -3213,14 +3214,14 @@ lemma rustCallSimulates_newSid
 /-! ### `RCloneCall` at the threaded `newSid`
 
 `RCloneCall` lowers to `[Copn(CLONE_TOWER), Ccall]`.  The leading `Copn`
-keeps `newSid = sid` and the trailing `Ccall` advances it, so the
-simulation composes `CloneImplOk` with `rustCallSimulates_newSid`. -/
+keeps `newSid = sid`, so the simulation composes `CloneImplOk` with
+`rustCallSimulates_newSid`. -/
 
 /-- The `newSid` after lowering `RCloneCall` to Jasmin coincides with
     the `newSid` after lowering the inner `RCall` (since the leading
     `Copn` for the clone preserves `newSid`).  Mirrors
-    `limbStore_toJasmin_newSid` for the Copn-step and propagates the
-    Ccall's `newSid` advance through `translateCmd_append_newSid`. -/
+    `limbStore_toJasmin_newSid` for the Copn-step and composes it with the
+    `Ccall` through `translateCmd_append_newSid`. -/
 lemma cloneCall_toJasmin_newSid
     (cloneVar : String) (cloneTy : TowerType) (oldDest : Located)
     (innerF : String) (dest : Located) (args : List Located)
@@ -3255,12 +3256,12 @@ lemma cloneCall_toJasmin_newSid
   simp only [List.length_cons, List.length_nil, Nat.zero_add]
 
 /-- **`rustCloneCallSimulates_newSid`**: simulates an `RCloneCall`
-    instruction with the post-state stated at the threaded `newSid`
-    (i.e. `(freshId sid).1`, the scope after the trailing `Ccall`).
+    instruction with the post-state stated at the threaded `newSid`, the scope
+    after the trailing `Ccall`.
 
     Combines `CloneImplOk` at `fuel` (for the leading `Copn(CLONE_TOWER)`,
     which preserves `newSid = sid`) with `rustCallSimulates_newSid` at
-    `fuel - 1` (for the trailing `Ccall`, which advances `newSid`).
+    `fuel - 1` (for the trailing `Ccall`).
 
     Mirrors `rustCloneCallSimulates` with `LeafImplOkNewSid` in place of
     `LeafImplOk` on the inner call. -/
@@ -3339,7 +3340,7 @@ lemma rustCloneCallSimulates_newSid
         cases n <;> simp only [translateCmd]
     -- Apply rustCallSimulates_newSid for the inner call at sid (since the
     -- clone preserves newSid = sid).  This posts at the inner-call's
-    -- threaded newSid (= (freshId sid).1), which by `cloneCall_toJasmin_newSid`
+    -- threaded newSid, which by `cloneCall_toJasmin_newSid`
     -- coincides with the full RCloneCall translation's newSid.
     obtain ⟨heap2, hEvalCall, hInv2, hSInv2, hB2⟩ :=
       rustCallSimulates_newSid N leafSpec env (fuel - 1) hLeafN innerF dest args
@@ -3373,10 +3374,10 @@ namespace RustExecWithCalls
     `RLimbStore`s or single `RCloneCall`s.
 
     `RLimbStore` lowers to one `.Copn`, which keeps `newSid = sid`
-    (`limbStore_toJasmin_newSid`); `RCall` lowers to one `.Ccall`, which
-    advances it; `RCloneCall` lowers to `[Copn(CLONE_TOWER), Ccall]`. At an
-    `RIfNz` the invariants must survive the scope advance through both branches,
-    which `BranchScopeMerges` states.
+    (`limbStore_toJasmin_newSid`); `RCall` lowers to one `.Ccall`;
+    `RCloneCall` lowers to `[Copn(CLONE_TOWER), Ccall]`. At an `RIfNz` the
+    invariants must hold at the scope threaded through both branches, which
+    `BranchScopeMerges` states.
 
     `RFor`, `RBlock`, `RLetZero`, `RLetU64Zero` and `RCallSwap` are admitted only
     call-free; `RWhileNz` and the constructors with `whileFree = false` are
@@ -3608,7 +3609,7 @@ end RustExecWithCalls
     * single `RCall`: closed via `rustCallSimulates_newSid`.
     * single `RLimbStore`: closed via `rustLimbStoreSimulates`
       after the `newSid = sid` rewrite (limb store is `.Copn` which preserves
-      `newSid`, unlike `.Ccall`).  Requires `hLimb : LimbStoreImplOk`.
+      `newSid`).  Requires `hLimb : LimbStoreImplOk`.
     * single `RCloneCall`: closed via
       `rustCloneCallSimulates_newSid`.  Requires `hClone : CloneImplOk`
       and a runtime well-typedness witness `hCloneWT`.
