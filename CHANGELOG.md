@@ -47,6 +47,15 @@ Block lowering framework:
   p = 2013265921 on the Poseidon2 multiply (`bbReduce_toNat_eq_mod`, `babyBear`),
   and `Algebraic/FieldWord/KoalaBear.lean` at p = 2130706433 with five folds
   (`reduceW_toNat`, `koalaBear`).
+- `VIR/MultiBlockLowering.lean`: `MultiBlockLoweringData d d'` maps a source type to
+  a list of target types and each op to a closed multi-result block over the
+  flattened argument registers; `lowerMulti` splices the blocks through a renaming
+  accumulator, and `multiFundamental_on` gives
+  `(L.lowerMulti c).denote (flatVal enc V) = enc (c.denote V)` for covered programs
+  from the block square alone, with `multiFundamentalM_on` for multi-result sources
+  and `comp`/`comp_fundamental` for the composition of two multi-value lowerings.
+  `VIR/MultiBlockLoweringToy.lean` lowers 128-bit additions to two 64-bit registers
+  with a carry (`dwLowering_fundamental`, `prog_lowered`).
 
 x86 backend:
 
