@@ -955,3 +955,4 @@ CatCrypt.Tactics.WP
 CatCrypt.Crypto.Hax.HaxToLowCTSim_Full
 CatCrypt.Crypto.SecureCompilation.ThirSboxRange
 CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.ConsumerDemo
+CatCrypt.Crypto.SecureCompilation.VIR.SemScalarLToJasminCom
