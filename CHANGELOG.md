@@ -59,6 +59,15 @@ Block lowering framework:
 
 x86 backend:
 
+- `X86Backend/ToLprogFaithfulConst.lean`: the physical faithfulness of
+  `Com.toLprogPhysAbi` extends from same-width binary `regArith` programs to programs
+  that also load constants: `UniformRegArithConst`, `CoverDataConst` (the old cover
+  data embeds through `CoverData.toConst`), `physBodyElem_regConst` (a constant
+  binding becomes one `MOV dst, #n`), `ConstBinding.maintains`, and
+  `toLprogPhysAbi_faithful_uniformConst` with its `_twoPtr` and `_epilogue` forms,
+  whose conclusions are those of the `_uniform` theorems. Immediate shifts and
+  programs mixing machine widths are outside it.
+
 - Register-count shifts from the gather's two-source `regArith .shr`/`.shl`/`.sar` export
   lower to one `.shrx`/`.shlx`/`.sarx` instruction: `lowerShiftRegJ` is the first
   alternative of `lowerAluJ2` and `lowerAluJ2InPlace` (`lowerAluJ2_shr_reg`,
