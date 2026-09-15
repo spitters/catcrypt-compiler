@@ -65,6 +65,17 @@ Block lowering framework:
   writes the BabyBear width-16 permutation as a step list, proves coverage by
   induction on the list (`run_covered`) and gives `permComAt_lowerK_denote`;
   `Algebraic/Poseidon2BabyBearEmit.lean` renders it (`permAsm`, `hasUnhandled`).
+- `Algebraic/FieldLimbs/Curve25519.lean`: `ZMod (2^255 - 19)` as four canonical
+  little-endian 64-bit limbs (`enc`, `enc_injective`) and constant-time
+  multi-result `jasminDialect` blocks with value theorems: `addBlk_denote`,
+  `subBlk_denote`, `negBlk_denote`, `mulBlk_denote` (4×4 schoolbook product, folds by
+  2^256 ≡ 38 and two select-based conditional subtractions), `sqrBlk_denote`,
+  `constBlk_denote`, `copyBlk_denote`; the blocks use `regArith`, `regConst`,
+  `mulhi`, `addCarryLo`/`addCarryHi` and `select`.
+  `Algebraic/FieldToJasminLimbs25519.lean`: the `MultiBlockLoweringData` from the
+  prime fragment of `fieldDialect` at 2^255 − 19 to four registers per element
+  (`loweringL`, `GoodL`, `blockSquareL`, `fieldToJasminLimbs_denote`), with the
+  example `mulAddProg_lowered` for `x·y + z`.
 
 x86 backend:
 
