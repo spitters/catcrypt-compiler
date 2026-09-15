@@ -17,8 +17,10 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeArrIdx
 and maps every other instruction to `none`. `translateInstrRExt` translates, in
 addition, the other shapes `JasminPrint.lowerExpr` emits: the rotate `Copn`, the
 counted `Cfor` of `JForProg`, the leaf `Ccall`, the register-index array read
-`Pget` and the array write `Laset`. It agrees with `translateInstrR` wherever
-that is defined (`translateInstrRExt_of_translateInstrR`).
+`Pget` and the array write `Laset`, together with the `Cif` and `Cwhile` of the
+`LowCT` lowering, their word comparisons `Oeq`/`Oneq` and the byte-array
+initialiser `Parr_init`. It agrees with `translateInstrR` wherever that is defined
+(`translateInstrRExt_of_translateInstrR`).
 
 ## Translation choices
 
@@ -29,6 +31,8 @@ that is defined (`translateInstrRExt_of_translateInstrR`).
   Jasmin's type checker inserts (`ComJasminBridgeArrIdx.idxExpr`).
 * The JasminAST `Pget`/`Laset` carry no alignment; the mirror image is `Unaligned`.
 * A `Cfor` range bound `n : Nat` translates to `Pconst n`.
+* `Parr_init n` (an `n`-byte array) translates to `Parr_init U8 n`, and `Cwhile`
+  to the mirror loop with `NoAlign`.
 
 ## Image theorems
 
@@ -87,13 +91,30 @@ def translateIdx : APExpr → Option MPexpr
 
 /-! ## §2. Expressions and l-values -/
 
-/-- `translatePExpr` extended by variables of array type and by the array read
-    `Pget`. -/
+/-- `translateSOp2` extended by the word comparisons `Oeq` and `Oneq`, which the
+    mirror tags with the operand kind `Op_w`. -/
+def translateSOp2Ext : ASOp2 → Option MSOp2
+  | .Oeq ws => (translateWSize ws).map (fun w => .Oeq (.Op_w w))
+  | .Oneq ws => (translateWSize ws).map (fun w => .Oneq (.Op_w w))
+  | op => translateSOp2 op
+
+/-- `translatePExpr` extended by variables of array type, the byte-array
+    initialiser `Parr_init n` (the mirror `Parr_init U8 n`), the array read `Pget`,
+    and operator applications over extended operands and `translateSOp2Ext`. -/
 def translatePExprExt : APExpr → Option MPexpr
   | .Pvar g => (translateGVarExt g).map .Pvar
+  | .Parr_init n => some (.Parr_init .U8 n)
   | .Pget aa ws x idx =>
       match translateWSize ws, translateGVarExt x, translateIdx idx with
       | some ws', some x', some i' => some (.Pget .Unaligned (translateArrAccess aa) ws' x' i')
+      | _, _, _ => none
+  | .Papp1 op e =>
+      match translateSOp1 op, translatePExprExt e with
+      | some op', some e' => some (.Papp1 op' e')
+      | _, _ => none
+  | .Papp2 op e1 e2 =>
+      match translateSOp2Ext op, translatePExprExt e1, translatePExprExt e2 with
+      | some op', some e1', some e2' => some (.Papp2 op' e1' e2')
       | _, _, _ => none
   | e => translatePExpr e
 
@@ -112,8 +133,8 @@ def translateLValExt : ALVal → Option MLval
 
 mutual
 /-- **The extended translation.** `Cassgn` over the extended l-values and
-    expressions, `Copn` of an asm op, `Cfor` with constant bounds, and `Ccall`;
-    `Cif`/`Cwhile` translate to `none`. -/
+    expressions, `Copn` of an asm op, `Cif`, `Cfor` with constant bounds, `Cwhile`
+    (without alignment) and `Ccall`. -/
 def translateInstrRExt : AInstrR → Option MInstrR
   | .Cassgn lv tag ty e =>
       match translateLValExt lv, translateSTypeExt ty, translatePExprExt e with
@@ -123,6 +144,15 @@ def translateInstrRExt : AInstrR → Option MInstrR
       match lvs.mapM translateLValExt, es.mapM translatePExprExt with
       | some lvs', some es' => some (.Copn lvs' (translateAssgnTag tag) (.Oasm op.name) es')
       | _, _ => none
+  | .Cif cond cthen celse =>
+      match translatePExprExt cond, translateCmdExt cthen, translateCmdExt celse with
+      | some cond', some cthen', some celse' => some (.Cif cond' cthen' celse')
+      | _, _, _ => none
+  | .Cwhile cbefore cond cafter =>
+      match translateCmdExt cbefore, translatePExprExt cond, translateCmdExt cafter with
+      | some cbefore', some cond', some cafter' =>
+          some (.Cwhile .NoAlign cbefore' cond' () cafter')
+      | _, _, _ => none
   | .Cfor v r body =>
       match translateVarIExt v, translateCmdExt body with
       | some v', some body' =>
@@ -132,7 +162,6 @@ def translateInstrRExt : AInstrR → Option MInstrR
       match lvs.mapM translateLValExt, args.mapM translatePExprExt with
       | some lvs', some args' => some (.Ccall lvs' { name := fn.name } args')
       | _, _ => none
-  | _ => none
 
 /-- The extended translation of a command, each instruction annotated `MkI ()`. -/
 def translateCmdExt : List AInstrR → Option (List MInstr)
@@ -168,18 +197,51 @@ theorem translateGVarExt_of (g : AGVar) (g' : MGVar) (h : translateGVar g = some
   | none => simp [hv] at h
   | some v => simpa [translateVarIExt_of _ _ hv, hv] using h
 
+/-- `translateSOp2Ext` agrees with `translateSOp2` where that is defined. -/
+theorem translateSOp2Ext_of (op : ASOp2) (op' : MSOp2) (h : translateSOp2 op = some op') :
+    translateSOp2Ext op = some op' := by
+  cases op <;> first | exact h | (simp [translateSOp2] at h)
+
 /-- `translatePExprExt` agrees with `translatePExpr` where that is defined. -/
-theorem translatePExprExt_of (e : APExpr) (e' : MPexpr) (h : translatePExpr e = some e') :
-    translatePExprExt e = some e' := by
-  cases e with
-  | Pvar g =>
+theorem translatePExprExt_of :
+    ∀ (e : APExpr) (e' : MPexpr), translatePExpr e = some e' → translatePExprExt e = some e'
+  | .Pvar g, e', h => by
     simp only [translatePExpr] at h
     simp only [translatePExprExt]
     cases hg : translateGVar g with
     | none => simp [hg] at h
     | some g₁ => simpa [translateGVarExt_of _ _ hg, hg] using h
-  | Pget aa ws x idx => simp [translatePExpr] at h
-  | _ => exact h
+  | .Papp1 op e, e', h => by
+    simp only [translatePExpr] at h
+    simp only [translatePExprExt]
+    cases ho : translateSOp1 op with
+    | none => simp [ho] at h
+    | some op₁ =>
+      cases he : translatePExpr e with
+      | none => simp [ho, he] at h
+      | some e₁ => simpa [ho, he, translatePExprExt_of e e₁ he] using h
+  | .Papp2 op e1 e2, e', h => by
+    simp only [translatePExpr] at h
+    simp only [translatePExprExt]
+    cases ho : translateSOp2 op with
+    | none => simp [ho] at h
+    | some op₁ =>
+      cases he1 : translatePExpr e1 with
+      | none => simp [ho, he1] at h
+      | some e₁ =>
+        cases he2 : translatePExpr e2 with
+        | none => simp [ho, he1, he2] at h
+        | some e₂ =>
+          simpa [ho, he1, he2, translatePExprExt_of e1 e₁ he1, translatePExprExt_of e2 e₂ he2,
+            translateSOp2Ext_of _ _ ho] using h
+  | .Pget _ _ _ _, _, h => by simp [translatePExpr] at h
+  | .Parr_init _, _, h => by simp [translatePExpr] at h
+  | .Pconst _, _, h => h
+  | .Pbool _, _, h => h
+  | .Psub _ _ _ _ _, _, h => h
+  | .Pload _ _ _, _, h => h
+  | .PappN _ _, _, h => h
+  | .Pif _ _ _ _, _, h => h
 
 /-- **Extension.** `translateInstrRExt` agrees with `translateInstrR` wherever
     `translateInstrR` is defined. -/

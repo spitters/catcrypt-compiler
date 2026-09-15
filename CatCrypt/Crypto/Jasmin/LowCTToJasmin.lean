@@ -1879,8 +1879,8 @@ lemma callFree_toJasmin_newSid
   | RCallDstThreaded _ _ _ => simp [callFree] at hCF
 
 /-- `RLimbStore` translates to a single `.Copn` instruction, which preserves
-    `newSid` (only `.Cfor` advances it).  Therefore the threaded
-    newSid is identical to the input `sid` for any fuel ≥ 2.
+    `newSid` (as every instruction does, `translateCmd_newSid`).  Therefore the
+    threaded newSid is identical to the input `sid` for any fuel.
 
     Companion to `callFree_toJasmin_newSid`: the latter is gated by `callFree`
     (which rejects `RLimbStore`); this version is `RLimbStore`-specific. -/

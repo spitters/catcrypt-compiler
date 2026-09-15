@@ -5,4 +5,6 @@ CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	1210	3290	1853
 CatCrypt/Crypto/SecureCompilation/Ascent/CarryMulCorrect.lean	2990	4860	3756
 CatCrypt/Crypto/SecureCompilation/Dialects/TranslateDialectScalarDenote.lean	3250	2340	1926
 CatCrypt/Crypto/SecureCompilation/ThirSboxRange.lean	61	3730	1627
+CatCrypt/Crypto/SecureCompilation/VIR/LowCTMirrorCorres.lean	1350	3610	1902
+CatCrypt/Crypto/SecureCompilation/VIR/LowCTMirrorTranslate.lean	112	2910	1876
 CatCrypt/Crypto/SecureCompilation/X86Backend/CarryMulBlock.lean	260	677	755

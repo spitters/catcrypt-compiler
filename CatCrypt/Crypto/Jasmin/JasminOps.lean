@@ -85,8 +85,8 @@ def invSboxArray : Array (BitVec 8) := #[
   0x17, 0x2B, 0x04, 0x7E, 0xBA, 0x77, 0xD6, 0x26, 0xE1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0C, 0x7D
 ]
 
-@[simp] theorem sboxArray_size : sboxArray.size = 256 := by native_decide
-@[simp] theorem invSboxArray_size : invSboxArray.size = 256 := by native_decide
+@[simp] theorem sboxArray_size : sboxArray.size = 256 := by decide +kernel
+@[simp] theorem invSboxArray_size : invSboxArray.size = 256 := by decide +kernel
 
 /-- AES S-Box: SubBytes transformation on a single byte.
     Concrete FIPS 197 lookup table (GF(2^8) inversion + affine map). -/

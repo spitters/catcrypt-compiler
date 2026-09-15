@@ -26,7 +26,16 @@ The translation is structured as:
 A function call `Ccall lvs f args` evaluates `args` in the caller scope `sid`, runs
 the translated body of `f` in the callee scope `(freshId sid).2`, and writes the
 values the body returns to `lvs` in scope `sid`; the instructions after the call are
-translated in scope `sid`.
+translated in scope `sid`. A loop `Cfor` runs its body in the scope `sid` of its
+surroundings, so every instruction leaves the scope unchanged
+(`translateCmd_newSid`): a variable written before or inside a loop is read after
+it at the same location, and `translateFun` reads its results in the scope of its
+body.
+
+## Main results
+
+- `translateCmd_newSid`, `translateInstrR_newSid`: translation leaves the scope unchanged.
+- `translateCmd_cfor_newSid`: the loop arm keeps the scope of its surroundings.
 
 ## References
 
@@ -274,8 +283,7 @@ def translateInstrR (env : TransEnv) (sid : ScopeId) (fuel : Nat) :
         | ⟨.sbool, false⟩ => elseResult.code
         | _ => thenResult.code }
   | .Cfor v range body =>
-    let (sid', _) := freshId sid
-    { newSid := sid',
+    { newSid := sid,
       code := translateForLoop env sid v.var (loopRange range) body fuel }
   | .Cwhile _ _ _ => { newSid := sid, code := .fail }
   | .Ccall _ii lvs fn args =>
@@ -312,6 +320,46 @@ def translateCmd (env : TransEnv) (instrs : Cmd) (sid : ScopeId) (fuel : Nat) :
       { newSid := restResult.newSid,
         code := .bind iResult.code fun _ => restResult.code }
 end
+
+/-! ## Scope Preservation -/
+
+/-- The loop arm keeps the scope of its surroundings: the instructions after a `Cfor`
+    are translated in the scope in which its body runs. -/
+theorem translateCmd_cfor_newSid (env : TransEnv) (sid : ScopeId) (fuel : Nat)
+    (v : VarI) (range : Range) (body : Cmd) :
+    (translateInstrR env sid fuel (.Cfor v range body)).newSid = sid := by
+  rw [translateInstrR.eq_def]
+
+/-- Translating a command leaves the scope unchanged. -/
+theorem translateCmd_newSid (env : TransEnv) :
+    ∀ (fuel : Nat) (c : Cmd) (sid : ScopeId), (translateCmd env c sid fuel).newSid = sid := by
+  intro fuel
+  induction fuel with
+  | zero => intro c sid; rw [translateCmd.eq_def]
+  | succ n ih =>
+    intro c sid
+    cases c with
+    | nil => rw [translateCmd.eq_def]
+    | cons i is =>
+      rw [translateCmd.eq_def]
+      dsimp only
+      have hi : (translateInstrR env sid n i).newSid = sid := by
+        cases i with
+        | Cif cond cthen celse =>
+          rw [translateInstrR.eq_def]; dsimp only
+          rw [ih cthen sid, ih celse sid]
+        | _ => rw [translateInstrR.eq_def]
+      rw [hi]
+      exact ih is sid
+
+/-- Translating an instruction leaves the scope unchanged. -/
+theorem translateInstrR_newSid (env : TransEnv) (sid : ScopeId) (fuel : Nat) (i : InstrR) :
+    (translateInstrR env sid fuel i).newSid = sid := by
+  cases i with
+  | Cif cond cthen celse =>
+    rw [translateInstrR.eq_def]; dsimp only
+    rw [translateCmd_newSid env fuel cthen sid, translateCmd_newSid env fuel celse sid]
+  | _ => rw [translateInstrR.eq_def]
 
 /-! ## Function Translation -/
 
