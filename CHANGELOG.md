@@ -56,6 +56,15 @@ Block lowering framework:
   and `comp`/`comp_fundamental` for the composition of two multi-value lowerings.
   `VIR/MultiBlockLoweringToy.lean` lowers 128-bit additions to two 64-bit registers
   with a carry (`dwLowering_fundamental`, `prog_lowered`).
+- `Algebraic/FieldToJasminWord.lean`: for `F : SingleWordField p`, the block lowering
+  of the prime fragment of `fieldDialect` to `jasminDialect` with F's blocks,
+  the coverage predicate `GoodW p`, `fieldToJasminWord_denote`
+  (`(lowerK F c).denote (mapValW F V) = F.enc (c.denote V)` for covered programs),
+  and `lowerK_exportFaithful` (lowered programs lie in the scalar fragment of
+  `comLsemExportFaithful_of_scalar`). `Algebraic/Poseidon2BabyBearCompile.lean`
+  writes the BabyBear width-16 permutation as a step list, proves coverage by
+  induction on the list (`run_covered`) and gives `permComAt_lowerK_denote`;
+  `Algebraic/Poseidon2BabyBearEmit.lean` renders it (`permAsm`, `hasUnhandled`).
 
 x86 backend:
 
