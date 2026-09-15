@@ -96,6 +96,17 @@ x86 backend:
   `toLprogPhysAbi_faithful_uniformConst` with its `_twoPtr` and `_epilogue` forms,
   whose conclusions are those of the `_uniform` theorems. Immediate shifts and
   programs mixing machine widths are outside it.
+- `X86Backend/ToLprogFaithfulMulCarrySel.lean`: the same faithfulness extended to
+  widening multiplies and carry chains. `MulHiBinding`, `AddCarryLoBinding` and
+  `AddCarryHiBinding` with their `maintains` steps rest on
+  `remapBlockMaintains2`/`remapBlockMaintains3`, the general remap arm of
+  `physBodyElem`, so they need only the destination-injectivity obligation and carry
+  no width restriction; `UniformRegArithMCS` and `CoverDataMCS` embed the constant
+  fragment (`UniformRegArithConst.toMCS`, `CoverDataConst.toMCS`), and
+  `toLprogPhysAbi_faithful_uniformMCS` with `_twoPtr` and `_epilogue` keeps the
+  conclusions of the earlier theorems. `select` is not covered: `opToLinstrR` emits
+  `CMOV`, for which `JasminLsem.applyOpn` has no arm, recorded as the proved negative
+  `lsemStep_select_eq_none`.
 
 - Register-count shifts from the gather's two-source `regArith .shr`/`.shl`/`.sar` export
   lower to one `.shrx`/`.shlx`/`.sarx` instruction: `lowerShiftRegJ` is the first
