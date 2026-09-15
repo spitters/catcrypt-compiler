@@ -67,6 +67,8 @@ def arrTower (A : TowerScope) : LowCT → LowCT
   | .RLetU64Zero x b => .RLetU64Zero x (arrTower A b)
   | .RIfNz v t e => .RIfNz v (arrTower A t) (arrTower A e)
   | .RWhileNz v b => .RWhileNz v (arrTower A b)
+  | .RFor x n b => .RFor x n (arrTower A b)
+  | .RForRuntime x bound b => .RForRuntime x bound (arrTower A b)
   | .RArrStore arr idx src =>
       match List.lookup arr.locVar A with
       | some t => .RArrStore { locVar := arr.locVar, locSrc := t } idx
@@ -89,6 +91,8 @@ def arrFree : LowCT → Bool
   | .RLetU64Zero _ b => arrFree b
   | .RIfNz _ t e => arrFree t && arrFree e
   | .RWhileNz _ b => arrFree b
+  | .RFor _ _ b => arrFree b
+  | .RForRuntime _ _ b => arrFree b
   | .RArrStore _ _ _ => false
   | .RArrLoad _ _ _ => false
   | _ => true
@@ -111,6 +115,15 @@ theorem arrTower_ifNz (A : TowerScope) (v : String) (t e : LowCT) :
 
 theorem arrTower_whileNz (A : TowerScope) (v : String) (b : LowCT) :
     arrTower A (.RWhileNz v b) = .RWhileNz v (arrTower A b) := by
+  simp [arrTower]
+
+theorem arrTower_for (A : TowerScope) (x : String) (n : Nat) (b : LowCT) :
+    arrTower A (.RFor x n b) = .RFor x n (arrTower A b) := by
+  simp [arrTower]
+
+theorem arrTower_forRuntime (A : TowerScope) (x : String)
+    (bound : CatCrypt.Crypto.Jasmin.LowCT.SExpr) (b : LowCT) :
+    arrTower A (.RForRuntime x bound b) = .RForRuntime x bound (arrTower A b) := by
   simp [arrTower]
 
 theorem arrTower_arrStore (A : TowerScope) (arr src : Located) (idx : String) (t : TowerType)
@@ -138,6 +151,8 @@ theorem arrTower_of_arrFree (A : TowerScope) (c : LowCT) (h : arrFree c = true) 
     simp only [arrFree, Bool.and_eq_true] at h
     rw [arrTower_ifNz, iht h.1, ihe h.2]
   | RWhileNz v b ih => rw [arrTower_whileNz, ih h]
+  | RFor x n b ih => rw [arrTower_for, ih h]
+  | RForRuntime x bound b ih => rw [arrTower_forRuntime, ih h]
   | RArrStore => simp [arrFree] at h
   | RArrLoad => simp [arrFree] at h
   | _ => simp [arrTower]
@@ -150,6 +165,8 @@ theorem arrTower_nil (c : LowCT) : arrTower [] c = c := by
   | RLetU64Zero x b ih => rw [arrTower_letU64Zero, ih]
   | RIfNz v t e iht ihe => rw [arrTower_ifNz, iht, ihe]
   | RWhileNz v b ih => rw [arrTower_whileNz, ih]
+  | RFor x n b ih => rw [arrTower_for, ih]
+  | RForRuntime x bound b ih => rw [arrTower_forRuntime, ih]
   | _ => simp [arrTower]
 
 /-- With the empty array table, `haxToLowCTA` is `haxToLowCT`. -/

@@ -64,6 +64,8 @@ def litTower (T : List String) : LowCT → LowCT
   | .RLetU64Zero x b => .RLetU64Zero x (litTower T b)
   | .RIfNz v t e => .RIfNz v (litTower T t) (litTower T e)
   | .RWhileNz v b => .RWhileNz v (litTower T b)
+  | .RFor x n b => .RFor x n (litTower T b)
+  | .RForRuntime x bound b => .RForRuntime x bound (litTower T b)
   | c => c
 
 theorem litTower_seq (T : List String) (a b : LowCT) :
@@ -96,6 +98,15 @@ theorem litTower_whileNz (T : List String) (v : String) (b : LowCT) :
     litTower T (.RWhileNz v b) = .RWhileNz v (litTower T b) := by
   simp [litTower]
 
+theorem litTower_for (T : List String) (x : String) (n : Nat) (b : LowCT) :
+    litTower T (.RFor x n b) = .RFor x n (litTower T b) := by
+  simp [litTower]
+
+theorem litTower_forRuntime (T : List String) (x : String)
+    (bound : CatCrypt.Crypto.Jasmin.LowCT.SExpr) (b : LowCT) :
+    litTower T (.RForRuntime x bound b) = .RForRuntime x bound (litTower T b) := by
+  simp [litTower]
+
 /-- With no tower literals, `litTower` is the identity. -/
 theorem litTower_nil (c : LowCT) : litTower [] c = c := by
   induction c with
@@ -114,6 +125,8 @@ theorem litTower_nil (c : LowCT) : litTower [] c = c := by
     | _ => simp only [litTower] at ih ⊢ <;> rw [ih]
   | RIfNz v t e iht ihe => rw [litTower_ifNz, iht, ihe]
   | RWhileNz v b ih => rw [litTower_whileNz, ih]
+  | RFor x n b ih => rw [litTower_for, ih]
+  | RForRuntime x bound b ih => rw [litTower_forRuntime, ih]
   | _ => simp [litTower]
 
 /-- An integer literal in `[0, 2^64)`. -/

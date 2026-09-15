@@ -38,6 +38,10 @@ to close the full syntactic-to-semantic implication.  Unblocks the
   `.broke`, `.continued`, or `.earlyRet`).
 * `hBodyAlwaysVal_of_AnfShaped` — derives the specific shape required
   by the whileLoop simulation lemma.
+* `denoteForLoop_ge_run`, `denoteForLoop_zero_run`, `denoteForLoop_succ_run`,
+  `denote_forLoop_lit_run` — unfold equations for counted loops.
+* `denoteForLoop_val_or_err`, `denote_forLoop_val_or_err` — outcome dichotomy
+  for counted loops.
 -/
 
 @[expose] public section
@@ -538,5 +542,113 @@ theorem hBodyAlwaysVal_of_AnfShaped
       ⟨v, env', hv⟩ | ⟨msg, env', he⟩
   · exact ⟨v, env', hv⟩
   · exact absurd he (hNoErr f env_a msg env')
+
+/-! ## §6  Counted loops
+
+Unfold equations for `denoteForLoop` separated by the bound test and the fuel,
+and the outcome dichotomy for `denoteForLoop` and `.forLoop`. -/
+
+/-- A counted loop whose start is not below its bound runs no trip. -/
+theorem denoteForLoop_ge_run (bi : Builtins) (fuel : Nat) (v : String) (lo hi : Int)
+    (body : ImpExpr) (env : Env) (h : hi ≤ lo) :
+    (denoteForLoop bi fuel v lo hi body).run env = (.val .unit, env) := by
+  show (denoteForLoop bi fuel v lo hi body).run env = _
+  unfold denoteForLoop
+  simp [h, StateT.run, pure, Pure.pure, StateT.pure]
+
+/-- A counted loop with a trip left fails at zero fuel. -/
+theorem denoteForLoop_zero_run (bi : Builtins) (v : String) (lo hi : Int)
+    (body : ImpExpr) (env : Env) (h : lo < hi) :
+    (denoteForLoop bi 0 v lo hi body).run env = (.err "out of fuel", env) := by
+  show (denoteForLoop bi 0 v lo hi body).run env = _
+  unfold denoteForLoop
+  simp [show ¬ hi ≤ lo by omega, StateT.run, pure, Pure.pure, StateT.pure]
+
+/-- One trip of a counted loop at successor fuel: the body runs at the same fuel
+    with the counter bound to the start, and the loop continues from the next
+    start at the predecessor fuel. -/
+theorem denoteForLoop_succ_run (bi : Builtins) (fuel : Nat) (v : String) (lo hi : Int)
+    (body : ImpExpr) (env : Env) (h : lo < hi) :
+    (denoteForLoop bi (fuel + 1) v lo hi body).run env =
+      (match (denote bi (fuel + 1) body).run (env.extend v (.int lo)) with
+       | (.val _, env_b) => (denoteForLoop bi fuel v (lo + 1) hi body).run env_b
+       | (.continued, env_b) => (denoteForLoop bi fuel v (lo + 1) hi body).run env_b
+       | (.broke w, env_b) => (.val w, env_b)
+       | (other, env_b) => (other, env_b)) := by
+  have hFor : denoteForLoop bi (fuel + 1) v lo hi body = (do
+      modify (Env.extend · v (.int lo))
+      let rb ← denote bi (fuel + 1) body
+      match rb with
+      | .val _ | .continued => denoteForLoop bi fuel v (lo + 1) hi body
+      | .broke w => pure (.val w)
+      | other => pure other) := by
+    conv_lhs => unfold denoteForLoop
+    simp only [show ¬ lo ≥ hi by omega, if_false, Nat.succ_ne_zero, Nat.add_sub_cancel]
+    rfl
+  show (denoteForLoop bi (fuel + 1) v lo hi body).run env = _
+  rw [hFor]
+  simp only [StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure, modify, modifyGet,
+    MonadStateOf.modifyGet, StateT.modifyGet]
+  cases denote bi (fuel + 1) body (env.extend v (.int lo)) with
+  | mk a s => cases a <;> rfl
+
+/-- Unfold equation for `.forLoop` with integer literal bounds. -/
+theorem denote_forLoop_lit_run (bi : Builtins) (fuel : Nat) (v : String) (lo hi : Int)
+    (body : ImpExpr) (env : Env) :
+    (denote bi fuel (.forLoop v (.lit (.int lo)) (.lit (.int hi)) body)).run env =
+      (denoteForLoop bi fuel v lo hi body).run env := by
+  simp [denote, StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure, StateT.pure,
+    Value.ofLit]
+
+/-- A counted loop whose body runs to a value or an error at every fuel runs to
+    a value or an error. -/
+theorem denoteForLoop_val_or_err (bi : Builtins) (v : String) (body : ImpExpr)
+    (hBody : ∀ fuel env,
+        (∃ w env', (denote bi fuel body).run env = (.val w, env'))
+      ∨ (∃ msg env', (denote bi fuel body).run env = (.err msg, env'))) :
+    ∀ (fuel : Nat) (lo hi : Int) (env : Env),
+        (∃ w env', (denoteForLoop bi fuel v lo hi body).run env = (.val w, env'))
+      ∨ (∃ msg env', (denoteForLoop bi fuel v lo hi body).run env = (.err msg, env')) := by
+  intro fuel
+  induction fuel with
+  | zero =>
+    intro lo hi env
+    by_cases h : hi ≤ lo
+    · exact Or.inl ⟨_, _, denoteForLoop_ge_run bi 0 v lo hi body env h⟩
+    · exact Or.inr ⟨_, _, denoteForLoop_zero_run bi v lo hi body env (by omega)⟩
+  | succ m ih =>
+    intro lo hi env
+    by_cases h : hi ≤ lo
+    · exact Or.inl ⟨_, _, denoteForLoop_ge_run bi _ v lo hi body env h⟩
+    rw [denoteForLoop_succ_run bi m v lo hi body env (by omega)]
+    rcases hBody (m + 1) (env.extend v (.int lo)) with ⟨w, e1, hb⟩ | ⟨msg, e1, hb⟩
+    · rw [hb]; exact ih (lo + 1) hi e1
+    · rw [hb]; exact Or.inr ⟨msg, e1, rfl⟩
+
+/-- `.forLoop` whose bounds and body run to a value or an error runs to a value
+    or an error. -/
+theorem denote_forLoop_val_or_err (bi : Builtins) (fuel : Nat) (v : String)
+    (lo hi body : ImpExpr) (env : Env)
+    (hlo : ∀ env,
+        (∃ w env', (denote bi fuel lo).run env = (.val w, env'))
+      ∨ (∃ msg env', (denote bi fuel lo).run env = (.err msg, env')))
+    (hhi : ∀ env,
+        (∃ w env', (denote bi fuel hi).run env = (.val w, env'))
+      ∨ (∃ msg env', (denote bi fuel hi).run env = (.err msg, env')))
+    (hBody : ∀ fuel env,
+        (∃ w env', (denote bi fuel body).run env = (.val w, env'))
+      ∨ (∃ msg env', (denote bi fuel body).run env = (.err msg, env'))) :
+    (∃ w env', (denote bi fuel (.forLoop v lo hi body)).run env = (.val w, env'))
+      ∨ (∃ msg env', (denote bi fuel (.forLoop v lo hi body)).run env = (.err msg, env')) := by
+  have hL := denoteForLoop_val_or_err bi v body hBody fuel
+  simp only [denote, StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure]
+  rcases hlo env with ⟨a, e1, ha⟩ | ⟨m, e1, ha⟩ <;>
+  rcases hhi e1 with ⟨b, e2, hb⟩ | ⟨m', e2, hb⟩ <;>
+  simp only [StateT.run] at ha hb <;> simp only [ha, hb]
+  · cases a <;> cases b <;>
+      first | exact Or.inr ⟨_, _, rfl⟩ | exact Or.inl ⟨_, _, rfl⟩ | exact hL _ _ _
+  · cases a <;> exact Or.inl ⟨_, _, rfl⟩
+  · exact Or.inr ⟨_, _, rfl⟩
+  · exact Or.inr ⟨_, _, rfl⟩
 
 end CatCrypt.Crypto.Hax

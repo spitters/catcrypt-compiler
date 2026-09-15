@@ -960,3 +960,4 @@ CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramLit
 CatCrypt.Crypto.Jasmin.JasminTranslateLoopScope
 CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres
 CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramArr
+CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramFor
