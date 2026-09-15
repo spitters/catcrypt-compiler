@@ -513,6 +513,7 @@ def pkgModules3 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Algebraic.FieldWord.SingleWord,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Algebraic.Poseidon2BabyBearCompile,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Algebraic.Poseidon2BabyBearEmit,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Algebraic.Poseidon2BabyBearSpec,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.ArrayLoopCT,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.ArrLoadLeaf,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.ArrStoreEmit,

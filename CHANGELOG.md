@@ -76,6 +76,15 @@ Block lowering framework:
   prime fragment of `fieldDialect` at 2^255 − 19 to four registers per element
   (`loweringL`, `GoodL`, `blockSquareL`, `fieldToJasminLimbs_denote`), with the
   example `mulAddProg_lowered` for `x·y + z`.
+- `Algebraic/Poseidon2BabyBearSpec.lean`: `permComAt_spec` states that the compiled
+  field-dialect permutation denotes `poseidon2BabyBearPermute` of the input lanes, by a
+  slot-vector value semantics (`semRun`, `run_denote`) and per-segment effects
+  (`externalRoundSteps_eff`, `internalRoundSteps_eff`, `externalMDSSteps_eff`,
+  `internalMDSSteps_eff`, `constSteps_eff`, `permRest_eff`) composed pointwise, with
+  the constant slots identified with the round constants and the diagonal
+  (`constVal_cExt`, `constVal_cInt`, `constVal_cDiag`); `permJasminAt_spec` composes it
+  with `permComAt_lowerK_denote`, so the lowered jasmin program computes the encoding of
+  the specification.
 
 x86 backend:
 
