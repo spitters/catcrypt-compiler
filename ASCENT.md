@@ -42,9 +42,12 @@ section [Scope](#scope) gives their hypotheses.
   exit value through the front's unified descent `transU` and the jasmin lowering to
   the `Com jasminDialect` of the node, unrolled at the entry environment's trip count
   ([Data-dependent loops as functions](#data-dependent-loops-as-functions)).
-- Leaf calls: `ascendGLL_sound` abstracts `RCall`, `RSelect` with a layout array among
-  its operands, and `RArrLoadLit` from a source that is not a `TArr _ .TU64` layout
-  array, to abstract leaves at `semUL ls fuel`;
+- Leaf calls: `ascendGLL_sound` abstracts `RCall`, `RCallDstThreaded`, `RTupleLoad`,
+  `RCallSwap`, `RCloneCall` and `RCallN`, `RSelect` with a layout array among its
+  operands or as its destination, `RArrLoadLit` from a source that is not a
+  `TArr _ .TU64` layout array, and `RArrStoreLit` that is not a word write to a
+  `TArr _ .TU64` array, to abstract word leaves on `u64` destinations and abstract array
+  leaves on layout-array destinations at `semUL ls fuel`;
   `semScalarLToJasminCom_denote_eq` carries `semScalarL ls` through the front and the
   jasmin lowering for every oracle pair related by `LeafTransport`
   ([Leaf calls](#leaf-calls-the-boundary-of-semscalar)).
@@ -57,9 +60,10 @@ section [Scope](#scope) gives their hypotheses.
 
 Not covered by any theorem in the package:
 
-- the selector of `RSelect` at the front's `"select"` leaf, and the ascent of
-  array-writing leaves, `RCallSwap`, `RCloneCall`, `RCallN`, `RCallDstThreaded` and
-  `RTupleLoad`;
+- a `RustExec` counterpart of the `"select"` leaf, whose selector `RustExec` reads from
+  the scalar store; the `RustExec` counterparts of `RCallSwap` and `RCallN` when a
+  destination is also an argument; and the ascent of `RArrLoadLit` into a layout-array
+  destination;
 - hax programs with renaming aliases, tower-bound conditions, `forFold` or `whileFold`,
   or a builtin table implementing `index` or `array_update`, and a composition of the
   hax simulations with the front and the jasmin lowering;
@@ -536,7 +540,7 @@ alongside the default statement, which is unchanged:
    `semScalar` and `semU` with each leaf arm binding its destination to `ls` at the name
    and arguments of the `extCall` the front emits for that node, the arguments read with
    `argVals`. `semScalar_eq_semScalarL` and `semU_eq_semUL` identify the default
-   instances. The front's `"select"` leaf receives the two sources and not the selector.
+   instances. The front's `"select"` leaf receives the selector and the two sources.
 2. `catCryptDenoteWith ls` is the dialect denotation consulting `ls` at `extCall`, and
    `jasminDenoteWith jls` the jasmin one. `cryptoDialectToJasminCom_denote_eq_of_transport`
    (`VIR/DialectToJasminComLeaf.lean`) holds for every oracle pair related by
@@ -545,28 +549,59 @@ alongside the default statement, which is unchanged:
    (`lookupArgs_toJArgsD`). With `leafTransport_default`, `catCryptDenoteWith_default` and
    `jasminDenoteWith_jasminExtSem` it gives `cryptoDialectToJasminCom_denote_eq'`
    (`cryptoDialectToJasminCom_denote_eq'_of_default`).
-3. `CallAgrees leafSpec ls` and `ArrLoadAgrees leafSpec ls`
-   (`Dialects/RustExecLeafOracleBridge.lean`) say a `RustExec` oracle, encoded by
-   `cryptoTyOfRustVal`, is `ls` on the encoded arguments. Under them
-   `rustExec_semScalarL_call` and `rustExec_semScalarL_arrLoadLit` relate a `RustExec`
-   step of `RCall`, and of a literal-index read in the leaf case, to the `semScalarL` step
-   from an environment encoding the arguments. `zeroLeafSpec` agrees with `defaultLeaf`
-   (`callAgrees_zero`, `rustExec_semScalar_call_zero`). `RSelect` has no such statement:
-   `RustExec` reads the selector, and the `"select"` leaf does not receive it.
-4. `ascendGLL lf L fuel` (`Ascent/GuardsLeaf.lean`) is `ascendGL L fuel` with abstract
-   leaves `lf : AbsLeaves`, an optional function `List AVal → ZMod 2^64` per name, where
-   an argument abstracts to a word or to the element values of a layout array
-   (`absArg`). `LeafAbs ls name f` is the hypothesis that `wEnc` of the oracle's `u64`
-   result is `f` of the abstracted arguments. `corresL_call` (`RCall`),
-   `corresL_selectLeaf` (`RSelect` with a layout array among the selector and sources)
-   and `corresL_arrLoadLitLeaf` (`RArrLoadLit` from a source that is not a `TArr _ .TU64`
-   array in the layout) abstract such a node to a write of `f` to a `u64` destination,
-   and `ascendGLL_sound` holds at `semUL ls fuel` under `LeavesSound ls lf`.
-   `ascendGLL_noLeaves` and `ascendGL_sound_of_ascendGLL` recover `ascendGL_sound`;
-   `leafAbs_leafOfAbs` gives, for every family of abstract leaves, an oracle for which it
-   is sound. The worked instance `leafK` reads a `TBytes 8` array through `"arrLoad:0"`
-   and selects over it through `"select"`; `leafK_corres` refines it to `leafKProg` with
-   no guard.
+3. `CallAgrees leafSpec ls`, `ArrLoadAgrees leafSpec ls`, `TupleLoadLeafAgrees leafSpec ls`
+   and `ArrStoreAgrees leafSpec ls` (`Dialects/RustExecLeafOracleBridge.lean`) say a
+   `RustExec` oracle, encoded by `cryptoTyOfRustVal`, is `ls` on the encoded arguments.
+   Under them `rustExec_semScalarL_call`, `rustExec_semScalarL_callDstThreaded`,
+   `rustExec_semScalarL_tupleLoad`, `rustExec_semScalarL_arrLoadLit` and
+   `rustExec_semScalarL_arrStoreLit` relate a `RustExec` step of `RCall`,
+   `RCallDstThreaded`, `RTupleLoad`, and of a literal-index read or write in the leaf
+   case, to the `semScalarL` step from an environment encoding the arguments;
+   `rustExec_semScalarL_callSwap` and `rustExec_semScalarL_callN` do the same for the
+   two-destination and multi-destination calls when no destination written before an
+   argument is read is itself an argument, `RustExec` reading the arguments once and
+   `semScalarL` before each write. `RustExec` copies the old destination of `RCloneCall`
+   into the clone variable, where `semScalarL` binds the `"clone"` leaf;
+   `rustExec_semScalarL_cloneCall` relates the two under `CloneAgrees ls`, the statement
+   that the `"clone"` leaf returns its argument. `zeroLeafSpec` agrees with `defaultLeaf`
+   (`callAgrees_zero`, `tupleLoadLeafAgrees_zero`, `arrStoreAgrees_zero`,
+   `rustExec_semScalar_call_zero`). `RSelect` has no such statement: `RustExec` reads the
+   selector from the scalar store, which the encoding does not relate to the environment.
+4. `ascendGLL lf lfa L fuel` (`Ascent/GuardsLeaf.lean`) is `ascendGL L fuel` with abstract
+   word leaves `lf : AbsLeaves`, an optional function `List AVal → ZMod 2^64` per name,
+   and abstract array leaves `lfa : AbsArrLeaves`, an optional function
+   `List AVal → Nat → ZMod 2^64` per name, where an argument abstracts to a word or to
+   the element values of a layout array (`absArg`). `LeafAbs ls name f` is the hypothesis
+   that `wEnc` of the oracle's `u64` result is `f` of the abstracted arguments, and
+   `LeafAbsArr ls name g` that cell `j` of its `.memref n` result, encoded, is
+   `g (abstracted arguments) j`; the abstract write of an array leaf is
+   `setCells s n (g args)`, and `cellLeaf k f` is the array leaf writing cell `k` to `f`
+   and keeping the others. Every leaf node is a binding, or a sequence of bindings, of a
+   destination to the oracle (`leafDstStep`); `leafDstAbs` abstracts one binding to the
+   word leaf on an unreserved `u64` word or to the array leaf on a layout array whose
+   type encodes to its layout length, `AbsStep` and `seqAbs` compose bindings, and
+   `absStep_leafDst` is the soundness of one binding. The rules per form are
+   `corresL_call` and `corresL_callArr` (`RCall`), `corresL_callDstThreaded` and
+   `corresL_callDstThreadedArr`, `corresL_tupleLoadLeaf` and `corresL_tupleLoadArrLeaf`,
+   `corresL_callSwap` (two `u64` destinations, the second read after the first write),
+   `corresL_cloneCall` (a `u64` clone of a `u64` old destination, then the inner call),
+   `corresL_callN` (the fold `callNAbsL` over the destinations, output `i` at the leaf
+   `callNLeafName f i`), `corresL_selectLeaf` and `corresL_selectArrLeaf` (`RSelect` with
+   a layout array among the selector and sources, or as its destination),
+   `corresL_arrLoadLitLeaf` (`RArrLoadLit` from a source that is not a `TArr _ .TU64`
+   array in the layout) and `corresL_arrStoreLitLeaf` with its one-cell form
+   `corresL_arrStoreLitCell` (`RArrStoreLit` that is not a word write to a `TArr _ .TU64`
+   array). `ascendGLL_sound` holds at `semUL ls fuel` under `LeavesSound ls lf` and
+   `ArrLeavesSound ls lfa`. `ascendGLL_noLeaves` and `ascendGL_sound_of_ascendGLL` recover
+   `ascendGL_sound`; `leafAbs_leafOfAbs`, `leafAbs_leafOfAbsArr` and
+   `leafAbsArr_leafOfAbsArr` give, for every family of abstract leaves, an oracle for
+   which it is sound. The worked instance `leafK` reads a `TBytes 8` array through
+   `"arrLoad:0"` and selects over it through `"select"`; `leafK_corres` refines it to
+   `leafKProg` with no guard. `leafK2` writes byte `3` of a `TBytes 8` array through
+   `"arrStore:3"`, reads a tuple component through `"tupleLoad:1"`, and runs an `RCallN`,
+   an `RCallDstThreaded`, an `RCallSwap` and an `RCloneCall`; `leafK2_corres` refines it
+   to `leafK2Prog` with no guard, and `leafK2_value` evaluates the abstract program on a
+   store related to a concrete environment (`leafK2_srwordL`).
 
 The front preservation theorems hold at every leaf oracle.
 `translateDialectFull_denoteWith` and `translateDialectControl_denote_ctlWith`
@@ -581,14 +616,15 @@ instances at `defaultLeaf`. `semScalarLToJasminCom_denote_eq`
 transport of the value `semScalarL ls` leaves in the tracked output. `jleafOfAbs fs`
 is the jasmin oracle of a family of abstract leaves on `u64` destinations,
 `leafTransport_leafOfAbs` relates it to `leafOfAbs fs`, and
-`leafK_semScalarLToJasminCom` is the composed statement at `leafK`. Since the
-`"select"` leaf does not receive the selector (item 1), no oracle computes the value
-`RustExec` gives `RSelect` at that node.
+`leafK_semScalarLToJasminCom` is the composed statement at `leafK`. `RustExec` reads the
+selector of `RSelect` from the scalar store, which the encoding of item 3 does not
+relate to the environment, so no `RustExec` statement covers that node.
 
-The leaf rules of the ascent write a `u64` destination: a leaf writing an array (`"arrStore:i"`, or
-`RSelect` into an array) stays unsupported, as do `RCallSwap`, `RCloneCall`, `RCallN`,
-`RCallDstThreaded` and `RTupleLoad`. The `RustExec` bridge covers `RCall` and
-`RArrLoadLit`.
+The leaf rules of the ascent write a `u64` destination through a word leaf or a
+layout-array destination through an array leaf; `RArrLoadLit` into a layout-array
+destination stays unsupported. The `RustExec` bridge covers `RCall`, `RCallDstThreaded`,
+`RTupleLoad`, `RArrLoadLit`, `RArrStoreLit`, `RCallSwap`, `RCloneCall` and `RCallN`, the
+last two under `CloneAgrees` and outside destinations that are also arguments.
 
 `ascendGL` also returns
 the unsupported guard for `RLetU64Zero` over a body containing a loop, for `RIfNz` and

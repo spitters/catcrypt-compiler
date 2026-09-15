@@ -54,7 +54,11 @@ succeeds every argument is bound, and the list is the front's argument vector.
 * `semUL_leaf` — on a node that is not seq-like, `semUL` is `semScalarL`
 * `semScalarL_rCall`, `semScalarL_rSelect_word`, `semScalarL_rSelect_leaf`,
   `semScalarL_rArrLoadLit_word`, `semScalarL_rArrLoadLit_leaf`,
-  `semScalarL_rArrStoreLit_word` — the arm equations used by the ascent
+  `semScalarL_rArrStoreLit_word`, `semScalarL_rArrStoreLit_leaf`,
+  `semScalarL_rCallDstThreaded`, `semScalarL_rTupleLoad`, `semScalarL_rCallSwap`,
+  `semScalarL_rCloneCall`, `semScalarL_rCallN` — the arm equations used by the ascent
+* `argVals_upd_other`, `semCallNDestsL_other` — frame equations of the argument values and
+  of the `RCallN` fold
 -/
 
 @[expose] public section
@@ -179,5 +183,97 @@ theorem semScalarL_rArrStoreLit_word (ls : SemLeafSpec) (arr src : Located) (idx
       some (env.upd arr.locVar (t := .memref n)
         (memSetDyn a (BitVec.ofNat 64 idx).toNat v)) := by
   simp only [semScalarL, Located.locDst, harr, ha, hs]
+
+/-- A literal-index write outside the word case binds the array to the oracle at
+    `"arrStore:idx"` on the array and the source. -/
+theorem semScalarL_rArrStoreLit_leaf (ls : SemLeafSpec) (arr src : Located) (idx : Nat)
+    (env : SEnvScalar)
+    (hleaf : ∀ (k n : Nat) (a : Fin n → BitVec 64) (v : BitVec 64), arr.locSrc = .TArr k .TU64 →
+      env arr.locVar = some ⟨.memref n, a⟩ → env src.locVar = some ⟨.sword 64, v⟩ → False) :
+    semScalarL ls (.RArrStoreLit arr idx src) env =
+      some (env.upd arr.locVar (t := encodeTy arr.locSrc)
+        (ls ("arrStore:" ++ toString idx) (encodeTy arr.locSrc)
+          (argVals env (locNames [arr, src])))) := by
+  simp only [semScalarL]
+  split
+  · rename_i k n a v harr ha hs
+    exact (hleaf k n a v harr ha hs).elim
+  · rfl
+
+/-- The destination-threaded leaf call binds its destination to the oracle at its name on
+    the destination followed by the arguments. -/
+theorem semScalarL_rCallDstThreaded (ls : SemLeafSpec) (fname : String) (dst : Located)
+    (args : List Located) (env : SEnvScalar) :
+    semScalarL ls (.RCallDstThreaded fname dst args) env =
+      some (env.upd dst.locVar (t := encodeTy dst.locSrc)
+        (ls fname (encodeTy dst.locSrc) (argVals env (locNames (dst :: args))))) := rfl
+
+/-- The tuple component read binds its destination to the oracle at `"tupleLoad:idx"` on
+    the source. -/
+theorem semScalarL_rTupleLoad (ls : SemLeafSpec) (dst src : Located) (idx : Nat)
+    (env : SEnvScalar) :
+    semScalarL ls (.RTupleLoad dst src idx) env =
+      some (env.upd dst.locVar (t := encodeTy dst.locSrc)
+        (ls ("tupleLoad:" ++ toString idx) (encodeTy dst.locSrc)
+          (argVals env (locNames [src])))) := rfl
+
+/-- The two-destination call binds `dest1`, then `dest2`, to the oracle at its name on the
+    arguments, the second read after the first write. -/
+theorem semScalarL_rCallSwap (ls : SemLeafSpec) (fname : String) (dest1 dest2 : Located)
+    (args : List Located) (env : SEnvScalar) :
+    semScalarL ls (.RCallSwap fname dest1 dest2 args) env =
+      some ((env.upd dest1.locVar (t := encodeTy dest1.locSrc)
+          (ls fname (encodeTy dest1.locSrc) (argVals env (locNames args)))).upd
+        dest2.locVar (t := encodeTy dest2.locSrc)
+          (ls fname (encodeTy dest2.locSrc)
+            (argVals (env.upd dest1.locVar (t := encodeTy dest1.locSrc)
+              (ls fname (encodeTy dest1.locSrc) (argVals env (locNames args)))) (locNames args)))) :=
+  rfl
+
+/-- The clone-and-call node on a bound old destination binds the clone variable to the
+    oracle at `"clone"` on the old value, then the new destination to the oracle at the
+    inner name on the arguments. -/
+theorem semScalarL_rCloneCall (ls : SemLeafSpec) (cv : String) (tt : TowerType)
+    (oldDest : Located) (innerF : String) (newDest : Located) (args : List Located)
+    (env : SEnvScalar) (cloneTy : CryptoTy) (old : ⟦cloneTy⟧)
+    (hold : env oldDest.locVar = some ⟨cloneTy, old⟩) :
+    semScalarL ls (.RCloneCall cv tt oldDest innerF newDest args) env =
+      some ((env.upd cv (t := cloneTy) (ls "clone" cloneTy (argVals env [oldDest.locVar]))).upd
+        newDest.locVar (t := encodeTy newDest.locSrc)
+          (ls innerF (encodeTy newDest.locSrc)
+            (argVals (env.upd cv (t := cloneTy) (ls "clone" cloneTy (argVals env [oldDest.locVar])))
+              (locNames args)))) := by
+  have h : argVals env [oldDest.locVar] = [⟨cloneTy, old⟩] := by simp [argVals, hold]
+  rw [h]
+  simp only [semScalarL, hold]
+
+/-- The multi-destination call is the fold `semCallNDestsL` from index `0`. -/
+theorem semScalarL_rCallN (ls : SemLeafSpec) (fname : String) (dests args : List Located)
+    (env : SEnvScalar) :
+    semScalarL ls (.RCallN fname dests args) env =
+      some (semCallNDestsL ls fname args dests 0 env) := rfl
+
+/-- The argument values are unchanged by a write to a name outside the argument list. -/
+theorem argVals_upd_other (env : SEnvScalar) (y : String) {t : CryptoTy} (v : ⟦t⟧) :
+    ∀ names : List String, y ∉ names → argVals (env.upd y v) names = argVals env names
+  | [], _ => rfl
+  | x :: xs, h => by
+      have hxy : x ≠ y := fun hxy => h (hxy ▸ List.mem_cons_self)
+      have ih := argVals_upd_other env y v xs (fun hm => h (List.mem_cons_of_mem _ hm))
+      simp only [argVals, List.filterMap_cons] at ih ⊢
+      rw [ih]
+      simp [SEnvScalar.upd, hxy]
+
+/-- The `RCallN` fold leaves every name outside the destinations unchanged. -/
+theorem semCallNDestsL_other (ls : SemLeafSpec) (fname : String) (args : List Located) :
+    ∀ (dests : List Located) (i : Nat) (env : SEnvScalar) (y : String),
+      y ∉ locNames dests → semCallNDestsL ls fname args dests i env y = env y
+  | [], _, _, _, _ => rfl
+  | d :: rest, i, env, y, h => by
+      have hyd : y ≠ d.locVar := fun hyd => h (by simp [locNames, hyd])
+      have hyr : y ∉ locNames rest := fun hm => h (by simp [locNames] at hm ⊢; exact Or.inr hm)
+      show semCallNDestsL ls fname args rest (i + 1) (env.upd d.locVar _) y = env y
+      rw [semCallNDestsL_other ls fname args rest (i + 1) _ y hyr]
+      simp [SEnvScalar.upd, hyd]
 
 end CatCrypt.Crypto.SecureCompilation.Dialects.LeafOracleScalar
