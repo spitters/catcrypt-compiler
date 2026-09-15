@@ -15,6 +15,7 @@ THIRD_PARTY_NOTICES.md
 CHANGELOG.md
 bench.md
 bench/PROVENANCE.md
+bench/SCOREBOARD.md
 CatCrypt/Crypto/Optimizer/README.md
 CatCrypt/Crypto/Optimizer/Rewrite/AGENTS.md
 CatCrypt/Crypto/SecureCompilation/AGENTS.md
