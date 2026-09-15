@@ -505,6 +505,8 @@ def pkgModules3 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.AddModKernel,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.AeadProtocolKernels,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.AesKernelRegistryEntry,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Algebraic.Ed25519PointAddCompile,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Algebraic.Ed25519PointAddLower,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Curve25519,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Algebraic.FieldToJasminLimbs25519,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Algebraic.FieldToJasminWord,

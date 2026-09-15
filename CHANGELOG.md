@@ -85,6 +85,14 @@ Block lowering framework:
   (`constVal_cExt`, `constVal_cInt`, `constVal_cDiag`); `permJasminAt_spec` composes it
   with `permComAt_lowerK_denote`, so the lowered jasmin program computes the encoding of
   the specification.
+- `Algebraic/Ed25519PointAddCompile.lean`: the a = −1 extended-coordinate Edwards
+  addition as a 23-binding `Com fieldDialect` program over the eight input coordinates,
+  with `pointAddProg_covered`, the value theorems `pointAddProg_m1add` and
+  `addSpec_m1add` (the four outputs are the coordinates of `m1add`), and
+  `pointAddProg_z3_ne_zero`: the result's `Z` is non-zero for any two points of
+  `EdwardsPointExt ed25519Ext`, so the formula has no exceptional case.
+  `Algebraic/Ed25519PointAddLower.lean` lowers it through `fieldToJasminLimbs_denote`
+  (`pointAddProg_lowered`, `pointAddProg_lowered_m1add`).
 
 x86 backend:
 
