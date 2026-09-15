@@ -156,6 +156,16 @@ theorem corresL_of_corres_eq {P : AState → Prop} {fa : AState → AState} {c :
   obtain ⟨env', hs, hSR'⟩ := h env a hSR hP
   exact ⟨env', (heq env).trans hs, hSR'⟩
 
+/-- A `Corres` result transfers to `CorresL ls` on a command on which `semScalarL ls` is
+    `semScalar` at every environment the state relation admits. -/
+theorem corresL_of_corres_eqOn {P : AState → Prop} {fa : AState → AState} {c : LowCT}
+    (h : Corres SR P fa c)
+    (heq : ∀ env a, SR env a → semScalarL ls c env = semScalar c env) :
+    CorresL ls SR P fa c := by
+  intro env a hSR hP
+  obtain ⟨env', hs, hSR'⟩ := h env a hSR hP
+  exact ⟨env', (heq env a hSR).trans hs, hSR'⟩
+
 theorem corresUL_weaken {fuel : Nat} {P P' : AState → Prop} {fa : AState → AState}
     {c : LowCT} (h : CorresUL ls fuel SR P fa c) (himp : ∀ a, P' a → P a) :
     CorresUL ls fuel SR P' fa c := by
@@ -1374,8 +1384,12 @@ theorem corresUL_limbStoreAbs (ls : SemLeafSpec) (L : ArrLayout) (fuel : Nat)
     · rw [if_pos hc]
       exact corresUL_weaken _ _
         (corresUL_of_corresL _ _ rfl
-          (corresL_of_corres_eq _ _
-            (corresL_limbStore L loc idx v n (layoutSize_mem hs) hc) (fun _ => rfl)))
+          (corresL_of_corres_eqOn _ _
+            (corresL_limbStore L loc idx v n (layoutSize_mem hs) hc)
+            (fun env _ hSR => by
+              obtain ⟨_, av, hav, _⟩ := hSR.2 _ (layoutSize_mem hs)
+              have hav' : env loc.locVar = some ⟨.memref n, av⟩ := hav
+              simp only [semScalarL, semScalar, hav'])))
         (fun _ _ => trivial)
     · rw [if_neg hc]
       exact corresUL_unsupported _ _ _ _ _

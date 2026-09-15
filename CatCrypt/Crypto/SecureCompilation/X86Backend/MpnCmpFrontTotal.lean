@@ -35,7 +35,7 @@ namespace CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpFrontTotal
 
 open CatCrypt.Crypto.SecureCompilation.CryptoSSA
 open CatCrypt.Crypto.Jasmin.LowCT (LowCT SExpr TowerType Located)
-open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar (isTmpName)
+open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar (isTmpName notTmp_of_headNe)
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectTotality
   (NameTys TransTotal SrcTys VmApprox BoundAt boundAt_bind_self boundAt_bind_of_ne
    frontLoopBodyJ_total)

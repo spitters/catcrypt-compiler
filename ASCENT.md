@@ -75,7 +75,9 @@ Not covered by any theorem in the package:
   pass and its simulation exist only in the dev tree), loops whose bounds are
   expressions other than literals and variables, and a composition of the hax
   simulations with the front and the jasmin lowering (the dev tree carries one for the
-  extracted SHA-256 `maj`);
+  extracted SHA-256 `maj` and one for `big_sigma0`, the latter through the literal-slot
+  arm of the front: an `RLimbStore` into an unbound `.TFp` slot emits `bvConst` and the
+  leaf `limbLit:idx`, which binds the slot);
 - a weld of `corresU_whileFun` to the rolled loop: the `Com jasminDialect` of
   `corresU_whileFun_jasminDenote` is the front's unrolling of the `RWhileNz` node at
   the entry environment's trip count (`transU`), and no theorem relates it to the

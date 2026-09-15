@@ -69,7 +69,7 @@ open CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFrameRoundTrip
   (upd_ne upd_self envReadU64_of_bound envReader_of_bound envReadU64_upd_ne
    envReadU64_upd_self semScalar_arrLoad semScalar_arrStore semScalar_setExpr_run)
 open CatCrypt.Crypto.SecureCompilation.Ascent (notTmp_of_short)
-open CatCrypt.Crypto.SecureCompilation.Dialects.TransFromMemref (notTmp_of_headNe)
+open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar (notTmp_of_headNe)
 open CatCrypt.Crypto.SecureCompilation.FieldReduceIdioms (bSltu)
 open CatCrypt.Crypto.SecureCompilation.MultiLimbKernel (bignumVal)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontEmit (ones seqAll)

@@ -71,7 +71,9 @@ N-dest `RCallN`); the dynamic-index array **load**/**store** arms (`RArrLoad` vi
 (`RArrLoadLit`/`RArrStoreLit`, a `bvConst` index temp + the same read or write on a
 `TArr _ .TU64` word array, opaque on other slot and array types); the constant-time word select `RSelect` (the eight-op mask
 chain, §5e′, opaque on other slot types); the memref limb write `RLimbStore` (a
-weaken-step + a `memrefSet` bind); and the contract assertion `RAssert` (no
+weaken-step + a `memrefSet` bind on a bound memref destination; on an unbound
+destination the literal slot, a `bvConst` bind + an `extCall (limbLitLeafName idx)`
+bind at the leaf oracle); and the contract assertion `RAssert` (no
 emission, identity waist — §4b). Every single-binding arm reduces to `scalar_step`; the
 multi-binding arms (`RLetU64Zero`, `RCallSwap`, `RCloneCall`, `RLimbStore`,
 `RCallN`) compose per-bind via `ComCont.comp` along the `RSeq` spine (`RCallN` by
@@ -617,7 +619,14 @@ def semScalar : LowCT → SEnvScalar → Option SEnvScalar
             some (env.upd loc.locVar (t := .memref n)
               (fun j => if j = ⟨idx, h⟩ then v else arr j))
           else none
-      | _ => none
+      | none =>
+          match encodeTy loc.locDst with
+          | .memref n =>
+              if idx < n then
+                some (env.upd loc.locVar (t := .memref n) (CryptoTy.default (.memref n)))
+              else none
+          | _ => none
+      | some _ => none
   | .RCallN _fname dests _args, env => some (semCallNDests dests env)
   | .RArrLoad dst src idxVar, env =>
       match dst.locDst, env src.locVar, env idxVar with
@@ -777,7 +786,16 @@ def semScalarL (ls : SemLeafSpec) : LowCT → SEnvScalar → Option SEnvScalar
             some (env.upd loc.locVar (t := .memref n)
               (fun j => if j = ⟨idx, h⟩ then v else arr j))
           else none
-      | _ => none
+      | none =>
+          match encodeTy loc.locDst with
+          | .memref n =>
+              if idx < n then
+                some (env.upd loc.locVar (t := .memref n)
+                  (ls (TranslateDialectDirectArms.limbLitLeafName idx) (.memref n)
+                    [⟨.sword 64, v⟩]))
+              else none
+          | _ => none
+      | some _ => none
   | .RCallN fname dests args, env => some (semCallNDestsL ls fname args dests 0 env)
   | .RArrLoad dst src idxVar, env =>
       match dst.locDst, env src.locVar, env idxVar with
@@ -2610,7 +2628,35 @@ theorem translateDialectFull_denoteWith (ls : SemLeafSpec) {c : LowCT} (hcov : I
   | rLimbStore loc idx v =>
       intro Γ vm V env env' o hc htr hsem
       rcases hlk : vm.lookup loc.locVar with _ | ⟨mt, arr⟩
-      · simp [translateDialectFull, hlk] at htr
+      · have henv : env loc.locVar = none := by rw [← hc loc.locVar, hlk]; rfl
+        simp only [translateDialectFull, hlk] at htr
+        simp only [semScalarL, henv] at hsem
+        rcases hen : encodeTy loc.locDst with _ | _ | _ | _ | _ | n
+        all_goals (rw [hen] at htr hsem; dsimp only at htr hsem)
+        iterate 5 (exact absurd htr (by simp))
+        by_cases hlt : idx < n
+        · rw [if_pos hlt] at htr hsem
+          simp only [Option.some.injEq] at htr hsem
+          obtain rfl := htr
+          obtain rfl := hsem
+          have hcw := consistentS_weaken vm V env hc
+            (({ op := .bvConst 64 v, retTy_eq := rfl, args := .nil } :
+              Expr catCryptDialect Γ (.sword 64)).denote V)
+          obtain ⟨_, hcont1⟩ :=
+            scalar_stepWith ls vm V env hc loc.locVar
+              ({ op := .bvConst 64 v, retTy_eq := rfl, args := .nil } :
+                Expr catCryptDialect Γ (.sword 64))
+          obtain ⟨hcons2, hcont2⟩ :=
+            scalar_stepWith ls vm.weaken (V.extend _) env hcw loc.locVar (limbLitExpr idx n)
+          refine ⟨_, hcons2, ?_⟩
+          intro t tail
+          obtain ⟨com2, hcom2, hden2⟩ := hcont2 tail
+          obtain ⟨com, hcom, hden⟩ := hcont1 com2
+          refine ⟨com, ?_, ?_⟩
+          · show ComCont.comp (ComCont.varBind _) (ComCont.varBind _) tail = some com
+            simp only [ComCont.comp, hcom2, hcom]
+          · exact hden.trans hden2
+        · rw [if_neg hlt] at htr; simp at htr
       · rcases mt with _ | _ | ⟨_, _⟩ | ⟨_, _⟩ | _ | n
         · simp [translateDialectFull, hlk] at htr
         · simp [translateDialectFull, hlk] at htr
@@ -3259,7 +3305,16 @@ theorem translateDialectFull_extWith (ls : SemLeafSpec) (c : LowCT) :
           exact ⟨[encodeTy newDest.locDst, cloneTy], rfl, fun h => absurd h (by simp)⟩
   case RLimbStore loc idx v =>
       rcases hlk : vm.lookup loc.locVar with _ | p
-      · simp [translateDialectFull, hlk] at htr
+      · simp only [translateDialectFull, hlk] at htr
+        rcases hen : encodeTy loc.locDst with _ | _ | _ | _ | _ | n
+        all_goals (rw [hen] at htr; dsimp only at htr)
+        iterate 5 (exact absurd htr (by simp))
+        by_cases hlt : idx < n
+        · rw [if_pos hlt] at htr
+          simp only [Option.some.injEq] at htr
+          obtain rfl := htr
+          exact ⟨[.memref n, .sword 64], rfl, fun h => absurd h (by simp)⟩
+        · rw [if_neg hlt] at htr; simp at htr
       · obtain ⟨mt, arr⟩ := p
         rcases mt with _ | _ | ⟨_, _⟩ | ⟨_, _⟩ | _ | n
         · simp [translateDialectFull, hlk] at htr

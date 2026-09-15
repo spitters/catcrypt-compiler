@@ -40,7 +40,7 @@ namespace CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpArrMemN
 
 open CatCrypt.Crypto.SecureCompilation.CryptoSSA
 open CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA (encodeTy)
-open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar (isTmpName srcClean)
+open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar (isTmpName srcClean notTmp_of_headNe)
 open CatCrypt.Crypto.SecureCompilation.Dialects.CarryChainSelect (sexprVars)
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectTotality
   (NameTys SrcTys VmApprox)

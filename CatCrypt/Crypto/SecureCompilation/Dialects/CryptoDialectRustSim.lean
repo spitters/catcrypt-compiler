@@ -402,7 +402,16 @@ theorem translateDialectFull_preserves_noAlias {Γ : Ctx} (vm : VarMap Γ) {c : 
   | rLimbStore loc idx v =>
       simp only [translateDialectFull] at hT
       cases hlk : vm.lookup loc.locVar with
-      | none => rw [hlk] at hT; exact absurd hT (by simp)
+      | none =>
+        rw [hlk] at hT
+        dsimp only at hT
+        rcases hen : encodeTy loc.locDst with _ | _ | _ | _ | _ | n
+        all_goals (rw [hen] at hT; dsimp only at hT)
+        iterate 5 (exact absurd hT (by simp))
+        by_cases h : idx < n
+        · rw [if_pos h] at hT; simp only [Option.some.injEq] at hT; subst hT
+          exact noAlias_bind (noAlias_weaken hNA) loc.locVar
+        · rw [if_neg h] at hT; exact absurd hT (by simp)
       | some pair =>
         rw [hlk] at hT
         obtain ⟨ty, arr⟩ := pair
@@ -536,6 +545,51 @@ theorem translateDialectControl_preserves_noAlias {Γ : Ctx} (vm : VarMap Γ) {c
                           | some o₂' =>
                             rw [hr] at hT; simp only [Option.some.injEq] at hT; subst hT
                             exact ihelse o₁.vm hr (ihthen vm hdt hNA)
+
+/-- A 64-bit word pushed onto the valuation under the weakened map keeps the state
+    interpretation: every binding of the map refers past the new slot. -/
+theorem rustStateInterp_weaken_word {Γ : Ctx} {vm : VarMap Γ} {rs : RustState} {V : HVec Γ}
+    (hInv : RustStateInterp vm rs V) (w : BitVec 64) :
+    RustStateInterp (vm.weaken : VarMap (.sword 64 :: Γ)) rs (HVec.cons w V) := by
+  refine ⟨?_, noAlias_weaken hInv.noAlias⟩
+  intro name s cv hL
+  simp only [VarMap.weaken] at hL
+  cases hOld : vm.lookup name with
+  | none => rw [hOld] at hL; exact absurd hL (by simp)
+  | some pair3 =>
+    rw [hOld] at hL
+    obtain ⟨t', cv'⟩ := pair3
+    simp only [Option.some.injEq, Sigma.mk.injEq] at hL
+    obtain ⟨ht', hcvE⟩ := hL
+    subst ht'
+    cases hcvE
+    have hOldOK := hInv name t' cv' hOld
+    cases t' with
+    | sword nw =>
+      by_cases h64 : nw = 64
+      · subst h64
+        show (CVar.there cv' : CVar (.sword 64 :: Γ) (.sword 64)).lookup (HVec.cons w V)
+              = BitVec.ofNat 64 (rs.rsScalar name)
+        simp [CVar.lookup]
+        exact hOldOK
+      · exact bindingOK_sword_ne (n := nw) h64 _ _ _ _
+    | memref m =>
+      simp only [bindingOK] at hOldOK ⊢
+      cases hRsT2 : rs.rsTower name with
+      | none => rw [hRsT2] at hOldOK; exact hOldOK
+      | some pair4 =>
+        rw [hRsT2] at hOldOK
+        obtain ⟨t'', vt⟩ := pair4
+        intro hEncP
+        have hHeqP := hOldOK hEncP
+        show HEq ((CVar.there cv' : CVar (.sword 64 :: Γ) (.memref m)).lookup (HVec.cons w V))
+                 (cryptoTyOfRustVal t'' vt)
+        simp only [CVar.lookup]
+        exact hHeqP
+    | bit => simp only [bindingOK]
+    | unit => simp only [bindingOK]
+    | pair _ _ => simp only [bindingOK]
+    | sum _ _ => simp only [bindingOK]
 
 /-- **Rust ↔ dialect-front simulation (`CProg`-free statement).**
     On the control-covered fragment `IsCoveredCtl`, if the `CProg`-free direct
@@ -897,7 +951,22 @@ theorem rustExecSimulatesDialect
   | limbStore loc idx vbv rs0 oldDestV _hLook =>
       simp only [translateDialectControl, translateDialectFull] at hTrans
       cases hLook : vm.lookup loc.locVar with
-      | none => rw [hLook] at hTrans; exact absurd hTrans (by simp)
+      | none =>
+        rw [hLook] at hTrans
+        dsimp only at hTrans
+        rcases hEnc : encodeTy loc.locDst with _ | _ | _ | _ | _ | n
+        all_goals (rw [hEnc] at hTrans; dsimp only at hTrans)
+        iterate 5 (exact absurd hTrans (by simp))
+        by_cases h : idx < n
+        · rw [if_pos h] at hTrans
+          simp only [Option.some.injEq] at hTrans
+          subst hTrans
+          simp only [locatedUpdate]
+          exact ⟨_, interp_bind_memref_setTower_general (x := loc.locVar)
+            (rustStateInterp_weaken_word hInv vbv) loc.locDst hEnc
+            (leafSpec.limbStore loc oldDestV idx vbv)⟩
+        · rw [if_neg h] at hTrans
+          exact absurd hTrans (by simp)
       | some pair =>
         rw [hLook] at hTrans
         obtain ⟨t, arr⟩ := pair
@@ -929,49 +998,7 @@ theorem rustExecSimulatesDialect
                 rfl
             simp only [bindingOK] at hOK
             rw [hRsT] at hOK
-            have hInvW : RustStateInterp (vm.weaken : VarMap (.sword 64 :: Γ)) rs0
-                           (HVec.cons vbv V) := by
-              refine ⟨?_, noAlias_weaken hInv.noAlias⟩
-              intro name s cv hL
-              simp only [VarMap.weaken] at hL
-              cases hOld : vm.lookup name with
-              | none => rw [hOld] at hL; exact absurd hL (by simp)
-              | some pair3 =>
-                rw [hOld] at hL
-                obtain ⟨t', cv'⟩ := pair3
-                simp only [Option.some.injEq, Sigma.mk.injEq] at hL
-                obtain ⟨ht', hcvE⟩ := hL
-                subst ht'
-                cases hcvE
-                have hOldOK := hInv name t' cv' hOld
-                cases t' with
-                | sword nw =>
-                  by_cases h64 : nw = 64
-                  · subst h64
-                    show (CVar.there cv' : CVar (.sword 64 :: Γ) (.sword 64)).lookup
-                            (HVec.cons vbv V)
-                          = BitVec.ofNat 64 (rs0.rsScalar name)
-                    simp [CVar.lookup]
-                    exact hOldOK
-                  · exact bindingOK_sword_ne (n := nw) h64 _ _ _ _
-                | memref m =>
-                  simp only [bindingOK] at hOldOK ⊢
-                  cases hRsT2 : rs0.rsTower name with
-                  | none => rw [hRsT2] at hOldOK; exact hOldOK
-                  | some pair4 =>
-                    rw [hRsT2] at hOldOK
-                    obtain ⟨t'', vt⟩ := pair4
-                    intro hEncP
-                    have hHeqP := hOldOK hEncP
-                    show HEq ((CVar.there cv' : CVar (.sword 64 :: Γ) (.memref m)).lookup
-                                (HVec.cons vbv V))
-                             (cryptoTyOfRustVal t'' vt)
-                    simp only [CVar.lookup]
-                    exact hHeqP
-                | bit => simp only [bindingOK]
-                | unit => simp only [bindingOK]
-                | pair _ _ => simp only [bindingOK]
-                | sum _ _ => simp only [bindingOK]
+            have hInvW := rustStateInterp_weaken_word hInv vbv
             simp only [locatedUpdate]
             by_cases hEnc : encodeTy loc.locDst = .memref n
             · exact ⟨_, interp_bind_memref_setTower_general (x := loc.locVar) hInvW

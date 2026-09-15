@@ -321,6 +321,21 @@ def expand (τ : Typing) : LowCT → Option (LeakTrace × Typing)
   | .RScalarSetExpr x e =>
       some (sexprLeak e ++ [.pureOp "bvShiftL"],
         (τ.updTemps 0 (sexprLeak e).length).upd x (.sword 64))
+  | .RLimbStore loc idx _ =>
+      match τ loc.locVar with
+      | some (.memref n) =>
+          if idx < n then
+            some ([.pureOp "bvConst", .pureOp "memrefSet"], τ.upd loc.locVar (.memref n))
+          else none
+      | none =>
+          match encodeTy loc.locDst with
+          | .memref n =>
+              if idx < n then
+                some ([.pureOp "bvConst", .pureOp ("extCall:" ++ limbLitLeafName idx)],
+                  τ.upd loc.locVar (.memref n))
+              else none
+          | _ => none
+      | some _ => none
   | _ => none
 
 /-- **The front's prefix prepends `expand`'s event list.** For every command on
@@ -480,6 +495,44 @@ theorem translateDialectFull_leakTrace_expand {Γ : Ctx} (vm : VarMap Γ) (c : L
               show VarMap.tyOf (VarMap.bind _ _) = _
               rw [VarMap.tyOf_bind, ty₁]
           · exact absurd h (by simp)
+  | RLimbStore loc idx v =>
+      simp only [expand] at he
+      simp only [translateDialectFull] at h
+      rcases hlk : vm.lookup loc.locVar with _ | ⟨mt, arr⟩
+      · have hty : VarMap.tyOf vm loc.locVar = none := by simp [VarMap.tyOf, hlk]
+        rw [hlk] at h
+        rw [hty] at he
+        dsimp only at h he
+        rcases hen : encodeTy loc.locDst with _ | _ | _ | _ | _ | n
+        all_goals (rw [hen] at h he; dsimp only at h he)
+        iterate 5 (exact absurd h (by simp))
+        by_cases hlt : idx < n
+        · rw [if_pos hlt] at h he
+          simp only [Option.some.injEq, Prod.mk.injEq] at h he
+          obtain ⟨rfl, rfl⟩ := he
+          subst h
+          refine ⟨ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+            (ComCont.varBind_leakFactorsTrace _), ?_⟩
+          show VarMap.tyOf (VarMap.bind _ _) = _
+          rw [VarMap.tyOf_bind, VarMap.tyOf_weaken]
+        · rw [if_neg hlt] at h; exact absurd h (by simp)
+      · have hty : VarMap.tyOf vm loc.locVar = some mt := by simp [VarMap.tyOf, hlk]
+        rw [hlk] at h
+        rw [hty] at he
+        rcases mt with _ | _ | _ | _ | _ | n
+        all_goals (dsimp only at h he)
+        iterate 5 (exact absurd h (by simp))
+        by_cases hlt : idx < n
+        · rw [dif_pos hlt] at h
+          rw [if_pos hlt] at he
+          simp only [Option.some.injEq, Prod.mk.injEq] at h he
+          obtain ⟨rfl, rfl⟩ := he
+          subst h
+          refine ⟨ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+            (ComCont.varBind_leakFactorsTrace _), ?_⟩
+          show VarMap.tyOf (VarMap.bind _ _) = _
+          rw [VarMap.tyOf_bind, VarMap.tyOf_weaken]
+        · rw [dif_neg hlt] at h; exact absurd h (by simp)
   | _ => simp [expand] at he
 
 end CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakExpansion

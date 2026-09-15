@@ -35,6 +35,18 @@ x86 backend:
   semantics of that form; `x86_SHR_word_eq_SHRX`, `x86_SHL_word_eq_SHLX`,
   `x86_SAR_word_eq_SARX` relate the data words of the two forms for every count.
 
+Dialect front:
+
+- Literal slots: an `RLimbStore ⟨x, .TFp⟩ idx v` whose destination is not yet bound
+  (the shape `litTower` produces for literal call arguments) translates to `bvConst 64 v`
+  followed by the leaf call `extCall (limbLitLeafName idx)`, which binds the six-limb
+  memref; `semScalar` binds the default memref and `semScalarL` the oracle's value at that
+  leaf, `translateDialectFull_denoteWith`, the leak factoring, the typed `expand`
+  (`[bvConst, extCall:limbLit:idx]` on an unbound destination, `[bvConst, memrefSet]` on
+  a bound one) and `rustExecSimulatesDialect` cover the arm; `corresL_of_corres_eqOn`
+  (`Ascent/GuardsLeaf.lean`) carries the limb-store leaf rule, since `semScalarL ls`
+  and `semScalar` differ on an `RLimbStore` into an unbound destination.
+
 Leak traces:
 
 - `Dialects/CryptoDialectLeakExpansion.lean`: `translateDialectFull_leakTrace_expand`

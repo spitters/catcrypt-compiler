@@ -45,7 +45,11 @@ opaque `extCall` leaf bindings (the crypto leaf calls) or a `memrefSet` chain:
   operands match the dynamic-index memref ABI (array `.memref n`, index/value
   `.sword 64`, word destination), else one `extCall "arrLoadDyn"` / `"arrStoreDyn"`
   (see §1c);
-* `RLimbStore`       — a `bvConst`; `memrefSet` pair;
+* `RLimbStore`       — a `bvConst`; `memrefSet` pair on a bound memref
+  destination; on an unbound destination whose tower type encodes to `.memref n`
+  (a literal slot, the image of a literal binding under the tower-literal pass),
+  a `bvConst`; `extCall (limbLitLeafName idx)` pair, the leaf taking the word and
+  returning the slot holding it at limb `idx`;
 * `RCallSwap`        — two sequential `extCall`s;
 * `RCloneCall`       — `extCall "clone"`; inner `extCall innerF`;
 * `RCallN`           — a left-to-right fold of `extCall (callNLeafName f i)` per
@@ -106,6 +110,15 @@ Each builds the `catCryptDialect` `Expr` that `toVIRExprT` of the corresponding
 def extCallExpr {Γ : Ctx} (name : String) (retTy : CryptoTy) {argTys : List CryptoTy}
     (args : CHVector (fun t => CVar Γ t) argTys) : Expr catCryptDialect Γ retTy :=
   { op := .extCall name argTys retTy, retTy_eq := rfl, args := toVIRArgs args }
+
+/-- The leaf name of the literal slot at limb `idx`: the leaf takes one 64-bit word
+    and returns the memref slot holding it at limb `idx`. -/
+def limbLitLeafName (idx : Nat) : String := "limbLit:" ++ toString idx
+
+/-- The `extCall` expression of the literal slot at limb `idx` over the word bound at
+    the head of the context. -/
+def limbLitExpr {Γ : Ctx} (idx n : Nat) : Expr catCryptDialect (.sword 64 :: Γ) (.memref n) :=
+  extCallExpr (limbLitLeafName idx) (.memref n) (.cons (CVar.here : CVar (.sword 64 :: Γ) _) .nil)
 
 /-! ## 1b. Scalar-`SExpr` lowering (`RScalarSetExpr`)
 
@@ -895,7 +908,19 @@ def translateDialectFull {Γ : Ctx} (vm : VarMap Γ) :
                    cont := ComCont.comp (ComCont.varBind e1) (ComCont.varBind e2),
                    vm := vm.weaken.bind loc.locVar }
           else none
-      | _ => none
+      | none =>
+          match encodeTy loc.locDst with
+          | .memref n =>
+              if idx < n then
+                let e1 : Expr catCryptDialect Γ (.sword 64) :=
+                  { op := .bvConst 64 v, retTy_eq := rfl, args := .nil }
+                some { Γ' := .memref n :: .sword 64 :: Γ,
+                       cont := ComCont.comp (ComCont.varBind e1)
+                         (ComCont.varBind (limbLitExpr idx n)),
+                       vm := vm.weaken.bind loc.locVar }
+              else none
+          | _ => none
+      | some _ => none
   | .RCallSwap fname dest1 dest2 args =>
       match resolveLocatedArgs vm args with
       | none => none

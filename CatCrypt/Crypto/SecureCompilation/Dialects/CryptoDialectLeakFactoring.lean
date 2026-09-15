@@ -448,6 +448,11 @@ theorem translateDialectFull_cont_leakFactors {Γ : Ctx} (vm : VarMap Γ) {c : L
       rw [translateDialectFull] at h
       split at h <;> first
         | (split at h <;> first
+            | (split at h <;> first
+                | (rw [Option.some.injEq] at h; subst h;
+                   exact ⟨2, ComCont.comp_leakFactors (ComCont.varBind_leakFactors _)
+                     (ComCont.varBind_leakFactors _)⟩)
+                | exact absurd h (by simp))
             | (rw [Option.some.injEq] at h; subst h;
                exact ⟨2, ComCont.comp_leakFactors (ComCont.varBind_leakFactors _) (ComCont.varBind_leakFactors _)⟩)
             | exact absurd h (by simp))
@@ -957,6 +962,11 @@ theorem translateDialectFull_cont_leakFactorsTrace {Γ : Ctx} (vm : VarMap Γ) {
       rw [translateDialectFull] at h
       split at h <;> first
         | (split at h <;> first
+            | (split at h <;> first
+                | (rw [Option.some.injEq] at h; subst h;
+                   exact ⟨_, ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _)
+                     (ComCont.varBind_leakFactorsTrace _)⟩)
+                | exact absurd h (by simp))
             | (rw [Option.some.injEq] at h; subst h;
                exact ⟨_, ComCont.comp_leakFactorsTrace (ComCont.varBind_leakFactorsTrace _) (ComCont.varBind_leakFactorsTrace _)⟩)
             | exact absurd h (by simp))

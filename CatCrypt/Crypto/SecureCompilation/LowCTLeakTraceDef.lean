@@ -143,6 +143,10 @@ def LowCT.leakTrace : LowCT → LeakTrace
   -- count is not statically known), so it emits a single placeholder marker.
   | .RForRuntime _ _ _               =>
       [.pureOp "forRuntime"]
+  -- Two pure ops in either binding state of the destination: the literal word and the
+  -- `memrefSet` on a bound memref, or the literal word and the `extCall` of
+  -- `limbLitLeafName idx` on an unbound destination (the literal slot). The typed
+  -- trace `CryptoDialectLeakExpansion.expand` separates the two.
   | .RLimbStore _ _ _                =>
       [.pureOp "bvConst", .pureOp "memrefSet"]
   -- Phase F/G/H/L/M (2026-05-03): structural trace for the new constructors.
