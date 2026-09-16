@@ -342,6 +342,140 @@ theorem loopBodyWalkNCall_lcmdDirect (d : Nat) (accReg idxReg : String)
         subst hz
         exact opToLinstrR_direct h.1 (loopExprArgsN_not_indexed _ _ _ _ _ _ e)
 
+/-- A multi-binder loop-body variable resolved with the buffer bindings in scope
+    is a register or an immediate: the in-place accumulator resolves to the
+    accumulator register, a scratch buffer binding to its frame slot name, and
+    every other reference exactly as `loopResolveVarN` resolves it. -/
+theorem loopResolveVarNBuf_not_indexed (d : Nat) (accReg idxReg : String)
+    (invRegs : List String) (bufs : List (Nat × Nat)) (ipSlot : Option Nat)
+    (curDepth : Nat) (immSlotMap : ImmSlotMap)
+    {Γ : Ctxt jasminDialect} {τ : JasminTy} (v : Ctxt.Var Γ τ) :
+    isIndexed (loopResolveVarNBuf d accReg idxReg invRegs bufs ipSlot curDepth
+      immSlotMap v) = false := by
+  unfold loopResolveVarNBuf
+  dsimp only
+  split
+  · rfl
+  · split
+    · rfl
+    · exact loopResolveVarN_not_indexed _ _ _ _ _ _ v
+
+theorem loopExprArgsNBuf_go_not_indexed (d : Nat) (accReg idxReg : String)
+    (invRegs : List String) (bufs : List (Nat × Nat)) (ipSlot : Option Nat)
+    (curDepth : Nat) (immSlotMap : ImmSlotMap) {Γ : Ctxt jasminDialect} :
+    ∀ {tys : List JasminTy} (hv : HVector (fun ty => Ctxt.Var Γ ty) tys),
+      ∀ o ∈ loopExprArgsNBuf.go d accReg idxReg invRegs bufs ipSlot curDepth
+        immSlotMap hv, isIndexed o = false
+  | [], _ => by intro o ho; simp [loopExprArgsNBuf.go] at ho
+  | _ :: _, .cons v rest => by
+      intro o ho
+      rw [loopExprArgsNBuf.go, List.mem_cons] at ho
+      rcases ho with rfl | ho
+      · exact loopResolveVarNBuf_not_indexed _ _ _ _ _ _ _ _ v
+      · exact loopExprArgsNBuf_go_not_indexed d accReg idxReg invRegs bufs ipSlot
+          curDepth immSlotMap rest o ho
+
+/-- Every operand of a multi-binder loop-body expression resolved with the buffer
+    bindings in scope is a register or an immediate. -/
+theorem loopExprArgsNBuf_not_indexed (d : Nat) (accReg idxReg : String)
+    (invRegs : List String) (bufs : List (Nat × Nat)) (ipSlot : Option Nat)
+    (curDepth : Nat) (immSlotMap : ImmSlotMap)
+    {Γ : Ctxt jasminDialect} {τ : JasminTy} (e : Expr jasminDialect Γ τ) :
+    ∀ o ∈ loopExprArgsNBuf d accReg idxReg invRegs bufs ipSlot curDepth immSlotMap e,
+      isIndexed o = false :=
+  loopExprArgsNBuf_go_not_indexed d accReg idxReg invRegs bufs ipSlot curDepth
+    immSlotMap e.args
+
+/-- Marshalling one loop-body call operand into an argument register is direct
+    when the operand is: a memory operand is taken by address (`LEA`) and every
+    other operand by value (`MOV`), both with the operand as a source. -/
+theorem loopBufMarshalArg_direct (areg : String) (op : LOperand)
+    (h : isIndexed op = false) :
+    linstrRDirect (loopBufMarshalArg areg op).li_i = true := by
+  cases op with
+  | reg n =>
+      unfold loopBufMarshalArg
+      dsimp only
+      split
+      · exact linstrRDirect_Lopn_mk (by simp [isIndexed]) (by
+          intro o ho
+          simp only [List.mem_cons, List.not_mem_nil, or_false] at ho
+          subst ho
+          rfl)
+      · exact movOperand_direct _ _ _ rfl
+  | imm m => exact movOperand_direct _ _ _ rfl
+  | arr b i => exact movOperand_direct _ _ _ rfl
+  | arrIdx b i s => simp [isIndexed] at h
+
+/-- The out-pointer marshalling sequence of a buffer-returning loop-body leaf
+    call is direct when its argument operands are. -/
+theorem loopBodyCallLcmdBuf_direct (dstMem sym : String) (argOps : List LOperand)
+    (h : ∀ o ∈ argOps, isIndexed o = false) :
+    lcmdDirect (loopBodyCallLcmdBuf dstMem sym argOps) = true := by
+  unfold loopBodyCallLcmdBuf
+  refine lcmdDirect_of_mem ?_
+  intro z hz
+  simp only [List.mem_cons, List.mem_append, List.mem_map, List.not_mem_nil,
+    or_false] at hz
+  rcases hz with rfl | ⟨p, hp, rfl⟩ | rfl
+  · exact linstrRDirect_Lopn_mk (by simp [isIndexed]) (by
+      intro o ho
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at ho
+      subst ho
+      rfl)
+  · exact loopBufMarshalArg_direct _ _ (h _ (List.of_mem_zip hp).1)
+  · rfl
+
+/-- The in-place marshalling sequence of a buffer-returning loop-body leaf call
+    that writes the accumulator is direct when the accumulator operand and the
+    argument operands are. -/
+theorem loopBodyCallLcmdBufInPlace_direct (accOp : LOperand) (sym : String)
+    (argOps : List LOperand) (hacc : isIndexed accOp = false)
+    (h : ∀ o ∈ argOps, isIndexed o = false) :
+    lcmdDirect (loopBodyCallLcmdBufInPlace accOp sym argOps) = true := by
+  unfold loopBodyCallLcmdBufInPlace
+  refine lcmdDirect_of_mem ?_
+  intro z hz
+  simp only [List.mem_cons, List.mem_append, List.mem_map, List.not_mem_nil,
+    or_false] at hz
+  rcases hz with rfl | ⟨p, hp, rfl⟩ | rfl
+  · exact loopBufMarshalArg_direct _ _ hacc
+  · exact loopBufMarshalArg_direct _ _ (h _ (List.of_mem_zip hp).1)
+  · rfl
+
+/-- The buffer-aware multi-binder loop-body walk of an index-free `Com` uses no
+    register-indexed operand. -/
+theorem loopBodyWalkNBuf_lcmdDirect (d : Nat) (accReg idxReg : String)
+    (invRegs : List String) (bufs : List (Nat × Nat)) (ipSlot : Option Nat)
+    (immSlotMap : ImmSlotMap) :
+    ∀ {Γ : Ctxt jasminDialect} {t : JasminTy} (c : Com jasminDialect Γ t)
+      (curDepth : Nat), ComJasminCTByConstruction c →
+      lcmdDirect (loopBodyWalkNBuf d accReg idxReg invRegs bufs ipSlot immSlotMap c
+        curDepth).1 = true
+  | _, _, .ret _, _, _ => rfl
+  | _, _, .var e body, curDepth, h => by
+      have hs := loopExprArgsNBuf_not_indexed d accReg idxReg invRegs bufs ipSlot
+        curDepth immSlotMap e
+      refine lcmdDirect_append_of ?_
+        (loopBodyWalkNBuf_lcmdDirect d accReg idxReg invRegs bufs ipSlot immSlotMap
+          body (curDepth + 1) h.2)
+      split
+      · split
+        · exact loopBodyCallLcmdBufInPlace_direct _ _ _ rfl hs
+        · split
+          · exact loopBodyCallLcmdBuf_direct _ _ _ hs
+          · exact callMarshalHere_lcmdDirect _ _ _ _ _ hs
+      · split
+        · exact loopBodyCallLcmdBufInPlace_direct _ _ _ rfl hs
+        · split
+          · exact loopBodyCallLcmdBuf_direct _ _ _ hs
+          · exact callMarshalHere_lcmdDirect _ _ _ _ _ hs
+      · refine lcmdDirect_of_mem ?_
+        intro z hz
+        simp only [List.mem_cons, List.not_mem_nil, or_false] at hz
+        subst hz
+        exact opToLinstrR_direct h.1 hs
+
 /-- The single-binder back-edge frame around a body copy `w.1` with result
     register `w.2`. -/
 theorem frame1_lcmdDirect (accReg ctr : String) (initOp : LOperand) (n : Nat)
@@ -474,14 +608,28 @@ theorem forLoopLcmdNCall_lcmdDirect (d : Nat) (accReg : String) (initOp : LOpera
     (invOps : List LOperand) (immSlotMap : ImmSlotMap)
     (hinit : isIndexed initOp = false)
     (hp : ComJasminCTByConstruction p.update) :
-    lcmdDirect (forLoopLcmdNCall d accReg initOp p invOps immSlotMap) = true :=
-  frameN_lcmdDirect accReg (loopIdx d) (loopCtr d) initOp (.imm p.n) d
-    (invOps.filterMap (fun o => match o with | .reg n => some n | _ => none))
-    (loopBodyWalkNCall d accReg (loopIdx d)
-      (invOps.filterMap (fun o => match o with | .reg n => some n | _ => none))
-      immSlotMap p.update (2 + invTys.length))
-    hinit rfl
-    (loopBodyWalkNCall_lcmdDirect d accReg (loopIdx d) _ immSlotMap p.update _ hp)
+    lcmdDirect (forLoopLcmdNCall d accReg initOp p invOps immSlotMap) = true := by
+  unfold forLoopLcmdNCall
+  refine lcmdDirect_append_of (lcmdDirect_append_of (lcmdDirect_append_of
+    (lcmdDirect_append_of (lcmdDirect_append_of (lcmdDirect_append_of
+      ?_ ?_) ?_) ?_) ?_) ?_) ?_
+  · split <;> rfl
+  · refine lcmdDirect_of_mem ?_
+    intro z hz
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hz
+    rcases hz with rfl | rfl | rfl | rfl
+    · exact movOperand_direct _ _ _ hinit
+    · rfl
+    · rfl
+    · rfl
+  · cases hc : ((loopScratchBufBindings p.update (2 + invTys.length)).isEmpty &&
+        (loopInPlaceBufSlot p.update (2 + invTys.length)).isNone) with
+    | false => exact loopBodyWalkNBuf_lcmdDirect _ _ _ _ _ _ _ _ _ hp
+    | true => exact loopBodyWalkNCall_lcmdDirect _ _ _ _ _ _ _ hp
+  · split <;> rfl
+  · rfl
+  · exact invTouch_lcmdDirect _ _
+  · rfl
 
 /-- `forLoopLcmdNRt` emits no register-indexed operand when its accumulator seed
     and runtime trip count are registers or immediates and its loop body is

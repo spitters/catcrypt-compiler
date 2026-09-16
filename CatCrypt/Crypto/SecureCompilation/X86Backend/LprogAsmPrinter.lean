@@ -1434,42 +1434,6 @@ def frameAddVecOverlap (body : VIR.JasminLprogExport.Lcmd) : Bool :=
   [ ⟨0, .Lopn [] "FRAMEADD" [.imm 96]⟩
   , ⟨0, .Lopn [.reg "kv.0"] "VMOVDQU" [.reg "XMM0"]⟩ ] = true
 
-/-- The allocated frame size `F` (bytes, 16-aligned) for a body: an explicit
-    `FRAME` directive if present (the array-ABI orchestration), else the 64-byte
-    qsave block plus every spill cell (`cell·(maxIdx+1)`, cell = 8 for a U64 body,
-    4 for U32). `frameAddDirective` bytes extend either layout, for a body holding
-    bottom-anchored scratch buffers. A 16-byte tail pad keeps `%rsp` ABI-aligned
-    after the `leaq -F`. -/
-def frameSize (body : VIR.JasminLprogExport.Lcmd) : Nat :=
-  let frameAdd := frameAddDirective body
-  match frameDirective body with
-  | some f => (f + frameAdd + 15) / 16 * 16
-  | none =>
-    let cell := if bodyIsU64 body then 8 else 4
-    let spillBytes := match maxSpillIdx body with
-                      | some m => cell * (m + 1)
-                      | none => 0
-    -- The vector-spill region sits at the BOTTOM of the frame (offsets `32·idx`
-    -- from `%rsp`); reserving it grows `frame` so the top-anchored qsave and GP
-    -- `k.N` cells stay disjoint from it. `0` for a body with no `kv.N` slots, so
-    -- every existing (GP-only) kernel's frame is unchanged.
-    let raw := qsaveBytes + spillBytes + vecSpillBytes body + frameAdd
-    let f16 := (raw + 15) / 16 * 16
-    -- A body that issues a real `call` needs `%rsp ≡ 0 (mod 16)` AT each call
-    -- instruction (SysV): function entry is `≡ 8` (the pushed return address),
-    -- so the frame must be `≡ 8 (mod 16)`. A 16-aligned F leaves every call
-    -- site misaligned and an SSE-using C leaf (`movaps` stack spills) faults.
-    -- Call-free bodies keep the 16-aligned F (byte-identical).
-    if VIR.JasminLprogExport.bodyHasCall body then f16 + 8 else f16
-
-/-- Render a whole `Lcmd` body's instruction lines in a frame of size `frame`
-    (flattening the per-`Lopn` line lists). The prologue (pointer save + park) and
-    epilogue (output stores + callee-save restore) are themselves ordinary
-    `Lopn`s `comToLfundefPhysAbi` produced, so they render uniformly here. -/
-def renderLcmd (frame spillW : Nat) (body : VIR.JasminLprogExport.Lcmd)
-    (lblPfx : String := "") (rvs : Bool := false) : List String :=
-  body.flatMap (fun i => renderLinstrR frame spillW i.li_i lblPfx rvs)
-
 /-! ### Callee-saved GP park/restore for hand-built bodies (#596)
 
 The SysV x86-64 ABI requires a function to preserve `{RBX, RBP, R12, R13, R14,
@@ -1485,10 +1449,14 @@ SEGFAULTs. `renderLfundef` therefore detects every callee-saved GPR the body
 **writes as a bare register destination but does NOT already `qsave`-park**, and
 brackets the frame with a `pushq`/`popq` pair for exactly those.
 
-This is **inert** for the linear-jasmin path: every callee-saved register those
-bodies write as a bare destination is also `qsave`-parked (`buildPrologue` saves
-all six unconditionally), so `calleeSavedToSave` returns `[]` and the emitted
-`.s` is byte-identical to before. It is also inert for any body that touches no
+The push count is also what the frame sizer reads for the SysV call-site
+alignment correction (`frameSize`), since each push moves `%rsp` by 8 before the
+frame `leaq`; the set is therefore defined ahead of the frame layout.
+
+For the linear-jasmin path the wrapping is **inert**: every callee-saved register
+those bodies write as a bare destination is also `qsave`-parked (`buildPrologue`
+saves all six unconditionally), so `calleeSavedToSave` returns `[]` and no
+push/pop is emitted. It is likewise inert for any body that touches no
 callee-saved register as scratch. -/
 
 /-- The SysV x86-64 ABI callee-saved GP registers (the caller relies on these
@@ -1511,7 +1479,7 @@ def bodyWritesBareReg (body : VIR.JasminLprogExport.Lcmd) (reg : String) : Bool 
 /-- True iff the body already `qsave`-parks `reg` (contains an `Lopn` whose
     destination is the bare name `qsave.<reg>`). This is the linear-jasmin path's
     own ABI save (`buildPrologue`); when present, the printer must NOT add a
-    second push/pop (that would diverge from the byte-identical baseline). -/
+    second push/pop. -/
 def bodyParksQsave (body : VIR.JasminLprogExport.Lcmd) (reg : String) : Bool :=
   let qname := "qsave." ++ reg
   body.any (fun i =>
@@ -1528,6 +1496,72 @@ def bodyParksQsave (body : VIR.JasminLprogExport.Lcmd) (reg : String) : Bool :=
     except for hand-built bodies that clobber callee-saved registers. -/
 def calleeSavedToSave (body : VIR.JasminLprogExport.Lcmd) : List String :=
   calleeSavedRegs.filter (fun r => bodyWritesBareReg body r && !bodyParksQsave body r)
+
+/-- The allocated frame size `F` (bytes: a 16-aligned layout plus the call-site
+    alignment correction) for a body: an explicit `FRAME` directive if present
+    (the array-ABI orchestration), else the 64-byte qsave block plus every spill
+    cell (`cell·(maxIdx+1)`, cell = 8 for a U64 body, 4 for U32).
+    `frameAddDirective` bytes extend either layout, for a body holding
+    bottom-anchored scratch buffers.
+
+    A body that issues a real `call` needs `%rsp ≡ 0 (mod 16)` AT each call
+    instruction (SysV). The `%rsp` a call site sees is the entry value (`≡ 8`
+    (mod 16), the pushed return address), less 8 per callee-saved register
+    `renderLfundef` pushes before the frame (`calleeSavedToSave`), less `F` (the
+    `leaq -F(%rsp)`). The correction adds 8 to the 16-aligned layout exactly when
+    `8 + 8·npush + F` is `≡ 8 (mod 16)`, on either branch; it is what keeps an
+    SSE-using leaf's `movaps` stack spills from faulting. A call-free body takes
+    the 16-aligned layout unchanged.
+
+    The correction moves only the frame's top: the `FRAMEADD` scratch buffers and
+    the `kv.N` vector-spill cells are anchored at the post-`leaq` `%rsp`, and the
+    qsave and `k.N` cells are placed relative to `F` (`qsaveFrameOff`,
+    `spillFrameOff`), so both regions keep their layout and stay disjoint. -/
+def frameSize (body : VIR.JasminLprogExport.Lcmd) : Nat :=
+  let frameAdd := frameAddDirective body
+  let f16 :=
+    match frameDirective body with
+    | some f => (f + frameAdd + 15) / 16 * 16
+    | none =>
+      let cell := if bodyIsU64 body then 8 else 4
+      let spillBytes := match maxSpillIdx body with
+                        | some m => cell * (m + 1)
+                        | none => 0
+      -- The vector-spill region sits at the BOTTOM of the frame (offsets `32·idx`
+      -- from `%rsp`); reserving it grows `frame` so the top-anchored qsave and GP
+      -- `k.N` cells stay disjoint from it. `0` for a body with no `kv.N` slots, so
+      -- every existing (GP-only) kernel's frame keeps this layout.
+      let raw := qsaveBytes + spillBytes + vecSpillBytes body + frameAdd
+      (raw + 15) / 16 * 16
+  if VIR.JasminLprogExport.bodyHasCall body
+      && (8 + 8 * (calleeSavedToSave body).length + f16) % 16 != 0 then f16 + 8
+  else f16
+
+-- Static checks pinning the call-site alignment correction. A call-free body
+-- takes the 16-aligned layout on either branch. A calling body takes the frame
+-- for which `8 + 8·npush + F ≡ 0 (mod 16)`, with `npush` the length of
+-- `calleeSavedToSave`: a bare `RBX` destination is one such push, a bare `RAX`
+-- destination is none (`RAX` is caller-saved).
+#guard frameSize [⟨0, .Lopn [.reg "RAX"] "MOV:64" [.imm 1]⟩] = 64
+#guard frameSize [⟨0, .Lopn [] "FRAME" [.imm 592]⟩] = 592
+#guard frameSize
+  [ ⟨0, .Lopn [.reg "RAX"] "MOV:64" [.imm 1]⟩, ⟨0, .Lcall none ("f", 0)⟩ ] = 72
+#guard frameSize
+  [ ⟨0, .Lopn [.reg "RBX"] "MOV:64" [.imm 1]⟩, ⟨0, .Lcall none ("f", 0)⟩ ] = 64
+#guard frameSize
+  [ ⟨0, .Lopn [] "FRAME" [.imm 592]⟩, ⟨0, .Lcall none ("f", 0)⟩ ] = 600
+#guard frameSize
+  [ ⟨0, .Lopn [] "FRAME" [.imm 592]⟩
+  , ⟨0, .Lopn [.reg "RBX"] "MOV:64" [.imm 1]⟩
+  , ⟨0, .Lcall none ("f", 0)⟩ ] = 592
+
+/-- Render a whole `Lcmd` body's instruction lines in a frame of size `frame`
+    (flattening the per-`Lopn` line lists). The prologue (pointer save + park) and
+    epilogue (output stores + callee-save restore) are themselves ordinary
+    `Lopn`s `comToLfundefPhysAbi` produced, so they render uniformly here. -/
+def renderLcmd (frame spillW : Nat) (body : VIR.JasminLprogExport.Lcmd)
+    (lblPfx : String := "") (rvs : Bool := false) : List String :=
+  body.flatMap (fun i => renderLinstrR frame spillW i.li_i lblPfx rvs)
 
 /-! ## 5. The leaf-function wrapper (trusted ABI scaffolding)
 

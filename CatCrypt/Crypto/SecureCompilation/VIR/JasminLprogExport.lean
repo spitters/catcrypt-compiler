@@ -1697,6 +1697,81 @@ def loopBufTotal (bs : List (Nat × Nat)) : Nat :=
 #guard loopBufOff [(3, 96), (5, 12)] 4 = none
 #guard loopBufTotal [(3, 96), (5, 12)] = 112
 
+/-! #### The in-place accumulator case
+
+A buffer-returning leaf call whose destination is the accumulator's own storage
+— `acc := madd(acc, sel)` — takes the accumulator's base as its out-pointer
+instead of a scratch slot, which is the `framedAbiCallMarshal` marshalling
+(`RDI` and `RSI` both the base) at a loop-body call site. The binding that
+carries it is identified from the body `Com` alone: its op returns a `stackArr`
+(`callResultBufferTy`), its first operand is the accumulator binder (root slot
+`startDepth - 1`, the slot `loopResolveVarN` resolves to `accReg`), and it is
+the binding the body's terminal `.ret` names. A reference to such a binding
+resolves to `accReg`, so the call writes the accumulator and the loop's feedback
+move is absent by the `retReg == accReg` test that already governs it. -/
+
+/-- The root binder slot a loop-body `Com`'s terminal `.ret` names, walking from
+    a walk start depth `curDepth`. The slot arithmetic is `loopResolveVarN`'s:
+    `curDepth - 1 - varIndex v`. -/
+def comBodyRetSlot :
+    {Γ : Ctxt jasminDialect} → {t : JasminTy} →
+    Com jasminDialect Γ t → (curDepth : Nat) → Nat
+  | _, _, .ret v, curDepth => curDepth - 1 - varIndex v
+  | _, _, .var _ body, curDepth => comBodyRetSlot body (curDepth + 1)
+
+/-- The root binder slot of an operand vector's first entry, at context depth
+    `curDepth`, and `none` for an empty vector. -/
+def hvecArg0Slot {Γ : Ctxt jasminDialect} (curDepth : Nat) :
+    {tys : List JasminTy} → HVector (fun ty => Ctxt.Var Γ ty) tys → Option Nat
+  | [], _ => none
+  | _ :: _, .cons v _ => some (curDepth - 1 - varIndex v)
+
+/-- The root binder slot of an `Expr`'s first operand at context depth
+    `curDepth`, and `none` for a nullary op. -/
+def exprArg0Slot {Γ : Ctxt jasminDialect} {τ : JasminTy}
+    (e : Expr jasminDialect Γ τ) (curDepth : Nat) : Option Nat :=
+  hvecArg0Slot curDepth e.args
+
+/-- Scan a loop-body `Com` from `curDepth` for the binding that updates the
+    accumulator in place: a buffer-typed call binding whose first operand is the
+    accumulator (root slot `startDepth - 1`) and whose own slot is `retSlot`. -/
+def loopInPlaceBufSlotAt (startDepth retSlot : Nat) :
+    {Γ : Ctxt jasminDialect} → {t : JasminTy} →
+    Com jasminDialect Γ t → (curDepth : Nat) → Option Nat
+  | _, _, .ret _, _ => none
+  | _, _, .var e body, curDepth =>
+      if (callResultBufferTy e.op).isSome
+          && exprArg0Slot e curDepth == some (startDepth - 1)
+          && curDepth == retSlot then
+        some curDepth
+      else loopInPlaceBufSlotAt startDepth retSlot body (curDepth + 1)
+
+/-- The slot of the loop body's in-place accumulator update, and `none` when the
+    body has none: the body's returned binding, when that binding is a
+    buffer-typed call taking the accumulator as its first operand. -/
+def loopInPlaceBufSlot {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (c : Com jasminDialect Γ t) (startDepth : Nat) : Option Nat :=
+  loopInPlaceBufSlotAt startDepth (comBodyRetSlot c startDepth) c startDepth
+
+/-- The buffer bindings that need a frame scratch slot: `loopBufBindings` without
+    the in-place accumulator update, whose result goes to the accumulator's own
+    storage. Equal to `loopBufBindings` on a body with no in-place update. -/
+def loopScratchBufBindings {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (c : Com jasminDialect Γ t) (startDepth : Nat) : List (Nat × Nat) :=
+  match loopInPlaceBufSlot c startDepth with
+  | none => loopBufBindings c startDepth
+  | some s => (loopBufBindings c startDepth).filter (fun b => b.1 != s)
+
+/-- Marshal one loop-body call operand into SysV argument register `areg`: a
+    memory operand by its address (`LEA`), every other operand by its value
+    (`MOV`). -/
+def loopBufMarshalArg (areg : String) (op : LOperand) : Linstr :=
+  match op with
+  | .reg n =>
+      if hasPrefix n "mem." then ⟨0, .Lopn [.reg areg] "LEA:64" [.reg n]⟩
+      else ⟨0, .Lopn [.reg areg] (withWidthTag 64 "MOV") [op]⟩
+  | _ => ⟨0, .Lopn [.reg areg] (withWidthTag 64 "MOV") [op]⟩
+
 /-- Marshal one buffer-returning leaf call: the destination buffer's address into
     `RDI` (the out-pointer), then each operand into the following SysV argument
     registers — a buffer operand by its address (`LEA`), a register operand by its
@@ -1706,28 +1781,41 @@ def loopBufTotal (bs : List (Nat × Nat)) : Nat :=
 def loopBodyCallLcmdBuf (dstMem sym : String) (argOps : List LOperand) : Lcmd :=
   let outLea : Linstr := ⟨0, .Lopn [.reg "RDI"] "LEA:64" [.reg dstMem]⟩
   let argMarshal : Lcmd :=
-    (argOps.zip (sysvArgRegs.drop 1)).map (fun ⟨op, areg⟩ =>
-      match op with
-      | .reg n =>
-          if hasPrefix n "mem." then ⟨0, .Lopn [.reg areg] "LEA:64" [.reg n]⟩
-          else ⟨0, .Lopn [.reg areg] (withWidthTag 64 "MOV") [op]⟩
-      | _ => ⟨0, .Lopn [.reg areg] (withWidthTag 64 "MOV") [op]⟩)
+    (argOps.zip (sysvArgRegs.drop 1)).map (fun ⟨op, areg⟩ => loopBufMarshalArg areg op)
   outLea :: (argMarshal ++ [⟨0, .Lcall none (sym, 0)⟩])
 
+/-- Marshal one buffer-returning leaf call that writes the accumulator in place:
+    the accumulator operand into `RDI` (the out-pointer) and its operands into the
+    following SysV argument registers, the first of which is the accumulator
+    again, then the real `Lcall`. The `framedAbiCallMarshal` shape — one base in
+    both the out-pointer and its own argument register — at a loop-body call
+    site. No `RAX` capture and no scratch slot. -/
+def loopBodyCallLcmdBufInPlace (accOp : LOperand) (sym : String)
+    (argOps : List LOperand) : Lcmd :=
+  let argMarshal : Lcmd :=
+    (argOps.zip (sysvArgRegs.drop 1)).map (fun ⟨op, areg⟩ => loopBufMarshalArg areg op)
+  loopBufMarshalArg "RDI" accOp :: (argMarshal ++ [⟨0, .Lcall none (sym, 0)⟩])
+
 /-- Resolve a multi-binder loop-body `Var` with the buffer bindings in scope: a
-    reference to a buffer-typed binding is its frame slot `mem.RSP.<off>`, and
+    reference to the in-place accumulator update (`ipSlot`) is `accReg`, a
+    reference to a scratch buffer binding is its frame slot `mem.RSP.<off>`, and
     every other reference is exactly `loopResolveVarN`'s. -/
 def loopResolveVarNBuf (d : Nat) (accReg idxReg : String) (invRegs : List String)
-    (bufs : List (Nat × Nat)) (curDepth : Nat) (immSlotMap : ImmSlotMap)
+    (bufs : List (Nat × Nat)) (ipSlot : Option Nat) (curDepth : Nat)
+    (immSlotMap : ImmSlotMap)
     {Γ : Ctxt jasminDialect} {τ : JasminTy} (v : Ctxt.Var Γ τ) : LOperand :=
-  match loopBufOff bufs (curDepth - 1 - varIndex v) with
-  | some off => .reg (frameBufName off)
-  | none => loopResolveVarN d accReg idxReg invRegs curDepth immSlotMap v
+  let slot := curDepth - 1 - varIndex v
+  if ipSlot == some slot then .reg accReg
+  else
+    match loopBufOff bufs slot with
+    | some off => .reg (frameBufName off)
+    | none => loopResolveVarN d accReg idxReg invRegs curDepth immSlotMap v
 
 /-- Collect a loop-body `Expr`'s operands with the buffer bindings in scope (the
     `loopResolveVarNBuf` analogue of `loopExprArgsN`). -/
 def loopExprArgsNBuf (d : Nat) (accReg idxReg : String) (invRegs : List String)
-    (bufs : List (Nat × Nat)) (curDepth : Nat) (immSlotMap : ImmSlotMap)
+    (bufs : List (Nat × Nat)) (ipSlot : Option Nat) (curDepth : Nat)
+    (immSlotMap : ImmSlotMap)
     {Γ : Ctxt jasminDialect} {τ : JasminTy} (e : Expr jasminDialect Γ τ) :
     List LOperand :=
   let rec go {tys : List JasminTy}
@@ -1735,39 +1823,50 @@ def loopExprArgsNBuf (d : Nat) (accReg idxReg : String) (invRegs : List String)
     match tys, hv with
     | [], _ => []
     | _ :: _, .cons v rest =>
-        loopResolveVarNBuf d accReg idxReg invRegs bufs curDepth immSlotMap v :: go rest
+        loopResolveVarNBuf d accReg idxReg invRegs bufs ipSlot curDepth immSlotMap v
+          :: go rest
   go e.args
 
 /-- The `loopBodyWalkNCall` body walk, but lowering a leaf call whose result is a
-    `stackArr` to the out-pointer sequence `loopBodyCallLcmdBuf` writing into that
-    binding's frame slot, and resolving a reference to such a binding to the slot
-    itself. A body with no buffer-typed call binding has an empty `bufs`, so every
-    op lowers exactly as `loopBodyWalkNCall` lowers it. -/
+    `stackArr` to an out-pointer sequence: the in-place accumulator update
+    (`ipSlot`) writes through `accReg` (`loopBodyCallLcmdBufInPlace`) and every
+    other buffer-typed call writes into its frame slot
+    (`loopBodyCallLcmdBuf`), with a reference to such a binding resolving to that
+    destination. A body with no buffer-typed call binding has an empty `bufs` and
+    `ipSlot = none`, so every op lowers exactly as `loopBodyWalkNCall` lowers
+    it. -/
 def loopBodyWalkNBuf (d : Nat) (accReg idxReg : String) (invRegs : List String)
-    (bufs : List (Nat × Nat)) (immSlotMap : ImmSlotMap) :
+    (bufs : List (Nat × Nat)) (ipSlot : Option Nat) (immSlotMap : ImmSlotMap) :
     {Γ : Ctxt jasminDialect} → {t : JasminTy} →
     Com jasminDialect Γ t → (curDepth : Nat) → (Lcmd × String)
   | _, _, .ret v, curDepth =>
-      ([], match loopResolveVarNBuf d accReg idxReg invRegs bufs curDepth immSlotMap v with
+      ([], match loopResolveVarNBuf d accReg idxReg invRegs bufs ipSlot curDepth
+              immSlotMap v with
             | .reg n => n
             | .imm m => toString m
             | .arr b i => b ++ "[" ++ toString i ++ "]"
             | .arrIdx b i s => b ++ "[" ++ i ++ "*" ++ toString s ++ "]")
   | _, _, .var e body, curDepth =>
       let (rest, ret) :=
-        loopBodyWalkNBuf d accReg idxReg invRegs bufs immSlotMap body (curDepth + 1)
+        loopBodyWalkNBuf d accReg idxReg invRegs bufs ipSlot immSlotMap body (curDepth + 1)
       let dstReg := loopReg d curDepth
-      let srcs := loopExprArgsNBuf d accReg idxReg invRegs bufs curDepth immSlotMap e
+      let srcs := loopExprArgsNBuf d accReg idxReg invRegs bufs ipSlot curDepth immSlotMap e
       let here : Lcmd :=
         match e.op with
         | .extCall name argTys retTy =>
-            match loopBufOff bufs curDepth with
-            | some off => loopBodyCallLcmdBuf (frameBufName off) name srcs
-            | none => callMarshalHere dstReg name argTys retTy srcs
+            if ipSlot == some curDepth then
+              loopBodyCallLcmdBufInPlace (.reg accReg) name srcs
+            else
+              match loopBufOff bufs curDepth with
+              | some off => loopBodyCallLcmdBuf (frameBufName off) name srcs
+              | none => callMarshalHere dstReg name argTys retTy srcs
         | .callN name argTys retTys =>
-            match loopBufOff bufs curDepth with
-            | some off => loopBodyCallLcmdBuf (frameBufName off) name srcs
-            | none => callMarshalHere dstReg name argTys (retTys.headD (.reg 0)) srcs
+            if ipSlot == some curDepth then
+              loopBodyCallLcmdBufInPlace (.reg accReg) name srcs
+            else
+              match loopBufOff bufs curDepth with
+              | some off => loopBodyCallLcmdBuf (frameBufName off) name srcs
+              | none => callMarshalHere dstReg name argTys (retTys.headD (.reg 0)) srcs
         | _ => [⟨0, opToLinstrR e.op dstReg srcs⟩]
       (here ++ rest, ret)
 
@@ -1894,19 +1993,22 @@ def forLoopLcmdNCall (d : Nat) (accReg : String) (initOp : LOperand)
   let idxReg := loopIdx d
   let invRegs : List String := invOps.filterMap (fun o =>
     match o with | .reg n => some n | _ => none)
-  -- The body's buffer-typed call bindings, and the frame bytes they occupy. An
-  -- empty list takes the `loopBodyWalkNCall` walk unchanged, so a body with no
-  -- buffer-returning call emits exactly the instructions it emitted before.
-  let bufs := loopBufBindings p.update (2 + invTys.length)
+  -- The slot of the body's in-place accumulator update, if it has one, and the
+  -- buffer-typed call bindings that need frame scratch. With no in-place update
+  -- and no scratch buffer the walk is `loopBodyWalkNCall`, so a body with no
+  -- buffer-returning call emits exactly the instructions the call walk emits.
+  let startDepth := 2 + invTys.length
+  let ipSlot := loopInPlaceBufSlot p.update startDepth
+  let bufs := loopScratchBufBindings p.update startDepth
   let (bodyW, retReg) :=
-    if bufs.isEmpty then
-      loopBodyWalkNCall d accReg idxReg invRegs immSlotMap p.update
-        (2 + invTys.length)
+    if bufs.isEmpty && ipSlot.isNone then
+      loopBodyWalkNCall d accReg idxReg invRegs immSlotMap p.update startDepth
     else
-      loopBodyWalkNBuf d accReg idxReg invRegs bufs immSlotMap p.update
-        (2 + invTys.length)
-  -- A buffer result lives in its frame slot, not a register, so there is no
-  -- register to thread back into the accumulator and no `MOV` is emitted.
+      loopBodyWalkNBuf d accReg idxReg invRegs bufs ipSlot immSlotMap p.update startDepth
+  -- A scratch buffer result lives in its frame slot, not a register, so there is
+  -- no register to thread back into the accumulator and no `MOV` is emitted; an
+  -- in-place update returns `accReg` itself, which the `retReg == accReg` test
+  -- already leaves alone.
   let feedback : Lcmd :=
     if retReg == accReg || hasPrefix retReg "mem." then []
     else [⟨0, .Lopn [.reg accReg] (withWidthTag 64 "MOV") [.reg retReg]⟩]
@@ -7700,6 +7802,49 @@ def edAddCallBodyW : Lcmd :=
 def dblCallfreeBody :
     Com jasminDialect [JasminTy.reg 64, JasminTy.reg 64] (JasminTy.reg 64) :=
   .var (.mk (.regArith .add 64) rfl (.cons .here (.cons .here .nil))) (.ret .here)
+
+/-- A loop body whose single binding calls a leaf returning a 16-word buffer,
+    taking the accumulator as its first operand and returning that binding: the
+    in-place accumulator update, in the body context of a 16-word array
+    accumulator, the loop index, and a 12-word invariant array. -/
+def inPlaceBufCallBody :
+    Com jasminDialect
+      [JasminTy.stackArr 64 16, JasminTy.reg 64, JasminTy.stackArr 64 12]
+      (JasminTy.stackArr 64 16) :=
+  .var (.mk (.extCall "madd" [.stackArr 64 16, .stackArr 64 12] (.stackArr 64 16)) rfl
+          (.cons .here (.cons (.there (.there .here)) .nil)))
+    (.ret .here)
+
+/-- A loop body whose single binding calls a leaf returning a 16-word buffer from
+    the loop index alone: a buffer result that is not an accumulator update. -/
+def scratchBufCallBody :
+    Com jasminDialect [JasminTy.stackArr 64 16, JasminTy.reg 64]
+      (JasminTy.stackArr 64 16) :=
+  .var (.mk (.extCall "table_select" [.reg 64] (.stackArr 64 16)) rfl
+          (.cons (.there .here) .nil))
+    (.ret .here)
+
+-- Static checks pinning the in-place condition against silent change, at each
+-- body's own walk start depth (`2 + nInv`): the accumulator-updating buffer call
+-- is detected and takes no frame scratch, a buffer call that is not an
+-- accumulator update keeps its scratch slot, and a call-free body has neither.
+#guard loopInPlaceBufSlot inPlaceBufCallBody 3 = some 3
+#guard loopBufBindings inPlaceBufCallBody 3 = [(3, 128)]
+#guard loopScratchBufBindings inPlaceBufCallBody 3 = []
+#guard loopBufTotal (loopScratchBufBindings inPlaceBufCallBody 3) = 0
+#guard loopInPlaceBufSlot scratchBufCallBody 2 = none
+#guard loopScratchBufBindings scratchBufCallBody 2 = [(2, 128)]
+#guard loopBufTotal (loopScratchBufBindings scratchBufCallBody 2) = 128
+#guard loopInPlaceBufSlot dblCallfreeBody 2 = none
+#guard loopScratchBufBindings dblCallfreeBody 2 = []
+
+-- The walk's result name carries the destination the call wrote: the in-place
+-- update returns the accumulator register, so the loop emits no feedback move,
+-- and a scratch buffer result returns its frame slot.
+#guard (loopBodyWalkNBuf 3 "RACC" "Lidx3" ["RBX"] [] (some 3) (fun _ => none)
+          inPlaceBufCallBody 3).2 = "RACC"
+#guard (loopBodyWalkNBuf 2 "RACC" "Lidx2" [] (loopScratchBufBindings scratchBufCallBody 2)
+          none (fun _ => none) scratchBufCallBody 2).2 = "mem.RSP.0"
 
 -- `loopBodyWalkNCall_callfree_eq_loopBodyWalkN` moved out of Lean: the two
 -- renderings are compared by `lake exe jasmin-lprog-shape-kat`.

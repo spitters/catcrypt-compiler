@@ -34,6 +34,47 @@ The emitted `ed25519_point_add` passes a known-answer test against libsodium's
 emitted inversion and compression kernels, byte-identical, with `T₃·Z₃ = X₃·Y₃`
 on every raw output (`bench/ed25519_comb_compare/point_add_compare.c`, dev repo).
 
+Call-site stack alignment:
+
+- `X86Backend/LprogAsmPrinter.lean`: `frameSize` applies one total correction,
+  `8 + 8 * (calleeSavedToSave body).length + f16 ≡ 0 (mod 16)` whenever the body
+  issues a call, on both branches. The correction previously lived only on the
+  computed branch and assumed no callee-saved pushes, so every call site in an
+  `ArrAbiOrch`-emitted kernel sat at `≡ 8` where SysV requires `≡ 0`, and a body
+  with an odd push count was misaligned on the other branch. Verified in the
+  emitted assembly and in a linked binary before the change, not inferred.
+  `calleeSavedToSave` and its three helpers move above `frameSize`, which now
+  depends on them; sharing the definition makes the frame's push count and the
+  prologue's the same count by construction rather than on sampled bodies.
+- Of the emitted artifacts, `ed25519_madd_x86_from_lean` moves 592 → 600 and is
+  the only Ed25519 artifact whose bytes change; the `x25519_scalarmult` frame of
+  952 is unchanged, as its `native_decide` pin requires. The Ed25519 known-answer
+  tests pass after the move.
+
+In-place accumulator threading:
+
+- `VIR/JasminLprogExport.lean`: `comBodyRetSlot`, `hvecArg0Slot`, `exprArg0Slot`,
+  `loopInPlaceBufSlot`, `loopScratchBufBindings` and
+  `loopBodyCallLcmdBufInPlace`. A buffer-returning call whose first operand is the
+  accumulator binder and whose binding is the one the body's terminal `ret` names
+  is marshalled in place — out-pointer and first operand both the accumulator's
+  base — so it takes no scratch slot and contributes no `FRAMEADD` bytes, and the
+  feedback move disappears through the existing `retReg == accReg` test. The
+  three conditions are slot comparisons, so no register or symbol name enters the
+  test.
+
+Constant-time preservation for the branching walk:
+
+- `X86Backend/LoopExporterCTBridge.lean`: `loopResolveVarNBuf_not_indexed`,
+  `loopExprArgsNBuf_not_indexed`, `loopBufMarshalArg_direct`,
+  `loopBodyCallLcmdBuf_direct`, `loopBodyCallLcmdBufInPlace_direct` and
+  `loopBodyWalkNBuf_lcmdDirect`. `forLoopLcmdNCall_lcmdDirect` keeps its exact
+  statement with no added hypothesis: every operand the buffer walk emits is a
+  register or an immediate, and the frame-slot names carry constant offsets, so
+  direct addressing holds on both branches. The lemmas quantify over the binding
+  list, the in-place slot, the depth and the variable, so they cover every arm
+  the walk can emit rather than the arms a current caller exercises.
+
 Loop-body buffer calls:
 
 - `VIR/JasminLprogExport.lean`: `callResultBufferTy`, `bufTyBytes`,
