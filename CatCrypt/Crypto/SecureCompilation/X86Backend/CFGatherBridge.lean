@@ -38,10 +38,14 @@ label, the loop region ending in the counter test, and the conditional back-edge
 sequence `straight pre ; loop n (straight region) ; straight []`, given a
 compile-time-positive counter seed, straight-line prefix and region, and a
 condition-code back-edge. `forLoopLcmd`, `forLoopLcmdN` and `forLoopLcmdNCall`
-emit that shape (`forLoopLcmd_eq_backEdgeFrame` and its two companions), and the
-loop-body walks emit straight-line instructions only
-(`loopBodyWalk_straight`, `loopBodyWalkN_straight`), so the parse of those three
-exports is pinned. What remains for the whole recogniser to succeed is that each
+emit that shape (`forLoopLcmd_eq_backEdgeFrame` and its two companions); the
+call-aware export carries the `FRAMEADD` scratch declaration of its body's buffer
+bindings ahead of the prefix, and walks its body with `loopBodyWalkNSel`. The
+single-binder and multi-binder walks emit straight-line instructions only
+(`loopBodyWalk_straight`, `loopBodyWalkN_straight`), so the parse of those two
+exports is pinned outright; the call-aware export's parse is pinned on a body
+walk assumed straight-line, which a body issuing a real `Lcall` does not
+satisfy. What remains for the whole recogniser to succeed is that each
 leaf lowers through `lowerCov6`; `#guard`s at the end of §10 discharge that on
 the deployed `dblLoopBody` export and on a `compileFromHax` output.
 
@@ -365,6 +369,66 @@ theorem frame1Region_loopFrameOk {accReg ctr : String} {w : Lcmd × String}
   simp [List.all_eq_true.mpr (frame1Region_straight hb), isCounterTest, isCmpMnem,
     withWidthTag]
 
+/-- The scratch-byte declaration a loop frame carries ahead of its prefix: the
+    `FRAMEADD` directive for the loop body's buffer bindings, and nothing when
+    the body lays no buffer. -/
+def frameAddPre (bufs : List (Nat × Nat)) : Lcmd :=
+  if bufs.isEmpty then []
+  else [⟨0, .Lopn [] "FRAMEADD" [.imm (loopBufTotal bufs)]⟩]
+
+/-- The scratch-byte declaration is straight-line. -/
+theorem frameAddPre_straight (bufs : List (Nat × Nat)) :
+    ∀ i ∈ frameAddPre bufs, isStraightL i = true := by
+  intro i hi
+  rw [frameAddPre] at hi
+  split at hi
+  · simp at hi
+  · simp only [List.mem_singleton] at hi; subst hi; rfl
+
+/-- The body walk the call-aware multi-binder loop export selects: the
+    buffer-aware walk when the loop body lays scratch buffers or updates its
+    accumulator in place, and the call-aware walk otherwise. -/
+def loopBodyWalkNSel (d : Nat) (accReg idxReg : String) (invRegs : List String)
+    (immSlotMap : ImmSlotMap) {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (body : Com jasminDialect Γ t) (startDepth : Nat) : Lcmd × String :=
+  if (loopScratchBufBindings body startDepth).isEmpty
+      && (loopInPlaceBufSlot body startDepth).isNone then
+    loopBodyWalkNCall d accReg idxReg invRegs immSlotMap body startDepth
+  else
+    loopBodyWalkNBuf d accReg idxReg invRegs
+      (loopScratchBufBindings body startDepth)
+      (loopInPlaceBufSlot body startDepth) immSlotMap body startDepth
+
+/-- A body walk with its returned name read as the accumulator when the result
+    lives in a frame slot (a `mem.`-prefixed name) rather than a register. The
+    frame region's feedback move is `MOV accReg, w.2` guarded by `w.2 == accReg`,
+    and a frame slot carries no register to move from. -/
+def frameFeedbackWalk (accReg : String) (w : Lcmd × String) : Lcmd × String :=
+  (w.1, if hasPrefix w.2 "mem." then accReg else w.2)
+
+/-- Reading the returned name as the accumulator keeps the body copy, so a
+    straight-line body copy stays straight-line. -/
+theorem frameFeedbackWalk_straight (accReg : String) {w : Lcmd × String}
+    (hb : ∀ i ∈ w.1, isStraightL i = true) :
+    ∀ i ∈ (frameFeedbackWalk accReg w).1, isStraightL i = true := hb
+
+/-- The region of a frame over a slot-aware body walk: the body copy, the
+    accumulator feedback under the widened guard, the index advance, the counter
+    decrement, the invariant-base touches and the counter test. -/
+theorem frameNRegion_frameFeedbackWalk (accReg idxReg ctr : String)
+    (invRegs : List String) (w : Lcmd × String) :
+    frameNRegion accReg idxReg ctr invRegs (frameFeedbackWalk accReg w)
+      = w.1
+        ++ (if w.2 == accReg || hasPrefix w.2 "mem." then []
+            else [⟨0, .Lopn [.reg accReg] (withWidthTag 64 "MOV") [.reg w.2]⟩])
+        ++ [ ⟨0, .Lopn [.reg idxReg] (withWidthTag 64 "ADD") [.reg idxReg, .imm 1]⟩
+           , ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "SUB") [.reg ctr, .imm 1]⟩ ]
+        ++ invRegs.map (fun r =>
+             ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .reg r]⟩)
+        ++ [ ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .imm 0]⟩ ] := by
+  rw [frameNRegion, frameFeedbackWalk]
+  cases hm : hasPrefix w.2 "mem." <;> simp [hm]
+
 /-! ## 5. The exporters emit back-edge frames -/
 
 /-- The straight-line prefix of a multi-binder loop frame: the accumulator seed,
@@ -401,6 +465,25 @@ theorem frame1Pre_seed (accReg ctr : String) (initOp : LOperand) (n : Nat) :
     (frame1Pre accReg ctr initOp n).getLast?.bind counterSeed? = some (ctr, n) := by
   simp [frame1Pre, counterSeed?, isMovMnem, withWidthTag]
 
+/-- A prefix carrying the scratch-byte declaration ahead of a multi-binder loop
+    frame's seeds is straight-line. -/
+theorem frameAddPre_frameNPre_straight (bufs : List (Nat × Nat))
+    (accReg idxReg ctr : String) (initOp : LOperand) (n : Nat) :
+    ∀ i ∈ frameAddPre bufs ++ frameNPre accReg idxReg ctr initOp n,
+      isStraightL i = true := by
+  intro i hi
+  rcases List.mem_append.mp hi with h | h
+  · exact frameAddPre_straight bufs i h
+  · exact frameNPre_straight accReg idxReg ctr initOp n i h
+
+/-- The scratch-byte declaration leaves the counter seed the prefix's last
+    instruction. -/
+theorem frameAddPre_frameNPre_seed (bufs : List (Nat × Nat))
+    (accReg idxReg ctr : String) (initOp : LOperand) (n : Nat) :
+    (frameAddPre bufs ++ frameNPre accReg idxReg ctr initOp n).getLast?.bind
+        counterSeed? = some (ctr, n) := by
+  simp [frameNPre, counterSeed?, isMovMnem, withWidthTag]
+
 /-- `forLoopLcmdN` emits a bottom-tested back-edge frame. -/
 theorem forLoopLcmdN_eq_backEdgeFrame (d : Nat) (accReg : String)
     (initOp : LOperand) {accTy : JasminTy} {invTys : Ctxt jasminDialect}
@@ -417,19 +500,24 @@ theorem forLoopLcmdN_eq_backEdgeFrame (d : Nat) (accReg : String)
     List.cons_append, List.nil_append]
   rfl
 
-/-- `forLoopLcmdNCall` emits the same frame around the call-aware body walk. -/
+/-- `forLoopLcmdNCall` emits the same frame around the body walk it selects,
+    behind the scratch-byte declaration the body's buffer bindings need. -/
 theorem forLoopLcmdNCall_eq_backEdgeFrame (d : Nat) (accReg : String)
     (initOp : LOperand) {accTy : JasminTy} {invTys : Ctxt jasminDialect}
     (p : JLoopBodyN accTy invTys) (invOps : List LOperand)
     (immSlotMap : ImmSlotMap) :
     forLoopLcmdNCall d accReg initOp p invOps immSlotMap
-      = backEdgeFrame (frameNPre accReg (loopIdx d) (loopCtr d) initOp p.n) d
+      = backEdgeFrame
+          (frameAddPre (loopScratchBufBindings p.update (2 + invTys.length))
+            ++ frameNPre accReg (loopIdx d) (loopCtr d) initOp p.n) d
           (frameNRegion accReg (loopIdx d) (loopCtr d)
             (invOps.filterMap (fun o => match o with | .reg r => some r | _ => none))
-            (loopBodyWalkNCall d accReg (loopIdx d)
-              (invOps.filterMap (fun o => match o with | .reg r => some r | _ => none))
-              immSlotMap p.update (2 + invTys.length))) "NZ" := by
-  simp only [forLoopLcmdNCall, backEdgeFrame, frameNPre, frameNRegion,
+            (frameFeedbackWalk accReg
+              (loopBodyWalkNSel d accReg (loopIdx d)
+                (invOps.filterMap (fun o => match o with | .reg r => some r | _ => none))
+                immSlotMap p.update (2 + invTys.length)))) "NZ" := by
+  rw [backEdgeFrame, frameNRegion_frameFeedbackWalk]
+  simp only [forLoopLcmdNCall, frameAddPre, frameNPre, loopBodyWalkNSel,
     List.append_assoc, List.cons_append, List.nil_append]
   rfl
 
@@ -594,16 +682,18 @@ theorem forLoopLcmdN_branchFree (d : Nat) (accReg : String) (initOp : LOperand)
 theorem forLoopLcmdNCall_branchFree (d : Nat) (accReg : String) (initOp : LOperand)
     {accTy : JasminTy} {invTys : Ctxt jasminDialect} (p : JLoopBodyN accTy invTys)
     (invOps : List LOperand) (immSlotMap : ImmSlotMap) (hn : 0 < p.n)
-    (hbody : ∀ i ∈ (loopBodyWalkNCall d accReg (loopIdx d)
+    (hbody : ∀ i ∈ (loopBodyWalkNSel d accReg (loopIdx d)
       (invOps.filterMap (fun o => match o with | .reg r => some r | _ => none))
       immSlotMap p.update (2 + invTys.length)).1, isStraightL i = true)
     {cf : OwnedCF 64}
     (hrec : lcmdToOwnedCF (forLoopLcmdNCall d accReg initOp p invOps immSlotMap)
       = some cf) : CFBranchFree cf := by
   rw [forLoopLcmdNCall_eq_backEdgeFrame] at hrec
-  exact lcmdToOwnedCF_backEdgeFrame_branchFree (frameNPre_straight _ _ _ _ _)
-    (frameNPre_seed _ _ _ _ _) hn (frameNRegion_straight hbody)
-    (frameNRegion_loopFrameOk hbody) rfl hrec
+  exact lcmdToOwnedCF_backEdgeFrame_branchFree
+    (frameAddPre_frameNPre_straight _ _ _ _ _ _)
+    (frameAddPre_frameNPre_seed _ _ _ _ _ _) hn
+    (frameNRegion_straight (frameFeedbackWalk_straight accReg hbody))
+    (frameNRegion_loopFrameOk (frameFeedbackWalk_straight accReg hbody)) rfl hrec
 
 /-- **The fixed-trip single-binder loop export recognises to a branch-free
     block.** -/

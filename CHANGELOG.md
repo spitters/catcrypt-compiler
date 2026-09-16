@@ -34,6 +34,33 @@ The emitted `ed25519_point_add` passes a known-answer test against libsodium's
 emitted inversion and compression kernels, byte-identical, with `T₃·Z₃ = X₃·Y₃`
 on every raw output (`bench/ed25519_comb_compare/point_add_compare.c`, dev repo).
 
+The back-edge frame equation, restated:
+
+- `X86Backend/CFGatherBridge.lean`: `forLoopLcmdNCall_eq_backEdgeFrame` was false
+  after the exporter gained a second body walk, in three independent respects —
+  the walk, the `FRAMEADD` prefix, and the widened feedback guard — so any body
+  with a buffer-returning call was a counterexample. Each took a different
+  repair. `frameAddPre` folds the directive prefix into `backEdgeFrame`'s
+  existing arbitrary `pre`, leaving the frame notion unchanged.
+  `loopBodyWalkNSel` names the exporter's selection, so the equation holds on
+  both branches. The guard is normalised by `frameFeedbackWalk`, which reads a
+  `mem.`-prefixed return name as the accumulator, rather than by widening
+  `frameNRegion`'s test: `forLoopLcmdN` still uses the narrow guard, so widening
+  there would have made `forLoopLcmdN_eq_backEdgeFrame` false in turn.
+  `frameNRegion_frameFeedbackWalk` states that equivalence, so the widened guard
+  appears in a theorem rather than inside a definition.
+- The equation now holds for every body, buffer-carrying ones included, and
+  additionally pins that the directive sits ahead of the prefix rather than
+  inside the loop region. `forLoopLcmdNCall_branchFree` keeps its strength and
+  its hypothesis moves to the selected walk, so it speaks about buffer-carrying
+  bodies instead of being silent about them.
+- Not closed, and predating this: that corollary requires the body copy to be
+  straight-line, and `isStraightL` is false on `Lcall`, so whenever the body lays
+  buffers or threads in place the selected walk emits a real call and the
+  hypothesis is unsatisfiable. The corollary is vacuous on exactly those bodies
+  and bites on call-free ones, as before. A module docstring claiming three
+  exports' parses are pinned is corrected to two.
+
 Call-site stack alignment:
 
 - `X86Backend/LprogAsmPrinter.lean`: `frameSize` applies one total correction,
