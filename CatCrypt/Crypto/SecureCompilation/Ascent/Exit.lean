@@ -7,7 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.Ascent.WhileTop
 public import CatCrypt.Crypto.SecureCompilation.Ascent.PipelineWeld
-public import HaxLean.Ascent.Exit
+public import CatCrypt.Hax.Ascent.Exit
 
 /-!
 # Early exit as an exception phase
@@ -22,7 +22,7 @@ AutoCorres's exception phase reads a `return` inside a loop.
 
 ## A. The exception reading of the encoding
 
-This part is re-exported from hax-lean's `HaxLean/Ascent/Exit.lean`. `cfExcept` reads a control-flow-tagged value as an `Except`: the `Break` tag is the
+This part is re-exported from hax-lean's `CatCrypt/Hax/Ascent/Exit.lean`. `cfExcept` reads a control-flow-tagged value as an `Except`: the `Break` tag is the
 thrown value, anything else the normal result. `outcomeExceptCF` lifts it to the
 pipeline's outcomes and `outcomeExceptRaw` reads the reference outcomes (`val` is
 `pure`, `earlyRet` is `throw`). `pipeline_exceptProg` is the abstraction theorem:
@@ -66,7 +66,7 @@ namespace CatCrypt.Crypto.SecureCompilation.Ascent
 
 /-! ## A. The exception reading of the control-flow encoding
 
-The definitions and results of this part are in hax-lean's `HaxLean/Ascent/Exit.lean`
+The definitions and results of this part are in hax-lean's `CatCrypt/Hax/Ascent/Exit.lean`
 (namespace `Hax.Ascent`), re-exported here. -/
 
 export _root_.Hax.Ascent (cfExcept cfExcept_break outcomeExceptCF outcomeExceptRaw

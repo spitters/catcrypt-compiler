@@ -2450,14 +2450,20 @@ def pkgModules12 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Deep.ReflectUCHelpers,
     Lake.Glob.one `CatCrypt.Deep.Strategy,
     Lake.Glob.one `CatCrypt.Deep.Tactics,
+    Lake.Glob.one `CatCrypt.Hax.Ascent.Corres,
+    Lake.Glob.one `CatCrypt.Hax.Ascent.Demo,
+    Lake.Glob.one `CatCrypt.Hax.Ascent.Encode,
+    Lake.Glob.one `CatCrypt.Hax.Ascent.Exit,
+    Lake.Glob.one `CatCrypt.Hax.Ascent.Fuel,
+    Lake.Glob.one `CatCrypt.Hax.Ascent.Refines,
+  ]
+def pkgModules13 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Hax.CType,
     Lake.Glob.one `CatCrypt.Hax.CTypeResolve,
     Lake.Glob.one `CatCrypt.Hax.CTypeValue,
     Lake.Glob.one `CatCrypt.Hax.FoldRange,
     Lake.Glob.one `CatCrypt.Hax.PrimeirBuiltins,
     Lake.Glob.one `CatCrypt.Hax.ReprBridge,
-  ]
-def pkgModules13 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Hax.Runtime,
     Lake.Glob.one `CatCrypt.Hax.RustM,
     Lake.Glob.one `CatCrypt.Hax.ToRawCode,
@@ -2555,7 +2561,7 @@ require CompPoly from git
 
 -- hax-lean: the typed haxpipeT front (`Hax.TExpr`).
 require «hax-lean» from git
-  "https://github.com/spitters/hax-lean.git" @ "2fc80306d4c6c002c32eb61bfc04f1d020973c69"
+  "https://github.com/spitters/hax-lean.git" @ "a2eab7127ac865294f30de7a29384483f6e32bd5"
 
 require mathlib from git
   "https://github.com/leanprover-community/mathlib4" @ "v4.33.1"

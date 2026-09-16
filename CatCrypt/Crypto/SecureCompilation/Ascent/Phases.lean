@@ -8,7 +8,7 @@ module
 import all Init.Data.Repr
 public meta import Std.Tactic.BVDecide.Reflect
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Corres
-public import HaxLean.Ascent.Refines
+public import CatCrypt.Hax.Ascent.Refines
 
 /-!
 # The ascent calculus as composable AutoCorres phases
@@ -56,7 +56,7 @@ once to extract a word witness from the existential field relation.
 ## TS as the choice of a result monad
 
 The last section re-exports the result-monad side of TS from hax-lean's
-`HaxLean/Ascent/Refines.lean` (namespace `Hax.Ascent`), generic in the concrete and
+`CatCrypt/Hax/Ascent/Refines.lean` (namespace `Hax.Ascent`), generic in the concrete and
 abstract state types, and states `corres_iff_refinesP`. An abstract program is `AbsProg ε A B`: a pure function
 `A → B`, an `Option`-valued one (`none` is guard failure), or an exception program
 `A → Option (Except ε B)` (a thrown value is an early exit). `MonadLevel` orders the
@@ -336,7 +336,7 @@ algebra they instantiate without importing that module.) -/
 /-! ## TS: the result monad of an abstract program
 
 The three result monads, the refinement relations at each level and the lifting lemmas
-are the parametric layer `Hax.Ascent` of hax-lean (`HaxLean/Ascent/Refines.lean`),
+are the parametric layer `Hax.Ascent` of hax-lean (`CatCrypt/Hax/Ascent/Refines.lean`),
 re-exported here under their names in this namespace. -/
 
 export _root_.Hax.Ascent (MonadLevel MonadLevel.pure MonadLevel.option MonadLevel.except

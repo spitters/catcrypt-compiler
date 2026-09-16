@@ -43,7 +43,7 @@ exception-level body relation of the loop rule of `Ascent/Exit.lean` is
 
 ## A hax source program
 
-The pass on a hax source is in hax-lean's `HaxLean/Ascent/Exit.lean` (namespace
+The pass on a hax source is in hax-lean's `CatCrypt/Hax/Ascent/Exit.lean` (namespace
 `Hax.Ascent`) and is re-exported here. `tsHax bi fuel e` abstracts a raw hax-lean program whose pipeline output
 `Hax.pipeline e` encodes early exits as control-flow tags. The exception program is
 the exception reading of the reference run, `haxExceptAbs`; its refinement of the
@@ -79,7 +79,7 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
 /-! ## The pass on a hax source, and the generic facts on the three levels
 
 `liftOk` and `refinesO_exceptOk` are re-exported by `Phases.lean`; the hax-source pass
-from `NotEarlyRet` to `tsHax_toExcept` is in hax-lean's `HaxLean/Ascent/Exit.lean`
+from `NotEarlyRet` to `tsHax_toExcept` is in hax-lean's `CatCrypt/Hax/Ascent/Exit.lean`
 (namespace `Hax.Ascent`), re-exported here. -/
 
 export _root_.Hax.Ascent (NotEarlyRet denote_notEarlyRet_mutual denote_ne_earlyRet
