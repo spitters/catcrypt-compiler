@@ -52,15 +52,23 @@ produces through its `ok` output.
 
 ## The generator is fixed in a leaf
 
-The two multiples of the generator — `k·G` in signing and `u₁·G` in
-verification — go through `p384_scalar_mul_base`, which takes the scalar alone.
-`u₂·Q` uses the variable-base `p384_scalar_mul`.
+`k·G` in signing goes through `p384_scalar_mul_base`, which takes the scalar
+alone.
+
+Verification computes `u₁·G + u₂·Q` in the single leaf `p384_lincomb`, which
+takes the two scalars and the variable point and fixes the generator, so the
+two ladders share one doubling chain. Both scalars are public, so that leaf
+carries no constant-time obligation; the requirements on it, including
+agreement with `p384_point_add (p384_scalar_mul_base u1) (p384_scalar_mul u2 Q)`,
+are stated at its declaration in `P384Reflect`. A shim differential test of
+the leaf against that two-multiply form is what ties the two; this module
+proves no agreement between them.
 
 ## The leaves are opaque
 
 Every arithmetic step is a leaf call. The Rust shim implements the
 scalar-field leaves over fiat-crypto's `p384_scalar_64.rs`, and the group-law
-leaves `p384_scalar_mul` / `p384_point_add` are supplied by the P-384 group
+leaves `p384_scalar_mul_base` / `p384_lincomb` are supplied by the P-384 group
 surface. This module proves the orchestration — the sequence, the destinations
 and the leaf names — and no arithmetic property of any leaf.
 
@@ -116,8 +124,8 @@ open CatCrypt.Crypto.Jasmin.LowCT
 /-! ## 1. Opaque P-384 surface types
 
 `P384Scalar` (48 bytes) and `P384Point` (144 bytes, projective `X ‖ Y ‖ Z`),
-together with the group-law leaves `p384_scalar_mul`, `p384_scalar_mul_base`
-and `p384_point_add` the bodies below call, come from
+together with the group-law leaves `p384_scalar_mul`, `p384_scalar_mul_base`,
+`p384_point_add` and `p384_lincomb`, come from
 `CatCrypt.Crypto.Jasmin.P384Reflect`. -/
 
 /-! ## 2. Scalar-field and projection leaves
@@ -350,7 +358,13 @@ Each body is call-only: a left-nested `RSeq` chain of `.RCall` leaves. -/
     unconditionally, and `ok` is the conjunction of the four flags, so the body
     contains no branch on an input. A signature whose `r` or `s` is zero or is
     at or above `n`, and a signature under an identity or off-curve public key,
-    give `ok = 0`. -/
+    give `ok = 0`.
+
+    `R = u₁·G + u₂·Q` is one call to the `p384_lincomb` leaf, which interleaves
+    the two ladders over a shared doubling chain. Its requirements, including
+    agreement with the composition
+    `p384_point_add (p384_scalar_mul_base u1) (p384_scalar_mul u2 Q)`, are
+    stated at the `p384_lincomb` declaration in `P384Reflect`. -/
 def p384EcdsaVerifyFullBody : LowCT :=
   p384SeqChain
     [ .RCall "p384_scalar_in_range"  (flagP384 "vr")  [scP384 "r"],
@@ -359,9 +373,8 @@ def p384EcdsaVerifyFullBody : LowCT :=
       .RCall "p384_scalar_inv"       (scP384 "sinv")  [scP384 "s"],
       .RCall "p384_scalar_muln"      (scP384 "u1")    [scP384 "e", scP384 "sinv"],
       .RCall "p384_scalar_muln"      (scP384 "u2")    [scP384 "r", scP384 "sinv"],
-      .RCall "p384_scalar_mul_base"  (ptP384 "t1")    [scP384 "u1"],
-      .RCall "p384_scalar_mul"       (ptP384 "t2")    [scP384 "u2", ptP384 "Q"],
-      .RCall "p384_point_add"        (ptP384 "R")     [ptP384 "t1", ptP384 "t2"],
+      .RCall "p384_lincomb"          (ptP384 "R")     [scP384 "u1", scP384 "u2",
+                                                       ptP384 "Q"],
       .RCall "p384_point_affine_x"   (scP384 "x")     [ptP384 "R"],
       .RCall "p384_scalar_reduce"    (scP384 "xn")    [scP384 "x"],
       .RCall "p384_scalar_is_eq"     (flagP384 "eq")  [scP384 "xn", scP384 "r"],
@@ -426,8 +439,7 @@ def p384EcdsaVerifyFullRustBody : LowCT :=
   p384WithLocals
     [("vr", .TU64), ("vs", .TU64), ("vq", .TU64),
      ("sinv", p384ScalarTowerType), ("u1", p384ScalarTowerType),
-     ("u2", p384ScalarTowerType), ("t1", p384PointTowerType),
-     ("t2", p384PointTowerType), ("R", p384PointTowerType),
+     ("u2", p384ScalarTowerType), ("R", p384PointTowerType),
      ("x", p384ScalarTowerType), ("xn", p384ScalarTowerType),
      ("eq", .TU64), ("c1", .TU64), ("c2", .TU64)]
     p384EcdsaVerifyFullBody
@@ -476,8 +488,8 @@ def p384EcdsaVerifyFullJasmin : Cmd := toJasminCmd p384EcdsaVerifyFullBody
 /-- The signing body, lowered through the owned front. -/
 def p384EcdsaSignJasmin : Cmd := toJasminCmd p384EcdsaSignBody
 
-/-- The verification body lowers to fifteen Jasmin commands, one per leaf. -/
-theorem p384EcdsaVerifyFullJasmin_length : p384EcdsaVerifyFullJasmin.length = 15 := rfl
+/-- The verification body lowers to thirteen Jasmin commands, one per leaf. -/
+theorem p384EcdsaVerifyFullJasmin_length : p384EcdsaVerifyFullJasmin.length = 13 := rfl
 
 /-- Every command the front emits for the verification body is a `Ccall` — no
     fall-through to an unhandled construct. -/
@@ -491,7 +503,7 @@ theorem p384EcdsaVerifyFullJasmin_call_names :
         (fun i => match i with | .Ccall _ _ fn _ => fn.name | _ => "") =
       ["p384_scalar_in_range", "p384_scalar_in_range", "p384_point_valid",
        "p384_scalar_inv", "p384_scalar_muln", "p384_scalar_muln",
-       "p384_scalar_mul_base", "p384_scalar_mul", "p384_point_add",
+       "p384_lincomb",
        "p384_point_affine_x", "p384_scalar_reduce", "p384_scalar_is_eq",
        "p384_flag_and", "p384_flag_and", "p384_flag_and"] := rfl
 

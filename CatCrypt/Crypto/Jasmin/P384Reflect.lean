@@ -124,6 +124,35 @@ axiom p384_scalar_mul_base : P384Scalar → P384Point
     projective addition of `p384-safe-rust` `g1_add`. -/
 axiom p384_point_add : P384Point → P384Point → P384Point
 
+/-- P-384 two-term linear combination `R = u₁ · G + u₂ · Q`, with `G` the
+    generator of FIPS 186-4 D.1.2.4 fixed in the leaf, so a caller passes the
+    two scalars and the variable point only.
+
+    Requirements on the implementation:
+
+    * it agrees with
+      `p384_point_add (p384_scalar_mul_base u1) (p384_scalar_mul u2 Q)` on
+      every input;
+    * it interleaves the two ladders over one shared doubling chain — a single
+      left-to-right pass over the scalar bits, doubling the accumulator once
+      per position and adding the multiples of `G` and of `Q` selected by that
+      position's digits, so a `w`-bit scalar pair costs `w` doublings rather
+      than `2w`;
+    * the fixed multiples of `G` it reads are for that same generator.
+
+    Both scalars are public. In ECDSA verification `u₁` and `u₂` are computed
+    from the signature, the digest and the group order, all of which any party
+    that can call the verifier already holds. This leaf therefore carries no
+    constant-time obligation, and no constant-time property of it is claimed.
+
+    This leaf is where an emitted verifier's arithmetic differs in shape from
+    the reference composition
+    `p384_point_add (p384_scalar_mul_base u1) (p384_scalar_mul u2 Q)`: one
+    interleaved pass against two separate ladders and an addition. The shim
+    crate's differential test of the leaf against that two-multiply form is
+    what ties them; no agreement between them is proved here. Opaque. -/
+axiom p384_lincomb : P384Scalar → P384Scalar → P384Point → P384Point
+
 /-! ## 3. Tower-type abbreviations -/
 
 /-- Tower type of a P-384 scalar: six little-endian 64-bit limbs. -/
@@ -161,6 +190,18 @@ def p384PointAddPattern : LowCTPattern where
   fnHead    := ``p384_point_add
   arity     := 2
   towerType := .TBytes 144
+
+/-- Register `p384_lincomb` → leaf `p384_lincomb`: two 48-byte scalars and a
+    144-byte point to a 144-byte point, the generator being fixed in the
+    leaf. -/
+@[rust_cmd_pattern]
+def p384LincombPattern : LowCTPattern where
+  name      := "p384_lincomb"
+  fnHead    := ``p384_lincomb
+  arity     := 3
+  towerType := p384PointTowerType
+  argTypes  := some [p384ScalarTowerType, p384ScalarTowerType,
+                     p384PointTowerType]
 
 /-- A `Located` slot in the P-384 kernels. -/
 def locP384 (n : String) (t : TowerType) : Located :=
