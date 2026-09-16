@@ -12,13 +12,14 @@ public import CatCrypt.Crypto.Symbolic.MLS.ParentHash
 # MLS Group Authentication
 
 Combines TreeSync authentication (commit auth), parent hash guarantee,
-and tree invariants to prove that MLS group state is authentic:
-all honest members agree on the group state, or someone is corrupted.
+and tree invariants: a verified commit has a matching commit event or a
+corrupted committer, and two views of the group agree at every leaf when
+their root hashes are equal.
 
 ## Main results
 
-* `mls_group_authentication` — group state authenticity
-* `mls_group_consistency` — honest members see the same tree
+* `mls_group_consistency` — both receivers' commits are real, or the
+  committer is corrupt
 * `ValidLeaves_getLeaf` — leaf validity at every index
 * `mls_treesync_security` — credential agreement and attestation under
   the TreeSync invariants
@@ -32,8 +33,9 @@ This file bridges the individual security results:
    have equal leaf content
 3. **Tree Invariants** (`TreeInvariants.lean`): tree structure is well-formed
 
-Combined: if two honest members both verify a commit with the same root hash,
-they agree on every leaf position in the tree.
+Combined: two members who verify a commit each have a matching commit event
+or a corrupted committer, and their trees agree on every leaf position
+whenever the two root hashes are equal.
 
 ## References
 
@@ -49,50 +51,20 @@ open CatCrypt.Crypto.Symbolic
 
 /-! ## Group Authentication -/
 
-/-- **Group Authentication**: If two members both verify a commit and
-see the same tree root hash, then either they agree on the entire
-tree (same leaf content at every position) or the committer is corrupted.
+/-- **Group Consistency**: two members who each verify a commit for the same
+group, epoch and root hash either face a corrupted committer, or both
+verifications are backed by a real `Commit` event of that committer and the
+two trees agree at every leaf position.
 
-This is the top-level TreeSync authentication theorem, combining:
-- Commit authentication: each `CommitVerified` has a matching `Commit`
-  or the committer is corrupted
-- Parent hash guarantee: trees with the same root hash agree on all leaves
+Each receiver's verification event contributes its own commit witness, ordered
+before that receiver's index, and corruption is reported at `max i₁ i₂`, the
+later of the two verification points. Leaf agreement comes from the two root
+hashes being equal, by structural injectivity of the symbolic hash, and uses
+neither verification event.
 
-Parameters:
-- `receiver₁`, `receiver₂`: two group members who verified the same commit
-- `committer`: the committer who created the commit
-- `rootHash`: the agreed tree root hash
-- `tree₁`, `tree₂`: the trees that `receiver₁` and `receiver₂` see -/
-theorem mls_group_authentication
-    (tr : Trace) (i₁ i₂ : Nat) (receiver₁ receiver₂ committer : String)
-    (groupId : Bytes) (epoch : Nat) (rootHash : Bytes)
-    {n : Nat} (tree₁ tree₂ : SymTree n)
-    (hHash₁ : treeHash tree₁ = rootHash)
-    (hHash₂ : treeHash tree₂ = rootHash) :
-    @traceInvariant mlsInvariants tr →
-    tr.eventTriggeredAt i₁ receiver₁ commitVerifiedTag
-      (mkCommitVerifiedContent receiver₁ committer groupId epoch rootHash) →
-    tr.eventTriggeredAt i₂ receiver₂ commitVerifiedTag
-      (mkCommitVerifiedContent receiver₂ committer groupId epoch rootHash) →
-    -- Both verified → both have matching Commit events or committer is corrupted
-    ((∃ j₁, j₁ < i₁ ∧ tr.eventTriggeredAt j₁ committer commitTag
-        (mkCommitContent committer groupId epoch rootHash)) ∨
-      tr.isCorruptAt committer i₁) →
-    -- And: their trees agree on all leaf positions
-    ∀ idx : LeafIndex n, getLeaf tree₁ idx = getLeaf tree₂ idx := by
-  intro _hInv _hEvent₁ _hEvent₂ _hAuth
-  -- Trees with the same root hash agree on all leaves
-  -- by the parent hash guarantee
-  intro idx
-  have hHash : treeHash tree₁ = treeHash tree₂ := by
-    rw [hHash₁, hHash₂]
-  exact parent_hash_guarantee tree₁ tree₂ hHash idx
-
-/-- **Group Consistency with Commit Auth**: Combines commit authentication
-and parent hash guarantee into a single statement.
-
-If two members both verify the same commit AND the committer is honest,
-then a real `Commit` event exists AND their trees agree. -/
+The credential-level refinement, in which agreeing leaves also carry a valid
+credential attested by the auth service to a group member, is
+`mls_treesync_security`. -/
 theorem mls_group_consistency
     (tr : Trace) (i₁ i₂ : Nat) (receiver₁ receiver₂ committer : String)
     (groupId : Bytes) (epoch : Nat) (rootHash : Bytes)
@@ -106,29 +78,38 @@ theorem mls_group_consistency
       (mkCommitVerifiedContent receiver₂ committer groupId epoch rootHash) →
     -- Either: committer is corrupted
     tr.isCorruptAt committer (max i₁ i₂) ∨
-    -- Or: a real Commit event exists AND all leaf positions agree
-    ((∃ j, j < i₁ ∧ tr.eventTriggeredAt j committer commitTag
+    -- Or: both verifications have a matching Commit event AND all leaf
+    -- positions agree
+    (((∃ j₁, j₁ < i₁ ∧ tr.eventTriggeredAt j₁ committer commitTag
         (mkCommitContent committer groupId epoch rootHash)) ∧
+      (∃ j₂, j₂ < i₂ ∧ tr.eventTriggeredAt j₂ committer commitTag
+        (mkCommitContent committer groupId epoch rootHash))) ∧
      (∀ idx : LeafIndex n, getLeaf tree₁ idx = getLeaf tree₂ idx)) := by
   intro hInv hEvent₁ hEvent₂
-  -- Apply commit authentication for receiver₁
   have hAuth₁ := mls_commit_authentication tr i₁ receiver₁ committer groupId epoch rootHash
     hInv hEvent₁
+  have hAuth₂ := mls_commit_authentication tr i₂ receiver₂ committer groupId epoch rootHash
+    hInv hEvent₂
   cases hAuth₁ with
-  | inl hCommit =>
-    -- A matching Commit event exists
-    right
-    constructor
-    · exact hCommit
-    · -- Trees agree by parent hash guarantee
-      intro idx
-      have hHash : treeHash tree₁ = treeHash tree₂ := by rw [hHash₁, hHash₂]
-      exact parent_hash_guarantee tree₁ tree₂ hHash idx
   | inr hCorrupt =>
     -- Committer is corrupted at i₁ ≤ max i₁ i₂
     left
     obtain ⟨j, hj, hentry⟩ := hCorrupt
     exact ⟨j, by omega, hentry⟩
+  | inl hCommit₁ =>
+    cases hAuth₂ with
+    | inr hCorrupt =>
+      -- Committer is corrupted at i₂ ≤ max i₁ i₂
+      left
+      obtain ⟨j, hj, hentry⟩ := hCorrupt
+      exact ⟨j, by omega, hentry⟩
+    | inl hCommit₂ =>
+      right
+      refine ⟨⟨hCommit₁, hCommit₂⟩, ?_⟩
+      -- Trees agree by parent hash guarantee
+      intro idx
+      have hHash : treeHash tree₁ = treeHash tree₂ := by rw [hHash₁, hHash₂]
+      exact parent_hash_guarantee tree₁ tree₂ hHash idx
 
 /-! ## Auth Service Integration -/
 
