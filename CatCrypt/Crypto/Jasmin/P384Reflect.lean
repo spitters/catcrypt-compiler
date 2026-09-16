@@ -15,7 +15,7 @@ public import CatCrypt.Crypto.Jasmin.LowCTToJasmin
 
 The P-384 (NIST FIPS 186-4) analogue of `P256Reflect.lean`: opaque surface
 types (`P384Scalar`, `P384Point`), `@[rust_cmd_pattern]` registrations for the
-two group-law leaves, hand-built `LowCT` bodies for the two kernels, and Rust
+group-law leaves, hand-built `LowCT` bodies for the two kernels, and Rust
 source emission for the shim crate.
 
 ## Two kernels
@@ -108,6 +108,17 @@ noncomputable instance : Inhabited P384Point := ⟨P384Point.default⟩
     windowed ladder of `p384-safe-rust` `g1_scalar_mul`. -/
 axiom p384_scalar_mul : P384Scalar → P384Point → P384Point
 
+/-- P-384 fixed-base scalar multiplication `R = k · G`, with `G` the P-384
+    generator of FIPS 186-4 D.1.2.4. The generator is fixed in the leaf, so a
+    caller passes only the scalar.
+
+    Requirements on the implementation: it computes `k · G` for the standard
+    generator; it is constant time in `k`, its execution time and memory-access
+    trace depending on neither the value of `k` nor the table entries it
+    selects; and the precomputed multiples of `G` it reads are for that same
+    generator. Opaque here. -/
+axiom p384_scalar_mul_base : P384Scalar → P384Point
+
 /-- P-384 point addition `R = P + Q`. Opaque; the shim issues the complete
     projective addition of `p384-safe-rust` `g1_add`. -/
 axiom p384_point_add : P384Point → P384Point → P384Point
@@ -128,6 +139,21 @@ def p384ScalarMulPattern : LowCTPattern where
   name      := "p384_scalar_mul"
   fnHead    := ``p384_scalar_mul
   arity     := 2
+  towerType := .TBytes 144
+
+/-- Register `p384_scalar_mul_base` → leaf `p384_scalar_mul_base`.
+
+    `LowCTPattern` carries a single `towerType` for the destination and every
+    argument, and this leaf is heterogeneous (`48 → 144`). The registration
+    therefore pins the leaf name, the Lean head `p384_scalar_mul_base`, the
+    arity `1`, and the 144-byte destination width; it does not pin the 48-byte
+    width of the scalar argument, which the hand-built bodies fix through the
+    tower type of the slot they pass. -/
+@[rust_cmd_pattern]
+def p384ScalarMulBasePattern : LowCTPattern where
+  name      := "p384_scalar_mul_base"
+  fnHead    := ``p384_scalar_mul_base
+  arity     := 1
   towerType := .TBytes 144
 
 /-- Register `p384_point_add` → leaf `p384_point_add`. -/
