@@ -17,15 +17,16 @@ and valid parent hash invariants, their structures agree on all direct paths.
 
 * `treeHash_injective` — trees with equal hashes have equal structure
 * `treeHash_detects_leaf_change` — equal root hash implies equal leaves
-* `parent_hash_guarantee` — the full parent hash guarantee theorem
+* `parent_hash_guarantee` — equal root hash implies agreement on every leaf
 
-## Key Insight
+## Symbolic hash injectivity
 
-In the F* TreeSync proof, the parent hash guarantee theorem requires
-`z3rlimit=100` and SMT reasoning about hash collision resistance.
-In our formalization, `Bytes.hash` is an injective constructor in the
-symbolic term algebra, so `treeHash t₁ = treeHash t₂` directly implies
-structural equality via `Bytes.hash.injEq`. No SMT needed.
+In the F* TreeSync proof, the parent hash guarantee requires `z3rlimit=100`
+and SMT reasoning about hash collision resistance. Here `Bytes.hash` is an
+injective constructor in the symbolic term algebra, so
+`treeHash t₁ = treeHash t₂` implies structural equality via
+`Bytes.hash.injEq`. The results in this file rest on that injectivity; the
+`ParentHashValid` invariant is not among their hypotheses.
 
 ## References
 
@@ -116,21 +117,21 @@ theorem treeHash_ne_of_leaf_ne {n : Nat} (t₁ t₂ : SymTree n) (idx : LeafInde
 
 /-! ## Full Parent Hash Guarantee -/
 
-/-- **Parent Hash Guarantee Theorem**: If two trees satisfy the
-parent hash invariant and have the same root hash, then they agree
-on ALL leaf positions.
+/-- **Parent Hash Guarantee**: two trees with the same root hash agree
+on every leaf position.
 
-This is the main theorem from the Inria TreeSync proof
-(Wallez et al., USENIX Security 2023, Theorem 3).
+Corresponds to the Inria TreeSync parent hash guarantee
+(Wallez et al., USENIX Security 2023, Theorem 3), which is stated there
+under the parent hash invariant and proved from hash collision
+resistance with `z3rlimit=100`.
 
-In F*, this requires `z3rlimit=100` and ~1000 LOC because hash
-collision resistance must be invoked via SMT.
-
-In our formalization, it follows immediately from
-`treeHash_detects_leaf_change`, because `Bytes.hash` is structurally
-injective. -/
+In this symbolic model the parent hash invariant is not a hypothesis and
+the parent hash mechanism does no work in the proof. `Bytes.hash` is an
+injective constructor of the term algebra, so equal root hashes force
+structural equality of the two trees, and the statement is
+`treeHash_detects_leaf_change`. Two trees whose parent hash fields are
+arbitrary satisfy the conclusion just as well. -/
 theorem parent_hash_guarantee {n : Nat} (t₁ t₂ : SymTree n)
-    (_hPH₁ : ParentHashValid t₁) (_hPH₂ : ParentHashValid t₂)
     (hHash : treeHash t₁ = treeHash t₂) :
     ∀ idx : LeafIndex n, getLeaf t₁ idx = getLeaf t₂ idx :=
   fun idx => treeHash_detects_leaf_change t₁ t₂ idx hHash
