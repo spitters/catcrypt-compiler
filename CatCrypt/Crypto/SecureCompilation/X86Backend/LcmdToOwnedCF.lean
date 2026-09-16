@@ -119,7 +119,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCTPreservation
   (linstrRDirect lcmdDirect lcmdDirect_iff lowerCov6_direct mapM_flatten_direct)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.GatherImmForms (lowerCov6L)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrGatherExtended (isLret)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (frameSize bodyIsU64)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+  (frameSize bodyIsU64 qsaveBytes qsaveBytesFor)
 
 /-! ## 1. Instruction classes -/
 
@@ -279,19 +280,21 @@ def parseLcmdCF : Nat → Lcmd → Option LcmdCF
 /-- Gather one straight-line segment to a `JInstr` block, dropping the flag-only
     compares. The frame size and spill width are the ones
     `GatherImmForms.gatherJBlock6` computes for the whole body. -/
-def gatherSeg (frame spillW : Nat) (seg : Lcmd) : Option (List (JInstr 64)) :=
-  ((seg.filter (fun i => !isFlagOnly i)).mapM (lowerCov6L frame spillW)).map List.flatten
+def gatherSeg (frame spillW : Nat) (seg : Lcmd)
+    (qsaveB : Nat := qsaveBytes) : Option (List (JInstr 64)) :=
+  ((seg.filter (fun i => !isFlagOnly i)).mapM
+    (fun i => lowerCov6L frame spillW i qsaveB)).map List.flatten
 
 /-- Gather every leaf of a skeleton. -/
-def lcmdCFToOwnedCF (frame spillW : Nat) : LcmdCF → Option (OwnedCF 64)
-  | .straight seg => (gatherSeg frame spillW seg).map OwnedCF.straight
+def lcmdCFToOwnedCF (frame spillW qsaveB : Nat) : LcmdCF → Option (OwnedCF 64)
+  | .straight seg => (gatherSeg frame spillW seg qsaveB).map OwnedCF.straight
   | .seq a b =>
-      match lcmdCFToOwnedCF frame spillW a, lcmdCFToOwnedCF frame spillW b with
+      match lcmdCFToOwnedCF frame spillW qsaveB a, lcmdCFToOwnedCF frame spillW qsaveB b with
       | some x, some y => some (.seq x y)
       | _, _ => none
-  | .loop n b => (lcmdCFToOwnedCF frame spillW b).map (OwnedCF.loop n)
+  | .loop n b => (lcmdCFToOwnedCF frame spillW qsaveB b).map (OwnedCF.loop n)
   | .ifPub g t e =>
-      match lcmdCFToOwnedCF frame spillW t, lcmdCFToOwnedCF frame spillW e with
+      match lcmdCFToOwnedCF frame spillW qsaveB t, lcmdCFToOwnedCF frame spillW qsaveB e with
       | some x, some y => some (.ifPub g x y)
       | _, _ => none
 
@@ -302,7 +305,8 @@ def lcmdCFToOwnedCF (frame spillW : Nat) : LcmdCF → Option (OwnedCF 64)
     outside the recognised frames. -/
 def lcmdToOwnedCF (body : Lcmd) : Option (OwnedCF 64) :=
   (parseLcmdCF (body.length + 1) (body.filter (fun i => !isLret i))).bind
-    (lcmdCFToOwnedCF (frameSize body) (if bodyIsU64 body then 64 else 32))
+    (lcmdCFToOwnedCF (frameSize body) (if bodyIsU64 body then 64 else 32)
+      (qsaveBytesFor body))
 
 /-! ## 4. The addressing class crosses the recogniser -/
 
@@ -337,9 +341,10 @@ theorem mem_of_mem_tail2_dropWhile {α : Type} {p : α → Bool} {l t : List α}
 /-- The gather of an index-free segment is in the constant-time addressing class:
     the dropped flag-only compares are removed by a filter, and every remaining
     instruction lowers to direct instructions by `lowerCov6_direct`. -/
-theorem gatherSeg_allDirect {frame spillW : Nat} {seg : Lcmd} {g : List (JInstr 64)}
+theorem gatherSeg_allDirect {frame spillW qsaveB : Nat} {seg : Lcmd}
+    {g : List (JInstr 64)}
     (hd : ∀ i ∈ seg, linstrRDirect i.li_i = true)
-    (h : gatherSeg frame spillW seg = some g) : allDirect g = true := by
+    (h : gatherSeg frame spillW seg qsaveB = some g) : allDirect g = true := by
   simp only [gatherSeg, Option.map_eq_some_iff] at h
   obtain ⟨ls, hls, rfl⟩ := h
   refine mapM_flatten_direct ?_ _ ?_ ls hls
@@ -350,9 +355,9 @@ theorem gatherSeg_allDirect {frame spillW : Nat} {seg : Lcmd} {g : List (JInstr 
 
 /-- A gathered skeleton whose leaves are index-free is an index-free structured
     block. -/
-theorem lcmdCFToOwnedCF_cfAllDirect {frame spillW : Nat} :
+theorem lcmdCFToOwnedCF_cfAllDirect {frame spillW qsaveB : Nat} :
     ∀ (k : LcmdCF) (cf : OwnedCF 64), LcmdCFDirect k →
-      lcmdCFToOwnedCF frame spillW k = some cf → CFAllDirect cf := by
+      lcmdCFToOwnedCF frame spillW qsaveB k = some cf → CFAllDirect cf := by
   intro k
   induction k with
   | straight seg =>

@@ -181,73 +181,85 @@ so a single name list parametrises both. -/
 
 /-- **`ADD` bytes agree (resolver-unconditional).** -/
 theorem add_bytes_agree_std (names : List String) (frame spillW : Nat) (dn sn : String)
+    (qsaveB : Nat)
     (hdn : dn ∈ names) (hsn : sn ∈ names) (hdt : dn ∈ stdRegNames) (hst : sn ∈ stdRegNames)
-    (hdk : spillQsaveOff frame spillW dn = none) (hsk : spillQsaveOff frame spillW sn = none)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false) :
     encodeJInstr (stdGpAlloc names) (.add dn (.reg sn))
-      = encTwoAddr frame spillW 1 0x01 (.reg dn) (.reg sn) :=
-  add_bytes_agree (stdGpAlloc names) frame spillW dn sn dn sn
+      = encTwoAddr frame spillW 1 0x01 (.reg dn) (.reg sn) qsaveB :=
+  add_bytes_agree (stdGpAlloc names) frame spillW dn sn dn sn qsaveB
     hdk hsk hdm hsm hdsp hssp
     (resolver_agree names dn hdn hdt) (resolver_agree names sn hsn hst)
 
 /-- **`SUB` bytes agree (resolver-unconditional).** -/
 theorem sub_bytes_agree_std (names : List String) (frame spillW : Nat) (dn sn : String)
+    (qsaveB : Nat)
     (hdn : dn ∈ names) (hsn : sn ∈ names) (hdt : dn ∈ stdRegNames) (hst : sn ∈ stdRegNames)
-    (hdk : spillQsaveOff frame spillW dn = none) (hsk : spillQsaveOff frame spillW sn = none)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false) :
     encodeJInstr (stdGpAlloc names) (.sub dn (.reg sn))
-      = encTwoAddr frame spillW 1 0x29 (.reg dn) (.reg sn) :=
-  sub_bytes_agree (stdGpAlloc names) frame spillW dn sn dn sn
+      = encTwoAddr frame spillW 1 0x29 (.reg dn) (.reg sn) qsaveB :=
+  sub_bytes_agree (stdGpAlloc names) frame spillW dn sn dn sn qsaveB
     hdk hsk hdm hsm hdsp hssp
     (resolver_agree names dn hdn hdt) (resolver_agree names sn hsn hst)
 
 /-- **`AND` bytes agree (resolver-unconditional).** -/
 theorem and_bytes_agree_std (names : List String) (frame spillW : Nat) (dn sn : String)
+    (qsaveB : Nat)
     (hdn : dn ∈ names) (hsn : sn ∈ names) (hdt : dn ∈ stdRegNames) (hst : sn ∈ stdRegNames)
-    (hdk : spillQsaveOff frame spillW dn = none) (hsk : spillQsaveOff frame spillW sn = none)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false) :
     encodeJInstr (stdGpAlloc names) (.and_ dn (.reg sn))
-      = encTwoAddr frame spillW 1 0x21 (.reg dn) (.reg sn) :=
-  and_bytes_agree (stdGpAlloc names) frame spillW dn sn dn sn
+      = encTwoAddr frame spillW 1 0x21 (.reg dn) (.reg sn) qsaveB :=
+  and_bytes_agree (stdGpAlloc names) frame spillW dn sn dn sn qsaveB
     hdk hsk hdm hsm hdsp hssp
     (resolver_agree names dn hdn hdt) (resolver_agree names sn hsn hst)
 
 /-- **`OR` bytes agree (resolver-unconditional).** -/
 theorem or_bytes_agree_std (names : List String) (frame spillW : Nat) (dn sn : String)
+    (qsaveB : Nat)
     (hdn : dn ∈ names) (hsn : sn ∈ names) (hdt : dn ∈ stdRegNames) (hst : sn ∈ stdRegNames)
-    (hdk : spillQsaveOff frame spillW dn = none) (hsk : spillQsaveOff frame spillW sn = none)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false) :
     encodeJInstr (stdGpAlloc names) (.or_ dn (.reg sn))
-      = encTwoAddr frame spillW 1 0x09 (.reg dn) (.reg sn) :=
-  or_bytes_agree (stdGpAlloc names) frame spillW dn sn dn sn
+      = encTwoAddr frame spillW 1 0x09 (.reg dn) (.reg sn) qsaveB :=
+  or_bytes_agree (stdGpAlloc names) frame spillW dn sn dn sn qsaveB
     hdk hsk hdm hsm hdsp hssp
     (resolver_agree names dn hdn hdt) (resolver_agree names sn hsn hst)
 
 /-- **`XOR` bytes agree (resolver-unconditional).** -/
 theorem xor_bytes_agree_std (names : List String) (frame spillW : Nat) (dn sn : String)
+    (qsaveB : Nat)
     (hdn : dn ∈ names) (hsn : sn ∈ names) (hdt : dn ∈ stdRegNames) (hst : sn ∈ stdRegNames)
-    (hdk : spillQsaveOff frame spillW dn = none) (hsk : spillQsaveOff frame spillW sn = none)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false) :
     encodeJInstr (stdGpAlloc names) (.xor_ dn (.reg sn))
-      = encTwoAddr frame spillW 1 0x31 (.reg dn) (.reg sn) :=
-  xor_bytes_agree (stdGpAlloc names) frame spillW dn sn dn sn
+      = encTwoAddr frame spillW 1 0x31 (.reg dn) (.reg sn) qsaveB :=
+  xor_bytes_agree (stdGpAlloc names) frame spillW dn sn dn sn qsaveB
     hdk hsk hdm hsm hdsp hssp
     (resolver_agree names dn hdn hdt) (resolver_agree names sn hsn hst)
 
 /-- **`MOV` (reg-reg) bytes agree (resolver-unconditional).** -/
 theorem mov_bytes_agree_std (names : List String) (frame spillW : Nat) (dn sn : String)
+    (qsaveB : Nat)
     (hdn : dn ∈ names) (hsn : sn ∈ names) (hdt : dn ∈ stdRegNames) (hst : sn ∈ stdRegNames)
-    (hdk : spillQsaveOff frame spillW dn = none) (hsk : spillQsaveOff frame spillW sn = none)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false) :
     encodeJInstr (stdGpAlloc names) (.mov dn (.reg sn))
-      = encTwoAddr frame spillW 1 0x89 (.reg dn) (.reg sn) :=
-  mov_bytes_agree (stdGpAlloc names) frame spillW dn sn dn sn
+      = encTwoAddr frame spillW 1 0x89 (.reg dn) (.reg sn) qsaveB :=
+  mov_bytes_agree (stdGpAlloc names) frame spillW dn sn dn sn qsaveB
     hdk hsk hdm hsm hdsp hssp
     (resolver_agree names dn hdn hdt) (resolver_agree names sn hsn hst)
 
@@ -263,15 +275,16 @@ is fixed by the Lprog operand `dn`/`sn` (which IS `"mem.<base>.<off>"`). -/
     destination-register resolution discharged. The Lprog source `sn` is the parsed
     `mem.*` operand (`hsm`); `bb` is its base number. -/
 theorem load_bytes_agree_std (names : List String) (frame spillW op : Nat)
-    (d base : String) (off : Int) (dn sn : String) (bb : Nat)
+    (d base : String) (off : Int) (dn sn : String) (bb : Nat) (qsaveB : Nat)
     (hdn : d ∈ names) (hdt : d ∈ stdRegNames) (hd : gpNumU dn = gpNumU d)
-    (hdk : spillQsaveOff frame spillW dn = none) (hsk : spillQsaveOff frame spillW sn = none)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = some (bb, off))
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
     (hb : gpNum (regOf (stdGpAlloc names) base) = bb) :
     encodeJInstr (stdGpAlloc names) (.loadMem d base off)
-      = encTwoAddr frame spillW 1 op (.reg dn) (.reg sn) :=
-  load_bytes_agree (stdGpAlloc names) frame spillW op d base off dn sn bb
+      = encTwoAddr frame spillW 1 op (.reg dn) (.reg sn) qsaveB :=
+  load_bytes_agree (stdGpAlloc names) frame spillW op d base off dn sn bb qsaveB
     hdk hsk hdm hsm hdsp hssp (hd ▸ resolver_agree names d hdn hdt) hb
 
 /-- **`STORE` bytes agree (resolver-unconditional).** The JInstr `storeMem base off (reg r)`
@@ -279,15 +292,16 @@ theorem load_bytes_agree_std (names : List String) (frame spillW op : Nat)
     source-register resolution discharged. The Lprog destination `dn` is the parsed
     `mem.*` operand (`hdm`); `bb` is its base number. -/
 theorem store_bytes_agree_std (names : List String) (frame spillW op : Nat)
-    (base : String) (off : Int) (r : String) (dn sn : String) (bb : Nat)
+    (base : String) (off : Int) (r : String) (dn sn : String) (bb : Nat) (qsaveB : Nat)
     (hrn : r ∈ names) (hrt : r ∈ stdRegNames) (hr : gpNumU sn = gpNumU r)
-    (hdk : spillQsaveOff frame spillW dn = none) (hsk : spillQsaveOff frame spillW sn = none)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = some (bb, off)) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
     (hb : gpNum (regOf (stdGpAlloc names) base) = bb) :
     encodeJInstr (stdGpAlloc names) (.storeMem base off (.reg r))
-      = encTwoAddr frame spillW 1 op (.reg dn) (.reg sn) :=
-  store_bytes_agree (stdGpAlloc names) frame spillW op base off r dn sn bb
+      = encTwoAddr frame spillW 1 op (.reg dn) (.reg sn) qsaveB :=
+  store_bytes_agree (stdGpAlloc names) frame spillW op base off r dn sn bb qsaveB
     hdk hsk hdm hsm hdsp hssp (hr ▸ resolver_agree names r hrn hrt) hb
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ResolverAgree

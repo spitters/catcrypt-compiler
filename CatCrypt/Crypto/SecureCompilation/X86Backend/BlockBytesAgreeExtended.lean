@@ -177,9 +177,9 @@ the literal (the `LprogJInstrMnemDispatch` route, here for the two-source `OR`/`
 did not pre-instantiate). -/
 
 /-- `OR:64 [dn, sn]` (destructive, `dn` self-source) → `encTwoAddr … 1 0x09 …`. -/
-theorem encodeLopn_or₂ (frame spillW : Nat) (dn sn : String) :
-    encodeLopn frame spillW (.Lopn [.reg dn] "OR:64" [.reg dn, .reg sn])
-      = encTwoAddr frame spillW 1 0x09 (.reg dn) (.reg sn) := by
+theorem encodeLopn_or₂ (frame spillW : Nat) (dn sn : String) (qsaveB : Nat) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "OR:64" [.reg dn, .reg sn]) qsaveB
+      = encTwoAddr frame spillW 1 0x09 (.reg dn) (.reg sn) qsaveB := by
   simp only [encodeLopn,
     show (isCarryOutBinding "OR:64" || isMulHiBinding "OR:64") = false from by decide +kernel,
     show stripWidthTag "OR:64" = "OR" from by decide +kernel,
@@ -192,9 +192,9 @@ theorem encodeLopn_or₂ (frame spillW : Nat) (dn sn : String) :
     Bool.false_eq_true, if_false]
 
 /-- `XOR:64 [dn, sn]` (destructive) → `encTwoAddr … 1 0x31 …`. -/
-theorem encodeLopn_xor₂ (frame spillW : Nat) (dn sn : String) :
-    encodeLopn frame spillW (.Lopn [.reg dn] "XOR:64" [.reg dn, .reg sn])
-      = encTwoAddr frame spillW 1 0x31 (.reg dn) (.reg sn) := by
+theorem encodeLopn_xor₂ (frame spillW : Nat) (dn sn : String) (qsaveB : Nat) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "XOR:64" [.reg dn, .reg sn]) qsaveB
+      = encTwoAddr frame spillW 1 0x31 (.reg dn) (.reg sn) qsaveB := by
   simp only [encodeLopn,
     show (isCarryOutBinding "XOR:64" || isMulHiBinding "XOR:64") = false from by decide +kernel,
     show stripWidthTag "XOR:64" = "XOR" from by decide +kernel,
@@ -220,30 +220,34 @@ same side-condition the POC `*_bytes_agree` lemmas carry. -/
     destructive `OR:64 [dn, sn]` bytes. So the only byte difference from the Lprog encoder is
     that leading `mov d, s0` — which the Lprog side does not emit. -/
 theorem or64_block_eq_mov_prepend_lopn
-    (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn s0 : String)
-    (hdk : spillQsaveOff frame spillW dn = none) (hsk : spillQsaveOff frame spillW sn = none)
+    (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn s0 : String) (qsaveB : Nat)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
     (lowerLinstrExtCov (.Lopn [.reg d] "OR:64" [.reg s0, .reg r])).map (encodeJBlock alloc)
       = some (encodeJInstr alloc (JInstr.mov d (.reg s0))
-                ++ encodeLopn frame spillW (.Lopn [.reg dn] "OR:64" [.reg dn, .reg sn])) := by
+                ++ encodeLopn frame spillW
+                    (.Lopn [.reg dn] "OR:64" [.reg dn, .reg sn]) qsaveB) := by
   rw [lower_or64, Option.map_some, encodeLopn_or₂,
-    ← or_bytes_agree alloc frame spillW d r dn sn hdk hsk hdm hsm hdsp hssp hd hs]
+    ← or_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp hd hs]
   simp [encodeJBlock, List.flatMap_cons]
 
 /-- **`XOR:64` two-source byte isolation** — the dual of `or64_block_eq_mov_prepend_lopn`. -/
 theorem xor64_block_eq_mov_prepend_lopn
-    (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn s0 : String)
-    (hdk : spillQsaveOff frame spillW dn = none) (hsk : spillQsaveOff frame spillW sn = none)
+    (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn s0 : String) (qsaveB : Nat)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
     (lowerLinstrExtCov (.Lopn [.reg d] "XOR:64" [.reg s0, .reg r])).map (encodeJBlock alloc)
       = some (encodeJInstr alloc (JInstr.mov d (.reg s0))
-                ++ encodeLopn frame spillW (.Lopn [.reg dn] "XOR:64" [.reg dn, .reg sn])) := by
+                ++ encodeLopn frame spillW
+                    (.Lopn [.reg dn] "XOR:64" [.reg dn, .reg sn]) qsaveB) := by
   rw [lower_xor64, Option.map_some, encodeLopn_xor₂,
-    ← xor_bytes_agree alloc frame spillW d r dn sn hdk hsk hdm hsm hdsp hssp hd hs]
+    ← xor_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp hd hs]
   simp [encodeJBlock, List.flatMap_cons]
 
 /-! ### §1d. The residual self-`mov` is non-empty (the divergence, made concrete)

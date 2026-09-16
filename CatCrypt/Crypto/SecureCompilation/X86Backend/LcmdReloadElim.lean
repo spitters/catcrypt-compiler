@@ -83,7 +83,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-  (renderLcmd renderLprogAtt frameSize bodyIsU64)
+  (renderLcmd renderLprogAtt frameSize bodyIsU64 qsaveBytesFor)
 
 /-! ## 1. The spill-move shapes -/
 
@@ -465,6 +465,55 @@ theorem reloadElimBody_sublist (b : Lcmd) : (reloadElimBody b).Sublist b := by
   · exact dropReloadsLcmd_sublist b
   · exact List.Sublist.refl b
 
+/-! ### The sweep preserves the call-carrying status
+
+`frameSize` reads `bodyHasCall` to size the qsave block, so a pass that rewrites a
+body between frame computation and rendering must leave that predicate fixed or the
+two sides disagree on the layout. The sweep deletes only the reload half of an
+adjacent spill store/reload pair, and `isRedundantReloadL` recognises a pair of
+`Lopn` moves — never an `Lcall` — so the deleted instruction never carried a call. -/
+
+/-- **Prepending preserves the call-carrying status.** The instruction `consDropL`
+    may delete is the recognised reload, whose shape is an `Lopn`. -/
+theorem consDropL_bodyHasCall (i : Linstr) (k : Lcmd) :
+    bodyHasCall (consDropL i k) = bodyHasCall (i :: k) := by
+  cases k with
+  | nil => rfl
+  | cons j rest =>
+    rw [consDropL]
+    split
+    · rename_i h
+      obtain ⟨_, _, _, _, hj, _, _, _⟩ := eq_of_isRedundantReloadL h
+      simp [bodyHasCall, hj]
+    · rfl
+
+/-- **The sweep preserves the call-carrying status.** -/
+theorem bodyHasCall_dropReloadsLcmd (b : Lcmd) :
+    bodyHasCall (dropReloadsLcmd b) = bodyHasCall b := by
+  induction b with
+  | nil => rfl
+  | cons i rest ih =>
+    rw [dropReloadsLcmd_cons, consDropL_bodyHasCall]
+    simp only [bodyHasCall, List.any_cons] at ih ⊢
+    rw [ih]
+
+/-- **The guarded sweep preserves the call-carrying status.** -/
+theorem bodyHasCall_reloadElimBody (b : Lcmd) :
+    bodyHasCall (reloadElimBody b) = bodyHasCall b := by
+  unfold reloadElimBody
+  split
+  · exact bodyHasCall_dropReloadsLcmd b
+  · rfl
+
+/-- **The optimized body keeps the qsave block.** With the frame size
+    (`frameSize_reloadElimBody`) and the width class (`bodyIsU64_reloadElimBody`),
+    this is the third and last layout input the renderer derives from the body, so
+    the swept body renders at exactly the original's frame layout. -/
+theorem qsaveBytesFor_reloadElimBody (b : Lcmd) :
+    qsaveBytesFor (reloadElimBody b) = qsaveBytesFor b := by
+  unfold qsaveBytesFor
+  rw [bodyHasCall_reloadElimBody]
+
 /-- **The guarded sweep preserves the register map and memory.** -/
 theorem reloadElimBody_lsem {w : Nat} (b : Lcmd) (s : Lstate w) :
     ArchAgreeOpt (lsemStraight ((reloadElimBody b).map Linstr.li_i) s)
@@ -498,6 +547,19 @@ theorem renderLcmd_reloadElim_sublist (frame spillW : Nat) (b : Lcmd)
     (renderLcmd frame spillW (reloadElimBody b) lblPfx rvs qsaveB).Sublist
       (renderLcmd frame spillW b lblPfx rvs qsaveB) :=
   sublist_flatMap (reloadElimBody_sublist b) _
+
+/-- **The optimized render deletes lines and adds none, at the deployed
+    configuration.** Each side takes the qsave block its own body determines, which
+    is what `renderLcmd` does when the emitter supplies no block explicitly. The two
+    blocks coincide (`qsaveBytesFor_reloadElimBody`), so this is the generalised
+    statement instantiated at the layout the renderer actually uses. -/
+theorem renderLcmd_reloadElim_sublist_deployed (frame spillW : Nat) (b : Lcmd)
+    (lblPfx : String) (rvs : Bool) :
+    (renderLcmd frame spillW (reloadElimBody b) lblPfx rvs
+        (qsaveBytesFor (reloadElimBody b))).Sublist
+      (renderLcmd frame spillW b lblPfx rvs (qsaveBytesFor b)) := by
+  rw [qsaveBytesFor_reloadElimBody b]
+  exact renderLcmd_reloadElim_sublist frame spillW b lblPfx rvs (qsaveBytesFor b)
 
 /-- The pass on one `Lfundef` (body only; ABI metadata untouched). -/
 def reloadElimFundef (f : Lfundef) : Lfundef :=

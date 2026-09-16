@@ -147,8 +147,8 @@ def isControlTransfer : LinstrR → Bool
   | _ => false
 
 /-- The whole-body lowering has no arm for a control-transfer instruction. -/
-theorem lowerCov6_of_controlTransfer (frame spillW : Nat) {i : LinstrR}
-    (h : isControlTransfer i = true) : lowerCov6 frame spillW i = none := by
+theorem lowerCov6_of_controlTransfer (frame spillW qsaveB : Nat) {i : LinstrR}
+    (h : isControlTransfer i = true) : lowerCov6 frame spillW i qsaveB = none := by
   cases i <;> first | rfl | simp [isControlTransfer] at h
 
 /-- A successful `Option`-valued `mapM` succeeds on every element. -/
@@ -193,7 +193,7 @@ theorem gatherJBlock6_no_control_transfer {body : Lcmd} {g : List (JInstr 64)}
     rw [List.mem_filter]
     exact ⟨hi, by simp [hnr]⟩
   obtain ⟨js, hjs⟩ := mapM_some_mem hls i hmem
-  rw [lowerCov6L, lowerCov6_of_controlTransfer _ _ hct] at hjs
+  rw [lowerCov6L, lowerCov6_of_controlTransfer _ _ _ hct] at hjs
   simp at hjs
 
 /-! ## 3. Refining source observations to machine leakage

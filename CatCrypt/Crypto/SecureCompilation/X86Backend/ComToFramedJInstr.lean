@@ -47,8 +47,8 @@ instruction-byte level**:
 * **§1 — the path.** `comToFramedJInstr` (item 1) and `comToFramedJFunc` (the
   `JFunc` it frames), with `comToFramedJInstr_eq` pinning the composition.
 
-* **§2 — the framing reconciliation.** `framedText_agree_of_body_agree` is the
-  load-bearing lemma: when the JInstr leaf's prologue / arg-marshal / epilogue
+* **§2 — the framing reconciliation.** `framedText_agree_of_body_agree`: when
+  the JInstr leaf's prologue / arg-marshal / epilogue
   bytes equal the Lprog leaf's framing bytes AND the two **body** byte streams
   agree (`encodeJBlock ≡ encodeLcmd` on the covered fragment, the
   `LprogJInstrBytesAgree` block agreement), the whole `.text` instruction streams
@@ -298,15 +298,16 @@ theorem demoFramedText_body_flatMap (alloc : GpAlloc) :
     instruction bytes", instantiated on the demo body's `ADD` and delegated to the
     already-proved `LprogJInstrBytesAgree.add_bytes_agree`. -/
 theorem demoFramedText_add_agrees (alloc : GpAlloc) (frame spillW : Nat) (dn sn : String)
-    (hdk : LprogBytes.spillQsaveOff frame spillW dn = none)
-    (hsk : LprogBytes.spillQsaveOff frame spillW sn = none)
+    (qsaveB : Nat)
+    (hdk : LprogBytes.spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : LprogBytes.spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : LprogBytes.parseMemName dn = none) (hsm : LprogBytes.parseMemName sn = none)
     (hdsp : LprogBytes.isSpillOrQsave dn = false) (hssp : LprogBytes.isSpillOrQsave sn = false)
     (hd : gpNum (regOf alloc "t") = LprogBytes.gpNumU dn)
     (hs : gpNum (regOf alloc "b") = LprogBytes.gpNumU sn) :
     encodeJInstr alloc (.add "t" (.reg "b"))
-      = LprogBytes.encTwoAddr frame spillW 1 0x01 (.reg dn) (.reg sn) :=
-  LprogJInstrBytesAgree.add_bytes_agree alloc frame spillW "t" "b" dn sn
+      = LprogBytes.encTwoAddr frame spillW 1 0x01 (.reg dn) (.reg sn) qsaveB :=
+  LprogJInstrBytesAgree.add_bytes_agree alloc frame spillW "t" "b" dn sn qsaveB
     hdk hsk hdm hsm hdsp hssp hd hs
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ComToFramedJInstr

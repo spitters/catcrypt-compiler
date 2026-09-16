@@ -1621,10 +1621,6 @@ silently. -/
 #guard qsaveFrameOff 128 "R9" qsaveBytesCall = some 32
 #guard qsaveFrameOff 128 "RDX" qsaveBytesCall != qsaveFrameOff 128 "RDX"
 
--- A `call` writes its return address at `-8(%rsp)`, which is the default-block
--- placement of slot 8 and is why a calling body may not use it.
-#guard qsaveFrameOff 128 "RDX" = some (-8)
-
 -- The spill region starts below whichever block is reserved.
 #guard spillFrameOff 128 64 0 = 56
 #guard spillFrameOff 128 64 0 qsaveBytesCall = 24

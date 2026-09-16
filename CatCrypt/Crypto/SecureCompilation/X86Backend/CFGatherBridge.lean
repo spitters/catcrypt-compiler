@@ -550,9 +550,9 @@ def CFBranchFree {w : Nat} : MachineConstantTime.OwnedCF w → Prop
 
 /-- Gathering the leaves of a conditional-free skeleton gives a conditional-free
     block. -/
-theorem lcmdCFToOwnedCF_branchFree {frame spillW : Nat} :
+theorem lcmdCFToOwnedCF_branchFree {frame spillW qsaveB : Nat} :
     ∀ (k : LcmdCF) (cf : MachineConstantTime.OwnedCF 64), LcmdCFBranchFree k →
-      lcmdCFToOwnedCF frame spillW k = some cf → CFBranchFree cf := by
+      lcmdCFToOwnedCF frame spillW qsaveB k = some cf → CFBranchFree cf := by
   intro k
   induction k with
   | straight seg =>
@@ -810,20 +810,22 @@ def demoLoopSrc : ImpExpr :=
 
 /-! ## 11. The call/return layer -/
 
-/-- The `OwnedCF` recogniser with the frame size and spill width supplied, so
-    that every segment of one body gathers against that body's frame. -/
-def lcmdToOwnedCFAt (frame spillW : Nat) (body : Lcmd) : Option (OwnedCF 64) :=
+/-- The `OwnedCF` recogniser with the frame size, spill width and qsave block
+    supplied, so that every segment of one body gathers against that body's
+    frame layout. -/
+def lcmdToOwnedCFAt (frame spillW qsaveB : Nat) (body : Lcmd) : Option (OwnedCF 64) :=
   (parseLcmdCF (body.length + 1) (body.filter (fun i => !isLret i))).bind
-    (lcmdCFToOwnedCF frame spillW)
+    (fun k => lcmdCFToOwnedCF frame spillW qsaveB k)
 
 theorem lcmdToOwnedCF_eq_at (body : Lcmd) :
     lcmdToOwnedCF body
       = lcmdToOwnedCFAt (LprogAsmPrinter.frameSize body)
-          (if LprogAsmPrinter.bodyIsU64 body then 64 else 32) body := rfl
+          (if LprogAsmPrinter.bodyIsU64 body then 64 else 32)
+          (LprogAsmPrinter.qsaveBytesFor body) body := rfl
 
-theorem lcmdToOwnedCFAt_cfAllDirect {frame spillW : Nat} {body : Lcmd}
+theorem lcmdToOwnedCFAt_cfAllDirect {frame spillW qsaveB : Nat} {body : Lcmd}
     {cf : OwnedCF 64} (hd : lcmdDirect body = true)
-    (h : lcmdToOwnedCFAt frame spillW body = some cf) : CFAllDirect cf := by
+    (h : lcmdToOwnedCFAt frame spillW qsaveB body = some cf) : CFAllDirect cf := by
   simp only [lcmdToOwnedCFAt, Option.bind_eq_some_iff] at h
   obtain ⟨k, hk, hcf⟩ := h
   refine lcmdCFToOwnedCF_cfAllDirect k cf ?_ hcf
@@ -831,10 +833,11 @@ theorem lcmdToOwnedCFAt_cfAllDirect {frame spillW : Nat} {body : Lcmd}
   intro i hi
   exact (lcmdDirect_iff body).mp hd i (List.mem_of_mem_filter hi)
 
-theorem lcmdToOwnedCFAt_branchFree {frame spillW : Nat} {body : Lcmd} {k : LcmdCF}
+theorem lcmdToOwnedCFAt_branchFree {frame spillW qsaveB : Nat} {body : Lcmd}
+    {k : LcmdCF}
     {cf : OwnedCF 64} (hk : parseLcmdCF (body.length + 1)
       (body.filter (fun i => !isLret i)) = some k) (hbf : LcmdCFBranchFree k)
-    (h : lcmdToOwnedCFAt frame spillW body = some cf) : CFBranchFree cf := by
+    (h : lcmdToOwnedCFAt frame spillW qsaveB body = some cf) : CFBranchFree cf := by
   rw [lcmdToOwnedCFAt, hk, Option.bind] at h
   exact lcmdCFToOwnedCF_branchFree k cf hbf h
 
@@ -858,23 +861,24 @@ def callSym? (i : Linstr) : Option String :=
     the block `resolve` supplies for the symbol and whose continuation is the
     recognised remainder. `none` when a run does not recognise or the symbol does
     not resolve. -/
-def parseLcmdCall (frame spillW : Nat) (resolve : String → Option (CallCF 64)) :
+def parseLcmdCall (frame spillW qsaveB : Nat) (resolve : String → Option (CallCF 64)) :
     Nat → Lcmd → Option (CallCF 64)
   | 0, _ => none
   | fuel + 1, c =>
       match c.dropWhile (fun i => !isLcall i) with
-      | [] => (lcmdToOwnedCFAt frame spillW c).map CallCF.leaf
+      | [] => (lcmdToOwnedCFAt frame spillW qsaveB c).map CallCF.leaf
       | i :: rest =>
           match callSym? i with
           | none => none
           | some sym =>
-              match lcmdToOwnedCFAt frame spillW (c.takeWhile (fun j => !isLcall j)) with
+              match lcmdToOwnedCFAt frame spillW qsaveB
+                  (c.takeWhile (fun j => !isLcall j)) with
               | none => none
               | some pre =>
                   match resolve sym with
                   | none => none
                   | some callee =>
-                      (parseLcmdCall frame spillW resolve fuel rest).map
+                      (parseLcmdCall frame spillW qsaveB resolve fuel rest).map
                         (fun cont => .seq (.leaf pre) (.call callee cont))
 
 /-- **The call-aware recogniser.** Parse an emitted `Lcmd` into the structured
@@ -883,18 +887,19 @@ def parseLcmdCall (frame spillW : Nat) (resolve : String → Option (CallCF 64))
 def lcmdToCallCF (resolve : String → Option (CallCF 64)) (body : Lcmd) :
     Option (CallCF 64) :=
   parseLcmdCall (LprogAsmPrinter.frameSize body)
-    (if LprogAsmPrinter.bodyIsU64 body then 64 else 32) resolve (body.length + 1) body
+    (if LprogAsmPrinter.bodyIsU64 body then 64 else 32)
+    (LprogAsmPrinter.qsaveBytesFor body) resolve (body.length + 1) body
 
 /-- **The addressing class crosses the call-aware recogniser.** When no operand
     of the emitted command is register-indexed and every resolved callee is
     index-free, the call/return block the recogniser returns is index-free
     throughout — the hypothesis of `SpeculativeCTReturn.callSpecExec_arch_mem`. -/
-theorem parseLcmdCall_callAllDirect {frame spillW : Nat}
+theorem parseLcmdCall_callAllDirect {frame spillW qsaveB : Nat}
     {resolve : String → Option (CallCF 64)}
     (hres : ∀ (sym : String) (cc : CallCF 64), resolve sym = some cc →
       CallAllDirect cc) :
     ∀ (fuel : Nat) (c : Lcmd) (cc : CallCF 64), lcmdDirect c = true →
-      parseLcmdCall frame spillW resolve fuel c = some cc → CallAllDirect cc := by
+      parseLcmdCall frame spillW qsaveB resolve fuel c = some cc → CallAllDirect cc := by
   intro fuel
   induction fuel with
   | zero => intro c cc _ h; exact absurd h (by simp [parseLcmdCall])

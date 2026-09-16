@@ -210,27 +210,28 @@ theorem strip_MOV : stripWidthTag "MOV:64" = "MOV" := by decide +kernel
 /-- The gather's image of a two-source ALU `Lopn` whose tag-stripped mnemonic is
     in the `lowerAluJ` table: the in-place op when the first source is the
     destination, the SSA split otherwise. -/
-theorem lower_bin (frame spillW : Nat) (d opn : String) (s0 s1 : LOperand) (i : JInstr 64)
+theorem lower_bin (frame spillW qsaveB : Nat) (d opn : String) (s0 s1 : LOperand)
+    (i : JInstr 64)
     (h1 : opn ≠ "MULXHI:64") (h2 : opn ≠ "STORE") (h3 : opn ≠ "STOREIDX")
     (hsh : LoweringExtended.lowerShiftRegJ d (stripWidthTag opn) (lowerJOperand s0)
       (lowerJOperand s1) = none)
     (halu : lowerAluJ d (stripWidthTag opn) (lowerJOperand s1) = some i) :
-    lowerCov6 frame spillW (.Lopn [.reg d] opn [s0, s1])
+    lowerCov6 frame spillW (.Lopn [.reg d] opn [s0, s1]) qsaveB
       = some (if lowerJOperand s0 = JOperand.reg d then [i]
               else [JInstr.mov d (lowerJOperand s0), i]) := by
   unfold lowerCov6
-  split <;> simp_all [lowerCov5, lowerLinstrExtCov4, lowerLinstrExtCov3, lowerAluJ2InPlace,
-    Option.none_or]
+  split <;> simp_all [lowerCov5, lowerLinstrExtCov4, lowerLinstrExtCov3, lowerAluJ2InPlace]
 
 /-- The gather's image of a single-source `Lopn` over a register or immediate
     whose tag-stripped mnemonic is in the `lowerAluJ` table. -/
-theorem lower_un (frame spillW : Nat) (d opn : String) (src : LOperand) (i : JInstr 64)
+theorem lower_un (frame spillW qsaveB : Nat) (d opn : String) (src : LOperand)
+    (i : JInstr 64)
     (hsrc : tiedOperand src = true) (h1 : opn ≠ "MOVQ")
     (hs1 : opn ≠ "SAR:63:64") (hs2 : opn ≠ "SAR:23:64") (hs3 : opn ≠ "SAR:31")
     (hsh : CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtended.parseShiftMnem opn = none)
     (hsar : CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringCoverageCmovSar.sarCountOf opn = none)
     (halu : lowerAluJ d (stripWidthTag opn) (lowerJOperand src) = some i) :
-    lowerCov6 frame spillW (.Lopn [.reg d] opn [src]) = some [i] := by
+    lowerCov6 frame spillW (.Lopn [.reg d] opn [src]) qsaveB = some [i] := by
   cases src with
   | reg r =>
     unfold lowerCov6
@@ -268,7 +269,8 @@ theorem LJCorr_write {ls : Lstate 64} {s : JState 64} (h : LJCorr ls s)
     succeeds, and the two results correspond. `f` is the shared word function:
     `applyOpn` computes it on the `Lcmd` side (`happly`) and the `JInstr`
     constructor writes it on the machine side (`hev`). -/
-theorem bin_case (frame spillW : Nat) {ls : Lstate 64} {s : JState 64} (hc : LJCorr ls s)
+theorem bin_case (frame spillW qsaveB : Nat) {ls : Lstate 64} {s : JState 64}
+    (hc : LJCorr ls s)
     (d opn : String) (s0 s1 : LOperand) (mk : String → JOperand → JInstr 64)
     (f : BitVec 64 → BitVec 64 → BitVec 64)
     (hne1 : opn ≠ "MULXHI:64") (hne2 : opn ≠ "STORE") (hne3 : opn ≠ "STOREIDX")
@@ -279,9 +281,9 @@ theorem bin_case (frame spillW : Nat) {ls : Lstate 64} {s : JState 64} (hc : LJC
     (happly : ∀ a b : BitVec 64, applyOpn (stripWidthTag opn) [a, b] = some (f a b))
     (hev : ∀ (t : JState 64) (src : JOperand) (r : String),
       (evalInstr t (mk d src)).regs r = if r = d then f (t.regs d) (src.eval t) else t.regs r) :
-    ∃ g ls', lowerCov6 frame spillW (.Lopn [.reg d] opn [s0, s1]) = some g ∧
+    ∃ g ls', lowerCov6 frame spillW (.Lopn [.reg d] opn [s0, s1]) qsaveB = some g ∧
       lsemStep (.Lopn [.reg d] opn [s0, s1]) ls = some ls' ∧ LJCorr ls' (runBlock s g) := by
-  have hlow := lower_bin frame spillW d opn s0 s1 (mk d (lowerJOperand s1))
+  have hlow := lower_bin frame spillW qsaveB d opn s0 s1 (mk d (lowerJOperand s1))
     hne1 hne2 hne3 (hsh _ _) (halu (lowerJOperand s1))
   have hstep : lsemStep (.Lopn [.reg d] opn [s0, s1]) ls
       = some ((ls.setReg d (f (evalOperand ls s0) (evalOperand ls s1))).nextPc) := by
@@ -323,13 +325,14 @@ theorem bin_case (frame spillW : Nat) {ls : Lstate 64} {s : JState 64} (hc : LJC
 
 /-- **One tied `MOV:64`.** The gather emits a single `mov`; both sides write the
     evaluated source to the destination. -/
-theorem mov_case (frame spillW : Nat) {ls : Lstate 64} {s : JState 64} (hc : LJCorr ls s)
+theorem mov_case (frame spillW qsaveB : Nat) {ls : Lstate 64} {s : JState 64}
+    (hc : LJCorr ls s)
     (d : String) (src : LOperand) (hsrc : tiedOperand src = true) :
-    ∃ g ls', lowerCov6 frame spillW (.Lopn [.reg d] "MOV:64" [src]) = some g ∧
+    ∃ g ls', lowerCov6 frame spillW (.Lopn [.reg d] "MOV:64" [src]) qsaveB = some g ∧
       lsemStep (.Lopn [.reg d] "MOV:64" [src]) ls = some ls' ∧ LJCorr ls' (runBlock s g) := by
   have halu : lowerAluJ d (stripWidthTag "MOV:64") (lowerJOperand src)
       = some (JInstr.mov d (lowerJOperand src)) := by rw [strip_MOV]; rfl
-  have hlow := lower_un frame spillW d "MOV:64" src (JInstr.mov d (lowerJOperand src))
+  have hlow := lower_un frame spillW qsaveB d "MOV:64" src (JInstr.mov d (lowerJOperand src))
     hsrc (by decide) (by decide) (by decide) (by decide) pshift_MOV
     (by rfl) halu
   have hstep : lsemStep (.Lopn [.reg d] "MOV:64" [src]) ls
@@ -349,9 +352,9 @@ theorem mov_case (frame spillW : Nat) {ls : Lstate 64} {s : JState 64} (hc : LJC
 
 /-! ## 6. The dispatch over the tied fragment -/
 
-theorem instr_agree (frame spillW : Nat) (i : Linstr) (hi : tiedInstr i = true)
+theorem instr_agree (frame spillW qsaveB : Nat) (i : Linstr) (hi : tiedInstr i = true)
     {ls : Lstate 64} {s : JState 64} (hc : LJCorr ls s) :
-    ∃ g ls', lowerCov6L frame spillW i = some g ∧
+    ∃ g ls', lowerCov6L frame spillW i qsaveB = some g ∧
       lsemStep i.li_i ls = some ls' ∧ LJCorr ls' (runBlock s g) := by
   obtain ⟨p, ir⟩ := i
   simp only [tiedInstr, tiedInstrR] at hi
@@ -363,32 +366,32 @@ theorem instr_agree (frame spillW : Nat) (i : Linstr) (hi : tiedInstr i = true)
       simpa [Bool.or_eq_true, Bool.not_eq_true] using hg
     simp only [tiedBinMnem, Bool.or_eq_true, beq_iff_eq] at hm
     rcases hm with ((((rfl | rfl) | rfl) | rfl) | rfl) | rfl
-    · exact bin_case frame spillW hc d _ s0 s1 JInstr.add (· + ·)
+    · exact bin_case frame spillW qsaveB hc d _ s0 s1 JInstr.add (· + ·)
         (by decide) (by decide) (by decide) (fun op => by rw [strip_ADD]; rfl)
         (fun _ _ => by rw [strip_ADD]; exact LoweringExtended.lowerShiftRegJ_ADD _ _ _)
         h0 h1 hguard (fun a b => by rw [strip_ADD]; rfl) (fun _ _ _ => rfl)
-    · exact bin_case frame spillW hc d _ s0 s1 JInstr.sub (· - ·)
+    · exact bin_case frame spillW qsaveB hc d _ s0 s1 JInstr.sub (· - ·)
         (by decide) (by decide) (by decide) (fun op => by rw [strip_SUB]; rfl)
         (fun _ _ => by rw [strip_SUB]; exact LoweringExtended.lowerShiftRegJ_SUB _ _ _)
         h0 h1 hguard (fun a b => by rw [strip_SUB]; rfl) (fun _ _ _ => rfl)
-    · exact bin_case frame spillW hc d _ s0 s1 JInstr.imul (· * ·)
+    · exact bin_case frame spillW qsaveB hc d _ s0 s1 JInstr.imul (· * ·)
         (by decide) (by decide) (by decide) (fun op => by rw [strip_MUL]; rfl)
         (fun _ _ => by rw [strip_MUL]; exact LoweringExtended.lowerShiftRegJ_MUL _ _ _)
         h0 h1 hguard (fun a b => by rw [strip_MUL]; rfl) (fun _ _ _ => rfl)
-    · exact bin_case frame spillW hc d _ s0 s1 JInstr.and_ (· &&& ·)
+    · exact bin_case frame spillW qsaveB hc d _ s0 s1 JInstr.and_ (· &&& ·)
         (by decide) (by decide) (by decide) (fun op => by rw [strip_AND]; rfl)
         (fun _ _ => by rw [strip_AND]; exact LoweringExtended.lowerShiftRegJ_AND _ _ _)
         h0 h1 hguard (fun a b => by rw [strip_AND]; rfl) (fun _ _ _ => rfl)
-    · exact bin_case frame spillW hc d _ s0 s1 JInstr.or_ (· ||| ·)
+    · exact bin_case frame spillW qsaveB hc d _ s0 s1 JInstr.or_ (· ||| ·)
         (by decide) (by decide) (by decide) (fun op => by rw [strip_OR]; rfl)
         (fun _ _ => by rw [strip_OR]; exact LoweringExtended.lowerShiftRegJ_OR _ _ _)
         h0 h1 hguard (fun a b => by rw [strip_OR]; rfl) (fun _ _ _ => rfl)
-    · exact bin_case frame spillW hc d _ s0 s1 JInstr.xor_ (· ^^^ ·)
+    · exact bin_case frame spillW qsaveB hc d _ s0 s1 JInstr.xor_ (· ^^^ ·)
         (by decide) (by decide) (by decide) (fun op => by rw [strip_XOR]; rfl)
         (fun _ _ => by rw [strip_XOR]; exact LoweringExtended.lowerShiftRegJ_XOR _ _ _)
         h0 h1 hguard (fun a b => by rw [strip_XOR]; rfl) (fun _ _ _ => rfl)
   · rename_i d src
-    exact mov_case frame spillW hc d src hi
+    exact mov_case frame spillW qsaveB hc d src hi
   · simp at hi
 
 /-! ## 7. The block lift -/
@@ -402,26 +405,27 @@ theorem runBlock_append (s : JState 64) (b1 b2 : List (JInstr 64)) :
 
 /-- The per-instruction lowering flattened over a whole body: the gather without
     the `Lret` filter and with the frame parameters supplied. -/
-def gatherWith (frame spillW : Nat) (body : List Linstr) : Option (List (JInstr 64)) :=
-  (body.mapM (lowerCov6L frame spillW)).map List.flatten
+def gatherWith (frame spillW qsaveB : Nat) (body : List Linstr) :
+    Option (List (JInstr 64)) :=
+  (body.mapM (fun i => lowerCov6L frame spillW i qsaveB)).map List.flatten
 
 /-- **Block agreement.** A body whose every instruction is tied gathers, runs to
     completion under `lsemStraight`, and the resulting `Lstate` corresponds to the
     `runBlock` of the gathered block. -/
-theorem block_agree (frame spillW : Nat) (body : List Linstr)
+theorem block_agree (frame spillW qsaveB : Nat) (body : List Linstr)
     (hb : ∀ i ∈ body, tiedInstr i = true) {ls : Lstate 64} {s : JState 64} (hc : LJCorr ls s) :
-    ∃ g ls', gatherWith frame spillW body = some g ∧
+    ∃ g ls', gatherWith frame spillW qsaveB body = some g ∧
       lsemStraight (body.map (·.li_i)) ls = some ls' ∧ LJCorr ls' (runBlock s g) := by
   induction body generalizing ls s with
   | nil => exact ⟨[], ls, rfl, rfl, hc⟩
   | cons i is ih =>
     obtain ⟨g1, ls1, hg1, hstep1, hc1⟩ :=
-      instr_agree frame spillW i (hb i (List.mem_cons_self ..)) hc
+      instr_agree frame spillW qsaveB i (hb i (List.mem_cons_self ..)) hc
     obtain ⟨g2, ls2, hg2, hstep2, hc2⟩ :=
       ih (fun j hj => hb j (List.mem_cons_of_mem i hj)) hc1
     refine ⟨g1 ++ g2, ls2, ?_, ?_, ?_⟩
     · unfold gatherWith at hg2 ⊢
-      cases hgm : is.mapM (lowerCov6L frame spillW) with
+      cases hgm : is.mapM (fun i => lowerCov6L frame spillW i qsaveB) with
       | none => rw [hgm] at hg2; simp at hg2
       | some gs =>
         rw [hgm] at hg2
@@ -455,7 +459,9 @@ theorem gatherJBlock6_lsem_agree (body : List Linstr)
     block_agree
       (CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter.frameSize body)
       (if CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter.bodyIsU64 body then 64
-        else 32) body hb hc
+        else 32)
+      (CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter.qsaveBytesFor body)
+      body hb hc
   refine ⟨g, ls', ?_, hstep, hc'⟩
   unfold gatherJBlock6
   rw [filter_isLret_id body hb]

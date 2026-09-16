@@ -97,7 +97,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrGatherExtended (isLret)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-  (frameSize bodyIsU64 isCarryOutBinding isMulHiBinding mnemWidth)
+  (frameSize bodyIsU64 isCarryOutBinding isMulHiBinding mnemWidth qsaveBytes qsaveBytesFor)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter (GpAlloc regOf)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.SpillSlotEncode (lowerCov5 gatherJBlock5)
 
@@ -117,13 +117,16 @@ encoding* `encodeJInstr` picks for the same `.mov`/`.shr`/`.shl`, not the chosen
     `isCarryOutBinding || isMulHiBinding → []` top guard); everything else,
     including the imm-MOV and the count-in-tag shift, delegates to `lowerCov5`
     (the byte fix for those two is `encodeJBlock6`'s form selection). -/
-def lowerCov6 (frame spillW : Nat) : LinstrR → Option (List (JInstr 64))
+def lowerCov6 (frame spillW : Nat) (i : LinstrR)
+    (qsaveB : Nat := qsaveBytes) : Option (List (JInstr 64)) :=
+  match i with
   | .Lopn [.reg _] "MULXHI:64" [_, _] => some []
-  | i => lowerCov5 frame spillW i
+  | i => lowerCov5 frame spillW i qsaveB
 
 /-- Lower a full `Linstr` (drops the position tag), with the imm-form peepholes. -/
-def lowerCov6L (frame spillW : Nat) (i : Linstr) : Option (List (JInstr 64)) :=
-  lowerCov6 frame spillW i.li_i
+def lowerCov6L (frame spillW : Nat) (i : Linstr)
+    (qsaveB : Nat := qsaveBytes) : Option (List (JInstr 64)) :=
+  lowerCov6 frame spillW i.li_i qsaveB
 
 /-- **The complete full-body `JInstr` gather with the three immediate-form
     peepholes.** Drop the trailing `Lret`, compute the frame size + body-uniform
@@ -133,7 +136,9 @@ def lowerCov6L (frame spillW : Nat) (i : Linstr) : Option (List (JInstr 64)) :=
 def gatherJBlock6 (body : List Linstr) : Option (List (JInstr 64)) :=
   let frame := frameSize body
   let spillW := if bodyIsU64 body then 64 else 32
-  ((body.filter (fun i => !isLret i)).mapM (lowerCov6L frame spillW)).map List.flatten
+  let qsaveB := qsaveBytesFor body
+  ((body.filter (fun i => !isLret i)).mapM
+    (fun i => lowerCov6L frame spillW i qsaveB)).map List.flatten
 
 /-! ## 2. The byte-target-matching encoder: `encodeJInstr6` (= `encodeJInstr` +
 two re-pointed arms)
@@ -143,7 +148,7 @@ to the encoding `LprogBytes.encodeLopn` selects:
 
 * **`.mov d (.imm v)`**: for the imm32-sign-extendable range — `v < 2^31`
   **or** `2^64 − 2^31 ≤ v` — emit the 7-byte `C7 /0 id` form (`encMovImmw 1`),
-  matching `encImmOp`'s `"MOV"/"MOVQ"` arm; only a genuinely-64-bit value falls
+  matching `encImmOp`'s `"MOV"/"MOVQ"` arm; only a value outside that range falls
   to the 10-byte `movabs`. (The live `encodeJInstr` only took the 7-byte form
   for `v < 2^31`, diverging on the all-ones-mask range.)
 * **`.shr`/`.shl d (.imm 1)`**: emit the 3-byte `D1 /ext` shift-by-1 short form

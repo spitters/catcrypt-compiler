@@ -294,8 +294,9 @@ theorem lowerLinstrExtCov4_direct {i : LinstrR} {js : List (JInstr 64)}
     · exact lowerLinstrExtCov3_direct hi h
   · exact lowerLinstrExtCov3_direct hi h
 
-theorem lowerCov5_direct {frame spillW : Nat} {i : LinstrR} {js : List (JInstr 64)}
-    (hi : linstrRDirect i = true) (h : lowerCov5 frame spillW i = some js) :
+theorem lowerCov5_direct {frame spillW qsaveB : Nat} {i : LinstrR}
+    {js : List (JInstr 64)}
+    (hi : linstrRDirect i = true) (h : lowerCov5 frame spillW i qsaveB = some js) :
     allDirect js = true := by
   unfold lowerCov5 at h
   split at h
@@ -307,8 +308,9 @@ theorem lowerCov5_direct {frame spillW : Nat} {i : LinstrR} {js : List (JInstr 6
     · exact lowerLinstrExtCov4_direct (by simpa [linstrRDirect] using hi) h
   · exact lowerLinstrExtCov4_direct hi h
 
-theorem lowerCov6_direct {frame spillW : Nat} {i : LinstrR} {js : List (JInstr 64)}
-    (hi : linstrRDirect i = true) (h : lowerCov6 frame spillW i = some js) :
+theorem lowerCov6_direct {frame spillW qsaveB : Nat} {i : LinstrR}
+    {js : List (JInstr 64)}
+    (hi : linstrRDirect i = true) (h : lowerCov6 frame spillW i qsaveB = some js) :
     allDirect js = true := by
   unfold lowerCov6 at h
   split at h

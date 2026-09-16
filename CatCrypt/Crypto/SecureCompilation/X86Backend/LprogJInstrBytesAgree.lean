@@ -55,9 +55,9 @@ For each width-threading wrapper the Lprog path uses, the **U64** instance is
 * `encAluImmw_one`  : `encAluImmw 1 digit d v = encAluImm digit d v`
 * `encShiftImmw_one`: `encShiftImmw 1 ext d v = encShiftImm ext d v`
 
-These are the load-bearing facts: every covered mnemonic's bytes are produced, on
-each side, by one of these shapes, so per-shape equality at `w = 1` is exactly
-"the two encoders compute the same machine bytes".
+Every covered mnemonic's bytes are produced, on each side, by one of these
+shapes, so per-shape equality at `w = 1` is exactly "the two encoders compute the
+same machine bytes".
 
 ### §2 — Per-mnemonic JInstr-vs-Lprog agreement
 
@@ -256,11 +256,12 @@ names, so on the covered fragment these always hold. -/
 /-- **Reg-reg `encTwoAddr` reduces to `encAluRRw`.** On two plain register operands
     (neither a spill/qsave nor a `mem.*` name), the Lprog two-address byte function is
     the width-threaded `encAluRRw` — the §1 wrapper. -/
-theorem encTwoAddr_regReg (frame spillW w op : Nat) (dn sn : String)
-    (hdk : spillQsaveOff frame spillW dn = none) (hsk : spillQsaveOff frame spillW sn = none)
+theorem encTwoAddr_regReg (frame spillW w op : Nat) (dn sn : String) (qsaveB : Nat)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false) :
-    encTwoAddr frame spillW w op (.reg dn) (.reg sn)
+    encTwoAddr frame spillW w op (.reg dn) (.reg sn) qsaveB
       = encAluRRw w op (gpNumU dn) (gpNumU sn) := by
   simp only [encTwoAddr, hdk, hsk, hdm, hsm, hdsp, hssp, Bool.or_self,
     Bool.false_eq_true, if_false]
@@ -269,10 +270,12 @@ theorem encTwoAddr_regReg (frame spillW w op : Nat) (dn sn : String)
     `mem.<base>.<off>` operand and the source is a plain register, the Lprog store
     byte function is `encMemMovw w 0x89` over the parsed base/offset. -/
 theorem encTwoAddr_store (frame spillW w op : Nat) (dn sn : String) (bb : Nat) (off : Int)
-    (hdk : spillQsaveOff frame spillW dn = none) (hsk : spillQsaveOff frame spillW sn = none)
+    (qsaveB : Nat)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = some (bb, off)) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false) :
-    encTwoAddr frame spillW w op (.reg dn) (.reg sn)
+    encTwoAddr frame spillW w op (.reg dn) (.reg sn) qsaveB
       = encMemMovw w 0x89 (gpNumU sn) bb off := by
   simp only [encTwoAddr, hdk, hsk, hdm, hsm, hdsp, hssp, Bool.or_self,
     Bool.false_eq_true, if_false]
@@ -281,10 +284,12 @@ theorem encTwoAddr_store (frame spillW w op : Nat) (dn sn : String) (bb : Nat) (
     `mem.<base>.<off>` operand and the destination is a plain register, the Lprog load
     byte function is `encMemMovw w 0x8b` over the parsed base/offset. -/
 theorem encTwoAddr_load (frame spillW w op : Nat) (dn sn : String) (bb : Nat) (off : Int)
-    (hdk : spillQsaveOff frame spillW dn = none) (hsk : spillQsaveOff frame spillW sn = none)
+    (qsaveB : Nat)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = some (bb, off))
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false) :
-    encTwoAddr frame spillW w op (.reg dn) (.reg sn)
+    encTwoAddr frame spillW w op (.reg dn) (.reg sn) qsaveB
       = encMemMovw w 0x8b (gpNumU dn) bb off := by
   simp only [encTwoAddr, hdk, hsk, hdm, hsm, hdsp, hssp, Bool.or_self,
     Bool.false_eq_true, if_false]
@@ -303,68 +308,86 @@ matching covered `Lopn` arm), at the U64 width `w = 1`. -/
 /-- **`ADD` bytes agree.** The JInstr `add` encoding equals the Lprog reg-reg
     two-address byte function at opcode `0x01`, U64 width, under resolver agreement. -/
 theorem add_bytes_agree (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn : String)
-    (hdk : spillQsaveOff frame spillW dn = none) (hsk : spillQsaveOff frame spillW sn = none)
+    (qsaveB : Nat)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
     encodeJInstr alloc (.add d (.reg r))
-      = encTwoAddr frame spillW 1 0x01 (.reg dn) (.reg sn) := by
-  rw [jinstr_add, encTwoAddr_regReg frame spillW 1 0x01 dn sn hdk hsk hdm hsm hdsp hssp,
+      = encTwoAddr frame spillW 1 0x01 (.reg dn) (.reg sn) qsaveB := by
+  rw [jinstr_add,
+    encTwoAddr_regReg frame spillW 1 0x01 dn sn qsaveB hdk hsk hdm hsm hdsp hssp,
     encAluRRw_one, hd, hs]
 
 /-- **`SUB` bytes agree** (opcode `0x29`). -/
 theorem sub_bytes_agree (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn : String)
-    (hdk : spillQsaveOff frame spillW dn = none) (hsk : spillQsaveOff frame spillW sn = none)
+    (qsaveB : Nat)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
     encodeJInstr alloc (.sub d (.reg r))
-      = encTwoAddr frame spillW 1 0x29 (.reg dn) (.reg sn) := by
-  rw [jinstr_sub, encTwoAddr_regReg frame spillW 1 0x29 dn sn hdk hsk hdm hsm hdsp hssp,
+      = encTwoAddr frame spillW 1 0x29 (.reg dn) (.reg sn) qsaveB := by
+  rw [jinstr_sub,
+    encTwoAddr_regReg frame spillW 1 0x29 dn sn qsaveB hdk hsk hdm hsm hdsp hssp,
     encAluRRw_one, hd, hs]
 
 /-- **`AND` bytes agree** (opcode `0x21`). -/
 theorem and_bytes_agree (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn : String)
-    (hdk : spillQsaveOff frame spillW dn = none) (hsk : spillQsaveOff frame spillW sn = none)
+    (qsaveB : Nat)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
     encodeJInstr alloc (.and_ d (.reg r))
-      = encTwoAddr frame spillW 1 0x21 (.reg dn) (.reg sn) := by
-  rw [jinstr_and, encTwoAddr_regReg frame spillW 1 0x21 dn sn hdk hsk hdm hsm hdsp hssp,
+      = encTwoAddr frame spillW 1 0x21 (.reg dn) (.reg sn) qsaveB := by
+  rw [jinstr_and,
+    encTwoAddr_regReg frame spillW 1 0x21 dn sn qsaveB hdk hsk hdm hsm hdsp hssp,
     encAluRRw_one, hd, hs]
 
 /-- **`OR` bytes agree** (opcode `0x09`). -/
 theorem or_bytes_agree (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn : String)
-    (hdk : spillQsaveOff frame spillW dn = none) (hsk : spillQsaveOff frame spillW sn = none)
+    (qsaveB : Nat)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
     encodeJInstr alloc (.or_ d (.reg r))
-      = encTwoAddr frame spillW 1 0x09 (.reg dn) (.reg sn) := by
-  rw [jinstr_or, encTwoAddr_regReg frame spillW 1 0x09 dn sn hdk hsk hdm hsm hdsp hssp,
+      = encTwoAddr frame spillW 1 0x09 (.reg dn) (.reg sn) qsaveB := by
+  rw [jinstr_or,
+    encTwoAddr_regReg frame spillW 1 0x09 dn sn qsaveB hdk hsk hdm hsm hdsp hssp,
     encAluRRw_one, hd, hs]
 
 /-- **`XOR` bytes agree** (opcode `0x31`). -/
 theorem xor_bytes_agree (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn : String)
-    (hdk : spillQsaveOff frame spillW dn = none) (hsk : spillQsaveOff frame spillW sn = none)
+    (qsaveB : Nat)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
     encodeJInstr alloc (.xor_ d (.reg r))
-      = encTwoAddr frame spillW 1 0x31 (.reg dn) (.reg sn) := by
-  rw [jinstr_xor, encTwoAddr_regReg frame spillW 1 0x31 dn sn hdk hsk hdm hsm hdsp hssp,
+      = encTwoAddr frame spillW 1 0x31 (.reg dn) (.reg sn) qsaveB := by
+  rw [jinstr_xor,
+    encTwoAddr_regReg frame spillW 1 0x31 dn sn qsaveB hdk hsk hdm hsm hdsp hssp,
     encAluRRw_one, hd, hs]
 
 /-- **`MOV` bytes agree** (opcode `0x89`). -/
 theorem mov_bytes_agree (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn : String)
-    (hdk : spillQsaveOff frame spillW dn = none) (hsk : spillQsaveOff frame spillW sn = none)
+    (qsaveB : Nat)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
     encodeJInstr alloc (.mov d (.reg r))
-      = encTwoAddr frame spillW 1 0x89 (.reg dn) (.reg sn) := by
-  rw [jinstr_mov, encTwoAddr_regReg frame spillW 1 0x89 dn sn hdk hsk hdm hsm hdsp hssp,
+      = encTwoAddr frame spillW 1 0x89 (.reg dn) (.reg sn) qsaveB := by
+  rw [jinstr_mov,
+    encTwoAddr_regReg frame spillW 1 0x89 dn sn qsaveB hdk hsk hdm hsm hdsp hssp,
     encAluRRw_one, hd, hs]
 
 /-! ### §2d. The const-offset memory arms
@@ -380,15 +403,16 @@ byte-identical to the Lprog `encTwoAddr` load/store bytes at the U64 width. -/
     byte function (`encMemMovw 1 0x8b`). The Lprog source operand `sn` parses to the
     same base/offset (`hsm`), and the destination register numbers agree (`hd`). -/
 theorem load_bytes_agree (alloc : GpAlloc) (frame spillW op : Nat)
-    (d base : String) (off : Int) (dn sn : String) (bb : Nat)
-    (hdk : spillQsaveOff frame spillW dn = none) (hsk : spillQsaveOff frame spillW sn = none)
+    (d base : String) (off : Int) (dn sn : String) (bb : Nat) (qsaveB : Nat)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = some (bb, off))
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hb : gpNum (regOf alloc base) = bb) :
     encodeJInstr alloc (.loadMem d base off)
-      = encTwoAddr frame spillW 1 op (.reg dn) (.reg sn) := by
+      = encTwoAddr frame spillW 1 op (.reg dn) (.reg sn) qsaveB := by
   rw [jinstr_loadMem,
-    encTwoAddr_load frame spillW 1 op dn sn bb off hdk hsk hdm hsm hdsp hssp,
+    encTwoAddr_load frame spillW 1 op dn sn bb off qsaveB hdk hsk hdm hsm hdsp hssp,
     encMemMovw_one, hd, hb]
 
 /-- **`STORE` bytes agree.** JInstr `storeMem` (reg src) equals the Lprog `mem.*`←reg
@@ -396,15 +420,16 @@ theorem load_bytes_agree (alloc : GpAlloc) (frame spillW op : Nat)
     `dn` parses to the same base/offset (`hdm`), and the source register numbers agree
     (`hr`). -/
 theorem store_bytes_agree (alloc : GpAlloc) (frame spillW op : Nat)
-    (base : String) (off : Int) (r : String) (dn sn : String) (bb : Nat)
-    (hdk : spillQsaveOff frame spillW dn = none) (hsk : spillQsaveOff frame spillW sn = none)
+    (base : String) (off : Int) (r : String) (dn sn : String) (bb : Nat) (qsaveB : Nat)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = some (bb, off)) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
     (hr : gpNum (regOf alloc r) = gpNumU sn) (hb : gpNum (regOf alloc base) = bb) :
     encodeJInstr alloc (.storeMem base off (.reg r))
-      = encTwoAddr frame spillW 1 op (.reg dn) (.reg sn) := by
+      = encTwoAddr frame spillW 1 op (.reg dn) (.reg sn) qsaveB := by
   rw [jinstr_storeMem,
-    encTwoAddr_store frame spillW 1 op dn sn bb off hdk hsk hdm hsm hdsp hssp,
+    encTwoAddr_store frame spillW 1 op dn sn bb off qsaveB hdk hsk hdm hsm hdsp hssp,
     encMemMovw_one, hr, hb]
 
 /-! ## §3. Block-level: lifting the per-instruction agreement to `gatherJBlock`

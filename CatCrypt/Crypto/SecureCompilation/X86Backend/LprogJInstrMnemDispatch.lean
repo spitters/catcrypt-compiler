@@ -90,15 +90,15 @@ straight through the ALU arm (no further string dispatch), so they may stay symb
     width-`1` reg-reg byte function `encTwoAddr frame spillW 1 op …`, with the SDM opcode
     `op` already resolved by the (closed-string) `aluOpcode` dispatch. -/
 theorem dispatch_alu_one
-    (frame spillW op : Nat) (mnem base : String) (dn sn : String)
+    (frame spillW op : Nat) (mnem base : String) (dn sn : String) (qsaveB : Nat)
     (hbind : (isCarryOutBinding mnem || isMulHiBinding mnem) = false)
     (hstrip : stripWidthTag mnem = base)
     (hw : rexW (mnemWidth mnem) = 1)
     (hmulx : (base == "MULX") = false) (hmulxmem : (base == "MULXMEM") = false)
     (hadx : adxPrefix base = none) (halu : aluOpcode base = some op)
     (htag : tagShiftExt base = none) :
-    encodeLopn frame spillW (.Lopn [.reg dn] mnem [.reg sn])
-      = encTwoAddr frame spillW 1 op (.reg dn) (.reg sn) := by
+    encodeLopn frame spillW (.Lopn [.reg dn] mnem [.reg sn]) qsaveB
+      = encTwoAddr frame spillW 1 op (.reg dn) (.reg sn) qsaveB := by
   simp only [encodeLopn, hbind, hstrip, hw, hmulx, hmulxmem, hadx, halu, htag,
     Bool.false_eq_true, if_false]
 
@@ -106,15 +106,15 @@ theorem dispatch_alu_one
     two-source export form `Lopn [.reg dn] "<MNEM>:64" [.reg d0, .reg sn]` (`d0` the dst
     self-source). The `[d], [_, s]` arm routes identically to `encTwoAddr`. -/
 theorem dispatch_alu_two
-    (frame spillW op : Nat) (mnem base : String) (dn d0 sn : String)
+    (frame spillW op : Nat) (mnem base : String) (dn d0 sn : String) (qsaveB : Nat)
     (hbind : (isCarryOutBinding mnem || isMulHiBinding mnem) = false)
     (hstrip : stripWidthTag mnem = base)
     (hw : rexW (mnemWidth mnem) = 1)
     (hmulx : (base == "MULX") = false) (hmulxmem : (base == "MULXMEM") = false)
     (hadx : adxPrefix base = none) (halu : aluOpcode base = some op)
     (htag : tagShiftExt base = none) :
-    encodeLopn frame spillW (.Lopn [.reg dn] mnem [.reg d0, .reg sn])
-      = encTwoAddr frame spillW 1 op (.reg dn) (.reg sn) := by
+    encodeLopn frame spillW (.Lopn [.reg dn] mnem [.reg d0, .reg sn]) qsaveB
+      = encTwoAddr frame spillW 1 op (.reg dn) (.reg sn) qsaveB := by
   simp only [encodeLopn, hbind, hstrip, hw, hmulx, hmulxmem, hadx, halu, htag,
     Bool.false_eq_true, if_false]
 
@@ -122,15 +122,15 @@ theorem dispatch_alu_two
     `:64` tag, so `mnemWidth = 32` and `w = 0`; the dispatch reduces to
     `encTwoAddr frame spillW 0 op …`. -/
 theorem dispatch_mem
-    (frame spillW op : Nat) (mnem base : String) (dn sn : String)
+    (frame spillW op : Nat) (mnem base : String) (dn sn : String) (qsaveB : Nat)
     (hbind : (isCarryOutBinding mnem || isMulHiBinding mnem) = false)
     (hstrip : stripWidthTag mnem = base)
     (hw : rexW (mnemWidth mnem) = 0)
     (hmulx : (base == "MULX") = false) (hmulxmem : (base == "MULXMEM") = false)
     (hadx : adxPrefix base = none) (halu : aluOpcode base = some op)
     (htag : tagShiftExt base = none) :
-    encodeLopn frame spillW (.Lopn [.reg dn] mnem [.reg sn])
-      = encTwoAddr frame spillW 0 op (.reg dn) (.reg sn) := by
+    encodeLopn frame spillW (.Lopn [.reg dn] mnem [.reg sn]) qsaveB
+      = encTwoAddr frame spillW 0 op (.reg dn) (.reg sn) qsaveB := by
   simp only [encodeLopn, hbind, hstrip, hw, hmulx, hmulxmem, hadx, halu, htag,
     Bool.false_eq_true, if_false]
 
@@ -140,91 +140,91 @@ Instantiate §1 on each covered mnemonic literal. Every hypothesis is a closed-s
 boolean/`Option` fact discharged by `decide +kernel` — kernel-clean, no `native_decide`. -/
 
 /-- `ADD:64` (opcode `0x01`) one-source dispatch. -/
-theorem encodeLopn_add (frame spillW : Nat) (dn sn : String) :
-    encodeLopn frame spillW (.Lopn [.reg dn] "ADD:64" [.reg sn])
-      = encTwoAddr frame spillW 1 0x01 (.reg dn) (.reg sn) :=
-  dispatch_alu_one frame spillW 0x01 "ADD:64" "ADD" dn sn
+theorem encodeLopn_add (frame spillW : Nat) (dn sn : String) (qsaveB : Nat) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "ADD:64" [.reg sn]) qsaveB
+      = encTwoAddr frame spillW 1 0x01 (.reg dn) (.reg sn) qsaveB :=
+  dispatch_alu_one frame spillW 0x01 "ADD:64" "ADD" dn sn qsaveB
     (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel)
 
 /-- `SUB:64` (opcode `0x29`) one-source dispatch. -/
-theorem encodeLopn_sub (frame spillW : Nat) (dn sn : String) :
-    encodeLopn frame spillW (.Lopn [.reg dn] "SUB:64" [.reg sn])
-      = encTwoAddr frame spillW 1 0x29 (.reg dn) (.reg sn) :=
-  dispatch_alu_one frame spillW 0x29 "SUB:64" "SUB" dn sn
+theorem encodeLopn_sub (frame spillW : Nat) (dn sn : String) (qsaveB : Nat) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "SUB:64" [.reg sn]) qsaveB
+      = encTwoAddr frame spillW 1 0x29 (.reg dn) (.reg sn) qsaveB :=
+  dispatch_alu_one frame spillW 0x29 "SUB:64" "SUB" dn sn qsaveB
     (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel)
 
 /-- `AND:64` (opcode `0x21`) one-source dispatch. -/
-theorem encodeLopn_and (frame spillW : Nat) (dn sn : String) :
-    encodeLopn frame spillW (.Lopn [.reg dn] "AND:64" [.reg sn])
-      = encTwoAddr frame spillW 1 0x21 (.reg dn) (.reg sn) :=
-  dispatch_alu_one frame spillW 0x21 "AND:64" "AND" dn sn
+theorem encodeLopn_and (frame spillW : Nat) (dn sn : String) (qsaveB : Nat) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "AND:64" [.reg sn]) qsaveB
+      = encTwoAddr frame spillW 1 0x21 (.reg dn) (.reg sn) qsaveB :=
+  dispatch_alu_one frame spillW 0x21 "AND:64" "AND" dn sn qsaveB
     (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel)
 
 /-- `OR:64` (opcode `0x09`) one-source dispatch. -/
-theorem encodeLopn_or (frame spillW : Nat) (dn sn : String) :
-    encodeLopn frame spillW (.Lopn [.reg dn] "OR:64" [.reg sn])
-      = encTwoAddr frame spillW 1 0x09 (.reg dn) (.reg sn) :=
-  dispatch_alu_one frame spillW 0x09 "OR:64" "OR" dn sn
+theorem encodeLopn_or (frame spillW : Nat) (dn sn : String) (qsaveB : Nat) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "OR:64" [.reg sn]) qsaveB
+      = encTwoAddr frame spillW 1 0x09 (.reg dn) (.reg sn) qsaveB :=
+  dispatch_alu_one frame spillW 0x09 "OR:64" "OR" dn sn qsaveB
     (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel)
 
 /-- `XOR:64` (opcode `0x31`) one-source dispatch. -/
-theorem encodeLopn_xor (frame spillW : Nat) (dn sn : String) :
-    encodeLopn frame spillW (.Lopn [.reg dn] "XOR:64" [.reg sn])
-      = encTwoAddr frame spillW 1 0x31 (.reg dn) (.reg sn) :=
-  dispatch_alu_one frame spillW 0x31 "XOR:64" "XOR" dn sn
+theorem encodeLopn_xor (frame spillW : Nat) (dn sn : String) (qsaveB : Nat) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "XOR:64" [.reg sn]) qsaveB
+      = encTwoAddr frame spillW 1 0x31 (.reg dn) (.reg sn) qsaveB :=
+  dispatch_alu_one frame spillW 0x31 "XOR:64" "XOR" dn sn qsaveB
     (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel)
 
 /-- `MOV:64` (opcode `0x89`) one-source dispatch. -/
-theorem encodeLopn_mov (frame spillW : Nat) (dn sn : String) :
-    encodeLopn frame spillW (.Lopn [.reg dn] "MOV:64" [.reg sn])
-      = encTwoAddr frame spillW 1 0x89 (.reg dn) (.reg sn) :=
-  dispatch_alu_one frame spillW 0x89 "MOV:64" "MOV" dn sn
+theorem encodeLopn_mov (frame spillW : Nat) (dn sn : String) (qsaveB : Nat) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "MOV:64" [.reg sn]) qsaveB
+      = encTwoAddr frame spillW 1 0x89 (.reg dn) (.reg sn) qsaveB :=
+  dispatch_alu_one frame spillW 0x89 "MOV:64" "MOV" dn sn qsaveB
     (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel)
 
 /-- `ADD:64` two-source (dst self-source) dispatch. -/
-theorem encodeLopn_add₂ (frame spillW : Nat) (dn d0 sn : String) :
-    encodeLopn frame spillW (.Lopn [.reg dn] "ADD:64" [.reg d0, .reg sn])
-      = encTwoAddr frame spillW 1 0x01 (.reg dn) (.reg sn) :=
-  dispatch_alu_two frame spillW 0x01 "ADD:64" "ADD" dn d0 sn
+theorem encodeLopn_add₂ (frame spillW : Nat) (dn d0 sn : String) (qsaveB : Nat) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "ADD:64" [.reg d0, .reg sn]) qsaveB
+      = encTwoAddr frame spillW 1 0x01 (.reg dn) (.reg sn) qsaveB :=
+  dispatch_alu_two frame spillW 0x01 "ADD:64" "ADD" dn d0 sn qsaveB
     (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel)
 
 /-- `SUB:64` two-source (dst self-source) dispatch. -/
-theorem encodeLopn_sub₂ (frame spillW : Nat) (dn d0 sn : String) :
-    encodeLopn frame spillW (.Lopn [.reg dn] "SUB:64" [.reg d0, .reg sn])
-      = encTwoAddr frame spillW 1 0x29 (.reg dn) (.reg sn) :=
-  dispatch_alu_two frame spillW 0x29 "SUB:64" "SUB" dn d0 sn
+theorem encodeLopn_sub₂ (frame spillW : Nat) (dn d0 sn : String) (qsaveB : Nat) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "SUB:64" [.reg d0, .reg sn]) qsaveB
+      = encTwoAddr frame spillW 1 0x29 (.reg dn) (.reg sn) qsaveB :=
+  dispatch_alu_two frame spillW 0x29 "SUB:64" "SUB" dn d0 sn qsaveB
     (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel)
 
 /-- `LOAD` (opcode `0x8b`, untagged ⇒ `w = 0`) dispatch. -/
-theorem encodeLopn_load (frame spillW : Nat) (dn sn : String) :
-    encodeLopn frame spillW (.Lopn [.reg dn] "LOAD" [.reg sn])
-      = encTwoAddr frame spillW 0 0x8b (.reg dn) (.reg sn) :=
-  dispatch_mem frame spillW 0x8b "LOAD" "LOAD" dn sn
+theorem encodeLopn_load (frame spillW : Nat) (dn sn : String) (qsaveB : Nat) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "LOAD" [.reg sn]) qsaveB
+      = encTwoAddr frame spillW 0 0x8b (.reg dn) (.reg sn) qsaveB :=
+  dispatch_mem frame spillW 0x8b "LOAD" "LOAD" dn sn qsaveB
     (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel)
 
 /-- `STORE` (opcode `0x89`, untagged ⇒ `w = 0`) dispatch. -/
-theorem encodeLopn_store (frame spillW : Nat) (dn sn : String) :
-    encodeLopn frame spillW (.Lopn [.reg dn] "STORE" [.reg sn])
-      = encTwoAddr frame spillW 0 0x89 (.reg dn) (.reg sn) :=
-  dispatch_mem frame spillW 0x89 "STORE" "STORE" dn sn
+theorem encodeLopn_store (frame spillW : Nat) (dn sn : String) (qsaveB : Nat) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "STORE" [.reg sn]) qsaveB
+      = encTwoAddr frame spillW 0 0x89 (.reg dn) (.reg sn) qsaveB :=
+  dispatch_mem frame spillW 0x89 "STORE" "STORE" dn sn qsaveB
     (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel)
@@ -241,68 +241,80 @@ byte-agreement. -/
 /-- **`ADD` end-to-end** (`native_decide`-free): the JInstr `add` encoding equals the
     full Lprog `encodeLopn` dispatch on the `ADD:64` reg-reg `Lopn`. -/
 theorem add_dispatch_agree (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn : String)
-    (hdk : spillQsaveOff frame spillW dn = none) (hsk : spillQsaveOff frame spillW sn = none)
+    (qsaveB : Nat)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
     encodeJInstr alloc (.add d (.reg r))
-      = encodeLopn frame spillW (.Lopn [.reg dn] "ADD:64" [.reg sn]) := by
-  rw [add_bytes_agree alloc frame spillW d r dn sn hdk hsk hdm hsm hdsp hssp hd hs,
+      = encodeLopn frame spillW (.Lopn [.reg dn] "ADD:64" [.reg sn]) qsaveB := by
+  rw [add_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp hd hs,
     encodeLopn_add]
 
 /-- **`SUB` end-to-end** (`native_decide`-free). -/
 theorem sub_dispatch_agree (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn : String)
-    (hdk : spillQsaveOff frame spillW dn = none) (hsk : spillQsaveOff frame spillW sn = none)
+    (qsaveB : Nat)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
     encodeJInstr alloc (.sub d (.reg r))
-      = encodeLopn frame spillW (.Lopn [.reg dn] "SUB:64" [.reg sn]) := by
-  rw [sub_bytes_agree alloc frame spillW d r dn sn hdk hsk hdm hsm hdsp hssp hd hs,
+      = encodeLopn frame spillW (.Lopn [.reg dn] "SUB:64" [.reg sn]) qsaveB := by
+  rw [sub_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp hd hs,
     encodeLopn_sub]
 
 /-- **`AND` end-to-end** (`native_decide`-free). -/
 theorem and_dispatch_agree (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn : String)
-    (hdk : spillQsaveOff frame spillW dn = none) (hsk : spillQsaveOff frame spillW sn = none)
+    (qsaveB : Nat)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
     encodeJInstr alloc (.and_ d (.reg r))
-      = encodeLopn frame spillW (.Lopn [.reg dn] "AND:64" [.reg sn]) := by
-  rw [and_bytes_agree alloc frame spillW d r dn sn hdk hsk hdm hsm hdsp hssp hd hs,
+      = encodeLopn frame spillW (.Lopn [.reg dn] "AND:64" [.reg sn]) qsaveB := by
+  rw [and_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp hd hs,
     encodeLopn_and]
 
 /-- **`OR` end-to-end** (`native_decide`-free). -/
 theorem or_dispatch_agree (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn : String)
-    (hdk : spillQsaveOff frame spillW dn = none) (hsk : spillQsaveOff frame spillW sn = none)
+    (qsaveB : Nat)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
     encodeJInstr alloc (.or_ d (.reg r))
-      = encodeLopn frame spillW (.Lopn [.reg dn] "OR:64" [.reg sn]) := by
-  rw [or_bytes_agree alloc frame spillW d r dn sn hdk hsk hdm hsm hdsp hssp hd hs,
+      = encodeLopn frame spillW (.Lopn [.reg dn] "OR:64" [.reg sn]) qsaveB := by
+  rw [or_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp hd hs,
     encodeLopn_or]
 
 /-- **`XOR` end-to-end** (`native_decide`-free). -/
 theorem xor_dispatch_agree (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn : String)
-    (hdk : spillQsaveOff frame spillW dn = none) (hsk : spillQsaveOff frame spillW sn = none)
+    (qsaveB : Nat)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
     encodeJInstr alloc (.xor_ d (.reg r))
-      = encodeLopn frame spillW (.Lopn [.reg dn] "XOR:64" [.reg sn]) := by
-  rw [xor_bytes_agree alloc frame spillW d r dn sn hdk hsk hdm hsm hdsp hssp hd hs,
+      = encodeLopn frame spillW (.Lopn [.reg dn] "XOR:64" [.reg sn]) qsaveB := by
+  rw [xor_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp hd hs,
     encodeLopn_xor]
 
 /-- **`MOV` end-to-end** (`native_decide`-free). -/
 theorem mov_dispatch_agree (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn : String)
-    (hdk : spillQsaveOff frame spillW dn = none) (hsk : spillQsaveOff frame spillW sn = none)
+    (qsaveB : Nat)
+    (hdk : spillQsaveOff frame spillW dn qsaveB = none)
+    (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemName sn = none)
     (hdsp : isSpillOrQsave dn = false) (hssp : isSpillOrQsave sn = false)
     (hd : gpNum (regOf alloc d) = gpNumU dn) (hs : gpNum (regOf alloc r) = gpNumU sn) :
     encodeJInstr alloc (.mov d (.reg r))
-      = encodeLopn frame spillW (.Lopn [.reg dn] "MOV:64" [.reg sn]) := by
-  rw [mov_bytes_agree alloc frame spillW d r dn sn hdk hsk hdm hsm hdsp hssp hd hs,
+      = encodeLopn frame spillW (.Lopn [.reg dn] "MOV:64" [.reg sn]) qsaveB := by
+  rw [mov_bytes_agree alloc frame spillW d r dn sn qsaveB hdk hsk hdm hsm hdsp hssp hd hs,
     encodeLopn_mov]
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrMnemDispatch

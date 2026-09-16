@@ -20,8 +20,8 @@ It left **one** named residual: the callee-saved **qsave reg↔mem spills/restor
 `qsave.X` slot name to an `off(%rsp)` displacement (`spillQsaveOff frame spillW`)
 and emits them via the RSP-SIB encoder `encRspMem`. The register-only JInstr
 gather aliased `MOVQ ↦ MOV:64` and so made them *gather*, but as a 3-byte reg-reg
-`mov` — their bytes still disagreed (3 ≠ 5). This was a genuine **capability gap**:
-the JInstr scalar encoder lacked the `off(%rsp)` spill-slot resolution.
+`mov` — their bytes still disagreed (3 ≠ 5). The JInstr scalar encoder lacked the
+`off(%rsp)` spill-slot resolution.
 
 This module closes it. `JInstr` already carries the memory-operand constructors
 `storeMem (base) (off) (src)` (`movq %src, off(%base)`) and
@@ -44,8 +44,7 @@ arg-marshal + qsave spills/restores + ALU + shift) gathers AND byte-matches
 `encodeLcmd` of the same body, byte-for-byte (§3 `#eval`, `111 = 111` bytes). This
 is the **complete real-kernel body byte-identity**: a real GoldenPath kernel's
 JInstr emit is byte-equal to its `compileComToElf`/Lprog emit on the full body.
-The residual that `GatherFullBody` recorded honestly is now **gone** — the qsave
-spills resolve to the same `off(%rsp)` stores on both sides.
+The qsave spills resolve to the same `off(%rsp)` stores on both sides.
 
 ## The kernel-reducible certificates (`native_decide`-free)
 
@@ -91,7 +90,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin (JInstr JOperand)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrGatherExtended (isLret)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
-open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (frameSize bodyIsU64)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+  (frameSize bodyIsU64 qsaveBytes qsaveBytesFor)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.GatherFullBody (lowerLinstrExtCov4)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysBodyGather (physAlloc)
 
@@ -112,9 +112,11 @@ everything else delegates verbatim. -/
     `storeMem "RSP" off (.reg s)` (`movq %s, off(%rsp)`); a **reload**
     (`MOVQ X, qsave.X`, src is the slot) lowers to `loadMem d "RSP" off`
     (`movq off(%rsp), %d`). All else delegates to `lowerLinstrExtCov4`. -/
-def lowerCov5 (frame spillW : Nat) : LinstrR → Option (List (JInstr 64))
+def lowerCov5 (frame spillW : Nat) (i : LinstrR)
+    (qsaveB : Nat := qsaveBytes) : Option (List (JInstr 64)) :=
+  match i with
   | .Lopn [.reg d] "MOVQ" [.reg s] =>
-      match spillQsaveOff frame spillW d, spillQsaveOff frame spillW s with
+      match spillQsaveOff frame spillW d qsaveB, spillQsaveOff frame spillW s qsaveB with
       -- store to a `%rsp`-relative slot: dst is the slot, src a register.
       | some off, none => some [JInstr.storeMem "RSP" off (.reg s)]
       -- reload from a `%rsp`-relative slot: src is the slot, dst a register.
@@ -124,8 +126,9 @@ def lowerCov5 (frame spillW : Nat) : LinstrR → Option (List (JInstr 64))
   | i => lowerLinstrExtCov4 i
 
 /-- Lower a full `Linstr` (drops the position tag), spill-slot-aware. -/
-def lowerCov5L (frame spillW : Nat) (i : Linstr) : Option (List (JInstr 64)) :=
-  lowerCov5 frame spillW i.li_i
+def lowerCov5L (frame spillW : Nat) (i : Linstr)
+    (qsaveB : Nat := qsaveBytes) : Option (List (JInstr 64)) :=
+  lowerCov5 frame spillW i.li_i qsaveB
 
 /-- **The complete full-body `JInstr` gather.** Drop the trailing `Lret`, compute
     the frame size + body-uniform spill width from the body (the SAME way
@@ -137,7 +140,9 @@ def lowerCov5L (frame spillW : Nat) (i : Linstr) : Option (List (JInstr 64)) :=
 def gatherJBlock5 (body : List Linstr) : Option (List (JInstr 64)) :=
   let frame := frameSize body
   let spillW := if bodyIsU64 body then 64 else 32
-  ((body.filter (fun i => !isLret i)).mapM (lowerCov5L frame spillW)).map List.flatten
+  let qsaveB := qsaveBytesFor body
+  ((body.filter (fun i => !isLret i)).mapM
+    (fun i => lowerCov5L frame spillW i qsaveB)).map List.flatten
 
 /-! ## 2. The qsave per-op byte agreements (the deliverable, `native_decide`-free)
 
