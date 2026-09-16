@@ -1772,29 +1772,52 @@ def loopBufMarshalArg (areg : String) (op : LOperand) : Linstr :=
       else ⟨0, .Lopn [.reg areg] (withWidthTag 64 "MOV") [op]⟩
   | _ => ⟨0, .Lopn [.reg areg] (withWidthTag 64 "MOV") [op]⟩
 
-/-- Marshal one buffer-returning leaf call: the destination buffer's address into
-    `RDI` (the out-pointer), then each operand into the following SysV argument
-    registers — a buffer operand by its address (`LEA`), a register operand by its
-    value (`MOV`) — then the real `Lcall`. No `RAX` capture: the leaf returns
-    through the out-pointer. The `ArrAbiOrch.emitOneCall` shape at a loop-body call
-    site. -/
+/-- Marshal one buffer-returning leaf call: each operand into its SysV argument
+    register from `RSI` on — a buffer operand by its address (`LEA`), a register
+    operand by its value (`MOV`) — then the destination buffer's address into
+    `RDI` (the out-pointer), then the real `Lcall`. No `RAX` capture: the leaf
+    returns through the out-pointer. The `ArrAbiOrch.emitOneCall` shape at a
+    loop-body call site.
+
+    The out-pointer is written last because its own source is a frame slot, which
+    no argument marshal can clobber, while `RDI` is an allocatable register that
+    an argument's source may occupy: writing it after every argument source has
+    been read is what keeps such an argument readable. -/
 def loopBodyCallLcmdBuf (dstMem sym : String) (argOps : List LOperand) : Lcmd :=
   let outLea : Linstr := ⟨0, .Lopn [.reg "RDI"] "LEA:64" [.reg dstMem]⟩
   let argMarshal : Lcmd :=
     (argOps.zip (sysvArgRegs.drop 1)).map (fun ⟨op, areg⟩ => loopBufMarshalArg areg op)
-  outLea :: (argMarshal ++ [⟨0, .Lcall none (sym, 0)⟩])
+  argMarshal ++ [outLea, ⟨0, .Lcall none (sym, 0)⟩]
 
 /-- Marshal one buffer-returning leaf call that writes the accumulator in place:
-    the accumulator operand into `RDI` (the out-pointer) and its operands into the
-    following SysV argument registers, the first of which is the accumulator
-    again, then the real `Lcall`. The `framedAbiCallMarshal` shape — one base in
-    both the out-pointer and its own argument register — at a loop-body call
-    site. No `RAX` capture and no scratch slot. -/
+    the operands into the SysV argument registers from `RSI` on, the first of
+    which is the accumulator, then the accumulator operand into `RDI` (the
+    out-pointer), then the real `Lcall`. The `framedAbiCallMarshal` shape — one
+    base in both the out-pointer and its own argument register — at a loop-body
+    call site. No `RAX` capture and no scratch slot.
+
+    The out-pointer is written last for the reason `loopBodyCallLcmdBuf` states:
+    `RDI` is allocatable, so an argument whose source the allocator places there
+    is read before the out-pointer overwrites it. The accumulator itself is
+    loop-carried, which the looped-call barrier places in a callee-saved register
+    (`calleeFirstPhys`), so it survives the argument marshalling. -/
 def loopBodyCallLcmdBufInPlace (accOp : LOperand) (sym : String)
     (argOps : List LOperand) : Lcmd :=
   let argMarshal : Lcmd :=
     (argOps.zip (sysvArgRegs.drop 1)).map (fun ⟨op, areg⟩ => loopBufMarshalArg areg op)
-  loopBufMarshalArg "RDI" accOp :: (argMarshal ++ [⟨0, .Lcall none (sym, 0)⟩])
+  argMarshal ++ [loopBufMarshalArg "RDI" accOp, ⟨0, .Lcall none (sym, 0)⟩]
+
+-- Static checks pinning the marshalling order: the argument registers are
+-- written in SysV order from `RSI` on and the out-pointer `RDI` last, so an
+-- argument whose source the register allocator places in `RDI` is read before
+-- the out-pointer overwrites it.
+#guard (loopBodyCallLcmdBuf "mem.RSP.0" "madd" [.reg "L0_r3", .reg "L0_r4"]).filterMap
+    (fun i => match i.li_i with | .Lopn [.reg d] _ _ => some d | _ => none)
+  = ["RSI", "RDX", "RDI"]
+#guard (loopBodyCallLcmdBufInPlace (.reg "L0_r1") "madd"
+    [.reg "L0_r1", .reg "L0_r4"]).filterMap
+    (fun i => match i.li_i with | .Lopn [.reg d] _ _ => some d | _ => none)
+  = ["RSI", "RDX", "RDI"]
 
 /-- Resolve a multi-binder loop-body `Var` with the buffer bindings in scope: a
     reference to the in-place accumulator update (`ipSlot`) is `accReg`, a
@@ -3826,6 +3849,19 @@ def hwRegNames : List String :=
 /-- Is `n` a literal hardware GP register name (`hwRegNames`)? -/
 def isHwRegName (n : String) : Bool := hwRegNames.contains n
 
+/-- Is `n` a **frame-slot** operand name rather than a register-file name: a GP
+    spill `k.N`, a vector spill `kv.N`, an ABI save `qsave.X`, or a
+    base-relative memory reference `mem.<base>.<off>`?
+
+    These four prefixes are the operand classes `LprogAsmPrinter.resolveName`
+    resolves to a memory address; each denotes a location in the frame, not a
+    slot in the register file, so the register allocator's name→physical lookup
+    does not apply to it. The SSA names a body carries (`r<d>`, `a<j>`,
+    `L<d>_r<k>`, `Lctr<d>`, `Lidx<d>`) begin with none of these prefixes, so no
+    allocated name is classified here. -/
+def isFrameSlotName (n : String) : Bool :=
+  hasPrefix n "k." || hasPrefix n "kv." || hasPrefix n "qsave." || hasPrefix n "mem."
+
 /-- The callee-saved-first permutation of the 13 allocatable GP physical indices
     (`gpRegNames` order). The callee-saved registers come first —
     `RBX(1) RBP(6) R12(11) R13(12)` — then the caller-saved
@@ -4025,6 +4061,10 @@ def straightCallPhys (body : Lcmd) (tbl : Array Nat) (s : Nat) : Nat :=
     name-resolution pass (`buildArgMaterializePhys`, `buildArgPtrMaterialize`,
     `buildEpilogue`, and the looped export's `memrefBaseReload`).
 
+    A **frame-slot** name (`isFrameSlotName`: `k.`/`kv.`/`qsave.`/`mem.`) names a
+    location in the frame, which the printer resolves itself, and passes through
+    unchanged on every path.
+
     For a call-free body this is the post-RA lookup
     `physRegName (physMapTabled tbl (nameSlot body n))`. For a body that issues a
     real `Lcall` (`bodyHasCall`), the caller-save barrier engages: a literal
@@ -4044,13 +4084,26 @@ def straightCallPhys (body : Lcmd) (tbl : Array Nat) (s : Nat) : Nat :=
     The prologue / arg materialize / epilogue agree with the barrier-relocated
     body (all resolve through THIS function, over the SAME composed table). -/
 def physNameForBody (body : Lcmd) (tbl : Array Nat) (n : String) : String :=
-  if bodyHasCall body then
+  if isFrameSlotName n then n
+  else if bodyHasCall body then
     if isHwRegName n then n
     else if bodyStraightCall body then
       physRegName (physMapTabled tbl (nameSlot body n))
     else physRegName (calleeFirstPhys (physMapTabled tbl (nameSlot body n)))
   else
     physRegName (physMapTabled tbl (nameSlot body n))
+
+-- Static checks pinning the frame-slot passthrough: a GP spill, a vector spill,
+-- an ABI save and a base-relative memory reference each resolve to themselves,
+-- under a call-free body and under a body that issues a call, while an SSA name
+-- still resolves through the allocation table.
+#guard physNameForBody [] #[] "mem.RSP.0" = "mem.RSP.0"
+#guard physNameForBody [] #[] "k.3" = "k.3"
+#guard physNameForBody [] #[] "kv.1" = "kv.1"
+#guard physNameForBody [] #[] "qsave.RDX" = "qsave.RDX"
+#guard physNameForBody [⟨0, .Lcall none ("f", 0)⟩] #[] "mem.RSP.96" = "mem.RSP.96"
+#guard physNameForBody [⟨0, .Lcall none ("f", 0)⟩] #[] "qsave.RDX" = "qsave.RDX"
+#guard physNameForBody [] #[] "r0" = "RAX"
 
 /-- Compose the straight-line call relocation into an allocation table: every
     GP entry is routed through `straightCallRelocTable` (computed ONCE — the

@@ -417,13 +417,13 @@ theorem loopBodyCallLcmdBuf_direct (dstMem sym : String) (argOps : List LOperand
   intro z hz
   simp only [List.mem_cons, List.mem_append, List.mem_map, List.not_mem_nil,
     or_false] at hz
-  rcases hz with rfl | ⟨p, hp, rfl⟩ | rfl
+  rcases hz with ⟨p, hp, rfl⟩ | rfl | rfl
+  · exact loopBufMarshalArg_direct _ _ (h _ (List.of_mem_zip hp).1)
   · exact linstrRDirect_Lopn_mk (by simp [isIndexed]) (by
       intro o ho
       simp only [List.mem_cons, List.not_mem_nil, or_false] at ho
       subst ho
       rfl)
-  · exact loopBufMarshalArg_direct _ _ (h _ (List.of_mem_zip hp).1)
   · rfl
 
 /-- The in-place marshalling sequence of a buffer-returning loop-body leaf call
@@ -438,9 +438,9 @@ theorem loopBodyCallLcmdBufInPlace_direct (accOp : LOperand) (sym : String)
   intro z hz
   simp only [List.mem_cons, List.mem_append, List.mem_map, List.not_mem_nil,
     or_false] at hz
-  rcases hz with rfl | ⟨p, hp, rfl⟩ | rfl
-  · exact loopBufMarshalArg_direct _ _ hacc
+  rcases hz with ⟨p, hp, rfl⟩ | rfl | rfl
   · exact loopBufMarshalArg_direct _ _ (h _ (List.of_mem_zip hp).1)
+  · exact loopBufMarshalArg_direct _ _ hacc
   · rfl
 
 /-- The buffer-aware multi-binder loop-body walk of an index-free `Com` uses no
