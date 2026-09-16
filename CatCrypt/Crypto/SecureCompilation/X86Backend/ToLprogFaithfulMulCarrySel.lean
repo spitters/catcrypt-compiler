@@ -7,6 +7,7 @@ module
 
 import all Init.Data.String.TakeDrop
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulBinopWide
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulBinopMov
 
 /-!
 # Whole-function register-allocation faithfulness with widening-multiply, carry-chain and select bindings
@@ -121,6 +122,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulWholeFn
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulProlog
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulAssembled
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulConst
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulBinopMov
 
 /-! ## 1. Mnemonic facts -/
 
@@ -456,6 +458,8 @@ theorem physBodyElem_src3 (body : Lcmd) (tbl : Array Nat) (ii : Nat)
 inductive MulCarryBinding (w : Nat) (body : Lcmd) (tbl : Array Nat) where
   | arith (b : ArithConstBinding w body tbl)
   | binopWide (b : ToLprogFaithfulBinopWide.BinopWideBinding w body tbl)
+  | binopMov (b : ToLprogFaithfulBinopMov.BinopMovBinding w body tbl)
+  | binopMovWide (b : ToLprogFaithfulBinopMov.BinopMovWideBinding w body tbl)
   | mulhi (m : MulHiBinding w body tbl)
   | addCarryLo (c : AddCarryLoBinding w body tbl)
   | addCarryHi (c : AddCarryHiBinding w body tbl)
@@ -466,6 +470,8 @@ def MulCarryBinding.block {w : Nat} {body : Lcmd} {tbl : Array Nat} :
     MulCarryBinding w body tbl → List LinstrR
   | .arith b => b.block
   | .binopWide b => b.block
+  | .binopMov b => b.block
+  | .binopMovWide b => b.block
   | .mulhi m => m.block
   | .addCarryLo c => c.block
   | .addCarryHi c => c.block
@@ -476,6 +482,8 @@ def MulCarryBinding.vstep {w : Nat} {body : Lcmd} {tbl : Array Nat} :
     MulCarryBinding w body tbl → Lstate w → Lstate w
   | .arith b => b.vstep
   | .binopWide b => b.vstep
+  | .binopMov b => b.vstep
+  | .binopMovWide b => b.vstep
   | .mulhi m => m.vstep
   | .addCarryLo c => c.vstep
   | .addCarryHi c => c.vstep
@@ -487,6 +495,8 @@ theorem MulCarryBinding.maintains {w : Nat} {body : Lcmd} {tbl : Array Nat}
   cases b with
   | arith b => exact b.maintains
   | binopWide b => exact b.maintains
+  | binopMov b => exact b.maintains
+  | binopMovWide b => exact b.maintains
   | mulhi m => exact m.maintains
   | addCarryLo c => exact c.maintains
   | addCarryHi c => exact c.maintains
@@ -654,6 +664,35 @@ inductive CoverDataMCS {w : Nat} (body : Lcmd) (tbl : Array Nat) (nArgs : Nat) :
       CoverDataMCS body tbl nArgs
         (.var ⟨JasminOp.regArith bop 64, heq, .cons a0 (.cons a1 .nil)⟩ bdy) d
         (.binopWide b :: bs)
+  | varMov {Γ s} {bop : JasminBinOp}
+      {heq : DialectSignature.ret (d := jasminDialect) (JasminOp.regArith bop w) = .reg w}
+      {a0 a1 : Ctxt.Var Γ (JasminTy.reg w)} {bdy : Com jasminDialect (JasminTy.reg w :: Γ) s}
+      (d : Nat) (hw : w ≠ 64) (hns : NonShift bop)
+      (b : ToLprogFaithfulBinopMov.BinopMovBinding w body tbl)
+      (bs : List (MulCarryBinding w body tbl))
+      (hdst : b.nDst = regName d)
+      (hopn : b.opn = withWidthTag w (binOpName bop))
+      (hS0 : b.nS0 = resolveVarName d nArgs a0)
+      (hsrc : b.nSrc = resolveVarName d nArgs a1)
+      (htail : CoverDataMCS body tbl nArgs bdy (d + 1) bs) :
+      CoverDataMCS body tbl nArgs
+        (.var ⟨JasminOp.regArith bop w, heq, .cons a0 (.cons a1 .nil)⟩ bdy) d
+        (.binopMov b :: bs)
+  | var64Mov {Γ s} {bop : JasminBinOp}
+      {heq : DialectSignature.ret (d := jasminDialect) (JasminOp.regArith bop 64) = .reg 64}
+      {a0 a1 : Ctxt.Var Γ (JasminTy.reg 64)}
+      {bdy : Com jasminDialect (JasminTy.reg 64 :: Γ) s}
+      (d : Nat) (hns : NonShift bop)
+      (b : ToLprogFaithfulBinopMov.BinopMovWideBinding w body tbl)
+      (bs : List (MulCarryBinding w body tbl))
+      (hdst : b.nDst = regName d)
+      (hbop : b.bop = bop)
+      (hS0 : b.nS0 = resolveVarName d nArgs a0)
+      (hsrc : b.nSrc = resolveVarName d nArgs a1)
+      (htail : CoverDataMCS body tbl nArgs bdy (d + 1) bs) :
+      CoverDataMCS body tbl nArgs
+        (.var ⟨JasminOp.regArith bop 64, heq, .cons a0 (.cons a1 .nil)⟩ bdy) d
+        (.binopMovWide b :: bs)
   | const {Γ s} {n : Nat}
       {heq : DialectSignature.ret (d := jasminDialect) (JasminOp.regConst w n) = .reg w}
       {bdy : Com jasminDialect (JasminTy.reg w :: Γ) s}
@@ -721,6 +760,8 @@ theorem CoverDataMCS.uniformRegArithMCS {w : Nat} {body : Lcmd} {tbl : Array Nat
   | ret v d => exact .ret v
   | var d hw hns b bs _ _ _ _ _ ih => exact .var _ _ _ _ _ hw hns ih
   | var64 d hns b bs _ _ _ _ _ ih => exact .var64 _ _ _ _ _ hns ih
+  | varMov d hw hns b bs _ _ _ _ _ ih => exact .var _ _ _ _ _ hw hns ih
+  | var64Mov d hns b bs _ _ _ _ _ ih => exact .var64 _ _ _ _ _ hns ih
   | const d c bs _ _ _ ih => exact .const _ _ ih
   | mulhi d m bs _ _ _ _ ih => exact .mulhi _ _ _ _ ih
   | addCarryLo d c bs _ _ _ _ _ ih => exact .addCarryLo _ _ _ _ _ ih
@@ -835,6 +876,14 @@ theorem coverDataMCS_bodyCover {w : Nat} (body : Lcmd) (tbl : Array Nat) (nArgs 
       rw [bindingHeads_var_eq]
       exact .cons (ToLprogFaithfulBinopWide.regArithHead64_cover body tbl nArgs d _ hns _ _ b
         hdst hbop hsrc hcol) ih
+  | varMov d hw hns b bs hdst hopn hS0 hsrc _ ih =>
+      rw [bindingHeads_var_eq]
+      exact .cons (ToLprogFaithfulBinopMov.regArithHeadMov_cover body tbl nArgs d _ w hw hns _ _ b
+        hdst hopn hS0 hsrc) ih
+  | var64Mov d hns b bs hdst hbop hS0 hsrc _ ih =>
+      rw [bindingHeads_var_eq]
+      exact .cons (ToLprogFaithfulBinopMov.regArithHeadMov64_cover body tbl nArgs d _ hns _ _ b
+        hdst hbop hS0 hsrc) ih
   | const d c bs hdst hn _ ih =>
       rw [bindingHeads_const_eq]
       refine .cons ?_ ih

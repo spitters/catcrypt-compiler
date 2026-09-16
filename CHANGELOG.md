@@ -34,6 +34,38 @@ The emitted `ed25519_point_add` passes a known-answer test against libsodium's
 emitted inversion and compression kernels, byte-identical, with `T₃·Z₃ = X₃·Y₃`
 on every raw output (`bench/ed25519_comb_compare/point_add_compare.c`, dev repo).
 
+Physical faithfulness, the two-address collapse:
+
+- `X86Backend/ToLprogFaithfulBinopMov.lean`: `BinopMovBinding` and
+  `BinopMovWideBinding` cover the mov-prefixed branch of `lowerTwoAddr`. Their
+  `block` is the emitter's own output rather than a hand-written concatenation,
+  and `maintains` comes from `ToLprogFaithfulTwoAddr.lowerTwoAddr_blockMaintains`
+  and, at width 64, from `movThenBinop_storeRel_step` with two mnemonic
+  congruences. `physBodyElem_binopTwoAddr` states the expansion over
+  `lowerTwoAddr` itself, so it needs no register-allocation hypothesis — the
+  dichotomy lives inside the emitter — and `regArithHeadMov_cover` and
+  `regArithHeadMov64_cover` cover the emitted head with no collapse condition.
+- `X86Backend/ToLprogFaithfulMulCarrySel.lean`: `binopMov` and `binopMovWide`
+  constructors on `MulCarryBinding`, `varMov` and `var64Mov` arms on
+  `CoverDataMCS` carrying no collapse hypothesis, and the matching induction
+  cases. No statement changes.
+
+Why this was needed: the collapse condition holds for no binop binding of any
+real emitted program. Measured over three, it is 0 of 1, 0 of 4 and 0 of 221 on
+the shipped `ed25519_point_add`, and it is structurally forced — the allocator is
+a linear scan with no coalescing whose expiry keeps a source's interval alive
+exactly where the destination is defined. The lowering was always correct on both
+branches (`ToLprogFaithfulRA.lowerTwoAddr_dichotomy`); only the cover demanded
+one of them.
+
+What remains conditional: every binding carries `hinj`, global injectivity of the
+register renaming, which fails as soon as the allocator reuses a register — and
+the live-scoped form does not replace it, since the allocator's no-collision
+theorem supplies distinctness only for slots whose ranges overlap. A cover for a
+large program is therefore still uninhabited. What would suffice is a `StoreRel`
+indexed by the program point and quantified over the names live there, so a
+physical write may legitimately clobber a dead name's value.
+
 Frame layout:
 
 - `X86Backend/LprogAsmPrinter.lean`: `frameAddDirective` and a `FRAMEADD`
