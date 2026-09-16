@@ -237,6 +237,12 @@ inductive RouteGap where
   | uncoveredTripBodyPair
   /-- The chosen front declined the body. -/
   | frontDeclined
+  /-- A loop body binds the result of a leaf call at a `stackArr` type. The
+      loop-body value model gives every body binding a register (`loopReg`), and
+      the loop-body call marshaller `callMarshalHere` knows the GP and SSE
+      register classes only, so a multi-word result has no location the route can
+      name. -/
+  | bufferResultCallInBody
   deriving Repr, DecidableEq, Inhabited
 
 /-! ## 2. Reading the axes off the source -/
@@ -1046,6 +1052,81 @@ def tripGapOf (src : LowCT) : Option RouteGap :=
 -- rather than dropping the second loop.
 #guard tripGapOf siblingSource == some .siblingNeedsTwoBodies
 
+/-! ### The buffer-result leaf-call condition
+
+A loop-body binding resolves to a register (`loopResolveVarN`, through
+`loopReg d slot`), and the loop-body call marshaller `callMarshalHere` dispatches
+a leaf call between the GP and SSE register classes by `callMarshalWidth`, which
+sends every non-`reg` type to 64. A leaf whose result is a `stackArr` — a buffer
+returned through an out-pointer — therefore has neither a marshalling arm nor a
+location for its result. The predicates below decide that condition on a body
+`Com` and on a whole `ComL`, and `compile` reports it as
+`RouteGap.bufferResultCallInBody`.
+
+An array-typed accumulator or invariant is not this condition: those are
+`stackArr`-typed too (`mapTy (.memref n) = .stackArr 64 n`), but they reach the
+body as base names that the memref ops index, not as call results. -/
+
+/-- The `stackArr` result type of a leaf-call op, and `none` for a call whose
+    result marshals in a register and for every non-call op. A `callN`'s result
+    is its head return type, the slot the loop-body walk binds. -/
+def callResultBufferTy : JasminOp → Option JasminTy
+  | .extCall _ _ (.stackArr w n) => some (.stackArr w n)
+  | .callN _ _ retTys =>
+      match retTys.headD (.reg 0) with
+      | .stackArr w n => some (.stackArr w n)
+      | _ => none
+  | _ => none
+
+/-- Does a loop-body `Com` bind the result of a leaf call at a `stackArr` type? -/
+def comBodyHasBufferCall :
+    {Γ : Ctxt jasminDialect} → {t : JasminTy} → Com jasminDialect Γ t → Bool
+  | _, _, .ret _ => false
+  | _, _, .var e body =>
+      (callResultBufferTy e.op).isSome || comBodyHasBufferCall body
+
+/-- Does any loop node of a `ComL` carry a buffer-result leaf call in its body?
+    The `comLHasLoopCall` analogue for the buffer-result condition, over the same
+    loop nodes. -/
+def comLHasBufferCallLoopBody :
+    {Γ : Ctxt jasminDialect} → {t : JasminTy} → ComL Γ t → Bool
+  | _, _, .ret _ => false
+  | _, _, .var _ body => comLHasBufferCallLoopBody body
+  | _, _, .forLoop _ _ body => comLHasBufferCallLoopBody body
+  | _, _, .forLoopN loop _ _ body =>
+      comBodyHasBufferCall loop.update || comLHasBufferCallLoopBody body
+  | _, _, .forLoopNRt update _ _ _ body =>
+      comBodyHasBufferCall update || comLHasBufferCallLoopBody body
+  | _, _, .forLoopNRtNested innerCount innerUpdate _ _ _ body =>
+      comBodyHasBufferCall innerCount || comBodyHasBufferCall innerUpdate
+        || comLHasBufferCallLoopBody body
+  | _, _, .whileNz update _ _ _ body =>
+      comBodyHasBufferCall update || comLHasBufferCallLoopBody body
+  | _, _, .forLoopBlock loopBody _ _ _ body =>
+      comLHasBufferCallLoopBody loopBody || comLHasBufferCallLoopBody body
+
+/-- A loop body whose single binding calls a leaf returning a 16-word buffer, in
+    the body context of an array accumulator and the loop index. -/
+def bufferCallBody :
+    Com jasminDialect [JasminTy.stackArr 64 16, JasminTy.reg 64]
+      (JasminTy.stackArr 64 16) :=
+  .var (.mk (.extCall "point_add" [.stackArr 64 16] (.stackArr 64 16)) rfl
+          (.cons .here .nil))
+    (.ret .here)
+
+/-- A loop body whose single binding calls a leaf returning one register word,
+    in the body context of a word accumulator and the loop index. -/
+def regCallBody :
+    Com jasminDialect [JasminTy.reg 64, JasminTy.reg 64] (JasminTy.reg 64) :=
+  .var (.mk (.extCall "prg_node" [.reg 64] (.reg 64)) rfl (.cons .here .nil))
+    (.ret .here)
+
+-- Static checks pinning the predicate against silent change: it fires on a
+-- buffer-returning leaf call, and not on the register-result in-loop call the
+-- emitted rolled kernels already carry.
+#guard comBodyHasBufferCall bufferCallBody
+#guard !comBodyHasBufferCall regCallBody
+
 /-- Analyse `src`, select the route, and dispatch it.
 
     The caller still supplies everything the source cannot name: the outer
@@ -1055,7 +1136,9 @@ def tripGapOf (src : LowCT) : Option RouteGap :=
     carries the bundled front, so the denotation travels with the program.
 
     `.error` names the axis with no covering route (`RouteGap`), including
-    `frontDeclined` when the selected front rejects the body. -/
+    `frontDeclined` when the selected front rejects the body and
+    `bufferResultCallInBody` when the front's body binds a leaf-call result at a
+    `stackArr` type. -/
 def compile {Γouter : Ctxt jasminDialect} {accCTy : CryptoTy} {invCTys : Ctx}
     (out : OutputForm) (src : LowCT)
     (countVar : Option (Ctxt.Var Γouter (JasminTy.reg 64)))
@@ -1074,7 +1157,9 @@ def compile {Γouter : Ctxt jasminDialect} {accCTy : CryptoTy} {invCTys : Ctx}
           | .ok trip =>
               match hupd : p.bodyFront.front (accCTy := accCTy) vmBody accName sp.body with
               | none => .error .frontDeclined
-              | some _ =>
+              | some u =>
+                  if comBodyHasBufferCall u then .error .bufferResultCallInBody
+                  else
                   match compileLoopFront p.bodyFront trip vmBody accName sp.body init
                           invs hupd with
                   | none => .error .uncoveredTripBodyPair
@@ -1106,12 +1191,14 @@ theorem compile_eq_compileLoop {Γouter : Ctxt jasminDialect} {accCTy : CryptoTy
         · exact absurd h (by simp)
         · split at h
           · exact absurd h (by simp)
-          · rename_i F hF
-            split at h
-            · rename_i c hb
-              cases h
-              exact (compileLoopFront_build _ _ _ _ _ _ _ _ hF).symm.trans hb
+          · split at h
             · exact absurd h (by simp)
+            · rename_i F hF
+              split at h
+              · rename_i c hb
+                cases h
+                exact (compileLoopFront_build _ _ _ _ _ _ _ _ hF).symm.trans hb
+              · exact absurd h (by simp)
 
 /-- **`compile`'s program denotes the `JLoopBodyN` fold at the plan's trip
     count.** The statement is uniform over every route `compile` can select:

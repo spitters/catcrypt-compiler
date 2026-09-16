@@ -34,6 +34,20 @@ The emitted `ed25519_point_add` passes a known-answer test against libsodium's
 emitted inversion and compression kernels, byte-identical, with `T₃·Z₃ = X₃·Y₃`
 on every raw output (`bench/ed25519_comb_compare/point_add_compare.c`, dev repo).
 
+Route dispatcher:
+
+- `Dialects/FrontRoutePlan.lean`: `RouteGap.bufferResultCallInBody`, with
+  `callResultBufferTy`, `comBodyHasBufferCall` and `comLHasBufferCallLoopBody`.
+  A rolled-loop body binding a buffer-typed leaf-call result compiles to that gap
+  rather than falling through to the loop-body call marshaller, which knows only
+  GP and SSE registers and would emit a register move of a multi-word memory
+  result. The predicate keys on call results rather than on `stackArr` bindings,
+  because `mapTy (.memref n) = .stackArr 64 n` makes every memref accumulator
+  `stackArr`-typed. `compile_eq_compileLoop` and `compile_denote` keep their
+  statements and their axioms. Emitters that call `rolledForLoopN` directly
+  bypass `compile` and so bypass the gap; `comLHasBufferCallLoopBody` is exposed
+  for them to assert, and nothing asserts it yet.
+
 Physical faithfulness of width-64 binary arithmetic:
 
 - `X86Backend/ToLprogFaithfulBinopWide.lean`: `BinopWideBinding` covers a
