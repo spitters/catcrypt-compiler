@@ -16,7 +16,8 @@ public import CatCrypt.Crypto.Jasmin.LowCTToJasmin
 The P-384 (NIST FIPS 186-4) analogue of `P256Reflect.lean`: opaque surface
 types (`P384Scalar`, `P384Point`), `@[rust_cmd_pattern]` registrations for the
 group-law leaves, hand-built `LowCT` bodies for the two kernels, and Rust
-source emission for the shim crate.
+source emission for the shim crate. The MSM-term kernel also has a body
+reified from its pure-Lean specification through the registry (§9).
 
 ## Two kernels
 
@@ -133,28 +134,25 @@ def p384PointTowerType : TowerType := .TBytes 144
 
 /-! ## 4. `@[rust_cmd_pattern]` registrations -/
 
-/-- Register `p384_scalar_mul` → leaf `p384_scalar_mul`. -/
+/-- Register `p384_scalar_mul` → leaf `p384_scalar_mul`: a 48-byte scalar and
+    a 144-byte point to a 144-byte point. -/
 @[rust_cmd_pattern]
 def p384ScalarMulPattern : LowCTPattern where
   name      := "p384_scalar_mul"
   fnHead    := ``p384_scalar_mul
   arity     := 2
-  towerType := .TBytes 144
+  towerType := p384PointTowerType
+  argTypes  := some [p384ScalarTowerType, p384PointTowerType]
 
-/-- Register `p384_scalar_mul_base` → leaf `p384_scalar_mul_base`.
-
-    `LowCTPattern` carries a single `towerType` for the destination and every
-    argument, and this leaf is heterogeneous (`48 → 144`). The registration
-    therefore pins the leaf name, the Lean head `p384_scalar_mul_base`, the
-    arity `1`, and the 144-byte destination width; it does not pin the 48-byte
-    width of the scalar argument, which the hand-built bodies fix through the
-    tower type of the slot they pass. -/
+/-- Register `p384_scalar_mul_base` → leaf `p384_scalar_mul_base`: a 48-byte
+    scalar to a 144-byte point, the generator being fixed in the leaf. -/
 @[rust_cmd_pattern]
 def p384ScalarMulBasePattern : LowCTPattern where
   name      := "p384_scalar_mul_base"
   fnHead    := ``p384_scalar_mul_base
   arity     := 1
-  towerType := .TBytes 144
+  towerType := p384PointTowerType
+  argTypes  := some [p384ScalarTowerType]
 
 /-- Register `p384_point_add` → leaf `p384_point_add`. -/
 @[rust_cmd_pattern]
@@ -299,7 +297,36 @@ theorem p384EcdsaVerifyJasmin_all_assgn_or_call :
         | .Cassgn .. => true
         | _ => false) = true := rfl
 
-/-! ## 9. Inspection -/
+/-! ## 9. The MSM-term kernel generated from its pure-Lean specification
+
+`p384MsmTermLean` is reified through the pattern registry: the registration of
+§4 supplies the leaf name, the 144-byte destination and the per-argument
+widths `48, 144`, and `reifyLowCT%` builds the body and the parameter list
+from the Lean term. -/
+
+/-- The MSM-term kernel, reified from `p384MsmTermLean`. -/
+def p384MsmTermGen : ReifiedFunc := reifyLowCT% p384MsmTermLean
+
+/-- The generated body is the hand-built body of §6 under a leading `RSkip`:
+    the reifier accumulates its command chain starting from `RSkip`, so a
+    kernel of one leaf call comes out as `RSeq RSkip (RCall …)`. -/
+theorem p384MsmTermGen_body :
+    p384MsmTermGen.body = .RSeq .RSkip p384MsmTermBody := rfl
+
+/-- The generated and the hand-built body lower to the same Jasmin command. -/
+theorem p384MsmTermGen_jasmin :
+    toJasminCmd p384MsmTermGen.body = p384MsmTermJasmin := rfl
+
+/-- The generated parameter list is the hand-built one, scalar at 48 bytes and
+    point at 144. -/
+theorem p384MsmTermGen_args :
+    p384MsmTermGen.args = p384MsmTermReified.args := rfl
+
+/-- The generated return slot is the hand-built one. -/
+theorem p384MsmTermGen_retName :
+    p384MsmTermGen.retName = p384MsmTermReified.retName := rfl
+
+/-! ## 10. Inspection -/
 
 #eval p384MsmTermReified.args.map Prod.fst              -- [k, P]
 #eval p384EcdsaVerifyReified.args.map Prod.fst          -- [u1, G, u2, Q]

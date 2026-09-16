@@ -273,8 +273,20 @@ structure LowCTPattern where
   fnHead    : Name
   /-- Expected number of fully-applied arguments. -/
   arity     : Nat
-  /-- TowerType of the destination (and all args). -/
+  /-- TowerType of the destination, and of every argument when `argTypes`
+      is `none`. -/
   towerType : TowerType
+  /-- Per-argument tower types of a heterogeneous leaf, in argument order.
+
+      `none` is the homogeneous reading: the destination and every argument
+      take `towerType`. `some ts` requires `ts.length = arity` and gives
+      argument `i` the type `ts[i]`, leaving the destination at `towerType`;
+      a scalar-times-point leaf is then `arity := 2`,
+      `towerType := .TBytes 144`, `argTypes := some [.TBytes 48, .TBytes 144]`.
+
+      A pattern carrying `argTypes` is matched against them by
+      `patternArgMismatch?`. -/
+  argTypes  : Option (List TowerType) := none
   deriving Inhabited
 
 
@@ -1172,8 +1184,10 @@ meta def knownOps : List (Name × String × Nat × TowerType) :=
   , (``mld_verify_compare,       "verify_compare",        3, .TU64) ]
 
 /-- Match a fully-applied known op against the in-file `knownOps`
-    table.  Returns `(leafName, argFVars, towerType)`. -/
-meta def matchOp? (e : Expr) : Option (String × Array Expr × TowerType) :=
+    table.  Returns `(leafName, argFVars, towerType, argTypes?)`; the
+    `knownOps` entries are homogeneous, so `argTypes?` is `none`. -/
+meta def matchOp? (e : Expr) :
+    Option (String × Array Expr × TowerType × Option (List TowerType)) :=
   match e.getAppFnArgs with
   | (cn, args) =>
     match knownOps.find? (fun p => p.1 == cn) with
@@ -1185,56 +1199,8 @@ meta def matchOp? (e : Expr) : Option (String × Array Expr × TowerType) :=
       -- slots that become `Located`s.  Legacy ops (no implicits) are
       -- unaffected — all their arguments are already fvars.
       let valArgs := args.filter (·.isFVar)
-      if valArgs.size == arity then some (leafName, valArgs, tt) else none
+      if valArgs.size == arity then some (leafName, valArgs, tt, none) else none
     | none => none
-
-/-- Phase B: match a fully-applied op against the dynamic
-    `LowCTPattern` registry **and** the persistent
-    `@[rust_cmd_pattern]`-tagged declarations.  Consulted *after*
-    `matchOp?` fails, so in-file `knownOps` entries take precedence
-    over registered instances.
-
-    Two registries are consulted:
-    1. `rustCmdPatternRegistry` — the `IO.Ref` populated by direct
-       `LowCTPattern.register` calls (`initialize` blocks).
-    2. `rustCmdPatternExt` — the persistent extension populated by
-       `@[rust_cmd_pattern]` attribute applications.  Resolution
-       requires `Lean.Meta.evalExpr`, which is `unsafe`; this
-       function is therefore `unsafe` and exposed via
-       `@[implemented_by]` for safe consumption. -/
-unsafe def matchPatternUnsafe (e : Expr) :
-    MetaM (Option (String × Array Expr × TowerType)) := do
-  match e.getAppFnArgs with
-  | (cn, args) =>
-    -- 1. Try the IO.Ref-based dynamic registry first.
-    let p? ← (LowCTPattern.lookup? cn : IO _)
-    match p? with
-    | some p =>
-        if args.size == p.arity then
-          pure (some (p.name, args, p.towerType))
-        else pure none
-    | none =>
-        -- 2. Fall back to the persistent attribute-tagged decls.
-        let names ← LowCTPattern.taggedDecls
-        for n in names do
-          if let some _ := (← getEnv).find? n then
-            try
-              let pat ← Lean.Meta.evalExpr LowCTPattern
-                (Lean.mkConst ``LowCTPattern) (Lean.mkConst n)
-              if pat.fnHead == cn ∧ args.size == pat.arity then
-                return some (pat.name, args, pat.towerType)
-            catch _ => continue
-        pure none
-
-
-
-/-- Safe wrapper over `matchPatternUnsafe`.  The `IO.Ref`-only path
-    is sufficient if you don't use `@[rust_cmd_pattern]` and only
-    register patterns via direct `LowCTPattern.register` calls. -/
-@[implemented_by matchPatternUnsafe]
-opaque matchPattern? (e : Expr) :
-    MetaM (Option (String × Array Expr × TowerType))
-
 
 /-! ## 4. Reifier -/
 
@@ -1319,6 +1285,144 @@ def erasedArgType? (leafName : String) (argIdx : Nat) : Option TowerType :=
   else if leafName == "verify_compare" ∧ (argIdx == 0 ∨ argIdx == 1) then some (.TBytes 0)
   else none
 
+/-! ### Pattern matching against per-argument types
+
+`patternArgMismatch?` decides whether a pattern whose `fnHead` already matches
+the application head also fits its arguments, and describes the first
+disagreement it finds.  The matcher below uses it in two ways: a pattern that
+fits is the match, and a head whose every candidate pattern fails makes the
+reifier raise the collected descriptions instead of returning `none`. -/
+
+/-- The first disagreement between `p` and an application of `p.fnHead` to
+    `args` at result type `resultTy`, or `none` when the pattern fits.
+
+    The argument count is checked against `p.arity` for every pattern.  The
+    remaining conditions apply to a pattern carrying `argTypes = some ts`, and
+    leave a pattern without them matched on arity alone.
+
+    * `ts.length` equals `p.arity`.
+    * A Lean type that `leanTypeToTowerType` maps to a surface fixes the
+      tower type at that position, and at the destination.  A Lean type
+      outside that map — an opaque surface type such as a curve scalar or
+      point — is not constrained by this condition.
+    * An argument whose Lean type is the leaf's result type carries
+      `p.towerType`, the type of the destination it could be written to.
+    * The partition of argument positions by declared tower type agrees with
+      their partition by Lean type: two positions carrying the same declared
+      type have the same Lean type, and two positions carrying different
+      declared types have different Lean types.
+
+    Together the last two separate the argument widths of a heterogeneous
+    leaf from its Lean signature, so a registration listing them in the wrong
+    order, or collapsing two of them, is a mismatch rather than a match. -/
+def patternArgMismatch? (p : LowCTPattern) (args : Array Expr)
+    (resultTy : Expr) : MetaM (Option MessageData) := do
+  if args.size != p.arity then
+    return some m!"{p.name}: arity {p.arity}, applied to {args.size} arguments"
+  match p.argTypes with
+  | none => return none
+  | some ts =>
+    if ts.length != p.arity then
+      return some
+        m!"{p.name}: arity {p.arity}, but argTypes lists {ts.length} types"
+    let resTy ← whnf resultTy
+    -- `leanTypeToTowerType` answers `.TFp25519` both for that surface and for
+    -- a Lean type it does not map, so only a non-default answer constrains a
+    -- position.
+    let resSurface ← leanTypeToTowerType resTy
+    if resSurface != .TFp25519 ∧ resSurface != p.towerType then
+      return some
+        m!"{p.name}: the destination is declared {toString (repr p.towerType)} \
+           but the result type {resTy} maps to {toString (repr resSurface)}"
+    let tys ← args.mapM fun a => do whnf (← inferType a)
+    for i in [0 : args.size] do
+      let declared := ts[i]!
+      let surface ← leanTypeToTowerType tys[i]!
+      if surface != .TFp25519 ∧ surface != declared then
+        return some
+          m!"{p.name}: argument {i} is declared {toString (repr declared)} but \
+             its Lean type {tys[i]!} maps to {toString (repr surface)}"
+      if (← isDefEq tys[i]! resTy) ∧ declared != p.towerType then
+        return some
+          m!"{p.name}: argument {i} has the leaf's result type {resTy} but is \
+             declared {toString (repr declared)} against the destination's \
+             {toString (repr p.towerType)}"
+      for j in [i + 1 : args.size] do
+        let sameLean ← isDefEq tys[i]! tys[j]!
+        if (ts[j]! == declared) != sameLean then
+          return some
+            (if sameLean then
+              m!"{p.name}: arguments {i} and {j} have the same Lean type \
+                 {tys[i]!} but are declared {toString (repr declared)} and \
+                 {toString (repr ts[j]!)}"
+             else
+              m!"{p.name}: arguments {i} and {j} are both declared \
+                 {toString (repr declared)} but have Lean types {tys[i]!} and \
+                 {tys[j]!}")
+    return none
+
+/-- Phase B: match a fully-applied op against the dynamic
+    `LowCTPattern` registry **and** the persistent
+    `@[rust_cmd_pattern]`-tagged declarations.  Consulted *after*
+    `matchOp?` fails, so in-file `knownOps` entries take precedence
+    over registered instances.
+
+    Two registries are consulted:
+    1. `rustCmdPatternRegistry` — the `IO.Ref` populated by direct
+       `LowCTPattern.register` calls (`initialize` blocks).
+    2. `rustCmdPatternExt` — the persistent extension populated by
+       `@[rust_cmd_pattern]` attribute applications.  Resolution
+       requires `Lean.Meta.evalExpr`, which is `unsafe`; this
+       function is therefore `unsafe` and exposed via
+       `@[implemented_by]` for safe consumption.
+
+    An application whose head matches no registered pattern gives `none`,
+    which is the reifier's ordinary fall-through.  An application whose head
+    does match, at a set of patterns none of which fits its arguments, raises
+    an error listing each candidate's disagreement as reported by
+    `patternArgMismatch?`, so a declined match is distinguishable from an
+    unregistered head. -/
+unsafe def matchPatternUnsafe (e : Expr) :
+    MetaM (Option (String × Array Expr × TowerType × Option (List TowerType))) := do
+  match e.getAppFnArgs with
+  | (cn, args) =>
+    let resultTy ← inferType e
+    -- The first fitting pattern is the match; the disagreements of the
+    -- patterns that share the head but do not fit are accumulated, and
+    -- reported only if no pattern fits.  Both registries are walked in the
+    -- same pass, the `IO.Ref` one first, so a fitting pattern stops the walk
+    -- before the remaining tagged declarations are evaluated.
+    let mut reasons : Array MessageData := #[]
+    for p in (← (LowCTPattern.snapshot : IO _)) do
+      if p.fnHead == cn then
+        match ← patternArgMismatch? p args resultTy with
+        | none   => return some (p.name, args, p.towerType, p.argTypes)
+        | some r => reasons := reasons.push r
+    let names ← LowCTPattern.taggedDecls
+    for n in names do
+      if let some _ := (← getEnv).find? n then
+        let pat? ← try
+            pure (some (← Lean.Meta.evalExpr LowCTPattern
+              (Lean.mkConst ``LowCTPattern) (Lean.mkConst n)))
+          catch _ => pure none
+        if let some pat := pat? then
+          if pat.fnHead == cn then
+            match ← patternArgMismatch? pat args resultTy with
+            | none   => return some (pat.name, args, pat.towerType, pat.argTypes)
+            | some r => reasons := reasons.push r
+    if reasons.isEmpty then
+      return none
+    throwError
+      "reifier: the head {cn} is registered but no pattern fits this \
+       application:{indentD (MessageData.joinSep reasons.toList Format.line)}"
+
+/-- Safe wrapper over `matchPatternUnsafe`.  The `IO.Ref`-only path
+    is sufficient if you don't use `@[rust_cmd_pattern]` and only
+    register patterns via direct `LowCTPattern.register` calls. -/
+@[implemented_by matchPatternUnsafe]
+opaque matchPattern? (e : Expr) :
+    MetaM (Option (String × Array Expr × TowerType × Option (List TowerType)))
+
 /-- If the (whnf'd) expression `v` is a `u64` / `Nat` literal, return its
     `Nat` value.  Recognizes bare `Nat` literals, `UInt64.ofBitVec n#64`,
     and `{ toBitVec := n#64 }`.  Used by the reifier to emit
@@ -1399,12 +1503,13 @@ partial def reifyBindings (bindings : Array Expr) (outNames : List String) :
                 matchPattern? vReducedDefault
         let vReduced := vReducedDefault
         match matchResult with
-        | some (leafName, argExprs, tt) =>
+        | some (leafName, argExprs, tt, argTys?) =>
             -- Convert each argExpr to its bound variable's string name,
-            -- giving each its *own* surface tower type (from the Lean
-            -- binder type) rather than the op's single result type `tt`.
-            -- The Tier-3 erasure hook overrides specific (leaf, argIdx)
-            -- positions to `.TBytes 0` (size-erased source / compare args).
+            -- giving each its *own* surface tower type: the Tier-3 erasure
+            -- hook first (specific `(leaf, argIdx)` positions at
+            -- `.TBytes 0`), then the pattern's declared per-argument type
+            -- when it carries one, then the Lean binder type, and the op's
+            -- result type `tt` only as the last fallback.
             let argLocs ← argExprs.mapIdxM fun i a => do
               let a ← whnf a
               unless a.isFVar do
@@ -1412,7 +1517,10 @@ partial def reifyBindings (bindings : Array Expr) (outNames : List String) :
               let n ← fvarDisplayName a.fvarId!
               let argTT ← match erasedArgType? leafName i with
                 | some e => pure e
-                | none   => argTowerType a tt
+                | none   =>
+                  match argTys?.bind (·[i]?) with
+                  | some t => pure t
+                  | none   => argTowerType a tt
               pure ({ locVar := n, locSrc := argTT } : Located)
             let destName ← fvarDisplayName fvarId
             let args : List Located := argLocs.toList
@@ -1472,7 +1580,7 @@ partial def reifyChain (bindings : Array Expr) (finalExpr : Expr) :
             matchPattern? finalReducedDefault
     let finalReduced := finalReducedDefault
     match matchResult with
-    | some (leafName, argExprs, tt) =>
+    | some (leafName, argExprs, tt, argTys?) =>
         let argLocs ← argExprs.mapIdxM fun i a => do
           let a ← whnf a
           unless a.isFVar do
@@ -1480,7 +1588,10 @@ partial def reifyChain (bindings : Array Expr) (finalExpr : Expr) :
           let n ← fvarDisplayName a.fvarId!
           let argTT ← match erasedArgType? leafName i with
             | some e => pure e
-            | none   => argTowerType a tt
+            | none   =>
+              match argTys?.bind (·[i]?) with
+              | some t => pure t
+              | none   => argTowerType a tt
           pure ({ locVar := n, locSrc := argTT } : Located)
         let retName := "__result"
         let args : List Located := argLocs.toList
@@ -1534,12 +1645,39 @@ partial def reifyChainMulti (bindings : Array Expr) (finalExpr : Expr) :
   let acc ← reifyBindings bindings outNames.toList
   pure (acc, outNames.toList)
 
+/-- The tower type a reified body gives to the argument slot named `x`: the
+    `locSrc` of the first `.RCall` argument of that name, or `none` when no
+    call takes an argument of that name.
+
+    The constructors traversed are those the reifier emits (`RSkip`, `RSeq`,
+    `RLetZero`, `RLetU64Zero`, `RScalarSet`, `RCall`); any other node gives
+    `none`. -/
+partial def bodySlotTowerType? (x : String) : LowCT → Option TowerType
+  | .RCall _ _ args => (args.find? (·.locVar == x)).map (·.locSrc)
+  | .RSeq a b       => (bodySlotTowerType? x a).orElse fun _ => bodySlotTowerType? x b
+  | .RLetZero _ _ b => bodySlotTowerType? x b
+  | .RLetU64Zero _ b => bodySlotTowerType? x b
+  | _ => none
+
+/-- The tower type of a reified function's parameter `x` whose Lean binder
+    type is `bt`.
+
+    `leanTypeToTowerType` answers `.TFp25519` for a Lean type it does not
+    map, which is what an opaque surface type such as a curve scalar or point
+    gives.  For such a parameter the body is the better witness: a leaf whose
+    pattern declares per-argument types has already stamped the slot with the
+    declared type, and that type is used.  A parameter whose binder type maps
+    to a surface keeps that surface. -/
+def paramTowerType (body : LowCT) (x : String) (bt : TowerType) : TowerType :=
+  if bt == .TFp25519 then (bodySlotTowerType? x body).getD bt else bt
+
 /-- Reify a Lean expression `e : Fp25519 → … → Fp25519` into a
     `ReifiedFunc`. Lambdas give the argument list, lets become RCalls,
     the body's final expression becomes the return.
 
     Argument tower types are inferred from the Lean-level binder type
-    via `leanTypeToTowerType` (defined above `reifyChain`). -/
+    via `leanTypeToTowerType` (defined above `reifyChain`), and for a binder
+    type outside that map from the reified body via `paramTowerType`. -/
 partial def reifyFunc (e : Expr) : MetaM ReifiedFunc := do
   -- Unfold Lean `def` references, then enter lambdas (parameters) and
   -- lets (intermediate bindings) separately, so we know which is which.
@@ -1556,7 +1694,7 @@ partial def reifyFunc (e : Expr) : MetaM ReifiedFunc := do
       let allBinders := params ++ letVars
       let (body, retName) ← reifyChain allBinders finalExpr
       pure
-        { args := argEntries.toList
+        { args := argEntries.toList.map (fun (n, t) => (n, paramTowerType body n t))
           body := body
           retName := retName
           outNames := [retName] }
@@ -1578,7 +1716,7 @@ partial def reifyFuncMulti (e : Expr) : MetaM ReifiedFunc := do
       let (body, outNames) ← reifyChainMulti allBinders finalExpr
       let retName := outNames.headD "__result"
       pure
-        { args := argEntries.toList
+        { args := argEntries.toList.map (fun (n, t) => (n, paramTowerType body n t))
           body := body
           retName := retName
           outNames := outNames }

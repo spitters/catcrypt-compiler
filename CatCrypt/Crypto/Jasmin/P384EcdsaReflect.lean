@@ -178,12 +178,12 @@ axiom p384_flag_and : UInt64 → UInt64 → UInt64
 
 /-! ## 3. `@[rust_cmd_pattern]` registrations
 
-`LowCTPattern.towerType` is one type for the destination and every argument,
-so only the homogeneous leaves are registered: the four scalar leaves at
-`.TBytes 48` and `p384_flag_and` at `.TU64`. The heterogeneous leaves
-(`p384_point_affine_x`, `144 → 48`; `p384_scalar_is_eq`, `48 × 48 → u64`;
-`p384_scalar_in_range`, `48 → u64`; `p384_point_valid`, `144 → u64`) are
-called by name from the hand-built bodies in §6. -/
+`LowCTPattern.towerType` is the destination type and `LowCTPattern.argTypes`
+the per-argument types, so the homogeneous and the heterogeneous leaves are
+registered alike: the four scalar leaves at `.TBytes 48` and `p384_flag_and`
+at `.TU64` carry no `argTypes`, and `p384_point_affine_x` (`144 → 48`),
+`p384_scalar_is_eq` (`48 × 48 → u64`), `p384_scalar_in_range` (`48 → u64`)
+and `p384_point_valid` (`144 → u64`) each list theirs. -/
 
 /-- Register `p384_scalar_inv` → leaf `p384_scalar_inv`. -/
 @[rust_cmd_pattern]
@@ -224,6 +224,46 @@ def p384FlagAndPattern : LowCTPattern where
   fnHead    := ``p384_flag_and
   arity     := 2
   towerType := .TU64
+
+/-- Register `p384_point_affine_x` → leaf `p384_point_affine_x`: a 144-byte
+    projective point to a 48-byte affine `x`. -/
+@[rust_cmd_pattern]
+def p384PointAffineXPattern : LowCTPattern where
+  name      := "p384_point_affine_x"
+  fnHead    := ``p384_point_affine_x
+  arity     := 1
+  towerType := p384ScalarTowerType
+  argTypes  := some [p384PointTowerType]
+
+/-- Register `p384_scalar_is_eq` → leaf `p384_scalar_is_eq`: two 48-byte
+    scalars to a `u64` flag. -/
+@[rust_cmd_pattern]
+def p384ScalarIsEqPattern : LowCTPattern where
+  name      := "p384_scalar_is_eq"
+  fnHead    := ``p384_scalar_is_eq
+  arity     := 2
+  towerType := .TU64
+  argTypes  := some [p384ScalarTowerType, p384ScalarTowerType]
+
+/-- Register `p384_scalar_in_range` → leaf `p384_scalar_in_range`: a 48-byte
+    scalar to a `u64` flag. -/
+@[rust_cmd_pattern]
+def p384ScalarInRangePattern : LowCTPattern where
+  name      := "p384_scalar_in_range"
+  fnHead    := ``p384_scalar_in_range
+  arity     := 1
+  towerType := .TU64
+  argTypes  := some [p384ScalarTowerType]
+
+/-- Register `p384_point_valid` → leaf `p384_point_valid`: a 144-byte
+    projective point to a `u64` flag. -/
+@[rust_cmd_pattern]
+def p384PointValidPattern : LowCTPattern where
+  name      := "p384_point_valid"
+  fnHead    := ``p384_point_valid
+  arity     := 1
+  towerType := .TU64
+  argTypes  := some [p384PointTowerType]
 
 /-! ## 4. Slot constructors
 
