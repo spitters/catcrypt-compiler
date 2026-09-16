@@ -1,0 +1,45 @@
+# Registry read by scripts/hypothesis-instance-gate.sh.
+#
+# One row per (theorem, side condition, shipped instance). A row says: this
+# hypothesis of this theorem is decidable on a fixed program, the evaluator
+# `scripts/vacuity/HypothesisInstanceProbe.lean` counts how many bindings of this
+# instance satisfy it, and this is what the count is allowed to be.
+#
+# Columns, tab-separated:
+#   1 theorem     fully qualified name of the conditional theorem
+#   2 hypothesis  the evaluator's key for the side condition
+#   3 instance    fully qualified name of the shipped program it is evaluated over
+#   4 policy      require | route:<group> | report
+#   5 domain      the finite domain the evaluation ranges over, and why it is finite
+#
+# Policies:
+#   require        the count must be greater than zero. A zero means the theorem
+#                  names a situation no shipped program is in.
+#   route:<group>  one alternative of a set. At least one row of the group, for
+#                  that theorem and instance, must be greater than zero; a group
+#                  all of whose rows are zero fails the same way `require` does.
+#                  A single zero row inside a live group is printed, not failed:
+#                  it records a condition that has stopped carrying any binding.
+#   report         measured and printed; decides nothing.
+#
+# A row whose instance the evaluator does not measure fails (the registry and the
+# evaluator have drifted). A measurement with no row fails the same way. A row
+# that must be allowed to measure zero is recorded, with its reason, in
+# scripts/vacuity/hypothesis-instance-exclude.txt.
+#
+# theorem	hypothesis	instance	policy	domain
+CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulMulCarrySel.toLprogPhysAbi_faithful_uniformMCS	hcol	CatCrypt.Crypto.SecureCompilation.Algebraic.Ed25519PointAdd.pointAddCom	route:arm	one string equality per regArith binop head of bindingHeads
+CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulMulCarrySel.toLprogPhysAbi_faithful_uniformMCS	mov_arm	CatCrypt.Crypto.SecureCompilation.Algebraic.Ed25519PointAdd.pointAddCom	route:arm	three comparisons per regArith binop head of bindingHeads
+CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulMulCarrySel.toLprogPhysAbi_faithful_uniformMCS	cover_arm	CatCrypt.Crypto.SecureCompilation.Algebraic.Ed25519PointAdd.pointAddCom	require	per head: the conjunction of the arm conditions, the width tag and hinj
+CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulMulCarrySel.toLprogPhysAbi_faithful_uniformMCS	hinj	CatCrypt.Crypto.SecureCompilation.Algebraic.Ed25519PointAdd.pointAddCom	report	bodyNames plus one absent name; physRename factors through nameSlot
+CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulMulCarrySel.toLprogPhysAbi_faithful_uniformMCS	hwidth64	CatCrypt.Crypto.SecureCompilation.Algebraic.Ed25519PointAdd.pointAddCom	report	one suffix test per head
+CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulMulCarrySel.toLprogPhysAbi_faithful_uniformMCS	hcol	CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath.fieldAddCom	route:arm	one string equality per regArith binop head of bindingHeads
+CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulMulCarrySel.toLprogPhysAbi_faithful_uniformMCS	mov_arm	CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath.fieldAddCom	route:arm	three comparisons per regArith binop head of bindingHeads
+CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulMulCarrySel.toLprogPhysAbi_faithful_uniformMCS	cover_arm	CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath.fieldAddCom	require	per head: the conjunction of the arm conditions, the width tag and hinj
+CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulMulCarrySel.toLprogPhysAbi_faithful_uniformMCS	hinj	CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath.fieldAddCom	report	bodyNames plus one absent name; physRename factors through nameSlot
+CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulMulCarrySel.toLprogPhysAbi_faithful_uniformMCS	hwidth64	CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath.fieldAddCom	report	one suffix test per head
+CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulMulCarrySel.toLprogPhysAbi_faithful_uniformMCS	hcol	CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath.fieldCondSub251Com	route:arm	one string equality per regArith binop head of bindingHeads
+CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulMulCarrySel.toLprogPhysAbi_faithful_uniformMCS	mov_arm	CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath.fieldCondSub251Com	route:arm	three comparisons per regArith binop head of bindingHeads
+CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulMulCarrySel.toLprogPhysAbi_faithful_uniformMCS	cover_arm	CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath.fieldCondSub251Com	require	per head: the conjunction of the arm conditions, the width tag and hinj
+CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulMulCarrySel.toLprogPhysAbi_faithful_uniformMCS	hinj	CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath.fieldCondSub251Com	report	bodyNames plus one absent name; physRename factors through nameSlot
+CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulMulCarrySel.toLprogPhysAbi_faithful_uniformMCS	hwidth64	CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath.fieldCondSub251Com	report	one suffix test per head

@@ -1,0 +1,15 @@
+# Rows of scripts/vacuity/hypothesis-instances.tsv allowed to measure zero.
+#
+# A `require` row or a `route:<group>` group that measures zero fails the gate:
+# the theorem's hypothesis holds for no binding of a program the tree ships, so
+# the theorem covers nothing that is emitted. Recording the row here suppresses
+# that failure and states why the zero is the intended reading — that the
+# theorem's scope is smaller than the instance, with the wider statement tracked
+# somewhere a reader will meet it.
+#
+# One row per line, tab-separated:
+#   <theorem>	<hypothesis>	<instance>	<reason>
+#
+# An entry whose theorem, hypothesis and instance do not all appear in the
+# registry fails the gate, so a row deleted from the registry cannot leave a
+# stale excuse behind.
