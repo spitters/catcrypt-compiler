@@ -106,6 +106,11 @@ Frame layout:
 - `X86Backend/LprogBytes.lean`: `carriesNoBytes` accepts `FRAMEADD`. A
   `FRAME`-carrying body is not byte-encodable today, so a rolled kernel that
   requested buffers through `FRAME` would silently lose its byte export.
+- `X86Backend/LprogAsmPrinter.lean` also gains `frameAddVecOverlap` and the
+  `# UNHANDLED-FRAMEADD-VECSPILL` sentinel: `FRAMEADD` buffers and the `kv.N`
+  vector-spill region share the bottom anchor, and only the printer sees both,
+  since `kv.N` slots do not exist until after register allocation. Inert for
+  every existing body.
 
 Route dispatcher:
 
