@@ -38,22 +38,27 @@ register renaming of one body.
   structure `BinopMovBinding` requires `ρ nDst ≠ ρ nS0`, `nSrc ≠ nDst`, and that
   the leading move does not place two spill slots in one instruction
   (`LOperand.isSpill`). All three are computations on the head.
-* `hinj`: the `inj` row measures the all-names form
-  `∀ m, ρ m = ρ nDst → m = nDst`. It is decidable on a fixed program because `ρ`
-  factors through `nameSlot body`, whose range is `{0, …, (bodyNames body).length}`
-  and whose last value is the image of every name the body does not mention, so
-  checking `bodyNames body` together with one name absent from it decides the
-  quantifier. That form holds at no binding of a shipped kernel: the sentinel
-  fibre alone refutes it, and a slot-reducing allocation shares a register across
-  names with disjoint live ranges.
+* `hinj`, in two rows. The binding structures of the fragment carry the
+  live-scoped condition `∀ m ∈ Lout, ρ m = ρ nDst → m = nDst`, over the names
+  live after the binding. `Lout` is a carried list, so the measurement fixes it
+  to the liveness the exporter's own allocator works against: a name is live
+  after the head at trace position `pos` when its slot's `physLiveRange` in
+  `bodyTrace body` satisfies `st ≤ pos < en`. The `hinj_live` row counts the
+  heads where the only live-after name on the destination's register is the
+  destination.
 
-  The binding structures of the fragment carry instead a live-set-scoped
-  condition `∀ m ∈ Lout, ρ m = ρ nDst → m = nDst`, over the names live after the
-  binding, together with a carry condition relating the live sets. Those are the
-  interference conditions at one program point, and the all-names row below is
-  therefore stricter than what the theorems require. Measuring the live-scoped
-  form needs the per-binding live sets, which this evaluator does not compute;
-  the `inj` row is kept as the stricter measurement it has always been.
+  The `hinj` row counts the all-names form `∀ m, ρ m = ρ nDst → m = nDst`,
+  decidable because `ρ` factors through `nameSlot body`, whose range is
+  `{0, …, (bodyNames body).length}` and whose last value is the image of every
+  name the body does not mention, so checking `bodyNames body` together with one
+  absent name decides the quantifier. No shipped kernel satisfies it: the
+  sentinel fibre alone refutes it, and a slot-reducing allocation shares a
+  register across names with disjoint live ranges. It is kept as the stricter
+  measurement, and `cover_arm` uses the live-scoped form, which is the one the
+  theorems carry.
+
+  The companion carry condition `∀ m ∈ Lout, m ≠ nDst → m ∈ Lin` relates
+  consecutive live sets rather than the allocation, and no row measures it.
 * The cover fixes one width for the whole binding list, and the exporter targets a
   64-bit state, so a head whose mnemonic carries no `:64` tag is outside the
   binding list the cover data ranges over. `hwidth64` counts the tagged heads.
@@ -136,14 +141,22 @@ structure HeadFacts where
       leading move carries at most one spill operand. -/
   movArm : Bool
   /-- The destination is the only name the renaming sends to its physical
-      register (the `hinj` every binding structure carries). -/
+      register, over every name of the body. -/
   inj : Bool
+  /-- The destination is the only name live after this head that the renaming
+      sends to its physical register (the `hinj` the binding structures carry,
+      at the live-out set the allocator works against). -/
+  injLive : Bool
 
 /-- The facts of one head, against the body's renaming. `imgs` is the list of
-    `ρ`-images of the body's names and `freshImg` the image of a name the body
-    does not mention. -/
+    `ρ`-images of the body's names, `freshImg` the image of a name the body does
+    not mention, and `groups` sends a physical register to the names the renaming
+    places there, each with its live range. `hd` pairs the head with its position
+    in `bodyTrace body`, the index those ranges are measured against. -/
 def factsOf (body : Lcmd) (tbl : Array Nat) (imgs : List String) (freshImg : String)
-    (i : Linstr) : Option HeadFacts := do
+    (groups : Std.HashMap String (List (String × Nat × Nat)))
+    (hd : Nat × Linstr) : Option HeadFacts := do
+  let (pos, i) := hd
   let opn ← opnOf i
   let dst ← dstOf i
   let base := stripWidthTag opn
@@ -165,7 +178,9 @@ def factsOf (body : Lcmd) (tbl : Array Nat) (imgs : List String) (freshImg : Str
            tagged := hasSuffix opn ":64"
            collapse := collapse
            movArm := movArm
-           inj := imgs.countP (fun p => p == pdst) == 1 && pdst != freshImg }
+           inj := imgs.countP (fun p => p == pdst) == 1 && pdst != freshImg
+           injLive := (groups.getD pdst []).all (fun q =>
+             q.1 == dst || !(q.2.1 ≤ pos && pos < q.2.2)) }
 
 /-- The binding-head list of a `Com` at the parameters `comToLfundef` exports it
     with: `nArgs = Γ.length` arguments named by `argName`, no immediate map, and
@@ -192,7 +207,28 @@ def measure {Γ : Ctxt jasminDialect} {t : JasminTy}
   let fresh := if names.contains "?absent" then "?absent'" else "?absent"
   let imgs := names.map (physRename body tbl)
   let freshImg := physRename body tbl fresh
-  let facts := body.filterMap (factsOf body tbl imgs freshImg)
+  let tr := bodyTrace body
+  -- The live range of every slot, in one pass, indexed for lookup by slot.
+  let rangeArr : Array (Nat × Nat) := Id.run do
+    let mut a : Array (Nat × Nat) := Array.replicate (names.length + 2) (0, 0)
+    for r in (physLiveData tr).1 do
+      if r.1 < a.size then a := a.set! r.1 (r.2.1, r.2.2)
+    return a
+  -- The names the renaming places on each physical register, with their ranges.
+  let groups : Std.HashMap String (List (String × Nat × Nat)) :=
+    names.foldl (fun acc n =>
+      let s := nameSlot body n
+      let r := if s < rangeArr.size then rangeArr[s]! else (0, 0)
+      let img := physRename body tbl n
+      acc.insert img ((n, r.1, r.2) :: acc.getD img [])) {}
+  -- A head's position is its position in `bodyTrace`, which keeps one event per
+  -- `Lopn` and drops every other instruction.
+  let indexed : List (Nat × Linstr) :=
+    (body.foldl (fun (acc : List (Nat × Linstr) × Nat) i =>
+      match i.li_i with
+      | .Lopn _ _ _ => ((acc.2, i) :: acc.1, acc.2 + 1)
+      | _ => acc) ([], 0)).1.reverse
+  let facts := indexed.filterMap (factsOf body tbl imgs freshImg groups)
   let binops := facts.filter (·.isBinop)
   let heads := facts.length
   -- The arms of `CoverDataMCS` a binding can be built by, as far as the
@@ -201,9 +237,10 @@ def measure {Γ : Ctxt jasminDialect} {t : JasminTy}
   result inst "hcol" (binops.countP (·.collapse)) binops.length
   result inst "mov_arm" (binops.countP (·.movArm)) binops.length
   result inst "hinj" (facts.countP (·.inj)) heads
+  result inst "hinj_live" (facts.countP (·.injLive)) heads
   result inst "hwidth64" (facts.countP (·.tagged)) heads
   result inst "cover_arm"
-    (facts.countP (fun f => f.inFragment && f.tagged && f.inj
+    (facts.countP (fun f => f.inFragment && f.tagged && f.injLive
       && (!f.isBinop || f.collapse || f.movArm))) heads
   info inst "names" (toString names.length)
   info inst "heads" (toString heads)

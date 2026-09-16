@@ -794,6 +794,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.SpeculativeCTPreservation
 CatCrypt.Crypto.SecureCompilation.X86Backend.StackZeroize
 CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulAssembled
 CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulRA
+CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulRAInterference
 CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulTwoAddr
 CatCrypt.Crypto.SecureCompilation.X86Backend.TreehashChainEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.ValidateLowering
