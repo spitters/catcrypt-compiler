@@ -54,7 +54,7 @@ PROVED (against the literal `physBody`, zero `sorry`):
   of `comToLprog_faithful_straightline` over the *emitter's actual output*,
   modulo the cover hypothesis below.
 
-## Residual (named honestly — NOT proved here)
+## Residual (NOT proved here)
 
 * **The cover hypothesis `hcover`.** This module proves the `flatMap` identity
   *given* that each source instruction is in the binop two-address-collapse shape
@@ -283,13 +283,16 @@ output. -/
 theorem physBody_lsem_result {w : Nat} (body : Lcmd)
     (bs : List (BinopBinding w body (bodyPhysTable body)))
     (hcover : BodyCover body (bodyPhysTable body) body bs)
+    (L N : List String)
+    (hch : Chained (bs.map (fun b => (b.Lin, b.Lout))) L N)
     (s s' : Lstate w)
-    (hrel : StoreRel body (bodyPhysTable body) s s') (nRes : String) :
+    (hrel : StoreRel body (bodyPhysTable body) L s s')
+    (nRes : String) (hnRes : nRes ∈ N) :
     ∃ s'', lsemStraight ((physBody (fun _ => none) body).map (·.li_i)) s' = some s''
       ∧ s''.lvm (physRename body (bodyPhysTable body) nRes)
           = (composeVSteps (bs.map (fun b => (b.block, b.vstep))) s).lvm nRes := by
   rw [physBody_map_li_i body bs hcover]
-  exact binopBody_lsem_result body (bodyPhysTable body) bs s s' hrel nRes
+  exact binopBody_lsem_result body (bodyPhysTable body) bs L N hch s s' hrel nRes hnRes
 
 /-- **General physical faithfulness as an `Option.map`.** The `Option.map (read at
     ρ nRes)` of the literal-`physBody` run equals `some` of the composed virtual
@@ -298,12 +301,16 @@ theorem physBody_lsem_result {w : Nat} (body : Lcmd)
 theorem physBody_lsem_result_map {w : Nat} (body : Lcmd)
     (bs : List (BinopBinding w body (bodyPhysTable body)))
     (hcover : BodyCover body (bodyPhysTable body) body bs)
+    (L N : List String)
+    (hch : Chained (bs.map (fun b => (b.Lin, b.Lout))) L N)
     (s s' : Lstate w)
-    (hrel : StoreRel body (bodyPhysTable body) s s') (nRes : String) :
+    (hrel : StoreRel body (bodyPhysTable body) L s s')
+    (nRes : String) (hnRes : nRes ∈ N) :
     (lsemStraight ((physBody (fun _ => none) body).map (·.li_i)) s').map
         (fun st => st.lvm (physRename body (bodyPhysTable body) nRes))
       = some ((composeVSteps (bs.map (fun b => (b.block, b.vstep))) s).lvm nRes) := by
-  obtain ⟨s'', hrun, hread⟩ := physBody_lsem_result body bs hcover s s' hrel nRes
+  obtain ⟨s'', hrun, hread⟩ :=
+    physBody_lsem_result body bs hcover L N hch s s' hrel nRes hnRes
   rw [hrun, Option.map_some, hread]
 
 /-! ## 4. A three-binding cover instance
@@ -311,7 +318,7 @@ theorem physBody_lsem_result_map {w : Nat} (body : Lcmd)
 To exhibit `BodyCover` as inhabitable (not a vacuous hypothesis), we build a
 three-element cover from three per-instruction realization witnesses and route a
 three-binop body through `physBody_lsem_result`. The realization witnesses
-(`InstrRealizesBinding`) carry the genuine per-instruction shape obligations — we
+(`InstrRealizesBinding`) carry the per-instruction shape obligations — we
 do not fabricate them; the *instance content* is that the inductive `BodyCover`
 constructor composes them and the general theorem fires on a three-binding body. -/
 
@@ -339,12 +346,15 @@ theorem physBody_lsem_result_three {w : Nat}
     (h0 : InstrRealizesBinding [i0, i1, i2] (bodyPhysTable [i0, i1, i2]) i0 b0)
     (h1 : InstrRealizesBinding [i0, i1, i2] (bodyPhysTable [i0, i1, i2]) i1 b1)
     (h2 : InstrRealizesBinding [i0, i1, i2] (bodyPhysTable [i0, i1, i2]) i2 b2)
+    (L N : List String)
+    (hch : Chained ([b0, b1, b2].map (fun b => (b.Lin, b.Lout))) L N)
     (s s' : Lstate w)
-    (hrel : StoreRel [i0, i1, i2] (bodyPhysTable [i0, i1, i2]) s s') (nRes : String) :
+    (hrel : StoreRel [i0, i1, i2] (bodyPhysTable [i0, i1, i2]) L s s')
+    (nRes : String) (hnRes : nRes ∈ N) :
     ∃ s'', lsemStraight ((physBody (fun _ => none) [i0, i1, i2]).map (·.li_i)) s' = some s''
       ∧ s''.lvm (physRename [i0, i1, i2] (bodyPhysTable [i0, i1, i2]) nRes)
           = (composeVSteps ([b0, b1, b2].map (fun b => (b.block, b.vstep))) s).lvm nRes :=
   physBody_lsem_result [i0, i1, i2] [b0, b1, b2]
-    (bodyCover_three [i0, i1, i2] i0 i1 i2 b0 b1 b2 h0 h1 h2) s s' hrel nRes
+    (bodyCover_three [i0, i1, i2] i0 i1 i2 b0 b1 b2 h0 h1 h2) L N hch s s' hrel nRes hnRes
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulFlatMap

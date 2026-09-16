@@ -320,7 +320,7 @@ whose physical result register reads the composed virtual store — with the
 argument-materialization piece *proved* and the body piece reduced to
 `physBody_lsem_result_uniform`. The prologue/`Lret` framing and the full
 `Com.denote` tie (which the body theorem states via `composeVSteps`) remain as
-the stated hypotheses, honestly outside the modeled fragment. -/
+the stated hypotheses, outside the modeled fragment. -/
 
 /-- **Whole-function composition (materialization ++ body), with the honest
     framing.** From a start state `s'`, run the argument-materialization sequence
@@ -347,9 +347,12 @@ theorem toLprogPhysAbi_lsem_goal {w : Nat} (body : Lcmd) (nArgs d : Nat)
     (hbody : body = bindingHeads nArgs argName (fun _ => none) com d)
     (hcd : CoverData body (bodyPhysTable body) nArgs com d bs)
     (_hmemref : MemrefPtrsDistinct body (bodyPhysTable body))
+    (L N : List String)
+    (hch : Chained (bs.map (fun b => (b.Lin, b.Lout))) L N)
     (s s' : Lstate w)
     (hrel : ∀ sMat, lsemStraight (argMatSeq pairs) s' = some sMat →
-      StoreRel body (bodyPhysTable body) s sMat) (nRes : String) :
+      StoreRel body (bodyPhysTable body) L s sMat)
+    (nRes : String) (hnRes : nRes ∈ N) :
     ∃ sMat s'',
       lsemStraight (argMatSeq pairs) s' = some sMat
       ∧ lsemStraight ((physBody (fun _ => none) body).map (·.li_i)) sMat = some s''
@@ -357,11 +360,12 @@ theorem toLprogPhysAbi_lsem_goal {w : Nat} (body : Lcmd) (nArgs d : Nat)
           = (composeVSteps (bs.map (fun b => (b.block, b.vstep))) s).lvm nRes := by
   -- materialization runs to some `sMat` (we only need that it terminates here)
   obtain ⟨sMat, hrunMat, _⟩ := argMatSeq_reads pairs hfresh hdist s'
-  -- the body precondition `StoreRel s sMat` is supplied by `hrel`
-  have hrelMat : StoreRel body (bodyPhysTable body) s sMat := hrel sMat hrunMat
+  -- the body precondition `StoreRel` at the entry live set is supplied by `hrel`
+  have hrelMat : StoreRel body (bodyPhysTable body) L s sMat := hrel sMat hrunMat
   -- the body run is the proved n-ary body theorem
   obtain ⟨s'', hrunBody, hread⟩ :=
-    physBody_lsem_result_uniform body nArgs d com bs hbody hcd s sMat hrelMat nRes
+    physBody_lsem_result_uniform body nArgs d com bs hbody hcd L N hch s sMat hrelMat
+      nRes hnRes
   exact ⟨sMat, s'', hrunMat, hrunBody, hread⟩
 
 /-! ## 6. The whole-function theorem over `lsemRun`
@@ -423,6 +427,8 @@ theorem toLprogPhysAbi_lsem {w : Nat} (body : Lcmd) (nArgs d : Nat)
     (hbody : body = bindingHeads nArgs argName (fun _ => none) com d)
     (hcd : CoverData body (bodyPhysTable body) nArgs com d bs)
     (_hmemref : MemrefPtrsDistinct body (bodyPhysTable body))
+    (L N : List String)
+    (hch : Chained (bs.map (fun b => (b.Lin, b.Lout))) L N)
     (sEntry s : Lstate w)
     -- (a) the body prefix is `Lret`-free, so `lsemRun` peels the trailing `Lret`.
     (hbodyNoLret : .Lret ∉
@@ -433,7 +439,8 @@ theorem toLprogPhysAbi_lsem {w : Nat} (body : Lcmd) (nArgs d : Nat)
     -- (d) the post-materialization body precondition (the prologue/materialization
     --     establish it; the per-argument component is `argMat_establishes_argRegs`).
     (hrel : ∀ sMat, lsemStraight (argMatSeq pairs) sProlog = some sMat →
-      StoreRel body (bodyPhysTable body) s sMat) (nRes : String) :
+      StoreRel body (bodyPhysTable body) L s sMat)
+    (nRes : String) (hnRes : nRes ∈ N) :
     ∃ sEnd,
       lsemRun
         (prologue ++ argMatSeq pairs ++ (physBody (fun _ => none) body).map (·.li_i)
@@ -451,11 +458,12 @@ theorem toLprogPhysAbi_lsem {w : Nat} (body : Lcmd) (nArgs d : Nat)
   obtain ⟨sMat, hrunMat, _⟩ := argMatSeq_reads pairs hfresh hdist sProlog
   rw [hrunMat]
   simp only [Option.bind_some]
-  -- the body precondition `StoreRel s sMat` is supplied by `hrel`.
-  have hrelMat : StoreRel body (bodyPhysTable body) s sMat := hrel sMat hrunMat
+  -- the body precondition `StoreRel` at the entry live set is supplied by `hrel`.
+  have hrelMat : StoreRel body (bodyPhysTable body) L s sMat := hrel sMat hrunMat
   -- (d) the body run is the proved n-ary body theorem.
   obtain ⟨sEnd, hrunBody, hread⟩ :=
-    physBody_lsem_result_uniform body nArgs d com bs hbody hcd s sMat hrelMat nRes
+    physBody_lsem_result_uniform body nArgs d com bs hbody hcd L N hch s sMat hrelMat
+      nRes hnRes
   exact ⟨sEnd, hrunBody, hread⟩
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulWholeFn

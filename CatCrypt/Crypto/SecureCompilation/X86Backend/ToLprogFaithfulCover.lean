@@ -27,8 +27,8 @@ A `regArith bop w` binding emits, under `comToBody … curDepth`, the literal he
   `⟨0, .Lopn [.reg (regName curDepth)] (withWidthTag w (binOpName bop))
         [resolveVar … a0, resolveVar … a1]⟩`
 
-(`comToBody_var_head`/`comToBody_var_head_eq`, both by `rfl` — the genuine
-de-Bruijn structural identification). Under the trivial (no-constant) immediate
+(`comToBody_var_head`/`comToBody_var_head_eq`, both by `rfl` — the de-Bruijn
+structural identification). Under the trivial (no-constant) immediate
 map both operands resolve to *registers* (`resolveVar_eq_reg`), so the head is
 exactly `regArithHead`. `regArithHead_realizes` then shows this head **realises**
 (`InstrRealizesBinding`) any `BinopBinding b` whose logical destination is
@@ -302,14 +302,17 @@ theorem physBody_lsem_result_single {w : Nat} (body : Lcmd)
     (hcol : physRename body (bodyPhysTable body)
         (resolveVarName curDepth nArgs a0)
       = physRename body (bodyPhysTable body) (regName curDepth))
+    (L N : List String)
+    (hch : Chained ([b].map (fun b => (b.Lin, b.Lout))) L N)
     (s s' : Lstate w)
-    (hrel : StoreRel body (bodyPhysTable body) s s') (nRes : String) :
+    (hrel : StoreRel body (bodyPhysTable body) L s s')
+    (nRes : String) (hnRes : nRes ∈ N) :
     ∃ s'', lsemStraight ((physBody (fun _ => none) body).map (·.li_i)) s' = some s''
       ∧ s''.lvm (physRename body (bodyPhysTable body) nRes)
           = (composeVSteps ([b].map (fun b => (b.block, b.vstep))) s).lvm nRes :=
   physBody_lsem_result body [b]
     (bodyCover_single body nArgs curDepth bop w hw hns a0 a1 b hbody hdst hopn hsrc hcol)
-    s s' hrel nRes
+    L N hch s s' hrel nRes hnRes
 
 /-- **Two-binop body cover, constructed.** A body that *is* two `regArithHead`s
     (the binop fragment of a two-binding `UniformRegArith` `Com`) has its cover
@@ -367,14 +370,17 @@ theorem physBody_lsem_result_two {w : Nat} (body : Lcmd)
     (hsrc1 : b1.nSrc = resolveVarName d1 nArgs c1)
     (hcol1 : physRename body (bodyPhysTable body) (resolveVarName d1 nArgs c0)
       = physRename body (bodyPhysTable body) (regName d1))
+    (L N : List String)
+    (hch : Chained ([b0, b1].map (fun b => (b.Lin, b.Lout))) L N)
     (s s' : Lstate w)
-    (hrel : StoreRel body (bodyPhysTable body) s s') (nRes : String) :
+    (hrel : StoreRel body (bodyPhysTable body) L s s')
+    (nRes : String) (hnRes : nRes ∈ N) :
     ∃ s'', lsemStraight ((physBody (fun _ => none) body).map (·.li_i)) s' = some s''
       ∧ s''.lvm (physRename body (bodyPhysTable body) nRes)
           = (composeVSteps ([b0, b1].map (fun b => (b.block, b.vstep))) s).lvm nRes :=
   physBody_lsem_result body [b0, b1]
     (bodyCover_two body nArgs d0 d1 bop0 bop1 w hw hns0 hns1 a0 a1 c0 c1 b0 b1 hbody
       hdst0 hopn0 hsrc0 hcol0 hdst1 hopn1 hsrc1 hcol1)
-    s s' hrel nRes
+    L N hch s s' hrel nRes hnRes
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulCover

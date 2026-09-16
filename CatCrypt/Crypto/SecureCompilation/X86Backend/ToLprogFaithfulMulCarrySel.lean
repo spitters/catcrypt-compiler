@@ -26,9 +26,9 @@ two-address `isBinop` alphabet, is a native shift or rotate, or is a memory
 load or store, so each takes the general `physBodyElem` arm: every operand is
 renamed by `remapOperand` and the single instruction is emitted unchanged. There
 is no injected legalization move, hence no leading two-address `mov` and no
-two-address collapse obligation `hcol` on the register allocation — the only
-allocator obligation is the destination injectivity `hinj` that every binding
-kind carries.
+two-address collapse obligation `hcol` on the register allocation — the
+allocator obligations are the live-out interference condition `hinj` and the
+carry condition `hcarry` that every binding kind carries.
 
 `JasminLsem.applyOpn` models all four opcodes and ties each to the dialect
 denotation it lowers from (`applyOpn_mulhi`, `applyOpn_addCarryLo`,
@@ -214,41 +214,47 @@ theorem lsemStep_src3 {w : Nat} (nD nA nB nC opn : String) (s : Lstate w) (v : B
     `s ↦ s.setReg nDst (vval s)`, given the modeled-opcode premise `hop` at every
     virtual store and the destination injectivity `hinj`. -/
 theorem remapBlockMaintains2 {w : Nat} (body : Lcmd) (tbl : Array Nat)
+    (Lin Lout : List String)
     (nDst nA nB opn : String) (vval : Lstate w → BitVec w)
-    (hinj : ∀ m, physRename body tbl m = physRename body tbl nDst → m = nDst)
+    (hAIn : nA ∈ Lin) (hBIn : nB ∈ Lin)
+    (hinj : ∀ m ∈ Lout, physRename body tbl m = physRename body tbl nDst → m = nDst)
+    (hcarry : ∀ m ∈ Lout, m ≠ nDst → m ∈ Lin)
     (hop : ∀ s : Lstate w, applyOpn (stripWidthTag opn) [s.lvm nA, s.lvm nB] = some (vval s)) :
-    BlockMaintains body tbl
+    BlockMaintains body tbl Lin Lout
       [.Lopn [.reg (physRename body tbl nDst)] opn
         [.reg (physRename body tbl nA), .reg (physRename body tbl nB)]]
       (fun s => s.setReg nDst (vval s)) := by
   intro s s' hrel
   have hop' : applyOpn (stripWidthTag opn)
       [s'.lvm (physRename body tbl nA), s'.lvm (physRename body tbl nB)] = some (vval s) := by
-    rw [hrel nA, hrel nB]; exact hop s
+    rw [hrel nA hAIn, hrel nB hBIn]; exact hop s
   refine ⟨(s'.setReg (physRename body tbl nDst) (vval s)).nextPc, ?_, ?_⟩
   · rw [lsemStraight_cons,
       lsemStep_src2 (physRename body tbl nDst) (physRename body tbl nA)
         (physRename body tbl nB) opn s' (vval s) hop']
     rfl
-  · intro m
+  · intro m hmL
     by_cases hm : physRename body tbl m = physRename body tbl nDst
-    · have hmd : m = nDst := hinj m hm
+    · have hmd : m = nDst := hinj m hmL hm
       subst hmd
       simp
     · have hmne : m ≠ nDst := fun he => hm (by rw [he])
       simp only [Lstate.lvm_nextPc, Lstate.lvm_setReg, if_neg hm, if_neg hmne]
-      exact hrel m
+      exact hrel m (hcarry m hmL hmne)
 
 /-- **Maintenance of a three-source single-instruction binding.** The renamed
     instruction `opn ρ nDst, ρ nA, ρ nB, ρ nC` re-establishes `StoreRel` against
     `s ↦ s.setReg nDst (vval s)`, given the modeled-opcode premise `hop` at every
     virtual store and the destination injectivity `hinj`. -/
 theorem remapBlockMaintains3 {w : Nat} (body : Lcmd) (tbl : Array Nat)
+    (Lin Lout : List String)
     (nDst nA nB nC opn : String) (vval : Lstate w → BitVec w)
-    (hinj : ∀ m, physRename body tbl m = physRename body tbl nDst → m = nDst)
+    (hAIn : nA ∈ Lin) (hBIn : nB ∈ Lin) (hCIn : nC ∈ Lin)
+    (hinj : ∀ m ∈ Lout, physRename body tbl m = physRename body tbl nDst → m = nDst)
+    (hcarry : ∀ m ∈ Lout, m ≠ nDst → m ∈ Lin)
     (hop : ∀ s : Lstate w,
       applyOpn (stripWidthTag opn) [s.lvm nA, s.lvm nB, s.lvm nC] = some (vval s)) :
-    BlockMaintains body tbl
+    BlockMaintains body tbl Lin Lout
       [.Lopn [.reg (physRename body tbl nDst)] opn
         [.reg (physRename body tbl nA), .reg (physRename body tbl nB),
          .reg (physRename body tbl nC)]]
@@ -257,20 +263,20 @@ theorem remapBlockMaintains3 {w : Nat} (body : Lcmd) (tbl : Array Nat)
   have hop' : applyOpn (stripWidthTag opn)
       [s'.lvm (physRename body tbl nA), s'.lvm (physRename body tbl nB),
        s'.lvm (physRename body tbl nC)] = some (vval s) := by
-    rw [hrel nA, hrel nB, hrel nC]; exact hop s
+    rw [hrel nA hAIn, hrel nB hBIn, hrel nC hCIn]; exact hop s
   refine ⟨(s'.setReg (physRename body tbl nDst) (vval s)).nextPc, ?_, ?_⟩
   · rw [lsemStraight_cons,
       lsemStep_src3 (physRename body tbl nDst) (physRename body tbl nA)
         (physRename body tbl nB) (physRename body tbl nC) opn s' (vval s) hop']
     rfl
-  · intro m
+  · intro m hmL
     by_cases hm : physRename body tbl m = physRename body tbl nDst
-    · have hmd : m = nDst := hinj m hm
+    · have hmd : m = nDst := hinj m hmL hm
       subst hmd
       simp
     · have hmne : m ≠ nDst := fun he => hm (by rw [he])
       simp only [Lstate.lvm_nextPc, Lstate.lvm_setReg, if_neg hm, if_neg hmne]
-      exact hrel m
+      exact hrel m (hcarry m hmL hmne)
 
 /-! ## 3. The three binding kinds -/
 
@@ -282,7 +288,20 @@ structure MulHiBinding (w : Nat) (body : Lcmd) (tbl : Array Nat) where
   nDst : String
   nA : String
   nB : String
-  hinj : ∀ m, physRename body tbl m = physRename body tbl nDst → m = nDst
+  /-- The logical names live before the binding. -/
+  Lin : List String
+  /-- The logical names live after the binding. -/
+  Lout : List String
+  /-- The binding reads its first operand. -/
+  hAIn : nA ∈ Lin
+  /-- The binding reads its second operand. -/
+  hBIn : nB ∈ Lin
+  /-- No other name live after the binding shares the destination's physical
+      register. -/
+  hinj : ∀ m ∈ Lout, physRename body tbl m = physRename body tbl nDst → m = nDst
+  /-- Every name live after the binding other than its destination was already
+      live before it. -/
+  hcarry : ∀ m ∈ Lout, m ≠ nDst → m ∈ Lin
 
 /-- The physical block of a `mulhi` binding: `MULXHI ρ nDst, ρ nA, ρ nB` at
     width `w`. -/
@@ -300,9 +319,10 @@ def MulHiBinding.vstep {w : Nat} {body : Lcmd} {tbl : Array Nat}
 /-- A `mulhi` binding's block re-establishes `StoreRel` against its virtual
     transformer. -/
 theorem MulHiBinding.maintains {w : Nat} {body : Lcmd} {tbl : Array Nat}
-    (b : MulHiBinding w body tbl) : BlockMaintains body tbl b.block b.vstep :=
-  remapBlockMaintains2 body tbl b.nDst b.nA b.nB (withWidthTag w "MULXHI")
-    (fun s => mulHiW (s.lvm b.nA) (s.lvm b.nB)) b.hinj
+    (b : MulHiBinding w body tbl) :
+    BlockMaintains body tbl b.Lin b.Lout b.block b.vstep :=
+  remapBlockMaintains2 body tbl b.Lin b.Lout b.nDst b.nA b.nB (withWidthTag w "MULXHI")
+    (fun s => mulHiW (s.lvm b.nA) (s.lvm b.nB)) b.hAIn b.hBIn b.hinj b.hcarry
     (fun s => by rw [stripWidthTag_withWidthTag_MULXHI]; exact applyOpn_mulhi _ _)
 
 /-- An `addCarryLo` binding along the renaming `physRename body tbl`: the logical
@@ -313,7 +333,22 @@ structure AddCarryLoBinding (w : Nat) (body : Lcmd) (tbl : Array Nat) where
   nA : String
   nB : String
   nC : String
-  hinj : ∀ m, physRename body tbl m = physRename body tbl nDst → m = nDst
+  /-- The logical names live before the binding. -/
+  Lin : List String
+  /-- The logical names live after the binding. -/
+  Lout : List String
+  /-- The binding reads its first addend. -/
+  hAIn : nA ∈ Lin
+  /-- The binding reads its second addend. -/
+  hBIn : nB ∈ Lin
+  /-- The binding reads its carry-in. -/
+  hCIn : nC ∈ Lin
+  /-- No other name live after the binding shares the destination's physical
+      register. -/
+  hinj : ∀ m ∈ Lout, physRename body tbl m = physRename body tbl nDst → m = nDst
+  /-- Every name live after the binding other than its destination was already
+      live before it. -/
+  hcarry : ∀ m ∈ Lout, m ≠ nDst → m ∈ Lin
 
 /-- The physical block of an `addCarryLo` binding: `ADCX ρ nDst, ρ nA, ρ nB,
     ρ nC` at width `w`. -/
@@ -333,10 +368,11 @@ def AddCarryLoBinding.vstep {w : Nat} {body : Lcmd} {tbl : Array Nat}
 /-- An `addCarryLo` binding's block re-establishes `StoreRel` against its virtual
     transformer. -/
 theorem AddCarryLoBinding.maintains {w : Nat} {body : Lcmd} {tbl : Array Nat}
-    (b : AddCarryLoBinding w body tbl) : BlockMaintains body tbl b.block b.vstep :=
-  remapBlockMaintains3 body tbl b.nDst b.nA b.nB b.nC (withWidthTag w "ADCX")
+    (b : AddCarryLoBinding w body tbl) :
+    BlockMaintains body tbl b.Lin b.Lout b.block b.vstep :=
+  remapBlockMaintains3 body tbl b.Lin b.Lout b.nDst b.nA b.nB b.nC (withWidthTag w "ADCX")
     (fun s => addCarryWord (s.lvm b.nA) (s.lvm b.nB) (BitVec.setWidth 1 (s.lvm b.nC)))
-    b.hinj
+    b.hAIn b.hBIn b.hCIn b.hinj b.hcarry
     (fun s => by rw [stripWidthTag_withWidthTag_ADCX]; exact applyOpn_addCarryLo _ _ _)
 
 /-- An `addCarryHi` binding along the renaming `physRename body tbl`: the logical
@@ -347,7 +383,22 @@ structure AddCarryHiBinding (w : Nat) (body : Lcmd) (tbl : Array Nat) where
   nA : String
   nB : String
   nC : String
-  hinj : ∀ m, physRename body tbl m = physRename body tbl nDst → m = nDst
+  /-- The logical names live before the binding. -/
+  Lin : List String
+  /-- The logical names live after the binding. -/
+  Lout : List String
+  /-- The binding reads its first addend. -/
+  hAIn : nA ∈ Lin
+  /-- The binding reads its second addend. -/
+  hBIn : nB ∈ Lin
+  /-- The binding reads its carry-in. -/
+  hCIn : nC ∈ Lin
+  /-- No other name live after the binding shares the destination's physical
+      register. -/
+  hinj : ∀ m ∈ Lout, physRename body tbl m = physRename body tbl nDst → m = nDst
+  /-- Every name live after the binding other than its destination was already
+      live before it. -/
+  hcarry : ∀ m ∈ Lout, m ≠ nDst → m ∈ Lin
 
 /-- The physical block of an `addCarryHi` binding: `ADCXHI ρ nDst, ρ nA, ρ nB,
     ρ nC` at width `w`. -/
@@ -367,11 +418,12 @@ def AddCarryHiBinding.vstep {w : Nat} {body : Lcmd} {tbl : Array Nat}
 /-- An `addCarryHi` binding's block re-establishes `StoreRel` against its virtual
     transformer. -/
 theorem AddCarryHiBinding.maintains {w : Nat} {body : Lcmd} {tbl : Array Nat}
-    (b : AddCarryHiBinding w body tbl) : BlockMaintains body tbl b.block b.vstep :=
-  remapBlockMaintains3 body tbl b.nDst b.nA b.nB b.nC (withWidthTag w "ADCXHI")
+    (b : AddCarryHiBinding w body tbl) :
+    BlockMaintains body tbl b.Lin b.Lout b.block b.vstep :=
+  remapBlockMaintains3 body tbl b.Lin b.Lout b.nDst b.nA b.nB b.nC (withWidthTag w "ADCXHI")
     (fun s => BitVec.setWidth w
       (carryOutBit (s.lvm b.nA) (s.lvm b.nB) (BitVec.setWidth 1 (s.lvm b.nC))))
-    b.hinj
+    b.hAIn b.hBIn b.hCIn b.hinj b.hcarry
     (fun s => by rw [stripWidthTag_withWidthTag_ADCXHI]; exact applyOpn_addCarryHi _ _ _)
 
 /-- A `select` binding along the renaming `physRename body tbl`: the logical
@@ -382,7 +434,22 @@ structure SelectBinding (w : Nat) (body : Lcmd) (tbl : Array Nat) where
   nCond : String
   nA : String
   nB : String
-  hinj : ∀ m, physRename body tbl m = physRename body tbl nDst → m = nDst
+  /-- The logical names live before the binding. -/
+  Lin : List String
+  /-- The logical names live after the binding. -/
+  Lout : List String
+  /-- The binding reads its condition. -/
+  hCondIn : nCond ∈ Lin
+  /-- The binding reads the word taken when the condition bit is one. -/
+  hAIn : nA ∈ Lin
+  /-- The binding reads the word taken when the condition bit is zero. -/
+  hBIn : nB ∈ Lin
+  /-- No other name live after the binding shares the destination's physical
+      register. -/
+  hinj : ∀ m ∈ Lout, physRename body tbl m = physRename body tbl nDst → m = nDst
+  /-- Every name live after the binding other than its destination was already
+      live before it. -/
+  hcarry : ∀ m ∈ Lout, m ≠ nDst → m ∈ Lin
 
 /-- The physical block of a `select` binding: `CMOV ρ nDst, ρ nCond, ρ nA,
     ρ nB` at width `w`. -/
@@ -402,10 +469,12 @@ def SelectBinding.vstep {w : Nat} {body : Lcmd} {tbl : Array Nat}
 /-- A `select` binding's block re-establishes `StoreRel` against its virtual
     transformer. -/
 theorem SelectBinding.maintains {w : Nat} {body : Lcmd} {tbl : Array Nat}
-    (b : SelectBinding w body tbl) : BlockMaintains body tbl b.block b.vstep :=
-  remapBlockMaintains3 body tbl b.nDst b.nCond b.nA b.nB (withWidthTag w "CMOV")
+    (b : SelectBinding w body tbl) :
+    BlockMaintains body tbl b.Lin b.Lout b.block b.vstep :=
+  remapBlockMaintains3 body tbl b.Lin b.Lout b.nDst b.nCond b.nA b.nB
+    (withWidthTag w "CMOV")
     (fun s => selectW (BitVec.setWidth 1 (s.lvm b.nCond)) (s.lvm b.nA) (s.lvm b.nB))
-    b.hinj
+    b.hCondIn b.hAIn b.hBIn b.hinj b.hcarry
     (fun s => by rw [stripWidthTag_withWidthTag_CMOV]; exact applyOpn_select _ _ _)
 
 /-! ## 4. The step of the `select` head
@@ -489,9 +558,34 @@ def MulCarryBinding.vstep {w : Nat} {body : Lcmd} {tbl : Array Nat} :
   | .addCarryHi c => c.vstep
   | .select c => c.vstep
 
-/-- Every binding's block is a `BlockMaintains` witness. -/
+/-- The logical names live before a binding. -/
+def MulCarryBinding.Lin {w : Nat} {body : Lcmd} {tbl : Array Nat} :
+    MulCarryBinding w body tbl → List String
+  | .arith b => b.Lin
+  | .binopWide b => b.Lin
+  | .binopMov b => b.Lin
+  | .binopMovWide b => b.Lin
+  | .mulhi m => m.Lin
+  | .addCarryLo c => c.Lin
+  | .addCarryHi c => c.Lin
+  | .select c => c.Lin
+
+/-- The logical names live after a binding. -/
+def MulCarryBinding.Lout {w : Nat} {body : Lcmd} {tbl : Array Nat} :
+    MulCarryBinding w body tbl → List String
+  | .arith b => b.Lout
+  | .binopWide b => b.Lout
+  | .binopMov b => b.Lout
+  | .binopMovWide b => b.Lout
+  | .mulhi m => m.Lout
+  | .addCarryLo c => c.Lout
+  | .addCarryHi c => c.Lout
+  | .select c => c.Lout
+
+/-- Every binding's block is a `BlockMaintains` witness across its live sets. -/
 theorem MulCarryBinding.maintains {w : Nat} {body : Lcmd} {tbl : Array Nat}
-    (b : MulCarryBinding w body tbl) : BlockMaintains body tbl b.block b.vstep := by
+    (b : MulCarryBinding w body tbl) :
+    BlockMaintains body tbl b.Lin b.Lout b.block b.vstep := by
   cases b with
   | arith b => exact b.maintains
   | binopWide b => exact b.maintains
@@ -534,18 +628,18 @@ theorem physBody_map_li_iMCS {w : Nat} (body : Lcmd)
 /-- Running the flattened block list of a binding list from a `StoreRel`-related
     start reads the composed virtual store at every renamed register. -/
 theorem mulCarryBody_lsem_result {w : Nat} (body : Lcmd) (tbl : Array Nat)
-    (bs : List (MulCarryBinding w body tbl)) (s s' : Lstate w)
-    (hrel : StoreRel body tbl s s') (nRes : String) :
+    (bs : List (MulCarryBinding w body tbl)) (L N : List String)
+    (hch : Chained (bs.map (fun b => (b.Lin, b.Lout))) L N)
+    (s s' : Lstate w)
+    (hrel : StoreRel body tbl L s s') (nRes : String) (hnRes : nRes ∈ N) :
     ∃ s'', lsemStraight ((bs.map (·.block)).flatten) s' = some s''
       ∧ s''.lvm (physRename body tbl nRes)
           = (composeVSteps (bs.map (fun b => (b.block, b.vstep))) s).lvm nRes := by
-  have hmaint : ∀ p ∈ bs.map (fun b => (b.block, b.vstep)),
-      BlockMaintains body tbl p.1 p.2 := by
-    intro p hp
-    obtain ⟨b, _, rfl⟩ := List.mem_map.mp hp
-    exact b.maintains
-  have hkey := physBlocks_storeRel_result body tbl
-    (bs.map (fun b => (b.block, b.vstep))) hmaint s s' hrel nRes
+  have hmaint : BlocksMaintain body tbl L N (bs.map (fun b => (b.block, b.vstep))) :=
+    blocksMaintain_of_chained body tbl bs N (·.Lin) (·.Lout) (·.block) (·.vstep)
+      L (fun b _ => b.maintains) hch
+  have hkey := physBlocks_storeRel_result body tbl L N
+    (bs.map (fun b => (b.block, b.vstep))) hmaint s s' hrel nRes hnRes
   have hreidx : ((bs.map (fun b => (b.block, b.vstep))).map Prod.fst) = bs.map (·.block) := by
     rw [List.map_map]; rfl
   rw [hreidx] at hkey
@@ -555,12 +649,15 @@ theorem mulCarryBody_lsem_result {w : Nat} (body : Lcmd) (tbl : Array Nat)
 theorem physBody_lsem_resultMCS {w : Nat} (body : Lcmd)
     (bs : List (MulCarryBinding w body (bodyPhysTable body)))
     (hcover : BodyCoverMCS body (bodyPhysTable body) body bs)
-    (s s' : Lstate w) (hrel : StoreRel body (bodyPhysTable body) s s') (nRes : String) :
+    (L N : List String)
+    (hch : Chained (bs.map (fun b => (b.Lin, b.Lout))) L N)
+    (s s' : Lstate w) (hrel : StoreRel body (bodyPhysTable body) L s s')
+    (nRes : String) (hnRes : nRes ∈ N) :
     ∃ s'', lsemStraight ((physBody (fun _ => none) body).map (·.li_i)) s' = some s''
       ∧ s''.lvm (physRename body (bodyPhysTable body) nRes)
           = (composeVSteps (bs.map (fun b => (b.block, b.vstep))) s).lvm nRes := by
   rw [physBody_map_li_iMCS body bs hcover]
-  exact mulCarryBody_lsem_result body (bodyPhysTable body) bs s s' hrel nRes
+  exact mulCarryBody_lsem_result body (bodyPhysTable body) bs L N hch s s' hrel nRes hnRes
 
 /-! ## 7. The `Com` fragment and its threaded cover data -/
 
@@ -918,14 +1015,17 @@ theorem physBody_lsem_result_uniformMCS {w : Nat} (body : Lcmd) (nArgs d : Nat)
     (bs : List (MulCarryBinding w body (bodyPhysTable body)))
     (hbody : body = bindingHeads nArgs argName (fun _ => none) com d)
     (hcd : CoverDataMCS body (bodyPhysTable body) nArgs com d bs)
+    (L N : List String)
+    (hch : Chained (bs.map (fun b => (b.Lin, b.Lout))) L N)
     (s s' : Lstate w)
-    (hrel : StoreRel body (bodyPhysTable body) s s') (nRes : String) :
+    (hrel : StoreRel body (bodyPhysTable body) L s s')
+    (nRes : String) (hnRes : nRes ∈ N) :
     ∃ s'', lsemStraight ((physBody (fun _ => none) body).map (·.li_i)) s' = some s''
       ∧ s''.lvm (physRename body (bodyPhysTable body) nRes)
           = (composeVSteps (bs.map (fun b => (b.block, b.vstep))) s).lvm nRes := by
   have hcov0 := coverDataMCS_bodyCover body (bodyPhysTable body) nArgs com d bs hcd
   have hcov : BodyCoverMCS body (bodyPhysTable body) body bs := hbody ▸ hcov0
-  exact physBody_lsem_resultMCS body bs hcov s s' hrel nRes
+  exact physBody_lsem_resultMCS body bs hcov L N hch s s' hrel nRes hnRes
 
 /-! ## 9. The assembled whole-function theorems -/
 
@@ -940,11 +1040,13 @@ theorem prologue_argMat_body_lsemStraightMCS {w : Nat} (body : Lcmd) (nArgs d : 
     (hfresh : SourcesFresh pairs) (hdist : DestsDistinct pairs)
     (hbody : body = bindingHeads nArgs argName (fun _ => none) com d)
     (hcd : CoverDataMCS body (bodyPhysTable body) nArgs com d bs)
+    (L N : List String)
+    (hch : Chained (bs.map (fun b => (b.Lin, b.Lout))) L N)
     (sEntry s : Lstate w)
-    (hdisjFrame : PrologueFrameDisjoint body (bodyPhysTable body))
-    (hoff : StoreRelOff body (bodyPhysTable body) (pairs.map Prod.fst) s sEntry)
-    (habi : ArgMatAbi body (bodyPhysTable body) pairs s (prologueState sEntry))
-    (nRes : String) :
+    (hdisjFrame : PrologueFrameDisjoint body (bodyPhysTable body) L)
+    (hoff : StoreRelOff body (bodyPhysTable body) L (pairs.map Prod.fst) s sEntry)
+    (habi : ArgMatAbi body (bodyPhysTable body) L pairs s (prologueState sEntry))
+    (nRes : String) (hnRes : nRes ∈ N) :
     .Lret ∉ ((buildPrologue virt tbl0 inLoadMap).map (·.li_i) ++ argMatSeq pairs
         ++ (physBody (fun _ => none) body).map (·.li_i))
     ∧ ∃ sEnd,
@@ -955,13 +1057,15 @@ theorem prologue_argMat_body_lsemStraightMCS {w : Nat} (body : Lcmd) (nArgs d : 
       ∧ sEnd.lvm (physRename body (bodyPhysTable body) nRes)
           = (composeVSteps (bs.map (fun b => (b.block, b.vstep))) s).lvm nRes := by
   have hoffP :=
-    buildPrologue_preserves_StoreRelOff body (bodyPhysTable body) _ s sEntry hdisjFrame hoff
+    buildPrologue_preserves_StoreRelOff body (bodyPhysTable body) L _ s sEntry
+      hdisjFrame hoff
   obtain ⟨sMat, hrunMat, _⟩ := argMatSeq_reads pairs hfresh hdist (prologueState sEntry)
-  have hrelMat : StoreRel body (bodyPhysTable body) s sMat :=
-    argMatSeq_establishes_StoreRel body (bodyPhysTable body) pairs hfresh hdist s _ sMat
+  have hrelMat : StoreRel body (bodyPhysTable body) L s sMat :=
+    argMatSeq_establishes_StoreRel body (bodyPhysTable body) L pairs hfresh hdist s _ sMat
       hoffP habi hrunMat
   obtain ⟨sB, hrunBody, hread⟩ :=
-    physBody_lsem_result_uniformMCS body nArgs d com bs hbody hcd s sMat hrelMat nRes
+    physBody_lsem_result_uniformMCS body nArgs d com bs hbody hcd L N hch s sMat
+      hrelMat nRes hnRes
   refine ⟨?_, sB, ?_, hread⟩
   · intro hmem
     rcases List.mem_append.mp hmem with hmem | hmem
@@ -990,11 +1094,13 @@ theorem toLprogPhysAbi_faithful_uniformMCS {w : Nat} (body : Lcmd) (nArgs d : Na
     (hfresh : SourcesFresh pairs) (hdist : DestsDistinct pairs)
     (hbody : body = bindingHeads nArgs argName (fun _ => none) com d)
     (hcd : CoverDataMCS body (bodyPhysTable body) nArgs com d bs)
+    (L N : List String)
+    (hch : Chained (bs.map (fun b => (b.Lin, b.Lout))) L N)
     (sEntry s : Lstate w)
-    (hdisjFrame : PrologueFrameDisjoint body (bodyPhysTable body))
-    (hoff : StoreRelOff body (bodyPhysTable body) (pairs.map Prod.fst) s sEntry)
-    (habi : ArgMatAbi body (bodyPhysTable body) pairs s (prologueState sEntry))
-    (nRes : String) :
+    (hdisjFrame : PrologueFrameDisjoint body (bodyPhysTable body) L)
+    (hoff : StoreRelOff body (bodyPhysTable body) L (pairs.map Prod.fst) s sEntry)
+    (habi : ArgMatAbi body (bodyPhysTable body) L pairs s (prologueState sEntry))
+    (nRes : String) (hnRes : nRes ∈ N) :
     ∃ sEnd,
       lsemRun
         ((buildPrologue virt tbl0 inLoadMap).map (·.li_i) ++ argMatSeq pairs
@@ -1004,7 +1110,7 @@ theorem toLprogPhysAbi_faithful_uniformMCS {w : Nat} (body : Lcmd) (nArgs d : Na
           = (composeVSteps (bs.map (fun b => (b.block, b.vstep))) s).lvm nRes := by
   obtain ⟨hnoLret, sEnd, hrun, hread⟩ :=
     prologue_argMat_body_lsemStraightMCS body nArgs d com bs virt tbl0 inLoadMap pairs
-      hfresh hdist hbody hcd sEntry s hdisjFrame hoff habi nRes
+      hfresh hdist hbody hcd L N hch sEntry s hdisjFrame hoff habi nRes hnRes
   rw [lsemRun_body_ret _ _ _ hnoLret]
   exact ⟨sEnd, hrun, hread⟩
 
@@ -1020,16 +1126,19 @@ theorem toLprogPhysAbi_faithful_uniformMCS_twoPtr {w : Nat} (body : Lcmd) (nArgs
     (hbody : body = bindingHeads nArgs argName (fun _ => none) com d)
     (hcd : CoverDataMCS body (bodyPhysTable body) nArgs com d bs)
     (hmemref : MemrefPtrsDistinct body (bodyPhysTable body))
+    (L N : List String)
+    (hch : Chained (bs.map (fun b => (b.Lin, b.Lout))) L N)
     (sEntry s : Lstate w)
-    (hdisjFrame : PrologueFrameDisjoint body (bodyPhysTable body))
-    (hoff : StoreRelOff body (bodyPhysTable body)
+    (hdisjFrame : PrologueFrameDisjoint body (bodyPhysTable body) L)
+    (hm0 : argName 0 ∈ L) (hm1 : argName 1 ∈ L)
+    (hoff : StoreRelOff body (bodyPhysTable body) L
       [physRename body (bodyPhysTable body) (argName 0),
        physRename body (bodyPhysTable body) (argName 1)] s sEntry)
-    (hRdi : ∀ m, physRename body (bodyPhysTable body) m
+    (hRdi : ∀ m ∈ L, physRename body (bodyPhysTable body) m
       = physRename body (bodyPhysTable body) (argName 0) → sEntry.lvm "RDI" = s.lvm m)
-    (hRsi : ∀ m, physRename body (bodyPhysTable body) m
+    (hRsi : ∀ m ∈ L, physRename body (bodyPhysTable body) m
       = physRename body (bodyPhysTable body) (argName 1) → sEntry.lvm "RSI" = s.lvm m)
-    (nRes : String) :
+    (nRes : String) (hnRes : nRes ∈ N) :
     ∃ sEnd,
       lsemRun
         ((buildPrologue virt tbl0 inLoadMap).map (·.li_i)
@@ -1039,17 +1148,18 @@ theorem toLprogPhysAbi_faithful_uniformMCS_twoPtr {w : Nat} (body : Lcmd) (nArgs
       ∧ sEnd.lvm (physRename body (bodyPhysTable body) nRes)
           = (composeVSteps (bs.map (fun b => (b.block, b.vstep))) s).lvm nRes := by
   refine toLprogPhysAbi_faithful_uniformMCS body nArgs d com bs virt tbl0 inLoadMap rest _
-    (twoPtrPairs_sourcesFresh _ _ hdisjFrame) (twoPtrPairs_destsDistinct _ _ hmemref)
-    hbody hcd sEntry s hdisjFrame hoff ?_ nRes
-  intro p hp m hpm
+    (twoPtrPairs_sourcesFresh _ _ L hdisjFrame hm0 hm1)
+    (twoPtrPairs_destsDistinct _ _ hmemref)
+    hbody hcd L N hch sEntry s hdisjFrame hoff ?_ nRes hnRes
+  intro p hp m hmL hpm
   simp only [twoPtrPairs, List.mem_cons, List.not_mem_nil, or_false] at hp
   rcases hp with rfl | rfl
   · dsimp only
     rw [prologueState_lvm_abiSaveRdi]
-    exact hRdi m hpm
+    exact hRdi m hmL hpm
   · dsimp only
     rw [prologueState_lvm_abiSaveRsi]
-    exact hRsi m hpm
+    exact hRsi m hmL hpm
 
 /-- **Whole-function faithfulness with the callee-save restore epilogue, extended
     fragment.** The function body `buildPrologue ++ argMatSeq pairs ++ physBody ++
@@ -1064,11 +1174,13 @@ theorem toLprogPhysAbi_faithful_uniformMCS_epilogue {w : Nat} (body : Lcmd)
     (hfresh : SourcesFresh pairs) (hdist : DestsDistinct pairs)
     (hbody : body = bindingHeads nArgs argName (fun _ => none) com d)
     (hcd : CoverDataMCS body (bodyPhysTable body) nArgs com d bs)
+    (L N : List String)
+    (hch : Chained (bs.map (fun b => (b.Lin, b.Lout))) L N)
     (sEntry s : Lstate w)
-    (hdisjFrame : PrologueFrameDisjoint body (bodyPhysTable body))
-    (hoff : StoreRelOff body (bodyPhysTable body) (pairs.map Prod.fst) s sEntry)
-    (habi : ArgMatAbi body (bodyPhysTable body) pairs s (prologueState sEntry))
-    (nRes : String)
+    (hdisjFrame : PrologueFrameDisjoint body (bodyPhysTable body) L)
+    (hoff : StoreRelOff body (bodyPhysTable body) L (pairs.map Prod.fst) s sEntry)
+    (habi : ArgMatAbi body (bodyPhysTable body) L pairs s (prologueState sEntry))
+    (nRes : String) (hnRes : nRes ∈ N)
     (hResFree : physRename body (bodyPhysTable body) nRes ∉ epilogueWritten) :
     ∃ sEnd,
       lsemRun
@@ -1080,7 +1192,7 @@ theorem toLprogPhysAbi_faithful_uniformMCS_epilogue {w : Nat} (body : Lcmd)
           = (composeVSteps (bs.map (fun b => (b.block, b.vstep))) s).lvm nRes := by
   obtain ⟨hnoLret, sB, hrun, hread⟩ :=
     prologue_argMat_body_lsemStraightMCS body nArgs d com bs virt tbl0 inLoadMap pairs
-      hfresh hdist hbody hcd sEntry s hdisjFrame hoff habi nRes
+      hfresh hdist hbody hcd L N hch sEntry s hdisjFrame hoff habi nRes hnRes
   have hnoLretEpi : .Lret ∉ calleeSaveRestoreEpilogue.map (·.li_i) :=
     Lret_not_mem_of_lsemStraight_some _ _ _ (calleeSaveRestoreEpilogue_lsem sB)
   have hnoLret' : .Lret ∉

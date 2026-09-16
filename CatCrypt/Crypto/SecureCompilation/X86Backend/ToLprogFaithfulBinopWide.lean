@@ -155,8 +155,20 @@ structure BinopWideBinding (w : Nat) (body : Lcmd) (tbl : Array Nat) where
   bop : JasminBinOp
   /-- The value written at the destination. -/
   vval : Lstate w → BitVec w
-  /-- Distinct live names get distinct slots at the destination's fibre. -/
-  hinj : ∀ m, physRename body tbl m = physRename body tbl nDst → m = nDst
+  /-- The logical names live before the binding. -/
+  Lin : List String
+  /-- The logical names live after the binding. -/
+  Lout : List String
+  /-- The binding reads its destination, as the two-address first source. -/
+  hdstIn : nDst ∈ Lin
+  /-- The binding reads its second source. -/
+  hsrcIn : nSrc ∈ Lin
+  /-- No other name live after the binding shares the destination's physical
+      register. -/
+  hinj : ∀ m ∈ Lout, physRename body tbl m = physRename body tbl nDst → m = nDst
+  /-- Every name live after the binding other than its destination was already
+      live before it. -/
+  hcarry : ∀ m ∈ Lout, m ≠ nDst → m ∈ Lin
   /-- The operator's value at the two operand reads. -/
   hop : ∀ s : Lstate w, applyOpn (binOpName bop) [s.lvm nDst, s.lvm nSrc] = some (vval s)
 
@@ -178,10 +190,11 @@ def BinopWideBinding.vstep {w : Nat} {body : Lcmd} {tbl : Array Nat}
     default-width step theorem applies. -/
 theorem BinopWideBinding.maintains {w : Nat} {body : Lcmd} {tbl : Array Nat}
     (b : BinopWideBinding w body tbl) :
-    BlockMaintains body tbl b.block b.vstep := by
+    BlockMaintains body tbl b.Lin b.Lout b.block b.vstep := by
   intro s s' hrel
   obtain ⟨s'', hrun, hst⟩ :=
-    legalizeBinop_storeRel_step body tbl s s' b.nDst b.nSrc (binOpName b.bop) hrel b.hinj
+    legalizeBinop_storeRel_step body tbl b.Lin b.Lout s s' b.nDst b.nSrc
+      (binOpName b.bop) hrel b.hdstIn b.hsrcIn b.hinj b.hcarry
       (stripWidthTag_binOpName b.bop) (b.vval s) (b.hop s)
   refine ⟨s'', ?_, hst⟩
   rw [BinopWideBinding.block,

@@ -38,12 +38,22 @@ register renaming of one body.
   structure `BinopMovBinding` requires `ρ nDst ≠ ρ nS0`, `nSrc ≠ nDst`, and that
   the leading move does not place two spill slots in one instruction
   (`LOperand.isSpill`). All three are computations on the head.
-* `hinj` (every binding structure of the fragment): `∀ m, ρ m = ρ nDst → m = nDst`.
-  The quantifier is over all strings and the condition is still decidable, because
-  `ρ` factors through `nameSlot body`, whose range is `{0, …, (bodyNames body).length}`
-  and whose last value is the image of every name the body does not mention.
-  Checking `bodyNames body` together with one name absent from it therefore decides
-  the quantifier.
+* `hinj`: the `inj` row measures the all-names form
+  `∀ m, ρ m = ρ nDst → m = nDst`. It is decidable on a fixed program because `ρ`
+  factors through `nameSlot body`, whose range is `{0, …, (bodyNames body).length}`
+  and whose last value is the image of every name the body does not mention, so
+  checking `bodyNames body` together with one name absent from it decides the
+  quantifier. That form holds at no binding of a shipped kernel: the sentinel
+  fibre alone refutes it, and a slot-reducing allocation shares a register across
+  names with disjoint live ranges.
+
+  The binding structures of the fragment carry instead a live-set-scoped
+  condition `∀ m ∈ Lout, ρ m = ρ nDst → m = nDst`, over the names live after the
+  binding, together with a carry condition relating the live sets. Those are the
+  interference conditions at one program point, and the all-names row below is
+  therefore stricter than what the theorems require. Measuring the live-scoped
+  form needs the per-binding live sets, which this evaluator does not compute;
+  the `inj` row is kept as the stricter measurement it has always been.
 * The cover fixes one width for the whole binding list, and the exporter targets a
   64-bit state, so a head whose mnemonic carries no `:64` tag is outside the
   binding list the cover data ranges over. `hwidth64` counts the tagged heads.

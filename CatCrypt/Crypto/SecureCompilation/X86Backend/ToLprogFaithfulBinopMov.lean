@@ -161,8 +161,19 @@ structure BinopMovBinding (w : Nat) (body : Lcmd) (tbl : Array Nat) where
   opn : String
   /-- The value written at the destination. -/
   vval : Lstate w → BitVec w
-  /-- Distinct live names get distinct slots at the destination's fibre. -/
-  hinj : ∀ m, physRename body tbl m = physRename body tbl nDst → m = nDst
+  /-- The logical names live before the binding. -/
+  Lin : List String
+  /-- The logical names live after the binding. -/
+  Lout : List String
+  /-- The binding reads its first source. -/
+  hs0In : nS0 ∈ Lin
+  /-- No name live between the leading move and the binop, other than the
+      destination itself, shares the destination's physical register. -/
+  hinj : ∀ m ∈ nDst :: nSrc :: Lout,
+    physRename body tbl m = physRename body tbl nDst → m = nDst
+  /-- Every such name other than the destination was already live before the
+      binding. -/
+  hcarry : ∀ m ∈ nDst :: nSrc :: Lout, m ≠ nDst → m ∈ Lin
   /-- The register allocation did not place the destination on its first
       source's register. -/
   hne : physRename body tbl nDst ≠ physRename body tbl nS0
@@ -192,9 +203,10 @@ def BinopMovBinding.vstep {w : Nat} {body : Lcmd} {tbl : Array Nat}
 /-- A mov-prefixed binop binding's block re-establishes `StoreRel` against its
     virtual transformer. -/
 theorem BinopMovBinding.maintains {w : Nat} {body : Lcmd} {tbl : Array Nat}
-    (b : BinopMovBinding w body tbl) : BlockMaintains body tbl b.block b.vstep :=
-  lowerTwoAddr_blockMaintains body tbl b.nDst b.nS0 b.nSrc b.opn b.vval b.hinj b.hne
-    b.hsrcNe b.hnsp b.hstrip b.hop
+    (b : BinopMovBinding w body tbl) :
+    BlockMaintains body tbl b.Lin b.Lout b.block b.vstep :=
+  lowerTwoAddr_blockMaintains body tbl b.Lin b.Lout b.nDst b.nS0 b.nSrc b.opn b.vval
+    b.hs0In b.hinj b.hcarry b.hne b.hsrcNe b.hnsp b.hstrip b.hop
 
 /-! ## 5. The width-64 mov-prefixed binding kind -/
 
@@ -212,8 +224,19 @@ structure BinopMovWideBinding (w : Nat) (body : Lcmd) (tbl : Array Nat) where
   bop : JasminBinOp
   /-- The value written at the destination. -/
   vval : Lstate w → BitVec w
-  /-- Distinct live names get distinct slots at the destination's fibre. -/
-  hinj : ∀ m, physRename body tbl m = physRename body tbl nDst → m = nDst
+  /-- The logical names live before the binding. -/
+  Lin : List String
+  /-- The logical names live after the binding. -/
+  Lout : List String
+  /-- The binding reads its first source. -/
+  hs0In : nS0 ∈ Lin
+  /-- No name live between the leading move and the binop, other than the
+      destination itself, shares the destination's physical register. -/
+  hinj : ∀ m ∈ nDst :: nSrc :: Lout,
+    physRename body tbl m = physRename body tbl nDst → m = nDst
+  /-- Every such name other than the destination was already live before the
+      binding. -/
+  hcarry : ∀ m ∈ nDst :: nSrc :: Lout, m ≠ nDst → m ∈ Lin
   /-- The register allocation did not place the destination on its first
       source's register. -/
   hne : physRename body tbl nDst ≠ physRename body tbl nS0
@@ -240,11 +263,13 @@ def BinopMovWideBinding.vstep {w : Nat} {body : Lcmd} {tbl : Array Nat}
     against its virtual transformer: the `:64`-tagged block runs as the untagged
     one does, so the default-width composition step applies. -/
 theorem BinopMovWideBinding.maintains {w : Nat} {body : Lcmd} {tbl : Array Nat}
-    (b : BinopMovWideBinding w body tbl) : BlockMaintains body tbl b.block b.vstep := by
+    (b : BinopMovWideBinding w body tbl) :
+    BlockMaintains body tbl b.Lin b.Lout b.block b.vstep := by
   intro s s' hrel
   obtain ⟨s'', hrun, hst⟩ :=
-    movThenBinop_storeRel_step body tbl s s' b.nDst b.nS0 b.nSrc (binOpName b.bop) hrel
-      b.hinj b.hsrcNe b.hnsp (stripWidthTag_binOpName b.bop) (b.vval s) (b.hop s)
+    movThenBinop_storeRel_step body tbl b.Lin b.Lout s s' b.nDst b.nS0 b.nSrc
+      (binOpName b.bop) hrel b.hs0In b.hinj b.hcarry b.hsrcNe b.hnsp
+      (stripWidthTag_binOpName b.bop) (b.vval s) (b.hop s)
   refine ⟨s'', ?_, hst⟩
   rw [BinopMovWideBinding.block,
     lowerTwoAddr_regReg_ne _ _ _ _ _ b.hne,

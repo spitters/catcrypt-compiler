@@ -64,7 +64,7 @@ PROVED (zero `sorry`, axiom-clean — `propext`/`Classical.choice`/`Quot.sound`)
   (hence `physBody_lsem_result_uniform`) as inhabitable, not a vacuous
   hypothesis.
 
-## Residual (named honestly — NOT proved here)
+## Residual (NOT proved here)
 
 * **The per-binding `CoverData` bundle stays a hypothesis.** `CoverData` carries,
   at each binding, the cover element `BinopBinding` and the four head-match
@@ -261,8 +261,11 @@ theorem physBody_lsem_result_uniform {w : Nat} (body : Lcmd) (nArgs d : Nat)
     (bs : List (BinopBinding w body (bodyPhysTable body)))
     (hbody : body = bindingHeads nArgs argName (fun _ => none) com d)
     (hcd : CoverData body (bodyPhysTable body) nArgs com d bs)
+    (L N : List String)
+    (hch : Chained (bs.map (fun b => (b.Lin, b.Lout))) L N)
     (s s' : Lstate w)
-    (hrel : StoreRel body (bodyPhysTable body) s s') (nRes : String) :
+    (hrel : StoreRel body (bodyPhysTable body) L s s')
+    (nRes : String) (hnRes : nRes ∈ N) :
     ∃ s'', lsemStraight ((physBody (fun _ => none) body).map (·.li_i)) s' = some s''
       ∧ s''.lvm (physRename body (bodyPhysTable body) nRes)
           = (composeVSteps (bs.map (fun b => (b.block, b.vstep))) s).lvm nRes := by
@@ -270,7 +273,7 @@ theorem physBody_lsem_result_uniform {w : Nat} (body : Lcmd) (nArgs d : Nat)
       (bindingHeads nArgs argName (fun _ => none) com d) bs :=
     coverData_bodyCover body (bodyPhysTable body) nArgs com d bs hcd
   have hcov : BodyCover body (bodyPhysTable body) body bs := hbody ▸ hcov0
-  exact physBody_lsem_result body bs hcov s s' hrel nRes
+  exact physBody_lsem_result body bs hcov L N hch s s' hrel nRes hnRes
 
 /-- **n-ary physical faithfulness, phrased over `comToBody … |>.dropLast`.** The
     same as `physBody_lsem_result_uniform`, but stating the physical body as the
@@ -282,14 +285,17 @@ theorem physBody_lsem_result_dropLast {w : Nat} (body : Lcmd) (nArgs d : Nat)
     (bs : List (BinopBinding w body (bodyPhysTable body)))
     (hbody : body = (comToBody nArgs argName (fun _ => none) com d).dropLast)
     (hcd : CoverData body (bodyPhysTable body) nArgs com d bs)
+    (L N : List String)
+    (hch : Chained (bs.map (fun b => (b.Lin, b.Lout))) L N)
     (s s' : Lstate w)
-    (hrel : StoreRel body (bodyPhysTable body) s s') (nRes : String) :
+    (hrel : StoreRel body (bodyPhysTable body) L s s')
+    (nRes : String) (hnRes : nRes ∈ N) :
     ∃ s'', lsemStraight ((physBody (fun _ => none) body).map (·.li_i)) s' = some s''
       ∧ s''.lvm (physRename body (bodyPhysTable body) nRes)
           = (composeVSteps (bs.map (fun b => (b.block, b.vstep))) s).lvm nRes :=
   physBody_lsem_result_uniform body nArgs d com bs
     (hbody.trans (comToBody_dropLast_eq_heads nArgs argName (fun _ => none) com d))
-    hcd s s' hrel nRes
+    hcd L N hch s s' hrel nRes hnRes
 
 /-! ## A length-3 fully-general `CoverData` instance
 

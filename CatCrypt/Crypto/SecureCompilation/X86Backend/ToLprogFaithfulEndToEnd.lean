@@ -46,8 +46,8 @@ PROVED (against the real `lsemStraight`, zero `sorry`):
   `[t ← t + a ; t ← t ^ a]` (read at result name `t`). The composed virtual
   transformer is *computed* down to the explicit expression
   `(s.lvm t + s.lvm a) ^^^ s.lvm a`, and `binopBody_lsem_result` carries that
-  exact value to the physical result register. The value depends genuinely on
-  both bindings (non-degenerate). This exhibits the whole pipeline — `physBody`
+  exact value to the physical result register. The value depends on both
+  bindings. This exhibits the whole pipeline — `physBody`
   block-list ⇒ `lsemStraight` run ⇒ `StoreRel` projection ⇒ explicit BitVec
   expression — on a control-flow-free, memory-free instance, with no `Com.denote`
   index residual in the witness.
@@ -67,7 +67,7 @@ along `ρ`. The concrete witness *computes* this identification end-to-end for a
 explicit body; the general lift along the de-Bruijn `straightOps`/`flatMap`
 indexing is the named residual below.
 
-## Residual (named honestly — NOT proved here)
+## Residual (NOT proved here)
 
 * **The general `flatMap` ⇒ block-list ⇒ `Com.denote` identification.** As in
   `ToLprogFaithfulBody`: reading `physBody body`'s literal `flatMap` output as
@@ -121,26 +121,31 @@ theorem composeVSteps_cons {w : Nat}
     register-pointwise by the threaded `StoreRel`. Combines
     `binopBody_storeRel` (whole-body threading) with the result projection. -/
 theorem binopBody_lsem_result {w : Nat} (body : Lcmd) (tbl : Array Nat)
-    (bs : List (BinopBinding w body tbl))
-    (s s' : Lstate w) (hrel : StoreRel body tbl s s') (nRes : String) :
+    (bs : List (BinopBinding w body tbl)) (L N : List String)
+    (hch : Chained (bs.map (fun b => (b.Lin, b.Lout))) L N)
+    (s s' : Lstate w) (hrel : StoreRel body tbl L s s')
+    (nRes : String) (hnRes : nRes ∈ N) :
     ∃ s'', lsemStraight ((bs.map (·.block)).flatten) s' = some s''
       ∧ s''.lvm (physRename body tbl nRes)
           = (composeVSteps (bs.map (fun b => (b.block, b.vstep))) s).lvm nRes := by
-  obtain ⟨s'', hrun, hrel''⟩ := binopBody_storeRel body tbl bs s s' hrel
-  -- `hrel''` is `StoreRel body tbl (composeVSteps …) s''`; unfold and project at nRes.
-  exact ⟨s'', hrun, hrel'' nRes⟩
+  obtain ⟨s'', hrun, hrel''⟩ := binopBody_storeRel body tbl bs L N hch s s' hrel
+  -- `hrel''` relates at `N`; project it at the result name, which is live there.
+  exact ⟨s'', hrun, hrel'' nRes hnRes⟩
 
 /-- **End-to-end result as an `Option.map`.** The `Option.map (read at ρ nRes)`
     of the physical run equals `some` of the composed virtual store read at
     `nRes` — the exact `Option.map (decode …) = some (…)` shape of
     `comToLprog_faithful_straightline`, transported to the physical side. -/
 theorem binopBody_lsem_result_map {w : Nat} (body : Lcmd) (tbl : Array Nat)
-    (bs : List (BinopBinding w body tbl))
-    (s s' : Lstate w) (hrel : StoreRel body tbl s s') (nRes : String) :
+    (bs : List (BinopBinding w body tbl)) (L N : List String)
+    (hch : Chained (bs.map (fun b => (b.Lin, b.Lout))) L N)
+    (s s' : Lstate w) (hrel : StoreRel body tbl L s s')
+    (nRes : String) (hnRes : nRes ∈ N) :
     (lsemStraight ((bs.map (·.block)).flatten) s').map
         (fun st => st.lvm (physRename body tbl nRes))
       = some ((composeVSteps (bs.map (fun b => (b.block, b.vstep))) s).lvm nRes) := by
-  obtain ⟨s'', hrun, hread⟩ := binopBody_lsem_result body tbl bs s s' hrel nRes
+  obtain ⟨s'', hrun, hread⟩ :=
+    binopBody_lsem_result body tbl bs L N hch s s' hrel nRes hnRes
   rw [hrun, Option.map_some, hread]
 
 /-! ## 3. A concrete witness: a two-binding binop body, computed end-to-end
@@ -151,10 +156,10 @@ composed virtual transformer *computed* down to a literal-shape `BitVec`
 expression. This makes the `composeVSteps ⇒ Com.denote` step concrete (no
 de-Bruijn residual *in the witness*): the value the straight-line computation
 deposits at its result name `t` is read off the fold explicitly, and it depends
-genuinely on *both* bindings (the witness is not degenerate).
+on *both* bindings, so the witness is not degenerate.
 
-The bindings are kept parametric over an abstract `(body, tbl)` and carry the
-genuine RA side conditions (`hinj`, `hstrip`, `hop`) — we do NOT fabricate them;
+The bindings are kept parametric over an abstract `(body, tbl)` and carry the RA
+side conditions (`hinj`, `hcarry`, `hstrip`, `hop`) — we do NOT fabricate them;
 the *witness content* is the explicit reduction of `composeVSteps` to the
 computed value `(s.lvm t + s.lvm a) ^^^ s.lvm a`, which is independent of the
 physical plumbing. The first binding's write to `t` must survive the second
@@ -189,13 +194,15 @@ theorem composeVSteps_two_binop {w : Nat} (body : Lcmd) (tbl : Array Nat)
     result depends on both bindings, so the witness is non-degenerate. -/
 theorem binopBody_endToEnd_concrete {w : Nat} (body : Lcmd) (tbl : Array Nat)
     (t a : String) (ht : t ≠ a)
-    (b1 b2 : BinopBinding w body tbl)
+    (b1 b2 : BinopBinding w body tbl) (L N : List String)
+    (hch : Chained ([b1, b2].map (fun b => (b.Lin, b.Lout))) L N)
     (hb1d : b1.nDst = t) (hb1s : b1.nSrc = a) (hb1v : ∀ s, b1.vval s = s.lvm t + s.lvm a)
     (hb2d : b2.nDst = t) (hb2s : b2.nSrc = a) (hb2v : ∀ s, b2.vval s = s.lvm t ^^^ s.lvm a)
-    (s s' : Lstate w) (hrel : StoreRel body tbl s s') :
+    (s s' : Lstate w) (hrel : StoreRel body tbl L s s') (htN : t ∈ N) :
     ∃ s'', lsemStraight (([b1, b2].map (·.block)).flatten) s' = some s''
       ∧ s''.lvm (physRename body tbl t) = (s.lvm t + s.lvm a) ^^^ s.lvm a := by
-  obtain ⟨s'', hrun, hread⟩ := binopBody_lsem_result body tbl [b1, b2] s s' hrel t
+  obtain ⟨s'', hrun, hread⟩ :=
+    binopBody_lsem_result body tbl [b1, b2] L N hch s s' hrel t htN
   refine ⟨s'', hrun, ?_⟩
   rw [hread]
   -- the composed virtual read at `t` is the computed expression

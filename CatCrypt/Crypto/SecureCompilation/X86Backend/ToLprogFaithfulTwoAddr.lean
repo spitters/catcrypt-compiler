@@ -30,8 +30,8 @@ The leading `mov ρdst, ρs0` copies `s'.lvm (ρ s0)` into `ρ dst`. On the
 **virtual** side the matching transformer is the intermediate copy
 `sMid := s.setReg nDst (s.lvm nS0)` — the moved value lands logically at `nDst`.
 We show (`legalizeMov_regReg_storeRel_step`) that the leading mov re-establishes
-`StoreRel body tbl sMid s'2` from `StoreRel body tbl s s'`, by the **same**
-dead-scratch + destination-injectivity argument as the binop write-side step
+`StoreRel body tbl Lmid sMid s'2` from `StoreRel body tbl Lin s s'`, by the
+**same** dead-scratch + live-out interference argument as the binop write-side step
 (`legalizeBinop_storeRel_step`): the mov writes only `ρ dst`, and injectivity
 confines that write to the `nDst` fibre.
 
@@ -60,7 +60,7 @@ PROVED (against the real `lsemStraight`):
   witness, so `dst ≠ s0` bindings slot into `physBlocks_storeRel`'s whole-body
   threading exactly like the `dst = s0` `binopBlockMaintains`.
 
-RESIDUAL (named honestly — NOT proved here):
+RESIDUAL (NOT proved here):
 * the **spilled leading mov** (`legalizeMov`'s `dst.isSpill && s0.isSpill`
   branch: `mov R15, s0; mov dst, R15`): in the shipped pipeline `physRegName`
   never both-spills `dst` and `s0` into the same scratch, but the two-`Lopn`
@@ -114,46 +114,52 @@ theorem legalizeMov_regReg_step {w : Nat} (s : Lstate w) (dst s0 : String)
 /-! ## 2. The leading `mov`: store-relation maintenance
 
 The leading `mov ρdst, ρs0` writes only `ρ dst`, so the dead-scratch invariant is
-not even needed (no scratch is touched); the destination-injectivity `hinj`
-confines the physical write at `ρ nDst` to the `nDst` fibre, matching the virtual
-copy `s ↦ s.setReg nDst (s.lvm nS0)`. -/
+not even needed (no scratch is touched); the live-out interference condition
+`hinj` confines the physical write at `ρ nDst` to the `nDst` fibre among the
+names live after the move, matching the virtual copy
+`s ↦ s.setReg nDst (s.lvm nS0)`. -/
 
 /-- **Leading no-spill `mov`, store-relation maintenance.** From the read relation
-    `StoreRel body tbl s s'`, the leading `legalizeMov (.reg (ρ nDst)) (.reg
-    (ρ nS0)) "MOV"` runs to some `s'2` re-establishing `StoreRel body tbl
+    `StoreRel body tbl Lin s s'`, the leading `legalizeMov (.reg (ρ nDst)) (.reg
+    (ρ nS0)) "MOV"` runs to some `s'2` re-establishing `StoreRel body tbl Lout
     (s.setReg nDst (s.lvm nS0)) s'2`. The virtual side is the **copy** of `nS0`'s
-    value into `nDst`. The destination injectivity `hinj` (the RA-correctness
-    property — distinct live names get distinct slots) confines the physical write
-    at `ρ nDst` to exactly the `nDst` fibre; every other renamed name is framed
-    out by `lsemStep_Lopn_frame` and reads through `StoreRel`. -/
+    value into `nDst`. The live-out interference condition `hinj` confines the
+    physical write at `ρ nDst` to exactly the `nDst` fibre among the names of
+    `Lout`; every other renamed name is framed out by `lsemStep_Lopn_frame` and
+    reads through the incoming relation, which `hcarry` routes it back to. -/
 theorem legalizeMov_regReg_storeRel_step {w : Nat} (body : Lcmd) (tbl : Array Nat)
+    (Lin Lout : List String)
     (s s' : Lstate w) (nDst nS0 : String)
-    (hrel : StoreRel body tbl s s')
-    (hinj : ∀ m, physRename body tbl m = physRename body tbl nDst → m = nDst)
+    (hrel : StoreRel body tbl Lin s s')
+    (hs0In : nS0 ∈ Lin)
+    (hinj : ∀ m ∈ Lout, physRename body tbl m = physRename body tbl nDst → m = nDst)
+    (hcarry : ∀ m ∈ Lout, m ≠ nDst → m ∈ Lin)
     (hns : ¬ ((LOperand.reg (physRename body tbl nDst)).isSpill
         && (LOperand.reg (physRename body tbl nS0)).isSpill) = true) :
     ∃ s'2, lsemStraight
         (legalizeMov (.reg (physRename body tbl nDst))
           (.reg (physRename body tbl nS0)) "MOV") s' = some s'2
-      ∧ StoreRel body tbl (s.setReg nDst (s.lvm nS0)) s'2 := by
+      ∧ StoreRel body tbl Lout (s.setReg nDst (s.lvm nS0)) s'2 := by
   unfold StoreRel at hrel ⊢
   -- The physical mov copies `s'.lvm (ρ nS0)` into `ρ nDst`; by the read relation
   -- `s'.lvm (ρ nS0) = s.lvm nS0`, the value being copied.
   have hrun := legalizeMov_regReg_step s'
     (physRename body tbl nDst) (physRename body tbl nS0) hns
   refine ⟨_, hrun, ?_⟩
-  intro m
+  intro m hmL
   by_cases hm : physRename body tbl m = physRename body tbl nDst
-  · -- `m` shares `nDst`'s slot ⇒ `m = nDst`; both sides are the moved value.
-    have hmd : m = nDst := hinj m hm
+  · -- `m` shares `nDst`'s slot and is live out ⇒ `m = nDst`; both sides are the
+    -- moved value.
+    have hmd : m = nDst := hinj m hmL hm
     subst hmd
     simp only [Lstate.lvm_nextPc, Lstate.lvm_setReg, if_pos]
-    exact hrel nS0
+    exact hrel nS0 hs0In
   · -- `m`'s slot differs ⇒ the physical write at `ρ nDst` misses it (frame), and
-    -- the virtual copy at `nDst` misses `m` (`m ≠ nDst`); read through `StoreRel`.
+    -- the virtual copy at `nDst` misses `m` (`m ≠ nDst`); read through the
+    -- incoming relation.
     simp only [Lstate.lvm_nextPc, Lstate.lvm_setReg, if_neg hm]
     have hmne : m ≠ nDst := fun he => hm (by rw [he])
-    rw [if_neg hmne, hrel m]
+    rw [if_neg hmne, hrel m (hcarry m hmL hmne)]
 
 /-! ## 3. The composition: the whole `dst ≠ s0` `lowerTwoAddr` block
 
@@ -174,14 +180,23 @@ write is `s ↦ s.setReg nDst (applyOpn opn [s.lvm nS0, s.lvm nS1])`. -/
     binop reading `s0`'s value (placed at `dst` by the leading copy) as its first
     operand. Composes `legalizeMov_regReg_storeRel_step` with the existing binop
     write-side `legalizeBinop_storeRel_step` via `lsemStraight_append`. The
-    `hns0 : nS0 ≠ nDst` / `hns1 : nS1 ≠ nDst` are the binding's source-vs-dest
-    distinctness (the two-address read picks up the copied/unmodified sources).
-    `hinj` is the destination injectivity of both writes; `hnsp` selects the
-    non-spill leading-mov branch. -/
+    `hns1 : nS1 ≠ nDst` is the binding's source-vs-dest distinctness (the
+    two-address read picks up the unmodified second source). `hnsp` selects the
+    non-spill leading-mov branch.
+
+    The intermediate live set, between the leading move and the binop, is
+    `nDst :: nS1 :: Lout`: the move defines `nDst`, which the binop then reads,
+    and `nS1` must survive the move to be read as well. `hinj` and `hcarry` are
+    therefore stated over that set rather than over `Lout` alone — which is
+    exactly the interference condition at the move's own program point. -/
 theorem movThenBinop_storeRel_step {w : Nat} (body : Lcmd) (tbl : Array Nat)
+    (Lin Lout : List String)
     (s s' : Lstate w) (nDst nS0 nS1 opn : String)
-    (hrel : StoreRel body tbl s s')
-    (hinj : ∀ m, physRename body tbl m = physRename body tbl nDst → m = nDst)
+    (hrel : StoreRel body tbl Lin s s')
+    (hs0In : nS0 ∈ Lin)
+    (hinj : ∀ m ∈ nDst :: nS1 :: Lout,
+      physRename body tbl m = physRename body tbl nDst → m = nDst)
+    (hcarry : ∀ m ∈ nDst :: nS1 :: Lout, m ≠ nDst → m ∈ Lin)
     (hns1 : nS1 ≠ nDst)
     (hnsp : ¬ ((LOperand.reg (physRename body tbl nDst)).isSpill
         && (LOperand.reg (physRename body tbl nS0)).isSpill) = true)
@@ -192,10 +207,11 @@ theorem movThenBinop_storeRel_step {w : Nat} (body : Lcmd) (tbl : Array Nat)
             (.reg (physRename body tbl nS0)) "MOV"
           ++ legalizeBinop (.reg (physRename body tbl nDst))
             (.reg (physRename body tbl nS1)) opn "MOV") s' = some s''
-      ∧ StoreRel body tbl (s.setReg nDst v) s'' := by
-  -- Peel the leading mov: it maintains `StoreRel` against the copy `sMid`.
+      ∧ StoreRel body tbl Lout (s.setReg nDst v) s'' := by
+  -- Peel the leading mov: it carries the relation to the intermediate live set.
   obtain ⟨s'2, hrunMov, hrelMid⟩ :=
-    legalizeMov_regReg_storeRel_step body tbl s s' nDst nS0 hrel hinj hnsp
+    legalizeMov_regReg_storeRel_step body tbl Lin (nDst :: nS1 :: Lout) s s' nDst nS0
+      hrel hs0In hinj hcarry hnsp
   -- The binop sources `[nDst, nS1]` read, in the copy `sMid := s.setReg nDst
   -- (s.lvm nS0)`: `nDst ↦ s.lvm nS0` (copied), `nS1 ↦ s.lvm nS1` (`nS1 ≠ nDst`).
   -- So `applyOpn opn [sMid.lvm nDst, sMid.lvm nS1] = some v`.
@@ -209,8 +225,12 @@ theorem movThenBinop_storeRel_step {w : Nat} (body : Lcmd) (tbl : Array Nat)
     rw [hmidDst, hmidS1]; exact hop
   -- Run the binop write-side step on `(sMid, s'2)`.
   obtain ⟨s'', hrunBin, hrelBin⟩ :=
-    legalizeBinop_storeRel_step body tbl (s.setReg nDst (s.lvm nS0)) s'2 nDst nS1 opn
-      hrelMid hinj hstrip v hop'
+    legalizeBinop_storeRel_step body tbl (nDst :: nS1 :: Lout) Lout
+      (s.setReg nDst (s.lvm nS0)) s'2 nDst nS1 opn
+      hrelMid List.mem_cons_self (List.mem_cons_of_mem _ List.mem_cons_self)
+      (fun m hm => hinj m (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ hm)))
+      (fun m hm _ => List.mem_cons_of_mem _ (List.mem_cons_of_mem _ hm))
+      hstrip v hop'
   refine ⟨s'', ?_, ?_⟩
   · rw [lsemStraight_append, hrunMov]; simpa using hrunBin
   · -- `sMid.setReg nDst v = s.setReg nDst v` (the binop write overwrites the copy).
@@ -237,26 +257,32 @@ slots `dst ≠ s0` bindings into the whole-body threading alongside the `dst = s
     is the two-address binop result `applyOpn opn [s.lvm nS0, s.lvm nS1]`. Packages
     `movThenBinop_storeRel_step` so it consumes — and is consumed by —
     `physBlocks_storeRel` exactly like `binopBlockMaintains` does for the
-    `dst = s0` collapse. The hypotheses mirror `binopBlockMaintains`' (destination
-    injectivity, width-tag stability, a binop-result premise at every store) plus
-    the two-address `nS1 ≠ nDst` and non-spill-leading-mov side conditions. -/
+    `dst = s0` collapse. The hypotheses mirror `binopBlockMaintains`' (the
+    interference and carry conditions, width-tag stability, a binop-result premise
+    at every store) plus the two-address `nS1 ≠ nDst` and non-spill-leading-mov
+    side conditions, with the conditions taken over the move's intermediate live
+    set `nDst :: nS1 :: Lout`. -/
 theorem movBinopBlockMaintains {w : Nat} (body : Lcmd) (tbl : Array Nat)
+    (Lin Lout : List String)
     (nDst nS0 nS1 opn : String) (vval : Lstate w → BitVec w)
-    (hinj : ∀ m, physRename body tbl m = physRename body tbl nDst → m = nDst)
+    (hs0In : nS0 ∈ Lin)
+    (hinj : ∀ m ∈ nDst :: nS1 :: Lout,
+      physRename body tbl m = physRename body tbl nDst → m = nDst)
+    (hcarry : ∀ m ∈ nDst :: nS1 :: Lout, m ≠ nDst → m ∈ Lin)
     (hns1 : nS1 ≠ nDst)
     (hnsp : ¬ ((LOperand.reg (physRename body tbl nDst)).isSpill
         && (LOperand.reg (physRename body tbl nS0)).isSpill) = true)
     (hstrip : stripWidthTag opn = opn)
     (hop : ∀ s : Lstate w, applyOpn opn [s.lvm nS0, s.lvm nS1] = some (vval s)) :
-    BlockMaintains body tbl
+    BlockMaintains body tbl Lin Lout
       (legalizeMov (.reg (physRename body tbl nDst))
           (.reg (physRename body tbl nS0)) "MOV"
         ++ legalizeBinop (.reg (physRename body tbl nDst))
           (.reg (physRename body tbl nS1)) opn "MOV")
       (fun s => s.setReg nDst (vval s)) := by
   intro s s' hrel
-  exact movThenBinop_storeRel_step body tbl s s' nDst nS0 nS1 opn hrel hinj hns1
-    hnsp hstrip (vval s) (hop s)
+  exact movThenBinop_storeRel_step body tbl Lin Lout s s' nDst nS0 nS1 opn hrel
+    hs0In hinj hcarry hns1 hnsp hstrip (vval s) (hop s)
 
 /-! ## 5. Tying the block to the literal `lowerTwoAddr` output
 
@@ -292,19 +318,24 @@ theorem lowerTwoAddr_regReg_neq (body : Lcmd) (tbl : Array Nat)
     collapse: both yield `BlockMaintains` witnesses that `physBlocks_storeRel`
     threads across the whole body. -/
 theorem lowerTwoAddr_blockMaintains {w : Nat} (body : Lcmd) (tbl : Array Nat)
+    (Lin Lout : List String)
     (nDst nS0 nS1 opn : String) (vval : Lstate w → BitVec w)
-    (hinj : ∀ m, physRename body tbl m = physRename body tbl nDst → m = nDst)
+    (hs0In : nS0 ∈ Lin)
+    (hinj : ∀ m ∈ nDst :: nS1 :: Lout,
+      physRename body tbl m = physRename body tbl nDst → m = nDst)
+    (hcarry : ∀ m ∈ nDst :: nS1 :: Lout, m ≠ nDst → m ∈ Lin)
     (hne : physRename body tbl nDst ≠ physRename body tbl nS0)
     (hns1 : nS1 ≠ nDst)
     (hnsp : ¬ ((LOperand.reg (physRename body tbl nDst)).isSpill
         && (LOperand.reg (physRename body tbl nS0)).isSpill) = true)
     (hstrip : stripWidthTag opn = opn)
     (hop : ∀ s : Lstate w, applyOpn opn [s.lvm nS0, s.lvm nS1] = some (vval s)) :
-    BlockMaintains body tbl
+    BlockMaintains body tbl Lin Lout
       (lowerTwoAddr (.reg (physRename body tbl nDst))
         (.reg (physRename body tbl nS0)) (.reg (physRename body tbl nS1)) opn "MOV")
       (fun s => s.setReg nDst (vval s)) := by
   rw [lowerTwoAddr_regReg_neq body tbl nDst nS0 nS1 opn hne]
-  exact movBinopBlockMaintains body tbl nDst nS0 nS1 opn vval hinj hns1 hnsp hstrip hop
+  exact movBinopBlockMaintains body tbl Lin Lout nDst nS0 nS1 opn vval
+    hs0In hinj hcarry hns1 hnsp hstrip hop
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulTwoAddr

@@ -10,24 +10,36 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulSpill
 /-!
 # `toLprogPhysAbi` faithfulness — the RA store-relation WRITE side
 
-`ToLprogFaithfulSpill.evalOperand_remapOperand_reg` proved the **read** side of
-the linear-scan RA refinement: under the store relation
+`ToLprogFaithfulSpill.evalOperand_remapOperand_reg` proves the **read** side of
+the linear-scan RA refinement: under a store relation
 
   `hrel : ∀ m, s'.lvm (physRename body tbl m) = s.lvm m`
 
 evaluating a `remapOperand`-renamed register operand against the physical store
 `s'` equals evaluating the original against the virtual store `s`. That lemma is
-stated *relative to* the relation `hrel`; it does not say the relation is
+stated *relative to* the relation; it does not say the relation is
 **maintained** across a write. This module discharges the write side: after a
 `legalizeBinop`-emitted binding executes under `lsemStraight`, the store relation
 is **re-established** for the next binding.
 
-## The relation, the virtual step, the physical step
+## The relation is indexed by a live set
 
 Write `ρ := physRename body tbl` (the physical RA renaming, §4 of `…Spill`). The
-store relation between a virtual store `s` and a physical store `s'` is
+store relation between a virtual store `s` and a physical store `s'` carries a
+list `L` of logical names — the names live at the program point it holds at:
 
-  `StoreRel ρ s s' := ∀ m, s'.lvm (ρ m) = s.lvm m`.
+  `StoreRel body tbl L s s' := ∀ m ∈ L, s'.lvm (ρ m) = s.lvm m`.
+
+Quantifying over `L` rather than over all strings is what makes the relation
+satisfiable at a shipped allocation. `ρ` is not injective: a linear-scan
+allocator reuses one physical register across logical names whose live ranges
+are disjoint, and it sends every name the body does not mention to a single
+sentinel location (`ToLprogFaithfulBinopMov.physRename_eq_of_not_mem`). A
+relation quantified over all names therefore equates the virtual values of names
+that share a register, which no execution satisfies. Restricted to the names
+live at one point, it is the agreement a register allocation preserves.
+
+## The virtual step and the physical step
 
 A virtual binop binding writes its logical destination `nDst` with the result
 `v`, i.e. the virtual store steps `s ↦ s.setReg nDst v`. On the physical side the
@@ -48,16 +60,33 @@ and discharge both: `ρ m = physRegName (physMapTabled tbl (nameSlot body m))`,
 and `physRegName` only ever emits one of the 13 GP names `RAX…R13` or a `k.N`
 spill name — never `R15`/`R14`.
 
-## The injectivity hypothesis (kept as a hypothesis — RA correctness)
+## The four side conditions of the step
 
-For the destination fibre we need `ρ` to separate `nDst` from every *other* live
-logical name: if `ρ m = ρ nDst` with `m ≠ nDst`, the physical write to `ρ nDst`
-would silently overwrite `m`'s value. This is exactly the **RA-correctness**
-property (the allocator gives distinct live names distinct slots); the
-`RegMachineSim` lemma `jinstr_renameBlock_sound` proves the analogue for the
-`JInstr`/`JState` machine under a uniform renaming. We keep it as the explicit
-hypothesis `hinj : ∀ m, ρ m = ρ nDst → m = nDst` of the maintenance step (the
-liveness-relative injectivity at the binding's destination), not derived here.
+`legalizeBinop_storeRel_step` carries a live set `Lin` before the binding and a
+live set `Lout` after it, related by four conditions:
+
+* `hdstIn : nDst ∈ Lin` and `hsrcIn : nSrc ∈ Lin` — the binding reads both of
+  its operands, so both are live on entry and the read relation covers them;
+* `hinj : ∀ m ∈ Lout, ρ m = ρ nDst → m = nDst` — the destination's physical
+  register is not shared with any *other* name live after the binding. This is
+  the interference condition of the allocation at this program point, in the
+  shape `JasminLprogExport.InterferenceRespected` states it: the defined name
+  together with the live-out set, pairwise distinct under `ρ`. Restricting it to
+  `Lout` is what a slot-reducing allocation can satisfy; the same condition
+  quantified over all strings holds at no binding of a shipped kernel, because
+  the sentinel fibre alone already refutes it;
+* `hcarry : ∀ m ∈ Lout, m ≠ nDst → m ∈ Lin` — every name live after the binding
+  other than the one it defines was already live before it, so the write-frame
+  carries its value across.
+
+`hinj` and `hcarry` are properties of the register allocation and of the
+liveness of the source program. They are hypotheses here, not derived from the
+allocator: `ToLprogFaithfulRA.physRename_injOn_live` reduces `hinj` to
+slot-level injectivity on the live set and `ToLprogFaithfulRA.physMap_no_collision`
+supplies that for slots whose live ranges overlap, but the two facts about the
+`Lcmd` layer that join them — the `physTable`-scatter agreement and the
+binding-position-to-`physLiveRange` correspondence — are the named residual of
+that module.
 
 ## What this module proves vs the residual
 
@@ -65,17 +94,19 @@ PROVED (against the real `lsemStraight`):
 * `legalizeBinop_writeFrame`: `legalizeBinop` leaves every register **outside**
   `{dst, R15, R14}` unchanged (the write-frame of all four branches);
 * `physRename_ne_reloadScratch{,2}`: the scratches are out of `ρ`'s image;
-* `legalizeBinop_storeRel_step`: the per-binding maintenance — `StoreRel` is
-  re-established after one `legalizeBinop` binding, given the read relation, the
-  dead-scratch facts (discharged), and the destination injectivity `hinj`.
+* `legalizeBinop_storeRel_step`: the per-binding maintenance — `StoreRel` at
+  `Lout` is re-established after one `legalizeBinop` binding, given the read
+  relation at `Lin`, the dead-scratch facts (discharged), and the four side
+  conditions above.
+
+The whole-body threading of these steps is the sibling
+`ToLprogFaithfulBody.physBlocks_storeRel`; the leading two-address
+`mov dst, s0` per binding for `dst ≠ s0` is packaged as a `BlockMaintains`
+witness in `ToLprogFaithfulTwoAddr`.
 
 RESIDUAL (NOT proved here):
-* the full `physBody` induction threading `StoreRel` across **all** bindings: it
-  carries `hinj` as a *liveness* invariant of the whole block — large
-  bookkeeping, not the single-step content. (The whole-body threading itself is
-  the sibling `ToLprogFaithfulBody.physBlocks_storeRel`; the leading two-address
-  `mov dst, s0` per binding for `dst ≠ s0` is discharged and packaged as a
-  `BlockMaintains` witness in `ToLprogFaithfulTwoAddr`.)
+* the interference condition `hinj` and the liveness condition `hcarry`, as
+  described above;
 * `arr`/`arrIdx` (memory) operands: `remapOperand` passes them through unrenamed,
   so their maintenance is a `StoreAgreesM` (memory) obligation, not this register
   relation;
@@ -241,57 +272,67 @@ theorem legalizeBinop_writeFrame {w : Nat} (s s' : Lstate w) (dst src opn : Stri
 
 /-! ## 2. The store relation and its per-binding maintenance
 
-`StoreRel ρ s s'` is the read relation `evalOperand_remapOperand_reg` consumes:
-the physical store `s'` reads, at every renamed register `ρ m`, what the virtual
-store `s` reads at `m`. The maintenance theorem `legalizeBinop_storeRel_step`
-re-establishes it after one `legalizeBinop` binding. -/
+`StoreRel body tbl L s s'` is the read relation `evalOperand_remapOperand_reg`
+consumes, restricted to a live set: at every name `m` of `L`, the physical store
+`s'` reads at the renamed register `ρ m` what the virtual store `s` reads at `m`.
+The maintenance theorem `legalizeBinop_storeRel_step` carries it from the live-in
+set of one `legalizeBinop` binding to the live-out set. -/
 
-/-- The RA store relation along the physical renaming `ρ = physRename body tbl`:
-    the physical store `s'` agrees with the virtual store `s` register-pointwise,
-    read through `ρ`. This is exactly the hypothesis of
-    `evalOperand_remapOperand_reg` (the read side). -/
-def StoreRel {w : Nat} (body : Lcmd) (tbl : Array Nat) (s s' : Lstate w) : Prop :=
-  ∀ m, s'.lvm (physRename body tbl m) = s.lvm m
+/-- The RA store relation along the physical renaming `ρ = physRename body tbl`,
+    at the live set `L`: the physical store `s'` agrees with the virtual store
+    `s`, read through `ρ`, at every logical name of `L`. `L` is the set of names
+    live at the program point the relation holds at; `ρ` is injective on no
+    larger set, since the allocator reuses a register across names with disjoint
+    live ranges. -/
+def StoreRel {w : Nat} (body : Lcmd) (tbl : Array Nat) (L : List String)
+    (s s' : Lstate w) : Prop :=
+  ∀ m ∈ L, s'.lvm (physRename body tbl m) = s.lvm m
 
 /-- **Per-binding store-relation maintenance (the write side).** Suppose the read
-    relation `StoreRel body tbl s s'` holds before a binop binding whose logical
-    destination is `nDst` and whose two sources are `nDst`, `nSrc`. On the virtual
-    side the binding steps `s ↦ s.setReg nDst v` (with `v` the binop result). On
-    the physical side it is realised as
+    relation `StoreRel body tbl Lin s s'` holds at the live-in set `Lin` before a
+    binop binding whose logical destination is `nDst` and whose two sources are
+    `nDst`, `nSrc`. On the virtual side the binding steps `s ↦ s.setReg nDst v`
+    (with `v` the binop result). On the physical side it is realised as
     `legalizeBinop (.reg (ρ nDst)) (.reg (ρ nSrc)) opn` (`ρ = physRename body
     tbl`). Then that physical sequence runs to a state `s''` for which the store
-    relation is **re-established**: `StoreRel body tbl (s.setReg nDst v) s''`.
+    relation is **re-established** at the live-out set `Lout`:
+    `StoreRel body tbl Lout (s.setReg nDst v) s''`.
 
-    Three ingredients:
-    * the read relation gives `s'.lvm (ρ nDst) = s.lvm nDst` and likewise for
-      `nSrc`, so the physical binop computes the same `v` (`legalizeBinop_lsem`);
+    The ingredients:
+    * the read relation at the two operands (`hdstIn`, `hsrcIn` place them in
+      `Lin`) gives `s'.lvm (ρ nDst) = s.lvm nDst` and likewise for `nSrc`, so the
+      physical binop computes the same `v` (`legalizeBinop_lsem`);
     * the **dead-scratch invariant** (`physRename_ne_reloadScratch{,2}`, discharged
       here) excludes `R15`/`R14` from `ρ`'s image, so the transient scratch writes
       of the spill branches are invisible to the relation (via
       `legalizeBinop_writeFrame`);
-    * the **destination injectivity** `hinj : ∀ m, ρ m = ρ nDst → m = nDst` (the
-      RA-correctness property — distinct live names get distinct slots; the
-      `RegMachineSim` lemma `jinstr_renameBlock_sound` proves the uniform-
-      renaming analogue) confines the physical write at `ρ nDst` to exactly the
-      `nDst` fibre, matching the virtual `setReg nDst`.
+    * the **live-out interference condition** `hinj : ∀ m ∈ Lout, ρ m = ρ nDst →
+      m = nDst` confines the physical write at `ρ nDst` to exactly the `nDst`
+      fibre among the names live after the binding, matching the virtual
+      `setReg nDst`. A name that shares `nDst`'s register but is dead here is
+      unconstrained, which is what lets a slot-reducing allocation satisfy it;
+    * the **live-out carry condition** `hcarry : ∀ m ∈ Lout, m ≠ nDst → m ∈ Lin`
+      routes every other live-out name back through the incoming relation.
 
-    This is the single-binding step; threading it across the whole `physBody`
-    (including the leading two-address `mov` per binding and carrying `hinj` as a
-    block-level liveness invariant) is the named residual — see the module
-    docstring. -/
+    `hinj` and `hcarry` are conditions on the register allocation and on the
+    liveness of the source program; see the module docstring. This is the
+    single-binding step; the whole-`physBody` threading is
+    `ToLprogFaithfulBody.physBlocks_storeRel`. -/
 theorem legalizeBinop_storeRel_step {w : Nat} (body : Lcmd) (tbl : Array Nat)
-    (s s' : Lstate w) (nDst nSrc opn : String)
-    (hrel : StoreRel body tbl s s')
-    (hinj : ∀ m, physRename body tbl m = physRename body tbl nDst → m = nDst)
+    (Lin Lout : List String) (s s' : Lstate w) (nDst nSrc opn : String)
+    (hrel : StoreRel body tbl Lin s s')
+    (hdstIn : nDst ∈ Lin) (hsrcIn : nSrc ∈ Lin)
+    (hinj : ∀ m ∈ Lout, physRename body tbl m = physRename body tbl nDst → m = nDst)
+    (hcarry : ∀ m ∈ Lout, m ≠ nDst → m ∈ Lin)
     (hstrip : stripWidthTag opn = opn) (v : BitVec w)
     (hop : applyOpn opn [s.lvm nDst, s.lvm nSrc] = some v) :
     ∃ s'', lsemStraight
         (legalizeBinop (.reg (physRename body tbl nDst))
           (.reg (physRename body tbl nSrc)) opn "MOV") s' = some s''
-      ∧ StoreRel body tbl (s.setReg nDst v) s'' := by
+      ∧ StoreRel body tbl Lout (s.setReg nDst v) s'' := by
   unfold StoreRel at hrel ⊢
-  have hreadD : s'.lvm (physRename body tbl nDst) = s.lvm nDst := hrel nDst
-  have hreadS : s'.lvm (physRename body tbl nSrc) = s.lvm nSrc := hrel nSrc
+  have hreadD : s'.lvm (physRename body tbl nDst) = s.lvm nDst := hrel nDst hdstIn
+  have hreadS : s'.lvm (physRename body tbl nSrc) = s.lvm nSrc := hrel nSrc hsrcIn
   have hop' : applyOpn opn
       [s'.lvm (physRename body tbl nDst), s'.lvm (physRename body tbl nSrc)] = some v := by
     rw [hreadD, hreadS]; exact hop
@@ -301,10 +342,10 @@ theorem legalizeBinop_storeRel_step {w : Nat} (body : Lcmd) (tbl : Array Nat)
     (Ne.symm (physRename_ne_reloadScratch body tbl nSrc))
     reloadScratch_ne_reloadScratch2 hstrip v hop'
   refine ⟨s'', hrun, ?_⟩
-  intro m
+  intro m hmL
   by_cases hm : physRename body tbl m = physRename body tbl nDst
-  · -- `m` shares `nDst`'s slot ⇒ `m = nDst` (injectivity); both sides are `v`.
-    have hmd : m = nDst := hinj m hm
+  · -- `m` shares `nDst`'s slot and is live out ⇒ `m = nDst`; both sides are `v`.
+    have hmd : m = nDst := hinj m hmL hm
     subst hmd
     rw [hval]
     simp [Lstate.setReg]
@@ -314,8 +355,8 @@ theorem legalizeBinop_storeRel_step {w : Nat} (body : Lcmd) (tbl : Array Nat)
         (physRename body tbl nDst) (physRename body tbl nSrc) opn
         (physRename body tbl m) hm
         (physRename_ne_reloadScratch body tbl m) (physRename_ne_reloadScratch2 body tbl m) hrun
-    rw [hframe, hrel m]
     have hmne : m ≠ nDst := fun he => hm (by rw [he])
+    rw [hframe, hrel m (hcarry m hmL hmne)]
     simp [Lstate.setReg, hmne]
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulWriteSide

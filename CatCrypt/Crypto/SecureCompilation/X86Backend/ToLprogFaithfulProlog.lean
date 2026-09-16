@@ -17,8 +17,8 @@ correctness theorem. It carries two hypotheses about the *prologue*:
 * `hProlog : lsemStraight prologue sEntry = some sProlog` — the prologue's net
   effect on the linear-machine state; and
 * `hrel : ∀ sMat, lsemStraight (argMatSeq pairs) sProlog = some sMat →
-    StoreRel body tbl s sMat` — the post-materialization store relation the body
-  consumes.
+    StoreRel body tbl L s sMat` — the post-materialization store relation the
+  body consumes, at the entry live set `L`.
 
 At the time `toLprogPhysAbi_lsem` was stated, the prologue used the `MOVQ`
 mnemonic, which the `JasminLsem` straight-line model did not cover, so `hProlog`
@@ -45,11 +45,11 @@ pass* rather than assuming its postcondition.
   and `R14`); every other register reads through unchanged. This is the frame
   the store-relation preservation rests on.
 
-* **`buildPrologue_preserves_StoreRel`**: if `StoreRel body tbl s sEntry` holds
-  and the physical renaming's image avoids the nine prologue-written cells
+* **`buildPrologue_preserves_StoreRel`**: if `StoreRel body tbl L s sEntry` holds
+  and the physical renaming's image on `L` avoids the nine prologue-written cells
   (`PrologueFrameDisjoint` — the RA never places a live virtual name on a
   red-zone save slot or the reserved `R14` scratch, which the actual register
-  allocator respects), then `StoreRel body tbl s (prologueState sEntry)` — the
+  allocator respects), then `StoreRel body tbl L s (prologueState sEntry)` — the
   prologue preserves the entry store relation.
 
 * **`buildPrologue_establishes_StoreRel`** (part b): chaining the frame through
@@ -133,7 +133,7 @@ theorem buildPrologue_lsem {w : Nat} (virt : Lfundef) (tbl : Array Nat)
     lsemStraight ((buildPrologue virt tbl inLoadMap).map (·.li_i)) sEntry
       = some (prologueState sEntry) := by
   simp only [buildPrologue, List.map_cons, List.map_nil, lsemStraight,
-    lsemStep, stripWidthTag_MOVQ, evalOperand, applyOpn_MOVQ, applyOpn,
+    lsemStep, stripWidthTag_MOVQ, evalOperand, applyOpn,
     prologueState, prologueStep, abiSaveRdiName, abiSaveRsiName, reloadScratch2]
 
 /-! ## 2. The prologue frame -/
@@ -159,34 +159,35 @@ theorem buildPrologue_frame {w : Nat} (sEntry : Lstate w) (y : String)
 
 /-! ## 3. Store-relation preservation (the prologue half of `hrel`) -/
 
-/-- **The RA-disjointness side condition for the prologue.** The physical
-    renaming `physRename body tbl` never places a live virtual name onto one of
-    the nine prologue-written cells (the red-zone save slots `qsave.*` and the
-    reserved scratch `R14`). The register allocator respects this: `qsave.*` are
-    not allocatable register names, and `R14` is reserved as a reload scratch (it
-    is excluded from `gpRegNames`, the allocatable set). This is the same class
-    of RA-correctness invariant as `MemrefPtrsDistinct` / the `hinj` injectivity
-    already carried by the whole-function theorem. -/
-def PrologueFrameDisjoint (body : Lcmd) (tbl : Array Nat) : Prop :=
-  ∀ m, physRename body tbl m ∉ prologueWritten
+/-- **The RA-disjointness side condition for the prologue**, over a live set `L`.
+    The physical renaming `physRename body tbl` never places a name live at `L`
+    onto one of the nine prologue-written cells (the red-zone save slots
+    `qsave.*` and the reserved scratch `R14`). The register allocator respects
+    this: `qsave.*` are not allocatable register names, and `R14` is reserved as a
+    reload scratch (it is excluded from `gpRegNames`, the allocatable set).
+    Restricting to `L` matches the store relation the whole-function theorem
+    threads, which constrains only the names live at each program point. -/
+def PrologueFrameDisjoint (body : Lcmd) (tbl : Array Nat) (L : List String) : Prop :=
+  ∀ m ∈ L, physRename body tbl m ∉ prologueWritten
 
-/-- **The prologue preserves the entry store relation.** If `StoreRel body tbl s
-    sEntry` and the renaming's image avoids the prologue-written cells
-    (`PrologueFrameDisjoint`), then `StoreRel body tbl s (prologueState sEntry)`:
-    every renamed register reads through the prologue unchanged
+/-- **The prologue preserves the entry store relation.** If `StoreRel body tbl L
+    s sEntry` and the renaming's image on `L` avoids the prologue-written cells
+    (`PrologueFrameDisjoint`), then `StoreRel body tbl L s (prologueState sEntry)`:
+    every renamed register of a name in `L` reads through the prologue unchanged
     (`buildPrologue_frame`), so the entry relation transfers verbatim. -/
 theorem buildPrologue_preserves_StoreRel {w : Nat} (body : Lcmd) (tbl : Array Nat)
-    (s sEntry : Lstate w) (hdisj : PrologueFrameDisjoint body tbl)
-    (hrel : StoreRel body tbl s sEntry) :
-    StoreRel body tbl s (prologueState sEntry) := by
-  intro m
-  rw [buildPrologue_frame sEntry (physRename body tbl m) (hdisj m)]
-  exact hrel m
+    (L : List String) (s sEntry : Lstate w)
+    (hdisj : PrologueFrameDisjoint body tbl L)
+    (hrel : StoreRel body tbl L s sEntry) :
+    StoreRel body tbl L s (prologueState sEntry) := by
+  intro m hmL
+  rw [buildPrologue_frame sEntry (physRename body tbl m) (hdisj m hmL)]
+  exact hrel m hmL
 
 /-! ## 4. `hrel` discharged: the prologue + materialization establish `StoreRel`
 
 The body's `hrel` precondition is `∀ sMat, lsemStraight (argMatSeq pairs)
-sProlog = some sMat → StoreRel body tbl s sMat`. With `sProlog = prologueState
+sProlog = some sMat → StoreRel body tbl L s sMat`. With `sProlog = prologueState
 sEntry`, the prologue half is `buildPrologue_preserves_StoreRel`; the
 materialization half (that running `argMatSeq pairs` *preserves* the store
 relation away from the argument destinations, and *establishes* the argument
@@ -197,8 +198,8 @@ contract — the named glue, supplied by `argMat_establishes_argRegs` plus the
 materialization frame), `hrel` follows. -/
 
 /-- **`hrel` discharged (prologue side).** Given the entry store relation
-    `StoreRel body tbl s sEntry`, the prologue RA-disjointness
-    `PrologueFrameDisjoint`, and the materialization's store-relation contract
+    `StoreRel body tbl L s sEntry`, the prologue RA-disjointness
+    `PrologueFrameDisjoint` over `L`, and the materialization's store-relation contract
     `hMatRel` (the materialization, started from a `StoreRel`-related state,
     re-establishes the store relation it needs — the argument-register half is
     `argMat_establishes_argRegs`, the frame half is `argMatSeq_frame`), the
@@ -206,15 +207,15 @@ materialization frame), `hrel` follows. -/
     sEntry`. This is the by-construction `hrel` discharge: the only external
     inputs are the entry store relation and the two named RA invariants. -/
 theorem buildPrologue_establishes_StoreRel {w : Nat} (body : Lcmd) (tbl : Array Nat)
-    (s sEntry : Lstate w) (pairs : List (String × String))
-    (hdisj : PrologueFrameDisjoint body tbl)
-    (hrelEntry : StoreRel body tbl s sEntry)
-    (hMatRel : ∀ sP, StoreRel body tbl s sP →
-      ∀ sMat, lsemStraight (argMatSeq pairs) sP = some sMat → StoreRel body tbl s sMat) :
+    (L : List String) (s sEntry : Lstate w) (pairs : List (String × String))
+    (hdisj : PrologueFrameDisjoint body tbl L)
+    (hrelEntry : StoreRel body tbl L s sEntry)
+    (hMatRel : ∀ sP, StoreRel body tbl L s sP →
+      ∀ sMat, lsemStraight (argMatSeq pairs) sP = some sMat → StoreRel body tbl L s sMat) :
     ∀ sMat, lsemStraight (argMatSeq pairs) (prologueState sEntry) = some sMat →
-      StoreRel body tbl s sMat := by
-  have hProlRel : StoreRel body tbl s (prologueState sEntry) :=
-    buildPrologue_preserves_StoreRel body tbl s sEntry hdisj hrelEntry
+      StoreRel body tbl L s sMat := by
+  have hProlRel : StoreRel body tbl L s (prologueState sEntry) :=
+    buildPrologue_preserves_StoreRel body tbl L s sEntry hdisj hrelEntry
   exact hMatRel (prologueState sEntry) hProlRel
 
 /-! ## 5. The assembled whole-function corollary with fewer hypotheses
@@ -248,16 +249,18 @@ theorem toLprogPhysAbi_lsem_of_buildPrologue {w : Nat} (body : Lcmd) (nArgs d : 
     (hbody : body = bindingHeads nArgs argName (fun _ => none) com d)
     (hcd : CoverData body (bodyPhysTable body) nArgs com d bs)
     (hmemref : MemrefPtrsDistinct body (bodyPhysTable body))
+    (L N : List String)
+    (hch : Chained (bs.map (fun b => (b.Lin, b.Lout))) L N)
     (sEntry s : Lstate w)
     (hbodyNoLret : .Lret ∉
       ((buildPrologue virt tbl0 inLoadMap).map (·.li_i) ++ argMatSeq pairs
         ++ (physBody (fun _ => none) body).map (·.li_i)))
-    (hdisjFrame : PrologueFrameDisjoint body (bodyPhysTable body))
-    (hrelEntry : StoreRel body (bodyPhysTable body) s sEntry)
-    (hMatRel : ∀ sP, StoreRel body (bodyPhysTable body) s sP →
+    (hdisjFrame : PrologueFrameDisjoint body (bodyPhysTable body) L)
+    (hrelEntry : StoreRel body (bodyPhysTable body) L s sEntry)
+    (hMatRel : ∀ sP, StoreRel body (bodyPhysTable body) L s sP →
       ∀ sMat, lsemStraight (argMatSeq pairs) sP = some sMat →
-        StoreRel body (bodyPhysTable body) s sMat)
-    (nRes : String) :
+        StoreRel body (bodyPhysTable body) L s sMat)
+    (nRes : String) (hnRes : nRes ∈ N) :
     ∃ sEnd,
       lsemRun
         ((buildPrologue virt tbl0 inLoadMap).map (·.li_i) ++ argMatSeq pairs
@@ -270,13 +273,13 @@ theorem toLprogPhysAbi_lsem_of_buildPrologue {w : Nat} (body : Lcmd) (nArgs d : 
   -- materialization contract carries it across `argMatSeq`.
   have hrel : ∀ sMat,
       lsemStraight (argMatSeq pairs) (prologueState sEntry) = some sMat →
-        StoreRel body (bodyPhysTable body) s sMat :=
-    buildPrologue_establishes_StoreRel body (bodyPhysTable body) s sEntry
+        StoreRel body (bodyPhysTable body) L s sMat :=
+    buildPrologue_establishes_StoreRel body (bodyPhysTable body) L s sEntry
       pairs hdisjFrame hrelEntry hMatRel
   -- Apply the whole-function theorem with the prologue run discharged.
   exact toLprogPhysAbi_lsem body nArgs d com bs
     ((buildPrologue virt tbl0 inLoadMap).map (·.li_i)) rest pairs hfresh hdist
-    hbody hcd hmemref sEntry s hbodyNoLret (prologueState sEntry)
-    (buildPrologue_lsem virt tbl0 inLoadMap sEntry) hrel nRes
+    hbody hcd hmemref L N hch sEntry s hbodyNoLret (prologueState sEntry)
+    (buildPrologue_lsem virt tbl0 inLoadMap sEntry) hrel nRes hnRes
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulProlog
