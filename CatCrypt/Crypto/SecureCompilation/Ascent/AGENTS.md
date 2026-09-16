@@ -98,10 +98,13 @@ the table gives the role and the declarations to read first.
 | [`GuardsLeaf`](GuardsLeaf.lean) | `CorresL`, `CorresUL` over the waist at a leaf oracle (`semScalarL`, `semUL`); abstract word leaves `AVal`, `absArg`, `LeafAbs`, `AbsLeaves` and array leaves `LeafAbsArr`, `AbsArrLeaves`, `setCells`, `cellLeaf`; leaf steps `leafDstStep`, `leafDstAbs`, `AbsStep`, `seqAbs`; `ascendGLL`, `ascendGLL_sound`, `ascendGLL_noLeaves`; leaves `corresL_call`, `corresL_callArr`, `corresL_callDstThreaded`, `corresL_tupleLoadLeaf`, `corresL_callSwap`, `corresL_cloneCall`, `corresL_callN`, `corresL_selectLeaf`, `corresL_selectArrLeaf`, `corresL_arrLoadLitLeaf`, `corresL_arrStoreLitLeaf`, `corresL_arrStoreLitCell`; `leafK_corres`, `leafK2_corres` |
 | [`Strengthen`](Strengthen.lean) | `tsLowCTL`, `tsLowCTL_sound`, `tsLowCTL_isSome_iff` and the empty-layout `tsLowCT`, `tsLowCT_sound`, `tsLowCT_isSome_iff`; `tsHax`, `tsHax_sound`; `Kernel.tsLevel` |
 | [`CorresAttr`](CorresAttr.lean) | the `@[corres]` label attribute |
-| [`CorresSolver`](CorresSolver.lean) | `corresJ_cons`, `corresJ_castFa`; tactics `corres_leaf`, `corres_chain`, `corres_solve` |
-| [`CorresX86Solver`](CorresX86Solver.lean) | `SRx`, `corresJ_of_regs`, the leaves `corresJ_movX` … `corresJ_mulxX`; tactic `corres_solve_x86` |
+| [`CorresSymEngine`](CorresSymEngine.lean) | the `SymM` worklist engine over a machine description: `Machine`, `Shape`, `listShape`, `run`, `solve` |
+| [`CorresSolver`](CorresSolver.lean) | `corresJ_cons`, `corresJ_cons_true`, `corresJ_castFa`; the engine instance `corresJMachine` and tactic `corres_sym`; macro tactics `corres_leaf`, `corres_chain`, `corres_solve` |
+| [`CorresX86Solver`](CorresX86Solver.lean) | `SRx`, `corresJ_of_regs`, the leaves `corresJ_movX` … `corresJ_mulxX`; macro tactic `corres_solve_x86` |
 | [`CorresRiscvLeaves`](CorresRiscvLeaves.lean) | `SRr`, `corresR_of_set`, the twelve `RInst64` leaves; the `@[corresR]` attribute |
-| [`CorresRiscvSolver`](CorresRiscvSolver.lean) | the `@[corresR]` registrations; tactic `corres_solve_rv`; `corresR_subBorrow3` |
+| [`CorresRiscvSolver`](CorresRiscvSolver.lean) | the `@[corresR]` registrations; `corresR_cons_true`; the engine instance `corresRMachine` and tactic `corres_sym_rv`; macro tactic `corres_solve_rv`; `corresR_subBorrow3` |
+| [`CorresSymScalar`](CorresSymScalar.lean) | `corres_seq_true`; the engine instance `corresScalarMachine` over `Corres` and tactic `corres_sym_scalar` |
+| [`CorresSym`](CorresSym.lean) | `corres_sym` on the 99-instruction `solinas_square` body, `solinasSquareBlock_corres_sym` |
 | [`MontBounds`](MontBounds.lean) | tactic `mont_bound` for carry-out and Montgomery range side goals |
 | [`InvariantSchemas`](InvariantSchemas.lean) | window-invariant templates `MontReduceInvariant`, `SchoolbookMulInvariant`, `DivstepInvariant`, `FieldAddSubInvariant` with layouts |
 
@@ -172,8 +175,8 @@ the table gives the role and the declarations to read first.
 |---|---|
 | [`Demos/Decide`](Demos/Decide.lean) | the deciding tactics on arithmetic and bitwise kernels |
 | [`Demos/Scalar`](Demos/Scalar.lean) | `corres_solve_scalar`, `corres_rotl`, and `qrClosed_frontDenote` |
-| [`Demos/X86StraightLine`](Demos/X86StraightLine.lean) | `corres_solve_x86` on carry chains and on `x86Target.compile` output |
-| [`Demos/Riscv`](Demos/Riscv.lean) | `corres_solve_rv` on an add with materialised carry |
+| [`Demos/X86StraightLine`](Demos/X86StraightLine.lean) | `corres_sym` on carry chains and on `x86Target.compile` output |
+| [`Demos/Riscv`](Demos/Riscv.lean) | `corres_sym_rv` on an add with materialised carry |
 | [`Demos/LeanSourceX86`](Demos/LeanSourceX86.lean) | descent results at x86 (`add_descent_x86`) and the solver on the same blocks (`add_descent_solver`) |
 | [`Demos/LeanSourceRiscv`](Demos/LeanSourceRiscv.lean) | descent results at RV64 (`add_descent_riscv`) |
 | [`Demos/HeapAbs`](Demos/HeapAbs.lean) | `feAddN_capstone`, `feAdd4_capstone_field` over `ValueAbs` |
@@ -227,12 +230,12 @@ These modules are not imported by any module above and are not part of the calcu
 | `Corres` at `asemW c`, `asemWExpr c` or `asemWBV c` for a small concrete kernel | `ascend!`, `ascend_expr!`, `ascend_bitwise!`, `ascend_unified!` | membership by one `decide` over the whole kernel |
 | the same goal for a large or generated kernel (`def`-bound, built by `List.foldr` or `List.map`) | `ascend_meta` | walks the term; `decide` only on single names and literals |
 | the same goal when every terminal is a literal `RScalarSet` | `ascend`, `ascend_expr`, `ascend_bitwise` | constructor search; leaves the `IsArithClean` / `IsWordClean` side conditions of expression terminals open |
-| `Corres SRwordBV (fun _ => True) fold c` for a straight-line `RSeq` / `RScalarSetExpr` kernel mixing arithmetic and bitwise nodes | `corres_solve_scalar` | synthesises the `wordStep` fold; the only leaf is `corres_setExprWord` |
+| `Corres SRwordBV (fun _ => True) fold c` for a straight-line `RSeq` / `RScalarSetExpr` kernel mixing arithmetic and bitwise nodes | `corres_sym_scalar`, or the macro `corres_solve_scalar` | synthesises the `wordStep` fold; the only leaf is `corres_setExprWord` |
 | a kernel with loops, conditionals, range side conditions or unsupported nodes | `ascendG_sound`, `ascendG_sound_scalar`, `tsLowCT_sound` (terms) | inspect `(ascendG fuel c).1` first; an `unsupported` guard makes the precondition unsatisfiable |
 | a kernel with `RArrLoad`, `RArrStore` or `RLimbStore` | `ascendGL_sound_scalar`, `tsLowCTL_sound_scalar` over the array layout (terms) | pass the layout listing each array with its length; `arrSelK` is the template |
-| `CorresJ SRcarry` or `CorresJ SRcarry2` over a carry-family `JInstr` block | `corres_solve` | composes the `@[corres]` leaves by `corresJ_cons` |
-| `CorresJ SRx` over value instructions, given as `JInstr`s, as `xs.map xinstrToJ`, or as `x86Target.compile p` | `corres_solve_x86` | normalises the block, then `corres_solve` |
-| `CorresR SRr` over an `RInst64` block | `corres_solve_rv` | composes the `@[corresR]` leaves |
+| `CorresJ SR` over a `JInstr` block (`SRcarry`, `SRcarry2`, `SRx`, `SRmem cells`), given as a literal, a definition, a concatenation, `xs.map xinstrToJ` or `x86Target.compile p` | `corres_sym` | the `SymM` engine over the `@[corres]` leaves; side conditions by `decide`; a 99-instruction block needs no `maxRecDepth` |
+| the same goals, by macro recursion | `corres_solve`, `corres_solve_x86`, `corres_solve_mem` | recursion depth grows with the block length |
+| `CorresR SRr` over an `RInst64` block | `corres_sym_rv`, or the macro `corres_solve_rv` | composes the `@[corresR]` leaves |
 | carry-out equalities and Montgomery top-carry or range goals | `mont_bound` | linear goals over powers of `2^64` |
 
 A solver closes the goal only when the stated abstract transition is definitionally
@@ -261,8 +264,11 @@ The kernel has no inputs; state the theorem as a result about that kernel.
 
 ### An x86 or RV64 block
 
-State `CorresJ SR (fun _ => True) fold block` and close it with `corres_solve_x86` or
-`corres_solve`. A new instruction needs one lemma with conclusion
+State `CorresJ SR (fun _ => True) fold block` and close it with `corres_sym`. A new
+machine judgment of the same shape gets the engine by a `CorresSymEngine.Machine`
+value (the judgment, its leaves, its composition, empty-block, weakening and cast
+lemmas, and a block classifier) and `elab "name" : tactic => CorresSymEngine.solve m`,
+as `CorresRiscvSolver` and `CorresSymScalar` do. A new instruction needs one lemma with conclusion
 `CorresJ SR (fun _ => True) step [i]` tagged `@[corres]`, in a module that imports
 `CorresAttr`; `corresJ_of_regs` states such a leaf once for any instruction whose
 register effect is one write. For RV64, tag the leaf `@[corresR]` (declared in

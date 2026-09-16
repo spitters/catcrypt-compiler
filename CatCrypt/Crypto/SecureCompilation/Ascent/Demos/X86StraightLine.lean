@@ -8,19 +8,21 @@ module
 public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresX86Solver
 
 /-!
-# Demo: `corres_solve_x86` over straight-line x86 blocks
+# Demo: `corres_sym` over straight-line x86 blocks
 
 Route: a `JInstr` block run by `runBlock` refines a composed abstract transition
 (`CorresJ`), through the carry-tracking relation `SRcarry` for the carry-family
 instructions and through the register-only relation `SRx` for the value
 instructions. Each instruction has a `@[corres]` leaf (`corresJ_sbb`,
 `corresJ_adc`, `corresJ_mulx`, `corresJ_adcx` under `SRcarry`; `corresJ_movX`,
-`corresJ_addX`, `corresJ_shlX`, … under `SRx`); `corres_solve_x86` normalises a
-block given as the compiled output of the x86 `ScalarTarget` to its `JInstr`
-transcription, folds the leaves through `corresJ_cons` and reconciles the
-synthesized fold with the stated transition by `rfl`.
+`corresJ_addX`, `corresJ_shlX`, … under `SRx`); `corres_sym` puts a block given
+as the compiled output of the x86 `ScalarTarget` in weak head normal form
+instruction by instruction, folds the leaves through `corresJ_cons_true` and
+compares the synthesized fold with the stated transition by definitional
+equality.
 
-Tactic: `corres_solve_x86` (`Ascent/CorresX86Solver.lean`).
+Tactic: `corres_sym` (`Ascent/CorresSolver.lean`), over the leaves of
+`Ascent/CorresX86Solver.lean`.
 
 ## Main results
 
@@ -54,7 +56,7 @@ theorem sbb3_refines :
     CorresJ SRcarry (fun _ => True)
       (fun a => sbbStep "r2" "s2" (sbbStep "r1" "s1" (sbbStep "r0" "s0" a)))
       [.sbb "r0" (.reg "s0"), .sbb "r1" (.reg "s1"), .sbb "r2" (.reg "s2")] := by
-  corres_solve_x86
+  corres_sym
 
 /-- A widening multiply followed by an add-with-carry: `(hi, lo) := x * y;
     acc += lo + CF`. `mulxStep` writes the low and high words of the 128-bit
@@ -65,7 +67,7 @@ theorem mulx_adcx_refines :
     CorresJ SRcarry (fun _ => True)
       (fun a => adcStep "acc" "lo" (mulxStep "hi" "lo" "x" "y" a))
       [.mulx "hi" "lo" (.reg "x") (.reg "y"), .adcx "acc" (.reg "lo")] := by
-  corres_solve_x86
+  corres_sym
 
 /-- A value block: `r := a; r += b; r -= c; r <<= 3`. Under `SRx` no flag is
     tracked; each step is the abstract register write of the word the
@@ -75,7 +77,7 @@ theorem alu_refines :
       (fun st => shlStepX "r" (.imm 3) (subStepX "r" (.reg "c") (addStepX "r" (.reg "b")
         (movStepX "r" (.reg "a") st))))
       [.mov "r" (.reg "a"), .add "r" (.reg "b"), .sub "r" (.reg "c"), .shl "r" (.imm 3)] := by
-  corres_solve_x86
+  corres_sym
 
 /-- The x86 `ScalarTarget` compiles `r := a + b; s := r >> 3` to the two-address
     pairs `mov r a; add r b; mov s r; shr s 3`; translated by `xinstrToJ`, the
@@ -85,7 +87,7 @@ theorem compiled_refines :
       (fun st => shrStepX "s" (.imm 3) (movStepX "s" (.reg "r")
         (addStepX "r" (.reg "b") (movStepX "r" (.reg "a") st))))
       ((x86Target.compile [.add "r" "a" "b", .shrI "s" "r" 3]).map xinstrToJ) := by
-  corres_solve_x86
+  corres_sym
 
 /-- info: 'CatCrypt.Crypto.SecureCompilation.Ascent.Demos.sbb3_refines' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

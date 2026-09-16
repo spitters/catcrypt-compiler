@@ -22,7 +22,7 @@ register.
 
 The same compiled blocks, translated to `JInstr` by `xinstrToJ`, are also
 refined bottom-up by the ascent solver: `binCom_flatten` exposes the
-two-address statement the descent emits, and `corres_solve_x86` composes the
+two-address statement the descent emits, and `corres_sym` composes the
 `mov` and `add`/`sub` value leaves into the abstract fold.
 
 ## Main results
@@ -32,7 +32,7 @@ two-address statement the descent emits, and `corres_solve_x86` composes the
 * `binOp_descent_x86`: the same for any `binFrag` binary operation.
 * `fieldAddCom_eq_descent`: `fieldAddCom` is the descent's closed `Com` for `add`.
 * `add_descent_solver`, `sub_descent_solver`: the translated compiled blocks
-  refine the `add`/`sub` two-address folds under `SRx`, by `corres_solve_x86`.
+  refine the `add`/`sub` two-address folds under `SRx`, by `corres_sym`.
 -/
 
 @[expose] public section
@@ -93,7 +93,7 @@ theorem add_descent_solver :
       ((x86Target.compile (comToRegProg FieldEmitGoldenPath.fieldAddCom 2)).map xinstrToJ) := by
   rw [fieldAddCom_eq_descent, binCom_flatten]
   simp only [opToStmts]
-  corres_solve_x86
+  corres_sym
 
 /-- The compiled x86 block of `descentSubCom`, translated to `JInstr`, refines
     the two-address fold `sub v2 v1 ∘ mov v2 v0` under the register-only relation. -/
@@ -106,7 +106,7 @@ theorem sub_descent_solver :
     ((x86Target.compile (comToRegProg (descentCom (binFrag .sub) twoArgEnv 0) 2)).map xinstrToJ)
   rw [binCom_flatten]
   simp only [opToStmts]
-  corres_solve_x86
+  corres_sym
 
 /-- info: 'CatCrypt.Crypto.SecureCompilation.Ascent.Demos.add_descent_solver' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

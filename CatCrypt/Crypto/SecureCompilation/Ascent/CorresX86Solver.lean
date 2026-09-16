@@ -32,7 +32,8 @@ first. The x86 twin of `corres_solve_rv` (`CorresRiscvSolver`).
   the register file is one write; `corresJ_movX` … `corresJ_negX` are its
   instances, and `corresJ_mulxX` is the two-write `mulx` leaf.
 * `corres_solve_x86` normalises `x86Target.compile p`, `toX86`, and
-  `List.map xinstrToJ` in the goal's block and runs `corres_solve`.
+  `List.map xinstrToJ` in the goal's block and runs `corres_solve`. `corres_sym`
+  (`CorresSolver`) closes the same goals without the normalisation step.
 
 ## Main results
 
@@ -263,7 +264,10 @@ macro_rules
           List.append_nil, xinstrToJ, operandToJ])
        corres_solve))
 
-/-! ## Tests -/
+/-! ## Tests
+
+The tests are closed by `corres_sym` (`CorresSolver`), which puts a block given as
+`xs.map xinstrToJ` or as `x86Target.compile p` in weak head normal form itself. -/
 
 /-- A `JInstr` block: a move, an add, a subtract, a shift by an immediate. -/
 theorem corres_solve_x86_alu (r a b c : String) :
@@ -271,14 +275,14 @@ theorem corres_solve_x86_alu (r a b c : String) :
       (fun st => shlStepX r (.imm 3) (subStepX r (.reg c) (addStepX r (.reg b)
         (movStepX r (.reg a) st))))
       [.mov r (.reg a), .add r (.reg b), .sub r (.reg c), .shl r (.imm 3)] := by
-  corres_solve_x86
+  corres_sym
 
 /-- A `Model` block, translated by `xinstrToJ`. -/
 theorem corres_solve_x86_translated (r a b : String) :
     CorresJ SRx (fun _ => True)
       (fun st => addStepX r (.reg b) (movStepX r (.reg a) st))
       ([Instr.mov r (.reg a), Instr.add r (.reg b)].map xinstrToJ) := by
-  corres_solve_x86
+  corres_sym
 
 /-- The compiled output of the x86 `ScalarTarget` on a two-statement program,
     translated by `xinstrToJ`: each statement is the two-address pair `mov; op`. -/
@@ -287,13 +291,13 @@ theorem corres_solve_x86_compiled (r s a b : String) :
       (fun st => shrStepX s (.imm 3) (movStepX s (.reg r)
         (addStepX r (.reg b) (movStepX r (.reg a) st))))
       ((x86Target.compile [.add r a b, .shrI s r 3]).map xinstrToJ) := by
-  corres_solve_x86
+  corres_sym
 
 /-- The `umulh` selection: `mulx d d a b` leaves the high word in `d`. -/
 theorem corres_solve_x86_umulh (d a b : String) :
     CorresJ SRx (fun _ => True)
       (fun st => mulxStepX d d (.reg a) (.reg b) st)
       ((x86Target.compile [.umulh d a b]).map xinstrToJ) := by
-  corres_solve_x86
+  corres_sym
 
 end CatCrypt.Crypto.SecureCompilation.Ascent

@@ -655,7 +655,7 @@ theorem denote_forLoop_val_or_err (bi : Builtins) (fuel : Nat) (v : String)
   simp only [StateT.run] at ha hb <;> simp only [ha, hb]
   · cases a <;> cases b <;>
       first | exact Or.inr ⟨_, _, rfl⟩ | exact Or.inl ⟨_, _, rfl⟩ | exact hL _ _ _
-  · cases a <;> exact Or.inl ⟨_, _, rfl⟩
+  · cases a <;> exact Or.inr ⟨_, _, rfl⟩
   · exact Or.inr ⟨_, _, rfl⟩
   · exact Or.inr ⟨_, _, rfl⟩
 
@@ -773,7 +773,7 @@ theorem denote_forLoopRev_val_or_err (bi : Builtins) (fuel : Nat) (v : String)
   simp only [StateT.run] at ha hb <;> simp only [ha, hb]
   · cases a <;> cases b <;>
       first | exact Or.inr ⟨_, _, rfl⟩ | exact Or.inl ⟨_, _, rfl⟩ | exact hL _ _ _
-  · cases a <;> exact Or.inl ⟨_, _, rfl⟩
+  · cases a <;> exact Or.inr ⟨_, _, rfl⟩
   · exact Or.inr ⟨_, _, rfl⟩
   · exact Or.inr ⟨_, _, rfl⟩
 

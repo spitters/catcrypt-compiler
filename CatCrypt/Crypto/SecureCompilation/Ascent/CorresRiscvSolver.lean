@@ -8,18 +8,23 @@ module
 public meta import CatCrypt.Crypto.SecureCompilation.Ascent.CorresRiscvLeaves
 public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresRiscvLeaves
 public import Lean
+public meta import CatCrypt.Crypto.SecureCompilation.Ascent.CorresSymEngine
+public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresSymEngine
 
 /-!
-# `corres_solve_rv`: composing `CorresR` leaves over a straight-line `RInst64` block
+# Composing `CorresR` leaves over a straight-line `RInst64` block
 
-The RV64 twin of `corres_solve` (`CorresSolver`). The per-instruction leaves of
-`CorresRiscvLeaves` are folded through `corresR_cons`, the cons form of
-`corresR_append`, and the abstract transition is synthesized as the composed fold
-of the per-instruction steps.
+The RV64 twin of `corres_sym` and `corres_solve` (`CorresSolver`). The
+per-instruction leaves of `CorresRiscvLeaves` are folded through `corresR_cons`, the
+cons form of `corresR_append`, and the abstract transition is synthesized as the
+composed fold of the per-instruction steps.
 
 * `@[corresR]` is the leaf registry, populated here with the twelve leaves.
 * `corresR_cons` composes a single-instruction leaf on the head with a `CorresR`
-  on the tail.
+  on the tail; `corresR_cons_true` is its instance at precondition `fun _ => True`.
+* `corres_sym_rv` runs the `SymM` engine of `CorresSymEngine` at the machine
+  `corresRMachine`: the `@[corresR]` leaves, `corresR_cons_true` on a composite
+  block, `corresR_nil` on the empty block.
 * `corresR_leaf` applies the first `@[corresR]` leaf that unifies with the goal.
 * `corresR_chain` walks the block, `corresR_leaf` on each head.
 * `corres_solve_rv` frees the goal's transition to a metavariable through
@@ -33,12 +38,13 @@ by `or`.
 
 ## Main results
 
-* `corres_solve_rv`: the tactic composing the `@[corresR]` leaves over a
+* `corresRMachine`, `corres_sym_rv`: the engine instance and its tactic.
+* `corres_solve_rv`: the macro tactic composing the `@[corresR]` leaves over a
   straight-line `RInst64` block against a synthesized transition.
-* `corresR_cons`, `corresR_castFa`: the composition and transition-rewrite lemmas
-  the tactic uses.
+* `corresR_cons`, `corresR_cons_true`, `corresR_castFa`: the composition and
+  transition-rewrite lemmas the tactics use.
 * `corresR_subBorrow3`: the twelve-instruction three-limb subtract with borrows
-  materialised by `sltu`, closed by the tactic.
+  materialised by `sltu`, closed by `corres_sym_rv`.
 -/
 
 @[expose] public section
@@ -59,6 +65,13 @@ theorem corresR_cons {AState : Type} (SR : RState64 → AState → Prop)
     (h₁ : CorresR SR P fa [i]) (h₂ : CorresR SR Q ga c) (hpre : ∀ a, P a → Q (fa a)) :
     CorresR SR P (fun a => ga (fa a)) (i :: c) := by
   exact corresR_append SR h₁ h₂ hpre
+
+/-- `corresR_cons` at precondition `fun _ => True`. -/
+theorem corresR_cons_true {AState : Type} (SR : RState64 → AState → Prop)
+    {fa ga : AState → AState} {i : RInst64} {c : List RInst64}
+    (h₁ : CorresR SR (fun _ => True) fa [i]) (h₂ : CorresR SR (fun _ => True) ga c) :
+    CorresR SR (fun _ => True) (fun a => ga (fa a)) (i :: c) :=
+  corresR_cons SR h₁ h₂ (fun _ _ => trivial)
 
 /-- Rewrite the abstract transition of a `CorresR` along an equality. -/
 theorem corresR_castFa {AState : Type} (SR : RState64 → AState → Prop)
@@ -120,6 +133,28 @@ macro_rules
        · corresR_chain
        · rfl))
 
+/-! ## The `SymM` solver -/
+
+/-- The RV64 machine of the `SymM` engine: `CorresR` over a `List RInst64` block, the
+    `@[corresR]` leaves, `corresR_cons_true`, `corresR_nil`, `corresR_weaken` and
+    `corresR_castFa`, side conditions tried by `decide`. -/
+meta def corresRMachine : CorresSymEngine.Machine where
+  name := "corres_sym_rv"
+  judgment := ``CorresR
+  leaves := Lean.labelled `corresR
+  split := ``corresR_cons_true
+  empty := ``corresR_nil
+  weaken := ``corresR_weaken
+  castFa := ``corresR_castFa
+  classify := CorresSymEngine.listShape
+
+/-- Close `CorresR SR P fa block` over a straight-line `RInst64` block by composing the
+    `@[corresR]` leaves with the `SymM` engine of `CorresSymEngine` at `corresRMachine`.
+    A block given as a definition is put in weak head normal form by the engine; the
+    synthesized transition is matched against the goal's transition by definitional
+    equality. -/
+elab "corres_sym_rv" : tactic => CorresSymEngine.solve corresRMachine
+
 /-! ## The three-limb borrow chain
 
 `subBorrow3Block` subtracts the three-limb value in `b0 b1 b2` from the one in
@@ -151,21 +186,20 @@ theorem corresR_subBorrow3 (a0 a1 a2 b0 b1 b2 d0 d1 d2 c0 t1 c1 e1 t2 c2 e2 bout
     CorresR SRr (fun _ => True)
       (subBorrow3Step a0 a1 a2 b0 b1 b2 d0 d1 d2 c0 t1 c1 e1 t2 c2 e2 bout)
       (subBorrow3Block a0 a1 a2 b0 b1 b2 d0 d1 d2 c0 t1 c1 e1 t2 c2 e2 bout) := by
-  unfold subBorrow3Block subBorrow3Step
-  corres_solve_rv
+  corres_sym_rv
 
 /-! ## Tests -/
 
 /-- A single instruction. -/
 theorem corres_solve_rv_add (d a b : String) :
     CorresR SRr (fun _ => True) (addStepR d a b) [.add d a b] := by
-  corres_solve_rv
+  corres_sym_rv
 
 /-- A three-instruction mixed block: an add, its carry-out by `sltu`, a shift. -/
 theorem corres_solve_rv_mixed (d a b c e : String) (sh : Nat) :
     CorresR SRr (fun _ => True)
       (fun st => srliStepR e d sh (sltuStepR c d a (addStepR d a b st)))
       [.add d a b, .sltu c d a, .srli e d sh] := by
-  corres_solve_rv
+  corres_sym_rv
 
 end CatCrypt.Crypto.SecureCompilation.Ascent

@@ -33,8 +33,9 @@ condition `(b, o) ∈ cells`).
 
 The flag-and-register leaves of `SRcarry2` lift to `SRmem` through
 `corresJ_liftCarry2`; the memory-operand instructions `loadMem`, `storeMem` and
-`mulxMem` have direct leaves. `corres_solve_mem` runs the `corres_solve` fold and
-discharges the side conditions by `decide`.
+`mulxMem` have direct leaves. `corres_sym` (`CorresSolver`) composes them and
+discharges their side conditions by `decide`; `corres_solve_mem` runs the
+`corres_solve` fold with the same side-condition discharge.
 
 The layouts of CryptOpt's Curve25519 `carry_mul`
 (`fiat_curve25519_carry_mul/seed1667947554054692_ratio13465.asm`) are
@@ -52,7 +53,7 @@ The leaves cover every instruction of CryptOpt's Curve25519 `solinas_square`
 `[rsi + 8i]`, output limbs `[rdi + 8i]`, six spill slots `[rsp - 0x80]` …
 `[rsp - 0x58]`) is satisfiable (`srmem_solinas_satisfiable`), and the 99-instruction
 body refines `absRunMem` over `SRmem solinasCells` (`solinasBody_corres`), composed
-from four segments closed by `corres_solve_mem`.
+from four segments closed by `corres_sym`.
 
 ## Main results
 
@@ -70,9 +71,9 @@ from four segments closed by `corres_solve_mem`.
   each an `SRcarry2` leaf at the loaded word.
 * `runBlock_imulMemImm`: the block `loadMem d b o; imul d k` has the effect of the
   three-operand `imul d, [b + o], k` on registers, flags and memory.
-* `corres_solve_mem`: the solver over `SRmem`.
+* `corres_solve_mem`: the macro solver over `SRmem`.
 * `carryMul_lines8to16_corres`, `carryMul_imul_corres`, `carryMul_addAdcx_corres`:
-  instruction sequences of the `carry_mul` file closed by `corres_solve_mem`.
+  instruction sequences of the `carry_mul` file closed by `corres_sym`.
 * `corresJ_inc2`, `corresJ_clc2`, `corresJ_testN2`, `corresJ_test2`, `corresJ_adc2`,
   `corresJ_lea2`, `corresJ_movzx2`, `corresJ_setcc2`, `corresJ_cmovcc2`: `SRcarry2`
   leaves for `inc`, `clc`, `test`, `adc`, `lea`, `movzx`, and `setcc`/`cmovcc` at a
@@ -1097,7 +1098,7 @@ theorem carryMul_lines8to16_corres :
        .storeMem "rsp" (-0x78) (.reg "rbp"),
        .storeMem "rsp" (-0x70) (.reg "r12"),
        .mulxMem "r12" "rbp" (.reg "rdx") "rsi" 0] := by
-  corres_solve_mem
+  corres_sym
 
 /-- Line 25 of `carry_mul`, `imul rdx, [rax + 0x8], 0x13`, as `loadMem; imul`
     (`runBlock_imulMemImm`), followed by the spill of line 26. -/
@@ -1109,7 +1110,7 @@ theorem carryMul_imul_corres :
             (loadStepM "rdx" "rax" 8 a).mem⟩))
       [.loadMem "rdx" "rax" 8, .imul "rdx" (.imm 0x13),
        .storeMem "rsp" (-0x48) (.reg "rbx")] := by
-  corres_solve_mem
+  corres_sym
 
 /-- Lines 37–40 of `carry_mul`: two `add`/`adcx` pairs. -/
 theorem carryMul_addAdcx_corres :
@@ -1119,7 +1120,7 @@ theorem carryMul_addAdcx_corres :
           (adcxStep2 "r15" "r9" (addStep2 "rbx" (.reg "rdi") a.c))), a.mem⟩)
       [.add "rbx" (.reg "rdi"), .adcx "r15" (.reg "r9"),
        .add "r10" (.reg "r11"), .adcx "rcx" (.reg "r12")] := by
-  corres_solve_mem
+  corres_sym
 
 /-! ## The abstract run over `AMemX` -/
 
@@ -1212,26 +1213,22 @@ theorem srmem_solinas_satisfiable : ∃ st a, SRmem solinasCells st a := by
 /-- Instructions 1–33 refine their abstract run over `SRmem solinasCells`. -/
 theorem solinasSeg1_corres :
     CorresJ (SRmem solinasCells) (fun _ => True) (absRunMem solinasSeg1) solinasSeg1 := by
-  unfold solinasSeg1
-  corres_solve_mem
+  corres_sym
 
 /-- Instructions 34–65 refine their abstract run over `SRmem solinasCells`. -/
 theorem solinasSeg2_corres :
     CorresJ (SRmem solinasCells) (fun _ => True) (absRunMem solinasSeg2) solinasSeg2 := by
-  unfold solinasSeg2
-  corres_solve_mem
+  corres_sym
 
 /-- Instructions 66–93 refine their abstract run over `SRmem solinasCells`. -/
 theorem solinasSeg3_corres :
     CorresJ (SRmem solinasCells) (fun _ => True) (absRunMem solinasSeg3) solinasSeg3 := by
-  unfold solinasSeg3
-  corres_solve_mem
+  corres_sym
 
 /-- Instructions 94–99 refine their abstract run over `SRmem solinasCells`. -/
 theorem solinasSeg4_corres :
     CorresJ (SRmem solinasCells) (fun _ => True) (absRunMem solinasSeg4) solinasSeg4 := by
-  unfold solinasSeg4
-  corres_solve_mem
+  corres_sym
 
 /-- The whole body of `solinas_square` refines its abstract run over
     `SRmem solinasCells`. -/

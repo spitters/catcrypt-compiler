@@ -14,7 +14,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.CarryMulBlock
 `X86Backend/CarryMulBlock.lean` splits the parsed kernel into segments at the
 instructions that write a register used as a memory base. Within a segment no base
 register of the tracked cells is written, so `SRmem` over a fixed cell list is
-preserved, and `corres_solve_mem` closes each segment against `absRunMem`:
+preserved, and `corres_sym` closes each segment against `absRunMem`:
 
 * `carryMulMid` (instructions 5–146) reads and writes the input limbs `[rsi + 8i]`,
   `[rax + 8i]` and the seventeen frame slots `[rsp - 0x80]` … `[rsp + 0]`
@@ -89,32 +89,27 @@ theorem srmem_carryMulTail_satisfiable : ∃ st a, SRmem carryMulTailCells st a 
 /-- Instructions 5–33 refine their abstract run over `SRmem carryMulMidCells`. -/
 theorem carryMulMid1_corres :
     CorresJ (SRmem carryMulMidCells) (fun _ => True) (absRunMem carryMulMid1) carryMulMid1 := by
-  unfold carryMulMid1
-  corres_solve_mem
+  corres_sym
 
 /-- Instructions 34–63 refine their abstract run over `SRmem carryMulMidCells`. -/
 theorem carryMulMid2_corres :
     CorresJ (SRmem carryMulMidCells) (fun _ => True) (absRunMem carryMulMid2) carryMulMid2 := by
-  unfold carryMulMid2
-  corres_solve_mem
+  corres_sym
 
 /-- Instructions 64–92 refine their abstract run over `SRmem carryMulMidCells`. -/
 theorem carryMulMid3_corres :
     CorresJ (SRmem carryMulMidCells) (fun _ => True) (absRunMem carryMulMid3) carryMulMid3 := by
-  unfold carryMulMid3
-  corres_solve_mem
+  corres_sym
 
 /-- Instructions 93–120 refine their abstract run over `SRmem carryMulMidCells`. -/
 theorem carryMulMid4_corres :
     CorresJ (SRmem carryMulMidCells) (fun _ => True) (absRunMem carryMulMid4) carryMulMid4 := by
-  unfold carryMulMid4
-  corres_solve_mem
+  corres_sym
 
 /-- Instructions 121–146 refine their abstract run over `SRmem carryMulMidCells`. -/
 theorem carryMulMid5_corres :
     CorresJ (SRmem carryMulMidCells) (fun _ => True) (absRunMem carryMulMid5) carryMulMid5 := by
-  unfold carryMulMid5
-  corres_solve_mem
+  corres_sym
 
 /-- Instructions 5–146 refine their abstract run over `SRmem carryMulMidCells`. -/
 theorem carryMulMid_corres :
@@ -130,7 +125,6 @@ theorem carryMulMid_corres :
 /-- Instructions 148–166 refine their abstract run over `SRmem carryMulTailCells`. -/
 theorem carryMulTail_corres :
     CorresJ (SRmem carryMulTailCells) (fun _ => True) (absRunMem carryMulTail) carryMulTail := by
-  unfold carryMulTail
-  corres_solve_mem
+  corres_sym
 
 end CatCrypt.Crypto.SecureCompilation.Ascent

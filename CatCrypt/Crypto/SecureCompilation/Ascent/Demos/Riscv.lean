@@ -13,13 +13,13 @@ public import CatCrypt.Crypto.SecureCompilation.Ascent.CorresRiscvSolver
 RV64 has no carry flag: the carry out of `t := a + b` is the word `t <ᵘ a`,
 computed by `sltu`. `addCarryBlock` is that two-instruction idiom, and
 `addCarry_ascends` refines it against the composed abstract fold through
-`corres_solve_rv`. `addCarry_readout` reads the two written words back off the
+`corres_sym_rv`. `addCarry_readout` reads the two written words back off the
 abstract state.
 
 ## Main results
 
 * `addCarry_ascends`: the add-with-carry-out block refines `addCarryStep` under
-  `SRr`, by `corres_solve_rv`.
+  `SRr`, by `corres_sym_rv`.
 * `addCarry_readout`: the abstract state after the block holds the sum in `t0`
   and the carry word in `t1`.
 -/
@@ -44,8 +44,7 @@ def addCarryStep (st : AStateR) : AStateR :=
     running `addCarryBlock` lands in a state related to `addCarryStep`. -/
 theorem addCarry_ascends :
     CorresR SRr (fun _ => True) addCarryStep addCarryBlock := by
-  unfold addCarryBlock addCarryStep
-  corres_solve_rv
+  corres_sym_rv
 
 /-- Reading the abstract result: `t0` holds the wrapped sum and `t1` holds the
     carry-out word, `1` exactly when the sum wrapped below `a0`. -/
