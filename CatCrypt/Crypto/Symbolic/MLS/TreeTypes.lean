@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 import all Init.Data.Repr
+import all Init.Data.String.Defs
 public meta import CatCrypt.Crypto.Symbolic.Properties
 public import CatCrypt.Crypto.Symbolic.Properties
 
@@ -148,7 +149,10 @@ This replaces the SMT-heavy parent hash guarantee proof from F*. -/
 
 /-- The leaf and parent hash tags are distinct (as ByteArrays). -/
 theorem leafHashTag_bytes_ne : "MLS.LeafHash".toUTF8 ≠ "MLS.ParentHash".toUTF8 := by
-  native_decide
+  have inj : ∀ s t : String, s.toUTF8 = t.toUTF8 → s = t := by
+    intro ⟨b1, h1⟩ ⟨b2, h2⟩ (h : b1 = b2)
+    cases h; rfl
+  exact fun h => absurd (inj _ _ h) (by decide)
 
 /-- The leaf and parent hash tags are distinct. -/
 theorem leafHashTag_ne_parentHashTag : leafHashTag ≠ parentHashTag := by
