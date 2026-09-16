@@ -34,6 +34,20 @@ The emitted `ed25519_point_add` passes a known-answer test against libsodium's
 emitted inversion and compression kernels, byte-identical, with `T₃·Z₃ = X₃·Y₃`
 on every raw output (`bench/ed25519_comb_compare/point_add_compare.c`, dev repo).
 
+Frame layout:
+
+- `X86Backend/LprogAsmPrinter.lean`: `frameAddDirective` and a `FRAMEADD`
+  directive that `frameSize` adds to both of its branches, so a body can request
+  extra frame bytes without replacing the computed layout. The existing `FRAME`
+  directive replaces it, which also drops the `bodyHasCall` alignment correction;
+  `FRAMEADD` keeps both. It returns `0` for every body that does not carry the
+  directive, and no body emits one yet, so every kernel's frame size and every
+  qsave and spill offset are unchanged — checked by re-rendering the ten emitted
+  Ed25519 artifacts and comparing checksums.
+- `X86Backend/LprogBytes.lean`: `carriesNoBytes` accepts `FRAMEADD`. A
+  `FRAME`-carrying body is not byte-encodable today, so a rolled kernel that
+  requested buffers through `FRAME` would silently lose its byte export.
+
 Route dispatcher:
 
 - `Dialects/FrontRoutePlan.lean`: `RouteGap.bufferResultCallInBody`, with

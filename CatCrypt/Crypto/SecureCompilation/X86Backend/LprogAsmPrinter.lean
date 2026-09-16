@@ -1250,7 +1250,7 @@ def renderLinstrR (frame spillW : Nat) (i : LinstrR) (lblPfx : String := "")
       -- The `FRAME` directive (#656 array-ABI orchestration) is a frame-size
       -- annotation consumed by `frameSize`; it issues no x86 line (drop before the
       -- arity arms so the empty-dst form doesn't surface as UNHANDLED-LOPN).
-      if opn == "FRAME" then [] else
+      if opn == "FRAME" || opn == "FRAMEADD" then [] else
       -- MULX high-word binding. A FUSED body has no standalone `MULXHI` left
       -- (`fuseMulHiLprog` consumed the pair into one two-output `mulx`), so a
       -- `MULXHI` surviving to the text renderer means its high-word WRITE is
@@ -1387,13 +1387,63 @@ def frameDirective (body : VIR.JasminLprogExport.Lcmd) : Option Nat :=
     | none, .Lopn [] "FRAME" [.imm f] => some f
     | none, _ => none) none
 
+/-- The additive frame-extension directive `Lopn [] "FRAMEADD" [.imm n]`: the
+    bytes a body needs at the BOTTOM of its frame for scratch buffers, on top of
+    whatever layout `frameSize` otherwise computes. Summed over every occurrence,
+    and `0` for a body carrying none — such a body keeps its computed frame
+    exactly.
+
+    Distinct from `FRAME`, which replaces the computed layout rather than
+    extending it. A body carrying `FRAMEADD` addresses its buffers as
+    `mem.RSP.<off>` with `off` in `[0, n)` (the bottom anchoring `ArrAbiOrch`
+    uses), so the offsets are fixed when the body is walked, before register
+    allocation settles the spill count. The vector-spill region `kv.N` is
+    anchored at the same bottom, so a body carrying both `FRAMEADD` and `kv.N`
+    slots would overlap the two. -/
+def frameAddDirective (body : VIR.JasminLprogExport.Lcmd) : Nat :=
+  body.foldl (fun acc i =>
+    match i.li_i with
+    | .Lopn [] "FRAMEADD" [.imm n] => acc + n
+    | _ => acc) 0
+
+-- Static checks pinning the frame extension against silent change: a body
+-- carrying no `FRAMEADD` contributes nothing, so its frame — and every qsave and
+-- spill offset computed from that frame — is the one it had before the directive
+-- existed. `FRAME` is a distinct directive and contributes nothing here.
+#guard frameAddDirective [] = 0
+#guard frameAddDirective [⟨0, .Lopn [.reg "RAX"] "MOV:64" [.imm 1]⟩] = 0
+#guard frameAddDirective [⟨0, .Lopn [] "FRAME" [.imm 64]⟩] = 0
+#guard frameAddDirective [⟨0, .Lopn [] "FRAMEADD" [.imm 96]⟩] = 96
+
+/-- Do a body's bottom-anchored scratch buffers and its vector-spill cells claim
+    the same frame region? `FRAMEADD` buffers occupy `[0, n)` from the post-`leaq`
+    `%rsp`, and a `kv.idx` cell resolves to `32·(idx+1)(%rsp)` with `0(%rsp)`
+    reserved as the spill-legalization scratch — both anchored at the bottom of
+    the frame. A body carrying each therefore aliases the two regions.
+
+    `false` for every body carrying no `FRAMEADD`, which is every body that does
+    not lay scratch buffers of its own. -/
+def frameAddVecOverlap (body : VIR.JasminLprogExport.Lcmd) : Bool :=
+  frameAddDirective body != 0 && (maxVecSpillIdx body).isSome
+
+-- The overlap condition is absent from a body with no scratch buffers, and is
+-- detected when a body claims the bottom of the frame twice.
+#guard frameAddVecOverlap [] = false
+#guard frameAddVecOverlap [⟨0, .Lopn [] "FRAMEADD" [.imm 96]⟩] = false
+#guard frameAddVecOverlap
+  [ ⟨0, .Lopn [] "FRAMEADD" [.imm 96]⟩
+  , ⟨0, .Lopn [.reg "kv.0"] "VMOVDQU" [.reg "XMM0"]⟩ ] = true
+
 /-- The allocated frame size `F` (bytes, 16-aligned) for a body: an explicit
     `FRAME` directive if present (the array-ABI orchestration), else the 64-byte
     qsave block plus every spill cell (`cell·(maxIdx+1)`, cell = 8 for a U64 body,
-    4 for U32). A 16-byte tail pad keeps `%rsp` ABI-aligned after the `leaq -F`. -/
+    4 for U32). `frameAddDirective` bytes extend either layout, for a body holding
+    bottom-anchored scratch buffers. A 16-byte tail pad keeps `%rsp` ABI-aligned
+    after the `leaq -F`. -/
 def frameSize (body : VIR.JasminLprogExport.Lcmd) : Nat :=
+  let frameAdd := frameAddDirective body
   match frameDirective body with
-  | some f => (f + 15) / 16 * 16
+  | some f => (f + frameAdd + 15) / 16 * 16
   | none =>
     let cell := if bodyIsU64 body then 8 else 4
     let spillBytes := match maxSpillIdx body with
@@ -1403,7 +1453,7 @@ def frameSize (body : VIR.JasminLprogExport.Lcmd) : Nat :=
     -- from `%rsp`); reserving it grows `frame` so the top-anchored qsave and GP
     -- `k.N` cells stay disjoint from it. `0` for a body with no `kv.N` slots, so
     -- every existing (GP-only) kernel's frame is unchanged.
-    let raw := qsaveBytes + spillBytes + vecSpillBytes body
+    let raw := qsaveBytes + spillBytes + vecSpillBytes body + frameAdd
     let f16 := (raw + 15) / 16 * 16
     -- A body that issues a real `call` needs `%rsp ≡ 0 (mod 16)` AT each call
     -- instruction (SysV): function entry is `≡ 8` (the pushed return address),
@@ -1513,9 +1563,17 @@ def renderLfundef (name : String) (body : VIR.JasminLprogExport.Lcmd)
   let saves := calleeSavedToSave body
   let pushes := saves.map (fun r => "\tpushq " ++ gpReg64 r)
   let pops := (saves.reverse).map (fun r => "\tpopq " ++ gpReg64 r)
+  -- A body whose bottom-anchored `FRAMEADD` buffers claim the same cells as its
+  -- vector spills carries the visible marker the `no UNHANDLED` shape gates
+  -- catch, rather than aliasing the two regions silently.
+  let overlapMark : List String :=
+    if frameAddVecOverlap body then
+      [ "\t# UNHANDLED-FRAMEADD-VECSPILL " ++ toString (frameAddDirective body) ]
+    else []
   let header :=
     [ "\t.text", "\t.globl " ++ name, "\t.type " ++ name ++ ", @function", name ++ ":" ]
       ++ pushes
+      ++ overlapMark
       ++ [ "\tleaq -" ++ toString frame ++ "(%rsp), %rsp" ]
   let footer :=
     ([ "\tleaq " ++ toString frame ++ "(%rsp), %rsp" ] ++ pops)

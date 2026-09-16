@@ -1176,11 +1176,14 @@ wrote. Every other form must produce at least one byte, and `encodableLinstrR` r
 that off `encodeLinstrR` itself — so the predicate cannot drift from the encoder as
 arms are added. -/
 
-/-- The `LinstrR` forms whose encoding is empty by construction. -/
+/-- The `LinstrR` forms whose encoding is empty by construction. The `FRAMEADD`
+    frame-extension directive is one: `LprogAsmPrinter.frameSize` reads it and the
+    printer drops it, so it reaches neither the text nor the byte stream. -/
 def carriesNoBytes : LinstrR → Bool
   | .Lret => true
   | .Lalign => true
   | .Llabel _ _ => true
+  | .Lopn [] "FRAMEADD" _ => true
   | .Lopn _ opn _ => isMulHiBinding opn
   | _ => false
 
