@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 import all Init.Data.String.TakeDrop
-public import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulConst
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulBinopWide
 
 /-!
 # Whole-function register-allocation faithfulness with widening-multiply, carry-chain and select bindings
@@ -53,9 +53,9 @@ The proof reuses the binop and constant development unchanged and adds:
   `s ↦ s.setReg nDst (vval s)`.
 * `physBodyElem_mulhi`, `physBodyElem_addCarry3`: `physBody` expands the heads to
   the single renamed instruction.
-* `UniformRegArithMCS`: the `Com` fragment of non-shift, non-64-bit binary
-  `regArith` bindings, `regConst` bindings, and `mulhi` / `addCarryLo` /
-  `addCarryHi` / `select` bindings.
+* `UniformRegArithMCS`: the `Com` fragment of non-shift binary `regArith`
+  bindings at a default width and at width 64, `regConst` bindings, and
+  `mulhi` / `addCarryLo` / `addCarryHi` / `select` bindings.
 * `CoverDataMCS.uniformRegArithMCS`: cover data exists only for that fragment;
   `CoverDataConst.toMCS` embeds the binop-or-constant cover data.
 * `physBody_lsem_result_uniformMCS`: the physical body run of such a `Com` reads
@@ -455,6 +455,7 @@ theorem physBodyElem_src3 (body : Lcmd) (tbl : Array Nat) (ii : Nat)
     fragment. -/
 inductive MulCarryBinding (w : Nat) (body : Lcmd) (tbl : Array Nat) where
   | arith (b : ArithConstBinding w body tbl)
+  | binopWide (b : ToLprogFaithfulBinopWide.BinopWideBinding w body tbl)
   | mulhi (m : MulHiBinding w body tbl)
   | addCarryLo (c : AddCarryLoBinding w body tbl)
   | addCarryHi (c : AddCarryHiBinding w body tbl)
@@ -464,6 +465,7 @@ inductive MulCarryBinding (w : Nat) (body : Lcmd) (tbl : Array Nat) where
 def MulCarryBinding.block {w : Nat} {body : Lcmd} {tbl : Array Nat} :
     MulCarryBinding w body tbl → List LinstrR
   | .arith b => b.block
+  | .binopWide b => b.block
   | .mulhi m => m.block
   | .addCarryLo c => c.block
   | .addCarryHi c => c.block
@@ -473,6 +475,7 @@ def MulCarryBinding.block {w : Nat} {body : Lcmd} {tbl : Array Nat} :
 def MulCarryBinding.vstep {w : Nat} {body : Lcmd} {tbl : Array Nat} :
     MulCarryBinding w body tbl → Lstate w → Lstate w
   | .arith b => b.vstep
+  | .binopWide b => b.vstep
   | .mulhi m => m.vstep
   | .addCarryLo c => c.vstep
   | .addCarryHi c => c.vstep
@@ -483,6 +486,7 @@ theorem MulCarryBinding.maintains {w : Nat} {body : Lcmd} {tbl : Array Nat}
     (b : MulCarryBinding w body tbl) : BlockMaintains body tbl b.block b.vstep := by
   cases b with
   | arith b => exact b.maintains
+  | binopWide b => exact b.maintains
   | mulhi m => exact m.maintains
   | addCarryLo c => exact c.maintains
   | addCarryHi c => exact c.maintains
@@ -550,9 +554,10 @@ theorem physBody_lsem_resultMCS {w : Nat} (body : Lcmd)
 
 /-! ## 7. The `Com` fragment and its threaded cover data -/
 
-/-- A `Com` all of whose bindings are non-shift, non-64-bit binary `regArith`
-    binops, `regConst` loads, or `mulhi` / `addCarryLo` / `addCarryHi` bindings,
-    terminating at `.ret`. -/
+/-- A `Com` all of whose bindings are non-shift binary `regArith` binops at a
+    default width (`var`) or at width 64 (`var64`), `regConst` loads, or
+    `mulhi` / `addCarryLo` / `addCarryHi` / `select` bindings, terminating at
+    `.ret`. -/
 inductive UniformRegArithMCS : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
     Com jasminDialect Γ t → Prop where
   | ret {Γ t} (v : Ctxt.Var Γ t) : UniformRegArithMCS (.ret v)
@@ -562,6 +567,13 @@ inductive UniformRegArithMCS : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
       (hw : w ≠ 64) (hns : NonShift bop) (hbody : UniformRegArithMCS body) :
       UniformRegArithMCS
         (.var ⟨JasminOp.regArith bop w, heq, .cons a0 (.cons a1 .nil)⟩ body)
+  | var64 {Γ s} (bop : JasminBinOp)
+      (heq : DialectSignature.ret (d := jasminDialect) (JasminOp.regArith bop 64) = .reg 64)
+      (a0 a1 : Ctxt.Var Γ (JasminTy.reg 64))
+      (body : Com jasminDialect (JasminTy.reg 64 :: Γ) s)
+      (hns : NonShift bop) (hbody : UniformRegArithMCS body) :
+      UniformRegArithMCS
+        (.var ⟨JasminOp.regArith bop 64, heq, .cons a0 (.cons a1 .nil)⟩ body)
   | const {Γ s} {w n : Nat}
       (heq : DialectSignature.ret (d := jasminDialect) (JasminOp.regConst w n) = .reg w)
       (body : Com jasminDialect (JasminTy.reg w :: Γ) s)
@@ -626,6 +638,22 @@ inductive CoverDataMCS {w : Nat} (body : Lcmd) (tbl : Array Nat) (nArgs : Nat) :
       CoverDataMCS body tbl nArgs
         (.var ⟨JasminOp.regArith bop w, heq, .cons a0 (.cons a1 .nil)⟩ bdy) d
         (.arith (.binop b) :: bs)
+  | var64 {Γ s} {bop : JasminBinOp}
+      {heq : DialectSignature.ret (d := jasminDialect) (JasminOp.regArith bop 64) = .reg 64}
+      {a0 a1 : Ctxt.Var Γ (JasminTy.reg 64)}
+      {bdy : Com jasminDialect (JasminTy.reg 64 :: Γ) s}
+      (d : Nat) (hns : NonShift bop)
+      (b : ToLprogFaithfulBinopWide.BinopWideBinding w body tbl)
+      (bs : List (MulCarryBinding w body tbl))
+      (hdst : b.nDst = regName d)
+      (hbop : b.bop = bop)
+      (hsrc : b.nSrc = resolveVarName d nArgs a1)
+      (hcol : physRename body tbl (resolveVarName d nArgs a0)
+          = physRename body tbl (regName d))
+      (htail : CoverDataMCS body tbl nArgs bdy (d + 1) bs) :
+      CoverDataMCS body tbl nArgs
+        (.var ⟨JasminOp.regArith bop 64, heq, .cons a0 (.cons a1 .nil)⟩ bdy) d
+        (.binopWide b :: bs)
   | const {Γ s} {n : Nat}
       {heq : DialectSignature.ret (d := jasminDialect) (JasminOp.regConst w n) = .reg w}
       {bdy : Com jasminDialect (JasminTy.reg w :: Γ) s}
@@ -692,6 +720,7 @@ theorem CoverDataMCS.uniformRegArithMCS {w : Nat} {body : Lcmd} {tbl : Array Nat
   induction h with
   | ret v d => exact .ret v
   | var d hw hns b bs _ _ _ _ _ ih => exact .var _ _ _ _ _ hw hns ih
+  | var64 d hns b bs _ _ _ _ _ ih => exact .var64 _ _ _ _ _ hns ih
   | const d c bs _ _ _ ih => exact .const _ _ ih
   | mulhi d m bs _ _ _ _ ih => exact .mulhi _ _ _ _ ih
   | addCarryLo d c bs _ _ _ _ _ ih => exact .addCarryLo _ _ _ _ _ ih
@@ -802,6 +831,10 @@ theorem coverDataMCS_bodyCover {w : Nat} (body : Lcmd) (tbl : Array Nat) (nArgs 
       rw [bindingHeads_var_eq]
       exact .cons (physBodyElem_of_realizes body tbl _ b
         (regArithHead_realizes body tbl nArgs d _ w hw hns _ _ b hdst hopn hsrc hcol)) ih
+  | var64 d hns b bs hdst hbop hsrc hcol _ ih =>
+      rw [bindingHeads_var_eq]
+      exact .cons (ToLprogFaithfulBinopWide.regArithHead64_cover body tbl nArgs d _ hns _ _ b
+        hdst hbop hsrc hcol) ih
   | const d c bs hdst hn _ ih =>
       rw [bindingHeads_const_eq]
       refine .cons ?_ ih

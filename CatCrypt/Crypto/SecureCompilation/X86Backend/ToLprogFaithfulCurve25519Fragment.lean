@@ -19,38 +19,34 @@ module places each of them against `ToLprogFaithfulMulCarrySel.UniformRegArithMC
 the `Com` fragment of the whole-function physical faithfulness theorems
 `toLprogPhysAbi_faithful_uniformMCS` and its two-pointer and epilogue instances.
 
-Six of the seven are inside the fragment: a `Com` binding `eConst`, `eBit`,
-`eMulhi`, `eAdc`, `eCarry` or `eSel` on top of a fragment body is again in the
-fragment. `eSel` is the conditional correction of every Curve25519 block — the
-conditional subtraction of `p = 2^255 - 19` in `csubK`, the fold of the carry by
-`38` in `reduceK`, and the limb-wise `selR` — and it is in the fragment through
-`SelectBinding` and the `CMOV` arm of `JasminLsem.applyOpn`.
+All seven are inside the fragment: a `Com` binding any of them on top of a
+fragment body is again in the fragment. `eSel` is the conditional correction of
+every Curve25519 block — the conditional subtraction of `p = 2^255 - 19` in
+`csubK`, the fold of the carry by `38` in `reduceK`, and the limb-wise `selR` —
+and it is in the fragment through `SelectBinding` and the `CMOV` arm of
+`JasminLsem.applyOpn`. `eBin` enters through the width-64 arm `var64`, whose
+binding kind is `ToLprogFaithfulBinopWide.BinopWideBinding`: at width 64 the head
+mnemonic carries the `:64` tag and the two-address expansion of `physBodyElem`
+injects the `MOV:64` legalization move, and that block runs as the untagged one
+does because `lsemStep` reads a mnemonic only through `stripWidthTag`. The
+operators the blocks use are `mul`, `xor` and `or`, each of which satisfies
+`NonShift`.
 
-`eBin op` is outside: the fragment's binary `regArith` arm carries the side
-condition `w ≠ 64`, which the blocks' width 64 does not meet. The condition comes
-from `ToLprogFaithfulCover.regArithHead_realizes`, whose `InstrRealizesBinding`
-obligation requires the head mnemonic to carry no `:64` width tag, while
-`withWidthTag 64 (binOpName bop)` carries it
-(`hasSuffix_withWidthTag_64_binOpName`); at width 64 the two-address expansion of
-`physBodyElem` injects the `MOV:64` legalization move rather than the untagged
-`MOV` of `BinopBinding.block`.
-
-Two shape conditions of the whole-function theorems are also unmet by the blocks
-as written. The blocks are `MultiReturnCom jasminDialect Γ [reg 64, reg 64,
-reg 64, reg 64]`, returning four limb variables, while `UniformRegArithMCS` and
-the cover data are stated over the single-return `Com`. And `CoverDataMCS` is
-indexed by one word width `w` for the whole binding list, while the blocks bind
-`regConst 1` (`eBit`, the carry-chain's zero carry-in) beside their width-64
-bindings.
+Two shape conditions of the whole-function theorems are unmet by the blocks as
+written. The blocks are `MultiReturnCom jasminDialect Γ [reg 64, reg 64, reg 64,
+reg 64]`, returning four limb variables, while `UniformRegArithMCS` and the cover
+data are stated over the single-return `Com`. And `CoverDataMCS` is indexed by one
+word width `w` for the whole binding list, while the blocks bind `regConst 1`
+(`eBit`, the carry-chain's zero carry-in) beside their width-64 bindings.
 
 ## Main results
 
 * `uniformRegArithMCS_eConst`, `uniformRegArithMCS_eBit`,
   `uniformRegArithMCS_eMulhi`, `uniformRegArithMCS_eAdc`,
-  `uniformRegArithMCS_eCarry`, `uniformRegArithMCS_eSel`: the six constructors
-  inside the fragment.
+  `uniformRegArithMCS_eCarry`, `uniformRegArithMCS_eSel`,
+  `uniformRegArithMCS_eBin`: the seven constructors inside the fragment.
 * `hasSuffix_withWidthTag_64_binOpName`: the width-64 binop mnemonic carries the
-  `:64` tag that the binop cover arm excludes.
+  `:64` tag.
 -/
 
 @[expose] public section
@@ -63,6 +59,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulMulCarrySel
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulNary
 open CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Curve25519
 
 /-! ## 1. The six constructors inside the fragment -/
@@ -121,6 +118,18 @@ theorem uniformRegArithMCS_eSel {Γ : Ctxt jasminDialect} {s : JasminTy}
   show UniformRegArithMCS
     (Com.var ⟨JasminOp.select 64, rfl, .cons c (.cons a (.cons b .nil))⟩ body)
   exact .select rfl c a b body hbody
+
+/-- A width-64 `regArith` binop (`eBin`) keeps a `Com` in the fragment when its
+    operator is neither a shift nor `andn`. The operators the Curve25519 blocks
+    use are `mul` (the limb products of `rowR`), `xor` (the complement of `xorR`)
+    and `or` (the limb copies of `copyBlk`). -/
+theorem uniformRegArithMCS_eBin {Γ : Ctxt jasminDialect} {s : JasminTy}
+    (bop : JasminBinOp) (hns : NonShift bop) (a b : Ctxt.Var Γ w64)
+    (body : Com jasminDialect (w64 :: Γ) s) (hbody : UniformRegArithMCS body) :
+    UniformRegArithMCS (Com.var (eBin bop a b) body) := by
+  show UniformRegArithMCS
+    (Com.var ⟨JasminOp.regArith bop 64, rfl, .cons a (.cons b .nil)⟩ body)
+  exact .var64 bop rfl a b body hns hbody
 
 /-! ## 2. The width-64 binop mnemonic carries the `:64` tag -/
 

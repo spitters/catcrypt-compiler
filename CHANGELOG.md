@@ -34,6 +34,33 @@ The emitted `ed25519_point_add` passes a known-answer test against libsodium's
 emitted inversion and compression kernels, byte-identical, with `T₃·Z₃ = X₃·Y₃`
 on every raw output (`bench/ed25519_comb_compare/point_add_compare.c`, dev repo).
 
+Physical faithfulness of width-64 binary arithmetic:
+
+- `X86Backend/ToLprogFaithfulBinopWide.lean`: `BinopWideBinding` covers a
+  `regArith` binding at width 64. `ToLprogFaithfulBody.BinopBinding` carries a
+  proof that its mnemonic is untagged and hardcodes `MOV` in its block, while
+  `physBodyElem` at a `:64` head passes `MOV:64`, which is why the binop arm
+  carried `w ≠ 64`. `lsemStep` reads a register-arm mnemonic only through
+  `stripWidthTag`, so the difference is a congruence: `lsemStep_congr1`,
+  `lsemStep_congr2` and `legalizeBinop_mnem_congr` lift it over the four spill
+  shapes, and `BinopWideBinding.maintains` transports the store relation of
+  `ToLprogFaithfulWriteSide` across it. The binding carries the operator rather
+  than a mnemonic string, so its tag equations are computations and no
+  idempotence of `stripWidthTag`, which does not hold in general, is needed.
+- `X86Backend/ToLprogFaithfulMulCarrySel.lean`: a `binopWide` constructor on
+  `MulCarryBinding` and a `var64` arm on `UniformRegArithMCS` and `CoverDataMCS`.
+  No statement changes; the three inductives gain a constructor and every
+  `cases` site is inside these modules.
+- `X86Backend/ToLprogFaithfulCurve25519Fragment.lean`: `uniformRegArithMCS_eBin`,
+  which depends on no axioms. All seven fragment constructors are now available,
+  so every binding of every Curve25519 block is a fragment binding.
+
+Not closed by this: `toLprogPhysAbi_faithful_uniformMCS` still does not apply to
+a Curve25519 block. The blocks are `MultiReturnCom` with four outputs while the
+cover data is stated over the single-return `Com`, and `CoverDataMCS` fixes one
+width for the whole binding list, so the blocks' width-1 carry-in constants
+cannot sit beside their width-64 bindings.
+
 ### 2026-09-15
 
 hax front to LowCT:
