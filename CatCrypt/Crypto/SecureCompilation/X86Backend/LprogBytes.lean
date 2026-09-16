@@ -323,24 +323,26 @@ def isSpillOrQsave (n : String) : Bool :=
 /-- The `%rsp`-relative frame offset of a spill (`k.N`) or ABI-save (`qsave.X`)
     operand name, **matching `LprogAsmPrinter.resolveName` exactly**: a spill `k.idx`
     resolves to `spillFrameOff frame spillW idx`, a save `qsave.X` to
-    `qsaveFrameOff frame X`. `none` for an unparseable spill/qsave name (so the
-    caller surfaces it rather than mis-resolving). The base register is always `%rsp`
-    (SDM number 4). -/
-def spillQsaveOff (frame spillW : Nat) (n : String) : Option Int :=
+    `qsaveFrameOff frame X`, both at the frame's qsave block size `qsaveB`.
+    `none` for an unparseable spill/qsave name (so the caller surfaces it rather
+    than mis-resolving). The base register is always `%rsp` (SDM number 4). -/
+def spillQsaveOff (frame spillW : Nat) (n : String)
+    (qsaveB : Nat := qsaveBytes) : Option Int :=
   if hasPrefix n "k." then
     match natOfDigits? (n.toList.drop 2) with
-    | some idx => some (spillFrameOff frame spillW idx)
+    | some idx => some (spillFrameOff frame spillW idx qsaveB)
     | none => none
   else if hasPrefix n "qsave." then
-    qsaveFrameOff frame (String.ofList (n.toList.drop 6))
+    qsaveFrameOff frame (String.ofList (n.toList.drop 6)) qsaveB
   else none
 
 /-- A `MOV` between a register and `[%rsp + off]`. `%rsp` (SDM number 4) has
     `r/m = 100` in the ModRM, which x86 reserves as the **SIB escape** — so a base of
     `%rsp` REQUIRES a SIB byte. The SIB for `[%rsp + disp]` (no index) is `0x24`
-    (`scale=0`, `index=100` = "no index", `base=100` = `%rsp`); `encMemMov` does NOT
-    emit it (its `modRMMem` would mis-decode `%rsp` as the SIB escape with a missing
-    SIB), so this is the dedicated RSP-base encoder. `op` = `0x8B` (load `r ← m`) or
+    (`scale=0`, `index=100` = "no index", `base=100` = `%rsp`). This is the
+    dedicated RSP-base encoder; it agrees byte-for-byte with the general
+    `encMemMovw … base=4 …`, whose shared `ScalarEncoder.memTail` emits the same
+    SIB under its `needSib` branch. `op` = `0x8B` (load `r ← m`) or
     `0x89` (store `m ← r`); `r` is the register operand. The `mod`/disp selection is
     the same as `encMemMov` (disp0 / signed disp8 / disp32), but with the SIB byte
     inserted after the ModRM. (`off = 0` still emits a `mod=00` SIB form, which is a
@@ -371,10 +373,11 @@ def encRspMem (w op r : Nat) (off : Int) : List (BitVec 8) :=
     encodes the **move** opcode for a memory operand (`op` is `0x89`/`0x8b` for
     `STORE`/`LOAD`); an ALU op against a spill (`add k.N, %rN`) is not produced by the
     owned bodies (the reload is materialised first) and is left to the residual. -/
-def encTwoAddr (frame spillW w : Nat) (op : Nat) (d s : LOperand) : List (BitVec 8) :=
+def encTwoAddr (frame spillW w : Nat) (op : Nat) (d s : LOperand)
+    (qsaveB : Nat := qsaveBytes) : List (BitVec 8) :=
   match d, s with
   | .reg dn, .reg sn =>
-      match spillQsaveOff frame spillW dn, spillQsaveOff frame spillW sn with
+      match spillQsaveOff frame spillW dn qsaveB, spillQsaveOff frame spillW sn qsaveB with
       -- store to a spill/qsave slot: dst is `%rsp`-relative, src is a register.
       | some off, none =>
           if isSpillOrQsave sn then []  -- mem,mem (spill→spill) not emitted
@@ -818,7 +821,9 @@ def fitsRel8 (d : Int) : Bool := -128 ≤ d ∧ d ≤ 127
 
 /-- The straight-line (non-control-flow) `Lopn` byte encoding. Independent of any
     displacement; the control-flow arms are handled by `encodeCF`. -/
-def encodeLopn (frame spillW : Nat) : LinstrR → List (BitVec 8)
+def encodeLopn (frame spillW : Nat) (i : LinstrR)
+    (qsaveB : Nat := qsaveBytes) : List (BitVec 8) :=
+  match i with
   | .Lopn dsts opn srcs =>
       if isCarryOutBinding opn || isMulHiBinding opn then
         -- ADX carry-out binding (`ADCXHI`/`ADOXHI`): materialise the post-add flag
@@ -918,7 +923,7 @@ def encodeLopn (frame spillW : Nat) : LinstrR → List (BitVec 8)
                 else []
             | _, _, _ =>
               match aluOpcode base with
-              | some op => encTwoAddr frame spillW w op d s
+              | some op => encTwoAddr frame spillW w op d s qsaveB
               | none =>
                 match twoByteOpcode base, d, s with
                 | some op, .reg dn, .reg sn => enc0FRRw w op (gpNumU dn) (gpNumU sn)
@@ -966,7 +971,7 @@ def encodeLopn (frame spillW : Nat) : LinstrR → List (BitVec 8)
             | some ext, .reg dn => encTagShift w ext (gpNumU dn) base
             | _, _ =>
               match aluOpcode base with
-              | some op => encTwoAddr frame spillW w op d s
+              | some op => encTwoAddr frame spillW w op d s qsaveB
               | none =>
                 match twoByteOpcode base, d, s with
                 | some op, .reg dn, .reg sn => enc0FRRw w op (gpNumU dn) (gpNumU sn)
@@ -1013,7 +1018,7 @@ def encodeLopn (frame spillW : Nat) : LinstrR → List (BitVec 8)
                           -- case, not an `aluOpcode` row, for the same reason
                           -- as the reg-reg arm: `encTwoAddr`'s memory arms
                           -- encode the MOV opcodes.
-                          match spillQsaveOff frame spillW sn with
+                          match spillQsaveOff frame spillW sn qsaveB with
                           | some off => encRspMem w 0x3B (gpNumU dn) off
                           | none => []
                         else []
@@ -1063,8 +1068,10 @@ def encodeLopn (frame spillW : Nat) : LinstrR → List (BitVec 8)
     arms ignore `dispOf`; control-flow arms pick the short (`rel8`) form when the
     displacement fits a signed byte (matching the assembler), else the long form.
     Carry-out / MULX-high bindings and `Lret`/`Lalign`/`Llabel` produce no data bytes. -/
-def encodeLinstrR (frame spillW : Nat) (dispOf : LLabel → Int) : LinstrR → List (BitVec 8)
-  | .Lopn dsts opn srcs => encodeLopn frame spillW (.Lopn dsts opn srcs)
+def encodeLinstrR (frame spillW : Nat) (dispOf : LLabel → Int) (i : LinstrR)
+    (qsaveB : Nat := qsaveBytes) : List (BitVec 8) :=
+  match i with
+  | .Lopn dsts opn srcs => encodeLopn frame spillW (.Lopn dsts opn srcs) qsaveB
   | .Lret => []
   | .Lalign => []
   | .Llabel _ _ => []
@@ -1097,8 +1104,9 @@ relaxation. -/
 /-- The length (in bytes) of an instruction's encoding under a resolved-displacement
     function `dispOf`. For a branch this reflects the short/long choice; for a
     straight-line op it is the fixed encoding length. -/
-def instrLenAt (frame spillW : Nat) (dispOf : LLabel → Int) (i : LinstrR) : Nat :=
-  (encodeLinstrR frame spillW dispOf i).length
+def instrLenAt (frame spillW : Nat) (dispOf : LLabel → Int) (i : LinstrR)
+    (qsaveB : Nat := qsaveBytes) : Nat :=
+  (encodeLinstrR frame spillW dispOf i qsaveB).length
 
 /-- One relaxation pass: given the *current* label-offset table `tbl`, fold over the
     body computing each instruction's length under the displacements `tbl` induces
@@ -1108,8 +1116,8 @@ def instrLenAt (frame spillW : Nat) (dispOf : LLabel → Int) (i : LinstrR) : Na
 def lookupLabel (tbl : List (LLabel × Nat)) (l : LLabel) : Nat :=
   (tbl.find? (fun p => p.1 == l)).elim 0 (·.2)
 
-def relaxPass (frame spillW : Nat) (tbl : List (LLabel × Nat)) (body : Lcmd) :
-    List (LLabel × Nat) :=
+def relaxPass (frame spillW : Nat) (tbl : List (LLabel × Nat)) (body : Lcmd)
+    (qsaveB : Nat := qsaveBytesFor body) : List (LLabel × Nat) :=
   (body.foldl (fun (acc : (Nat × List (LLabel × Nat))) instr =>
       let (off, out) := acc
       match instr.li_i with
@@ -1120,22 +1128,26 @@ def relaxPass (frame spillW : Nat) (tbl : List (LLabel × Nat)) (body : Lcmd) :
           -- long choice only flips at the rel8 boundary, so we estimate with the LONG
           -- instrEnd (conservative-stable: the assembler relaxes from long to short).
           let dispOf : LLabel → Int := fun t =>
-            Int.ofNat (lookupLabel tbl t) - Int.ofNat (off + instrLenAt frame spillW (fun _ => 0) i)
-          (off + instrLenAt frame spillW dispOf i, out)) (0, [])).2
+            Int.ofNat (lookupLabel tbl t)
+              - Int.ofNat (off + instrLenAt frame spillW (fun _ => 0) i qsaveB)
+          (off + instrLenAt frame spillW dispOf i qsaveB, out)) (0, [])).2
 
 /-- Iterate `relaxPass` to a fixpoint (or until `fuel` runs out). Each pass can only
     keep or shorten branch lengths (a branch that fit rel8 stays short), so the
     offsets are monotone and converge; `fuel = body.length + 1` is more than enough. -/
-def relaxFix (frame spillW : Nat) : Nat → List (LLabel × Nat) → Lcmd → List (LLabel × Nat)
+def relaxFix (frame spillW qsaveB : Nat) :
+    Nat → List (LLabel × Nat) → Lcmd → List (LLabel × Nat)
   | 0, tbl, _ => tbl
   | fuel + 1, tbl, body =>
-      let tbl' := relaxPass frame spillW tbl body
-      if tbl' == tbl then tbl else relaxFix frame spillW fuel tbl' body
+      let tbl' := relaxPass frame spillW tbl body qsaveB
+      if tbl' == tbl then tbl else relaxFix frame spillW qsaveB fuel tbl' body
 
 /-- The label → byte-offset table after relaxation: start from the all-long-form
     layout (`relaxPass []` seeds every label, then iterate). -/
-def labelOffsets (frame spillW : Nat) (body : Lcmd) : List (LLabel × Nat) :=
-  relaxFix frame spillW (body.length + 1) (relaxPass frame spillW [] body) body
+def labelOffsets (frame spillW : Nat) (body : Lcmd)
+    (qsaveB : Nat := qsaveBytesFor body) : List (LLabel × Nat) :=
+  relaxFix frame spillW qsaveB (body.length + 1)
+    (relaxPass frame spillW [] body qsaveB) body
 
 /-- **Encode the whole body**, backpatching each branch to its resolved displacement
     under the relaxed layout. For each instruction, `instrEnd = off + instrLenAt …`,
@@ -1147,18 +1159,20 @@ def encodeLcmd (body : Lcmd) : List (BitVec 8) :=
   -- byte-resolves to the same `off(%rsp)` the text path renders.
   let frame := frameSize body
   let spillW := if bodyIsU64 body then 64 else 32
-  let tbl := labelOffsets frame spillW body
+  let qsaveB := qsaveBytesFor body
+  let tbl := labelOffsets frame spillW body qsaveB
   (body.foldl (fun (acc : (Nat × List (BitVec 8))) instr =>
       let (off, bytes) := acc
       let i := instr.li_i
       -- displacement is computed against THIS instruction's end; for a branch the
       -- length under the relaxed table is stable, so use it directly.
       let dispLong : LLabel → Int := fun l =>
-        Int.ofNat (lookupLabel tbl l) - Int.ofNat (off + instrLenAt frame spillW (fun _ => 0) i)
-      let len := instrLenAt frame spillW dispLong i
+        Int.ofNat (lookupLabel tbl l)
+          - Int.ofNat (off + instrLenAt frame spillW (fun _ => 0) i qsaveB)
+      let len := instrLenAt frame spillW dispLong i qsaveB
       let instrEnd := off + len
       let dispOf : LLabel → Int := fun l => Int.ofNat (lookupLabel tbl l) - Int.ofNat instrEnd
-      (instrEnd, bytes ++ encodeLinstrR frame spillW dispOf i)) (0, [])).2
+      (instrEnd, bytes ++ encodeLinstrR frame spillW dispOf i qsaveB)) (0, [])).2
 
 /-! ## 5a. Encodability: which instructions carry bytes
 
@@ -1191,8 +1205,9 @@ def carriesNoBytes : LinstrR → Bool
     construction, or `encodeLinstrR` gives it a non-empty encoding. The stand-in
     displacement is immaterial: a branch encodes to 2, 5 or 6 bytes and never to
     none, and a straight-line `Lopn` ignores the resolver. -/
-def encodableLinstrR (frame spillW : Nat) (i : LinstrR) : Bool :=
-  carriesNoBytes i || !(encodeLinstrR frame spillW (fun _ => 0) i).isEmpty
+def encodableLinstrR (frame spillW : Nat) (i : LinstrR)
+    (qsaveB : Nat := qsaveBytes) : Bool :=
+  carriesNoBytes i || !(encodeLinstrR frame spillW (fun _ => 0) i qsaveB).isEmpty
 
 /-- Does every instruction of a body reach the byte stream? The frame size and the
     body-uniform spill width are computed exactly as `encodeLcmd` computes them, so
@@ -1201,7 +1216,7 @@ def encodableLinstrR (frame spillW : Nat) (i : LinstrR) : Bool :=
 def encodableLcmd (body : Lcmd) : Bool :=
   let frame := frameSize body
   let spillW := if bodyIsU64 body then 64 else 32
-  body.all fun instr => encodableLinstrR frame spillW instr.li_i
+  body.all fun instr => encodableLinstrR frame spillW instr.li_i (qsaveBytesFor body)
 
 -- Static checks pinning the frame-extension directive's byte status: `FRAMEADD`
 -- carries no bytes by construction, so a body laying scratch buffers still
@@ -1231,6 +1246,7 @@ theorem encodeLcmdChecked_eq {body : Lcmd} {bs : List (BitVec 8)}
 theorem encodableLinstrR_of_checked {body : Lcmd} {bs : List (BitVec 8)}
     (h : encodeLcmdChecked body = some bs) {instr : Linstr} (hi : instr ∈ body) :
     encodableLinstrR (frameSize body) (if bodyIsU64 body then 64 else 32) instr.li_i
+        (qsaveBytesFor body)
       = true := by
   unfold encodeLcmdChecked at h
   split at h
@@ -1242,18 +1258,20 @@ theorem encodableLinstrR_of_checked {body : Lcmd} {bs : List (BitVec 8)}
 /-- **An encodable instruction that is not empty by construction occupies at least
     one byte, under any displacement resolver.** -/
 theorem encodeLinstrR_length_pos (frame spillW : Nat) (d : LLabel → Int) (i : LinstrR)
-    (henc : encodableLinstrR frame spillW i = true) (hc : carriesNoBytes i = false) :
-    1 ≤ (encodeLinstrR frame spillW d i).length := by
-  have hne : (encodeLinstrR frame spillW (fun _ => 0) i).isEmpty = false := by
+    (qsaveB : Nat)
+    (henc : encodableLinstrR frame spillW i qsaveB = true)
+    (hc : carriesNoBytes i = false) :
+    1 ≤ (encodeLinstrR frame spillW d i qsaveB).length := by
+  have hne : (encodeLinstrR frame spillW (fun _ => 0) i qsaveB).isEmpty = false := by
     unfold encodableLinstrR at henc
     rw [hc] at henc
     simpa using henc
   cases i with
   | Lopn dsts opn srcs =>
-    have hd : encodeLinstrR frame spillW d (.Lopn dsts opn srcs)
-        = encodeLinstrR frame spillW (fun _ => 0) (.Lopn dsts opn srcs) := rfl
+    have hd : encodeLinstrR frame spillW d (.Lopn dsts opn srcs) qsaveB
+        = encodeLinstrR frame spillW (fun _ => 0) (.Lopn dsts opn srcs) qsaveB := rfl
     rw [hd]
-    cases hl : encodeLinstrR frame spillW (fun _ => 0) (.Lopn dsts opn srcs) with
+    cases hl : encodeLinstrR frame spillW (fun _ => 0) (.Lopn dsts opn srcs) qsaveB with
     | nil => rw [hl] at hne; simp at hne
     | cons a t => simp
   | Lgoto t =>
@@ -1281,21 +1299,23 @@ def byteCarrying (body : Lcmd) : Nat :=
   body.countP fun instr => !carriesNoBytes instr.li_i
 
 /-- The accumulator form of the length bound, over `encodeLcmd`'s fold. -/
-theorem encodeLcmd_fold_length_ge (frame spillW : Nat) (tbl : List (LLabel × Nat)) :
+theorem encodeLcmd_fold_length_ge (frame spillW : Nat) (tbl : List (LLabel × Nat))
+    (qsaveB : Nat) :
     ∀ (body : Lcmd) (off : Nat) (acc : List (BitVec 8)),
-      (∀ instr ∈ body, encodableLinstrR frame spillW instr.li_i = true) →
+      (∀ instr ∈ body, encodableLinstrR frame spillW instr.li_i qsaveB = true) →
       acc.length + byteCarrying body ≤
         ((body.foldl (fun (a : Nat × List (BitVec 8)) instr =>
             let (off, bytes) := a
             let i := instr.li_i
             let dispLong : LLabel → Int := fun l =>
               Int.ofNat (lookupLabel tbl l)
-                - Int.ofNat (off + instrLenAt frame spillW (fun _ => 0) i)
-            let len := instrLenAt frame spillW dispLong i
+                - Int.ofNat (off + instrLenAt frame spillW (fun _ => 0) i qsaveB)
+            let len := instrLenAt frame spillW dispLong i qsaveB
             let instrEnd := off + len
             let dispOf : LLabel → Int := fun l =>
               Int.ofNat (lookupLabel tbl l) - Int.ofNat instrEnd
-            (instrEnd, bytes ++ encodeLinstrR frame spillW dispOf i)) (off, acc)).2).length := by
+            (instrEnd, bytes ++ encodeLinstrR frame spillW dispOf i qsaveB))
+              (off, acc)).2).length := by
   intro body
   induction body with
   | nil => intro off acc _; simp [byteCarrying]
@@ -1313,9 +1333,9 @@ theorem encodeLcmd_fold_length_ge (frame spillW : Nat) (tbl : List (LLabel × Na
         (fun l => Int.ofNat (lookupLabel tbl l)
           - Int.ofNat (off + instrLenAt frame spillW
               (fun l => Int.ofNat (lookupLabel tbl l)
-                - Int.ofNat (off + instrLenAt frame spillW (fun _ => 0) instr.li_i))
-              instr.li_i))
-        instr.li_i (hall instr List.mem_cons_self) hc
+                - Int.ofNat (off + instrLenAt frame spillW (fun _ => 0) instr.li_i qsaveB))
+              instr.li_i qsaveB))
+        instr.li_i qsaveB (hall instr List.mem_cons_self) hc
       simp only [Bool.not_false, if_pos]
       unfold byteCarrying at *
       omega
@@ -1328,7 +1348,9 @@ theorem encodeLcmdChecked_length_ge {body : Lcmd} {bs : List (BitVec 8)}
   rw [encodeLcmdChecked_eq h]
   have := encodeLcmd_fold_length_ge (frameSize body)
     (if bodyIsU64 body then 64 else 32)
-    (labelOffsets (frameSize body) (if bodyIsU64 body then 64 else 32) body)
+    (labelOffsets (frameSize body) (if bodyIsU64 body then 64 else 32) body
+      (qsaveBytesFor body))
+    (qsaveBytesFor body)
     body 0 [] (fun instr hi => encodableLinstrR_of_checked h hi)
   simpa [encodeLcmd] using this
 
@@ -1346,9 +1368,10 @@ that entry point. -/
 /-- An instruction whose encoding is empty although `carriesNoBytes` does not
     excuse it is exactly what the gate rejects. -/
 theorem encodableLinstrR_eq_false_of_dropped (frame spillW : Nat) (i : LinstrR)
+    (qsaveB : Nat)
     (hc : carriesNoBytes i = false)
-    (he : encodeLinstrR frame spillW (fun _ => 0) i = []) :
-    encodableLinstrR frame spillW i = false := by
+    (he : encodeLinstrR frame spillW (fun _ => 0) i qsaveB = []) :
+    encodableLinstrR frame spillW i qsaveB = false := by
   simp [encodableLinstrR, hc, he]
 
 /-- **A body carrying an unrecognised instruction is declined, not truncated.**
@@ -1357,14 +1380,14 @@ theorem encodableLinstrR_eq_false_of_dropped (frame spillW : Nat) (i : LinstrR)
 theorem encodeLcmdChecked_eq_none_of_dropped {body : Lcmd} {instr : Linstr}
     (hi : instr ∈ body) (hc : carriesNoBytes instr.li_i = false)
     (he : encodeLinstrR (frameSize body) (if bodyIsU64 body then 64 else 32)
-            (fun _ => 0) instr.li_i = []) :
+            (fun _ => 0) instr.li_i (qsaveBytesFor body) = []) :
     encodeLcmdChecked body = none := by
   unfold encodeLcmdChecked
   split
   · rename_i hall
     unfold encodableLcmd at hall
     have h1 := (List.all_eq_true.mp hall) instr hi
-    rw [encodableLinstrR_eq_false_of_dropped _ _ _ hc he] at h1
+    rw [encodableLinstrR_eq_false_of_dropped _ _ _ _ hc he] at h1
     exact absurd h1 (by simp)
   · rfl
 
@@ -1584,7 +1607,8 @@ def encodeLcmdReloc (symBase : String → Option Int) (body : Lcmd) :
     List (BitVec 8) × List (Nat × String) :=
   let frame := frameSize body
   let spillW := if bodyIsU64 body then 64 else 32
-  let tbl := labelOffsets frame spillW body
+  let qsaveB := qsaveBytesFor body
+  let tbl := labelOffsets frame spillW body qsaveB
   let res := body.foldl (fun (acc : Nat × List (BitVec 8) × List (Nat × String)) instr =>
       let (off, bytes, relocs) := acc
       let i := instr.li_i
@@ -1604,11 +1628,12 @@ def encodeLcmdReloc (symBase : String → Option Int) (body : Lcmd) :
       | none =>
           -- local / straight-line: identical to `encodeLcmd`.
           let dispLong : LLabel → Int := fun l =>
-            Int.ofNat (lookupLabel tbl l) - Int.ofNat (off + instrLenAt frame spillW (fun _ => 0) i)
-          let len := instrLenAt frame spillW dispLong i
+            Int.ofNat (lookupLabel tbl l)
+              - Int.ofNat (off + instrLenAt frame spillW (fun _ => 0) i qsaveB)
+          let len := instrLenAt frame spillW dispLong i qsaveB
           let instrEnd := off + len
           let dispOf : LLabel → Int := fun l => Int.ofNat (lookupLabel tbl l) - Int.ofNat instrEnd
-          (instrEnd, bytes ++ encodeLinstrR frame spillW dispOf i, relocs)) (0, [], [])
+          (instrEnd, bytes ++ encodeLinstrR frame spillW dispOf i qsaveB, relocs)) (0, [], [])
   (res.2.1, res.2.2)
 
 /-! ## 6. Wrapping a looped function as bytes / an ELF object

@@ -488,13 +488,15 @@ theorem sublist_flatMap {α β : Type} {a b : List α} (h : a.Sublist b) (f : α
       simp only [List.flatMap_cons]
       exact ih.append_left _
 
-/-- **The optimized render deletes lines and adds none.** At the frame the
-    optimized body itself determines (`frameSize_reloadElimBody`: the original's),
-    the rendered text of the swept body is a sublist of the rendered text of the
-    original. -/
-theorem renderLcmd_reloadElim_sublist (frame spillW : Nat) (b : Lcmd) (lblPfx : String) :
-    (renderLcmd frame spillW (reloadElimBody b) lblPfx).Sublist
-      (renderLcmd frame spillW b lblPfx) :=
+/-- **The optimized render deletes lines and adds none.** Rendered at one frame
+    (`frameSize_reloadElimBody`: the swept body's is the original's), one width
+    class and one qsave block, the text of the swept body is a sublist of the
+    text of the original. The qsave block is an explicit parameter so both
+    renders are taken at the same frame layout. -/
+theorem renderLcmd_reloadElim_sublist (frame spillW : Nat) (b : Lcmd)
+    (lblPfx : String) (rvs : Bool) (qsaveB : Nat) :
+    (renderLcmd frame spillW (reloadElimBody b) lblPfx rvs qsaveB).Sublist
+      (renderLcmd frame spillW b lblPfx rvs qsaveB) :=
   sublist_flatMap (reloadElimBody_sublist b) _
 
 /-- The pass on one `Lfundef` (body only; ABI metadata untouched). -/

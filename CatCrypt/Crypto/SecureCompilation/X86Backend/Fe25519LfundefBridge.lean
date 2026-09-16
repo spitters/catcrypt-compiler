@@ -699,7 +699,7 @@ def FB : String := "RBX"
 
 /-- The sizing-sentinel spill index. 110 work limbs (ladder 60 + inversion temps 48,
     plus a margin) ⇒ index 109 is the lowest-address cell; referencing it forces
-    `frameSize = 952` (the 110-cell region below the 64-byte qsave block, `+8` call
+    `frameSize = 984` (the 110-cell region below the 96-byte qsave block, `+8` call
     parity: the orchestrator body calls the field leaves, so the frame is sized
     `≡ 8 (mod 16)` to keep every call site SysV 16-aligned). The cell is used as
     scratch (the saved swap mask) so the reference is live, not dead. -/
@@ -978,7 +978,7 @@ theorem x25519Schedule_multiple_loops :
 /-! ### 5f. FRONT render-confirmation: the generated body carries the deployed ABI
 
 The front-generated `x25519ScalarmultLcmd` renders to the SAME owned `.s` shape the
-hand-authored body did — the frame size (`x25519Scalarmult_frame_reserved` = 952
+hand-authored body did — the frame size (`x25519Scalarmult_frame_reserved` = 984
 below) and the byte-encodability (`x25519Scalarmult_fully_byteEncodable`) are the
 same fingerprints, and these render KATs pin the control shape: the 255-iteration
 ladder loop back-edge (`.L0:`/`jne .L0`), the sibling `call x25519_mono_step`, and
@@ -1042,17 +1042,18 @@ theorem x25519ScalarmultFullObject_nonempty : x25519ScalarmultFullObject ≠ [] 
   exact fun h => by simp [h] at this
 
 /-- The folded orchestrator references the sizing sentinel `k.109`, so the encoder
-    reserves the whole `mem.RBX.*` work frame (`frameSize = 952` bytes: the
-    110-cell region + qsave block, `+8` call parity — the body calls the field
-    leaves, so call sites stay SysV 16-aligned). -/
+    reserves the whole `mem.RBX.*` work frame (`frameSize = 984` bytes: the
+    110-cell region + the 96-byte qsave block, `+8` call parity — the body calls
+    the field leaves, so call sites stay SysV 16-aligned and the third through
+    sixth pointer arguments are parked inside the frame rather than below `%rsp`). -/
 theorem x25519Scalarmult_frame_reserved :
-    LprogAsmPrinter.frameSize x25519ScalarmultLcmd = 952 := by native_decide
+    LprogAsmPrinter.frameSize x25519ScalarmultLcmd = 984 := by native_decide
 
 /-- Every `Lopn` of the folded orchestrator byte-encodes — ZERO uncovered ops (the
     whole scaffolding is in the byte-encodable `LinstrR` alphabet). -/
 theorem x25519Scalarmult_fully_byteEncodable :
     (x25519ScalarmultLcmd.filter (fun i => match i.li_i with
-      | .Lopn _ _ _ => (LprogBytes.encodeLopn 952 64 i.li_i).isEmpty
+      | .Lopn _ _ _ => (LprogBytes.encodeLopn 984 64 i.li_i 96).isEmpty
       | _ => false)) = [] := by native_decide
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519LfundefBridge

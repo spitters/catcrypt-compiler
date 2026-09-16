@@ -165,6 +165,23 @@ def spillCellBytes (w : Nat) : Nat := if w = 64 then 8 else 4
     SHA-256 has 70; see module note). -/
 def qsaveBytes : Nat := 8 * 8
 
+/-- The bytes reserved at the top of the frame for the ABI save slots of a body
+    that issues a `call`: all twelve 8-byte cells (`qsave.RDI … qsave.R9`),
+    including the slots of the 3rd-through-6th SysV pointer arguments.
+
+    A `call` pushes its return address at `-8(%rsp)`, the first cell of the
+    System-V red zone, so the red-zone placement those four slots take in a
+    call-free body does not survive a call. A calling body reserves them inside
+    its own frame instead. -/
+def qsaveBytesCall : Nat := 12 * 8
+
+/-- The qsave block size of a body: the twelve-cell block when the body issues a
+    `call`, the eight-cell block otherwise. A call-free body reserves exactly
+    `qsaveBytes`, so its frame layout — and every qsave and spill offset computed
+    from it — is the one it had before the block became body-dependent. -/
+def qsaveBytesFor (body : VIR.JasminLprogExport.Lcmd) : Nat :=
+  if VIR.JasminLprogExport.bodyHasCall body then qsaveBytesCall else qsaveBytes
+
 /-- The zero-based qsave slot index of a save register (`RDI`=0 … `R15`=7, plus
     the 2nd+ SysV input pointer regs `RDX`=8 … `R9`=11 for multi-input array
     loops), used to place its 8-byte cell in the frame's top block. -/
@@ -177,27 +194,31 @@ def qsaveSlot : String → Option Nat
   | "R8"  => some 10 | "R9" => some 11
   | _ => none
 
-/-- The positive frame offset (from the post-`leaq` `%rsp`) of qsave slot `X` in
-    a frame of size `frame`: the top 64 bytes hold the eight 8-byte save slots,
-    slot `i` at `frame - 8·(i+1)`. -/
-def qsaveFrameOff (frame : Nat) (reg : String) : Option Int :=
+/-- The frame offset (from the post-`leaq` `%rsp`) of qsave slot `X` in a frame of
+    size `frame` whose qsave block is `qsaveB` bytes: the top of the frame holds
+    the 8-byte save cells, slot `i` at `frame - 8·(i+1)`, for as many slots as
+    `qsaveB` reserves.
+
+    A slot the block does not reach is placed in the System-V red zone below
+    `%rsp` at `-8·(i-7)`. The red zone is guaranteed only to a leaf, so that
+    placement is sound exactly for a body that issues no `call`; `qsaveBytesFor`
+    is what widens the block to hold slots 8-11 for a calling body. At the
+    default `qsaveB = qsaveBytes` the eight standard slots are in-frame and slots
+    8-11 are red-zone, which is the call-free layout. -/
+def qsaveFrameOff (frame : Nat) (reg : String) (qsaveB : Nat := qsaveBytes) :
+    Option Int :=
   (qsaveSlot reg).map (fun i =>
-    if i < 8 then
-      -- standard 8 callee-save slots: top of the frame (unchanged, keeps every
-      -- existing kernel byte-identical).
+    if 8 * (i + 1) ≤ qsaveB then
       Int.ofNat frame - 8 * (Int.ofNat i + 1)
     else
-      -- the 2nd+ SysV input-pointer slots (RDX=8 … R9=11) for multi-input array
-      -- loops live in the System-V red zone BELOW %rsp (these kernels are leaves,
-      -- no calls), so the frame size and the standard slots do not move.
       -(8 * (Int.ofNat i - 7)))
 
 /-- The positive frame offset (from the post-`leaq` `%rsp`) of U32-spill slot
-    `k.idx` at op width `w` in a frame of size `frame`: the spill region sits
-    BELOW the 64-byte qsave block, slot `idx` at `frame - qsaveBytes -
-    cell·(idx+1)` (downward-growing, disjoint from qsave). -/
-def spillFrameOff (frame w idx : Nat) : Int :=
-  Int.ofNat frame - Int.ofNat qsaveBytes - Int.ofNat (spillCellBytes w * (idx + 1))
+    `k.idx` at op width `w` in a frame of size `frame` whose qsave block is
+    `qsaveB` bytes: the spill region sits BELOW that block, slot `idx` at
+    `frame - qsaveB - cell·(idx+1)` (downward-growing, disjoint from qsave). -/
+def spillFrameOff (frame w idx : Nat) (qsaveB : Nat := qsaveBytes) : Int :=
+  Int.ofNat frame - Int.ofNat qsaveB - Int.ofNat (spillCellBytes w * (idx + 1))
 
 /-! ## 2. Operand resolution: `LOperand` (with name conventions) → AT&T text
 
@@ -211,16 +232,19 @@ and carry no shift. -/
     bare GP register); `spillW` is the **body-uniform** spill width that fixes the
     `k.N` cell stride — it must be constant across the whole body, else a slot
     would get inconsistent offsets between a `:64` op and an (untagged) reload
-    MOV. `frame` is the allocated frame size. Recognises, in priority order:
-    spill `k.N`, ABI save `qsave.X`, memory `mem.<base>.<off>`, then a GP reg. -/
-def resolveName (frame spillW w : Nat) (n : String) : String :=
+    MOV. `frame` is the allocated frame size, `qsaveB` the frame's qsave block
+    size (which fixes where the spill region starts and which qsave slots are
+    in-frame). Recognises, in priority order: spill `k.N`, ABI save `qsave.X`,
+    memory `mem.<base>.<off>`, then a GP reg. -/
+def resolveName (frame spillW w : Nat) (n : String)
+    (qsaveB : Nat := qsaveBytes) : String :=
   if "k.".isPrefixOf n then
     match (String.toNat? (n.drop 2).toString) with
-    | some idx => toString (spillFrameOff frame spillW idx) ++ "(%rsp)"
+    | some idx => toString (spillFrameOff frame spillW idx qsaveB) ++ "(%rsp)"
     | none => "<BADSPILL:" ++ n ++ ">"
   else if "qsave.".isPrefixOf n then
     let reg := (n.drop 6).toString
-    match qsaveFrameOff frame reg with
+    match qsaveFrameOff frame reg qsaveB with
     | some off => toString off ++ "(%rsp)"
     | none => "<BADQSAVE:" ++ n ++ ">"
   else if "mem.".isPrefixOf n then
@@ -269,8 +293,10 @@ def resolveName (frame spillW w : Nat) (n : String) : String :=
     encodes). This is the text-path analogue of `LprogBytes`' SIB encoder: a
     `LOADIDX` reads `dst ← (%base,%idx,scale)`, a `STOREIDX` writes
     `(%base,%idx,scale) ← src`. -/
-def resolveOperand (frame spillW w : Nat) : LOperand → String
-  | .reg n => resolveName frame spillW w n
+def resolveOperand (frame spillW w : Nat) (o : LOperand)
+    (qsaveB : Nat := qsaveBytes) : String :=
+  match o with
+  | .reg n => resolveName frame spillW w n qsaveB
   | .imm v => "$" ++ toString v
   | .arr b i => "<ARR:" ++ b ++ "[" ++ toString i ++ "]>"
   | .arrIdx b i s =>
@@ -317,15 +343,18 @@ def vecSpillReg : String := "%ymm15"
     has no imm64-to-memory encoding, so a ≥ 2³¹ constant stores as two `movl`
     dword writes (lo at `+0`, hi at `+4`). `none` for a non-memory operand or a
     SIB `arrIdx` (the dword split cannot re-scale a SIB stride). -/
-def resolveMemPlus (frame spillW delta : Nat) : LOperand → Option String
+def resolveMemPlus (frame spillW delta : Nat) (o : LOperand)
+    (qsaveB : Nat := qsaveBytes) : Option String :=
+  match o with
   | .reg n =>
       if "k.".isPrefixOf n then
         match String.toNat? (n.drop 2).toString with
         | some idx =>
-            some (toString (spillFrameOff frame spillW idx + Int.ofNat delta) ++ "(%rsp)")
+            some (toString (spillFrameOff frame spillW idx qsaveB + Int.ofNat delta)
+              ++ "(%rsp)")
         | none => none
       else if "qsave.".isPrefixOf n then
-        match qsaveFrameOff frame ((n.drop 6).toString) with
+        match qsaveFrameOff frame ((n.drop 6).toString) qsaveB with
         | some off => some (toString (off + Int.ofNat delta) ++ "(%rsp)")
         | none => none
       else if "mem.".isPrefixOf n then
@@ -516,8 +545,10 @@ plain move `mov<sz> src, dst`. The flag-setting side effects the x86 ISA attache
       into CF via `bt $0, cin` (dropped only for the fused-flag sentinel, where
       the flag flows directly). The dst self-source is the implicit x86
       destination-source, not a printed operand. -/
-def renderLopn (frame spillW : Nat) (rvs : Bool := false) :
-    List LOperand → String → List LOperand → List String
+def renderLopn (frame spillW : Nat) (rvs : Bool := false)
+    (dsts : List LOperand) (opn : String) (srcs : List LOperand)
+    (qsaveB : Nat := qsaveBytes) : List String :=
+  match dsts, opn, srcs with
   -- `SETcc` (`SETC`, set-on-carry → byte GPR, zero-extended): one destination,
   -- **zero** data sources (the carry-in is the implicit `CF` flag, not a printed
   -- operand). Emits the `setb`/`movzbq` pair that realises the model's `setc` arm
@@ -544,8 +575,8 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false) :
         let mn := if "VPSLLD".isPrefixOf opn then "vpslld" else "vpsrld"
         match opn.splitOn ":", s, d with
         | [_, nStr], .reg sn, .reg dn =>
-            [ "\t" ++ mn ++ " $" ++ nStr ++ ", " ++ resolveName frame spillW 32 sn
-                ++ ", " ++ resolveName frame spillW 32 dn ]
+            [ "\t" ++ mn ++ " $" ++ nStr ++ ", " ++ resolveName frame spillW 32 sn qsaveB
+                ++ ", " ++ resolveName frame spillW 32 dn qsaveB ]
         | _, _, _ => [ "\t# UNHANDLED-VYMM " ++ opn ]
       -- **YMM cross-/in-lane permutes by immediate** (NTT lane routing):
       -- `VPSHUFD:<n>` (in-lane dword shuffle) / `VPERMQ:<n>` (cross-lane qword
@@ -555,16 +586,16 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false) :
         let mn := if "VPSHUFD".isPrefixOf opn then "vpshufd" else "vpermq"
         match opn.splitOn ":", s, d with
         | [_, nStr], .reg sn, .reg dn =>
-            [ "\t" ++ mn ++ " $" ++ nStr ++ ", " ++ resolveName frame spillW 32 sn
-                ++ ", " ++ resolveName frame spillW 32 dn ]
+            [ "\t" ++ mn ++ " $" ++ nStr ++ ", " ++ resolveName frame spillW 32 sn qsaveB
+                ++ ", " ++ resolveName frame spillW 32 dn qsaveB ]
         | _, _, _ => [ "\t# UNHANDLED-VYMM " ++ opn ]
       -- **VMOVSHDUP** (NTT odd-lane duplicate): `d := dup_odd s`. Single-source
       -- two-operand VEX move, no immediate. AT&T `vmovshdup %ymm<s>, %ymm<d>`.
       else if base == "VMOVSHDUP" then
         match s, d with
         | .reg sn, .reg dn =>
-            [ "\tvmovshdup " ++ resolveName frame spillW 32 sn
-                ++ ", " ++ resolveName frame spillW 32 dn ]
+            [ "\tvmovshdup " ++ resolveName frame spillW 32 sn qsaveB
+                ++ ", " ++ resolveName frame spillW 32 dn qsaveB ]
         | _, _ => [ "\t# UNHANDLED-VYMM " ++ opn ]
       -- **256-bit vector ABI move** (`VMOVDQU`, batch8 SoA ABI): the packed
       -- input load (`mem → %ymm`) / output store (`%ymm → mem`) and any packed
@@ -578,12 +609,12 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false) :
           -- `%ymm15`. When `rvs` (batch8 reserves `%ymm15`) the bounce needs no
           -- save/restore; otherwise it is saved to / restored from `vecSpillScratch`.
           (if rvs then [] else [ "\tvmovdqu " ++ vecSpillReg ++ ", " ++ vecSpillScratch ])
-            ++ [ "\tvmovdqu " ++ resolveOperand frame spillW 32 s ++ ", " ++ vecSpillReg,
-                 "\tvmovdqu " ++ vecSpillReg ++ ", " ++ resolveOperand frame spillW 32 d ]
+            ++ [ "\tvmovdqu " ++ resolveOperand frame spillW 32 s qsaveB ++ ", " ++ vecSpillReg,
+                 "\tvmovdqu " ++ vecSpillReg ++ ", " ++ resolveOperand frame spillW 32 d qsaveB ]
             ++ (if rvs then [] else [ "\tvmovdqu " ++ vecSpillScratch ++ ", " ++ vecSpillReg ])
         else
-          [ "\tvmovdqu " ++ resolveOperand frame spillW 32 s ++ ", "
-              ++ resolveOperand frame spillW 32 d ]
+          [ "\tvmovdqu " ++ resolveOperand frame spillW 32 s qsaveB ++ ", "
+              ++ resolveOperand frame spillW 32 d qsaveB ]
       else if (base == "MOV" || base == "MOVQ")
               && (match s with | .reg n => "XMM".isPrefixOf n | _ => false)
               && !isAnyMem d then
@@ -596,7 +627,7 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false) :
         match s with
         | .reg sn =>
             [ "\tmovq %xmm" ++ (sn.drop 3).toString ++ ", "
-                ++ resolveOperand frame spillW 64 d ]
+                ++ resolveOperand frame spillW 64 d qsaveB ]
         | _ => [ "\t# UNHANDLED-VMOV " ++ opn ]
       else
       -- **imm64 store** (the fri_proof Merkle u64 mixer constants): x86 has no
@@ -614,10 +645,10 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false) :
             else none
         | _, _ => none
       if let some v := imm64Store then
-        match resolveMemPlus frame spillW 4 d with
+        match resolveMemPlus frame spillW 4 d qsaveB with
         | some hiOp =>
             [ "\tmovl $" ++ toString (v % 4294967296) ++ ", "
-                ++ resolveOperand frame spillW 32 d,
+                ++ resolveOperand frame spillW 32 d qsaveB,
               "\tmovl $" ++ toString (v / 4294967296) ++ ", " ++ hiOp ]
         | none => [ "\t# UNHANDLED-IMM64-STORE " ++ opn ]
       else
@@ -631,8 +662,8 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false) :
       -- the real width off the raw mnemonic. Render `op<sz> $n, %d` (prepending a
       -- `mov` when the source register differs from the destination).
       if let some (m, n, w) := parseImmShiftMnem opn then
-        let dop := resolveOperand frame spillW w d
-        let sop := resolveOperand frame spillW w s
+        let dop := resolveOperand frame spillW w d qsaveB
+        let sop := resolveOperand frame spillW w s qsaveB
         -- **Shift/rotate-by-0 peephole (dead-instruction drop).** A shift or
         -- rotate by 0 is the identity on the destination value (`x << 0 = x`,
         -- `x >> 0 = x`, `ror/rol x, 0 = x` — and none of these five write a flag
@@ -666,15 +697,15 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false) :
             let lw := scale * 8
             let dstW := if lw < 32 then 32 else lw
             if lw == 16 then
-              [ "\tmovzwl " ++ resolveOperand frame spillW 64 s ++ ", "
-                  ++ resolveOperand frame spillW 32 d ]
+              [ "\tmovzwl " ++ resolveOperand frame spillW 64 s qsaveB ++ ", "
+                  ++ resolveOperand frame spillW 32 d qsaveB ]
             else if lw == 8 then
-              [ "\tmovzbl " ++ resolveOperand frame spillW 64 s ++ ", "
-                  ++ resolveOperand frame spillW 32 d ]
+              [ "\tmovzbl " ++ resolveOperand frame spillW 64 s qsaveB ++ ", "
+                  ++ resolveOperand frame spillW 32 d qsaveB ]
             else
               [ "\tmov" ++ sizeSuffix dstW ++ " "
-                  ++ resolveOperand frame spillW 64 s ++ ", "
-                  ++ resolveOperand frame spillW dstW d ]
+                  ++ resolveOperand frame spillW 64 s qsaveB ++ ", "
+                  ++ resolveOperand frame spillW dstW d qsaveB ]
         | _ => [ "\t# UNHANDLED-LOADIDX " ++ opn ]
       -- **ZEROEXT / TRUNC** (#656 cast_demo): a cross-width cast. `ZEROEXT` is the
       -- widening zero-extend (`movzx`), `TRUNC` the narrowing low-bits keep. The
@@ -705,15 +736,15 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false) :
         if isMemOperand s && !isMemOperand d then
           -- load: zero-extend narrow memory → 32-bit working reg
           let zext := if w == 16 then "movzwl" else "movzbl"
-          [ "\t" ++ zext ++ " " ++ resolveOperand frame spillW w s ++ ", "
-              ++ resolveOperand frame spillW 32 d ]
+          [ "\t" ++ zext ++ " " ++ resolveOperand frame spillW w s qsaveB ++ ", "
+              ++ resolveOperand frame spillW 32 d qsaveB ]
         else if isMemOperand d && !isMemOperand s then
           -- store: width-exact narrow write (no overrun)
-          [ "\tmov" ++ sizeSuffix w ++ " " ++ resolveOperand frame spillW w s ++ ", "
-              ++ resolveOperand frame spillW w d ]
+          [ "\tmov" ++ sizeSuffix w ++ " " ++ resolveOperand frame spillW w s qsaveB ++ ", "
+              ++ resolveOperand frame spillW w d qsaveB ]
         else
-          [ "\tmov" ++ sizeSuffix w ++ " " ++ resolveOperand frame spillW w s ++ ", "
-              ++ resolveOperand frame spillW w d ]
+          [ "\tmov" ++ sizeSuffix w ++ " " ++ resolveOperand frame spillW w s qsaveB ++ ", "
+              ++ resolveOperand frame spillW w d qsaveB ]
       else
       -- **Native immediate shift / rotate** fallback. The primary shift handler
       -- runs at the top of this arm (`parseImmShiftMnem`, off the raw mnemonic) so
@@ -730,8 +761,8 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false) :
             | _ => none
           match immMn with
           | some m =>
-              let dop := resolveOperand frame spillW w d
-              let sop := resolveOperand frame spillW w s
+              let dop := resolveOperand frame spillW w d qsaveB
+              let sop := resolveOperand frame spillW w s qsaveB
               -- Shift/rotate-by-0 peephole (same identity-drop as the primary
               -- `parseImmShiftMnem` arm above): a count of 0 is the identity, so a
               -- self-shift emits nothing and a rebind degenerates to `mov s, d`.
@@ -762,12 +793,12 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false) :
             -- additionally covers a two-`mem.` frame copy, so the printer never
             -- emits an illegal `mov mem, mem` regardless of the operand class.
             [ "\t" ++ m ++ sizeSuffix w ++ " "
-                ++ resolveOperand frame spillW w s ++ ", " ++ resolveName frame spillW w "R15",
+                ++ resolveOperand frame spillW w s qsaveB ++ ", " ++ resolveName frame spillW w "R15" qsaveB,
               "\t" ++ m ++ sizeSuffix w ++ " "
-                ++ resolveName frame spillW w "R15" ++ ", " ++ resolveOperand frame spillW w d ]
+                ++ resolveName frame spillW w "R15" qsaveB ++ ", " ++ resolveOperand frame spillW w d qsaveB ]
           else
           [ "\t" ++ m ++ sizeSuffix w ++ " "
-              ++ resolveOperand frame spillW w s ++ ", " ++ resolveOperand frame spillW w d ]
+              ++ resolveOperand frame spillW w s qsaveB ++ ", " ++ resolveOperand frame spillW w d qsaveB ]
       | none => [ "\t# UNHANDLED-OP " ++ opn ]
   -- BMI1 `andn` (`ANDN`): the **non-destructive 3-operand** form. Both sources
   -- are real (neither is a `dst` self-source), and `dst` is written directly:
@@ -821,9 +852,9 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false) :
             -- so a spilled operand is placed in the first (memory-allowed) slot by
             -- swapping the two sources, and a spilled destination is computed into
             -- `%ymm15` (saved to / restored from `vecSpillScratch`) then stored.
-            let bStr := resolveName frame spillW 32 bn
-            let aStr := resolveName frame spillW 32 an
-            let dStr := resolveName frame spillW 32 dn
+            let bStr := resolveName frame spillW 32 bn qsaveB
+            let aStr := resolveName frame spillW 32 an qsaveB
+            let dStr := resolveName frame spillW 32 dn qsaveB
             let mB := isAnyMem b   -- first AT&T source in memory?
             let mA := isAnyMem a   -- second AT&T source in memory?
             if isVSpill d then
@@ -861,8 +892,8 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false) :
             -- immediate form `vpslld/vpsrld $n, <data>, <dst>` (data may be memory;
             -- a spilled dst bounces through %ymm15).
             let mnImm := if opn == "VPSLLVD" then "vpslld" else "vpsrld"
-            let dataStr := resolveName frame spillW 32 an
-            let dStr := resolveName frame spillW 32 dn
+            let dataStr := resolveName frame spillW 32 an qsaveB
+            let dStr := resolveName frame spillW 32 dn qsaveB
             if isVSpill d then
               (if rvs then [] else [ "\tvmovdqu " ++ vecSpillReg ++ ", " ++ vecSpillScratch ])
                 ++ [ "\t" ++ mnImm ++ " $" ++ toString n ++ ", " ++ dataStr ++ ", " ++ vecSpillReg,
@@ -871,9 +902,9 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false) :
             else
               [ "\t" ++ mnImm ++ " $" ++ toString n ++ ", " ++ dataStr ++ ", " ++ dStr ]
         | .reg an, .reg bn, .reg dn =>
-            let cStr := resolveName frame spillW 32 bn   -- count (first AT&T)
-            let dataStr := resolveName frame spillW 32 an -- data (second AT&T)
-            let dStr := resolveName frame spillW 32 dn    -- dst
+            let cStr := resolveName frame spillW 32 bn qsaveB   -- count (first AT&T)
+            let dataStr := resolveName frame spillW 32 an qsaveB -- data (second AT&T)
+            let dStr := resolveName frame spillW 32 dn qsaveB    -- dst
             let mData := isVSpill a
             let mDst := isVSpill d
             if mDst && mData then
@@ -905,9 +936,9 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false) :
         let mn := if opn == "VPSUBD" then "vpsubd" else "vpsubq"
         match a, b, d with
         | .reg an, .reg bn, .reg dn =>
-            let bStr := resolveName frame spillW 32 bn    -- b = src2 (first, may be mem)
-            let aStr := resolveName frame spillW 32 an     -- a = src1 (second, reg)
-            let dStr := resolveName frame spillW 32 dn      -- dst (reg)
+            let bStr := resolveName frame spillW 32 bn qsaveB    -- b = src2 (first, may be mem)
+            let aStr := resolveName frame spillW 32 an qsaveB     -- a = src1 (second, reg)
+            let dStr := resolveName frame spillW 32 dn qsaveB      -- dst (reg)
             let mA := isVSpill a
             let mDst := isVSpill d
             if mDst && mA then
@@ -936,16 +967,16 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false) :
       else if "VPBLENDD".isPrefixOf opn then
         match opn.splitOn ":", a, b, d with
         | [_, nStr], .reg an, .reg bn, .reg dn =>
-            [ "\tvpblendd $" ++ nStr ++ ", " ++ resolveName frame spillW 32 bn
-                ++ ", " ++ resolveName frame spillW 32 an
-                ++ ", " ++ resolveName frame spillW 32 dn ]
+            [ "\tvpblendd $" ++ nStr ++ ", " ++ resolveName frame spillW 32 bn qsaveB
+                ++ ", " ++ resolveName frame spillW 32 an qsaveB
+                ++ ", " ++ resolveName frame spillW 32 dn qsaveB ]
         | _, _, _, _ => [ "\t# UNHANDLED-VYMM " ++ opn ]
       else if stripAbiTag opn == "ANDN" then
         let w := mnemWidth opn
         [ "\tandn" ++ sizeSuffix w ++ " "
-            ++ resolveOperand frame spillW w b ++ ", "
-            ++ resolveOperand frame spillW w a ++ ", "
-            ++ resolveOperand frame spillW w d ]
+            ++ resolveOperand frame spillW w b qsaveB ++ ", "
+            ++ resolveOperand frame spillW w a qsaveB ++ ", "
+            ++ resolveOperand frame spillW w d qsaveB ]
       -- **STOREIDX** (#539): the register-indexed (SIB) array element store. Sources
       -- are `[.arrIdx base idx scale, val]` — the SIB destination and the stored
       -- value; the `Lopn` destination `d` names the functionally-updated array (the
@@ -958,8 +989,8 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false) :
         | .arrIdx _ _ scale =>
             let sw := scale * 8
             [ "\tmov" ++ sizeSuffix sw ++ " "
-                ++ resolveOperand frame spillW sw b ++ ", "
-                ++ resolveOperand frame spillW 64 a ]
+                ++ resolveOperand frame spillW sw b qsaveB ++ ", "
+                ++ resolveOperand frame spillW 64 a qsaveB ]
         | _ => [ "\t# UNHANDLED-STOREIDX " ++ opn ]
       -- **Variable-count shift** `Lopn [d] SHL/SHR/SAR [val, count]` (the Merkle
       -- level loop's `n >> (lvl+1)`: the count is a RUNTIME register, not a
@@ -980,16 +1011,16 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false) :
         if isMemOperand b then [ "\t# UNHANDLED-VARSHIFT-MEMCOUNT " ++ opn ]
         else
           [ "\t" ++ mn ++ sizeSuffix w ++ " "
-              ++ resolveOperand frame spillW w b ++ ", "
-              ++ resolveOperand frame spillW w a ++ ", "
-              ++ resolveOperand frame spillW w d ]
+              ++ resolveOperand frame spillW w b qsaveB ++ ", "
+              ++ resolveOperand frame spillW w a qsaveB ++ ", "
+              ++ resolveOperand frame spillW w d qsaveB ]
       else
         let w := mnemWidth opn
         let mnBase := stripAbiTag opn
         match attBase mnBase with
         | some m =>
-            let bOp := resolveOperand frame spillW w b
-            let dOp := resolveOperand frame spillW w d
+            let bOp := resolveOperand frame spillW w b qsaveB
+            let dOp := resolveOperand frame spillW w d qsaveB
             -- **Mem-to-mem legalization for the flag-only compare class.** x86 has
             -- no memory-to-memory `cmp`/`test`, and the upstream two-address
             -- legalizer (`physBodyRmap`'s `isBinop` alphabet) does not cover
@@ -1011,7 +1042,7 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false) :
             -- write-back of the scratch is needed.
             if (mnBase == "CMP" || mnBase == "TEST")
                 && isMemOperand b && isMemOperand d then
-              let scratch := resolveName frame spillW w "R15"
+              let scratch := resolveName frame spillW w "R15" qsaveB
               [ "\tmov" ++ sizeSuffix w ++ " " ++ dOp ++ ", " ++ scratch,
                 "\t" ++ m ++ sizeSuffix w ++ " " ++ bOp ++ ", " ++ scratch ]
             else
@@ -1030,10 +1061,10 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false) :
       -- registers), as `cmov`/`test` require for the destination and the tested
       -- operand.
       if base == "CMOV" then
-        let dOp := resolveOperand frame spillW w d
-        let condOp := resolveOperand frame spillW w a
-        let tOp := resolveOperand frame spillW w s
-        let fOp := resolveOperand frame spillW w cin
+        let dOp := resolveOperand frame spillW w d qsaveB
+        let condOp := resolveOperand frame spillW w a qsaveB
+        let tOp := resolveOperand frame spillW w s qsaveB
+        let fOp := resolveOperand frame spillW w cin qsaveB
         let sz := sizeSuffix w
         -- `test` takes at most one memory operand, so a SPILLED CONDITION is
         -- compared against zero instead: `cmp $0, cond` sets `ZF = (cond == 0)`,
@@ -1089,8 +1120,8 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false) :
       -- `bt → adcx` flag dependency is intact.
       if base == "ADCX" || base == "ADOX" then
         let mn := if base == "ADOX" then "adox" else "adcx"
-        let dOp := resolveOperand frame spillW w d
-        let aOp := resolveOperand frame spillW w a
+        let dOp := resolveOperand frame spillW w d qsaveB
+        let aOp := resolveOperand frame spillW w a qsaveB
         if !(isMemOperand d) then
           let movLine := if aOp == dOp then []
                          else [ "\tmov" ++ sizeSuffix w ++ " " ++ aOp ++ ", " ++ dOp ]
@@ -1099,9 +1130,9 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false) :
           -- `bt $0, cin` materialise-round-trip is dead — drop it and let the flag
           -- flow straight into this `adcx`/`adox`.
           let btLine := if cin == LOperand.reg cfCarrySentinel then []
-                        else [ "\tbt" ++ sizeSuffix w ++ " $0, " ++ resolveOperand frame spillW w cin ]
+                        else [ "\tbt" ++ sizeSuffix w ++ " $0, " ++ resolveOperand frame spillW w cin qsaveB ]
           movLine ++ btLine
-            ++ [ "\t" ++ mn ++ sizeSuffix w ++ " " ++ resolveOperand frame spillW w s ++ ", " ++ dOp ]
+            ++ [ "\t" ++ mn ++ sizeSuffix w ++ " " ++ resolveOperand frame spillW w s qsaveB ++ ", " ++ dOp ]
         else
           -- **Spilled destination** (the carry-chain kernels under register
           -- pressure): `adcx`/`adox` require a REGISTER destination (unlike the
@@ -1126,8 +1157,8 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false) :
           --
           -- The scratch is picked to avoid every operand's text (including
           -- SIB/mem base registers, via substring check).
-          let sOp := resolveOperand frame spillW w s
-          let cOp := resolveOperand frame spillW w cin
+          let sOp := resolveOperand frame spillW w s qsaveB
+          let cOp := resolveOperand frame spillW w cin qsaveB
           let usedTexts := [dOp, aOp, sOp, cOp]
           let freeOf : String → Bool := fun cand =>
             usedTexts.all (fun t => (t.splitOn cand).length == 1)
@@ -1152,7 +1183,7 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false) :
       match attBase base with
       | some m =>
           [ "\t" ++ m ++ sizeSuffix w ++ " "
-              ++ resolveOperand frame spillW w s ++ ", " ++ resolveOperand frame spillW w d ]
+              ++ resolveOperand frame spillW w s qsaveB ++ ", " ++ resolveOperand frame spillW w d qsaveB ]
       | none => [ "\t# UNHANDLED-OP " ++ opn ]
   -- BMI2 widening multiply `MULX` (#656 byte-direct field leaves): TWO
   -- destinations `[dstLo, dstHi]` and one explicit source `src2` (the implicit
@@ -1164,9 +1195,9 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false) :
   | [dl, dh], opn, [s] =>
       let base := stripWidthTag opn
       if base == "MULX" || base == "MULXMEM" then
-        let rs := resolveOperand frame spillW 64 s
-        let rdl := resolveOperand frame spillW 64 dl
-        let rdh := resolveOperand frame spillW 64 dh
+        let rs := resolveOperand frame spillW 64 s qsaveB
+        let rdl := resolveOperand frame spillW 64 dl qsaveB
+        let rdh := resolveOperand frame spillW 64 dh qsaveB
         let mnem := if base == "MULXMEM" then "mulxq" else "mulx"
         -- **Coincident mulx destinations.** When the owned RA homes the LOW and
         -- HIGH outputs in the SAME physical register (`rdl == rdh` — the low word
@@ -1234,7 +1265,7 @@ binary / shift-by-immediate `renderLopn` arms emit the AT&T VEX 3-operand form
     the matching data op), and a visible sentinel comment for any unexpected
     shape (never a silent drop). -/
 def renderLinstrR (frame spillW : Nat) (i : LinstrR) (lblPfx : String := "")
-    (rvs : Bool := false) : List String :=
+    (rvs : Bool := false) (qsaveB : Nat := qsaveBytes) : List String :=
   -- `lblPfx` makes the local `.L<l>` labels **function-scoped**: gas local labels
   -- are file-scoped, so two functions in one `.s` that both wrap a `loopLcmd`
   -- (top label `0`) would emit two `.L0:` and collide at assembly. `renderLfundef`
@@ -1287,13 +1318,13 @@ def renderLinstrR (frame spillW : Nat) (i : LinstrR) (lblPfx : String := "")
             -- carry-out.  Register destinations keep the existing
             -- `setcc %r8b; movzbq` pair (byte-identical for existing kernels).
             if "k.".isPrefixOf dn || "qsave.".isPrefixOf dn || "mem.".isPrefixOf dn then
-              let slot := resolveName frame spillW 64 dn
+              let slot := resolveName frame spillW 64 dn qsaveB
               [ "\tmovq $0, " ++ slot, "\t" ++ setcc ++ " " ++ slot ]
             else
               [ "\t" ++ setcc ++ " " ++ gpReg8 dn, "\tmovzbq " ++ gpReg8 dn ++ ", " ++ gpReg64 dn ]
         | _ => []
       else
-        renderLopn frame spillW rvs dsts opn srcs
+        renderLopn frame spillW rvs dsts opn srcs qsaveB
   | .Lret => []
   | .Lalign => []
   | .Llabel _ l => [ ".L" ++ lblPfx ++ toString l ++ ":" ]
@@ -1499,10 +1530,17 @@ def calleeSavedToSave (body : VIR.JasminLprogExport.Lcmd) : List String :=
 
 /-- The allocated frame size `F` (bytes: a 16-aligned layout plus the call-site
     alignment correction) for a body: an explicit `FRAME` directive if present
-    (the array-ABI orchestration), else the 64-byte qsave block plus every spill
-    cell (`cell·(maxIdx+1)`, cell = 8 for a U64 body, 4 for U32).
-    `frameAddDirective` bytes extend either layout, for a body holding
+    (the array-ABI orchestration), else the body's qsave block (`qsaveBytesFor`)
+    plus every spill cell (`cell·(maxIdx+1)`, cell = 8 for a U64 body, 4 for
+    U32). `frameAddDirective` bytes extend either layout, for a body holding
     bottom-anchored scratch buffers.
+
+    A body that issues a `call` reserves the wider twelve-cell qsave block, so
+    its 3rd-through-6th pointer-argument slots sit inside the frame rather than
+    in the red zone a `call` overwrites. On the `FRAME` branch the declared size
+    is raised by the same difference, which leaves the bottom-anchored buffers
+    that directive describes where they were. A call-free body reserves
+    `qsaveBytes` on either branch and keeps the frame it had.
 
     A body that issues a real `call` needs `%rsp ≡ 0 (mod 16)` AT each call
     instruction (SysV). The `%rsp` a call site sees is the entry value (`≡ 8`
@@ -1521,7 +1559,7 @@ def frameSize (body : VIR.JasminLprogExport.Lcmd) : Nat :=
   let frameAdd := frameAddDirective body
   let f16 :=
     match frameDirective body with
-    | some f => (f + frameAdd + 15) / 16 * 16
+    | some f => (f + frameAdd + (qsaveBytesFor body - qsaveBytes) + 15) / 16 * 16
     | none =>
       let cell := if bodyIsU64 body then 8 else 4
       let spillBytes := match maxSpillIdx body with
@@ -1531,7 +1569,7 @@ def frameSize (body : VIR.JasminLprogExport.Lcmd) : Nat :=
       -- from `%rsp`); reserving it grows `frame` so the top-anchored qsave and GP
       -- `k.N` cells stay disjoint from it. `0` for a body with no `kv.N` slots, so
       -- every existing (GP-only) kernel's frame keeps this layout.
-      let raw := qsaveBytes + spillBytes + vecSpillBytes body + frameAdd
+      let raw := qsaveBytesFor body + spillBytes + vecSpillBytes body + frameAdd
       (raw + 15) / 16 * 16
   if VIR.JasminLprogExport.bodyHasCall body
       && (8 + 8 * (calleeSavedToSave body).length + f16) % 16 != 0 then f16 + 8
@@ -1545,23 +1583,61 @@ def frameSize (body : VIR.JasminLprogExport.Lcmd) : Nat :=
 #guard frameSize [⟨0, .Lopn [.reg "RAX"] "MOV:64" [.imm 1]⟩] = 64
 #guard frameSize [⟨0, .Lopn [] "FRAME" [.imm 592]⟩] = 592
 #guard frameSize
-  [ ⟨0, .Lopn [.reg "RAX"] "MOV:64" [.imm 1]⟩, ⟨0, .Lcall none ("f", 0)⟩ ] = 72
+  [ ⟨0, .Lopn [.reg "RAX"] "MOV:64" [.imm 1]⟩, ⟨0, .Lcall none ("f", 0)⟩ ] = 104
 #guard frameSize
-  [ ⟨0, .Lopn [.reg "RBX"] "MOV:64" [.imm 1]⟩, ⟨0, .Lcall none ("f", 0)⟩ ] = 64
+  [ ⟨0, .Lopn [.reg "RBX"] "MOV:64" [.imm 1]⟩, ⟨0, .Lcall none ("f", 0)⟩ ] = 96
 #guard frameSize
-  [ ⟨0, .Lopn [] "FRAME" [.imm 592]⟩, ⟨0, .Lcall none ("f", 0)⟩ ] = 600
+  [ ⟨0, .Lopn [] "FRAME" [.imm 592]⟩, ⟨0, .Lcall none ("f", 0)⟩ ] = 632
 #guard frameSize
   [ ⟨0, .Lopn [] "FRAME" [.imm 592]⟩
   , ⟨0, .Lopn [.reg "RBX"] "MOV:64" [.imm 1]⟩
-  , ⟨0, .Lcall none ("f", 0)⟩ ] = 592
+  , ⟨0, .Lcall none ("f", 0)⟩ ] = 624
+
+/-! ### Pins: the call-dependent qsave block
+
+The block a body reserves, where each slot lands under it, and where the spill
+region starts below it. The negative controls are the call-free rows: they fix
+the red-zone placement of slots 8-11 and the 64-byte spill base, so a change
+that made the wide block unconditional would fail them rather than pass
+silently. -/
+
+-- The block is eight cells for a call-free body and twelve for a calling one.
+#guard qsaveBytesFor [⟨0, .Lopn [.reg "RAX"] "MOV:64" [.imm 1]⟩] = 64
+#guard qsaveBytesFor
+  [ ⟨0, .Lopn [.reg "RAX"] "MOV:64" [.imm 1]⟩, ⟨0, .Lcall none ("f", 0)⟩ ] = 96
+
+-- The eight standard slots are in-frame under either block, at the same offset.
+#guard qsaveFrameOff 128 "RDI" = some 120
+#guard qsaveFrameOff 128 "RDI" qsaveBytesCall = some 120
+#guard qsaveFrameOff 128 "R15" = some 64
+#guard qsaveFrameOff 128 "R15" qsaveBytesCall = some 64
+
+-- Slots 8-11 are red-zone under the default block (the leaf-only placement) and
+-- in-frame under the call block. The `≠` row is the control: it fails if the two
+-- branches ever collapse onto one placement.
+#guard qsaveFrameOff 128 "RDX" = some (-8)
+#guard qsaveFrameOff 128 "R9" = some (-32)
+#guard qsaveFrameOff 128 "RDX" qsaveBytesCall = some 56
+#guard qsaveFrameOff 128 "R9" qsaveBytesCall = some 32
+#guard qsaveFrameOff 128 "RDX" qsaveBytesCall != qsaveFrameOff 128 "RDX"
+
+-- A `call` writes its return address at `-8(%rsp)`, which is the default-block
+-- placement of slot 8 and is why a calling body may not use it.
+#guard qsaveFrameOff 128 "RDX" = some (-8)
+
+-- The spill region starts below whichever block is reserved.
+#guard spillFrameOff 128 64 0 = 56
+#guard spillFrameOff 128 64 0 qsaveBytesCall = 24
+#guard spillFrameOff 128 64 0 qsaveBytesCall != spillFrameOff 128 64 0
 
 /-- Render a whole `Lcmd` body's instruction lines in a frame of size `frame`
     (flattening the per-`Lopn` line lists). The prologue (pointer save + park) and
     epilogue (output stores + callee-save restore) are themselves ordinary
     `Lopn`s `comToLfundefPhysAbi` produced, so they render uniformly here. -/
 def renderLcmd (frame spillW : Nat) (body : VIR.JasminLprogExport.Lcmd)
-    (lblPfx : String := "") (rvs : Bool := false) : List String :=
-  body.flatMap (fun i => renderLinstrR frame spillW i.li_i lblPfx rvs)
+    (lblPfx : String := "") (rvs : Bool := false)
+    (qsaveB : Nat := qsaveBytesFor body) : List String :=
+  body.flatMap (fun i => renderLinstrR frame spillW i.li_i lblPfx rvs qsaveB)
 
 /-! ## 5. The leaf-function wrapper (trusted ABI scaffolding)
 
