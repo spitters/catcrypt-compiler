@@ -3184,15 +3184,21 @@ value's allocation in the same step. Two slots whose ranges overlap are therefor
 never given the same register. -/
 
 /-- `freeRegIn` hands out an index inside the pool. -/
-theorem freeRegIn_lt {numRegs : Nat} {used : List Nat} {ph : Nat}
-    (h : freeRegIn numRegs used = some ph) : ph < numRegs :=
-  List.mem_range.mp (List.mem_of_find?_eq_some h)
+theorem freeRegIn_lt {numRegs : Nat} {used reserved : List Nat} {ph : Nat}
+    (h : freeRegIn numRegs used reserved = some ph) : ph < numRegs := by
+  unfold freeRegIn at h
+  cases reserved <;> exact List.mem_range.mp (List.mem_of_find?_eq_some h)
 
 /-- `freeRegIn` hands out an index that no active allocation holds. -/
-theorem freeRegIn_not_mem {numRegs : Nat} {used : List Nat} {ph : Nat}
-    (h : freeRegIn numRegs used = some ph) : ph ∉ used := by
+theorem freeRegIn_not_mem {numRegs : Nat} {used reserved : List Nat} {ph : Nat}
+    (h : freeRegIn numRegs used reserved = some ph) : ph ∉ used := by
   unfold freeRegIn at h
-  simpa using List.find?_some h
+  cases reserved with
+  | nil => simpa using List.find?_some h
+  | cons r rs =>
+    have hp := List.find?_some h
+    simp only [Bool.and_eq_true] at hp
+    simpa using hp.1
 
 theorem spillFold_mem (st : Nat) (uses : Array Nat) :
     ∀ (act : List PhysActive) (b0 : Option PhysActive) (far : PhysActive),
