@@ -1617,6 +1617,160 @@ def callMarshalHere (dst name : String) (argTys : List JasminTy) (retTy : Jasmin
       ((srcs.zip argWs).map (fun ⟨op, w⟩ => (op, w > 64)))
   else loopBodyCallLcmd dst name srcs
 
+/-! ### 3b‴″. Buffer-returning leaf calls in a loop body
+
+`callMarshalHere` dispatches a leaf call between the GP and SSE register classes
+by `callMarshalWidth`, which sends every non-`reg` type to 64. A leaf whose
+result is a `stackArr` returns it through an **out-pointer** instead, so its
+result belongs to no register class: the caller passes the address of a
+destination buffer as the first argument and the leaf writes through it.
+
+The declarations below give such a call a home inside a rolled loop body. Each
+buffer-typed binding of the body gets a frame slot at a fixed byte offset from
+the bottom of the frame; the call marshals that slot's address into `RDI` ahead
+of its operands and captures no `RAX`. Offsets are assigned by a pre-pass over
+the body `Com` (`loopBufBindings`), so they are fixed when the body is walked and
+need no knowledge of the spill count the register allocator settles later. The
+bytes are declared to `LprogAsmPrinter.frameSize` by a `FRAMEADD` directive. -/
+
+/-- The `stackArr` result type of a leaf-call op, and `none` for a call whose
+    result marshals in a register and for every non-call op. A `callN`'s result is
+    its head return type, the slot the loop-body walk binds. -/
+def callResultBufferTy : JasminOp → Option JasminTy
+  | .extCall _ _ (.stackArr w n) => some (.stackArr w n)
+  | .callN _ _ retTys =>
+      match retTys.headD (.reg 0) with
+      | .stackArr w n => some (.stackArr w n)
+      | _ => none
+  | _ => none
+
+/-- The byte size of a buffer operand: a `stackArr w n` is `n` elements of `w`
+    bits. Every other type is a register value and occupies no buffer. -/
+def bufTyBytes : JasminTy → Nat
+  | .stackArr w n => n * w / 8
+  | _ => 0
+
+/-- The operand name of a loop-body scratch buffer at byte offset `off`: the
+    `mem.RSP.<off>` reference the printer renders as `off(%rsp)`, addressed from
+    the post-`leaq` `%rsp`. Agrees with `memName "RSP"`, which is defined further
+    down this file than the loop-body walk that needs this name. -/
+def frameBufName (off : Nat) : String := "mem.RSP." ++ toString off
+
+/-- The buffer-typed call bindings of a loop-body `Com`, as `(binder slot, result
+    byte size)` in program order. A binding's slot is the `curDepth` at which it is
+    made, which is the number `loopResolveVarN` resolves a reference to it to. -/
+def loopBufBindings :
+    {Γ : Ctxt jasminDialect} → {t : JasminTy} →
+    Com jasminDialect Γ t → (curDepth : Nat) → List (Nat × Nat)
+  | _, _, .ret _, _ => []
+  | _, _, .var e body, curDepth =>
+      let rest := loopBufBindings body (curDepth + 1)
+      match callResultBufferTy e.op with
+      | some ty => (curDepth, bufTyBytes ty) :: rest
+      | none => rest
+
+/-- The byte offset of the buffer bound at slot `s`, from the bottom of the frame:
+    the prefix sum of the preceding buffer sizes, each rounded up to eight bytes.
+    `none` when `s` binds no buffer. The loop-body analogue of
+    `ArrAbiOrch.binBufOff`. -/
+def loopBufOff (bs : List (Nat × Nat)) (s : Nat) : Option Nat :=
+  let rec go (l : List (Nat × Nat)) (acc : Nat) : Option Nat :=
+    match l with
+    | [] => none
+    | (slot, sz) :: t =>
+        if slot == s then some acc else go t (acc + (sz + 7) / 8 * 8)
+  go bs 0
+
+/-- The total scratch bytes a loop body's buffer bindings occupy, each 8-aligned:
+    the `FRAMEADD` the body declares. The loop-body analogue of
+    `ArrAbiOrch.scratchTotal`. -/
+def loopBufTotal (bs : List (Nat × Nat)) : Nat :=
+  bs.foldl (fun acc p => acc + (p.2 + 7) / 8 * 8) 0
+
+-- Static checks pinning the buffer layout against silent change: a body with no
+-- buffer binding reserves nothing and resolves no slot, and consecutive buffers
+-- are placed at 8-aligned offsets in program order.
+#guard loopBufOff [] 3 = none
+#guard loopBufTotal [] = 0
+#guard loopBufOff [(3, 96), (5, 12)] 3 = some 0
+#guard loopBufOff [(3, 96), (5, 12)] 5 = some 96
+#guard loopBufOff [(3, 96), (5, 12)] 4 = none
+#guard loopBufTotal [(3, 96), (5, 12)] = 112
+
+/-- Marshal one buffer-returning leaf call: the destination buffer's address into
+    `RDI` (the out-pointer), then each operand into the following SysV argument
+    registers — a buffer operand by its address (`LEA`), a register operand by its
+    value (`MOV`) — then the real `Lcall`. No `RAX` capture: the leaf returns
+    through the out-pointer. The `ArrAbiOrch.emitOneCall` shape at a loop-body call
+    site. -/
+def loopBodyCallLcmdBuf (dstMem sym : String) (argOps : List LOperand) : Lcmd :=
+  let outLea : Linstr := ⟨0, .Lopn [.reg "RDI"] "LEA:64" [.reg dstMem]⟩
+  let argMarshal : Lcmd :=
+    (argOps.zip (sysvArgRegs.drop 1)).map (fun ⟨op, areg⟩ =>
+      match op with
+      | .reg n =>
+          if hasPrefix n "mem." then ⟨0, .Lopn [.reg areg] "LEA:64" [.reg n]⟩
+          else ⟨0, .Lopn [.reg areg] (withWidthTag 64 "MOV") [op]⟩
+      | _ => ⟨0, .Lopn [.reg areg] (withWidthTag 64 "MOV") [op]⟩)
+  outLea :: (argMarshal ++ [⟨0, .Lcall none (sym, 0)⟩])
+
+/-- Resolve a multi-binder loop-body `Var` with the buffer bindings in scope: a
+    reference to a buffer-typed binding is its frame slot `mem.RSP.<off>`, and
+    every other reference is exactly `loopResolveVarN`'s. -/
+def loopResolveVarNBuf (d : Nat) (accReg idxReg : String) (invRegs : List String)
+    (bufs : List (Nat × Nat)) (curDepth : Nat) (immSlotMap : ImmSlotMap)
+    {Γ : Ctxt jasminDialect} {τ : JasminTy} (v : Ctxt.Var Γ τ) : LOperand :=
+  match loopBufOff bufs (curDepth - 1 - varIndex v) with
+  | some off => .reg (frameBufName off)
+  | none => loopResolveVarN d accReg idxReg invRegs curDepth immSlotMap v
+
+/-- Collect a loop-body `Expr`'s operands with the buffer bindings in scope (the
+    `loopResolveVarNBuf` analogue of `loopExprArgsN`). -/
+def loopExprArgsNBuf (d : Nat) (accReg idxReg : String) (invRegs : List String)
+    (bufs : List (Nat × Nat)) (curDepth : Nat) (immSlotMap : ImmSlotMap)
+    {Γ : Ctxt jasminDialect} {τ : JasminTy} (e : Expr jasminDialect Γ τ) :
+    List LOperand :=
+  let rec go {tys : List JasminTy}
+      (hv : HVector (fun ty => Ctxt.Var Γ ty) tys) : List LOperand :=
+    match tys, hv with
+    | [], _ => []
+    | _ :: _, .cons v rest =>
+        loopResolveVarNBuf d accReg idxReg invRegs bufs curDepth immSlotMap v :: go rest
+  go e.args
+
+/-- The `loopBodyWalkNCall` body walk, but lowering a leaf call whose result is a
+    `stackArr` to the out-pointer sequence `loopBodyCallLcmdBuf` writing into that
+    binding's frame slot, and resolving a reference to such a binding to the slot
+    itself. A body with no buffer-typed call binding has an empty `bufs`, so every
+    op lowers exactly as `loopBodyWalkNCall` lowers it. -/
+def loopBodyWalkNBuf (d : Nat) (accReg idxReg : String) (invRegs : List String)
+    (bufs : List (Nat × Nat)) (immSlotMap : ImmSlotMap) :
+    {Γ : Ctxt jasminDialect} → {t : JasminTy} →
+    Com jasminDialect Γ t → (curDepth : Nat) → (Lcmd × String)
+  | _, _, .ret v, curDepth =>
+      ([], match loopResolveVarNBuf d accReg idxReg invRegs bufs curDepth immSlotMap v with
+            | .reg n => n
+            | .imm m => toString m
+            | .arr b i => b ++ "[" ++ toString i ++ "]"
+            | .arrIdx b i s => b ++ "[" ++ i ++ "*" ++ toString s ++ "]")
+  | _, _, .var e body, curDepth =>
+      let (rest, ret) :=
+        loopBodyWalkNBuf d accReg idxReg invRegs bufs immSlotMap body (curDepth + 1)
+      let dstReg := loopReg d curDepth
+      let srcs := loopExprArgsNBuf d accReg idxReg invRegs bufs curDepth immSlotMap e
+      let here : Lcmd :=
+        match e.op with
+        | .extCall name argTys retTy =>
+            match loopBufOff bufs curDepth with
+            | some off => loopBodyCallLcmdBuf (frameBufName off) name srcs
+            | none => callMarshalHere dstReg name argTys retTy srcs
+        | .callN name argTys retTys =>
+            match loopBufOff bufs curDepth with
+            | some off => loopBodyCallLcmdBuf (frameBufName off) name srcs
+            | none => callMarshalHere dstReg name argTys (retTys.headD (.reg 0)) srcs
+        | _ => [⟨0, opToLinstrR e.op dstReg srcs⟩]
+      (here ++ rest, ret)
+
 /-! ### 3b⁗. Straight-line `CALL:`/`CALLN:` shadow → real `Lcall` expansion
 
 The straight-line body walk (`comToBody`, via `opToLinstrR`) lowers a
@@ -1740,15 +1894,32 @@ def forLoopLcmdNCall (d : Nat) (accReg : String) (initOp : LOperand)
   let idxReg := loopIdx d
   let invRegs : List String := invOps.filterMap (fun o =>
     match o with | .reg n => some n | _ => none)
-  let (bodyW, retReg) := loopBodyWalkNCall d accReg idxReg invRegs immSlotMap p.update
-                            (2 + invTys.length)
+  -- The body's buffer-typed call bindings, and the frame bytes they occupy. An
+  -- empty list takes the `loopBodyWalkNCall` walk unchanged, so a body with no
+  -- buffer-returning call emits exactly the instructions it emitted before.
+  let bufs := loopBufBindings p.update (2 + invTys.length)
+  let (bodyW, retReg) :=
+    if bufs.isEmpty then
+      loopBodyWalkNCall d accReg idxReg invRegs immSlotMap p.update
+        (2 + invTys.length)
+    else
+      loopBodyWalkNBuf d accReg idxReg invRegs bufs immSlotMap p.update
+        (2 + invTys.length)
+  -- A buffer result lives in its frame slot, not a register, so there is no
+  -- register to thread back into the accumulator and no `MOV` is emitted.
   let feedback : Lcmd :=
-    if retReg == accReg then []
+    if retReg == accReg || hasPrefix retReg "mem." then []
     else [⟨0, .Lopn [.reg accReg] (withWidthTag 64 "MOV") [.reg retReg]⟩]
+  -- The scratch bytes the body's buffers need, declared to
+  -- `LprogAsmPrinter.frameSize`. Absent when the body lays no buffer.
+  let frameAdd : Lcmd :=
+    if bufs.isEmpty then []
+    else [⟨0, .Lopn [] "FRAMEADD" [.imm (loopBufTotal bufs)]⟩]
   let ctr := loopCtr d
   let top : LLabel := d
   let invTouch : Lcmd := invRegs.map (fun r =>
     ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "CMP") [.reg ctr, .reg r]⟩)
+  frameAdd ++
   [ ⟨0, .Lopn [.reg accReg] (withWidthTag 64 "MOV") [initOp]⟩
   , ⟨0, .Lopn [.reg idxReg] (withWidthTag 64 "MOV") [.imm 0]⟩
   , ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "MOV") [.imm p.n]⟩
@@ -4189,6 +4360,12 @@ abbrev OutStoreMap := List (String × Nat)
     existing `LOperand`-keyed proofs continue to apply. -/
 def memName (base : String) (off : Nat) : String :=
   "mem." ++ base ++ "." ++ toString off
+
+-- The loop-body buffer name agrees with the general frame-memory name. The walk
+-- that lays those buffers sits above this definition and carries its own copy of
+-- the spelling; these checks hold the two together.
+#guard frameBufName 0 = memName "RSP" 0
+#guard frameBufName 32 = memName "RSP" 32
 
 /-- The destination operand name of the `bidx`-th binding of a virtual body
     `body` (counting only `Lopn`s; `Lret` is skipped). The binding's destination

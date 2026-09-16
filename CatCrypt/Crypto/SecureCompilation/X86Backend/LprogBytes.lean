@@ -1203,6 +1203,16 @@ def encodableLcmd (body : Lcmd) : Bool :=
   let spillW := if bodyIsU64 body then 64 else 32
   body.all fun instr => encodableLinstrR frame spillW instr.li_i
 
+-- Static checks pinning the frame-extension directive's byte status: `FRAMEADD`
+-- carries no bytes by construction, so a body laying scratch buffers still
+-- reaches the byte stream, while `FRAME` keeps the status it already had.
+#guard carriesNoBytes (.Lopn [] "FRAMEADD" [.imm 128]) = true
+#guard encodableLinstrR 0 64 (.Lopn [] "FRAMEADD" [.imm 128]) = true
+#guard encodableLcmd
+  [ ⟨0, .Lopn [] "FRAMEADD" [.imm 128]⟩
+  , ⟨0, .Lopn [.reg "RAX"] "MOV:64" [.imm 1]⟩ ] = true
+#guard carriesNoBytes (.Lopn [] "FRAME" [.imm 64]) = false
+
 /-- `encodeLcmd` gated on `encodableLcmd`: the body's bytes when every instruction
     reaches the stream, `none` when one would be dropped. An emitter that byte-encodes
     a body it did not itself build takes this route. -/

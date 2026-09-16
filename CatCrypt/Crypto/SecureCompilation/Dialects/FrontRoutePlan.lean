@@ -1067,18 +1067,9 @@ An array-typed accumulator or invariant is not this condition: those are
 `stackArr`-typed too (`mapTy (.memref n) = .stackArr 64 n`), but they reach the
 body as base names that the memref ops index, not as call results. -/
 
-/-- The `stackArr` result type of a leaf-call op, and `none` for a call whose
-    result marshals in a register and for every non-call op. A `callN`'s result
-    is its head return type, the slot the loop-body walk binds. -/
-def callResultBufferTy : JasminOp → Option JasminTy
-  | .extCall _ _ (.stackArr w n) => some (.stackArr w n)
-  | .callN _ _ retTys =>
-      match retTys.headD (.reg 0) with
-      | .stackArr w n => some (.stackArr w n)
-      | _ => none
-  | _ => none
-
-/-- Does a loop-body `Com` bind the result of a leaf call at a `stackArr` type? -/
+/-- Does a loop-body `Com` bind the result of a leaf call at a `stackArr` type?
+    The result type itself is `JasminLprogExport.callResultBufferTy`, which the
+    loop-body walk reads to give such a binding its frame slot. -/
 def comBodyHasBufferCall :
     {Γ : Ctxt jasminDialect} → {t : JasminTy} → Com jasminDialect Γ t → Bool
   | _, _, .ret _ => false
@@ -1126,6 +1117,16 @@ def regCallBody :
 -- emitted rolled kernels already carry.
 #guard comBodyHasBufferCall bufferCallBody
 #guard !comBodyHasBufferCall regCallBody
+
+-- The same two bodies at the loop-body walk's own starting depth (`2` with no
+-- invariant binders): the register-result call lays no buffer, so the loop
+-- lowering takes its existing walk, and the buffer-result call lays one slot of
+-- the leaf's result size and declares those bytes to the frame.
+#guard loopBufBindings regCallBody 2 = []
+#guard loopBufTotal (loopBufBindings regCallBody 2) = 0
+#guard loopBufBindings bufferCallBody 2 = [(2, 128)]
+#guard loopBufTotal (loopBufBindings bufferCallBody 2) = 128
+#guard loopBufOff (loopBufBindings bufferCallBody 2) 2 = some 0
 
 /-- Analyse `src`, select the route, and dispatch it.
 

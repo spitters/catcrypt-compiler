@@ -34,6 +34,33 @@ The emitted `ed25519_point_add` passes a known-answer test against libsodium's
 emitted inversion and compression kernels, byte-identical, with `T₃·Z₃ = X₃·Y₃`
 on every raw output (`bench/ed25519_comb_compare/point_add_compare.c`, dev repo).
 
+Loop-body buffer calls:
+
+- `VIR/JasminLprogExport.lean`: `callResultBufferTy`, `bufTyBytes`,
+  `frameBufName`, `loopBufBindings`, `loopBufOff`, `loopBufTotal`,
+  `loopBodyCallLcmdBuf`, `loopResolveVarNBuf`, `loopExprArgsNBuf` and
+  `loopBodyWalkNBuf`. A rolled-loop body whose bindings include a buffer-typed
+  leaf-call result gets frame scratch for those bindings and an out-pointer
+  call: the destination buffer's address in `RDI`, operands by `LEA` when they
+  are buffers and `MOV` when they are registers, and no `RAX` capture.
+  `forLoopLcmdNCall` computes the buffer bindings, takes the existing walk
+  unchanged when there are none, and otherwise emits its own `FRAMEADD`. No new
+  export entry is needed: a buffer-returning call is already a call, so
+  `comLToBody` routes to `forLoopLcmdNCall` already, and `frameAddDirective`
+  folds over the whole body wherever the directive sits.
+- `Dialects/FrontRoutePlan.lean` reuses the upstream `callResultBufferTy`
+  instead of keeping its own copy.
+- `X86Backend/LprogBytes.lean`: guards pinning that a `FRAMEADD`-carrying body
+  remains byte-encodable, which a `FRAME`-carrying body is not.
+
+Not implemented: threading a buffer result back into an accumulator in place.
+Such a result is written to its scratch slot and no feedback move is emitted, so
+a rolled kernel wanting `acc := f(acc, x)` in place is not yet expressible. This
+is an omission rather than a wrong instruction, and it is what the Ed25519 comb
+walk needs next.
+
+The ten emitted Ed25519 artifacts re-render byte-identically.
+
 Physical faithfulness, the two-address collapse:
 
 - `X86Backend/ToLprogFaithfulBinopMov.lean`: `BinopMovBinding` and
