@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.Ascent.WhileTop
 public import CatCrypt.Crypto.SecureCompilation.Ascent.PipelineWeld
+public import HaxLean.Ascent.Exit
 
 /-!
 # Early exit as an exception phase
@@ -21,7 +22,7 @@ AutoCorres's exception phase reads a `return` inside a loop.
 
 ## A. The exception reading of the encoding
 
-`cfExcept` reads a control-flow-tagged value as an `Except`: the `Break` tag is the
+This part is re-exported from hax-lean's `HaxLean/Ascent/Exit.lean`. `cfExcept` reads a control-flow-tagged value as an `Except`: the `Break` tag is the
 thrown value, anything else the normal result. `outcomeExceptCF` lifts it to the
 pipeline's outcomes and `outcomeExceptRaw` reads the reference outcomes (`val` is
 `pure`, `earlyRet` is `throw`). `pipeline_exceptProg` is the abstraction theorem:
@@ -63,70 +64,13 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
 
 namespace CatCrypt.Crypto.SecureCompilation.Ascent
 
-/-! ## A. The exception reading of the control-flow encoding -/
+/-! ## A. The exception reading of the control-flow encoding
 
-/-- The exception reading of a control-flow-encoded value: the `Break` tag
-    `controlFlow true w` is the thrown value `w`; any other value is the normal
-    result. -/
-def cfExcept : Hax.Value → Except Hax.Value Hax.Value
-  | .controlFlow true w => .error w
-  | v => .ok v
+The definitions and results of this part are in hax-lean's `HaxLean/Ascent/Exit.lean`
+(namespace `Hax.Ascent`), re-exported here. -/
 
-@[simp] theorem cfExcept_break (w : Hax.Value) :
-    cfExcept (.controlFlow true w) = .error w := rfl
-
-/-- The exception reading of a pipeline outcome: a `val` reads through `cfExcept`;
-    any other outcome has no reading. -/
-def outcomeExceptCF : Hax.Outcome → Option (Except Hax.Value Hax.Value)
-  | .val v => some (cfExcept v)
-  | _ => none
-
-/-- The exception reading of a reference outcome: a `val` that is not
-    control-flow-tagged is the normal result, an `earlyRet` is the thrown value, and
-    every other outcome (a loop-scoped `broke`/`continued`, an error) has no
-    reading. -/
-def outcomeExceptRaw : Hax.Outcome → Option (Except Hax.Value Hax.Value)
-  | .val v => if v.isControlFlow then none else some (.ok v)
-  | .earlyRet v => some (.error v)
-  | _ => none
-
-/-- A normal reference outcome reads as `pure`. -/
-theorem outcomeExceptRaw_val (v : Hax.Value) (hv : v.isControlFlow = false) :
-    outcomeExceptRaw (.val v) = some (pure v : ExceptT Hax.Value Id Hax.Value).run := by
-  simp [outcomeExceptRaw, hv]; rfl
-
-/-- An early return reads as `throw`. -/
-theorem outcomeExceptRaw_earlyRet (v : Hax.Value) :
-    outcomeExceptRaw (.earlyRet v) = some (throw v : ExceptT Hax.Value Id Hax.Value).run := rfl
-
-/-- The encoding commutes with the two readings: whenever the reference outcome has
-    a reading, the encoded outcome has the same reading. -/
-theorem outcomeExceptCF_encodeCF (o : Hax.Outcome) (r : Except Hax.Value Hax.Value)
-    (h : outcomeExceptRaw o = some r) :
-    outcomeExceptCF (Hax.Outcome.encodeCF o) = some r := by
-  cases o with
-  | val v =>
-      cases v with
-      | controlFlow b w => simp [outcomeExceptRaw] at h
-      | _ => simp [outcomeExceptRaw] at h; subst h; rfl
-  | earlyRet v => simp [outcomeExceptRaw] at h; subst h; rfl
-  | broke v => simp [outcomeExceptRaw] at h
-  | continued => simp [outcomeExceptRaw] at h
-  | err msg => simp [outcomeExceptRaw] at h
-
-/-- **The exception-phase abstraction.** For a well-scoped program `e` (loop-scoped,
-    without `?`, without fold constructors) and a control-flow-free entry
-    environment, if the reference run of `e` is the run of the abstract exception
-    program `prog`, then the pipeline's encoded outcome, read through
-    `outcomeExceptCF`, is the run of the same `prog`. -/
-theorem pipeline_exceptProg (bi : Hax.Builtins) (hbi : Hax.Builtins.DeepNoControlFlow bi)
-    (e : Hax.ImpExpr) (hls : Hax.LoopScoped e) (hnq : Hax.NoQuestionMark e)
-    (hncf : Hax.NoCFConstructors e) (fuel : Nat) (env : Hax.Env)
-    (henv : Hax.Env.NoControlFlow env) (prog : ExceptT Hax.Value Id Hax.Value)
-    (h : outcomeExceptRaw (Hax.denote bi fuel e env).1 = some prog.run) :
-    outcomeExceptCF (Hax.denote' bi fuel (Hax.pipeline e) env).1 = some prog.run := by
-  rw [Hax.pipeline_full_correct bi hbi e hls hnq hncf fuel env henv]
-  exact outcomeExceptCF_encodeCF _ _ h
+export _root_.Hax.Ascent (cfExcept cfExcept_break outcomeExceptCF outcomeExceptRaw
+  outcomeExceptRaw_val outcomeExceptRaw_earlyRet outcomeExceptCF_encodeCF pipeline_exceptProg)
 
 /-! ## B. The loop rule with an exception phase -/
 

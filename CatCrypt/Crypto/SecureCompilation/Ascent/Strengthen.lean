@@ -43,7 +43,8 @@ exception-level body relation of the loop rule of `Ascent/Exit.lean` is
 
 ## A hax source program
 
-`tsHax bi fuel e` abstracts a raw hax-lean program whose pipeline output
+The pass on a hax source is in hax-lean's `HaxLean/Ascent/Exit.lean` (namespace
+`Hax.Ascent`) and is re-exported here. `tsHax bi fuel e` abstracts a raw hax-lean program whose pipeline output
 `Hax.pipeline e` encodes early exits as control-flow tags. The exception program is
 the exception reading of the reference run, `haxExceptAbs`; its refinement of the
 pipeline's encoded outcome is `haxExceptAbs_refines` (`pipeline_exceptProg`). The
@@ -75,34 +76,15 @@ namespace CatCrypt.Crypto.SecureCompilation.Ascent
 open CatCrypt.Crypto.Jasmin.LowCT
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
 
-/-! ## Generic facts on the three levels -/
+/-! ## The pass on a hax source, and the generic facts on the three levels
 
-section Generic
+`liftOk` and `refinesO_exceptOk` are re-exported by `Phases.lean`; the hax-source pass
+from `NotEarlyRet` to `tsHax_toExcept` is in hax-lean's `HaxLean/Ascent/Exit.lean`
+(namespace `Hax.Ascent`), re-exported here. -/
 
-variable {C D A B ε : Type}
-
-/-- The output relation of the exception level induced by a relation on normal
-    results: `.ok b` is related as `b`, a thrown value is related to nothing. -/
-def liftOk (SR : D → B → Prop) : D → Except ε B → Prop
-  | d, .ok b => SR d b
-  | _, .error _ => False
-
-/-- The normal results of a refining exception program refine at the `Option`
-    level. -/
-theorem refinesO_exceptOk (sem : C → Option D) (SRin : C → A → Prop)
-    (SRout : D → Except ε B → Prop) (f : A → Option (Except ε B))
-    (h : RefinesO sem SRin SRout f) :
-    RefinesO sem SRin (fun d b => SRout d (.ok b)) (exceptOk f) := by
-  intro c a b hSR hf
-  unfold exceptOk at hf
-  rcases hfa : f a with _ | (e | b')
-  · rw [hfa] at hf; exact absurd hf (by simp)
-  · rw [hfa] at hf; exact absurd hf (by simp)
-  · rw [hfa, Option.some.injEq] at hf
-    subst hf
-    exact h c a (.ok b') hSR hfa
-
-end Generic
+export _root_.Hax.Ascent (NotEarlyRet denote_notEarlyRet_mutual denote_ne_earlyRet
+  haxExceptAbs haxPipelineSem haxEntry haxExceptAbs_refines haxExceptAbs_noThrow tsHaxLevel
+  tsHax tsHax_level tsHax_sound tsHax_toExcept)
 
 /-! ## The unified-waist relations as instances -/
 
@@ -322,167 +304,6 @@ theorem arrSelK_ts_refines {ε : Type} :
     (AbsProg.pure (ε := ε) arrSelKAbs).Refines (fun env => semScalar arrSelK env)
       (SRwordL arrSelLayout) (liftOk (SRwordL arrSelLayout)) :=
   tsLowCTL_sound_scalar arrSelLayout 0 arrSelK rfl (arrSelK_tsLowCTL 0)
-
-/-! ## A hax source program never returning early -/
-
-/-- The run does not end in an early return. -/
-def NotEarlyRet (p : Hax.Outcome × Hax.Env) : Prop := ∀ v s, p ≠ (.earlyRet v, s)
-
-set_option linter.unusedSimpArgs false in
-/-- The reference evaluator and its helpers never end in an early return on a program
-    passing `Hax.checkNoEarlyExit`, stated for the six functions of the mutual block. -/
-theorem denote_notEarlyRet_mutual (bi : Hax.Builtins) :
-    (∀ fuel e env, Hax.checkNoEarlyExit e = true → NotEarlyRet (Hax.denote bi fuel e env)) ∧
-    (∀ fuel cond body env, (Hax.checkNoEarlyExit cond && Hax.checkNoEarlyExit body) = true →
-      NotEarlyRet (Hax.denoteWhile bi fuel cond body env)) ∧
-    (∀ fuel var lo hi body env, Hax.checkNoEarlyExit body = true →
-      NotEarlyRet (Hax.denoteForLoopRev bi fuel var lo hi body env)) ∧
-    (∀ fuel var lo hi body env, Hax.checkNoEarlyExit body = true →
-      NotEarlyRet (Hax.denoteForLoop bi fuel var lo hi body env)) ∧
-    (∀ fuel v arms env, Hax.checkNoEarlyExit.checkNoEarlyExitArms arms = true →
-      NotEarlyRet (Hax.denoteMatchArms bi fuel v arms env)) ∧
-    (∀ (_ : Nat) (_ : List Hax.ImpExpr), True) := by
-  refine Hax.denote.mutual_induct
-    (motive1 := fun fuel e => ∀ env, Hax.checkNoEarlyExit e = true →
-      NotEarlyRet (Hax.denote bi fuel e env))
-    (motive2 := fun fuel cond body => ∀ env,
-      (Hax.checkNoEarlyExit cond && Hax.checkNoEarlyExit body) = true →
-      NotEarlyRet (Hax.denoteWhile bi fuel cond body env))
-    (motive3 := fun fuel var lo hi body => ∀ env, Hax.checkNoEarlyExit body = true →
-      NotEarlyRet (Hax.denoteForLoopRev bi fuel var lo hi body env))
-    (motive4 := fun fuel var lo hi body => ∀ env, Hax.checkNoEarlyExit body = true →
-      NotEarlyRet (Hax.denoteForLoop bi fuel var lo hi body env))
-    (motive5 := fun fuel v arms => ∀ env, Hax.checkNoEarlyExit.checkNoEarlyExitArms arms = true →
-      NotEarlyRet (Hax.denoteMatchArms bi fuel v arms env))
-    (motive6 := fun _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
-  all_goals intros
-  all_goals try trivial
-  all_goals
-    rename_i h
-    try simp only [Hax.checkNoEarlyExit, Hax.checkNoEarlyExit.checkNoEarlyExitArms,
-      Bool.and_eq_true] at h
-    unfold NotEarlyRet at *
-    intro w s'
-    first
-      | (unfold Hax.denote) | (unfold Hax.denoteWhile) | (unfold Hax.denoteForLoop)
-      | (unfold Hax.denoteForLoopRev) | (unfold Hax.denoteMatchArms)
-    repeat' (first
-      | (simp only [bind, StateT.bind, get, getThe, MonadStateOf.get, StateT.get, set,
-          MonadStateOf.set, pure, StateT.pure, modify, modifyGet,
-          MonadStateOf.modifyGet, StateT.modifyGet])
-      | split)
-  all_goals first
-    | done
-    | (simp_all; done)
-    | (intro hc; simp only [Prod.mk.injEq] at hc; obtain ⟨rfl, rfl⟩ := hc; simp_all)
-    | skip
-  -- The four goals whose `match` is applied to the state, which `split` does not
-  -- reach: the variable read, the builtin call, the projection, the match arm.
-  · rename_i name env
-    cases env name <;> simp [StateT.pure, pure]
-  · rename_i f _ _ _ _ _ _ vals _
-    cases bi f vals <;> simp [StateT.pure, pure]
-  · rename_i i _ _ _ _ _ v _
-    cases v.projIdx i <;> simp [StateT.pure, pure]
-  · rename_i v pat _ _ ih2 ih1 env
-    cases Hax.matchPat pat v env with
-    | none => exact ih1 env h.2 w s'
-    | some env' => exact ih2 env' h.1 w s'
-
-/-- **A program without `return` or `?` never returns early.** On a program passing
-    `Hax.checkNoEarlyExit`, the reference run never ends in `earlyRet`. -/
-theorem denote_ne_earlyRet (bi : Hax.Builtins) (fuel : Nat) (e : Hax.ImpExpr) (env : Hax.Env)
-    (h : Hax.checkNoEarlyExit e = true) (v : Hax.Value) (s : Hax.Env) :
-    Hax.denote bi fuel e env ≠ (.earlyRet v, s) :=
-  (denote_notEarlyRet_mutual bi).1 fuel e env h v s
-
-/-! ## The pass on a hax source program -/
-
-/-- The exception reading of the reference run of `e` from the entry environment: a
-    normal value is `.ok`, an early return is `.error`, any other outcome has no
-    reading. -/
-def haxExceptAbs (bi : Hax.Builtins) (fuel : Nat) (e : Hax.ImpExpr) :
-    Hax.Env → Option (Except Hax.Value Hax.Value) :=
-  fun env => outcomeExceptRaw (Hax.denote bi fuel e env).1
-
-/-- The pipeline's run of `e` from the entry environment, its outcome read through the
-    control-flow encoding. -/
-def haxPipelineSem (bi : Hax.Builtins) (fuel : Nat) (e : Hax.ImpExpr) :
-    Hax.Env → Option (Except Hax.Value Hax.Value) :=
-  fun env => outcomeExceptCF (Hax.denote' bi fuel (Hax.pipeline e) env).1
-
-/-- The entry relation of a hax program: the same environment, free of control-flow
-    values. -/
-def haxEntry (c a : Hax.Env) : Prop := c = a ∧ Hax.Env.NoControlFlow a
-
-/-- The exception program refines the pipeline's encoded run, for a well-scoped
-    program under a builtin table that never produces a control-flow value. -/
-theorem haxExceptAbs_refines (bi : Hax.Builtins) (hbi : Hax.Builtins.DeepNoControlFlow bi)
-    (e : Hax.ImpExpr) (hls : Hax.LoopScoped e) (hnq : Hax.NoQuestionMark e)
-    (hncf : Hax.NoCFConstructors e) (fuel : Nat) :
-    RefinesO (haxPipelineSem bi fuel e) haxEntry (fun d r => d = r) (haxExceptAbs bi fuel e) := by
-  rintro env _ r ⟨rfl, henv⟩ hr
-  exact ⟨r, pipeline_exceptProg bi hbi e hls hnq hncf fuel env henv (ExceptT.mk r) hr, rfl⟩
-
-/-- On a program passing `Hax.checkNoEarlyExit`, the exception program never throws. -/
-theorem haxExceptAbs_noThrow (bi : Hax.Builtins) (fuel : Nat) (e : Hax.ImpExpr)
-    (h : Hax.checkNoEarlyExit e = true) (env : Hax.Env) (err : Hax.Value) :
-    haxExceptAbs bi fuel e env ≠ some (.error err) := by
-  intro hc
-  simp only [haxExceptAbs] at hc
-  rcases hd : Hax.denote bi fuel e env with ⟨o, s⟩
-  rw [hd] at hc
-  cases o with
-  | earlyRet v => exact denote_ne_earlyRet bi fuel e env h v s hd
-  | val v =>
-      simp only [outcomeExceptRaw] at hc
-      split at hc <;> simp at hc
-  | broke v => simp [outcomeExceptRaw] at hc
-  | continued => simp [outcomeExceptRaw] at hc
-  | err msg => simp [outcomeExceptRaw] at hc
-
-/-- The level `tsHax` picks: `Option` on a program without `return` or `?`,
-    exception otherwise. -/
-def tsHaxLevel (e : Hax.ImpExpr) : MonadLevel :=
-  if Hax.checkNoEarlyExit e then .option else .except
-
-/-- The abstract program of a hax source at the weakest fitting level: the normal
-    results of `haxExceptAbs` as an `Option` program on a program without `return` or
-    `?`, `haxExceptAbs` itself otherwise. -/
-def tsHax (bi : Hax.Builtins) (fuel : Nat) (e : Hax.ImpExpr) :
-    AbsProg Hax.Value Hax.Env Hax.Value :=
-  if Hax.checkNoEarlyExit e then .option (exceptOk (haxExceptAbs bi fuel e))
-  else .except (haxExceptAbs bi fuel e)
-
-theorem tsHax_level (bi : Hax.Builtins) (fuel : Nat) (e : Hax.ImpExpr) :
-    (tsHax bi fuel e).level = tsHaxLevel e := by
-  unfold tsHax tsHaxLevel
-  split <;> rfl
-
-/-- **Soundness of the pass on a hax source.** The abstract program `tsHax` refines
-    the pipeline's encoded run at its own level. -/
-theorem tsHax_sound (bi : Hax.Builtins) (hbi : Hax.Builtins.DeepNoControlFlow bi)
-    (e : Hax.ImpExpr) (hls : Hax.LoopScoped e) (hnq : Hax.NoQuestionMark e)
-    (hncf : Hax.NoCFConstructors e) (fuel : Nat) :
-    (tsHax bi fuel e).Refines (haxPipelineSem bi fuel e) haxEntry (fun d r => d = r) := by
-  have hx := haxExceptAbs_refines bi hbi e hls hnq hncf fuel
-  unfold tsHax
-  split
-  · exact refinesO_exceptOk _ _ _ _ hx
-  · exact hx
-
-/-- **The `Option` choice loses nothing.** On a program passing
-    `Hax.checkNoEarlyExit`, the exception image of the `Option` program is the
-    exception program. -/
-theorem tsHax_toExcept (bi : Hax.Builtins) (fuel : Nat) (e : Hax.ImpExpr)
-    (h : Hax.checkNoEarlyExit e = true) :
-    (tsHax bi fuel e).toExcept = haxExceptAbs bi fuel e := by
-  unfold tsHax
-  rw [if_pos h]
-  funext env
-  exact exceptOk_mapOk_of_noThrow _ (haxExceptAbs_noThrow bi fuel e h) env
 
 /-! ## The choice over both program kinds -/
 
