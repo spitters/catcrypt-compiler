@@ -220,6 +220,7 @@ CatCrypt.Crypto.SecureCompilation.Algebraic.FieldWord.SingleWord
 CatCrypt.Crypto.SecureCompilation.Algebraic.Poseidon2BabyBearCompile
 CatCrypt.Crypto.SecureCompilation.Algebraic.Poseidon2BabyBearEmit
 CatCrypt.Crypto.SecureCompilation.Algebraic.Poseidon2BabyBearSpec
+CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem
 CatCrypt.Crypto.SecureCompilation.Ascent.ArrLoadLeaf
 CatCrypt.Crypto.SecureCompilation.Ascent.ArrStoreEmit
 CatCrypt.Crypto.SecureCompilation.Ascent.AscendMeta
