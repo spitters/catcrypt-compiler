@@ -650,13 +650,14 @@ theorem denote_forLoop_val_or_err (bi : Builtins) (fuel : Nat) (v : String)
       ∨ (∃ msg env', (denote bi fuel (.forLoop v lo hi body)).run env = (.err msg, env')) := by
   have hL := denoteForLoop_val_or_err bi v body hBody fuel
   simp only [denote, StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure]
-  rcases hlo env with ⟨a, e1, ha⟩ | ⟨m, e1, ha⟩ <;>
-  rcases hhi e1 with ⟨b, e2, hb⟩ | ⟨m', e2, hb⟩ <;>
-  simp only [StateT.run] at ha hb <;> simp only [ha, hb]
-  · cases a <;> cases b <;>
-      first | exact Or.inr ⟨_, _, rfl⟩ | exact Or.inl ⟨_, _, rfl⟩ | exact hL _ _ _
-  · cases a <;> exact Or.inr ⟨_, _, rfl⟩
-  · exact Or.inr ⟨_, _, rfl⟩
+  rcases hlo env with ⟨a, e1, ha⟩ | ⟨m, e1, ha⟩ <;> simp only [StateT.run] at ha <;>
+    simp only [ha]
+  · simp only [StateT.bind]
+    rcases hhi e1 with ⟨b, e2, hb⟩ | ⟨m', e2, hb⟩ <;> simp only [StateT.run] at hb <;>
+      simp only [hb]
+    · cases a <;> cases b <;>
+        first | exact Or.inr ⟨_, _, rfl⟩ | exact Or.inl ⟨_, _, rfl⟩ | exact hL _ _ _
+    · cases a <;> exact Or.inr ⟨_, _, rfl⟩
   · exact Or.inr ⟨_, _, rfl⟩
 
 /-! ## §7  Reverse counted loops
@@ -768,13 +769,14 @@ theorem denote_forLoopRev_val_or_err (bi : Builtins) (fuel : Nat) (v : String)
       ∨ (∃ msg env', (denote bi fuel (.forLoopRev v lo hi body)).run env = (.err msg, env')) := by
   have hL := denoteForLoopRev_val_or_err bi v body hBody fuel
   simp only [denote, StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure]
-  rcases hlo env with ⟨a, e1, ha⟩ | ⟨m, e1, ha⟩ <;>
-  rcases hhi e1 with ⟨b, e2, hb⟩ | ⟨m', e2, hb⟩ <;>
-  simp only [StateT.run] at ha hb <;> simp only [ha, hb]
-  · cases a <;> cases b <;>
-      first | exact Or.inr ⟨_, _, rfl⟩ | exact Or.inl ⟨_, _, rfl⟩ | exact hL _ _ _
-  · cases a <;> exact Or.inr ⟨_, _, rfl⟩
-  · exact Or.inr ⟨_, _, rfl⟩
+  rcases hlo env with ⟨a, e1, ha⟩ | ⟨m, e1, ha⟩ <;> simp only [StateT.run] at ha <;>
+    simp only [ha]
+  · simp only [StateT.bind]
+    rcases hhi e1 with ⟨b, e2, hb⟩ | ⟨m', e2, hb⟩ <;> simp only [StateT.run] at hb <;>
+      simp only [hb]
+    · cases a <;> cases b <;>
+        first | exact Or.inr ⟨_, _, rfl⟩ | exact Or.inl ⟨_, _, rfl⟩ | exact hL _ _ _
+    · cases a <;> exact Or.inr ⟨_, _, rfl⟩
   · exact Or.inr ⟨_, _, rfl⟩
 
 end CatCrypt.Crypto.Hax

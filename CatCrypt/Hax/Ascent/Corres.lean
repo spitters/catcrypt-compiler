@@ -47,8 +47,7 @@ run from `entry a` returns `enc (f a)` from some fuel on. `haxEval bi e env` is 
 eventual value of the run, and `fnCorres_refinesO` and `fnCorres_absProg` read a
 `FnCorres` as `RefinesO` and as the `Option`-level `AbsProg` refinement of
 `optGuard G f`. `FnPartial` is the partial-correctness form (a value the run returns at
-any fuel is `enc (f a)`), implied by `FnCorres` on a `fuelSafe` program
-(`fnPartial_of_fnCorres`), and `fnCorres_iff_triple` states `FnCorres` as a `Std.Do`
+any fuel is `enc (f a)`), implied by `FnCorres` (`fnPartial_of_fnCorres`), and `fnCorres_iff_triple` states `FnCorres` as a `Std.Do`
 triple over the `Option` program `optGuard G f a`.
 -/
 
@@ -548,16 +547,15 @@ open Std.Do
 
 variable {S : Type} {bi : Builtins}
 
-/-- On a `fuelSafe` program one value run at some fuel gives the correspondence: the run
-    is the same at every larger fuel (`denote'_val_mono`). -/
+/-- One value run at some fuel gives the correspondence: the run is the same at every
+    larger fuel (`denote'_val_mono`). -/
 theorem corres_of_run {P Q : Env → S → Prop} {G : S → Prop} {e : ImpExpr} {V : S → Value}
-    (hs : fuelSafe e = true)
     (h : ∀ env σ, P env σ → G σ → ∃ fuel env', Q env' σ ∧ denote' bi fuel e env = (.val (V σ), env')) :
     Corres bi P G e V Q := by
   intro env σ hP hG
   obtain ⟨fuel₀, env', hQ, hrun⟩ := h env σ hP hG
   refine ⟨fuel₀, env', hQ, fun fuel hf => ?_⟩
-  rw [denote'_val_mono bi hs (by rw [hrun]) hf, hrun]
+  rw [denote'_val_mono bi (by rw [hrun]) hf, hrun]
 
 /-- The environment binding the parameters of a function: the head of the list is bound
     last and shadows the rest. -/
@@ -632,13 +630,13 @@ def FnPartial (bi : Builtins) {A β : Type} [HaxEnc β] (e : ImpExpr) (entry : A
     (G : A → Prop) (f : A → β) : Prop :=
   ∀ a, G a → ∀ fuel v, (denote' bi fuel e (entry a)).1 = .val v → v = enc (f a)
 
-/-- On a `fuelSafe` program the adequacy form gives the partial-correctness form. -/
+/-- The adequacy form gives the partial-correctness form. -/
 theorem fnPartial_of_fnCorres {A β : Type} [HaxEnc β] {e : ImpExpr} {entry : A → Env}
-    {G : A → Prop} {f : A → β} (hs : fuelSafe e = true) (h : FnCorres bi e entry G f) :
+    {G : A → Prop} {f : A → β} (h : FnCorres bi e entry G f) :
     FnPartial bi e entry G f := by
   intro a hG fuel v hv
   obtain ⟨fuel₀, hrun⟩ := h a hG
-  have hm := denote'_val_mono bi hs hv (Nat.le_max_left fuel fuel₀)
+  have hm := denote'_val_mono bi hv (Nat.le_max_left fuel fuel₀)
   have e₁ := hrun (max fuel fuel₀) (Nat.le_max_right _ _)
   rw [hm, hv] at e₁
   exact Outcome.val.inj e₁
