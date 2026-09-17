@@ -2463,6 +2463,7 @@ def pkgModules13 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Deep.ReflectUCHelpers,
     Lake.Glob.one `CatCrypt.Deep.Strategy,
     Lake.Glob.one `CatCrypt.Deep.Tactics,
+    Lake.Glob.one `CatCrypt.EmitArtifacts.P384Rust,
     Lake.Glob.one `CatCrypt.Hax.Ascent.AscendHax,
     Lake.Glob.one `CatCrypt.Hax.Ascent.AscendHaxDemo,
     Lake.Glob.one `CatCrypt.Hax.Ascent.Builtins,
@@ -2627,6 +2628,12 @@ lean_exe sha256linear where
 
 lean_exe keccaklinear where
   root := `CatCrypt.Crypto.SecureCompilation.VIR.KeccakLinearMain
+
+lean_exe «emit-p384-rust» where
+  -- P-384 Rust-source emitters, run as a compiled program rather than `#eval` at
+  -- elaboration. Writes `bench/p384_ecdsa_rust/gen/`; run from this package root.
+  root := `CatCrypt.EmitArtifacts.P384Rust
+  supportInterpreter := true
 
 lean_exe keccakscheduled where
   root := `CatCrypt.Crypto.SecureCompilation.VIR.KeccakScheduledMain
