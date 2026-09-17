@@ -2253,9 +2253,9 @@ def pkgModules11 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.TLS.PSKAuth,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.TLS.PSKSecrecy,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.TLS.ProtocolVerification,
+    Lake.Glob.one `CatCrypt.Crypto.Symbolic.TLS.ServerAuth,
   ]
 def pkgModules12 : Array Lake.Glob := #[
-    Lake.Glob.one `CatCrypt.Crypto.Symbolic.TLS.ServerAuth,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Tactic,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.TimedLabel,
     Lake.Glob.one `CatCrypt.Crypto.Symbolic.Trace,
@@ -2455,9 +2455,9 @@ def pkgModules12 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Hax.Ascent.Corres,
     Lake.Glob.one `CatCrypt.Hax.Ascent.Demo,
     Lake.Glob.one `CatCrypt.Hax.Ascent.Encode,
+    Lake.Glob.one `CatCrypt.Hax.Ascent.Exit,
   ]
 def pkgModules13 : Array Lake.Glob := #[
-    Lake.Glob.one `CatCrypt.Hax.Ascent.Exit,
     Lake.Glob.one `CatCrypt.Hax.Ascent.Fuel,
     Lake.Glob.one `CatCrypt.Hax.Ascent.Refines,
     Lake.Glob.one `CatCrypt.Hax.CType,
