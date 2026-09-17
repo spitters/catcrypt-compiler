@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86ByteFields
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Lean
 public import Mathlib.Tactic.IntervalCases
 public import Mathlib.Tactic.FinCases
@@ -109,31 +110,6 @@ These transcribe the field splits the Sail decoder applies: the REX prefix
 ModRM byte (`modr_m` bitfield: `mod[7:6] / reg[5:3] / r/m[2:0]`, the accessors
 `modr_m[mod]`, `modr_m[reg]`, `modr_m[r_m]` used in `x86_decode_sib_p`). -/
 
-/-- Is `b` a REX prefix byte (`0x40..0x4F`)? (`prefixes` legacy-prefix detection,
-    Sail `get_one_byte_prefix_array_code` group; REX is the `0x4_` block.) -/
-def isRex (b : BitVec 8) : Bool := 0x40 ≤ b.toNat ∧ b.toNat ≤ 0x4f
-
-/-- REX.W bit (operand-size = 64). -/
-def rexW (b : BitVec 8) : Nat := (b.toNat >>> 3) &&& 1
-/-- REX.R bit (extends ModRM.reg). -/
-def rexR (b : BitVec 8) : Nat := (b.toNat >>> 2) &&& 1
-/-- REX.X bit (extends SIB.index). -/
-def rexX (b : BitVec 8) : Nat := (b.toNat >>> 1) &&& 1
-/-- REX.B bit (extends ModRM.rm / SIB.base). -/
-def rexB (b : BitVec 8) : Nat := b.toNat &&& 1
-
-/-- ModRM `mod` field (`modr_m[mod]`, bits 7:6). -/
-def modField (b : BitVec 8) : Nat := (b.toNat >>> 6) &&& 3
-/-- ModRM `reg` field (`modr_m[reg]`, bits 5:3). -/
-def regField (b : BitVec 8) : Nat := (b.toNat >>> 3) &&& 7
-/-- ModRM `r/m` field (`modr_m[r_m]`, bits 2:0). -/
-def rmField (b : BitVec 8) : Nat := b.toNat &&& 7
-
-/-- Sail `x86_decode_sib_p modr_m false` (64-bit mode): a SIB byte follows iff
-    `r/m = 0b100 ∧ mod ≠ 0b11`. -/
-def sibFollows (modrm : BitVec 8) : Bool :=
-  rmField modrm = 4 ∧ modField modrm ≠ 3
-
 /-! ## 2. The decoded register-form record
 
 The fields a register-direct decode recovers: the full 8-bit opcode (one-byte
@@ -233,13 +209,6 @@ The bound `< 16` is the GP-register range (`gpNum` is `0..15`); under it the
 reconstruction `REX.bit<<3 | ModRM.field` is the identity on the register
 number. -/
 
-/-- Helper: for `n < 16`, `(n >>> 3 &&& 1) * 8 + (n &&& 7) = n` — the
-    REX-bit/ModRM-field split is the identity on a 4-bit register number. -/
-theorem regsplit_id (n : Nat) (h : n < 16) :
-    ((n >>> 3) &&& 1) * 8 + (n &&& 7) = n := by
-  interval_cases n
-  all_goals decide
-
 /-- **Round-trip for the legacy reg-reg ALU/MOV forms.** For any one-byte opcode
     `op < 256` and GP registers `d, s < 16`, decoding `encAluRR op d s` recovers
     the opcode and `(reg = s, rm = d)` — exactly the fields the encoder set
@@ -270,34 +239,6 @@ theorem roundtrip_0FRR (op d s : Nat) (hop : op < 256) (hd : d < 16) (hs : s < 1
       rexR, rexB, regField, rmField, rex, modRMReg, bit, BitVec.toNat_ofNat]
     interval_cases d <;> interval_cases s <;> rfl
   rw [hreg, hop']
-
-/-- The little-endian 32-bit recomposition the decoder applies is the inverse of
-    `imm32LE` on values `< 2^32`: `b0 + b1·256 + b2·256² + b3·256³ = v`. The four
-    `BitVec 8` bytes' `.toNat` are `(v >>> 8i) &&& 0xff` reduced mod `256`. -/
-theorem imm32LE_recompose (v : Nat) (hv : v < 2 ^ 32) :
-    (BitVec.ofNat 8 (v &&& 0xff)).toNat
-      + (BitVec.ofNat 8 ((v >>> 8) &&& 0xff)).toNat * 0x100
-      + (BitVec.ofNat 8 ((v >>> 16) &&& 0xff)).toNat * 0x10000
-      + (BitVec.ofNat 8 ((v >>> 24) &&& 0xff)).toNat * 0x1000000 = v := by
-  simp only [show (0xff : Nat) = 2 ^ 8 - 1 from rfl, Nat.and_two_pow_sub_one_eq_mod,
-    BitVec.toNat_ofNat, Nat.shiftRight_eq_div_pow]
-  omega
-
-/-- The little-endian 64-bit recomposition the `B8+r io` decoder applies is the
-    inverse of `imm64LE` on values `< 2^64`. The eight `BitVec 8` bytes' `.toNat`
-    are `(v >>> 8i) &&& 0xff` reduced mod `256`. -/
-theorem imm64LE_recompose (v : Nat) (hv : v < 2 ^ 64) :
-    (BitVec.ofNat 8 (v &&& 0xff)).toNat
-      + (BitVec.ofNat 8 ((v >>> 8) &&& 0xff)).toNat * 0x100
-      + (BitVec.ofNat 8 ((v >>> 16) &&& 0xff)).toNat * 0x10000
-      + (BitVec.ofNat 8 ((v >>> 24) &&& 0xff)).toNat * 0x1000000
-      + (BitVec.ofNat 8 ((v >>> 32) &&& 0xff)).toNat * 0x100000000
-      + (BitVec.ofNat 8 ((v >>> 40) &&& 0xff)).toNat * 0x10000000000
-      + (BitVec.ofNat 8 ((v >>> 48) &&& 0xff)).toNat * 0x1000000000000
-      + (BitVec.ofNat 8 ((v >>> 56) &&& 0xff)).toNat * 0x100000000000000 = v := by
-  simp only [show (0xff : Nat) = 2 ^ 8 - 1 from rfl, Nat.and_two_pow_sub_one_eq_mod,
-    BitVec.toNat_ofNat, Nat.shiftRight_eq_div_pow]
-  omega
 
 /-- **Round-trip for `MOV $imm32, %dst`** (`encMovImm`): `C7 /0` form, `reg`=0
     (the `/0` opcode-extension digit), `rm`=dst, `imm`=the 32-bit value. -/
@@ -425,42 +366,6 @@ mnemonic, and a `JInstr`-rebuilder that reads the `DecReg` register numbers back
 through the allocation. The round-trip `rebuild (decode (encode i)) = i` holds
 for the register-direct reg-reg ALU/MOV family on any allocation whose register
 numbers are GP (`< 16`), which `gpNum` guarantees unconditionally. -/
-
-/-- `gpNum` always lands in the GP range `0..15` (it is a 16-way table with a `0`
-    fallback) — so every register operand the encoder emits decodes back into the
-    `< 16` range the round-trip lemmas require. -/
-theorem gpNum_lt_16 (r : String) : gpNum r < 16 := by
-  unfold gpNum
-  split <;> omega
-
-/-- The one-byte ALU/MOV opcode → mnemonic constructor map, inverting the opcode
-    bytes `encodeJInstr` emits for the reg-reg arms (`ADD 01`, `OR 09`, `ADC 11`,
-    `SBB 19`, `AND 21`, `SUB 29`, `XOR 31`, `MOV 89`). Returns the `JInstr`
-    constructor expecting `(dst, src)`. -/
-def aluMnemonic : Nat → Option (String → JOperand → JInstr 64)
-  | 0x01 => some JInstr.add
-  | 0x09 => some JInstr.or_
-  | 0x11 => some JInstr.adc
-  | 0x19 => some JInstr.sbb
-  | 0x21 => some JInstr.and_
-  | 0x29 => some JInstr.sub
-  | 0x31 => some JInstr.xor_
-  | 0x89 => some JInstr.mov
-  | _    => none
-
-/-- The GP register name (`%rN`) for a SDM register number `0..15`, the inverse of
-    `gpNum` on the canonical names. -/
-def regName : Nat → String
-  | 0 => "%rax" | 1 => "%rcx" | 2 => "%rdx" | 3 => "%rbx"
-  | 4 => "%rsp" | 5 => "%rbp" | 6 => "%rsi" | 7 => "%rdi"
-  | 8 => "%r8"  | 9 => "%r9"  | 10 => "%r10" | 11 => "%r11"
-  | 12 => "%r12" | 13 => "%r13" | 14 => "%r14" | _ => "%r15"
-
-/-- `regName` inverts `gpNum` on the 16 canonical `%rN` names. -/
-theorem regName_gpNum (r : String) (h : r ∈ ["%rax","%rcx","%rdx","%rbx","%rsp","%rbp",
-    "%rsi","%rdi","%r8","%r9","%r10","%r11","%r12","%r13","%r14","%r15"]) :
-    regName (gpNum r) = r := by
-  fin_cases h <;> rfl
 
 /-- Rebuild a reg-reg ALU/MOV `JInstr` from a decoded `DecReg`: the opcode picks
     the mnemonic, `rm` is the destination register number, `reg` the source. -/
@@ -617,23 +522,6 @@ def decodeBaseLow3 : List (BitVec 8) → Option Nat
         none  -- RIP-relative: no base register (the bug we must NOT emit for %rbp/%r13)
       else some (rmField modrm)
   | [] => none
-
-/-- `rmField (modRMMem m reg b) = b &&& 7` — the ModRM `r/m` field is the base low-3. -/
-theorem rmField_modRMMem (m reg b : Nat) :
-    rmField (BitVec.ofNat 8 (modRMMem m reg b)) = b &&& 7 := by
-  have er : (reg &&& 7) = reg % 8 := Nat.and_two_pow_sub_one_eq_mod reg 3
-  have eb : (b &&& 7) = b % 8 := Nat.and_two_pow_sub_one_eq_mod b 3
-  rw [rmField, Nat.and_two_pow_sub_one_eq_mod _ 3, BitVec.toNat_ofNat, eb]
-  unfold modRMMem; rw [er, eb]; omega
-
-/-- `modField (modRMMem m reg b) = m` for a valid `mod` (`m < 4`). -/
-theorem modField_modRMMem (m reg b : Nat) (hm : m < 4) :
-    modField (BitVec.ofNat 8 (modRMMem m reg b)) = m := by
-  have er : (reg &&& 7) = reg % 8 := Nat.and_two_pow_sub_one_eq_mod reg 3
-  have eb : (b &&& 7) = b % 8 := Nat.and_two_pow_sub_one_eq_mod b 3
-  rw [modField, Nat.and_two_pow_sub_one_eq_mod _ 2, Nat.shiftRight_eq_div_pow,
-    BitVec.toNat_ofNat]
-  unfold modRMMem; rw [er, eb]; omega
 
 /-- The SIB byte `0x24` decodes to base low-3 = 4 (`0x24 &&& 7 = 4`). -/
 theorem sibByte_0x24_base : (BitVec.ofNat 8 0x24).toNat &&& 7 = 4 := by decide
