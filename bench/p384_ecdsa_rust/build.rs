@@ -15,10 +15,11 @@
 //!
 //! The `force-fallback` feature suppresses the detection.
 //!
-//! Under the `s2n` feature this also links the vendored AWS s2n-bignum
-//! archive, which the third leaf backend calls.  The archive is
-//! `libs2nbignum.a` under `bench/reference_install/s2n-bignum/x86`;
-//! `S2N_BIGNUM_DIR` overrides the directory.  Nothing is built here — the
+//! Under the `s2n` feature this also links the AWS s2n-bignum archive, which
+//! the third leaf backend calls.  The archive is `x86/libs2nbignum.a` under
+//! the s2n-bignum checkout named by `S2N_BIGNUM_DIR`; unset, the checkout is
+//! `../../../SSProve-lean/bench/reference_install/s2n-bignum` relative to
+//! this crate, the one in the sibling SSProve-lean tree.  Nothing is built here — the
 //! checkout is read, never modified, and a missing archive is a hard error
 //! rather than a silent fallback, because a backend that does not link is
 //! not a backend that was measured.
@@ -31,21 +32,22 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 
-/// Emits the link directives for the vendored s2n-bignum archive.
+/// Emits the link directives for the s2n-bignum archive.
+///
+/// `S2N_BIGNUM_DIR` names the s2n-bignum checkout, the directory holding
+/// `x86/` and `x86_att/`; the archive is `$S2N_BIGNUM_DIR/x86/libs2nbignum.a`.
 fn link_s2n_bignum(manifest: &PathBuf) {
     println!("cargo:rerun-if-env-changed=S2N_BIGNUM_DIR");
 
-    let dir = env::var_os("S2N_BIGNUM_DIR").map(PathBuf::from).unwrap_or_else(|| {
-        manifest
-            .join("..")
-            .join("reference_install")
-            .join("s2n-bignum")
-            .join("x86")
+    let root = env::var_os("S2N_BIGNUM_DIR").map(PathBuf::from).unwrap_or_else(|| {
+        manifest.join("../../../SSProve-lean/bench/reference_install/s2n-bignum")
     });
+    let dir = root.join("x86");
     let archive = dir.join("libs2nbignum.a");
     assert!(
         archive.is_file(),
-        "feature `s2n` needs {}; build it in the s2n-bignum checkout or set S2N_BIGNUM_DIR",
+        "feature `s2n` needs {}; set S2N_BIGNUM_DIR to an s2n-bignum checkout \
+         whose x86/libs2nbignum.a is built",
         archive.display()
     );
 
@@ -60,7 +62,12 @@ fn link_s2n_bignum(manifest: &PathBuf) {
 /// The `.s` files live in sibling bench directories and are untracked build
 /// output of their Lean emitters; they are read here, never written, and
 /// never regenerated (that is `lake` work, and it belongs to whoever records
-/// a figure).  They are passed as link arguments, so the linker driver
+/// a figure).  Their writers are `emitMainP384` in
+/// `CatCrypt.Crypto.SecureCompilation.X86Backend.Curve6MontMulProvenEmit` and
+/// `emitP384` in `CatCrypt.Crypto.SecureCompilation.X86Backend.P384FieldKernel`,
+/// which write paths relative to the working directory; the README lists the
+/// commands.  `P384_EMIT_MONTMUL_S` and `P384_EMIT_SOLINAS_S` override the
+/// two paths.  They are passed as link arguments, so the linker driver
 /// assembles them; nothing is spawned from this script.
 fn link_emitted_field_kernels(manifest: &PathBuf) {
     let sources = [

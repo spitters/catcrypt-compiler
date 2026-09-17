@@ -6,7 +6,9 @@
 #
 #   KERNEL    the s2n-bignum symbol, with a parameter file
 #             kernels/KERNEL.sh (bignum_montmul_p384, bignum_montsqr_p384)
-#   S2N_ROOT  the s2n-bignum checkout; default bench/reference_install/s2n-bignum
+#   S2N_ROOT  the s2n-bignum checkout; default $S2N_BIGNUM_DIR, and when that
+#             is unset ../SSProve-lean/bench/reference_install/s2n-bignum
+#             relative to this repository
 #   OUT_LEAN  the Lean module to write; default
 #             CatCrypt/Crypto/SecureCompilation/Ascent/Demos/<ident>.lean, with
 #             <ident> taken from the parameter file
@@ -34,7 +36,11 @@ done
 lident="$(echo "${ident:0:1}" | tr '[:upper:]' '[:lower:]')${ident:1}"
 length_tactic="${length_tactic:-unfold ${lident}Block; simp only [List.length_append]; rfl}"
 
-root="${2:-$repo/bench/reference_install/s2n-bignum}"
+root="${2:-${S2N_BIGNUM_DIR:-$repo/../SSProve-lean/bench/reference_install/s2n-bignum}}"
+[ -d "$root/x86_att" ] || {
+  echo "import_s2n: no s2n-bignum checkout at $root; set S2N_BIGNUM_DIR or pass S2N_ROOT" >&2
+  exit 2
+}
 out="${3:-$repo/CatCrypt/Crypto/SecureCompilation/Ascent/Demos/$ident.lean}"
 cpp_cmd="${CPP:-cpp}"
 

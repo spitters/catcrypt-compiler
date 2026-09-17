@@ -13,12 +13,12 @@
 //! | arm | symbol | computes | source |
 //! |---|---|---|---|
 //! | `ours-montmul` | `p384_montmul_proven` | `x y R^-1 mod p`, `R = 2^384` | `bench/p384_compare/gen/p384_montmul_proven.s` |
-//! | `s2n-montmul` | `bignum_montmul_p384` | `x y R^-1 mod p`, `R = 2^384` | `bench/reference_install/s2n-bignum/x86_att/p384/bignum_montmul_p384.S` |
+//! | `s2n-montmul` | `bignum_montmul_p384` | `x y R^-1 mod p`, `R = 2^384` | `$S2N_BIGNUM_DIR/x86_att/p384/bignum_montmul_p384.S` |
 //! | `ours-solinas` | `p384_mul_x86_from_lean` | `x y mod p`, ordinary domain | `bench/p384_fieldmul_compare/gen_com/p384_mul_x86_from_lean.s` |
 //! | `aucurves-fp_mul` | `p384::fp_mul` | `x y R^-1 mod p` | fiat-crypto, or CryptOpt when linked |
 //! | `s2n-reemitted` | `bignum_montmul_p384_reemitted` | `x y R^-1 mod p`, `R = 2^384` | `bench/s2n_import/gen/bignum_montmul_p384_reemitted.s` |
 //! | `s2n-encoded` | `bignum_montmul_p384_encoded` | `x y R^-1 mod p`, `R = 2^384` | `bench/s2n_import/gen/bignum_montmul_p384_encoded.s` |
-//! | `s2n-montsqr` | `bignum_montsqr_p384` | `x^2 R^-1 mod p`, `R = 2^384` | `bench/reference_install/s2n-bignum/x86_att/p384/bignum_montsqr_p384.S` |
+//! | `s2n-montsqr` | `bignum_montsqr_p384` | `x^2 R^-1 mod p`, `R = 2^384` | `$S2N_BIGNUM_DIR/x86_att/p384/bignum_montsqr_p384.S` |
 //! | `s2n-sqr-reemitted` | `bignum_montsqr_p384_reemitted` | `x^2 R^-1 mod p`, `R = 2^384` | `bench/s2n_import/gen/bignum_montsqr_p384_reemitted.s` |
 //! | `s2n-sqr-encoded` | `bignum_montsqr_p384_encoded` | `x^2 R^-1 mod p`, `R = 2^384` | `bench/s2n_import/gen/bignum_montsqr_p384_encoded.s` |
 //!

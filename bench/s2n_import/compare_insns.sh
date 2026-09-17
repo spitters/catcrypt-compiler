@@ -5,7 +5,10 @@
 # Usage: bench/s2n_import/compare_insns.sh [KERNEL [S2N_ARCHIVE]]
 #
 #   KERNEL       the s2n-bignum symbol; default bignum_montmul_p384
-#   S2N_ARCHIVE  default: the vendored x86/libs2nbignum.a
+#   S2N_ARCHIVE  default: $S2N_BIGNUM_DIR/x86/libs2nbignum.a, with
+#                S2N_BIGNUM_DIR defaulting to
+#                ../SSProve-lean/bench/reference_install/s2n-bignum relative
+#                to this repository
 #
 # Assembles gen/KERNEL_reemitted.s (and gen/KERNEL_encoded.s, when present)
 # with `as`, disassembles them and KERNEL from the archive, and prints for
@@ -18,7 +21,11 @@ set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 sym="${1:-bignum_montmul_p384}"
-archive="${2:-$repo/bench/reference_install/s2n-bignum/x86/libs2nbignum.a}"
+archive="${2:-${S2N_BIGNUM_DIR:-$repo/../SSProve-lean/bench/reference_install/s2n-bignum}/x86/libs2nbignum.a}"
+[ -f "$archive" ] || {
+  echo "compare_insns: no archive $archive; set S2N_BIGNUM_DIR or pass S2N_ARCHIVE" >&2
+  exit 2
+}
 src="$here/gen/${sym}_reemitted.s"
 enc="$here/gen/${sym}_encoded.s"
 [ -f "$src" ] || { echo "compare_insns: no $src; run make reemit" >&2; exit 2; }

@@ -68,3 +68,37 @@ Not same-tier: the production code is scalar and ours uses the extension.
 
 The last two rows are the opposite case: our scalar ladder is faster than the
 production AVX2 one.
+
+## P-384 ECDSA and DHKEM, emitted Rust orchestration
+
+These rows are not in the tables above, because they are wall-clock medians of
+whole operations rather than cycle counts, and in most of them the arithmetic
+under the emitted orchestration is not ours. The compiler emits the call
+sequence as Rust (`lake exe emit-p384-rust`); the leaves are the AUCurves
+`p384-safe-rust` group law over the fiat-crypto Rust field or the CryptOpt
+assembly field (`aucurves`), or AWS s2n-bignum assembly (`s2n`, where no byte
+below the orchestration is ours). A ratio is ours over theirs in the same
+process, on the same host, pinned. The full tables, dates, machine load and
+commands are in
+[bench/p384_ecdsa_rust/PERF.md](bench/p384_ecdsa_rust/PERF.md); the crate and
+its tiering are described in
+[bench/p384_ecdsa_rust/README.md](bench/p384_ecdsa_rust/README.md).
+
+| operation | ours | reference | tier | ratio |
+|---|---|---|---|---:|
+| ECDSA sign | `aucurves`, fiat-crypto Rust field | RustCrypto `p384` 0.13.1 | same tier | 0.16 |
+| ECDSA verify | `aucurves`, fiat-crypto Rust field | RustCrypto `p384` 0.13.1 | same tier | 0.49 |
+| ECDSA verify | `aucurves`, CryptOpt field | Graviola 0.4.1 (s2n-bignum) | same tier | 1.54 |
+| ECDSA sign | `s2n` | Graviola 0.4.1 (s2n-bignum) | same arithmetic; Graviola's column includes hashing and nonce derivation | 0.20 – 0.21 |
+| ECDSA verify | `s2n` | Graviola 0.4.1 (s2n-bignum) | same arithmetic | 0.59 – 0.65 |
+| ECDSA sign, nonce supplied | `s2n` | AWS-LC 5.9.0 | same tier | 0.41 |
+| ECDSA verify | `s2n` | AWS-LC 5.9.0 | same tier | 0.88 |
+| DHKEM encap, emitted | `s2n` | AWS-LC 5.9.0, reconstruction | same tier | 0.86 |
+| DHKEM decap, emitted | `s2n` | AWS-LC 5.9.0, reconstruction | same tier | 0.98 |
+| P-384 field multiply, cycles | emitted `p384_montmul_proven` | s2n-bignum `bignum_montmul_p384` (ADX) | same tier | 2.58 |
+
+The ECDSA rows against RustCrypto and Graviola are from 2026-09-16, the AWS-LC
+rows from a loaded machine on the same date, the DHKEM rows from the emitted
+kernels on 2026-09-17, and the field-multiply row is invariant-TSC minima.
+The emitted P-384 field multiply is not used under any of the whole-operation
+rows.

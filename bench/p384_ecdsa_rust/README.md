@@ -1,8 +1,8 @@
-# `p384_ecdsa_rust` — leaf shims, KATs and a benchmark for the emitted P-384 ECDSA source
+# `p384_ecdsa_rust`: leaf shims, tests and benchmarks for the emitted P-384 ECDSA and DHKEM source
 
-kind: authored · authority: canonical for this directory · freshness: the
-benchmark numbers below are a single dated run and go stale with the machine,
-the toolchain and the contents of `gen/`
+kind: authored · authority: canonical for this directory · freshness: the file
+tables go stale when the emitter or the leaf backends change; the measured
+figures are in [PERF.md](PERF.md), each with its date
 
 The CatCrypt compiler emits the orchestration of ECDSA-P-384 as Rust that
 calls thirteen leaf functions. This crate supplies those leaves, a second
@@ -14,20 +14,76 @@ stacks run, OpenSSL 3.0, BoringSSL and AWS-LC, to the interop suite and the
 benchmark ([§ OpenSSL and BoringSSL](#openssl-and-boringssl-the-production-opponents),
 [§ AWS-LC](#aws-lc-the-third-production-opponent)).
 
-The leaves come in **three backends**, and the same emitted orchestration is
+The leaves come in three backends, and the same emitted orchestration is
 compiled over each: AUCurves `p384-safe-rust` with the fiat-crypto field,
-the same with the CryptOpt assembly field, and — behind `--features s2n` —
-AWS s2n-bignum assembly. The third exists to answer one question. Graviola's
-P-384 arithmetic *is* s2n-bignum, so putting our orchestration on the same
-assembly turns the comparison with it into one of orchestration alone.
-[§ Whole operation, three backends](#whole-operation-three-backends) is the
-answer, and [§ The three leaf backends](#the-three-leaf-backends) says what
-each configuration is for.
+the same with the CryptOpt assembly field, and, behind `--features s2n`,
+AWS s2n-bignum assembly. Graviola's P-384 arithmetic is s2n-bignum, so the
+third backend makes the comparison with Graviola one of orchestration alone.
+[§ The three leaf backends](#the-three-leaf-backends) says what each
+configuration is for, and
+[PERF.md § Whole operation, three backends](PERF.md#whole-operation-three-backends)
+holds the result.
 
-The crate also carries **DHKEM(P-384, HKDF-SHA384)**, RFC 9180 KEM id
+The crate also carries DHKEM(P-384, HKDF-SHA384), RFC 9180 KEM id
 `0x0011`, `Encap` and `Decap` only, over the same backends, with its own
-reference, interop suite and benchmark:
+reference and interop suite:
 [§ DHKEM(P-384, HKDF-SHA384)](#dhkemp-384-hkdf-sha384).
+
+All measurements, with host, load, commands and ratios, are in
+[PERF.md](PERF.md). A ratio there is ours over theirs, measured in the same
+process.
+
+## What is where
+
+The P-384 and s2n-bignum material spans three repositories:
+catcrypt-compiler (this repository), the development tree SSProve-lean, and
+the AUCurves tree at `~/Claude/BLS/AUCurves`. Paths are relative to the root of
+the repository named in the second column. The "proved" column states only what
+the module docstring of the file states; "none" means the file carries no
+theorem. Elsewhere in this document a code span of the form `checkout:path`
+names a file of an external checkout or package (for example
+`openssl-3.0.13:crypto/ec/ec_lib.c` or `graviola-0.4.1:src/mid/p384.rs`),
+not a file of this repository.
+
+| path | repository | what it is | what is proved |
+|---|---|---|---|
+| [`CatCrypt/Crypto/Jasmin/P384Reflect.lean`](../../CatCrypt/Crypto/Jasmin/P384Reflect.lean) | catcrypt-compiler | Lean front: P-384 surface types, the group-law leaf registrations, the MSM-term and two-term MSM kernels as `LowCT`, their Rust rendering (`emitP384Rust`) | structural only: each body lowers to a Jasmin command of the stated length with the stated leaf names; the leaves are axioms; no constant-time or security property |
+| [`CatCrypt/Crypto/Jasmin/P384EcdsaReflect.lean`](../../CatCrypt/Crypto/Jasmin/P384EcdsaReflect.lean) | catcrypt-compiler | Lean front: ECDSA-P-384 verify and sign as call-only `LowCT` over the mod-`n` scalar leaves (`emitP384EcdsaRust`) | structural only: command counts (13 for verify, 10 for sign) and the leaf name of each command; no unforgeability or constant-time property |
+| [`CatCrypt/Crypto/Jasmin/P384DhkemReflect.lean`](../../CatCrypt/Crypto/Jasmin/P384DhkemReflect.lean) | catcrypt-compiler | Lean front: DHKEM(P-384, HKDF-SHA384) `Encap` and `Decap` as call-only `LowCT` (`emitP384DhkemRust`) | structural only: the ordered leaf names of each lowered body; no IND-CCA, correctness or constant-time property |
+| [`CatCrypt/EmitArtifacts/P384Rust.lean`](../../CatCrypt/EmitArtifacts/P384Rust.lean) | catcrypt-compiler | emit driver, `lake exe emit-p384-rust`, run from the repository root; writes `gen/` of this directory | none |
+| [`gen/`](gen/PROVENANCE.md) | catcrypt-compiler | the emitted Rust: `p384_ecdsa_verify.rs`, `p384_ecdsa_sign.rs`, `p384_ecdsa_verify_msm.rs`, `p384_msm_term.rs`, `p384_dhkem_encap.rs`, `p384_dhkem_decap.rs`; never hand-edited | none; see the front modules |
+| `src/generated.rs` | catcrypt-compiler | includes `gen/` once per backend; the hand-written fallback transcription | none |
+| `src/leaves.rs`, `src/scalar.rs`, `src/lincomb.rs`, `src/sec1.rs`, `src/dhkem_kdf.rs` | catcrypt-compiler | leaf backend `aucurves`: shims over `p384-safe-rust`, fiat-crypto's scalar field and `safegcd-rs`, the interleaved two-term multiply, SEC1 and HKDF leaves | none; see [§ The leaves and their constant-time status](#the-leaves-and-their-constant-time-status) |
+| `src/leaves_s2n.rs`, `src/s2n.rs`, `src/comb_s2n.rs`, `src/lincomb_s2n.rs` | catcrypt-compiler | leaf backend `s2n` (`--features s2n`): shims over the s2n-bignum archive, the fixed-base comb and the interleaved pass | none in this repository; s2n-bignum's routines carry HOL Light proofs upstream |
+| `src/backend.rs` | catcrypt-compiler | the backend table the tests and the benchmark iterate | none |
+| `src/reference.rs`, `src/dhkem_ref.rs` | catcrypt-compiler | independent reference ECDSA and DHKEM | none |
+| `tests/`, `src/vectors.rs` | catcrypt-compiler | CAVP, Wycheproof, differential, leaf, scalar, s2n-backend, RustCrypto, Graviola, production and DHKEM suites ([§ Commands](#commands)) | none; test evidence |
+| `src/rc.rs`, `src/grav.rs`, `src/ossl.rs`, `src/ossl_kem.rs`, `src/bssl.rs`, `src/awslc.rs`, `src/hpke_rs.rs` | catcrypt-compiler | bridges to the opponents: RustCrypto `p384` 0.13.1, Graviola 0.4.1, OpenSSL, BoringSSL, AWS-LC, hpke-rs 0.7.0 | none |
+| `src/bin/bench.rs`, `src/bin/fieldbench.rs` | catcrypt-compiler | the ECDSA and DHKEM benchmark; the field-multiply comparison | none; results in [PERF.md](PERF.md) |
+| [`bench/s2n_import`](../s2n_import/README.md) | catcrypt-compiler | the s2n-bignum importer (`import_s2n.sh`, `translate.awk`), re-emit and encode drivers, the framed known-answer test | none; the importer is untrusted |
+| [`Ascent/Demos/S2nMontmulP384.lean`](../../CatCrypt/Crypto/SecureCompilation/Ascent/Demos/S2nMontmulP384.lean), [`S2nMontsqrP384.lean`](../../CatCrypt/Crypto/SecureCompilation/Ascent/Demos/S2nMontsqrP384.lean) | catcrypt-compiler, under `CatCrypt/Crypto/SecureCompilation/` | the imported `bignum_montmul_p384` (264 instructions) and `bignum_montsqr_p384` (230) as `List (JInstr 64)`, pinned to s2n-bignum commit `7bd7c8ca` | the block lengths |
+| [`Ascent/Demos/S2nMontmulP384Proof.lean`](../../CatCrypt/Crypto/SecureCompilation/Ascent/Demos/S2nMontmulP384Proof.lean) | catcrypt-compiler | correctness of the imported montmul block | `s2nMontmulP384_correct`: under `runBlock`, for `x · y ≤ 2^384 · p384`, the block stores `z < p384` with `z = x · y · (2^384)⁻¹` in `ZMod p384`; name-keyed memory, no aliasing between output and inputs |
+| [`Ascent/Demos/S2nMontmulP384Bytes.lean`](../../CatCrypt/Crypto/SecureCompilation/Ascent/Demos/S2nMontmulP384Bytes.lean) | catcrypt-compiler | the montmul block carried to the owned encoder's bytes | `s2nMontmulP384_decode`: the bytes decode to the block; `s2nMontmulP384Bytes_correct`: the decoded instructions compute the Montgomery product; decoder-to-processor agreement is not proved |
+| [`Ascent/Demos/S2nMontmulP384Addr.lean`](../../CatCrypt/Crypto/SecureCompilation/Ascent/Demos/S2nMontmulP384Addr.lean) | catcrypt-compiler | the montmul result over address memory | `s2nMontmulP384_correct_addr` with no hypothesis relating the three pointers (in-place and squaring instances included); `s2nMontsqrP384_sim_addr`: the montsqr block's address run agrees with its name-keyed run |
+| [`Ascent/Demos/S2nMontmulP384Framed.lean`](../../CatCrypt/Crypto/SecureCompilation/Ascent/Demos/S2nMontmulP384Framed.lean) | catcrypt-compiler | the montmul block inside the red-zone leaf frame, the source of `bignum_montmul_p384_framed` | `s2nMontmulP384FramedBytes_correct`: the decoded framed bytes compute the product and restore `%rsp` and the six callee-saved registers; the red zone not overlapping the caller's buffers is assumed |
+| [`Ascent/AddrMem.lean`](../../CatCrypt/Crypto/SecureCompilation/Ascent/AddrMem.lean) | catcrypt-compiler | an address-memory machine for `JInstr 64` and the discipline checks | simulation of `runBlock` by `runBlockA` under the address discipline |
+| [`X86Backend/LeafFrame.lean`](../../CatCrypt/Crypto/SecureCompilation/X86Backend/LeafFrame.lean) | catcrypt-compiler | the System V red-zone save/restore frame as `JInstr 64` | `runBlock_framed`, `corresJ_framed` for bodies satisfying `frameSafe` |
+| [`X86Backend/EncodedBlockCorres.lean`](../../CatCrypt/Crypto/SecureCompilation/X86Backend/EncodedBlockCorres.lean) | catcrypt-compiler | `CorresJ` carried from a block to its encoded byte stream | `encodeJBlock_bytesCorresJ`, `encodeJBlock?_bytesCorresJ` |
+| [`X86Backend/SailX86LeanUniversal.lean`](../../CatCrypt/Crypto/SecureCompilation/X86Backend/SailX86LeanUniversal.lean) | catcrypt-compiler | the owned instruction model compared with Sail-x86 and the Intel SDM for the instructions of the montmul block | `evalInstr` equal to, or refining, the transcribed Sail bodies (or SDM definitions) for every starting state, register name and operand value |
+| `p384-safe-rust` | AUCurves | P-384 field and group in Rust: fiat-crypto field, RCB `a = -3` complete formulas, 4-bit window, `W = 5` comb; field chosen at build time (fiat, CryptOpt, s2n-bignum, encoded montmul) | outside this repository; see its README |
+| `safegcd-rs` | AUCurves | Bernstein-Yang divstep inversion; `safegcd_p384` (field) and `safegcd_p384_order` (group order) | outside this repository; convergence certificates in Rocq under AUCurves |
+| `fiat-crypto/fiat-rust` | AUCurves | fiat-crypto generated Rust, including `fiat-rust:src/p384_64.rs` and `fiat-rust:src/p384_scalar_64.rs` | outside this repository |
+| `crates/catcrypt-p384` | SSProve-lean | planned Rust crate for the P-384 kernels; not present | — |
+| `crates/catcrypt-ed25519` | SSProve-lean | planned Rust crate for Ed25519 over emitted x86-64 kernels; partly present and untracked | — |
+
+The two emitted field kernels that `fieldbench` links are untracked files of
+this repository, written by `emitMainP384` in
+`CatCrypt/Crypto/SecureCompilation/X86Backend/Curve6MontMulProvenEmit.lean` and
+by `emitP384` in `CatCrypt/Crypto/SecureCompilation/X86Backend/P384FieldKernel.lean`
+([§ Paths](#paths)):
+
+    bench/p384_compare/gen/p384_montmul_proven.s
+    bench/p384_fieldmul_compare/gen_com/p384_mul_x86_from_lean.s
 
 ## The emitted entry points
 
@@ -63,9 +119,9 @@ zero `k` drives `r` to zero and is reported the same way.
 | mod-`n` reduction, addition, Fermat inverse (`src/scalar.rs`) | this crate | ours |
 | group law (`g1_add`, `g1_double`, `g1_neg`, `g1_scalar_mul`, `g1_scalar_mul_base`) | AUCurves `p384-safe-rust`, Rocq-emitted RCB `a = -3` formulas, Qed borrow certificates | ours |
 | `fp_inv`, the base-field inverse | Bernstein-Yang divstep port in AUCurves `safegcd-rs`, against the Rocq convergence certificate | ours |
-| mod-`n` divstep inverse | the same port, instantiated at the group order in `safegcd-rs/src/safegcd_p384_order.rs` | ours |
-| mod-`n` multiply, squaring, Montgomery conversions | fiat-crypto `p384_scalar_64.rs` | external, machine-generated and machine-checked |
-| base field | fiat-crypto `p384_64.rs`, and optionally the CryptOpt assembly | external |
+| mod-`n` divstep inverse | the same port, instantiated at the group order in `safegcd-rs:src/safegcd_p384_order.rs` | ours |
+| mod-`n` multiply, squaring, Montgomery conversions | fiat-crypto `fiat-rust:src/p384_scalar_64.rs` | external, machine-generated and machine-checked |
+| base field | fiat-crypto `fiat-rust:src/p384_64.rs`, and optionally the CryptOpt assembly | external |
 | reference sign and verify (`src/reference.rs`) | this crate | ours |
 | RustCrypto `p384` 0.13.1 / `ecdsa` 0.16.9 | external | reference and benchmark baseline, never ours |
 | Graviola 0.4.1 | external, s2n-bignum assembly | second reference and benchmark baseline, never ours |
@@ -81,7 +137,7 @@ zero `k` drives `r` to zero and is reported the same way.
 
 Every layer that differs between the two sides is ours. The field is the one
 layer neither side owns and both sides share: RustCrypto's
-`p384-0.13.1/src/arithmetic/field/p384_64.rs` and the field AUCurves calls are
+`p384-0.13.1:src/arithmetic/field/p384_64.rs` and the field AUCurves calls are
 the same fiat-crypto generated code, so in the pure-Rust configuration the
 measurement isolates the group law, the scalar layer and the orchestration —
 all three of them ours.
@@ -196,10 +252,10 @@ it is the same-tier comparison, because both sides then run the same
 arithmetic. It is not a claim about our compiler's code generation: no byte
 under these leaves was emitted by us.
 
-The archive is read from `bench/reference_install/s2n-bignum/x86`, never
-modified, and linked by `build.rs` behind the `s2n` feature.
-`S2N_BIGNUM_DIR` overrides the directory. With the feature off the crate
-builds and tests exactly as before.
+The archive is `x86/libs2nbignum.a` in the s2n-bignum checkout named by
+`S2N_BIGNUM_DIR` ([§ Paths](#paths)). It is read, never modified, and linked
+by `build.rs` behind the `s2n` feature. With the feature off the crate builds
+and tests exactly as before.
 
 ## Graviola, the second opponent
 
@@ -233,7 +289,7 @@ either.
 | `aucurves`, fiat-crypto field, pure Rust | not same tier | Rust against assembly; we expect to lose |
 
 The pure-Rust rows against Graviola are reported with that label rather than
-omitted. All three are in the tables below, and where we lose the row says
+omitted. All three are in the tables of [PERF.md](PERF.md), and where we lose the row says
 so.
 
 ### The signing-fairness problem
@@ -258,7 +314,7 @@ What is reported instead: Graviola's full `sign` as measured, with the three
 components it performs and our kernel does not timed separately in the same
 round-robin, so the arithmetic-only cost can be bounded. The SHA-384 and the
 sixteen-byte RNG read are called directly. The DRBG is a reconstruction over
-Graviola's own public `Hmac<Sha384>` following `high/hmac_drbg.rs`: four
+Graviola's own public `Hmac<Sha384>` following `graviola-0.4.1:src/high/hmac_drbg.rs`: four
 invocations to seed `HmacDrbg::new(d, e, random)` and three to draw one
 48-byte candidate through `RandomSource::fill`, seven HMAC-SHA-384
 invocations in all. A rejected candidate would add three, which for P-384
@@ -270,7 +326,7 @@ bound on our ratio.
 
 Verification has no such problem: Graviola's `verify` takes no RNG and no
 DRBG and differs from our kernel only by hashing the message. The benchmark
-message is 25 bytes, one SHA-384 block, and the measurement below puts the
+message is 25 bytes, one SHA-384 block, and the measurement in [PERF.md](PERF.md) puts the
 hash at 0.1% of the verify row. Verification is therefore the headline
 Graviola comparison.
 
@@ -342,7 +398,7 @@ built or modified here, and no C source is compiled: the bridges are
 The BoringSSL build under `build-ct/` is `CMAKE_BUILD_TYPE=Release`
 (`-O3 -DNDEBUG`), GCC 13, assembly enabled, not FIPS, and without
 `CONSTANT_TIME_VALIDATION` (none of those options appears in its
-`CMakeCache.txt`). OpenSSL is Ubuntu's `3.0.13-0ubuntu3.15` build.
+`boringssl-build-ct:CMakeCache.txt`). OpenSSL is Ubuntu's `3.0.13-0ubuntu3.15` build.
 
 ### Their P-384 arithmetic
 
@@ -352,17 +408,17 @@ perlasm, which at six limbs takes the plain `MUL` loop and no MULX/ADX path.
 
 **OpenSSL 3.0.13.** The source is not on this machine at that version (the
 checkout in `bench_refs/openssl` is master, 4.1.0-dev, which has
-`ecp_nistp384.c`); the files below were read from the `openssl-3.0.13` tag
+`openssl:crypto/ec/ecp_nistp384.c`); the files below were read from the `openssl-3.0.13` tag
 on GitHub.
 
 | layer | 3.0.13 source |
 |---|---|
-| method | `crypto/ec/ec_curve.c`: the `NID_secp384r1` entry carries a method only under `S390X_EC_ASM`, so `ec_group_new_from_data` calls `EC_GROUP_new_curve_GFp`; `crypto/ec/ec_cvt.c` returns `EC_GFp_mont_method()` whenever `OPENSSL_BN_ASM_MONT` is defined. `ecp_nistp384.c` does not exist in 3.0. The system library exports `EC_GFp_nistp224_method`, `_nistp256_` and `_nistp521_` and no P-384 method |
-| field multiply | `ossl_ec_GFp_mont_field_mul` → `BN_mod_mul_montgomery` → `bn_mul_mont_fixed_top` (`crypto/bn/bn_mont.c`) → `bn_mul_mont` (`crypto/bn/asm/x86_64-mont.pl`), whose entry sends a limb count with `num & 3 != 0` to `.Lmul_enter`, the generic loop; `bn_mulx4x_mont` needs a multiple of four limbs, at least eight |
-| points | `BIGNUM` Jacobian, `ossl_ec_GFp_simple_add` / `_dbl` (`crypto/ec/ecp_smpl.c`) |
-| `k*G` in signing | `ossl_ec_scalar_mul_ladder` (`crypto/ec/ec_mult.c`), Montgomery ladder with coordinate blinding, no precomputed table |
+| method | `openssl-3.0.13:crypto/ec/ec_curve.c`: the `NID_secp384r1` entry carries a method only under `S390X_EC_ASM`, so `ec_group_new_from_data` calls `EC_GROUP_new_curve_GFp`; `openssl-3.0.13:crypto/ec/ec_cvt.c` returns `EC_GFp_mont_method()` whenever `OPENSSL_BN_ASM_MONT` is defined. `openssl-3.0.13:crypto/ec/ecp_nistp384.c` does not exist in 3.0. The system library exports `EC_GFp_nistp224_method`, `_nistp256_` and `_nistp521_` and no P-384 method |
+| field multiply | `ossl_ec_GFp_mont_field_mul` → `BN_mod_mul_montgomery` → `bn_mul_mont_fixed_top` (`openssl-3.0.13:crypto/bn/bn_mont.c`) → `bn_mul_mont` (`openssl-3.0.13:crypto/bn/asm/x86_64-mont.pl`), whose entry sends a limb count with `num & 3 != 0` to `.Lmul_enter`, the generic loop; `bn_mulx4x_mont` needs a multiple of four limbs, at least eight |
+| points | `BIGNUM` Jacobian, `ossl_ec_GFp_simple_add` / `_dbl` (`openssl-3.0.13:crypto/ec/ecp_smpl.c`) |
+| `k*G` in signing | `ossl_ec_scalar_mul_ladder` (`openssl-3.0.13:crypto/ec/ec_mult.c`), Montgomery ladder with coordinate blinding, no precomputed table |
 | `u1*G + u2*Q` | `ossl_ec_wNAF_mul`, interleaved wNAF, window 4 at 384 bits (`EC_window_bits_for_scalar_size`) |
-| scalar inverse | `ec_field_inverse_mod_ord` (`crypto/ec/ec_lib.c`): Fermat, `BN_mod_exp_mont` to `n - 2` |
+| scalar inverse | `ec_field_inverse_mod_ord` (`openssl-3.0.13:crypto/ec/ec_lib.c`): Fermat, `BN_mod_exp_mont` to `n - 2` |
 | P-256, for contrast | `ecp_nistz256` x86-64 assembly (`ecp_nistz256-x86_64.pl`) |
 
 **BoringSSL `956bac6e4db9`.**
@@ -377,7 +433,7 @@ on GitHub.
 | scalar inverse | `ec_simple_scalar_inv0_montgomery` → `bn_mod_inverse0_prime_mont_small` (`bn/exponentiation.cc.inc`): Fermat |
 
 **BoringSSL's P-384 field is not fiat-crypto.** `third_party/fiat` at this
-commit carries `p256_64.h`, `p256_field_64.br.c.inc` and the Curve25519
+commit carries `boringssl:third_party/fiat/p256_64.h`, `p256_field_64.br.c.inc` and the Curve25519
 files and nothing for P-384; the P-384 group is the generic Montgomery
 method above. So neither production library is the same field as the
 `aucurves` pure-Rust configuration.
@@ -401,15 +457,15 @@ method above. So neither production library is the same field as the
 | OpenSSL, full-API row | digest | derived | `ECDSA_do_sign` |
 
 BoringSSL's nonce-supplied entry point is exported in this version
-(`include/openssl/ecdsa.h`, defined in `crypto/ecdsa/ecdsa_asn1.cc`) and
+(`boringssl:include/openssl/ecdsa.h`, defined in `crypto/ecdsa/ecdsa_asn1.cc`) and
 reaches the same `ecdsa_sign_impl` as `ECDSA_do_sign`; what it skips is
 `ecdsa_sign_fixed`'s SHA-512 of the private key and digest and its
 rejection-sampled DRBG draw. The self-test hook `ecdsa_sign_fixed` calls is
-an inline no-op outside FIPS builds (`crypto/internal.h`). That column is
+an inline no-op outside FIPS builds (`boringssl:crypto/internal.h`). That column is
 like for like.
 
 OpenSSL's `ECDSA_do_sign_ex` exists in 3.0.13, but with `kinv` and `r` given
-`ossl_ecdsa_simple_sign_sig` (`crypto/ec/ecdsa_ossl.c`) skips
+`ossl_ecdsa_simple_sign_sig` (`openssl-3.0.13:crypto/ec/ecdsa_ossl.c`) skips
 `ecdsa_sign_setup`, so it computes only `s = kinv (e + d r)` and timing it
 alone would drop `k*G` and the inverse. The OpenSSL column therefore
 rebuilds the rest of `ecdsa_sign_setup` from exported functions with the same
@@ -423,7 +479,7 @@ it from the other side.
 
 The nonce derivation each full API adds is timed on its own: OpenSSL's
 `BN_generate_dsa_nonce`, called directly (two rounds of a 64-byte private-RNG
-draw hashed with SHA-512, `crypto/bn/bn_rand.c`), and BoringSSL's pair
+draw hashed with SHA-512, `openssl-3.0.13:crypto/bn/bn_rand.c`), and BoringSSL's pair
 rebuilt from `SHA512` over the same 96 bytes and `BN_rand_range_ex(k, 1, n)`,
 which runs the same `bn_rand_range_words` DRBG loop with zero additional
 data. Neither is isolated inside the library's own call.
@@ -455,94 +511,6 @@ Unlike Graviola, both libraries accept a prehashed digest and a supplied
 nonce, so every published field of the CAVP vectors, `m` and `s` included,
 is checked through both. No failure occurred and no vector was altered.
 
-### Measured
-
-2026-09-16, the same machine as the sections above (AMD Ryzen 7 PRO 7840U,
-Linux 7.0.0-31-generic, rustc 1.93.0, `--release`, pinned to core 15), 15
-repetitions of 300 iterations, every column interleaved round-robin in one
-process. **The box was loaded: load average 3.8 to 9.6 across the runs, with
-Lean workers and another field benchmark on other cores**, so the
-absolute figures are inflated and vary by up to a factor of two between
-processes; the
-ratios, which the interleaving protects, are what is reported. Eight
-processes were run: four of the committed binary (load 7.2 to 9.6) and,
-before it, four of a binary identical in every timed arm except that it
-lacked the BoringSSL nonce-derivation arm (load 3.8 to 7.0).
-
-Absolute figures, committed binary, the lower-load process of each pair:
-
-| configuration | op | backend | ours | RustCrypto | Graviola | OpenSSL | BoringSSL |
-|---|---|---|---|---|---|---|---|
-| pure Rust | sign | `aucurves` | 110 695 | 678 005 | 164 552 | 891 753 | 536 049 |
-| pure Rust | sign | `s2n` | 33 877 | 678 005 | 164 552 | 891 753 | 536 049 |
-| pure Rust | verify | `aucurves` | 621 089 | 1 240 531 | 296 337 | 700 770 | 557 621 |
-| pure Rust | verify | `s2n` | 187 960 | 1 240 531 | 296 337 | 700 770 | 557 621 |
-| CryptOpt | sign | `aucurves` | 97 202 | 815 286 | 198 086 | 914 053 | 594 536 |
-| CryptOpt | sign | `s2n` | 37 623 | 815 286 | 198 086 | 914 053 | 594 536 |
-| CryptOpt | verify | `aucurves` | 508 338 | 1 418 192 | 333 705 | 790 534 | 610 648 |
-| CryptOpt | verify | `s2n` | 197 543 | 1 418 192 | 333 705 | 790 534 | 610 648 |
-
-ns/op, median of the per-repetition figures. The OpenSSL and BoringSSL sign
-columns are the nonce-supplied ones.
-
-Ratios, ours over theirs, range over the four processes of each field
-configuration (eight for the `s2n` rows, which do not depend on it):
-
-| op | our row | vs OpenSSL | vs BoringSSL | tier against both |
-|---|---|---|---|---|
-| sign | `aucurves`, pure Rust | 0.11 – 0.13 | 0.19 – 0.21 | not same tier, against us |
-| sign | `aucurves`, CryptOpt | 0.10 – 0.11 | 0.14 – 0.16 | same tier on the field |
-| sign | `s2n` | 0.03 – 0.04 | 0.05 – 0.06 | not same tier, in our favour |
-| verify | `aucurves`, pure Rust | 0.83 – 0.89 | **1.11 – 1.28** | not same tier, against us |
-| verify | `aucurves`, CryptOpt | 0.61 – 0.68 | 0.74 – 0.85 | same tier on the field |
-| verify | `s2n` | 0.24 – 0.27 | 0.31 – 0.37 | not same tier, in our favour |
-
-The sign rows against BoringSSL are like for like; against OpenSSL they are
-against the reconstruction described above. The verify rows are like for
-like on both.
-
-**Where we lose.** Verification in the pure-Rust `aucurves` configuration
-against BoringSSL, 1.11 in three of the four processes and 1.28 in the most
-loaded one:
-our group law and orchestration over the fiat-crypto Rust field are slower
-than BoringSSL's C group law over its generic assembly Montgomery loop. The
-same row is a win against OpenSSL (0.83 to 0.89), and with the CryptOpt field
-it is a win against both (0.61 to 0.68 and 0.74 to 0.85). Against Graviola
-the losses recorded above stand, unchanged in these runs: 1.88 to 2.10 pure
-Rust and 1.46 to 1.61 with the CryptOpt field. Every other row is a win.
-
-Signing, full API against the nonce-supplied column:
-
-| process | BoringSSL, nonce supplied | BoringSSL, `ECDSA_do_sign` | its nonce derivation | OpenSSL, nonce supplied | OpenSSL, `ECDSA_do_sign` | `BN_generate_dsa_nonce` |
-|---|---|---|---|---|---|---|
-| pure Rust | 536 049 | 540 872 | 893 | 891 753 | 862 858 | 2 577 |
-| CryptOpt | 594 536 | 641 323 | 1 023 | 914 053 | 945 265 | 2 885 |
-
-The nonce derivation is 0.2% of BoringSSL's signature and 0.3% of OpenSSL's
-(0.9 to 1.4 µs and 2.1 to 3.5 µs over all processes). The full-API minus
-nonce-supplied difference moves between −85 µs and +115 µs across processes,
-two orders of magnitude above the component it would measure, so it does not
-resolve the derivation, and on this box it cannot distinguish the OpenSSL
-reconstruction from the production entry point either. Against the full API
-the sign ratios are 0.14 to 0.20 (`aucurves`) and 0.05 to 0.06 (`s2n`) for
-BoringSSL, 0.10 to 0.13 and 0.03 to 0.04 for OpenSSL; they are not like for
-like, and differ from the nonce-supplied ratios by less than the spread.
-
-`openssl speed -seconds 3 ecdsap384` on core 15 in the same window gives
-977.6 signs/s and 1363.1 verifies/s, 1.02 ms and 734 µs, through the EVP
-provider path; the harness's `ECDSA_do_sign` and `ECDSA_do_verify` figures
-over the eight processes, 0.72 to 1.24 ms and 0.58 to 0.97 ms, are the same
-magnitude.
-
-**What could not be isolated or verified.** OpenSSL's nonce-supplied signing
-cost through its own `ecdsa_sign_setup`: no exported entry point takes `k`,
-so the column is the public-API reconstruction. BoringSSL's nonce derivation
-inside `ECDSA_do_sign`: `BCM_rand_bytes_with_additional_data` is not
-exported, so the component is `BN_rand_range_ex` with zero additional data.
-The OpenSSL 3.0.13 source was read from the upstream tag, not from Ubuntu's
-patched source package, which is not on this machine; the build options
-`openssl version -a` prints do not change the method selection it describes.
-
 ## AWS-LC, the third production opponent
 
 `--features production` also brings in AWS-LC 5.9.0, the shared
@@ -567,30 +535,32 @@ two libraries exports.
 
 The build is `CMAKE_BUILD_TYPE=Release` (`-O3 -DNDEBUG`), GCC 13.3.0,
 assembly enabled, `BUILD_SHARED_LIBS=ON`; the `FIPS` option is not set in
-its `CMakeCache.txt`, so `BORINGSSL_FIPS` is undefined and the lazy
-self-test hooks are no-ops (`crypto/internal.h:1257`).
+its `aws-lc-build:CMakeCache.txt`, so `BORINGSSL_FIPS` is undefined and the lazy
+self-test hooks are no-ops (`aws-lc:crypto/internal.h:1257`).
 
 ### Its P-384 arithmetic
 
 Unlike BoringSSL and OpenSSL, AWS-LC has a dedicated P-384 method, and its
 field is s2n-bignum assembly, the arithmetic of our `s2n` backend and of
-Graviola. File:line references are to the checkout above.
+Graviola. File:line references are to the checkout above. A file name given
+without its full directory is in the `ec`, `ecdsa` or `bn` subdirectory of
+`aws-lc:crypto/fipsmodule`.
 
 | layer | source |
 |---|---|
-| method | `crypto/fipsmodule/ec/ec.c:129-146`, `EC_group_p384`: `out->meth = EC_GFp_nistp384_method()` unless `OPENSSL_SMALL` |
-| field selection | `crypto/fipsmodule/ec/ec_nistp.h:20-25` defines `EC_NISTP_USE_S2N_BIGNUM` when `OPENSSL_NO_ASM` is unset, the OS is Linux or Apple, and on x86-64 `MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2` is unset (it is `OFF` in `CMakeCache.txt`) |
-| field multiply, square | `crypto/fipsmodule/ec/p384.c:45-55` and `:288-302` map them to `bignum_montmul_p384_selector` / `bignum_montsqr_p384_selector`; `third_party/s2n-bignum/s2n-bignum_aws-lc.h:88-90` and `:112-120` call `bignum_montmul_p384` / `bignum_montsqr_p384` (MULX/ADX) when the CPU has BMI2 and ADX, and the `_alt` variants otherwise. The Ryzen 7840U has both, so the non-`_alt` routines run (inferred from the selector and `/proc/cpuinfo`, not traced) |
-| point double | `p384.c:259`, `p384_montjdouble_selector`, s2n-bignum assembly |
-| point add | `p384.c:275-284`, `ec_nistp_point_add` in C (`ec_nistp.c`) over the s2n-bignum field calls |
-| variable-base multiply (ECDH) | `p384.c:464-484`: `p384_montjscalarmul_selector` (`:475`), s2n-bignum's `p384_montjscalarmul`, the routine of the same name that our "montjscalarmul on G" micro-benchmark calls from the vendored archive (the two s2n-bignum copies were not compared) |
-| `k*G` in signing | `p384.c:491`, `ec_nistp_scalar_mul_base` (`ec_nistp.c:507-565`): a comb over the precomputed `p384_g_pre_comp` table with regular-wNAF digits, window 5 (`ec_nistp.c:308`) |
-| `u1*G + u2*Q` in verification | `p384.c:513`, `ec_nistp_scalar_mul_public` (`ec_nistp.c:647-699`): textbook wNAF, `w = 5` for both scalars, the first sub-table of the precomputed table for `G` |
-| scalar inverse | `crypto/fipsmodule/ec/scalar.c:128-133`, `bn_mod_inverse0_prime_mont_small` (`bn/exponentiation.c:756-762`): Fermat; the verifier's `ec_scalar_to_montgomery_inv_vartime` (`scalar.c:135`) uses the same routine |
-| scalar multiply mod `n` | `bn_mod_mul_montgomery_small` (`bn/montgomery.c:491-506`) → `bn_mul_mont` (`:523-540`), which at six limbs fails `bn_mulx4x_mont_capable` and `bn_mul4x_mont_capable` (`bn/internal.h:305-313`, both need `num >= 8 && num % 4 == 0`) and calls `bn_mul_mont_nohw` |
-| sign | `crypto/fipsmodule/ecdsa/ecdsa.c:157-221`, `ecdsa_sign_impl`; `ECDSA_sign_with_nonce_and_leak_private_key_for_testing` (`:251-258`) and `ECDSA_do_sign` (`:260-326`) both reach it |
-| verify | `ecdsa.c:103-148`, `ec_point_mul_scalar_public` at `:137` |
-| ECDH | `crypto/ecdh_extra/ecdh_extra.c:26-34` → `ECDH_compute_shared_secret` (`crypto/fipsmodule/ecdh/ecdh.c:28`), which copies the peer point into a fresh `EC_KEY` and runs `EC_KEY_check_fips` on it (`:58`) on every call, then `ec_point_mul_scalar` (`:64`) |
+| method | `aws-lc:crypto/fipsmodule/ec/ec.c:129-146`, `EC_group_p384`: `out->meth = EC_GFp_nistp384_method()` unless `OPENSSL_SMALL` |
+| field selection | `aws-lc:crypto/fipsmodule/ec/ec_nistp.h:20-25` defines `EC_NISTP_USE_S2N_BIGNUM` when `OPENSSL_NO_ASM` is unset, the OS is Linux or Apple, and on x86-64 `MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2` is unset (it is `OFF` in `aws-lc-build:CMakeCache.txt`) |
+| field multiply, square | `aws-lc:crypto/fipsmodule/ec/p384.c:45-55` and `:288-302` map them to `bignum_montmul_p384_selector` / `bignum_montsqr_p384_selector`; `aws-lc:third_party/s2n-bignum/s2n-bignum_aws-lc.h:88-90` and `:112-120` call `bignum_montmul_p384` / `bignum_montsqr_p384` (MULX/ADX) when the CPU has BMI2 and ADX, and the `_alt` variants otherwise. The Ryzen 7840U has both, so the non-`_alt` routines run (inferred from the selector and `/proc/cpuinfo`, not traced) |
+| point double | `aws-lc:p384.c:259`, `p384_montjdouble_selector`, s2n-bignum assembly |
+| point add | `aws-lc:p384.c:275-284`, `ec_nistp_point_add` in C (`aws-lc:ec_nistp.c`) over the s2n-bignum field calls |
+| variable-base multiply (ECDH) | `aws-lc:p384.c:464-484`: `p384_montjscalarmul_selector` (`:475`), s2n-bignum's `p384_montjscalarmul`, the routine of the same name that our "montjscalarmul on G" micro-benchmark calls from the vendored archive (the two s2n-bignum copies were not compared) |
+| `k*G` in signing | `aws-lc:p384.c:491`, `ec_nistp_scalar_mul_base` (`aws-lc:ec_nistp.c:507-565`): a comb over the precomputed `p384_g_pre_comp` table with regular-wNAF digits, window 5 (`aws-lc:ec_nistp.c:308`) |
+| `u1*G + u2*Q` in verification | `aws-lc:p384.c:513`, `ec_nistp_scalar_mul_public` (`aws-lc:ec_nistp.c:647-699`): textbook wNAF, `w = 5` for both scalars, the first sub-table of the precomputed table for `G` |
+| scalar inverse | `aws-lc:crypto/fipsmodule/ec/scalar.c:128-133`, `bn_mod_inverse0_prime_mont_small` (`aws-lc:bn/exponentiation.c:756-762`): Fermat; the verifier's `ec_scalar_to_montgomery_inv_vartime` (`aws-lc:scalar.c:135`) uses the same routine |
+| scalar multiply mod `n` | `bn_mod_mul_montgomery_small` (`aws-lc:bn/montgomery.c:491-506`) → `bn_mul_mont` (`:523-540`), which at six limbs fails `bn_mulx4x_mont_capable` and `bn_mul4x_mont_capable` (`aws-lc:bn/internal.h:305-313`, both need `num >= 8 && num % 4 == 0`) and calls `bn_mul_mont_nohw` |
+| sign | `aws-lc:crypto/fipsmodule/ecdsa/ecdsa.c:157-221`, `ecdsa_sign_impl`; `ECDSA_sign_with_nonce_and_leak_private_key_for_testing` (`:251-258`) and `ECDSA_do_sign` (`:260-326`) both reach it |
+| verify | `aws-lc:ecdsa.c:103-148`, `ec_point_mul_scalar_public` at `:137` |
+| ECDH | `aws-lc:crypto/ecdh_extra/ecdh_extra.c:26-34` → `ECDH_compute_shared_secret` (`aws-lc:crypto/fipsmodule/ecdh/ecdh.c:28`), which copies the peer point into a fresh `EC_KEY` and runs `EC_KEY_check_fips` on it (`:58`) on every call, then `ec_point_mul_scalar` (`:64`) |
 
 `nm` on the library lists `bignum_montmul_p384`, `bignum_montmul_p384_alt`,
 `bignum_montinv_p384`, the `p384_montjscalarmul` loops and the
@@ -619,7 +589,7 @@ full-API row is `ECDSA_do_sign`. `ECDSA_do_sign` has BoringSSL's structure
 rebuilt pair, `SHA512` and `BN_rand_range_ex(k, 1, n)`. Verification is
 `ECDSA_do_verify` on a pre-built `ECDSA_SIG`. Setting the public key of a
 signing key runs AWS-LC's pairwise consistency check (`ec_key_gen_pct`,
-`ec_key.c:247`), which is key setup and not timed.
+`aws-lc:crypto/fipsmodule/ec/ec_key.c:247`), which is key setup and not timed.
 
 ### Interop
 
@@ -642,42 +612,6 @@ all six print `SKIP:` and pass.
 No ECDSA divergence was found. The DHKEM reconstruction has one; see
 [§ Divergences of the opponents from RFC 9180](#divergences-of-the-opponents-from-rfc-9180).
 
-### Measured
-
-2026-09-16, the machine of [§ Measured](#measured), pinned to core 15, one
-process of the pure-Rust AUCurves build (`P384_NO_CRYPTOPT=1`),
-`BENCH_SECTIONS=dhkem,ecdsa BENCH_REPS=15 BENCH_ITERS=300`, every column
-interleaved round-robin. **Load average 4.0 before the run and 6.7 after**,
-with Lean and C compiler processes on other cores, so absolute figures are
-from a loaded machine. `gen/` held the emitted ECDSA sources and no DHKEM
-source, so the ECDSA rows are emitted kernels and the DHKEM rows the
-transcription.
-
-| op | ours `aucurves` | ours `s2n` | AWS-LC | `aucurves` / AWS-LC | `s2n` / AWS-LC |
-|---|---|---|---|---|---|
-| sign, nonce supplied | 97 407 | 30 356 | 74 443 | **1.31** | 0.41 |
-| verify | 532 002 | 155 941 | 176 936 | **3.01** | 0.88 |
-| sign, AWS-LC full API | | | 81 541 | 1.19 | 0.37 |
-
-ns/op, median of the per-repetition figures. AWS-LC's nonce-derivation arm
-is 603 ns. In the same process: OpenSSL 3.0.13 sign 762 421 and verify
-622 992, BoringSSL 491 900 and 483 369, Graviola 145 965 and 269 249.
-
-**Where we lose.** Both `aucurves` rows. In the pure-Rust configuration our
-group law over the fiat-crypto Rust field is slower than AWS-LC's comb and
-wNAF over s2n-bignum assembly: 1.31 on signing and 3.01 on verification. The
-same arithmetic tier is the `s2n` row, which is faster on both, 0.41 and
-0.88. Two differences on the signing path are known from the sources and
-were not isolated inside AWS-LC: its scalar inverse is Fermat over the
-generic `bn_mul_mont_nohw`, where the `s2n` backend calls the divstep
-inverse (in this process our own Fermat chain took 38.7 µs and the divstep
-2.6 µs), and its comb is `ec_nistp_scalar_mul_base` in C with a C point
-addition, where ours is `src/comb_s2n.rs`. Both sides verify with a width-5 two-term pass over
-the same field, and the verification margin is the narrower one.
-
-The CryptOpt and s2n-montmul AUCurves field configurations were not run
-against AWS-LC.
-
 ## Paths
 
 The three path dependencies are relative and assume the AUCurves checkout is
@@ -693,10 +627,11 @@ point_from_bytes}`, which fix the 144-byte point encoding. RustCrypto's
 `p384` is imported under the name `p384_rc` because the path dependency already occupies
 the name.
 
-Two more paths are read, never written, and are not cargo dependencies:
+Further paths are read, never written, and are not cargo dependencies:
 
-    s2n-bignum   -> ../reference_install/s2n-bignum/x86/libs2nbignum.a
-                    (feature `s2n`; override with S2N_BIGNUM_DIR)
+    s2n-bignum   -> $S2N_BIGNUM_DIR/x86/libs2nbignum.a
+                    (feature `s2n`; S2N_BIGNUM_DIR is the s2n-bignum checkout,
+                     default ../../../SSProve-lean/bench/reference_install/s2n-bignum)
     emitted montmul -> ../p384_compare/gen/p384_montmul_proven.s
     emitted solinas -> ../p384_fieldmul_compare/gen_com/p384_mul_x86_from_lean.s
                     (feature `emit-field`, the `fieldbench` binary only;
@@ -718,9 +653,31 @@ Two more paths are read, never written, and are not cargo dependencies:
                      at run time and skipped when absent; override with
                      P384_AWSLC_LIBCRYPTO)
 
+`S2N_BIGNUM_DIR` is the single setting for the s2n-bignum checkout: `build.rs`,
+the `Makefile` of this directory (which also derives `S2N_FIELD` from it for
+`make bench-dhkem`) and every script in `bench/s2n_import` read it. The default
+names the checkout of the sibling SSProve-lean tree, the one s2n-bignum checkout
+on the development machine; the build stops with the path it looked for when
+`x86/libs2nbignum.a` is absent there. The checkout must be at the commit the
+importer pins (`bench/s2n_import/kernels/bignum_montmul_p384.sh`) for
+`make import` in `bench/s2n_import`; the archive is built in the checkout with
+its own makefile.
+
 The two `.s` files are untracked build output of their Lean emitters.
 `build.rs` hands them to the linker of the `fieldbench` binary and never
-regenerates them; regenerate with lake before recording a figure from them.
+regenerates them; regenerate them before recording a figure from them. Their
+emitters are `emitMainP384` (module
+`CatCrypt.Crypto.SecureCompilation.X86Backend.Curve6MontMulProvenEmit`) and
+`emitP384` (module `CatCrypt.Crypto.SecureCompilation.X86Backend.P384FieldKernel`),
+both in this repository. The drivers that call them are in SSProve-lean and
+write relative to the working directory, so run from `~/Claude/SSProve-lean`
+they write under that tree's `bench/`:
+
+    lake env lean bench/sm2_compare/p384_montmul_proven_emit.lean
+    lake exe emit-securecompilation3      # includes P384FieldKernel.emitP384
+
+Copy the two files here afterwards, or point `P384_EMIT_MONTMUL_S` and
+`P384_EMIT_SOLINAS_S` at them.
 
 Graviola is a pinned registry dependency, `graviola = "=0.4.1"`, and is
 declared under `[dependencies]` rather than `[dev-dependencies]` because the
@@ -801,12 +758,12 @@ its domain.
 `p384_scalar_inv` is the Bernstein-Yang divstep inversion of
 `safegcd::safegcd_p384_order`, which is `safegcd-rs`'s modulus-generic
 `ModInfo<7>` core instantiated at the group order. It is the sibling of
-`safegcd_p384.rs`, the base-field instance behind `fp_inv`: `n` and `p` are
+`safegcd-rs:src/safegcd_p384.rs`, the base-field instance behind `fp_inv`: `n` and `p` are
 both odd and both 384 bits wide, so both take 7×62-bit signed limbs and the
 same 15 outer iterations of 59 divsteps. `ModInfo::outer_iters` requires
 `ceil((9437*b + 1) / (4096*59))` for a b-bit modulus under the δ₀=1/2
 encoding, which is 15 at `b = 384`, and `modinv_62` requires only that the
-bottom limb be odd; `safegcd_p384_order.rs` asserts both, and its in-crate
+bottom limb be odd; `safegcd-rs:src/safegcd_p384_order.rs` asserts both, and its in-crate
 KAT checks `x * x^-1 = 1 (mod n)` on the same inputs as the base-field one,
 including `n - 1`.
 
@@ -822,7 +779,7 @@ squarings and 287 multiplications, left-to-right square-and-multiply over
 figures from `N_MINUS_2`, and `divstep_inverse_matches_fermat` checks that
 the two agree on 200 random scalars and on `0`, `1`, `2`, `n - 2` and
 `n - 1`. It is the differential reference for the leaf, and the measured
-cost of both is in the table below.
+cost of both is in [PERF.md § The scalar inverse](PERF.md#the-scalar-inverse).
 
 ## The two-term multiply
 
@@ -849,7 +806,7 @@ at 14, and taking the non-adjacent form's mean digit density of `1/(W + 1)`:
 The interleaved pass also drops the constant-time table scans the two
 multiplication leaves perform — 3827 entries between them, each a
 three-coordinate masked select — which is the rest of the difference the
-measurement below shows.
+measurement in [PERF.md § The two-term multiply](PERF.md#the-two-term-multiply) shows.
 
 ## `gen/` and the fallback
 
@@ -861,20 +818,23 @@ out by hand. `p384_ecdsa_rust::EMITTED` reports which path a binary took, and
 `--features force-fallback` selects the transcription even when `gen/` is
 populated, so the two can be compared.
 
-`gen/` currently holds four files emitted by `lake exe emit-p384-rust`:
-`p384_ecdsa_verify.rs`, `p384_ecdsa_sign.rs`, `p384_ecdsa_verify_msm.rs` and
-`p384_msm_term.rs`. Their call sequences agree with the fallback
-transcription leaf call for leaf call — thirteen for verify, ten for sign,
-three for the two-term MSM. Nothing under `gen/` is hand-edited; the
-provenance note lives in `gen/PROVENANCE.md` rather than `gen/README`
-because the emitter writes into that directory.
+`gen/` is written by `lake exe emit-p384-rust`, run from the root of this
+repository (the executable and its module `CatCrypt/EmitArtifacts/P384Rust.lean`
+are declared in this repository's `lakefile.lean`). It holds six files: the
+ECDSA files `p384_ecdsa_verify.rs`, `p384_ecdsa_sign.rs`,
+`p384_ecdsa_verify_msm.rs` and `p384_msm_term.rs`, and the two DHKEM files of
+[§ DHKEM](#dhkemp-384-hkdf-sha384). The ECDSA call sequences agree with the
+fallback transcription leaf call for leaf call: thirteen for verify, ten for
+sign, three for the two-term MSM. Nothing under `gen/` is hand-edited; the
+provenance note is `gen/PROVENANCE.md` rather than a README because the
+emitter writes into that directory.
 
 ## Test vectors
 
 **FIPS 186-4 CAVP, `[P-384,SHA-384]` SigGen, 15 vectors** — in
-`src/vectors.rs`. NIST publishes them in `SigGen.txt` inside
+`src/vectors.rs`. NIST publishes them in `186-4ecdsatestvectors.zip:SigGen.txt` inside
 `186-4ecdsatestvectors.zip`; the copy transcribed here is the one in the
-RustCrypto `p384` 0.13.1 crate at `src/test_vectors/ecdsa.rs`, which names
+RustCrypto `p384` 0.13.1 crate at `p384-0.13.1:src/test_vectors/ecdsa.rs`, which names
 that source and whose `m` field is the SHA-384 prehash of the original `Msg`.
 That crate is in this machine's cargo registry cache. Nothing was fetched
 from the network and no vector was constructed here.
@@ -882,7 +842,7 @@ from the network and no vector was constructed here.
 **CAVP SigVer is not on this machine.** No `.rsp` file for ECDSA P-384
 verification was found under `~/Claude`, `~/.cargo` or the AUCurves tree. The
 negative-verification corpus used instead is Google Wycheproof's
-`ecdsa_secp384r1_sha384_p1363_test.txt`, in BoringSSL's converted text form
+`wycheproof_testvectors:ecdsa_secp384r1_sha384_p1363_test.txt`, in BoringSSL's converted text form
 at `~/Claude/bench_refs/boringssl/third_party/wycheproof_testvectors`. It is
 Wycheproof, not CAVP, and `tests/wycheproof.rs` says so. The vectors are not
 vendored into this directory; point `WYCHEPROOF_DIR` at a checkout, and the
@@ -902,8 +862,8 @@ RustCrypto and against `src/reference.rs`.
 The emitted verify checks `r` and `s` against `[1, n)`, validates `Q`, and
 ands the three flags with the arithmetic relation; the emitted sign reports
 an out-of-range `r` or `s` through `ok`. On the Wycheproof corpus and on
-every differential input in `tests/`, the kernel's verdict agrees with
-RustCrypto's.
+every differential input in `tests/`, the kernel accepts exactly the inputs
+RustCrypto accepts.
 
 It carries no explicit identity check on `R = u1*G + u2*Q` and needs none:
 the identity gives `x(R) = 0`, which no `r` in `[1, n)` equals.
@@ -935,6 +895,10 @@ builds the D3 signature with a small `s` by solving for the digest,
 48-byte input.
 
 ## Commands
+
+Every command below with `--features s2n` needs `S2N_BIGNUM_DIR` to name a
+built s2n-bignum checkout, or the default of [§ Paths](#paths) to exist. The
+`Makefile` sets and exports the default.
 
     # every test, every backend, pure-Rust AUCurves field
     P384_NO_CRYPTOPT=1 cargo test --offline --release --features s2n -- --nocapture
@@ -990,7 +954,10 @@ builds the D3 signature with a small `s` by solving for the digest,
 
 The `Makefile` wraps these as `test`, `test-asm`, `test-no-s2n`, `kat`,
 `wycheproof`, `graviola`, `production`, `bench`, `bench-production` and
-`field`. `--offline` is required: the
+`field`, and the DHKEM commands of
+[§ DHKEM, Commands](#commands-1) as `dhkem` and `bench-dhkem`. None of them
+runs Lean. Recorded results and the conditions of each run are in
+[PERF.md](PERF.md). `--offline` is required: the
 registry cache holds the pinned RustCrypto and Graviola versions and the
 network is not reliable here.
 
@@ -1004,7 +971,8 @@ the counts are test functions, not scored cases. Without the feature it is
 six for AWS-LC) and the six of `tests/dhkem_production.rs` added; those
 files compile to nothing without `production`. The three counts, 80, 94 and
 116, were rerun on 2026-09-16 after AWS-LC was added, with
-`P384_NO_CRYPTOPT=1` only, every test passing. Under `--features force-fallback` two fewer, because the two
+`P384_NO_CRYPTOPT=1` only, every test passing; the `s2n,production` count was
+rerun on 2026-09-17 in this repository, 116 passing. Under `--features force-fallback` two fewer, because the two
 ECDSA `built_against_the_emitted_sources` assertions are compiled out; the
 DHKEM one checks the fallback instead. Before AWS-LC was added, all five
 configurations were run on 2026-09-16 with every test passing, the
@@ -1013,450 +981,6 @@ configurations were run on 2026-09-16 with every test passing, the
 instance:
 
     cd ~/Claude/BLS/AUCurves/safegcd-rs && cargo test --offline --release
-
-## Measured
-
-2026-09-16, AMD Ryzen 7 PRO 7840U (Zen 4, 8 cores / 16 threads), Linux
-7.0.0-31-generic, rustc 1.93.0, `--release`, pinned to core 15, load average
-1.1 to 1.9 during the run — one Rocq worker was saturating another core. The
-figure is the median of the per-repetition ns/op. Our side, RustCrypto and
-Graviola, and the two arms of each micro-benchmark, are interleaved
-round-robin within each process, because on this machine the clock drifts by
-more over a sequential sweep than the variants differ from each other
-(the `build.sh` script of the AUCurves `p384-safe-rust` crate records that
-measurement).
-
-Whether the CryptOpt assembly is linked is a compile-time choice of
-`p384-safe-rust`, so the two configurations cannot be interleaved against
-each other; they are separate processes and separate rows. Against
-RustCrypto only the pure-Rust row is a same-tier comparison: the assembly row
-has a hand-superoptimized field multiply on our side and Rust on
-RustCrypto's. Against Graviola it is the assembly row that is same-tier and
-the pure-Rust row that is not.
-
-The Graviola figures are a later run on the same machine, core and pinning;
-the RustCrypto columns were re-measured inside the same two processes, so the
-three columns of a row are directly comparable. Against the earlier
-`### Whole operation` table the RustCrypto column sits 7 to 10% lower, which
-bounds the drift between the two runs; the four ratios reproduce to two
-decimals across them.
-
-### The scalar inverse
-
-15 repetitions of 4000 iterations, one fixed scalar, pure-Rust field. The
-scalar field is fiat-crypto in both configurations and the divstep inverter
-calls neither `fp_mul` nor `fp_square`, so the assembly configuration
-reproduces these three rows to within 1%.
-
-| inverse | ns/op | vs Fermat |
-|---|---|---|
-| Fermat `a^(n-2)`, 383 squarings + 287 multiplications | 33 016 | 1.00 |
-| divstep, 15 × 59, `safegcd_p384_order` | 2 228 | 0.07 |
-| base-field `fp_inv`, `safegcd_p384`, for scale | 2 256 | — |
-
-The two divstep inverses cost the same, as they should: identical limb
-count, identical iteration count, and a modulus that enters only as data.
-`bench/p384_safegcd_compare` recorded `fp_inv` at 2333 ns/op on this box,
-which is the same figure to 3%.
-
-Both are the half-delta variant. The safegcd core starts `zeta = -1`, the
-δ₀ = 1/2 encoding, and `ModInfo::outer_iters` documents the requirement
-`outer_iters ≥ ⌈(9437·b + 1)/(4096·59)⌉`, which is fifteen at `b = 384` and
-gives 885 divsteps; the classic δ₀ = 1 bound at that width is 1110, which
-needs nineteen outer iterations. Running the same step over the same modulus
-at each count, and asserting the two agree on 256 inputs first:
-
-| bound | divsteps | ns/op | ratio |
-|---|---|---|---|
-| classic δ₀ = 1, 19 × 59 | 1121 | 2718 | 1.00 |
-| half δ₀ = 1/2, 15 × 59 | 885 | 2145 | 0.79 |
-
-The ratio is the iteration ratio, 885/1121, to two decimals — the per-step
-cost is the same and only the count differs. At the whole-operation level it
-is worth about 570 ns, under one percent of a signature, because the inverse
-is now a few percent of the operation rather than the quarter of it that the
-Fermat chain was.
-
-### The two-term multiply
-
-15 repetitions of 200 iterations, on the `u1`, `u2` and `Q` of the verify
-row below.
-
-| configuration | route | ns/op | ratio |
-|---|---|---|---|
-| fiat-crypto field, pure Rust | `mul_base` + `mul` + `add`, 3 leaves | 480 031 | 1.00 |
-| fiat-crypto field, pure Rust | `p384_lincomb`, interleaved, w = 5 | 445 379 | 0.93 |
-| CryptOpt assembly field | `mul_base` + `mul` + `add`, 3 leaves | 353 576 | 1.00 |
-| CryptOpt assembly field | `p384_lincomb`, interleaved, w = 5 | 329 233 | 0.93 |
-
-### Whole operation
-
-15 repetitions of 300 iterations.
-
-| configuration | op | ours ns/op | RustCrypto ns/op | ratio | same tier |
-|---|---|---|---|---|---|
-| fiat-crypto field, pure Rust | sign | 80 490 | 505 369 | 0.16 | yes |
-| fiat-crypto field, pure Rust | verify | 455 950 | 927 494 | 0.49 | yes |
-| CryptOpt assembly field | sign | 62 281 | 505 166 | 0.12 | no |
-| CryptOpt assembly field | verify | 339 054 | 951 083 | 0.36 | no |
-
-Ratio is ours / RustCrypto; below 1.00 means our side is faster. A repeat of
-the whole measurement gave the same four ratios to two decimals (ours:
-80 767 / 458 594 pure, 62 486 / 339 050 assembly; RustCrypto: 506 812 /
-931 008 and 506 800 / 933 626). The RustCrypto column differs by 2.5%
-between the two processes of a run, which bounds the drift between them.
-
-### Whole operation, all three implementations
-
-15 repetitions of 300 iterations, one process per field configuration, the
-three sides interleaved round-robin inside each. Same machine, core and
-pinning as the two-column table above, but a separate run: read the ratios
-across the two tables and the absolutes only within one.
-
-| configuration | op | ours ns/op | RustCrypto | vs RC | Graviola | vs GV |
-|---|---|---|---|---|---|---|
-| fiat-crypto field, pure Rust | sign | 73 061 | 461 528 | 0.16 | 108 205 | 0.68 |
-| fiat-crypto field, pure Rust | verify | 414 759 | 851 848 | 0.49 | 206 189 | **2.01** |
-| CryptOpt assembly field | sign | 57 460 | 468 695 | 0.12 | 112 181 | 0.51 |
-| CryptOpt assembly field | verify | 310 122 | 857 869 | 0.36 | 201 581 | **1.54** |
-
-A repeat of the whole measurement gave the same ratios against RustCrypto to
-two decimals and against Graviola to within 4%: ours 73 891 / 417 078 pure
-and 57 019 / 305 075 assembly, Graviola 109 703 / 199 535 and 108 776 /
-197 638, so 0.67 and 2.09 pure, 0.52 and 1.54 assembly. The Graviola verify
-column is the noisiest of the six, moving 1.3% between the two runs.
-
-Tier per row, and what each column includes:
-
-| row | vs RustCrypto | vs Graviola |
-|---|---|---|
-| pure Rust, sign | same tier; both prehashed and both given `k` | not same tier (Rust against assembly), *and* not like for like (their column is the whole `sign` API) |
-| pure Rust, verify | same tier | not same tier; like for like up to a 0.1% message hash |
-| assembly, sign | not same tier | same tier, but not like for like |
-| assembly, verify | not same tier | **same tier and like for like — the headline Graviola row** |
-
-The RustCrypto ratios are unchanged from the previous measurement: 0.16 and
-0.49 against 0.16 and 0.50 pure Rust, 0.12 and 0.36 against 0.12 and 0.36
-with the assembly field.
-
-**Where we lose.** Verification, against Graviola, in both configurations.
-The headline row — same tier, like for like — is 310 µs against 202 µs, a
-factor of 1.54 slower. The pure-Rust row is 2.01, which is the tier gap and
-is reported as such. Both are the two-term multiply: our `p384_lincomb` is
-Shamir with a 5-bit window over the AUCurves group law, and Graviola runs two
-5-bit-window Booth multiplications in s2n-bignum assembly and still finishes
-first. The 1.54 is the figure to move, and it is not a compiler-emit figure:
-the orchestration above the leaves is a handful of calls either way.
-
-**Where we win, and by how much once the caveat is paid.** Signing, in both
-configurations, but the column is not like for like: Graviola's `sign` does
-SHA-384, a system-RNG read and an RFC 6979 nonce derivation that our kernel
-does not. Timing those three separately bounds the part that can be
-subtracted:
-
-| configuration | component | ns/op | of `sign` |
-|---|---|---|---|
-| pure Rust | SHA-384 of the 25-byte message | 193 | 0.2% |
-| pure Rust | system RNG, 16 bytes | 426 | 0.4% |
-| pure Rust | RFC 6979 HMAC_DRBG, 7 × HMAC-SHA-384 | 5 422 | 5.0% |
-| pure Rust | subtotal | 6 041 | 5.6% |
-| pure Rust | `sign`, measured | 108 205 | 100% |
-| pure Rust | arithmetic only, upper bound | 102 164 | — |
-| CryptOpt assembly | subtotal of the same three | 6 022 | 5.4% |
-| CryptOpt assembly | `sign`, measured | 112 181 | 100% |
-| CryptOpt assembly | arithmetic only, upper bound | 106 159 | — |
-
-Against that upper bound the sign ratio is at most 0.72 pure Rust and 0.54
-with the assembly field, so the signing win survives the caveat in both
-configurations. It comes from the fixed-base comb: Graviola's README states
-that its P-384 base-point multiplication uses the same 5-bit window as its
-variable-point one, "leaving some P384 base point performance on the table".
-
-The subtraction is bounded and not exact. The three components are timed
-outside `sign`, because `rfc6979_sign_with_random` is private and the `Hash`
-parameter cannot be instantiated downstream; the DRBG figure is the
-reconstruction described above, over Graviola's own `Hmac<Sha384>`. Whatever
-else `sign` does — the private-key encode, the zeroise, the rejection test —
-is unaccounted, so the arithmetic-only row is an upper bound and the ratio
-against it is an upper bound too. **What could not be isolated:** Graviola's
-arithmetic-only signing cost exactly, and its internal HMAC_DRBG object,
-which is `pub(crate)`.
-
-On the verify side the hash is 193 ns of a 206 189 ns row, 0.09%, so removing
-it moves the pure-Rust ratio from 2.011 to 2.013 and the assembly ratio from
-1.538 to 1.540. The message is 25 bytes, one SHA-384 block; a longer message
-would raise Graviola's column and flatter ours, which is why a short one is
-used.
-
-### Against the previous kernel
-
-The previous kernel used the Fermat scalar inverse and reached `u1*G + u2*Q`
-through `p384_scalar_mul_base`, `p384_scalar_mul` and `p384_point_add`. Only
-the ratio columns compare across the two dates: the RustCrypto baseline was
-457 677 – 458 128 ns/op for sign and 838 679 – 839 781 for verify on the
-earlier run and 505 166 – 506 812 and 927 494 – 951 083 here, on the same
-machine, binary and pinning, with a Rocq worker on the box this time.
-
-| configuration | op | ratio, previous | ratio, now |
-|---|---|---|---|
-| fiat-crypto field, pure Rust | sign | 0.22 | 0.16 |
-| fiat-crypto field, pure Rust | verify | 0.56 | 0.49 |
-| CryptOpt assembly field | sign | 0.18 | 0.12 |
-| CryptOpt assembly field | verify | 0.42 | 0.36 |
-
-Nothing got slower. The movement is attributable to the two changes
-separately, and the two micro-benchmarks account for it within 2%. Scaling
-the previous absolute figures by the RustCrypto baseline's own movement puts
-the previous kernel at 111.4 µs and 520.9 µs (pure Rust) and 93.3 µs and
-401.2 µs (assembly) under this run's conditions. Signing calls the inverse
-once and not the two-term multiply, so it should drop by the inverse's
-30.8 µs; verification calls both, so it should drop by 30.8 µs plus the
-34.7 µs (pure Rust) or 24.3 µs (assembly) of the multiply:
-
-| configuration | op | previous, rescaled | predicted | measured |
-|---|---|---|---|---|
-| fiat-crypto field, pure Rust | sign | 111.4 µs | 80.6 µs | 80.5 µs |
-| fiat-crypto field, pure Rust | verify | 520.9 µs | 455.4 µs | 456.0 µs |
-| CryptOpt assembly field | sign | 93.3 µs | 62.5 µs | 62.3 µs |
-| CryptOpt assembly field | verify | 401.2 µs | 346.0 µs | 339.1 µs |
-
-The rescaling is an estimate, not a measurement: it assumes our side and
-RustCrypto's were slowed by the same factor between the two dates. The
-micro-benchmarks are direct, and they are what the attribution rests on.
-
-These are whole-operation numbers for an orchestration the compiler emitted
-over our own verified leaves. They say nothing about the correctness of the emit;
-that is the Lean equivalence proof, and a passing KAT is not a substitute for
-it (`../AGENTS.md`, "KAT vs correctness proof").
-
-## Measured, the s2n-bignum backend
-
-2026-09-16, same machine as the tables above (AMD Ryzen 7 PRO 7840U, Zen 4,
-8 cores / 16 threads, Linux 7.0.0-31-generic, rustc 1.93.0, `--release`,
-pinned to core 15). **The box was busier than during the run recorded above:
-load average 2.4 to 4.9, with Lean workers on other cores throughout.** Every
-absolute figure in this section is inflated by that — RustCrypto's sign
-column reads 582 to 705 µs here against 462 to 469 µs there — so read the
-ratios, which the round-robin interleaving protects, and not the absolutes.
-Four processes were run, two per AUCurves field configuration, and the spread
-between them is quoted on every row.
-
-### The P-384 field multiply, which decides what could be built
-
-Before any configuration was built on our own field kernels, the two emitted
-P-384 field kernels in the tree were measured against s2n-bignum's. Neither
-had been measured against anything recorded: `bench/framework/geomean_ratios.tsv`
-has no P-384 row, and `bench/p384_fieldmul_compare/README.md`'s bench section
-is deferred.
-
-`src/bin/fieldbench.rs`, `--features s2n,emit-field`. Known-answer gate
-first, 100 361 operand pairs per arm — all pairs of corner operands plus
-100 000 random pairs below `p` — every output byte-identical to a reference
-built from `bignum_montmul_p384` itself, and every output below `p`. No
-timing is printed unless every arm passes. Then a serial dependent chain,
-301 samples of 2000 multiplies, arms interleaved in rotating order within
-each sample. The figure is invariant-TSC reference cycles, minimum and
-median.
-
-| arm | computes | min cyc | med cyc | min ns | ratio to s2n |
-|---|---|---|---|---|---|
-| `p384_montmul_proven`, CatCrypt emit | `x y R⁻¹ mod p`, `R = 2^384` | 330.1 | 343.7 | 100.1 | **2.58** |
-| `bignum_montmul_p384`, s2n-bignum | `x y R⁻¹ mod p`, `R = 2^384` | 127.9 | 132.1 | 38.8 | 1.00 |
-| `p384::fp_mul`, fiat-crypto Rust | `x y R⁻¹ mod p` | 210.2 | 219.8 | 63.8 | 1.64 |
-| `p384::fp_mul`, CryptOpt assembly | `x y R⁻¹ mod p` | 144.6 | 150.3 | 43.9 | 1.23 |
-| `p384_mul_x86_from_lean`, CatCrypt emit | `x y mod p`, ordinary domain | 299.5 | 311.1 | 90.9 | 2.34 |
-
-The two CryptOpt and fiat rows come from two processes (the field is a
-compile-time choice); the other three rows are from the pure-Rust process and
-reproduce in the assembly process to within 3%.
-
-**The first row is the answer, and it is a loss.** Our emitted P-384
-Montgomery multiply is **2.58× slower** than s2n-bignum's on the minima and
-2.60× on the medians, on the same function, the same Montgomery domain, the
-same six-limb layout and the same calling convention. Three runs gave 2.573,
-2.575 and 2.581 on the minima, so the figure is not noise. It is also slower
-than the fiat-crypto Rust it would replace, by a factor of 1.57.
-
-This is consistent with what `bench/p384_fieldmul_compare/README.md` already
-says of the other kernel: correctness-first, unscheduled emit, with no
-register-residence or scheduling pass applied. Nothing about the result is
-surprising and nothing about it is hidden.
-
-The Solinas row is a different shape of comparison and not a like-for-like
-one: it computes `x y mod p` in the ordinary domain through a 6×6 MULX/ADCX
-schoolbook and a derived signed eleven-term Solinas reduction, where the
-montmul rows compute `x y R⁻¹ mod p`. It does more of one kind of work and
-none of another. It is timed as the other emitted P-384 field kernel; it does not substitute
-for the montmul.
-
-**Consequence for the backends.** A fourth configuration with our emitted
-field kernels under the group law was not built. On these numbers it would be
-slower than all three existing ones and would answer no question the others
-do not. The field layer is where the work is, and until the emitted montmul
-is within reach of 127 cycles there is nothing to compose it into. Note also
-that a mixed configuration would have to be internally consistent about the
-Montgomery domain: `p384_montmul_proven` and `bignum_montmul_p384` agree on
-`R = 2^384`, but `p384_mul_x86_from_lean` is in the ordinary domain and
-cannot be dropped in beside either.
-
-At the group layer there is nothing to compose at all. The six-limb emitted
-point-operation stack has uninhabited realizer bundles and a ladder that
-cannot read its scalar, so the group law in every configuration here comes
-from AUCurves or from s2n-bignum.
-
-### The base-point multiply, the first orchestration lever
-
-The comb against the archive's own windowed multiplication, on identical
-s2n-bignum arithmetic. 15 repetitions of 200 iterations, round-robin. The
-second row is the route Graviola takes for its base point.
-
-| route | ns/op, pure process | ns/op, assembly process | ratio |
-|---|---|---|---|
-| `p384_montjscalarmul` on `G` (as Graviola) | 151 409 | 128 834 | 1.00 |
-| fixed-base comb, `w = 5`, `p384_montjmixadd` | 29 261 | 25 433 | **0.19 – 0.20** |
-| AUCurves fixed-base comb, `w = 5`, for scale | 102 404 | 64 091 | 0.68 / 0.50 |
-
-The first two rows run the same field operations and the same point
-operations. They differ only in how the multiplication is organised, so the
-ratio is the comb's alone: **5.1× on the base-point multiply**, from trading
-three hundred and eighty-four doublings for a 229 KB table. The repeat
-process gave 0.19 and 0.19.
-
-### The two-term multiply, the second lever
-
-| backend | route | ns/op, pure | ns/op, assembly | ratio |
-|---|---|---|---|---|
-| `aucurves` | `mul_base` + `mul` + `add`, 3 leaves | 1 114 346 | 733 373 | 1.00 |
-| `aucurves` | interleaved, `w = 5` | 648 330 | 422 349 | 0.58 |
-| `s2n` | `mul_base` + `mul` + `add`, 3 leaves | 302 991 | 279 040 | 1.00 |
-| `s2n` | interleaved, `w = 5` | 185 161 | 169 004 | **0.61** |
-
-The `s2n` split route, 303 µs and 279 µs, is within a few percent of
-Graviola's whole verify row measured in the same processes (298 µs and 286
-µs), which is the expected reading of a verification that performs two
-separate window multiplications and one addition.
-
-### The scalar inverse
-
-15 repetitions of 4000 iterations, round-robin, pure-Rust process.
-
-| inverse | ns/op | vs Fermat |
-|---|---|---|
-| Fermat `a^(n-2)`, 383 squarings + 287 multiplications | 45 742 | 1.00 |
-| divstep, 15 × 59, `safegcd_p384_order` | 3 045 | 0.07 |
-| base-field `fp_inv`, for scale | 3 371 | 0.07 |
-| s2n-bignum generic `bignum_modinv` at the group order | 3 119 | 0.07 |
-
-s2n-bignum has **no** group-order inverse for P-384: `bignum_inv_p384` and
-`bignum_montinv_p384` are both modulo the field prime. What it has is the
-generic `bignum_modinv` for an arbitrary odd modulus, and that is the last
-row. It computes the same function as the divstep inverse
-(`tests/s2n.rs::generic_modinv_matches_the_divstep_inverse`, sixteen random
-scalars) and runs within 3% of it across all four processes, sometimes above
-and sometimes below. On that showing there is no reason to swap, and the
-`s2n` backend keeps the crate's divstep inverse, as every other backend does.
-
-### Whole operation, three backends
-
-15 repetitions of 300 iterations, one process per AUCurves field
-configuration, every side interleaved round-robin inside each. The `s2n`
-rows appear in both processes and should agree; the spread between them
-bounds the run-to-run drift.
-
-Pure-Rust process, first run:
-
-| op | backend | ours ns/op | RustCrypto | vs RC | Graviola | vs GV |
-|---|---|---|---|---|---|---|
-| sign | `aucurves` | 108 486 | 704 823 | 0.15 | 176 435 | 0.61 |
-| sign | `s2n` | 34 459 | 704 823 | 0.05 | 176 435 | **0.20** |
-| verify | `aucurves` | 649 971 | 1 294 174 | 0.50 | 297 669 | 2.18 |
-| verify | `s2n` | 193 854 | 1 294 174 | 0.15 | 297 669 | **0.65** |
-
-CryptOpt-assembly process, first run:
-
-| op | backend | ours ns/op | RustCrypto | vs RC | Graviola | vs GV |
-|---|---|---|---|---|---|---|
-| sign | `aucurves` | 79 333 | 626 086 | 0.13 | 153 930 | 0.52 |
-| sign | `s2n` | 32 005 | 626 086 | 0.05 | 153 930 | **0.21** |
-| verify | `aucurves` | 431 953 | 1 162 307 | 0.37 | 286 174 | 1.51 |
-| verify | `s2n` | 167 488 | 1 162 307 | 0.14 | 286 174 | **0.59** |
-
-Four processes, the ratios that matter:
-
-| ratio | pure #1 | pure #2 | asm #1 | asm #2 |
-|---|---|---|---|---|
-| `s2n` sign / Graviola | 0.20 | 0.20 | 0.21 | 0.21 |
-| `s2n` verify / Graviola | 0.65 | 0.59 | 0.59 | 0.62 |
-| `s2n` sign / RustCrypto | 0.05 | 0.05 | 0.05 | 0.05 |
-| `s2n` verify / RustCrypto | 0.15 | 0.14 | 0.15 | 0.14 |
-| `aucurves` verify / Graviola | 2.18 | 2.04 | 1.51 | 1.51 |
-
-The `aucurves` ratios reproduce the run recorded in the section above — 0.15
-to 0.16 and 0.50 for sign and verify against RustCrypto pure-Rust, 0.13 and
-0.37 with the assembly field, 1.51 against Graviola — which is the check that
-the harness change did not move them.
-
-**On identical s2n-bignum arithmetic, our orchestration beats Graviola on
-both operations: sign at 0.20 to 0.21, verify at 0.59 to 0.65.** Graviola's
-sign column is its whole API and not like for like; subtracting the three
-components it performs and our kernel does not (SHA-384, the system-RNG read
-and the RFC 6979 HMAC_DRBG nonce, 5.1% and 5.4% of the row) puts the bound at
-0.21 pure and 0.22 assembly, so the signing win survives the caveat with room
-to spare. The verify row needs no caveat beyond the 0.09% message hash.
-
-Where the two wins come from, in the same processes: the base-point multiply
-at 0.19 of the route Graviola takes, and the two-term multiply at 0.61 of the
-two-separate-multiplications route its verification takes. Those two
-micro-benchmarks account for the two whole-operation rows.
-
-**The `aucurves` verify row against Graviola is still a loss**, 1.51 with the
-assembly field, unchanged from the earlier run. That row compares our group
-law on a CryptOpt field against s2n-bignum assembly, which is a different
-question from the one the `s2n` row answers, and both are kept for that
-reason. What the `s2n` row shows is that the 1.51 is not an orchestration
-deficit: with the arithmetic held fixed the same orchestration wins by a
-factor of 1.6 on the same operation.
-
-## Measured, all field configurations (2026-09-17)
-
-One process per AUCurves field configuration, run one after another, each with
-`BENCH_SECTIONS=ecdsa,dhkem BENCH_REPS=15 BENCH_ITERS=300
-BENCH_MICRO_ITERS=4000`, `--features s2n,production`, core 15, OpenSSL 4.1.0-dev
-for the native DHKEM row. The load average was 2.8–3.8 in the first three
-processes. The last two processes, with `P384_S2N_FIELD` set to
-`bench/s2n_import/gen/bignum_montmul_p384_encoded.s` and to the framed file with
-its symbol renamed, ran later on a quieter machine, and their opponent columns
-are 5–10 % lower than in the first three. Compare rows within one process only.
-Median µs per operation; the `aucurves` rows change with the field, the `s2n`
-rows are the s2n-bignum backend in the same process.
-
-| field under `aucurves` | sign `aucurves` | sign `s2n` | verify `aucurves` | verify `s2n` | encap `aucurves` | decap `aucurves` | base-point comb `aucurves` |
-|---|---|---|---|---|---|---|---|
-| fiat-crypto Rust | 94.9 | 29.3 | 543.7 | 161.0 | 560.6 | 454.8 | 82.0 |
-| CryptOpt assembly | 68.7 | 28.0 | 380.4 | 151.7 | 386.3 | 328.0 | 59.2 |
-| s2n-bignum montmul and montsqr | 56.2 | 26.5 | 293.0 | 141.9 | 310.6 | 262.9 | 49.8 |
-| our encoded montmul (square as montmul) | 53.1 | 25.0 | 272.8 | 132.3 | 288.4 | 241.6 | 44.3 |
-| our framed montmul (square as montmul) | 53.1 | 25.0 | 278.0 | 132.6 | 287.7 | 240.5 | 44.6 |
-
-Ratios, ours over the opponent in the same process, for the pure-Rust process
-(`aucurves` / `s2n`):
-
-| op | RustCrypto | Graviola | OpenSSL 3.0 | BoringSSL | AWS-LC |
-|---|---|---|---|---|---|
-| sign | 0.16 / 0.05 | 0.65 / 0.20 | 0.13 / 0.04 | 0.20 / 0.06 | 1.26 / 0.39 |
-| verify | 0.51 / 0.15 | 2.16 / 0.64 | 0.91 / 0.27 | 1.12 / 0.33 | 3.12 / 0.92 |
-
-and for the process with our encoded montmul:
-
-| op | RustCrypto | Graviola | OpenSSL 3.0 | BoringSSL | AWS-LC |
-|---|---|---|---|---|---|
-| sign | 0.10 / 0.05 | 0.45 / 0.21 | 0.08 / 0.04 | 0.13 / 0.06 | 0.80 / 0.38 |
-| verify | 0.29 / 0.14 | 1.27 / 0.61 | 0.52 / 0.25 | 0.65 / 0.31 | 1.80 / 0.87 |
-
-The Graviola sign column is its whole API (hash, RNG and RFC 6979 nonce
-included) and is not like for like; the verify column is. The two montmul files
-differ only in the frame (red-zone moves or `push`/`pop`), and their rows agree
-within the run-to-run spread.
 
 ## DHKEM(P-384, HKDF-SHA384)
 
@@ -1518,9 +1042,13 @@ and each entry point it does not define is taken from the transcription in
 `src/generated.rs` (`dhkem_transcription!`), whose call order is the Lean
 front's. `p384_ecdsa_rust::DHKEM_ENCAP_EMITTED` and `DHKEM_DECAP_EMITTED`
 report the choice; `tests/dhkem.rs::built_against_the_emitted_sources_when_present`
-checks it against the directory. Both files have been in `gen/` since 2026-09-17; the tables below marked
-"transcription" predate that, and [§ Emitted kernels](#emitted-kernels) holds
-the run on the emitted sources.
+checks it against the directory. Both files have been in `gen/` since
+2026-09-17, when `lake exe emit-p384-rust` wrote them;
+`P384_NO_CRYPTOPT=1 cargo test --offline --release --features s2n,production`
+passes 116 tests on them. The DHKEM tables of [PERF.md](PERF.md) marked
+"transcription" predate that, and
+[PERF.md § Emitted kernels](PERF.md#emitted-kernels) holds the run on the
+emitted sources.
 
 ### Reference and opponents
 
@@ -1530,27 +1058,27 @@ cache and the checkouts, not assumed:
 | implementation | P-384 DHKEM? | used here as |
 |---|---|---|
 | `src/dhkem_ref.rs` | — | independent reference: RustCrypto `p384` 0.13.1 `ecdh::diffie_hellman` and `hkdf` 0.12.4 streaming, no leaf shared |
-| hpke-rs 0.7.0, `hpke-rs-rust-crypto` 0.7.0 | **yes**: the `DhKemP384` arms of `dh`, `secret_to_public`, `kem_key_gen` in `hpke-rs-rust-crypto-0.7.0/src/lib.rs`, over RustCrypto `p384` 0.13 and `hkdf` 0.13 | native API (`Hpke::setup_sender` / `setup_receiver`), and a reconstruction over its provider trait (`src/hpke_rs.rs`) |
-| hpke-rs 0.7.0, `hpke-rs-libcrux` 0.7.0 | only through RustCrypto `p384` **0.14.0-rc.8** behind `rustcrypto-p-curves` (`hpke-rs-libcrux-0.7.0/src/lib.rs`, lines 15-19 and 75-84); `libcrux-ecdh` 0.0.8 itself has no P-384 (`src/ecdh.rs`: `derive` returns `UnknownAlgorithm`) | not used: `p384` 0.14.0-rc.8 is not in the registry cache |
-| Graviola 0.4.1 | ECDH yes (`key_agreement::p384`, `mid/p384.rs`), HMAC yes, no HKDF, no HPKE | reconstruction (`src/grav.rs`) |
-| BoringSSL `956bac6e4db9` | its HPKE has KEMs `0x0010`, `0x0020`, X-Wing and ML-KEM only (`include/openssl/hpke.h`) | reconstruction from `EC_POINT_*`, `ECDH_compute_key`, `HKDF_extract`/`HKDF_expand` (`src/bssl.rs`) |
+| hpke-rs 0.7.0, `hpke-rs-rust-crypto` 0.7.0 | **yes**: the `DhKemP384` arms of `dh`, `secret_to_public`, `kem_key_gen` in `hpke-rs-rust-crypto-0.7.0:src/lib.rs`, over RustCrypto `p384` 0.13 and `hkdf` 0.13 | native API (`Hpke::setup_sender` / `setup_receiver`), and a reconstruction over its provider trait (`src/hpke_rs.rs`) |
+| hpke-rs 0.7.0, `hpke-rs-libcrux` 0.7.0 | only through RustCrypto `p384` **0.14.0-rc.8** behind `rustcrypto-p-curves` (`hpke-rs-libcrux-0.7.0:src/lib.rs`, lines 15-19 and 75-84); `libcrux-ecdh` 0.0.8 itself has no P-384 (`libcrux-ecdh-0.0.8:src/ecdh.rs`: `derive` returns `UnknownAlgorithm`) | not used: `p384` 0.14.0-rc.8 is not in the registry cache |
+| Graviola 0.4.1 | ECDH yes (`key_agreement::p384`, `graviola-0.4.1:src/mid/p384.rs`), HMAC yes, no HKDF, no HPKE | reconstruction (`src/grav.rs`) |
+| BoringSSL `956bac6e4db9` | its HPKE has KEMs `0x0010`, `0x0020`, X-Wing and ML-KEM only (`boringssl:include/openssl/hpke.h`) | reconstruction from `EC_POINT_*`, `ECDH_compute_key`, `HKDF_extract`/`HKDF_expand` (`src/bssl.rs`) |
 | OpenSSL 3.0.13 (system) | no HPKE (no `OSSL_HPKE_*` export) and no DHKEM operation; both arrived in 3.2 | reconstruction from `EVP_PKEY_derive` and `EVP_KDF "HKDF"` (`src/ossl_kem.rs`) |
 | OpenSSL 3.6.0, `/opt/microsoft/mdatp/lib/libcrypto.so.3` | **yes**: `EVP_PKEY_encapsulate` / `EVP_PKEY_decapsulate` with `operation = "DHKEM"` (the layer under `OSSL_HPKE_encap`) | native API, and the same reconstruction |
 | OpenSSL 4.1.0-dev, `bench_refs/openssl-install/lib/libcrypto.so.4` | **yes**, the same operation | the same two roles, when `P384_OPENSSL36_LIBCRYPTO` names it |
-| AWS-LC 5.9.0 at `f3798b6fe6a8` | its HPKE has KEMs X25519 (`0x0020`) and ML-KEM only (`include/openssl/hpke.h:41-44`); no P-384 KEM | reconstruction from `EC_POINT_*`, `ECDH_compute_key`, `HKDF_extract`/`HKDF_expand`, in the shape of the BoringSSL one (`src/awslc.rs`) |
+| AWS-LC 5.9.0 at `f3798b6fe6a8` | its HPKE has KEMs X25519 (`0x0020`) and ML-KEM only (`aws-lc:include/openssl/hpke.h:41-44`); no P-384 KEM | reconstruction from `EC_POINT_*`, `ECDH_compute_key`, `HKDF_extract`/`HKDF_expand`, in the shape of the BoringSSL one (`src/awslc.rs`) |
 
 The OpenSSL 3.6.0 library is the copy Microsoft Defender for Endpoint ships,
 used as found and loaded with `dlopen` (override with
 `P384_OPENSSL36_LIBCRYPTO`; the tests skip it when absent). Its build
 configuration is not published. It exports no `EC_GFp_nistp*_method`, which
 3.x exports exactly when `enable-ec_nistp_64_gcc_128` is set, so secp384r1
-gets no dedicated method (`crypto/ec/ec_curve.c`) and runs the generic
+gets no dedicated method (`openssl:crypto/ec/ec_curve.c`) and runs the generic
 `EC_GFp_mont_method`; it carries the CRYPTOGAMS `x86_64-mont` code. That is
 an inference from its exports and strings.
 
 The OpenSSL 4.1.0-dev library in `bench_refs/openssl-install` was built
 from the `bench_refs/openssl` checkout; its `configdata.pm` lists
-`no-ec_nistp_64_gcc_128`, under which `crypto/ec/ec_curve.c:2722-2730`
+`no-ec_nistp_64_gcc_128`, under which `openssl:crypto/ec/ec_curve.c:2722-2730`
 gives secp384r1 no method, and `nm` finds no `nistp384` symbol in it, so it
 too runs the generic `EC_GFp_mont_method` (the `x86_64-mont` path is
 inferred, not traced). `OpenSSL_version_num()` reports `0x40100000`; the
@@ -1563,7 +1091,7 @@ s2n-bignum assembly. `ECDH_compute_key` copies the peer point into a fresh
 inside its DHKEM rows.
 
 **Test vectors.** No official DHKEM(P-384) vectors are on this machine. The
-CFRG `test-vectors.json` in `~/Claude/libcrux/tests/hpke_test_vectors.json`
+CFRG test-vector file in `~/Claude/libcrux/tests/hpke_test_vectors.json`
 holds KEM ids `0x0010`, `0x0012`, `0x0020` and `0x0021` only, the same four
 RFC 9180 Appendix A covers; BoringSSL's HPKE vectors cover its own KEMs; the
 hpke-rs 0.7.0 package ships no test data. The evidence is agreement across
@@ -1614,7 +1142,7 @@ and each divergence is pinned by a test rather than skipped:
 
 1. **Graviola 0.4.1 accepts a coordinate `>= p`** when it reduces to a curve
    point. `AffineMontPoint::from_x962_uncompressed`
-   (`graviola-0.4.1/src/mid/p384.rs`, lines 249-273) converts both
+   (`graviola-0.4.1:src/mid/p384.rs`, lines 249-273) converts both
    coordinates to the Montgomery domain, which reduces them mod `p`, and
    checks only the curve equation. `x = p` with `y = sqrt(b)` is accepted as
    `(0, sqrt b)` (`tests/dhkem.rs::graviola_accepts_a_non_canonical_x_coordinate`).
@@ -1622,8 +1150,8 @@ and each divergence is pinned by a test rather than skipped:
 2. **OpenSSL 3.0.13, 3.6.0 and 4.1.0-dev accept the X9.62 hybrid
    encoding**, prefix
    `0x06` or `0x07` whose low bit matches the parity of `y`, both on key
-   import and in the native DHKEM `Decap` (`crypto/ec/ecp_oct.c` admits
-   `POINT_CONVERSION_HYBRID`; `ec_kem.c` parses `enc` through
+   import and in the native DHKEM `Decap` (`openssl:crypto/ec/ecp_oct.c` admits
+   `POINT_CONVERSION_HYBRID`; `openssl:providers/implementations/kem/ec_kem.c` parses `enc` through
    `EC_KEY_oct2key`). RFC 9180 §7.1.1 specifies the uncompressed form.
    The shared secret they return uses the point's DH value and the hybrid
    bytes in the KEM context.
@@ -1631,189 +1159,17 @@ and each divergence is pinned by a test rather than skipped:
    `pkR` in `Encap`, and checks only that the parity bit matches:
    `EC_POINT_oct2point` masks the low bit of the prefix and dispatches
    `0x06`/`0x07` to `ec_point_from_hybrid`
-   (`crypto/fipsmodule/ec/oct.c:17-26`, `:95-114`, `:146-154`). BoringSSL,
+   (`aws-lc:crypto/fipsmodule/ec/oct.c:17-26`, `:95-114`, `:146-154`). BoringSSL,
    from which AWS-LC forked, rejects both. This is a property of AWS-LC's
    point decoder as the reconstruction uses it; AWS-LC offers no P-384 DHKEM
    of its own that could be tested.
 3. **OpenSSL accepts a private key `>= n`** that is non-zero mod `n`, and
    computes with `sk mod n`: `EVP_PKEY_fromdata` imports any 48-byte value,
-   and the DHKEM's `eckey_check` (`ec_kem.c`, lines 68-99) only rejects
+   and the DHKEM's `eckey_check` (`openssl:providers/implementations/kem/ec_kem.c`, lines 68-99) only rejects
    `sk = 0 mod n`. `n + 1` and `2^384 - 1` are accepted; `0` and `n` are not.
    The 4.1.0-dev build behaves the same. AWS-LC rejects all four
    out-of-range keys: `EC_KEY_set_private_key` fails for a value not below
-   `n` (`ec_bignum_to_scalar`, `crypto/fipsmodule/ec/ec_key.c:175-197`).
-
-### Measured
-
-2026-09-16, the machine of [§ Measured](#measured), rustc 1.93.0,
-`--release`, pinned to core 15, `BENCH_SECTIONS=dhkem BENCH_REPS=15
-BENCH_ITERS=300`, one process per AUCurves field configuration, every arm
-interleaved round-robin within the process. **The load average was 6.6 to
-8.7 throughout** — two C compiler processes, Lean and Python were running on
-other cores — so these are figures from a loaded machine. The `s2n` rows
-appear in all three processes and differ by up to 7% (encap 188.7 to 195.4
-µs, decap 149.8 to 161.0 µs), which bounds the run-to-run drift. Both DHKEM
-kernels were the transcription (`gen/` held no DHKEM file).
-
-Median µs per operation. `pure`, `asm` and `s2n-f` are the processes with the
-AUCurves field in fiat-crypto Rust, the CryptOpt assembly, and s2n-bignum's
-`bignum_montmul_p384`/`bignum_montsqr_p384` (`P384_S2N_FIELD`); only the
-`ours/aucurves` row runs a different field in each, the others show the drift.
-
-| op | implementation | kind | arithmetic | pure | asm | s2n-f |
-|---|---|---|---|---|---|---|
-| encap | ours, `aucurves` | transcription | AUCurves RCB over the column's field | 692.5 | 484.4 | 413.2 |
-| encap | ours, `s2n` | transcription | s2n-bignum asm | 195.4 | 188.7 | 192.0 |
-| encap | reference | reconstruction | RustCrypto `p384` 0.13.1, fiat Rust | 1303.7 | 1312.4 | 1223.7 |
-| encap | hpke-rs `setup_sender` | native, + DeriveKeyPair + key schedule | RustCrypto `p384` 0.13.1 | 1411.8 | 1303.1 | 1237.8 |
-| encap | hpke-rs provider | reconstruction | RustCrypto `p384` 0.13.1 | 1337.4 | 1282.5 | 1240.7 |
-| encap | Graviola 0.4.1 | reconstruction | s2n-bignum asm | 348.0 | 320.3 | 320.6 |
-| encap | BoringSSL | reconstruction | generic Montgomery C, `bn_mul_mont_nohw` | 1132.9 | 1064.1 | 1006.5 |
-| encap | OpenSSL 3.0.13 | reconstruction | `EC_GFp_mont`, `x86_64-mont` | 2346.8 | 2280.3 | 2191.7 |
-| encap | OpenSSL 3.6.0 | reconstruction | `EC_GFp_mont`, `x86_64-mont` (inferred) | 1854.6 | 1787.7 | 1720.3 |
-| encap | OpenSSL 3.6.0 DHKEM | native, + DeriveKeyPair | as above | 1780.1 | 1730.3 | 1666.1 |
-| decap | ours, `aucurves` | transcription | AUCurves RCB over the column's field | 591.7 | 415.5 | 341.0 |
-| decap | ours, `s2n` | transcription | s2n-bignum asm | 161.0 | 150.6 | 149.8 |
-| decap | reference | reconstruction | RustCrypto `p384` 0.13.1 | 671.9 | 657.9 | 608.4 |
-| decap | hpke-rs `setup_receiver` | native, + pk(skR) + key schedule | RustCrypto `p384` 0.13.1 | 1333.8 | 1319.1 | 1256.7 |
-| decap | hpke-rs provider | reconstruction | RustCrypto `p384` 0.13.1 | 663.6 | 631.8 | 622.7 |
-| decap | Graviola 0.4.1 | reconstruction | s2n-bignum asm | 176.7 | 170.0 | 164.0 |
-| decap | BoringSSL | reconstruction | generic Montgomery C | 546.7 | 517.8 | 495.6 |
-| decap | OpenSSL 3.0.13 | reconstruction | `EC_GFp_mont` | 1462.1 | 1440.7 | 1412.8 |
-| decap | OpenSSL 3.6.0 | reconstruction | `EC_GFp_mont` (inferred) | 914.5 | 957.5 | 909.3 |
-| decap | OpenSSL 3.6.0 DHKEM | native | as above | 896.8 | 875.1 | 864.2 |
-
-The ratios that decide the comparison, ours / theirs:
-
-| ratio | pure | asm | s2n-f |
-|---|---|---|---|
-| `s2n` encap / Graviola | 0.56 | 0.59 | 0.60 |
-| `s2n` decap / Graviola | 0.91 | 0.89 | 0.91 |
-| `aucurves` encap / Graviola | 1.99 | 1.51 | 1.29 |
-| `aucurves` decap / Graviola | 3.35 | 2.44 | 2.08 |
-| `aucurves` encap / hpke-rs, adjusted | 0.50 | 0.38 | 0.34 |
-| `aucurves` decap / hpke-rs, adjusted | 0.89 | 0.61 | 0.55 |
-| `s2n` encap / hpke-rs, adjusted | 0.14 | 0.15 | 0.16 |
-| `s2n` decap / hpke-rs, adjusted | 0.24 | 0.22 | 0.24 |
-| `aucurves` decap / BoringSSL | 1.08 | 0.80 | 0.69 |
-| `s2n` encap / OpenSSL 3.6 DHKEM | 0.11 | 0.11 | 0.12 |
-| `s2n` decap / OpenSSL 3.6 DHKEM | 0.18 | 0.17 | 0.17 |
-
-"Adjusted" subtracts from hpke-rs's native row the separately timed parts
-our kernel does not perform: the base-mode key schedule (10.0 to 11.2 µs)
-from both, the KDF part of `DeriveKeyPair` (2.7 to 2.9 µs, timed over `hkdf`
-0.12 as an estimate) from encap, and `pk(skR)` (621 to 657 µs) from decap.
-hpke-rs's `setup_receiver` recomputes `pkR` from `skR` on every call
-(`dh_kem::decaps`), which roughly doubles its decapsulation cost. The
-OpenSSL 3.6 DHKEM encap row still includes `DeriveKeyPair`, whose KDF part
-is under 5 µs of its 1.7 ms.
-
-**The HKDF share is small.** `ExtractAndExpand` alone, µs: ours 3.0 to 3.8,
-the reference 3.0 to 3.1, hpke-rs's provider 2.9 to 3.7, Graviola's HMAC 2.5
-to 2.9, BoringSSL 2.4 to 2.6, OpenSSL 3.0 4.3 to 5.0, OpenSSL 3.6 4.0 to 4.7.
-It is 0.5 to 1.0% of our `aucurves` rows and 1.9 to 2.3% of our `s2n` rows;
-the rest is the two scalar multiplications (encap) or one (decap).
-
-**Where we lose.**
-
-* **`aucurves` against Graviola, in every field configuration**: encap 1.29
-  to 1.99, decap 2.08 to 3.35. This is our group law and variable-base
-  multiply over fiat-crypto, CryptOpt or s2n-bignum field code against
-  s2n-bignum's Jacobian point operations; with the arithmetic held equal
-  (the `s2n` row) the same orchestration wins on both operations, so the
-  loss is in the arithmetic under the leaves, not in the emitted sequence.
-  Decap loses by more because it has no fixed-base multiply, where the comb
-  recovers ground.
-* **`aucurves` pure-Rust decap against the BoringSSL reconstruction**: 1.08.
-  BoringSSL runs C with an assembly Montgomery loop, so this is not
-  same-tier; with an assembly field under AUCurves the row is 0.80 or 0.69.
-* **The `s2n` decap margin over Graviola is narrow**: 0.89 to 0.91, within
-  the order of the drift between processes. Both run a width-5 window over
-  the same point operations; our decap has no comb to spend.
-* **Our KDF leaves take 1.3 to 1.5 times as long as BoringSSL's HKDF**, the
-  fastest here, about 1 µs per operation; against the reference and
-  hpke-rs's provider the difference is within the noise.
-
-Against the same-tier production opponent, hpke-rs over RustCrypto
-(`aucurves` pure-Rust row), ours is faster: 0.50 encap and 0.89 decap
-adjusted, 0.49 and 0.44 unadjusted. Against the C libraries in these three
-processes every row of ours is faster except the BoringSSL decap above.
-
-**AWS-LC and OpenSSL 4.1.0-dev**, a later single process: pure-Rust
-AUCurves build, `BENCH_SECTIONS=dhkem,ecdsa BENCH_REPS=15 BENCH_ITERS=300`,
-core 15, `P384_OPENSSL36_LIBCRYPTO` set to the 4.1.0-dev build, load average
-4.0 before and 6.7 after (the run whose ECDSA rows are in
-[§ AWS-LC](#aws-lc-the-third-production-opponent)). Median µs per operation,
-and ours over theirs:
-
-| op | implementation | kind | µs | `aucurves` / this | `s2n` / this |
-|---|---|---|---|---|---|
-| encap | ours, `aucurves` | transcription | 627.6 | 1.00 | 0.27 |
-| encap | ours, `s2n` | transcription | 170.3 | 3.68 | 1.00 |
-| encap | Graviola 0.4.1 | reconstruction | 301.2 | 2.08 | 0.57 |
-| encap | BoringSSL | reconstruction | 974.9 | 0.64 | 0.17 |
-| encap | AWS-LC 5.9.0 | reconstruction | 200.8 | **3.13** | 0.85 |
-| encap | OpenSSL 4.1.0-dev | reconstruction | 2261.1 | 0.28 | 0.08 |
-| encap | OpenSSL 4.1.0-dev DHKEM | native, + DeriveKeyPair | 1548.0 | 0.41 | 0.11 |
-| decap | ours, `aucurves` | transcription | 517.6 | 1.00 | 0.27 |
-| decap | ours, `s2n` | transcription | 138.1 | 3.75 | 1.00 |
-| decap | Graviola 0.4.1 | reconstruction | 151.3 | 3.42 | 0.91 |
-| decap | BoringSSL | reconstruction | 477.6 | **1.08** | 0.29 |
-| decap | AWS-LC 5.9.0 | reconstruction | 138.3 | **3.74** | **1.00** |
-| decap | OpenSSL 4.1.0-dev | reconstruction | 1539.7 | 0.34 | 0.09 |
-| decap | OpenSSL 4.1.0-dev DHKEM | native | 789.3 | 0.66 | 0.17 |
-
-AWS-LC's `ExtractAndExpand` alone took 2.6 µs, OpenSSL 4.1.0-dev's 3.1 µs.
-
-* **`s2n` decap against AWS-LC is a tie**: 138.1 against 138.3 µs, a ratio
-  of 1.00. Both run the same s2n-bignum field and the same assembly
-  variable-base multiply by name (`p384_montjscalarmul`), plus the SEC1
-  decoding and validation and the KDF; AWS-LC's figure also includes the
-  per-call `EC_KEY` copy and `EC_KEY_check_fips`. `s2n` encap is 0.85;
-  encap adds a fixed-base multiply, which is AWS-LC's C comb on one side and
-  `src/comb_s2n.rs` on the other, and the split of the difference was not
-  measured.
-* **`aucurves` pure Rust loses to AWS-LC** by 3.13 (encap) and 3.74
-  (decap), the same shape as the Graviola loss above: Rust group law over
-  the fiat-crypto Rust field against s2n-bignum assembly.
-* The OpenSSL 4.1.0-dev reconstruction is slower than its own native DHKEM
-  (2261 against 1548 µs encap, 1540 against 789 µs decap). The
-  reconstruction builds its `EVP_PKEY` objects and KDF contexts on every
-  call; its cost was not decomposed.
-
-### Emitted kernels
-
-`lake exe emit-p384-rust` wrote `gen/p384_dhkem_encap.rs` and
-`gen/p384_dhkem_decap.rs` on 2026-09-17; the build reports both as emitted.
-`P384_NO_CRYPTOPT=1 cargo test --offline --release --features s2n,production`
-passes 116 tests on them. Bench: pure-Rust AUCurves build,
-`BENCH_SECTIONS=dhkem BENCH_REPS=15 BENCH_ITERS=300`, core 15,
-`P384_OPENSSL36_LIBCRYPTO` set to the 4.1.0-dev build, load average 1.7 before
-and 2.5 after. Median µs per operation, and ours over theirs:
-
-| op | implementation | kind | µs | `aucurves` / this | `s2n` / this |
-|---|---|---|---|---|---|
-| encap | ours, `aucurves` | emitted | 523.2 | 1.00 | 0.27 |
-| encap | ours, `s2n` | emitted | 140.2 | 3.73 | 1.00 |
-| encap | Graviola 0.4.1 | reconstruction | 240.7 | 2.17 | 0.58 |
-| encap | AWS-LC 5.9.0 | reconstruction | 163.0 | 3.21 | 0.86 |
-| encap | hpke-rs 0.7.0 | native, + DeriveKeyPair, + key schedule | 1007.1 | 0.52 | 0.14 |
-| encap | BoringSSL | reconstruction | 852.3 | 0.61 | 0.16 |
-| encap | OpenSSL 4.1.0-dev DHKEM | native, + DeriveKeyPair | 1327.5 | 0.39 | 0.11 |
-| decap | ours, `aucurves` | emitted | 440.1 | 1.00 | 0.27 |
-| decap | ours, `s2n` | emitted | 116.7 | 3.77 | 1.00 |
-| decap | Graviola 0.4.1 | reconstruction | 123.0 | 3.58 | 0.95 |
-| decap | AWS-LC 5.9.0 | reconstruction | 118.7 | 3.71 | 0.98 |
-| decap | hpke-rs 0.7.0 | native, + pk(skR), + key schedule | 998.5 | 0.44 | 0.12 |
-| decap | BoringSSL | reconstruction | 427.8 | 1.03 | 0.27 |
-| decap | OpenSSL 4.1.0-dev DHKEM | native | 664.8 | 0.66 | 0.18 |
-
-The emitted `s2n` rows are 0.86 (encap) and 0.98 (decap) of AWS-LC and 0.58
-and 0.95 of Graviola; the decap margins are within the run-to-run drift
-recorded above. The `aucurves` pure-Rust rows lose to Graviola and AWS-LC by
-2.2–3.7 and to BoringSSL decap by 1.03. All rows of this run are faster than
-the earlier runs, including the opponents, because the machine was less
-loaded; compare within a run only.
+   `n` (`ec_bignum_to_scalar`, `aws-lc:crypto/fipsmodule/ec/ec_key.c:175-197`).
 
 ### Commands
 
@@ -1827,10 +1183,10 @@ loaded; compare within a run only.
       taskset -c 15 ./target/release/bench
     BENCH_SECTIONS=dhkem BENCH_REPS=15 BENCH_ITERS=300 \
       taskset -c 15 ./target/release/bench
-    P384_S2N_FIELD=$PWD/../reference_install/s2n-bignum/x86/libs2nbignum.a \
+    P384_S2N_FIELD=$S2N_BIGNUM_DIR/x86/libs2nbignum.a \
       BENCH_SECTIONS=dhkem BENCH_REPS=15 BENCH_ITERS=300 taskset -c 15 ./target/release/bench
 
-    # the AWS-LC and OpenSSL 4.1.0-dev run recorded above
+    # the AWS-LC and OpenSSL 4.1.0-dev run recorded in PERF.md
     P384_NO_CRYPTOPT=1 cargo build --offline --release --features s2n,production --bin bench
     P384_OPENSSL36_LIBCRYPTO=$HOME/Claude/bench_refs/openssl-install/lib/libcrypto.so.4 \
       BENCH_SECTIONS=dhkem,ecdsa BENCH_REPS=15 BENCH_ITERS=300 BENCH_MICRO_ITERS=4000 \

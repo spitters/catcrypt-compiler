@@ -8,9 +8,9 @@
 //!
 //! # What is linked
 //!
-//! `build.rs` links `libs2nbignum.a` from the vendored checkout under
-//! `bench/reference_install/s2n-bignum/x86` when the `s2n` feature is on.
-//! `S2N_BIGNUM_DIR` overrides the directory.  The archive is built from the
+//! `build.rs` links `x86/libs2nbignum.a` from the s2n-bignum checkout named
+//! by `S2N_BIGNUM_DIR` when the `s2n` feature is on; the default is the
+//! checkout in the sibling SSProve-lean tree, see `build.rs`.  The archive is built from the
 //! `x86_att/` sources; every routine below has its argument order and its
 //! Montgomery-domain convention taken from the header comment of its own
 //! `.S` file, and the ABI is System V (`RDI`, `RSI`, `RDX`, `RCX`, `R8`),

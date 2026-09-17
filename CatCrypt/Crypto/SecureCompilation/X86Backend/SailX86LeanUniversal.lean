@@ -18,7 +18,7 @@ names and a fixed starting state. This module states the comparison for every
 starting state `s : JState 64`, every destination and source register name, and
 every operand value and incoming flag, for the instructions of the s2n-bignum
 P-384 Montgomery multiplication block
-(`Ascent/Demos/S2nMontmulP384.lean` in the dev tree).
+(`Ascent/Demos/S2nMontmulP384.lean` in this package).
 
 Each result has two parts: the value part (the destination word and the flags
 the instruction writes, as functions of the operand values and incoming flags)

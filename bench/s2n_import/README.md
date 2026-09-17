@@ -13,11 +13,33 @@ encoder, and checks the results against s2n-bignum.
 | `reemit.lean`, `reemit_montsqr.lean` | prints the imported block with `AsmPrinter.renderBlockBody` and `renderLeafFn` to `gen/<kernel>_reemitted.s` |
 | `encode.lean`, `encode_montsqr.lean` | encodes the imported block with `ScalarEncoder.encodeJBlock` and writes the bytes as `.byte` directives to `gen/<kernel>_encoded.s` |
 | `compare_insns.sh [KERNEL]` | assembles the re-emitted and encoded files and compares their disassembly and size with the s2n-bignum archive |
-| `Makefile` | `import`, `reemit`, `encode`, `compare` (each for both kernels, or `-montmul` / `-montsqr`), `field` |
+| `encode_framed.lean`, `kat_framed/` | the framed montmul and its known-answer test ([§ The framed function](#the-framed-function)) |
+| `Makefile` | `import`, `reemit`, `encode`, `compare` (each for both kernels, or `-montmul` / `-montsqr`), `encode-framed`, `framed-kat`, `field` |
 
 The known-answer gate and the timing are the `s2n-reemitted`, `s2n-encoded`,
 `s2n-sqr-reemitted` and `s2n-sqr-encoded` arms of
-`bench/p384_ecdsa_rust/src/bin/fieldbench.rs` (`make field`).
+`bench/p384_ecdsa_rust/src/bin/fieldbench.rs` (`make field`); the recorded
+figures are in [PERF.md](../p384_ecdsa_rust/PERF.md) of that directory.
+
+## Settings and what runs Lean
+
+`S2N_BIGNUM_DIR` names the s2n-bignum checkout, a directory holding `x86_att/`
+and a built `x86/libs2nbignum.a`. The `Makefile`, `import_s2n.sh` and
+`compare_insns.sh` read it, as does `bench/p384_ecdsa_rust`; its default is
+the checkout of the sibling SSProve-lean tree,
+`../SSProve-lean/bench/reference_install/s2n-bignum` relative to the root of
+this repository. A target or script that needs the checkout stops with the path
+it looked for when the checkout is absent. `make import` also requires the
+checkout to be at the commit pinned in `kernels/<kernel>.sh`.
+
+`reemit`, `encode` and `encode-framed` run `lake lean` from the repository
+root, which builds the imported modules when needed. `HEAVY_RUN` names a
+wrapper for those commands; its default is
+`$(REPO)/../SSProve-lean/scripts/heavy-run.sh` when that file exists, and no
+wrapper otherwise. `compare` and `field` depend on the files `reemit` and
+`encode` write, so they run Lean when those files are older than their Lean
+sources. `import` and `framed-kat` run no Lean when their inputs are present:
+`framed-kat` needs the framed file `$(FRAMED)`, which `encode-framed` writes.
 
 | kernel | module | body instructions | archive / re-emitted / encoded bytes |
 |---|---|---|---|
@@ -91,7 +113,7 @@ substitute for the proof.
    commit, the source file has no local change, and its SHA-256 equals the pinned
    value.
 1. Runs the C preprocessor (`cpp`, or `$CPP`) over
-   `x86_att/p384/KERNEL.S` from the `x86_att` directory with
+   `s2n-bignum:x86_att/p384/KERNEL.S` from the `x86_att` directory with
    `-I ../include`, keeping line markers so each instruction carries its source
    line.
 2. Splits each preprocessed line on `;`, which separates the instructions of one

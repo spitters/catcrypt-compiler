@@ -1,12 +1,13 @@
-# `gen/` — compiler output. Do not hand-edit.
+# `bench/p384_ecdsa_rust/gen/`: compiler output, not hand-edited
 
 kind: authored · authority: canonical for this directory · freshness: the file
 list goes stale when the emitter changes
 
-Every `*.rs` file here is produced by `lake exe emit-p384-rust` from the
-CatCrypt Lean fronts and is regenerated from Lean, never patched here. An edit
-made in this directory is lost on the next emit and breaks the provenance
-chain `bench/framework/AUDIT_EMIT_BYPASS.md` records.
+Every `*.rs` file here is produced by `lake exe emit-p384-rust`, run from the
+root of this repository, from the CatCrypt Lean fronts, and is regenerated from
+Lean, never patched here. An edit made in this directory is lost on the next
+emit and breaks the provenance chain that
+`~/Claude/SSProve-lean/bench/framework/AUDIT_EMIT_BYPASS.md` records.
 
 This note is `PROVENANCE.md` rather than `README` because the emitter writes
 into this directory and overwrote an earlier `README`.

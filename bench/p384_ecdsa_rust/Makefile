@@ -5,7 +5,9 @@
 # field and the group law under those leaves are adopted verified leaves
 # (fiat-crypto, AUCurves p384-safe-rust, AWS s2n-bignum), and the reference
 # side is RustCrypto p384 and Graviola, external unverified implementations.
-# See ../AGENTS.md and the README for which side is which.
+# See the README for which side is which, PERF.md for recorded results.
+# No target here runs Lean; `field` reads two emitted `.s` files that lake
+# writes (README, § Paths).
 #
 #   make test        # every test, every backend, pure-Rust AUCurves field
 #   make kat         # the FIPS 186-4 CAVP vectors only
@@ -21,6 +23,10 @@
 #   make clean
 
 CARGO ?= cargo --offline
+# The s2n-bignum checkout; build.rs links $(S2N_BIGNUM_DIR)/x86/libs2nbignum.a.
+# The default is the checkout in the sibling SSProve-lean tree.
+S2N_BIGNUM_DIR ?= $(abspath ../../../SSProve-lean/bench/reference_install/s2n-bignum)
+export S2N_BIGNUM_DIR
 # The s2n-bignum leaf backend is behind a feature so the other backends can
 # be built without the archive; every target below turns it on.
 FEATURES ?= --features s2n
@@ -147,7 +153,7 @@ dhkem:
 	$(PURE) $(CARGO) test --release $(PROD_FEATURES) --test dhkem --test dhkem_production -- --nocapture
 
 # The AUCurves field under the s2n-bignum archive, the third configuration.
-S2N_FIELD ?= $(abspath ../reference_install/s2n-bignum/x86/libs2nbignum.a)
+S2N_FIELD ?= $(S2N_BIGNUM_DIR)/x86/libs2nbignum.a
 
 .PHONY: dhkem bench-dhkem
 bench-dhkem:

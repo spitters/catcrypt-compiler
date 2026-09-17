@@ -12,10 +12,22 @@
 # Per kernel: import-montmul, import-montsqr, reemit-montmul, reemit-montsqr,
 # encode-montmul, encode-montsqr, compare-montmul, compare-montsqr.
 #
-# `reemit` and `encode` need the Lean modules built; `lake lean` builds them if
-# needed. `field` needs all four generated files.
+# `reemit`, `encode` and `encode-framed` run `lake lean` from the repository
+# root, which builds the Lean modules if needed. `field` needs all four
+# generated files, and `framed-kat` needs gen/bignum_montmul_p384_framed.s.
+#
+# Variables:
+#   S2N_BIGNUM_DIR  the s2n-bignum checkout; the archive is
+#                   $(S2N_BIGNUM_DIR)/x86/libs2nbignum.a. Default: the checkout
+#                   in the sibling SSProve-lean tree.
+#   HEAVY_RUN       a wrapper for the `lake lean` commands. Default: the
+#                   sibling SSProve-lean tree's scripts/heavy-run.sh when that
+#                   file exists, otherwise none.
 
 REPO := $(abspath ../..)
+S2N_BIGNUM_DIR ?= $(abspath $(REPO)/../SSProve-lean/bench/reference_install/s2n-bignum)
+export S2N_BIGNUM_DIR
+HEAVY_RUN ?= $(wildcard $(abspath $(REPO)/../SSProve-lean/scripts/heavy-run.sh))
 DEMOS := $(REPO)/CatCrypt/Crypto/SecureCompilation/Ascent/Demos
 LEAN_MODULE := $(DEMOS)/S2nMontmulP384.lean
 BYTES_MODULE := $(DEMOS)/S2nMontmulP384Bytes.lean
@@ -26,9 +38,9 @@ SQR_REEMITTED := gen/bignum_montsqr_p384_reemitted.s
 SQR_ENCODED := gen/bignum_montsqr_p384_encoded.s
 FRAMED_MODULE := $(DEMOS)/S2nMontmulP384Framed.lean
 FRAMED := gen/bignum_montmul_p384_framed.s
-S2N_LIB := ../reference_install/s2n-bignum/x86/libs2nbignum.a
+S2N_LIB := $(S2N_BIGNUM_DIR)/x86/libs2nbignum.a
 IMPORTER := import_s2n.sh translate.awk
-LAKE_LEAN := cd $(REPO) && LEAN_NUM_THREADS=1 bash scripts/heavy-run.sh lake lean
+LAKE_LEAN := cd $(REPO) && LEAN_NUM_THREADS=1 $(if $(HEAVY_RUN),bash $(HEAVY_RUN)) lake lean
 
 .PHONY: import import-montmul import-montsqr reemit reemit-montmul reemit-montsqr \
         encode encode-montmul encode-montsqr compare compare-montmul compare-montsqr field \
@@ -78,6 +90,7 @@ $(FRAMED): $(FRAMED_MODULE) encode_framed.lean
 # Random, in-place and squaring vectors against bignum_montmul_p384, and the
 # six callee-saved registers across a call.
 framed-kat: $(FRAMED) kat_framed/kat.c kat_framed/check_saved.s
+	@test -f $(S2N_LIB) || { echo "framed-kat: no $(S2N_LIB); set S2N_BIGNUM_DIR to a built s2n-bignum checkout" >&2; exit 2; }
 	gcc -O2 -o gen/framed_kat kat_framed/kat.c kat_framed/check_saved.s $(FRAMED) $(S2N_LIB)
 	./gen/framed_kat
 
