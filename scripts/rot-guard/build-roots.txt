@@ -906,8 +906,9 @@ CatCrypt.Deep.ReflectTactic
 CatCrypt.Deep.ReflectUCHelpers
 CatCrypt.Deep.Strategy
 CatCrypt.Deep.Tactics
-CatCrypt.Hax.Ascent.Demo
+CatCrypt.Hax.Ascent.AscendHaxDemo
 CatCrypt.Hax.Ascent.Deps
+CatCrypt.Hax.Ascent.EarlyExit
 CatCrypt.Hax.Ascent.LocalCalls
 CatCrypt.Hax.Ascent.Structs
 CatCrypt.Hax.PrimeirBuiltins
