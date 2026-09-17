@@ -43,9 +43,10 @@ comparison on the real GoldenPath kernel `AsconLinear.asconSigma0Com`.
 
 * **Per-shift in-place drop-`mov`.** The Lprog `encodeLopn` of a count-in-tag
   shift `SHR:<n>:64 [d] [src]` emits `mov %src, %d` followed by `shr %d, $n`
-  when `src ≠ d`, and the shift alone when `src = d`. `gatherJBlock4` matches
-  both: an in-place shift lowers to the single `[shr d $n]` / `[shl d $n]`, and
-  a shift from a distinct register keeps the materialise `mov d, src`.
+  when `src ≠ d`, and the shift alone when `src = d`; for the count 0 it emits
+  only the `mov`. `gatherJBlock4` matches all three: an in-place shift lowers to
+  the single `[shr d $n]` / `[shl d $n]`, a shift from a distinct register keeps
+  the materialise `mov d, src`, and a count-0 shift lowers to its copy alone.
 
 ## What byte-matches, and the one residual (honest)
 
@@ -136,7 +137,9 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysBodyGather (physAlloc)
       `[shr d $n]` / `[shl d $n]`, without the materialise `mov d, d`. The Lprog
       encoder emits `mov d, s` before the shift exactly when `s ≠ d`, so a shift
       with a distinct source keeps the two-instruction form of
-      `lowerLinstrExtCov3`.
+      `lowerLinstrExtCov3`. A count-0 shift is the identity, and the encoder
+      emits only its copy: nothing when `s = d`, `mov d, s` otherwise. The
+      lowering does the same.
 
     Every other shape delegates to `lowerLinstrExtCov3` verbatim (the in-place
     two-source ALU peephole). So `lowerLinstrExtCov4` differs from
@@ -152,8 +155,10 @@ def lowerLinstrExtCov4 : LinstrR → Option (List (JInstr 64))
       match parseShiftMnem opn, src with
       | some p, .reg s =>
           if s = dst then
-            some [if p.1 then JInstr.shl dst (JOperand.imm p.2)
-                  else JInstr.shr dst (JOperand.imm p.2)]
+            if p.2 = 0 then some []
+            else some [if p.1 then JInstr.shl dst (JOperand.imm p.2)
+                       else JInstr.shr dst (JOperand.imm p.2)]
+          else if p.2 = 0 then some [JInstr.mov dst (JOperand.reg s)]
           else lowerLinstrExtCov3 (.Lopn [.reg dst] opn [src])
       | _, _ => lowerLinstrExtCov3 (.Lopn [.reg dst] opn [src])
   -- everything else (two-source ALU, MULXHI, memory, control-flow): the in-place
@@ -191,59 +196,67 @@ to `[mov d s, shr/shl d $n]`, the same two instructions the Lprog encoder emits.
     `SHL:45:64` / `SHL:36:64` analogues are `lowerCov4_shr28` / `lowerCov4_shl45` /
     `lowerCov4_shl36`. -/
 theorem lowerCov4_shr19 (dst : String) (n : Nat)
-    (hsh : parseShiftMnem "SHR:19:64" = some (false, n)) :
+    (hsh : parseShiftMnem "SHR:19:64" = some (false, n)) (hn0 : n ≠ 0) :
     lowerLinstrExtCov4 (.Lopn [.reg dst] "SHR:19:64" [.reg dst])
       = some [JInstr.shr dst (.imm n)] := by
   show (match parseShiftMnem "SHR:19:64", LOperand.reg dst with
         | some p, .reg s =>
             if s = dst then
-              some [if p.1 then JInstr.shl dst (JOperand.imm p.2)
-                    else JInstr.shr dst (JOperand.imm p.2)]
+              if p.2 = 0 then some []
+              else some [if p.1 then JInstr.shl dst (JOperand.imm p.2)
+                         else JInstr.shr dst (JOperand.imm p.2)]
+            else if p.2 = 0 then some [JInstr.mov dst (JOperand.reg s)]
             else lowerLinstrExtCov3 (.Lopn [.reg dst] "SHR:19:64" [.reg dst])
         | _, _ => lowerLinstrExtCov3 (.Lopn [.reg dst] "SHR:19:64" [.reg dst])) = _
-  rw [hsh]; simp
+  rw [hsh]; simp [hn0]
 
 /-- In-place `SHR:28:64 [d]` lowers to the single `[shr d $n]`. -/
 theorem lowerCov4_shr28 (dst : String) (n : Nat)
-    (hsh : parseShiftMnem "SHR:28:64" = some (false, n)) :
+    (hsh : parseShiftMnem "SHR:28:64" = some (false, n)) (hn0 : n ≠ 0) :
     lowerLinstrExtCov4 (.Lopn [.reg dst] "SHR:28:64" [.reg dst])
       = some [JInstr.shr dst (.imm n)] := by
   show (match parseShiftMnem "SHR:28:64", LOperand.reg dst with
         | some p, .reg s =>
             if s = dst then
-              some [if p.1 then JInstr.shl dst (JOperand.imm p.2)
-                    else JInstr.shr dst (JOperand.imm p.2)]
+              if p.2 = 0 then some []
+              else some [if p.1 then JInstr.shl dst (JOperand.imm p.2)
+                         else JInstr.shr dst (JOperand.imm p.2)]
+            else if p.2 = 0 then some [JInstr.mov dst (JOperand.reg s)]
             else lowerLinstrExtCov3 (.Lopn [.reg dst] "SHR:28:64" [.reg dst])
         | _, _ => lowerLinstrExtCov3 (.Lopn [.reg dst] "SHR:28:64" [.reg dst])) = _
-  rw [hsh]; simp
+  rw [hsh]; simp [hn0]
 
 /-- In-place `SHL:45:64 [d]` lowers to the single `[shl d $n]`. -/
 theorem lowerCov4_shl45 (dst : String) (n : Nat)
-    (hsh : parseShiftMnem "SHL:45:64" = some (true, n)) :
+    (hsh : parseShiftMnem "SHL:45:64" = some (true, n)) (hn0 : n ≠ 0) :
     lowerLinstrExtCov4 (.Lopn [.reg dst] "SHL:45:64" [.reg dst])
       = some [JInstr.shl dst (.imm n)] := by
   show (match parseShiftMnem "SHL:45:64", LOperand.reg dst with
         | some p, .reg s =>
             if s = dst then
-              some [if p.1 then JInstr.shl dst (JOperand.imm p.2)
-                    else JInstr.shr dst (JOperand.imm p.2)]
+              if p.2 = 0 then some []
+              else some [if p.1 then JInstr.shl dst (JOperand.imm p.2)
+                         else JInstr.shr dst (JOperand.imm p.2)]
+            else if p.2 = 0 then some [JInstr.mov dst (JOperand.reg s)]
             else lowerLinstrExtCov3 (.Lopn [.reg dst] "SHL:45:64" [.reg dst])
         | _, _ => lowerLinstrExtCov3 (.Lopn [.reg dst] "SHL:45:64" [.reg dst])) = _
-  rw [hsh]; simp
+  rw [hsh]; simp [hn0]
 
 /-- In-place `SHL:36:64 [d]` lowers to the single `[shl d $n]`. -/
 theorem lowerCov4_shl36 (dst : String) (n : Nat)
-    (hsh : parseShiftMnem "SHL:36:64" = some (true, n)) :
+    (hsh : parseShiftMnem "SHL:36:64" = some (true, n)) (hn0 : n ≠ 0) :
     lowerLinstrExtCov4 (.Lopn [.reg dst] "SHL:36:64" [.reg dst])
       = some [JInstr.shl dst (.imm n)] := by
   show (match parseShiftMnem "SHL:36:64", LOperand.reg dst with
         | some p, .reg s =>
             if s = dst then
-              some [if p.1 then JInstr.shl dst (JOperand.imm p.2)
-                    else JInstr.shr dst (JOperand.imm p.2)]
+              if p.2 = 0 then some []
+              else some [if p.1 then JInstr.shl dst (JOperand.imm p.2)
+                         else JInstr.shr dst (JOperand.imm p.2)]
+            else if p.2 = 0 then some [JInstr.mov dst (JOperand.reg s)]
             else lowerLinstrExtCov3 (.Lopn [.reg dst] "SHL:36:64" [.reg dst])
         | _, _ => lowerLinstrExtCov3 (.Lopn [.reg dst] "SHL:36:64" [.reg dst])) = _
-  rw [hsh]; simp
+  rw [hsh]; simp [hn0]
 
 
 /-- **The `MOVQ ↦ MOV:64` alias lowers to a reg-reg `mov`.** A single-source

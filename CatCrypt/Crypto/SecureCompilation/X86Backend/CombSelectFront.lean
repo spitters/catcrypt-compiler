@@ -10,6 +10,8 @@ public import CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFront
 public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectTotality
 public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectTotality
 public import CatCrypt.Crypto.SecureCompilation.Dialects.CarryChainSelectAdequacy
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstIndexFold
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstIndexFold
 
 /-!
 # Ed25519 comb-window constant-time select, generated through the front
@@ -44,6 +46,12 @@ them into four running limbs. Every entry is read on every call and the index
   `translateDialectControl_denote`.
 * `combSelectFrontAsm`, `combSelect5FrontAsm`, `combSelect6FrontAsm`: the owned
   AT&T renderings at `N = 16, 32, 64`.
+* `combSelectFrontFoldedAsm`, `combSelect5FrontFoldedAsm`,
+  `combSelect6FrontFoldedAsm`: the same renderings after
+  `ConstIndexFold.constIndexFold`, which turns every table access into a
+  fixed-displacement access.
+* `combSelectFoldCovers`: the Boolean hypothesis of
+  `ConstIndexFold.constIndexFoldBody_lcmdDirect` on the exported bodies.
 
 ## Addressing
 
@@ -52,7 +60,10 @@ them into four running limbs. Every entry is read on every call and the index
 as a base-plus-index memory operand whose index register holds a literal. The
 exported body is therefore outside `AllocCTPreservation.lcmdDirect`, and the
 constant-time theorem `toLprogPhysAbi_gather_constant_time` does not apply to
-it.
+it. The folded renderings apply `ConstIndexFold.constIndexFold` to the exported
+`Lprog`; when `combSelectFoldCovers N` is `some true`, the folded body is
+`lcmdDirect` and `ConstIndexFold.gatherPrinted_constIndexFoldBody_constant_time`
+applies to it.
 -/
 
 @[expose] public section
@@ -191,6 +202,46 @@ def combSelect5FrontAsm : Option String :=
 /-- The 64-entry (6-bit window) select, `ed25519_comb6_select_x86_from_lean`. -/
 def combSelect6FrontAsm : Option String :=
   combSelectFrontAsmN "ed25519_comb6_select_x86_from_lean" 64
+
+/-- The exported `Lprog` of the lowered select under `f(tbl = RDI, d = RSI,
+    out = RDX)`, with the export arguments of `Secp256k1PointOpFront.ownedAsm`. -/
+def combSelectLprog (name : String) (N : Nat) : Option JasminLprogExport.Lprog :=
+  (combSelectLowered N).map (fun s =>
+    JasminLprogExport.Com.toLprogPhysAbi s.2.2 name
+      (fun _ => none) (fun _ => none) (fun _ => none) []
+      (abiArgs := ["RDI", "RSI", "RDX"]) (abiTyin := [64, 64, 64])
+      (residence := none) (abiW := 0) (forceLivePin := true))
+
+/-- The owned AT&T rendering of the select after `ConstIndexFold.constIndexFold`,
+    with the folded accesses spelled as `mem.<base>.<off>` operands. -/
+def combSelectFrontFoldedAsmN (name : String) (N : Nat) : Option String :=
+  (combSelectLprog name N).map (fun lp =>
+    LprogOptPipeline.renderOwned
+      (ConstIndexFold.spellLprog (ConstIndexFold.constIndexFold lp)))
+
+/-- The folded 16-entry select, `ed25519_comb_select_x86_from_lean`. -/
+def combSelectFrontFoldedAsm : Option String :=
+  combSelectFrontFoldedAsmN "ed25519_comb_select_x86_from_lean" 16
+
+/-- The folded 32-entry select, `ed25519_comb5_select_x86_from_lean`. -/
+def combSelect5FrontFoldedAsm : Option String :=
+  combSelectFrontFoldedAsmN "ed25519_comb5_select_x86_from_lean" 32
+
+/-- The folded 64-entry select, `ed25519_comb6_select_x86_from_lean`. -/
+def combSelect6FrontFoldedAsm : Option String :=
+  combSelectFrontFoldedAsmN "ed25519_comb6_select_x86_from_lean" 64
+
+/-- For every function of the exported `N`-entry select: every register-indexed
+    instruction is folded (`ConstIndexFold.covers`) and the fold keeps the frame
+    parameters. `some true` discharges both hypotheses of
+    `ConstIndexFold.constIndexFoldBody_lcmdDirect`. -/
+def combSelectFoldCovers (N : Nat) : Option Bool :=
+  (combSelectLprog "ed25519_comb_select_x86_from_lean" N).map (fun lp =>
+    lp.lp_funcs.all (fun f =>
+      let b := f.2.lfd_body
+      let p := ConstIndexFold.bodyParams b
+      ConstIndexFold.covers p [] b
+        && ConstIndexFold.bodyParams (ConstIndexFold.foldCore p [] b) == p))
 
 /-! ## 3. Names outside the front's temporary namespace -/
 

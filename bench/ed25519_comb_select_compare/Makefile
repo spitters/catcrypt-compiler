@@ -26,7 +26,10 @@ LEAN_S  := gen_com/ed25519_comb_select_x86_from_lean.s
 FRONT_S := gen_com_front/ed25519_comb_select_x86_from_lean.s
 FRONT_M := $(REPO)/CatCrypt/Crypto/SecureCompilation/X86Backend/CombSelectFront.lean
 
-.PHONY: all emit kat run clean emit-front kat-front run-front
+FOLD_S  := gen_com_folded/ed25519_comb_select_x86_from_lean.s
+FOLD_M  := $(REPO)/CatCrypt/Crypto/SecureCompilation/X86Backend/ConstIndexFold.lean
+
+.PHONY: all emit kat run clean emit-front kat-front run-front emit-folded kat-folded run-folded
 
 all: comb_select_compare
 
@@ -66,5 +69,25 @@ kat-front: comb_select_compare_front
 run-front: comb_select_compare_front
 	$(PIN) ./comb_select_compare_front $(TRIALS)
 
+# The front-generated select after the constant-index fold: every table read is a
+# fixed-offset load. Not the shipped kernel either.
+$(FOLD_S): $(KERNEL) $(FRONT_M) $(FOLD_M) emit_folded.lean
+	cd $(REPO) && lake env lean --run bench/ed25519_comb_select_compare/emit_folded.lean
+
+emit-folded: $(FOLD_S)
+
+folded_combsel.o: $(FOLD_S)
+	$(CC) -c $(FOLD_S) -o folded_combsel.o
+
+comb_select_compare_folded: comb_select_compare.c folded_combsel.o
+	$(CC) $(CFLAGS) comb_select_compare.c folded_combsel.o -o $@
+
+kat-folded: comb_select_compare_folded
+	./comb_select_compare_folded 1
+
+run-folded: comb_select_compare_folded
+	$(PIN) ./comb_select_compare_folded $(TRIALS)
+
 clean:
-	rm -f lean_combsel.o comb_select_compare front_combsel.o comb_select_compare_front
+	rm -f lean_combsel.o comb_select_compare front_combsel.o comb_select_compare_front \
+	  folded_combsel.o comb_select_compare_folded

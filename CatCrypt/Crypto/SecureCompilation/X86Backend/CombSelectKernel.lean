@@ -536,6 +536,21 @@ def emitFrontTo (dir : String) : IO Unit := do
   IO.println s!"wrote {dir}/ed25519_comb5_select_x86_from_lean.s (32-entry, 5-bit)"
   IO.println s!"wrote {dir}/ed25519_comb6_select_x86_from_lean.s (64-entry, 6-bit)"
 
+/-- Write the front-generated selects after `ConstIndexFold.constIndexFold`, under
+    the shipped symbol names, into `dir`. -/
+def emitFoldedTo (dir : String) : IO Unit := do
+  let some a4 := CombSelectFront.combSelectFrontFoldedAsm
+    | throw (IO.userError "front compilation of the 16-entry comb select failed")
+  let some a5 := CombSelectFront.combSelect5FrontFoldedAsm
+    | throw (IO.userError "front compilation of the 32-entry comb select failed")
+  let some a6 := CombSelectFront.combSelect6FrontFoldedAsm
+    | throw (IO.userError "front compilation of the 64-entry comb select failed")
+  IO.FS.createDirAll dir
+  IO.FS.writeFile (dir ++ "/ed25519_comb_select_x86_from_lean.s") a4
+  IO.FS.writeFile (dir ++ "/ed25519_comb5_select_x86_from_lean.s") a5
+  IO.FS.writeFile (dir ++ "/ed25519_comb6_select_x86_from_lean.s") a6
+  IO.println s!"wrote the folded 16-, 32- and 64-entry selects to {dir}"
+
 /-- Emit driver for the dev-tree bench `bench/ed25519_comb_compare`, run from that
     repository's root. -/
 def emitMain : IO Unit := emitTo "bench/ed25519_comb_compare/gen_com"

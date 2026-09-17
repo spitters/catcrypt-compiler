@@ -2,3 +2,5 @@
 /*.o
 /comb_select_compare
 /comb_select_compare_front
+/gen_com_folded/
+/comb_select_compare_folded
