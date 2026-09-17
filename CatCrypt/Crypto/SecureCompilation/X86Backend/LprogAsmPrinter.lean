@@ -337,38 +337,6 @@ def vecSpillScratch : String := "0(%rsp)"
     `vecSpillScratch` around each use so no register is reserved. -/
 def vecSpillReg : String := "%ymm15"
 
-/-- The AT&T text of a **memory-class** operand (spill `k.N`, qsave `X`,
-    `mem.<base>.<off>`) at byte offset `+delta` from its base address. Used by
-    the imm64-store arm to address the HIGH dword of a 64-bit slot (`+4`): x86
-    has no imm64-to-memory encoding, so a ≥ 2³¹ constant stores as two `movl`
-    dword writes (lo at `+0`, hi at `+4`). `none` for a non-memory operand or a
-    SIB `arrIdx` (the dword split cannot re-scale a SIB stride). -/
-def resolveMemPlus (frame spillW delta : Nat) (o : LOperand)
-    (qsaveB : Nat := qsaveBytes) : Option String :=
-  match o with
-  | .reg n =>
-      if "k.".isPrefixOf n then
-        match String.toNat? (n.drop 2).toString with
-        | some idx =>
-            some (toString (spillFrameOff frame spillW idx qsaveB + Int.ofNat delta)
-              ++ "(%rsp)")
-        | none => none
-      else if "qsave.".isPrefixOf n then
-        match qsaveFrameOff frame ((n.drop 6).toString) qsaveB with
-        | some off => some (toString (off + Int.ofNat delta) ++ "(%rsp)")
-        | none => none
-      else if "mem.".isPrefixOf n then
-        match ((n.drop 4).toString).splitOn "." with
-        | [base, off] =>
-            match String.toNat? off with
-            | some o =>
-                some ((if o + delta = 0 then "" else toString (o + delta))
-                  ++ "(" ++ gpReg64 base ++ ")")
-            | none => none
-        | _ => none
-      else none
-  | _ => none
-
 /-! ## 3. Mnemonic map: owned-RA body opcode → AT&T mnemonic + size suffix
 
 The body mnemonics are the textual jasmin opcodes from
@@ -630,14 +598,24 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
                 ++ resolveOperand frame spillW 64 d qsaveB ]
         | _ => [ "\t# UNHANDLED-VMOV " ++ opn ]
       else
-      -- **imm64 store** (the fri_proof Merkle u64 mixer constants): x86 has no
-      -- imm64-to-memory encoding (`movq $imm, mem` takes a SIGN-EXTENDED imm32,
-      -- so gas rejects any value ≥ 2³¹), and no scratch register exists at
-      -- render time (R11 is in the RA pool). Store as two `movl` dword writes:
-      -- lo at `+0`, hi at `+4` (hi = 0 still written — the imm32 form would
-      -- sign-extend). Register destinations stay on the generic arm: gas
-      -- selects `movabs` for imm64-to-register itself, keeping every existing
-      -- kernel's text byte-identical.
+      -- **imm64 store** (the fri_proof Merkle u64 mixer constants, the
+      -- Ed25519 point-add constant): x86 has no imm64-to-memory encoding
+      -- (`movq $imm, mem` takes a SIGN-EXTENDED imm32, so gas rejects any value
+      -- ≥ 2³¹), and every GP register is in the RA pool. The constant is loaded
+      -- into a borrowed register saved at the bottom of the red zone, with the
+      -- save/restore discipline of the spilled `cmov`/`adcx` destinations below
+      -- (call-free leaves; the export's red-zone stash slots sit at `-8·k`,
+      -- never at `-128`), and stored as one 64-bit word:
+      --
+      --   movq scratch, -128(%rsp)
+      --   movq $v, scratch        ; gas selects the imm64 `movabs` encoding
+      --   movq scratch, [d]
+      --   movq -128(%rsp), scratch
+      --
+      -- No instruction writes a flag. The scratch avoids the text of `[d]`
+      -- (its base register, for a `mem.<base>` destination). Register
+      -- destinations stay on the generic arm, whose `movq $v, %reg` gas also
+      -- assembles as `movabs`.
       let imm64Store : Option Nat :=
         match s, attBase base with
         | .imm v, some "mov" =>
@@ -645,12 +623,17 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
             else none
         | _, _ => none
       if let some v := imm64Store then
-        match resolveMemPlus frame spillW 4 d qsaveB with
-        | some hiOp =>
-            [ "\tmovl $" ++ toString (v % 4294967296) ++ ", "
-                ++ resolveOperand frame spillW 32 d qsaveB,
-              "\tmovl $" ++ toString (v / 4294967296) ++ ", " ++ hiOp ]
-        | none => [ "\t# UNHANDLED-IMM64-STORE " ++ opn ]
+        let dOp := resolveOperand frame spillW 64 d qsaveB
+        let freeOf : String → Bool := fun cand => (dOp.splitOn cand).length == 1
+        let scratch :=
+          if freeOf "%rax" then "%rax"
+          else if freeOf "%rbx" then "%rbx"
+          else if freeOf "%rcx" then "%rcx"
+          else "%rdx"
+        [ "\tmovq " ++ scratch ++ ", -128(%rsp)",
+          "\tmovq $" ++ toString v ++ ", " ++ scratch,
+          "\tmovq " ++ scratch ++ ", " ++ dOp,
+          "\tmovq -128(%rsp), " ++ scratch ]
       else
       -- **Native immediate shift / rotate** (#497/#605/#606): the count is carried
       -- IN the mnemonic (`SHR:n` / `SHL:n` / `SAR:n` / `ROR:n` / `ROL:n`, from
@@ -1138,7 +1121,7 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
           -- pressure): `adcx`/`adox` require a REGISTER destination (unlike the
           -- classic two-address ALU class, whose memory-destination forms the
           -- generic arm exploits), and no scratch register exists at render time
-          -- (all GPs are in the RA pool — the imm64-store precedent).  `push`/
+          -- (all GPs are in the RA pool).  `push`/
           -- `pop` cannot save one either: the export stashes ABI args in the red
           -- zone (`-8(%rsp)`, `forceLivePin`), which a push would clobber.
           -- Instead borrow a scratch and save it at the BOTTOM of the red zone
@@ -1228,6 +1211,13 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
 `XMM<k>` operand names resolve to the AVX `%ymm<k>` register, and the packed
 binary / shift-by-immediate `renderLopn` arms emit the AT&T VEX 3-operand form
 (`src2, src1, dst`). -/
+
+-- The imm64-store arm on a `mem.RAX` destination: the constant goes through
+-- `%rbx`, the first candidate absent from the destination's text, saved to and
+-- restored from `-128(%rsp)`. A static pin of the printed form.
+#guard renderLopn 0 0 false [.reg "mem.RAX.8"] "MOV:64" [.imm 2596001775599221991]
+        = ["\tmovq %rbx, -128(%rsp)", "\tmovq $2596001775599221991, %rbx",
+           "\tmovq %rbx, 8(%rax)", "\tmovq -128(%rsp), %rbx"]
 
 #guard resolveName 0 0 32 "XMM3" = "%ymm3"
 #guard renderLopn 0 0 false [.reg "XMM0"] "VPXOR" [.reg "XMM1", .reg "XMM2"]
