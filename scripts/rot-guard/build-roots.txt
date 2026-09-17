@@ -767,6 +767,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.LadderStepFrontOkProof
 CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdLea
 CatCrypt.Crypto.SecureCompilation.X86Backend.LeaRoundThirEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.LeafFFIViaMachineModel
+CatCrypt.Crypto.SecureCompilation.X86Backend.LeafFrame
 CatCrypt.Crypto.SecureCompilation.X86Backend.LinkerReloc
 CatCrypt.Crypto.SecureCompilation.X86Backend.LoopReduceX86Demo
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTCallCompose
@@ -806,6 +807,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.RescheduleScratch
 CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgreeMontMulBlock
 CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgreeShiftReg
 CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86CFDecoder
+CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86LeanUniversal
 CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarValidation
 CatCrypt.Crypto.SecureCompilation.X86Backend.Secp256k1LadderCopyFront
 CatCrypt.Crypto.SecureCompilation.X86Backend.Secp256k1MontMulKernel
