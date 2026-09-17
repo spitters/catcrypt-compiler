@@ -1190,14 +1190,25 @@ wrote. Every other form must produce at least one byte, and `encodableLinstrR` r
 that off `encodeLinstrR` itself — so the predicate cannot drift from the encoder as
 arms are added. -/
 
+/-- A count-in-tag shift mnemonic (`"SHL:0:64"`) whose count is `0`: the identity
+    shift, which the count-in-tag arm of `encodeLopn` encodes to no bytes when its
+    source and destination are the same general-purpose register. -/
+def isIdentityTagShift (opn : String) : Bool :=
+  !isCarryOutBinding opn && (tagShiftExt (stripWidthTag opn)).isSome
+    && tagShiftCount (stripWidthTag opn) == 0
+
 /-- The `LinstrR` forms whose encoding is empty by construction. The `FRAMEADD`
     frame-extension directive is one: `LprogAsmPrinter.frameSize` reads it and the
-    printer drops it, so it reaches neither the text nor the byte stream. -/
+    printer drops it, so it reaches neither the text nor the byte stream. A
+    count-in-tag shift by `0` of a general-purpose register onto itself is another:
+    the printer and the encoder both drop it. -/
 def carriesNoBytes : LinstrR → Bool
   | .Lret => true
   | .Lalign => true
   | .Llabel _ _ => true
   | .Lopn [] "FRAMEADD" _ => true
+  | .Lopn [.reg dn] opn [.reg sn] =>
+      isMulHiBinding opn || (dn == sn && isGpName dn && isIdentityTagShift opn)
   | .Lopn _ opn _ => isMulHiBinding opn
   | _ => false
 
@@ -1227,6 +1238,13 @@ def encodableLcmd (body : Lcmd) : Bool :=
   [ ⟨0, .Lopn [] "FRAMEADD" [.imm 128]⟩
   , ⟨0, .Lopn [.reg "RAX"] "MOV:64" [.imm 1]⟩ ] = true
 #guard carriesNoBytes (.Lopn [] "FRAME" [.imm 64]) = false
+-- The identity self-shift carries no bytes and its encoding is empty; a shift by a
+-- nonzero count, and a by-0 shift between two registers, still carry bytes.
+#guard carriesNoBytes (.Lopn [.reg "R15"] "SHL:0:64" [.reg "R15"]) = true
+#guard (encodeLinstrR 128 64 (fun _ => 0) (.Lopn [.reg "R15"] "SHL:0:64" [.reg "R15"])).isEmpty
+#guard carriesNoBytes (.Lopn [.reg "R15"] "SHL:3:64" [.reg "R15"]) = false
+#guard carriesNoBytes (.Lopn [.reg "R15"] "SHL:0:64" [.reg "R8"]) = false
+#guard encodableLinstrR 128 64 (.Lopn [.reg "R15"] "SHL:0:64" [.reg "R8"]) = true
 
 /-- `encodeLcmd` gated on `encodableLcmd`: the body's bytes when every instruction
     reaches the stream, `none` when one would be dropped. An emitter that byte-encodes
