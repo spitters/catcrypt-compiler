@@ -217,6 +217,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineTieFragments
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresRelationalWeld
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresSym
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresSymScalar
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.CombSelectBytes
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.EarlyExitJasmin
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Fe25519AddSubSelectProof
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Fe25519KernelsBytes
@@ -245,6 +246,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Fe25519AddShipped
 CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Fe25519MulShipped
 CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Fe25519SqrShipped
 CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Fe25519SubShipped
+CatCrypt.Crypto.SecureCompilation.Ascent.Imported.ShippedCT
 CatCrypt.Crypto.SecureCompilation.Ascent.InvariantSchemas
 CatCrypt.Crypto.SecureCompilation.Ascent.JStateSepLogic
 CatCrypt.Crypto.SecureCompilation.Ascent.JasminMirrorTie
