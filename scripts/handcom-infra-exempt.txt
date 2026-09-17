@@ -147,3 +147,9 @@ CatCrypt/Crypto/SecureCompilation/X86Backend/SpeculativeCTPreservation.lean  # s
 CatCrypt/Crypto/SecureCompilation/X86Backend/LcmdLea.lean  # Lcmd->Lcmd LEA-formation optimizer pass; .Lopn occurrences are pass matchers and #guard fixtures, writes no artifact
 CatCrypt/Crypto/SecureCompilation/X86Backend/RunBlockLsemAgreeCondSubP.lean  # runBlock<->lsem block agreement (conditional subtract-p); proof subject, no emit artifact
 CatCrypt/Crypto/SecureCompilation/X86Backend/RunBlockLsemAgreeMontMulBlock.lean  # runBlock<->lsem block agreement (Montgomery multiply block); proof subject, no emit artifact
+CatCrypt/Crypto/SecureCompilation/Algebraic/FieldLimbs/Curve25519.lean  # block library of the verified field-dialect lowering FieldToJasminLimbs25519: each multi-limb block carries a value theorem against ZMod (2^255 - 19), and fieldToJasminLimbs_denote composes them; lowering rules, not a deployed kernel
+CatCrypt/Crypto/SecureCompilation/Algebraic/FieldWord/SingleWord.lean  # block library of the verified single-word field-dialect lowering FieldToJasminWord: each block carries a value theorem against ZMod p; lowering rules, not a deployed kernel
+CatCrypt/Crypto/SecureCompilation/X86Backend/ToLprogFaithfulBinopMov.lean  # faithfulness proof chain for the mov-prefixed two-address collapse; the Lopn it builds are PROOF SUBJECTS, no artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/ToLprogFaithfulBinopWide.lean  # faithfulness proof chain for width-64 binops; the Lopn it builds are PROOF SUBJECTS, no artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/ToLprogFaithfulConst.lean  # faithfulness proof chain for constant bindings; the Lopn it builds are PROOF SUBJECTS, no artifact
+CatCrypt/Crypto/SecureCompilation/X86Backend/ToLprogFaithfulMulCarrySel.lean  # faithfulness proof chain for mulhi, carry chains and select; the Lopn it builds are PROOF SUBJECTS, no artifact

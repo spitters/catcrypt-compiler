@@ -62,3 +62,5 @@ test D
 
 # ---- review (per-file lowering check pending; tracked, NOT silently unmarked) ----
 # (empty — all dialects classified as of 2026-07-19.)
+test dwDialect
+test wordDialect

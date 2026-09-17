@@ -28,6 +28,8 @@
 #   FRONT marker (routes through the verified front):
 #     reifyLowCT | translateDialectControl | cryptoDialectToJasminCom |
 #     rolledForLoopN | FieldEmitGoldenPath | RelationalCompile | emitDialectOwnedArr |
+#     loweringL.lowerMulti | fieldToJasminLimbs | fieldToJasminWord (the verified field-dialect
+#     lowering of `Algebraic/`, whose block libraries are listed as infrastructure) |
 #     FrontRoutePlan.{compile,compileLoop,compileNested,compileBlock} — the
 #     rolled-loop dispatcher, which selects one of the rolled-loop combinators
 #     (a site that reaches the family through it names no combinator; see
@@ -148,7 +150,7 @@ BASELINE_FILE="scripts/handcom-provenance-baseline.txt"
 # forLoopBlock GF(16) nest; mayo-solve-emit-kat). CAVEAT: step-composition is weaker
 # provenance than a high-level-source descent (schedule hand-authored in a verified DSL);
 # re-sourcing from a high-level source (like Poseidon2 via translBB) is a future strengthening.
-FRONT_RE='(reifyLowCT|translateDialectControl|cryptoDialectToJasminCom|rolledForLoopN|compileLoop|compileNested|compileBlock|FrontRoutePlan|FieldEmitGoldenPath|RelationalCompile|emitDialectOwnedArr|lowerThir|ThirToCom|CatCryptEmit\.|buildOrchCom|OrchestrationFront|OrchFront|toLfundefPhysFramedAbi|translBB|MpnAddFrontEmit|MpnLoopFrontEmit|serByteStore|QuerySampleBranchFront|Shake256SpongeFront|Fe25519UnifyingFront|MpnCmpEarlyExitFront|SolveGf16FrontGen)'
+FRONT_RE='(reifyLowCT|translateDialectControl|cryptoDialectToJasminCom|rolledForLoopN|compileLoop|compileNested|compileBlock|FrontRoutePlan|FieldEmitGoldenPath|RelationalCompile|emitDialectOwnedArr|lowerThir|ThirToCom|CatCryptEmit\.|buildOrchCom|OrchestrationFront|OrchFront|toLfundefPhysFramedAbi|translBB|MpnAddFrontEmit|MpnLoopFrontEmit|serByteStore|QuerySampleBranchFront|Shake256SpongeFront|Fe25519UnifyingFront|MpnCmpEarlyExitFront|SolveGf16FrontGen|loweringL\.lowerMulti|fieldToJasminLimbs|fieldToJasminWord)'
 
 # The construction markers are split from the render markers. Building an IR node
 # (`Lopn` / `LinstrR` / `mkLinstr` / a de-Bruijn `Com` chain) is authorship;
@@ -223,6 +225,10 @@ front_sourced() {
   [ "$depth" -le 0 ] && return 1
   case "$seen" in *" $f "*) return 0 ;; esac
   has_front "$f" && return 0
+  # An exempt infrastructure module reached through a source is not a kernel, so a
+  # module drawing a type or a block from it is judged by its other sources;
+  # detector B skips such modules in the same way.
+  [ "$depth" -lt "$FRONT_SOURCED_DEPTH" ] && is_infra "$f" && return 0
   has_construct "$f" && return 1
   local ids id target src
   ids="$(emit_sources "$f")"
