@@ -1,0 +1,116 @@
+[package]
+name = "p384-ecdsa-rust"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Leaf shim crate, differential harness and benchmark for the CatCrypt-emitted P-384 ECDSA source"
+
+# Standalone crate: not a member of any surrounding cargo workspace.
+[workspace]
+
+[lib]
+name = "p384_ecdsa_rust"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bench"
+path = "src/bin/bench.rs"
+
+# The field-multiply comparison: the two CatCrypt-emitted P-384 field kernels
+# against s2n-bignum's.  Needs both `s2n` (for the oracle and the opponent)
+# and `emit-field` (which links the two emitted `.s` files).
+[[bin]]
+name = "fieldbench"
+path = "src/bin/fieldbench.rs"
+required-features = ["s2n", "emit-field"]
+
+[dependencies]
+# The pure-Rust P-384 field and group implementation.  `extracted` is enabled
+# for `p384::wnaf::{point_to_bytes, point_from_bytes}`, which define the
+# 144-byte projective point encoding this crate's ABI uses.
+p384 = { package = "p384-safe-rust", path = "../../../BLS/AUCurves/p384-safe-rust", features = ["extracted"] }
+
+# The mod-n scalar field (Montgomery, 6 x u64).
+fiat-crypto = { path = "../../../BLS/AUCurves/fiat-crypto/fiat-rust" }
+
+# The Bernstein-Yang divstep inverse.  `safegcd_p384_order` is the mod-n
+# instantiation the scalar inverse leaf uses; `p384-safe-rust` already
+# depends on the same crate for the base-field `fp_inv`.
+safegcd = { path = "../../../BLS/AUCurves/safegcd-rs" }
+
+# RustCrypto P-384 + ECDSA: the differential opponent and the benchmark
+# baseline.  Renamed because the path dependency above already occupies the
+# name `p384`.  Pinned to what the local registry cache holds, so
+# `cargo --offline` resolves.
+p384_rc = { package = "p384", version = "=0.13.1", default-features = false, features = ["arithmetic", "ecdsa", "ecdh"] }
+ecdsa = { version = "=0.16.9", default-features = false, features = ["arithmetic", "hazmat"] }
+elliptic-curve = { version = "=0.13.8", default-features = false, features = ["arithmetic", "sec1", "ecdh"] }
+
+# HKDF-SHA384 for the DHKEM(P-384) leaves (`src/dhkem_kdf.rs`) and for the
+# independent reference DHKEM (`src/dhkem_ref.rs`).  The three versions are
+# the digest-0.10 line, which is what `elliptic-curve` 0.13 already pulls in,
+# and all three are in the local registry cache.
+hkdf = "=0.12.4"
+hmac = "=0.12.1"
+sha2 = { version = "=0.10.9", default-features = false }
+
+# hpke-rs 0.7.0, the HPKE library OpenMLS uses, with its RustCrypto
+# provider: the native-API DHKEM(P-384) opponent (`src/hpke_rs.rs`).
+# `hpke-test` and `hpke-test-prng` expose `Hpke::seed`, which fixes the
+# ephemeral randomness so an encapsulation is reproducible; `hazmat` exposes
+# the encapsulated secret's bytes.  The libcrux provider is not used: its
+# P-384 support is RustCrypto `p384` 0.14.0-rc.8 behind
+# `rustcrypto-p-curves`, which is not in the registry cache, and
+# `libcrux-ecdh` 0.0.8 itself has no P-384 (README § DHKEM(P-384)).
+hpke-rs = { version = "=0.7.0", default-features = false, features = ["rustcrypto", "hazmat", "hpke-test", "hpke-test-prng"] }
+hpke-rs-crypto = { version = "=0.7.0", default-features = false }
+hpke-rs-rust-crypto = { version = "=0.7.0", default-features = false }
+
+# Graviola: the second differential opponent and benchmark baseline.  Its
+# P-384 field and group arithmetic is hand-written assembly derived from
+# s2n-bignum, machine-checked in HOL Light, so it is a different tier from
+# the fiat-crypto Rust that this crate and RustCrypto both run.  Pinned to
+# what the local registry cache holds, so `cargo --offline` resolves.
+graviola = "=0.4.1"
+
+
+[features]
+# Ignore anything under `gen/` and use the hand-written transcription of the
+# three call sequences in `src/generated.rs::fallback` instead.
+force-fallback = []
+
+# Link the vendored AWS s2n-bignum archive and compile the third leaf
+# backend over it: `src/s2n.rs`, `src/leaves_s2n.rs`, `src/comb_s2n.rs`,
+# `src/lincomb_s2n.rs`.  Off by default, so the two existing backends build
+# and test exactly as before.  `build.rs` finds the archive at
+# `../reference_install/s2n-bignum/x86`, or wherever `S2N_BIGNUM_DIR` points.
+s2n = []
+
+# Link the two CatCrypt-emitted P-384 field kernels, which live in sibling
+# bench directories and are untracked build output of the Lean emitters:
+#
+#   ../p384_compare/gen/p384_montmul_proven.s            (R = 2^384 Montgomery)
+#   ../p384_fieldmul_compare/gen_com/p384_mul_x86_from_lean.s  (ordinary domain)
+#
+# Used only by the `fieldbench` binary.  `P384_EMIT_MONTMUL_S` and
+# `P384_EMIT_SOLINAS_S` override the paths.
+emit-field = []
+
+# The production TLS-stack opponents, read in place and never rebuilt:
+#
+#   BoringSSL  ../../../bench_refs/boringssl/build-ct/libcrypto.a, linked
+#              statically (override the directory with BORINGSSL_LIB_DIR)
+#   OpenSSL    /usr/lib/x86_64-linux-gnu/libcrypto.so.3, opened with dlopen
+#              (override with P384_OPENSSL_LIBCRYPTO)
+#   AWS-LC     ../../../bench_refs/aws-lc-build/crypto/libcrypto.so, opened
+#              with dlopen at run time and skipped when absent (override
+#              with P384_AWSLC_LIBCRYPTO)
+#
+# The three export the same C names, so only BoringSSL is linked by name;
+# `src/ossl.rs` says why the others are loaded instead.  Adds `src/bssl.rs`,
+# `src/ossl.rs`, `src/ossl_kem.rs`, `src/awslc.rs`, `tests/production.rs`,
+# `tests/dhkem_production.rs` and the production columns of the benchmark.
+production = []
+
+[profile.release]
+debug = true

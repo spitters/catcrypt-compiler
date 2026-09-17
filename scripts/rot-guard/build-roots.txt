@@ -224,6 +224,8 @@ CatCrypt.Crypto.SecureCompilation.Ascent.Demos.HeapAbs
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.LeanSourceRiscv
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.LeanSourceX86
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Riscv
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.S2nMontmulP384Addr
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.S2nMontmulP384Framed
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.SourceToBytes
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.WhileFunSumJasmin
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.X86StraightLine

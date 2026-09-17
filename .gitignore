@@ -21,3 +21,7 @@ docs/lake-manifest.json
 !/bench/hmac_compare/gen/hmac_xor_pad.s
 !/bench/hmac_compare/gen/sha256_compress.s
 !/bench/x25519_fieldmul_compare/gen/fe25519_mul_proven.s
+!/bench/p384_ecdsa_rust/gen/*.rs
+!/bench/p384_ecdsa_rust/gen/PROVENANCE.md
+/bench/p384_ecdsa_rust/target/
+/bench/p384_ecdsa_rust/Cargo.lock
