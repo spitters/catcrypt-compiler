@@ -100,7 +100,6 @@ CatCrypt.Crypto.Jasmin.Mpn.MLIRBackend
 CatCrypt.Crypto.Jasmin.Mpn.QhatBound
 CatCrypt.Crypto.Jasmin.P256.EvalChain
 CatCrypt.Crypto.Jasmin.P256Reflect
-CatCrypt.Crypto.Jasmin.P384DhkemReflect
 CatCrypt.Crypto.Jasmin.Passes.ConstantFold
 CatCrypt.Crypto.Jasmin.Passes.NopElim
 CatCrypt.Crypto.Jasmin.Plonky3AirReflect
@@ -205,7 +204,6 @@ CatCrypt.Crypto.SecureCompilation.Algebraic.Ed25519PointAddEmit
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldWord.KoalaBear
 CatCrypt.Crypto.SecureCompilation.Algebraic.Poseidon2BabyBearEmit
 CatCrypt.Crypto.SecureCompilation.Algebraic.Poseidon2BabyBearSpec
-CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem
 CatCrypt.Crypto.SecureCompilation.Ascent.ArrLoadLeaf
 CatCrypt.Crypto.SecureCompilation.Ascent.ArrStoreEmit
 CatCrypt.Crypto.SecureCompilation.Ascent.AscendMeta
@@ -233,13 +231,13 @@ CatCrypt.Crypto.SecureCompilation.Ascent.Demos.WhileFunSumJasmin
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.X86StraightLine
 CatCrypt.Crypto.SecureCompilation.Ascent.GradedMvcgenProbe
 CatCrypt.Crypto.SecureCompilation.Ascent.GradedWP
-CatCrypt.Crypto.SecureCompilation.Ascent.Imported.CallSeg
 CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519CombSelectShipped
 CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519CompressShipped
 CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519InvertShipped
 CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519Join16Shipped
 CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519MaddShipped
 CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519PackSignShipped
+CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519PointAddShipped
 CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519ScMuladdShipped
 CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519ScReduceShipped
 CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Fe25519AddShipped
@@ -732,7 +730,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAdd6Bls
 CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacAddAffine
 CatCrypt.Crypto.SecureCompilation.X86Backend.EcJacDbl6ABlock
 CatCrypt.Crypto.SecureCompilation.X86Backend.Ed25519PointKernel
-CatCrypt.Crypto.SecureCompilation.X86Backend.EncodedBlockCorres
 CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519LfundefBridge
 CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulOptimized
 CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulProvenEmit
@@ -759,7 +756,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.LadderStepFrontOkProof
 CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdLea
 CatCrypt.Crypto.SecureCompilation.X86Backend.LeaRoundThirEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.LeafFFIViaMachineModel
-CatCrypt.Crypto.SecureCompilation.X86Backend.LeafFrame
 CatCrypt.Crypto.SecureCompilation.X86Backend.LinkerReloc
 CatCrypt.Crypto.SecureCompilation.X86Backend.LoopReduceX86Demo
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTCallCompose
@@ -885,7 +881,6 @@ CatCrypt.Crypto.Vale.MLKEM768
 CatCrypt.Crypto.Vale.MpnInvert
 CatCrypt.Crypto.Vale.P256FieldMul
 CatCrypt.Crypto.Vale.P256FieldMulCoqAxioms
-CatCrypt.Crypto.Vale.P384FieldMul
 CatCrypt.Crypto.Vale.P384FieldMulCoqAxioms
 CatCrypt.Crypto.Vale.Pallas
 CatCrypt.Crypto.Vale.PallasFieldMul
@@ -924,10 +919,12 @@ CatCrypt.Deep.ReflectTactic
 CatCrypt.Deep.ReflectUCHelpers
 CatCrypt.Deep.Strategy
 CatCrypt.Deep.Tactics
+CatCrypt.EmitArtifacts.P384Rust
 CatCrypt.Hax.Ascent.AscendHaxDemo
 CatCrypt.Hax.Ascent.Deps
-CatCrypt.Hax.Ascent.EarlyExit
+CatCrypt.Hax.Ascent.IfBreak
 CatCrypt.Hax.Ascent.LocalCalls
+CatCrypt.Hax.Ascent.RuntimeOps
 CatCrypt.Hax.Ascent.Structs
 CatCrypt.Hax.PrimeirBuiltins
 CatCrypt.Hax.ReprBridge
