@@ -42,12 +42,10 @@ comparison on the real GoldenPath kernel `AsconLinear.asconSigma0Com`.
   single-source `MOVQ` to the `MOV:64` lowering, so the framing **gathers**.
 
 * **Per-shift in-place drop-`mov`.** The Lprog `encodeLopn` of a count-in-tag
-  shift `SHR:<n>:64 [d] [src]` emits **only** `shr %d, $n` — it *ignores the
-  source register entirely*, treating the rotate as destructive on `d` (the
-  prior `mov d, src` is its own separate `Lopn` in the physical body, or the
-  source already equals `d`). To byte-match, `gatherJBlock4` drops the gather's
-  leading materialise `mov d, src` for a count-in-tag shift and emits just
-  `[shr d $n]` / `[shl d $n]` — the single op the Lprog encoder produces.
+  shift `SHR:<n>:64 [d] [src]` emits `mov %src, %d` followed by `shr %d, $n`
+  when `src ≠ d`, and the shift alone when `src = d`. `gatherJBlock4` matches
+  both: an in-place shift lowers to the single `[shr d $n]` / `[shl d $n]`, and
+  a shift from a distinct register keeps the materialise `mov d, src`.
 
 ## What byte-matches, and the one residual (honest)
 
@@ -133,27 +131,31 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysBodyGather (physAlloc)
       emits) is lowered as the gather-covered `MOV:64` form. `encodeLopn` already
       maps the two mnemonics to identical bytes (`FramingReconcile` §3), so the
       framing now gathers.
-    * **per-shift drop-`mov`**: a count-in-tag shift `SHR:<n>:64`/`SHL:<n>:64`
-      `[src]` lowers to the **single** `[shr d $n]` / `[shl d $n]` — dropping the
-      gather's leading materialise `mov d, src`, matching the Lprog encoder, which
-      emits only `shr/shl %d, $n` (it ignores the shift's source register).
+    * **in-place shift**: a count-in-tag shift `SHR:<n>:64`/`SHL:<n>:64` whose
+      source register is its destination lowers to the **single**
+      `[shr d $n]` / `[shl d $n]`, without the materialise `mov d, d`. The Lprog
+      encoder emits `mov d, s` before the shift exactly when `s ≠ d`, so a shift
+      with a distinct source keeps the two-instruction form of
+      `lowerLinstrExtCov3`.
 
     Every other shape delegates to `lowerLinstrExtCov3` verbatim (the in-place
     two-source ALU peephole). So `lowerLinstrExtCov4` differs from
-    `lowerLinstrExtCov3` only on the single-source `MOVQ` and the count-in-tag
-    shift shapes. -/
+    `lowerLinstrExtCov3` only on the single-source `MOVQ` and the in-place
+    count-in-tag shift shapes. -/
 def lowerLinstrExtCov4 : LinstrR → Option (List (JInstr 64))
   -- `MOVQ ↦ MOV:64` synonym alias (the framing mnemonic `buildPrologue` emits)
   | .Lopn [.reg dst] "MOVQ" [s] =>
       lowerLinstrExtCov3 (.Lopn [.reg dst] "MOV:64" [s])
-  -- single-source: a count-in-tag shift drops its materialise `mov` (the Lprog
-  -- encoder emits only `shr/shl %d, $n`); everything else delegates verbatim
+  -- single-source: an in-place count-in-tag shift is the shift alone; everything
+  -- else, including a shift from a distinct register, delegates verbatim
   | .Lopn [.reg dst] opn [src] =>
-      match parseShiftMnem opn with
-      | some p =>
-          some [if p.1 then JInstr.shl dst (JOperand.imm p.2)
-                else JInstr.shr dst (JOperand.imm p.2)]
-      | none   => lowerLinstrExtCov3 (.Lopn [.reg dst] opn [src])
+      match parseShiftMnem opn, src with
+      | some p, .reg s =>
+          if s = dst then
+            some [if p.1 then JInstr.shl dst (JOperand.imm p.2)
+                  else JInstr.shr dst (JOperand.imm p.2)]
+          else lowerLinstrExtCov3 (.Lopn [.reg dst] opn [src])
+      | _, _ => lowerLinstrExtCov3 (.Lopn [.reg dst] opn [src])
   -- everything else (two-source ALU, MULXHI, memory, control-flow): the in-place
   -- coverage superset verbatim
   | i => lowerLinstrExtCov3 i
@@ -170,65 +172,79 @@ def lowerLinstrExtCov4L (i : Linstr) : Option (List (JInstr 64)) :=
 def gatherJBlock4 (body : List Linstr) : Option (List (JInstr 64)) :=
   ((body.filter (fun i => !isLret i)).mapM lowerLinstrExtCov4L).map List.flatten
 
-/-! ## 2. The new shift arm: lowering equations
+/-! ## 2. The in-place shift arm: lowering equations
 
-The count-in-tag shift now lowers to the **single** destructive op — no leading
-materialise `mov`. The lowering is stated parametrically over the shift count `n`
-(carried as a hypothesis `hsh : parseShiftMnem opn = some (isLeft, n)`), because
-`parseShiftMnem` dispatches via `String.startsWith`, which does not kernel-reduce
-— the count value `n` is recovered from the hypothesis, not by reduction. -/
+An in-place count-in-tag shift (source register = destination) lowers to the
+**single** destructive op. The lowering is stated parametrically over the shift
+count `n` (carried as a hypothesis `hsh : parseShiftMnem opn = some (isLeft, n)`),
+because `parseShiftMnem` dispatches via `String.startsWith`, which does not
+kernel-reduce — the count value `n` is recovered from the hypothesis, not by
+reduction. A shift from a distinct register lowers through `lowerLinstrExtCov3`
+to `[mov d s, shr/shl d $n]`, the same two instructions the Lprog encoder emits. -/
 
-/-- A count-in-tag right shift `SHR:19:64 [src]` (dst `d`) lowers under
+/-- A count-in-tag right shift `SHR:19:64 [d]` (dst `d`) lowers under
     `lowerLinstrExtCov4` to the **single** op `[shr d $n]`, given the parse
-    `parseShiftMnem "SHR:19:64" = some (false, n)`. The leading materialise
-    `mov d, src` the non-in-place gather carried is **dropped** — the Lprog encoder
-    emits only the shift op. The mnemonic is concrete (so the `"MOVQ"`-head arm is
-    decidably distinct and the matcher reduces to the shift branch); the count `n`
-    is recovered from the `parseShiftMnem` hypothesis (it is not kernel-reducible —
-    `String.startsWith`). The `SHR:28:64` / `SHL:45:64` / `SHL:36:64` analogues are
-    `lowerCov4_shr28` / `lowerCov4_shl45` / `lowerCov4_shl36`. -/
-theorem lowerCov4_shr19 (dst src : String) (n : Nat)
+    `parseShiftMnem "SHR:19:64" = some (false, n)`. The mnemonic is concrete (so
+    the `"MOVQ"`-head arm is decidably distinct and the matcher reduces to the
+    shift branch); the count `n` is recovered from the `parseShiftMnem` hypothesis
+    (it is not kernel-reducible — `String.startsWith`). The `SHR:28:64` /
+    `SHL:45:64` / `SHL:36:64` analogues are `lowerCov4_shr28` / `lowerCov4_shl45` /
+    `lowerCov4_shl36`. -/
+theorem lowerCov4_shr19 (dst : String) (n : Nat)
     (hsh : parseShiftMnem "SHR:19:64" = some (false, n)) :
-    lowerLinstrExtCov4 (.Lopn [.reg dst] "SHR:19:64" [.reg src])
+    lowerLinstrExtCov4 (.Lopn [.reg dst] "SHR:19:64" [.reg dst])
       = some [JInstr.shr dst (.imm n)] := by
-  show (match parseShiftMnem "SHR:19:64" with
-        | some p => some [if p.1 then JInstr.shl dst (JOperand.imm p.2)
-                          else JInstr.shr dst (JOperand.imm p.2)]
-        | none   => lowerLinstrExtCov3 (.Lopn [.reg dst] "SHR:19:64" [.reg src])) = _
+  show (match parseShiftMnem "SHR:19:64", LOperand.reg dst with
+        | some p, .reg s =>
+            if s = dst then
+              some [if p.1 then JInstr.shl dst (JOperand.imm p.2)
+                    else JInstr.shr dst (JOperand.imm p.2)]
+            else lowerLinstrExtCov3 (.Lopn [.reg dst] "SHR:19:64" [.reg dst])
+        | _, _ => lowerLinstrExtCov3 (.Lopn [.reg dst] "SHR:19:64" [.reg dst])) = _
   rw [hsh]; simp
 
-/-- `SHR:28:64 [src]` lowers to the single `[shr d $n]` (drop-`mov`). -/
-theorem lowerCov4_shr28 (dst src : String) (n : Nat)
+/-- In-place `SHR:28:64 [d]` lowers to the single `[shr d $n]`. -/
+theorem lowerCov4_shr28 (dst : String) (n : Nat)
     (hsh : parseShiftMnem "SHR:28:64" = some (false, n)) :
-    lowerLinstrExtCov4 (.Lopn [.reg dst] "SHR:28:64" [.reg src])
+    lowerLinstrExtCov4 (.Lopn [.reg dst] "SHR:28:64" [.reg dst])
       = some [JInstr.shr dst (.imm n)] := by
-  show (match parseShiftMnem "SHR:28:64" with
-        | some p => some [if p.1 then JInstr.shl dst (JOperand.imm p.2)
-                          else JInstr.shr dst (JOperand.imm p.2)]
-        | none   => lowerLinstrExtCov3 (.Lopn [.reg dst] "SHR:28:64" [.reg src])) = _
+  show (match parseShiftMnem "SHR:28:64", LOperand.reg dst with
+        | some p, .reg s =>
+            if s = dst then
+              some [if p.1 then JInstr.shl dst (JOperand.imm p.2)
+                    else JInstr.shr dst (JOperand.imm p.2)]
+            else lowerLinstrExtCov3 (.Lopn [.reg dst] "SHR:28:64" [.reg dst])
+        | _, _ => lowerLinstrExtCov3 (.Lopn [.reg dst] "SHR:28:64" [.reg dst])) = _
   rw [hsh]; simp
 
-/-- `SHL:45:64 [src]` lowers to the single `[shl d $n]` (drop-`mov`). -/
-theorem lowerCov4_shl45 (dst src : String) (n : Nat)
+/-- In-place `SHL:45:64 [d]` lowers to the single `[shl d $n]`. -/
+theorem lowerCov4_shl45 (dst : String) (n : Nat)
     (hsh : parseShiftMnem "SHL:45:64" = some (true, n)) :
-    lowerLinstrExtCov4 (.Lopn [.reg dst] "SHL:45:64" [.reg src])
+    lowerLinstrExtCov4 (.Lopn [.reg dst] "SHL:45:64" [.reg dst])
       = some [JInstr.shl dst (.imm n)] := by
-  show (match parseShiftMnem "SHL:45:64" with
-        | some p => some [if p.1 then JInstr.shl dst (JOperand.imm p.2)
-                          else JInstr.shr dst (JOperand.imm p.2)]
-        | none   => lowerLinstrExtCov3 (.Lopn [.reg dst] "SHL:45:64" [.reg src])) = _
+  show (match parseShiftMnem "SHL:45:64", LOperand.reg dst with
+        | some p, .reg s =>
+            if s = dst then
+              some [if p.1 then JInstr.shl dst (JOperand.imm p.2)
+                    else JInstr.shr dst (JOperand.imm p.2)]
+            else lowerLinstrExtCov3 (.Lopn [.reg dst] "SHL:45:64" [.reg dst])
+        | _, _ => lowerLinstrExtCov3 (.Lopn [.reg dst] "SHL:45:64" [.reg dst])) = _
   rw [hsh]; simp
 
-/-- `SHL:36:64 [src]` lowers to the single `[shl d $n]` (drop-`mov`). -/
-theorem lowerCov4_shl36 (dst src : String) (n : Nat)
+/-- In-place `SHL:36:64 [d]` lowers to the single `[shl d $n]`. -/
+theorem lowerCov4_shl36 (dst : String) (n : Nat)
     (hsh : parseShiftMnem "SHL:36:64" = some (true, n)) :
-    lowerLinstrExtCov4 (.Lopn [.reg dst] "SHL:36:64" [.reg src])
+    lowerLinstrExtCov4 (.Lopn [.reg dst] "SHL:36:64" [.reg dst])
       = some [JInstr.shl dst (.imm n)] := by
-  show (match parseShiftMnem "SHL:36:64" with
-        | some p => some [if p.1 then JInstr.shl dst (JOperand.imm p.2)
-                          else JInstr.shr dst (JOperand.imm p.2)]
-        | none   => lowerLinstrExtCov3 (.Lopn [.reg dst] "SHL:36:64" [.reg src])) = _
+  show (match parseShiftMnem "SHL:36:64", LOperand.reg dst with
+        | some p, .reg s =>
+            if s = dst then
+              some [if p.1 then JInstr.shl dst (JOperand.imm p.2)
+                    else JInstr.shr dst (JOperand.imm p.2)]
+            else lowerLinstrExtCov3 (.Lopn [.reg dst] "SHL:36:64" [.reg dst])
+        | _, _ => lowerLinstrExtCov3 (.Lopn [.reg dst] "SHL:36:64" [.reg dst])) = _
   rw [hsh]; simp
+
 
 /-- **The `MOVQ ↦ MOV:64` alias lowers to a reg-reg `mov`.** A single-source
     `MOVQ R14, RSI` (the reg-reg arg-marshal framing) lowers under

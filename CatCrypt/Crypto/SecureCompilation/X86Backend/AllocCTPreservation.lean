@@ -285,12 +285,14 @@ theorem lowerLinstrExtCov4_direct {i : LinstrR} {js : List (JInstr 64)}
   split at h
   · exact lowerLinstrExtCov3_direct (by simpa [linstrRDirect] using hi) h
   · split at h
-    · simp only [Option.some.injEq] at h
-      subst h
-      refine allDirect_of_forall ?_
-      intro j hj
-      simp only [List.mem_cons, List.not_mem_nil, or_false] at hj
-      subst hj; split <;> simp [IsDirect]
+    · split at h
+      · simp only [Option.some.injEq] at h
+        subst h
+        refine allDirect_of_forall ?_
+        intro j hj
+        simp only [List.mem_cons, List.not_mem_nil, or_false] at hj
+        subst hj; split <;> simp [IsDirect]
+      · exact lowerLinstrExtCov3_direct hi h
     · exact lowerLinstrExtCov3_direct hi h
   · exact lowerLinstrExtCov3_direct hi h
 
