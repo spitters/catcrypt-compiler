@@ -985,3 +985,4 @@ CatCrypt.Tactics.Triangle
 CatCrypt.Tactics.TryBij2
 CatCrypt.Tactics.UpToBad
 CatCrypt.Tactics.WP
+CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86CallSegRoundtrip
